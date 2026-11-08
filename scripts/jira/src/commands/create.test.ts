@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -2409,5 +2409,96 @@ describe.skipIf(process.platform !== 'linux')('create — post door (a test on t
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
     expect(await failure()).not.toMatch(/nothing was posted/);
     expect(mockRequest).toHaveBeenCalled();
+  });
+});
+
+// I13: an issue in the configured test project is not work, so the work filing policy
+// (placement, home, sector), the INTAKE queue and the admissions ledger do not apply to it.
+describe('create — a test project is not work (I13)', () => {
+  let root: string;
+  let errs: string[];
+  let ledger: string;
+
+  const play = () =>
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) return [{ name: 'v1.1.3', released: false }];
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.includes('/issue/')) return { fields: { labels: [], status: { name: 'To Do' }, fixVersions: [] } };
+      return { key: 'HTEST-1' };
+    });
+  const file = async (project: string, ...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--project', project, '--type', 'Task', '--title', 'the console loses a worker', ...args]);
+  };
+  const posts =() => mockRequest.mock.calls.filter((x) => x[0] === 'POST' && x[1] === '/issue');
+  const ledgerText = () => {
+    try {
+      return readFileSync(ledger, 'utf8');
+    } catch {
+      return '';
+    }
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    errs = [];
+    vi.spyOn(console, 'error').mockImplementation((s: unknown) => { errs.push(String(s)); });
+    root = mkdtempSync(join(tmpdir(), 'create-testproject-'));
+    mkdirSync(join(root, 'conf'));
+    writeFileSync(join(root, 'conf', 'himmel.conf'), 'JIRA_PROJECTS=HIMMEL,LUNA\nJIRA_TEST_PROJECT=HTEST\n');
+    ledger = join(root, 'admissions-ledger.jsonl');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', join(root, 'conf'));
+    vi.stubEnv('HIMMEL_JIRA_LIVE_TEST', '');
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', ledger);
+    play();
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    process.exitCode = undefined;
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('a Task created in the test project with only a valid body passes placement, home and sector checks', async () => {
+    await file('HTEST', '--desc', PLAIN);
+    expect(posts().length).toBe(1);
+  });
+
+  it('queues no INTAKE and appends no admissions row', async () => {
+    await file('HTEST', '--desc', PLAIN);
+    expect(errs.some((e) => /INTAKE/.test(e))).toBe(false);
+    expect(readdirSync(join(baseRoot, 'state', 'R1')).includes('requests.jsonl')).toBe(false);
+    expect(ledgerText()).toBe('');
+  });
+
+  it('the exactly-one-release preflight does not refuse a test-project create', async () => {
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'no-release-state'));
+    await file('HTEST', '--desc', PLAIN);
+    expect(posts().length).toBe(1);
+  });
+
+  it('a test-project create does not read the Sector options or send a Sector', async () => {
+    vi.stubEnv('JIRA_SECTOR_FIELD', 'customfield_10212');
+    await file('HTEST', '--desc', PLAIN);
+    expect(posts().length).toBe(1);
+    expect((posts()[0]![2] as { fields: Record<string, unknown> }).fields['customfield_10212']).toBeUndefined();
+  });
+
+  // Controls: green on the base tree too.
+  it('control: the same Task in HIMMEL is still refused for placement', async () => {
+    await expect(file('HIMMEL', '--desc', PLAIN, ...HOME)).rejects.toThrow(/needs a placement/);
+    expect(posts().length).toBe(0);
+  });
+
+  it('control: a test-project create with no body is still refused for the body shape', async () => {
+    await expect(file('HTEST')).rejects.toThrow();
+    expect(posts().length).toBe(0);
+  });
+
+  it('control: a HIMMEL Task with placement still queues its INTAKE', async () => {
+    await file('HIMMEL', '--desc', PLAIN, '--proposed-version', 'v1.1.3', ...HOME);
+    expect(errs.some((e) => /INTAKE queued/.test(e))).toBe(true);
   });
 });

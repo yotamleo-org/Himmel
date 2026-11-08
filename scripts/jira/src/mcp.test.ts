@@ -185,6 +185,39 @@ describe('MCP create under the marker goes through the guard', () => {
   });
 });
 
+describe('MCP create — a test project is not work (I13)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'mcp-test-project-'));
+    writeFileSync(join(dir, 'himmel.conf'), 'JIRA_PROJECTS=HIMMEL,LUNA\nJIRA_TEST_PROJECT=HTEST\n');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', dir);
+    vi.stubEnv('HIMMEL_JIRA_LIVE_TEST', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('MCP create in the test project passes the home check', async () => {
+    const { deps, request } = mockDeps({ key: 'HTEST-1', id: '1' });
+    const out = await tool('create').handler({ type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'HTEST' }, deps);
+    expect(out).toBe('Created HTEST-1');
+    expect(request.mock.calls.filter((c) => c[0] === 'POST').length).toBe(1);
+  });
+
+  it('control: the same create in HIMMEL is still refused for its home', async () => {
+    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
+    await expect(tool('create').handler({ type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'HIMMEL' }, deps)).rejects.toThrow(/no Sector|--parent.*--labels standalone/s);
+    expect(request.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
+  });
+
+  it('control: a test-project create with no body is still refused for the body shape', async () => {
+    const { deps, request } = mockDeps({ key: 'HTEST-1', id: '1' });
+    await expect(tool('create').handler({ type: 'Task', title: 'New', project: 'HTEST' }, deps)).rejects.toThrow(/missing "## Impact"/);
+    expect(request.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
+  });
+});
+
 describe('MCP tool happy-path routing', () => {
   afterEach(() => {
     vi.unstubAllEnvs();

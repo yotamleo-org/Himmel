@@ -22,6 +22,7 @@ import { placementOf, readOperatorRecords, request as releaseRequest } from '../
 import { admits } from '../release/leaks.js';
 import { loadKey } from '../release/ledger.js';
 import { releaseKeyPath, releaseRoot } from '../release/paths.js';
+import { isTestProject } from '../live-test-guard.js';
 
 function collect(value: string, prev: string[]): string[] {
   return [...prev, value];
@@ -114,6 +115,21 @@ export function resolveTitle(opts: { title?: string; summary?: string }): string
 }
 
 /** The Sector to file under: the typed --sector, else a live "<Sector>: " title prefix; an unknown prefix exits 1. */
+/** The Sector options a create checks against: none when Sector is not configured, or for the test project (not work). */
+async function sectorsOf(sectorId: string | undefined, testProject: boolean): Promise<readonly string[] | undefined> {
+  return sectorId && !testProject ? await sectorOptions() : undefined;
+}
+
+/** A Task, Story or Bug needs a home; an issue in the test project is not work and needs none. */
+function homeCheck(testProject: boolean, ...args: Parameters<typeof homeVerdict>): ReturnType<typeof homeVerdict> {
+  return testProject ? { action: 'ok', message: '' } : homeVerdict(...args);
+}
+
+/** The intake-gate ledger row a filing owes; the test project is not work and owes none. */
+async function admissionOf(testProject: boolean, ...args: Parameters<typeof checkIntakeGate>): ReturnType<typeof checkIntakeGate> {
+  return testProject ? undefined : await checkIntakeGate(...args);
+}
+
 function sectorForCreate(
   type: string,
   title: string,
@@ -593,10 +609,11 @@ function placeAtFiling(
   o: PlacementOptions,
   labels: string[] | undefined,
   residual: boolean,
+  testProject = false,
 ): { labels: string[] | undefined; bugDefault: boolean } {
   const type = o.type.toLowerCase();
   const isBug = type === 'bug';
-  if ((!isBug && type !== 'task' && type !== 'story') || residual || o.fixVersion !== undefined) return { labels, bugDefault: false };
+  if ((!isBug && type !== 'task' && type !== 'story') || residual || testProject || o.fixVersion !== undefined) return { labels, bugDefault: false };
   if (o.backlog) return { labels: [...new Set([...(labels ?? []), BACKLOG_LABEL, proposedLabel('backlog')])], bugDefault: false };
   if (o.proposedVersion !== undefined) return { labels: [...new Set([...(labels ?? []), proposedLabel(o.proposedVersion)])], bugDefault: false };
   if (o.gate !== undefined || (isBug && o.priority?.toLowerCase() === 'highest')) return { labels, bugDefault: true };
@@ -622,7 +639,7 @@ const intakeWhy = (o: { why?: string; proposedVersion?: string }, title: string)
   const proposed = o.proposedVersion !== undefined && o.proposedVersion !== 'backlog' ? `proposed for ${o.proposedVersion}` : 'filed to the backlog';
   return o.why?.trim() || `${proposed}: ${title}`;
 };
-const intakeOwed = (type: string, fields: Record<string, unknown>): boolean => !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
+const intakeOwed = (type: string, fields: Record<string, unknown>, testProject = false): boolean => !testProject && !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
 
 interface IntakeOptions {
   type: string;
@@ -658,8 +675,8 @@ export function assertIntakeQueueable(why: string): void {
 }
 
 /** Refuses an unversioned Bug, Task or Story (a follow-up or residual too) whose INTAKE could not be queued; runs before the POST. */
-function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, title: string): void {
-  if (intakeOwed(o.type, fields)) assertIntakeQueueable(intakeWhy(o, title));
+function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, title: string, testProject: boolean): void {
+  if (intakeOwed(o.type, fields, testProject)) assertIntakeQueueable(intakeWhy(o, title));
 }
 
 interface ParentState {
@@ -710,8 +727,8 @@ async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; r
   return { ...o, proposedVersion: target, why, evidence };
 }
 
-function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions): void {
-  if (!intakeOwed(o.type, fields)) return;
+function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions, testProject = false): void {
+  if (!intakeOwed(o.type, fields, testProject)) return;
   const toVersion = o.proposedVersion === undefined || o.proposedVersion === 'backlog' ? null : o.proposedVersion;
   try {
     queueBacklogIntake(key, intakeWhy(o, title), toVersion, true, o.evidence);
@@ -743,7 +760,8 @@ export function queueBacklogIntake(key: string, why: string, toVersion: string |
   }
 }
 
-function recordAdmission(key: string, row: Omit<AdmissionInput, 'key'>): void {
+function recordAdmission(key: string, row: Omit<AdmissionInput, 'key'>, testProject = false): void {
+  if (testProject) return;
   try {
     appendAdmission({ ...row, key });
   } catch (e) {
@@ -979,9 +997,12 @@ export function registerCreate(program: Command): void {
           throw new Error('--over-cap needs a reason');
         }
         const overrideReason = checkPlacementFlags(options);
+        const createProject = options.project ?? projectKey();
+        // I13: an issue in the configured test project is not work: no placement, home, Sector, INTAKE or admissions row.
+        const testProject = isTestProject(createProject);
         await assertProposedVersion(options);
         const fields: Record<string, unknown> = {
-          project: { key: options.project ?? projectKey() },
+          project: { key: createProject },
           summary: resolveTitle(options),
           issuetype: { name: options.type },
         };
@@ -1020,7 +1041,7 @@ export function registerCreate(program: Command): void {
         if (verdict.action === 'warn') console.error(verdict.message);
         // Sectors are opt-in: with JIRA_SECTOR_FIELD unset there is no Sector check and none is sent.
         const sectorId = sectorField();
-        const sectors = sectorId ? await sectorOptions() : undefined;
+        const sectors = await sectorsOf(sectorId, testProject);
         const titleCheck = titleVerdict(options.type, resolveTitle(options), sectors);
         if (titleCheck.action === 'warn') console.error(titleCheck.message);
         if (options.sector !== undefined && !sectors) {
@@ -1030,7 +1051,7 @@ export function registerCreate(program: Command): void {
         let labels = options.labels !== undefined ? parseLabels(options.labels) : undefined;
         let residual: ResidualPlan | undefined;
         if (options.residualOf !== undefined) {
-          residual = await planResidual(options.project ?? projectKey(), { ...options, sector, residualOf: options.residualOf });
+          residual = await planResidual(createProject, { ...options, sector, residualOf: options.residualOf });
           if (residual.duplicateOf) {
             const dup = residual.duplicateOf;
             const head = markdownToAdf(`Re-raised as a residual of ${options.residualOf}: ${resolveTitle(options)}`);
@@ -1048,12 +1069,12 @@ export function registerCreate(program: Command): void {
         assertProposalNotInherited(options, inherited);
         const versionOptions = { ...options, fixVersion: inherited ?? options.fixVersion };
         if (options.backlog) labels = [...new Set([...(labels ?? []), BACKLOG_LABEL])];
-        const placed = placeAtFiling(versionOptions, labels, residual !== undefined);
+        const placed = placeAtFiling(versionOptions, labels, residual !== undefined, testProject);
         labels = placed.labels;
         const core = markCore(agentDetail, options.changeClass, labels);
         labels = core.labels;
         // A Sector (when configured) plus an epic or the standalone label; Epic and Subtask only warn.
-        const home = homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
+        const home = homeCheck(testProject, options.type, { sector, parent: options.parent, labels }, sectors);
         if (home.action === 'refuse') {
           console.error(home.message);
           process.exit(1);
@@ -1067,19 +1088,19 @@ export function registerCreate(program: Command): void {
           if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
           console.error(`jira: residual routed to ${inherited ?? residual.fixVersion ?? 'the backlog'}`);
         }
-        const overCapReason = await applyVersions(options.project ?? projectKey(), versionOptions, fields, {
+        const overCapReason = await applyVersions(createProject, versionOptions, fields, {
           labels,
           residual: residual !== undefined && inherited === undefined,
           bugDefault: placed.bugDefault,
         });
-        const admission = await checkIntakeGate(options.project ?? projectKey(), fields['fixVersions'], {
+        const admission = await admissionOf(testProject, createProject, fields['fixVersions'], {
           gate: options.gate,
           override: overrideReason !== undefined,
         });
 
-        await checkExistingBlocker(options.project ?? projectKey(), fields['fixVersions'], options);
-        const intake = intakeOwed(options.type, fields) ? await followUpIntake(versionOptions) : options;
-        preflightIntake(intake, fields, resolveTitle(options));
+        await checkExistingBlocker(createProject, fields['fixVersions'], options);
+        const intake = intakeOwed(options.type, fields, testProject) ? await followUpIntake(versionOptions) : options;
+        preflightIntake(intake, fields, resolveTitle(options), testProject);
 
         const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited, residual, bugDefault: placed.bugDefault });
         const result = await request<CreateIssueResponse>('POST', '/issue', { fields }, writer);
@@ -1095,9 +1116,9 @@ export function registerCreate(program: Command): void {
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);
         printCore(core.verdict);
-        queueIntakeIfUnversioned(result.key, fields, resolveTitle(options), intake);
+        queueIntakeIfUnversioned(result.key, fields, resolveTitle(options), intake, testProject);
         if (overrideReason !== undefined) {
-          recordAdmission(result.key, { version: options.fixVersion!, kind: 'override', reason: overrideReason });
+          recordAdmission(result.key, { version: options.fixVersion!, kind: 'override', reason: overrideReason }, testProject);
         }
         if (admission) recordAdmission(result.key, admission);
         await displaceResidual(residual, result.key, { type: options.type, title: resolveTitle(options) });

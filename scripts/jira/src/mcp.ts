@@ -17,6 +17,7 @@ import { parseLabels } from './commands/labels.js';
 import { uploadAll } from './commands/attach-helper.js';
 import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titleSector, titleVerdict } from './plain-block.js';
 import { resolveSector, sectorField, sectorOptions } from './commands/sector.js';
+import { isTestProject } from './live-test-guard.js';
 import type {
   JiraIssue,
   JiraSearchResult,
@@ -130,8 +131,11 @@ export function createTools(): JiraTool[] {
         additionalProperties: false,
       },
       async handler(args, deps) {
+        const project = (args.project as string) ?? projectKey();
+        // I13: an issue in the configured test project is not work: no home or Sector check.
+        const testProject = isTestProject(project);
         const fields: Record<string, unknown> = {
-          project: { key: (args.project as string) ?? projectKey() },
+          project: { key: project },
           summary: args.title,
           issuetype: { name: args.type },
         };
@@ -155,7 +159,7 @@ export function createTools(): JiraTool[] {
         if (verdict.action === 'refuse') throw new Error(verdict.message);
         // Sectors are opt-in: with JIRA_SECTOR_FIELD unset there is no Sector check and none is sent.
         const sectorId = sectorField();
-        const sectors = sectorId ? await sectorOptions(deps.request) : undefined;
+        const sectors = sectorId && !testProject ? await sectorOptions(deps.request) : undefined;
         let sector =
           args.sector !== undefined && sectors ? resolveSector(args.sector as string, sectors) : undefined;
         if (args.sector === undefined && sectors) {
@@ -165,7 +169,7 @@ export function createTools(): JiraTool[] {
           sector = derived.sector;
         }
         const labels = args.labels !== undefined ? parseLabels(args.labels as string) : undefined;
-        const home = homeVerdict(args.type as string, { sector, parent: args.parent as string | undefined, labels }, sectors);
+        const home = testProject ? { action: 'ok' as const, message: '' } : homeVerdict(args.type as string, { sector, parent: args.parent as string | undefined, labels }, sectors);
         if (home.action === 'refuse') throw new Error(home.message);
         if (args.parent) fields['parent'] = { key: args.parent };
         if (labels) fields['labels'] = labels;
