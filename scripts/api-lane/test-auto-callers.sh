@@ -1,28 +1,11 @@
 #!/usr/bin/env bash
-# The auto-caller grep test: fails when a caller in scripts/ or docs/ defaults to API
-# account auto outside the allowlist below, when anything but the himmel graph pass calls
-# the graph form of the lane gate, when a docs line says rm-run always takes the API lane,
-# or when a pinned docs line moved.
-#
 # No arguments. Exit 0 when clean, 1 on any hit; each hit prints one line on stdout.
 # AUTO_CALLERS_ROOT points the checks at another git tree (the suite's own rows use it);
 # unset, the checks run over this repo and the suite's rows then inject one violation
 # per check into a temp copy, each of which must print a hit.
 #
-# Checks (fixed strings only, over scripts/ and docs/; *.test.*, test-*.sh and the luna
-# old-auto runner fixture are excluded by path):
-#   1  the auto shapes below, outside the allowlist; claude-api.sh and semantic-update.sh,
-#      which decide auto, are outside the two A|B|C|auto strings only
-#   2  "auto", 'auto' or :-auto on a line naming HIMMEL_API_ACCOUNT, outside the allowlist,
-#      claude-api.sh and semantic-update.sh
-#   3  llm_backend_api_ready_graph outside llm-backend.sh, graph-cadence.sh and
-#      refresh-graph-map.sh
-#   4  a docs line holding rm-run, API lane and always
-#   5  pinned docs lines, present or absent
-#
 # ponytail: literal-shape grep over scripts/ and docs/, so a default built by indirection escapes it until its first call, and the launcher trusts a caller that declares graphify or a mapped kind; upgrade path: tie the kind to the calling script in the launcher, and section 6 must replace this test if the limit goes.
 # Platform guard: bash 3.2, git and awk on local files; Linux verified.
-# The patterns and injected lines are literal text, never expanded; each check appends to one out file.
 # shellcheck disable=SC2016,SC2129
 set -uo pipefail
 
@@ -60,7 +43,6 @@ scripts/handover/chief-kit/headed-arm-worker.sh
     worker_propagate_env HIMMEL_API_ACCOUNT auto
 ALLOW
 
-# allowed_line <file> <substring> -> the one allowlist line of <file> holding <substring>
 allowed_line() {
     awk -v f="$1" -v s="$2" 'NR % 2 == 1 { file = $0; next } file == f && index($0, s) { print; exit }' "$ALLOWLIST"
 }
@@ -68,8 +50,6 @@ allowed_line() {
 EXCLUDES=(':(exclude)*.test.*' ':(exclude)*/test-*.sh' ':(exclude)scripts/luna/fixtures/graphmap-semantic-luna-old-auto.txt')
 DECIDERS=(':(exclude)scripts/api-lane/claude-api.sh' ':(exclude)scripts/graphify/semantic-update.sh')
 
-# grep_tree <root> <git grep args...> -- <pathspecs...>: file:line:text hits, nothing on no hit;
-# a git grep that fails (exit above 1) leaves a line in $GREP_FAILED, which run_checks reports
 GREP_FAILED="$TMP_ROOT/grep-failed"
 grep_tree() {
     local root="$1" rc=0; shift
@@ -77,8 +57,6 @@ grep_tree() {
     [ "$rc" -le 1 ] || echo "git grep exited $rc in $root" >>"$GREP_FAILED"
 }
 
-# drop_allowed <check> <hits file>: prints "check<N> file:line: text" for every hit not
-# covered by an unused allowlist row; one hit per file:line
 drop_allowed() {
     awk -v check="$1" '
         NR == FNR { if (FNR % 2 == 1) file = $0; else allow[file SUBSEP $0]++; next }
@@ -92,13 +70,11 @@ drop_allowed() {
         }' "$ALLOWLIST" "$2"
 }
 
-# run_checks <root>: prints every hit, returns 1 when there is one
 run_checks() {
     local root="$1" hits="$TMP_ROOT/hits.$$" out="$TMP_ROOT/out.$$"
     : >"$out"
     rm -f "$GREP_FAILED"
 
-    # Checks 1 and 2 share the allowlist, so a line both match is judged once.
     {
         grep_tree "$root" -e 'HIMMEL_API_ACCOUNT=auto' -e "HIMMEL_API_ACCOUNT ?? 'auto'" \
             -e 'HIMMEL_API_ACCOUNT auto' -e 'A|B|auto' -e 'A\|B\|auto' -- scripts docs "${EXCLUDES[@]}"
@@ -162,7 +138,6 @@ rc=0; out="$(run_checks "$REPO")" || rc=$?
 [ -n "$out" ] && printf '%s\n' "$out"
 if [ "$rc" -eq 0 ]; then pass "no hit in scripts/ or docs/"; else fail "hits in scripts/ or docs/ (listed above)"; fi
 
-# The rows below run the checks over a temp git copy of every file a check reads.
 COPIED="scripts/luna/graphmap-cadence.sh scripts/lib/api-credit-state.mjs scripts/jira/src/commands/release.ts
 scripts/lib/llm-backend.sh scripts/handover/chief-kit/headed-arm-worker.sh scripts/api-lane/claude-api.sh
 scripts/graphify/semantic-update.sh scripts/graphify/graph-cadence.sh scripts/graphify/refresh-graph-map.sh
@@ -178,12 +153,10 @@ git -C "$BASE" add -A
 
 T="$TMP_ROOT/case"
 fresh() { rm -rf "$T"; cp -R "$BASE" "$T"; }
-# lit_replace <file> <from> <to>: every literal <from> in <file> becomes <to>
 lit_replace() {
     FROM="$2" TO="$3" awk '{ s = $0; o = ""; while ((i = index(s, ENVIRON["FROM"])) > 0) { o = o substr(s, 1, i - 1) ENVIRON["TO"]; s = substr(s, i + length(ENVIRON["FROM"])) } print o s }' \
         "$1" >"$1.new" && mv "$1.new" "$1"
 }
-# expect_hit <label> <expected substring>: the checks over $T exit 1 and print the substring
 expect_hit() {
     git -C "$T" add -A
     local rc=0 got
