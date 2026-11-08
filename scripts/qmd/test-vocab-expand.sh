@@ -58,8 +58,8 @@ if [ "$got" = "$want" ]; then pass "V7 expanded search becomes a lex-only query 
 else fail "V7 got='$got'"; fi
 
 # V8: a question with no registry word, a flag value naming one, and any other verb keep their argv.
-got="$(argv search -n5 --min-score 0.3 "prompt cache")$(argv get -c console leg.md)$(argv query --intent "the chief" "prompt cache")"
-want="search|-n5|--min-score|0.3|prompt cache|get|-c|console|leg.md|query|--intent|the chief|prompt cache|"
+got="$(argv search -n5 --min-score 0.3 "the prompt cache")$(argv get -c console leg.md)$(argv query --intent "the chief" "prompt cache")"
+want="search|-n5|--min-score|0.3|the prompt cache|get|-c|console|leg.md|query|--intent|the chief|prompt cache|"
 if [ "$got" = "$want" ]; then pass "V8 unexpanded argv unchanged"
 else fail "V8 got='$got'"; fi
 
@@ -94,16 +94,16 @@ got="$(vxpy 'm.shape_vec("claude -p --bg mode")')|$(vxpy 'm.shape_lex("claude -p
 if [ "$got" = 'claude --bg mode|claude "-p" "--bg" mode|claude -p mode' ]; then pass "V15 vec drops a single-dash word, lex quotes dash words only when asked"
 else fail "V15 got='$got'"; fi
 
-got="$(doc search "how does the waiter wake -p")"
-if [ "$got" = 'lex: waiter wake -p' ]; then pass "V16 a search keeps a typed -negation"
+got="$(doc search "how does the waiter wake -p")|$(doc search "how does the waiter wake")"
+if [ "$got" = 'how does the waiter wake -p|how does the waiter wake' ]; then pass "V16 a search naming no registry word runs as given, so qmd search keeps its own limits and scores"
 else fail "V16 got='$got'"; fi
 
-got="$(doc search 'what is "the end" mode')|$(doc search "how does the")"
-if [ "$got" = 'lex: "the end" mode|how does the' ]; then pass "V13 quoted phrase kept, all-filler question whole"
+got="$(vxpy 'm.shape_lex("what is \"the end\" mode")')|$(vxpy 'm.shape_lex("how does the")')"
+if [ "$got" = '"the end" mode|how does the' ]; then pass "V13 quoted phrase kept, all-filler question whole"
 else fail "V13 got='$got'"; fi
 
-got="$(doc search 'what is ("state of the art") mode')"
-if [ "$got" = 'lex: ("state of the art") mode' ]; then pass "V14 quoted phrase inside punctuation keeps its filler words"
+got="$(vxpy 'm.shape_lex("what is (\"state of the art\") mode")')"
+if [ "$got" = '("state of the art") mode' ]; then pass "V14 quoted phrase inside punctuation keeps its filler words"
 else fail "V14 got='$got'"; fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi

@@ -9,11 +9,11 @@ document that asks it in both:
   doc query|search <question>
       Prints the query document: "lex: <question>", one "lex:" line per vocabulary swap
       (every old word to its new one, every new word to its old one) and, for query, a
-      "vec: <question>" line. The lex lines drop filler words (shape_lex). A query that names
-      no registry word passes through unchanged, so qmd keeps its own expansion; a search
-      holding filler words is shaped alone (it is lex-only either way). It also prints the
-      question unchanged when it is already a query document, or holds what a lex/vec line
-      rejects (an odd number of double quotes, a -negation for query).
+      "vec: <question>" line. The lex lines drop filler words (shape_lex). A question that
+      names no registry word passes through unchanged, so qmd keeps its own expansion, limits
+      and scores. It also prints the question unchanged when it is already a query document,
+      or holds what a lex/vec line rejects (an odd number of double quotes, a -negation for
+      query).
       A caller that sends typed legs itself (retrieval-eval) uses shape_lex(quote_flags=True)
       and shape_vec: qmd rejects a vec query holding a dash word, and reads a bare dash word
       in a lex query as a NOT.
@@ -147,15 +147,13 @@ def document(verb, question, prs=None):
         return question
     alts = [swap(question, d, prs) for d in ("to-new", "to-old")]
     swapped = any(a != question for a in alts)
-    if verb == "query" and not swapped:
+    if not swapped:
         return question
     lines = []
     for line in [question, *alts]:
         shaped = shape_lex(line)
         if shaped not in lines:
             lines.append(shaped)
-    if not swapped and lines == [question]:
-        return question
     doc = [f"lex: {line}" for line in lines]
     if verb == "query":
         doc.append(f"vec: {question}")
