@@ -448,10 +448,11 @@ The cache is a head-bound file per PR: a snapshot is used only for the head SHA
 the run bound at start, so a push never reads a stale-head green. `scripts/ci/api-budget.sh`
 prints the live budget as one read-only line (`gh-api: remaining=R/5000 reset=HH:MMZ graphql=G/5000`).
 `scripts/measurements/gh-graphql-callers.sh` is a read-only measurement that prints an estimate of GraphQL points per hour by calling script (1 point per call), with `watch` (samples the live fleet, changes nothing), `run` (one command under a counting shim) and `report` modes.
-Never run your own `gh pr checks` poll loop in the background — that is the spend
-this replaces; call `scripts/check-ci.sh` in the foreground.
+Never run your own `gh pr checks` poll loop — that is the spend this replaces;
+call `scripts/check-ci.sh` once, bounded by `--max-wait`. Run a long wait with
+`run_in_background`: its completion notification carries the exit code.
 
-**Workflow/job wait.** Run the same entrypoint in the foreground:
+**Workflow/job wait.** Run the same entrypoint:
 
 ```bash
 bash scripts/check-ci.sh --run 123456 --max-wait 900
@@ -481,7 +482,7 @@ The heartbeat defaults to a per-process `run-*.rows.<pid>.wait` file under
 must exist). It uses chief-wait's `hb=<epoch> pid=<pid> key=<run> tick=<ok|fail|->
 state=<sampling|waiting|exited> [exit=<code>]` shape. A dead process leaving a
 waiting/sampling heartbeat is not success. Do not wrap this command in a poll
-loop or use `run_in_background`.
+loop; run a long wait with `run_in_background`.
 
 ## 4. The control surface
 

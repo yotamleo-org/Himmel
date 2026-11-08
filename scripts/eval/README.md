@@ -9,8 +9,8 @@ himmel's evals: each one measures one thing and writes its own output.
 | `docs-review/` | the `docs-reviewer` skill on frozen docs PRs: the operator's points found, the code fix named, BLOCKING true against false | a hand-scored result per case (no ledger row) |
 | `guard-corpus/` | a hook change, base vs head, over a command corpus | `diff` stdout plus a `JSON` line |
 | `scrape-bench/` | scrape providers on a fixed URL set | one JSONL row per URL |
-| `retrieval-eval/` | `retrieval-eval.py`: grep, qmd-lex, qmd-hybrid, graphify and combined (plus opt-in qmd-hybrid-norerank) on transcript-mined questions: recall@k, reason-carried, tokens and ms; `census` counts qmd and graphify use per session role | `results.jsonl`, `scores.tsv` |
-| `retrieval-eval/answer-ab.py` | tokens to a correct answer, end to end: a haiku answerer on the questions it fails closed-book, with no retrieval, grep, path + ident-grep, graphify or fused output pasted in; total session tokens per correct answer per arm; opt-in realistic worker-session arms (vanilla, fused-cached, bm25-rerank, vec-rerank) priced per call from usage | `table.tsv`, `results.jsonl`, ledger row `answer-ab` |
+| `retrieval-eval/` | `retrieval-eval.py`: grep, qmd-lex, qmd-hybrid, graphify and combined (plus opt-in qmd-hybrid-norerank) on transcript-mined questions: hit@k, reason-carried, tokens and ms; `census` counts qmd and graphify use per session role | `results.jsonl`, `scores.tsv` |
+| `retrieval-eval/answer-ab.py` | tokens per file hit, end to end: a haiku answerer on the questions it fails closed-book, with no retrieval, grep, path + ident-grep, graphify or fused output pasted in; total session tokens per file hit per arm; opt-in realistic worker-session arms (vanilla, fused-cached, bm25-rerank, vec-rerank) priced per call from usage | `table.tsv`, `results.jsonl`, ledger row `answer-ab` |
 | `handover-cost.py` | the per-handover chief price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and worker-relay turns and cost, gross and net (HIMMEL-6491 method); `--workers-after` counts only newer workers | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
 | `chief-wake-classes.py` | the chief wake mix for one date from session JSONLs: wakes, requests and eq per class (operator, relay-only, escalate) and per wake kind, priced with `handover-cost.py` (HIMMEL-2975 plan method); `--exclude` drops live chiefs | `CLASS` and `KIND` rows on stdout (no ledger row) |
 | `lone-comm-count.py` | report-only count of the turns whose only tool call is one comm tool (an `append-results.sh` bullet, a `SendMessage`, an himmel-bus send) per session JSONL, by marker class; GO, NO-GO, token-quoting, SUCCESSION and RETASK rows are counted apart as safety, never batchable; files as arguments, or `--dir D --hours N` | a TSV per session, `CLASS` rows and a `TOTAL` line on stdout (no ledger row) |
@@ -93,20 +93,52 @@ the live ledger.
 
 Check a ledger: `python3 scripts/eval/lib/eval_runs.py validate <ledger>`.
 
-## Tokens to a correct answer (answer-ab)
+## Retrieval file hits and offline replay (retrieval-eval)
 
-The retrieval token goal is the cost of reaching a correct answer, not the size of
-one call. `retrieval-eval/answer-ab.py run --questions retrieval-eval/questions.jsonl --out DIR`
+`retrieval-eval.py` reports `hit@k`: a gold file appears among the first k distinct
+retrieved files. This is a file-hit rate. `hit_any@k` also accepts a grade-1 file;
+`precision@k`, `mrr`, `gold_share`, `ndcg@k` and `tokens_per_hit` retain their existing
+names. The combined arm fuses the first-k lists of grep, qmd-hybrid and graphify.
+Scoring uses each arm's limit-k query exactly as before. Each row also keeps
+`files_top20`, taken from a second, separate query at the evidence depth
+(`max(k, 20)`, recorded as `evidence_depth` in the ledger config); that list is
+evidence only and is never scored or fused, and with rerank on it need not begin
+with the scored list.
+
+Re-fuse a saved run without retrieval, subprocesses, network or paid calls:
+
+```bash
+python3 scripts/eval/retrieval-eval/retrieval-eval.py replay --results DIR/results.jsonl
+python3 scripts/eval/retrieval-eval/retrieval-eval.py replay --results DIR/results.jsonl --add path,ident-grep
+```
+
+`--questions` defaults to `questions.jsonl` beside the script. `--arms` selects the
+fused set (default `grep,qmd-hybrid,graphify`); `--add` appends arms from the saved
+results. Every selected arm and the saved `combined` baseline must be present for
+every saved question. `--rrf-k` changes the RRF constant (default 60), and `--k`
+changes the output cutoff (default 5). Replay uses saved `files`, so its candidates
+are limited to the lists that run saved.
+
+The output compares saved and replayed hit counts for insample, heldout and all.
+`reproduces saved combined` is yes when the total hit counts match with the default
+arms and RRF constant. Rescued and regressed IDs are printed only for the insample
+(dev) slice; held-out questions are frozen and appear only as counts, so they cannot
+guide tuning.
+
+## Tokens per file hit (answer-ab)
+
+The retrieval token metric is the cost of naming a gold file.
+`retrieval-eval/answer-ab.py run --questions retrieval-eval/questions.jsonl --out DIR`
 screens a sample with a haiku answerer and no retrieval, keeps the questions it fails,
-then answers each once per arm with that arm's output pasted in. The answer is a list
-of at most three file paths, correct when one is a gold file. `tokens_per_correct` is
-an arm's total session tokens (input, cache creation, cache read, output) over its
-correct answers.
+then answers each once per arm with that arm's output pasted in. `file_hit` is true
+when one of the at most three named paths is a gold file; it does not grade the answer
+text. `tokens_per_file_hit` is an arm's total session tokens (input, cache creation,
+cache read, output) over its file hits.
 
 First run, 2026-10-21, claude-haiku-5-5, 20 sampled, 15 failed closed-book and kept
 (`--pool 20 --n 15`), one answer per question and arm, $0.21:
 
-| arm | correct | tokens total | tokens per correct | retrieval tokens (mean) |
+| arm | file hits | tokens total | tokens per file hit | retrieval tokens (mean) |
 |---|---|---|---|---|
 | none (no retrieval) | 1/15 | 74879 | 74879 | 0 |
 | grep | 6/15 | 110554 | 18426 | 1217 |
@@ -116,8 +148,8 @@ First run, 2026-10-21, claude-haiku-5-5, 20 sampled, 15 failed closed-book and k
 
 The baseline is below 15/15, so the A/B has no ceiling. Every arm carries a fixed
 session overhead of about 4.2k tokens, which the none row shows. Reading the table:
-path + ident-grep costs the least per correct answer; graphify and fused answer one to
-two more questions but at about three times the tokens per correct answer.
+path + ident-grep costs the least per file hit; graphify and fused name a gold file for
+one to two more questions but at about three times the tokens per file hit.
 
 Limits: one sample of 15, one answer per cell (the none arm answered 1 of 15 here
 after failing all 15 in the screen, so a cell is noisy by about one question); the
@@ -149,14 +181,14 @@ These arms take the question sample whole (`--pool 75 --n 75` is all 75 question
 Cost is priced per call from the usage split (input, output, cache read, cache
 creation) through `scripts/lanes/model-price.mjs`, never from `total_cost_usd`; a model
 with no price row is reported `unpriced`. The table adds `priced_usd`,
-`cost_per_correct`, the token mix, `cached_share` (cache read over input + cache read +
+`cost_per_file_hit`, the token mix, `cached_share` (cache read over input + cache read +
 cache creation), `ms_median` and `turns_mean`.
 
 The run now writes one `answer-ab` row to the eval-runs ledger (`--no-ledger` writes
-none): per arm `<arm>.correct`, `.cost_usd`, `.cost_per_correct`, `.tokens_per_correct`,
+none): per arm `<arm>.file_hit`, `.cost_usd`, `.cost_per_file_hit`, `.tokens_per_file_hit`,
 `.input`, `.output`, `.cache_read`, `.cache_creation`, `.cached_share`, `.ms_median`,
-`.turns_mean`, the same under `<arm>.insample.` and `<arm>.heldout.` (`n`, `correct`,
-`cost_usd`, `cost_per_correct`), and per-question cases. `results.jsonl` gains a row as
+`.turns_mean`, the same under `<arm>.insample.` and `<arm>.heldout.` (`n`, `file_hit`,
+`cost_usd`, `cost_per_file_hit`), and per-question cases. `results.jsonl` gains a row as
 each call lands, so a run stopped halfway keeps what it paid for.
 
 A route call returns the top 5 files with at most 400 characters of excerpt each
@@ -167,7 +199,7 @@ Two opt-in flags measure the cache the way a user meets it:
 - `--prime` asks one throwaway question per arm before the measured ones, so no
   measured call pays an arm's cold prefix write. The headline `<arm>.cost_usd` leaves
   it out; `<arm>.prime_cost_usd`, `.cost_usd_with_prime` and
-  `.cost_per_correct_with_prime` report it.
+  `.cost_per_file_hit_with_prime` report it.
 - `--warm-session K` asks K questions in ONE persisted session per arm (the first call
   `--session-id`, later calls `--resume`), question j of every arm before question j+1 so
   each arm stays inside the 5-minute cache window. Question 1 pays the prefix; questions

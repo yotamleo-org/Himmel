@@ -71,7 +71,7 @@ describe('resolveProjects (config-driven, no hardcoded HIMMEL)', () => {
   });
 });
 
-describe('Jira URL config layers (HIMMEL-8244)', () => {
+describe('Jira URL config layers', () => {
   afterEach(() => { vi.unstubAllEnvs(); });
 
   it('uses a conf-only URL without prompting and never takes a config token', () => {
@@ -289,7 +289,7 @@ describe('loadEnvIntoProcess quote stripping', () => {
   });
 });
 
-describe('loadEnvIntoProcess reads JIRA_PROJECTS from himmel.conf (HIMMEL-7427)', () => {
+describe('loadEnvIntoProcess reads JIRA_PROJECTS from himmel.conf', () => {
   const saved = { cfg: process.env.HIMMEL_CONFIG_DIR, proj: process.env.JIRA_PROJECTS };
   const restore = (k, v) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; };
   const setup = (conf, local, dotenv) => {
@@ -330,7 +330,7 @@ describe('loadEnvIntoProcess reads JIRA_PROJECTS from himmel.conf (HIMMEL-7427)'
   });
 });
 
-describe('credentials in the keyring (HIMMEL-8471)', () => {
+describe('credentials in the keyring', () => {
   const FIXTURE = { JIRA_EMAIL: 'kr@example.invalid', JIRA_API_TOKEN: 'keyring-fixture-token' };
 
   it('ensureEnvKeys counts a credential only the keyring holds as present; the base URL still needs .env', () => {

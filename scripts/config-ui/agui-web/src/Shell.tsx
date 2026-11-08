@@ -6,6 +6,7 @@ import { fleetDot, railMarkup } from "../../public/nav.js";
 // @ts-expect-error: plain ES module shared with the chief (no types).
 import { renderHeader } from "../../public/render.js";
 import type { FleetState } from "./Fleet";
+import { isRagEvalHash } from "./rag-eval-model";
 
 const PROBING = '<span class="ver">himmel</span><span class="k">probing…</span>'; // as public/index.html, until the report answers
 
@@ -43,7 +44,7 @@ export function Shell({ token, run, fleet, children }: { token: string | null; r
     load();
     return () => { live = false; clearTimeout(timer); };
   }, [token]);
-  const current = run ? "run" : "fleet";
+  const current = run ? "run" : isRagEvalHash(location.hash) ? null : "fleet";
   return (
     <div className="shell">
       <aside className="rail" aria-label="Regions">

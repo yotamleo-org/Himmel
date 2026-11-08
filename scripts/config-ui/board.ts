@@ -5,8 +5,8 @@
 // <HANDOVER_DIR>/<slug>/himmel/. A test therefore reaches only the paths it sets: with none of these nothing is spawned and
 // the page shows both as absent, with the reason, never as a count.
 import { execFile, execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { runChild } from "./lock";
 import { readRoadmap } from "./roadmap";
 import { jiraMirrorDir } from "./tracker-sources";
@@ -15,7 +15,7 @@ type Env = Record<string, string | undefined>;
 export type Absent = { state: "absent"; reason: string };
 // chains: every version, for the whole Board. versionChains: the picked version (else the running one), for the Chains tab alone, with its burn-down.
 // prs: the open PRs and their CI per ticket, from the worker records the status sweep keeps (a local file read, no GitHub call).
-export type BoardExtras = { drift: Record<string, unknown> | Absent; chains: Record<string, unknown> | Absent; versionChains: Record<string, unknown> | Absent; prs: PrRead | Absent };
+export type BoardExtras = { drift: Record<string, unknown> | Absent; chains: Record<string, unknown> | Absent; versionChains: Record<string, unknown> | Absent; prs: PrRead | Absent; owed: Owed };
 // seen: when each ticket's worker record last moved (its last_event_ts), for the age on the card's worker line.
 export type PrRead = { state: "ok"; repo?: string; prs: Record<string, { pr: number; head: string; ci: string }[]>; seen: Record<string, string>; unread: string[] };
 
@@ -149,6 +149,134 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
   return { state: "ok", sdrift: last.slice("sdrift=".length) };
 }
 
+// What is owed to the operator beside the labels and the chain holds, read from the records that hold it: the same three sources as the roadmap
+// tracker's reader (tracker.py operator_owed), so the two views agree. All READ ONLY.
+//   1. an unsigned spec: the latest critic verdict of a spec of an open ticket of the running version is SPEC CLEAN or is past the round cap, and
+//      <bucket>/release/<version>/operator.jsonl has no `spec` row naming that spec file;
+//   2. a `queue:` segment or `pool-disposition:` line of the newest chief doc's `## Live state` that names the operator;
+//   3. the newest *HANDOFF.md of the bucket, its `## Open operator items` lines.
+// A source that cannot be read is named in `unread`; when none can be read the whole read is absent with the reasons, never an empty list.
+// ponytail: the newest chief doc by mtime stands for "the live chief" and its folder for the bucket, upgrade path: the live chiefs' docs by queue lock as Shift reads them.
+export type OwedItem = { source: "unsigned spec" | "chief doc" | "handoff"; key: string | null; title: string; ctx: string; act: string };
+export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?: string[] } | Absent;
+const OWED_SOURCES = 3; // unsigned specs, handoff items, chief doc lines
+const SPEC_ROUNDS = 3; // the critic round cap (critic-seal.sh): a spec past it needs the operator's record whatever its last verdict says
+const OWED_RE = /operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed/i;
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+// The lines under `## <heading>` up to the next `## `; undefined when the file has no such section.
+function mdSection(text: string, heading: string): string[] | undefined {
+  const out: string[] = [];
+  let on = false, found = false;
+  for (const l of text.split("\n")) {
+    if (l.startsWith("## ")) { if (on) break; on = l.slice(3).trim() === heading; found ||= on; } else if (on) out.push(l);
+  }
+  return found ? out : undefined;
+}
+const readText = (p: string) => readFileSync(p, "utf8");
+const utf8 = (p: string) => new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(p)); // throws on bytes that are not UTF-8
+// A record and a file name one spec through any symlink or `..`, with or without one trailing `.md`.
+// A file that is not there still resolves through a symlinked folder, as Python's realpath does.
+const specId = (p: string) => {
+  let r: string;
+  try { r = realpathSync(p); } catch { try { r = join(realpathSync(dirname(p)), basename(p)); } catch { r = resolve(p); } }
+  return r.replace(/\.md$/, "");
+};
+// `skipped` takes the critic files of single specs that could not be read: the rest of the list still stands.
+function specItems(bucket: string, version: string, open: Map<string, string>, skipped: string[]): OwedItem[] {
+  const signed = new Set<string>();
+  let ledger = "";
+  try { ledger = readText(join(bucket, "release", version, "operator.jsonl")); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; } // a release with no record yet has signed nothing
+  for (const l of ledger.split("\n")) {
+    try { const r = JSON.parse(l); if (r && r.kind === "spec" && typeof r.spec_path === "string") signed.add(specId(r.spec_path)); } catch { /* a torn or blank line holds no record */ }
+  }
+  const dir = join(bucket, "specs", "designs"), latest = new Map<string, { n: number; f: string }>();
+  for (const f of readdirSync(dir)) {
+    const m = f.match(/^(.*)\.critic-spec-r(\d+)\.md$/);
+    if (m && (!latest.has(m[1]) || Number(m[2]) > latest.get(m[1])!.n)) latest.set(m[1], { n: Number(m[2]), f });
+  }
+  const items: OwedItem[] = [];
+  for (const [spec, { n, f }] of [...latest].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
+    const key = spec.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
+    let last: string | undefined;
+    try { last = utf8(join(dir, f)).split("\n").map((x) => x.trim()).filter(Boolean).pop(); } catch { /* named below */ }
+    if (last === undefined) { skipped.push(f); continue; } // an empty, unreadable or non-UTF-8 critic file skips that one spec, and says so
+    if (!key || !open.has(key) || signed.has(specId(join(dir, spec))) || !(last === "SPEC CLEAN" || n >= SPEC_ROUNDS)) continue;
+    items.push({ source: "unsigned spec", key, title: open.get(key)!, act: "sign the spec, or rule on its findings",
+      ctx: `${spec}: latest critic round ${n} reads ${/^SPEC (?:CLEAN|FINDINGS \d+)$/.test(last) ? last : "no verdict line"}, no spec row in operator.jsonl` });
+  }
+  return items;
+}
+function handoffItems(bucket: string): OwedItem[] | undefined {
+  let best: { f: string; t: number } | undefined;
+  for (const f of readdirSync(bucket)) {
+    if (!f.endsWith("HANDOFF.md")) continue;
+    const t = statSync(join(bucket, f)).mtimeMs;
+    if (!best || t > best.t) best = { f, t };
+  }
+  const sec = best ? mdSection(readText(join(bucket, best.f)), "Open operator items") : undefined;
+  return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*none\.?$/i.test(l))
+    .map((l) => ({ source: "handoff" as const, key: null, title: clip(l.replace(/^[-*]\s+/, ""), 140), ctx: best!.f, act: "answer the open item" }));
+}
+function chiefDocItems(doc: string, open: Map<string, string>): OwedItem[] | undefined {
+  const live = mdSection(readText(doc), "Live state");
+  if (!live) return undefined;
+  const items: OwedItem[] = [];
+  for (const l of live) {
+    // what follows " || " on a queue line is history, not live
+    const segs = l.startsWith("queue:") ? l.slice(6).split(" || ")[0].split(" | ") : l.startsWith("pool-disposition:") ? [l.slice(17)] : [];
+    for (const s of segs.map((x) => x.trim()).filter((x) => OWED_RE.test(x))) {
+      const key = s.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
+      const known = !!key && open.has(key);
+      items.push({ source: "chief doc", key: known ? key! : null, title: known ? open.get(key!)! : clip(s, 140), ctx: known ? clip(s, 160) : "from the chief doc's Live state", act: "the operator acts on what the line names" });
+    }
+  }
+  return items;
+}
+function newestChiefDoc(env: Env): string | undefined {
+  if (env.HIMMEL_CHIEF_DOC) return env.HIMMEL_CHIEF_DOC;
+  if (!env.HANDOVER_DIR) return undefined;
+  let best: { p: string; t: number } | undefined;
+  try {
+    for (const e of readdirSync(env.HANDOVER_DIR, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue;
+      const dir = join(env.HANDOVER_DIR, e.name, "himmel");
+      try {
+        for (const f of readdirSync(dir)) {
+          if (!/-chief\.md$/.test(f)) continue;
+          const t = statSync(join(dir, f)).mtimeMs;
+          if (!best || t > best.t) best = { p: join(dir, f), t };
+        }
+      } catch { /* no himmel dir under this slug */ }
+    }
+  } catch { /* an unreadable handover root reads as no doc */ }
+  return best?.p;
+}
+export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed {
+  const mirror = jiraMirrorDir(env), proj = env.JIRA_PROJECT_KEY || "HIMMEL";
+  const doc = newestChiefDoc(env), bucket = env.HIMMEL_BUCKET_DIR || (doc ? dirname(doc) : undefined);
+  const items: OwedItem[] = [], unread: string[] = [], why: string[] = [], skipped: string[] = [];
+  const miss = (what: string, reason: string) => { unread.push(what); why.push(`${what}: ${reason}`); };
+  let running: string | undefined;
+  const open = new Map<string, string>(); // the open tickets of the running version: id to title
+  try {
+    const r = read({ mirrorDir: mirror, projects: [{ key: proj, dir: mirror }], workers: { state: "absent" } });
+    running = r.versions[r.cur]?.n.replace(new RegExp(` \\(${proj}\\)$`), "");
+    for (const t of r.tickets) if (t.v === r.cur && (t.b === "todo" || t.b === "prog" || t.b === "rev" || t.b === "ci")) open.set(t.id ?? `${proj}-${t.k}`, t.t);
+  } catch (e) { why.push(`the open tickets could not be read: ${(e as Error).message}`); }
+  const tryRead = (what: string, f: () => OwedItem[] | undefined, none: string) => {
+    try { const got = f(); if (got) items.push(...got); else miss(what, none); } catch (e) { miss(what, (e as Error).message); }
+  };
+  if (!bucket) { miss("unsigned specs", "no bucket: no chief doc under the handover root, and HIMMEL_BUCKET_DIR is not set"); miss("handoff items", "no bucket"); }
+  else {
+    if (!running) miss("unsigned specs", "no running version");
+    else tryRead("unsigned specs", () => specItems(bucket, running!, open, skipped), "none");
+    tryRead("handoff items", () => handoffItems(bucket), `no Open operator items section in the newest HANDOFF under ${bucket}`);
+  }
+  if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
+  else tryRead("chief doc lines", () => chiefDocItems(doc, open), "the chief doc has no Live state section");
+  return unread.length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread, skipped };
+}
+
 // `asked`: the version tile picked on the page. A known one is the version the tab reads; an unknown one reads as the running version and the answer says so (fellBack).
 export async function readBoardExtras(env: Env, read: typeof readRoadmap = readRoadmap, asked?: string): Promise<BoardExtras> {
   const mirror = jiraMirrorDir(env);
@@ -159,7 +287,7 @@ export async function readBoardExtras(env: Env, read: typeof readRoadmap = readR
   // the chain read's state dir (hold and merge rows) is the script's own: TICKET_STATUS_STATE_DIR, else $HOME/.himmel/state
   if (!registry) {
     const none = absent("no chain registry: none found under the handover root, and HIMMEL_CHAIN_REGISTRY is not set");
-    return { drift: await drift, chains: none, versionChains: none, prs: readPrs(env) };
+    return { drift: await drift, chains: none, versionChains: none, prs: readPrs(env), owed: readOwed(env, read) };
   }
   const chainRead = (extra: string[]) => runReader(join(KIT, "chain-state.mjs"), ["--json", "--registry", registry, "--mirror", mirror, ...extra], env, "the chain read");
   const withBurn = (r: Record<string, unknown> | Absent) => ("tickets" in r ? { ...r, burn: burnDown(r as Parameters<typeof burnDown>[0]) } : r);
@@ -170,6 +298,6 @@ export async function readBoardExtras(env: Env, read: typeof readRoadmap = readR
   const pick = "state" in vs ? undefined : bare && vs.names.includes(bare) ? bare : vs.running;
   const fell = !("state" in vs) && asked && pick !== bare ? { fellBack: { asked, to: vs.running ?? null } } : {};
   const forTab = "state" in vs ? Promise.resolve(vs) : (pick ? chainRead(["--version", pick]) : whole).then(withBurn).then((r) => ("tickets" in r ? { ...r, ...fell } : r));
-  const [d, chains, versionChains] = await Promise.all([drift, whole, forTab]);
-  return { drift: d, chains, versionChains, prs: readPrs(env) };
+  const [d, chains, versionChains, owed] = await Promise.all([drift, whole, forTab, readOwed(env, read)]);
+  return { drift: d, chains, versionChains, prs: readPrs(env), owed };
 }

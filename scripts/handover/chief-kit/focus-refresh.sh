@@ -345,7 +345,7 @@ plan=$(sed -n 's/^focus-plan:[[:space:]]*//p' "$DOC" | head -n 1)
 case "$plan" in none*) plan="" ;; esac
 [ -z "$plan" ] || echo "focus-refresh: WARN priority-source plan-differs: the priority line is read from $plan, not derived from the chain registry" >&2
 set -- --version "$VER" --out "$stage/page.html" --mirror-dir "$MIR" --versions-file "$MIR.versions.tsv" \
-    --prs-file "$stage/prs.json" --workers-dir "$(ts_state_dir)/workers" --repo "$REPO"
+    --prs-file "$stage/prs.json" --workers-dir "$(ts_state_dir)/workers" --repo "$REPO" --owed-dir "$DIR" --chief-doc "$DOC"
 [ -z "$plan" ] || set -- "$@" --priority-file "$plan"
 if [ -n "$CHAINS_NEW" ]; then set -- "$@" --chains-file "$CHAINS_NEW"
 elif [ -f "$DIR/focus-chains.json" ]; then set -- "$@" --chains-file "$DIR/focus-chains.json"; fi

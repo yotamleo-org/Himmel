@@ -101,9 +101,27 @@ write_doc "HIMMEL-222, hold"
 prs "$(pr 102 feat/himmel-222-beta)"
 run
 check "queue-held by ticket key: exits 0" "0" "$rc"
-write_doc "#102 (adapter merge)"
+write_doc "#102 held (adapter merge)"
 run
 check "queue-held by PR number: exits 0" "0" "$rc"
+write_doc "#102 (adapter merge)"
+run
+check "9599 a PR named on the queue: line with no hold word is unowned" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
+write_doc "4951 merging | 102 222 N5162 handed off, relaunch after 4951 merges | 4660 8992 HELD until 9032"
+run
+check "9599 a narrative segment that names the PR and no hold is unowned" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
+write_doc "4951 merging | 102 222 HELD until 9032 Task 2 | 4660 8992 relaunch"
+run
+check "9599 a HELD segment names the PR: exits 0" "0" "$rc"
+write_doc "102 222 threshold tuning, withheld relaunch"
+run
+check "9599 hold inside another word does not hold the PR" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
+write_doc "102 222 hold2, held_x"
+run
+check "9599 hold followed by a digit or an underscore does not hold the PR" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
+write_doc "4951 merging || prior US queue: 102 222 HELD until 9032"
+run
+check "9599 a hold in a prior-queue segment after || does not hold the PR" "1:UNMAPPED 102 feat/himmel-222-beta" "$rc:$out"
 write_doc "none"
 run
 check "the same PR with the hold gone is unowned" "UNMAPPED 102 feat/himmel-222-beta" "$out"

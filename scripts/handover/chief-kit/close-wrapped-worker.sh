@@ -314,9 +314,11 @@ fi
 # merely names the stem, a later marker of any kind, and file mtimes (a launch, a bus adopt and a vault
 # pull all rewrite them) prove nothing about a successor that has just started.
 resume_evidence() {
-    local stem
+    local stem lab
     stem=$(basename "$2" .md)
-    awk -v stem="$stem" '
+    lab=$(worker_label "$2")
+    [[ $lab =~ [0-9][a-z]+$ ]] || lab=""
+    awk -v stem="$stem" -v lab="$lab" '
         /^## Results( |$)/ { seen = 1; inres = 1; next }
         /^## / { inres = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next }
         !inres || !/^- / { next }
@@ -331,7 +333,7 @@ resume_evidence() {
                 tok = substr($0, RSTART, RLENGTH)
                 sub(/^release-token[: \t]+/, "", tok); gsub(/`/, "", tok)
             }
-            if (!named && index($0, stem)) named = 1
+            if (!named && (index($0, stem) || (lab != "" && match($0, "(^|[^A-Za-z0-9])" lab "([^A-Za-z0-9]|$)")))) named = 1
             if (named && !hand && (mk == "WRAPPED" || (mk == "BLOCKED" && $0 ~ /([Hh]and-?off|RESUME written:)/))) { hand = 1; next }
             if (!hand) { if (tok != "") pred = tok; next }
             if (!live && tok != "" && tok != pred) { live = 1; next }
@@ -341,10 +343,19 @@ resume_evidence() {
         END { exit !(wrapped && tailmk == "WRAPPED") }' "$1"
 }
 
+successor_own_evidence() {
+    awk '
+        /^## Results( |$)/ { seen = 1; inres = 1; next }
+        /^## / { inres = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next }
+        !inres || !/^- / { next }
+        /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?LIVE([^A-Za-z0-9_]|$)/ && /release-token[: \t]+`?[A-Za-z0-9_.-]+-pid[0-9]+`?/ { live = 1 }
+        END { exit !live }' "$1" && [ "$(doc_tail_status "$1")" = WRAPPED ]
+}
+
 # results_tail_status <doc>: the doc's tail status read from its `## Results` section and the ruling sections
 # the writers add after it (`## Chief Rulings`, `## Console Rulings`), through the one marker parser
-# (worker_tail_status). append-results.sh appends at the end of the file, so once inbox-send adds a ruling
-# section the worker's later bullets sit below it and still count; a bullet in any other later section (a
+# (worker_tail_status). append-results.sh inserts at the end of the last of these sections, so once inbox-send
+# adds a ruling section the worker's later bullets sit below it and still count; a bullet in any other later section (a
 # `## Notes` line that mentions WRAPPED) never reads as the worker's tail. Prints `nosection` for a doc with
 # no Results heading (a legacy doc: the whole-file tail stands). Returns 1 when the text cannot be copied.
 results_tail_status() {
@@ -609,14 +620,17 @@ if [ "$census_rc" -gt 1 ]; then
 fi
 
 claim_ids=""
+own_claim_ids=""; sib_claim_ids=""
 set_claim_ids() {
-    local d first
-    claim_ids=""
+    local d first d_ids
+    claim_ids=""; own_claim_ids=""; sib_claim_ids=""
     [ "$CHIEF_MODE" -eq 0 ] || return 0
     for d in "$@"; do
         IFS= read -r first < "$d" || continue
         [ "$first" = "---" ] || continue
-        claim_ids="$claim_ids$(awk 'NR == 1 { next } /^---$/ { exit } { print }' "$d" | sed -n 's/^session_ids: *//p' | tr ',' '\n' | tr -d ' ' | grep -E '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$')"$'\n'
+        d_ids="$(awk 'NR == 1 { next } /^---$/ { exit } { print }' "$d" | sed -n 's/^session_ids: *//p' | tr ',' '\n' | tr -d ' ' | grep -E '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$')"$'\n'
+        claim_ids="$claim_ids$d_ids"
+        if [ "$d" = "$1" ]; then own_claim_ids="$own_claim_ids$d_ids"; else sib_claim_ids="$sib_claim_ids$d_ids"; fi
     done
 }
 if [ "$PREDECESSOR" -eq 0 ] && [ -n "$SIB_DOC" ]; then set_claim_ids "$DOC" "$SIB_DOC"; else set_claim_ids "$DOC"; fi
@@ -624,8 +638,8 @@ if [ "$PREDECESSOR" -eq 0 ] && [ -n "$SIB_DOC" ]; then set_claim_ids "$DOC" "$SI
 proc_start_time() { sed -E 's/^.*\) //' "$1" | awk '{print $20}'; }
 
 pid_proven_by_id() {
-    local pid="$1" proc="${CLAUDE_SESSIONS_PROC:-/proc}" cfg="" f rec sid ps st
-    [ -n "$claim_ids" ] || return 1
+    local pid="$1" ids="${2-$claim_ids}" proc="${CLAUDE_SESSIONS_PROC:-/proc}" cfg="" f rec sid ps st
+    [ -n "$ids" ] || return 1
     if [ -r "$proc/$pid/environ" ]; then
         cfg=$(tr '\0' '\n' < "$proc/$pid/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -n 1)
     fi
@@ -634,9 +648,13 @@ pid_proven_by_id() {
     rec=$(jq -r '[.sessionId // "", (.procStart // "" | tostring)] | join(" ")' "$f") || return 1
     sid="${rec%% *}"; ps="${rec#* }"
     [ -n "$sid" ] && [ -n "$ps" ] && [ -r "$proc/$pid/stat" ] || return 1
-    grep -qxF -- "$sid" <<< "$claim_ids" || return 1
+    grep -qxF -- "$sid" <<< "$ids" || return 1
     st=$(proc_start_time "$proc/$pid/stat")
     [ "$st" = "$ps" ]
+}
+
+pid_is_siblings_window() {
+    [ -n "$sib_claim_ids" ] && pid_proven_by_id "$1" "$sib_claim_ids" && ! pid_proven_by_id "$1" "$own_claim_ids"
 }
 
 match_sessions() {
@@ -645,6 +663,7 @@ match_sessions() {
     while IFS=$'\t' read -r pid name _model _ac; do
         [ -n "$pid" ] || continue
         case "$name" in '#'*) continue ;; esac
+        if pid_is_siblings_window "$pid"; then continue; fi
         # An original and its -r<N> relaunch both alive remain ambiguous.
         base_name=$(printf '%s' "$name" | sed -E 's/-r[0-9]+$//')
         case "$names" in
@@ -671,7 +690,7 @@ match_sessions
 # If only a legacy resumed window remains, its completed run must be proven before
 # broadening the names. A hand-off alone never signals a booting/live successor.
 if [ "$PREDECESSOR" -eq 1 ] && [ "$match_count" -eq 0 ]; then
-    if [ "$last_marker" != WRAPPED ] || ! resume_evidence "$DOC" "$NAMED_SUCCESSOR"; then
+    if [ "$last_marker" != WRAPPED ] || { ! resume_evidence "$DOC" "$NAMED_SUCCESSOR" && ! successor_own_evidence "$NAMED_SUCCESSOR"; }; then
         echo "close-wrapped-worker: refusing - no predecessor session and no completed successor evidence" >&2
         exit 4
     fi

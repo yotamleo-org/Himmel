@@ -21,11 +21,11 @@ The operator ruled on 2026-10-07 that the guard is
 output for every PreToolUse call and every PreCompact, at any fill. Workers
 auto-compact anyway, and an always-on guard stopped every opus worker at 13 % fill.
 The one exception is a native-lane Sonnet 5.5 launch on a profile that sets
-`sonnetContextGuard`: the default `worker-impl` launch runs the guard in hand-off mode
-and `worker-eval` in compaction mode, both at the 450000 ceiling (see Turning it on).
-A native-lane Opus 5.5 launch on a profile that sets `opusContextGuard` is the second: every
-`worker-*` profile hands off, `worker-eval` compacts, at the 800000 ceiling. Fable, other
-lanes and a Sonnet `worker-docs` launch stay off.
+`sonnetContextGuard`: `worker-impl` and `worker-eval` run the guard in compaction mode
+at the 850000 ceiling (see Turning it on). A native-lane Opus 5.5 launch on a profile that
+sets `opusContextGuard` is the second: every `worker-*` profile compacts, at the 850000
+ceiling (operator decisions 843 and 844). Hand-off mode is opt-in, by
+`--context-guard handoff`. Fable, other lanes and a Sonnet `worker-docs` launch stay off.
 
 ## Turning it on
 
@@ -39,12 +39,13 @@ bash scripts/handover/chief-kit/headed-arm-worker.sh --context-guard handoff …
 - `--context-guard none` turns the guard off. It is the default except for the Sonnet
   profile launches in the next bullet.
 - A Sonnet launch on a profile that sets `sonnetContextGuard` turns the guard on without a
-  flag: `worker-impl` hands off, `worker-eval` compacts. It applies only to the native lane
-  on a Sonnet 5.5 model, together with that profile's 450000 ceiling (see
+  flag: `worker-impl` and `worker-eval` both compact. It applies only to the native lane
+  on a Sonnet 5.5 model, together with that profile's 850000 ceiling (see
   `docs/internals/lane-calibration.md`, Per-profile ceilings). `WORKER_SESSION_CONTEXT=1m`
   drops it with the ceiling; an explicit `--context-guard` (including `none`) wins.
 - An Opus launch on a profile that sets `opusContextGuard` works the same way on the native
-  lane on an Opus 5.5 model, together with that profile's 800000 ceiling. `WORKER_SESSION_CONTEXT=1m`
+  lane on an Opus 5.5 model, together with that profile's 850000 ceiling; every `worker-*`
+  profile compacts. `WORKER_SESSION_CONTEXT=1m`
   drops both, so launch Opus workers without it. A requested A/B arm skips them too.
 - If no flag is given, a `HIMMEL_WORKER_SESSION_CONTEXT_MODE` (old name
   `HIMMEL_WORKER_SESSION_CONTEXT_MODE`, still read; a set new name wins unless it is
@@ -76,9 +77,9 @@ model window.
 - **Share.** The share is `HIMMEL_WORKER_SESSION_CONTEXT_SHARE`, read from the worker's env.
   Any value other than 1-100 gives 75. A Sonnet launch on a profile that sets
   `sonnetContextShare` (`worker-impl` and `worker-eval`: 73) gets it exported by the
-  launcher, under the same native-lane Sonnet 5.5 gate as the 450000 ceiling, and a
+  launcher, under the same native-lane Sonnet 5.5 gate as the 850000 ceiling, and a
   native-lane Opus 5.5 launch on a profile that sets `opusContextShare` (every `worker-*`
-  profile: 87) under the gate of its 800000 ceiling, so `WORKER_SESSION_CONTEXT=1m`,
+  profile: 87) under the gate of its 850000 ceiling, so `WORKER_SESSION_CONTEXT=1m`,
   Fable, other lanes and a Sonnet `worker-docs` launch export none. The
   launcher scrubs the name from the launching shell (it is in the chief-context
   strip list), so the launcher no longer takes a launch-env override of the share;
@@ -100,55 +101,61 @@ earlier 65 % (130000) left 27000 tokens of room but stopped every opus worker at
 13 % fill. If a worker needs more headroom than 7000 tokens, raise the launcher
 ceiling; that is an operator decision.
 
-**Why 73 on a Sonnet profile.** At the 450000 ceiling the threshold is
-`ceil(75 × 450000 / 1000000)` = `ceil(33.75)` = 34 % of the window, which is **340000
-tokens**, not the nominal 337500. Four `worker-impl` Sonnet workers on 2026-11-02 (N4523,
+**Why 73 on a Sonnet profile.** At today's 850000 ceiling, share 73 puts the deny at
+`ceil(73 × 850000 / 1000000)` = `ceil(62.05)` = 63 % of the 1M window, **630000 tokens**.
+The share was chosen at the earlier ceiling and has not been re-measured at 850000.
+Measured at the earlier 450000 ceiling (2026-11-02): the default share 75 gave
+`ceil(75 × 450000 / 1000000)` = `ceil(33.75)` = 34 % of the window, which is 340000
+tokens, not the nominal 337500. Four `worker-impl` Sonnet workers (N4523,
 N4531, N4520, N4533) were denied there, as designed (last context before the deny 337229,
 337180, 346893, 343339; none compacted). The earliest auto compaction seen in a Sonnet 5.5
-transcript that mentions 450000 was 343158 (then 345258, 345330, 347186 up to about
+transcript at that 450000 ceiling was 343158 (then 345258, 345330, 347186 up to about
 356k), so the deny left 3158 tokens before it, under the about 7000 a commit, push and
-CHECKPOINT need. A higher share cannot help: it would put the deny past the earliest
-compaction. Share 73 gives `ceil(73 × 450000 / 1000000)` = 33 %, 330000 tokens, and a
-nominal 13000 tokens of room (the last context before a deny sat up to 6893 tokens past
-the threshold, and the overshoot at 73 is unmeasured). This protects the hand-off from a
-compaction; it does not stop hand-offs: a `worker-impl` worker (hand-off mode) that
-outgrows 33 % still relaunches, by design, while a `worker-eval` worker
-(compact mode) checkpoints and continues.
+CHECKPOINT need. A higher share could not help: it would put the deny past the earliest
+compaction. At that 450000 ceiling share 73 gave `ceil(73 × 450000 / 1000000)` = 33 %,
+330000 tokens, and a nominal 13000 tokens of room (the last context before a deny sat up
+to 6893 tokens past the threshold, and the overshoot at 73 is unmeasured). Both Sonnet
+profiles now run in compact mode: a pushed CHECKPOINT unlocks the deny and the worker
+carries on to the ceiling.
 
-**Why 87 on an Opus profile (operator decision 751).** The ruling is a
-checkpoint at 700000 and a ceiling of 800000. The hook rounds up to a whole percent of the
-window, so `ceil(87 × 800000 / 1000000)` = `ceil(69.6)` = 70 %, **exactly 700000 tokens**;
-88, the nearer share on paper (87.5), would give 71 %, 710000. Fill itself reaches the hook
-as a whole percent, so a deny can land up to about 5000 tokens under 700000.
+**Why 87 on an Opus profile.** Operator decision 751 (2026-11-07) ruled a checkpoint at
+700000 under the then 800000 ceiling. The hook rounds up to a whole percent of the window, so
+at that ceiling `ceil(87 × 800000 / 1000000)` = `ceil(69.6)` = 70 %, exactly 700000 tokens;
+88, the nearer share on paper (87.5), would have given 71 %, 710000. Operator decisions 843
+and 844 (2026-11-08) raised the ceiling to 850000 and set the guard to compact, so share 87
+now gives `ceil(87 × 850000 / 1000000)` = `ceil(73.95)` = 74 % of the 1M window, **740000
+tokens**. Fill itself reaches the hook as a whole percent, so a deny can land up to about
+5000 tokens under the threshold.
 
-Where auto compaction fires at this ceiling on steady growth is still unmeasured, but it is
-above **744217 tokens by API usage**. The guard denied first in both workers that passed
-700000. This was measured on 2026-11-07 with `scripts/eval/compaction-trigger-report.py` over the
-transcripts of the 41 native Opus workers launched at 800000 after the change:
+Where auto compaction fires on steady growth is unmeasured at 850000. At the earlier 800000
+ceiling it was above **744217 tokens by API usage**, and the guard, then at 700000, denied
+first in both workers that passed 700000. This was measured on 2026-11-07 with
+`scripts/eval/compaction-trigger-report.py` over the transcripts of the 41 native Opus
+workers launched at the 800000 ceiling after decision 751:
 
 - Five workers passed 600000 tokens by API usage, and none of them compacted.
 - Two of them passed 700000. The guard denied both, with the last call before the deny at
   717344 and 698865. They then ran on to 737159 and 744217 with no compaction.
 - The one compaction among the 41 came after 54 minutes idle, at 282690 by the CLI's count.
 
-Two VM runs on a bulk-read fixture each compacted straight after one large read batch, at
-749689 and 678169 by the CLI's count (about 645000 by API usage in the second, calculated).
-The second then grew to 690007 by API usage with no second compaction. Re-run the script when
-more Opus workers have grown past 744217.
+Two VM runs on a bulk-read fixture at the 800000 ceiling each compacted straight after one
+large read batch, at 749689 and 678169 by the CLI's count (about 645000 by API usage in the
+second, calculated). The second then grew to 690007 by API usage with no second compaction.
+Re-run the script when more Opus workers at 850000 have grown past the 740000 deny.
 
 **What the guard does not cover.** A second compaction trigger fires after about 54 minutes
 idle, whatever the ceiling: 10 Opus compactions from 337516 to 555513 tokens over 21 days,
 each after 54 to 55 minutes without a call. Below the threshold the guard passes an auto
-compaction, so an Opus worker idle that long before 700000 can still compact. The guard also
+compaction, so an Opus worker idle that long before 740000 can still compact. The guard also
 checks only between calls, so one tool batch that jumps past the threshold reaches a compaction
 with no deny, at any share: that is what both real runs above did, and neither saw a deny.
 
 ## The autocompact A/B arm
 
 The 200000 ceiling is the default for every worker except a native-lane Sonnet 5.5
-launch on a profile with `sonnetAutocompact` (`worker-impl` and `worker-eval` run 450000)
+launch on a profile with `sonnetAutocompact` (`worker-impl` and `worker-eval` run 850000)
 and a native-lane Opus 5.5 launch on a profile with `opusAutocompact` (every `worker-*`
-profile runs 800000). A measured A/B against 400000 is opt-in and audited, and needs the
+profile runs 850000). A measured A/B against 400000 is opt-in and audited, and needs the
 plain 200000 ceiling, so it runs on `worker-docs`, where an Opus launch skips its ceiling:
 
 - **Launch.** `WORKER_SESSION_AUTOCOMPACT_AB=400000` (only `200000` or `400000`; anything

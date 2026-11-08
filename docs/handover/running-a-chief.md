@@ -31,9 +31,12 @@ it a GO it merges, closes the ticket and ends.
 
 ## Parallel waves
 
-The chief starts workers in parallel waves: a group dispatched together, after
-it checks that no two of them will change the same files. `HIMMEL_FLEET_CAP`
-caps how many sessions run at once; a worker launch past it is refused.
+The chief starts workers in parallel waves. A file that another worker or an
+open PR also changes is shown beside the ticket and does not keep it off the
+dispatch list. While workers run, each file still has one writer at a time. The
+later PR merges the latest main in, and its description says which conflicts it
+resolved. `HIMMEL_FLEET_CAP` caps how many sessions run at once; a worker launch
+past it is refused.
 
 ## Your approval: the GO
 
@@ -292,9 +295,12 @@ bullet to the brief, which `tick.sh` surfaces. The hand form above discards
 stderr, so read the log or the brief; the generated launcher keeps stderr in
 `<stem>.launch.out`.
 
-Two rules govern the fan-out. **Collision-check first:** list the files each
-queued worker will touch and confirm they are disjoint; **single-writer** means
-many readers but exactly one writer per artifact. And **every dispatch names an
+Three rules govern the fan-out. **A shared file is shown, not held:**
+`next-dispatchable.sh` lists the ticket and prints `# overlap <KEY> <file> with
+<holder>` under it; the later PR merges the latest main in, and its description
+says which conflicts it resolved. **Single-writer** while workers run: many
+readers but exactly one writer per artifact, so a launch whose `Writes:` overlap
+a live hold is refused, as above. And **every dispatch names an
 explicit model**: an unnamed one draws on the scarcer parent quota. Tier and
 effort guidance, including the chief's own wake-up budget, is in
 [`../internals/lane-calibration.md`](../internals/lane-calibration.md).
@@ -498,12 +504,12 @@ pasted into the brief. Detail:
 - On the native lane, a standard-context launch of a model in the Sonnet 5.0
   to 5.9 range (`headed-arm-worker.sh` matches the id by prefix, so the plain,
   unnumbered id counts too) takes the profile's `sonnetAutocompact` as its ceiling
-  (`worker-impl` and `worker-eval`: `450000`) and the profile's
-  `sonnetContextGuard` as its default context guard (`worker-impl`: hand-off,
-  `worker-eval`: compaction). A standard-context launch of an Opus 5.5 model on the
-  native lane takes `opusAutocompact` (every `worker-*` profile: `800000`),
-  `opusContextGuard` (hand-off, `worker-eval`: compaction) and `opusContextShare`
-  (`87`, a deny at 700000 tokens), so launch Opus workers **without**
+  (`worker-impl` and `worker-eval`: `850000`) and the profile's
+  `sonnetContextGuard` as its default context guard (both: compaction). A
+  standard-context launch of an Opus 5.5 model on the
+  native lane takes `opusAutocompact` (every `worker-*` profile: `850000`),
+  `opusContextGuard` (compaction) and `opusContextShare`
+  (`87`, a deny at 740000 tokens), so launch Opus workers **without**
   `WORKER_SESSION_CONTEXT=1m` and without a Context line. An explicit
   `--context-guard` (including `none`) wins over that default. A profile with
   `contextMode` `1m` (`design`) runs at `1m`. `WORKER_SESSION_CONTEXT=1m` alone is

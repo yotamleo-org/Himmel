@@ -32,6 +32,12 @@ PREFIX_WORDS ={"!", "then", "do", "else", "elif", "if", "while", "until", "{", "
 ASSIGN_RE = re.compile(r"^([A-Za-z_][A-Za-z_0-9]*)=(.*)$", re.S)
 HEREDOC_RE = re.compile(r"(?<!<)<<(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z_0-9]*)\2")
 SHELL_EXT = (".sh", ".bash")
+OTHER_SCRIPT_EXT = (".py", ".mjs", ".cjs", ".js")
+PYTHON_WORD_RE = re.compile(r"python(?:\d+(?:\.\d+)*)?")
+PYTHON_NO_FILE_FLAG_RE = re.compile(r"-[BEIPRSOdiqsuvx]*[cm]")
+PYTHON_OPERAND_FLAGS = {"-W", "-X"}
+NODE_NO_FILE_FLAGS = {"-e", "--eval", "-p", "--print"}
+NODE_OPERAND_FLAGS = {"-r", "--require", "--import", "--loader", "--experimental-loader", "-C", "--conditions", "--title"}
 
 
 def is_shell_file_node(node):
@@ -41,6 +47,16 @@ def is_shell_file_node(node):
         and node.get("file_type") == "code"
         and node.get("source_location") == "L1"
         and (node.get("metadata") or {}).get("kind") == "file"
+    )
+
+
+def is_script_file_node(node):
+    sf = node.get("source_file") or ""
+    return (
+        sf.endswith(OTHER_SCRIPT_EXT)
+        and node.get("file_type") == "code"
+        and node.get("source_location") == "L1"
+        and node.get("label") == posixpath.basename(sf)
     )
 
 
@@ -404,6 +420,34 @@ def _strip_prefix(words):
     return words[i:]
 
 
+def _interpreter(word):
+    if "$" in word or "`" in word:
+        return None
+    base = posixpath.basename(_unquote(word))
+    if PYTHON_WORD_RE.fullmatch(base):
+        return "python"
+    return "node" if base == "node" else None
+
+
+def _interpreter_script(interp, args):
+    i = 0
+    while i < len(args):
+        a = _unquote(args[i])
+        if a == "-" or a == "--":
+            return None if a == "-" else (args[i + 1] if i + 1 < len(args) else None)
+        if a[:1] not in "-+":
+            return args[i]
+        if interp == "python":
+            if PYTHON_NO_FILE_FLAG_RE.match(a):
+                return None
+            i += 2 if a in PYTHON_OPERAND_FLAGS else 1
+        else:
+            if a in NODE_NO_FILE_FLAGS or a.startswith(("--eval=", "--print=")):
+                return None
+            i += 2 if a in NODE_OPERAND_FLAGS else 1
+    return None
+
+
 def scan_file(src):
     """(assigns, calls) for one shell source: assigns maps a variable to every
     raw value it is given; calls is [(relation, raw target word, line)]."""
@@ -424,9 +468,15 @@ def scan_file(src):
             continue
         rest = _strip_prefix(words)
         while rest:
+            interp = _interpreter(rest[0])
+            if interp:
+                script = _interpreter_script(interp, rest[1:])
+                if script is not None:
+                    calls.append(("calls", script, line))
+                break
             relation = CALL_WORDS.get(BASH_WORDS.get(rest[0], rest[0]))
             if relation is None:
-                if _unquote(rest[0]).endswith(SHELL_EXT):
+                if _unquote(rest[0]).endswith(SHELL_EXT + OTHER_SCRIPT_EXT):
                     calls.append(("calls", rest[0], line))
                 break
             args = rest[1:]
@@ -446,9 +496,13 @@ def find_shell_edges(nodes, root):
     """(edges, unresolved) over every shell file node whose file is readable
     under root."""
     by_path = {}
+    call_targets = {}
     for node_id, node in nodes.items():
         if is_shell_file_node(node):
             by_path[node["source_file"]] = node_id
+        elif is_script_file_node(node):
+            call_targets[node["source_file"]] = node_id
+    call_targets.update(by_path)
     edges = []
     unresolved = 0
     for sf, src_id in sorted(by_path.items()):
@@ -461,8 +515,9 @@ def find_shell_edges(nodes, root):
         resolver = _Resolver(sf, assigns)
         for relation, word, line in calls:
             targets = {}
+            lookup = by_path if relation == "sources" else call_targets
             for t in resolver.word(word):
-                tgt_id = by_path.get(t[len(ROOT) + 1:])
+                tgt_id = lookup.get(t[len(ROOT) + 1:])
                 if tgt_id is not None:
                     targets[tgt_id] = targets.get(tgt_id) or t.startswith(ROOT + "/")
             if not targets:

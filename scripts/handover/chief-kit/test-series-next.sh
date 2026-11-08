@@ -339,7 +339,12 @@ const keys = a.slice(a.indexOf(a[1] === 'core-check' ? '--key' : '--mirror') + (
 if (a[1] === 'core-check') { for (const k of keys) console.log('NOT-CORE ' + k); }
 else { for (const k of keys) console.log('SPEC ok ' + k + ' x'); }
 JSEOF
-printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/wt-stub.sh"; chmod +x "$tmp/wt-stub.sh"
+cat > "$tmp/wt-stub.sh" <<'WTEOF'
+#!/usr/bin/env bash
+w="$PWD/.claude/worktrees/$(printf '%s' "$1" | tr / +)"; mkdir -p "$w"
+[ ! -e "$PWD/.git" ] || printf 'gitdir: %s\n' "$PWD/.git" > "$w/.git"
+WTEOF
+chmod +x "$tmp/wt-stub.sh"
 SRP="HIMMEL-9000 (the earlier fix). Source: \`git log -3 -- scripts/sa\`."
 cat > "$tmp/iworkers.json" <<IWEOF
 [

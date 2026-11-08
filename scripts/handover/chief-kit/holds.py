@@ -603,7 +603,34 @@ def refusal(path, fields, key):
     return '%s. Message your chief: HOLD-ASK %s %s' % (head, path, key)
 
 
-def claim_one(repo, judge, path, key, label, doc, source, pr, created=None):
+def sync_denied_name(repo):
+    return 'sync-denied.%s' % escape(repo)
+
+
+def sync_denied_read(repo):
+    try:
+        with open(os.path.join(holds_root(), sync_denied_name(repo)), encoding='utf-8') as f:
+            return set(f.read().splitlines())
+    except FileNotFoundError:
+        return set()
+    except (OSError, UnicodeDecodeError) as e:
+        sys.stderr.write('holds: cannot read %s: %s\n' % (sync_denied_name(repo), getattr(e, 'strerror', None) or e))
+        return set()
+
+
+def sync_denied_write(repo, lines):
+    root = holds_root()
+    try:
+        os.makedirs(root, exist_ok=True)
+        tmp = os.path.join(root, '%s%d.sync-denied' % (TMP_PREFIX, os.getpid()))
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.write(''.join(l + '\n' for l in sorted(lines)))
+        os.replace(tmp, os.path.join(root, sync_denied_name(repo)))
+    except OSError as e:
+        sys.stderr.write('holds: cannot write %s: %s\n' % (sync_denied_name(repo), e.strerror or e))
+
+
+def claim_one(repo, judge, path, key, label, doc, source, pr, created=None, seen=None):
     """-> 'claimed' | 'own' | 'granted' | 'skipped' | 'fault' | 'refused:<message>'."""
     norm = normalize(repo, path)
     if norm is None:
@@ -663,7 +690,13 @@ def claim_one(repo, judge, path, key, label, doc, source, pr, created=None):
             continue
         state = judge.row_state(fields, mtime)
         if state == 'alive':
-            log_event('deny', rel, key, fields[0])
+            if seen is None:
+                log_event('deny', rel, key, fields[0])
+            else:
+                sig = '\t'.join(clean(x) for x in [rel, key] + fields)
+                if sig not in seen[0] and sig not in seen[1]:
+                    log_event('deny', rel, key, fields[0])
+                seen[1].add(sig)
             return 'refused:' + refusal(rel, fields, key)
         if state == 'unknown':
             fault('holder liveness unproven', rel, key)
@@ -1314,6 +1347,8 @@ def op_sync_prs(a):
     deadline = time.time() + BOX
     judge = Judge(repo, deadline)
     prs = set()
+    seen = (sync_denied_read(repo), set())
+    cut = False
     for l in lines:
         f = (l.split('\t') + ['', '', '', ''])[:4]
         pr, head, tkey, path = [x.strip() for x in f]
@@ -1321,10 +1356,13 @@ def op_sync_prs(a):
             continue
         prs.add(pr)
         if time.time() >= deadline:
+            cut = True
             break
         m = re.search(r'[A-Za-z][A-Za-z0-9]*-\d+', tkey)  # the field is the title or its key: the first ticket key in it
         key = m.group(0) if m else 'PR-%s' % pr
-        claim_one(repo, judge, path, key, 'branch:%s' % head, '', 'pr', pr)
+        claim_one(repo, judge, path, key, 'branch:%s' % head, '', 'pr', pr, seen=seen)
+    if not cut and seen[1] != seen[0]:
+        sync_denied_write(repo, seen[1])
     for d in (slug_dir(repo), slug_dir(repo, '_abs')):
         try:
             names = os.listdir(d)

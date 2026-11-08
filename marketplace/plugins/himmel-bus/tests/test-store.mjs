@@ -434,3 +434,14 @@ test('appendChained never recreates a missing log', async t => {
   await assert.rejects(primitive.appendChained(join(dir, 'missing'), message(), join(dir, 'lock')), /ENOENT/);
   assert.deepEqual(await readdir(dir), ['lock']);
 });
+
+test('a 100-character session name appends and reads back; 129 characters is refused', async t => {
+  const { store, root } = await fixture(t);
+  const long = 'w'.repeat(100);
+  await store.append(root, long, message('long name'));
+  const got = await store.read(root, long);
+  assert.equal(got.records.length, 1);
+  assert.equal(got.records[0].b, 'long name');
+  await store.append(root, 'w'.repeat(128), message('edge'));
+  await assert.rejects(store.append(root, 'w'.repeat(129), message()), /invalid session name/);
+});

@@ -290,6 +290,57 @@ check "zero-match: rc 0 (the window already exited, HIMMEL-7811)" "$rc" "0"
 contains "zero-match: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "zero-match: kill never called" "$(cat "$CALLS")" ""
 
+# --- 4a. a RESUME-shaped doc (Results first, then three more sections) ----
+mkdir -p "$W/vault9607/.git"
+cp "$HERE/../../../templates/luna-second-brain/.gitleaks.toml" "$W/vault9607/.gitleaks.toml"
+mk9607() {
+    local results_bullet="$1" trap_bullet="$2"
+    {
+        echo "# HIMMEL-9 N1 demo worker"; echo; echo "Your RETASK token is X-1."; echo
+        echo "## Results (newest at the bottom)"; echo
+        [ -z "$results_bullet" ] || echo "$results_bullet"
+        echo
+        echo "## State at hand-off"; echo; echo "- committed, nothing dirty"; echo
+        echo "## Remaining steps"; echo; echo "- ship it"; echo
+        echo "## Traps learned"; echo; echo "$trap_bullet"
+    } > "$DOC"
+}
+mk9607 "- 09:00 LIVE - resumed" "- a trap"
+TICK_VAULT_DIR="$W/vault9607" WORKER_SESSION_JIRA_STATUS=0 bash "$HERE/append-results.sh" "$DOC" "WRAPPED - done" >/dev/null 2>&1
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 RESUME-shaped doc: a bullet from append-results.sh is accepted -> rc 0" "$rc" "0"
+contains "9607 RESUME-shaped doc: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+check "9607 RESUME-shaped doc: the tick's parser reads the same WRAPPED" "$(bash -c '. "$1"; worker_tail_status "$2"' _ "$HERE/../../lib/worker-tail-status.sh" "$DOC")" "WRAPPED"
+mk9607 "" "- 10:00 WRAPPED - done"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 legacy doc: bullets written at the end of the file under an empty Results are refused -> rc 4" "$rc" "4"
+mk9607 "- 09:00 LIVE - resumed" "- 10:00 WRAPPED - done"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 legacy doc: a Results that holds a marker bullet is not overridden by a later section -> rc 4" "$rc" "4"
+mk9607 "" "- when done, append the WRAPPED bullet"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 empty Results: a later bullet that only mentions WRAPPED is no worker tail -> rc 4" "$rc" "4"
+printf '# HIMMEL-9 N1 demo worker\n\n- **WRAPPED** once merge-on-green lands\n\n## Results (newest at the bottom)\n\n## Traps learned\n\n- a trap\n' > "$DOC"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 empty Results: a marker-led bullet above the Results heading is no worker tail -> rc 4" "$rc" "4"
+ORIG9607="$W/HIMMEL-9-N1-demo-2026-01-01.md"
+printf '# HIMMEL-9 N1 demo worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - starting\n- 09:30 WRAPPED - hand-off\n' > "$ORIG9607"
+mk9607 "- 09:00 LIVE - resumed" "- a trap"
+TICK_VAULT_DIR="$W/vault9607" WORKER_SESSION_JIRA_STATUS=0 bash "$HERE/append-results.sh" "$DOC" "WRAPPED - done" >/dev/null 2>&1
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 RESUME doc with its original beside it: a bullet from append-results.sh closes -> rc 0" "$rc" "0"
+mk9607 "" "- 10:00 WRAPPED - done"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 RESUME doc with its original beside it: bullets at the end of the file under an empty Results are refused -> rc 4" "$rc" "4"
+rm -f "$ORIG9607"
+
 # --- 4b. a session-scratchpad clone holding unpushed commits ------------
 SCR="$W/claude-$(id -u)/proj/sess/scratchpad"
 mkdir -p "$SCR"
@@ -2339,6 +2390,74 @@ check "9542 pair: that pair signals nothing" "$(cat "$CALLS")" ""
 rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
 pgrep_x_stub
 rm -f "$P_ORIG" "$P_RES"
+
+S9648_ORIG="$W/HIMMEL-9-N70-pair9648-2026-01-01.md"
+S9648_RES="$W/HIMMEL-9-N70b-pair9648-2026-01-01-RESUME.md"
+S9648_SID_O="dddddddd-4444-4444-8444-dddddddddddd"
+S9648_SID_R="eeeeeeee-5555-4555-8555-eeeeeeeeeeee"
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '---\nsession_ids: %s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - context full, handing off\n' "$S9648_SID_O" > "$S9648_ORIG"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '---\nsession_ids: %s\n---\n# resume\n\n## Results\n\n- 11:00 LIVE - resumed, release-token `fixture-pid200`\n- 12:00 WRAPPED - merged\n' "$S9648_SID_R" > "$S9648_RES"
+mkproc 501 original-short-name "$S9648_SID_O" 9501
+mkproc 502 relaunch-short-name "$S9648_SID_R" 9502
+pgrep_x_stub 501 502
+reset_calls
+rc=0; out=$(run "$S9648_ORIG" 2>&1) || rc=$?
+check "9648 1: the original doc closes with its relaunch live -> rc 0" "$rc" "0"
+exact_count "9648 1: only the original's own window is signaled" "$(cat "$CALLS")" "kill -TERM 501" "1"
+not_contains "9648 1: the relaunch window is never signaled from the original" "$(cat "$CALLS")" "502"
+reset_calls
+rc=0; out=$(run "$S9648_RES" 2>&1) || rc=$?
+check "9648 1: the RESUME doc closes with the original live -> rc 0" "$rc" "0"
+exact_count "9648 1: only the relaunch's own window is signaled" "$(cat "$CALLS")" "kill -TERM 502" "1"
+not_contains "9648 1: the original window is never signaled from the RESUME doc" "$(cat "$CALLS")" "501"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '---\nsession_ids: %s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - context full, handing off to N70b\n- 11:00 LIVE - resumed, release-token `fixture-pid200`\n- 12:00 WRAPPED - merged\n' "$S9648_SID_O" > "$S9648_ORIG"
+printf -- '---\nsession_ids: %s\n---\n# resume\n\n## Results\n\n' "$S9648_SID_R" > "$S9648_RES"
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+mkproc 502 relaunch-short-name "$S9648_SID_R" 9502
+pgrep_x_stub 502
+reset_calls
+rc=0; out=$(run "$S9648_RES" 2>&1) || rc=$?
+check "9648 2: a RESUME doc whose WRAPPED is in the original doc closes -> rc 0" "$rc" "0"
+exact_count "9648 2: the relaunch window is signaled" "$(cat "$CALLS")" "kill -TERM 502" "1"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '---\nsession_ids: %s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - context full, handing off to N70b\n' "$S9648_SID_O" > "$S9648_ORIG"
+reset_calls
+rc=0; out=$(run "$S9648_RES" 2>&1) || rc=$?
+check "9648 2: a predecessor-only WRAPPED is still no hand-off evidence -> rc 4" "$rc" "4"
+check "9648 2: that signals nothing" "$(cat "$CALLS")" ""
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '---\nsession_ids: %s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - hand-off, resume brief %s\n' "$S9648_SID_O" "$S9648_RES" > "$S9648_ORIG"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '---\nsession_ids: %s\n---\n# resume\n\n## Results\n\n- 11:00 LIVE - resumed, release-token `fixture-pid200`\n- 12:00 WRAPPED - merged\n' "$S9648_SID_R" > "$S9648_RES"
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+pgrep_x_stub
+reset_calls
+rc=0; out=$(run "$S9648_ORIG" 2>&1) || rc=$?
+check "9648 3: the original closes after its relaunch was closed -> rc 0" "$rc" "0"
+not_contains "9648 3: no 'no completed successor evidence' refusal" "$out" "no completed successor evidence"
+printf -- '---\nsession_ids: %s\n---\n# resume\n\n## Results\n\n' "$S9648_SID_R" > "$S9648_RES"
+reset_calls
+rc=0; out=$(run "$S9648_ORIG" 2>&1) || rc=$?
+check "9648 3: a successor with no LIVE and WRAPPED of its own is still no evidence -> rc 4" "$rc" "4"
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+pgrep_x_stub
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - context full, handing off to N70b\n' > "$S9648_ORIG"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '---\nsession_ids: %s\n---\n# resume\n\n## Results\n\n- 11:00 LIVE - resumed, release-token `fixture-pid200`\n- 12:00 WRAPPED - merged\n' "$S9648_SID_R" > "$S9648_RES"
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+mkproc 502 relaunch-short-name "$S9648_SID_R" 9502
+pgrep_x_stub 502
+reset_calls
+rc=0; out=$(run "$S9648_ORIG" 2>&1) || rc=$?
+check "9648 4: an original doc with no session ids never signals the relaunch's window" "$(cat "$CALLS")" ""
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+pgrep_x_stub
+rm -f "$S9648_ORIG" "$S9648_RES"
 
 # --- 24: no handovers/ leaked into the real repo ----------------
 post_handovers=absent

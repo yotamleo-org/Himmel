@@ -8,6 +8,11 @@ file set, then counts how sessions really use qmd and graphify.
           [--collection himmel] [--label L]
   check   --questions Q [--repo R]           validate a question set, print its size
   census  --out FILE [--projects DIR] [--days 7]
+  replay  --results FILE [--questions Q] [--arms grep,qmd-hybrid,graphify]
+          [--rrf-k 60] [--k 5] [--add path,ident-grep]
+          Re-fuse saved files offline; compare with saved combined hits. Questions
+          default to questions.jsonl beside this script. Only dev IDs are printed;
+          held-out results are counts only. No subprocesses, retrieval or network.
 
 Arms (all read-only):
   grep        git grep over the repo's tracked files for the question's words,
@@ -62,7 +67,11 @@ JSON list of {file, snippet}) and RETRIEVAL_EVAL_GRAPH_CMD (called with
 
 Output in DIR: results.jsonl (one row per question x arm), scores.tsv (also
 printed), and one eval-runs ledger row (eval "retrieval-eval", see
-scripts/eval/README.md). Exit: 0 scored, 1 check found problems, 64 usage error.
+scripts/eval/README.md). Rows keep files_top20, from a second query at max(k, 20), as
+evidence only; files and scoring come from the limit-k query. qmd_error keeps failure details; skipped is false for real rows
+(skipped arms have no rows, and their reasons stay in the ledger config).
+Exit: 0 scored, 1 check found problems or a graph arm's stamp is unavailable,
+64 usage error. A missing graph stamp still writes all run outputs.
 Stdlib only.
 """
 import argparse
@@ -86,9 +95,15 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
+import importlib.util  # noqa: E402
+
+_vx_spec = importlib.util.spec_from_file_location("vocab_expand", os.path.join(HERE, "..", "..", "qmd", "vocab-expand.py"))
+vocab_expand = importlib.util.module_from_spec(_vx_spec)
+_vx_spec.loader.exec_module(vocab_expand)
 
 SPLITS = ("insample", "heldout")
-ARMS = ["grep", "grep-rtk", "path", "ident-grep", "ident-grep-rtk", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
+STRATA = ("code", "doc")
+ARMS =["grep", "grep-rtk", "path", "ident-grep", "ident-grep-rtk", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
 RTK_ARMS = ["grep-rtk", "ident-grep-rtk"]
 FUSED = ["grep", "qmd-hybrid", "graphify"]
 OPT_IN = ["qmd-hybrid-norerank"]
@@ -373,33 +388,36 @@ def mcp_rows(msg):
 
 
 def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
-    args = {"searches": [{"type": "lex", "query": q}] + ([{"type": "vec", "query": q}] if hybrid else []),
+    vec = vocab_expand.shape_vec(q) if hybrid else ""
+    args = {"searches": [{"type": "lex", "query": vocab_expand.shape_lex(q, quote_flags=True)}] + ([{"type": "vec", "query": vec}] if vec else []),
             "collections": [collection], "limit": k, "intent": q}
     args["rerank"] = hybrid and rerank
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
     if cmd:
         out, to, rc = run_cmd(shlex.split(cmd), timeout, stdin=json.dumps(args))
         if to:
-            return [], "", True, False
+            return [], "", True, False, "timed out"
         if rc != 0:
-            return [], "", False, True
+            return [], "", False, True, "qmd failed (rc %s)" % rc
         try:
             rows = json.loads(out or "[]")
         except ValueError:
-            return [], "", False, True
+            return [], "", False, True, "qmd returned unreadable output"
     else:
         try:
             rows = qmd_server(args, timeout)
         except Exception as e:  # a timeout or a dead server is a scored miss, not a crash
             to = "timed out" in str(e).lower() or isinstance(e, TimeoutError)
-            return [], "", to, not to
+            return [], "", to, not to, str(e)[:100]
+    if not isinstance(rows, list) or any(not isinstance(r, dict) for r in rows):
+        return [], "", False, True, "qmd returned unreadable output"
     files, text = [], []
     for r in rows:
         f = re.sub(r"^(?:qmd://[^/]+|%s)/" % re.escape(collection), "", str(r.get("file", "")))
         if f and f not in files:
             files.append(f)
         text.append("%s %s %s" % (r.get("file", ""), r.get("title", ""), r.get("snippet", "")))
-    return files[:k], "\n".join(text), False, False
+    return files[:k], "\n".join(text), False, False, ""
 
 
 def arm_graphify(q, repo, timeout, k):
@@ -413,14 +431,14 @@ def arm_graphify(q, repo, timeout, k):
     return files[:k], out, to, not to and rc != 0
 
 
-def fuse(lists, k):
+def fuse(lists, k, rrf_k=60):
     """Reciprocal-rank fusion; qmd lowercases its paths, so the key is the lowercased path."""
     s, name = {}, {}
     for lst in lists:
         for i, f in enumerate(lst):
             key = f.lower()
             name.setdefault(key, f)
-            s[key] = s.get(key, 0.0) + 1.0 / (60 + i + 1)
+            s[key] = s.get(key, 0.0) + 1.0 / (rrf_k + i + 1)
     return [name[x] for x in sorted(s, key=lambda x: (-s[x], x))[:k]]
 
 
@@ -428,6 +446,10 @@ def is_hit(files, gold):
     """qmd lowercases its paths, so compare case-insensitively."""
     fl, gl = [f.lower() for f in files], [g.lower() for g in gold]
     return any(f == g or f.endswith("/" + g) for f in fl for g in gl)
+
+
+def stratum(q):
+    return "doc" if any(g.lower().endswith(".md") for g in q["gold"]) else "code"
 
 
 def is_hit_any(files, q):
@@ -564,6 +586,22 @@ def skip_rtk(arms):
     return {x: "rtk is not on PATH" for x in arms if x in RTK_ARMS}
 
 
+def run_arm(arm, q, repo, a, k):
+    if arm == "grep":
+        return arm_grep(q, repo, a.timeout, k) + ("",)
+    if arm == "grep-rtk":
+        return arm_grep_rtk(q, repo, a.timeout, k) + ("",)
+    if arm == "path":
+        return arm_path(q, repo, a.timeout, k) + ("",)
+    if arm == "ident-grep":
+        return arm_ident_grep(q, repo, a.timeout, k) + ("",)
+    if arm == "ident-grep-rtk":
+        return arm_ident_grep_rtk(q, repo, a.timeout, k) + ("",)
+    if arm == "graphify":
+        return arm_graphify(q, repo, a.timeout, k) + ("",)
+    return arm_qmd(q, arm != "qmd-lex", a.timeout, k, a.collection, arm != "qmd-hybrid-norerank")
+
+
 def cmd_run(a):
     arms = [x for x in a.arms.split(",") if x]
     for x in arms:
@@ -584,6 +622,7 @@ def cmd_run(a):
     need = list(arms)
     if "combined" in arms:
         need = [x for x in ARMS + OPT_IN if x in arms or x in FUSED]
+    evidence_depth = max(a.k, 20)
     rows = []
     for q in qs:
         got = {}
@@ -593,35 +632,30 @@ def cmd_run(a):
                 files = fuse([p["files"] for p in parts], a.k)
                 text = "\n".join(p["_text"] for p in parts)
                 got[arm] = dict(files=files, _text=text, ms=sum(p["ms"] for p in parts),
-                                timeout=any(p["timeout"] for p in parts), error=any(p["error"] for p in parts))
+                                timeout=any(p["timeout"] for p in parts), error=any(p["error"] for p in parts),
+                                files_top20=fuse([p["files_top20"] for p in parts], 20),
+                                qmd_error=next((p["qmd_error"] for p in parts if p["qmd_error"]), ""))
             else:
                 t0 = time.time()
-                if arm == "grep":
-                    files, text, to, err = arm_grep(q["q"], repo, a.timeout, a.k)
-                elif arm == "grep-rtk":
-                    files, text, to, err = arm_grep_rtk(q["q"], repo, a.timeout, a.k)
-                elif arm == "path":
-                    files, text, to, err = arm_path(q["q"], repo, a.timeout, a.k)
-                elif arm == "ident-grep":
-                    files, text, to, err = arm_ident_grep(q["q"], repo, a.timeout, a.k)
-                elif arm == "ident-grep-rtk":
-                    files, text, to, err = arm_ident_grep_rtk(q["q"], repo, a.timeout, a.k)
-                elif arm == "graphify":
-                    files, text, to, err = arm_graphify(q["q"], repo, a.timeout, a.k)
-                else:
-                    files, text, to, err = arm_qmd(q["q"], arm != "qmd-lex", a.timeout, a.k, a.collection,
-                                                   arm != "qmd-hybrid-norerank")
-                got[arm] = dict(files=files, _text=text, ms=int((time.time() - t0) * 1000), timeout=bool(to),
-                                error=bool(err))
+                files, text, to, err, qmd_error = run_arm(arm, q["q"], repo, a, a.k)
+                ms = int((time.time() - t0) * 1000)
+                top20 = files
+                if evidence_depth > a.k and not (to or err):
+                    deep = run_arm(arm, q["q"], repo, a, evidence_depth)
+                    if not (deep[2] or deep[3]):
+                        top20 = deep[0][:evidence_depth]
+                got[arm] = dict(files=files, files_top20=top20, _text=text, ms=ms, timeout=bool(to), error=bool(err),
+                                qmd_error=qmd_error)
         for arm in arms:
             g = got[arm]
             row = dict(id=q["id"], kind=q.get("kind"), src=q.get("src"), split=q.get("split", "insample"),
-                       arm=arm, files=g["files"], hit=is_hit(g["files"], q["gold"]),
+                       stratum=stratum(q), arm=arm, files=g["files"], hit=is_hit(g["files"], q["gold"]),
                        hit_any=is_hit_any(g["files"], q), ndcg=ndcg(g["files"], q, a.k),
                        precision=precision(g["files"], q, a.k), rr=reciprocal_rank(g["files"], q, a.k),
                        gold_n=gold_found(g["files"], q, a.k)[0], ret_n=gold_found(g["files"], q, a.k)[1],
                        reason=carried(g["_text"], q.get("reason", [])),
-                       tokens=tok(g["_text"]), ms=g["ms"], timeout=g["timeout"], error=g["error"])
+                       tokens=tok(g["_text"]), ms=g["ms"], timeout=g["timeout"], error=g["error"],
+                       files_top20=g["files_top20"], qmd_error=g["qmd_error"], skipped=False)
             rows.append(row)
         print("%s %s" % (q["id"], " ".join("%s=%s" % (r["arm"], int(r["hit"])) for r in rows[-len(arms):])),
               file=sys.stderr)
@@ -657,8 +691,12 @@ def cmd_run(a):
         metrics.update({arm + "." + rk: rec, arm + "." + pk: prec, arm + ".mrr": mrr, arm + ".gold_share": gs,
                         arm + ".reason_carried": rea, arm + ".tokens_mean": tk, arm + ".tokens_per_hit": tph,
                         arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er})
-        for sl in SPLITS:
-            sr = [r for r in rs if r["split"] == sl]
+        slices = [(sl, lambda r, sl=sl: r["split"] == sl) for sl in SPLITS]
+        slices += [(st, lambda r, st=st: r["stratum"] == st) for st in STRATA]
+        slices += [("%s.%s" % (sl, st), lambda r, sl=sl, st=st: r["split"] == sl and r["stratum"] == st)
+                   for sl in SPLITS for st in STRATA]
+        for sl, pick in slices:
+            sr = [r for r in rs if pick(r)]
             srr = [r for r in sr if r["reason"] is not None]
             vals = [mean([r["hit"] for r in sr]), mean([r["hit_any"] for r in sr]),
                     mean([r["ndcg"] for r in sr]), mean([r["reason"] for r in srr])]
@@ -679,28 +717,101 @@ def cmd_run(a):
     print("\n".join(slice_lines))
     with open(a.questions, "rb") as fh:
         qhash = hashlib.sha256(fh.read()).hexdigest()[:16]
-    config = dict(arms=arms, k=a.k, timeout=a.timeout, collection=a.collection, questions=qhash)
+    config = dict(arms=arms, k=a.k, evidence_depth=evidence_depth, timeout=a.timeout, collection=a.collection,
+                  questions=qhash)
     if skipped:
         config["skipped"] = skipped
     held = sorted((q for q in qs if q.get("split") == "heldout"), key=lambda q: str(q["id"]))
-    meta = dict(label=a.label, questions_path=os.path.abspath(a.questions), graph_built_at=graph_built(repo),
+    meta = dict(label=a.label, questions_path=os.path.abspath(a.questions), graph_built_at=None,
                 n_heldout=len(held),
                 heldout_sha256=hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16])
+    if "graphify" in arms or "combined" in arms:
+        try:
+            meta["graph_built_at"] = graph_built(repo)
+        except RuntimeError as e:
+            meta["graph_built_error"] = str(e)
+            print("retrieval-eval: ERROR graph stamp: %s" % e, file=sys.stderr)
     row = eval_runs.make_row("retrieval-eval", "scripts/eval/retrieval-eval/retrieval-eval.py", config, metrics,
                              n=len(qs), cases=cases, artifact=os.path.abspath(a.out), meta=meta, repo=repo)
     eval_runs.append_safe(row, who="retrieval-eval")
-    return 0
+    return 1 if "graph_built_error" in meta else 0
 
 
 def graph_built(repo):
     try:
-        common = subprocess.run(["git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                                capture_output=True, text=True, timeout=10).stdout.strip()
-        with open(os.path.join(os.path.dirname(common), "graphify-out", "graph.json")) as fh:
-            m = re.search(r'"built_at_commit":\s*"([0-9a-f]*)"', fh.read(4096))
-        return m.group(1) if m else None
-    except (OSError, subprocess.TimeoutExpired):
-        return None
+        r = subprocess.run(["git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise RuntimeError("cannot resolve git common dir: %s" % e) from e
+    common = r.stdout.strip()
+    if r.returncode != 0 or not common:
+        raise RuntimeError("cannot resolve git common dir for %s: %s" % (repo, r.stderr.strip()))
+    path = os.path.join(os.path.dirname(common), "graphify-out", "graph.json")
+    stamp = re.compile(rb'"built_at_commit"\s*:\s*"([0-9a-fA-F]+)"')
+    try:
+        with open(path, "rb") as fh:
+            boundary_tail = b""
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                data = boundary_tail + chunk
+                m = stamp.search(data)
+                if m:
+                    return m.group(1).decode("ascii")
+                boundary_tail = data[-256:]
+    except OSError as e:
+        raise RuntimeError("cannot read graph.json at %s: %s" % (path, e)) from e
+    raise RuntimeError("no built_at_commit stamp in %s" % path)
+
+
+def cmd_replay(a):
+    arms = list(dict.fromkeys(x.strip() for x in (a.arms + "," + a.add).split(",") if x.strip()))
+    if not arms:
+        raise Usage("--arms names no arm")
+    if a.k < 1 or a.rrf_k < 0:
+        raise Usage("--k must be positive and --rrf-k must be nonnegative")
+    questions = {q["id"]: q for q in load_questions(a.questions)}
+    try:
+        with open(a.results) as fh:
+            rows = [json.loads(line) for line in fh if line.strip()]
+    except (OSError, ValueError) as e:
+        raise Usage("cannot read saved results: %s" % e) from e
+    by_id = {}
+    for r in rows:
+        by_id.setdefault(r["id"], {})[r["arm"]] = r
+    scored = []
+    for qid, saved in by_id.items():
+        if qid not in questions:
+            raise Usage("saved question is missing from the questions file")
+        q = questions[qid]
+        split = q.get("split", "insample")
+        if split not in SPLITS:
+            raise Usage("question has unknown split '%s'" % split)
+        for arm in arms + ["combined"]:
+            if arm not in saved:
+                raise Usage("missing arm '%s' for a saved question" % arm)
+        files = fuse([saved[arm]["files"] for arm in arms], a.k, a.rrf_k)
+        scored.append((qid, split, bool(saved["combined"]["hit"]), is_hit(files, q["gold"]), stratum(q)))
+
+    def counts(index, by_stratum=False):
+        parts = []
+        for name in STRATA if by_stratum else SPLITS + ("all",):
+            rs = [r for r in scored if name == "all" or r[4 if by_stratum else 1] == name]
+            parts.append("%s %d/%d" % (name, sum(r[index] for r in rs), len(rs)))
+        return " ".join(parts)
+
+    print("replay arms=%s rrf_k=%d k=%d" % (",".join(arms), a.rrf_k, a.k))
+    print("saved combined: " + counts(2))
+    print("replay combined: " + counts(3))
+    print("saved combined by stratum: " + counts(2, True))
+    print("replay combined by stratum: " + counts(3, True))
+    same = arms == FUSED and a.rrf_k == 60 and sum(r[2] for r in scored) == sum(r[3] for r in scored)
+    print("reproduces saved combined: %s" % ("yes" if same else "no"))
+
+    def dev_ids(was_hit, now_hit):
+        return [r[0] for r in scored if r[1] == "insample" and r[2] == was_hit and r[3] == now_hit]
+
+    print("rescued (dev): " + (" ".join(dev_ids(False, True)) or "none"))
+    print("regressed (dev): " + (" ".join(dev_ids(True, False)) or "none"))
+    return 0
 
 
 # ---- census -------------------------------------------------------------------
@@ -893,7 +1004,14 @@ def main(argv=None):
     s.add_argument("--out", required=True)
     s.add_argument("--projects", default=os.path.join(os.path.expanduser("~"), ".claude", "projects"))
     s.add_argument("--days", type=int, default=7)
-    for sp in (r, c, s):
+    rp = sub.add_parser("replay")
+    rp.add_argument("--results", required=True)
+    rp.add_argument("--questions", default=os.path.join(HERE, "questions.jsonl"))
+    rp.add_argument("--arms", default=",".join(FUSED))
+    rp.add_argument("--rrf-k", type=int, default=60)
+    rp.add_argument("--k", type=int, default=5)
+    rp.add_argument("--add", default="")
+    for sp in (r, c, s, rp):
         sp.error = p.error
     try:
         a = p.parse_args(argv)
@@ -903,7 +1021,9 @@ def main(argv=None):
             return cmd_check(a)
         if a.cmd == "census":
             return cmd_census(a)
-        raise Usage("name a subcommand: run, check or census")
+        if a.cmd == "replay":
+            return cmd_replay(a)
+        raise Usage("name a subcommand: run, check, census or replay")
     except Usage as e:
         print("retrieval-eval: %s" % e, file=sys.stderr)
         return 64

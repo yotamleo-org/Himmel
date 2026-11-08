@@ -1,5 +1,5 @@
 # Hooks exported for OTHER repos to consume via pre-commit's remote-repo
-# mechanism (HIMMEL-214: worktree isolation was enforced only in himmel;
+# mechanism (worktree isolation was enforced only in himmel;
 # luna and other operator repos relied on prose). himmel's OWN gates stay
 # wired as `repo: local` in .pre-commit-config.yaml — that file remains the
 # source of truth for what runs HERE.

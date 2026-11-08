@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-answer-ab.sh -- the tokens-to-correct-answer A/B: the closed-book
+# test-answer-ab.sh -- the tokens-per-file-hit A/B: the closed-book
 # screen, the arms, the token accounting and the billing stops. No real claude, qmd or
 # graphify call: all three are stub commands, and grep runs over a scratch git repo.
 #
@@ -49,6 +49,12 @@ printf '%s\n' "$*" >> "$STUB_DIR/argv.log"
 prompt="$(cat)"
 n=$((${#prompt} / 4))
 case "${STUB_MODE:-}" in
+wrongprose)
+  printf '%s\n' '{"result":"The lock is released by deleting the .git directory.\nANSWER: [\"docs/lock.md\"]","usage":{},"total_cost_usd":0}'
+  exit 0 ;;
+longprose)
+  python3 -I -c 'import json; print(json.dumps({"result": "X" * 4100 + "\nANSWER: [\"docs/lock.md\"]", "usage": {}, "total_cost_usd": 0}))'
+  exit 0 ;;
 garbage) echo 'not json'; exit 0 ;;
 esac
 # A realistic session (--mcp-config given) is played by session.py, which calls the route tool for real.
@@ -72,6 +78,14 @@ d = os.environ["STUB_DIR"]
 argv = sys.argv[1:]
 prompt = sys.stdin.read()
 open(os.path.join(d, "sess-all.log"), "a").write(" ".join(argv) + "\n")
+hits = 0
+for dp, _, fs in os.walk(os.getcwd()):
+    for fn in fs:
+        try:
+            hits += b"BANKSECRET" in open(os.path.join(dp, fn), "rb").read()
+        except OSError:
+            pass
+open(os.path.join(d, "sess-cwd.log"), "a").write("%s %d %d\n" % (os.getcwd(), hits, os.path.exists("docs/lock.md")))
 sid = argv[argv.index("--session-id") + 1] if "--session-id" in argv else (argv[argv.index("--resume") + 1] if "--resume" in argv else None)
 if sid and os.environ.get("CLAUDE_CONFIG_DIR"):  # a persisted session leaves a transcript the run must remove
     os.makedirs(os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "projects", "p"), exist_ok=True)
@@ -106,6 +120,8 @@ if servers:
             {"jsonrpc": "2.0", "method": "notifications/initialized"},
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
             {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "route", "arguments": {"query": q}}}]
+    if os.environ.get("STUB_ROUTE_TWICE"):
+        msgs.append({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "route", "arguments": {"query": "broken backend"}}})
     out, _ = p.communicate("".join(json.dumps(m) + "\n" for m in msgs), timeout=60)
     by = {}
     for line in out.splitlines():
@@ -161,19 +177,19 @@ t() { awk -F'\t' -v a="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next} $1==
 
 # 2. no ceiling: the no-retrieval baseline is below n/n, and a retrieval arm is told apart from it.
 eq "baseline arm n" "2" "$(t none n)"
-eq "baseline arm scores below n/n" "0" "$(t none correct)"
-eq "grep arm answers both" "2" "$(t grep correct)"
-eq "graphify (wrong file) arm answers none" "0" "$(t graphify correct)"
-eq "an arm with no correct answer has no tokens-per-correct" "-" "$(t graphify tokens_per_correct)"
+eq "baseline arm scores below n/n" "0" "$(t none file_hit)"
+eq "grep arm answers both" "2" "$(t grep file_hit)"
+eq "graphify (wrong file) arm answers none" "0" "$(t graphify file_hit)"
+eq "an arm with no file hit has no tokens_per_file_hit" "-" "$(t graphify tokens_per_file_hit)"
 
-# 3. tokens to a correct answer: total session tokens of the arm over its correct answers.
+# 3. tokens per file hit: total session tokens of the arm over its file hits.
 tot="$(t grep tokens_total)"
-eq "grep tokens_per_correct is tokens_total over correct" "$((tot / 2))" "$(t grep tokens_per_correct | cut -d. -f1)"
+eq "grep tokens_per_file_hit is tokens_total over file_hit" "$((tot / 2))" "$(t grep tokens_per_file_hit | cut -d. -f1)"
 if [ "$(t grep tokens_total)" -gt "$(t none tokens_total)" ]; then pass "retrieval context adds session tokens over the baseline"; else fail "retrieval context adds session tokens over the baseline"; fi
 
 # 4. the six arms are all in the table.
 eq "table lists every arm" "fused graphify grep grep-rtk none pathident" "$(awk -F'\t' 'NR>1{print $1}' "$W/out/table.tsv" | sort | tr '\n' ' ' | sed 's/ $//')"
-eq "grep-rtk arm answers both" "2" "$(t grep-rtk correct)"
+eq "grep-rtk arm answers both" "2" "$(t grep-rtk file_hit)"
 eq "grep-rtk retrieval went through rtk" "yes" "$(grep -q '^rewrite grep ' "$RTK_LOG" && grep -q '^grep -n -I -H -i -F' "$RTK_LOG" && echo yes || echo no)"
 mkdir -p "$W/nortk"
 for tool in git bash sh grep python3 env; do ln -sf "$(command -v "$tool")" "$W/nortk/$tool"; done
@@ -195,12 +211,12 @@ STUB_COST=0.5 python3 -I "$AB" run --repo "$R" --questions "$Q" --out "$W/out-ca
 rc=$?
 if [ "$rc" -ne 0 ] && grep -q 'max-usd' "$W/out-cap/STOPPED" 2>/dev/null; then pass "max-usd stops the run (rc $rc)"; else fail "max-usd stops the run (rc $rc)"; fi
 
-# 8. an unparseable claude reply is an incorrect, errored row, never a crash.
+# 8. an unparseable claude reply is a missed, errored row, never a crash.
 STUB_MODE=garbage python3 -I "$AB" run --repo "$R" --questions "$Q" --out "$W/out-garbage" > "$W/garbage.txt" 2>&1
 rc=$?
 if grep -q 'Traceback' "$W/garbage.txt"; then fail "garbage reply does not crash"; else pass "garbage reply does not crash"; fi
 if [ "$rc" -ne 0 ]; then pass "garbage reply exits nonzero (rc $rc)"; else fail "garbage reply exits nonzero (rc $rc)"; fi
-eq "garbage replies are errored, incorrect rows" "0" "$(python3 -I -c 'import json,sys; print(sum(1 for l in open(sys.argv[1]) if not json.loads(l)["error"] or json.loads(l)["correct"]))' "$W/out-garbage/results.jsonl")"
+eq "garbage replies are errored, missed rows" "0" "$(python3 -I -c 'import json,sys; print(sum(1 for l in open(sys.argv[1]) if not json.loads(l)["error"] or json.loads(l)["file_hit"]))' "$W/out-garbage/results.jsonl")"
 
 # 9. an empty --arms is a usage error before any call is billed; a rerun clears the old STOPPED.
 python3 -I "$AB" run --repo "$R" --questions "$Q" --out "$W/out-empty" --arms "" > "$W/empty.txt" 2>&1
@@ -224,6 +240,16 @@ rt() { awk -F'\t' -v a="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next} $1=
 eq "table lists the four realistic arms" "bm25-rerank fused-cached vanilla vec-rerank" "$(awk -F'\t' 'NR>1{print $1}' "$W/out-real/table.tsv" | sort | tr '\n' ' ' | sed 's/ $//')"
 eq "results.jsonl holds one row per paid call (written as each call lands)" "12" "$(wc -l < "$W/out-real/results.jsonl" | tr -d ' ')"
 eq "each realistic arm answers every question once, with no closed-book screen" "3 3 3 3" "$(rt vanilla n) $(rt fused-cached n) $(rt bm25-rerank n) $(rt vec-rerank n)"
+
+eq "routed rows keep one route call and its query/files; vanilla keeps none" "True" "$(python3 -I -c 'import json,sys
+rows = list(map(json.loads, open(sys.argv[1])))
+print(all(r.get("route_calls") == (0 if r["arm"] == "vanilla" else 1)
+          and isinstance(r.get("tool_trace"), list)
+          and len(r["tool_trace"]) == r["route_calls"]
+          and all(t.get("query") and isinstance(t.get("files"), list) and t.get("failure", "missing") is None
+                  for t in r["tool_trace"]) for r in rows))' "$W/out-real/results.jsonl")"
+eq "one-turn rows keep no route calls" "True" "$(python3 -I -c 'import json,sys
+print(all(r.get("route_calls") == 0 and r.get("tool_trace") == [] for r in map(json.loads, open(sys.argv[1]))))' "$W/out/results.jsonl")"
 
 # 11. cost is priced per call from the usage split by the price table, never the flat total_cost_usd.
 read -r p_in p_out p_cr p_cw <<< "$(awk -F'\t' '$1=="claude-sonnet-5-5"{print $2, $3, $4, $5}' "$HERE/../../lanes/lib/model-prices.tsv")"
@@ -262,10 +288,12 @@ eq "exactly one ledger row was written" "1" "$(wc -l < "$W/ledger.jsonl" | tr -d
 lg() { python3 -I -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(eval(sys.argv[2]))' "$W/ledger.jsonl" "$1"; }
 eq "the row is the answer-ab eval" "answer-ab" "$(lg 'r["eval"]')"
 eq "row n is the question count" "3" "$(lg 'r["n"]')"
-eq "row carries per-arm correct" "1" "$(lg 'r["metrics"]["vanilla.correct"]')"
-eq "row carries cost_usd, cost_per_correct, cached_share, ms_median, turns_mean per arm" "yes" "$(lg '"yes" if all(("%s.%s" % (a, m)) in r["metrics"] for a in ("vanilla","fused-cached","bm25-rerank","vec-rerank") for m in ("cost_usd","cost_per_correct","tokens_per_correct","cached_share","ms_median","turns_mean","input","output","cache_read","cache_creation")) else "no"')"
+eq "row carries per-arm file_hit" "1" "$(lg 'r["metrics"]["vanilla.file_hit"]')"
+eq "row carries cost_usd, cost_per_file_hit, cached_share, ms_median, turns_mean per arm" "yes" "$(lg '"yes" if all(("%s.%s" % (a, m)) in r["metrics"] for a in ("vanilla","fused-cached","bm25-rerank","vec-rerank") for m in ("cost_usd","cost_per_file_hit","tokens_per_file_hit","cached_share","ms_median","turns_mean","input","output","cache_read","cache_creation")) else "no"')"
 eq "row cost_usd is the priced figure" "$want_v" "$(lg '"%.4f" % r["metrics"]["vanilla.cost_usd"]')"
-eq "row carries the insample and heldout split" "2 1 1" "$(lg 'r["metrics"]["vanilla.insample.n"]') $(lg 'r["metrics"]["vanilla.heldout.n"]') $(lg 'r["metrics"]["vanilla.heldout.correct"]')"
+eq "row carries the insample and heldout split" "2 1 1" "$(lg 'r["metrics"]["vanilla.insample.n"]') $(lg 'r["metrics"]["vanilla.heldout.n"]') $(lg 'r["metrics"]["vanilla.heldout.file_hit"]')"
+eq "row carries the code-only and doc strata beside the split" "1 2 0 1" "$(lg 'r["metrics"]["vanilla.code.n"]') $(lg 'r["metrics"]["vanilla.doc.n"]') $(lg 'r["metrics"]["vanilla.code.file_hit"]') $(lg 'r["metrics"]["vanilla.doc.file_hit"]')"
+eq "row carries split x stratum n and file_hit" "1 1 0 0 1 0 1 None" "$(lg 'r["metrics"]["vanilla.insample.code.n"]') $(lg 'r["metrics"]["vanilla.insample.doc.n"]') $(lg 'r["metrics"]["vanilla.insample.code.file_hit"]') $(lg 'r["metrics"]["vanilla.insample.doc.file_hit"]') $(lg 'r["metrics"]["vanilla.heldout.doc.n"]') $(lg 'r["metrics"]["vanilla.heldout.code.n"]') $(lg 'r["metrics"]["vanilla.heldout.doc.file_hit"]') $(lg 'r["metrics"]["vanilla.heldout.code.file_hit"]')"
 eq "row cases are per question and mark the heldout one" "True" "$(lg 'r["cases"]["a3"]["heldout"]')"
 if [ ! -e "$HOMEX/.himmel/eval-runs.jsonl" ]; then pass "the HOME ledger is not written when HIMMEL_EVAL_RUNS_LEDGER names one"; else fail "the HOME ledger is not written when HIMMEL_EVAL_RUNS_LEDGER names one"; fi
 HOME="$HOMEX" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-nol" --arms vanilla --model claude-sonnet-5-5 --pool 3 --n 3 --no-ledger > "$W/nol.txt" 2>&1
@@ -292,7 +320,7 @@ if [ "$rc" -ne 0 ]; then pass "an errored session makes the run exit nonzero (rc
 eq "the errored call is counted, not priced" "1" "$(lg 'r["metrics"]["vanilla.errors"]')"
 want_two="$(python3 -I -c 'import sys; i,o,r,w=map(float,sys.argv[1:5]); print("%.4f" % (2*(100*i+50*o+9000*r+1000*w)/1e6))' "$p_in" "$p_out" "$p_cr" "$p_cw")"
 eq "the arm cost is the two good calls (the errored call books no cost)" "$want_two" "$(lg '"%.4f" % r["metrics"]["vanilla.cost_usd"]')"
-eq "the arm cost per correct answer follows" "$want_two" "$(lg '"%.4f" % r["metrics"]["vanilla.cost_per_correct"]')"
+eq "the arm cost per file hit follows" "$want_two" "$(lg '"%.4f" % r["metrics"]["vanilla.cost_per_file_hit"]')"
 eq "the errored question has no cost in the cases" "None" "$(lg 'r["cases"]["a2"]["vanilla.cost_usd"]')"
 
 # 17. a model with no price row is reported unpriced: no arm cost, never a guess.
@@ -343,7 +371,7 @@ eq "the prime call is not a measured question" "3 3 3 3" "$(pt vanilla n) $(pt f
 eq "the measured cost leaves the prime call out" "$want_v" "$(lg '"%.4f" % r["metrics"]["vanilla.cost_usd"]')"
 eq "the prime call is priced on its own" "yes" "$(lg "\"yes\" if abs(r['metrics']['vanilla.prime_cost_usd'] * 3 - $want_v) < 1e-3 else \"no\"")"
 eq "the cost with the cold call is the measured cost plus the prime cost" "yes" "$(lg "\"yes\" if abs(r['metrics']['vanilla.cost_usd_with_prime'] * 3 - 4 * $want_v) < 1e-3 else \"no\"")"
-eq "cost per correct with the cold call is reported" "yes" "$(lg "\"yes\" if abs(r['metrics']['vanilla.cost_per_correct_with_prime'] - r['metrics']['vanilla.cost_usd_with_prime'] / r['metrics']['vanilla.correct']) < 1e-9 else \"no\"")"
+eq "cost per file hit with the cold call is reported" "yes" "$(lg "\"yes\" if abs(r['metrics']['vanilla.cost_per_file_hit_with_prime'] - r['metrics']['vanilla.cost_usd_with_prime'] / r['metrics']['vanilla.file_hit']) < 1e-9 else \"no\"")"
 eq "the prime calls add no question to the row" "3" "$(lg 'r["n"]')"
 eq "the spend guard counts the prime calls" "True" "$(lg 'r["meta"]["spent_usd"] > 4 * r["metrics"]["vanilla.prime_cost_usd"]')"
 
@@ -372,6 +400,88 @@ if STUB_FAIL_Q="queue lock" CLAUDE_CONFIG_DIR="$W/cc" python3 -I "$AB" run --rep
 eq "after a failed first call the next question opens a new session, not --resume" "--session-id --session-id --session-id" "$(wsess vanilla | awk '{print $1}' | tr '\n' ' ' | sed 's/ $//')"
 eq "the three sessions have three different ids" "3" "$(wsess vanilla | cut -d' ' -f2 | sort -u | wc -l | tr -d ' ')"
 eq "a question that opened a fresh session after a failed call is question 1 of it, not a warm one" "1 1 1" "$(python3 -I -c 'import json,sys; print(" ".join(str(r["pos"]) for r in map(json.loads, open(sys.argv[1]))))' "$W/out-warmerr/results.jsonl")"
+
+STUB_MODE=wrongprose HIMMEL_EVAL_RUNS_LEDGER="$W/wrong-ledger.jsonl" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-wrong" --arms vanilla --pool 1 --n 1 > "$W/wrong.txt" 2>&1
+eq "wrong-answer/right-file control runs" "0" "$?"
+eq "wrong-answer/right-file control keeps the file hit and the wrong prose" "True" "$(python3 -I -c 'import json,sys
+r = json.loads(open(sys.argv[1]).readline())
+print(r.get("file_hit") is True and "correct" not in r and "deleting the .git directory" in r.get("result", ""))' "$W/out-wrong/results.jsonl")"
+eq "ledger cases and metrics call the scorer file-hit, never correct" "True" "$(python3 -I -c 'import json,sys
+r = json.loads(open(sys.argv[1]).readline())
+print(r["config"].get("scorer") == "file-hit" and r["metrics"].get("vanilla.file_hit") == 1
+      and r["cases"]["a1"].get("vanilla.file_hit") is True
+      and not any("correct" in k for d in [r["metrics"]] + list(r["cases"].values()) for k in d))' "$W/wrong-ledger.jsonl")"
+eq "errored rows keep an empty reply" "True" "$(python3 -I -c 'import json,sys
+print(all(r.get("result") == "" and "correct" not in r for r in map(json.loads, open(sys.argv[1]))))' "$W/out-garbage/results.jsonl")"
+eq "warm sessions reset their per-answer route trace" "True" "$(python3 -I -c 'import json,sys
+print(all(r.get("route_calls") == 1 and len(r.get("tool_trace", [])) == 1
+          for r in map(json.loads, open(sys.argv[1])) if r["arm"] == "fused-cached"))' "$W/out-warm/results.jsonl")"
+
+STUB_MODE=longprose python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-long" --arms vanilla --pool 1 --n 1 --no-ledger > "$W/long.txt" 2>&1
+eq "a long reply runs" "0" "$?"
+eq "reply evidence is capped at 4000 characters but the full named answer is scored" "True" "$(python3 -I -c 'import json,sys
+r = json.loads(open(sys.argv[1]).readline())
+print(r.get("result") == "X" * 4000 and r.get("file_hit") is True and r["named"] == ["docs/lock.md"])' "$W/out-long/results.jsonl")"
+
+cat > "$W/qmd-trace" <<'EOF'
+#!/usr/bin/env bash
+in="$(cat)"
+case "$in" in
+*broken*) exit 3 ;;
+*) printf '[{"file":"qmd://himmel/docs/lock.md","snippet":"queue lock"}]\n' ;;
+esac
+EOF
+chmod +x "$W/qmd-trace"
+STUB_ROUTE_TWICE=1 RETRIEVAL_EVAL_QMD_CMD="$W/qmd-trace" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-trace" --arms bm25-rerank,fused-cached --pool 1 --n 1 --no-ledger > "$W/trace.txt" 2>&1
+eq "a session with a failed route still answers" "0" "$?"
+eq "route evidence keeps both calls, ordered files and failure detail" "True" "$(python3 -I -c 'import json,sys
+rows = list(map(json.loads, open(sys.argv[1])))
+print(len(rows) == 2 and all(r.get("route_calls") == 2 and len(r.get("tool_trace", [])) == 2
+      and r["tool_trace"][0] == {"query": "where is the queue lock described", "files": ["docs/lock.md"] + (["docs/other.md"] if r["arm"] == "fused-cached" else []), "failure": None}
+      and r["tool_trace"][1]["query"] == "broken backend"
+      and r["tool_trace"][1]["failure"] == "qmd failed (rc 3)"
+      for r in rows))' "$W/out-trace/results.jsonl")"
+
+# 23. a realistic session cannot Read, Grep or Glob the question bank (it holds the gold files).
+rm -f "$W"/sess-*.log
+RR="$(cd "$R" && pwd -P)"
+bankrow='{"id":"a1","kind":"where","q":"where is the queue lock described","gold":["docs/lock.md"],"reason":[],"note":"BANKSECRET"}'
+mkdir -p "$R/scripts/eval/retrieval-eval" "$R/.claude/worktrees/x/scripts/eval/retrieval-eval"
+for f in scripts/eval/retrieval-eval/questions.jsonl scripts/eval/retrieval-eval/questions-v2.jsonl inrepo-bank.jsonl; do
+  printf '%s\n' "$bankrow" > "$R/$f"
+done
+printf '/.claude/worktrees\n' > "$R/.gitignore"
+printf '%s\n' "${bankrow%\}},\"wt\":\"BANKSECRET-wt\"}" > "$R/.claude/worktrees/x/scripts/eval/retrieval-eval/questions.jsonl"
+git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m banks
+printf 'BANKSECRET-untracked\n' > "$R/untracked-bank.txt"
+inrepo="$R/inrepo-bank.jsonl"
+python3 -I "$AB" run --repo "$R" --questions "$inrepo" --out "$W/out-deny" --arms "$REAL" --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/deny.txt" 2>&1
+eq "a deny-rule run completes" "0" "$?"
+eq "four sessions ran" "4" "$(wc -l < "$W/sess-cwd.log" | tr -d ' ')"
+eq "no session runs inside the repo, or in a tree under it" "0" "$(awk '{print $1}' "$W/sess-cwd.log" | grep -c "^$RR")"
+eq "no bank bytes are in any session's cwd tree (an ignored worktree copy and an untracked file included, neither byte-identical to a bank)" "0" "$(awk '{s += $2} END {print s + 0}' "$W/sess-cwd.log")"
+eq "the rest of the repo is still in the session's cwd tree" "4" "$(awk '{s += $3} END {print s + 0}' "$W/sess-cwd.log")"
+eq "the session's scratch export is gone after the run" "no" "$([ -e "$(awk 'NR==1 {print $1}' "$W/sess-cwd.log")" ] && echo yes || echo no)"
+eq "the repo's own bank is untouched" "1" "$(grep -c BANKSECRET "$R/scripts/eval/retrieval-eval/questions.jsonl")"
+for arm in vanilla routed; do
+  if [ "$arm" = vanilla ]; then sel="$(grep 'mcp-vanilla' "$W/sess-all.log")"; else sel="$(grep -v 'mcp-vanilla' "$W/sess-all.log")"; fi
+  calls="$(printf '%s\n' "$sel" | grep -c .)"
+  eq "$arm session: every call carries --disallowedTools" "$calls" "$(printf '%s\n' "$sel" | grep -cF -- '--disallowedTools')"
+  for bank in scripts/eval/retrieval-eval/questions.jsonl scripts/eval/retrieval-eval/questions-v2.jsonl inrepo-bank.jsonl; do
+    eq "$arm session: every call denies Read of $bank" "$calls" "$(printf '%s\n' "$sel" | grep -cF -- "Read(/$RR/$bank)")"
+  done
+  eq "$arm session: every call denies Read of a bank copy anywhere" "$calls" "$(printf '%s\n' "$sel" | grep -cF -- 'Read(//**/scripts/eval/retrieval-eval/questions*.jsonl)')"
+done
+eq "vanilla still has tools Read, Grep, Glob only" "Read,Grep,Glob" "$(sort -u "$W/sess-allowed-vanilla.log")"
+
+rm -f "$W"/sess-*.log
+extrow='{"id":"a1","kind":"where","q":"where is the queue lock described","gold":["docs/lock.md"],"reason":[],"note":"BANKSECRET-ext"}'
+printf '%s\n' "$extrow" > "$W/ext-bank.jsonl"
+printf '%s\n' "$extrow" > "$R/renamed-copy.dat"
+git -C "$R" add renamed-copy.dat && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m renamed
+python3 -I "$AB" run --repo "$R" --questions "$W/ext-bank.jsonl" --out "$W/out-ext" --arms vanilla --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/ext.txt" 2>&1
+eq "an external-bank run completes" "0" "$?"
+eq "a tracked copy of an external --questions file is not in the session's cwd tree" "0" "$(awk '{s += $2} END {print s + 0}' "$W/sess-cwd.log")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -9,9 +9,14 @@ document that asks it in both:
   doc query|search <question>
       Prints the query document: "lex: <question>", one "lex:" line per vocabulary swap
       (every old word to its new one, every new word to its old one) and, for query, a
-      "vec: <question>" line. Prints the question unchanged when it names no registry word,
-      is already a query document, or holds what a lex/vec line rejects (an odd number of
-      double quotes, a -negation for query).
+      "vec: <question>" line. The lex lines drop filler words (shape_lex). A question that
+      names no registry word passes through unchanged, so qmd keeps its own expansion, limits
+      and scores. It also prints the question unchanged when it is already a query document,
+      or holds what a lex/vec line rejects (an odd number of double quotes, a -negation for
+      query).
+      A caller that sends typed legs itself (retrieval-eval) uses shape_lex(quote_flags=True)
+      and shape_vec: qmd rejects a vec query holding a dash word, and reads a bare dash word
+      in a lex query as a NOT.
 
   argv <verb> <arg>...
       Prints the qmd argv, NUL-separated: the question (every positional) replaced by the
@@ -37,6 +42,34 @@ STRING_OPTS = {
 }
 SHORT_STRING = set("cCnl")
 NEGATION = re.compile(r'(^|\s)-[\w"]')
+# ponytail: one fixed English list, no per-corpus tuning; grow it from a miss.
+STOPWORDS = frozenset(
+    "a an the is are was were be been being do does did how what why when where who whom whose which "
+    "of to in on at for from by with about into and or it its this that these those can could should "
+    "would will there here as if than then i we you they he she me my our your their".split()
+)
+
+
+def shape_lex(question, quote_flags=False):
+    """question for a lex leg: filler words dropped, "quoted phrases" and every other token kept.
+    A question of only filler words stays whole. quote_flags quotes a dash word ("-p"), which
+    qmd's lex parser would otherwise read as a NOT; the default keeps a typed -negation."""
+    toks = re.findall(r'[^\s"]*"[^"]*"[^\s"]*|\S+', question)
+    keep = []
+    for t in toks:
+        if '"' in t:
+            keep.append(t)
+        elif quote_flags and t.startswith("-") and len(t) > 1:
+            keep.append('"%s"' % t)
+        elif t.strip("?,.;:!()").lower() not in STOPWORDS:
+            keep.append(t)
+    return " ".join(keep) if keep else question
+
+
+def shape_vec(question):
+    """question for a vec leg: a leading dash word dropped (qmd rejects the whole vec query holding
+    one, see validateSemanticQuery); "" when nothing is left."""
+    return " ".join(t for t in question.split() if not NEGATION.match(t))
 
 
 def rows(path=REGISTRY):
@@ -112,13 +145,15 @@ def document(verb, question, prs=None):
         return question
     if question.count('"') % 2 or (verb == "query" and NEGATION.search(question)):
         return question
-    lines = [question]
-    for direction in ("to-new", "to-old"):
-        alt = swap(question, direction, prs)
-        if alt not in lines:
-            lines.append(alt)
-    if len(lines) == 1:
+    alts = [swap(question, d, prs) for d in ("to-new", "to-old")]
+    swapped = any(a != question for a in alts)
+    if not swapped:
         return question
+    lines = []
+    for line in [question, *alts]:
+        shaped = shape_lex(line)
+        if shaped not in lines:
+            lines.append(shaped)
     doc = [f"lex: {line}" for line in lines]
     if verb == "query":
         doc.append(f"vec: {question}")

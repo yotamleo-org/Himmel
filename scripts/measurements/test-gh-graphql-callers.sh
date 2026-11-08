@@ -166,6 +166,23 @@ rc_wfloor=$?
 if [ "$rc_wfloor" = 2 ] && [ ! -s "$WLOG2" ]; then ok "watch refuses under the floor and logs nothing"
 else bad "watch floor" "rc=$rc_wfloor"; fi
 
+WLOG4="$TMP/watch4.log"
+FAKE_REMAINING=100 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$WLOG4" --seconds 1 >/dev/null 2>&1
+rc_wdef=$?
+if [ "$rc_wdef" = 2 ] && [ ! -s "$WLOG4" ]; then ok "watch with no --floor still refuses at 100 remaining (default 1500)"
+else bad "watch default floor at 100" "rc=$rc_wdef"; fi
+
+WLOG5="$TMP/watch5.log"
+FAKE_REMAINING=100 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$WLOG5" --seconds 1 --floor 0 >/dev/null 2>"$TMP/watch5.err"
+rc_wf0=$?
+if [ "$rc_wf0" = 0 ] && grep -q 'watched 1s' "$TMP/watch5.err"; then ok "watch --floor 0 watches at 100 remaining"
+else bad "watch --floor 0 at 100" "rc=$rc_wf0 err=$(cat "$TMP/watch5.err")"; fi
+
+bash "$SCRIPT" watch --log "$TMP/watch6.log" --seconds 1 --floor abc >/dev/null 2>&1
+rc_wfbad=$?
+if [ "$rc_wfbad" = 64 ]; then ok "watch --floor rejects a non-numeric value as a usage error"
+else bad "watch --floor abc" "rc=$rc_wfbad"; fi
+
 FAKE_NOHDR=1 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$TMP/watch3.log" --seconds 1 >/dev/null 2>&1
 rc_wnohdr=$?
 FAKE_NOHDR=1 PATH="$BIN:$PATH" bash "$SCRIPT" run --log "$TMP/run3.log" -- bash "$TMP/fakecaller.sh" >/dev/null 2>&1

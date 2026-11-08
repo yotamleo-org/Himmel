@@ -450,58 +450,58 @@ check "A/B arm control (paired, no marker, worker-docs): exit 0" "$rc" "0"
 contains "A/B arm control (paired, no marker, worker-docs): stays 200000" "$out" "--autocompact 200000"
 # The wrapper resolves the per-profile Sonnet ceiling once and hands the renderer the
 # value in HEADED_ARM_SONNET_AUTOCOMPACT; the renderer never re-derives it from MODEL.
-rc=0; out="$(ab_run paired standard "" implsonnet worker-impl claude-sonnet-5 450000)" || rc=$?
+rc=0; out="$(ab_run paired standard "" implsonnet worker-impl claude-sonnet-5 850000)" || rc=$?
 check "Sonnet ceiling marker (paired, standard): exit 0" "$rc" "0"
-contains "Sonnet ceiling marker (paired, standard): argv carries --autocompact 450000" "$out" "--autocompact 450000"
-rc=0; out="$(ab_run paired standard "" implrewritten worker-impl sonnet 450000)" || rc=$?
-contains "Sonnet ceiling marker: honoured whatever the model string (the wrapper decided)" "$out" "--autocompact 450000"
+contains "Sonnet ceiling marker (paired, standard): argv carries --autocompact 850000" "$out" "--autocompact 850000"
+rc=0; out="$(ab_run paired standard "" implrewritten worker-impl sonnet 850000)" || rc=$?
+contains "Sonnet ceiling marker: honoured whatever the model string (the wrapper decided)" "$out" "--autocompact 850000"
 rc=0; out="$(ab_run paired standard "" implnomarker worker-impl claude-sonnet-5)" || rc=$?
 check "worker-impl on Sonnet, no marker: exit 0" "$rc" "0"
 contains "worker-impl on Sonnet, no marker: stays 200000 (no second resolution from MODEL)" "$out" "--autocompact 200000"
-not_contains "worker-impl on Sonnet, no marker: no 450000" "$out" "--autocompact 450000"
+not_contains "worker-impl on Sonnet, no marker: no 850000" "$out" "--autocompact 850000"
 rc=0; out="$(ab_run paired standard "" implopus worker-impl claude-opus-5-5)" || rc=$?
 check "worker-impl on Opus (paired, no marker): exit 0" "$rc" "0"
 contains "worker-impl on Opus, no marker: argv stays --autocompact 200000 (no second resolution from MODEL)" "$out" "--autocompact 200000"
-not_contains "worker-impl on Opus: no 450000" "$out" "--autocompact 450000"
-rc=0; out="$(ab_run stale standard "" stalesonnet worker-impl claude-sonnet-5 450000)" || rc=$?
+not_contains "worker-impl on Opus: no 850000" "$out" "--autocompact 850000"
+rc=0; out="$(ab_run stale standard "" stalesonnet worker-impl claude-sonnet-5 850000)" || rc=$?
 contains "Sonnet ceiling marker (stale pid): ignored, stays 200000" "$out" "--autocompact 200000"
-not_contains "Sonnet ceiling marker (stale pid): no 450000" "$out" "--autocompact 450000"
-for bad in 500000 199999 400000.5 abc; do
+not_contains "Sonnet ceiling marker (stale pid): no 850000" "$out" "--autocompact 850000"
+for bad in 850001 199999 400000.5 abc; do
   rc=0; out="$(ab_run paired standard "" "badson$bad" worker-impl claude-sonnet-5 "$bad")" || rc=$?
   check "Sonnet ceiling marker ($bad): refused exit 2" "$rc" "2"
   not_contains "Sonnet ceiling marker ($bad): no launch argv" "$out" "--autocompact $bad"
 done
 # design is the one profile whose 1m context passes the worker-context gate, so this row
 # reaches the marker's own 1m check; on worker-impl the earlier gate would refuse it first.
-rc=0; out="$(ab_run paired 1m "" sonnet1m design claude-sonnet-5 450000)" || rc=$?
+rc=0; out="$(ab_run paired 1m "" sonnet1m design claude-sonnet-5 850000)" || rc=$?
 check "Sonnet ceiling marker (1m context): refused exit 2" "$rc" "2"
-contains "Sonnet ceiling marker (1m context): refused by the marker's own check" "$out" "refusing HEADED_ARM_SONNET_AUTOCOMPACT=450000"
-rc=0; out="$(ab_run paired standard "" sonnetchief chief claude-sonnet-5 450000)" || rc=$?
+contains "Sonnet ceiling marker (1m context): refused by the marker's own check" "$out" "refusing HEADED_ARM_SONNET_AUTOCOMPACT=850000"
+rc=0; out="$(ab_run paired standard "" sonnetchief chief claude-sonnet-5 850000)" || rc=$?
 check "Sonnet ceiling marker (chief profile): refused exit 2" "$rc" "2"
 # The Opus ceiling reaches the renderer the same way (decision 751): decided once by
-# the wrapper, honoured only when paired, 200000 to 800000, standard worker arm only.
-rc=0; out="$(ab_run paired standard "" opusok worker-impl claude-opus-5-5 "" 800000)" || rc=$?
+# the wrapper, honoured only when paired, 200000 to 850000, standard worker arm only.
+rc=0; out="$(ab_run paired standard "" opusok worker-impl claude-opus-5-5 "" 850000)" || rc=$?
 check "Opus ceiling marker (paired, standard): exit 0" "$rc" "0"
-contains "Opus ceiling marker (paired, standard): argv carries --autocompact 800000" "$out" "--autocompact 800000"
+contains "Opus ceiling marker (paired, standard): argv carries --autocompact 850000" "$out" "--autocompact 850000"
 not_contains "Opus ceiling marker (paired, standard): no 1m suffix" "$out" "[1m]"
-rc=0; out="$(ab_run stale standard "" opusstale worker-impl claude-opus-5-5 "" 800000)" || rc=$?
+rc=0; out="$(ab_run stale standard "" opusstale worker-impl claude-opus-5-5 "" 850000)" || rc=$?
 contains "Opus ceiling marker (stale pid): ignored, stays 200000" "$out" "--autocompact 200000"
-not_contains "Opus ceiling marker (stale pid): no 800000" "$out" "--autocompact 800000"
-rc=0; out="$(ab_run none standard "" opusnone worker-impl claude-opus-5-5 "" 800000)" || rc=$?
+not_contains "Opus ceiling marker (stale pid): no 850000" "$out" "--autocompact 850000"
+rc=0; out="$(ab_run none standard "" opusnone worker-impl claude-opus-5-5 "" 850000)" || rc=$?
 contains "Opus ceiling marker (no pid pairing): stays 200000" "$out" "--autocompact 200000"
-for bad in 800001 199999 800000.5 abc; do
+for bad in 850001 199999 850000.5 abc; do
   rc=0; out="$(ab_run paired standard "" "badopus$bad" worker-impl claude-opus-5-5 "" "$bad")" || rc=$?
   check "Opus ceiling marker ($bad): refused exit 2" "$rc" "2"
   not_contains "Opus ceiling marker ($bad): no launch argv" "$out" "--autocompact $bad"
 done
-rc=0; out="$(ab_run paired 1m "" opus1m design claude-opus-5-5 "" 800000)" || rc=$?
+rc=0; out="$(ab_run paired 1m "" opus1m design claude-opus-5-5 "" 850000)" || rc=$?
 check "Opus ceiling marker (1m context): refused exit 2" "$rc" "2"
-contains "Opus ceiling marker (1m context): refused by the marker's own check" "$out" "refusing HEADED_ARM_OPUS_AUTOCOMPACT=800000"
-rc=0; out="$(ab_run paired standard "" opuschief chief claude-opus-5-5 "" 800000)" || rc=$?
+contains "Opus ceiling marker (1m context): refused by the marker's own check" "$out" "refusing HEADED_ARM_OPUS_AUTOCOMPACT=850000"
+rc=0; out="$(ab_run paired standard "" opuschief chief claude-opus-5-5 "" 850000)" || rc=$?
 check "Opus ceiling marker (chief profile): refused exit 2" "$rc" "2"
-rc=0; out="$(ab_run paired standard 400000 opusab worker-impl claude-opus-5-5 "" 800000)" || rc=$?
+rc=0; out="$(ab_run paired standard 400000 opusab worker-impl claude-opus-5-5 "" 850000)" || rc=$?
 check "Opus ceiling marker beside the A/B marker: refused exit 2" "$rc" "2"
-rc=0; out="$(ab_run paired standard "" opussonnet worker-impl claude-opus-5-5 450000 800000)" || rc=$?
+rc=0; out="$(ab_run paired standard "" opussonnet worker-impl claude-opus-5-5 850000 850000)" || rc=$?
 check "Opus ceiling marker beside the Sonnet marker: refused exit 2" "$rc" "2"
 rc=0; out="$(ab_run stale standard 400000 stale)" || rc=$?
 check "A/B arm (stale pid): ignored, exit 0" "$rc" "0"

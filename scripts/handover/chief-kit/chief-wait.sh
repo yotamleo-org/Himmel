@@ -274,6 +274,11 @@
 # TICK_CLOSABLE_MIN minutes) wakes when it appears or changes; absent means none.
 # deadwin=<label>:closed|held (tick.sh: a worker window whose session died) wakes
 # when it appears or changes; absent means none.
+# unclosed=<label>[,<label>] (tick.sh: a worker read CLOSABLE, or WRAPPED / NOLIVE with a
+# live window, open on two ticks running with no DISPOSITION bullet in the chief doc) wakes
+# `WAKE unclosed <labels>` for each worker new to the marker `<inbox>.wait.unclosed` (the
+# labels printed are the new ones), again every CHIEF_WAIT_UNCLOSED_REWAKE_MIN (default 60)
+# while it stays; the marker clears when the field is gone. It is not part of the action key.
 # Everything else on the tick line (heartbeat, procs, fill, fleet, gql,
 # orphans...) moves without needing a chief act and never wakes. Two consecutive samples must differ from the saved key (not
 # necessarily from each other), so one failed `gh` read (prs=none for a single
@@ -1077,6 +1082,14 @@ unowned_wake() {
     nums="$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')"
     set_wake "$nums" "$unowned_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}"
 }
+unowned_aged_file="$inbox.wait.unowned-aged"
+unowned_aged_wake() {
+    local aged
+    aged="$(printf '%s\n' "$1" | tr ',' '\n' | sed -n 's/^#\([0-9][0-9]*\):\([0-9][0-9]*\)m.*/\1 \2/p' | awk -v m="${CHIEF_WAIT_UNOWNED_WAKE_MIN:-30}" '$2 + 0 >= m + 0 { print $1 }')"
+    [ -n "$aged" ] || { rm -f "$unowned_aged_file"; return 1; }
+    set_wake "$aged" "$unowned_aged_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}" || return 1
+    printf '%s\n' "$aged" | paste -sd, -
+}
 # set_wake: <newline-separated items> <marker file> <re-wake minutes> — the shared marker
 # logic: succeeds (and refreshes the marker) when the marker is missing, holds none of
 # an item, or is older than the re-wake window.
@@ -1102,6 +1115,16 @@ set_wake() {
     fi
     printf '%s\n' "$nums" > "$file" 2>/dev/null
     return 0
+}
+unclosed_file="$inbox.wait.unclosed"
+unclosed_wake() {
+    local items l fresh=""
+    items="$(printf '%s\n' "$1" | tr ',' '\n')"
+    for l in $items; do
+        if [ ! -f "$unclosed_file" ] || ! grep -qxF -- "$l" "$unclosed_file"; then fresh="${fresh:+$fresh,}$l"; fi
+    done
+    set_wake "$items" "$unclosed_file" "${CHIEF_WAIT_UNCLOSED_REWAKE_MIN:-60}" || return 1
+    printf '%s\n' "${fresh:-$1}"
 }
 # unwatched_wake: <unwatched= labels, `+`-joined> — a live worker the manifest does not list
 # (tick.sh already drops other chiefs' workers). Same marker logic, own marker, own window.
@@ -1592,7 +1615,7 @@ ready_wake() {
             ready_fold="$ready_fold $label"; continue
         fi
         heartbeat sampling
-        rc_out="$(timeout -k 5 150 bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        rc_out="$(timeout -k 5 150 bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" --observe "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
         if [ "$rc" -eq 0 ]; then rck=PASS; else rck=FAIL; fi
         if printf '%s\n' "$rc_out" | grep -q '^\[PASS\] 7\.'; then cov=PASS; else cov=FAIL; fi
         if printf '%s\n' "$rc_out" | grep -qx 'TRUST-PATH: yes'; then trust=yes; else trust=no; fi
@@ -1954,9 +1977,13 @@ while :; do
                 '?') unowned_none_streak=0 ;;
                 none)
                     unowned_none_streak=$((unowned_none_streak + 1))
-                    [ "$unowned_none_streak" -lt 2 ] || rm -f "$unowned_file" ;;
+                    [ "$unowned_none_streak" -lt 2 ] || rm -f "$unowned_file" "$unowned_aged_file" ;;
                 *)
                     unowned_none_streak=0
+                    if [ "$housekeeping_secs" -ne 0 ] && unowned_aged="$(unowned_aged_wake "$unowned_val")"; then
+                        printf 'WAKE unowned-pr %s\n%s\n' "$unowned_aged" "$tick_line"
+                        exit_reason='wake-unowned-pr'; exit 0
+                    fi
                     if unowned_wake "$unowned_val"; then
                         # 8934: an unowned PR is look-only (the chief reads it, a worker owns the fix): every sight joins the
                         # digest and rides the next real wake; HOUSEKEEPING_DIGEST_SECS=0 keeps the unbatched wake
@@ -1976,6 +2003,13 @@ while :; do
             elif unwatched_wake "$unwatched_val"; then
                 printf 'WAKE unwatched %s\n%s\n' "$unwatched_val" "$tick_line"
                 exit_reason='wake-unwatched'; exit 0
+            fi
+            unclosed_val="$(field unclosed "$tick_line")"
+            if [ -z "$unclosed_val" ]; then
+                rm -f "$unclosed_file"
+            elif unclosed_new="$(unclosed_wake "$unclosed_val")"; then
+                printf 'WAKE unclosed %s\n%s\n' "$unclosed_new" "$tick_line"
+                exit_reason='wake-unclosed'; exit 0
             fi
             doctor_val="$(field doctor "$tick_line")"
             case "$doctor_val" in

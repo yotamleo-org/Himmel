@@ -9,7 +9,7 @@ work*. It is deliberately distinct from `/handover-resume-armed`, which
 *recovers* an interrupted/armed session's stop-point (transcript + last
 `AskUserQuestion`). resume ≠ recovery.
 
-**Script-driven (HIMMEL-1038):** resume is read-only and fully mechanical, so
+**Script-driven:** resume is read-only and fully mechanical, so
 this command calls `scripts/handover/resume.sh` directly and does **not** invoke
 the handover skill — avoiding the ~47KB `SKILL.md` load (~7% of context) that the
 skill path incurred. The script resolves the target repo + bucket from
@@ -27,7 +27,7 @@ skill path incurred. The script resolves the target repo + bucket from
      print a clear unsupported-argument error naming the accepted forms
      (`/handover-resume [ID] [overnight]`). The phase-2 chain-action params
      (`merge-private`, `merge-public`, `propagate-only`, `minerva-full`,
-     `plan-only`, `arm-successor`) are **not implemented yet** (HIMMEL-1034), so a
+     `plan-only`, `arm-successor`) are **not implemented yet**, so a
      token like `merge` is unsupported today rather than silently ignored.
      (The script also validates the ID form and exits rc 2 on a bad one, but do
      the reject up-front so a bad token never reaches the script.)
@@ -48,14 +48,14 @@ skill path incurred. The script resolves the target repo + bucket from
 3. Act on the printed cold-start: load the referenced files and continue the work
    from the item's stop-point.
 
-4. **If the overnight flag was set** (e.g. `/handover-resume HIMMEL-1033 overnight`):
+4. **If the overnight flag was set** (e.g. `/handover-resume <KEY> overnight`):
    if `docs/handover/afk-mode.md` is not in this repo (a project install does
    not carry it), say that `overnight` stays in the himmel checkout and resume
    normally. Otherwise, after loading the item, treat this as the AFK-mode
    trigger for that item's latest `next-session-*.md` and run the autonomous
    pipeline per `docs/handover/afk-mode.md` without pausing between phases.
 
-## Not yet implemented (phase 2 — HIMMEL-1034)
+## Not yet implemented (phase 2)
 
 Chain-action params — `merge-private`, `merge-public`, `propagate-only`,
 `minerva-full`, `plan-only`, `arm-successor` — will delegate to the existing

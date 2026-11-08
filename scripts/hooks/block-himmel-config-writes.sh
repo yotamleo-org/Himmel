@@ -88,7 +88,7 @@ trap 'rc=$?; if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then exit 2; fi' EXIT
 # A refused rm or mv of a guarded file leaves a row in the config audit log
 # with the file, action, session, never the command text. Best effort:
 # the row never changes the refusal.
-ATTEMPT="" ATTEMPT_FILE="" SESSION=""
+ATTEMPT="" ATTEMPT_FILE="" SESSION="" REMEDY=""
 deny() {
     if [ -n "$ATTEMPT" ]; then
         { CLAUDE_SESSION_ID="$SESSION" bash "${BASH_SOURCE[0]%/*}/../lib/config-audit.sh" denied "$ATTEMPT_FILE" "denied-$ATTEMPT" \
@@ -97,14 +97,18 @@ deny() {
     {
         echo "block-himmel-config-writes: refusing - $1."
         echo
-        echo "    ~/.himmel/config.json carries graphify.salus_ollama_cloud_ok, the persisted"
-        echo "    opt-in that lets salus (PHI) corpora reach ollama-cloud, and a repo's"
-        echo "    .himmel/project.conf sets that repo's settings and gate policy, so"
-        echo "    changing them is operator-only. himmel.conf, himmel.conf.local and"
-        echo "    station profiles also choose credential destinations (JIRA_BASE_URL)."
-        echo "    Remedy: use himmelctl config set for its supported settings, or ask"
-        echo "    the operator to edit the file at their own prompt. Plain reads and"
-        echo "    the Read tool stay allowed. There is no env bypass."
+        if [ -n "$REMEDY" ]; then
+            printf '%s\n' "$REMEDY"
+        else
+            echo "    ~/.himmel/config.json carries graphify.salus_ollama_cloud_ok, the persisted"
+            echo "    opt-in that lets salus (PHI) corpora reach ollama-cloud, and a repo's"
+            echo "    .himmel/project.conf sets that repo's settings and gate policy, so"
+            echo "    changing them is operator-only. himmel.conf, himmel.conf.local and"
+            echo "    station profiles also choose credential destinations (JIRA_BASE_URL)."
+            echo "    Remedy: use himmelctl config set for its supported settings, or ask"
+            echo "    the operator to edit the file at their own prompt. Plain reads and"
+            echo "    the Read tool stay allowed. There is no env bypass."
+        fi
     } >&2
     exit 2
 }
@@ -159,6 +163,29 @@ MAX_PATCH_BYTES=524288
 MAX_PATCH_HEADERS=1000
 MAX_HEADER_LINE_BYTES=4096
 
+station_env_resolved() {
+    local f="${HIMMEL_CONFIG_AUDIT_ENV_FILE:-}" lib="${BASH_SOURCE[0]%/*}/../lib/load-dotenv.sh"
+    # shellcheck source=../lib/load-dotenv.sh
+    if [ -z "$f" ] && [ -r "$lib" ]; then { f=$(. "$lib"; _load_dotenv_envfile ""); } 2>/dev/null || f=""; fi
+    [ -n "$f" ] || return 1
+    hook_resolve_m "$f" 2>/dev/null
+}
+deny_station_env() {
+    local tool="$1" given="$2" resolved="$3" env_r
+    case "$resolved" in */.env) ;; *) return 0 ;; esac
+    env_r=$(station_env_resolved) || deny "$tool targets $given, a .env file, and the station .env could not be resolved to compare it with (fail-closed)"
+    [ "$resolved" = "$env_r" ] || return 0
+    # shellcheck disable=SC2016 # the remedy shows $id literally
+    REMEDY='    The station .env is changed through the config audit, so a deliberate edit
+    leaves a row and the watcher can tell it from damage. Audited route:
+        id=$(bash scripts/lib/config-audit.sh pre <the .env>)
+        ...make the change...
+        bash scripts/lib/config-audit.sh post "$id" <the .env> write --script <name>
+    A key renamed with its value unchanged is then reported as a rename, not a
+    loss. Plain reads and the Read tool stay allowed. There is no env bypass.'
+    deny "$tool targets the station .env ($given): write it between config-audit.sh pre and config-audit.sh post"
+}
+
 # check_path TOOL PATH: deny when PATH is, or resolves to, the config or a
 # project file.
 check_path() {
@@ -177,6 +204,7 @@ check_path() {
     fi
     case "$r" in */.himmel/project.conf) deny "$t target $p resolves to a project file ($r)" ;; esac
     case "$r" in */.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json) deny "$t target $p resolves to an outside-review store ($r)" ;; esac
+    deny_station_env "$t" "$p" "$r"
     return 0
 }
 
@@ -299,6 +327,7 @@ EOF
                 [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
                 case "$r" in */.himmel/project.conf) deny "an apply_patch target resolves to a project file ($r)" ;; esac
                 case "$r" in */.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json) deny "an apply_patch target resolves to an outside-review store ($r)" ;; esac
+                deny_station_env apply_patch "$r" "$r"
             done <<EOF
 $resolved
 EOF

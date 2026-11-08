@@ -543,6 +543,55 @@ eq "10n a truncated himmel.conf takes no backup" 1 "$(nbk)"
 has "10n and alerts" "himmel.conf truncated" "$(cat "$ALERTS")"
 rm -rf "$S10"
 
+put_env11() { printf 'JIRA_PROJECT_KEY=HIMMEL\n%s\n' "$1" > "$S10/clone/.env"; }
+RA="$CANARY-ra"; RB="$CANARY-rb"
+new_station; put_station "$V1"
+put_env11 "$(printf 'TELEGRAMTESTBOTA=%s\nTELEGRAMTESTBOTB=%s' "$RA" "$RB")"
+st watch 2>/dev/null
+put_env11 "$(printf 'TELEGRAMTESTABOT=%s\nTELEGRAMTESTBOTB=%s' "$RA" "$RB")"
+out=$(st check); rc=$?
+eq "11a a renamed key exits 0 from check" 0 "$rc"
+has "11a check names the old and the new name" "RENAME	.env	TELEGRAMTESTBOTA	TELEGRAMTESTABOT" "$out"
+lacks "11a no LOSS row for a rename" "LOSS" "$out"
+lacks "11a no value reaches the check rows" "$CANARY" "$out"
+put_env11 "$(printf 'TELEGRAMTESTBOTB=%s' "$RB")"
+out=$(st check); rc=$?
+eq "11b control: a deleted key exits 3" 3 "$rc"
+has "11b control: a deleted key is a LOSS row" "LOSS	.env	lost keys	TELEGRAMTESTBOTA" "$out"
+lacks "11b control: a deleted key is not a rename" "RENAME" "$out"
+put_env11 "$(printf 'TELEGRAMTESTABOT=%s-changed\nTELEGRAMTESTBOTB=%s' "$RA" "$RB")"
+out=$(st check); rc=$?
+eq "11c control: a rename with a new value exits 3" 3 "$rc"
+has "11c control: and names the lost key" "TELEGRAMTESTBOTA" "$out"
+new_station; put_station "$V1"
+put_env11 "$(printf 'TELEGRAMTESTBOTA=%s\nTELEGRAMTESTBOTB=%s' "$RA" "$RB")"
+st watch 2>/dev/null
+put_env11 "$(printf 'TELEGRAMTESTABOT=%s\nTELEGRAMTESTBBOT=%s' "$RA" "$RB")"
+err=$(st watch 2>&1 >/dev/null); rc=$?
+eq "11d a rename sends no alert" 0 "$(wc -l < "$ALERTS" | tr -d ' ')"
+eq "11d a rename exits 0 from watch" 0 "$rc"
+has "11d the watch text names a rename" "renamed" "$err"
+has "11d the watch text names both renames" "TELEGRAMTESTBOTB to TELEGRAMTESTBBOT" "$err"
+lacks "11d the rename text is not the alert wording" "⚠️" "$err"
+lacks "11d no value reaches the rename text" "$CANARY" "$err"
+out=$(st check); rc=$?
+eq "11d the rename is the new baseline: check stays quiet" 0 "$rc"
+lacks "11d and prints no RENAME row again" "RENAME" "$out"
+err=$(st watch 2>&1 >/dev/null)
+lacks "11d and the next watch says nothing" "renamed" "$err"
+put_env11 "$(printf 'TELEGRAMTESTABOT=%s' "$RA")"
+st watch 2>/dev/null
+has "11d control: a real loss keeps the alert wording" "⚠️ himmel station config" "$(cat "$ALERTS")"
+has "11d control: and names the lost key" "TELEGRAMTESTBBOT" "$(cat "$ALERTS")"
+new_station; put_station "$V1"
+put_env11 "$(printf 'TELEGRAMTESTBOTA=%s' "$RA")"
+st watch 2>/dev/null
+node -e 'const f=process.argv[1],fs=require("fs"),w=JSON.parse(fs.readFileSync(f,"utf8"));for(const n of Object.keys(w))delete w[n].digests;fs.writeFileSync(f,JSON.stringify(w));' "$S10_STATE/watch.json"
+put_env11 "$(printf 'TELEGRAMTESTABOT=%s' "$RA")"
+out=$(st check); rc=$?
+eq "11e control: an older watch.json without digests reads a rename as a loss" 3 "$rc"
+rm -rf "$S10"
+
 real_after=$(real_marks)
 eq "8 a fixture-HOME run never touches the real backups" "$real_before" "$real_after"
 
