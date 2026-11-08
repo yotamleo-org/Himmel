@@ -147,8 +147,6 @@ BANK_DIR = os.path.join("scripts", "eval", "retrieval-eval")
 
 
 def bank_rels(repo, questions):
-    """Repo-relative paths of the question bank: the two committed banks, plus the --questions file when
-    it lies inside the repo. `repo` is a realpath."""
     rels = [os.path.join(BANK_DIR, f) for f in BANK_FILES]
     q = os.path.realpath(questions)
     if q.startswith(repo.rstrip(os.sep) + os.sep) and os.path.relpath(q, repo) not in rels:
@@ -332,8 +330,6 @@ class Sweep:
         self.sink = None
 
     def session_cwd(self):
-        """The directory a realistic session runs in: a scratch export of the repo without the question bank,
-        built on first use and removed when the process exits."""
         if self.export is None:
             self.export = os.path.join(self.scratch, "export")
             os.mkdir(self.export)

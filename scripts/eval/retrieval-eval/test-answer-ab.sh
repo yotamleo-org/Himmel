@@ -79,7 +79,7 @@ argv = sys.argv[1:]
 prompt = sys.stdin.read()
 open(os.path.join(d, "sess-all.log"), "a").write(" ".join(argv) + "\n")
 hits = 0
-for dp, _, fs in os.walk(os.getcwd()):  # the bank bytes a session could reach from its cwd
+for dp, _, fs in os.walk(os.getcwd()):
     for fn in fs:
         try:
             hits += b"BANKSECRET" in open(os.path.join(dp, fn), "rb").read()
@@ -469,7 +469,6 @@ for arm in vanilla routed; do
 done
 eq "vanilla still has tools Read, Grep, Glob only" "Read,Grep,Glob" "$(sort -u "$W/sess-allowed-vanilla.log")"
 
-# a --questions file outside the repo: a tracked copy of it under another name is stripped by content
 rm -f "$W"/sess-*.log
 extrow='{"id":"a1","kind":"where","q":"where is the queue lock described","gold":["docs/lock.md"],"reason":[],"note":"BANKSECRET-ext"}'
 printf '%s\n' "$extrow" > "$W/ext-bank.jsonl"
