@@ -361,6 +361,52 @@ if [ -e "$S/taint/sMF" ]; then pass "wired PostToolUseFailure mark hook taints";
 run_wired SessionStart peer-taint-resume.sh "$(jq -cn --arg p "$tmp/transcript.jsonl" '{session_id:"sMR",hook_event_name:"SessionStart",source:"resume",transcript_path:$p}')"
 if [ -e "$S/taint/sMR" ]; then pass "wired SessionStart resume hook taints"; else fail "wired SessionStart resume hook taints" "rc=$RC err=$ERR"; fi
 
+echo "== untaint.sh: only a human at a terminal clears a taint =="
+UNTAINT="$REPO_ROOT/scripts/peer-bridge/untaint.sh"
+# tty.py MODE ANSWER CMD...: MODE pty runs CMD on a new pty and types ANSWER;
+# MODE notty runs CMD in a new session with no controlling terminal.
+cat > "$tmp/tty.py" <<'PY'
+import os, pty, sys
+mode, answer, cmd = sys.argv[1], sys.argv[2], sys.argv[3:]
+if mode == "notty":
+    pid = os.fork()
+    if pid == 0:
+        os.setsid()
+        os.execvp(cmd[0], cmd)
+else:
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execvp(cmd[0], cmd)
+    os.write(fd, (answer + "\n").encode())
+    try:
+        while os.read(fd, 1024):
+            pass
+    except OSError:
+        pass
+_, st = os.waitpid(pid, 0)
+sys.exit(os.WEXITSTATUS(st) if os.WIFEXITED(st) else 128 + os.WTERMSIG(st))
+PY
+# untaint MODE ANSWER SID [VAR=VALUE...]: sets RC.
+untaint() {
+    local mode="$1" ans="$2" sid="$3"
+    shift 3
+    env HOME="$H" "$@" python3 -I "$tmp/tty.py" "$mode" "$ans" "$BASH_BIN" "$UNTAINT" "$sid" >/dev/null 2>&1
+    RC=$?
+}
+new_home
+: > "$S/taint/sU"
+untaint notty yes sU; if [ "$RC" = 3 ] && [ -e "$S/taint/sU" ]; then pass "no TTY: exit 3 and the taint stays"; else fail "no TTY: exit 3 and the taint stays" "rc=$RC"; fi
+untaint pty yes sU CLAUDECODE=1; if [ "$RC" = 3 ] && [ -e "$S/taint/sU" ]; then pass "a pty answering yes with CLAUDECODE set: exit 3"; else fail "a pty answering yes with CLAUDECODE set: exit 3" "rc=$RC"; fi
+untaint pty yes sU CLAUDE_CODE_SESSION_ID=abc; if [ "$RC" = 3 ] && [ -e "$S/taint/sU" ]; then pass "a pty answering yes with CLAUDE_CODE_SESSION_ID set: exit 3"; else fail "a pty answering yes with CLAUDE_CODE_SESSION_ID set: exit 3" "rc=$RC"; fi
+untaint pty no sU; if [ "$RC" = 3 ] && [ -e "$S/taint/sU" ]; then pass "a pty answering no: exit 3"; else fail "a pty answering no: exit 3" "rc=$RC"; fi
+: > "$H/.himmel/x"
+untaint pty yes '../../x'; if [ "$RC" = 3 ] && [ -e "$H/.himmel/x" ]; then pass "the id ../../x: exit 3 and nothing outside taint/ is removed"; else fail "the id ../../x: exit 3 and nothing outside taint/ is removed" "rc=$RC"; fi
+untaint pty yes sU; if [ "$RC" = 0 ] && [ ! -e "$S/taint/sU" ] && grep -q '"sid":"sU"' "$S/taint/cleared.log"; then pass "a pty answering yes with a clean env clears and logs"; else fail "a pty answering yes with a clean env clears and logs" "rc=$RC"; fi
+: > "$S/taint/sP.pending.1-a"; : > "$S/taint/sP.pending.2-b"
+untaint pty yes sP
+run_hook "$GATE" "$(jf sP Read file_path x)"
+if [ "$(pending_count sP)" = 0 ] && grep -q '"sid":"sP"' "$S/taint/cleared.log" && [ "$RC" = 0 ]; then pass "leftover provisional marks are cleared and the gate no longer restricts"; else fail "leftover provisional marks are cleared and the gate no longer restricts" "gate=$RC pending=$(pending_count sP)"; fi
+
 echo
 echo "peer-taint: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
