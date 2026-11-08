@@ -140,7 +140,7 @@ test("normalizeBoard: a board with no worker-time block still loads, with an emp
   expect(normalizeBoard({ ...b, trends: {} }).trends.worker_time).toEqual({ unit: "min", today: [] });
 });
 
-test("normalizeBoard: a null ci and a null merged_today (a failed GitHub read) stay null", () => {
+test("normalizeBoard pass-through pin: a null ci and a null merged_today (a failed GitHub read) stay null", () => {
   const b = board([worker("N1")]);
   const out = normalizeBoard({ ...b, ci: null, headline: { live: 1, cap: null, merged_today: null, needs_you: 0, blocked: 0 }, trends: {} });
   expect(out.ci).toBeNull();
