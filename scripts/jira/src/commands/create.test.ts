@@ -2489,6 +2489,18 @@ describe('create — a test project is not work (I13)', () => {
     expect(posts().length).toBe(0);
   });
 
+  it('fail-closed: with no JIRA_TEST_PROJECT an HTEST Task is refused for placement and posts nothing', async () => {
+    writeFileSync(join(root, 'conf', 'himmel.conf'), 'JIRA_PROJECTS=HIMMEL,LUNA\n');
+    await expect(file('HTEST', '--desc', PLAIN, ...HOME)).rejects.toThrow(/needs a placement/);
+    expect(posts().length).toBe(0);
+  });
+
+  it('fail-closed: a work project named as JIRA_TEST_PROJECT does not exempt a HIMMEL Task', async () => {
+    writeFileSync(join(root, 'conf', 'himmel.conf'), 'JIRA_PROJECTS=HIMMEL,LUNA\nJIRA_TEST_PROJECT=HIMMEL\n');
+    await expect(file('HIMMEL', '--desc', PLAIN, ...HOME)).rejects.toThrow(/needs a placement/);
+    expect(posts().length).toBe(0);
+  });
+
   it('control: a test-project create with no body is still refused for the body shape', async () => {
     await expect(file('HTEST')).rejects.toThrow();
     expect(posts().length).toBe(0);

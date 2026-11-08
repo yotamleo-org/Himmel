@@ -8129,6 +8129,10 @@ function jiraLiveTest(candidate) {
 }
 
 function cmdConfigSetTestProject(value, args) {
+  if (!/^[A-Z][A-Z0-9]+$/.test(value)) {
+    console.error(`himmelctl: config set: jira.testProject ${JSON.stringify(value)} refused: not a Jira project key (^[A-Z][A-Z0-9]+$)`);
+    return 2;
+  }
   const asked = jiraLiveTest(value);
   if (asked.error) { console.error(asked.error); return 2; }
   if (asked.testProject !== value) {

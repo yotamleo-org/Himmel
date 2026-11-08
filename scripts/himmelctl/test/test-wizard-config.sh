@@ -848,6 +848,19 @@ run_cfg_s live-test-ok.json live-test-none.json set jira.testProject HTEST
 [ "$CFG_RC" -eq 1 ] || fail "caseS: a post-write mismatch should exit 1 (got rc=$CFG_RC): $CFG_OUT"
 grepq "$CFG_OUT" -F 'no JIRA_TEST_PROJECT is set' || fail "caseS: the mismatch should carry the verb's problem (got: $CFG_OUT)"
 
+stubSE="$work/stub-jira-cli-echo.js"
+cat > "$stubSE" <<'STUB'
+const i = process.argv.indexOf('--candidate');
+const c = i >= 0 ? process.argv[i + 1] : null;
+process.stdout.write(JSON.stringify({ context: false, own_keys: [], test_project: c, problem: null, jira_configured: true }));
+STUB
+for bad in $'HTEST\nJIRA_BASE_URL=http://evil.invalid' 'HTEST#x'; do
+  S_CLI=$(winpath "$stubSE")
+  run_cfg_s live-test-ok.json - set jira.testProject "$bad"
+  [ "$CFG_RC" -eq 2 ] || fail "caseS: a value that is not a bare project key should exit 2 even when the verb echoes it back (got rc=$CFG_RC for $(printf %q "$bad")): $CFG_OUT"
+  [ -e "$confS" ] && fail "caseS: a value that is not a bare project key must write nothing (got: $(cat "$confS"))"
+done
+
 stubSF="$work/stub-jira-cli-fails.js"
 cat > "$stubSF" <<'STUB'
 const fs = require('fs'), path = require('path');
