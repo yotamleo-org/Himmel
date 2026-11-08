@@ -7,7 +7,7 @@ import * as store from './store.mjs';
 import { canonRole } from './edges.mjs';
 import { legacyNamesOn } from '../../../../scripts/lib/env-alias.mjs';
 
-const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const NAME = store.SESSION_NAME;
 const ROLES = ['worker', 'chief', 'judge', 'consult'];
 
 // A role as stored or typed -> its current name, or a refusal. `console` is `chief`;
@@ -92,9 +92,9 @@ async function update(root, name, change) {
 export async function loadPeers(root) {
   const peers = {};
   for (const file of await readdir(peersDir(root))) {
-    const match = /^([A-Za-z0-9][A-Za-z0-9._-]{0,63})\.json$/.exec(file);
-    if (!match) continue;
-    try { const peer = await readPeer(root, match[1]); if (peer) peers[match[1]] = peer; } catch { /* unreadable peer: no edges */ }
+    const stem = file.endsWith('.json') ? file.slice(0, -'.json'.length) : '';
+    if (!NAME.test(stem)) continue;
+    try { const peer = await readPeer(root, stem); if (peer) peers[stem] = peer; } catch { /* unreadable peer: no edges */ }
   }
   return peers;
 }

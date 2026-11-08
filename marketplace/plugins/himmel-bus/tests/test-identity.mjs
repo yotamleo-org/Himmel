@@ -634,3 +634,21 @@ test('M3: CLI accepts --role console always and --console under the switch only'
   assert.notEqual(off.status, 0);
   assert.match(off.stderr, /--console was renamed to --chief/);
 });
+
+test('a 100-character session name registers, loads, formats and shows in the fleet view; 129 is refused', async t => {
+  const { root } = await fixture(t);
+  const long = 'w'.repeat(100);
+  await identity.register(root, 'con', { role: 'chief' });
+  await identity.register(root, long, { role: 'worker', chief: 'con' });
+  assert.equal((await identity.loadPeers(root))[long].n, long);
+  await identity.register(root, 'w'.repeat(128), { role: 'worker', chief: 'con' });
+  await assert.rejects(identity.register(root, 'w'.repeat(129), { role: 'worker', chief: 'con' }), /invalid session name/);
+  const deliver = await import(new URL('../lib/deliver.mjs', import.meta.url));
+  const head = deliver.formatRecord({ n: 1, f: long, r: 'con', c: 1, b: 'hi' }, {});
+  assert.ok(head.includes(`from ${long}:`), head);
+  await store.append(root, long, { i: 'ID1', t: 1000, f: 'con', r: long, b: 'hello' });
+  const agui = await import(new URL('../lib/agui.mjs', import.meta.url));
+  const events = [];
+  for await (const e of agui.busEvents(root)) events.push(e);
+  assert.ok(events.some(e => e.delta[0].path === '/bus/msgs/ID1'));
+});

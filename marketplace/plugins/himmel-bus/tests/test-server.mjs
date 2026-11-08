@@ -88,6 +88,16 @@ async function run() {
     assert.deepEqual(await store.scan(fx.root, 'worker'), []);
   });
 
+  test('send accepts a 128-character recipient name past the schema and refuses 129', async t => {
+    const fx = await fixture(t);
+    const client = await connect(t, fx, 'worker');
+    assert.match(await refused(client, 'send', { to: 'x'.repeat(100), b: 'hi' }), /no edge to/);
+    assert.match(await refused(client, 'send', { to: 'x'.repeat(128), b: 'hi' }), /no edge to/);
+    const why = await refused(client, 'send', { to: 'x'.repeat(129), b: 'hi' });
+    assert.ok(why);
+    assert.doesNotMatch(why, /no edge to/);
+  });
+
   test('T3.2 worker to sibling and worker to another console get no edge, listing only its own edges', async t => {
     const fx = await fixture(t);
     const client = await connect(t, fx, 'worker');
