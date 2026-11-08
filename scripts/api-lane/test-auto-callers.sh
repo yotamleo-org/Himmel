@@ -68,10 +68,13 @@ allowed_line() {
 EXCLUDES=(':(exclude)*.test.*' ':(exclude)*/test-*.sh' ':(exclude)scripts/luna/fixtures/graphmap-semantic-luna-old-auto.txt')
 DECIDERS=(':(exclude)scripts/api-lane/claude-api.sh' ':(exclude)scripts/graphify/semantic-update.sh')
 
-# grep_tree <root> <git grep args...> -- <pathspecs...>: file:line:text hits, nothing on no hit
+# grep_tree <root> <git grep args...> -- <pathspecs...>: file:line:text hits, nothing on no hit;
+# a git grep that fails (exit above 1) leaves a line in $GREP_FAILED, which run_checks reports
+GREP_FAILED="$TMP_ROOT/grep-failed"
 grep_tree() {
-    local root="$1"; shift
-    git -C "$root" grep -n -F --no-color "$@" 2>/dev/null || true
+    local root="$1" rc=0; shift
+    git -C "$root" grep -n -F --no-color "$@" || rc=$?
+    [ "$rc" -le 1 ] || echo "git grep exited $rc in $root" >>"$GREP_FAILED"
 }
 
 # drop_allowed <check> <hits file>: prints "check<N> file:line: text" for every hit not
@@ -93,6 +96,7 @@ drop_allowed() {
 run_checks() {
     local root="$1" hits="$TMP_ROOT/hits.$$" out="$TMP_ROOT/out.$$"
     : >"$out"
+    rm -f "$GREP_FAILED"
 
     # Checks 1 and 2 share the allowlist, so a line both match is judged once.
     {
@@ -112,6 +116,9 @@ run_checks() {
         | sed 's/^/check4 /' >>"$out"
 
     local f line
+    for f in docs/internals/api-lane.md docs/internals/graph-cadence.md docs/internals/enforcement.md scripts/eval/docs-review/README.md; do
+        [ -r "$root/$f" ] || echo "check5 $f: not readable" >>"$out"
+    done
     f="$root/docs/internals/api-lane.md"
     for s in 'Auto routing is off for every call except' 'auto only for the himmel graph pass'; do
         line="$(allowed_line docs/internals/api-lane.md "$s")"
@@ -134,6 +141,7 @@ run_checks() {
         || echo "check5 docs/internals/enforcement.md: still says 'makes it the standing default'" >>"$out"
     ! grep -q -F 'account `auto`' "$root/scripts/eval/docs-review/README.md" 2>/dev/null \
         || echo "check5 scripts/eval/docs-review/README.md: still says account \`auto\`" >>"$out"
+    [ ! -s "$GREP_FAILED" ] || sed 's/^/checkERR /' "$GREP_FAILED" >>"$out"
 
     cat "$out"
     [ ! -s "$out" ]
@@ -191,6 +199,15 @@ echo "TEST: the clean copy prints no hit"
 fresh
 rc=0; got="$(AUTO_CALLERS_ROOT="$T" bash "$HERE/test-auto-callers.sh")" || rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$got" ]; then pass "the copy is clean"; else fail "the copy is clean" "rc=$rc out=$got"; fi
+
+echo "TEST: a scan that cannot run is a hit, never a clean pass"
+rm -rf "$T"; mkdir -p "$T"; cp -R "$BASE/docs" "$BASE/scripts" "$T/"
+rc=0; got="$(AUTO_CALLERS_ROOT="$T" bash "$HERE/test-auto-callers.sh" 2>/dev/null)" || rc=$?
+if [ "$rc" -eq 1 ] && case "$got" in *"checkERR git grep exited"*) true ;; *) false ;; esac; then
+    pass "a tree that is not a git repo fails with checkERR"
+else
+    fail "a tree that is not a git repo fails with checkERR" "rc=$rc out=$got"
+fi
 
 echo "TEST: check 1 and 2 rows"
 fresh; allowed_line scripts/lib/api-credit-state.mjs 'routing for HIMMEL_API_ACCOUNT=auto' >>"$T/scripts/lib/api-credit-state.mjs"
