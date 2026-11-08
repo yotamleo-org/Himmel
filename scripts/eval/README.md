@@ -99,6 +99,11 @@ Check a ledger: `python3 scripts/eval/lib/eval_runs.py validate <ledger>`.
 retrieved files. This is a file-hit rate. `hit_any@k` also accepts a grade-1 file;
 `precision@k`, `mrr`, `gold_share`, `ndcg@k` and `tokens_per_hit` retain their existing
 names. The combined arm fuses the first-k lists of grep, qmd-hybrid and graphify.
+Scoring uses each arm's limit-k query exactly as before. Each row also keeps
+`files_top20`, taken from a second, separate query at the evidence depth
+(`max(k, 20)`, recorded as `evidence_depth` in the ledger config); that list is
+evidence only and is never scored or fused, and with rerank on it need not begin
+with the scored list.
 
 Re-fuse a saved run without retrieval, subprocesses, network or paid calls:
 

@@ -67,8 +67,8 @@ JSON list of {file, snippet}) and RETRIEVAL_EVAL_GRAPH_CMD (called with
 
 Output in DIR: results.jsonl (one row per question x arm), scores.tsv (also
 printed), and one eval-runs ledger row (eval "retrieval-eval", see
-scripts/eval/README.md). Rows keep files_top20 as evidence; files and scoring still
-use the first k. qmd_error keeps failure details; skipped is false for real rows
+scripts/eval/README.md). Rows keep files_top20, from a second query at max(k, 20), as
+evidence only; files and scoring come from the limit-k query. qmd_error keeps failure details; skipped is false for real rows
 (skipped arms have no rows, and their reasons stay in the ledger config).
 Exit: 0 scored, 1 check found problems or a graph arm's stamp is unavailable,
 64 usage error. A missing graph stamp still writes all run outputs.
@@ -149,7 +149,7 @@ def run_cmd(argv, timeout, cwd=None, stdin=None):
         return out or "", True, None
 
 
-def arm_grep(q, repo, timeout, k, text_k=None):
+def arm_grep(q, repo, timeout, k):
     kws = words(q)
     score = {}
     t0 = time.time()
@@ -169,7 +169,7 @@ def arm_grep(q, repo, timeout, k, text_k=None):
             score[f] = (d + 1, c + int(n or 0))
     files = sorted(score, key=lambda f: (-score[f][0], -score[f][1], f))[:k]
     text, to, err = [], False, False
-    for f in files[:text_k]:
+    for f in files:
         argv = ["git", "-C", repo, "grep", "-n", "-I", "-i", "-F"]
         for w in kws:
             argv += ["-e", w]
@@ -182,7 +182,7 @@ def arm_grep(q, repo, timeout, k, text_k=None):
     return files, "\n".join(text), to, err
 
 
-def arm_path(q, repo, timeout, k, text_k=None):
+def arm_path(q, repo, timeout, k):
     kws = []
     for w in words(q):  # worker_tail_status names worker-tail-status.sh: match its parts
         for p in re.split(r"[_.\-]", w):
@@ -201,7 +201,7 @@ def arm_path(q, repo, timeout, k, text_k=None):
         if hit:
             score[f] = (len(hit), sum(w in base for w in hit), -len(f))
     files = sorted(score, key=lambda f: (score[f], f), reverse=True)[:k]
-    return files, "\n".join(files[:text_k]), False, False
+    return files, "\n".join(files), False, False
 
 
 IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:[-.][A-Za-z0-9_]+)*")
@@ -224,7 +224,7 @@ def definition(ident):
                       r"|%s\s*\(\s*\)\s*\{|(?:export\s+)?%s\s*(?::[^=]+)?=(?!=))" % (i, i, i))
 
 
-def arm_ident_grep(q, repo, timeout, k, text_k=None):
+def arm_ident_grep(q, repo, timeout, k):
     t0 = time.time()
     score, lines = {}, {}
     for ident in idents(q):
@@ -249,14 +249,14 @@ def arm_ident_grep(q, repo, timeout, k, text_k=None):
             score[f] = (d or int(bool(dre.search(body))), n, c + 1)
             lines.setdefault(f, []).append(line)
     files = sorted(score, key=lambda f: (-score[f][0], -score[f][1], -score[f][2], f))[:k]
-    text = [ln for f in files[:text_k] for ln in lines[f][:8]]
+    text = [ln for f in files for ln in lines[f][:8]]
     return files, "\n".join(text), False, False
 
 
 RTK_LINE = re.compile(r"(.+?):\d+:")
 
 
-def rtk_view(flags, terms, files, repo, timeout, text_k=None):
+def rtk_view(flags, terms, files, repo, timeout):
     """(files, text, timed_out, error) of what a session reads when it greps `files` for `terms`: the
     command is handed to `rtk rewrite`, as the hook does, and the rewritten command is run. A file's lines
     are capped at 8, as in the raw arms, so the difference is the filter alone."""
@@ -289,25 +289,25 @@ def rtk_view(flags, terms, files, repo, timeout, text_k=None):
         if f not in seen:
             seen.append(f)
         count[f] = count.get(f, 0) + 1
-        if count[f] <= 8 and f in seen[:text_k]:
+        if count[f] <= 8:
             text.append(line)
     return seen, "\n".join(text), False, False
 
 
-def arm_grep_rtk(q, repo, timeout, k, text_k=None):
+def arm_grep_rtk(q, repo, timeout, k):
     t0 = time.time()
-    files, _, to, err = arm_grep(q, repo, timeout, k, text_k)
+    files, _, to, err = arm_grep(q, repo, timeout, k)
     if to or err:
         return files, "", to, err
-    return rtk_view(["-i", "-F"], words(q), files, repo, timeout - (time.time() - t0), text_k)
+    return rtk_view(["-i", "-F"], words(q), files, repo, timeout - (time.time() - t0))
 
 
-def arm_ident_grep_rtk(q, repo, timeout, k, text_k=None):
+def arm_ident_grep_rtk(q, repo, timeout, k):
     t0 = time.time()
-    files, _, to, err = arm_ident_grep(q, repo, timeout, k, text_k)
+    files, _, to, err = arm_ident_grep(q, repo, timeout, k)
     if to or err:
         return files, "", to, err
-    return rtk_view(["-w", "-F"], idents(q), files, repo, timeout - (time.time() - t0), text_k)
+    return rtk_view(["-w", "-F"], idents(q), files, repo, timeout - (time.time() - t0))
 
 
 @functools.lru_cache(maxsize=None)
@@ -381,7 +381,7 @@ def mcp_rows(msg):
     return rows if isinstance(rows, list) else []
 
 
-def arm_qmd(q, hybrid, timeout, k, collection, rerank=True, text_k=None):
+def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
     args = {"searches": [{"type": "lex", "query": q}] + ([{"type": "vec", "query": q}] if hybrid else []),
             "collections": [collection], "limit": k, "intent": q}
     args["rerank"] = hybrid and rerank
@@ -409,8 +409,7 @@ def arm_qmd(q, hybrid, timeout, k, collection, rerank=True, text_k=None):
         f = re.sub(r"^(?:qmd://[^/]+|%s)/" % re.escape(collection), "", str(r.get("file", "")))
         if f and f not in files:
             files.append(f)
-        if text_k is None or f in files[:text_k]:
-            text.append("%s %s %s" % (r.get("file", ""), r.get("title", ""), r.get("snippet", "")))
+        text.append("%s %s %s" % (r.get("file", ""), r.get("title", ""), r.get("snippet", "")))
     return files[:k], "\n".join(text), False, False, ""
 
 
@@ -576,6 +575,23 @@ def skip_rtk(arms):
     return {x: "rtk is not on PATH" for x in arms if x in RTK_ARMS}
 
 
+def run_arm(arm, q, repo, a, k):
+    """(files, text, timed_out, error, qmd_error) of one non-combined arm asked for k files."""
+    if arm == "grep":
+        return arm_grep(q, repo, a.timeout, k) + ("",)
+    if arm == "grep-rtk":
+        return arm_grep_rtk(q, repo, a.timeout, k) + ("",)
+    if arm == "path":
+        return arm_path(q, repo, a.timeout, k) + ("",)
+    if arm == "ident-grep":
+        return arm_ident_grep(q, repo, a.timeout, k) + ("",)
+    if arm == "ident-grep-rtk":
+        return arm_ident_grep_rtk(q, repo, a.timeout, k) + ("",)
+    if arm == "graphify":
+        return arm_graphify(q, repo, a.timeout, k) + ("",)
+    return arm_qmd(q, arm != "qmd-lex", a.timeout, k, a.collection, arm != "qmd-hybrid-norerank")
+
+
 def cmd_run(a):
     arms = [x for x in a.arms.split(",") if x]
     for x in arms:
@@ -611,24 +627,15 @@ def cmd_run(a):
                                 qmd_error=next((p["qmd_error"] for p in parts if p["qmd_error"]), ""))
             else:
                 t0 = time.time()
-                qmd_error = ""
-                if arm == "grep":
-                    files, text, to, err = arm_grep(q["q"], repo, a.timeout, evidence_depth, a.k)
-                elif arm == "grep-rtk":
-                    files, text, to, err = arm_grep_rtk(q["q"], repo, a.timeout, evidence_depth, a.k)
-                elif arm == "path":
-                    files, text, to, err = arm_path(q["q"], repo, a.timeout, evidence_depth, a.k)
-                elif arm == "ident-grep":
-                    files, text, to, err = arm_ident_grep(q["q"], repo, a.timeout, evidence_depth, a.k)
-                elif arm == "ident-grep-rtk":
-                    files, text, to, err = arm_ident_grep_rtk(q["q"], repo, a.timeout, evidence_depth, a.k)
-                elif arm == "graphify":
-                    files, text, to, err = arm_graphify(q["q"], repo, a.timeout, evidence_depth)
-                else:
-                    files, text, to, err, qmd_error = arm_qmd(q["q"], arm != "qmd-lex", a.timeout, evidence_depth, a.collection,
-                                                              arm != "qmd-hybrid-norerank", a.k)
-                got[arm] = dict(files=files[:a.k], files_top20=files[:20], _text=text,
-                                ms=int((time.time() - t0) * 1000), timeout=bool(to), error=bool(err), qmd_error=qmd_error)
+                files, text, to, err, qmd_error = run_arm(arm, q["q"], repo, a, a.k)
+                ms = int((time.time() - t0) * 1000)
+                top20 = files
+                if evidence_depth > a.k and not (to or err):
+                    deep = run_arm(arm, q["q"], repo, a, evidence_depth)
+                    if not (deep[2] or deep[3]):
+                        top20 = deep[0][:evidence_depth]
+                got[arm] = dict(files=files, files_top20=top20, _text=text, ms=ms, timeout=bool(to), error=bool(err),
+                                qmd_error=qmd_error)
         for arm in arms:
             g = got[arm]
             row = dict(id=q["id"], kind=q.get("kind"), src=q.get("src"), split=q.get("split", "insample"),
@@ -696,7 +703,8 @@ def cmd_run(a):
     print("\n".join(slice_lines))
     with open(a.questions, "rb") as fh:
         qhash = hashlib.sha256(fh.read()).hexdigest()[:16]
-    config = dict(arms=arms, k=a.k, timeout=a.timeout, collection=a.collection, questions=qhash)
+    config = dict(arms=arms, k=a.k, evidence_depth=evidence_depth, timeout=a.timeout, collection=a.collection,
+                  questions=qhash)
     if skipped:
         config["skipped"] = skipped
     held = sorted((q for q in qs if q.get("split") == "heldout"), key=lambda q: str(q["id"]))

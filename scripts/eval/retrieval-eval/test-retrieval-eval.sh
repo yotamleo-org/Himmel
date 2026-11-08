@@ -317,7 +317,7 @@ printf '{"id":"q8","kind":"where","q":"where is relay_batch defined","gold":["bi
 RETRIEVAL_EVAL_QMD_CMD="$W/qmd-log" py "$EV" run --repo "$R" --questions "$W/q8.jsonl" --out "$W/out8" --arms qmd-hybrid,qmd-hybrid-norerank > /dev/null 2>&1
 eq "norerank arm is accepted by --arms" "0" "$?"
 eq "norerank arm scores a hit" "1.00" "$(awk -F'\t' '$1=="qmd-hybrid-norerank"{print $3}' "$W/out8/scores.tsv")"
-eq "norerank sends lex+vec with rerank false" "lex,vec False" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[1]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
+eq "norerank sends lex+vec with rerank false" "lex,vec False" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[2]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
 eq "qmd-hybrid sends lex+vec with rerank true" "lex,vec True" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[0]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
 eq "default arms are the nine" "10" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
 
@@ -534,6 +534,24 @@ print(len(qm.get("files_top20", [])) == 20 and qm["files_top20"][:5] == qm["file
       and all(x.get("skipped") is False and x.get("qmd_error") == "" for x in r.values()))' "$W/out-deep/results.jsonl")"
 eq "skipped arms still have no result rows" "True" "$(py -c 'import json,sys
 print(all(r["arm"] == "grep" and r.get("skipped") is False for r in map(json.loads, open(sys.argv[1]))))' "$W/outr3/results.jsonl")"
+
+cat > "$W/qmd-reorder" <<'EOF'
+#!/usr/bin/env python3
+import json, os, sys
+a = json.load(sys.stdin)
+open(os.environ["QMD_LIMITS"], "a").write("%d\n" % a["limit"])
+files = ["docs/p%d.md" % i for i in range(5)] if a["limit"] <= 5 else ["docs/shared.md"] + ["docs/p%d.md" % i for i in range(24)]
+print(json.dumps([{"file": "qmd://himmel/" + f, "snippet": "x"} for f in files[:a["limit"]]]))
+EOF
+chmod +x "$W/qmd-reorder"
+QMD_LIMITS="$W/qmd-limits.log" RETRIEVAL_EVAL_QMD_CMD="$W/qmd-reorder" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-reorder.jsonl" py "$EV" run --repo "$R" --questions "$W/deep.jsonl" --out "$W/out-reorder" --arms qmd-hybrid > /dev/null 2>&1
+eq "the scored qmd list comes from the limit-k query, the top 20 from a separate query" "True" "$(py -c 'import json,sys
+r = json.loads(open(sys.argv[1]).readline())
+print(r["files"] == ["docs/p%d.md" % i for i in range(5)] and not r["hit"]
+      and len(r["files_top20"]) == 20 and r["files_top20"][0] == "docs/shared.md"
+      and sorted(int(x) for x in open(sys.argv[2]).read().split()) == [5, 20])' "$W/out-reorder/results.jsonl" "$W/qmd-limits.log")"
+eq "the ledger config records the evidence depth" "20" "$(py -c 'import json,sys
+print(json.loads(open(sys.argv[1]).readline())["config"].get("evidence_depth"))' "$W/ledger-reorder.jsonl")"
 
 py - "$W" <<'PY'
 import json, pathlib, sys
