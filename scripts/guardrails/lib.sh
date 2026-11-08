@@ -1191,8 +1191,6 @@ EOF
 # _in_session_scratchpad FILE — true when FILE (canonical) is the caller's own
 # session scratchpad or lies under it: <tmp>/claude-<uid>/<project>/<session>/scratchpad
 # with <tmp> = $TMPDIR or /tmp. The scratchpad directory lands in _SCRATCHPAD_ROOT.
-# Callers pass an already-canonical path, so a symlink in the scratchpad that
-# leads into a checkout is already that checkout's path and never matches here.
 _SCRATCHPAD_ROOT=""
 _SCRATCHPAD_BASE=""
 _in_session_scratchpad() {
@@ -1222,6 +1220,15 @@ _in_session_scratchpad() {
     return 1
 }
 
+_stray_git_above_scratchpad() {
+    local file="$1" repo="$2"
+    _in_session_scratchpad "$file" || return 1
+    [ "$repo" != "$_SCRATCHPAD_ROOT" ] || return 1
+    case "$_SCRATCHPAD_ROOT/" in "$repo/"*) ;; *) return 1 ;; esac
+    case "$repo/" in "$_SCRATCHPAD_BASE/"*) return 0 ;; esac
+    return 1
+}
+
 main_checkout_verdict_set() {
     local file_real="${1:-}"
     local repo_real=""
@@ -1230,18 +1237,8 @@ main_checkout_verdict_set() {
     [ -n "$repo_real" ] || return 0
     repo_real="${repo_real%/}"
 
-    # A path in the caller's own session scratchpad is outside any repo when the
-    # `.git` the walk-up found sits above the scratchpad but inside the temp root
-    # (a stray /tmp/.git). A `.git` in the scratchpad itself or below it, or in a
-    # directory above the temp root (a TMPDIR inside a checkout), decides as before.
-    if _in_session_scratchpad "$file_real" && [ "$repo_real" != "$_SCRATCHPAD_ROOT" ]; then
-        case "$_SCRATCHPAD_ROOT/" in
-            "$repo_real/"*)
-                case "$repo_real/" in
-                    "$_SCRATCHPAD_BASE/"*) return 0 ;;
-                esac
-                ;;
-        esac
+    if _stray_git_above_scratchpad "$file_real" "$repo_real"; then
+        return 0
     fi
 
     case "$file_real" in
