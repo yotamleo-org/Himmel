@@ -1587,3 +1587,78 @@ test("Board: a card in a chain says FAST-TRACK with the chain's name and its ste
   expect(html).toContain(`<div class="rm-drain">v1.1.2 drain: open 4 · in-chain 2 · in no chain 2</div>`);
   expect(board(r, { v: "v1.1.2" }, null)).not.toContain("rm-drain"); // without the chain read it cannot split
 });
+
+// ---- Waiting on you lists what is owed to the operator: unsigned specs, the chief doc's open decisions and operator holds on a ticket with a PR ----
+const owedUi = { version: null, theme: null };
+const waitingSec = (html: string) => html.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)?.[0] ?? "";
+
+test("Board: a core ticket whose spec-check says NO-SPEC or SPEC-STALE is a Waiting on you row with its title, context and action, and leaves once the signature lands", () => {
+  const s = station();
+  const put = (n: number, labels: string[], status = "To Do") => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), issue(n, status, status, ["v1.1.3"], `Core work ${n}`, labels));
+  put(20, ["core"]); put(21, ["core"]); put(22, ["core"]); put(23, [], "To Do"); put(24, ["core"], "Done");
+  const r = read(s), chains = { state: "absent", reason: "no chain registry" };
+  const owed = { specs: { state: "ok", checks: ["NO-SPEC HIMMEL-20", "SPEC-STALE HIMMEL-21 /b/s.md O-0001", "SPEC ok HIMMEL-22 /b/s.md O-0002", "NO-SPEC HIMMEL-23", "NO-SPEC HIMMEL-24"] } };
+  const sec = waitingSec(renderBoard(r, owedUi, { drift: null, chains, owed }));
+  expect(sec).toContain("Core work 20"); // the title, never a bare key
+  expect(sec).toContain("no signed spec on record");
+  expect(sec).toContain("Core work 21");
+  expect(sec).toContain("changed after it was signed");
+  expect(sec).toContain("Action:");
+  expect(sec).toContain("sign or rule on the spec page");
+  expect(sec).not.toContain("HIMMEL-22"); // signed and fresh
+  expect(sec).not.toContain("HIMMEL-23"); // not core
+  expect(sec).not.toContain("HIMMEL-24"); // Done: nothing is owed
+  // recording the signature removes the row
+  const after = { specs: { state: "ok", checks: ["SPEC ok HIMMEL-20 /b/s.md O-0003", "SPEC ok HIMMEL-21 /b/s.md O-0004"] } };
+  expect(renderBoard(r, owedUi, { drift: null, chains, owed: after })).not.toContain("rm-waiting");
+  // a spec read that failed is said, never shown as nobody owing a signature
+  const bad = renderBoard(r, owedUi, { drift: null, chains: { state: "absent", reason: "x" }, owed: { specs: { state: "absent", reason: "spec-check failed: no release root" } } });
+  expect(bad).not.toContain("rm-waiting");
+  expect(bad).toContain("spec signatures not read");
+});
+
+test("Board: an operator hold on a ticket with an open PR is a Waiting on you row with the PR, the hold's reason and the action", () => {
+  const r = read(station());
+  const ch = chainsOk();
+  ch.tickets[K(2)] = { key: K(2), state: "waits on you", chains: [], badges: [], more: 0, links: [{ on: null, kind: "operator", status: "open", reason: "pick the budget for the paid run", owner: "chief" }] } as never;
+  ch.tickets[K(5)] = { ...ch.tickets[K(5)], links: [{ on: null, kind: "chain-order", status: "open", reason: "waits for step 1", owner: "chief" }] } as never; // not the operator's
+  const prs = { state: "ok", prs: { [K(2)]: [{ pr: 4958, head: "a".repeat(40), ci: "green" }] }, seen: {}, unread: [] };
+  const sec = waitingSec(renderBoard(r, owedUi, { drift: null, chains: ch, prs }));
+  expect(sec).toContain("Orphaned work"); // the held ticket's title
+  expect(sec).toContain("PR #4958");
+  expect(sec).toContain("pick the budget for the paid run");
+  expect(sec).toContain("Action:");
+  expect(sec).not.toContain("waits for step 1");
+});
+
+test("Board: the chief doc's open decisions are Waiting on you rows with the action, and a failed read is said", () => {
+  const r = read(station());
+  const chains = { state: "absent", reason: "no chain registry" };
+  const owed = { decisions: { state: "ok", items: ["HIMMEL-9502 residual d: reply `9502 B` or `9502 raise`"] } };
+  const sec = waitingSec(renderBoard(r, owedUi, { drift: null, chains, owed }));
+  expect(sec).toContain("HIMMEL-9502 residual d");
+  expect(sec).toContain("9502 raise");
+  expect(sec).toContain("Action:");
+  expect(sec).toContain("answer the chief");
+  const none = renderBoard(r, owedUi, { drift: null, chains, owed: { decisions: { state: "ok", items: [] } } });
+  expect(none).not.toContain("rm-waiting");
+});
+
+test("readOwed: runs spec-check for the open core tickets and reads the newest chief doc's open decisions; an unreadable source is absent with its reason", async () => {
+  const { readOwed } = await import("../board");
+  const s = station();
+  const put = (n: number, labels: string[], status = "To Do") => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), issue(n, status, status, ["v1.1.3"], `Core work ${n}`, labels));
+  put(20, ["core"]); put(21, [], "To Do"); put(24, ["core"], "Done");
+  const stub = join(s.d, "spec-check-stub.js");
+  writeFileSync(stub, `console.log(process.argv.filter((k) => /^HIMMEL-\\d+$/.test(k)).map((k) => "NO-SPEC " + k).join("\\n")); process.exitCode = 1;\n`);
+  const ho = join(s.d, "ho", "u", "himmel");
+  mkdirSync(ho, { recursive: true });
+  writeFileSync(join(ho, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief.md"), "# VE\n\n## Live state\n\nworkers: x\ndecisions: 9502 raise or B (reply `9502 B`); 9271 run the apply at the station\nrelease: v1.1.3\n\n## Current direction\n");
+  const env = { PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, CONFIG_UI_SPEC_CHECK: stub, HANDOVER_DIR: join(s.d, "ho"), JIRA_PROJECT_KEY: "HIMMEL" };
+  const o = await readOwed(env);
+  expect(o.specs).toEqual({ state: "ok", checks: ["NO-SPEC HIMMEL-20"] }); // only the open core ticket was asked
+  expect(o.decisions).toEqual({ state: "ok", items: ["9502 raise or B (reply `9502 B`)", "9271 run the apply at the station"] });
+  const none = await readOwed({ ...env, CONFIG_UI_SPEC_CHECK: join(s.d, "missing.js"), HANDOVER_DIR: join(s.d, "no-ho") });
+  expect(none.specs.state).toBe("absent");
+  expect(none.decisions.state).toBe("absent");
+});

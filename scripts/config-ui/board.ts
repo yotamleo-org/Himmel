@@ -9,13 +9,14 @@ import { readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync 
 import { join, resolve } from "node:path";
 import { runChild } from "./lock";
 import { readRoadmap } from "./roadmap";
+import { decisionsOf } from "./shift";
 import { jiraMirrorDir } from "./tracker-sources";
 
 type Env = Record<string, string | undefined>;
 export type Absent = { state: "absent"; reason: string };
 // chains: every version, for the whole Board. versionChains: the picked version (else the running one), for the Chains tab alone, with its burn-down.
 // prs: the open PRs and their CI per ticket, from the worker records the status sweep keeps (a local file read, no GitHub call).
-export type BoardExtras = { drift: Record<string, unknown> | Absent; chains: Record<string, unknown> | Absent; versionChains: Record<string, unknown> | Absent; prs: PrRead | Absent };
+export type BoardExtras = { drift: Record<string, unknown> | Absent; chains: Record<string, unknown> | Absent; versionChains: Record<string, unknown> | Absent; prs: PrRead | Absent; owed: Owed };
 // seen: when each ticket's worker record last moved (its last_event_ts), for the age on the card's worker line.
 export type PrRead = { state: "ok"; repo?: string; prs: Record<string, { pr: number; head: string; ci: string }[]>; seen: Record<string, string>; unread: string[] };
 
@@ -149,6 +150,59 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
   return { state: "ok", sdrift: last.slice("sdrift=".length) };
 }
 
+// What is owed to the operator beside the labels and chain holds: `release spec-check` over the open core tickets (a NO-SPEC or SPEC-STALE line is an
+// owed signature) and the open decisions in the newest chief doc. Both are READ ONLY; a source that cannot be read is absent with its reason, never an empty list.
+// ponytail: the newest chief doc by mtime stands for "the live chief", upgrade path: the live chiefs' docs by queue lock as Shift reads them.
+export type Owed = { specs: { state: "ok"; checks: string[] } | Absent; decisions: { state: "ok"; items: string[] } | Absent };
+const specCheckCli = (env: Env) => env.CONFIG_UI_SPEC_CHECK || resolve(KIT, "../../jira/dist/index.js");
+const SPEC_KEEP = ["PATH", "HOME", "JIRA_PROJECT_KEY", "USER_SLUG", "HANDOVER_DIR", "HIMMEL_RELEASE_STATE_DIR", "HIMMEL_JIRA_MIRROR"];
+function readSpecs(env: Env, mirror: string, read: typeof readRoadmap): Promise<Owed["specs"]> {
+  const cli = specCheckCli(env);
+  let keys: string[];
+  try {
+    const r = read({ mirrorDir: mirror, projects: [{ key: env.JIRA_PROJECT_KEY || "HIMMEL", dir: mirror }], workers: { state: "absent" } });
+    keys = r.tickets.filter((t) => t.labels.includes("core") && t.b !== "done" && t.b !== "wont").map((t) => t.id ?? `${env.JIRA_PROJECT_KEY || "HIMMEL"}-${t.k}`);
+  } catch (e) { return Promise.resolve(absent(`the core tickets could not be read: ${(e as Error).message}`)); }
+  if (!keys.length) return Promise.resolve({ state: "ok", checks: [] });
+  try { statSync(cli); } catch { return Promise.resolve(absent(`spec-check is not built: ${cli} is not there`)); }
+  const cenv = Object.fromEntries(SPEC_KEEP.map((k) => [k, env[k] ?? (k === "PATH" ? process.env.PATH : undefined)]).filter(([, v]) => v !== undefined)) as NodeJS.ProcessEnv;
+  return new Promise((done) => {
+    // spec-check exits 1 while any key is unsigned, so the exit code is not the failure: no recognised line is
+    execFile("node", [cli, "release", "spec-check", ...keys, "--mirror", mirror], { env: cenv, timeout: TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+      const lines = String(stdout).split("\n").map((l) => l.trim()).filter((l) => /^(SPEC ok|SPEC-STALE|NO-SPEC) /.test(l));
+      if (!lines.length) return done(absent(`spec-check failed: ${String(stderr || (err as Error | null)?.message || "it printed no result").trim().split("\n").pop()?.slice(0, 200)}`));
+      done({ state: "ok", checks: lines.filter((l) => !l.startsWith("SPEC ok ")) });
+    });
+  });
+}
+function newestChiefDoc(env: Env): string | undefined {
+  if (env.HIMMEL_CHIEF_DOC) return env.HIMMEL_CHIEF_DOC;
+  if (!env.HANDOVER_DIR) return undefined;
+  let best: { p: string; t: number } | undefined;
+  try {
+    for (const e of readdirSync(env.HANDOVER_DIR, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue;
+      const dir = join(env.HANDOVER_DIR, e.name, "himmel");
+      try {
+        for (const f of readdirSync(dir)) {
+          if (!/-chief\.md$/.test(f)) continue;
+          const t = statSync(join(dir, f)).mtimeMs;
+          if (!best || t > best.t) best = { p: join(dir, f), t };
+        }
+      } catch { /* no himmel dir under this slug */ }
+    }
+  } catch { /* an unreadable handover root reads as no doc */ }
+  return best?.p;
+}
+function readDecisions(env: Env): Owed["decisions"] {
+  const doc = newestChiefDoc(env);
+  if (!doc) return absent("no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
+  try { return { state: "ok", items: decisionsOf(readFileSync(doc, "utf8")) }; } catch (e) { return absent(`the chief doc could not be read: ${(e as Error).message}`); }
+}
+export async function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Promise<Owed> {
+  return { specs: await readSpecs(env, jiraMirrorDir(env), read), decisions: readDecisions(env) };
+}
+
 // `asked`: the version tile picked on the page. A known one is the version the tab reads; an unknown one reads as the running version and the answer says so (fellBack).
 export async function readBoardExtras(env: Env, read: typeof readRoadmap = readRoadmap, asked?: string): Promise<BoardExtras> {
   const mirror = jiraMirrorDir(env);
@@ -159,7 +213,7 @@ export async function readBoardExtras(env: Env, read: typeof readRoadmap = readR
   // the chain read's state dir (hold and merge rows) is the script's own: TICKET_STATUS_STATE_DIR, else $HOME/.himmel/state
   if (!registry) {
     const none = absent("no chain registry: none found under the handover root, and HIMMEL_CHAIN_REGISTRY is not set");
-    return { drift: await drift, chains: none, versionChains: none, prs: readPrs(env) };
+    return { drift: await drift, chains: none, versionChains: none, prs: readPrs(env), owed: await readOwed(env, read) };
   }
   const chainRead = (extra: string[]) => runReader(join(KIT, "chain-state.mjs"), ["--json", "--registry", registry, "--mirror", mirror, ...extra], env, "the chain read");
   const withBurn = (r: Record<string, unknown> | Absent) => ("tickets" in r ? { ...r, burn: burnDown(r as Parameters<typeof burnDown>[0]) } : r);
@@ -170,6 +224,6 @@ export async function readBoardExtras(env: Env, read: typeof readRoadmap = readR
   const pick = "state" in vs ? undefined : bare && vs.names.includes(bare) ? bare : vs.running;
   const fell = !("state" in vs) && asked && pick !== bare ? { fellBack: { asked, to: vs.running ?? null } } : {};
   const forTab = "state" in vs ? Promise.resolve(vs) : (pick ? chainRead(["--version", pick]) : whole).then(withBurn).then((r) => ("tickets" in r ? { ...r, ...fell } : r));
-  const [d, chains, versionChains] = await Promise.all([drift, whole, forTab]);
-  return { drift: d, chains, versionChains, prs: readPrs(env) };
+  const [d, chains, versionChains, owed] = await Promise.all([drift, whole, forTab, readOwed(env, read)]);
+  return { drift: d, chains, versionChains, prs: readPrs(env), owed };
 }
