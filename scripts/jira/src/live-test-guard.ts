@@ -1,10 +1,14 @@
 // The live-test guard: the Jira test project setting, the HIMMEL_JIRA_LIVE_TEST marker and its own-key
-// grammar, and the loopback / unreachable URL tests.
-// Imports env-file.ts only, never client.ts, so client.ts can call the guard without an import cycle.
+// grammar, the route table, the loopback / unreachable URL tests, and the test-run-guard Jira door.
+// Imports env-file.ts only, never client.ts, so client.ts can call the guard without an import cycle:
+// requestAt and uploadMultipart pass liveTestGuard the request's base URL and a GET-only getter that
+// never re-enters the guard (the station URL comes from env-file.ts's stationJiraBaseUrl).
+import { spawnSync } from 'node:child_process';
 import { readFileSync, readlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
-import { readEnvFile, underTest } from './env-file.js';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readEnvFile, sameJiraBase, stationJiraBaseUrl, underTest } from './env-file.js';
 
 const PROJECT_KEY = /^[A-Z][A-Z0-9]+$/;
 const OWN_KEYS = /^([A-Z][A-Z0-9]+-[0-9]+)(,[A-Z][A-Z0-9]+-[0-9]+)*$/;
@@ -213,12 +217,17 @@ function agileWrite(method: string, path: string, body: unknown): WriteTargets {
   return UNKNOWN;
 }
 
+/** A GET, or the one POST that reads (`/search/approximate-count`). */
+export function isJiraRead(apiBase: string, method: string, path: string): boolean {
+  return method === 'GET' || (method === 'POST' && apiBase === '/rest/api/3' && path === '/search/approximate-count');
+}
+
 /**
  * Every issue or project a request writes, by the spec's route table: one anchored pattern per row, the
  * query string refused except the one unwatch shape. A route the table does not hold is `unknown`.
  */
 export function writeTargets(apiBase: string, method: string, path: string, body: unknown): WriteTargets {
-  if (method === 'GET' || (method === 'POST' && apiBase === '/rest/api/3' && path === '/search/approximate-count')) return { kind: 'read' };
+  if (isJiraRead(apiBase, method, path)) return { kind: 'read' };
   if (apiBase === '/rest/api/3') return restWrite(method, path, body);
   if (apiBase === '/rest/agile/1.0') return agileWrite(method, path, body);
   return UNKNOWN;
@@ -252,4 +261,105 @@ export function jiraIsLoopback(url: string): boolean {
 /** Loopback or a `.invalid` host: no real Jira answers there. Only liveTestGuard asks this. */
 export function jiraIsUnreachable(url: string): boolean {
   return jiraIsLoopback(url) || (hostOf(url) ?? '').endsWith('.invalid');
+}
+
+const TEST_RUN_GUARD = join(dirname(fileURLToPath(import.meta.url)), '../../lib/test-run-guard');
+
+/** Would a post to `url` be a test on the station writing the real Jira? Loopback never asks; only exit 77 refuses. */
+export function testJiraPostRefused(what: string, url: string = process.env.JIRA_BASE_URL ?? ''): boolean {
+  if (jiraIsLoopback(url)) return false;
+  const r = spawnSync('bash', [TEST_RUN_GUARD, 'check', '--real', `jira-${what.replace(/ /g, '-')}-comment`], { stdio: ['ignore', 'inherit', 'inherit'] });
+  return r.status === 77;
+}
+
+/**
+ * A test on the station never posts to the real Jira, whatever its release root. `what` names the
+ * command in the refusal ("release leaks", "create"). Only exit 77 refuses.
+ */
+export function refuseTestJiraPost(what: string): void {
+  if (testJiraPostRefused(what)) throw new Error(`${what}: refused, nothing was posted`);
+}
+
+type Get = <T>(path: string) => Promise<T>;
+const REFUSED = 'jira: live-test write refused:';
+const NO_DIR = 'the live-test config dir could not be read from the marked claude ancestor';
+
+/** The issue refs, issueLink sides and version projects a write names, read fresh; the projects that are not the test project. */
+async function offendingProjects(
+  write: Extract<WriteTargets, { kind: 'targets' }>, test: string, ownKeys: string[], read: Get, unreadable: (what: string) => Error,
+): Promise<string[]> {
+  const out: string[] = [];
+  let testId: string | undefined;
+  const testProjectId = async (): Promise<string> => (testId ??= String((await read<{ id?: unknown }>(`/project/${test}`)).id));
+  if (write.project?.key !== undefined && write.project.key !== test) out.push(write.project.key);
+  if (write.project?.id !== undefined && write.project.id !== await testProjectId()) out.push(`id ${write.project.id}`);
+  const issues = [...write.issues];
+  for (const id of write.links ?? []) {
+    const link = obj(await read<unknown>(`/issueLink/${id}`));
+    const sides = issueRefs([refOf(link.inwardIssue), refOf(link.outwardIssue)]);
+    if (!sides) throw unreadable(`/issueLink/${id}`);
+    issues.push(...sides);
+  }
+  // Own keys stand only on an issue-scoped route, never on a create.
+  const ownOk = write.project === undefined;
+  for (const ref of issues) {
+    if (ownOk && ownKeys.includes(ref)) continue;
+    const key = obj(obj(obj(await read<unknown>(`/issue/${ref}?fields=project`)).fields).project).key;
+    if (typeof key !== 'string') throw unreadable(`/issue/${ref}?fields=project`);
+    if (key !== test) out.push(key);
+  }
+  for (const id of write.versions ?? []) {
+    const projectId = obj(await read<unknown>(`/version/${id}`)).projectId;
+    if (projectId === undefined) throw unreadable(`/version/${id}`);
+    if (String(projectId) !== await testProjectId()) out.push(`id ${String(projectId)}`);
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * Under the live-test marker, a write reaches the network only when every target is in the test project
+ * or is an own key on an issue-scoped route. Unmarked it returns at once (no read). `baseUrl` is the
+ * request's base; `get` reads `/rest/api/3<path>` without re-entering the guard. Throws the refusal.
+ */
+export async function liveTestGuard(apiBase: string, method: string, path: string, body: unknown, baseUrl: string, get: Get): Promise<void> {
+  const ctx = liveTestContext();
+  if (!ctx.set) return;
+  const write = writeTargets(apiBase, method, path, body);
+  if (write.kind === 'read' || jiraIsUnreachable(baseUrl)) return;
+  const { testProject: test, problem } = ctx.configDir ? resolveTestProject(ctx.configDir) : { testProject: null, problem: NO_DIR };
+  if (!test || !ctx.configDir) {
+    throw new Error(`${REFUSED} this is a live test (HIMMEL_JIRA_LIVE_TEST) but no valid Jira test project is configured: ${problem}. ` +
+      'Ask the operator to run: himmelctl config set jira.testProject <KEY>.');
+  }
+  const raw = stationJiraBaseUrl(ctx.configDir, { profileFromEnv: false });
+  const station = raw && hostOf(raw) ? raw : null;
+  if (!station || !sameJiraBase(baseUrl, station)) {
+    throw new Error(`${REFUSED} this request goes to ${baseUrl}, not the station's Jira (${station ?? 'no station Jira URL is configured'}); ` +
+      `a live test writes only to ${test} on the station's own instance.`);
+  }
+  const route = `${method} ${apiBase}${path}`;
+  const routeRefusal = (why = ''): Error =>
+    new Error(`${REFUSED} ${route} is not a write the live-test guard can tie to one project${why}, so it never runs under a live test (test project ${test}).`);
+  if (write.kind === 'unknown') throw routeRefusal();
+  const read: Get = async <T>(p: string): Promise<T> => {
+    try {
+      return await get<T>(p);
+    } catch (e) {
+      throw routeRefusal(` (the read GET /rest/api/3${p} failed: ${(e as Error).message})`);
+    }
+  };
+  const unreadable = (p: string): Error => routeRefusal(` (the read GET /rest/api/3${p} named no project)`);
+  const off = await offendingProjects(write, test, ctx.ownKeys, read, unreadable);
+  if (off.length > 0) {
+    throw new Error(`${REFUSED} ${route} targets project ${off.join(', ')}; a live test writes only to the test project ${test} ` +
+      `(JIRA_TEST_PROJECT) or to this brief's own tickets. Use --project ${test}, or an issue in ${test}.`);
+  }
+}
+
+/** The guard for a full upload URL: split under the base (not under it is R-instance), then liveTestGuard. */
+export async function liveTestUploadGuard(url: string, baseUrl: () => string, get: Get): Promise<void> {
+  if (!liveTestContext().set) return;
+  const base = baseUrl();
+  const split = splitUploadUrl(url, base);
+  await liveTestGuard(split?.apiBase ?? '', 'POST', split?.path ?? '', undefined, split ? base : url, get);
 }

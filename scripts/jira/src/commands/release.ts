@@ -7,6 +7,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Command } from 'commander';
 import { authHeader, baseUrl, projectKey, request } from '../client.js';
+import { refuseTestJiraPost } from '../live-test-guard.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
 import { newestFixVersionEntry, type Getter } from '../release/version-writes.js';
@@ -529,25 +530,9 @@ function refuseTestWrite(verb: string): void {
   if (r.status === 77) throw new Error(`release ${verb}: refused, nothing was written`);
 }
 
-/** A loopback Jira is a local stub: it cannot reach the real one. */
-function jiraIsLoopback(): boolean {
-  try {
-    const host = new URL(process.env.JIRA_BASE_URL ?? '').hostname;
-    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
-  } catch {
-    return false;
-  }
-}
-
-/**
- * A test on the station never posts to the real Jira, whatever its release root. `what` names the
- * command in the refusal ("release leaks", "create"). Only exit 77 refuses.
- */
-export function refuseTestJiraPost(what: string): void {
-  if (jiraIsLoopback()) return;
-  const r = spawnSync('bash', [TEST_RUN_GUARD, 'check', '--real', `jira-${what.replace(/ /g, '-')}-comment`], { stdio: ['ignore', 'inherit', 'inherit'] });
-  if (r.status === 77) throw new Error(`${what}: refused, nothing was posted`);
-}
+// The post door lives in live-test-guard.ts so client.ts can ask it without importing this file;
+// create.ts and the posting verbs below keep calling it from here.
+export { refuseTestJiraPost };
 
 /**
  * A test on the station never mints a release key. The default path is asked about as real

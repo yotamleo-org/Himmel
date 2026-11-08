@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTools, buildServer, type ToolDeps, type JiraTool } from './mcp.js';
@@ -7,6 +7,17 @@ import { markdownToAdf } from './adf.js';
 import { PLAIN_BLOCK_TEMPLATE } from './plain-block.js';
 import { SECTORS, resetSectorCache } from './commands/sector.js';
 import { declare, type Ctx } from './release/engine.js';
+
+// The test-run-guard door a real write asks answers 0, so the guarded MCP rows below reach their stubbed
+// fetch; every other spawn runs for real.
+vi.mock('node:child_process', async (orig) => {
+  const m = await orig<typeof import('node:child_process')>();
+  const spawnSync = ((cmd: string, args?: readonly string[], opts?: object) =>
+    cmd === 'bash' && String(args?.[0] ?? '').endsWith('/test-run-guard')
+      ? { status: 0, signal: null, output: [], pid: 0, stdout: null, stderr: null }
+      : m.spawnSync(cmd, args ?? [], opts ?? {})) as unknown as typeof m.spawnSync;
+  return { ...m, spawnSync };
+});
 
 // The Sector field is opt-in: these tests run with it configured unless one deletes the variable.
 beforeEach(() => {
@@ -133,6 +144,44 @@ describe('MCP server wiring', () => {
     const result = await handler({ method: 'tools/call', params: { name: 'get', arguments: { key: 'HIMMEL-1' } } }, { mcpReq: { requestState: () => undefined, inputResponses: undefined } });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toBe('plain string error');
+  });
+});
+
+describe('MCP create under the marker goes through the guard', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'mcp-live-guard-'));
+    writeFileSync(join(dir, 'himmel.conf'),
+      'JIRA_BASE_URL=https://station.atlassian.net\nJIRA_PROJECTS=HIMMEL,LUNA\nJIRA_TEST_PROJECT=HTEST\n');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', dir);
+    vi.stubEnv('HIMMEL_JIRA_LIVE_TEST', 'none');
+    vi.stubEnv('HIMMEL_PROFILE', '');
+    vi.stubEnv('JIRA_BASE_URL', 'https://station.atlassian.net');
+    delete process.env.JIRA_SECTOR_FIELD;
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('the real defaultDeps: a create in HIMMEL is a tool error with no POST, in HTEST one POST', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({ ok: true, status: 200, text: async () => '{"key":"HTEST-1","id":"1"}' }));
+    vi.stubGlobal('fetch', fetchMock);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handler = (buildServer() as any)._requestHandlers.get('tools/call');
+    const call = (project: string) => handler(
+      { method: 'tools/call', params: { name: 'create', arguments: { type: 'Task', title: 'New', desc: PLAIN_FILLED, project, labels: 'standalone' } } },
+      { mcpReq: { requestState: () => undefined, inputResponses: undefined } },
+    );
+    const posts = () => fetchMock.mock.calls.filter((c) => c[1]?.method === 'POST');
+    const refused = await call('HIMMEL');
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0].text).toMatch(/^jira: live-test write refused: .*HIMMEL.*HTEST/s);
+    expect(posts()).toEqual([]);
+    const allowed = await call('HTEST');
+    expect(allowed.isError).toBeFalsy();
+    expect(posts().length).toBe(1);
   });
 });
 

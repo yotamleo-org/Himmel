@@ -1,5 +1,20 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { spawn } from 'node:child_process';
+
+// The test-run-guard door (scripts/lib/test-run-guard) answers 77, as it does for a test on the station;
+// every other spawn runs for real.
+const door = vi.hoisted(() => ({ calls: 0 }));
+vi.mock('node:child_process', async (orig) => {
+  const m = await orig<typeof import('node:child_process')>();
+  const spawnSync = ((cmd: string, args?: readonly string[], opts?: object) => {
+    if (cmd === 'bash' && String(args?.[0] ?? '').endsWith('/test-run-guard')) {
+      door.calls++;
+      return { status: 77, signal: null, output: [], pid: 0, stdout: null, stderr: null };
+    }
+    return m.spawnSync(cmd, args ?? [], opts ?? {});
+  }) as unknown as typeof m.spawnSync;
+  return { ...m, spawnSync };
+});
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -310,6 +325,34 @@ describe('splitUploadUrl', () => {
   it('a URL not under the base is null', () => {
     expect(splitUploadUrl('https://other.atlassian.net/rest/api/3/issue/HTEST-1/attachments', base)).toBeNull();
     expect(splitUploadUrl(`${base}.evil.example/rest/api/3/issue/HTEST-1/attachments`, base)).toBeNull();
+  });
+});
+
+describe('R31: a test on the station never writes the real Jira through either exit', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('a station-host comment from a test context is refused before fetch, the door asked once per process', async () => {
+    const { request, uploadMultipart } = await import('./client.js');
+    vi.stubEnv('JIRA_BASE_URL', 'https://station.atlassian.net');
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '{}' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(request('POST', '/issue/HIMMEL-1/comment', { body: {} })).rejects.toThrow(/refused, nothing was posted/);
+    await expect(request('PUT', '/issue/HIMMEL-1', { fields: {} })).rejects.toThrow(/refused, nothing was posted/);
+    const file = join(temp('ltg-upload-'), 'a.png');
+    writeFileSync(file, 'x');
+    await expect(uploadMultipart('https://station.atlassian.net/rest/api/3/issue/HIMMEL-1/attachments', file)).rejects.toThrow(/refused, nothing was posted/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(door.calls).toBe(1);
+    await request('GET', '/issue/HIMMEL-1');
+    await request('POST', '/search/approximate-count', { jql: 'project = HIMMEL' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    await request('POST', '/issue/HIMMEL-1/comment', { body: {} });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(door.calls).toBe(1);
   });
 });
 

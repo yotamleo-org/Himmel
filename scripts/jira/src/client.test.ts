@@ -1,17 +1,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { uploadAttachment, normalizeEnv, baseUrl, loadEnvFile, request, requestAt } from './client.js';
+import { Command } from 'commander';
+import { uploadAttachment, uploadMultipart, normalizeEnv, baseUrl, loadEnvFile, request, requestAt, agileRequest, confluenceV2 } from './client.js';
+import { registerMove } from './commands/move.js';
 import { readVersionWrites } from './release/version-writes.js';
 import { sameJiraBase, stationJiraBaseUrl } from './env-file.js';
 
-// Records every git call the path lookups make, passing each through.
+// Records every git call the path lookups make, passing each through. The test-run-guard door a write
+// asks (scripts/lib/test-run-guard) answers `door.status`: 0, so these hermetic writes to a stubbed
+// fetch pass it; every other spawn runs for real.
+const door = vi.hoisted(() => ({ status: 0 as number | null, calls: 0 }));
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
-  return { ...m, execFileSync: vi.fn(m.execFileSync) };
+  const spawnSync = ((cmd: string, args?: readonly string[], opts?: object) => {
+    if (cmd === 'bash' && String(args?.[0] ?? '').endsWith('/test-run-guard')) {
+      door.calls++;
+      return { status: door.status, signal: null, output: [], pid: 0, stdout: null, stderr: null };
+    }
+    return m.spawnSync(cmd, args ?? [], opts ?? {});
+  }) as unknown as typeof m.spawnSync;
+  return { ...m, execFileSync: vi.fn(m.execFileSync), spawnSync };
 });
 
 describe('uploadAttachment', () => {
@@ -842,5 +854,297 @@ describe('version-write journal hook', () => {
     const imports = src.split('\n').filter((l) => /^import\b/.test(l)).join('\n');
     expect(imports).not.toMatch(/history/);
     expect(imports).not.toMatch(/client\.js/);
+  });
+});
+
+// --- the live-test guard at both write exits ------------------------------------
+// The marker is set in the own env (the vitest harness skips the ancestor walk), the station files say
+// JIRA_TEST_PROJECT=HTEST, JIRA_PROJECTS=HIMMEL,LUNA and the station URL, and fetch is a fake Jira that
+// answers each issue's project from its key prefix unless `moved` says otherwise.
+
+const STATION = 'https://station.atlassian.net';
+const LINKS: Record<string, unknown> = {
+  '1': { inwardIssue: { key: 'HTEST-1' }, outwardIssue: { key: 'HTEST-2' } },
+  '2': { inwardIssue: { key: 'HTEST-1' }, outwardIssue: { key: 'HIMMEL-1' } },
+};
+const VERSION_PROJECT: Record<string, number> = { '100': 10132, '200': 10000 };
+const PROJECT_ID: Record<string, string> = { HTEST: '10132', HIMMEL: '10000' };
+
+interface LiveCall { method: string; url: string; body?: unknown }
+function liveJira(opts: { moved?: Record<string, string>; failGet?: number } = {}): { calls: LiveCall[]; writes: () => LiveCall[]; gets: () => LiveCall[] } {
+  const calls: LiveCall[] = [];
+  const reply = (status: number, body: unknown) => ({ ok: status < 400, status, text: async () => JSON.stringify(body ?? {}) });
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
+    const method = init.method ?? 'GET';
+    calls.push({ method, url, ...(typeof init.body === 'string' ? { body: JSON.parse(init.body) } : {}) });
+    if (method !== 'GET') return reply(200, { key: 'HTEST-99', id: '1' });
+    if (opts.failGet) return reply(opts.failGet, { errorMessages: ['boom'] });
+    const path = new URL(url).pathname.replace(/^\/rest\/api\/3/, '');
+    let m = /^\/issue\/([^/]+)(\/.*)?$/.exec(path);
+    if (m) {
+      const ref = m[1];
+      const project = opts.moved?.[ref] ?? (/^[0-9]+$/.test(ref) ? 'HTEST' : ref.split('-')[0]);
+      if (m[2] === '/comment') return reply(200, { comments: [], total: 0, startAt: 0, maxResults: 50 });
+      if (m[2] === '/transitions') return reply(200, { transitions: [{ id: '31', name: 'Done', to: { name: 'Done' } }] });
+      return reply(200, { key: ref, fields: { project: { key: project }, summary: 's', issuetype: { name: 'Task' }, description: null } });
+    }
+    if ((m = /^\/issueLink\/([0-9]+)$/.exec(path))) return reply(200, LINKS[m[1]]);
+    if ((m = /^\/version\/([0-9]+)$/.exec(path))) return reply(200, { id: m[1], projectId: VERSION_PROJECT[m[1]] });
+    if ((m = /^\/project\/([A-Z0-9]+)$/.exec(path))) return reply(200, { id: PROJECT_ID[m[1]], key: m[1] });
+    return reply(404, {});
+  }));
+  return { calls, writes: () => calls.filter((c) => c.method !== 'GET'), gets: () => calls.filter((c) => c.method === 'GET') };
+}
+
+const REFUSED = /^jira: live-test write refused: .*HTEST/s;
+const REFUSED_ANYWHERE = /jira: live-test write refused: .*HTEST/s;
+
+describe('the live-test guard at requestAt and uploadMultipart', () => {
+  let dir: string;
+  const conf = (extra = ''): void =>
+    writeFileSync(join(dir, 'himmel.conf'), `JIRA_BASE_URL=${STATION}\nJIRA_PROJECTS=HIMMEL,LUNA\n${extra}`);
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'jira-live-guard-'));
+    conf('JIRA_TEST_PROJECT=HTEST\n');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', dir);
+    vi.stubEnv('HIMMEL_JIRA_LIVE_TEST', 'none');
+    vi.stubEnv('HIMMEL_PROFILE', '');
+    vi.stubEnv('JIRA_BASE_URL', STATION);
+    vi.stubEnv('HIMMEL_VERSION_WRITES', join(dir, 'version-writes.jsonl'));
+    door.status = 0;
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('DoD 1 / I1 / I9 create in HIMMEL is refused under the marker and names HTEST', async () => {
+    const j = liveJira();
+    await expect(requestAt('/rest/api/3', 'POST', '/issue', { fields: { project: { key: 'HIMMEL' } } }))
+      .rejects.toThrow(/^jira: live-test write refused: .*HIMMEL.*HTEST/s);
+    expect(j.writes()).toEqual([]);
+  });
+
+  it('DoD 2 create in HTEST proceeds', async () => {
+    const j = liveJira();
+    await requestAt('/rest/api/3', 'POST', '/issue', { fields: { project: { key: 'HTEST' } } });
+    expect(j.writes().map((c) => c.method)).toEqual(['POST']);
+  });
+
+  const API = '/rest/api/3';
+  const AGILE = '/rest/agile/1.0';
+  const withKey = (body: unknown, key: string): unknown =>
+    body === undefined ? undefined : JSON.parse(JSON.stringify(body).replace(/"K"/g, `"${key}"`));
+  it.each([
+    ['edit', API, 'PUT', '/issue/K', { fields: { summary: 's' } }],
+    ['comment', API, 'POST', '/issue/K/comment', { body: {} }],
+    ['comment edit', API, 'PUT', '/issue/K/comment/10200', { body: {} }],
+    ['transition', API, 'POST', '/issue/K/transitions', { transition: { id: '31' } }],
+    ['assignee', API, 'PUT', '/issue/K/assignee', { accountId: 'a' }],
+    ['watch', API, 'POST', '/issue/K/watchers', 'abc:123'],
+    ['unwatch', API, 'DELETE', '/issue/K/watchers?accountId=557058%3Aabc', undefined],
+    ['worklog', API, 'POST', '/issue/K/worklog', { timeSpent: '1h' }],
+    ['rank', AGILE, 'PUT', '/issue/rank', { issues: ['HTEST-2', 'K'], rankBeforeIssue: 'HTEST-3' }],
+    ['backlog', AGILE, 'POST', '/backlog/issue', { issues: ['K'] }],
+    ['sprint issue move', AGILE, 'POST', '/sprint/7/issue', { issues: ['HTEST-2', 'K'] }],
+  ])('route %s: allowed on an HTEST issue, refused on a HIMMEL one', async (_name, apiBase, method, path, body) => {
+    const j = liveJira();
+    await requestAt(apiBase, method, path.replace('/K', '/HTEST-1'), withKey(body, 'HTEST-1'));
+    expect(j.writes().length).toBe(1);
+    await expect(requestAt(apiBase, method, path.replace('/K', '/HIMMEL-1'), withKey(body, 'HIMMEL-1'))).rejects.toThrow(REFUSED);
+    expect(j.writes().length).toBe(1);
+  });
+
+  it.each([
+    ['link sides each checked', API, 'POST', ['/issueLink', '/issueLink'],
+      { inwardIssue: { key: 'HTEST-1' }, outwardIssue: { key: 'HTEST-2' } }, { inwardIssue: { key: 'HTEST-1' }, outwardIssue: { key: 'HIMMEL-1' } }],
+    ['issueLink delete', API, 'DELETE', ['/issueLink/1', '/issueLink/2'], undefined, undefined],
+    ['version create by key', API, 'POST', ['/version', '/version'], { project: 'HTEST', name: 'v0.0.1' }, { project: 'HIMMEL', name: 'v0.0.1' }],
+    ['version create by id', API, 'POST', ['/version', '/version'], { projectId: 10132, name: 'v0.0.1' }, { projectId: 10000, name: 'v0.0.1' }],
+    ['version edit', API, 'PUT', ['/version/100', '/version/200'], { archived: true }, { archived: true }],
+    ['version move', API, 'POST', ['/version/100/move', '/version/200/move'], { position: 'First' }, { position: 'First' }],
+  ])('route %s: one allowed and one refused', async (_name, apiBase, method, [ok, bad], okBody, badBody) => {
+    const j = liveJira();
+    await requestAt(apiBase, method, ok, okBody);
+    expect(j.writes().length).toBe(1);
+    await expect(requestAt(apiBase, method, bad, badBody)).rejects.toThrow(REFUSED);
+    expect(j.writes().length).toBe(1);
+  });
+
+  it.each([
+    '/issue/HTEST-1/../HIMMEL-1/comment', '/issue/HTEST-1/%2e%2e/comment', '/issue//HTEST-1/comment',
+    '/issue/HTEST-1/comment/', '/issue/HTEST-1/comment?x=1', '/issue/htest-1/comment',
+  ])('I2 / P7 unanchored paths are R-route: %s', async (path) => {
+    const j = liveJira();
+    await expect(request('POST', path, { body: {} })).rejects.toThrow(/^jira: live-test write refused: .* is not a write the live-test guard can tie to one project.*HTEST/s);
+    expect(j.calls).toEqual([]);
+  });
+
+  it('I1 body link keys are targets', async () => {
+    const j = liveJira();
+    await expect(request('PUT', '/issue/HTEST-6', { update: { issuelinks: [{ add: { outwardIssue: { key: 'HIMMEL-1' } } }] } })).rejects.toThrow(REFUSED);
+    await expect(request('POST', '/issue', { fields: { project: { key: 'HTEST' }, parent: { key: 'HIMMEL-2' } } })).rejects.toThrow(REFUSED);
+    expect(j.writes()).toEqual([]);
+  });
+
+  it('I1 own keys: an issue-scoped write on the brief ticket proceeds, other work writes are refused', async () => {
+    vi.stubEnv('HIMMEL_JIRA_LIVE_TEST', 'HIMMEL-9577');
+    const j = liveJira();
+    await request('POST', '/issue/HIMMEL-9577/transitions', { transition: { id: '31' } });
+    expect(j.writes().length).toBe(1);
+    await expect(request('POST', '/issue/HIMMEL-1/comment', { body: {} })).rejects.toThrow(REFUSED);
+    await expect(request('POST', '/issue', { fields: { project: { key: 'HIMMEL' } } })).rejects.toThrow(REFUSED);
+    expect(j.writes().length).toBe(1);
+  });
+
+  it('I3 issue routes resolve by a fresh read', async () => {
+    const j = liveJira({ moved: { 'HTEST-5': 'HIMMEL' } });
+    await expect(request('POST', '/issue/HTEST-5/comment', { body: {} })).rejects.toThrow(/targets project HIMMEL.*HTEST/s);
+    await request('POST', '/issue/HTEST-6/comment', { body: {} });
+    await request('POST', '/issue/HTEST-6/comment', { body: {} });
+    expect(j.gets().filter((c) => c.url.includes('/issue/HTEST-6?fields=project')).length).toBe(2);
+  });
+
+  it('I3 resolves a numeric issue id by read', async () => {
+    const j = liveJira({ moved: { '10002': 'HIMMEL' } });
+    await request('POST', '/issue/10001/comment', { body: {} });
+    await expect(request('POST', '/issue/10002/comment', { body: {} })).rejects.toThrow(REFUSED);
+    expect(j.gets().map((c) => new URL(c.url).pathname)).toEqual(['/rest/api/3/issue/10001', '/rest/api/3/issue/10002']);
+    expect(j.writes().length).toBe(1);
+  });
+
+  async function move(src: string, to: string): Promise<string> {
+    vi.spyOn(process, 'exit').mockImplementation(((code: number) => { throw new Error(`exit ${code}`); }) as never);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const program = new Command();
+    registerMove(program);
+    await program.parseAsync(['node', 'jira', 'move', src, '--to-project', to]).catch(() => undefined);
+    return err.mock.calls.map((c) => c.join(' ')).join('\n');
+  }
+
+  it('move into a work project is refused before any write', async () => {
+    const j = liveJira();
+    expect(await move('HTEST-3', 'HIMMEL')).toMatch(REFUSED_ANYWHERE);
+    expect(j.writes()).toEqual([]);
+  });
+
+  it('a move into HTEST from a work-project source is refused at its first source write', async () => {
+    const j = liveJira();
+    expect(await move('HIMMEL-7', 'HTEST')).toMatch(REFUSED_ANYWHERE);
+    expect(j.writes().map((c) => `${c.method} ${new URL(c.url).pathname}`)).toEqual(['POST /rest/api/3/issue']);
+  });
+
+  it.each([
+    ['project create', () => request('POST', '/project', { key: 'X' })],
+    ['a Confluence page', () => confluenceV2('POST', '/pages', {})],
+    ['a sprint create', () => agileRequest('POST', '/sprint', { name: 's' })],
+  ])('I2 %s is R-route', async (_name, write) => {
+    const j = liveJira();
+    await expect(write()).rejects.toThrow(/is not a write the live-test guard can tie to one project.*HTEST/s);
+    expect(j.calls).toEqual([]);
+  });
+
+  it('I2 a resolution GET answering 500 is R-route naming the read', async () => {
+    const j = liveJira({ failGet: 500 });
+    await expect(request('POST', '/issue/HTEST-1/comment', { body: {} }))
+      .rejects.toThrow(/GET \/rest\/api\/3\/issue\/HTEST-1\?fields=project failed.*HTEST/s);
+    expect(j.writes()).toEqual([]);
+  });
+
+  it('I5 no JIRA_TEST_PROJECT is R-none naming the setter', async () => {
+    conf();
+    const j = liveJira();
+    await expect(request('POST', '/issue/HTEST-1/comment', { body: {} }))
+      .rejects.toThrow(/^jira: live-test write refused: this is a live test \(HIMMEL_JIRA_LIVE_TEST\) but no valid Jira test project is configured.*himmelctl config set jira\.testProject/s);
+    expect(j.calls).toEqual([]);
+  });
+
+  it('I14 a request to another instance is R-instance', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://other.atlassian.net');
+    const j = liveJira();
+    await expect(request('POST', '/issue/HTEST-1/comment', { body: {} }))
+      .rejects.toThrow(/this request goes to https:\/\/other\.atlassian\.net, not the station's Jira \(https:\/\/station\.atlassian\.net\).*HTEST/s);
+    expect(j.calls).toEqual([]);
+  });
+
+  // No layer may hold a URL, the install .env included: git is made to fail, so only the checkout's own
+  // .env is looked for (absent in a worktree and in CI).
+  const ownEnv = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '.env');
+  it.skipIf(existsSync(ownEnv))('I14 no station URL in any layer is R-instance', async () => {
+    writeFileSync(join(dir, 'himmel.conf'), 'JIRA_PROJECTS=HIMMEL,LUNA\nJIRA_TEST_PROJECT=HTEST\n');
+    vi.stubEnv('HIMMEL_REPO', '');
+    vi.mocked(execFileSync).mockImplementation(() => { throw new Error('no git here'); });
+    const j = liveJira();
+    await expect(request('POST', '/issue/HTEST-1/comment', { body: {} })).rejects.toThrow(/no station Jira URL is configured.*HTEST/s);
+    expect(j.calls).toEqual([]);
+  });
+
+  it('I14 an env HIMMEL_PROFILE naming another instance is R-instance', async () => {
+    const vault = join(dir, 'vault');
+    mkdirSync(join(vault, 'profiles'), { recursive: true });
+    writeFileSync(join(vault, 'himmel.conf'), `JIRA_BASE_URL=${STATION}\nJIRA_PROJECTS=HIMMEL,LUNA\nJIRA_TEST_PROJECT=HTEST\n`);
+    writeFileSync(join(vault, 'profiles', 'work.conf'), 'JIRA_BASE_URL=https://work.atlassian.net\n');
+    rmSync(join(dir, 'himmel.conf'));
+    symlinkSync(join(vault, 'himmel.conf'), join(dir, 'himmel.conf'));
+    vi.stubEnv('HIMMEL_PROFILE', 'work');
+    vi.stubEnv('JIRA_BASE_URL', 'https://work.atlassian.net');
+    const j = liveJira();
+    await expect(request('POST', '/issue/HTEST-1/comment', { body: {} })).rejects.toThrow(/goes to https:\/\/work\.atlassian\.net, not the station's Jira.*HTEST/s);
+    expect(j.calls).toEqual([]);
+  });
+
+  it.each(['http://127.0.0.1:9', 'http://jira.invalid'])('I15 a write to %s passes the guard', async (base) => {
+    vi.stubEnv('JIRA_BASE_URL', base);
+    const j = liveJira();
+    await request('POST', '/issue', { fields: { project: { key: 'HIMMEL' } } });
+    expect(j.calls.map((c) => c.method)).toEqual(['POST']);
+  });
+
+  it('I5 / I15 with no JIRA_TEST_PROJECT a loopback write still passes', async () => {
+    conf();
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    const j = liveJira();
+    await request('POST', '/issue/HIMMEL-1/comment', { body: {} });
+    expect(j.calls.map((c) => c.method)).toEqual(['POST']);
+  });
+
+  describe('uploadMultipart', () => {
+    let file: string;
+    beforeEach(() => {
+      file = join(dir, 'a.png');
+      writeFileSync(file, Buffer.from([0x89, 0x50]));
+    });
+
+    it('to a HIMMEL issue is refused, to an HTEST issue proceeds', async () => {
+      const j = liveJira();
+      await expect(uploadMultipart(`${STATION}/rest/api/3/issue/HIMMEL-1/attachments`, file)).rejects.toThrow(REFUSED);
+      expect(j.writes()).toEqual([]);
+      await uploadMultipart(`${STATION}/rest/api/3/issue/HTEST-1/attachments`, file);
+      expect(j.writes().map((c) => c.url)).toEqual([`${STATION}/rest/api/3/issue/HTEST-1/attachments`]);
+    });
+
+    it('a URL not under the base is R-instance', async () => {
+      const j = liveJira();
+      await expect(uploadMultipart('https://other.atlassian.net/rest/api/3/issue/HTEST-1/attachments', file))
+        .rejects.toThrow(/this request goes to https:\/\/other\.atlassian\.net.*HTEST/s);
+      expect(j.calls).toEqual([]);
+    });
+
+    it('a Confluence attachment is R-route', async () => {
+      const j = liveJira();
+      await expect(uploadMultipart(`${STATION}/wiki/rest/api/content/1/child/attachment`, file))
+        .rejects.toThrow(/is not a write the live-test guard can tie to one project.*HTEST/s);
+      expect(j.calls).toEqual([]);
+    });
+  });
+
+  it('I8 control: marker unset, POST /issue in HIMMEL sends exactly one fetch and no GET', async () => {
+    vi.stubEnv('HIMMEL_JIRA_LIVE_TEST', '');
+    const j = liveJira();
+    await request('POST', '/issue', { fields: { project: { key: 'HIMMEL' } } });
+    expect(j.calls.map((c) => c.method)).toEqual(['POST']);
   });
 });

@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { resolveSecrets } from '../../lib/resolve-secrets.mjs';
 import { envFilePath, readEnvFile, stationJiraBaseUrl, underTest } from './env-file.js';
+import { isJiraRead, jiraIsLoopback, liveTestGuard, liveTestUploadGuard, testJiraPostRefused } from './live-test-guard.js';
 import { preRead, recordVersionWrite, versionWriteScope, type Getter, type WriteRequest } from './release/version-writes.js';
 
 const DOTENV_KEYS = new Set([
@@ -193,6 +194,16 @@ async function beginVersionWrite(
   }
 }
 
+// A test on the station never writes the real Jira through either exit, whatever the command: the
+// test-run-guard door is asked once per process for the first write to a non-loopback host, and its
+// answer is kept.
+let testWriteRefused: boolean | undefined;
+function refuseTestWrite(what: string, url: string): void {
+  if (jiraIsLoopback(url)) return;
+  testWriteRefused ??= testJiraPostRefused('write', url);
+  if (testWriteRefused) throw new Error(`${what}: refused, nothing was posted`);
+}
+
 export async function requestAt<T>(
   apiBase: string,
   method: string,
@@ -201,7 +212,10 @@ export async function requestAt<T>(
   auth: string = authHeader(),
   writer?: string,
 ): Promise<T> {
-  const url = `${baseUrl()}${apiBase}${path}`;
+  const base = baseUrl();
+  const url = `${base}${apiBase}${path}`;
+  await liveTestGuard(apiBase, method, path, body, base, hookGetter(auth));
+  if (!isJiraRead(apiBase, method, path)) refuseTestWrite(`${method} ${apiBase}${path}`, url);
   const record = await beginVersionWrite(apiBase, method, path, body, auth, writer);
   const res = await fetch(url, {
     method,
@@ -241,6 +255,8 @@ export async function uploadMultipart(
   if (!existsSync(filePath)) {
     throw new Error(`attachment not found: ${filePath}`);
   }
+  await liveTestUploadGuard(url, baseUrl, hookGetter(auth));
+  refuseTestWrite(`POST ${url}`, url);
   const data = readFileSync(filePath);
   const fd = new FormData();
   fd.append(field, new Blob([data]), basename(filePath));
