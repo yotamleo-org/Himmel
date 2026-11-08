@@ -283,6 +283,8 @@ h() { local off="$1"; shift; AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + off)) pytho
 # the nonce is the one root holds for the id. approve_raw <now-offset> <id> <line> sends the line as given.
 approve_raw() { printf '%s\n' "$3" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) python3 -I "$HELPER" approve "$2" --from "${4:-$OP}" --chat "${4:-$OP}" 2>&1; }
 approve() { approve_raw "$1" "$2" "$(state_nonce "$2") $3" "${4:-}"; }
+# other_nonce <nonce>: a well-formed nonce that is not this one.
+other_nonce() { if [ "$1" = ZZZZ ]; then echo YYYY; else echo ZZZZ; fi; }
 # dn <now-offset> <id> [args...]: the operator's deny, with the nonce root holds for the id on stdin.
 dn() { local off="$1" id="$2"; shift 2; printf '%s\n' "$(state_nonce "$id")" | h "$off" deny "$id" --from "$OP" --chat "$OP" "$@"; }
 # lockdown_nonce: the nonce in the notice bot's last lockdown message.
@@ -466,7 +468,15 @@ printf '%s\n' "$(other_nonce "$(state_nonce "$id")")" | h 4 deny "$id" --from "$
 assert_contains "past three wrong nonces even the right one cannot deny" "result=locked" "$(dn 5 "$id")"
 assert_contains "past three wrong deny nonces the operator can still approve" "result=ran id=$id" "$(approve 6 "$id" "$(code 6)")"
 out=$(req 40); id=$(rid "$out")
-assert_contains "the right nonce denies" "result=denied id=$id" "$(dn 41 "$id")"
+for k in 41 42 43; do printf '%s\n' "$(other_nonce "$(state_nonce "$id")")" | h "$k" deny "$id" --from "$OP" --chat "$OP" >/dev/null; done
+assert_contains "past three wrong nonces a wrong nonce with a valid code is still refused" "result=bad-nonce" \
+    "$(printf '%s %s\n' "$(other_nonce "$(state_nonce "$id")")" "$(code 44)" | h 44 deny "$id" --from "$OP" --chat "$OP")"
+assert_contains "past three wrong nonces a code spent on a refused deny cannot deny" "result=locked" \
+    "$(printf '%s %s\n' "$(state_nonce "$id")" "$(code 44)" | h 45 deny "$id" --from "$OP" --chat "$OP")"
+assert_contains "past three wrong nonces the right nonce with a valid code denies" "result=denied id=$id" \
+    "$(printf '%s %s\n' "$(state_nonce "$id")" "$(code 61)" | h 61 deny "$id" --from "$OP" --chat "$OP")"
+out=$(req 100); id=$(rid "$out")
+assert_contains "the right nonce denies" "result=denied id=$id" "$(dn 101 "$id")"
 
 echo "== the helper refuses an unsafe seed, config or ledger =="
 new_root perms
@@ -1319,8 +1329,6 @@ for f in .aws/credentials .netrc .git-credentials .config/gh/hosts.yml .docker/c
     fi
 done
 
-# other_nonce <nonce>: a well-formed nonce that is not this one.
-other_nonce() { if [ "$1" = ZZZZ ]; then echo YYYY; else echo ZZZZ; fi; }
 
 echo "== slice 1b: the approval is bound to the nonce root sent (RED 7) =="
 new_root nonce; cfg "$ALL" true

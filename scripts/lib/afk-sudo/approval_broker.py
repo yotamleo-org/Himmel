@@ -19,8 +19,8 @@ request needs the next step's code.
 Approve and deny both need the request's nonce, which only root's notice carries. A wrong
 nonce never ends a request and never counts towards the broker-wide lock (only a wrong code
 sent with the right nonce does); it counts on that id, and past MAX_WRONG the id answers
-`locked` to anything short of the right nonce with a valid unspent code, so further guesses
-learn nothing. Lockdown needs a nonce of its own (lockdown_challenge / lockdown_take).
+`locked` to an approve or a deny short of the right nonce with a valid unspent code, so further
+guesses learn nothing. Lockdown needs a nonce of its own (lockdown_challenge / lockdown_take).
 """
 import base64
 import fcntl
@@ -421,19 +421,25 @@ class Broker:
             os.close(fd)
         return p, res
 
-    def deny(self, rid, sender, chat, nonce="", via="telegram", approver=None):
-        """End a pending request; needs its nonce. A wrong nonce leaves it pending and counts on the id;
-        past MAX_WRONG the id refuses every deny `locked` (it can still be approved, or it expires)."""
+    def deny(self, rid, sender, chat, nonce="", via="telegram", approver=None, code=""):
+        """End a pending request; needs its nonce. A wrong nonce leaves it pending and counts on the id; past
+        MAX_WRONG on that id a deny also needs a valid unspent `code` (spent here), as an approve does, so further
+        guesses learn nothing and the operator can still deny."""
         who = self._who(via, approver, sender)
         fd = self._locked()
         try:
-            s = self._load()
+            s, t = self._load(), self.now()
             p = self._slot(s, rid)
             meta = p["meta"] if p else {}
             self._sender_ok(rid, sender, chat, meta, who)
             if not p:
                 self._refuse("deny", "no-pending", meta, id=rid, **who)
-            if p.get("wrong", 0) >= MAX_WRONG:
+            hit = self._hit(t, code)
+            fresh = hit is not None and hit > s["last_step"]
+            if fresh:
+                self._bump(s, hit)
+            if p.get("wrong", 0) >= MAX_WRONG and not fresh:
+                self._save(s)
                 self._refuse("deny", "locked", meta, id=rid, **who)
             if not self._nonce_ok(p, nonce):
                 p["wrong"] = p.get("wrong", 0) + 1
@@ -441,7 +447,7 @@ class Broker:
                 self._refuse("deny", "bad-nonce", meta, id=rid, **who)
             self._finish(s, rid, "denied")
             self._drop(s, rid)
-            self._spend(s, self.now())
+            self._spend(s, t)
             self._save(s)
             self._row("deny", "denied", meta, id=rid, sender=int(sender), **who)
         finally:

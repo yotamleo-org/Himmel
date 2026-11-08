@@ -26,8 +26,9 @@ const CONFIG = '/etc/himmel/afk-sudo.json';
 const ID_RE = /^[a-z2-7]{8}$/;
 // The nonce root sent (4 characters, Crockford base32) then the 6-digit code; spaces between are free.
 const REPLY_RE = /^([0-9A-Za-z]{4})([0-9]{6})$/;
-// A deny carries the nonce alone: only the holder of root's notice can end a request.
-const NONCE_RE = /^([0-9A-Za-z]{4})$/;
+// A deny carries the nonce, so only the holder of root's notice can end a request; after three wrong nonces on
+// the request the helper also wants the code.
+const DENY_RE = /^([0-9A-Za-z]{4})([0-9]{6})?$/;
 
 function readConfig(env) {
   try {
@@ -85,12 +86,12 @@ async function runAfkApprove({ verb, id, env = process.env, input = process.stdi
       }
       stdin = `${m[1]} ${m[2]}\n`;
     } else {
-      const m = NONCE_RE.exec((await readReply(input, output, 'Nonce: ')).replace(/\s+/g, ''));
+      const m = DENY_RE.exec((await readReply(input, output, 'Nonce [Code]: ')).replace(/\s+/g, ''));
       if (!m) {
-        err('himmelctl deny: type the 4-character nonce from the notice (no code), nothing sent');
+        err('himmelctl deny: type the 4-character nonce from the notice (and the 6-digit code once the helper asks), nothing sent');
         return 2;
       }
-      stdin = `${m[1]}\n`;
+      stdin = m[2] ? `${m[1]} ${m[2]}\n` : `${m[1]}\n`;
     }
   }
   const [cmd, ...pre] = env.HIMMELCTL_AFK_SUDO ? [env.HIMMELCTL_AFK_SUDO] : ['sudo', '-n', HELPER];

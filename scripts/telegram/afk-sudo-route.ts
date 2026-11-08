@@ -111,6 +111,8 @@ function runVerb(deps: AfkSudoDeps, verb: "approve" | "deny" | "lockdown", id: s
         ? "approved; the result comes from the notice bot"
         : verb === "approve" && first.startsWith("result=replay")
           ? "that code was already used, so nothing ran and the request is still pending. Wait for the next code (it changes every 30 seconds), tap Approve again and reply with the nonce and the new code."
+          : verb === "deny" && first.startsWith("result=locked")
+            ? `three wrong nonces were sent for this request, so a deny now also needs a current code: deny ${id} <nonce> <code>. Nothing ran; the request is still pending.`
           : verb === "lockdown" && res.code === 0 && first.startsWith("result=lockdown-nonce-sent")
             ? "nothing is switched off yet. The notice bot sent a lockdown nonce: send /afk-lockdown <that nonce> within 2 minutes."
             : first;
@@ -191,8 +193,10 @@ function opRequest(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
 
 // The prompt reply: the notice's four-character nonce, then the six-digit code.
 const CODE_REPLY = /^\s*([0-9A-Za-z]{4})\s*(\d{3})[\s-]?(\d{3})\s*$/;
-// The Deny prompt reply, and what follows the id in a typed deny: the nonce alone.
-const NONCE_REPLY = /^\s*([0-9A-Za-z]{4})\s*$/;
+// The Deny prompt reply, and what follows the id in a typed deny: the nonce, and after three wrong nonces
+// on the request the nonce and a code. The helper reads them as `NONCE [CODE]`.
+const DENY_REPLY = /^\s*([0-9A-Za-z]{4})\s*(?:(\d{3})[\s-]?(\d{3}))?\s*$/;
+const denyInput = (m: RegExpExecArray): string => (m[2] ? `${m[1]} ${m[2]}${m[3]}` : m[1]);
 const BARE_CODE = /^\s*\d{6}\s*$/;
 const NONCE_HINT = "4-character nonce from the notice bot's message";
 // This request's own id standing as a word in a reply: the operator typed it where the nonce goes.
@@ -242,13 +246,13 @@ function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, 
     return true;
   }
   if (p.verb === "deny") {
-    const n = NONCE_REPLY.exec(msg.text);
+    const n = DENY_REPLY.exec(msg.text);
     if (!n) {
-      say(`⚠️ afk-sudo: a deny takes only the ${NONCE_HINT}, no code. Nothing ran; the prompt still waits.`);
+      say(`⚠️ afk-sudo: a deny takes the ${NONCE_HINT} (with the 6-digit code after it only once the helper asks). Nothing ran; the prompt still waits.`);
       return true;
     }
     prompts.use(msg.chat_id, msg.reply_to_message_id!);
-    runVerb(deps, "deny", p.id, n[1], msg.from, msg.chat_id);
+    runVerb(deps, "deny", p.id, denyInput(n), msg.from, msg.chat_id);
     return true;
   }
   const m = CODE_REPLY.exec(msg.text);
@@ -333,11 +337,12 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
         : `⚠️ afk-sudo: the request id is already in "approve ${line.id}"; after it send only the ${NONCE_HINT} and the code: ${form}. Nothing ran.`).catch(() => {});
       return true;
     }
-    if (line.verb === "deny" && !NONCE_REPLY.test(line.code)) {
-      void deps.reply(msg.chat_id, `⚠️ afk-sudo: deny needs the ${NONCE_HINT}, no code: deny ${line.id} <nonce>. Nothing ran.`).catch(() => {});
+    const denied = line.verb === "deny" ? DENY_REPLY.exec(line.code) : null;
+    if (line.verb === "deny" && !denied) {
+      void deps.reply(msg.chat_id, `⚠️ afk-sudo: deny needs the ${NONCE_HINT}: deny ${line.id} <nonce>. Nothing ran.`).catch(() => {});
       return true;
     }
-    runVerb(deps, line.verb, line.id, line.code, msg.from, msg.chat_id);
+    runVerb(deps, line.verb, line.id, denied ? denyInput(denied) : line.code, msg.from, msg.chat_id);
     return true;
   };
 }
@@ -360,7 +365,7 @@ export function makeAfkSudoCallback(deps: AfkSudoCallbackDeps, prompts: AfkSudoP
       return true;
     }
     const text = verb === "deny"
-      ? `Deny ${id}: reply to this message with the ${NONCE_HINT} alone, no code. A wrong nonce leaves the request pending.`
+      ? `Deny ${id}: reply to this message with the ${NONCE_HINT}. A wrong nonce leaves the request pending.`
       : `Approve ${id}: reply to this message with the ${NONCE_HINT}, then the 6-digit code (<nonce> <code>), not the request id. A wrong code with the right nonce ends the request; a wrong nonce leaves it pending.`;
     const want = verb === "deny" ? "the nonce" : "the code";
     void deps.prompt(tap.chat_id, text)

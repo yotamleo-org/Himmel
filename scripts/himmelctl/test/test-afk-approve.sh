@@ -123,7 +123,10 @@ ctl "" "$tmp/config.json" deny "$ID1"
 if [ "$rc" = 2 ] && ! sent; then pass "a deny without a nonce sends nothing"; else fail "a deny without a nonce sends nothing" "rc=$rc"; fi
 ctl "$NONCE $CODE
 " "$tmp/config.json" deny "$ID1"
-if [ "$rc" = 2 ] && ! sent; then pass "a deny takes the nonce alone, never a code"; else fail "a deny takes the nonce alone, never a code" "rc=$rc"; fi
+assert_eq "a deny with the nonce and a code sends both on stdin" "$NONCE $CODE" "$(tr -d '\n' < "$tmp/log.stdin")"
+ctl "$CODE
+" "$tmp/config.json" deny "$ID1"
+if [ "$rc" = 2 ] && ! sent; then pass "a deny with a code and no nonce sends nothing"; else fail "a deny with a code and no nonce sends nothing" "rc=$rc"; fi
 ctl "" "$tmp/config-other.json" approve status "$ID1"
 assert_eq "RED 5: approve status reads a request's state" "0" "$rc"
 assert_eq "approve status passes only the verb and the id" "status $ID1 " "$(argv_line)"

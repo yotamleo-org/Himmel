@@ -116,8 +116,23 @@ test("a typed deny reaches the helper with the request's nonce on stdin, never i
   expect(calls).toEqual([{ args: ["deny", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF\n" }]);
 });
 
-test("a typed deny without the nonce, or with a code, never reaches the helper and says what to type", async () => {
-  for (const text of ["deny abcdefgh", "deny abcdefgh K7QF 123456", "deny abcdefgh 123456"]) {
+test("a typed deny with the nonce and a code sends both on stdin as NONCE CODE, for an id past three wrong nonces", async () => {
+  const { deps, calls } = fake();
+  expect(makeAfkSudoGate(deps)(dm("deny abcdefgh K7QF 123 456"))).toBe(true);
+  await settle();
+  expect(calls).toEqual([{ args: ["deny", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF 123456\n" }]);
+});
+
+test("a deny the helper answers locked says to send the nonce with a current code", async () => {
+  const { deps, replies } = fake();
+  deps.runHelper = async () => ({ code: 5, stdout: "result=locked id=abcdefgh\n" });
+  makeAfkSudoGate(deps)(dm("deny abcdefgh K7QF"));
+  await settle();
+  expect(replies[0]).toContain("deny abcdefgh <nonce> <code>");
+});
+
+test("a typed deny without the nonce never reaches the helper and says what to type", async () => {
+  for (const text of ["deny abcdefgh", "deny abcdefgh 123456", "deny abcdefgh K7QF 12345"]) {
     const { deps, calls, replies } = fake();
     expect(makeAfkSudoGate(deps)(dm(text))).toBe(true);
     await settle();
@@ -429,7 +444,7 @@ test("button: a Deny tap asks for the nonce with a prompt and never reaches the 
   expect(b.tap(tapOf("afk:deny:abcdefgh"))).toBe(true);
   await settle();
   expect(b.calls).toEqual([]);
-  expect(b.sent).toEqual([{ chat: OP, text: "Deny abcdefgh: reply to this message with the 4-character nonce from the notice bot's message alone, no code. A wrong nonce leaves the request pending." }]);
+  expect(b.sent).toEqual([{ chat: OP, text: "Deny abcdefgh: reply to this message with the 4-character nonce from the notice bot's message. A wrong nonce leaves the request pending." }]);
   expect(b.answers).toEqual(["Reply with the nonce"]);
 });
 
@@ -446,20 +461,20 @@ test("button: the nonce reply to a Deny prompt denies with the nonce on stdin, o
   expect(b.replies.at(-1)).toContain("tap Deny on it again");
 });
 
-test("button: a code or a nonce-and-code reply to a Deny prompt never reaches the helper and keeps the prompt alive", async () => {
+test("button: a code alone as the reply to a Deny prompt never reaches the helper and keeps the prompt alive", async () => {
   const b = buttons();
   b.tap(tapOf("afk:deny:abcdefgh"));
   await settle();
-  for (const text of ["123456", "K7QF 123456"]) {
+  for (const text of ["123456", "deny it"]) {
     expect(b.gate(reply(text, 77))).toBe(true);
     await settle();
     expect(b.calls).toEqual([]);
-    expect(b.replies.at(-1)).toContain("a deny takes only the");
+    expect(b.replies.at(-1)).toContain("a deny takes the");
     expect(b.replies.at(-1)).not.toContain("123456");
   }
-  expect(b.gate(reply("K7QF", 77))).toBe(true);
+  expect(b.gate(reply("K7QF 123-456", 77))).toBe(true);
   await settle();
-  expect(b.calls.length).toBe(1);
+  expect(b.calls).toEqual([{ args: ["deny", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF 123456\n" }]);
 });
 
 test("button: a waiting Deny prompt is not named as a code prompt", async () => {

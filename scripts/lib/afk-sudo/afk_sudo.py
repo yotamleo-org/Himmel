@@ -14,7 +14,8 @@ file (a repo file is agent-writable). Off by default: the station config ships
   afk-sudo op-request         --session S --ticket T [--proof] NAME key=value...   (a named station op from scripts/station-ops;
                               --proof reads the operator's TOTP code from stdin: the request may take the reserved slot)
   afk-sudo approve ID --from SENDER --chat CHAT [--via telegram|ssh --approver NAME]   (`NONCE CODE` is read from stdin)
-  afk-sudo deny ID --from SENDER --chat CHAT [--via telegram|ssh --approver NAME]   (the request's NONCE is read from stdin)
+  afk-sudo deny ID --from SENDER --chat CHAT [--via telegram|ssh --approver NAME]   (`NONCE` is read from stdin; after three
+                              wrong nonces on the id, `NONCE CODE`)
   afk-sudo status ID  |  run-status ID
   afk-sudo lockdown --from SENDER --chat CHAT [--with-nonce]   (operator only. Bare: root sends a lockdown nonce through
                               the notice bot. --with-nonce, that nonce on stdin: sets enabled: false and denies every
@@ -1858,7 +1859,7 @@ def main(argv):
         elif args.verb == "deny":
             toks = sys.stdin.readline().split()
             broker.deny(args.id, args.sender, args.chat, toks[0] if toks else "", args.via,
-                        clean(args.approver, 64) if args.approver else None)
+                        clean(args.approver, 64) if args.approver else None, "".join(toks[1:]))
             print(f"result=denied id={args.id}")
         else:
             print(f"result={broker.status(args.id)} id={args.id}")
