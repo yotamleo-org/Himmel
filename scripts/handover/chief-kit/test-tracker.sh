@@ -1405,6 +1405,12 @@ contains 'a pool-disposition line naming the operator is listed' "$w9611" 'opera
 not_contains 'a pool-disposition line that names no operator is not listed' "$w9611" 'slice parked, no ask'
 not_contains 'a line outside the Live state is not read' "$w9611" 'outside the live state'
 not_contains 'a page that read its sources does not say none was read' "$w9611" 'no operator-owed source read'
+mkdir -p "$W/bk9611-nolog/specs/designs"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$W/bk9611-nolog/specs/designs/HIMMEL-435-clean.md.critic-spec-r1.md"
+v9611render --owed-dir "$W/bk9611-nolog"
+w9611n="$(grep -F 'data-section="waiting"' "$v9611out")"
+contains 'a clean spec is owed when no operator.jsonl exists yet' "$w9611n" 'HIMMEL-435-clean.md: latest critic round 1 reads SPEC CLEAN'
+not_contains 'a bucket with a specs dir but no operator.jsonl counts as read' "$w9611n" 'no operator-owed source read'
 mkdir -p "$W/bk9611-empty/release/v1.1.3"
 : > "$W/bk9611-empty/release/v1.1.3/operator.jsonl"
 v9611render --owed-dir "$W/bk9611-empty"

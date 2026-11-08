@@ -1418,7 +1418,7 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
     The config UI's Waiting list reuses this reader."""
     items, readable = [], False
     if bucket:
-        signed = set()
+        signed = set()  # no operator.jsonl yet means no spec was signed, so every spec past its critics is owed
         try:
             for l in open(os.path.join(bucket, 'release', version, 'operator.jsonl'), encoding='utf-8'):
                 try:
@@ -1428,6 +1428,8 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                 if isinstance(r, dict) and r.get('kind') == 'spec':
                     signed.add(r.get('spec_path'))
             readable = True
+        except FileNotFoundError:
+            readable = os.path.isdir(os.path.join(bucket, 'specs', 'designs'))
         except OSError:
             signed = None
         if signed is not None:
