@@ -38,7 +38,13 @@
 # clears on the next sync. Runs are serialized on a flock next to the state file. While a run is in flight the state reads
 # `BEHIND:pending`, so a run that is killed never leaves a stale `ok`. Exit 0 whatever the station state; 2 on usage.
 #
-# Test seams (env): SS_UPDATE SS_UPGRADE SS_GH SS_PRIMARY SS_VAULT SS_QMD_CLONE SS_STATE SS_SYSTEMCTL.
+# usage_compute: every pass, after the state is written, runs scripts/usage/usage-compute.sh once
+# (incremental, --budget-seconds 120) under `timeout 180` so the Cost page has a store to read; prints
+# `STEP usage_compute rc=<n>` or `SKIP usage_compute store-locked|no-timeout`, never record content, and
+# never changes the station state or the exit code.
+#
+# Test seams (env): SS_UPDATE SS_UPGRADE SS_GH SS_PRIMARY SS_VAULT SS_QMD_CLONE SS_STATE SS_SYSTEMCTL
+# SS_USAGE_COMPUTE SS_TIMEOUT.
 # Platform guard: Linux bash 3.2+.
 set -uo pipefail
 
@@ -209,4 +215,21 @@ if [ -n "$behind" ]; then val="BEHIND:$behind"; echo "STATION=BEHIND:$behind"
 else val="ok"; echo "STATION=OK"
 fi
 mkdir -p "$(dirname "$STATE")" 2>/dev/null && printf '%s\n' "$val" > "$STATE" 2>/dev/null
+
+# usage_compute: build the usage store the Cost page reads. It runs after the verdict is
+# written and the sync lock is released, so a slow build never holds the state at pending or queues the
+# next sync. One incremental pass: usage-compute.sh stops starting windows after its own budget and
+# resumes at the first uncommitted window next time. The outer timeout is plain (SIGTERM only, never
+# -k or -s KILL), so the compute's EXIT trap releases the store lock. Its output is discarded: this
+# caller reads and prints no record content. A skip or a failure never changes the station state.
+exec 9>&-
+USAGE_STORE="${HIMMEL_USAGE_STORE:-$HOME/.himmel/state/usage}"
+if [ -n "${SS_USAGE_COMPUTE:-}" ]; then USAGE=("$SS_USAGE_COMPUTE"); else USAGE=(bash "$PRIMARY/scripts/usage/usage-compute.sh"); fi
+TO="${SS_TIMEOUT:-timeout}"
+if ! command -v "$TO" >/dev/null 2>&1; then echo "SKIP usage_compute no-timeout"
+elif [ -d "$USAGE_STORE/.lock" ]; then echo "SKIP usage_compute store-locked"
+else
+    (cd "$PRIMARY" && "$TO" 180 "${USAGE[@]}" --budget-seconds 120 >/dev/null 2>&1); rc=$?
+    echo "STEP usage_compute rc=$rc"
+fi
 exit 0
