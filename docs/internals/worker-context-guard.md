@@ -4,7 +4,7 @@
 one reference for what the worker context guard does, when it runs, and how a worker
 gets past it. The hook header carries the same facts for whoever edits the code.
 Hook wiring and the enforcement matrix are in
-[`enforcement.md`](enforcement.md#guard-worker-context-handoffsh--chief-spawned-worker-context-hand-off-himmel-4569).
+[`enforcement.md`](enforcement.md#guard-worker-context-handoffsh--chief-spawned-worker-context-hand-off).
 
 ## Purpose
 
