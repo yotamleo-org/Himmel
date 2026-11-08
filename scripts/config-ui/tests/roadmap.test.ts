@@ -232,6 +232,18 @@ const driftRows = (over: Record<string, unknown> = {}) => ({ ...driftOk([{ class
 const tidy = (ui: Record<string, unknown>, dr: unknown = driftRows()) => renderBoard(read(station()), { version: null, theme: null, tab: "tidy", ...ui }, { drift: dr });
 const cellText = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
 
+const bannerOf = (dr: unknown) => /<div class="(alert[^"]*)"[^>]*>/.exec(tidy({}, dr));
+
+test("the drift banner is an amber warning bar, and not an alert role, when there are real drift rows", () => {
+  const banner = bannerOf(driftRows());
+  expect(banner?.[1].split(" ")).toContain("warnbar");
+  expect(banner?.[0]).not.toContain("role=");
+});
+
+test("the drift banner keeps the plain look when there are no real drift rows", () => {
+  expect(bannerOf(driftOk([], 2, 1))?.[1]).toBe("alert");
+});
+
 test("Tidy up: Refresh starts nothing on open, marks the kept rows while running, and says why a run failed", () => {
   const saved = tidy({});
   expect(saved).toContain('data-act="drift-refresh"');
