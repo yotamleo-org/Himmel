@@ -455,6 +455,7 @@ export function signSpec(ctx: Ctx, o: {
   const { verdicts, residuals } = readVerdicts(o.verdicts);
   const bytes = readFileSync(spec);
   const specSha = createHash('sha256').update(bytes).digest('hex');
+  const planSha = o.plan ? fileSha(plan) : null;
   checkResiduals(bytes.toString('utf8'), residuals);
   runMinerva('minerva-spec-gate.sh', [spec], dirname(spec));
   // The lint resolves cited paths against its cwd's repo, so it runs from the checkout, whichever repo holds the
@@ -464,9 +465,10 @@ export function signSpec(ctx: Ctx, o: {
     own = [execFileSync('git', ['-C', dirname(spec), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()];
   } catch { /* a spec outside any repo has no second root */ }
   runMinerva('minerva-trace-lint.sh', [spec, plan, ...own], checkoutRoot());
-  // The record signs the bytes the checks read: a spec or verdict edited meanwhile refuses.
-  if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)) {
-    throw new Error('release operator spec: the spec or a verdict file changed while it was checked; sign again');
+  // The record signs the bytes the checks read: a spec, plan or verdict edited meanwhile refuses.
+  if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)
+    || (o.plan && (!existsSync(plan) || fileSha(plan) !== planSha))) {
+    throw new Error('release operator spec: the spec, plan or a verdict file changed while it was checked; sign again');
   }
   return lockedAcross(ctx, (l) => {
     const records = readOperatorRecords('spec', ctx.env);
@@ -484,32 +486,38 @@ export function signSpec(ctx: Ctx, o: {
       throw new Error(`release operator spec: ${k} is already signed in ${held.id}; re-sign with --supersedes ${held.id}`);
     }
     return appendOperator(ctx, l.k, {
-      kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha, plan_path: o.plan ? plan : null, verdicts,
+      kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha,
+      plan_path: o.plan ? plan : null, plan_sha256: planSha, verdicts,
       supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim,
     });
   });
 }
 
-// Per key, the newest verified unsuperseded spec record decides: `SPEC ok` while the spec and every
+// Per key, the newest verified unsuperseded spec record decides: `SPEC ok` while the spec, bound plan and every
 // verdict file still hash as signed, else `SPEC-STALE` (a missing file included); a sub-task with no
 // record reads its mirror parent's, one hop; else `NO-SPEC`.
-export function specCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string | null): { lines: string[]; ok: boolean } {
+export function specCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string | null): { lines: string[]; ok: boolean; warnings: string[] } {
   const records = readOperatorRecords('spec', env);
   const superseded = new Set(records.flatMap((r) => r.supersedes ?? []));
   const live = records.map((r, i) => ({ r, i })).filter(({ r }) => !superseded.has(r.id))
     .sort((a, b) => a.r.ts.localeCompare(b.r.ts) || a.i - b.i).map(({ r }) => r);
   const newest = (k: string) => live.filter((r) => r.keys?.includes(k)).at(-1);
   const issues = mirrorRoot ? readMirror(mirrorRoot).issues : null;
+  const warnings: string[] = [];
   const lines = keys.map((k) => {
     const snap = issues?.get(k);
     const parent = snap && /^sub-?task$/i.test(snap.type) ? snap.parent : null;
     const r = newest(k) ?? (parent ? newest(parent) : undefined);
     if (!r?.spec_path) return `NO-SPEC ${k}`;
+    if (r.plan_path && typeof r.plan_sha256 !== 'string') {
+      warnings.push(`${k} plan unbound: the record ${r.id} signed plan ${r.plan_path} without its hash; re-sign with --supersedes ${r.id} to bind it`);
+    }
     const fresh = [{ path: r.spec_path, sha256: r.spec_sha256 }, ...(r.verdicts ?? [])]
-      .every((v) => existsSync(v.path) && fileSha(v.path) === v.sha256);
+      .every((v) => existsSync(v.path) && fileSha(v.path) === v.sha256)
+      && (typeof r.plan_sha256 !== 'string' || (!!r.plan_path && existsSync(r.plan_path) && fileSha(r.plan_path) === r.plan_sha256));
     return `${fresh ? 'SPEC ok' : 'SPEC-STALE'} ${k} ${r.spec_path} ${r.id}`;
   });
-  return { lines, ok: lines.every((l) => l.startsWith('SPEC ok ')) };
+  return { lines, ok: lines.every((l) => l.startsWith('SPEC ok ')), warnings };
 }
 
 // --- core-gate bypass records (spec §4); coreMatch reads them through readOperatorRecords ---

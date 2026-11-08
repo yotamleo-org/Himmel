@@ -1652,6 +1652,45 @@ describe('signed minerva specs', () => {
     expect(check(['K-1'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /)]);
   });
 
+  it('the signature binds the plan bytes: one changed byte of the signed plan gives SPEC-STALE', () => {
+    declared();
+    const { spec: p, plan } = bucketSpec('docs/handover/running-a-chief.md');
+    const r = sign(sctx(), ['K-1'], p, { plan });
+    expect(r.plan_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${r.id}`]);
+    expect(specCheck(specEnv(), ['K-1'], null).warnings).toEqual([]);
+    writeFileSync(plan, `${readFileSync(plan, 'utf8')}\n- Task 2: an unsigned addition.\n`);
+    expect(check(['K-1'])).toEqual([`SPEC-STALE K-1 ${p} ${r.id}`]);
+    expect(specCheck(specEnv(), ['K-1'], null).ok).toBe(false);
+    unlinkSync(plan);
+    expect(check(['K-1'])).toEqual([`SPEC-STALE K-1 ${p} ${r.id}`]);
+  });
+
+  it('a record signed before the plan hash existed still reads SPEC ok, with a plan-unbound warning', () => {
+    declared();
+    const { spec: p, plan } = bucketSpec('docs/handover/running-a-chief.md');
+    const r = sign(sctx(), ['K-1'], p, { plan });
+    const c = sctx();
+    const k = loadKey(c.keyPath);
+    const path = join(c.dir, 'operator.jsonl');
+    const kept = readChain<OperatorRow>(path, k).verified.map(({ prev: _p, mac: _m, plan_sha256: _s, ...row }) => row);
+    rmSync(path);
+    for (const row of kept) appendChain(path, k, row);
+    writeFileSync(plan, `${readFileSync(plan, 'utf8')}\n- Task 2: an addition after the old signature.\n`);
+    const out = specCheck(specEnv(), ['K-1'], null);
+    expect(out.lines).toEqual([`SPEC ok K-1 ${p} ${r.id}`]);
+    expect(out.ok).toBe(true);
+    expect(out.warnings).toEqual([expect.stringMatching(/K-1.*plan unbound/)]);
+  });
+
+  it('a spec signed with no separate plan has no plan to bind and warns of nothing', () => {
+    declared();
+    const p = spec();
+    const r = sign(sctx(), ['K-1'], p);
+    expect(r.plan_sha256 ?? null).toBeNull();
+    expect(specCheck(specEnv(), ['K-1'], null).warnings).toEqual([]);
+  });
+
   it('a spec with invariants cannot be signed without its plan, nor with itself as the plan', () => {
     declared();
     const { spec: p } = bucketSpec('docs/handover/running-a-chief.md');
