@@ -157,6 +157,11 @@ assert_empty() {
 #     on the Claude side the session note is written by the handover flow.
 CODEX_ONLY="block-terminal-write-fence.sh end-session-wiki.sh"
 
+# Claude-side guards that MUST also be wired on Codex. The checks above run only
+# from Codex to Claude, so a guard never ported to Codex would pass them silently.
+#   peer-taint-*.sh : a session that read peer text is restricted on either harness.
+CODEX_PORTED="peer-taint-gate.sh peer-taint-mark.sh peer-taint-resume.sh"
+
 # Claude Stop/SessionEnd hooks deliberately not mirrored to Codex Stop/SessionEnd.
 CLAUDE_END_ONLY=(
   run-node.sh               # the node-resolving launcher every Claude
@@ -184,7 +189,7 @@ claude_end_only="$(printf '%s\n' "${CLAUDE_END_ONLY[@]}")"
 # shellcheck disable=SC2016  # the node script is single-quoted on purpose: $ and
 # ` inside it belong to JS/regex, and the shell values it needs arrive via env
 # vars and argv, never via interpolation.
-report="$(CODEX_ONLY="$CODEX_ONLY" CLAUDE_END_ONLY="$claude_end_only" node -e '
+report="$(CODEX_ONLY="$CODEX_ONLY" CODEX_PORTED="$CODEX_PORTED" CLAUDE_END_ONLY="$claude_end_only" node -e '
 const fs = require("fs"), path = require("path");
 const allow = new Set(process.env.CODEX_ONLY.split(/\s+/).filter(Boolean));
 const claudeEndAllow = new Set(process.env.CLAUDE_END_ONLY.split(/\s+/).filter(Boolean));
@@ -272,6 +277,7 @@ for (const s of [...codex].sort()) {
   else if (!claude.has(s) && !allow.has(s)) lines.push("ORPHAN " + s);
 }
 for (const s of [...allow].sort()) if (!codex.has(s)) lines.push("STALE-ALLOW " + s);
+for (const s of process.env.CODEX_PORTED.split(/\s+/).filter(Boolean)) if (!codex.has(s)) lines.push("UNPORTED " + s);
 for (const s of [...claudeEnd].sort()) {
   if (!codexEnd.has(s) && !claudeEndAllow.has(s)) lines.push("CLAUDE-END-MISSING " + s);
 }
@@ -331,6 +337,7 @@ fi
 assert_empty "every Codex-wired guardrail exists under scripts/hooks/" "$(field MISSING)"
 assert_empty "no Codex-only guardrail outside the declared allowlist" "$(field ORPHAN)"
 assert_empty "no stale CODEX_ONLY allowlist entry" "$(field STALE-ALLOW)"
+assert_empty "every CODEX_PORTED guardrail is wired on Codex" "$(field UNPORTED)"
 assert_empty "every Claude end-side hook is mirrored to Codex or declared exempt" "$(field CLAUDE-END-MISSING)"
 assert_empty "no stale CLAUDE_END_ONLY allowlist entry" "$(field STALE-CLAUDE-END-ALLOW)"
 

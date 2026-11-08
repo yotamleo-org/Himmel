@@ -5200,6 +5200,38 @@ only the tick's `denials=` field.
   `chief-wait.sh` paged. Tests: `test-ack-denial.sh`, `test-chief-wait.sh`
   (`p*` cases), `test-headed-arm-worker.sh` (case 38).
 
+**What the classifier is told to allow.** `docs/setup/settings-template.json`
+carries a `permissions.allow` block and an `autoMode` block for the steps our own
+gates already cleared. Both are user-scope settings: the vendor ignores `autoMode`
+in project settings, and the home paths do not belong in the public project file.
+The operator merges the two blocks into `~/.claude/settings.json`, replacing
+`<himmel-path>` with the primary checkout and `<handover-root>` with the handover
+root. A rule resolves before the classifier, so it also holds while the classifier
+is unavailable. Suite: `scripts/guardrails/test-settings-template-allow.sh`.
+
+The denial log for 2026-11-01 to 2026-11-08 held 1741 rows: 1636 are `Classifier
+unavailable` (an outage, no verdict) and 105 are verdicts. Grouped by command shape:
+
+| Shape (verdict rows, 7 days) | Decision | Why |
+|---|---|---|
+| `merge-on-green.sh … --go <file>` (9, tag `Merge Without Review`) | **allowed**: exact rule and one `autoMode.allow` entry | The script itself refuses unless the GO file `go.sh` wrote matches the PR head, so a valid GO already is the review. A worker was stopped after a trust-reviewed GO (PR 4923). |
+| `append-results.sh <doc> "<bullet>"` (3, tag `Instruction Poisoning`; 116 more rows in the outage) | **allowed**: exact rule and an `autoMode.environment` line | It appends a stamped plain-fact bullet to the doc path it is given, which is not limited to the handover root. It is not free of outward effect: on a `LIVE` or `WRAPPED` bullet it runs `worker-jira-status.sh`, which can transition the ticket in Jira, and on a `SUCCESSION` bullet it runs `bus adopt`. The environment line says a bullet is a record, never an approval. |
+| `qmd-bounded.sh query\|search -c <name> …` (0 verdicts; 137 rows in the outage) | **allowed**: seven exact rules, one per retrieval verb (`query`, `search`, `vsearch`, `get`, `multi-get`, `ls`, `status`) | Read-only retrieval through the bounded wrapper; the outage rows stop once a rule resolves it first. The wrapper passes its arguments to `qmd` unfiltered, so a bare `qmd-bounded.sh:*` rule would also pre-approve `trust`, `update` (which can pull), `collection remove`, `cleanup`, `skill install`, `embed -f`, `pull`, `init` and `mcp`; none of those has a rule. |
+| Own scripts the classifier read as `Code from External` | **kept refused**, apart from the three scripts the `autoMode.environment` tooling line names | The line names only `merge-on-green.sh`, `append-results.sh` and `qmd-bounded.sh` with a retrieval verb from the primary checkout and says it never covers an approval write, a guard lift or a bypass launch; a wider "own scripts" line would reach those. |
+| `go.sh`, `write-verdict.sh`, `cr-disposition.sh` (13, tags `Self-Approval`, `Auto-Mode Bypass`, `Merge Without Review`, `Security Weaken`) | **kept refused** | They write the approval itself; a worker or chief approving its own work is the case the classifier exists for. |
+| `merge-fork-pr.sh` (3, `Merge Without Review`) | **kept refused** | Its GO is the chief's own judgement of an outside repo, with no file a script can check. |
+| `thread-resolve-action-cli.mjs` (4, `External System Writes`) and `gh pr close`, `gh issue close` (3) | **kept refused** | Writes on GitHub that other people read; the arguments carry free text and vary per call. |
+| `kill <pid>` (12, `Interfere With Workloads`) | **kept refused** | Ends a session the operator may be using; a pid is not a gate. |
+| `holds.py`, `core-bypass` release, `himmelctl ui --allow-agent-session`, `HIMMEL_HOOK_INTEGRITY_BYPASS_OK`, `headed-arm-worker.sh` bypass launches (about 10, `Security Weaken`, `Safety Bypass Flag`) | **kept refused** | Each lifts a guard; only the operator's own word does that. |
+| `*-cadence.sh arm`, a fish `conf.d` write (7, `Unauthorized Persistence`) | **kept refused** | Installs a recurring job or shell config on the station. |
+| `VBoxManage snapshot … restore`, `protect-forks.sh --apply`, `worktree.sh prune` (6, `Irreversible Local Destruction`, `Modify Shared Resources`) | **kept refused** | Destroys VM or branch state, or changes a shared repo rule. |
+| `uvx …`, `bun x …` of an unpinned package (2, `Code from External`) | **kept refused** | Runs code fetched at call time. |
+| Everything else (about 20, one-off shapes, a `.claude/settings.json` edit among them) | **kept refused** | No repeated shape to write a rule for. |
+
+`soft_deny` and `hard_deny` are left alone, and `permissions.deny` still wins over
+every row above. A rule is an exact script path (plus the retrieval verb, for `qmd-bounded.sh`) with `:*` for its arguments: no
+`bash *`, no directory wildcard, no worktree-relative spelling.
+
 ### `auto-arm-on-subagent-cap.sh` — subagent-result cap watchdog
 
 Closes the detection gap left by `auto-arm-on-cap.sh`: when the cap hits

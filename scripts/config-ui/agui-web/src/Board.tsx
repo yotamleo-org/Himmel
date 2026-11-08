@@ -2,7 +2,7 @@
 // its table in the drawer) and the per-stage drill-in drawer. Everything here renders himmel.board/1; the colours and
 // their labels come from its `legend`, the recommendations from its `cards`. Read-only.
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import { applyKey, BOARD_URL, BRIEF_IDLE, BRIEF_URL, briefNext, normalizeBoard, openAt, ROLLUP_URL, stageSegments, STAGES, type Board, type BoardWorker, type Drawer, type Joined, type Rollup, type RollupCard, type Section, type Stage } from "./board-model";
+import { applyKey, BOARD_URL, BRIEF_IDLE, BRIEF_URL, briefNext, ciCount, failKind, normalizeBoard, openAt, ROLLUP_URL, stageSegments, STAGES, type Board, type BoardWorker, type Drawer, type Joined, type Rollup, type RollupCard, type Section, type Stage } from "./board-model";
 import { runHash } from "./fleet-model";
 
 const POLL_MS = 5_000;
@@ -99,7 +99,6 @@ export const StateChip =({ board, state }: { board: Board; state: string }) => <
 type CardId = "velocity" | "health" | "tools" | "roadmap";
 const TITLE: Record<CardId, string> = { velocity: "Fleet velocity", health: "Fleet health", tools: "Tool health", roadmap: "Roadmap reality" };
 const k1 = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
-const failKind = (cls: string) => (cls.startsWith("denied/") ? "denial" : "error");
 
 function Gantt({ board }: { board: Board }) {
   const today = board.trends.worker_time.today.filter((l) => l.live_at && l.merged_at);
@@ -164,8 +163,8 @@ export function Trends({ board, rollup, onCard }: { board: Board; rollup: Rollup
       <Bar parts={states.map(({ s, n }) => ({ n, color: tone(board, "state", s), title: label(board, "state", s) }))} />
       <div className="bd-row">{states.map(({ s, n }) => <span key={s} className="bd-chip" style={{ ["--c" as string]: tone(board, "state", s) }}>{`${label(board, "state", s)} ${n}`}</span>)}</div>
       <p className="bd-sub">Open PRs by CI</p>
-      <Bar parts={(["green", "pending", "no_checks", "red"] as const).map((c) => ({ n: board.ci[c], color: tone(board, "ci", c), title: label(board, "ci", c) }))} />
-      <div className="bd-row">{(["green", "pending", "no_checks", "red"] as const).map((c) => <span key={c} className="bd-chip" style={{ ["--c" as string]: tone(board, "ci", c) }}>{`${label(board, "ci", c)} ${board.ci[c]}`}</span>)}</div>
+      <Bar parts={(["green", "pending", "no_checks", "red"] as const).map((c) => ({ n: ciCount(board, c) ?? 0, color: tone(board, "ci", c), title: label(board, "ci", c) }))} />
+      <div className="bd-row">{(["green", "pending", "no_checks", "red"] as const).map((c) => <span key={c} className="bd-chip" style={{ ["--c" as string]: tone(board, "ci", c) }}>{`${label(board, "ci", c)} ${ciCount(board, c) ?? "n/a"}`}</span>)}</div>
       <p className="bd-sub">Usage budget</p>
       {([["week", board.bank.week_pct], ["5 h", board.bank.five_hour_pct]] as const).map(([n, p]) => <div key={n} className="bd-meter"><span>{n}</span>
         <div className="bd-bar"><i style={{ width: `${p ?? 0}%`, background: tone(board, "budget", budget(p)) }} /></div><b>{p === null ? "n/a" : `${p}%`}</b></div>)}
@@ -200,7 +199,7 @@ function Spark({ values }: { values: number[] }) {
 function CardTable({ board, card }: { board: Board; card: CardId }) {
   const t = board.trends;
   const rows: [string, string][] = card === "velocity" ? t.worker_time.today.map((l) => [l.worker, `LIVE→PR ${l.to_pr_min ?? "–"}m · READY→merged ${l.ready_to_merged_min ?? "–"}m · total ${l.live_to_merged_min ?? "–"}m`])
-    : card === "health" ? [...board.workers.map((l): [string, string] => [l.worker, `${label(board, "state", l.state)} · ${label(board, "stage", l.stage)}`]), ["CI", (["green", "pending", "no_checks", "red"] as const).map((c) => `${label(board, "ci", c)} ${board.ci[c]}`).join(" · ")], ["Budget", `week ${board.bank.week_pct ?? "n/a"}% · 5 h ${board.bank.five_hour_pct ?? "n/a"}%`]]
+    : card === "health" ? [...board.workers.map((l): [string, string] => [l.worker, `${label(board, "state", l.state)} · ${label(board, "stage", l.stage)}`]), ["CI", (["green", "pending", "no_checks", "red"] as const).map((c) => `${label(board, "ci", c)} ${ciCount(board, c) ?? "n/a"}`).join(" · ")], ["Budget", `week ${board.bank.week_pct ?? "n/a"}% · 5 h ${board.bank.five_hour_pct ?? "n/a"}%`]]
       : card === "tools" ? [...(t.failures?.classes ?? []).map((c): [string, string] => [c.class, `${c.sessions} session${c.sessions === 1 ? "" : "s"} · route ${c.route}`]), ...t.tools.map((x): [string, string] => [x.tool, x.recommendation])]
         : board.milestones.map((m): [string, string] => [m.version, m.unavailable ? "unavailable" : `${m.done}/${m.total} done${m.open_blockers?.length ? ` · blockers ${m.open_blockers.join(", ")}` : ""}`]);
   return <><h3>{TITLE[card]}</h3><p className="bd-rec">{board.cards[card]?.recommendation}</p>
