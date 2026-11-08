@@ -33,7 +33,7 @@ import { createJournalMapper } from "./journal-mapper.ts";
 import { mergeJournalFiles, sessionFiles } from "./journal-merge.ts";
 import { backendModelOf, codexStartOf, costRowOf, evalRowOf, laneOf, readCodexBank, W, type CodexBank, type CostRow, type EvalRow, type Lane, type LaneFrom } from "./lane.ts";
 import { busRootOf, registerConfigRoot, resolveJournal } from "./sse.ts";
-import { busEvents } from "../../../marketplace/plugins/himmel-bus/lib/agui.mjs";
+import { busEvents, EXPIRY_MS } from "../../../marketplace/plugins/himmel-bus/lib/agui.mjs";
 import { loadPeers } from "../../../marketplace/plugins/himmel-bus/lib/identity.mjs";
 import { legacyNamesOn } from "../../lib/env-alias.mjs";
 
@@ -311,7 +311,7 @@ const BUS_KINDS = new Set(["ruling", "report", "proposal", "data"]);
 // The bus's edges and each session's counts, from busEvents' metadata; an unreadable or absent store is no traffic.
 // ponytail: a change replays the whole store again (the store has no per-log read), upgrade path: replay only the logs whose files changed.
 const BUS_WAIT_MS = 500;
-type BusRead = { edges: BusEdge[]; rows: Map<string, BusCounts> };
+type BusRead = { edges: BusEdge[]; rows: Map<string, BusCounts>; until: number };
 const busCache = new Map<string, { sig: string; read: BusRead }>();
 const busRuns = new Map<string, Promise<void>>();
 async function busSig(root: string): Promise<string> {
@@ -327,8 +327,9 @@ async function busSig(root: string): Promise<string> {
 async function busRead(root: string): Promise<BusRead | null> {
   type Msg = { f?: string | null; r?: string | null; t?: number; c?: number; kind?: string; delivered?: boolean; acked?: boolean; expired?: boolean };
   const msgs = new Map<string, Msg>();
+  const now = Date.now();
   try {
-    for await (const e of busEvents(root)) {
+    for await (const e of busEvents(root, { now })) {
       const d = e.delta[0], m = /^\/bus\/msgs\/([^/]+)(?:\/(delivered|acked|expired))?$/.exec(d.path);
       if (!m) continue;
       const msg = msgs.get(m[1]) ?? {};
@@ -349,15 +350,17 @@ async function busRead(root: string): Promise<BusRead | null> {
     rows.set(msg.r, row);
     row.undelivered += msg.delivered || msg.acked || msg.expired ? 0 : 1; row.unacked += ruling ? 1 : 0;
   }
-  return { edges: [...edges.values()], rows };
+  let until = Infinity;
+  for (const msg of msgs.values()) if (msg.c === 1 && !msg.acked && !msg.expired && msg.t !== undefined) until = Math.min(until, msg.t + EXPIRY_MS);
+  return { edges: [...edges.values()], rows, until };
 }
 async function busOf(root: string, env: Record<string, string | undefined>): Promise<{ edges: BusEdge[]; of: (name: string) => BusCounts }> {
   const sig = await busSig(root);
   let hit = busCache.get(root);
-  if (hit?.sig !== sig) {
+  if (hit?.sig !== sig || Date.now() >= (hit?.read.until ?? 0)) {
     let run = busRuns.get(root);
     if (!run) {
-      run = busRead(root).then((read) => { if (read) busCache.set(root, { sig, read }); }).finally(() => { busRuns.delete(root); });
+      run = busRead(root).then((read) => { if (read) busCache.set(root, { sig, read }); else busCache.delete(root); }).finally(() => { busRuns.delete(root); });
       busRuns.set(root, run);
     }
     let t: ReturnType<typeof setTimeout> | undefined;
