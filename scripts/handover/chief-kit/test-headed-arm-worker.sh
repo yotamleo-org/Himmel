@@ -5187,6 +5187,13 @@ for bus9537_ov in "" 1; do
   contains "9537a too-long name: the refusal names the length and the limit" "$bus9537_out" "session name is ${#bus9537_name} characters, over the bus limit of 128"
   not_contains "9537a too-long name: the refusal does not say the bus is broken" "$bus9537_out" "the bus is broken"
 done
+rm -f "$bus45/seen" "$bus45/bus-called"; rc=0
+bus9537_out="$(HEADED_ARM_BUS_CLI="$bus9537_stub" XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 "${bus9537_name%??}" "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
+check "9537d a name of exactly the limit (128) is not refused as too long: the bus is asked" "$([ -e "$bus45/bus-called" ] && echo asked || echo not-asked)" "asked"
+not_contains "9537d a name of exactly the limit is not called over the limit" "$bus9537_out" "over the bus limit"
 check "9537c the launcher's name limit is the bus validator's" \
   "$(sed -n 's/^ *BUS_NAME_MAX=\([0-9]*\)$/\1/p' "$SCRIPT" | head -1)" \
   "$(sed -n 's/^export const SESSION_NAME = .*{0,\([0-9]*\)}\$\/;$/\1/p' "$HERE/../../../marketplace/plugins/himmel-bus/lib/store.mjs" | awk '{print $1+1}')"

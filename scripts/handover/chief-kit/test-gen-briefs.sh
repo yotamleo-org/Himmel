@@ -823,6 +823,9 @@ EOF
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-ab.json"
 rc=0; python3 "$SUT" "$WORK/rm-ab.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmb-ab" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-ab.err" || rc=$?
 [ "$rc" = 1 ] && grep -q 'ab_arm' "$WORK/rm-ab.err" && [ ! -e "$WORK/rmb-ab/launch-N910.sh" ] && pass "an rm worker with an ab_arm is refused before anything is written (HIMMEL-7811)" || fail "rm ab_arm rc=$rc"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["release"]="r"*120; l[0]["state_dir"]=sys.argv[3]+"/"+"r"*120; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-long.json" "$WORK/hr/tester/himmel/release"
+rc=0; python3 "$SUT" "$WORK/rm-long.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmb-long" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-long.err" || rc=$?
+[ "$rc" = 1 ] && grep -q '128' "$WORK/rm-long.err" && [ ! -e "$WORK/rmb-long/launch-N910.sh" ] && pass "9537 e: an rm worker whose name is over the bus limit is refused naming 128, nothing written" || fail "9537 e: rm over-limit rc=$rc: $(cat "$WORK/rm-long.err")"
 rmout="$(python3 "$SUT" "$WORK/rm.json" --base 4ccb59d --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/rmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/rmf.json" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "an rm worker generates (rc 0)" || fail "rm rc=$rc: $rmout"
 RMD="$WORK/rmb/HIMMEL-9010-N910-rm-R1-2026-10-08.md"
@@ -1708,7 +1711,10 @@ has "9537 a: the branch is the one given" "$(cat "$WORK/bc101/$C101.md" 2>/dev/n
 mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*200' "$WORK/c102.json"
 gen98 "$WORK/c102.json" "$WORK/bc102"; rc=$?
 C102="$(basename "$(find "$WORK/bc102" -name '*-N901-*.md' -print -quit 2>/dev/null)" .md)"
-[ "$rc" = 0 ] && [ "${#C102}" -le 120 ] && pass "9537 b: a slug with no word boundary is cut to fit" || fail "9537 b: rc=$rc name [$C102]"
+[ "$rc" = 0 ] && [ "${#C102}" -eq 120 ] && pass "9537 b: a slug with no word boundary is cut to exactly the room left (120 characters)" || fail "9537 b: rc=$rc name [$C102]"
+BUSMAX_GB="$(sed -n 's/^BUS_NAME_MAX = \([0-9]*\)$/\1/p' "$SUT")"
+BUSMAX_STORE="$(sed -n 's/^export const SESSION_NAME = .*{0,\([0-9]*\)}\$\/;$/\1/p' "$HERE/../../../marketplace/plugins/himmel-bus/lib/store.mjs" | awk '{print $1+1}')"
+[ -n "$BUSMAX_GB" ] && [ "$BUSMAX_GB" = "$BUSMAX_STORE" ] && pass "9537 d: BUS_NAME_MAX is the bus validator's limit ($BUSMAX_STORE)" || fail "9537 d: BUS_NAME_MAX [$BUSMAX_GB] != store.mjs [$BUSMAX_STORE]"
 gen98 "$WORK/a98.json" "$WORK/bc104" --manifest "$WORK/c104-fleet.json"; rc=$?
 C104="$WORK/bc104/HIMMEL-9801-N901-plain-fix-2026-10-08.md"
 { [ "$rc" = 0 ] && [ -f "$C104" ]; } && pass "9537 c: a short slug keeps its name byte for byte" || fail "9537 c: rc=$rc"
