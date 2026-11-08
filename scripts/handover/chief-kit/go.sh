@@ -61,10 +61,10 @@
 #
 # --contract yes|no: the merge contract of the merge this GO lets through - yes when the
 # merge completes the ticket (merge-on-green.sh --jira-transition), no for a partial merge.
-# A himmel merge GO needs it (ready-check.sh runs with --require-contract: a keyed PR title
+# A himmel merge GO needs it (ready-check.sh requires it by default: a keyed PR title
 # and no contract is a refusal), because merge-on-green.sh refuses a contract-no merge whose
 # PR body records no remainder (exit 26) and a GO must not be written for a merge that
-# refuses. Not for --repo; optional for --fix-main-red.
+# refuses. Not for --repo; optional for --fix-main-red, which runs ready-check.sh with --observe.
 #
 # every himmel GO, trust-reviewed or not, first runs this directory's
 # ready-check.sh <pr> <head> from the caller's cwd and refuses (exit 4) unless
@@ -453,8 +453,9 @@ fi
 # the chief runs it by hand), so a push after /pr-check cannot get a GO
 # without a fresh review. Run from $HERE: the anchor's copy, never a worktree's.
 # The merge contract is named by the caller (--contract): a merge GO that does not name it is refused
-# by ready-check item 17 (--require-contract), because merge-on-green.sh's remainder refusal depends on it.
-RC_ARGS=""
+# by ready-check item 17 by default, because merge-on-green.sh's remainder refusal depends on it.
+# --fix-main-red keeps the warn-only read with --observe; it writes a separate FIX-GO.
+RC_ARGS="--observe"
 [ "$FIX_SET" -eq 1 ] || RC_ARGS="--require-contract"
 [ "$CONTRACT_SET" -eq 0 ] || RC_ARGS="$RC_ARGS --contract $CONTRACT"
 # shellcheck disable=SC2086  # RC_ARGS is fixed words built just above, never caller text

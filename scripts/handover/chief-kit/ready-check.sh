@@ -10,15 +10,16 @@
 # NOT read the three-dot diff — that judgement call stays the chief's own,
 # and the script says so on its last line.
 #
-# Usage: ready-check.sh [--contract yes|no] [--require-contract] <pr-number> <full-40-hex-head-sha>
+# Usage: ready-check.sh [--contract yes|no] [--observe] [--require-contract] <pr-number> <full-40-hex-head-sha>
 #        ready-check.sh --only 7 <pr-number>
 #   --only 7 runs check 7 — a worker's own pre-READY lint of its PR body, the
 #   same code the chief runs — plus the warn-only check 14. Prints
 #   COVERAGE-LINT PASS|FAIL.
 #   --contract yes|no names the merge contract for check 17: yes when the merge
 #   completes the ticket (merge-on-green.sh --jira-transition), no for a partial
-#   merge. --require-contract (go.sh, ready-go.sh, auto-go.sh pass it) makes a
-#   keyed title with no --contract a FAIL; without it check 17 only warns.
+#   merge. A keyed title with no --contract FAILs by default. --observe opts
+#   into a warn-only read for callers that write no GO. --require-contract
+#   stays accepted for compatibility (go.sh, ready-go.sh, auto-go.sh pass it).
 #
 # Checks:
 #   1. Shared snapshot: headRefOid == <head-sha> (full 40 chars); mergeStateStatus
@@ -173,8 +174,8 @@
 #      the PR body read through scripts/lib/pr_remainder.py (the merge's reader, run from
 #      the anchor) must record a remainder, a `Remaining:` line or a `deferred -> KEY` line
 #      under `## Ticket coverage`; `none`, a missing reader or no answer FAILs. `--contract
-#      yes` and a title with no key pass. No `--contract` on a keyed title FAILs under
-#      --require-contract and warns otherwise. Not part of `--only 7`.
+#      yes` and a title with no key pass. No `--contract` on a keyed title FAILs by
+#      default and warns with --observe. Not part of `--only 7`.
 #
 # 18. Open findings, the merge's gates 4 and 4b read at GO time: the head the
 #      merge gates on can be an earlier round head (a judge GO moves it), where an Important
@@ -227,14 +228,14 @@ usage() {
     local rc_primary
     rc_primary=$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || rc_primary=""
     case "$rc_primary" in */.git) rc_primary="${rc_primary%/.git}" ;; *) rc_primary="<primary-checkout>" ;; esac
-    echo "usage: ready-check.sh [--contract yes|no] [--require-contract] <pr-number> <full-40-hex-head-sha>" >&2
+    echo "usage: ready-check.sh [--contract yes|no] [--observe] [--require-contract] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint, for a worker before READY)" >&2
     echo "       ready-check.sh --outside <pr-number>  (prints outside-pr: yes|no, the item 16 predicate)" >&2
     echo "run it from the primary checkout, not a worktree (check 12 needs an up-to-date anchor): cd '$rc_primary' && bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
 
 CONTRACT=""
-REQUIRE_CONTRACT=0
+REQUIRE_CONTRACT=1
 while :; do
     case "${1:-}" in
         --contract)
@@ -245,6 +246,7 @@ while :; do
             [ -z "$CONTRACT" ] || { usage; echo "ready-check: --contract is given once" >&2; exit 2; }
             CONTRACT="$2"; shift 2 ;;
         --require-contract) REQUIRE_CONTRACT=1; shift ;;
+        --observe) REQUIRE_CONTRACT=0; shift ;;
         *) break ;;
     esac
 done
@@ -1862,7 +1864,7 @@ check_outside_pr
 # the title's key with the merge's own reader (ticket_key_from_title) and the body with the merge's own remainder reader
 # (scripts/lib/pr_remainder.py, run from the anchor with python3 -I, never from the checkout under review). The contract is
 # the merge line's (--jira-transition, or the brief's `Completes ticket:`), so the caller names it: --contract yes|no.
-# With no --contract, a GO writer (--require-contract) FAILs on a keyed title and an observer gets a WARN.
+# With no --contract, a keyed title FAILs by default; --observe opts into a WARN for a read that writes no GO.
 check_partial_remainder() {
     local pr_title lib key rc anchor reader ans
     [ "$ONLY7" -eq 0 ] || return 0

@@ -35,12 +35,12 @@ on denial) and adds the chief step that ruling lacked.
 **Claudex PRs: the chief merges.** A claudex worker's brief ends its Ship step
 at `READY <pr> <head> GREEN` and never runs `merge-on-green.sh` (its auto-mode
 classifier refuses merge-path actions). On that READY run, from
-the primary checkout and in this order: `bash scripts/handover/chief-kit/ready-check.sh <pr> <head>`, the
+the primary checkout and in this order: `bash scripts/handover/chief-kit/ready-check.sh --contract yes|no <pr> <full-head-sha>`, the
 judge or trust review the PR needs, then
 `bash scripts/handover/chief-kit/go.sh --contract yes|no [--trust-reviewed <qid>] <pr> <head>`, then
 `bash scripts/handover/merge-on-green.sh <pr> [--jira-transition] --worker-doc <worker doc>`.
 `--contract` is the worker doc's `Completes ticket:` answer: without it a PR titled
-with a ticket key fails `ready-check.sh` item 17 and `go.sh` writes nothing (exit 4).
+with a ticket key fails item 17 in both calls and `go.sh` writes nothing (exit 4).
 Pass `--jira-transition` unless the worker doc's `Completes ticket:` line says no
 (a brief whose scope states neither value has no such line and takes the yes
 wording, as the worker's own Ship step does); the `--worker-doc` line binds it either way.

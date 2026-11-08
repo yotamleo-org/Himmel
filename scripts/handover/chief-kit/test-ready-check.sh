@@ -3857,8 +3857,13 @@ contains "17f: item 17 fails" "$R17_OUT" "[FAIL] 17."
 contains "17f: says to name the contract" "$R17_OUT" "--contract yes|no"
 RUN_FLAGS=""
 R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
-check "17g a keyed title with no contract named, from an observer: exit 0 (a warning, not a verdict)" "$R17_RC" "0"
-contains "17g: item 17 warns" "$R17_OUT" "[WARN] 17."
+check "17g a keyed title with no contract named and no flag (the plain call the chief runs before go.sh): exit 1, as go.sh refuses it" "$R17_RC" "1"
+contains "17g: item 17 fails" "$R17_OUT" "[FAIL] 17."
+contains "17g: says to name the contract" "$R17_OUT" "--contract yes|no"
+RUN_FLAGS="--observe"
+R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
+check "17g2 --observe (a waiter or shepherd read, no GO is written): exit 0 (a warning, not a verdict)" "$R17_RC" "0"
+contains "17g2: item 17 warns" "$R17_OUT" "[WARN] 17."
 # a reader the anchor lacks refuses, as the merge refuses on a broken anchor
 NR_ORIGIN="$tmp/tp-origin-nr.git"; NR_ANCHOR="$tmp/tp-nr"
 git init -q --bare "$NR_ORIGIN"
