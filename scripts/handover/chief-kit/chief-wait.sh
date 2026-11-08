@@ -1687,11 +1687,6 @@ size_wake() {
     printf '%s\n' "$total" > "$size_file.tmp" && mv -f "$size_file.tmp" "$size_file"
     printf 'WAKE size rows=%s\n%s\n' "$total" "$(printf '%s\n' "$out" | tail -n +2)"
 }
-# pr_watch_wake: with --workers-from, poll each `watch` row of the fleet manifest over REST (see the
-# header) and print `WAKE pr-watch <pr> <detail>` for the first row that moved, after `watch set`
-# has written what was seen back to it. Throttled to one poll per CHIEF_WAIT_PR_WATCH_SEC (the stamp
-# is only written when there are rows, so a fleet with none spends nothing). A failed read, or one
-# that does not parse, is no wake and leaves the row for the next interval.
 # ponytail: one page of reviews (100) per PR; upgrade = --paginate if a watched PR ever passes 100.
 prwatch_at_file="$inbox.wait.prwatch.at"
 pr_watch_wake() {
@@ -1711,7 +1706,6 @@ pr_watch_wake() {
         nh="$(printf '%s' "$pj" | jq -r '.head.sha // empty' 2>/dev/null)"  # swallow-ok: an unparsed reply fails the checks below
         nc="$(printf '%s' "$pj" | jq -r 'if (.comments | type) == "number" and (.review_comments | type) == "number" then .comments + .review_comments else empty end' 2>/dev/null)"  # swallow-ok: as above
         nr="$(printf '%s' "$rj" | jq -r 'if type == "array" then length else empty end' 2>/dev/null)"  # swallow-ok: as above
-        # closed or merged moves nothing else: a merge commit leaves the head, and a close the counts, as they were
         ns="$(printf '%s' "$pj" | jq -r 'if .merged == true then "merged" elif .state == "closed" then "closed" elif .state == "open" then "open" else empty end' 2>/dev/null)"  # swallow-ok: as above
         case "$nh" in ''|*[!0-9a-f]*) continue ;; esac
         case "$nc" in ''|*[!0-9]*) continue ;; esac
@@ -1722,10 +1716,8 @@ pr_watch_wake() {
         [ "$com" = - ] || [ "$com" = "$nc" ] || detail="$detail comments $com→$nc"
         [ "$rev" = - ] || [ "$rev" = "$nr" ] || detail="$detail reviews $rev→$nr"
         [ "$st" = - ] || [ "$st" = "$ns" ] || detail="$detail state $st→$ns"
-        # a row is keyed by PR and repo: name the repo unless it is the waiter's own
         repo_arg=(); repo_tag=""
         [ "$repo" = '{owner}/{repo}' ] || { repo_arg=(--repo "$repo"); repo_tag=" repo=$repo"; }
-        # the row is written first: a write that fails wakes nothing and the change is seen again next interval
         timeout -k 2 40 bash "$HERE/fleet-manifest.sh" watch "$legs_from" set "$pr" ${repo_arg[@]+"${repo_arg[@]}"} --head "$nh" --comments "$nc" --reviews "$nr" --state "$ns" </dev/null >/dev/null 2>&1 9>&- || continue  # gnu-ok: Linux-only kit; swallow-ok: as above
         [ -n "$detail" ] || continue
         printf 'WAKE pr-watch %s%s%s\n' "$pr" "$repo_tag" "$detail"
@@ -2005,7 +1997,6 @@ while :; do
             if ready_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-ready'; exit 0; fi
             if silent_go_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-silent-go'; exit 0; fi
             if size_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-size'; exit 0; fi
-            # a watched outside PR that moved: REST only, the row is updated before the wake prints
             if pr_watch_wake_out="$(pr_watch_wake)"; then printf '%s\n%s\n' "$pr_watch_wake_out" "$tick_line"; save_key "$key"; exit_reason='wake-pr-watch'; exit 0; fi
             if [ -n "$ready_fold" ] && [ -n "$saved" ]; then
                 ready_new="$(ready_fold_key "$saved" "$key" "$ready_fold")"

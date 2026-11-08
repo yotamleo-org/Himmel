@@ -93,8 +93,6 @@ VALID="$JQ_W"'length == 1 and (.[0] | type == "object" and .schema == 1 and (W |
 [ "$#" -ge 2 ] || { usage >&2; exit 2; }
 verb="$1"; manifest="$2"; shift 2
 
-# watch: one row per outside PR in the top-level `watch` array -- parsed here, applied
-# to the locked, validated manifest below, in the same single write path as add/remove.
 wsub=""; wpr=""; whead=""; wcom=""; wrev=""; wrepo=""; wstate=""
 if [ "$verb" = watch ]; then
     [ "$#" -ge 1 ] || { usage >&2; exit 2; }
@@ -107,7 +105,6 @@ if [ "$verb" = watch ]; then
             case "$wpr" in ''|*[!0-9]*|0*) echo "fleet-manifest: watch needs a PR number: $wpr" >&2; exit 2 ;; esac
             while [ "$#" -gt 0 ]; do
                 [ "$#" -ge 2 ] || { usage >&2; exit 2; }
-                # remove names a row (PR + --repo) and carries no seen-values
                 [ "$wsub" != remove ] || [ "$1" = --repo ] || { usage >&2; exit 2; }
                 case "$1" in
                     --state) case "$2" in open|closed|merged) wstate="$2" ;; *) echo "fleet-manifest: --state must be open, closed or merged: $2" >&2; exit 2 ;; esac ;;
@@ -223,15 +220,11 @@ fi
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 for arg in "$@"; do
     if [ "$verb" = watch ]; then
-        # add upserts the fields given; set updates an existing row only (a poll that races a remove must
-        # not bring the row back); remove drops it. A key the row does not carry stays absent.
         case "$wsub" in
             remove)
                 cur="$(printf '%s\n' "$cur" | jq --argjson p "$wpr" --arg rp "$wrepo" \
                     'if has("watch") then .watch |= map(select((.pr == $p and ((.repo // "") == $rp)) | not)) else . end')" || exit 1 ;;
             add|set)
-                # a row is keyed by PR number AND repo (no --repo = the waiter's own repository): the same number in
-                # two repositories is two rows
                 cur="$(printf '%s\n' "$cur" | jq --argjson p "$wpr" --arg sub "$wsub" --arg t "$now" --arg h "$whead" --arg c "$wcom" --arg r "$wrev" --arg rp "$wrepo" --arg st "$wstate" \
                     '({} + (if $h != "" then {head: $h} else {} end) + (if $c != "" then {comments: ($c | tonumber)} else {} end)
                         + (if $r != "" then {reviews: ($r | tonumber)} else {} end) + (if $st != "" then {state: $st} else {} end)

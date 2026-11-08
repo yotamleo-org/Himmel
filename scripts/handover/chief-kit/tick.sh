@@ -1400,8 +1400,6 @@ for leg in $WORKERS_SPLIT; do
                 # A stable label lets chief-wait wake once, never on a growing age.
                 if [ "$lock_status" != NOLOCK ] && [ "$leg_idle_seconds" -ge "$(( idle_min * 60 ))" ] && [ "$leg_foreground_running" = 0 ]; then
                     leg_label_state=IDLE-HELD
-                    # an idle worker whose newest marker bullet is `LIVE — HOLD-OUTSIDE pr=<n>` is
-                    # waiting on an outside event in a window it should have closed; flag it with its PR.
                     ho_bullet="$(grep -E '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|MERGED)([^A-Za-z0-9_]|$)' "$leg_doc" 2>/dev/null | tail -n 1)" || ho_bullet=""  # pipefail-ok: tail reads grep to EOF; swallow-ok: an unreadable doc reads as no hold, which flags nothing
                     ho_re='^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?LIVE[^A-Za-z0-9_].*HOLD-OUTSIDE[[:space:]]+pr=#?([0-9]+)'
                     if [[ $ho_bullet =~ $ho_re ]]; then holdout_summary="$(csv_add "$holdout_summary" "$label:${BASH_REMATCH[3]}")"; fi
@@ -3352,8 +3350,6 @@ elif [ -e "$uc_state" ]; then
 fi
 [ -z "$uc_csv" ] || unclosed_tail=" unclosed=$uc_csv"
 
-# holdout=<label>:<pr>[,...]: ABSENT unless an IDLE-HELD worker's newest marker bullet is
-# `LIVE — HOLD-OUTSIDE pr=<n>`. A busy worker is never flagged. It does not wake the chief by itself.
 holdout_tail=""
 [ -z "$holdout_summary" ] || holdout_tail=" holdout=$holdout_summary"
 

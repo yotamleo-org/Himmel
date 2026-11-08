@@ -242,7 +242,6 @@ check '7e. the refused re-add leaves the arm alone' 400k "$(jq -r '.workers[0].a
 bash "$SCRIPT" add "$m9" --lane native --arm 400k "$l1" >/dev/null 2>&1; rc=$?
 check '7e. re-adding with the same arm stays a no-op (rc 0)' 0 "$rc"
 
-# 9. watch rows: one row per outside PR, kept in the top-level `watch` array.
 m10="$tmp/m10.json"
 h1=1111111111111111111111111111111111111111
 h2=2222222222222222222222222222222222222222
