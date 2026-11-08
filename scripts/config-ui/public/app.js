@@ -15,11 +15,27 @@ const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, 
 let feed = null;
 let lastProbe = null; // the newest 202 body ({ elapsedMs, progress }) while the first report runs
 
-// The token rides the URL fragment (never sent in a request line); keep it in
-// memory only and clear it from the address bar. The AG-UI rail
-// links here as #t=<token>&page=<id>, landing on that page.
+// The token rides the URL fragment (never sent in a request line); clear it from the address bar and keep it for this
+// tab in sessionStorage (same tab only), so a reload still has it. A tab with none asks the server for one on a valid
+// session cookie (adoptToken). The AG-UI rail links here as #t=<token>&page=<id>, landing on that page.
 const landing = parseLanding(location.hash);
-const token = landing ? landing.token : "";
+const TAB_KEY = "himmel.fleet-token";
+const keptToken = () => { try { return sessionStorage.getItem(TAB_KEY) || ""; } catch (_) { return ""; } };
+const keepToken = (t) => { try { sessionStorage.setItem(TAB_KEY, t); } catch (_) { /* a tab that cannot store it loses it on reload */ } };
+let token = landing ? landing.token : keptToken();
+if (landing) keepToken(token);
+// GET /api/fleet-token: a token for this tab from a valid session cookie (HttpOnly, so sent by the browser, never read here).
+async function adoptToken() {
+  try {
+    const r = await fetch("/api/fleet-token", { cache: "no-store" });
+    if (!r.ok) return false;
+    const t = (await r.json()).token;
+    if (typeof t !== "string" || !/^[\w-]+$/.test(t)) return false;
+    token = t;
+    keepToken(t);
+    return true;
+  } catch (_) { return false; }
+}
 if (landing) history.replaceState(null, "", location.pathname + location.search + "#/" + landing.page + (landing.tile ? "?tile=" + landing.tile : landing.q ? "?" + landing.q : ""));
 // the Fleet link's status dot, read on load and on each page change (never polled: an open
 // chief must still let the server idle out).
@@ -329,6 +345,7 @@ async function loadMode() {
   new MutationObserver(lockWrites).observe($("#main"), { childList: true, subtree: true });
 }
 loadMode();
+if (!token) adoptToken().then((ok) => { if (ok) renderPages(); }); // a reload or a login: the session cookie gets this tab its token back
 
 // /login takes ?next=, the page to come back to; login.js accepts only a path on this site. The address holds no typed value.
 function loginHref() { return "/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash); }
@@ -990,10 +1007,18 @@ function toggleBundle(h) {
 }
 
 // A tab without the launch token has no Fleet to show: /agui/ would open the bundled replay as if it were live.
+// A valid session cookie gets the tab a token on the click itself (a login in another tab since this one loaded); with
+// none, the tab says to log in.
 for (const type of ["click", "auxclick"]) document.addEventListener(type, (e) => {
-  if (token || !e.target.closest || !e.target.closest('a[href^="/agui/"]')) return;
+  const link = e.target.closest && e.target.closest('a[href^="/agui/"]');
+  if (token || !link) return;
   e.preventDefault();
-  setStatus("This tab has no session token, so Fleet is not available here: open the URL `himmelctl ui` printed.");
+  adoptToken().then((ok) => {
+    if (!ok) return setStatus("This tab is not signed in, so Fleet is not available here: log in, then open Fleet again.");
+    renderPages();
+    if (type === "click") location.assign(link.getAttribute("href").replace(/#t=.*$/, "") + "#t=" + token);
+    else setStatus("Fleet is ready for this tab: open it again."); // a middle-click's new tab cannot be opened after the wait; the rail now links with the token
+  });
 });
 
 document.addEventListener("click", (e) => {

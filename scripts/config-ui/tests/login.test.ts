@@ -55,9 +55,10 @@ function boot(o: { password?: string | null; noIdle?: boolean; readOnly?: boolea
     method: "POST", headers: { "content-type": "application/json", origin: base, ...headers }, body: JSON.stringify(body),
   });
   const login = (user: string, pw: string) => post("/api/login", { user, password: pw });
+  const logout = (cookie: string) => post("/api/logout", {}, { cookie });
   const feed = (headers: Record<string, string> = {}) => fetch(base + "/api/feed", { headers });
   const audit = () => { const f = join(home, ".himmel", "state", "config-ui", "actions.jsonl"); return existsSync(f) ? readFileSync(f, "utf8") : ""; };
-  return { s, base, home, project, loginFile, k, env, password: password ?? "", post, login, feed, audit, advance: (ms: number) => { t += ms; } };
+  return { s, base, home, project, loginFile, k, env, password: password ?? "", post, login, logout, feed, audit, advance: (ms: number) => { t += ms; } };
 }
 
 const cookieOf = (r: Response) => (r.headers.get("set-cookie") ?? "").split(";")[0];
@@ -82,6 +83,21 @@ test("the right password answers with an HttpOnly, SameSite=Strict, short-lived 
   expect(age).toBeLessThanOrEqual(3600);
   expect(await r.text()).not.toContain(b.password);
   expect((await b.feed({ cookie: cookieOf(r) })).status).toBe(200);
+});
+
+test("GET /api/fleet-token hands a token to a valid same-origin session only, never to the launch token alone, a made-up cookie or a foreign origin", async () => {
+  const b = boot();
+  const ask = (headers: Record<string, string>) => fetch(b.base + "/api/fleet-token", { headers });
+  for (const refused of [{}, { "x-himmel-token": TOKEN }, { cookie: "himmel_session=" + "a".repeat(64) }]) expect((await ask(refused)).status).toBe(401);
+  const c = cookieOf(await b.login(USER, b.password));
+  const r = await ask({ cookie: c });
+  expect(r.status).toBe(200);
+  expect(await r.json()).toEqual({ token: TOKEN });
+  expect(r.headers.get("cache-control")).toBe("no-store");
+  expect((await ask({ cookie: c, origin: "http://evil.example" })).status).toBe(403);
+  expect((await fetch(b.base + "/api/fleet-token", { method: "POST", headers: { cookie: c, "content-type": "application/json", origin: b.base }, body: "{}" })).status).toBe(405);
+  expect((await b.logout(c)).status).toBe(200);
+  expect((await ask({ cookie: c })).status).toBe(401); // the session ended: so did the way to a token
 });
 
 test("the launch token still opens /api/ next to the login", async () => {
@@ -359,14 +375,14 @@ const PUBLIC = join(import.meta.dir, "../public");
 const settle = () => new Promise((r) => setTimeout(r, 120));
 const NAME = "JIRA_API_TOKEN";
 
-type Spy = { urls: string[]; bodies: { url: string; body: string }[]; store: string[]; logs: string[]; cookies: string[]; replaced: string[]; history: string[] };
+type Spy = { urls: string[]; bodies: { url: string; body: string }[]; store: string[]; logs: string[]; cookies: string[]; replaced: string[]; history: string[]; went: string[]; tab: Map<string, string> }; // tab: this tab's sessionStorage, kept across the page loads of one browser
 
 // What a browser keeps for one site: one cookie, and a record of everything the page sent, stored, logged or wrote to the address bar.
 function browser(base: string) {
   let jar = "";
-  const spy: Spy = { urls: [], bodies: [], store: [], logs: [], cookies: [], replaced: [], history: [] };
+  const spy: Spy = { urls: [], bodies: [], store: [], logs: [], cookies: [], replaced: [], history: [], went: [], tab: new Map() };
   const real = globalThis.fetch;
-  const answered = new Set(["/api/mode", "/api/setup/secret", "/api/login", "/api/logout"]);
+  const answered = new Set(["/api/mode", "/api/setup/secret", "/api/login", "/api/logout", "/api/fleet-token"]);
   const fetchStub = async (url: string, init: { headers?: Record<string, string>; body?: unknown } = {}) => {
     const path = String(url).split("?")[0];
     spy.urls.push(String(url));
@@ -390,7 +406,7 @@ async function withGlobals(over: Record<string, unknown>, run: () => Promise<voi
 }
 const recorder = (spy: Spy) => ({
   localStorage: { setItem: (k: string, v: string) => spy.store.push(`${k}=${v}`) },
-  sessionStorage: { setItem: (k: string, v: string) => spy.store.push(`${k}=${v}`) },
+  sessionStorage: { getItem: (k: string) => spy.tab.get(k) ?? null, removeItem: (k: string) => void spy.tab.delete(k), setItem: (k: string, v: string) => { spy.tab.set(k, v); spy.store.push(`${k}=${v}`); } },
   console: { log: (...a: unknown[]) => spy.logs.push(a.join(" ")), warn: (...a: unknown[]) => spy.logs.push(a.join(" ")), error: (...a: unknown[]) => spy.logs.push(a.join(" ")), info: (...a: unknown[]) => spy.logs.push(a.join(" ")), debug: (...a: unknown[]) => spy.logs.push(a.join(" ")) },
 });
 
@@ -423,7 +439,7 @@ async function onPage(b: ReturnType<typeof browser>, hash: string, run: (p: { ma
     set cookie(v: string) { b.spy.cookies.push(v); }, get cookie() { return ""; },
   };
   // the address bar: the launch URL's #t=<token>&page=<id> lands on /#/<id>, as parseLanding and app.js do in the browser
-  const loc = { hash, pathname: "/", search: "", host: "x" };
+  const loc = { hash, pathname: "/", search: "", host: "x", assign: (u: string) => void b.spy.went.push(u) };
   stubs.parseLanding = (h: string) => { const m = /^#t=([^&]+)&page=(\w+)/.exec(h); return m ? { token: m[1], page: m[2] } : null; };
   const over = {
     ...stubs, ...recorder(b.spy), MutationObserver: class { observe() {} }, document: doc, fetch: b.fetchStub, addEventListener() {}, location: loc,
@@ -612,19 +628,57 @@ test("Log in opens in a new tab, so the working tab keeps its token and its next
   });
 });
 
-test("a token-less tab's Fleet and Shift links say to open the URL himmelctl ui printed; a tab with the token follows them", async () => {
+test("a token-less tab with no session says to log in, and never names the terminal URL; a tab with the token follows the link", async () => {
   const s = boot({ noIdle: true });
   const less = browser(s.base);
   await onPage(less, "#/config", async (p) => {
     expect(p.fire("click", linkEvent("/agui/#t="))).toBe(true);
-    expect(p.status()).toContain("himmelctl ui");
+    await settle();
+    expect(p.status()).toContain("log in");
+    expect(p.status()).not.toContain("himmelctl ui");
     expect(p.fire("auxclick", linkEvent("/agui/#t="))).toBe(true); // a middle-click
     expect(p.fire("click", linkEvent("/other"))).toBe(false);
+    expect(less.spy.went).toEqual([]);
   });
   const withToken = browser(s.base);
   await onPage(withToken, `#t=${TOKEN}&page=config`, async (p) => {
     expect(p.fire("click", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
     expect(p.fire("auxclick", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
+  });
+});
+
+test("the launch token is kept for the tab: a reload with no fragment still follows the Fleet link, and the token reached no cookie, URL or log", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await onPage(b, `#t=${TOKEN}&page=config`, async () => {});
+  expect([...b.spy.tab.values()]).toEqual([TOKEN]);
+  await onPage(b, "#/config", async (p) => { // the reload: the fragment is gone, the tab's storage is not
+    expect(p.fire("click", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
+    expect(b.spy.urls.filter((u) => u.includes("/api/fleet-token"))).toEqual([]); // it had the token, so it asked for none
+  });
+  for (const [what, seen] of Object.entries({ urls: b.spy.urls, cookies: b.spy.cookies, logs: b.spy.logs, history: b.spy.history })) expect(seen.join("\n"), what).not.toContain(TOKEN);
+});
+
+test("a tab with no token and a valid session asks the server for one on load, keeps it for the tab, and Fleet follows", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await logIn(b, "", USER, s.password);
+  await onPage(b, "#/config", async (p) => {
+    expect(b.spy.urls.filter((u) => u.includes("/api/fleet-token")).length).toBe(1);
+    expect([...b.spy.tab.values()]).toEqual([TOKEN]);
+    expect(p.fire("click", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
+  });
+  expect(b.spy.urls.join("\n")).not.toContain(TOKEN);
+});
+
+test("a token-less tab whose session began after it loaded gets a token on the Fleet click and goes to Fleet", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await onPage(b, "#/config", async (p) => {
+    await logIn(b, "", USER, s.password); // the login happens in another tab: the same cookie jar
+    expect(p.fire("click", linkEvent("/agui/#t="))).toBe(true);
+    await settle();
+    expect(b.spy.went).toEqual([`/agui/#t=${TOKEN}`]);
   });
 });
 
