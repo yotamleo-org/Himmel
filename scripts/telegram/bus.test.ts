@@ -7,8 +7,28 @@ import { appendLine, readNewLines, sessionDir as _sd, ensureSession as _es, send
 import { appendContext, readContext, truncateFullyConsumed } from "./bus";
 import { repairCursorBeyondEof } from "./bus";
 import { appendIfExists } from "./bus";
+import { appendOutboxLine } from "./bus";
 
 function root() { return mkdtempSync(join(tmpdir(), "telegram-bus-")); }
+
+test("appendOutboxLine: the first call for a new chat writes meta with chat_id and appends one line", async () => {
+  const r = root();
+  await appendOutboxLine(r, 4242, { text: "hello" });
+  const meta = JSON.parse(readFileSync(join(r, "sessions", "__chat__", "meta.json"), "utf8"));
+  expect(meta.chat_id).toBe(4242);
+  const lines = readFileSync(join(r, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim().split("\n");
+  expect(lines.map((l) => JSON.parse(l))).toEqual([{ text: "hello" }]);
+});
+
+test("appendOutboxLine: a group chat routes to group_<id>, and a second call keeps existing meta", async () => {
+  const r = root();
+  await appendOutboxLine(r, -100123, { text: "one" });
+  const metaFile = join(r, "sessions", "group_-100123", "meta.json");
+  writeFileSync(metaFile, JSON.stringify({ ...JSON.parse(readFileSync(metaFile, "utf8")), status: "running" }));
+  await appendOutboxLine(r, -100123, { text: "two" });
+  expect(JSON.parse(readFileSync(metaFile, "utf8")).status).toBe("running");
+  expect(readFileSync(join(r, "sessions", "group_-100123", "outbox.jsonl"), "utf8").trim().split("\n")).toHaveLength(2);
+});
 
 test("ensureSession atomically creates dir + returns created flag", async () => {
   const r = root();
