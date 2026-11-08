@@ -4013,7 +4013,7 @@ check_c95_barrier_off() {
         warned=1
         offline="$(head -n 1 "$off" 2>/dev/null | cut -c1-300)"
         # holds.py off writes "<utc time><TAB><reason>": that is a ruled, standing state (INFO); anything else is not ours (WARN)
-        if printf '%s' "$offline" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z'"$(printf '\t')"; then
+        if grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z'"$(printf '\t')" <<< "$offline"; then
             emit INFO C95-barrier-off "the single-writer barrier is OFF for every repo: $off exists ($(printf '%s' "$offline" | tr '\t' ' '))" \
                 "when the reason is over, the chief runs: python3 -I $py on"
         else
@@ -4050,7 +4050,7 @@ check_c95_barrier_off() {
         live="$(printf '%s\n' "$rows" | awk -F'\t' '$6 == "alive" { n++ } END { print n + 0 }')"
         if [ "$live" -gt 0 ]; then
             warned=1
-            age=$(( ($(date +%s) - $(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null || date +%s)) / 60 ))
+            age=$(( ($(date +%s) - $(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null || date +%s)) / 60 )) # gnu-ok: the BSD stat -f is the fallback on this line
             emit WARN C95-barrier-off "the single-writer barrier is OFF for $repo: $marker exists (marker age $age min) and $live live worker row(s) are registered there -- no write is guarded" \
                 "remove $marker once the workers there are done (a marker in a linked worktree never disables the barrier)"
         fi
