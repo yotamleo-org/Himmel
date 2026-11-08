@@ -665,9 +665,6 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     const path = new URL(req.url).pathname;
     if (path === "/api/login" || path === "/api/logout") return loginRoute(req, path, origin);
     if (path === "/api/fleet-token") {
-      // A tab that lost the launch token (a reload, a login) gets one back here, on a valid session cookie alone: the launch
-      // token does not open this route (its holder has it). The token rides this response body, never a request line, a log
-      // or a referrer; a cross-origin caller is refused, and the cookie is SameSite=Strict besides.
       if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
       if (auth.session(req.headers.get("cookie")) === null) return new Response("unauthorized", { status: 401 });
       const from = req.headers.get("origin");

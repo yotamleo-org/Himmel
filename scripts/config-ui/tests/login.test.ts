@@ -97,7 +97,7 @@ test("GET /api/fleet-token hands a token to a valid same-origin session only, ne
   expect((await ask({ cookie: c, origin: "http://evil.example" })).status).toBe(403);
   expect((await fetch(b.base + "/api/fleet-token", { method: "POST", headers: { cookie: c, "content-type": "application/json", origin: b.base }, body: "{}" })).status).toBe(405);
   expect((await b.logout(c)).status).toBe(200);
-  expect((await ask({ cookie: c })).status).toBe(401); // the session ended: so did the way to a token
+  expect((await ask({ cookie: c })).status).toBe(401);
 });
 
 test("the launch token still opens /api/ next to the login", async () => {
@@ -375,12 +375,12 @@ const PUBLIC = join(import.meta.dir, "../public");
 const settle = () => new Promise((r) => setTimeout(r, 120));
 const NAME = "JIRA_API_TOKEN";
 
-type Spy = { urls: string[]; bodies: { url: string; body: string }[]; store: string[]; logs: string[]; cookies: string[]; replaced: string[]; history: string[]; went: string[]; tab: Map<string, string> }; // tab: this tab's sessionStorage, kept across the page loads of one browser
+type Spy = { urls: string[]; bodies: { url: string; body: string }[]; store: string[]; logs: string[]; cookies: string[]; replaced: string[]; history: string[]; went: string[]; tabStorage: Map<string, string> };
 
 // What a browser keeps for one site: one cookie, and a record of everything the page sent, stored, logged or wrote to the address bar.
 function browser(base: string) {
   let jar = "";
-  const spy: Spy = { urls: [], bodies: [], store: [], logs: [], cookies: [], replaced: [], history: [], went: [], tab: new Map() };
+  const spy: Spy = { urls: [], bodies: [], store: [], logs: [], cookies: [], replaced: [], history: [], went: [], tabStorage: new Map() };
   const real = globalThis.fetch;
   const answered = new Set(["/api/mode", "/api/setup/secret", "/api/login", "/api/logout", "/api/fleet-token"]);
   const fetchStub = async (url: string, init: { headers?: Record<string, string>; body?: unknown } = {}) => {
@@ -406,7 +406,7 @@ async function withGlobals(over: Record<string, unknown>, run: () => Promise<voi
 }
 const recorder = (spy: Spy) => ({
   localStorage: { setItem: (k: string, v: string) => spy.store.push(`${k}=${v}`) },
-  sessionStorage: { getItem: (k: string) => spy.tab.get(k) ?? null, removeItem: (k: string) => void spy.tab.delete(k), setItem: (k: string, v: string) => { spy.tab.set(k, v); spy.store.push(`${k}=${v}`); } },
+  sessionStorage: { getItem: (k: string) => spy.tabStorage.get(k) ?? null, removeItem: (k: string) => void spy.tabStorage.delete(k), setItem: (k: string, v: string) => { spy.tabStorage.set(k, v); spy.store.push(`${k}=${v}`); } },
   console: { log: (...a: unknown[]) => spy.logs.push(a.join(" ")), warn: (...a: unknown[]) => spy.logs.push(a.join(" ")), error: (...a: unknown[]) => spy.logs.push(a.join(" ")), info: (...a: unknown[]) => spy.logs.push(a.join(" ")), debug: (...a: unknown[]) => spy.logs.push(a.join(" ")) },
 });
 
@@ -651,11 +651,11 @@ test("the launch token is kept for the tab: a reload with no fragment still foll
   const s = boot({ noIdle: true });
   const b = browser(s.base);
   await onPage(b, `#t=${TOKEN}&page=config`, async () => {});
-  expect([...b.spy.tab.values()]).toEqual([TOKEN]);
-  await onPage(b, "#/config", async (p) => { // the reload: the fragment is gone, the tab's storage is not
+  expect([...b.spy.tabStorage.values()]).toEqual([TOKEN]);
+  await onPage(b, "#/config", async (p) => {
     expect(p.fire("click", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
-    expect(b.spy.urls.filter((u) => u.includes("/api/fleet-token")).length).toBe(1); // no session: the ask is refused and the kept token stands
-    expect([...b.spy.tab.values()]).toEqual([TOKEN]);
+    expect(b.spy.urls.filter((u) => u.includes("/api/fleet-token")).length).toBe(1);
+    expect([...b.spy.tabStorage.values()]).toEqual([TOKEN]);
   });
   for (const [what, seen] of Object.entries({ urls: b.spy.urls, cookies: b.spy.cookies, logs: b.spy.logs, history: b.spy.history })) expect(seen.join("\n"), what).not.toContain(TOKEN);
 });
@@ -664,9 +664,9 @@ test("a kept token the server no longer knows is replaced on load when the tab h
   const s = boot({ noIdle: true });
   const b = browser(s.base);
   await logIn(b, "", USER, s.password);
-  b.spy.tab.set("himmel.fleet-token", "stale0token");
+  b.spy.tabStorage.set("himmel.fleet-token", "stale0token");
   await onPage(b, "#/config", async () => {
-    expect([...b.spy.tab.values()]).toEqual([TOKEN]);
+    expect([...b.spy.tabStorage.values()]).toEqual([TOKEN]);
   });
 });
 
@@ -676,7 +676,7 @@ test("a tab with no token and a valid session asks the server for one on load, k
   await logIn(b, "", USER, s.password);
   await onPage(b, "#/config", async (p) => {
     expect(b.spy.urls.filter((u) => u.includes("/api/fleet-token")).length).toBe(1);
-    expect([...b.spy.tab.values()]).toEqual([TOKEN]);
+    expect([...b.spy.tabStorage.values()]).toEqual([TOKEN]);
     expect(p.fire("click", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
   });
   expect(b.spy.urls.join("\n")).not.toContain(TOKEN);
@@ -686,7 +686,7 @@ test("a token-less tab whose session began after it loaded gets a token on the F
   const s = boot({ noIdle: true });
   const b = browser(s.base);
   await onPage(b, "#/config", async (p) => {
-    await logIn(b, "", USER, s.password); // the login happens in another tab: the same cookie jar
+    await logIn(b, "", USER, s.password);
     expect(p.fire("click", linkEvent("/agui/#t="))).toBe(true);
     await settle();
     expect(b.spy.went).toEqual([`/agui/#t=${TOKEN}`]);

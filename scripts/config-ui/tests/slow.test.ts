@@ -147,7 +147,7 @@ test("page: a slower, older feed load never repaints over a newer one", async ()
     render: (f: { id?: string } | null) => { if (f) painted.push(f.id ?? "?"); return ""; }, renderNav: () => "",
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
-    // the rail (nav.js) and its fleet read are not under test here, nor is the read-only mode probe, the tab-token read or the vm form's or the report settings' or the review gate's or the fleet cap's or the setup read (Configure's onVisit) or the tracker sources' read: none may take the feed's fetch slot.
+    // the rail (nav.js) and its fleet read are not under test here, nor is the read-only mode probe or the vm form's or the report settings' or the review gate's or the fleet cap's or the setup read (Configure's onVisit) or the tracker sources' read: none may take the feed's fetch slot.
     fetch: (url: string) => url === "/api/agui/fleet" || url === "/api/fleet-token" || url === "/api/mode" || url === "/api/vm" || url === "/api/review-gate" || url === "/api/fleet-cap" || url === "/api/report-settings" || url === "/api/setup" || url === "/api/sources" || url === "/api/api-roles" ? Promise.resolve({ status: 401, ok: false, json: async () => ({ error: "stub" }) }) : new Promise((res) => {
       const ok = (b: string) => res({ status: 200, ok: true, json: async () => ({ id: b }) });
       if (first) { first = false; ok("initial"); } else waiting.push(ok);

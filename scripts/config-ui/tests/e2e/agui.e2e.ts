@@ -679,7 +679,6 @@ test("18. a claudex worker's cost-eq reads not priced", async ({ page }) => {
   await expect(card(page, FLEET.worker.name).locator(".fleet-usage")).toHaveText("context 4% of 1.0M (model window) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq not priced");
 });
 
-// The launch token is kept for the tab, and a valid session cookie gets a token-less tab one.
 test("19. a reload keeps Fleet open live: the tab kept its token, and no request line carries it", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
   const tok = /#t=([0-9a-f]{64})/.exec(h.url)![1];
@@ -688,12 +687,12 @@ test("19. a reload keeps Fleet open live: the tab kept its token, and no request
   await page.goto(h.url.replace("/agui/#t=", "/#t="));
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Configure");
   await page.reload();
-  expect(await page.evaluate(() => location.hash)).toBe("#/config"); // the fragment is gone: only the tab's storage has the token
+  expect(await page.evaluate(() => location.hash)).toBe("#/config");
   const fleet = page.locator("nav.pages a", { hasText: "Fleet" });
   await expect(fleet).toHaveAttribute("href", `/agui/#t=${tok}`);
   await fleet.click();
   await expect(page).toHaveURL(new RegExp(`/agui/#t=${tok}$`));
-  await expect(card(page, FLEET.worker.name)).toBeVisible(); // the live fleet, not the bundled replay
+  await expect(card(page, FLEET.worker.name)).toBeVisible();
   for (const u of lines) expect(new URL(u).pathname + new URL(u).search).not.toContain(tok);
 });
 
