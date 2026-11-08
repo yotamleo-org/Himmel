@@ -1717,12 +1717,15 @@ mk98 "$OPUS98" "$WORK/d98n.json"
 gen98 "$WORK/d98n.json" "$WORK/bd98n"
 lacks "9598 d: an opus worker with no context_1m gets no Context line" "$(cat "$WORK/bd98n"/*-N901-plain-fix-2026-10-08.md 2>/dev/null)" "**Context:**"
 lacks "9598 d: and its launcher exports no context override" "$(cat "$WORK/bd98n/launch-N901.sh" 2>/dev/null)" "WORKER_SESSION_CONTEXT"
-for bad in 'w["ab_arm"]="200k"; w["profile"]="worker-docs"' 'w["lane"]="claudex"' 'w["context_1m"]="  "'; do
-    mk98 "$OPUS98; w[\"context_1m\"]=\"decision 844: 1M\"; $bad" "$WORK/d98b.json"
+d98bad() {
+    mk98 "$1" "$WORK/d98b.json"
     gen98 "$WORK/d98b.json" "$WORK/bd98b"; rc=$?
-    [ "$rc" = 1 ] && grep -q 'context_1m\|claudex' "$WORK/g98.err" && pass "9598 d: context_1m with [$bad] is refused" || fail "9598 d: [$bad] rc=$rc: $(cat "$WORK/g98.err")"
+    [ "$rc" = 1 ] && grep -qF -- "$2" "$WORK/g98.err" && pass "9598 d: context_1m with [$1] is refused: $2" || fail "9598 d: [$1] rc=$rc: $(cat "$WORK/g98.err")"
     rm -rf "$WORK/bd98b"
-done
+}
+d98bad "$OPUS98; w[\"context_1m\"]=\"decision 844: 1M\"; w[\"ab_arm\"]=\"200k\"; w[\"profile\"]=\"worker-docs\"" "cannot both be set"
+d98bad 'w["keys"]=["HIMMEL-9801"]; w["context_1m"]="decision 844: 1M"; w["lane"]="claudex"' "context_1m is native-lane only"
+d98bad "$OPUS98; w[\"context_1m\"]=\"  \"" "context_1m must be a non-blank"
 
 mk98 'w.pop("prior"); w["keys"]=["HIMMEL-9801"]; w["inherited"]={"pr":4242,"authors":["someone"],"mode":"resume"}' "$WORK/e98.json"
 gen98 "$WORK/e98.json" "$WORK/be98"; rc=$?
@@ -1769,6 +1772,15 @@ PYEOF
 mkdir -p "$WORK/lintfail"
 lf="$(python3 -I "$WORK/lintfail.py" "$HERE" "$WORK/lintfail" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "a brief-lint timeout or start failure leaves no brief behind" || fail "lint failure path: $lf"
+
+mk98 'w["keys"]=["HIMMEL-9801"]; w["writes"]="scripts/x/ /etc/outside98.md "+sys.argv[4]' "$WORK/g98o.json" "$WORK/handovers/../esc98/y.md"
+gen98 "$WORK/g98o.json" "$WORK/bg98o"; rc=$?
+[ "$rc" = 0 ] && [ "$(grep '^> \*\*Writes:\*\* ' "$WORK/bg98o"/*-N901-plain-fix-2026-10-08.md 2>/dev/null)" = "> **Writes:** scripts/x/" ] && pass "9598 a: an absolute path outside the handover root, and one with .., stay off the Writes line" || fail "9598 a: outside paths rc=$rc, Writes [$(grep -h '^> \*\*Writes:\*\* ' "$WORK/bg98o"/*.md 2>/dev/null)]"
+
+srmut lintref 'pass'
+rc=0; o="$(BRIEF_LINT_JIRA_CLI="$WORK/no-such-cli.js" srrun lintref)" || rc=$?
+{ [ "$rc" = 1 ] && case "$o" in *"brief-lint refuses"*) true ;; *) false ;; esac; } && pass "9598 f: a series writer brief lint refuses exits 1" || fail "9598 f: series lint refusal rc=$rc: $o"
+[ -z "$(find "$WORK/sr-b-lintref" -type f \( -name '*.md' -o -name 'launch-*' -o -path '*/series/*' \) -print -quit 2>/dev/null)" ] && pass "9598 f: and leaves no brief, launcher, series ledger or lock behind" || fail "9598 f: left $(find "$WORK/sr-b-lintref" -type f)"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

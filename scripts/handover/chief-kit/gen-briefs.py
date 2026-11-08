@@ -1243,15 +1243,22 @@ def lint_env(hroot):
     return env
 
 
+def drop_refused_brief(doc, l):
+    sp = l.get('series_plan')
+    for p in (doc,) + ((sp['ledger'], sp['ledger'] + '.lock') if sp else ()):
+        if os.path.exists(p):
+            os.unlink(p)
+
+
 def lint_brief(doc, l, hroot):
     lint = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'brief-lint.sh')
     try:
         r = subprocess.run(['bash', lint, doc], capture_output=True, text=True, timeout=120, env=lint_env(hroot))
     except (OSError, subprocess.SubprocessError) as e:
-        os.unlink(doc)
+        drop_refused_brief(doc, l)
         die('worker %s: brief-lint could not run (%s), so no brief or launcher is kept for it or the workers after it' % (l['label'], e))
     if r.returncode != 0:
-        os.unlink(doc)
+        drop_refused_brief(doc, l)
         die('worker %s: brief-lint refuses the brief (rc %d), so no brief or launcher is kept for it or the workers after it: %s' % (
             l['label'], r.returncode, ' '.join((r.stderr or r.stdout).split())))
 
