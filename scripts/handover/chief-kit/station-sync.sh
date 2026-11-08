@@ -33,12 +33,14 @@
 # A tracked edit in the qmd fork clone prints `LOCAL-DIFF qmd_fork <file>`.
 #
 # Output: `STEP <step> rc=<n>` per step, any LOCAL-DIFF lines, then
-# `STATION=OK` or `STATION=BEHIND:<component>,...`. The same value (`ok` or
+# `STATION=OK` or `STATION=BEHIND:<component>,...`, then a `STEP usage_compute rc=<n>` or
+# `SKIP usage_compute <reason>` line. The same station value (`ok` or
 # `BEHIND:...`) is written to the state file tick.sh reads as station=; it
 # clears on the next sync. Runs are serialized on a flock next to the state file. While a run is in flight the state reads
 # `BEHIND:pending`, so a run that is killed never leaves a stale `ok`. Exit 0 whatever the station state; 2 on usage.
 #
-# Test seams (env): SS_UPDATE SS_UPGRADE SS_GH SS_PRIMARY SS_VAULT SS_QMD_CLONE SS_STATE SS_SYSTEMCTL.
+# Test seams (env): SS_UPDATE SS_UPGRADE SS_GH SS_PRIMARY SS_VAULT SS_QMD_CLONE SS_STATE SS_SYSTEMCTL
+# SS_USAGE_COMPUTE SS_TIMEOUT.
 # Platform guard: Linux bash 3.2+.
 set -uo pipefail
 
@@ -209,4 +211,18 @@ if [ -n "$behind" ]; then val="BEHIND:$behind"; echo "STATION=BEHIND:$behind"
 else val="ok"; echo "STATION=OK"
 fi
 mkdir -p "$(dirname "$STATE")" 2>/dev/null && printf '%s\n' "$val" > "$STATE" 2>/dev/null
+
+release_sync_lock() { exec 9>&-; }
+USAGE_TERM_TIMEOUT_SECONDS=180
+USAGE_BUDGET_SECONDS=120
+release_sync_lock
+USAGE_STORE="${HIMMEL_USAGE_STORE:-$HOME/.himmel/state/usage}"
+if [ -n "${SS_USAGE_COMPUTE:-}" ]; then USAGE=("$SS_USAGE_COMPUTE"); else USAGE=(bash "$PRIMARY/scripts/usage/usage-compute.sh"); fi
+TO="${SS_TIMEOUT:-timeout}"
+if ! command -v "$TO" >/dev/null 2>&1; then echo "SKIP usage_compute no-timeout"
+elif [ -d "$USAGE_STORE/.lock" ]; then echo "SKIP usage_compute store-locked"
+else
+    (cd "$PRIMARY" && "$TO" "$USAGE_TERM_TIMEOUT_SECONDS" "${USAGE[@]}" --budget-seconds "$USAGE_BUDGET_SECONDS" >/dev/null 2>&1); rc=$?
+    echo "STEP usage_compute rc=$rc"
+fi
 exit 0
