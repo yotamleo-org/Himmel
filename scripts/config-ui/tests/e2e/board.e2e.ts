@@ -328,7 +328,6 @@ test("reloading on the No version tab starts its read without a page error", asy
   await open(page);
   await go(page, "#/board?tab=nv");
   await expect(page.locator("#rm-nv .rm-card", { hasText: "Standing ticket with no version" })).toBeVisible();
-  // the tab keeps its token across a reload, so route() reaches loadNoVersion() at load without a ReferenceError and the card draws again
   const asked = page.waitForRequest((r) => r.url().includes("/api/roadmap?nv=1"));
   await page.reload();
   await asked;
