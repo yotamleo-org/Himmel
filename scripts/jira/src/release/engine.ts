@@ -520,8 +520,6 @@ export function specCheck(env: Record<string, string | undefined>, keys: string[
   return { lines, ok: lines.every((l) => l.startsWith('SPEC ok ')), warnings };
 }
 
-// --- the version bucket: the verdict the launch door and the merge line ask ---
-
 export const OUT_OF_VERSION_MS = 14 * 86_400_000;
 
 // The newest verified out-of-version record naming the key, under 14 days old. A record past a chain break, or in a

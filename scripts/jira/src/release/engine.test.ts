@@ -2133,13 +2133,11 @@ describe('release bucket-check verdict', () => {
   const mir = () => join(root, 'mirror');
   const declared = () => declare(ctx(env()), { project: 'BKT', versions: ['v1.1.9', 'v1.1.10'], decision: '106', verbatim: 'R', mode: 'observe' });
   const versions = (text = 'v1.1.8\ttrue\t2026-10-01\tfalse\nv1.1.10\tfalse\t\tfalse\nv1.1.9\tfalse\t\tfalse\n') => writeFileSync(`${mir()}.versions.tsv`, text);
-  // The bucket's fixture: a declared release on HIMMEL, a mirror, and a versions file whose current is v1.1.9.
   function world(issues: Parameters<typeof mirror>[0] = []) {
     declared();
     mirror(issues);
     versions();
   }
-  // A live-read stub: answers fixVersions per key, fails, or never answers; it counts its calls.
   function stub(answer: Record<string, string[]> | 'fail' | 'hang' = 'fail') {
     const calls: string[] = [];
     const get = (<T>(path: string): Promise<T> => {

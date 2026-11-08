@@ -898,7 +898,6 @@ describe('RM apply names its writer', () => {
 describe('jira release bucket-check', () => {
   const vf = () => join(root, 'verbatim.txt');
   const declared = () => run('operator', 'declare', 'R1', '--versions', 'v1.1.9,v1.1.10', '--decision', '106', '--verbatim-file', vf());
-  // The key's project mirror, and its versions file beside it as focus-refresh.sh writes it.
   function projectMirror(...issues: Array<{ key: string; fixVersions: string[]; category?: string }>): string {
     const dir = join(root, 'jira-mirror', 'HIMMEL');
     mkdirSync(dir, { recursive: true });
@@ -910,7 +909,6 @@ describe('jira release bucket-check', () => {
     writeFileSync(`${dir}.versions.tsv`, 'v1.1.9\tfalse\t\tfalse\nv1.1.10\tfalse\t\tfalse\n');
     return dir;
   }
-  // An out-of-version record, signed into the release's operator chain as the S1b writer will write it.
   const approve = (key: string, decision: string, ageDays: number) => appendChain(join(root, 'state', 'R1', 'operator.jsonl'), loadKey(join(root, 'keys', 'R1.key')), {
     id: `O-R1-ov-${decision}`, kind: 'out-of-version', decision, keys: [key], ts: new Date(Date.now() - ageDays * 86_400_000).toISOString(),
   });
