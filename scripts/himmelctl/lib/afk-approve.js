@@ -9,8 +9,9 @@
 //   - refuses unless it runs as the config's operator_user, before anything is sent,
 //   - sends the config's own operator_id as --from/--chat, so SSH can never name anyone else,
 //   - tags the call --via ssh --approver <that user>, which the ledger rows carry, and
-//   - reads the nonce and the TOTP code (for a deny, the nonce alone) from stdin (masked on a TTY) and
-//     hands them to the helper's stdin. Neither goes in argv, a log or a ledger row.
+//   - reads the nonce and the TOTP code (for a deny the nonce, and the code once the request has seen three
+//     wrong nonces) from stdin (masked on a TTY) and hands them to the helper's stdin. Neither goes in argv,
+//     a log or a ledger row.
 //
 // Test seams (an operator-run CLI gains no privilege from them: they only change which file this
 // user's own process reads, or which program it runs in place of `sudo -n <helper>`):
