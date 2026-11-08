@@ -268,10 +268,9 @@ run_hook "$MARK" "$(jpost sN PostToolUse x "out $flipped")"
 if [ ! -e "$S/taint/sN" ] && [ "$(pending_count sN)" = 0 ]; then pass "an unverified copy does not taint"; else fail "an unverified copy does not taint"; fi
 run_hook "$MARK" "$(jpost sF PostToolUseFailure x "err $GOOD")"
 if [ -e "$S/taint/sF" ]; then pass "PostToolUseFailure with a verified marker taints"; else fail "PostToolUseFailure with a verified marker taints"; fi
-mkdir -p "$tmp/stubnode"
-printf '#!/bin/sh\necho called >> "%s"\nexit 1\n' "$tmp/node-calls" > "$tmp/stubnode/node"; chmod +x "$tmp/stubnode/node"
-run_hook "$MARK" "$(jpost sQ PostToolUse 'git status' 'plain output')" PATH="$tmp/stubnode:$PATH"
-if [ ! -e "$tmp/node-calls" ] && [ "$RC" = 0 ]; then pass "output without the prefix never starts node"; else fail "output without the prefix never starts node"; fi
+stub_hooks pre ''
+run_hook "$SH" "$(jpost sQ PostToolUse 'git status' 'plain output')" STUB_TOUCH="$tmp/node-calls"
+if [ ! -e "$tmp/node-calls" ] && [ "$RC" = 0 ]; then pass "output without the prefix never starts the verifier"; else fail "output without the prefix never starts the verifier"; fi
 mv "$C/hmac.key" "$C/hmac.key.off"
 run_hook "$MARK" "$(jpost sK PostToolUse x "out $GOOD")"
 if [ "$RC" = 0 ] && [ -z "$ERR" ] && [ ! -e "$S/taint/sK" ]; then pass "a missing key file: no taint and no error"; else fail "a missing key file: no taint and no error" "rc=$RC err=$ERR"; fi
@@ -342,8 +341,9 @@ run_hook "$SH" "$(jpost sX PostToolUse x "out $GOOD")" STUB_THROW=1
 if [ "$(pending_count sX)" = 0 ]; then pass "other outcome clears: the throwing-verifier row turns red"; else fail "other outcome clears: the throwing-verifier row turns red"; fi
 mkdir -p "$tmp/mpf"; sed '/# guard:prefilter$/d' "$MARK" > "$tmp/mpf/peer-taint-mark.sh"; cp "$PLUG/run-node.sh" "$PLUG/resolve-node.sh" "$MARKER_JS" "$tmp/mpf/"
 rm -f "$tmp/node-calls"
-run_hook "$tmp/mpf/peer-taint-mark.sh" "$(jpost sQ PostToolUse 'git status' 'plain output')" PATH="$tmp/stubnode:$PATH"
-if [ -e "$tmp/node-calls" ]; then pass "no prefilter: the stub-node row turns red"; else fail "no prefilter: the stub-node row turns red"; fi
+stub_hooks nopre '/# guard:prefilter$/d'
+run_hook "$SH" "$(jpost sQ PostToolUse 'git status' 'plain output')" STUB_TOUCH="$tmp/node-calls"
+if [ -e "$tmp/node-calls" ]; then pass "no prefilter: the verifier-start row turns red"; else fail "no prefilter: the verifier-start row turns red"; fi
 # shellcheck disable=SC2016 # sed text, not shell
 sed 's|^    1:unverified) rm -f "$own" ;; # guard:undo$|    1:unverified) rm -f "$own" "$S/taint/$sid" ;;|' "$MARK" > "$tmp/mpf/peer-taint-mark.sh"
 : > "$S/taint/sA"
