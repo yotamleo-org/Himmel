@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# next-dispatchable.sh — Ranked list, with its file overlaps named, of the next
+# next-dispatchable.sh — Ranked, collision-checked list of the next
 # tickets a chief can dispatch. READ-ONLY: it prints, it never launches,
 # creates a worktree or writes the mirror. chief-wait.sh prints it with the
 # `WAKE underfilled` block; a chief can also run it by hand. It absorbs the
