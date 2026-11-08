@@ -703,11 +703,10 @@ test('HIMMEL-7264: a fresh reading with too little left still refuses a start', 
   assert.equal(pickUsd(f, '0.10').verdict, 'PROCEED');
 });
 
-test('HIMMEL-7264: a missing snapshot, a missing row, an expired grant and an aged-out automatic snapshot all route on the ledger', () => {
+test('a missing snapshot, a missing row and an aged-out automatic snapshot all route on the ledger', () => {
   const cases = {
     'file missing': (f) => rmSync(f.paths.snapshot),
     'row missing': (f) => { f.snapshot.accounts = {}; f.save(); },
-    'expired grant': (f) => { for (const a of ['A', 'B']) Object.assign(f.snapshot.accounts[a], { starts_at: f.now - 4000, expires_at: f.now - 10 }); f.save(); },
     'aged-out automatic': (f) => { for (const a of ['A', 'B']) Object.assign(f.snapshot.accounts[a], { source: 'automatic-snapshot', starts_at: f.now - 7200, observed_at: f.now - 3600 }); f.save(); },
   };
   for (const [name, mutate] of Object.entries(cases)) {
@@ -717,6 +716,42 @@ test('HIMMEL-7264: a missing snapshot, a missing row, an expired grant and an ag
     assert.equal(r.verdict, 'PROCEED', `${name}: ${JSON.stringify(r)}`);
     assert.equal(r.snapshot_unknown, true, name);
   }
+});
+
+const expireGrant = (f, ...accounts) => {
+  for (const a of accounts) Object.assign(f.snapshot.accounts[a], { starts_at: f.now - 4000, expires_at: f.now - 10 });
+  f.save();
+};
+
+test('pick never answers PROCEED for an account whose status reads expired-grant', () => {
+  const f = fixture();
+  expireGrant(f, 'A');
+  assert.equal(f.call().reason, 'expired-grant');
+  // B has no reading, so the ledger would rank A first on the tie: only the expiry stops it
+  delete f.snapshot.accounts.B; f.save();
+  const r = pickUsd(f, '0.01');
+  assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
+  assert.equal(r.account, 'B');
+  const only = pickOnly(f, '0.01', 'A');
+  assert.notEqual(only.verdict, 'PROCEED', JSON.stringify(only));
+});
+
+test('with every account expired, pick refuses with no account', () => {
+  const f = fixture();
+  expireGrant(f, 'A', 'B');
+  const r = pickUsd(f, '0.01');
+  assert.equal(r.verdict, 'SKIPPED-BANK', JSON.stringify(r));
+  assert.equal(r.reason, 'no-account-with-headroom');
+  assert.equal(r.account, undefined);
+});
+
+test('an expired grant also refuses a reserve under optional routing', () => {
+  const f = fixture();
+  expireGrant(f, 'A');
+  const r = JSON.parse(spawnSync(process.execPath, [SUT, 'reserve', '--id', 'j1', '--usd', '0.01'],
+    { env: { ...f.env, HIMMEL_API_SNAPSHOT_OPTIONAL: '1' }, encoding: 'utf8' }).stdout);
+  assert.equal(r.verdict, 'SKIPPED-BANK', JSON.stringify(r));
+  assert.equal(r.reason, 'expired-grant');
 });
 
 test('HIMMEL-7264: a snapshot flagged unverified or discrepant never routes on the ledger, whatever else is malformed in it', () => {
