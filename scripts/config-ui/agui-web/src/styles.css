@@ -370,3 +370,19 @@ a.bd-link{margin-right:10px}.bd-link+.bd-link,.bd-chip+.bd-link{margin-left:10px
 .bd-tip[data-tip]::after{content:attr(data-tip);display:none;position:absolute;left:0;top:100%;z-index:25;width:max-content;max-width:min(320px,80vw);padding:var(--s1) var(--s2);border-radius:6px;background:var(--fg);color:var(--surface);font:var(--fs-xs) var(--font-ui);line-height:1.35;white-space:normal;overflow-wrap:anywhere;pointer-events:none}
 .bd-tip[data-tip]:hover::after,.bd-tip[data-tip]:focus-visible::after{display:block}
 .bd-note-body{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12.5px;max-height:12em;overflow:auto}
+
+/* The RAG eval page: the bottom line first, then one row per route; a cell the eval has not measured says so in words, never a number. */
+.rag{max-width:1180px;margin:0 auto;padding:20px 24px}
+.rag h1{font-size:var(--fs-lg);margin:0 0 var(--s3)}
+.rag-bottom{font-size:var(--fs-md);font-weight:600;margin:0 0 var(--s2);padding:var(--s3) var(--s4);background:var(--panel);border-left:3px solid var(--accent);border-radius:var(--radius)}
+.rag-dim{color:var(--dim)}
+.rag-scroll{overflow-x:auto;margin:var(--s4) 0}
+.rag-table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+.rag-table th,.rag-table td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.rag-table thead th{color:var(--dim);font-weight:600;font-size:var(--fs-xs)}
+.rag-table thead th[scope="colgroup"]{color:var(--fg);border-bottom:1px solid var(--rule-strong)}
+.rag-table tbody th{font-weight:600}
+.rag-gap{color:var(--dim);font-style:italic;background:repeating-linear-gradient(135deg,transparent 0 6px,var(--surface-2) 6px 7px)}
+.rag-yardstick th{color:var(--road)}
+.rag-notes{color:var(--dim);margin:0;padding-left:18px;max-width:80ch}
+.rag-notes li{margin:2px 0}
