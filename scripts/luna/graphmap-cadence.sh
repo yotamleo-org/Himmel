@@ -451,7 +451,7 @@ Flags (arm only, except --dry-run and --luna-only):
                          Arms PAUSED: arm writes semantic-luna.paused; rm it
                          to resume. Needs --api-account.
   --api-account A|B|C    With --with-luna-semantic: the API account the luna
-                         semantic runner names (never auto, decision 525).
+                         semantic runner names (never auto).
                          arm --rewrite-armed keeps the account the runner was
                          armed with, and refuses a runner armed with auto or
                          none (re-arm it with --force --api-account).
@@ -569,7 +569,10 @@ if [ "$REWRITE_ARMED" -eq 1 ] && { [ "$FORCE" -eq 1 ] || [ "$AST_ONLY" -eq 1 ] |
 fi
 # The luna semantic runner spends an API account the operator names: auto is the himmel graph pass alone (decision 525).
 if [ "$WITH_LUNA_SEMANTIC" -eq 1 ] && ! llm_backend_api_account_ok "$API_ACCOUNT"; then
-    echo "ERR graphmap-cadence: --with-luna-semantic needs --api-account A, B or C (got '${API_ACCOUNT:-}'): the luna semantic worker never runs on auto (decision 525)" >&2; exit 2
+    echo "ERR graphmap-cadence: --with-luna-semantic needs --api-account A, B or C (got '${API_ACCOUNT:-}'): the luna semantic worker never runs on auto" >&2; exit 2
+fi
+if [ -n "$API_ACCOUNT" ] && [ "$WITH_LUNA_SEMANTIC" -eq 0 ]; then
+    echo "ERR graphmap-cadence: --api-account only applies to --with-luna-semantic" >&2; exit 1
 fi
 
 # The semantic pair's backend label must come from the INSTALLED runner's
@@ -1401,7 +1404,7 @@ cmd_arm() {
         API_ACCOUNT=$(armed_luna_semantic_account "$CRON_RUNNER_SEMANTIC_LUNA")
         if ! llm_backend_api_account_ok "$API_ACCOUNT"; then
             if semantic_api_opted_in; then
-                echo "ERR graphmap-cadence: $CRON_RUNNER_SEMANTIC_LUNA was armed with account '${API_ACCOUNT:-none}', not A, B or C (decision 525): re-arm it with arm --luna-only --ast-only --with-luna-semantic --api-account A|B|C --force; nothing was rewritten" >&2
+                echo "ERR graphmap-cadence: $CRON_RUNNER_SEMANTIC_LUNA was armed with account '${API_ACCOUNT:-none}', not A, B or C: re-arm it with bash scripts/luna/graphmap-cadence.sh arm --luna-only --ast-only --with-luna-semantic --api-account A --force (B or C also work); nothing was rewritten" >&2
                 exit 2
             fi
             API_ACCOUNT=""

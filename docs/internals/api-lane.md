@@ -6,16 +6,19 @@ OFF unless the launching shell sets `HIMMEL_API_LANE=on`. This page covers what
 happens when a call on it fails. The launcher's header lists the
 full argument and environment contract.
 
+`auto` picks the account among those allowed; whether a feature runs at all is that
+feature's own switch.
+
 ## Who uses it
 
 | Caller | Default backend | How it reaches the API lane |
 |---|---|---|
 | `scripts/api-lane/judge-call.sh` | API lane | always (a chief's verdict question) |
 | `scripts/api-lane/bulk-call.sh` | API lane | always |
-| `jira release rm-run` (release manager) | API lane | always; the prompt goes on stdin and is replayed on the fallback |
+| `jira release rm-run` (release manager) | the subscription | only in the himmel repo with `judge` mapped in `roles.json` (see [The role map](#the-role-map)); there the launcher's fallback is off, and a failed lane call, a policy refusal included, makes `rm-run` rule the batch once on the subscription itself; a timed-out call ends the run |
 | `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the review runs on the subscription |
 | `scripts/graphify/graph-cadence.sh --semantic` | `claude-cli` | `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` |
-| `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|auto` |
+| `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|C` |
 
 The two cadences default to the subscription (`claude-cli`) because both API
 accounts can run dry; the API lane is an explicit opt-in there.
@@ -30,7 +33,17 @@ no alert and runs no fallback. During the call the launcher stops it, settles
 and exits 143; once the call has ended it exits with its usual code, and a stop
 that lands in the failure path ends that path too.
 The call watchdog (`HIMMEL_API_CALL_TIMEOUT_S`) signals only the call, so a call
-it stops is a failed call and takes the path below. Then the launcher:
+it stops is a failed call and takes the path below.
+
+A policy refusal is the one refusal that takes no part of it: a call asking for account
+`auto` under a kind the limit does not allow (see [Account C and auto routing](#account-c-and-auto-routing))
+prints `claude-api: policy refusal: …` and exits 2, with no alert, no alert stamp and no
+fallback, whatever `HIMMEL_API_FALLBACK` says. It means a caller regressed, so it leaves
+one line in `policy-refusals.jsonl` in the alert directory (`HIMMEL_API_ALERT_DIR`, by
+default the stamp directory below), and the doctor's `C91-api-policy-refusals` check prints
+one WARN per kind and repo, with a count, for a refusal in the last 48 h.
+
+For every other failure the launcher:
 
 1. **Decides whether to fall back** (first match wins):
 

@@ -346,8 +346,8 @@ publisher, so it never fetches.
 
 The luna vault graph is rebuilt AST-only nightly (`HIMMEL-GraphMapAst-Luna`), so
 its markdown only gets LLM extraction from a separate job:
-`graphmap-cadence.sh arm --luna-only --ast-only --with-luna-semantic` adds
-`HIMMEL-GraphSemantic-Luna` (cron, `50 */2`), which runs `semantic-update.sh
+`bash scripts/luna/graphmap-cadence.sh arm --luna-only --ast-only --with-luna-semantic --api-account A`
+(account B or C also works; the flag is required and `auto` is refused) adds `HIMMEL-GraphSemantic-Luna` (cron, `50 */2`), which runs `semantic-update.sh
 --name luna --corpus-class luna-personal --backend claude-api` against the same
 external out dir the AST job writes (an absolute `GRAPHIFY_OUT`), capped at 20
 changed files and 2 USD per fire. It arms PAUSED (`semantic-luna.paused` beside
