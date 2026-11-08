@@ -168,7 +168,6 @@ rc_wfloor=$?
 if [ "$rc_wfloor" = 2 ] && [ ! -s "$WLOG2" ]; then ok "watch refuses under the floor and logs nothing"
 else bad "watch floor" "rc=$rc_wfloor"; fi
 
-# watch --floor: the default still refuses at 100, --floor 0 watches at 100
 WLOG4="$TMP/watch4.log"
 FAKE_REMAINING=100 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$WLOG4" --seconds 1 >/dev/null 2>&1
 rc_wdef=$?
