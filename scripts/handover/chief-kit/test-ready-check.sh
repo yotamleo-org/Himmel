@@ -263,6 +263,7 @@ seed_deferral() {
     printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-%s","severity":"sug","verdict":"deferred","deferred_to":"%s","fu_class":"polish","reason":"out of scope","artifact":"diff","perspective":"off"}\n' "${SEED_BRANCH:-b}" "${2:-$SHA}" "$1" "$1" >> "$LEDGER"
 }
 
+RUN_FLAGS="--observe"
 run() {
     local cache="${RUN_CACHE:-}"
     [ -n "$cache" ] || cache=$(mktemp -d "$tmp/cache.XXXXXX") || return 1
@@ -1848,7 +1849,7 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" \
     PATH="$PATH" GH_LOG="$GH_LOG" READY_CHECK_ANCHOR="$TP_ANCHOR" \
-    bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
+    bash "$own/scripts/handover/chief-kit/ready-check.sh" --observe "$PR" "$SHA")" || rc=$?
 # the copy has no scripts/lib/timeout-bin.sh, so check 19 fails closed and is the only FAIL
 check "own-checkout .env: only check 19 fails" "$(printf '%s\n' "$out" | grep '^\[FAIL\]' | grep -vc '^\[FAIL\] 19\. suite evidence: no timeout binary')" "0"
 contains "own-checkout .env: check 19 fails closed without a timeout lib" "$out" "[FAIL] 19. suite evidence: no timeout binary"
@@ -3389,7 +3390,7 @@ rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
     PATH="$PATH" GH_LOG="$GH_LOG" READY_CHECK_ANCHOR="$TP_ANCHOR" \
-    bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
+    bash "$own/scripts/handover/chief-kit/ready-check.sh" --observe "$PR" "$SHA")" || rc=$?
 check "bug-origin partial copy: only check 19 fails (no timeout lib)" "$(printf '%s\n' "$out" | grep '^\[FAIL\]' | grep -vc '^\[FAIL\] 19\. suite evidence: no timeout binary')" "0"
 contains "bug-origin partial copy: not checked" "$out" "$BO_NOTCHECKED"
 
@@ -3403,7 +3404,7 @@ rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
     PATH="$PATH" GH_LOG="$GH_LOG" READY_CHECK_ANCHOR="$TP_ANCHOR" \
-    bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
+    bash "$own/scripts/handover/chief-kit/ready-check.sh" --observe "$PR" "$SHA")" || rc=$?
 check "bug-origin broken lib: exit 0" "$rc" "0"
 contains "bug-origin broken lib: not checked" "$out" "$BO_NOTCHECKED"
 notcontains "bug-origin broken lib: never the no-key PASS" "$out" "$BO_NOTBUG"
@@ -3857,8 +3858,13 @@ contains "17f: item 17 fails" "$R17_OUT" "[FAIL] 17."
 contains "17f: says to name the contract" "$R17_OUT" "--contract yes|no"
 RUN_FLAGS=""
 R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
-check "17g a keyed title with no contract named, from an observer: exit 0 (a warning, not a verdict)" "$R17_RC" "0"
-contains "17g: item 17 warns" "$R17_OUT" "[WARN] 17."
+check "17g a keyed title with no contract named and no flag (the plain call the chief runs before go.sh): exit 1, as go.sh refuses it" "$R17_RC" "1"
+contains "17g: item 17 fails" "$R17_OUT" "[FAIL] 17."
+contains "17g: says to name the contract" "$R17_OUT" "--contract yes|no"
+RUN_FLAGS="--observe"
+R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
+check "17g2 --observe (a waiter or shepherd read, no GO is written): exit 0 (a warning, not a verdict)" "$R17_RC" "0"
+contains "17g2: item 17 warns" "$R17_OUT" "[WARN] 17."
 # a reader the anchor lacks refuses, as the merge refuses on a broken anchor
 NR_ORIGIN="$tmp/tp-origin-nr.git"; NR_ANCHOR="$tmp/tp-nr"
 git init -q --bare "$NR_ORIGIN"
@@ -3882,7 +3888,7 @@ notcontains "17i --only 7 does not run item 18" "$R17_OUT" "] 18."
 # Item 18 asks scripts/cr/clear-review-marker.sh --check-findings, the merge's own ledger verdict, at the head the
 # merge will gate on, with and without the chief's GO assumed. The PR 4611 shape: an Important raised at the reviewed
 # head A and never ruled; B (a non-test delta on top of A) carries its own ok row, so item 4 passes at B.
-RUN_FLAGS=""
+RUN_FLAGS="--observe"
 SHA_SAVE="$SHA"
 R18_A=$(git -C "$REPO" rev-parse HEAD)
 printf 'b\n' > "$REPO/f18.txt"

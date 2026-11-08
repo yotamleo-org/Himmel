@@ -1025,6 +1025,10 @@ rc=0; out="$(go30 "$KEYED30" - 77 "$SHA")" || rc=$?
 check    "8918 b6: a keyed title and no --contract -> exit 4" "$rc" "4"
 contains "8918 b6: says to name the contract" "$out" "--contract yes|no"
 check    "8918 b6: nothing written" "$(find "$ROOT30" -type f | wc -l | tr -d ' ')" "0"
+rm -rf "$ROOT30"; mkdir -p "$ROOT30"
+rc=0; out="$(go30 "$KEYED30" - --fix-main-red 4242 77 "$SHA")" || rc=$?
+check    "9613: --fix-main-red on a keyed title and no --contract -> exit 0" "$rc" "0"
+check    "9613: the fix-GO is written" "$(find "$ROOT30" -type f -name "fix-main-red.77.$SHA.4242" | wc -l | tr -d ' ')" "1"
 rc=0; out="$(go30 "$KEYED30" - --contract maybe 77 "$SHA")" || rc=$?
 check    "8918: --contract maybe -> exit 2" "$rc" "2"
 rc=0; out="$(go30 "$KEYED30" - --contract yes --contract no 77 "$SHA")" || rc=$?
