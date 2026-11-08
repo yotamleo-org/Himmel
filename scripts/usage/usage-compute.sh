@@ -135,8 +135,7 @@ PROJECTS="$(cd "$PROJECTS" && pwd)" || die "cannot enter $PROJECTS"
 if [ "$PRINT" != 1 ]; then
   mkdir -p "$STORE"
   LOCK="$STORE/.lock"; n=0
-  # USAGE_COMPUTE_TEST_LOCK_TRIES is a TEST SEAM: fewer half-second tries, so a suite row reads the refusal without waiting 300 s
-  tries="${USAGE_COMPUTE_TEST_LOCK_TRIES:-600}"
+  tries=600
   # prim-ok: readers share this directory lock; preserve the 300-second writer deadline instead of with_lock's blocking file protocol.
   until mkdir "$LOCK" 2>/dev/null; do
     n=$((n + 1))
@@ -154,18 +153,6 @@ if [ "$PRINT" != 1 ]; then
 fi
 # a signal exits through the EXIT trap, so the lock never outlives the run
 trap 'exit 130' INT TERM HUP
-
-# TEST SEAM: inert unless USAGE_COMPUTE_TEST_PAUSE_AT names this point (window:<k> after the k-th window is committed,
-# file:<n> after the n-th transcript's phase state is saved) and USAGE_COMPUTE_TEST_PAUSE_FILE is set: it creates
-# <file>.reached and waits (about 30 s at most) while <file> exists, so a suite row can kill the run at that point.
-test_pause() {
-  [ "${USAGE_COMPUTE_TEST_PAUSE_AT:-}" = "$1" ] || return 0
-  local f="${USAGE_COMPUTE_TEST_PAUSE_FILE:-}" i=0
-  [ -n "$f" ] || return 0
-  : > "$f.reached"
-  while [ -e "$f" ] && [ "$i" -lt 600 ]; do sleep 0.05; i=$((i + 1)); done
-  return 0
-}
 
 : > "$WORK/ledger.jsonl"
 [ ! -f "$LEDGER" ] || cp "$LEDGER" "$WORK/ledger.jsonl" || die "cannot read ledger: $LEDGER"
@@ -486,7 +473,7 @@ def ukey: if test("^[A-Za-z0-9.-][A-Za-z0-9._-]{0,99}$") then . else null end;
 | to_entries[] | .value + { gone: (if .key == 0 then $gone else [] end) }' "$WORK/inv.txt" > "$WORK/windows.jsonl" \
   || die "cannot plan the windows"
 
-added=0; kept=0; phase_added=0; nfile=0
+added=0; kept=0; phase_added=0
 : > "$WORK/print.jsonl"
 build_window() {
   local win="$1" last="$2" day nu nread=0 rel f ck tl key st off size consumed stem par atype meta fp k j nrows
@@ -561,8 +548,7 @@ build_window() {
         | jq -nRc --slurpfile st "$WORK/st.json" --argjson prices "$PRICES" --argjson meta "$meta" --arg fp "$fp" --argjson off "$((off + consumed))" "$PHASE_FILE_JQ"; } \
       > "$WORK/pnew.json" || die "phase-cost pass failed on $f"
     put "$WORK/pnew.json" "$PSTATE/$key.json"
-    nread=$((nread + 1)); nfile=$((nfile + 1))
-    test_pause "file:$nfile"
+    nread=$((nread + 1))
   done < <(jq -r '.[].files[].rel' "$WORK/wunits.json")
   rm -f "$WORK/chunk"
 
@@ -615,7 +601,6 @@ while IFS= read -r win <&3; do
   fi
   k=$((k + 1))
   build_window "$win" "$([ "$k" -eq "$W" ] && echo 1 || echo 0)"
-  test_pause "window:$k"
 done 3< "$WORK/windows.jsonl"
 [ "$W" != 0 ] || build_window '{"day":"none","units":[],"gone":[]}' 1
 
