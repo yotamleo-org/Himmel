@@ -1569,6 +1569,18 @@ describe('signed minerva specs', () => {
     expect(check(['K-1'])).toEqual(['NO-SPEC K-1']);
   });
 
+  it('a plan edited while the minerva checks run refuses to sign', () => {
+    declared();
+    const { spec: p, plan } = bucketSpec('docs/handover/running-a-chief.md');
+    afterMinerva.fn = () => writeFileSync(plan, `${readFileSync(plan, 'utf8')}\n- Task 2: added mid-sign.\n`);
+    try {
+      expect(() => sign(sctx(), ['K-1'], p, { plan })).toThrow(/changed while it was checked/);
+    } finally {
+      afterMinerva.fn = null;
+    }
+    expect(check(['K-1'])).toEqual(['NO-SPEC K-1']);
+  });
+
   it('a --supersedes re-sign that drops a key of the record it replaces is refused', () => {
     declared();
     const p = spec();
