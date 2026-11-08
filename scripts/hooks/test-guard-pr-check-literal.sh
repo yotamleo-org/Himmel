@@ -855,8 +855,8 @@ run "R8 worktree as HIMMEL_REPO -> deny" 2 "$(payload "bash $W1 1 --go x" "$WT")
 need_in_err "R8 points at the launching shell" "launching shell"
 no_line_starting "R8 prints no runnable line" "bash "
 # R9: a reader the reader model does not accept (accepted over-deny).
-run "R9 /usr/bin/cat on the path -> deny" 2 "$(payload "/usr/bin/cat $W1" "$WT")" "$HR"
-need_line "R9 the printed line is the caller's command with the path written out" "/usr/bin/cat $ANCH"
+run "R9 /usr/bin/cat on the path -> deny" 2 "$(payload "/usr/bin/cat $W1" "$WT")" "$HR" # gnu-ok: payload text fed to the hook, never executed
+need_line "R9 the printed line is the caller's command with the path written out" "/usr/bin/cat $ANCH" # gnu-ok: payload text fed to the hook, never executed
 
 # Passing rows: each keeps its base decision and never prints the spelling refusal.
 run "the anchor literal spelling -> allow (left to the permission layer)" 0 "$(payload "bash $ANCH 1 --go x" "$WT")" "$HR"
@@ -880,7 +880,8 @@ run "P3 a \${U:- ...} spanning the prefix keeps its deny" 2 \
 no_spelling_deny "P3 a \${U:- ...} spanning the prefix"
 # P4: a Unicode space is not a shell blank. Needs a UTF-8 locale for the hook to read the bytes as one character.
 EM=$'\xe2\x80\x83'
-if locale -a 2>/dev/null | grep -qiE '^c\.utf-?8$'; then
+LOCALES=$(locale -a 2>/dev/null)
+if grep -qiE '^c\.utf-?8$' <<<"$LOCALES"; then
     run "P4 an em space after the command word keeps its deny" 2 "$(payload "bash -n${EM}$W1" "$WT")" "$HR" LC_ALL=C.UTF-8
     no_spelling_deny "P4 an em space after the command word"
     run "P4 an em space inside the command word keeps its deny" 2 "$(payload "bash${EM}$W1 1 --go x" "$WT")" "$HR" LC_ALL=C.UTF-8
