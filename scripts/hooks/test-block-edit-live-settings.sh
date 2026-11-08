@@ -3875,6 +3875,11 @@ assert_rc "9891 cp into a /tmp dir whose settings.json is a live symlink (cwd pr
     "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SANDBOX/scratchdir" HOME="$FAKEHOME")"
 assert_rc "9892 cp into a plain /tmp dir (cwd primary) allows" 0 \
     "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SANDBOX/scratchok/" HOME="$FAKEHOME")"
+rows_both 9893 2 "a uniq word that expands, or an operand after --, can name the output file: denies" <<'ROWS'
+n='0 /etc/hostname'; uniq -s $n @P@/.claude/settings.json
+n=' /etc/hostname'; uniq -c$n @P@/.claude/settings.json
+uniq -- -c @P@/.claude/settings.json
+ROWS
 
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).

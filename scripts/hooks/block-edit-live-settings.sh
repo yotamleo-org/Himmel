@@ -1936,7 +1936,7 @@ _tok_readonly_ok() {
         sg=${ST_S[k]}
         if [ "$sg" != "$s" ]; then
             [ "$s" -lt 0 ] || _tok_ro_segment || return 1
-            s=$sg first='' fk=-1 sub='' _GGV=0 _GGD=0 _UQ=0 _UQV=0 _AW=0 _CPN=0 _CPL='' _CPD=0 _PYS=0
+            s=$sg first='' fk=-1 sub='' _GGV=0 _GGD=0 _UQ=0 _UQV=0 _UQD=0 _AW=0 _CPN=0 _CPL='' _CPD=0 _PYS=0
             _CPA=()
         fi
         w=${ST_W[k]}
@@ -1967,7 +1967,7 @@ _tok_readonly_ok() {
                         [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] || return 1
                     fi
                     ;;
-                less|git|sed|eval|sort|printf) [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] || return 1 ;;
+                less|git|sed|eval|sort|printf|uniq) [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] || return 1 ;;
             esac
             case "$first" in
                 uniq) _tok_uniq_word "$w" ;;
@@ -2055,8 +2055,11 @@ _tok_ro_segment() {
 _tok_uniq_word() {
     if [ "$_UQV" = 1 ]; then
         _UQV=0
+    elif [ "$_UQD" = 1 ]; then
+        _UQ=$((_UQ + 1))
     else
         case "$1" in
+            --) _UQD=1 ;;
             -f | -s | -w | --skip-fields | --skip-chars | --check-chars) _UQV=1 ;;
             -?*) ;;
             *) _UQ=$((_UQ + 1)) ;;
