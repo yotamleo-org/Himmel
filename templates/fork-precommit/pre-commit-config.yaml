@@ -1,4 +1,4 @@
-# himmel fork-adapter pre-commit core (HIMMEL-5978).
+# himmel fork-adapter pre-commit core.
 # Copy to <fork>/.himmel/pre-commit-config.yaml next to gitleaks.toml, then:
 #   pre-commit install -c .himmel/pre-commit-config.yaml -t pre-commit -t commit-msg
 # It lives under .himmel/ so upstream never touches it and rebases stay clean;

@@ -2,26 +2,19 @@
 .env
 .env.migrate.*
 scripts/jira/dist/
-# where-are-we ledger L2 (HIMMEL-516): regenerated-from-live-sources cache, not
+# where-are-we ledger L2: regenerated-from-live-sources cache, not
 # source of truth — never commit it.
 /.where-are-we/
 # node_modules anywhere — none are tracked. A per-package list let
-# marketplace/plugins/*/node_modules/ slip through and be sweepable (HIMMEL-371).
+# marketplace/plugins/*/node_modules/ slip through and be sweepable.
 node_modules/
 /.claude/settings.local.json
-# /allow-rule backups (.bak-<epoch>-<pid>) and mktemp orphans written beside it (HIMMEL-5112).
+# /allow-rule backups (.bak-<epoch>-<pid>) and mktemp orphans written beside it.
 /.claude/settings.local.json.*
 # tokensave MCP code-graph state (local SQLite DB, session-generated — never commit).
 /.tokensave/
-# graphify knowledge-graph artifacts (HIMMEL-621, REMOVED HIMMEL-2705 step 1
-# from the git tree entirely — this repo's derived graph no longer PUBLISHES
-# at all). Formerly (HIMMEL-1123) the two portable artifacts (graph.json,
-# GRAPH_REPORT.md) were tracked so stations that can't afford the LLM-backed
-# extraction (win2: "no resources") could pull them instead of re-extracting.
-# That cross-station-pull design is retired: the directory is now ignored
-# OUTRIGHT, nothing re-included. Working files stay on disk — the daily
-# HIMMEL-829 cadence keeps rebuilding them locally, and every place that
-# used to COMMIT or PR the graph now no-ops on this ignored path instead.
+# graphify knowledge-graph artifacts: this repo's derived graph is not
+# published, so the directory is ignored OUTRIGHT, nothing re-included.
 graphify-out/*
 # .claudeignore
 # graphify writes output files (graph.json, graphify-out/) into the workspace. Ignoring them keeps them out of file search and context. It is NOT a prompt-cache fix: a graph.json write does not invalidate a running session's prompt cache (measured: docs/internals/prompt-cache.md, eval no-invalidation). Add them to .claudeignore:
@@ -29,12 +22,12 @@ graph.json
 graphify-out/
 /.claude/skills/graphify/
 # graphify multi-harness init scatters per-machine integration files across the
-# repo (HIMMEL-1193). Regenerable via /graphify, same as the ignored skills dir
+# repo. Regenerable via /graphify, same as the ignored skills dir
 # above.
 /.github/copilot-instructions.md
 .agents/rules/graphify.md
 .agents/workflows/graphify.md
-# Generated/junk artifacts that must never be committed (HIMMEL-371).
+# Generated/junk artifacts that must never be committed.
 # NOT package-lock.json globally — 6 legit npm packages track theirs. The
 # wrong-PM lockfile case (a package-lock.json inside a bun package, left by the
 # npm-audit pre-push gates) is prevented per-bun-package via that package's own
@@ -43,14 +36,14 @@ graphify-out/
 *.tsbuildinfo
 .DS_Store
 Thumbs.db
-# stray empty scratch file at the repo root — not produced by any himmel script
-# (HIMMEL-1193); anchored so it only ignores the root stray.
+# stray empty scratch file at the repo root — not produced by any himmel script;
+# anchored so it only ignores the root stray.
 /.tmp
 # end-session-wiki hook local artifacts — contain raw transcript excerpts (potential secrets).
 # Match any .claude/ dir (the hook writes into the cwd's .claude/, e.g. scripts/telegram/.claude/).
 **/.claude/end-session-wiki.log
 **/.claude/end-session-wiki.log.old
-# run-hook-with-bash.js --chain durable skip/deny log (HIMMEL-2060) — local
+# run-hook-with-bash.js --chain durable skip/deny log — local
 # diagnostics, not source. Not root-anchored (CR round 4, codex-2): the
 # launcher falls back to cwd when CLAUDE_PROJECT_DIR is unset, so a nested
 # invocation writes .claude/logs/ under a subdirectory too.
@@ -62,52 +55,52 @@ Thumbs.db
 **/handovers/*/.pending-new-item*
 .pending-consolidate*
 **/handovers/*/.pending-consolidate*
-# auto-arm-on-cap / auto-arm-on-subagent-cap runtime snapshots (HIMMEL-276) —
+# auto-arm-on-cap / auto-arm-on-subagent-cap runtime snapshots —
 # the hooks write these into himmel handovers/ as untracked clutter on main.
 # (Followup: redirect the hook write path to HANDOVER_DIR — see HIMMEL ticket.)
 handovers/auto-arm-status-*.md
 # arm-resume lock files (arms.jsonl) — transient arming-lock state that lands in
-# the himmel handovers/ stub as untracked clutter; observed staged on main
-# (HIMMEL-1024), same class as the auto-arm-status snapshots above.
+# the himmel handovers/ stub as untracked clutter; observed staged on main,
+# same class as the auto-arm-status snapshots above.
 handovers/.locks/
 # Overnight-mode reports/recovery artifacts — auto-generated session state
 # (morning-report.sh et al.) that belongs in the state repo, not the himmel
 # handovers/ stub. Archived copies live in <state-repo> handovers/yotamleo/himmel/.
 handovers/overnight-report-*.md
 handovers/overnight-recovery-*.md
-# Worker inbox + cursors (HIMMEL-5308): the one untracked subtree left in the
+# Worker inbox + cursors: the one untracked subtree left in the
 # primary's handovers/ stub that showed in every `git status`.
 /handovers/inbox/
-# Cross-project handover content moved to <state-repo> in HIMMEL-13 —
-# prevent accidental re-tracking if the operator's local copy still
-# exists or gets re-created here by an out-of-date tool.
+# Cross-project handover content lives in <state-repo>; these entries
+# prevent re-tracking if the operator's local copy still exists or an
+# out-of-date tool re-creates it here.
 /handovers/luna/
 /handovers/manual_notes.md
 /handovers/random_dreams.md
 # Runtime artifacts that pollute primary-worktree git status
 .claire/
 /.claude/scheduled_tasks.lock
-# HIMMEL-1552: the settings writers' exclusive lock. Transient, but it sits
+# The settings writers' exclusive lock. Transient, but it sits
 # beside a TRACKED file, so a crash-orphaned one would otherwise be swept up by
 # `git add -A`.
 /.claude/settings.json.lock
 /.playwright-mcp
-# Legacy /improve disk artifacts (command removed, HIMMEL-4381). Kept so a
+# Legacy /improve disk artifacts (command removed). Kept so a
 # clone that still holds saved drafts never sweeps them up with `git add -A`.
 /.improve/
-# superpowers design docs were removed for OSS (HIMMEL-297); overnight-mode
-# Mode A (no HANDOVER_DIR) regenerates plans under docs/superpowers/plans/ —
-# keep those local, never re-track the folder into the public repo.
+# overnight-mode Mode A (no HANDOVER_DIR) regenerates plans under
+# docs/superpowers/plans/ — keep those local, never track the folder into
+# the public repo.
 /docs/superpowers/
 # Internal design/plan/decision specs belong in the luna state repo, never in
-# himmel docs/ (HIMMEL-409). himmel docs/ is reference + OSS-public only. Ignore
+# himmel docs/. himmel docs/ is reference + OSS-public only. Ignore
 # docs/specs/ so migrated-out specs can't silently re-track (and never leak to
 # the public mirror). New specs go to <state-repo>/handovers/<user>/<repo>/specs/.
 /docs/specs/
-# Decision records (ADRs) are state-repo work artifacts too (HIMMEL-409) —
+# Decision records (ADRs) are state-repo work artifacts too —
 # they belong in <state-repo>/.../specs/decision/, never himmel docs/.
 /docs/adr/
-# Codex artifacts (HIMMEL-427: codex IS now wired). The guardrail wiring is
+# Codex artifacts. The guardrail wiring is
 # TRACKED (hooks.json + the run-hook wrapper + its README); codex's local
 # runtime config, sessions, and auto-generated slash-command→skill mirrors stay
 # ignored. (AGENTS.md itself is tracked separately.)
@@ -119,22 +112,21 @@ handovers/overnight-recovery-*.md
 .agents/skills/source-command-*/
 # himmel-contributor marker (opt-in; enables doc-guard gate) — never commit it
 .himmel-dev
-# per-operator CR registry overlay (account quota state) — never commit (HIMMEL-727)
+# per-operator CR registry overlay (account quota state) — never commit
 scripts/cr/critics.local.json
-# per-machine lane availability/override overlay (himmelctl config) — never commit (HIMMEL-758)
+# per-machine lane availability/override overlay (himmelctl config) — never commit
 scripts/lanes/lanes.local.json
-# machine-local grok tool-schema cache dir — never commit (HIMMEL-876)
+# machine-local grok tool-schema cache dir — never commit
 /mcps/
-# scripts/lanes/bench/runs/ (HIMMEL-2560, REMOVED HIMMEL-2705 step 1): bench
-# RUN-OUTPUT JSONs moved to the luna state repo — the bench tooling still
-# writes fresh runs here locally, so the directory stays gitignored instead
-# of tracked. See scripts/lib/public-clone-paths.sh for the move rationale.
+# scripts/lanes/bench/runs/: bench RUN-OUTPUT JSONs live in the luna state
+# repo; the bench tooling still writes fresh runs here locally, so the
+# directory is ignored. See scripts/lib/public-clone-paths.sh for why.
 scripts/lanes/bench/runs/
 # stray Corsair iCUE/CorsairLink driver log dropped in the repo root by the
-# host tooling — machine-local noise, never ours to commit (HIMMEL-1611).
+# host tooling — machine-local noise, never ours to commit.
 CorsairLink.log
 # CPython bytecode for the harness's tracked .py sources — pure build
-# byproducts, regenerated on the next import, never work product (HIMMEL-2584).
+# byproducts, regenerated on the next import, never work product.
 # Left untracked-but-unignored, they read to clean-garden as "untracked files
 # that are not known strays (possible forgotten work)", so it correctly refuses
 # to prune — and EVERY merged worktree became unprunable (5 of 5 on this
@@ -142,17 +134,17 @@ CorsairLink.log
 # these files are noise.
 __pycache__/
 *.pyc
-# HIMMEL-3754: vitest's own reporter output dir (any tracked `vitest run`
+# Vitest's own reporter output dir (any tracked `vitest run`
 # invocation mints it), same class of noise as __pycache__ above.
 .vitest/
-# HIMMEL-3078: two recurring strays that tripped himmel-update's dirty-tree
+# Two recurring strays that tripped himmel-update's dirty-tree
 # gate before the gate was scoped to tracked changes — a `bun.lock` `bun
 # install` drops inside the npm-managed scripts/bitbucket/, and a claude-hud
 # plugin config the HUD writes locally. Both are pure noise, never ours to
 # commit.
 scripts/bitbucket/bun.lock
 .claude/plugins/claude-hud/config.json
-# HIMMEL-6286: docs site build output
+# Docs site build output
 site/dist/
 site/node_modules/
 site/.astro/

@@ -1,4 +1,4 @@
-# MCP fleet lean profiles (HIMMEL-719)
+# MCP fleet lean profiles
 
 Every Claude Code session spawns the **full** MCP fleet at startup — per-session,
 not shared. Measured baseline: ~6 node procs/session (chrome-devtools + context7 +
@@ -29,7 +29,7 @@ server specs and writes `local.<name>.json` here. **Those are
 gitignored** — they carry absolute home-directory paths, which must never hit git. Only the
 generator + `profiles.json` manifest + this README are committed.
 
-Secrets are NOT written into the profile (HIMMEL-5002). An env var named
+Secrets are NOT written into the profile. An env var named
 `*API_KEY`, `*TOKEN`, `*SECRET` or `*PASSWORD` goes to a 0600 file at
 `~/.config/himmel/mcp-secrets/<server>/<VAR>` (override the root with
 `HIMMEL_MCP_SECRETS_DIR`), and the profile starts the server through
@@ -43,10 +43,10 @@ registration, and no installer step, on a fresh clone with nothing installed.
 `graphify` is NOT a safe baseline pick: it resolves only from the on-demand
 registry (see below), which `setup.sh --with-graphify` / `adopt.sh
 --with-graphify` populate, so it is listed only in the opt-in `graph` profile.
-(tokensave used to fill the `minimal` role; it was dropped, HIMMEL-2581, and
-its installer provisioning removed, HIMMEL-2634 — this table reflects that.)
+(tokensave used to fill the `minimal` role; it was dropped and its installer
+provisioning removed — this table reflects that.)
 
-## On-demand servers (HIMMEL-7176, HIMMEL-7177)
+## On-demand servers
 
 `~/.claude.json` `mcpServers` loads into **every** session, so a server kept
 there costs its tool schemas everywhere. `obsidian-vault` (15 tools) and
@@ -92,7 +92,7 @@ session, so it is left for you to review + apply — not done automatically:
 ```bash
 # 1. Drop rarely-needed always-on stdio servers from ~/.claude.json mcpServers.
 #    Re-add recipe is just the reverse — keep this block to restore:
-#      headroom     -> until HIMMEL-622 adopts it
+#      headroom     -> evaluated as a token reducer, not adopted
 #      onepassword  -> now reachable via the `secrets` profile on demand
 # 2. context7: disable the npx plugin, rely on the remote endpoint (research profile):
 #      claude plugin disable context7
@@ -114,5 +114,5 @@ T0 always-on (none currently — `minimal`'s sole member, context7-remote, is
 already a T1 singleton; see `minimal` above) · T1 shared HTTP singleton
 (context7 remote, atlassian,
 huggingface, vercel — 0 local procs) · T2 profile-scoped (browser, vault, graph, secrets)
-· T3 env-gated opt-in (telegram-himmel, luna-correlate — HIMMEL-591, done) · TX
+· T3 env-gated opt-in (telegram-himmel, luna-correlate) · TX
 CLI-first (jira over atlassian, gh over github, firecrawl).

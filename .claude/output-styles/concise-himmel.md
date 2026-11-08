@@ -1,6 +1,6 @@
 ---
 name: concise-himmel
-description: Concise, reworded per the Fable 5.1 prompting guide's formatting-in-chat should-do framing (HIMMEL-2586)
+description: Concise, reworded per the Fable 5.1 prompting guide's formatting-in-chat should-do framing
 keep-coding-instructions: true
 ---
 

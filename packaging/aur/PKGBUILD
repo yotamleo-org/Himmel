@@ -1,7 +1,7 @@
 # Maintainer: yotamleo <https://github.com/yotamleo>
 # shellcheck shell=bash disable=SC2034,SC2154  # a PKGBUILD: makepkg reads these variables and supplies pkgdir/srcdir
 #
-# himmel — the AUR package (HIMMEL-3059 S5). It repackages the checksummed
+# himmel — the AUR package. It repackages the checksummed
 # release tarball that release.yml publishes; it builds nothing and ships no
 # install logic. Per-user wiring (settings, hooks, plugins, jobs) is phase 2:
 # each user runs `himmelctl install` as themselves. The install hooks print and
@@ -49,7 +49,7 @@ sha256sums=('3e635b0f7d934201225ab080e50d2f73c0a99bd097632a2bfb5c1e7c8d1f5a33')
 package() {
   install -d "$pkgdir/opt"
   cp -a "$srcdir/himmel-${_tag}" "$pkgdir/opt/himmel"
-  # HIMMEL-3059 S6b: uninstall.sh's project_is_himmel_checkout() needs a way
+  # uninstall.sh's project_is_himmel_checkout() needs a way
   # to recognise this flat, .git-less, current-symlink-less prefix as a real
   # himmel identity root (VERSION alone isn't enough -- it's already in the
   # tarball this package() step just copied in). Only pacman ever writes this.

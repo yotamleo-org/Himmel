@@ -53,7 +53,7 @@ function stubbedRun(args, items = {}, locked = false, conf = '') {
   return { r, store, envFile };
 }
 
-describe('init-cli with credentials in the keyring (HIMMEL-8471)', () => {
+describe('init-cli with credentials in the keyring', () => {
   it('--check passes with the token and email only in the keyring', () => {
     const { r, envFile } = stubbedRun(['--check'], { JIRA_EMAIL: 'kr@example.invalid', JIRA_API_TOKEN: 'keyring-fixture-token' });
     expect(r.status).toBe(0);

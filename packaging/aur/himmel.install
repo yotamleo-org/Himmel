@@ -1,4 +1,4 @@
-# himmel.install — pacman install hooks (HIMMEL-3059 S5, design §4.3).
+# himmel.install — pacman install hooks (native-package design §4.3).
 # Every function here PRINTS and never acts. pacman runs them as root with no
 # invoking-user context, and every himmel side effect lives in some user's
 # $HOME, so root would guess wrong. They never look for users' homes and never
