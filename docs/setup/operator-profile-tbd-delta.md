@@ -1,10 +1,11 @@
-# Operator profile: what the wizard does not set up
+# Operator profile: the gap to a fresh install
 
 The install profile (`scripts/install/capture-operator-profile.mjs`) records
 what the wizard's questions can express. This page lists what the operator's
-reference machine actually **runs** that no wizard question produces today:
-the gap between a fresh install and the operator's own machine. Each row is
-one item from a live capture on that machine. To capture it again:
+reference machine actually **runs** beyond that: the gap between a fresh
+install and the operator's own machine. Most rows are still open gaps; a row
+the wizard has since learned to cover stays, marked so. Each row is one item
+from a live capture on that machine. To capture it again:
 
 ```bash
 node scripts/install/capture-operator-profile.mjs --delta-out /tmp/operator-delta.json
