@@ -60,6 +60,16 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".codex/run-hook.sh --sandbox peer-taint-gate.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -97,6 +107,16 @@
             "timeout": 60
           }
         ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".codex/run-hook.sh --sandbox peer-taint-mark.sh",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -104,7 +124,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".codex/run-hook.sh --sandbox --lifecycle check-update-available.sh+inject-initiative.sh+inject-where-are-we.sh+inject-doc-freshness.sh+record-primary-baseline.sh",
+            "command": ".codex/run-hook.sh --sandbox --lifecycle check-update-available.sh+inject-initiative.sh+inject-where-are-we.sh+inject-doc-freshness.sh+record-primary-baseline.sh+peer-taint-resume.sh",
             "timeout": 60
           }
         ]

@@ -9,10 +9,12 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXPECTED_COUNTS = Object.freeze({
-  PreToolUse: 19,
-  SessionStart: 5,
+  PreToolUse: 20,
+  SessionStart: 6,
   SessionEnd: 3,
   Notification: 1,
+  PostToolUse: 1,
+  PostToolUseFailure: 1,
 });
 const EXPECTED_HOOKS = Object.freeze([
   { event: 'PreToolUse', script: 'inject-minerva-critic.sh', source: 'plugin' },
@@ -58,6 +60,9 @@ const EXPECTED_HOOKS = Object.freeze([
   // plugin-shipped so an adopter repo gets the walled-host WebFetch redirect
   // too; it names the himmel fetcher only when the checkout has one.
   { event: 'PreToolUse', script: 'redirect-webfetch-walled-hosts.sh', source: 'plugin' },
+  // plugin-shipped so the peer taint gate also runs in a peer desk, whose cwd is
+  // an empty dir outside every checkout; the last PreToolUse group.
+  { event: 'PreToolUse', script: 'peer-taint-gate.sh', source: 'plugin' },
   { event: 'SessionStart', script: 'inject-where-are-we.sh' },
   { event: 'SessionStart', script: 'inject-doc-freshness.sh' },
   { event: 'SessionStart', script: 'inject-worktree-nudge.sh' },
@@ -76,10 +81,15 @@ const EXPECTED_HOOKS = Object.freeze([
   // checkout going dirty in a way that hook never sees. Placed directly
   // after record-hook-integrity.sh, matching hooks.json's document order.
   { event: 'SessionStart', script: 'record-primary-baseline.sh' },
+  // a resumed or forked session whose transcript holds a verified peer fence starts tainted.
+  { event: 'SessionStart', script: 'peer-taint-resume.sh', source: 'plugin' },
   { event: 'SessionEnd', script: 'refresh-where-are-we-on-end.sh' },
   { event: 'SessionEnd', script: 'jira-nudge-on-end.sh' },
   { event: 'SessionEnd', script: 'telegram-session-end.sh' },
   { event: 'Notification', script: 'telegram-notification.sh' },
+  // a tool result carrying a verified peer fence taints the session, success or failure.
+  { event: 'PostToolUse', script: 'peer-taint-mark.sh', source: 'plugin' },
+  { event: 'PostToolUseFailure', script: 'peer-taint-mark.sh', source: 'plugin' },
 ]);
 const COMMAND_FIELD = /("command")(\s*:\s*)("(?:\\.|[^"\\])*")/g;
 const COMMAND_SENTINEL = '__WIRE_PLUGIN_HOOK_BASH_COMMAND__';

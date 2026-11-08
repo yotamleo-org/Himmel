@@ -333,6 +333,34 @@ rm -f "$S/taint/sC" "$S/taint/sC".pending*
 concurrent "$SH" verified-first
 if [ "$MID_RC" != 2 ]; then pass "one shared provisional name: the concurrent row turns red"; else fail "one shared provisional name: the concurrent row turns red" "mid=$MID_RC"; fi
 
+echo "== wired: the hooks.json commands run from a desk cwd outside any checkout =="
+HOOKS_JSON="$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json"
+# wired_cmd EVENT SCRIPT: the hooks.json command that runs SCRIPT on EVENT.
+wired_cmd() {
+    node -e 'const h = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).hooks[process.argv[2]] || [];
+const c = h.flatMap((g) => g.hooks).map((x) => x.command).filter((x) => x.includes("/" + process.argv[3] + "\""));
+if (c.length !== 1) process.exit(1); process.stdout.write(c[0]);' "$HOOKS_JSON" "$1" "$2"
+}
+# run_wired EVENT SCRIPT INPUT: run the wired command the way Claude Code does, from the desk dir.
+run_wired() {
+    local c
+    c=$(wired_cmd "$1" "$2") || { RC=99; OUT=""; ERR="no single wired command for $2 on $1"; return; }
+    OUT=$(cd "$DESK" && printf '%s' "$3" | env HOME="$H" CLAUDE_PLUGIN_ROOT="$REPO_ROOT/marketplace/plugins/himmel-ops" CLAUDE_PROJECT_DIR="$DESK" sh -c "$c" 2>"$tmp/err")
+    RC=$?
+    ERR=$(cat "$tmp/err")
+}
+new_keyed_home
+DESK="$S/desk/goomal"; mkdir -p "$DESK"
+: > "$S/taint/sT"
+run_wired PreToolUse peer-taint-gate.sh "$(jf sT Read file_path x)"; expect "wired gate denies Read x for a tainted sid from the desk cwd" 2
+run_wired PreToolUse peer-taint-gate.sh "$(jb sT Bash "$(read_cmd "$ABS")")" ; expect "wired gate allows the read shape for a tainted sid" 0
+run_wired PostToolUse peer-taint-mark.sh "$(jpost sM PostToolUse x "out $GOOD")"
+if [ -e "$S/taint/sM" ]; then pass "wired PostToolUse mark hook taints"; else fail "wired PostToolUse mark hook taints" "rc=$RC err=$ERR"; fi
+run_wired PostToolUseFailure peer-taint-mark.sh "$(jpost sMF PostToolUseFailure x "err $GOOD")"
+if [ -e "$S/taint/sMF" ]; then pass "wired PostToolUseFailure mark hook taints"; else fail "wired PostToolUseFailure mark hook taints" "rc=$RC err=$ERR"; fi
+run_wired SessionStart peer-taint-resume.sh "$(jq -cn --arg p "$tmp/transcript.jsonl" '{session_id:"sMR",hook_event_name:"SessionStart",source:"resume",transcript_path:$p}')"
+if [ -e "$S/taint/sMR" ]; then pass "wired SessionStart resume hook taints"; else fail "wired SessionStart resume hook taints" "rc=$RC err=$ERR"; fi
+
 echo
 echo "peer-taint: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
