@@ -10,6 +10,8 @@ PLAYBOOK="$ROOT/docs/internals/stuck-playbook.md"
 GATES="$ROOT/docs/internals/validation-gates.md"
 README="$ROOT/README.md"
 CHIEF_RUN="$ROOT/docs/handover/running-a-chief.md"
+AFK="$ROOT/docs/handover/afk-mode.md"
+SERIES="$ROOT/docs/handover/worker-sections/series.md"
 fails=0
 
 pass() { printf 'ok - %s\n' "$1"; }
@@ -25,7 +27,7 @@ section() {
     awk -v re="$2" '$0 ~ re { f = 1; next } f && /^#+ / { exit } f { print }' "$1"
 }
 
-for f in "$PREFACE" "$CHECK_CI" "$PLAYBOOK" "$GATES" "$README" "$CHIEF_RUN"; do
+for f in "$PREFACE" "$CHECK_CI" "$PLAYBOOK" "$GATES" "$README" "$CHIEF_RUN" "$AFK" "$SERIES"; do
     [ -r "$f" ] || { printf 'FAIL - unreadable %s\n' "$f"; exit 1; }
 done
 
@@ -43,6 +45,15 @@ checkci="$(cat "$CHECK_CI")"
 lacks 'D1 check-ci: run mode is not foreground-only' "$checkci" 'run **one foreground** Bash command'
 # shellcheck disable=SC2016 # the needle is a literal Markdown code span, not an expansion
 lacks 'D1 check-ci: run mode does not forbid run_in_background' "$checkci" 'Do not use `run_in_background`'
+afk="$(cat "$AFK")"
+lacks 'D1 afk-mode: no foreground blocking wait' "$afk" 'one foreground blocking command'
+lacks 'D1 afk-mode: no "never a turn that ends on a background task"' "$afk" 'never a turn that ends on a background task'
+has 'D1 afk-mode: a wait is armed with run_in_background' "$afk" "bounded \`run_in_background\` wait"
+series="$(cat "$SERIES")"
+lacks 'D1 series: no "Nothing runs in the background"' "$series" 'Nothing runs in the background'
+has 'D1 series: the long wait is armed with run_in_background' "$series" "bounded \`run_in_background\` wait"
+lacks 'D7 check-ci: merge is not "an operator action"' "$checkci" 'merge stays an operator action'
+has 'D7 check-ci: a chief worker merges on the GO' "$checkci" 'merges only on the chief'"'"'s GO'
 
 trailer="$(section "$PLAYBOOK" '^## Symptom: a pre-push gate failed on a missing attestation trailer')"
 [ -n "$trailer" ] || fail 'D5 playbook has the attestation-trailer section'

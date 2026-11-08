@@ -102,8 +102,9 @@ Act on the exit code:
   commit only — it is not a review-state gate; if meaningful time passed since
   exit 0, re-run /check-ci before merging (the block-unresolved-cr-merge hook,
   HIMMEL-936, independently blocks `gh pr merge` while review threads are
-  unresolved). Auto/AFK mode: stop at PR-ready — merge stays an
-  operator action.
+  unresolved). A chief worker merges only on the chief's GO
+  (`merge-on-green.sh --go <GO file>`); an AFK shift stops at PR-ready and
+  leaves the merge to you unless `ARMAUTOMERGE=1`.
 - `1` — a check failed (fail-fast: returns on the first red). If it went red
   within seconds, suspect a GitHub Actions billing/permissions block rather
   than the code — check the run annotations first. Read bulky CI failure

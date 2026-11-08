@@ -363,14 +363,13 @@ holder pid + elapsed are right there: no `ps`, no reading
 is *parked*. That distinction is the point of the knob; a worker that hand-rolls
 its own sleep loop throws it away.
 
-**A worker that ends its turn on a background job never wakes.** The harness
-backgrounds any Bash call that runs past ~120 s, and a worker whose turn ends
-waiting on that job gets no wake-up; it sits "working" forever while the
-chief reads its silence as progress. The brief therefore **names the scoped
-suites** the worker runs (each under the 120 s budget or explicitly foreground),
-and forbids "I'll wait for the notification": waiting is one foreground
-blocking command or a foreground `until … done` loop, never a turn that ends
-on a background task.
+**A worker that ends its turn with nothing armed sleeps.** No wake-up comes
+until the next relay, while the chief reads its silence as progress. The brief
+therefore **names the scoped suites** the worker runs (each under the 120 s
+budget or explicitly foreground), and a wait is one bounded
+`run_in_background` wait that returns within 50 minutes, re-armed on each
+wake, whose completion notification wakes the worker
+([`worker-sections/cache-keepalive.md`](worker-sections/cache-keepalive.md)).
 
 ## Base verification — arming on a fence, and syncing across workers
 
