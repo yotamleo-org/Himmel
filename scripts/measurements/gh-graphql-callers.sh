@@ -2,11 +2,14 @@
 # gh-graphql-callers.sh — which script spends the shared GitHub GraphQL budget.
 # Read-only: it never changes gh for anyone else.
 #
-#   watch [--log F] [--seconds S] [--interval I]
+#   watch [--log F] [--seconds S] [--interval I] [--floor N]
 #       Changes nothing: polls /proc for live gh processes of the whole fleet
 #       for S seconds (default 3600) and charges each, once, to its nearest .sh
 #       ancestor. A gh shorter-lived than I (default 0.2 s) is missed. The bucket
 #       line printed at the end is the probe's own reading, shared with the fleet.
+#       Refuses (rc 2) before watching when the bucket has fewer than N points
+#       left (default 1500) or cannot be read; watch spends only its two probes,
+#       so --floor 0 lets a measurement run when the quota is low.
 #
 #   run [--log F] [--floor N] -- <cmd...>
 #       Runs ONE command with a counting `gh` shim first on PATH for that child
@@ -39,7 +42,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DEFAULT="${GH_CALLERS_LOG:-${TMPDIR:-/tmp}/gh-graphql-callers.log}"
 
-usage() { sed -n '2,36p' "$0" >&2; exit 64; }
+usage() { sed -n '2,39p' "$0" >&2; exit 64; }
 
 # gqlc_cost <gh args...> — GraphQL points one gh call spends (estimate: 1, or 0).
 gqlc_cost() {
@@ -147,10 +150,12 @@ cmd_watch() {
             --log) log="${2:-}"; shift 2 ;;
             --seconds) seconds="${2:-}"; shift 2 ;;
             --interval) interval="${2:-}"; shift 2 ;;
+            --floor) floor="${2:-}"; shift 2 ;;
             *) usage ;;
         esac
     done
     case "$seconds" in ''|*[!0-9]*) usage ;; esac
+    case "$floor" in ''|*[!0-9]*) usage ;; esac
     budget_gate "$floor"
     set -f  # cmdline words carry jq globs; never expand them
     local before="$GHB_REMAINING" reset0="$GHB_RESET" end=$((SECONDS + 10#$seconds))
