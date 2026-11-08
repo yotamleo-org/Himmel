@@ -33,7 +33,8 @@
 # A tracked edit in the qmd fork clone prints `LOCAL-DIFF qmd_fork <file>`.
 #
 # Output: `STEP <step> rc=<n>` per step, any LOCAL-DIFF lines, then
-# `STATION=OK` or `STATION=BEHIND:<component>,...`. The same value (`ok` or
+# `STATION=OK` or `STATION=BEHIND:<component>,...`, then a `STEP usage_compute rc=<n>` or
+# `SKIP usage_compute <reason>` line. The same station value (`ok` or
 # `BEHIND:...`) is written to the state file tick.sh reads as station=; it
 # clears on the next sync. Runs are serialized on a flock next to the state file. While a run is in flight the state reads
 # `BEHIND:pending`, so a run that is killed never leaves a stale `ok`. Exit 0 whatever the station state; 2 on usage.

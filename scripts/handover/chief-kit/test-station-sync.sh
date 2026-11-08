@@ -70,6 +70,7 @@ export HIMMEL_USAGE_STORE="$W/usage-store" SS_UCALLS="$W/ucalls" SS_TCALLS="$W/t
 cat > "$W/usage-compute" <<'EOF2'
 #!/usr/bin/env bash
 echo "usage-compute $*" >> "$SS_UCALLS"
+flock -n "$SS_STATE.lock" true; echo "lock-probe rc=$?" >> "$SS_UCALLS"
 [ -z "${SS_T_UOUT:-}" ] || echo "$SS_T_UOUT"
 [ -z "${SS_T_USTATE:-}" ] || echo "state-during-compute: $(cat "$SS_STATE" 2>/dev/null)" >> "$SS_UCALLS"
 exit "${SS_T_URC:-0}"
@@ -368,5 +369,9 @@ lacks "32 compute output is not echoed" "$out" "SECRET-RECORD-CONTENT"
 : > "$SS_UCALLS"
 SS_T_USTATE=1 run "$W/ver-current" docs/x.md
 contains "33 state is already final when the build runs" "$(cat "$SS_UCALLS")" "state-during-compute: ok"
+
+: > "$SS_UCALLS"
+run "$W/ver-current" docs/x.md
+contains "34 the sync lock is free while the build runs" "$(cat "$SS_UCALLS")" "lock-probe rc=0"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
