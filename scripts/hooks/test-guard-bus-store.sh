@@ -296,6 +296,9 @@ allow "9628 a quoted append-results.sh bullet naming bus register" \
 allow "9628 a python heredoc naming bus register" "$(bash_json $'python3 - <<\'EOF\'\nprint("bus register x")\nEOF')"
 allow "9628 a loop of gh calls ending in a grep for bus register" \
     "$(bash_json 'for r in 1 2; do gh run view $r --log | grep "bus register"; done')"
+deny  "9628 rg --pre runs its command" "$(bash_json "rg --pre 'bus register x' pat /tmp/f")"
+deny  "9628 rg --pre=cmd runs its command" "$(bash_json "rg --pre='bus bind x 1' pat /tmp/f")"
+deny  "9628 rg --hostname-bin runs its command" "$(bash_json "rg --hostname-bin 'bus rebind x 1' pat /tmp/f")"
 deny  "9628 control: bus register x" "$(bash_json 'bus register x')"
 deny  "9628 control: bin/bus bind x 1" "$(bash_json 'node marketplace/plugins/himmel-bus/bin/bus bind x 1')"
 deny  "9628 control: bash -c bus rebind" "$(bash_json 'bash -c "bus rebind x 1"')"

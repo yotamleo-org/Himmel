@@ -34,7 +34,8 @@
 #         (a heredoc body, a --summary). A call to grep, egrep, fgrep, rg, sed,
 #         awk, python or append-results.sh is data too: its words are a pattern,
 #         a program or a bullet, and it is not read for a bus word and a verb
-#         (RESIDUAL: `awk`, `sed` and `python` can run what they quote). A call
+#         (rg `--pre` and `--hostname-bin` run a command, so such a call is not
+#         data; RESIDUAL: `awk`, `sed` and `python` can run what they quote). A call
 #         whose every word is literal, names neither bus nor a verb and has no
 #         heredoc passes beside them, unless a cat or tee call in it wrote a
 #         heredoc body. Every other call goes to the word walker below.
@@ -458,7 +459,9 @@ def sink: .opaque == null and ((.via // []) | length == 0) and ((.assigns // [])
     or (.argv[0].v == "bus" and (.argv[1].v // "" | IN("status", "peers", "wait", "send", "adopt"))));
 def ar: (.argv[0] | select(lit) | .v) // "";
 def arscript: test("(^|/)append-results\\.sh$");
+def runsopt: any(.argv[]; select(lit) | .v | test("^--(pre|hostname-bin)($|=)"));
 def data: .opaque == null and ((.via // []) | length == 0) and ((.assigns // []) | length == 0)
+  and (runsopt | not)
   and (ar as $a | ($a | IN("grep", "egrep", "fgrep", "rg", "sed", "awk", "gawk", "mawk", "python", "python3"))
     or ($a | arscript)
     or ($a | IN("bash", "sh")) and ((.argv[1] | select(lit) | .v // "") | arscript));
