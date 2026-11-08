@@ -184,8 +184,7 @@ at that head, zero unresolved threads, trailers in the first commit; the diff st
 your judgement), then `bash scripts/handover/chief-kit/go.sh --contract yes|no <pr> <head>`: that write IS the GO
 (`gh pr merge` needs the file; a messaged `GO` only notifies). `go.sh`
 refuses (exit 4) unless `ready-check.sh` passes; a head with no ok CR-ledger row
-gets no GO. `--contract` is the worker doc's `Completes ticket:` answer; a keyed title
-without it fails item 17 in both calls. The worker merges and reports `MERGED #<n> → <sha>`; pull the primary.
+gets no GO. The worker merges and reports `MERGED #<n> → <sha>`; pull the primary.
 
 The worker closes Jira per the brief's completes-ticket line (`> **Completes ticket:** yes|no`)
 (`--jira-transition` only for `yes`). After `MERGED`, re-read the ticket — the flag closes only the first `[KEY]`
