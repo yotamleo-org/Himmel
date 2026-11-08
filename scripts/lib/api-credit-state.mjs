@@ -31,7 +31,7 @@ const NO_EXPIRY = 4102444800;
 // Reasons a snapshot gives no usable reading; with HIMMEL_API_SNAPSHOT_OPTIONAL=1 (auto routing) the ledger and
 // the account cap decide instead. Identity mismatch and the discrepancy flag stay refusals.
 const SNAPSHOT_UNUSABLE = new Set(['missing-snapshot', 'invalid-snapshot', 'unreconciled-amounts', 'invalid-timestamp',
-  'invalid-grant-interval', 'expired-grant', 'stale-snapshot', 'invalid-money']);
+  'invalid-grant-interval', 'stale-snapshot', 'invalid-money']);
 // A call past this has died or been killed: its reservation is released, never held for good.
 const CALL_TIMEOUT = 3600;
 // The launcher stops a call at its timeout and kills what ignored TERM this many seconds later.
