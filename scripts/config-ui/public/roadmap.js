@@ -342,11 +342,13 @@ function stripHtml(d, sel, tab, ui = {}, lead = "", slim = false) {
 // the chain read's "waits on you" tickets); with no chain read it still counts the labelled ones and says the holds were not read, and
 // with neither it says so. A ticket with no version is not counted (the default read leaves it out), so while one exists the count says
 // how many and points at the No version tab, and a 0 never stands alone; the line is short because a longer one wraps the tab row. "Shipped" has no count here (the merged-PR read is the Shift page's), so it names where the number is.
-function linksHtml(ch, rows, d, nv) {
+function linksHtml(ch, rows, d, nv, owed) {
   let wait = `<b>waits for you: not read</b> (${esc(noChains(ch))})`;
   if (chainOk(ch) || rows.length) {
-    wait = `<b>${rows.length} ${rows.length === 1 ? "waits" : "wait"} for you</b>${rows.length ? ": " + rows.map((x) => esc(x.key)).join(", ") : ""}${chainOk(ch) ? "" : ` (chain holds not read: ${esc(noChains(ch))})`}`;
+    wait = `<b>${rows.length} ${rows.length === 1 ? "waits" : "wait"} for you</b>${rows.length ? ": " + rows.map((x) => esc(x.key || "item")).join(", ") : ""}${chainOk(ch) ? "" : ` (chain holds not read: ${esc(noChains(ch))})`}`;
   }
+  const unreadSrc = unreadOwed(owed);
+  if (unreadSrc.length) wait += ` (${esc(unreadSrc.join("; "))})`;
   const unread = nvOk(nv) ? 0 : d.noVersionCount || 0; // once the No version read is in, those tickets are in the rows above and nothing is left uncounted
   const scope = unread ? ` <span class="ro">(${unread} not counted: <a href="${boardHref({ tab: "nv" })}">no version</a>)</span>` : "";
   return `<div class="rm-links"><div class="rm-link"><span>${wait}${scope}</span><a href="#/shift">open in Shift →</a></div>`
@@ -359,39 +361,64 @@ function linksHtml(ch, rows, d, nv) {
 const OPERATOR_LABELS = ["operator-decision", "operator", "operator-present", "operator-gated"];
 // nv = the No version read (GET /api/roadmap?nv=1) once it has arrived: its operator-labelled tickets are rows too, tagged noVersion.
 const nvOk = (nv) => !!(nv && nv.state === "ok" && Array.isArray(nv.tickets));
-function waitingRows(d, ch, nv) {
-  const rows = new Map();
+// Each row carries its context lines (ctx) and the action the operator takes (acts). Sources beside the labels and the chain's "waits on you":
+// owed.items = what board.ts readOwed read (unsigned specs, chief doc lines naming the operator, the newest HANDOFF's open operator items); one that names
+// no ticket is a row of its own. An operator hold on a ticket carries its reason and, from prs, the open PR it holds.
+const isOpenB = (b) => b === "todo" || b === "prog" || b === "rev" || b === "ci";
+function waitingRows(d, ch, nv, owed, prs) {
+  const rows = new Map(), titles = new Map();
+  const get = (key, title, noVersion) => {
+    if (!rows.has(key)) rows.set(key, { key, title: title || titles.get(key) || "", labels: [], noVersion: !!noVersion, ctx: [], acts: [] });
+    return rows.get(key);
+  };
   const add = (list, noVersion) => {
     for (const t of list) {
+      titles.set(idOf(t), t.t);
       const labels = (t.labels || []).filter((l) => OPERATOR_LABELS.includes(l));
-      if (labels.length && (t.b === "todo" || t.b === "prog" || t.b === "rev" || t.b === "ci")) rows.set(idOf(t), { key: idOf(t), title: t.t, labels, noVersion });
+      if (labels.length && isOpenB(t.b)) { const r = get(idOf(t), t.t, noVersion); r.labels = labels; r.acts.push("decide what the label asks, then drop it"); }
     }
   };
   add(d.tickets, false);
   if (nvOk(nv)) add(nv.tickets, true);
+  // an owed item naming a ticket joins that ticket's row (one row per key); one naming none is a row of its own
+  const loose = [];
+  if (owed && owed.state === "ok") (owed.items || []).forEach((item, i) => {
+    if (item.key) { const r = get(item.key, item.title, false); r.ctx.push(item.ctx); r.acts.push(item.act); }
+    else loose.push({ key: "", title: item.title, labels: [], noVersion: false, ctx: [item.ctx], acts: [item.act], loose: true, id: `owed-${i}` });
+  });
   if (chainOk(ch)) for (const x of Object.values(ch.tickets)) {
-    if (x.state !== "waits on you") continue;
-    const own = rows.get(x.key);
-    rows.set(x.key, { key: x.key, title: (own && own.title) || x.title || "", labels: own ? own.labels : [], noVersion: !!(own && own.noVersion), chain: (x.chains || []).find((y) => y.state === "waits on you") || (x.chains || [])[0] });
+    const holds = (x.links || []).filter((l) => l.kind === "operator" && l.status === "open"); // read whatever the ticket's state: a blocked ticket still holds for the operator
+    if (x.state !== "waits on you" && !holds.length) continue;
+    const r = get(x.key, x.title, false);
+    r.chain = (x.chains || []).find((y) => y.state === "waits on you") || (x.chains || [])[0];
+    const pr = prs && prs.state === "ok" && prs.prs && prs.prs[x.key] && prs.prs[x.key][0];
+    if (pr) r.ctx.push(`PR #${pr.pr} is held`);
+    for (const l of holds) r.ctx.push(l.reason || "an operator hold");
+    if (holds.length) r.acts.push("rule on it, then the chief releases the hold");
   }
-  return [...rows.values()];
+  return [...rows.values(), ...loose];
 }
 
 // The Waiting on you section, one row per waiting ticket: key, title, the operator label or the chain and step it waits at. The key
 // opens its chain only where the Chains tab (the running version) holds the ticket. With nothing waiting there is no section: the count
 // link beside the tabs says 0 or "not read", and an empty box would push the first card down.
-function waitingHtml(rows, tabCh, v, d, ch, nv) {
+// What an unreadable owed source says: a read that failed is never a plain "nobody owes you".
+const unreadOwed = (owed) => !owed ? [] : owed.state === "ok" ? [...(owed.unread || []).map((w) => `${w} not read`), ...((owed.skipped || []).length ? [`${owed.skipped.length} critic file${owed.skipped.length === 1 ? "" : "s"} unread, skipped: ${owed.skipped.join(", ")}`] : [])] : ["the operator-owed sources not read"];
+function waitingHtml(rows, tabCh, v, d, ch, nv, owed) {
   if (!rows.length) return "";
   const row = (x) => {
     const href = `#/board?tab=chains${v ? `&amp;v=${esc(encodeURIComponent(v))}` : ""}&amp;at=${esc(encodeURIComponent(x.key))}`;
     // a ticket with no version opens the No version tab, where its card is; any other opens its chain where the Chains tab holds it
-    const key = x.noVersion ? `<a href="${boardHref({ tab: "nv" })}">${esc(x.key)}</a>` : chainOk(tabCh) && tabCh.tickets[x.key] ? `<a href="${href}">${esc(x.key)}</a>` : esc(x.key);
+    const key = x.loose ? "" : x.noVersion ? `<a href="${boardHref({ tab: "nv" })}">${esc(x.key)}</a>` : chainOk(tabCh) && tabCh.tickets[x.key] ? `<a href="${href}">${esc(x.key)}</a>` : esc(x.key);
     const why = [...x.labels, ...(x.chain ? [`${x.chain.id} ${x.chain.step}/${x.chain.steps}`] : []), ...(x.noVersion ? ["no version"] : [])];
-    return `<li>${key} ${esc(x.title || "")}${why.length ? ` <span class="ro">${why.map(esc).join(" · ")}</span>` : ""}</li>`;
+    // the title is never left bare: a ticket whose title was not read says so
+    const act = x.acts.length ? `<br><span class="ro">${[...x.ctx, `Action: ${[...new Set(x.acts)].join("; ")}`].map(esc).join(" · ")}</span>` : "";
+    return `<li>${key ? key + " " : ""}${esc(x.title || "(title not read)")}${why.length ? ` <span class="ro">${why.map(esc).join(" · ")}</span>` : ""}${act}</li>`;
   };
   const nvRead = nvOk(nv);
-  const notes = [chainOk(ch) ? "" : "chain holds not read", d.noVersionCount && !nvRead ? `${d.noVersionCount} tickets with no version are on the No version tab` : ""].filter(Boolean);
-  return section("rm-waiting", "Waiting on you", `${rows.length} ${rows.length === 1 ? "ticket waits" : "tickets wait"} on you, across every version${nvRead ? " and the tickets with no version" : ""}${notes.length ? ` (${notes.join("; ")})` : ""}.`,
+  const notes = [chainOk(ch) ? "" : "chain holds not read", d.noVersionCount && !nvRead ? `${d.noVersionCount} tickets with no version are on the No version tab` : "", ...unreadOwed(owed)].filter(Boolean);
+  const noun = rows.some((x) => x.loose) ? ["item waits", "items wait"] : ["ticket waits", "tickets wait"];
+  return section("rm-waiting", "Waiting on you", `${rows.length} ${rows.length === 1 ? noun[0] : noun[1]} on you, across every version${nvRead ? " and the tickets with no version" : ""}${notes.length ? ` (${notes.join("; ")})` : ""}.`,
     `<ul class="rm-waiting">${rows.map(row).join("")}</ul>`);
 }
 
@@ -839,10 +866,10 @@ function boardPage(data, ui, extras) {
   if (data.source === "none") return page + noTrackerHtml();
   if (data.state !== "ok") return page + `<div class="nodata">${esc(data.reason || "board unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
   // the whole Board reads every version; the Chains tab reads the running one
-  const { drift: dr, chains: ch, versionChains: tabCh = ch, prs } = extras;
+  const { drift: dr, chains: ch, versionChains: tabCh = ch, prs, owed } = extras;
   const tab = TABS.some(([id]) => id === ui.tab) ? ui.tab : "roadmap";
   const sel = selIndex(data, ui);
-  const rows = waitingRows(data, ch, ui.nv);
+  const rows = waitingRows(data, ch, ui.nv, owed, prs);
   const tileSel = tab !== "chains" || !chainOk(tabCh) ? sel : tabCh.version ? versionAt(data, tabCh.version) : -1; // a tile never highlights over totals of another version
   const src = data.source === "github" ? `GitHub issues (${data.mirror.count})` : data.source === "local" ? `the local tracker store (${data.mirror.count} items)`
     : `the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"})`;
@@ -860,7 +887,7 @@ function boardPage(data, ui, extras) {
   }
   // the No version tab's tickets are in no version, so the picked version's read cannot hold them: it keeps the whole read
   const shownCh = tab === "nv" ? ch : cardCh;
-  const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr, prs) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv) + lanesHtml(data, ui, sel, cardCh, dr, prs);
+  const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr, prs) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv, owed) + lanesHtml(data, ui, sel, cardCh, dr, prs);
   // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
-  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), modal)}</div>`, `<div class="rm-under"${modal ? " inert" : ""}>`, stripHtml(data, tileSel, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows, data, ui.nv)}</div>`, barHtml(data, ui, shownCh, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
+  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), modal)}</div>`, `<div class="rm-under"${modal ? " inert" : ""}>`, stripHtml(data, tileSel, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows, data, ui.nv, owed)}</div>`, barHtml(data, ui, shownCh, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
 }
