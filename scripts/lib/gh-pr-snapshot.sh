@@ -22,8 +22,24 @@ key=$(printf '%s' "$repository" | cksum | awk '{print $1}')
 lock="$dir/$key.lock"
 # Fail closed under contention rather than fetching outside the lock. Do not
 # steal by age: a slow live fetch must not lose its lock to another writer.
-# prim-ok: a non-blocking try-lock that fails closed on contention; with_lock waits for the holder instead of refusing
-mkdir "$lock" 2>/dev/null || exit 1
+# ponytail: a polled lock is not first-in-first-out; at four waiters or fewer inside 30 s starvation is unlikely, upgrade path a ticket-queue lock (an ordered waiter file per run) if a station proof ever shows a waiter timing out under contention.
+# ponytail: a dead or hung holder's lock costs each run the full wait before it fails, with no steal, and ready-check still prints only cannot read; upgrade path surface this line in ready-check, then a liveness check on the recorded pid under its own trust review, since that is lock stealing.
+# Wait for a held lock up to GH_PR_SNAPSHOT_LOCK_WAIT whole seconds (default 30, 0 = try
+# once, 1 to 3 digits read as base 10), then fail closed. Never steal: a slow fetch keeps its lock.
+lock_wait="${GH_PR_SNAPSHOT_LOCK_WAIT:-30}"
+case "$lock_wait" in ''|*[!0-9]*|????*) lock_wait=30 ;; esac
+lock_wait=$((10#$lock_wait))
+lock_tries=$((lock_wait * 5))
+# prim-ok: a bounded wait on a try-lock that fails closed; with_lock waits without bound
+until mkdir "$lock" 2>/dev/null; do
+    if [ "$lock_tries" -le 0 ]; then
+        holder='?'; IFS= read -r holder 2>/dev/null < "$lock/pid" || holder='?'
+        echo "gh-pr-snapshot: $lock still held by pid $holder after ${lock_wait} s" >&2
+        exit 1
+    fi
+    lock_tries=$((lock_tries - 1))
+    sleep 0.2
+done
 printf '%s\n' "$$" > "$lock/pid"
 # prim-ok: the work dir sits in the cache dir beside the lock so a published snapshot is a same-filesystem mv; tmpdir would use TMPDIR
 work=$(mktemp -d "$dir/.snapshot.XXXXXX") || { rm -f "$lock/pid"; rmdir "$lock"; exit 1; }
