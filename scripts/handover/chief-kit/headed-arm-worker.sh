@@ -2884,23 +2884,22 @@ fi
 # names no chief, which has nobody to register with.
 # A profile with no mcpServers field (null) loads every user MCP server,
 # himmel-bus among them, so it opts in too.
+BUS_NAME_MAX=128
+refuse_name_over_bus_limit() {
+    [ "${#NAME}" -gt "$BUS_NAME_MAX" ] || return 0
+    BUS_OUT="session name is ${#NAME} characters, over the bus limit of $BUS_NAME_MAX: shorten the slug of $NAME"
+    echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - $BUS_OUT" >> "$LOG"
+    echo "headed-arm-worker: refusing to launch $NAME - $BUS_OUT (bus=FAIL:name too long)"
+    echo "headed-arm-worker: refusing to launch $NAME - $BUS_OUT" >&2
+    bash "$HERE/append-results.sh" "$DOC" "bus=FAIL:name too long, ${#NAME} over $BUS_NAME_MAX" >/dev/null 2>&1 || true
+    exit 2
+}
 case "${MCP_NAMES_JSON:-}" in
     *'"himmel-bus"'*|null)
         if [ "$HEADLESS" -ne 1 ] && [ -z "$BUS_CHIEF" ]; then
             echo "$(date +%F_%T) headed-arm-worker: $NAME names no chief - not registered on the bus" >> "$LOG"
         elif [ "$HEADLESS" -ne 1 ]; then
-            # The bus refuses a name over its limit (marketplace/plugins/himmel-bus/lib/store.mjs
-            # SESSION_NAME; gen-briefs.py BUS_NAME_MAX): say so, not "the bus is broken". The
-            # override never launches a worker the bus cannot name, so this is checked first.
-            BUS_NAME_MAX=128
-            if [ "${#NAME}" -gt "$BUS_NAME_MAX" ]; then
-                BUS_OUT="session name is ${#NAME} characters, over the bus limit of $BUS_NAME_MAX: shorten the slug of $NAME"
-                echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - $BUS_OUT" >> "$LOG"
-                echo "headed-arm-worker: refusing to launch $NAME - $BUS_OUT (bus=FAIL:name too long)"
-                echo "headed-arm-worker: refusing to launch $NAME - $BUS_OUT" >&2
-                bash "$HERE/append-results.sh" "$DOC" "bus=FAIL:name too long, ${#NAME} over $BUS_NAME_MAX" >/dev/null 2>&1 || true
-                exit 2
-            fi
+            refuse_name_over_bus_limit
             BUS_CLI="${HEADED_ARM_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
             BUS_ROLE=worker
             [ "$JUDGE" -eq 1 ] && BUS_ROLE=judge

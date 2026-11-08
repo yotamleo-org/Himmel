@@ -1695,8 +1695,6 @@ mk98 'w["keys"]=["HIMMEL-9801"]' "$WORK/b98ok.json"
 MIRROR_LOG="$WORK/mirror98.log" gen98 "$WORK/b98ok.json" "$WORK/bb98ok"; rc=$?
 { [ "$rc" = 0 ] && [ ! -s "$WORK/mirror98.log" ]; } && pass "9598 b: a ticket whose mirror row is complete runs no refresh" || fail "9598 b: rc=$rc, refresh log [$(cat "$WORK/mirror98.log")]"
 
-# A slug too long for the bus limit is trimmed at a word boundary: the key, label and date stay, the
-# trimmed name and its -RESUME form (a letter on the label plus -RESUME) both fit 128, and it is printed.
 mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="-".join(["wordy"]*30)' "$WORK/c101.json"
 gen98 "$WORK/c101.json" "$WORK/bc101" --manifest "$WORK/c101-fleet.json"; rc=$?
 [ "$rc" = 0 ] && pass "9537 a: a slug too long for the bus is trimmed, not refused" || fail "9537 a: rc=$rc: $(cat "$WORK/g98.err")"
@@ -1707,12 +1705,10 @@ has "9537 a: the trim is printed" "$(cat "$WORK/g98.out")" "trimmed"
 has "9537 a: the printed manifest add line names the trimmed doc" "$(cat "$WORK/g98.out")" "$C101.md"
 has "9537 a: the launcher names the trimmed doc" "$(cat "$WORK/bc101/launch-N901.sh" 2>/dev/null)" "$C101.md"
 has "9537 a: the branch is the one given" "$(cat "$WORK/bc101/$C101.md" 2>/dev/null)" "fix/himmel-9001-plain-fix"
-# a slug with no word boundary is cut hard
 mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*200' "$WORK/c102.json"
 gen98 "$WORK/c102.json" "$WORK/bc102"; rc=$?
 C102="$(basename "$(find "$WORK/bc102" -name '*-N901-*.md' -print -quit 2>/dev/null)" .md)"
 [ "$rc" = 0 ] && [ "${#C102}" -le 120 ] && pass "9537 b: a slug with no word boundary is cut to fit" || fail "9537 b: rc=$rc name [$C102]"
-# control: a short slug is unchanged byte for byte, and nothing is printed as trimmed
 gen98 "$WORK/a98.json" "$WORK/bc104" --manifest "$WORK/c104-fleet.json"; rc=$?
 C104="$WORK/bc104/HIMMEL-9801-N901-plain-fix-2026-10-08.md"
 { [ "$rc" = 0 ] && [ -f "$C104" ]; } && pass "9537 c: a short slug keeps its name byte for byte" || fail "9537 c: rc=$rc"

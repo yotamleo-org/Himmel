@@ -5174,8 +5174,6 @@ bus9071_out="$(BUS_EXEC_SECS=08 HEADED_ARM_BUS_CLI="$bus45_hung" XDG_STATE_HOME=
 bus9071_secs=$((SECONDS - bus9071_t0))
 check "9071g hung bus: refused within the bound" "$rc:$([ "$bus9071_secs" -lt 60 ] && echo bounded || echo "slow:${bus9071_secs}s")" "2:bounded"
 contains "9071g hung bus: the refusal says it timed out, a leading zero read as decimal" "$bus9071_out" "timed out after 8s"
-# A name over the bus limit is refused as a name-length error before the bus is asked, with or
-# without the override; a real bus error keeps the broken-bus text.
 bus9537_stub="$bus45/bus-called-stub"
 printf '#!/usr/bin/env bash\ntouch "%s/bus-called"\necho "bus: invalid session name"\nexit 1\n' "$bus45" > "$bus9537_stub"; chmod +x "$bus9537_stub"
 bus9537_name="HIMMEL-9537-$(printf 'x%.0s' $(seq 1 118))"

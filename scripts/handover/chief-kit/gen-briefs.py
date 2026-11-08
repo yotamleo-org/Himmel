@@ -131,13 +131,11 @@ import holds  # noqa: E402  the one parser of a Writes line, and the one grant-p
 REQUIRED = ['label', 'keys', 'slug', 'branch', 'title', 'desc', 'why', 'prior', 'scope', 'scope_short', 'commit']
 RM_REQUIRED = ['label', 'keys', 'slug', 'release', 'versions', 'state_dir', 'mode']
 BUS_NAME_MAX = 128
-# A relaunch adds a letter to the label and -RESUME to the name (N5454b ... -RESUME).
-RESUME_ROOM = len('b-RESUME')
+RELAUNCH_NAME_GROWTH = len('b-RESUME')
 
 
 def fit_slug(key, label, slug, date):
-    """The slug cut at a word boundary (a hard cut if it has none) so the name and its -RESUME form fit the bus."""
-    room = BUS_NAME_MAX - RESUME_ROOM - len('%s-%s--%s' % (key, label, date))
+    room = BUS_NAME_MAX - RELAUNCH_NAME_GROWTH - len('%s-%s--%s' % (key, label, date))
     if len(slug) <= room or room < 1:
         return slug
     cut = slug[:room] if slug[room] == '-' else slug[:room].rpartition('-')[0] or slug[:room]
