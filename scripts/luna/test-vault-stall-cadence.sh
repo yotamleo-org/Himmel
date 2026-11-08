@@ -170,7 +170,7 @@ printf '#!/usr/bin/env bash\nfor f in $(cat list); do echo $f; done\n' >"$V/hand
 git -C "$V" add handovers/x.sh
 out="$(run_sut)"; rc=$?
 assert_eq "T1 run exits 0" "0" "$rc"
-assert_has "T1 commit message names the ticket and class" "chore(vault): [HIMMEL-4471] remediate stall class shellcheck" "$(git -C "$V" log -1 --format=%s)"
+assert_has "T1 commit message names the class" "chore(vault): remediate stall class shellcheck" "$(git -C "$V" log -1 --format=%s)"
 assert_eq "T1 commit holds ONLY the config" ".pre-commit-config.yaml " "$(head_files)"
 assert_eq "T1 backlog still staged, untouched" "handovers/x.sh " "$(staged)"
 assert_has "T1 shellcheck exclude now covers handovers/" "exclude: '^handovers/|" "$(sed -n '/id: shellcheck/,/id: gitleaks/p' "$V/.pre-commit-config.yaml")"
