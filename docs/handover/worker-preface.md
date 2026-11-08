@@ -13,8 +13,9 @@ improvising; confirm the chief's session name in `ListAgents` first.
 
 - **Never call `AskUserQuestion`.** [enforced: block-worker-askuserquestion]
 - **Never call `ScheduleWakeup`.** [enforced: guard-worker-wakeup]
-- Waiting means **one foreground blocking command** (or `until … done` loop),
-  never a background job. [prose]
+- Waiting means **one bounded wait** armed with Bash `run_in_background` for at
+  most 50 minutes. Re-arm on each wake; WRAP an open-ended wait. See
+  `worker-sections/cache-keepalive.md`. [prose]
 
 Report at **milestones only**: `LIVE`, `RESOLVED`, `CHECKPOINT`, `WRAPPED` and
 `READY <pr> <full head> GREEN` are bullets only, never a message; a merge is no
@@ -122,7 +123,7 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   `Security reviewed: <token>`, tokens listed in `check-security-reviewed.sh`).
   Never `git commit --amend` (blocked): use the stuck playbook. [enforced: security-reviewed]
 - **Order: commit → push → `/pr-check` → open the PR** with `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>` (refused while review is pending). **One push per review round**: one commit of every fix, title/body/`## Ticket coverage` edits too. [prose]
-- Once open: `/pr-check` at the `READY` head → as it enters final CI, `JUDGE-REQUEST <pr> <head>` (`worker-sections/judge-request.md`) → one foreground `scripts/check-ci.sh <pr> --max-wait <sec>`, whose exit code decides, never a background poll → `READY` bullet. [prose]
+- Once open: `/pr-check` at the `READY` head → as it enters final CI, `JUDGE-REQUEST <pr> <head>` (`worker-sections/judge-request.md`) → one `scripts/check-ci.sh <pr> --max-wait 3000` armed with `run_in_background` (re-armed on each wake), whose exit code in the completion notification decides, never a poll loop of your own → `READY` bullet. [prose]
 - **Lint `## Ticket coverage` before `READY`:**
   `bash scripts/handover/chief-kit/ready-check.sh --only 7 <pr>` until it prints
   `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). [prose]

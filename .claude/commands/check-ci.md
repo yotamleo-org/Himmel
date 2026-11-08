@@ -5,7 +5,8 @@ argument-hint: [pr-number|branch|url] [--grace <sec>] [--settle <sec>] [--max-wa
 
 ## Workflow/job mode (HIMMEL-4856)
 
-When `$ARGUMENTS` contains `--run <run-id>`, run **one foreground** Bash command:
+When `$ARGUMENTS` contains `--run <run-id>`, run one Bash command with
+`run_in_background: true`:
 
 ```bash
 bash scripts/check-ci.sh $ARGUMENTS
@@ -14,9 +15,10 @@ bash scripts/check-ci.sh $ARGUMENTS
 Optional `--job <name>` selects an exact job name (matrix suffix included).
 Success waits for the selected jobs (or the whole workflow); a failure exits
 immediately even while other jobs run.
-This is a workflow/job wait, **not a PR merge/review certification**. Do not use
-`run_in_background` or add a poll loop. The shared repository/run-id cache,
-adaptive interval and REST/core budget preflight handle the waiting.
+This is a workflow/job wait, **not a PR merge/review certification**. The
+completion notification carries the exit code. Add no poll loop of your own.
+The shared repository/run-id cache, adaptive interval and REST/core budget
+preflight handle the waiting.
 `--max-wait` defaults to 900 seconds (`0` unbounded); no PR settle/review gates
 apply. `0` = success/neutral/skipped, `1` = failed/cancelled (job and
 `gh run view <id> --log-failed` command printed), `2` = cannot evaluate
