@@ -10,7 +10,7 @@ guard, runner indirection (`.sh` with `printf %q`-quoted values, crontab
 entries marker-tagged `# HIMMEL-Pipeline-*`).
 
 Armed defaults (an operator decision; a daily harvest job
-added later; model pins and a frequency shift to cut cost; overridable
+added later; model pins cut the cost; overridable
 via flags):
 
 | Task | Schedule | Model | Runs |
