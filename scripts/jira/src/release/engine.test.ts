@@ -1683,6 +1683,33 @@ describe('signed minerva specs', () => {
     expect(out.warnings).toEqual([expect.stringMatching(/K-1.*plan unbound/)]);
   });
 
+  it('spec-check prints the plan-unbound warning on stderr and still exits ok', async () => {
+    declared();
+    for (const [k, v] of Object.entries(specEnv())) vi.stubEnv(k, v);
+    const { spec: p, plan } = bucketSpec('docs/handover/running-a-chief.md');
+    const r = sign(sctx(), ['K-1'], p, { plan });
+    const c = sctx();
+    const k = loadKey(c.keyPath);
+    const path = join(c.dir, 'operator.jsonl');
+    const kept = readChain<OperatorRow>(path, k).verified.map(({ prev: _p, mac: _m, plan_sha256: _s, ...row }) => row);
+    rmSync(path);
+    for (const row of kept) appendChain(path, k, row);
+    const out: string[] = [];
+    const err: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((s: string) => { out.push(s); });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation((s: string) => { err.push(s); });
+    const code = process.exitCode;
+    try {
+      await cli('spec-check', 'K-1');
+    } finally {
+      log.mockRestore();
+      errSpy.mockRestore();
+    }
+    expect(out).toEqual([`SPEC ok K-1 ${p} ${r.id}`]);
+    expect(err).toEqual([expect.stringMatching(/^WARN K-1 plan unbound/)]);
+    expect(process.exitCode).toBe(code);
+  });
+
   it('a spec signed with no separate plan has no plan to bind and warns of nothing', () => {
     declared();
     const p = spec();
