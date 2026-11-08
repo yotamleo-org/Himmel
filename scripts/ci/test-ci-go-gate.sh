@@ -449,8 +449,8 @@ cancel = re.search(r"^  cancel-in-progress:\s*(.*)$", "\n".join(lines), re.MULTI
 if not cancel or not ev_inner(re.fullmatch(r"\$\{\{\s*(.*?)\s*\}\}", cancel.group(1).strip()).group(1), opened_ev):
     bad15.append("a pull_request run does not cancel the run it supersedes")
 doc = "\n".join(lines[:lines.index("jobs:")])
-if "Create-time label" not in doc or "next release call" not in doc:
-    bad15.append("the ci.yml header does not say what a create-time label does when the opened run lands last")
+if "Create-time label" not in doc or "stalls until a manual step" not in doc or "next release call" in doc:
+    bad15.append("the ci.yml header does not say that a create-time label stalls until a manual step when the opened run lands last")
 if bad15:
     bad("G15 " + "; ".join(bad15))
 else:
