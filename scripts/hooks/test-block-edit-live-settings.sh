@@ -3801,6 +3801,8 @@ cp @P@/.claude/settings.json /tmp/claude-1000/x/scratchpad/settings.copy.json
 cp -p @H@/.claude/settings.json /tmp/claude-1000/x/scratchpad/
 cat @P@/.claude/settings.json | jq .hooks | grep -c Bash | sort -n | uniq
 python3 - <<'PY'\nimport os, json\nd = os.path.expanduser('~/.himmel/state/jira-mirror/HIMMEL/HIMMEL-1.md')\nt = open(d).read()\nf = open('/tmp/claude-1000/x/scratchpad/out.txt', 'w')\nf.write(t)\nPY
+uniq -c @P@/.claude/settings.json
+uniq -- @P@/.claude/settings.json
 ROWS
 assert_rc "9830 grep piped to sort -t with an ANSI-C tab (cwd worktree) allows" 0 \
     "$(bash_rc_of "$NESTED_WT" "grep -n foo /tmp/claude-1000/x/scratchpad/f.txt | sort -t\$'\\t' -k2" HOME="$FAKEHOME")"
@@ -3847,10 +3849,15 @@ cp /tmp/x @H@/$'.claude'/settings.json
 cp /tmp/x @H@/$'.cla'ude/sett$'ings'.json
 echo x > @H@/.claude/settings.json; sort -t$'\t' /tmp/y
 ROWS
-SCRATCH=$(mktemp -d /tmp/himmel-lsb.XXXXXX) || { echo "FATAL: no /tmp scratch dir" >&2; exit 1; }
-case "$(printf '%s' "$SCRATCH" | tr '[:upper:]' '[:lower:]')" in
-    *tee*) echo "FATAL: scratch dir name holds 'tee'" >&2; exit 1 ;;
-esac
+SCRATCH=''
+for _try in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    SCRATCH=$(mktemp -d /tmp/himmel-lsb.XXXXXX) || { echo "FATAL: no /tmp scratch dir" >&2; exit 1; }
+    case "$(printf '%s' "$SCRATCH" | tr '[:upper:]' '[:lower:]')" in
+        *tee*) rmdir "$SCRATCH"; SCRATCH='' ;;
+        *) break ;;
+    esac
+done
+[ -n "$SCRATCH" ] || { echo "FATAL: no scratch dir name clear of 'tee' in 20 draws" >&2; exit 1; }
 ln -s "$PRIMARY/.claude/settings.json" "$SCRATCH/scratch-link" || { echo "FATAL: ln -s failed" >&2; exit 1; }
 assert_rc "9880 cp onto a /tmp symlink to the live settings denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "cp /tmp/x/a.json $SCRATCH/scratch-link" HOME="$FAKEHOME")"

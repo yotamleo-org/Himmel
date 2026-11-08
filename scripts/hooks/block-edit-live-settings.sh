@@ -1917,7 +1917,8 @@ _tok_sensitive_name() {
 # equal to `tee` or ending `/tee`; an output redirect other than to /dev/null or an fd dup
 # (`2>&1`); `<>`; an assignment to an exported or sensitive name
 # (_tok_sensitive_name); a command word carrying a live `$` or a glob; and,
-# for less/git/rg/sed, any word carrying a live `$` or a glob — each can
+# for less/git/sed/eval/sort/printf/uniq, and rg bar an absolute glob, any word
+# carrying a live `$` or a glob — each can
 # expand into an option that writes or runs (`-i`, `--output=`, `--pre`,
 # `+!cmd`). The per-program option vetoes are the old ones plus rg --pre and
 # less `+…`.
