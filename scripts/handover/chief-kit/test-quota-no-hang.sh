@@ -840,11 +840,12 @@ report_file() {
                     printf 'FAIL %s\n' "${line#FAIL }"; fails=$((fails + 1))
                 fi ;;
         esac
-    done < "$1"
+    done < "$RES_FILE"
 }
 for f in "$RES"/*.txt; do
     [ -f "$f" ] || continue
-    report_file "$f"
+    RES_FILE="$f"
+    report_file
 done
 printf 'quota-no-hang: %s pass, %s known-red, %s fail (%s unexpected-pass), %s skip%s\n' \
     "$passes" "$known" "$fails" "$unexpected" "$skips" "$([ "$STRICT" = 1 ] && echo ' [--strict]')"
