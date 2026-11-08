@@ -9,8 +9,7 @@
 //   fired. Node exits 1 on an uncaught throw too, so a caller trusts exit 1 only
 //   with the `unverified` line. The key comes from a file, never argv.
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const MARKER_RE = /<<<PEER-UNTRUSTED nonce=([0-9a-f]{16}) mac=([0-9a-f]{16})>>>/g;
@@ -52,7 +51,17 @@ async function main(argv) {
   return ok ? 0 : 1;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Real paths on both sides: the plugin dir may be reached through a symlink, and
+// node reports the main module's real path in import.meta.url.
+function invokedAsScript() {
+  try {
+    return Boolean(process.argv[1]) && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedAsScript()) {
   main(process.argv.slice(2)).then(
     (rc) => process.exit(rc),
     (err) => {

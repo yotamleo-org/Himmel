@@ -249,6 +249,9 @@ echo "== fence verifier CLI =="
 new_keyed_home
 printf 'another-key' > "$tmp/wrong.key"
 r=$(verify_rc "$C/hmac.key" "before $GOOD after"); if [ "$r" = 0 ]; then pass "sign then verify exits 0"; else fail "sign then verify exits 0" "$r"; fi
+ln -s "$PLUG" "$tmp/plug-link"
+r=$(printf '%s' "$GOOD" | node "$tmp/plug-link/peer-marker.mjs" verify --key-file "$C/hmac.key" 2>/dev/null)
+if [ "$r" = verified ]; then pass "the CLI runs when reached through a symlinked dir"; else fail "the CLI runs when reached through a symlinked dir" "$r"; fi
 r=$(verify_rc "$tmp/wrong.key" "$GOOD"); if [ "$r" = 1 ]; then pass "a wrong key exits 1"; else fail "a wrong key exits 1" "$r"; fi
 last="${GOOD: -4:1}"; if [ "$last" = 0 ]; then last=1; else last=0; fi
 flipped="${GOOD:0:$((${#GOOD}-4))}$last>>>"

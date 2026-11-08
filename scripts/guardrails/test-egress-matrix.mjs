@@ -12,6 +12,7 @@
 // "allow+log": consumers MUST honor its ledger obligation (a JSONL line per
 // run — see semantics.verdicts in the JSON), not just the allow.
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -556,6 +557,25 @@ for (const u of purposes.filter(x => x !== "enrichment"))
   assert(evaluate("luna-clippings", "deepseek", u).effective === "deny", `luna-clippings x deepseek x ${u} must stay deny (HIMMEL-6269 opens enrichment only)`);
 for (const c of ["luna-personal", "handover-state", "voice-audio", "jira-mirror", "operator-repos"])
   assert(evaluate(c, "deepseek", "enrichment").effective === "deny", `${c} x deepseek x enrichment must stay deny (HIMMEL-6269 opens luna-clippings only)`);
+
+// Peer bridge: a message to a peer bot leaves only from the peer desk, whose
+// session holds operator-typed text alone. The imported evaluator and the CLI
+// must agree on that one open cell; every vault and state corpus stays denied.
+assert(providers.includes("peer-telegram"), "provider peer-telegram must be declared");
+assert(purposes.includes("peer-message"), "purpose peer-message must be declared");
+assert(corpora.includes("peer-desk"), "corpus peer-desk must be declared");
+{
+  const evalMod = await import(join(dirname(fileURLToPath(import.meta.url)), "egress-matrix-eval.mjs"));
+  const got = evalMod.evaluate(evalMod.loadMatrix(), "peer-desk", "peer-telegram", "peer-message");
+  assert(got.verdict === "allow", `imported evaluate(peer-desk, peer-telegram, peer-message) must be allow, got ${got.verdict}`);
+  const cli = spawnSync(process.execPath,
+    [join(dirname(fileURLToPath(import.meta.url)), "egress-matrix-eval.mjs"), "peer-desk", "peer-telegram", "peer-message"],
+    { encoding: "utf8" });
+  assert(cli.status === 0 && cli.stdout.split("\t")[0] === "allow",
+    `CLI first field for peer-desk x peer-telegram x peer-message must be allow, got status ${cli.status} ${JSON.stringify(cli.stdout)}`);
+}
+for (const c of ["salus", "luna-personal", "handover-state", "jira-mirror"])
+  assert(evaluate(c, "peer-telegram", "peer-message").effective === "deny", `${c} x peer-telegram x peer-message must deny`);
 
 if (failures > 0) {
   console.error(`egress-matrix: ${failures} invariant failure(s)`);
