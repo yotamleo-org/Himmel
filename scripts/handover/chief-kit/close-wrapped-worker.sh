@@ -121,7 +121,8 @@
 #      original's Results hold no successor LIVE (new release token) then WRAPPED after the
 #      hand-off WRAPPED (no hand-off evidence), except that an ORIGINAL doc whose own tail is WRAPPED
 #      beside a never-launched -RESUME doc (no marker-bullet, lock free) closes its own window, and is
-#      refused with this code while a session runs under the -RESUME doc's names or session ids; and a named hand-off whose predecessor session
+#      refused with this code while a session runs under the -RESUME doc's names or session ids;
+#      and a named hand-off whose predecessor session
 #      is gone is refused unless the predecessor is WRAPPED with completed successor evidence
 #      and the successor's own last marker-bullet is WRAPPED; and a BLOCKED tail that is not
 #      itself the hand-off bullet (a later ordinary BLOCKED) is a working worker
@@ -405,7 +406,7 @@ if ! last_marker=$(doc_tail_status "$DOC"); then
 fi
 tail_doc="$DOC"   # the doc last_marker is read from
 PREDECESSOR=0
-ORPHAN_RESUME=0   # 1: the RESUME doc beside this original never launched (checked against the live sessions below)
+ORPHAN_RESUME=0
 if [ -n "$NAMED_SUCCESSOR" ]; then
     case "$last_marker" in
         WRAPPED) PREDECESSOR=1 ;;
@@ -427,9 +428,6 @@ if [ -n "$SIB_DOC" ] && [ "$PREDECESSOR" -eq 0 ]; then
         # started: only the successor's own record on the original (a LIVE with a new release token,
         # then its WRAPPED, after the hand-off) lets either doc close
         if ! resume_evidence "$sib_orig" "$sib_res"; then
-            # An ORIGINAL doc whose own tail is WRAPPED, beside a RESUME doc that never launched (no marker-bullet,
-            # lock free), is a hand-off nobody picked up (a worker that wrapped with its PR open): its own window
-            # closes. The census below refuses while anything runs under the RESUME doc's names (a booting successor).
             if [[ $DOC != *-RESUME.md ]] && [ "$last_marker" = WRAPPED ]; then
                 ORPHAN_RESUME=1
             else
@@ -696,8 +694,6 @@ $sessions
 EOF
 }
 
-# resume_session_live: success when a live session runs under a name only the RESUME doc derives (not one of
-# this doc's own names) or is proven by the RESUME doc's session ids: a successor that is booting or working.
 resume_session_live() {
     local pid name _model _ac base
     while IFS=$'\t' read -r pid name _model _ac; do

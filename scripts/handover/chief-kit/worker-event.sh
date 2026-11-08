@@ -283,8 +283,6 @@ else
     outf="$(mktemp "${TMPDIR:-/tmp}/worker-event-out.XXXXXX")" || { rm -f "$errf"; escalate "wrap-merged-failed rc=1 mktemp"; }
     "${WRAP[@]}" "${args[@]}" >"$outf" 2>"$errf"; rc=$?
     what=wrap-merged
-    # A WRAPPED whose PR is still OPEN (the worker handed off and waits on an outside event) stops at
-    # wrap-merged's first step, before it changes anything: close the worker's window instead of escalating.
     if [ "$rc" -eq 3 ] && [ "$marker" = WRAPPED ] && grep -qE "step pr-state failed: PR #[0-9]+ is 'OPEN'" "$errf"; then
         rm -f "$outf"; outf=""
         "${CLOSE[@]}" --fleet "$FLEET" "$worker" >/dev/null 2>"$errf"; rc=$?

@@ -2460,10 +2460,6 @@ rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
 pgrep_x_stub
 rm -f "$S9648_ORIG" "$S9648_RES"
 
-# --- 9662: a worker that wrapped with its PR open, its RESUME doc written but never launched ---
-# The original doc's tail is WRAPPED and its lock is free; the RESUME doc holds no marker-bullet of its own.
-# No process under the RESUME session name -> the original's window closes. Any process under it is a
-# booting successor and nothing is signaled.
 O9662="$W/HIMMEL-9-N71-orphan9662-2026-01-01.md"
 R9662="$W/HIMMEL-9-N71b-orphan9662-2026-01-01-RESUME.md"
 SID_O9662="ffffffff-6666-4666-8666-ffffffffffff"
@@ -2485,7 +2481,6 @@ rc=0; out=$(run "$O9662" 2>&1) || rc=$?
 check "9662 2: an unlaunched RESUME doc, the original's window already gone -> rc 0" "$rc" "0"
 contains "9662 2: that reads as CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "9662 2: nothing is signaled" "$(cat "$CALLS")" ""
-# a process under the RESUME session name is a booting successor: refuse, signal nothing (the original's window too)
 for booting in "HIMMEL-9-N71b-orphan9662-2026-01-01" "HIMMEL-9-N71b-orphan9662-2026-01-01-RESUME"; do
     rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
     mkproc 510 HIMMEL-9-N71-orphan9662-2026-01-01 "$SID_O9662" 9510
@@ -2496,7 +2491,6 @@ for booting in "HIMMEL-9-N71b-orphan9662-2026-01-01" "HIMMEL-9-N71b-orphan9662-2
     check "9662 3: a live session named $booting -> rc 4" "$rc" "4"
     check "9662 3: $booting: nothing signaled" "$(cat "$CALLS")" ""
 done
-# a booting successor under a shortened name is proven by the RESUME doc's session id
 rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
 mkproc 510 HIMMEL-9-N71-orphan9662-2026-01-01 "$SID_O9662" 9510
 mkproc 512 short-boot-name "$SID_R9662" 9512
@@ -2505,7 +2499,6 @@ reset_calls
 rc=0; out=$(run "$O9662" 2>&1) || rc=$?
 check "9662 4: a live session proven by the RESUME doc's session id -> rc 4" "$rc" "4"
 check "9662 4: that session id: nothing signaled" "$(cat "$CALLS")" ""
-# the original's own tail must be WRAPPED
 # shellcheck disable=SC2016  # literal fixture token delimiters
 printf -- '---\nsession_ids: %s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n' "$SID_O9662" > "$O9662"
 rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
@@ -2515,7 +2508,6 @@ reset_calls
 rc=0; out=$(run "$O9662" 2>&1) || rc=$?
 check "9662 5: an unlaunched RESUME doc, original tail LIVE -> rc 4" "$rc" "4"
 check "9662 5: original tail LIVE: nothing signaled" "$(cat "$CALLS")" ""
-# the RESUME doc itself is never the orphan-closable doc: it has no tail of its own
 reset_calls
 rc=0; out=$(run "$R9662" 2>&1) || rc=$?
 check "9662 6: the unlaunched RESUME doc itself -> rc 4" "$rc" "4"
