@@ -1086,20 +1086,10 @@ python_heredoc_readonly() {
     _py_heredoc_body "$1" && _py_body_readonly "$_PYH_BODY" 0
 }
 
-# python_heredoc_scratch_write CMD — python_heredoc_readonly's reading, plus
-# one write: an `open('<literal path under /tmp>', 'w'|'a')` whose path is
-# absolute, free of `..` and `.claude`, so a body that reads the home or a
-# state dir and writes a scratch file is no write to a live settings file.
 python_heredoc_scratch_write() {
     _py_heredoc_body "$1" && _py_body_readonly "$_PYH_BODY" 1
 }
 
-# _ansi_words_inert CMD — 0 when CMD holds no backslash escape but \t \n \r
-# (the only ones that cannot spell a letter or a dot) and every
-# whitespace-separated word that holds a `$'`, its quotes and `$` dropped,
-# spells no `settings` or `claude`. A live settings name is ONE shell word, so
-# an ANSI-C word that cannot join `.claude` and `settings.json` hides nothing:
-# `sort -t$'\t'` beside a /tmp/claude-1000 path is no mention.
 # ponytail: a name with a space in it (a quoted space splits the word here)
 # is not a settings file name, and the escapes check is global so a split
 # word cannot hide one; upgrade path: judge the tokenizer's words.
@@ -1120,8 +1110,6 @@ _ansi_words_inert() {
     [ "$ok" = 1 ] && [ "$seen" = 1 ]
 }
 
-# _py_heredoc_body CMD — set _PYH_BODY to the body of CMD when CMD is exactly
-# one `python3 [-] <<'DELIM'` statement; 1 otherwise.
 _py_heredoc_body() {
     local LC_ALL=C nl=$'\n' c=$1 first rest last body delim
     local rfirst='^(python[0-9.]*)([[:space:]]+-[IBuEsSOq]+)*([[:space:]]+-)?[[:space:]]*<<[[:space:]]*(\x27([A-Za-z_][A-Za-z0-9_]*)\x27|"([A-Za-z_][A-Za-z0-9_]*)")[[:space:]]*$'
@@ -1141,13 +1129,6 @@ _py_heredoc_body() {
     _PYH_BODY=$body
 }
 
-# _py_body_readonly BODY MODE — 0 when the python BODY (a heredoc body, or the
-# word after `-c`) can only read. MODE 1 also lets it write a scratch file:
-# each write-mode `open('<literal path>', 'w'|'a')` is checked and blanked (its
-# path must start /tmp/ or /var/tmp/, hold no `..` or `.claude`, and still
-# resolve there through canon), and `.write(` / `.writelines(` calls then act
-# only on those handles, since every other open( or handle source is refused
-# below.
 _py_body_readonly() {
     local LC_ALL=C nl=$'\n' body=$1 mode=$2 ob bl b b2 lit words w ralias wp wm
     local rextra='filehandler|zipfile|tarfile|sqlite3|shelve|dbm|fileinput|mmap|logging|tempfile|builtins|operator|functools|contextlib|globals|locals|vars|__dict__|__class__|__subclasses__|__getattribute__|__getitem__|modules|methodcaller|attrgetter|redirect_|shutil|fileio|gzip|bz2|lzma|urlretrieve|dump[[:space:]]*\(|stream[[:space:]]*=|std(out|err)[[:space:]]*=([^=]|$)' \
@@ -1163,15 +1144,12 @@ _py_body_readonly() {
     # plain ASCII, so a spelled-out builtin would pass the byte-wise word split.
     local rnonascii=$'[^\t\n -~]'
     [[ $body =~ $rnonascii ]] && return 1
-    # the write-mode opens are read from the body with its case kept: canon
-    # must resolve the real path (a symlink in /tmp/A is not /tmp/a)
     ob=$body
     if [ "$mode" = 1 ]; then
         while [[ $ob =~ $rwopen ]]; do
             wm=${BASH_REMATCH[0]}
             wp=${BASH_REMATCH[1]}
             case "$wp" in /tmp/* | /var/tmp/*) ;; *) return 1 ;; esac
-            # a backslash escape (\x2e) would spell what these tests look for
             case "$wp" in *..* | *.[Cc][Ll][Aa][Uu][Dd][Ee]* | *'$'* | *'%'* | *'{'* | *\\*) return 1 ;; esac
             wp=$(canon "$wp") || return 1
             case "$wp" in /tmp/* | /var/tmp/* | /private/tmp/* | /private/var/tmp/*) ;; *) return 1 ;; esac
@@ -1982,12 +1960,9 @@ _tok_readonly_ok() {
             first=$lw fk=$k
         else
             case "$first" in
-                # rg: a glob word that starts with a literal `/` or `~/`
-                # expands only to paths, never to an option (`--pre`)
                 rg)
                     if [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 1 ]; then
-                        # shellcheck disable=SC2088 # the word's literal `~/` prefix, not an expansion
-                        case "$w" in /* | '~/'*) ;; *) return 1 ;; esac
+                        case "$w" in /* | \~/*) ;; *) return 1 ;; esac
                     else
                         [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] || return 1
                     fi
@@ -2077,9 +2052,6 @@ _tok_ro_segment() {
     return 0
 }
 
-# _tok_uniq_word WORD — one word after `uniq`. _UQ counts the
-# operands (the input, then an OUTPUT file); the value of -f/-s/-w is not one.
-# Always returns 0: the caller is not guarded and the hook runs under set -e.
 _tok_uniq_word() {
     if [ "$_UQV" = 1 ]; then
         _UQV=0
@@ -2093,21 +2065,13 @@ _tok_uniq_word() {
     return 0
 }
 
-# _tok_awk_word K — word K after `awk`. Only `-F SEP`, `-v NAME=VAL`
-# and a program that cannot redirect (no `>`), pipe (`|`), spawn (`system`),
-# read a command (`getline`) or include a file (`@`) is a read; any other
-# option (-f, -i, -e, ...) is not. _AW: 0 before the program, 1 a -F/-v value
-# is next, 2 the program was seen (the rest are input files).
 _tok_awk_word() {
     local k=$1 w=${ST_W[$1]} lw=${ST_LW[$1]}
     if [ "$_AW" = 2 ]; then
-        # an input file; a trailing option (-f PROG) or a word that can expand
-        # into one is not (some awks read options after the program)
         case "$w" in -?*) return 1 ;; esac
         [ "${ST_X[k]}" = 0 ] || return 1
         if [ "${ST_G[k]}" = 1 ]; then
-            # shellcheck disable=SC2088 # the word's literal `~/` prefix, not an expansion
-            case "$w" in /* | '~/'*) ;; *) return 1 ;; esac
+            case "$w" in /* | \~/*) ;; *) return 1 ;; esac
         fi
         return 0
     fi
@@ -2122,11 +2086,6 @@ _tok_awk_word() {
     _AW=2
 }
 
-# _tok_cp_word K — word K after `cp`: a copy whose destination is
-# a scratch path reads its sources. Options are only -f -p -a -R -r -v -n -u
-# (no -t, -T, -l, -s, -b, long options, which can move the destination or link
-# a source), and no word carries a live `$` or a glob (either can expand into
-# an option or shift the destination).
 _tok_cp_word() {
     local k=$1 w=${ST_W[$1]}
     [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] || return 1
@@ -2141,13 +2100,9 @@ _tok_cp_word() {
     _CPL=$w
 }
 
-# _tok_cp_end — in _tok_ro_segment's scope: the cp has a source and its last
-# operand is a literal path under /tmp that holds no `..` or `.claude` and still
-# resolves under /tmp through canon (a symlink aimed at a live .claude fails).
 _tok_cp_end() {
     local r rl
     [ "$_CPN" -ge 2 ] || return 1
-    # a recursive copy of a tree that carries .claude/settings*.json stays a write
     [ "$variant_dest" = 0 ] || return 1
     case "$_CPL" in /tmp/* | /var/tmp/*) ;; *) return 1 ;; esac
     case "$_CPL" in *..* | *.[Cc][Ll][Aa][Uu][Dd][Ee]*) return 1 ;; esac
@@ -2155,11 +2110,7 @@ _tok_cp_end() {
     case "$r" in /tmp/* | /var/tmp/* | /private/tmp/* | /private/var/tmp/*) ;; *) return 1 ;; esac
     rl=$(printf '%s' "${r%/}" | tr '[:upper:]' '[:lower:]')
     case "$rl" in *.claude*) return 1 ;; esac
-    # never the directory that holds a live .claude (a recursive copy of a
-    # tree carrying .claude/settings.json lands in it)
     [ "$rl" != "$primary_root_lc" ] && [ "$rl" != "$own_root_lc" ] && [ "$rl" != "$home_root_lc" ] || return 1
-    # into a directory, each source lands as DIR/<its name>, which may itself
-    # be a symlink to a live file: that file is judged the same way
     if [ -d "$r" ]; then
         local i=0 s f
         while [ "$i" -lt $((_CPN - 1)) ]; do
@@ -2175,9 +2126,6 @@ _tok_cp_end() {
     return 0
 }
 
-# _tok_py_word K — word K after `python`: `python3 [-IBuEsSOq] -c
-# BODY` with nothing after BODY, whose body only reads (_py_body_readonly).
-# _PYS: 0 before -c, 1 the body is next, 2 the body was judged.
 _tok_py_word() {
     local k=$1 w=${ST_W[$1]}
     case "$_PYS" in
@@ -4344,9 +4292,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                     elif [ "$ST_ANSIC" = 1 ] && [ "$ST_OK" = 1 ] && [ "$cmd_j" = "$cmd" ] \
                         && ! _ansi_in_param_brace "$cmd" && _tok_no_shell_ok \
                         && _ansi_words_inert "$cmd_j"; then
-                        # a real ANSI-C word, but the `settings`/`claude` text
-                        # sits in another word (`sort -t$'\t'` beside
-                        # /tmp/claude-1000/...) and no segment rereads text
                         :
                     else
                         ansi_c=1; mentions_settings=1
@@ -4824,8 +4769,6 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # An interpreter that both finds $HOME and writes a file can build the
     # live path at run time, out of the text's sight (interp_home_write). Read
     # from the raw text: cmd_lc has lost the quotes that mark a write mode.
-    # A python heredoc whose only writes open a literal /tmp path (checked in
-    # python_heredoc_scratch_write) cannot build a live settings path to write.
     if interp_home_write "$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]')" \
         && [ "${EDIT_LIVE_SETTINGS_OK:-0}" != "1" ] \
         && ! python_heredoc_scratch_write "$cmd"; then

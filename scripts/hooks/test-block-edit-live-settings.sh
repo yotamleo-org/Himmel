@@ -3787,13 +3787,6 @@ rows_both 9766 2 "gh with an expanded subcommand beside a live .claude denies" <
 gh release $v -D @P@/.claude/hooks
 ROWS
 
-# 9800-9899: the guard refuses a command that can write a live
-# settings file; a read that merely names one passes. The sampled read shapes
-# (rg/grep over a transcript, jq or python3 -c over the settings file, a piped
-# chain ending in uniq or awk, cp of the settings file to a scratch path, an
-# ANSI-C tab beside a /tmp/claude-1000 path, a python heredoc that reads the
-# state dir and writes a scratch file) allow; every write shape beside them
-# keeps denying.
 rows_both 9800 0 "a read that names a live settings file allows" <<'ROWS'
 rg -l "settings.json" /tmp/claude-1000/x/scratchpad/*.jsonl
 rg -n "settings.json" ~/.claude/projects/foo/a.jsonl | sort | uniq -c
@@ -3809,12 +3802,10 @@ cp -p @H@/.claude/settings.json /tmp/claude-1000/x/scratchpad/
 cat @P@/.claude/settings.json | jq .hooks | grep -c Bash | sort -n | uniq
 python3 - <<'PY'\nimport os, json\nd = os.path.expanduser('~/.himmel/state/jira-mirror/HIMMEL/HIMMEL-1.md')\nt = open(d).read()\nf = open('/tmp/claude-1000/x/scratchpad/out.txt', 'w')\nf.write(t)\nPY
 ROWS
-# The ANSI-C tab beside a /tmp/claude-1000 path is no spelling of a settings name.
 assert_rc "9830 grep piped to sort -t with an ANSI-C tab (cwd worktree) allows" 0 \
     "$(bash_rc_of "$NESTED_WT" "grep -n foo /tmp/claude-1000/x/scratchpad/f.txt | sort -t\$'\\t' -k2" HOME="$FAKEHOME")"
 assert_rc "9831 grep piped to sort -t with an ANSI-C tab (cwd primary) allows" 0 \
     "$(bash_rc_of "$PRIMARY" "grep -n foo /tmp/claude-1000/x/scratchpad/f.txt | sort -t\$'\\t' -k2" HOME="$FAKEHOME")"
-# Control rows: every write shape stays denied (these pass on the base too).
 rows_both 9850 2 "a write shape beside a live settings file denies" <<'ROWS'
 echo x > @P@/.claude/settings.json
 echo x | tee @P@/.claude/settings.json
@@ -3856,7 +3847,6 @@ cp /tmp/x @H@/$'.claude'/settings.json
 cp /tmp/x @H@/$'.cla'ude/sett$'ings'.json
 echo x > @H@/.claude/settings.json; sort -t$'\t' /tmp/y
 ROWS
-# A /tmp destination that is a symlink to the live settings file is that file.
 ln -s "$PRIMARY/.claude/settings.json" "$SANDBOX/scratch-link"
 assert_rc "9880 cp onto a /tmp symlink to the live settings denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "cp /tmp/x/a.json $SANDBOX/scratch-link" HOME="$FAKEHOME")"
@@ -3868,8 +3858,6 @@ import os
 f = open('$SANDBOX/scratch-link', 'w')
 f.write(os.path.expanduser('~'))
 PY" HOME="$FAKEHOME")"
-# An escaped path in a python open(), an awk option after the program, and a
-# cp into a /tmp directory whose settings.json is a live symlink all deny.
 rows_both 9883 2 "an escaped python path, a trailing awk option, an awk expansion deny" <<'ROWS'
 python3 - <<'PY'\nimport os\nf = open('/tmp/\x2e\x2e/home/x/\x2eclaude/settings.json', 'w')\nf.write(os.path.expanduser('~'))\nPY
 awk '{print}' @P@/.claude/settings.json -f /tmp/evil.awk
