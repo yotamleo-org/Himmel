@@ -30,6 +30,12 @@
 #       never skips a required job: the job runs and its steps skip, so the
 #       required context is written (a skipped job reports its raw name
 #       expression, which satisfies nothing)
+#   G14 against the real timeline of scratch PR 3841: a push after a go run starts
+#       cheap jobs only, the release's unlabeled event starts no run, and the
+#       release's labeled event is the new head's one go run
+#   G15 a create-time ci:go: the labeled go run supersedes the opened run in the
+#       same group and runs every cheap job, and the header says what the reverse
+#       order does
 #
 # The required-context list is a copy of the live ruleset
 # (gh api repos/yotamleo-org/Himmel/rules/branches/main). The PR 3792 check-runs
@@ -43,11 +49,12 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CI_YML="${CI_YML:-$ROOT/.github/workflows/ci.yml}"
 REQUIRED="${REQUIRED_CONTEXTS_FILE:-$ROOT/scripts/ci/fixtures/ci-go-gate-required-contexts.txt}"
 CHECKS="${PR_CHECKS_FILE:-$ROOT/scripts/ci/fixtures/ci-go-gate-pr3792-checks.tsv}"
+PUSH="${PR_PUSH_FILE:-$ROOT/scripts/ci/fixtures/ci-go-gate-pr3841-push.tsv}"
 
-python3 -I - "$CI_YML" "$REQUIRED" "$CHECKS" <<'PY'
+python3 -I - "$CI_YML" "$REQUIRED" "$CHECKS" "$PUSH" <<'PY'
 import re, sys
 
-ci_yml, required_file, checks_file = sys.argv[1], sys.argv[2], sys.argv[3]
+ci_yml, required_file, checks_file, push_file = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 required = {l.strip() for l in open(required_file) if l.strip()}
 checks = [l.rstrip("\n").split("\t") for l in open(checks_file) if l.strip() and not l.startswith("#")]
 lines = open(ci_yml).read().split("\n")
@@ -381,6 +388,80 @@ if bad12:
     bad("G12 " + "; ".join(sorted(set(bad12))))
 else:
     ok("G12 no job skipped on a pull_request event reports a name the PR 3792 cheap or go run wrote")
+
+# ---- G14 ----
+# Real timeline of scratch PR 3841: a go run at head 1, a push (head 2), the release's
+# unlabel + label pair, a push (head 3). The evaluator must start the runs GitHub started,
+# cancel the ones GitHub cancelled, and give head 2 exactly one run with the heavy jobs.
+push_fx = [l.rstrip("\n").split("\t") for l in open(push_file) if l.strip() and not l.startswith("#")]
+evs = [r[1:] for r in push_fx if r[0] == "event"]      # ts, action, label, head
+real_runs = [r[1:] for r in push_fx if r[0] == "run"]  # id, created, updated, conclusion, head
+started = []
+no_run = []
+for ts, act, lab, h in evs:
+    if act not in tl:
+        no_run.append(act)
+        continue
+    c = event("pull_request", act, lab, "on")
+    started.append((ts, h, c, ev_text(grp, c) if grp else "", {j for j in HEAVY & set(jobs) if runs(j, c)}))
+bad14 = []
+if no_run != ["unlabeled"]:
+    bad14.append("events that start no run are %r (want only the release's unlabeled)" % no_run)
+if len(started) != len(real_runs):
+    bad14.append("the evaluator starts %d runs, GitHub started %d" % (len(started), len(real_runs)))
+else:
+    for i, (ts, h, c, g, heavy) in enumerate(started):
+        rid, _created, updated, concl, rhead = real_runs[i]
+        if rhead != h:
+            bad14.append("run %s is at head %s, the event is at %s" % (rid, rhead, h))
+        cancelled = any(started[j][3] == g and started[j][0] < updated for j in range(i + 1, len(started)))
+        if (concl == "cancelled") != cancelled:
+            bad14.append("run %s: GitHub ended it %s, the evaluator says %s" % (rid, concl, "cancelled" if cancelled else "not cancelled"))
+    go_runs = {}
+    for ts, h, c, g, heavy in started:
+        if heavy:
+            go_runs[h] = go_runs.get(h, 0) + 1
+    if go_runs.get("2ba654e06") != 1:
+        bad14.append("head 2 after the push has %r go runs (want exactly 1)" % go_runs.get("2ba654e06"))
+    for ts, h, c, g, heavy in started:
+        if c["github"].event.action == "synchronize" and heavy:
+            bad14.append("a push at %s runs heavy jobs %s" % (h, sorted(heavy)))
+heavy_names = ("bun-suites", "node-suites", "shell-unit-shard", "lanes-and-trust-suites", "leak-classes", "git-env-scrub", "security-scan")
+def wrote(kind, name):
+    return {c for k, n, c in (r[1:] for r in push_fx if r[0] == "check") if k == kind and n.split(" (")[0] == name} - {"skipped"}
+for name in heavy_names:
+    if not wrote("go", name):
+        bad14.append("the real go run at head 2 wrote no result for %s" % name)
+    if wrote("synchronize", name):
+        bad14.append("the real push run at head 2 wrote a result for %s" % name)
+if bad14:
+    bad("G14 " + "; ".join(bad14))
+else:
+    ok("G14 PR 3841: a push after a go run starts cheap jobs only, unlabeled starts no run, the release's labeled event is head 2's one go run")
+
+# ---- G15 ----
+# gh pr create --label ci:go starts an opened run and a labeled go run in one group. The
+# later run cancels the earlier one. The label is added after the PR exists, so the go run is
+# the later one and survives; it runs every cheap job too, so the cancelled opened run loses
+# nothing. Not proven live (a live create-time run could not be pushed past the push gates).
+opened_ev = event("pull_request", "opened", "", "on")
+go_ev = event("pull_request", "labeled", "ci:go", "on")
+bad15 = []
+if not grp or ev_text(grp, opened_ev) != ev_text(grp, go_ev):
+    bad15.append("the opened and the go run are in different groups, so neither cancels the other")
+lost = [j for j in sorted(CHEAP & set(jobs)) if not j.startswith("fail-fast") and runs(j, opened_ev) and not runs(j, go_ev)]
+if lost:
+    bad15.append("the opened run runs %s, the go run that cancels it does not" % lost)
+cancel = re.search(r"^  cancel-in-progress:\s*(.*)$", "\n".join(lines), re.MULTILINE)
+if not cancel or not ev_inner(re.fullmatch(r"\$\{\{\s*(.*?)\s*\}\}", cancel.group(1).strip()).group(1), opened_ev):
+    bad15.append("a pull_request run does not cancel the run it supersedes")
+doc = "\n".join(lines[:lines.index("jobs:")])
+if "Create-time label" not in doc or "next release call" not in doc:
+    bad15.append("the ci.yml header does not say what a create-time label does when the opened run lands last")
+if bad15:
+    bad("G15 " + "; ".join(bad15))
+else:
+    ok("G15 a create-time ci:go: the labeled go run supersedes the opened run, which runs nothing the go run does not; the header documents the reverse order")
 
 # ---- G10 ----
 head = "\n".join(lines[:lines.index("jobs:")])

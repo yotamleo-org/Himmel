@@ -162,6 +162,104 @@ if grep -q "^        if: github.event_name != 'pull_request' && inputs.suites ==
   ok "a suites dispatch records no breakage metric (a partial run would read unlisted suites as fixed)"
 else bad "the breakage record/upload steps are not skipped for a suites dispatch"; fi
 
+# 12. a label event that is not ci:macos runs no macOS job and queues behind nothing. Real data:
+# every label event on scratch PR 3841 (no ci:macos) started a macos-cadence run whose shell and
+# summary jobs were skipped (fixture, kind macos-label). Such a run in the shared PR group would
+# replace the one PENDING real run there (a newer push waiting behind a running macOS run).
+if ! python3 -I - "$WF" "${PR3841_FIXTURE:-$ROOT/scripts/ci/fixtures/ci-go-gate-pr3841-push.tsv}" <<'PY'
+import re, sys
+
+wf, fixture = sys.argv[1], sys.argv[2]
+fails = 0
+def ok(m): print("ok - " + m)
+def bad(m):
+    global fails
+    fails += 1
+    print("FAIL - " + m, file=sys.stderr)
+
+lines = [re.sub(r"\s+#.*$", "", l) for l in open(wf).read().split("\n") if not l.lstrip().startswith("#")]
+
+class N:
+    def __init__(self, d): self.d = d
+    def __getattr__(self, k):
+        v = self.d.get(k)
+        if v is None: return N({})
+        return N(v) if isinstance(v, dict) else v
+    def __bool__(self): return bool(self.d)
+    def __eq__(self, o): return not self.d and o == ""
+    def __ne__(self, o): return not self.__eq__(o)
+    def __str__(self): return ""
+
+def ev_inner(expr, ctx):
+    e = expr.replace("github.event.pull_request.labels.*.name", "LABELS")
+    e = e.replace("&&", " and ").replace("||", " or ")
+    e = re.sub(r"!(?!=)", " not ", e)
+    env = {"__builtins__": {}, "always": lambda: True, "contains": lambda a, b: b in a,
+           "format": lambda f, *a: re.sub(r"\{(\d+)\}", lambda m: str(a[int(m.group(1))]), f), **ctx}
+    return eval(e, env)
+
+def ev_text(text, ctx):
+    return re.sub(r"\$\{\{\s*(.*?)\s*\}\}", lambda m: str(ev_inner(m.group(1), ctx)), text)
+
+def event(name, ref, action="", label="", labels=(), suites="", run_id="99"):
+    gh = {"event_name": name, "ref": ref, "run_id": run_id,
+          "event": {"action": action, "label": {"name": label}, "pull_request": {"labels": list(labels)}}}
+    return {"github": N(gh), "inputs": N({"suites": suites} if suites else {}), "LABELS": list(labels)}
+
+group = next((m.group(1) for l in lines for m in [re.match(r"^  group:\s*(macos-cadence-.*)$", l)] if m), "")
+def job_if(job):
+    inside = False
+    for l in lines:
+        if re.match(r"^  [a-z][a-z-]*:$", l):
+            inside = l.strip() == job + ":"
+        elif inside and l.startswith("    if: "):
+            return l[len("    if: "):]
+    return ""
+
+PR = "refs/pull/9/merge"
+sync = event("pull_request", PR, "synchronize", labels=["ci:macos"])
+mac = event("pull_request", PR, "labeled", "ci:macos", ["ci:macos"])
+other = event("pull_request", PR, "labeled", "ci:go", ["ci:macos", "ci:go"])
+other2 = event("pull_request", PR, "labeled", "ci:go", ["ci:macos", "ci:go"], run_id="100")
+sched = event("schedule", "refs/heads/main")
+disp = event("workflow_dispatch", "refs/heads/x", suites="a.sh")
+g = {k: ev_text(group, c) for k, c in [("sync", sync), ("mac", mac), ("other", other), ("other2", other2), ("sched", sched), ("disp", disp)]}
+
+if g["sync"] == g["mac"] == "macos-cadence-%s-full" % PR and g["sched"] == "macos-cadence-refs/heads/main-full" \
+        and g["disp"] == "macos-cadence-refs/heads/x-suites":
+    ok("push, ci:macos label, schedule and suites dispatch keep their group (%s)" % g["sync"])
+else:
+    bad("groups changed for a run that must keep its group: %r" % g)
+if g["other"] != g["sync"] and g["other"] != g["other2"] and g["other"].startswith("macos-cadence-"):
+    ok("a label event other than ci:macos has its own group per run (%s)" % g["other"])
+else:
+    bad("a non-macos label event shares group %r with the push group %r (it replaces a pending macOS run)" % (g["other"], g["sync"]))
+
+bad_if = []
+for job in ("shell", "summary"):
+    cond = job_if(job)
+    if not cond:
+        bad_if.append("job %s has no if" % job)
+        continue
+    for label, c, want in [("a non-macos label event", other, False), ("a push on a ci:macos PR", sync, True),
+                           ("the ci:macos label", mac, True), ("schedule", sched, True),
+                           ("a push on a PR without ci:macos", event("pull_request", PR, "synchronize", labels=["bug"]), False)]:
+        if bool(ev_inner(cond, c)) != want:
+            bad_if.append("job %s %s %s" % (job, "skips" if want else "runs", label))
+if bad_if:
+    bad("; ".join(bad_if))
+else:
+    ok("shell and summary skip a non-macos label event and a PR without ci:macos, and run for the rest")
+
+rows = [l.rstrip("\n").split("\t") for l in open(fixture) if l.startswith("check\tmacos-label\t")]
+if rows and all(r[3] == "skipped" for r in rows):
+    ok("PR 3841: the real non-macos label event started a macos-cadence run with every job skipped (%d check-runs)" % len(rows))
+else:
+    bad("PR 3841 fixture lacks skipped macos-label check-runs: %r" % rows)
+sys.exit(1 if fails else 0)
+PY
+then fails=$((fails + 1)); fi
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
 exit 1
