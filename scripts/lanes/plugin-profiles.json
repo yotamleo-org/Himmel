@@ -440,8 +440,8 @@
       "sonnetContextGuard": "handoff",
       "sonnetContextShare": 73,
       "_comment_contextBudget": "2026-10-25: set from measured openings (scripts/eval/profile-openings.py, 14 days to 2026-10-25): n=1745, median first-request size 54149, range 26377-66366, rounded up to 55000. Was 35000 (n=0 attributable merged workers, kept under n<3).",
-      "_comment_sonnet": "Operator ruling 2026-10-30 (option 1, Sonnet workers only): impl runs a ceiling plus a hand-off (450000 then; decision 844, 2026-11-08, raised it to 850000, where share 73 now denies at 63 percent = 630000). Opus and Fable keep autocompact 200000 with no guard, because the A/B sample was Sonnet only and Phase 1 shows Opus differs after compaction.",
-      "_comment_share": "(chief ruling 2026-11-02): sonnetContextShare 73 makes the guard deny at 33 percent of the 1M window (330000 tokens), not 34 (340000). The hook rounds 75 percent of 450000 = 33.75 up to 34, which left 3158 tokens before the earliest 450000 compaction seen (343158), under the about 7000 a commit, push and CHECKPOINT need; 73 leaves about 13000. It protects the hand-off from a compaction; it does not stop hand-offs."
+      "_comment_sonnet": "Operator ruling 2026-10-30 (option 1, Sonnet workers only): impl runs a ceiling plus a hand-off (450000 then; decision 844, 2026-11-08, raised it to 850000, where share 73 now denies at 63 percent = 630000). Fable keeps autocompact 200000 with no guard; Opus has its own ceiling and guard above (_comment_opus).",
+      "_comment_share": "(chief ruling 2026-11-02, set at the 450000 ceiling; at 850000 the same share 73 denies at 63 percent = 630000, well ahead of any compaction): sonnetContextShare 73 made the guard deny at 33 percent of the 1M window (330000 tokens), not 34 (340000). The hook rounds 75 percent of 450000 = 33.75 up to 34, which left 3158 tokens before the earliest 450000 compaction seen (343158), under the about 7000 a commit, push and CHECKPOINT need; 73 leaves about 13000. It protects the hand-off from a compaction; it does not stop hand-offs."
     },
     "worker-eval": {
       "gateAllow": true,
