@@ -13,7 +13,7 @@ Run:
 bash scripts/retitle.sh $ARGUMENTS
 ```
 
-Then copy the printed `/rename …` line and run it. Pass extra ticket IDs as arguments for a session that spans tickets (e.g. `/retitle HIMMEL-430` → `HIMMEL-432/HIMMEL-430 …`).
+Then copy the printed `/rename …` line and run it. Pass extra ticket IDs as arguments for a session that spans tickets (e.g. `/retitle PROJ-430` → `PROJ-432/PROJ-430 …`).
 
 Notes:
 - The built-in `/rename` sets the session display name shown in the `/resume` picker and on the prompt bar. To also set your terminal's tab title, relaunch with the name baked in: `claude -n "<name>"` (the `-n` flag sets the terminal title at launch).

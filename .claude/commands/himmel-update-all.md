@@ -4,7 +4,7 @@ description: Use himmel-ops:himmel-update-all.
 argument-hint: "[--check] [--vault <path>] [--template-dir <path>]"
 ---
 
-# /himmel-update-all — update the himmel harness AND the luna vault (HIMMEL-426)
+# /himmel-update-all — update the himmel harness AND the luna vault
 
 himmel has two independent update surfaces:
 - **harness** (hooks, slash commands, scripts, plugins) — pulled by `/himmel-update` / `scripts/himmel-update.sh`.
@@ -12,7 +12,7 @@ himmel has two independent update surfaces:
 
 This combo runs both, **harness first** (so the latest template + skill are on disk before the vault upgrade reads them), then the vault. Run the two steps in order:
 
-**Step 1 — harness.** This command can run from **any directory** (HIMMEL-459), so first resolve the himmel checkout using the same checkout-resolution order as `marketplace/plugins/himmel-ops/scripts/workers.sh` (here it fails closed with an error; workers.sh fails open): `$HIMMEL_REPO` → the current git toplevel → canonical install paths → error. If `$ARGUMENTS` contains `--check`, run the dry-run form; otherwise the real update:
+**Step 1 — harness.** This command can run from **any directory**, so first resolve the himmel checkout using the same checkout-resolution order as `marketplace/plugins/himmel-ops/scripts/workers.sh` (here it fails closed with an error; workers.sh fails open): `$HIMMEL_REPO` → the current git toplevel → canonical install paths → error. If `$ARGUMENTS` contains `--check`, run the dry-run form; otherwise the real update:
 
 ```bash
 # Resolve the himmel checkout: $HIMMEL_REPO -> git toplevel -> canonical -> error.
@@ -40,7 +40,7 @@ The harness step's plugin install-state report flags any himmel-marketplace plug
 Skill { skill: "obsidian-triage:luna-upgrade", args: "$ARGUMENTS" }
 ```
 
-If the `Skill` tool refuses the invocation ("skill not found" or similar): report the harness result from Step 1, then fall back to the plugin-independent engine instead of failing (HIMMEL-1153 — the lean plugin floor, HIMMEL-1032, disables `obsidian-triage@himmel` by policy on some machines, which trips this same path even though the plugin is vendored+installed).
+If the `Skill` tool refuses the invocation ("skill not found" or similar): report the harness result from Step 1, then fall back to the plugin-independent engine instead of failing (the lean plugin floor disables `obsidian-triage@himmel` by policy on some machines, which trips this same path even though the plugin is vendored+installed).
 
 **Diagnose first.** `$REPO/marketplace/plugins/obsidian-triage/` is tracked in git, so it existing on disk is true in every himmel checkout and proves nothing about whether the plugin is installed/enabled — only the `enabledPlugins` config does. Check `.claude/settings.local.json` first, then `~/.claude/settings.json`, for an `"obsidian-triage@himmel"` entry (local overrides global). Effective value `false` → **disabled by policy** (remedy: flip it to `true` in whichever file carries the `false`, prefer `.claude/settings.local.json`). No entry in either file → **enabled state unknown/defaulted** — say so honestly, do NOT confidently claim "not installed"; give both remedies (add `"obsidian-triage@himmel": true` to `.claude/settings.local.json`, or `/plugin install obsidian-triage` if it was never registered).
 
@@ -57,4 +57,4 @@ Prefix whichever report you give with the diagnosis (disabled-by-policy vs unkno
 
 After both steps: harness hooks are live immediately; **restart any running Claude session** to pick up plugin / slash-command / skill changes.
 
-The harness step ends with the **gap-audit offer** (HIMMEL-5836): a print-only list of non-green qmd / graphify / in-work-ticket / ponytail checks. Relay it to the operator and run the full audit (`bash "$REPO/scripts/himmel-doctor.sh"`) only on their yes.
+The harness step ends with the **gap-audit offer**: a print-only list of non-green qmd / graphify / in-work-ticket / ponytail checks. Relay it to the operator and run the full audit (`bash "$REPO/scripts/himmel-doctor.sh"`) only on their yes.

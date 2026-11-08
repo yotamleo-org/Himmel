@@ -3,18 +3,18 @@ description: Rebuild the luna or himmel graphify graph.
 argument-hint: [luna|himmel|both] [--vault <path>] [--dry-run]
 ---
 
-Operator one-shot graphify refresh for the **luna** and/or **himmel** corpora
-(HIMMEL-1644). Fires `refresh-graph-map.sh` per corpus **serially** (luna then
+Operator one-shot graphify refresh for the **luna** and/or **himmel** corpora.
+Fires `refresh-graph-map.sh` per corpus **serially** (luna then
 himmel), with the SAME per-corpus argument sets the daily cadence
-(`graphmap-cadence.sh`, HIMMEL-829) uses — the title/slug/tag literals, the
+(`graphmap-cadence.sh`) uses — the title/slug/tag literals, the
 luna-vs-himmel corpus-root asymmetry (luna extracts the vault, himmel extracts
 the repo, BOTH publish their curated MOC into the vault's `60-Maps/`), and the
 fixed `claude-cli` backend.
 
 This is the on-demand path the cadence is the scheduled path for. It owns NO
 safety itself — the runner (`refresh-graph-map.sh`) owns the fence (scratchpad
-copy, never a live vault), the per-out-dir promote lock (HIMMEL-910), the
-freshness manifest (HIMMEL-907), and the host-path guard (HIMMEL-1134). This
+copy, never a live vault), the per-out-dir promote lock, the
+freshness manifest, and the host-path guard. This
 command just resolves the vault, builds the per-corpus argv, and fires.
 
 Run:
@@ -36,7 +36,7 @@ The himmel run passes `--merge-into-live`: himmel's live graph is mostly AST nod
 from the hourly `ast-update.sh`, so the markdown extraction is merged INTO it
 (`semantic-merge.py merge`, the step `semantic-update.sh` runs) rather than
 promoted over it, and the promote shrink guard compares the merged graph with the
-live one (HIMMEL-6008). A bare `graphify update .` refuses for the same shape;
+live one. A bare `graphify update .` refuses for the same shape;
 `ast-update.sh` is the structural-refresh path. The luna vault graph is
 markdown-only and keeps the plain promote. A failed run prints its reason and
 log path.
@@ -44,11 +44,11 @@ log path.
 After the refresh runs, the command prints `graphmap-cadence.sh status` so
 cadence drift is visible alongside the ad-hoc refresh (advisory — a cadence
 query failure never fails this command). On a successful **himmel** run it
-prints a next-step hint to run `/graph-publish` (HIMMEL-1129) to ship the
+prints a next-step hint to run `/graph-publish` to ship the
 refreshed tracked `graphify-out/` — it does NOT auto-run it (that commit + push
 + PR stays an explicit operator action).
 
-**Recovering an orphaned extraction (HIMMEL-3205).** When an extraction finished
+**Recovering an orphaned extraction.** When an extraction finished
 but its promote never ran (the runner was killed mid-flight), re-promote it
 without paying for a second extraction. `graph-refresh.sh` does not forward this
 flag; call the runner directly, once per corpus, with the corpus's own argument
@@ -74,7 +74,7 @@ holding the lock, and `--no-update`. The MOC is published only with an explicit
 `--publish`. The workdir is never deleted; on success the runner prints
 `promoted; safe to remove <dir>`.
 
-Timeout calibration lives in `refresh-graph-map.sh` (HIMMEL-1645); this command
+Timeout calibration lives in `refresh-graph-map.sh`; this command
 forwards the caller's environment verbatim and does not set `GRAPHIFY_API_TIMEOUT`.
 
 Environment:
@@ -85,6 +85,6 @@ Environment:
 Exit codes:
 - `0` all selected corpora refreshed successfully
 - `1` usage error (unknown corpus / unknown flag)
-- `2` environment error (`refresh-graph-map.sh` not found, `--vault` is not a directory, or the vault preflight refused it -- PHI/denylisted/root/non-vault, HIMMEL-1644)
+- `2` environment error (`refresh-graph-map.sh` not found, `--vault` is not a directory, or the vault preflight refused it -- PHI/denylisted/root/non-vault)
 - `3` one or more corpus refresh runs FAILED (`refresh-graph-map.sh` exited non-zero, not a usage skip) -- investigate
 - `4` no failures, but one or more runs were SKIPPED (usage at/over threshold, runner exited 3) and nothing else failed -- benign, retry later
