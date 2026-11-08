@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, type Access } from "./gate";
+import { classify } from "./router";
 
 // Operator `approve <id> <nonce> <code>` / `deny <id>` -> the root afk-sudo helper.
 // The helper (scripts/lib/afk-sudo/afk_sudo.py, installed
@@ -239,6 +240,8 @@ function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, 
   return true;
 }
 
+const isOutsidePrApprove = (text: string): boolean => classify(text).kind === "approve";
+
 // The gate poller.ts calls first in handleInbound: true = consumed.
 export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (msg: AfkSudoMsg) => boolean {
   return (msg) => {
@@ -251,6 +254,7 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
     if (prompt) return codeReply(deps, prompts!, msg, prompt);
     const line = parseAfkSudo(msg.text);
     if (!line) {
+      if (isOutsidePrApprove(msg.text)) return false;
       if (MALFORMED.test(msg.text)) {
         deps.log("[afk-sudo] approve with a malformed id consumed");
         if (eligible(deps.access(), msg)) {
