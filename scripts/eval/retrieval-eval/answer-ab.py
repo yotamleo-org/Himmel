@@ -28,7 +28,8 @@ Steps:
                 fused      grep + qmd-hybrid + graphify outputs, as the combined arm reads them
               The default --arms are these six. The four realistic arms are opt-in (--arms):
                 vanilla       a worker session: the himmel worker preface, the repo CLAUDE.md and
-                              hooks (cwd = --repo), tools Read, Grep, Glob only, an empty MCP config
+                              hooks (cwd = a bank-free export of --repo), tools Read, Grep, Glob only,
+                              an empty MCP config
                 fused-cached  the same session plus ONE tool, route, that returns grep + qmd
                               hybrid (reranked) + graphify, rank-fused, as a tool RESULT. The session
                               flags (preface, CLAUDE.md, hooks, model, permission mode) are vanilla's,
@@ -64,10 +65,17 @@ scripts/lanes/model-price.mjs; a model with no price row is reported unpriced, n
 The one-turn arms keep their cost_usd column (the reported total_cost_usd); the realistic arms'
 cost_usd is the priced figure.
 
+A realistic session cannot Read, Grep or Glob the question bank (it holds the gold files). It runs in a
+scratch export of --repo's HEAD (git archive, so no ignored or untracked file) from which the bank is
+removed: questions.jsonl, questions-v2.jsonl, a --questions file inside --repo, and any tracked copy of
+their bytes. Glob lists gitignored files too, so the export is the barrier; the session also carries
+--disallowedTools Read rules for the bank paths as a second layer. The scorer still reads the bank in
+this process. The routed arms' retrieval (route server, grep, qmd, graphify) still runs on --repo.
+
 Billing: bank-preflight before every call (a refusal stops the run), --output-format
 json, an explicit --permission-mode, no tools (realistic arms: Read, Grep, Glob and the route
 tool), a per-run cap and a --max-usd cap. The one-turn answerer runs in an empty scratch
-directory so no project file steers it; a realistic session runs in --repo, as a worker does.
+directory so no project file steers it; a realistic session runs in a bank-free export of --repo, as a worker does.
 
 Output in DIR: results.jsonl (a row per question x arm, plus the screen rows),
 screened.txt, table.tsv (also printed), STOPPED when a cap or a refusal cut the run.
@@ -82,6 +90,7 @@ Stdlib only (node for the price table).
 """
 # billed-opt-in: HIMMEL_BILLED_OK
 import argparse
+import atexit
 import hashlib
 import glob
 import importlib.util
@@ -93,6 +102,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import uuid
@@ -131,6 +141,69 @@ PRICE_JS = ("import {loadPrices, priceCall} from %s;"
             "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{"
             "const r=priceCall(JSON.parse(s),loadPrices());"
             "console.log(JSON.stringify({priced:r.priced,usd:r.usd}))});" % json.dumps("file://" + PRICE_MJS))
+
+
+BANK_FILES = ("questions.jsonl", "questions-v2.jsonl")
+BANK_DIR = os.path.join("scripts", "eval", "retrieval-eval")
+
+
+def bank_rels(repo, questions):
+    rels = [os.path.join(BANK_DIR, f) for f in BANK_FILES]
+    q = os.path.realpath(questions)
+    if q.startswith(repo.rstrip(os.sep) + os.sep) and os.path.relpath(q, repo) not in rels:
+        rels.append(os.path.relpath(q, repo))
+    return rels
+
+
+def bank_deny(repo, questions):
+    """Read deny rules, the second layer behind the scratch export: the bank paths of this repo, and any
+    copy of the committed banks anywhere on the filesystem (sibling worktrees). Claude Code applies Read
+    rules to Grep and Glob as well (best effort); `//` anchors the rule at the filesystem root."""
+    rules = ["Read(/%s)" % os.path.join(repo, r) for r in bank_rels(repo, questions)]
+    return rules + ["Read(//**/%s/questions*.jsonl)" % BANK_DIR.replace(os.sep, "/")]
+
+
+def file_digest(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def export_without_bank(repo, questions, dest):
+    """A scratch export of the repo's HEAD (git archive, so no ignored or untracked file comes along) with
+    the question bank removed: by path, and by content wherever else a copy of it is tracked. Glob in a
+    session lists gitignored files too, so denying the bank's paths is not enough; a tree that holds no
+    bank bytes is. Raises Usage when the archive cannot be taken."""
+    p = subprocess.Popen(["git", "-C", repo, "archive", "--format=tar", "HEAD"], stdout=subprocess.PIPE,
+                         stderr=subprocess.DEVNULL)
+    try:
+        with tarfile.open(fileobj=p.stdout, mode="r|") as tf:
+            try:
+                tf.extractall(dest, filter="data")
+            except TypeError:  # python before the extraction filters
+                tf.extractall(dest)
+    except (tarfile.TarError, OSError) as e:
+        p.kill()
+        raise Usage("cannot export %s for a session: %s" % (repo, e))
+    if p.wait() != 0:
+        raise Usage("cannot export %s for a session: git archive HEAD failed" % repo)
+    rels = bank_rels(repo, questions)
+    sums, sizes = set(), set()
+    for f in [os.path.join(root, r) for root in (repo, dest) for r in rels] + [os.path.realpath(questions)]:
+        if os.path.isfile(f) and not os.path.islink(f):
+            sums.add(file_digest(f))
+            sizes.add(os.path.getsize(f))
+    for r in rels:
+        f = os.path.join(dest, r)
+        if os.path.lexists(f):
+            os.remove(f)
+    for d, _, names in os.walk(dest):
+        for n in names:
+            f = os.path.join(d, n)
+            if not os.path.islink(f) and os.path.getsize(f) in sizes and file_digest(f) in sums:
+                os.remove(f)
 
 
 class Usage(Exception):
@@ -250,10 +323,20 @@ class Sweep:
         self.claude = os.environ.get("CLAUDE_BIN", "claude")
         self.preflight = os.environ.get("BANK_PREFLIGHT", os.path.join(REPO, "scripts", "lib", "usage-preflight.sh"))
         self.scratch = tempfile.mkdtemp(prefix="answer-ab-")
-        self.repo = os.path.abspath(a.repo)
+        self.repo = os.path.realpath(a.repo)
+        self.deny = bank_deny(self.repo, a.questions)
+        self.export = None
         self.mcp = {}
         self.traces = {}
         self.sink = None
+
+    def session_cwd(self):
+        if self.export is None:
+            self.export = os.path.join(self.scratch, "export")
+            os.mkdir(self.export)
+            atexit.register(shutil.rmtree, self.export, True)
+            export_without_bank(self.repo, self.a.questions, self.export)
+        return self.export
 
     def bank_ok(self):
         r = subprocess.run(["bash", self.preflight], capture_output=True, text=True)
@@ -284,7 +367,7 @@ class Sweep:
         keep = ["--no-session-persistence"] if sess is None else ["--resume" if sess["n"] else "--session-id", sess["id"]]
         return [self.claude, "-p", "--model", self.a.model, "--permission-mode", "dontAsk",
                 "--output-format", "json", "--max-budget-usd", "%.4f" % cap, "--tools", SESSION_TOOLS,
-                "--allowedTools", allowed, "--strict-mcp-config", "--mcp-config", self.mcp_config(arm)] + keep + [
+                "--allowedTools", allowed, "--disallowedTools"] + self.deny + ["--strict-mcp-config", "--mcp-config", self.mcp_config(arm)] + keep + [
                 "--append-system-prompt-file", PREFACE]
 
     def ask(self, q, arm, text, tag=None, sess=None, prime=False):
@@ -300,7 +383,7 @@ class Sweep:
             return None
         real = arm in REAL_ARMS
         if real:
-            argv, prompt, cwd = self.session_argv(arm, cap, sess), build_session_prompt(q["q"]), self.repo
+            argv, prompt, cwd = self.session_argv(arm, cap, sess), build_session_prompt(q["q"]), self.session_cwd()
         else:
             argv = [self.claude, "-p", "--model", self.a.model, "--permission-mode", "dontAsk",
                     "--output-format", "json", "--max-budget-usd", "%.4f" % cap, "--tools", "",
@@ -310,7 +393,7 @@ class Sweep:
         trace = self.traces.get(arm)
         if trace:
             open(trace, "w").close()
-        row = dict(id=q["id"], arm=tag or arm, split=q.get("split", "insample"), file_hit=False, named=[], tokens=0, weighted=0,
+        row = dict(id=q["id"], arm=tag or arm, split=q.get("split", "insample"), stratum=self.ev.stratum(q), file_hit=False, named=[], tokens=0, weighted=0,
                    cost_usd=0.0, priced_usd=0.0, priced=True, input=0, output=0, cache_read=0, cache_creation=0,
                    turns=0, retr_tokens=self.ev.tok(text), error=None, pos=sess["n"] + 1 if sess is not None else 1, prime=prime,
                    result="", route_calls=0, tool_trace=[])
@@ -592,8 +675,12 @@ def ledger_row(ev, a, sw, arms, repo):
                 ps = pos_stats([r for r in rs if pick(r["pos"])]) or {}
                 metrics.update({"%s.%s.%s" % (arm, key, m): ps.get(m) for m in
                                 ("n", "cost_mean", "cache_read_mean", "cache_creation_mean", "cached_share")})
-        for sl in SPLITS:
-            ss = arm_stats([r for r in rs if r["split"] == sl]) if any(r["split"] == sl for r in rs) else None
+        slices = [(sl, lambda r, sl=sl: r["split"] == sl) for sl in SPLITS]
+        slices += [(st, lambda r, st=st: r["stratum"] == st) for st in ev.STRATA]
+        slices += [("%s.%s" % (sl, st), lambda r, sl=sl, st=st: r["split"] == sl and r["stratum"] == st)
+                   for sl in SPLITS for st in ev.STRATA]
+        for sl, pick in slices:
+            ss = arm_stats([r for r in rs if pick(r)]) if any(pick(r) for r in rs) else None
             pre = "%s.%s." % (arm, sl)
             metrics.update({pre + "n": ss["n"] if ss else 0, pre + "file_hit": ss["file_hit"] if ss else None,
                             pre + "cost_usd": ss["cost_usd"] if ss else None,
