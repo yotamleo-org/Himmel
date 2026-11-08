@@ -504,12 +504,12 @@ pasted into the brief. Detail:
 - On the native lane, a standard-context launch of a model in the Sonnet 5.0
   to 5.9 range (`headed-arm-worker.sh` matches the id by prefix, so the plain,
   unnumbered id counts too) takes the profile's `sonnetAutocompact` as its ceiling
-  (`worker-impl` and `worker-eval`: `450000`) and the profile's
-  `sonnetContextGuard` as its default context guard (`worker-impl`: hand-off,
-  `worker-eval`: compaction). A standard-context launch of an Opus 5.5 model on the
-  native lane takes `opusAutocompact` (every `worker-*` profile: `800000`),
-  `opusContextGuard` (hand-off, `worker-eval`: compaction) and `opusContextShare`
-  (`87`, a deny at 700000 tokens), so launch Opus workers **without**
+  (`worker-impl` and `worker-eval`: `850000`) and the profile's
+  `sonnetContextGuard` as its default context guard (both: compaction). A
+  standard-context launch of an Opus 5.5 model on the
+  native lane takes `opusAutocompact` (every `worker-*` profile: `850000`),
+  `opusContextGuard` (compaction) and `opusContextShare`
+  (`87`, a deny at 740000 tokens), so launch Opus workers **without**
   `WORKER_SESSION_CONTEXT=1m` and without a Context line. An explicit
   `--context-guard` (including `none`) wins over that default. A profile with
   `contextMode` `1m` (`design`) runs at `1m`. `WORKER_SESSION_CONTEXT=1m` alone is
