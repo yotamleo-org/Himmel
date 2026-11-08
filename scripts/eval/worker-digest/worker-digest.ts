@@ -103,6 +103,19 @@ const MODEL = /^(claude|gpt|gemini|glm|codex|o\d)[a-z0-9.\-[\]]{0,60}$/i;
 // The tool name between the colon and "hook error" can carry a hyphen (mcp__himmel-bus__read), which \w does not match.
 const HOOK_PREFIX = /^(?:PreToolUse|PermissionRequest):[\w.-]+ hook error: /;
 const HOOK_ANY = /^(?:PreToolUse|PermissionRequest):[\w.-]+ hook error/;
+// Refusals whose text does not open "<hook name>:". Each fixed opening names the guard that wrote it; the DENY opening names
+// the hook it denied. ponytail: a table of today's openings, upgrade path the chain-log member for every guard.
+const OPENINGS: [RegExp, string][] = [
+  [/^You are a CHIEF session running a long chief-kit script/, "guard-chief-foreground"],
+  [/^bus store-deny:/, "guard-bus-store"],
+  [/^agent-model-deny:/, "guard-agent-model"],
+  [/^Refusing a repeat:/, "guard-identical-denied-retry"],
+  [/^guard-unwrap:/, "guard-unwrap"],
+  [/^guard-empty-expansion:/, "guard-empty-expansion"],
+];
+const DENY_OPENING = /^run-hook-with-bash: DENY ([\w.-]+)\.sh\b/;
+// A TaskStop on a task that already ended: the stop did nothing wrong, so it is no failure.
+const STOP_NOOP = /\bis not running\b|\bNo task found\b/;
 const CLASSIFIER = /denied by the Claude Code auto mode classifier/;
 const BRACKET = /Reason: \[([^\]\n]{1,80})\]/;
 const TEST_NAME = /[\w./-]*?((?:test-[\w.-]+\.sh)|(?:[\w.-]+\.test\.ts))\b/g;
@@ -369,7 +382,7 @@ async function main() {
   const suiteLast = new Map<string, { row: Row; red: boolean }>();
   const mapperDenied = new Set<string>();
   const m = { tool_calls: 0, subagents: 0, turns: 0, fail_denied: 0, fail_suite: 0, fail_blocked: 0, fail_error: 0,
-    run_errors: 0, interrupts: 0, ok_no_match: 0, ok_result: 0, ok_retry: 0 };
+    run_errors: 0, interrupts: 0, ok_no_match: 0, ok_noop_stop: 0, ok_result: 0, ok_retry: 0 };
   let mainModel: string | null = null;
   const callsByTool: Record<string, number> = Object.create(null);
   const failuresByTool: Record<string, number> = Object.create(null);
@@ -481,13 +494,20 @@ async function main() {
     }
     if (CONTEXT_GUARD.test(text.slice(0, 2000))) return "guard-leg-context-handoff";
     const pre = HOOK_PREFIX.exec(text);
+    // The guard a fixed opening names, else null. A DENY of a script that is no hook names no guard.
+    const opened = (s: string): string | null => {
+      const hit = OPENINGS.find(([re]) => re.test(s));
+      if (hit) return hit[1];
+      const denied = DENY_OPENING.exec(s)?.[1];
+      return denied && hooks.has(denied) ? denied : null;
+    };
     // A refusal with no hook prefix (an Agent guard words its own message) is still a guard's when the chain log names it.
     if (!pre && member) { const name = member.replace(/\.sh$/, ""); return hooks.has(name) ? name : "other"; }
-    if (!pre) return "permission-prompt";
+    if (!pre) return opened(text) ?? "permission-prompt";
     let rest = text.slice(pre[0].length);
     if (rest.startsWith("[")) { const i = rest.indexOf("]: "); rest = i >= 0 ? rest.slice(i + 3) : ""; }
     const name = /^[^\w]*([a-z0-9][a-z0-9-]*):/.exec(rest)?.[1];
-    return name && hooks.has(name) ? name : "other";
+    return name && hooks.has(name) ? name : opened(rest) ?? "other";
   };
 
   for (const e of events) {
@@ -553,6 +573,7 @@ async function main() {
           add(a, "blocked/-", "blocked", e.toolCallId, e.timestamp);
         } else {
           const tool = callName.get(e.toolCallId) ?? "";
+          if (tool === "TaskStop" && STOP_NOOP.test(e.content.slice(0, 500))) { m.ok_noop_stop++; break; }
           const sub = tool === "Bash" ? bashErrorSub(cmd, e.content) : "";
           if (sub === null) { m.ok_no_match++; break; }
           m.fail_error++;

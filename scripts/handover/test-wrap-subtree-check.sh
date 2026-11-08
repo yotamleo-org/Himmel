@@ -85,6 +85,7 @@ run() { # run <fixture> [args...] — SUT under the hermetic seams, self = 901
 out="$(run "$W/clean.txt" 101 2>&1)"; rc=$?
 eq 'clean subtree (explicit pid): rc 0' 0 "$rc"
 contains 'clean subtree: CLOSABLE line, harness children counted' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (3 harness-owned children ignored)'
+contains 'clean subtree: says there is nothing to TaskStop' "$out" 'Nothing is still running: no TaskStop needed.'
 
 out="$(WRAP_SUBTREE_START_WINDOW=0 COLUMNS=40 run "$W/clean.txt" 101 2>&1)"; rc=$?
 eq 'a COLUMNS in the environment does not truncate argv: clean subtree rc 0' 0 "$rc"
@@ -100,6 +101,7 @@ contains 'dirty subtree withholds CLOSABLE' "$out" 'WITHHELD: 6 process(es) stil
 contains 'a qmd command that is not the MCP server is NOT exempt (codex-1)' "$out" 'pid=207'
 contains 'a process merely under an mcp-named path is NOT exempt (codex-1)' "$out" 'pid=208'
 lacks 'a withheld run never prints the CLOSABLE banner' "$out" 'CLOSABLE:'
+contains 'a withheld run heads its pid rows as the tasks still running' "$out" 'Still running, TaskStop only the ones you started:'
 contains 'lists the orphaned poll loop' "$out" 'pid=203 ppid=101 etime=02:10:05'
 contains 'lists a wrapper whose command text contains mcp (wrappers are never harness)' "$out" 'pid=204'
 contains 'lists the loop'"'"'s child' "$out" 'pid=205'
