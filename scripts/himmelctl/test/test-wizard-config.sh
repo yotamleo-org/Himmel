@@ -783,4 +783,83 @@ cmp -s "$confR.before" "$confR" || fail "caseR: a refused path must leave himmel
 [ -e "$work/a" ] && fail "caseR: a refused relative path must create nothing"
 echo "ok: caseR handover.root / luna.vaultPath write an absolute path to himmel.conf; refusals write nothing"
 
+# ── Case S: jira.testProject, the test-project setter (I7) ──
+# The setter asks the read-only `jira live-test --json --candidate <KEY>` verb, through the HIMMELCTL_JIRA_CLI seam
+# (a stub that prints the canned fixtures in scripts/jira/src/fixtures), and verifies the resolved value after writing.
+fxS="$work/fixtureS"; build_fixture "$fxS"
+stubS="$work/jira-stub-S.js"
+cat > "$stubS" <<'STUB'
+const fs = require('fs'), path = require('path');
+const dir = process.env.STUB_DIR, nf = path.join(dir, 'n');
+const n = (fs.existsSync(nf) ? Number(fs.readFileSync(nf, 'utf8')) : 0) + 1;
+fs.writeFileSync(nf, String(n));
+fs.writeFileSync(path.join(dir, `argv.${n}`), process.argv.slice(2).join(' '));
+const f = [`out.${n}`, 'out.1'].map((x) => path.join(dir, x)).find((x) => fs.existsSync(x));
+process.stdout.write(fs.readFileSync(f, 'utf8'));
+STUB
+fixturesS="$repo_root/scripts/jira/src/fixtures"
+S_N=0
+run_cfg_s() {
+  # run_cfg_s <out.1 fixture> <out.2 fixture|-> <args...>; a fresh HOME and stub dir per call
+  S_N=$((S_N + 1))
+  _hS="$work/home-S-$S_N"; mkdir -p "$_hS/.himmel"; confS="$_hS/.himmel/himmel.conf"
+  _dS="$work/stub-S-$S_N"; mkdir -p "$_dS"
+  cp "$fixturesS/$1" "$_dS/out.1"; [ "$2" = "-" ] || cp "$fixturesS/$2" "$_dS/out.2"
+  shift 2
+  S_CLI=${S_CLI-$(winpath "$stubS")}
+  set +e
+  CFG_OUT=$(HOME="$_hS" USERPROFILE="$(winpath "$_hS")" HIMMELCTL_CACHE_DIR="$(winpath "$_hS.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hS.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxS")" STUB_DIR="$(winpath "$_dS")" HIMMELCTL_JIRA_CLI="$S_CLI" \
+    "$node_bin" "$wizard" config "$@" 2>&1)
+  CFG_RC=$?
+  set -e
+  S_CLI=
+  unset S_CLI
+}
+run_cfg_s live-test-ok.json live-test-ok.json set jira.testProject HTEST
+[ "$CFG_RC" -eq 0 ] || fail "caseS: a valid test project should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grep -qxF 'JIRA_TEST_PROJECT=HTEST' "$confS" || fail "caseS: himmel.conf should carry JIRA_TEST_PROJECT=HTEST (got: $(cat "$confS" 2>&1))"
+grepq "$(cat "$_dS/argv.1")" -F 'live-test --json --candidate HTEST' || fail "caseS: the validation call should be 'live-test --json --candidate HTEST' (got: $(cat "$_dS/argv.1"))"
+[ -e "$_dS/argv.2" ] || fail "caseS: the setter must re-run the verb after writing"
+
+run_cfg_s live-test-ok.json - set jira.testProject HTEST --dry-run
+[ "$CFG_RC" -eq 0 ] || fail "caseS: --dry-run should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grepq "$CFG_OUT" -F 'DRY: JIRA_TEST_PROJECT=HTEST' || fail "caseS: the dry run should name the line it would write (got: $CFG_OUT)"
+[ -e "$confS" ] && fail "caseS: --dry-run must write nothing (got: $(cat "$confS"))"
+
+run_cfg_s live-test-work.json - set jira.testProject HIMMEL
+[ "$CFG_RC" -eq 2 ] || fail "caseS: a work project should exit 2 (got rc=$CFG_RC): $CFG_OUT"
+grepq "$CFG_OUT" -F 'HIMMEL is a work project' || fail "caseS: the refusal should carry the verb's problem (got: $CFG_OUT)"
+[ -e "$confS" ] && fail "caseS: a refused work project must write nothing (got: $(cat "$confS"))"
+
+run_cfg_s live-test-none.json - set jira.testProject h_test
+[ "$CFG_RC" -eq 2 ] || fail "caseS: a key the verb does not resolve to itself should exit 2 (got rc=$CFG_RC): $CFG_OUT"
+[ -e "$confS" ] && fail "caseS: a refused key must write nothing (got: $(cat "$confS"))"
+
+# a himmel.conf.local that already sets the key takes the write, himmel.conf stays clear of it
+_hS="$work/home-S-local"; mkdir -p "$_hS/.himmel"; printf 'JIRA_TEST_PROJECT=X\n' > "$_hS/.himmel/himmel.conf.local"
+printf 'JIRA_EMAIL=keep@example.invalid\n' > "$_hS/.himmel/himmel.conf"
+_dS="$work/stub-S-local"; mkdir -p "$_dS"; cp "$fixturesS/live-test-ok.json" "$_dS/out.1"
+set +e
+CFG_OUT=$(HOME="$_hS" USERPROFILE="$(winpath "$_hS")" HIMMELCTL_CACHE_DIR="$(winpath "$_hS.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hS.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxS")" STUB_DIR="$(winpath "$_dS")" HIMMELCTL_JIRA_CLI="$(winpath "$stubS")" \
+  "$node_bin" "$wizard" config set jira.testProject HTEST 2>&1)
+CFG_RC=$?
+set -e
+[ "$CFG_RC" -eq 0 ] || fail "caseS: a local override should still take the write (got rc=$CFG_RC): $CFG_OUT"
+grep -qxF 'JIRA_TEST_PROJECT=HTEST' "$_hS/.himmel/himmel.conf.local" || fail "caseS: himmel.conf.local should carry JIRA_TEST_PROJECT=HTEST (got: $(cat "$_hS/.himmel/himmel.conf.local"))"
+grep -q '^JIRA_TEST_PROJECT=' "$_hS/.himmel/himmel.conf" && fail "caseS: himmel.conf must not gain the key when the override file owns it"
+grep -qxF 'JIRA_EMAIL=keep@example.invalid' "$_hS/.himmel/himmel.conf" || fail "caseS: himmel.conf must keep its other lines"
+
+# the value does not resolve after the write: exit 1
+run_cfg_s live-test-ok.json live-test-none.json set jira.testProject HTEST
+[ "$CFG_RC" -eq 1 ] || fail "caseS: a post-write mismatch should exit 1 (got rc=$CFG_RC): $CFG_OUT"
+grepq "$CFG_OUT" -F 'no JIRA_TEST_PROJECT is set' || fail "caseS: the mismatch should carry the verb's problem (got: $CFG_OUT)"
+
+# the verb cannot run: exit 2, nothing written, the build command is named
+S_CLI="$work/no-such-jira-cli.js"
+run_cfg_s live-test-ok.json - set jira.testProject HTEST
+[ "$CFG_RC" -eq 2 ] || fail "caseS: an absent verb should exit 2 (got rc=$CFG_RC): $CFG_OUT"
+grepq "$CFG_OUT" -F 'npm --prefix scripts/jira run build' || fail "caseS: an absent verb should name the build command (got: $CFG_OUT)"
+[ -e "$confS" ] && fail "caseS: an absent verb must write nothing (got: $(cat "$confS"))"
+echo "ok: caseS jira.testProject validates through the verb, writes the owning file, verifies after, and refuses without a verb"
+
 echo "PASS"

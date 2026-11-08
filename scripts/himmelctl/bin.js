@@ -8113,9 +8113,45 @@ function cmdConfigSetPath(name, value, args) {
 // straight from himmel.conf.local, then himmel.conf); an unset key means off.
 const TEAM_MODE_KEY = 'HIMMEL_TRACKER_TEAM_MODE';
 
+// config set jira.testProject <KEY>: the one Jira project the live tests may write to. The read-only
+// `jira live-test --json` verb owns the rules (a key shape, never a work project); this setter asks it before and
+// after the write and trusts only its answer. HIMMELCTL_JIRA_CLI names a stand-in for the built CLI (a test seam).
+const TEST_PROJECT_KEY = 'JIRA_TEST_PROJECT';
+function jiraLiveTest(candidate) {
+  const cli = process.env.HIMMELCTL_JIRA_CLI || path.join(repoRoot(), 'scripts', 'jira', 'dist', 'index.js');
+  const cannot = `himmelctl: config set: the jira live-test verb cannot run (${cli}); build it with: npm --prefix scripts/jira run build`;
+  if (!fs.existsSync(cli)) return { error: cannot };
+  const r = spawnSync(process.execPath, [cli, 'live-test', '--json', ...(candidate === undefined ? [] : ['--candidate', candidate])], { encoding: 'utf8' });
+  try {
+    const out = JSON.parse(r.stdout);
+    return { testProject: out.test_project || null, problem: out.problem || null };
+  } catch (_e) {
+    return { error: cannot };
+  }
+}
+
+function cmdConfigSetTestProject(value, args) {
+  const asked = jiraLiveTest(value);
+  if (asked.error) { console.error(asked.error); return 2; }
+  if (asked.testProject !== value) {
+    console.error(`himmelctl: config set: jira.testProject ${value} refused: ${asked.problem || 'the live-test verb did not accept it'}`);
+    return 2;
+  }
+  if (!writeConfigVar(TEST_PROJECT_KEY, value, args, [behaviourConfigLib.writeTarget(TEST_PROJECT_KEY)])) return 1;
+  if (args.dryRun) return 0;
+  const now = jiraLiveTest();
+  if (now.error) { console.error(now.error); return 1; }
+  if (now.testProject !== value) {
+    console.error(`himmelctl: config set: jira.testProject ${value} was written but does not resolve: ${now.problem || `the verb reads ${now.testProject}`}`);
+    return 1;
+  }
+  return 0;
+}
+
 function cmdConfigSet(pathParts, value, args) {
   if (pathParts[0] === 'commit') return cmdConfigSetCommit(pathParts.slice(1), value, args);
   if (Object.prototype.hasOwnProperty.call(CONFIG_PATH_KEYS, pathParts.join('.'))) return cmdConfigSetPath(pathParts.join('.'), value, args);
+  if (pathParts.join('.') === 'jira.testProject') return cmdConfigSetTestProject(value, args);
   if (value !== 'on' && value !== 'off') {
     console.error(`himmelctl: config set: value must be 'on' or 'off' (got '${value}')`);
     return 2;
