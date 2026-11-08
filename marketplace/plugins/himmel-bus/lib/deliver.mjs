@@ -14,7 +14,7 @@ export const BATCH_LINES = 190;
 const INLINE_BYTES = 1500;
 const SUMMARY_CHARS = 300;
 const RECORD_LINES = 20;
-const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const NAME = store.SESSION_NAME;
 // C0 except tab/newline, DEL, C1, U+2028/2029: none may start a line of ours.
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029]/g;
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
