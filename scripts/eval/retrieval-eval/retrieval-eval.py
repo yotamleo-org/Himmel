@@ -95,6 +95,11 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
+import importlib.util  # noqa: E402
+
+_vx_spec = importlib.util.spec_from_file_location("vocab_expand", os.path.join(HERE, "..", "..", "qmd", "vocab-expand.py"))
+vocab_expand = importlib.util.module_from_spec(_vx_spec)
+_vx_spec.loader.exec_module(vocab_expand)
 
 SPLITS = ("insample", "heldout")
 ARMS = ["grep", "grep-rtk", "path", "ident-grep", "ident-grep-rtk", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
@@ -382,7 +387,8 @@ def mcp_rows(msg):
 
 
 def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
-    args = {"searches": [{"type": "lex", "query": q}] + ([{"type": "vec", "query": q}] if hybrid else []),
+    vec = vocab_expand.shape_vec(q) if hybrid else ""
+    args = {"searches": [{"type": "lex", "query": vocab_expand.shape_lex(q, quote_flags=True)}] + ([{"type": "vec", "query": vec}] if vec else []),
             "collections": [collection], "limit": k, "intent": q}
     args["rerank"] = hybrid and rerank
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
