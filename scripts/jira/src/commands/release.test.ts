@@ -729,6 +729,7 @@ describe('routedJudge', () => {
   const decision = (reason: string) => ({ req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason });
   const envelope = (reason: string) => JSON.stringify({ is_error: false, result: JSON.stringify([decision(reason)]) });
   let dir: string;
+  const pathWithEmptyPs = (psDir: string): string => `${psDir}:${process.env.PATH ?? ''}`;
 
   function world(roles: unknown, fake: { out?: string; rc?: number; sleep?: number } = {}) {
     dir = mkdtempSync(join(root, 'world-'));
@@ -754,10 +755,7 @@ describe('routedJudge', () => {
       HIMMEL_API_CREDIT_CONFIG: join(dir, 'config.json'), HIMMEL_API_CREDIT_SNAPSHOT: join(dir, 'snapshot.json'),
       HIMMEL_API_CREDIT_STATE: join(dir, 'ledger.json'), HIMMEL_API_CLAUDE_BIN: join(dir, 'claude-fake'),
       HIMMEL_API_ALERT_DIR: join(dir, 'alerts'), HIMMEL_API_ALERT_CMD: join(dir, 'alert-stub'), HIMMEL_API_LOCK_WAIT_MS: '2000',
-      // FLEET_PS_CMD, FLEET_PROC and HIMMEL_FLEET_CAP are chokepoint seams of usage-preflight.sh: set per call, a Claude session in
-      // the primary checkout refuses them. The empty `ps` is found through PATH instead, and the cap is read from the temp
-      // HOME's config, never the process env.
-      HIMMEL_FLEET_SLOTS: join(dir, 'slots'), PATH: `${dir}:${process.env.PATH ?? ''}`,
+      HIMMEL_FLEET_SLOTS: join(dir, 'slots'), PATH: pathWithEmptyPs(dir),
       CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1', CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
       ANTHROPIC_API_KEY: '', HIMMEL_API_KEY_ID: '',
     };
