@@ -23,7 +23,7 @@ set -uo pipefail
 
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-leak_home="$(mktemp -d "${TMPDIR:-/tmp}/tick-leak-home.XXXXXX")" || exit 1  # prim-ok: the suite's own private temp root, removed at the end
+leak_home="$(mktemp -d "${TMPDIR:-/tmp}/tick-leak-home.XXXXXX")" || exit 1
 mkdir -p "$leak_home/.himmel/state/holds"
 printf '2026-01-01T00:00:00Z\tdeny\tseed\tHIMMEL-1\tHIMMEL-2\n' > "$leak_home/.himmel/state/holds/events.log"
 cp "$leak_home/.himmel/state/holds/events.log" "$leak_home/events.before"
