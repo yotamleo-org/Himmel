@@ -736,10 +736,7 @@ def graph_built(repo):
     try:
         with open(path, "rb") as fh:
             boundary_tail = b""
-            while True:
-                chunk = fh.read(1024 * 1024)
-                if not chunk:
-                    break
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
                 data = boundary_tail + chunk
                 m = stamp.search(data)
                 if m:
