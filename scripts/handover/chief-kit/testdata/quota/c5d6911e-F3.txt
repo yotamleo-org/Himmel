@@ -1,0 +1,3 @@
+# hand-written from the spec quote, not a byte copy (classifier denied transcript extraction)
+# F3: gh stderr, worker-pr-open.sh, session c5d6911e. The spec quote ends at "reach out…", so the tail is completed here. Lines starting '# ' are header, not payload.
+gh: API rate limit exceeded for user ID 88616986. If you reach out to GitHub Support for help, please include the request ID (HTTP 403)
