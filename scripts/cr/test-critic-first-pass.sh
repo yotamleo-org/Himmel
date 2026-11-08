@@ -392,6 +392,7 @@ check "claude has injection guard" "$(PP claude-opus-4-8     | grep -c 'UNTRUSTE
 # Precision rules and the docs lens ride in the shared diff rules block.
 check "diff rules check a finding against callers, guards and tests" "$(PP gpt-5.5 | grep -c 'callers, guards and tests')" "1"
 check "diff rules carry the docs lens"                              "$(PP gpt-5.5 | grep -c '^- Docs lens:')"              "1"
+check "diff rules carry the gate-integrity rule"                    "$(PP gpt-5.5 | grep -c '^- Gate integrity:')"         "1"
 check "gpt diff-mode keeps injection Critical clause" "$(PP gpt-5.5 | grep -c 'itself a Critical finding')" "1"
 check "gpt diff-mode carves out agent-instruction content" "$(PP gpt-5.5 | grep -c 'NOT a prompt-injection finding')" "1"
 # Policy structure (not just phrase presence): current-run steering
@@ -936,11 +937,11 @@ index 0000000..2222222 100644
 golden_small(){ for m in gpt-5.5 claude-opus-4-8 qwen/qwen3-coder-480b; do printf '%s' "$DIFF" | CRITIC_KNOWN_FINDINGS=0 bash "$CFP" --model "$m" --print-prompt "$@"; done | h256; }
 golden_big(){ for m in gpt-5.5 claude-opus-4-8 qwen/qwen3-coder-480b; do printf '%s' "$BIG" | CRITIC_KNOWN_FINDINGS=0 CRITIC_FIRST_PASS_CAP_BYTES=200 bash "$CFP" --model "$m" --print-prompt; done | h256; }
 # I10: with no context file the prompt is byte-identical to the base prompt
-# (eb11eb50d, re-pinned after the precision rules and docs lens were added),
+# (eb11eb50d, re-pinned after the precision rules, docs lens and gate-integrity rule were added),
 # for a small diff and for an over-cap (truncated) diff.
-check "I10 golden: small-diff prompt is byte-identical to base" "$(golden_small)" "bf11d967e4ab567788f2160a8628488651e9aaff5f3e85955cff9b93d2afde4b"
-check "I10 golden: over-cap diff prompt is byte-identical to base" "$(golden_big)" "0eb20eef69b4912685803ad9cedf2ed3b2be870d2fce82cac1e46b3c825b70d4"
-check "I10 golden: an empty --context-file is no context (small)" "$(golden_small --context-file '')" "bf11d967e4ab567788f2160a8628488651e9aaff5f3e85955cff9b93d2afde4b"
+check "I10 golden: small-diff prompt is byte-identical to base" "$(golden_small)" "76e894b2a7b5c5bac3ebd3fad5dbf88b54dd1893ef631f16e55fe4781efa049b"
+check "I10 golden: over-cap diff prompt is byte-identical to base" "$(golden_big)" "e43d96caa49224740562748390731614d453af0e4852ff37a3b6a21d4694c7ff"
+check "I10 golden: an empty --context-file is no context (small)" "$(golden_small --context-file '')" "76e894b2a7b5c5bac3ebd3fad5dbf88b54dd1893ef631f16e55fe4781efa049b"
 
 ctx="$tmp/ctx.txt"
 printf '%s\n' '{"range": ["lib/util.sh", 40, 50]}' '{"range": ["foo.sh", 1, 5]}' '' 'function helper() {' '  return 1' '}' > "$ctx"
