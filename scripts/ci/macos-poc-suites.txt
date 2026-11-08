@@ -35,6 +35,7 @@ scripts/hooks/test-escape-class-corpus.sh
 scripts/hooks/test-hook-rewrite-integrity.sh
 scripts/hooks/test-jira-nudge-on-end.sh
 scripts/hooks/test-launcher-lifecycle-integrity.sh
+scripts/hooks/test-peer-taint.sh
 scripts/hooks/test-require-quiet-run.sh
 
 # --- lib (scripts/lib)

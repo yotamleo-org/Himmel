@@ -3,7 +3,7 @@ import { existsSync, readFileSync, lstatSync, constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
-import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
+import { appendLine, appendOutboxLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, makeChiefTap, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
@@ -2227,22 +2227,6 @@ export function bridgeEnvOrigin(env: LoadedBridgeEnv, key: BridgeEnvKey): string
 
 async function sessionsList(root: string): Promise<string[]> {
   try { return await readdir(join(root, "sessions")); } catch { return []; }
-}
-
-// Reply via the originating chat's outbox: consistent with every other
-// operator-facing message in the bridge (send-then-commit durability + per-chat throttle
-// via flushOutboxes), and (unlike a direct sendMessage in the ingest loop) it does not
-// block polling. Routes to the SAME session the chat uses (group_<id> for a group, so a
-// group `/arm` reply lands in that group and its per-group context is preserved;
-// __chat__ for a DM), mirrors handleInbound's chatSession routing.
-async function appendOutboxLine(root: string, chat_id: number, line: object): Promise<void> {
-  const session = chat_id < 0 ? `group_${chat_id}` : "__chat__";
-  const { created } = await ensureSession(root, session);
-  const meta = await readMeta(root, session);
-  if (created || !meta) {
-    await writeMeta(root, session, { chat_id, status: "idle", last_run_pid: null, last_run_at: null, task_name: null, retry_at: null });
-  }
-  await appendLine(join(sessionDir(root, session), "outbox.jsonl"), JSON.stringify(line));
 }
 
 export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object): Promise<void> {

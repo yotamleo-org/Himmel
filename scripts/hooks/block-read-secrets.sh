@@ -459,9 +459,9 @@ _fp_plain_file() {
         c="$_CP_OUT"
         if shopt -q nocasematch; then nc=1; fi
         shopt -s nocasematch
-        case "$d" in *.ssh*|*config-audit*|*.himmel*) hit=1 ;; esac
+        case "$d" in *.ssh*|*config-audit*|*.himmel*|*peer-bridge*) hit=1 ;; esac
         [ "$nc" = 1 ] || shopt -u nocasematch
-        case "$c" in *config-audit*|*.himmel*) hit=1 ;; esac
+        case "$c" in *config-audit*|*.himmel*|*peer-bridge*) hit=1 ;; esac
         [ "$hit" = 1 ] || _FP_OK=1
         hit=0; nc=0
     fi
@@ -514,6 +514,8 @@ g4_secret_path() {
             return 0 ;;
         */config-audit|*/config-audit/backups|*/config-audit/backups/*) return 0 ;;
         */.himmel/secrets|*/.himmel/secrets/*)                          return 0 ;;
+        */.himmel/peer-bridge|*/.himmel/peer-bridge/*)                  return 0 ;;
+        */.config/himmel/peer-bridge|*/.config/himmel/peer-bridge/*)    return 0 ;;
     esac
     # A config-audit backup holds a copy of the .env, so its tree is matched on the
     # canonical path too: a symlink to it, or through a linked directory, is the same file.
@@ -543,6 +545,7 @@ g4_secret_path() {
             c=$(guard_canon_path "$raw") || return 0
         fi
         case "$c" in */config-audit|*/config-audit/backups|*/config-audit/backups/*|*/.himmel/secrets|*/.himmel/secrets/*) return 0 ;; esac
+        case "$c" in */.himmel/peer-bridge|*/.himmel/peer-bridge/*|*/.config/himmel/peer-bridge|*/.config/himmel/peer-bridge/*) return 0 ;; esac
     fi
     return 1
 }

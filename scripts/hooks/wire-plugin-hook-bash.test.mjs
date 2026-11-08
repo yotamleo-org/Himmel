@@ -82,6 +82,11 @@ function unwire(text) {
       commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh"';
       continue;
     }
+    const peer = command.match(/\/hooks\/(peer-taint-(?:gate|mark|resume)\.sh)"$/);
+    if (peer) {
+      commandHook.command = `bash "\${CLAUDE_PLUGIN_ROOT}/hooks/${peer[1]}"`;
+      continue;
+    }
     const match = command.match(/scripts\/hooks\/([A-Za-z0-9._-]+\.sh)"/);
     assert.ok(match, `could not extract project hook script from ${command}`);
     const script = match[1];

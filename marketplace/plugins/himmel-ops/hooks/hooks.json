@@ -180,6 +180,16 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" \"${CLAUDE_PLUGIN_ROOT}/hooks/peer-taint-gate.sh\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -227,6 +237,15 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" \"${CLAUDE_PLUGIN_ROOT}/hooks/peer-taint-resume.sh\"",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -264,6 +283,30 @@
           {
             "type": "command",
             "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" --optional \"$CLAUDE_PROJECT_DIR/scripts/hooks/telegram-notification.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" \"${CLAUDE_PLUGIN_ROOT}/hooks/peer-taint-mark.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" \"${CLAUDE_PLUGIN_ROOT}/hooks/peer-taint-mark.sh\"",
             "timeout": 15
           }
         ]
