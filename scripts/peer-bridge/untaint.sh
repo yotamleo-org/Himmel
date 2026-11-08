@@ -33,7 +33,7 @@ if [ -z "$sid" ] || [ "${#sid}" -gt 64 ]; then refuse "usage: untaint.sh <sessio
 case "$sid" in *[!A-Za-z0-9-]*) refuse "invalid session_id" ;; esac
 [ -d "$S/taint" ] || refuse "no taint dir under $S"
 
-exec 3</dev/tty 2>/dev/null || refuse "needs a human at a terminal (/dev/tty)"
+{ exec 3</dev/tty; } 2>/dev/null || refuse "needs a human at a terminal (/dev/tty)"
 printf 'Clear the peer taint of session %s? Type yes: ' "$sid" >&2
 ans=""
 read -r ans <&3 || refuse "no answer"

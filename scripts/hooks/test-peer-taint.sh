@@ -401,10 +401,14 @@ else:
         os.execvp(cmd[0], cmd)
     os.write(fd, (answer + "\n").encode())
     try:
-        while os.read(fd, 1024):
-            pass
+        while True:
+            chunk = os.read(fd, 1024)
+            if not chunk:
+                break
+            sys.stdout.buffer.write(chunk)
     except OSError:
         pass
+    sys.stdout.flush()
 _, st = os.waitpid(pid, 0)
 sys.exit(os.WEXITSTATUS(st) if os.WIFEXITED(st) else 128 + os.WTERMSIG(st))
 PY
@@ -421,6 +425,8 @@ untaint notty yes sU; if [ "$RC" = 3 ] && [ -e "$S/taint/sU" ]; then pass "no TT
 untaint pty yes sU CLAUDECODE=1; if [ "$RC" = 3 ] && [ -e "$S/taint/sU" ]; then pass "a pty answering yes with CLAUDECODE set: exit 3"; else fail "a pty answering yes with CLAUDECODE set: exit 3" "rc=$RC"; fi
 untaint pty yes sU CLAUDE_CODE_SESSION_ID=abc; if [ "$RC" = 3 ] && [ -e "$S/taint/sU" ]; then pass "a pty answering yes with CLAUDE_CODE_SESSION_ID set: exit 3"; else fail "a pty answering yes with CLAUDE_CODE_SESSION_ID set: exit 3" "rc=$RC"; fi
 untaint pty no sU; if [ "$RC" = 3 ] && [ -e "$S/taint/sU" ]; then pass "a pty answering no: exit 3"; else fail "a pty answering no: exit 3" "rc=$RC"; fi
+seen=$(env HOME="$H" python3 -I "$tmp/tty.py" pty no "$BASH_BIN" "$UNTAINT" sU 2>&1)
+case "$seen" in *"Type yes"*"not cleared"*) pass "the human sees the prompt and the refusal on the terminal" ;; *) fail "the human sees the prompt and the refusal on the terminal" "$seen" ;; esac
 : > "$H/.himmel/x"
 untaint pty yes '../../x'; if [ "$RC" = 3 ] && [ -e "$H/.himmel/x" ]; then pass "the id ../../x: exit 3 and nothing outside taint/ is removed"; else fail "the id ../../x: exit 3 and nothing outside taint/ is removed" "rc=$RC"; fi
 if [ "$(id -u)" = 0 ]; then
