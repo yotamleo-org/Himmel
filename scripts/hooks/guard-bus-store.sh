@@ -459,7 +459,8 @@ def sink: .opaque == null and ((.via // []) | length == 0) and ((.assigns // [])
     or (.argv[0].v == "bus" and (.argv[1].v // "" | IN("status", "peers", "wait", "send", "adopt"))));
 def ar: (.argv[0] | select(lit) | .v) // "";
 def arscript: test("(^|/)append-results\\.sh$");
-def runsopt: any(.argv[]; select(lit) | .v | test("^--(pre|hostname-bin)($|=)"));
+def optargs: .argv | ((map(lit and .v == "--") | index(true)) as $i | if $i == null then . else .[:$i] end);
+def runsopt: ar == "rg" and any(optargs[]; select(lit) | .v | test("^--(pre|hostname-bin)($|=)"));
 def data: .opaque == null and ((.via // []) | length == 0) and ((.assigns // []) | length == 0)
   and (runsopt | not)
   and (ar as $a | ($a | IN("grep", "egrep", "fgrep", "rg", "sed", "awk", "gawk", "mawk", "python", "python3"))
