@@ -1610,7 +1610,7 @@ test("Board: an unsigned spec is a Waiting on you row with the ticket's title, a
   expect(part).toContain("handoff items not read");
   // a skipped critic file is named in the header with its count, the rest of the list still shows
   const skip = renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items: [], unread: [], skipped: ["HIMMEL-8-empty.critic-spec-r1.md", "HIMMEL-6-binary.critic-spec-r1.md"] } });
-  expect(skip).toContain("2 critic file(s) unread, skipped: HIMMEL-8-empty.critic-spec-r1.md, HIMMEL-6-binary.critic-spec-r1.md");
+  expect(skip).toContain("2 critic files unread, skipped: HIMMEL-8-empty.critic-spec-r1.md, HIMMEL-6-binary.critic-spec-r1.md");
 });
 
 test("Board: an operator hold on a ticket with an open PR is a Waiting on you row with the PR, the hold's reason and the action", () => {
@@ -1661,9 +1661,10 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   critic("HIMMEL-7-capped", 3, "SPEC FINDINGS 1");                // past the round cap: owed
   critic("HIMMEL-3-shipped.md", 1, "SPEC CLEAN");                 // its ticket is Done
   critic("HIMMEL-5-signed-bare", 1, "SPEC CLEAN");                // signed below by the name with no .md
-  // the first spec is signed by a path that reaches the file through a `..`, the second by the spec name with no .md through a symlinked folder: both read as signed
+  // the signing record and the critic base differ in a trailing .md in both directions, and reach the file through a `..` or a symlinked folder: both read as signed
+  //   the first spec's critic base ends in .md and its record does not; the second's record ends in .md and its critic base does not
   symlinkSync(designs, join(bucket, "designs-link"));
-  writeFileSync(join(rel, "operator.jsonl"), `${JSON.stringify({ kind: "spec", keys: [K(2)], spec_path: `${designs}/../designs/HIMMEL-2-signed.md` })}\nnot json\n${JSON.stringify({ kind: "spec", spec_path: join(bucket, "designs-link", "HIMMEL-5-signed-bare") })}\n`);
+  writeFileSync(join(rel, "operator.jsonl"), `${JSON.stringify({ kind: "spec", keys: [K(2)], spec_path: `${designs}/../designs/HIMMEL-2-signed` })}\nnot json\n${JSON.stringify({ kind: "spec", spec_path: join(bucket, "designs-link", "HIMMEL-5-signed-bare.md") })}\n`);
   writeFileSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief.md"),
     "# VE\n\n## Live state\n\nworkers: x\nqueue: HIMMEL-5 merge waits for operator sign-off | HIMMEL-9 runs by itself || was: HIMMEL-7 waited for operator sign-off\npool-disposition: HIMMEL-4 parked until the operator words arrive\n\n## Current direction\n");
   writeFileSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief-HANDOFF.md"), "# h\n\n## Open operator items\n\n- 9271: run the apply at the station\n- none\n\n## Next\n");

@@ -403,7 +403,7 @@ function waitingRows(d, ch, nv, owed, prs) {
 // opens its chain only where the Chains tab (the running version) holds the ticket. With nothing waiting there is no section: the count
 // link beside the tabs says 0 or "not read", and an empty box would push the first card down.
 // What an unreadable owed source says: a read that failed is never a plain "nobody owes you".
-const unreadOwed = (owed) => !owed ? [] : owed.state === "ok" ? [...(owed.unread || []).map((w) => `${w} not read`), ...((owed.skipped || []).length ? [`${owed.skipped.length} critic file(s) unread, skipped: ${owed.skipped.join(", ")}`] : [])] : ["the operator-owed sources not read"];
+const unreadOwed = (owed) => !owed ? [] : owed.state === "ok" ? [...(owed.unread || []).map((w) => `${w} not read`), ...((owed.skipped || []).length ? [`${owed.skipped.length} critic file${owed.skipped.length === 1 ? "" : "s"} unread, skipped: ${owed.skipped.join(", ")}`] : [])] : ["the operator-owed sources not read"];
 function waitingHtml(rows, tabCh, v, d, ch, nv, owed) {
   if (!rows.length) return "";
   const row = (x) => {

@@ -195,7 +195,7 @@ function specItems(bucket: string, version: string, open: Map<string, string>, s
     if (m && (!latest.has(m[1]) || Number(m[2]) > latest.get(m[1])!.n)) latest.set(m[1], { n: Number(m[2]), f });
   }
   const items: OwedItem[] = [];
-  for (const [spec, { n, f }] of [...latest].sort((a, b) => a[0].localeCompare(b[0]))) {
+  for (const [spec, { n, f }] of [...latest].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
     const key = spec.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
     let last: string | undefined;
     try { last = utf8(join(dir, f)).split("\n").map((x) => x.trim()).filter(Boolean).pop(); } catch { /* named below */ }
