@@ -469,5 +469,15 @@ for arm in vanilla routed; do
 done
 eq "vanilla still has tools Read, Grep, Glob only" "Read,Grep,Glob" "$(sort -u "$W/sess-allowed-vanilla.log")"
 
+# a --questions file outside the repo: a tracked copy of it under another name is stripped by content
+rm -f "$W"/sess-*.log
+extrow='{"id":"a1","kind":"where","q":"where is the queue lock described","gold":["docs/lock.md"],"reason":[],"note":"BANKSECRET-ext"}'
+printf '%s\n' "$extrow" > "$W/ext-bank.jsonl"
+printf '%s\n' "$extrow" > "$R/renamed-copy.dat"
+git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m renamed
+python3 -I "$AB" run --repo "$R" --questions "$W/ext-bank.jsonl" --out "$W/out-ext" --arms vanilla --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/ext.txt" 2>&1
+eq "an external-bank run completes" "0" "$?"
+eq "a tracked copy of an external --questions file is not in the session's cwd tree" "0" "$(awk '{s += $2} END {print s + 0}' "$W/sess-cwd.log")"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

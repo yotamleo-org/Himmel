@@ -192,12 +192,10 @@ def export_without_bank(repo, questions, dest):
         raise Usage("cannot export %s for a session: git archive HEAD failed" % repo)
     rels = bank_rels(repo, questions)
     sums, sizes = set(), set()
-    for root in (repo, dest):
-        for r in rels:
-            f = os.path.join(root, r)
-            if os.path.isfile(f) and not os.path.islink(f):
-                sums.add(file_digest(f))
-                sizes.add(os.path.getsize(f))
+    for f in [os.path.join(root, r) for root in (repo, dest) for r in rels] + [os.path.realpath(questions)]:
+        if os.path.isfile(f) and not os.path.islink(f):
+            sums.add(file_digest(f))
+            sizes.add(os.path.getsize(f))
     for r in rels:
         f = os.path.join(dest, r)
         if os.path.lexists(f):
