@@ -139,10 +139,7 @@
 #                               moved; it then `watch set`s the row, so the
 #                               same change never wakes twice. No change is silent; a REST failure
 #                               is silent and retried next interval; a field the row left unset is a
-#                               silent baseline. The rows live in the manifest, so a successor's
-#                               waiter on the inherited manifest watches them with no re-arm. The chief
-#                               reads the PR, acts, and `watch remove`s the row when the event is over.
-#                               Seams (tests): CHIEF_WAIT_GH replaces `gh`; CHIEF_WAIT_PR_WATCH_SEC=0
+#                               silent baseline. Seams (tests): CHIEF_WAIT_GH replaces `gh`; CHIEF_WAIT_PR_WATCH_SEC=0
 #                               polls every sample. The repository is the row's `repo` or, as for
 #                               `gh pr checks` below, the one `gh` resolves from the waiter's cwd.
 #   WAKE succession complete <k/n>   with --succession <successor> --doc <chief doc>

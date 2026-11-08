@@ -12,15 +12,6 @@
 #   fleet-manifest.sh watch  <manifest> remove <pr> [--repo <owner/name>]
 #   fleet-manifest.sh watch  <manifest> list                 pr<TAB>head<TAB>comments<TAB>reviews<TAB>repo<TAB>state, `-` for unset
 #
-# watch: one row per outside PR a worker no longer waits on, keyed by PR number and repo (no --repo =
-# the waiter's own repository) -- the head sha, the comment count (issue + review comments), the
-# review count and the state (open, closed or merged) last seen. chief-wait.sh
-# polls each row over REST and wakes `WAKE pr-watch <pr> ...` when one differs, then `watch set`s the
-# row so the same change never wakes twice. The rows live in the top-level `watch` array, a key the
-# writer carries through every rewrite untouched, so schema 1 stays valid, every reader of `workers`
-# is unchanged, and a successor chief that inherits the manifest inherits the rows with no re-arm.
-# A count or head left off a row is a silent baseline on the first poll.
-#
 # Location: next to the chief doc, named after it —
 # <chief doc stem>.fleet.json.
 #
