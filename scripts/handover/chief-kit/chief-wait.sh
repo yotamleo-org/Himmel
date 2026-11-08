@@ -1965,7 +1965,7 @@ while :; do
                     [ "$unowned_none_streak" -lt 2 ] || rm -f "$unowned_file" "$unowned_aged_file" ;;
                 *)
                     unowned_none_streak=0
-                    if unowned_aged="$(unowned_aged_wake "$unowned_val")"; then
+                    if [ "$housekeeping_secs" -ne 0 ] && unowned_aged="$(unowned_aged_wake "$unowned_val")"; then
                         printf 'WAKE unowned-pr %s\n%s\n' "$unowned_aged" "$tick_line"
                         exit_reason='wake-unowned-pr'; exit 0
                     fi
