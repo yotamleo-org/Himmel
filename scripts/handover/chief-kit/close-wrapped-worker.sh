@@ -357,9 +357,8 @@ results_tail_status() {
 }
 
 # doc_tail_status <doc>: the status the close gates read for a doc - its Results tail (results_tail_status),
-# or the whole-file tail for a legacy doc with no Results heading, or whose Results holds no marker bullet
-# (before append-results.sh inserted under Results, a resumed worker's bullets sat under the doc's last
-# section). Returns 1 when the doc cannot be read.
+# or the whole-file tail for a legacy doc with no Results heading, or whose Results holds no marker bullet.
+# Returns 1 when the doc cannot be read.
 doc_tail_status() {
     local rt
     rt=$(results_tail_status "$1") || return 1

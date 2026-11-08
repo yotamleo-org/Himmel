@@ -291,19 +291,18 @@ contains "zero-match: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "zero-match: kill never called" "$(cat "$CALLS")" ""
 
 # --- 4a. a RESUME-shaped doc (Results first, then three more sections) ----
-# append-results.sh puts the WRAPPED bullet under ## Results, where the closer reads it; a legacy doc
-# whose Results holds no marker bullet at all falls back to the marker bullets further down.
 mkdir -p "$W/vault9607/.git"
 cp "$HERE/../../../templates/luna-second-brain/.gitleaks.toml" "$W/vault9607/.gitleaks.toml"
-mk9607() { # mk9607 <results-bullet-line|""> <trap-bullet-line>
+mk9607() {
+    local results_bullet="$1" trap_bullet="$2"
     {
         echo "# HIMMEL-9 N1 demo worker"; echo; echo "Your RETASK token is X-1."; echo
         echo "## Results (newest at the bottom)"; echo
-        [ -z "$1" ] || echo "$1"
+        [ -z "$results_bullet" ] || echo "$results_bullet"
         echo
         echo "## State at hand-off"; echo; echo "- committed, nothing dirty"; echo
         echo "## Remaining steps"; echo; echo "- ship it"; echo
-        echo "## Traps learned"; echo; echo "$2"
+        echo "## Traps learned"; echo; echo "$trap_bullet"
     } > "$DOC"
 }
 mk9607 "- 09:00 LIVE - resumed" "- a trap"
@@ -322,7 +321,7 @@ reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "9607 legacy doc: a Results that holds a marker bullet is not overridden by a later section -> rc 4" "$rc" "4"
 
-# --- 4b.a session-scratchpad clone holding unpushed commits ------------
+# --- 4b. a session-scratchpad clone holding unpushed commits ------------
 SCR="$W/claude-$(id -u)/proj/sess/scratchpad"
 mkdir -p "$SCR"
 git init -q -b main --bare "$W/scr-remote.git"

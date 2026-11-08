@@ -300,8 +300,6 @@ rc=0; bash "$wt13/scripts/handover/chief-kit/append-results.sh" "$d13c" "SUCCESS
 check "13: an explicit APPEND_RESULTS_BUS still wins and is not labelled" "$(grep -c '^- [0-9:]* bus-adopt: adopted: legx chief old → CON-B-chief$' "$d13c")" 1
 
 # --- 14. a RESUME-shaped doc takes the bullet at the end of ## Results ---
-# Results comes first, then State at hand-off / Remaining steps / Traps learned: the bullet lands
-# under Results (where close-wrapped-worker.sh reads), and the later sections stay byte-for-byte.
 d14="$tmp/HIMMEL-9-N14-fixture-2026-11-08-RESUME.md"
 printf '# worker\n\nYour RETASK token is X-14.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n\n## State at hand-off\n\n- committed\n\n## Remaining steps\n\n- ship\n\n## Traps learned\n\n- a trap\n' > "$d14"
 WORKER_SESSION_JIRA_STATUS=0 bash "$SCRIPT" "$d14" "WRAPPED fixture" >/dev/null 2>&1

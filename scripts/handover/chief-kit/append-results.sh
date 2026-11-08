@@ -175,24 +175,21 @@ fi
 locked=0
 doc_lock "$DOC" append-results && locked=1
 
-# The bullet belongs at the end of the section close-wrapped-worker.sh reads: the LAST of the
-# `## Results` / `## Chief Rulings` / `## Console Rulings` sections. A RESUME doc carries more
-# sections after Results (State at hand-off, Remaining steps, Traps learned): appended at the
-# true EOF the bullet sat under the last of them and the closer saw no marker. `at` is the line
-# the bullet goes after (that section's last non-blank line) when a `## ` heading follows the
-# section; 0 means the section runs to EOF (every doc whose Results is last), which appends as before.
-at="$(awk '
+# insert_after: the last non-blank line of the LAST `## Results` / `## Chief Rulings` /
+# `## Console Rulings` section (the sections close-wrapped-worker.sh reads), when a `## ` heading
+# follows it; 0 when that section runs to EOF, where the bullet is appended.
+insert_after="$(awk '
     /^## (Results|Chief Rulings|Console Rulings)([ \t]|$)/ { tgt = 1; last = NR; closed = 0; next }
     tgt && !closed { if (/^## /) closed = 1; else if ($0 !~ /^[ \t]*$/) last = NR }
-    END { print (tgt && closed) ? last : 0 }' "$DOC")" || at=0  # swallow-ok: an unreadable scan appends at EOF, as before
-case "$at" in ''|*[!0-9]*) at=0 ;; esac
+    END { print (tgt && closed) ? last : 0 }' "$DOC")" || insert_after=0  # swallow-ok: an unreadable scan appends at EOF, as before
+case "$insert_after" in ''|*[!0-9]*) insert_after=0 ;; esac
 inserted=0
-if [ "$at" -gt 0 ]; then
+if [ "$insert_after" -gt 0 ]; then
     # a temp beside the doc, cp -p'd so it keeps the doc's mode (mktemp makes it 0600); the bullet
     # goes through ENVIRON because awk -v would process its backslashes
     tmp=""
     if tmp="$(mktemp "$DOC.tmp.XXXXXX")" && cp -p "$DOC" "$tmp" \
-        && bullet="$bullet" awk -v at="$at" '{ print } NR == at { print ENVIRON["bullet"] }' "$DOC" > "$tmp" \
+        && bullet="$bullet" awk -v after="$insert_after" '{ print } NR == after { print ENVIRON["bullet"] }' "$DOC" > "$tmp" \
         && mv -f "$tmp" "$DOC"; then  # prim-ok: the temp is cp -p'd from the doc to keep its mode; atomic_write would publish it 0600
         inserted=1
     else
