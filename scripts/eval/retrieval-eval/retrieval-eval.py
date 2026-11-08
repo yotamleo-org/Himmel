@@ -576,7 +576,6 @@ def skip_rtk(arms):
 
 
 def run_arm(arm, q, repo, a, k):
-    """(files, text, timed_out, error, qmd_error) of one non-combined arm asked for k files."""
     if arm == "grep":
         return arm_grep(q, repo, a.timeout, k) + ("",)
     if arm == "grep-rtk":
