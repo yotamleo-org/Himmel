@@ -130,12 +130,12 @@ contains "W10 control: docs on Sonnet exports no share" "$out" "HIMMEL_WORKER_SE
 out="$(dry10 worker-impl "$T/opus-doc10.md" claude-opus-5-5)"
 contains "W10 impl on Opus takes the 850000 ceiling (decision 844)" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=850000"
 contains "W10 impl on Opus exports the profile share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=87"
-contains "W10 impl on Opus turns the hand-off guard on" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
+contains "W10 impl on Opus turns the compaction guard on" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
 { cat "$T/opus-doc10.md"; printf 'Test VM: ubuntu_new\n'; } >"$T/opus-vm-doc10.md"   # worker-vm refuses a brief naming no VM
 for prof10 in worker-docs worker-bus worker-vm worker-e2e; do
     out="$(dry10 "$prof10" "$T/opus-vm-doc10.md" claude-opus-5-5)"
     contains "W10 $prof10 on Opus takes the 850000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=850000"
-    contains "W10 $prof10 on Opus hands off" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
+    contains "W10 $prof10 on Opus compacts" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
 done
 out="$(dry10 worker-eval "$T/opus-doc10.md" claude-opus-5-5)"
 contains "W10 eval on Opus compacts" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"

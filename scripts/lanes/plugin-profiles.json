@@ -433,15 +433,15 @@
       "contextMode": "standard",
       "autocompact": 200000,
       "opusAutocompact": 850000,
-      "opusContextGuard": "handoff",
+      "opusContextGuard": "compact",
       "opusContextShare": 87,
-      "_comment_opus": "Operator decision 751 (2026-11-07): an Opus 5 worker on the native lane gets a ceiling and a hand-off guard. The guard rounds to a whole percent of the 1M window. Two real runs at the earlier 800000 ceiling each compacted straight after one large read batch (749689 and 678169 by the CLI's own count), so the compaction point is not located; see docs/internals/worker-context-guard.md.",
+      "_comment_opus": "Operator decision 751 (2026-11-07): an Opus 5 worker on the native lane gets a ceiling and a compaction guard. The guard rounds to a whole percent of the 1M window. Two real runs at the earlier 800000 ceiling each compacted straight after one large read batch (749689 and 678169 by the CLI's own count), so the compaction point is not located; see docs/internals/worker-context-guard.md.",
       "sonnetAutocompact": 850000,
-      "sonnetContextGuard": "handoff",
+      "sonnetContextGuard": "compact",
       "sonnetContextShare": 73,
       "_comment_contextBudget": "2026-10-25: set from measured openings (scripts/eval/profile-openings.py, 14 days to 2026-10-25): n=1745, median first-request size 54149, range 26377-66366, rounded up to 55000. Was 35000 (n=0 attributable merged workers, kept under n<3).",
-      "_comment_sonnet": "Operator ruling 2026-10-30 (option 1, Sonnet workers only): impl runs a ceiling plus a hand-off. Fable keeps autocompact 200000 with no guard; Opus has its own ceiling and guard above (_comment_opus).",
-      "_comment_share": "(chief ruling 2026-11-02): sonnetContextShare sets where the hand-off guard denies: the hook rounds share percent of the ceiling up to a whole percent of the 1M window. The share was chosen at the old 450000 ceiling to leave room for a commit, push and CHECKPOINT before the earliest compaction seen; it has not been re-measured at the current ceiling. It protects the hand-off from a compaction; it does not stop hand-offs."
+      "_comment_sonnet": "Operator ruling 2026-10-30 (option 1, Sonnet workers only): impl runs a ceiling plus a compaction guard. Fable keeps autocompact 200000 with no guard; Opus has its own ceiling and guard above (_comment_opus).",
+      "_comment_share": "(chief ruling 2026-11-02): sonnetContextShare sets where the context guard denies: the hook rounds share percent of the ceiling up to a whole percent of the 1M window. The share was chosen at the old 450000 ceiling to leave room for a commit, push and CHECKPOINT before the earliest compaction seen; it has not been re-measured at the current ceiling. In compact mode a pushed CHECKPOINT bullet unlocks it and the session carries on to the ceiling."
     },
     "worker-eval": {
       "gateAllow": true,
@@ -472,7 +472,7 @@
       "contextMode": "standard",
       "autocompact": 200000,
       "opusAutocompact": 850000,
-      "opusContextGuard": "handoff",
+      "opusContextGuard": "compact",
       "opusContextShare": 87
     },
     "worker-bus": {
@@ -487,7 +487,7 @@
       "contextMode": "standard",
       "autocompact": 200000,
       "opusAutocompact": 850000,
-      "opusContextGuard": "handoff",
+      "opusContextGuard": "compact",
       "opusContextShare": 87,
       "_comment_contextBudget": "2026-10-25: set from measured openings (scripts/eval/profile-openings.py, 14 days to 2026-10-25): n=7, median first-request size 52557, range 49808-63723, rounded up to 53000. Was 35000."
     },
@@ -504,7 +504,7 @@
       "contextMode": "standard",
       "autocompact": 200000,
       "opusAutocompact": 850000,
-      "opusContextGuard": "handoff",
+      "opusContextGuard": "compact",
       "opusContextShare": 87
     },
     "worker-e2e": {
@@ -523,7 +523,7 @@
       "contextMode": "standard",
       "autocompact": 200000,
       "opusAutocompact": 850000,
-      "opusContextGuard": "handoff",
+      "opusContextGuard": "compact",
       "opusContextShare": 87
     },
     "lane-review": {

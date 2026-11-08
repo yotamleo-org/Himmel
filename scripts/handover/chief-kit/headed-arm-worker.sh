@@ -177,10 +177,10 @@
 # worker-docs exist to carry a different context setting, not a different roster
 # (the one difference: worker-docs keeps lean-skills on the native lane, where the
 # others drop it): a profile's sonnetAutocompact / sonnetContextGuard apply to the
-# native lane on a claude-sonnet-5 model only (worker-impl 850000 + hand-off,
+# native lane on a claude-sonnet-5 model only (worker-impl 850000 + compaction,
 # worker-eval 850000 + compaction, worker-docs 200000). A profile's opusAutocompact /
 # opusContextGuard apply the same way to the native lane on a claude-opus-5 model only
-# (every worker-* profile 850000 + hand-off, worker-eval + compaction). See the _comment
+# (every worker-* profile 850000 + compaction). See the _comment
 # in plugin-profiles.json.
 # --profile composes with --lane claudex: the shim prepends
 # profile flags, then execs scripts/claude-codex via WORKER_SESSION_CLAUDE_BIN. The

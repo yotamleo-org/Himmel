@@ -96,13 +96,13 @@ for (const [field, value] of [['opusAutocompact', 850001], ['opusAutocompact', 1
   });
 }
 const OPUS = (guard) => ({ opusAutocompact: 850000, opusContextGuard: guard, opusContextShare: 87 });
-test('the shipped registry sets 850k per profile: impl hands off, eval compacts, docs stays at 200k', () => {
+test('the shipped registry sets 850k per profile: impl and eval compact, docs stays at 200k', () => {
   const real = PP.loadRegistry();
   assert.deepEqual(PP.validateRegistry(real), []);
   const ctx = (name) => PP.contextForProfile(real, name);
-  assert.deepEqual(ctx('worker-impl'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 850000, sonnetContextGuard: 'handoff', sonnetContextShare: 73, ...OPUS('handoff') });
+  assert.deepEqual(ctx('worker-impl'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 850000, sonnetContextGuard: 'compact', sonnetContextShare: 73, ...OPUS('compact') });
   assert.deepEqual(ctx('worker-eval'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 850000, sonnetContextGuard: 'compact', sonnetContextShare: 73, ...OPUS('compact') });
-  assert.deepEqual(ctx('worker-docs'), { contextMode: 'standard', autocompact: 200000, ...OPUS('handoff') });
+  assert.deepEqual(ctx('worker-docs'), { contextMode: 'standard', autocompact: 200000, ...OPUS('compact') });
 });
 test('decision 751: every worker profile carries the Opus numbers, and no other profile does', () => {
   const real = PP.loadRegistry();
