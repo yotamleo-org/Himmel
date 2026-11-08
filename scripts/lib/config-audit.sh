@@ -18,10 +18,13 @@
 #                                                    names only (migrate-env.sh, after a keyring move)
 #   config-audit.sh restore <id> [--script NAME]     put a backup's set back (audited, backed up)
 #   config-audit.sh watch                            alert on a deleted, truncated or key-losing file;
-#                                                    on a healthy read keep a value backup of the config files
+#                                                    on a healthy read keep a value backup of the config files;
+#                                                    a key whose value now sits under a new name is a rename:
+#                                                    one information line on stderr, no alert
 #   config-audit.sh check                            the same comparison, read-only (the doctor): LOSS rows
-#                                                    (exit 3), then BACKUP <id> <age> and NOBACKUP <file>
-#                                                    <path> for a present file no backup holds (exit 0)
+#                                                    (exit 3), RENAME <file> <old> <new> <path> rows (exit 0), then
+#                                                    BACKUP <id> <age> and NOBACKUP <file> <path> for a present
+#                                                    file no backup holds (exit 0)
 #   config-audit.sh accept                           take the live set as healthy (a deliberate hand edit)
 #   config-audit.sh denied <file> <action> [--script NAME] [--pid N]
 #                                                    log a refused write (block-himmel-config-writes.sh)
@@ -307,7 +310,9 @@ function snapshot() {
     if (!p) continue;
     const b = read(p);
     const k = keys(n, b);
-    snap[n] = { path: p, present: b !== null, size: b === null ? 0 : b.length, keys: k === null ? null : [...k.keys()].sort() };
+    // digests: sha256 per key name, so a key that reappears under a new name reads as a rename.
+    snap[n] = { path: p, present: b !== null, size: b === null ? 0 : b.length, keys: k === null ? null : [...k.keys()].sort(),
+      digests: k === null ? null : Object.fromEntries([...k.entries()].sort((x, y) => (x[0] < y[0] ? -1 : 1))) };
   }
   return snap;
 }
@@ -347,11 +352,22 @@ function problems(snap, live) {
     if (!is || !was.present) continue;
     if (!is.present) { out.push({ file: n, path: was.path, kind: "deleted", lost: was.keys || [] }); continue; }
     if ((is.size === 0 && was.size > 0) || (was.keys !== null && is.keys === null)) { out.push({ file: n, path: was.path, kind: "truncated", lost: was.keys || [] }); continue; }
-    const lost = (was.keys || []).filter((k) => !(is.keys || []).includes(k));
-    if (lost.length) out.push({ file: n, path: was.path, kind: "lost keys", lost });
+    let lost = (was.keys || []).filter((k) => !(is.keys || []).includes(k));
+    // A lost key whose value digest now sits under a key that is new in the live file is a rename.
+    const fresh = (is.keys || []).filter((k) => !(was.keys || []).includes(k)), taken = new Set(), renames = [];
+    for (const k of lost) {
+      const d = was.digests && was.digests[k];
+      const to = d && is.digests ? fresh.find((f) => !taken.has(f) && is.digests[f] === d) : null;
+      if (to) { taken.add(to); renames.push([k, to]); }
+    }
+    lost = lost.filter((k) => !renames.some((r) => r[0] === k));
+    if (lost.length) out.push({ file: n, path: was.path, kind: "lost keys", lost, renames });
+    else if (renames.length) out.push({ file: n, path: was.path, kind: "renamed", lost: [], renames });
   }
   return out;
 }
+const isLoss = (p) => p.kind !== "renamed";
+const renamed = (p) => p.renames.map((r) => r[0] + " to " + r[1]).join(", ");
 // The newest backup whose copy of the file is present and holds every lost key.
 function goodBackup(p) {
   for (const x of manifests()) {
@@ -361,7 +377,8 @@ function goodBackup(p) {
   }
   return null;
 }
-const describe = (p) => `${p.path} ${p.kind}` + (p.lost.length ? `: ${p.lost.slice(0, 20).join(", ")}${p.lost.length > 20 ? ` (+${p.lost.length - 20} more)` : ""}` : "");
+const describe = (p) => `${p.path} ${p.kind}` + (p.lost.length ? `: ${p.lost.slice(0, 20).join(", ")}${p.lost.length > 20 ? ` (+${p.lost.length - 20} more)` : ""}` : "")
+  + (p.renames && p.renames.length ? ` (renamed: ${renamed(p)})` : "");
 
 function list() {
   const live = snapshot();
@@ -479,9 +496,14 @@ function watch(readOnly) {
   const live = snapshot();
   const snap = loadWatch();
   if (!snap) { if (!readOnly) { saveWatch(live); keepHealthy(); } return []; }
-  const ps = problems(snap, live);
-  if (readOnly) return ps;
-  if (!ps.length) { saveWatch(live); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {} return []; }
+  const all = problems(snap, live), ps = all.filter(isLoss);
+  if (readOnly) return all;
+  if (!ps.length) {
+    saveWatch(live); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {}
+    // A rename is information, once: the renamed set is the new baseline, so the next pass is quiet.
+    if (all.length) console.log("INFO\tℹ️ himmel station config: " + all.map((p) => `${p.path} renamed: ${renamed(p)}`).join("; ") + " (same values, nothing lost)");
+    return [];
+  }
   for (const p of ps) p.backup = goodBackup(p);
   const text = "⚠️ himmel station config: " + ps.map((p) => describe(p) + (p.backup ? ` (newest good backup ${p.backup})` : " (no backup holds them)")).join("; ")
     + ". List: /config backups. Restore: /config restore <id> <code>";
@@ -505,7 +527,12 @@ try {
     ts: now(), pid: Number(opt("--pid", "")) || null, session: E.CLAUDE_SESSION_ID || E.CLAUDE_CODE_SESSION_ID || "",
     script: opt("--script", ""), file: real(argv[0]), action: argv[1], denied: true });
   else if (verb === "accept") { saveWatch(snapshot()); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {} console.log("result=accepted"); }
-  else if (verb === "check") { for (const p of watch(true)) { p.backup = goodBackup(p); console.log(`LOSS\t${p.file}\t${p.kind}\t${p.lost.join(",") || "-"}\t${p.backup || "-"}\t${p.path}`); } for (const r of backupRows()) console.log(r); }
+  else if (verb === "check") {
+    const found = watch(true);
+    for (const p of found.filter(isLoss)) { p.backup = goodBackup(p); console.log(`LOSS\t${p.file}\t${p.kind}\t${p.lost.join(",") || "-"}\t${p.backup || "-"}\t${p.path}`); }
+    for (const p of found) for (const [from, to] of p.renames || []) console.log(`RENAME\t${p.file}\t${from}\t${to}\t${p.path}`);
+    for (const r of backupRows()) console.log(r);
+  }
   else process.exit(2);
 } catch (e) {
   console.error(`config-audit: ${verb} failed: ${e && e.code ? e.code : "error"} ${e && e.message ? e.message.replace(/\n.*/s, "") : ""}`);
@@ -571,6 +598,7 @@ _ca_watch() {
         case "$line" in
             ALERT*) ;;
             WARN*) echo "config-audit: WARN: $(printf '%s' "$line" | cut -f2-)" >&2; rc=4; continue ;;
+            INFO*) echo "config-audit: $(printf '%s' "$line" | cut -f2-)" >&2; continue ;;
             *) continue ;;
         esac
         fp="$(printf '%s' "$line" | cut -f2)"
