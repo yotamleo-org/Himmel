@@ -10,6 +10,8 @@
 #   # billed-opt-in: --billed|HIMMEL_BILLED_OK   the script tests the token(s) it names
 #   # billed-opt-in: arming                      an operator-armed cadence: arming is the opt-in
 #   # billed-exempt: <reason>                    a wrapper/launcher/text-only mention, no call of its own
+#   # billed-daemon: <capIdentifier>             a long-running daemon whose calls a named cap bounds
+#                                                (`//` in a .ts file); the cap is the opt-in
 #
 #   bash scripts/ci/test-billed-optin.sh          lints the repo, then runs the RED rows.
 #   bash scripts/ci/test-billed-optin.sh --lint [--root D] [--tracked F]
@@ -22,7 +24,8 @@
 #     binary, so its fixtures would match the pattern); a -live suite always needs a header;
 #   - `billed-opt-in:` names only --billed and/or HIMMEL_BILLED_OK, and the file must test each
 #     on a non-comment line; `arming` needs a *-cadence.sh script that is, or names, this file;
-#   - `billed-exempt:` needs a reason.
+#   - `billed-exempt:` needs a reason;
+#   - `billed-daemon:` names a non-empty cap identifier the file uses on a non-comment line.
 # ponytail: the token check is "appears on a non-comment line", not "guards the first call";
 # the refusal rows below run each marked script without the opt-in and prove it, upgrade path
 # is a per-script row for every new guard.
@@ -34,7 +37,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 RE='(^|[^A-Za-z0-9_./-])claude[[:space:]]+(-p|--print|--bg)([[:space:]]|$)|(^|[^A-Za-z0-9_./-])claude[[:space:]]+-[^|;&#]*[[:space:]](-p|--print|--bg)([[:space:]]|$)|"?\$\{?[A-Za-z_]*CLAUDE[A-Za-z_]*\}?"?[[:space:]]+(-p|--print|--bg)([[:space:]]|$)|["'"'"']claude["'"'"'],[[:space:]]*["'"'"'](-p|--print|--bg)|(^|[^A-Za-z0-9_./-])codex[[:space:]]+exec([[:space:]]|$)|["'"'"']codex["'"'"'],[[:space:]]*["'"'"']exec|(spawn|spawnSync|execFile|execFileSync)\([[:space:]]*["'"'"']claude["'"'"']|api\.anthropic\.com/v1/messages|openrouter\.ai/api/v1/(chat|completions|responses)|claude-api\.sh|claude-headless\.sh|llm-backend\.sh|claude-lane\.sh'
 SKIP_RE='(^|/)(fixtures|node_modules|dist)/|^docs/|^graphify-out/|^scripts/hooks/|claude-hud|\.test\.'
-HDR_RE='^[[:space:]]*(#|//)[[:space:]]*billed-(opt-in|exempt):'
+HDR_RE='^[[:space:]]*(#|//)[[:space:]]*billed-(opt-in|exempt|daemon):'
 NONCOMMENT_RE='^[[:space:]]*(#|//|\*)'
 
 noncomment() { grep -v -E "$NONCOMMENT_RE" "$1"; }
@@ -66,10 +69,16 @@ lint() { # <root> <tracked-list>
       if [ -n "$hit" ]; then echo "FAIL unmarked billed call: $f:$hit"; bad=1; fi
       continue
     fi
-    kind=$(printf '%s' "$hdr" | sed -E 's/^[[:space:]]*(#|\/\/)[[:space:]]*billed-(opt-in|exempt):[[:space:]]*.*$/\2/')
-    val=$(printf '%s' "$hdr" | sed -E 's/^[[:space:]]*(#|\/\/)[[:space:]]*billed-(opt-in|exempt):[[:space:]]*(.*)$/\3/')
+    kind=$(printf '%s' "$hdr" | sed -E 's/^[[:space:]]*(#|\/\/)[[:space:]]*billed-(opt-in|exempt|daemon):[[:space:]]*.*$/\2/')
+    val=$(printf '%s' "$hdr" | sed -E 's/^[[:space:]]*(#|\/\/)[[:space:]]*billed-(opt-in|exempt|daemon):[[:space:]]*(.*)$/\3/')
     if [ "$kind" = exempt ]; then
       [ -n "$val" ] || { echo "FAIL billed-exempt needs a reason: $f"; bad=1; }
+      continue
+    fi
+    if [ "$kind" = daemon ]; then
+      val=$(printf '%s' "$val" | sed -E 's/[[:space:]]+$//')
+      if [ -z "$val" ]; then echo "FAIL billed-daemon names no cap: $f"; bad=1; continue; fi
+      noncomment "$root/$f" | grep -F -- "$val" >/dev/null || { echo "FAIL billed-daemon names $val but the file never uses it: $f"; bad=1; }
       continue
     fi
     if [ "$val" = arming ]; then
@@ -160,6 +169,10 @@ put scripts/x/orphan-armed.sh '#!/usr/bin/env bash' '# billed-opt-in: arming' 'c
 put scripts/cad/run-cadence.sh '#!/usr/bin/env bash' 'bash scripts/x/armed.sh'
 put scripts/x/fixtures/skipped.sh 'claude -p "a fixture"'
 put docs/skipped.sh 'claude -p "a doc"'
+put scripts/x/daemon.ts '// billed-daemon: maxReaderRunsPerDay' 'if (runs >= cfg.maxReaderRunsPerDay) return;' 'spawn("claude", ["-p"]);'
+put scripts/x/daemon-empty.ts '// billed-daemon:' 'spawn("claude", ["-p"]);'
+put scripts/x/daemon-comment-only.ts '// billed-daemon: maxReaderRunsPerDay' '// capped by maxReaderRunsPerDay' 'spawn("claude", ["-p"]);'
+put scripts/x/daemon-unmarked.ts 'if (runs >= cfg.maxReaderRunsPerDay) return;' 'spawn("claude", ["-p"]);'
 
 frow() { # <label> <want-rc> <want-text> <fixture-relpath>   (lints a tracked list of just that file, + cadence)
   grep -x -F -e "$4" -e scripts/cad/run-cadence.sh "$tmp/tracked" > "$tmp/one"
@@ -194,6 +207,10 @@ frow "arming accepted when a cadence script runs the file" 0 "" scripts/x/armed.
 frow "RED: arming with no cadence script behind it" 1 "arming but no cadence script runs it: scripts/x/orphan-armed.sh" scripts/x/orphan-armed.sh
 frow "a fixtures/ path is skipped" 0 "" scripts/x/fixtures/skipped.sh
 frow "a docs/ path is skipped" 0 "" docs/skipped.sh
+frow "a capped daemon names a cap it uses on a code line" 0 "" scripts/x/daemon.ts
+frow "RED: billed-daemon with no cap" 1 "billed-daemon names no cap: scripts/x/daemon-empty.ts" scripts/x/daemon-empty.ts
+frow "RED: a billed-daemon cap that appears only in comments" 1 "billed-daemon names maxReaderRunsPerDay but the file never uses it: scripts/x/daemon-comment-only.ts" scripts/x/daemon-comment-only.ts
+frow "RED: a daemon site with no header still fails" 1 "unmarked billed call: scripts/x/daemon-unmarked.ts:2" scripts/x/daemon-unmarked.ts
 
 for opt in --root --tracked; do
   bash "$SELF" --lint "$opt" > "$tmp/out" 2>&1; rc=$?
