@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 // While a reply is set, the judge's subscription `claude` call returns it, the usage preflight prints `preflight`, and
 // the API launcher is refused on policy as on the station since PR 4669; each is recorded. Every other child runs for real.
 type Seen = { file: string; args: string[]; env: NodeJS.ProcessEnv };
-const judgeReply = vi.hoisted(() => ({ out: null as string | null, preflight: 'PROCEED\n', calls: [] as Seen[] }));
+const judgeReply = vi.hoisted(() => ({ out: null as string | null, preflight: 'PROCEED\n', calls: [] as Seen[], hang: false }));
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
   const execFileSync = ((...a: Parameters<typeof m.execFileSync>) => {
@@ -16,7 +16,6 @@ vi.mock('node:child_process', async (orig) => {
     const file = String(a[0]);
     const args = (a[1] as string[] | undefined) ?? [];
     const seen = { file, args, env: { ...((a[2] as { env?: NodeJS.ProcessEnv } | undefined)?.env ?? process.env) } };
-    if (file === 'claude') { judgeReply.calls.push(seen); return judgeReply.out; }
     if (String(args[0] ?? '').endsWith('usage-preflight.sh')) { judgeReply.calls.push(seen); return judgeReply.preflight; }
     if (String(args[0] ?? '').endsWith('claude-api.sh')) {
       judgeReply.calls.push(seen);
@@ -24,7 +23,23 @@ vi.mock('node:child_process', async (orig) => {
     }
     return m.execFileSync(...a);
   }) as typeof m.execFileSync;
-  return { ...m, execFileSync };
+  const execFile = ((...a: unknown[]) => {
+    if (judgeReply.out === null || a[0] !== 'claude') return (m.execFile as (...x: unknown[]) => unknown)(...a);
+    const args = (a[1] as string[] | undefined) ?? [];
+    judgeReply.calls.push({ file: 'claude', args, env: { ...((a[2] as { env?: NodeJS.ProcessEnv } | undefined)?.env ?? process.env) } });
+    const reply = judgeReply.out;
+    const done = a[3] as (err: Error | null, out: string, errOut: string) => void;
+    const signal = (a[2] as { signal?: AbortSignal } | undefined)?.signal;
+    if (judgeReply.hang) signal?.addEventListener('abort', () => done(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }), '', ''), { once: true });
+    else setImmediate(() => done(null, reply, ''));
+    return { stdin: { on: () => undefined, end: () => undefined } };
+  }) as typeof m.execFile;
+  return { ...m, execFileSync, execFile };
+});
+const rmRunSeen = vi.hoisted(() => ({ opts: null as { judgeTimeoutMs?: number } | null }));
+vi.mock('../release/engine.js', async (orig) => {
+  const m = await orig<typeof import('../release/engine.js')>();
+  return { ...m, rmRun: ((c, j, o) => { rmRunSeen.opts = o ?? null; return m.rmRun(c, j, o); }) as typeof m.rmRun };
 });
 // The run options the repair command hands to the repair, as the last call saw them.
 const repairSeen = vi.hoisted(() => ({ opts: null as { apply?: boolean; refuse?: unknown } | null }));
@@ -37,7 +52,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
+import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
 
@@ -68,6 +83,7 @@ afterEach(() => {
   judgeReply.out = null;
   judgeReply.preflight = 'PROCEED\n';
   judgeReply.calls = [];
+  judgeReply.hang = false;
 });
 
 describe.skipIf(process.platform !== 'linux')('jira release from a test on the station', () => {
@@ -259,6 +275,35 @@ describe('jira release rm-run', () => {
     expect(judgeReply.calls.some((c) => c.file === 'claude')).toBe(false);
   });
 
+  it.each(['SIGTERM', 'SIGINT', 'SIGHUP'] as const)('%s during the judge call stops the run: the call is killed, the lease freed, the claim open, the doc says why', async (sig) => {
+    await oneRequest();
+    judgeReply.hang = true;
+    const before = process.listenerCount(sig);
+    const run1 = run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    await vi.waitFor(() => expect(judgeReply.calls.some((c) => c.file === 'claude')).toBe(true));
+    expect(process.listenerCount(sig)).toBe(before + 1);
+    process.emit(sig, sig);
+    await expect(run1).rejects.toThrow(`rm-run: stopped by ${sig}; nothing more ruled`);
+    expect(process.listenerCount(sig)).toBe(before);
+    const dir = join(root, 'state', 'R1');
+    expect(JSON.parse(readFileSync(join(dir, 'lease.json'), 'utf8'))).toMatchObject({ epoch: 1, released: true });
+    expect(JSON.parse(readFileSync(join(dir, 'requests.jsonl'), 'utf8').trim().split('\n').at(-1) ?? '{}')).toMatchObject({ req: 'Q-R1-0001', state: 'open' });
+    const docs = readdirSync(join(dir, 'rm-runs'));
+    expect(docs).toHaveLength(1);
+    expect(readFileSync(join(dir, 'rm-runs', docs[0]), 'utf8')).toMatch(new RegExp(`^- FAILED: rm-run: stopped by ${sig}`, 'm'));
+    expect(out).toEqual([
+      `FAILED: rm-run: stopped by ${sig}; nothing more ruled`, 'RETURNED 1 claimed requests to open',
+      expect.stringMatching(/^RM-RUN R1 judge: 1 requests, \d+ ms$/), `RM-RUN R1 run record: ${join(dir, 'rm-runs', docs[0])}`,
+    ]);
+  });
+
+  it('the CLI gives the judge a deadline that outlasts one routed call', async () => {
+    await oneRequest();
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    expect(rmRunSeen.opts?.judgeTimeoutMs).toBe(960_000);
+    expect(rmRunSeen.opts?.judgeTimeoutMs).toBeGreaterThan(JUDGE_SPAWN_TIMEOUT_MS);
+  });
+
   it('a stale bank reading still runs the judge', async () => {
     await oneRequest();
     judgeReply.preflight = 'BANK-STALE\n';
@@ -281,7 +326,8 @@ describe('jira release rm-run', () => {
     judgeReply.out = JSON.stringify({ is_error: false, result: JSON.stringify([other]) });
     out = [];
     await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
-    expect(out.at(-2)).toMatch(/^REFUSED Q-R1-0001: /);
+    expect(out.at(-3)).toMatch(/^REFUSED Q-R1-0001: /);
+    expect(out.at(-2)).toMatch(/^RM-RUN R1 judge: 1 requests, \d+ ms$/);
     expect(out.at(-1)).toBe('RM-RUN R1 summary: 1 refused');
     expect(process.exitCode).toBe(2);
     process.exitCode = 0;
@@ -683,7 +729,7 @@ describe('routedJudge', () => {
   const envelope = (reason: string) => JSON.stringify({ is_error: false, result: JSON.stringify([decision(reason)]) });
   let dir: string;
 
-  function world(roles: unknown, fake: { out?: string; rc?: number } = {}) {
+  function world(roles: unknown, fake: { out?: string; rc?: number; sleep?: number } = {}) {
     dir = mkdtempSync(join(root, 'world-'));
     const now = Math.floor(Date.now() / 1000);
     const config = { version: 1, ledger_path: join(dir, 'ledger.json'), accounts: {
@@ -699,7 +745,7 @@ describe('routedJudge', () => {
     for (const a of ['A', 'B']) writeFileSync(join(dir, `key-${a}.env`), `ANTHROPIC_API_KEY=sk-ant-dummy-${a}-0000\n`, { mode: 0o600 });
     if (roles !== undefined) writeFileSync(join(dir, 'roles.json'), JSON.stringify({ version: 1, roles }));
     const script = (name: string, body: string) => { writeFileSync(join(dir, name), `#!/bin/bash\n${body}\n`); chmodSync(join(dir, name), 0o700); };
-    script('claude-fake', `{ echo "cwd=$PWD"; echo "acct=\${HIMMEL_API_ACCOUNT:-}"; printf 'arg=%s\\n' "$@"; echo --; } >> '${join(dir, 'fake.log')}'\nprintf '%s' '${fake.out ?? envelope('from-fake')}'\nexit ${fake.rc ?? 0}`);
+    script('claude-fake', `{ echo "cwd=$PWD"; echo "acct=\${HIMMEL_API_ACCOUNT:-}"; printf 'arg=%s\\n' "$@"; echo --; } >> '${join(dir, 'fake.log')}'\n${fake.sleep ? `echo "pid=$$" >> '${join(dir, 'fake.log')}'\nsleep ${fake.sleep}\n` : ''}printf '%s' '${fake.out ?? envelope('from-fake')}'\nexit ${fake.rc ?? 0}`);
     script('alert-stub', `echo "alert $TG_MESSAGE" >> '${join(dir, 'alert.log')}'`);
     script('ps', 'exit 0');
     writeFileSync(join(dir, 'native-cache.json'), JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
@@ -769,6 +815,54 @@ describe('routedJudge', () => {
     expect(w.fallbackCalls).toHaveLength(1);
     expect((w.read('fake.log').match(/^--$/gm) ?? []).length).toBe(1);
     expect(w.read('alert.log')).not.toBe('');
+  });
+
+  const ancestor = (pid: number, name: string): number => {
+    for (let p = pid; p > 1; p = Number(readFileSync(`/proc/${p}/stat`, 'utf8').replace(/^.*\) /, '').split(' ')[1])) {
+      if (readFileSync(`/proc/${p}/cmdline`, 'utf8').includes(name)) return p;
+    }
+    throw new Error(`no ${name} above pid ${pid}`);
+  };
+  const fakePid = (w: ReturnType<typeof world>) => Number(/^pid=(\d+)$/m.exec(w.read('fake.log'))?.[1]);
+
+  it('mapped, the run stopped mid-call: the call is killed and no fallback runs', async () => {
+    const w = world({ judge: ['B'] }, { sleep: 30 });
+    const stop = new AbortController();
+    const got = makeRoutedJudge(w.fallback)(INPUT, { signal: stop.signal });
+    await vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: 10_000 });
+    stop.abort(new Error('rm-run: stopped by SIGTERM; nothing more ruled'));
+    await expect(got).rejects.toThrow();
+    expect(w.fallbackCalls).toHaveLength(0);
+  }, 20_000);
+
+  it.skipIf(process.platform !== 'linux')('mapped, TERM to the launcher alone: it exits 143 and no fallback runs', async () => {
+    const w = world({ judge: ['B'] }, { sleep: 30 });
+    const got = makeRoutedJudge(w.fallback)(INPUT);
+    await vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: 10_000 });
+    process.kill(ancestor(fakePid(w), 'claude-api.sh'), 'SIGTERM');
+    await expect(got).rejects.toMatchObject({ status: 143 });
+    expect(w.fallbackCalls).toHaveLength(0);
+  }, 20_000);
+
+  it('mapped, the launcher times out its own call: the run fails and no fallback runs', async () => {
+    const w = world({ judge: ['B'] }, { sleep: 30 });
+    const t0 = Date.now();
+    await expect(makeRoutedJudge(w.fallback, 2)(INPUT)).rejects.toThrow();
+    expect(Date.now() - t0).toBeLessThan(15_000);
+    expect(w.fallbackCalls).toHaveLength(0);
+  }, 20_000);
+
+  it('mapped, node kills the launcher at its spawn timeout: it exits 143, the run fails and no fallback runs', async () => {
+    const w = world({ judge: ['B'] }, { sleep: 30 });
+    await expect(makeRoutedJudge(w.fallback, 60, 2000)(INPUT)).rejects.toMatchObject({ killed: true, status: 143 });
+    expect(w.fallbackCalls).toHaveLength(0);
+  }, 20_000);
+
+  it('judgeCall kills a call past its timeout and says so', async () => {
+    const t0 = Date.now();
+    await expect(judgeCall('bash', ['-c', 'sleep 5'], { input: '', cwd: root, env: process.env, timeoutMs: 100 }))
+      .rejects.toThrow('rm-run: the judge call (bash) timed out after 0.1s; nothing ruled');
+    expect(Date.now() - t0).toBeLessThan(3000);
   });
 
   it('mapped, unparseable output: the fallback answers', async () => {

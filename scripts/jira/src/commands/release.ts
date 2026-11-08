@@ -1,5 +1,5 @@
 // billed-exempt: the release manager rm-run judge; run by the chief on purpose, bank-preflight gated
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -20,7 +20,7 @@ import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
   apply, claim, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
-  type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
+  type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
@@ -299,10 +299,25 @@ function judgePreflight(): string {
     .trim().split('\n').pop() ?? '';
 }
 
+// Async on purpose: a synchronous child call blocks Node's event loop, so no abort signal or timer could reach it.
+export function judgeCall(file: string, args: string[], o: { input: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal }): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: o.timeoutMs, signal: o.signal },
+      (err, stdout, stderr) => {
+        if (stderr) process.stderr.write(stderr);
+        if (!err) return resolve(stdout);
+        if (err.killed && !o.signal?.aborted) err.message = `rm-run: the judge call (${file}) timed out after ${o.timeoutMs / 1000}s; nothing ruled`;
+        reject(Object.assign(err, { status: typeof err.code === 'number' ? err.code : null }));
+      });
+    child.stdin?.on('error', () => undefined);
+    child.stdin?.end(o.input);
+  });
+}
+
 // One bounded model call per batch on the subscription, never the API lane (decision 525): preflight first, the bare
 // plugin profile, no tools, one turn, JSON envelope, the prompt on stdin. A stale bank reading still shows budget and
 // runs; an unreadable or exhausted bank rules nothing.
-export const liveJudge: Judge = async (input) => {
+export const liveJudge: Judge = async (input, opts) => {
   const verdict = judgePreflight();
   if (verdict !== 'PROCEED' && verdict !== 'BANK-STALE') throw new Error(`rm-run: nothing ruled: preflight ${verdict || '(no token)'}`);
   const skill = readFileSync(join(repoRoot, 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8');
@@ -317,15 +332,16 @@ export const liveJudge: Judge = async (input) => {
   try {
     execFileSync('bash', [join(repoRoot, 'scripts', 'handover', 'launch-record.sh'), `rm-judge-${sid.slice(0, 8)}`, 'bare', 'native', 'release-manager', sid, 'opus'], { stdio: ['ignore', 'ignore', 'inherit'] });
   } catch (e) {
+    if ((e as { signal?: unknown }).signal) throw e;
     process.stderr.write(`rm-run: launch record not written: ${e instanceof Error ? e.message : String(e)}\n`);
   }
   let out: string | undefined;
   let rc = 1;
   try {
-    out = execFileSync('claude', [
+    out = await judgeCall('claude', [
       '-p', '--session-id', sid, '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
       '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-    ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: JUDGE_TIMEOUT_S * 1000, stdio: ['pipe', 'pipe', 'inherit'] });
+    ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), timeoutMs: JUDGE_TIMEOUT_S * 1000, signal: opts?.signal });
     rc = 0;
     return parseDecisions(out);
   } catch (e) {
@@ -382,6 +398,7 @@ export const JUDGE_TIMEOUT_S = 900;
 // The outer spawn timeout outlasts the launcher's own call timeout plus its five-second kill grace, so the launcher
 // stops its call and releases the reservation before this process would kill it alone.
 export const JUDGE_SPAWN_TIMEOUT_MS = (JUDGE_TIMEOUT_S + 30) * 1000;
+export const RM_RUN_JUDGE_DEADLINE_MS = JUDGE_SPAWN_TIMEOUT_MS + 30_000;
 // judgeEnv strips every HIMMEL_API_ name; these seven pass back: the roster path (it anchors the role map path) and
 // the binary, snapshot, ledger-state, alert and lock-wait seams the launcher's own tests set. Unset, the launcher uses
 // its default. No other name from the caller's API env reaches the judge.
@@ -397,38 +414,53 @@ function autoRepoDir(): string {
 }
 
 // The one env for both the role pre-read and the launcher spawn.
-export function judgeApiEnv(processEnv: NodeJS.ProcessEnv, repoDir: string = autoRepoDir()): NodeJS.ProcessEnv {
+export function judgeApiEnv(processEnv: NodeJS.ProcessEnv, repoDir: string = autoRepoDir(), callTimeoutS: number = JUDGE_TIMEOUT_S): NodeJS.ProcessEnv {
   const passed = Object.fromEntries(JUDGE_API_PASS_ENV.filter((k) => processEnv[k] !== undefined).map((k) => [k, processEnv[k]]));
   return {
     ...judgeEnv(processEnv), ...passed,
     HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_FALLBACK: 'off', HIMMEL_API_TOOLS: '',
-    HIMMEL_API_CALL_TIMEOUT_S: String(JUDGE_TIMEOUT_S), HIMMEL_API_AUTO_REPO_DIR: repoDir,
+    HIMMEL_API_CALL_TIMEOUT_S: String(callTimeoutS), HIMMEL_API_AUTO_REPO_DIR: repoDir,
   };
 }
 
 // ponytail: the API judge loads the operator's full plugin set and user memory and has no turn cap (the launcher refuses
 // --settings, --max-turns and --mcp-config); its budget cap (JUDGE_API_BUDGET_USD) and plan mode bound the cost; plan P5
 // proposes a launcher allowlist entry for --settings under the profile settings dir, with a mutation test.
+const SIGNALLED_EXIT = new Set([128 + 1, 128 + 2, 128 + 15]);
+
+function launcherStopped(e: unknown): boolean {
+  const k = e as { signal?: unknown; status?: unknown };
+  return Boolean(k.signal) || SIGNALLED_EXIT.has(k.status as number);
+}
+
 // ponytail: the pre-read and the launcher read roles.json separately; a hand edit between the two reads can make the
 // launcher refuse on policy after routedJudge saw "mapped", which writes one policy-refusals line and lands on liveJudge;
 // the window is one node start; a UI save landing in that window has the same effect; plan P4's write guard covers
 // agent writes only, not that race.
-// `fallback` is the test seam; production passes nothing and gets liveJudge. Any API-route failure (a policy refusal, no
-// room, an API error, an unparseable reply) ends in the fallback, once: the judge always gets an answer.
-export function makeRoutedJudge(fallback: Judge = liveJudge): Judge {
-  return async (input) => {
-    const env = judgeApiEnv(process.env);
+// `fallback`, `callTimeoutS` and `spawnTimeoutMs` are the test seams; production passes nothing and gets liveJudge, the
+// launcher's 900 s call timeout and node's 930 s kill.
+// Any other API-route failure (a policy refusal, no room, an API error, an unparseable reply) ends in the fallback, once.
+// A stopped run or a timed-out call ends the run instead (decision 815).
+export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: number = JUDGE_TIMEOUT_S, spawnTimeoutMs: number = (callTimeoutS + 30) * 1000): Judge {
+  return async (input, opts) => {
+    const env = judgeApiEnv(process.env, undefined, callTimeoutS);
     const mapped = spawnSync('node', [join(repoRoot, 'scripts', 'lib', 'api-roles.mjs'), 'accounts', 'judge'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
-    if (mapped.status !== 0 || !(mapped.stdout ?? '').trim()) return fallback(input);
+    if (mapped.signal) throw new Error(`rm-run: the judge role read was stopped by ${mapped.signal}; nothing ruled`);
+    if (mapped.status !== 0 || !(mapped.stdout ?? '').trim()) return fallback(input, opts);
     const skill = readFileSync(join(repoRoot, 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8');
     // An empty cwd, so no project instructions load beside the skill.
     const cwd = mkdtempSync(join(tmpdir(), 'rm-run-judge-'));
     try {
-      const r = spawnSync('bash', [join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'),
-        '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'plan', '--max-budget-usd', String(JUDGE_API_BUDGET_USD), '--output-format', 'json',
-      ], { input: judgePrompt(input, skill), cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: JUDGE_SPAWN_TIMEOUT_MS, stdio: ['pipe', 'pipe', 'inherit'] });
-      if (r.status !== 0) return fallback(input);
-      try { return parseDecisions(r.stdout); } catch { return fallback(input); }
+      let out: string;
+      try {
+        out = await judgeCall('bash', [join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'),
+          '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'plan', '--max-budget-usd', String(JUDGE_API_BUDGET_USD), '--output-format', 'json',
+        ], { input: judgePrompt(input, skill), cwd, env, timeoutMs: spawnTimeoutMs, signal: opts?.signal });
+      } catch (e) {
+        if (opts?.signal?.aborted || launcherStopped(e)) throw e;
+        return fallback(input, opts);
+      }
+      try { return parseDecisions(out); } catch { return fallback(input, opts); }
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
@@ -676,10 +708,31 @@ export function registerRelease(program: Command): void {
     .option('--chief-override <reason>', 'Same, console session only (HIMMEL_CONSOLE=1); the reason and the count go to the admissions ledger')
     .action(async (release: string, o: { doc?: string; mirrorRoot?: string; ruling?: string; chiefOverride?: string }) => {
       const ctx = ctxFor(release, o.mirrorRoot);
-      const lines = await rmRun(ctx, judgeFor(ctx), {
-        doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o),
-      });
-      for (const l of lines) console.log(l);
+      const stop = new AbortController();
+      // With its last listener gone, Node restores the default action, so a second signal kills as before.
+      const signals: NodeJS.Signals[] = ['SIGTERM', 'SIGINT', 'SIGHUP'];
+      const onSignal = (sig: NodeJS.Signals) => {
+        for (const s of signals) process.off(s, onSignal);
+        stop.abort(new Error(`rm-run: stopped by ${sig}; nothing more ruled`));
+      };
+      for (const s of signals) process.on(s, onSignal);
+      const judgeLine: string[] = [];
+      let lines: string[];
+      try {
+        lines = await rmRun(ctx, judgeFor(ctx), {
+          doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o), signal: stop.signal,
+          judgeTimeoutMs: RM_RUN_JUDGE_DEADLINE_MS,
+          onJudge: (n, ms) => { judgeLine.push(`RM-RUN ${release} judge: ${n} requests, ${ms} ms`); },
+        });
+      } catch (e) {
+        const r = e as Partial<RunRecord>;
+        for (const l of [...(r.runLines ?? []), ...judgeLine]) console.log(l);
+        if (r.runDoc) console.log(`RM-RUN ${release} run record: ${r.runDoc}`);
+        throw e;
+      } finally {
+        for (const s of signals) process.off(s, onSignal);
+      }
+      for (const l of [...lines, ...judgeLine]) console.log(l);
       const summary = rmRunSummary(release, lines);
       if (summary) console.log(summary);
       if (lines.some((l) => /^(REFUSED|PENDING) /.test(l))) process.exitCode = 2;
