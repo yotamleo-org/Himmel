@@ -90,7 +90,7 @@ const registry = new Set([...doctor.matchAll(/^(?:run_check|run_heavy|if ! docto
 // the numbers that are health checks, not setup: classified on purpose, so a new check cannot stay off Configure unseen
 const NOT_SETUP = new Set(
   `C2 C3 C4 C5 C7 C8 C12 C14 C19 C21 C22 C23 C24 C25 C26 C27 C29 C30 C31 C33 C34 C35 C36 C37 C40 C41 C42 C44 C45 C47 C48 C49 C50 C51 C52 C54
-  C56 C57 C58 C59 C60 C61 C64 C66 C67 C68 C69 C70 C71 C72 C76 C77 C79 C80 C82 C83 C84 C86 C87 C88 C89 C90 C91`.split(/\s+/),
+  C56 C57 C58 C59 C60 C61 C64 C66 C67 C68 C69 C70 C71 C72 C76 C77 C79 C80 C82 C83 C84 C86 C87 C88 C89 C90 C91 C95`.split(/\s+/),
 );
 
 test("the test reads the doctor's check numbers", () => {
