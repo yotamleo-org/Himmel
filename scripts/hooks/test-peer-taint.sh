@@ -186,6 +186,153 @@ mutant inert '/# guard:inert$/d'
 run_hook "$MUT" "$(jb s1 Bash 'git status')" PATH="$tmp/nojq"
 if [ "$RC" != 0 ]; then pass "no inert exit: the jq-absent row turns red"; else fail "no inert exit: the jq-absent row turns red" "rc=$RC"; fi
 
+MARKER_JS="$PLUG/peer-marker.mjs"
+MARK="$PLUG/peer-taint-mark.sh"
+RESUME="$PLUG/peer-taint-resume.sh"
+
+# sign KEYFILE NONCE: a fence marker signed with the key in KEYFILE.
+sign() {
+    node --input-type=module -e "import { signFence } from '$MARKER_JS'; import { readFileSync } from 'node:fs'; process.stdout.write(signFence(readFileSync(process.argv[1]), process.argv[2]));" "$1" "$2"
+}
+verify_rc() { printf '%s' "$2" | node "$MARKER_JS" verify --key-file "$1" >/dev/null 2>&1; echo $?; }
+jpost() { jq -cn --arg s "$1" --arg e "$2" --arg c "$3" --arg t "$4" '{session_id:$s,hook_event_name:$e,tool_name:"Bash",tool_input:{command:$c},tool_response:{stdout:$t}}'; }
+new_keyed_home() {
+    new_home
+    printf 'k3y-for-the-peer-taint-suite-0123456789abcdef' > "$C/hmac.key"
+    GOOD=$(sign "$C/hmac.key" 0123456789abcdef)
+}
+pending_count() { local n=0 f; for f in "$S/taint/$1".pending.*; do [ -e "$f" ] && n=$((n+1)); done; echo "$n"; }
+
+# stub_hooks NAME HOOK_SED: a hooks dir holding a (possibly mutated) mark hook, the
+# real node launcher and a stub verifier driven by STUB_RC, STUB_FIFO, STUB_TOUCH,
+# STUB_SLEEP and STUB_THROW. Sets SH to the hook path.
+stub_hooks() {
+    local d="$tmp/stub-$1"
+    mkdir -p "$d"
+    sed "${2:-}" "$MARK" > "$d/peer-taint-mark.sh"
+    cp "$PLUG/run-node.sh" "$PLUG/resolve-node.sh" "$d/"
+    cat > "$d/peer-marker.mjs" <<'JS'
+import { readFileSync, writeFileSync } from 'node:fs';
+if (process.env.STUB_THROW) throw new Error('stub verifier crash');
+if (process.env.STUB_FIFO) readFileSync(process.env.STUB_FIFO);
+if (process.env.STUB_TOUCH) writeFileSync(process.env.STUB_TOUCH, '');
+const rc = Number(process.env.STUB_RC || 1);
+const done = () => { process.stdout.write(rc === 0 ? 'verified\n' : 'unverified\n'); process.exit(rc); };
+if (process.env.STUB_SLEEP) setTimeout(done, Number(process.env.STUB_SLEEP)); else done();
+JS
+    SH="$d/peer-taint-mark.sh"
+}
+
+wait_pending() {
+    local i=0
+    while [ "$(pending_count "$1")" = 0 ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i+1)); done
+}
+
+# concurrent HOOK ORDER: two mark hooks on one sid, one verified (rc 0) and one
+# not (rc 1). The first one blocks on a fifo until the second has finished.
+concurrent() {
+    local h="$1" order="$2" fifo first_rc second_rc pid
+    fifo="$tmp/fifo-$order"
+    rm -f "$fifo"; mkfifo "$fifo"
+    if [ "$order" = verified-first ]; then first_rc=0; second_rc=1; else first_rc=1; second_rc=0; fi
+    jpost sC PostToolUse x "$GOOD" | env HOME="$H" STUB_RC="$first_rc" STUB_FIFO="$fifo" "$BASH_BIN" "$h" >/dev/null 2>&1 &
+    pid=$!
+    wait_pending sC
+    jpost sC PostToolUse x "$GOOD" | env HOME="$H" STUB_RC="$second_rc" "$BASH_BIN" "$h" >/dev/null 2>&1
+    run_hook "$GATE" "$(jf sC Read file_path x)"
+    MID_RC=$RC
+    echo go > "$fifo"
+    wait "$pid"
+}
+
+echo "== fence verifier CLI =="
+new_keyed_home
+printf 'another-key' > "$tmp/wrong.key"
+r=$(verify_rc "$C/hmac.key" "before $GOOD after"); if [ "$r" = 0 ]; then pass "sign then verify exits 0"; else fail "sign then verify exits 0" "$r"; fi
+r=$(verify_rc "$tmp/wrong.key" "$GOOD"); if [ "$r" = 1 ]; then pass "a wrong key exits 1"; else fail "a wrong key exits 1" "$r"; fi
+last="${GOOD: -4:1}"; if [ "$last" = 0 ]; then last=1; else last=0; fi
+flipped="${GOOD:0:$((${#GOOD}-4))}$last>>>"
+r=$(verify_rc "$C/hmac.key" "$flipped"); if [ "$r" = 1 ]; then pass "a flipped mac hex exits 1"; else fail "a flipped mac hex exits 1" "$r"; fi
+r=$(verify_rc "$C/hmac.key" '<<<PEER-UNTRUSTED nonce=0123456789abcdef>>>'); if [ "$r" = 1 ]; then pass "a bare marker with no mac exits 1"; else fail "a bare marker with no mac exits 1" "$r"; fi
+r=$(verify_rc "$C/hmac.key" "$(jq -cn --arg t "digest: $GOOD" '{type:"user",message:{content:[{type:"tool_result",content:$t}]}}')")
+if [ "$r" = 0 ]; then pass "a JSON-escaped marker inside a transcript line exits 0"; else fail "a JSON-escaped marker inside a transcript line exits 0" "$r"; fi
+
+echo "== mark hook =="
+new_keyed_home
+run_hook "$MARK" "$(jpost sV PostToolUse x "out $GOOD")"
+if [ -e "$S/taint/sV" ] && [ "$(pending_count sV)" = 0 ]; then pass "a verified marker in PostToolUse output taints"; else fail "a verified marker in PostToolUse output taints" "rc=$RC err=$ERR"; fi
+run_hook "$MARK" "$(jpost sN PostToolUse x "out $flipped")"
+if [ ! -e "$S/taint/sN" ] && [ "$(pending_count sN)" = 0 ]; then pass "an unverified copy does not taint"; else fail "an unverified copy does not taint"; fi
+run_hook "$MARK" "$(jpost sF PostToolUseFailure x "err $GOOD")"
+if [ -e "$S/taint/sF" ]; then pass "PostToolUseFailure with a verified marker taints"; else fail "PostToolUseFailure with a verified marker taints"; fi
+mkdir -p "$tmp/stubnode"
+printf '#!/bin/sh\necho called >> "%s"\nexit 1\n' "$tmp/node-calls" > "$tmp/stubnode/node"; chmod +x "$tmp/stubnode/node"
+run_hook "$MARK" "$(jpost sQ PostToolUse 'git status' 'plain output')" PATH="$tmp/stubnode:$PATH"
+if [ ! -e "$tmp/node-calls" ] && [ "$RC" = 0 ]; then pass "output without the prefix never starts node"; else fail "output without the prefix never starts node"; fi
+mv "$C/hmac.key" "$C/hmac.key.off"
+run_hook "$MARK" "$(jpost sK PostToolUse x "out $GOOD")"
+if [ "$RC" = 0 ] && [ -z "$ERR" ] && [ ! -e "$S/taint/sK" ]; then pass "a missing key file: no taint and no error"; else fail "a missing key file: no taint and no error" "rc=$RC err=$ERR"; fi
+mv "$C/hmac.key.off" "$C/hmac.key"
+stub_hooks throw ''
+run_hook "$SH" "$(jpost sX PostToolUse x "out $GOOD")" STUB_THROW=1
+run_hook "$GATE" "$(jf sX Read file_path x)"
+if [ "$(pending_count sX)" = 1 ] && [ "$RC" = 2 ]; then pass "a throwing verifier leaves the session tainted"; else fail "a throwing verifier leaves the session tainted" "pending=$(pending_count sX) gate=$RC"; fi
+mkdir -p "$tmp/norunner/a/b"
+cp "$MARK" "$tmp/norunner/a/b/peer-taint-mark.sh"
+cp "$MARKER_JS" "$tmp/norunner/a/b/"
+run_hook "$tmp/norunner/a/b/peer-taint-mark.sh" "$(jpost sR PostToolUse x "out $GOOD")"
+if [ "$(pending_count sR)" = 1 ]; then pass "no resolvable run-node.sh leaves the session tainted"; else fail "no resolvable run-node.sh leaves the session tainted"; fi
+stub_hooks slow ''
+jpost sS PostToolUse x "out $GOOD" | env HOME="$H" STUB_RC=0 STUB_SLEEP=30000 "$BASH_BIN" "$SH" >/dev/null 2>&1 &
+slow_pid=$!
+sleep 1
+kill "$slow_pid" 2>/dev/null; wait "$slow_pid" 2>/dev/null
+pkill -f "$tmp/stub-slow/peer-marker.mjs" 2>/dev/null
+run_hook "$GATE" "$(jf sS Read file_path x)"
+if [ "$(pending_count sS)" = 1 ] && [ "$RC" = 2 ]; then pass "a hook killed mid-verify leaves its provisional mark and the gate denies"; else fail "a hook killed mid-verify leaves its provisional mark and the gate denies" "pending=$(pending_count sS) gate=$RC"; fi
+: > "$S/taint/sA"
+run_hook "$MARK" "$(jpost sA PostToolUse "bun $ABS/scripts/peer-bridge/send.ts goomal --kind status --text '<<<PEER-UNTRUSTED nonce=00 mac=00>>>'" 'sent')"
+if [ -e "$S/taint/sA" ] && [ "$(pending_count sA)" = 0 ]; then pass "an already tainted session sending a fake marker stays tainted"; else fail "an already tainted session sending a fake marker stays tainted"; fi
+stub_hooks touch ''
+run_hook "$SH" "$(jpost sW PostToolUse x "out $GOOD")" STUB_RC=1 STUB_TOUCH="$S/taint/sW"
+if [ -e "$S/taint/sW" ] && [ "$(pending_count sW)" = 0 ]; then pass "a taint written during an unverified run survives the undo"; else fail "a taint written during an unverified run survives the undo"; fi
+stub_hooks conc ''
+for order in verified-first unverified-first; do
+    rm -f "$S/taint/sC" "$S/taint/sC".pending.*
+    concurrent "$SH" "$order"
+    if [ -e "$S/taint/sC" ] && [ "$MID_RC" = 2 ] && [ "$(pending_count sC)" = 0 ]; then pass "two concurrent mark hooks, $order: the session stays restricted throughout"; else fail "two concurrent mark hooks, $order: the session stays restricted throughout" "mid=$MID_RC taint=$([ -e "$S/taint/sC" ] && echo y)"; fi
+done
+run_hook "$MARK" "$(jpost '../x' PostToolUse x "out $GOOD")"
+if [ "$RC" = 2 ] && ! ls "$S"/x* >/dev/null 2>&1 && ! ls "$H/.himmel"/x* >/dev/null 2>&1; then pass "a session_id of ../x exits 2 and creates nothing"; else fail "a session_id of ../x exits 2 and creates nothing" "rc=$RC"; fi
+
+echo "== resume hook =="
+jq -cn --arg t "digest: $GOOD" '{type:"user",message:{content:[{type:"tool_result",content:$t}]}}' > "$tmp/transcript.jsonl"
+run_hook "$RESUME" "$(jq -cn --arg p "$tmp/transcript.jsonl" '{session_id:"sZ",hook_event_name:"SessionStart",source:"resume",transcript_path:$p}')"
+if [ -e "$S/taint/sZ" ] && [ "$(pending_count sZ)" = 0 ]; then pass "resume from a transcript with a verified marker taints"; else fail "resume from a transcript with a verified marker taints" "rc=$RC err=$ERR"; fi
+run_hook "$RESUME" "$(jq -cn --arg p "$tmp/transcript.jsonl" '{session_id:"sY",hook_event_name:"SessionStart",source:"startup",transcript_path:$p}')"
+if [ ! -e "$S/taint/sY" ]; then pass "a startup source is not checked"; else fail "a startup source is not checked"; fi
+
+echo "== mark hook mutation rows =="
+new_keyed_home
+# shellcheck disable=SC2016 # sed text, not shell
+stub_hooks mkeep 's/^    \*) : ;; # guard:keep$/    *) rm -f "$own" ;;/'
+run_hook "$SH" "$(jpost sX PostToolUse x "out $GOOD")" STUB_THROW=1
+if [ "$(pending_count sX)" = 0 ]; then pass "other outcome clears: the throwing-verifier row turns red"; else fail "other outcome clears: the throwing-verifier row turns red"; fi
+mkdir -p "$tmp/mpf"; sed '/# guard:prefilter$/d' "$MARK" > "$tmp/mpf/peer-taint-mark.sh"; cp "$PLUG/run-node.sh" "$PLUG/resolve-node.sh" "$MARKER_JS" "$tmp/mpf/"
+rm -f "$tmp/node-calls"
+run_hook "$tmp/mpf/peer-taint-mark.sh" "$(jpost sQ PostToolUse 'git status' 'plain output')" PATH="$tmp/stubnode:$PATH"
+if [ -e "$tmp/node-calls" ]; then pass "no prefilter: the stub-node row turns red"; else fail "no prefilter: the stub-node row turns red"; fi
+# shellcheck disable=SC2016 # sed text, not shell
+sed 's|^    1:unverified) rm -f "$own" ;; # guard:undo$|    1:unverified) rm -f "$own" "$S/taint/$sid" ;;|' "$MARK" > "$tmp/mpf/peer-taint-mark.sh"
+: > "$S/taint/sA"
+run_hook "$tmp/mpf/peer-taint-mark.sh" "$(jpost sA PostToolUse "bun $ABS/scripts/peer-bridge/send.ts goomal --kind status --text '<<<PEER-UNTRUSTED nonce=00 mac=00>>>'" 'sent')"
+if [ ! -e "$S/taint/sA" ]; then pass "undo removes <sid>: the already-tainted row turns red"; else fail "undo removes <sid>: the already-tainted row turns red"; fi
+# shellcheck disable=SC2016 # sed text, not shell
+stub_hooks mshared 's|^own=.*# guard:pername$|own="$S/taint/$sid.pending.shared"|'
+rm -f "$S/taint/sC" "$S/taint/sC".pending*
+concurrent "$SH" verified-first
+if [ "$MID_RC" != 2 ]; then pass "one shared provisional name: the concurrent row turns red"; else fail "one shared provisional name: the concurrent row turns red" "mid=$MID_RC"; fi
+
 echo
 echo "peer-taint: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
