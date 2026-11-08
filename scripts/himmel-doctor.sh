@@ -4028,7 +4028,7 @@ check_c95_barrier_off() {
         [ -e "$name" ] || [ -L "$name" ] || continue
         repo="$(printf '%s' "${name##*/}" | sed -e 's/%2F/\//g' -e 's/%25/%/g')"
         err="$(mktemp "${TMPDIR:-/tmp}/c95.XXXXXX" 2>/dev/null)" || { emit WARN C95-barrier-off "mktemp failed -- the holds register was not read"; return 0; }
-        rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "${HIMMEL_DOCTOR_HOLDS_T:-30}"} python3 -I "$py" read --repo "$repo" 2>"$err")"; rc=$?
+        rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "${HIMMEL_DOCTOR_HOLDS_T:-33}"} python3 -I "$py" read --repo "$repo" 2>"$err")"; rc=$?
         if [ "$rc" -ne 0 ]; then
             warned=1
             emit WARN C95-barrier-off "cannot read the holds register of $repo (holds.py read exit $rc: $(head -c 200 "$err" | tr '\n\t' '  ')) -- a barrier-off repo there would not show" \

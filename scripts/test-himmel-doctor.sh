@@ -8309,6 +8309,16 @@ if command -v mkfifo >/dev/null 2>&1 && [ -n "${_TIMEOUT_BIN:-}" ]; then
 else
     echo "  SKIP: C95 FIFO OFF — no mkfifo or no timeout binary"
 fi
+echo "== C95: a holds.py that never returns -> WARN 'cannot read ... exit 124' inside the HIMMEL_DOCTOR_HOLDS_T bound =="
+if [ -n "${_TIMEOUT_BIN:-}" ]; then
+    c95_reset; mkdir -p "$c95_t/slow/scripts/handover/chief-kit"; ln -s "$REPO_ROOT/scripts/lib" "$c95_t/slow/scripts/lib"
+    printf 'import time\ntime.sleep(60)\n' > "$c95_t/slow/scripts/handover/chief-kit/holds.py"
+    SECONDS=0
+    out="$(env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" HIMMEL_DOCTOR_HOLDS_T=2 "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$c95_t/slow" --only C95 --no-color 2>&1 < /dev/null)"
+    if grepq "$out" -E "WARN C95-barrier-off.*cannot read.*$c95_repo.*exit 124" && [ "$SECONDS" -lt 15 ]; then pass "C95 holds.py that sleeps -> WARN exit 124 in ${SECONDS}s"; else fail "C95 sleeping holds.py (${SECONDS}s) -> $(printf '%s' "$out" | head -4)"; fi
+else
+    echo "  SKIP: C95 sleeping holds.py — no timeout binary"
+fi
 rm -rf "$c95_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
