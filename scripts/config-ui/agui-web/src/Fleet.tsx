@@ -14,7 +14,7 @@ import { pageHref } from "../../public/nav.js";
 import { FLEET_URL } from "./stream";
 import { FleetFilterBar } from "./FleetMenu";
 import { chainKey, chiefCounts, cloudPhase, consoleHash, fleetSections, NO_FILTERS, rowHref, runHash, shortName, type Filters, type ProcessOrphan, type Row } from "./fleet-model";
-import { BoardContext, cardOf, DrawerView, Legend, SectionsStrip, StageDots, StateChip, Swatch, Trends, RollupCards, useBoard, useBoardCtx, useDrawerKeys, useRollup, type BoardCtx, type Panel } from "./Board";
+import { BoardContext, cardOf, DrawerView, Legend, SectionsStrip, StageDots, StateChip, Swatch, Trends, useBoard, useBoardCtx, useDrawerKeys, useRollup, type BoardCtx, type Panel } from "./Board";
 import { joinBoard, needsShown, openAt, parseView, viewHash, type Drawer, type Stage } from "./board-model";
 export { rowHref, orphanReason, visibleRows, consoleGroups, type Row } from "./fleet-model";
 type Node = { row: Row; kids: Node[] };
@@ -184,12 +184,14 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {fleet?.census === "degraded" && <p className="quiet">Some sessions could not be read; the list may be incomplete.</p>}
         {!fleet && !error && <div className="fleet-skel" aria-hidden="true"><i /><i /><i /></div>}
         {selected && fleet && !known && <p className="quiet">Supervisor session not found: {selected}. <a href={`#t=${encodeURIComponent(token)}`}>The whole fleet</a></p>}
-        {boardConsole && <nav className="bd-tabs" aria-label="Fleet views">
-          {(["fleet", "trends"] as const).map((t) => <button key={t} type="button" aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>{t === "fleet" ? "Fleet" : "Trends"}</button>)}
-          {boardError && <span className="quiet" role="status">{`board: ${boardError}`}</span>}
-        </nav>}
-        {tab === "trends" && board && <Trends board={board} rollup={rollup} onCard={(card) => setPanel({ kind: "card", card })} />}
-        {tab === "trends" && !board && <><p className="quiet">{boardError ? `The board could not be read: ${boardError}.` : "Loading the board…"}</p><div className="bd-trends"><RollupCards rollup={rollup} /></div></>}
+        <div className="bd-tr">
+          <nav className="bd-tabs" aria-label="Fleet views">
+            {(["fleet", "trends"] as const).map((t) => <button key={t} type="button" aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>{t === "fleet" ? "Fleet" : "Trends"}</button>)}
+          </nav>
+          {boardConsole && <span className="bd-aside">chief <b>{boardConsole}</b>{board && ` · read ${board.generated_at.slice(11, 16)}`}</span>}
+          {boardConsole && boardError && tab === "fleet" && <span className="quiet" role="status">{`board: ${boardError}`}</span>}
+        </div>
+        {tab === "trends" && <Trends board={board} boardError={boardError} rollup={rollup} chief={boardConsole} onCard={(card) => setPanel({ kind: "card", card })} />}
         {tab === "fleet" && board && <Legend board={board} groups={["verb", "stage", "state"]} />}
         {tab === "fleet" && board && <SectionsStrip sections={board.sections} />}
         {tab === "fleet" && <>

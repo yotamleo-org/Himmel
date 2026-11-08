@@ -512,15 +512,9 @@ for (const [width, tallest] of [[1280, 120], [390, 180]] as const) {
   });
 }
 
-test("14. the Trends cost chart keeps its bars a bar's width, and a stage dot opens the drawer that Esc closes", async ({ page }) => {
+test("14. a stage dot opens the drawer that Esc closes", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
   await page.goto(h.url);
-  await page.getByRole("navigation", { name: "Fleet views" }).getByRole("button", { name: "Trends" }).click();
-  await expect(page.locator(".bd-card")).toHaveCount(4);
-  const bars = page.locator("svg.bd-spark rect");
-  await expect(bars).toHaveCount(2);
-  expect((await bars.first().boundingBox())!.width).toBeLessThanOrEqual(24);
-  await page.getByRole("navigation", { name: "Fleet views" }).getByRole("button", { name: "Fleet" }).click();
   await card(page, FLEET.worker.name).locator(".bd-dot").first().click();
   await expect(page.locator(".bd-drawer")).toBeVisible();
   await page.keyboard.press("Escape");
