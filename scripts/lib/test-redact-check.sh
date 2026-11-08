@@ -19,7 +19,6 @@ trap 'rm -rf "$tmp"' EXIT
 
 rep() { printf "$1%.0s" $(seq 1 "$2"); }
 
-# check <label> <want-rc> <want-stdout> : stdin is the text
 check() {
     local label="$1" want_rc="$2" want_out="$3" out rc
     out=$(bash -c '. "$1" && redact_check' _ "$LIB" 2>&1)

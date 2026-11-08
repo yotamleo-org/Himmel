@@ -327,7 +327,7 @@ else
     if [ "$(pending_count sLk)" = 1 ]; then pass "resume with an unreadable transcript keeps a provisional mark"; else fail "resume with an unreadable transcript keeps a provisional mark"; fi
     chmod 600 "$tmp/locked.jsonl"
     # shellcheck disable=SC2016 # sed text, not shell
-    sed 's/^if \[ "\$scan" = 1 \]; then exit 0; fi # guard:scan$/if [ "$scan" != 0 ]; then exit 0; fi/' "$RESUME" > "$tmp/mut-resume.sh"
+    sed 's/^if \[ "\$scan" = clean \]; then exit 0; fi # guard:scan$/if [ "$scan" != marked ]; then exit 0; fi/' "$RESUME" > "$tmp/mut-resume.sh"
     chmod 000 "$tmp/locked.jsonl"
     run_hook "$tmp/mut-resume.sh" "$(jq -cn --arg p "$tmp/locked.jsonl" '{session_id:"sLm",hook_event_name:"SessionStart",source:"resume",transcript_path:$p}')"
     if [ "$(pending_count sLm)" = 0 ]; then pass "an inspection failure read as clean: the unreadable-transcript row turns red"; else fail "an inspection failure read as clean: the unreadable-transcript row turns red"; fi

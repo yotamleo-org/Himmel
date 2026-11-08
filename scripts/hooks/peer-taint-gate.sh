@@ -68,7 +68,6 @@ deny() {
 }
 
 canon_dir() {
-    # canon_dir DIR: the physical path of an existing dir, or nothing.
     (cd -P "$1" 2>/dev/null && pwd -P) || true
 }
 
@@ -80,7 +79,6 @@ under() {
 }
 
 floor_path() {
-    # floor_path VALUE: deny when VALUE names either bridge dir.
     local v="$1" d b cd
     [ -n "$v" ] || return 0
     case "$v" in \~) v="${HOME:-}" ;; \~/*) v="${HOME:-}/${v#\~/}" ;; esac
@@ -124,7 +122,6 @@ himmel_root() {
 }
 
 shape() {
-    # shape: prints read, send or nothing for $cmd under $root.
     local rest pre_r pre_s
     local re_read='^[a-z0-9-]+( --thread [0-9]+)?( --ack [A-Za-z0-9]+)?$'
     local re_send="^[a-z0-9-]+ (--kind (status|info) |--kind answer --reply-to [0-9]+ )--text '[^']+'\$"

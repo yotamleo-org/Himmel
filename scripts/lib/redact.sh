@@ -88,7 +88,6 @@ redact() {
         '
 }
 
-# A grep error (rc 2, not a match and not a miss) returns 2, so a caller never reads it as clean.
 redact_check() {
     local _in _i=0 _rc _pem
     _in=$(cat && printf x) || return 2

@@ -558,9 +558,6 @@ for (const u of purposes.filter(x => x !== "enrichment"))
 for (const c of ["luna-personal", "handover-state", "voice-audio", "jira-mirror", "operator-repos"])
   assert(evaluate(c, "deepseek", "enrichment").effective === "deny", `${c} x deepseek x enrichment must stay deny (HIMMEL-6269 opens luna-clippings only)`);
 
-// Peer bridge: a message to a peer bot leaves only from the peer desk, whose
-// session holds operator-typed text alone. The imported evaluator and the CLI
-// must agree on that one open cell; every vault and state corpus stays denied.
 assert(providers.includes("peer-telegram"), "provider peer-telegram must be declared");
 assert(purposes.includes("peer-message"), "purpose peer-message must be declared");
 assert(corpora.includes("peer-desk"), "corpus peer-desk must be declared");

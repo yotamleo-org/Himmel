@@ -37,19 +37,18 @@ KEY="$C/hmac.key"
 case "$sid" in *[!A-Za-z0-9-]*) echo "peer-taint-resume: invalid session_id" >&2; exit 2 ;; esac
 [ "${#sid}" -le 64 ] || { echo "peer-taint-resume: invalid session_id" >&2; exit 2; }
 
-# A transcript it cannot inspect (no path, missing, unreadable, a grep error) is
-# not a clean one: only grep's own "no match" lets the session start unmarked.
-scan=2
+scan=uninspectable
 if [ -n "$tp" ] && [ -f "$tp" ] && [ -r "$tp" ]; then
-    scan=0
-    grep -qF '<<<PEER-UNTRUSTED' "$tp" || scan=$?
+    grc=0
+    grep -qF '<<<PEER-UNTRUSTED' "$tp" || grc=$?
+    case "$grc" in 0) scan=marked ;; 1) scan=clean ;; esac
 fi
-if [ "$scan" = 1 ]; then exit 0; fi # guard:scan
+if [ "$scan" = clean ]; then exit 0; fi # guard:scan
 
 if [ ! -d "$S/taint" ]; then mkdir -m 700 "$S/taint" 2>/dev/null || [ -d "$S/taint" ] || exit 2; fi
 own="$S/taint/$sid.pending.$$-$RANDOM$RANDOM"
 : > "$own" || exit 2
-[ "$scan" = 0 ] || exit 0
+[ "$scan" = marked ] || exit 0
 
 here=$(cd "$(dirname "$0")" && pwd -P)
 marker="$here/peer-marker.mjs"
