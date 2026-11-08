@@ -477,7 +477,7 @@ run_mode() {
     # the scaled seams and use the scaled bound passed in
     [ "$class" = rate ] && bound="${RATE_BOUND:-$bound}"
     [ "$class" = rate ] && scaled=0
-    [ "$class" = stall ] && [ "$FULL" = 1 ] && scaled=0
+    [ "$class" = stall ] && [ "$FULL" = 1 ] && scaled=0 && bound=$(full_bound "$caller" "$mode")
     ROW_DIR="$cdir/rows/$mode"; mkdir -p "$ROW_DIR"
     local envs=()
     local l
@@ -686,7 +686,7 @@ drive_chief_wait() {
         class=$(mode_class "$m")
         scaled=1; bound=30; rb=110
         [ "$class" = rate ] && scaled=0 && bound=$rb
-        [ "$class" = stall ] && [ "$FULL" = 1 ] && scaled=0
+        [ "$class" = stall ] && [ "$FULL" = 1 ] && scaled=0 && bound=$(full_bound chief-wait.sh "$m")
         ROW_DIR="$cdir/rows/$m"; mkdir -p "$ROW_DIR"
         rm -f "$inbox".wait* "$cdir/h/consoles/c.md.wait"* ; : > "$inbox"
         envs=()
@@ -838,6 +838,30 @@ suite_rows() {
 
 # ---- run ----------------------------------------------------------------------------------------
 want_caller() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ] || [ "$ONLY" = "$(out_name_of "$1")" ]; }
+if [ -n "$ONLY" ]; then
+    known_caller=0
+    for c in $CALLERS; do want_caller "$c" && known_caller=1; done
+    [ "$known_caller" = 1 ] || { echo "test-quota-no-hang: unknown --caller '$ONLY' (one of: $CALLERS)" >&2; exit 2; }
+fi
+
+# --full: the spec's default-settings bound for a hung row, per caller and mode (spec section 6)
+full_bound() {  # <caller> <mode>
+    case "$1:$2" in
+        tick.sh:*) echo 100 ;;
+        chief-wait.sh:hung) echo 140 ;;
+        chief-wait.sh:*) echo 1240 ;;
+        next-dispatchable.sh:hung) echo 25 ;;
+        next-dispatchable.sh:*) echo 405 ;;
+        check-ci.sh:hung) echo 130 ;;
+        check-ci.sh:*) echo 255 ;;
+        ready-check.sh:hung) echo 125 ;;
+        ready-check.sh:*) echo 155 ;;
+        go.sh:hung) echo 130 ;;
+        go.sh:*) echo 275 ;;
+        cr-disposition.sh:*) echo 65 ;;
+        *) echo 300 ;;
+    esac
+}
 
 suite_rows
 pids=""
@@ -852,10 +876,20 @@ for c in $CALLERS; do
         cd "$tmp" || exit 1
         "$d"
     ) &
-    pids="$pids $!"
+    pids="$pids $!:$c"
 done
-# shellcheck disable=SC2086  # pids is a word list of job ids
-wait $pids 2> /dev/null
+# A driver that dies before it emits a row would otherwise vanish and leave the suite green: collect
+# every driver's status and require it to have written at least one row.
+for pc in $pids; do
+    wait "${pc%%:*}" 2> /dev/null
+    drc=$?
+    CUR=$(out_name_of "${pc#*:}")
+    if [ "$drc" != 0 ]; then
+        emit "FAIL $CUR driver exited rc=$drc"
+    elif [ ! -s "$RES/$CUR.txt" ]; then
+        emit "FAIL $CUR driver wrote no rows"
+    fi
+done
 
 # the live quota path was not written by any row
 QUOTA_AFTER="$(quota_fingerprint)"
