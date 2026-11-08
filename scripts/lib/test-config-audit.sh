@@ -543,8 +543,6 @@ eq "10n a truncated himmel.conf takes no backup" 1 "$(nbk)"
 has "10n and alerts" "himmel.conf truncated" "$(cat "$ALERTS")"
 rm -rf "$S10"
 
-# --- 11. a key whose value now sits under a new name is a rename, not a loss ---
-# The station .env holds the keys; values are canaries, compared by digest and never printed.
 put_env11() { printf 'JIRA_PROJECT_KEY=HIMMEL\n%s\n' "$1" > "$S10/clone/.env"; }
 RA="$CANARY-ra"; RB="$CANARY-rb"
 new_station; put_station "$V1"
@@ -556,18 +554,15 @@ eq "11a a renamed key exits 0 from check" 0 "$rc"
 has "11a check names the old and the new name" "RENAME	.env	TELEGRAMTESTBOTA	TELEGRAMTESTABOT" "$out"
 lacks "11a no LOSS row for a rename" "LOSS" "$out"
 lacks "11a no value reaches the check rows" "$CANARY" "$out"
-# 11b. control: a deleted key is still a loss.
 put_env11 "$(printf 'TELEGRAMTESTBOTB=%s' "$RB")"
 out=$(st check); rc=$?
 eq "11b control: a deleted key exits 3" 3 "$rc"
 has "11b control: a deleted key is a LOSS row" "LOSS	.env	lost keys	TELEGRAMTESTBOTA" "$out"
 lacks "11b control: a deleted key is not a rename" "RENAME" "$out"
-# 11c. a key renamed AND given a new value is a loss: the digest does not match.
 put_env11 "$(printf 'TELEGRAMTESTABOT=%s-changed\nTELEGRAMTESTBOTB=%s' "$RA" "$RB")"
 out=$(st check); rc=$?
 eq "11c control: a rename with a new value exits 3" 3 "$rc"
 has "11c control: and names the lost key" "TELEGRAMTESTBOTA" "$out"
-# 11d. the text watch builds: information for a rename, the alert wording for a loss.
 new_station; put_station "$V1"
 put_env11 "$(printf 'TELEGRAMTESTBOTA=%s\nTELEGRAMTESTBOTB=%s' "$RA" "$RB")"
 st watch 2>/dev/null
@@ -588,7 +583,6 @@ put_env11 "$(printf 'TELEGRAMTESTABOT=%s' "$RA")"
 st watch 2>/dev/null
 has "11d control: a real loss keeps the alert wording" "⚠️ himmel station config" "$(cat "$ALERTS")"
 has "11d control: and names the lost key" "TELEGRAMTESTBBOT" "$(cat "$ALERTS")"
-# 11e. a watch.json written before the digests existed cannot tell a rename: it reads as a loss.
 new_station; put_station "$V1"
 put_env11 "$(printf 'TELEGRAMTESTBOTA=%s' "$RA")"
 st watch 2>/dev/null

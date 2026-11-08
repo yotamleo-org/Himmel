@@ -310,7 +310,6 @@ function snapshot() {
     if (!p) continue;
     const b = read(p);
     const k = keys(n, b);
-    // digests: sha256 per key name, so a key that reappears under a new name reads as a rename.
     snap[n] = { path: p, present: b !== null, size: b === null ? 0 : b.length, keys: k === null ? null : [...k.keys()].sort(),
       digests: k === null ? null : Object.fromEntries([...k.entries()].sort((x, y) => (x[0] < y[0] ? -1 : 1))) };
   }
@@ -353,7 +352,6 @@ function problems(snap, live) {
     if (!is.present) { out.push({ file: n, path: was.path, kind: "deleted", lost: was.keys || [] }); continue; }
     if ((is.size === 0 && was.size > 0) || (was.keys !== null && is.keys === null)) { out.push({ file: n, path: was.path, kind: "truncated", lost: was.keys || [] }); continue; }
     let lost = (was.keys || []).filter((k) => !(is.keys || []).includes(k));
-    // A lost key whose value digest now sits under a key that is new in the live file is a rename.
     const fresh = (is.keys || []).filter((k) => !(was.keys || []).includes(k)), taken = new Set(), renames = [];
     for (const k of lost) {
       const d = was.digests && was.digests[k];
@@ -500,7 +498,6 @@ function watch(readOnly) {
   if (readOnly) return all;
   if (!ps.length) {
     saveWatch(live); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {}
-    // A rename is information, once: the renamed set is the new baseline, so the next pass is quiet.
     if (all.length) console.log("INFO\tℹ️ himmel station config: " + all.map((p) => `${p.path} renamed: ${renamed(p)}`).join("; ") + " (same values, nothing lost)");
     return [];
   }

@@ -163,9 +163,6 @@ MAX_PATCH_BYTES=524288
 MAX_PATCH_HEADERS=1000
 MAX_HEADER_LINE_BYTES=4096
 
-# The .env config-audit watches (the set's .env). A session write to it is
-# refused: a hand edit leaves no audit row, so the watcher cannot tell it from
-# damage. Consulted only for a target that resolves to a file named .env.
 station_env_resolved() {
     local f="${HIMMEL_CONFIG_AUDIT_ENV_FILE:-}" lib="${BASH_SOURCE[0]%/*}/../lib/load-dotenv.sh"
     # shellcheck source=../lib/load-dotenv.sh
@@ -173,12 +170,11 @@ station_env_resolved() {
     [ -n "$f" ] || return 1
     hook_resolve_m "$f" 2>/dev/null
 }
-# deny_station_env TOOL PATH RESOLVED: deny when RESOLVED is the station .env.
 deny_station_env() {
-    local env_r
-    case "$3" in */.env) ;; *) return 0 ;; esac
+    local tool="$1" given="$2" resolved="$3" env_r
+    case "$resolved" in */.env) ;; *) return 0 ;; esac
     env_r=$(station_env_resolved) || return 0
-    [ "$3" = "$env_r" ] || return 0
+    [ "$resolved" = "$env_r" ] || return 0
     # shellcheck disable=SC2016 # the remedy shows $id literally
     REMEDY='    The station .env is changed through the config audit, so a deliberate edit
     leaves a row and the watcher can tell it from damage. Audited route:
@@ -187,7 +183,7 @@ deny_station_env() {
         bash scripts/lib/config-audit.sh post "$id" <the .env> write --script <name>
     A key renamed with its value unchanged is then reported as a rename, not a
     loss. Plain reads and the Read tool stay allowed. There is no env bypass.'
-    deny "$1 targets the station .env ($2): write it between config-audit.sh pre and config-audit.sh post"
+    deny "$tool targets the station .env ($given): write it between config-audit.sh pre and config-audit.sh post"
 }
 
 # check_path TOOL PATH: deny when PATH is, or resolves to, the config or a
