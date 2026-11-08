@@ -315,7 +315,7 @@ check "9607 RESUME-shaped doc: the tick's parser reads the same WRAPPED" "$(bash
 mk9607 "" "- 10:00 WRAPPED - done"
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
-check "9607 legacy doc: empty Results falls back to the WRAPPED bullet further down -> rc 0" "$rc" "0"
+check "9607 legacy doc: bullets written at the end of the file under an empty Results are refused -> rc 4" "$rc" "4"
 mk9607 "- 09:00 LIVE - resumed" "- 10:00 WRAPPED - done"
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
@@ -324,16 +324,21 @@ mk9607 "" "- when done, append the WRAPPED bullet"
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "9607 empty Results: a later bullet that only mentions WRAPPED is no worker tail -> rc 4" "$rc" "4"
-mk9607 "" "- 10:00 WRAPPED - done"
+printf '# HIMMEL-9 N1 demo worker\n\n- **WRAPPED** once merge-on-green lands\n\n## Results (newest at the bottom)\n\n## Traps learned\n\n- a trap\n' > "$DOC"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "9607 empty Results: a marker-led bullet above the Results heading is no worker tail -> rc 4" "$rc" "4"
 ORIG9607="$W/HIMMEL-9-N1-demo-2026-01-01.md"
 printf '# HIMMEL-9 N1 demo worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - starting\n- 09:30 WRAPPED - hand-off\n' > "$ORIG9607"
+mk9607 "- 09:00 LIVE - resumed" "- a trap"
+TICK_VAULT_DIR="$W/vault9607" WORKER_SESSION_JIRA_STATUS=0 bash "$HERE/append-results.sh" "$DOC" "WRAPPED - done" >/dev/null 2>&1
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
-check "9607 RESUME doc with its original beside it: marker bullets below an empty Results close -> rc 0" "$rc" "0"
-mk9607 "" "- when done, append the WRAPPED bullet"
+check "9607 RESUME doc with its original beside it: a bullet from append-results.sh closes -> rc 0" "$rc" "0"
+mk9607 "" "- 10:00 WRAPPED - done"
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
-check "9607 RESUME doc with its original beside it: a later WRAPPED mention alone is refused -> rc 4" "$rc" "4"
+check "9607 RESUME doc with its original beside it: bullets at the end of the file under an empty Results are refused -> rc 4" "$rc" "4"
 rm -f "$ORIG9607"
 
 # --- 4b. a session-scratchpad clone holding unpushed commits ------------
