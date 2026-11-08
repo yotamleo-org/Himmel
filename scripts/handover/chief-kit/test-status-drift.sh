@@ -153,11 +153,12 @@ esac
 EOS
 cat >"$tmp/lock-stub.sh" <<'EOS'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FX/lock.log"
 rc=$(cat "$FX/lock.rc" 2>/dev/null || echo 0)
 [ "$rc" = 0 ] && { echo free; exit 0; }
 now=$(date -u +%s)
 hb=$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$now" +%Y-%m-%dT%H:%M:%SZ)
-printf '{\n  "session": "s",\n  "heartbeat": "%s"\n}\nstatus: FRESH\n' "$hb"
+printf '{\n  "session": "s",\n  "heartbeat": "%s"\n}\nstatus: %s\n' "$hb" "$(cat "$FX/lock.status" 2>/dev/null || echo FRESH)"
 exit "$rc"
 EOS
 chmod +x "$tmp/jira-stub.sh" "$tmp/bin/gh" "$tmp/lock-stub.sh"
@@ -875,6 +876,126 @@ check "3b: a live owner means not UNOWNED" "$(dcount UNOWNED)" 0
 reset "In Progress"; jl "$K" "In Progress"; pr 7 "[$K] feat" aaa111; checks 7 fail
 drift
 check "3b: an open PR means not UNOWNED" "$(dcount UNOWNED)" 0
+
+# 9561 S1: a chief-owned D6n park is AWAITING until its clock runs out, a vanished or dead lock is UNOWNED
+NOW=1794139200
+export TICKET_STATUS_NOW=$NOW
+iso_at() { # <seconds before NOW> - an ISO time (negative = after NOW)
+    local e=$((NOW - $1))
+    date -u -d "@$e" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$e" +%Y-%m-%dT%H:%M:%SZ
+}
+lrow() { # <seconds before NOW> <event> <result> <rule or -> [extra json] - a row for $K, oldest first
+    mkdir -p "$TICKET_STATUS_STATE_DIR"
+    jq -nc --arg ts "$(iso_at "$1")" --arg e "$2" --arg k "$K" --arg r "$3" --arg rule "$4" --argjson x "${5:-{\}}" \
+        '{ts: $ts, event: $e, key: $k, result: $r} + (if $rule == "-" then {} else {rule: $rule} end) + $x' >> "$LOG"
+}
+d6own() { # <yes|no> - a record owned by a WRAPPED doc whose brief says Completes ticket: <yes|no>
+    local hash
+    hash=$(printf '%s|%s|%s|%s' N1 wrapped '' 'In Progress' | cksum | awk '{ print $1 }')
+    owned "$K" WRAPPED "$(jq -nc --arg t "$(iso_at 60)" --arg h "$hash" '{last_event_ts: $t, comment_hash: $h}')"
+    printf '# worker\n\n> **Completes ticket:** %s\n\n## Results (newest at the bottom)\n- 10:00 WRAPPED — x\n' "$1" > "$tmp/$K-N1-slug-2026-10-21.md"
+}
+d6fx() { reset "In Progress"; jl "$K" "In Progress"; d6own no; }
+driftenv() { env "$@" bash "$DRIFT" --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1; }
+nrelease() { cat "$FX/lock.log" 2>/dev/null | grep -c '^release' || true; }
+lockfx() { printf '%s\n' "$1" > "$FX/lock.rc"; printf '%s\n' "$2" > "$FX/lock.status"; }
+
+d6fx; lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n
+drift
+check "9561 S1 1: a chief-owned D6n park of 1 h is one AWAITING row" "$(dcount AWAITING)" 1
+contains "9561 S1 1: it waits on the chief" "$(drows AWAITING)" "wait=chief"
+contains "9561 S1 1: its source is the D6n park" "$(drows AWAITING)" "source=d6n"
+contains "9561 S1 1: its since is the first D6n row" "$(drows AWAITING)" "since=$(iso_at 3600) "
+contains "9561 S1 1: its due is 24 h after the first D6n row" "$(drows AWAITING)" "due=$(iso_at -82800) "
+check "9561 S1 1: and the key is not UNOWNED" "$(dcount UNOWNED)" 0
+contains "9561 S1 1: a wait row is no drift: sdrift=0" "$(dlast)" "sdrift=0:"
+check "9561 S1 9: the pass wrote nothing" "$(nwrites)" 0
+check "9561 S1 9: and released no lock" "$(nrelease)" 0
+
+d6fx; lrow 90000 wrapped noop D6n; lrow 60 sweep noop D6n
+drift
+check "9561 S1 2: a D6n park of 25 h is no AWAITING row" "$(dcount AWAITING)" 0
+contains "9561 S1 2: it is UNOWNED, awaiting the chief since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since $(iso_at 90000)"
+contains "9561 S1 2: and says overdue" "$(drows UNOWNED)" "overdue"
+contains "9561 S1 2: and counts as drift: sdrift=1" "$(dlast)" "sdrift=1:"
+
+d6fx; lrow 90000 wrapped noop D6n; lrow 7200 live skip RM; lrow 7200 live disabled -; lrow 7200 sweep deferred - '{"stage":"lock"}'; lrow 7200 sweep noop D5; lrow 60 sweep noop D6n
+drift
+check "9561 S1 3a: an RM skip, a disabled, a deferred and a D5 noop row inside the run do not restart it" "$(dcount AWAITING)" 0
+contains "9561 S1 3a: the park is overdue since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since $(iso_at 90000)"
+d6fx; lrow 108000 wrapped noop D6n; lrow 7200 live noop D5; lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n
+drift
+contains "9561 S1 3b: an event=live row starts a new run: since is the newer run's first row" "$(drows AWAITING)" "since=$(iso_at 3600) "
+d6fx; lrow 7200 wrapped noop D6n; lrow 3600 pr-open moved D5
+drift
+check "9561 S1 3c: a moved row of another rule after the last D6n row leaves no park start" "$(dcount AWAITING)" 0
+check "9561 S1 3c: and the plain UNOWNED row stands" "$(drows UNOWNED | grep -c 'awaiting the chief')/$(dcount UNOWNED)" 0/1
+d6fx; lrow 90000 wrapped noop D6n; lrow 7200 hold moved D6n; lrow 60 sweep noop D6n
+drift
+check "9561 S1 3d: a hold row inside the run starts nothing" "$(dcount AWAITING)" 0
+contains "9561 S1 3d: the park is overdue since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since $(iso_at 90000)"
+d6fx; lrow 3600 wrapped moved D6n
+drift
+contains "9561 S1 3e (a synthetic guard of the at-or-after rule: no moved D6n row exists live): an anchor that carries the rule is the park start" "$(drows AWAITING)" "since=$(iso_at 3600) "
+d6fx; lrow 90000 wrapped noop D6n; lrow 7200 merge pending - '{"pr":"8601","head":"h1","contract":"no","stage":"pre-merge"}'; lrow 60 sweep noop D6n
+MERGE_ROWS_GH="$tmp/mrgh" drift
+check "9561 S1 3f: a pre-merge row whose PR is open is dropped and is no anchor" "$(dcount AWAITING)" 0
+contains "9561 S1 3f: the park is overdue since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since $(iso_at 90000)"
+
+reset "In Progress"; jl "$K" "In Progress"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":2}'; logrow merge "$K" noop 4480 no; printf '0\n' > "$FX/lock.rc"
+drift
+check "9561 S1 4: a D5c key whose lock was gone for two sweeps is UNOWNED" "$(dcount UNOWNED)" 1
+reset "In Progress"; jl "$K" "In Progress"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":1}'; logrow merge "$K" noop 4480 no; printf '0\n' > "$FX/lock.rc"
+drift
+check "9561 S1 4 control: one gone sweep is not UNOWNED" "$(dcount UNOWNED)" 0
+
+reset "To Do"
+drift
+contains "9561 S1 5: an empty run prints sdrift=0" "$(dlast)" "sdrift=0:"
+
+reset "To Do"; jl "$K" "To Do"; d6own yes
+drift
+check "9561 S1 6 control: a brief saying yes (derives D6) prints no AWAITING and no UNOWNED" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/0
+reset "In Progress"; jl "$K" "In Progress"; d6own yes; lrow 3600 wrapped noop D6n
+drift
+check "9561 S1 6 control: a brief saying yes is no chief-owned park even over D6n rows" "$(dcount AWAITING)" 0
+
+d6fx; lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n
+for v in abc 99999999999999999999h; do
+    driftenv TICKET_STATUS_AWAIT_TTL_CHIEF=$v
+    check "9561 S1 7: TTL_CHIEF=$v prints one HEALTH row" "$(drows HEALTH | grep -c 'env: TICKET_STATUS_AWAIT_TTL_CHIEF')/$(dcount HEALTH)" 1/1
+    check "9561 S1 7: and the row never prints the value" "$(drows HEALTH | grep -c -- "$v")" 0
+    contains "9561 S1 7: TTL_CHIEF=$v keeps the 24 h due" "$(drows AWAITING)" "due=$(iso_at -82800) "
+done
+driftenv TICKET_STATUS_AWAIT_MAX=30d TICKET_STATUS_AWAIT_TTL_CHIEF=400d
+check "9561 S1 7: MAX=30d prints the HEALTH row" "$(drows HEALTH | grep -c 'env: TICKET_STATUS_AWAIT_MAX')" 1
+contains "9561 S1 7: and the due is clamped at 14 d" "$(drows AWAITING)" "due=$(iso_at $((3600 - 1209600))) "
+driftenv TICKET_STATUS_AWAIT_TTL_CHIEF=2h
+contains "9561 S1 7: TTL_CHIEF=2h makes the 1 h park due in 1 h" "$(drows AWAITING)" "due=$(iso_at -3600) "
+check "9561 S1 7: and prints no HEALTH row" "$(dcount HEALTH)" 0
+
+reset "In Progress"; jl "$K" "In Progress"; owned "$K" LIVE '{"state":"live"}'; lockfx 12 STALE-DEAD
+drift
+check "9561 S1 8: a D5 key over a STALE-DEAD lock is one UNOWNED row" "$(dcount UNOWNED)" 1
+contains "9561 S1 8: its fix names the reap" "$(drows UNOWNED)" "queue-lock.sh status --sweep --reap-dead"
+contains "9561 S1 8: and says the reap appends a HALTED bullet" "$(drows UNOWNED)" "the reap appends a HALTED bullet, so the next derive reads $K wrapped"
+contains "9561 S1 8: and that it releases every STALE-DEAD lock under the root" "$(drows UNOWNED)" "releases every STALE-DEAD lock under the root, each re-proved under its claim and CAS"
+check "9561 S1 9: the pass wrote nothing" "$(nwrites)" 0
+check "9561 S1 9: and released no lock" "$(nrelease)" 0
+reset "In Progress"; jl "$K" "In Progress"; owned "$K" LIVE '{"state":"live"}'; lockfx 12 STALE
+drift
+check "9561 S1 8 control: rc 12 STALE is still an owner" "$(dcount UNOWNED)" 0
+reset "In Progress"; jl "$K" "In Progress"; owned "$K" PARKED-USAGE '{"state":"parked"}'; lockfx 12 STALE-DEAD
+drift
+check "9561 S1 8: a parked worker over a STALE-DEAD lock is no worker" "$(dcount UNOWNED)" 1
+contains "9561 S1 8: and the fix names the reap" "$(drows UNOWNED)" "queue-lock.sh status --sweep --reap-dead"
+reset "In Progress"; jl "$K" "In Progress"; owned "$K" PARKED-USAGE '{"state":"parked"}'; lockfx 12 STALE
+drift
+check "9561 S1 8 control: a parked worker over rc 12 STALE keeps its owner" "$(dcount UNOWNED)" 0
+reset "In Progress"; jl "$K" "In Progress"; owned "$K" PARKED-USAGE '{"state":"parked"}'; lockfx 11 FRESH
+drift
+check "9561 S1 8 control: a parked worker over a FRESH lock keeps its owner" "$(dcount UNOWNED)" 0
+unset TICKET_STATUS_NOW
 
 # a `standing` ticket is started on purpose with no single PR; a ticket whose PR is open in
 # another repo is owned by that PR (the open-PR list only sees this repo)

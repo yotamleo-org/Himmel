@@ -15,8 +15,10 @@
 // `sdrift=<n>:<sig>` or `sdrift=unknown`. A row is KNOWN when the TSV pairs its key with its class
 // (or with `unset`, a pair that came in from Jira) AND the checker ticket's mirror status is not Done
 // (E23). It is TRANSIENT when it is an unpaired WORKER-COMMENT row (the comment lags a marker and
-// the next sweep heals it). Every other row is REAL and counts at once (K2): nothing waits for a
-// second run. A checker ticket whose status cannot be read keeps its rows REAL.
+// the next sweep heals it). It is WAITING when it is an AWAITING row ending in ` | wait=<who>` (a
+// chief-owned park inside its clock): `waiting` holds it and `real` never does. An UNOWNED row
+// carrying the mark, an AWAITING row without it or with a malformed who is REAL. Every other row is
+// REAL and counts at once (K2): nothing waits for a second run. A checker ticket whose status cannot be read keeps its rows REAL.
 //
 // ponytail: fresh for a fixed 3 h because focus refreshes are event driven, upgrade path = read the
 // last refresh's own spacing from focus-state.
@@ -29,6 +31,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TEAM_KEY = 'HIMMEL_TRACKER_TEAM_MODE';
 const TRANSIENT_CLASSES = new Set(['WORKER-COMMENT']);
+const WAIT_ROW = /^AWAITING .* \| wait=(chief|operator|[a-z][a-z0-9-]{0,31})$/;
 
 function usage() {
   process.stderr.write('usage: drift-summary.mjs --json [--drift <file>] [--known <tsv>] [--mirror-dir <dir>] [--now <epoch>] [--stale-after <seconds>]\n');
@@ -103,7 +106,7 @@ const out = {
   file: { path: driftFile, exists: false, writtenAt: null, writtenHm: null },
   sdrift: null, unknown: false, stale: false,
   ...readMode(),
-  real: [], known: [], transient: [],
+  real: [], known: [], transient: [], waiting: [],
   checkers: [],
 };
 
@@ -127,6 +130,10 @@ if (raw !== null) {
     const r = line.match(/^([A-Z][A-Z-]*) (\S+)(?: |$)/);
     if (!r) continue;
     const row = { class: r[1], key: r[2], line };
+    if (r[1] === 'AWAITING' && WAIT_ROW.test(line)) {
+      out.waiting.push(row);
+      continue;
+    }
     const pairs = known.filter((k) => k.key === row.key && (k.class === row.class || k.class === 'unset'));
     const open = pairs.find((k) => !['Done', 'unknown'].includes(checkerStatus(k.checker)));
     if (open) {
@@ -139,6 +146,6 @@ if (raw !== null) {
   }
   out.checkers = [...new Set(out.known.map((k) => k.checker))];
 }
-out.counts = { real: out.real.length, known: out.known.length, transient: out.transient.length };
+out.counts = { real: out.real.length, known: out.known.length, transient: out.transient.length, waiting: out.waiting.length };
 
 process.stdout.write(`${JSON.stringify(out)}\n`);
