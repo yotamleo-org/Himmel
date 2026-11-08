@@ -7,7 +7,9 @@
 # Usage: ticket-hold.sh <KEY> --reason <text> --owner <who> [--until <YYYY-MM-DD>]
 #                      [--kind chain-order|gate|file-collision|operator|date] [--on <KEY>]
 #        ticket-hold.sh <KEY> --release [--owner <who>]
-#   --until is advisory: nothing releases a hold on that date (the Chains tab reads a date
+#   --owner is chief, operator or a lowercase name (a-z, 0-9, -; at most 32); --until must be a real date.
+#   The hold row records owner, reason and any until: status-drift.sh reads it as a wait on the
+#   owner until that date (nothing releases the hold on it; the Chains tab reads a date
 #   hold as date-gated until then); --kind date needs it.
 #   --kind and --on (the ticket it waits on) go into the HOLD comment and the event row;
 #   with --kind, so does --until.
@@ -63,8 +65,13 @@ fi
 case "$KIND" in "" | chain-order | gate | file-collision | operator | date) ;; *) usage ;; esac
 [ "$KIND" != date ] || [ -n "$UNTIL" ] || usage
 [ -z "$ON" ] || [[ "$ON" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || usage
+if [ -n "$OWNER" ]; then
+    [[ "$OWNER" =~ ^(chief|operator|[a-z][a-z0-9-]{0,31})$ ]] || usage
+fi
 if [ -n "$UNTIL" ]; then
     [[ "$UNTIL" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || usage
+    e=$(date -u -d "$UNTIL" +%s 2>/dev/null || date -u -j -f %Y-%m-%d "$UNTIL" +%s 2>/dev/null) || usage # swallow-ok: the BSD form follows
+    [ "$(date -u -d "@$e" +%Y-%m-%d 2>/dev/null || date -u -r "$e" +%Y-%m-%d 2>/dev/null)" = "$UNTIL" ] || usage # swallow-ok: the BSD form follows
 fi
 command -v jq >/dev/null 2>&1 || { echo "ticket-hold: jq not found" >&2; exit 1; }
 
@@ -79,7 +86,8 @@ else
     EVENT=hold FLAG=--add-labels
 fi
 
-row() { status_event event="$EVENT" key="$KEY" ${KIND:+kind="$KIND"} ${ON:+on="$ON"} ${KIND:+${UNTIL:+until="$UNTIL"}} "$@"; }
+ROWREASON=$(printf '%s' "$REASON" | tr -d '|\t\r\n')
+row() { status_event event="$EVENT" key="$KEY" ${OWNER:+owner="$OWNER"} ${REASON:+reason="$ROWREASON"} ${KIND:+kind="$KIND"} ${ON:+on="$ON"} ${UNTIL:+until="$UNTIL"} "$@"; }
 
 # chain_log <k=v>... - one row in chain-log.jsonl, beside status-events.jsonl.
 chain_log() {
