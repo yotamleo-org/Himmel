@@ -204,10 +204,10 @@ case "$rc" in
 esac
 
 # ── 8. ready-check ──────────────────────────────────────────────────────────
-if bash "$READY_CHECK" "$PR" "$HEAD_SHA" >/dev/null 2>&1; then
+if bash "$READY_CHECK" --observe "$PR" "$HEAD_SHA" >/dev/null 2>&1; then
     add_line "ready-check: PASS"
 else
-    add_line "ready-check: FAIL (run ready-check.sh $PR $HEAD_SHA for the failing rows)"
+    add_line "ready-check: FAIL (run ready-check.sh --observe $PR $HEAD_SHA for the failing rows)"
     add_reason ready-check-failed
 fi
 

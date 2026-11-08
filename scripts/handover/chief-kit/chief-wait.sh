@@ -1615,7 +1615,7 @@ ready_wake() {
             ready_fold="$ready_fold $label"; continue
         fi
         heartbeat sampling
-        rc_out="$(timeout -k 5 150 bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        rc_out="$(timeout -k 5 150 bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" --observe "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
         if [ "$rc" -eq 0 ]; then rck=PASS; else rck=FAIL; fi
         if printf '%s\n' "$rc_out" | grep -q '^\[PASS\] 7\.'; then cov=PASS; else cov=FAIL; fi
         if printf '%s\n' "$rc_out" | grep -qx 'TRUST-PATH: yes'; then trust=yes; else trust=no; fi
