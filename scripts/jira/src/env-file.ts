@@ -1,5 +1,3 @@
-// The config-file parser and the station Jira URL walk, shared by client.ts and live-test-guard.ts so
-// neither imports the other.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

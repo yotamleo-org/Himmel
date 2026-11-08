@@ -19,7 +19,6 @@ export function parseOwnKeys(value: string): string[] | null {
   return OWN_KEYS.test(value) ? value.split(',') : null;
 }
 
-/** Keys read from the two station files only: himmel.conf.local, then himmel.conf. */
 function stationFiles(configDir: string, keys: string[]): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const file of ['himmel.conf.local', 'himmel.conf']) readEnvFile(join(configDir, file), new Set(keys), env);
@@ -38,14 +37,17 @@ export function resolveTestProject(configDir: string, candidate?: string): { tes
   return { testProject: key, problem: null };
 }
 
+const readLink = (path: string): string => {
+  try {
+    return readlinkSync(path);
+  } catch {
+    return '';
+  }
+};
+
 /** `_csg_is_claude`'s three rules (scripts/lib/chokepoint-seam-guard.sh): plain, native versioned, npm. */
 export function isClaudeProc(procRoot: string, pid: number): boolean {
-  let exe = '';
-  try {
-    exe = readlinkSync(join(procRoot, String(pid), 'exe'));
-  } catch {
-    // no exe link: argv decides
-  }
+  const exe = readLink(join(procRoot, String(pid), 'exe'));
   if (basename(exe) === 'claude' || exe.includes('/claude/versions/')) return true;
   let argv: string[] = [];
   try {
@@ -132,7 +134,6 @@ export function testProjectConfigDir(env: NodeJS.ProcessEnv = process.env): stri
   return env.HIMMEL_CONFIG_DIR || join(env.HOME || homedir(), '.himmel');
 }
 
-/** Is `project` the configured test project (read from testProjectConfigDir())? */
 export function isTestProject(project: string): boolean {
   const dir = testProjectConfigDir();
   return dir !== null && resolveTestProject(dir).testProject === project;
@@ -152,11 +153,6 @@ const UNKNOWN: WriteTargets = { kind: 'unknown' };
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? v as Record<string, unknown> : {});
 const refOf = (v: unknown): unknown => obj(v).key ?? obj(v).id;
 
-/**
- * Issue refs a body names: fields.parent, fields.issuelinks, update.parent[].set and
- * update.issuelinks[].add, each side. Any other operation on update.parent or update.issuelinks is
- * null (unknown), so a form this does not read is refused rather than passed unread.
- */
 function bodyLinks(body: unknown): unknown[] | null {
   const fields = obj(obj(body).fields);
   const update = obj(obj(body).update);
@@ -177,7 +173,6 @@ function bodyLinks(body: unknown): unknown[] | null {
   return refs;
 }
 
-/** Every ref must be an issue key or numeric id; anything else makes the write unknown. */
 function issueRefs(refs: unknown[]): string[] | null {
   const out = refs.map((r) => (typeof r === 'number' ? String(r) : r));
   return out.every((r): r is string => typeof r === 'string' && ISSUE_REF.test(r)) ? out : null;
@@ -232,7 +227,6 @@ function agileWrite(method: string, path: string, body: unknown): WriteTargets {
   return UNKNOWN;
 }
 
-/** A GET, or the one POST that reads (`/search/approximate-count`). */
 export function isJiraRead(apiBase: string, method: string, path: string): boolean {
   return method === 'GET' || (method === 'POST' && apiBase === '/rest/api/3' && path === '/search/approximate-count');
 }
@@ -273,7 +267,6 @@ export function jiraIsLoopback(url: string): boolean {
   return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
 }
 
-/** Loopback or a `.invalid` host: no real Jira answers there. Only liveTestGuard asks this. */
 export function jiraIsUnreachable(url: string): boolean {
   return jiraIsLoopback(url) || (hostOf(url) ?? '').endsWith('.invalid');
 }
@@ -299,7 +292,6 @@ type Get = <T>(path: string) => Promise<T>;
 const REFUSED = 'jira: live-test write refused:';
 const NO_DIR = 'the live-test config dir could not be read from the marked claude ancestor';
 
-/** The issue refs, issueLink sides and version projects a write names, read fresh; the projects that are not the test project. */
 async function offendingProjects(
   write: Extract<WriteTargets, { kind: 'targets' }>, test: string, ownKeys: string[], read: Get, unreadable: (what: string) => Error,
 ): Promise<string[]> {
@@ -315,10 +307,9 @@ async function offendingProjects(
     if (!sides) throw unreadable(`/issueLink/${id}`);
     issues.push(...sides);
   }
-  // Own keys stand only on an issue-scoped route, never on a create.
-  const ownOk = write.project === undefined;
+  const issueScopedRoute = write.project === undefined;
   for (const ref of issues) {
-    if (ownOk && ownKeys.includes(ref)) continue;
+    if (issueScopedRoute && ownKeys.includes(ref)) continue;
     const key = obj(obj(obj(await read<unknown>(`/issue/${ref}?fields=project`)).fields).project).key;
     if (typeof key !== 'string') throw unreadable(`/issue/${ref}?fields=project`);
     if (key !== test) out.push(key);
@@ -371,7 +362,6 @@ export async function liveTestGuard(apiBase: string, method: string, path: strin
   }
 }
 
-/** The guard for a full upload URL: split under the base (not under it is R-instance), then liveTestGuard. */
 export async function liveTestUploadGuard(url: string, baseUrl: () => string, get: Get): Promise<void> {
   if (!liveTestContext().set) return;
   const base = baseUrl();

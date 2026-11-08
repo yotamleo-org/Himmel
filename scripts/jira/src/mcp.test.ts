@@ -8,8 +8,6 @@ import { PLAIN_BLOCK_TEMPLATE } from './plain-block.js';
 import { SECTORS, resetSectorCache } from './commands/sector.js';
 import { declare, type Ctx } from './release/engine.js';
 
-// The test-run-guard door a real write asks answers 0, so the guarded MCP rows below reach their stubbed
-// fetch; every other spawn runs for real.
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
   const spawnSync = ((cmd: string, args?: readonly string[], opts?: object) =>
@@ -168,8 +166,10 @@ describe('MCP create under the marker goes through the guard', () => {
   it('the real defaultDeps: a create in HIMMEL is a tool error with no POST, in HTEST one POST', async () => {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({ ok: true, status: 200, text: async () => '{"key":"HTEST-1","id":"1"}' }));
     vi.stubGlobal('fetch', fetchMock);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handler = (buildServer() as any)._requestHandlers.get('tools/call');
+    type CallResult = { isError?: boolean; content: Array<{ text: string }> };
+    type Handlers = { _requestHandlers: Map<string, (req: unknown, extra: unknown) => Promise<CallResult>> };
+    const handler = (buildServer() as unknown as Handlers)._requestHandlers.get('tools/call');
+    if (!handler) throw new Error('no tools/call handler');
     const call = (project: string) => handler(
       { method: 'tools/call', params: { name: 'create', arguments: { type: 'Task', title: 'New', desc: PLAIN_FILLED, project, labels: 'standalone' } } },
       { mcpReq: { requestState: () => undefined, inputResponses: undefined } },

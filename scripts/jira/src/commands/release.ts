@@ -530,8 +530,6 @@ function refuseTestWrite(verb: string): void {
   if (r.status === 77) throw new Error(`release ${verb}: refused, nothing was written`);
 }
 
-// The post door lives in live-test-guard.ts so client.ts can ask it without importing this file;
-// create.ts and the posting verbs below keep calling it from here.
 export { refuseTestJiraPost };
 
 /**

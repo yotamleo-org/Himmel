@@ -10,9 +10,7 @@ import { registerMove } from './commands/move.js';
 import { readVersionWrites } from './release/version-writes.js';
 import { sameJiraBase, stationJiraBaseUrl } from './env-file.js';
 
-// Records every git call the path lookups make, passing each through. The test-run-guard door a write
-// asks (scripts/lib/test-run-guard) answers `door.status`: 0, so these hermetic writes to a stubbed
-// fetch pass it; every other spawn runs for real.
+// Records every git call the path lookups make, passing each through.
 const door = vi.hoisted(() => ({ status: 0 as number | null, calls: 0 }));
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
@@ -857,10 +855,6 @@ describe('version-write journal hook', () => {
   });
 });
 
-// --- the live-test guard at both write exits ------------------------------------
-// The marker is set in the own env (the vitest harness skips the ancestor walk), the station files say
-// JIRA_TEST_PROJECT=HTEST, JIRA_PROJECTS=HIMMEL,LUNA and the station URL, and fetch is a fake Jira that
-// answers each issue's project from its key prefix unless `moved` says otherwise.
 
 const STATION = 'https://station.atlassian.net';
 const LINKS: Record<string, unknown> = {
@@ -1073,8 +1067,6 @@ describe('the live-test guard at requestAt and uploadMultipart', () => {
     expect(j.calls).toEqual([]);
   });
 
-  // No layer may hold a URL, the install .env included: git is made to fail, so only the checkout's own
-  // .env is looked for (absent in a worktree and in CI).
   const ownEnv = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '.env');
   it.skipIf(existsSync(ownEnv))('I14 no station URL in any layer is R-instance', async () => {
     writeFileSync(join(dir, 'himmel.conf'), 'JIRA_PROJECTS=HIMMEL,LUNA\nJIRA_TEST_PROJECT=HTEST\n');

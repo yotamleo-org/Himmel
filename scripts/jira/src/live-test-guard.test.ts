@@ -1,8 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { spawn } from 'node:child_process';
 
-// The test-run-guard door (scripts/lib/test-run-guard) answers 77, as it does for a test on the station;
-// every other spawn runs for real.
 const door = vi.hoisted(() => ({ calls: 0 }));
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
@@ -43,8 +41,6 @@ function station(files: { local?: string; conf?: string }): string {
   return dir;
 }
 
-// A fake /proc built the way scripts/lib/test-chokepoint-seam-guard.sh builds its tree: status with PPid,
-// NUL-separated environ and cmdline, and an exe symlink.
 interface FakeProc { pid: number; ppid: number; exe?: string; argv?: string[]; environ?: string[] | null; status?: string }
 function fakeProc(procs: FakeProc[]): string {
   const root = temp('ltg-proc-');
@@ -185,7 +181,6 @@ describe('liveTestContext', () => {
   });
 
   it('a vanished ancestor ends the walk', () => {
-    // pid 20 has no entry: the walk stops there, so the marked claude above it is never read.
     const root = fakeProc([init, claude(10, 1, ['HIMMEL_JIRA_LIVE_TEST=HIMMEL-1']), self(30, 20)]);
     expect(liveTestContext({ procRoot: root, pid: 30, env: {} })).toEqual({ set: false, ownKeys: [], configDir: null });
   });

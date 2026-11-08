@@ -2,7 +2,6 @@ import type { Command } from 'commander';
 import { stationJiraBaseUrl } from '../env-file.js';
 import { liveTestContext, resolveTestProject, testProjectConfigDir } from '../live-test-guard.js';
 
-// The read-only answer every other surface (setter, doctor, gen-briefs, live suite, guest_exec) asks.
 export function registerLiveTest(program: Command): void {
   program
     .command('live-test')

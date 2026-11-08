@@ -27,7 +27,6 @@ function resolveFromKeyring(root: string): void {
 
 export function loadEnvFile(envPath: string): void {
   const confDir = process.env.HIMMEL_CONFIG_DIR || join(process.env.HOME || homedir(), '.himmel');
-  // The process value wins, then the station walk (local, profile from the env first, conf, install .env).
   const station = stationJiraBaseUrl(confDir, { profileFromEnv: true, envPath });
   if (station) process.env.JIRA_BASE_URL ||= station;
   readEnvFile(join(confDir, 'himmel.conf.local'), CONFIG_KEYS);
@@ -194,9 +193,6 @@ async function beginVersionWrite(
   }
 }
 
-// A test on the station never writes the real Jira through either exit, whatever the command: the
-// test-run-guard door is asked once per process for the first write to a non-loopback host, and its
-// answer is kept.
 let testWriteRefused: boolean | undefined;
 function refuseTestWrite(what: string, url: string): void {
   if (jiraIsLoopback(url)) return;
