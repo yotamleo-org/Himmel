@@ -1370,13 +1370,16 @@ h9611="$(cat "$v9611out" 2>/dev/null)"
 contains 'a priority file older than the newest Jira update names its age' "$h9611" 'priority line last edited 2026-09-01 00:00 UTC, older than the newest Jira update'
 not_contains 'a priority file read says nothing about having no source' "$h9611" 'no priority line is read'
 
-for t in 436 437 438; do
+for t in 436 437 438 439 440 441; do
     printf '%s\n' '---' "key: \"HIMMEL-$t\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
         '---' "# HIMMEL-$t: owedsec ticket $t" > "$vp/HIMMEL-$t.md"
 done
 bk="$W/bk9611"
 mkdir -p "$bk/release/v1.1.3" "$bk/specs/designs"
-printf '%s\n' '{"kind":"spec","keys":["HIMMEL-437"],"spec_path":"'"$bk"'/specs/designs/HIMMEL-437-signed.md"}' '{bad row' '{"kind":"declare","decision":"1"}' > "$bk/release/v1.1.3/operator.jsonl"
+printf '%s\n' '{"kind":"spec","keys":["HIMMEL-437"],"spec_path":"'"$bk"'/specs/designs/HIMMEL-437-signed.md"}' '{"kind":"spec","spec_path":"'"$bk"'/specs/designs/HIMMEL-439-nomd.md"}' '{bad row' '{"kind":"declare","decision":"1"}' > "$bk/release/v1.1.3/operator.jsonl"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-439-nomd.critic-spec-r1.md"
+: > "$bk/specs/designs/HIMMEL-440-empty.md.critic-spec-r1.md"
+printf '\377\376 not utf-8\n' > "$bk/specs/designs/HIMMEL-441-binary.md.critic-spec-r1.md"
 printf '%s\n' '# critic' 'SPEC FINDINGS 2' > "$bk/specs/designs/HIMMEL-434-capped.md.critic-spec-r3.md"
 printf '%s\n' '# critic' 'SPEC FINDINGS 9' > "$bk/specs/designs/HIMMEL-434-capped.md.critic-spec-r2.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-435-clean.md.critic-spec-r1.md"
@@ -1397,6 +1400,8 @@ contains 'a past-cap spec whose last line is no verdict says so, never prints th
 not_contains 'a spec with a spec row is not owed' "$w9611" 'HIMMEL-437-signed'
 not_contains 'a spec under the cap with findings is not owed' "$w9611" 'HIMMEL-436-underway'
 not_contains 'a spec of a ticket not open in the version is not owed' "$w9611" 'HIMMEL-999'
+not_contains 'a spec signed under its .md path is not owed when the critic file has no .md before .critic-spec' "$w9611" 'HIMMEL-439-nomd'
+contains 'an empty critic file and an undecodable one are named as unread and skipped' "$w9611" '2 critic files unread, skipped: HIMMEL-440-empty.md.critic-spec-r1.md, HIMMEL-441-binary.md.critic-spec-r1.md'
 contains 'the handoff open operator item is listed with its action' "$w9611" 'Answer the paid-step ask'
 contains 'a queue segment naming the operator is listed' "$w9611" 'HIMMEL-435 waits for operator sign-off'
 contains 'a pool-disposition line naming the operator is listed' "$w9611" 'operator on Telegram, runs the paid step'

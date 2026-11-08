@@ -1405,8 +1405,13 @@ def md_section(path, heading):
     return out if on or out else None
 
 
+def spec_id(path):
+    p = os.path.realpath(path or '')
+    return p[:-3] if p.endswith('.md') else p
+
+
 def operator_owed(bucket, chief_doc, version, opn, mir):
-    items, readable = [], False
+    items, readable, unread = [], False, []
     if bucket:
         signed = set()
         try:
@@ -1416,7 +1421,7 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                 except ValueError:
                     continue
                 if isinstance(r, dict) and r.get('kind') == 'spec':
-                    signed.add(os.path.realpath(r.get('spec_path') or ''))
+                    signed.add(spec_id(r.get('spec_path')))
             readable = True
         except FileNotFoundError:
             readable = os.path.isdir(os.path.join(bucket, 'specs', 'designs'))
@@ -1432,9 +1437,10 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                 k = re.search(r'HIMMEL-(\d+)', os.path.basename(spec))
                 try:
                     last = [x for x in open(f, encoding='utf-8').read().splitlines() if x.strip()][-1].strip()
-                except (OSError, IndexError):
+                except (OSError, ValueError, IndexError):
+                    unread.append(os.path.basename(f))
                     continue
-                if k and int(k.group(1)) in opn and os.path.realpath(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= CRITIC_ROUND_CAP):
+                if k and int(k.group(1)) in opn and spec_id(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= CRITIC_ROUND_CAP):
                     n = int(k.group(1))
                     items.append(('unsigned spec', n, clip(opn[n]['title'], 100),
                                   '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
@@ -1458,7 +1464,7 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                     n = num(k.group(0)) if k else None
                     items.append(('chief doc', n, clip(opn[n]['title'], 100) if n in opn else clip(s.strip(), 140), clip(s.strip(), 160),
                                   'the operator acts on what the line names'))
-    return items, readable
+    return items, readable, unread
 
 
 def source_notes(chains, chains_mtime, prio_mtime, ndt):
@@ -1624,10 +1630,12 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     chainhtml = ''.join('<div class="chain"><h3>%s</h3><ol>\n%s</ol></div>' % (esc(ch['name']), ''.join(step(st) for st in ch['steps']))
                         for ch in chains)
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
-    owed, owed_read = operator_owed(bucket_dir, chief_doc, version, opn, mir)
+    owed, owed_read, owed_unread = operator_owed(bucket_dir, chief_doc, version, opn, mir)
     nwait = len(wait) + len(owed)
-    waithtml = '<section data-section="waiting" data-count="%d"><h2 class="sh">Waiting on you <span class="n">%d</span>%s</h2>%s</section>' % (
+    waithtml = '<section data-section="waiting" data-count="%d"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s</h2>%s</section>' % (
         nwait, nwait, '' if owed_read else ' <span class="n">no operator-owed source read</span>',
+        ' <span class="n">%d critic file%s unread, skipped: %s</span>' % (
+            len(owed_unread), '' if len(owed_unread) == 1 else 's', esc(', '.join(owed_unread))) if owed_unread else '',
         '<ul>%s</ul>' % (''.join('<li>%s %s <span class="own">Jira %s · %s</span></li>' % (
             key_html(k), esc(clip(opn[k]['title'], 100)), esc(jcol[k]), esc(', '.join(sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))))) for k in wait)
             + ''.join('<li class="owed">%s%s <span class="own">%s · %s · action: %s</span></li>' % (
