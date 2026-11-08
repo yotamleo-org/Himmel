@@ -388,7 +388,7 @@ while IFS= read -r key; do
             else
                 lout=$(bash "$HERE/../queue-lock.sh" status "$ldoc" 2>/dev/null); lrc=$? # swallow-ok: as above
             fi
-            if [ "$lrc" = 12 ] && printf '%s\n' "$lout" | grep -q '^status: STALE-DEAD'; then deadlock=1; fi ;;
+            if [ "$lrc" = 12 ] && grep -q '^status: STALE-DEAD' <<<"$lout"; then deadlock=1; fi ;;
         esac
         noworker=$deadlock
         case "$ws" in none|wrapped) noworker=1 ;; esac
