@@ -27,6 +27,9 @@
 #                        A bullet that cannot be written appends ` doc-bullet=failed <why>` (its own
 #                        line after a GO-WRITTEN). Any other auto-go answer is
 #                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: auto-go.sh --dry-run runs once (its answer is ignored, so it leaves one auto-go.jsonl row), then ESCALATE marker-READY, as before.
+#                        A WRAPPED whose PR wrap-merged finds still OPEN (rc 3 at its pr-state step) is closed the
+#                        same way: HANDLED close-wrapped, or ESCALATE close-wrapped-failed when that close refuses.
+#                        A MERGED line for an OPEN PR still escalates wrap-merged-failed.
 #   anything else     -> ESCALATE (READY with the flag off, and FINDING, need a judge or the chief)
 #
 #   stacked_series on: series-ledger.py find (the bucket is the manifest's directory) says whether the worker's
@@ -280,6 +283,13 @@ else
     outf="$(mktemp "${TMPDIR:-/tmp}/worker-event-out.XXXXXX")" || { rm -f "$errf"; escalate "wrap-merged-failed rc=1 mktemp"; }
     "${WRAP[@]}" "${args[@]}" >"$outf" 2>"$errf"; rc=$?
     what=wrap-merged
+    # A WRAPPED whose PR is still OPEN (the worker handed off and waits on an outside event) stops at
+    # wrap-merged's first step, before it changes anything: close the worker's window instead of escalating.
+    if [ "$rc" -eq 3 ] && [ "$marker" = WRAPPED ] && grep -qE "step pr-state failed: PR #[0-9]+ is 'OPEN'" "$errf"; then
+        rm -f "$outf"; outf=""
+        "${CLOSE[@]}" --fleet "$FLEET" "$worker" >/dev/null 2>"$errf"; rc=$?
+        what=close-wrapped
+    fi
 fi
 if [ "$rc" -ne 0 ]; then
     msg="$(tr '\n' ' ' <"$errf")"

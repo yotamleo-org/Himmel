@@ -336,6 +336,33 @@ contains "13 refusal surfaced" "$out" "queue lock held"
 # read-sink-ok: LE_LIVE_CALLS is the suite's own scratch file under $W
 check "13 refused close runs no live-state" "$(cat "$LE_LIVE_CALLS")" ""
 
+# 13e. a WRAPPED worker whose PR is still OPEN (it handed off and waits on an outside event): wrap-merged refuses
+# at pr-state with rc 3, and the window is closed by close-wrapped-worker.sh instead of escalating
+OPEN_ERR="wrap-merged: step pr-state failed: PR #2553 is 'OPEN', not MERGED"
+LE_WRAP_RC=3 LE_WRAP_ERR="$OPEN_ERR" LE_LIST="$W/list13" run "WRAPPED N3002. PR 2553 open."
+check "13e open-PR wrap rc" "$rc" 0
+contains "13e open-PR wrap prints HANDLED close-wrapped" "$out" "HANDLED close-wrapped N3002"
+contains "13e wrap-merged ran first" "$calls" "wrap --doc"
+contains "13e close gets the fleet and the worker doc" "$calls" "close --fleet $W/fleet.json $W/HIMMEL-5-N3002-shipped-2026-10-14.md"
+lacks "13e open-PR wrap starts no station sync" "$out" "station=pending"
+# read-sink-ok: LE_LIVE_CALLS is the suite's own scratch file under $W
+contains "13e live-state ran" "$(cat "$LE_LIVE_CALLS")" "live $W/doc"
+# a refused close is still an escalation, naming the close
+LE_WRAP_RC=3 LE_WRAP_ERR="$OPEN_ERR" LE_CLOSE_RC=4 LE_CLOSE_ERR="close-wrapped-worker: refusing - not WRAPPED" LE_LIST="$W/list13" run "WRAPPED N3002."
+check "13e refused close rc" "$rc" 10
+contains "13e refused close escalates" "$out" "ESCALATE close-wrapped-failed rc=4"
+contains "13e refusal surfaced" "$out" "not WRAPPED"
+# a pr-state refusal that is not an OPEN PR still escalates wrap-merged-failed, the close never runs
+LE_WRAP_RC=3 LE_WRAP_ERR="wrap-merged: step pr-state failed: gh pr view 2553: could not resolve" LE_LIST="$W/list13" run "WRAPPED N3002."
+check "13e unreadable PR rc" "$rc" 10
+contains "13e unreadable PR escalates wrap-merged-failed" "$out" "ESCALATE wrap-merged-failed rc=3"
+lacks "13e unreadable PR: close not run" "$calls" "close"
+# a MERGED message for an OPEN PR is a contradiction, never a close
+LE_WRAP_RC=3 LE_WRAP_ERR="$OPEN_ERR" LE_LIST="$W/list13" run "MERGED #2553 N3002"
+check "13e MERGED on an OPEN PR rc" "$rc" 10
+contains "13e MERGED on an OPEN PR escalates" "$out" "ESCALATE wrap-merged-failed rc=3"
+lacks "13e MERGED on an OPEN PR: close not run" "$calls" "close"
+
 # 13b. a WRAPPED that resolves to a successor doc with no PR of its own, while the original sibling names one,
 # takes wrap-merged's merge verification, never the direct close
 printf '%s\n' '## Results' '- 10:00 READY 2553 abc' '- 10:30 WRAPPED hand-off' > "$W/HIMMEL-6-N5001-orig-2026-10-14.md"

@@ -119,7 +119,9 @@
 #      also refused while its -RESUME sibling has a last marker-bullet that is not WRAPPED; and
 #      both docs of a pair are refused while the -RESUME doc has no marker-bullet and the
 #      original's Results hold no successor LIVE (new release token) then WRAPPED after the
-#      hand-off WRAPPED (no hand-off evidence); and a named hand-off whose predecessor session
+#      hand-off WRAPPED (no hand-off evidence), except that an ORIGINAL doc whose own tail is WRAPPED
+#      beside a never-launched -RESUME doc (no marker-bullet, lock free) closes its own window, and is
+#      refused with this code while a session runs under the -RESUME doc's names or session ids; and a named hand-off whose predecessor session
 #      is gone is refused unless the predecessor is WRAPPED with completed successor evidence
 #      and the successor's own last marker-bullet is WRAPPED; and a BLOCKED tail that is not
 #      itself the hand-off bullet (a later ordinary BLOCKED) is a working worker
@@ -403,6 +405,7 @@ if ! last_marker=$(doc_tail_status "$DOC"); then
 fi
 tail_doc="$DOC"   # the doc last_marker is read from
 PREDECESSOR=0
+ORPHAN_RESUME=0   # 1: the RESUME doc beside this original never launched (checked against the live sessions below)
 if [ -n "$NAMED_SUCCESSOR" ]; then
     case "$last_marker" in
         WRAPPED) PREDECESSOR=1 ;;
@@ -424,8 +427,15 @@ if [ -n "$SIB_DOC" ] && [ "$PREDECESSOR" -eq 0 ]; then
         # started: only the successor's own record on the original (a LIVE with a new release token,
         # then its WRAPPED, after the hand-off) lets either doc close
         if ! resume_evidence "$sib_orig" "$sib_res"; then
-            echo "close-wrapped-worker: refusing - $sib_res has no marker-bullet of its own and $sib_orig holds no successor LIVE (new release token) then WRAPPED after the hand-off (no hand-off evidence)" >&2
-            exit 4
+            # An ORIGINAL doc whose own tail is WRAPPED, beside a RESUME doc that never launched (no marker-bullet,
+            # lock free), is a hand-off nobody picked up (a worker that wrapped with its PR open): its own window
+            # closes. The census below refuses while anything runs under the RESUME doc's names (a booting successor).
+            if [[ $DOC != *-RESUME.md ]] && [ "$last_marker" = WRAPPED ]; then
+                ORPHAN_RESUME=1
+            else
+                echo "close-wrapped-worker: refusing - $sib_res has no marker-bullet of its own and $sib_orig holds no successor LIVE (new release token) then WRAPPED after the hand-off (no hand-off evidence)" >&2
+                exit 4
+            fi
         fi
         if [[ $DOC == *-RESUME.md ]]; then
             tail_doc="$sib_orig"
@@ -685,6 +695,32 @@ match_sessions() {
 $sessions
 EOF
 }
+
+# resume_session_live: success when a live session runs under a name only the RESUME doc derives (not one of
+# this doc's own names) or is proven by the RESUME doc's session ids: a successor that is booting or working.
+resume_session_live() {
+    local pid name _model _ac base
+    while IFS=$'\t' read -r pid name _model _ac; do
+        [ -n "$pid" ] || continue
+        case "$name" in '#'*) continue ;; esac
+        if pid_is_siblings_window "$pid"; then return 0; fi
+        base=$(printf '%s' "$name" | sed -E 's/-r[0-9]+$//')
+        case "$names" in
+            *",${name},"*|*",${base},"*)
+                case "$own_names" in
+                    *",${name},"*|*",${base},"*) ;;
+                    *) return 0 ;;
+                esac ;;
+        esac
+    done <<EOF
+$sessions
+EOF
+    return 1
+}
+if [ "$ORPHAN_RESUME" -eq 1 ] && resume_session_live; then
+    echo "close-wrapped-worker: refusing - $sib_res has no marker-bullet of its own, $sib_orig holds no successor LIVE (new release token) then WRAPPED after the hand-off (no hand-off evidence), and a session is live under the RESUME doc's name (a booting successor)" >&2
+    exit 4
+fi
 match_sessions
 # A named hand-off closes the predecessor by its OWN names, never the successor's.
 # If only a legacy resumed window remains, its completed run must be proven before
