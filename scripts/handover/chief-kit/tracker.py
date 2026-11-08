@@ -1369,13 +1369,12 @@ OPERATOR_LABELS = ('operator-decision', 'operator', 'operator-present', 'operato
 WAITING_CHAIN_RE = re.compile(r'waiting on you', re.I)
 
 
-STALE_WORKER = timedelta(days=1)  # a finished worker record older than this is history, not who owns the ticket
-STALE_SOURCE = timedelta(days=1)  # a hand-kept source (chain registry, priority line) this far behind Jira is named on the page
+STALE_WORKER = timedelta(days=1)
+STALE_SOURCE = timedelta(days=1)
 # ponytail: a record with no last_event_ts keeps its line (its age is unknown); upgrade: stamp the record at wrap in ticket-status.sh
 
 
 def live_worker_records(workers):
-    """`workers` without the finished (wrapped, halted) records whose last event is over a day old and that hold no open PR."""
     now = datetime.now(timezone.utc)
     out = {}
     for k, rec in (workers or {}).items():
@@ -1387,11 +1386,10 @@ def live_worker_records(workers):
 
 
 OWED_RE = re.compile(r'operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed', re.I)
-SPEC_ROUNDS = 3  # the critic round cap (critic-seal.sh): a spec past it needs the operator's record, whatever its last verdict says
+CRITIC_ROUND_CAP = 3
 
 
 def md_section(path, heading):
-    """The lines under `## <heading>` of a markdown file up to the next `## `; None when the file is unreadable or has no such section."""
     try:
         lines = open(path, encoding='utf-8').read().splitlines()
     except OSError:
@@ -1408,17 +1406,10 @@ def md_section(path, heading):
 
 
 def operator_owed(bucket, chief_doc, version, opn, mir):
-    """([(source, ticket number or None, title, context, action)], whether any source was readable): what waits on the
-    operator, read from the records that hold it. Jira labels are not among them (read in version_page).
-
-    1. an unsigned spec: the latest critic verdict of a spec of an open ticket of `version` is `SPEC CLEAN` or is past the round cap,
-       and `<bucket>/release/<version>/operator.jsonl` has no `spec` row naming that spec file;
-    2. a `queue:` segment or `pool-disposition:` line of the chief doc's `## Live state` that names the operator;
-    3. the newest `*HANDOFF.md` in the bucket, its `## Open operator items` lines.
-    The config UI's Waiting list reuses this reader."""
+    """([(source, ticket number or None, title, context, action)], whether any source was readable)."""
     items, readable = [], False
     if bucket:
-        signed = set()  # no operator.jsonl yet means no spec was signed, so every spec past its critics is owed
+        signed = set()
         try:
             for l in open(os.path.join(bucket, 'release', version, 'operator.jsonl'), encoding='utf-8'):
                 try:
@@ -1444,7 +1435,7 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                     last = [x for x in open(f, encoding='utf-8').read().splitlines() if x.strip()][-1].strip()
                 except (OSError, IndexError):
                     continue
-                if k and int(k.group(1)) in opn and spec not in signed and (last == 'SPEC CLEAN' or rnd >= SPEC_ROUNDS):
+                if k and int(k.group(1)) in opn and spec not in signed and (last == 'SPEC CLEAN' or rnd >= CRITIC_ROUND_CAP):
                     n = int(k.group(1))
                     items.append(('unsigned spec', n, clip(opn[n]['title'], 100),
                                   '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
@@ -1472,9 +1463,6 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
 
 
 def source_notes(chains, chains_mtime, prio_mtime, ndt):
-    """The header notes for the hand-kept sources the page reads: the focus-chains.json file itself, the chain registry
-    its rows name, and the priority file (None when no priority file is read). Each is named only when it is older
-    than the newest Jira update (a day's slack for the registry and the priority line, which a person edits)."""
     def stamp(ts):
         return datetime.fromtimestamp(ts, timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
     notes = []
