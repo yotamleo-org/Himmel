@@ -1624,8 +1624,8 @@ fi
 # Single-writer barrier: seed this worker's exact file holds, past the duplicate-name refusal (exit 6) and
 # the ticket-rival refusal (exit 16), so a refused launch leaves no row and a headless launch seeds under its name claim
 # alone. Only a worker launch carries HIMMEL_HOLD_KEY (headed-arm-worker.sh sets it); a chief, a judge, a consult, a
-# release manager or a relay carries none, and --dry-run exited above. With the barrier folded off (the OFF sentinel) the
-# seed still runs, but holds.py claims and refuses only a bucket file (an absolute path); a repo file is skipped. A RESUME doc first re-points its key's rows to the new doc and label. Only holds.py exit 1 with a `holds:`
+# release manager or a relay carries none, and --dry-run exited above. A RESUME doc first re-points its key's rows to
+# the new doc and label. Only holds.py exit 1 with a `holds:`
 # line on stderr is a refusal (exit 2; the EXIT trap drops the ticket claim); any other outcome warns and launches,
 # because a seed fault must never stop a launch (a SyntaxError in holds.py also exits 1, with no `holds:` line).
 # WRITE_HOLD_OK=1 (exactly 1) in the launching shell turns a refusal into a warning. repoint and seed share one 60 s deadline,

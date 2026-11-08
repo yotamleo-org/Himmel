@@ -637,7 +637,7 @@ def claim_one(repo, judge, path, key, label, doc, source, pr, created=None, seen
         return 'skipped'  # a tree is noted, not held
     slug, rel = norm
     if slug != '_abs' and os.path.exists(os.path.join(holds_root(), 'OFF')):
-        return 'skipped'  # the barrier folded off drops every repo-file hold; a bucket file (_abs) cannot be merged forward, so it stays held
+        return 'skipped'
     if slug != '_abs' and rel in exempt_set():
         return 'skipped'
     name = escape(rel)

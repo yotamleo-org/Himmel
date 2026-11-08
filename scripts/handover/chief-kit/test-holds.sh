@@ -512,7 +512,6 @@ run hp release --key HIMMEL-9212 --repo "$R" --doc "$DAB1"
 run hp seed --key HIMMEL-9213 --label lab --doc "$DAB2" --repo "$R"
 same "abs bucket path: release frees the row, so the rival seed passes" "$RC" 0
 
-# ---- S8 (no file holds): with the OFF sentinel present a bucket file is still held, and a repo file is not
 S8F="$W/h/u/r/specs/s8-case.md"
 S8DA="$(mkdoc ZZS-9701-s8a.md "> **Writes:** $S8F scripts/s8-repo.sh")"
 S8DB="$(mkdoc ZZS-9702-s8b.md "> **Writes:** $S8F scripts/s8-repo.sh")"
