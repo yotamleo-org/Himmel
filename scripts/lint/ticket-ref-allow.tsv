@@ -29,10 +29,8 @@ K6	^scripts/ci/suite-tiers\.tsv$	flow-miss:	test-suite-tiers.sh requires the rea
 K6	^scripts/testing/documented-commands\.tsv$	xfail:	test-documented-commands.sh reads the xfail: verdict and prints its ticket
 K6	^scripts/eval/bug-origin/line-table\.tsv$	residual:	the residual: class the bug-origin parsers accept; the table is their test input
 K6	^scripts/one-shot/leg-term-allow\.tsv$	legs=\|legset=\|lacks	a K5 row whose regex mirrors a test line that carries a key
-K6	^scripts/himmelctl/tbd-delta\.json$	"ticket":	bin.js loads this map and the wizard prints the ticket
 K6	^docs/guide/dev-graph/graph\.json$	"ticket":	dev-graph.js links each node to its ticket
 K6	^docs/ui\.md$	^\| `[^|]*` \| [a-z ]+ \| 	test-ui-doc-actions.sh requires an owner on each entry-page row
-K6	^docs/setup/operator-profile-tbd-delta\.md$	^\| [0-9]+ \| 	test-wizard-gaps.sh checks each table row against tbd-delta.json
 K6	^scripts/config-ui/agui-web/src/fixture\.json$	"agent":|/ticket"	agui-reducer.test.ts asserts the agent name and the finding ticket this stream carries
 K6	^scripts/eval/lane-quality/tasks/real-[^/]+/task\.json$	"ticket":	lane-quality/run.sh reads the mined task record
 K6	^scripts/eval/routing/cases/open\.jsonl$	"request":	routing/run.sh hashes the case set, so a rewritten request changes the baseline

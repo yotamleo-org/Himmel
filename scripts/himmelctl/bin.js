@@ -5874,7 +5874,8 @@ function printOrphanedBundleInfo() {
 //   (b) not recorded: the field is genuinely absent from this profile (a
 //       profile written before the question existed), never a false "off"
 //       answer the operator never made.
-//   (c) reference-only: no wizard question can produce this yet. Rendered
+//   (c) reference-only: what the operator machine runs, each row with its
+//       state (covered by the wizard, planned, not planned). Rendered
 //       from the checked-in tbd-delta.json map (itself checked against
 //       docs/setup/operator-profile-tbd-delta.md by test-wizard-gaps.sh, a
 //       structural doc<->map agreement test. Never hand-sync those two).
@@ -5996,7 +5997,7 @@ function referenceOnlyList() {
   return Object.keys(TBD_DELTA)
     .sort((a, b) => Number(a) - Number(b))
     .map((row) => ({
-      row: Number(row), label: TBD_DELTA[row].label, ticket: TBD_DELTA[row].ticket, paths: TBD_DELTA[row].paths,
+      row: Number(row), label: TBD_DELTA[row].label, state: TBD_DELTA[row].state, paths: TBD_DELTA[row].paths,
     }));
 }
 
@@ -6062,13 +6063,13 @@ async function cmdGaps(args) {
     for (const n of notRecorded) console.log(`  - ${n.label} (reference=${JSON.stringify(n.referenceValue)})`);
   }
   console.log('');
-  console.log('Reference-only — no wizard question can produce these yet:');
+  console.log('Reference-only — the operator machine runs these; each says whether the wizard covers it:');
   if (!isOperatorReference) {
     console.log(`  (omitted — these rows are the operator machine's own delta capture, not measured against --preset ${args.preset})`);
   } else if (referenceOnly.length === 0) {
     console.log('  (none)');
   } else {
-    for (const r of referenceOnly) console.log(`  - ${r.label}`);
+    for (const r of referenceOnly) console.log(`  - ${r.label} (${r.state})`);
   }
   console.log('');
   console.log("Present but unverified — recorded in the profile; run 'himmelctl status' to confirm still wired:");
