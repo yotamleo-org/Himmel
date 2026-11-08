@@ -71,7 +71,7 @@ export function readEnvFile(envPath: string, keys: ReadonlySet<string>, env: Nod
 // Match the shell loader's station profile selection; project config cannot
 // choose the Jira destination. A plain (unlinked) himmel.conf has no profiles.
 // With profileFromEnv the process HIMMEL_PROFILE wins over himmel.conf.local's line.
-export function profileFilePath(confDir: string, profileFromEnv: boolean): string | undefined {
+function profileFilePath(confDir: string, profileFromEnv: boolean): string | undefined {
   const env = { HIMMEL_PROFILE: profileFromEnv ? process.env.HIMMEL_PROFILE : undefined };
   readEnvFile(join(confDir, 'himmel.conf.local'), new Set(['HIMMEL_PROFILE']), env);
   const name = env.HIMMEL_PROFILE;
@@ -98,4 +98,18 @@ export function stationJiraBaseUrl(configDir: string, opts: { profileFromEnv: bo
   readEnvFile(join(configDir, 'himmel.conf'), keys, env);
   readEnvFile(opts.envPath ?? envFilePath(), keys, env);
   return env.JIRA_BASE_URL || null;
+}
+
+/** One Jira instance: lower-cased scheme and host, default port dropped, trailing `/` stripped. */
+export function sameJiraBase(a: string, b: string): boolean {
+  const norm = (u: string): string | null => {
+    try {
+      const url = new URL(u);
+      return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}`;
+    } catch {
+      return null;
+    }
+  };
+  const na = norm(a);
+  return na !== null && na === norm(b);
 }

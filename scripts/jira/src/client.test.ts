@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { uploadAttachment, normalizeEnv, baseUrl, loadEnvFile, request, requestAt } from './client.js';
 import { readVersionWrites } from './release/version-writes.js';
+import { sameJiraBase, stationJiraBaseUrl } from './env-file.js';
 
 // Records every git call the path lookups make, passing each through.
 vi.mock('node:child_process', async (orig) => {
@@ -425,6 +426,86 @@ describe('loadEnvFile', () => {
     process.env.JIRA_BASE_URL = 'https://live.example';
     loadEnvFile(file);
     expect(process.env.JIRA_BASE_URL).toBe('https://live.example');
+  });
+
+  it('loadEnvFile resolves JIRA_BASE_URL exactly as before for env, local, profile, conf and .env layers', () => {
+    const vault = join(dir, 'vault', '.himmel');
+    mkdirSync(join(vault, 'profiles'), { recursive: true });
+    symlinkSync('../vault/.himmel/himmel.conf', join(dir, '.himmel', 'himmel.conf'));
+    const layers = {
+      local: () => writeFileSync(join(dir, '.himmel', 'himmel.conf.local'), 'HIMMEL_PROFILE=work\nJIRA_BASE_URL=https://local.example\n'),
+      profile: () => writeFileSync(join(vault, 'profiles', 'work.conf'), 'JIRA_BASE_URL=https://profile.example\n'),
+      conf: () => writeFileSync(join(vault, 'himmel.conf'), 'JIRA_BASE_URL=https://conf.example\n'),
+    };
+    const resolved = (): string => { process.env.JIRA_BASE_URL = ''; loadEnvFile(file); return process.env.JIRA_BASE_URL ?? ''; };
+    writeFileSync(join(dir, '.himmel', 'himmel.conf.local'), 'HIMMEL_PROFILE=work\n');
+    writeFileSync(join(vault, 'himmel.conf'), '');
+    expect(resolved()).toBe('https://from-dotenv.example');
+    layers.conf();
+    expect(resolved()).toBe('https://conf.example');
+    layers.profile();
+    expect(resolved()).toBe('https://profile.example');
+    layers.local();
+    expect(resolved()).toBe('https://local.example');
+    process.env.JIRA_BASE_URL = 'https://env.example';
+    loadEnvFile(file);
+    expect(process.env.JIRA_BASE_URL).toBe('https://env.example');
+  });
+});
+
+describe('stationJiraBaseUrl', () => {
+  let dir: string;
+  let conf: string;
+  let envPath: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'jira-station-url-'));
+    conf = join(dir, '.himmel');
+    envPath = join(dir, 'install.env');
+    mkdirSync(join(dir, 'vault', '.himmel', 'profiles'), { recursive: true });
+    writeFileSync(join(dir, 'vault', '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://conf.example\n');
+    writeFileSync(join(dir, 'vault', '.himmel', 'profiles', 'work.conf'), 'JIRA_BASE_URL=https://work.example\n');
+    writeFileSync(join(dir, 'vault', '.himmel', 'profiles', 'home.conf'), 'JIRA_BASE_URL=https://home.example\n');
+    mkdirSync(conf);
+    symlinkSync('../vault/.himmel/himmel.conf', join(conf, 'himmel.conf'));
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('I14 stationJiraBaseUrl with profileFromEnv false ignores process JIRA_BASE_URL and HIMMEL_PROFILE', () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://process.example');
+    vi.stubEnv('HIMMEL_PROFILE', 'work');
+    expect(stationJiraBaseUrl(conf, { profileFromEnv: false, envPath })).toBe('https://conf.example');
+  });
+
+  it('with profileFromEnv true takes the env HIMMEL_PROFILE first', () => {
+    vi.stubEnv('HIMMEL_PROFILE', 'work');
+    writeFileSync(join(conf, 'himmel.conf.local'), 'HIMMEL_PROFILE=home\n');
+    expect(stationJiraBaseUrl(conf, { profileFromEnv: true, envPath })).toBe('https://work.example');
+    expect(stationJiraBaseUrl(conf, { profileFromEnv: false, envPath })).toBe('https://home.example');
+  });
+
+  it('a profile named in himmel.conf.local supplies the URL', () => {
+    vi.stubEnv('HIMMEL_PROFILE', '');
+    writeFileSync(join(conf, 'himmel.conf.local'), 'HIMMEL_PROFILE=work\n');
+    expect(stationJiraBaseUrl(conf, { profileFromEnv: false, envPath })).toBe('https://work.example');
+  });
+
+  it('no layer gives null; the install .env is the last layer', () => {
+    const bare = join(dir, 'bare');
+    mkdirSync(bare);
+    expect(stationJiraBaseUrl(bare, { profileFromEnv: false, envPath })).toBeNull();
+    writeFileSync(envPath, 'JIRA_BASE_URL=https://dotenv.example\n');
+    expect(stationJiraBaseUrl(bare, { profileFromEnv: false, envPath })).toBe('https://dotenv.example');
+  });
+
+  it('sameJiraBase normalises scheme, host, default port and a trailing slash', () => {
+    expect(sameJiraBase('https://Station.atlassian.net/', 'https://station.atlassian.net')).toBe(true);
+    expect(sameJiraBase('https://station.atlassian.net:443', 'https://station.atlassian.net')).toBe(true);
+    expect(sameJiraBase('http://station.atlassian.net', 'https://station.atlassian.net')).toBe(false);
+    expect(sameJiraBase('https://other.atlassian.net', 'https://station.atlassian.net')).toBe(false);
+    expect(sameJiraBase('not a url', 'not a url')).toBe(false);
   });
 });
 

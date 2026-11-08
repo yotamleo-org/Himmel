@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { resolveSecrets } from '../../lib/resolve-secrets.mjs';
-import { envFilePath, profileFilePath, readEnvFile, underTest } from './env-file.js';
+import { envFilePath, readEnvFile, stationJiraBaseUrl, underTest } from './env-file.js';
 import { preRead, recordVersionWrite, versionWriteScope, type Getter, type WriteRequest } from './release/version-writes.js';
 
 const DOTENV_KEYS = new Set([
@@ -26,9 +26,10 @@ function resolveFromKeyring(root: string): void {
 
 export function loadEnvFile(envPath: string): void {
   const confDir = process.env.HIMMEL_CONFIG_DIR || join(process.env.HOME || homedir(), '.himmel');
+  // The process value wins, then the station walk (local, profile from the env first, conf, install .env).
+  const station = stationJiraBaseUrl(confDir, { profileFromEnv: true, envPath });
+  if (station) process.env.JIRA_BASE_URL ||= station;
   readEnvFile(join(confDir, 'himmel.conf.local'), CONFIG_KEYS);
-  const profile = profileFilePath(confDir, true);
-  if (profile) readEnvFile(profile, new Set(['JIRA_BASE_URL']));
   readEnvFile(join(confDir, 'himmel.conf'), CONFIG_KEYS);
   let projectRoot: string | undefined;
   try {
