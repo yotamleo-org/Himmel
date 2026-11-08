@@ -209,6 +209,8 @@ printf '%s\n' 8 > "$W/handover/inbox/.cursor/N65"
 printf 'pid=%s\n' "$$" > "$W/himmel-shell-suite-test.lock/owner"
 
 export PATH="$W/bin:$PATH"
+export HOME="$W/home"
+mkdir -p "$HOME"
 export DOC="$W/handover/chief.md"
 export TOKEN=test-token
 export WORKERS='HIMMEL-111-legN61 HIMMEL-222-legN65'
