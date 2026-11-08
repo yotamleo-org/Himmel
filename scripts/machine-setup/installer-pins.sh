@@ -11,9 +11,9 @@
 # shellcheck disable=SC2034 # the pins are consumed by the script that sources this
 
 # nvm — install.sh at an exact tag; the clone it makes must land on NVM_COMMIT.
-NVM_TAG="v0.40.8"
-NVM_COMMIT="a885b885fef16fac4bc544188fb25e9e37ae83e8"
-NVM_INSTALL_SHA256="48a0eee9a60e07422dce0eb5774754c83889570ca1ee2566c516acbe8af03a9e"
+NVM_TAG="v0.41.0"
+NVM_COMMIT="4e8758a801eea9479b32a904f31093e410ddaba4"
+NVM_INSTALL_SHA256="045932fe05f0d4247c946f2ec0ec4026dbfd8ce88a5f67ea28d8ea833227f48b"
 
 # node — exact patch release (its major must equal .nvmrc); sha256 of the
 # linux-x64 .tar.xz and of the bin/node inside it. This release also drops the emSign
