@@ -362,11 +362,11 @@ fi
 # The audited 400k A/B arm marker, set only by headed-arm-worker.sh.
 # Same PID pairing as above, so an ambient value from another process is ignored.
 _ab_autocompact=""
-# The Sonnet ceiling the wrapper resolved for this launch (200000 to 450000), under
+# The Sonnet ceiling the wrapper resolved for this launch (200000 to 850000), under
 # the same pairing. The wrapper decides it once; this renderer never re-derives it
 # from a model string the wrapper may since have rewritten.
 _sonnet_autocompact=""
-# The same for the Opus ceiling (200000 to 800000, operator decision 751).
+# The same for the Opus ceiling (200000 to 850000, operator decisions 751 and 844).
 _opus_autocompact=""
 if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
     _ab_autocompact="${HEADED_ARM_AB_AUTOCOMPACT:-}"
@@ -416,20 +416,20 @@ fi
 if [ -n "$_sonnet_autocompact" ]; then
     case "$_sonnet_autocompact" in
         *[!0-9]*) _sonnet_bad=1 ;;
-        *) _sonnet_bad=0; { [ "$_sonnet_autocompact" -ge 200000 ] && [ "$_sonnet_autocompact" -le 450000 ]; } || _sonnet_bad=1 ;;
+        *) _sonnet_bad=0; { [ "$_sonnet_autocompact" -ge 200000 ] && [ "$_sonnet_autocompact" -le 850000 ]; } || _sonnet_bad=1 ;;
     esac
     if [ "$_sonnet_bad" = "1" ] || [ "$CONTEXT" != "standard" ] || [ "$_context_profile" = "chief" ] || [ -n "$_ab_autocompact" ]; then
-        echo "headed-arm: refusing HEADED_ARM_SONNET_AUTOCOMPACT=$_sonnet_autocompact: only 200000 to 450000 on a standard-context worker arm without the A/B marker is accepted" >&2
+        echo "headed-arm: refusing HEADED_ARM_SONNET_AUTOCOMPACT=$_sonnet_autocompact: only 200000 to 850000 on a standard-context worker arm without the A/B marker is accepted" >&2
         exit 2
     fi
 fi
 if [ -n "$_opus_autocompact" ]; then
     case "$_opus_autocompact" in
         *[!0-9]*) _opus_bad=1 ;;
-        *) _opus_bad=0; { [ "$_opus_autocompact" -ge 200000 ] && [ "$_opus_autocompact" -le 800000 ]; } || _opus_bad=1 ;;
+        *) _opus_bad=0; { [ "$_opus_autocompact" -ge 200000 ] && [ "$_opus_autocompact" -le 850000 ]; } || _opus_bad=1 ;;
     esac
     if [ "$_opus_bad" = "1" ] || [ "$CONTEXT" != "standard" ] || [ "$_context_profile" = "chief" ] || [ -n "$_ab_autocompact" ] || [ -n "$_sonnet_autocompact" ]; then
-        echo "headed-arm: refusing HEADED_ARM_OPUS_AUTOCOMPACT=$_opus_autocompact: only 200000 to 800000 on a standard-context worker arm without the A/B or Sonnet marker is accepted" >&2
+        echo "headed-arm: refusing HEADED_ARM_OPUS_AUTOCOMPACT=$_opus_autocompact: only 200000 to 850000 on a standard-context worker arm without the A/B or Sonnet marker is accepted" >&2
         exit 2
     fi
 fi

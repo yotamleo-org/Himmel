@@ -284,7 +284,7 @@ function validateToolTrim(errors, name, spec) {
 // apply only to a native-lane launch of that model. Sonnet's sample was Sonnet only and Opus
 // is operator decision 751; any other model keeps `autocompact` and no guard.
 function validateModelContext(errors, name, spec) {
-  for (const [model, max] of [['sonnet', 450000], ['opus', 800000]]) {
+  for (const [model, max] of [['sonnet', 850000], ['opus', 850000]]) {
     const ceiling = spec[`${model}Autocompact`];
     if (ceiling !== undefined && (!Number.isSafeInteger(ceiling) || ceiling < 200000 || ceiling > max)) {
       errors.push(`profile "${name}" ${model}Autocompact must be an integer from 200000 to ${max}`);

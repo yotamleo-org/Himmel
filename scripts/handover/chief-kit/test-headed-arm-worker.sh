@@ -974,14 +974,14 @@ contains "profile numeric ceiling: renderer names profile source" "$log8profile"
 not_contains "profile numeric ceiling: not an operator ruling" "$log8profile" "operator-ruling"
 
 # a standard profile may carry a Sonnet-only ceiling (sonnetAutocompact) and context
-# guard (sonnetContextGuard): impl hands off at 450k, eval compacts at 450k, docs stays
+# guard (sonnetContextGuard): impl hands off at 850k, eval compacts at 850k, docs stays
 # at 200k, and any other model keeps today's 200000 with no guard. Full launch through
 # the real renderer, so the final argv check is exercised too.
 sonnet_reg="$tmp/sonnet-registry.json"
 cat > "$sonnet_reg" <<'SONNET_EOF'
 {"floor":["qmd@himmel"],"catalog":["qmd@himmel"],"profiles":{"operator":null,
-"worker-impl":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":450000,"sonnetContextGuard":"handoff","sonnetContextShare":73},
-"worker-eval":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":450000,"sonnetContextGuard":"compact"},
+"worker-impl":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":850000,"sonnetContextGuard":"handoff","sonnetContextShare":73},
+"worker-eval":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":850000,"sonnetContextGuard":"compact"},
 "worker-docs":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000}}}
 SONNET_EOF
 # sonnet_launch <tag> <profile> <model> [extra worker args] sets sa_rc / sa_rec / sa_env
@@ -1004,8 +1004,8 @@ sonnet_launch() {
 }
 sonnet_launch impl-sonnet worker-impl claude-sonnet-5-5
 check "sonnet ceiling: impl on Sonnet launches" "$sa_rc" "0"
-contains "sonnet ceiling: impl on Sonnet renders --autocompact 450000" "$sa_rec" "--autocompact 450000"
-contains "sonnet ceiling: impl on Sonnet exports the 450000 ceiling" "$sa_env" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=450000"
+contains "sonnet ceiling: impl on Sonnet renders --autocompact 850000" "$sa_rec" "--autocompact 850000"
+contains "sonnet ceiling: impl on Sonnet exports the 850000 ceiling" "$sa_env" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=850000"
 contains "sonnet ceiling: impl on Sonnet turns the hand-off guard on" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
 not_contains "sonnet ceiling: no 1m suffix" "$sa_rec" "[1m]"
 check "sonnet share: a real launch delivers exactly the profile share to the worker's env" "$(printf '%s\n' "$sa_env" | grep '^HIMMEL_WORKER_SESSION_CONTEXT_SHARE=')" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
@@ -1018,7 +1018,7 @@ contains "sonnet ceiling: impl on Opus keeps --autocompact 200000" "$sa_rec" "--
 contains "sonnet ceiling: impl on Opus exports the 200000 ceiling" "$sa_env" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
 not_contains "sonnet ceiling: impl on Opus sets no context guard" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
 sonnet_launch eval-sonnet worker-eval claude-sonnet-5-5
-contains "sonnet ceiling: eval on Sonnet renders --autocompact 450000" "$sa_rec" "--autocompact 450000"
+contains "sonnet ceiling: eval on Sonnet renders --autocompact 850000" "$sa_rec" "--autocompact 850000"
 contains "sonnet ceiling: eval on Sonnet compacts" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
 sonnet_launch eval-opus worker-eval claude-opus-5-5
 contains "sonnet ceiling: eval on Opus keeps --autocompact 200000" "$sa_rec" "--autocompact 200000"
@@ -1043,7 +1043,7 @@ for sl in "or-impl:worker-impl:claude-sonnet-5-5:--lane openrouter" \
   sonnet_launch "$sl_tag" "$sl_prof" "$sl_model" "$sl_args"
   check "sonnet ceiling: $sl_tag launches (exit 0)" "$sa_rc" "0"
   contains "sonnet ceiling: $sl_tag keeps --autocompact 200000" "$sa_rec" "--autocompact 200000"
-  not_contains "sonnet ceiling: $sl_tag has no 450000" "$sa_rec" "450000"
+  not_contains "sonnet ceiling: $sl_tag has no 850000" "$sa_rec" "850000"
   not_contains "sonnet ceiling: $sl_tag sets no context guard" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
 done
 # WORKER_SESSION_CONTEXT=1m drops the profile's guard together with its ceiling.
@@ -1067,22 +1067,22 @@ check "A/B arm control on a Sonnet worker-docs launch: exit 0" "$rc" "0"
 opus_reg="$tmp/opus-registry.json"
 cat > "$opus_reg" <<'OPUS_EOF'
 {"floor":["qmd@himmel"],"catalog":["qmd@himmel"],"profiles":{"operator":null,
-"worker-impl":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":450000,"sonnetContextGuard":"handoff","sonnetContextShare":73,"opusAutocompact":800000,"opusContextGuard":"handoff","opusContextShare":87},
-"worker-eval":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":450000,"sonnetContextGuard":"compact","sonnetContextShare":73,"opusAutocompact":800000,"opusContextGuard":"compact","opusContextShare":87},
+"worker-impl":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":850000,"sonnetContextGuard":"handoff","sonnetContextShare":73,"opusAutocompact":850000,"opusContextGuard":"handoff","opusContextShare":87},
+"worker-eval":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":850000,"sonnetContextGuard":"compact","sonnetContextShare":73,"opusAutocompact":850000,"opusContextGuard":"compact","opusContextShare":87},
 "worker-docs":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000}}}
 OPUS_EOF
 sa_reg="$opus_reg"
 sonnet_launch opus-impl worker-impl claude-opus-5-5
 check "opus ceiling: impl on Opus launches" "$sa_rc" "0"
-contains "opus ceiling: impl on Opus renders --autocompact 800000" "$sa_rec" "--autocompact 800000"
-contains "opus ceiling: impl on Opus exports the 800000 ceiling" "$sa_env" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=800000"
+contains "opus ceiling: impl on Opus renders --autocompact 850000" "$sa_rec" "--autocompact 850000"
+contains "opus ceiling: impl on Opus exports the 850000 ceiling" "$sa_env" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=850000"
 contains "opus ceiling: impl on Opus turns the hand-off guard on" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
 check "opus ceiling: a real launch delivers exactly the profile share" "$(printf '%s\n' "$sa_env" | grep '^HIMMEL_WORKER_SESSION_CONTEXT_SHARE=')" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=87"
 contains "opus ceiling: the share rides the launcher env token list into the konsole argv" "$sa_rec" " HIMMEL_WORKER_SESSION_CONTEXT_SHARE=87 "
 not_contains "opus ceiling: no 1m suffix" "$sa_rec" "[1m]"
 og_env="$sa_env"
 sonnet_launch opus-eval worker-eval claude-opus-5-5
-contains "opus ceiling: eval on Opus renders --autocompact 800000" "$sa_rec" "--autocompact 800000"
+contains "opus ceiling: eval on Opus renders --autocompact 850000" "$sa_rec" "--autocompact 850000"
 contains "opus ceiling: eval on Opus compacts" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
 sonnet_launch opus-docs worker-docs claude-opus-5-5
 contains "opus ceiling: a profile without Opus fields stays at --autocompact 200000" "$sa_rec" "--autocompact 200000"
@@ -1091,9 +1091,9 @@ sonnet_launch opus-flag worker-impl claude-opus-5-5 "--context-guard compact"
 contains "opus ceiling: an explicit --context-guard wins over the profile's" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
 sonnet_launch opus-none worker-impl claude-opus-5-5 "--context-guard none"
 not_contains "opus ceiling: --context-guard none turns the profile's guard off" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
-contains "opus ceiling: --context-guard none keeps the ceiling" "$sa_rec" "--autocompact 800000"
+contains "opus ceiling: --context-guard none keeps the ceiling" "$sa_rec" "--autocompact 850000"
 sonnet_launch opus-sonnet worker-impl claude-sonnet-5-5
-contains "opus ceiling: Sonnet on the same profile keeps 450000" "$sa_rec" "--autocompact 450000"
+contains "opus ceiling: Sonnet on the same profile keeps 850000" "$sa_rec" "--autocompact 850000"
 check "opus ceiling: Sonnet on the same profile keeps share 73" "$(printf '%s\n' "$sa_env" | grep '^HIMMEL_WORKER_SESSION_CONTEXT_SHARE=')" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
 for ol in "or-opus:claude-opus-5-5:--lane openrouter" \
           "ds-opus:claude-opus-5-5:--lane deepseek" \
@@ -1104,14 +1104,14 @@ for ol in "or-opus:claude-opus-5-5:--lane openrouter" \
   sonnet_launch "$ol_tag" worker-impl "$ol_model" "$ol_args"
   check "opus ceiling: $ol_tag launches (exit 0)" "$sa_rc" "0"
   contains "opus ceiling: $ol_tag keeps --autocompact 200000" "$sa_rec" "--autocompact 200000"
-  not_contains "opus ceiling: $ol_tag has no 800000" "$sa_rec" "800000"
+  not_contains "opus ceiling: $ol_tag has no 850000" "$sa_rec" "850000"
   not_contains "opus ceiling: $ol_tag sets no context guard" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
   not_contains "opus ceiling: $ol_tag sets no share" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE="
 done
 sa_reg=""
 # One dry-run row per lane and model, the ticket's proof: Opus moves, nothing else does.
-for od in "claude-opus-5-5:native:800000:$sa_opus_doc" \
-          "claude-sonnet-5-5:native:450000:$some_doc" \
+for od in "claude-opus-5-5:native:850000:$sa_opus_doc" \
+          "claude-sonnet-5-5:native:850000:$some_doc" \
           "claude-fable-5-1:native:200000:$sa_fable_doc" \
           "claude-opus-5-5:openrouter:200000:$sa_opus_doc"; do
   IFS=: read -r od_model od_lane od_want od_doc <<< "$od"
@@ -1163,22 +1163,22 @@ og_run() {
     bash "$og_hook" 2>&1 >/dev/null)" || og_rc=$?
 }
 og_mode="$(og_val CONTEXT_MODE)"; og_ceiling="$(og_val AUTOCOMPACT)"; og_share="$(og_val CONTEXT_SHARE)"
-og_fill 69; og_run "$og_tool" "$og_mode" "$og_ceiling" "$og_share"
-check "opus guard: at 690000 an ordinary call passes" "$og_rc" "0"
-og_fill 70; og_run "$og_tool" "$og_mode" "$og_ceiling" "$og_share"
-check "opus guard: at 700000 an ordinary call is denied" "$og_rc" "2"
-contains "opus guard: the deny names the 70 % threshold" "$og_err" "threshold 70 %"
-contains "opus guard: the deny names its basis" "$og_err" "87 % of the 800000-token autocompact ceiling on a 1000000-token window"
+og_fill 73; og_run "$og_tool" "$og_mode" "$og_ceiling" "$og_share"
+check "opus guard: at 730000 an ordinary call passes" "$og_rc" "0"
+og_fill 74; og_run "$og_tool" "$og_mode" "$og_ceiling" "$og_share"
+check "opus guard: at 740000 an ordinary call is denied" "$og_rc" "2"
+contains "opus guard: the deny names the 74 % threshold" "$og_err" "threshold 74 %"
+contains "opus guard: the deny names its basis" "$og_err" "87 % of the 850000-token autocompact ceiling on a 1000000-token window"
 contains "opus guard: the deny names the hand-off" "$og_err" "mode handoff"
-og_fill 70; og_run "$og_compact" "$og_mode" "$og_ceiling" "$og_share"
+og_fill 74; og_run "$og_compact" "$og_mode" "$og_ceiling" "$og_share"
 check "opus guard: an auto compaction at the threshold is refused until the hand-off" "$og_rc" "2"
-og_fill 69; og_run "$og_compact" "$og_mode" "$og_ceiling" "$og_share"
+og_fill 73; og_run "$og_compact" "$og_mode" "$og_ceiling" "$og_share"
 check "opus guard: an auto compaction below the threshold passes" "$og_rc" "0"
 # RED controls: the deny is the guard's and the share is what places it.
-og_fill 70; og_run "$og_tool" "" "$og_ceiling" "$og_share"
-check "opus guard control: with no mode the same call at 700000 passes" "$og_rc" "0"
-og_fill 70; og_run "$og_tool" "$og_mode" "$og_ceiling" 88
-check "opus guard control: share 88 would land at 710000, so 700000 passes" "$og_rc" "0"
+og_fill 74; og_run "$og_tool" "" "$og_ceiling" "$og_share"
+check "opus guard control: with no mode the same call at 740000 passes" "$og_rc" "0"
+og_fill 74; og_run "$og_tool" "$og_mode" "$og_ceiling" 88
+check "opus guard control: share 88 would land at 750000, so 740000 passes" "$og_rc" "0"
 
 # a caller passing an ALREADY-SUFFIXED model
 # (claude-sonnet-5[1m]) under the DEFAULT (standard) context must still end
@@ -1667,7 +1667,7 @@ rec17="$(cat "$d17/record" 2>/dev/null || true)"
 env17="$(cat "$d17/env-record" 2>/dev/null || true)"
 check "full launch --profile: exit 0" "$rc" "0"
 contains "full launch --profile: the launcher is the profile shim" "$rec17" "worker-claude-launcher.sh"
-contains "full launch --profile: the ceiling guard still holds (HIMMEL-7667: worker-impl on Sonnet is 450000)" "$rec17" "--autocompact 450000"
+contains "full launch --profile: the ceiling guard still holds (worker-impl on Sonnet is 850000)" "$rec17" "--autocompact 850000"
 contains "full launch --profile: HIMMEL_LEAN_WORKER_SESSION=1 reaches the launched environment" "$env17" "HIMMEL_LEAN_WORKER_SESSION=1"
 contains "full launch --profile: the shim is told where the settings live" "$env17" "WORKER_SESSION_PROFILE_SETTINGS=$d17/HIMMEL-3333-leg.leg-settings.json"
 if [ -s "$d17/HIMMEL-3333-leg.leg-settings.json" ]; then
@@ -3332,7 +3332,7 @@ set29="$tmp/c29/HIMMEL-3403-hl.leg-settings.json"
 check "29a --headless: exit 0" "$rc" "0"
 contains "29b --headless: argv carries --bg" "$rec29" "--bg"
 contains "29c --headless: argv declares --permission-mode auto" "$rec29" "--permission-mode auto"
-contains "29d --headless: autocompact pin kept (HIMMEL-7667: worker-impl on Sonnet is 450000)" "$rec29" "--autocompact 450000"
+contains "29d --headless: autocompact pin kept (worker-impl on Sonnet is 850000)" "$rec29" "--autocompact 850000"
 contains "29e --headless: session name kept" "$rec29" "-n HIMMEL-3403-hl"
 contains "29f --headless: profile settings still injected" "$rec29" "--settings $set29"
 check "29g --headless: konsole never called" "$([ -e "$d29/konsole-called" ] && echo called || echo none)" "none"

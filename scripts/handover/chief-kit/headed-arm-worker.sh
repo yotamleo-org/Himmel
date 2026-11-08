@@ -4,8 +4,8 @@
 # A thin wrapper around scripts/handover/headed-arm.sh that
 # pins every worker arm to the standard --autocompact 200000 ceiling (a native-lane
 # Sonnet 5.5 launch on a profile with sonnetAutocompact, today worker-impl and
-# worker-eval, pins 450000 instead, and a native-lane Opus 5 launch on a profile
-# with opusAutocompact, today every worker-* profile, pins 800000) - the window
+# worker-eval, pins 850000 instead, and a native-lane Opus 5 launch on a profile
+# with opusAutocompact, today every worker-* profile, pins 850000) - the window
 # itself measures 1M regardless (docs/internals/lane-calibration.md "What a
 # plain launch reports") - and adds the worker-only env the chief lane does not
 # need.
@@ -177,10 +177,10 @@
 # worker-docs exist to carry a different context setting, not a different roster
 # (the one difference: worker-docs keeps lean-skills on the native lane, where the
 # others drop it): a profile's sonnetAutocompact / sonnetContextGuard apply to the
-# native lane on a claude-sonnet-5 model only (worker-impl 450000 + hand-off,
-# worker-eval 450000 + compaction, worker-docs 200000). A profile's opusAutocompact /
+# native lane on a claude-sonnet-5 model only (worker-impl 850000 + hand-off,
+# worker-eval 850000 + compaction, worker-docs 200000). A profile's opusAutocompact /
 # opusContextGuard apply the same way to the native lane on a claude-opus-5 model only
-# (every worker-* profile 800000 + hand-off, worker-eval + compaction). See the _comment
+# (every worker-* profile 850000 + hand-off, worker-eval + compaction). See the _comment
 # in plugin-profiles.json.
 # --profile composes with --lane claudex: the shim prepends
 # profile flags, then execs scripts/claude-codex via WORKER_SESSION_CLAUDE_BIN. The
@@ -1170,7 +1170,7 @@ unset -v _lg_dir _lg_phys _lg_reason _lg_rc
 # the `design` profile (and only it) resolves 1m by itself - an
 # operator ruling (2026-10-01) that early compaction hurts design work, so no
 # WORKER_SESSION_CONTEXT or brief Context line is needed; every other profile keeps a
-# standard window (200000, or 450000 for a Sonnet 5.5 profile, or 800000 for an Opus 5
+# standard window (200000, or 850000 for a Sonnet 5.5 or an Opus 5
 # profile) and a bare
 # WORKER_SESSION_CONTEXT=1m is still refused below.
 PROFILES_MJS="${HEADED_ARM_WORKER_PROFILES:-$HERE/../../lanes/plugin-profiles.mjs}"
@@ -1199,7 +1199,7 @@ if [ -n "$PROFILE" ]; then
     fi
     # The operator's per-profile ruling (2026-10-30). A profile may
     # give a Sonnet launch a higher standard ceiling (sonnetAutocompact, up to
-    # 450000) and a default context guard (sonnetContextGuard). Only the native
+    # 850000) and a default context guard (sonnetContextGuard). Only the native
     # lane on a claude-sonnet-5 model takes either: the 450000 ceiling was measured
     # there, and another lane, an older Sonnet or the bare alias keeps the 200000
     # above with no guard. Opus and Fable never read either. An explicit
@@ -1212,7 +1212,7 @@ if [ -n "$PROFILE" ]; then
     if [ "$CONTEXT" = "standard" ] && [ "$LANE" = "native" ]; then
         case "$MODEL" in
             claude-sonnet-5*)
-                if _sonnet_ceiling="$(printf '%s' "$_worker_context_json" | jq -er '.sonnetAutocompact | select(type == "number" and . >= 200000 and . <= 450000 and floor == .)')"; then
+                if _sonnet_ceiling="$(printf '%s' "$_worker_context_json" | jq -er '.sonnetAutocompact | select(type == "number" and . >= 200000 and . <= 850000 and floor == .)')"; then
                     RESOLVED_AUTOCOMPACT="$_sonnet_ceiling"
                     [ "$_sonnet_ceiling" = "200000" ] || SONNET_CEILING=1
                     # The profile's guard share (the hook's deny point is share x ceiling,
@@ -1226,10 +1226,10 @@ if [ -n "$PROFILE" ]; then
                 fi ;;
             claude-opus-5*)
                 if [ -z "${WORKER_SESSION_AUTOCOMPACT_AB:-}" ] \
-                    && _opus_ceiling="$(printf '%s' "$_worker_context_json" | jq -er '.opusAutocompact | select(type == "number" and . >= 200000 and . <= 800000 and floor == .)')"; then
+                    && _opus_ceiling="$(printf '%s' "$_worker_context_json" | jq -er '.opusAutocompact | select(type == "number" and . >= 200000 and . <= 850000 and floor == .)')"; then
                     RESOLVED_AUTOCOMPACT="$_opus_ceiling"
                     [ "$_opus_ceiling" = "200000" ] || OPUS_CEILING=1
-                    # 87 of 800000 on the 1M window is ceil(69.6) = 70 % = 700000 tokens.
+                    # 87 of 850000 on the 1M window is ceil(73.95) = 74 % = 740000 tokens.
                     OPUS_SHARE="$(printf '%s' "$_worker_context_json" | jq -r '.opusContextShare | select(type == "number" and . >= 1 and . <= 100 and floor == .)')"
                     if [ -z "$CONTEXT_GUARD" ]; then
                         CONTEXT_GUARD="$(printf '%s' "$_worker_context_json" | jq -r '.opusContextGuard // empty')"

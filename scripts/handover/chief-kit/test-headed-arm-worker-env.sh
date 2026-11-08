@@ -108,7 +108,7 @@ done
 
 # W10. a Sonnet worker profile exports its own guard share (73, so the
 # deny lands 33 % = 330000 tokens, ahead of the earliest 450000 compaction at 343158);
-# the share rides the same native-lane claude-sonnet-5 gate as the 450000 ceiling.
+# the share rides the same native-lane claude-sonnet-5 gate as the 850000 ceiling.
 mkdir -p "$T/notcore-jira"
 cat >"$T/notcore-jira/index.js" <<'NCEOF'
 const a = process.argv.slice(2);
@@ -128,13 +128,13 @@ out="$(dry10 worker-docs "$T/doc10.md" claude-sonnet-5-5)"
 contains "W10 control: docs on Sonnet keeps the 200000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
 contains "W10 control: docs on Sonnet exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
 out="$(dry10 worker-impl "$T/opus-doc10.md" claude-opus-5-5)"
-contains "W10 impl on Opus takes the 800000 ceiling (decision 751)" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=800000"
+contains "W10 impl on Opus takes the 850000 ceiling (decision 844)" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=850000"
 contains "W10 impl on Opus exports the profile share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=87"
 contains "W10 impl on Opus turns the hand-off guard on" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
 { cat "$T/opus-doc10.md"; printf 'Test VM: ubuntu_new\n'; } >"$T/opus-vm-doc10.md"   # worker-vm refuses a brief naming no VM
 for prof10 in worker-docs worker-bus worker-vm worker-e2e; do
     out="$(dry10 "$prof10" "$T/opus-vm-doc10.md" claude-opus-5-5)"
-    contains "W10 $prof10 on Opus takes the 800000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=800000"
+    contains "W10 $prof10 on Opus takes the 850000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=850000"
     contains "W10 $prof10 on Opus hands off" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
 done
 out="$(dry10 worker-eval "$T/opus-doc10.md" claude-opus-5-5)"
@@ -149,7 +149,7 @@ out="$(dry10 worker-impl "$T/doc10.md" claude-sonnet-4-6)"
 contains "W10 control: impl on an older Sonnet exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
 fx10 '> **Context:** 1m — operator-ruling: HIMMEL-8825 fixture 1m worker' >"$T/onem-doc10.md"
 out="$(WORKER_SESSION_CONTEXT=1m dry10 worker-impl "$T/onem-doc10.md" claude-sonnet-5-5)"
-contains "W10 control: impl on Sonnet with a sanctioned 1m override resolves auto, not the 450000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=auto"
+contains "W10 control: impl on Sonnet with a sanctioned 1m override resolves auto, not the 850000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=auto"
 contains "W10 control: impl on Sonnet with a sanctioned 1m override exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
 out="$(HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5)"
 contains "W10 a share set in the launching shell is scrubbed: the profile's wins" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
@@ -163,12 +163,12 @@ contains "W10 control: a stale launcher share token does not reach a profile wit
 not_contains "W10 control: the stale launcher share token is removed for a profile without one" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50"
 for bad10 in 0 101 73.5 '"73"'; do
     printf '%s\n' '{"floor":["qmd@himmel"],"catalog":["qmd@himmel"],"profiles":{"operator":null,' \
-        "\"worker-impl\":{\"enable\":[],\"contextBudget\":50000,\"contextMode\":\"standard\",\"autocompact\":200000,\"sonnetAutocompact\":450000,\"sonnetContextGuard\":\"handoff\",\"sonnetContextShare\":$bad10}}}" >"$T/bad-share.json"
+        "\"worker-impl\":{\"enable\":[],\"contextBudget\":50000,\"contextMode\":\"standard\",\"autocompact\":200000,\"sonnetAutocompact\":850000,\"sonnetContextGuard\":\"handoff\",\"sonnetContextShare\":$bad10}}}" >"$T/bad-share.json"
     rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$T/bad-share.json" dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5)" || rc=$?
     check "W10 sonnetContextShare $bad10 refuses the launch (exit 2)" "$rc" "2"
     contains "W10 the refusal names sonnetContextShare" "$out" "sonnetContextShare"
     printf '%s\n' '{"floor":["qmd@himmel"],"catalog":["qmd@himmel"],"profiles":{"operator":null,' \
-        "\"worker-impl\":{\"enable\":[],\"contextBudget\":50000,\"contextMode\":\"standard\",\"autocompact\":200000,\"opusAutocompact\":800000,\"opusContextGuard\":\"handoff\",\"opusContextShare\":$bad10}}}" >"$T/bad-opus-share.json"
+        "\"worker-impl\":{\"enable\":[],\"contextBudget\":50000,\"contextMode\":\"standard\",\"autocompact\":200000,\"opusAutocompact\":850000,\"opusContextGuard\":\"handoff\",\"opusContextShare\":$bad10}}}" >"$T/bad-opus-share.json"
     rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$T/bad-opus-share.json" dry10 worker-impl "$T/opus-doc10.md" claude-opus-5-5)" || rc=$?
     check "W10 opusContextShare $bad10 refuses the launch (exit 2)" "$rc" "2"
     contains "W10 the refusal names opusContextShare" "$out" "opusContextShare"
