@@ -1608,6 +1608,9 @@ test("Board: an unsigned spec is a Waiting on you row with the ticket's title, a
   expect(bad).toContain("the operator-owed sources not read");
   const part = renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items: [], unread: ["handoff items"] } });
   expect(part).toContain("handoff items not read");
+  // a skipped critic file is named in the header with its count, the rest of the list still shows
+  const skip = renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items: [], unread: [], skipped: ["HIMMEL-8-empty.critic-spec-r1.md", "HIMMEL-6-binary.critic-spec-r1.md"] } });
+  expect(skip).toContain("2 critic file(s) unread, skipped: HIMMEL-8-empty.critic-spec-r1.md, HIMMEL-6-binary.critic-spec-r1.md");
 });
 
 test("Board: an operator hold on a ticket with an open PR is a Waiting on you row with the PR, the hold's reason and the action", () => {
@@ -1622,6 +1625,12 @@ test("Board: an operator hold on a ticket with an open PR is a Waiting on you ro
   expect(sec).toContain("pick the budget for the paid run");
   expect(sec).toContain("Action:");
   expect(sec).not.toContain("waits for step 1");
+  // a ticket whose state is blocked still waits on the operator while its operator link is open
+  ch.tickets[K(2)] = { ...ch.tickets[K(2)], state: "blocked" } as never;
+  expect(waitingSec(renderBoard(r, owedUi, { drift: null, chains: ch, prs }))).toContain("pick the budget for the paid run");
+  // a closed operator link is no wait
+  ch.tickets[K(2)] = { ...ch.tickets[K(2)], links: [{ on: null, kind: "operator", status: "closed", reason: "pick the budget for the paid run", owner: "chief" }] } as never;
+  expect(waitingSec(renderBoard(r, owedUi, { drift: null, chains: ch, prs }))).not.toContain("pick the budget for the paid run");
 });
 
 test("Board: a chief doc line naming a ticket joins that ticket's row, and a HANDOFF item naming none is a row of its own, each with the action", () => {
@@ -1651,9 +1660,11 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   critic("HIMMEL-5-still-in-review", 1, "SPEC FINDINGS 2");       // the critics are not done: not yet the operator's
   critic("HIMMEL-7-capped", 3, "SPEC FINDINGS 1");                // past the round cap: owed
   critic("HIMMEL-3-shipped.md", 1, "SPEC CLEAN");                 // its ticket is Done
-  writeFileSync(join(rel, "operator.jsonl"), `${JSON.stringify({ kind: "spec", keys: [K(2)], spec_path: join(designs, "HIMMEL-2-signed.md") })}\nnot json\n`);
+  critic("HIMMEL-5-signed-bare", 1, "SPEC CLEAN");                // signed below by the name with no .md
+  // the first spec is signed by a path that reaches the file through a `..`, the second by the spec name with no .md: both read as signed
+  writeFileSync(join(rel, "operator.jsonl"), `${JSON.stringify({ kind: "spec", keys: [K(2)], spec_path: `${designs}/../designs/HIMMEL-2-signed.md` })}\nnot json\n${JSON.stringify({ kind: "spec", spec_path: join(designs, "HIMMEL-5-signed-bare") })}\n`);
   writeFileSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief.md"),
-    "# VE\n\n## Live state\n\nworkers: x\nqueue: HIMMEL-5 merge waits for operator sign-off | HIMMEL-9 runs by itself\npool-disposition: HIMMEL-4 parked until the operator words arrive\n\n## Current direction\n");
+    "# VE\n\n## Live state\n\nworkers: x\nqueue: HIMMEL-5 merge waits for operator sign-off | HIMMEL-9 runs by itself || was: HIMMEL-7 waited for operator sign-off\npool-disposition: HIMMEL-4 parked until the operator words arrive\n\n## Current direction\n");
   writeFileSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief-HANDOFF.md"), "# h\n\n## Open operator items\n\n- 9271: run the apply at the station\n- none\n\n## Next\n");
   const env = { PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, HANDOVER_DIR: join(s.d, "ho"), JIRA_PROJECT_KEY: "HIMMEL" };
   const o = readOwed(env);
@@ -1663,23 +1674,29 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   expect(o.items.find((i) => i.key === K(1))!.ctx).toContain("latest critic round 1 reads SPEC CLEAN");
   expect(o.items.find((i) => i.key === K(7))!.ctx).toContain("latest critic round 3 reads SPEC FINDINGS 1");
   const chief = o.items.filter((i) => i.source === "chief doc");
-  expect(chief.map((i) => i.key)).toEqual([K(5), null]); // 4 is Done in v1.1.1, so its title is the line itself
+  expect(chief.map((i) => i.key)).toEqual([K(5), null]); // 4 is Done in v1.1.1, so its title is the line itself; what follows " || " is history, so the old wait named there is no item
   expect(chief[0].title).toBe("Resumed work");
   expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["9271: run the apply at the station"]);
   // no HANDOFF: that source is named, the others still read
   rmSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief-HANDOFF.md"));
   const part = readOwed(env);
   expect(part.state === "ok" && part.unread).toEqual(["handoff items"]);
-  // a critic file that cannot be read names the spec source unread, never a quiet gap in its list
+  // a critic file that cannot be read, or is empty, skips that one spec and is named; the other specs still list
   mkdirSync(join(designs, "HIMMEL-9-broken.critic-spec-r1.md"));
+  writeFileSync(join(designs, "HIMMEL-8-empty.critic-spec-r1.md"), "");
+  writeFileSync(join(designs, "HIMMEL-6-binary.critic-spec-r1.md"), Buffer.from([0x53, 0xff, 0xfe, 0x0a])); // not UTF-8
   const broken = readOwed(env);
-  expect(broken.state === "ok" && broken.unread).toEqual(["unsigned specs", "handoff items"]);
+  expect(broken.state === "ok" && broken.unread).toEqual(["handoff items"]);
+  expect(broken.state === "ok" && broken.skipped).toEqual(["HIMMEL-6-binary.critic-spec-r1.md", "HIMMEL-8-empty.critic-spec-r1.md", "HIMMEL-9-broken.critic-spec-r1.md"]);
+  expect(broken.state === "ok" && broken.items.filter((i) => i.source === "unsigned spec").map((i) => i.key)).toEqual([K(1), K(7)]);
   rmSync(join(designs, "HIMMEL-9-broken.critic-spec-r1.md"), { recursive: true });
+  rmSync(join(designs, "HIMMEL-8-empty.critic-spec-r1.md"));
+  rmSync(join(designs, "HIMMEL-6-binary.critic-spec-r1.md"));
   // a release with no operator.jsonl yet has signed nothing: its clean specs are owed, not unread
   rmSync(join(rel, "operator.jsonl"));
   const fresh = readOwed(env);
   expect(fresh.state === "ok" && fresh.unread).toEqual(["handoff items"]);
-  expect(fresh.state === "ok" && fresh.items.filter((i) => i.source === "unsigned spec").map((i) => i.key)).toEqual([K(1), K(2), K(7)]);
+  expect(fresh.state === "ok" && fresh.items.filter((i) => i.source === "unsigned spec").map((i) => i.key)).toEqual([K(1), K(2), K(5), K(7)]);
   // no handover root and no chief doc: nothing is readable, so the answer is absent with the reasons
   const none = readOwed({ ...env, HANDOVER_DIR: join(s.d, "no-ho") });
   expect(none.state).toBe("absent");

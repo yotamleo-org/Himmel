@@ -5,7 +5,7 @@
 // <HANDOVER_DIR>/<slug>/himmel/. A test therefore reaches only the paths it sets: with none of these nothing is spawned and
 // the page shows both as absent, with the reason, never as a count.
 import { execFile, execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { runChild } from "./lock";
 import { readRoadmap } from "./roadmap";
@@ -158,7 +158,7 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
 // A source that cannot be read is named in `unread`; when none can be read the whole read is absent with the reasons, never an empty list.
 // ponytail: the newest chief doc by mtime stands for "the live chief" and its folder for the bucket, upgrade path: the live chiefs' docs by queue lock as Shift reads them.
 export type OwedItem = { source: "unsigned spec" | "chief doc" | "handoff"; key: string | null; title: string; ctx: string; act: string };
-export type Owed = { state: "ok"; items: OwedItem[]; unread: string[] } | Absent;
+export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?: string[] } | Absent;
 const OWED_SOURCES = 3; // unsigned specs, handoff items, chief doc lines
 const SPEC_ROUNDS = 3; // the critic round cap (critic-seal.sh): a spec past it needs the operator's record whatever its last verdict says
 const OWED_RE = /operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed/i;
@@ -173,12 +173,16 @@ function mdSection(text: string, heading: string): string[] | undefined {
   return found ? out : undefined;
 }
 const readText = (p: string) => readFileSync(p, "utf8");
-function specItems(bucket: string, version: string, open: Map<string, string>): OwedItem[] {
+const utf8 = (p: string) => new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(p)); // throws on bytes that are not UTF-8
+// A record and a file name one spec through any symlink or `..`, with or without one trailing `.md`.
+const specId = (p: string) => { let r: string; try { r = realpathSync(p); } catch { r = resolve(p); } return r.replace(/\.md$/, ""); };
+// `skipped` takes the critic files of single specs that could not be read: the rest of the list still stands.
+function specItems(bucket: string, version: string, open: Map<string, string>, skipped: string[]): OwedItem[] {
   const signed = new Set<string>();
   let ledger = "";
   try { ledger = readText(join(bucket, "release", version, "operator.jsonl")); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; } // a release with no record yet has signed nothing
   for (const l of ledger.split("\n")) {
-    try { const r = JSON.parse(l); if (r && r.kind === "spec" && typeof r.spec_path === "string") signed.add(r.spec_path); } catch { /* a torn or blank line holds no record */ }
+    try { const r = JSON.parse(l); if (r && r.kind === "spec" && typeof r.spec_path === "string") signed.add(specId(r.spec_path)); } catch { /* a torn or blank line holds no record */ }
   }
   const dir = join(bucket, "specs", "designs"), latest = new Map<string, { n: number; f: string }>();
   for (const f of readdirSync(dir)) {
@@ -188,8 +192,10 @@ function specItems(bucket: string, version: string, open: Map<string, string>): 
   const items: OwedItem[] = [];
   for (const [spec, { n, f }] of [...latest].sort((a, b) => a[0].localeCompare(b[0]))) {
     const key = spec.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
-    const last = readText(join(dir, f)).split("\n").map((x) => x.trim()).filter(Boolean).pop() ?? ""; // an unreadable critic file fails the whole source, so it is named unread
-    if (!key || !open.has(key) || signed.has(join(dir, spec)) || signed.has(join(dir, `${spec}.md`)) || !(last === "SPEC CLEAN" || n >= SPEC_ROUNDS)) continue;
+    let last: string | undefined;
+    try { last = utf8(join(dir, f)).split("\n").map((x) => x.trim()).filter(Boolean).pop(); } catch { /* named below */ }
+    if (last === undefined) { skipped.push(f); continue; } // an empty, unreadable or non-UTF-8 critic file skips that one spec, and says so
+    if (!key || !open.has(key) || signed.has(specId(join(dir, spec))) || !(last === "SPEC CLEAN" || n >= SPEC_ROUNDS)) continue;
     items.push({ source: "unsigned spec", key, title: open.get(key)!, act: "sign the spec, or rule on its findings",
       ctx: `${spec}: latest critic round ${n} reads ${/^SPEC (?:CLEAN|FINDINGS \d+)$/.test(last) ? last : "no verdict line"}, no spec row in operator.jsonl` });
   }
@@ -211,7 +217,8 @@ function chiefDocItems(doc: string, open: Map<string, string>): OwedItem[] | und
   if (!live) return undefined;
   const items: OwedItem[] = [];
   for (const l of live) {
-    const segs = l.startsWith("queue:") ? l.slice(6).split(" | ") : l.startsWith("pool-disposition:") ? [l.slice(17)] : [];
+    // what follows " || " on a queue line is history, not live
+    const segs = l.startsWith("queue:") ? l.slice(6).split(" || ")[0].split(" | ") : l.startsWith("pool-disposition:") ? [l.slice(17)] : [];
     for (const s of segs.map((x) => x.trim()).filter((x) => OWED_RE.test(x))) {
       const key = s.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
       const known = !!key && open.has(key);
@@ -242,7 +249,7 @@ function newestChiefDoc(env: Env): string | undefined {
 export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed {
   const mirror = jiraMirrorDir(env), proj = env.JIRA_PROJECT_KEY || "HIMMEL";
   const doc = newestChiefDoc(env), bucket = env.HIMMEL_BUCKET_DIR || (doc ? dirname(doc) : undefined);
-  const items: OwedItem[] = [], unread: string[] = [], why: string[] = [];
+  const items: OwedItem[] = [], unread: string[] = [], why: string[] = [], skipped: string[] = [];
   const miss = (what: string, reason: string) => { unread.push(what); why.push(`${what}: ${reason}`); };
   let running: string | undefined;
   const open = new Map<string, string>(); // the open tickets of the running version: id to title
@@ -257,12 +264,12 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
   if (!bucket) { miss("unsigned specs", "no bucket: no chief doc under the handover root, and HIMMEL_BUCKET_DIR is not set"); miss("handoff items", "no bucket"); }
   else {
     if (!running) miss("unsigned specs", "no running version");
-    else tryRead("unsigned specs", () => specItems(bucket, running!, open), "none");
+    else tryRead("unsigned specs", () => specItems(bucket, running!, open, skipped), "none");
     tryRead("handoff items", () => handoffItems(bucket), `no Open operator items section in the newest HANDOFF under ${bucket}`);
   }
   if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
   else tryRead("chief doc lines", () => chiefDocItems(doc, open), "the chief doc has no Live state section");
-  return unread.length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread };
+  return unread.length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread, skipped };
 }
 
 // `asked`: the version tile picked on the page. A known one is the version the tab reads; an unknown one reads as the running version and the answer says so (fellBack).

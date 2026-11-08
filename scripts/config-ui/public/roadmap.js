@@ -387,10 +387,10 @@ function waitingRows(d, ch, nv, owed, prs) {
     else loose.push({ key: "", title: item.title, labels: [], noVersion: false, ctx: [item.ctx], acts: [item.act], loose: true, id: `owed-${i}` });
   });
   if (chainOk(ch)) for (const x of Object.values(ch.tickets)) {
-    if (x.state !== "waits on you") continue;
+    const holds = (x.links || []).filter((l) => l.kind === "operator" && l.status === "open"); // read whatever the ticket's state: a blocked ticket still holds for the operator
+    if (x.state !== "waits on you" && !holds.length) continue;
     const r = get(x.key, x.title, false);
     r.chain = (x.chains || []).find((y) => y.state === "waits on you") || (x.chains || [])[0];
-    const holds = (x.links || []).filter((l) => l.kind === "operator" && l.status === "open");
     const pr = prs && prs.state === "ok" && prs.prs && prs.prs[x.key] && prs.prs[x.key][0];
     if (pr) r.ctx.push(`PR #${pr.pr} is held`);
     for (const l of holds) r.ctx.push(l.reason || "an operator hold");
@@ -403,7 +403,7 @@ function waitingRows(d, ch, nv, owed, prs) {
 // opens its chain only where the Chains tab (the running version) holds the ticket. With nothing waiting there is no section: the count
 // link beside the tabs says 0 or "not read", and an empty box would push the first card down.
 // What an unreadable owed source says: a read that failed is never a plain "nobody owes you".
-const unreadOwed = (owed) => !owed ? [] : owed.state === "ok" ? (owed.unread || []).map((w) => `${w} not read`) : ["the operator-owed sources not read"];
+const unreadOwed = (owed) => !owed ? [] : owed.state === "ok" ? [...(owed.unread || []).map((w) => `${w} not read`), ...((owed.skipped || []).length ? [`${owed.skipped.length} critic file(s) unread, skipped: ${owed.skipped.join(", ")}`] : [])] : ["the operator-owed sources not read"];
 function waitingHtml(rows, tabCh, v, d, ch, nv, owed) {
   if (!rows.length) return "";
   const row = (x) => {
