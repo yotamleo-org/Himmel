@@ -1632,10 +1632,25 @@ else
     fail "luna semantic runner survived disarm"
 fi
 
+echo "TEST: arm --api-account without --with-luna-semantic refuses and arms nothing"
+crontab_before=$(cat "$CSTATE3/crontab" 2>/dev/null || echo NONE)
+rc=0; out=$(run_cron3 arm --vault "$VAULT" --luna-only --ast-only --api-account A 2>&1) || rc=$?
+assert_rc "arm --api-account A without --with-luna-semantic exits 1" 1 "$rc"
+assert_contains "the refusal says the flag only applies to --with-luna-semantic" "--api-account only applies to --with-luna-semantic" "$out"
+if [ "$crontab_before" = "$(cat "$CSTATE3/crontab" 2>/dev/null || echo NONE)" ]; then pass "the refused arm leaves the crontab as it was"; else fail "the refused arm changed the crontab"; fi
+if [ -e "$CRON_DIR3/graphmap-semantic-luna.sh" ]; then fail "the refused arm wrote a luna semantic runner"; else pass "the refused arm wrote no luna semantic runner"; fi
+
+echo "TEST: --help prints no ruling number"
+rc=0; out=$(run_cron3 --help 2>&1) || rc=$?
+assert_rc "--help exits 0" 0 "$rc"
+assert_contains "--help describes --api-account" "--api-account" "$out"
+assert_not_contains "--help prints no ruling number" "decision 525" "$out"
+
 echo "TEST: arm --with-luna-semantic needs --api-account A|B|C and bakes it into the luna payload"
 rc=0; out=$(run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic 2>&1) || rc=$?
 assert_rc "arm --with-luna-semantic without --api-account exits 2" 2 "$rc"
 assert_contains "the refusal names --api-account" "--api-account" "$out"
+assert_not_contains "the refusal prints no ruling number" "decision 525" "$out"
 if [ -e "$CRON_DIR3/graphmap-semantic-luna.sh" ]; then fail "the refused arm wrote a luna semantic runner"; else pass "the refused arm wrote no luna semantic runner"; fi
 rc=0; out=$(run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --api-account auto 2>&1) || rc=$?
 assert_rc "arm --with-luna-semantic --api-account auto exits 2" 2 "$rc"
@@ -1658,6 +1673,12 @@ cp "$SCRIPT_DIR/fixtures/graphmap-semantic-luna-old-auto.txt" "$CRON_DIR3/graphm
 rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
 assert_rc "arm --rewrite-armed over a runner armed with auto exits 2" 2 "$rc"
 assert_contains "the auto refusal names --api-account" "--api-account" "$out"
+assert_not_contains "the auto refusal prints no ruling number" "decision 525" "$out"
+remedy="${out#*re-arm it with }"; remedy="${remedy%% (*}"
+case "$remedy" in "bash scripts/luna/graphmap-cadence.sh arm "*) pass "the remedy starts with the script path" ;; *) fail "the remedy starts with the script path" "$remedy" ;; esac
+assert_contains "the remedy names account A and --force" "--api-account A --force" "$remedy"
+assert_not_contains "the remedy holds no A|B|C a shell reads as pipes" "A|B|C" "$remedy"
+if "$REAL_BASH" -n -c "$remedy" 2>/dev/null; then pass "the remedy parses as a command"; else fail "the remedy parses as a command" "$remedy"; fi
 assert_contains "the refused rewrite leaves the old runner as it was" "HIMMEL_API_ACCOUNT=auto" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh")"
 sed 's/HIMMEL_API_ACCOUNT=auto //' "$SCRIPT_DIR/fixtures/graphmap-semantic-luna-old-auto.txt" > "$CRON_DIR3/graphmap-semantic-luna.sh"
 rc=0; out=$(PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?

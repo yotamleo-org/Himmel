@@ -5887,14 +5887,18 @@ rc 5 unless `HIMMEL_API_LANE=on` is in the caller's environment, and a per-call
 env prefix is refused by the guards, so workers never reached it and the PR critic
 (`critic-first-pass.sh`) was skipped. `headed-arm-worker.sh` now reads an opt-in seam
 from the LAUNCHING shell: `WORKER_SESSION_API_LANE=on` puts `HIMMEL_API_LANE=on` and
-`HIMMEL_API_ACCOUNT=auto` into the worker's environment (`--dry-run` prints both).
-Default OFF: unset or any other value launches a worker with neither. The wrapper
-strips an ambient `HIMMEL_API_LANE`/`HIMMEL_API_ACCOUNT` (both are in
-`chief_context_worker_env_unset_names`), so the seam is the only way in. The
-chief makes it the standing default by exporting `WORKER_SESSION_API_LANE=on` in its own
-launch environment. The switch does not bypass spend control: `claude-api.sh`
-still applies the API credit guard (`~/.himmel/state/api-credit`) and account
-routing per call, and `usage-preflight.sh` still gates the launch itself.
+`HIMMEL_API_ACCOUNT` set to the account `auto` into the worker's environment
+(`--dry-run` prints both). Default OFF: unset or any other value launches a worker
+with neither. The wrapper strips an ambient `HIMMEL_API_LANE`/`HIMMEL_API_ACCOUNT`
+(both are in `chief_context_worker_env_unset_names`), so the seam is the only way
+in. The limit refuses that account for the critic, bulk calls and an unmapped judge
+(see `docs/internals/api-lane.md`), so the switch does not bill a critic: a critic
+refused this way is a policy refusal, which the critic reports as skipped today, and
+a chief should not export the switch as a standing default. Whether a worker can name
+its own API account is settled by a later change. The switch does not bypass spend
+control: `claude-api.sh` still applies the API credit guard
+(`~/.himmel/state/api-credit`) and account routing per call, and
+`usage-preflight.sh` still gates the launch itself.
 
 Subagent transcripts are NOT flat files under the project directory. A
 session's own transcript is `~/.claude/projects/<slugified-cwd>/<sessionId>.jsonl`,
