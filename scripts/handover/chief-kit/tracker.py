@@ -1410,26 +1410,42 @@ def spec_id(path):
     return p[:-3] if p.endswith('.md') else p
 
 
-def operator_owed(bucket, chief_doc, version, opn, mir):
-    items, readable, unread = [], False, []
-    if bucket:
-        signed = set()
+CRITICAL_RE = re.compile(r'^OPERATOR-CRITICAL:[ \t]*\S', re.M)
+
+
+def operator_critical(spec, critic):
+    for p in (spec if spec.endswith('.md') else spec + '.md', critic):
         try:
-            for l in open(os.path.join(bucket, 'release', version, 'operator.jsonl'), encoding='utf-8'):
+            if CRITICAL_RE.search(open(p, encoding='utf-8').read()):
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def operator_owed(handover_dir, chief_doc, version, opn, mir):
+    """(operator items, source read, unread critic files, chief-owed items): unsigned specs without the marker are chief-owed."""
+    items, chief_owes, readable, unread = [], [], False, []
+    if handover_dir:
+        signed, signed_ticket_numbers = set(), set()
+        try:
+            for l in open(os.path.join(handover_dir, 'release', version, 'operator.jsonl'), encoding='utf-8'):
                 try:
                     r = json.loads(l)
                 except ValueError:
                     continue
                 if isinstance(r, dict) and r.get('kind') == 'spec':
                     signed.add(spec_id(r.get('spec_path')))
+                    named = os.path.basename(str(r.get('spec_path') or '')) + ' ' + str(r.get('keys') or '')
+                    signed_ticket_numbers.update(int(n) for n in re.findall(r'HIMMEL-(\d+)', named))
             readable = True
         except FileNotFoundError:
-            readable = os.path.isdir(os.path.join(bucket, 'specs', 'designs'))
+            readable = os.path.isdir(os.path.join(handover_dir, 'specs', 'designs'))
         except OSError:
             signed = None
         if signed is not None:
             latest = {}
-            for f in glob.glob(os.path.join(bucket, 'specs', 'designs', '*.critic-spec-r*.md')):
+            for f in glob.glob(os.path.join(handover_dir, 'specs', 'designs', '*.critic-spec-r*.md')):
                 m = re.fullmatch(r'(.*)\.critic-spec-r(\d+)\.md', f)
                 if m and (m.group(1) not in latest or int(m.group(2)) > latest[m.group(1)][0]):
                     latest[m.group(1)] = (int(m.group(2)), f)
@@ -1440,13 +1456,13 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                 except (OSError, ValueError, IndexError):
                     unread.append(os.path.basename(f))
                     continue
-                if k and int(k.group(1)) in opn and spec_id(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= CRITIC_ROUND_CAP):
+                if k and int(k.group(1)) in opn and int(k.group(1)) not in signed_ticket_numbers and spec_id(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= CRITIC_ROUND_CAP):
                     n = int(k.group(1))
-                    items.append(('unsigned spec', n, clip(opn[n]['title'], 100),
+                    (items if operator_critical(spec, f) else chief_owes).append(('unsigned spec', n, clip(opn[n]['title'], 100),
                                   '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
                                       os.path.basename(spec), rnd, last if re.fullmatch(r'SPEC (?:CLEAN|FINDINGS \d+)', last) else 'no verdict line'),
                                   'sign the spec, or rule on its findings'))
-        hand = sorted(glob.glob(os.path.join(bucket, '*HANDOFF.md')), key=os.path.getmtime)
+        hand = sorted(glob.glob(os.path.join(handover_dir, '*HANDOFF.md')), key=os.path.getmtime)
         sec = md_section(hand[-1], 'Open operator items') if hand else None
         if sec is not None:
             readable = True
@@ -1462,9 +1478,11 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                 if OWED_RE.search(s):
                     k = KEY_RE.search(s)
                     n = num(k.group(0)) if k else None
+                    if n and 'HIMMEL-%d' % n in mir and bucket(mir['HIMMEL-%d' % n]) in ('done', 'wont'):
+                        continue
                     items.append(('chief doc', n, clip(opn[n]['title'], 100) if n in opn else clip(s.strip(), 140), clip(s.strip(), 160),
                                   'the operator acts on what the line names'))
-    return items, readable, unread
+    return items, readable, unread, chief_owes
 
 
 def source_notes(chains, chains_mtime, prio_mtime, ndt):
@@ -1630,7 +1648,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     chainhtml = ''.join('<div class="chain"><h3>%s</h3><ol>\n%s</ol></div>' % (esc(ch['name']), ''.join(step(st) for st in ch['steps']))
                         for ch in chains)
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
-    owed, owed_read, owed_unread = operator_owed(bucket_dir, chief_doc, version, opn, mir)
+    owed, owed_read, owed_unread, chief_owes = operator_owed(bucket_dir, chief_doc, version, opn, mir)
     nwait = len(wait) + len(owed)
     waithtml = '<section data-section="waiting" data-count="%d"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s</h2>%s</section>' % (
         nwait, nwait, '' if owed_read else ' <span class="n">no operator-owed source read</span>',
@@ -1642,6 +1660,10 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
                 key_html(n) + ' ' if n else '', esc(t), esc(src), esc(ctx), esc(act)) for src, n, t, ctx, act in owed))
         if nwait else '<div class="empty">%s</div>' % ('nothing is waiting on you' if owed_read else
                                                        'no operator-owed source read: the Jira labels name no waiting ticket, and that is all that was checked'))
+    if chief_owes:
+        waithtml += '\n<section data-section="chief-owes" data-count="%d"><h2 class="sh">Chief owes <span class="n">%d</span></h2><ul>%s</ul></section>' % (
+            len(chief_owes), len(chief_owes), ''.join('<li class="owed">%s%s <span class="own">%s · %s · action: %s</span></li>' % (
+                key_html(n) + ' ' if n else '', esc(t), esc(src), esc(ctx), esc(act)) for src, n, t, ctx, act in chief_owes))
     legend = ''.join('<span class="lg b%d">%s</span>' % (min(i, 7), esc(n)) for i, n in enumerate(names))
     seclegend = ''.join('<span class="sec" style="--s:%s">%s %d</span>' % (c, esc(n), sum(1 for m in opn.values() if m['sector'] == n))
                         for n, c in SECTOR_COLORS.items() if any(m['sector'] == n for m in opn.values()))

@@ -34,13 +34,19 @@ case "$(cat)" in *'"command":"bash scripts/cr/review-round.sh"'*)
     printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}' ;;
 esac
 EOF
-# Fake sudo: answers `mode` from $T/mode; refuses when it is absent (helper not installed).
+# Fake sudo: logs every call to $T/calls and answers `mode` from $T/mode, refusing when it is absent
+# (helper not installed); `mode -- ARGV` adds `admits=` from $T/admits, and fails as an older helper
+# does when $T/admits is absent.
 cat > "$T/bin/sudo" <<EOF
 #!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$T/calls"
 [ "\$1 \$2 \$3" = "-n /usr/local/libexec/himmel/afk-sudo mode" ] || exit 1
 [ -r "$T/mode" ] || { echo "sudo: a password is required" >&2; exit 1; }
-cat "$T/mode"
+[ \$# -eq 3 ] && { cat "$T/mode"; exit 0; }
+[ "\$4" = -- ] && [ -r "$T/admits" ] || { echo "afk-sudo: error: unrecognized arguments" >&2; exit 2; }
+printf '%s admits=%s\n' "\$(cat "$T/mode")" "\$(cat "$T/admits")"
 EOF
+: > "$T/helper"
 chmod +x "$T/bin/sudo"
 # A systemctl on PATH on every runner, so the plain-argv row does not depend on the host.
 printf '#!/bin/sh\nexit 0\n' > "$T/bin/systemctl"
@@ -54,7 +60,7 @@ setmode() { if [ -n "$1" ]; then printf '%s\n' "$1" > "$T/mode"; else rm -f "$T/
 run() {
     jq -cn --arg tool "$1" --arg cmd "$2" --arg cwd "${3:-$T/wt}" \
         '{hook_event_name:"PermissionRequest",session_id:"S-1",cwd:$cwd,tool_name:$tool,tool_input:{command:$cmd}}' \
-        | PATH="$T/bin:$PATH" bash "$H" 2>/dev/null
+        | AFK_PROMPT_HELPER_PROBE="${PROBE:-$T/helper}" PATH="$T/bin:$PATH" bash "$H" 2>/dev/null
 }
 msg() { printf '%s' "$1" | jq -r '.hookSpecificOutput.decision.message // empty' 2>/dev/null; }
 beh() { printf '%s' "$1" | jq -r '.hookSpecificOutput.decision.behavior // empty' 2>/dev/null; }
@@ -110,6 +116,28 @@ passes "station off" Bash "id"
 setmode ''
 passes "helper absent or sudo refused" Bash "id"
 setmode "$ON"
+: > "$T/calls"
+out="$(PROBE="$T/no-such-helper" run Bash "id")"
+[ -z "$out" ] && [ ! -s "$T/calls" ] && ok "no helper installed means no sudo call" \
+    || bad "no helper installed means no sudo call (got: $out; calls: $(cat "$T/calls"))"
+
+echo "== mode=allowlist: only a command the helper admits is denied with the afk-run line =="
+setmode 'result=mode mode=allowlist enabled=true run_enabled=true'
+printf 'false\n' > "$T/admits"
+: > "$T/calls"
+passes "an off-list command prints nothing, so the dialog opens" Bash "systemctl restart nginx"
+grep -qx -- '-n /usr/local/libexec/himmel/afk-sudo mode -- systemctl restart nginx' "$T/calls" \
+    && ok "the allowlist check names the exact argv" || bad "the allowlist check names the exact argv (calls: $(cat "$T/calls"))"
+printf 'true\n' > "$T/admits"
+denies_with "an admitted command is denied with the afk-run line" \
+    "$RUN --session S-1 --ticket HIMMEL-8067 --blocked-by prompt --cwd $T/wt -- systemctl restart nginx" \
+    Bash "systemctl restart nginx"
+rm -f "$T/admits"
+passes "a helper that cannot answer the allowlist check prints nothing" Bash "systemctl restart nginx"
+setmode "$ON"
+: > "$T/calls"
+run Bash "id" >/dev/null
+[ "$(wc -l < "$T/calls" | tr -d ' ')" = 1 ] && ok "mode=all asks the helper once" || bad "mode=all asks the helper once (calls: $(cat "$T/calls"))"
 out="$(jq -cn '{tool_name:"Bash",session_id:"S-1",tool_input:{command:"id"}}' | AFK_PROMPT_TO_REQUEST_OFF=1 PATH="$T/bin:$PATH" bash "$H" 2>/dev/null)"
 [ -z "$out" ] && ok "the bypass lets the dialog open" || bad "the bypass lets the dialog open (got: $out)"
 out="$(printf 'not json' | PATH="$T/bin:$PATH" bash "$H" 2>/dev/null; echo "rc=$?")"

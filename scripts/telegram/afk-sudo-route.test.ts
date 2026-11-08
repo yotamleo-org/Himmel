@@ -109,11 +109,37 @@ test("a real malformed afk-sudo id with a code still gets the afk-sudo reply and
   }
 });
 
-test("deny reaches the helper with an empty stdin", async () => {
+test("a typed deny reaches the helper with the request's nonce on stdin, never in argv", async () => {
   const { deps, calls } = fake();
-  expect(makeAfkSudoGate(deps)(dm("deny abcdefgh"))).toBe(true);
+  expect(makeAfkSudoGate(deps)(dm("deny abcdefgh K7QF"))).toBe(true);
   await settle();
-  expect(calls).toEqual([{ args: ["deny", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "" }]);
+  expect(calls).toEqual([{ args: ["deny", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF\n" }]);
+});
+
+test("a typed deny with the nonce and a code sends both on stdin as NONCE CODE, for an id past three wrong nonces", async () => {
+  const { deps, calls } = fake();
+  expect(makeAfkSudoGate(deps)(dm("deny abcdefgh K7QF 123 456"))).toBe(true);
+  await settle();
+  expect(calls).toEqual([{ args: ["deny", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF 123456\n" }]);
+});
+
+test("a deny the helper answers locked says to send the nonce with a current code", async () => {
+  const { deps, replies } = fake();
+  deps.runHelper = async () => ({ code: 5, stdout: "result=locked id=abcdefgh\n" });
+  makeAfkSudoGate(deps)(dm("deny abcdefgh K7QF"));
+  await settle();
+  expect(replies[0]).toContain("deny abcdefgh <nonce> <code>");
+});
+
+test("a typed deny without the nonce never reaches the helper and says what to type", async () => {
+  for (const text of ["deny abcdefgh", "deny abcdefgh 123456", "deny abcdefgh K7QF 12345"]) {
+    const { deps, calls, replies } = fake();
+    expect(makeAfkSudoGate(deps)(dm(text))).toBe(true);
+    await settle();
+    expect(calls).toEqual([]);
+    expect(replies[0]).toContain("deny abcdefgh <nonce>");
+    expect(replies[0]).not.toContain("123456");
+  }
 });
 
 test("forwarded, caption or voice, non-operator, group and anonymous-admin lines are consumed but never reach the helper", async () => {
@@ -346,7 +372,7 @@ test("button: an Approve tap asks for the nonce and code with a prompt and never
   expect(b.tap(tapOf("afk:approve:abcdefgh"))).toBe(true);
   await settle();
   expect(b.calls).toEqual([]);
-  expect(b.sent).toEqual([{ chat: OP, text: "Approve abcdefgh: reply to this message with the 4-character nonce from the notice bot's message, then the 6-digit code (<nonce> <code>), not the request id. A wrong nonce or code ends the request." }]);
+  expect(b.sent).toEqual([{ chat: OP, text: "Approve abcdefgh: reply to this message with the 4-character nonce from the notice bot's message, then the 6-digit code (<nonce> <code>), not the request id. A wrong code with the right nonce ends the request; a wrong nonce leaves it pending until three wrong nonces have been sent; after that it ends the request." }]);
   expect(b.answers.length).toBe(1);
 });
 
@@ -413,12 +439,49 @@ test("a code sent without replying while two prompts wait names both requests", 
   expect(b.replies.at(-1)).toContain("bbbbbbbb");
 });
 
-test("button: a Deny tap denies at once and asks for no code", async () => {
+test("button: a Deny tap asks for the nonce with a prompt and never reaches the helper", async () => {
   const b = buttons();
   expect(b.tap(tapOf("afk:deny:abcdefgh"))).toBe(true);
   await settle();
-  expect(b.calls).toEqual([{ args: ["deny", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "" }]);
-  expect(b.sent).toEqual([]);
+  expect(b.calls).toEqual([]);
+  expect(b.sent).toEqual([{ chat: OP, text: "Deny abcdefgh: reply to this message with the 4-character nonce from the notice bot's message. A wrong nonce leaves the request pending." }]);
+  expect(b.answers).toEqual(["Reply with the nonce"]);
+});
+
+test("button: the nonce reply to a Deny prompt denies with the nonce on stdin, once", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:deny:abcdefgh"));
+  await settle();
+  expect(b.gate(reply(" k7qf ", 77))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([{ args: ["deny", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "k7qf\n" }]);
+  expect(b.gate(reply("K7QF", 77))).toBe(true);
+  await settle();
+  expect(b.calls.length).toBe(1);
+  expect(b.replies.at(-1)).toContain("tap Deny on it again");
+});
+
+test("button: a code alone as the reply to a Deny prompt never reaches the helper and keeps the prompt alive", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:deny:abcdefgh"));
+  await settle();
+  for (const text of ["123456", "deny it"]) {
+    expect(b.gate(reply(text, 77))).toBe(true);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.replies.at(-1)).toContain("a deny takes the");
+    expect(b.replies.at(-1)).not.toContain("123456");
+  }
+  expect(b.gate(reply("K7QF 123-456", 77))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([{ args: ["deny", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF 123456\n" }]);
+});
+
+test("button: a waiting Deny prompt is not named as a code prompt", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:deny:abcdefgh"));
+  await settle();
+  expect(b.prompts.live(OP)).toEqual([]);
 });
 
 test("button: a tap from a stranger, a non-operator allowFrom id, or a group chat does nothing", async () => {
@@ -701,13 +764,33 @@ test("slice 4: the operator's typed /afk-lockdown reaches the helper with no arg
   }
 });
 
-test("slice 4: /afk-lockdown with anything after it never reaches the helper, so no argument can turn anything on", async () => {
-  for (const text of ["/afk-lockdown --enable", "/afk-lockdown enable", "/afk-lockdown all", "/afk-lockdown\n--mode=all", "/afk-lockdown true"]) {
+test("slice 4: /afk-lockdown with anything but a lockdown nonce after it never reaches the helper, so no argument can turn anything on", async () => {
+  for (const text of ["/afk-lockdown --enable", "/afk-lockdown enable", "/afk-lockdown all", "/afk-lockdown\n--mode=all", "/afk-lockdown true", "/afk-lockdown K7QF2345 --enable", "/afk-lockdown K7QF-2345"]) {
     const { deps, calls, replies } = fake();
     expect(makeAfkSudoGate(deps)(dm(text))).toBe(true);
     await settle();
     expect(calls).toEqual([]);
-    expect(replies[0]).toContain("takes no arguments");
+    expect(replies[0]).toContain("takes nothing, or the 8-character lockdown nonce");
+  }
+});
+
+test("lockdown: a bare /afk-lockdown says a nonce was sent and that nothing is off yet", async () => {
+  const { deps, replies } = fake();
+  deps.runHelper = async () => ({ code: 0, stdout: "result=lockdown-nonce-sent expires=1700000120\n" });
+  makeAfkSudoGate(deps)(dm("/afk-lockdown"));
+  await settle();
+  expect(replies).toEqual(["✅ afk-sudo lockdown: nothing is switched off yet. The notice bot sent a lockdown nonce: send /afk-lockdown <that nonce> within 2 minutes."]);
+});
+
+test("lockdown: /afk-lockdown <nonce> reaches the helper with --with-nonce and the nonce on stdin, never in argv", async () => {
+  for (const [text, nonce] of [["/afk-lockdown K7QF2345", "K7QF2345"], ["/afk-lockdown@himmel_bot  k7qf2345 ", "k7qf2345"]]) {
+    const { deps, calls, replies } = fake();
+    deps.runHelper = async (args, stdin) => { calls.push({ args, stdin }); return { code: 0, stdout: "result=locked denied=abcdefgh\n" }; };
+    expect(makeAfkSudoGate(deps)(dm(text))).toBe(true);
+    await settle();
+    expect(calls).toEqual([{ args: ["lockdown", "--from", String(OP), "--chat", String(OP), "--with-nonce"], stdin: `${nonce}\n` }]);
+    expect(calls[0].args.join(" ")).not.toContain(nonce);
+    expect(replies).toEqual(["✅ afk-sudo lockdown: result=locked denied=abcdefgh"]);
   }
 });
 
@@ -761,6 +844,24 @@ test("the operator's /op reaches the helper as op-request with the name and key=
   expect(replies).toEqual(["✅ afk-sudo op cron-entry: result=pending id=abcdefgh expires=1 operator=4242"]);
 });
 
+test("an /op ending in the operator's six-digit code files it with --proof and the code on stdin, never in argv", async () => {
+  const { deps, calls, replies } = fake();
+  deps.runHelper = async (args, stdin) => { calls.push({ args, stdin }); return { code: 0, stdout: "result=pending id=abcdefgh expires=1 operator=4242\n" }; };
+  expect(makeAfkSudoGate(deps)(dm("/op size-approval key=HIMMEL-1 files=300 482913"))).toBe(true);
+  await settle();
+  expect(calls).toEqual([{ args: ["op-request", "--session", "telegram-op", "--ticket", "operator", "--proof", "--", "size-approval", "key=HIMMEL-1", "files=300"], stdin: "482913\n" }]);
+  expect(calls[0].args.join(" ")).not.toContain("482913");
+  expect(replies.join("\n")).not.toContain("482913");
+});
+
+test("a lone six-digit word after /op is read as the op name, never as a code", async () => {
+  const { deps, calls, replies } = fake();
+  expect(makeAfkSudoGate(deps)(dm("/op 482913"))).toBe(true);
+  await settle();
+  expect(calls).toEqual([]);
+  expect(replies[0]).toContain("op name");
+});
+
 test("a malformed /op line is refused before the helper, with the reason", async () => {
   for (const [text, why] of [["/op", "usage"], ["/op Bad_Name", "op name"], ["/op cron-entry tag", "not key=value"], ['/op cron-entry tag="a', "unbalanced"], ["/op cron-entry a=1 b=2 c=3 d=4 e=5 f=6 g=7 h=8 i=9", "too many"]] as const) {
     const { deps, calls, replies } = fake();
@@ -788,11 +889,11 @@ test("/op from a forwarded message, a group or another sender is consumed and ru
 
 const NONCE_HINT = "4-character nonce from the notice bot's message";
 
-test("prompt: names the nonce and the notice bot, says the request id is not what to type and that a wrong reply ends the request", async () => {
+test("prompt: names the nonce and the notice bot, says the request id is not what to type and which wrong reply ends the request", async () => {
   const b = buttons();
   b.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
-  expect(b.sent).toEqual([{ chat: OP, text: `Approve abcdefgh: reply to this message with the ${NONCE_HINT}, then the 6-digit code (<nonce> <code>), not the request id. A wrong nonce or code ends the request.` }]);
+  expect(b.sent).toEqual([{ chat: OP, text: `Approve abcdefgh: reply to this message with the ${NONCE_HINT}, then the 6-digit code (<nonce> <code>), not the request id. A wrong code with the right nonce ends the request; a wrong nonce leaves it pending until three wrong nonces have been sent; after that it ends the request.` }]);
 });
 
 test("refusal: a reply to the prompt names its cause per shape, runs no verb and keeps the prompt alive", async () => {

@@ -113,12 +113,52 @@ printf '%s\n' "$NEW" > "$HEAD_FILE"
 # A live fetch lock must not be stolen or bypassed.
 locks=("$GH_PR_SNAPSHOT_CACHE_DIR"/*.json)
 key=${locks[0]##*/}; key=${key%%-*}
-mkdir "$GH_PR_SNAPSHOT_CACHE_DIR/$key.lock"
+lock="$GH_PR_SNAPSHOT_CACHE_DIR/$key.lock"
+mkdir "$lock"
+printf '4242\n' > "$lock/pid"
 : > "$GH_LOG"
-rc=0; out=$(run 77) || rc=$?
+t0=$SECONDS
+rc=0; out=$(GH_PR_SNAPSHOT_LOCK_WAIT=2 run 77 2> "$W/err") || rc=$?
+elapsed=$((SECONDS - t0))
+in_range=no; { [ "$elapsed" -ge 2 ] && [ "$elapsed" -le 4 ]; } && in_range=yes
 check 'contention fails closed' "$rc" 1
+check 'contention returns no data' "$out" ''
 check 'contention does not bypass lock to fetch' "$(grep -c '^api graphql' "$GH_LOG" 2>/dev/null || true)" 0
-rmdir "$GH_PR_SNAPSHOT_CACHE_DIR/$key.lock"
+check 'contention stderr names the holder pid' "$(grep -c 'still held by pid 4242' "$W/err")" 1
+check "contention waits the bound (2 to 4 s, took $elapsed)" "$in_range" yes
+check 'contention leaves the holder pid file intact' "$(cat "$lock/pid" 2>/dev/null)" 4242
+rm -f "$lock/pid"; rmdir "$lock"
+freed_run() {
+    fixture "$NEW"; : > "$GH_LOG"
+    mkdir "$lock"; printf '4242\n' > "$lock/pid"
+    ( sleep 1; rm -f "$lock/pid"; rmdir "$lock" ) &
+    remover=$!
+    rc=0; out=$(GH_PR_SNAPSHOT_LOCK_WAIT="$1" bash "$HERE/gh-pr-snapshot.sh" acme/repo 0 77) || rc=$?
+    wait "$remover"
+}
+freed_run 09
+check 'wait 09: lock freed during the wait succeeds' "$rc" 0
+check 'wait 09: snapshot returned' "$(printf '%s' "$out" | jq -r '.[0].number' 2>/dev/null)" 77
+check 'wait 09: one GraphQL request' "$(grep -c '^api graphql' "$GH_LOG" 2>/dev/null || true)" 1
+freed_run abc
+check 'wait abc: read as the default, so the freed lock is taken' "$rc" 0
+freed_run 9223372036854775808
+check 'wait 4+ digits: read as the default, so the freed lock is taken' "$rc" 0
+fixture "$NEW"; : > "$GH_LOG"
+mkdir "$lock"; printf '4242\n' > "$lock/pid"
+t0=$SECONDS
+rc=0; out=$(GH_PR_SNAPSHOT_LOCK_WAIT=0 bash "$HERE/gh-pr-snapshot.sh" acme/repo 0 77 2> "$W/err") || rc=$?
+elapsed=$((SECONDS - t0))
+check 'wait 0: try once fails closed' "$rc" 1
+check "wait 0: no wait (took $elapsed s)" "$([ "$elapsed" -le 1 ] && echo yes || echo no)" yes
+check 'wait 0: holder pid file intact' "$(cat "$lock/pid" 2>/dev/null)" 4242
+rm -f "$lock/pid"; rmdir "$lock"
+mkdir "$lock"
+rc=0; out=$(GH_PR_SNAPSHOT_LOCK_WAIT=0 bash "$HERE/gh-pr-snapshot.sh" acme/repo 0 77 2> "$W/err") || rc=$?
+check 'no pid file: fails closed' "$rc" 1
+check 'no pid file: stderr says pid ?' "$(grep -c 'still held by pid ?' "$W/err")" 1
+check 'no pid file: no shell redirect error leaks' "$(grep -c 'No such file' "$W/err")" 0
+rmdir "$lock"
 # A colliding/foreign entry with the same PR and head must not be a hit.
 for f in "$GH_PR_SNAPSHOT_CACHE_DIR"/*.json; do
     jq '.repository = "github.com/foreign/repo"' "$f" > "$W/foreign"

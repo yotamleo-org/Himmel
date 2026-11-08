@@ -1188,6 +1188,52 @@ EOF
     return 0
 }
 
+_SCRATCHPAD_ROOT=""
+_SCRATCHPAD_BASE=""
+_in_uid_scratchpad_set() {
+    local file="$1" uid base rest proj sess
+    _SCRATCHPAD_ROOT=""
+    _SCRATCHPAD_BASE=""
+    uid=$(id -u 2>/dev/null) || return 1
+    for base in "${TMPDIR:-}" /tmp; do
+        base="${base%/}"
+        [ -n "$base" ] || continue
+        base=$(cd -P -- "$base" 2>/dev/null && pwd -P) || continue
+        case "$file" in
+            "$base/claude-$uid/"*) ;;
+            *) continue ;;
+        esac
+        rest="${file#"$base/claude-$uid/"}"
+        proj="${rest%%/*}"; [ -n "$proj" ] && [ "$proj" != "$rest" ] || continue; rest="${rest#*/}"
+        sess="${rest%%/*}"; [ -n "$sess" ] && [ "$sess" != "$rest" ] || continue; rest="${rest#*/}"
+        case "$rest" in
+            scratchpad|scratchpad/*)
+                _SCRATCHPAD_ROOT="$base/claude-$uid/$proj/$sess/scratchpad"
+                _SCRATCHPAD_BASE="$base"
+                return 0
+                ;;
+        esac
+    done
+    return 1
+}
+
+_stray_git_above_scratchpad() {
+    local file="$1" repo="$2"
+    _in_uid_scratchpad_set "$file" || return 1
+    [ "$repo" != "$_SCRATCHPAD_ROOT" ] || return 1
+    case "$_SCRATCHPAD_ROOT/" in "$repo/"*) ;; *) return 1 ;; esac
+    case "$repo/" in "$_SCRATCHPAD_BASE/"*) ;; *) return 1 ;; esac
+    [ -d "$repo/.git" ] && [ ! -L "$repo/.git" ] || return 1
+    local entry parent
+    for entry in HEAD commondir gitdir; do
+        [ ! -e "$repo/.git/$entry" ] && [ ! -L "$repo/.git/$entry" ] || return 1
+    done
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 && return 1
+    parent="${repo%/*}"
+    [ -n "$parent" ] || parent="/"
+    ! _repo_root_for_path_set "$parent"
+}
+
 main_checkout_verdict_set() {
     local file_real="${1:-}"
     local repo_real=""
@@ -1221,6 +1267,10 @@ main_checkout_verdict_set() {
     elif [ "$branch_rc" -eq 0 ]; then
         block_reason="main"
     else
+        if _stray_git_above_scratchpad "$file_real" "$repo_real"; then
+            _MCV_ROOT="$repo_real"
+            return 0
+        fi
         _MCV_ROOT="$repo_real"
         return 3
     fi
