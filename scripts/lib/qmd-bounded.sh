@@ -4,12 +4,9 @@
 # Run it:   bash qmd-bounded.sh <qmd verb> [args...]
 #   runs qmd (resolved as qmd-bin.sh's qmd_cmd does) under a deadline of
 #   $QMD_TIMEOUT_SECS, else 300 s — the ad-hoc path block-bare-qmd-query.sh
-#   sends agents to. A question naming a fleet word is first asked in both
-#   vocabularies by scripts/qmd/vocab-expand.py, its lex lines without filler
-#   words (an expanded search runs as a lex-only query with --no-rerank); a
-#   search holding filler words is shaped the same way, and a query naming no
-#   fleet word, or holding a -negation, runs as given. QMD_VOCAB_EXPAND=0
-#   turns all of that off.
+#   sends agents to. A query or search question is first asked in both fleet
+#   vocabularies by scripts/qmd/vocab-expand.py (an expanded search runs as a
+#   lex-only query with --no-rerank); QMD_VOCAB_EXPAND=0 turns that off.
 # Source it, then: qmd_bounded <secs> <cmd> [args...]
 #   rc      the command's own rc, or 124 when the deadline fired (as timeout(1))
 #   <secs>  whole seconds; 0 runs the command unbounded
