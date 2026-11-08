@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in the pass/fail reporting lines
-# test-drift-summary-wait.sh — Exercises the wait bucket of drift-summary.mjs: an AWAITING row that
-# ends in ` | wait=<who>` is a wait, not drift, so it lands in `waiting` and never in `real`; an
-# UNOWNED row carrying the mark, an AWAITING row without it and one whose who is malformed stay real.
+# test-drift-summary-wait.sh — the wait bucket of drift-summary.mjs.
 # DRIFT_SUMMARY overrides the script under test (the RED control: a missing script fails every row).
 #
 # Run: bash scripts/handover/chief-kit/test-drift-summary-wait.sh

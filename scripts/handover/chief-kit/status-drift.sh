@@ -35,10 +35,7 @@
 #                     park (rule D6n: the worker wrapped and its brief says Completes ticket: no)
 #                     is UNOWNED once it is 24 h old, saying it is awaiting the chief and overdue
 #   AWAITING          the same chief-owned park before its 24 h are up: a wait, not drift. Its row
-#                     ends in ` | wait=chief`; the park starts at the first D6n row at or after the
-#                     key's newest anchor (a moved row that is not a hold, a merge row carrying a
-#                     contract, an event=live row that is not a skip or disabled), read from
-#                     ts_merge_rows output
+#                     ends in ` | wait=chief`
 #   HELD-IN-WORK      labelled held, with a live owner or an open PR
 #   VERSION-DRIFT    Done or worked (In Progress / In Review / IN CI), held only in a later unreleased
 #                     version than the current one; the fix is an INTAKE request to the current version
@@ -146,7 +143,7 @@ bounded() {
 
 NOW="${TICKET_STATUS_NOW:-}"
 case "$NOW" in ''|*[!0-9]*) NOW=$(date -u +%s) ;; esac
-await_secs() { # <NAME> <default seconds> <largest seconds> - AWAIT_SECS: the variable as seconds, else the default and a HEALTH row
+await_secs() {
     local v n
     AWAIT_SECS=$2
     v="${!1:-}"
@@ -178,7 +175,6 @@ partials="" parkrows=""
 if [ -f "$LOG" ]; then
     # Every key whose latest merge row carrying a contract is partial (contract=no), with its partial PRs, read once from the
     # WHOLE log: the last 500 rows hold about five hours, so a ticket a partial merge left days ago would name no PR there.
-    # The same output gives each key's park start for rules D6n and D5c.
     mergeout=$(ts_merge_rows "$LOG" 2>/dev/null) # swallow-ok: an unreadable log names no partial PR and no park start, and the generic fix stands
     partials=$(jq -Rrs '[split("\n")[] | fromjson? | select(type == "object" and .event == "merge" and .key != null and has("contract") and .contract != "")]
         | group_by(.key)[] | select(last.contract == "no")

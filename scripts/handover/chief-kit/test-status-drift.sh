@@ -877,7 +877,6 @@ reset "In Progress"; jl "$K" "In Progress"; pr 7 "[$K] feat" aaa111; checks 7 fa
 drift
 check "3b: an open PR means not UNOWNED" "$(dcount UNOWNED)" 0
 
-# 9561 S1: a chief-owned D6n park is AWAITING until its clock runs out, a vanished or dead lock is UNOWNED
 NOW=1794139200
 export TICKET_STATUS_NOW=$NOW
 iso_at() { # <seconds before NOW> - an ISO time (negative = after NOW)

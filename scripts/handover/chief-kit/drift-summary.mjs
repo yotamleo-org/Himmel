@@ -18,7 +18,8 @@
 // the next sweep heals it). It is WAITING when it is an AWAITING row ending in ` | wait=<who>` (a
 // chief-owned park inside its clock): `waiting` holds it and `real` never does. An UNOWNED row
 // carrying the mark, an AWAITING row without it or with a malformed who is REAL. Every other row is
-// REAL and counts at once (K2): nothing waits for a second run. A checker ticket whose status cannot be read keeps its rows REAL.
+// REAL and counts at once (K2): nothing waits for a second run. A checker ticket whose status
+// cannot be read keeps its rows REAL.
 //
 // ponytail: fresh for a fixed 3 h because focus refreshes are event driven, upgrade path = read the
 // last refresh's own spacing from focus-state.
