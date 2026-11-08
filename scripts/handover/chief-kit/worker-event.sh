@@ -26,7 +26,7 @@
 #                                                  the line passed on as is, rc 10
 #                        A bullet that cannot be written appends ` doc-bullet=failed <why>` (its own
 #                        line after a GO-WRITTEN). Any other auto-go answer is
-#                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: auto-go.sh --dry-run runs once (its answer is ignored, so it leaves one auto-go.jsonl row), then ESCALATE marker-READY, as before.
+#                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: auto-go.sh --dry-run runs once, detached and bounded (LE_DRYRUN_BOUND seconds, default 60; its answer is ignored, so it leaves one auto-go.jsonl row; with stacked_series on it runs under the series ledger writer's label, as the live path does), and ESCALATE marker-READY follows at once, as before.
 #                        A WRAPPED whose PR wrap-merged finds still OPEN (rc 3 at its pr-state step) is closed the
 #                        same way: HANDLED close-wrapped, or ESCALATE close-wrapped-failed when that close refuses.
 #                        A MERGED line for an OPEN PR still escalates wrap-merged-failed.
@@ -59,7 +59,7 @@
 # auto-go.sh's `GO-WRITTEN …` lines (rc 11: the GO file stands, the bus send failed).
 # Usage errors exit 2 before anything runs.
 #
-# Test seams (env): LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_AUTOGO.
+# Test seams (env): LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_AUTOGO LE_DRYRUN_BOUND.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
 
@@ -108,7 +108,22 @@ dry_run_ready() {
     dpr="${BASH_REMATCH[1]}"; dhead="${BASH_REMATCH[2]}"
     dlabels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)"
     case "$dlabels" in ''|*$'\n'*) return 0 ;; esac
-    "${AUTOGO[@]}" --dry-run --doc "$DOC" --fleet "$FLEET" --worker "$dlabels" "$dpr" "$dhead" >/dev/null 2>&1
+    # Detached, output discarded: the dry run is advisory, so a slow or hung one never holds the READY escalation. The
+    # subshell gets the GNU timeout where one exists (scripts/lib/timeout-bin.sh; macOS has none, so there the dry run
+    # is detached but unbounded); timeout kills the dry run's whole process group, so nothing outlives the bound.
+    (
+        # the series label, as the live path below reads it (the series-ledger.py find call and the label it addresses):
+        # a series READY dry-runs under the ledger writer's manifest label, else the message's label stands
+        if stacked_series_state; then
+            dw="$("${LIST[@]}" "$FLEET" | grep -F -- "-${dlabels}-" | head -n 1)"
+            if [ -n "$dw" ] && dfind="$(python3 -I "$HERE/series-ledger.py" find --bucket "$(dirname "$FLEET")" --doc "$dw" --manifest "$FLEET")" \
+                && [ -n "$dfind" ] && [ "${dfind##* }" != "-" ]; then
+                dlabels="${dfind##* }"
+            fi
+        fi
+        . "$HERE/../../lib/timeout-bin.sh"
+        ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "${LE_DRYRUN_BOUND:-60}"} "${AUTOGO[@]}" --dry-run --doc "$DOC" --fleet "$FLEET" --worker "$dlabels" "$dpr" "$dhead"
+    ) >/dev/null 2>&1 </dev/null &
     return 0
 }
 
