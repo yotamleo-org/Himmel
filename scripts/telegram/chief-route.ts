@@ -1,5 +1,7 @@
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
+import { hostname } from "node:os";
+import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, realpath } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
@@ -148,6 +150,67 @@ export async function routeFleetCommand(
   }
   const text = route.verb === "status" ? "fleet status" : `${route.verb}${route.worker ? ` ${route.worker}` : ""}`;
   await routeToConsole(root, msg, { kind: "console", name: target.name, text, thread: true }, (chat, ack, name) => reply(chat, name ? `queued ${text} → chief ${name}${ack.includes(BUSY_NOTE) ? ` — ${BUSY_NOTE}` : ""}` : ack, name));
+}
+
+// ponytail: no lock around the read-check-append in routeApprove, safe only because the poller dispatches one message at a time; upgrade path = an atomic append-if-absent helper.
+// ponytail: the reader checks neither `from` nor `chat`, and a same-uid process can append a row itself (the
+// tamper-evident approval store is a separate ticket); this verb does not make the reader check them, upgrade path = a MAC per row.
+// ponytail: `is_bot` means any bot, so the operator-chat requirement (a DM, where only this bridge's bot writes) is what makes "bot-authored" mean ours; upgrade path = compare the replied-to sender id with the bridge bot's id.
+export type ApproveRoute = Extract<import("./router").Route, { kind: "approve" }>;
+export type ApproveMsg = { from: number; chat_id: number; message_id?: number; reply_to_message_id?: number; reply_to_bot?: boolean; reply_to_text?: string; forwarded?: boolean; caption?: boolean };
+const APPROVE_REQUEST = /^outside-approve-request ([1-9][0-9]{0,5}) ([0-9a-f]{40})$/;
+export const APPROVE_GH_TIMEOUT_MS = 20_000;
+const APPROVALS_FILE = "outside-pr-approvals.jsonl";
+
+async function livePr(pr: number, timeoutMs: number): Promise<{ state: string; head: string } | null> {
+  try {
+    const p = Bun.spawn(["gh", "pr", "view", String(pr), "--json", "state,headRefOid"], { ...SPAWN_OWN_GROUP, cwd: join(import.meta.dir, "../.."), stdin: "ignore", stdout: "pipe", stderr: "ignore" });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<null>(done => { timer = setTimeout(() => { killTree(p.pid, (s: string) => p.kill(s as any)); done(null); }, timeoutMs); });
+    const out = await Promise.race([Promise.all([new Response(p.stdout).text(), p.exited]), timedOut]).finally(() => clearTimeout(timer));
+    if (!out || out[1] !== 0) return null;
+    const j = JSON.parse(out[0]);
+    return j && typeof j === "object" && typeof j.state === "string" && typeof j.headRefOid === "string" && /^[0-9a-f]{40}$/.test(j.headRefOid) ? { state: j.state, head: j.headRefOid } : null;
+  } catch { return null; }
+}
+
+export async function routeApprove(msg: ApproveMsg, route: ApproveRoute, gate: ConsoleRouteGate, opts: { ghTimeoutMs?: number } = {}): Promise<void> {
+  if (!gate.authorize(msg.from, msg.chat_id)) return;
+  if (msg.forwarded === true || msg.caption !== false) return;
+  const say = async (text: string) => {
+    try { await gate.reply(msg.chat_id, text, undefined, msg.message_id); }
+    catch (e) { console.error(`[chief-route] approve reply could not be delivered for chat ${msg.chat_id}: ${e}`); }
+  };
+  const refuse = (why: string) => say(`⚠️ approve: ${why} — nothing stored.`);
+  if (msg.chat_id !== operatorChatId(await loadAccess())) return refuse("it works only in the operator's own chat");
+  const asked = typeof msg.reply_to_text === "string" ? APPROVE_REQUEST.exec(msg.reply_to_text.split("\n", 1)[0]) : null;
+  if (msg.reply_to_message_id == null || msg.reply_to_bot !== true || !asked) return refuse("reply to the outside-approve-request message from the bot");
+  const [, askedPr, sha] = asked;
+  if (Number(askedPr) !== route.pr) return refuse(`that request is for PR ${askedPr}, not PR ${route.pr}`);
+  if (route.prefix.length < 7) return refuse("the sha prefix must be at least 7 hex");
+  if (!sha.startsWith(route.prefix)) return refuse(`${route.prefix} is not a prefix of the requested sha ${sha.slice(0, 7)}`);
+  if (!Number.isSafeInteger(msg.message_id) || (msg.message_id as number) <= 0) return refuse("this message has no message id, so the approval cannot be recorded");
+  const live = await livePr(route.pr, opts.ghTimeoutMs ?? APPROVE_GH_TIMEOUT_MS);
+  if (!live) return say(`⚠️ approve: cannot read PR ${route.pr}; nothing stored`);
+  if (live.state !== "OPEN") return refuse(`PR ${route.pr} is not open (${live.state})`);
+  if (live.head !== sha) return refuse(`PR ${route.pr}'s head changed since the request (now ${live.head.slice(0, 7)}, requested ${sha.slice(0, 7)}); ask the chief for a new request`);
+  const home = process.env.HOME;
+  if (!home || !isAbsolute(home)) return refuse("HOME is not set");
+  const store = join(home, ".himmel", APPROVALS_FILE);
+  let prior = "";
+  try { prior = await readFile(store, "utf8"); }
+  catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") { console.error(`[chief-route] approve could not read ${store}: ${e}`); return refuse("cannot read the approval file"); } }
+  for (const line of prior.split("\n")) {
+    let row: any; try { row = JSON.parse(line); } catch { continue; }
+    if (row && row.pr === route.pr && row.head === sha && row.stage === "review" && row.message_id != null) return say(`PR ${route.pr} at ${sha.slice(0, 7)} is already approved (message ${row.message_id}); nothing new stored.`);
+  }
+  const row = { v: 1, ts: new Date().toISOString(), host: hostname(), source: "telegram-approve", kind: "approval", pr: route.pr, head: sha, stage: "review", from: msg.from, chat: msg.chat_id, message_id: msg.message_id };
+  try {
+    await mkdir(dirname(store), { recursive: true, mode: 0o700 });
+    const fh = await open(store, "a", 0o600);
+    try { await fh.write(JSON.stringify(row) + "\n"); } finally { await fh.close(); }
+  } catch (e) { console.error(`[chief-route] approve could not write ${store}: ${e}`); return refuse("the approval could not be written"); }
+  await say(`✅ approved PR ${route.pr} at ${sha.slice(0, 7)} (review stage); the review may now run at this exact head.`);
 }
 
 export async function routeToConsole(

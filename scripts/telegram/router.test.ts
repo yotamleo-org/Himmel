@@ -1,5 +1,16 @@
 import { expect, test } from "bun:test";
 import { classify } from "./router";
+
+test("classifies approve <pr> <hex> and routes a malformed line nowhere", () => {
+  expect(classify("approve 7 a1a1a1a")).toEqual({ kind: "approve", pr: 7, prefix: "a1a1a1a" });
+  expect(classify("  Approve #123 A1B2C3D4  ")).toEqual({ kind: "approve", pr: 123, prefix: "a1b2c3d4" });
+  expect(classify(`approve 7 ${"a".repeat(40)}`)).toEqual({ kind: "approve", pr: 7, prefix: "a".repeat(40) });
+  expect(classify("approve 7 abc")).toEqual({ kind: "approve", pr: 7, prefix: "abc" });
+  for (const t of ["approve", "approve 7", "approve seven a1a1a1a", "approve 7 zzzzzzz", "approve 0 a1a1a1a", "approve 1234567 a1a1a1a", `approve 7 ${"a".repeat(41)}`, "approve 7 a1a1a1a now", "approve 7\na1a1a1a x", "please approve 7 a1a1a1a", "approved 7 a1a1a1a", "/approve 7 a1a1a1a"]) {
+    expect(classify(t).kind, t).toBe("chat");
+  }
+});
+
 test("classifies control/dispatch/followup/chat + validates key", () => {
   expect(classify("status")).toEqual({ kind: "control", verb: "status" });
   expect(classify("stop HIMMEL-9")).toEqual({ kind: "control", verb: "stop", ticket: "HIMMEL-9" });
