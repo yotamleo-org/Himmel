@@ -359,7 +359,6 @@ globroot_reaches() {
         after=${s#*"$m"}
         rest=${after%%[[:space:];&|()<>]*}
         tail="${m#"${lead}himmel/"}$rest"
-        # shellcheck disable=SC2016  # literal characters, nothing expands
         case "$tail" in *[\$\`\{]* | *..*) return 0 ;; esac
         IFS=/ read -ra tc <<< "$tail"
         for c in "${tc[@]}"; do
@@ -374,7 +373,6 @@ globroot_reaches() {
             /*) p="$pre" ;;
             *) return 0 ;;
         esac
-        # shellcheck disable=SC2016  # literal characters, nothing expands
         case "$p" in *[\*\?\[\{\$\`]* | */..*) return 0 ;; esac
         d="${p}himmel"
         [ -d "$d" ] || return 0
