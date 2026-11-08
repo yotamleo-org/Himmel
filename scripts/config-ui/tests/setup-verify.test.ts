@@ -157,9 +157,10 @@ test("only a same-origin POST runs it", async () => {
   expect((await verify("POST", "http://evil.example")).status).toBe(403);
 });
 
-test("the page keeps nothing in browser storage", () => {
+test("the page keeps nothing in browser storage but the tab's own Fleet token", () => {
   for (const f of ["setup.js", "app.js"]) {
     const src = readFileSync(join(import.meta.dir, "..", "public", f), "utf8");
-    expect([f, /\b(localStorage|sessionStorage|indexedDB|document\.cookie)\b/.test(src.replace(/\/\/.*$/gm, ""))]).toEqual([f, false]);
+    const bare = src.replace(/\/\/.*$/gm, "").replace(/sessionStorage\.(get|set)Item\(TAB_KEY\b/g, ""); // the one per-tab key app.js owns
+    expect([f, /\b(localStorage|sessionStorage|indexedDB|document\.cookie)\b/.test(bare)]).toEqual([f, false]);
   }
 });
