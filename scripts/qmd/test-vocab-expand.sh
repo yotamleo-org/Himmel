@@ -19,47 +19,47 @@ argv() { python3 -I "$VX" argv "$@" | tr '\0' '|'; }
 
 # V1: a new-vocabulary question also asks it in the old one; query keeps the question as vec.
 got="$(doc query "how does the chief start a worker")"
-want="lex: how does the chief start a worker${nl}lex: how does the console start a leg${nl}vec: how does the chief start a worker"
+want="lex: chief start worker${nl}lex: console start leg${nl}vec: how does the chief start a worker"
 if [ "$got" = "$want" ]; then pass "V1 new terms gain an old-vocabulary lex line"
 else fail "V1 got='$got'"; fi
 
 # V2: search is lex-only: no vec line.
 got="$(doc search "how does a leg report a blocker to the console")"
-want="lex: how does a leg report a blocker to the console${nl}lex: how does a worker report a blocker to the chief"
+want="lex: leg report blocker console${nl}lex: worker report blocker chief"
 if [ "$got" = "$want" ]; then pass "V2 search document has lex lines only"
 else fail "V2 got='$got'"; fi
 
 # V3: a question mixing both vocabularies is asked wholly in each, plurals and capitals kept.
 got="$(doc search "Legs and chiefs")"
-want="lex: Legs and chiefs${nl}lex: Workers and chiefs${nl}lex: Legs and consoles"
+want="lex: Legs chiefs${nl}lex: Workers chiefs${nl}lex: Legs consoles"
 if [ "$got" = "$want" ]; then pass "V3 mixed question gives one line per direction"
 else fail "V3 got='$got'"; fi
 
 # V4: a question naming no registry word passes through unchanged.
-got="$(doc query "how long does the prompt cache keep a prefix warm")"
-if [ "$got" = "how long does the prompt cache keep a prefix warm" ]; then pass "V4 no registry word, unchanged"
+got="$(doc query "prompt cache prefix warm")"
+if [ "$got" = "prompt cache prefix warm" ]; then pass "V4 no registry word, unchanged"
 else fail "V4 got='$got'"; fi
 
 # V5: a question that already is a query document, or a lex line would reject, passes through.
-got="$(doc query "lex: console worker")|$(doc search 'the "chief worker')|$(doc query "chief -worker")"
-if [ "$got" = 'lex: console worker|the "chief worker|chief -worker' ]; then pass "V5 document, odd quote and negation unchanged"
+got="$(doc query "lex: console worker")|$(doc search 'the "chief worker')"
+if [ "$got" = 'lex: console worker|the "chief worker' ]; then pass "V5 document and odd quote unchanged"
 else fail "V5 got='$got'"; fi
 
 # V6: a phrase already in the new vocabulary is not grown ("parallel wave" never "parallel parallel wave").
 got="$(doc search "who starts a parallel wave")"
-want="lex: who starts a parallel wave${nl}lex: who starts a wave"
+want="lex: starts parallel wave${nl}lex: starts wave"
 if [ "$got" = "$want" ]; then pass "V6 new phrase kept, old phrase added"
 else fail "V6 got='$got'"; fi
 
 # V7: an expanded search runs as query with --no-rerank, its flags and their values kept in order.
 got="$(argv search -c himmel --files -n 5 "how does a worker report a blocker")"
-want="query|-c|himmel|--files|-n|5|--no-rerank|--|lex: how does a worker report a blocker${nl}lex: how does a leg report a blocker|"
+want="query|-c|himmel|--files|-n|5|--no-rerank|--|lex: worker report blocker${nl}lex: leg report blocker|"
 if [ "$got" = "$want" ]; then pass "V7 expanded search becomes a lex-only query without rerank"
 else fail "V7 got='$got'"; fi
 
 # V8: a question with no registry word, a flag value naming one, and any other verb keep their argv.
-got="$(argv search -n5 --min-score 0.3 "the prompt cache")$(argv get -c console leg.md)$(argv query --intent "the chief" "prompt cache")"
-want="search|-n5|--min-score|0.3|the prompt cache|get|-c|console|leg.md|query|--intent|the chief|prompt cache|"
+got="$(argv search -n5 --min-score 0.3 "prompt cache")$(argv get -c console leg.md)$(argv query --intent "the chief" "prompt cache")"
+want="search|-n5|--min-score|0.3|prompt cache|get|-c|console|leg.md|query|--intent|the chief|prompt cache|"
 if [ "$got" = "$want" ]; then pass "V8 unexpanded argv unchanged"
 else fail "V8 got='$got'"; fi
 
@@ -79,6 +79,23 @@ if command -v bun >/dev/null 2>&1; then
 else
   echo "  skip: V10 vocabulary golden set (bun not on PATH)"
 fi
+
+# V11: the lexical leg drops filler words, so a keyword AND no longer needs "how does the".
+got="$(doc search "how does the waiter wake the chief")"
+want="lex: waiter wake chief${nl}lex: waiter wake console"
+if [ "$got" = "$want" ]; then pass "V11 lex line drops filler words"
+else fail "V11 got='$got'"; fi
+
+# V12: the vector leg drops a leading dash word (qmd rejects a vec query holding one); the lex line keeps it.
+got="$(doc query "claude -p mode")"
+want="lex: claude -p mode${nl}vec: claude mode"
+if [ "$got" = "$want" ]; then pass "V12 vec line drops -p, lex line keeps it"
+else fail "V12 got='$got'"; fi
+
+# V13: a quoted phrase keeps its filler words; a question of only filler words stays whole.
+got="$(doc search 'what is "the end" mode')|$(doc search "how does the")"
+if [ "$got" = 'lex: "the end" mode|how does the' ]; then pass "V13 quoted phrase kept, all-filler question whole"
+else fail "V13 got='$got'"; fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

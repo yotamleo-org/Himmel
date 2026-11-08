@@ -275,6 +275,24 @@ for error in (RuntimeError("backend unavailable " * 10), TimeoutError("timed out
     rows.append(m.arm_qmd("fixture", True, 1, 5, "himmel"))
 print(rows[0][2:] == (False, True, "backend unavailable " * 5) and rows[1][2:] == (True, False, "timed out"))' "$EV")"
 
+# 8c2. each qmd leg is shaped before it is sent: the lex leg drops filler words, the vec leg drops a
+# leading dash word (qmd rejects a vec query holding one); the intent keeps the whole question.
+cat > "$W/qmd-rec" <<'EOF'
+#!/usr/bin/env bash
+cat > "$(dirname "$0")/sent.json"
+echo '[]'
+EOF
+chmod +x "$W/qmd-rec"
+RETRIEVAL_EVAL_QMD_CMD="$W/qmd-rec" py -c 'import importlib.util,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+m.arm_qmd("how does the waiter wake the chief -p", True, 5, 5, "himmel")' "$EV"
+sent() { py -c 'import json,sys
+a = json.load(open(sys.argv[1]))
+print(a["intent"] if sys.argv[2] == "intent" else [s["query"] for s in a["searches"] if s["type"] == sys.argv[2]][0])' "$W/sent.json" "$1"; }
+eq "lex leg drops filler words and keeps -p" "waiter wake chief -p" "$(sent lex)"
+eq "vec leg drops the leading dash word" "how does the waiter wake the chief" "$(sent vec)"
+eq "intent keeps the whole question" "how does the waiter wake the chief -p" "$(sent intent)"
+
 # 8d. grep never returns the tracked question set.
 eq "grep skips the question set" "0" "$(grep -c 'retrieval-eval/questions' "$W/out/results.jsonl")"
 eq "no arm returns a plugin bundle or a minified file" "0" "$(grep -cE '\.obsidian/plugins/|\.min\.js' "$W/out/results.jsonl")"

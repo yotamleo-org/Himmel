@@ -9,9 +9,10 @@ document that asks it in both:
   doc query|search <question>
       Prints the query document: "lex: <question>", one "lex:" line per vocabulary swap
       (every old word to its new one, every new word to its old one) and, for query, a
-      "vec: <question>" line. Prints the question unchanged when it names no registry word,
-      is already a query document, or holds what a lex/vec line rejects (an odd number of
-      double quotes, a -negation for query).
+      "vec: <question>" line. Each leg is shaped first: the lex lines drop filler words
+      (shape_lex) and the vec line drops a leading dash word (shape_vec), which qmd rejects
+      in a vec query. Prints the question unchanged when no leg changes, it is already a
+      query document, or it holds what a lex line rejects (an odd number of double quotes).
 
   argv <verb> <arg>...
       Prints the qmd argv, NUL-separated: the question (every positional) replaced by the
@@ -37,6 +38,27 @@ STRING_OPTS = {
 }
 SHORT_STRING = set("cCnl")
 NEGATION = re.compile(r'(^|\s)-[\w"]')
+# Question words a keyword AND cannot satisfy: a lex query joins every term, so "how does the" must
+# all appear in a doc. ponytail: one fixed English list, no per-corpus tuning; grow it from a miss.
+STOPWORDS = frozenset(
+    "a an the is are was were be been being do does did how what why when where who whom whose which "
+    "of to in on at for from by with about into and or it its this that these those can could should "
+    "would will there here as if than then i we you they he she me my our your their".split()
+)
+
+
+def shape_lex(question):
+    """question for a lex leg: filler words dropped, "quoted phrases" and every other token kept.
+    A question of only filler words stays whole."""
+    toks = re.findall(r'"[^"]*"|\S+', question)
+    keep = [t for t in toks if t.startswith('"') or t.strip("?,.;:!()").lower() not in STOPWORDS]
+    return " ".join(keep) if keep else question
+
+
+def shape_vec(question):
+    """question for a vec leg: a leading dash word dropped (qmd rejects the whole vec query holding
+    one, see validateSemanticQuery); "" when nothing is left."""
+    return " ".join(t for t in question.split() if not NEGATION.match(t))
 
 
 def rows(path=REGISTRY):
@@ -110,18 +132,20 @@ def document(verb, question, prs=None):
     """The query document for question, or question itself when it does not expand."""
     if "\n" in question or question.lstrip().lower().startswith(PREFIXES):
         return question
-    if question.count('"') % 2 or (verb == "query" and NEGATION.search(question)):
+    if question.count('"') % 2:
         return question
-    lines = [question]
+    lex = shape_lex(question)
+    lines = [lex]
     for direction in ("to-new", "to-old"):
-        alt = swap(question, direction, prs)
+        alt = swap(lex, direction, prs)
         if alt not in lines:
             lines.append(alt)
-    if len(lines) == 1:
+    vec = shape_vec(question) if verb == "query" else question
+    if lines == [question] and vec == question:
         return question
     doc = [f"lex: {line}" for line in lines]
-    if verb == "query":
-        doc.append(f"vec: {question}")
+    if verb == "query" and vec:
+        doc.append(f"vec: {vec}")
     return "\n".join(doc)
 
 
