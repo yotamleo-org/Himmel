@@ -6,7 +6,7 @@
 // the page shows both as absent, with the reason, never as a count.
 import { execFile, execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { runChild } from "./lock";
 import { readRoadmap } from "./roadmap";
 import { jiraMirrorDir } from "./tracker-sources";
@@ -175,7 +175,12 @@ function mdSection(text: string, heading: string): string[] | undefined {
 const readText = (p: string) => readFileSync(p, "utf8");
 const utf8 = (p: string) => new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(p)); // throws on bytes that are not UTF-8
 // A record and a file name one spec through any symlink or `..`, with or without one trailing `.md`.
-const specId = (p: string) => { let r: string; try { r = realpathSync(p); } catch { r = resolve(p); } return r.replace(/\.md$/, ""); };
+// A file that is not there still resolves through a symlinked folder, as Python's realpath does.
+const specId = (p: string) => {
+  let r: string;
+  try { r = realpathSync(p); } catch { try { r = join(realpathSync(dirname(p)), basename(p)); } catch { r = resolve(p); } }
+  return r.replace(/\.md$/, "");
+};
 // `skipped` takes the critic files of single specs that could not be read: the rest of the list still stands.
 function specItems(bucket: string, version: string, open: Map<string, string>, skipped: string[]): OwedItem[] {
   const signed = new Set<string>();

@@ -2,7 +2,7 @@
 // render, no republish); the page draws the kanban by version and theme, the release panels and the drift trend, the
 // worker -> Jira sync plan the chief kit writes, and the librarian's ready-to-approve lists. Read-only throughout.
 import { test, expect, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { legSync, readRoadmap, SYNC_LABEL } from "../roadmap";
@@ -1661,8 +1661,9 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   critic("HIMMEL-7-capped", 3, "SPEC FINDINGS 1");                // past the round cap: owed
   critic("HIMMEL-3-shipped.md", 1, "SPEC CLEAN");                 // its ticket is Done
   critic("HIMMEL-5-signed-bare", 1, "SPEC CLEAN");                // signed below by the name with no .md
-  // the first spec is signed by a path that reaches the file through a `..`, the second by the spec name with no .md: both read as signed
-  writeFileSync(join(rel, "operator.jsonl"), `${JSON.stringify({ kind: "spec", keys: [K(2)], spec_path: `${designs}/../designs/HIMMEL-2-signed.md` })}\nnot json\n${JSON.stringify({ kind: "spec", spec_path: join(designs, "HIMMEL-5-signed-bare") })}\n`);
+  // the first spec is signed by a path that reaches the file through a `..`, the second by the spec name with no .md through a symlinked folder: both read as signed
+  symlinkSync(designs, join(bucket, "designs-link"));
+  writeFileSync(join(rel, "operator.jsonl"), `${JSON.stringify({ kind: "spec", keys: [K(2)], spec_path: `${designs}/../designs/HIMMEL-2-signed.md` })}\nnot json\n${JSON.stringify({ kind: "spec", spec_path: join(bucket, "designs-link", "HIMMEL-5-signed-bare") })}\n`);
   writeFileSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief.md"),
     "# VE\n\n## Live state\n\nworkers: x\nqueue: HIMMEL-5 merge waits for operator sign-off | HIMMEL-9 runs by itself || was: HIMMEL-7 waited for operator sign-off\npool-disposition: HIMMEL-4 parked until the operator words arrive\n\n## Current direction\n");
   writeFileSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief-HANDOFF.md"), "# h\n\n## Open operator items\n\n- 9271: run the apply at the station\n- none\n\n## Next\n");
