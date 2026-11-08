@@ -1071,6 +1071,16 @@ printf 'garbage\n' > "$SP3/.git"
 out=$(TMPDIR="$SP3" main_checkout_verdict "$SP3/claude-$SPU/p/s/scratchpad/x.py"); rc=$?
 if [ "$rc" -ne 0 ]; then pass "main_checkout_verdict: a garbage gitfile at a temp root inside a checkout is not exempt -> rc=$rc"; else fail "main_checkout_verdict: garbage gitfile temp root in a checkout -> expected a refusal got rc=0 out=[$out]"; fi
 rm -rf "$SP3"
+SP6="$FIX/sp6"; mkdir -p "$SP6/.git" "$SP6/claude-$SPU/p/s/scratchpad"
+printf '%s\n' "$MV_MAIN_C/.git" > "$SP6/commondir"
+ln -s refs/heads/main "$SP6/HEAD"
+SP6_C=$(cd "$SP6" && pwd -P)
+out=$(TMPDIR="$SP6" main_checkout_verdict "$SP6_C/claude-$SPU/p/s/scratchpad/x.py"); rc=$?
+if [ "$rc" -eq 3 ]; then pass "main_checkout_verdict: a temp root that is a git dir with a commondir and a symlinked HEAD is not exempt -> rc=3"; else fail "main_checkout_verdict: bare-style temp root -> expected rc=3 got rc=$rc out=[$out]"; fi
+SP7="$MV_MAIN_C/.sp7"; mkdir -p "$SP7/.git" "$SP7/claude-$SPU/p/s/scratchpad"
+out=$(GIT_CEILING_DIRECTORIES="$MV_MAIN_C" TMPDIR="$SP7" main_checkout_verdict "$SP7/claude-$SPU/p/s/scratchpad/x.py"); rc=$?
+if [ "$rc" -eq 3 ]; then pass "main_checkout_verdict: an empty temp-root .git in a checkout is not exempt when git stops at a ceiling directory -> rc=3"; else fail "main_checkout_verdict: ceiling fixture -> expected rc=3 got rc=$rc out=[$out]"; fi
+rm -rf "$SP7"
 SP5="$FIX/sp5"; mkdir -p "$SP5/claude-$SPU/p/s/scratchpad/.git"
 SP5_C=$(cd "$SP5" && pwd -P)
 out=$(TMPDIR="$SP5" main_checkout_verdict "$SP5_C/claude-$SPU/p/s/scratchpad/x.py"); rc=$?

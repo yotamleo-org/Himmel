@@ -260,6 +260,14 @@ assert_rc "T3e a garbage gitfile at a temp root inside a checkout on main blocks
 mkdir -p "$SANDBOX/mainrepo/tmph/.git"
 assert_rc "T3e an empty .git at a temp root inside a checkout on main blocks" 2 \
     "$(rc_of "$SANDBOX/mainrepo/tmph/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SANDBOX/mainrepo/tmph")"
+assert_rc "T3e an empty .git at a temp root inside a checkout on main blocks when git stops at a ceiling directory" 2 \
+    "$(rc_of "$SANDBOX/mainrepo/tmph/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SANDBOX/mainrepo/tmph" GIT_CEILING_DIRECTORIES="$SANDBOX/mainrepo")"
+SBB9626=$(mktemp -d "${TMPDIR:-/tmp}/t3g.XXXXXX") || exit 1
+mkdir -p "$SBB9626/claude-$(id -u)/proj/sess/scratchpad" "$SBB9626/.git"
+printf '%s\n' "$SANDBOX/mainrepo/.git" > "$SBB9626/commondir"
+ln -s refs/heads/main "$SBB9626/HEAD"
+assert_rc "T3e a temp root that is a git dir with a commondir into a primary and a symlinked HEAD blocks" 2 \
+    "$(rc_of "$SBB9626/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SBB9626")"
 t3eerr=$(printf '%s' "{\"tool_input\":{\"file_path\":\"$SB9626/other/x.py\"}}" | env TMPDIR="$SB9626" bash "$HOOK" 2>&1 >/dev/null)
 case "$t3eerr" in
     *"$SB9626/.git"*) echo "PASS T3e the rc 3 message names the .git it found" ;;
@@ -724,7 +732,7 @@ assert_rc "T50 Write .single-writer (untracked+gitignored) on main blocks (HIMME
 # Clean up the worktree registration before removing the sandbox (avoids a
 # dangling `git worktree` admin record under SANDBOX/wtrepo).
 git -C "$SANDBOX/wtrepo" worktree remove --force "$SANDBOX/wtrepo/.claude/worktrees/feat+x" 2>/dev/null || true
-rm -rf "$SANDBOX" "$SB9626" "$SBA9626" 2>/dev/null || true
+rm -rf "$SANDBOX" "$SB9626" "$SBA9626" "$SBB9626" 2>/dev/null || true
 
 if [ "$FAILED" -gt 0 ]; then
     echo "---"
