@@ -123,8 +123,7 @@ mutate falsyat 'd["attack"]=0';                           refuse "a falsy non-li
 mutate longqid 'd["qid"]="j2599a_"+"a"*42';                refuse "a 49-char qid is refused" longqid "qid"
 mutate badtk 'd["tickets"]=["not-a-key"]';                refuse "a malformed ticket key is refused" badtk "ticket"
 
-# delta_class is what delta-class.sh printed for the push; it picks the model and the marker.
-gen_ok() { # <name> <out var> : generate from $WORK/<name>.json; sets $gen_out, $gen_rc, $gen_doc (the brief text)
+gen_ok() {
     rm -rf "$BUCKET"
     gen_out="$(python3 "$SUT" "$WORK/$1.json" --chief "$CHIEF" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" 2>"$WORK/$1.err")"; gen_rc=$?
     gen_doc="$(cat "$BUCKET"/*-judge-j2599a-*.md 2>/dev/null)"

@@ -184,7 +184,6 @@ def render(s, a, template):
         die('template drift: expected one paragraph starting %r, found %d' % ('> **You are the judge for', len(judge_at)))
     judge_para = paras[judge_at[0]].replace('<model>', model)
     if s.get('delta_class') == 'finding':
-        # the guard allows Sonnet only on a line of its own, `DELTA-JUDGE: <head>`
         judge_para += '\n\nDELTA-JUDGE: %s' % s['head']
         tier_line = '> **Tier:** sonnet — delta re-judge: delta-class.sh printed finding for this push, so it runs on Sonnet'
     else:
