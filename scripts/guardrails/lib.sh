@@ -1188,12 +1188,9 @@ EOF
     return 0
 }
 
-# _in_session_scratchpad FILE — true when FILE (canonical) is a session scratchpad
-# of this uid (any project, any session) or lies under it: <tmp>/claude-<uid>/<project>/<session>/scratchpad
-# with <tmp> = $TMPDIR or /tmp. The scratchpad directory lands in _SCRATCHPAD_ROOT.
 _SCRATCHPAD_ROOT=""
 _SCRATCHPAD_BASE=""
-_in_session_scratchpad() {
+_in_uid_scratchpad_set() {
     local file="$1" uid base rest proj sess
     _SCRATCHPAD_ROOT=""
     _SCRATCHPAD_BASE=""
@@ -1222,7 +1219,7 @@ _in_session_scratchpad() {
 
 _stray_git_above_scratchpad() {
     local file="$1" repo="$2"
-    _in_session_scratchpad "$file" || return 1
+    _in_uid_scratchpad_set "$file" || return 1
     [ "$repo" != "$_SCRATCHPAD_ROOT" ] || return 1
     case "$_SCRATCHPAD_ROOT/" in "$repo/"*) ;; *) return 1 ;; esac
     case "$repo/" in "$_SCRATCHPAD_BASE/"*) return 0 ;; esac
