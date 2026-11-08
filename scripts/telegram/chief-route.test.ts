@@ -1,5 +1,5 @@
 import { expect, test, spyOn } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync, statSync, cpSync } from "node:fs";   // readdirSync and chmodSync come from the import further down
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import { classify } from "./router";
@@ -528,6 +528,196 @@ test("reply CLI: the old --console is refused even with HIMMEL_LEGACY_NAMES=1; o
   expect(old.code).toBe(1);
   expect(old.line).toBeNull();
   expect(old.err).toContain("usage: bun chief-route.ts reply");
+});
+
+// ---- The router (message kinds, the class table, the plain-words rule). Every call runs the real CLI with a sandbox BRIDGE_ROOT and a sandbox HOME.
+const TABLE = join(import.meta.dir, "message-classes.json");
+const FIX = join(import.meta.dir, "fixtures");
+const FIX_MIRROR = join(FIX, "jira-mirror", "HIMMEL");
+const CLI = join(import.meta.dir, "chief-route.ts");
+const DO_STEP = " Do: ask a reviewer for the one approval GitHub still wants";
+type Ran = { code: number; out: string; err: string; r: string; home: string };
+async function route(args: string[], o: { r?: string; env?: Record<string, string>; table?: string; access?: object } = {}): Promise<Ran> {
+  const r = o.r ?? root(); const home = mkdtempSync(join(tmpdir(), "chief-route-home-"));
+  const access = join(home, "access.json"); writeFileSync(access, JSON.stringify(o.access ?? { allowFrom: ["7"] }));
+  const p = Bun.spawn(["bun", CLI, "reply", ...args], {
+    env: { ...process.env, BRIDGE_ROOT: r, HOME: home, HIMMEL_TEST_FIXTURE: "1", HIMMEL_JIRA_MIRROR: FIX_MIRROR, HIMMEL_MESSAGE_CLASSES: o.table ?? TABLE, TELEGRAM_ACCESS_PATH: access, ...o.env },
+    stdout: "pipe", stderr: "pipe",
+  });
+  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  return { code: await p.exited, out, err, r, home };
+}
+const lines = (f: string): string[] => (existsSync(f) ? readFileSync(f, "utf8").split("\n").filter(Boolean) : []);
+const operatorOutbox = (r: string): { text: string; console?: string }[] => lines(join(r, "sessions", "__chat__", "outbox.jsonl")).map((l) => JSON.parse(l));
+const spool = (r: string): { text: string; kind: string; at: string }[] => lines(join(r, "monitor", "outbox.jsonl")).map((l) => JSON.parse(l));
+const routeLog = (r: string): string[] => lines(join(r, "route.log"));
+const filler = (n: number) => "blocked word ".repeat(Math.ceil(n / 13)).slice(0, n);
+const longMerge = (total: number) => `Merge refused. Blocks: ${filler(total - 23 - DO_STEP.length)}${DO_STEP}`;
+// the plain-words check of spec I3 on one queued text: no bare worker label, no bare owner/repo#n, every ticket key with a summary
+function plainWords(text: string): void {
+  expect(text).not.toMatch(/(?<!worker )(?<![A-Za-z0-9-])N[0-9]+[a-z]*(?![A-Za-z0-9])/i);
+  expect(text).not.toMatch(/(^|[ (])[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#[0-9]+/);
+  for (const key of new Set(text.match(/HIMMEL-[0-9]+(?![0-9-])/g) ?? [])) expect(text.includes(`${key} (`) || text.includes(`${key}: `)).toBe(true);
+}
+
+test("R1.1 a worker-silent kind queues nothing for the operator, prints silent and exits 0", async () => {
+  const x = await route(["--kind", "worker-silent", "operator", "WORKER-SILENT N4992b signal=succession-partial"]);
+  expect(x.code).toBe(0);
+  expect(x.out.trim()).toBe("silent");
+  expect(operatorOutbox(x.r)).toEqual([]);
+  expect(spool(x.r)).toEqual([]);
+});
+
+test("R1.2 an unknown kind, a malformed kind, an unknown cadence worker and an unreadable table each land in the operator outbox uncapped", async () => {
+  const text = `Something happened. Blocks: nothing. ${filler(900)}${DO_STEP}`;
+  const cases: [string[], string | undefined][] = [
+    [["--kind", "no-such-kind"], undefined], [["--kind", "Bad Kind"], undefined], [["--kind", "cadence:new-thing"], undefined],
+    [["--kind", "merge-blocked"], join(tmpdir(), "chief-route-no-such-table.json")], [[], undefined],
+  ];
+  for (const [flags, table] of cases) {
+    const x = await route([...flags, "operator", text], { table });
+    expect(x.code).toBe(0);
+    expect(x.out.trim()).toBe("escalate");
+    expect(operatorOutbox(x.r).map((m) => m.text)).toEqual([text]);
+    expect(spool(x.r)).toEqual([]);
+  }
+});
+
+test("R1.4 replay 11-07: the operator gets the 4 controls, the spool the 4 monitor lines, the 5 silent lines nothing", async () => {
+  const replay = readFileSync(join(FIX, "replay-11-07.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as { time: string; kind?: string; expect: string; text: string });
+  expect(replay).toHaveLength(13);
+  const after = JSON.parse(readFileSync(TABLE, "utf8"));
+  for (const row of after.kinds) { if (row.kind === "hold-ask-chief") row.class = "silent"; if (row.kind === "denial-page") row.class = "monitor"; }
+  const dir = mkdtempSync(join(tmpdir(), "chief-route-table-")); const afterS4 = join(dir, "after-s4.json"); writeFileSync(afterS4, JSON.stringify(after));
+  const r = root();
+  for (const l of replay) {
+    const x = await route([...(l.kind ? ["--kind", l.kind] : []), "operator", l.text], { r, table: afterS4 });
+    expect(x.code).toBe(0);
+    expect(x.out.trim()).toBe(l.expect);
+  }
+  const queued = operatorOutbox(r).map((m) => m.text);
+  expect(queued).toHaveLength(4);
+  expect(spool(r)).toHaveLength(4);
+  expect(spool(r).map((m) => m.kind)).toEqual(["cadence:vault-stall", "cadence:vm-maintain-login-himmel-claudex", "cache-health", "denial-page"]);
+  for (const t of [...queued, ...spool(r).map((m) => m.text)]) plainWords(t);
+  expect(routeLog(r)).toHaveLength(13);
+  // with the S1 table the 03:54 ask and the 04:41 denial still reach the operator (spec section 5)
+  const s1 = root();
+  for (const l of replay) await route([...(l.kind ? ["--kind", l.kind] : []), "operator", l.text], { r: s1 });
+  expect(operatorOutbox(s1)).toHaveLength(6);
+  expect(spool(s1)).toHaveLength(3);
+});
+
+test("R1.5 the cap: 900 characters of merge-blocked come out at 400 or fewer with the Do: step whole; a long Do: step and chief-reply go uncut", async () => {
+  const text = longMerge(900);
+  const x = await route(["--kind", "merge-blocked", "operator", text]);
+  const sent = operatorOutbox(x.r)[0].text;
+  expect(sent.length).toBeLessThanOrEqual(400);
+  expect(sent.endsWith(DO_STEP)).toBe(true);
+  const cutDir = join(x.r, "route-cut");
+  const files = readdirSync(cutDir);
+  expect(files).toHaveLength(1);
+  expect(readFileSync(join(cutDir, files[0]), "utf8")).toBe(text);
+  expect(sent).toContain(`full text on the station: ${join(cutDir, files[0])}`);
+  expect(routeLog(x.r)[0].endsWith(" cut")).toBe(true);
+
+  const bigDo = `Merge refused. Blocks: the merge. Do: ${"x".repeat(450)}`;
+  const y = await route(["--kind", "merge-blocked", "operator", bigDo]);
+  expect(operatorOutbox(y.r).map((m) => m.text)).toEqual([bigDo]);
+  expect(routeLog(y.r)[0].endsWith(" over-cap-uncut")).toBe(true);
+  expect(existsSync(join(y.r, "route-cut"))).toBe(false);
+
+  const reply = filler(900);
+  const z = await route(["--kind", "chief-reply", "operator", reply]);
+  expect(operatorOutbox(z.r).map((m) => m.text)).toEqual([reply]);
+});
+
+test("R1.6 one route-log line per call for each class, written after the append, with no message text in it", async () => {
+  const r = root();
+  for (const [kind, cls] of [["merge-blocked", "escalate"], ["cadence:vault-stall", "monitor"], ["worker-silent", "silent"]]) {
+    const before = routeLog(r).length;
+    const x = await route(["--kind", kind, "operator", `ZEBRA-MARKER is the text. Blocks: nothing. Do: read it`], { r });
+    expect(x.code).toBe(0);
+    const log = routeLog(r);
+    expect(log).toHaveLength(before + 1);
+    const f = log[log.length - 1].split(" ");
+    expect(f).toHaveLength(7);
+    expect(f[1]).toBe(kind); expect(f[2]).toBe(cls);
+    expect(log.join("\n")).not.toContain("ZEBRA");
+  }
+  const outbox = statSync(join(r, "sessions", "__chat__", "outbox.jsonl"), { bigint: true }).mtimeNs;
+  expect(statSync(join(r, "route.log"), { bigint: true }).mtimeNs >= outbox).toBe(true);
+});
+
+test("R1.7 monitor and silent kinds create nothing under sessions/", async () => {
+  const r = root();
+  await route(["--kind", "cadence:vault-stall", "operator", "stalled. Blocks: nothing. Do: read the log"], { r });
+  await route(["--kind", "worker-silent", "operator", "quiet"], { r });
+  expect(existsSync(join(r, "sessions"))).toBe(false);
+  expect(spool(r)).toHaveLength(1);
+});
+
+test("R1.9 a monitor kind whose text names salus lands in the operator outbox and not in the spool", async () => {
+  const x = await route(["--kind", "cadence:vault-stall", "operator", "SALUS vault stalled. Blocks: nothing. Do: read the log"]);
+  expect(x.out.trim()).toBe("escalate");
+  expect(operatorOutbox(x.r)).toHaveLength(1);
+  expect(spool(x.r)).toEqual([]);
+});
+
+test("R1.10 --chief X --kind Y and --kind Y --satellite Z both parse; operator resolves through the fixture access.json; no operator exits 1", async () => {
+  const a = await route(["--chief", NAME, "--kind", "merge-blocked", "operator", "Merge refused. Blocks: x. Do: y"]);
+  expect(a.code).toBe(0);
+  expect(operatorOutbox(a.r)).toEqual([{ text: "Merge refused. Blocks: x. Do: y", console: NAME }]);
+  const b = await route(["--kind", "merge-blocked", "--satellite", "assist_satellite.kitchen", "operator", "Merge refused. Blocks: x. Do: y"], { env: { HA_URL: "", HA_TOKEN: "" } });
+  expect(b.err).not.toContain("usage:");
+  expect(b.err).toContain("could not speak");
+  expect(operatorOutbox(b.r)).toHaveLength(1);
+  const c = await route(["--kind", "merge-blocked", "operator", "x"], { access: { allowFrom: [] } });
+  expect(c.code).toBe(1);
+  expect(c.err).toContain("usage: bun chief-route.ts reply");
+  expect(operatorOutbox(c.r)).toEqual([]);
+  const d = await route(["--kind", "merge-blocked", "7", "Merge refused. Blocks: x. Do: y"]);
+  expect(d.code).toBe(0);
+  expect(operatorOutbox(d.r)).toHaveLength(1);
+});
+
+test("R1.11 an internal error puts the raw uncut text in the operator outbox, prints escalate and exits 0", async () => {
+  const text = longMerge(900);
+  // 1. a mirror file that cannot be read
+  if (process.getuid?.() !== 0) {
+    const mirror = mkdtempSync(join(tmpdir(), "chief-route-mirror-")); cpSync(FIX_MIRROR, join(mirror, "HIMMEL"), { recursive: true });
+    chmodSync(join(mirror, "HIMMEL", "HIMMEL-9012.md"), 0);
+    const raw = "A worker on HIMMEL-9012 needs a file. Blocks: that worker. Do: run it";
+    const x = await route(["--kind", "merge-blocked", "operator", raw], { env: { HIMMEL_JIRA_MIRROR: join(mirror, "HIMMEL") } });
+    expect(x.code).toBe(0); expect(x.out.trim()).toBe("escalate");
+    expect(operatorOutbox(x.r).map((m) => m.text)).toEqual([raw]);
+    expect(routeLog(x.r)[0]).toContain(" escalate-fallback ");
+  }
+  // 2. an unwritable route-cut directory
+  const r2 = root(); writeFileSync(join(r2, "route-cut"), "a file, so mkdir fails");
+  const y = await route(["--kind", "merge-blocked", "operator", text], { r: r2 });
+  expect(y.code).toBe(0); expect(y.out.trim()).toBe("escalate");
+  expect(operatorOutbox(r2).map((m) => m.text)).toEqual([text]);
+  // 3. an unwritable spool directory
+  const r3 = root(); writeFileSync(join(r3, "monitor"), "a file, so mkdir fails");
+  const raw3 = "stalled. Blocks: nothing. Do: read the log";
+  const z = await route(["--kind", "cadence:vault-stall", "operator", raw3], { r: r3 });
+  expect(z.code).toBe(0); expect(z.out.trim()).toBe("escalate");
+  expect(operatorOutbox(r3).map((m) => m.text)).toEqual([raw3]);
+  // 4. an unwritable route log leaves the escalation queued
+  const r4 = root(); mkdirSync(join(r4, "route.log"));
+  const w = await route(["--kind", "merge-blocked", "operator", "Merge refused. Blocks: x. Do: y"], { r: r4 });
+  expect(w.code).toBe(0); expect(w.out.trim()).toBe("escalate");
+  expect(operatorOutbox(r4)).toHaveLength(1);
+  expect(w.err).toContain("route log");
+});
+
+test("R1.12 a CLI reply with a sandbox BRIDGE_ROOT and HOME writes route.log under the bridge root and no telegram-route anywhere under HOME", async () => {
+  const x = await route(["--kind", "merge-blocked", "operator", "Merge refused. Blocks: x. Do: y"]);
+  expect(existsSync(join(x.r, "route.log"))).toBe(true);
+  const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => [join(d, e.name), ...(e.isDirectory() ? walk(join(d, e.name)) : [])]);
+  expect(walk(x.home).filter((p) => p.includes("telegram-route"))).toEqual([]);
+  expect(walk(x.home).filter((p) => p.endsWith("route.log"))).toEqual([]);
 });
 
 // Every malformed reserved fleet shape is a terminal refusal.

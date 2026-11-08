@@ -1,0 +1,13 @@
+{"time":"03:15","kind":"cadence:vault-stall","expect":"monitor","text":"vault-stall: the vault auto-commit is still refused after the self-repair (end-of-file-fixer, rolled back). Blocks: the vault backup. Do: read the vault-stall log and run the repair by hand"}
+{"time":"03:47","kind":"cadence:vm-maintain-login-himmel-claudex","expect":"monitor","text":"vm-maintain-login-himmel-claudex: the claude login and the codex login on himmel-claudex expired. Blocks: nothing until a VM job needs them. Do: on himmel-claudex run the claude and the codex login, then re-run vm-maintain.sh"}
+{"time":"03:54","kind":"hold-ask-chief","expect":"silent","text":"A worker on HIMMEL-9012 wants scripts/cr/critic-panel.sh, held by HIMMEL-8992. Blocks: that worker. Do: in a real terminal, run: bash go.sh grant --key HIMMEL-9012 --path scripts/cr/critic-panel.sh"}
+{"time":"04:07","kind":"cache-health","expect":"monitor","text":"cache-health alert: 1 new. Worker session HIMMEL-9480-N4998-a1 has an 86.1% cache hit rate. Blocks: nothing. Do: read the cache-health log"}
+{"time":"04:14","kind":"worker-silent","expect":"silent","text":"WORKER-SILENT N4992b signal=succession-partial: no activity for 20 minutes"}
+{"time":"04:14","kind":"worker-silent","expect":"silent","text":"WORKER-SILENT N4992c signal=succession-partial: no activity for 20 minutes"}
+{"time":"04:14","kind":"worker-silent","expect":"silent","text":"WORKER-SILENT N4989b signal=succession-partial: no activity for 20 minutes"}
+{"time":"04:14","kind":"worker-silent","expect":"silent","text":"WORKER-SILENT N5004b signal=succession-partial: no activity for 20 minutes"}
+{"time":"04:41","kind":"denial-page","expect":"monitor","text":"Session 81843b5d of the himmel chief has 3 classifier denials (PAUSE-RISK). Blocks: that session. Do: open it in Remote Control and answer the prompt"}
+{"time":"control","kind":"merge-blocked","expect":"escalate","text":"Merge refused: PR 4882 in yotamleo-org/Himmel. Blocks: the merge after GO. Do: ask a reviewer for the one approval GitHub still wants"}
+{"time":"control","kind":"token-in-output","expect":"escalate","text":"A credential leaked: a GitHub token appeared in session 81843b5d. Blocks: nothing yet, it is in the transcript. Do: rotate the GitHub token"}
+{"time":"control","kind":"hold-ask-operator","expect":"escalate","text":"A worker on HIMMEL-9012 needs a settings or CI file: .github/workflows/ci.yml. Blocks: that worker. Do: in a real terminal, run: bash go.sh grant --key HIMMEL-9012 --path .github/workflows/ci.yml"}
+{"time":"control","expect":"escalate","text":"An unclassified message from a sender that passes no kind."}

@@ -1,8 +1,9 @@
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
-import { hostname } from "node:os";
+import { hostname, homedir } from "node:os";
+import { briefTextCounted, protectedRanges, DO_MARK } from "./key-brief";
 import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
-import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, realpath } from "node:fs/promises";
+import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, realpath, appendFile, writeFile } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
 import { BASH_BIN } from "./run";
@@ -818,6 +819,100 @@ export async function queueFile(root: string, chat: number, path: string, captio
   return send;
 }
 
+// ---- The router. Every `reply` names a kind; ONE table, message-classes.json, gives the kind a
+// class: escalate (the operator's chat), monitor (the monitoring spool) or silent (nothing). Fail-safe: a missing,
+// malformed or unknown kind, or an unreadable table, is an escalation, and an internal error sends the raw text.
+export type MsgClass = "escalate" | "monitor" | "silent";
+type ClassRow = { kind: string; class: MsgClass; cap?: number | "none"; "ref-word"?: string };
+type ClassTable = { cap: number; rows: ClassRow[] };
+const KIND_RE = /^[a-z0-9][a-zA-Z0-9:._-]{0,95}$/;
+const FAMILY_RE = /^cadence:[a-z0-9]+-[a-z0-9]+-/;   // a family row is `cadence:<word>-<word>-…*`, never shorter
+
+// The test knob is honoured under HIMMEL_TEST_FIXTURE=1 only, so a leaked variable cannot reclassify a kind.
+const classTablePath = () => (process.env.HIMMEL_TEST_FIXTURE === "1" && process.env.HIMMEL_MESSAGE_CLASSES) || join(import.meta.dir, "message-classes.json");
+const mirrorRoot = () => (process.env.HIMMEL_JIRA_MIRROR ? dirname(process.env.HIMMEL_JIRA_MIRROR) : join(homedir(), ".himmel", "state", "jira-mirror"));
+
+// null when the table cannot be read or is not a table: every kind is then unclassified.
+export async function loadClassTable(path = classTablePath()): Promise<ClassTable | null> {
+  try {
+    const t = JSON.parse(await readFile(path, "utf8"));
+    if (!t || !Array.isArray(t.kinds)) return null;
+    const rows = t.kinds.filter((r: ClassRow) => r && typeof r.kind === "string" && (r.class === "escalate" || r.class === "monitor" || r.class === "silent"));
+    return { cap: Number.isSafeInteger(t.cap) && t.cap > 0 ? t.cap : 400, rows };
+  } catch { return null; }
+}
+
+// An exact row wins over a family row. Anything else, a bad kind included, is unclassified (null).
+export function resolveKind(table: ClassTable | null, kind: string | undefined): ClassRow | null {
+  if (!table || kind === undefined || !KIND_RE.test(kind)) return null;
+  const exact = table.rows.find((r) => r.kind === kind);
+  if (exact) return exact;
+  return table.rows.find((r) => r.kind.endsWith("*") && r.kind.indexOf("*") === r.kind.length - 1 && FAMILY_RE.test(r.kind) && kind.startsWith(r.kind.slice(0, -1))) ?? null;
+}
+
+// Cut an over-cap text before its last ` Do: ` at a word boundary, never inside a backtick span or a `!` / `$ ` line;
+// the Do: step stays whole and the full text goes to <bridge root>/route-cut/. No cut point: the text goes uncut.
+async function capText(text: string, kind: string, cap: number, root: string): Promise<{ text: string; state: "ok" | "cut" | "over-cap-uncut" }> {
+  if (text.length <= cap) return { text, state: "ok" };
+  const uncut = { text, state: "over-cap-uncut" as const };
+  const doAt = text.lastIndexOf(DO_MARK);
+  if (doAt < 0) return uncut;
+  const pre = text.slice(0, doAt); const doSeg = text.slice(doAt);
+  const dir = join(root, "route-cut");
+  const file = join(dir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${kind.replace(/[^A-Za-z0-9_-]/g, "_")}.txt`);
+  const suffix = `... (full text on the station: ${file})`;
+  let i = Math.min(cap - suffix.length - doSeg.length, pre.length);
+  const spans = protectedRanges(pre);
+  for (;;) {
+    while (i > 0 && pre[i] !== " " && pre[i] !== "\n") i--;
+    if (i <= 0) return uncut;
+    const span = spans.find(([s, e]) => i > s && i < e);
+    if (!span) break;
+    i = span[0];
+  }
+  await mkdir(dir, { recursive: true });
+  await writeFile(file, text, { mode: 0o600, flag: "wx" });
+  return { text: `${pre.slice(0, i).trimEnd()}${suffix}${doSeg}`, state: "cut" };
+}
+
+// Queue, spool or silence one reply, then write its route-log line. Returns the class it took. Only a failed
+// replyViaOutbox throws (the CLI exits 1, as today); any other error sends the raw text to the operator.
+export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string }): Promise<MsgClass> {
+  const { replyViaOutbox } = await import("./poller");
+  const kind = o.kind !== undefined && KIND_RE.test(o.kind) ? o.kind : undefined;
+  let cls: MsgClass = "escalate"; let logClass: string = "escalate"; let sent = text; let capState = "ok"; let keys = 0;
+  try {
+    const table = await loadClassTable();
+    const row = resolveKind(table, kind);
+    cls = row?.class ?? "escalate";
+    if (cls !== "silent") {
+      const b = briefTextCounted(text, mirrorRoot(), row?.["ref-word"] ?? "PR");
+      sent = b.text; keys = b.keys;
+    }
+    // ponytail: a word match, upgrade path = run scripts/handover/chief-kit/salus_marked.py on every path the text names
+    if (cls === "monitor" && /salus/i.test(sent)) cls = "escalate";
+    if (cls === "escalate" && row && row.cap !== "none") {
+      const c = await capText(sent, kind!, table!.cap, root);
+      sent = c.text; capState = c.state;
+    }
+    if (cls === "monitor") {
+      await mkdir(join(root, "monitor"), { recursive: true });
+      await appendFile(join(root, "monitor", "outbox.jsonl"), `${JSON.stringify({ text: sent, kind, at: new Date().toISOString() })}\n`, { mode: 0o600 });
+    }
+    logClass = cls;
+  } catch (e) {
+    console.error(`[chief-route] routing failed, sending the raw text to the operator: ${e instanceof Error ? e.message : e}`);
+    cls = "escalate"; logClass = "escalate-fallback"; sent = text; capState = "ok";
+  }
+  if (cls === "escalate") await replyViaOutbox(root, chatId, sent, o.consoleName);
+  const dest = cls === "escalate" ? o.dest : cls === "monitor" ? "monitor" : "none";
+  try {
+    await mkdir(root, { recursive: true });
+    await appendFile(join(root, "route.log"), `${new Date().toISOString()} ${kind ?? "unclassified"} ${logClass} ${dest} ${sent.length} ${keys} ${capState}\n`);
+  } catch (e) { console.error(`[chief-route] route log not written: ${e instanceof Error ? e.message : e}`); }
+  return cls;
+}
+
 // CLI: `bun chief-route.ts send-file <chat_id> <path> [caption...]` queues a file (above).
 // CLI: `bun chief-route.ts reply [--chief <name>] [--satellite <entity_id>] <chat_id> <text...>`, the chief's reply
 // path. Appends to the same per-chat outbox every other bridge reply uses; the
@@ -837,19 +932,22 @@ if (import.meta.main) {
     try { await refuseRoundPastCap(args[0], args[1]); }
     catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1); }
   } else {
-    const name = args[0] === "--chief" ? args.splice(0, 2)[1] : verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined;
-    const satellite = verb === "reply" && args[0] === "--satellite" ? args.splice(0, 2)[1] : undefined;
+    // The three flags come in any order before the chat argument.
+    const flags: { chief?: string; satellite?: string; kind?: string } = {};
+    if (verb === "reply") while (args.length >= 2 && (args[0] === "--chief" || args[0] === "--satellite" || args[0] === "--kind")) flags[args.shift()!.slice(2) as keyof typeof flags] = args.shift()!;
+    const name = flags.chief ?? (verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined);
+    const satellite = flags.satellite;
     const [chat, ...rest] = args;
-    const chatId = Number(chat);
+    const chatId = chat === "operator" ? (operatorChatId(await loadAccess()) ?? NaN) : Number(chat);
     if (verb === "reply" && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
-      const { replyViaOutbox } = await import("./poller");
-      await replyViaOutbox(defaultRoot(), chatId, rest.join(" "), name);
-      if (satellite !== undefined) {
+      const cls = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}` });
+      console.log(cls);
+      if (satellite !== undefined && cls !== "silent") {
         try { await speakOnSatellite(satellite, rest.join(" ")); }
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] <chat_id> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }
