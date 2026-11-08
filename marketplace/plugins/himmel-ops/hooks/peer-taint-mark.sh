@@ -23,6 +23,10 @@
 # The verifier is peer-marker.mjs beside this file, else the plugin copy; node runs
 # through run-node.sh beside this file, else scripts/lib/run-node.sh.
 #
+# Fail direction: toward taint. It never denies a call (PostToolUse); any verifier
+# outcome it cannot read leaves the session restricted. Bypass: none, it only
+# marks; a human clears a mark with scripts/peer-bridge/untaint.sh <session_id>.
+#
 # Bash 3.2-compatible.
 
 S="${HOME:-}/.himmel/peer-bridge"

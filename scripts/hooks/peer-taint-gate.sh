@@ -41,6 +41,13 @@
 # outcome of the body also exits 2 (ERR trap plus the rc check at the end).
 # Clearing a taint: a human at a terminal runs scripts/peer-bridge/untaint.sh <session_id>.
 #
+# Fail direction: a security fence, so it fails CLOSED once a bridge dir exists,
+# and is inert (exit 0, nothing parsed) where none does.
+# Bypass: no env var, by design. A launching-shell flag would be inherited by the
+# peer desk the gate exists to restrict. The release is untaint.sh at a terminal,
+# which the deny message names; the path floor has none, since the operator reads
+# those dirs from their own terminal, not through Claude.
+#
 # ponytail: a harness timeout kill allows the call, so the gate stays small enough to finish far inside its timeout, upgrade path the harness denies a PreToolUse call whose hook was killed.
 # ponytail: the path floor is an accidental-leak floor, the same ceiling as block-read-secrets; a relative path from a cwd outside both dirs evades it, upgrade path the bridge state is owned by its own sandboxed user.
 #

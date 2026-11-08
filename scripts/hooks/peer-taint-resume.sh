@@ -13,6 +13,9 @@
 # creates its own taint/<sid>.pending.<pid>-<rand>, then verifier exit 0 with `verified`
 # touches taint/<sid> and removes it, exit 1 with `unverified` removes it, and any other outcome keeps it.
 #
+# Fail direction: toward taint; it never blocks a session start. Bypass: none, it
+# only marks; a human clears a mark with scripts/peer-bridge/untaint.sh <session_id>.
+#
 # Bash 3.2-compatible.
 
 S="${HOME:-}/.himmel/peer-bridge"
