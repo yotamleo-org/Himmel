@@ -259,6 +259,52 @@ deny  "a path-qualified cat may run its heredoc (text reader)" "$(bash_json $'./
 deny  "a path-qualified bus status runs a file the same call wrote (text reader)" \
     "$(bash_json $'tee ./bus <<\'EOF\'\nbus register x\nEOF\n./bus status')"
 
+echo "== HIMMEL-8776: a glob under a himmel/ dir that cannot hold the bus store passes =="
+# repos/himmel is a checkout (no bus child); alt/himmel holds a bus dir under a
+# spelling with no `state/himmel` in it, so only the glob arm can see it.
+mkdir -p "$SCR/repos/himmel/pkg/node_modules/playwright-core" "$SCR/alt/himmel/bus/peers" "$SCR/home/.himmel/x" \
+    "$SCR/home/.local/state/himmel/bus" "$SCR/home/code/himmel/pkg" "$SCR/repos2" \
+    || { echo "FAIL: cannot build the glob fixtures" >&2; exit 1; }
+{ ln -s "$SCR/alt" "$SCR/link" && ln -s "$SCR/alt/himmel" "$SCR/repos2/himmel"; } \
+    || { echo "FAIL: cannot build the glob symlinks" >&2; exit 1; }
+allow "8776 ls -d ~/.himmel/* (the harness home is not the state dir)" "$(bash_json 'ls -d ~/.himmel/*')" HOME="$SCR/home"
+allow "8776 grep over ~/.himmel/*" "$(bash_json 'grep -l foo ~/.himmel/*/notes.md')" HOME="$SCR/home"
+allow "8776 ls a checkout's himmel/*/node_modules/playwright*" "$(bash_json "ls -d $SCR/repos/himmel/*/node_modules/playwright*")"
+allow "8776 cd into a checkout glob" "$(bash_json "cd $SCR/repos/himmel/p* && ls")"
+allow "8776 sed over a checkout glob" "$(bash_json "sed -n 1p $SCR/repos/himmel/*/package.json")"
+allow "8776 git ls-files over a checkout glob" "$(bash_json "git ls-files -- $SCR/repos/himmel/*")"
+allow "8776 a ~/ checkout glob" "$(bash_json 'ls ~/code/himmel/*')" HOME="$SCR/home"
+allow "8776 a \$HOME/ checkout glob" "$(bash_json 'ls $HOME/code/himmel/*')" HOME="$SCR/home"
+deny  "8776 control: a himmel/* glob where a bus dir exists" "$(bash_json "ls $SCR/alt/himmel/*")"
+deny  "8776 control: a himmel/b?s glob where a bus dir exists" "$(bash_json "ls $SCR/alt/himmel/b?s/peers")"
+deny  "8776 control: a glob under a path that does not exist (fail-closed)" "$(bash_json "ls $SCR/nonexistent/himmel/*")"
+deny  "8776 control: a relative himmel/* glob" "$(bash_json 'ls himmel/*')"
+deny  "8776 control: .. in the prefix" "$(bash_json "ls $SCR/repos/../alt/himmel/*")"
+deny  "8776 control: an expansion in the prefix" "$(bash_json "ls $SCR/\$x/himmel/*")"
+deny  "8776 control: the prefix is a symlink to a dir holding a bus dir" "$(bash_json "ls $SCR/link/himmel/*")"
+deny  "8776 control: himmel itself is a symlink to a dir holding a bus dir" "$(bash_json "ls $SCR/repos2/himmel/*")"
+deny  "8776 control: a checkout glob does not excuse a bus-dir glob after it" "$(bash_json "ls $SCR/repos/himmel/* $SCR/alt/himmel/*")"
+deny  "8776 control: ~/.local/state/himmel/* where a bus dir exists" "$(bash_json 'ls ~/.local/state/himmel/*')" HOME="$SCR/home"
+
+echo "== HIMMEL-9628: words in data pass, a bus CLI run still denies =="
+allow "9628 grep -l with a pattern naming bus register" "$(bash_json 'grep -l "bus register failed" /tmp/x/*.launch.out')"
+allow "9628 rg with a pattern naming bus rebind" "$(bash_json "rg 'bus rebind' scripts")"
+allow "9628 sed -i on a comment line naming bus register" "$(bash_json "sed -i 's/# bus register is the launcher/# the launcher registers/' /tmp/f.sh")" # gnu-ok: the sed command is payload text the guard reads, never run
+allow "9628 awk pattern naming bus bind" "$(bash_json "awk '/bus bind/' /tmp/f.txt")"
+allow "9628 a quoted append-results.sh bullet naming bus register" \
+    "$(bash_json 'bash /home/u/himmel/scripts/handover/chief-kit/append-results.sh /home/u/luna/h.md "BLOCKED bus register failed: invalid session name"')"
+allow "9628 a python heredoc naming bus register" "$(bash_json $'python3 - <<\'EOF\'\nprint("bus register x")\nEOF')"
+allow "9628 a loop of gh calls ending in a grep for bus register" \
+    "$(bash_json 'for r in 1 2; do gh run view $r --log | grep "bus register"; done')"
+deny  "9628 control: bus register x" "$(bash_json 'bus register x')"
+deny  "9628 control: bin/bus bind x 1" "$(bash_json 'node marketplace/plugins/himmel-bus/bin/bus bind x 1')"
+deny  "9628 control: bash -c bus rebind" "$(bash_json 'bash -c "bus rebind x 1"')"
+deny  "9628 control: a grep then a real bus register" "$(bash_json 'grep -l foo /tmp/f; bus register y')"
+deny  "9628 control: a real bus bind inside a body next to a grep" "$(bash_json "bash -c 'grep foo f; bus bind x 1'")"
+deny  "9628 control: a heredoc body written by cat that a data command is then pointed at" \
+    "$(bash_json $'cat > /tmp/x.sh <<\'EOF\'\nbus register x\nEOF\nsed -n 1p /tmp/x.sh')"
+deny  "9628 control: an echoed bus register piped to python" "$(bash_json 'echo "bus register x" | python3 -')"
+
 echo "== model failures: the text reader decides =="
 # A heredoc body naming bus register is allowed by the model and denied by the
 # text reader, so a deny here proves the call fell back.
