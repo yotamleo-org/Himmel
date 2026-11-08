@@ -166,7 +166,7 @@ function kpis(data) {
   const recovery = data ? `<p class="sub" data-note="recovery">Recovery ${pct(ratio(recovered, known))} (${recovered} of ${known} known · ${failed - known} unclassified)</p>` : "";
   return `<div class="kpis">${[
     tile("calls", "Calls", num(calls), data ? (isNum(calls) ? "tool call attempts" : "calls not recorded for every session") : "—"),
-    tile("failed", "Failed", num(failed), data ? `${sum("errors")} errors · ${sum("denials")} denied` : "—"),
+    tile("failed", "Failed", num(failed), data ? `${sum("errors")} errors · ${sum("denials")} denied${sum("blocked") ? ` · ${sum("blocked")} blocked reports (not failures)` : ""}` : "—"),
     tile("rate", "Failure rate", pct(rate), data ? (bad.size ? "Count check failed: rate hidden" : `${failed} of ${num(calls)} calls`) : "—"),
     tile("highest", "Highest rate", worst ? pct(worst.r) : "—", data ? (worst ? `${worst.t.tool} · ${worst.t.failures} of ${worst.t.calls} calls` : "no tool with 10 or more calls") : "—"),
   ].join("")}</div>${recovery}`;
@@ -536,7 +536,7 @@ function toolDrill(data, inv, ui, token) {
   const head = `${back(ui)}<h2>Tool drill-in: ${esc(displayName(r))} <span class="tag">${esc(KIND_LABEL[r.kind])}</span> <span class="tag">${esc(SRC_LABEL[r.src])}${r.source && r.src !== "core" ? ` · ${esc(r.source)}` : ""}</span></h2>`;
   if (!r.t) return `<section class="box">${head}${sub("What happened to this tool in the window?")}<p class="nodata">No recorded calls in this window. The station scan lists it; calls ${isNum(data && data.totalCalls) ? "0" : "—"}.</p></section>${toolChain(data, r.key, token)}`;
   const t = r.t, bad = badCounts(data).has(t.tool);
-  const stats = `<dl class="stats">${stat("calls", "Calls", num(t.calls))}${stat("failed", "Failed", num(t.failures))}${stat("errors", "Errors", num(t.errors))}${stat("denied", "Denied", num(t.denials))}${stat("rate", "Failure rate", bad ? "Count check failed" : pct(t.rate))}${stat("error-rate", "Error rate", bad ? "—" : pct(t.error_rate))}${stat("recovery", "Recovery", `${pct(t.recovery_rate)} (${num(t.recovered)} of ${num(t.known)} known)`)}</dl>`;
+  const stats = `<dl class="stats">${stat("calls", "Calls", num(t.calls))}${stat("failed", "Failed", num(t.failures))}${stat("errors", "Errors", num(t.errors))}${stat("denied", "Denied", num(t.denials))}${isNum(t.blocked) && t.blocked > 0 ? stat("blocked", "Blocked reports", num(t.blocked)) : ""}${stat("rate", "Failure rate", bad ? "Count check failed" : pct(t.rate))}${stat("error-rate", "Error rate", bad ? "—" : pct(t.error_rate))}${stat("recovery", "Recovery", `${pct(t.recovery_rate)} (${num(t.recovered)} of ${num(t.known)} known)`)}</dl>`;
   const classes = table(["Class", "Count", "Share of this tool's calls"], (t.classes || []).map((c) => `<tr data-class="${esc(c.class)}">${td(esc(c.class))}${td(num(c.count))}${td(pct(ratio(c.count, t.calls)))}</tr>`), "No failure class recorded");
   return `<section class="box">${head}${sub("Was it this tool, or its callers? The same population as the overview row.")}${stats}</section>
 ${t.tool === "Bash" ? bashSections(data) : ""}

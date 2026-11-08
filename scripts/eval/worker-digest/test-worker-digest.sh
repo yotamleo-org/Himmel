@@ -327,5 +327,41 @@ check "a hook-denied Agent call (no prefix, named by the chain log) counts under
 check "the Agent hook deny is keyed by the guard the chain log names" '[ "$(jq -r "[.failures[] | select(.class == \"denied/guard-agent-model\")] | .[0].count" "$TMP/hd/with.json")" = 1 ]'
 check "the metrics count two denied and two errored calls" 'jq -e ".metrics.fail_denied == 2 and .metrics.fail_error == 2" "$TMP/hd/with.json" >/dev/null'
 
+echo "9. refusal openings and no-op TaskStops"
+S11=9623c1a5-0000-4000-8000-000000000001
+mkdir -p "$TMP/op"
+pair() {
+  jq -nc --arg id "$1" --arg tool "$2" --argjson input "$3" --arg text "$4" --arg s "$S11" \
+    '{type: "assistant", uuid: ("a-" + $id), message: {model: "claude-sonnet-5-5", id: ("msg_" + $id), role: "assistant", content: [{type: "tool_use", id: $id, name: $tool, input: $input}]}, sessionId: $s, timestamp: "2026-11-08T12:00:01.000Z", isSidechain: false},
+     {type: "user", uuid: ("u-" + $id), message: {role: "user", content: [{type: "tool_result", tool_use_id: $id, content: $text, is_error: true}]}, sessionId: $s, timestamp: "2026-11-08T12:00:02.000Z", isSidechain: false}'
+}
+PRE='PreToolUse:Bash hook error: [bash $CLAUDE_PROJECT_DIR/scripts/hooks'
+{
+  pair op1 Bash '{"command":"bash chief-kit/x.sh"}' "$PRE/guard-chief-foreground.sh]: You are a CHIEF session running a long chief-kit script (x.sh) in the foreground — DENIED."
+  pair op2 Bash '{"command":"cat store"}' "$PRE/guard-bus-store.sh]: bus store-deny: reads the bus store. himmel-bus keeps its store off-limits."
+  pair op3 Bash '{"command":"agent"}' "$PRE/guard-agent-model.sh]: agent-model-deny: a judge model override 'sonnet' off its frontmatter tier."
+  pair op4 Bash '{"command":"same"}' "$PRE/guard-identical-denied-retry.sh]: Refusing a repeat: this exact command was already denied 2 times in this session."
+  pair op5 Bash '{"command":"edit hook"}' "$PRE/run-hook-with-bash.sh]: run-hook-with-bash: DENY block-read-secrets.sh — on-disk content no longer matches the session's record."
+  pair op6 Bash '{"command":"nested"}' "$PRE/block-destructive-commands.sh]: guard-unwrap: refusing a command nested more than 6 levels deep."
+  pair op7 Bash '{"command":"x=\"\" rm"}' "$PRE/block-read-secrets.sh]: guard-empty-expansion: a \${...} holding a command substitution sits in a command that names this guard's target - denied."
+  pair op8 Bash '{"command":"other"}' "$PRE/block-read-secrets.sh]: some words no guard table claims"
+  pair op9 Bash '{"command":"run-hook"}' "$PRE/run-hook-with-bash.sh]: run-hook-with-bash: DENY not-a-real-hook.sh — nothing vouches for it."
+  pair ts1 TaskStop '{"task_id":"t1"}' "Task t1 is not running (status: completed)"
+  pair ts2 TaskStop '{"task_id":"t2"}' "No task found with ID: t2"
+  pair ts3 TaskStop '{"task_id":"t3"}' "TaskStop failed: the task runner crashed"
+} >"$TMP/op/$S11.jsonl"
+digest "$TMP/op/$S11.jsonl" >"$TMP/op/out.json" 2>"$TMP/op/err" || bad "the openings digest exits 0: $(head -c 300 "$TMP/op/err")"
+orow() { jq -c --arg k "$1" '[.failures[] | select(.class == $k)] | .[0] // empty' "$TMP/op/out.json"; }
+check "a CHIEF inline-guard refusal is denied/guard-chief-foreground" '[ "$(orow denied/guard-chief-foreground | jq .count)" = 1 ]'
+check "a bus store-deny refusal is denied/guard-bus-store" '[ "$(orow denied/guard-bus-store | jq .count)" = 1 ]'
+check "an agent-model-deny refusal is denied/guard-agent-model" '[ "$(orow denied/guard-agent-model | jq .count)" = 1 ]'
+check "a Refusing a repeat refusal is denied/guard-identical-denied-retry" '[ "$(orow denied/guard-identical-denied-retry | jq .count)" = 1 ]'
+check "a run-hook-with-bash DENY X.sh refusal is keyed by X" '[ "$(orow denied/block-read-secrets | jq .count)" = 1 ]'
+check "a guard-unwrap refusal is denied/guard-unwrap" '[ "$(orow denied/guard-unwrap | jq .count)" = 1 ]'
+check "a guard-empty-expansion refusal is denied/guard-empty-expansion" '[ "$(orow denied/guard-empty-expansion | jq .count)" = 1 ]'
+check "control: a refusal no guard claims, and a DENY of a name that is no hook, stay denied/other" '[ "$(orow denied/other | jq .count)" = 2 ]'
+check "a TaskStop error saying not running or No task found is a no-op, not error/TaskStop" '[ "$(orow error/TaskStop | jq .count)" = 1 ] && jq -e ".metrics.ok_noop_stop == 2" "$TMP/op/out.json" >/dev/null'
+check "control: any other TaskStop error is still a failure" '[ "$(jq -r "[.tool_health[] | select(.tool == \"TaskStop\")] | .[0] | \"\(.calls) \(.failures)\"" "$TMP/op/out.json")" = "3 1" ]'
+
 echo "test-worker-digest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
