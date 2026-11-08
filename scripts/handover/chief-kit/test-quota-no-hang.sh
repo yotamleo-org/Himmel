@@ -44,7 +44,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-REAL_QUOTA="${HIMMEL_QUOTA_DIR:-${HOME:-/nonexistent}/.himmel/state/quota}"
+REAL_QUOTA="${HOME:-/nonexistent}/.himmel/state/quota"
 quota_fingerprint() {
     if [ -d "$REAL_QUOTA" ]; then
         find "$REAL_QUOTA" -type f -exec stat -c '%n %Y %s' {} + 2>/dev/null | sort | cksum  # gnu-ok: chief kit is Linux-only
