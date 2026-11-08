@@ -14,7 +14,14 @@ tier-return|operator-ruling; the launcher refuses an opus/fable judge without th
 Optional: pr + head (a 40-hex sha; the change under review), tickets (ticket keys), author_doc
 (the worker's own handover doc), attack (list of lines of attack to try, NOT conclusions),
 evidence (list of {item, for}), completion (default: the PR merge-question shape),
-description, model (default claude-opus-5-5), do_not.
+description, model (default claude-opus-5-5), do_not, delta_class (what delta-class.sh printed for
+the push being re-judged: trust or finding; absent for a first judge).
+
+The model follows the class. A first judge and a trust delta keep Opus. A finding
+delta is a Sonnet judge: the brief names claude-sonnet-5-5 and carries the line
+`DELTA-JUDGE: <head>` that guard-agent-model.sh requires before it allows Sonnet; it needs pr and
+head, takes no tier (the Tier gate is for opus and fable), and refuses a model other than Sonnet.
+A none delta needs no judge and is refused. The last stdout field is `model=<id>`.
 
 Blind, not thin (the template's first rule): the spec may carry the evidence and the attack
 list but never a conclusion, so conclusion / verdict / disposition / recommendation keys
@@ -31,9 +38,10 @@ from datetime import date as _date
 
 TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruling')
 DEFAULT_MODEL = 'claude-opus-5-5'
+DELTA_MODEL = 'claude-sonnet-5-5'
 REQUIRED = ['qid', 'ticket', 'question', 'reason', 'prior', 'tier']
 KNOWN = set(REQUIRED) | {'pr', 'head', 'tickets', 'author_doc', 'attack', 'evidence', 'completion',
-                         'description', 'model', 'do_not'}
+                         'description', 'model', 'do_not', 'delta_class'}
 BLIND = ('conclusion', 'verdict', 'disposition', 'recommendation', 'recommended', 'finding_status')
 DEFAULT_DO_NOT = ('everything except reading and writing your verdict file. A judge that finds it needs '
                   'to edit a file to answer its question has been asked an implementation question: '
@@ -50,6 +58,10 @@ def tier_gate(model):
     return m.group(1) if m else None
 
 
+def model_of(s):
+    return DELTA_MODEL if s.get('delta_class') == 'finding' else (s.get('model') or DEFAULT_MODEL)
+
+
 def validate(s):
     if not isinstance(s, dict):
         die('the spec must be a JSON object')
@@ -59,7 +71,16 @@ def validate(s):
     unknown = sorted(set(s) - KNOWN)
     if unknown:
         die('unknown spec key(s): %s' % ', '.join(unknown))
-    missing = [k for k in REQUIRED if not s.get(k)]
+    dc = s.get('delta_class')
+    if dc is not None:
+        if dc not in ('trust', 'finding'):
+            die('delta_class must be trust or finding (a none delta needs no judge), got %r' % (dc,))
+        if dc == 'finding':
+            if not (s.get('pr') and s.get('head')):
+                die('delta_class finding needs pr and head: the DELTA-JUDGE marker names the head it judges')
+            if s.get('model') is not None and s['model'] != DELTA_MODEL:
+                die('delta_class finding runs on %s, not %r; drop the model key' % (DELTA_MODEL, s['model']))
+    missing = [k for k in REQUIRED if not s.get(k) and not (k == 'tier' and dc == 'finding')]
     if missing:
         die('spec missing: %s' % ', '.join(missing))
     # the label slot of the handover-token grammar (docs/internals/handover-token-grammar.md)
@@ -86,14 +107,15 @@ def validate(s):
     for k in ('description', 'completion', 'do_not', 'model'):
         if s.get(k) is not None and (not isinstance(s[k], str) or not s[k].strip()):
             die('%s must be non-blank text when given' % k)
-    t = s['tier']
-    if not isinstance(t, dict) or t.get('category') not in TIER_CATEGORIES:
-        die('tier.category must be one of %s' % '|'.join(TIER_CATEGORIES))
-    r = t.get('reason')
-    if not isinstance(r, str) or not r.strip() or '\n' in r or '\r' in r:
-        die('tier.reason must be non-blank single-line text')
-    if not tier_gate(s.get('model') or DEFAULT_MODEL):
-        die('model %r is not an opus or fable model; a judge launches at one of them' % (s.get('model'),))
+    if dc != 'finding':
+        t = s['tier']
+        if not isinstance(t, dict) or t.get('category') not in TIER_CATEGORIES:
+            die('tier.category must be one of %s' % '|'.join(TIER_CATEGORIES))
+        r = t.get('reason')
+        if not isinstance(r, str) or not r.strip() or '\n' in r or '\r' in r:
+            die('tier.reason must be non-blank single-line text')
+        if not tier_gate(model_of(s)):
+            die('model %r is not an opus or fable model; a judge launches at one of them' % (s.get('model'),))
     ev = s['evidence'] if s.get('evidence') is not None else []
     if not isinstance(ev, list) or not all(isinstance(e, dict) and isinstance(e.get('item'), str) and e['item'].strip()
                                   and isinstance(e.get('for'), str) and e['for'].strip() for e in ev):
@@ -152,8 +174,7 @@ def evidence_text(s):
 
 def render(s, a, template):
     paras = block_of(template).split('\n\n')
-    model = s.get('model') or DEFAULT_MODEL
-    gate = tier_gate(model)
+    model = model_of(s)
     desc = s.get('description') or ('Rule on %s: %s' % (s['ticket'], s['question']))
     desc = ' '.join(desc.split())
     sub_para(paras, '---\nresume_cwd:', '---\nresume_cwd: %s\ndescription: %s\ntemplate_version: 1\n---' % (s['_scratch'], json.dumps(desc, ensure_ascii=False)))
@@ -161,8 +182,15 @@ def render(s, a, template):
     judge_at = [i for i, p in enumerate(paras) if p.startswith('> **You are the judge for')]
     if len(judge_at) != 1:
         die('template drift: expected one paragraph starting %r, found %d' % ('> **You are the judge for', len(judge_at)))
-    sub_para(paras, '> **You are the judge for', paras[judge_at[0]].replace('<model>', model))
-    sub_para(paras, '> **Tier:**', '> **Tier:** %s — %s: %s' % (gate, s['tier']['category'], s['tier']['reason']))
+    judge_para = paras[judge_at[0]].replace('<model>', model)
+    if s.get('delta_class') == 'finding':
+        # the guard allows Sonnet only on a line of its own, `DELTA-JUDGE: <head>`
+        judge_para += '\n\nDELTA-JUDGE: %s' % s['head']
+        tier_line = '> **Tier:** sonnet — delta re-judge: delta-class.sh printed finding for this push, so it runs on Sonnet'
+    else:
+        tier_line = '> **Tier:** %s — %s: %s' % (tier_gate(model), s['tier']['category'], s['tier']['reason'])
+    sub_para(paras, '> **You are the judge for', judge_para)
+    sub_para(paras, '> **Tier:**', tier_line)
     sub_para(paras, '> **The question (verbatim', '> **The question (verbatim, one line):** %s' % s['question'])
     sub_para(paras, '> **Reason (why', '> **Reason (why this needs a judge, not the chief\'s own read):** %s' % s['reason'])
     sub_para(paras, '> **Prior art (required):**', '> **Prior art (required):** %s' % s['prior'])
@@ -238,7 +266,7 @@ def main():
         die('%s already exists; refusing to overwrite a judge brief' % doc)
     with f:
         f.write(text)
-    print('%s %s %s' % (spec['qid'], spec['_nonce'], doc))
+    print('%s %s %s model=%s' % (spec['qid'], spec['_nonce'], doc, model_of(spec)))
 
 
 if __name__ == '__main__':
