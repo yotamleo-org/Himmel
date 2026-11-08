@@ -547,5 +547,78 @@ got16c=$( python3 -c 'import json,sys; print({n["id"]: n for n in json.load(open
 [ "$got16c" = "['docs_m_helper', 'docs_n_helper']" ] \
   && pass "T16 a later canonical keeps the ids its alias had absorbed" || fail "T16 merged_ids lost on re-merge: $got16c"
 
+echo "T17: shell-to-python/node calls resolve to calls edges, negatives do not"
+D17="$WS/t17"; C17="$D17/corpus"; mkdir -p "$C17/a" "$C17/scripts"
+cat > "$C17/a/caller.sh" <<'SH'
+#!/usr/bin/env bash
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/t_dirname.py" "$graph")"
+python3 "$HERE/t_here.py" --flag
+PY="$HERE/t_var.py"
+python3 -I "$PY"
+node "$HERE/t_node.mjs"
+"$HERE/t_direct.py" arg
+python3 scripts/t_literal.py
+timeout 5 python3 "$HERE/t_timeout.py"
+python3 "-I" "$HERE/t_quoted.py"
+node --conditions development "$HERE/t_cond.mjs"
+python3 -c 'print(1)'
+python3 -m json.tool
+python3 "$1"
+# python3 "$HERE/n_comment.py"
+echo "python3 $HERE/n_echo.py"
+python3 '$HERE/n_squote.py'
+python3 "$HERE/n_nonode.py"
+cat <<EOF
+python3 "$HERE/n_heredoc.py"
+EOF
+SH
+for f in a/t_dirname.py a/t_here.py a/t_var.py a/t_node.mjs a/t_direct.py scripts/t_literal.py a/t_timeout.py a/t_quoted.py a/t_cond.mjs a/n_comment.py a/n_echo.py a/n_squote.py a/n_heredoc.py; do
+  printf '' > "$C17/$f"
+done
+python3 - "$D17" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+nodes = []
+for root, _, files in os.walk(os.path.join(d, "corpus")):
+    for f in files:
+        rel = os.path.relpath(os.path.join(root, f), os.path.join(d, "corpus"))
+        nid = rel.replace("/", "_").replace(".", "_")
+        n = {"id": nid, "label": os.path.basename(rel), "source_file": rel, "file_type": "code", "source_location": "L1"}
+        if rel.endswith(".sh"):
+            n["metadata"] = {"language": "bash", "kind": "file"}
+        nodes.append(n)
+json.dump({"directed": False, "multigraph": False, "graph": {}, "nodes": nodes, "links": [], "hyperedges": []},
+          open(os.path.join(d, "graph.json"), "w"))
+PY
+out17=$( python3 "$SCRIPT" --out "$D17" --root "$C17" 2>&1 ); rc17=$?
+[ "$rc17" -eq 0 ] || fail "T17 exit 0 (got $rc17): $out17"
+echo "$out17" | grep -qF "shell-calls=9 shell-sources=0 shell-unresolved=3" \
+  && pass "T17 summary counts the python/node calls and the unresolved ones" \
+  || fail "T17 summary wrong: $out17"
+if python3 - "$D17/graph.json" <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+got = {(e["source"], e["target"], e["relation"], e["confidence"]) for e in g["links"] if e.get("hardened") == "shell-call"}
+want = {("a_caller_sh", t, "calls", c) for t, c in [
+    ("a_t_dirname_py", "EXTRACTED"), ("a_t_here_py", "EXTRACTED"), ("a_t_var_py", "EXTRACTED"),
+    ("a_t_node_mjs", "EXTRACTED"), ("a_t_direct_py", "EXTRACTED"), ("scripts_t_literal_py", "EXTRACTED"),
+    ("a_t_timeout_py", "EXTRACTED"), ("a_t_quoted_py", "EXTRACTED"), ("a_t_cond_mjs", "EXTRACTED")]}
+missing, extra = want - got, got - want
+for m in sorted(missing):
+    print(f"  missing case: {m[1]}")
+for x in sorted(extra):
+    print(f"  false edge: {x[1]}")
+sys.exit(1 if missing or extra else 0)
+PY
+then
+  pass "T17 every python/node call form is an edge and no comment/echo/heredoc/-c/-m path is"
+else
+  fail "T17 shell-to-python edges wrong"
+fi
+cp "$D17/graph.json" "$D17/graph.json.before"
+python3 "$SCRIPT" --out "$D17" --root "$C17" >/dev/null
+cmp -s "$D17/graph.json.before" "$D17/graph.json" && pass "T17 re-run adds no edge twice" || fail "T17 re-run changed graph.json"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

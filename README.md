@@ -65,9 +65,11 @@ One ticket travels the same path every time:
    first: questions, a spec, a plan, each one checked by a critic before the
    next step.
 2. **Build.** The chief hands the ticket to a worker. The worker gets its own
-   branch and working folder. Before it starts a group of workers, the chief
-   checks that no two of them plan to change the same files; an overlap with an
-   open PR can pass if it is small and merges clean
+   branch and working folder. The chief sees which files each worker plans to
+   change. A file another worker or an open PR also changes is shown beside the
+   ticket and does not hold it back. While workers run, each file still has one
+   writer at a time. The later PR merges the latest main in, and its description
+   says which conflicts it resolved
    ([parallel waves](docs/handover/running-a-chief.md#parallel-waves)).
 3. **Review.** The worker runs `/pr-check` (`/himmel-ops:pr-check` in your own
    project): a second model reads the change, if you have one set up, and the worker checks each finding against the

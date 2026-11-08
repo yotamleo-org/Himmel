@@ -33,7 +33,7 @@ async function logNames(root) {
     const live = file.match(/^(.+)\.jsonl$/);
     const closed = file.match(/^(.+)\.\d+\.jsonl(\.zst|\.gz)?$/);
     const name = closed?.[1] ?? live?.[1];
-    if (name && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(name)) names.add(name);
+    if (name && store.SESSION_NAME.test(name)) names.add(name);
   }
   return [...names];
 }

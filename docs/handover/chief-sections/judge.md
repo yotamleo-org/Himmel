@@ -102,6 +102,13 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   (it echoes `agent-model-delta-judge: …` on stderr). The marker rescues Sonnet only: haiku and
   fable stay denied. The first full judge of a PR keeps Opus, and so does a delta that prints
   `trust`: the guard only reads the declaration and cannot check the class, so the chief does.
+  **Do not pick the model by hand**: put `"delta_class": "<what delta-class.sh printed>"` in the
+  `gen-judge-brief.py` spec (`finding` or `trust`; a first judge omits it). `finding` writes a
+  brief that names `claude-sonnet-5-5` and carries the `DELTA-JUDGE: <head>` line (it needs `pr`
+  and `head`, takes no `tier`, and refuses another model); `trust` and no key keep Opus. The
+  last field of its output is `model=<id>`: dispatch with that model, and copy the
+  `DELTA-JUDGE:` line into the prompt when the brief has one. Sonnet with no marker is what the
+  guard refuses (`agent-model-deny`).
 - **A deferred Critical or Important finding needs a disposition before GO**:
   past the round cap such a finding is never dropped. `go.sh` runs
   `cr-disposition.sh check <pr> <head>` and refuses (exit 9) while any

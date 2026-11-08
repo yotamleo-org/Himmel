@@ -62,7 +62,12 @@ ticket_key() { printf '%s\n' "$1" | grep -oiE '[a-z][a-z0-9]*-[0-9]+' | head -n 
 queue_line="$(awk '
     $0 == "## Live state" { s = 1; next }
     s && /^## / { exit }
-    s && index($0, "queue:") == 1 { print; exit }
+    s && index($0, "queue:") == 1 {
+        sub(/\|\|.*/, "")
+        n = split($0, seg, "|")
+        for (i = 1; i <= n; i++) if (seg[i] ~ /(^|[^A-Za-z0-9_])([Hh][Ee][Ll][Dd]|[Hh][Oo][Ll][Dd])([^A-Za-z0-9_]|$)/) print seg[i]
+        exit
+    }
 ' "$doc" 2>/dev/null)" || unavailable "the chief doc's queue: line could not be read"  # swallow-ok: a read failure exits as unavailable, never as an empty queue
 
 owned_by_record() { # <KEY> — rc 0 when its worker record reads a state other than wrapped or none

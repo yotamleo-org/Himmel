@@ -156,10 +156,12 @@ this recovery and the gate agree.
 **What to do if the FIRST commit carries a trailer whose token doesn't
 conform** — a genuine `Security reviewed:` line whose text doesn't start with
 `manual` / `claude-code-security-review` / `pr-review-toolkit` / `ad-hoc`
-(`scripts/hooks/check-security-reviewed.sh`'s `TOKEN_RE`): the
-sanctioned recovery is a **follow-up commit** carrying a conforming trailer
-line — never `git commit --amend`, never a `git commit-tree` rebuild of the
-first commit; both are classifier-vetoed.
+(`scripts/hooks/check-security-reviewed.sh`'s `TOKEN_RE`): use the same recut
+as above. Cut a fresh branch from `origin/main`, make **ONE new commit** with
+conforming trailers, open a new PR, and close the old one with a pointer.
+Check 5 reads only the first commit, so a follow-up commit clears the push
+gate and still fails check 5. Use the recut — never `git commit --amend`, never a
+`git commit-tree` rebuild of the first commit; both are classifier-vetoed.
 
 ---
 

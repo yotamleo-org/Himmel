@@ -669,10 +669,22 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 check "(8934) a tick-fail streak does not wake, it joins the digest" "0:1" "$(grep -c '^WAKE ' "$WORK/d1.out"):$(grep -c '^tick-fail samples=2 step=tick-exit:1' "$I.wait.housekeeping" 2>/dev/null)"
 
 reset_stub
-sed -i 's/ bank=/ unowned-prs=#2575:120m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+sed -i 's/ bank=/ unowned-prs=#2575:12m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 I="$(new_inbox d2)"
 timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/d2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
-check "(8934) the first sight of an unowned PR does not wake, it joins the digest" "124:0:1" "$rc:$(grep -c '^WAKE ' "$WORK/d2.out"):$(grep -c '^unowned-prs #2575:120m' "$I.wait.housekeeping" 2>/dev/null)"
+check "(8934) the first sight of a young unowned PR does not wake, it joins the digest" "124:0:1" "$rc:$(grep -c '^WAKE ' "$WORK/d2.out"):$(grep -c '^unowned-prs #2575:12m' "$I.wait.housekeeping" 2>/dev/null)"
+
+reset_stub
+sed -i 's/ bank=/ unowned-prs=#4946:70m,#4891:957m,#4999:5m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox u1)"
+timeout 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u1.out" 2>/dev/null; rc=$?
+check "(9599) an unowned PR older than 30 m wakes, exit 0" "0" "$rc"
+check "(9599) the wake names each aged PR and not the young one" "WAKE unowned-pr 4946,4891" "$(head -n1 "$WORK/u1.out")"
+timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u2.out" 2>/dev/null; rc=$?
+check "(9599) the same aged set does not re-wake inside the window" "124:0" "$rc:$(grep -c '^WAKE unowned-pr' "$WORK/u2.out")"
+sed -i 's/unowned-prs=[^ ]* bank=/unowned-prs=#4999:5m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u3.out" 2>/dev/null
+check "(9599) a sample with no aged PR clears the aged marker" "no" "$([ -e "$I.wait.unowned-aged" ] && echo yes || echo no)"
 
 reset_stub
 I="$(new_inbox d3)"

@@ -1762,8 +1762,8 @@ check_live_line_kept() {
                why="$(decisions_kept_verbatim "$prev_line" "$out_line" "$(dirname "$outgoing")" 2>&1 >/dev/null)" && return 0
            fi ;;
     esac
-    awk '$0 == "## Results" { f = 1; next } f && /^## / { f = 0 } f' "$outgoing" \
-        | grep -Eq "^- .*($marker$prune):[[:space:]]*[^[:space:]<]" && return 0
+    # a here-string, not a pipe: `grep -q` quits at the first match, and under pipefail the writer's SIGPIPE would read as no match
+    grep -Eq "^- .*($marker$prune):[[:space:]]*[^[:space:]<]" <<< "$(awk '$0 == "## Results" { f = 1; next } f && /^## / { f = 0 } f' "$outgoing")" && return 0
     err "refusing to hand over: the $field: line in $outgoing is missing, a placeholder, shorter than its predecessor's or drops one of its rulings ($prev_name):"
     err "  predecessor: $field: $prev_line"
     [ -z "$why" ] || err "$why"
@@ -1802,7 +1802,8 @@ check_direction_companions() {
     results="$(awk '$0 == "## Results" { f = 1; next } f && /^## / { f = 0 } f' "$doc")"
     ! grep -Eq "^- .*DIRECTION-COMPANION-LOST:[[:space:]]*[^[:space:]<]" <<< "$results" || return 0
     base="$(dirname "$doc")"
-    pointer="$(printf '%s\n' "$body" | grep -m 1 '^Full original text')" || pointer=""
+    # a here-string, not a pipe: `grep -m 1` quits at the first match, and under pipefail the writer's SIGPIPE blanked the pointer
+    pointer="$(grep -m 1 '^Full original text' <<< "$body")" || pointer=""
     if [ -z "$pointer" ]; then
         for f in "$base"/specs/decisions/chief-direction-*.md; do
             if [ -e "$f" ]; then listed="$listed ${f#"$base"/}"; fi
@@ -1879,9 +1880,9 @@ check_no_orphan_pr() {
         orphan_gate_note="orphan-pr check unavailable (rc=$rc): this handover was not gated on unowned open PRs; run orphan-pr-check.sh"
     fi
     [ "$rc" -eq 1 ] || return 0
-    err "refusing to hand over: an open PR is unowned (its ticket's worker record reads wrapped or none, or is absent) and no queue: line names it:"
+    err "refusing to hand over: an open PR is unowned (its ticket's worker record reads wrapped or none, or is absent) and no queue: segment holds it:"
     printf '%s\n' "$orphans" | while IFS= read -r line; do err "  $line"; done
-    err "  relaunch a worker on it, or name its PR number or ticket key on the queue: line of $1, then retry"
+    err "  relaunch a worker on it, or give it a | segment holding its PR number or ticket key and the word HELD (before any ||) on the queue: line of $1, then retry"
     return 1
 }
 
@@ -2179,7 +2180,7 @@ declared_release_line() {
 carried_live_state() {
     local live="$1" field line
     for field in epics decisions priority versions tracker-plan release rm focus-version focus-plan; do
-        line="$(printf '%s\n' "$live" | grep -m 1 "^$field:")" || line=""
+        line="$(grep -m 1 "^$field:" <<< "$live")" || line=""
         case "$field" in
             epics|decisions) [ -n "$line" ] || line="$field: none" ;;
             release) [ -n "$line" ] || line="$(declared_release_line)" ;;

@@ -95,6 +95,7 @@ next item.
 
 ## Waiting
 
-Check the previous item's CI at your own boundaries with a short foreground
-`check-ci.sh <pr> --max-wait 60`. Run the long blocking wait only when you have nothing
-left to write. Nothing runs in the background.
+Check the previous item's CI at your own boundaries with a short
+`check-ci.sh <pr> --max-wait 60`. When you have nothing left to write, arm the
+long wait as one bounded `run_in_background` wait (`check-ci.sh <pr> --max-wait
+3000`), re-armed on each wake: [`cache-keepalive.md`](cache-keepalive.md).

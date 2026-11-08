@@ -54,8 +54,12 @@ validating session.
 **Verdict owner:** the Claude-family validating session
 applying the lane rubric owns the merge-trust verdict. Panel findings stay
 ADVISORY blocking-candidates (junior models advise, Claude adjudicates; the
-gate stays Claude-only). The operator retains the physical
-merge action (unchanged).
+gate stays Claude-only). The chief re-checks the PR at the exact reviewed head
+and writes a GO file with `chief-kit/go.sh` on the operator's authority. The
+operator can tell the chief to hold any PR. A native worker then runs
+`merge-on-green.sh --go <GO file>` (exit 17 without it). The chief merges a
+claudex worker's PR with `merge-on-green.sh`. An adapter-repo worker stops at
+`READY`; the chief merges its PR with `merge-fork-pr.sh`.
 
 **PASS/FAIL semantics:** fail-closed on the verdict-presence axis. No
 validating-session verdict ⇒ not PR-eligible. A worker self-report ("done") is
@@ -81,9 +85,9 @@ mechanic invoked is a shipped instrument.
 
 | Artifact class | Chain (shipped instruments only) | Posture (panel avail. / verdict presence) | Human checkpoint |
 |---|---|---|---|
-| Code diff (Claude lane) | pre-push deterministic gates → `/pr-check` full lane → operator merge | panel fail-open; verdict/marker fail-closed | merge (operator) |
-| Code diff (Codex lane) | lane gate = full lane + lane rubric, validating session adjudicates | panel fail-open; verdict/marker fail-closed (verdict-presence axis — §3) | merge (operator) |
-| Docs-only diff | docs-audit lane (never-zero-CR) | verdict/marker fail-closed | merge (operator) |
+| Code diff (Claude lane) | pre-push deterministic gates → `/pr-check` full lane → chief GO at the reviewed head → `merge-on-green.sh` | panel fail-open; verdict/marker fail-closed | chief's GO (on the operator's authority) |
+| Code diff (Codex lane) | lane gate = full lane + lane rubric, validating session adjudicates → chief GO at the reviewed head → `merge-on-green.sh` | panel fail-open; verdict/marker fail-closed (verdict-presence axis — §3) | chief's GO (on the operator's authority) |
+| Docs-only diff | docs-audit lane (never-zero-CR) → chief GO at the reviewed head → `merge-on-green.sh` | verdict/marker fail-closed | chief's GO (on the operator's authority) |
 | Spec/plan artifacts (minerva) | Stage-2/4 adversarial critics (same-family today — known blind spot; a cross-model artifact critic is not built yet) | critics advisory; orchestrator gates advance (fail-closed on a missing critic round) | operator ratifies open design choices |
 | Handover state | exempt — no gate | exempt — no gate | none |
 

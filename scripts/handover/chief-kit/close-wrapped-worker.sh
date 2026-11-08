@@ -343,8 +343,8 @@ resume_evidence() {
 
 # results_tail_status <doc>: the doc's tail status read from its `## Results` section and the ruling sections
 # the writers add after it (`## Chief Rulings`, `## Console Rulings`), through the one marker parser
-# (worker_tail_status). append-results.sh appends at the end of the file, so once inbox-send adds a ruling
-# section the worker's later bullets sit below it and still count; a bullet in any other later section (a
+# (worker_tail_status). append-results.sh inserts at the end of the last of these sections, so once inbox-send
+# adds a ruling section the worker's later bullets sit below it and still count; a bullet in any other later section (a
 # `## Notes` line that mentions WRAPPED) never reads as the worker's tail. Prints `nosection` for a doc with
 # no Results heading (a legacy doc: the whole-file tail stands). Returns 1 when the text cannot be copied.
 results_tail_status() {

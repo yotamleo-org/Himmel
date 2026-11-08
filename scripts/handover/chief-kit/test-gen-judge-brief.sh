@@ -123,6 +123,40 @@ mutate falsyat 'd["attack"]=0';                           refuse "a falsy non-li
 mutate longqid 'd["qid"]="j2599a_"+"a"*42';                refuse "a 49-char qid is refused" longqid "qid"
 mutate badtk 'd["tickets"]=["not-a-key"]';                refuse "a malformed ticket key is refused" badtk "ticket"
 
+gen_ok() {
+    rm -rf "$BUCKET"
+    gen_out="$(python3 "$SUT" "$WORK/$1.json" --chief "$CHIEF" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" 2>"$WORK/$1.err")"; gen_rc=$?
+    gen_doc="$(cat "$BUCKET"/*-judge-j2599a-*.md 2>/dev/null)"
+}
+mutate dfind 'd["delta_class"]="finding"; del d["tier"]'
+gen_ok dfind
+[ "$gen_rc" = 0 ] && pass "a finding-class delta spec generates (rc 0)" || fail "finding delta rc=$gen_rc: $(cat "$WORK/dfind.err")"
+has "a finding delta prints model=claude-sonnet-5-5" "$gen_out" "model=claude-sonnet-5-5"
+has "a finding delta brief names the Sonnet judge" "$gen_doc" "You are the judge for \`j2599a\`, claude-sonnet-5-5"
+has "a finding delta brief carries the DELTA-JUDGE marker line for the head" "$gen_doc" "
+DELTA-JUDGE: $HEAD40
+"
+has "a finding delta brief has a sonnet Tier line" "$gen_doc" "> **Tier:** sonnet — "
+lacks "a finding delta brief has no opus Tier line" "$gen_doc" "> **Tier:** opus"
+if [ -f "$DOC" ]; then
+    bash "$HERE/brief-lint.sh" "$DOC" 2>"$WORK/lint2.err"; rc=$?
+    [ "$rc" = 0 ] && pass "a finding delta brief passes brief-lint.sh" || fail "finding delta brief-lint rc=$rc: $(cat "$WORK/lint2.err")"
+else fail "a finding delta brief passes brief-lint.sh (no brief written)"; fi
+
+gen_ok spec
+has "a first judge prints model=claude-opus-5-5" "$gen_out" "model=claude-opus-5-5"
+lacks "a first judge brief carries no DELTA-JUDGE marker" "$gen_doc" "DELTA-JUDGE:"
+mutate dtrust 'd["delta_class"]="trust"'
+gen_ok dtrust
+has "a trust delta prints model=claude-opus-5-5" "$gen_out" "model=claude-opus-5-5"
+lacks "a trust delta brief carries no DELTA-JUDGE marker" "$gen_doc" "DELTA-JUDGE:"
+has "a trust delta brief keeps the opus Tier line" "$gen_doc" "> **Tier:** opus — "
+
+mutate dnone 'd["delta_class"]="none"';                              refuse "a none delta is refused: it needs no judge" dnone "delta_class"
+mutate dbad 'd["delta_class"]="full"';                               refuse "an unknown delta_class is refused" dbad "delta_class"
+mutate dnopr 'd["delta_class"]="finding"; del d["pr"]; del d["head"]'; refuse "a finding delta with no PR head is refused" dnopr "delta_class"
+mutate dopus 'd["delta_class"]="finding"; d["model"]="claude-opus-5-5"'; refuse "a finding delta pinned to opus is refused" dopus "delta_class"
+
 # The nonce <letter>-<qid>-<hex> must stay inside the vault token grammar (1-3 upper-case letters).
 jletter() { # <label> <stderr fragment> <args...>: refused, rc 1, nothing written
     local n="$1" frag="$2"; shift 2
