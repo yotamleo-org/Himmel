@@ -710,8 +710,8 @@ test("20. a tab with no token and no session is told to log in; after signing in
     await page.goto(origin + "/");
     const fleet = page.locator("nav.pages a", { hasText: "Fleet" });
     await fleet.click();
-    await expect(page.locator("#status")).toContainText("log in");
-    await expect(page.locator("#status")).not.toContainText("himmelctl ui");
+    await expect(page.locator("#toast")).toContainText("log in");
+    await expect(page.locator("#toast")).not.toContainText("himmelctl ui");
     await expect(page).toHaveURL(origin + "/#/config");
     await page.goto(`${origin}/login?next=%2F`);
     await page.locator('input[name="user"]').fill("operator");
