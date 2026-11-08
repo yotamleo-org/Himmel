@@ -444,12 +444,6 @@ lacks=$OLDKIT
 run "first fixture, go.sh via the kit path it lacks -> deny" 2 "$(payload "bash $lacks/go.sh" "$WT")" "$HR"
 
 # ---- chief-O NO-GO finding 1: the $HIMMEL_REPO-prefixed anchor spelling -----
-# The exemption admits a LITERAL `$HIMMEL_REPO` (or `${HIMMEL_REPO}`) prefix -
-# never evaluated by this hook (it only sees the raw command text), so it is
-# exactly as trusted as any other absolute path once resolved: the shell, not a
-# branch, picks the anchor. merge-on-green.sh is the exception: no allow rule
-# can match a shell expansion, so that spelling is refused (the printed literal
-# matches the generated rule, see the printed_matches rows below).
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
 run 'literal $HIMMEL_REPO/ prefix, clean tree -> deny (merge carve-out)' 2 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"' "$WT")" "$HR"
@@ -565,8 +559,6 @@ run 'traversal plus a second $ after the prefix -> deny' 2 \
     "$(payload 'bash "$HIMMEL_REPO/../../../../../../..$PWD/scripts/cr/pr-check-context.sh"' "$WT")" "$HR"
 
 # ---- the merge-on-green remedy must not loop --------
-# The exemption denies ANY quote/backslash anywhere in the command, so a quoted
-# argument never reaches the variable spelling; the remedy names the anchor path.
 run 'quoted arg on the anchored spelling -> deny (would loop without the fix)' 2 \
     "$(payload "bash \"\$HIMMEL_REPO/scripts/handover/merge-on-green.sh\" --branch 'x'" "$WT")" "$HR"
 need_in_err "remedy offers the anchor's own path as the fallback" "bash $PRIMARY/scripts/handover/merge-on-green.sh <args>"
@@ -788,7 +780,6 @@ printed_matches 'control: quoted anchor path matches no rule' nomatch "bash \"$P
 # shellcheck disable=SC2016 # the literal text
 printed_matches 'control: unquoted variable path matches no rule' nomatch 'bash $HIMMEL_REPO/scripts/handover/merge-on-green.sh --go /g'
 
-# ---- the $HIMMEL_REPO spelling of merge-on-green.sh is refused ----
 MOGP=scripts/handover/merge-on-green.sh
 ANCH="$PRIMARY/$MOGP"
 W1="\"\$HIMMEL_REPO/$MOGP\""
@@ -851,7 +842,6 @@ no_spelling_deny "P3 a # before the word"
 run "P3 a \${U:- ...} spanning the prefix keeps its deny" 2 \
     "$(payload "bash \${U:- \$HIMMEL_REPO/$MOGP }" "$WT")" "$HR"
 no_spelling_deny "P3 a \${U:- ...} spanning the prefix"
-# P4: a Unicode space is not a shell blank. Needs a UTF-8 locale for the hook to read the bytes as one character.
 EM=$'\xe2\x80\x83'
 LOCALES=$(locale -a 2>/dev/null)
 if grep -qiE '^c\.utf-?8$' <<<"$LOCALES"; then

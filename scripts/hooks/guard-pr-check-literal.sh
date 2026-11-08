@@ -239,8 +239,6 @@ deny() {
     exit 2
 }
 
-# deny_anchor_var <head> <tail>: head and tail are the raw text before and after
-# the exempt word. Prints the caller's own command with only that word replaced.
 deny_anchor_var() {
     local h=$1 t=$2 d rc=0
     d=$(anchor_remedy_dir) || rc=$?
@@ -2907,9 +2905,6 @@ anchor_var_word() {
     ar_rest=${w//\"/}
     ar_tail=$s
 }
-# Carve merge-on-green.sh out of the exemption by file identity (so //, /./, a
-# symlink or a hardlink need no text rule). Only adds an exit 2; it never sets or
-# clears himmel_anchor_prefix or hit.
 mog_rel=scripts/handover/merge-on-green.sh
 if [ "$himmel_anchor_prefix" -eq 1 ] && anchor_var_word \
     && [ -f "$HIMMEL_REPO/$mog_rel" ] \
