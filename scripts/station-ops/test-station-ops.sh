@@ -219,6 +219,7 @@ echo "== lockdown denies a pending op request =="
 new_root lock
 out=$(oreq 0 S1 cron-entry action=remove tag=ping); id=$(rid "$out")
 h 1 lockdown --from "$OPERATOR" --chat "$OPERATOR" >/dev/null
+python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1] + "/var/lib/himmel/afk-sudo/state.json"))["lockdown"]["nonce"])' "$R" | h 1 lockdown --with-nonce --from "$OPERATOR" --chat "$OPERATOR" >/dev/null
 assert_contains "the pending op request reads denied" "result=denied" "$(h 2 status "$id")"
 assert_contains "a locked-down station refuses a new op request" "result=disabled" "$(oreq 3 S2 cron-entry action=remove tag=ping)"
 
