@@ -49,9 +49,7 @@ const rollup = (many = true) => ({ state: "ok", cards: [
 async function open(page: Page, b: object, r: object, chief = true) {
   await page.route("**/api/agui/board**", (route) => route.fulfill({ json: b }));
   await page.route("**/api/rollup", (route) => route.fulfill({ json: r }));
-  // no live chief: the census answers without its console rows, as it does when every chief has wrapped
   if (!chief) await page.route("**/api/agui/fleet", async (route) => {
-    // a poll in flight when the harness stops finds the server gone: abort it, never fail the row on it
     const response = await route.fetch().catch(() => null);
     if (!response) return route.abort();
     const fleet = await response.json();
@@ -66,7 +64,6 @@ async function open(page: Page, b: object, r: object, chief = true) {
 test("1. twenty merged workers draw the 8 longest and a link for the other 12", async ({ page }) => {
   await open(page, board({}, merged(20)), rollup());
   await expect(page.locator(".bd-gt .bd-track")).toHaveCount(8);
-  // spans run 60 to 250 min with the longest last: N9112 (180 min) to N9119 (250 min) are the 8 longest
   const drawn = await page.locator(".bd-gt .bd-w").evaluateAll((els) => els.map((e) => e.firstChild?.textContent ?? ""));
   expect([...drawn].sort()).toEqual(Array.from({ length: 8 }, (_, i) => `N${9112 + i}`));
   await expect(page.getByRole("button", { name: /^and 12 more, each shorter than 3h 0m/ })).toBeVisible();
