@@ -11,7 +11,9 @@ node scripts/install/capture-operator-profile.mjs --delta-out /tmp/operator-delt
 ```
 
 When you move a setup to a new machine, check each row marked `planned` or
-`not planned` on the old machine and set it up by hand on the new one.
+`not planned` on the old machine and set it up by hand on the new one. Do the
+same for any part of a `covered by the wizard` row that its coverage cell
+says the wizard does not offer, such as ggs in row 1.
 `himmelctl gaps` lists the same rows with the same state.
 
 State values: `covered by the wizard` (the wizard asks this now; the row
