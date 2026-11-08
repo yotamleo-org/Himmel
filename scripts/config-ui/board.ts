@@ -6,10 +6,9 @@
 // the page shows both as absent, with the reason, never as a count.
 import { execFile, execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { runChild } from "./lock";
 import { readRoadmap } from "./roadmap";
-import { decisionsOf } from "./shift";
 import { jiraMirrorDir } from "./tracker-sources";
 
 type Env = Record<string, string | undefined>;
@@ -150,30 +149,75 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
   return { state: "ok", sdrift: last.slice("sdrift=".length) };
 }
 
-// What is owed to the operator beside the labels and chain holds: `release spec-check` over the open core tickets (a NO-SPEC or SPEC-STALE line is an
-// owed signature) and the open decisions in the newest chief doc. Both are READ ONLY; a source that cannot be read is absent with its reason, never an empty list.
-// ponytail: the newest chief doc by mtime stands for "the live chief", upgrade path: the live chiefs' docs by queue lock as Shift reads them.
-export type Owed = { specs: { state: "ok"; checks: string[] } | Absent; decisions: { state: "ok"; items: string[] } | Absent };
-const specCheckCli = (env: Env) => env.CONFIG_UI_SPEC_CHECK || resolve(KIT, "../../jira/dist/index.js");
-const SPEC_KEEP = ["PATH", "HOME", "JIRA_PROJECT_KEY", "USER_SLUG", "HANDOVER_DIR", "HIMMEL_RELEASE_STATE_DIR", "HIMMEL_JIRA_MIRROR"];
-function readSpecs(env: Env, mirror: string, read: typeof readRoadmap): Promise<Owed["specs"]> {
-  const cli = specCheckCli(env);
-  let keys: string[];
-  try {
-    const r = read({ mirrorDir: mirror, projects: [{ key: env.JIRA_PROJECT_KEY || "HIMMEL", dir: mirror }], workers: { state: "absent" } });
-    keys = r.tickets.filter((t) => t.labels.includes("core") && t.b !== "done" && t.b !== "wont").map((t) => t.id ?? `${env.JIRA_PROJECT_KEY || "HIMMEL"}-${t.k}`);
-  } catch (e) { return Promise.resolve(absent(`the core tickets could not be read: ${(e as Error).message}`)); }
-  if (!keys.length) return Promise.resolve({ state: "ok", checks: [] });
-  try { statSync(cli); } catch { return Promise.resolve(absent(`spec-check is not built: ${cli} is not there`)); }
-  const cenv = Object.fromEntries(SPEC_KEEP.map((k) => [k, env[k] ?? (k === "PATH" ? process.env.PATH : undefined)]).filter(([, v]) => v !== undefined)) as NodeJS.ProcessEnv;
-  return new Promise((done) => {
-    // spec-check exits 1 while any key is unsigned, so the exit code is not the failure: no recognised line is
-    execFile("node", [cli, "release", "spec-check", ...keys, "--mirror", mirror], { env: cenv, timeout: TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
-      const lines = String(stdout).split("\n").map((l) => l.trim()).filter((l) => /^(SPEC ok|SPEC-STALE|NO-SPEC) /.test(l));
-      if (!lines.length) return done(absent(`spec-check failed: ${String(stderr || (err as Error | null)?.message || "it printed no result").trim().split("\n").pop()?.slice(0, 200)}`));
-      done({ state: "ok", checks: lines.filter((l) => !l.startsWith("SPEC ok ")) });
-    });
-  });
+// What is owed to the operator beside the labels and the chain holds, read from the records that hold it: the same three sources as the roadmap
+// tracker's reader (tracker.py operator_owed), so the two views agree. All READ ONLY.
+//   1. an unsigned spec: the latest critic verdict of a spec of an open ticket of the running version is SPEC CLEAN or is past the round cap, and
+//      <bucket>/release/<version>/operator.jsonl has no `spec` row naming that spec file;
+//   2. a `queue:` segment or `pool-disposition:` line of the newest chief doc's `## Live state` that names the operator;
+//   3. the newest *HANDOFF.md of the bucket, its `## Open operator items` lines.
+// A source that cannot be read is named in `unread`; when none can be read the whole read is absent with the reasons, never an empty list.
+// ponytail: the newest chief doc by mtime stands for "the live chief" and its folder for the bucket, upgrade path: the live chiefs' docs by queue lock as Shift reads them.
+export type OwedItem = { source: "unsigned spec" | "chief doc" | "handoff"; key: string | null; title: string; ctx: string; act: string };
+export type Owed = { state: "ok"; items: OwedItem[]; unread: string[] } | Absent;
+const OWED_SOURCES = 3; // unsigned specs, handoff items, chief doc lines
+const SPEC_ROUNDS = 3; // the critic round cap (critic-seal.sh): a spec past it needs the operator's record whatever its last verdict says
+const OWED_RE = /operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed/i;
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+// The lines under `## <heading>` up to the next `## `; undefined when the file has no such section.
+function mdSection(text: string, heading: string): string[] | undefined {
+  const out: string[] = [];
+  let on = false, found = false;
+  for (const l of text.split("\n")) {
+    if (l.startsWith("## ")) { if (on) break; on = l.slice(3).trim() === heading; found ||= on; } else if (on) out.push(l);
+  }
+  return found ? out : undefined;
+}
+const readText = (p: string) => readFileSync(p, "utf8");
+function specItems(bucket: string, version: string, open: Map<string, string>): OwedItem[] {
+  const signed = new Set<string>();
+  for (const l of readText(join(bucket, "release", version, "operator.jsonl")).split("\n")) {
+    try { const r = JSON.parse(l); if (r && r.kind === "spec" && typeof r.spec_path === "string") signed.add(r.spec_path); } catch { /* a torn or blank line holds no record */ }
+  }
+  const dir = join(bucket, "specs", "designs"), latest = new Map<string, { n: number; f: string }>();
+  for (const f of readdirSync(dir)) {
+    const m = f.match(/^(.*)\.critic-spec-r(\d+)\.md$/);
+    if (m && (!latest.has(m[1]) || Number(m[2]) > latest.get(m[1])!.n)) latest.set(m[1], { n: Number(m[2]), f });
+  }
+  const items: OwedItem[] = [];
+  for (const [spec, { n, f }] of [...latest].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const key = spec.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
+    let last: string;
+    try { last = readText(join(dir, f)).split("\n").map((x) => x.trim()).filter(Boolean).pop() ?? ""; } catch { continue; }
+    if (!key || !open.has(key) || signed.has(join(dir, spec)) || signed.has(join(dir, `${spec}.md`)) || !(last === "SPEC CLEAN" || n >= SPEC_ROUNDS)) continue;
+    items.push({ source: "unsigned spec", key, title: open.get(key)!, act: "sign the spec, or rule on its findings",
+      ctx: `${spec}: latest critic round ${n} reads ${/^SPEC (?:CLEAN|FINDINGS \d+)$/.test(last) ? last : "no verdict line"}, no spec row in operator.jsonl` });
+  }
+  return items;
+}
+function handoffItems(bucket: string): OwedItem[] | undefined {
+  let best: { f: string; t: number } | undefined;
+  for (const f of readdirSync(bucket)) {
+    if (!f.endsWith("HANDOFF.md")) continue;
+    const t = statSync(join(bucket, f)).mtimeMs;
+    if (!best || t > best.t) best = { f, t };
+  }
+  const sec = best ? mdSection(readText(join(bucket, best.f)), "Open operator items") : undefined;
+  return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*none\.?$/i.test(l))
+    .map((l) => ({ source: "handoff" as const, key: null, title: clip(l.replace(/^[-*]\s+/, ""), 140), ctx: best!.f, act: "answer the open item" }));
+}
+function chiefDocItems(doc: string, open: Map<string, string>): OwedItem[] | undefined {
+  const live = mdSection(readText(doc), "Live state");
+  if (!live) return undefined;
+  const items: OwedItem[] = [];
+  for (const l of live) {
+    const segs = l.startsWith("queue:") ? l.slice(6).split(" | ") : l.startsWith("pool-disposition:") ? [l.slice(17)] : [];
+    for (const s of segs.map((x) => x.trim()).filter((x) => OWED_RE.test(x))) {
+      const key = s.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
+      const known = !!key && open.has(key);
+      items.push({ source: "chief doc", key: known ? key! : null, title: known ? open.get(key!)! : clip(s, 140), ctx: known ? clip(s, 160) : "from the chief doc's Live state", act: "the operator acts on what the line names" });
+    }
+  }
+  return items;
 }
 function newestChiefDoc(env: Env): string | undefined {
   if (env.HIMMEL_CHIEF_DOC) return env.HIMMEL_CHIEF_DOC;
@@ -194,13 +238,30 @@ function newestChiefDoc(env: Env): string | undefined {
   } catch { /* an unreadable handover root reads as no doc */ }
   return best?.p;
 }
-function readDecisions(env: Env): Owed["decisions"] {
-  const doc = newestChiefDoc(env);
-  if (!doc) return absent("no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
-  try { return { state: "ok", items: decisionsOf(readFileSync(doc, "utf8")) }; } catch (e) { return absent(`the chief doc could not be read: ${(e as Error).message}`); }
-}
-export async function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Promise<Owed> {
-  return { specs: await readSpecs(env, jiraMirrorDir(env), read), decisions: readDecisions(env) };
+export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed {
+  const mirror = jiraMirrorDir(env), proj = env.JIRA_PROJECT_KEY || "HIMMEL";
+  const doc = newestChiefDoc(env), bucket = env.HIMMEL_BUCKET_DIR || (doc ? dirname(doc) : undefined);
+  const items: OwedItem[] = [], unread: string[] = [], why: string[] = [];
+  const miss = (what: string, reason: string) => { unread.push(what); why.push(`${what}: ${reason}`); };
+  let running: string | undefined;
+  const open = new Map<string, string>(); // the open tickets of the running version: id to title
+  try {
+    const r = read({ mirrorDir: mirror, projects: [{ key: proj, dir: mirror }], workers: { state: "absent" } });
+    running = r.versions[r.cur]?.n.replace(new RegExp(` \\(${proj}\\)$`), "");
+    for (const t of r.tickets) if (t.v === r.cur && (t.b === "todo" || t.b === "prog" || t.b === "rev" || t.b === "ci")) open.set(t.id ?? `${proj}-${t.k}`, t.t);
+  } catch (e) { why.push(`the open tickets could not be read: ${(e as Error).message}`); }
+  const tryRead = (what: string, f: () => OwedItem[] | undefined, none: string) => {
+    try { const got = f(); if (got) items.push(...got); else miss(what, none); } catch (e) { miss(what, (e as Error).message); }
+  };
+  if (!bucket) { miss("unsigned specs", "no bucket: no chief doc under the handover root, and HIMMEL_BUCKET_DIR is not set"); miss("handoff items", "no bucket"); }
+  else {
+    if (!running) miss("unsigned specs", "no running version");
+    else tryRead("unsigned specs", () => specItems(bucket, running!, open), "none");
+    tryRead("handoff items", () => handoffItems(bucket), `no Open operator items section in the newest HANDOFF under ${bucket}`);
+  }
+  if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
+  else tryRead("chief doc lines", () => chiefDocItems(doc, open), "the chief doc has no Live state section");
+  return unread.length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread };
 }
 
 // `asked`: the version tile picked on the page. A known one is the version the tab reads; an unknown one reads as the running version and the answer says so (fellBack).
@@ -213,7 +274,7 @@ export async function readBoardExtras(env: Env, read: typeof readRoadmap = readR
   // the chain read's state dir (hold and merge rows) is the script's own: TICKET_STATUS_STATE_DIR, else $HOME/.himmel/state
   if (!registry) {
     const none = absent("no chain registry: none found under the handover root, and HIMMEL_CHAIN_REGISTRY is not set");
-    return { drift: await drift, chains: none, versionChains: none, prs: readPrs(env), owed: await readOwed(env, read) };
+    return { drift: await drift, chains: none, versionChains: none, prs: readPrs(env), owed: readOwed(env, read) };
   }
   const chainRead = (extra: string[]) => runReader(join(KIT, "chain-state.mjs"), ["--json", "--registry", registry, "--mirror", mirror, ...extra], env, "the chain read");
   const withBurn = (r: Record<string, unknown> | Absent) => ("tickets" in r ? { ...r, burn: burnDown(r as Parameters<typeof burnDown>[0]) } : r);

@@ -1588,33 +1588,26 @@ test("Board: a card in a chain says FAST-TRACK with the chain's name and its ste
   expect(board(r, { v: "v1.1.2" }, null)).not.toContain("rm-drain"); // without the chain read it cannot split
 });
 
-// ---- Waiting on you lists what is owed to the operator: unsigned specs, the chief doc's open decisions and operator holds on a ticket with a PR ----
+// ---- Waiting on you lists what is owed to the operator: unsigned specs, chief doc lines, the HANDOFF's open items and operator holds on a ticket with a PR ----
 const owedUi = { version: null, theme: null };
 const waitingSec = (html: string) => html.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)?.[0] ?? "";
+const noChains = { state: "absent", reason: "no chain registry" };
 
-test("Board: a core ticket whose spec-check says NO-SPEC or SPEC-STALE is a Waiting on you row with its title, context and action, and leaves once the signature lands", () => {
-  const s = station();
-  const put = (n: number, labels: string[], status = "To Do") => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), issue(n, status, status, ["v1.1.3"], `Core work ${n}`, labels));
-  put(20, ["core"]); put(21, ["core"]); put(22, ["core"]); put(23, [], "To Do"); put(24, ["core"], "Done");
-  const r = read(s), chains = { state: "absent", reason: "no chain registry" };
-  const owed = { specs: { state: "ok", checks: ["NO-SPEC HIMMEL-20", "SPEC-STALE HIMMEL-21 /b/s.md O-0001", "SPEC ok HIMMEL-22 /b/s.md O-0002", "NO-SPEC HIMMEL-23", "NO-SPEC HIMMEL-24"] } };
-  const sec = waitingSec(renderBoard(r, owedUi, { drift: null, chains, owed }));
-  expect(sec).toContain("Core work 20"); // the title, never a bare key
-  expect(sec).toContain("no signed spec on record");
-  expect(sec).toContain("Core work 21");
-  expect(sec).toContain("changed after it was signed");
-  expect(sec).toContain("Action:");
-  expect(sec).toContain("sign or rule on the spec page");
-  expect(sec).not.toContain("HIMMEL-22"); // signed and fresh
-  expect(sec).not.toContain("HIMMEL-23"); // not core
-  expect(sec).not.toContain("HIMMEL-24"); // Done: nothing is owed
+test("Board: an unsigned spec is a Waiting on you row with the ticket's title, a context line and the action, and leaves once its record lands", () => {
+  const r = read(station());
+  const spec = { source: "unsigned spec", key: K(2), title: "Orphaned work", ctx: "HIMMEL-2-orphans.md: latest critic round 1 reads SPEC CLEAN, no spec row in operator.jsonl", act: "sign the spec, or rule on its findings" };
+  const sec = waitingSec(renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items: [spec], unread: [] } }));
+  expect(sec).toContain("Orphaned work"); // the title, never a bare key
+  expect(sec).toContain("latest critic round 1 reads SPEC CLEAN");
+  expect(sec).toContain("Action: sign the spec, or rule on its findings");
   // recording the signature removes the row
-  const after = { specs: { state: "ok", checks: ["SPEC ok HIMMEL-20 /b/s.md O-0003", "SPEC ok HIMMEL-21 /b/s.md O-0004"] } };
-  expect(renderBoard(r, owedUi, { drift: null, chains, owed: after })).not.toContain("rm-waiting");
-  // a spec read that failed is said, never shown as nobody owing a signature
-  const bad = renderBoard(r, owedUi, { drift: null, chains: { state: "absent", reason: "x" }, owed: { specs: { state: "absent", reason: "spec-check failed: no release root" } } });
+  expect(renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items: [], unread: [] } })).not.toContain("rm-waiting");
+  // a read that failed is said, never shown as nobody owing the operator anything
+  const bad = renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "absent", reason: "no bucket" } });
   expect(bad).not.toContain("rm-waiting");
-  expect(bad).toContain("spec signatures not read");
+  expect(bad).toContain("the operator-owed sources not read");
+  const part = renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items: [], unread: ["handoff items"] } });
+  expect(part).toContain("handoff items not read");
 });
 
 test("Board: an operator hold on a ticket with an open PR is a Waiting on you row with the PR, the hold's reason and the action", () => {
@@ -1631,34 +1624,53 @@ test("Board: an operator hold on a ticket with an open PR is a Waiting on you ro
   expect(sec).not.toContain("waits for step 1");
 });
 
-test("Board: the chief doc's open decisions are Waiting on you rows with the action, and a failed read is said", () => {
+test("Board: a chief doc line naming a ticket joins that ticket's row, and a HANDOFF item naming none is a row of its own, each with the action", () => {
   const r = read(station());
-  const chains = { state: "absent", reason: "no chain registry" };
-  const owed = { decisions: { state: "ok", items: ["HIMMEL-9502 residual d: reply `9502 B` or `9502 raise`"] } };
-  const sec = waitingSec(renderBoard(r, owedUi, { drift: null, chains, owed }));
-  expect(sec).toContain("HIMMEL-9502 residual d");
-  expect(sec).toContain("9502 raise");
-  expect(sec).toContain("Action:");
-  expect(sec).toContain("answer the chief");
-  const none = renderBoard(r, owedUi, { drift: null, chains, owed: { decisions: { state: "ok", items: [] } } });
-  expect(none).not.toContain("rm-waiting");
+  const items = [
+    { source: "chief doc", key: K(5), title: "Resumed work", ctx: "HIMMEL-5 operator sign-off before the merge", act: "the operator acts on what the line names" },
+    { source: "handoff", key: null, title: "9271: run the apply at the station", ctx: "VE-HANDOFF.md", act: "answer the open item" },
+  ];
+  const sec = waitingSec(renderBoard(r, owedUi, { drift: null, chains: noChains, owed: { state: "ok", items, unread: [] } }));
+  expect(sec).toContain("Resumed work");
+  expect(sec).toContain("operator sign-off before the merge");
+  expect(sec).toContain("9271: run the apply at the station");
+  expect(sec).toContain("Action: answer the open item");
+  expect(sec.match(/<li>/g)!.length).toBe(2);
 });
 
-test("readOwed: runs spec-check for the open core tickets and reads the newest chief doc's open decisions; an unreadable source is absent with its reason", async () => {
+test("readOwed: reads the unsigned specs, the newest chief doc's lines naming the operator and the newest HANDOFF's open items; an unreadable source is named, none readable is absent", async () => {
   const { readOwed } = await import("../board");
   const s = station();
-  const put = (n: number, labels: string[], status = "To Do") => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), issue(n, status, status, ["v1.1.3"], `Core work ${n}`, labels));
-  put(20, ["core"]); put(21, [], "To Do"); put(24, ["core"], "Done");
-  const stub = join(s.d, "spec-check-stub.js");
-  writeFileSync(stub, `console.log(process.argv.filter((k) => /^HIMMEL-\\d+$/.test(k)).map((k) => "NO-SPEC " + k).join("\\n")); process.exitCode = 1;\n`);
-  const ho = join(s.d, "ho", "u", "himmel");
-  mkdirSync(ho, { recursive: true });
-  writeFileSync(join(ho, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief.md"), "# VE\n\n## Live state\n\nworkers: x\ndecisions: 9502 raise or B (reply `9502 B`); 9271 run the apply at the station\nrelease: v1.1.3\n\n## Current direction\n");
-  const env = { PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, CONFIG_UI_SPEC_CHECK: stub, HANDOVER_DIR: join(s.d, "ho"), JIRA_PROJECT_KEY: "HIMMEL" };
-  const o = await readOwed(env);
-  expect(o.specs).toEqual({ state: "ok", checks: ["NO-SPEC HIMMEL-20"] }); // only the open core ticket was asked
-  expect(o.decisions).toEqual({ state: "ok", items: ["9502 raise or B (reply `9502 B`)", "9271 run the apply at the station"] });
-  const none = await readOwed({ ...env, CONFIG_UI_SPEC_CHECK: join(s.d, "missing.js"), HANDOVER_DIR: join(s.d, "no-ho") });
-  expect(none.specs.state).toBe("absent");
-  expect(none.decisions.state).toBe("absent");
+  // the running version is v1.1.2: tickets 1, 2, 5 and 7 are open there, 3 is Done in v1.1.1
+  const bucket = join(s.d, "ho", "u", "himmel");
+  const designs = join(bucket, "specs", "designs"), rel = join(bucket, "release", "v1.1.2");
+  mkdirSync(designs, { recursive: true }); mkdirSync(rel, { recursive: true });
+  const critic = (name: string, n: number, last: string) => writeFileSync(join(designs, `${name}.critic-spec-r${n}.md`), `# round ${n}\n\nnotes\n\n${last}\n`);
+  critic("HIMMEL-1-clean-unsigned.md", 1, "SPEC CLEAN");          // owed
+  critic("HIMMEL-2-signed.md", 1, "SPEC CLEAN");                  // signed below
+  critic("HIMMEL-5-still-in-review", 1, "SPEC FINDINGS 2");       // the critics are not done: not yet the operator's
+  critic("HIMMEL-7-capped", 3, "SPEC FINDINGS 1");                // past the round cap: owed
+  critic("HIMMEL-3-shipped.md", 1, "SPEC CLEAN");                 // its ticket is Done
+  writeFileSync(join(rel, "operator.jsonl"), `${JSON.stringify({ kind: "spec", keys: [K(2)], spec_path: join(designs, "HIMMEL-2-signed.md") })}\nnot json\n`);
+  writeFileSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief.md"),
+    "# VE\n\n## Live state\n\nworkers: x\nqueue: HIMMEL-5 merge waits for operator sign-off | HIMMEL-9 runs by itself\npool-disposition: HIMMEL-4 parked until the operator words arrive\n\n## Current direction\n");
+  writeFileSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief-HANDOFF.md"), "# h\n\n## Open operator items\n\n- 9271: run the apply at the station\n- none\n\n## Next\n");
+  const env = { PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, HANDOVER_DIR: join(s.d, "ho"), JIRA_PROJECT_KEY: "HIMMEL" };
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  expect(o.unread).toEqual([]);
+  expect(o.items.filter((i) => i.source === "unsigned spec").map((i) => [i.key, i.title])).toEqual([[K(1), "Roadmap in the ui"], [K(7), "Ready work"]]);
+  expect(o.items.find((i) => i.key === K(1))!.ctx).toContain("latest critic round 1 reads SPEC CLEAN");
+  expect(o.items.find((i) => i.key === K(7))!.ctx).toContain("latest critic round 3 reads SPEC FINDINGS 1");
+  const chief = o.items.filter((i) => i.source === "chief doc");
+  expect(chief.map((i) => i.key)).toEqual([K(5), null]); // 4 is Done in v1.1.1, so its title is the line itself
+  expect(chief[0].title).toBe("Resumed work");
+  expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["9271: run the apply at the station"]);
+  // no HANDOFF: that source is named, the others still read
+  rmSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief-HANDOFF.md"));
+  const part = readOwed(env);
+  expect(part.state === "ok" && part.unread).toEqual(["handoff items"]);
+  // no handover root and no chief doc: nothing is readable, so the answer is absent with the reasons
+  const none = readOwed({ ...env, HANDOVER_DIR: join(s.d, "no-ho") });
+  expect(none.state).toBe("absent");
 });

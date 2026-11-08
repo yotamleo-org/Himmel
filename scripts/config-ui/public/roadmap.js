@@ -345,7 +345,7 @@ function stripHtml(d, sel, tab, ui = {}, lead = "", slim = false) {
 function linksHtml(ch, rows, d, nv, owed) {
   let wait = `<b>waits for you: not read</b> (${esc(noChains(ch))})`;
   if (chainOk(ch) || rows.length) {
-    wait = `<b>${rows.length} ${rows.length === 1 ? "waits" : "wait"} for you</b>${rows.length ? ": " + rows.map((x) => esc(x.key || "decision")).join(", ") : ""}${chainOk(ch) ? "" : ` (chain holds not read: ${esc(noChains(ch))})`}`;
+    wait = `<b>${rows.length} ${rows.length === 1 ? "waits" : "wait"} for you</b>${rows.length ? ": " + rows.map((x) => esc(x.key || "item")).join(", ") : ""}${chainOk(ch) ? "" : ` (chain holds not read: ${esc(noChains(ch))})`}`;
   }
   const unreadSrc = unreadOwed(owed);
   if (unreadSrc.length) wait += ` (${esc(unreadSrc.join("; "))})`;
@@ -362,9 +362,8 @@ const OPERATOR_LABELS = ["operator-decision", "operator", "operator-present", "o
 // nv = the No version read (GET /api/roadmap?nv=1) once it has arrived: its operator-labelled tickets are rows too, tagged noVersion.
 const nvOk = (nv) => !!(nv && nv.state === "ok" && Array.isArray(nv.tickets));
 // Each row carries its context lines (ctx) and the action the operator takes (acts). Sources beside the labels and the chain's "waits on you":
-// owed.specs = `release spec-check` lines for the open core tickets (NO-SPEC and SPEC-STALE are owed signatures), owed.decisions = the chief doc's
-// open operator decisions (no ticket: a row of its own), an operator hold on a ticket carries its reason and, from prs, the open PR it holds.
-const SPEC_CTX = { "NO-SPEC": "no signed spec on record", "SPEC-STALE": "the spec or a verdict changed after it was signed" };
+// owed.items = what board.ts readOwed read (unsigned specs, chief doc lines naming the operator, the newest HANDOFF's open operator items); one that names
+// no ticket is a row of its own. An operator hold on a ticket carries its reason and, from prs, the open PR it holds.
 const isOpenB = (b) => b === "todo" || b === "prog" || b === "rev" || b === "ci";
 function waitingRows(d, ch, nv, owed, prs) {
   const rows = new Map(), titles = new Map();
@@ -381,17 +380,12 @@ function waitingRows(d, ch, nv, owed, prs) {
   };
   add(d.tickets, false);
   if (nvOk(nv)) add(nv.tickets, true);
-  if (owed && owed.specs && owed.specs.state === "ok") {
-    const mine = [...d.tickets.map((t) => [t, false]), ...(nvOk(nv) ? nv.tickets.map((t) => [t, true]) : [])];
-    for (const line of owed.specs.checks || []) {
-      const m = /^(NO-SPEC|SPEC-STALE) (\S+)/.exec(line);
-      const hit = m && mine.find(([t]) => idOf(t) === m[2]);
-      if (!hit || !(hit[0].labels || []).includes("core") || !isOpenB(hit[0].b)) continue;
-      const r = get(m[2], hit[0].t, hit[1]);
-      r.ctx.push(SPEC_CTX[m[1]]);
-      r.acts.push("sign or rule on the spec page");
-    }
-  }
+  // an owed item naming a ticket joins that ticket's row (one row per key); one naming none is a row of its own
+  const loose = [];
+  if (owed && owed.state === "ok") (owed.items || []).forEach((item, i) => {
+    if (item.key) { const r = get(item.key, item.title, false); r.ctx.push(item.ctx); r.acts.push(item.act); }
+    else loose.push({ key: "", title: item.title, labels: [], noVersion: false, ctx: [item.ctx], acts: [item.act], loose: true, id: `owed-${i}` });
+  });
   if (chainOk(ch)) for (const x of Object.values(ch.tickets)) {
     if (x.state !== "waits on you") continue;
     const r = get(x.key, x.title, false);
@@ -402,23 +396,20 @@ function waitingRows(d, ch, nv, owed, prs) {
     for (const l of holds) r.ctx.push(l.reason || "an operator hold");
     if (holds.length) r.acts.push("rule on it, then the chief releases the hold");
   }
-  if (owed && owed.decisions && owed.decisions.state === "ok") (owed.decisions.items || []).forEach((item, i) => {
-    rows.set(`decision-${i}`, { key: "", title: item, labels: [], noVersion: false, ctx: ["an open decision in the chief doc"], acts: ["answer the chief"], decision: true });
-  });
-  return [...rows.values()];
+  return [...rows.values(), ...loose];
 }
 
 // The Waiting on you section, one row per waiting ticket: key, title, the operator label or the chain and step it waits at. The key
 // opens its chain only where the Chains tab (the running version) holds the ticket. With nothing waiting there is no section: the count
 // link beside the tabs says 0 or "not read", and an empty box would push the first card down.
 // What an unreadable owed source says: a read that failed is never a plain "nobody owes you".
-const unreadOwed = (owed) => owed ? [owed.specs && owed.specs.state === "absent" ? "spec signatures not read" : "", owed.decisions && owed.decisions.state === "absent" ? "the chief doc's decisions not read" : ""].filter(Boolean) : [];
+const unreadOwed = (owed) => !owed ? [] : owed.state === "ok" ? (owed.unread || []).map((w) => `${w} not read`) : ["the operator-owed sources not read"];
 function waitingHtml(rows, tabCh, v, d, ch, nv, owed) {
   if (!rows.length) return "";
   const row = (x) => {
     const href = `#/board?tab=chains${v ? `&amp;v=${esc(encodeURIComponent(v))}` : ""}&amp;at=${esc(encodeURIComponent(x.key))}`;
     // a ticket with no version opens the No version tab, where its card is; any other opens its chain where the Chains tab holds it
-    const key = x.decision ? "" : x.noVersion ? `<a href="${boardHref({ tab: "nv" })}">${esc(x.key)}</a>` : chainOk(tabCh) && tabCh.tickets[x.key] ? `<a href="${href}">${esc(x.key)}</a>` : esc(x.key);
+    const key = x.loose ? "" : x.noVersion ? `<a href="${boardHref({ tab: "nv" })}">${esc(x.key)}</a>` : chainOk(tabCh) && tabCh.tickets[x.key] ? `<a href="${href}">${esc(x.key)}</a>` : esc(x.key);
     const why = [...x.labels, ...(x.chain ? [`${x.chain.id} ${x.chain.step}/${x.chain.steps}`] : []), ...(x.noVersion ? ["no version"] : [])];
     // the title is never left bare: a ticket whose title was not read says so
     const act = x.acts.length ? `<br><span class="ro">${[...x.ctx, `Action: ${[...new Set(x.acts)].join("; ")}`].map(esc).join(" · ")}</span>` : "";
@@ -426,7 +417,7 @@ function waitingHtml(rows, tabCh, v, d, ch, nv, owed) {
   };
   const nvRead = nvOk(nv);
   const notes = [chainOk(ch) ? "" : "chain holds not read", d.noVersionCount && !nvRead ? `${d.noVersionCount} tickets with no version are on the No version tab` : "", ...unreadOwed(owed)].filter(Boolean);
-  const noun = rows.some((x) => x.decision) ? ["item waits", "items wait"] : ["ticket waits", "tickets wait"];
+  const noun = rows.some((x) => x.loose) ? ["item waits", "items wait"] : ["ticket waits", "tickets wait"];
   return section("rm-waiting", "Waiting on you", `${rows.length} ${rows.length === 1 ? noun[0] : noun[1]} on you, across every version${nvRead ? " and the tickets with no version" : ""}${notes.length ? ` (${notes.join("; ")})` : ""}.`,
     `<ul class="rm-waiting">${rows.map(row).join("")}</ul>`);
 }
