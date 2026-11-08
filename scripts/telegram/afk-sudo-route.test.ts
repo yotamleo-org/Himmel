@@ -76,6 +76,39 @@ test("an approve line with a mistyped id and a code is consumed, and never reach
   expect(makeAfkSudoGate(fake().deps)(dm("approve PR 4204"))).toBe(false);
 });
 
+test("handleInbound: with afk-sudo installed, an outside-PR approve whose prefix holds a six-digit run reaches routeApprove", async () => {
+  const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+  const accessFile = join(r, "access.json");
+  writeFileSync(accessFile, JSON.stringify({ allowFrom: [String(OP)] }));
+  const saved = process.env.TELEGRAM_ACCESS_PATH;
+  process.env.TELEGRAM_ACCESS_PATH = accessFile;
+  try {
+    for (const prefix of ["a123456", "1234567", "abc123456def", "123456"]) {
+      const { deps, calls, replies } = fake();
+      const approveReplies: string[] = [];
+      const ran: string[] = [];
+      const consoleRoute = { authorize: (from: number, chat: number) => from === OP && chat === OP, reply: async (_chat: number, text: string) => { approveReplies.push(text); } };
+      const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps) };
+      await handleInbound(r, { ...dm(`approve 7 ${prefix}`), ts: Math.floor(Date.now() / 1000), message_id: 123 } as never, async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true, undefined, undefined, undefined, consoleRoute);
+      await settle();
+      expect(replies).toEqual([]);
+      expect(calls).toEqual([]);
+      expect(ran).toEqual([]);
+      expect(approveReplies.join("\n")).toContain("⚠️ approve: reply to the outside-approve-request message from the bot");
+    }
+  } finally { if (saved === undefined) delete process.env.TELEGRAM_ACCESS_PATH; else process.env.TELEGRAM_ACCESS_PATH = saved; }
+});
+
+test("a real malformed afk-sudo id with a code still gets the afk-sudo reply and never reaches routeApprove", async () => {
+  for (const text of ["approve abcdefg 123456", "approve abcdefghi K7QF 123456", "approve 7 K7QF 123456", "approve 7 a123456 please"]) {
+    const { deps, calls, replies } = fake();
+    expect(makeAfkSudoGate(deps)(dm(text))).toBe(true);
+    await settle();
+    expect(calls).toEqual([]);
+    expect(replies[0]).toBe("⚠️ afk-sudo: the id is not 8 letters, nothing ran");
+  }
+});
+
 test("deny reaches the helper with an empty stdin", async () => {
   const { deps, calls } = fake();
   expect(makeAfkSudoGate(deps)(dm("deny abcdefgh"))).toBe(true);
