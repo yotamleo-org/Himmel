@@ -9,8 +9,6 @@
 #   4. run: the shim attributes GraphQL calls to the calling script, skips REST
 #   5. run: remaining under the floor refuses (rc 2) and runs nothing
 #   6. watch: a live gh process is charged once to its calling script
-#   7. watch --floor N: default stays 1500 (refuses at 100), --floor 0 watches
-#      at 100, a non-numeric value is a usage error
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
