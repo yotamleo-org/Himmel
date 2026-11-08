@@ -3847,15 +3847,19 @@ cp /tmp/x @H@/$'.claude'/settings.json
 cp /tmp/x @H@/$'.cla'ude/sett$'ings'.json
 echo x > @H@/.claude/settings.json; sort -t$'\t' /tmp/y
 ROWS
-ln -s "$PRIMARY/.claude/settings.json" "$SANDBOX/scratch-link"
+SCRATCH=$(mktemp -d /tmp/himmel-lsb.XXXXXX) || { echo "FATAL: no /tmp scratch dir" >&2; exit 1; }
+case "$(printf '%s' "$SCRATCH" | tr '[:upper:]' '[:lower:]')" in
+    *tee*) echo "FATAL: scratch dir name holds 'tee'" >&2; exit 1 ;;
+esac
+ln -s "$PRIMARY/.claude/settings.json" "$SCRATCH/scratch-link" || { echo "FATAL: ln -s failed" >&2; exit 1; }
 assert_rc "9880 cp onto a /tmp symlink to the live settings denies" 2 \
-    "$(bash_rc_of "$NESTED_WT" "cp /tmp/x/a.json $SANDBOX/scratch-link" HOME="$FAKEHOME")"
+    "$(bash_rc_of "$NESTED_WT" "cp /tmp/x/a.json $SCRATCH/scratch-link" HOME="$FAKEHOME")"
 assert_rc "9881 cp of the live settings onto a /tmp symlink to it denies" 2 \
-    "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SANDBOX/scratch-link" HOME="$FAKEHOME")"
+    "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SCRATCH/scratch-link" HOME="$FAKEHOME")"
 assert_rc "9882 python heredoc writing a /tmp symlink to the live settings denies" 2 \
     "$(bash_rc_of "$PRIMARY" "python3 - <<'PY'
 import os
-f = open('$SANDBOX/scratch-link', 'w')
+f = open('$SCRATCH/scratch-link', 'w')
 f.write(os.path.expanduser('~'))
 PY" HOME="$FAKEHOME")"
 rows_both 9883 2 "an escaped python path, a trailing awk option, an awk expansion deny" <<'ROWS'
@@ -3867,14 +3871,15 @@ ROWS
 rows_both 9887 0 "awk over an absolute glob operand allows" <<'ROWS'
 awk '{print $1}' @P@/.claude/settings.json /tmp/claude-1000/x/*.log
 ROWS
-mkdir -p "$SANDBOX/scratchdir" "$SANDBOX/scratchok"
-ln -s "$FAKEHOME/.claude/settings.json" "$SANDBOX/scratchdir/settings.json"
+mkdir -p "$SCRATCH/scratchdir" "$SCRATCH/scratchok" || { echo "FATAL: mkdir failed" >&2; exit 1; }
+ln -s "$FAKEHOME/.claude/settings.json" "$SCRATCH/scratchdir/settings.json" || { echo "FATAL: ln -s failed" >&2; exit 1; }
 assert_rc "9890 cp into a /tmp dir whose settings.json is a live symlink (cwd worktree) denies" 2 \
-    "$(bash_rc_of "$NESTED_WT" "cp $PRIMARY/.claude/settings.json $SANDBOX/scratchdir/" HOME="$FAKEHOME")"
+    "$(bash_rc_of "$NESTED_WT" "cp $PRIMARY/.claude/settings.json $SCRATCH/scratchdir/" HOME="$FAKEHOME")"
 assert_rc "9891 cp into a /tmp dir whose settings.json is a live symlink (cwd primary) denies" 2 \
-    "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SANDBOX/scratchdir" HOME="$FAKEHOME")"
+    "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SCRATCH/scratchdir" HOME="$FAKEHOME")"
 assert_rc "9892 cp into a plain /tmp dir (cwd primary) allows" 0 \
-    "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SANDBOX/scratchok/" HOME="$FAKEHOME")"
+    "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SCRATCH/scratchok/" HOME="$FAKEHOME")"
+rm -r -- "$SCRATCH"
 rows_both 9893 2 "a uniq word that expands, or an operand after --, can name the output file: denies" <<'ROWS'
 n='0 /etc/hostname'; uniq -s $n @P@/.claude/settings.json
 n=' /etc/hostname'; uniq -c$n @P@/.claude/settings.json
