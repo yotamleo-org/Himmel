@@ -224,6 +224,27 @@ git update-ref -d refs/remotes/origin/main
 J=$J8
 git checkout -q "$base_branch"
 
+# 8k/8l (S9): a merge in the delta whose remerge-diff is not empty (a hand-resolved conflict) is
+# reviewed, never none, even on a non-trust file no prior finding names; a clean merge stays none
+git checkout -q -b base8l "$J8"; mkdir -p lib; seq 1 5 > lib/x.sh; seq 1 5 > lib/y.sh; B8=$(step lib-base)
+git checkout -q -b main8l "$B8"; echo "mainx" > lib/x.sh; echo "mainy" > lib/y.sh; M=$(step main-lib)
+git checkout -q -b pr8l "$B8"; echo "prx" > lib/x.sh; Jp=$(step pr-lib)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8l >/dev/null 2>&1
+echo "resolved" > lib/x.sh; N=$(step resolved-lib)
+J=$Jp; mkv GO
+check "8k: a hand-resolved conflict in a non-trust file, no prior finding names it -> finding" "$(cls "$N")" finding
+git update-ref -d refs/remotes/origin/main
+git checkout -q -b main8m "$B8"; echo "mainy" > lib/y.sh; M=$(step main-lib-y)
+git checkout -q -b pr8m "$B8"; echo "prx" > lib/x.sh; Jp=$(step pr-lib-x)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8m >/dev/null 2>&1; N=$(git rev-parse HEAD)
+J=$Jp; mkv GO
+check "8l: a clean merge-forward of an unrelated main change (empty remerge-diff) -> none" "$(cls "$N")" none
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
+
 # 8e: the PR's own edit to a trust path (after the judged head) is dropped by resolving to main's exact side
 git checkout -q -b main8e "$J8"; echo "mainx" > scripts/ci/x.sh; M=$(step main-x)
 git checkout -q -b pr8e "$J8"; printf 'pr\n' >> docs/c.md; Jp=$(step pr-judged)

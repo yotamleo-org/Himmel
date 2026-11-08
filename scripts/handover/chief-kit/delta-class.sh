@@ -32,6 +32,8 @@
 # A fail-closed or path-match trust prints its reason on stderr; stdout stays one word.
 # A NO-GO verdict that names no `finding:` line classifies finding, never none:
 # its findings exist only as prose, so any delta needs a judge.
+# A merge commit in the delta whose remerge-diff is not empty (a conflict resolved by hand)
+# classifies finding, never none, whatever file it touches; a clean merge-forward does not.
 #
 # Platform guard: POSIX bash 3.2+; needs git, jq (ledger rows only).
 set -u
@@ -147,7 +149,7 @@ done < "$work/names.z"
 # not the PR's change (its blob equals origin/main's at both heads), unless a merge's
 # remerge-diff names it (a conflict resolution is PR-authored).
 cp "$work/names.txt" "$work/trust-names.txt" || trust "cannot copy the changed path list"
-anc=0
+anc=0 resolved_merge=0
 if git merge-base --is-ancestor "$J" "$N" 2>/dev/null; then anc=1; else [ "$?" -eq 1 ] || trust "cannot tell whether $N descends from $J"; fi
 # a new head that does not descend from the judged head (a rewritten history) is no delta of it
 [ "$anc" -eq 1 ] || trust "new head $N does not descend from judged head $J"
@@ -163,6 +165,8 @@ if [ "$anc" -eq 1 ]; then
             read -r -a mparts <<< "$mline"
             [ "${#mparts[@]}" -eq 3 ] || trust "merge $m is not a two-parent merge"
             git show --remerge-diff --name-only -z --format= --no-ext-diff --no-relative "$m" > "$work/remerge.z" 2>/dev/null || trust "cannot read the remerge diff of merge $m"
+            # a merge whose remerge-diff is not empty holds a hand-resolved conflict: PR-authored, so it is reviewed, never none
+            [ ! -s "$work/remerge.z" ] || resolved_merge=1
             while IFS= read -r -d '' p; do
                 case "$p" in *$'\n'*) trust "a remerge path holds a newline" ;; esac
                 printf '%s\n' "$p" >> "$work/authored.txt"
@@ -226,6 +230,8 @@ jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "")
     "$work/rows.jsonl" >> "$work/findings.tsv" 2>/dev/null || trust "cannot read the finding rows of ledger $LEDGER"
 
 [ "$nogo_prose" -eq 0 ] || fin finding
+# a merge in the delta with a non-empty remerge-diff (a hand-resolved conflict) needs a judge, like a finding hit
+[ "$resolved_merge" -eq 0 ] || fin finding
 # a ledger finding that names no file cannot be matched to any hunk, so it needs a judge
 [ -z "$(jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "") == "")) | "x"' "$work/rows.jsonl")" ] || fin finding
 
