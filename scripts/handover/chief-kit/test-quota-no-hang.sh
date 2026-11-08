@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015  # A && B || C is intentional in the row helpers
 # shellcheck disable=SC2016  # the single-quoted bodies are scripts written to files and run by bash -c, expanded there
 # scripts/handover/chief-kit/test-quota-no-hang.sh - T1 of the shared PR watcher plan, the RED suite for the quota gate.
-#
-# With a stub gh answering rate-limit (or hanging), each DoD caller must return within a stated
-# bound, NAME the limit, and not read it as a finding, a free pool of 0 or an unreadable PR.
-# This suite is the RED every later gate slice (T2 to T10) removes marks from.
 #
 #   test-quota-no-hang.sh [--caller <name>] [--mode <stub mode>] [--keep] [--strict] [--full]
 #     --caller  run one caller's rows (go.sh, ready-check.sh, cr-disposition.sh, tick.sh,
@@ -21,28 +16,8 @@
 # A KNOWN-RED row that fails is reported and does not fail the suite; one that PASSES does
 # (UNEXPECTED-PASS), which forces the flip when its task lands.
 #
-# Stub gh only: PATH-first, mode from $STUB_MODE, keys on GH_TOKEN, every call logged to
-# $STUB_LOG. No real gh call, no forced refusal, no live quota state.
-#
-# Every row runs under a harness `timeout -k` at three times its bound, which reaps the stub's
-# process group. A kill is a failed row (UNBOUNDED): that is how today's unbounded callers show RED.
-#
-# Wall time. Callers run in parallel (one background job each), so the suite takes as long as its
-# slowest caller, and a caller's rows run one after another. A row that passes costs its real time; a
-# row that does not return is cut at 3 x its bound. The cut each caller can cost per row:
-#   caller                rate-limit row (bound -> cut)   hung row, scaled seams (bound -> cut)
-#   cr-disposition.sh        5 ->  15                        6 ->  18
-#   ready-check.sh          15 ->  45                        8 ->  24
-#   go.sh                   20 ->  60                       14 ->  42
-#   tick.sh                 60 -> 180                       10 ->  30
-#   next-dispatchable.sh    25 ->  75                       12 ->  36
-#   check-ci.sh             20 ->  60                       12 ->  36
-#   chief-wait.sh          110 -> 330 (a waiter that wakes on nothing is stopped at the end of its
-#                                  first sample + bound + 5 s instead)   30 ->  90
-# Measured on the station (loadavg about 3): 191 to 196 s for the whole suite, three runs, with
-# every cut above that today's callers actually take. Budget 540 s (CI cap 600 s).
-#
-# Platform guard: POSIX bash 3.2+ for the harness; the callers are Linux-only chief-kit scripts.
+# Stub gh only, no real gh call. Every row is cut at three times its bound. Platform: Linux
+# (the callers are chief-kit scripts); the harness is bash 3.2-safe.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,7 +29,7 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --keep) KEEP=1; shift ;;
         --caller) ONLY="${2:-}"; shift 2 2>/dev/null || shift "$#" ;;
-        --mode) MODE_ONLY="${2:-}"; shift 2 2>/dev/null || shift "$#" ;;  # one stub mode, to debug a row
+        --mode) MODE_ONLY="${2:-}"; shift 2 2>/dev/null || shift "$#" ;;
         --strict) STRICT=1; shift ;;
         --full) FULL=1; shift ;;
         *) echo "usage: test-quota-no-hang.sh [--caller <name>] [--strict] [--full]" >&2; exit 2 ;;
@@ -68,12 +43,10 @@ cleanup() {
     local p
     for p in $(jobs -p 2>/dev/null); do kill "$p" 2>/dev/null; done
     pkill -f "$tmp" 2>/dev/null || true
-    # --keep leaves the scratch tree (each row's out and stub.log) to debug a row
     if [ "$KEEP" = 1 ]; then echo "kept: $tmp" >&2; else rm -rf "$tmp"; fi
 }
 trap cleanup EXIT
 
-# ---- the live quota path must not be written (fingerprint before and after) -------------------
 REAL_QUOTA="${HIMMEL_QUOTA_DIR:-${HOME:-/nonexistent}/.himmel/state/quota}"
 quota_fingerprint() {
     if [ -d "$REAL_QUOTA" ]; then
@@ -84,11 +57,9 @@ quota_fingerprint() {
 }
 QUOTA_BEFORE="$(quota_fingerprint)"
 
-# ---- the stub gh --------------------------------------------------------------------------------
 STUBBIN="$tmp/stubbin"; mkdir -p "$STUBBIN"
 cat > "$STUBBIN/gh" <<'STUB'
 #!/usr/bin/env bash
-# stub gh for test-quota-no-hang.sh. Mode: $STUB_MODE. Token class from GH_TOKEN vs $STUB_READ_TOKEN.
 mode="${STUB_MODE:-healthy}"
 tok=main
 [ -n "${STUB_READ_TOKEN:-}" ] && [ "${GH_TOKEN:-}" = "$STUB_READ_TOKEN" ] && tok=read
@@ -112,9 +83,6 @@ case "$mode" in
     read-only) [ "$tok" = read ] && refused=1 ;;
     hung) exec sleep 600 ;;
     hung-after-probe) [ "$probe" = 1 ] || exec sleep 600 ;;
-    # extra modes beyond the spec table: main's token hangs while read's answers (reaches a gate's second
-    # callee), and GraphQL refuses from its second real call (the first read gets through, so a gate
-    # gets past `repo view` and meets the refusal in a later read: the [FAIL]-rows path)
     main-hung) [ "$tok" = main ] && exec sleep 600 ;;
     gql-late)
         if [ "$bucket" = graphql ] && [ "$probe" = 0 ]; then
@@ -122,7 +90,6 @@ case "$mode" in
             [ "$(wc -l < "${STUB_LOG:-/dev/null}.gql" 2> /dev/null || echo 0)" -gt 1 ] && refused=1
         fi ;;
 esac
-# the reset a probe reports
 case "$mode" in
     reset-past) reset=$((now - 3600)) ;;
     reset-absent) reset="" ;;
@@ -188,7 +155,6 @@ exit 0
 STUB
 chmod +x "$STUBBIN/gh"
 
-# the terminal gh: what a healthy call nobody else answers gets
 FINALBIN="$tmp/finalbin"; mkdir -p "$FINALBIN"
 cat > "$FINALBIN/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -199,16 +165,13 @@ exit 0
 STUB
 chmod +x "$FINALBIN/gh"
 
-# read-token root for the real gh-read.sh router
 ENVROOT="$tmp/envroot"; mkdir -p "$ENVROOT"
 printf 'himmel_github_token_vm2=readtok123\n' > "$ENVROOT/.env"
 
-# ---- result plumbing ----------------------------------------------------------------------------
 RES="$tmp/res"; mkdir -p "$RES"
 emit() { printf '%s\n' "$*" >> "$RES/$CUR.txt"; }   # emit <status> <caller> <mode> <assertion> [detail]
 
-# KNOWN-RED table: <task> <caller> <mode> <assertion>. Filled from the spec's section 6 RED column.
-known_task() {  # <caller> <mode> <assertion> -> task or empty
+known_task() {
     awk -v c="$1" -v m="$2" -v a="$3" '$2 == c && $3 == m && $4 == a { print $1; exit }' <<'KNOWN'
 T3 go.sh gql-out exit
 T3 go.sh gql-out names-limit
@@ -362,18 +325,17 @@ T7a chief-wait.sh hung-after-probe telegram-latency
 KNOWN
 }
 
-# ---- false phrases ------------------------------------------------------------------------------
 # 'head branch' from the spec list is not a phrase here: cr-disposition's HONEST rate-limit wording
 # contains it ("rate limit hit reading PR #N's head branch"). The false form is "cannot read PR".
 FALSE_PHRASES=("no valid disposition" "0 free" "POOL-EMPTY" "cannot read PR" "cannot resolve the PR" "cannot resolve owner/repo" "[FAIL]" "open PRs unknown" "READY-GO FAIL" "TRUST: refused" "must be OPEN" "ready-check=FAIL" "ci=PENDING" "disposition=open:?")
-false_phrase_in() {  # <text> -> prints the first false phrase found, rc 0 if one is
+false_phrase_in() {
     local p
     for p in "${FALSE_PHRASES[@]}"; do
         case "$1" in *"$p"*) printf '%s' "$p"; return 0 ;; esac
     done
     return 1
 }
-names_limit() {  # <class rate|stall> <text> [caller]
+names_limit() {
     # tick.sh prints a stall= field of its own on every line, so for it only a quota= field names the limit
     if [ "${3:-}" = tick.sh ]; then
         if [ "$1" = rate ]; then grep -qE ' quota=[^ ]+' <<< "$2"; else grep -qE ' quota=[^ ]*:stall' <<< "$2"; fi
@@ -384,10 +346,7 @@ names_limit() {  # <class rate|stall> <text> [caller]
     fi
 }
 
-# ---- one row ------------------------------------------------------------------------------------
-# row <caller> <mode> <bound> <want-exit> <want-class rate|stall> <out-file-of-exec>
-# The driver sets ROW_RC / ROW_SECS / ROW_OUT first through exec_row.
-exec_row() {  # <bound> <cmd...>   (env is already set by the caller via env(1))
+exec_row() {
     local bound="$1"
     shift
     local t0 t1
@@ -399,7 +358,7 @@ exec_row() {  # <bound> <cmd...>   (env is already set by the caller via env(1))
     ROW_OUT="$(cat "$ROW_DIR/out" 2>/dev/null)"  # read-sink-ok: the row's own capture file
 }
 
-judge_row() {  # <caller> <mode> <bound> <want-exit> <class>
+judge_row() {
     local caller="$1" mode="$2" bound="$3" want="$4" class="$5" fp
     local killed=0
     case "$ROW_RC" in 124 | 137) killed=1 ;; esac
@@ -441,7 +400,6 @@ judge_row() {  # <caller> <mode> <bound> <want-exit> <class>
     fi
 }
 
-# env every driver shares; prints KEY=VAL words for env(1). $1 caller dir, $2 mode, $3 scaled(0|1)
 base_env() {
     local cdir="$1" mode="$2" scaled="$3"
     printf '%s\n' \
@@ -458,23 +416,17 @@ base_env() {
     fi
 }
 
-# modes: rate-limit modes run at default settings; hung modes use the scaled seams unless --full
 RATE_MODES="gql-out rest-out both-out gql-200 main-only read-only reset-past reset-absent reset-absurd secondary"
 HUNG_MODES="hung hung-after-probe"
-XM=""  # extra modes a driver adds for its own caller (gql-late, main-hung)
+XM=""
 
 mode_class() { case "$1" in hung | hung-after-probe | main-hung) echo stall ;; *) echo rate ;; esac; }
 
-# ---- per-caller drivers -------------------------------------------------------------------------
-# Each driver: sets up its fixtures under $cdir, then for every mode calls run_mode.
-# run_mode <caller> <mode> <bound-scaled> <bound-default-rate> <want-exit> <cmd...> reads base_env itself.
 run_mode() {
     local caller="$1" mode="$2" bound="$3" want="$4"
     shift 4
     local scaled=1 class
     class=$(mode_class "$mode")
-    # rate-limit rows run at default settings and prove the spec's bound (RATE_BOUND); hung rows run on
-    # the scaled seams and use the scaled bound passed in
     [ "$class" = rate ] && bound="${RATE_BOUND:-$bound}"
     [ "$class" = rate ] && scaled=0
     [ "$class" = stall ] && [ "$FULL" = 1 ] && scaled=0 && bound=$(full_bound "$caller" "$mode")
@@ -486,20 +438,17 @@ run_mode() {
     # fixture token and put a REAL credential in reach of a row. Unset every ambient token first.
     exec_row "$bound" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY -u CHIEF_SESSION_NAME \
         -u himmel_github_token_vm2 -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN "${envs[@]}" "$@"
-    # a rate-limit mode that refuses nothing this caller reads is "none"; an open question is "maybe"
     if [ "$class" = rate ] && [ -n "${AFFECT_FN:-}" ]; then
         case "$("$AFFECT_FN" "$mode")" in no) class=none ;; maybe) class=maybe ;; boundonly) class=boundonly ;; esac
     fi
     judge_row "$caller" "$mode" "$bound" "$want" "$class"
 }
 
-setup_caller_dir() {  # <name> -> sets cdir, prepares home/quota/snap/tmp
+setup_caller_dir() {
     cdir="$tmp/$1"
     mkdir -p "$cdir/home" "$cdir/quota" "$cdir/snap" "$cdir/tmp" "$cdir/rows"
 }
 
-# ready-pass fixture shared by the gates: a repo whose ledger has an ok row for $SHA and a gh that
-# answers ready-check green. READY_BIN is placed AFTER the stub on PATH, so a healthy call reaches it.
 gate_fixture() {
     # shellcheck source=scripts/handover/chief-kit/testlib-ready-pass.sh
     # shellcheck disable=SC1091
@@ -515,7 +464,6 @@ gate_fixture() {
 
 modes_for() { if [ -n "$MODE_ONLY" ]; then printf '%s\n' "$MODE_ONLY"; else printf '%s %s %s\n' "$RATE_MODES" "$HUNG_MODES" "$XM"; fi; }
 
-# affect_<caller> <mode>: yes (a call it makes is refused), no (nothing it reads is), maybe (spec silent)
 affect_cr_disposition() { case "$1" in rest-out | read-only) echo no ;; *) echo yes ;; esac; }
 affect_ready_check() { case "$1" in read-only) echo no ;; main-only) echo maybe ;; *) echo yes ;; esac; }
 affect_go() { case "$1" in read-only) echo no ;; *) echo yes ;; esac; }
@@ -559,7 +507,6 @@ drive_go() {
         rm -rf "$cdir/root/.locks"
         EXTRA_ENV="HANDOVER_DIR=$cdir/root"
         run_mode go.sh "$m" 14 11 bash "$script" 77 "$SHA"
-        # a refused or hung gate must not leave a GO behind (a mode that refuses nothing it reads does)
         if [ "$(affect_go "$m")" = no ] && [ "$(mode_class "$m")" = rate ]; then
             emit "PASS go.sh $m no-go-written n/a"
         elif [ -e "$cdir/root/.locks/go/77.$SHA" ]; then
@@ -573,10 +520,7 @@ drive_go() {
 
 affect_nd() { case "$1" in read-only) echo no ;; *) echo yes ;; esac; }
 
-# next-dispatchable.sh on a fixture Jira mirror with one free To Do ticket; a stub classifier, so the
-# only gh it can reach is the PATH stub. After the spec a paused or stalled run prints ONE line,
-# `# quota-pause ...` or `# gh-stall ...`, no rows, no POOL-EMPTY, exit 0.
-nd_fixture() {  # builds the mirror under $cdir and sets ND_ENV (newline-separated KEY=VAL words)
+nd_fixture() {
     local M
     M="$cdir/jira-mirror/HIMMEL"; mkdir -p "$M" "$cdir/notcore"
     printf -- '---\nkey: "HIMMEL-1"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "x"\npriority: "High"\nlabels: []\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-1: a free ticket\n\n## Description\n\nEdit scripts/lib/alpha.sh only.\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n' > "$M/HIMMEL-1.md"
@@ -613,9 +557,6 @@ drive_next_dispatchable() {
 
 affect_tick() { case "$1" in read-only) echo maybe ;; main-only) echo maybe ;; *) echo yes ;; esac; }
 
-# tick.sh inside tick-test-fixture.sh's hermetic repo (stub queue-lock, pgrep, bank, ps ...); only gh
-# is ours, first on PATH. After the spec the line carries quota=<token>.<bucket>:<n>@<reset> (or :stall)
-# and prs=?; today it names no limit. Exit is 0 either way.
 drive_tick() {
     CUR=tick.sh
     local script="$HERE/tick.sh" m
@@ -631,10 +572,6 @@ drive_tick() {
 
 affect_check_ci() { case "$1" in read-only | main-only) echo boundonly ;; *) echo yes ;; esac; }
 
-# check-ci.sh on the gate fixture with a short --max-wait. The healthy stub cannot answer a whole
-# checks watch, so a mode that refuses only one account is judged on the bound alone. After the spec
-# a refusal prints the QUOTA-PAUSE line and exits 2 within --max-wait + 15 s (15 s when the reset is
-# past --max-wait, which the stub's +30 min reset is).
 drive_check_ci() {
     CUR=check-ci.sh
     local script="$ROOT/scripts/check-ci.sh" m
@@ -650,15 +587,6 @@ drive_check_ci() {
 
 affect_cw() { case "$1" in read-only) echo no ;; *) echo yes ;; esac; }
 
-# chief-wait.sh, real, with the real tick (inside tick-test-fixture.sh), the real dispatcher, the real
-# ready-check and cr-disposition, and the stub gh. The waiter returns only on a WAKE, so the rows
-# measure from <inbox>.wait (spec section 6):
-#   1. sample time   first state=sampling to the end of that sample (the run's end: a Telegram line
-#                    appended during the sample wakes it as soon as the sample finishes)
-#   2. telegram      that line must print its WAKE within the sample bound + 5 s
-#   3. no false wake a paused or stalled gate must not spend the READY or wake `ready`; the READY row
-#                    stays out of <inbox>.wait.readywoke. (Asserted on the same run: a second
-#                    run under a bare `timeout` would double the wall time for the same claim.)
 drive_chief_wait() {
     CUR=chief-wait.sh
     local script="$HERE/chief-wait.sh" m bound rb scaled class envs l pid hb samp tsent t0 t1 killed
@@ -701,10 +629,6 @@ drive_chief_wait() {
             "${envs[@]}" timeout -k 3 "$((bound * 3))" bash "$script" "$inbox" --workers-from "$legs" \
             > "$ROW_DIR/out" 2>&1 < /dev/null &
         pid=$!
-        # The Telegram line goes in during the first sample (spec: "during a paused sample"). Sample time =
-        # first state=sampling to the first state=waiting after it, or to the exit when the sample ended in
-        # a WAKE. A waiter that wakes on nothing never exits, so once the sample is over and the line has
-        # had its bound + 5 s the run is stopped here: that is a failed telegram-latency row, not a hang.
         samp="" tsent="" prev=waiting sdone="" stopped=0
         while kill -0 "$pid" 2> /dev/null; do
             hb=$(cat "$inbox.wait" 2> /dev/null)
@@ -725,7 +649,7 @@ drive_chief_wait() {
             sleep 0.5
         done
         wait "$pid" 2> /dev/null; ROW_RC=$?
-        pkill -f "$inbox" 2> /dev/null || true  # anything the waiter left behind (its tick, its probes)
+        pkill -f "$inbox" 2> /dev/null || true
         [ "$stopped" = 0 ] || ROW_RC=0
         t1=$(date +%s)
         [ -n "$sdone" ] || sdone=$t1
@@ -795,11 +719,9 @@ driver_of() {
 }
 out_name_of() { case "$1" in pr-sweep) echo pr-sweep.sh ;; *) echo "$1.sh" ;; esac; }
 
-# ---- suite-level rows ---------------------------------------------------------------------------
 suite_rows() {
     CUR=suite
     local f body
-    # F1, F2 and F3 present and naming the limit
     for f in 55498a23-F1.txt 32a082f4-F2.txt c5d6911e-F3.txt; do
         if [ ! -s "$FIXDIR/$f" ]; then
             emit "FAIL suite fixture $f absent"
@@ -809,7 +731,6 @@ suite_rows() {
             emit "PASS suite fixture $f"
         fi
     done
-    # the false-phrase check has a RED control fed today's wording, and a clean control
     for body in \
         "go: refusing the GO for PR #7 at abc - a Critical or Important finding has no valid disposition (above)." \
         "cr-disposition: cannot read PR #7's head branch" \
@@ -828,7 +749,6 @@ suite_rows() {
     else
         emit "PASS suite false-phrase-clean-control"
     fi
-    # the classifier names control: honest wording names the limit, unrelated text does not
     if names_limit rate "gh: API rate limit exceeded" && ! names_limit rate "gh: not found"; then
         emit "PASS suite names-limit-control"
     else
@@ -836,7 +756,6 @@ suite_rows() {
     fi
 }
 
-# ---- run ----------------------------------------------------------------------------------------
 want_caller() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ] || [ "$ONLY" = "$(out_name_of "$1")" ]; }
 if [ -n "$ONLY" ]; then
     known_caller=0
@@ -844,8 +763,7 @@ if [ -n "$ONLY" ]; then
     [ "$known_caller" = 1 ] || { echo "test-quota-no-hang: unknown --caller '$ONLY' (one of: $CALLERS)" >&2; exit 2; }
 fi
 
-# --full: the spec's default-settings bound for a hung row, per caller and mode (spec section 6)
-full_bound() {  # <caller> <mode>
+full_bound() {
     case "$1:$2" in
         tick.sh:*) echo 100 ;;
         chief-wait.sh:hung) echo 140 ;;
@@ -878,8 +796,6 @@ for c in $CALLERS; do
     ) &
     pids="$pids $!:$c"
 done
-# A driver that dies before it emits a row would otherwise vanish and leave the suite green: collect
-# every driver's status and require it to have written at least one row.
 for pc in $pids; do
     wait "${pc%%:*}" 2> /dev/null
     drc=$?
@@ -891,12 +807,10 @@ for pc in $pids; do
     fi
 done
 
-# the live quota path was not written by any row
 QUOTA_AFTER="$(quota_fingerprint)"
 CUR=suite
 if [ "$QUOTA_BEFORE" = "$QUOTA_AFTER" ]; then emit "PASS suite live-quota-path-untouched"; else emit "FAIL suite live-quota-path-untouched $REAL_QUOTA changed"; fi
 
-# ---- report -------------------------------------------------------------------------------------
 fails=0 known=0 passes=0 skips=0 unexpected=0
 report_file() {
     local line status caller mode assertion rest task
