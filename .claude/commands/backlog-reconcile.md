@@ -32,8 +32,8 @@ engine's default `--dry-run` mode and asks before re-invoking it with
 3. Present batch A and batch D to the operator with the evidence line for
    each ticket. **Do not proceed without an explicit answer.**
 4. Only on explicit approval, re-run with the approved keys and the existing
-   safety valves (both required by the engine itself, so a ticket with
-   several tasks is never closed on its first landed one):
+   safety valves (both required by the engine itself, because a commit subject
+   naming a ticket does not prove the whole ticket landed):
    ```bash
    node scripts/jira/reconcile-backlog.mjs --project "$JIRA_PROJECT_KEY" --apply \
      --only <approved-key-list> --max-close <count-of-approved-CLOSE-keys> \
