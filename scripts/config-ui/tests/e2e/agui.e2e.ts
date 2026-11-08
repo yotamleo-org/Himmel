@@ -2,6 +2,11 @@
 // while the page is open (a live stream over the real SSE path). Needs agui-web/dist
 // (`cd scripts/config-ui/agui-web && bun install && bun run build`); skipped, loudly, when absent.
 import { test, expect } from "@playwright/test";
+import { randomBytes, scryptSync } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { stubKeyring } from "../keyring-stub";
 import { CLOUD, FLEET, PRIOR_CHIEF } from "../agui-fleet-fixture";
 import { aguiBuilt, bootAgui, denseRun, J, play, type AguiHarness } from "./agui-fixtures";
 import { shortName } from "../../agui-web/src/fleet-model";
@@ -666,4 +671,53 @@ test("18. a claudex worker's cost-eq reads not priced", async ({ page }) => {
   await page.goto(h.url);
   await expand(page, FLEET.worker.name);
   await expect(card(page, FLEET.worker.name).locator(".fleet-usage")).toHaveText("context 4% of 1.0M (model window) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq not priced");
+});
+
+test("19. a reload keeps Fleet open live: the tab kept its token, and no request line carries it", async ({ page }) => {
+  h = await bootAgui("", { fleet: true });
+  const tok = /#t=([0-9a-f]{64})/.exec(h.url)![1];
+  const lines: string[] = [];
+  page.on("request", (r) => lines.push(r.url()));
+  await page.goto(h.url.replace("/agui/#t=", "/#t="));
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Configure");
+  await page.reload();
+  expect(await page.evaluate(() => location.hash)).toBe("#/config");
+  const fleet = page.locator("nav.pages a", { hasText: "Fleet" });
+  await expect(fleet).toHaveAttribute("href", `/agui/#t=${tok}`);
+  await fleet.click();
+  await expect(page).toHaveURL(new RegExp(`/agui/#t=${tok}$`));
+  await expect(card(page, FLEET.worker.name)).toBeVisible();
+  for (const u of lines) expect(new URL(u).pathname + new URL(u).search).not.toContain(tok);
+});
+
+test("20. a tab with no token and no session is told to log in; after signing in Fleet opens live", async ({ page }) => {
+  const dir = mkdtempSync(join(tmpdir(), "agui-login-e2e-"));
+  const k = stubKeyring(dir);
+  const saved: Record<string, string | undefined> = {};
+  for (const [n, v] of Object.entries(k.env)) { saved[n] = process.env[n]; process.env[n] = v; }
+  const password = "pw-" + randomBytes(12).toString("hex");
+  const salt = randomBytes(16).toString("hex");
+  k.put("HIMMEL_UI_LOGIN", JSON.stringify({ user: "operator", salt, hash: scryptSync(password, salt, 64).toString("hex") }));
+  try {
+    h = await bootAgui("", { fleet: true });
+    const origin = new URL(h.url).origin;
+    await page.goto(origin + "/");
+    const fleet = page.locator("nav.pages a", { hasText: "Fleet" });
+    await fleet.click();
+    await expect(page.locator("#toast")).toContainText("log in");
+    await expect(page.locator("#toast")).not.toContainText("himmelctl ui");
+    await expect(page).toHaveURL(origin + "/#/config");
+    await page.goto(`${origin}/login?next=%2F`);
+    await page.locator('input[name="user"]').fill("operator");
+    await page.locator('input[name="password"]').fill(password);
+    await page.locator('button[type="submit"]').click();
+    await page.waitForURL(origin + "/");
+    await expect(fleet).toHaveAttribute("href", /\/agui\/#t=[0-9a-f]{64}$/);
+    await fleet.click();
+    await expect(page).toHaveURL(/\/agui\/#t=[0-9a-f]{64}$/);
+    await expect(card(page, FLEET.worker.name)).toBeVisible();
+  } finally {
+    for (const [n, v] of Object.entries(saved)) { if (v === undefined) delete process.env[n]; else process.env[n] = v; }
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
