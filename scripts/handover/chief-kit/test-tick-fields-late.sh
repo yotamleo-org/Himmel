@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# test-tick-fields-late.sh — the orphans-wip= ... review= field rows of the batched chief tick (the earlier
-# rows are in test-tick-fields.sh). Same fixture, hermetic like test-tick.sh: no live queue, process, scheduler, GitHub or bank.
-#
 # PLATFORM GUARD: The chief kit is Linux-only
 # (pgrep, atq, /tmp suite locks, and claudex/konsole); this Bash 3.2 suite
 # exercises that platform-specific script.
