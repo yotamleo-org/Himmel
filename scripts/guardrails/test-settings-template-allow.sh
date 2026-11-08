@@ -38,6 +38,13 @@ else
   fail=1
 fi
 
+if jq -e '(.autoMode.environment // []) | any(.[]; test("never covers writing an approval")) and all(.[]; (test("scripts, run from") | not))' "$TEMPLATE" >/dev/null 2>&1; then
+  echo "PASS: template autoMode.environment names the three scripts and excludes approvals and bypasses"
+else
+  echo "FAIL: template autoMode.environment trusts scripts broadly or leaves approvals and bypasses unexcluded"
+  fail=1
+fi
+
 if jq -e '(.autoMode.allow // []) | length == 1 and (.[0] | test("merge-on-green\\.sh"))' "$TEMPLATE" >/dev/null 2>&1; then
   echo "PASS: template autoMode.allow carries the one merge-on-green.sh entry"
 else
