@@ -216,20 +216,17 @@ else val="ok"; echo "STATION=OK"
 fi
 mkdir -p "$(dirname "$STATE")" 2>/dev/null && printf '%s\n' "$val" > "$STATE" 2>/dev/null
 
-# usage_compute: build the usage store the Cost page reads. It runs after the verdict is
-# written and the sync lock is released, so a slow build never holds the state at pending or queues the
-# next sync. One incremental pass: usage-compute.sh stops starting windows after its own budget and
-# resumes at the first uncommitted window next time. The outer timeout is plain (SIGTERM only, never
-# -k or -s KILL), so the compute's EXIT trap releases the store lock. Its output is discarded: this
-# caller reads and prints no record content. A skip or a failure never changes the station state.
-exec 9>&-
+release_sync_lock() { exec 9>&-; }
+USAGE_TERM_TIMEOUT_SECONDS=180
+USAGE_BUDGET_SECONDS=120
+release_sync_lock
 USAGE_STORE="${HIMMEL_USAGE_STORE:-$HOME/.himmel/state/usage}"
 if [ -n "${SS_USAGE_COMPUTE:-}" ]; then USAGE=("$SS_USAGE_COMPUTE"); else USAGE=(bash "$PRIMARY/scripts/usage/usage-compute.sh"); fi
 TO="${SS_TIMEOUT:-timeout}"
 if ! command -v "$TO" >/dev/null 2>&1; then echo "SKIP usage_compute no-timeout"
 elif [ -d "$USAGE_STORE/.lock" ]; then echo "SKIP usage_compute store-locked"
 else
-    (cd "$PRIMARY" && "$TO" 180 "${USAGE[@]}" --budget-seconds 120 >/dev/null 2>&1); rc=$?
+    (cd "$PRIMARY" && "$TO" "$USAGE_TERM_TIMEOUT_SECONDS" "${USAGE[@]}" --budget-seconds "$USAGE_BUDGET_SECONDS" >/dev/null 2>&1); rc=$?
     echo "STEP usage_compute rc=$rc"
 fi
 exit 0

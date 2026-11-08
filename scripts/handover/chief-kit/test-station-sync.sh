@@ -66,7 +66,6 @@ EOF2
 mkdir -p "$W/vault"
 export SS_UPDATE="$W/update" SS_UPGRADE="$W/upgrade" SS_CALLS="$W/calls" SS_STATE="$W/state" \
        SS_PRIMARY="$W" SS_VAULT="$W/vault" SS_QMD_CLONE="$W/no-such-clone" SS_T_DRYRUN="$W/dry-clean"
-# the usage build step: a stub compute and a stub timeout, each logging to its own file so the update-call rows stay exact
 export HIMMEL_USAGE_STORE="$W/usage-store" SS_UCALLS="$W/ucalls" SS_TCALLS="$W/tcalls"
 cat > "$W/usage-compute" <<'EOF2'
 #!/usr/bin/env bash
@@ -332,7 +331,6 @@ lacks "27 and not the unrelated table rows" "$out" "not-attempted"
 check "27 the failure is named once" "$(printf '%s\n' "$out" | grep -c 'STATION=BEHIND:config_ui-failed$')" 1
 rm -f "$CUI_MARK"
 
-# 29-33: every pass builds the usage store (the Cost page reads it), once, incrementally, under a plain timeout
 : > "$SS_UCALLS"; : > "$SS_TCALLS"; rm -rf "$HIMMEL_USAGE_STORE"
 run "$W/ver-current" docs/x.md
 check "29 a pass runs usage-compute once" "$(grep -c '^usage-compute' "$SS_UCALLS")" 1
@@ -347,7 +345,6 @@ lacks "29 timeout has no signal flag" "$(cat "$SS_TCALLS")" " -s"
 contains "29 step line" "$out" "STEP usage_compute rc=0"
 contains "29 station ok" "$out" "STATION=OK"
 
-# the store lock is held by another run: skip, never wait the lock out
 : > "$SS_UCALLS"; mkdir -p "$HIMMEL_USAGE_STORE/.lock"
 run "$W/ver-current" docs/x.md
 check "30 locked store: compute not started" "$(grep -c '^usage-compute' "$SS_UCALLS")" 0
@@ -355,7 +352,6 @@ contains "30 skip names the reason" "$out" "SKIP usage_compute store-locked"
 contains "30 station still ok" "$out" "STATION=OK"
 rm -rf "$HIMMEL_USAGE_STORE"
 
-# a compute that fails or times out never fails the sync
 : > "$SS_UCALLS"
 SS_T_URC=3 run "$W/ver-current" docs/x.md
 check "31 sync rc" "$rc" 0
@@ -366,11 +362,9 @@ SS_T_URC=124 run "$W/ver-current" docs/x.md
 contains "31 timed-out compute reported" "$out" "STEP usage_compute rc=124"
 contains "31 station still ok after a timeout" "$out" "STATION=OK"
 
-# the caller reads and prints no record content
 SS_T_UOUT="SECRET-RECORD-CONTENT" run "$W/ver-current" docs/x.md
 lacks "32 compute output is not echoed" "$out" "SECRET-RECORD-CONTENT"
 
-# the verdict is written before the build starts: a slow build never holds the state at pending
 : > "$SS_UCALLS"
 SS_T_USTATE=1 run "$W/ver-current" docs/x.md
 contains "33 state is already final when the build runs" "$(cat "$SS_UCALLS")" "state-during-compute: ok"
