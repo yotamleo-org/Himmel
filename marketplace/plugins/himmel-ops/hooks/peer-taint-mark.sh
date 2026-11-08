@@ -33,7 +33,7 @@ S="${HOME:-}/.himmel/peer-bridge"
 C="${HOME:-}/.config/himmel/peer-bridge"
 [ -d "$S" ] || exit 0
 
-input=$(cat; printf x)
+input=$(cat && printf x) || { echo "peer-taint-mark: unreadable hook input" >&2; exit 2; }
 input=${input%x}
 case "$input" in *'<<<PEER-UNTRUSTED'*) ;; *) exit 0 ;; esac # guard:prefilter
 KEY="$C/hmac.key"

@@ -314,6 +314,25 @@ run_hook "$RESUME" "$(jq -cn --arg p "$tmp/transcript.jsonl" '{session_id:"sZ",h
 if [ -e "$S/taint/sZ" ] && [ "$(pending_count sZ)" = 0 ]; then pass "resume from a transcript with a verified marker taints"; else fail "resume from a transcript with a verified marker taints" "rc=$RC err=$ERR"; fi
 run_hook "$RESUME" "$(jq -cn --arg p "$tmp/transcript.jsonl" '{session_id:"sY",hook_event_name:"SessionStart",source:"startup",transcript_path:$p}')"
 if [ ! -e "$S/taint/sY" ]; then pass "a startup source is not checked"; else fail "a startup source is not checked"; fi
+printf '{"type":"user","message":{"content":"plain"}}\n' > "$tmp/clean.jsonl"
+run_hook "$RESUME" "$(jq -cn --arg p "$tmp/clean.jsonl" '{session_id:"sCl",hook_event_name:"SessionStart",source:"resume",transcript_path:$p}')"
+if [ ! -e "$S/taint/sCl" ] && [ "$(pending_count sCl)" = 0 ]; then pass "resume from a transcript with no marker leaves no mark"; else fail "resume from a transcript with no marker leaves no mark"; fi
+run_hook "$RESUME" "$(jq -cn --arg p "$tmp/no-such.jsonl" '{session_id:"sMi",hook_event_name:"SessionStart",source:"resume",transcript_path:$p}')"
+if [ "$(pending_count sMi)" = 1 ]; then pass "resume with a missing transcript keeps a provisional mark"; else fail "resume with a missing transcript keeps a provisional mark"; fi
+if [ "$(id -u)" = 0 ]; then
+    echo "  SKIP: root reads mode 000"
+else
+    cp "$tmp/transcript.jsonl" "$tmp/locked.jsonl"; chmod 000 "$tmp/locked.jsonl"
+    run_hook "$RESUME" "$(jq -cn --arg p "$tmp/locked.jsonl" '{session_id:"sLk",hook_event_name:"SessionStart",source:"resume",transcript_path:$p}')"
+    if [ "$(pending_count sLk)" = 1 ]; then pass "resume with an unreadable transcript keeps a provisional mark"; else fail "resume with an unreadable transcript keeps a provisional mark"; fi
+    chmod 600 "$tmp/locked.jsonl"
+    # shellcheck disable=SC2016 # sed text, not shell
+    sed 's/^if \[ "\$scan" = 1 \]; then exit 0; fi # guard:scan$/if [ "$scan" != 0 ]; then exit 0; fi/' "$RESUME" > "$tmp/mut-resume.sh"
+    chmod 000 "$tmp/locked.jsonl"
+    run_hook "$tmp/mut-resume.sh" "$(jq -cn --arg p "$tmp/locked.jsonl" '{session_id:"sLm",hook_event_name:"SessionStart",source:"resume",transcript_path:$p}')"
+    if [ "$(pending_count sLm)" = 0 ]; then pass "an inspection failure read as clean: the unreadable-transcript row turns red"; else fail "an inspection failure read as clean: the unreadable-transcript row turns red"; fi
+    chmod 600 "$tmp/locked.jsonl"
+fi
 
 echo "== mark hook mutation rows =="
 new_keyed_home
@@ -404,6 +423,14 @@ untaint pty yes sU CLAUDE_CODE_SESSION_ID=abc; if [ "$RC" = 3 ] && [ -e "$S/tain
 untaint pty no sU; if [ "$RC" = 3 ] && [ -e "$S/taint/sU" ]; then pass "a pty answering no: exit 3"; else fail "a pty answering no: exit 3" "rc=$RC"; fi
 : > "$H/.himmel/x"
 untaint pty yes '../../x'; if [ "$RC" = 3 ] && [ -e "$H/.himmel/x" ]; then pass "the id ../../x: exit 3 and nothing outside taint/ is removed"; else fail "the id ../../x: exit 3 and nothing outside taint/ is removed" "rc=$RC"; fi
+if [ "$(id -u)" = 0 ]; then
+    echo "  SKIP: root removes from a read-only dir"
+else
+    chmod 500 "$S/taint"
+    untaint pty yes sU
+    chmod 700 "$S/taint"
+    if [ "$RC" = 3 ] && [ -e "$S/taint/sU" ] && ! grep -q '"sid":"sU"' "$S/taint/cleared.log" 2>/dev/null; then pass "a removal that fails: exit 3 and no log line"; else fail "a removal that fails: exit 3 and no log line" "rc=$RC"; fi
+fi
 untaint pty yes sU; if [ "$RC" = 0 ] && [ ! -e "$S/taint/sU" ] && grep -q '"sid":"sU"' "$S/taint/cleared.log"; then pass "a pty answering yes with a clean env clears and logs"; else fail "a pty answering yes with a clean env clears and logs" "rc=$RC"; fi
 : > "$S/taint/sP.pending.1-a"; : > "$S/taint/sP.pending.2-b"
 untaint pty yes sP

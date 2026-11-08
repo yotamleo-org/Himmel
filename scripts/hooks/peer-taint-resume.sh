@@ -8,8 +8,9 @@
 #
 # Only `source: resume` is checked. The decision is peer-taint-mark.sh's, over
 # the transcript at transcript_path instead of the tool output: no bridge dir,
-# no marker text in the transcript (a fixed-string prefilter) or no key file
-# exits 0; an invalid session_id or unreadable input exits 2; otherwise this run
+# no key file, or a transcript grep reads with no marker text in it (a
+# fixed-string prefilter) exits 0; an invalid session_id or unreadable input
+# exits 2; a transcript it cannot inspect keeps a provisional mark; otherwise this run
 # creates its own taint/<sid>.pending.<pid>-<rand>, then verifier exit 0 with `verified`
 # touches taint/<sid> and removes it, exit 1 with `unverified` removes it, and any other outcome keeps it.
 #
@@ -22,7 +23,7 @@ S="${HOME:-}/.himmel/peer-bridge"
 C="${HOME:-}/.config/himmel/peer-bridge"
 [ -d "$S" ] || exit 0
 
-input=$(cat)
+input=$(cat) || { echo "peer-taint-resume: unreadable hook input" >&2; exit 2; }
 if ! fields=$(jq -r '[.session_id // "", .source // "", .transcript_path // ""] | map(if type == "string" then . else error("type") end) | @sh "sid=\(.[0]) src=\(.[1]) tp=\(.[2])"' <<<"$input" 2>/dev/null); then # swallow-ok: a failed read exits 2 below
     echo "peer-taint-resume: unreadable hook input" >&2
     exit 2
@@ -30,17 +31,25 @@ fi
 sid="" src="" tp=""
 eval "$fields"
 [ "$src" = resume ] || exit 0
-[ -n "$tp" ] && [ -f "$tp" ] || exit 0
-grep -qF '<<<PEER-UNTRUSTED' "$tp" || exit 0
 KEY="$C/hmac.key"
 [ -f "$KEY" ] || exit 0
 [ -n "$sid" ] || exit 0
 case "$sid" in *[!A-Za-z0-9-]*) echo "peer-taint-resume: invalid session_id" >&2; exit 2 ;; esac
 [ "${#sid}" -le 64 ] || { echo "peer-taint-resume: invalid session_id" >&2; exit 2; }
 
+# A transcript it cannot inspect (no path, missing, unreadable, a grep error) is
+# not a clean one: only grep's own "no match" lets the session start unmarked.
+scan=2
+if [ -n "$tp" ] && [ -f "$tp" ] && [ -r "$tp" ]; then
+    scan=0
+    grep -qF '<<<PEER-UNTRUSTED' "$tp" || scan=$?
+fi
+if [ "$scan" = 1 ]; then exit 0; fi # guard:scan
+
 if [ ! -d "$S/taint" ]; then mkdir -m 700 "$S/taint" 2>/dev/null || [ -d "$S/taint" ] || exit 2; fi
 own="$S/taint/$sid.pending.$$-$RANDOM$RANDOM"
 : > "$own" || exit 2
+[ "$scan" = 0 ] || exit 0
 
 here=$(cd "$(dirname "$0")" && pwd -P)
 marker="$here/peer-marker.mjs"

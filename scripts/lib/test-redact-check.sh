@@ -67,6 +67,11 @@ out=$(cd "$tmp" && printf 'xoxb-%s-abc\n' "$(rep 2 12)" | bash -c ". $LIB && red
 rc=$?
 if [ "$rc" = 14 ] && [ "$out" = "shape=xox precision=high" ]; then pass "spawn form works outside the repo"; else fail "spawn form works outside the repo" "rc=$rc out=$out"; fi
 
+echo "== a stdin that cannot be read is never clean =="
+out=$(bash -c '. "$1" && redact_check' _ "$LIB" < "$tmp" 2>/dev/null)
+rc=$?
+if [ "$rc" = 2 ]; then pass "a stdin read error (a directory) returns 2"; else fail "a stdin read error (a directory) returns 2" "rc=$rc out=$out"; fi
+
 echo
 echo "redact-check: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

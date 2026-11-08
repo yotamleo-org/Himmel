@@ -91,7 +91,7 @@ redact() {
 # A grep error (rc 2, not a match and not a miss) returns 2, so a caller never reads it as clean.
 redact_check() {
     local _in _i=0 _rc _pem
-    _in=$(cat; printf x)
+    _in=$(cat && printf x) || return 2
     _in=${_in%x}
     while [ "$_i" -lt "${#REDACT_SHAPE_RE[@]}" ]; do
         LC_ALL=C grep -E -q -e "${REDACT_SHAPE_RE[$_i]}" 2>/dev/null <<<"$_in"
