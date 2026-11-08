@@ -243,6 +243,20 @@ tick TERMed the window (the leg's lock is FREE/WRAPPED, or a live <tabtitle>-r<n
 window exists); :held = reported only. chief-wait.sh wakes when it appears or
 changes. Env seam: TICK_KILL_BIN.
 
+unclosed=<label>[,<label>] follows deadwin= and is ABSENT unless a
+worker the tick reads CLOSABLE -- or WRAPPED / NOLIVE with a live window (a worker
+konsole, tabtitle HIMMEL-<n>-N<k>-..., with a child process) -- was already open on the
+PREVIOUS tick: a worker first seen on this tick is only recorded (one tick of grace), and
+one that stops being a candidate loses its record. State file
+$TICK_STATE_DIR/tick-unclosed-<chief doc stem> (`<label> <first-seen epoch> <dispositions
+at first sight>`). A disposition bullet in the --doc chief doc, newer than first sight,
+removes the worker from the field; the exact shape (greppable, one per line):
+  - [HH:MM ]DISPOSITION <label> closed
+  - [HH:MM ]DISPOSITION <label> parked <named wake, e.g. wake=pr-4999-merge>
+  - [HH:MM ]DISPOSITION <label> given-up <reason>
+`parked` and `given-up` need the wake or reason after them; a bare word does not clear.
+chief-wait.sh wakes `WAKE unclosed <label>` on a worker new to its marker.
+
 workers= (legs= in an older tick) reads a worker's lock as FRESH or STALE (held),
 IDLE-HELD (held, but its readable session transcript has no activity for TICK_IDLE_MIN
 minutes, default 45, and no armed task/Monitor or unfinished foreground Bash/Agent;
@@ -3285,6 +3299,55 @@ elif [ -e "$dw_state" ]; then
 fi
 [ -z "$deadwin_tail" ] || deadwin_tail=" deadwin=$deadwin_tail"
 
+# unclosed=<label>[,<label>]: a worker the tick reads CLOSABLE, or WRAPPED /
+# NOLIVE with a live konsole (a tabtitle row with a child process, from the deadwin read
+# above), that was already open on the PREVIOUS tick and has no newer disposition bullet
+# in the chief doc. State file tick-unclosed-<chief doc stem> holds `<label> <first-seen
+# epoch> <dispositions then>` per such worker: a worker first seen now is only recorded
+# (one tick of grace), one that is no longer a candidate loses its record. A disposition is
+# counted against the count at first sight, so an old bullet from an earlier episode of the
+# same label never hides the next one. ABSENT when none.
+uc_disp_count() { # <label>: the chief doc's disposition bullets for it
+    [ -n "$console_doc" ] && [ -f "$console_doc" ] || { printf '0\n'; return 0; }
+    grep -cE "^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?DISPOSITION $1 (closed([^A-Za-z]|\$)|parked [^ ]|given-up [^ ])" "$console_doc" 2>/dev/null || true  # swallow-ok: no match prints 0; an unreadable doc reads as no disposition
+}
+unclosed_tail=""
+uc_csv=""
+uc_state="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-unclosed${console_doc:+-$(basename "$console_doc" .md)}"
+uc_now="$(date +%s)"
+uc_win=","
+while read -r _ _ uc_tt uc_child; do
+    [ "$uc_child" = 1 ] || continue
+    uc_l="${uc_tt#HIMMEL-*-}"; uc_l="${uc_l%%-*}"
+    uc_win="$uc_win$uc_l,"
+done <<< "${dw_rows:-}"
+uc_new_state=""
+for uc_e in ${legs_summary//,/ }; do
+    uc_l="${uc_e%%:*}"; uc_s="${uc_e#*:}"
+    case "$uc_s" in
+        CLOSABLE) ;;
+        WRAPPED|NOLIVE) case "$uc_win" in *",$uc_l,"*) ;; *) continue ;; esac ;;
+        *) continue ;;
+    esac
+    uc_cnt="$(uc_disp_count "$uc_l")"
+    uc_prev=""
+    [ ! -r "$uc_state" ] || uc_prev="$(awk -v l="$uc_l" '$1 == l { print $2, $3; exit }' "$uc_state" 2>/dev/null)"  # swallow-ok: an unreadable record reads as first sight
+    if [ -z "$uc_prev" ]; then
+        uc_new_state="$uc_new_state$uc_l $uc_now $uc_cnt"$'\n'
+        continue
+    fi
+    read -r uc_t uc_base <<< "$uc_prev"
+    case "$uc_base" in ""|*[!0-9]*) uc_base=0 ;; esac
+    uc_new_state="$uc_new_state$uc_l $uc_t $uc_base"$'\n'
+    [ "$uc_cnt" -gt "$uc_base" ] || uc_csv="$(csv_add "$uc_csv" "$uc_l")"
+done
+if [ -n "$uc_new_state" ]; then
+    mkdir -p "${uc_state%/*}" 2>/dev/null && printf '%s' "$uc_new_state" > "$uc_state" 2>/dev/null  # swallow-ok: a failed state write only delays the wake by a tick
+elif [ -e "$uc_state" ]; then
+    rm -f "$uc_state" 2>/dev/null  # swallow-ok: a stale record is re-pruned next tick
+fi
+[ -z "$uc_csv" ] || unclosed_tail=" unclosed=$uc_csv"
+
 # closable=<n>: finished windows still open past TICK_CLOSABLE_MIN minutes.
 # ABSENT when 0; run `close-wrapped-worker.sh --sweep --fleet <manifest>`.
 closable_tail=""
@@ -3753,6 +3816,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
     [ -z "$closable_tail" ] || printf 'closable windows: %s\n' "${closable_tail# closable=}"
     [ -z "$deadwin_tail" ] || printf 'dead windows: %s\n' "${deadwin_tail# deadwin=}"
+    [ -z "$unclosed_tail" ] || printf 'unclosed windows: %s\n' "${unclosed_tail# unclosed=}"
     [ -z "$busedge_tail" ] || printf 'bus edges: %s\n' "${busedge_tail# busedge=}"
     [ -z "$wakerstate_tail" ] || printf 'bus wakers: %s\n' "${wakerstate_tail# wakerstate=}"
     printf 'vault: %s\n' "$vault_summary"
@@ -3860,7 +3924,7 @@ else
     compact_field wt-ceiling "$wtc_summary"
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
     while IFS= read -r crfirst_line; do
         [ -n "$crfirst_line" ] || continue
         printf 'ACTION cr-first %s\n' "$crfirst_line"

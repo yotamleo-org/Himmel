@@ -274,6 +274,11 @@
 # TICK_CLOSABLE_MIN minutes) wakes when it appears or changes; absent means none.
 # deadwin=<label>:closed|held (tick.sh: a worker window whose session died) wakes
 # when it appears or changes; absent means none.
+# unclosed=<label>[,<label>] (tick.sh: a worker read CLOSABLE, or WRAPPED / NOLIVE with a
+# live window, open on two ticks running with no DISPOSITION bullet in the chief doc) wakes
+# `WAKE unclosed <labels>` for each worker new to the marker `<inbox>.wait.unclosed` (the
+# labels printed are the new ones), again every CHIEF_WAIT_UNCLOSED_REWAKE_MIN (default 60)
+# while it stays; the marker clears when the field is gone. It is not part of the action key.
 # Everything else on the tick line (heartbeat, procs, fill, fleet, gql,
 # orphans...) moves without needing a chief act and never wakes. Two consecutive samples must differ from the saved key (not
 # necessarily from each other), so one failed `gh` read (prs=none for a single
@@ -1110,6 +1115,21 @@ set_wake() {
     fi
     printf '%s\n' "$nums" > "$file" 2>/dev/null
     return 0
+}
+unclosed_file="$inbox.wait.unclosed"
+# unclosed_wake: <unclosed= labels, comma-joined> — a worker the tick read
+# finished and still open on two ticks running, with no disposition bullet. Same marker logic,
+# own marker, own window. Prints the labels new to the marker (the whole set when only the
+# re-wake window is due) and succeeds; the marker then holds the current set, so a worker
+# that leaves the field (a disposition, a closed window) and returns is new again.
+unclosed_wake() {
+    local items l fresh=""
+    items="$(printf '%s\n' "$1" | tr ',' '\n')"
+    for l in $items; do
+        grep -qxF -- "$l" "$unclosed_file" 2>/dev/null || fresh="${fresh:+$fresh,}$l"  # swallow-ok: no marker holds none, so the first sight wakes
+    done
+    set_wake "$items" "$unclosed_file" "${CHIEF_WAIT_UNCLOSED_REWAKE_MIN:-60}" || return 1
+    printf '%s\n' "${fresh:-$1}"
 }
 # unwatched_wake: <unwatched= labels, `+`-joined> — a live worker the manifest does not list
 # (tick.sh already drops other chiefs' workers). Same marker logic, own marker, own window.
@@ -1988,6 +2008,13 @@ while :; do
             elif unwatched_wake "$unwatched_val"; then
                 printf 'WAKE unwatched %s\n%s\n' "$unwatched_val" "$tick_line"
                 exit_reason='wake-unwatched'; exit 0
+            fi
+            unclosed_val="$(field unclosed "$tick_line")"
+            if [ -z "$unclosed_val" ]; then
+                rm -f "$unclosed_file"
+            elif unclosed_new="$(unclosed_wake "$unclosed_val")"; then
+                printf 'WAKE unclosed %s\n%s\n' "$unclosed_new" "$tick_line"
+                exit_reason='wake-unclosed'; exit 0
             fi
             doctor_val="$(field doctor "$tick_line")"
             case "$doctor_val" in
