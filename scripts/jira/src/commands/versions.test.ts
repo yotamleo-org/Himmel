@@ -3,6 +3,18 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readVersionWrites } from '../release/version-writes.js';
+
+// The test-run-guard door a real write asks answers 0, so these writes reach their stubbed fetch; every
+// other spawn runs for real.
+vi.mock('node:child_process', async (orig) => {
+  const m = await orig<typeof import('node:child_process')>();
+  const spawnSync = ((cmd: string, args?: readonly string[], opts?: object) =>
+    cmd === 'bash' && String(args?.[0] ?? '').endsWith('/test-run-guard')
+      ? { status: 0, signal: null, output: [], pid: 0, stdout: null, stderr: null }
+      : m.spawnSync(cmd, args ?? [], opts ?? {})) as unknown as typeof m.spawnSync;
+  return { ...m, spawnSync };
+});
+
 import {
   buildVersionCreateBody,
   buildFixVersionBody,
