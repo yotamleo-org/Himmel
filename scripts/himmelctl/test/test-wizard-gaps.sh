@@ -9,11 +9,6 @@
 #   (b) not recorded: the field is genuinely absent from this profile (a
 #       profile written before the question existed), never a false "off"
 #       answer the operator never made.
-#   (c) reference-only: what the operator machine runs, each row with its
-#       state (covered by the wizard, planned, not planned). Rendered
-#       from the checked-in scripts/himmelctl/tbd-delta.json map, itself
-#       checked (case f below) against docs/setup/operator-profile-tbd-
-#       delta.md so the two can never silently drift apart.
 #   (d) present but unverified: this setup's answer matches the reference
 #       (both "on"), but gaps is a static profile diff, not a live probe,
 #       named as still-manual (run `himmelctl status` to confirm).
@@ -29,20 +24,11 @@
 # Covers:
 #   a. a profile with a feature answered off (vs the operator reference)
 #      appears under group (a), labelled as a choice, not a gap.
-#   b. group (b) renders a reference-only item by its label and state, with
-#      no ticket key.
 #   c. --json emits parseable JSON; assert on a field via node -e, not a
 #      substring of prose.
 #   d. exit code is 0 when gaps exist (a report, not a gate).
 #   e. a missing install profile exits non-zero with the same clear message
 #      cmdStatus/cmdEnsure already use.
-#   f. doc<->map ROW-LEVEL agreement: every doc table row (# column) appears
-#      as a key in scripts/himmelctl/tbd-delta.json's `entries` with the
-#      SAME state, and vice versa (STRUCTURAL, not instructional:
-#      this test fails the moment a row is dropped from either side, even
-#      when its path happens to still appear via a different row.
-#      A path-keyed or set check is structurally
-#      blind to exactly that kind of drift).
 #   g. an identical-to-reference profile -> group (a) empty, group (c)
 #      populated (present but unverified).
 #   h. --from-profile points gaps at a profile file outside the cache.
@@ -241,43 +227,6 @@ grepq "$errE" -F 'no himmelctl install profile found' || fail "case e: expected 
 grepq "$errE" -F 'run himmelctl install first' || fail "case e: expected the standard missing-profile message (got: $errE)"
 echo "ok: case e — a missing install profile exits non-zero with the standard message"
 
-# ── case f: doc<->map ROW-LEVEL STRUCTURAL agreement. Every doc table row
-# (# column) must appear as a key in the map's `entries`, with the SAME
-# state, and vice versa. A path-SET check (the prior
-# version of this test) is structurally blind to a dropped row whose
-# path happens to still appear via a sibling row. CR:
-# rows 2 and 4 both cite delta.cadences.extraArmedTasks, so a path-keyed map
-# silently swallowed row 4 and the old set-based check still passed. This
-# version fails the moment a row is missing from either side. It also keeps
-# a path cross-check: every delta.*/profile.* path cited in a doc row's
-# Item or "Captured how" cell must be listed in that SAME row's map entry
-# (row 12 cites its one path, delta.alwaysOnInferred, parenthetically in the
-# Item cell rather than in Captured how. Scanning both is what the map's
-# own paths[] is meant to agree with; scanning the whole row instead would
-# false-positive on incidental mentions in the prose columns).
-# Extraction is scoped to actual table DATA rows (`^\|\s*\d+\s*\|`) and, for
-# the state, to the State cell, which must be exactly one of
-# "covered by the wizard", "planned" or "not planned".
-# the row-level check above still had two blind
-# spots. A stale `label` in the map was never compared against the doc's
-# Item cell at all, and a path check only ran doc->map (an EXTRA path in a
-# map entry the doc never cites went unnoticed). Both extended below:
-# label comparison uses a normalised WORD-CONTAINMENT rule (not exact
-# equality): strip markdown backticks/emphasis, lowercase, split into a
-# word set, and require that at least 90% of the map label's distinct words
-# appear verbatim in the doc Item cell's word set. Exact equality is
-# impractical here: the map's `label` is a hand-paraphrase of the doc's
-# Item cell, not a copy (row 9's Item cell adds a parenthetical the label
-# omits; row 12's Item cell says "the capture INFERS ... it is never an
-# asked-and-recorded answer" where the label says "inferred ..., never
-# asked-and-recorded": same content, different inflection/wording) so a
-# byte- or even whitespace/markdown-normalised equality check would fail on
-# EVERY currently-correct row that paraphrases at all. Containment (map
-# words found in doc words) tolerates that paraphrasing. Extra explanatory
-# clauses in the doc's longer prose don't hurt since we only require the
-# map's (fewer, shorter) words to be present, not the reverse, while still
-# failing hard on a label that's actually stale or copied from a different
-# row, where most of its words won't appear in this row's Item cell at all.
 docMapAgreement=$(node -e '
   const fs = require("fs");
   const doc = fs.readFileSync(process.argv[1], "utf8");
@@ -288,7 +237,7 @@ docMapAgreement=$(node -e '
     s.replace(/[`*_]/g, "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
   );
   const STATES = ["covered by the wizard", "planned", "not planned"];
-  const docRows = new Map(); // rowNum -> { state, paths: Set, itemWords: Set }
+  const docRows = new Map();
   for (const l of rows) {
     const cells = l.split("|");
     const rowNum = (cells[1] || "").trim();
