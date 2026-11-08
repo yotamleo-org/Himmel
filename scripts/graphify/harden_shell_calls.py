@@ -2,11 +2,7 @@
 # each shell file the graph holds a file node for and turns
 #   bash|sh|source|.|exec <path>   and a bare   <path>.sh   command word
 # into "calls" (bash/sh/exec/direct) or "sources" (source/.) edges between
-# the two file nodes. A script run by an interpreter (python/python3/node
-# <path>) or a bare <path>.py/.mjs/.cjs/.js command word is a "calls" edge to
-# that Python/JS file's AST node (no metadata.kind there, unlike shell nodes);
-# python -c/-m and node -e/-p run no file and are not edges. stdlib only,
-# like harden-graph.py.
+# the two file nodes. stdlib only, like harden-graph.py.
 #
 # Resolution rule (never guessed): <path> resolves only from what the SAME
 # file says --
@@ -38,10 +34,10 @@ HEREDOC_RE = re.compile(r"(?<!<)<<(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z_0-9]*)\2")
 SHELL_EXT = (".sh", ".bash")
 OTHER_SCRIPT_EXT = (".py", ".mjs", ".cjs", ".js")
 PYTHON_WORD_RE = re.compile(r"python(?:\d+(?:\.\d+)*)?")
-PYTHON_STOP_RE = re.compile(r"-[BEIPRSOdiqsuvx]*[cm]")  # -c / -m (also clustered): runs no file
+PYTHON_NO_FILE_FLAG_RE = re.compile(r"-[BEIPRSOdiqsuvx]*[cm]")
 PYTHON_OPERAND_FLAGS = {"-W", "-X"}
-NODE_STOP_FLAGS = {"-e", "--eval", "-p", "--print"}
-NODE_OPERAND_FLAGS = {"-r", "--require", "--import", "--loader", "--experimental-loader"}
+NODE_NO_FILE_FLAGS = {"-e", "--eval", "-p", "--print"}
+NODE_OPERAND_FLAGS = {"-r", "--require", "--import", "--loader", "--experimental-loader", "-C", "--conditions", "--title"}
 
 
 def is_shell_file_node(node):
@@ -55,7 +51,6 @@ def is_shell_file_node(node):
 
 
 def is_script_file_node(node):
-    """A Python/JS file node: the AST pass gives it no metadata.kind."""
     sf = node.get("source_file") or ""
     return (
         sf.endswith(OTHER_SCRIPT_EXT)
@@ -426,7 +421,6 @@ def _strip_prefix(words):
 
 
 def _interpreter(word):
-    """"python" or "node" when the command word names that interpreter."""
     if "$" in word or "`" in word:
         return None
     base = posixpath.basename(_unquote(word))
@@ -436,21 +430,19 @@ def _interpreter(word):
 
 
 def _interpreter_script(interp, args):
-    """The raw script word an interpreter command runs, or None when it runs no
-    file (-c/-m/-e/-p, stdin) or names none."""
     i = 0
     while i < len(args):
-        a = args[i]
+        a = _unquote(args[i])
         if a == "-" or a == "--":
             return None if a == "-" else (args[i + 1] if i + 1 < len(args) else None)
         if a[:1] not in "-+":
-            return a
+            return args[i]
         if interp == "python":
-            if PYTHON_STOP_RE.match(a):
+            if PYTHON_NO_FILE_FLAG_RE.match(a):
                 return None
             i += 2 if a in PYTHON_OPERAND_FLAGS else 1
         else:
-            if a in NODE_STOP_FLAGS or a.startswith(("--eval=", "--print=")):
+            if a in NODE_NO_FILE_FLAGS or a.startswith(("--eval=", "--print=")):
                 return None
             i += 2 if a in NODE_OPERAND_FLAGS else 1
     return None

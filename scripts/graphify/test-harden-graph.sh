@@ -547,11 +547,6 @@ got16c=$( python3 -c 'import json,sys; print({n["id"]: n for n in json.load(open
 [ "$got16c" = "['docs_m_helper', 'docs_n_helper']" ] \
   && pass "T16 a later canonical keeps the ids its alias had absorbed" || fail "T16 merged_ids lost on re-merge: $got16c"
 
-# --- T17: --root follows a shell script into the Python / Node script it runs
-# by path (python3 -I "$(dirname ...)/x.py", python3 "$HERE/x.py", node x.mjs, a
-# direct x.py command word) into a calls edge to that file's AST node; -c, -m,
-# $1, comment, echo and heredoc mentions are not edges. Python/JS file nodes
-# carry no metadata.kind (only shell file nodes do) ---
 echo "T17: shell-to-python/node calls resolve to calls edges, negatives do not"
 D17="$WS/t17"; C17="$D17/corpus"; mkdir -p "$C17/a" "$C17/scripts"
 cat > "$C17/a/caller.sh" <<'SH'
@@ -565,6 +560,8 @@ node "$HERE/t_node.mjs"
 "$HERE/t_direct.py" arg
 python3 scripts/t_literal.py
 timeout 5 python3 "$HERE/t_timeout.py"
+python3 "-I" "$HERE/t_quoted.py"
+node --conditions development "$HERE/t_cond.mjs"
 python3 -c 'print(1)'
 python3 -m json.tool
 python3 "$1"
@@ -576,7 +573,7 @@ cat <<EOF
 python3 "$HERE/n_heredoc.py"
 EOF
 SH
-for f in a/t_dirname.py a/t_here.py a/t_var.py a/t_node.mjs a/t_direct.py scripts/t_literal.py a/t_timeout.py a/n_comment.py a/n_echo.py a/n_squote.py a/n_heredoc.py; do
+for f in a/t_dirname.py a/t_here.py a/t_var.py a/t_node.mjs a/t_direct.py scripts/t_literal.py a/t_timeout.py a/t_quoted.py a/t_cond.mjs a/n_comment.py a/n_echo.py a/n_squote.py a/n_heredoc.py; do
   printf '' > "$C17/$f"
 done
 python3 - "$D17" <<'PY'
@@ -591,13 +588,12 @@ for root, _, files in os.walk(os.path.join(d, "corpus")):
         if rel.endswith(".sh"):
             n["metadata"] = {"language": "bash", "kind": "file"}
         nodes.append(n)
-# n_nonode.py has no file node: the call is unresolved, never a guess
 json.dump({"directed": False, "multigraph": False, "graph": {}, "nodes": nodes, "links": [], "hyperedges": []},
           open(os.path.join(d, "graph.json"), "w"))
 PY
 out17=$( python3 "$SCRIPT" --out "$D17" --root "$C17" 2>&1 ); rc17=$?
 [ "$rc17" -eq 0 ] || fail "T17 exit 0 (got $rc17): $out17"
-echo "$out17" | grep -qF "shell-calls=7 shell-sources=0 shell-unresolved=3" \
+echo "$out17" | grep -qF "shell-calls=9 shell-sources=0 shell-unresolved=3" \
   && pass "T17 summary counts the python/node calls and the unresolved ones" \
   || fail "T17 summary wrong: $out17"
 if python3 - "$D17/graph.json" <<'PY'
@@ -607,7 +603,7 @@ got = {(e["source"], e["target"], e["relation"], e["confidence"]) for e in g["li
 want = {("a_caller_sh", t, "calls", c) for t, c in [
     ("a_t_dirname_py", "EXTRACTED"), ("a_t_here_py", "EXTRACTED"), ("a_t_var_py", "EXTRACTED"),
     ("a_t_node_mjs", "EXTRACTED"), ("a_t_direct_py", "EXTRACTED"), ("scripts_t_literal_py", "EXTRACTED"),
-    ("a_t_timeout_py", "EXTRACTED")]}
+    ("a_t_timeout_py", "EXTRACTED"), ("a_t_quoted_py", "EXTRACTED"), ("a_t_cond_mjs", "EXTRACTED")]}
 missing, extra = want - got, got - want
 for m in sorted(missing):
     print(f"  missing case: {m[1]}")
