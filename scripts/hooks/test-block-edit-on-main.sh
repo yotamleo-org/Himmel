@@ -233,6 +233,11 @@ assert_rc "T3e a scratchpad symlink into a primary still blocks" 2 \
     "$(rc_of "$SCR2/linkprim/foo.js" TMPDIR="$SANDBOX")"
 assert_rc "T3e a scratchpad symlink into a primary still blocks under the stray .git" 2 \
     "$(rc_of "$SCR2/linkprim/foo.js" TMPDIR="$SB9626")"
+# A temp root that sits INSIDE a checkout on main is not exempted: the `.git` the
+# walk-up finds is above the temp root.
+mkdir -p "$SANDBOX/mainrepo/tmproot/claude-$(id -u)/proj/sess/scratchpad"
+assert_rc "T3e a temp root inside a checkout on main still blocks a scratchpad Write" 2 \
+    "$(rc_of "$SANDBOX/mainrepo/tmproot/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SANDBOX/mainrepo/tmproot")"
 # The rc 3 message names the `.git` the walk-up found.
 t3eerr=$(printf '%s' "{\"tool_input\":{\"file_path\":\"$SB9626/other/x.py\"}}" | env TMPDIR="$SB9626" bash "$HOOK" 2>&1 >/dev/null)
 case "$t3eerr" in

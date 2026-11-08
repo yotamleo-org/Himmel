@@ -1194,9 +1194,11 @@ EOF
 # Callers pass an already-canonical path, so a symlink in the scratchpad that
 # leads into a checkout is already that checkout's path and never matches here.
 _SCRATCHPAD_ROOT=""
+_SCRATCHPAD_BASE=""
 _in_session_scratchpad() {
     local file="$1" uid base rest proj sess
     _SCRATCHPAD_ROOT=""
+    _SCRATCHPAD_BASE=""
     uid=$(id -u 2>/dev/null) || return 1
     for base in "${TMPDIR:-}" /tmp; do
         base="${base%/}"
@@ -1212,6 +1214,7 @@ _in_session_scratchpad() {
         case "$rest" in
             scratchpad|scratchpad/*)
                 _SCRATCHPAD_ROOT="$base/claude-$uid/$proj/$sess/scratchpad"
+                _SCRATCHPAD_BASE="$base"
                 return 0
                 ;;
         esac
@@ -1228,11 +1231,16 @@ main_checkout_verdict_set() {
     repo_real="${repo_real%/}"
 
     # A path in the caller's own session scratchpad is outside any repo when the
-    # `.git` the walk-up found sits ABOVE the scratchpad (a stray /tmp/.git).
-    # A `.git` in the scratchpad itself or below it decides as before.
+    # `.git` the walk-up found sits above the scratchpad but inside the temp root
+    # (a stray /tmp/.git). A `.git` in the scratchpad itself or below it, or in a
+    # directory above the temp root (a TMPDIR inside a checkout), decides as before.
     if _in_session_scratchpad "$file_real" && [ "$repo_real" != "$_SCRATCHPAD_ROOT" ]; then
         case "$_SCRATCHPAD_ROOT/" in
-            "$repo_real/"*) return 0 ;;
+            "$repo_real/"*)
+                case "$repo_real/" in
+                    "$_SCRATCHPAD_BASE/"*) return 0 ;;
+                esac
+                ;;
         esac
     fi
 
