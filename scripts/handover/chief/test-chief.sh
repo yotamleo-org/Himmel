@@ -3377,19 +3377,17 @@ check "9502 a missing companion refuses (exit 7)" "$rc91" "7"
 check "9502 the missing-companion refusal prints a repair line naming the file" "$(printf '%s\n' "$out91" | grep -c "repair:.*$rel92")" "1"
 mk91 cmp92f "(46) other ruling" "- 10:00 LIVE — DIRECTION-COMPANION-LOST: $rel92 deleted by hand, the readings stay" "$ptr92"$'\n\n'"$sl92"; run91 cmp92f
 check "9502 a recorded DIRECTION-COMPANION-LOST bullet lets a missing companion pass" "$rc91" "0"
-# The companion part bound (CHIEF_DIRECTION_PART_BYTES) is 48,000 bytes: the live 11-08 companions
-# measured 72,000 bytes = 29,815 tokens in one Read (2.415 bytes a token), so 48,000 bytes is about
-# 19,900 tokens, 20 percent under the 25,000-token Read limit. A direction of about 41,600 bytes of
-# full text (just above the old 40,000 bound) is one companion; one of about 50,000 is two, none over 48,000.
+old92=40000
+new92=48000
 w92="$(printf 'ruling text %.0s' $(seq 1 48))"
-dirn92() { local i; for i in $(seq 1 "$1"); do printf 'OPERATOR 11-05 AB (BINDING, carry to every successor; decision %d): %s\n\n' "$((900 + i))" "$w92"; done; }
+dirn92() { local i=0 sz=0 u; while [ "$sz" -le "$1" ]; do i=$((i + 1)); u="$(printf 'OPERATOR 11-05 AB (BINDING, carry to every successor; decision %d): %s' "$((900 + i))" "$w92")"; printf '%s\n\n' "$u"; sz=$((sz + ${#u} + 2)); done; }
 parts92() { find "$root/tester/$1/specs/decisions" -name 'chief-direction-*-p*.md' 2>/dev/null | wc -l | tr -d ' '; }
-mk91 big92a "(46) other ruling" "-" "$(dirn92 64)"; run91 big92a
+mk91 big92a "(46) other ruling" "-" "$(dirn92 "$old92")"; run91 big92a
 check "9502 bound: a direction just above the old 40,000-byte part bound passes" "$rc91" "0"
 check "9502 bound: a direction just above the old 40,000-byte part bound is one companion" "$(parts92 big92a)" "1"
-mk91 big92b "(46) other ruling" "-" "$(dirn92 77)"; run91 big92b
-check "9502 bound: a direction of about 50,000 bytes is two companions" "$(parts92 big92b)" "2"
-check "9502 bound: no companion is over 48,000 bytes" "$(find "$root/tester/big92b/specs/decisions" -name 'chief-direction-*-p*.md' -size +48000c | wc -l | tr -d ' ')" "0"
+mk91 big92b "(46) other ruling" "-" "$(dirn92 "$new92")"; run91 big92b
+check "9502 bound: a direction just above the new 48,000-byte part bound is two companions" "$(parts92 big92b)" "2"
+check "9502 bound: no companion is over 48,000 bytes" "$(find "$root/tester/big92b/specs/decisions" -name 'chief-direction-*-p*.md' -size +"$new92"c | wc -l | tr -d ' ')" "0"
 mk91 hdr91 "(46) other ruling" "-" "$dir91"
 cat > "$root/tester/hdr91/DEMO-nextleg-${today}B-chief-HANDOFF.md" <<'HDR'
 # DF → DG handoff state

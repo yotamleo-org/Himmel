@@ -2020,7 +2020,7 @@ tracker_head() {
 # are listed with the ruling's, and the companions keep it directly under its head. A line an earlier run already shortened stays as
 # it is but counts against the budget; its full text is carried forward from the companion
 # files the earlier note names. The companions are specs/decisions/chief-direction-<date>[-N]-pK.md,
-# each under CHIEF_DIRECTION_PART_BYTES (default 48000, about 19,900 tokens at the measured 2.415 bytes a token, 20 percent under the 25,000-token Read limit, so one Read takes it whole). Returns 1
+# each under CHIEF_DIRECTION_PART_BYTES (default 48000, so one Read takes it whole). Returns 1
 # and prints nothing when no line was shortened, 2 when a companion could not be written.
 # Args: block (stdin), dir, date.
 compress_direction() {
