@@ -51,6 +51,12 @@ ship="$(section "$PREFACE" '^## Shipping')"
 contains 'preface Shipping names the resolve CLI' "$ship" 'thread-resolve-action-cli.mjs'
 contains 'preface Shipping says every resolve carries a reason' "$ship" '--reason'
 contains 'preface Shipping routes a denied resolve to the chief' "$ship" 'BLOCKED resolve <pr> <ids>'
+# The always-loaded preface carries the spelling and the reason
+# forms scripts/hooks/allow-thread-resolve.sh accepts, not only the on-demand section.
+contains 'preface Shipping spells the full resolve CLI path' "$ship" 'node <primary>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner'
+contains 'preface Shipping names the fixed reason the hook accepts' "$ship" 'fixed <7-40 hex sha>'
+contains 'preface Shipping names the followup reason the hook accepts' "$ship" 'followup <KEY-n>'
+contains 'preface Shipping names the rejected reason the hook accepts' "$ship" 'rejected <why>'
 work="$(section "$PREFACE" '^## How you work')"
 contains 'preface: a classifier denial on a loop shape is a shape denial' "$work" 'a denied loop is a shape denial'
 
