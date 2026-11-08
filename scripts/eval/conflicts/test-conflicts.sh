@@ -32,6 +32,7 @@ command -v python3 >/dev/null 2>&1 || { echo "SKIP test-conflicts: python3 not o
 cat > "$TMP/shim/gh" <<'SH'
 #!/bin/sh
 printf '%s\n' "$*" >> "$TMP_GH_LOG"
+pwd >> "$TMP_GH_LOG"
 case "$1 $2" in
   "pr view")
     case "$3" in
@@ -99,6 +100,14 @@ done
 build d-clean clean
 out="$(det "$TMP/d-clean" "$(g "$TMP/d-clean" rev-parse B)")"
 eq "detect clean merge prints nothing" "$out" ""
+
+# 1b. main is squash-merged: once the squash commit is on main, the head's own merges still read as the branch's
+build d-squash merged
+g "$TMP/d-squash" checkout -q main
+g "$TMP/d-squash" merge --squash B >/dev/null 2>&1
+g "$TMP/d-squash" commit -q -m "t (#31)"
+out="$(det "$TMP/d-squash" "$(g "$TMP/d-squash" rev-parse B)")"
+has "detect after the squash commit reached main" "$out" "f.sh"
 
 # 2. more than 20 merge commits: unknown, no file listed
 build d-many merged
@@ -223,9 +232,18 @@ BL="$TMP/BL"
 : > "$TMP_GH_LOG"
 out="$(python3 -I "$CONF" backfill --since 2026-11-01T00:00:00Z --repo-dir "$rec" --base-ref main --ledger-dir "$BL" 2>&1)"
 has "backfill ran the merged search" "$(cat "$TMP_GH_LOG")" "merged:>=2026-11-01"
+has "gh ran inside --repo-dir" "$(cat "$TMP_GH_LOG")" "$rec"
 eq "backfill wrote two files" "$(find "$BL/conflicts" -name '*.jsonl' | sort | sed 's|.*/||' | tr '\n' ' ')" "41.jsonl 42.jsonl "
 srcs="$(python3 -I -c 'import json,sys; print(sorted({json.loads(l)["source"] for f in sys.argv[1:] for l in open(f)}))' "$BL/conflicts/41.jsonl" "$BL/conflicts/42.jsonl")"
 eq "backfill rows say source backfill" "$srcs" "['backfill']"
+
+# a listing at gh's limit is refused, not silently cut
+python3 -I -c 'import json; print(json.dumps([{"number": n, "title": "t", "body": "", "mergedAt": "2026-11-05T10:00:00Z", "mergeCommit": None, "headRefOid": "", "isCrossRepository": False} for n in range(1, 501)]))' > "$TMP_GH_LIST"
+out="$(python3 -I "$CONF" backfill --since 2026-11-01T00:00:00Z --repo-dir "$rec" --base-ref main --ledger-dir "$TMP/BL2" 2>&1)"
+rc=$?
+eq "backfill at the gh limit exits 2" "$rc" "2"
+has "backfill at the gh limit says narrow --since" "$out" "narrow --since"
+if [ ! -e "$TMP/BL2" ]; then pass "backfill at the gh limit writes nothing"; else fail "backfill at the gh limit writes nothing"; fi
 
 echo "RESULT pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

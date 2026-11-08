@@ -43,6 +43,7 @@ SUBDIR = "conflicts"
 MAX_MERGES = 20
 GIT_SECS = 30
 GH_SECS = 30
+BACKFILL_LIMIT = 500
 NOTE_MAX = 300
 TRUST_LIST = "scripts/ci/ci-trust-paths.txt"
 
@@ -137,9 +138,10 @@ def detect(repo, head, base, pr=None):
         return [], str(e)
 
 
-def gh_json(*args):
+def gh_json(repo, *args):
+    """gh runs inside the repo under review, so a call from another checkout reads the right repository."""
     try:
-        r = subprocess.run(["gh"] + list(args), capture_output=True, text=True, timeout=GH_SECS)
+        r = subprocess.run(["gh"] + list(args), capture_output=True, text=True, timeout=GH_SECS, cwd=repo)
     except (subprocess.TimeoutExpired, OSError):
         return None
     if r.returncode != 0:
@@ -150,9 +152,9 @@ def gh_json(*args):
         return None
 
 
-def outside_pr(n):
+def outside_pr(repo, n):
     """Whether PR n comes from a fork; an unreadable answer is False."""
-    d = gh_json("pr", "view", str(n), "--json", "isCrossRepository")
+    d = gh_json(repo, "pr", "view", str(n), "--json", "isCrossRepository")
     return bool(isinstance(d, dict) and d.get("isCrossRepository"))
 
 
@@ -247,7 +249,7 @@ def record(snap, repo, base, ledger, source):
     for r in rows.values():
         for n in r["other_prs"]:
             if n not in outside:
-                outside[n] = outside_pr(n)
+                outside[n] = outside_pr(repo, n)
         out_rows.append({"v": 1, "repo": slug, "pr": pr, "key": key, "head": head,
                          "merge_commit": mc.get("oid") or "", "merged_at": snap.get("mergedAt") or "",
                          "merge": r["merge"], "file": r["file"], "other_prs": r["other_prs"],
@@ -284,10 +286,13 @@ def cmd_backfill(a):
     if d is None:
         sys.stderr.write("conflicts: --since is not an ISO time: %s\n" % a.since)
         return 2
-    prs = gh_json("pr", "list", "--state", "merged", "--search", "merged:>=%s" % d.strftime("%Y-%m-%d"), "--limit", "500",
+    prs = gh_json(a.repo_dir, "pr", "list", "--state", "merged", "--search", "merged:>=%s" % d.strftime("%Y-%m-%d"), "--limit", str(BACKFILL_LIMIT),
                   "--json", "number,title,body,mergedAt,mergeCommit,headRefOid,isCrossRepository")
     if not isinstance(prs, list):
         sys.stderr.write("conflicts: gh pr list failed\n")
+        return 2
+    if len(prs) >= BACKFILL_LIMIT:
+        sys.stderr.write("conflicts: gh returned %d PRs, the most it lists; narrow --since and run again\n" % BACKFILL_LIMIT)
         return 2
     for snap in prs:
         merged = judge_accuracy.when(snap.get("mergedAt") or "")
