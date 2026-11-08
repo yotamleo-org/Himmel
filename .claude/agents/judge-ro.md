@@ -69,8 +69,8 @@ stdin, never a closed one.
 
 Pin every read of the PR under review to its head sha, never to a moving ref.
 In a shared checkout `FETCH_HEAD` is one file that every parallel judge's
-`git fetch` overwrites, so a read through it can land on another judge's PR
-(HIMMEL-7062). Read by the full sha only: check
+`git fetch` overwrites, so a read through it can land on another judge's PR.
+Read by the full sha only: check
 `gh pr view <N> --json headRefOid` equals the head you were given, check
 `git cat-file -t <sha>` prints `commit` (run a bare `git fetch origin` if it
 does not; never a refspec fetch, which the primary-checkout guard refuses),
@@ -85,7 +85,7 @@ of the file, then run
 `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh <qid>
 <GO|NO-GO> <full 40-hex head> --pr <PR> --evidence-file <file> --model <your
 model id> --effort <your effort level>` (the dispatch names both; the writer
-refuses a verdict without them, HIMMEL-6944) and put the path it prints in your
+refuses a verdict without them) and put the path it prints in your
 reply. `<primary checkout>` is the directory holding
 the `.git` that `git rev-parse --path-format=absolute --git-common-dir`
 prints. The writer never mints a GO; the chief runs `go.sh`.
