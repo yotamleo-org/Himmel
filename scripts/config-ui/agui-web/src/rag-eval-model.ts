@@ -21,6 +21,7 @@ const ROUTES: { key: string; label: string; finds: string | null; answers: strin
 ];
 
 const HIT_AT_5_LEGACY_NAME = "recall@5";
+const FILE_HIT_LEGACY_NAME = "correct";
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const newest = (rows: LedgerRow[], name: string, has: (r: LedgerRow) => boolean) =>
   rows.filter((r) => r.eval === name && r.status === "ok" && r.metrics && has(r)).sort((a, b) => (a.ts < b.ts ? 1 : -1))[0];
@@ -44,12 +45,13 @@ function finds(rows: LedgerRow[], arm: string): Measure | null {
 
 function answers(rows: LedgerRow[], arm: string): Measure | null {
   const size = (x: LedgerRow) => num(x.metrics[`${arm}.n`]) ?? num(x.n) ?? 0;
-  const r = newest(rows, "answer-ab", (x) => num(x.metrics[`${arm}.correct`]) !== null && size(x) > 0);
+  const hits = (m: LedgerRow["metrics"], key: string) => num(m[`${key}.file_hit`]) ?? num(m[`${key}.${FILE_HIT_LEGACY_NAME}`]);
+  const r = newest(rows, "answer-ab", (x) => hits(x.metrics, arm) !== null && size(x) > 0);
   if (!r) return null;
-  const m = r.metrics, count = num(m[`${arm}.correct`])!, n = size(r);
+  const m = r.metrics, count = hits(m, arm)!, n = size(r);
   const mix = ["input", "output", "cache_read", "cache_creation"].map((k) => num(m[`${arm}.${k}`]));
   const tokens = mix.every((t) => t !== null) ? (mix as number[]).reduce((a, b) => a + b, 0) / n : null;
-  const part = (s: string) => split(num(m[`${arm}.${s}.correct`]), num(m[`${arm}.${s}.n`]));
+  const part = (s: string) => split(hits(m, `${arm}.${s}`), num(m[`${arm}.${s}.n`]));
   return { count, n, rate: count / n, tokens, ms: num(m[`${arm}.ms_median`]), ts: r.ts, runId: r.run_id, heldout: part("heldout"), insample: part("insample") };
 }
 

@@ -96,6 +96,14 @@ test("ragEvalModel: a row with no sample (n 0) is skipped for an older one with 
   expect(m.routes.find((r) => r.key === "vanilla")!.answers).toMatchObject({ count: 69, n: 75 });
 });
 
+test("ragEvalModel: a row that records file_hit, not correct, is read and picked as newest", () => {
+  const renamed = Object.fromEntries(Object.entries({
+    ...arm("vanilla", 60, 75), "vanilla.heldout.correct": 20, "vanilla.heldout.n": 25,
+  }).map(([k, v]) => [k.replace(/\.correct$/, ".file_hit"), v]));
+  const m = ragEvalModel([ab("2026-11-05T19:20:03Z", 75, arm("vanilla", 69, 75)), ab("2026-11-09T10:00:00Z", 75, renamed)]);
+  expect(m.routes.find((r) => r.key === "vanilla")!.answers).toMatchObject({ count: 60, n: 75, ts: "2026-11-09T10:00:00Z", heldout: { count: 20, n: 25 } });
+});
+
 test("wilson: the 95% range the audit quotes for 69 of 75", () => {
   const [lo, hi] = wilson(69, 75);
   expect(lo).toBeCloseTo(0.836, 3);
