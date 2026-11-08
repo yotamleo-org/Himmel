@@ -1445,7 +1445,8 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                 if k and int(k.group(1)) in opn and spec not in signed and (last == 'SPEC CLEAN' or rnd >= SPEC_ROUNDS):
                     n = int(k.group(1))
                     items.append(('unsigned spec', n, clip(opn[n]['title'], 100),
-                                  '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (os.path.basename(spec), rnd, last[:40]),
+                                  '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
+                                      os.path.basename(spec), rnd, last if re.fullmatch(r'SPEC (?:CLEAN|FINDINGS \d+)', last) else 'no verdict line'),
                                   'sign the spec, or rule on its findings'))
         hand = sorted(glob.glob(os.path.join(bucket, '*HANDOFF.md')), key=os.path.getmtime)
         sec = md_section(hand[-1], 'Open operator items') if hand else None

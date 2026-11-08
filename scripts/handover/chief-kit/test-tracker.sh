@@ -1372,7 +1372,7 @@ contains 'a priority file older than the newest Jira update names its age' "$h96
 not_contains 'a priority file read says nothing about having no source' "$h9611" 'no priority line is read'
 
 # --- Waiting on you reads the records that hold what waits on the operator.
-for t in 436 437; do
+for t in 436 437 438; do
     printf '%s\n' '---' "key: \"HIMMEL-$t\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
         '---' "# HIMMEL-$t: owedsec ticket $t" > "$vp/HIMMEL-$t.md"
 done
@@ -1385,15 +1385,17 @@ printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-435-clean.md.c
 printf '%s\n' '# critic' 'SPEC FINDINGS 3' > "$bk/specs/designs/HIMMEL-436-underway.md.critic-spec-r1.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-437-signed.md.critic-spec-r1.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-999-notopen.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'a closing note that is not a verdict line' > "$bk/specs/designs/HIMMEL-438-noverdict.md.critic-spec-r3.md"
 printf '%s\n' '# handoff' '## Open operator items' '' 'Answer the paid-step ask' '## Wrapped' 'none' > "$bk/HIMMEL-nextleg-x-chief-HANDOFF.md"
 printf '%s\n' '# chief' '## Live state' 'queue: first | HIMMEL-435 waits for operator sign-off | third' \
     'pool-disposition: HIMMEL-434 question operator on Telegram, runs the paid step' 'pool-disposition: HIMMEL-436 slice parked, no ask' \
     '## Other' 'pool-disposition: HIMMEL-437 operator words outside the live state' > "$bk/chief.md"
 v9611render --owed-dir "$bk" --chief-doc "$bk/chief.md"
 w9611="$(grep -F 'data-section="waiting"' "$v9611out")"
-contains 'Waiting on you counts the unsigned specs, the handoff item and the chief lines' "$w9611" 'data-count="5"'
+contains 'Waiting on you counts the unsigned specs, the handoff item and the chief lines' "$w9611" 'data-count="6"'
 contains 'a spec past the round cap with no spec row is owed' "$w9611" 'HIMMEL-434-capped.md: latest critic round 3'
 contains 'a spec whose latest critic reads SPEC CLEAN with no spec row is owed' "$w9611" 'HIMMEL-435-clean.md: latest critic round 1 reads SPEC CLEAN'
+contains 'a past-cap spec whose last line is no verdict says so, never prints that line' "$w9611" 'HIMMEL-438-noverdict.md: latest critic round 3 reads no verdict line'
 not_contains 'a spec with a spec row is not owed' "$w9611" 'HIMMEL-437-signed'
 not_contains 'a spec under the cap with findings is not owed' "$w9611" 'HIMMEL-436-underway'
 not_contains 'a spec of a ticket not open in the version is not owed' "$w9611" 'HIMMEL-999'
