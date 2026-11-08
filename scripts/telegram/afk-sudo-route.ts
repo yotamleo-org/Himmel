@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, type Access } from "./gate";
+import { classify } from "./router";
 
 // Operator `approve <id> <nonce> <code>` / `deny <id>` -> the root afk-sudo helper.
 // The helper (scripts/lib/afk-sudo/afk_sudo.py, installed
@@ -251,6 +252,9 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
     if (prompt) return codeReply(deps, prompts!, msg, prompt);
     const line = parseAfkSudo(msg.text);
     if (!line) {
+      // An outside-PR approve ("approve <pr> <sha prefix>") is the router's verb, not an afk-sudo line: its
+      // prefix may hold a six-digit run, and the verb itself refuses anything that is not a reply to the bot's request.
+      if (classify(msg.text).kind === "approve") return false;
       if (MALFORMED.test(msg.text)) {
         deps.log("[afk-sudo] approve with a malformed id consumed");
         if (eligible(deps.access(), msg)) {
