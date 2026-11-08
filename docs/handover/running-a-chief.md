@@ -1076,18 +1076,29 @@ Pass: `usage-preflight` prints the new account's `five_hour` / `seven_day` and
 `PROCEED` (or `SKIPPED-BANK` if that account is genuinely high). `BANK-UNKNOWN`
 means the cache is still the old account's; refresh again, or check the login.
 
-**4. Confirm the weekly budget override voided itself.** An override is bound to the
-account that set it, so it is no override under the new login; only the operator can
-set one (`usage-lift.sh set`). Verify:
+**4. Check the weekly budget override.** A standing override follows the new login
+with no step: once the cache from step 3 is the new account's, it holds there as it
+did on the old one. A one-window override stays bound to the account that set it,
+so it voids. Only the operator can set either (`usage-lift.sh set`). Verify:
 
 ```bash
 bash scripts/lib/usage-lift.sh show
 ```
 
-Expect `usage-lift: INVALID: account` after an account switch. Other invalid
-reasons are `expired`, `window`, `trust`, `parse` (or `missing` when unset).
-The doctor reports `lift set but INVALID: <reason>`. A stale file is harmless
-and can be removed with `bash scripts/lib/usage-lift.sh clear`.
+A standing override reads `usage-lift: followed: standing lift set on <4 hex>…, now
+on <4 hex>…` and then `usage-lift: VALID`; the doctor reports `lift set and VALID
+(standing=true, followed)`. Otherwise `show` and the doctor name the reason, and the
+doctor adds its remedy:
+
+- `cache-account`: the usage cache is still the old login's. Refresh it (step 3).
+- `account`: a one-window override set on the old account, which never follows;
+  or the new login cannot be read. The operator re-sets it, or you `clear` it.
+- `set_by`: the standing override was set by another user, or written with `USER`
+  unset before this rule. The operator runs `set --standing` once.
+- `expired`, `window`, `trust`, `parse` (or `missing` when unset): as before.
+
+A stale file is harmless and can be removed with
+`bash scripts/lib/usage-lift.sh clear`.
 
 A one-window weekly budget override skips only the weekly ceiling; `five_hour` still binds.
 Whole-second reset values tolerate up to one second of fractional API jitter,
@@ -1098,9 +1109,9 @@ not a different weekly window. Only the operator can enable the standing
 bash scripts/lib/usage-lift.sh set --standing
 ```
 
-It records `standing:true` in the same operator-only, account-bound override file
-(no new state path or hook bypass). The policy applies to every fresh window
-for that account and defaults `CADENCE_USAGE_MAX_PCT` to 100 for launch checks.
+It records `standing:true` in the same operator-only override file (no new state
+path or hook bypass). The policy applies to every fresh window, on every account
+the station logs into, and defaults `CADENCE_USAGE_MAX_PCT` to 100 for launch checks.
 An explicit ceiling still controls `five_hour`; either usage budget at 100 refuses,
 so no launch starts on extra usage. Plain `set` replaces it with a one-window weekly budget override;
 `clear` disables it. Agents must never run either form of `set`.
