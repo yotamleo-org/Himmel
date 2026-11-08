@@ -53,10 +53,11 @@ else
   fail=1
 fi
 
-if jq -e '(.autoMode.environment // []) | any(.[]; test("qmd-bounded\\.sh with a retrieval verb \\(query, search, vsearch, get, multi-get, ls, status\\) from the primary checkout is routine CI work, not publication"))' "$TEMPLATE" >/dev/null 2>&1; then
-  echo "PASS: template autoMode.environment limits qmd-bounded.sh to its seven retrieval verbs"
+TOOLING_LINE='Trusted tooling: running <himmel-path>/scripts/handover/merge-on-green.sh, <himmel-path>/scripts/handover/chief-kit/append-results.sh or <himmel-path>/scripts/lib/qmd-bounded.sh with a retrieval verb (query, search, vsearch, get, multi-get, ls, status) from the primary checkout is routine CI work, not publication. This never covers writing an approval (go.sh, write-verdict.sh), lifting a guard or a bypass flag, or launching a bypass session.'
+if jq -e --arg t "$TOOLING_LINE" '(.autoMode.environment // []) | length == 2 and .[0] == $t' "$TEMPLATE" >/dev/null 2>&1; then
+  echo "PASS: template autoMode.environment is two lines and its tooling line is exactly the pinned text"
 else
-  echo "FAIL: template autoMode.environment does not limit qmd-bounded.sh to its seven retrieval verbs"
+  echo "FAIL: template autoMode.environment is not two lines, or its tooling line differs from the pinned text (re-read the change for a widening, then re-pin)"
   fail=1
 fi
 
