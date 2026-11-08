@@ -38,11 +38,6 @@
 # clears on the next sync. Runs are serialized on a flock next to the state file. While a run is in flight the state reads
 # `BEHIND:pending`, so a run that is killed never leaves a stale `ok`. Exit 0 whatever the station state; 2 on usage.
 #
-# usage_compute: every pass, after the state is written, runs scripts/usage/usage-compute.sh once
-# (incremental, --budget-seconds 120) under `timeout 180` so the Cost page has a store to read; prints
-# `STEP usage_compute rc=<n>` or `SKIP usage_compute store-locked|no-timeout`, never record content, and
-# never changes the station state or the exit code.
-#
 # Test seams (env): SS_UPDATE SS_UPGRADE SS_GH SS_PRIMARY SS_VAULT SS_QMD_CLONE SS_STATE SS_SYSTEMCTL
 # SS_USAGE_COMPUTE SS_TIMEOUT.
 # Platform guard: Linux bash 3.2+.
