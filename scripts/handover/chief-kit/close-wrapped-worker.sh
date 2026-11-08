@@ -343,8 +343,8 @@ resume_evidence() {
 
 # results_tail_status <doc>: the doc's tail status read from its `## Results` section and the ruling sections
 # the writers add after it (`## Chief Rulings`, `## Console Rulings`), through the one marker parser
-# (worker_tail_status). append-results.sh appends at the end of the file, so once inbox-send adds a ruling
-# section the worker's later bullets sit below it and still count; a bullet in any other later section (a
+# (worker_tail_status). append-results.sh inserts at the end of the last of these sections, so once inbox-send
+# adds a ruling section the worker's later bullets sit below it and still count; a bullet in any other later section (a
 # `## Notes` line that mentions WRAPPED) never reads as the worker's tail. Prints `nosection` for a doc with
 # no Results heading (a legacy doc: the whole-file tail stands). Returns 1 when the text cannot be copied.
 results_tail_status() {
@@ -357,11 +357,13 @@ results_tail_status() {
 }
 
 # doc_tail_status <doc>: the status the close gates read for a doc - its Results tail (results_tail_status),
-# or the whole-file tail for a legacy doc with no Results heading. Returns 1 when the doc cannot be read.
+# or the whole-file tail for a legacy doc with no Results heading, or whose Results holds no marker bullet
+# (before append-results.sh inserted under Results, a resumed worker's bullets sat under the doc's last
+# section). Returns 1 when the doc cannot be read.
 doc_tail_status() {
     local rt
     rt=$(results_tail_status "$1") || return 1
-    if [ "$rt" = nosection ]; then worker_tail_status "$1"; else printf '%s' "$rt"; fi
+    if [ "$rt" = nosection ] || [ -z "$rt" ]; then worker_tail_status "$1"; else printf '%s' "$rt"; fi
 }
 
 tail_marker_minutes() {

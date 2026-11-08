@@ -11,8 +11,12 @@
 #
 # Usage: append-results.sh <doc> <text>
 #
-# Writes `- HH:MM <text>` as a new final line of <doc> (the timestamp is
-# always the current wall-clock HH:MM, never taken from <text>). If the file
+# Writes `- HH:MM <text>` as the last line of the doc's `## Results` section (the timestamp is
+# always the current wall-clock HH:MM, never taken from <text>). A RESUME doc has more sections
+# after Results; the bullet goes before the next `## ` heading so close-wrapped-worker.sh, which
+# reads Results, sees it. When the section runs to the end of the file (a `## Chief
+# Rulings` / `## Console Rulings` section that follows Results counts as the same run: the last of
+# them is the target) the bullet is a new final line. If the file
 # does not already end in a newline, one is added first, so the new bullet
 # is never glued onto a prior line. Refuses - doc left byte-for-byte
 # unchanged - unless the file exists, is readable and writable, and
@@ -171,15 +175,44 @@ fi
 locked=0
 doc_lock "$DOC" append-results && locked=1
 
-# Command substitution strips trailing newlines, so a non-empty result here
-# means the file's last byte is NOT a newline.
-if [ -s "$DOC" ] && [ -n "$(tail -c 1 "$DOC")" ]; then
-    printf '\n' >> "$DOC"
+# The bullet belongs at the end of the section close-wrapped-worker.sh reads: the LAST of the
+# `## Results` / `## Chief Rulings` / `## Console Rulings` sections. A RESUME doc carries more
+# sections after Results (State at hand-off, Remaining steps, Traps learned): appended at the
+# true EOF the bullet sat under the last of them and the closer saw no marker. `at` is the line
+# the bullet goes after (that section's last non-blank line) when a `## ` heading follows the
+# section; 0 means the section runs to EOF (every doc whose Results is last), which appends as before.
+at="$(awk '
+    /^## (Results|Chief Rulings|Console Rulings)([ \t]|$)/ { tgt = 1; last = NR; closed = 0; next }
+    tgt && !closed { if (/^## /) closed = 1; else if ($0 !~ /^[ \t]*$/) last = NR }
+    END { print (tgt && closed) ? last : 0 }' "$DOC")" || at=0  # swallow-ok: an unreadable scan appends at EOF, as before
+case "$at" in ''|*[!0-9]*) at=0 ;; esac
+inserted=0
+if [ "$at" -gt 0 ]; then
+    # a temp beside the doc, cp -p'd so it keeps the doc's mode (mktemp makes it 0600); the bullet
+    # goes through ENVIRON because awk -v would process its backslashes
+    tmp=""
+    if tmp="$(mktemp "$DOC.tmp.XXXXXX")" && cp -p "$DOC" "$tmp" \
+        && bullet="$bullet" awk -v at="$at" '{ print } NR == at { print ENVIRON["bullet"] }' "$DOC" > "$tmp" \
+        && mv -f "$tmp" "$DOC"; then  # prim-ok: the temp is cp -p'd from the doc to keep its mode; atomic_write would publish it 0600
+        inserted=1
+    else
+        [ -z "$tmp" ] || rm -f "$tmp"
+        echo "append-results: write failed for $DOC" >&2
+        exit 5
+    fi
 fi
 
-if ! printf '%s\n' "$bullet" >> "$DOC"; then
-    echo "append-results: write failed for $DOC" >&2
-    exit 5
+if [ "$inserted" -eq 0 ]; then
+    # Command substitution strips trailing newlines, so a non-empty result here
+    # means the file's last byte is NOT a newline.
+    if [ -s "$DOC" ] && [ -n "$(tail -c 1 "$DOC")" ]; then
+        printf '\n' >> "$DOC"
+    fi
+
+    if ! printf '%s\n' "$bullet" >> "$DOC"; then
+        echo "append-results: write failed for $DOC" >&2
+        exit 5
+    fi
 fi
 [ "$locked" -eq 1 ] && doc_unlock
 echo "append-results: appended to $DOC"

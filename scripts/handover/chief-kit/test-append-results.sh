@@ -299,5 +299,20 @@ printf '#!/bin/sh\necho "adopted: legx chief old -> $2"\n' > "$tmp/bus"
 rc=0; bash "$wt13/scripts/handover/chief-kit/append-results.sh" "$d13c" "SUCCESSION accepted: CON-B-chief replaces CON-A-chief" >/dev/null 2>&1 || rc=$?
 check "13: an explicit APPEND_RESULTS_BUS still wins and is not labelled" "$(grep -c '^- [0-9:]* bus-adopt: adopted: legx chief old → CON-B-chief$' "$d13c")" 1
 
+# --- 14. a RESUME-shaped doc takes the bullet at the end of ## Results ---
+# Results comes first, then State at hand-off / Remaining steps / Traps learned: the bullet lands
+# under Results (where close-wrapped-worker.sh reads), and the later sections stay byte-for-byte.
+d14="$tmp/HIMMEL-9-N14-fixture-2026-11-08-RESUME.md"
+printf '# worker\n\nYour RETASK token is X-14.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n\n## State at hand-off\n\n- committed\n\n## Remaining steps\n\n- ship\n\n## Traps learned\n\n- a trap\n' > "$d14"
+WORKER_SESSION_JIRA_STATUS=0 bash "$SCRIPT" "$d14" "WRAPPED fixture" >/dev/null 2>&1
+check "14: the bullet is the line right after the old Results bullet" "$(sed -n '8p' "$d14" | sed 's/^- [0-9:]* //')" "WRAPPED fixture"
+check "14: the blank line then the State heading follow it" "$(sed -n '9,10p' "$d14" | tr '\n' '|')" "|## State at hand-off|"
+check "14: the later sections are unchanged" "$(sed -n '11,$p' "$d14" | tr '\n' '|')" "|- committed||## Remaining steps||- ship||## Traps learned||- a trap|"
+check "14: the file's last line is still the old trap bullet" "$(tail -n 1 "$d14")" "- a trap"
+d14b="$tmp/HIMMEL-9-N15-fixture-2026-11-08-RESUME.md"
+printf '# worker\n\nYour RETASK token is X-15.\n\n## Results (newest at the bottom)\n\n## Chief Rulings (newest at the bottom)\n\n- 10:00 ruling\n\n## Traps learned\n\n- a trap\n' > "$d14b"
+WORKER_SESSION_JIRA_STATUS=0 bash "$SCRIPT" "$d14b" "LIVE fixture" >/dev/null 2>&1
+check "14: with a Chief Rulings section after Results the bullet lands at its end, in doc order" "$(sed -n '9,10p' "$d14b" | sed 's/^- [0-9:]* //' | tr '\n' '|')" "ruling|LIVE fixture|"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1
