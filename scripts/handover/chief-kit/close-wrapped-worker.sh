@@ -642,7 +642,7 @@ if [ "$PREDECESSOR" -eq 0 ] && [ -n "$SIB_DOC" ]; then set_claim_ids "$DOC" "$SI
 proc_start_time() { sed -E 's/^.*\) //' "$1" | awk '{print $20}'; }
 
 pid_proven_by_id() {
-    local pid="$1" ids="${2:-$claim_ids}" proc="${CLAUDE_SESSIONS_PROC:-/proc}" cfg="" f rec sid ps st
+    local pid="$1" ids="${2-$claim_ids}" proc="${CLAUDE_SESSIONS_PROC:-/proc}" cfg="" f rec sid ps st
     [ -n "$ids" ] || return 1
     if [ -r "$proc/$pid/environ" ]; then
         cfg=$(tr '\0' '\n' < "$proc/$pid/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -n 1)
