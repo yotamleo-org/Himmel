@@ -279,13 +279,15 @@ mkdir -p "$TMP/t8bin"
 printf '#!/bin/sh\nprintf "%%s|" "$@"\n' >"$TMP/t8bin/qmd"
 chmod +x "$TMP/t8bin/qmd"
 t8() { PATH="$TMP/t8bin:$PATH" BUN_INSTALL="$TMP/bun" bash "$LIB_DIR/qmd-bounded.sh" "$@" </dev/null; }
-assert_eq "T8a search expands to a lex-only query" "query|-c|himmel|--no-rerank|--|lex: the chief
-lex: the console|" "$(t8 search -c himmel "the chief")"
-assert_eq "T8b query keeps its vec line" "query|--|lex: the chief
-lex: the console
+assert_eq "T8a search expands to a lex-only query" "query|-c|himmel|--no-rerank|--|lex: chief
+lex: console|" "$(t8 search -c himmel "the chief")"
+assert_eq "T8b query keeps its vec line" "query|--|lex: chief
+lex: console
 vec: the chief|" "$(t8 query "the chief")"
 assert_eq "T8c QMD_VOCAB_EXPAND=0 runs the argv as given" "search|-c|himmel|the chief|" "$(QMD_VOCAB_EXPAND=0 t8 search -c himmel "the chief")"
-assert_eq "T8d a question with no fleet word runs as given" "search|prompt cache|" "$(t8 search "prompt cache")"
+assert_eq "T8d a question with no fleet word and no filler runs as given" "search|prompt cache|" "$(t8 search "prompt cache")"
+assert_eq "T8e a natural question, with filler or a dash word, passes through to qmd's own expansion" "query|how does the waiter wake -p|query|how does the waiter wake|" "$(t8 query "how does the waiter wake -p")$(t8 query "how does the waiter wake")"
+assert_eq "T8f a search naming no fleet word runs as given, filler or dash word or not" "search|how does the waiter wake -p|search|how does the waiter wake|" "$(t8 search "how does the waiter wake -p")$(t8 search "how does the waiter wake")"
 
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"

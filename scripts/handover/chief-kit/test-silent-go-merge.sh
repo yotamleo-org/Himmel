@@ -35,7 +35,7 @@ printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "$STUB/pages"\n' > "$STUB/p
 # ready-check seam: rc and output from files.
 cat > "$STUB/ready-check.sh" <<'EOF'
 #!/usr/bin/env bash
-printf '%s %s\n' "$1" "$2" >> "$STUB/rc-calls"
+printf '%s\n' "$*" >> "$STUB/rc-calls"
 cat "$STUB/rc.out" 2>/dev/null
 exit "$(cat "$STUB/rc.rc" 2>/dev/null || echo 0)"
 EOF
@@ -103,7 +103,7 @@ reset yes; go_file "$SHA"; run
 check "(g1) exactly one merge call" "1" "$(n "$STUB/merges")"
 check "(g1) the merge is the bare relative form with --jira-transition and the GO file" \
     "scripts/handover/merge-on-green.sh 77 --jira-transition --worker-doc $WD --go $GOF" "$(cat "$STUB/merges" 2>/dev/null)"
-check "(g1) ready-check ran at the GO head first" "77 $SHA" "$(cat "$STUB/rc-calls" 2>/dev/null)"
+check "(g1) ready-check ran at the GO head first, as a warn-only read (--observe)" "--observe 77 $SHA" "$(cat "$STUB/rc-calls" 2>/dev/null)"
 check "(g1) ready-check runs under a bound past item 19's 105 s" "above" "$(awk '{ print ($1 > 105) ? "above" : "at-or-below" }' "$STUB/timeout-bounds" 2>/dev/null | head -n 1)"
 check "(g1) one operator alert" "1" "$(n "$STUB/pages")"
 check "(g1) the alert names the worker, the PR and the head" "1" "$(n "$STUB/pages" "^SILENT-WORKER-MERGE N9 pr=77 head=$SHA ")"

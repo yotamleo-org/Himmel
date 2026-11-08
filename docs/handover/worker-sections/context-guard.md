@@ -6,9 +6,9 @@ Read on demand: `worker-preface.md` names this file when the context guard denie
 is on:** checkpoint or hand off. The guard (`guard-worker-context-handoff.sh`) is **off by default**: it runs only when your chief
 launched you with `--context-guard compact|handoff`, which sets
 `HIMMEL_WORKER_SESSION_CONTEXT_MODE`, or when your profile turns it on (a native Sonnet 5.5
-`worker-impl` launch hands off and `worker-eval` compacts, both at a 450000 ceiling; a native
-Opus 5.5 launch on any `worker-*` profile hands off, `worker-eval` compacts, at an 800000 ceiling
-with the deny at 700000 tokens); you cannot
+`worker-impl` or `worker-eval` launch compacts, at an 850000 ceiling; a native
+Opus 5.5 launch on any `worker-*` profile compacts, at an 850000 ceiling
+with the deny at 740000 tokens); you cannot
 change it in-session. The one reference is
 `docs/internals/worker-context-guard.md`. The threshold is 75 % of the ceiling by default
 (73 on a Sonnet profile, 87 on an Opus one; the deny names yours), not of the window: an opus worker pinned at 200000 runs on a 1000000-token window, so it

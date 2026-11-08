@@ -275,6 +275,22 @@ for error in (RuntimeError("backend unavailable " * 10), TimeoutError("timed out
     rows.append(m.arm_qmd("fixture", True, 1, 5, "himmel"))
 print(rows[0][2:] == (False, True, "backend unavailable " * 5) and rows[1][2:] == (True, False, "timed out"))' "$EV")"
 
+cat > "$W/qmd-rec" <<'EOF'
+#!/usr/bin/env bash
+cat > "$(dirname "$0")/sent.json"
+echo '[]'
+EOF
+chmod +x "$W/qmd-rec"
+RETRIEVAL_EVAL_QMD_CMD="$W/qmd-rec" py -c 'import importlib.util,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+m.arm_qmd("how does the waiter wake the chief -p --bg", True, 5, 5, "himmel")' "$EV"
+sent() { py -c 'import json,sys
+a = json.load(open(sys.argv[1]))
+print(a["intent"] if sys.argv[2] == "intent" else [s["query"] for s in a["searches"] if s["type"] == sys.argv[2]][0])' "$W/sent.json" "$1"; }
+eq "lex leg drops filler words and quotes the dash words, which qmd would read as a NOT" 'waiter wake chief "-p" "--bg"' "$(sent lex)"
+eq "vec leg drops the single-dash word qmd rejects" "how does the waiter wake the chief --bg" "$(sent vec)"
+eq "intent keeps the whole question" "how does the waiter wake the chief -p --bg" "$(sent intent)"
+
 # 8d. grep never returns the tracked question set.
 eq "grep skips the question set" "0" "$(grep -c 'retrieval-eval/questions' "$W/out/results.jsonl")"
 eq "no arm returns a plugin bundle or a minified file" "0" "$(grep -cE '\.obsidian/plugins/|\.min\.js' "$W/out/results.jsonl")"
@@ -347,13 +363,42 @@ eq "ledger row: held-out hit_any@5 counts a grade-1 file" "1.00" "$(lm "$W/ledge
 eq "ledger row: held-out ndcg@5 is graded" "0.69" "$(lm "$W/ledger-9b.jsonl" 'grep.heldout.ndcg@5')"
 eq "ledger row validates" "0" "$(python3 -I "$HERE/../lib/eval_runs.py" validate "$W/ledger-9b.jsonl" > /dev/null 2>&1; echo $?)"
 eq "ledger row names the frozen held-out set" "2" "$(py -c 'import json,sys; print(json.loads(open(sys.argv[1]).readlines()[-1])["meta"]["n_heldout"])' "$W/ledger-9b.jsonl")"
-eq "scores-by-slice.tsv has one row per arm and slice" "3" "$(wc -l < "$W/outh/scores-by-slice.tsv" | tr -d ' ')"
+eq "scores-by-slice.tsv has one row per arm, split, stratum and split x stratum" "9" "$(wc -l < "$W/outh/scores-by-slice.tsv" | tr -d ' ')"
 eq "the run prints both slices" "2" "$(grep -cE '^grep	(insample|heldout)	' "$W/outh.txt")"
 eq "results.jsonl rows carry their split" "insample heldout heldout" "$(py -c 'import json,sys; print(" ".join(json.loads(l)["split"] for l in open(sys.argv[1])))' "$W/outh/results.jsonl")"
 # A run over a set with no held-out question still carries the held-out keys: n 0, scores null.
 HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-9c.jsonl" py "$EV" run --repo "$R" --questions "$Q" --out "$W/outq" --arms grep > /dev/null 2>&1
 eq "no held-out question: held-out n is 0" "0" "$(lm "$W/ledger-9c.jsonl" grep.heldout.n)"
 eq "no held-out question: held-out hit is null" "None" "$(lm "$W/ledger-9c.jsonl" 'grep.heldout.hit@5')"
+
+cat > "$W/qs.jsonl" <<'EOF'
+{"id":"c1","kind":"where","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[]}
+{"id":"c2","kind":"where","q":"where does relay_batch run","gold":["bin/run.sh"],"reason":[]}
+{"id":"d1","kind":"why","q":"why does a halt need no token","gold":["docs/lock.md"],"reason":[]}
+{"id":"hc1","kind":"where","split":"heldout","q":"which script defines relay_batch","gold":["bin/run.sh"],"reason":[]}
+{"id":"hd1","kind":"how","split":"heldout","q":"queue lock one session per handover doc","gold":["docs/lock.md"],"reason":[]}
+{"id":"hd2","kind":"why","split":"heldout","q":"why is a halt a mild DoS","gold":["docs/lock.md","bin/run.sh"],"reason":[]}
+EOF
+cat > "$W/qmd-md" <<'EOF'
+#!/usr/bin/env bash
+cat > /dev/null
+printf '[{"file":"qmd://himmel/docs/lock.md","snippet":"queue lock"}]\n'
+EOF
+chmod +x "$W/qmd-md"
+RETRIEVAL_EVAL_QMD_CMD="$W/qmd-md" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-9d.jsonl" py "$EV" run --repo "$R" --questions "$W/qs.jsonl" --out "$W/outs" --arms qmd-hybrid --label strata > "$W/outs.txt" 2>&1
+eq "stratum run exits 0" "0" "$?"
+eq "ledger row: code-only n and hit beside the pooled number" "3 0.00" "$(lm "$W/ledger-9d.jsonl" qmd-hybrid.code.n) $(lm "$W/ledger-9d.jsonl" 'qmd-hybrid.code.hit@5')"
+eq "ledger row: doc n and hit" "3 1.00" "$(lm "$W/ledger-9d.jsonl" qmd-hybrid.doc.n) $(lm "$W/ledger-9d.jsonl" 'qmd-hybrid.doc.hit@5')"
+eq "ledger row: pooled hit is unchanged" "0.50" "$(lm "$W/ledger-9d.jsonl" 'qmd-hybrid.hit@5')"
+eq "ledger row: split x stratum n" "2 1 1 2" "$(lm "$W/ledger-9d.jsonl" qmd-hybrid.insample.code.n) $(lm "$W/ledger-9d.jsonl" qmd-hybrid.insample.doc.n) $(lm "$W/ledger-9d.jsonl" qmd-hybrid.heldout.code.n) $(lm "$W/ledger-9d.jsonl" qmd-hybrid.heldout.doc.n)"
+eq "ledger row: split x stratum hit" "0.00 1.00 0.00 1.00" "$(lm "$W/ledger-9d.jsonl" 'qmd-hybrid.insample.code.hit@5') $(lm "$W/ledger-9d.jsonl" 'qmd-hybrid.insample.doc.hit@5') $(lm "$W/ledger-9d.jsonl" 'qmd-hybrid.heldout.code.hit@5') $(lm "$W/ledger-9d.jsonl" 'qmd-hybrid.heldout.doc.hit@5')"
+eq "ledger row: the split rows keep their numbers" "3 3 0.33 0.67" "$(lm "$W/ledger-9d.jsonl" qmd-hybrid.insample.n) $(lm "$W/ledger-9d.jsonl" qmd-hybrid.heldout.n) $(lm "$W/ledger-9d.jsonl" 'qmd-hybrid.insample.hit@5') $(lm "$W/ledger-9d.jsonl" 'qmd-hybrid.heldout.hit@5')"
+eq "ledger row validates with strata" "0" "$(python3 -I "$HERE/../lib/eval_runs.py" validate "$W/ledger-9d.jsonl" > /dev/null 2>&1; echo $?)"
+eq "scores-by-slice.tsv: one row per arm, split, stratum and split x stratum" "qmd-hybrid insample 3|qmd-hybrid heldout 3|qmd-hybrid code 3|qmd-hybrid doc 3|qmd-hybrid insample.code 2|qmd-hybrid insample.doc 1|qmd-hybrid heldout.code 1|qmd-hybrid heldout.doc 2" "$(awk -F'\t' 'NR>1{print $1, $2, $3}' "$W/outs/scores-by-slice.tsv" | tr '\n' '|' | sed 's/|$//')"
+eq "scores-by-slice.tsv: the code row shows hit 0.00 over its real n" "3 0.00" "$(awk -F'\t' '$2=="code"{print $3, $4}' "$W/outs/scores-by-slice.tsv")"
+eq "the run prints the stratum rows" "2" "$(grep -cE '^qmd-hybrid	(code|doc)	' "$W/outs.txt")"
+eq "results.jsonl rows carry their stratum" "code code doc code doc doc" "$(py -c 'import json,sys; print(" ".join(json.loads(l)["stratum"] for l in open(sys.argv[1])))' "$W/outs/results.jsonl")"
+eq "a split x stratum with no question: n 0, hit null" "0 None 0 None" "$(lm "$W/ledger-9c.jsonl" grep.heldout.code.n) $(lm "$W/ledger-9c.jsonl" 'grep.heldout.code.hit@5') $(lm "$W/ledger-9c.jsonl" grep.heldout.doc.n) $(lm "$W/ledger-9c.jsonl" 'grep.heldout.doc.hit@5')"
 # check refuses a bad split, a missing grade-1 file and a file graded twice.
 chk() { printf '%s\n' "$1" > "$W/qc.jsonl"; py "$EV" check --repo "$R" --questions "$W/qc.jsonl" > /dev/null 2>&1; echo $?; }
 eq "check refuses an unknown split" "1" "$(chk '{"id":"c1","split":"dev","q":"x","gold":["docs/lock.md"],"reason":[]}')"
@@ -583,6 +628,29 @@ eq "added path reports a dev regression" "1" "$(grep -c '^regressed (dev): dev-r
 eq "added path reports held-out counts only" "1" "$(grep -c '^replay combined: insample 1/2 heldout 1/1 all 2/3$' "$W/replay-add.txt")"
 eq "a changed total does not reproduce saved combined" "1" "$(grep -c '^reproduces saved combined: no$' "$W/replay-add.txt")"
 eq "held-out IDs never appear in replay output" "0" "$(cat "$W/replay.txt" "$W/replay-add.txt" | grep -c 'heldout-secret')"
+py - "$W" <<'PY'
+import json, pathlib, sys
+w = pathlib.Path(sys.argv[1])
+qs, rows = [], []
+for qid, gold, split, saved_hit, found in (("c-in", "a.py", "insample", True, "a.py"), ("c-miss", "b.sh", "insample", False, None),
+                                           ("c-held", "c.js", "heldout", True, "c.js"), ("d-in", "d.md", "insample", True, "d.md"),
+                                           ("d-held", "e.md", "heldout", False, None)):
+    qs.append(dict(id=qid, q="fixture", gold=[gold], split=split, reason=[]))
+    files = [found] if found else []
+    rows.extend([dict(id=qid, arm="grep", files=files), dict(id=qid, arm="qmd-hybrid", files=[]),
+                 dict(id=qid, arm="graphify", files=[]), dict(id=qid, arm="path", files=[gold]),
+                 dict(id=qid, arm="combined", files=files, hit=saved_hit)])
+for name, data in (("replay-s-q.jsonl", qs), ("replay-s.jsonl", rows)):
+    (w / name).write_text("".join(json.dumps(x) + "\n" for x in data))
+PY
+py "$EV" replay --results "$W/replay-s.jsonl" --questions "$W/replay-s-q.jsonl" > "$W/replay-s.txt" 2>&1
+eq "strata replay runs" "0" "$?"
+eq "replay keeps the split counts for the saved and replayed combined" "2" "$(grep -c 'combined: insample 2/3 heldout 1/2 all 3/5$' "$W/replay-s.txt")"
+eq "replay prints the saved combined count per stratum" "1" "$(grep -c '^saved combined by stratum: code 2/3 doc 1/2$' "$W/replay-s.txt")"
+eq "replay prints the replayed combined count per stratum" "1" "$(grep -c '^replay combined by stratum: code 2/3 doc 1/2$' "$W/replay-s.txt")"
+py "$EV" replay --results "$W/replay-s.jsonl" --questions "$W/replay-s-q.jsonl" --add path > "$W/replay-s-add.txt" 2>&1
+eq "added path moves the replayed stratum counts and not the saved ones" "1 1" "$(grep -c '^saved combined by stratum: code 2/3 doc 1/2$' "$W/replay-s-add.txt") $(grep -c '^replay combined by stratum: code 3/3 doc 2/2$' "$W/replay-s-add.txt")"
+eq "the rescue list stays insample-only" "1 0" "$(grep -c '^rescued (dev): c-miss$' "$W/replay-s-add.txt") $(cat "$W/replay-s-add.txt" | grep -c -E 'c-held|d-held')"
 py "$EV" replay --results "$W/replay-missing.jsonl" --questions "$W/replay-q.jsonl" --add path > "$W/replay-missing.txt" 2>&1
 eq "an arm missing for one question is a Usage error" "64" "$?"
 eq "the missing arm is named" "1" "$(grep -c "missing arm 'path'" "$W/replay-missing.txt")"
