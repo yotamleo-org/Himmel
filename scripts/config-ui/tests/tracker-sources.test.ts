@@ -191,7 +191,7 @@ test("the Roadmap page says when the issue list is truncated, as the Kanban does
 
 test("the rail hides the Board when the sources are empty, keeps it otherwise or while unknown", () => {
   const labels = (sources?: string[]) => navLinks({ here: "console", token: TOKEN, current: "config", sources }).map((l: { label: string }) => l.label);
-  expect(labels([])).toEqual(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Workflow", "Docs"]);
+  expect(labels([])).toEqual(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Workflow", "Cost", "Docs"]);
   expect(labels(["github"])).toContain("Board");
   expect(labels(["jira"])).toContain("Board");
   expect(labels(undefined)).toContain("Board");

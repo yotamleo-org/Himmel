@@ -4433,6 +4433,59 @@ out="$( (unset USAGE_LIFT_FILE; CADENCE_USAGE_CACHE="$t/cache.json" run_doctor_f
 if grepq "$out" -F 'lift set but INVALID: parse'; then fail "C34 read the retired bank-lift.json"; else pass "C34 ignores the retired bank-lift.json"; fi # old-term-ok
 rm -rf "$t"
 
+echo "== C34: lift after an account switch -> remedy per reason, followed OK =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-follow.XXXXXX")" || exit 1
+c32_fixture_base "$t"
+mkdir -p "$t/scripts/lib" "$t/home/.himmel/state"
+cp "$REPO_ROOT/scripts/lib/usage-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$t/scripts/lib/"
+printf '%s' '{"oauthAccount":{"accountUuid":"uuid-doctor-follow-a"}}' > "$t/login-a.json"
+printf '%s' '{"oauthAccount":{"accountUuid":"uuid-doctor-follow-b"}}' > "$t/login-b.json"
+c34_ha="$(. "$REPO_ROOT/scripts/lib/usage-cache-identity.sh"; current_account_hash "$t/login-a.json")"
+c34_hb="$(. "$REPO_ROOT/scripts/lib/usage-cache-identity.sh"; current_account_hash "$t/login-b.json")"
+c34_now="$(date +%s)"
+c34_lift() {
+    jq -cn --arg a "$c34_ha" --argjson s "$1" --arg by "$2" --argjson u "$((c34_now+3600))" \
+        '{window:"seven_day",until:$u,standing:$s,account:$a,set_by:$by,set_at:"x"}' > "$t/home/.himmel/state/usage-lift.json"
+    chmod 600 "$t/home/.himmel/state/usage-lift.json"
+}
+c34_follow_line() {
+    printf '{"account":"%s","five_hour":{"utilization":10},"seven_day":{"utilization":10,"resets_at":%s}}' \
+        "$1" "$((c34_now+86400))" > "$t/cache.json"
+    USAGE_LIFT_FILE="$t/home/.himmel/state/usage-lift.json" CADENCE_USAGE_CACHE="$t/cache.json" \
+        CLAUDE_ACCOUNT_CONFIG="$t/login-b.json" run_doctor_fake_repo "$t" "$t/home" \
+        | grep -A1 'C34-cost-guards: lift set' | grep -E 'C34-cost-guards: lift set|^ +→'
+}
+c34_no_hash() { ! grepq "$1" -E '[0-9a-f]{5}'; }
+c34_lift true "$(id -un)"
+c34_line="$(c34_follow_line "$c34_ha")"
+if grepq "$c34_line" -F 'lift set but INVALID: cache-account' && grepq "$c34_line" -F 'force a refresh' && c34_no_hash "$c34_line"; then
+    pass "C34 cache-account names the cache refresh"
+else
+    fail "C34 cache-account remedy -> $c34_line"
+fi
+c34_lift false "$(id -un)"
+c34_line="$(c34_follow_line "$c34_hb")"
+if grepq "$c34_line" -F 'lift set but INVALID: account' && grepq "$c34_line" -F 'one-window lift does not follow an account switch' && c34_no_hash "$c34_line"; then
+    pass "C34 window lift on another account names the re-set"
+else
+    fail "C34 account remedy -> $c34_line"
+fi
+c34_lift true not-the-operator
+c34_line="$(c34_follow_line "$c34_hb")"
+if grepq "$c34_line" -F 'lift set but INVALID: set_by' && grepq "$c34_line" -F 'not set by this user' && c34_no_hash "$c34_line"; then
+    pass "C34 set_by names the one-time standing re-set"
+else
+    fail "C34 set_by remedy -> $c34_line"
+fi
+c34_lift true "$(id -un)"
+c34_line="$(c34_follow_line "$c34_hb")"
+if grepq "$c34_line" -F 'OK   C34-cost-guards: lift set and VALID (standing=true, followed)' && c34_no_hash "$c34_line"; then
+    pass "C34 followed standing lift reads VALID, followed"
+else
+    fail "C34 followed -> $c34_line"
+fi
+rm -rf "$t"
+
 echo "== C34: everything wired (real copies of the 3 target files) -> all three rows OK =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c32.XXXXXX")" || { fail "C34 all-wired: mktemp -d failed"; exit 1; }
 c32_fixture_base "$t"
@@ -6876,9 +6929,15 @@ echo "== C52-graphify-ollama: default backend (claude-cli) + missing extra -> OK
 out="$(C52_BACKEND=claude-cli c52_run "$c52_t/missing")"
 if grepq "$out" 'OK   C52-graphify-ollama' && ! grepq "$out" 'WARN C52-graphify-ollama'; then pass "C52 claude-cli backend -> OK"; else fail "C52 claude-cli -> $(printf '%s' "$out" | grep -A1 C52)"; fi
 
-echo "== C52-graphify-ollama: unaccepted backend -> WARN naming the variable, not a claude-cli OK =="
+echo "== C52-graphify-ollama: claude-api and its api alias -> OK skip (HIMMEL-7644), never the not-accepted WARN =="
+for c52_b in claude-api api; do
+    out="$(C52_BACKEND=$c52_b c52_run "$c52_t/missing")"
+    if grepq "$out" 'OK   C52-graphify-ollama' && grepq "$out" -F 'claude-api' && ! grepq "$out" 'WARN C52-graphify-ollama'; then pass "C52 $c52_b backend -> OK skip"; else fail "C52 $c52_b -> $(printf '%s' "$out" | grep -A1 C52)"; fi
+done
+
+echo "== C52-graphify-ollama: unaccepted backend -> WARN naming the variable, remedy lists claude-api, not a claude-cli OK =="
 out="$(C52_BACKEND=bogus c52_run "$c52_t/ok")"
-if grepq "$out" 'WARN C52-graphify-ollama' && grepq "$out" -F "GRAPH_CADENCE_SEMANTIC_BACKEND='bogus'" && ! grepq "$out" 'OK   C52-graphify-ollama'; then pass "C52 unaccepted backend -> WARN"; else fail "C52 bogus -> $(printf '%s' "$out" | grep -A1 C52)"; fi
+if grepq "$out" 'WARN C52-graphify-ollama' && grepq "$out" -F "GRAPH_CADENCE_SEMANTIC_BACKEND='bogus'" && grepq "$out" -F 'claude-cli, claude-api or ollama' && ! grepq "$out" 'OK   C52-graphify-ollama'; then pass "C52 unaccepted backend -> WARN"; else fail "C52 bogus -> $(printf '%s' "$out" | grep -A1 C52)"; fi
 
 echo "== C52-graphify-ollama: no graphifyy venv -> OK (skipped) =="
 out="$(c52_run "$c52_t/absent")"

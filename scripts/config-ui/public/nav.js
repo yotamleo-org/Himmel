@@ -10,8 +10,9 @@ export const PAGES = [
   { id: "config", label: "Configure" },
   { id: "board", label: "Board" },
   { id: "workflow", label: "Workflow" },
+  { id: "cost", label: "Cost" },
 ];
-const CHIEF = ["shift", "report", "config", "health", "toolhealth", "board", "workflow"];
+const CHIEF = ["shift", "report", "config", "health", "toolhealth", "board", "workflow", "cost"];
 
 // Settings and Setup became one Configure page. The old ids (and the himmelctl install hand-off's page=setup) still land
 // on it: Setup with the Secrets tile picked. TILES are the Configure page's four groups. (app.js maps the #/setup route

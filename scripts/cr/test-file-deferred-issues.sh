@@ -39,6 +39,8 @@ assert_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "expected='$2' 
 
 TMP_ROOT=$(mktemp -d)
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
+# The Jira key reaches the filer through the config layer; an empty config dir keeps the run off the operator's himmel.conf.
+export HIMMEL_CONFIG_DIR="$TMP_ROOT/config"
 
 # A git repo with one commit — the script calls `git rev-parse --short HEAD`.
 REPO="$TMP_ROOT/repo"
@@ -262,7 +264,7 @@ run_mode() {  # run_mode <TRACKER> <FORGE> [args...] — gh+jira stubs, logs res
     ( cd "$REPO" && PATH="$LBIN_UNIX:$PATH" TRACKER="$t" FORGE="$f" GH_CMD="$LBIN/gh" \
         JIRA_PROJECT_KEY="${JKEY-TST}" JIRA_CMD="$JSTUB" GLOG="$GLOG" JLOG="$JLOG" JDESC="$JDESC" \
         JIRA_LIST_RESULT="${JIRA_LIST_RESULT:-}" JIRA_LIST_FAIL="${JIRA_LIST_FAIL:-}" JIRA_CREATE_FAIL="${JIRA_CREATE_FAIL:-}" JIRA_CREATE_DUP="${JIRA_CREATE_DUP:-}" \
-        bash "$FDI" --pr 1 --input "$INPUT" "$@" 2>&1 )
+        bash "$FDI" --pr 1 --input "$INPUT" --fu-class "${FDI_CLASS:-escape}" "$@" 2>&1 )
 }
 
 echo "TEST: tracker=jira files ONE ticket, never calls gh (RED: gh issue create)"
@@ -324,16 +326,29 @@ echo "TEST: tracker=jira files through the residual writer (RED: raw create, no 
 out=$(run_mode jira github); rc=$?
 assert_eq "writer → exit 0" "0" "$rc"
 assert_contains "create carries --residual-of from the branch ticket" "$(grep '^create' "$JLOG")" "--residual-of TST-5"
-assert_contains "create defaults --fu-class polish" "$(grep '^create' "$JLOG")" "--fu-class polish"
+assert_contains "create carries the run_mode escape class" "$(grep '^create' "$JLOG")" "--fu-class escape"
 assert_contains "create defaults --class unclassified" "$(grep '^create' "$JLOG")" "--class unclassified"
 assert_contains "create keeps the cr-deferred label" "$(grep '^create' "$JLOG")" "--labels cr-deferred"
 
+echo "TEST: HIMMEL-9498 polish (the script's default class) files nothing and prints the batch for the PR body"
+out=$(FDI_CLASS=polish run_mode jira github); rc=$?
+assert_eq "polish → exit 0" "0" "$rc"
+assert_contains "polish says it is not filed" "$out" "polish is not filed"
+assert_contains "polish prints the findings" "$out" "docs/readme.md: LOW: missing example."
+assert_eq "polish creates nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
+assert_eq "polish asks Jira nothing" "0" "$(wc -c <"$JLOG" | tr -d ' ')"
+assert_eq "polish never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+out=$(cd "$REPO" && PATH="$LBIN_UNIX:$PATH" TRACKER=jira FORGE=github GH_CMD="$LBIN/gh" JIRA_PROJECT_KEY=TST JIRA_CMD="$JSTUB" GLOG="$GLOG" JLOG="$JLOG" JDESC="$JDESC" bash "$FDI" --pr 1 --input "$INPUT" 2>&1); rc=$?
+assert_contains "no --fu-class at all is polish and files nothing" "$out" "polish is not filed"
+assert_eq "no --fu-class creates nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
+
 echo "TEST: explicit --residual-of / --fu-class / --class override the defaults"
-out=$(run_mode jira github --residual-of TST-9 --fu-class hardening --fu-why no-check --class shell-quoting); rc=$?
+out=$(run_mode jira github --residual-of TST-9 --fu-class hardening --fu-why no-check --fu-override decision-762 --class shell-quoting); rc=$?
 assert_eq "override → exit 0" "0" "$rc"
 assert_contains "override parent" "$(grep '^create' "$JLOG")" "--residual-of TST-9"
 assert_contains "override fu-class" "$(grep '^create' "$JLOG")" "--fu-class hardening"
 assert_contains "override fu-why" "$(grep '^create' "$JLOG")" "--fu-why no-check"
+assert_contains "override passes the named override" "$(grep '^create' "$JLOG")" "--fu-override decision-762"
 assert_contains "override class" "$(grep '^create' "$JLOG")" "--class shell-quoting"
 
 echo "TEST: --fu-class hardening needs a valid --fu-why, and --fu-why needs hardening"
@@ -344,6 +359,18 @@ assert_contains "hardening without --fu-why names the flag" "$out" "--fu-why"
 assert_eq "hardening without --fu-why files nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
 out=$(run_mode jira github --fu-class hardening --fu-why bogus 2>&1); rc=$?
 assert_eq "hardening with an unknown --fu-why → exit 1" "1" "$rc"
+out=$(run_mode jira github --fu-class hardening --fu-why no-check 2>&1); rc=$?
+assert_eq "HIMMEL-9498 hardening with no --fu-override → exit 1" "1" "$rc"
+assert_contains "hardening with no --fu-override names the flag" "$out" "--fu-override"
+assert_eq "hardening with no --fu-override files nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
+for bad_override in because-i-said-so decision-abc decision-762x judge-1 DU-j3603 du-j3603-4; do
+    out=$(run_mode jira github --fu-class hardening --fu-why no-check --fu-override "$bad_override" 2>&1); rc=$?
+    assert_eq "9498 hardening with an override of the wrong shape ($bad_override) → exit 1" "1" "$rc"
+    assert_contains "9498 the shape refusal for $bad_override says the id is unverified" "$out" "not verified"
+    assert_eq "9498 an override of the wrong shape ($bad_override) files nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
+done
+out=$(run_mode jira github --fu-class escape --fu-override decision-762 2>&1); rc=$?
+assert_eq "HIMMEL-9498 --fu-override with a non-hardening class → exit 1" "1" "$rc"
 out=$(run_mode jira github --fu-class escape --fu-why no-check 2>&1); rc=$?
 assert_eq "--fu-why with a non-hardening class → exit 1" "1" "$rc"
 
@@ -454,7 +481,7 @@ require('fs').appendFileSync(process.env.JLOG, process.argv.slice(2).join(' ') +
 STUB
 : >"$JLOG"
 out=$( cd "$REPO" && env -u JIRA_CMD -u TRACKER JIRA_PROJECT_KEY=TST JLOG="$JLOG" \
-    bash "$FAKE/scripts/cr/file-deferred-issues.sh" --pr 1 --input "$INPUT" --dry-run 2>&1 ); rc=$?
+    bash "$FAKE/scripts/cr/file-deferred-issues.sh" --pr 1 --input "$INPUT" --fu-class escape --dry-run 2>&1 ); rc=$?
 assert_eq "own-checkout CLI → exit 0" "0" "$rc"
 assert_contains "own-checkout CLI was called for the dedupe lookup" "$(cat "$JLOG")" "list --project TST"
 echo

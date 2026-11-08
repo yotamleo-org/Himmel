@@ -859,7 +859,9 @@ def user_writable(path):
 
 def file_marks(rec, i, argv0_shown):
     """` ⚠️ NOT SHOWN, user-writable` for argv element i when it is argv[0] or a bound file argument.
-    A root-owned argv[0] that is not shown (a system binary) gets no mark."""
+    A root-owned argv[0] that is not shown (a system binary) gets no mark. A classifier request's
+    unshown file argument also carries its sha256 prefix."""
+    sha = ""
     if i == 0:
         path = rec.get("argv0_path")
         shown = argv0_shown or not (path and user_writable(path))
@@ -869,9 +871,12 @@ def file_marks(rec, i, argv0_shown):
         if not t.startswith("file:"):
             return ""
         path = t[len("file:"):]
-        shown = next((f["shown"] for f in rec.get("files", []) if f["path"] == path), True)
+        f = next((f for f in rec.get("files", []) if f["path"] == path), None)
+        shown = f["shown"] if f else True
+        if f and not shown and rec.get("blocked_by") == "classifier":
+            sha = f" sha256 {f['sha256'][:8]}"
     marks = ([] if shown else ["NOT SHOWN"]) + (["user-writable"] if path and user_writable(path) else [])
-    return f" ⚠️ <b>{', '.join(marks)}</b>" if marks else ""
+    return sha + (f" ⚠️ <b>{', '.join(marks)}</b>" if marks else "")
 
 
 def facts(rec, nonce, mode, cls, digest, bodies, stdin_text):
@@ -1002,7 +1007,7 @@ def run_bodies(rec):
     return bodies, (read_copy(rec["id"], "stdin") if rec["stdin"]["copy"] else "")
 
 
-# The same shapes as scripts/hooks/log-classifier-denial.sh redact(), line by line as sed reads them;
+# The same shapes as scripts/lib/redact.sh redact(), line by line as sed reads them;
 # test-afk-sudo.sh holds the two to the same output.
 _KEY = r"([Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|" \
        r"[Pp][Aa][Ss][Ss][Ww][Dd]|[Pp][Aa][Ss][Ss]|[Pp][Ww][Dd])"
@@ -1149,6 +1154,17 @@ def run_request(broker, config, args):
     if unbound:
         print("result=bad-file")
         return 5
+    classifier_key = None
+    if args.blocked_by == "classifier":
+        # The floor above read every body. The notice shows a data file's path and sha256 only: a
+        # refused command may name a file it should not read, and the operator has not approved yet.
+        # A script argv[0] and an interpreter's script operand keep their text (it is the program).
+        si = script_operand({"argv": argv, "targets": targets})
+        keep = {targets[si][len("file:"):]} if si is not None else set()
+        files = [(e, b if e["path"] in keep or (e["path"] == argv0_path and b is not None and b.startswith(b"#!")) else None)
+                 for e, b in files]
+        files = [(dict(e, shown=b is not None), b) for e, b in files]
+        classifier_key = hashlib.sha256(json.dumps([meta["session"], cwd, argv]).encode()).hexdigest()
     if not SEAM and run_pw.pw_uid != 0 and not setpriv_path():
         print("result=no-setpriv")
         return 5
@@ -1166,7 +1182,8 @@ def run_request(broker, config, args):
     window = cfg_int(run_block(config), "ttl_s", 900, 30, 3600)
     shown = clean(" ".join(argv), 300)
     broker.retain = prune
-    rid, expires, nonce = broker.request("run", shown, make_builder(spec), {k: meta[k] for k in ("session", "ticket", "cwd")}, window)
+    rid, expires, nonce = broker.request("run", shown, make_builder(spec), {k: meta[k] for k in ("session", "ticket", "cwd")}, window,
+                                         classifier_key=classifier_key)
     try:
         rec = load_record(rid)
         ok = send_notice(broker, config, token, rec, nonce, mode, cls, rec_hash(rec), *run_bodies(rec))
@@ -1708,7 +1725,9 @@ def main(argv):
             raise TypeError("config is not an object")
         if args.verb == "mode":
             print(f"result=mode mode={mode_of(config)} enabled={str(config.get('enabled') is True).lower()} "
-                  f"run_enabled={str(run_enabled(config)).lower()}")
+                  f"run_enabled={str(run_enabled(config)).lower()} "
+                  f"classifier_requests={str(config.get('classifier_requests') is True).lower()} "
+                  f"grant_enabled={str(grant_enabled(config)).lower()}")
             return 0
         if args.verb == "lockdown":
             return lockdown(config, args)

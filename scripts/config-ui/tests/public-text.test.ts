@@ -42,3 +42,53 @@ test("no UI source carries a decision number, ticket key or worker label", () =>
   const hits = files.flatMap((file) => internalRefs(file, readFileSync(file, "utf8")).map((ref) => `${relative(ROOT, file)}: ${ref}`));
   expect(hits).toEqual([]);
 });
+
+// The plugin menu shows the description fields of every marketplace.json and plugin.json, so they are read too.
+// Test fixtures are not shown to a user and are left out.
+const REPO = join(ROOT, "../..");
+// Files another open PR holds, each named with the day it was allowed. Drop the entry when that PR merges.
+const HELD: Record<string, string> = {
+  "marketplace/plugins/himmel-ops/.claude-plugin/plugin.json": "PR 4905 rewrites this description, allowed 2026-11-07",
+  "templates/luna-second-brain/marketplace/.claude-plugin/marketplace.json": "PR 4859 holds this file, allowed 2026-11-07",
+};
+
+function descriptionRefs(source: string): string[] {
+  const refs: string[] = [];
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (node === null || typeof node !== "object") return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "description" && typeof value === "string") refs.push(...(value.match(INTERNAL) ?? []));
+      else walk(value);
+    }
+  };
+  walk(JSON.parse(source));
+  return refs;
+}
+
+const manifests = () =>
+  new TextDecoder()
+    .decode(Bun.spawnSync(["git", "ls-files", "-z", "--", "*.claude-plugin/marketplace.json", "*.claude-plugin/plugin.json"], { cwd: REPO }).stdout)
+    .split("\0")
+    .filter((path) => path !== "" && !path.includes("/fixtures/"));
+
+test("the check catches a planted reference of each kind in a marketplace entry, the marketplace metadata and a plugin manifest", () => {
+  const key = "HIMMEL" + "-1234";
+  for (const planted of ["decision 525", "Decision 99", "525 default", key, "N5006"]) {
+    const marketplace = { name: "m", metadata: { description: `A marketplace (${planted}).` }, plugins: [{ name: "p", description: `Does a thing (${planted}).` }] };
+    expect(descriptionRefs(JSON.stringify(marketplace))).toEqual([planted, planted]);
+    expect(descriptionRefs(JSON.stringify({ name: "p", version: "1.0.0", description: `Does a thing (${planted}).` }))).toEqual([planted]);
+    expect(descriptionRefs(JSON.stringify({ name: "p", source: { ref: planted }, description: "Does a thing." }))).toEqual([]);
+  }
+});
+
+test("no plugin or marketplace description carries a decision number, ticket key or worker label", () => {
+  const files = manifests();
+  expect(files).toContain("marketplace/.claude-plugin/marketplace.json");
+  expect(files).toContain("marketplace/plugins/qmd/.claude-plugin/plugin.json");
+  for (const held of Object.keys(HELD)) expect(files).toContain(held);
+  const hits = files
+    .filter((file) => !(file in HELD))
+    .flatMap((file) => descriptionRefs(readFileSync(join(REPO, file), "utf8")).map((ref) => `${file}: ${ref}`));
+  expect(hits).toEqual([]);
+});

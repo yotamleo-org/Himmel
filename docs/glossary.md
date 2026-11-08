@@ -16,9 +16,9 @@ Each headword is the plain name people read in the docs and UI. The repo's own
 name, the one that ids, env vars, file names, flags and command names use, is
 the alias in brackets. Keep repo identifiers in code spans (`/chief`,
 `HIMMEL_CONSOLE_LEG`, `headed-arm-worker.sh`, `go.sh`). Repo identifiers are being
-renamed to the plain names (HIMMEL-5689). That migration is a known breaking
+renamed to the plain names. That migration is a known breaking
 change: the old names stop working when their rename PR lands, with no alias
-(the four slices that merged before that ruling kept aliases; HIMMEL-6647 removed them).
+(the four slices that merged before the migration became a breaking change kept aliases, since removed).
 They are listed in [Renamed identifiers](migration/renamed-identifiers.md), a
 temporary side doc that is removed once the rename is done; the plan is in
 [Identifier renames](#identifier-renames).
@@ -29,7 +29,7 @@ In prose, say the plain name, and the old name once in brackets the first time.
 | **Agentic OS** | What himmel is: a harness on top of Claude Code's own harness that adds guarded sessions, handover and memory, a command layer (Jarvis) and its surface (the himmel UI and the other views of the fleet), so a fleet of sessions runs as one software factory. It is not an agent SDK. |
 | **Jarvis** | The agentic OS's command layer: the chief, its workers, the judge, the GO and the unattended-run parts (arming, usage-cap auto-relaunch, shifts). See [jarvis-subsystems.md](jarvis-subsystems.md). In prose say "Jarvis" for the layer and "the chief" for the session that runs it. |
 | **himmel UI** [config UI] | The local web app that `himmelctl ui` serves on `127.0.0.1`, where you configure himmel and watch the fleet. Its Fleet page is the one fleet page: every live Claude session, a run view per session, and the chief's board. With the Telegram bridge, the statusline, the morning report and the metrics it is Jarvis's surface. It shows the fleet but gives it no orders; you steer by messaging the chief. See [ui.md](ui.md). |
-| **Automated review** [CR, code review] | The pre-PR review gate and everything named for it: the review-owed marker (CR marker), the CR ledger, the critic panel, `/pr-check` (ruled 2026-09-24, operator). A human read of the PR is "human review". CodeRabbit is one best-effort CI reviewer inside that gate and is always spelled out, never abbreviated CR. |
+| **Automated review** [CR, code review] | The pre-PR review gate and everything named for it: the review-owed marker (CR marker), the CR ledger, the critic panel, `/pr-check`. A human read of the PR is "human review". CodeRabbit is one best-effort CI reviewer inside that gate and is always spelled out, never abbreviated CR. |
 | **Chief** [supervisor session, console] | The operator's chief of staff: a persistent, operator-facing session that owns the shift. It holds the queue lock on its own document, the GO authority and the token (nonce) mint. It dispatches workers, watches the fleet, acts on rulings and merges on GO, and does no implementation itself. `/chief new` starts one. In prose say "the chief"; never "chief session" and never a bare "supervisor": `scripts/telegram/supervisor.ts` is a process keeper. |
 | **Judge session** / **judge subagent** [judge, judge call] | A clean session, headed or headless, spawned for one question, sometimes on a deliberately thin brief. **Advisory: it rules, the chief acts.** Several may run in parallel on one question with different scopes. A judge session is a worker of the judge kind; a judge subagent is an in-process child. See [Judge: call and session](#judge-call-and-session). A judge verdict stays "judge verdict". |
 | **Consolidator** | Combines several judges' outputs into one reconciled answer, so the chief does not absorb N judgments. A lexicon term only: nothing in the repo implements it yet. |
@@ -40,7 +40,7 @@ In prose, say the plain name, and the old name once in brackets the first time.
 | **Arming** [scheduled launch] | Launching a headed or headless session on a schedule (`/chief new --arm`, `arm-resume.sh`, `headed-arm.sh`). |
 | **Side session** [manual override] | An ad-hoc operator-side session: a whiteboard. It passes work to the chief as a ticket and a brief, never as a relayed ruling. |
 | **Succession** [shift handoff] | One chief handing over to the next: the outgoing one arms its successor and writes a HANDOFF (`/chief next`). Not a dependency chain: a dependency chain is workers. |
-| **himmel-bus** | The local, hash-chained message bus between a chief and its workers (`marketplace/plugins/himmel-bus`). Delivery is by hook (`bus-deliver-hook`), and a message is a ruling only under a `from` header from the receiver's registered chief (see [RETASK §3b](internals/retask-channel.md)). It is not the Telegram bridge (`scripts/telegram/bus.ts` is that bridge's own store, which himmel-bus reuses for storage only) and not the file inbox (`inbox-send.sh`, the `handovers/inbox/` files), which stays the fallback transport. |
+| **himmel-bus** | The local, hash-chained message bus between a chief and its workers (`marketplace/plugins/himmel-bus`). Delivery is by hook (`bus-deliver-hook`), and a message is a ruling only under a `from` header from the receiver's registered chief (see [revision channel §3b](internals/retask-channel.md)). It is not the Telegram bridge (`scripts/telegram/bus.ts` is that bridge's own store, which himmel-bus reuses for storage only) and not the file inbox (`inbox-send.sh`, the `handovers/inbox/` files), which stays the fallback transport. |
 
 **Not roles.** *Orchestrator* is a rule (`orchestrator-inline-guard`: a
 top-tier parent must not implement inline), not a session role; the word also
@@ -53,17 +53,17 @@ The terms above are defined once, in the lexicon. This is an alias index for
 the harness terms, which are defined in the
 [harness wiring lexicon](#harness-wiring-lexicon) under their repo names:
 ids, env vars, file names, flags and command names carry those names until
-their HIMMEL-5689 slice lands (see [Identifier renames](#identifier-renames)). In prose for people, use
+their rename slice lands (see [Identifier renames](#identifier-renames)). In prose for people, use
 the plain name, and say the old name once, the first time, in brackets.
 
 | Plain name | Old name (alias) | Notes |
 |---|---|---|
 | **auto-ship step** | leg (initiative sense) | A step `HIMMEL_INITIATIVE` takes by itself, such as prcheck or merge. |
-| **usage** | bank | Slice V1 of HIMMEL-5689 renamed `PARKED-BANK` to `PARKED-USAGE` and the `CADENCE_BANK_*` variables to `CADENCE_USAGE_*`. HIMMEL-6647 removed the old variable names. The marker readers still accept `PARKED-BANK`, because handover docs written before the rename carry it; write `PARKED-USAGE`. |
-| **weekly limit override** | bank lift | Renamed by slice V1; HIMMEL-6647 removed the old names. |
+| **usage** | bank | Slice V1 of the rename turned `PARKED-BANK` into `PARKED-USAGE` and the `CADENCE_BANK_*` variables into `CADENCE_USAGE_*`. The old variable names are gone. The marker readers still accept `PARKED-BANK`, because handover docs written before the rename carry it; write `PARKED-USAGE`. |
+| **weekly limit override** | bank lift | Renamed by slice V1; the old names are gone. |
 | **review-owed marker** | CR marker | |
 | **finding status** | verdict (of a CR finding) | A judge verdict stays "judge verdict". |
-| **variant sweep** | class sweep | Replaces the 10-17 interim name "sibling sweep". Named for CodeQL's "variant analysis". The `SWEEP` ledger keyword is unchanged. |
+| **variant sweep** | class sweep | Replaces "sibling sweep", an earlier interim name. Named for CodeQL's "variant analysis". The `SWEEP` ledger keyword is unchanged. |
 | **review round** / **diff-only round** | round / delta round | Docs only. The printed `pr-check:` line is unchanged. |
 | **GO file (merge approval)** | GO file | The other GO is written "judge verdict GO". |
 | **off switch** | bypass flag | Never "bypass" alone: `bypassPermissions` is a different thing. |
@@ -71,7 +71,7 @@ the plain name, and say the old name once, the first time, in brackets.
 | **warn-only** | advisory | |
 | **worker system prompt** | preface | There are five prefaces (worker, worker claudex, worker openrouter, judge, consult). |
 | **usage-cap auto-relaunch** | watchdog | Only where the README, getting-started and why-himmel mean the auto-arm hooks. A wall-clock killer is a "run timeout". |
-| **AFK (unattended) mode** | overnight mode | `/overnight-shift` and `overnight-mode.md` were renamed by slice V3 to `/afk-shift` and `afk-mode.md`; HIMMEL-6647 removed the old ones. |
+| **AFK (unattended) mode** | overnight mode | `/overnight-shift` and `overnight-mode.md` were renamed by slice V3 to `/afk-shift` and `afk-mode.md`; the old ones are gone. |
 | **soft block (speed bump)** | speed bump | Stops only the accidental form. |
 | **revision** | RETASK | The `RETASK` block keyword stays: code parses it. |
 | **token** | nonce | "Nonce" stays an alias here; ids keep it. |
@@ -85,21 +85,21 @@ listed under [Do not rename](#do-not-rename).
 
 ## Identifier renames
 
-Rename plan: HIMMEL-5689. Names ruled 2026-10-20 (operator): chief, worker, dependency chain, parallel wave.
-The rest follow the HIMMEL-5689 plan. Slices V3, V1, V2 and V5 merged before the ruling below, with
+The first names settled were chief, worker, dependency chain and parallel wave; the rest follow the
+rename plan. Slices V3, V1, V2 and V5 merged before the migration became a breaking change, with
 aliases: their old names worked through a forwarder at the old path, a
 command alias or a read-both env name. V4a-1 did the same for the worker env names and hooks.
-HIMMEL-6647 removed those leftovers. Every other row is a plan until its slice merges: until then
-only the old name exists. **This migration is a known breaking change** (operator ruling 2026-10-24): from
-the ruling on, an old name does not keep working after its rename PR merges, so there is no read-both env
+Those leftovers have since been removed. Every other row is a plan until its slice merges: until then
+only the old name exists. **This migration is a known breaking change**: an old
+name stops working when its rename PR merges, so there is no read-both env
 alias, no wrapper at the old path, no redirect stub and no alias-pin test. Every old name, its new name and
 each place the code uses it are listed in [Renamed identifiers](migration/renamed-identifiers.md), with
-the order of the rename PRs and the file names the table below does not name, which need a ruling. That
-side doc is temporary: HIMMEL-6647 deletes it once `git grep` finds no old name outside it, this glossary
+the order of the rename PRs and the file names the table below does not name, which are not decided yet. That
+side doc is temporary: it is deleted once `git grep` finds no old name outside it, this glossary
 (whose family map and do-not-rename list keep the old names on purpose), the changelog, the frozen
 fixtures (`*/fixtures/**`) and the handover records (`handovers/`, which keep the spelling they were
 written with). The release
-changelog (HIMMEL-7006) names the breaking change.
+changelog names the breaking change.
 
 | Family | Old name | New name | Slice |
 |---|---|---|---|
@@ -113,9 +113,9 @@ changelog (HIMMEL-7006) names the breaking change.
 | F6 | `headed-arm-leg.sh` | `headed-arm-worker.sh` | V4b |
 | F7 | `leg-*.sh` helpers, `leg-digest*`, `close-wrapped-leg.sh`; profiles `leg-impl`, `leg-bus`, `leg-vm` | `worker-*`, `close-wrapped-worker.sh`; profiles `worker-impl`, `worker-bus`, `worker-vm` | V4b; V4a (profiles) |
 | F8 | `scripts/handover/console-kit/`, `leg-preface*.md`, `console-template.md`, `leg-brief-template.md` | the former `chief-kit/` directory, `worker-preface*.md`, `chief-template.md`, `worker-brief-template.md` | T; M (the directory) |
-| F9 | `/console`, `console.sh`; skill `himmel-ops:console` | `/chief` only, `chief.sh`, `chief-context.sh`; skill `himmel-ops:chief`; agents `judge`, `judge-ro` (never `chief-judge*`). The Claude command aliases were removed (HIMMEL-8314); Telegram bridge aliases are separate. | V5 |
+| F9 | `/console`, `console.sh`; skill `himmel-ops:console` | `/chief` only, `chief.sh`, `chief-context.sh`; skill `himmel-ops:chief`; agents `judge`, `judge-ro` (never `chief-judge*`). The Claude command aliases were removed; Telegram bridge aliases are separate. | V5 |
 | F10 | `overnight-shift`, `overnight-mode.md`, `OVERNIGHT_*`, `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT` | `afk-shift`, `afk-mode.md`, `AFK_*`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK` | V3 |
-| F11 | `watchdog` (auto-arm hooks only) | `auto-relaunch` in prose; ids deferred until a new id name is ruled | — |
+| F11 | `watchdog` (auto-arm hooks only) | `auto-relaunch` in prose; ids keep the old name until a new id name is chosen | — |
 | F13 | `class-sweep`, `missing-class-sweep` (the `SWEEP` ledger keyword is unchanged) | `variant-sweep`, `missing-variant-sweep` | V2 |
 | F14 | `speed bump` (message text) | `soft block` | D |
 | F15 | fleet-sense `chain`, `wave` (and the interim `ticket sequence`, `batch`) | dependency chain, parallel wave: glossary and prose only; no fleet-sense identifier exists. Reserved forms: `DEPENDENCY_CHAIN_*`, `PARALLEL_WAVE_*` | R2, T, D |
@@ -160,7 +160,7 @@ subagent runs inside the caller's process and holds nothing of its own.
 
 `go.sh` refuses under `HIMMEL_CONSOLE_LEG` (every chief-spawned session) and
 under `HIMMEL_CONSOLE_RELAY`; `inbox-send.sh` refuses `--token` under
-`HIMMEL_CONSOLE_RELAY`. The RETASK channel that these tokens belong to is in
+`HIMMEL_CONSOLE_RELAY`. The revision channel that these tokens belong to is in
 [`internals/retask-channel.md`](internals/retask-channel.md).
 
 ## Judge: call and session
@@ -216,7 +216,7 @@ How work is grouped, sized and shipped. The layers, widest first:
 | **Ticket** | A Story, Task or Bug: one phase or increment of an epic, or a standalone piece of work that the Sector field alone groups. One ticket = one worker = one worktree = one PR. |
 | **Subtask** | A step that shares its ticket's PR. |
 | **Version** | A focus bucket: a mix of phases from several sectors, with a soft cap of about 40 tickets. Every goal in it is near, real and backed by a proof of concept. A ticket carries a fixVersion only once a version pulls it; the rest wait in their sector's backlog. A version ships on a P80 target date (from `effort-assess`) **and** scope: on the date, what is Done ships, and the rest rolls to the next version unless a must-have is still open. Each release records planned versus delivered. |
-| **Intake** | How work enters a version that is already frozen: the [intake gate](#follow-ups-and-intake). A frozen version takes a new ticket only with `--gate critical`, `regression`, `must:<decision>` or `receipt` (decision 99 P2), and each admission is recorded. Before the freeze, work enters through planning. |
+| **Intake** | How work enters a version that is already frozen: the [intake gate](#follow-ups-and-intake). A frozen version takes a new ticket only with `--gate critical`, `regression`, `must:<decision>` or `receipt`, and each admission is recorded. Before the freeze, work enters through planning. |
 | **Cap gate** | The check `jira create` runs when a ticket would land in the current unreleased version. At 15 open `residual` tickets (a `residual-budget:N` line in the version description overrides the 15), a raw filing warns, is labelled `over-cap`, and records a comment; `--over-cap <reason>` remains supported as an optional explanation. An `operator-directed` ticket is exempt. The residual verb (`--residual-of`) competes for a full unfrozen version's slots by gate, follow-up class, priority, chain, shared sector and then creation time (older first). A higher-ranked newcomer displaces the lowest-ranked To Do residual with no gate; otherwise the newcomer moves down. The loser moves from current to next, or from next to backlog, with `residual-displaced`; a displaced resident receives a comment naming the newcomer. Started or gated tickets are never displaced, and frozen versions never compete. A Bug with no `--fix-version` goes to the next version instead of a full current one. `--follow-up-of <key>` stamps the `residual` label and links the parent, so every follow-up is counted. A version past the cap flips the board's `--changed` signal. |
 
 **Maturity ladder.** A feature, and through its features a sector, climbs:
@@ -254,18 +254,18 @@ exists, the code word last.
 |---|---|
 | **Follow-up** (code word: residual) | Work a review or a PR found and left for later, filed as its own ticket linked to the parent. Example: a review finding deferred at round 3. Used in `jira create --follow-up-of`, the `residual` label and `ledger-append.sh --verdict deferred`. Docs say "follow-up"; labels and flags keep "residual". |
 | **Follow-up depth** | 1 for a follow-up of shipped work, 2 for a follow-up of a follow-up, and so on. Depth 2 or more goes to the backlog. Label `residual-depth-N`. |
-| **Escape** (industry: escaped defect) | A real flow is broken today: a wrong result, lost or corrupted data, a flow that cannot finish, or a guard that refuses (or fails open on) an ordinary command someone typed. Fixed in the version in progress, which is not done while it is open. Example: every bash-AST guard failed closed under jq 1.7 (HIMMEL-6893). Flag `--fu-class escape`, label `fu-escape`. |
-| **Hardening** | The maturity-ladder step from Proven to Hardened (decision 112), never software-security hardening. The feature works, but nothing would tell us if it broke or decayed: no test goes red, the board shows nothing, the chief is not told. The hardening fix adds the alarm. Every hardening follow-up carries one reason code. Example: a checksum row that cannot fail (HIMMEL-6887). Flag `--fu-class hardening --fu-why <code>`, labels `fu-hardening` and `fu-why-<code>`. |
-| **Reason code** | Why a follow-up is hardening, one of five: `unseen-failure` (a failure exits 0, is swallowed, or never reaches the board, the tick or the chief), `no-check` (nothing automated goes red if it breaks), `vacuous-check` (a check exists but cannot fail), `no-recovery` (a failure has no bounded recovery: no timeout, a non-atomic write, no retry, a lock that can strand), `silent-rot` (state degrades over time with no signal). Flag `--fu-why`, label `fu-why-<code>`. After R1' (HIMMEL-6919) a hardening filing without a code is a usage error. |
-| **Polish** | It works, and an existing check would catch it breaking. It could just be nicer: wording, tidier code, a cleaner screen, an extra figure, or a guard closed against a trick nobody types by accident. Backlog by default; polish never holds a version back. Example: leftover wording in an old doc (HIMMEL-6813). Flag `--fu-class polish`, label `fu-polish`. |
+| **Escape** (industry: escaped defect) | A real flow is broken today: a wrong result, lost or corrupted data, a flow that cannot finish, or a guard that refuses (or fails open on) an ordinary command someone typed. Fixed in the version in progress, which is not done while it is open. Example: every bash-AST guard failed closed under jq 1.7. Flag `--fu-class escape`, label `fu-escape`. |
+| **Hardening** | The maturity-ladder step from Proven to Hardened, never software-security hardening. The feature works, but nothing would tell us if it broke or decayed: no test goes red, the board shows nothing, the chief is not told. The hardening fix adds the alarm. Every hardening follow-up carries one reason code. Example: a checksum row that cannot fail. Flag `--fu-class hardening --fu-why <code> --fu-override <id>`, labels `fu-hardening`, `fu-why-<code>` and `fu-override`. The verb files a hardening follow-up only with `--fu-override`, a judge verdict id (`XX-jNNNN-N`) or a chief decision number (`decision-<n>`), which it prints into the ticket. The id is an unverified audit label: the verb checks its shape only; looking it up is a follow-up. |
+| **Reason code** | Why a follow-up is hardening, one of five: `unseen-failure` (a failure exits 0, is swallowed, or never reaches the board, the tick or the chief), `no-check` (nothing automated goes red if it breaks), `vacuous-check` (a check exists but cannot fail), `no-recovery` (a failure has no bounded recovery: no timeout, a non-atomic write, no retry, a lock that can strand), `silent-rot` (state degrades over time with no signal). Flag `--fu-why`, label `fu-why-<code>`. A hardening filing without a code is a usage error. |
+| **Polish** | It works, and an existing check would catch it breaking. It could just be nicer: wording, tidier code, a cleaner screen, an extra figure, or a guard closed against a trick nobody types by accident. Polish is not filed: the verb refuses `--fu-class polish`; note it in the PR body, or file a plain ticket if someone will really work it. Polish never holds a version back. Example: leftover wording in an old doc. |
 | **Deferred escape** | A follow-up that was deferred and later caused an escape. Counted per version as claim B, "deferral lets bad bugs through". Recorded by `scripts/cr/mark-deferred-escape.sh`, label `deferred-escape`; read by the stability scorecard and `scripts/release/followup-report.sh`. |
 | **Frozen scope** (industry: scope freeze; code word: frozen set) | The tickets a version holds on its freeze date (`frozen: <date>` in the version description). After the freeze, new work enters only through the intake gate. |
 | **Intake gate** | The check a filing into a frozen version must pass, naming one of four kinds: `critical`, `regression`, `must:<decision>` (industry: release blocker) or `receipt`. Flag `jira create --gate`; the same flag is required to move a ticket into a frozen version. |
 | **Receipt** | A ticket filed to record work being dispatched now and closed within a day. It enters a frozen version through `--gate receipt`. |
 | **Admission** | The ledger record that a ticket entered a frozen version, with its gate and who admitted it (`kind: rm-admit`; a chief override is recorded as such). |
-| **Follow-up budget** (code word: residual budget) | How many open follow-ups a version holds before new ones compete on rank: 15 unless a `residual-budget:N` line in the version description says otherwise. A monitor, not a quota. See Cap gate above for what a filing over it does today and after R6' (HIMMEL-6924). Labels `over-cap`, `residual-overflow`, `residual-displaced`. |
+| **Follow-up budget** (code word: residual budget) | How many open follow-ups a version holds before new ones compete on rank: 15 unless a `residual-budget:N` line in the version description says otherwise. A monitor, not a quota. See Cap gate above for what a filing over it does. Labels `over-cap`, `residual-overflow`, `residual-displaced`. |
 | **Backlog** / **icebox** | Backlog: no version, waiting for planning. Icebox: parked indefinitely in the ICE project and out of every count (`ice-followups.sh`). |
-| **Ad hoc** / **station ad hoc** | Ad hoc: a quick fix for our own setup, filed with no version. Station ad hoc: a reversible change made on the station before its repo fix, recorded under the label `station-adhoc` so the repo fix is never dropped (plan 10.4). |
+| **Ad hoc** / **station ad hoc** | Ad hoc: a quick fix for our own setup, filed with no version. Station ad hoc: a reversible change made on the station before its repo fix, recorded under the label `station-adhoc` so the repo fix is never dropped. |
 | **Operator-directed** | Filed on the operator's explicit instruction. Exempt from the follow-up budget. Label `operator-directed`. |
 
 ## Industry terms
@@ -310,7 +310,7 @@ collision are not listed: they now use the new wording.
 | **worker** | A worker: one ticket, one worktree, one PR (formerly worker session). | A lane worker (a process on a dispatch backend: `scripts/lanes/stop-worker.sh`), a dispatched subagent worker (`internals/worker-spawn-matrix.md`), a Codex lane worker, `reconcile-workers.sh` and `max_workers`. Also `HIMMEL_WORKER`, the dispatched-lane marker, which a worker does not carry. | A bare "worker" is the fleet sense; every other sense is qualified (lane, subagent, Codex lane). Worker env names are `HIMMEL_WORKER_SESSION_*`, never `HIMMEL_WORKER_*`. |
 | **chain** | A **dependency chain**: workers that must run in order. A bare "chain" is never the fleet sense in new prose. | A serial hook chain and the hook runner's `--chain` flag; the token chain of a succession (`worker-sections/succession.md`); the handover skill's chain files (`next-session-N.md`, read by `arm-resume.sh`); `/himmel-update`'s six-item dependency chain; the dependency supply chain of package security (see the overlap map); the pin chain (`PIN_CHAIN_*`). | "Dependency chain" next to tickets or workers means the fleet sense. The `/himmel-update` docs and package security use the same two words for the other senses. Hooks, tokens and chain files always carry their qualifier. The hook sense is in `architecture.md` and `harness-compat.md`. |
 | **wave** | A **parallel wave**: a group of workers started together. | The idiom "wave … through" ("a guard must not wave it through"); a subagent wave (`MID-AGENT-WAVE` in `auto-arm-on-subagent-cap.sh`, `FIRST_WAVE` in `lane-readiness.mjs`); Argo CD sync waves. | "Parallel wave", or a wave of workers or tickets, means the fleet sense. The idiom is a verb. A subagent wave is a burst of `Agent` dispatches inside one session. |
-| **batch** | Not a fleet term any more: a group of workers started together is a parallel wave ("batch" was the 10-17 interim name). | `batch mode` in a scheduled script, a ledger batch row, a panel batch spec. | A fleet doc means a parallel wave. A script flag or a ledger means the other. |
+| **batch** | Not a fleet term any more: a group of workers started together is a parallel wave ("batch" was an earlier interim name). | `batch mode` in a scheduled script, a ledger batch row, a panel batch spec. | A fleet doc means a parallel wave. A script flag or a ledger means the other. |
 | **armed** | Arming (scheduled launch): launching a session on a schedule. | Opt-in auto-merge (`ARMAUTOMERGE`). That use of "armed" is kept on purpose. Starting a Monitor loop is no longer called arming, and the tick now runs in `chief-wait.sh`. | A session or a schedule means arming. A PR merge means the other. |
 | **orchestrator** / **coordinator** | Not session roles. Orchestrator is a rule, `orchestrator-inline-guard`. | The external pattern catalog's names for the parent session. The CI orchestrator daemon. | A hook name means the rule. A pattern description means the catalog. A CI run means the daemon. The catalog is `orchestration-patterns.md` and the daemon is `scripts/ci-orchestrator`. |
 | **GO** | The chief's GO file that authorises one merge. | A judge verdict `GO` or `NO-GO`, written by `write-verdict.sh`. It is one input the chief reads before it signs a GO file. | In prose write "judge verdict GO" for the verdict and "GO file" for the merge authorisation. The verdict format is in `handover/verdict-template.md`. |
@@ -320,7 +320,7 @@ collision are not listed: they now use the new wording.
 ## Harness wiring lexicon
 
 The words the enforcement surface uses: deny messages, `scripts/hooks/`
-headers and [`internals/enforcement.md`](internals/enforcement.md) (HIMMEL-5419).
+headers and [`internals/enforcement.md`](internals/enforcement.md).
 One definition per term; a word under *Avoid* is a synonym to replace with the
 canonical term. Script names without a directory live in `scripts/hooks/`.
 
@@ -330,7 +330,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 |---|---|---|
 | **Hook** | A script an event runs. Six homes: a Claude Code hook (`.claude/settings.json`), a plugin hook (`marketplace/plugins/himmel-ops/hooks/hooks.json`), a Codex hook (`.codex/hooks.json`, through `.codex/run-hook.sh`), a git hook staged by `.pre-commit-config.yaml` (pre-commit, commit-msg, pre-push), the installed `reference-transaction` shim (`install-main-ref-transaction.sh`), and the installed single-writer `pre-push` shim (`install-single-writer-floor.sh`, which runs `check-single-writer-push-floor.sh`). The `i-have-adhd`, `lean-skills` and `qmd` plugins carry their own `marketplace/plugins/<name>/hooks/hooks.json` too. Two homes sit outside those files: the `rtk hook claude` PreToolUse rewriter that `rtk init -g` registers in the user's `~/.claude/settings.json`, and the Hermes `parity_guard.py` hook that `scripts/hermes/assets/wire_parity_guard.py` wires into a Hermes profile. `SessionEnd` and `Stop` are events inside the homes above, not homes of their own. | trigger |
 | **Wirer / inventory** | The two scripts that write hook entries, each from its own hand-kept ordered list (the inventory): `wire-hook-bash.mjs` (`EXPECTED_SCRIPT_ORDER`, into `.claude/settings.json`) and `wire-plugin-hook-bash.mjs` (`EXPECTED_HOOKS`, into the himmel-ops `hooks.json`). A wirer run installs an inventory entry its target lacks. | hook list |
-| **Impostor** | A `scripts/hooks/*.sh` call under an event the wirer owns (`PreToolUse`, `PostToolUse`, `SessionStart`) that its inventory does not list; `wire-hook-bash.mjs` refuses it (HIMMEL-1552). | — |
+| **Impostor** | A `scripts/hooks/*.sh` call under an event the wirer owns (`PreToolUse`, `PostToolUse`, `SessionStart`) that its inventory does not list; `wire-hook-bash.mjs` refuses it. | — |
 | **Hook runner** | `run-hook-with-bash.js`: runs one hook, or a `--chain` of them in one process, under the right bash on every platform. The Codex twin is `.codex/run-hook.sh`. | wrapper |
 | **Guard** | A PreToolUse hook that can deny a tool call before it runs (`block-*`, `guard-*`). It judges the call's text, not its effect. A `guard-` prefix or a "guard" in a file name does not mean this role: `stop-chief-idle-guard.sh` is a Stop hook, `check-doc-guard.sh` is a pre-commit and pre-push gate, and `parity_guard.py` is a Hermes hook. | gate (for a session hook) |
 | **Gate** | A check that stops work moving to its next stage: a git hook (commit, push), a CI job, or a precondition inside a chokepoint (the CR gate, the CI-green gate, the GO gate). | guard (for a git or CI check) |
@@ -339,7 +339,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Floor** | The deterministic minimum that still holds when every other layer is absent: the destructive-command floor (`block-destructive-commands.sh`, shared by Claude and Codex) and the single-writer force-push floor (`check-single-writer-push-floor.sh`). | baseline |
 | **Gate integrity** | A gate's own collaborators are fixed paths, never environment seams, so a contaminated environment cannot forge the evidence it reads. `clear-cr-marker.sh` and `merge-on-green.sh` carry a `GATE INTEGRITY` note: the CR ledger path, `check-ci.sh` and `gh` are not overridable there. | — |
 | **Reviewer mode** | A reviewer's row in `scripts/cr/critics.json` says `hard` or `best-effort`. A hard reviewer that cannot review the head holds the merge; a best-effort one is relaxed (a NOTE) when it cannot review. A finding it did post must be resolved either way. Walkthrough: [daily-loop step 7a](daily-loop.md#7a-review-on-the-pull-request-coderabbit-and-the-review-gate). | soft gate |
-| **CI release** | Planned (HIMMEL-6581, HIMMEL-6582), opt-in per repo. The station adds the `ci:go` label once the review gate passes at a head, and that label event starts the heavy CI jobs. It never lets anything merge on its own. | CR-first trigger |
+| **CI release** | Opt-in per repo (the `CI_GO_GATE` repository variable set to `on`; off by default). The station adds the `ci:go` label once the review gate passes at a head, and that label event starts the heavy CI jobs. It never lets anything merge on its own. | CR-first trigger |
 | **Advisory** | A hook or check that prints and never blocks (exit 0): `scripts/cr/doc-freshness-advisory.sh`, `graphify-freshness-advisory.sh`, `jira-nudge-on-end.sh`, the `api` backend tier. | soft gate |
 | **Nudge** | A hook that steers a habit rather than protecting a secret or a checkout (`require-quiet-run.sh`, `guard-worker-wakeup.sh`, `jira-nudge-on-end`, `inject-worktree-nudge`). Advisory-only versus may-deny is a separate axis, so both kinds count: some only print, some deny. A denying nudge fails open on its own errors (missing `jq`, unparsed input). Its opposite is a security fence, which fails closed. | — |
 | **Watchdog** | A hook that watches a resource and acts on its own, deliberately fail-open: `auto-arm-on-cap.sh` and `auto-arm-on-subagent-cap.sh` arm a resume as a usage cap nears and block once to force a handover (off with `AUTO_ARM_DISABLE=1`). | monitor |
@@ -351,7 +351,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Allow rule** | A literal entry the native permission matcher compares against the command *text*. A `VAR=` prefix, a quote, `$(…)` or a compound drops the call to the classifier; `auto-approve-safe-bash.sh` approves the shapes the matcher refuses. | whitelist |
 | **Hook integrity** | Every guard script pinned to its committed blob hash at session start (`record-hook-integrity.sh`); a pinned guard edited mid-session locks tool use. | — |
 | **Shadow ledger** | `scripts/trust/shadow-ledger.mjs`: a passive, hash-chained record of every approval-shaped decision. It records and never denies. | audit log |
-| **Trust path** | A file that decides whether other changes are safe: your merge gate, your hooks, your CI checks and the list itself. A change to one can switch a safety check off, so the agent that wrote it may not approve it; it merges only after an independent reviewer has signed off on that exact commit (a trust-reviewed GO, `go.sh --trust-reviewed`). The list lives in `scripts/ci/ci-trust-paths.txt` on the default branch, never read from the PR. Add any file that guards your project (deploy scripts, release config); an adopted project's list must also keep himmel's core lines (`scripts/ci/ci-trust-paths-core.txt`). These checks run in himmel's merge script and in Claude sessions; a merge made another way (the forge web UI, a raw `gh pr merge`) bypasses them, and the optional forge branch rules (HIMMEL-3897) enforce the list there. | protected file |
+| **Trust path** | A file that decides whether other changes are safe: your merge gate, your hooks, your CI checks and the list itself. A change to one can switch a safety check off, so the agent that wrote it may not approve it; it merges only after an independent reviewer has signed off on that exact commit (a trust-reviewed GO, `go.sh --trust-reviewed`). The list lives in `scripts/ci/ci-trust-paths.txt` on the default branch, never read from the PR. Add any file that guards your project (deploy scripts, release config); an adopted project's list must also keep himmel's core lines (`scripts/ci/ci-trust-paths-core.txt`). These checks run in himmel's merge script and in Claude sessions; a merge made another way (the forge web UI, a raw `gh pr merge`) bypasses them, and the optional forge branch rules enforce the list there. | protected file |
 
 ### Places and identity
 
@@ -390,11 +390,11 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Plugin profile** | A plugin set a worker launches with (`headed-arm-worker.sh --profile <name>`, defined in `scripts/lanes/plugin-profiles.json`). | — |
 | **Preface** | [`handover/worker-preface.md`](handover/worker-preface.md): the rules appended to every worker's system prompt at launch. Five prefaces exist (worker, worker claudex, worker openrouter, judge, consult), so write "worker preface" or "judge preface", never a bare "preface". | system prompt |
 | **Brief** | In this glossary, the per-worker header of a handover document, not a task prompt (`brief.md` and `--brief-file` name whole task prompts). It holds: ticket, worktree, base sha, token, chief, contract. The brief wins over the preface where they disagree. | — |
-| **Nonce** [token] | The RETASK token minted per child; a revision must quote it ([`internals/retask-channel.md`](internals/retask-channel.md)). | password |
+| **Nonce** [token] | The revision token minted per child; a revision must quote it ([`internals/retask-channel.md`](internals/retask-channel.md)). | password |
 | **Tick** | `scripts/handover/chief-kit/tick.sh`: one batched snapshot line of the fleet, read from each worker's newest status-marker bullet. | poll |
 | **Waiter** | `scripts/handover/chief-kit/chief-wait.sh`: the chief's one background command, silent until the first real event, then it exits. | monitor loop |
-| **Board** | The chief's board: a generated HTML page of fleet state and worker phases (HIMMEL-3361). | dashboard |
-| **Tracker** | The ticket backend a run uses, `TRACKER=jira\|local\|none` ([configuration](configuration.md); HIMMEL-4759). | — |
+| **Board** | The chief's board: a generated HTML page of fleet state and worker phases. | dashboard |
+| **Tracker** | The ticket backend a run uses, `TRACKER=jira\|local\|none` ([configuration](configuration.md)). | — |
 | **Status marker** | The leading word of a worker's Results bullet (`LIVE`, `FINDING`, `RESOLVED`, `READY`, `BLOCKED`, `HALTED`, `WRAPPED`, `PARKED-USAGE`, `RESUMED`), written by `scripts/handover/chief-kit/append-results.sh`. | state |
 | **Ponytail comment** | A `ponytail: <ceiling>, <upgrade path>` code comment for a deliberate simplification ([`internals/ponytail-convention.md`](internals/ponytail-convention.md)). | TODO |
 | **Backend tier** | The CLI-over-MCP routing registry `scripts/backends.json`, enforced by `block-backend-tier.sh`. | — |
@@ -411,7 +411,7 @@ comment is the `ponytail:` code comment.
 | **verdict** | One disposition per review finding, written by `write-verdicts.sh`. | A judge's verdict file. The one-word answer `usage-preflight.sh` prints. These are three different objects. | A review verdict sits in the CR ledger. A judge verdict is a file written for one question (`handover/verdict-template.md`). The bank token is script output. |
 | **ledger** | The CR ledger, one row per critic that responded at a head. | The shadow ledger, the claudex inbox ledger, and the bank-preflight ledger row. | Name which one. The CR ledger is `cr-critic-scores.jsonl` in the git common dir. |
 | **board** | The chief's board, a generated HTML page of fleet state. | The Jira board, set by `JIRA_BOARD_ID`. The chief's board does not replace it. | A `JIRA_BOARD_ID` or a Jira URL means the Jira board. |
-| **tracker** | The ticket backend a run uses, `TRACKER=jira\|local\|none`. | The roadmap page `tracker.py`, until its rename ticket lands. The version-first roadmap view (HIMMEL-3990). Neither is the `TRACKER` backend. | The `TRACKER` variable means the backend. A page or a ticket means one of the others. The page is `scripts/handover/chief-kit/tracker.py`. |
+| **tracker** | The ticket backend a run uses, `TRACKER=jira\|local\|none`. | The roadmap page `tracker.py`, until its rename ticket lands. The version-first roadmap view. Neither is the `TRACKER` backend. | The `TRACKER` variable means the backend. A page or a ticket means one of the others. The page is `scripts/handover/chief-kit/tracker.py`. |
 | **profile** | A plugin profile: the plugin set a worker launches with (`--profile <name>`). | An install profile. An MCP profile. `CR_PROFILE`, the critic tier switch (`free,paid`, or `none` to skip the panel). The `himmelctl` install profile (`starter`, `luna`, `operator`, `custom`). The Hermes profile `himmel_agent`. | A `--profile` flag on a worker launcher means the plugin profile. `CR_PROFILE` is an env var read by `scripts/cr/critic-panel.sh` and set in `.env.example`. The `himmelctl` profile is a wizard answer (`docs/setup/new-machine.md`). The Hermes profile is in `docs/hermes-runbook.md`. The others live in `docs/setup/profiles/` and `.claude/mcp-profiles/profiles.json`. |
 
 ## Overlap map
@@ -443,7 +443,7 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | No rogue scheduler job launches `claude` | `block-rogue-claude-schedule` (Bash, PowerShell) | — | `block-rogue-claude-schedule` (Bash) | — | — | — |
 | Destructive commands denied | `block-destructive-commands` | `block-docker-privesc` | `block-destructive-commands`, `block-docker-privesc` | — | — | — |
 | No `git stash` | `block-git-stash` (Bash, PowerShell) | — | `block-git-stash` (Bash) | — | — | — |
-| Live settings not writable | `block-edit-live-settings` (Bash, PowerShell, Edit) | — | `block-edit-live-settings` (Bash; not `apply_patch`, HIMMEL-5430 open) | — | — | — |
+| Live settings not writable | `block-edit-live-settings` (Bash, PowerShell, Edit) | — | `block-edit-live-settings` (Bash; not `apply_patch` yet) | — | — | — |
 | Bank lift not writable | `block-bank-lift-writes` (Bash, Edit) | — | `block-bank-lift-writes` (Bash, Edit) | — | — | — |
 | `~/.himmel/config.json` opt-ins not writable | `block-himmel-config-writes` | — | `block-himmel-config-writes` | — | — | — |
 | Lesson and enforcement files not agent-written | — | `block-lesson-enforcement-writes` | `block-lesson-enforcement-writes` | — | — | — |
@@ -515,7 +515,7 @@ Facts only; nothing here is a proposed change.
 - `git stash`, live settings writes, rogue scheduler jobs, `quiet-run` — a
   PreToolUse hook only (Claude and Codex wire the same scripts); no git or CI
   layer. Codex does not cover the live-settings write path through
-  `apply_patch` (HIMMEL-5430, open).
+  `apply_patch` yet.
 - No direct push to `main` from a Claude session — pre-push
   `check-push-target` only; no Claude hook, and `permissions.allow` lists bare
   `git push`.

@@ -2,8 +2,9 @@
 import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
 import { renderHealth, verdict, parseView, projectVerdict, chiefLiveFor } from "/health.js";
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
-import { driftSince, pinsFromSearch, renderBoard, searchWithPins, togglePin } from "/roadmap.js";
+import { boardRefreshDue, driftSince, pinsFromSearch, renderBoard, searchWithPins, togglePin } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
+import { renderCost } from "/cost.js";
 import { apiRolesDraft, renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
 import { renderReport, reportBar } from "/report.js";
@@ -59,7 +60,7 @@ let session = null; // is this browser holding a login session: null until read,
 const NEEDS_LOGIN = "log in to save a secret; what you typed was cleared, type it again after you are back"; // the row's message for a save refused in service mode; declared before route() runs
 let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
 let roadmap = null, roadmapGen = 0, nvGen = 0; // declared before route() runs, as healthGen is: a reload at #/board?tab=nv calls loadNoVersion() from it
-let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains, versionChains }, null until read
+let boardExtras = null, boardGen = 0, boardAsked = ""; // boardAsked: the version tile the last read was sent for // GET /api/board: { drift, chains, versionChains }, null until read
 let pagebarOpen = false; // the page bar's "Filters (n on)" fold at phone width; declared before route() runs, as the next one is
 let originsReading = false; // declared before route() runs: a reload at #/board paints, and that paint asks for Tidy up's origins
 // writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
@@ -73,12 +74,15 @@ let shift = null, shiftGen = 0, shiftAt = 0; // GET /api/shift, null until read;
 const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
 let wfModel = null, wfStats = null, wfGen = 0, wfAt = 0, wfScrolled = null; // the workflow model and GET /api/phase-stats, null until read
 const wfUi = { tab: "workflow", phase: null, step: null, walk: null, at: 0 }; // from the route: #/workflow[/eval]?phase=|step=|walk=&at=
+let costModel = null, costErr = false, costGen = 0;
+const costView = { open: [] };
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => withLoginButton(render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify })), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.apiRoles || !state.apiRoles.data) loadApiRoles(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => pageBar() + healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
   { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
+  { id: "cost", label: "Cost", needsFeed: false, render: () => (costErr ? `<p class="sub">The cost could not be read just now${costModel ? "; this is the last good read" : ""}.</p>` : "") + renderCost(costModel, { ...costView, err: costErr }), onVisit: () => loadCost(), afterPaint: () => costMount() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
   { id: "report", label: "Morning report", needsFeed: false, render: () => pageBar() + renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
 ];
@@ -130,6 +134,7 @@ function route() {
   if (old || id !== currentPage.id) history.replaceState(null, "", location.pathname + location.search + "#/" + currentPage.id + (state.tile ? "?tile=" + state.tile : ""));
   const bq = new URLSearchParams(currentPage.id === "board" ? m[3] || "" : "");
   roadmapUi.tab = bq.get("tab"); roadmapUi.v = bq.get("v"); roadmapUi.at = bq.get("at"); roadmapUi.drawer = null; // a new route closes the drawer
+  if (currentPage.id === "board" && boardExtras && askedVersion() !== boardAsked) loadBoard(); // a tile picked: the Chains tab reads that version
   const wasWhy = roadmapUi.why;
   roadmapUi.why = bq.get("why");
   shiftUi.id = null;
@@ -256,6 +261,7 @@ function paint() {
   const focusB = document.activeElement && document.activeElement.matches && document.activeElement.matches(".bhead") ? document.activeElement.dataset.b : null;
   const focusRg = document.activeElement && document.activeElement.matches && document.activeElement.matches("[data-rg]") ? { rg: document.activeElement.dataset.rg, slug: document.activeElement.dataset.slug } : null;
   const focusT = document.activeElement && document.activeElement.matches && document.activeElement.matches("button.tile") ? document.activeElement.dataset.tile : null;
+  const focusP = document.activeElement && document.activeElement.matches && document.activeElement.matches("button.dr") ? document.activeElement.dataset.phase : null;
   const focusD = document.activeElement && document.activeElement.closest && document.activeElement.closest(".drawer") ? { act: document.activeElement.dataset.act, cmd: document.activeElement.dataset.cmd } : null; // any repaint (the history landing, a refresh) keeps keyboard focus on the same drawer control
   // A secret or path being typed lives only in its field: a repaint (a report landing, a read finishing) must not wipe it.
   // It is held in this one synchronous call and put straight back; it is never kept in page state.
@@ -276,7 +282,8 @@ function paint() {
   if (focusB !== null) { for (const h of document.querySelectorAll(".bhead")) if (h.dataset.b === focusB) { h.focus(); break; } }
   if (focusRg !== null) { for (const c of document.querySelectorAll("[data-rg]")) if (c.dataset.rg === focusRg.rg && c.dataset.slug === focusRg.slug) { c.focus(); break; } }
   if (focusT !== null) { for (const t of document.querySelectorAll("button.tile")) if (t.dataset.tile === focusT) { t.focus(); break; } }
-  if (focusD) { const c = [...document.querySelectorAll(".drawer [data-act]")].find((x) => x.dataset.act === focusD.act && x.dataset.cmd === focusD.cmd); if (c) c.focus(); }
+  if (focusP !== null) { for (const b of document.querySelectorAll("button.dr")) if (b.dataset.phase === focusP) { b.focus(); break; } }
+  if (focusD) { const c =[...document.querySelectorAll(".drawer [data-act]")].find((x) => x.dataset.act === focusD.act && x.dataset.cmd === focusD.cmd); if (c) c.focus(); }
   if (keep !== null) { const q = $("#q"); q.focus(); q.setSelectionRange(keep, keep); }
 }
 
@@ -641,6 +648,33 @@ async function loadWorkflow() {
   wfStats = s.status === "fulfilled" ? s.value : { error: s.reason instanceof Error ? s.reason.message : "server unreachable" };
   if (currentPage.id === "workflow") paint();
 }
+async function loadCost() {
+  const gen = ++costGen;
+  try {
+    const r = await fetch("/api/cost", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const m = await r.json();
+    if (gen !== costGen) return;
+    costModel = m; costErr = false;
+  } catch (_) { if (gen !== costGen) return; costErr = true; }
+  if (currentPage.id === "cost") paint();
+}
+// The bars' widths come in the markup as style attributes, which the page's CSP (default-src 'self') refuses, so they are set here.
+function costMount() {
+  const main = $("#main");
+  for (const el of main.querySelectorAll(".bar[style]")) el.style.width = (/width:\s*([\d.]+%)/.exec(el.getAttribute("style")) || [])[1] || "0%";
+  const onClick = (e) => {
+    const b = e.target.closest && e.target.closest("button.dr");
+    const id = b && b.dataset.phase;
+    if (!id) return;
+    costView.open = costView.open.includes(id) ? costView.open.filter((x) => x !== id) : [...costView.open, id];
+    paint();
+    const again = [...main.querySelectorAll("button.dr")].find((x) => x.dataset.phase === id);
+    if (again) again.focus();
+  };
+  main.addEventListener("click", onClick);
+  return () => main.removeEventListener("click", onClick);
+}
 // a step link or a walk scrolls its card (or the opened phase) into view, once per route: a later repaint never jumps.
 function wfScroll() {
   const el = document.querySelector(".wf-step.wf-hl") || (wfUi.phase && document.getElementById("pp-" + wfUi.phase));
@@ -672,8 +706,11 @@ async function loadRoadmap() {
   } catch (_) { data = { state: "error", reason: "server unreachable" }; }
   if (gen !== roadmapGen) return;
   roadmap = data;
+  if (data.state === "ok") roadmapUi.readAt = Date.now(); // the Board's read line says when, and the self-refresh counts from here
   roadmapUi.writes = data.source !== "github"; // GitHub cards are read-only
   if (currentPage.id === "board") paint();
+  // Waiting on you lists the operator-labelled tickets with no version, which only the No version read carries (a local mirror read, no network): ask for it beside the default one
+  if (data.noVersionCount && !roadmapUi.nv && roadmapUi.tab !== "nv") loadNoVersion();
 }
 // the Board's No version tab: those tickets are not in the default read, so they are fetched when the tab opens (and again on refresh).
 async function loadNoVersion() {
@@ -687,12 +724,15 @@ async function loadNoVersion() {
   roadmapUi.nv = data;
   if (currentPage.id === "board") paint();
 }
+// the version tile the Chains tab reads; "all" is never sent (the tab has no all-versions choice)
+function askedVersion() { return roadmapUi.v && roadmapUi.v !== "all" ? roadmapUi.v : ""; }
 // the Board's drift summary and chain read: each part absent on its own, so a missing registry never hides the lanes.
 async function loadBoard() {
   const gen = ++boardGen;
   let data;
+  boardAsked = askedVersion();
   try {
-    const r = await fetch("/api/board", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    const r = await fetch("/api/board" + (boardAsked ? "?v=" + encodeURIComponent(boardAsked) : ""), { headers: { "X-Himmel-Token": token }, cache: "no-store" });
     data = r.ok ? await r.json() : null;
   } catch (_) { data = null; }
   if (gen !== boardGen) return;
@@ -841,6 +881,18 @@ document.addEventListener("keydown", (e) => {
   if (e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && c.hasAttribute("data-rm-card")) { e.preventDefault(); void moveByKey(c, e.key === "ArrowRight" ? 1 : -1); }
 });
 document.addEventListener("dragend", () => { rmDrag = null; });
+// The Board reads itself again at a bounded interval (roadmap.js BOARD_REFRESH_MS), checked on a 10 s tick; boardRefreshDue holds back while the page is hidden, a drawer
+// is open, a field has focus, a card is being dragged or a read of this kind is still running.
+let boardReads = 0;
+setInterval(() => { // t13b-ok: a bounded 10 s tick that lives and dies with the open Board page, no background service
+  if (typeof document === "undefined") return; // a suite that imports this module without a page has nothing to refresh
+  const a = document.activeElement;
+  if (!boardRefreshDue({ page: currentPage.id, visible: document.visibilityState === "visible", modal: !!(roadmapUi.drawer || roadmapUi.why),
+    editing: !!(a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)), dragging: rmDrag !== null, busy: boardReads > 0, readAt: roadmapUi.readAt || 0, now: Date.now() })) return;
+  boardReads++;
+  roadmapUi.readAt = Date.now(); // the attempt counts: a server that is down is asked once per interval, not every tick
+  Promise.all([loadRoadmap(), loadBoard(), roadmapUi.nv || roadmapUi.tab === "nv" ? loadNoVersion() : null]).finally(() => { boardReads--; });
+}, 10_000);
 document.addEventListener("change", (e) => {
   if (e.target.id === "proj") { // the page bar picker: it routes, the route reads the project
     const v = e.target.value;

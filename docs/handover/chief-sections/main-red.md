@@ -3,7 +3,7 @@
 Read on demand: the CI row of `monitors.md` names this file when a main run
 completes red, and a worker's `MAIN-RED` message lands here too. A red main
 is the chief's first job, so classify it first, using steps 1-3 below. The merge
-script no longer refuses a PR whose own CI is green (HIMMEL-8675): it merges with a
+script no longer refuses a PR whose own CI is green: it merges with a
 `MAIN-RED advisory:` line and an audit `via=advisory run=<id>`, so the HOLD below
 is the chief's to enforce by withholding GOs:
 

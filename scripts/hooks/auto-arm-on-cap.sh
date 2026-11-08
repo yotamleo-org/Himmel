@@ -665,8 +665,10 @@ py_out="$STATE_DIR/auto-arm-py-out"
 # honor the operator's validated bank lift, the way bank-preflight
 # and guard-implementor-dispatch do. A valid lift spends seven_day to 100; a
 # standing lift also spends five_hour to 100 unless CADENCE_USAGE_MAX_PCT is
-# explicit. Anything else (missing, expired, other account, unreadable lib) is
-# no lift: both windows keep $THRESHOLD, exactly as before (fail-open).
+# explicit; a standing lift that followed an account switch counts the same.
+# Anything else (missing, expired, a window lift from another account,
+# unreadable lib) is no lift: both windows keep $THRESHOLD, exactly as before
+# (fail-open).
 FH_THRESHOLD="$THRESHOLD"
 SD_THRESHOLD="$THRESHOLD"
 _lift_lib="$hook_dir/../lib/usage-lift.sh"

@@ -2,7 +2,7 @@
 
 Read on demand from `chief-template.md` `## Standing rules`. Applies while a
 release is declared (`jira release state <R>` prints a status other than
-`UNKNOWN: … is missing`). Design: HIMMEL-6796; on demand since HIMMEL-7201.
+`UNKNOWN: … is missing`). The release manager runs on demand, not as a standing session.
 
 - **Every placement into, out of or within the release is a request.** You
   never write a release version's fixVersions yourself. Write the request(s),

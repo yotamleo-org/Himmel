@@ -293,7 +293,7 @@
       "id": "p.design",
       "source": {
         "file": "scripts/lanes/plugin-profiles.json",
-        "line": 166,
+        "line": 273,
         "text": "\"design\": {"
       },
       "lane": "leg",

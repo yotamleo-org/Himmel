@@ -50,6 +50,10 @@ tick_bound() {
 # job is started by a subshell that exits at once, so init adopts it and the tick never reaps it.
 tick_detach() { ( "$@" </dev/null >/dev/null 2>&1 & printf '%s\n' "$!" ); }
 
+# tick_now_s: the epoch seconds in $tick_now, from the shell's own clock (no fork) when it has one;
+# bash 3.2 (macOS /bin/bash) has no printf '%(%s)T', so it falls back to date.
+tick_now_s() { printf -v tick_now '%(%s)T' -1 2>/dev/null || tick_now="$(date +%s)"; }  # swallow-ok: a shell without the builtin clock uses date
+
 # tick_section_refresh <base> <min-secs> <script> <args...>: run <script> detached, so the
 # waiter's timeout kills the tick's process group and never the refresh, at most once per
 # <min-secs> whether it succeeded or not ($base.tried), one at a time per <base> ($base.lock).
@@ -63,8 +67,11 @@ tick_section_refresh() {
     touch "$base.tried"
     pid="$(tick_detach setsid -w flock -n -E 75 "$base.lock" bash -c "$@")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the cache; gnu-ok: chief kit is Linux-only
     wait_s="${TICK_SECTION_WAIT:-3}"; case "$wait_s" in '' | *[!0-9]*) wait_s=3 ;; esac
-    end=$(( $(date +%s) + wait_s ))
-    while kill -0 "$pid" 2>/dev/null && [ "$(date +%s)" -lt "$end" ]; do sleep 0.05; done
+    # The poll forks only its sleep, every 0.25 s: the tick's CPU must not grow with how long a
+    # refresh runs, and a loaded runner makes the refresh, and so the poll, run longer.
+    tick_now_s
+    end=$(( tick_now + wait_s ))
+    while kill -0 "$pid" 2>/dev/null && [ "$tick_now" -lt "$end" ]; do sleep 0.25; tick_now_s; done
 }
 
 # tick_cache_age <file>: its age in seconds; nothing when it cannot be read.
@@ -501,6 +508,9 @@ the whole `## Live state` section over LIVESTATE_BUDGET_BYTES (12000): keep only
 open workers and the last GO there, shift history goes to specs/history/.
 `ACTION doc-over-read-limit=<bytes>/<limit>` flags the WHOLE doc over DOC_READ_BUDGET_BYTES
 (48000, a conservative byte bound for the 25,000-token Read limit).
+`ACTION direction-companions-unread=<unread>/<named>` flags the chief transcript (found by its custom
+title, the doc stem) with no Read of a companion the `Full original text` line names; silent with no
+pointer line or no transcript found.
 
 --burn adds a per-worker context-burn field (first-turn/avg-ctx, via
 scripts/lanes/worker-burn.sh) for every doc in --workers. OPT-IN because it scans
@@ -1102,6 +1112,10 @@ tick_title_newest() {
         [ -z "${2:-}" ] || case "$f" in "$2"/*) ;; *) continue ;; esac
         if [ -z "$tick_title_hit" ] || [ "$f" -nt "$tick_title_hit" ]; then tick_title_hit="$f"; fi
     done <<<"$tick_title_idx"
+}
+
+companion_was_read() {
+    awk -v rel="$2\"" '{ s = $0; while (match(s, /"name":"Read","input":\{[^}]*"file_path":"[^"]*"/)) { seg = substr(s, RSTART, RLENGTH); if (substr(seg, length(seg) - length(rel) + 1) == rel) f = 1; s = substr(s, RSTART + RLENGTH) } } END { exit !f }' "$1"
 }
 
 # leg_forked <candidate names, comma list> -- succeeds when the newest session
@@ -2611,8 +2625,9 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         pd_pid="$(tick_detach setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
         pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
         pd_wait="$(tick_bound "$pd_wait")"
-        pd_end=$(( $(date +%s) + pd_wait ))
-        while kill -0 "$pd_pid" 2>/dev/null && [ "$(date +%s)" -lt "$pd_end" ]; do sleep 0.2; done
+        tick_now_s  # the poll forks only its sleep
+        pd_end=$(( tick_now + pd_wait ))
+        while kill -0 "$pd_pid" 2>/dev/null && [ "$tick_now" -lt "$pd_end" ]; do sleep 0.25; tick_now_s; done
         pd_m="$(stat -c %Y "$pd_base.rows" 2>/dev/null)" || pd_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no snapshot reads old
         case "$pd_m" in '' | *[!0-9]*) ;; *) pd_age=$(( $(date +%s) - pd_m )) ;; esac
     fi
@@ -2743,12 +2758,30 @@ case "$livestate_budget" in ''|*[!0-9]*) livestate_budget=12000 ;; esac
 # the whole doc against the Read limit (25,000 tokens; a chief.sh next successor of 48,372 bytes
 # was read whole in one Read, so 48000 bytes is a conservative bound), not only the Live state
 doc_bytes=0
+dc_total=0
+dc_unread=""
+dc_unread_n=0
 doc_read_budget="${DOC_READ_BUDGET_BYTES:-48000}"
 case "$doc_read_budget" in ''|*[!0-9]*) doc_read_budget=48000 ;; esac
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_bytes="$(wc -c < "$console_doc" | tr -d '[:space:]')"
     handoff_file="${console_doc%.md}-HANDOFF.md"
     [ ! -f "$handoff_file" ] || handoff_bytes="$(wc -c < "$handoff_file" | tr -d '[:space:]')"
+    dc_ptr="$(awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f && /^Full original text/ { print; exit }' "$console_doc")"
+    if [ -n "$dc_ptr" ]; then
+        dc_rels="$(awk '{ while (match($0, /specs\/decisions\/chief-direction-[A-Za-z0-9._-]*\.md/)) { print substr($0, RSTART, RLENGTH); $0 = substr($0, RSTART + RLENGTH) } }' <<< "$dc_ptr")"
+        dc_stem="${console_doc##*/}"
+        tick_title_newest "${dc_stem%.md}"
+        if [ -n "$dc_rels" ] && [ -n "$tick_title_hit" ]; then
+            while IFS= read -r dc_rel; do
+                dc_total=$((dc_total + 1))
+                if ! companion_was_read "$tick_title_hit" "$dc_rel"; then
+                    dc_unread="$dc_unread $dc_rel"
+                    dc_unread_n=$((dc_unread_n + 1))
+                fi
+            done <<< "$dc_rels"
+        fi
+    fi
     decisions_bytes="$(printf '%s\n' "$live_state_body" | grep -m1 '^decisions:' | tr -d '\n' | wc -c | tr -d '[:space:]')"
     # counted from the doc, heading and trailing blank lines included: $live_state_body came through a command substitution, which drops them
     livestate_bytes="$(LC_ALL=C awk '$0 == "## Live state" { f = 1; n = length($0) + 1; next } f && /^## / { exit } f { n += length($0) + 1 } END { print n + 0 }' "$console_doc")"
@@ -3861,6 +3894,9 @@ else
     fi
     if [ "$livestate_bytes" -gt "$livestate_budget" ]; then
         printf 'ACTION livestate-over-budget=%s/%s: keep only the open workers and the last GO in the Live state; move shift history verbatim to %q (chief-sections/live-state.md)\n' "$livestate_bytes" "$livestate_budget" "${console_doc%/*}/specs/history/chief-live-state-${console_doc##*/}"
+    fi
+    if [ -n "$dc_unread" ]; then
+        printf 'ACTION direction-companions-unread=%s/%s: Read the direction companion files now, in the bucket of %q:%s (the Current direction is one-line readings; the full text of every ruling is only in them)\n' "$dc_unread_n" "$dc_total" "$console_doc" "$dc_unread"
     fi
     if [ "$doc_bytes" -gt "$doc_read_budget" ]; then
         printf 'ACTION doc-over-read-limit=%s/%s: the whole doc will not read in one Read (25k tokens); move Results and queue and tracker history verbatim to %q (Current direction is shortened only by chief.sh next, never by hand)\n' "$doc_bytes" "$doc_read_budget" "${console_doc%/*}/specs/decisions/chief-history-$(date +%F).md"

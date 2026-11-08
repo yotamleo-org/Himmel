@@ -446,19 +446,19 @@ check "tqlike second succession: the time-head index lines are unchanged and sti
 check "tqlike second succession: the HANDOFF names the companions by their line" "$(grep -cF 'beginning `Full original text`' "${gen2_doc%.md}-HANDOFF.md")" "1"
 check "tqlike second succession: the 20 new rulings are in a companion file" "$(companion_files "$doc2" | while read -r f; do cat "$root/tester/tqlike/$f"; done | grep -c '^OPERATOR 11-07 ZZ ')" "20"
 
-# (e) a third succession when an earlier companion file is gone: the direction and its pointer are
-# carried as they were, with a warning, never replaced by companions that lack the full text
 rc=0; python3 -I "$tmp/gen2.py" "$doc2" "$root/tester/tqlike" 3 950 YY || rc=$?
-dir_lines "$doc2" > "$tmp/gen3.expected"
 lost="$(companion_files "$doc2" | tail -n 1)"
 mv "$root/tester/tqlike/$lost" "$tmp/lost-companion"
+files3="$(printf '%s\n' "$root/tester/tqlike"/DEMO-nextleg-*)"
 out3="$(chief next --bucket tqlike --doc "$doc2" 2>&1)"; rc3=$?
+check "tqlike third succession (a companion file gone): next refuses (exit 7)" "$rc3" "7"
+check "tqlike third succession (a companion file gone): next prints a repair line naming the file" "$(printf '%s\n' "$out3" | grep -c "repair:.*$lost")" "1"
+check "tqlike third succession (a companion file gone): no successor doc was written" "$(printf '%s\n' "$root/tester/tqlike"/DEMO-nextleg-* | diff - <(printf '%s\n' "$files3") >/dev/null && echo same || echo changed)" "same"
 mv "$tmp/lost-companion" "$root/tester/tqlike/$lost"
-check "tqlike third succession (a companion file gone): next succeeds" "$rc3" "0"
-check "tqlike third succession (a companion file gone): next warns about the companion" "$(printf '%s\n' "$out3" | grep -c 'could not read the earlier direction companion')" "1"
+out3="$(chief next --bucket tqlike --doc "$doc2" 2>&1)"; rc3=$?
+check "tqlike third succession (the companion file restored): next succeeds" "$rc3" "0"
 doc3="$(printf '%s\n' "$out3" | sed -n 's/^doc: //p')"
-[ ! -f "$doc3" ] || dir_lines "$doc3" | diff - "$tmp/gen3.expected" | cut -c1-120 | head -n 6 | sed 's/^/    direction diff: /'
-check "tqlike third succession (a companion file gone): the direction is carried as it was, pointer included" "$([ -f "$doc3" ] && dir_lines "$doc3" | cmp -s - "$tmp/gen3.expected" && echo same || echo differs)" same
+check "tqlike third succession (the companion file restored): the 3 new rulings are in a companion file" "$([ -f "$doc3" ] && companion_files "$doc3" | while read -r f; do cat "$root/tester/tqlike/$f"; done | grep -c '^OPERATOR 11-07 YY ')" "3"
 
 # (f) a fourth succession when the chief added its rulings ABOVE the pointer (newest first): the
 # pointer is no longer the first line, and next still finds it, carries the earlier text forward

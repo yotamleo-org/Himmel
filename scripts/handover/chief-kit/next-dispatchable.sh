@@ -209,6 +209,20 @@ repo = os.environ['ND_REPO']
 sys.path.insert(0, os.path.join(repo, 'scripts', 'lib'))
 from env_alias import legacy_names_on
 
+# Every gh read goes through ghrun. A gh answer that names a rate limit is recorded once, so the header says the fleet's
+# GitHub budget is spent and that the unread rows are unknown, not empty. gh itself is not wrapped or changed.
+RATE_LIMIT_RE = re.compile(r'rate limit|RATE_LIMIT', re.I)
+rate_limited = []
+
+def ghrun(argv, **kw):
+    try:
+        return subprocess.run(argv, **kw)
+    except subprocess.CalledProcessError as e:
+        err = e.stderr if isinstance(e.stderr, str) else (e.stderr or b'').decode('utf-8', 'replace')
+        if RATE_LIMIT_RE.search(err) and not rate_limited:
+            rate_limited.append(err.strip().splitlines()[0][:200])
+        raise
+
 
 def manifest_workers(m):
     """The manifest's worker array: `workers`, else the pre-rename `legs` while legacy names are on.
@@ -379,7 +393,7 @@ def trial_clean(num):
         ok = False
         gitdir, mainref = os.environ['ND_GIT_DIR'], os.environ['ND_MAIN_REF']
         try:
-            sha = subprocess.run([gh, 'api', 'repos/%s/pulls/%s' % (gh_repo, num), '--jq', '.head.sha'], capture_output=True, text=True, timeout=60, check=True).stdout.strip()
+            sha = ghrun([gh, 'api', 'repos/%s/pulls/%s' % (gh_repo, num), '--jq', '.head.sha'], capture_output=True, text=True, timeout=60, check=True).stdout.strip()
             if re.fullmatch(r'[0-9a-f]{40,64}', sha):
                 have = lambda: subprocess.run(['git', '-C', gitdir, 'cat-file', '-e', sha + '^{commit}'], capture_output=True, timeout=60).returncode == 0
                 if not have():
@@ -688,14 +702,38 @@ except OSError as e:
     status_unreadable = True
     print('# warn: %s is unreadable (%s): merged contract rows are unknown: a To Do ticket with a merge on main is withheld, but a done-pending or partially merged In Progress ticket may still be listed as RESUME' % (os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl'), e.strerror or e))
 
-def merged_on_main(key):
-    # True when the main ref carries a commit citing [KEY]; a git read that fails counts as merged (unknown fails closed)
+ref_proves_absence_memo = []
+
+def ref_proves_absence():
+    # An empty `git log --grep` proves a key is absent only from a ref whose history is whole and recent: a shallow clone stops at its
+    # boundary, and a ref last updated more than the 14-day window ago lacks every merge since. Either reads as unknown, never as "no".
+    if not ref_proves_absence_memo:
+        ok = False
+        try:
+            shallow = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'rev-parse', '--is-shallow-repository'], capture_output=True, text=True, timeout=60, check=True).stdout.strip()
+            tip = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'log', '-1', '--format=%ct', os.environ['ND_MAIN_REF']], capture_output=True, text=True, timeout=60, check=True).stdout.strip()
+            ok = shallow == 'false' and time.time() - int(tip) <= 14 * 86400
+        except (OSError, ValueError, subprocess.SubprocessError):
+            ok = False
+        ref_proves_absence_memo.append(ok)
+    return ref_proves_absence_memo[0]
+
+def cited_on_main(key, subject_only=False):
+    # True: the local main ref carries a commit citing [KEY] (in its message, or in its subject only when subject_only: a squash
+    # subject is the PR title). False: it does not, and the ref's history can show that. None: unknown (no such ref, git failed or
+    # timed out, a shallow or stale ref with no match).
     try:
-        r = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'log', os.environ['ND_MAIN_REF'], '--fixed-strings', '--grep=[%s]' % key, '-1', '--format=%h'],
+        r = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'log', os.environ['ND_MAIN_REF'], '--fixed-strings', '--grep=[%s]' % key, '--max-count=50', '--format=%s'],
                            capture_output=True, text=True, timeout=60, check=True)
-        return bool(r.stdout.strip())
+        if any('[%s]' % key in s for s in r.stdout.splitlines()) if subject_only else bool(r.stdout.strip()):
+            return True
+        return False if ref_proves_absence() else None
     except (OSError, subprocess.SubprocessError):
-        return True
+        return None
+
+def merged_on_main(key):
+    # Unknown fails closed in THIS direction: it counts as merged, so a To Do ticket is withheld, never dispatched on a guess.
+    return cited_on_main(key) is not False
 
 def partial_resume(key):
     # a ticket with a merged partial slice is in work: it is a RESUME row naming that slice, never a fresh To Do row
@@ -1059,12 +1097,12 @@ pr_meta = {}  # PR number -> (title, head branch)
 gh = os.environ.get('NEXT_DISPATCH_GH_CMD', 'gh')
 gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
 try:
-    nums = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
+    nums = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
                           capture_output=True, text=True, timeout=60, check=True).stdout.split()
     def pr_files(num):
         # the paginated files API, not `gh pr diff`: that fails with HTTP 406 on a PR over 300 files. A rename holds both names.
         try:
-            files = subprocess.run([gh, 'api', '--paginate', 'repos/%s/pulls/%s/files' % (gh_repo, num), '--jq', '.[] | .filename, (.previous_filename // empty)'],
+            files = ghrun([gh, 'api', '--paginate', 'repos/%s/pulls/%s/files' % (gh_repo, num), '--jq', '.[] | .filename, (.previous_filename // empty)'],
                                    capture_output=True, text=True, timeout=120, check=True).stdout.splitlines()
         except (OSError, subprocess.SubprocessError):
             return None  # this PR's files are unknown; the rest are still read
@@ -1080,7 +1118,7 @@ try:
                 held += [(f, 'open PR %s' % num, False) for f in d if f]  # a diff is files: compared exactly
                 pr_file_map[num] = [f for f in d if f]
     # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
-    for line in subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
+    for line in ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
                                capture_output=True, text=True, timeout=60, check=True).stdout.splitlines():
         cols = line.split('\t')
         if len(cols) >= 3:
@@ -1097,11 +1135,64 @@ except (OSError, subprocess.SubprocessError):
 remainder_cache = {}
 unread_prs = set()
 reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py')  # NEXT_DISPATCH_READER: the test seam for the reader
+
+# A merged PR's remainder, kept in a state file by PR number and ticket key so a run does not read the same merged body from
+# GitHub again (628 `pr view` calls in a 30-minute sample of the fleet). Invalidation rule: an entry is used for
+# NEXT_DISPATCH_BODY_TTL seconds (default 3600) after it was read, then read again; only a remainder that SAID something
+# (`remaining`, `handed-off`) is stored, so the body a chief edits to clear a NEEDS-CHIEF-NOTE row (kind none) and a body gh could not read
+# are asked again on the next run. A chief who edits a body that already holds a remainder is seen within the TTL. NEXT_DISPATCH_BODY_CACHE
+# names the file (`off` disables the cache); a corrupt or unwritable file reads as no cache.
+body_cache_path = os.environ.get('NEXT_DISPATCH_BODY_CACHE') or os.path.join(os.environ.get('HOME') or os.path.expanduser('~'), '.himmel', 'state', 'next-dispatchable', 'merged-pr-remainders.json')
+try:
+    body_ttl = max(0, int(os.environ.get('NEXT_DISPATCH_BODY_TTL', '3600')))
+except ValueError:
+    body_ttl = 3600
+
+def body_cache_load():
+    if body_cache_path == 'off':
+        return {}
+    try:
+        d = json.load(open(body_cache_path, encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+def cached_remainder(pr, key):
+    e = body_cache_load().get('%s:%s' % (pr, key))
+    try:
+        age = time.time() - float(e['at'])
+        kind, handed, text = e['ans']
+        if 0 <= age < body_ttl and kind in ('remaining', 'handed-off') and isinstance(handed, list) and isinstance(text, str):
+            return (kind, [str(h) for h in handed], text)
+    except (KeyError, TypeError, ValueError):
+        pass  # swallow-ok: an entry that cannot be read is no entry
+    return None
+
+def store_remainder(pr, key, ans):
+    if body_cache_path == 'off':
+        return
+    try:
+        d = body_cache_load()
+        now = time.time()
+        d = {k: v for k, v in d.items() if isinstance(v, dict) and isinstance(v.get('at'), (int, float)) and 0 <= now - v['at'] < body_ttl}
+        d['%s:%s' % (pr, key)] = {'at': now, 'ans': [ans[0], list(ans[1]), ans[2]]}
+        os.makedirs(os.path.dirname(body_cache_path), exist_ok=True)
+        tmp = '%s.%d' % (body_cache_path, os.getpid())
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(d, f)
+        os.replace(tmp, body_cache_path)
+    except (OSError, ValueError):
+        pass  # swallow-ok: a cache that cannot be written costs the next run one more read
+
 def remainder_of(pr, key):
     if (pr, key) not in remainder_cache:
         ans = ('none', [], '')
+        hit = cached_remainder(pr, key)
+        if hit is not None:
+            remainder_cache[(pr, key)] = hit
+            return hit
         try:
-            body = subprocess.run([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=60, check=True).stdout
+            body = ghrun([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=60, check=True).stdout
             out = subprocess.run([sys.executable, '-I', reader, key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
             if out[0] == 'remaining' and len(out) == 2:
                 ans = ('remaining', [], out[1])
@@ -1109,6 +1200,8 @@ def remainder_of(pr, key):
                 ans = ('handed-off', out[1].split(', '), out[2])
             elif out[0] != 'none':
                 raise subprocess.SubprocessError('unrecognised reader answer')
+            if ans[0] != 'none':
+                store_remainder(pr, key, ans)
         except (OSError, subprocess.SubprocessError):
             unread_prs.add(pr)
         remainder_cache[(pr, key)] = ans
@@ -1261,7 +1354,7 @@ def branch_states(branch):
     # every PR state (OPEN, MERGED, CLOSED) gh lists for the head branch; None when gh cannot say, or when the list
     # fills its limit (a PR past it could be open)
     try:
-        out = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--head', branch, '--state', 'all', '--limit', str(BRANCH_PR_LIMIT), '--json', 'state', '--jq', '.[].state'],
+        out = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--head', branch, '--state', 'all', '--limit', str(BRANCH_PR_LIMIT), '--json', 'state', '--jq', '.[].state'],
                              capture_output=True, text=True, timeout=60, check=True).stdout.split()
     except (OSError, subprocess.SubprocessError):
         return None  # swallow-ok: a PR state that cannot be read keeps the hold
@@ -1328,7 +1421,15 @@ inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['
              and i['key'] not in worker_keys and i['key'] not in pr_keys]
 if inci_keys and not (pr_unknown or pr_files_unknown or owners_unknown or register_unknown):
     def merged_cites(key):
-        out = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'merged', '--search', key, '--limit', '30', '--json', 'title,headRefName', '--jq', '.[] | [.title, .headRefName] | @tsv'],
+        # A commit on the local main ref citing [KEY] answers "merged" with no GitHub call: this search was the dispatcher's
+        # largest GraphQL cost. Local "no" and local "unknown" (no ref, git failed) are both asked of GitHub, because the
+        # ref may lag a merge made minutes ago. Unknown fails closed in THIS direction: if GitHub cannot answer either, the error
+        # propagates and the run reports `merged PRs unknown` with no IN CI row, so the ticket is never called merged and never dispatched on a guess.
+        # (subject only: the old search read a PR's title and head branch, so a ticket named in another commit's body is not merged by it;
+        # 50 matches that are all body mentions fall through to GitHub, the safe direction)
+        if cited_on_main(key, subject_only=True):
+            return True
+        out = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'merged', '--search', key, '--limit', '30', '--json', 'title,headRefName', '--jq', '.[] | [.title, .headRefName] | @tsv'],
                              capture_output=True, text=True, timeout=60, check=True).stdout
         return key in {k.upper() for k in re.findall(r'[A-Za-z]+-\d+', out)}
     try:
@@ -1459,6 +1560,8 @@ def classify(batch):
     return cls
 
 print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', holds register unknown (unreadable or too slow)' if register_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
+if rate_limited:
+    print('# WARN: GitHub rate limit: gh answered "%s"; the reads it refused are unknown, not empty, so rows may be missing' % rate_limited[0])
 for k, who in resume_held:
     print('RESUME-HELD %s by %s' % (k, who))
 for k, prs in needs_note:

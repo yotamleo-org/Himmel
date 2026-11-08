@@ -73,6 +73,15 @@
 #      as blast=off on the CLEARED line). As in 4e, a branch with no `score`
 #      row, or whose first `score` row predates the gate, is exempt
 #      (reason=missing-blast-radius).
+#   4g. A lane=full marker whose diff adds a code comment needs a `comments`
+#      row (/pr-check step 3.7) stamped with this branch at the clearing head,
+#      or at an earlier head with no comment added since; an `off` row audits as
+#      comments=off. The comments are counted by the HIMMEL_REPO anchor's
+#      scripts/lint/check-history-comments.sh, never the copy beside this script
+#      (an absolute-path run is the branch's own copy), so a branch cannot edit
+#      its counter; an unset or relative HIMMEL_REPO, or a counter or row that
+#      cannot be read, refuses closed. A marker minted before the gate day is exempt
+#      (reason=missing-comment-review).
 #   4d. Every finding stamped with this branch whose effective verdict is
 #      agreed or fixed, at ANY round head, has a variant-sweep record in
 #      <git-common-dir>/cr-class-sweeps/<branch> (written by
@@ -117,7 +126,7 @@
 #              (gate 4), 14 (gate 4b, gate 4c, a malformed ledger, or the 3c
 #              family record), 10 usage, 12 the branch has a recorded round
 #              head but <tip> is not a commit in this repository. Gates 3,
-#              3b, 4d, 4e, 4f and 5 are not part of it.
+#              3b, 4d, 4e, 4f, 4g and 5 are not part of it.
 #   --assume-go  with --check-findings only: judge as the merge will once the
 #              chief's GO exists. The judge-go lookup counts as accepted, so
 #              the gates run at the recorded round head with `fixed` passing;
@@ -153,6 +162,9 @@
 #       Also (4f): a guard or gate diff has no blast-radius row on this
 #       branch (reason=missing-blast-radius), or the diff or ledger could not
 #       be read (reason=blast-radius-unreadable).
+#       Also (4g): a diff adds a code comment and the branch has no usable
+#       comments row (reason=missing-comment-review), or the comment counter,
+#       the diff or a row could not be read (reason=comment-review-unreadable).
 #   15  blocking finding(s) recorded at that SHA — address them, re-run /pr-check
 #   16  the marker is unbound (no endpoint/base recorded — a legacy
 #       format), the marker-bound endpoint head is unreadable/different, a PR
@@ -1752,6 +1764,97 @@ if [ "$marker_lane" = "full" ]; then
         *)
             echo "clear-cr-marker: could not evaluate the blast-radius gate (diff ${marker_base:0:8}...${tip:0:8} or $ledger unreadable) — refusing closed." >&2
             audit "REFUSED reason=blast-radius-unreadable branch=$branch sha=$tip"
+            exit 14 ;;
+    esac
+fi
+
+# ponytail: the row is self-attested, the same trust as `blast`. Upgrade path:
+# run the review as a context-free headless reviewer with a provenance artifact,
+# as claude-floor-review.sh does.
+cmt_count() {
+    local _n _anchor="${HIMMEL_REPO:-}"
+    case "$_anchor" in /*) ;; *) return 1 ;; esac
+    _n=$(bash "$_anchor/scripts/lint/check-history-comments.sh" --range "$1" --tip "$tip" --count-comments) || return 1
+    case "$_n" in ''|*[!0-9]*) return 1 ;; esac
+    printf '%s' "$_n"
+}
+if [ "$marker_lane" = "full" ]; then
+    comments_verdict="error"
+    cmt_rows=$(LEDGER="$ledger" BRANCH="$branch" MARKER_TS="$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$1); print $1; exit}' "$marker")" COMMENTS_GATE_SINCE="2026-11-07T00:00:00Z" node -e '
+      const fs = require("fs"), e = process.env;
+      if (Date.parse(e.MARKER_TS) < Date.parse(e.COMMENTS_GATE_SINCE)) { console.log("exempt"); process.exit(0); }
+      console.log("gate");
+      const rows = fs.existsSync(e.LEDGER) ? fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean) : [];
+      const out = [];
+      for (const l of rows) {
+          let r;
+          try { r = JSON.parse(l); } catch { continue; }
+          if (!r || r.kind !== "comments" || r.branch !== e.BRANCH) continue;
+          const usable = r.status === "ok" ? Number.isInteger(r.count) && r.count >= 0
+              : r.status === "off" && (r.reason === "codex-lane" || r.reason === "agent-not-loaded");
+          if (!usable) continue;
+          const clean = (s) => String(s || "-").replace(/\s+/g, "_").replace(/=/g, ":");
+          out.push(clean(r.head) + " " + r.status + " " + clean(r.reason));
+      }
+      console.log(out.reverse().join("\n"));') || cmt_rows="error"
+    cmt_basis=""
+    case "${cmt_rows%%$'\n'*}" in
+        exempt) comments_verdict="ok" ;;
+        gate)
+            cmt_tip_row="" cmt_earlier=""
+            while IFS=' ' read -r _ch _cs _cr; do
+                [ -n "$_ch" ] || continue
+                case "$_ch" in *[!0-9a-fA-F]*) continue ;; esac
+                if [ "${#_ch}" -ge 7 ] && [ "${tip#"$_ch"}" != "$tip" ]; then
+                    [ -n "$cmt_tip_row" ] || cmt_tip_row="$_cs $_cr"
+                else
+                    cmt_earlier="$cmt_earlier$_ch $_cs $_cr"$'\n'
+                fi
+            done <<< "${cmt_rows#*$'\n'}"
+            if [ -n "$cmt_tip_row" ]; then
+                comments_verdict="ok"
+                case "$cmt_tip_row" in
+                    off\ *) cmt_basis=" comments=off reason=${cmt_tip_row#off }" ;;
+                    *) cmt_basis=" comments=ok" ;;
+                esac
+            elif _cm_mb=$(git merge-base --end-of-options "$marker_base" "$tip") && _cm_n=$(cmt_count "$_cm_mb"); then
+                if [ "$_cm_n" -eq 0 ]; then
+                    comments_verdict="ok"
+                else
+                    comments_verdict="missing"
+                    while IFS=' ' read -r _ch _cs _cr; do
+                        [ -n "$_ch" ] || continue
+                        comments_verdict="error"
+                        _cm_full=$(git rev-parse --verify --quiet "$_ch^{commit}") || continue
+                        git merge-base --is-ancestor "$_cm_full" "$tip" 2>/dev/null || continue
+                        if _cm_n=$(cmt_count "$_cm_full"); then
+                            if [ "$_cm_n" -eq 0 ]; then
+                                comments_verdict="ok"
+                                case "$_cs" in
+                                    off) cmt_basis=" comments=off reason=$_cr" ;;
+                                    *) cmt_basis=" comments=ok" ;;
+                                esac
+                            else
+                                comments_verdict="missing"
+                            fi
+                        fi
+                        break
+                    done <<< "$cmt_earlier"
+                fi
+            fi ;;
+    esac
+    case "$comments_verdict" in
+        ok) clear_basis="${clear_basis:-}$cmt_basis" ;;
+        missing)
+            echo "clear-cr-marker: $branch adds code comments but has no comment-review row for them — the /pr-check step 3.7 review (scripts/cr/pr-check-ref/34-step3-comments.md) did not run. Refusing." >&2
+            echo "  Run the review, then record it: bash scripts/cr/ledger-append.sh comments --head $tip --count <n> --status ok" >&2
+            echo "  To skip it, record why: bash scripts/cr/ledger-append.sh comments --head $tip --status off --reason codex-lane|agent-not-loaded" >&2
+            audit "REFUSED reason=missing-comment-review branch=$branch sha=$tip"
+            exit 14 ;;
+        *)
+            echo "clear-cr-marker: could not evaluate the comment-review gate (the HIMMEL_REPO anchor's comment counter, the diff ${marker_base:0:8}...${tip:0:8}, or a comments row in $ledger is unusable) — refusing closed." >&2
+            echo "  If the branch was rebased, earlier comments rows no longer resolve. Run the review, then record a row at the clearing head: bash scripts/cr/ledger-append.sh comments --head $tip --count <n> --status ok" >&2
+            audit "REFUSED reason=comment-review-unreadable branch=$branch sha=$tip"
             exit 14 ;;
     esac
 fi

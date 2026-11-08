@@ -2056,9 +2056,21 @@ _bwimc_mode_for_operand_set() {
     _BWIMC_MODE="$mode"
 }
 
+# ponytail: the denial rides this hook's text scan, whose shapes are not
+# finite; ceiling: a write shape the scan misses still creates the marker;
+# upgrade path: the doctor WARN for a marker repo with a live worker row.
+_bwimc_worker_session() {
+    local LC_ALL=C
+    [ "${HIMMEL_CONSOLE_LEG:-0}" = "1" ] || return 1
+    [ -n "${HIMMEL_HOLD_KEY:-}" ] && [ -n "${HIMMEL_HOLD_DOC:-}" ] || return 1
+    case "$HIMMEL_HOLD_DOC" in /*) ;; *) return 1 ;; esac
+    [[ "$HIMMEL_HOLD_KEY" =~ ^[A-Za-z][A-Za-z0-9]*-[0-9]+$ ]]
+}
+
 _bwimc_deny() {
     local kind="$1" raw="$2" resolved="$3" repo_root="$4"
-    local why=""
+    local why="" worker=0
+    _bwimc_worker_session && worker=1
     case "$kind" in
         main) why="its repo is on main/master" ;;
         primary-feature) why="its repo is the PRIMARY checkout on a feature branch" ;;
@@ -2076,6 +2088,7 @@ _bwimc_deny() {
         chroot-git) why="it runs a git write behind a chroot (chroot DIR, sudo -R/--chroot) other than /: its -C, --git-dir, --work-tree and GIT_* paths are not mapped into the new root, so its repo cannot be classified (failing closed)" ;;
         unsafe-interp-body) why="an eval/bash -c/sh -c/zsh -c argument contains a write-shaped token whose target cannot be proven to stay outside the primary (failing closed)" ;;
         ast-unresolved) why="the AST engine could not read the command (shfmt missing, a parse error, an unknown node kind or a control byte in a target), so its targets cannot be classified (failing closed)" ;;
+        worker-marker) why="it writes the repo-root .single-writer marker from a worker session, and that marker switches the single-writer barrier and this fence off for the whole repo" ;;
     esac
     {
         echo "⛔ block-write-into-main-checkout: refusing a write-shaped command — $why."
@@ -2095,7 +2108,10 @@ _bwimc_deny() {
         echo "    redirect/tee/sed -i/cp/mv/rm/touch/ln/git-commit surface that guard,"
         echo "    wired only on Edit|Write|MultiEdit|NotebookEdit, cannot see."
         echo "      - run the command from a type/slug worktree, or"
-        if [ -n "$repo_root" ]; then
+        if [ "$worker" = 1 ]; then
+            echo "      - ask your chief by SendMessage if this repo should commit to main by design"
+            echo "        (a worker session cannot create the .single-writer marker), or"
+        elif [ -n "$repo_root" ]; then
             echo "      - touch \"$repo_root/.single-writer\" if this repo commits to main by design, or"
         fi
         echo "      - set EDIT_ON_MAIN_OK=1 in the LAUNCHING shell (a per-call prefix cannot"
@@ -2139,7 +2155,8 @@ _bwimc_check_canon() {
             # root-level basename; a subdirectory entry or a near-miss name
             # (.single-writer.bak, .single-writerx) still denies.
             if [ -n "$repo_root" ] && [ "$canon" = "$repo_root/.single-writer" ]; then
-                return 0
+                _bwimc_worker_session || return 0
+                _bwimc_deny "worker-marker" "$raw" "$canon" "$repo_root"
             fi
             if [ "$vrc" = 1 ]; then
                 _bwimc_deny "main" "$raw" "$canon" "$repo_root"

@@ -43,6 +43,7 @@ cat > "$STUB_DIR/claude" <<'STUB'
 if [ "$1" = "plugin" ] && [ "$2" = "marketplace" ] && [ "$3" = "add" ]; then exit 0; fi
 if [ "$1" = "plugin" ] && [ "$2" = "install" ]; then
   if [ -n "${STUB_INSTALL_FAIL:-}" ]; then echo "error: failed to clone marketplace: network unreachable" >&2; exit 1; fi
+  if [ -n "${STUB_INSTALL_SOFTFAIL:-}" ]; then echo "error: git-subdir fetch failed: No space left on device" >&2; exit 0; fi
   if [ -n "${STUB_INSTALL_BENIGN:-}" ]; then echo "Plugin already installed"; exit 1; fi
   exit 0
 fi
@@ -114,6 +115,22 @@ set -e
 [ "$rc1" -ne 0 ] || fail "real failure should exit non-zero (got $rc1)"
 grepq "$out1" "step FAILED"            || fail "missing loud 'step FAILED' marker"
 grepq "$out1" "network unreachable"    || fail "captured CLI error text not surfaced"
+# the "not present after install" summary carries the failing plugin's install error too
+summary1="${out1#*not present after install}"
+grepq "$summary1" "install output for foo@mp"   || fail "summary names no install output for the missing plugin"
+grepq "$summary1" "network unreachable"         || fail "summary lacks the failing plugin's install error"
+
+# ── Case 1b: install exits 0 yet the plugin is absent (a full disk, a git-subdir fetch):
+#            the CLI said something and the summary must repeat it.
+set +e
+out1b=$(PATH="$STUB_DIR:$PATH" STUB_INSTALL_SOFTFAIL=1 STUB_PRESENT="" \
+        bash "$SUT" --scope user --template "$TMP/template.json" --settings "$SETTINGS" 2>&1)
+rc1b=$?
+set -e
+[ "$rc1b" -ne 0 ] || fail "an absent plugin should exit non-zero (got $rc1b)"
+summary1b="${out1b#*not present after install}"
+grepq "$summary1b" "No space left on device"    || fail "exit-0 install error not shown in the summary: $out1b"
+echo "ok: a missing plugin's install error is printed in the summary"
 
 # ── Case 2: benign already-installed + present in list → quiet + exit 0
 set +e

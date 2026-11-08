@@ -9,7 +9,7 @@ deny-guard x lane table, and `scripts/parity/test-ws5-invariants.sh` checks
 that the gemini / copilot / cursor rows stay `deferred`.
 
 > **Note:** this index records compatibility/parity, not current routing —
-> dormancy status for impl lanes (claudex is live; hermes-oneshot and codex-exec are dormant; the GLM lane was removed, HIMMEL-7481) lives in `scripts/lanes/lanes.json` /
+> dormancy status for impl lanes (claudex is live; hermes-oneshot and codex-exec are dormant; the GLM lane was removed) lives in `scripts/lanes/lanes.json` /
 > [`lane-calibration.md`](lane-calibration.md), not here.
 
 ## Doctrine
@@ -38,8 +38,8 @@ not a trust ruling.
 separately: the two Claude Code paths (the backend swapped; the native
 PreToolUse hooks) and a hermes path (fenced by `parity_guard.py`, since the CC
 hooks do not load under hermes). Its dispatcher, launcher and registry row are
-deleted (HIMMEL-7909, HIMMEL-7481), as is its classifier tail in the worker write
-fence (HIMMEL-7907), so the two Claude Code paths have no row or column below.
+deleted, as is its classifier tail in the worker write
+fence, so the two Claude Code paths have no row or column below.
 `parity_guard.py` still refuses that engine as untrusted.
 
 ## Invariant guard set
@@ -76,7 +76,7 @@ git-hook gates):
 
 Write-authority is the load-bearing parity dimension, but
 `block-worker-write-fence.sh` is not one of the six deny-guards above. Its GLM
-push / network / `mcp__*` classifier tail was deleted (HIMMEL-7907); it now
+push / network / `mcp__*` classifier tail was deleted; it now
 holds only the pin-dir and anchor-tamper fences. It is recorded here as its own
 dimension row so every write-fence cell sits in a real row (no home-less cell).
 

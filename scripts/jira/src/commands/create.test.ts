@@ -571,13 +571,55 @@ describe('create --residual-of', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  it('polish goes to the backlog: no fixVersion, labels residual, depth 1, class', async () => {
+  it('HIMMEL-9498 DoD 1: a polish residual files nothing and exits with the message', async () => {
     play();
-    await file(...RES, '--fu-class', 'polish');
+    await expect(file(...RES, '--fu-class', 'polish')).rejects.toThrow(/polish residual is not filed.*note it in the PR body.*jira link <PR ticket> <plain ticket>/s);
+    expect(created()).toBeUndefined();
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
+  });
+
+  it('HIMMEL-9498 DoD 1: a polish residual is refused with a gate, a duplicate and --fu-override too', async () => {
+    play({ dup: 'HIMMEL-31' });
+    await expect(file(...RES, '--fu-class', 'polish', '--gate', 'receipt')).rejects.toThrow(/polish residual is not filed/);
+    await expect(file(...RES, '--fu-class', 'polish', '--fu-override', 'decision-762')).rejects.toThrow(/polish residual is not filed/);
+    await expect(file(...RES, '--fu-class', 'polish', '--area', 'cr scripts')).rejects.toThrow(/polish residual is not filed/);
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
+  });
+
+  it('HIMMEL-9498 DoD 2: a hardening residual with no override files nothing and names the flag', async () => {
+    play();
+    await expect(file(...RES, '--fu-class', 'hardening', '--fu-why', 'no-check')).rejects.toThrow(/--fu-override/);
+    expect(created()).toBeUndefined();
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
+  });
+
+  it('HIMMEL-9498 DoD 2: a hardening residual with an unnamed override is refused too', async () => {
+    play();
+    for (const bad of ['', 'x', 'decision 762', 'because', 'because-i-said-so', 'decision-abc', 'decision-762x', 'judge-1', 'DU-j3603', 'du-j3603-4']) {
+      await expect(file(...RES, '--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', bad)).rejects.toThrow(/--fu-override/);
+    }
+    expect(created()).toBeUndefined();
+  });
+
+  it.each(['decision-762', 'DU-j3603-4'])('HIMMEL-9498 DoD 2: a hardening residual with override %s files and prints the override into the ticket', async (id) => {
+    play();
+    await file(...RES, '--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', id);
     const f = created()!;
-    expect(f['fixVersions']).toBeUndefined();
-    expect(f['labels']).toEqual(expect.arrayContaining(['residual', 'residual-depth-1', 'class-shell-quoting']));
-    expect(f['labels']).not.toContain('residual-displaced');
+    expect(f['labels']).toEqual(expect.arrayContaining(['residual', 'fu-hardening', 'fu-why-no-check', 'fu-override']));
+    expect(JSON.stringify(f['description'])).toContain(`fu-override: ${id}`);
+  });
+
+  it('HIMMEL-9498 DoD 3: an escape residual files as before, and --fu-override does not apply to it', async () => {
+    play();
+    await file(...RES, '--fu-class', 'escape');
+    const f = created()!;
+    expect(f['labels']).toEqual(expect.arrayContaining(['residual', 'fu-escape']));
+    expect(f['labels']).not.toContain('fu-override');
+    expect(JSON.stringify(f['description'])).not.toContain('fu-override');
+    vi.clearAllMocks();
+    play();
+    await expect(file(...RES, '--fu-class', 'escape', '--fu-override', 'decision-762')).rejects.toThrow(/--fu-override applies only to --fu-class hardening/);
+    expect(created()).toBeUndefined();
   });
 
   it('RED b: escape steps down when a full version holds only started residuals, and stamps affectsVersion', async () => {
@@ -588,7 +630,7 @@ describe('create --residual-of', () => {
     expect(f['versions']).toEqual([{ name: 'v1.1.3' }]);
   });
 
-  const HARD = ['--fu-class', 'hardening', '--fu-why', 'no-check'];
+  const HARD = ['--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', 'decision-762'];
 
   it('hardening under the budget lands in its placed version', async () => {
     play({ open: 14 });
@@ -632,7 +674,7 @@ describe('create --residual-of', () => {
 
   it('a new residual is linked to its parent', async () => {
     play();
-    await file(...RES, '--fu-class', 'polish');
+    await file(...RES, '--fu-class', 'escape');
     const link = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issueLink');
     expect(JSON.stringify(link![2])).toMatch(/HIMMEL-77.*HIMMEL-50|HIMMEL-50.*HIMMEL-77/s);
   });
@@ -647,7 +689,7 @@ describe('create --residual-of', () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
       throw new Error('exit');
     }) as never);
-    await expect(file(...RES, '--fu-class', 'polish')).rejects.toThrow('exit');
+    await expect(file(...RES, '--fu-class', 'escape')).rejects.toThrow('exit');
     expect(exit).toHaveBeenCalledWith(1);
     const err = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n');
     expect(err).toMatch(/HIMMEL-77 but linking to HIMMEL-50 failed: link boom/);
@@ -677,7 +719,7 @@ describe('create --residual-of', () => {
     await expect(file('--residual-of', 'HIMMEL-50', '--class', 'x')).rejects.toThrow(/--fu-class/);
     await expect(file('--residual-of', 'HIMMEL-50', '--fu-class', 'polish', '--class', '')).rejects.toThrow(/--class/);
     await expect(file(...RES, '--fu-class', 'nit')).rejects.toThrow(/polish, escape, hardening/);
-    await expect(file(...RES, '--fu-class', 'polish', '--fix-version', 'v1.1.3')).rejects.toThrow(/--fix-version/);
+    await expect(file(...RES, '--fu-class', 'escape', '--fix-version', 'v1.1.3')).rejects.toThrow(/--fix-version/);
     expect(created()).toBeUndefined();
   });
 });
@@ -727,7 +769,7 @@ describe('create --residual-of placement', () => {
     return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
   };
   const lands = () => (created()!['fixVersions'] as { name: string }[] | undefined)?.map((v) => v.name);
-  const WHY = ['--fu-why', 'no-check'];
+  const WHY = ['--fu-why', 'no-check', '--fu-override', 'decision-762'];
   const HARD = ['--fu-class', 'hardening', ...WHY];
 
   beforeEach(() => {
@@ -753,10 +795,10 @@ describe('create --residual-of placement', () => {
     expect(lands()).toBeUndefined();
   });
 
-  it('row b: polish goes to the backlog even with a gate', async () => {
+  it('row b: polish is refused even with a gate and a frozen current', async () => {
     play({ frozen: true });
-    await file('--fu-class', 'polish', '--gate', 'receipt');
-    expect(lands()).toBeUndefined();
+    await expect(file('--fu-class', 'polish', '--gate', 'receipt')).rejects.toThrow(/polish residual is not filed/);
+    expect(created()).toBeUndefined();
   });
 
   it('row c: a gate files into the frozen current and records the admission', async () => {
@@ -837,12 +879,12 @@ describe('create --residual-of placement', () => {
 
   it('stamps fu-<class> on every residual and fu-why-<code> on hardening only', async () => {
     play();
-    await file('--fu-class', 'polish');
-    expect(created()!['labels']).toContain('fu-polish');
+    await file('--fu-class', 'escape');
+    expect(created()!['labels']).toContain('fu-escape');
     expect(created()!['labels']).not.toEqual(expect.arrayContaining([expect.stringMatching(/^fu-why-/)]));
     vi.clearAllMocks();
     play();
-    await file('--fu-class', 'hardening', '--fu-why', 'silent-rot');
+    await file('--fu-class', 'hardening', '--fu-why', 'silent-rot', '--fu-override', 'decision-762');
     expect(created()!['labels']).toEqual(expect.arrayContaining(['fu-hardening', 'fu-why-silent-rot']));
   });
 
@@ -964,7 +1006,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
 
   it.each(['critical', 'regression', 'must:decision-137', 'receipt'])('RED a: gate %s beats class and priority and is persisted', async (gate) => {
     residents = residents.map((r) => residual(r.key, ['residual', 'fu-escape'], 'To Do', 'Highest'));
-    await file('--fu-class', 'hardening', '--fu-why', 'no-check', '--gate', gate, '--priority', 'Lowest');
+    await file('--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', 'decision-762', '--gate', gate, '--priority', 'Lowest');
     expect(created().labels).toContain(`gate-${gate.split(':')[0]}`);
     expect(mockRequest.mock.calls.find((c) => c[0] === 'PUT')?.[1]).toBe('/issue/HIMMEL-900');
   });
@@ -1040,7 +1082,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
 
   it.each(['--blocks', '--split-from'])('RED b: %s inheritance does not put a competed newcomer back into the full version', async (relation) => {
     residents = residents.map((r) => residual(r.key, ['residual', 'fu-escape']));
-    await file('--fu-class', 'hardening', '--fu-why', 'no-check', relation, 'HIMMEL-50');
+    await file('--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', 'decision-762', relation, 'HIMMEL-50');
     expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
     expect(created().labels).toContain('residual-displaced');
     expect(console.error).toHaveBeenCalledWith('jira: residual routed to v1.1.4');
@@ -1074,7 +1116,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
 
   it('RED b: higher-ranked and started residents keep their slots; newcomer steps down labelled', async () => {
     residents = residents.map((r, i) => residual(r.key, ['residual', 'fu-escape'], i % 2 ? 'In Progress' : 'To Do', 'Highest'));
-    await file('--fu-class', 'hardening', '--fu-why', 'no-check', '--priority', 'Medium');
+    await file('--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', 'decision-762', '--priority', 'Medium');
     expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
     expect(created().labels).toContain('residual-displaced');
     expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT')).toBe(false);
@@ -1933,7 +1975,7 @@ describe('create — blocker version placement', () => {
   });
 
   it('a residual that inherits its blocker version names create-residual', async () => {
-    await file('--residual-of', 'HIMMEL-1620', '--fu-class', 'polish', '--blocks', 'HIMMEL-6575');
+    await file('--residual-of', 'HIMMEL-1620', '--fu-class', 'escape', '--blocks', 'HIMMEL-6575');
     expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
     expect(postWriter()).toBe('create-residual');
   });
@@ -2033,7 +2075,7 @@ describe('create — blocker version placement', () => {
   });
 
   it.each(['--blocks', '--split-from'])('reports the inherited residual destination for %s', async (relation) => {
-    await file('--residual-of', 'HIMMEL-3', '--fu-class', 'polish', '--class', 'routing', relation, 'HIMMEL-1620');
+    await file('--residual-of', 'HIMMEL-3', '--fu-class', 'escape', '--class', 'routing', relation, 'HIMMEL-1620');
     expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
     expect(console.error).toHaveBeenCalledWith('jira: residual routed to v1.1.3');
     expect(console.error).not.toHaveBeenCalledWith('jira: residual routed to the backlog');

@@ -34,7 +34,7 @@ on denial) and adds the chief step that ruling lacked.
 
 **Claudex PRs: the chief merges.** A claudex worker's brief ends its Ship step
 at `READY <pr> <head> GREEN` and never runs `merge-on-green.sh` (its auto-mode
-classifier refuses merge-path actions, HIMMEL-4097). On that READY run, from
+classifier refuses merge-path actions). On that READY run, from
 the primary checkout and in this order: `bash scripts/handover/chief-kit/ready-check.sh <pr> <head>`, the
 judge or trust review the PR needs, then
 `bash scripts/handover/chief-kit/go.sh --contract yes|no [--trust-reviewed <qid>] <pr> <head>`, then
@@ -55,15 +55,15 @@ prints the worker message as `GO <pr> <head> - merge with: bash <merge script>
 a bare GO run, give the worker the path it printed as its `--go` argument. A chief worker's
 `merge-on-green.sh` exits 17 without `--go`, or with the file of another PR or
 head, and prints the verified GO evidence, so the merge command shows the
-review it relies on (HIMMEL-7165: a merge with no visible review was denied as
+review it relies on (a merge with no visible review was denied as
 Merge Without Review, intermittently). A `--go` merge that resolves no open PR
-merged nothing and exits 27, never a silent 0 (HIMMEL-8918). If the classifier still denies a
+merged nothing and exits 27, never a silent 0. If the classifier still denies a
 reviewed merge, the worker sends `BLOCKED`; do not run the denied merge for it
 (that launders the denial) and do not loosen any rule. The fallback is the
 claudex path above, tracked as a follow-up.
 
 **A red main and the merge gate.** A red main no longer stops a PR whose own CI
-passed (HIMMEL-8675): `merge-on-green.sh` prints one `MAIN-RED advisory:` line,
+passed: `merge-on-green.sh` prints one `MAIN-RED advisory:` line,
 audits `main-red-advisory ... via=advisory run=<red run id>` with the class and
 failed suites, and merges. A run that is being re-run counts by its previous
 attempt. It prints `main-red: <class> (<suites>)` on every red it
@@ -87,7 +87,7 @@ you lift a HOLD, and do not dispatch a second one.
 `python3 scripts/handover/chief-kit/chain-graph.py --open --json > <graph>`, then
 `bash scripts/handover/chief-kit/chain-plan.sh --graph <graph> --ready <pr>,<pr>`
 (`--ready`: the PRs green and GO-able now). It prints `ORDER`, `HOLD <pr> for <pr>`
-and `MERGE-FORWARD <pr> after <pr>` lines (kinds: HIMMEL-7701 design § 2).
+and `MERGE-FORWARD <pr> after <pr>` lines (kinds: the chain graph design § 2).
 - **S1 and independent:** no order; each PR merges as it goes green and gets its GO.
 - **H1 / H2 (`HOLD`):** the successor waits for its predecessor's merge.
 - **S2 (`MERGE-FORWARD`):** the first mergeable PR of the pair merges first, never
@@ -149,7 +149,7 @@ that blocks the pull or an unreadable `origin` still exits 21: fix the primary
 checkout by hand.
 
 A PR that changes a plugin bumps that plugin's `plugin.json` version above
-`main`'s (HIMMEL-8368), so `himmel-update` refreshes the station at once;
+`main`'s, so `himmel-update` refreshes the station at once;
 `check-plugin-drift.sh --bump-required`, ready-check item 9 and the
 merge-on-green recheck refuse a plugin change without the bump, and a bump with
 no other change in that plugin. Two PRs bumping one plugin from the same base

@@ -63,6 +63,7 @@ DRY_RUN=0
 RESIDUAL_OF=""
 FU_CLASS="polish"
 FU_WHY=""
+FU_OVERRIDE=""
 CR_CLASS=""
 SEVERITIES_REGEX='NIT|LOW|SUGGESTION|IMPROVEMENT|DEFERRED'
 
@@ -81,9 +82,13 @@ Optional:
   --residual-of <KEY>   Jira only: the PR's ticket the residual hangs off (default: the
                         ticket key in the branch name). The Jira ticket is filed by
                         `jira create --residual-of`, which picks version and depth.
-  --fu-class <c>        Jira only: polish (default) | escape | hardening.
+  --fu-class <c>        Jira only: polish (default) | escape | hardening. Polish is not filed
+                        (decisions 746, 762): the batch is printed for the PR body instead.
   --fu-why <code>       Jira only: required with --fu-class hardening (and only then):
                         unseen-failure | no-check | vacuous-check | no-recovery | silent-rot.
+  --fu-override <id>    Jira only: required with --fu-class hardening, a judge verdict id of the
+                        form XX-jNNNN-N or decision-N (an unverified audit label, shape only);
+                        hardening is filed only with a named override.
   --class <id>          Jira only: CR class id (default: the one class the CR ledger holds
                         for these findings on this branch, else unclassified).
 
@@ -105,6 +110,7 @@ while [ $# -gt 0 ]; do
         --residual-of) RESIDUAL_OF="${2:-}"; shift 2 ;;
         --fu-class) FU_CLASS="${2:-}"; shift 2 ;;
         --fu-why)   FU_WHY="${2:-}"; shift 2 ;;
+        --fu-override) FU_OVERRIDE="${2:-}"; shift 2 ;;
         --class)   CR_CLASS="${2:-}"; shift 2 ;;
         -h|--help)  usage; exit 0 ;;
         *)          echo "ERR file-deferred-issues: unknown arg: $1" >&2; usage >&2; exit 1 ;;
@@ -129,8 +135,17 @@ if [ "$FU_CLASS" = "hardening" ]; then
             exit 1
             ;;
     esac
+    # Decisions 746, 762: hardening is filed only with a named override.
+    if ! [[ $FU_OVERRIDE =~ ^(decision-[0-9]+|[A-Z]{2}-j[0-9]+-[0-9]+)$ ]]; then
+        echo "ERR file-deferred-issues: --fu-class hardening requires --fu-override <judge verdict id of the form XX-jNNNN-N|decision-N> (got: ${FU_OVERRIDE:-none}); the id is printed into the ticket and not verified; nothing filed" >&2
+        exit 1
+    fi
+    FU_WHY_ARGS+=(--fu-override "$FU_OVERRIDE")
 elif [ -n "$FU_WHY" ]; then
     echo "ERR file-deferred-issues: --fu-why applies only to --fu-class hardening" >&2
+    exit 1
+elif [ -n "$FU_OVERRIDE" ]; then
+    echo "ERR file-deferred-issues: --fu-override applies only to --fu-class hardening" >&2
     exit 1
 fi
 
@@ -376,6 +391,15 @@ if [ "$TRACKER_MODE" = jira ]; then
         node "$(dirname "$common")/scripts/jira/dist/index.js" "$@"
     }
     jira_title="[CR PR #${PR_NUMBER}] Deferred review findings (${batch_count})"
+
+    # Polish is not filed (decisions 746, 762): the verb would refuse it,
+    # so print the batch for the PR body and succeed, as the none path does.
+    if [ "$FU_CLASS" = polish ]; then
+        echo "file-deferred-issues: polish is not filed (decisions 746, 762) — nothing filed. Note these ${batch_count} finding(s) in the PR body, or file a plain ticket if someone will really work them (batch ${batch_short}):"
+        printf '%s\n' "$batch_list"
+        echo "file-deferred-issues: summary — 0 filed, 0 duplicates, 0 dry-run, 0 failed, 0 dedupe-check-failed"
+        exit 0
+    fi
 
     # Dedupe — fail-closed. A lookup error must NOT file (a transient failure
     # would otherwise duplicate the ticket) and must NOT fall back to GitHub.

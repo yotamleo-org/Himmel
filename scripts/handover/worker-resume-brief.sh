@@ -53,7 +53,9 @@
 # branch head SHA + its subject, and the dirty paths, plus a placeholder for
 # the verbatim operator block and the ordered remaining steps (neither is
 # git-recoverable). Appends (never rewrites/truncates) a
-# "## RESUME BRIEF (generated ... )" section to the doc.
+# "## RESUME BRIEF (generated ... )" section to the doc. The brief ends with a
+# "## Results (newest at the bottom)" heading (so append-results.sh accepts a RESUME
+# doc written from it) unless it is appended to a doc that already has one.
 #
 # EXIT CODES: 0 success, 1 usage/IO error, 2 branch could not be resolved.
 set -uo pipefail
@@ -354,6 +356,9 @@ _lrb_main() {
     local prior_note=""
     grep -q '^## RESUME BRIEF' "$worker_doc" 2>/dev/null && prior_note="(a previous RESUME BRIEF section already exists in this doc -- this is a new one appended below it)"
 
+    local results_heading=1
+    [ "$dry_run" -eq 0 ] && grep -qE '^## Results([[:space:]]|$)' "$worker_doc" 2>/dev/null && results_heading=0
+
     local brief
     brief=$(
         printf '\n## RESUME BRIEF (generated %s by worker-resume-brief.sh)\n\n' "$(_lrb_now_iso)"
@@ -422,6 +427,7 @@ _lrb_main() {
         printf -- '- [ ] (paste the operator'"'"'s request verbatim here -- do not paraphrase)\n'
         printf '\n**Remaining steps (fill in -- NOT recoverable from git):**\n\n'
         printf -- '- [ ] (fill from the mission doc'"'"'s step list)\n'
+        [ "$results_heading" -eq 0 ] || printf '\n## Results (newest at the bottom)\n'
     )
 
     # A failed WRITE must never be reported as success --

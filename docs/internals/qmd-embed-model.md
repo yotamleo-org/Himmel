@@ -5,7 +5,7 @@ The embed model is a **per-machine option**, and the model a machine runs is
 `bash scripts/luna/qmd-embed-model.sh check` (or `show`) to read the configured
 model; the SessionStart qmd advisory prints it as `embed-model=`. The station
 embeds with `openai:qwen/qwen3-embedding-8b` on **OpenRouter** (operator ruling
-2026-10-15, HIMMEL-5756/5712), so its documents and queries leave the machine
+2026-10-15), so its documents and queries leave the machine
 under the egress matrix.
 
 Without a config, qmd embeds with **embeddinggemma-300M**. **Qwen3-Embedding-0.6B**

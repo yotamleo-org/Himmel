@@ -3,7 +3,7 @@ name: release-manager
 description: "Rule version intake, reversion, discharge; status, burn-down, READY."
 ---
 
-# release-manager — every placement into a release is a reasoned ruling (HIMMEL-6796)
+# release-manager — every placement into a release is a reasoned ruling
 
 For the release manager only (`HIMMEL_RELEASE_MANAGER=1`). Requests are ruled
 by the on-demand batch `jira release rm-run <R>`, which reads this skill as its

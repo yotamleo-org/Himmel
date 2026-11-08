@@ -91,7 +91,7 @@ test("--read-only: GET and HEAD still work and GET /api/mode says readOnly", asy
 });
 
 // every GET route that reads the config or the fleet; a poll that records state (the shift poll, the cached feed) is among them
-const GET_ROUTES = ["/api/feed", "/api/projects", "/api/bank", "/api/board", "/api/fleet-cap", "/api/health", "/api/mode", "/api/phase-stats", "/api/report",
+const GET_ROUTES = ["/api/feed", "/api/projects", "/api/bank", "/api/board", "/api/cost", "/api/fleet-cap", "/api/health", "/api/mode", "/api/phase-stats", "/api/report",
   "/api/reports", "/api/report-settings", "/api/reviewers", "/api/review-gate", "/api/roadmap", "/api/rollup", "/api/setup", "/api/shift", "/api/sources",
   "/api/tool-health", "/api/tool-inventory", "/api/vm"];
 

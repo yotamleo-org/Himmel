@@ -10,7 +10,7 @@ Complete checklist for getting a new machine to full working state.
 | Tier | Platforms | What it promises |
 |---|---|---|
 | **Supported** | Linux, macOS | Linux is CI-gated on every PR (required check) — [green `bun-suites` runs on `main`](https://github.com/yotamleo-org/Himmel/actions/workflows/ci.yml?query=branch%3Amain); adopter round trip verified on both. macOS CI runs on the nightly only (not a per-PR required check); its nightly is green — [macos-cadence nightly runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule) (8/8 shards, 0 red suites), with the [`macos-cadence`](../../.github/workflows/macos-cadence.yml) workflow as the ongoing check. |
-| **Not supported** | Windows, WSL included | Dropped (HIMMEL-5729). |
+| **Not supported** | Windows, WSL included | Dropped. |
 
 **Install channels:** release tarball (`himmel-<version>-linux.tar.gz` + `.sha256`, Linux): **supported**, steps in the [README](../../README.md#quickstart); `git clone` + `himmelctl install`: supported; plugin marketplace (`marketplace/plugins/*`): supported, through the Claude Code plugin marketplace (`claude plugin install/update/uninstall`), not `himmelctl`; AUR: **landed** (recipe in [`packaging/aur/`](../../packaging/aur/)); brew: not supported, reopens only if a shared macOS/Linux tap becomes worthwhile; nix / deb / rpm: not supported, reopen on user-driven demand. The tarball's fresh-guest run is green.
 
@@ -440,7 +440,7 @@ On a new machine, put behaviour and policy settings in `~/.himmel`, not
   ([template](himmel-config.example.json)).
 - **`.env`** keeps the secrets (`JIRA_API_TOKEN`, provider
   keys, Telegram keys) and any key not yet classified as config, until the
-  keyring work (HIMMEL-7147, HIMMEL-7576) is complete. Never empty it.
+  keyring work is complete. Never empty it.
 
 A machine set up from an older `.env` moves its keys with the update's
 `.env` migration. When `.env` and `~/.himmel` hold different values for a key,
@@ -1220,7 +1220,7 @@ touch ~/Documents/salus/.salus
 
 A PHI root without a marker can instead be listed, one absolute path per line,
 in `~/.config/claude-glm/phi-roots` (the harness-wide PHI config directory; the
-name outlived the GLM lane, HIMMEL-7898) or `~/.config/claude-codex/phi-roots`;
+name outlived the GLM lane) or `~/.config/claude-codex/phi-roots`;
 the launcher reads both.
 
 ### 4e. qmd search bootstrap (optional)
@@ -1324,7 +1324,7 @@ Hooks: `gitleaks` (secrets scan) + standard hooks. Luna-specific rules live in `
 
 > Vault not at `~/Documents/luna`, or want to route a repo's session notes to a different vault? Point the end-session-wiki capture at it; see [Choosing the target vault](../luna/end-session-wiki.md#choosing-the-target-vault) (and §7 below).
 
-### 5a. Optional — Obsidian Web Clipper templates ([Jira LUNA-2](https://yotamleo.atlassian.net/browse/LUNA-2))
+### 5a. Optional — Obsidian Web Clipper templates
 
 If you'll be clipping web pages into Luna (X posts, articles, Reddit threads, newsletters, YouTube videos), install the Obsidian Web Clipper Chrome extension + drop in the 6 pre-built JSON templates that ship with Luna. **Skip if you only want to use Luna for native notes.**
 
@@ -1347,7 +1347,7 @@ Install:
 
 The drag-and-drop is the entire install. Trigger tables + post-install tuning live in luna at `_Templates/Web-Clipper/import/README.md`; the *why* behind each section lives in luna at `30-Resources/Tech/Obsidian Web Clipper Templates.md` (both in the luna repo, not linkable from himmel).
 
-Triage of clipped notes (action items / labels / Related Notes hygiene) is implemented as the **`obsidian-triage`** plugin shipped from himmel's marketplace; see §6 below for install. Ticket: [LUNA-3](https://yotamleo.atlassian.net/browse/LUNA-3); handover tracked in the operator's private handover repo.
+Triage of clipped notes (action items / labels / Related Notes hygiene) is implemented as the **`obsidian-triage`** plugin shipped from himmel's marketplace; see §6 below for install. The handover is tracked in the operator's private handover repo.
 
 ---
 
@@ -1360,7 +1360,7 @@ Plugins live at `~/.claude/plugins/`. Different install methods per plugin: read
 | Plugin | Source | Install method | Why |
 |--------|--------|----------------|-----|
 | `handover` | himmel marketplace | `/plugin install` after adding himmel marketplace | Handover doc workflows for cross-session continuity |
-| `obsidian-triage` (LUNA-3) | himmel marketplace | `/plugin install` after adding himmel marketplace | Autonomous triage of Web Clipper output: `/triage-clips` + `/synthesize-clips`. Required only if you set up the Web Clipper templates in §5a |
+| `obsidian-triage` | himmel marketplace | `/plugin install` after adding himmel marketplace | Autonomous triage of Web Clipper output: `/triage-clips` + `/synthesize-clips`. Required only if you set up the Web Clipper templates in §5a |
 | `obsidian` (Steph Ango's skills) | himmel marketplace (sources `kepano/obsidian-skills`, SHA-pinned) | `/plugin install` after adding himmel marketplace | `obsidian-markdown`, `obsidian-bases`, `json-canvas`, `obsidian-cli`, `defuddle`. `obsidian-triage` can use `obsidian-markdown` for proper OFM when editing clipped notes (recommended, not required — fallback documented in the command body) |
 | `claude-obsidian` | himmel marketplace (sources upstream `AgriciDaniel/claude-obsidian`, tag-pinned) | `/plugin install` after adding himmel marketplace | Wiki query, save, ingest, lint, autoresearch. Companion to `obsidian-triage` — `wiki-query` optionally powers richer Related Notes inference |
 
@@ -1540,7 +1540,7 @@ Turn any of these back on with one command
 > mechanism the on-demand tier's escape hatch above relies on;
 > it is not floor-specific.
 
-#### `security-guidance` — recommended OFF; **operator decision pending**
+#### `security-guidance` — recommended OFF
 
 `security-guidance@claude-plugins-official` runs an **LLM diff review at the end
 of every turn**, an **agentic commit review on every `git commit`**, and ~9 hooks
@@ -1554,19 +1554,19 @@ on, and adding process spawns to the pool that a kernel-handle
 leak was traced to.
 
 **Adopter default: OFF.** `docs/setup/settings-template.json` and the `user`
-profile in `scripts/lanes/plugin-profiles.json` both ship it `false` as of
-this change; no adopter or dispatched lane enables it.
+profile in `scripts/lanes/plugin-profiles.json` both ship it `false`; no
+adopter or dispatched lane enables it.
 
-**Operator box: decision pending.** It is still ENABLED on the operator machine
-(user scope, Claude + Codex). The recommendation is to disable it:
+**Already on?** The default does not change a user-scope install: a machine
+that enabled it earlier (user scope, Claude + Codex) keeps it on until you
+disable it:
 
 ```bash
 claude plugin disable security-guidance@claude-plugins-official
 ```
 
-But that is a user-scope change the operator applies, so that change
-deliberately did **not** flip it. Re-enable per-session or per-repo instead if
-you ever want the per-turn review back.
+Re-enable per-session or per-repo instead if you ever want the per-turn review
+back.
 
 ### Install sequence
 
@@ -1734,7 +1734,7 @@ see `scripts/lib/graphify-bin.sh`.)
 The install exposes two binaries: `graphify` (the CLI) and `graphify-mcp`
 (the MCP server). The CLI (`graphify query|explain|path`, `worker-graph.sh`) is the
 supported path and what agents use. **The MCP server is on demand, not
-default** (HIMMEL-7177): `setup.sh --with-graphify` (and `adopt.sh
+default**: `setup.sh --with-graphify` (and `adopt.sh
 --with-graphify` at `user`/`local` scope) write the absolute `graphify-mcp` path
 into the on-demand registry `~/.config/himmel/mcp-on-demand.json` (override
 `HIMMEL_MCP_ONDEMAND_FILE`) and never into `~/.claude.json`, so a normal
@@ -1761,7 +1761,7 @@ graphify section in `CLAUDE.md`.
 
 Configure in Claude Code settings (`~/.claude/settings.json`):
 
-- **obsidian-vault** (on demand, HIMMEL-7176): `uvx mcp-obsidian` pointing to the Luna vault path. Put its spec in `~/.config/himmel/mcp-on-demand.json` (`{"mcpServers":{"obsidian-vault":{...}}}`, same shape as `~/.claude.json`), **not** in `~/.claude.json`, which every session loads. Launch with `node scripts/mcp/build-mcp-profiles.mjs`, then `claude --strict-mcp-config --mcp-config .claude/mcp-profiles/local.vault.json`. The Obsidian Local REST API plugin stays installed either way: the end-session-wiki hook writes session notes through it.
+- **obsidian-vault** (on demand): `uvx mcp-obsidian` pointing to the Luna vault path. Put its spec in `~/.config/himmel/mcp-on-demand.json` (`{"mcpServers":{"obsidian-vault":{...}}}`, same shape as `~/.claude.json`), **not** in `~/.claude.json`, which every session loads. Launch with `node scripts/mcp/build-mcp-profiles.mjs`, then `claude --strict-mcp-config --mcp-config .claude/mcp-profiles/local.vault.json`. The Obsidian Local REST API plugin stays installed either way: the end-session-wiki hook writes session notes through it.
 - **atlassian**: Jira/Confluence MCP (requires token)
 
 ---

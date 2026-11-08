@@ -6068,7 +6068,7 @@ async function cmdGaps(args) {
   } else if (referenceOnly.length === 0) {
     console.log('  (none)');
   } else {
-    for (const r of referenceOnly) console.log(`  - ${r.label} [${r.ticket}]`);
+    for (const r of referenceOnly) console.log(`  - ${r.label}`);
   }
   console.log('');
   console.log("Present but unverified — recorded in the profile; run 'himmelctl status' to confirm still wired:");

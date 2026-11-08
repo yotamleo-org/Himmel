@@ -54,6 +54,8 @@
 
 # Hook denials and allow-list logic.
 ^scripts/hooks/(block|guard|cadence-deny)-
+# The AFK approval hooks: they send a refused command toward the operator's code request.
+^scripts/hooks/(afk-|approval-grant-)
 ^scripts/hooks/(auto-approve-safe-bash|permission-allow-gate-shapes|narrow-allow|cadence-approve-engines|require-quiet-run|read-clamp|orchestrator-inline-guard|rtk-hook-guard|hook-integrity|record-hook-integrity|guardrail-|run-hook-with-bash|wire-|mcp-policy|redirect-webfetch-walled-hosts|detect-token-in-output|infra-destroy-verbs)
 ^marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts\.sh$
 # The plugin's vendored launcher twins (byte-identical to run-hook-with-bash and hook-integrity above; test-plugin-hook-bash-wiring.sh).
@@ -81,6 +83,8 @@
 ^scripts/cr/dependabot-go\.sh$
 # The CodeRabbit thread recorder merge-on-green.sh runs after a merge.
 ^scripts/cr/cr-thread-recorder\.sh$
+# The Telegram routing files that carry an approval: the chief route, gate, router and poller.
+^scripts/telegram/(chief-route|gate|router|poller)\.ts$
 # The core match the ticket spec gate asks (HIMMEL-8353); the list it reads is under ^scripts/ci/ above.
 ^scripts/jira/src/release/core\.ts$
 # Hook config files outside the audited dirs.

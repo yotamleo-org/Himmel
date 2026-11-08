@@ -1,9 +1,9 @@
 # Fork pre-commit core
 
-Every `yotamleo/*` fork is a himmel adapter (HIMMEL-5900). A commit to a fork
+Every `yotamleo/*` fork is a himmel adapter. A commit to a fork
 skips himmel's own gates, so a secret or an unticketed change can land on a
 fork the station then installs. This page defines the small **core** every fork
-gets, what stays himmel-only, and how a fork adopts it. Tracked in HIMMEL-5978.
+gets, what stays himmel-only, and how a fork adopts it.
 
 The rule: the core is **security and process only**. It never imposes himmel's
 lint or style on upstream code; a fork's own linters win.
@@ -66,7 +66,7 @@ fork's himmel branch plus the one `install` line, run once per clone.
 
 ## Fork inventory (2026-10-16)
 
-The HIMMEL-5900 registry (`scripts/guardrails/himmel-adapters.json`) lists the
+The fork registry (`scripts/guardrails/himmel-adapters.json`) lists the
 forks tracked as himmel adapters (standard: `docs/internals/fork-adapters.md`).
 
 | Fork | Default | Language | Own hooks | Own lint | CI |

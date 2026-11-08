@@ -55,23 +55,62 @@ const sectorPick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}
 // The chain read (GET /api/board, chain-state.mjs): usable only when it carries chains; anything else is the absent notice.
 const chainOk = (ch) => !!(ch && Array.isArray(ch.chains) && ch.tickets);
 const GLYPH = { done: "✓", "in flight": "●", "can launch": "▷", blocked: "⛔", "waits on you": "?", "date-gated": "⏲" };
-const glyph = (s) => GLYPH[s] || (/^waits on step/.test(s) ? "…" : /^done/.test(s) ? "✓" : "");
-// A chain badge under the card title: chain id, the ticket's step of the chain's steps, and its state as a glyph and a word,
+const glyph = (s) => GLYPH[s] || (/^waits on/.test(s) ? "…" : s === "done · out of order" ? "⚠" : /^done/.test(s) ? "✓" : "");
+// The one chain-link icon: on the Chains tab and on every card badge, so a card says which tab it opens.
+const CLINK = `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>`;
+// A chain badge under the card title: the chain icon and id, the ticket's step as words, and its state as a glyph and a word,
 // so it reads without colour (at most two badges, then +N). A ticket in no chain, or no chain read at all, has none.
-function chainBadge(t, ch, v) {
+function chainBadge(t, ch, v, d) {
   const ct = chainOk(ch) ? ch.tickets[idOf(t)] : null;
   if (!ct || !Array.isArray(ct.badges) || !ct.badges.length) return "";
   const at = encodeURIComponent(idOf(t));
   const parts = ct.badges.map((id) => ct.chains.find((c) => c.id === id)).filter(Boolean).map((c) => {
-    const text = `${glyph(c.state)} ${c.id} ${c.step}/${c.steps} · ${c.state}`.trim();
-    return `<a class="rm-chain" href="#/board?tab=chains${v ? `&amp;v=${esc(encodeURIComponent(v))}` : ""}&amp;at=${esc(at)}" aria-label="Open the ${esc(c.id)} chain on the Chains tab: ${esc(text)}">${tip(text, `<span aria-hidden="true">${glyph(c.state)}</span> ${esc(c.id)} ${esc(String(c.step))}/${esc(String(c.steps))} · ${esc(c.state)}`)}</a>`;
+    const state = viewState(ct, c.state, ch, d).state, step = `step ${c.step} of ${c.steps}`;
+    const text = `${glyph(state)} ${c.id} ${step} · ${state}`.trim();
+    return `<a class="rm-chain" href="#/board?tab=chains${v ? `&amp;v=${esc(encodeURIComponent(v))}` : ""}&amp;at=${esc(at)}" aria-label="Open the ${esc(c.id)} chain on the Chains tab: ${esc(text)}">${tip(text, `${CLINK}<span aria-hidden="true">${glyph(state)}</span> ${esc(c.id)} ${esc(step)} · ${esc(state)}`)}</a>`;
   });
   return `<div class="rm-chains">${parts.join("")}${ct.more ? ` <span class="ro">+${esc(String(ct.more))}</span>` : ""}</div>`;
 }
 
-function cardHtml(t, d, showVersion, w, ch, v, known) {
+// A card's open PRs and their CI as links (#N · CI state), from the worker records /api/board carries as prs; a started card with none says so. With no read
+// of the records nothing is shown, so the flag never rests on a guess.
+function prHtml(t, pr) {
+  if (!pr || pr.state !== "ok" || !pr.prs) return "";
+  const list = pr.prs[idOf(t)] || [];
+  if (list.length) return `<div class="rm-pr">${list.map((p) => {
+    const text = `#${p.pr} · CI ${p.ci}`;
+    return pr.repo ? `<a class="pr ci-${esc(p.ci)}" href="https://github.com/${esc(pr.repo)}/pull/${p.pr}" target="_blank" rel="noopener">${esc(text)}</a>` : `<span class="pr ci-${esc(p.ci)}">${esc(text)}</span>`;
+  }).join(" ")}</div>`;
+  if ((pr.unread || []).includes(idOf(t))) return "";
+  return t.b === "prog" || t.b === "rev" || t.b === "ci" ? `<div class="rm-pr"><span class="pr nopr">no open PR</span></div>` : "";
+}
+
+// What an open ticket waits on, from the mirror's links: "blocked by open X" for a blocker still open, "after X (done)" for a shut one, and a key in no mirror says its state is unknown.
+// The tracker's FAST-TRACK label: an open ticket in a chain names the chain and its step. Needs the chain read; nothing is guessed without it.
+function ftHtml(t, ch) {
+  const ct = chainOk(ch) && t.b !== "done" && t.b !== "wont" ? ch.tickets[idOf(t)] : null, c = ct && ct.chains && ct.chains[0];
+  if (!c) return "";
+  const def = ch.chains.find((x) => x.id === c.id);
+  return `<div class="rm-ft">FAST-TRACK · ${esc(def && def.name ? def.name : c.id)} · step ${c.step}</div>`;
+}
+function depHtml(t) {
+  const a = Array.isArray(t.after) ? t.after : [];
+  if (!a.length) return "";
+  const open = a.filter((x) => x.b === "todo" || x.b === "prog" || x.b === "rev" || x.b === "ci"), shut = a.filter((x) => x.b === "done" || x.b === "wont"), unk = a.filter((x) => x.b === "unknown");
+  return `<div class="rm-dep">${open.length ? `<span class="warn">blocked by open ${open.map((x) => esc(x.id)).join(", ")}</span> ` : ""}${shut.length ? `after ${shut.map((x) => `${esc(x.id)} (${x.b === "wont" ? "won't do" : "done"})`).join(", ")} ` : ""}${unk.length ? unk.map((x) => `${esc(x.id)} (state unknown)`).join(", ") : ""}</div>`;
+}
+
+// "50 min ago", "3 h ago", "2 d ago": the tracker's own steps, from the worker record's last event; empty when the record is missing or unreadable.
+function agoHtml(t, pr) {
+  const ts = pr && pr.state === "ok" && pr.seen ? Date.parse(pr.seen[idOf(t)]) : NaN;
+  if (!Number.isFinite(ts)) return "";
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  return ` <span class="ro">· ${s < 3600 ? `${Math.floor(s / 60)} min` : s < 86400 ? `${Math.floor(s / 3600)} h` : `${Math.floor(s / 86400)} d`} ago</span>`;
+}
+
+function cardHtml(t, d, showVersion, w, ch, v, known, pr) {
   const kb = known && known.get(idOf(t)) ? `<span class="rm-kb" title="The drift row on this ticket is the checker's fault: listed, not counted."><span aria-hidden="true">≠</span> checker bug ${esc(known.get(idOf(t)))}</span>` : "";
-  const lg = t.worker ? `<div class="rm-worker"><b>${esc(t.worker.label)} ${esc(t.worker.marker)}</b>${t.worker.reason ? " " + esc(t.worker.reason) : ""}</div>` : "";
+  const lg = t.worker ? `<div class="rm-worker"><b>${esc(t.worker.label)} ${esc(t.worker.marker)}</b>${t.worker.reason ? " " + esc(t.worker.reason) : ""}${agoHtml(t, pr)}</div>` : "";
   const dr = t.drift === 1 ? `<span class="st pill warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st pill warn">unplanned</span>` : "";
   const ver = showVersion && t.v >= 0 ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
   const theme = w ? sectorPick(t, d) : esc(d.themes[t.theme]);
@@ -81,7 +120,7 @@ function cardHtml(t, d, showVersion, w, ch, v, known) {
   const ci = t.b === "ci" ? ` <span class="ro pill warn">CI</span>` : ""; // CI shares the Review column: the pill says which of the two the card is in
   // two lines: the id, status and sector row, then the title clamped to two lines; the card's accessible name is the id and the full title
   return `<div class="rm-card"${attrs}${open} role="button" aria-label="${esc(idOf(t))}: ${esc(t.t)}"><div class="rm-top"><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span>${ci} <span class="ro">${ver}${theme} ${dr}</span></div>`
-    + `<div class="rm-tip rm-title" data-tip="${esc(t.t)}"><span class="rm-clip">${esc(t.t)}</span></div>${chainBadge(t, ch, v)}${kb}${lg}</div>`;
+    + `<div class="rm-tip rm-title" data-tip="${esc(t.t)}"><span class="rm-clip">${esc(t.t)}</span></div>${chainBadge(t, ch, v, d)}${ftHtml(t, ch)}${kb}${depHtml(t)}${prHtml(t, pr)}${lg}</div>`;
 }
 
 // One board: a column per status over the given tickets (Review and CI share one). Won't stays hidden while empty so a quiet board stays short.
@@ -94,7 +133,7 @@ function boardHtml(d, tickets, showVersion, w, ch, v, o = {}) {
     const cards = tickets.filter((t) => bs.includes(t.b)), n = cards.length;
     const jn = o.scope ? o.scope.filter((t) => bs.includes(t.b)).length : null;
     const jira = jn === null ? "" : `<span class="ro rm-jira">${jn === n ? `Jira ${jn} matches` : `Jira ${jn} · ${n} shown`}</span>`;
-    const body = cards.map((t) => cardHtml(t, d, showVersion, w, ch, v, o.known)).join(""), drop = w ? ` data-rm-drop="${b}"` : "";
+    const body = cards.map((t) => cardHtml(t, d, showVersion, w, ch, v, o.known, o.prs)).join(""), drop = w ? ` data-rm-drop="${b}"` : "";
     const drawerHere = o.drawer && cards.some((t) => t.k === o.drawer.k && (t.project || "") === (o.drawer.project || "")); // closing the drawer focuses its card: it must not sit in a closed <details>
     if (o.foldDone && b === "done") return `<details class="rm-col rm-done"${o.find || drawerHere ? " open" : ""}${drop} data-rm-col="done"><summary><b>${esc(l)}</b> <span class="ro rm-n">${n}</span> ${jira}</summary>${body}</details>`;
     return `<div class="rm-col${b === "wont" ? " rm-lane" : ""}"${drop}${o.scope ? ` data-rm-col="${b}"` : ""}><h4>${tip(l, esc(l))} <span class="ro rm-n">${n}</span> ${jira}</h4>${body}</div>`;
@@ -268,15 +307,26 @@ function windowBar(d, ui, w, inert = false) {
     + (w.pinned.length ? `<button class="btn" data-rm-clear-pins>Clear pins</button>` : "") + `</div>`;
 }
 
-function stripHtml(d, sel, ch, tab, ui = {}, lead = "") {
+// slim (the Chains tab): one small chip per version, the picked version's numbers in one line under the chips, and the window controls
+// behind a "N of M versions" menu. The fuller tiles stay on the Roadmap, Tidy up and No version tabs.
+function slimStrip(d, sel, tab, ui, w, inert) {
+  const info = (i) => { const v = d.versions[i], c = v.counts; return { v, c, run: runState(d, v, i), tag: v.rel ? `released${v.date ? " " + v.date : ""}` : runState(d, v, i) || "planned", total: Object.values(c).reduce((a, b) => a + b, 0) }; };
+  const stat = (x) => `${x.c.done} done · ${x.c.prog + x.c.rev + x.c.ci} in flight · ${x.c.todo} to do${x.c.wont ? ` · ${x.c.wont} won't` : ""}`;
+  const chips = w.idx.map((i) => { const x = info(i);
+    return `<a class="vc${i === sel ? " sel" : ""}" href="${boardHref({ tab, v: x.v.n })}"${i === sel ? ` aria-current="true"` : ""} title="${esc(`${x.v.n} · ${x.tag} · ${stat(x)}`)}"><b>${esc(x.v.n)}</b> <small>${esc(x.tag)}</small><progress value="${x.c.done}" max="${x.total || 1}" aria-label="${esc(x.v.n)}: ${x.c.done} of ${x.total} tickets done"></progress></a>`; }).join("");
+  const pv = sel >= 0 && d.versions[sel] ? `<p class="pv"><b>${esc(d.versions[sel].n)}</b> · ${esc(info(sel).tag)} · ${nTickets(info(sel).total)} · ${esc(stat(info(sel)))}</p>` : "";
+  const menu = `<details class="vmenu"${inert ? " inert" : ""}><summary>${w.idx.length} of ${d.versions.length} versions ▾</summary>${windowBar(d, ui, w, inert)}</details>`;
+  return (chips ? `<div class="vchips" aria-label="Versions">${chips}${menu}</div>` : `<div class="empty">No versions to show with these filters.</div>${menu}`) + pv;
+}
+function stripHtml(d, sel, tab, ui = {}, lead = "", slim = false) {
   const note = d.releaseUnknown ? `<div class="nodata">release state unknown: no versions snapshot, so no version is shown as released</div>` : "";
   const w = windowOf(d, ui), pins = ui.pins || [];
+  if (slim) return lead + note + slimStrip(d, sel, tab, ui, w, !!ui.inert);
   const tiles = w.idx.map((i) => {
     const v = d.versions[i];
     const c = v.counts, total = Object.values(c).reduce((a, b) => a + b, 0), flight = c.prog + c.rev + c.ci;
     const run = runState(d, v, i), tag = v.rel ? `released${v.date ? " " + v.date : ""}` : run || "planned";
-    const inChains = chainOk(ch) ? d.tickets.filter((t) => t.v === i && ch.tickets[idOf(t)]).length : null;
-    const stats = `${c.done} done · ${flight} in flight · ${c.todo} to do${c.wont ? ` · ${c.wont} won't` : ""}${inChains !== null ? ` · ${inChains} in chains` : ""}`;
+    const stats = `${c.done} done · ${flight} in flight · ${c.todo} to do${c.wont ? ` · ${c.wont} won't` : ""}`;
     const open = v.open.length ? `<span class="ro pill fail">${v.open.length} still open: ${v.open.map((k) => `${v.project || "HIMMEL"}-${k}`).map(esc).join(", ")}</span>` : "";
     const pinned = pins.includes(v.n);
     return `<div class="rm-vcell"><a class="rm-vt${i === sel ? " sel" : ""}" href="${boardHref({ tab: tab === "roadmap" ? "" : tab, v: v.n })}"${i === sel ? ` aria-current="true"` : ""}>${tip(`${v.n} · ${tag}`, `<b>${esc(v.n)}</b> <span class="ro pill${v.rel ? " ok" : run === "running" ? " warn" : ""}">${esc(tag)}</span>`)}`
@@ -292,13 +342,13 @@ function stripHtml(d, sel, ch, tab, ui = {}, lead = "") {
 // the chain read's "waits on you" tickets); with no chain read it still counts the labelled ones and says the holds were not read, and
 // with neither it says so. A ticket with no version is not counted (the default read leaves it out), so while one exists the count says
 // how many and points at the No version tab, and a 0 never stands alone; the line is short because a longer one wraps the tab row. "Shipped" has no count here (the merged-PR read is the Shift page's), so it names where the number is.
-function linksHtml(ch, rows, d) {
+function linksHtml(ch, rows, d, nv) {
   let wait = `<b>waits for you: not read</b> (${esc(noChains(ch))})`;
   if (chainOk(ch) || rows.length) {
     wait = `<b>${rows.length} ${rows.length === 1 ? "waits" : "wait"} for you</b>${rows.length ? ": " + rows.map((x) => esc(x.key)).join(", ") : ""}${chainOk(ch) ? "" : ` (chain holds not read: ${esc(noChains(ch))})`}`;
   }
-  const nv = d.noVersionCount || 0;
-  const scope = nv ? ` <span class="ro">(${nv} not counted: <a href="${boardHref({ tab: "nv" })}">no version</a>)</span>` : "";
+  const unread = nvOk(nv) ? 0 : d.noVersionCount || 0; // once the No version read is in, those tickets are in the rows above and nothing is left uncounted
+  const scope = unread ? ` <span class="ro">(${unread} not counted: <a href="${boardHref({ tab: "nv" })}">no version</a>)</span>` : "";
   return `<div class="rm-links"><div class="rm-link"><span>${wait}${scope}</span><a href="#/shift">open in Shift →</a></div>`
     + `<div class="rm-link"><span><b>Shipped since yesterday</b>: the count is not read here</span><a href="#/report">Morning report →</a></div></div>`;
 }
@@ -307,16 +357,22 @@ function linksHtml(ch, rows, d) {
 // marks "waits on you" (a live operator hold). Every version, whichever one is selected; a ticket with no version is on the No version tab.
 // One row per key. The chain read can be missing while the labels are not, so the two are read apart.
 const OPERATOR_LABELS = ["operator-decision", "operator", "operator-present", "operator-gated"];
-function waitingRows(d, ch) {
+// nv = the No version read (GET /api/roadmap?nv=1) once it has arrived: its operator-labelled tickets are rows too, tagged noVersion.
+const nvOk = (nv) => !!(nv && nv.state === "ok" && Array.isArray(nv.tickets));
+function waitingRows(d, ch, nv) {
   const rows = new Map();
-  for (const t of d.tickets) {
-    const labels = (t.labels || []).filter((l) => OPERATOR_LABELS.includes(l));
-    if (labels.length && (t.b === "todo" || t.b === "prog" || t.b === "rev" || t.b === "ci")) rows.set(idOf(t), { key: idOf(t), title: t.t, labels });
-  }
+  const add = (list, noVersion) => {
+    for (const t of list) {
+      const labels = (t.labels || []).filter((l) => OPERATOR_LABELS.includes(l));
+      if (labels.length && (t.b === "todo" || t.b === "prog" || t.b === "rev" || t.b === "ci")) rows.set(idOf(t), { key: idOf(t), title: t.t, labels, noVersion });
+    }
+  };
+  add(d.tickets, false);
+  if (nvOk(nv)) add(nv.tickets, true);
   if (chainOk(ch)) for (const x of Object.values(ch.tickets)) {
     if (x.state !== "waits on you") continue;
     const own = rows.get(x.key);
-    rows.set(x.key, { key: x.key, title: (own && own.title) || x.title || "", labels: own ? own.labels : [], chain: (x.chains || []).find((y) => y.state === "waits on you") || (x.chains || [])[0] });
+    rows.set(x.key, { key: x.key, title: (own && own.title) || x.title || "", labels: own ? own.labels : [], noVersion: !!(own && own.noVersion), chain: (x.chains || []).find((y) => y.state === "waits on you") || (x.chains || [])[0] });
   }
   return [...rows.values()];
 }
@@ -324,32 +380,42 @@ function waitingRows(d, ch) {
 // The Waiting on you section, one row per waiting ticket: key, title, the operator label or the chain and step it waits at. The key
 // opens its chain only where the Chains tab (the running version) holds the ticket. With nothing waiting there is no section: the count
 // link beside the tabs says 0 or "not read", and an empty box would push the first card down.
-function waitingHtml(rows, tabCh, v, d, ch) {
+function waitingHtml(rows, tabCh, v, d, ch, nv) {
   if (!rows.length) return "";
   const row = (x) => {
     const href = `#/board?tab=chains${v ? `&amp;v=${esc(encodeURIComponent(v))}` : ""}&amp;at=${esc(encodeURIComponent(x.key))}`;
-    const key = chainOk(tabCh) && tabCh.tickets[x.key] ? `<a href="${href}">${esc(x.key)}</a>` : esc(x.key);
-    const why = [...x.labels, ...(x.chain ? [`${x.chain.id} ${x.chain.step}/${x.chain.steps}`] : [])];
+    // a ticket with no version opens the No version tab, where its card is; any other opens its chain where the Chains tab holds it
+    const key = x.noVersion ? `<a href="${boardHref({ tab: "nv" })}">${esc(x.key)}</a>` : chainOk(tabCh) && tabCh.tickets[x.key] ? `<a href="${href}">${esc(x.key)}</a>` : esc(x.key);
+    const why = [...x.labels, ...(x.chain ? [`${x.chain.id} ${x.chain.step}/${x.chain.steps}`] : []), ...(x.noVersion ? ["no version"] : [])];
     return `<li>${key} ${esc(x.title || "")}${why.length ? ` <span class="ro">${why.map(esc).join(" · ")}</span>` : ""}</li>`;
   };
-  const notes = [chainOk(ch) ? "" : "chain holds not read", d.noVersionCount ? `${d.noVersionCount} tickets with no version are on the No version tab` : ""].filter(Boolean);
-  return section("rm-waiting", "Waiting on you", `${rows.length} ${rows.length === 1 ? "ticket waits" : "tickets wait"} on you, across every version${notes.length ? ` (${notes.join("; ")})` : ""}.`,
+  const nvRead = nvOk(nv);
+  const notes = [chainOk(ch) ? "" : "chain holds not read", d.noVersionCount && !nvRead ? `${d.noVersionCount} tickets with no version are on the No version tab` : ""].filter(Boolean);
+  return section("rm-waiting", "Waiting on you", `${rows.length} ${rows.length === 1 ? "ticket waits" : "tickets wait"} on you, across every version${nvRead ? " and the tickets with no version" : ""}${notes.length ? ` (${notes.join("; ")})` : ""}.`,
     `<ul class="rm-waiting">${rows.map(row).join("")}</ul>`);
 }
 
+// The Chains tab is the one coloured tab: the chain icon, the number of chains of the read it opens, and a blocked chip only while a ticket is blocked.
 function tabsHtml(d, ui, tab, ch, dr) {
-  const blocked = chainOk(ch) ? Object.values(ch.tickets).filter((x) => x.state === "blocked").length : 0;
-  const em = { chains: chainOk(ch) ? (ch.version ? `${ch.chains.length} in ${ch.version} · ${blocked} blocked` : `${ch.chains.length} · no running version`) : "", tidy: driftOk(dr) ? `${dr.counts.real} drift` : "", nv: d.noVersionCount ? String(d.noVersionCount) : "" };
+  const ok = chainOk(ch), n = ok ? ch.chains.length : 0, blocked = ok && ch.version ? countsOf(ch, d).blocked : 0;
+  const em = { tidy: driftOk(dr) ? `${dr.counts.real} drift ${dr.counts.real === 1 ? "row" : "rows"}` : "", nv: d.noVersionCount ? nTickets(d.noVersionCount) : "" };
+  const chains = (on) => `<a class="tab ch" role="tab" aria-selected="${on}" href="${boardHref({ tab: "chains", v: ui.v })}"${ok ? ` aria-label="${esc(`Chains, ${n} ${n === 1 ? "chain" : "chains"}${ch.version ? " in " + ch.version : ""}${blocked ? `, ${nTickets(blocked)} blocked` : ""}`)}"` : ""}>${CLINK}Chains${ok ? ` <span class="cnt">${n}</span>` : ""}${blocked ? ` <span class="blk">⛔ ${nTickets(blocked)} blocked</span>` : ""}</a>`;
   // the No version tab is there while some ticket has no fixVersion (the count is the default read's; the tickets are read when it opens)
-  return `<nav class="tabs" role="tablist" aria-label="Board">${TABS.filter(([id]) => id !== "nv" || d.noVersionCount || tab === "nv").map(([id, label]) =>
+  return `<nav class="tabs" role="tablist" aria-label="Board">${TABS.filter(([id]) => id !== "nv" || d.noVersionCount || tab === "nv").map(([id, label]) => id === "chains" ? chains(tab === id) :
     `<a class="tab" role="tab" aria-selected="${tab === id}" href="${boardHref({ tab: id, v: ui.v })}">${esc(label)}${em[id] ? ` <span class="ro">${esc(em[id])}</span>` : ""}</a>`).join("")}</nav>`;
+}
+// What sits beside the tabs on the Chains tab: who waits for you (every version), the two pages that follow, and the real refresh.
+function asideHtml(ch, rows, fresh) {
+  const wait = chainOk(ch) || rows.length ? `${nTickets(rows.length)} ${rows.length === 1 ? "waits" : "wait"} for you, any version` : "waits for you: not read";
+  return `<div class="aside"><a href="#/shift">${wait} Shift →</a><a href="#/report">Morning report →</a><button class="btn" data-act="refresh-roadmap" aria-label="refresh: read the board again">↻ refresh</button>${fresh ? `<span class="ro rd" title="${esc(fresh)}">${esc(fresh)}</span>` : ""}</div>`;
 }
 
 // The Roadmap tab's lane filters. Project is the ticket id's prefix; Theme is the plan's theme (the Sector has its own filter); Only is one
 // state of the chain read, or the plan drift. The chain states are listed but disabled while no chain read is there.
 const projectOf = (t) => (/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(idOf(t)) ? idOf(t).slice(0, idOf(t).indexOf("-")) : "GitHub");
 const projectsOf = (d) => [...new Set(d.tickets.map(projectOf))].sort();
-const chainState = (t, ch) => (chainOk(ch) ? ch.tickets[idOf(t)] : null);
+// the ticket's chain row with the state the page shows (a wait on an earlier version is a wait, not "blocked")
+const chainState = (t, ch, d) => { const ct = chainOk(ch) ? ch.tickets[idOf(t)] : null; return ct ? { ...ct, state: viewState(ct, ct.state, ch, d).state } : null; };
 const ONLY = [["blocked", (t, ct) => !!ct && ct.state === "blocked", true], ["waits on step", (t, ct) => !!ct && /^waits on step/.test(ct.state), true],
   ["waits on you", (t, ct) => !!ct && ct.state === "waits on you", true], ["date-gated", (t, ct) => !!ct && ct.state === "date-gated", true],
   ["drift", (t) => t.drift === 1, false], ["in a chain", (t, ct) => !!ct, true]];
@@ -357,7 +423,7 @@ const fsel = (name, label, items, cur) => `<label>${label} <select data-rm-filte
   `<option value="${i}"${cur === i ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
 function laneFilters(d, ui, ch, sel) {
   const scope = d.tickets.filter((t) => sel < 0 || t.v === sel);
-  const only = ONLY.map(([l, f, needs]) => needs && !chainOk(ch) ? `${l} (not read)` : `${l} ${scope.filter((t) => f(t, chainState(t, ch))).length}`);
+  const only = ONLY.map(([l, f, needs]) => needs && !chainOk(ch) ? `${l} (not read)` : `${l} ${scope.filter((t) => f(t, chainState(t, ch, d))).length}`);
   const onlySel = `<label>Only <select data-rm-filter="only"><option value="">all</option>${ONLY.map(([, , needs], i) =>
     `<option value="${i}"${needs && !chainOk(ch) ? " disabled" : ui.only === i ? " selected" : ""}>${esc(only[i])}</option>`).join("")}</select></label>`;
   // [stays on the bar line, goes under More ▾]
@@ -387,14 +453,28 @@ const passOf = (d, ui, ch, from = d) => {
   return (t) => (ui.theme == null || (sector != null && d.themes[t.theme] === sector)) && !(ui.hideDone && t.b === "done")
     && (!ui.chain || !chainOk(ch) || (ch.tickets[idOf(t)] && ch.tickets[idOf(t)].chains.some((c) => c.id === ui.chain)))
     && (ui.project == null || projectOf(t) === project) && (ui.planTheme == null || t.pt === ui.planTheme)
-    && (!only || (only[2] && !chainOk(ch)) || only[1](t, chainState(t, ch)))
+    && (!only || (only[2] && !chainOk(ch)) || only[1](t, chainState(t, ch, d)))
     && (!q || idOf(t).toLowerCase().includes(q) || t.t.toLowerCase().includes(q));
 };
 
 // ticket key to the checker ticket that explains its drift row, for the tag on a lane card
 const knownByKey = (dr) => new Map((dr && dr.known ? dr.known : []).map((r) => [r.key, r.checker]));
 
-function lanesHtml(d, ui, sel, ch, dr) {
+// The drain line (the tracker's): a version's open tickets, how many are in a chain and how many are in none. Needs the chain read.
+const drainLine = (d, sel, scope, ch) => {
+  if (sel < 0 || !chainOk(ch)) return "";
+  const open = scope.filter((t) => t.b !== "done" && t.b !== "wont"), inChain = open.filter((t) => ch.tickets[idOf(t)] && ch.tickets[idOf(t)].chains.length).length;
+  return `<div class="rm-drain">${esc(d.versions[sel].n)} drain: open ${open.length} · in-chain ${inChain} · in no chain ${open.length - inChain}</div>`;
+};
+// The sector legend: each Sector of the open tickets in scope with its count, the largest first (the tracker's .seclegend). A ticket with no Sector is not a Sector.
+const sectorLegend = (d, scope) => {
+  const n = new Map();
+  for (const t of scope) if (t.b !== "done" && t.b !== "wont" && d.themes[t.theme] && d.themes[t.theme] !== NO_SECTOR) n.set(d.themes[t.theme], (n.get(d.themes[t.theme]) || 0) + 1);
+  const rows = [...n].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]));
+  return rows.length ? `<div class="seclegend" aria-label="Sectors of the open tickets">${rows.map(([name, c]) => `<span class="sec">${esc(name)} ${c}</span>`).join(" ")}</div>` : "";
+};
+
+function lanesHtml(d, ui, sel, ch, dr, prs) {
   const gh = d.source === "github";
   const writeOn = !!ui.writes && !gh;
   if (sel === -2) return section("rm-lanes", "Roadmap", "", `<div class="empty">${esc(ui.v)}: no such version in the mirror.</div>`);
@@ -402,22 +482,22 @@ function lanesHtml(d, ui, sel, ch, dr) {
   const what = sel >= 0 ? `${d.versions[sel].n}: ${shown.length} tickets` : `every version: ${shown.length} tickets`;
   const sub = gh ? `${what}. GitHub issues are read-only here: change them on GitHub.${d.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
     : `${what}.${writeOn ? " Drag a card to another column to change its status." : ""}`;
-  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr) }) : `<div class="empty">No tickets match.</div>`);
+  return section("rm-lanes", "Roadmap", sub, shown.length ? drainLine(d, sel, scope, ch) + sectorLegend(d, scope) + boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr), prs }) : `<div class="empty">No tickets match.</div>`);
 }
 
 // The No version tab: the tickets with no fixVersion, in the same columns. They are not in the default read; ui.nv is GET /api/roadmap?nv=1,
 // asked for when this tab opens (null until it arrives).
-function nvTab(data, ui, ch, dr) {
+function nvTab(data, ui, ch, dr, prs) {
   const nv = ui.nv, sub = "Tickets with no fixVersion. Give one a fixVersion in Jira to put it on a version's board.";
   if (!nv) return section("rm-nv", "No version", sub, `<p class="sub" id="status">loading…</p>`);
   if (nv.state !== "ok") return section("rm-nv", "No version", sub, `<div class="nodata">${esc(nv.reason || "the tickets with no version could not be read")}</div>`);
   const writeOn = !!ui.writes && nv.source !== "github";
   const scope = nv.tickets.filter((t) => t.noVersion), shown = scope.filter(passOf(nv, ui, ch, data));
   return section("rm-nv", "No version", `${shown.length} ticket${shown.length === 1 ? "" : "s"}. ${sub}${writeOn ? " Drag a card to another column to change its status." : ""}`,
-    shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr) }) : `<div class="empty">No tickets match.</div>`);
+    shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr), prs }) : `<div class="empty">No tickets match.</div>`);
 }
 
-// The Chains tab, from the v4 mockup's frames 4 and 4b: how chains link, what each one logged, why a ticket waits, and the burn-down. Reads only.
+// The Chains tab: one read, the selected version's, and every count carries its unit. Reads only.
 const live = (a) => a.status === "open" || a.status === "unknown";
 const whyLink = (ui, key, on) => { const id = `${key}.${on || ""}`;
   return `<a class="rm-whylink" data-why-open="${esc(id)}" aria-label="Why ${esc(key)} waits${on ? " on " + esc(on) : ""}" href="${boardHref({ tab: "chains", v: ui.v, why: id })}">Why</a>`; };
@@ -425,78 +505,161 @@ const stamp = (ts) => String(ts || "").slice(0, 16).replace("T", " ");
 // With several Board projects a version is named "<name> (<PROJECT>)"; the chain read has the bare name.
 // ponytail: the first project with that name wins, upgrade path: the chain read names its project.
 const versionAt = (d, name) => (d.versions || []).findIndex((x) => x.n === name || x.n.startsWith(`${name} (`));
+const nTickets = (n) => `${n} ${n === 1 ? "ticket" : "tickets"}`;
+const shortKey = (k) => String(k).replace(/^[A-Za-z][A-Za-z0-9]*-/, "");
 
-function chainMap(ch) {
-  const W = 200, H = 56, GX = 40, GY = 40, COLS = 3;
-  const at = new Map(ch.chains.map((c, i) => [c.id, { x: 10 + (i % COLS) * (W + GX) + W / 2, y: 10 + Math.floor(i / COLS) * (H + GY) + H / 2 }]));
-  const edges = new Map(); // the blocker's chain to the waiting chain; open while any link between them is
-  for (const c of ch.chains) for (const a of c.across || []) if (a.dir === "waits-on") for (const o of a.chains || []) {
-    if (!at.has(o) || o === c.id) continue;
-    const k = JSON.stringify([o, c.id]);
-    edges.set(k, edges.get(k) || live(a));
+// The chain read calls a ticket "blocked" whenever an open blocker is outside the read's version. The page keeps that word for a blocker nothing
+// lands before the version: one in a later version, in no version, or in a released version and still open. A blocker in an earlier open
+// version is only a wait, and it reads "waits on <that version>" with no red.
+function blockerKind(l, ch, d) {
+  const names = l.onVersions || [], at = versionAt(d, ch.version), idx = names.map((n) => versionAt(d, n));
+  if (!names.length) return { kind: "none" };
+  const rel = idx.findIndex((i) => i >= 0 && d.versions[i].rel);
+  if (rel >= 0) return { kind: "released", v: names[rel] };
+  // with no versions snapshot nothing is known to be released, so an earlier open version is not trusted to be unreleased: it stays blocked
+  if (at >= 0 && idx.every((i) => i >= 0 && i < at)) return { kind: d.releaseUnknown ? "unsure" : "earlier", v: names[idx.indexOf(Math.max(...idx))] };
+  return { kind: "later", v: names[0] };
+}
+function viewState(t, state, ch, d) {
+  if (state !== "blocked") return { state };
+  const outs = ((t && t.links) || []).filter((l) => l.status === "open" && l.on && !(l.onVersions || []).includes(ch.version)).map((l) => ({ l, ...blockerKind(l, ch, d) }));
+  const hard = outs.find((o) => o.kind !== "earlier");
+  if (hard || !outs.length) return { state: "blocked", why: hard };
+  const last = outs.reduce((a, b) => (versionAt(d, b.v) > versionAt(d, a.v) ? b : a));
+  return { state: `waits on ${last.v}`, why: last };
+}
+const blockerWords = (o) => (o.kind === "none" ? "in no version" : o.kind === "released" ? `in ${o.v}, a released version, and still open` : o.kind === "earlier" ? `planned in ${o.v}, an earlier version` : o.kind === "unsure" ? `planned in ${o.v}, an earlier version, but no versions snapshot says whether it is released` :`in ${o.v}, a later version`);
+
+// The tickets of one read by state, each ticket once. "waiting" is every wait: on a step, on you, on a date, on an earlier version.
+function countsOf(ch, d) {
+  const n = { done: 0, flight: 0, launch: 0, wait: 0, blocked: 0, unknown: 0 };
+  for (const t of Object.values(ch.tickets)) {
+    const s = viewState(t, t.state, ch, d).state;
+    if (/^done/.test(s)) n.done++; else if (s === "in flight") n.flight++; else if (s === "can launch") n.launch++; else if (s === "blocked" && ch.version) n.blocked++; else if (s === "unknown") n.unknown++; else n.wait++;
   }
-  const lines = [...edges].map(([k, open]) => {
-    const [from, to] = JSON.parse(k), p = at.get(from), q = at.get(to), dx = q.x - p.x, dy = q.y - p.y;
-    const t = Math.min(dx ? W / 2 / Math.abs(dx) : 1, dy ? (H / 2 + 4) / Math.abs(dy) : 1); // the line stops at each box's edge
-    return `<line class="rm-edge${open ? " open" : ""}" x1="${p.x + dx * t}" y1="${p.y + dy * t}" x2="${q.x - dx * t}" y2="${q.y - dy * t}" marker-end="url(#rm-arrow)"/>`;
-  }).join("");
-  const boxes = ch.chains.map((c) => { const p = at.get(c.id), name = String(c.name || c.id);
-    return `<rect class="rm-map-box" x="${p.x - W / 2}" y="${p.y - H / 2}" width="${W}" height="${H}" rx="8"/><text x="${p.x}" y="${p.y - 4}" text-anchor="middle">${esc(name.length > 24 ? name.slice(0, 23) + "…" : name)}</text>`
-      + `<text class="rm-map-sub" x="${p.x}" y="${p.y + 16}" text-anchor="middle">${esc(String(c.done))}/${esc(String(c.total))} done</text>`; }).join("");
-  const rows = Math.ceil(ch.chains.length / COLS);
-  return `<svg class="rm-map" viewBox="0 0 ${3 * W + 2 * GX + 20} ${rows * (H + GY) - GY + 20}" role="img" aria-label="Map of ${ch.chains.length} chains and the links between them; the list below says the same in words">`
-    + `<defs><marker id="rm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path class="rm-arrow" d="M0 0L8 4L0 8z"/></marker></defs>${lines}${boxes}</svg>`;
+  return n;
 }
 
-function crossLinks(ui, ch) {
-  const name = (id) => { const c = ch.chains.find((x) => x.id === id); return (c && c.name) || id; };
-  const rows = ch.chains.flatMap((c) => (c.across || []).filter((a) => a.dir === "waits-on" && (a.chains || []).length).map((a) =>
-    `<li><b>${esc(a.key)}</b> <span class="ro">in ${esc(name(c.id))}</span> waits on <b>${esc(a.on)}</b> <span class="ro">in ${esc(a.chains.map(name).join(", "))} · ${esc(a.kind)} · ${esc(a.status)}</span>${live(a) ? " " + whyLink(ui, a.key, a.on) : ""}</li>`));
-  const list = rows.length ? `<ul class="rm-xlist">${rows.join("")}</ul>` : `<p class="ro">${ch.version ? `No links between the chains of ${esc(ch.version)}; a link to work outside it shows under its chain.` : "No links across chains."}</p>`;
-  const map = chainMap(ch), note = map ? `<p class="sub rm-map-note">An arrow runs from the work that lands first. A moving dashed line is still open; a solid one is cleared.</p>` : "";
-  return section("rm-xlinks", "How the chains link", "Which ticket waits on a ticket in another chain.", note + map + list);
-}
+const rowsOf = (ch, c) => Object.values(ch.tickets).map((t) => [t, (t.chains || []).find((x) => x.id === c.id)]).filter(([, x]) => x)
+  .sort((a, b) => a[1].step - b[1].step || String(a[0].key).localeCompare(String(b[0].key), "en", { numeric: true }));
+const arrow = (open) => `<svg class="lk${open ? " open" : ""}" viewBox="0 0 30 12" aria-hidden="true"><line x1="1" y1="6" x2="23" y2="6"/><path d="M22 1l7 5-7 5z"/></svg>`;
+const doneOf = (c) => c.total > 0 && c.done === c.total;
+const progress = (c) => `<progress value="${c.done}" max="${c.total || 1}" aria-hidden="true"></progress>${c.done} of ${nTickets(c.total)} done`;
 
+// The chain's members that sit outside the picked version: the whole read has them, the narrowed read does not.
+function outsideOf(ch, c, whole, d) {
+  const w = chainOk(whole) ? whole.chains.find((x) => x.id === c.id) : null, mine = new Set(c.members || rowsOf(ch, c).map(([t]) => t.key));
+  return ((w && w.members) || []).filter((k) => !mine.has(k)).map((k) => { const t = d.tickets.find((x) => idOf(x) === k); return { key: k, v: t && t.v >= 0 ? d.versions[t.v].n : "" }; });
+}
+const outChip = (list, version) => (list.length ? `<span class="out" title="${esc(list.map((o) => `${o.key} is in ${o.v || "no version"}`).join("; "))}">+${nTickets(list.length)} outside ${esc(version)}<span class="outn"> · ${list.map((o) => `${esc(o.key)} in ${esc(o.v || "no version")}`).join(", ")}</span></span>` : "");
+
+function chipHtml(ui, ch, d, c, [t, x]) {
+  const st = viewState(t, x.state, ch, d).state;
+  const cls = st === "done · out of order" ? "oo" : /^done/.test(st) ? "dn" : st === "in flight" ? "fl" : st === "can launch" ? "go" : st === "blocked" ? "bd" : "wt";
+  const word = st === "done" ? "" : ` ${st}`;
+  const why = /^done/.test(st) ? "" : (t.links || []).filter(live).slice(0, 1).map((l) => " " + whyLink(ui, t.key, l.on)).join("");
+  return `<span class="tw"><a class="tk ${cls}${ui.at === t.key ? " rm-at" : ""}"${t.chains[0].id === c.id ? ` id="cn-${esc(t.key)}"` : ""} href="${boardHref({ tab: "chains", v: ui.v, at: t.key })}" title="${esc(`${t.key} ${t.title || ""}`.trim())}">`
+    + `<span class="gl" aria-hidden="true">${glyph(st)}</span> ${esc(shortKey(t.key))}${esc(word)}</a>${why}</span>`;
+}
+function railHtml(ui, ch, d, c, rows) {
+  const by = new Map();
+  for (const r of rows) { if (!by.has(r[1].step)) by.set(r[1].step, []); by.get(r[1].step).push(r); }
+  return `<div class="rl">${[...by.keys()].sort((a, b) => a - b).map((s, i) => `${i ? arrow(by.get(s).some(([, x]) => /^waits on step/.test(x.state))) : ""}<div class="st"><small>step ${s} of ${c.steps}</small>${by.get(s).map((r) => chipHtml(ui, ch, d, c, r)).join("")}</div>`).join("")}</div>`;
+}
+// Every ticket with its full title, one line each: a phone has no hover, so nothing a reader needs lives only in a bubble.
+function titlesHtml(ch, d, rows, fold = true) {
+  const list = `<ul class="tl">${rows.map(([t, x]) => `<li><b>${esc(t.key)}</b> ${esc(viewState(t, x.state, ch, d).state.replace(" · ", ", "))}, step ${x.step} of ${x.steps}: ${esc(t.title || "")}</li>`).join("")}</ul>`;
+  return fold ? `<details class="fold"><summary>Tickets and titles · ${nTickets(rows.length)}</summary>${list}</details>` : list;
+}
+// What is going on in an open chain: what is running now, what can launch next, and what waits or is blocked (full title, never clamped).
+function nowHtml(ch, d, c, rows) {
+  const vs = rows.map((r) => ({ t: r[0], ...viewState(r[0], r[1].state, ch, d) }));
+  const line = (tag, key, text) => `<span><em>${tag}</em><b>${esc(key)}</b> ${text}</span>`;
+  const title = (t) => esc(t.title || "");
+  const more = (n) => (n > 1 ? ` <span class="ro">+${n - 1} more</span>` : "");
+  const flight = vs.filter((x) => x.state === "in flight"), blocked = vs.filter((x) => x.state === "blocked"), waits = vs.filter((x) => x.why && x.state !== "blocked");
+  const out = [];
+  if (flight.length) out.push(line("NOW", flight[0].t.key, title(flight[0].t) + more(flight.length)));
+  if (c.next && c.next.keys.length) { const t = ch.tickets[c.next.keys[0]]; out.push(line("NEXT", c.next.keys[0], title(t || {}) + more(c.next.keys.length))); }
+  for (const x of blocked.slice(0, 2)) out.push(line("BLOCKED", x.t.key, x.why ? `waits on ${esc(x.why.l.on)}, ${esc(blockerWords(x.why))}` : "waits on a ticket this read cannot place"));
+  for (const x of waits.slice(0, 2)) out.push(line("WAITS", x.t.key, `waits on ${esc(x.why.v)}: ${esc(x.why.l.on)} is ${esc(blockerWords(x.why))}`));
+  if (!out.length) out.push(`<span class="ro">no step can launch yet</span>`);
+  return `<div class="now">${out.join("")}</div>`;
+}
 function acrossHtml(ui, c, version) {
-  const rows = (c.across || []).map((a) => {
+  const as = c.across || [];
+  if (!as.length) return "";
+  const open = as.filter(live).length;
+  const rows = as.map((a) => {
     const where = (a.chains || []).length ? `in ${a.chains.join(", ")}` : `in no chain${version ? ` of ${version}` : ""}`;
     const other = a.dir === "waits-on" ? `waits on <b>${esc(a.on)}</b> <span class="ro">${esc(where)}` : `holds up <b>${esc(a.key)}</b> <span class="ro">${esc(where)}`;
-    const self = a.dir === "waits-on" ? a.key : a.on;
-    return `<li><b>${esc(self)}</b> ${other} · ${esc(a.kind)} · ${esc(a.status)}</span>${live(a) ? " " + whyLink(ui, a.key, a.on) : ""}</li>`;
+    return `<li><b>${esc(a.dir === "waits-on" ? a.key : a.on)}</b> ${other} · ${esc(a.kind)} · ${esc(a.status)}</span>${live(a) ? " " + whyLink(ui, a.key, a.on) : ""}</li>`;
   });
-  return rows.length ? `<p class="rm-subh">Across other work</p><ul class="rm-xlist">${rows.join("")}</ul>` : "";
+  return `<details class="fold"><summary>Across other work · ${as.length} ${as.length === 1 ? "link" : "links"}, ${open ? `${open} open` : "all cleared"}</summary><ul class="rm-xlist">${rows.join("")}</ul></details>`;
 }
-
+// The change log shows only when the chain has rows.
 function logHtml(ui, c) {
   const log = c.log || [];
-  if (!log.length) return `<p class="ro">No changes logged.</p>`;
+  if (!log.length) return "";
   const last = log[log.length - 1];
-  return `<details class="rm-log" data-log="${esc(c.id)}"${(ui.logOpen || []).includes(c.id) ? " open" : ""}><summary>Change log · ${log.length} · last ${esc(stamp(last.ts))}: ${esc(last.change)}</summary>`
+  return `<details class="rm-log fold" data-log="${esc(c.id)}"${(ui.logOpen || []).includes(c.id) ? " open" : ""}><summary>Change log · ${log.length} ${log.length === 1 ? "row" : "rows"} · last ${esc(stamp(last.ts))}: ${esc(last.change)}</summary>`
     + `<div class="scroll"><table class="rm-sync data"><thead><tr><th>When</th><th>Change</th><th>Ticket</th><th>On</th><th>Kind</th><th>Who</th><th>Reason</th></tr></thead><tbody>${log.map((r) =>
       `<tr><td>${esc(stamp(r.ts))}</td><td>${esc(r.change || "")}</td><td>${esc(r.key || r.chain || "")}</td><td>${esc(r.on || "")}</td><td>${esc(r.kind || "")}</td><td>${esc(r.who || "")}</td><td>${esc(r.reason || "")}</td></tr>`).join("")}</tbody></table></div></details>`;
 }
 
+function openCard(ui, ch, d, whole, c, rows) {
+  const red = rows.some(([t, x]) => viewState(t, x.state, ch, d).state === "blocked");
+  return `<article id="rm-chain-${esc(c.id)}" class="cc${red ? " red" : ""}" aria-labelledby="h-rm-chain-${esc(c.id)}"><div class="cct"><div><h3 id="h-rm-chain-${esc(c.id)}">${esc(c.name || c.id)}</h3><span class="cid">${esc(c.id)}</span></div>`
+    + `<div class="prog">${outChip(outsideOf(ch, c, whole, d), ch.version || "this read")}${progress(c)}</div></div>${railHtml(ui, ch, d, c, rows)}${nowHtml(ch, d, c, rows)}<div class="folds">${acrossHtml(ui, c, ch.version)}${titlesHtml(ch, d, rows)}${logHtml(ui, c)}</div></article>`;
+}
+function finCard(ui, ch, d, whole, c, rows) {
+  const bad = rows.filter(([, x]) => x.state === "done · out of order").map(([t]) => shortKey(t.key)), held = rows.some(([, x]) => x.state === "done · order held");
+  const chk = bad.length ? `<span class="chk bad">⚠ ${bad.slice(0, 2).join(", ")}${bad.length > 2 ? ` +${bad.length - 2}` : ""} out of order</span>` : held ? `<span class="chk">order held</span>` : `<span></span>`;
+  return `<details id="rm-chain-${esc(c.id)}" class="fin"${ui.at && rows.some(([t]) => t.key === ui.at) ? " open" : ""}><summary><span class="gl" aria-hidden="true">✓</span><span class="nm">${esc(c.name || c.id)} <span class="cid">${esc(c.id)}</span></span>${chk}`
+    + `${outChip(outsideOf(ch, c, whole, d), ch.version || "this read") || "<span></span>"}<span class="prog">${c.done} of ${nTickets(c.total)} done</span></summary>`
+    + `<div class="inner">${railHtml(ui, ch, d, c, rows)}${titlesHtml(ch, d, rows, false)}${logHtml(ui, c)}</div></details>`;
+}
+
+// The link strip: shown only when a ticket of one chain waits on a ticket of another chain of this read.
+function linkStrip(ui, ch) {
+  const by = (id) => ch.chains.find((x) => x.id === id);
+  const box = (c) => `<span class="lbox" title="${esc(c.name || c.id)}"><span class="ln">${esc(c.name || c.id)}</span><span>${c.done} of ${nTickets(c.total)} done</span></span>`;
+  return ch.chains.flatMap((c) => (c.across || []).filter((a) => a.dir === "waits-on").map((a) => ({ c, a, from: (a.chains || []).map(by).find((x) => x && x.id !== c.id) })).filter((x) => x.from))
+    .map(({ c, a, from }) => `<div class="lmap" aria-label="How the chains link">${box(from)}${arrow(live(a))}${box(c)}<span class="foot">${esc(a.key)} waits on ${esc(a.on)} · ${esc(a.kind)} · ${esc(a.status)}${live(a) ? " " + whyLink(ui, a.key, a.on) : ""}</span></div>`).join("");
+}
+
+// The burn-down is folded. Its words are the same facts in text; there is no pace line when the cut date is before the first merge.
 function burnHtml(d, ch) {
   const b = ch.burn;
   if (!b) return "";
-  const sub = "Open tickets across the chains, one point a day; bars are the merges of that day.";
-  const undated = b.undated ? ` ${b.undated} done ticket${b.undated === 1 ? " has" : "s have"} no recorded date and ${b.undated === 1 ? "is" : "are"} left out.` : "";
+  const undated = b.undated ? ` ${b.undated} done ${b.undated === 1 ? "ticket has" : "tickets have"} no recorded date and ${b.undated === 1 ? "is" : "are"} left out.` : "";
   const scope = ch.version ? ` in ${ch.version}` : "";
-  if (!b.points.length) return section("rm-burn", "Burn-down", sub, `<p class="ro rm-burn-words">No merge recorded yet${esc(scope)}: ${b.total} open.${undated}</p>`);
+  const fold = (inner) => `<details class="burn"><summary>Burn-down</summary>${inner}</details>`;
+  if (!b.points.length) return fold(`<p class="ro rm-burn-words">No merge recorded yet${esc(scope)}: ${nTickets(b.total)} open.${undated}</p>`);
   const v = (d.versions || [])[versionAt(d, ch.version)], cut = v && v.date ? v.date : "";
   const dayMs = (x) => Date.parse(`${x}T00:00:00Z`), first = dayMs(b.points[0].day), lastPt = b.points[b.points.length - 1];
-  const end = Math.max(dayMs(lastPt.day), cut ? dayMs(cut) : 0), W = 640, H = 140, top = 8;
+  const paced = !!cut && dayMs(cut) >= first;
+  const end = Math.max(dayMs(lastPt.day), paced ? dayMs(cut) : 0), W = 640, H = 110, top = 8;
   const X = (ms) => 10 + (end > first ? (ms - first) / (end - first) : 0) * (W - 20), Y = (n) => top + (1 - n / (b.total || 1)) * (H - top);
   const pts = b.points.map((p) => ({ ...p, x: X(dayMs(p.day)), y: Y(p.open) }));
-  const bars = pts.filter((p) => p.merged).map((p) => `<rect class="rm-burn-bar" x="${p.x - 3}" y="${Y(p.merged)}" width="6" height="${H - Y(p.merged)}"/>`).join("");
-  const pace = cut ? `<polyline class="rm-burn-pace" points="${pts[0].x},${pts[0].y} ${X(dayMs(cut))},${Y(0)}"/>` : "";
+  const bars = pts.filter((p) => p.merged).map((p) => `<rect class="bar" x="${p.x - 3}" y="${Y(p.merged)}" width="6" height="${H - Y(p.merged)}"/>`).join("");
+  const pace = paced ? `<polyline class="rm-burn-pace" points="${pts[0].x},${pts[0].y} ${X(dayMs(cut))},${Y(0)}"/>` : "";
   const merged = b.points.reduce((n, p) => n + p.merged, 0);
-  const words = `${lastPt.open} open of ${b.total}${scope}; ${merged} merged since ${b.points[0].day}.${cut ? ` The dashed line is the even pace to the cut on ${cut}.` : ch.version ? " This version has no date, so there is no pace line." : " No running version, so there is no pace line."}${undated}`;
-  return section("rm-burn", "Burn-down", sub, `<svg class="rm-burn-svg" viewBox="0 0 ${W} ${H + 4}" role="img" aria-label="${esc(words)}">${bars}${pace}<polyline class="rm-burn-open" points="${pts.map((p) => `${p.x},${p.y}`).join(" ")}"/>`
-    + `${pts.map((p) => `<circle class="rm-burn-dot" cx="${p.x}" cy="${p.y}" r="3"><title>${esc(p.day)}: ${p.open} open, ${p.merged} merged</title></circle>`).join("")}</svg><p class="ro rm-burn-words">In words: ${esc(words)}</p>`);
+  const cutWords = !cut ? (ch.version ? " This version has no date, so there is no pace line." : " No running version, so there is no pace line.")
+    : paced ? ` The dashed line is the even pace to the cut on ${cut}.` : ` The cut date, ${cut}, has passed, so no pace line is drawn.`;
+  const words = `${lastPt.open} of ${nTickets(b.total)} open${scope}; ${nTickets(merged)} merged since ${b.points[0].day}.${cutWords}${undated}`;
+  return fold(`<svg viewBox="0 0 ${W} ${H + 4}" role="img" aria-label="${esc(words)}">${bars}${pace}<polyline class="ol" points="${pts.map((p) => `${p.x},${p.y}`).join(" ")}"/>`
+    + `${pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3"><title>${esc(p.day)}: ${p.open} open, ${p.merged} merged</title></circle>`).join("")}</svg><p class="ro rm-burn-words">In words: ${esc(words)}</p>`);
+}
+function sparkHtml(ch) {
+  const b = ch.burn;
+  if (!b || !b.points.length) return "";
+  const n = b.points.length, last = b.points[n - 1];
+  const line = n > 1 ? `<svg viewBox="0 0 110 26" role="img" aria-label="Open tickets across the chains"><polyline points="${b.points.map((p, i) => `${2 + (i / (n - 1)) * 106},${2 + (1 - p.open / (b.total || 1)) * 22}`).join(" ")}"/></svg>` : "";
+  return `<div class="spark">${line}${nTickets(last.open)} open</div>`; // no total here: the line above has the chains' ticket total, and the burn-down leaves out undated done tickets
 }
 
-function whyHtml(ui, ch) {
+function whyHtml(ui, ch, d) {
   if (!ui.why || !chainOk(ch)) return "";
   const dot = ui.why.indexOf("."), key = dot < 0 ? ui.why : ui.why.slice(0, dot), on = dot < 0 ? "" : ui.why.slice(dot + 1);
   const t = ch.tickets[key], same = ((t && t.links) || []).filter((x) => (x.on || "") === on), l = same.find(live) || same[0];
@@ -506,34 +669,47 @@ function whyHtml(ui, ch) {
   if (!l) return panel(head(`Why ${key} waits`) + `<p class="nodata">This link is not in this chain read: it cleared, or the ticket left the version.</p>`);
   const fact = (k, v) => (v ? `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>` : "");
   const show = (k) => (ch.tickets[k] ? `<a href="${boardHref({ tab: "chains", v: ui.v, at: k })}">Show ${esc(k)} in its chain</a>` : "");
+  const where = (l.onVersions || []).length ? `in ${l.onVersions.join(", ")}` : "in no version";
   return panel(head(on ? `Why ${key} waits on ${on}` : `Why ${key} waits: ${l.kind}`)
-    + `<dl class="rm-facts">${fact("State", t.state)}${fact("Blocker", on ? on + (ch.tickets[on] ? "" : ` (in no chain${ch.version ? ` of ${ch.version}` : ""})`) : "")}${fact("Kind", l.kind)}${fact("Source", l.source)}${fact("Added", l.added ? stamp(l.added) : "not recorded")}${fact("Status", l.status)}${fact("What clears it", l.clears)}${fact("Reason", l.reason)}${fact("Owner", l.owner)}${fact("Until", l.until)}</dl>`
+    + `<dl class="rm-facts">${fact("State", viewState(t, t.state, ch, d).state)}${fact("Blocker", on ? on + (ch.tickets[on] ? "" : ` (${where}${ch.version ? `; in no chain of ${ch.version}` : ""})`) : "")}${fact("Kind", l.kind)}${fact("Source", l.source)}${fact("Added", l.added ? stamp(l.added) : "not recorded")}${fact("Status", l.status)}${fact("What clears it", l.clears)}${fact("Reason", l.reason)}${fact("Owner", l.owner)}${fact("Until", l.until)}</dl>`
     + `<p>${[show(key), on ? show(on) : ""].filter(Boolean).join(" · ")}</p><p class="ro">Esc closes this panel.</p>`);
 }
 
-// The tab reads the running version whatever tile was asked for, and says so.
-function coversHtml(ui, ch, d) {
+// The tab reads the version the tile picked. When it cannot (all versions, or a name the mirror lacks) it reads the running one, and says so in one line.
+function notesHtml(ui, ch) {
   if (!ch.version) return "";
-  const at = (d.versions || [])[versionAt(d, ch.version)];
-  const other = ui.v === "all" ? "every version" : ui.v && ui.v !== ch.version && !(at && at.n === ui.v) ? ui.v : "";
-  const missing = ui.at && !ch.tickets[ui.at] ? ` ${ui.at} is not in a chain of ${ch.version}.` : "";
-  return `<p class="sub rm-covers">${esc(`This tab covers the running version, ${ch.version}${other ? `, not ${other}` : ""}.${missing}`)}</p>`;
+  const notes = [ui.v === "all" ? `Chains show one version at a time, so “all versions” shows the running version, ${ch.version}.` : "",
+    ch.fellBack ? `${ch.fellBack.asked} is not a version in the mirror, so this tab shows the running version, ${ch.version}.` : "",
+    ui.at && !ch.tickets[ui.at] ? `${ui.at} is not in a chain of ${ch.version}.` : ""].filter(Boolean);
+  return notes.length ? `<p class="sub rm-covers">${esc(notes.join(" "))}</p>` : "";
+}
+// The chains of the whole read with no ticket in this version, and the first other version that has one.
+function footHtml(ui, ch, d, whole, sel) {
+  if (!ch.version || !chainOk(whole)) return "";
+  const rest = whole.chains.filter((x) => !ch.chains.some((c) => c.id === x.id));
+  if (!rest.length) return "";
+  const at = d.tickets.filter((t) => rest.some((x) => (x.members || []).includes(idOf(t))) && t.v >= 0 && t.v !== sel).map((t) => t.v);
+  const first = at.length ? Math.min(...at) : -1;
+  const there = rest.filter((x) => d.tickets.some((t) => t.v === first && (x.members || []).includes(idOf(t))));
+  const pick = at.length ? ` Pick <a href="${boardHref({ tab: "chains", v: d.versions[first].n })}">${esc(d.versions[first].n)}</a> to see ${there.length === rest.length ? (rest.length === 1 ? "it" : "them") : there.map((x) => esc(x.id)).join(", ")}.` : "";
+  return `<p class="foot">${rest.length === 1 ? "1 more chain" : `${rest.length} more chains`}, ${rest.map((x) => esc(x.id)).join(", ")}, ${rest.length === 1 ? "has" : "have"} no ticket in ${esc(ch.version)}.${pick}</p>`;
 }
 
-function chainsTab(ui, ch, d) {
-  const sub = "Work that has to land in order.";
-  if (!chainOk(ch)) return section("rm-chains", "Chains", sub, `<div class="nodata">${esc(noChains(ch))}</div>`);
-  const covers = coversHtml(ui, ch, d);
-  if (!ch.chains.length) return section("rm-chains", "Chains", sub, `${covers}<div class="empty">${ch.version ? `No chain has a ticket in ${esc(ch.version)}.` : "No chains in the registry."}</div>`);
+function chainsTab(ui, ch, d, whole, sel) {
+  if (!chainOk(ch)) return `<section id="rm-chains" class="cp" aria-label="Chains"><div class="nodata">${esc(noChains(ch))}</div></section>`;
+  const per = ch.chains.map((c) => ({ c, rows: rowsOf(ch, c) })), open = per.filter((x) => !doneOf(x.c)), fin = per.filter((x) => doneOf(x.c));
+  const label = ch.version ? `Chains in ${ch.version}` : "Chains";
+  const wrap = (inner) => `<section id="rm-chains" class="cp" aria-label="${esc(label)}">${notesHtml(ui, ch)}${inner}</section>`;
+  if (!per.length) return wrap(`<div class="empty">${ch.version ? `No chain has a ticket in ${esc(ch.version)}.` : "No chains in the registry."}</div>${footHtml(ui, ch, d, whole, sel)}`);
+  const k = countsOf(ch, d), total = Object.keys(ch.tickets).length;
+  const states = [[k.done, "done"], [k.flight, "in flight"], [k.launch, "can launch"], [k.wait, "waiting"]].filter(([n]) => n).map(([n, w]) => `${nTickets(n)} ${w}`).concat(ch.version ? [`${nTickets(k.blocked)} blocked`] : [], k.unknown ? [`${nTickets(k.unknown)} unclear`] : []);
   const noVersion = ch.version ? "" : `<div class="nodata">no running version: the chain read covers every version, so it cannot tell a real block and shows no count of them.</div>`;
-  return covers + noVersion + crossLinks(ui, ch) + "\n" + ch.chains.map((c) => {
-    const rows = Object.values(ch.tickets).map((t) => [t, (t.chains || []).find((x) => x.id === c.id)]).filter(([, x]) => x)
-      .sort((a, b) => a[1].step - b[1].step || String(a[0].key).localeCompare(String(b[0].key), "en", { numeric: true }));
-    const nxt = c.next ? `next: step ${c.next.step} ${(c.next.keys || []).map(esc).join(", ")}` : c.done < c.total ? "no step can launch yet" : "no step left";
-    return `<section id="rm-chain-${esc(c.id)}" class="box" aria-labelledby="h-rm-chain-${esc(c.id)}"><h2 id="h-rm-chain-${esc(c.id)}">${esc(c.name || c.id)} <span class="ro">${esc(c.id)}</span></h2>`
-      + `<p class="sub">${c.done}/${c.total} done · ${c.steps} step${c.steps === 1 ? "" : "s"} · ${nxt}</p>${acrossHtml(ui, c, ch.version)}<div class="scroll"><table class="rm-sync rm-chainrows data"><thead><tr><th>Ticket</th><th>Title</th><th>Step</th><th>State</th></tr></thead><tbody>${rows.map(([t, x]) =>
-        `<tr${t.chains[0].id === c.id ? ` id="cn-${esc(t.key)}"` : ""}${ui.at === t.key ? ` class="rm-at"` : ""}><td>${esc(t.key)}</td><td>${esc(t.title || "")}</td><td>${esc(String(x.step))}/${esc(String(x.steps))}</td><td><span aria-hidden="true"${x.state === "in flight" ? ` class="rm-ping"` : ""}>${glyph(x.state)}</span> ${esc(x.state)}${(t.links || []).filter(live).map((l) => " " + whyLink(ui, t.key, l.on)).join("")}</td></tr>`).join("")}</tbody></table></div>${logHtml(ui, c)}</section>`;
-  }).join("\n") + "\n" + burnHtml(d, ch);
+  return wrap(`<div class="cph"><div class="big">${per.length} ${per.length === 1 ? "chain" : "chains"}${ch.version ? ` in ${esc(ch.version)}` : ""}<small>${open.length} open · ${fin.length} finished</small></div>`
+    + `<div class="tick"><b>${nTickets(total)}</b> in them: ${states.join(" · ")}<div class="legend">A chain is work that has to land in order. Steps run left to right; tickets in one step can run side by side.</div></div>${sparkHtml(ch)}</div>`
+    + noVersion + linkStrip(ui, ch)
+    + (open.length ? `<div class="gh">Open · ${open.length} ${open.length === 1 ? "chain" : "chains"}</div>${open.map((x) => openCard(ui, ch, d, whole, x.c, x.rows)).join("\n")}` : "")
+    + (fin.length ? `<div class="gh">Finished${ch.version ? ` in ${esc(ch.version)}` : ""} · ${fin.length} ${fin.length === 1 ? "chain" : "chains"}</div>${fin.map((x) => finCard(ui, ch, d, whole, x.c, x.rows)).join("\n")}` : "")
+    + footHtml(ui, ch, d, whole, sel) + burnHtml(d, ch));
 }
 
 // One row of status-drift.sh: `CLASS KEY says | writer=… | fix=…`. The fix is shown with a copy button; the Board never runs it.
@@ -651,6 +827,11 @@ function drawerHtml(d, ui) {
   </aside>`;
 }
 
+// The Board reads itself again once a whole interval has passed since its last read, and only while it is on screen with nothing being typed, dragged,
+// opened or already loading: a repaint under any of those would lose the operator's place. The caller (app.js) ticks this on a timer.
+export const BOARD_REFRESH_MS = 60_000;
+export const boardRefreshDue = (s) => s.page === "board" && !!s.visible && !s.modal && !s.editing && !s.dragging && !s.busy && s.readAt > 0 && s.now - s.readAt >= BOARD_REFRESH_MS;
+
 export const renderBoard =(data, ui, extras) => pg(boardPage(data, ui || {}, extras || {}));
 function boardPage(data, ui, extras) {
   const page = pageHeader("Board", "Every version, what each ticket is doing, and what is left");
@@ -658,17 +839,28 @@ function boardPage(data, ui, extras) {
   if (data.source === "none") return page + noTrackerHtml();
   if (data.state !== "ok") return page + `<div class="nodata">${esc(data.reason || "board unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
   // the whole Board reads every version; the Chains tab reads the running one
-  const { drift: dr, chains: ch, versionChains: tabCh = ch } = extras;
+  const { drift: dr, chains: ch, versionChains: tabCh = ch, prs } = extras;
   const tab = TABS.some(([id]) => id === ui.tab) ? ui.tab : "roadmap";
   const sel = selIndex(data, ui);
-  const rows = waitingRows(data, ch);
+  const rows = waitingRows(data, ch, ui.nv);
   const tileSel = tab !== "chains" || !chainOk(tabCh) ? sel : tabCh.version ? versionAt(data, tabCh.version) : -1; // a tile never highlights over totals of another version
   const src = data.source === "github" ? `GitHub issues (${data.mirror.count})` : data.source === "local" ? `the local tracker store (${data.mirror.count} items)`
     : `the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"})`;
   // plain text: the bar clips it to what fits and keeps the whole line in its bubble
-  const fresh = `read live from ${src}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${dr.file.writtenHm || "unknown"}` : ""}`;
-  const body = tab === "chains" ? chainsTab(ui, tabCh, data) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch, dr) : waitingHtml(rows, tabCh, ui.v, data, ch) + lanesHtml(data, ui, sel, ch, dr);
-  const drawer = drawerHtml(data, ui), why = tab === "chains" ? whyHtml(ui, tabCh) : "";
+  const readAt = ui.readAt ? ` · read ${new Date(ui.readAt).toLocaleTimeString([], { hour12: false })}, refreshes every ${BOARD_REFRESH_MS / 1000} s` : "";
+  const fresh = `read live from ${src}${readAt}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${dr.file.writtenHm || "unknown"}` : ""}`;
+  // the badges, the Only filter and its counts read the picked version's own read when the tab holds it, so a wait on an earlier version reads the same everywhere
+  const cardCh = chainOk(tabCh) && tabCh.version && versionAt(data, tabCh.version) === sel ? tabCh : ch;
+  const drawer = drawerHtml(data, ui), why = tab === "chains" ? whyHtml(ui, tabCh, data) : "";
+  const modal = !!(drawer || why);
+  if (tab === "chains") {
+    // one read, the picked version's: a slim version row, the tabs and their aside, and the panel. No drift banner, no lane filters, no "all versions".
+    const head = `<div class="rm-head bh"${modal ? " inert" : ""}><header class="ph"><h1>Board</h1></header>${stripHtml(data, tileSel, tab, { ...ui, inert: modal }, "", true)}</div>`;
+    return [head, `<div class="rm-under"${modal ? " inert" : ""}>`, `<div class="tr">${tabsHtml(data, ui, tab, tabCh, dr)}${asideHtml(ch, rows, fresh)}</div>`, writeNote(ui), chainsTab(ui, tabCh, data, ch, tileSel), `</div>`, drawer, why].join("\n");
+  }
+  // the No version tab's tickets are in no version, so the picked version's read cannot hold them: it keeps the whole read
+  const shownCh = tab === "nv" ? ch : cardCh;
+  const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr, prs) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv) + lanesHtml(data, ui, sel, cardCh, dr, prs);
   // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
-  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), !!(drawer || why))}</div>`, `<div class="rm-under"${drawer || why ? " inert" : ""}>`, stripHtml(data, tileSel, ch, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows, data)}</div>`, barHtml(data, ui, ch, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
+  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), modal)}</div>`, `<div class="rm-under"${modal ? " inert" : ""}>`, stripHtml(data, tileSel, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows, data, ui.nv)}</div>`, barHtml(data, ui, shownCh, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
 }

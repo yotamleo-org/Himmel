@@ -1,6 +1,6 @@
 # Configuration & workflow chains
 
-Audience: contributor, and an adopter who has finished getting started. Owner of the rewrite: HIMMEL-7212.
+Audience: contributor, and an adopter who has finished getting started.
 
 The canonical map of **what himmel does, in what order, and what you can
 control**. Every claim here is traceable to code or config in this repo — the
@@ -300,7 +300,7 @@ flowchart TD
     CDXBACK --> BACK
 ```
 
-**Dormancy (operator ruling 2026-08-19).** The diagram shows what
+**Dormancy.** The diagram shows what
 each sanctioned script *does*, not what is currently routed to it. `lanes.json`
 deliberately carries no `defaultImplLane`, so an unqualified impl dispatch
 refuses toward the native Claude-subagent path rather than silently picking a
@@ -311,7 +311,7 @@ lanes, codex-exec, hermes-oneshot and openrouter-claude, are marked `dormant`;
 opting one in is per-dispatch and per-lane (`CODEX_EXEC_LANE_OK`,
 `HERMES_ONESHOT_LANE_OK`, `OPENROUTER_CLAUDE_LANE_OK`; `/lanes` prints each
 dormant lane's opt-in). The GLM lane was removed, registry row included
-(HIMMEL-7909, HIMMEL-7481). Hermes critic rows inside `/pr-check` are unaffected.
+with it. Hermes critic rows inside `/pr-check` are unaffected.
 `/lanes` is the live inventory; `internals/lane-calibration.md` is the status
 of record.
 
@@ -391,7 +391,7 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | `block-backend-tier` | an MCP (Model Context Protocol plugin-server) call for a service whose CLI ranks higher and has the verb (registry `scripts/backends.json`) | auth-gated | `MCP_ALL_OK=1` or `MCP_<SERVICE>_OK=1` |
 | `block-jira-compound-write` | a Jira CLI write wrapped in `$(…)`/heredoc/chain | auth-gated (blocks the compound shape, prescribes the one literal retry) | `JIRA_COMPOUND_WRITE_OK=1` |
 | `block-tail-pipe-on-gates` | a pipeline whose FIRST stage invokes an exit-code-critical gate (`check-ci.sh`, `clear-review-marker.sh`, `run-shell-tests.sh`, `merge-on-green.sh`, `pr-merge.sh`, `scripts/*/test-*.sh`) and whose LAST stage is `tail`/`head` — `$?` would be tail's, not the gate's | warn-only (fail-open on anything it cannot parse) | a same-line `# tail-pipe-ok: <reason>` marker — deliberately NOT an env var, since a per-call prefix never reaches a hook |
-| `guard-memory-capture` | writes to the auto-memory store breaking its form rules | auth-gated | `MEMORY_CAPTURE_OK=1`; `MEMORY_TOPIC_MODE` (default `deny`) picks the topic-cap outcome, `warn` = the HIMMEL-8005 advisory |
+| `guard-memory-capture` | writes to the auto-memory store breaking its form rules | auth-gated | `MEMORY_CAPTURE_OK=1`; `MEMORY_TOPIC_MODE` (default `deny`) picks the topic-cap outcome, `warn` = an advisory instead of the deny |
 | `block-docker-privesc` | privileged/secret-mounting docker runs | auth-gated | `DOCKER_PRIVESC_OK=1` |
 | `block-merged-pr-commit` | `git commit` onto a branch whose PR already merged | auth-gated (hygiene) | `MERGED_PR_COMMIT_OK=1` |
 | `check-cr-marker-on-pr-create` | `gh pr create` while a review-owed marker exists | auth-gated | clean `/pr-check` (clears the marker) |
@@ -550,8 +550,8 @@ each bridged var's own comment there names its bridging reader.
   process values take precedence. Its legacy `.env` fallback lasts one release.
 - **Moves to `~/.himmel/config.json` `.policy`:** `CR_REQUIRE_CROSS_MODEL`,
   `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`.
-- **Stays in `.env`:** the secrets, until the keyring work (HIMMEL-7147,
-  HIMMEL-7576) is complete: API tokens, the Telegram keys and
+- **Stays in `.env`:** the secrets, until the keyring work
+  is complete: API tokens, the Telegram keys and
   every key not yet classified as config, plus other tools' keys. Only a
   himmel secret that nothing in the checkout reads moves, to
   `~/.config/secrets/himmel.env`. Never empty `.env`: Jira, Telegram and the
@@ -751,8 +751,7 @@ A repo with no code review at all says so explicitly:
 { "review": "no_code_review" }
 ```
 
-**himmel's own review posture (operator decision 2026-07-28;
-CodeRabbit half superseded 2026-09-07).**
+**himmel's own review posture.**
 The knobs above are general; this is the setting this repo actually runs.
 **The codex critic panel is the steady-state pre-PR reviewer, every review round, and
 CodeRabbit is the GitHub App ONLY** — there is no local CodeRabbit pass to

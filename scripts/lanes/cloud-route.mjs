@@ -39,7 +39,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
-const REPO_SLUG = 'yotamleo/Himmel';
+const REPO_SLUG = 'yotamleo-org/Himmel'; // env-literal-ok: the canonical slug; --search does not follow a repo rename, and the dispatcher's own reads use this one
 const HOOKS = /^scripts\/hooks\//;
 // What the cloud lane can and cannot do is data: every matrix row with a `match`
 // is a run-time need that keeps a ticket on the station, and max_asks caps asks.
@@ -145,6 +145,7 @@ export function askLines(description) {
 const overlaps = (a, b) => a === b || b.startsWith(a.replace(/\/?$/, '/')) || a.startsWith(b.replace(/\/?$/, '/'));
 
 const STALE_DAYS = 14;
+const MERGED_PAGE = 30; // the per-ticket merged search reads this many; a full page may hide more matches
 
 // a CLOUD-OK ticket's files stay reserved across invocations through the bucket's
 // cloud-route.jsonl. A reservation ends at RESERVATION_HOURS, or when a merged PR cites the
@@ -238,6 +239,7 @@ export function classifyTicket(t, ctx) {
   const lost = ctx.tree ? unresolved(files, ctx.tree) : [];
   if (lost.length) return v('LOCAL-NATIVE', `cannot resolve ${lost.join(', ')} at the base — no such file or directory, so the hook, trust and held checks cannot be trusted (pass files)`);
   if (ctx.mergedUnknown) return v('BLOCKED', 'merged-PR list unavailable (gh failed) — cannot prove the ticket is not already fixed');
+  if (ctx.mergedTruncated?.has(t.key)) return v('BLOCKED', `merged-PR list unavailable for ${t.key} (${MERGED_PAGE} merged PRs match it, so the search may be truncated) — cannot prove the ticket is not already fixed`);
   const fixed = fixedBy(t, files, ctx);
   if (fixed.length) return { ...v('VERIFY-LOCAL', `may already be fixed on main — ${fixed.map((f) => `PR ${f.number} (${f.why}, merged ${String(f.mergedAt).slice(0, 10)})`).join('; ')}; verify locally before any cloud session`), prs: fixed.map((f) => f.number) };
   return v('CLOUD-OK', `${files.length} file(s), ${asks} ask(s), no hook, trust path or run-time need, none held`);
@@ -340,22 +342,60 @@ function openPrFiles() {
   return out;
 }
 
+// Can an empty `git log --grep` on this ref show a key is absent? Only when its history is whole and recent: a shallow clone
+// stops at its boundary, and a ref last updated more than the window ago lacks every merge since. Either reads as unknown.
+const refProof = new Map();
+function refProvesAbsence(cwd, ref) {
+  const k = `${cwd}\0${ref}`;
+  if (!refProof.has(k)) {
+    let ok = false;
+    try {
+      const shallow = gitClean(['rev-parse', '--is-shallow-repository'], { cwd, encoding: 'utf8', timeout: 60000 }).trim();
+      const tip = Number(gitClean(['log', '-1', '--format=%ct', ref], { cwd, encoding: 'utf8', timeout: 60000 }).trim());
+      ok = shallow === 'false' && Number.isFinite(tip) && Date.now() / 1000 - tip <= STALE_DAYS * 86400;
+    } catch { ok = false; }
+    refProof.set(k, ok);
+  }
+  return refProof.get(k);
+}
+
+// Does the local main ref carry a commit whose message (subject and body, a squash merge keeps the PR body) names the key?
+// true; false when it does not and the ref's history can show that; null when it cannot be told (no such ref, git failed or
+// timed out, a shallow or stale ref with no match). A superset screen: a short key also
+// matches a longer one, which only costs one search that the cites test then filters.
+function citedOnMain(key) {
+  try {
+    const cwd = process.env.CLOUD_ROUTE_GIT_DIR || primaryCheckout();
+    const ref = process.env.CLOUD_ROUTE_MAIN_REF || 'origin/main';
+    if (gitClean(['log', ref, '--fixed-strings', `--grep=${key}`, '-1', '--format=%h'], { cwd, encoding: 'utf8', timeout: 60000 }).trim() !== '') return true;
+    return refProvesAbsence(cwd, ref) ? false : null;
+  } catch { return null; }
+}
+
 // One shared list of PRs merged since STALE_DAYS ago (the file-overlap rule) plus one
 // search per ticket (PRs citing the key, any age), through the same gh the open-PR list
-// uses. Deduplicated by number.
+// uses. Deduplicated by number. Returns { prs, truncated }.
+// The per-ticket search was the dispatcher's largest GraphQL cost, so a key no commit on the local main ref
+// names is not searched. Fails closed: a local answer of unknown (null) still searches. What a lagging ref can hide is a
+// merge of the last STALE_DAYS, and the shared window list above reads exactly those from GitHub, so only the key search
+// is skipped, never the window.
+// ponytail: a PR older than the window whose body gained the key after it merged (the squash message never held it) is not found, upgrade path: an indexed key-to-PR map filled once per merge
+// A key whose search fills the page is `truncated`: that ticket alone is BLOCKED, the other tickets of the run still classify.
 function mergedPrs(keys) {
   const gh = process.env.CLOUD_ROUTE_GH_CMD || 'gh';
-  const run = (extra) => JSON.parse(execFileSync(gh, ['pr', 'list', '--repo', REPO_SLUG, '--state', 'merged', '--json', 'number,title,body,mergedAt,files', ...extra], { encoding: 'utf8', timeout: 60000 }) || '[]');
+  const run = (extra) => JSON.parse(execFileSync(gh, ['pr', 'list', '--repo', REPO_SLUG, '--state', 'merged', '--json', 'number,title,body,mergedAt,files', ...extra], { encoding: 'utf8', timeout: 60000, maxBuffer: 64 * 1024 * 1024 }) || '[]');
   const since = new Date(Date.now() - STALE_DAYS * 86400e3).toISOString().slice(0, 10);
   const all = new Map();
+  const truncated = new Set();
   // ponytail: the file-overlap window reads at most 200 PRs, so a busier fortnight can hide an overlap, upgrade path: paginate or search per file
   for (const pr of run(['--limit', '200', '--search', `merged:>=${since}`])) all.set(pr.number, pr);
   for (const k of keys) {
-    const hits = run(['--limit', '30', '--search', `${k} in:title,body`]);
-    if (hits.length >= 30) throw new Error(`30 merged PRs match ${k} — the search may be truncated`);
+    if (citedOnMain(k) === false) continue;
+    const hits = run(['--limit', String(MERGED_PAGE), '--search', `${k} in:title,body`]);
+    if (hits.length >= MERGED_PAGE) truncated.add(k);
     for (const pr of hits) all.set(pr.number, pr);
   }
-  return [...all.values()];
+  return { prs: [...all.values()], truncated };
 }
 
 function main(argv) {
@@ -383,7 +423,8 @@ function main(argv) {
   try { held.push(...openPrFiles()); } catch (e) { heldUnknown = true; process.stderr.write(`cloud-route: gh failed, open-PR files unknown — ${e.message.split('\n')[0]}\n`); }
   let merged = [];
   let mergedUnknown = false;
-  try { merged = mergedPrs(keys); } catch (e) { mergedUnknown = true; process.stderr.write(`cloud-route: gh failed, merged PRs unknown — ${e.message.split('\n')[0]}\n`); }
+  let mergedTruncated = new Set();
+  try { ({ prs: merged, truncated: mergedTruncated } = mergedPrs(keys)); } catch (e) { mergedUnknown = true; process.stderr.write(`cloud-route: gh failed, merged PRs unknown — ${e.message.split('\n')[0]}\n`); }
   // reservations from earlier runs; read after merged so a merged PR can release them
   const log = opt.bucket ? join(opt.bucket, 'cloud-route.jsonl') : null;
   if (log) {
@@ -393,7 +434,7 @@ function main(argv) {
   let tree = [];
   let treeUnknown = false;
   try { tree = baseTree(); } catch (e) { treeUnknown = true; process.stderr.write(`cloud-route: git failed, file tree unknown — ${e.message.split('\n')[0]}\n`); }
-  const ctx = { trust: loadTrust(), held, heldUnknown, merged, mergedUnknown, tree, treeUnknown };
+  const ctx = { trust: loadTrust(), held, heldUnknown, merged, mergedUnknown, mergedTruncated, tree, treeUnknown };
   const date = new Date().toISOString().slice(0, 10);
   const launches = [];
   if (!opt.classifyOnly) mkdirSync(opt.bucket, { recursive: true });

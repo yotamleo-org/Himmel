@@ -68,7 +68,7 @@ same one (then pick the stronger and disable the loser).
 | Dev command output | **RTK (hooked)**, which keeps the boundary | a challenger clears invariant 2 (license) then beats RTK on a measured real-session delta (invariant 3) |
 | Conversational / verbose output | **unowned** | the boundary is deliberately empty: a candidate enters through invariant 2 (license) then invariant 3 (measured delta) |
 | MCP / tool output | **open; the MCP eval decides** (Headroom lead candidate, Apache-2.0) | adoption gate = measured token delta on a real himmel workday + outcome-per-session verdict |
-| Stable prefixes (prompt cache) | **owner = the operator** (as `/morning-report` reviewer), responder path below | cheapest lever, least instrumented. **monitored by `scripts/eval/cache-health-cadence.sh`** (HIMMEL-5672, [`docs/internals/cache-health.md`](internals/cache-health.md)): hourly, no model, per-role hit rate against a 7-day baseline, one Telegram + chief message only on a real threshold crossing (baseline 2026-10-14: 97.9 % overall, chiefs 99.3, workers 97.8, subagents 94.9). The circulating 76.5% read-ratio / "<40% = structural issue" figures are one-tweet heuristics from someone else's workspace, flagged non-representative by the source note itself; himmel's own read-ratio was first measured 2026-09-29: 98.2% over 1,210 session first-turns and 36.0G tokens of a single project's transcripts (`scripts/eval/cache-probe.sh first-turn`, [`docs/internals/prompt-cache.md`](internals/prompt-cache.md)) |
+| Stable prefixes (prompt cache) | **owner = the operator** (as `/morning-report` reviewer), responder path below | cheapest lever, least instrumented. **monitored by `scripts/eval/cache-health-cadence.sh`** ([`docs/internals/cache-health.md`](internals/cache-health.md)): hourly, no model, per-role hit rate against a 7-day baseline, one Telegram + chief message only on a real threshold crossing (baseline 2026-10-14: 97.9 % overall, chiefs 99.3, workers 97.8, subagents 94.9). The circulating 76.5% read-ratio / "<40% = structural issue" figures are one-tweet heuristics from someone else's workspace, flagged non-representative by the source note itself; himmel's own read-ratio was first measured 2026-09-29: 98.2% over 1,210 session first-turns and 36.0G tokens of a single project's transcripts (`scripts/eval/cache-probe.sh first-turn`, [`docs/internals/prompt-cache.md`](internals/prompt-cache.md)) |
 | Context bloat | **CLAUDE.md hygiene** | with the Vercel passive-beats-on-demand caveat baked into its acceptance (always-on beat on-demand 100% vs 79% for general knowledge; don't blanket-move content out of always-on) |
 | Whole task (routing) | **lane selection** ([`lane-calibration.md`](internals/lane-calibration.md)); this doc only states the policy: trivial→cheap is the biggest lever | seam: this doc = policy + measurement bar; lane selection = mechanism (lane table, model defaults, fallback chains) |
 | Downgraded bulk output (validation) | **the sampling rule** (below) | every downgraded task class names its validation sampling rule: rate, judge, escalation trigger (sampled failure ⇒ batch escalates to the frontier lane). Proposed as an acceptance criterion on the bulk-downgrade routing work; cheap routing that silently degrades outcome-per-session is the named failure |
@@ -196,8 +196,8 @@ fails if a runbook body creeps back inline.
 `ui-ux-pro-max` + `scroll-world` (audit O1, ~6 KB) is a user-scope operator
 action already applied outside this repo, and `security-guidance` is an adopter-
 default change (see
-[`docs/setup/new-machine.md`](setup/new-machine.md#security-guidance--recommended-off-operator-decision-pending))
-with the operator-box decision still pending. Neither changes this machine's
+[`docs/setup/new-machine.md`](setup/new-machine.md#security-guidance--recommended-off))
+that does not turn it off on a machine where it is already on. Neither changes this machine's
 current listing sum.
 
 ### Skill/command descriptions → a 120-char cap (measured 2026-08-23)
@@ -251,7 +251,7 @@ from it), and it had grown to 19,018 B. Every rule was re-sorted by layer
 (hook/gate → one line naming the enforcer; reference detail → `docs/internals/`;
 recovery → the stuck-playbook; general engineering defaults → a user-scope
 block installed once by `adopt.sh`/`himmel-update`), and a
-pre-commit byte gate (`scripts/ci/check-claude-md-budget.sh`, ≤ 6,144 B since HIMMEL-5512) keeps
+pre-commit byte gate (`scripts/ci/check-claude-md-budget.sh`, ≤ 6,144 B since the lean steering bench) keeps
 it from re-accreting.
 
 **Method.** Tracked bytes straight from the object store (`git show <rev>:<path> | wc -c`)
@@ -283,13 +283,12 @@ once.
 structurally enforced kept its one-line directive and gained the enforcer's
 name (`block-edit-on-main`, `check-push-target`, `orchestrator-inline-guard`, …);
 only the rationale and recovery detail moved. The session-critical paragraph
-(hook bypass = launching-shell env, `.single-writer`), the RETASK rule, the
+(hook bypass = launching-shell env, `.single-writer`), the revision-channel rule, the
 Jira absolute-path invocation, the qmd `--collections` trap and the egress
 clause stayed inline verbatim, because a directive behind a lookup is a dead
 directive.
 
-**The `## graphify` section stays as verbatim upstream text (operator ruling
-2026-08-23).** `graphify install --platform claude` writes a stock `## graphify`
+**The `## graphify` section stays as verbatim upstream text.** `graphify install --platform claude` writes a stock `## graphify`
 section into the project `CLAUDE.md` on every run (`graphifyy`
 `install.py: claude_install` → `_replace_or_append_section`: replace the
 section in place if a line is exactly `## graphify`, else append at EOF), and
@@ -301,7 +300,7 @@ what the installer writes, unmodified, so a reinstall or upgrade is a no-op
 (or a clean upstream text bump), never a conflict. himmel's own rules live
 entirely OUTSIDE the section; where they conflict, the RULES above it win. The stock
 section teaches the bare `graphify` command, which failed 35 of 58 times from a
-worktree (HIMMEL-8759); the verbatim claim stays true because the section is not
+worktree; the verbatim claim stays true because the section is not
 edited. The fix is the Retrieval routing rule above it, which names
 `bash scripts/graphify/worker-graph.sh`, and `scripts/ci/check-taught-search-forms.sh`
 keeps every other taught file on a working form. The budget gate

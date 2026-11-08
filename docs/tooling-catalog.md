@@ -56,7 +56,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `github` | GitHub integration (issues, PRs, repos) | ON-DEMAND — cached, off by default |
 | `feature-dev` | Feature development workflow (explorer, architect, reviewer agents) | ON-DEMAND — cached, off by default |
 | `claude-md-management` | Manages CLAUDE.md files across projects | ON-DEMAND — cached, off by default |
-| `security-guidance` | Security analysis and guidance | ON-DEMAND — cached, off by default (retired in favor of the automated review gate — see [new-machine.md §6](setup/new-machine.md#security-guidance--recommended-off-operator-decision-pending)) |
+| `security-guidance` | Security analysis and guidance | ON-DEMAND — cached, off by default (retired in favor of the automated review gate — see [new-machine.md §6](setup/new-machine.md#security-guidance--recommended-off)) |
 | `commit-commands` | Git commit helpers and conventions | ON-DEMAND — cached, off by default |
 | `claude-code-setup` | Setup assistant for new Claude Code environments | ON-DEMAND — cached, off by default |
 | `pr-review-toolkit` | PR review tools (code, tests, types, silent failures, comments) | ON-DEMAND — cached, off by default (`/pr-check` dispatches it only with `CR_CLAUDE_AGENTS=1`) |
@@ -78,7 +78,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `motion-lexicon` | Motion vocabulary skill, tag `v6.0.0` | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `threejs-skills` | Three.js skills (10 skills, sha-pinned) | ON-DEMAND, `design-3d` profile; catalog id `@himmel` |
 | `ai-image-prompts` | AI image prompt library (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-imagegen` profile; catalog id `@himmel` |
-| `higgsfield-skills` | Higgsfield image and video skills (higgsfield-ai/skills, MIT, 8 root-dir skills listed, `strict:true` as upstream's own entry, sha-pinned); they run the `higgsfield` CLI through Bash, no MCP (HIMMEL-7826) | ON-DEMAND, `design-imagegen` profile; egress to Higgsfield (prompts and uploaded files), a `higgsfield` Bash call is denied in salus by `block-agent-native-egress.sh`. Operator, once per machine: `npm i -g @higgsfield/cli`, then `higgsfield auth login` (browser); catalog id `@himmel` |
+| `higgsfield-skills` | Higgsfield image and video skills (higgsfield-ai/skills, MIT, 8 root-dir skills listed, `strict:true` as upstream's own entry, sha-pinned); they run the `higgsfield` CLI through Bash, no MCP | ON-DEMAND, `design-imagegen` profile; egress to Higgsfield (prompts and uploaded files), a `higgsfield` Bash call is denied in salus by `block-agent-native-egress.sh`. Operator, once per machine: `npm i -g @higgsfield/cli`, then `higgsfield auth login` (browser); catalog id `@himmel` |
 | `platform-design-skills` | Platform design guidelines: all 8 upstream platforms load, no skills list (sha-pinned) | ON-DEMAND, `design-a11y` profile; catalog id `@himmel` |
 | `diagram-design` | Diagram design skills (manifest-bearing upstream, sha-pinned) | ON-DEMAND, `design-diagram` profile; catalog id `@himmel` |
 | `builder-visual` | Builder.io skills: all upstream skills load, incl. visual-plan and visual-recap; `strict:true` (upstream plugin.json) (sha-pinned) | ON-DEMAND, `design` core + `design-diagram` profile; its `.mcp.json` registers the hosted OAuth MCP `agent-native-dispatch` (`https://dispatch.agent-native.com/mcp`, egress to Builder.io, one-time operator login); catalog id `@himmel` |
@@ -91,7 +91,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `anthropic-design-skills` | anthropics/skills: whole skills/ dir loads (design ones: theme-factory, brand-guidelines, canvas-design; a skills list cannot subset it) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `hallmark` | Nutlope/hallmark design skill (90 MB clone), opt-in trial | ON-DEMAND, `design-trial` profile; catalog id `@himmel` |
 
-Evaluated for the design kit and NOT added (HIMMEL-4016, static review only: the
+Evaluated for the design kit and NOT added (static review only: the
 usage POC was not run, because external code runs VM-first and no VM was free):
 `alchaincyf/huashu-design` v3.0.0 (MIT; Chinese-language skill, HTML prototypes,
 decks and MP4/GIF/PPTX export that need Playwright, pptxgenjs and sharp installed;
@@ -338,7 +338,7 @@ README's fork-delta section).
 
 ---
 
-### obsidian-second-brain (REMOVED, HIMMEL-8416)
+### obsidian-second-brain (REMOVED)
 
 Removed from the himmel marketplace and from every profile. The Telegram bridge
 and `lane-content` loaded it on every spawn for about 2.4k-3.5k tokens, and it
@@ -429,10 +429,10 @@ Astra surfaces (`~/.codex/config.toml`, `scripts/cr/critics.json`) are already a
 
 | Tool | What it does |
 |------|-------------|
-| `component-scan.mjs` | LUNA-57. gh-API deep repo component scanner for `luna-ingest --deep`. Inventories skills/commands/agents/tools/plugin manifests; upserts a cross-repo-deduped `30-Resources/Components/` library. No clone — gh tree + raw reads only. |
-| `telegram-clip.mjs` | LUNA-58. Telegram → `Clippings/` ingestion entry point. Maps one message (text / bare URL / forward) to a LUNA-2 Web-Clipper-shaped clip note so `harvest-clips` ingests it; classifies by URL host, preserves sender/ts/msg-id provenance, idempotent per message-id. Pure Node, no runtime deps (the test uses the vendored `js-yaml`). |
-| `roadmap-aggregate.mjs` | LUNA-59. Read-only cross-source roadmap-item aggregator for `roadmap-clips`. Scans daily-note action items, `_deferred.md` backlog, synthesis proposals, promotion candidates, and the component inventory; emits a JSON item inventory the skill clusters into a sequenced 60-Maps roadmap. Pure Node, no runtime deps. |
-| `clip-lookup.mjs` (+ `clip-lookup-cli.mjs`, `is-thin-cli.mjs`) | LUNA-78. Single source of truth for *"is this URL already harvested (and enriched) in the vault?"* — filesystem-only canonical-URL/status-id match plus a per-type `isThinClipBody` thinness predicate. `telegram-clip.mjs` (`alreadyFiledByUrl`) and `dedup-sweep.mjs` (`indexVault`) derive their URL key from it; `/read-link` and `harvest-clips` shell out to the CLIs. No vault → returns `null` (never throws), so callers degrade to live fetch. Pure Node, no runtime deps. |
+| `component-scan.mjs` | gh-API deep repo component scanner for `luna-ingest --deep`. Inventories skills/commands/agents/tools/plugin manifests; upserts a cross-repo-deduped `30-Resources/Components/` library. No clone — gh tree + raw reads only. |
+| `telegram-clip.mjs` | Telegram → `Clippings/` ingestion entry point. Maps one message (text / bare URL / forward) to a Web-Clipper-shaped clip note so `harvest-clips` ingests it; classifies by URL host, preserves sender/ts/msg-id provenance, idempotent per message-id. Pure Node, no runtime deps (the test uses the vendored `js-yaml`). |
+| `roadmap-aggregate.mjs` | Read-only cross-source roadmap-item aggregator for `roadmap-clips`. Scans daily-note action items, `_deferred.md` backlog, synthesis proposals, promotion candidates, and the component inventory; emits a JSON item inventory the skill clusters into a sequenced 60-Maps roadmap. Pure Node, no runtime deps. |
+| `clip-lookup.mjs` (+ `clip-lookup-cli.mjs`, `is-thin-cli.mjs`) | Single source of truth for *"is this URL already harvested (and enriched) in the vault?"* — filesystem-only canonical-URL/status-id match plus a per-type `isThinClipBody` thinness predicate. `telegram-clip.mjs` (`alreadyFiledByUrl`) and `dedup-sweep.mjs` (`indexVault`) derive their URL key from it; `/read-link` and `harvest-clips` shell out to the CLIs. No vault → returns `null` (never throws), so callers degrade to live fetch. Pure Node, no runtime deps. |
 | `follow-list-score.mjs` (+ `lib/follow-{roster,dossier,verify,screen,score}.mjs`) | Evidence-first X/Twitter follow-list scorer: pure-code `gather` (per-handle evidence dossier — corpus, account fetch via the spike-A fxtwitter endpoint, claim extraction/verification, injection screen), a manual `judge-prep` → Claude judge pass scored against `follow-judge-charter.md`, and pure-code `assemble` (deterministic composite/tier math + `follow-overrides.json` whitelist/exclude, writes `ai-x-follow-list.md` + `ai-x-follow-scores.md`). Judge pass is interactive/subagent only — never headless `claude -p`. See `marketplace/plugins/obsidian-triage/tools/README.md`. |
 
 #### luna-correlate (`luna-correlate@himmel`)
@@ -469,7 +469,7 @@ plugin, so a skill that a profile must enable moves into a plugin instead
 
 ### writing-for-agents (`.claude/skills/writing-for-agents/`)
 
-**What:** Vendored `mattpocock/skills` skill (MIT, pinned `49dd158d1076134a641b33efb035946536778336`, HIMMEL-5631) on cutting and tightening agent-facing docs. User-invoked (`disable-model-invocation`), 0 listing tokens. POC use: `/writing-for-agents find ways to cull my global steering files`, read-only, proposal only. Complements `claude-md-audit` (rubric check of a changed CLAUDE.md) and `prose-audit` (mechanical prose to script); neither culls sediment or no-ops across the steering set. Scheduling not wired (operator ruling pending).
+**What:** Vendored `mattpocock/skills` skill (MIT, pinned `49dd158d1076134a641b33efb035946536778336`) on cutting and tightening agent-facing docs. User-invoked (`disable-model-invocation`), 0 listing tokens. POC use: `/writing-for-agents find ways to cull my global steering files`, read-only, proposal only. Complements `claude-md-audit` (rubric check of a changed CLAUDE.md) and `prose-audit` (mechanical prose to script); neither culls sediment or no-ops across the steering set. Scheduling not wired (operator ruling pending).
 
 ---
 
@@ -515,7 +515,7 @@ check no longer does).
 `cadence_runner_stamp` (`scripts/lib/cadence-format.sh`, shared by C8 above and
 `himmel-update`'s post-pull STALE nudge) reads only the runner extension the
 CURRENT platform actually executes — `.sh` on Linux/macOS; the `.bat` twin is a
-leftover of the dropped Windows support (HIMMEL-5729) and is never read. A cadence copied between stations leaves a dormant,
+leftover of the dropped Windows support and is never read. A cadence copied between stations leaves a dormant,
 never-regenerated twin on whichever platform doesn't arm it; that twin is
 invisible to the staleness probe on purpose, so it can never pin a false-stale
 floor on the platform that actually runs the cadence.
@@ -553,7 +553,7 @@ Answers the operator's named observability blind spot — per-session tool-call 
 instagram.com, reddit.com, redd.it — the file's one line) go through Scrapling's stealth fetcher
 (`~/.himmel/scrapling-venv`, no cookies, never a Chrome profile): X prints
 author, handle, date, each post's text in order and media URLs; Instagram prints
-the `og:` tags; Reddit prints the thread's rendered text (HIMMEL-4709, cookieless). Any other host is a plain GET rendered to text. Exit: 0 ok, 2
+the `og:` tags; Reddit prints the thread's rendered text (cookieless). Any other host is a plain GET rendered to text. Exit: 0 ok, 2
 usage, 3 scrapling missing (install hint on stderr), 4 fetch failed (status on
 stderr). Companion PreToolUse hook `scripts/hooks/redirect-webfetch-walled-hosts.sh`
 (matcher `WebFetch`) denies WebFetch on a walled host and prints that exact
@@ -620,7 +620,7 @@ idempotent `scripts/lib/register-auto-arm-hook.sh`. Tests:
 
 Sourced-only, bash-3.2-safe lib exporting `resolve_user_home` (the user home:
 `$HOME`, then `/tmp` as the last resort; a `USERPROFILE` branch left from the
-dropped Windows support, HIMMEL-5729, never fires on Linux or macOS) and `default_vault` (honors `LUNA_VAULT_PATH` first — the path
+dropped Windows support, never fires on Linux or macOS) and `default_vault` (honors `LUNA_VAULT_PATH` first — the path
 `adopt.sh` persists and `himmel-doctor` probes — else `<home>/Documents/luna`
 via the resolver above; an explicit `--vault` always overrides at the caller).
 Extracted **verbatim** from `scripts/luna/pipeline-cadence.sh` (Stage 1 PR-A, spec A16), which now sources it instead of carrying its own
@@ -647,7 +647,7 @@ Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), 
 
 ---
 
-## /no-comments + comment-sicko (vendored, HIMMEL-5630)
+## /no-comments + comment-sicko (vendored)
 
 `.claude/skills/no-comments/` (`SKILL.md`, `LICENSE`) and `.claude/agents/comment-sicko.md`: the comment-prune tool. `/no-comments [scope]` spawns the `comment-sicko` reviewer, which deletes comments outside a short keep list (license headers, external-forced behaviour, public API docs, constraint links, `ponytail:` markers) and flags our-code surprises as `MUST KILL`. Vendored from `cursor/plugins` pstack at `1e5c90a4b6f249917bd21fe361b3a2a7deb741b8` (MIT, Lauren Tan); deviations are listed in each file's header. `disable-model-invocation`, so it runs only when typed.
 
@@ -890,7 +890,8 @@ vault prose; the full mechanics live in luna
 
 - **Effort ladder — default `xhigh` (decision 223), `low` first for mechanical
   chunks, never `ultra`/`max`.** The launcher pins `CLAUDE_CODE_EFFORT_LEVEL=xhigh`
-  when unset (it was `medium` from HIMMEL-2772 until HIMMEL-7580, `high` before
+  when unset (it was `medium` while implementation was offloaded to the codex lanes
+  to spare the Claude weekly bank, until claudex became a live lane, `high` before
   that, and before the operating rules an implicit `xhigh`); override per
   dispatch for a cheaper task (calibration: `docs/internals/lane-calibration.md`,
   "Effort calibration"). `ultra` is unreachable (see Effort mapping above); `max` is
@@ -1155,7 +1156,7 @@ wrong (not on PATH) or bypasses the wrapper's guards (hook-blocked).
 ## lean-skills (plugin: `lean-skills@himmel`)
 
 **Tier:** ALWAYS — installed + enabled on every himmel machine; it replaced
-`superpowers@claude-plugins-official` (HIMMEL-3064).
+`superpowers@claude-plugins-official`.
 **What:** Workflow orchestration skills. Invoked via `/skill` tool.
 
 Key skills used:
@@ -1348,7 +1349,7 @@ on demand; nothing here runs automatically.
   (`GRAPHIFY_LEDGER`); `deepseek`/`codex` use OpenAI chat/completions, `claude` uses the Anthropic Messages API. DeepSeek off-peak advisory. `--dry-run` first.
 - `scripts/luna/fetch-health.py` — Daily no-LLM health probes for luna
   clip-source fetch integrations. The registry (`build_probe_registry`) carries
-  **ten** source ids, several per platform, none cookie-backed (HIMMEL-4709): `reddit`
+  **ten** source ids, several per platform, none cookie-backed: `reddit`
   (plain `.json` GET), `x-fxtwitter`, `x-scrapling`, `instagram-embed`,
   `instagram-scrapling` (the Scrapling path, run with the scrapling venv),
   `youtube-scrapling` (metadata via Scrapling and the transcript via yt-dlp
@@ -1464,8 +1465,7 @@ view into the vault — the bridge between the derived graph and the KB.
   unattended:
   `bash scripts/luna/graphmap-cadence.sh arm` (`--luna-time` / `--himmel-time` /
   `--vault` / `--force` / `--dry-run` / `--ast-only`). A bare arm registers the
-  HIMMEL rows only; the Luna graph tasks are off by default (HIMMEL-9011,
-  decision 449) and come only from `arm --luna-only`.
+  HIMMEL rows only; the Luna graph tasks are off by default (decision 449) and come only from `arm --luna-only`.
   `--ast-only` arms/dedup-checks ONLY the free structural (AST) task of the
   scope being armed (himmel's on a bare arm, Luna's with `--luna-only`),
   skipping that scope's semantic task (and its backend credential

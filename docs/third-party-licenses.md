@@ -110,7 +110,7 @@ families are `@img/sharp-libvips` and `@img/sharp`:
   library; himmel neither modifies nor distributes it, so no obligation is
   triggered. Dropping it is not worth a lockfile override, since astro lists
   it as its own optional dependency.
-- **Accepted** on 2026-10-23 (HIMMEL-7169). Revisit if the site starts
+- **Accepted** on 2026-10-23. Revisit if the site starts
   shipping processed images or a bundled `node_modules`.
 
 ## Docs-site bundle: `pele` (MIT, kepano)
@@ -167,7 +167,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ## Vendored skill: `unslop` (MIT, Lauren Tan)
 
-Added 2026-09-17 (re-synced to the pin below in HIMMEL-5812), the first single-file skill vendored outside
+Added 2026-09-17 (re-synced to the pinned commit below), the first single-file skill vendored outside
 `marketplace/plugins/*`. Lives at `.claude/skills/unslop/SKILL.md`, sourced
 from `cursor/plugins` (pstack) at pinned commit
 `99743e9c151c8537cbbf1f98bb38f34ef3368453`, path
@@ -206,7 +206,7 @@ SOFTWARE.
 
 ## Vendored skill: `technical-writing` (MIT, Lauren Tan)
 
-Added 2026-10-27 (HIMMEL-7622, decision 345). Lives at
+Added 2026-10-27. Lives at
 `.claude/skills/technical-writing/SKILL.md`, sourced from `cursor/plugins`
 (pstack) at pinned commit `99743e9c151c8537cbbf1f98bb38f34ef3368453`, path
 `pstack/skills/technical-writing/SKILL.md`. A single vendored markdown file:
@@ -217,8 +217,8 @@ docs reviewer cites it as its NIT-only generic layer. Its licence is the same
 
 ## Vendored plugin: `pstack` (MIT, Lauren Tan)
 
-Added 2026-10-15 (HIMMEL-5803), expanded 2026-10-30 (HIMMEL-6690,
-HIMMEL-8218). `marketplace/plugins/pstack/`, ten skills
+Added 2026-10-15, expanded 2026-10-30 (the pin bump that took the Claude Code
+harness mapping, and the statechart trial). `marketplace/plugins/pstack/`, ten skills
 (`correct`, `blast-radius`, `create-verification-skill`,
 `maintain-verification-skill`, `benchmark-checklist`,
 `principle-explain-the-number`, `in-your-own-words`, `statechart`,
@@ -228,11 +228,11 @@ mapping, sourced from `cursor/plugins` at pinned commit
 `4dd1d05818d19792e7cd6e818f1667f95f7e1dbe`, path `pstack/`. The inventory and
 per-file hashes in `marketplace/plugins/pstack/VENDORED.md` record the pin and
 deviations. The separate `unslop`, `no-comments` and `comment-sicko` copies
-above remain at `99743e9c` (HIMMEL-5812). Never
+above remain at `99743e9c`. Never
 sourced from the `michael-denyer/pstack-claude` fork. Opt-in, off in every worker
 profile (registry row: [`tool-adoption/registry.md`](tool-adoption/registry.md)).
 The earlier pin also fed a take-parts digest of six principles restated in our
-wording; the digest itself vendors no files (HIMMEL-5810:
+wording; the digest itself vendors no files (see
 [`tool-adoption/pstack-principles-digest.md`](tool-adoption/pstack-principles-digest.md)).
 
 MIT License text as it appeared at that commit (`pstack/LICENSE`), reproduced
@@ -264,7 +264,7 @@ SOFTWARE.
 
 ## Vendored plugin: `humanizer` (MIT, Siqi Chen)
 
-Added 2026-10-16 (HIMMEL-5857). `marketplace/plugins/humanizer/`, one skill
+Added 2026-10-16. `marketplace/plugins/humanizer/`, one skill
 (`humanizer`) sourced from `blader/humanizer` at pinned commit
 `0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0`. The `SKILL.md` header names the
 pin and its one deviation (an added `disable-model-invocation: true`
@@ -300,7 +300,7 @@ SOFTWARE.
 
 ## Vendored plugin: `domain-modeling` (MIT, Matt Pocock)
 
-Added 2026-10-17 (HIMMEL-5498). `marketplace/plugins/domain-modeling/`, one
+Added 2026-10-17. `marketplace/plugins/domain-modeling/`, one
 skill (`domain-modeling`) sourced from `mattpocock/skills` at pinned commit
 `49dd158d1076134a641b33efb035946536778336`, path
 `skills/engineering/domain-modeling/`. The `SKILL.md` header names the pin and

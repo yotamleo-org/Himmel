@@ -1169,6 +1169,21 @@ assert_eq "config_ui linked worktree: rc 0" "0" "$cui_rc"
 assert_eq "config_ui linked worktree: bun and systemctl not called" "" "$cui_log"
 assert_contains "config_ui linked worktree: row says why" "linked worktree" "$cui_out"
 
+# The station's primary has a one-byte .git/commondir ("."): plain --git-dir then prints ".git" while --git-common-dir
+# prints the absolute path, so comparing them as strings read the primary as a linked worktree. Real git init, same file.
+make_cui_repo scripts/config-ui/server.ts
+printf '.' > "$CUI_REPO/.git/commondir"
+run_cui apply
+assert_eq "config_ui primary with .git/commondir: rc 0" "0" "$cui_rc"
+if grepq "$cui_out" "linked worktree"; then assert_fail "config_ui primary with .git/commondir: must not read as a linked worktree"; else assert_pass "config_ui primary with .git/commondir: not read as a linked worktree"; fi
+assert_contains "config_ui primary with .git/commondir: builds the bundle" "agui-web|run build" "$cui_log"
+assert_contains "config_ui primary with .git/commondir: restarts the service" "restart himmel-ui.service" "$cui_log"
+git -C "$CUI_REPO" worktree add --quiet "$CUI_REPO-wt" HEAD 2>/dev/null
+run_cui apply CUI_ROOT="$CUI_REPO-wt"
+assert_eq "config_ui worktree of a commondir primary: rc 0" "0" "$cui_rc"
+assert_eq "config_ui worktree of a commondir primary: bun and systemctl not called" "" "$cui_log"
+assert_contains "config_ui worktree of a commondir primary: row says why" "linked worktree" "$cui_out"
+
 # the HTTP check: the unit file names a port, so the restarted server must answer on it (curl never goes through a proxy env)
 make_cui_repo scripts/config-ui/server.ts
 run_cui apply HIMMELCTL_SYSTEMD_USER_UNIT_DIR="$CUI_UNITS"

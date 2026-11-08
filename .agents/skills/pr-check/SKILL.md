@@ -8,21 +8,21 @@ description: Panel-only CR gate for Codex — run the critic panel, clear the re
 This is the Codex subset of himmel's `/pr-check`: the cross-model **shell critic
 panel** plus CR-marker handling. It does NOT dispatch the Claude
 `pr-review-toolkit` reviewer agents, and there is NO per-finding verdict /
-adjudication step. (Codex native `/review` integration is a post-HIMMEL-527
+adjudication step. (Codex native `/review` integration is a
 follow-up.)
 
-## Review floor (HIMMEL-1224)
+## Review floor
 
 Stated once, per path, so the floor is explicit rather than implied by which gate
 happens to fail-close:
 - interactive `/pr-check` (a Claude session is present) → the **Claude
   self-review** backstop is the floor: fail-OPEN on lane ABSENCE, fail-CLOSED on
   an attempted-but-failed lane, distinct from `SKIP_CR`. **Opt-in raise
-  (`CR_REQUIRE_CROSS_MODEL=1`, HIMMEL-1237):** a setup that wants cross-model
+  (`CR_REQUIRE_CROSS_MODEL=1`):** a setup that wants cross-model
   coverage *required* makes the Claude-alone floor insufficient — `clear-review-marker.sh`
   gate 3b then also requires ≥1 **non-Claude** `avail … ok` at the SHA — unless
   `CR_FLOOR_FALLBACK=claude-only` and a provenance-valid claude-floor row is
-  present (HIMMEL-3107). That escape is NOT a gate-3b pass (HIMMEL-3108): a
+  present. That escape is NOT a gate-3b pass: a
   `claude-floor` row never counts as a non-Claude responder, and under this
   opt-in the clearing record states its basis — `CLEARED … via=cross-model
   non_claude=<n>` vs `CLEARED … via=claude-floor same_model=1 context_free=1
@@ -36,14 +36,14 @@ happens to fail-close:
   the marker and points the operator at `SKIP_CR=1` — this path fails CLOSED
   rather than degrading to a lone free critic.
 
-## 0. Resolve the repo under review (HIMMEL-2035, HIMMEL-2226)
+## 0. Resolve the repo under review
 
 **`/pr-check` takes NO argument, ever (operator ruling 2026-08-31).** Design
 principle: **cwd selects the repo under review; `$himmel_dir` — resolved once
 below — selects the himmel scripts.** No step here or below `cd`s, so that
 principle holds unconditionally in every lane. Step 0 is ONE call, through the
 `HIMMEL_REPO` trust anchor (never the cwd's own files) — no lane-comparison
-branching left in the fence (HIMMEL-2335): the lane comparison that used to be
+branching left in the fence: the lane comparison that used to be
 inline now happens entirely INSIDE the script the fence calls (see below).
 GitHub-hosted repos only. Arm a foreign repo once by running
 `bash scripts/cr/install-cr-gate.sh --target <path>` **from himmel's primary
@@ -58,19 +58,19 @@ path into the fence as literal text (the harness pastes the argument in, not
 a shell variable) and then `cd`'d there — a path with an apostrophe or `$(…)`
 broke the quoting (no in-fence escape can fire before the shell parses pasted
 text), and the `cd` could not outlive its own fence, so every later step
-resolved against himmel's git-common-dir while reporting the target's branch
-(HIMMEL-2262). To review another repo: start a session whose cwd IS that
+resolved against himmel's git-common-dir while reporting the target's branch.
+To review another repo: start a session whose cwd IS that
 repo and run a bare `/pr-check`; step 0 below resolves the himmel scripts from the
 `HIMMEL_REPO` anchor, never from a file the reviewed repo supplies. Both
 defects are then structurally absent — no substituted path, no `cd`.
 
-**Any argument is STILL SILENTLY IGNORED IN THIS LANE (HIMMEL-2306).** The
+**Any argument is STILL SILENTLY IGNORED IN THIS LANE.** The
 command reads none, so a stale `/pr-check <path>` reviews the CURRENT repo —
 and can clear ITS marker — not the path's. The mitigation is unchanged: read
 the `repo=`/`branch=` step 0 prints and confirm they are the repo you meant
 before trusting the run.
 
-**The HIMMEL-2306 guard does NOT cover Codex — do not read the Claude
+**The argument guard does NOT cover Codex — do not read the Claude
 runbook's "refused" wording as applying here.** That guard is
 `scripts/hooks/block-pr-check-args.sh`, a **`UserPromptExpansion`** hook, and
 that is a Claude Code harness event wired through `.claude/settings.json`.
@@ -80,7 +80,7 @@ all**, so there is nothing for that hook to attach to here. Closing this lane's
 half needs either a Codex-side prompt-stage event that does not exist today, or
 a different mechanism entirely; it is deliberately NOT claimed as done.
 
-Why the gap is not closed with prose in this file: HIMMEL-2226 tried twice
+Why the gap is not closed with prose in this file: an earlier fix tried twice
 in-prompt (a fence reading the harness's argument variable, then a prose
 sentinel carrying the same value) and both were rejected on review, because
 anything that lets the runbook OBSERVE the argument has already brought the
@@ -89,11 +89,10 @@ NAME that variable — check (vi) of `scripts/cr/test-pr-check-pair.sh` forbids
 the token anywhere in either twin, prose included, because the harness
 substitutes it before the runbook is read.
 
-**Why the fence is now ONE bare call, not an inline `if`/`else`
-(HIMMEL-3798, superseding HIMMEL-2335's one-fence shape).** The one-fence
+**Why the fence is now ONE bare call, not an inline `if`/`else`.** The one-fence
 compound below (kept for history) already satisfied the worktree-isolation
 guard, but it was still the single highest-rate classifier-denial shape on
-this runbook (HIMMEL-3724 4a row 2): a worker's `gateAllow` literal matches a
+this runbook: a worker's `gateAllow` literal matches a
 whole SIMPLE command, and the permission matcher splits a compound on its
 shell separators before matching, so no exact-literal rule for the whole
 `if...fi` string ever fired reliably. `scripts/cr/pr-check-step0.sh` moves
@@ -105,10 +104,10 @@ anchor-prefixed literal:
 A standalone SIMPLE command, no `if`, no `;`, no pipe, spelling the
 PERSISTENT uppercase `$HIMMEL_REPO` with the double quote spanning the WHOLE
 path. It needs no entry in the guard's `TARGETS`: the guard's
-`himmel_anchor_prefix` exemption (HIMMEL-3437 finding 1) already skips a
+`himmel_anchor_prefix` exemption already skips a
 lone, unwrapped `"$HIMMEL_REPO/`-prefixed operand entirely, because
 `$HIMMEL_REPO` is anchor-controlled, never branch-controlled. **The literal's
-TEXT shape alone is not what makes this safe** (HIMMEL-3798 codex-1): an
+TEXT shape alone is not what makes this safe**: an
 unset or empty `HIMMEL_REPO` at the guard's own runtime would let this call
 resolve to a root-relative, user-plantable path (the Git Bash hazard below).
 The guard additionally checks its own actual `HIMMEL_REPO` value (non-empty,
@@ -140,18 +139,18 @@ EnterWorktree-isolated session).
 
 **If this fence is refused with "runs bash in a plain command … cannot be
 shown not to run git" anyway, the session is EnterWorktree-pinned** (a worker
-launched before HIMMEL-3536's fix, or one whose settings someone hand-edited
-back in) — the fix and the interim are in `docs/internals/stuck-playbook.md`
-(HIMMEL-3536), not a respelling of this fence.
+launched before that fix, or one whose settings someone hand-edited
+back in) — the fix and the interim are in `docs/internals/stuck-playbook.md`,
+not a respelling of this fence.
 
-**Himmel-lane spelling of step 0 (HIMMEL-3359) — run this INSTEAD of the
+**Himmel-lane spelling of step 0 — run this INSTEAD of the
 fence above, never both, and ONLY in a himmel checkout on a diff that touches
 none of the paths `pr-check-context.sh` guards: `scripts/cr/`, `scripts/lib/`,
 `scripts/guardrails/lib.sh`, `scripts/check-ci.sh`,
 `scripts/handover/resolve-active-item.sh` and the files the critic panel, the
 handover bridges and the usage preflight run through a variable — the full
 list is `cr_guarded` in `pr-check-context.sh` (what a clean step 0 later runs
-from the branch — HIMMEL-3493).** First prove the lane — the allow rule is
+from the branch).** First prove the lane — the allow rule is
 emitted for every worker profile whatever its cwd, so the relative path is
 trusted only once the cwd shares `HIMMEL_REPO`'s git dir AND is the worktree
 root (from a subdirectory the relative path would name a local file there,
@@ -163,11 +162,11 @@ Go on ONLY if its first line equals its second line followed by `/.git` (a
 string compare: a differently spelled path only sends you to the fence, the
 safe direction) and its third line is empty (the cwd is the worktree root);
 anything else, an empty second line included, means use the canonical fence
-above. Then run the same diff `pr-check-context.sh` runs (HIMMEL-3382): the
+above. Then run the same diff `pr-check-context.sh` runs: the
 merge-base diff of the branch's COMMITTED history, PLUS its WORKING-TREE and
 UNTRACKED changes, all scoped to the guarded paths above. This check's
 silence is necessary, not sufficient, for the script's own "no": the script
-also compares the guarded bytes against the anchor's (HIMMEL-3472) and
+also compares the guarded bytes against the anchor's and
 ignores `__pycache__/`, so the check can only over-report, which sends you to
 the fence — the safe direction
 (always against refs/remotes/origin/main, even on a stacked PR — the branch
@@ -190,7 +189,7 @@ their exact names beside the `$mb` expansion, and the glob only over-reports):
 Use the bare literal below ONLY when that check prints nothing at all — a
 failed check (`refs/remotes/origin/main` does not resolve, or ANY one of the
 three listing calls fails, whose empty stdout would otherwise read as a clean
-diff — HIMMEL-3454) prints the literal word `unknown`, which is not a path and
+diff) prints the literal word `unknown`, which is not a path and
 can never mean a clean diff; the pathspecs are plain, not `:(top)`, because
 the lane check already proved the cwd is the worktree root and an inherited
 `GIT_LITERAL_PATHSPECS=1` would take `:(top)scripts/cr/` literally and match
@@ -203,8 +202,8 @@ one shape a worker's allow rule can match:
 If the check prints any path or `unknown`, use the canonical fence above — and if that
 fence is refused, stop and report BLOCKED; never fall back to the bare
 literal. On such a diff an allow-listed literal would auto-run the branch's own
-bytes, which may have deleted their own hand-off (chief ruling on
-HIMMEL-3359). The in-script hand-off is defense in depth, not the trust root:
+bytes, which may have deleted their own hand-off (chief ruling).
+The in-script hand-off is defense in depth, not the trust root:
 run from a copy that is not the anchor's, `pr-check-context.sh` reads
 `HIMMEL_REPO` itself and `exec`s the ANCHOR's copy before deciding anything
 or sourcing any branch file, so the lane decision, the delegation and its `delegation` ledger row are still
@@ -241,7 +240,7 @@ launching shell, then re-run.
 **`pr-check-context.sh` IS the trusted-anchor entry point — the lane
 comparison moved inside it, out of the fence.** It reads `HIMMEL_REPO` from
 its OWN process environment (never re-derived from cwd or a file the repo
-under review supplies — HIMMEL-2226 Finding 1: a crafted repo can contain its
+under review supplies — a crafted repo can contain its
 own `scripts/cr/critic-panel.sh`, or bake any path into its own `pre-push`
 hook), then compares the cwd's git-common-dir against `$HIMMEL_REPO/.git` by
 inode (`test -ef`, so a trailing slash, symlink, slash style or Windows
@@ -258,12 +257,12 @@ unarmed adopter simply has no marker, so step 1 reports nothing to do.
 location, so STOP before any paid critic call rather than guess from the cwd.
 
 **Branch self-review is NOT lost — it moved one level down, and it is now a
-DELIBERATE, LOGGED decision instead of an automatic one (HIMMEL-2335).** On
+DELIBERATE, LOGGED decision instead of an automatic one.** On
 the himmel lane only, when the branch's own diff touches a guarded path
 (`scripts/cr/`, `scripts/lib/`, `scripts/guardrails/lib.sh`,
 `scripts/check-ci.sh`, `scripts/handover/resolve-active-item.sh` or the rest
-of `cr_guarded` in `pr-check-context.sh` — HIMMEL-3493) — the exact set is printed as `cr_diff_files=` in the stdout
-contract below (HIMMEL-3382: the same diff the himmel-lane spelling above
+of `cr_guarded` in `pr-check-context.sh`) — the exact set is printed as `cr_diff_files=` in the stdout
+contract below (the same diff the himmel-lane spelling above
 runs, less `__pycache__/`) — `pr-check-context.sh` detects it,
 appends a `delegation` row
 to the CR ledger through the ANCHOR's own `scripts/cr/ledger-append.sh` (the
@@ -282,8 +281,8 @@ known-non-touching one: never delegate on it, and fall back
 `himmel_dir=` the anchor for the rest of the run too — the same fallback the
 failed-ledger-write case takes.
 
-**This is now a measured property of the harness, not a precaution
-(HIMMEL-2314).** HIMMEL-2226 wrote the carry-forward-as-a-literal rule
+**This is now a measured property of the harness, not a precaution.**
+The carry-forward-as-a-literal rule was written
 defensively — "a value assigned in one block *need not* survive" — because it
 could not establish how Codex sequences blocks, and deliberately refused to
 assert one in prose. It has since been settled empirically: a two-block probe
@@ -296,13 +295,13 @@ in the block that computes it. `scripts/cr/test-pr-check-pair.sh` check (ii)
 REJECTS the `"$himmel_dir/scripts/..."` spelling outright rather than
 accepting it as a legitimate alternative.
 
-**HIMMEL-4040: relative literal for EVERY scripts/cr call.** Run each
+**The relative literal for EVERY scripts/cr call.** Run each
 `bash "<himmel_dir>/scripts/cr/<script>.sh"` block below as the cwd-relative
 `bash scripts/cr/<script>.sh <literal args>` whenever cwd is a himmel worktree
 root whose `scripts/cr/` matches the anchor's; keep the absolute spelling only
 for the drifted or adopter case.
 
-**Himmel-lane spelling — drop the absolute prefix (HIMMEL-3338).** The
+**Himmel-lane spelling — drop the absolute prefix.** The
 `"<himmel_dir>/scripts/..."` form the blocks below show is the canonical,
 adopter-safe spelling. When step 0's printed `himmel_dir=` equals `repo=` (the
 himmel lane), drop the `"<himmel_dir>/` prefix and its closing quote and run the
@@ -318,7 +317,7 @@ exactly once, no `cd` before it. Do not call it again here; carry its printed
 literals forward.** A delegating re-exec REPLACES the anchor's own process
 (`exec`, not a second concurrent run), so only the run that actually produced
 the printed context above also performed its side effects — the two
-HIMMEL-1219 verdict-scratch resets (truncating `cr-prior-blocking/<branch>`
+verdict-scratch resets (truncating `cr-prior-blocking/<branch>`
 and `cr-aggregate-verdicts/<branch>`), described in the Claude runbook's step
 0 — this lane never writes to them itself, but a stale verdict left by a
 PRIOR run (Claude or Codex; the git-common-dir is shared) could otherwise leak
@@ -331,12 +330,12 @@ substituted literal `<branch>` / `<head>` / `<marker>` into the later blocks
 — do NOT sed them into a shell variable here (a variable assigned in this
 block need not survive into a later one). Take the WHOLE remainder after
 `<key>=` — a branch may legitimately contain `=` (e.g. `wip/branch=2`), and
-the marker path under it. The printed `head=` is also the HIMMEL-1175 pin:
+the marker path under it. The printed `head=` is also the input pin:
 carrying it as a literal is the point — a fresh `git rev-parse HEAD` in a
 later block would be the drift the pin exists to catch. It also prints
 `anchor_lane=<himmel|adopter>`, `delegated=<yes|no>` and
 `cr_diff_files=<comma-joined, sorted, deduped set this run decided on
-(HIMMEL-3382) — the merge-base diff of committed history plus
+— the merge-base diff of committed history plus
 working-tree/untracked changes under the guarded paths (scripts/cr/,
 scripts/lib/, scripts/guardrails/lib.sh, scripts/check-ci.sh,
 scripts/handover/resolve-active-item.sh and the rest of cr_guarded in
@@ -347,7 +346,7 @@ and means something unrelated.
 
 It also prints `lane=` — the marker's 3rd field, the CR lane, read INSIDE the
 script against a real shell variable rather than substituted into a fence
-(HIMMEL-2226 round 2: the marker path embeds the branch name, which is
+(the marker path embeds the branch name, which is
 repo-controlled, so a `'` in a branch name could otherwise break out of a
 substituted `'<marker>'`). `lane=` is only ever read, never substituted into
 a later block — see step 2.
@@ -356,7 +355,7 @@ Everything after this is cwd-relative on purpose: marker, ledger, base ref and
 clear all resolve from this directory's `git rev-parse --git-common-dir`. No
 fence `cd`s, so this holds unconditionally in every lane — including the
 adopter lane, which used to `cd` in step 0 only and leave every later step
-resolving against himmel's own git-common-dir (HIMMEL-2262, now structurally
+resolving against himmel's own git-common-dir (now structurally
 dissolved rather than documented).
 
 ## 1. Locate the marker
@@ -367,17 +366,17 @@ substituted literal `<branch>` / `<head>` / `<marker>` — the marker is
 
 If `<marker>` is absent, report `no pending CR for <branch> — nothing to do` and stop.
 
-## 2. Lane check (HIMMEL-303)
+## 2. Lane check
 
 Step 0 already printed `lane=` — the marker's 3rd field. Use that value; there
-is no fence to run here (HIMMEL-2226 round 2 — see step 0 above). If
+is no fence to run here (see step 0 above). If
 `lane = docs-audit`: the code-critic panel is the wrong charter — **retain**
 the marker and tell the operator to run the Claude `/pr-check` for docs lanes.
 Stop. Only `lane = full` or empty proceeds.
 
 ## 3. Run the panel over the diff
 
-**Operator ruling 2026-09-21 (HIMMEL-3338): the operator authorises sending
+**Operator ruling 2026-09-21: the operator authorises sending
 review diffs to Codex from workers.** `panel-first-pass.sh` below is allow-listed
 for the worker profiles as a literal, so a denial on it most likely means the call
 was not spelled as one (see the himmel-lane spelling note above) — check the
@@ -385,12 +384,11 @@ spelling first. A denial that names a deny rule or a policy restriction is not a
 spelling problem: stop and report it, never respell around it, and never skip
 the lane silently.
 
-**`scripts/cr/panel-first-pass.sh` (HIMMEL-2226) now does what this step used to
-do inline** — resolve the default branch, capture the base SHA once (HIMMEL-1984:
-every consumer of this range must review the SAME range, so the base
+**`scripts/cr/panel-first-pass.sh` now does what this step used to
+do inline** — resolve the default branch, capture the base SHA once (every consumer of this range must review the SAME range, so the base
 is pinned to a SHA captured here rather than re-resolved live at each call site),
 load and export `CR_PROFILE` from the primary checkout's `.env` WITHOUT
-hand-computing a tier filter (HIMMEL-558: `critic-panel.sh` resolves its own
+hand-computing a tier filter (`critic-panel.sh` resolves its own
 tiers from `CR_PROFILE` and treats it authoritative — hand-scoping the tier is
 what drifted a run to free-only and silently dropped the paid codex critic),
 diff the captured base SHA against `--head` (never live HEAD — step 4 stamps
@@ -400,9 +398,9 @@ review), and run the panel over it — retrying once through `rtk proxy git diff
 when the plain diff comes back as a stat summary instead of a unified diff (an
 rtk-proxied environment's `git diff`, which `critic-panel.sh` otherwise rejects
 as "no valid diff"). `CR_PROFILE` is authoritative — the panel derives its tiers
-from it; **unset ⇒ the PAID codex anchor, not a free panel (HIMMEL-1101,
-operator decision: accept paid-by-default).** The free lane was removed
-deliberately (HIMMEL-667, HIMMEL-953), and `critics.json` today holds exactly one
+from it; **unset ⇒ the PAID codex anchor, not a free panel (operator
+decision: accept paid-by-default).** The free lane was removed
+deliberately, and `critics.json` today holds exactly one
 row — `codex` / `gpt-6.1-sol`, tier `paid` — so an unset `CR_PROFILE` resolves to
 zero free rows and falls back to it: a default `/pr-check` that actually runs the
 panel consumes the operator's OpenAI usage budget. `CR_PROFILE=none` is the instant
@@ -429,7 +427,7 @@ the bypass.
     # fixed $2 would have read (codex-3).
     db_sha=$(printf '%s\n' "$panel_out" | sed -n '1p' | awk -F'[()]' '/^captured diff base:/{print $(NF-1)}')
     panel_out=$(printf '%s\n' "$panel_out" | sed '1d')
-    # HIMMEL-2314: PRINT both, in the block that computes them. The Codex
+    # PRINT both, in the block that computes them. The Codex
     # harness runs each block as a SEPARATE PROCESS (proven by a two-block
     # probe skill run through `codex exec`: block 2 read back an empty string
     # for a canary block 1 had assigned), so nothing below can expand
@@ -449,7 +447,7 @@ the bypass.
         exit 7
     fi
 
-**Panel exit 7 = input-pin mismatch (HIMMEL-1175, HIMMEL-1984). STOP HERE — do not
+**Panel exit 7 = input-pin mismatch. STOP HERE — do not
 continue.** The checkout is no longer at the SHA step 0 captured, or the
 diff BASE no longer resolves to the commit this step captured, so the diff, the
 review, and the ledger stamp would describe three different things. Nothing was
@@ -459,13 +457,13 @@ never records an availability row. Stopping HERE rather than at step 5 is the
 point: every later step would otherwise record a review of inputs already known
 to be stale.
 
-**The check itself now lives in the step-3 block above (HIMMEL-2314)** — it has
+**The check itself now lives in the step-3 block above** — it has
 to, because blocks are separate processes and `$panel_rc` does not survive one.
 As a fence of its own it read an unset variable, so `[ "$panel_rc" -eq 7 ]`
 raised "integer expression expected" and the STOP never fired. `panel_rc=` is
 also echoed to the transcript there, so this stop is auditable after the fact.
 
-## 3.5. CodeRabbit — the GitHub App, not a local pass (HIMMEL-2704)
+## 3.5. CodeRabbit — the GitHub App, not a local pass
 
 **There is no CodeRabbit step in this lane.** CodeRabbit is the GitHub App
 and reviews the PR only after it exists, so nothing here invokes it. The CLI
@@ -479,7 +477,7 @@ That leaves this lane with ONE finding source — the panel in step 3 — which
 is why the review floor above is `"a panel critic responded"` and why step 5
 retains the marker whenever the panel returns zero responders. The App's
 post-PR contract is enforced by `scripts/check-ci.sh`, not here, and
-CodeRabbit is best effort (HIMMEL-3360): zero unresolved review THREADS (a
+CodeRabbit is best effort: zero unresolved review THREADS (a
 green check-run is NOT clean — PR #2209 carried six unresolved threads under
 a `pass` rollup on 2026-09-06) and zero undispositioned outside-diff body
 findings are the gate; CodeRabbit's commit status (`scripts/lib/coderabbit-signal.sh`;
@@ -489,7 +487,7 @@ review` trigger per new head (a head move discards the in-flight review);
 nothing schedules or holds work on the App, and
 `scripts/hooks/check-cr-best-effort.sh` gates the tracked text for that.
 
-## 4. Record ledger evidence (HIMMEL-1171)
+## 4. Record ledger evidence
 
 This step runs after both finding sources and **before** any gate decision. The
 marker may be cleared only from evidence persisted by
@@ -521,8 +519,8 @@ marker may be cleared only from evidence persisted by
    safer if storage breaks mid-step: a persisted blocker without an availability
    row cannot clear, while the reverse ordering could momentarily look clean.
 
-   **The producers already wrote the finding rows — you record only the VERDICT
-   (HIMMEL-2321).** `critic-panel.sh` has always self-written every panel finding
+   **The producers already wrote the finding rows — you record only the VERDICT.**
+   `critic-panel.sh` has always self-written every panel finding
    through `ledger-append.sh --batch-file`. The rows for
    `[<slug>-N]` therefore already exist at
    this head, carrying the reviewer's own file, line and text — written by the
@@ -532,7 +530,7 @@ marker may be cleared only from evidence persisted by
    hands the rest to the shell. Recording only a verdict removes the last
    reviewer-authored byte from this fence: an id and a closed-vocabulary word.
 
-   **Substituted placeholders are SINGLE-quoted (HIMMEL-2226).** `<slug>` is a
+   **Substituted placeholders are SINGLE-quoted.** `<slug>` is a
    value YOU paste into the command text — it comes from a reviewer-supplied
    finding ID, so the shell PARSES it, and double quotes do not help: `$(…)`,
    backticks and `${…}` all still execute inside `"…"`. Only single quotes make
@@ -606,7 +604,7 @@ ledger deduplicates availability on `(head, model)` and findings on
 
 ## 5. Gate decision
 
-- `panel_rc = 7` (input-pin mismatch, HIMMEL-1175) never reaches this step —
+- `panel_rc = 7` (input-pin mismatch) never reaches this step —
   step 3 stops the run the moment it sees it, so nothing downstream records a
   review of inputs already known to be stale. Restated here only so the
   gate table is complete: marker **retained**, and `SKIP_CR=1` is NOT the answer
@@ -631,7 +629,7 @@ ledger deduplicates availability on `(head, model)` and findings on
     - `0` → `CR clean — marker cleared (M/N critics responded)` using
       `$panel_coverage`. If the script's own line reads `… ON THE SAME-MODEL
       FLOOR …`, report THAT verbatim instead: the floor cleared it and the SHA
-      has no cross-model coverage (HIMMEL-3108).
+      has no cross-model coverage.
     - `13` → stale SHA / branch changed; marker retained, re-run `/pr-check`.
     - `14` → no responder evidence at this HEAD; marker retained.
     - `15` → blocking ledger finding; marker retained and report it.

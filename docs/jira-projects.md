@@ -14,7 +14,7 @@ PR introducing this file).
 - Default project (HIMMEL): `jira list`, `jira create --type Story --title "..." --sector "Ship loop" --labels standalone`
 - Non-default project: pass `--project <KEY>` to any subcommand. Example:
   `jira create --project LUNA --type Story --title "..." --sector "Planning & tracking" --labels standalone`
-- A Task, Story or Bug needs `--sector` and either `--parent <epic>` or `--labels standalone` (HIMMEL-6223).
+- A Task, Story or Bug needs `--sector` and either `--parent <epic>` or `--labels standalone`.
 - Refresh this catalog: run `jira projects` and update the table above.
 
 ## Conventions
@@ -27,7 +27,7 @@ PR introducing this file).
   2026-05-19 forward files standalones as Stories in their topical project
   (e.g. Luna-related standalones → LUNA-N Story under
   `<state-repo>/handovers/<USER_SLUG>/luna/standalones/`).
-- Theme label (HIMMEL-5491): a ticket carries at most one `theme-<slug>` label (`<slug>` is lowercase `a-z0-9` with
+- Theme label: a ticket carries at most one `theme-<slug>` label (`<slug>` is lowercase `a-z0-9` with
   single hyphens, at most 40 characters). The config-ui Kanban theme select writes it through the Jira CLI and
   replaces any other `theme-*` label; other labels are kept. The config-ui roadmap and the chief-kit tracker read it
   first and fall back to the plan's stage1 / overlay theme only when no label is set. A slug that matches a plan theme

@@ -146,7 +146,7 @@ count as evidence.
 
 ## Results
 
-### 2026-10-19 — HIMMEL-5512 (current 10,427 B vs lean 5,681 B)
+### 2026-10-19 — lean steering bench (current 10,427 B vs lean 5,681 B)
 
 `BENCH_MODEL=claude-sonnet-5-5`, N = 3 (not 5, to keep the draw small), arms are
 `--no-hardlinks` clones of `5edc4cbb0` differing only in `CLAUDE.md`. Fat = the

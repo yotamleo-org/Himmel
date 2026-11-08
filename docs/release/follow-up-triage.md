@@ -105,7 +105,7 @@ row wins. "Next" means the earliest unreleased version after the current one.
 | # | Condition | Lands in |
 |---|---|---|
 | a | depth ≥ 2 | backlog |
-| b | `--fu-class polish` | backlog |
+| b | `--fu-class polish` | nowhere: the verb refuses it and files nothing (see "What the verb files") |
 | c | `--gate critical\|regression\|must:<ref>\|receipt` is given | current. The intake gate records the admission. |
 | d | `--fu-class escape` | current if current is not frozen; **next** if it is frozen |
 | e | `--fu-class hardening` with a dependency chain: the parent, or the `--blocks` target, is open in version V | V if V is unfrozen; **next** if V is the frozen current |
@@ -124,6 +124,34 @@ row wins. "Next" means the earliest unreleased version after the current one.
   current version instead of placing by rows d and e. Over the follow-up budget,
   R6' (HIMMEL-6924) makes a version's lowest-ranked To Do follow-up step down to
   make room for a higher-ranked newcomer; see the glossary's Cap gate entry.
+
+## What the verb files
+
+Operator decisions 746 and 762: a polish follow-up never earned its ticket (since
+10-24, 211 were filed, 17 closed, none High), so the verb files by class:
+
+| Class | `jira create --residual-of` |
+|---|---|
+| `escape` | Files, as above. A broken real flow always files. |
+| `hardening` | Files only with `--fu-override <id>`, a judge verdict id (`XX-jNNNN-N`) or a chief decision number (`decision-<n>`). The id is an unverified audit label: only its shape is checked, not that the verdict or decision exists. The ticket carries the `fu-override` label and a `fu-override: <id>` line in its description. Without one it is refused. |
+| `polish` | Refused with a message, nothing filed, with or without `--fu-override`. Note it in the PR body, or file a plain ticket (`jira create` without `--residual-of`) if someone will really work it. |
+
+A refusal exits non-zero and writes nothing, so a caller that retries the same
+command gets the same refusal. No review step may retry it; each caller below
+takes the other road:
+
+- **`review-round.sh defer`** (the review loop's cap and early-close path) never
+  asks the verb to file a polish Suggestion or nit. With no `--defer-to`, it amends
+  the finding's ledger row `verdict=deferred`, `fu_class=polish`, with no
+  `deferred_to`, and the reason "Polish finding noted in the PR body". The row still
+  counts as a recorded decision, the marker clears, and the item needs no
+  `deferred →` coverage line, since there is no ticket to name. Write the finding in
+  the PR body. A hardening finding needs `--fu-override <id>`; without one `defer`
+  exits 6 and files nothing. `--defer-to <ticket>` still attaches every pending
+  finding to a ticket the worker named, as before.
+- **`file-deferred-issues.sh`** on a Jira repo prints the batch for the PR body
+  when the class is polish (its default), and files only a hardening batch that
+  carries `--fu-override`.
 
 ## Recording the class
 
@@ -147,7 +175,8 @@ carries `--set class=<id>` or `--set class=new:<slug>`. A fixed amend stays
 auto-only (`unattributed` when nothing claims it).
 
 `review-round.sh defer` (the three-round cap path) records `polish`: it only
-defers Suggestions. Deferring an Important always needs an explicit class.
+defers Suggestions, and with no `--defer-to` it files no ticket for them (see "What the
+verb files"). Deferring an Important always needs an explicit class.
 Panel batch rows (`--batch-file`) are not enforced; they are not deferrals a
 person classifies. The same class goes on the follow-up ticket as its label
 (`fu-escape`, `fu-hardening` or `fu-polish`), and in the summary when filing.

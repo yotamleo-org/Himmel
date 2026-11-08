@@ -1,4 +1,4 @@
-# Chief reply style (HIMMEL-8201)
+# Chief reply style
 
 The operator has ADHD. Shape every reply so it can be acted on at a glance:
 

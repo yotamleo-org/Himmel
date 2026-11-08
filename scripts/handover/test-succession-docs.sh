@@ -204,7 +204,7 @@ contains 'retask-channel.md: the two-token form and why replay of one token fail
 contains 'retask-channel.md: residual risk is named (the HANDOFF holds the old token)' "$retask" 'HANDOFF'
 contains 'retask-channel.md: EXPANSION/REDIRECT/narrowing semantics are untouched' "$retask" 'unchanged'
 contains 'retask-channel.md: the chain path prices persistent authority, not one revision' "$retask" 'persistent authority'
-contains 'retask-channel.md: the accepted amplification is tracked' "$retask" 'HIMMEL-3257'
+contains 'retask-channel.md: the accepted amplification is tracked' "$retask" 'tracked as a backlog ticket'
 contains 'retask-channel.md: the chain path says the named-sender check no longer binds' "$retask" 'no longer binds'
 contains 'chief-template.md: step 9 asks the predecessor to name the successor in its relay' "$step9" 'naming you'
 contains 'chief-template.md: handing over says each SENDMESSAGE line carries the successor and the worker token' "$(flat "$handing")" '(successor, worker'"'"'s token)'

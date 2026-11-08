@@ -40,9 +40,13 @@
 # ponytail: text-level literal-path fence, sandbox layer HIMMEL-5685 owns the rest — it cannot see Write-tool CONTENT
 # that is itself a script writing the lift, a script FILE that writes the lift
 # without being handed its path, or a bind mount. Those are bounded at RUNTIME:
-# usage-preflight honours only an account-bound lift capped by the seven_day
-# resets_at and fails closed on anything else, so a forged lift buys at most
-# the rest of one window; upgrade path is an operator-owned lift the gate verifies.
+# usage-preflight honours only an owner- and mode-checked lift, read against a
+# cache stamped with the login's account and a future seven_day resets_at, and
+# fails closed on anything else. A forged window lift is account-bound and buys
+# at most the rest of one window; a forged standing lift ignores until and
+# follows the login (set_by is provenance, not a bound), so it spends to 100 %
+# on every account the station logs into, never extra_usage;
+# upgrade path is an operator-owned lift the gate verifies.
 # ponytail: a `cd`/`pushd`/`popd` word anywhere makes the cwd unknown, so a
 # relative word is judged by its name alone (a lift-named word denies, any
 # other relative word is allowed); upgrade path is a cd model, only if a

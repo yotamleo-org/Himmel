@@ -7,7 +7,7 @@ import { BASH_BIN, buildPrompt } from "./run";
 import { sendMessage } from "./telegram-api";
 import { appendLine, ensureSession, writeMeta, sessionDir } from "./bus";
 import { handleInbound, replyViaOutbox, flushOutboxes, ingestUpdates, makeRunFn } from "./poller";
-import { consoleInboxPath, foldLine, type ConsoleRouteGate } from "./chief-route";
+import { consoleInboxPath, foldLine, renderMarkdownHtml, type ConsoleRouteGate } from "./chief-route";
 
 // Every test runs against a scratch bridge root and a fake reply
 // seam, never the real ~/.claude/handover/bridge, never Telegram.
@@ -1608,6 +1608,75 @@ test("send-file refuses a spec page that still says Not for signature, and sends
   expect(createHash("sha256").update(bytes).digest("hex")).toBe(sha(clean));
 });
 
+const REQ = "operator asked to see it early";
+const earlySpec = (r: string, name = "early.md", text = "# Early\n\nbody\n") => {
+  const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
+  const spec = join(dir, name); writeFileSync(spec, text);
+  return spec;
+};
+
+test("send-file --by-request queues a spec page with no clean critics, marked not passed on the page and in the caption; plain send-file still refuses it", async () => {
+  const r = root(); const spec = earlySpec(r);
+  const before = await sendFile(r, "1", spec);
+  expect(before.code).not.toBe(0);
+  expect(before.lines).toEqual([]);
+  const res = await sendFile(r, "--by-request", REQ, "1", spec, "my words");
+  expect(res.err).toBe("");
+  expect(res.code).toBe(0);
+  expect(res.lines.length).toBe(1);
+  expect(res.lines[0].caption).toMatch(/^NOT PASSED - not for signature/);
+  expect(res.lines[0].caption).toContain("my words");
+  const html = readFileSync(res.lines[0].document_path as string, "utf8");
+  expect(html).toContain("NOT PASSED");
+  expect(html).toContain("Not for signature");
+  expect(html).toContain(`asked: ${REQ}</p>`);
+  expect(html.indexOf("NOT PASSED")).toBeLessThan(html.indexOf("<h1>"));
+  const after = await sendFile(r, "1", spec);
+  expect(after.code).not.toBe(0);
+  expect(after.lines.length).toBe(1);
+});
+
+test("send-file --by-request puts the mark right after <body> of an .html page and leaves the rest of its bytes alone", async () => {
+  const r = root(); const page = earlySpec(r, "early.html", "<!doctype html><html><head><title>x</title></head><body><h1>Early</h1></body></html>\n");
+  const res = await sendFile(r, "--by-request", REQ, "1", page);
+  expect(res.code).toBe(0);
+  const html = readFileSync(res.lines[0].document_path as string, "utf8");
+  expect(html).toMatch(/<body><section class="not-passed">/);
+  expect(html).toContain("<h1>Early</h1></body></html>");
+  expect(html).toContain(REQ);
+});
+
+test("send-file --by-request names no request: refused, nothing queued", async () => {
+  const r = root(); const spec = earlySpec(r);
+  for (const args of [["--by-request", "", "1", spec], ["--by-request", "   ", "1", spec], ["--by-request"], ["--by-request", "1", spec]]) {
+    const res = await sendFile(r, ...args);
+    expect(res.code).not.toBe(0);
+    expect(res.lines).toEqual([]);
+  }
+  expect((await sendFile(r, "--by-request", "", "1", spec)).err).toContain("names no request");
+  expect(existsSync(join(r, "outgoing"))).toBe(false);
+});
+
+test("send-file --by-request carries its mark only on a .md or .html page", async () => {
+  const r = root(); const f = join(r, "run.log"); writeFileSync(f, "log\n");
+  const res = await sendFile(r, "--by-request", REQ, "1", f);
+  expect(res.code).not.toBe(0);
+  expect(res.err).toContain("only on a .md or .html page");
+  expect(res.lines).toEqual([]);
+});
+
+test("a page sent --by-request cannot satisfy the signature check, even with every critic clean and sealed over its bytes", async () => {
+  const r = root(); const b = htmlBundle(r, "<!doctype html><html><body><h1>Design</h1></body></html>\n");
+  const res = await sendFile(r, "--by-request", REQ, "1", b.page);
+  expect(res.code).toBe(0);
+  const marked = readFileSync(res.lines[0].document_path as string, "utf8");
+  writeFileSync(b.page, marked);
+  criticSeals(b.spec, "spec", 2, "SPEC CLEAN", [b.sealed[0], { text: marked, file: "design.html" }]);
+  const { checkSignaturePage } = await import("./chief-route");
+  await expect(checkSignaturePage(b.page)).rejects.toThrow("Not for signature");
+  expect((await sendFile(r, "1", b.page)).code).not.toBe(0);
+});
+
 // ---- a spec gets three critic rounds per kind, then the page goes to the operator with each open finding on it ----
 const D_TEXT = "# Design\n\nthe spec\n";
 const P_TEXT = "# Plan\n\nthe plan\n";
@@ -1859,4 +1928,21 @@ test("planted: a spec named like a judge file still gets three rounds", async ()
   const refused = await seal(r4, spec, sha(D_TEXT));
   expect(refused.code).not.toBe(0);
   expect(refused.err).toContain("operator-round-r4.md");
+});
+
+// The page the router renders opens dark with no saved choice, whatever the system preference says; print alone goes back to light.
+test("the routed markdown page opens dark with readable text, no system-preference flip, and a light print", () => {
+  const html = renderMarkdownHtml("# T\n\nbody `code`\n\n```\npre\n```\n\n> quote\n\n| a |\n|---|\n| b |\n", "T");
+  const root = /:root\{([^}]*)\}/.exec(html)?.[1] ?? "";
+  const val = (v: string) => new RegExp(`${v}:(#[0-9a-fA-F]{6})`).exec(root)?.[1];
+  const lum = (h: string) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const [bg, ink, mute] = ["--bg", "--ink", "--mute"].map(val);
+  expect(bg && ink && mute).toBeTruthy();
+  expect(lum(bg!)).toBeLessThan(0.1);
+  expect(ratio(ink!, bg!)).toBeGreaterThanOrEqual(4.5);
+  expect(ratio(mute!, bg!)).toBeGreaterThanOrEqual(4.5);
+  expect(html).not.toContain("prefers-color-scheme");
+  expect(html).toContain("color-scheme:dark");
+  expect(html).toMatch(/@media print\{:root\{[^}]*--bg:#fff/);
 });

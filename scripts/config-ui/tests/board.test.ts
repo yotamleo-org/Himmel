@@ -524,10 +524,84 @@ test("GET /api/board: a member of another version stays in the whole-Board read 
   expect(r.versionChains.burn.total).toBe(1);
 });
 
+// The version tile picked on the Board decides which version the Chains tab reads.
+test("GET /api/board?v=: a known version narrows the tab's read to it, an unknown one falls back to the running version and says so, no v is unchanged", async () => {
+  const s = scratch();
+  writeFileSync(join(s.mirror, "HIMMEL-21.md"), mirrorIssue(21, "To Do", "To Do", [], "Next version work").replace("v1.1.3", "v1.1.4"));
+  writeFileSync(s.mirror + ".versions.tsv", "v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n");
+  writeFileSync(s.registry, JSON.stringify({ schema: "himmel.chain-registry/1", chains: [{ id: "memory", goal: "Memory guard rework chain", members: ["HIMMEL-1", "HIMMEL-2"] }, { id: "later", goal: "Later version work chain", members: ["HIMMEL-21"] }] }));
+  const url = serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s);
+  const picked = await get(`${url}?v=v1.1.4`);
+  expect(picked.versionChains.version).toBe("v1.1.4");
+  expect(Object.keys(picked.versionChains.tickets)).toEqual(["HIMMEL-21"]);
+  expect(picked.versionChains.burn.total).toBe(1);
+  expect(picked.versionChains.fellBack).toBeUndefined();
+  const unknown = await get(`${url}?v=v9.9.9`);
+  expect(unknown.versionChains.version).toBe("v1.1.3");
+  expect(unknown.versionChains.fellBack).toEqual({ asked: "v9.9.9", to: "v1.1.3" });
+  const none = await get(url);
+  expect(none.versionChains.version).toBe("v1.1.3");
+  expect(none.versionChains.fellBack).toBeUndefined();
+  expect(Object.keys(none.chains.tickets).sort()).toEqual(["HIMMEL-1", "HIMMEL-2", "HIMMEL-21"]);
+});
+
+// With two projects on the Board the tiles are named "v1.1.4 (HIMMEL)"; the chain registry is the one project's, so its own suffix is the same version.
+test("GET /api/board?v=: a tile named with the chain project's key picks that version, another project's tile falls back and says so", async () => {
+  const s = scratch();
+  writeFileSync(join(s.mirror, "HIMMEL-21.md"), mirrorIssue(21, "To Do", "To Do", [], "Next version work").replace("v1.1.3", "v1.1.4"));
+  writeFileSync(s.mirror + ".versions.tsv", "v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n");
+  writeFileSync(s.registry, JSON.stringify({ schema: "himmel.chain-registry/1", chains: [{ id: "memory", goal: "Memory guard rework chain", members: ["HIMMEL-1", "HIMMEL-2"] }, { id: "later", goal: "Later version work chain", members: ["HIMMEL-21"] }] }));
+  const url = serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s);
+  const own = await get(`${url}?v=${encodeURIComponent("v1.1.4 (HIMMEL)")}`);
+  expect(own.versionChains.version).toBe("v1.1.4");
+  expect(own.versionChains.fellBack).toBeUndefined();
+  const other = await get(`${url}?v=${encodeURIComponent("v1.1.4 (SALUS)")}`);
+  expect(other.versionChains.version).toBe("v1.1.3");
+  expect(other.versionChains.fellBack).toEqual({ asked: "v1.1.4 (SALUS)", to: "v1.1.3" });
+});
+
 test("GET /api/board: a failed roadmap read is that failure on the tab, never no running version, and the whole-Board read still arrives", async () => {
   const s = scratch();
   const env = { PATH: process.env.PATH, HOME: s.home, HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") };
   const r = await readBoardExtras(env, () => { throw new Error("mirror went away"); });
   expect(r.versionChains).toEqual({ state: "absent", reason: "the running version could not be read: mirror went away" });
   expect((r.chains as { schema: string }).schema).toBe("himmel.chains/1");
+});
+
+test("Board: a card shows its open PR and CI as a link from the worker records, flags a started card with no open PR, and flags nothing when the records are not read", async () => {
+  const s = scratch();
+  writeFileSync(join(s.mirror, "HIMMEL-3.md"), mirrorIssue(3, "In Progress", "In Progress", [], "Has a PR"));
+  writeFileSync(join(s.mirror, "HIMMEL-4.md"), mirrorIssue(4, "In Progress", "In Progress", [], "Started, no PR"));
+  writeFileSync(join(s.mirror, "HIMMEL-5.md"), mirrorIssue(5, "In Progress", "In Progress", [], "Red latch, plus a closed PR"));
+  writeFileSync(s.mirror + ".versions.tsv", "v1.1.3\tfalse\t\n");
+  const st = join(s.d, "state");
+  mkdirSync(join(st, "workers"), { recursive: true });
+  const rec = (key: string, prs: Record<string, unknown>) => writeFileSync(join(st, "workers", `${key}.json`), JSON.stringify({ key, leg: "N1", state: "running", prs }));
+  rec("HIMMEL-3", { "4703": { head: "a".repeat(40), ci: "pending", red_latch: false, open: true } });
+  rec("HIMMEL-5", { "4704": { head: "b".repeat(40), ci: "green", red_latch: true, open: true }, "4600": { head: "c".repeat(40), ci: "green", red_latch: false, open: false } });
+  const env = { HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: st, GH_REPO: "acme/widgets" };
+  const ui = { version: null, theme: null, v: "all" };
+  const page = async (base: string) => renderBoard(await get(base.replace("/api/board", "/api/roadmap")), ui, await get(base));
+  const base = serve(env, s);
+  const api = await get(base);
+  expect(api.prs).toEqual({ state: "ok", repo: "acme/widgets", prs: {
+    ["HIMMEL-" + 3]: [{ pr: 4703, head: "a".repeat(40), ci: "running" }],
+    ["HIMMEL-" + 5]: [{ pr: 4704, head: "b".repeat(40), ci: "red" }] }, seen: {}, unread: [] }); // pending reads running, a red latch reads red, a closed PR is not listed
+  const html = await page(base);
+  const card = (k: string) => html.match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  expect(card("HIMMEL-3")).toContain('<a class="pr ci-running" href="https://github.com/acme/widgets/pull/4703"');
+  expect(card("HIMMEL-3")).toContain("#4703 · CI running");
+  expect(card("HIMMEL-3")).not.toContain("no open PR");
+  expect(card("HIMMEL-5")).toContain("#4704 · CI red");
+  expect(card("HIMMEL-5")).not.toContain("4600");
+  expect(card("HIMMEL-4")).toContain("no open PR"); // started, and no worker record names an open PR
+  expect(card("HIMMEL-2")).not.toContain("no open PR"); // not started
+  expect(card("HIMMEL-1")).not.toContain("no open PR"); // done
+  writeFileSync(join(st, "workers", "HIMMEL-4.json"), "{ not json");
+  writeFileSync(join(st, "workers", "HIMMEL-" + 2 + ".json"), "null"); // parses, but holds no record
+  expect((await get(serve(env, s))).prs.unread.sort()).toEqual(["HIMMEL-" + 2, "HIMMEL-" + 4]);
+  expect((await page(serve(env, s))).match(new RegExp(`<div class="rm-card"[^>]*aria-label="HIMMEL-${4}:[\\s\\S]*?</div></div>`))![0]).not.toContain("no open PR"); // the record could not be read, so no claim is made
+  const none = await page(serve({ ...env, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s));
+  expect(none).not.toContain("no open PR"); // the records could not be read: no card is flagged on a guess
+  expect(none).not.toContain("CI running");
 });

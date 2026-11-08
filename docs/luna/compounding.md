@@ -178,7 +178,7 @@ quietly compounds and one with silent gaps.
 - **A conversation's findings/decisions** → file them by the vault's own
   `_CLAUDE.md` conventions. The obsidian-second-brain capture skills
   (`/obsidian-save`, `/obsidian-log`, `/obsidian-capture`) were removed with that
-  plugin (HIMMEL-8416). This is the path the "automatic" summary does **not**
+  plugin. This is the path the "automatic" summary does **not**
   cover.
 - **A repo / issue / PR URL** → `/luna-ingest <url>` (obsidian-triage) fetches,
   classifies, and files a structured note under `30-Resources/Tech/`.

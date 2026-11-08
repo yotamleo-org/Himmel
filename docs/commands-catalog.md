@@ -1,6 +1,6 @@
 # Slash Commands Catalog
 
-Audience: contributor, and an adopter looking for the command that does a job; the first two sections below say which commands reach an adopted repo. Owner of the rewrite: HIMMEL-7213.
+Audience: contributor, and an adopter looking for the command that does a job; the first two sections below say which commands reach an adopted repo.
 
 ## Find a command by task
 
@@ -98,7 +98,7 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 > `principle-explain-the-number`, `/in-your-own-words`, `/statechart`,
 > `/create-formal-verification-skill`, `/maintain-formal-verification-skill`):
 > typed by the operator, no `commands/` directory, on in the interactive `user`
-> profile only (HIMMEL-6690, HIMMEL-8218). Statechart includes its runtime and
+> profile only. Statechart includes its runtime and
 > optional Java/TLC prerequisites; missing prerequisites stop the check. A himmel-generated
 > lockfile pins its test-only npm dependencies for repository audit, not runtime installation. See
 > [marketplace/plugins/pstack/README.md](../marketplace/plugins/pstack/README.md).
@@ -180,9 +180,9 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 |---|---|---|
 | /skill-find | Find the right skill or agent. |  |
 | /luna-backfill | Backfill old Claude transcripts into luna; costly. | Backfill old Claude session transcripts into the luna vault as structured session notes. TOKEN-INTENSIVE — warns before running and recommends --dry-run first. |
-| /luna-ingest | Wrapper; use obsidian-triage:luna-ingest. | Chain-following triage for a github repo URL. Thin wrapper that delegates to the obsidian-triage:luna-ingest skill (LUNA-9 skill conversion — see marketplace/plugins/obsidian-triage/skills/luna-ingest/SKILL.md for the runbook). |
-| /telegram-clip | Wrapper; use obsidian-triage:telegram-clip. | File a Telegram message (text / bare URL / forward) as a harvest-ready LUNA-2 clip note in the luna vault's Clippings/. Thin wrapper that delegates to the obsidian-triage:telegram-clip skill (LUNA-58 — see marketplace/plugins/obsidian-triage/skills/telegram-clip/SKILL.md for the runbook). |
-| /roadmap-clips | Wrapper; use obsidian-triage:roadmap-clips. | Aggregate actionable items across the luna vault (daily action items, _deferred.md backlog, synthesis proposals, promotion candidates, component inventory), cluster into a sequenced roadmap mapped to tools, dedup candidate tickets against open Jira, and write a 60-Maps/ roadmap note. Proposals only. Thin wrapper that delegates to the obsidian-triage:roadmap-clips skill (LUNA-59 — see marketplace/plugins/obsidian-triage/skills/roadmap-clips/SKILL.md for the runbook). |
+| /luna-ingest | Wrapper; use obsidian-triage:luna-ingest. | Chain-following triage for a github repo URL. Thin wrapper that delegates to the obsidian-triage:luna-ingest skill (the command became a skill — see marketplace/plugins/obsidian-triage/skills/luna-ingest/SKILL.md for the runbook). |
+| /telegram-clip | Wrapper; use obsidian-triage:telegram-clip. | File a Telegram message (text / bare URL / forward) as a harvest-ready Web-Clipper-shaped clip note in the luna vault's Clippings/. Thin wrapper that delegates to the obsidian-triage:telegram-clip skill (see marketplace/plugins/obsidian-triage/skills/telegram-clip/SKILL.md for the runbook). |
+| /roadmap-clips | Wrapper; use obsidian-triage:roadmap-clips. | Aggregate actionable items across the luna vault (daily action items, _deferred.md backlog, synthesis proposals, promotion candidates, component inventory), cluster into a sequenced roadmap mapped to tools, dedup candidate tickets against open Jira, and write a 60-Maps/ roadmap note. Proposals only. Thin wrapper that delegates to the obsidian-triage:roadmap-clips skill (see marketplace/plugins/obsidian-triage/skills/roadmap-clips/SKILL.md for the runbook). |
 | /luna-upgrade | Wrapper; use obsidian-triage:luna-upgrade. | Content-preserving upgrade of an existing luna-second-brain vault to the current himmel template (dry-run → confirm → apply, or --check to just report whether an upgrade is available). Thin wrapper that delegates to the obsidian-triage:luna-upgrade skill (see marketplace/plugins/obsidian-triage/skills/luna-upgrade/SKILL.md for the runbook). |
 | /luna-upgrade-all | Wrapper; use obsidian-triage:luna-upgrade-all. | Multi-vault upgrade sweep — discover all luna-second-brain vaults, dry-run-first, per-vault operator-confirmed apply, backup/restore safety net, and conflict-brainstorm on _CLAUDE.md conflicts. Thin wrapper that delegates to the obsidian-triage:luna-upgrade-all skill (see marketplace/plugins/obsidian-triage/skills/luna-upgrade-all/SKILL.md for the runbook). |
 
@@ -201,17 +201,17 @@ the github-repo ingest skill these dispatch to.
 | /x-media-enrich | X/Twitter media rung (parity with ig-media-enrich): for X clips referencing video.twimg.com / pbs.twimg.com media with no media_enriched_at, download the tweet's video/GIF/images via Scrapling (cookieless), local faster-whisper transcript, first-frame screenshot for soundless GIF-like videos, copy images into Clippings/_media/ + agent-read slide digest via --apply-digest. --include-done drives the historical backfill. Lean-invoke. |  |
 | /triage-clips | Stage 2 — autonomous triage: summarize, infer tags, suggest Related Notes, extract action items → daily note, annotate promotion candidate, mark `processed: true`. Idempotent. |  |
 | /synthesize-clips | Stage 3 — cross-clip synthesis: find recurring patterns across processed clips, write proposal pages to `Clippings/_synthesis/` (proposals only, never restructures). |  |
-| /archive-clips | Stage 4 (LUNA-55) — graduate fully-chained clips (harvested ∧ processed ∧ in-synthesis) to `Clippings/_done/<YYYY-MM>/`, rewrite inbound links (literal, boundary-safe), dedup by canonical URL, (re)generate `Clippings/_deferred.md`. |  |
-| /synthesize-stubs | SYNTHESIZE stub mode (LUNA-87) — the generative path that compounds the evidence pool into early `status: stub` subject pages. |  |
-| /deepen-subject | github source fan-out on promotion (LUNA-89) — fills the `## References` scaffold of a `deepen_pending: true` Tech subject page from its linked github sources. |  |
-| /contra | CONTRA passes (LUNA-96/97): ghost-self — past-you (notes older than the `--min-age` duration, default 6m; age from frontmatter `date:`, daily notes falling back to the `YYYY-MM-DD.md` filename) reacting to current-you with verbatim-quote guard; --bridge — one forced cross-domain analogy (max one bridge/day). Appends to today's daily note `## Thinking`. Lean-invoke only. |  |
+| /archive-clips | Stage 4 — graduate fully-chained clips (harvested ∧ processed ∧ in-synthesis) to `Clippings/_done/<YYYY-MM>/`, rewrite inbound links (literal, boundary-safe), dedup by canonical URL, (re)generate `Clippings/_deferred.md`. |  |
+| /synthesize-stubs | SYNTHESIZE stub mode — the generative path that compounds the evidence pool into early `status: stub` subject pages. |  |
+| /deepen-subject | github source fan-out on promotion — fills the `## References` scaffold of a `deepen_pending: true` Tech subject page from its linked github sources. |  |
+| /contra | CONTRA passes: ghost-self — past-you (notes older than the `--min-age` duration, default 6m; age from frontmatter `date:`, daily notes falling back to the `YYYY-MM-DD.md` filename) reacting to current-you with verbatim-quote guard; --bridge — one forced cross-domain analogy (max one bridge/day). Appends to today's daily note `## Thinking`. Lean-invoke only. |  |
 
-**One-time backfill (not a stage):** `/migrate-clip-lifecycle <vault> [--dry-run | --apply [--month YYYY-MM] | --rollback <manifest>]` (obsidian-triage, LUNA-86) — deterministic, reversible, resumable engine (`tools/migrate-clip-lifecycle.mjs`) that migrates the historical top-level `processed: true` clips into `Clippings/_evidence/`, stamping `evidence_kind:` and rewriting every inbound wikilink across SIX literal boundary forms (3 plain + 3 `.md`-suffixed, the silent-dangle guard). Folder-keyed idempotent; byte-identical rollback via the manifest. Run ONCE behind a mandatory staging gate — not a recurring pipeline stage.
+**One-time backfill (not a stage):** `/migrate-clip-lifecycle <vault> [--dry-run | --apply [--month YYYY-MM] | --rollback <manifest>]` (obsidian-triage) — deterministic, reversible, resumable engine (`tools/migrate-clip-lifecycle.mjs`) that migrates the historical top-level `processed: true` clips into `Clippings/_evidence/`, stamping `evidence_kind:` and rewriting every inbound wikilink across SIX literal boundary forms (3 plain + 3 `.md`-suffixed, the silent-dangle guard). Folder-keyed idempotent; byte-identical rollback via the manifest. Run ONCE behind a mandatory staging gate — not a recurring pipeline stage.
 
-**Companion (not a stage):** `/read-link <url>` (obsidian-triage, LUNA-78) — vault-first link reader: read an already-harvested clip for a URL before any live fetch; enrich a thin clip, else live-fetch (fxtwitter / WebFetch / luna-ingest) as the last resort. Never Grok. UX inspired by eugeniughelbur/obsidian-second-brain's `/x-read` (clean-room, no vendored fork).
+**Companion (not a stage):** `/read-link <url>` (obsidian-triage) — vault-first link reader: read an already-harvested clip for a URL before any live fetch; enrich a thin clip, else live-fetch (fxtwitter / WebFetch / luna-ingest) as the last resort. Never Grok. UX inspired by eugeniughelbur/obsidian-second-brain's `/x-read` (clean-room, no vendored fork).
 
 <!-- mem:d87dfc8833af -->
-**Companion (not a stage):** `/watch-youtube <url> [--visual]` (obsidian-triage, HIMMEL-5715) — on-demand cookieless YouTube watch/summarize: Scrapling metadata + yt-dlp transcript, optional ffmpeg scene frames (`-fps_mode vfr`); no Gemini/Grok key. Use it instead of the vault plugin's `/youtube`.
+**Companion (not a stage):** `/watch-youtube <url> [--visual]` (obsidian-triage) — on-demand cookieless YouTube watch/summarize: Scrapling metadata + yt-dlp transcript, optional ffmpeg scene frames (`-fps_mode vfr`); no Gemini/Grok key. Use it instead of the vault plugin's `/youtube`.
 
 ## Plugin skills & ops (himmel-ops, obsidian-triage)
 
@@ -237,7 +237,7 @@ slash alias exists).
 | bus (himmel-bus) | Protocol card for himmel-bus messages: `send(to, b, re=n)` / `read(n)`, the `bus #n from <name>:` vs `bus #n data from <name>:` trust split, the 1500-byte ruling cap, and `bus wait` for holding. Bus wiring grants the MCP server and its tool permissions only; the skill itself loads when the himmel-bus@himmel plugin is enabled separately. |
 | vault-lint (obsidian-triage) | Filesystem-only, report-only vault health lint — a single deterministic Python pass that converges on large PARA vaults (orphans, broken wikilinks, audit). Vault-agnostic. |
 | luna-vitals-extract (obsidian-triage) | Backfill salus health series for one vault time-bucket — extracts (date, metric, value) tuples via the luna-vitals CLI + an LLM prose pass, writing one per-bucket review artifact. Single-writer; never writes 50-Vitals/ directly. |
-| /grow-feed-log (obsidian-triage) | Extract a grow-tent feed/watering (free-form text, e.g. "added 5L + 2 caps to the mint") or a bare nutrient-label photo from a Telegram-shaped message and append it to the vault's `20-Areas/Grow/Grow-Feeding-Log.md` — a feed row to `## Log`, a new product to `## Products`. LLM-first (no rigid command grammar); idempotent per message-id; append-only. Telegram routing is LUNA-127 (separate, out of scope). Slash alias + dispatchable skill (LUNA-130). |
+| /grow-feed-log (obsidian-triage) | Extract a grow-tent feed/watering (free-form text, e.g. "added 5L + 2 caps to the mint") or a bare nutrient-label photo from a Telegram-shaped message and append it to the vault's `20-Areas/Grow/Grow-Feeding-Log.md` — a feed row to `## Log`, a new product to `## Products`. LLM-first (no rigid command grammar); idempotent per message-id; append-only. Telegram routing is separate work, out of scope here. Slash alias + dispatchable skill. |
 
 The long skills above (`vm`, `memory-compound`, `luna-ingest`) keep a short core `SKILL.md` and load their detail on demand from a `references/` directory next to it (`obsidian-triage/references/luna-ingest/` for `luna-ingest`).
 

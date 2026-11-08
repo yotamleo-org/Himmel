@@ -1,6 +1,6 @@
 # Fork adapter standard
 
-Every `yotamleo/*` fork is a himmel adapter (HIMMEL-5900): it is listed in
+Every `yotamleo/*` fork is a himmel adapter: it is listed in
 `scripts/guardrails/himmel-adapters.json`, and a change to it follows the himmel
 flow (ticket ID on every commit and PR, judge, signed GO, chief merge). The
 registry is read from the default branch of the harness repo, so a worktree edit
@@ -57,7 +57,7 @@ reference; `--only <owner/repo>` limits a run to one fork.
 
 ## Sync rule
 
-Syncing a fork with its upstream is upkeep, never a PR (HIMMEL-8334):
+Syncing a fork with its upstream is upkeep, never a PR:
 
 - **No carried commits** → keep no fork: point pins and installs at the
   upstream. The nightly drift issue says `use-upstream <upstream>` for it.

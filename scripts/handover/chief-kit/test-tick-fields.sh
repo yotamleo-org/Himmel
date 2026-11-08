@@ -633,6 +633,28 @@ cg_spin9342="$(cg_run9342 1)"
 contains 'the spinning guardrail refresh lands in the tick that launched it' "$(cat "$cg9342/line")" ' ciguard=ok'
 if [ $((cg_spin9342 - cg_base9342)) -lt 1000 ]; then pass 'a section refresh the tick waits out adds none of its CPU to the tick'; else fail "a section refresh added $((cg_spin9342 - cg_base9342)) ms of CPU to the tick (spin ${cg_spin9342} ms, control ${cg_base9342} ms)"; fi
 
+# The tick's wait for a refresh is CPU too. A wait that forks `date` and `sleep` on every
+# 50 ms poll costs more CPU the longer the refresh runs, so on a loaded runner the row above
+# failed with no refresh CPU in the tick. This row counts those forks, which load does not change:
+# a refresh that sleeps 2 s (no CPU) must cost the tick no more than 15 more date/sleep calls.
+wp9461="$W/wp9461"; mkdir -p "$wp9461/bin"
+for wp_cmd9461 in date sleep; do
+    printf '%s\n' '#!/usr/bin/env bash' "echo x >>\"$wp9461/calls\"" "exec $(command -v "$wp_cmd9461") \"\$@\"" > "$wp9461/bin/$wp_cmd9461"
+    chmod +x "$wp9461/bin/$wp_cmd9461"
+done
+printf '%s\n' '#!/usr/bin/env bash' "[ -z \"\${WAIT:-}\" ] || $(command -v sleep) 2" 'echo ciguard=ok' > "$wp9461/probe"
+chmod +x "$wp9461/probe"
+wp_run9461() {  # wp_run9461 <WAIT>: how many date and sleep calls the whole tick made
+    rm -rf "$wp9461/state"; mkdir -p "$wp9461/state"; : > "$wp9461/calls"
+    env WAIT="$1" PATH="$wp9461/bin:$PATH" TICK_STATE_DIR="$wp9461/state" TICK_SECTION_WAIT=30 TICK_CIGUARD_PROBE="$wp9461/probe" bash "$SUT" > "$wp9461/line" 2>/dev/null
+    wc -l < "$wp9461/calls" | tr -d ' '
+}
+wp_base9461="$(wp_run9461 '')"
+contains 'the control tick serves the instant refresh' "$(cat "$wp9461/line")" ' ciguard=ok'
+wp_wait9461="$(wp_run9461 1)"
+contains 'the tick waited out the 2 s refresh' "$(cat "$wp9461/line")" ' ciguard=ok'
+if [ $((wp_wait9461 - wp_base9461)) -le 15 ]; then pass 'the tick waits for a refresh without a date or sleep fork on every poll'; else fail "the wait for a 2 s refresh made $((wp_wait9461 - wp_base9461)) more date/sleep calls (wait ${wp_wait9461}, control ${wp_base9461})"; fi
+
 # The dependabot sweep and the plan-index refresh are not waited on, but a tick that is still
 # running when one ends reaps it all the same. Each stub child touches $HD_DONE as its last step;
 # a stub `bun` (the tick's last slow step) holds the tick until that file exists (at most 15 s)
@@ -757,7 +779,11 @@ cat > "$W/ow-gh" <<'STUB'
 exit 0
 STUB
 chmod +x "$W/ow-gh"
-ow_tick() { NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" bash "$SUT" 2>/dev/null; }
+# The dispatcher answers an IN CI ticket's "merged" from the main ref's commit subjects first: pin it to an empty repo, so a real
+# commit on this checkout's origin/main that names a fixture key cannot answer for it and hide the merged-PR read failure row.
+{ git init -q -b main "$W/ow-main" && git -C "$W/ow-main" -c user.name=t -c user.email=t@e.x -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m init; } \
+    || { fail "the ow-main fixture repo could not be created"; exit 1; }
+ow_tick() { NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_GIT_DIR="$W/ow-main" NEXT_DISPATCH_MAIN_REF=main bash "$SUT" 2>/dev/null; }
 ow_of() { printf '%s\n' "$1" | tr ' ' '\n' | sed -n 's/^orphans-wip=//p'; }
 mk_ow 901 "In Progress" Task
 mk_ow 902 "In Review" Task

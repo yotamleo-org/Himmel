@@ -13,7 +13,7 @@ the PR head (the `plugin-version-bump` job pins the head sha explicitly for that
 and some jobs run only for pull requests. Main runs `ci.yml` on a schedule, a sweep cron
 roughly every 7 h plus a nightly, with a different job set, and `workflow_dispatch` for a
 run on a selected ref; the completed run's `headSha` names the exact commit it covered.
-There is no `push` trigger (HIMMEL-5113): per-merge runs on main
+There is no `push` trigger: per-merge runs on main
 cost about 2,300 runner hours on the green ones alone and competed with PR runs for the
 account's runner slots. The price is that a break on main surfaces up to a nominal 7 h
 later (GitHub fires schedules late on this repo, so the real gap can reach about 11 to
@@ -34,7 +34,7 @@ occasionally and is handled by the next section, not by tightening the gate.
 
 Main-red must stay rare and be fixed fast. The merge gate only makes it visible:
 `merge-on-green.sh` no longer refuses a PR whose own checks passed because the newest
-completed `CI` run on main is red (HIMMEL-8675): the merge proceeds and prints one
+completed `CI` run on main is red: the merge proceeds and prints one
 `MAIN-RED advisory:` line. Its audit line reads `MAIN-RED main-red-advisory ... via=advisory
 run=<red run id> class=<class> suites=<failed suites>`; a PR that declares the fix
 (`Fixes-main-red:` line or a fix-GO; see the [stuck-playbook](stuck-playbook.md)) is
@@ -130,7 +130,7 @@ deliberate merge commit, never a rebase and never a force-push.
 3. **Proofs tied to the final head.** Evidence that must hold at the merged result (a
    gate or e2e proof pinned to a sha) is re-taken after the merge.
 
-A sibling's plugin bump IS a reason for the plugin it bumped (HIMMEL-8368). A PR that
+A sibling's plugin bump IS a reason for the plugin it bumped. A PR that
 changes a plugin bumps that plugin's `plugin.json` version above the base's, so two PRs
 bumping one plugin from the same base collide on the version line (or merge clean to the
 same number): the second merges main and bumps above it. `plugin-version-bump`, the

@@ -2924,10 +2924,17 @@ check_c34() {
     # shellcheck disable=SC1090
     if [ -r "$lift_lib" ] && . "$lift_lib"; then
         if usage_lift_valid; then
-            emit OK C34-cost-guards "lift set and VALID (standing=${USAGE_LIFT_STANDING:-false})"
+            local followed=""
+            [ "${USAGE_LIFT_FOLLOWED:-false}" = true ] && followed=", followed"
+            emit OK C34-cost-guards "lift set and VALID (standing=${USAGE_LIFT_STANDING:-false}${followed})"
         elif [ "${USAGE_LIFT_REASON:-unknown}" != missing ]; then
-            emit WARN C34-cost-guards "lift set but INVALID: ${USAGE_LIFT_REASON:-unknown}" \
-                "operator: inspect usage-lift.sh show; clear or re-set for the current account"
+            local remedy="operator: inspect usage-lift.sh show; clear or re-set"
+            case "${USAGE_LIFT_REASON:-unknown}" in
+                cache-account) remedy="the usage cache is still the old login's: force a refresh (running-a-chief.md, account switch step 3)" ;;
+                account) remedy="a one-window lift does not follow an account switch (or the login cannot be read): the operator re-sets it, or clear it" ;;
+                set_by) remedy="the standing lift was not set by this user (or was set with USER unset): the operator re-runs set --standing once" ;;
+            esac
+            emit WARN C34-cost-guards "lift set but INVALID: ${USAGE_LIFT_REASON:-unknown}" "$remedy"
         fi
     fi
 
@@ -4458,17 +4465,19 @@ check_c51_firecrawl_parked() {
 # backend skips the check. Never runs graphify itself
 # (a graphify invocation auto-refreshes the user's skill dirs) -- only the venv
 # python. Seams: HIMMEL_DOCTOR_GRAPHIFY_VENV (venv dir), HIMMEL_DOCTOR_UV.
+# billed-exempt: read-only diagnostic; it sources the llm-backend.sh resolver to name a backend and makes no model call
 check_c52_graphify_ollama() {
-    local uv_bin="${HIMMEL_DOCTOR_UV:-uv}" venv tooldir="" py="" c
-    case "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}" in
-        ollama) ;;
-        claude-cli)
-            emit OK C52-graphify-ollama "graph-cadence semantic backend is claude-cli -- [ollama] extra check skipped"
-            return 0 ;;
-        *)
-            emit WARN C52-graphify-ollama "GRAPH_CADENCE_SEMANTIC_BACKEND='${GRAPH_CADENCE_SEMANTIC_BACKEND}' is not accepted -- graph-cadence will refuse it" "set GRAPH_CADENCE_SEMANTIC_BACKEND to claude-cli or ollama"
-            return 0 ;;
-    esac
+    local uv_bin="${HIMMEL_DOCTOR_UV:-uv}" venv tooldir="" py="" c backend
+    # shellcheck source=lib/llm-backend.sh
+    . "$SELF_DIR/lib/llm-backend.sh"
+    if ! backend="$(llm_backend_resolve "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}")"; then
+        emit WARN C52-graphify-ollama "GRAPH_CADENCE_SEMANTIC_BACKEND='${GRAPH_CADENCE_SEMANTIC_BACKEND}' is not accepted -- graph-cadence will refuse it" "set GRAPH_CADENCE_SEMANTIC_BACKEND to one of claude-cli, claude-api or ollama"
+        return 0
+    fi
+    if [ "$backend" != ollama ]; then
+        emit OK C52-graphify-ollama "graph-cadence semantic backend is $backend -- [ollama] extra check skipped"
+        return 0
+    fi
     if [ -n "${HIMMEL_DOCTOR_GRAPHIFY_VENV:-}" ]; then
         venv="$HIMMEL_DOCTOR_GRAPHIFY_VENV"
     else

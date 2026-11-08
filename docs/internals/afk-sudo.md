@@ -1,10 +1,10 @@
 # AFK sudo and the `run` kind
 
 `scripts/lib/afk-sudo/` is the root helper that runs one privileged command after
-the operator approves it with a TOTP code (HIMMEL-8066). Slice 1a of HIMMEL-8067
+the operator approves it with a TOTP code. Slice 1a
 adds a second kind, `run`, which freezes one argv, shows it to the operator and
 runs exactly that once. Slice 1b adds root's notice bot and a nonce bound to each request
-(HIMMEL-8078 part 1) and turns the run kind on. The helper is Linux-only: safe file
+and turns the run kind on. The helper is Linux-only: safe file
 validation needs `O_PATH`, `/proc/self/fd` and `fstatfs`.
 
 Files: `afk_sudo.py` (the helper, installed as `/usr/local/libexec/himmel/afk-sudo`),
@@ -33,7 +33,7 @@ Check order for a run: `disabled` (top-level `enabled`), `run-not-shipped`,
 `os.path.ALLOW_MISSING`; see the binding below), then the request checks, the last of
 which are `no-setpriv` and `no-notice-bot`.
 
-## The notice bot and the nonce (slice 1b, HIMMEL-8078 part 1)
+## The notice bot and the nonce (slice 1b)
 
 A session could put any text into the bridge bot's chat, so a look-alike request message
 cannot be ruled out there. The facts therefore come from a second bot whose token only
@@ -287,14 +287,14 @@ the `deny` rows (a single deny, its refusals, and each request a lockdown denies
 ledger shows per request the denial that caused it, the request, who approved or denied and how, and
 the result of the one re-run. An `expire` row is not an answer, so it carries neither field.
 
-## Spent steps (HIMMEL-8078 part 2)
+## Spent steps
 
 A code valid for request A is refused (`replay`) for request B when A ended without
 running in the same 30-second step. Deny, burn and a failed code check spend the
 current step; an expiry spends the step the request ran out in (not the lazy detection
 time). All writes keep the maximum step.
 
-## The `grant` kind (HIMMEL-7686)
+## The `grant` kind
 
 A grant lets one Bash call the permission classifier refused run once in the worker's own
 session, after the operator approves it. Nothing runs as root: root only records the
@@ -348,7 +348,7 @@ run kind's frozen argv for anything that needs more):
 ## Config keys
 
 `mode`, `operator_user`, `max_per_hour` (default 6, max 30), `run.enabled` (default
-false), `run.ttl_s` (default 900, max 3600), `run.timeout_s` (default 300, max 1800),
+false), `classifier_requests` (default false; see "A classifier refusal files its own request"), `run.ttl_s` (default 900, max 3600), `run.timeout_s` (default 300, max 1800),
 `grant.enabled` (default false), `grant.ttl_s` (default 900, 30 to 3600),
 `ops.enabled` (default false), `ops.ttl_s` (default 900, 30 to 3600), `never_remote_extra`. `install.sh` writes them with the safe defaults on first
 install from `afk-sudo.json.template` (beside it). Over an existing config it adds the keys the template has and the
@@ -382,7 +382,7 @@ again by the helper on every call, so it takes effect on the next verb:
 
 A session cannot do any of these: the config, the helper and the sudoers rule are root-owned.
 
-**`/afk-lockdown` (HIMMEL-8067 slice 4).** The one Telegram verb that only narrows, for a
+**`/afk-lockdown` (slice 4).** The one Telegram verb that only narrows, for a
 lost phone or the end of a trip. Typed by the operator in their private chat, with no
 argument (text after it is refused and nothing runs), it calls the root helper's
 `lockdown --from SENDER --chat CHAT`, which checks the sender and chat against
@@ -394,7 +394,7 @@ config back: no verb, flag or argument sets `enabled: true` or `mode: "all"`, an
 anything), and it leaves live grants dead because `grant-spend` answers `disabled`. While
 the bridge's own lockdown switch is on, the poller does not consult this route at all.
 
-## The `op` kind: station ops (HIMMEL-8203)
+## The `op` kind: station ops
 
 A station op is one named, versioned, reviewed script in `scripts/station-ops/<op>.sh` with a
 schema `<op>.json` (name, version, `run_as`, `timeout_s`, `effect`, `params` as an `enum` or a `re`,
@@ -406,7 +406,7 @@ to the manifest; the repo copy is never executed. OPS-1 ships `cron-entry.sh` (t
 (`pacman -Syu` on Arch, `apt-get` on Debian; log in `/var/log/himmel/ops/<id>.log`), each with its
 `<op>.json` schema.
 
-OPS-2 (HIMMEL-8562) adds three more, each `<op>.sh` plus `<op>.json`:
+OPS-2 adds three more, each `<op>.sh` plus `<op>.json`:
 
 | op | runs as | what it does |
 | --- | --- | --- |
@@ -446,7 +446,7 @@ pending op request like any other.
 
 ## Approving over SSH
 
-HIMMEL-8067. `himmelctl approve <id>`, `himmelctl deny <id>` and `himmelctl approve status <id>` let the
+`himmelctl approve <id>`, `himmelctl deny <id>` and `himmelctl approve status <id>` let the
 operator answer a pending request from an SSH shell, for example after a classifier denial when the phone
 is out of reach. It is a thin caller of the same root helper the Telegram route calls:
 
@@ -491,14 +491,14 @@ nonce and code out of argv. The spec is amended by the chief, not here.
 `request` (sudo kind, allowlist), `run-request`, `op-request`, `grant-request` (the command's bytes on
 stdin), `grant-spend`, `approve`, `deny`, `lockdown`, `status`
 (`run-status` is an alias; both still answer on a locked-down station), `run-result ID [--stream stdout|stderr]` and `mode`
-(`result=mode mode=… enabled=… run_enabled=…`, the effective flag; answered before the
+(`result=mode mode=… enabled=… run_enabled=… classifier_requests=… grant_enabled=…`, the effective flags; answered before the
 `enabled` check).
 
 ## afk-run
 
 ```text
 afk-run --session S --ticket T --blocked-by classifier|hook:<guard>|prompt|operator-step \
-        [--as root] [--cwd DIR] [--stdin-file F] [--why W] -- ARGV...
+        [--as root] [--cwd DIR] [--stdin-file F] [--why W] [--no-wait] -- ARGV...
 afk-run wait <id>
 ```
 
@@ -508,7 +508,64 @@ stdout and stderr and exits with the command's status. Other exits: 3 denied or 
 `afk-run wait <id>`), 76 the helper stayed busy and nothing was filed. The last stderr
 line is `afk-run: status=ran:<exit>|denied|expired|refused:<result>|pending|busy …`,
 with ` id=<id>` when one exists. Timing: `AFK_RUN_WAIT_S` (540), `AFK_RUN_POLL_S` (3),
-`AFK_RUN_BUSY_EVERY_S` (15); they are also the test seams.
+`AFK_RUN_BUSY_EVERY_S` (15); they are also the test seams. `--no-wait` files once, sends the
+control message and ends at once: 75 `pending id=<id>`, or 76 busy with nothing filed and no
+retry. It never polls; the operator's code still runs the command.
+
+### A classifier refusal files its own request
+
+The model does not call `afk-run` for a command the classifier refused: the classifier reads
+that call as a way around itself and refuses it too. Instead
+`scripts/hooks/afk-denied-to-request.sh` (`PermissionDenied`, matcher `Bash`, timeout 60 s, the external-call tier)
+files the request from the refused call's own bytes:
+
+```text
+afk-run --no-wait --session <session_id> --ticket <branch ticket|none> \
+        --blocked-by classifier --cwd <cwd> --why "classifier refused: <category>" -- ARGV
+```
+
+ARGV follows the prompt hook's rule: a plain command is its own argv; anything else is
+`bash -c <the exact bytes>`. Nothing runs at filing; root runs the frozen argv once, after
+`NONCE CODE`, as above.
+
+**When it files.** Only while the operator is away: `mode` must answer `enabled=true`,
+`run_enabled=true` and `classifier_requests=true`, and `grant_enabled=false`.
+`classifier_requests` is a top-level key of the root config (default `false`); the operator
+sets it with `sudoedit /etc/himmel/afk-sudo.json` when leaving and clears it on return. Nothing
+user-writable turns it on, and there is no verb for it. With the grant kind on, the grant hook
+owns classifier refusals and this hook stands down. `afk-prompt-to-request.sh` still keys on
+`enabled` and `run_enabled` only.
+
+**What files.** Only a real refusal: the denial reason must carry a bracketed classifier
+category (`[Unauthorized Persistence]`). "Classifier unavailable" and no-verdict denials carry
+none, and the call is simply retried. Nothing heads toward Telegram before approval that should
+not: a command that matches a `redact()` shape (`scripts/lib/redact.sh`, the patterns
+`log-classifier-denial.sh` uses) or a credential or exfiltration category files nothing, and the
+free-text reason is never passed, only the category. A command any of whose words is an
+`afk-run` path is skipped. That skip is best-effort, a word scan and not a parse, so a computed
+path is not seen; root's checks and the operator's code still apply to it.
+
+It also files nothing, prints nothing and exits 0 when `AFK_DENIED_TO_REQUEST_OFF=1` is set in
+the launching shell, without `jq`, for a tool other than Bash or an empty command, and when the
+helper is absent or sudo refuses. It never asks for a `retry`.
+
+**What root adds for `blocked_by=classifier`.**
+
+- At most 2 such requests an hour, and never the last free request of `max_per_hour` or the
+  last free pending slot: the rest answer `classifier-rate-limited`. A request filed on purpose
+  keeps that room.
+- The same argv from the same session answers `duplicate` while an earlier request for it is
+  pending or inside its ttl.
+- A bound data file is shown by path and sha256 only (`NOT SHOWN`), never its body, and no copy
+  is kept. A script `argv[0]` (`#!`) and an interpreter's script operand still show their text.
+  The floor reads every body before this.
+- The floor's `secret-read` rule also names `*/.aws/credentials`, `.netrc`,
+  `.git-credentials`, `*/gh/hosts.yml`, `*/.docker/config.json`, `*/.kube/config`, `.npmrc`,
+  `.pypirc` and `.env.*`, for every kind.
+
+Accepted residual: the refused session is not told the request id. `PermissionDenied` can
+return only `retry`, and no text reaches the model. It learns the outcome from the operator or
+the chief, or with `afk-run wait <id>` (the id is in the notice and in root's ledger).
 
 Once a request is filed, `afk-run` sends the bridge bot's id-only message with the Approve /
 Deny buttons (token from `TELEGRAM_ENV`, default `~/.claude/channels/telegram/.env`, passed

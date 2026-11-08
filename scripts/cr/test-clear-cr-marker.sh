@@ -136,13 +136,17 @@ build_repo_template() {
     # The floor provenance check verifies the artifact's stamp here.
     cp "$FLOOR_MJS" "$REPO_TEMPLATE/scripts/cr/claude-floor.mjs" \
         || { echo "FAIL: cp claude-floor.mjs into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    mkdir -p "$REPO_TEMPLATE/scripts/lint" \
+        || { echo "FAIL: mkdir of template scripts/lint failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    cp "$(dirname "$CLEAR")/../lint/check-history-comments.sh" "$(dirname "$CLEAR")/../lint/ticket-refs.awk" "$(dirname "$CLEAR")/../lint/ticket-ref-allow.tsv" "$REPO_TEMPLATE/scripts/lint/" \
+        || { echo "FAIL: cp history-comments gate files into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     # anchor-handoff.sh's self-anchor check now also requires
     # the anchor's own git index to track the relative entry path (closing
     # the orphaned-worktree bypass) - without this, these scripts/cr/*.sh
     # copies are untracked in the template repo and a relative entry with
     # HIMMEL_REPO=$tmp (the legitimate self-anchor case these fixtures rely
     # on) falls through to the hand-off path instead of self-anchoring.
-    git -C "$REPO_TEMPLATE" add -A scripts/cr scripts/lib bin \
+    git -C "$REPO_TEMPLATE" add -A scripts/cr scripts/lib scripts/lint bin \
         || { echo "FAIL: git add of template scaffold scripts failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
 }
 # A throwaway floor signing key pair — never the real
@@ -296,8 +300,9 @@ stub_check_ci() {
 # run_clear <tmp> <expected-rc> <name> [args...]
 run_clear() {
     local tmp="$1" expected="$2" name="$3"; shift 3
-    local rc=0 out
-    out=$(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-review-marker.sh" "$@" 2>&1) || rc=$?
+    local rc=0 out _env=()
+    [ -n "${CM_ANCHOR_SELF:-}" ] && _env=(HIMMEL_REPO="$tmp")
+    out=$(cd "$tmp" && env ${_env[@]+"${_env[@]}"} PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-review-marker.sh" "$@" 2>&1) || rc=$?
     LAST_CLEAR_OUT="$out"
     if [ "$rc" -eq "$expected" ]; then pass; else
         fail "$name (expected rc=$expected, got $rc)"; echo "    out: $out" >&2
@@ -1281,6 +1286,171 @@ blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z "$(_bl_row feat/x 
 run_clear "$tmp" 0 "off row whose reason carries a key=value → exit 0"
 if grepq "$(cat "$tmp/.git/clear-cr-marker.log" 2>/dev/null)" -F 'via=forged'; then fail "an off reason must not add a field to the CLEARED audit line"; else pass; fi
 rm -rf "$tmp"
+
+_cm_ts=2026-12-01T10:00:00+00:00
+_CM_CODE='# keep the lock order stable\necho hi\n'
+_CM_GONE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+_cm_row() { printf '{"kind":"comments","ts":"2026-12-01T10:30:00Z","branch":"%s","head":"%s","status":"%s"%s%s}' "$1" "$2" "$3" "${4:+,\"count\":$4}" "${5:+,\"reason\":\"$5\"}"; }
+cm_commit() {
+    mkdir -p "$1/$(dirname "$2")" && printf '%b' "$3" > "$1/$2" \
+        && git -C "$1" add -- "$2" && git -C "$1" commit -q -m "add $2" -- "$2" \
+        && git -C "$1" push -q origin feat/x >/dev/null 2>&1 \
+        && sha=$(git -C "$1" rev-parse --verify HEAD)
+}
+cm_start() {
+    make_repo || exit 1
+    cm_commit "$tmp" src/a.sh "$_CM_CODE" || fail "cm_commit src/a.sh"
+    _cm_c1="$sha"
+}
+cm_finish() {
+    local ts="$1"; shift
+    write_marker "$tmp" "$sha" full "" "" "$ts"
+    write_ledger "$tmp" "$(_pf_row 2026-09-01T09:00:00Z "$sha")" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")" "$@"
+    stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+}
+cm_reason() { if grepq "$LAST_CLEAR_OUT" -F "reason=$1"; then pass; else fail "$2: must refuse with reason=$1: $LAST_CLEAR_OUT"; fi; }
+CM_ANCHOR_SELF=1
+
+cm_start; cm_finish "$_cm_ts"
+run_clear "$tmp" 14 "diff adds a code comment, no comments row → exit 14"
+cm_reason missing-comment-review "no comments row"
+if marker_exists "$tmp"; then pass; else fail "no comments row: marker must REMAIN"; fi
+if grepq "$LAST_CLEAR_OUT" -F 'ledger-append.sh comments --head'; then pass; else fail "the refusal must name the comments row command: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+cm_start; cm_finish "$_cm_ts" "$(_cm_row feat/x "$sha" ok 2)"
+run_clear "$tmp" 0 "comments row at the clearing head → exit 0"
+if grepq "$(cat "$tmp/.git/clear-cr-marker.log" 2>/dev/null)" -F 'comments=ok'; then pass; else fail "a row-backed clear must audit comments=ok"; fi
+rm -rf "$tmp"
+
+cm_start; cm_commit "$tmp" src/b.sh '# a second reason\necho 2\n' || fail "cm_commit src/b.sh"
+cm_finish "$_cm_ts" "$(_cm_row feat/x "$_cm_c1" ok 1)"
+run_clear "$tmp" 14 "row at an earlier head, a later commit adds a comment → exit 14"
+cm_reason missing-comment-review "earlier row, later comment"
+rm -rf "$tmp"
+
+cm_start; cm_commit "$tmp" notes.txt 'plain prose\n' || fail "cm_commit notes.txt"
+cm_finish "$_cm_ts" "$(_cm_row feat/x "$_cm_c1" ok 1)"
+run_clear "$tmp" 0 "row at an earlier head, a later commit adds no comment → exit 0"
+rm -rf "$tmp"
+
+cm_start; cm_finish "$_cm_ts" "$(_cm_row feat/x "$sha" off '' codex-lane)"
+run_clear "$tmp" 0 "off row with reason codex-lane → exit 0"
+if grepq "$(cat "$tmp/.git/clear-cr-marker.log" 2>/dev/null)" -F 'comments=off reason=codex-lane'; then pass; else fail "an off-row clear must audit comments=off and its reason"; fi
+rm -rf "$tmp"
+
+cm_start; cm_finish "$_cm_ts" "$(_cm_row feat/other "$sha" ok 1)"
+run_clear "$tmp" 14 "only another branch's comments row → exit 14"
+rm -rf "$tmp"
+
+make_repo || exit 1
+cm_commit "$tmp" src/n.sh 'echo hi\n' || fail "cm_commit src/n.sh"
+cm_finish "$_cm_ts"
+run_clear "$tmp" 0 "diff adds code but no comment line, no row → exit 0"
+rm -rf "$tmp"
+
+make_repo || exit 1
+cm_commit "$tmp" src/j.js '/**\n * Does the thing.\n */\nmodule.exports = 1;\n' || fail "cm_commit src/j.js"
+cm_finish "$_cm_ts"
+run_clear "$tmp" 14 "diff adds only a JSDoc block, no row → exit 14"
+cm_reason missing-comment-review "JSDoc block"
+rm -rf "$tmp"
+
+cm_start; rm -f "$tmp/scripts/lint/ticket-refs.awk"; cm_finish "$_cm_ts"
+run_clear "$tmp" 14 "the comment counter cannot run (ticket-refs.awk missing), no row → exit 14"
+cm_reason comment-review-unreadable "counter without its classifier"
+rm -rf "$tmp"
+
+cm_start; rm -f "$tmp/scripts/lint/check-history-comments.sh"; cm_finish "$_cm_ts"
+run_clear "$tmp" 14 "the comment counter is missing, no row → exit 14"
+cm_reason comment-review-unreadable "counter missing"
+rm -rf "$tmp"
+
+cm_start; cm_commit "$tmp" src/b.sh '# a second reason\necho 2\n' || fail "cm_commit src/b.sh"
+cm_finish "$_cm_ts" "$(_cm_row feat/x "$_CM_GONE" ok 1)"
+run_clear "$tmp" 14 "the only row sits at an earlier head that does not resolve → exit 14"
+cm_reason comment-review-unreadable "unresolvable earlier row"
+if grepq "$LAST_CLEAR_OUT" -F 'ledger-append.sh comments --head'; then pass; else fail "the unreadable refusal must name the comments row command: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+cm_start
+if ! { git -C "$tmp" checkout -q -b side main && echo s > "$tmp/side.txt" && git -C "$tmp" add side.txt \
+    && git -C "$tmp" commit -q -m side -- side.txt && _cm_side=$(git -C "$tmp" rev-parse --verify HEAD) \
+    && git -C "$tmp" checkout -q feat/x; }; then fail "side branch fixture"; fi
+cm_commit "$tmp" src/b.sh '# a second reason\necho 2\n' || fail "cm_commit src/b.sh"
+cm_finish "$_cm_ts" "$(_cm_row feat/x "$_cm_side" ok 1)"
+run_clear "$tmp" 14 "the only row sits at a head that is not an ancestor of the tip → exit 14"
+cm_reason comment-review-unreadable "non-ancestor earlier row"
+rm -rf "$tmp"
+
+cm_start; cm_finish "$_cm_ts" "$(_cm_row feat/x "$_CM_GONE" ok 1)" "$(_cm_row feat/x "$sha" ok 1)"
+run_clear "$tmp" 0 "an unresolvable old row plus a row at the clearing head → exit 0"
+rm -rf "$tmp"
+
+cm_start; cm_finish "$_cm_ts" "$(_cm_row feat/x "$sha" ok)"
+run_clear "$tmp" 14 "an ok row with no count does not count → exit 14"
+cm_reason missing-comment-review "ok row without a count"
+rm -rf "$tmp"
+
+cm_start; cm_finish "$_cm_ts" "$(_cm_row feat/x "$sha" off '' because)"
+run_clear "$tmp" 14 "an off row whose reason is not codex-lane or agent-not-loaded does not count → exit 14"
+cm_reason missing-comment-review "off row with another reason"
+rm -rf "$tmp"
+
+cm_start; cm_finish 2026-10-01T10:00:00+00:00
+run_clear "$tmp" 0 "marker minted before the comments gate, no row → exit 0"
+rm -rf "$tmp"
+
+cm_run_anchored() {
+    local rc=0 out
+    out=$(cd "$1" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$2" PATH="$1/bin:$PATH" bash scripts/cr/clear-review-marker.sh 2>&1) || rc=$?
+    LAST_CLEAR_OUT="$out"
+    if [ "$rc" -eq "$3" ]; then pass; else fail "$4 (expected rc=$3, got $rc)"; echo "    out: $out" >&2; fi
+}
+cm_anchor_case() {
+    make_repo || exit 1; _cm_anchor="$tmp"; stub_check_ci "$_cm_anchor" 0
+    cm_start
+    printf '#!/usr/bin/env bash\necho 0\n' > "$tmp/scripts/lint/check-history-comments.sh"
+    if ! { git -C "$tmp" add -- scripts/lint/check-history-comments.sh && git -C "$tmp" commit -q -m "gate prints 0" -- scripts/lint/check-history-comments.sh \
+        && git -C "$tmp" push -q origin feat/x >/dev/null 2>&1 && sha=$(git -C "$tmp" rev-parse --verify HEAD); }; then fail "anchor fixture gate edit"; fi
+}
+cm_anchor_case; cm_finish "$_cm_ts"
+cm_run_anchored "$tmp" "$_cm_anchor" 14 "a branch gate that prints 0 does not hide a code comment from the anchor's gate"
+cm_reason missing-comment-review "anchored gate"
+rm -rf "$tmp" "$_cm_anchor"
+
+cm_anchor_case; cm_finish "$_cm_ts" "$(_cm_row feat/x "$sha" ok 1)"
+cm_run_anchored "$tmp" "$_cm_anchor" 0 "the same anchored run with a row at the clearing head → exit 0"
+rm -rf "$tmp" "$_cm_anchor"
+
+cm_anchor_case; rm -f "$_cm_anchor/scripts/lint/ticket-refs.awk"; cm_finish "$_cm_ts"
+cm_run_anchored "$tmp" "$_cm_anchor" 14 "an anchor without ticket-refs.awk, no row → exit 14"
+cm_reason comment-review-unreadable "anchor without its classifier"
+rm -rf "$tmp" "$_cm_anchor"
+
+# The runbook clears by absolute path, so the branch's gate copy runs and its own lint sits beside it.
+cm_run_abs() {
+    local rc=0 out _e=(HIMMEL_REPO="$2")
+    [ "$2" = UNSET ] && _e=(-u HIMMEL_REPO)
+    out=$(cd "$1" && env -u CR_ANCHOR_HANDED_OFF "${_e[@]}" PATH="$1/bin:$PATH" bash "$1/scripts/cr/clear-review-marker.sh" 2>&1) || rc=$?
+    LAST_CLEAR_OUT="$out"
+    if [ "$rc" -eq "$3" ]; then pass; else fail "$4 (expected rc=$3, got $rc)"; echo "    out: $out" >&2; fi
+}
+cm_anchor_case; cm_finish "$_cm_ts"
+cm_run_abs "$tmp" "$_cm_anchor" 14 "absolute-path clear: a branch lint that prints 0 does not hide a code comment from the anchor's counter"
+cm_reason missing-comment-review "absolute path, branch lint prints 0"
+rm -rf "$tmp" "$_cm_anchor"
+
+cm_anchor_case; cm_finish "$_cm_ts"
+cm_run_abs "$tmp" UNSET 14 "absolute-path clear with HIMMEL_REPO unset refuses closed"
+cm_reason comment-review-unreadable "HIMMEL_REPO unset"
+rm -rf "$tmp" "$_cm_anchor"
+
+cm_anchor_case; cm_finish "$_cm_ts"
+cm_run_abs "$tmp" . 14 "absolute-path clear with HIMMEL_REPO=. (cwd's own lint prints 0) refuses closed"
+cm_reason comment-review-unreadable "HIMMEL_REPO relative"
+rm -rf "$tmp" "$_cm_anchor"
+CM_ANCHOR_SELF=
 
 # 4b. Empty ledger → no evidence /pr-check ever ran → refuse.
 make_repo || exit 1

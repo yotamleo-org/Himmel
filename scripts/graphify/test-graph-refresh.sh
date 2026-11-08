@@ -132,7 +132,7 @@ if [ -n "${SKIP_REFRESH:-}" ] && [ "$name" = "$SKIP_REFRESH" ]; then
 fi
 if [ -n "${FAIL_REFRESH:-}" ] && [ "$name" = "$FAIL_REFRESH" ]; then
     echo "fake-runner: failing on $name (FAIL_REFRESH)" >&2
-    if [ -n "${FAIL_REASON:-}" ]; then echo "refresh-graph-map: $FAIL_REASON" >&2; fi
+    if [ -n "${FAIL_REASON:-}" ]; then echo "${FAIL_PREFIX:-}refresh-graph-map: $FAIL_REASON" >&2; fi
     exit 1
 fi
 exit 0
@@ -431,6 +431,12 @@ summary_fail=$(printf '%s\n' "$out" | grep -F 'failed corpus: himmel' | head -1)
 assert_contains "end summary lists the failed corpus with its log" "$log_path" "$summary_fail"
 ok_line=$(printf '%s\n' "$out" | grep -F '[luna] OK' | head -1)
 assert_not_contains "OK line unchanged (no log noise)" "(log:" "$ok_line"
+
+echo "TEST: a refused worker (its ERR refresh-graph-map: line) carries the refusal in the FAIL line"
+reset_runner_log
+rc=0; out=$(FAIL_REFRESH=himmel FAIL_PREFIX="ERR " FAIL_REASON="--backend claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment -- refusing, no claude-cli fallback" run_refresh both --vault "$VAULT" 2>&1) || rc=$?
+fail_line=$(printf '%s\n' "$out" | grep -F '[himmel] FAIL' | head -1)
+assert_contains "refused FAIL line carries the refusal" "needs HIMMEL_API_LANE=on" "$fail_line"
 
 # ============================================================================
 # Test 9b: bank-skip only (no failures) -> exit 4, summary carries no OK token

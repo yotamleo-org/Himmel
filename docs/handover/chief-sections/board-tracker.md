@@ -17,7 +17,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     whether the render moved after a dispatch, verdict, GO, MERGED or WRAPPED
     (nonces and lock tokens are redacted from the file either way). Rendering
     never publishes, and the board stays LOCAL (operator ruling 10-29): the
-    chief profile denies the `Artifact` tool (HIMMEL-8201). Record the local
+    chief profile denies the `Artifact` tool. Record the local
     file's path on the `board:` line of `## Live state`; `chief.sh next`
     carries it to your successor, who re-renders the same file.
     The tick's `board=` field is your reminder:
@@ -45,7 +45,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     5 rows (the full tables are in the archive).
 
     **`--json <path>`** also writes the board model as JSON (schema
-    `himmel.board/1`) for a richer UI (HIMMEL-5968) to render. It holds:
+    `himmel.board/1`) for a richer UI (the Fleet page of the always-on UI) to render. It holds:
     - `needs_you`: each item has a verb (`go`, `unblock`, `decide` or `act`); a
       `go` item carries the `go.sh` command.
     - The worker list, under the key `board.mjs` writes for it: each worker's

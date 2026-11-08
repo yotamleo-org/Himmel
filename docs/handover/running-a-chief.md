@@ -181,7 +181,7 @@ env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
 `[1m]` is appended to the model only for the 4.6 family (`claude-opus-4-6`,
 `claude-sonnet-4-6`); Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable run 1M natively
 and non-Anthropic ids (`gpt-*`, `glm-*`, anything with a `/`) never take it
-(HIMMEL-5501). `--autocompact` and the Opus 5.5 id need Claude Code 2.1.280 or
+at all. `--autocompact` and the Opus 5.5 id need Claude Code 2.1.280 or
 newer: an armed launch on an older CLI refuses and names `claude update`
 (`/himmel-update` brings it current).
 
@@ -238,7 +238,7 @@ label, count and class, and nothing else. A paged worker is then **refused** on
 re-dispatch (`headed-arm-worker.sh` exits 14) until someone has looked and run
 `bash scripts/handover/chief-kit/ack-denial.sh <worker-label-or-doc>`;
 `--ignore-denials` overrides. Detail:
-[`../internals/enforcement.md`](../internals/enforcement.md#log-classifier-denialsh--classifier-denial-tap-himmel-3724).
+[`../internals/enforcement.md`](../internals/enforcement.md#log-classifier-denialsh--classifier-denial-tap).
 
 ## Dispatching workers
 
@@ -261,9 +261,9 @@ checked>` (or `claude-code-security-review` / `pr-review-toolkit` / `ad-hoc`
 in place of `manual`). A paraphrase the worker copies faithfully is how a
 non-conforming trailer reaches the pre-push gate.
 
-**Search before you write the brief's Prior art line (HIMMEL-8758).** Workers and
+**Search before you write the brief's Prior art line.** Workers and
 judges inherit that line, and chiefs searched the notes in 19 % of sessions and
-the graph in 7 % (the HIMMEL-8749 baseline). Run `bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel "worker brief Prior art"`
+the graph in 7 % (the measured baseline). Run `bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel "worker brief Prior art"`
 (tickets and PRs), the same with -c luna (specs, audits, decisions) and
 `bash <primary checkout>/scripts/graphify/worker-graph.sh explain "worker-graph.sh"` (structure). Those quoted words are an
 example: put this ticket's topic and symbol there. A bare
@@ -299,7 +299,7 @@ explicit model**: an unnamed one draws on the scarcer parent quota. Tier and
 effort guidance, including the chief's own wake-up budget, is in
 [`../internals/lane-calibration.md`](../internals/lane-calibration.md).
 
-**A core ticket builds only after a signed minerva spec (HIMMEL-8353).**
+**A core ticket builds only after a signed minerva spec.**
 
 - **What core means.** The operator's definition: the ship loop, the chain a
   ticket travels from filing to merge. That is the chief, how versions are
@@ -357,7 +357,7 @@ effort guidance, including the chief's own wake-up budget, is in
   in-flight key passes only through the `core-snapshot` record. A `BYPASS` key
   is printed as `bypass=<class>` and logged to `core-gate.jsonl` beside the
   brief. Run a minerva worker for each `CORE` key without `SPEC ok`.
-- **The minerva design leg launches on a key with no spec (HIMMEL-9027).** The
+- **The minerva design leg launches on a key with no spec.** The
   brief for that minerva worker carries the line `> **Design leg:** minerva`,
   spelled exactly so, and a `Writes:` line that names only `.md` files in the
   state repo's `specs/` folder. Each file is either relative to the bucket,
@@ -404,14 +404,14 @@ line in its prompt draws a warning from `guard-agent-model.sh` (warn only, never
 a deny; the reason must pass the same length and placeholder test as
 `ESCALATION:`). Opus is for the one hard call: put the reason on that line.
 
-**Operator-ruled Opus classes (HIMMEL-8926).** The table is not the whole rule.
+**Operator-ruled Opus classes.** The table is not the whole rule.
 Standing operator rulings keep four helper classes on Opus at high effort, and
 a chief that follows the table over them is wrong: audits (backlog, version,
 done, collision or drift audits, decision explainers, spend measurement),
 docs work, mockups and HTML renders, and spec critics. Over 2026-11-01 and
 2026-11-02 these classes were about 87 % of the chief `general-purpose` Opus
 spend (22.98 $-eq a day, measured in
-`specs/audits/HIMMEL-8926-chief-helper-spend-2026-11-05.md` in the state
+`specs/audits/*-chief-helper-spend-2026-11-05.md` in the state
 repo); the rest was one root-cause investigation (a hard call) and a 0.07
 triage. A tier move alone therefore cannot bring that spend under 15 a day.
 The rules:
@@ -524,7 +524,7 @@ the worker's repo ranked by PageRank over its primary checkout's
 `scripts/graphify/repo-map.py`; with no graph, or a generator still running after
 `WORKER_SESSION_REPO_MAP_TIMEOUT` (default 30) seconds, or on a host with no GNU `timeout` to bound
 it, the worker launches without it and the launch log says so. It stays off because the A/B on the K7 questions
-(HIMMEL-6142) showed no gain: 15/15 answers found with and without it, at the
+showed no gain: 15/15 answers found with and without it, at the
 same token cost.
 
 `headed-arm-worker.sh` exports `HIMMEL_CONSOLE_LEG=1`, which
@@ -617,7 +617,7 @@ A worker's `WRAPPED` (or your own claudex `MERGED`) line is one call, not a turn
 routes it to `chief-kit/wrap-merged.sh` and prints `HANDLED` or `ESCALATE
 <reason>`; a judge verdict is one `chief-kit/verdict-go.sh` call. Chiefs that
 ran the hand sequences spent most of their input tokens on them
-(HIMMEL-5592 inventory: `scripts/eval/chief-load-inventory.py`).
+(measured by `scripts/eval/chief-load-inventory.py`).
 
 **Lane canary**: `scripts/lanes/lane-canary.sh [--lanes a,b]
 [--timeout <sec>] [--out <report.json>] [--dry-run]` launches one no-op worker per
@@ -895,7 +895,7 @@ so a worktree edit cannot widen it) and the PR targets that entry's
 1. `bash scripts/handover/chief-kit/go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr> <head>`
    (exit 6 not allowlisted or the harness repo itself, 7 PR not OPEN, CLEAN and on the adapter branch at that head
    or a review thread still open, 5 no signed judge GO).
-2. `bash <anchor>/scripts/handover/merge-fork-pr.sh [--jira-transition] <owner/repo> <pr> <head>`
+2. `bash scripts/handover/merge-fork-pr.sh [--jira-transition] <owner/repo> <pr> <head>`
    (chief only; a bare `gh pr merge --repo <fork>` stays refused; pass `--jira-transition` when the brief says `completes-ticket: yes`, and send the worker its `jira-transition=` line).
 
 Both scripts require GitHub's `mergeStateStatus` CLEAN (every check at the head
@@ -1076,18 +1076,29 @@ Pass: `usage-preflight` prints the new account's `five_hour` / `seven_day` and
 `PROCEED` (or `SKIPPED-BANK` if that account is genuinely high). `BANK-UNKNOWN`
 means the cache is still the old account's; refresh again, or check the login.
 
-**4. Confirm the weekly budget override voided itself.** An override is bound to the
-account that set it, so it is no override under the new login; only the operator can
-set one (`usage-lift.sh set`). Verify:
+**4. Check the weekly budget override.** A standing override follows the new login
+with no step: once the cache from step 3 is the new account's, it holds there as it
+did on the old one. A one-window override stays bound to the account that set it,
+so it voids. Only the operator can set either (`usage-lift.sh set`). Verify:
 
 ```bash
 bash scripts/lib/usage-lift.sh show
 ```
 
-Expect `usage-lift: INVALID: account` after an account switch. Other invalid
-reasons are `expired`, `window`, `trust`, `parse` (or `missing` when unset).
-The doctor reports `lift set but INVALID: <reason>`. A stale file is harmless
-and can be removed with `bash scripts/lib/usage-lift.sh clear`.
+A standing override reads `usage-lift: followed: standing lift set on <4 hex>…, now
+on <4 hex>…` and then `usage-lift: VALID`; the doctor reports `lift set and VALID
+(standing=true, followed)`. Otherwise `show` and the doctor name the reason, and the
+doctor adds its remedy:
+
+- `cache-account`: the usage cache is still the old login's. Refresh it (step 3).
+- `account`: a one-window override set on the old account, which never follows;
+  or the new login cannot be read. The operator re-sets it, or you `clear` it.
+- `set_by`: the standing override was set by another user, or written with `USER`
+  unset before this rule. The operator runs `set --standing` once.
+- `expired`, `window`, `trust`, `parse` (or `missing` when unset): as before.
+
+A stale file is harmless and can be removed with
+`bash scripts/lib/usage-lift.sh clear`.
 
 A one-window weekly budget override skips only the weekly ceiling; `five_hour` still binds.
 Whole-second reset values tolerate up to one second of fractional API jitter,
@@ -1098,9 +1109,9 @@ not a different weekly window. Only the operator can enable the standing
 bash scripts/lib/usage-lift.sh set --standing
 ```
 
-It records `standing:true` in the same operator-only, account-bound override file
-(no new state path or hook bypass). The policy applies to every fresh window
-for that account and defaults `CADENCE_USAGE_MAX_PCT` to 100 for launch checks.
+It records `standing:true` in the same operator-only override file (no new state
+path or hook bypass). The policy applies to every fresh window, on every account
+the station logs into, and defaults `CADENCE_USAGE_MAX_PCT` to 100 for launch checks.
 An explicit ceiling still controls `five_hour`; either usage budget at 100 refuses,
 so no launch starts on extra usage. Plain `set` replaces it with a one-window weekly budget override;
 `clear` disables it. Agents must never run either form of `set`.

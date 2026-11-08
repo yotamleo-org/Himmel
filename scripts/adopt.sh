@@ -491,11 +491,18 @@ copy_portable() {
 ensure_worktrees_ignored() {
   [[ -e "$TARGET/.git" ]] || return 0
   [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
-  if [[ -f "$TARGET/.gitignore" ]] && grep -qx -e '/\{0,1\}\.claude/worktrees/\{0,1\}' "$TARGET/.gitignore"; then
-    return 0
+  # .env too: /handover-setup writes HANDOVER_DIR into the project's own .env,
+  # which would otherwise show as untracked.
+  local -a missing=()
+  if ! { [[ -f "$TARGET/.gitignore" ]] && grep -qx -e '/\{0,1\}\.claude/worktrees/\{0,1\}' "$TARGET/.gitignore"; }; then
+    missing+=(".claude/worktrees/")
   fi
+  if ! { [[ -f "$TARGET/.gitignore" ]] && grep -qx -e '/\{0,1\}\.env' "$TARGET/.gitignore"; }; then
+    missing+=(".env")
+  fi
+  [[ ${#missing[@]} -gt 0 ]] || return 0
   if [[ $DRY_RUN -eq 1 ]]; then
-    echo "DRY: append .claude/worktrees/ to $TARGET/.gitignore"
+    echo "DRY: append ${missing[*]} to $TARGET/.gitignore"
     return 0
   fi
   local before="" op=create
@@ -510,7 +517,7 @@ ensure_worktrees_ignored() {
   if [[ -s "$TARGET/.gitignore" && -n "$(tail -c1 "$TARGET/.gitignore")" ]]; then
     echo >> "$TARGET/.gitignore"
   fi
-  echo ".claude/worktrees/" >> "$TARGET/.gitignore"
+  printf '%s\n' "${missing[@]}" >> "$TARGET/.gitignore"
   if ! prov_record "$op" file "$TARGET/.gitignore" --scope project --class code --row adopter-scripts \
       --writer adopt.sh "${pre[@]}" --post-file "$TARGET/.gitignore"; then
     if [[ -n "$before" ]]; then
@@ -525,7 +532,7 @@ ensure_worktrees_ignored() {
     return 1
   fi
   rm -f "$before"
-  echo "  .gitignore: added .claude/worktrees/"
+  echo "  .gitignore: added ${missing[*]}"
 }
 
 # The git gates refuse every commit on main, so the install itself can only

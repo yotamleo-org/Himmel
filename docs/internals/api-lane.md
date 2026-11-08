@@ -3,7 +3,7 @@
 `scripts/api-lane/claude-api.sh` runs one print-mode `claude` call billed to an
 API account (`HIMMEL_API_ACCOUNT=A|B|C|auto`; auto only for the himmel graph pass, or a kind the role map maps) instead of the subscription. It is
 OFF unless the launching shell sets `HIMMEL_API_LANE=on`. This page covers what
-happens when a call on it fails (HIMMEL-8643). The launcher's header lists the
+happens when a call on it fails. The launcher's header lists the
 full argument and environment contract.
 
 ## Who uses it
@@ -127,7 +127,7 @@ A reader that sums API dollars skips every row with a `lane` other than `api` (t
 no `lane`): `shift-spend.mjs` does, so the native and `sub-fallback` rows are neither summed nor counted as unpriced.
 `scripts/usage/release-judge-reconcile.sh` is the read-only check that each release judge transcript has its row.
 
-## Account C and auto routing (HIMMEL-9052, decision 525 FINAL)
+## Account C and auto routing
 
 Account C is a third API org with a 200.00 USD cap. A, B and C are treated identically: the same refusals (key from
 the caller `ANTHROPIC_API_KEY` or a mode-600 `key-C.env` beside the ledger, `HIMMEL_API_KEY_ID` equal to the roster
@@ -145,7 +145,7 @@ works for every kind and every repo, judge, critic, bulk and cull included.
 Config name: `ANTHROPIC_API_ORG_ID_C`, matching `ANTHROPIC_API_ORG_ID_A` and `_B`. Every site that unsets the A and B keys before a subscription `claude -p` also unsets
 `ANTHROPIC_ORG_C_KEY`. The key file `key-C.env` is written by the operator, never by a script.
 
-### The role map (HIMMEL-9076, decision 526)
+### The role map
 
 `roles.json` says which accounts auto routing may use for each routable kind. It sits beside the account roster
 `config.json` (default `~/.himmel/state/api-credit/roles.json`; `HIMMEL_API_CREDIT_CONFIG` moves both) and holds no
@@ -157,12 +157,12 @@ secret, only role names and account letters:
 
 - **Known roles** are the `ROLES` export of `scripts/lib/api-roles.mjs`, the one owner of reading, validating and
   writing the file: `graphify` and `judge`. `probe` and `other` are never roles.
-- **No map is decision 525.** With no file, the graph pass uses every configured account and every other kind is
-  refused (exit 2, no alert, no fallback). A role with no entry stays on decision 525 too.
-- **Four states.** `absent` (no file): decision 525. `valid`: the map. `partial` (the file parses but an entry has an
-  error): the live entries apply, each ignored role falls to decision 525. `invalid` (not JSON, `version` is not 1 or
-  `roles` is not an object): the whole file is ignored, decision 525, with `invalid-role-map:<reason>`. A broken map
-  only takes away widening; it never refuses what decision 525 allows and never touches `config.json`.
+- **No map means the default.** With no file, the graph pass uses every configured account and every other kind is
+  refused (exit 2, no alert, no fallback). A role with no entry gets the same default.
+- **Four states.** `absent` (no file): the default. `valid`: the map. `partial` (the file parses but an entry has an
+  error): the live entries apply, each ignored role falls back to the default. `invalid` (not JSON, `version` is not 1
+  or `roles` is not an object): the whole file is ignored and the default applies, with `invalid-role-map:<reason>`.
+  A broken map only takes away widening; it never refuses what the default allows and never touches `config.json`.
 - **Dropped letters.** An unknown role (`unknown-role:<name>`) is ignored. An unknown letter in a list
   (`unknown-account:<role>:<letter>`) is dropped and the entry stays live with the rest: `judge: ["B", "D"]` routes
   to B. An empty or non-array list (`empty-role:<role>`) is ignored. A duplicate letter is deduped silently. A known
@@ -171,14 +171,15 @@ secret, only role names and account letters:
 - **A pick stays inside the role.** The launcher and the graph batch ask `api-roles.mjs accounts <kind>` and pass the
   answer to `api-credit-state.mjs pick --usd N --only <letters>`. A role mapped to B is served by B or refused
   (`no account has room`), never by A. A named account never reads the map.
-- **The graph batch walks the accounts.** On auto, a credit-exhausted answer marks the account and the
-  pick runs again over the accounts of the same list that were not yet tried, so a pass reaches C when A and B are
-  out. Each account is tried at most once per pass, so a role mapped to one account is tried once and fails. When
-  none is left the pass stops with `credit exhausted on every account tried (A B C); nothing submitted`; each
-  retry line and the final failure name the accounts tried. ONLY a credit-exhausted answer moves on: a bad key or any
-  other error stops the pass at once (`only a credit-exhausted answer tries the next account`), because the next
-  account would fail the same way or bill for nothing. One batch is submitted per pass, so decision 664's single-batch
-  limit is unchanged. The synchronous path's breaker stops dispatch after one rejection per account in play.
+- **The graph batch walks the accounts.** On auto, a credit-exhausted answer or a rejected key (HTTP 401 or 403, the
+  batch client's exit 6) marks the account and the pick runs again over the accounts of the same list that were not
+  yet tried, so a pass reaches C when A is out of credit and B's key is dead. Each account is tried at most once per
+  pass, so a role mapped to one account is tried once and fails. When none is left the pass stops with
+  `every account tried is out of credit or rejected its key (A credit exhausted, B API key rejected, C ...); nothing
+  submitted`; each retry line and the final failure name the accounts tried. ONLY those two answers move on: a
+  network or server error, a rate limit or a refusal stops the pass at once (`only a credit-exhausted or rejected-key
+  answer tries the next account`), because the next account would fail the same way or bill for nothing. Walking the accounts never submits a second batch: one batch
+  per pass, as before. The synchronous path's breaker stops dispatch after one rejection per account in play.
 - **An exhausted marker clears on its own.** `api-credit-state.mjs exhausted` writes `exhausted_at` for the account.
   Auto skips a marked account for `EXHAUSTED_TTL` (3600 seconds), or sooner when the operator snapshot holds a reading
   newer than the marker (refresh the snapshot after funding the account and the next pick uses it). An account marked
@@ -222,7 +223,7 @@ Recommended, cheapest first:
 3. Use synchronous calls (`GRAPHIFY_API_BATCH=0`) only for a small changed set; there the 5-minute tier is enough
    and the write premium is smaller, but the full price is twice the batch price.
 
-The measured per-run cost and cache read/write split for C is posted on HIMMEL-9052 after the one bounded run.
+The measured per-run cost and cache read/write split for C is posted on the account C ticket after the one bounded run.
 
 ## Test seams
 

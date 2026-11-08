@@ -40,7 +40,7 @@ For Jira ops in this repo, default to the local CLI at
 | Transitions | `... transitions HIMMEL-N` (id<TAB>name per available transition) | `getTransitionsForJiraIssue`                                  |
 | Move        | `... move HIMMEL-N --to-project LUNA [--type Story] [--dry-run]` (close source + create target + copy comments) | (none — Jira Cloud REST API has no direct project-change endpoint) |
 | Projects    | `... projects` / `... project-create ...`                                   | `getVisibleJiraProjects` / no equivalent for create              |
-| Link        | `... link HIMMEL-A HIMMEL-B` (Relates, the default; case-insensitive `--type`, validated against the live type list). Blocks is explicit: `link A --blocks B` (A blocks B) and `link A --blocked-by B` (A is blocked by B); the bare two-key form is refused for Blocks, because the first key is the blocker (`link A B --type Blocks` stores "A blocks B") and callers often expect the reverse; the explicit flags state the direction. The output prints the stored relation (`Linked: A blocks B`), matching `links` and the Jira UI (HIMMEL-6577). `scripts/jira/audit-blocks-links.mjs` is a read-only TSV audit of open-ticket Blocks links with proposed flips | `createIssueLink` (+ `getIssueLinkTypes` for the type list) |
+| Link        | `... link HIMMEL-A HIMMEL-B` (Relates, the default; case-insensitive `--type`, validated against the live type list). Blocks is explicit: `link A --blocks B` (A blocks B) and `link A --blocked-by B` (A is blocked by B); the bare two-key form is refused for Blocks, because the first key is the blocker (`link A B --type Blocks` stores "A blocks B") and callers often expect the reverse; the explicit flags state the direction. The output prints the stored relation (`Linked: A blocks B`), matching `links` and the Jira UI. `scripts/jira/audit-blocks-links.mjs` is a read-only TSV audit of open-ticket Blocks links with proposed flips | `createIssueLink` (+ `getIssueLinkTypes` for the type list) |
 | Links       | `... links HIMMEL-N` (lists id, type, canonical `inward=` / `outward=` keys, and the relation from the queried issue) | `getJiraIssue` with the `issuelinks` field |
 | Unlink      | `... unlink HIMMEL-INWARD HIMMEL-OUTWARD [--type Relates]` (resolves the REST id from the directed pair and refuses ambiguous matches) | (none — use `DELETE /rest/api/3/issueLink/{id}`) |
 | Assign      | `... assign HIMMEL-N <email\|accountId>` (`-`/`unassigned` clears, `auto` = default assignee; email → accountId via `/user/search`) | `editJiraIssue` (assignee field) |
@@ -55,7 +55,7 @@ For Jira ops in this repo, default to the local CLI at
 | Roadmap     | `... roadmap fields [--json]` / `... roadmap set HIMMEL-N [--readiness 0-4] [--theme T] [--goals G1,G3] [--impact 1-5] [--alignment N] [--effort XS\|S\|M\|L\|XL [--guard]] [--audit-date D] [--audit-evidence URL] [--close-candidate yes\|no] [--no-roi]` / `... roadmap get HIMMEL-N` / `... roadmap export --out F.json` / `... roadmap sync-sprints [--board N] [--dry-run]` (`--theme` is the retired Theme field: it works only while `HIMMEL_LEGACY_NAMES` is on (the default) and is refused when that is 0, false, no or off, naming `edit --sector`; the config-ui Roadmap and Kanban group by Sector (the mirror's `sector:` line, the old `theme-*` label as the fallback, "no sector" for neither) and a card's select writes the Sector with `edit --sector`, never a theme label; fields resolved by name, ROI = impact × alignment × confidence ÷ effort recomputed after every set; `sync-sprints` gives each dated unreleased fixVersion a same-named sprint carrying its dates and moves its open issues in — an issue on several dated versions goes to the earliest-releasing one — and `--dry-run` exits 1 on drift) | (none) |
 | Rank        | `... rank HIMMEL-N --before\|--after HIMMEL-M` / `... rank --file order.txt` (Agile `PUT /issue/rank`, the file ranks top-down in chunks of 50) | (none) |
 | Resolution  | `... resolution HIMMEL-N` (re-runs the current status's self-transition so the workflow post-function sets or clears the resolution — resolution is not on the edit screen) | (none) |
-| Release     | `... release state <R> [--json]` (exit 3 when not OK) / `... release request <R> --verb INTAKE\|REVERSION\|DISCHARGE --key K --to <v\|backlog> --why ...` (refuses a placeholder why, an INTAKE for a closed key outside the release unless `--evidence '{"pr":N}'` names its merged PR, and a REVERSION/DISCHARGE from a version the mirror does not hold the key in) / `... release withdraw <R> --req Q --reason ... [--by O-id]` (retires a pending request; `--by` names the operator decision row covering its key; an operator decision also withdraws the pending requests it contradicts) / `... release claim <R>` / `... release rule <R> --req Q --outcome O --op <kind> [--sector S] --ground G --reason-file F [--supersedes ids] [--authority operator --ref O-id]` / `... release apply <R> <R-id>` (fixVersions write, readback, receipt comment; idempotent) / `... release lease acquire\|release <R>` / `... release operator declare\|freeze\|decision\|takeover <R> ...` (refused inside a spawned worker). Signed, hash-chained state under `$HANDOVER_DIR/<user>/<repo>/release/<R>/` (HIMMEL-6796); the release manager's verbs: `himmel-ops:release-manager` | MCP tool `release` (`sub` = state, request, claim, rule, apply, lease-acquire, lease-release; the operator verbs are CLI-only) |
+| Release     | `... release state <R> [--json]` (exit 3 when not OK) / `... release request <R> --verb INTAKE\|REVERSION\|DISCHARGE --key K --to <v\|backlog> --why ...` (refuses a placeholder why, an INTAKE for a closed key outside the release unless `--evidence '{"pr":N}'` names its merged PR, and a REVERSION/DISCHARGE from a version the mirror does not hold the key in) / `... release withdraw <R> --req Q --reason ... [--by O-id]` (retires a pending request; `--by` names the operator decision row covering its key; an operator decision also withdraws the pending requests it contradicts) / `... release claim <R>` / `... release rule <R> --req Q --outcome O --op <kind> [--sector S] --ground G --reason-file F [--supersedes ids] [--authority operator --ref O-id]` / `... release apply <R> <R-id>` (fixVersions write, readback, receipt comment; idempotent) / `... release lease acquire\|release <R>` / `... release operator declare\|freeze\|decision\|takeover <R> ...` (refused inside a spawned worker). Signed, hash-chained state under `$HANDOVER_DIR/<user>/<repo>/release/<R>/`; the release manager's verbs: `himmel-ops:release-manager` | MCP tool `release` (`sub` = state, request, claim, rule, apply, lease-acquire, lease-release; the operator verbs are CLI-only) |
 
 **Use MCP only when the plugin lacks the operation** (custom-field
 discovery, account-ID lookup via `lookupJiraAccountId`). Confluence now has
@@ -270,7 +270,7 @@ The sync reads reachability from the tags of the clone it runs in, so it must
 run from a clone of the repo whose releases it lists (`--repo` must match), and
 `--apply` refuses when a published tag is missing locally (`git fetch --tags`).
 
-**Ticket home (HIMMEL-6223, HIMMEL-6277).** `create` refuses a Task, Story or
+**Ticket home.** `create` refuses a Task, Story or
 Bug with neither `--parent <epic>` nor `--labels standalone`, and, when Sector is
 configured, with no `--sector` (matched case-insensitively against the field's
 live option list); the refusal names the missing field, the valid options and
@@ -279,7 +279,7 @@ the opt-out. An Epic or Subtask only warns. The MCP `create` takes the same
 Rollout: the rule goes live on a station when `himmel-update` rebuilds
 `scripts/jira/dist`; until then a stale `dist/` still files without a Sector.
 
-**Sector from the title (HIMMEL-8659).** With no `--sector`, a title that opens
+**Sector from the title.** With no `--sector`, a title that opens
 with `<Sector>: ` naming a live option files under that Sector (matched
 case-insensitively, stored as the option's own label), so `Visibility: x` needs no
 flag. A Task, Story or Bug whose `<Word>: ` prefix names no live option is refused
@@ -291,7 +291,7 @@ the no-Sector refusal above applies. An explicit `--sector` always wins. The sam
 tickets whose Sector is empty (read-only, exit 1 while any is); backfill them with
 `edit-batch`.
 
-**Sector is opt-in (HIMMEL-6277).** The field is a custom Jira field, so its id
+**Sector is opt-in.** The field is a custom Jira field, so its id
 is config, not code: `jira.sectorField` in `~/.himmel/config.json` (the
 `JIRA_SECTOR_FIELD` env var overrides it). Absent or `none` means no
 Sector check and no Sector field sent (a stray `--sector` on `create` warns and
@@ -304,22 +304,22 @@ prints the `jira.sectorField` config.json snippet (it never writes the file;
 config.json writes are operator-only); `--opt-out` prints the `none` snippet. With no
 Sector configured the release manager's prompt allows a null sector, a ruling without one carries
 `sector=none` and applies; `release rule --sector` (and the MCP `sector`) is optional unless a field
-is configured (HIMMEL-7417). Configured, a ruling
+is configured. Configured, a ruling
 without a sector is refused (`REFUSED <req>: release rule: a ruling without a sector refuses`, the request
 stays claimed) and the judge HOLDs a sectorless request. A missing config.json or an absent
 `jira.sectorField` means sectors are off; malformed JSON or a non-string value throws instead. Code:
 `scripts/jira/src/commands/sector.ts` (config + options) and `sector-setup.ts`.
 
-**Bug placement (HIMMEL-6776).** `create --type Bug` without `--fix-version` is
+**Bug placement.** `create --type Bug` without `--fix-version` is
 placed at filing, never defaulted silently. `--proposed-version <v>` files it with a
 `proposed-<v>` label and no fixVersion and queues its INTAKE request toward `<v>` in the
-same call (HIMMEL-8170); `--backlog` alone is refused: it needs `--proposed-version backlog`
+same call; `--backlog` alone is refused: it needs `--proposed-version backlog`
 and a one-line `--why`, and then files the `backlog` label with no fixVersion.
 `--proposed-version` cannot be combined with `--fix-version` or `--gate`, applies to a Bug, Task or
 Story only, and a named version must exist and be unreleased. The same rule covers a Task or Story, so no ticket
 is filed without at least a proposed version; a residual (`--residual-of`, `--follow-up-of`) routes itself to a version
 or the backlog, and one that lands with no version is held to the same rule as any other.
-`--follow-up-of <KEY>` reads the parent's status and fixVersion (HIMMEL-9002). An open parent in the current
+`--follow-up-of <KEY>` reads the parent's status and fixVersion. An open parent in the current
 (earliest unreleased) version: the follow-up's INTAKE asks for that version, its why states only facts (parent,
 status, version) and its evidence carries them; it does not claim a remainder. `--remainder`, which needs
 `--follow-up-of`, is for a ticket that holds a deferred DoD row of the parent: the why then says the parent cannot
@@ -358,12 +358,12 @@ non-empty reason and a ledger that can take an append (`HANDOVER_DIR`, or
 before the ticket is filed. After
 the create it appends one JSON row `{ts, version, key, gate|kind, actor, reason}`
 (`kind: "override"`) to `$HANDOVER_DIR/admissions-ledger.jsonl`. The marker is
-spoofable by any same-uid caller (ponytail, upgrade path HIMMEL-6796). Code:
+spoofable by any same-uid caller (ponytail, upgrade path: the release manager's signed state). Code:
 `scripts/jira/src/commands/admissions-ledger.ts` (`appendAdmission(row)`,
 `readAdmissions(version?)` and the preflight `assertAdmissionsWritable()`, the
 whole API).
 
-**Intake gate for a frozen version (HIMMEL-6775).** A version whose description
+**Intake gate for a frozen version.** A version whose description
 has a line `frozen: <date>` takes no new ticket without a reason. `create` checks
 the version the ticket will land in, whether from `--fix-version`, a Highest or
 `--gate` Bug's default, or a `--residual-of` escape or hardening route, and
@@ -374,17 +374,17 @@ appends the row `{ts, version, key, gate, actor}` to the admissions ledger.
 `--chief-override "<reason>"` (rules above) admits past the gate and writes its
 override row instead. A version without the `frozen:` line behaves as before and
 writes no row; `--backlog` files a Bug with no version, so it needs no gate. The
-gate reason is recorded, not verified (ponytail, upgrade path HIMMEL-6796).
+gate reason is recorded, not verified (ponytail, upgrade path: the release manager's signed state).
 `edit --fix-version` and `edit --add-fix-version` run the same check with the same
 `--gate` and `--chief-override` flags: the refusal lands before the PUT, and the
-gate or override row is appended after the edit reads back (HIMMEL-6918).
-`jira fix-version --add` is not gated yet (HIMMEL-6828). Code:
+gate or override row is appended after the edit reads back.
+`jira fix-version --add` is not gated yet. Code:
 `scripts/jira/src/commands/intake-gate.ts` (`frozenDate`, `assertIntakeGate`,
 `checkIntakeGate`, `checkConsoleOverride`).
 
 **Who sets `HIMMEL_CONSOLE=1`.** `headed-arm.sh --role chief` exports it, so `chief.sh` and every arm-resume re-arm carry it; the worker launcher scrubs it from a worker's environment. The chief admits a fix to a broken chief or operator flow itself, without the release manager. When the release manager rules an INTAKE `ADMIT`, `release apply` appends the `rm-admit` ledger row (`by` is the lease owner session, once per ruling), so the board counts it like a chief admission.
 
-**Bulk guard on `rm-run` (HIMMEL-6778).** One `jira release rm-run` moves at most 20 open tickets into or out of the declared current version. Every fresh ruling it attempts counts (a replayed older intent writes no fixVersion, so it does not count; a voided one is counted when re-ruled), and a ruling the engine then refuses still uses its slot (the limit is on attempted moves, so it errs on the side of holding); closed tickets (per the mirror) and operator-authority rulings that carry a ref do not. The 21st move is not ruled: its request goes back to `open` (unclaimed) and prints `PENDING <req>: bulk guard ...`, so the next run picks it up. `rm-run <R> --ruling <decision-ref>` lifts the cap for the run: when the run needed it, it prints `bulk <N> lifted by ruling <ref>` and writes the same `kind: "override"` ledger row with `ruling: <ref>`. The chief lifts it with `--chief-override "<reason>"` (`HIMMEL_CONSOLE=1`, a non-empty reason and a ledger that can take an append, else it refuses before claiming anything): when the run needed it, one `kind: "override"` row `{version, key: "rm-run:<R>", reason: "bulk <N> open moves in <v>: <reason>"}` lands in the admissions ledger. The ref is recorded, not verified (ponytail, upgrade path HIMMEL-6796). A single `release apply`, `fix-version` and `edit-batch` are unchanged: `fix-version` takes one key and `edit-batch` only sets Sector, so neither can move a batch. Code: `BULK_MOVE_LIMIT` and `rmRun` in `scripts/jira/src/release/engine.ts`.
+**Bulk guard on `rm-run`.** One `jira release rm-run` moves at most 20 open tickets into or out of the declared current version. Every fresh ruling it attempts counts (a replayed older intent writes no fixVersion, so it does not count; a voided one is counted when re-ruled), and a ruling the engine then refuses still uses its slot (the limit is on attempted moves, so it errs on the side of holding); closed tickets (per the mirror) and operator-authority rulings that carry a ref do not. The 21st move is not ruled: its request goes back to `open` (unclaimed) and prints `PENDING <req>: bulk guard ...`, so the next run picks it up. `rm-run <R> --ruling <decision-ref>` lifts the cap for the run: when the run needed it, it prints `bulk <N> lifted by ruling <ref>` and writes the same `kind: "override"` ledger row with `ruling: <ref>`. The chief lifts it with `--chief-override "<reason>"` (`HIMMEL_CONSOLE=1`, a non-empty reason and a ledger that can take an append, else it refuses before claiming anything): when the run needed it, one `kind: "override"` row `{version, key: "rm-run:<R>", reason: "bulk <N> open moves in <v>: <reason>"}` lands in the admissions ledger. The ref is recorded, not verified (ponytail, upgrade path: the release manager's signed state). A single `release apply`, `fix-version` and `edit-batch` are unchanged: `fix-version` takes one key and `edit-batch` only sets Sector, so neither can move a batch. Code: `BULK_MOVE_LIMIT` and `rmRun` in `scripts/jira/src/release/engine.ts`.
 
 ## Confluence CLI
 

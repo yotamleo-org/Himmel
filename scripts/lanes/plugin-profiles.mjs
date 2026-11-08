@@ -96,6 +96,50 @@ function validateVmLaunchAllow(errors, rules) {
   }
 }
 
+// The chief's own go and merge rules: the relative `bash scripts/...` shape the chief
+// types from the checkout root, script path plus `:*` and nothing wider. The relative
+// merge-on-green rule is admitted for the chief only; a worker's merge is the anchor twin.
+const CHIEF_RULE_RE = /^Bash\(bash scripts\/handover\/(?:chief-kit\/(?:go|ready-check|ready-go)|merge-on-green|merge-fork-pr)\.sh:\*\)$/;
+function validateChiefAllow(errors, rules) {
+  if (rules === undefined) return; // older custom registries do not opt in
+  if (!Array.isArray(rules) || rules.length === 0) {
+    errors.push('chiefAllow must be a non-empty array of Bash rules');
+    return;
+  }
+  for (const rule of rules) {
+    if (typeof rule !== 'string' || !CHIEF_RULE_RE.test(rule)) {
+      errors.push(`chiefAllow rule ${JSON.stringify(rule)} must be a chief go or merge script path plus :*`);
+    }
+  }
+}
+
+// Every himmel-script rule names the capability it grants (design invariant I4), so a
+// later change can switch a capability off. A rule in a gate list with no entry, or an
+// entry that is not one of these, is refused. Only the gate lists are walked: the map also
+// holds the project file's rules, which settings-allow.test.mjs pins.
+const CAPABILITIES = ['go', 'merge', 'ship', 'fleet', 'release', 'infra', 'housekeeping'];
+function validateRuleCapabilities(errors, registry) {
+  const lists = ['gateAllow', 'vmLaunchAllow', 'chiefAllow'].filter((key) => Array.isArray(registry?.[key]));
+  const tags = registry?.ruleCapabilities;
+  const tagsOk = tags !== null && typeof tags === 'object' && !Array.isArray(tags);
+  if (lists.length && !tagsOk) {
+    errors.push('ruleCapabilities must be an object mapping every gate rule to its capability');
+    return;
+  }
+  if (tagsOk) {
+    for (const [rule, capability] of Object.entries(tags)) {
+      if (!CAPABILITIES.includes(capability)) errors.push(`ruleCapabilities capability ${JSON.stringify(capability)} for ${JSON.stringify(rule)} must be one of ${CAPABILITIES.join(', ')}`);
+    }
+  }
+  for (const key of lists) {
+    for (const rule of registry[key]) {
+      if (typeof rule === 'string' && !CAPABILITIES.includes(Object.hasOwn(tags, rule) ? tags[rule] : undefined)) {
+        errors.push(`${key} rule ${JSON.stringify(rule)} must carry a capability in ruleCapabilities (one of ${CAPABILITIES.join(', ')})`);
+      }
+    }
+  }
+}
+
 function validateGateAllow(errors, rules) {
   if (rules === undefined) return; // older custom registries do not opt in
   if (!Array.isArray(rules) || rules.length === 0) {
@@ -293,6 +337,9 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
   if (spec.gateAllow === true && !WORKER_SESSION_PROFILES.has(name)) {
     errors.push(`profile "${name}" gateAllow is restricted to worker-shaped profiles`);
   }
+  if (spec.chiefAllow !== undefined && (typeof spec.chiefAllow !== 'boolean' || (spec.chiefAllow && name !== 'chief'))) {
+    errors.push(`profile "${name}" chiefAllow must be a boolean, true only on the chief profile`);
+  }
   validateIdList(errors, spec.enable, catalogSet, `profile "${name}" enable`);
   if (spec.drop !== undefined) {
     if (!Array.isArray(spec.drop)) {
@@ -447,6 +494,9 @@ function validateProfiles(errors, registry, profiles, catalogSet, floorSet) {
     if (spec?.gateAllow === true && registry.gateAllow === undefined) {
       errors.push(`profile "${name}" gateAllow requires the registry gateAllow list`);
     }
+    if (spec?.chiefAllow === true && registry.chiefAllow === undefined) {
+      errors.push(`profile "${name}" chiefAllow requires the registry chiefAllow list`);
+    }
     if (spec?.vmLaunch === true && registry.vmLaunchAllow === undefined) {
       errors.push(`profile "${name}" vmLaunch requires the registry vmLaunchAllow list`);
     }
@@ -460,6 +510,8 @@ export function validateRegistry(registry) {
   const errors = [];
   validateGateAllow(errors, registry?.gateAllow);
   validateVmLaunchAllow(errors, registry?.vmLaunchAllow);
+  validateChiefAllow(errors, registry?.chiefAllow);
+  validateRuleCapabilities(errors, registry);
   const floor = registry?.floor;
   const catalog = registry?.catalog;
   const profiles = registry?.profiles;
@@ -594,7 +646,9 @@ export function resolveProfile(registry, name, opts = {}) {
     for (const rule of mcpAllow) if (!allow.includes(rule)) allow.push(rule);
     return { enabledPlugins, permissions: { allow, ...denyOf(spec) }, ...disableOf(spec), ...autoModeTrustSettings(opts.forkNwos, opts.anchor),...listingSettings(registry, [name], enabledPlugins, opts) };
   }
-  const permissions = { ...(mcpAllow.length ? { allow: mcpAllow } : {}), ...denyOf(spec) };
+  const chiefAllow = spec?.chiefAllow === true ? (registry.chiefAllow ?? []) : [];
+  const allow = [...chiefAllow, ...mcpAllow];
+  const permissions = { ...(allow.length ? { allow } : {}), ...denyOf(spec) };
   return { enabledPlugins, ...(Object.keys(permissions).length ? { permissions } : {}), ...disableOf(spec), ...listingSettings(registry, [name], enabledPlugins, opts) };
 }
 

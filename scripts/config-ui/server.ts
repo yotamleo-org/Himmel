@@ -27,6 +27,7 @@ import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
 import { readRollup } from "./rollup";
 import { readPhaseStats } from "./phase-stats";
+import { readCost } from "./cost";
 import { fileReader, liveBoards, readMerged, type Live, type Lock, type Span, readShifts, redactShift, shiftsFile, tick as tickShifts, viewOf } from "./shift";
 import { readReviewers } from "./reviewers";
 import { eligibleFromInventory, readToolInventory } from "./tool-inventory";
@@ -92,6 +93,7 @@ const STATIC: Record<string, [string, string]> = {
   "/tool-health.js": ["tool-health.js", "application/javascript; charset=utf-8"],
   "/roadmap.js": ["roadmap.js", "application/javascript; charset=utf-8"],
   "/workflow.js": ["workflow.js", "application/javascript; charset=utf-8"],
+  "/cost.js": ["cost.js", "application/javascript; charset=utf-8"],
   "/shift.js": ["shift.js", "application/javascript; charset=utf-8"],
   "/report.js": ["report.js", "application/javascript; charset=utf-8"],
   "/setup.js": ["setup.js", "application/javascript; charset=utf-8"],
@@ -760,6 +762,10 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const common = gitCommonDir(root);
         return json(redactOut(readPhaseStats(env, common ? join(common, "cr-review-rounds") : "", now())));
       }
+      if (path === "/api/cost") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        return json(redactOut(readCost(env)));
+      }
       // the review page (critics and judges on planted bugs and merged PRs), read from the file the weekly judge-accuracy cadence wrote.
       if (path === "/api/reviewers") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
@@ -815,7 +821,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         // read: the checkout's own mirror and key are dropped, so a project that names none gets the default, as the cards do
         const { HIMMEL_JIRA_MIRROR: _checkoutMirror, JIRA_PROJECT_KEY: _checkoutKey, ...handover } = mergedSettings(root, env);
         const mirror = Object.fromEntries(["HIMMEL_JIRA_MIRROR", "JIRA_PROJECT_KEY"].filter((k) => benv[k]).map((k) => [k, benv[k]]));
-        return json(redactOut(await readBoardExtras({ ...handover, ...mirror })));
+        return json(redactOut(await readBoardExtras({ ...handover, ...mirror }, undefined, new URL(req.url).searchParams.get("v") || undefined)));
       }
       // every live session, for the fleet landing at /agui/ with no run. Read-only.
       if (path === "/api/agui/fleet") {
