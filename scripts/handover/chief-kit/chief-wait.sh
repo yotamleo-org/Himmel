@@ -1117,16 +1117,11 @@ set_wake() {
     return 0
 }
 unclosed_file="$inbox.wait.unclosed"
-# unclosed_wake: <unclosed= labels, comma-joined> — a worker the tick read
-# finished and still open on two ticks running, with no disposition bullet. Same marker logic,
-# own marker, own window. Prints the labels new to the marker (the whole set when only the
-# re-wake window is due) and succeeds; the marker then holds the current set, so a worker
-# that leaves the field (a disposition, a closed window) and returns is new again.
 unclosed_wake() {
     local items l fresh=""
     items="$(printf '%s\n' "$1" | tr ',' '\n')"
     for l in $items; do
-        grep -qxF -- "$l" "$unclosed_file" 2>/dev/null || fresh="${fresh:+$fresh,}$l"  # swallow-ok: no marker holds none, so the first sight wakes
+        if [ ! -f "$unclosed_file" ] || ! grep -qxF -- "$l" "$unclosed_file"; then fresh="${fresh:+$fresh,}$l"; fi
     done
     set_wake "$items" "$unclosed_file" "${CHIEF_WAIT_UNCLOSED_REWAKE_MIN:-60}" || return 1
     printf '%s\n' "${fresh:-$1}"

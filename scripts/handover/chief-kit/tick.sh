@@ -3299,17 +3299,9 @@ elif [ -e "$dw_state" ]; then
 fi
 [ -z "$deadwin_tail" ] || deadwin_tail=" deadwin=$deadwin_tail"
 
-# unclosed=<label>[,<label>]: a worker the tick reads CLOSABLE, or WRAPPED /
-# NOLIVE with a live konsole (a tabtitle row with a child process, from the deadwin read
-# above), that was already open on the PREVIOUS tick and has no newer disposition bullet
-# in the chief doc. State file tick-unclosed-<chief doc stem> holds `<label> <first-seen
-# epoch> <dispositions then>` per such worker: a worker first seen now is only recorded
-# (one tick of grace), one that is no longer a candidate loses its record. A disposition is
-# counted against the count at first sight, so an old bullet from an earlier episode of the
-# same label never hides the next one. ABSENT when none.
-uc_disp_count() { # <label>: the chief doc's disposition bullets for it
-    [ -n "$console_doc" ] && [ -f "$console_doc" ] || { printf '0\n'; return 0; }
-    grep -cE "^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?DISPOSITION $1 (closed([^A-Za-z]|\$)|parked [^ ]|given-up [^ ])" "$console_doc" 2>/dev/null || true  # swallow-ok: no match prints 0; an unreadable doc reads as no disposition
+uc_disp_count() {
+    [ -r "$console_doc" ] || { printf '0\n'; return 0; }
+    grep -cE "^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?DISPOSITION $1 (closed([^A-Za-z]|\$)|parked [^ ]|given-up [^ ])" "$console_doc"
 }
 unclosed_tail=""
 uc_csv=""
@@ -3331,7 +3323,7 @@ for uc_e in ${legs_summary//,/ }; do
     esac
     uc_cnt="$(uc_disp_count "$uc_l")"
     uc_prev=""
-    [ ! -r "$uc_state" ] || uc_prev="$(awk -v l="$uc_l" '$1 == l { print $2, $3; exit }' "$uc_state" 2>/dev/null)"  # swallow-ok: an unreadable record reads as first sight
+    [ ! -r "$uc_state" ] || uc_prev="$(awk -v l="$uc_l" '$1 == l { print $2, $3; exit }' "$uc_state")"
     if [ -z "$uc_prev" ]; then
         uc_new_state="$uc_new_state$uc_l $uc_now $uc_cnt"$'\n'
         continue
@@ -3342,9 +3334,9 @@ for uc_e in ${legs_summary//,/ }; do
     [ "$uc_cnt" -gt "$uc_base" ] || uc_csv="$(csv_add "$uc_csv" "$uc_l")"
 done
 if [ -n "$uc_new_state" ]; then
-    mkdir -p "${uc_state%/*}" 2>/dev/null && printf '%s' "$uc_new_state" > "$uc_state" 2>/dev/null  # swallow-ok: a failed state write only delays the wake by a tick
+    { mkdir -p "${uc_state%/*}" && printf '%s' "$uc_new_state" > "$uc_state"; } || printf 'tick: cannot write %s\n' "$uc_state" >&2
 elif [ -e "$uc_state" ]; then
-    rm -f "$uc_state" 2>/dev/null  # swallow-ok: a stale record is re-pruned next tick
+    rm -f "$uc_state"
 fi
 [ -z "$uc_csv" ] || unclosed_tail=" unclosed=$uc_csv"
 

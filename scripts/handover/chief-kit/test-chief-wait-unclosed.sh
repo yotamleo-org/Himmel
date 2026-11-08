@@ -1,35 +1,23 @@
 #!/usr/bin/env bash
-# test-chief-wait-unclosed.sh — a worker the tick reads CLOSABLE,
-# or WRAPPED / NOLIVE with a live window, that is still open on the tick AFTER the one
-# that first saw it is named in the tick's `unclosed=<label>[,<label>]` field, and
-# chief-wait.sh wakes the chief once per worker (`WAKE unclosed <label>`). A disposition
-# bullet in the chief doc (`DISPOSITION <label> closed | parked <wake> | given-up <reason>`)
-# clears it; a worker whose window is gone loses its first-seen record.
-# Hermetic: tick-test-fixture.sh (not edited) plus a ps stub that answers the konsole rows.
-#
 # PLATFORM GUARD: The chief kit is Linux-only.
 # shellcheck disable=SC2015,SC2016  # `[ cond ] && pass || fail`: pass() cannot fail; single-quoted stub bodies expand at run time
 # shellcheck disable=SC2154  # fails, W, SUT, HERE come from the sourced tick-test-fixture.sh
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# Fail closed: a missing or broken fixture must fail the suite, never run it with zero rows.
 if ! { [ -r "$HERE/tick-test-fixture.sh" ] && . "$HERE/tick-test-fixture.sh"; } 2>/dev/null; then
     printf 'FAIL - %s (tick-test-fixture.sh missing, unreadable or failing to load)\n' "$(basename "$0")"
     exit 1
 fi
 trap 'kill $(jobs -p) 2>/dev/null; rm -rf "$W"' EXIT
 WAIT="$HERE/chief-wait.sh"
-check() { # <name> <want> <got>
+check() {
     if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2' got '$3')"; fi
 }
-field() { # <field> <tick output>
+field() {
     printf '%s\n' "$2" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1
 }
 
-# The fixture's ps stub only answers the `etime` table; deadwin and the window read ask for
-# `etimes`, which would fall through to the live process table. Answer every table read from the fixture,
-# and never let a deadwin TERM reach a real konsole.
 cat > "$W/bin/ps" <<'STUB'
 #!/usr/bin/env bash
 case " $* " in *' -eo '*|*' -ww '*) cat "$PS_FIXTURE" ;; *) exec /bin/ps "$@" ;; esac
@@ -43,18 +31,17 @@ printf '%s\n' '# chief' > "$chief"
 state_glob="$TICK_STATE_DIR/tick-unclosed*"
 # shellcheck disable=SC2086  # the state glob is meant to expand
 reset() { rm -f $state_glob; printf '%s\n' '# chief' > "$chief"; }
-mkworker() { # <label-number> <slug> [bullet...]: a worker doc; prints its path
+mkworker() {
     local f="$W/handover/HIMMEL-97$1-N97$1-$2.md"; shift 2
     printf '# worker\n' > "$f"
     local b
     for b in "$@"; do printf '%s\n' "$b" >> "$f"; done
     printf '%s' "$f"
 }
-tk() { bash "$SUT" --doc "$chief" --workers "$1" 2>/dev/null; }  # <worker doc>
+tk() { bash "$SUT" --doc "$chief" --workers "$1" 2>/dev/null; }
 konsole() { printf '%s 1 %s konsole --separate --workdir /x -p tabtitle=%s -e env X=1 /launcher --model m -n %s load doc\n' "$1" "${3:-3600}" "$2" "$2"; }
 child() { printf '%s %s 3600 claude --model m -n %s\n' "$1" "$2" "$3"; }
 
-# --- CLOSABLE: census alive. ---
 w1="$(mkworker 01 closable '- 12:00 LIVE — working' '- 12:30 WRAPPED — released')"
 mkcmdline 9701 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9701-N9701-closable work
 mk_pgrep_x "$W/bin-alive" 9701
@@ -72,7 +59,6 @@ check 'row 1: a CLOSABLE worker still open on the next tick is named in unclosed
 o3="$(alive "$w1")"
 check 'the worker stays named while it stays open' 'N9701' "$(field unclosed "$o3")"
 
-# --- disposition bullets in the chief doc. ---
 printf '%s\n' '- 12:40 DISPOSITION N9701 parked' >> "$chief"
 check 'a parked disposition with no named wake does not clear it' 'N9701' "$(field unclosed "$(alive "$w1")")"
 printf '%s\n' '- 12:41 DISPOSITION N9701 given-up' >> "$chief"
@@ -96,7 +82,6 @@ alive "$w1" > /dev/null; alive "$w1" > /dev/null
 printf '%s\n' '- 12:45 DISPOSITION N9791 closed' >> "$chief"
 check 'a disposition for another worker does not clear this one' 'N9701' "$(field unclosed "$(alive "$w1")")"
 
-# --- row 4: a window that is gone clears the first-seen record. ---
 reset
 alive "$w1" > /dev/null; alive "$w1" > /dev/null
 gone "$w1" > /dev/null
@@ -105,7 +90,6 @@ check 'row 4: a worker whose window is gone is not in unclosed=' '' "$(field unc
 check 'row 4: its first-seen record is cleared from the state file' '' "$(cat $state_glob 2>/dev/null)"
 check 'row 4: back again, it gets its one tick of grace afresh' '' "$(field unclosed "$(alive "$w1")")"
 
-# a stale disposition from an earlier episode does not hide the next one
 reset
 alive "$w1" > /dev/null; alive "$w1" > /dev/null
 printf '%s\n' '- 12:46 DISPOSITION N9701 closed' >> "$chief"
@@ -113,7 +97,6 @@ gone "$w1" > /dev/null
 alive "$w1" > /dev/null
 check 'a disposition from an earlier episode does not suppress a re-opened window' 'N9701' "$(field unclosed "$(alive "$w1")")"
 
-# --- WRAPPED / NOLIVE with a live window (no census row). ---
 w2="$(mkworker 02 wrapped '- 12:00 LIVE — working' '- 12:30 WRAPPED — released')"
 { konsole 5702 "HIMMEL-9702-N9702-wrapped"; child 5703 5702 "HIMMEL-9702-N9702-wrapped"; } > "$W/ps-win2.txt"
 reset
@@ -137,18 +120,19 @@ contains 'a worker that never went LIVE reads NOLIVE (control)' "$o" 'workers=N9
 check 'row 1: a NOLIVE worker with a live window is named on the next tick' 'N9703' "$(field unclosed "$(gone "$w3")")"
 export PS_FIXTURE="$W/ps-none.txt"
 
-# a working (lock held) worker is never unclosed
-w4="$(mkworker 301 busy '- 12:00 LIVE — working')"
+w4="$W/handover/HIMMEL-9608-N301-busy.md"
+printf '%s\n' '# worker' '- 12:00 LIVE — working' > "$w4"
+mkcmdline 9704 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9608-N301-busy work
+mk_pgrep_x "$W/bin-busy" 9704
 reset
-alive "$w4" > /dev/null
-check 'a worker that is still working is never unclosed' '' "$(field unclosed "$(alive "$w4")")"
+busy() { PATH="$W/bin-busy:$PATH" tk "$1"; }
+contains 'a worker holding its lock reads FRESH (control)' "$(busy "$w4")" 'workers=N301:FRESH'
+check 'a worker that is still working is never unclosed' '' "$(field unclosed "$(busy "$w4")")"
 
-# existing closable=<n> behaviour is unchanged: still the age-gated count
 touch -d '20 minutes ago' "$w1"
 reset
 check 'closable=<n> still counts an aged CLOSABLE worker' '1' "$(field closable "$(alive "$w1")")"
 
-# --- the waiter: WAKE unclosed <worker> once, cleared when the field goes. ---
 STUB="$W/stub"; mkdir -p "$STUB"
 printf '#!/usr/bin/env bash\ncat "$STUB/tick.line"\n' > "$STUB/tick.sh"
 printf '#!/usr/bin/env bash\ncat "$STUB/bank"\n' > "$STUB/bank.sh"
@@ -159,8 +143,7 @@ tick_line() {
     printf 'TICK 03:00 hb=1m workers=N1:FREE livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:? inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip%s\n' "$1" > "$STUB/tick.line"
 }
 inbox="$W/in/consoles/c.md"; mkdir -p "$(dirname "$inbox")"; : > "$inbox"
-# wait_for <out file> <max tenths>: succeeds when the waiter exited within the bound.
-run_waiter() { # <out file> <max tenths>: 0 = woke (exited) within the bound, 1 = still waiting (killed)
+run_waiter() {
     bash "$WAIT" "$inbox" --workers "N1.md" > "$1" 2>/dev/null &
     local wp=$! n=0
     while [ "$n" -lt "$2" ] && kill -0 "$wp" 2>/dev/null; do sleep 0.1; n=$((n+1)); done
