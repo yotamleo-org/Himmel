@@ -7,7 +7,6 @@ import { appendChained, readPast, commitCursor, chainHash, openChainFile, withCh
 
 export { readPast, commitCursor };
 export const ROTATE_BYTES = 256 * 1024;
-// The one session-name rule: store, identity, deliver and agui all use it.
 export const SESSION_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const initial = () => ({ k: 0, off: 0, n: 0, h: '' });
 
