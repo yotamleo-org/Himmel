@@ -1,5 +1,5 @@
 import { expect, test, spyOn } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync, statSync, cpSync } from "node:fs";   // readdirSync and chmodSync come from the import further down
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync, statSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import { classify } from "./router";
@@ -530,7 +530,6 @@ test("reply CLI: the old --console is refused even with HIMMEL_LEGACY_NAMES=1; o
   expect(old.err).toContain("usage: bun chief-route.ts reply");
 });
 
-// ---- The router (message kinds, the class table, the plain-words rule). Every call runs the real CLI with a sandbox BRIDGE_ROOT and a sandbox HOME.
 const TABLE = join(import.meta.dir, "message-classes.json");
 const FIX = join(import.meta.dir, "fixtures");
 const FIX_MIRROR = join(FIX, "jira-mirror", "HIMMEL");
@@ -553,7 +552,6 @@ const spool = (r: string): { text: string; kind: string; at: string }[] => lines
 const routeLog = (r: string): string[] => lines(join(r, "route.log"));
 const filler = (n: number) => "blocked word ".repeat(Math.ceil(n / 13)).slice(0, n);
 const longMerge = (total: number) => `Merge refused. Blocks: ${filler(total - 23 - DO_STEP.length)}${DO_STEP}`;
-// the plain-words check of spec I3 on one queued text: no bare worker label, no bare owner/repo#n, every ticket key with a summary
 function plainWords(text: string): void {
   expect(text).not.toMatch(/(?<!worker )(?<![A-Za-z0-9-])N[0-9]+[a-z]*(?![A-Za-z0-9])/i);
   expect(text).not.toMatch(/(^|[ (])[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#[0-9]+/);
@@ -601,7 +599,6 @@ test("R1.4 replay 11-07: the operator gets the 4 controls, the spool the 4 monit
   expect(spool(r).map((m) => m.kind)).toEqual(["cadence:vault-stall", "cadence:vm-maintain-login-himmel-claudex", "cache-health", "denial-page"]);
   for (const t of [...queued, ...spool(r).map((m) => m.text)]) plainWords(t);
   expect(routeLog(r)).toHaveLength(13);
-  // with the S1 table the 03:54 ask and the 04:41 denial still reach the operator (spec section 5)
   const s1 = root();
   for (const l of replay) await route([...(l.kind ? ["--kind", l.kind] : []), "operator", l.text], { r: s1 });
   expect(operatorOutbox(s1)).toHaveLength(6);
@@ -621,7 +618,6 @@ test("R1.5 the cap: 900 characters of merge-blocked come out at 400 or fewer wit
   expect(sent).toContain(`full text on the station: ${join(cutDir, files[0])}`);
   expect(routeLog(x.r)[0].endsWith(" cut")).toBe(true);
 
-  // a key that only the Do: step names gets a trailer line; the cap must still find the Do: step and cut before it
   const withTrailer = `${longMerge(900).slice(0, -DO_STEP.length)} Do: go.sh HIMMEL-1 abc`;
   const t = await route(["--kind", "merge-blocked", "operator", withTrailer]);
   const sentT = operatorOutbox(t.r)[0].text;
@@ -691,7 +687,6 @@ test("R1.10 --chief X --kind Y and --kind Y --satellite Z both parse; operator r
 
 test("R1.11 an internal error puts the raw uncut text in the operator outbox, prints escalate and exits 0", async () => {
   const text = longMerge(900);
-  // 1. a mirror file that cannot be read
   if (process.getuid?.() !== 0) {
     const mirror = mkdtempSync(join(tmpdir(), "chief-route-mirror-")); cpSync(FIX_MIRROR, join(mirror, "HIMMEL"), { recursive: true });
     chmodSync(join(mirror, "HIMMEL", "HIMMEL-9012.md"), 0);
@@ -701,18 +696,15 @@ test("R1.11 an internal error puts the raw uncut text in the operator outbox, pr
     expect(operatorOutbox(x.r).map((m) => m.text)).toEqual([raw]);
     expect(routeLog(x.r)[0]).toContain(" escalate-fallback ");
   }
-  // 2. an unwritable route-cut directory
   const r2 = root(); writeFileSync(join(r2, "route-cut"), "a file, so mkdir fails");
   const y = await route(["--kind", "merge-blocked", "operator", text], { r: r2 });
   expect(y.code).toBe(0); expect(y.out.trim()).toBe("escalate");
   expect(operatorOutbox(r2).map((m) => m.text)).toEqual([text]);
-  // 3. an unwritable spool directory
   const r3 = root(); writeFileSync(join(r3, "monitor"), "a file, so mkdir fails");
   const raw3 = "stalled. Blocks: nothing. Do: read the log";
   const z = await route(["--kind", "cadence:vault-stall", "operator", raw3], { r: r3 });
   expect(z.code).toBe(0); expect(z.out.trim()).toBe("escalate");
   expect(operatorOutbox(r3).map((m) => m.text)).toEqual([raw3]);
-  // 4. an unwritable route log leaves the escalation queued
   const r4 = root(); mkdirSync(join(r4, "route.log"));
   const w = await route(["--kind", "merge-blocked", "operator", "Merge refused. Blocks: x. Do: y"], { r: r4 });
   expect(w.code).toBe(0); expect(w.out.trim()).toBe("escalate");

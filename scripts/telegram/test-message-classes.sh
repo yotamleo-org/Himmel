@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# test-message-classes.sh - the lint of scripts/telegram/message-classes.json.
-#
-# The table is the one owner of every message kind's class. This suite fails when a control kind is reclassified, when a
-# control kind's pinned call leaves its sender, when a cadence worker or a Grafana rule has no row, when a family row is
-# too wide, and when an escalate sample does not fit the cap after the plain-words rule. It names each control kind's
-# sender file so scripts/cr/impacted-suites.sh also lists it for a PR on that sender:
-#   scripts/lib/merge-block-alert.sh   scripts/hooks/detect-token-in-output.sh   scripts/lib/config-audit.sh
-#   scripts/handover/chief-kit/chief-wait.sh   scripts/telegram/poller.ts   scripts/station-ops/recover.sh
-#   scripts/security/security-audit-cadence.sh   scripts/security/snyk-scan-cadence.sh   docs/handover/running-a-chief.md
-#
 # ponytail: the pin check is a text match on the sender file, not a data-flow proof, so a non-trust PR could pass another kind beside the pinned call; upgrade path = a trust-path helper per control kind, filed as its own ticket (a ponytail line may not carry the key)
 # shellcheck disable=SC2016  # the emitter fixtures are literal single-quoted lines that must not expand
 set -uo pipefail
@@ -18,12 +8,12 @@ TABLE="$REPO/scripts/telegram/message-classes.json"
 T="$(mktemp -d "${TMPDIR:-/tmp}/message-classes.XXXXXX")" || exit 1
 trap 'rm -rf "$T"' EXIT
 cd "$REPO" || exit 1
+CONTROL_SENDERS="scripts/lib/merge-block-alert.sh scripts/hooks/detect-token-in-output.sh scripts/lib/config-audit.sh scripts/handover/chief-kit/chief-wait.sh scripts/telegram/poller.ts scripts/station-ops/recover.sh scripts/security/security-audit-cadence.sh scripts/security/snyk-scan-cadence.sh docs/handover/running-a-chief.md"
 PASS=0; FAILN=0
 
 pass() { PASS=$((PASS + 1)); echo "ok - $1"; }
 fail() { FAILN=$((FAILN + 1)); echo "not ok - $1"; [ -n "${2:-}" ] && printf '%s\n' "$2" | sed 's/^/    /'; return 0; }
 
-# the lint: every check but the samples, in python so a table copy and a sender overlay are plain arguments
 cat > "$T/lint.py" <<'PY'
 import json, os, re, subprocess, sys, tempfile
 
@@ -177,7 +167,6 @@ print("\n".join(errs))
 sys.exit(1 if errs else 0)
 PY
 
-# the samples: each escalate row's sample fits the cap after the plain-words rule and names no bare label or number
 cat > "$T/samples.ts" <<'TS'
 import { readFileSync } from "node:fs";
 import { briefText } from "/__REPO__/scripts/telegram/key-brief";
@@ -197,7 +186,6 @@ process.exit(errs.length ? 1 : 0);
 TS
 sed "s#/__REPO__#$REPO#" "$T/samples.ts" > "$T/samples-run.ts" && mv "$T/samples-run.ts" "$T/samples.ts"
 
-# stubs the four emitters need to render their runner under a temp HOME, and the emitters themselves
 mkdir -p "$T/stub" "$T/fx"
 for s in crontab qmd claude graphify; do printf '#!/bin/sh\nexit 0\n' > "$T/stub/$s"; chmod +x "$T/stub/$s"; done
 export LINT_STUB_PATH="$T/stub:/usr/bin:/bin"
@@ -209,23 +197,22 @@ bash scripts/luna/pipeline-cadence.sh arm --vault "$LINT_VAULT" --dry-run
 bash scripts/upstreams/upstream-watch-cadence.sh arm --dry-run
 EM
 
-lint_clean() { # <name> <args...>: the lint must pass
+lint_clean() {
   local name="$1"; shift
   local out
   if out="$(python3 -I "$T/lint.py" --repo "$REPO" "$@" 2>&1)"; then pass "$name"; else fail "$name" "$out"; fi
 }
-lint_dirty() { # <name> <substring of the expected error> <args...>: the lint must fail, for that reason
+lint_dirty() {
   local name="$1" want="$2"; shift 2
   local out; if out="$(python3 -I "$T/lint.py" --repo "$REPO" "$@" 2>&1)"; then fail "$name (the lint passed)"; elif [[ "$out" == *"$want"* ]]; then pass "$name"; else fail "$name (wrong reason)" "$out"; fi
 }
-mut() { # <out.json> <python statements over t>: a copy of the table, changed
+mut() {
   python3 -I -c 'import json,sys; t=json.load(open(sys.argv[1])); exec(sys.argv[3]); json.dump(t,open(sys.argv[2],"w"))' "$TABLE" "$1" "$2"
 }
 emitter() { printf '%s\n' "$1" > "$T/emitters-one"; }
 
 command -v bun >/dev/null 2>&1 || { fail "bun is on PATH"; echo "1..$((PASS + FAILN))"; exit 1; }
 
-# 1. every escalate row's sample fits the cap after the rule and names no bare label or number
 if out="$(bun run "$T/samples.ts" "$TABLE" "$REPO/scripts/telegram/fixtures/jira-mirror" 2>&1)"; then pass "every escalate sample fits the cap and names no bare label"; else fail "every escalate sample fits the cap and names no bare label" "$out"; fi
 mut "$T/long-sample.json" 'for r in t["kinds"]:
     if r["kind"]=="merge-blocked": r["sample"]="Merge refused. Blocks: x. "+"word "*120+"Do: y"'
@@ -234,14 +221,12 @@ mut "$T/bare-num.json" 'for r in t["kinds"]:
     if r["kind"]=="merge-blocked": r["sample"]="Merge refused: #4882. Blocks: x. Do: y"'
 if bun run "$T/samples.ts" "$T/bare-num.json" "$REPO/scripts/telegram/fixtures/jira-mirror" >/dev/null 2>&1; then fail "a bare #number in a sample fails the lint"; else pass "a bare #number in a sample fails the lint"; fi
 
-# 2. the control kinds are escalate
 lint_clean "control kinds are escalate" --table "$TABLE" --only control
 mut "$T/token-silent.json" '[r.update({"class":"silent"}) for r in t["kinds"] if r["kind"]=="token-in-output"]'
 lint_dirty "token-in-output set to silent fails the lint" "token-in-output must be an escalate row" --table "$T/token-silent.json" --only control
 mut "$T/reply-silent.json" '[r.update({"class":"silent"}) for r in t["kinds"] if r["kind"]=="chief-reply"]'
 lint_dirty "chief-reply set to silent fails the lint" "chief-reply must be an escalate row" --table "$T/reply-silent.json" --only control
 
-# 3. each pin is in its sender file as code
 lint_clean "each control row's pin is in its sender file" --table "$TABLE" --only pins
 mkdir -p "$T/ov1/scripts/security" "$T/ov2/scripts/security"
 sed 's/fail snyk-scan/fail snyk-renamed/g' "$REPO/scripts/security/snyk-scan-cadence.sh" > "$T/ov1/scripts/security/snyk-scan-cadence.sh"
@@ -249,19 +234,16 @@ lint_dirty "a sender copy with the pinned call renamed fails the lint" "cadence:
 printf '#!/usr/bin/env bash\n# fail snyk-scan is only a comment here\necho snyk-scan\n' > "$T/ov2/scripts/security/snyk-scan-cadence.sh"
 lint_dirty "a sender whose only snyk-scan is a comment fails the lint" "cadence:snyk-scan: pin" --table "$TABLE" --only pins --overlay "$T/ov2"
 
-# 4. no cadence row is silent
 lint_clean "no cadence row is silent" --table "$TABLE" --only cadence-silent
 mut "$T/vault-silent.json" '[r.update({"class":"silent"}) for r in t["kinds"] if r["kind"]=="cadence:vault-stall"]'
 lint_dirty "cadence:vault-stall set to silent fails the lint" "cadence:vault-stall is silent" --table "$T/vault-silent.json" --only cadence-silent
 
-# 5. the family floor
 lint_clean "the two family rows are long enough" --table "$TABLE" --only family
 for bad in 'cadence:*' 'cadence:grafana-*' 'cadence:graphmap-*'; do
   mut "$T/fam.json" "t['kinds'].append({'kind':'$bad','class':'monitor','sender':'scripts/luna/graphmap-cadence.sh'})"
   lint_dirty "a family row $bad fails the lint" "is not a family row" --table "$T/fam.json" --only family
 done
 
-# 6. every cadence worker has a row: method 1 (literal call sites), method 2 (runner bodies), method 3 (variable-held)
 lint_clean "every cadence worker found at a call site has a row" --table "$TABLE" --only workers1
 mut "$T/no-doctor.json" 't["kinds"]=[r for r in t["kinds"] if r["kind"]!="cadence:himmel-doctor"]'
 lint_dirty "a call-site worker with no row fails the lint" "cadence worker himmel-doctor" --table "$T/no-doctor.json" --only workers1
@@ -278,19 +260,19 @@ emitter 'printf "%s\n" "x/cadence-alert.sh fail qmd-reindex \"rc-\$_rc\""'
 lint_clean "a fixture runner printing a worker that has a row passes" --table "$TABLE" --only workers2 --emitters-file "$T/emitters-one"
 lint_clean "every variable-held worker has its literal in its sender" --table "$TABLE" --only method3
 
-# 7. every rules.yaml rule has an exact grafana row, and DatasourceNoData has one
 lint_clean "every rules.yaml rule has an exact row" --table "$TABLE" --only grafana
 mut "$T/no-watcher.json" 't["kinds"]=[r for r in t["kinds"] if r["kind"]!="cadence:grafana-Watcher_down"]'
 lint_dirty "a rule with no row fails the lint" "Watcher down" --table "$T/no-watcher.json" --only grafana
 mut "$T/no-nodata.json" 't["kinds"]=[r for r in t["kinds"] if r["kind"]!="cadence:grafana-DatasourceNoData"]'
 lint_dirty "cadence:grafana-DatasourceNoData without a row fails the lint" "DatasourceNoData" --table "$T/no-nodata.json" --only grafana
 
-# 8. every row's sender exists, and chief-reply's is the chief doc
+missing=""
+for f in $CONTROL_SENDERS; do [ -f "$REPO/$f" ] || missing="$missing $f"; done
+if [ -z "$missing" ]; then pass "every control kind's sender file exists"; else fail "every control kind's sender file exists" "$missing"; fi
 lint_clean "every row's sender exists" --table "$TABLE" --only senders
 mut "$T/bad-sender.json" '[r.update({"sender":"scripts/no/such-sender.sh"}) for r in t["kinds"] if r["kind"]=="worker-silent"]'
 lint_dirty "a row whose sender is missing fails the lint" "does not exist" --table "$T/bad-sender.json" --only senders
 
-# 9. the whole lint on the real table
 lint_clean "the whole lint passes on the real table" --table "$TABLE" --emitters-file "$T/emitters"
 
 echo "1..$((PASS + FAILN)) pass=$PASS fail=$FAILN"

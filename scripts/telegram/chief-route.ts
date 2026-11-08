@@ -819,20 +819,15 @@ export async function queueFile(root: string, chat: number, path: string, captio
   return send;
 }
 
-// ---- The router. Every `reply` names a kind; ONE table, message-classes.json, gives the kind a
-// class: escalate (the operator's chat), monitor (the monitoring spool) or silent (nothing). Fail-safe: a missing,
-// malformed or unknown kind, or an unreadable table, is an escalation, and an internal error sends the raw text.
 export type MsgClass = "escalate" | "monitor" | "silent";
 type ClassRow = { kind: string; class: MsgClass; cap?: number | "none"; "ref-word"?: string };
 type ClassTable = { cap: number; rows: ClassRow[] };
 const KIND_RE = /^[a-z0-9][a-zA-Z0-9:._-]{0,95}$/;
-const FAMILY_RE = /^cadence:[a-z0-9]+-[a-z0-9]+-/;   // a family row is `cadence:<word>-<word>-…*`, never shorter
+const FAMILY_RE = /^cadence:[a-z0-9]+-[a-z0-9]+-/;
 
-// The test knob is honoured under HIMMEL_TEST_FIXTURE=1 only, so a leaked variable cannot reclassify a kind.
 const classTablePath = () => (process.env.HIMMEL_TEST_FIXTURE === "1" && process.env.HIMMEL_MESSAGE_CLASSES) || join(import.meta.dir, "message-classes.json");
 const mirrorRoot = () => (process.env.HIMMEL_JIRA_MIRROR ? dirname(process.env.HIMMEL_JIRA_MIRROR) : join(homedir(), ".himmel", "state", "jira-mirror"));
 
-// null when the table cannot be read or is not a table: every kind is then unclassified.
 export async function loadClassTable(path = classTablePath()): Promise<ClassTable | null> {
   try {
     const t = JSON.parse(await readFile(path, "utf8"));
@@ -842,7 +837,6 @@ export async function loadClassTable(path = classTablePath()): Promise<ClassTabl
   } catch { return null; }
 }
 
-// An exact row wins over a family row. Anything else, a bad kind included, is unclassified (null).
 export function resolveKind(table: ClassTable | null, kind: string | undefined): ClassRow | null {
   if (!table || kind === undefined || !KIND_RE.test(kind)) return null;
   const exact = table.rows.find((r) => r.kind === kind);
@@ -850,8 +844,6 @@ export function resolveKind(table: ClassTable | null, kind: string | undefined):
   return table.rows.find((r) => r.kind.endsWith("*") && r.kind.indexOf("*") === r.kind.length - 1 && FAMILY_RE.test(r.kind) && kind.startsWith(r.kind.slice(0, -1))) ?? null;
 }
 
-// Cut an over-cap text before its last ` Do: ` at a word boundary, never inside a backtick span or a `!` / `$ ` line;
-// the Do: step stays whole and the full text goes to <bridge root>/route-cut/. No cut point: the text goes uncut.
 async function capText(text: string, kind: string, cap: number, root: string): Promise<{ text: string; state: "ok" | "cut" | "over-cap-uncut" }> {
   if (text.length <= cap) return { text, state: "ok" };
   const uncut = { text, state: "over-cap-uncut" as const };
@@ -875,8 +867,6 @@ async function capText(text: string, kind: string, cap: number, root: string): P
   return { text: `${pre.slice(0, i).trimEnd()}${suffix}${doSeg}`, state: "cut" };
 }
 
-// Queue, spool or silence one reply, then write its route-log line. Returns the class it took. Only a failed
-// replyViaOutbox throws (the CLI exits 1, as today); any other error sends the raw text to the operator.
 export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string }): Promise<MsgClass> {
   const { replyViaOutbox } = await import("./poller");
   const kind = o.kind !== undefined && KIND_RE.test(o.kind) ? o.kind : undefined;
@@ -932,7 +922,6 @@ if (import.meta.main) {
     try { await refuseRoundPastCap(args[0], args[1]); }
     catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1); }
   } else {
-    // The three flags come in any order before the chat argument.
     const flags: { chief?: string; satellite?: string; kind?: string } = {};
     if (verb === "reply") while (args.length >= 2 && (args[0] === "--chief" || args[0] === "--satellite" || args[0] === "--kind")) flags[args.shift()!.slice(2) as keyof typeof flags] = args.shift()!;
     const name = flags.chief ?? (verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined);

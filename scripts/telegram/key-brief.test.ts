@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { briefText, findDo } from "./key-brief";
 
-// The fixture mirror holds only the five H1 lines the replay needs.
 const MIRROR = join(import.meta.dir, "fixtures", "jira-mirror");
 const NOT_READ = "summary not readable on the station";
 const cut = (s: string) => (s.length > 80 ? `${s.slice(0, 79)}…` : s);
