@@ -30,8 +30,7 @@ export HOME="$WORK/home" HANDOVER_DIR="$WORK/h"
 mkdir -p "$HOME" "$HANDOVER_DIR"
 HOLDS_PY="$HERE/holds.py"
 SEEDED=0
-# a worker's files are the `> **Writes:**` line of its doc (holds.py parse); seed appends that line to a fixture doc under $WORK
-seed() { # <key> <label> <doc> <path>...
+seed() {
     local d="$3"; shift 3
     case "$d" in "$WORK"/*) printf '> **Writes:** %s\n' "$*" >> "$d" ;; esac
     SEEDED=$((SEEDED + $#))

@@ -130,8 +130,7 @@
 # too) drops the ticket as `blocker-unknown KEY`, never clears it. With the live read off the
 # mirror is the only word. The output opens with `# source mirror_age_min=<n>` (minutes since
 # the mirror's newest file changed). A classifier
-# BLOCKED is never lifted: the drop carries its reason. cloud-route.mjs never returns BLOCKED for a held file
-#: classify() passes no --held, and an overlap only ends the reason it prints.
+# BLOCKED is never lifted: the drop carries its reason.
 #
 # Classification: the survivors go through scripts/lanes/cloud-route.mjs
 # --classify-only (the same gates as /cloud-route). CLOUD-OK prints CLOUD;
@@ -1328,7 +1327,7 @@ for i in issues.values():
     i['merged'] = i['status'] == 'IN CI' and i['key'] in merged_keys
     if i['key'] in worker_keys or i['key'] in pr_keys:
         continue
-    if pr_unknown or owners_unknown:  # an unread PR list or worker set could hide the ticket's owner; a worker with unknown FILES (no Writes line, unreadable doc) still owns its key, and an unread PR file set only prints `# overlap unknown for PR n`
+    if pr_unknown or owners_unknown:
         continue
     if i['merged']:  # nothing to dispatch: the ticket only needs closing
         resume.append(i)
@@ -1470,8 +1469,8 @@ def say(text):
     else:
         print(text)
 
-def say_overlaps(i, listed=True):
-    pairs = held_hits(i) + ([(f, 'listed ' + k) for f, k in picked_hits(i)] if listed else [])
+def say_overlaps(i, against_listed=True):
+    pairs = held_hits(i) + ([(f, 'listed ' + k) for f, k in picked_hits(i)] if against_listed else [])
     src = ' (from %s)' % i['src'] if os.environ.get('ND_WHY') == '1' else ''
     for f, who in dict.fromkeys(pairs):
         say('# overlap %s %s with %s%s' % (i['key'], f, who, src))
@@ -1614,7 +1613,7 @@ def emit_resume(rows):
             say('\t'.join(['MERGED-NOT-CLOSED', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
             n += 1
             continue
-        say_overlaps(i, listed=not resume_only)  # --resume-only counts orphans, dispatching nothing: no row of it is listed against another
+        say_overlaps(i, against_listed=not resume_only)
         picked.extend((f, i['key']) for f in i['files'])
         emitted.append(i)
         lane_of[i['key']] = 'RESUME'
