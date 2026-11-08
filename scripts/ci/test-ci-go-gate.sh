@@ -390,9 +390,6 @@ else:
     ok("G12 no job skipped on a pull_request event reports a name the PR 3792 cheap or go run wrote")
 
 # ---- G14 ----
-# Real timeline of scratch PR 3841: a go run at head 1, a push (head 2), the release's
-# unlabel + label pair, a push (head 3). The evaluator must start the runs GitHub started,
-# cancel the ones GitHub cancelled, and give head 2 exactly one run with the heavy jobs.
 push_fx = [l.rstrip("\n").split("\t") for l in open(push_file) if l.strip() and not l.startswith("#")]
 evs = [r[1:] for r in push_fx if r[0] == "event"]      # ts, action, label, head
 real_runs = [r[1:] for r in push_fx if r[0] == "run"]  # id, created, updated, conclusion, head
@@ -440,10 +437,6 @@ else:
     ok("G14 PR 3841: a push after a go run starts cheap jobs only, unlabeled starts no run, the release's labeled event is head 2's one go run")
 
 # ---- G15 ----
-# gh pr create --label ci:go starts an opened run and a labeled go run in one group. The
-# later run cancels the earlier one. The label is added after the PR exists, so the go run is
-# the later one and survives; it runs every cheap job too, so the cancelled opened run loses
-# nothing. Not proven live (a live create-time run could not be pushed past the push gates).
 opened_ev = event("pull_request", "opened", "", "on")
 go_ev = event("pull_request", "labeled", "ci:go", "on")
 bad15 = []
