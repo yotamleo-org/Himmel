@@ -177,7 +177,14 @@ for i in $(seq 1 25); do add add --file c.sh --anchor c --ceiling "many $i" --tr
 out=$(under claude CLAUDECODE=1 -- -- c.sh)
 has "25 rows: the header counts 25" "$out" "CEILINGS: 25 open rows for 1 of 1 touched files"
 eq "25 rows: 20 row lines" "$(printf '%s\n' "$out" | grep -c '^C-')" 20
-has "25 rows: the more line" "$out" "+5 more: ceiling-lookup.sh -- c.sh"
+has "25 rows: the more line names the next page" "$out" "+5 more: ceiling-lookup.sh --from 21 -- c.sh"
+out=$(under claude CLAUDECODE=1 -- --from 21 -- c.sh)
+eq "--from 21: the last 5 row lines" "$(printf '%s\n' "$out" | grep -c '^C-')" 5
+has "--from 21: the page starts at the 21st row" "$out" "ceiling: many 21 "
+lacks "--from 21: no more line on the last page" "$out" "more:"
+has "--from 21: the header still counts every row" "$out" "CEILINGS: 25 open rows"
+out=$(under claude CLAUDECODE=1 -- --from 0 -- c.sh)
+has "--from 0 is a usage error read as not read" "$out" "CEILINGS: not read (usage: --from"
 
 export HIMMEL_CEILINGS_LEDGER="$work/absent.tsv"
 out=$(cd "$fx" && bash "$LOOKUP" --ids "${range[@]}"); rc=$?

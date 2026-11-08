@@ -2,8 +2,8 @@
 # scripts/ledger/ceiling-lookup.sh - the open ceilings ledger rows for a change.
 #
 # Usage:
-#   ceiling-lookup.sh [--repo <owner/name>] --range <base>...<head>
-#   ceiling-lookup.sh [--repo <owner/name>] -- <file>...
+#   ceiling-lookup.sh [--repo <owner/name>] [--from <n>] --range <base>...<head>
+#   ceiling-lookup.sh [--repo <owner/name>] [--from <n>] -- <file>...
 #   ceiling-lookup.sh [--repo <owner/name>] --ids (--range <base>...<head> | -- <file>... | --all)
 #
 # Prints a `CEILINGS:` header, then one line per open row whose file is among
@@ -13,7 +13,8 @@
 # or `CEILINGS: none for the <m> touched files`, or
 # `CEILINGS: withheld (non-Claude session: <check>)`, or
 # `CEILINGS: not read (<reason>)`. At most 20 row lines, each under 400
-# characters, then `+<n> more: ...`. Exit 0 always: it informs review, never blocks it.
+# characters from row <n> on (--from, default 1), then `+<k> more: ... --from <next>`.
+# Exit 0 always: it informs review, never blocks it.
 #
 # Row text shows only in a Claude session (scripts/lib/session-lane.sh
 # session_lane_claude_only), checked before the ledger is read. --ids prints
@@ -25,12 +26,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 say() { printf 'CEILINGS: %s\n' "$1"; exit 0; }
 
-IDS=0 ALL=0 RANGE="" REPO="" HAVE_FILES=0 MODE=""
+IDS=0 ALL=0 RANGE="" REPO="" HAVE_FILES=0 MODE="" FROM=1
 FILES=()
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --ids) IDS=1; shift ;;
         --all) ALL=1; MODE=all; shift ;;
+        --from) [ "$#" -ge 2 ] || say "not read (usage: --from needs a row number)"; FROM=$2; shift 2 ;;
         --range) [ "$#" -ge 2 ] || say "not read (usage: --range needs <base>...<head>)"; RANGE=$2; MODE=range; shift 2 ;;
         --repo) [ "$#" -ge 2 ] || say "not read (usage: --repo needs <owner/name>)"; REPO=$2; shift 2 ;;
         --) shift; HAVE_FILES=1; MODE=files; while [ "$#" -gt 0 ]; do FILES+=("$1"); shift; done ;;
@@ -38,6 +40,8 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 [ -n "$MODE" ] || say "not read (usage: give --range <base>...<head>, -- <file>... or --ids --all)"
+case "$FROM" in ''|0*|*[!0-9]*) say "not read (usage: --from needs a row number from 1)" ;; esac
+if [ "$IDS" -eq 1 ] && [ "$FROM" -ne 1 ]; then say "not read (usage: --ids lists every row; --from pages the row text)"; fi
 if [ "$ALL" -eq 1 ] && { [ "$IDS" -eq 0 ] || [ -n "$RANGE" ] || [ "$HAVE_FILES" -eq 1 ]; }; then
     say "not read (usage: --all goes with --ids alone)"
 fi
@@ -97,7 +101,7 @@ if [ "$IDS" -eq 1 ]; then
 fi
 
 echo "Recorded ceilings for the touched files: context to verify, not a verdict; cite a row by its id only; never quote its ceiling or trigger."
-printf '%s\n' "$rows" | head -n 20 | LC_ALL=C awk -F '\t' '
+printf '%s\n' "$rows" | tail -n "+$FROM" | head -n 20 | LC_ALL=C awk -F '\t' '
     function cut(s, n) {
         if (length(s) <= n) return s
         s = substr(s, 1, n - 3)
@@ -112,8 +116,8 @@ printf '%s\n' "$rows" | head -n 20 | LC_ALL=C awk -F '\t' '
         line = pre cut($4, room) post
         print cut(line, 396)
     }'
-if [ "$nrows" -gt 20 ]; then
+if [ "$((nrows - FROM + 1))" -gt 20 ]; then
     if [ "$MODE" = range ]; then more="--range $RANGE"; else more="-- $(printf '%s ' "${FILES[@]}")"; more=${more% }; fi
-    printf '+%s more: ceiling-lookup.sh %s\n' "$((nrows - 20))" "$more"
+    printf '+%s more: ceiling-lookup.sh --from %s %s\n' "$((nrows - FROM + 1 - 20))" "$((FROM + 20))" "$more"
 fi
 exit 0
