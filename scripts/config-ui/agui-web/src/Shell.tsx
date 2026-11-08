@@ -44,7 +44,7 @@ export function Shell({ token, run, fleet, children }: { token: string | null; r
     load();
     return () => { live = false; clearTimeout(timer); };
   }, [token]);
-  const current = run ? "run" : isRagEvalHash(location.hash) ? null : "fleet"; // the RAG eval page has no rail entry yet
+  const current = run ? "run" : isRagEvalHash(location.hash) ? null : "fleet";
   return (
     <div className="shell">
       <aside className="rail" aria-label="Regions">

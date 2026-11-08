@@ -1,5 +1,3 @@
-// The RAG eval page (#t=<token>&page=rag-eval): per retrieval route, what the evals already measured, from GET /api/rag-eval.
-// A first cut: it runs no eval and shows no number the ledger does not hold.
 import { useEffect, useState } from "react";
 import { RAG_EVAL_URL, ragEvalModel, type Measure, type RagEval, type Route } from "./rag-eval-model";
 

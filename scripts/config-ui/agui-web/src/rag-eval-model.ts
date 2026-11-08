@@ -1,6 +1,3 @@
-// The RAG eval page's model: per retrieval route, the newest ok measure the eval-runs ledger already holds (GET /api/rag-eval).
-// "Finds" is retrieval-eval's hit@5 on the route's raw list (no model). "Answers" is answer-ab's right answers in a Claude
-// session that has the route as one tool. A route an eval has not measured carries no number, only the reason. Dependency-free.
 export const RAG_EVAL_URL = "/api/rag-eval";
 export const NOT_MEASURED = "not measured yet";
 
@@ -9,7 +6,6 @@ export type Measure = { count: number; n: number; rate: number; tokens: number |
 export type Route = { key: string; label: string; finds: Measure | null; findsGap: string; answers: Measure | null; answersGap: string };
 export type RagEval = { bottomLine: string; routes: Route[]; newest: string | null };
 
-// finds: the retrieval-eval arm; answers: the answer-ab arm; null = that eval has no such arm.
 const ROUTES: { key: string; label: string; finds: string | null; answers: string | null; findsGap?: string }[] = [
   { key: "combined", label: "Combined: grep + qmd + graphify", finds: "combined", answers: "fused-cached" },
   { key: "qmd-hybrid", label: "qmd · hybrid + rerank", finds: "qmd-hybrid", answers: null },
@@ -20,13 +16,13 @@ const ROUTES: { key: string; label: string; finds: string | null; answers: strin
   { key: "vanilla", label: "Vanilla Claude (no route tool)", finds: null, answers: "vanilla", findsGap: "no ranked list to score" },
 ];
 
+const HIT_AT_5_LEGACY_NAME = "recall@5";
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
-// the newest ok row of one eval that measured the arm on a sample (n > 0)
 const newest = (rows: LedgerRow[], name: string, has: (r: LedgerRow) => boolean) =>
   rows.filter((r) => r.eval === name && r.status === "ok" && r.metrics && has(r)).sort((a, b) => (a.ts < b.ts ? 1 : -1))[0];
 
 function finds(rows: LedgerRow[], arm: string): Measure | null {
-  const hit = (m: LedgerRow["metrics"]) => num(m[`${arm}.hit@5`]) ?? num(m[`${arm}.recall@5`]); // recall@5 is its name before 24 Oct
+  const hit = (m: LedgerRow["metrics"]) => num(m[`${arm}.hit@5`]) ?? num(m[`${arm}.${HIT_AT_5_LEGACY_NAME}`]);
   const r = newest(rows, "retrieval-eval", (x) => hit(x.metrics) !== null && (num(x.n) ?? 0) > 0);
   if (!r) return null;
   const rate = hit(r.metrics)!;
@@ -43,7 +39,6 @@ function answers(rows: LedgerRow[], arm: string): Measure | null {
   return { count, n, rate: count / n, tokens, ms: num(m[`${arm}.ms_median`]), ts: r.ts, runId: r.run_id };
 }
 
-// The 95% Wilson score range of k right out of n. The ledger's ci field is empty for these rows, so the page computes it.
 export function wilson(k: number, n: number, z = 1.96): [number, number] {
   const p = k / n, d = 1 + (z * z) / n, c = p + (z * z) / (2 * n), h = z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n));
   return [(c - h) / d, (c + h) / d];
@@ -51,7 +46,6 @@ export function wilson(k: number, n: number, z = 1.96): [number, number] {
 
 const pct = (m: Measure) => `${Math.round(m.rate * 100)}%`;
 const of = (m: Measure) => `${m.count} of ${m.n}`;
-// Two routes are compared only when one run measured both: the same questions, the same setup.
 function bottomLine(by: Record<string, Route>): string {
   const parts: string[] = [];
   const c = by.combined.finds, g = by.grep.finds;
@@ -77,5 +71,4 @@ export function ragEvalModel(rows: LedgerRow[]): RagEval {
   return { bottomLine: bottomLine(Object.fromEntries(routes.map((r) => [r.key, r]))), routes, newest: stamps.at(-1) ?? null };
 }
 
-// The agui fragment #t=<token>&page=rag-eval opens this page.
 export const isRagEvalHash = (hash: string) => new URLSearchParams(hash.replace(/^#/, "")).get("page") === "rag-eval";

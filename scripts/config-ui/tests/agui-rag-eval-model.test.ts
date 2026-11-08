@@ -1,4 +1,3 @@
-// The RAG eval page (agui-web RagEval.tsx): its model, built from eval-runs ledger rows, and GET /api/rag-eval, which serves them.
 import { test, expect, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,7 +26,7 @@ const ROWS: LedgerRow[] = [
     "graphify.hit@5": 0.52, "graphify.tokens_mean": 5369, "graphify.ms_median": 4315,
     "grep.hit@5": 0.3333, "grep.tokens_mean": 1320, "grep.ms_median": 207,
   }),
-  re("2026-11-06T09:00:00Z", "error", { "combined.hit@5": 0 }), // a failed run never shows
+  re("2026-11-06T09:00:00Z", "error", { "combined.hit@5": 0 }),
   ab("2026-11-05T18:11:55Z", 12, { ...arm("vanilla", 11, 12), ...arm("fused-cached", 11, 12) }),
   ab("2026-11-05T19:20:03Z", 75, { ...arm("vanilla", 69, 75), ...arm("fused-cached", 70, 75), ...arm("vec-rerank", 70, 75), ...arm("bm25-rerank", 67, 75) }),
 ];
@@ -37,7 +36,7 @@ test("ragEvalModel: each route shows its newest ok measure, with its date and sa
   const combined = m.routes.find((r) => r.key === "combined")!;
   expect(combined.finds).toMatchObject({ count: 54, n: 75, rate: 0.72, tokens: 7161, ms: 8618, ts: "2026-11-05T13:15:18Z" });
   expect(combined.answers).toMatchObject({ count: 70, n: 75, ms: 10000, ts: "2026-11-05T19:20:03Z" });
-  expect(combined.answers!.tokens).toBe(6000 + 1000 / 75); // the whole session's tokens a question
+  expect(combined.answers!.tokens).toBe(6000 + 1000 / 75);
   expect(m.newest).toBe("2026-11-05T19:20:03Z");
   expect(m.routes.map((r) => r.key)).toEqual(["combined", "qmd-hybrid", "qmd-vec", "qmd-lex", "graphify", "grep", "vanilla"]);
 });
@@ -69,7 +68,7 @@ test("ragEvalModel: the bottom line compares two routes only inside one run", ()
     re("2026-11-05T13:15:18Z", "ok", { "combined.hit@5": 0.72 }), re("2026-11-06T13:15:18Z", "ok", { "grep.hit@5": 0.33 }),
     ab("2026-11-05T19:20:03Z", 75, arm("fused-cached", 70, 75)), ab("2026-11-06T19:20:03Z", 75, arm("vanilla", 30, 75)),
   ]);
-  expect(split.routes.find((r) => r.key === "grep")!.finds).toMatchObject({ ts: "2026-11-06T13:15:18Z" }); // the table still shows each route's newest
+  expect(split.routes.find((r) => r.key === "grep")!.finds).toMatchObject({ ts: "2026-11-06T13:15:18Z" });
   expect(split.bottomLine).toBe("Not enough has been measured yet to compare combined search with grep or vanilla Claude.");
 });
 
@@ -112,7 +111,7 @@ test("GET /api/rag-eval: token-gated, GET only, serves the retrieval-eval and an
   expect(ragEvalModel(body.rows).bottomLine).toBe(ragEvalModel(ROWS).bottomLine);
   rmSync(ledger);
   expect(await (await fetch(url, { headers: { "X-Himmel-Token": TOKEN } })).json()).toEqual({ state: "absent", rows: [] });
-  mkdirSync(ledger); // a ledger that exists but cannot be read is not "nothing measured"
+  mkdirSync(ledger);
   const bad = await (await fetch(url, { headers: { "X-Himmel-Token": TOKEN } })).json();
   expect(bad).toMatchObject({ state: "unreadable", rows: [] });
   expect(bad.reason).toContain("EISDIR");

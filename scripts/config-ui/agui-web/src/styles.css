@@ -370,8 +370,6 @@ a.bd-link{margin-right:10px}.bd-link+.bd-link,.bd-chip+.bd-link{margin-left:10px
 .bd-tip[data-tip]::after{content:attr(data-tip);display:none;position:absolute;left:0;top:100%;z-index:25;width:max-content;max-width:min(320px,80vw);padding:var(--s1) var(--s2);border-radius:6px;background:var(--fg);color:var(--surface);font:var(--fs-xs) var(--font-ui);line-height:1.35;white-space:normal;overflow-wrap:anywhere;pointer-events:none}
 .bd-tip[data-tip]:hover::after,.bd-tip[data-tip]:focus-visible::after{display:block}
 .bd-note-body{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12.5px;max-height:12em;overflow:auto}
-
-/* The RAG eval page: the bottom line first, then one row per route; a cell the eval has not measured says so in words, never a number. */
 .rag{max-width:1180px;margin:0 auto;padding:20px 24px}
 .rag h1{font-size:var(--fs-lg);margin:0 0 var(--s3)}
 .rag-bottom{font-size:var(--fs-md);font-weight:600;margin:0 0 var(--s2);padding:var(--s3) var(--s4);background:var(--panel);border-left:3px solid var(--accent);border-radius:var(--radius)}

@@ -689,7 +689,6 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const scanEnv = env.HIMMEL_REPO ? env : { ...env, HIMMEL_REPO: stationRoot(root) };
         return json(redactOut(readToolHealth(env, new URL(req.url).searchParams, now(), { eligible: eligibleFromInventory(readToolInventory(scanEnv, now())), repoRoot: scanEnv.HIMMEL_REPO })));
       }
-      // the RAG eval page: the eval-runs ledger's retrieval-eval and answer-ab rows, read only
       if (path === "/api/rag-eval") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readRagEvalRows(env)));
