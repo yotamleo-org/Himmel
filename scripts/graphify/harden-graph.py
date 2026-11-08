@@ -3,7 +3,8 @@
 # doc-extracted concept nodes whose label literally names a code file to that
 # file's AST node (relation "references"), and adds allowlisted subprocess-exec
 # code-fact edges (relation "calls"). With --root, also resolves shell
-# calls/sources between shell files (harden_shell_calls.py). Writes only <out>/graph.json;
+# calls/sources between shell files and shell calls into Python/Node scripts
+# (harden_shell_calls.py). Writes only <out>/graph.json;
 # stdlib only -- never imports the `graphify` package (not importable from
 # system python3; see refresh-graph-map.sh's own venv note).
 #
