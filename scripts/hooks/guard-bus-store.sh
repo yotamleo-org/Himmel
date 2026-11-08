@@ -348,9 +348,11 @@ walk_words() {
 }
 
 globroot_reaches() {
-    local s="$1" m lead before after rest tail pre p d r c home_set=0 tc HOME_SET_RE
-    HOME_SET_RE='(^|[^A-Za-z0-9_])HOME\+?=|(^|[^A-Za-z0-9_])(export|declare|typeset|local|readonly|read|unset|printf|env)[[:space:]][^;&|]*HOME'
-    [[ "$s" =~ $HOME_SET_RE ]] && home_set=1
+    local s="$1" m lead before after rest tail pre p d r c home_set=0 tc hs HOME_SET_RE
+    HOME_SET_RE='(^|[^A-Za-z0-9_])(eval|declare|typeset|printf|read|export|local|readonly|unset|env|set|source|map[f]ile|read[a]rray)([[:space:]]|$)|(^|[[:space:];&|(])\.[[:space:]]'
+    hs=${s//\$\{HOME\}/}; hs=${hs//\$HOME/}
+    case "$hs" in *HOME*) home_set=1 ;; esac
+    [[ "$hs" =~ $HOME_SET_RE ]] && home_set=1
     while [[ "$s" =~ $GLOBROOT_RE ]]; do
         m=${BASH_REMATCH[0]}; lead=${BASH_REMATCH[1]}
         before=${s%%"$m"*}
