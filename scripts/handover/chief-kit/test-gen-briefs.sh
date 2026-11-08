@@ -1752,5 +1752,36 @@ gen98 "$WORK/f98.json" "$WORK/bf98"; rc=$?
 [ "$rc" != 0 ] && has "9598 f: a brief with an empty Writes line is refused by the lint gen-briefs runs" "$(cat "$WORK/g98.err")" "brief-lint" || fail "9598 f: empty-Writes brief generated, rc=$rc"
 [ ! -e "$WORK/bf98/launch-N901.sh" ] && ! ls "$WORK/bf98"/*.md >/dev/null 2>&1 && pass "9598 f: neither a launcher nor a brief is left for it" || fail "9598 f: files left in $WORK/bf98: $(ls "$WORK/bf98" 2>&1)"
 
+# a brief-lint timeout or start failure removes the brief like a refusal does, so the overwrite check never blocks the retry
+cat > "$WORK/lintfail.py" <<'PYEOF'
+import importlib.util, os, subprocess, sys
+here, out = sys.argv[1], sys.argv[2]
+sys.path.insert(0, here)
+spec = importlib.util.spec_from_file_location('gen_briefs', os.path.join(here, 'gen-briefs.py'))
+gb = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gb)
+bad = 0
+for exc in (subprocess.TimeoutExpired('bash', 120), FileNotFoundError('bash')):
+    doc = os.path.join(out, type(exc).__name__ + '.md')
+    open(doc, 'w').write('x')
+    def boom(*a, **k):
+        raise exc
+    gb.subprocess.run = boom
+    try:
+        gb.lint_brief(doc, {'label': 'N1'}, '/h')
+    except SystemExit:
+        pass
+    except Exception as e:
+        print('uncaught ' + type(e).__name__)
+        bad += 1
+    if os.path.exists(doc):
+        print('brief left behind: ' + doc)
+        bad += 1
+sys.exit(1 if bad else 0)
+PYEOF
+mkdir -p "$WORK/lintfail"
+lf="$(python3 -I "$WORK/lintfail.py" "$HERE" "$WORK/lintfail" 2>&1)"; rc=$?
+[ "$rc" = 0 ] && pass "a brief-lint timeout or start failure leaves no brief behind" || fail "lint failure path: $lf"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
