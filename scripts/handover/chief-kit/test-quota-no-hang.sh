@@ -376,11 +376,11 @@ false_phrase_in() {  # <text> -> prints the first false phrase found, rc 0 if on
 names_limit() {  # <class rate|stall> <text> [caller]
     # tick.sh prints a stall= field of its own on every line, so for it only a quota= field names the limit
     if [ "${3:-}" = tick.sh ]; then
-        if [ "$1" = rate ]; then printf '%s' "$2" | grep -qE ' quota=[^ ]+'; else printf '%s' "$2" | grep -qE ' quota=[^ ]*:stall'; fi
+        if [ "$1" = rate ]; then grep -qE ' quota=[^ ]+' <<< "$2"; else grep -qE ' quota=[^ ]*:stall' <<< "$2"; fi
     elif [ "$1" = rate ]; then
-        printf '%s' "$2" | grep -qiE 'QUOTA-PAUSE|rate[ -]limit|quota'
+        grep -qiE 'QUOTA-PAUSE|rate[ -]limit|quota' <<< "$2"
     else
-        printf '%s' "$2" | grep -qiE 'GH-STALL|stall|timed out|time out'
+        grep -qiE 'GH-STALL|stall|timed out|time out' <<< "$2"
     fi
 }
 
@@ -747,12 +747,12 @@ drive_chief_wait() {
             emit "PASS chief-wait.sh $m no-false-wake n/a"
             emit "PASS chief-wait.sh $m ready-unspent n/a"
         else
-            if [ "$killed" = 0 ] && [ -n "$tsent" ] && printf '%s' "$ROW_OUT" | grep -q '^WAKE telegram' && [ $((t1 - tsent)) -le $((bound + 5)) ]; then
+            if [ "$killed" = 0 ] && [ -n "$tsent" ] && grep -q '^WAKE telegram' <<< "$ROW_OUT" && [ $((t1 - tsent)) -le $((bound + 5)) ]; then
                 emit "PASS chief-wait.sh $m telegram-latency $((t1 - tsent))s"
             else
                 emit "FAIL chief-wait.sh $m telegram-latency no WAKE telegram within $((bound + 5))s of the line (waited $((t1 - ${tsent:-$t0}))s; the run ended on: $(printf '%s' "$ROW_OUT" | grep -m1 '^WAKE' | cut -c1-90))"
             fi
-            if printf '%s' "$ROW_OUT" | grep -q '^WAKE ready'; then
+            if grep -q '^WAKE ready' <<< "$ROW_OUT"; then
                 emit "FAIL chief-wait.sh $m no-false-wake a refused gate woke the chief with a READY verdict"
             else
                 emit "PASS chief-wait.sh $m no-false-wake"
@@ -803,7 +803,7 @@ suite_rows() {
     for f in 55498a23-F1.txt 32a082f4-F2.txt c5d6911e-F3.txt; do
         if [ ! -s "$FIXDIR/$f" ]; then
             emit "FAIL suite fixture $f absent"
-        elif ! grep -v '^# ' "$FIXDIR/$f" | grep -q 'API rate limit'; then
+        elif ! grep -q 'API rate limit' <<< "$(grep -v '^# ' "$FIXDIR/$f")"; then
             emit "FAIL suite fixture $f lacks 'API rate limit'"
         else
             emit "PASS suite fixture $f"
