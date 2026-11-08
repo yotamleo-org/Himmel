@@ -15,9 +15,6 @@ node_modules/
 /.tokensave/
 # graphify knowledge-graph artifacts: this repo's derived graph is not
 # published, so the directory is ignored OUTRIGHT, nothing re-included.
-# Working files stay on disk — the daily graph-map refresh cadence rebuilds
-# them locally, and every place that would commit or PR the graph no-ops on
-# this ignored path.
 graphify-out/*
 # .claudeignore
 # graphify writes output files (graph.json, graphify-out/) into the workspace. Ignoring them keeps them out of file search and context. It is NOT a prompt-cache fix: a graph.json write does not invalidate a running session's prompt cache (measured: docs/internals/prompt-cache.md, eval no-invalidation). Add them to .claudeignore:
