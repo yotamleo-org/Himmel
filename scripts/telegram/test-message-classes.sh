@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # ponytail: the pin check is a text match on the sender file, not a data-flow proof, so a non-trust PR could pass another kind beside the pinned call; upgrade path = a trust-path helper per control kind, filed as its own ticket (a ponytail line may not carry the key)
+# selector: tree-scan
 # shellcheck disable=SC2016  # the emitter fixtures are literal single-quoted lines that must not expand
 set -uo pipefail
 

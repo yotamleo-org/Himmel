@@ -631,9 +631,19 @@ test("R1.5 the cap: 900 characters of merge-blocked come out at 400 or fewer wit
   expect(routeLog(y.r)[0].endsWith(" over-cap-uncut")).toBe(true);
   expect(existsSync(join(y.r, "route-cut"))).toBe(false);
 
-  const reply = filler(900);
+  const reply = `${filler(900)} Do: read it`;
   const z = await route(["--kind", "chief-reply", "operator", reply]);
   expect(operatorOutbox(z.r).map((m) => m.text)).toEqual([reply]);
+  expect(existsSync(join(z.r, "route-cut"))).toBe(false);
+  expect(routeLog(z.r)[0].endsWith(" ok")).toBe(true);
+});
+
+test("a silent kind with --satellite speaks nothing, queues nothing and exits 0", async () => {
+  const x = await route(["--kind", "worker-silent", "--satellite", "assist_satellite.kitchen", "operator", "x"], { env: { HA_URL: "", HA_TOKEN: "" } });
+  expect(x.code).toBe(0);
+  expect(x.out.trim()).toBe("silent");
+  expect(x.err).not.toContain("could not speak");
+  expect(operatorOutbox(x.r)).toEqual([]);
 });
 
 test("R1.6 one route-log line per call for each class, written after the append, with no message text in it", async () => {

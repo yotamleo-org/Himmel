@@ -844,7 +844,7 @@ scripts/lanes/usage-status.ts scripts/lanes/bank-status-core.mjs scripts/lanes/f
 scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs scripts/himmelctl/lib/config-keys.json
 scripts/observability/quota-sources.ts
 scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts
-scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
+scripts/telegram/chief-route.ts scripts/telegram/key-brief.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
 scripts/telegram/chief-heartbeat-watch.ts
 scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts scripts/telegram/session-status.ts
 scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/afk-sudo-route.ts scripts/telegram/run.ts
@@ -876,7 +876,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/observability/quota-sources.ts'
     ':(top)scripts/telegram/alibaba-probe-once.ts' ':(top)scripts/telegram/quota-gauge.ts'
     ':(top)scripts/telegram/quota-gauge-alibaba.ts'
-    ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/bus.ts'
+    ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/key-brief.ts' ':(top)scripts/telegram/bus.ts'
     ':(top)scripts/telegram/chief-heartbeat-watch.ts'
     ':(top)scripts/telegram/poller.ts' ':(top)scripts/telegram/router.ts'
     ':(top)scripts/telegram/auto-action.ts' ':(top)scripts/telegram/telegram-api.ts'
