@@ -1880,9 +1880,9 @@ check_no_orphan_pr() {
         orphan_gate_note="orphan-pr check unavailable (rc=$rc): this handover was not gated on unowned open PRs; run orphan-pr-check.sh"
     fi
     [ "$rc" -eq 1 ] || return 0
-    err "refusing to hand over: an open PR is unowned (its ticket's worker record reads wrapped or none, or is absent) and no queue: line names it:"
+    err "refusing to hand over: an open PR is unowned (its ticket's worker record reads wrapped or none, or is absent) and no queue: segment holds it:"
     printf '%s\n' "$orphans" | while IFS= read -r line; do err "  $line"; done
-    err "  relaunch a worker on it, or name its PR number or ticket key on the queue: line of $1, then retry"
+    err "  relaunch a worker on it, or give it a | segment holding its PR number or ticket key and the word HELD (before any ||) on the queue: line of $1, then retry"
     return 1
 }
 
@@ -2021,7 +2021,7 @@ tracker_head() {
 # are listed with the ruling's, and the companions keep it directly under its head. A line an earlier run already shortened stays as
 # it is but counts against the budget; its full text is carried forward from the companion
 # files the earlier note names. The companions are specs/decisions/chief-direction-<date>[-N]-pK.md,
-# each under CHIEF_DIRECTION_PART_BYTES (default 40000, so one Read takes it whole). Returns 1
+# each under CHIEF_DIRECTION_PART_BYTES (default 48000, so one Read takes it whole). Returns 1
 # and prints nothing when no line was shortened, 2 when a companion could not be written.
 # Args: block (stdin), dir, date.
 compress_direction() {
@@ -2155,7 +2155,7 @@ except OSError as e:
     sys.exit(2)
 note = "Full original text of every ruling below, byte for byte, is in %d file%s under the bucket (%s). READ ALL OF THEM in your first turn, in the same batch as this document: the lines below are one-line readings and a clause cut from a reading is in them. The operator words of a numbered ruling: specs/decisions/verbatim-decision-<N>-*.txt. Every line headed OPERATOR or CHIEF, with the lines directly under it, is BINDING unless it says otherwise; any other line is context, not a ruling." % (len(names), "" if len(names) == 1 else "s", " ".join(names))
 sys.stdout.write(note + "\n\n" + "\n".join(out))
-' "$1" "${CHIEF_DIRECTION_BUDGET_BYTES:-12000}" "${CHIEF_DIRECTION_PART_BYTES:-40000}" "$2"
+' "$1" "${CHIEF_DIRECTION_BUDGET_BYTES:-12000}" "${CHIEF_DIRECTION_PART_BYTES:-48000}" "$2"
 }
 
 # Match the Jira CLI's declaration root, never the chief's arbitrary --bucket.

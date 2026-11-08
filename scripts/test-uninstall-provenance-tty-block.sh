@@ -117,16 +117,32 @@ check "RED62: the ledger stays live when the backups could not be retained" \
 check "RED62: the backups stay where the ledger points" \
   "$([ -f "$BACKUP_SM" ] && echo yes || echo no)" "yes"
 
+install_retained_mkdir_counter() {
+  local log="$1" real_mkdir
+  real_mkdir=$(command -v mkdir)
+  # shellcheck disable=SC2016 # style-only: the stub's $@ and $a must stay literal
+  printf '#!/bin/sh\nfor a in "$@"; do case "$a" in */retained-*) echo x >> "%s" ;; esac; done\nexec "%s" "$@"\n' \
+    "$log" "$real_mkdir" > "$SUITE_TMP/bin/mkdir"
+  chmod +x "$SUITE_TMP/bin/mkdir"
+}
+remove_retained_mkdir_counter() { rm -f "$SUITE_TMP/bin/mkdir"; }
+
 echo "==== RED63 (HIMMEL-3787 S2b, J1408A F2): an unwritable base dir fails fast, not after ~53 s of EACCES retries ===="
 new_case red63
 DEST63="$CASE_DIR/cwd/scripts/red63.sh"
 seed_modified_unit "$DEST63"
 chmod 0555 "$(prov_dir)"
+MKDIR63_LOG="$CASE_DIR/mkdir63.log"
+install_retained_mkdir_counter "$MKDIR63_LOG"
 _t63=$SECONDS
 out63=$(run_uninstall --yes --purge-state --keep-backups --skip-tasks --skip-plugins --skip-hooks)
 _d63=$((SECONDS - _t63))
+remove_retained_mkdir_counter
 chmod 0755 "$(prov_dir)"
-check "RED63: fails fast (under 15 s)" "$([ "$_d63" -lt 15 ] && echo fast || echo slow:$_d63)" "fast"
+_n63=$(wc -l < "$MKDIR63_LOG" 2>/dev/null | tr -d ' ')
+check "RED63: gives up at once (at most 2 retained-* mkdir attempts)" \
+  "$([ "${_n63:-0}" -ge 1 ] && [ "${_n63:-0}" -le 2 ] && echo bounded || echo "attempts:${_n63:-none}")" "bounded"
+check "RED63: finishes inside the 60 s backstop" "$([ "$_d63" -lt 60 ] && echo fast || echo slow:$_d63)" "fast"
 check "RED63: the real mkdir error is surfaced" \
   "$([ "$(printf '%s\n' "$out63" | grep -c -i 'permission denied')" -ge 1 ] && echo yes || echo no)" "yes"
 

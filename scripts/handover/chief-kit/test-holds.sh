@@ -871,6 +871,26 @@ printf '5051\tfeat/no-key\tno key in the title\tscripts/t3pr2.sh\n' > "$W/pr-fil
 run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" sync-prs --repo "$R" --files-from "$W/pr-files2.tsv"
 same "T3 sync-prs: a title with no key uses PR-<n>" "$(cut -f1 "$(rowf scripts/t3pr2.sh)")" "PR-5051"
 
+DHA="$(mkdoc "$K1-hold-a.md")"
+lock_hold "$DHA"
+put_row scripts/tdup.sh $K1 alpha "$DHA"
+printf '5065\tfeat/no-key\tno key in the title\tscripts/tdup.sh\n' > "$W/pr-files-dup.tsv"
+dup_denies() { grep -c "	deny	scripts/tdup.sh	PR-5065	$1\$" "$EVENTS" || true; }
+run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" sync-prs --repo "$R" --files-from "$W/pr-files-dup.tsv"
+same "sync-prs over a file a live row holds logs the deny" "$(dup_denies $K1)" 1
+run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" sync-prs --repo "$R" --files-from "$W/pr-files-dup.tsv"
+same "a second sync-prs over the same held file and the same holder logs no second deny" "$(dup_denies $K1)" 1
+DHB="$(mkdoc "$K2-hold-b.md")"
+lock_hold "$DHB"
+put_row scripts/tdup.sh $K2 alpha "$DHB"
+run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" sync-prs --repo "$R" --files-from "$W/pr-files-dup.tsv"
+same "a changed holder on the same file is logged again" "$(dup_denies $K2)" 1
+rm -f "$(rowf scripts/tdup.sh)"
+run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" sync-prs --repo "$R" --files-from "$W/pr-files-dup.tsv"
+put_row scripts/tdup.sh $K2 alpha "$DHB"
+run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" sync-prs --repo "$R" --files-from "$W/pr-files-dup.tsv"
+same "a deny that stopped and came back is logged again" "$(dup_denies $K2)" 2
+
 put_row scripts/t3gc1.sh HIMMEL-9505 lab "$(mkdoc HIMMEL-9505-case.md)"
 : > "$(rowf scripts/t3gc1.sh).grant.HIMMEL-9598"
 put_row scripts/t3gc2.sh HIMMEL-9506 lab "$(mkdoc HIMMEL-9506-case.md)"

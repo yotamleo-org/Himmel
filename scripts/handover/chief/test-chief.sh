@@ -2980,6 +2980,11 @@ ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst -
 check "orph8501 an unmapped open PR refuses next (exit 8)" "8" "$rco"
 check "orph8501 the refusal names the PR" "1" "$(grep -cF 'UNMAPPED 4325 fix/demo-88-orphan' "$tmp/outo")"
 check "orph8501 the refusal writes no HANDOFF" "no" "$([ -f "$root/tester/orph8501/DEMO-nextleg-${today}A-chief-HANDOFF.md" ] && echo yes || echo no)"
+sed 's/^queue:.*/queue: 4325 88 relaunch after 4951 merges | 4660 HELD until 9032/' "$doco" > "$doco.new" && mv "$doco.new" "$doco" || { echo "FAIL: 9599 fixture rewrite"; exit 1; }
+rco=0
+ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst --doc "$doco" >"$tmp/outo9599" 2>&1 || rco=$?
+check "9599 a PR named in a queue: segment with no hold refuses next (exit 8)" "8" "$rco"
+check "9599 the narrative refusal names the PR" "1" "$(grep -cF 'UNMAPPED 4325 fix/demo-88-orphan' "$tmp/outo9599")"
 sed 's/^queue:.*/queue: #4325 (held for the adapter merge)/' "$doco" > "$doco.new" && mv "$doco.new" "$doco" || { echo "FAIL: orph8501 fixture rewrite"; exit 1; }
 rco=0
 ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst --doc "$doco" >/dev/null 2>&1 || rco=$?
@@ -3377,6 +3382,17 @@ check "9502 a missing companion refuses (exit 7)" "$rc91" "7"
 check "9502 the missing-companion refusal prints a repair line naming the file" "$(printf '%s\n' "$out91" | grep -c "repair:.*$rel92")" "1"
 mk91 cmp92f "(46) other ruling" "- 10:00 LIVE — DIRECTION-COMPANION-LOST: $rel92 deleted by hand, the readings stay" "$ptr92"$'\n\n'"$sl92"; run91 cmp92f
 check "9502 a recorded DIRECTION-COMPANION-LOST bullet lets a missing companion pass" "$rc91" "0"
+old92=40000
+new92=48000
+w92="$(printf 'ruling text %.0s' $(seq 1 48))"
+dirn92() { local i=0 sz=0 u; while [ "$sz" -le "$1" ]; do i=$((i + 1)); u="$(printf 'OPERATOR 11-05 AB (BINDING, carry to every successor; decision %d): %s' "$((900 + i))" "$w92")"; printf '%s\n\n' "$u"; sz=$((sz + ${#u} + 2)); done; }
+parts92() { find "$root/tester/$1/specs/decisions" -name 'chief-direction-*-p*.md' 2>/dev/null | wc -l | tr -d ' '; }
+mk91 big92a "(46) other ruling" "-" "$(dirn92 "$old92")"; run91 big92a
+check "9502 bound: a direction just above the old 40,000-byte part bound passes" "$rc91" "0"
+check "9502 bound: a direction just above the old 40,000-byte part bound is one companion" "$(parts92 big92a)" "1"
+mk91 big92b "(46) other ruling" "-" "$(dirn92 "$new92")"; run91 big92b
+check "9502 bound: a direction just above the new 48,000-byte part bound is two companions" "$(parts92 big92b)" "2"
+check "9502 bound: no companion is over 48,000 bytes" "$(find "$root/tester/big92b/specs/decisions" -name 'chief-direction-*-p*.md' -size +"$new92"c | wc -l | tr -d ' ')" "0"
 mk91 hdr91 "(46) other ruling" "-" "$dir91"
 cat > "$root/tester/hdr91/DEMO-nextleg-${today}B-chief-HANDOFF.md" <<'HDR'
 # DF → DG handoff state

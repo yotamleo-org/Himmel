@@ -230,17 +230,17 @@ EOF
 
     unowned_hk() { sed -e "s/ unowned-prs=[^ ]*//" -e "s/ bank=/ unowned-prs=$1 bank=/" "$STUB/okcap.line" > "$STUB/okcap.line.tmp" && mv "$STUB/okcap.line.tmp" "$STUB/okcap.line"; }
     export CHIEF_WAIT_UNOWNED_REWAKE_MIN=1
-    unowned_hk '#2575:120m'
+    unowned_hk '#2575:12m'
     I="$(new_inbox unownedhk)"
     timeout 6 bash "$WAIT" "$I" --workers N1.md > "$WORK/unhk1.out" 2>/dev/null; digest_rc=$?
-    check '(8934) the first sight of an unowned PR joins the digest, no wake' '124:0:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/unhk1.out"):$(grep -c '^unowned-prs #2575:120m' "$I.wait.housekeeping")"
+    check '(8934) the first sight of an unowned PR joins the digest, no wake' '124:0:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/unhk1.out"):$(grep -c '^unowned-prs #2575:12m' "$I.wait.housekeeping")"
     touch -d '2 hours ago' "$I.wait.unowned"
-    unowned_hk '#2575:121m'
+    unowned_hk '#2575:13m'
     timeout 6 bash "$WAIT" "$I" --workers N1.md > "$WORK/unhk2.out" 2>/dev/null; digest_rc=$?
-    check '(8197) the same unowned set past its re-wake window joins the digest, no wake' '124:0:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/unhk2.out"):$(grep -c '^unowned-prs #2575:121m' "$I.wait.housekeeping")"
-    unowned_hk '#2575:130m,#2600:15m'
+    check '(8197) the same unowned set past its re-wake window joins the digest, no wake' '124:0:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/unhk2.out"):$(grep -c '^unowned-prs #2575:13m' "$I.wait.housekeeping")"
+    unowned_hk '#2575:14m,#2600:15m'
     timeout 6 bash "$WAIT" "$I" --workers N1.md > "$WORK/unhk3.out" 2>/dev/null; digest_rc=$?
-    check '(8934) a PR joining the unowned set joins the digest, no wake' '124:0:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/unhk3.out"):$(grep -c '^unowned-prs #2575:130m,#2600:15m' "$I.wait.housekeeping")"
+    check '(8934) a PR joining the unowned set joins the digest, no wake' '124:0:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/unhk3.out"):$(grep -c '^unowned-prs #2575:14m,#2600:15m' "$I.wait.housekeeping")"
     unset CHIEF_WAIT_UNOWNED_REWAKE_MIN
 
     # The digest signature is the whole wake, not the unresolved lines alone: a capacity move to

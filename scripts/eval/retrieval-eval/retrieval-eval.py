@@ -95,9 +95,15 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
+import importlib.util  # noqa: E402
+
+_vx_spec = importlib.util.spec_from_file_location("vocab_expand", os.path.join(HERE, "..", "..", "qmd", "vocab-expand.py"))
+vocab_expand = importlib.util.module_from_spec(_vx_spec)
+_vx_spec.loader.exec_module(vocab_expand)
 
 SPLITS = ("insample", "heldout")
-ARMS = ["grep", "grep-rtk", "path", "ident-grep", "ident-grep-rtk", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
+STRATA = ("code", "doc")
+ARMS =["grep", "grep-rtk", "path", "ident-grep", "ident-grep-rtk", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
 RTK_ARMS = ["grep-rtk", "ident-grep-rtk"]
 FUSED = ["grep", "qmd-hybrid", "graphify"]
 OPT_IN = ["qmd-hybrid-norerank"]
@@ -382,7 +388,8 @@ def mcp_rows(msg):
 
 
 def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
-    args = {"searches": [{"type": "lex", "query": q}] + ([{"type": "vec", "query": q}] if hybrid else []),
+    vec = vocab_expand.shape_vec(q) if hybrid else ""
+    args = {"searches": [{"type": "lex", "query": vocab_expand.shape_lex(q, quote_flags=True)}] + ([{"type": "vec", "query": vec}] if vec else []),
             "collections": [collection], "limit": k, "intent": q}
     args["rerank"] = hybrid and rerank
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
@@ -439,6 +446,10 @@ def is_hit(files, gold):
     """qmd lowercases its paths, so compare case-insensitively."""
     fl, gl = [f.lower() for f in files], [g.lower() for g in gold]
     return any(f == g or f.endswith("/" + g) for f in fl for g in gl)
+
+
+def stratum(q):
+    return "doc" if any(g.lower().endswith(".md") for g in q["gold"]) else "code"
 
 
 def is_hit_any(files, q):
@@ -638,7 +649,7 @@ def cmd_run(a):
         for arm in arms:
             g = got[arm]
             row = dict(id=q["id"], kind=q.get("kind"), src=q.get("src"), split=q.get("split", "insample"),
-                       arm=arm, files=g["files"], hit=is_hit(g["files"], q["gold"]),
+                       stratum=stratum(q), arm=arm, files=g["files"], hit=is_hit(g["files"], q["gold"]),
                        hit_any=is_hit_any(g["files"], q), ndcg=ndcg(g["files"], q, a.k),
                        precision=precision(g["files"], q, a.k), rr=reciprocal_rank(g["files"], q, a.k),
                        gold_n=gold_found(g["files"], q, a.k)[0], ret_n=gold_found(g["files"], q, a.k)[1],
@@ -680,8 +691,12 @@ def cmd_run(a):
         metrics.update({arm + "." + rk: rec, arm + "." + pk: prec, arm + ".mrr": mrr, arm + ".gold_share": gs,
                         arm + ".reason_carried": rea, arm + ".tokens_mean": tk, arm + ".tokens_per_hit": tph,
                         arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er})
-        for sl in SPLITS:
-            sr = [r for r in rs if r["split"] == sl]
+        slices = [(sl, lambda r, sl=sl: r["split"] == sl) for sl in SPLITS]
+        slices += [(st, lambda r, st=st: r["stratum"] == st) for st in STRATA]
+        slices += [("%s.%s" % (sl, st), lambda r, sl=sl, st=st: r["split"] == sl and r["stratum"] == st)
+                   for sl in SPLITS for st in STRATA]
+        for sl, pick in slices:
+            sr = [r for r in rs if pick(r)]
             srr = [r for r in sr if r["reason"] is not None]
             vals = [mean([r["hit"] for r in sr]), mean([r["hit_any"] for r in sr]),
                     mean([r["ndcg"] for r in sr]), mean([r["reason"] for r in srr])]
@@ -774,23 +789,25 @@ def cmd_replay(a):
             if arm not in saved:
                 raise Usage("missing arm '%s' for a saved question" % arm)
         files = fuse([saved[arm]["files"] for arm in arms], a.k, a.rrf_k)
-        scored.append((qid, split, bool(saved["combined"]["hit"]), is_hit(files, q["gold"])))
+        scored.append((qid, split, bool(saved["combined"]["hit"]), is_hit(files, q["gold"]), stratum(q)))
 
-    def counts(index):
+    def counts(index, by_stratum=False):
         parts = []
-        for split in SPLITS + ("all",):
-            rs = [r for r in scored if split == "all" or r[1] == split]
-            parts.append("%s %d/%d" % (split, sum(r[index] for r in rs), len(rs)))
+        for name in STRATA if by_stratum else SPLITS + ("all",):
+            rs = [r for r in scored if name == "all" or r[4 if by_stratum else 1] == name]
+            parts.append("%s %d/%d" % (name, sum(r[index] for r in rs), len(rs)))
         return " ".join(parts)
 
     print("replay arms=%s rrf_k=%d k=%d" % (",".join(arms), a.rrf_k, a.k))
     print("saved combined: " + counts(2))
     print("replay combined: " + counts(3))
+    print("saved combined by stratum: " + counts(2, True))
+    print("replay combined by stratum: " + counts(3, True))
     same = arms == FUSED and a.rrf_k == 60 and sum(r[2] for r in scored) == sum(r[3] for r in scored)
     print("reproduces saved combined: %s" % ("yes" if same else "no"))
 
     def dev_ids(was_hit, now_hit):
-        return [qid for qid, split, old, new in scored if split == "insample" and old == was_hit and new == now_hit]
+        return [r[0] for r in scored if r[1] == "insample" and r[2] == was_hit and r[3] == now_hit]
 
     print("rescued (dev): " + (" ".join(dev_ids(False, True)) or "none"))
     print("regressed (dev): " + (" ".join(dev_ids(True, False)) or "none"))

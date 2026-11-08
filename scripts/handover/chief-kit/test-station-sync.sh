@@ -66,6 +66,23 @@ EOF2
 mkdir -p "$W/vault"
 export SS_UPDATE="$W/update" SS_UPGRADE="$W/upgrade" SS_CALLS="$W/calls" SS_STATE="$W/state" \
        SS_PRIMARY="$W" SS_VAULT="$W/vault" SS_QMD_CLONE="$W/no-such-clone" SS_T_DRYRUN="$W/dry-clean"
+export HIMMEL_USAGE_STORE="$W/usage-store" SS_UCALLS="$W/ucalls" SS_TCALLS="$W/tcalls"
+cat > "$W/usage-compute" <<'EOF2'
+#!/usr/bin/env bash
+echo "usage-compute $*" >> "$SS_UCALLS"
+flock -n "$SS_STATE.lock" true; echo "lock-probe rc=$?" >> "$SS_UCALLS"
+[ -z "${SS_T_UOUT:-}" ] || echo "$SS_T_UOUT"
+[ -z "${SS_T_USTATE:-}" ] || echo "state-during-compute: $(cat "$SS_STATE" 2>/dev/null)" >> "$SS_UCALLS"
+exit "${SS_T_URC:-0}"
+EOF2
+cat > "$W/timeout" <<'EOF2'
+#!/usr/bin/env bash
+echo "timeout $*" >> "$SS_TCALLS"
+shift
+exec "$@"
+EOF2
+chmod +x "$W/usage-compute" "$W/timeout"
+export SS_USAGE_COMPUTE="$W/usage-compute" SS_TIMEOUT="$W/timeout"
 run() {  # run <versions file> <path>...
     : > "$SS_CALLS"; rm -f "$SS_STATE"
     export SS_T_VERSIONS="$1"; shift
@@ -314,5 +331,47 @@ contains "27 and the failed table row" "$out" "config_ui:     config_ui      fai
 lacks "27 and not the unrelated table rows" "$out" "not-attempted"
 check "27 the failure is named once" "$(printf '%s\n' "$out" | grep -c 'STATION=BEHIND:config_ui-failed$')" 1
 rm -f "$CUI_MARK"
+
+: > "$SS_UCALLS"; : > "$SS_TCALLS"; rm -rf "$HIMMEL_USAGE_STORE"
+run "$W/ver-current" docs/x.md
+check "29 a pass runs usage-compute once" "$(grep -c '^usage-compute' "$SS_UCALLS")" 1
+lacks "29 incremental: no --print, no --since" "$(cat "$SS_UCALLS")" "--print"
+lacks "29 incremental: no --since" "$(cat "$SS_UCALLS")" "--since"
+contains "29 bounded by its own budget" "$(cat "$SS_UCALLS")" "--budget-seconds"
+check "29 under one timeout" "$(grep -c '^timeout' "$SS_TCALLS")" 1
+case "$(cut -d' ' -f2 "$SS_TCALLS")" in ''|*[!0-9]*) echo "FAIL - 29 timeout duration is a plain number"; fails=$((fails+1)) ;; *) echo "ok - 29 timeout duration is a plain number" ;; esac
+lacks "29 timeout has no kill flag" "$(cat "$SS_TCALLS")" " -k"
+lacks "29 timeout has no kill-after" "$(cat "$SS_TCALLS")" "--kill-after"
+lacks "29 timeout has no signal flag" "$(cat "$SS_TCALLS")" " -s"
+contains "29 step line" "$out" "STEP usage_compute rc=0"
+contains "29 station ok" "$out" "STATION=OK"
+
+: > "$SS_UCALLS"; mkdir -p "$HIMMEL_USAGE_STORE/.lock"
+run "$W/ver-current" docs/x.md
+check "30 locked store: compute not started" "$(grep -c '^usage-compute' "$SS_UCALLS")" 0
+contains "30 skip names the reason" "$out" "SKIP usage_compute store-locked"
+contains "30 station still ok" "$out" "STATION=OK"
+rm -rf "$HIMMEL_USAGE_STORE"
+
+: > "$SS_UCALLS"
+SS_T_URC=3 run "$W/ver-current" docs/x.md
+check "31 sync rc" "$rc" 0
+contains "31 failed compute reported" "$out" "STEP usage_compute rc=3"
+contains "31 station still ok" "$out" "STATION=OK"
+check "31 state still ok" "$(cat "$SS_STATE")" "ok"
+SS_T_URC=124 run "$W/ver-current" docs/x.md
+contains "31 timed-out compute reported" "$out" "STEP usage_compute rc=124"
+contains "31 station still ok after a timeout" "$out" "STATION=OK"
+
+SS_T_UOUT="SECRET-RECORD-CONTENT" run "$W/ver-current" docs/x.md
+lacks "32 compute output is not echoed" "$out" "SECRET-RECORD-CONTENT"
+
+: > "$SS_UCALLS"
+SS_T_USTATE=1 run "$W/ver-current" docs/x.md
+contains "33 state is already final when the build runs" "$(cat "$SS_UCALLS")" "state-during-compute: ok"
+
+: > "$SS_UCALLS"
+run "$W/ver-current" docs/x.md
+contains "34 the sync lock is free while the build runs" "$(cat "$SS_UCALLS")" "lock-probe rc=0"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

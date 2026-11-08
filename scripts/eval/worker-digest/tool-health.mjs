@@ -130,7 +130,8 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     for (const h of health) {
       if (!h || typeof h.tool !== 'string' || !num(h.calls) || !num(h.failures) || !num(h.errors) || !num(h.denials) || typeof h.agent?.id !== 'string') continue;
       const slot = addSlot(h.agent.id, h.agent.model || (h.agent.id === 'main' ? r.model : null), h.day || day, profileOf(h.profile, r.meta?.profile, r.config?.profile));
-      if (slot) slot.tools.set(h.tool, h);
+      const blocked = h.classes && num(h.classes['blocked/-']) ? Math.min(h.classes['blocked/-'], h.failures) : 0;
+      if (slot) slot.tools.set(h.tool, { ...h, failures: h.failures - blocked, blocked });
     }
   }
   const seenFailures = new Set();
@@ -161,7 +162,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       }
     }
   }
-  const blank = () => ({ calls: 0, failures: 0, errors: 0, denials: 0, recovered: 0, known: 0, sessions: new Set(), classes: new Map(), ids: new Set() });
+  const blank = () => ({ calls: 0, failures: 0, errors: 0, denials: 0, blocked: 0, recovered: 0, known: 0, sessions: new Set(), classes: new Map(), ids: new Set() });
   const finish = (r) => ({ ...r, rate: rate(r.failures, r.calls), error_rate: rate(r.errors, r.calls), recovery_rate: rate(r.recovered, r.known), sessions: [...r.sessions], classes: [...r.classes].sort((a, b) => b[1] - a[1]).map(([className, count]) => ({ class: className, count })), tool_call_ids: [...r.ids].slice(0, 20) });
   const sumCalls = (a, b) => a === null || b === null ? null : a + b;
   function aggregate(list) {
@@ -179,7 +180,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
         addTiming(t.timing_raw, h);
         const d = daily.get(key) || { ...blank(), tool: h.tool, day: s.day, model: s.model, lane: s.lane, role: s.role };
         for (const target of [t, d]) {
-          target.calls = sumCalls(target.calls, h.calls); target.failures += h.failures; target.errors += h.errors; target.denials += h.denials; target.sessions.add(s.session);
+          target.calls = sumCalls(target.calls, h.calls); target.failures += h.failures; target.errors += h.errors; target.denials += h.denials; target.blocked += h.blocked ?? 0; target.sessions.add(s.session);
           for (const f of s.failures) {
             const count = h.classes ? h.classes[f.class] : inferredTool(f.class) === h.tool ? f.count : 0;
             if (!num(count) || count === 0) continue;

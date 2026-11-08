@@ -1,0 +1,3 @@
+# hand-written from the spec quote, not a byte copy (classifier denied transcript extraction)
+# F2: JSON body on stdout, merge-on-green's protection read, session 32a082f4. The spec quote ends at "timestamp…", so the tail and the status key are completed here. Lines starting '# ' are header, not payload.
+{ "message": "API rate limit exceeded for user ID 88616986. If you reach out to GitHub Support for help, please include the request ID AD1E:1AEA24:20920A9:2F9793C:6AEDCD85 and timestamp", "status": "403" }

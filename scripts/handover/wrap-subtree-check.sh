@@ -356,9 +356,11 @@ if [ "$count" -eq 0 ]; then
         printf 'CLOSABLE: no non-harness process under claude pid %s (%s harness-owned children ignored)\n' "$found" "$ignored"
         printf '%s\n' "$result" | sed -n '/^  ignored pid=/p'
     fi
+    printf 'Nothing is still running: no TaskStop needed.\n'
     exit 0
 fi
 printf 'WITHHELD: %s process(es) still alive under claude pid %s — TaskStop only what you started (background tasks, agents you spawned), then re-run; never stop a process you did not start, e.g. a session MCP server or the statusline refresh: report it to the chief instead\n' "$count" "$found"
+printf 'Still running, TaskStop only the ones you started:\n'
 printf '%s\n' "$result" | sed -n '/^  pid=/p'
 printf '%s\n' "$result" | sed -n '/^  ignored pid=/p'
 exit 1

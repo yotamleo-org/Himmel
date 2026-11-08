@@ -4,7 +4,7 @@ description: Wrapper; use obsidian-triage:luna-upgrade.
 argument-hint: [--check] [--vault <path>] [--template-dir <path>]
 ---
 
-# /luna-upgrade — slash-command wrapper (HIMMEL-389)
+# /luna-upgrade — slash-command wrapper
 
 Invoke the `obsidian-triage:luna-upgrade` skill via the `Skill` tool with `$ARGUMENTS` as the literal `args` parameter — do NOT inline or paraphrase the runbook body here, the skill is the single source of truth.
 
@@ -16,11 +16,11 @@ Skill { skill: "obsidian-triage:luna-upgrade", args: "$ARGUMENTS" }
 
 This wrapper exists so the operator can keep typing `/luna-upgrade` at the user prompt without learning the `/<plugin>:<skill>` form, mirroring `/luna-ingest`. Keep it a thin wrapper — never duplicate the runbook body.
 
-If the `Skill` tool refuses the `obsidian-triage:luna-upgrade` invocation ("skill not found" or similar): the skill is unavailable, but the engine it wraps is not — fall back to it directly instead of failing (HIMMEL-1153; the lean plugin floor, HIMMEL-1032, disables `obsidian-triage@himmel` by policy on some machines, which trips this same "unavailable" path even though the plugin is vendored+installed).
+If the `Skill` tool refuses the `obsidian-triage:luna-upgrade` invocation ("skill not found" or similar): the skill is unavailable, but the engine it wraps is not — fall back to it directly instead of failing (the lean plugin floor disables `obsidian-triage@himmel` by policy on some machines, which trips this same "unavailable" path even though the plugin is vendored+installed).
 
 **Diagnose before reporting** — distinguish disabled-by-policy from a genuinely-unconfigured state. `marketplace/plugins/obsidian-triage/` is tracked in git, so it existing on disk is true in every himmel checkout and proves nothing about whether the plugin is installed/enabled — only the `enabledPlugins` config does:
 - Check `.claude/settings.local.json` first, then `~/.claude/settings.json`, for an `"obsidian-triage@himmel"` entry — local overrides global when both are present.
-- Effective value `false` → **disabled by policy** (e.g. the lean plugin floor, HIMMEL-1032). Remedy: flip it to `true` in whichever file carries the `false` (prefer `.claude/settings.local.json`).
+- Effective value `false` → **disabled by policy** (e.g. the lean plugin floor). Remedy: flip it to `true` in whichever file carries the `false` (prefer `.claude/settings.local.json`).
 - No entry in either file → **enabled state unknown/defaulted** — say so honestly, do NOT confidently claim "not installed". Give both remedies: add `"obsidian-triage@himmel": true` to `.claude/settings.local.json`, or `/plugin install obsidian-triage` from the himmel marketplace if it was never registered at all.
 
 **Then run the fallback regardless** — the plugin-independent engine the skill wraps. Resolve the himmel checkout, translate `$ARGUMENTS`' `--vault <path>` to the engine's `--vault-dir <path>` (the engine is `templates/luna-second-brain/scripts/upgrade.sh`). Resolve `--template-dir` too: if `$ARGUMENTS` supplies one, use it verbatim; otherwise default to `$HIMMEL_DIR/templates/luna-second-brain` — do NOT hardcode the default into the commands below and silently drop an operator-supplied override.
