@@ -70,6 +70,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'release-cli-'));
   vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'state'));
   vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
+  vi.stubEnv('HIMMEL_CONSOLE', '');
   vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
   vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
   writeFileSync(join(root, 'verbatim.txt'), 'R = v1 + v2\n');
@@ -728,6 +729,7 @@ describe('routedJudge', () => {
   const decision = (reason: string) => ({ req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason });
   const envelope = (reason: string) => JSON.stringify({ is_error: false, result: JSON.stringify([decision(reason)]) });
   let dir: string;
+  const pathWithEmptyPs = (psDir: string): string => `${psDir}:${process.env.PATH ?? ''}`;
 
   function world(roles: unknown, fake: { out?: string; rc?: number; sleep?: number } = {}) {
     dir = mkdtempSync(join(root, 'world-'));
@@ -753,7 +755,7 @@ describe('routedJudge', () => {
       HIMMEL_API_CREDIT_CONFIG: join(dir, 'config.json'), HIMMEL_API_CREDIT_SNAPSHOT: join(dir, 'snapshot.json'),
       HIMMEL_API_CREDIT_STATE: join(dir, 'ledger.json'), HIMMEL_API_CLAUDE_BIN: join(dir, 'claude-fake'),
       HIMMEL_API_ALERT_DIR: join(dir, 'alerts'), HIMMEL_API_ALERT_CMD: join(dir, 'alert-stub'), HIMMEL_API_LOCK_WAIT_MS: '2000',
-      HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: join(dir, 'ps'), FLEET_PROC: dir,
+      HIMMEL_FLEET_SLOTS: join(dir, 'slots'), PATH: pathWithEmptyPs(dir),
       CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1', CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
       ANTHROPIC_API_KEY: '', HIMMEL_API_KEY_ID: '',
     };
