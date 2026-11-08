@@ -693,6 +693,36 @@ test("a token-less tab whose session began after it loaded gets a token on the F
   });
 });
 
+test("Log out drops the tab's kept token: a reload then holds none, and the Fleet click says to log in", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await logIn(b, "", USER, s.password);
+  await onPage(b, "#/config", async (p) => {
+    expect([...b.spy.tabStorage.values()]).toEqual([TOKEN]);
+    p.fire("click", clickEvent("logout"));
+    await settle();
+    expect(b.hasSession()).toBe(false);
+    expect([...b.spy.tabStorage.values()]).toEqual([]);
+  });
+  await onPage(b, "#/config", async (p) => {
+    expect(p.fire("click", linkEvent(`/agui/#t=${TOKEN}`))).toBe(true);
+    await settle();
+    expect(p.status()).toContain("log in");
+    expect(b.spy.went).toEqual([]);
+  });
+});
+
+test("a Fleet link that names a run keeps it when the tab's token is put in the fragment", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await onPage(b, "#/config", async (p) => {
+    await logIn(b, "", USER, s.password);
+    expect(p.fire("click", linkEvent("/agui/#t=&run=r-1"))).toBe(true);
+    await settle();
+    expect(b.spy.went).toEqual([`/agui/#t=${TOKEN}&run=r-1`]);
+  });
+});
+
 test("a read-only server with no token: a refused save is a plain 403 and the row offers no Log in (the header's Log in is the accepted dead end: the server cannot say read-only to a caller it refuses)", async () => {
   const s = boot({ noIdle: true, readOnly: true });
   const b = browser(s.base);

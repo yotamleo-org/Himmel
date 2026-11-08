@@ -341,7 +341,8 @@ async function loadMode() {
   new MutationObserver(lockWrites).observe($("#main"), { childList: true, subtree: true });
 }
 loadMode();
-if (!landing) adoptToken().then((ok) => { if (ok) renderPages(); });
+function repaintForToken() { renderPages(); if (feed || currentPage.needsFeed === false) paint(); }
+if (!landing) adoptToken().then((ok) => { if (ok) repaintForToken(); });
 
 // /login takes ?next=, the page to come back to; login.js accepts only a path on this site. The address holds no typed value.
 function loginHref() { return "/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash); }
@@ -351,7 +352,12 @@ function loginBadge() {
 }
 async function logout() {
   const { ok } = await post("/api/logout", {});
-  if (ok) { session = false; if (feed || currentPage.needsFeed === false) paint(); }
+  if (ok) {
+    session = false;
+    token = "";
+    try { sessionStorage.removeItem(TAB_KEY); } catch (_) {}
+    repaintForToken();
+  }
   loadMode();
 }
 // A save refused for want of a session says so in the row, with Log in beside it (NEEDS_LOGIN is declared with `session`, before route() paints).
@@ -1009,9 +1015,14 @@ for (const type of ["click", "auxclick"]) document.addEventListener(type, (e) =>
   e.preventDefault();
   adoptToken().then((ok) => {
     if (!ok) return setStatus("This tab is not signed in, so Fleet is not available here: log in, then open Fleet again.");
-    renderPages();
-    if (type === "click") location.assign(link.getAttribute("href").replace(/#t=.*$/, "") + "#t=" + token);
-    else setStatus("Fleet is ready for this tab: open it again.");
+    repaintForToken();
+    if (type === "click") {
+      const href = link.getAttribute("href");
+      const i = href.indexOf("#");
+      const frag = new URLSearchParams(i < 0 ? "" : href.slice(i + 1));
+      frag.set("t", token);
+      location.assign((i < 0 ? href : href.slice(0, i)) + "#" + frag);
+    } else setStatus("Fleet is ready for this tab: open it again.");
   });
 });
 
