@@ -164,7 +164,7 @@ function Series({ card }: { card: TrendCard }) {
   if (card.state !== "ok") return <div className="bd-ws"><div className="bd-k">{name}</div><p className="quiet">no data yet</p></div>;
   return <div className="bd-ws" role="group" aria-label={name}>
     <div className="bd-k">{name}</div>
-    <div className="bd-v">{w ? compact(w.value) : "–"}{w && <small>{w.key}</small>}</div>
+    <div className="bd-v">{w ? compact(w.value) : "–"}{w && <small>{w.partial ? `${w.key}, running week` : w.key}</small>}</div>
     <Line card={card} />
     <div className="bd-d">
       {w && (w.delta !== null && w.prev_key ? <Delta d={w.delta} better={better} text={`${signed(w.delta)} vs ${short(w.prev_key)}`} /> : <span className="bd-dl">No earlier week to compare with yet</span>)}

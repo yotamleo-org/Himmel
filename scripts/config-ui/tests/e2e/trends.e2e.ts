@@ -73,6 +73,13 @@ test("2. a one-week roll-up draws its dot and says the line starts with the seco
   await expect(page.getByText("No earlier week to compare with yet").first()).toBeVisible();
 });
 
+test("2b. a roll-up with only a running week labels its value as the running week", async ({ page }) => {
+  const r = rollup(false) as { cards: { week: { partial: boolean } }[] };
+  r.cards.forEach((c) => { c.week.partial = true; });
+  await open(page, board(), r);
+  await expect(page.locator(".bd-v small").first()).toHaveText("2026-W44, running week");
+});
+
 test("3. a null CI or merged-today count says it could not be read, never 0", async ({ page }) => {
   await open(page, board({ ci: null, headline: { live: 1, cap: 15, merged_today: null, needs_you: 0, blocked: 0 } }), rollup());
   await expect(page.locator(".bd-nod", { hasText: "Merged today" })).toContainText("could not be read");
