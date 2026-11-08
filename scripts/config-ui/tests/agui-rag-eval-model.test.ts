@@ -59,9 +59,9 @@ test("ragEvalModel: a route the eval has not measured says so and carries no num
 
 test("ragEvalModel: the bottom line leads with finds against grep, then answers against vanilla, a tie when the ranges overlap", () => {
   expect(ragEvalModel(ROWS).bottomLine).toBe("Combined search finds the right file on 72% of agent questions (54 of 75), plain grep on 33% (25 of 75); "
-    + "on naming a gold file within 3 guesses in a Claude session it ties vanilla Claude, 70 of 75 against 69 of 75, with overlapping 95% ranges.");
+    + "on naming a gold file among up to 3 guesses in a Claude session, which does not check the answer, it ties vanilla Claude, 70 of 75 against 69 of 75, with overlapping 95% ranges.");
   const apart = ragEvalModel([ab("2026-11-05T19:20:03Z", 75, { ...arm("vanilla", 30, 75), ...arm("fused-cached", 70, 75) })]);
-  expect(apart.bottomLine).toBe("On naming a gold file within 3 guesses in a Claude session combined search beats vanilla Claude, 70 of 75 against 30 of 75.");
+  expect(apart.bottomLine).toBe("On naming a gold file among up to 3 guesses in a Claude session, which does not check the answer, combined search beats vanilla Claude, 70 of 75 against 30 of 75.");
 });
 
 test("ragEvalModel: held-out and in-sample split, and the note that most questions are in-sample", () => {

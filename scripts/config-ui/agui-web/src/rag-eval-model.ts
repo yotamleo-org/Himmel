@@ -68,7 +68,7 @@ function bottomLine(by: Record<string, Route>): string {
   if (a && v && a.runId === v.runId) {
     const [al, ah] = wilson(a.count, a.n), [vl, vh] = wilson(v.count, v.n);
     const word = al > vh ? "beats" : ah < vl ? "trails" : "ties";
-    parts.push(`on naming a gold file within 3 guesses in a Claude session ${parts.length ? "it" : "combined search"} ${word} vanilla Claude, ${of(a)} against ${of(v)}${word === "ties" ? ", with overlapping 95% ranges" : ""}`);
+    parts.push(`on naming a gold file among up to 3 guesses in a Claude session, which does not check the answer, ${parts.length ? "it" : "combined search"} ${word} vanilla Claude, ${of(a)} against ${of(v)}${word === "ties" ? ", with overlapping 95% ranges" : ""}`);
   }
   if (!parts.length) return Object.values(by).some((r) => r.finds || r.answers) ? "Not enough has been measured yet to compare combined search with grep or vanilla Claude." : "Nothing has been measured yet, so no route can be compared.";
   const line = parts.join("; ") + ".";

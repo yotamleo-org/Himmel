@@ -58,11 +58,12 @@ export function RagEvalPage({ token }: { token: string }) {
         <>
           <p className="rag-bottom">{model.bottomLine}</p>
           <p className="rag-dim">From the eval runs already recorded{model.newest ? `, newest ${day(model.newest)}` : ""}. Opening this page runs no eval.</p>
+          <p className="rag-sample">These scores are weak, and a rework of the eval is under way.</p>
           {model.sampleNote && <p className="rag-sample">{model.sampleNote}</p>}
           <div className="rag-scroll">
             <table className="rag-table">
               <thead>
-                <tr><th rowSpan={2} scope="col">Route</th><th colSpan={4} scope="colgroup">Finds the file (hit@5 on the raw list)</th><th colSpan={4} scope="colgroup">Names a gold file (Claude session, up to 3 guesses)</th></tr>
+                <tr><th rowSpan={2} scope="col">Route</th><th colSpan={4} scope="colgroup">Finds the file (hit@5 on the raw list)</th><th colSpan={4} scope="colgroup">Names a gold file among up to 3 guesses (does not check the answer)</th></tr>
                 <tr><th scope="col">Found</th><th scope="col">List tokens</th><th scope="col">Median time</th><th scope="col">Run</th>
                   <th scope="col">Named</th><th scope="col">Session tokens</th><th scope="col">Median time</th><th scope="col">Run</th></tr>
               </thead>
@@ -71,7 +72,7 @@ export function RagEvalPage({ token }: { token: string }) {
           </div>
           <ul className="rag-notes">
             <li><b>Finds</b>: is a right file among the route's first 5 results. No model is involved. List tokens are what a caller reads from the list.</li>
-            <li><b>Names a gold file</b>: a Claude session with Read, Grep and Glob, plus the route as one tool, lists up to 3 files, and it counts when one of them is a gold file. The answer itself is not checked. Session tokens are the whole session's, so they are not comparable with list tokens.</li>
+            <li><b>Names a gold file among up to 3 guesses</b>: a Claude session with Read, Grep and Glob, plus the route as one tool, lists up to 3 files, and it counts when one of them is a gold file. The answer itself is not checked. Session tokens are the whole session's, so they are not comparable with list tokens.</li>
             <li><b>Vanilla Claude</b> is the same session with no route tool. It produces no ranked list, so it has no hit@5.</li>
             <li>A tie means the two 95% ranges overlap: the test cannot tell the two apart.</li>
           </ul>
