@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { briefText } from "./key-brief";
+import { briefText, findDo } from "./key-brief";
 
 // The fixture mirror holds only the five H1 lines the replay needs.
 const MIRROR = join(import.meta.dir, "fixtures", "jira-mirror");
@@ -66,6 +66,23 @@ test("PR numbers and worker labels get words outside Do:, and himmel#81843b5d st
   expect(briefText("session himmel#81843b5d paused", MIRROR, "PR")).toBe("session himmel#81843b5d paused");
   const kept = briefText("fix. Do: run N4992b and yotamleo-org/Himmel#4882", MIRROR, "PR");
   expect(kept).toBe("fix. Do: run N4992b and yotamleo-org/Himmel#4882");
+});
+
+test("a backtick span or a ! line that contains ` Do: ` stays whole, and the real Do: step is the last one outside them", () => {
+  const span = "`jira get HIMMEL-1 Do: x`";
+  const out = briefText(`A ${span} is shown`, MIRROR, "PR");
+  expect(out.startsWith(`A ${span} is shown`)).toBe(true);
+  expect(out.slice(`A ${span} is shown`.length)).toBe(`\n${S1}: ${NOT_READ}`);
+  const bang = "! echo 1 Do: HIMMEL-1";
+  const both = briefText(`First line.\n${bang}\nLast. Do: finish`, MIRROR, "PR");
+  expect(both).toContain(`\n${bang}\n`);
+  expect(both.endsWith("Do: finish")).toBe(true);
+});
+
+test("a trailer line leaves the Do: step findable by the cap's own search", () => {
+  const out = briefText("Merge refused. Blocks: x. Do: go.sh HIMMEL-1 abc", MIRROR, "PR");
+  expect(findDo(out)).toBeGreaterThan(0);
+  expect(out.slice(findDo(out)).trimStart()).toBe("Do: go.sh HIMMEL-1 abc");
 });
 
 test("the ref word comes from the kind's row", () => {

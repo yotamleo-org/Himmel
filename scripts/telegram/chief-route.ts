@@ -1,7 +1,7 @@
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
-import { briefTextCounted, protectedRanges, DO_MARK } from "./key-brief";
+import { briefTextCounted, protectedRanges, findDo } from "./key-brief";
 import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, realpath, appendFile, writeFile } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
@@ -855,7 +855,7 @@ export function resolveKind(table: ClassTable | null, kind: string | undefined):
 async function capText(text: string, kind: string, cap: number, root: string): Promise<{ text: string; state: "ok" | "cut" | "over-cap-uncut" }> {
   if (text.length <= cap) return { text, state: "ok" };
   const uncut = { text, state: "over-cap-uncut" as const };
-  const doAt = text.lastIndexOf(DO_MARK);
+  const doAt = findDo(text);
   if (doAt < 0) return uncut;
   const pre = text.slice(0, doAt); const doSeg = text.slice(doAt);
   const dir = join(root, "route-cut");

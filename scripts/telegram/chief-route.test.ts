@@ -621,6 +621,14 @@ test("R1.5 the cap: 900 characters of merge-blocked come out at 400 or fewer wit
   expect(sent).toContain(`full text on the station: ${join(cutDir, files[0])}`);
   expect(routeLog(x.r)[0].endsWith(" cut")).toBe(true);
 
+  // a key that only the Do: step names gets a trailer line; the cap must still find the Do: step and cut before it
+  const withTrailer = `${longMerge(900).slice(0, -DO_STEP.length)} Do: go.sh HIMMEL-1 abc`;
+  const t = await route(["--kind", "merge-blocked", "operator", withTrailer]);
+  const sentT = operatorOutbox(t.r)[0].text;
+  expect(sentT.length).toBeLessThanOrEqual(400);
+  expect(sentT.endsWith("Do: go.sh HIMMEL-1 abc")).toBe(true);
+  expect(routeLog(t.r)[0].endsWith(" cut")).toBe(true);
+
   const bigDo = `Merge refused. Blocks: the merge. Do: ${"x".repeat(450)}`;
   const y = await route(["--kind", "merge-blocked", "operator", bigDo]);
   expect(operatorOutbox(y.r).map((m) => m.text)).toEqual([bigDo]);
