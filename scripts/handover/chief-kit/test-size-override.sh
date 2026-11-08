@@ -256,7 +256,7 @@ fi
 : > "$HLOG"
 out=$(HIMMEL_CONSOLE=1 rk operator HIMMEL-9228 N5216 --files 272 --scope "$S" --reason keep-whole </dev/null 2>/dev/null); rc=$?
 check "R2: the operator verb with no terminal exits 75 (pending)" 75 "$rc"
-check "R2: it filed one request" 1 "$(wc -l < "$HLOG" | tr -d ' ')"
+check "R2: it filed one request" 1 "$(wc -l < "$HLOG" | tr -d ' ')"  # read-sink-ok: the suite reads its own mktemp helper log
 has "R2: it prints the plain-terminal hint" "$out" "himmelctl approve abcdefgh in a plain terminal"
 
 : > "$HLOG"
@@ -265,7 +265,7 @@ check "R3: a clean-env run is pending (75)" 75 "$rc"
 if grep -qE "^op-request --session terminal-[0-9]+ --ticket HIMMEL-9228 -- size-approval key=HIMMEL-9228 label=N5216 files=272 scope=$S reason=keep-whole\$" "$HLOG"; then
     pass "R3: the verb files exactly the size-approval op-request"
 else
-    fail "R3: the verb files exactly the size-approval op-request (got '$(cat "$HLOG")')"
+    fail "R3: the verb files exactly the size-approval op-request (got '$(cat "$HLOG")')"  # read-sink-ok: the suite reads its own mktemp helper log
 fi
 out=$(HELPER_ANSWER="result=ops-disabled" rk operator HIMMEL-9228 N5216 --files 272 --scope "$S" --reason keep-whole </dev/null 2>&1); rc=$?
 check "R3: ops-disabled exits 5" 5 "$rc"
@@ -280,7 +280,7 @@ check "R3: a reason outside ^[A-Za-z0-9,.:_-]{3,80}\$ exits 2" 2 "$rc"
 out=$(rk operator HIMMEL-9228 N5216 --files 301 --scope "$S" --reason keep-whole </dev/null 2>&1 >/dev/null); rc=$?
 check "R3: 301 files exits 4" 4 "$rc"
 has "R3: past the cap the verb says split" "$out" "split"
-check "R3: no refused call reached the helper" 0 "$(wc -l < "$HLOG" | tr -d ' ')"
+check "R3: no refused call reached the helper" 0 "$(wc -l < "$HLOG" | tr -d ' ')"  # read-sink-ok: the suite reads its own mktemp helper log
 
 if [ "$LINUX" = no ] || ! script -qec true /dev/null >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
     echo "SKIP: R9 needs util-linux script -qec and node (macOS; Linux CI gates)"
