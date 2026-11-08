@@ -677,10 +677,10 @@ check "(8934) the first sight of a young unowned PR does not wake, it joins the 
 reset_stub
 sed -i 's/ bank=/ unowned-prs=#4946:70m,#4891:957m,#4999:5m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 I="$(new_inbox u1)"
-timeout 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u1.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+timeout 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u1.out" 2>/dev/null; rc=$?
 check "(9599) an unowned PR older than 30 m wakes, exit 0" "0" "$rc"
 check "(9599) the wake names each aged PR and not the young one" "WAKE unowned-pr 4946,4891" "$(head -n1 "$WORK/u1.out")"
-timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u2.out" 2>/dev/null; rc=$?
 check "(9599) the same aged set does not re-wake inside the window" "124:0" "$rc:$(grep -c '^WAKE unowned-pr' "$WORK/u2.out")"
 
 reset_stub
