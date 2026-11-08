@@ -366,7 +366,7 @@ const gh = (ghArgs) => {
 };
 const openPrs = gh(['pr', 'list', '--state', 'open', '--limit', '100', '--json', 'number,title,headRefName,isDraft,statusCheckRollup']);
 const since = new Date(Date.now() - 86400e3).toISOString().slice(0, 19) + 'Z';
-const mergedPrs = gh(['pr', 'list', '--state', 'merged', '--limit', '60', '--search', `merged:>=${since}`, '--json', 'number,title,mergedAt,headRefName']);
+const mergedPrs = gh(['pr', 'list', '--state', 'merged', '--limit', '1000', '--search', `merged:>=${since}`, '--json', 'number,title,mergedAt,headRefName']);
 const epics = epicsDeclared.map((e) => {
     const found = gh(['pr', 'list', '--state', 'merged', '--limit', '200', '--search', `${e.key} in:title`, '--json', 'number,title']);
     const merged = found ? new Set(found.filter((p) => String(p.title).includes(`[${e.key}]`)).map((p) => p.number)).size : '?';
@@ -450,6 +450,7 @@ const openByNum = new Map((openPrs || []).map((p) => [p.number, p]));
 // ponytail: a PR gh cannot answer for (gh down, not a PR of this repo) reads not
 // merged, so its worker falls back to LIVE / READY.
 const mergedNums = new Set((mergedPrs || []).map((p) => p.number));
+const mergedAtByNum = new Map((mergedPrs || []).map((p) => [p.number, Date.parse(p.mergedAt)]).filter(([, t]) => Number.isFinite(t)));
 for (const n of new Set([...legInfo.values()].map((i) => i.pr).filter(Boolean))) {
     if (openByNum.has(n) || mergedNums.has(n)) continue;
     const v = ghJson(['pr', 'view', String(n), '--json', 'state']);
@@ -1218,6 +1219,7 @@ const legModel = (l) => {
     const times = bulletTimes(bullets, info.file || '');
     const firstAt = (re) => { const i = bullets.findIndex((b) => re.test(b)); return i < 0 ? null : times[i]; };
     const stages = { dispatch: null, live: times.find((t) => t !== null) ?? null, pr: null, ready: firstAt(/^- (?:\d{1,2}:\d{2}\s+)?READY\b(?!-)/), go: null, merged: firstAt(/^- (?:\d{1,2}:\d{2}\s+)?MERGED\b/) };
+    if (stages.merged === null && l.prNum && mergedAtByNum.has(l.prNum)) stages.merged = mergedAtByNum.get(l.prNum);
     const prAt = firstAt(PR_OPEN);
     stages.pr = prAt !== null && (stages.ready === null || prAt <= stages.ready) ? prAt : stages.ready;
     if (l.prNum && goAt.has(l.prNum)) stages.go = goAt.get(l.prNum);
@@ -1266,7 +1268,7 @@ for (const c of ciRows) ciOut[c] += 1;
 const pct = (re) => { const m = re.exec(usage || ''); return m ? Number(m[1]) : null; };
 const bankOut = { week_pct: pct(/wk(\d+)/), five_hour_pct: pct(/5h(\d+)/) };
 const todayKey = stamp.slice(0, 10);
-const mergedToday = (mergedPrs || []).filter((p) => p.mergedAt && isoOf(Date.parse(p.mergedAt))?.slice(0, 10) === todayKey).length;
+const mergedToday = mergedPrs === null ? null : mergedPrs.filter((p) => p.mergedAt && isoOf(Date.parse(p.mergedAt))?.slice(0, 10) === todayKey).length;
 const milestones = releases.map((r) => (r.unavailable ? { version: r.version, unavailable: true }
     : { version: r.version, done: r.done, total: r.total, open_blockers: r.blockers.map((b) => b.key) }));
 
@@ -1355,7 +1357,7 @@ const LEGEND = {
     verb: { decide: ['acc', 'Decide'], act: ['bad', 'Act'], go: ['warn', 'GO'], unblock: ['bad', 'Unblock'] },
     ci: { green: ['ok', 'green'], pending: ['warn', 'pending'], no_checks: ['mut', 'no checks yet'], red: ['bad', 'red'] },
     budget: { ok: ['ok', 'under 70 %'], high: ['warn', '70 to 84 %'], critical: ['bad', '85 % and over'] },
-    failure: { denial: ['warn', 'guard denial'], error: ['bad', 'tool error'] },
+    failure: { denial: ['warn', 'guard denial'], error: ['bad', 'tool error'], traj: ['vio', 'trajectory'], suite: ['bad', 'suite red'], blocked: ['warn', 'BLOCKED'], other: ['mut', 'other'] },
     marker: { live: ['acc', 'LIVE'], finding: ['warn', 'FINDING'], resolved: ['ok', 'RESOLVED'], ready: ['ok', 'READY'], blocked: ['bad', 'BLOCKED'], halted: ['bad', 'HALTED'], wrapped: ['mut', 'WRAPPED'] },
 };
 const legend = Object.fromEntries(Object.entries(LEGEND).map(([k, v]) => [k, Object.fromEntries(Object.entries(v).map(([n, [color, label]]) => [n, { color, label }]))]));
@@ -1363,9 +1365,10 @@ const legend = Object.fromEntries(Object.entries(LEGEND).map(([k, v]) => [k, Obj
 // One recommended action per report card, derived from the data above; the UI only renders it.
 const countState = (s) => legsOut.filter((l) => l.state === s).length;
 const cards = {
-    velocity: { recommendation: countState('ready-for-go') ? `${mergedToday} merged today; ${countState('ready-for-go')} READY wait for GO: judge them first`
-        : countState('in-review') ? `${mergedToday} merged today; ${countState('in-review')} in review: keep /pr-check and CI moving`
-            : mergedToday ? `${mergedToday} merged today; nothing waits for GO` : 'none merged today: check what the live workers are stuck on' },
+    velocity: { recommendation: countState('ready-for-go') ? `${mergedToday === null ? 'merged today unavailable' : `${mergedToday} merged today`}; ${countState('ready-for-go')} READY wait for GO: judge them first`
+        : countState('in-review') ? `${mergedToday === null ? 'merged today unavailable' : `${mergedToday} merged today`}; ${countState('in-review')} in review: keep /pr-check and CI moving`
+            : mergedToday === null ? 'merged today unavailable: GitHub did not answer'
+                : mergedToday ? `${mergedToday} merged today; nothing waits for GO` : 'none merged today: check what the live workers are stuck on' },
     health: { recommendation: needsYou.length ? `${needsYou.length} worker${needsYou.length === 1 ? '' : 's'} need you: start with ${needsYou[0].leg} (${needsYou[0].verb})`
         : ciOut.red ? `${ciOut.red} open PR${ciOut.red === 1 ? '' : 's'} red: triage the CI`
             : bankOut.week_pct !== null && bankOut.week_pct >= 85 ? `weekly budget at ${bankOut.week_pct} %: hold new dispatches`
@@ -1397,7 +1400,7 @@ const boardModel = {
     headline: { live: fleetOk ? fleetLive : liveLegs.length, cap: fleetOk ? fleetCap : null, merged_today: mergedToday, needs_you: needsYou.length, blocked: countState('blocked') },
     pool,
     bank: bankOut,
-    ci: ciOut,
+    ci: openPrs === null ? null : ciOut,
     red_main: redMain,
     milestones,
     needs_you: needsYou,

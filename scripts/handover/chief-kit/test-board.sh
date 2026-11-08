@@ -79,11 +79,14 @@ chmod +x "$W/bin/tick-stub"
 cat > "$W/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 [ -z "${GH_CWD_LOG:-}" ] || pwd -P >> "$GH_CWD_LOG"
+[ "${GH_FAIL:-}" != 1 ] || exit 1
 case "$*" in
     "pr view "*) [ -f "$GH_VIEW/$3.json" ] && cat "$GH_VIEW/$3.json" || exit 1 ;;
     *"--state open"*) cat "$GH_OPEN" ;;
     *"--state merged"*"in:title"*) cat "$GH_EPIC" ;;
-    *"--state merged"*) cat "$GH_MERGED" ;;
+    *"--state merged"*)
+        lim="$(printf '%s' "$*" | sed -n 's/.*--limit \([0-9]*\).*/\1/p')"
+        node -e 'process.stdout.write(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).slice(0, Number(process.argv[2]))))' "$GH_MERGED" "${lim:-1000}" ;;
     *) exit 1 ;;
 esac
 STUB
@@ -1599,6 +1602,30 @@ contains 'the operator board opens dark with readable text and a light choice st
 contains 'the user shift board opens dark with readable text and a light choice still works' "$(node "$W/dark-check.mjs" "$W/user-board.html" --bg --text --muted)" 'DARK-OK'
 lacks 'the operator board no longer follows a light system preference' "$(cat "$board")" 'prefers-color-scheme: dark'
 contains 'the archive page asks for a dark colour scheme' "$(cat "$B/chief-board-archive.html")" '<meta name="color-scheme" content="dark">'
+
+MG="$W/mrg"
+mkdir -p "$MG"
+printf '%s\n' '# leg' '## Results' '- 12:00 LIVE — PR 3101 open, watching CI' > "$MG/HIMMEL-9701-N31-mrg-2026-09-21-RESUME.md"
+printf '%s\n' '# console' '' '## Live state' '' 'epics: none' '' '## Results' > "$MG/chief-m.md"
+mg_at="$(date -u -d '1 minute ago' +%Y-%m-%dT%H:%M:%SZ)"
+node -e "const n = 61, at = process.argv[1]; console.log(JSON.stringify(Array.from({ length: n }, (_, i) => ({ number: 3101 + i, title: 't' + i, mergedAt: at, headRefName: 'feat/m' + i }))))" "$mg_at" > "$MG/merged.json"
+mgrun() {
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" GH_FAIL="${MG_GH_FAIL:-}" \
+        GH_OPEN="$W/open.json" GH_MERGED="$MG/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$MG/chief-m.md" --workers "$MG/HIMMEL-9701-N31-mrg-2026-09-21-RESUME.md" --repo "$W/repo" --out "$MG/board.html" --json "$MG/board.json" 2>"$W/stderr.log"
+}
+mgrun >/dev/null; rc=$?
+contains 'merged-today: rc 0' "rc=$rc" 'rc=0'
+jtxt="$(cat "$MG/board.json" 2>/dev/null)"
+jcheck 'merged-today: a worker with a merged PR and no MERGED bullet takes merged_at from the PR mergedAt' 'M.trends.leg_time.today.some((l) => l.leg === "N31" && l.merged_at !== null && l.live_to_merged_min !== null)'
+jcheck 'merged-today: 61 merged PRs in the stub count 61, not 60' 'M.headline.merged_today === 61'
+jcheck 'merged-today: the legend names the kinds trajectory, suite, blocked and other beside denial and error' '["denial","error","traj","suite","blocked","other"].every((k) => M.legend.failure[k] && M.legend.failure[k].color && M.legend.failure[k].label)'
+MG_GH_FAIL=1 mgrun >/dev/null; rc=$?
+contains 'failed gh read: rc 0' "rc=$rc" 'rc=0'
+jtxt="$(cat "$MG/board.json" 2>/dev/null)"
+jcheck 'failed gh read: ci and merged_today are null, not zero' 'M.ci === null && M.headline.merged_today === null'
+jcheck 'failed gh read: the velocity card does not claim nothing merged' '!M.cards.velocity.recommendation.startsWith("none merged today")'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'
