@@ -129,7 +129,7 @@ import holds  # noqa: E402  the one parser of a Writes line, and the one grant-p
 
 REQUIRED = ['label', 'keys', 'slug', 'branch', 'title', 'desc', 'why', 'prior', 'scope', 'scope_short', 'commit']
 RM_REQUIRED = ['label', 'keys', 'slug', 'release', 'versions', 'state_dir', 'mode']
-BUS_NAME_MAX = 128  # the bus's SESSION_NAME limit (marketplace/plugins/himmel-bus/lib/store.mjs)
+BUS_NAME_MAX = 128
 RM_MODEL = 'claude-opus-5-5'
 RM_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'docs', 'handover', 'rm-brief-template.md')
 HOOK_LINE = ("> - **Native lane.** You are launched with the hook-integrity bypass flag because this ticket edits a hook file; "
@@ -400,7 +400,7 @@ def validate(worker, i, repo):
     if worker.get('kind') is not None:
         die('worker #%d (%s): kind %r must be rm or absent' % (i, worker.get('label', '?'), worker['kind']))
     inh = worker.get('inherited')
-    resume = isinstance(inh, dict) and inh.get('mode') == 'resume'  # the resume of an ORPHAN PR: its prior art is the PR's own, so none is required
+    resume = isinstance(inh, dict) and inh.get('mode') == 'resume'
     missing = [k for k in REQUIRED if not worker.get(k) and not (k == 'prior' and resume)]
     if missing:
         die('worker #%d (%s) missing: %s' % (i, worker.get('label', '?'), ', '.join(missing)))
@@ -1312,7 +1312,7 @@ def render_launcher(l, ctx, doc):
     if l.get('effort'):
         lines.append('export WORKER_SESSION_EFFORT=%s' % l['effort'])
     if l.get('context_1m'):
-        lines.append('export WORKER_SESSION_CONTEXT=1m  # the brief\'s Context line carries the ruling headed-arm-worker.sh requires for it')
+        lines.append('export WORKER_SESSION_CONTEXT=1m')
     if ctx['adapter']:
         # headed-arm.sh starts the session in this dir; the worktree (not the primary) is what worker-pretrust trusts and the worker may edit.
         lines.append('export WORKER_SESSION_REPO=%s' % q(l['wt']))
