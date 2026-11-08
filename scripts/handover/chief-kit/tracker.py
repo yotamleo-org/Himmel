@@ -1416,7 +1416,7 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                 except ValueError:
                     continue
                 if isinstance(r, dict) and r.get('kind') == 'spec':
-                    signed.add(r.get('spec_path'))
+                    signed.add(os.path.realpath(r.get('spec_path') or ''))
             readable = True
         except FileNotFoundError:
             readable = os.path.isdir(os.path.join(bucket, 'specs', 'designs'))
@@ -1434,7 +1434,7 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                     last = [x for x in open(f, encoding='utf-8').read().splitlines() if x.strip()][-1].strip()
                 except (OSError, IndexError):
                     continue
-                if k and int(k.group(1)) in opn and spec not in signed and (last == 'SPEC CLEAN' or rnd >= CRITIC_ROUND_CAP):
+                if k and int(k.group(1)) in opn and os.path.realpath(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= CRITIC_ROUND_CAP):
                     n = int(k.group(1))
                     items.append(('unsigned spec', n, clip(opn[n]['title'], 100),
                                   '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
@@ -1451,7 +1451,7 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
     if live is not None:
         readable = True
         for l in live:
-            segs = l.partition(':')[2].split(' | ') if l.startswith('queue:') else [l.partition(':')[2]] if l.startswith('pool-disposition:') else []
+            segs = l.partition(':')[2].split(' || ')[0].split(' | ') if l.startswith('queue:') else [l.partition(':')[2]] if l.startswith('pool-disposition:') else []
             for s in segs:
                 if OWED_RE.search(s):
                     k = KEY_RE.search(s)

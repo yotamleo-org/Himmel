@@ -1385,7 +1385,7 @@ printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-437-signed.md.
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-999-notopen.md.critic-spec-r1.md"
 printf '%s\n' '# critic' 'a closing note that is not a verdict line' > "$bk/specs/designs/HIMMEL-438-noverdict.md.critic-spec-r3.md"
 printf '%s\n' '# handoff' '## Open operator items' '' 'Answer the paid-step ask' '## Wrapped' 'none' > "$bk/HIMMEL-nextleg-x-chief-HANDOFF.md"
-printf '%s\n' '# chief' '## Live state' 'queue: first | HIMMEL-435 waits for operator sign-off | third' \
+printf '%s\n' '# chief' '## Live state' 'queue: first | HIMMEL-435 waits for operator sign-off | third || prior shift queue: HIMMEL-438 operator sign-off long finished | HIMMEL-434 operator words old ask' \
     'pool-disposition: HIMMEL-434 question operator on Telegram, runs the paid step' 'pool-disposition: HIMMEL-436 slice parked, no ask' \
     '## Other' 'pool-disposition: HIMMEL-437 operator words outside the live state' > "$bk/chief.md"
 v9611render --owed-dir "$bk" --chief-doc "$bk/chief.md"
@@ -1402,6 +1402,14 @@ contains 'a queue segment naming the operator is listed' "$w9611" 'HIMMEL-435 wa
 contains 'a pool-disposition line naming the operator is listed' "$w9611" 'operator on Telegram, runs the paid step'
 not_contains 'a pool-disposition line that names no operator is not listed' "$w9611" 'slice parked, no ask'
 not_contains 'a line outside the Live state is not read' "$w9611" 'outside the live state'
+not_contains 'the history after a double bar on the queue line is not live' "$w9611" 'prior shift'
+not_contains 'a segment of that history naming the operator is not listed' "$w9611" 'words old ask'
+ln -s "$bk" "$W/bk9611-link"
+v9611render --owed-dir "$W/bk9611-link" --chief-doc "$bk/chief.md"
+not_contains 'a spec signed under the real bucket path is not owed when the bucket is given by a symlink' "$(grep -F 'data-section="waiting"' "$v9611out")" 'HIMMEL-437-signed'
+printf '{"key":"HIMMEL-436","leg":"N4414","state":"wrapped","last_event_ts":"%s","prs":{"77":{"open":true,"head":"abc1234def5678abc1234def5678abc1234def56"}}}\n' "$old9611" > "$W/wk9611/HIMMEL-436.json"
+v9611render --owed-dir "$bk" --chief-doc "$bk/chief.md"
+contains 'an old wrapped worker record that still holds an open PR is still printed' "$(cat "$v9611out")" 'worker N4414'
 not_contains 'a page that read its sources does not say none was read' "$w9611" 'no operator-owed source read'
 mkdir -p "$W/bk9611-nolog/specs/designs"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$W/bk9611-nolog/specs/designs/HIMMEL-435-clean.md.critic-spec-r1.md"
