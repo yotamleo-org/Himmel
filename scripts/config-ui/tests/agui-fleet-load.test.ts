@@ -39,10 +39,7 @@ test("archived chief docs get their lock read in parallel, bounded, and none is 
   expect(t.peak()).toBeLessThanOrEqual(16); // never 600 bash processes at once
 }, 30_000);
 
-// The himmel-bus store on the station holds about 1850 session logs; replaying all of them (busEvents) took
-// 3.6 s of a 6 s fleet poll. Budget: a poll of an unchanged bus costs well under the replay, and a poll never waits
-// longer than HIMMEL_FLEET_BUS_WAIT_MS for it.
-const BUS_LOGS = 1000; // about 1.1 s to replay here
+const BUS_LOGS = 1000;
 async function busTree() {
   const t = tree(0, "0");
   const state = join(t.dir, "state");
@@ -61,7 +58,7 @@ async function busTree() {
 
 test("a poll of an unchanged bus store does not replay it", async () => {
   const b = await busTree();
-  const cold = await b.read("60000"); // waits for the first read, so the counts are complete
+  const cold = await b.read("60000");
   expect(b.edgeN(cold.f)).toBe(BUS_LOGS);
   const warm = await b.read("60000");
   expect(b.edgeN(warm.f)).toBe(BUS_LOGS);
@@ -71,7 +68,7 @@ test("a poll of an unchanged bus store does not replay it", async () => {
 test("a poll answers within the bus wait and the replay finishes in the background", async () => {
   const b = await busTree();
   const first = await b.read("100");
-  expect(first.ms).toBeLessThan(600); // the replay alone is about 1.1 s
+  expect(first.ms).toBeLessThan(600);
   let seen = b.edgeN(first.f);
   for (let i = 0; i < 100 && seen < BUS_LOGS; i++) { await new Promise((ok) => setTimeout(ok, 100)); seen = b.edgeN((await b.read("100")).f); }
   expect(seen).toBe(BUS_LOGS);

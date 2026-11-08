@@ -309,9 +309,6 @@ const NO_BUS: BusCounts = { unacked: 0, undelivered: 0, unbound: false };
 const BUS_KINDS = new Set(["ruling", "report", "proposal", "data"]);
 
 // The bus's edges and each session's counts, from busEvents' metadata; an unreadable or absent store is no traffic.
-// busEvents replays every session log ever written (about 1850 on the station, 3.6 s of a 6 s poll), so
-// its result is kept until a log, ack or cursor file changes, and a poll waits at most BUS_WAIT_MS for a replay it
-// started: it answers with the last replay meanwhile (none yet: no traffic), and the replay finishes in the background.
 // ponytail: a change replays the whole store again (the store has no per-log read), upgrade path: replay only the logs whose files changed.
 const BUS_WAIT_MS = 500;
 type BusRead = { edges: BusEdge[]; rows: Map<string, BusCounts> };
@@ -321,13 +318,12 @@ async function busSig(root: string): Promise<string> {
   const parts: string[] = [];
   for (const dir of ["log", "ack", "cur"]) {
     let names: string[] = [];
-    try { names = (await readdir(join(root, dir))).sort(); } catch { /* absent: no files */ }
+    try { names = (await readdir(join(root, dir))).sort(); } catch {}
     const stats = await mapLimit(names, 64, (f) => stat(join(root, dir, f)).then((s) => `${f}:${s.size}:${s.mtimeMs}`, () => f));
     parts.push(stats.join(","));
   }
   return parts.join("|");
 }
-// null when the store could not be read: nothing is cached, so the next poll tries again.
 async function busRead(root: string): Promise<BusRead | null> {
   type Msg = { f?: string | null; r?: string | null; t?: number; c?: number; kind?: string; delivered?: boolean; acked?: boolean; expired?: boolean };
   const msgs = new Map<string, Msg>();
@@ -359,7 +355,6 @@ async function busOf(root: string, env: Record<string, string | undefined>): Pro
   const sig = await busSig(root);
   let hit = busCache.get(root);
   if (hit?.sig !== sig) {
-    // one replay per root at a time: a change that lands while it runs is picked up by the next poll after it ends
     let run = busRuns.get(root);
     if (!run) {
       run = busRead(root).then((read) => { if (read) busCache.set(root, { sig, read }); }).finally(() => { busRuns.delete(root); });
@@ -372,7 +367,7 @@ async function busOf(root: string, env: Record<string, string | undefined>): Pro
   }
   const { edges, rows } = hit?.read ?? { edges: [], rows: new Map<string, BusCounts>() };
   let peers: Record<string, { pid?: number }> = {};
-  try { peers = await loadPeers(root); } catch { /* no registry: nothing is unbound */ }
+  try { peers = await loadPeers(root); } catch {}
   return { edges, of: (name) => ({ ...(rows.get(name) ?? NO_BUS), unbound: !!peers[name] && peers[name].pid === undefined }) };
 }
 
