@@ -20,10 +20,11 @@
 #         `himmel/bus/log/...`; the hyphenated plugin dir `himmel-bus` is not it).
 #         Reads and writes are both denied: a log read is the T5 leak.
 #         A glob right under a `himmel/` dir (`himmel/*`, `himmel/b?s`) is
-#         denied only when that dir can hold the store: a checkout under an
-#         absolute, `~/` or $HOME/ prefix with no `bus` child, and a `.himmel`
-#         (the harness home), pass; a relative, missing, `..` or expanded prefix
-#         is denied.
+#         denied only when that dir can hold the store: a checkout under a
+#         literal absolute prefix with no `bus` child, and a `.himmel` (the
+#         harness home), pass. A relative, missing or expanded prefix, a `~/` or
+#         $HOME/ prefix (the hook does not trust HOME), and any command with a
+#         `..` in it are denied.
 #     (b) calls `bus register`, `bus bind` or `bus rebind` (the identity verbs
 #         the launcher owns; `bus` bounded the same way, so `bin/bus register`
 #         counts). When the text names bus and a verb, the command-position
@@ -348,32 +349,23 @@ walk_words() {
 }
 
 globroot_reaches() {
-    local s="$1" m lead before after rest tail pre p d r c home_set=0 tc hs HOME_SET_RE
-    HOME_SET_RE='(^|[^A-Za-z0-9_])(eval|declare|typeset|printf|read|export|local|readonly|unset|env|set|source|map[f]ile|read[a]rray)([[:space:]]|$)|(^|[[:space:];&|(])\.[[:space:]]'
-    hs=${s//\$\{HOME\}/}; hs=${hs//\$HOME/}
-    case "$hs" in *HOME*) home_set=1 ;; esac
-    [[ "$hs" =~ $HOME_SET_RE ]] && home_set=1
+    local s="$1" m lead before tail pre p d r c tc
+    case "$s" in *..*) return 0 ;; esac
     while [[ "$s" =~ $GLOBROOT_RE ]]; do
         m=${BASH_REMATCH[0]}; lead=${BASH_REMATCH[1]}
         before=${s%%"$m"*}
-        after=${s#*"$m"}
-        rest=${after%%[[:space:];&|()<>]*}
-        tail="${m#"${lead}himmel/"}$rest"
-        case "$tail" in *[\$\`\{]* | *..*) return 0 ;; esac
-        IFS=/ read -ra tc <<< "$tail"
+        tail="${m#"${lead}himmel/"}${s#*"$m"}"
+        case "$tail" in *[\$\`\{]*) return 0 ;; esac
+        IFS=/ read -ra tc <<< "${tail//[[:space:];&|()<>]//}"
         for c in "${tc[@]}"; do
             case "$c" in .*[\*\?\[]*) return 0 ;; esac
         done
         pre=${before##*[[:space:];&|()<>=]}$lead
-        # shellcheck disable=SC2016,SC2088  # the prefix is command text: a literal ~ and $HOME
         case "$pre" in
-            '~/'*) [ "$home_set" = 0 ] && [ -n "${HOME:-}" ] || return 0; p="$HOME/${pre#\~/}" ;;
-            '$HOME/'*) [ "$home_set" = 0 ] && [ -n "${HOME:-}" ] || return 0; p="$HOME/${pre#\$HOME/}" ;;
-            '${HOME}/'*) [ "$home_set" = 0 ] && [ -n "${HOME:-}" ] || return 0; p="$HOME/${pre#\$\{HOME\}/}" ;;
             /*) p="$pre" ;;
             *) return 0 ;;
         esac
-        case "$p" in *[\*\?\[\{\$\`]* | */..*) return 0 ;; esac
+        case "$p" in *[\*\?\[\{\$\`]*) return 0 ;; esac
         d="${p}himmel"
         [ -d "$d" ] || return 0
         r=$(hook_resolve_m "$d" 2>/dev/null) || return 0 # swallow-ok: a dir that cannot be resolved reaches, so it denies
