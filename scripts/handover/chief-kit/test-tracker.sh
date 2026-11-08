@@ -1334,7 +1334,79 @@ v7render >/dev/null
 if [ "$(cat "$v7out.vfp" 2>/dev/null)" != "$vfp7a" ]; then pass 'a changed operator label moves the focus fingerprint (HIMMEL-7621)'; else fail 'a changed operator label left the focus fingerprint unchanged'; fi
 rm -f "$vp/HIMMEL-431.md"
 v7render >/dev/null
-contains 'Waiting on you says so when no ticket waits (HIMMEL-7621)' "$(grep -F 'data-section="waiting"' "$v7out")" 'nothing is waiting on you'
+contains 'Waiting on you says no source was read when none was, never a bare 0' "$(grep -F 'data-section="waiting"' "$v7out")" 'no operator-owed source read'
+
+# --- a section whose source is old says so, or leaves the old data off the page.
+printf '%s\n' '---' 'key: "HIMMEL-434"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+    '---' '# HIMMEL-434: stalesec old wrapped worker' > "$vp/HIMMEL-434.md"
+printf '%s\n' '---' 'key: "HIMMEL-435"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+    '---' '# HIMMEL-435: stalesec fresh wrapped worker' > "$vp/HIMMEL-435.md"
+printf '%s' 'registry' > "$W/vp-registry9611.json"
+TZ=UTC touch -t 202609010000 "$W/vp-registry9611.json"
+cat > "$W/vp-chains9611.json" <<EOF
+[{"name":"c9611","registry":{"path":"$W/vp-registry9611.json"},"steps":[{"key":"HIMMEL-434"},{"key":"HIMMEL-435"}]}]
+EOF
+mkdir -p "$W/wk9611"
+old9611="$(python3 -c 'import datetime as d; print((d.datetime.now(d.timezone.utc) - d.timedelta(days=6)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
+new9611="$(python3 -c 'import datetime as d; print((d.datetime.now(d.timezone.utc) - d.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
+printf '{"key":"HIMMEL-434","leg":"N4412","state":"wrapped","last_event_ts":"%s","prs":{}}\n' "$old9611" > "$W/wk9611/HIMMEL-434.json"
+printf '{"key":"HIMMEL-435","leg":"N4413","state":"wrapped","last_event_ts":"%s","prs":{}}\n' "$new9611" > "$W/wk9611/HIMMEL-435.json"
+printf '%s\n' '# plan' 'priority: 1 | 2 | 3' > "$W/vp-plan9611.md"
+TZ=UTC touch -t 202609010000 "$W/vp-plan9611.md"
+v9611out="$W/vp-v9611.html"
+v9611render() {
+    local o
+    o="$(TRACKER_JIRA="$W/vpjira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
+        --prs-file "$W/vp-prs7.json" --chains-file "$W/vp-chains9611.json" --workers-dir "$W/wk9611" "$@" \
+        --jira-base-url https://jira.example.test --out "$v9611out" 2>&1)" || fail "a stale-section render failed: $o" >&2
+}
+v9611render
+h9611="$(cat "$v9611out" 2>/dev/null)"
+not_contains 'a wrapped worker record six days old is not printed on its chain row or card' "$h9611" 'worker N4412'
+contains 'a wrapped worker record from the last hour is still printed' "$h9611" 'worker N4413 · wrapped'
+contains 'the header names the age of a chain registry the chains were read from' "$h9611" 'chain registry last edited 2026-09-01 00:00 UTC, older than the newest Jira update'
+contains 'a page with no priority file says its blocks have no source' "$h9611" 'no priority line is read'
+v9611render --priority-file "$W/vp-plan9611.md"
+h9611="$(cat "$v9611out" 2>/dev/null)"
+contains 'a priority file older than the newest Jira update names its age' "$h9611" 'priority line last edited 2026-09-01 00:00 UTC, older than the newest Jira update'
+not_contains 'a priority file read says nothing about having no source' "$h9611" 'no priority line is read'
+
+# --- Waiting on you reads the records that hold what waits on the operator.
+for t in 436 437; do
+    printf '%s\n' '---' "key: \"HIMMEL-$t\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+        '---' "# HIMMEL-$t: owedsec ticket $t" > "$vp/HIMMEL-$t.md"
+done
+bk="$W/bk9611"
+mkdir -p "$bk/release/v1.1.3" "$bk/specs/designs"
+printf '%s\n' '{"kind":"spec","keys":["HIMMEL-437"],"spec_path":"'"$bk"'/specs/designs/HIMMEL-437-signed.md"}' '{bad row' '{"kind":"declare","decision":"1"}' > "$bk/release/v1.1.3/operator.jsonl"
+printf '%s\n' '# critic' 'SPEC FINDINGS 2' > "$bk/specs/designs/HIMMEL-434-capped.md.critic-spec-r3.md"
+printf '%s\n' '# critic' 'SPEC FINDINGS 9' > "$bk/specs/designs/HIMMEL-434-capped.md.critic-spec-r2.md"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-435-clean.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'SPEC FINDINGS 3' > "$bk/specs/designs/HIMMEL-436-underway.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-437-signed.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-999-notopen.md.critic-spec-r1.md"
+printf '%s\n' '# handoff' '## Open operator items' '' 'Answer the paid-step ask' '## Wrapped' 'none' > "$bk/HIMMEL-nextleg-x-chief-HANDOFF.md"
+printf '%s\n' '# chief' '## Live state' 'queue: first | HIMMEL-435 waits for operator sign-off | third' \
+    'pool-disposition: HIMMEL-434 question operator on Telegram, runs the paid step' 'pool-disposition: HIMMEL-436 slice parked, no ask' \
+    '## Other' 'pool-disposition: HIMMEL-437 operator words outside the live state' > "$bk/chief.md"
+v9611render --owed-dir "$bk" --chief-doc "$bk/chief.md"
+w9611="$(grep -F 'data-section="waiting"' "$v9611out")"
+contains 'Waiting on you counts the unsigned specs, the handoff item and the chief lines' "$w9611" 'data-count="5"'
+contains 'a spec past the round cap with no spec row is owed' "$w9611" 'HIMMEL-434-capped.md: latest critic round 3'
+contains 'a spec whose latest critic reads SPEC CLEAN with no spec row is owed' "$w9611" 'HIMMEL-435-clean.md: latest critic round 1 reads SPEC CLEAN'
+not_contains 'a spec with a spec row is not owed' "$w9611" 'HIMMEL-437-signed'
+not_contains 'a spec under the cap with findings is not owed' "$w9611" 'HIMMEL-436-underway'
+not_contains 'a spec of a ticket not open in the version is not owed' "$w9611" 'HIMMEL-999'
+contains 'the handoff open operator item is listed with its action' "$w9611" 'Answer the paid-step ask'
+contains 'a queue segment naming the operator is listed' "$w9611" 'HIMMEL-435 waits for operator sign-off'
+contains 'a pool-disposition line naming the operator is listed' "$w9611" 'operator on Telegram, runs the paid step'
+not_contains 'a pool-disposition line that names no operator is not listed' "$w9611" 'slice parked, no ask'
+not_contains 'a line outside the Live state is not read' "$w9611" 'outside the live state'
+not_contains 'a page that read its sources does not say none was read' "$w9611" 'no operator-owed source read'
+mkdir -p "$W/bk9611-empty/release/v1.1.3"
+: > "$W/bk9611-empty/release/v1.1.3/operator.jsonl"
+v9611render --owed-dir "$W/bk9611-empty"
+contains 'a readable source with nothing owed says nothing is waiting' "$(grep -F 'data-section="waiting"' "$v9611out")" 'nothing is waiting on you'
 
 # --- both pages open dark with no saved choice, whatever the system preference says
 if command -v node >/dev/null 2>&1; then
