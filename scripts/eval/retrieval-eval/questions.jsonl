@@ -2,7 +2,7 @@
 {"id":"q02","kind":"why","src":"selfq","q":"why does a RETASK narrowing or halt need no token while an expansion does","gold":["docs/internals/retask-channel.md"],"gold1":["docs/handover/worker-preface.md","CLAUDE.md"],"reason":["mild DoS"]}
 {"id":"q03","kind":"what","src":"selfq","q":"how do a chief and a worker relate","gold":["docs/glossary.md"],"gold1":["docs/handover/running-a-chief.md"],"reason":[]}
 {"id":"q04","kind":"why","src":"selfq","q":"how does graphify path traverse an entity named in several files","gold":["scripts/graphify/harden-graph.py","CLAUDE.md","AGENTS.md"],"reason":["canonical"]}
-{"id":"q05","kind":"why","src":"selfq","q":"why does the Jira transition at merge need the completes-ticket flag","gold":["docs/handover/worker-preface.md","scripts/handover/merge-on-green.sh"],"reason":["HIMMEL-3059"]}
+{"id":"q05","kind":"why","src":"selfq","q":"why does the Jira transition at merge need the completes-ticket flag","gold":["docs/handover/worker-preface.md","scripts/handover/merge-on-green.sh"],"reason":["completes-ticket"]}
 {"id":"q06","kind":"how","src":"graphify","q":"how does the queue lock work","gold":["scripts/handover/queue-lock.sh","docs/internals/handover-system.md"],"gold1":["docs/handover/worker-preface.md"],"reason":[]}
 {"id":"q07","kind":"how","src":"graphify","q":"how does the RETASK channel nonce work","gold":["docs/internals/retask-channel.md"],"reason":["nonce"]}
 {"id":"q08","kind":"where","src":"graphify","q":"where is the stale index rule defined","gold":["CLAUDE.md","AGENTS.md","scripts/luna/qmd-staleness.sh"],"gold1":["docs/internals/context-architecture.md"],"reason":["not evidence"]}
