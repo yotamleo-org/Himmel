@@ -81,6 +81,7 @@ export interface OperatorRow {
   spec_path?: string;
   spec_sha256?: string;
   plan_path?: string | null;
+  plan_sha256?: string | null;
   verdicts?: Array<{ path: string; sha256: string }>;
   supersedes?: string | null;
   residuals?: number;
