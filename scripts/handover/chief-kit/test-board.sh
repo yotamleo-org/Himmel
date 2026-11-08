@@ -1608,7 +1608,7 @@ mkdir -p "$MG"
 printf '%s\n' '# leg' '## Results' '- 12:00 LIVE — PR 3101 open, watching CI' > "$MG/HIMMEL-9701-N31-mrg-2026-09-21-RESUME.md"
 printf '%s\n' '# console' '' '## Live state' '' 'epics: none' '' '## Results' > "$MG/chief-m.md"
 mg_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-mg_old="$(date -u -d '26 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
+mg_old="$(date -u -d 'yesterday 23:59:59' +%Y-%m-%dT%H:%M:%SZ)"
 node -e "const at = process.argv[1], old = process.argv[2]; console.log(JSON.stringify(Array.from({ length: 62 }, (_, i) => ({ number: 3101 + i, title: 't' + i, mergedAt: i < 61 ? at : old, headRefName: 'feat/m' + i }))))" "$mg_at" "$mg_old" > "$MG/merged.json"
 mgrun() {
     TZ=UTC PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
@@ -1620,7 +1620,7 @@ mgrun >/dev/null; rc=$?
 contains 'merged-today: rc 0' "rc=$rc" 'rc=0'
 jtxt="$(cat "$MG/board.json" 2>/dev/null)"
 jcheck 'merged-today: a worker with a merged PR and no MERGED bullet takes merged_at from the PR mergedAt' 'M.trends.leg_time.today.some((l) => l.leg === "N31" && l.merged_at !== null && l.live_to_merged_min !== null)'
-jcheck 'merged-today: 62 merged PRs, one merged 26 hours ago, count 61 today (not the 60 cap, not 62)' 'M.headline.merged_today === 61'
+jcheck 'merged-today: 62 merged PRs, one merged yesterday inside the last 24 hours, count 61 today (not the 60 cap, not 62)' 'M.headline.merged_today === 61'
 jcheck 'merged-today: the legend names the kinds trajectory, suite, blocked and other beside denial and error' '["denial","error","traj","suite","blocked","other"].every((k) => M.legend.failure[k] && M.legend.failure[k].color && M.legend.failure[k].label)'
 MG_GH_FAIL=1 mgrun >/dev/null; rc=$?
 contains 'failed gh read: rc 0' "rc=$rc" 'rc=0'
