@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# test-questions-v2.sh -- questions-v2.jsonl carries the adjudicated labels of
-# q03, q08, q13, q25 and q30; questions.jsonl (v1) is frozen. No qmd, graphify or model call.
-#
-# Platform guard: Linux/macOS bash.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -14,7 +10,6 @@ pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
 eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (expected '$2', got '$3')"; fi; }
 
-# v1 is frozen: its published scores stay reproducible only while the file is byte-identical.
 V1_SHA256="9cb6f6b51d941a0268a8eabc43b5e784de4ff6ffc230b077060f9b6b7339e7b4"
 eq "v1 is byte-identical to the frozen bank" "$V1_SHA256" "$(sha256sum "$V1" | cut -d' ' -f1)"
 
@@ -27,7 +22,6 @@ fi
 n="$(python3 -I "$HERE/retrieval-eval.py" check --repo "$REPO_ROOT" --questions "$V2")"
 eq "v2 checks clean: 75 rows, unique ids, every gold and gold1 file exists" "75 rc=0" "$n rc=$?"
 
-# Only the five adjudicated rows differ from v1; no v1 gold path is dropped from gold.
 out="$(python3 -I - "$V1" "$V2" <<'PY'
 import json, sys
 
@@ -47,9 +41,9 @@ PY
 eq "v2 changes exactly the five adjudicated rows, keeps every v1 gold path and every other field" \
     "True ['q03', 'q08', 'q13', 'q25', 'q30'] True True" "$out"
 
-# The adjudicated labels (file:line evidence is in the PR body).
-has() { # id list path
-    python3 -I - "$V2" "$1" "$2" "$3" <<'PY'
+has() {
+    local id="$1" field="$2" path="$3"
+    python3 -I - "$V2" "$id" "$field" "$path" <<'PY'
 import json, sys
 rows = {json.loads(l)["id"]: json.loads(l) for l in open(sys.argv[1]) if l.strip()}
 print("yes" if sys.argv[4] in rows[sys.argv[2]].get(sys.argv[3], []) else "no")
