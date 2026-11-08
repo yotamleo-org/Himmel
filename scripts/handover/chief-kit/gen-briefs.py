@@ -12,13 +12,15 @@ runs itself. Ported from the BX/BY session-scratchpad generators.
 
 workers.json is a list of objects. Required keys per worker: label (N<k>), keys
 (ticket keys, first is the doc's), slug, branch (type/slug), title, desc, why,
-prior, scope, scope_short, commit. Optional: search_query and search_symbol (the notes query and the graph
+prior, scope, scope_short, commit (prior is optional for a worker whose inherited mode is resume: the brief then reads
+`none found (<the search query>)`). Optional: search_query and search_symbol (the notes query and the graph
 symbol the brief's search directive names for the worker to run; defaults: the title, and the first Writes path;
 a leg whose Writes is `none named` and sets no search_symbol gets no graph lookup, and neither does a leg in an
 adopted repo, which also gets no jira-himmel search),
 writes (a string copied from the ticket's Writes text;
-ONLY this field supplies the brief's Writes paths, never scope or prior. Missing writes leaves an
-empty Writes line the chief must fill before brief-lint allows launch; `none named` explicitly
+ONLY this field supplies the brief's Writes paths, never scope or prior. An absolute path under --handover-root (a bucket file)
+stays on the line; any other absolute path is dropped. Missing writes leaves an
+empty Writes line, which the brief-lint run below refuses; `none named` explicitly
 means no writes. scope and prior also appear on Writes note, which holds nothing), hook (true: the launcher exports
 the hook-integrity bypass, the brief says so; default false), judge (true: the
 chief runs an opus judge before GO; default false), env (true: the ticket touches CI, infra or the
@@ -108,7 +110,15 @@ the handover root is refused (HIMMEL-5517). Output files, in the bucket: the bri
 each launcher's sha256 is appended to `<manifest stem>.launchers.sha256` beside
 the manifest (sha256sum format), which Telegram /launch-worker checks (HIMMEL-5047).
 
-Exit: 0 ok; 1 a worker is invalid or a worktree failed (nothing written for it); 2 usage.
+context_1m (a non-blank one-line reason; native lane only, never with ab_arm): the brief gets `> **Context:** 1m — operator-ruling: <reason>`, the line
+headed-arm-worker.sh requires for WORKER_SESSION_CONTEXT=1m, and the launcher exports WORKER_SESSION_CONTEXT=1m. Without the key neither is written
+(an Opus worker runs at its profile ceiling).
+The worker's session name (the doc stem) must fit the bus limit of 128 characters, or the run is refused naming it before anything is written.
+A ticket whose mirror row lacks a DoD or Proof is read again after one incremental `jira mirror` (it may be edited since the last sync).
+Every worker brief is run through brief-lint.sh (with HANDOVER_DIR set to --handover-root) right after it is written; a brief it refuses is
+removed, no launcher is written for it, and the run exits 1 with lint's reason.
+
+Exit: 0 ok; 1 a worker is invalid, a worktree failed or brief-lint refused a brief (nothing kept for it); 2 usage.
 """
 import argparse, contextlib, fcntl, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
 from datetime import date as _date, datetime
@@ -119,6 +129,7 @@ import holds  # noqa: E402  the one parser of a Writes line, and the one grant-p
 
 REQUIRED = ['label', 'keys', 'slug', 'branch', 'title', 'desc', 'why', 'prior', 'scope', 'scope_short', 'commit']
 RM_REQUIRED = ['label', 'keys', 'slug', 'release', 'versions', 'state_dir', 'mode']
+BUS_NAME_MAX = 128  # the bus's SESSION_NAME limit (marketplace/plugins/himmel-bus/lib/store.mjs)
 RM_MODEL = 'claude-opus-5-5'
 RM_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'docs', 'handover', 'rm-brief-template.md')
 HOOK_LINE = ("> - **Native lane.** You are launched with the hook-integrity bypass flag because this ticket edits a hook file; "
@@ -352,11 +363,32 @@ def proof_missing(key):
     return ([n for n in ('DoD', 'Proof') if n in names], body)
 
 
+_REFRESHED = set()
+
+
+def refresh_mirror(key):
+    # A ticket edited after the last mirror sync reads stale here. Run the CLI's incremental mirror once per
+    # mirror root (never a second parser of Jira); True only when it ran, so the caller reads the row again.
+    root = os.path.abspath(mirror_dir(key))
+    if root in _REFRESHED:
+        return False
+    _REFRESHED.add(root)
+    cli = jira_cli()
+    r, why = run_jira(cli, ['mirror', '--root', root], env=dict(os.environ, JIRA_PROJECT_KEY=key.split('-')[0]))
+    if r is None or r.returncode != 0:
+        print('gen-briefs: warn: the Jira mirror could not be refreshed for %s (%s)' % (key, why or (r.stderr or r.stdout).strip()[:200]), file=sys.stderr)
+        return False
+    return True
+
+
 def check_proof(worker):
     # A ticket with no DoD or no Proof is not dispatched; print it for the chief to fix first.
+    # A row that would refuse the ticket, or is absent, is read again after one incremental mirror: the ticket may be edited since the last sync.
     refused = []
     for key in worker['keys']:
         got = proof_missing(key)
+        if (got is None or got[0]) and refresh_mirror(key):
+            got = proof_missing(key)
         if got is None:
             print('gen-briefs: warn: %s is not in the Jira mirror, so its DoD and Proof were not checked' % key, file=sys.stderr)
         elif got[0]:
@@ -370,9 +402,14 @@ def validate(worker, i, repo):
         return validate_rm(worker, i)
     if worker.get('kind') is not None:
         die('worker #%d (%s): kind %r must be rm or absent' % (i, worker.get('label', '?'), worker['kind']))
-    missing = [k for k in REQUIRED if not worker.get(k)]
+    inh = worker.get('inherited')
+    resume = isinstance(inh, dict) and inh.get('mode') == 'resume'  # the resume of an ORPHAN PR: its prior art is the PR's own, so none is required
+    missing = [k for k in REQUIRED if not worker.get(k) and not (k == 'prior' and resume)]
     if missing:
         die('worker #%d (%s) missing: %s' % (i, worker.get('label', '?'), ', '.join(missing)))
+    if resume and not worker.get('prior'):
+        # the Prior art line is never left out of a brief: brief-lint accepts none found (<query>) and refuses a bare none
+        worker['prior'] = 'none found (%s)' % ' '.join(search_fields(worker)[0].replace('(', ' ').replace(')', ' ').split())
     if not re.fullmatch(r'N[0-9]{1,5}', worker['label']):
         die('worker #%d: label %r is not N<k> with 1-5 digits (the vault token grammar)' % (i, worker['label']))
     if not isinstance(worker['keys'], list) or not all(re.match(r'^[A-Z]+-\d+$', k) for k in worker['keys']):
@@ -393,6 +430,14 @@ def validate(worker, i, repo):
             die('worker %s: lane %s has no default model; pass a model' % (worker['label'], lane))
         if tier_gate(worker.get('model')):
             die('worker %s: model %s is refused on lane %s; only native workers take an opus or fable model' % (worker['label'], worker.get('model'), lane))
+    if 'context_1m' in worker:
+        reason = worker['context_1m']
+        if not isinstance(reason, str) or not reason.strip() or GRANT_FIELD_BAD_CHAR_RE.search(reason):
+            die("worker %s: context_1m must be a non-blank one-line reason with no backtick or control character (it is the brief's Context ruling line)" % worker['label'])
+        if lane != 'native':
+            die('worker %s: context_1m is native-lane only (lane %s has no 1m context)' % (worker['label'], lane))
+        if worker.get('ab_arm'):
+            die('worker %s: context_1m and ab_arm cannot both be set (headed-arm-worker.sh refuses an A/B arm alongside 1m context)' % worker['label'])
     if worker.get('effort') not in (None,) + EFFORTS:
         die('worker %s: effort %r must be one of %s' % (worker['label'], worker.get('effort'), '|'.join(EFFORTS)))
     tier = worker.get('tier')
@@ -526,13 +571,25 @@ _READ_ONLY = [
 _SCOPE_END = re.compile(r'completes-ticket:|Other live workers|Touch nothing|READ ONLY|READ-ONLY|Stay off')
 
 
-def write_paths(scope):
+def under_root(p, hroot):
+    # The one rule brief-lint.sh applies to an absolute Writes path: normalized, and inside the handover root.
+    if not hroot or os.path.normpath(p) != p.rstrip('/'):
+        return False
+    root = os.path.realpath(hroot)
+    try:
+        return os.path.commonpath((root, os.path.realpath(p))) == root
+    except ValueError:
+        return False
+
+
+def write_paths(scope, hroot=None):
     # The paths the ticket's Writes text names, and nothing else: the collision check holds every path on the
-    # Writes line, so prose here ("find and fix the caller in x") must never reach it.
+    # Writes line, so prose here ("find and fix the caller in x") must never reach it. An absolute path is kept only
+    # when hroot is given and the path is under it (a bucket file, which brief-lint.sh accepts); every other absolute path is dropped.
     scope = _writes_scope(scope)
     out = []
     for _kind, p in holds.parse_text(holds.WRITES_LEAD + ' ' + scope):
-        if p not in out and not os.path.isabs(p):  # the line gen-briefs writes names repo paths only; an absolute bucket path is the chief's to add
+        if p not in out and (not os.path.isabs(p) or under_root(p, hroot)):
             out.append(p)
     return ' '.join(out) or ('none named' if scope.strip() == 'none named' else '')
 
@@ -743,13 +800,13 @@ def jira_cli():
     return os.path.join(primary, 'scripts', 'jira', 'dist', 'index.js')
 
 
-def run_jira(cli, args):
+def run_jira(cli, args, env=None):
     # (completed process or None, why it did not run). A missing CLI, node or a timeout is never read as an answer.
     if not os.path.isfile(cli):
         return None, 'no built jira CLI at %s' % cli
     try:
         # cwd inside the CLI's own checkout: it runs `git rev-parse` from its cwd, and ours may be no repository at all
-        return subprocess.run(['node', cli] + args, capture_output=True, text=True, timeout=120, cwd=os.path.dirname(os.path.abspath(cli))), ''
+        return subprocess.run(['node', cli] + args, capture_output=True, text=True, timeout=120, cwd=os.path.dirname(os.path.abspath(cli)), env=env), ''
     except (OSError, subprocess.SubprocessError) as e:
         return None, 'node could not run %s (%s)' % (cli, e)
 
@@ -1145,7 +1202,7 @@ template_version: 3
 {hookline} `cd` into the worktree, never EnterWorktree.
 > - **Reporting:** BLOCKED / permission prompt / question → the chief first (SendMessage). Never stop on AskUserQuestion. Doc bullets record plain facts; token quote-backs go in your SendMessage reply (HIMMEL-4931).
 > - **Shape denials:** rewrite as one literal command, retry once. Edit files with the Edit tool; a script that must name a seam variable, `unset` or `-u` goes in a file run as `python3 -I <file>`, never a heredoc or `perl -pi` on the command line.
-{abline}{tierline}{ctline}{seriesline}{coreline}
+{abline}{ctx1mline}{tierline}{ctline}{seriesline}{coreline}
 > **Why (read the ticket(s) first, including comments: {gets}):** {why}
 
 > **Prior art:** {prior}
@@ -1172,7 +1229,7 @@ template_version: 3
            branch=l['branch'], base=ctx['base'], nonce=l['nonce'], chief=ctx['chief'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
            hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'], search=search_directive(l, ctx),
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
-           scope=l['scope'], scope_line=write_paths(l.get('writes', '')), others=others, also=also,
+           scope=l['scope'], scope_line=write_paths(l.get('writes', ''), ctx['hroot']), others=others, also=also,
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
                      if l.get('tier') and tier_gate(l['model']) else ''),
            shipct=ship_completes(l['scope'], l.get('lane', 'native'))[0], shipmerge=ship_completes(l['scope'], l.get('lane', 'native'))[1],
@@ -1180,7 +1237,19 @@ template_version: 3
            inhblock=(INHERITED_BLOCK.format(pr=l['inherited']['pr'], authors=', '.join(l['inherited']['authors']), mode=l['inherited']['mode']) + '\n') if l.get('inherited') else '',
            vmline=(VM_LINE + '\n') if VM_RE.search(' '.join(str(l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra'))) else '',
            uiline=(UI_LINE + '\n') if l['profile'] == UI_PROFILE else '',
+           ctx1mline=('\n> **Context:** 1m — operator-ruling: %s\n' % l['context_1m'].strip()) if l.get('context_1m') else '',
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
+
+
+def lint_brief(doc, l, hroot):
+    # The launcher runs brief-lint.sh on this brief, so run it here first. A refused brief is removed and no
+    # launcher is written for it: the chief reads the reason now, not at launch.
+    lint = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'brief-lint.sh')
+    r = subprocess.run(['bash', lint, doc], capture_output=True, text=True, timeout=120, env=dict(os.environ, HANDOVER_DIR=hroot))
+    if r.returncode != 0:
+        os.unlink(doc)
+        die('worker %s: brief-lint refuses the brief (rc %d), so no brief or launcher is kept for it or the workers after it: %s' % (
+            l['label'], r.returncode, ' '.join((r.stderr or r.stdout).split())))
 
 
 def new_worktree_argv(ctx, branch):
@@ -1238,6 +1307,8 @@ def render_launcher(l, ctx, doc):
         lines.append('export WORKER_SESSION_AUTOCOMPACT_AB=%s  # HIMMEL-5193 A/B arm %s' % ('400000' if l['ab_arm'] == '400k' else '200000', l['ab_arm']))
     if l.get('effort'):
         lines.append('export WORKER_SESSION_EFFORT=%s' % l['effort'])
+    if l.get('context_1m'):
+        lines.append('export WORKER_SESSION_CONTEXT=1m  # the brief\'s Context line carries the ruling headed-arm-worker.sh requires for it')
     if ctx['adapter']:
         # headed-arm.sh starts the session in this dir; the worktree (not the primary) is what worker-pretrust trusts and the worker may edit.
         lines.append('export WORKER_SESSION_REPO=%s' % q(l['wt']))
@@ -1350,6 +1421,11 @@ def main():
             l['nonce'] = '%s-%s-%s' % (letter, l['label'], secrets.token_hex(4))
             l['stem'] = '%s-%s-%s-%s' % (l['keys'][0], l['label'], l['slug'], a.date)
             l['wt'] = '%s/.claude/worktrees/%s' % (a.repo, l['branch'].replace('/', '+'))
+        if len(l['stem']) > BUS_NAME_MAX:
+            # the stem is the worker's session name, which the bus registers; a longer one is refused there after the worktree exists
+            die('worker %s: session name %s is %d characters, over the bus limit of %d (marketplace/plugins/himmel-bus/lib/store.mjs SESSION_NAME); shorten the slug by %d' % (
+                l['label'], l['stem'], len(l['stem']), BUS_NAME_MAX, len(l['stem']) - BUS_NAME_MAX))
+        if not rm:
             core_worker_gate(l, ctx)
         if os.path.exists(os.path.join(a.bucket, l['stem'] + '.md')):
             die('%s already exists in the bucket; refusing to overwrite a live worker doc' % (l['stem'] + '.md'))
@@ -1381,6 +1457,8 @@ def main():
             create_series_ledger(l['series_plan'], doc)
         with open(doc, 'w') as f:
             f.write(render_rm_brief(l, ctx) if l.get('kind') == 'rm' else render_brief(l, ctx))
+        if l.get('kind') != 'rm':
+            lint_brief(doc, l, a.handover_root)
         launcher = os.path.join(a.bucket, 'launch-%s.sh' % l['label'])
         with open(launcher, 'w') as f:
             f.write(render_launcher(l, ctx, doc))
