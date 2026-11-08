@@ -1356,6 +1356,11 @@ assert_contains "three bad nonces on one id leave another id approvable" "result
 assert_contains "past the cap, the right nonce without a valid code is refused locked" "result=locked" "$(AFK_SUDO_RUN=1 approve_raw 40 "$a" "$na")"
 assert_contains "a refusal past the cap leaves the id pending" "result=pending" "$(h 41 run-status "$a")"
 assert_contains "past the cap, the right nonce and a valid code still approve" "result=ran id=$a" "$(approve_r 42 "$a" "$(code 42)")"
+c=$(rid "$(rs 50 S1)"); nc=$(state_nonce "$c")
+for k in 51 52 53; do AFK_SUDO_RUN=1 approve_raw "$k" "$c" "$(other_nonce "$nc")" >/dev/null; done
+assert_contains "past the cap, a wrong nonce with a valid code is refused bad-nonce" "result=bad-nonce" "$(AFK_SUDO_RUN=1 approve_raw 61 "$c" "$(other_nonce "$nc") $(code 61)")"
+assert_contains "past the cap, a wrong nonce with a valid code ends the request" "result=denied:bad-nonce" "$(h 62 run-status "$c")"
+assert_contains "a request a wrong nonce and a valid code ended past the cap cannot be approved with the next code" "result=no-pending" "$(AFK_SUDO_RUN=1 approve_raw 91 "$c" "$nc $(code 91)")"
 new_root noncespread; cfg "$ALL" true
 ids=("" "$(rid "$(rs 1 S1)")" "$(rid "$(rs 2 S2)")" "$(rid "$(breq 3 telegram-op "$(code 3)")")")
 for k in 1 2 3; do

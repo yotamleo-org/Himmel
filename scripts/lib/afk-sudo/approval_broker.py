@@ -20,7 +20,9 @@ Approve and deny both need the request's nonce, which only root's notice carries
 nonce never ends a request and never counts towards the broker-wide lock (only a wrong code
 sent with the right nonce does); it counts on that id, and past MAX_WRONG the id answers
 `locked` to an approve or a deny short of the right nonce with a valid unspent code, so further
-guesses learn nothing. Lockdown needs a nonce of its own (lockdown_challenge / lockdown_take).
+guesses learn nothing. Past MAX_WRONG an approve with a valid code and a wrong nonce ends the
+request: one id takes at most MAX_WRONG + 1 nonce-and-code guesses, and requests are capped by
+max_per_hour. Lockdown needs a nonce of its own (lockdown_challenge / lockdown_take).
 """
 import base64
 import fcntl
@@ -328,8 +330,9 @@ class Broker:
 
     def approve(self, rid, code, sender, chat, executor, nonce="", via="telegram", approver=None):
         """Check the nonce and the code; on success run executor(payload) once. Returns (pending, result).
-        A wrong nonce is refused `bad-nonce` and the request stays pending; it counts on that id only (see
-        the module doc), and a valid code sent with it is spent, since it was typed where a look-alike may
+        A wrong nonce is refused `bad-nonce` and the request stays pending (past MAX_WRONG on that id, a wrong
+        nonce sent with a valid code ends it); it counts on that id only (see the module doc), and a valid code
+        sent with it is spent, since it was typed where a look-alike may
         have read it. With the right nonce, a missing or wrong code ends the request and counts towards the
         broker-wide lock. A replayed code (one already spent, e.g. on another slot) is refused and the
         request stays pending. An unknown id ends no request. `via` and `approver` go on every row this
@@ -363,9 +366,14 @@ class Broker:
                 self._save(s)
                 self._refuse("code-check", "locked", p["meta"], id=rid, **who)
             if not self._nonce_ok(p, nonce):
+                capped = p.get("wrong", 0) >= MAX_WRONG
                 p["wrong"] = p.get("wrong", 0) + 1
                 if spend:
                     self._bump(s, hit)
+                if capped:
+                    self._finish(s, rid, "denied:bad-nonce")
+                    self._drop(s, rid)
+                    self._spend(s, t)
                 self._save(s)
                 self._refuse("code-check", "bad-nonce", p["meta"], id=rid, **who)
             result = None

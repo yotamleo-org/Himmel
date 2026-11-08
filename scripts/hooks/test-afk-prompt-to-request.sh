@@ -34,7 +34,9 @@ case "$(cat)" in *'"command":"bash scripts/cr/review-round.sh"'*)
     printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}' ;;
 esac
 EOF
-# Fake sudo: answers `mode` from $T/mode; refuses when it is absent (helper not installed).
+# Fake sudo: logs every call to $T/calls and answers `mode` from $T/mode, refusing when it is absent
+# (helper not installed); `mode -- ARGV` adds `admits=` from $T/admits, and fails as an older helper
+# does when $T/admits is absent.
 cat > "$T/bin/sudo" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$T/calls"

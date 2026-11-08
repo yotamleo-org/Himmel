@@ -383,15 +383,19 @@ again by the helper on every call, so it takes effect on the next verb:
 A session cannot do any of these: the config, the helper and the sudoers rule are root-owned.
 
 **`/afk-lockdown` (slice 4).** The one Telegram verb that only narrows, for a
-lost phone or the end of a trip. Typed by the operator in their private chat, with no
-argument (text after it is refused and nothing runs), it calls the root helper's
-`lockdown --from SENDER --chat CHAT`, which checks the sender and chat against
-`operator_id`, rewrites the config with `"enabled": false` (everything else, mode included,
-untouched), denies the pending request (a `deny` ledger row) and writes a `lockdown` ledger
-row. It works on a station that is already off, and a station stays off until root edits the
-config back: no verb, flag or argument sets `enabled: true` or `mode: "all"`, and
-`lockdown --enable` is a usage error. A lockdown needs no TOTP code (it cannot widen
-anything), and it leaves live grants dead because `grant-spend` answers `disabled`. While
+lost phone or the end of a trip, in two steps because every session runs as the operator's
+uid and can call the helper itself. Typed bare by the operator in their private chat, it
+calls the root helper's `lockdown --from SENDER --chat CHAT`, which only makes root send an
+8-character lockdown nonce through the notice bot (one live at a time, for 120 s; a bare call
+while one is live sends nothing new; with no notice bot it answers `result=no-notice-bot`).
+`/afk-lockdown <nonce>` calls `lockdown --with-nonce` with the nonce on stdin, which checks
+the sender and chat against `operator_id`, spends the nonce, rewrites the config with
+`"enabled": false` (everything else, mode included, untouched), denies every pending request
+(a `deny` ledger row each) and writes a `lockdown` ledger row. Any other text after the
+command is refused and nothing runs. It works on a station that is already off, and a station
+stays off until root edits the config back: no verb, flag or argument sets `enabled: true` or
+`mode: "all"`, and `lockdown --enable` is a usage error. A lockdown needs no TOTP code (it
+cannot widen anything), and it leaves live grants dead because `grant-spend` answers `disabled`. While
 the bridge's own lockdown switch is on, the poller does not consult this route at all.
 
 ## The `op` kind: station ops
@@ -448,11 +452,13 @@ pending op request like any other.
 
 `himmelctl approve <id>`, `himmelctl deny <id>` and `himmelctl approve status <id>` let the
 operator answer a pending request from an SSH shell, for example after a classifier denial when the phone
-is out of reach. It is a thin caller of the same root helper the Telegram route calls:
+is out of reach. A deny carries the request's nonce, as the Telegram `deny <id> <nonce>` does; after three
+wrong nonces on the request it also needs the current code. It is a thin caller of the same root helper the
+Telegram route calls:
 
 ```text
 sudo -n /usr/local/libexec/himmel/afk-sudo approve ID --from OP --chat OP --via ssh --approver USER   # NONCE CODE on stdin
-sudo -n /usr/local/libexec/himmel/afk-sudo deny    ID --from OP --chat OP --via ssh --approver USER
+sudo -n /usr/local/libexec/himmel/afk-sudo deny    ID --from OP --chat OP --via ssh --approver USER   # NONCE [CODE] on stdin
 sudo -n /usr/local/libexec/himmel/afk-sudo status  ID
 ```
 
