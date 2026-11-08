@@ -1956,6 +1956,25 @@ assert_rc "8319 ctl substitution inside an unmodelled expansion reads an ssh key
 # shellcheck disable=SC2016
 assert_rc "8319 ctl same, assigned, reads a file under the secrets directory"        2 "$(run_case "$(j_bash 'X=${X:-$(cat ~/.himmel/secrets/x)}')")"
 
+# The peer-bridge state dir (~/.himmel/peer-bridge) and key dir (~/.config/himmel/peer-bridge)
+# hold a bot token, the fence key and the peer inbox: no session reads them. Real files
+# under a temp HOME, so the plain-file fast path sees them as it would on a station.
+pb_home="$(mktemp -d "${TMPDIR:-/tmp}/brs-peer.XXXXXX")" || { echo "FAIL: mktemp"; exit 1; }
+mkdir -p "$pb_home/.config/himmel/peer-bridge" "$pb_home/.himmel/peer-bridge/goomal" "$pb_home/work"
+: > "$pb_home/.config/himmel/peer-bridge/env"
+: > "$pb_home/.config/himmel/peer-bridge/peers.json"
+: > "$pb_home/.config/himmel/peer-bridge/hmac.key"
+: > "$pb_home/.himmel/peer-bridge/goomal/inbox.jsonl"
+: > "$pb_home/work/notes.txt"
+assert_rc "peer-bridge Bash cat the key-dir env"        2 "$(run_case "$(j_bash "cat $pb_home/.config/himmel/peer-bridge/env")" "HOME=$pb_home")"
+assert_rc "peer-bridge Bash cat peers.json"             2 "$(run_case "$(j_bash "cat $pb_home/.config/himmel/peer-bridge/peers.json")" "HOME=$pb_home")"
+assert_rc "peer-bridge Bash cat a relative path from the parent dir" 2 "$(cd "$pb_home/.config/himmel" && run_case "$(j_bash 'cat peer-bridge/env')" "HOME=$pb_home")"
+assert_rc "peer-bridge Grep over the key dir"           2 "$(run_case "$(j_grep "$pb_home/.config/himmel/peer-bridge/")" "HOME=$pb_home")"
+assert_rc "peer-bridge Read the state-dir inbox"        2 "$(run_case "$(j_read "$pb_home/.himmel/peer-bridge/goomal/inbox.jsonl")" "HOME=$pb_home")"
+assert_rc "peer-bridge Bash cat hmac.key (basename rule)" 2 "$(run_case "$(j_bash "cat $pb_home/.config/himmel/peer-bridge/hmac.key")" "HOME=$pb_home")"
+assert_rc "peer-bridge an unrelated file stays readable" 0 "$(run_case "$(j_bash "cat $pb_home/work/notes.txt")" "HOME=$pb_home")"
+rm -rf "$pb_home"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."
