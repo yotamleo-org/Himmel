@@ -27,12 +27,12 @@ SESSION_LANE_HEADROOM_URL=http://127.0.0.1:8787
 
 _session_lane_walk_chain() {
     local p line pp comm n=0
-    SESSION_LANE_AGENT="" SESSION_LANE_CLAUDE_PID_OK=0
-    [ -n "${CLAUDE_PID:-}" ] || SESSION_LANE_CLAUDE_PID_OK=1
+    SESSION_LANE_AGENT="" SESSION_LANE_CLAUDE_PID_SEEN=0
+    [ -n "${CLAUDE_PID:-}" ] || SESSION_LANE_CLAUDE_PID_SEEN=1
     p=$$
     while [ -n "$p" ] && [ "$p" -gt 1 ] 2>/dev/null && [ "$n" -lt 64 ]; do
         n=$((n + 1))
-        [ "$p" = "${CLAUDE_PID:-}" ] && SESSION_LANE_CLAUDE_PID_OK=1
+        [ "$p" = "${CLAUDE_PID:-}" ] && SESSION_LANE_CLAUDE_PID_SEEN=1
         line=$(ps -o ppid=,comm= -p "$p" 2>/dev/null) || break
         line="${line#"${line%%[![:space:]]*}"}"
         pp=${line%%[[:space:]]*}
@@ -77,6 +77,6 @@ session_lane_claude_only() {
         '') echo "no claude process in the process chain"; return 1 ;;
         *) echo "process chain runs under $SESSION_LANE_AGENT"; return 1 ;;
     esac
-    if [ "$SESSION_LANE_CLAUDE_PID_OK" -ne 1 ]; then echo "CLAUDE_PID is not an ancestor"; return 1; fi
+    if [ "$SESSION_LANE_CLAUDE_PID_SEEN" -ne 1 ]; then echo "CLAUDE_PID is not an ancestor"; return 1; fi
     return 0
 }
