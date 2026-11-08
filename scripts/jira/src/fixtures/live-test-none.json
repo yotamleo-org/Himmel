@@ -1,0 +1,7 @@
+{
+  "context": false,
+  "own_keys": [],
+  "test_project": null,
+  "problem": "no JIRA_TEST_PROJECT is set in himmel.conf or himmel.conf.local",
+  "jira_configured": true
+}

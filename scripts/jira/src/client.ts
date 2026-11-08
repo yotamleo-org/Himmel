@@ -1,33 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { basename, dirname, join } from 'node:path';
 import { resolveSecrets } from '../../lib/resolve-secrets.mjs';
+import { envFilePath, profileFilePath, readEnvFile, underTest } from './env-file.js';
 import { preRead, recordVersionWrite, versionWriteScope, type Getter, type WriteRequest } from './release/version-writes.js';
-
-// The .env is found from this file's own install path, never the cwd: a run
-// from another repo must still reach the credentials. A worktree install has
-// no .env of its own, so the primary checkout (git's common dir, asked from the
-// script's directory) and then HIMMEL_REPO are tried in turn.
-function envFilePath(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const own = join(here, '..', '..', '..', '.env');
-  if (existsSync(own)) return own;
-  const candidates: string[] = [];
-  try {
-    const common = execFileSync(
-      'git',
-      ['rev-parse', '--path-format=absolute', '--git-common-dir'],
-      { encoding: 'utf8', cwd: here, stdio: ['ignore', 'pipe', 'ignore'] },
-    ).trim();
-    candidates.push(join(dirname(common), '.env'));
-  } catch {
-    // not inside a git checkout: HIMMEL_REPO is the only other anchor
-  }
-  if (process.env.HIMMEL_REPO) candidates.push(join(process.env.HIMMEL_REPO, '.env'));
-  return candidates.find((c) => existsSync(c)) ?? own;
-}
 
 const DOTENV_KEYS = new Set([
   'JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_PROJECT_KEY',
@@ -47,25 +24,10 @@ function resolveFromKeyring(root: string): void {
   for (const [k, v] of Object.entries(resolveSecrets(root, missing))) process.env[k] ||= v;
 }
 
-// Match the shell loader's station profile selection; project config cannot
-// choose the Jira destination. A plain (unlinked) himmel.conf has no profiles.
-function profileFilePath(confDir: string): string | undefined {
-  const env = { HIMMEL_PROFILE: process.env.HIMMEL_PROFILE };
-  readEnvFile(join(confDir, 'himmel.conf.local'), new Set(['HIMMEL_PROFILE']), env);
-  const name = env.HIMMEL_PROFILE;
-  if (!name || name.startsWith('.') || !/^[A-Za-z0-9._-]+$/.test(name)) return;
-  try {
-    const target = resolve(confDir, readlinkSync(join(confDir, 'himmel.conf')));
-    return join(dirname(target), 'profiles', `${name}.conf`);
-  } catch {
-    return; // Not a link: there is no station profile directory.
-  }
-}
-
 export function loadEnvFile(envPath: string): void {
   const confDir = process.env.HIMMEL_CONFIG_DIR || join(process.env.HOME || homedir(), '.himmel');
   readEnvFile(join(confDir, 'himmel.conf.local'), CONFIG_KEYS);
-  const profile = profileFilePath(confDir);
+  const profile = profileFilePath(confDir, true);
   if (profile) readEnvFile(profile, new Set(['JIRA_BASE_URL']));
   readEnvFile(join(confDir, 'himmel.conf'), CONFIG_KEYS);
   let projectRoot: string | undefined;
@@ -79,41 +41,6 @@ export function loadEnvFile(envPath: string): void {
   if (projectRoot) readEnvFile(join(projectRoot, '.env'), new Set(['JIRA_PROJECT_KEY']));
   resolveFromKeyring(dirname(envPath));
   readEnvFile(envPath, DOTENV_KEYS);
-}
-
-function stripInlineComment(value: string): string {
-  let quote = '';
-  let started = false;
-  let escaped = false;
-  for (let i = 0; i < value.length; i++) {
-    const char = value[i];
-    if (!started) {
-      if (char === ' ' || char === '\t') continue;
-      started = true;
-      if (char === '"' || char === "'") { quote = char; continue; }
-    }
-    if (quote) {
-      if (quote === '"' && escaped) { escaped = false; continue; }
-      if (quote === '"' && char === '\\') { escaped = true; continue; }
-      if (char === quote) quote = '';
-      continue;
-    }
-    if (char === '#' && i > 0 && /[ \t]/.test(value[i - 1])) return value.slice(0, i);
-  }
-  return value;
-}
-
-function readEnvFile(envPath: string, keys: ReadonlySet<string>, env: NodeJS.ProcessEnv = process.env): void {
-  if (!existsSync(envPath)) return;
-  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
-    const [key, ...rest] = trimmed.split('=');
-    if (!keys.has(key.trim())) continue;
-    // An exported-but-empty value is not usable (baseUrl() rejects it), so it
-    // must not shadow the file: `||=`, not `??=`.
-    env[key.trim()] ||= stripInlineComment(rest.join('=')).trim();
-  }
 }
 
 // Normalize JIRA_* env vars regardless of how they got into
@@ -148,10 +75,6 @@ export function normalizeEnv(): void {
   }
 }
 
-// A test never loads the station's himmel.conf, project .env or keyring on its own: under vitest or
-// bun (NODE_ENV=test) the automatic load is skipped, whatever the cwd or config, and a test that
-// wants a file calls loadEnvFile(path) itself. A real CLI or MCP run still loads at import.
-const underTest = (): boolean => !!process.env.VITEST || process.env.NODE_ENV === 'test';
 let envLoaded = false;
 function ensureEnvLoaded(): void {
   if (envLoaded) return;
