@@ -54,7 +54,7 @@ KEY = re.compile(r"\[([A-Z][A-Z0-9]*-[0-9]+)\]")
 
 
 class Unknown(Exception):
-    """A git read failed or timed out; the detector says unknown rather than guess."""
+    pass
 
 
 def parse_body(text):
@@ -73,7 +73,6 @@ def parse_body(text):
 
 
 def git(repo, *args, ok=(0,)):
-    """(rc, stdout bytes) of one bounded git call; Unknown on a timeout, a missing git or an rc outside `ok`."""
     env = {k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE")}
     env["GIT_TERMINAL_PROMPT"] = "0"
     try:
@@ -103,8 +102,6 @@ def have(repo, sha):
 
 
 def detect(repo, head, base, pr=None):
-    """(rows, reason): rows is [{file, other_prs, resolution, merge}] for each conflicted file, newest merge first
-    (a file conflicted in several merges is listed once, its other_prs the union); reason is "" or why it is unknown."""
     try:
         if not have(repo, head) and pr:
             git(repo, "fetch", "--no-write-fetch-head", "origin", "refs/pull/%d/head" % pr)
@@ -139,7 +136,6 @@ def detect(repo, head, base, pr=None):
 
 
 def gh_json(repo, *args):
-    """gh runs inside the repo under review, so a call from another checkout reads the right repository."""
     try:
         r = subprocess.run(["gh"] + list(args), capture_output=True, text=True, timeout=GH_SECS, cwd=repo)
     except (subprocess.TimeoutExpired, OSError):
@@ -153,13 +149,11 @@ def gh_json(repo, *args):
 
 
 def outside_pr(repo, n):
-    """Whether PR n comes from a fork; an unreadable answer is False."""
     d = gh_json(repo, "pr", "view", str(n), "--json", "isCrossRepository")
     return bool(isinstance(d, dict) and d.get("isCrossRepository"))
 
 
 def trust_patterns(repo, base):
-    """The regexes of ci-trust-paths.txt as the base ref has it, else []."""
     try:
         raw = text(repo, "show", "%s:%s" % (base, TRUST_LIST))
     except Unknown:
@@ -185,7 +179,6 @@ def repo_slug(repo):
 
 
 def ledger_root(repo, override):
-    """The conflicts directory, or None when no handover root is configured."""
     if override:
         return os.path.join(override, SUBDIR)
     judge_accuracy.LEDGER_SUBDIR = SUBDIR
@@ -193,7 +186,6 @@ def ledger_root(repo, override):
 
 
 def write_exclusive(path, data):
-    """Create `path` with `data` only if it does not exist (temp file, then link(2)); True if this call created it."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = "%s.tmp-%d-%s" % (path, os.getpid(), os.urandom(8).hex())
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
@@ -217,7 +209,6 @@ def machine_row(r):
 
 
 def record(snap, repo, base, ledger, source):
-    """The machine line for one PR snapshot; writes the ledger file when there is something to record."""
     pr = int(snap["number"])
     root = ledger_root(repo, ledger)
     if root is None:

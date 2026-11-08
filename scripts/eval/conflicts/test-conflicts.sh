@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# scripts/eval/conflicts/test-conflicts.sh - suite for conflicts.py (slice S3 of the no-file-holds work): the detector, the body
-# parser, the recorder and the backfill. Temp git repos and fixture gh/git shims only: no network, never the
-# real bucket, registry or ~/.himmel.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -28,7 +25,6 @@ sha() { sha256sum "$1" | cut -d' ' -f1; }
 
 command -v python3 >/dev/null 2>&1 || { echo "SKIP test-conflicts: python3 not on PATH"; exit 0; }
 
-# fixture gh: `pr view N` answers isCrossRepository (PR 3 is an outside PR), `pr list` returns two merged PRs; argv is logged
 cat > "$TMP/shim/gh" <<'SH'
 #!/bin/sh
 printf '%s\n' "$*" >> "$TMP_GH_LOG"
@@ -56,8 +52,6 @@ export PATH="$TMP/shim:$PATH"
 
 g() { "$REAL_GIT" -C "$1" "${@:2}"; }
 
-# build NAME MODE: main has f.sh (3 lines); branch B edits line 1; main gets "x (#12)"; B merges main and
-# resolves as MODE: merged | ours (B's side) | theirs (main's side) | deleted | clean (different lines)
 build() {
   local r="$TMP/$1" mode="$2"
   mkdir -p "$r"
@@ -87,10 +81,8 @@ build() {
 
 det() { python3 -I "$CONF" detect --repo-dir "$1" --head "$2" --base-ref main "${@:3}" 2>&1; }
 
-# 0. the script exists
 if [ -f "$CONF" ]; then pass "conflicts.py exists"; else fail "conflicts.py exists"; echo "RESULT pass=$PASS fail=$FAIL"; exit 1; fi
 
-# 1. detector: the four resolutions and the clean merge
 for mode in merged ours theirs deleted; do
   build "d-$mode" "$mode"
   head="$(g "$TMP/d-$mode" rev-parse B)"
@@ -101,15 +93,14 @@ build d-clean clean
 out="$(det "$TMP/d-clean" "$(g "$TMP/d-clean" rev-parse B)")"
 eq "detect clean merge prints nothing" "$out" ""
 
-# 1b. main is squash-merged: once the squash commit is on main, the head's own merges still read as the branch's
 build d-squash merged
 g "$TMP/d-squash" checkout -q main
 g "$TMP/d-squash" merge --squash B >/dev/null 2>&1
 g "$TMP/d-squash" commit -q -m "t (#31)"
+eq "squash commit is on main" "$(g "$TMP/d-squash" log -1 --format=%s main)" "t (#31)"
 out="$(det "$TMP/d-squash" "$(g "$TMP/d-squash" rev-parse B)")"
 has "detect after the squash commit reached main" "$out" "f.sh"
 
-# 2. more than 20 merge commits: unknown, no file listed
 build d-many merged
 r="$TMP/d-many"
 for i in $(seq 1 21); do
@@ -122,7 +113,6 @@ out="$(det "$r" "$(g "$r" rev-parse B)")"
 eq "detect over 20 merges" "$out" "unknown (over 20 merges)"
 hasnt "over 20 merges lists no file" "$out" "f.sh"
 
-# 3. a head missing from the store: one bounded no-write-fetch-head fetch, FETCH_HEAD untouched
 build fork merged
 g "$TMP/fork" update-ref refs/pull/7/head "$(g "$TMP/fork" rev-parse B)"
 R2="$TMP/fork2"
@@ -140,7 +130,6 @@ eq "fork head fetched once" "$(grep -c 'fetch --no-write-fetch-head' "$TMP/gitsh
 eq "FETCH_HEAD byte-identical" "$(sha "$FH")" "$before"
 has "fork head detected after fetch" "$out" "f.sh"
 
-# 4. body parser
 parsed="$(python3 -I - "$HERE" <<'PY'
 import sys
 sys.path.insert(0, sys.argv[1])
@@ -159,7 +148,6 @@ hasnt "parser: stops at next ##" "$parsed" "'z'"
 hasnt "parser: ignores other sections" "$parsed" "'a'"
 has "parser: no section is empty" "$parsed" "[]"
 
-# 5. record
 build rec merged
 rec="$TMP/rec"
 mkdir -p "$rec/scripts/ci"
@@ -193,7 +181,6 @@ eq "second run prints kept" "$out" "kept"
 eq "second run leaves bytes alone" "$(sha "$F")" "$b4"
 eq "no temp file left behind" "$(find "$L/conflicts" -name '31.jsonl*' | sed 's|.*/||')" "31.jsonl"
 
-# trust_path comes from the base ref's ci-trust-paths.txt
 printf '# c\n^f\\.sh$\n' > "$rec/scripts/ci/ci-trust-paths.txt"
 g "$rec" checkout -q main; g "$rec" add scripts/ci/ci-trust-paths.txt; g "$rec" commit -q -m "trust list"; g "$rec" checkout -q B
 sed -e 's/"number":31/"number":32/' "$TMP/snap.json" > "$TMP/snap32.json"
@@ -201,7 +188,6 @@ python3 -I "$CONF" record --snapshot "$TMP/snap32.json" --repo-dir "$rec" --base
 trust="$(python3 -I -c 'import json,sys; print([(r["file"], r["trust_path"]) for r in map(json.loads, open(sys.argv[1]))])' "$L/conflicts/32.jsonl")"
 eq "trust_path from the base ref list" "$trust" "[('f.sh', True), ('g.txt', False)]"
 
-# no section and no conflict: none, no file; no --ledger-dir: the judge_accuracy bucket rule
 build rec-clean clean
 CH="$(g "$TMP/rec-clean" rev-parse B)"
 cat > "$TMP/snap-none.json" <<JSON
@@ -215,7 +201,6 @@ out="$(python3 -I "$CONF" record --snapshot "$TMP/snap34.json" --repo-dir "$rec"
 has "default ledger dir wrote" "$out" "wrote:2"
 if [ -f "$TMP/ho/u/rec/conflicts/34.jsonl" ]; then pass "default ledger dir is the bucket's conflicts dir"; else fail "default ledger dir is the bucket's conflicts dir: $(find "$TMP/ho" -type f)"; fi
 
-# unknown detection writes nothing
 cat > "$TMP/snap-unk.json" <<JSON
 {"number":35,"title":"feat(x): [HIMMEL-9] t","body":"## Conflicts resolved\n- f.sh vs #12: x\n","mergedAt":"","mergeCommit":null,"headRefOid":"$(g "$r" rev-parse B)","isCrossRepository":false}
 JSON
@@ -223,7 +208,6 @@ out="$(python3 -I "$CONF" record --snapshot "$TMP/snap-unk.json" --repo-dir "$r"
 eq "unknown detection prints unknown" "$out" "unknown"
 if [ ! -e "$L/conflicts/35.jsonl" ]; then pass "unknown writes no file"; else fail "unknown writes no file"; fi
 
-# 6. backfill: two merged PRs from the fixture gh
 cat > "$TMP/gh-list.json" <<JSON
 [{"number":41,"title":"feat(x): [HIMMEL-9] a","body":"## Conflicts resolved\n- f.sh vs #12: a\n","mergedAt":"2026-11-03T10:00:00Z","mergeCommit":{"oid":"c41"},"headRefOid":"$RHEAD","isCrossRepository":false},
  {"number":42,"title":"feat(x): [HIMMEL-9] b","body":"## Conflicts resolved\n- f.sh vs #12: b\n","mergedAt":"2026-11-04T10:00:00Z","mergeCommit":{"oid":"c42"},"headRefOid":"$RHEAD","isCrossRepository":false}]
@@ -237,7 +221,6 @@ eq "backfill wrote two files" "$(find "$BL/conflicts" -name '*.jsonl' | sort | s
 srcs="$(python3 -I -c 'import json,sys; print(sorted({json.loads(l)["source"] for f in sys.argv[1:] for l in open(f)}))' "$BL/conflicts/41.jsonl" "$BL/conflicts/42.jsonl")"
 eq "backfill rows say source backfill" "$srcs" "['backfill']"
 
-# a listing at gh's limit is refused, not silently cut
 python3 -I -c 'import json; print(json.dumps([{"number": n, "title": "t", "body": "", "mergedAt": "2026-11-05T10:00:00Z", "mergeCommit": None, "headRefOid": "", "isCrossRepository": False} for n in range(1, 501)]))' > "$TMP_GH_LIST"
 out="$(python3 -I "$CONF" backfill --since 2026-11-01T00:00:00Z --repo-dir "$rec" --base-ref main --ledger-dir "$TMP/BL2" 2>&1)"
 rc=$?
