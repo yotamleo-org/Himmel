@@ -477,12 +477,6 @@ if [ -n "$DNOOP" ]; then
     fi
 fi
 
-# A --pr verdict (GO or NO-GO, not --delta-noop) records which ceilings ledger
-# rows were open for the PR's touched files at ruling time: the anchor's
-# ceiling-lookup.sh --ids (ids, files, anchors and tickets only, so the record
-# can be quoted and is the same whatever session runs this), run in the cwd's
-# repo over origin/main...<head>. Any failure records `not read`, never a
-# refusal. A CEILINGS: block typed in the evidence is context only.
 CEILINGS_BLOCK=""
 if [ -n "$PR" ] && [ -z "$DNOOP" ]; then
     if [ ! -f "$ANCHOR/scripts/ledger/ceiling-lookup.sh" ]; then

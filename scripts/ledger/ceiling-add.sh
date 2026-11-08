@@ -56,7 +56,6 @@ split_tab() {
 
 sha256() { { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-64; }
 
-# check_row <where> file anchor ceiling trigger ticket state note pr <cap>
 check_row() {
     local w=$1 f=$2 a=$3 c=$4 t=$5 k=$6 s=$7 n=$8 p=$9 cap=${10} v
     for v in "$f" "$a" "$c" "$t" "$k" "$s" "$n" "$p"; do
@@ -84,16 +83,16 @@ check_row() {
 ledger_resolve || { echo "ceiling-add: no ledger path ($LEDGER_WHY)" >&2; exit 2; }
 LEDGER=$LEDGER_PATH
 
-# run_locked <fn> ...: run fn under the ledger lock; fn returns 0 written,
-# 11 refused, 12 a write failed. Any other status is with_lock's own.
+RC_ROW_REFUSED=11
+RC_WRITE_FAILED=12
 run_locked() {
     local rc=0
     mkdir -p "$(dirname "$LEDGER")" 2>/dev/null || { echo "ceiling-add: cannot create $(dirname "$LEDGER")" >&2; exit 2; }
     with_lock "$LEDGER.lock" "$@" || rc=$?
     case "$rc" in
         0) return 0 ;;
-        11) exit 1 ;;
-        12) echo "ceiling-add: writing $LEDGER failed" >&2; exit 2 ;;
+        "$RC_ROW_REFUSED") exit 1 ;;
+        "$RC_WRITE_FAILED") echo "ceiling-add: writing $LEDGER failed" >&2; exit 2 ;;
         *) echo "ceiling-add: could not take or hold the ledger lock $LEDGER.lock (rc=$rc); nothing written. Once no ceiling-add.sh is running, remove $LEDGER.lock and re-run." >&2
            exit 2 ;;
     esac
@@ -124,9 +123,9 @@ add)
     [ "$REFUSED" -eq 0 ] || exit 1
     do_add() {
         local id
-        ensure_header || return 12
-        id=$(next_id) || return 12
-        printf '%s\t%s\t%s\t%s\t%s\t%s\topen\t%s\t%s\t%s\n' "$id" "$F" "$A" "$C" "$T" "$K" "$TODAY" "$P" "$N" >> "$LEDGER" || return 12
+        ensure_header || return "$RC_WRITE_FAILED"
+        id=$(next_id) || return "$RC_WRITE_FAILED"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\topen\t%s\t%s\t%s\n' "$id" "$F" "$A" "$C" "$T" "$K" "$TODAY" "$P" "$N" >> "$LEDGER" || return "$RC_WRITE_FAILED"
         printf '%s\n' "$id"
     }
     run_locked do_add
@@ -145,15 +144,15 @@ set)
     [ -n "$N" ] || usage "--note is required"
     do_set() {
         local cur row f a c t k
-        [ -s "$LEDGER" ] || { refuse "no ledger at $LEDGER"; return 11; }
-        cur=$(ledger_current "$LEDGER") || { refuse "the ledger is $cur"; return 11; }
+        [ -s "$LEDGER" ] || { refuse "no ledger at $LEDGER"; return "$RC_ROW_REFUSED"; }
+        cur=$(ledger_current "$LEDGER") || { refuse "the ledger is $cur"; return "$RC_ROW_REFUSED"; }
         row=$(printf '%s\n' "$cur" | awk -F '\t' -v id="$I" '$1 == id')
-        [ -n "$row" ] || { refuse "no row $I in $LEDGER"; return 11; }
+        [ -n "$row" ] || { refuse "no row $I in $LEDGER"; return "$RC_ROW_REFUSED"; }
         split_tab "$row"
         f=${FIELDS[1]} a=${FIELDS[2]} c=${FIELDS[3]} t=${FIELDS[4]} k=${FIELDS[5]}
         check_row "set $I" "$f" "$a" "$c" "$t" "$k" "$S" "$N" "$P" 2000
-        [ "$REFUSED" -eq 0 ] || return 11
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$I" "$f" "$a" "$c" "$t" "$k" "$S" "$TODAY" "$P" "$N" >> "$LEDGER" || return 12
+        [ "$REFUSED" -eq 0 ] || return "$RC_ROW_REFUSED"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$I" "$f" "$a" "$c" "$t" "$k" "$S" "$TODAY" "$P" "$N" >> "$LEDGER" || return "$RC_WRITE_FAILED"
     }
     run_locked do_set
     ;;
@@ -169,7 +168,6 @@ import)
     done
     [ -n "$DRAFT" ] || usage "import needs a draft file"
     [ -f "$DRAFT" ] && [ -r "$DRAFT" ] || usage "cannot read draft $DRAFT"
-    # validate and append the same bytes: both passes read one private copy
     SNAP=$(mktemp "${TMPDIR:-/tmp}/ceiling-draft.XXXXXX") || usage "cannot create a temp file"
     trap 'rm -f "$SNAP"' EXIT
     cp -- "$DRAFT" "$SNAP" || usage "cannot read draft $DRAFT"
@@ -193,12 +191,12 @@ import)
     if [ "$CHECK" -eq 1 ]; then echo "import --check: $DRAFT passes"; exit 0; fi
     do_import() {
         local keys tmp id num line f a c t k s n key n_open=0 n_lifted=0 n_dropped=0 n_obsolete=0 added=0 skipped=0 ln=0
-        ensure_header || return 12
+        ensure_header || return "$RC_WRITE_FAILED"
         keys=$(awk -F '\t' 'NR > 1 { print $2 "\t" $3 "\t" $4 }' "$LEDGER" | while IFS= read -r l; do
-            printf '%s\t%s\n' "${l%$'\t'*}" "$(printf '%s' "${l##*$'\t'}" | sha256)"; done) || return 12
-        id=$(next_id) || return 12
+            printf '%s\t%s\n' "${l%$'\t'*}" "$(printf '%s' "${l##*$'\t'}" | sha256)"; done) || return "$RC_WRITE_FAILED"
+        id=$(next_id) || return "$RC_WRITE_FAILED"
         num=$((10#${id#C-}))
-        tmp=$(mktemp "$(dirname "$LEDGER")/.ceiling-import.XXXXXX") || return 12
+        tmp=$(mktemp "$(dirname "$LEDGER")/.ceiling-import.XXXXXX") || return "$RC_WRITE_FAILED"
         while IFS= read -r line || [ -n "$line" ]; do
             ln=$((ln + 1))
             [ -n "$line" ] || continue
@@ -208,14 +206,12 @@ import)
             key="$f"$'\t'"$a"$'\t'"$(printf '%s' "$c" | sha256)"
             if printf '%s\n' "$keys" | grep -qxF -- "$key"; then skipped=$((skipped + 1)); continue; fi
             keys="$keys"$'\n'"$key"
-            printf 'C-%04d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$num" "$f" "$a" "$c" "$t" "$k" "$s" "$TODAY" "$P" "$n" >> "$tmp" || { rm -f "$tmp"; return 12; }
+            printf 'C-%04d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$num" "$f" "$a" "$c" "$t" "$k" "$s" "$TODAY" "$P" "$n" >> "$tmp" || { rm -f "$tmp"; return "$RC_WRITE_FAILED"; }
             num=$((num + 1)) added=$((added + 1))
             case "$s" in open) n_open=$((n_open + 1)) ;; lifted) n_lifted=$((n_lifted + 1)) ;;
                 dropped) n_dropped=$((n_dropped + 1)) ;; obsolete) n_obsolete=$((n_obsolete + 1)) ;; esac
         done < "$SNAP"
-        # one append of every new row under the lock; a reader racing it sees
-        # whole rows only (ledger_current leaves out a torn last line)
-        cat "$tmp" >> "$LEDGER" || { rm -f "$tmp"; return 12; }
+        cat "$tmp" >> "$LEDGER" || { rm -f "$tmp"; return "$RC_WRITE_FAILED"; }
         rm -f "$tmp"
         printf 'import: %s rows (open %s, lifted %s, dropped %s%s), skipped %s already in the ledger\n' \
             "$added" "$n_open" "$n_lifted" "$n_dropped" "$([ "$n_obsolete" -eq 0 ] || printf ', obsolete %s' "$n_obsolete")" "$skipped"

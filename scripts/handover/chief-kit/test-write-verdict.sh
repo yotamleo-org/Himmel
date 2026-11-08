@@ -63,7 +63,6 @@ mkdir -p "$root" || exit 1
 export USER_SLUG=tuser
 # every verdict records its judge; section 24 unsets these to test the refusal
 export HIMMEL_VERDICT_MODEL=test-model HIMMEL_VERDICT_EFFORT=high
-# a --pr verdict runs the ceilings lookup: pin its ledger inside the temp dir
 export HIMMEL_CEILINGS_LEDGER="$tmp/no-ceilings-ledger.tsv"
 case "$HIMMEL_CEILINGS_LEDGER" in "$tmp"/*) ;; *) echo "FAIL: the ceilings ledger escapes the temp dir"; exit 1 ;; esac
 unset HIMMEL_BUCKET_DIR
@@ -953,11 +952,6 @@ rc=0; wv q27h GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
 check "27: the harness checkout with no --repo still writes" "$rc" 0
 check "27: it lands in the harness bucket" "$(ls "$scope_dir/q27h" 2>/dev/null | wc -l | tr -d ' ')" 1
 
-# --- 28. a --pr verdict carries the writer's own ceilings lookup --------------
-# The writer runs its anchor's ceiling-lookup.sh --ids over origin/main...<head>
-# in the cwd's repo and signs the header and id lines above the evidence: no
-# ceiling or trigger text, GO and NO-GO alike, whatever session runs it. A typed
-# CEILINGS: block in the evidence is context only and never stops the write.
 cx="$tmp/fx28"
 git init -q "$cx" || exit 1
 cx_git() { git -C "$cx" -c user.email=t@t -c user.name=t -c commit.gpgsign=false "$@"; }
@@ -972,7 +966,6 @@ printf 'id\tfile\tanchor\tceiling\ttrigger\tticket\tstate\tdate\tpr\tnote\nC-000
 printf 'Checked a.sh.\n' > "$evd/ev28.md"
 printf 'class: other\nclass-reason: fixture\nChecked a.sh.\n' > "$evd/ev28n.md"
 ids28=$(printf 'C-0001\ta.sh\tdo_a\tHIMMEL-1')
-# rec28 <file>: the record's block above the evidence line `Checked a.sh.`
 above28() { awk '/^Checked a\.sh\.$/ { exit } { print }' "$1"; }
 for ans in GO NO-GO; do
     evf="$evd/ev28.md"; [ "$ans" = NO-GO ] && evf="$evd/ev28n.md"
@@ -988,7 +981,6 @@ rc=0; out=$(cd "$cx" && HIMMEL_CEILINGS_LEDGER="$tmp/ceilings28.tsv" ANTHROPIC_B
     wv q28x GO "$H28" --evidence-file "$evd/ev28.md" 2>&1) || rc=$?
 check "28: under a claudex env the verdict is written" "$rc" 0
 contains "28: under a claudex env the ids are still recorded (--ids is ungated)" "$(above28 "$out")" "$ids28"
-# R33: a typed block whose count differs is context only, GO and NO-GO alike
 printf 'CEILINGS: 5 open rows for 3 of 9 touched files (ledger /elsewhere)\nChecked a.sh.\n' > "$evd/typed28.md"
 printf 'class: other\nclass-reason: fixture\nCEILINGS: none for the 9 touched files\nChecked a.sh.\n' > "$evd/typed28n.md"
 for ans in GO NO-GO; do
@@ -997,7 +989,6 @@ for ans in GO NO-GO; do
     check "28: a typed block with a different count is written ($ans)" "$rc" 0
     contains "28: ...and the record carries the computed header ($ans)" "$(cat "$out" 2>/dev/null)" "CEILINGS: 1 open rows for 1 of 1 touched files"
 done
-# no ledger, a fixture tree with no scripts/ledger/, --repo, --delta-noop
 rc=0; out=$(cd "$cx" && HIMMEL_CEILINGS_LEDGER="$tmp/no-such-ledger.tsv" wv q28m GO "$H28" --evidence-file "$evd/ev28.md" 2>&1) || rc=$?
 check "28: with no ledger the verdict is written" "$rc" 0
 contains "28: ...recording not read" "$(cat "$out" 2>/dev/null)" "CEILINGS: not read (no ledger for"

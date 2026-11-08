@@ -287,11 +287,6 @@ panel_findings=""      # the merged findings block
 panel_ran=0
 panel_t0=$SECONDS
 
-# ceilings_header: the open ceilings ledger rows for the PR's touched files, on
-# stderr only, from the HIMMEL_REPO anchor's lookup (never this tree's copy,
-# which during feature work is the PR's own). Called once per exit-0 run: in
-# each skip branch below, and just before the panel runs. Never on stdout and
-# never to the panel, so no row reaches a critic.
 ceilings_header() {
     local ch_out ch_rc=0
     if [ -z "${HIMMEL_REPO:-}" ]; then

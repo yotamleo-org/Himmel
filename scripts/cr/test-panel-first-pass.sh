@@ -97,17 +97,12 @@ cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$fx/scripts/lib/load-dotenv.sh"
 cp "$HERE/../lib/shared-branch-lock.sh" "$fx/scripts/lib/shared-branch-lock.sh"
 chmod +x "$fx/scripts/cr/panel-first-pass.sh"
-# The ceilings lookup panel-first-pass.sh runs is the HIMMEL_REPO anchor's copy:
-# the fixture tree is that anchor, and the ledger is pinned inside $tmp, so no
-# run reads a real ledger (a row case sets its own fixture ledger).
 mkdir -p "$fx/scripts/ledger"
 cp "$HERE/../ledger/ceiling-lookup.sh" "$HERE/../ledger/ledger-lib.sh" "$fx/scripts/ledger/"
 cp "$HERE/../lib/session-lane.sh" "$fx/scripts/lib/session-lane.sh"
 export HIMMEL_REPO="$fx" HIMMEL_CEILINGS_LEDGER="$tmp/no-ceilings-ledger.tsv"
 case "$HIMMEL_CEILINGS_LEDGER" in "$tmp"/*) ok "the ceilings ledger is pinned inside the fixture" ;; *) bad "the ceilings ledger escapes the fixture"; exit 1 ;; esac
-# assert_no_ceilings <stderr> <label>: an exit before the round prints no CEILINGS header
 assert_no_ceilings() { assert_lacks "$1" "CEILINGS:" "$2 prints no CEILINGS header"; }
-# ceilings_count <stderr>: how many CEILINGS header lines
 ceilings_count() { printf '%s\n' "$1" | grep -c '^CEILINGS:' | tr -d ' '; }
 
 CALL_LOG="$tmp/panel-calls.log"
@@ -1038,7 +1033,6 @@ r5_err="$(cat "$tmp/err")"
 if [ "$r5_rc" -eq 8 ]; then ok "T1.35 --full on a cap refusal exits 8"; else bad "T1.35 cap exit (got $r5_rc; err: $r5_err)"; fi
 assert_has "$r5_err" "outside PR past its three full rounds: hand it to a maintainer takeover (HIMMEL-9019)" "T1.35 the takeover line on a cap refusal"
 assert_no_ceilings "$r5_err" "T1.35 the cap refusal exit 8"
-# an unreadable delta diff gives the round back at exit 5, before any CEILINGS header
 rs3_run_bad() {
     rm -f "$CALL_LOG" "$RR_LOG" "$tmp/err"
     r5_out="$( (cd "$rs3" && RR_FROM=0000000000000000000000000000000000000000 FAKE_RC=0 bash "$SCRIPT2" --head "$rs3_h2" --branch feature) 2>"$tmp/err" )"; r5_rc=$?
@@ -1274,17 +1268,12 @@ if [ "$pr_rc" -eq 5 ]; then ok "--pr for an unlisted author exits 5 before the p
 assert_no_ceilings "$pr_err" "--pr authorization refusal exit 5"
 if [ "$(grep -F 'feat/other-thing' "$pr_ledger" 2>/dev/null | grep -c '"kind":"preflight"')" = 0 ]; then ok "--pr for an unlisted author writes no preflight row"; else bad "--pr for an unlisted author wrote a preflight row"; fi
 
-# --- the CEILINGS header on stderr ---------------------------------------------
-# One header on every exit-0 run, from the anchor's lookup; rows only under a
-# Claude process chain (a copy of bash named claude); no row text to the panel.
 ceil_secret="the f.txt reader never handles a CRLF line"
 ceil_ledger="$tmp/ceilings.tsv"
 printf 'id\tfile\tanchor\tceiling\ttrigger\tticket\tstate\tdate\tpr\tnote\nC-0001\tf.txt\tbase\t%s\ta CRLF bug report\t\topen\t2026-11-08\t\t\n' "$ceil_secret" > "$ceil_ledger"
 mkdir -p "$tmp/cbin"
 cp "$(command -v bash)" "$tmp/cbin/claude"
 ceil_env=(env -u ANTHROPIC_BASE_URL -u ANTHROPIC_MODEL -u HERMES_ENGINE -u CODEX_ADAPTER -u CODEX_THREAD_ID -u CLAUDE_PID -u CODEX_PROXY_BASE_URL)
-# ceil_run <ledger> [NAME=value...]: one panel run on feature under the claude stub;
-# an assignment overrides the defaults (NAME= empties one)
 ceil_run() {
     local led=$1
     shift
@@ -1322,7 +1311,6 @@ rm -f "$tmp/err"
 (cd "$tmp/wt-empty" && bash "$SCRIPT" --head "$empty_sha" --branch feature-empty) >/dev/null 2>"$tmp/err"; rc=$?
 err="$(cat "$tmp/err")"
 if [ "$rc" -eq 0 ] && [ "$(ceilings_count "$err")" = 1 ]; then ok "ceilings: an empty diff prints one header"; else bad "ceilings: empty diff (rc $rc, headers $(ceilings_count "$err"))"; fi
-# git diff failing: a git that refuses the diff verb only
 real_git="$(command -v git)"
 mkdir -p "$tmp/gitfail"
 # shellcheck disable=SC2016  # the stub's own text, expanded when it runs
@@ -1333,7 +1321,6 @@ if [ "$rc" -eq 0 ]; then ok "ceilings: a failed git diff exits 0"; else bad "cei
 assert_has "$err" "git diff failed" "ceilings: control, the git diff failure branch ran"
 if [ "$(ceilings_count "$err")" = 1 ]; then ok "ceilings: a failed git diff prints one header"; else bad "ceilings: failed git diff headers (got $(ceilings_count "$err"))"; fi
 assert_has "$err" "CEILINGS: not read (bad range)" "ceilings: a failed git diff reads not read"
-# the anchor's lookup, never the reviewed tree's
 mkdir -p "$tmp/anchor/scripts/ledger"
 printf '#!/usr/bin/env bash\necho "CEILINGS: ANCHOR-COPY-MARKER"\n' > "$tmp/anchor/scripts/ledger/ceiling-lookup.sh"
 ceil_run "$ceil_ledger" HIMMEL_REPO="$tmp/anchor" CR_PROFILE=none

@@ -78,7 +78,6 @@ function fixture() {
     CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
     CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
     HIMMEL_API_ALERT_CMD: p.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts'),
-    // the ceilings lookup the bridge and the writer run reads only a ledger inside the case dir
     HIMMEL_CEILINGS_LEDGER: join(dir, 'no-ceilings-ledger.tsv') };
   writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const args = ['--qid', `q${pr}`, '--pr', String(pr), '--head', HEAD, '--question-file', p.q,
@@ -225,7 +224,6 @@ test('the prompt tells the judge a class other needs a class-reason line', () =>
 test('the question carries the ceilings rows under a Claude chain, withheld under claudex, and the verdict still records', () => {
   const f = fixture();
   assert.ok(f.env.HIMMEL_CEILINGS_LEDGER.startsWith(f.dir), 'the ledger is pinned inside the case dir');
-  // a repo whose head touches a.sh, which has an open ledger row
   const repo = join(f.dir, 'repo');
   mkdirSync(repo);
   const git = (...a) => spawnSync('git', ['-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...a], { encoding: 'utf8' });
@@ -239,7 +237,6 @@ test('the question carries the ceilings rows under a Claude chain, withheld unde
   const secret = 'the a.sh helper never handles CRLF';
   const ledger = join(f.dir, 'ceilings.tsv');
   writeFileSync(ledger, `id\tfile\tanchor\tceiling\ttrigger\tticket\tstate\tdate\tpr\tnote\nC-0001\ta.sh\tdo_a\t${secret}\ta CRLF report\t\topen\t2026-11-08\t\t\n`);
-  // a copy of bash named claude: the lookup's process walk meets `claude` first
   const claude = join(f.dir, 'claude');
   writeFileSync(claude, readFileSync(spawnSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).stdout.trim()), { mode: 0o755 });
   const args = f.args.map((a) => (a === HEAD ? head : a));

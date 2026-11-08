@@ -113,9 +113,6 @@ warn() { echo "auto-arm-on-cap: $*" >&2; }
 
 hook_dir=$(cd "$(dirname "$0")" && pwd)
 project_dir="${CLAUDE_PROJECT_DIR:-}"
-# The session-lane fact has one owner, scripts/lib/session-lane.sh (the ceilings
-# ledger gate reads it too). Fail-open: a missing lib skips the lane check, so
-# the watchdog stays on.
 _sl_lib="$hook_dir/../lib/session-lane.sh"
 [ -f "$_sl_lib" ] || _sl_lib="$project_dir/scripts/lib/session-lane.sh"
 # shellcheck source=../lib/session-lane.sh

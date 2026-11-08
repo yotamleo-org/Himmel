@@ -79,9 +79,6 @@ ART="$JD/judge-call-$QID.json"
 JOB="judge-$QID-$(date +%s)-$$"
 case "$JOB" in *[!A-Za-z0-9._:-]*) JOB="judge-$(date +%s)-$$" ;; esac
 
-# The ceilings ledger rows open for the PR's touched files, read before the ruling: this checkout's
-# ceiling-lookup.sh in the caller's cwd (the repo under review). Its Claude-only gate decides whether rows
-# or a `withheld` line go into the question; any failure is a `not read` line, never a refusal.
 CEILINGS="$(bash "$REPO/scripts/ledger/ceiling-lookup.sh" --range "origin/main...$HEAD" </dev/null 2>/dev/null)" || true
 case "$CEILINGS" in CEILINGS:*) ;; *) CEILINGS="CEILINGS: not read (ceiling-lookup.sh failed)" ;; esac
 

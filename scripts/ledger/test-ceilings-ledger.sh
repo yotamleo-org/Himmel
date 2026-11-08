@@ -1,22 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in the pass/fail reporting lines
 # shellcheck disable=SC2016  # single-quoted scripts run in the stub shells
-# scripts/ledger/test-ceilings-ledger.sh - suite for ceiling-add.sh, ceiling-lookup.sh,
-# ledger-lib.sh and the session gate in scripts/lib/session-lane.sh.
-#   I2  every refusal fires; 8 concurrent adds give 8 ids and 8 whole rows;
-#       import twice appends once and reports skipped
-#   I3  set and import only append; the reader shows an id's newest state
-#   I6  the Claude-only gate: native, Claude model and headroom proxy show rows;
-#       claudex, Codex CLI, empty env, a codex/copilot/agy/hermes ancestor, a
-#       CLAUDE_PID that is not an ancestor and a chain with no claude withhold;
-#       --ids shows no row text under any env; the ledger is keyed on the cwd's repo
-#   I7  no ledger, an unreadable ledger, a malformed row and a bad range: `not read`, exit 0
-#   caps: 300 for add, 2000 for a migration row; lines under 400 characters; 20 rows shown
-#   --ids prints id<TAB>file<TAB>anchor<TAB>ticket, also with --all
-#   a lock that cannot be taken exits 2 and names the recovery step
-# Hermetic: every run points HIMMEL_CEILINGS_LEDGER (or a fixture handover root)
-# inside the work dir, never at a real ledger. Rows that need a Claude ancestor
-# run under a copy of bash named `claude` (the same stub for codex and the others).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -33,10 +17,8 @@ has()  { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1 (missing [$3] in [$2])" ;; e
 lacks() { case "$2" in *"$3"*) bad "$1 (unexpected [$3] in [$2])" ;; *) ok "$1" ;; esac; }
 eq()   { [ "$2" = "$3" ] && ok "$1" || bad "$1 ([$2] != [$3])"; }
 
-# the token below is the ceiling text a withheld run must never print
 SECRET="the parser never reads quoted globs"
 
-# --- fixture repo -------------------------------------------------------------
 fx="$work/repo"
 mkdir -p "$fx"
 (
@@ -57,7 +39,6 @@ unset HIMMEL_BUCKET_DIR
 
 add() { (cd "$fx" && bash "$ADD" "$@"); }
 
-# --- I2 add and refusals --------------------------------------------------------
 id1=$(add add --file a.sh --anchor do_a --ceiling "$SECRET" --trigger "a glob test fails" --ticket HIMMEL-1); rc=$?
 eq "add exits 0" "$rc" 0
 eq "add prints the first id" "$id1" C-0001
@@ -65,7 +46,7 @@ head1=$(head -n 1 "$HIMMEL_CEILINGS_LEDGER")
 eq "the header is created on first write" "$head1" "$(printf 'id\tfile\tanchor\tceiling\ttrigger\tticket\tstate\tdate\tpr\tnote')"
 id2=$(add add --file b.sh --anchor '] [weird' --ceiling "b ceiling" --trigger "b trigger"); eq "a second add gets the next id" "$id2" C-0002
 
-refusal() { # <label> <want-text> args...
+refusal() {
     local label=$1 want=$2 out rc before after
     shift 2
     before=$(cat "$HIMMEL_CEILINGS_LEDGER")
@@ -86,7 +67,6 @@ out=$(add import "$work/nonote.tsv" 2>&1); rc=$?
 eq "import with neither --check nor --pr is usage (exit 2)" "$rc" 2
 has "import names the missing --pr" "$out" "--pr"
 
-# --- I2 concurrency ---------------------------------------------------------------
 for i in 1 2 3 4 5 6 7 8; do
     add add --file c.sh --anchor c --ceiling "parallel $i" --trigger t > "$work/par.$i" 2>&1 &
 done
@@ -96,7 +76,6 @@ eq "8 concurrent adds print 8 distinct ids" "$ids" 8
 whole=$(awk -F '\t' 'NR > 1 && $4 ~ /^parallel / && NF == 10' "$HIMMEL_CEILINGS_LEDGER" | wc -l | tr -d ' ')
 eq "8 concurrent adds leave 8 whole rows" "$whole" 8
 
-# --- I3 append-only and newest state ---------------------------------------------
 cp "$HIMMEL_CEILINGS_LEDGER" "$work/before"
 add set --id C-0002 --state lifted --note "fixed by the b rewrite" >/dev/null; eq "set exits 0" "$?" 0
 prefix() { cmp -s "$1" <(head -c "$(wc -c < "$1" | tr -d ' ')" "$2"); }
@@ -107,7 +86,6 @@ add set --id C-0002 --state open --note "reopened" >/dev/null
 idsout=$(cd "$fx" && bash "$LOOKUP" --ids -- b.sh)
 has "a reopened id is open again" "$idsout" "C-0002"
 
-# --- I2 import idempotency, I3 for import -------------------------------------------
 printf 'file\tanchor\tceiling\ttrigger\tticket\tstate\tnote\na.sh\tdo_a\timported one\tt\t\topen\tmigration: from a marker\nc.sh\tc\timported two\t\t\tdropped\tmigration: pointer only\n' > "$work/draft.tsv"
 out=$(add import --check "$work/draft.tsv"); eq "import --check passes a good draft" "$?" 0
 cp "$HIMMEL_CEILINGS_LEDGER" "$work/before"
@@ -120,18 +98,15 @@ out=$(add import --pr 77 "$work/draft.tsv")
 eq "a second import appends nothing" "$(wc -l < "$HIMMEL_CEILINGS_LEDGER")" "$n1"
 eq "a second import reports skipped" "$out" "import: 0 rows (open 0, lifted 0, dropped 0), skipped 2 already in the ledger"
 
-# --- caps ---------------------------------------------------------------------------
 long=$(printf 'w%.0s' $(seq 1 1200))
 refusal "a 1200-character add" "over 300 characters" add --file a.sh --anchor do_a --ceiling "$long" --trigger t
 printf 'file\tanchor\tceiling\ttrigger\tticket\tstate\tnote\na.sh\tdo_a\t%s\tt\t\topen\tmigration: long block\n' "$long" > "$work/long.tsv"
 out=$(add import --pr 78 "$work/long.tsv"); eq "a 1200-character migration row imports" "$?" 0
 
-# --- the gate --------------------------------------------------------------------------
 mkdir -p "$work/bin"
 for n in claude codex copilot agy hermes other; do cp "$(command -v bash)" "$work/bin/$n"; done
 clean_env=(env -u ANTHROPIC_BASE_URL -u ANTHROPIC_MODEL -u HERMES_ENGINE -u CODEX_ADAPTER -u CODEX_THREAD_ID -u CLAUDE_PID -u CODEX_PROXY_BASE_URL)
-# under <stub>: the trailing command keeps the stub from exec-ing straight into the lookup
-under() { # <stub> <env assignments...> -- <lookup args...>
+under() {
     local stub=$1
     shift
     local envs=()
@@ -175,15 +150,12 @@ has "CLAUDE_PID an ancestor shows rows" "$out" "C-0001 a.sh"
 sleep 60 & sleeper=$!
 out=$(under claude CLAUDECODE=1 CLAUDE_PID="$sleeper" -- "${range[@]}")
 has "CLAUDE_PID not an ancestor is withheld" "$out" "CLAUDE_PID is not an ancestor"
-# a chain with no agent name: the lookup is orphaned (its parent exits first),
-# so its chain is the init process or a subreaper, never this suite's claude
 rm -f "$work/orphan.out" "$work/orphan.done"
 (cd "$fx" && "${clean_env[@]}" CLAUDECODE=1 "$work/bin/other" -c '( sleep 1; bash "$0" "$@" > "'"$work"'/orphan.out" 2>&1; : > "'"$work"'/orphan.done" ) & exit 0' "$LOOKUP" "${range[@]}")
 for _ in $(seq 1 100); do [ -f "$work/orphan.done" ] && break; sleep 0.1; done
 out=$(cat "$work/orphan.out" 2>/dev/null)
 has "a chain with neither name is withheld" "$out" "no claude process in the process chain"
 
-# --- --ids: ungated, no row text, tab-separated ------------------------------------------
 out=$(under other ANTHROPIC_BASE_URL=http://127.0.0.1:8317 ANTHROPIC_MODEL=gpt-6.1-sol -- --ids "${range[@]}")
 has "--ids under a claudex env prints the header" "$out" "CEILINGS: 4 open rows for 2 of 2 touched files"
 has "--ids prints id, file, anchor and ticket tab-separated" "$out" "$(printf 'C-0001\ta.sh\tdo_a\tHIMMEL-1')"
@@ -195,7 +167,6 @@ has "--ids --all lists every open row" "$out" "$(printf 'C-0002\tb.sh\t] [weird\
 has "--ids --all header" "$out" "open rows (ledger $HIMMEL_CEILINGS_LEDGER)"
 lacks "--ids --all lists no closed row" "$out" "imported two"
 
-# --- display caps ----------------------------------------------------------------------------
 out=$(under claude CLAUDECODE=1 -- -- a.sh)
 longline=$(printf '%s\n' "$out" | grep 'migration\|wwwww' | head -n 1)
 [ -n "$longline" ] && [ "$(printf '%s' "$longline" | LC_ALL=C tr -d '\200-\277' | wc -c)" -lt 400 ] \
@@ -208,7 +179,6 @@ has "25 rows: the header counts 25" "$out" "CEILINGS: 25 open rows for 1 of 1 to
 eq "25 rows: 20 row lines" "$(printf '%s\n' "$out" | grep -c '^C-')" 20
 has "25 rows: the more line" "$out" "+5 more: ceiling-lookup.sh -- c.sh"
 
-# --- I7 not read, exit 0 -------------------------------------------------------------------------
 export HIMMEL_CEILINGS_LEDGER="$work/absent.tsv"
 out=$(cd "$fx" && bash "$LOOKUP" --ids "${range[@]}"); rc=$?
 eq "no ledger: exit 0" "$rc" 0
@@ -225,20 +195,17 @@ out=$(cd "$fx" && HIMMEL_CEILINGS_LEDGER="$work/many.tsv" bash "$LOOKUP" --ids -
 eq "bad range: exit 0" "$rc" 0
 eq "bad range: not read" "$out" "CEILINGS: not read (bad range)"
 
-# a torn last row (an append still in progress) is left out, not read as malformed
 cp "$work/many.tsv" "$work/torn.tsv"
 printf 'C-0099\tc.sh\tc\thalf a ro' >> "$work/torn.tsv"
 out=$(cd "$fx" && HIMMEL_CEILINGS_LEDGER="$work/torn.tsv" bash "$LOOKUP" --ids -- c.sh)
 has "a torn last row: the whole rows are still read" "$out" "CEILINGS: 25 open rows for 1 of 1 touched files"
 lacks "a torn last row is left out" "$out" "C-0099"
 
-# --- the lock ---------------------------------------------------------------------------------------
 mkdir -p "$work/locked.tsv.lock"
 out=$(cd "$fx" && HIMMEL_CEILINGS_LEDGER="$work/locked.tsv" bash "$ADD" add --file a.sh --anchor do_a --ceiling x --trigger t 2>&1); rc=$?
 eq "a lock that cannot be taken exits 2" "$rc" 2
 has "the lock failure names the recovery step" "$out" "remove $work/locked.tsv.lock and re-run"
 
-# --- the bucket key: the ledger of the cwd's repo, never another's ---------------------------------------
 hroot="$work/hroot"
 mkdir -p "$hroot/tuser/himmel/specs/ledgers"
 cp "$work/many.tsv" "$hroot/tuser/himmel/specs/ledgers/ceilings.tsv"

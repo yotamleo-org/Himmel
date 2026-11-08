@@ -21,7 +21,6 @@ lacks() { case "$2" in *"$3"*) fail "$1 (found '$3')" ;; *) pass "$1" ;; esac; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/gen-judge-brief-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
-# a spec with pr + head runs the ceilings lookup: its ledger stays inside $WORK
 export HIMMEL_CEILINGS_LEDGER="$WORK/no-ceilings-ledger.tsv"
 case "$HIMMEL_CEILINGS_LEDGER" in "$WORK"/*) ;; *) echo "FAIL: the ceilings ledger escapes the work dir"; exit 1 ;; esac
 unset HIMMEL_BUCKET_DIR
@@ -205,9 +204,6 @@ for f in .claude/agents/judge.md .claude/agents/judge-ro.md docs/handover/chief-
     has "$f forbids FETCH_HEAD" "$c" "never FETCH_HEAD"
 done
 
-# A spec with pr + head carries a recorded-ceilings item from the
-# lookup run in the cwd's repo (rows under a Claude chain, none, not read); a spec
-# with no pr carries none. The ledger is a fixture inside $WORK.
 CREPO="$WORK/crepo"
 mkdir -p "$CREPO"
 (

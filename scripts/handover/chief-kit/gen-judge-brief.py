@@ -144,8 +144,6 @@ CEILING_LOOKUP = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__
 
 
 def ceilings_of(head):
-    """The ceilings ledger block for origin/main...<head> in the cwd's repo (the lookup's own gate decides
-    rows or withheld); any failure is a `not read` line."""
     try:
         r = subprocess.run(['bash', CEILING_LOOKUP, '--range', 'origin/main...%s' % head], stdin=subprocess.DEVNULL,
                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=60)

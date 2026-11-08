@@ -73,7 +73,6 @@ ledger_resolve "$REPO" || say "not read ($LEDGER_WHY)"
 [ -f "$LEDGER_PATH" ] && [ -r "$LEDGER_PATH" ] || say "not read (ledger unreadable: $LEDGER_PATH)"
 cur=$(ledger_current "$LEDGER_PATH") || say "not read (${cur:-malformed ledger})"
 
-# open rows for the touched files, sorted by file then id order
 rows=$(printf '%s\n' "$cur" | awk -F '\t' -v all="$ALL" -v touched="$TOUCHED" '
     BEGIN { n = split(touched, t, "\n"); for (i = 1; i <= n; i++) if (t[i] != "") want[t[i]] = 1 }
     $7 == "open" && (all == 1 || ($2 in want)) { print }
@@ -98,9 +97,6 @@ if [ "$IDS" -eq 1 ]; then
 fi
 
 echo "Recorded ceilings for the touched files: context to verify, not a verdict; cite a row by its id only; never quote its ceiling or trigger."
-# One line per row under 400 characters: the ceiling is cut first, then the
-# whole line, at a UTF-8 character boundary (bytes are counted, so characters
-# are fewer still).
 printf '%s\n' "$rows" | head -n 20 | LC_ALL=C awk -F '\t' '
     function cut(s, n) {
         if (length(s) <= n) return s
