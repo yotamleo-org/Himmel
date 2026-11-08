@@ -312,8 +312,7 @@ fi
 # the first bullet naming the resume doc's stem; after it comes a LIVE carrying a release token
 # (`<host>-pid<N>`) other than the last LIVE token before the hand-off, then a WRAPPED. A bullet that
 # merely names the stem, a later marker of any kind, and file mtimes (a launch, a bus adopt and a vault
-# pull all rewrite them) prove nothing about a successor that has just started. The bullet may name the
-# resume doc's stem or its worker label (N70b, as a whole word): a hand-off written "to N70b" names it.
+# pull all rewrite them) prove nothing about a successor that has just started.
 resume_evidence() {
     local stem lab
     stem=$(basename "$2" .md)
@@ -344,9 +343,6 @@ resume_evidence() {
         END { exit !(wrapped && tailmk == "WRAPPED") }' "$1"
 }
 
-# successor_own_evidence <successor doc>: the successor wrote its own record in its own doc - a LIVE
-# carrying a release token, then a WRAPPED tail. A WRAPPED successor (its lock free, checked by the caller)
-# is a completed one, whichever doc the hand-off bullet sits in.
 successor_own_evidence() {
     awk '
         /^## Results( |$)/ { seen = 1; inres = 1; next }
@@ -624,7 +620,7 @@ if [ "$census_rc" -gt 1 ]; then
 fi
 
 claim_ids=""
-own_claim_ids=""; sib_claim_ids=""   # the first doc's ids, and those of the docs after it (the sibling's windows are not this doc's)
+own_claim_ids=""; sib_claim_ids=""
 set_claim_ids() {
     local d first d_ids
     claim_ids=""; own_claim_ids=""; sib_claim_ids=""
@@ -657,17 +653,17 @@ pid_proven_by_id() {
     [ "$st" = "$ps" ]
 }
 
+pid_is_siblings_window() {
+    [ -n "$sib_claim_ids" ] && pid_proven_by_id "$1" "$sib_claim_ids" && ! pid_proven_by_id "$1" "$own_claim_ids"
+}
+
 match_sessions() {
     matched=""; matched_name=""; match_count=0
     name_count=0; own_count=0; own_pid=""; own_name=""; matched_list=""
     while IFS=$'\t' read -r pid name _model _ac; do
         [ -n "$pid" ] || continue
         case "$name" in '#'*) continue ;; esac
-        # a relaunched pair has two live windows, told apart by the session ids each doc lists whatever their
-        # names are: a window the sibling's ids prove (and this doc's own do not) is the sibling's, never this doc's
-        if [ -n "$sib_claim_ids" ] && pid_proven_by_id "$pid" "$sib_claim_ids" && ! pid_proven_by_id "$pid" "$own_claim_ids"; then
-            continue
-        fi
+        if pid_is_siblings_window "$pid"; then continue; fi
         # An original and its -r<N> relaunch both alive remain ambiguous.
         base_name=$(printf '%s' "$name" | sed -E 's/-r[0-9]+$//')
         case "$names" in

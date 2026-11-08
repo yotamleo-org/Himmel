@@ -2391,8 +2391,6 @@ rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
 pgrep_x_stub
 rm -f "$P_ORIG" "$P_RES"
 
-# --- 9648: a worker relaunched from a RESUME doc is bound to two docs and closes by session id ---
-# the pair: original N70 and relaunch N70b; each doc lists its own launches in session_ids:, neither window carries a derivable name
 S9648_ORIG="$W/HIMMEL-9-N70-pair9648-2026-01-01.md"
 S9648_RES="$W/HIMMEL-9-N70b-pair9648-2026-01-01-RESUME.md"
 S9648_SID_O="dddddddd-4444-4444-8444-dddddddddddd"
@@ -2415,7 +2413,6 @@ rc=0; out=$(run "$S9648_RES" 2>&1) || rc=$?
 check "9648 1: the RESUME doc closes with the original live -> rc 0" "$rc" "0"
 exact_count "9648 1: only the relaunch's own window is signaled" "$(cat "$CALLS")" "kill -TERM 502" "1"
 not_contains "9648 1: the original window is never signaled from the RESUME doc" "$(cat "$CALLS")" "501"
-# 2: the relaunch wrote its LIVE and WRAPPED in the original doc; the RESUME doc has no marker of its own
 # shellcheck disable=SC2016  # literal fixture token delimiters
 printf -- '---\nsession_ids: %s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - context full, handing off to N70b\n- 11:00 LIVE - resumed, release-token `fixture-pid200`\n- 12:00 WRAPPED - merged\n' "$S9648_SID_O" > "$S9648_ORIG"
 printf -- '---\nsession_ids: %s\n---\n# resume\n\n## Results\n\n' "$S9648_SID_R" > "$S9648_RES"
@@ -2426,14 +2423,12 @@ reset_calls
 rc=0; out=$(run "$S9648_RES" 2>&1) || rc=$?
 check "9648 2: a RESUME doc whose WRAPPED is in the original doc closes -> rc 0" "$rc" "0"
 exact_count "9648 2: the relaunch window is signaled" "$(cat "$CALLS")" "kill -TERM 502" "1"
-# a WRAPPED that is only the predecessor's own (no later LIVE with a new release token) is still no evidence
 # shellcheck disable=SC2016  # literal fixture token delimiters
 printf -- '---\nsession_ids: %s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - context full, handing off to N70b\n' "$S9648_SID_O" > "$S9648_ORIG"
 reset_calls
 rc=0; out=$(run "$S9648_RES" 2>&1) || rc=$?
 check "9648 2: a predecessor-only WRAPPED is still no hand-off evidence -> rc 4" "$rc" "4"
 check "9648 2: that signals nothing" "$(cat "$CALLS")" ""
-# 3: the relaunch is closed and wrote its LIVE and WRAPPED in its own doc; the original names it as its successor
 # shellcheck disable=SC2016  # literal fixture token delimiters
 printf -- '---\nsession_ids: %s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - hand-off, resume brief %s\n' "$S9648_SID_O" "$S9648_RES" > "$S9648_ORIG"
 # shellcheck disable=SC2016  # literal fixture token delimiters
@@ -2444,14 +2439,12 @@ reset_calls
 rc=0; out=$(run "$S9648_ORIG" 2>&1) || rc=$?
 check "9648 3: the original closes after its relaunch was closed -> rc 0" "$rc" "0"
 not_contains "9648 3: no 'no completed successor evidence' refusal" "$out" "no completed successor evidence"
-# a successor with no marker of its own is no evidence
 printf -- '---\nsession_ids: %s\n---\n# resume\n\n## Results\n\n' "$S9648_SID_R" > "$S9648_RES"
 reset_calls
 rc=0; out=$(run "$S9648_ORIG" 2>&1) || rc=$?
 check "9648 3: a successor with no LIVE and WRAPPED of its own is still no evidence -> rc 4" "$rc" "4"
 rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
 pgrep_x_stub
-# a doc that lists no session ids owns no window: the sibling's window is still the sibling's
 # shellcheck disable=SC2016  # literal fixture token delimiters
 printf -- '# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - context full, handing off to N70b\n' > "$S9648_ORIG"
 # shellcheck disable=SC2016  # literal fixture token delimiters
