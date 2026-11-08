@@ -29,8 +29,7 @@ const EXHAUSTED_TTL = 3600;
 // A ledger-only row has no grant date: it sorts after every account with a real expiry.
 const NO_EXPIRY = 4102444800;
 // Reasons a snapshot gives no usable reading; with HIMMEL_API_SNAPSHOT_OPTIONAL=1 (auto routing) the ledger and
-// the account cap decide instead. Identity mismatch, the discrepancy flag and an expired grant stay refusals:
-// a grant that has ended is a fact, not a missing reading.
+// the account cap decide instead. Identity mismatch, the discrepancy flag and an expired grant stay refusals.
 const SNAPSHOT_UNUSABLE = new Set(['missing-snapshot', 'invalid-snapshot', 'unreconciled-amounts', 'invalid-timestamp',
   'invalid-grant-interval', 'stale-snapshot', 'invalid-money']);
 // A call past this has died or been killed: its reservation is released, never held for good.

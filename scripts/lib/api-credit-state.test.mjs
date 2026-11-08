@@ -727,7 +727,6 @@ test('pick never answers PROCEED for an account whose status reads expired-grant
   const f = fixture();
   expireGrant(f, 'A');
   assert.equal(f.call().reason, 'expired-grant');
-  // B has no reading, so the ledger would rank A first on the tie: only the expiry stops it
   delete f.snapshot.accounts.B; f.save();
   const r = pickUsd(f, '0.01');
   assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
