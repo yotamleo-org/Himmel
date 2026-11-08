@@ -53,6 +53,13 @@ else
   fail=1
 fi
 
+if jq -e '(.autoMode.environment // []) | any(.[]; test("qmd-bounded\\.sh with a retrieval verb \\(query, search, vsearch, get, multi-get, ls, status\\) from the primary checkout is routine CI work, not publication"))' "$TEMPLATE" >/dev/null 2>&1; then
+  echo "PASS: template autoMode.environment limits qmd-bounded.sh to its seven retrieval verbs"
+else
+  echo "FAIL: template autoMode.environment does not limit qmd-bounded.sh to its seven retrieval verbs"
+  fail=1
+fi
+
 if jq -e '(.autoMode.allow // []) | length == 1 and (.[0] | test("merge-on-green\\.sh"))' "$TEMPLATE" >/dev/null 2>&1; then
   echo "PASS: template autoMode.allow carries the one merge-on-green.sh entry"
 else
