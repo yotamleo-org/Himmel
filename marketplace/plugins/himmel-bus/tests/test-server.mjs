@@ -324,8 +324,6 @@ async function run() {
     assert.ok(!text(got).includes(big));
   });
 
-  // A changed byte in record #1 breaks the chain, so scan verifies none: a
-  // defect or a read failure on a segment, never a wrong "nothing unread".
   async function tampered(t) {
     const fx = await fixture(t);
     const con = await connect(t, fx, 'con');
