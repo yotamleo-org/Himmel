@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   isClaudeProc, jiraIsLoopback, jiraIsUnreachable, liveTestContext, parseOwnKeys, resolveTestProject,
-  testProjectConfigDir,
+  splitUploadUrl, testProjectConfigDir, writeTargets,
 } from './live-test-guard.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -227,6 +227,89 @@ describe('liveTestContext', () => {
   it('under the vitest harness the ancestor walk is skipped', () => {
     const root = fakeProc([init, claude(10, 1, ['HIMMEL_JIRA_LIVE_TEST=HIMMEL-1']), self(30, 10)]);
     expect(liveTestContext({ procRoot: root, pid: 30, env: { VITEST: 'true' } }).set).toBe(false);
+  });
+});
+
+describe('writeTargets: the route table as anchored patterns', () => {
+  const API = '/rest/api/3';
+  const AGILE = '/rest/agile/1.0';
+  it.each([
+    ['GET is a read', API, 'GET', '/issue/HIMMEL-1?fields=project', undefined],
+    ['approximate-count is a read', API, 'POST', '/search/approximate-count', { jql: 'project = X' }],
+  ])('%s', (_name, apiBase, method, path, body) => {
+    expect(writeTargets(apiBase, method, path, body)).toEqual({ kind: 'read' });
+  });
+
+  it.each([
+    ['create by key', API, 'POST', '/issue', { fields: { project: { key: 'HTEST' } } },
+      { kind: 'targets', project: { key: 'HTEST' }, issues: [] }],
+    ['create by id', API, 'POST', '/issue', { fields: { project: { id: '10132' } } },
+      { kind: 'targets', project: { id: '10132' }, issues: [] }],
+    ['create with a parent and body links', API, 'POST', '/issue',
+      { fields: { project: { key: 'HTEST' }, parent: { key: 'HIMMEL-2' }, issuelinks: [{ outwardIssue: { key: 'LUNA-3' } }] } },
+      { kind: 'targets', project: { key: 'HTEST' }, issues: ['HIMMEL-2', 'LUNA-3'] }],
+    ['edit', API, 'PUT', '/issue/HTEST-6', { update: { issuelinks: [{ add: { outwardIssue: { key: 'HIMMEL-1' } } }] } },
+      { kind: 'targets', issues: ['HTEST-6', 'HIMMEL-1'] }],
+    ['edit by numeric id', API, 'PUT', '/issue/10001', { fields: { summary: 's' } }, { kind: 'targets', issues: ['10001'] }],
+    ['comment', API, 'POST', '/issue/HTEST-1/comment', { body: {} }, { kind: 'targets', issues: ['HTEST-1'] }],
+    ['comment edit', API, 'PUT', '/issue/HTEST-1/comment/10200', { body: {} }, { kind: 'targets', issues: ['HTEST-1'] }],
+    ['transition', API, 'POST', '/issue/HTEST-1/transitions', { transition: { id: '31' } }, { kind: 'targets', issues: ['HTEST-1'] }],
+    ['assignee', API, 'PUT', '/issue/HTEST-1/assignee', { accountId: 'a' }, { kind: 'targets', issues: ['HTEST-1'] }],
+    ['watch (a JSON string body)', API, 'POST', '/issue/HTEST-1/watchers', 'abc:123', { kind: 'targets', issues: ['HTEST-1'] }],
+    ['worklog', API, 'POST', '/issue/HTEST-1/worklog', { timeSpent: '1h' }, { kind: 'targets', issues: ['HTEST-1'] }],
+    ['attachments', API, 'POST', '/issue/HTEST-1/attachments', undefined, { kind: 'targets', issues: ['HTEST-1'] }],
+    ['unwatch, the one query-string shape', API, 'DELETE', '/issue/HTEST-1/watchers?accountId=557058%3Aabc-12', undefined,
+      { kind: 'targets', issues: ['HTEST-1'] }],
+    ['issueLink create', API, 'POST', '/issueLink', { type: { name: 'Blocks' }, inwardIssue: { key: 'HTEST-1' }, outwardIssue: { key: 'HIMMEL-2' } },
+      { kind: 'targets', issues: ['HTEST-1', 'HIMMEL-2'] }],
+    ['issueLink delete', API, 'DELETE', '/issueLink/10010', undefined, { kind: 'targets', issues: [], links: ['10010'] }],
+    ['version create by key', API, 'POST', '/version', { project: 'HTEST', name: 'v1' }, { kind: 'targets', project: { key: 'HTEST' }, issues: [] }],
+    ['version create by id', API, 'POST', '/version', { projectId: 10132, name: 'v1' }, { kind: 'targets', project: { id: '10132' }, issues: [] }],
+    ['version edit', API, 'PUT', '/version/100', { archived: true }, { kind: 'targets', issues: [], versions: ['100'] }],
+    ['version move', API, 'POST', '/version/100/move', { position: 'First' }, { kind: 'targets', issues: [], versions: ['100'] }],
+    ['rank', AGILE, 'PUT', '/issue/rank', { issues: ['HTEST-1', 'HTEST-2'], rankBeforeIssue: 'HTEST-3' },
+      { kind: 'targets', issues: ['HTEST-1', 'HTEST-2', 'HTEST-3'] }],
+    ['backlog', AGILE, 'POST', '/backlog/issue', { issues: ['HTEST-1'] }, { kind: 'targets', issues: ['HTEST-1'] }],
+    ['sprint issue move', AGILE, 'POST', '/sprint/7/issue', { issues: ['HTEST-1', 'HIMMEL-4'] }, { kind: 'targets', issues: ['HTEST-1', 'HIMMEL-4'] }],
+  ])('maps %s', (_name, apiBase, method, path, body, want) => {
+    expect(writeTargets(apiBase, method, path, body)).toEqual(want);
+  });
+
+  it.each([
+    ['project create', API, 'POST', '/project', { key: 'X' }],
+    ['sprint create', AGILE, 'POST', '/sprint', { name: 's' }],
+    ['sprint update', AGILE, 'POST', '/sprint/7', { state: 'active' }],
+    ['a Confluence page', '/wiki/api/v2', 'POST', '/pages', {}],
+    ['field admin', API, 'POST', '/field', {}],
+    ['a dot-dot segment', API, 'POST', '/issue/HTEST-1/../HIMMEL-1/comment', {}],
+    ['a percent-escape', API, 'POST', '/issue/HTEST-1/%2e%2e/comment', {}],
+    ['a doubled slash', API, 'POST', '/issue//HTEST-1/comment', {}],
+    ['a trailing slash', API, 'POST', '/issue/HTEST-1/comment/', {}],
+    ['a query string on a write', API, 'POST', '/issue/HTEST-1/comment?x=1', {}],
+    ['a lower-case key', API, 'POST', '/issue/htest-1/comment', {}],
+    ['a remote link (not an enumerated sub-path)', API, 'POST', '/issue/HTEST-1/remotelink', {}],
+    ['unwatch with a second parameter', API, 'DELETE', '/issue/HTEST-1/watchers?accountId=abc&x=1', undefined],
+    ['unwatch with a disallowed character', API, 'DELETE', '/issue/HTEST-1/watchers?accountId=a/b', undefined],
+    ['a watcher query on a POST', API, 'POST', '/issue/HTEST-1/watchers?accountId=abc', 'abc'],
+    ['a malformed body key', API, 'POST', '/issueLink', { inwardIssue: { key: 'htest-1' }, outwardIssue: { key: 'HTEST-2' } }],
+    ['a create with no project', API, 'POST', '/issue', { fields: { summary: 's' } }],
+    ['a rank with no issues', AGILE, 'PUT', '/issue/rank', {}],
+  ])('refuses %s as unknown', (_name, apiBase, method, path, body) => {
+    expect(writeTargets(apiBase, method, path, body)).toEqual({ kind: 'unknown' });
+  });
+});
+
+describe('splitUploadUrl', () => {
+  const base = 'https://station.atlassian.net';
+  it('splits an issue attachment URL', () => {
+    expect(splitUploadUrl(`${base}/rest/api/3/issue/HTEST-1/attachments`, base)).toEqual({ apiBase: '/rest/api/3', path: '/issue/HTEST-1/attachments' });
+  });
+  it('keeps a Confluence attachment URL under /wiki (the table maps none)', () => {
+    expect(splitUploadUrl(`${base}/wiki/rest/api/content/1/child/attachment`, base)).toEqual({ apiBase: '/wiki', path: '/rest/api/content/1/child/attachment' });
+  });
+  it('a URL not under the base is null', () => {
+    expect(splitUploadUrl('https://other.atlassian.net/rest/api/3/issue/HTEST-1/attachments', base)).toBeNull();
+    expect(splitUploadUrl(`${base}.evil.example/rest/api/3/issue/HTEST-1/attachments`, base)).toBeNull();
   });
 });
 

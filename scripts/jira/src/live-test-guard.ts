@@ -134,6 +134,107 @@ export function isTestProject(project: string): boolean {
   return dir !== null && resolveTestProject(dir).testProject === project;
 }
 
+export type WriteTargets =
+  | { kind: 'read' }
+  | { kind: 'targets'; project?: { key?: string; id?: string }; issues: string[]; links?: string[]; versions?: string[] }
+  | { kind: 'unknown' };
+
+const ID_OR_KEY = '(?:[A-Z][A-Z0-9]+-[0-9]+|[0-9]+)';
+const ISSUE_REF = new RegExp(`^${ID_OR_KEY}$`);
+const ISSUE_ROUTE = new RegExp(`^/issue/(${ID_OR_KEY})(?:/(?:comment|transitions|assignee|watchers|worklog|attachments)(?:/[0-9]+)?)?$`);
+const UNWATCH = new RegExp(`^/issue/(${ID_OR_KEY})/watchers\\?accountId=[A-Za-z0-9:%-]+$`);
+const UNKNOWN: WriteTargets = { kind: 'unknown' };
+
+const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? v as Record<string, unknown> : {});
+const refOf = (v: unknown): unknown => obj(v).key ?? obj(v).id;
+
+/** Issue refs a body names: fields.parent, fields.issuelinks and update.issuelinks[].add, each side. */
+function bodyLinks(body: unknown): unknown[] {
+  const fields = obj(obj(body).fields);
+  const sides = (link: unknown): unknown[] =>
+    [obj(link).inwardIssue, obj(link).outwardIssue].filter((s) => s !== undefined).map(refOf);
+  const refs: unknown[] = fields.parent !== undefined ? [refOf(fields.parent)] : [];
+  for (const l of Array.isArray(fields.issuelinks) ? fields.issuelinks : []) refs.push(...sides(l));
+  const update = obj(obj(body).update).issuelinks;
+  for (const op of Array.isArray(update) ? update : []) refs.push(...sides(obj(op).add));
+  return refs;
+}
+
+/** Every ref must be an issue key or numeric id; anything else makes the write unknown. */
+function issueRefs(refs: unknown[]): string[] | null {
+  const out = refs.map((r) => (typeof r === 'number' ? String(r) : r));
+  return out.every((r): r is string => typeof r === 'string' && ISSUE_REF.test(r)) ? out : null;
+}
+
+function targets(issues: unknown[], extra: Omit<Extract<WriteTargets, { kind: 'targets' }>, 'kind' | 'issues'> = {}): WriteTargets {
+  const refs = issueRefs(issues);
+  return refs ? { kind: 'targets', ...extra, issues: refs } : UNKNOWN;
+}
+
+function restWrite(method: string, path: string, body: unknown): WriteTargets {
+  if (method === 'DELETE') {
+    const unwatch = UNWATCH.exec(path);
+    if (unwatch) return targets([unwatch[1]]);
+  }
+  if (path.includes('?')) return UNKNOWN;
+  const issue = ISSUE_ROUTE.exec(path);
+  if (issue && ['PUT', 'POST', 'DELETE'].includes(method)) return targets([issue[1], ...bodyLinks(body)]);
+  if (method === 'POST' && path === '/issue') {
+    const project = obj(obj(obj(body).fields).project);
+    if (typeof project.key === 'string') return targets(bodyLinks(body), { project: { key: project.key } });
+    if (typeof project.id === 'string' || typeof project.id === 'number') return targets(bodyLinks(body), { project: { id: String(project.id) } });
+    return UNKNOWN;
+  }
+  if (method === 'POST' && path === '/issueLink') {
+    const b = obj(body);
+    return targets([refOf(b.inwardIssue), refOf(b.outwardIssue)]);
+  }
+  const link = /^\/issueLink\/([0-9]+)$/.exec(path);
+  if (method === 'DELETE' && link) return { kind: 'targets', issues: [], links: [link[1]] };
+  if (method === 'POST' && path === '/version') {
+    const b = obj(body);
+    if (typeof b.project === 'string') return { kind: 'targets', project: { key: b.project }, issues: [] };
+    if (typeof b.projectId === 'string' || typeof b.projectId === 'number') return { kind: 'targets', project: { id: String(b.projectId) }, issues: [] };
+    return UNKNOWN;
+  }
+  const version = /^\/version\/([0-9]+)(\/move)?$/.exec(path);
+  if (version && (version[2] ? method === 'POST' : method === 'PUT')) return { kind: 'targets', issues: [], versions: [version[1]] };
+  return UNKNOWN;
+}
+
+function agileWrite(method: string, path: string, body: unknown): WriteTargets {
+  const b = obj(body);
+  const named = Array.isArray(b.issues) && b.issues.length > 0 ? b.issues as unknown[] : null;
+  if (!named || path.includes('?')) return UNKNOWN;
+  if (method === 'PUT' && path === '/issue/rank') {
+    return targets([...named, ...[b.rankBeforeIssue, b.rankAfterIssue].filter((r) => r !== undefined)]);
+  }
+  if (method === 'POST' && (path === '/backlog/issue' || /^\/sprint\/[0-9]+\/issue$/.test(path))) return targets(named);
+  return UNKNOWN;
+}
+
+/**
+ * Every issue or project a request writes, by the spec's route table: one anchored pattern per row, the
+ * query string refused except the one unwatch shape. A route the table does not hold is `unknown`.
+ */
+export function writeTargets(apiBase: string, method: string, path: string, body: unknown): WriteTargets {
+  if (method === 'GET' || (method === 'POST' && apiBase === '/rest/api/3' && path === '/search/approximate-count')) return { kind: 'read' };
+  if (apiBase === '/rest/api/3') return restWrite(method, path, body);
+  if (apiBase === '/rest/agile/1.0') return agileWrite(method, path, body);
+  return UNKNOWN;
+}
+
+/** An upload URL as (apiBase, path) under `baseUrl`; null when it is not under the base (another instance). */
+export function splitUploadUrl(url: string, baseUrl: string): { apiBase: string; path: string } | null {
+  const base = `${baseUrl.replace(/\/+$/, '')}/`;
+  if (!url.startsWith(base)) return null;
+  const rest = url.slice(base.length - 1);
+  for (const apiBase of ['/rest/api/3', '/wiki']) {
+    if (rest.startsWith(`${apiBase}/`)) return { apiBase, path: rest.slice(apiBase.length) };
+  }
+  return { apiBase: '', path: rest };
+}
+
 const hostOf = (url: string): string | null => {
   try {
     return new URL(url).hostname;
