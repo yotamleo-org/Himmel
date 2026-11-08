@@ -339,7 +339,6 @@ const keys = a.slice(a.indexOf(a[1] === 'core-check' ? '--key' : '--mirror') + (
 if (a[1] === 'core-check') { for (const k of keys) console.log('NOT-CORE ' + k); }
 else { for (const k of keys) console.log('SPEC ok ' + k + ' x'); }
 JSEOF
-# gen-briefs runs brief-lint on each brief, which classifies the brief's resume_cwd: the stub worktree must exist, and be a checkout exactly when the repo is
 cat > "$tmp/wt-stub.sh" <<'WTEOF'
 #!/usr/bin/env bash
 w="$PWD/.claude/worktrees/$(printf '%s' "$1" | tr / +)"; mkdir -p "$w"

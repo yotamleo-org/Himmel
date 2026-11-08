@@ -366,9 +366,7 @@ def proof_missing(key):
 _REFRESHED = set()
 
 
-def refresh_mirror(key):
-    # A ticket edited after the last mirror sync reads stale here. Run the CLI's incremental mirror once per
-    # mirror root (never a second parser of Jira); True only when it ran, so the caller reads the row again.
+def refresh_mirror_once_per_root(key):
     root = os.path.abspath(mirror_dir(key))
     if root in _REFRESHED:
         return False
@@ -383,11 +381,10 @@ def refresh_mirror(key):
 
 def check_proof(worker):
     # A ticket with no DoD or no Proof is not dispatched; print it for the chief to fix first.
-    # A row that would refuse the ticket, or is absent, is read again after one incremental mirror: the ticket may be edited since the last sync.
     refused = []
     for key in worker['keys']:
         got = proof_missing(key)
-        if (got is None or got[0]) and refresh_mirror(key):
+        if (got is None or got[0]) and refresh_mirror_once_per_root(key):
             got = proof_missing(key)
         if got is None:
             print('gen-briefs: warn: %s is not in the Jira mirror, so its DoD and Proof were not checked' % key, file=sys.stderr)
@@ -408,7 +405,6 @@ def validate(worker, i, repo):
     if missing:
         die('worker #%d (%s) missing: %s' % (i, worker.get('label', '?'), ', '.join(missing)))
     if resume and not worker.get('prior'):
-        # the Prior art line is never left out of a brief: brief-lint accepts none found (<query>) and refuses a bare none
         worker['prior'] = 'none found (%s)' % ' '.join(search_fields(worker)[0].replace('(', ' ').replace(')', ' ').split())
     if not re.fullmatch(r'N[0-9]{1,5}', worker['label']):
         die('worker #%d: label %r is not N<k> with 1-5 digits (the vault token grammar)' % (i, worker['label']))
@@ -572,7 +568,6 @@ _SCOPE_END = re.compile(r'completes-ticket:|Other live workers|Touch nothing|REA
 
 
 def under_root(p, hroot):
-    # The one rule brief-lint.sh applies to an absolute Writes path: normalized, and inside the handover root.
     if not hroot or os.path.normpath(p) != p.rstrip('/'):
         return False
     root = os.path.realpath(hroot)
@@ -584,8 +579,7 @@ def under_root(p, hroot):
 
 def write_paths(scope, hroot=None):
     # The paths the ticket's Writes text names, and nothing else: the collision check holds every path on the
-    # Writes line, so prose here ("find and fix the caller in x") must never reach it. An absolute path is kept only
-    # when hroot is given and the path is under it (a bucket file, which brief-lint.sh accepts); every other absolute path is dropped.
+    # Writes line, so prose here ("find and fix the caller in x") must never reach it.
     scope = _writes_scope(scope)
     out = []
     for _kind, p in holds.parse_text(holds.WRITES_LEAD + ' ' + scope):
@@ -1241,19 +1235,19 @@ template_version: 3
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
 
 
-def lint_brief(doc, l, hroot):
-    # The launcher runs brief-lint.sh on this brief, so run it here first. A refused brief is removed and no
-    # launcher is written for it: the chief reads the reason now, not at launch.
-    lint = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'brief-lint.sh')
-    # lint asks the same jira CLI and mirror the core gate here asked, unless its own seams are set
+def lint_env(hroot):
     env = dict(os.environ, HANDOVER_DIR=hroot)
     for lint_var, gen_var in (('BRIEF_LINT_JIRA_CLI', 'GEN_BRIEFS_JIRA_CLI'), ('BRIEF_LINT_MIRROR', 'GEN_BRIEFS_MIRROR')):
         if gen_var in os.environ and lint_var not in os.environ:
             env[lint_var] = os.environ[gen_var]
+    return env
+
+
+def lint_brief(doc, l, hroot):
+    lint = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'brief-lint.sh')
     try:
-        r = subprocess.run(['bash', lint, doc], capture_output=True, text=True, timeout=120, env=env)
+        r = subprocess.run(['bash', lint, doc], capture_output=True, text=True, timeout=120, env=lint_env(hroot))
     except (OSError, subprocess.SubprocessError) as e:
-        # a lint that did not run is no pass: the brief goes like a refused one, so the overwrite check never blocks the retry
         os.unlink(doc)
         die('worker %s: brief-lint could not run (%s), so no brief or launcher is kept for it or the workers after it' % (l['label'], e))
     if r.returncode != 0:
@@ -1432,7 +1426,6 @@ def main():
             l['stem'] = '%s-%s-%s-%s' % (l['keys'][0], l['label'], l['slug'], a.date)
             l['wt'] = '%s/.claude/worktrees/%s' % (a.repo, l['branch'].replace('/', '+'))
         if len(l['stem']) > BUS_NAME_MAX:
-            # the stem is the worker's session name, which the bus registers; a longer one is refused there after the worktree exists
             die('worker %s: session name %s is %d characters, over the bus limit of %d (marketplace/plugins/himmel-bus/lib/store.mjs SESSION_NAME); shorten the slug by %d' % (
                 l['label'], l['stem'], len(l['stem']), BUS_NAME_MAX, len(l['stem']) - BUS_NAME_MAX))
         if not rm:

@@ -33,7 +33,6 @@ export HIMMEL_FLAG_PR_SIZE_GATE=0
 cat > "$WORK/wt.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$1" >> "$WT_LOG"
-# brief-lint classifies the brief's resume_cwd (a git checkout with no chief-kit is an adopted repo), so the stub worktree must exist and be a checkout exactly when the repo is
 w="$PWD/.claude/worktrees/$(printf '%s' "$1" | tr / +)"; mkdir -p "$w"
 [ ! -e "$PWD/.git" ] || printf 'gitdir: %s\n' "$PWD/.git" > "$w/.git"
 [ "$1" = "fix/fail-me" ] && exit 1
@@ -82,7 +81,6 @@ if (a[0] === 'release' && a[1] === 'core-check') {
   }
   process.exit(missing);
 } else if (a[0] === 'mirror') {
-  // the incremental mirror gen-briefs runs before it refuses a ticket; MIRROR_FRESH holds the rows Jira "now" has
   if (process.env.MIRROR_LOG) fs.appendFileSync(process.env.MIRROR_LOG, 'mirror ' + a.join(' ') + ' project=' + process.env.JIRA_PROJECT_KEY + '\n');
   const src = process.env.MIRROR_FRESH;
   if (src && fs.existsSync(src)) for (const f of fs.readdirSync(src)) fs.copyFileSync(src + '/' + f, opt('--root') + '/' + f);
@@ -684,7 +682,7 @@ HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
 # worker-preface.md carries the adapter-repo stop-at-READY rule, so its budget is 12800.
 # chief-template.md carries the AG-UI board pointer in step 12 and the item 19 suite-evidence
 # note, so its budget is 17400; worker-preface.md's 12800 was raised to 12900 for the same change,
-# and to 13100 for the write-barrier bullet, and to 13300 for the full thread-resolve call. chief-template.md's was raised to 18000 for the
+# and to 13100 for the write-barrier bullet. chief-template.md's was raised to 18000 for the
 # two lines that make a chief read the direction companion files in its first batch.
 for budget in "worker-preface.md:13300" "chief-template.md:18000"; do
     f="${budget%%:*}"; max="${budget##*:}"
@@ -742,7 +740,6 @@ mkdir -p "$KIT/scripts/ci"
 cp "$SUT" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/platform-dropped.re" "$HERE/size-override.sh" "$KIT/scripts/handover/chief-kit/"
 cp "$HERE/../../ci/ci-trust-paths.txt" "$HERE/../../ci/pr-size-bands.tsv" "$KIT/scripts/ci/"
 mkdir -p "$KIT/scripts/lib"; cp "$HERE/../../lib/flags.py" "$HERE/../../lib/flags.tsv" "$HERE/../../lib/go-gate.sh" "$HERE/../../lib/handover-path.sh" "$KIT/scripts/lib/"
-# gen-briefs runs brief-lint.sh from its own directory, so the fixture kit carries it and the libs it sources
 cp "$HERE/brief-lint.sh" "$KIT/scripts/handover/chief-kit/"; cp -R "$HERE/../../lib/." "$KIT/scripts/lib/"
 export ADP_WT_LOG="$WORK/adp-wt.log"
 cat > "$KIT/scripts/_new-worktree.sh" <<'EOF'
@@ -1297,7 +1294,6 @@ for pw in absent nonamed; do
     [ "$rc" = 0 ] && pass "pr_size_gate on: $pw Writes list is reported, not refused (rc 0)" || fail "$pw: rc=$rc: $pso"
     has "$pw: the report names the rule" "$pso" "warning: worker N921 Writes name no file tracked at base"
 done
-# an empty Writes list: the size gate reports it and does not refuse; the brief-lint run refuses the empty line instead
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun emptyw)"; rc=$?
 [ "$rc" = 1 ] && has "pr_size_gate on: an empty Writes list is refused by brief-lint, not the size gate" "$pso" "brief-lint refuses the brief" || fail "emptyw: rc=$rc: $pso"
 lacks "emptyw: the size gate does not refuse it" "$pso" "hard max"
@@ -1667,15 +1663,13 @@ PYEOF
 agree="$(cd "$REPO" && python3 -I "$WORK/agree.py" "$HERE" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "gen-briefs write_paths and holds.py parse agree on all $(printf '%s\n' "$agree" | grep -c '^agree') real Writes lines" || fail "gen-briefs and holds.py parse disagree: $agree"
 
-# --- gen-briefs fills and checks every field the launcher requires, so a generated launcher is never refused ---
-mk98() { # <python statement editing worker dict w> <out json> [extra arg, sys.argv[4]]: the first fixture worker, edited
+mk98() {
     python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; w=l[0]; exec(sys.argv[3]); json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$2" "$1" "${3:-}"
 }
-gen98() { # <json> <bucket> [gen-briefs args]: stdout in g98.out, stderr in g98.err
+gen98() {
     python3 "$SUT" "$1" --base 4ccb59d --chief BZ --bucket "$2" --repo "$REPO" --handover-root "$WORK/handovers" --date 2026-10-08 --no-worktree "${@:3}" >"$WORK/g98.out" 2>"$WORK/g98.err"
 }
 pm HIMMEL-9801 "Edit the thing.$PROOF_TAIL"
-# (a) a Writes list of bucket-absolute paths keeps them on the Writes line, and the brief lints
 ABS98="$WORK/handovers/yotamleo/himmel/specs/plan/p98.md"
 mk98 'w["keys"]=["HIMMEL-9801"]; w["writes"]=sys.argv[4]' "$WORK/a98.json" "$ABS98"
 gen98 "$WORK/a98.json" "$WORK/ba98"; rc=$?
@@ -1685,7 +1679,6 @@ A98="$WORK/ba98/HIMMEL-9801-N901-plain-fix-2026-10-08.md"
 HANDOVER_DIR="$WORK/handovers" bash "$HERE/brief-lint.sh" "$A98" 2>"$WORK/a98.lint"; rc=$?
 [ "$rc" = 0 ] && pass "9598 a: that brief passes brief-lint.sh" || fail "9598 a: brief-lint rc=$rc: $(cat "$WORK/a98.lint")"
 
-# (b) a ticket edited after the last mirror refresh: gen-briefs refreshes the mirror before it refuses at the Proof check
 pm HIMMEL-9802 $'Edit scripts/x.\n\nDoD\n- the row is green\n'
 mkdir -p "$WORK/fresh98"; : > "$WORK/mirror98.log"
 printf -- '---\nkey: HIMMEL-9802\n---\n# HIMMEL-9802: t\n\n## Description\n\nEdit scripts/x.%s\n\n## Comments\n\nnone\n' "$PROOF_TAIL" > "$WORK/fresh98/HIMMEL-9802.md"
@@ -1702,8 +1695,6 @@ mk98 'w["keys"]=["HIMMEL-9801"]' "$WORK/b98ok.json"
 MIRROR_LOG="$WORK/mirror98.log" gen98 "$WORK/b98ok.json" "$WORK/bb98ok"; rc=$?
 { [ "$rc" = 0 ] && [ ! -s "$WORK/mirror98.log" ]; } && pass "9598 b: a ticket whose mirror row is complete runs no refresh" || fail "9598 b: rc=$rc, refresh log [$(cat "$WORK/mirror98.log")]"
 
-# (c) a session name over the bus limit (128) is refused naming the limit before anything is written; the limit itself passes
-# (the bus limit is 128, so a 66-character name is within it already; this row guards the limit itself)
 mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*int(sys.argv[4])' "$WORK/c101.json" 101
 gen98 "$WORK/c101.json" "$WORK/bc101"; rc=$?
 [ "$rc" = 1 ] && has "9598 c: a 129-character session name is refused naming the 128 limit" "$(cat "$WORK/g98.err")" "128" || fail "9598 c: over-limit rc=$rc"
@@ -1712,7 +1703,6 @@ mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*int(sys.argv[4])' "$WORK/c100.jso
 gen98 "$WORK/c100.json" "$WORK/bc100"; rc=$?
 [ "$rc" = 0 ] && pass "9598 c: a 128-character session name generates" || fail "9598 c: at-limit rc=$rc: $(cat "$WORK/g98.err")"
 
-# (d) an explicit context_1m key writes the Context line headed-arm-worker.sh reads and exports WORKER_SESSION_CONTEXT=1m; no key, neither
 OPUS98='w["keys"]=["HIMMEL-9801"]; w["model"]="claude-opus-5-5"; w["tier"]={"category":"design","reason":"multi-step design: x"}'
 mk98 "$OPUS98; w[\"context_1m\"]=\"decision 844: the operator wants the 1M window on this ticket\"" "$WORK/d98.json"
 gen98 "$WORK/d98.json" "$WORK/bd98"; rc=$?
@@ -1734,7 +1724,6 @@ for bad in 'w["ab_arm"]="200k"; w["profile"]="worker-docs"' 'w["lane"]="claudex"
     rm -rf "$WORK/bd98b"
 done
 
-# (e) a resume's Prior art line is never empty: with no prior key it reads none found (<query>), and the brief lints
 mk98 'w.pop("prior"); w["keys"]=["HIMMEL-9801"]; w["inherited"]={"pr":4242,"authors":["someone"],"mode":"resume"}' "$WORK/e98.json"
 gen98 "$WORK/e98.json" "$WORK/be98"; rc=$?
 E98="$WORK/be98/HIMMEL-9801-N901-plain-fix-2026-10-08.md"
@@ -1746,13 +1735,11 @@ mk98 'w.pop("prior"); w["keys"]=["HIMMEL-9801"]; w["inherited"]={"pr":4242,"auth
 gen98 "$WORK/e98t.json" "$WORK/be98t"; rc=$?
 [ "$rc" = 1 ] && pass "9598 e: a takeover with no prior key is still refused" || fail "9598 e: takeover rc=$rc"
 
-# (f) brief-lint runs on every brief gen-briefs writes: a brief it refuses exits non-zero and leaves no launcher
 mk98 'w["keys"]=["HIMMEL-9801"]; w.pop("writes")' "$WORK/f98.json"
 gen98 "$WORK/f98.json" "$WORK/bf98"; rc=$?
 [ "$rc" != 0 ] && has "9598 f: a brief with an empty Writes line is refused by the lint gen-briefs runs" "$(cat "$WORK/g98.err")" "brief-lint" || fail "9598 f: empty-Writes brief generated, rc=$rc"
 [ ! -e "$WORK/bf98/launch-N901.sh" ] && ! ls "$WORK/bf98"/*.md >/dev/null 2>&1 && pass "9598 f: neither a launcher nor a brief is left for it" || fail "9598 f: files left in $WORK/bf98: $(ls "$WORK/bf98" 2>&1)"
 
-# a brief-lint timeout or start failure removes the brief like a refusal does, so the overwrite check never blocks the retry
 cat > "$WORK/lintfail.py" <<'PYEOF'
 import importlib.util, os, subprocess, sys
 here, out = sys.argv[1], sys.argv[2]
