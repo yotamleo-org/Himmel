@@ -762,6 +762,12 @@ if [ -n "$ONLY" ]; then
     for c in $CALLERS; do want_caller "$c" && known_caller=1; done
     [ "$known_caller" = 1 ] || { echo "test-quota-no-hang: unknown --caller '$ONLY' (one of: $CALLERS)" >&2; exit 2; }
 fi
+if [ -n "$MODE_ONLY" ]; then
+    case " $RATE_MODES $HUNG_MODES gql-late main-hung " in
+        *" $MODE_ONLY "*) ;;
+        *) echo "test-quota-no-hang: unknown --mode '$MODE_ONLY' (one of: $RATE_MODES $HUNG_MODES gql-late main-hung)" >&2; exit 2 ;;
+    esac
+fi
 
 full_bound() {
     case "$1:$2" in
