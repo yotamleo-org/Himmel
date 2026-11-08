@@ -4223,6 +4223,37 @@ s17_clear
 # READY_CHECK_DEADLINE (whole seconds, default 150, 0 = none): argv unchanged; a stalled gh
 # read ends in a named FAIL, never a hang, and the override reaches the wrapper.
 reset_stubs
+# ponytail: this row proves the holder was alive when the run began, not that the run's lock
+# attempt met it; on a runner slow enough to spend 9 s before the snapshot read, the pass could
+# come without contention (the red on the old lib shows the timing holds); upgrade path is a seam
+# that makes the lib log a wait to a trace file this row asserts on.
+r1_shared="$tmp/lock-cache-r1"; mkdir -p "$r1_shared"
+r1_fails0=$fails
+env GH_PR_SNAPSHOT_CACHE_DIR="$r1_shared" GH_LOG="$tmp/holder.log" STUB_HEAD="$SHA" \
+    STUB_NWO="$NWO" STUB_ROLLUP="$GREEN_ROLLUP" STUB_COMMITS="$GREEN_COMMITS" \
+    STUB_GH_STALL=3 bash "$HERE/../../lib/gh-pr-snapshot.sh" "$NWO" 0 "$PR" > /dev/null 2>&1 &
+r1_holder=$!
+r1_took=no
+for _ in $(seq 1 50); do
+    if compgen -G "$r1_shared/*.lock/pid" > /dev/null; then r1_took=yes; break; fi
+    sleep 0.1
+done
+check "R1: the holder took the snapshot lock" "$r1_took" "yes"
+r1_alive=no; kill -0 "$r1_holder" 2>/dev/null && r1_alive=yes
+check "R1: the holder still holds the lock when the run starts" "$r1_alive" "yes"
+: > "$GH_LOG"
+rc=0; out="$(GH_PR_SNAPSHOT_LOCK_WAIT=30 RUN_CACHE="$r1_shared" run)" || rc=$?
+check "R1: a run that meets a held lock exits 0" "$rc" "0"
+contains "R1: the verdict is PASS" "$out" "READY-CHECK PASS"
+for r1_item in 1 2 3 4 5 6; do
+    check "R1: item $r1_item passes" "$(grep -c "^\[PASS\] $r1_item\." <<< "$out" | tr -d ' ')" "1"
+done
+r1_reads=$(grep -Ec '^(repo view|pr view|api graphql)' "$GH_LOG" || true)
+check "R1: the wait adds no gh read (at most 2 snapshot-shaped reads, saw ${r1_reads:-0})" "$([ "${r1_reads:-0}" -le 2 ] && echo yes || echo no)" "yes"
+r1_hrc=0; wait "$r1_holder" || r1_hrc=$?
+check "R1: the holder finished its read" "$r1_hrc" "0"
+[ "$fails" -eq "$r1_fails0" ] || grep -E '^\[(PASS|FAIL)\] (1|2|3|4|5|6|16)\.' <<< "$out"
+reset_stubs
 # shellcheck source=scripts/lib/timeout-bin.sh
 . "$HERE/../../lib/timeout-bin.sh"  # the same GNU timeout (timeout or gtimeout) ready-check resolves
 REAL_TIMEOUT="$_TIMEOUT_BIN"
@@ -4251,6 +4282,30 @@ check "deadline: 0 still passes" "$rc" "0"
 rc=0; out="$(READY_CHECK_DEADLINE=2 STUB_GH_STALL=30 run 2>&1)" || rc=$?
 check "deadline: a stalled gh read exits 1" "$rc" "1"
 contains "deadline: the FAIL line names the deadline and its variable" "$out" "READY-CHECK FAIL: no verdict within the 2 s deadline (READY_CHECK_DEADLINE)"
+r2_shared="$tmp/lock-cache-r2"; mkdir -p "$r2_shared"
+env GH_PR_SNAPSHOT_CACHE_DIR="$r2_shared" GH_LOG="$tmp/holder2.log" STUB_HEAD="$SHA" \
+    STUB_NWO="$NWO" STUB_ROLLUP="$GREEN_ROLLUP" STUB_COMMITS="$GREEN_COMMITS" \
+    STUB_GH_STALL=600 "$REAL_TIMEOUT" -k 2 12 bash "$HERE/../../lib/gh-pr-snapshot.sh" "$NWO" 0 "$PR" > /dev/null 2>&1 &
+r2_holder=$!
+r2_took=no
+for _ in $(seq 1 50); do
+    if compgen -G "$r2_shared/*.lock/pid" > /dev/null; then r2_took=yes; break; fi
+    sleep 0.1
+done
+check "R2: the holder took the snapshot lock" "$r2_took" "yes"
+r2_t0=$SECONDS
+rc=0; out="$(GH_PR_SNAPSHOT_LOCK_WAIT=2 RUN_CACHE="$r2_shared" run)" || rc=$?
+r2_elapsed=$((SECONDS - r2_t0))
+check "R2: a lock that never frees fails the run" "$rc" "1"
+contains "R2: the verdict is FAIL" "$out" "READY-CHECK FAIL"
+notcontains "R2: never a PASS verdict" "$out" "READY-CHECK PASS"
+for r2_item in 1 2 3 5 6; do
+    check "R2: item $r2_item fails closed" "$(grep -c "^\[FAIL\] $r2_item\." <<< "$out" | tr -d ' ')" "1"
+done
+check "R2: the run ended on the lock wait, inside the holder's life (took $r2_elapsed s)" "$([ "$r2_elapsed" -lt 12 ] && echo yes || echo no)" "yes"
+wait "$r2_holder" 2>/dev/null || true
+r2_left=no; compgen -G "$r2_shared/*.lock" > /dev/null && r2_left=yes
+check "R2: the killed holder's trap freed its lock" "$r2_left" "no"
 fi
 reset_stubs
 
