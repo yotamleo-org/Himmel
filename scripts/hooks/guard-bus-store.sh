@@ -348,16 +348,27 @@ walk_words() {
 }
 
 globroot_reaches() {
-    local s="$1" m lead before pre p d r
+    local s="$1" m lead before after rest tail pre p d r c home_set=0 tc HOME_SET_RE
+    HOME_SET_RE='(^|[^A-Za-z0-9_])HOME\+?=|(^|[^A-Za-z0-9_])(export|declare|typeset|local|readonly|read|unset|printf|env)[[:space:]][^;&|]*HOME'
+    [[ "$s" =~ $HOME_SET_RE ]] && home_set=1
     while [[ "$s" =~ $GLOBROOT_RE ]]; do
         m=${BASH_REMATCH[0]}; lead=${BASH_REMATCH[1]}
         before=${s%%"$m"*}
+        after=${s#*"$m"}
+        rest=${after%%[[:space:];&|()<>]*}
+        tail="${m#"${lead}himmel/"}$rest"
+        # shellcheck disable=SC2016  # literal characters, nothing expands
+        case "$tail" in *[\$\`\{]* | *..*) return 0 ;; esac
+        IFS=/ read -ra tc <<< "$tail"
+        for c in "${tc[@]}"; do
+            case "$c" in .*[\*\?\[]*) return 0 ;; esac
+        done
         pre=${before##*[[:space:];&|()<>=]}$lead
         # shellcheck disable=SC2016,SC2088  # the prefix is command text: a literal ~ and $HOME
         case "$pre" in
-            '~/'*) [ -n "${HOME:-}" ] || return 0; p="$HOME/${pre#\~/}" ;;
-            '$HOME/'*) [ -n "${HOME:-}" ] || return 0; p="$HOME/${pre#\$HOME/}" ;;
-            '${HOME}/'*) [ -n "${HOME:-}" ] || return 0; p="$HOME/${pre#\$\{HOME\}/}" ;;
+            '~/'*) [ "$home_set" = 0 ] && [ -n "${HOME:-}" ] || return 0; p="$HOME/${pre#\~/}" ;;
+            '$HOME/'*) [ "$home_set" = 0 ] && [ -n "${HOME:-}" ] || return 0; p="$HOME/${pre#\$HOME/}" ;;
+            '${HOME}/'*) [ "$home_set" = 0 ] && [ -n "${HOME:-}" ] || return 0; p="$HOME/${pre#\$\{HOME\}/}" ;;
             /*) p="$pre" ;;
             *) return 0 ;;
         esac

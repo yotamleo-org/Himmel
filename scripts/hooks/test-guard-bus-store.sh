@@ -283,6 +283,22 @@ deny  "8776 control: the prefix is a symlink to a dir holding a bus dir" "$(bash
 deny  "8776 control: himmel itself is a symlink to a dir holding a bus dir" "$(bash_json "ls $SCR/repos2/himmel/*")"
 deny  "8776 control: a checkout glob does not excuse a bus-dir glob after it" "$(bash_json "ls $SCR/repos/himmel/* $SCR/alt/himmel/*")"
 deny  "8776 control: ~/.local/state/himmel/* where a bus dir exists" "$(bash_json 'ls ~/.local/state/himmel/*')" HOME="$SCR/home"
+mkdir -p "$SCR/hm/himmel/pkg" "$SCR/co3/himmel" "$SCR/dollar/\$x/himmel/pkg" \
+    || { echo "FAIL: cannot build the NO-GO fixtures" >&2; exit 1; }
+ln -s "$SCR/nowhere-bus" "$SCR/co3/himmel/bus" || { echo "FAIL: cannot build the dangling bus link" >&2; exit 1; }
+deny  "8776 a .. after the glob climbs out of the checkout" "$(bash_json "ls $SCR/repos/himmel/pk?/../../../alt/hi?mel/bus/peers")"
+deny  "8776 a brace component can carry a slash or .." "$(bash_json "ls $SCR/repos/himmel/{pkg,x}/node_modules")"
+deny  "8776 a variable component can carry a slash or .." "$(bash_json "ls $SCR/repos/himmel/\$x/pkg")"
+deny  "8776 a variable after the glob can carry .." "$(bash_json "ls $SCR/repos/himmel/pk?/\$x")"
+deny  "8776 a dot-leading glob component can match .." "$(bash_json "ls $SCR/repos/himmel/.*/x")"
+deny  "8776 HOME assigned before a ~/ glob" "$(bash_json "HOME=$SCR/alt; ls ~/himmel/b?s/peers")" HOME="$SCR/hm"
+deny  "8776 export HOME before a ~/ glob" "$(bash_json "export HOME=$SCR/alt; ls ~/himmel/*")" HOME="$SCR/hm"
+deny  "8776 HOME assigned for a bash -c body" "$(bash_json "HOME=$SCR/alt bash -c 'ls ~/himmel/*'")" HOME="$SCR/hm"
+deny  "8776 env HOME before a \$HOME/ glob" "$(bash_json "env HOME=$SCR/alt ls \$HOME/himmel/*")" HOME="$SCR/hm"
+allow "8776 a HOME that is only read leaves a ~/ checkout glob allowed" "$(bash_json 'echo $HOME; ls ~/himmel/*')" HOME="$SCR/hm"
+deny  "8776 gate: a .. in the prefix denies even when it resolves to a checkout" "$(bash_json "ls $SCR/repos/../repos/himmel/*")"
+deny  "8776 gate: a \$ in the prefix denies even when a dir of that name is a checkout" "$(bash_json "ls $SCR/dollar/\$x/himmel/*")"
+deny  "8776 gate: a bus link that dangles still denies" "$(bash_json "ls $SCR/co3/himmel/*")"
 
 echo "== HIMMEL-9628: words in data pass, a bus CLI run still denies =="
 allow "9628 grep -l with a pattern naming bus register" "$(bash_json 'grep -l "bus register failed" /tmp/x/*.launch.out')"
