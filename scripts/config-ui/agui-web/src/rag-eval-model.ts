@@ -21,21 +21,23 @@ const ROUTES: { key: string; label: string; finds: string | null; answers: strin
 ];
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
-const newest = (rows: LedgerRow[], name: string, key: (m: LedgerRow["metrics"]) => number | null) =>
-  rows.filter((r) => r.eval === name && r.status === "ok" && key(r.metrics ?? {}) !== null).sort((a, b) => (a.ts < b.ts ? 1 : -1))[0];
+// the newest ok row of one eval that measured the arm on a sample (n > 0)
+const newest = (rows: LedgerRow[], name: string, has: (r: LedgerRow) => boolean) =>
+  rows.filter((r) => r.eval === name && r.status === "ok" && r.metrics && has(r)).sort((a, b) => (a.ts < b.ts ? 1 : -1))[0];
 
 function finds(rows: LedgerRow[], arm: string): Measure | null {
   const hit = (m: LedgerRow["metrics"]) => num(m[`${arm}.hit@5`]) ?? num(m[`${arm}.recall@5`]); // recall@5 is its name before 24 Oct
-  const r = newest(rows, "retrieval-eval", hit);
+  const r = newest(rows, "retrieval-eval", (x) => hit(x.metrics) !== null && (num(x.n) ?? 0) > 0);
   if (!r) return null;
   const rate = hit(r.metrics)!;
   return { count: Math.round(rate * r.n), n: r.n, rate, tokens: num(r.metrics[`${arm}.tokens_mean`]), ms: num(r.metrics[`${arm}.ms_median`]), ts: r.ts, runId: r.run_id };
 }
 
 function answers(rows: LedgerRow[], arm: string): Measure | null {
-  const r = newest(rows, "answer-ab", (m) => num(m[`${arm}.correct`]));
+  const size = (x: LedgerRow) => num(x.metrics[`${arm}.n`]) ?? num(x.n) ?? 0;
+  const r = newest(rows, "answer-ab", (x) => num(x.metrics[`${arm}.correct`]) !== null && size(x) > 0);
   if (!r) return null;
-  const m = r.metrics, count = num(m[`${arm}.correct`])!, n = num(m[`${arm}.n`]) ?? r.n;
+  const m = r.metrics, count = num(m[`${arm}.correct`])!, n = size(r);
   const mix = ["input", "output", "cache_read", "cache_creation"].map((k) => num(m[`${arm}.${k}`]));
   const tokens = mix.every((t) => t !== null) ? (mix as number[]).reduce((a, b) => a + b, 0) / n : null;
   return { count, n, rate: count / n, tokens, ms: num(m[`${arm}.ms_median`]), ts: r.ts, runId: r.run_id };
@@ -49,12 +51,13 @@ export function wilson(k: number, n: number, z = 1.96): [number, number] {
 
 const pct = (m: Measure) => `${Math.round(m.rate * 100)}%`;
 const of = (m: Measure) => `${m.count} of ${m.n}`;
+// Two routes are compared only when one run measured both: the same questions, the same setup.
 function bottomLine(by: Record<string, Route>): string {
   const parts: string[] = [];
   const c = by.combined.finds, g = by.grep.finds;
-  if (c && g) parts.push(`Combined search finds the right file on ${pct(c)} of agent questions (${of(c)}), plain grep on ${pct(g)} (${of(g)})`);
+  if (c && g && c.runId === g.runId) parts.push(`Combined search finds the right file on ${pct(c)} of agent questions (${of(c)}), plain grep on ${pct(g)} (${of(g)})`);
   const a = by.combined.answers, v = by.vanilla.answers;
-  if (a && v) {
+  if (a && v && a.runId === v.runId) {
     const [al, ah] = wilson(a.count, a.n), [vl, vh] = wilson(v.count, v.n);
     const word = al > vh ? "beats" : ah < vl ? "trails" : "ties";
     parts.push(`on right answers ${parts.length ? "it" : "combined search"} ${word} vanilla Claude, ${of(a)} against ${of(v)}${word === "ties" ? ", with overlapping 95% ranges" : ""}`);

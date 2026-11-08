@@ -1,6 +1,6 @@
 // The RAG eval page (agui-web RagEval.tsx): its model, built from eval-runs ledger rows, and GET /api/rag-eval, which serves them.
 import { test, expect, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isRagEvalHash, NOT_MEASURED, ragEvalModel, wilson, type LedgerRow } from "../agui-web/src/rag-eval-model";
@@ -64,6 +64,25 @@ test("ragEvalModel: the bottom line leads with finds against grep, then answers 
   expect(apart.bottomLine).toBe("On right answers combined search beats vanilla Claude, 70 of 75 against 30 of 75.");
 });
 
+test("ragEvalModel: the bottom line compares two routes only inside one run", () => {
+  const split = ragEvalModel([
+    re("2026-11-05T13:15:18Z", "ok", { "combined.hit@5": 0.72 }), re("2026-11-06T13:15:18Z", "ok", { "grep.hit@5": 0.33 }),
+    ab("2026-11-05T19:20:03Z", 75, arm("fused-cached", 70, 75)), ab("2026-11-06T19:20:03Z", 75, arm("vanilla", 30, 75)),
+  ]);
+  expect(split.routes.find((r) => r.key === "grep")!.finds).toMatchObject({ ts: "2026-11-06T13:15:18Z" }); // the table still shows each route's newest
+  expect(split.bottomLine).toBe("Not enough has been measured yet to compare combined search with grep or vanilla Claude.");
+});
+
+test("ragEvalModel: a row with no sample (n 0) is skipped for an older one with a sample", () => {
+  const m = ragEvalModel([
+    re("2026-11-05T13:15:18Z", "ok", { "grep.hit@5": 0.3333 }),
+    { ...re("2026-11-06T13:15:18Z", "ok", { "grep.hit@5": 0 }), n: 0 },
+    ab("2026-11-05T19:20:03Z", 75, arm("vanilla", 69, 75)), ab("2026-11-06T19:20:03Z", 0, arm("vanilla", 0, 0)),
+  ]);
+  expect(m.routes.find((r) => r.key === "grep")!.finds).toMatchObject({ count: 25, n: 75 });
+  expect(m.routes.find((r) => r.key === "vanilla")!.answers).toMatchObject({ count: 69, n: 75 });
+});
+
 test("wilson: the 95% range the audit quotes for 69 of 75", () => {
   const [lo, hi] = wilson(69, 75);
   expect(lo).toBeCloseTo(0.836, 3);
@@ -93,4 +112,8 @@ test("GET /api/rag-eval: token-gated, GET only, serves the retrieval-eval and an
   expect(ragEvalModel(body.rows).bottomLine).toBe(ragEvalModel(ROWS).bottomLine);
   rmSync(ledger);
   expect(await (await fetch(url, { headers: { "X-Himmel-Token": TOKEN } })).json()).toEqual({ state: "absent", rows: [] });
+  mkdirSync(ledger); // a ledger that exists but cannot be read is not "nothing measured"
+  const bad = await (await fetch(url, { headers: { "X-Himmel-Token": TOKEN } })).json();
+  expect(bad).toMatchObject({ state: "unreadable", rows: [] });
+  expect(bad.reason).toContain("EISDIR");
 });

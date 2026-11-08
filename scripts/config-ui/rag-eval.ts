@@ -6,10 +6,14 @@ import { join } from "node:path";
 type Env = Record<string, string | undefined>;
 const EVALS = new Set(["retrieval-eval", "answer-ab"]);
 
-export function readRagEvalRows(env: Env): { state: "ok" | "absent"; rows: Record<string, unknown>[] } {
+// absent: no ledger yet, so nothing was measured; unreadable: a ledger the page cannot read, which it reports as a failed read.
+export function readRagEvalRows(env: Env): { state: "ok" | "absent" | "unreadable"; reason?: string; rows: Record<string, unknown>[] } {
   let text: string;
   try { text = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER || join(env.HOME || homedir(), ".himmel", "eval-runs.jsonl"), "utf8"); }
-  catch { return { state: "absent", rows: [] }; }
+  catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return { state: "absent", rows: [] };
+    return { state: "unreadable", reason: String((e as Error).message ?? e), rows: [] };
+  }
   const rows: Record<string, unknown>[] = [];
   for (const line of text.split("\n")) {
     if (!line.includes('"retrieval-eval"') && !line.includes('"answer-ab"')) continue; // most of the ledger is other evals: skip them unparsed

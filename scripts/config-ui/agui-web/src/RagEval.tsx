@@ -10,7 +10,10 @@ function useRagEval(token: string): State {
     let live = true;
     fetch(RAG_EVAL_URL, { headers: { "X-Himmel-Token": token } })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((j) => live && setS({ model: ragEvalModel(Array.isArray(j.rows) ? j.rows : []), error: null }))
+      .then((j) => {
+        if (j.state === "unreadable") throw new Error(j.reason || "the eval-runs ledger is unreadable");
+        if (live) setS({ model: ragEvalModel(Array.isArray(j.rows) ? j.rows : []), error: null });
+      })
       .catch((e) => live && setS({ model: null, error: String(e?.message ?? e) }));
     return () => { live = false; };
   }, [token]);
