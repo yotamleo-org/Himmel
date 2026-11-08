@@ -15,8 +15,6 @@ const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, 
 let feed = null;
 let lastProbe = null; // the newest 202 body ({ elapsedMs, progress }) while the first report runs
 
-// The token rides the URL fragment (never sent in a request line); clear it from the address bar. The AG-UI rail
-// links here as #t=<token>&page=<id>, landing on that page.
 const landing = parseLanding(location.hash);
 const TAB_KEY = "himmel.fleet-token";
 const keptToken = () => { try { return sessionStorage.getItem(TAB_KEY) || ""; } catch (_) { return ""; } };
