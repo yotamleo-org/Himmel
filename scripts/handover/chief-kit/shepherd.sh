@@ -207,7 +207,7 @@ esac
 if bash "$READY_CHECK" --observe "$PR" "$HEAD_SHA" >/dev/null 2>&1; then
     add_line "ready-check: PASS"
 else
-    add_line "ready-check: FAIL (run ready-check.sh $PR $HEAD_SHA for the failing rows)"
+    add_line "ready-check: FAIL (run ready-check.sh --observe $PR $HEAD_SHA for the failing rows)"
     add_reason ready-check-failed
 fi
 

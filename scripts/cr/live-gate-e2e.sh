@@ -74,7 +74,7 @@ expect() { # <label> <want-rc> <got-rc>
 # 60s TTL, so a thread resolve would not show up on a re-run otherwise.
 ready() { # <pr> <head>
     local d; d=$(tmpdir) || return 99
-    GH_PR_SNAPSHOT_CACHE_DIR="$d" bash "$READY" "$@" >"$d/out" 2>&1
+    GH_PR_SNAPSHOT_CACHE_DIR="$d" bash "$READY" --observe "$@" >"$d/out" 2>&1
     local rc=$?; READY_OUT=$(cat "$d/out"); rm -rf "$d"; return $rc
 }
 
