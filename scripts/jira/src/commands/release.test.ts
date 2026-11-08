@@ -47,7 +47,9 @@ vi.mock('../release/repair-run.js', async (orig) => {
   const m = await orig<typeof import('../release/repair-run.js')>();
   return { ...m, repairRun: ((c, o) => { repairSeen.opts = o; return m.repairRun(c, o); }) as typeof m.repairRun };
 });
-vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: vi.fn(() => 'HIMMEL') }));
+vi.mock('../client.js', () => ({
+  request: vi.fn(), projectKey: vi.fn(() => 'HIMMEL'), baseUrl: vi.fn(() => 'http://127.0.0.1:9'), authHeader: vi.fn(() => 'Basic eA=='),
+}));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
@@ -939,7 +941,7 @@ describe('jira release bucket-check', () => {
     out = [];
     await run('bucket-check', '--mirror', mir, 'HIMMEL-5');
     expect(out).toHaveLength(1);
-    expect(out[0]).toMatch(/^FAILED HIMMEL-5 the live read of HIMMEL-5 failed: /);
+    expect(out[0]).toBe('FAILED HIMMEL-5 the live read of HIMMEL-5 failed: fetch failed');
   });
 
   it('an INTAKE on an approved key answers REQ approved:<id> and writes no row; a REVERSION on it still files', async () => {

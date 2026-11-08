@@ -2181,6 +2181,33 @@ describe('release bucket-check verdict', () => {
     expect((await check(['BKT-1']))[0]).toMatch(/^FAILED BKT-1 no versions file at .* while .*\/R9\/release\.json names BKT$/);
   });
 
+  it('row 0, an argument that is not a ticket key: FAILED by name', async () => {
+    world([]);
+    expect(await check(['not-a-key'])).toEqual(['FAILED not-a-key is not a ticket key']);
+  });
+
+  it('row 0, a release root that cannot be read: FAILED by name', async () => {
+    mirror([]);
+    versions();
+    writeFileSync(join(root, 'not-a-dir'), 'x');
+    const lines = await bucketCheck({ ...env(), HIMMEL_RELEASE_STATE_DIR: join(root, 'not-a-dir') }, ['BKT-1'], mir(), { get: stub().get, deadlineMs: 5000, now: NOW });
+    expect(lines[0]).toMatch(/^FAILED BKT-1 the release root cannot be read: ENOTDIR/);
+  });
+
+  it('row 0, a versions file that cannot be read: FAILED by name', async () => {
+    declared();
+    mirror([]);
+    mkdirSync(`${mir()}.versions.tsv`);
+    expect((await check(['BKT-1']))[0]).toMatch(/^FAILED BKT-1 the versions file .*mirror\.versions\.tsv cannot be read: EISDIR/);
+  });
+
+  it('row 0, a release.json that does not parse while a versions file exists: FAILED, the declared current unreadable', async () => {
+    world([{ key: 'BKT-1', fixVersions: ['v1.1.9'] }]);
+    mkdirSync(join(root, 'release', 'R9'), { recursive: true });
+    writeFileSync(join(root, 'release', 'R9', 'release.json'), '{ not json');
+    expect(await check(['BKT-1'])).toEqual([`FAILED BKT-1 ${join(root, 'release', 'R9', 'release.json')} does not parse, so the declared current cannot be read`]);
+  });
+
   it('row 0, a versions file with no current version: FAILED by name', async () => {
     world([{ key: 'BKT-1', fixVersions: ['v1.1.9'] }]);
     versions('v1.1.9\ttrue\t2026-11-01\tfalse\nv1.1.10\tfalse\t\ttrue\nzz-tmp\tfalse\t\tfalse\n');

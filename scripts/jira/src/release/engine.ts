@@ -522,6 +522,8 @@ export function specCheck(env: Record<string, string | undefined>, keys: string[
 
 export const OUT_OF_VERSION_MS = 14 * 86_400_000;
 
+const byIso = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 // The newest verified out-of-version record naming the key, under 14 days old. A record past a chain break, or in a
 // release whose key will not load, is not read, so a hidden approval reads as none.
 export function outOfVersionApproval(env: Record<string, string | undefined>, key: string, now: Date): ReleaseRecord | null {
@@ -534,7 +536,7 @@ export function outOfVersionApproval(env: Record<string, string | undefined>, ke
   return records.filter((r) => {
     const age = now.getTime() - Date.parse(r.ts);
     return r.keys?.includes(key) && age >= 0 && age < OUT_OF_VERSION_MS;
-  }).sort((a, b) => a.ts.localeCompare(b.ts)).at(-1) ?? null;
+  }).sort((a, b) => byIso(a.ts, b.ts)).at(-1) ?? null;
 }
 
 // The pool's current version, as next-dispatchable.sh reads it: of the versions file's rows (name, released, date,
@@ -619,7 +621,7 @@ async function bucketLine(env: Record<string, string | undefined>, key: string, 
   if (!current) return failed(`the versions file ${versionsPath} has no current version`);
   const broken = naming.find((d) => d.decl === null);
   if (broken) return failed(`${broken.path} does not parse, so the declared current cannot be read`);
-  const declared = naming.sort((a, b) => String(a.decl?.ts ?? '').localeCompare(String(b.decl?.ts ?? ''))).at(-1);
+  const declared = naming.sort((a, b) => byIso(String(a.decl?.ts ?? ''), String(b.decl?.ts ?? ''))).at(-1);
   if (declared && declared.decl?.current !== current) {
     return failed(`the declared current ${String(declared.decl?.current)} (${declared.path}) differs from the versions-file current ${current}`);
   }
