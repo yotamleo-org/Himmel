@@ -15,9 +15,6 @@
 # Row output: PASS | FAIL | SKIP absent | KNOWN-RED <task> <caller> <mode> <assertion>
 # A KNOWN-RED row that fails is reported and does not fail the suite; one that PASSES does
 # (UNEXPECTED-PASS), which forces the flip when its task lands.
-#
-# Stub gh only, no real gh call. Every row is cut at three times its bound. Platform: Linux
-# (the callers are chief-kit scripts); the harness is bash 3.2-safe.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
