@@ -1,5 +1,3 @@
-// The Fleet page's Trends tab against the real server: the board and the roll-up are answered by the test, so each band is
-// drawn from data it chooses. Needs agui-web/dist (`cd scripts/config-ui/agui-web && bun install && bun run build`).
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { FLEET } from "../agui-fleet-fixture";
