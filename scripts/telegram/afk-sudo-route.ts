@@ -240,6 +240,8 @@ function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, 
   return true;
 }
 
+const isOutsidePrApprove = (text: string): boolean => classify(text).kind === "approve";
+
 // The gate poller.ts calls first in handleInbound: true = consumed.
 export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (msg: AfkSudoMsg) => boolean {
   return (msg) => {
@@ -252,9 +254,7 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
     if (prompt) return codeReply(deps, prompts!, msg, prompt);
     const line = parseAfkSudo(msg.text);
     if (!line) {
-      // An outside-PR approve ("approve <pr> <sha prefix>") is the router's verb, not an afk-sudo line: its
-      // prefix may hold a six-digit run, and the verb itself refuses anything that is not a reply to the bot's request.
-      if (classify(msg.text).kind === "approve") return false;
+      if (isOutsidePrApprove(msg.text)) return false;
       if (MALFORMED.test(msg.text)) {
         deps.log("[afk-sudo] approve with a malformed id consumed");
         if (eligible(deps.access(), msg)) {

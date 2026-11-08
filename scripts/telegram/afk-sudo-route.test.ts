@@ -76,8 +76,6 @@ test("an approve line with a mistyped id and a code is consumed, and never reach
   expect(makeAfkSudoGate(fake().deps)(dm("approve PR 4204"))).toBe(false);
 });
 
-// With the helper installed the afk-sudo gate runs first, so an outside-PR approve whose
-// sha prefix holds a six-digit run must still reach the approve verb (routeApprove).
 test("handleInbound: with afk-sudo installed, an outside-PR approve whose prefix holds a six-digit run reaches routeApprove", async () => {
   const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
   const accessFile = join(r, "access.json");
