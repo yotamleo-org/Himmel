@@ -9,6 +9,7 @@
 #   (b) not recorded: the field is genuinely absent from this profile (a
 #       profile written before the question existed), never a false "off"
 #       answer the operator never made.
+#   (c) reference-only: what the operator machine runs, each with its state.
 #   (d) present but unverified: this setup's answer matches the reference
 #       (both "on"), but gaps is a static profile diff, not a live probe,
 #       named as still-manual (run `himmelctl status` to confirm).
@@ -24,11 +25,14 @@
 # Covers:
 #   a. a profile with a feature answered off (vs the operator reference)
 #      appears under group (a), labelled as a choice, not a gap.
+#   b. a reference-only row prints its label and state, never a ticket key.
 #   c. --json emits parseable JSON; assert on a field via node -e, not a
 #      substring of prose.
 #   d. exit code is 0 when gaps exist (a report, not a gate).
 #   e. a missing install profile exits non-zero with the same clear message
 #      cmdStatus/cmdEnsure already use.
+#   f. the doc table and tbd-delta.json agree row by row on number, state,
+#      paths and label.
 #   g. an identical-to-reference profile -> group (a) empty, group (c)
 #      populated (present but unverified).
 #   h. --from-profile points gaps at a profile file outside the cache.
@@ -191,7 +195,7 @@ run_gaps() {
     "$node_bin" "$wizard" gaps "$@"
 }
 
-# ── case a/b: an all-off profile -> group (a) choice + group (b) ticket ────
+# ── case a/b: an all-off profile -> group (a) choice + group (b) state ─────
 cacheAB="$work/cache-ab"; write_cache_off "$cacheAB"
 set +e
 outAB=$(run_gaps "$cacheAB" 2>&1); rcAB=$?
@@ -227,6 +231,7 @@ grepq "$errE" -F 'no himmelctl install profile found' || fail "case e: expected 
 grepq "$errE" -F 'run himmelctl install first' || fail "case e: expected the standard missing-profile message (got: $errE)"
 echo "ok: case e — a missing install profile exits non-zero with the standard message"
 
+# ── case f: the doc table and the map agree row by row ──────────────────────
 docMapAgreement=$(node -e '
   const fs = require("fs");
   const doc = fs.readFileSync(process.argv[1], "utf8");

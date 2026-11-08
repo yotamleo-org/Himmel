@@ -5874,6 +5874,7 @@ function printOrphanedBundleInfo() {
 //   (b) not recorded: the field is genuinely absent from this profile (a
 //       profile written before the question existed), never a false "off"
 //       answer the operator never made.
+//   (c) reference-only: what the operator machine runs, each with its state.
 //   (d) present but unverified: this setup's answer matches the reference
 //       (both "on"), but gaps is a static profile diff, never a live probe;
 //       named as still-manual (run `himmelctl status` to confirm it's
