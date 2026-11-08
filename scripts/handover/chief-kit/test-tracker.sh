@@ -1393,14 +1393,18 @@ printf '%s\n' '# chief' '## Live state' 'queue: first | HIMMEL-435 waits for ope
     '## Other' 'pool-disposition: HIMMEL-437 operator words outside the live state' > "$bk/chief.md"
 v9611render --owed-dir "$bk" --chief-doc "$bk/chief.md"
 w9611="$(grep -F 'data-section="waiting"' "$v9611out")"
-contains 'Waiting on you counts the unsigned specs, the handoff item and the chief lines' "$w9611" 'data-count="6"'
-contains 'a spec past the round cap with no spec row is owed' "$w9611" 'HIMMEL-434-capped.md: latest critic round 3'
-contains 'a spec whose latest critic reads SPEC CLEAN with no spec row is owed' "$w9611" 'HIMMEL-435-clean.md: latest critic round 1 reads SPEC CLEAN'
-contains 'a past-cap spec whose last line is no verdict says so, never prints that line' "$w9611" 'HIMMEL-438-noverdict.md: latest critic round 3 reads no verdict line'
-not_contains 'a spec with a spec row is not owed' "$w9611" 'HIMMEL-437-signed'
-not_contains 'a spec under the cap with findings is not owed' "$w9611" 'HIMMEL-436-underway'
-not_contains 'a spec of a ticket not open in the version is not owed' "$w9611" 'HIMMEL-999'
-not_contains 'a spec signed under its .md path is not owed when the critic file has no .md before .critic-spec' "$w9611" 'HIMMEL-439-nomd'
+c9611="$(grep -F 'data-section="chief-owes"' "$v9611out")"
+a9611="$w9611$c9611"
+contains 'Waiting on you counts only the handoff item and the chief lines' "$w9611" 'data-count="3"'
+contains 'the Chief owes group counts the three unsigned specs' "$c9611" 'data-count="3"'
+contains 'a spec past the round cap with no spec row is chief-owed' "$c9611" 'HIMMEL-434-capped.md: latest critic round 3'
+contains 'a spec whose latest critic reads SPEC CLEAN with no spec row is chief-owed' "$c9611" 'HIMMEL-435-clean.md: latest critic round 1 reads SPEC CLEAN'
+contains 'a past-cap spec whose last line is no verdict says so, never prints that line' "$c9611" 'HIMMEL-438-noverdict.md: latest critic round 3 reads no verdict line'
+not_contains 'an unsigned non-critical spec is not under Waiting on you' "$w9611" 'HIMMEL-435-clean.md'
+not_contains 'a spec with a spec row is not owed' "$a9611" 'HIMMEL-437-signed'
+not_contains 'a spec under the cap with findings is not owed' "$a9611" 'HIMMEL-436-underway'
+not_contains 'a spec of a ticket not open in the version is not owed' "$a9611" 'HIMMEL-999'
+not_contains 'a spec signed under its .md path is not owed when the critic file has no .md before .critic-spec' "$a9611" 'HIMMEL-439-nomd'
 contains 'an empty critic file and an undecodable one are named as unread and skipped' "$w9611" '2 critic files unread, skipped: HIMMEL-440-empty.md.critic-spec-r1.md, HIMMEL-441-binary.md.critic-spec-r1.md'
 contains 'the handoff open operator item is listed with its action' "$w9611" 'Answer the paid-step ask'
 contains 'a queue segment naming the operator is listed' "$w9611" 'HIMMEL-435 waits for operator sign-off'
@@ -1411,7 +1415,7 @@ not_contains 'the history after a double bar on the queue line is not live' "$w9
 not_contains 'a segment of that history naming the operator is not listed' "$w9611" 'words old ask'
 ln -s "$bk" "$W/bk9611-link"
 v9611render --owed-dir "$W/bk9611-link" --chief-doc "$bk/chief.md"
-not_contains 'a spec signed under the real bucket path is not owed when the bucket is given by a symlink' "$(grep -F 'data-section="waiting"' "$v9611out")" 'HIMMEL-437-signed'
+not_contains 'a spec signed under the real bucket path is not owed when the bucket is given by a symlink' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$v9611out")" 'HIMMEL-437-signed'
 printf '{"key":"HIMMEL-436","leg":"N4414","state":"wrapped","last_event_ts":"%s","prs":{"77":{"open":true,"head":"abc1234def5678abc1234def5678abc1234def56"}}}\n' "$old9611" > "$W/wk9611/HIMMEL-436.json"
 v9611render --owed-dir "$bk" --chief-doc "$bk/chief.md"
 contains 'an old wrapped worker record that still holds an open PR is still printed' "$(cat "$v9611out")" 'worker N4414'
@@ -1420,12 +1424,51 @@ mkdir -p "$W/bk9611-nolog/specs/designs"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$W/bk9611-nolog/specs/designs/HIMMEL-435-clean.md.critic-spec-r1.md"
 v9611render --owed-dir "$W/bk9611-nolog"
 w9611n="$(grep -F 'data-section="waiting"' "$v9611out")"
-contains 'a clean spec is owed when no operator.jsonl exists yet' "$w9611n" 'HIMMEL-435-clean.md: latest critic round 1 reads SPEC CLEAN'
+contains 'a clean spec is chief-owed when no operator.jsonl exists yet' "$(grep -F 'data-section="chief-owes"' "$v9611out")" 'HIMMEL-435-clean.md: latest critic round 1 reads SPEC CLEAN'
 not_contains 'a bucket with a specs dir but no operator.jsonl counts as read' "$w9611n" 'no operator-owed source read'
 mkdir -p "$W/bk9611-empty/release/v1.1.3"
 : > "$W/bk9611-empty/release/v1.1.3/operator.jsonl"
 v9611render --owed-dir "$W/bk9611-empty"
 contains 'a readable source with nothing owed says nothing is waiting' "$(grep -F 'data-section="waiting"' "$v9611out")" 'nothing is waiting on you'
+not_contains 'a page with nothing chief-owed has no Chief owes group' "$(cat "$v9611out")" 'data-section="chief-owes"'
+
+for t in 442 443 444 445 446 447 448 449 450; do
+    cat='To Do'; st='To Do'; res='Done'
+    [ "$t" = 445 ] && { cat='Done'; st='Done'; }
+    [ "$t" = 450 ] && { cat='Done'; st='Closed'; res="Won't Do"; }
+    printf '%s\n' '---' "key: \"HIMMEL-$t\"" 'updated: "2026-09-30T10:00:00.000+0000"' "statusCategory: \"$cat\"" "status: \"$st\"" "resolution: \"$res\"" 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+        '---' "# HIMMEL-$t: chiefowes ticket $t" > "$vp/HIMMEL-$t.md"
+done
+bk="$W/bk9673"
+mkdir -p "$bk/release/v1.1.3" "$bk/specs/designs"
+printf '%s\n' '{"kind":"spec","spec_path":"'"$bk"'/specs/designs/HIMMEL-444-bus-read-no-args.md"}' \
+    '{"kind":"spec","keys":["HIMMEL-448"],"spec_path":"'"$bk"'/specs/design/HIMMEL-448/spec.md"}' > "$bk/release/v1.1.3/operator.jsonl"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-448-old.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'OPERATOR-CRITICAL: terms change' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-449-critic-only.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-442-plain.md.critic-spec-r1.md"
+printf '%s\n' '# spec' 'plain spec, no marker' > "$bk/specs/designs/HIMMEL-442-plain.md"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-443-crit.md.critic-spec-r1.md"
+printf '%s\n' '# spec' 'OPERATOR-CRITICAL: grants a paid account' > "$bk/specs/designs/HIMMEL-443-crit.md"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-444-bus-read.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-447-empty.md.critic-spec-r1.md"
+printf '%s\n' '# spec' 'OPERATOR-CRITICAL:' 'a reason on the next line is no marker' > "$bk/specs/designs/HIMMEL-447-empty.md"
+printf '%s\n' '# chief' '## Live state' 'queue: HIMMEL-445 operator sign-off finished | HIMMEL-446 operator words still open | HIMMEL-450 operator words dropped' > "$bk/chief.md"
+v9611render --owed-dir "$bk" --chief-doc "$bk/chief.md"
+w9673="$(grep -F 'data-section="waiting"' "$v9611out")"
+c9673="$(grep -F 'data-section="chief-owes"' "$v9611out")"
+contains 'an unsigned non-critical spec is under Chief owes' "$c9673" 'HIMMEL-442-plain.md: latest critic round 1'
+not_contains 'an unsigned non-critical spec is not under Waiting on you' "$w9673" 'HIMMEL-442-plain.md'
+contains 'control: an unsigned spec carrying OPERATOR-CRITICAL still lists under Waiting on you' "$w9673" 'HIMMEL-443-crit.md: latest critic round 1'
+not_contains 'an operator-critical spec is not under Chief owes' "$c9673" 'HIMMEL-443-crit'
+not_contains 'an older critic family of a ticket with a signed spec row lists nowhere' "$w9673$c9673" 'HIMMEL-444'
+not_contains 'a chief-doc line whose ticket is Done does not list' "$w9673" 'HIMMEL-445 operator sign-off finished'
+contains 'control: a chief-doc line whose ticket is open still lists under Waiting on you' "$w9673" 'HIMMEL-446 operator words still open'
+not_contains 'a signed row filed at a folder-style spec_path signs its keys, so the older critic family lists nowhere' "$w9673$c9673" 'HIMMEL-448'
+contains 'a marker only in the latest critic file keeps the spec under Waiting on you' "$w9673" 'HIMMEL-449-critic-only.md: latest critic round 1'
+not_contains 'a chief-doc line whose ticket was closed without shipping does not list' "$w9673" 'HIMMEL-450 operator words dropped'
+contains 'Waiting on you counts the two critical specs and the open chief-doc line' "$w9673" 'data-count="3"'
+contains 'a marker line with no reason on its own line is not a marker' "$c9673" 'HIMMEL-447-empty.md: latest critic round 1'
+contains 'Chief owes counts the two non-critical specs' "$c9673" 'data-count="2"'
 
 # --- both pages open dark with no saved choice, whatever the system preference says
 if command -v node >/dev/null 2>&1; then

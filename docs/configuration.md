@@ -442,6 +442,7 @@ in `.env` or the launching shell):
 | `CHECK_CI_WATCH_INTERVAL` / `CHECK_CI_WATCH_INTERVAL_MAX` | `30` / `120` | poll-interval floor / ceiling; doubles while the rollup is unchanged, resets on a change |
 | `CHECK_CI_API_FLOOR` | `300` | rotate PR rollup reads to the other API when the preferred bucket has fewer calls remaining; wait only when both are low. Run mode still waits on core. `0` disables preemptive budget reads. Waits are bounded by `--max-wait` |
 | `CHECK_CI_LOCK_WAIT` | `30` | seconds a caller waits for the fetching peer before fetching itself |
+| `GH_PR_SNAPSHOT_LOCK_WAIT` | `30` | seconds the PR snapshot waits for a held repository lock before failing closed (never fetches without the lock, never steals it); `0` tries once; a non-integer or 4+ digits reads as `30` |
 | `GH_BUDGET_JITTER_MAX` | (existing) | random seconds added to a budget wait so callers do not wake in lock-step |
 
 The cache is a head-bound file per PR: a snapshot is used only for the head SHA

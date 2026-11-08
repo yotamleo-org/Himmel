@@ -68,6 +68,21 @@ test("rollup: a running week alone is shown but never compared", async () => {
   expect(r.cards[0].sentence).toBe("No earlier week or version to compare with yet");
 });
 
+test("rollup: each compared value names the row its delta compares against, and the running week is its own field", async () => {
+  const s = boot(ROWS);
+  const [velocity] = (await (await get(s.port)).json()).cards;
+  expect(velocity.week).toMatchObject({ key: "2026-W43", prev_key: "2026-W42" });
+  expect(velocity.version).toMatchObject({ key: "v1.1.0", prev_key: "v1.0.0" });
+  expect(velocity.running).toEqual({ key: "2026-W44", value: 3 });
+});
+
+test("rollup: a first row has no prev_key, and with no running week the field is null", async () => {
+  const s = boot([week("2026-W40", { merges: 10, cost_eq_per_ticket: 1, red_main: 0 }, { merges: null, cost_eq_per_ticket: null, red_main: null })]);
+  const [velocity] = (await (await get(s.port)).json()).cards;
+  expect(velocity.week).toMatchObject({ key: "2026-W40", prev_key: null });
+  expect(velocity.running).toBeNull();
+});
+
 test("rollup: an absent file is state absent; the route is token-gated and read-only", async () => {
   const s = boot();
   expect(await (await get(s.port)).json()).toMatchObject({ state: "absent" });

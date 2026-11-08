@@ -328,11 +328,10 @@ test("reloading on the No version tab starts its read without a page error", asy
   await open(page);
   await go(page, "#/board?tab=nv");
   await expect(page.locator("#rm-nv .rm-card", { hasText: "Standing ticket with no version" })).toBeVisible();
-  // the token lives in memory only, so the reloaded page is refused (401) and draws no card; the proof is that route() reaches loadNoVersion() at load without a ReferenceError
   const asked = page.waitForRequest((r) => r.url().includes("/api/roadmap?nv=1"));
   await page.reload();
   await asked;
-  await expect(page.locator("#main")).toContainText("roadmap failed (401)");
+  await expect(page.locator("#rm-nv .rm-card", { hasText: "Standing ticket with no version" })).toBeVisible();
   expect(errs).toEqual([]);
 });
 

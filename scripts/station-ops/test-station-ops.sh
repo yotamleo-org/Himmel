@@ -219,6 +219,7 @@ echo "== lockdown denies a pending op request =="
 new_root lock
 out=$(oreq 0 S1 cron-entry action=remove tag=ping); id=$(rid "$out")
 h 1 lockdown --from "$OPERATOR" --chat "$OPERATOR" >/dev/null
+python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1] + "/var/lib/himmel/afk-sudo/state.json"))["lockdown"]["nonce"])' "$R" | h 1 lockdown --with-nonce --from "$OPERATOR" --chat "$OPERATOR" >/dev/null
 assert_contains "the pending op request reads denied" "result=denied" "$(h 2 status "$id")"
 assert_contains "a locked-down station refuses a new op request" "result=disabled" "$(oreq 3 S2 cron-entry action=remove tag=ping)"
 
@@ -586,7 +587,6 @@ assert_eq "a pending request wrote no approval" "no" "$([ -e "$SA_DIR" ] && echo
 out=$(printf 'ZZZZ 000000\n' | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + 2)) HIMMEL_OPS_ROOT="$R" HIMMEL_OPS_BIN="$R/bin" python3 -I "$HELPER" approve "$id" --from "$OPERATOR" --chat "$OPERATOR" 2>&1)
 assert_absent "a wrong nonce and code does not run the op" "result=ran" "$out"
 assert_eq "a wrong code wrote no approval" "no" "$([ -e "$SA_DIR" ] && echo yes || echo no)"
-out=$(h 40 op-request --session telegram-op --ticket operator -- "${words[@]}"); id=$(rid "$out")
 out=$(approve 43 "$id" "$(code 43)")
 assert_contains "RED: NONCE CODE runs the size-approval op" "op_result=changed" "$out"
 SA6_F="$SA_DIR/HIMMEL-9228.N5216.272.$SA6_S"

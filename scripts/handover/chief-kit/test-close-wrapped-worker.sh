@@ -2442,7 +2442,8 @@ not_contains "9648 3: no 'no completed successor evidence' refusal" "$out" "no c
 printf -- '---\nsession_ids: %s\n---\n# resume\n\n## Results\n\n' "$S9648_SID_R" > "$S9648_RES"
 reset_calls
 rc=0; out=$(run "$S9648_ORIG" 2>&1) || rc=$?
-check "9648 3: a successor with no LIVE and WRAPPED of its own is still no evidence -> rc 4" "$rc" "4"
+check "9648 3: a successor with no LIVE and WRAPPED of its own is no evidence of a finished hand-off, but nothing runs under its name: the original is closed already (9662) -> rc 0" "$rc" "0"
+contains "9648 3: that reads as CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
 pgrep_x_stub
 # shellcheck disable=SC2016  # literal fixture token delimiters
@@ -2458,6 +2459,62 @@ check "9648 4: an original doc with no session ids never signals the relaunch's 
 rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
 pgrep_x_stub
 rm -f "$S9648_ORIG" "$S9648_RES"
+
+O9662="$W/HIMMEL-9-N71-orphan9662-2026-01-01.md"
+R9662="$W/HIMMEL-9-N71b-orphan9662-2026-01-01-RESUME.md"
+SID_O9662="ffffffff-6666-4666-8666-ffffffffffff"
+SID_R9662="11111111-7777-4777-8777-111111111111"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '---\nsession_ids: %s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n- 10:00 WRAPPED - PR 4242 open, hand-off to %s\n' "$SID_O9662" "$(basename "$R9662")" > "$O9662"
+printf -- '---\nsession_ids: %s\n---\n# resume\n\n## Results\n\n## State at hand-off\n\n- PR 4242 open\n' "$SID_R9662" > "$R9662"
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+mkproc 510 HIMMEL-9-N71-orphan9662-2026-01-01 "$SID_O9662" 9510
+pgrep_x_stub 510
+reset_calls
+rc=0; out=$(run "$O9662" 2>&1) || rc=$?
+check "9662 1: an unlaunched RESUME doc, original WRAPPED, its window live -> rc 0" "$rc" "0"
+exact_count "9662 1: the original's window is signaled once" "$(cat "$CALLS")" "kill -TERM 510" "1"
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+pgrep_x_stub
+reset_calls
+rc=0; out=$(run "$O9662" 2>&1) || rc=$?
+check "9662 2: an unlaunched RESUME doc, the original's window already gone -> rc 0" "$rc" "0"
+contains "9662 2: that reads as CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+check "9662 2: nothing is signaled" "$(cat "$CALLS")" ""
+for booting in "HIMMEL-9-N71b-orphan9662-2026-01-01" "HIMMEL-9-N71b-orphan9662-2026-01-01-RESUME"; do
+    rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+    mkproc 510 HIMMEL-9-N71-orphan9662-2026-01-01 "$SID_O9662" 9510
+    mkproc 511 "$booting" "$SID_R9662" 9511
+    pgrep_x_stub 510 511
+    reset_calls
+    rc=0; out=$(run "$O9662" 2>&1) || rc=$?
+    check "9662 3: a live session named $booting -> rc 4" "$rc" "4"
+    check "9662 3: $booting: nothing signaled" "$(cat "$CALLS")" ""
+done
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+mkproc 510 HIMMEL-9-N71-orphan9662-2026-01-01 "$SID_O9662" 9510
+mkproc 512 short-boot-name "$SID_R9662" 9512
+pgrep_x_stub 510 512
+reset_calls
+rc=0; out=$(run "$O9662" 2>&1) || rc=$?
+check "9662 4: a live session proven by the RESUME doc's session id -> rc 4" "$rc" "4"
+check "9662 4: that session id: nothing signaled" "$(cat "$CALLS")" ""
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf -- '---\nsession_ids: %s\n---\n# worker\n\n## Results\n\n- 09:00 LIVE - started, release-token `fixture-pid100`\n' "$SID_O9662" > "$O9662"
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+mkproc 510 HIMMEL-9-N71-orphan9662-2026-01-01 "$SID_O9662" 9510
+pgrep_x_stub 510
+reset_calls
+rc=0; out=$(run "$O9662" 2>&1) || rc=$?
+check "9662 5: an unlaunched RESUME doc, original tail LIVE -> rc 4" "$rc" "4"
+check "9662 5: original tail LIVE: nothing signaled" "$(cat "$CALLS")" ""
+reset_calls
+rc=0; out=$(run "$R9662" 2>&1) || rc=$?
+check "9662 6: the unlaunched RESUME doc itself -> rc 4" "$rc" "4"
+check "9662 6: the RESUME doc: nothing signaled" "$(cat "$CALLS")" ""
+rm -rf "$W/proc" "$W/sessions"; mkdir -p "$W/proc" "$W/sessions"
+pgrep_x_stub
+rm -f "$O9662" "$R9662"
 
 # --- 24: no handovers/ leaked into the real repo ----------------
 post_handovers=absent

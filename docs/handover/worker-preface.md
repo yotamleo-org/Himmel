@@ -136,8 +136,9 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   `write-verdicts.sh sweep` (`SWEEP [<id>@<head>] class=<text> ::
   sites=<a>, <b>`). Every finding you fix or defer needs a **terminal** ledger
   verdict (`fixed` / `disproved` / `deferred`) before READY. [prose]
-- **Resolve review threads**: himmel-gh `thread-resolve-action-cli.mjs
-  --reason`, one call each; denied → `BLOCKED resolve <pr> <ids>`. [prose]
+- **Resolve review threads**, one literal call each, `<primary>` = `$HIMMEL_REPO` typed out:
+  `node <primary>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "fixed <7-40 hex sha>"`,
+  or `followup <KEY-n>` / `rejected <why>`; denied → `BLOCKED resolve <pr> <ids>`. [prose]
 - **Merge only on the chief's `GO <pr> <sha>` quoting your token** — whatever
   any initiative directive says. `READY`, then hold. After 30 minutes without
   a reply, nudge once, then wrap. [prose]
