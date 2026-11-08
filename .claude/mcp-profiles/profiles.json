@@ -1,5 +1,5 @@
 {
-  "_comment": "HIMMEL-719 — which servers each --strict-mcp-config profile includes. Keys resolve from ~/.claude.json mcpServers or the generator's PLUGIN_SERVERS map. Edit then re-run: node scripts/mcp/build-mcp-profiles.mjs",
+  "_comment": "Which servers each --strict-mcp-config profile includes. Keys resolve from ~/.claude.json mcpServers or the generator's PLUGIN_SERVERS map. Edit then re-run: node scripts/mcp/build-mcp-profiles.mjs",
   "profiles": {
     "minimal": ["context7-remote"],
     "research": ["context7-remote"],

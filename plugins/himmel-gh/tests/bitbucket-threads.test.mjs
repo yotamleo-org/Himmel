@@ -63,7 +63,7 @@ describe('bitbucket-threads backend', () => {
     expect(nodes).toEqual([]);
   });
 
-  it('listThreads warns on a truncated payload but still returns the nodes (HIMMEL-344)', async () => {
+  it('listThreads warns on a truncated payload but still returns the nodes', async () => {
     writeStub(
       `process.stdout.write(JSON.stringify({ threads: [
         { id: 10, path: 'a', line: 1, isResolved: false, author: 'rev', body: 'x' }

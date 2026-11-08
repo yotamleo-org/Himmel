@@ -195,7 +195,7 @@ describe('jiraFetch error path', () => {
   });
 });
 
-describe('credentials held only in the keyring (HIMMEL-8471)', () => {
+describe('credentials held only in the keyring', () => {
   let origFetch;
   let tmp;
 
