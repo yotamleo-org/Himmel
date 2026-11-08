@@ -35,7 +35,10 @@
 #                     park (rule D6n: the worker wrapped and its brief says Completes ticket: no)
 #                     is UNOWNED once it is 24 h old, saying it is awaiting the chief and overdue
 #   AWAITING          the same chief-owned park before its 24 h are up: a wait, not drift. Its row
-#                     ends in ` | wait=chief`
+#                     ends in ` | wait=chief`. So is a ticket-hold.sh hold (a result=moved hold row with a valid
+#                     owner, while the ticket carries the `held` label) until its until date (end of that UTC day),
+#                     else its owner's wait length; the row ends in ` | wait=<owner>`. A held ticket with no valid
+#                     hold row says `held with no owner on record` on its UNOWNED row
 #   HELD-IN-WORK      labelled held, with a live owner or an open PR
 #   VERSION-DRIFT    Done or worked (In Progress / In Review / IN CI), held only in a later unreleased
 #                     version than the current one; the fix is an INTAKE request to the current version
@@ -55,7 +58,8 @@
 # status (~4 s a key), upgrade path = always pass the sweep's snapshot.
 #
 # Env: TICKET_STATUS_STATE_DIR, JIRA_PROJECT_KEY (default HIMMEL); TICKET_STATUS_NOW (epoch, the clock),
-# TICKET_STATUS_AWAIT_TTL_CHIEF (default 24h) and TICKET_STATUS_AWAIT_MAX (default 14d, at most 14d), each
+# TICKET_STATUS_AWAIT_TTL_CHIEF (default 24h), TICKET_STATUS_AWAIT_TTL_OPERATOR and _OTHER (default 72h) and
+# TICKET_STATUS_AWAIT_MAX (default 14d, at most 14d), each
 # <n>h or <n>d, else the default and one HEALTH row; the rest is read by the lib.
 #
 # Platform guard: POSIX bash 3.2+ (shell-only harness).
@@ -159,6 +163,10 @@ await_secs TICKET_STATUS_AWAIT_MAX 1209600 1209600
 AWAIT_MAX_S=$AWAIT_SECS
 await_secs TICKET_STATUS_AWAIT_TTL_CHIEF 86400 1000000000
 AWAIT_TTL_CHIEF_S=$AWAIT_SECS
+await_secs TICKET_STATUS_AWAIT_TTL_OPERATOR 259200 1000000000
+AWAIT_TTL_OPERATOR_S=$AWAIT_SECS
+await_secs TICKET_STATUS_AWAIT_TTL_OTHER 259200 1000000000
+AWAIT_TTL_OTHER_S=$AWAIT_SECS
 iso_of() { TZ=UTC date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || TZ=UTC date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; } # swallow-ok: the BSD form follows
 
 # --- health of the log -------------------------------------------------------------
@@ -171,7 +179,7 @@ logtail=""
 if [ -f "$LOG" ]; then
     logtail=$(tail -n 500 "$LOG" 2>/dev/null | ts_merge_rows 2>/dev/null | jq -Rc 'fromjson? // empty' 2>/dev/null) # swallow-ok: an unreadable log leaves the log-based classes empty and the health row above stands
 fi
-partials="" parkrows=""
+partials="" parkrows="" holdrows=""
 if [ -f "$LOG" ]; then
     # Every key whose latest merge row carrying a contract is partial (contract=no), with its partial PRs, read once from the
     # WHOLE log: the last 500 rows hold about five hours, so a ticket a partial merge left days ago would name no PR there.
@@ -186,7 +194,27 @@ if [ -f "$LOG" ]; then
         | ([$g[$a:][] | select(.rule == $r)] | first) as $f
         | select($f != null)
         | [$g[0].key, $r, $f.ts] | @tsv' <<<"$mergeout" 2>/dev/null) # swallow-ok: as above
+    holdrows=$(jq -Rr 'fromjson? | select(type == "object" and (.event == "hold" or .event == "hold-release") and .result == "moved" and (.key | type) == "string")
+        | def ok($re): if type == "string" and test($re) then . else "" end;
+        [.key, .event, (.ts | ok("\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\\z")),
+            (.owner | ok("\\A(chief|operator|[a-z][a-z0-9-]{0,31})\\z")), (.until | ok("\\A[0-9]{4}-[0-9]{2}-[0-9]{2}\\z")),
+            ((.reason // "") | if type == "string" then gsub("[|\t\r\n\u001f]"; "") else "" end)] | join("\u001f")' <<<"$mergeout" 2>/dev/null) # swallow-ok: as above
 fi
+date_ok() {
+    local e
+    [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+    e=$(date -u -d "$1" +%s 2>/dev/null || date -u -j -f %Y-%m-%d "$1" +%s 2>/dev/null) || return 1 # swallow-ok: the BSD form follows
+    [ "$(date -u -d "@$e" +%Y-%m-%d 2>/dev/null || date -u -r "$e" +%Y-%m-%d 2>/dev/null)" = "$1" ] # swallow-ok: the BSD form follows
+}
+hold_of() {
+    local line ev
+    H_SINCE="" H_OWNER="" H_UNTIL="" H_REASON=""
+    line=$(awk -F'\037' -v k="$1" '$1 == k { l = $0 } END { if (l != "") print l }' <<<"$holdrows")
+    [ -n "$line" ] || return 1
+    IFS=$'\037' read -r _ ev H_SINCE H_OWNER H_UNTIL H_REASON <<<"$line"
+    [ "$ev" = hold ] && [ -n "$H_OWNER" ] && [ -n "$H_SINCE" ] && _ts_epoch_of_iso "$H_SINCE" >/dev/null || return 1
+    date_ok "$H_UNTIL" || H_UNTIL=""
+}
 park_since() { # <KEY> <rule> - the ISO ts of the key's park start; empty when there is none or it does not parse
     local t
     t=$(awk -F'\t' -v k="$1" -v r="$2" '$1 == k && $2 == r { print $3; exit }' <<<"$parkrows")
@@ -393,8 +421,32 @@ while IFS= read -r key; do
             ppr=$(awk -F'\t' -v k="$key" '$1 == k { print $2 }' <<<"$partials")
             psince=""
             [ "$rule" != D6n ] || psince=$(park_since "$key" D6n)
-            if [ "$deadlock" = 1 ]; then
-                add UNOWNED "$key" "$jstatus with no open PR and its worker's lock is STALE-DEAD" "$FUNNEL" "bash scripts/handover/queue-lock.sh status --sweep --reap-dead (the reap appends a HALTED bullet, so the next derive reads $key wrapped, after two gone sweeps if that append failed; it releases every STALE-DEAD lock under the root, each re-proved under its claim and CAS)"
+            held=0 hvalid=0 usehold=0 hhint=""
+            if has_label "$key" held; then
+                held=1
+                if hold_of "$key"; then
+                    hvalid=1
+                    if [ -z "$psince" ] || [ "$(_ts_epoch_of_iso "$H_SINCE")" -ge "$(_ts_epoch_of_iso "$psince")" ]; then usehold=1; fi
+                fi
+            fi
+            if [ "$held" = 1 ] && [ "$hvalid" = 0 ]; then hhint="; held with no owner on record: re-run ticket-hold.sh $key --owner <who> --until <date> --reason <why>"; fi
+            if [ "$usehold" = 1 ]; then
+                hsec=$(_ts_epoch_of_iso "$H_SINCE")
+                if [ -n "$H_UNTIL" ]; then
+                    due=$(_ts_epoch_of_iso "${H_UNTIL}T23:59:59Z")
+                else
+                    case "$H_OWNER" in chief) ttl=$AWAIT_TTL_CHIEF_S ;; operator) ttl=$AWAIT_TTL_OPERATOR_S ;; *) ttl=$AWAIT_TTL_OTHER_S ;; esac
+                    due=$((hsec + ttl))
+                fi
+                [ "$due" -le $((hsec + AWAIT_MAX_S)) ] || due=$((hsec + AWAIT_MAX_S))
+                holdfix="$H_OWNER acts on $key, or re-hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>"
+                if [ "$NOW" -lt "$due" ]; then
+                    add AWAITING "$key" "$H_OWNER since=$H_SINCE due=$(iso_of "$due") what=$H_REASON source=hold" ticket-hold.sh "$holdfix" "$H_OWNER"
+                else
+                    add UNOWNED "$key" "$jstatus with no open PR and no live owner, awaiting $H_OWNER since $H_SINCE and overdue (due $(iso_of "$due"))" ticket-hold.sh "$holdfix"
+                fi
+            elif [ "$deadlock" = 1 ]; then
+                add UNOWNED "$key" "$jstatus with no open PR and its worker's lock is STALE-DEAD$hhint" "$FUNNEL" "bash scripts/handover/queue-lock.sh status --sweep --reap-dead (the reap appends a HALTED bullet, so the next derive reads $key wrapped, after two gone sweeps if that append failed; it releases every STALE-DEAD lock under the root, each re-proved under its claim and CAS)"
             elif [ -n "$psince" ]; then
                 ttl=$AWAIT_TTL_CHIEF_S
                 [ "$ttl" -le "$AWAIT_MAX_S" ] || ttl=$AWAIT_MAX_S
@@ -404,12 +456,12 @@ while IFS= read -r key; do
                     what=$(printf '%s' "the worker wrapped and the brief says Completes ticket: no, so the chief decides the remainder" | tr -d '|\t\r\n')
                     add AWAITING "$key" "chief since=$psince due=$(iso_of "$due") what=$what source=d6n" "$FUNNEL" "$chieffix" chief
                 else
-                    add UNOWNED "$key" "$jstatus with no open PR and no live owner, awaiting the chief since $psince and overdue (due $(iso_of "$due"))" "$FUNNEL" "$chieffix"
+                    add UNOWNED "$key" "$jstatus with no open PR and no live owner, awaiting the chief since $psince and overdue (due $(iso_of "$due"))$hhint" "$FUNNEL" "$chieffix"
                 fi
             elif [ -n "$ppr" ]; then
-                add UNOWNED "$key" "$jstatus with no open PR and no live owner, left by partial merge PR $ppr" "$FUNNEL" "bash scripts/handover/chief-kit/next-dispatchable.sh lists $key: dispatch the RESUME worker it names; close $key by hand when it says HANDED-OFF (the remainder is on other tickets); or, when it says NEEDS-CHIEF-NOTE, add the remainder to the partial PR's body or close $key by hand if nothing remains"
+                add UNOWNED "$key" "$jstatus with no open PR and no live owner, left by partial merge PR $ppr$hhint" "$FUNNEL" "bash scripts/handover/chief-kit/next-dispatchable.sh lists $key: dispatch the RESUME worker it names; close $key by hand when it says HANDED-OFF (the remainder is on other tickets); or, when it says NEEDS-CHIEF-NOTE, add the remainder to the partial PR's body or close $key by hand if nothing remains"
             else
-                add UNOWNED "$key" "$jstatus with no open PR and no live owner" "$FUNNEL" "dispatch a RESUME worker, or $SWEEP_FIX"
+                add UNOWNED "$key" "$jstatus with no open PR and no live owner$hhint" "$FUNNEL" "dispatch a RESUME worker, or $SWEEP_FIX"
             fi
         fi
     fi
