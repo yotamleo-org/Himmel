@@ -5174,6 +5174,31 @@ bus9071_out="$(BUS_EXEC_SECS=08 HEADED_ARM_BUS_CLI="$bus45_hung" XDG_STATE_HOME=
 bus9071_secs=$((SECONDS - bus9071_t0))
 check "9071g hung bus: refused within the bound" "$rc:$([ "$bus9071_secs" -lt 60 ] && echo bounded || echo "slow:${bus9071_secs}s")" "2:bounded"
 contains "9071g hung bus: the refusal says it timed out, a leading zero read as decimal" "$bus9071_out" "timed out after 8s"
+# A name over the bus limit is refused as a name-length error before the bus is asked, with or
+# without the override; a real bus error keeps the broken-bus text.
+bus9537_stub="$bus45/bus-called-stub"
+printf '#!/usr/bin/env bash\ntouch "%s/bus-called"\necho "bus: invalid session name"\nexit 1\n' "$bus45" > "$bus9537_stub"; chmod +x "$bus9537_stub"
+bus9537_name="HIMMEL-9537-$(printf 'x%.0s' $(seq 1 118))"
+for bus9537_ov in "" 1; do
+  rm -f "$bus45/seen" "$bus45/bus-called"; rc=0
+  bus9537_out="$(HIMMEL_LAUNCH_UNBOUND_OK="$bus9537_ov" HEADED_ARM_BUS_CLI="$bus9537_stub" XDG_STATE_HOME="$bus45/state" \
+    HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+    HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+      bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 "$bus9537_name" "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
+  check "9537a too-long name (override='$bus9537_ov'): launch exits 2, nothing launched, the bus not asked" "$rc:$([ -e "$bus45/seen" ] && echo launched || echo none):$([ -e "$bus45/bus-called" ] && echo asked || echo not-asked)" "2:none:not-asked"
+  contains "9537a too-long name: the refusal names the length and the limit" "$bus9537_out" "session name is ${#bus9537_name} characters, over the bus limit of 128"
+  not_contains "9537a too-long name: the refusal does not say the bus is broken" "$bus9537_out" "the bus is broken"
+done
+check "9537c the launcher's name limit is the bus validator's" \
+  "$(sed -n 's/^ *BUS_NAME_MAX=\([0-9]*\)$/\1/p' "$SCRIPT" | head -1)" \
+  "$(sed -n 's/^export const SESSION_NAME = .*{0,\([0-9]*\)}\$\/;$/\1/p' "$HERE/../../../marketplace/plugins/himmel-bus/lib/store.mjs" | awk '{print $1+1}')"
+rm -f "$bus45/seen"; rc=0
+bus9537_out="$(HEADED_ARM_BUS_CLI="$bus45_broken" XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9537-broken "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
+contains "9537b a real bus error keeps the broken-bus text" "$bus9537_out" "bus store unreadable - the bus is broken"
+not_contains "9537b a real bus error is not called a name-length error" "$bus9537_out" "over the bus limit"
 # an opted-out profile launched from a shell that carries a live
 # bind flag and an extra HIMMEL_BUS_* leaks neither to the launched env.
 rm -f "$bus45/seen"

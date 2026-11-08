@@ -113,7 +113,8 @@ the manifest (sha256sum format), which Telegram /launch-worker checks (HIMMEL-50
 context_1m (a non-blank one-line reason; native lane only, never with ab_arm): the brief gets `> **Context:** 1m — operator-ruling: <reason>`, the line
 headed-arm-worker.sh requires for WORKER_SESSION_CONTEXT=1m, and the launcher exports WORKER_SESSION_CONTEXT=1m. Without the key neither is written
 (an Opus worker runs at its profile ceiling).
-The worker's session name (the doc stem) must fit the bus limit of 128 characters, or the run is refused naming it before anything is written.
+The worker's session name (the doc stem) must fit the bus limit of 128 characters with room left for its -RESUME form: a slug that is too long is
+trimmed at a word boundary (the key, label and date stay) and the trim is printed. A name that still exceeds the limit is refused before anything is written.
 A ticket whose mirror row lacks a DoD or Proof is read again after one incremental `jira mirror` (it may be edited since the last sync).
 Every worker brief is run through brief-lint.sh (with HANDOVER_DIR set to --handover-root) right after it is written; a brief it refuses is
 removed, no launcher is written for it, and the run exits 1 with lint's reason.
@@ -130,6 +131,17 @@ import holds  # noqa: E402  the one parser of a Writes line, and the one grant-p
 REQUIRED = ['label', 'keys', 'slug', 'branch', 'title', 'desc', 'why', 'prior', 'scope', 'scope_short', 'commit']
 RM_REQUIRED = ['label', 'keys', 'slug', 'release', 'versions', 'state_dir', 'mode']
 BUS_NAME_MAX = 128
+# A relaunch adds a letter to the label and -RESUME to the name (N5454b ... -RESUME).
+RESUME_ROOM = len('b-RESUME')
+
+
+def fit_slug(key, label, slug, date):
+    """The slug cut at a word boundary (a hard cut if it has none) so the name and its -RESUME form fit the bus."""
+    room = BUS_NAME_MAX - RESUME_ROOM - len('%s-%s--%s' % (key, label, date))
+    if len(slug) <= room or room < 1:
+        return slug
+    cut = slug[:room] if slug[room] == '-' else slug[:room].rpartition('-')[0] or slug[:room]
+    return cut.rstrip('-')
 RM_MODEL = 'claude-opus-5-5'
 RM_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'docs', 'handover', 'rm-brief-template.md')
 HOOK_LINE = ("> - **Native lane.** You are launched with the hook-integrity bypass flag because this ticket edits a hook file; "
@@ -1430,7 +1442,10 @@ def main():
             l['stem'] = '%s-%s-rm-%s-%s' % (l['keys'][0], l['label'], l['release'], a.date)
         else:
             l['nonce'] = '%s-%s-%s' % (letter, l['label'], secrets.token_hex(4))
-            l['stem'] = '%s-%s-%s-%s' % (l['keys'][0], l['label'], l['slug'], a.date)
+            fitted = fit_slug(l['keys'][0], l['label'], l['slug'], a.date)
+            if fitted != l['slug']:
+                print('%s slug trimmed to fit the bus limit of %d (room kept for -RESUME): %s -> %s' % (l['label'], BUS_NAME_MAX, l['slug'], fitted))
+            l['stem'] = '%s-%s-%s-%s' % (l['keys'][0], l['label'], fitted, a.date)
             l['wt'] = '%s/.claude/worktrees/%s' % (a.repo, l['branch'].replace('/', '+'))
         if len(l['stem']) > BUS_NAME_MAX:
             die('worker %s: session name %s is %d characters, over the bus limit of %d (marketplace/plugins/himmel-bus/lib/store.mjs SESSION_NAME); shorten the slug by %d' % (

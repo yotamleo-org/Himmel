@@ -1695,13 +1695,30 @@ mk98 'w["keys"]=["HIMMEL-9801"]' "$WORK/b98ok.json"
 MIRROR_LOG="$WORK/mirror98.log" gen98 "$WORK/b98ok.json" "$WORK/bb98ok"; rc=$?
 { [ "$rc" = 0 ] && [ ! -s "$WORK/mirror98.log" ]; } && pass "9598 b: a ticket whose mirror row is complete runs no refresh" || fail "9598 b: rc=$rc, refresh log [$(cat "$WORK/mirror98.log")]"
 
-mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*int(sys.argv[4])' "$WORK/c101.json" 101
-gen98 "$WORK/c101.json" "$WORK/bc101"; rc=$?
-[ "$rc" = 1 ] && has "9598 c: a 129-character session name is refused naming the 128 limit" "$(cat "$WORK/g98.err")" "128" || fail "9598 c: over-limit rc=$rc"
-! ls "$WORK/bc101"/* >/dev/null 2>&1 && pass "9598 c: nothing is written for it" || fail "9598 c: wrote files for an over-limit name"
-mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*int(sys.argv[4])' "$WORK/c100.json" 100
-gen98 "$WORK/c100.json" "$WORK/bc100"; rc=$?
-[ "$rc" = 0 ] && pass "9598 c: a 128-character session name generates" || fail "9598 c: at-limit rc=$rc: $(cat "$WORK/g98.err")"
+# A slug too long for the bus limit is trimmed at a word boundary: the key, label and date stay, the
+# trimmed name and its -RESUME form (a letter on the label plus -RESUME) both fit 128, and it is printed.
+mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="-".join(["wordy"]*30)' "$WORK/c101.json"
+gen98 "$WORK/c101.json" "$WORK/bc101" --manifest "$WORK/c101-fleet.json"; rc=$?
+[ "$rc" = 0 ] && pass "9537 a: a slug too long for the bus is trimmed, not refused" || fail "9537 a: rc=$rc: $(cat "$WORK/g98.err")"
+C101="$(find "$WORK/bc101" -name '*-N901-*.md' -print -quit 2>/dev/null)"; C101="$(basename "$C101" .md)"
+[ -n "$C101" ] && [ "${#C101}" -le 120 ] && pass "9537 a: the trimmed name and its -RESUME form fit the bus limit (${#C101} + 8 of 128)" || fail "9537 a: name [$C101] is ${#C101} characters"
+case "$C101" in HIMMEL-9801-N901-wordy-*wordy-2026-10-08) pass "9537 a: the key, label and date are intact and the slug ends on a whole word";; *) fail "9537 a: name [$C101] lost its key, label, date or cut a word";; esac
+has "9537 a: the trim is printed" "$(cat "$WORK/g98.out")" "trimmed"
+has "9537 a: the printed manifest add line names the trimmed doc" "$(cat "$WORK/g98.out")" "$C101.md"
+has "9537 a: the launcher names the trimmed doc" "$(cat "$WORK/bc101/launch-N901.sh" 2>/dev/null)" "$C101.md"
+has "9537 a: the branch is the one given" "$(cat "$WORK/bc101/$C101.md" 2>/dev/null)" "fix/himmel-9001-plain-fix"
+# a slug with no word boundary is cut hard
+mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*200' "$WORK/c102.json"
+gen98 "$WORK/c102.json" "$WORK/bc102"; rc=$?
+C102="$(basename "$(find "$WORK/bc102" -name '*-N901-*.md' -print -quit 2>/dev/null)" .md)"
+[ "$rc" = 0 ] && [ "${#C102}" -le 120 ] && pass "9537 b: a slug with no word boundary is cut to fit" || fail "9537 b: rc=$rc name [$C102]"
+# control: a short slug is unchanged byte for byte, and nothing is printed as trimmed
+gen98 "$WORK/a98.json" "$WORK/bc104" --manifest "$WORK/c104-fleet.json"; rc=$?
+C104="$WORK/bc104/HIMMEL-9801-N901-plain-fix-2026-10-08.md"
+{ [ "$rc" = 0 ] && [ -f "$C104" ]; } && pass "9537 c: a short slug keeps its name byte for byte" || fail "9537 c: rc=$rc"
+lacks "9537 c: a short slug prints no trim" "$(cat "$WORK/g98.out")" "trimmed"
+has "9537 c: the printed manifest add line matches the doc name" "$(cat "$WORK/g98.out")" "$C104"
+has "9537 c: the launcher names the same doc" "$(cat "$WORK/bc104/launch-N901.sh" 2>/dev/null)" "$C104"
 
 OPUS98='w["keys"]=["HIMMEL-9801"]; w["model"]="claude-opus-5-5"; w["tier"]={"category":"design","reason":"multi-step design: x"}'
 mk98 "$OPUS98; w[\"context_1m\"]=\"decision 844: the operator wants the 1M window on this ticket\"" "$WORK/d98.json"
