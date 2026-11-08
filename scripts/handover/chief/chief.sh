@@ -2557,6 +2557,18 @@ cmd_next() {
             err "warning: could not write the tracker history to the history file; seeded the tracker: line whole"
         fi
     fi
+    if [ "$predecessor_dir" != "$state_dir" ]; then
+        local companion
+        for companion in $(printf '%s\n' "$predecessor_direction" | grep -m 1 '^Full original text' | grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md'); do
+            [ -f "$predecessor_dir/$companion" ] || continue
+            if [ -e "$state_dir/$companion" ]; then
+                cmp -s "$predecessor_dir/$companion" "$state_dir/$companion" || { err "the successor bucket holds a different $companion than the predecessor's; move one aside and retry"; exit 1; }
+                continue
+            fi
+            mkdir -p "$state_dir/specs/decisions"
+            cp "$predecessor_dir/$companion" "$state_dir/$companion" || { err "could not copy the direction companion $companion to $state_dir"; exit 1; }
+        done
+    fi
     if [ "$(printf '%s' "$predecessor_direction" | wc -c | tr -d ' ')" -gt "${CHIEF_DIRECTION_SPILL_BYTES:-12000}" ]; then
         dir_rc=0
         dir_short="$(printf '%s\n' "$predecessor_direction" | compress_direction "$state_dir" "$(date +%F)")" || dir_rc=$?
