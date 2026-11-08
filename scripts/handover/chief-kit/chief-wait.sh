@@ -1077,6 +1077,14 @@ unowned_wake() {
     nums="$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')"
     set_wake "$nums" "$unowned_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}"
 }
+unowned_aged_file="$inbox.wait.unowned-aged"
+unowned_aged_wake() {
+    local aged
+    aged="$(printf '%s\n' "$1" | tr ',' '\n' | sed -n 's/^#\([0-9][0-9]*\):\([0-9][0-9]*\)m.*/\1 \2/p' | awk -v m="${CHIEF_WAIT_UNOWNED_WAKE_MIN:-30}" '$2 + 0 >= m + 0 { print $1 }')"  # swallow-ok: no aged PR reads empty
+    [ -n "$aged" ] || return 1
+    set_wake "$aged" "$unowned_aged_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}" || return 1
+    printf '%s\n' "$aged" | paste -sd, -
+}
 # set_wake: <newline-separated items> <marker file> <re-wake minutes> — the shared marker
 # logic: succeeds (and refreshes the marker) when the marker is missing, holds none of
 # an item, or is older than the re-wake window.
@@ -1954,9 +1962,13 @@ while :; do
                 '?') unowned_none_streak=0 ;;
                 none)
                     unowned_none_streak=$((unowned_none_streak + 1))
-                    [ "$unowned_none_streak" -lt 2 ] || rm -f "$unowned_file" ;;
+                    [ "$unowned_none_streak" -lt 2 ] || rm -f "$unowned_file" "$unowned_aged_file" ;;
                 *)
                     unowned_none_streak=0
+                    if unowned_aged="$(unowned_aged_wake "$unowned_val")"; then
+                        printf 'WAKE unowned-pr %s\n%s\n' "$unowned_aged" "$tick_line"
+                        exit_reason='wake-unowned-pr'; exit 0
+                    fi
                     if unowned_wake "$unowned_val"; then
                         # 8934: an unowned PR is look-only (the chief reads it, a worker owns the fix): every sight joins the
                         # digest and rides the next real wake; HOUSEKEEPING_DIGEST_SECS=0 keeps the unbatched wake

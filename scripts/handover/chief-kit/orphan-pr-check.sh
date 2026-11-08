@@ -12,7 +12,9 @@
 # The record is <state dir>/workers/<KEY>.json (the one writer is the worker-jira-status funnel).
 # A PR is unowned when its record state is wrapped or none, or the ticket has no record; every
 # other state (live, idle, IDLE-HELD, parked, unknown) still owns it. A PR also counts as held
-# when the doc's Live state `queue:` line names its number (`#<n>` or `<n>`) or its ticket key.
+# when a `|`-separated segment of the doc's Live state `queue:` line, before any `||`, holds the
+# word held or hold and names its number (`#<n>` or `<n>`) or its ticket key; a segment that only
+# mentions the PR (a relaunch owed, a merge pending) is not a hold.
 #
 # The PR set is `gh pr list --state open --json number,headRefName,isCrossRepository,author` run in
 # <repo> (default: this checkout). Seams (tests): ORPHAN_PR_CHECK_PRS = a file holding that JSON,
@@ -62,7 +64,12 @@ ticket_key() { printf '%s\n' "$1" | grep -oiE '[a-z][a-z0-9]*-[0-9]+' | head -n 
 queue_line="$(awk '
     $0 == "## Live state" { s = 1; next }
     s && /^## / { exit }
-    s && index($0, "queue:") == 1 { print; exit }
+    s && index($0, "queue:") == 1 {
+        sub(/\|\|.*/, "")
+        n = split($0, seg, "|")
+        for (i = 1; i <= n; i++) if (seg[i] ~ /[Hh][Ee][Ll][Dd]|[Hh][Oo][Ll][Dd]/) print seg[i]
+        exit
+    }
 ' "$doc" 2>/dev/null)" || unavailable "the chief doc's queue: line could not be read"  # swallow-ok: a read failure exits as unavailable, never as an empty queue
 
 owned_by_record() { # <KEY> — rc 0 when its worker record reads a state other than wrapped or none
