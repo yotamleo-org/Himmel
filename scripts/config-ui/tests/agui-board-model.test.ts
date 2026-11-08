@@ -3,7 +3,7 @@
 import { test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { applyKey, briefNext, BRIEF_IDLE, failKind, joinBoard, needsShown, normalizeBoard, openAt, parseView, STAGES, stageSegments, viewHash, type Board, type BoardWorker, type Drawer } from "../agui-web/src/board-model";
+import { applyKey, briefNext, BRIEF_IDLE, ciCount, failKind, joinBoard, needsShown, normalizeBoard, openAt, parseView, STAGES, stageSegments, viewHash, type Board, type BoardWorker, type Drawer } from "../agui-web/src/board-model";
 import type { Row } from "../agui-web/src/fleet-model";
 
 const worker = (name: string, o: Partial<BoardWorker> = {}): BoardWorker => ({
@@ -145,6 +145,13 @@ test("normalizeBoard pass-through pin: a null ci and a null merged_today (a fail
   const out = normalizeBoard({ ...b, ci: null, headline: { live: 1, cap: null, merged_today: null, needs_you: 0, blocked: 0 }, trends: {} });
   expect(out.ci).toBeNull();
   expect(out.headline.merged_today).toBeNull();
+});
+
+test("ciCount: a null ci (a failed open-PR read) reads null instead of throwing, a real ci reads its count", () => {
+  const b = board([worker("N1")]);
+  expect(ciCount({ ...b, ci: null }, "green")).toBeNull();
+  expect(ciCount({ ...b, ci: { open: 3, green: 2, pending: 1, no_checks: 0, red: 0 } }, "green")).toBe(2);
+  expect(ciCount({ ...b, ci: { open: 3, green: 2, pending: 1, no_checks: 0, red: 0 } }, "red")).toBe(0);
 });
 
 test("failKind: the class prefix picks the kind; a trajectory class is not a tool error and run_error reads other", () => {

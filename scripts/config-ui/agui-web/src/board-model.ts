@@ -10,6 +10,7 @@ export const BRIEF_URL = (worker: string) => `/api/agui/brief?leg=${encodeURICom
 export type Legend = Record<string, Record<string, { color: string; label: string }>>;
 const FAILURE_KINDS = new Map([["denied", "denial"], ["error", "error"], ["traj", "traj"], ["suite", "suite"], ["blocked", "blocked"]]);
 export const failKind = (cls: string): string => FAILURE_KINDS.get(cls.split("/", 1)[0]) ?? "other";
+export const ciCount = (b: Board, c: "green" | "pending" | "no_checks" | "red"): number | null => b.ci?.[c] ?? null;
 export type TimelineBullet = { at: string | null; stage: string; marker: string; text: string };
 export type BoardWorker = {
   worker: string; ticket: string; goal: string; state: string; stage: Stage; stages: Record<Stage, string | null>;
