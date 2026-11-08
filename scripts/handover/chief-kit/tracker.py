@@ -1436,9 +1436,8 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
                     continue
                 if isinstance(r, dict) and r.get('kind') == 'spec':
                     signed.add(spec_id(r.get('spec_path')))
-                    sk = re.search(r'HIMMEL-(\d+)', os.path.basename(str(r.get('spec_path') or '')))
-                    if sk:
-                        signed_ticket_numbers.add(int(sk.group(1)))
+                    named = os.path.basename(str(r.get('spec_path') or '')) + ' ' + str(r.get('keys') or '')
+                    signed_ticket_numbers.update(int(n) for n in re.findall(r'HIMMEL-(\d+)', named))
             readable = True
         except FileNotFoundError:
             readable = os.path.isdir(os.path.join(handover_dir, 'specs', 'designs'))
