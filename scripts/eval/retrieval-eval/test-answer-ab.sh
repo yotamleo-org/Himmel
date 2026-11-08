@@ -433,7 +433,6 @@ print(len(rows) == 2 and all(r.get("route_calls") == 2 and len(r.get("tool_trace
       for r in rows))' "$W/out-trace/results.jsonl")"
 
 # 23. a realistic session cannot Read, Grep or Glob the question bank (it holds the gold files).
-# The session's Read deny rules name both bank files and a --questions file that lies inside --repo.
 rm -f "$W"/sess-*.log
 inrepo="$R/inrepo-bank.jsonl"; cp "$Q2" "$inrepo"
 python3 -I "$AB" run --repo "$R" --questions "$inrepo" --out "$W/out-deny" --arms "$REAL" --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/deny.txt" 2>&1
