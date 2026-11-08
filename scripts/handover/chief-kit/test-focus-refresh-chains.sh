@@ -47,6 +47,7 @@ for a in "$@"; do [ "$prev" = --out ] && out="$a"; [ "$prev" = --chains-file ] &
 printf 'page\n<meta name="himmel-focus" content="v1.1.3 vfp%s">\n' "$(cat "$FX/vfp" 2>/dev/null)" > "$out"
 echo "vfp$(cat "$FX/vfp" 2>/dev/null)" > "$out.vfp"
 echo "$chains" > "$FX/tracker-chains-path"
+echo "$*" > "$FX/tracker-args"
 [ -z "$chains" ] || cp "$chains" "$FX/tracker-chains.json"
 EOS
 cat >"$tmp/bin/drift" <<'EOS'
@@ -106,6 +107,7 @@ check "the graph is read for the registry's members only" "$(grep '^graph' "$FX/
 check "the tracker read the regenerated file, with its drain row" "$(drain_of "$FX/tracker-chains.json")" \
     "v1.1.3 drain: open 3 · in-chain 1 · standalone 1 · unchained 1 HIMMEL-9102 · dispatchable 1 · dropped {collision 1}"
 check "the published file is the one the tracker read" "$(cmp -s "$CH" "$FX/tracker-chains.json" && echo same)" same
+contains "the tracker is handed the bucket and the chief doc its Waiting on you reads" "$(cat "$FX/tracker-args")" "--owed-dir $tmp/doc --chief-doc $DOC"
 check "the state shows drain-unchained=1" "$(st drain-unchained)" 1
 contains "the unchained count is a WARN on stderr" "$(cat "$tmp/err")" "WARN drain-unchained=1"
 stage_left=""

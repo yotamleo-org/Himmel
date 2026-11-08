@@ -38,7 +38,7 @@ import os
 import re
 import subprocess
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape as esc
 import sys
 
@@ -1369,7 +1369,129 @@ OPERATOR_LABELS = ('operator-decision', 'operator', 'operator-present', 'operato
 WAITING_CHAIN_RE = re.compile(r'waiting on you', re.I)
 
 
-def version_page(mir, version, groups, prs, chains, base, repo, workers=None, chains_mtime=None, drain=''):
+STALE_WORKER = timedelta(days=1)
+STALE_SOURCE = timedelta(days=1)
+# ponytail: a record with no last_event_ts keeps its line (its age is unknown); upgrade: stamp the record at wrap in ticket-status.sh
+
+
+def live_worker_records(workers):
+    now = datetime.now(timezone.utc)
+    out = {}
+    for k, rec in (workers or {}).items():
+        t = utc_dt(rec.get('last_event_ts') or '')
+        if str(rec.get('state')) in ('wrapped', 'halted') and t and now - t > STALE_WORKER and not open_worker_prs(rec):
+            continue
+        out[k] = rec
+    return out
+
+
+OWED_RE = re.compile(r'operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed', re.I)
+CRITIC_ROUND_CAP = 3
+
+
+def md_section(path, heading):
+    try:
+        lines = open(path, encoding='utf-8').read().splitlines()
+    except OSError:
+        return None
+    out, on = [], False
+    for l in lines:
+        if l.startswith('## '):
+            if on:
+                break
+            on = l[3:].strip() == heading
+        elif on:
+            out.append(l)
+    return out if on or out else None
+
+
+def spec_id(path):
+    p = os.path.realpath(path or '')
+    return p[:-3] if p.endswith('.md') else p
+
+
+def operator_owed(bucket, chief_doc, version, opn, mir):
+    items, readable, unread = [], False, []
+    if bucket:
+        signed = set()
+        try:
+            for l in open(os.path.join(bucket, 'release', version, 'operator.jsonl'), encoding='utf-8'):
+                try:
+                    r = json.loads(l)
+                except ValueError:
+                    continue
+                if isinstance(r, dict) and r.get('kind') == 'spec':
+                    signed.add(spec_id(r.get('spec_path')))
+            readable = True
+        except FileNotFoundError:
+            readable = os.path.isdir(os.path.join(bucket, 'specs', 'designs'))
+        except OSError:
+            signed = None
+        if signed is not None:
+            latest = {}
+            for f in glob.glob(os.path.join(bucket, 'specs', 'designs', '*.critic-spec-r*.md')):
+                m = re.fullmatch(r'(.*)\.critic-spec-r(\d+)\.md', f)
+                if m and (m.group(1) not in latest or int(m.group(2)) > latest[m.group(1)][0]):
+                    latest[m.group(1)] = (int(m.group(2)), f)
+            for spec, (rnd, f) in sorted(latest.items()):
+                k = re.search(r'HIMMEL-(\d+)', os.path.basename(spec))
+                try:
+                    last = [x for x in open(f, encoding='utf-8').read().splitlines() if x.strip()][-1].strip()
+                except (OSError, ValueError, IndexError):
+                    unread.append(os.path.basename(f))
+                    continue
+                if k and int(k.group(1)) in opn and spec_id(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= CRITIC_ROUND_CAP):
+                    n = int(k.group(1))
+                    items.append(('unsigned spec', n, clip(opn[n]['title'], 100),
+                                  '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
+                                      os.path.basename(spec), rnd, last if re.fullmatch(r'SPEC (?:CLEAN|FINDINGS \d+)', last) else 'no verdict line'),
+                                  'sign the spec, or rule on its findings'))
+        hand = sorted(glob.glob(os.path.join(bucket, '*HANDOFF.md')), key=os.path.getmtime)
+        sec = md_section(hand[-1], 'Open operator items') if hand else None
+        if sec is not None:
+            readable = True
+            for l in sec:
+                if l.strip() and not re.fullmatch(r'[-*\s]*none\.?', l.strip(), re.I):
+                    items.append(('handoff', None, clip(l.strip(), 140), os.path.basename(hand[-1]), 'answer the open item'))
+    live = md_section(chief_doc, 'Live state') if chief_doc else None
+    if live is not None:
+        readable = True
+        for l in live:
+            segs = l.partition(':')[2].split(' || ')[0].split(' | ') if l.startswith('queue:') else [l.partition(':')[2]] if l.startswith('pool-disposition:') else []
+            for s in segs:
+                if OWED_RE.search(s):
+                    k = KEY_RE.search(s)
+                    n = num(k.group(0)) if k else None
+                    items.append(('chief doc', n, clip(opn[n]['title'], 100) if n in opn else clip(s.strip(), 140), clip(s.strip(), 160),
+                                  'the operator acts on what the line names'))
+    return items, readable, unread
+
+
+def source_notes(chains, chains_mtime, prio_mtime, ndt):
+    def stamp(ts):
+        return datetime.fromtimestamp(ts, timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+    notes = []
+    if chains_mtime is not None and ndt and datetime.fromtimestamp(chains_mtime, timezone.utc) < ndt:
+        notes.append('focus-chains.json last written %s, older than the newest Jira update (%s): the chain order and grouping may be out of date.'
+                     % (stamp(chains_mtime), ndt.strftime('%Y-%m-%d %H:%M UTC')))
+    regs = []
+    for ch in chains:
+        try:
+            regs.append(os.path.getmtime(ch['registry']['path']))
+        except (KeyError, TypeError, OSError):
+            continue
+    if regs and ndt and datetime.fromtimestamp(min(regs), timezone.utc) < ndt - STALE_SOURCE:
+        notes.append('chain registry last edited %s, older than the newest Jira update (%s): chains finished or begun since may be missing.'
+                     % (stamp(min(regs)), ndt.strftime('%Y-%m-%d %H:%M UTC')))
+    if prio_mtime is None:
+        notes.append('no priority line is read (no focus-plan: line names a plan), so every open ticket sits in rest of version.')
+    elif ndt and datetime.fromtimestamp(prio_mtime, timezone.utc) < ndt - STALE_SOURCE:
+        notes.append('priority line last edited %s, older than the newest Jira update (%s): the blocks may not match what is next.'
+                     % (stamp(prio_mtime), ndt.strftime('%Y-%m-%d %H:%M UTC')))
+    return notes
+
+
+def version_page(mir, version, groups, prs, chains, base, repo, workers=None, chains_mtime=None, drain='', prio_mtime=None, bucket_dir=None, chief_doc=None):
     """(html, stdout parity line, focus fingerprint): the FOCUS page of one version (HIMMEL-6769).
 
     Columns are the Jira status names of the version's open tickets, moved by an open PR's CI (`ci_column`) and each
@@ -1392,7 +1514,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
             return 'held'
         return 'work' if mir[k]['sn'] in ('In Progress', 'In Review', 'IN CI') else 'next'
 
-    workers = workers or {}
+    workers = live_worker_records(workers)
     prs = worker_ci(prs, workers)
     base = base.strip().rstrip('/') if re.match(r'^https?://', base.strip()) else ''
     opn = {num(k): m for k, m in mir.items() if version in m['fv'] and bucket(m) not in ('done', 'wont')}
@@ -1508,10 +1630,18 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     chainhtml = ''.join('<div class="chain"><h3>%s</h3><ol>\n%s</ol></div>' % (esc(ch['name']), ''.join(step(st) for st in ch['steps']))
                         for ch in chains)
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
-    waithtml = '<section data-section="waiting" data-count="%d"><h2 class="sh">Waiting on you <span class="n">%d</span></h2>%s</section>' % (
-        len(wait), len(wait), '<ul>%s</ul>' % ''.join('<li>%s %s <span class="own">Jira %s · %s</span></li>' % (
+    owed, owed_read, owed_unread = operator_owed(bucket_dir, chief_doc, version, opn, mir)
+    nwait = len(wait) + len(owed)
+    waithtml = '<section data-section="waiting" data-count="%d"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s</h2>%s</section>' % (
+        nwait, nwait, '' if owed_read else ' <span class="n">no operator-owed source read</span>',
+        ' <span class="n">%d critic file%s unread, skipped: %s</span>' % (
+            len(owed_unread), '' if len(owed_unread) == 1 else 's', esc(', '.join(owed_unread))) if owed_unread else '',
+        '<ul>%s</ul>' % (''.join('<li>%s %s <span class="own">Jira %s · %s</span></li>' % (
             key_html(k), esc(clip(opn[k]['title'], 100)), esc(jcol[k]), esc(', '.join(sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))))) for k in wait)
-        if wait else '<div class="empty">nothing is waiting on you</div>')
+            + ''.join('<li class="owed">%s%s <span class="own">%s · %s · action: %s</span></li>' % (
+                key_html(n) + ' ' if n else '', esc(t), esc(src), esc(ctx), esc(act)) for src, n, t, ctx, act in owed))
+        if nwait else '<div class="empty">%s</div>' % ('nothing is waiting on you' if owed_read else
+                                                       'no operator-owed source read: the Jira labels name no waiting ticket, and that is all that was checked'))
     legend = ''.join('<span class="lg b%d">%s</span>' % (min(i, 7), esc(n)) for i, n in enumerate(names))
     seclegend = ''.join('<span class="sec" style="--s:%s">%s %d</span>' % (c, esc(n), sum(1 for m in opn.values() if m['sector'] == n))
                         for n, c in SECTOR_COLORS.items() if any(m['sector'] == n for m in opn.values()))
@@ -1527,15 +1657,13 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
                                   None if KEY_RE.fullmatch(st.get('key', '')) else st.get('pr'), None if KEY_RE.fullmatch(st.get('key', '')) else st.get('owner'),
                                   step_row(st.get('key', ''))]
                                  for st in ch['steps']]] for ch in chains],
-        'waiting': [[k, sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))] for k in wait],
+        'waiting': [[k, sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))] for k in wait] + [list(o) for o in owed] + [owed_read],
         'prs': None if prs is None else [[k, [[n, d] for n, _, d in sorted(v)]] for k, v in sorted(prs.items())],
         'workers': [[k, r.get('leg'), r.get('state'), open_worker_prs(r)] for k, r in sorted(workers.items()) if k in opn]},
         sort_keys=True)
     vfp = hashlib.sha256(fp.encode('utf-8')).hexdigest()[:16]
-    cdt = datetime.fromtimestamp(chains_mtime, timezone.utc) if chains_mtime is not None else None
     ndt = utc_dt(upd)
-    age = (' focus-chains.json last written %s, older than the newest Jira update (%s): the chain order and grouping may be out of date.'
-           % (cdt.strftime('%Y-%m-%d %H:%M UTC'), utc_stamp(upd))) if cdt and ndt and cdt < ndt else ''
+    age = ''.join(' ' + n for n in source_notes(chains, chains_mtime, prio_mtime, ndt))
     html = VERSION_TEMPLATE.format(
         v=esc(version), n=len(opn), d=done, h=merged, gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=esc(utc_stamp(upd)),
         age=esc(age), waiting=waithtml,
@@ -1636,6 +1764,8 @@ def main():
     ap.add_argument('--handovers', default=os.environ.get('TRACKER_HANDOVERS_DIR', ''),
                     help='handover tree to grep for notes and live workers (default $TRACKER_HANDOVERS_DIR, '
                          'else <luna-root>/handovers/yotamleo/himmel)')
+    ap.add_argument('--owed-dir', default=None, help='--version: the handover bucket dir holding release/<version>/operator.jsonl, specs/designs and the *HANDOFF.md notes (Waiting on you)')
+    ap.add_argument('--chief-doc', default=None, help='--version: the chief doc whose `## Live state` queue:/pool-disposition: lines name what waits on the operator')
     ap.add_argument('--drift-log', default=None,
                     help='append-only drift/unplanned/unthemed counts per render (default <handovers>/roadmap-drift.tsv)')
     ap.add_argument('--jira-base-url', default=os.environ.get('JIRA_BASE_URL', ''),
@@ -1682,7 +1812,9 @@ def main():
         if not repo:
             raise SystemExit('tracker: no GitHub origin found for this checkout; pass --repo owner/name')
         html, par, vfp = version_page(read_mirror(), a.version, grp, open_prs(a.prs_file, repo), chains, a.jira_base_url, repo,
-                                      read_workers(a.workers_dir), chains_mtime, drain)
+                                      read_workers(a.workers_dir), chains_mtime, drain,
+                                      os.path.getmtime(a.priority_file) if a.priority_file else None,
+                                      os.path.abspath(a.owed_dir) if a.owed_dir else None, os.path.abspath(a.chief_doc) if a.chief_doc else None)
         os.makedirs(os.path.dirname(OUT), exist_ok=True)
         open(OUT, 'w', encoding='utf-8').write(html)
         open(OUT + '.vfp', 'w', encoding='utf-8').write(vfp + '\n')
