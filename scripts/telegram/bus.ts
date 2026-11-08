@@ -148,6 +148,22 @@ export async function appendLine(file: string, line: string): Promise<void> {
   await appendFile(file, line + "\n", { encoding: "utf8", mode: 0o600 });
 }
 
+// Reply via the originating chat's outbox: consistent with every other
+// operator-facing message in the bridge (send-then-commit durability + per-chat throttle
+// via flushOutboxes), and (unlike a direct sendMessage in the ingest loop) it does not
+// block polling. Routes to the SAME session the chat uses (group_<id> for a group, so a
+// group `/arm` reply lands in that group and its per-group context is preserved;
+// __chat__ for a DM), mirrors handleInbound's chatSession routing.
+export async function appendOutboxLine(root: string, chat_id: number, line: object): Promise<void> {
+  const session = chat_id < 0 ? `group_${chat_id}` : "__chat__";
+  const { created } = await ensureSession(root, session);
+  const meta = await readMeta(root, session);
+  if (created || !meta) {
+    await writeMeta(root, session, { chat_id, status: "idle", last_run_pid: null, last_run_at: null, task_name: null, retry_at: null });
+  }
+  await appendLine(join(sessionDir(root, session), "outbox.jsonl"), JSON.stringify(line));
+}
+
 // Append `line` to `file` ONLY if it already exists, an
 // O_WRONLY|O_APPEND open with NO O_CREAT, so a route attempt against a file
 // deleted moments earlier can never recreate it. A separate existsSync()

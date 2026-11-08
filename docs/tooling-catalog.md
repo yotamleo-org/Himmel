@@ -123,7 +123,7 @@ drift report; no marketplace install source or live setting is changed.
 
 | Plugin ID | Availability / default | Candidate profile | Refreshed target pin |
 |-----------|------------------------|-------------------|----------------------|
-| `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v7.0.1` (`2ce8aa15d05bd57213e6f746f953aafb7ded7a8b`) |
+| `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v7.0.2` (`22f0b463e7a5e579904dd6211a520321035526f7`) |
 | `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `4ae2317ddb22b046e26455e4f9c9b3aaaf62212d` |
 | `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `778c35a36e0afd2549c3fba86ec6e64afe649df3` |
 

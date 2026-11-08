@@ -611,6 +611,7 @@ export function registerRelease(program: Command): void {
       const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
       const r = specCheck(process.env, keys, mirror);
       for (const l of r.lines) console.log(l);
+      for (const warning of r.warnings) console.error(`WARN ${warning}`);
       if (!r.ok) process.exitCode = 1;
     });
 

@@ -8,6 +8,9 @@ export const BOARD_URL = (console: string) => `/api/agui/board?console=${encodeU
 export const BRIEF_URL = (worker: string) => `/api/agui/brief?leg=${encodeURIComponent(worker)}`;
 
 export type Legend = Record<string, Record<string, { color: string; label: string }>>;
+const FAILURE_KINDS = new Map([["denied", "denial"], ["error", "error"], ["traj", "traj"], ["suite", "suite"], ["blocked", "blocked"]]);
+export const failKind = (cls: string): string => FAILURE_KINDS.get(cls.split("/", 1)[0]) ?? "other";
+export const ciCount = (b: Board, c: "green" | "pending" | "no_checks" | "red"): number | null => b.ci?.[c] ?? null;
 export type TimelineBullet = { at: string | null; stage: string; marker: string; text: string };
 export type BoardWorker = {
   worker: string; ticket: string; goal: string; state: string; stage: Stage; stages: Record<Stage, string | null>;
@@ -23,9 +26,9 @@ export type Section = { id: string; title: string; body: string; tone: string; o
 export type Board = {
   schema: "himmel.board/1"; generated_at: string; console: { name: string };
   sections: Section[]; sections_error?: string;
-  headline: { live: number; cap: number | null; merged_today: number; needs_you: number; blocked: number };
+  headline: { live: number; cap: number | null; merged_today: number | null; needs_you: number; blocked: number };
   bank: { week_pct: number | null; five_hour_pct: number | null };
-  ci: { open: number; green: number; pending: number; no_checks: number; red: number };
+  ci: { open: number; green: number; pending: number; no_checks: number; red: number } | null;
   milestones: { version: string; unavailable?: boolean; done?: number; total?: number; open_blockers?: string[] }[];
   needs_you: Need[]; workers: BoardWorker[];
   trends: {

@@ -247,6 +247,28 @@ if [ "$got" = 2 ]; then ok "jq missing denies"; else bad "jq missing denies — 
 mkdir -p "$T/slow-model" && printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\ncase "$5" in jq) exit 124 ;; esac\nexit 0\n' >"$T/slow-model/timeout" && chmod +x "$T/slow-model/timeout"
 err=$(printf '%s' "$(bash_json "echo hi | bash")" | XDG_STATE_HOME="$T/state" PATH="$T/slow-model:$PATH" bash "$HOOK" 2>&1 >/dev/null); got=$?
 if [ "$got" = 2 ] && [[ $err == *"timed out"* ]]; then ok "a timed-out command model denies a pipe into a shell"; else bad "a timed-out command model denies a pipe into a shell — rc=$got $(printf '%s' "$err" | head -c 200)"; fi
+_model_fail() {
+    local label=$1 expect=$2 path_env=$3 hook=$4 cmd=$5 got
+    got=$(printf '%s' "$(bash_json "$cmd")" | XDG_STATE_HOME="$T/state" PATH="$path_env" "$(command -v bash)" "$hook" >/dev/null 2>&1; echo $?)
+    case "$got" in 0) got=allow ;; 2) got=deny ;; *) got="?(rc=$got)" ;; esac
+    if [ "$got" = "$expect" ]; then ok "$label"; else bad "$label — expected $expect got $got"; fi
+}
+PIPE_SET="printf '%s\\n' 'bash scripts/lib/usage-lift.sh set x' | sh -s"
+mkdir -p "$T/crash-model" "$T/garbled-model" "$T/no-shfmt" "$T/nolib/scripts/hooks"
+printf '#!/bin/sh\necho "fatal error: out of memory" >&2\nexit 2\n' >"$T/crash-model/shfmt"
+printf '#!/bin/sh\nprintf "not json"\n' >"$T/garbled-model/shfmt"
+chmod +x "$T/crash-model/shfmt" "$T/garbled-model/shfmt"
+for b in bash cat awk sed tr grep printf env dirname jq date mkdir; do
+    p=$(command -v "$b" 2>/dev/null) && ln -s "$p" "$T/no-shfmt/$b"
+done
+cp "$HOOK" "$T/nolib/scripts/hooks/block-bank-lift-writes.sh"
+_model_fail "9566: a crashing command model denies a pipe into a shell" deny "$T/crash-model:$PATH" "$HOOK" "$PIPE_SET"
+_model_fail "9566: an unreadable model output denies a pipe into a shell" deny "$T/garbled-model:$PATH" "$HOOK" "$PIPE_SET"
+_model_fail "9566: shfmt missing denies a pipe into a shell" deny "$T/no-shfmt" "$HOOK" "$PIPE_SET"
+_model_fail "9566: a missing model lib denies a pipe into a shell" deny "$PATH" "$T/nolib/scripts/hooks/block-bank-lift-writes.sh" "$PIPE_SET"
+_model_fail "9566: a crashing model leaves a command with no pipe into a shell allowed" allow "$T/crash-model:$PATH" "$HOOK" "echo hi | grep h"
+row "9566: a zsh-only clause after a piped set denies" deny "$PIPE_SET; for f (a) { echo \$f }"
+row "9566: a zsh-only flag expansion after a piped set denies" deny "echo 'bash scripts/lib/usage-lift.sh set x' | bash; echo \${(f)x}"
 
 echo "== deny message names the operator remedy =="
 err=$(printf '%s' "$(bash_json "bash $S set")" | bash "$HOOK" 2>&1 >/dev/null)

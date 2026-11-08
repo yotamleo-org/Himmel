@@ -22,7 +22,7 @@ export const MAX_BUFFER = 512 * 1024;
 const bytes = text => Buffer.byteLength(text);
 
 const SendInput = z.strictObject({
-  to: z.string().max(64).regex(/^[A-Za-z0-9._-]+$/).describe('session name'),
+  to: z.string().max(128).regex(/^[A-Za-z0-9._-]+$/).describe('session name'),
   b: z.string().max(MAX_BODY).describe('body'),
   s: z.string().max(MAX_SUMMARY).optional().describe('summary, required if b > 1500 bytes'),
   re: z.number().int().positive().optional().describe('your message # this answers (marks it acked)'),

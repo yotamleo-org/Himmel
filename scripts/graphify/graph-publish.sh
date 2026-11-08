@@ -261,8 +261,7 @@ Every path in this PR's diff is a tracked graphify-out artifact (\`graphify-out/
 
 ## Ticket
 
-- HIMMEL-1129
-- HIMMEL-2278 (the machine-generated-PR review class)
+- ${TICKET}
 
 ---
 

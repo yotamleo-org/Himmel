@@ -26,7 +26,7 @@
 #                                                  the line passed on as is, rc 10
 #                        A bullet that cannot be written appends ` doc-bullet=failed <why>` (its own
 #                        line after a GO-WRITTEN). Any other auto-go answer is
-#                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: ESCALATE marker-READY, as before.
+#                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: auto-go.sh --dry-run runs once (its answer is ignored, so it leaves one auto-go.jsonl row), then ESCALATE marker-READY, as before.
 #   anything else     -> ESCALATE (READY with the flag off, and FINDING, need a judge or the chief)
 #
 #   stacked_series on: series-ledger.py find (the bucket is the manifest's directory) says whether the worker's
@@ -99,9 +99,19 @@ line="${line#- }"
 while [[ "$line" =~ ^(N[0-9]+|[A-Z]+-[0-9]+)[[:space:]]+ ]]; do line="${line#"${BASH_REMATCH[0]}"}"; done
 marker="${line%%[^A-Za-z-]*}"
 
+dry_run_ready() {
+    local dpr dhead dlabels
+    [[ $line =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})([^0-9a-f]|$) ]] || return 0
+    dpr="${BASH_REMATCH[1]}"; dhead="${BASH_REMATCH[2]}"
+    dlabels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)"
+    case "$dlabels" in ''|*$'\n'*) return 0 ;; esac
+    "${AUTOGO[@]}" --dry-run --doc "$DOC" --fleet "$FLEET" --worker "$dlabels" "$dpr" "$dhead" >/dev/null 2>&1
+    return 0
+}
+
 case "$marker" in
     MERGED|WRAPPED) ;;
-    READY) auto_go_on || escalate "marker-READY" ;;
+    READY) auto_go_on || { dry_run_ready; escalate "marker-READY"; } ;;
     *) escalate "marker-${marker:-none}" ;;
 esac
 

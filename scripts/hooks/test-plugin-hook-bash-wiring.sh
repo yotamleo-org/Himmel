@@ -87,6 +87,16 @@ else
     bad "plugin guard-rm-writes.sh drifted from scripts/hooks/guard-rm-writes.sh"
 fi
 
+# The peer taint hooks ship in the plugin (a peer desk's cwd is outside any
+# checkout); the scripts/hooks copies are what the Codex lane wires.
+for peer_hook in peer-taint-gate.sh peer-taint-mark.sh peer-taint-resume.sh; do
+    if cmp -s "$HOOKS_DIR/$peer_hook" "$PLUGIN_ROOT/hooks/$peer_hook"; then
+        ok "plugin $peer_hook is byte-identical to scripts/hooks/$peer_hook"
+    else
+        bad "plugin $peer_hook drifted from scripts/hooks/$peer_hook"
+    fi
+done
+
 # No hardcoded inventory count here — wire-plugin-hook-bash.mjs's
 # own EXPECTED_HOOKS/EXPECTED_COUNTS (exercised by
 # wire-plugin-hook-bash.test.mjs, which already hardcodes "20" as an

@@ -26,6 +26,7 @@
     "operator-repos": "the operator's own private project repositories indexed by qmd as markdown collections: station-ops, ggs-local, ggs-bridge, agent-command-chain, nvidia-steam-shader-cache (HIMMEL-5683). Docs and notes of operator projects; no PHI, no vault journals. Mapped from qmd collection names by scripts/qmd/qmd-collection-corpus.json",
     "jira-mirror": "the local Jira mirror markdown (~/.himmel/state/jira-mirror/<project>): ticket titles, descriptions and comments of the himmel Jira project, indexed by qmd as collection jira-himmel (HIMMEL-5683)",
     "roadmap-plan": "the roadmap-plan docs (~/.himmel/state/roadmap-plan/docs): himmel planning notes indexed by qmd as collection roadmap-plan (HIMMEL-5683)",
+    "peer-desk": "the peer desk (~/.himmel/peer-bridge/desk/**): a fresh session started for one peer that may read nothing of ours, so the only text it holds is what the operator types into it. A message to a peer bot leaves only from here",
     "skill-index": "the generated skill-index markdown (~/.claude/skill-index): skill names and descriptions indexed by qmd as collection skills (HIMMEL-5683)"
   },
   "providers": {
@@ -45,9 +46,10 @@
     "higgsfield": { "region": "US", "note": "HIMMEL-7826: the `higgsfield` CLI that the higgsfield-skills@himmel skills (higgsfield-ai/skills) run through Bash for the design-imagegen profile. Every prompt and every local file passed by path (the CLI auto-uploads it) goes to Higgsfield servers. Enforced at the Bash call by marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh" },
     "builder-io": { "region": "US", "note": "HIMMEL-4328: the hosted OAuth MCP `agent-native-dispatch` (https://dispatch.agent-native.com/mcp) that builder-visual@himmel registers for the design profile (HIMMEL-4326). Every tool argument (prompts, file paths, pasted content) goes to Builder.io servers. Enforced at the MCP call by marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh" },
     "jira": { "region": "US", "note": "HIMMEL-4670 P5: the Atlassian Jira Cloud project the himmel Jira CLI (scripts/jira/dist/index.js, by absolute path) writes; the failure router is its only automated caller" },
+    "peer-telegram": { "region": "Telegram (global)", "note": "another station's bot in an untrusted Telegram supergroup, reached by the peer bridge. Every message also passes the bridge's own egress gate (secret shapes, length, kind and thread rules)" },
     "atlassian-mcp": { "region": "US", "note": "HIMMEL-4938: the hosted Atlassian remote MCP server (https://mcp.atlassian.com/v1/mcp). Only the initialize handshake and tools/list are permitted; every tools/call stays denied" }
   },
-  "purposes": ["extraction", "embedding", "rerank", "query-expansion", "inference", "vision-embedding", "enrichment", "stt", "tts", "ticketing", "catalog-fetch"],
+  "purposes": ["extraction", "embedding", "rerank", "query-expansion", "inference", "vision-embedding", "enrichment", "stt", "tts", "ticketing", "catalog-fetch", "peer-message"],
   "rules": [
     {
       "corpus": "salus", "provider": "local-ollama", "purpose": "*",
@@ -494,6 +496,11 @@
       "corpus": "mcp-tool-catalog", "provider": "atlassian-mcp", "purpose": "catalog-fetch",
       "verdict": "allow",
       "why": "HIMMEL-4938 (operator ruling 2026-10-08): an auth-only initialize + tools/list call to mcp.atlassian.com, capturing the real tool schemas for the Headroom token-reduction measurement. Metadata only: the request carries no ticket, vault or corpus content. Every tools/call, and every other corpus or purpose against this provider, stays default-deny."
+    },
+    {
+      "corpus": "peer-desk", "provider": "peer-telegram", "purpose": "peer-message",
+      "verdict": "allow",
+      "why": "the peer desk holds only operator-typed text (its session reads nothing of ours), so a reply to the peer carries nothing but what the operator typed. Every other corpus to this provider stays default-deny."
     }
   ],
   "default": "deny"

@@ -400,7 +400,7 @@ verify_edits() {
 commit_edits() {
     local c
     # shellcheck disable=SC2086  # $files is a space-separated list of fixed names
-    if ! SKIP="$SKIP_FIXERS" git -C "$vault" commit -q --only -m "chore(vault): [HIMMEL-4471] remediate stall class ${classes// /, }" -- $files >/dev/null 2>&1; then
+    if ! SKIP="$SKIP_FIXERS" git -C "$vault" commit -q --only -m "chore(vault): remediate stall class ${classes// /, }" -- $files >/dev/null 2>&1; then
         # The vault sync shares no lock with this run: it may have staged and
         # committed the edit itself between the re-run and this commit. Then
         # HEAD already holds it, and a rollback would revert a landed fix.

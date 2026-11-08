@@ -430,6 +430,7 @@ with_new="$(dir_bytes "$gen2_doc")"
 check "tqlike second succession: the 20 new rulings were added to the source direction" "$([ "$rc" -eq 0 ] && [ "$with_new" -gt "$before_dir" ] && echo yes || echo no)" yes
 out2="$(chief next --bucket tqlike --doc "$gen2_doc" 2>&1)"; rc=$?
 check "tqlike second succession: next succeeds" "$rc" "0"
+[ "$rc" -eq 0 ] || printf '%s\n' "$out2" | tail -n 5 | sed 's/^/    next said: /'
 doc2="$(printf '%s\n' "$out2" | sed -n 's/^doc: //p')"
 after_dir="$([ -f "$doc2" ] && dir_bytes "$doc2" || echo 0)"
 printf 'second succession: direction %s bytes, with 20 new rulings %s, successor %s\n' "$before_dir" "$with_new" "$after_dir"
@@ -457,6 +458,7 @@ check "tqlike third succession (a companion file gone): no successor doc was wri
 mv "$tmp/lost-companion" "$root/tester/tqlike/$lost"
 out3="$(chief next --bucket tqlike --doc "$doc2" 2>&1)"; rc3=$?
 check "tqlike third succession (the companion file restored): next succeeds" "$rc3" "0"
+[ "$rc3" -eq 0 ] || printf '%s\n' "$out3" | tail -n 5 | sed 's/^/    next said: /'
 doc3="$(printf '%s\n' "$out3" | sed -n 's/^doc: //p')"
 check "tqlike third succession (the companion file restored): the 3 new rulings are in a companion file" "$([ -f "$doc3" ] && companion_files "$doc3" | while read -r f; do cat "$root/tester/tqlike/$f"; done | grep -c '^OPERATOR 11-07 YY ')" "3"
 
@@ -467,10 +469,26 @@ rc=0; python3 -I "$tmp/gen2.py" "$doc3" "$root/tester/tqlike" 3 970 XX top || rc
 check "tqlike fourth succession: the 3 new rulings were put above the pointer line" "$([ "$rc" -eq 0 ] && dir_lines "$doc3" | awk 'NR == 1 { print substr($0, 1, 14) } NR == 2 { print substr($0, 1, 14) } NR == 3 { print substr($0, 1, 14) } NR == 4 { print substr($0, 1, 18) }' | tr '\n' '|')" "OPERATOR 11-07|OPERATOR 11-07|OPERATOR 11-07|Full original text|"
 out4="$(chief next --bucket tqlike --doc "$doc3" 2>&1)"; rc4=$?
 check "tqlike fourth succession (pointer not first): next succeeds" "$rc4" "0"
+[ "$rc4" -eq 0 ] || printf '%s\n' "$out4" | tail -n 5 | sed 's/^/    next said: /'
 doc4="$(printf '%s\n' "$out4" | sed -n 's/^doc: //p')"
 check "tqlike fourth succession (pointer not first): the 3 new rulings are in a companion file" "$([ -f "$doc4" ] && companion_files "$doc4" | while read -r f; do cat "$root/tester/tqlike/$f"; done | grep -c '^OPERATOR 11-07 XX ')" "3"
 check "tqlike fourth succession (pointer not first): the earlier 20 rulings are still in a companion file" "$([ -f "$doc4" ] && companion_files "$doc4" | while read -r f; do cat "$root/tester/tqlike/$f"; done | grep -c '^OPERATOR 11-07 ZZ ')" "20"
 check "tqlike fourth succession (pointer not first): the index lists the 3 new numbers and has one pointer line" "$([ -f "$doc4" ] && dir_lines "$doc4" | grep -cE '^OPERATOR 11-07 XX, decision 97[0-2]') $([ -f "$doc4" ] && dir_lines "$doc4" | grep -c '^Full original text')" "3 1"
+
+cat > "$tmp/pad.py" <<'PY'
+import sys
+doc, n = sys.argv[1], int(sys.argv[2])
+lines = open(doc, encoding="utf-8").read().split("\n")
+cur = lines.index("## Current direction")
+nxt = next(i for i in range(cur + 1, len(lines)) if lines[i].startswith("## "))
+lines[nxt:nxt] = ["Context line %d: %s" % (i, "pad " * 20) for i in range(n)] + [""]
+open(doc, "w", encoding="utf-8").write("\n".join(lines))
+PY
+rc=0; python3 -I "$tmp/pad.py" "$doc4" 900 || rc=$?
+check "tqlike fifth succession: the direction was padded past 100 KB" "$([ "$rc" -eq 0 ] && [ "$(dir_bytes "$doc4")" -gt 100000 ] && echo yes || echo no)" yes
+out5="$(chief next --bucket tqlike --doc "$doc4" 2>&1)"; rc5=$?
+check "tqlike fifth succession (a direction past 100 KB): next succeeds, the pointer line is found (no SIGPIPE refusal)" "$rc5" "0"
+[ "$rc5" -eq 0 ] || printf '%s\n' "$out5" | tail -n 5 | sed 's/^/    next said: /'
 
 # the refusals on an absent or empty Current direction stay
 chief new --bucket empty >/dev/null 2>&1

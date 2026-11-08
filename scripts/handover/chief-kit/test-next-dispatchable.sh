@@ -29,14 +29,12 @@ trap 'rm -rf "$WORK"' EXIT
 export HOME="$WORK/home" HANDOVER_DIR="$WORK/h"
 mkdir -p "$HOME" "$HANDOVER_DIR"
 HOLDS_PY="$HERE/holds.py"
-SUT_REPO="$(cd "$HERE/../../.." && pwd)"
 SEEDED=0
-seed() { # <key> <label> <doc> <path>...: one fresh register row per path (a fresh row is inside the arm grace, so alive), the shape holds.py claim writes at a launch
-    local k="$1" l="$2" d="$3"; shift 3
-    python3 -I "$HOLDS_PY" claim --key "$k" --label "$l" --doc "$d" --repo "$SUT_REPO" --source brief "$@" > /dev/null 2>&1 || fail "seed $k: holds.py claim failed"
+seed() {
+    local d="$3"; shift 3
+    case "$d" in "$WORK"/*) printf '> **Writes:** %s\n' "$*" >> "$d" ;; esac
     SEEDED=$((SEEDED + $#))
 }
-fresh_register() { rm -rf "$HOME/.himmel/state/holds"; SEEDED=0; }  # seeds persist across sections in the one fixture HOME: a section that needs a clean slate starts here
 # the default worker records live under the status state dir: keep it in the fixture
 export TICKET_STATUS_STATE_DIR="$WORK/ts-none"
 # and the admissions ledger: the real one must never admit a fixture key
@@ -111,7 +109,7 @@ export GH_ARGS="$WORK/gh.args"
 export PRS_TSV="$WORK/prs.tsv"
 export MERGED_TSV="$WORK/merged.tsv" MERGED_FAIL="$WORK/merged.fail"
 : > "$MERGED_TSV"
-printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
+printf '4242\tfix(x): an outside change to a held file\tcontributor/pr-held\ttrue\t2026-01-01T00:00:00Z\n4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
 WORKER="$WORK/HIMMEL-99-N1-live.md"
 # shellcheck disable=SC2016  # the backticks are literal doc text, not a command substitution
@@ -127,8 +125,10 @@ has "a CLOUD-OK ticket is listed as CLOUD" "$out" "CLOUD	HIMMEL-2"
 has "a hook ticket is LOCAL and tagged hook" "$out" "HIMMEL-9	Highest"
 has "the hook ticket carries the hook tag" "$(printf '%s\n' "$out" | grep 'HIMMEL-9	')" "	hook"
 has "the listed line names the touched files" "$out" "files=scripts/lib/beta.sh"
-lacks "a ticket colliding with an open PR is excluded" "$out" "HIMMEL-3	"
-lacks "a ticket colliding with a live worker's scope is excluded" "$out" "HIMMEL-4	"
+has "a ticket colliding with an open PR (an outside one) is listed" "$out" "HIMMEL-3	"
+has "an open PR's file is printed as an overlap, not a drop" "$out" "# overlap HIMMEL-3 scripts/lib/pr-held.sh with open PR 4242"
+has "a ticket colliding with a live worker's scope is listed" "$out" "HIMMEL-4	"
+has "a live worker's file is printed as an overlap" "$out" "# overlap HIMMEL-4 scripts/handover/chief-kit/live-file.sh with live worker N1"
 lacks "an operator-decision ticket is excluded" "$out" "HIMMEL-5	"
 lacks "a blocked-label ticket is excluded" "$out" "HIMMEL-6	"
 lacks "a ticket not in To Do is excluded" "$out" "HIMMEL-7	"
@@ -137,7 +137,7 @@ lacks "a BLOCKED classification is dropped" "$out" "HIMMEL-10	"
 first="$(printf '%s\n' "$out" | grep -v '^#' | head -n 1 | cut -f2)"
 [ "$first" = HIMMEL-9 ] && pass "ranked: earliest version, then priority first" || fail "ranked first is '$first' (want HIMMEL-9)"
 order="$(printf '%s\n' "$out" | grep -v '^#' | cut -f2 | paste -sd, -)"
-[ "$order" = "HIMMEL-9,HIMMEL-2,HIMMEL-1" ] && pass "ranked: v1.0.1 before v1.0.2" || fail "order is '$order'"
+[ "$order" = "HIMMEL-9,HIMMEL-3,HIMMEL-4,HIMMEL-2,HIMMEL-1" ] && pass "ranked: v1.0.1 before v1.0.2" || fail "order is '$order'"
 
 top1="$(run --top 1 --workers-from "$WORK/fleet.json" | grep -vc '^#')"
 [ "$top1" = 1 ] && pass "--top caps the list" || fail "--top 1 printed $top1 lines"
@@ -154,7 +154,8 @@ has "--no-classify lists survivors as LOCAL?" "$nc" "LOCAL?	HIMMEL-1"
 
 printf 'scripts/lib/alpha.sh\n' > "$WORK/held.txt"
 hl="$(run --held "$WORK/held.txt" --workers-from "$WORK/fleet.json")"
-lacks "--held excludes a colliding ticket" "$hl" "HIMMEL-1	"
+has "--held lists a colliding ticket" "$hl" "HIMMEL-1	"
+has "--held prints the overlap" "$hl" "# overlap HIMMEL-1 scripts/lib/alpha.sh with held list"
 
 bash "$SUT" --bogus >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "an unknown flag is a usage error (rc 2)" || fail "unknown flag rc=$rc"
@@ -196,7 +197,7 @@ mk HIMMEL-32 "To Do" Medium '[]' '[]' '[]' "independent" "Edit scripts/lib/other
 M="$M_SAVE"
 sh3="$(NEXT_DISPATCH_MIRROR="$M3" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" 2>/dev/null)"
 has "the top ticket on a shared file is listed" "$sh3" "HIMMEL-30	"
-lacks "a second ticket on the same file is not listed with it" "$sh3" "HIMMEL-31	"
+has "a second ticket on the same file is not listed with it: listed, its shared file an overlap" "$sh3" "# overlap HIMMEL-31 "
 has "an independent ticket is still listed" "$sh3" "HIMMEL-32	"
 
 # an unreadable manifest is reported, not treated as no live workers
@@ -211,16 +212,16 @@ lacks "a readable manifest is not reported unknown" "$out" "live workers unknown
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$WORKER" > "$WORK/fleet-w.json"
 ow="$(run --workers-from "$WORK/fleet-w.json")"
 has "a workers manifest still lists a free ticket" "$ow" "HIMMEL-1	"
-lacks "a workers manifest excludes a ticket colliding with a live worker's scope" "$ow" "HIMMEL-4	"
+has "a workers manifest excludes a ticket colliding with a live worker's scope: listed, its shared file an overlap" "$ow" "# overlap HIMMEL-4 "
 lacks "a workers manifest is not reported unknown" "$ow" "live workers unknown"
 printf '{"schema":1,"legs":[{"doc":"%s/gone.md","label":"N2"}],"workers":[{"doc":"%s","label":"N1"}]}\n' "$WORK" "$WORKER" > "$WORK/fleet-both.json"
 ob="$(run --workers-from "$WORK/fleet-both.json")"
-lacks "a manifest with both arrays reads the workers one (HIMMEL-4 excluded)" "$ob" "HIMMEL-4	"
+has "a manifest with both arrays reads the workers one (the colliding ticket excluded): listed, its shared file an overlap" "$ob" "# overlap HIMMEL-4 "
 lacks "a manifest with both arrays is not reported unknown" "$ob" "live workers unknown"
 off="$(HIMMEL_LEGACY_NAMES=0 run --workers-from "$WORK/fleet.json")"
 has "with HIMMEL_LEGACY_NAMES=0 a legs-only manifest is reported unknown" "$off" "live workers unknown"
 offw="$(HIMMEL_LEGACY_NAMES=0 run --workers-from "$WORK/fleet-w.json")"
-lacks "with HIMMEL_LEGACY_NAMES=0 a workers manifest still excludes HIMMEL-4" "$offw" "HIMMEL-4	"
+has "with HIMMEL_LEGACY_NAMES=0 a workers manifest still excludes the colliding ticket: listed, its shared file an overlap" "$offw" "# overlap HIMMEL-4 "
 lacks "with HIMMEL_LEGACY_NAMES=0 a workers manifest is not reported unknown" "$offw" "live workers unknown"
 
 # root files and plugins/ take part in the collision check
@@ -231,8 +232,8 @@ mk HIMMEL-41 "To Do" High '[]' '[]' '[]' "touches a plugin" "Edit plugins/foo/ru
 M="$M_SAVE"
 printf 'package.json\nplugins/foo\n' > "$WORK/held4.txt"
 rh="$(NEXT_DISPATCH_MIRROR="$M4" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --held "$WORK/held4.txt" 2>/dev/null)"
-lacks "a held root file excludes a ticket naming it" "$rh" "HIMMEL-40	"
-lacks "a held plugins/ path excludes a ticket naming it" "$rh" "HIMMEL-41	"
+has "a held root file excludes a ticket naming it: listed, its shared file an overlap" "$rh" "# overlap HIMMEL-40 "
+has "a held plugins/ path excludes a ticket naming it: listed, its shared file an overlap" "$rh" "# overlap HIMMEL-41 "
 
 # In Progress / In Review tickets nobody is working re-enter dispatch as RESUME, ranked first
 M5="$WORK/m5/HIMMEL"; mkdir -p "$M5"
@@ -393,7 +394,7 @@ rm -f "$MERGED_FAIL"
 has "a failed merged-PR read is reported" "$r6f" "merged PRs unknown"
 lacks "a failed merged-PR read lists no IN CI row" "$r6f" "HIMMEL-7"
 : > "$MERGED_TSV"
-printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
+printf '4242\tfix(x): an outside change to a held file\tcontributor/pr-held\ttrue\t2026-01-01T00:00:00Z\n4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
 # A ticket the status funnel returned to To Do when its worker WRAPPED (a worker record in state
 # wrapped, with a resume brief) is a RESUME row carrying the brief, never an ordinary To Do row;
@@ -723,14 +724,14 @@ seed HIMMEL-97 N9 "$LEGB" scripts/lib/own-scope.sh
 f1="$(run20)"
 has "fix1: a ticket on a WRAPPED worker's file is listed" "$f1" "HIMMEL-701	"
 has "fix1: a ticket on a file named only in READ ONLY prose is listed" "$f1" "HIMMEL-702	"
-lacks "fix1: a ticket on a live worker's write scope is held" "$f1" "HIMMEL-703	"
+has "fix1: a ticket on a live worker's write scope is held: listed, its shared file an overlap" "$f1" "# overlap HIMMEL-703 "
 has "fix1: a ticket on a file after Other live workers is listed" "$f1" "HIMMEL-704	"
 # the register holds files, not trees, so a directory a worker only describes holds nothing (assertion flipped from lacks)
 has "fix1: a directory a worker describes in prose is a note, not a held file" "$f1" "HIMMEL-705	"
 # shellcheck disable=SC2016
 printf '# parked\n> **Scope / do not:** writes confined to `scripts/lib/wrapped-held.sh`.\n\n## Results\n- 10:00 LIVE - go\n- 12:00 WRAPPED - merged\n- 13:00 PARKED-USAGE - relaunched, waiting for RESUME\n' > "$LEGW"
 seed HIMMEL-98 N8 "$LEGW" scripts/lib/wrapped-held.sh  # the parked worker's launch row; the wrapped step above held nothing
-lacks "a PARKED-USAGE tail after an old WRAPPED still holds the worker's files" "$(run20)" "HIMMEL-701	"
+has "a PARKED-USAGE tail after an old WRAPPED still holds the worker's files: listed, its shared file an overlap" "$(run20)" "# overlap HIMMEL-701 "
 
 # --- fix 2: a ticket a live worker or an open PR already owns is not offered ---
 M21="$WORK/jira-mirror21/HIMMEL"; mkdir -p "$M21"
@@ -815,12 +816,14 @@ lacks "version: a residual with a kindless intake row is not offered (only an rm
 has "collision: a directory named on the candidate side collides with nothing" "$v1" "HIMMEL-804	"
 has "collision: two candidates naming the same directory are both offered" "$v1" "HIMMEL-805	"
 has "collision: and the second is offered too" "$v1" "HIMMEL-806	"
-lacks "collision: a concrete file in a live worker's write scope is still held" "$v1" "HIMMEL-4	"
-lacks "collision: a concrete file equal to an open PR's file is still held" "$v1" "HIMMEL-3	"
+has "overlap: a concrete file in a live worker's write scope is listed, not held" "$v1" "HIMMEL-4	"
+has "overlap: and the live worker's file is printed" "$v1" "# overlap HIMMEL-4 scripts/handover/chief-kit/live-file.sh with live worker N1"
+has "overlap: a concrete file equal to an open PR's file is listed, not held" "$v1" "HIMMEL-3	"
+has "overlap: and the open PR's file is printed" "$v1" "# overlap HIMMEL-3 scripts/lib/pr-held.sh with open PR 4242"
 has "drops: a per-reason summary of the active version is printed" "$v1" "# dropped from v1.0.1:"
 w1="$(run30 --why)"
-has "why: a collision names the file and its holder" "$w1" "# drop HIMMEL-3 collision scripts/lib/pr-held.sh held by open PR 4242"
-has "why: a worker collision names the worker" "$w1" "# drop HIMMEL-4 collision scripts/handover/chief-kit/live-file.sh held by live worker N1"
+has "why: an overlap names the file and its holder, and where the scope came from" "$w1" "# overlap HIMMEL-3 scripts/lib/pr-held.sh with open PR 4242 (from description)"
+has "why: a worker overlap names the worker" "$w1" "# overlap HIMMEL-4 scripts/handover/chief-kit/live-file.sh with live worker N1 (from description)"
 has "why: an open blocker is named" "$w1" "# drop HIMMEL-8 blocker HIMMEL-801"
 has "why: an exclusion label is named" "$w1" "# drop HIMMEL-5 label operator-decision"
 has "why: a type is named" "$w1" "# drop HIMMEL-807 type Epic"
@@ -830,7 +833,7 @@ has "why: an open-PR owner is named" "$w1" "# drop HIMMEL-52 owned by open PR"
 has "why: a live-worker owner is named" "$w1" "# drop HIMMEL-99 owned by live worker"
 lacks "why: without --why no per-ticket line is printed" "$v1" "# drop HIMMEL-"
 printf 'scripts/lib/Brewfile\n' > "$WORK/held30.txt"
-lacks "collision: a new extensionless file equal to a held path is held" "$(run30 --held "$WORK/held30.txt")" "HIMMEL-810	"
+has "overlap: a new extensionless file equal to a held path is listed with the overlap" "$(run30 --held "$WORK/held30.txt")" "# overlap HIMMEL-810 scripts/lib/Brewfile with held list"
 
 # an override row admits a residual too
 printf '{"ts":"t","version":"v1.0.1","key":"HIMMEL-811","kind":"override","actor":"operator"}\n' >> "$WORK/ledger30.jsonl"
@@ -891,7 +894,7 @@ has "replay: a ticket the 'Do not touch' fence of a live worker hid is offered (
 # a directory scope is a note, not a register row (assertion flipped from lacks)
 has "replay: a directory-wide scope described in parentheses is a note, not a held file (HIMMEL-6485)" "$rp" "HIMMEL-6485	"
 lacks "replay: a ticket whose key is a live worker's is not offered (HIMMEL-4999)" "$rp" "HIMMEL-4999	"
-lacks "replay: a ticket really held by a live worker stays held (HIMMEL-6484)" "$rp" "HIMMEL-6484	"
+has "replay: a ticket really held by a live worker stays held: listed, its shared file an overlap" "$rp" "# overlap HIMMEL-6484 "
 n113="$(printf '%s\n' "$rp" | grep -c "	v1.1.3	")"
 [ "$n113" -ge 5 ] && pass "replay: at least 5 v1.1.3 rows ($n113)" || fail "replay: at least 5 v1.1.3 rows (got $n113)"
 
@@ -934,11 +937,11 @@ f25="$(NEXT_DISPATCH_MIRROR="$M25" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" -
 has "never-edit: a ticket inside a 'Never edit' tree is offered (HIMMEL-7358)" "$f25" "HIMMEL-750	"
 has "never-edit: a ticket inside a 'Do NOT TOUCH' tree (verb in capitals too) is offered" "$f25" "HIMMEL-751	"
 has "never-edit: a ticket inside a tree named only in a 'Touches <dir>, a trust-path pattern' note is offered" "$f25" "HIMMEL-752	"
-lacks "never-edit: a ticket on the worker's own named file stays held" "$f25" "HIMMEL-753	"
-lacks "never-edit: a file a 'Touches <file> ... pattern' sentence really writes stays held" "$f25" "HIMMEL-754	"
+has "never-edit: a ticket on the worker's own named file stays held: listed, its shared file an overlap" "$f25" "# overlap HIMMEL-753 "
+has "never-edit: a file a 'Touches <file> ... pattern' sentence really writes stays held: listed, its shared file an overlap" "$f25" "# overlap HIMMEL-754 "
 
 # --- a worker holds only the files it writes, not paths in a quoted grep or boilerplate ---
-FX="$HERE/fixtures/held-paths"
+FX="$WORK/held-fx"; cp -r "$HERE/fixtures/held-paths" "$FX"
 M26="$WORK/jira-mirror26/HIMMEL"; mkdir -p "$M26"
 M_SAVE="$M"; M="$M26"
 mk HIMMEL-860 "To Do" Medium '[]' '["v1.0.1"]' '[]' "n3558 real file" "Edit docs/adoption-trail.html only."
@@ -973,7 +976,6 @@ printf '{"schema":1,"legs":[{"doc":"%s","label":"N3558"},{"doc":"%s","label":"N3
     "$FX/HIMMEL-7469-N3578-neg-control.md" "$FX/HIMMEL-7469-N3579-writes-line.md" "$FX/HIMMEL-7469-N3580-frontmatter-description.md" "$FX/HIMMEL-7469-N3581-command-word-in-path.md" \
     "$FX/HIMMEL-7469-N3582-prose-before-path.md" "$FX/HIMMEL-7469-N3583-writes-line-prose.md" "$FX/HIMMEL-7469-N3584-writes-wrapped.md" "$FX/HIMMEL-7469-N3585-no-scope.md" "$FX/HIMMEL-7469-N3586-command-segment.md" > "$WORK/fleet26.json"
 # the register, not each doc's scope prose, says what a worker writes: one launch row per file the old reader held (trees are noted, not held)
-fresh_register
 seed HIMMEL-7377 N3558 "$FX/HIMMEL-7377-N3558-adoption-trail-narrow-panel.md" docs/adoption-trail.html
 seed HIMMEL-7469 N3579 "$FX/HIMMEL-7469-N3579-writes-line.md" docs/nd-writes-line.html scripts/handover/nd-writes-line.sh
 seed HIMMEL-7469 N3580 "$FX/HIMMEL-7469-N3580-frontmatter-description.md" docs/nd-frontmatter.html
@@ -983,7 +985,7 @@ seed HIMMEL-7469 N3583 "$FX/HIMMEL-7469-N3583-writes-line-prose.md" scripts/nd-c
 seed HIMMEL-7469 N3584 "$FX/HIMMEL-7469-N3584-writes-wrapped.md" scripts/nd-h.sh scripts/nd-i.sh
 seed HIMMEL-7469 N3586 "$FX/HIMMEL-7469-N3586-command-segment.md" scripts/nd-y.sh
 f26="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --workers-from "$WORK/fleet26.json" 2>"$WORK/f26.err")"
-lacks "held-paths: N3558 still holds its one real file docs/adoption-trail.html" "$f26" "HIMMEL-860	"
+has "held-paths: N3558 still holds its one real file docs/adoption-trail.html: listed, its shared file an overlap" "$f26" "# overlap HIMMEL-860 "
 has "held-paths: N3558's quoted 'grep -rl adoption-trail scripts/' does not hold scripts/check-ci.sh" "$f26" "HIMMEL-861	"
 has "held-paths: N3543's 'Trust path (scripts/lib/)' note does not hold scripts/lib/" "$f26" "HIMMEL-862	"
 has "held-paths: N3543's SINGLE-WRITER note holds nothing (the open PR holds that file)" "$f26" "HIMMEL-863	"
@@ -994,22 +996,21 @@ has "held-paths: N3557's 'Impacted suites:' file is run, not written" "$f26" "HI
 has "held-paths: N3557's 'find what the gitleaks gate or scripts/lib uses' read does not hold scripts/lib/" "$f26" "HIMMEL-867	"
 has "held-paths: negative control: scripts/ci/ on a write list is a note, not a held file" "$f26" "HIMMEL-868	"
 has "held-paths: negative control: the path that worker only greps is free" "$f26" "HIMMEL-869	"
-lacks "held-paths: a worker with a Writes line holds the files on it" "$f26" "HIMMEL-870	"
+has "held-paths: a worker with a Writes line holds the files on it: listed, its shared file an overlap" "$f26" "# overlap HIMMEL-870 "
 has "held-paths: a worker with a Writes line holds nothing the scope line prose names" "$f26" "HIMMEL-871	"
 has "held-paths: a front-matter description quoting 'writes confined to' holds nothing" "$f26" "HIMMEL-872	"
-lacks "held-paths: that worker still holds the file on its real scope line" "$f26" "HIMMEL-873	"
-lacks "held-paths: the file listed after a command-word name is still held" "$f26" "HIMMEL-875	"
+has "held-paths: that worker still holds the file on its real scope line: listed, its shared file an overlap" "$f26" "# overlap HIMMEL-873 "
+has "held-paths: the file listed after a command-word name is still held: listed, its shared file an overlap" "$f26" "# overlap HIMMEL-875 "
 has "held-paths: a command-word name does not hold its whole directory" "$f26" "HIMMEL-876	"
-lacks "held-paths: a path after 'find and fix the caller in' prose on a scope line is held" "$f26" "HIMMEL-877	"
-lacks "held-paths: a Writes line is never cleaned: a path after prose on it is held" "$f26" "HIMMEL-878	"
-lacks "held-paths: this worker's own SINGLE-WRITER note holds the file it names" "$f26" "HIMMEL-879	"
+has "held-paths: a path after 'find and fix the caller in' prose on a scope line is held: listed, its shared file an overlap" "$f26" "# overlap HIMMEL-877 "
+has "held-paths: a Writes line is never cleaned: a path after prose on it is held: listed, its shared file an overlap" "$f26" "# overlap HIMMEL-878 "
+has "held-paths: this worker's own SINGLE-WRITER note holds the file it names: listed, its shared file an overlap" "$f26" "# overlap HIMMEL-879 "
 has "held-paths: a bare 'grep -rl needle scripts/nd-read/' read holds nothing" "$f26" "HIMMEL-880	"
-lacks "held-paths: a path on the continuation line of a wrapped Writes block is held" "$f26" "HIMMEL-881	"
-lacks "held-paths: a path after a path segment named find is held" "$f26" "HIMMEL-882	"
+has "held-paths: a path on the continuation line of a wrapped Writes block is held: listed, its shared file an overlap" "$f26" "# overlap HIMMEL-881 "
+has "held-paths: a path after a path segment named find is held: listed, its shared file an overlap" "$f26" "# overlap HIMMEL-882 "
 has "held-paths: a path the front-matter description names (no command word before it) holds nothing" "$f26" "HIMMEL-883	"
 has "held-paths: a find -delete dir is a note, not a held file" "$f26" "HIMMEL-884	"
 # N3585 names no scope and has no row: its own run on a clean register (a key that has a row is read from the register, and the others above share one)
-fresh_register
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N3585"}]}\n' "$FX/HIMMEL-7469-N3585-no-scope.md" > "$WORK/fleet26b.json"
 f26b="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --workers-from "$WORK/fleet26b.json" 2>"$WORK/f26.err")"
 has "held-paths: a live worker that yields no held paths is named on stderr" "$(cat "$WORK/f26.err")" "live worker N3585 yields no held paths"
@@ -1017,46 +1018,7 @@ has "held-paths: a live worker that yields no held paths makes the live workers 
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N3587"}]}\n' "$FX/HIMMEL-7469-N3587-none-named.md" > "$WORK/fleet27.json"
 f27="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --workers-from "$WORK/fleet27.json" 2>/dev/null)"
 lacks "held-paths: an explicit 'Writes: none named' worker is a real empty scope, not unknown" "$f27" "live workers unknown"
-lacks "held-paths: a path after 'replace grep -P in' is a write, not a read" "$f26" "HIMMEL-885	"
-
-# a worker whose PR is open has pr rows (holds.py narrow made them) and is still a seeded worker: the register, not the doc, says what it writes
-M="$M26"
-mk HIMMEL-9821 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a file the PR freed" "Edit scripts/nd-pr-freed.sh only."
-mk HIMMEL-9822 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a file inside a tree the worker's Writes names" "Edit scripts/nd-pr-tree/x.sh only."
-mk HIMMEL-9823 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a file a sync-prs-only worker's Writes names" "Edit scripts/nd-pr-ctrl.sh only."
-M="$M_SAVE"
-cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror26/HIMMEL.versions.tsv"
-PRD="$WORK/pr-docs"; mkdir -p "$PRD"
-printf '# worker\n\nno scope line here.\n' > "$PRD/HIMMEL-9810-N9810-nowrites.md"
-printf '# worker\n\n> **Writes:** scripts/nd-pr-kept.sh scripts/nd-pr-freed.sh\n' > "$PRD/HIMMEL-9811-N9811-freed.md"
-printf '# worker\n\n> **Writes:** scripts/nd-pr-tree/ scripts/nd-pr-kept2.sh\n' > "$PRD/HIMMEL-9812-N9812-tree.md"
-printf '# worker\n\n> **Writes:** scripts/nd-pr-ctrl.sh\n' > "$PRD/HIMMEL-9813-N9813-ctrl.md"
-printf '#!/usr/bin/env bash\necho OPEN\n' > "$WORK/holds-gh-open"; chmod +x "$WORK/holds-gh-open"
-seedpr() { # <key> <label> <doc> <path>...: a pr row with a PR number, the shape holds.py narrow --apply leaves for a worker whose PR is open
-    local k="$1" l="$2" d="$3"; shift 3
-    python3 -I "$HOLDS_PY" claim --key "$k" --label "$l" --doc "$d" --repo "$SUT_REPO" --source pr --pr 5 "$@" > /dev/null 2>&1 || fail "seedpr $k: holds.py claim failed"
-}
-run_pr() { # <doc> <label>: the dispatcher with that one live worker
-    printf '{"schema":1,"legs":[{"doc":"%s","label":"%s"}]}\n' "$1" "$2" > "$WORK/fleet-pr.json"
-    HOLDS_GH="$WORK/holds-gh-open" NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --workers-from "$WORK/fleet-pr.json" 2>"$WORK/fpr.err"
-}
-fresh_register
-seedpr HIMMEL-9810 N9810 "$PRD/HIMMEL-9810-N9810-nowrites.md" scripts/nd-pr-n.sh
-fpr1="$(run_pr "$PRD"/*-nowrites.md N9810)"
-lacks "pr-rows: a worker with only pr rows and no Writes line is not named as yielding no held paths" "$(cat "$WORK/fpr.err")" "yields no held paths"
-lacks "pr-rows: a worker with only pr rows and no Writes line does not make the live workers unknown" "$fpr1" "live workers unknown"
-fresh_register
-seedpr HIMMEL-9811 N9811 "$PRD/HIMMEL-9811-N9811-freed.md" scripts/nd-pr-kept.sh
-fpr2="$(run_pr "$PRD"/*-freed.md N9811)"
-has "pr-rows: a candidate on a file the PR freed is listed (the doc's Writes are not re-held)" "$fpr2" "HIMMEL-9821	"
-fresh_register
-seedpr HIMMEL-9812 N9812 "$PRD/HIMMEL-9812-N9812-tree.md" scripts/nd-pr-kept2.sh
-fpr3="$(run_pr "$PRD"/*-tree.md N9812)"
-has "pr-rows: a candidate inside a tree the doc's Writes names is listed (the tree is not re-held)" "$fpr3" "HIMMEL-9822	"
-fresh_register
-seedpr HIMMEL-9813 'branch:feat/nd-ctrl' "$PRD/HIMMEL-9813-N9813-ctrl.md" scripts/nd-pr-other.sh
-fpr4="$(run_pr "$PRD"/*-ctrl.md N9813)"
-lacks "pr-rows: control: a worker with only a sync-prs row (label branch:) is not seeded, so its doc's Writes still hold" "$fpr4" "HIMMEL-9823	"
+has "held-paths: a path after 'replace grep -P in' is a write, not a read: listed, its shared file an overlap" "$f26" "# overlap HIMMEL-885 "
 
 
 # --- a disposition per open ticket, live blocker re-check, rename registry, per-PR file reads, narrow write scope ---
@@ -1131,14 +1093,16 @@ printf '5001\tfix(x): [HIMMEL-9101] one\tfix/himmel-9101-one\n5002\tfix(x): [HIM
 printf 'scripts/lib/dd-pr1.sh\nscripts/lib/dd-ov/x.sh\nscripts/lib/dd-ov2/y.sh\n' > "$DD_DIR/files-5001"
 printf 'scripts/lib/dd-huge.sh\n' > "$DD_DIR/files-5002"
 printf 'scripts/lib/dd-pr3.sh\nscripts/lib/dd-new-name.sh\nscripts/lib/dd-old-name.sh\n' > "$DD_DIR/files-5003"
-sed "s#@@FIXTURE@@#$DD#" "$DD/fleet.json" > "$WORK/dd-fleet.json"
+cp -r "$DD" "$WORK/dd-fx"
+sed "s#@@FIXTURE@@#$WORK/dd-fx#" "$DD/fleet.json" > "$WORK/dd-fleet.json"
 printf 'scripts/handover/chief-kit/dd-old.sh\nscripts/handover/chief-kit/dd-newn.sh\n' > "$WORK/dd-held.txt"
-seed HIMMEL-7044 N3901 "$DD/HIMMEL-7044-N3901-mentions.md" scripts/dd-own.sh  # its list also names scripts/dd-in/: a tree, noted and not held
+seed HIMMEL-7044 N3901 "$WORK/dd-fx/HIMMEL-7044-N3901-mentions.md" scripts/dd-own.sh  # its list also names scripts/dd-in/: a tree, noted and not held
 rundd() { NEXT_DISPATCH_MIRROR="$MD" NEXT_DISPATCH_GH_CMD="$WORK/gh-dd" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-dd" NEXT_DISPATCH_JIRA_CMD="$WORK/jira-dd" bash "$SUT" --top 50 --held "$WORK/dd-held.txt" --workers-from "$WORK/dd-fleet.json" "$@" 2>"$WORK/dd.err"; }
 dd_out="$(rundd --dispositions)"
 # (c) the rename registry
-has "dispositions: a pre-rename path collides with its new spelling, naming the holder" "$dd_out" "# disposition HIMMEL-901 collision scripts/handover/console-kit/dd-old.sh held by held list"
-has "dispositions: a new path collides with the old spelling held" "$dd_out" "# disposition HIMMEL-903 collision scripts/handover/chief-kit/dd-newn.sh held by held list"
+has "dispositions: a pre-rename path overlaps its new spelling, naming the holder" "$dd_out" "# overlap HIMMEL-901 scripts/handover/console-kit/dd-old.sh with held list"
+has "dispositions: the overlapping ticket is listed, not a collision class" "$dd_out" "# disposition HIMMEL-901 listed LOCAL"
+has "dispositions: a new path overlaps the old spelling held" "$dd_out" "# overlap HIMMEL-903 scripts/handover/chief-kit/dd-newn.sh with held list"
 has "dispositions: a stale pre-rename path nobody holds is listed" "$dd_out" "LOCAL	HIMMEL-902"
 # (b) the live blocker re-check
 has "dispositions: a blocker Done in the live read does not drop the ticket" "$dd_out" "LOCAL	HIMMEL-904"
@@ -1154,12 +1118,12 @@ has "scope: a mentioned vendored plugin dir holds nothing" "$dd_out" "LOCAL	HIMM
 has "scope: a mentioned single-writer dir holds nothing" "$dd_out" "LOCAL	HIMMEL-923"
 # a directory on the list is a note, not a register row (assertion flipped from has collision)
 lacks "scope: a directory on the list is a note, not a held file" "$dd_out" "# disposition HIMMEL-924 collision "
-has "scope: a file on the list still holds" "$dd_out" "# disposition HIMMEL-925 collision "
+has "scope: a file on the list is an overlap, not a drop" "$dd_out" "# overlap HIMMEL-925 scripts/dd-own.sh with live worker"
 # (e) one unreadable PR marks only itself unknown
 has "prs: the PRs are read through the paginated files API" "$(cat "$DD_DIR/gh.args")" "api --paginate repos/yotamleo-org/Himmel/pulls/5001/files"
-has "prs: the files of the PR before the unreadable one are held" "$dd_out" "# disposition HIMMEL-930 collision scripts/lib/dd-pr1.sh held by open PR 5001"
-has "prs: the files of the PR after the unreadable one are held" "$dd_out" "# disposition HIMMEL-931 collision scripts/lib/dd-pr3.sh held by open PR 5003"
-has "prs: a renamed file's previous name is held" "$dd_out" "# disposition HIMMEL-932 collision scripts/lib/dd-old-name.sh held by open PR 5003"
+has "prs: the files of the PR before the unreadable one overlap" "$dd_out" "# overlap HIMMEL-930 scripts/lib/dd-pr1.sh with open PR 5001"
+has "prs: the files of the PR after the unreadable one overlap" "$dd_out" "# overlap HIMMEL-931 scripts/lib/dd-pr3.sh with open PR 5003"
+has "prs: a renamed file's previous name overlaps" "$dd_out" "# overlap HIMMEL-932 scripts/lib/dd-old-name.sh with open PR 5003"
 has "prs: the files read asks for previous_filename" "$(cat "$DD_DIR/gh.args")" "previous_filename"
 lacks "prs: no PR is unknown when every files read succeeds" "$dd_out" "open PR files unknown"
 has "dispositions: a directory ticket with a held file under it is dropped, naming the file and its holder" "$dd_out" "# disposition HIMMEL-960 classification BLOCKED: scripts/lib/dd-ov/ contains held scripts/lib/dd-ov/x.sh (open PR 5001)"
@@ -1172,25 +1136,25 @@ export DDU="$WORK/ddu"; mkdir -p "$DDU"
 cp "$DD_DIR/live.txt" "$DD_DIR/prs.tsv" "$DD_DIR/files-5001" "$DD_DIR/files-5003" "$DDU/"
 : > "$DDU/fail-5002"
 ddu_out="$(DD_DIR="$DDU" rundd --dispositions)" && pass "prs: the run with an unreadable PR exits 0" || fail "prs: the run with an unreadable PR failed"
-has "prs: the unreadable PR is named in the header" "$ddu_out" "open PR files unknown for PR 5002"
+has "prs: the unreadable PR is named overlap unknown" "$ddu_out" "# overlap unknown for PR 5002"
 lacks "prs: one unreadable PR does not mark every open PR unknown" "$ddu_out" "open PRs unknown"
-has "prs: the files of the PR before the unreadable one are still held" "$ddu_out" "# disposition HIMMEL-930 collision scripts/lib/dd-pr1.sh held by open PR 5001"
-has "prs: the files of the PR after the unreadable one are still held" "$ddu_out" "# disposition HIMMEL-931 collision scripts/lib/dd-pr3.sh held by open PR 5003"
-lacks "prs: RESUME rows are suppressed while a PR's files are unreadable" "$ddu_out" "RESUME	HIMMEL-940"
-lacks "prs: no To Do row is listed while a PR's files are unreadable" "$ddu_out" "LOCAL	HIMMEL-902"
-has "prs: a To Do row held for an unreadable PR says why" "$ddu_out" "# disposition HIMMEL-902 open PR files unknown (PR 5002)"
+has "prs: the files of the PR before the unreadable one still overlap" "$ddu_out" "# overlap HIMMEL-930 scripts/lib/dd-pr1.sh with open PR 5001"
+has "prs: the files of the PR after the unreadable one still overlap" "$ddu_out" "# overlap HIMMEL-931 scripts/lib/dd-pr3.sh with open PR 5003"
+has "prs: RESUME rows are still listed while a PR's files are unreadable" "$ddu_out" "RESUME	HIMMEL-940"
+has "prs: To Do rows are still listed while a PR's files are unreadable" "$ddu_out" "LOCAL	HIMMEL-902"
+has "prs: a To Do row beside an unreadable PR is listed" "$ddu_out" "# disposition HIMMEL-902 listed LOCAL"
 # a PR the API cuts short at 3000 files is unknown, not a silent truncation
 export DD3K="$WORK/dd3k"; mkdir -p "$DD3K"
 cp "$DD_DIR/live.txt" "$DD3K/live.txt"
 printf '5101\tfix(x): [HIMMEL-9104] vast\tfix/himmel-9104-vast\n' > "$DD3K/prs.tsv"
 seq 1 3000 | sed 's#^#scripts/lib/dd-vast-#' > "$DD3K/files-5101"
 dd3k_out="$(DD_DIR="$DD3K" rundd --dispositions)" && pass "prs: the 3000-file run exits 0" || fail "prs: the 3000-file run failed"
-has "prs: a PR listing 3000 files is named unknown in the header" "$dd3k_out" "5101"
-lacks "prs: a PR listing 3000 files suppresses RESUME rows" "$dd3k_out" "RESUME	HIMMEL-940"
+has "prs: a PR listing 3000 files is named overlap unknown" "$dd3k_out" "# overlap unknown for PR 5101"
+has "prs: a PR listing 3000 files does not suppress RESUME rows" "$dd3k_out" "RESUME	HIMMEL-940"
 # (d) a disposition for every open ticket of the version
 has "dispositions: a listed ticket says so" "$dd_out" "# disposition HIMMEL-902 listed LOCAL"
 has "dispositions: a worker-less In Progress ticket is a RESUME row while every PR is readable" "$dd_out" "RESUME	HIMMEL-940"
-has "dispositions: an in-progress ticket whose RESUME row is suppressed is still accounted for" "$ddu_out" "# disposition HIMMEL-940 unowned In Progress"
+has "dispositions: an in-progress ticket beside an unreadable PR is a listed RESUME row" "$ddu_out" "# disposition HIMMEL-940 listed RESUME"
 has "dispositions: a label drop names the label" "$dd_out" "# disposition HIMMEL-951 label operator-decision"
 dd_n="$(printf '%s\n' "$dd_out" | grep -c '^# disposition ')"
 [ "$dd_n" = 21 ] && pass "dispositions: one line per open v1.0.1 ticket (21)" || fail "dispositions: $dd_n lines for 21 open v1.0.1 tickets"
@@ -1199,79 +1163,6 @@ ddu_n="$(printf '%s\n' "$ddu_out" | grep -c '^# disposition ')"
 dd_plain="$(rundd)"
 lacks "dispositions: a plain run prints none" "$dd_plain" "# disposition "
 
-# --- soft edges on a local git fixture (no flag) ---------------------------------
-# A ticket whose files overlap an open PR is kept when the trial merge of that PR against main
-# is clean, the overlap is at most 2 files and no trust path is involved, and says so with a
-# `# SOFT` row.
-G="$WORK/soft-git"; mkdir -p "$G"
-g() { git -C "$G" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"; }
-g init -q -b main
-for f in soft-a soft-b soft-c soft-d soft-conf; do seq 1 20 | sed "s/^/$f /" > "$G/$f.txt"; done
-g add -A; g commit -q -m base
-g checkout -q -b pr-clean; sed '1s/.*/changed by the PR/' "$G/soft-a.txt" > "$G/soft-a.txt.n" && mv "$G/soft-a.txt.n" "$G/soft-a.txt"; g commit -q -am pr-clean
-SHA_CLEAN="$(g rev-parse HEAD)"
-g checkout -q main; g checkout -q -b pr-conflict; sed '1s/.*/PR side/' "$G/soft-conf.txt" > "$G/soft-conf.txt.n" && mv "$G/soft-conf.txt.n" "$G/soft-conf.txt"; g commit -q -am pr-conflict
-SHA_CONFLICT="$(g rev-parse HEAD)"
-g checkout -q main; sed '1s/.*/main side/' "$G/soft-conf.txt" > "$G/soft-conf.txt.n" && mv "$G/soft-conf.txt.n" "$G/soft-conf.txt"; g commit -q -am main-moves
-
-SD="$WORK/soft-gh"; mkdir -p "$SD"
-printf '7001\tfeat(x): [HIMMEL-9901] clean\tfeat/himmel-9901-clean\n7002\tfeat(x): [HIMMEL-9902] conflicting\tfeat/himmel-9902-conf\n7003\tfeat(x): [HIMMEL-9903] trust\tfeat/himmel-9903-trust\n7004\tfeat(x): [HIMMEL-9904] wide\tfeat/himmel-9904-wide\n' > "$SD/prs.tsv"
-printf '7001\n7002\n7003\n7004\n' > "$SD/nums"
-printf 'scripts/lanes/soft-a.sh\nscripts/lanes/soft-one.sh\nscripts/lanes/soft-two.sh\n' > "$SD/files-7001"
-printf 'scripts/lanes/soft-conf.sh\n' > "$SD/files-7002"
-printf 'scripts/lib/soft-trust.sh\n' > "$SD/files-7003"
-printf 'scripts/lanes/wide-a.sh\nscripts/lanes/wide-b.sh\nscripts/lanes/wide-c.sh\n' > "$SD/files-7004"
-printf '%s' "$SHA_CLEAN" > "$SD/head-7001"; printf '%s' "$SHA_CONFLICT" > "$SD/head-7002"
-printf '%s' "$SHA_CLEAN" > "$SD/head-7003"; printf '%s' "$SHA_CLEAN" > "$SD/head-7004"
-cat > "$WORK/gh31" <<'EOF'
-#!/usr/bin/env bash
-n="$(printf '%s' "$*" | sed -n 's|.*pulls/\([0-9]*\).*|\1|p')"
-case "$*" in
-    *merged*) ;;
-    *"pr list"*headRefName*) cat "$SOFT_DIR/prs.tsv" ;;
-    *"pr list"*) cat "$SOFT_DIR/nums" ;;
-    *head.sha*) cat "$SOFT_DIR/head-$n" ;;
-    *pulls/*/files*) cat "$SOFT_DIR/files-$n" ;;
-esac
-EOF
-chmod +x "$WORK/gh31"
-export SOFT_DIR="$SD"
-M31="$WORK/m31/HIMMEL"; mkdir -p "$M31"
-M_SAVE="$M"; M="$M31"
-mk HIMMEL-3101 "To Do" Highest '[]' '["v1.0.1"]' '[]' "overlaps a clean PR" "Edit scripts/lanes/soft-one.sh only."
-mk HIMMEL-3102 "To Do" High '[]' '["v1.0.1"]' '[]' "overlaps a PR whose trial merge conflicts" "Edit scripts/lanes/soft-conf.sh only."
-mk HIMMEL-3103 "To Do" High '[]' '["v1.0.1"]' '[]' "overlaps a trust path" "Edit scripts/lib/soft-trust.sh only."
-mk HIMMEL-3104 "To Do" High '[]' '["v1.0.1"]' '[]' "overlaps three files" "Edit scripts/lanes/wide-a.sh, scripts/lanes/wide-b.sh and scripts/lanes/wide-c.sh."
-mk HIMMEL-3105 "To Do" High '[]' '["v1.0.1"]' '[]' "overlaps a PR and a live worker" "Edit scripts/lanes/soft-a.sh and scripts/handover/chief-kit/live-file.sh."
-mk HIMMEL-3106 "To Do" Medium '[]' '["v1.0.1"]' '[]' "overlaps two files of a clean PR" "Edit scripts/lanes/soft-a.sh and scripts/lanes/soft-two.sh."
-mk HIMMEL-3107 "To Do" Medium '[]' '["v1.0.1"]' '[]' "overlaps nothing" "Edit scripts/lanes/free-one.sh only."
-M="$M_SAVE"
-cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m31/HIMMEL.versions.tsv"
-run31() { NEXT_DISPATCH_MIRROR="$M31" NEXT_DISPATCH_GH_CMD="$WORK/gh31" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" NEXT_DISPATCH_GIT_DIR="$G" NEXT_DISPATCH_MAIN_REF="${SOFT_MAIN_REF:-main}" bash "$SUT" --top 20 --workers-from "$WORK/fleet.json" "$@" 2>/dev/null; }
-seed HIMMEL-99 N1 "$WORKER" scripts/handover/chief-kit/live-file.sh  # the register was reset above: N1's launch row again
-soft_on="$(run31)"
-soft_why="$(run31 --why)"
-
-# the clean small overlaps stay dispatchable and are named
-has "soft: a ticket overlapping a clean PR is listed" "$soft_on" "HIMMEL-3101	"
-has "soft: it says SOFT, naming the holder and the file" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-one.sh for HIMMEL-3101"
-has "soft: a two-file overlap of one clean PR is listed" "$soft_on" "HIMMEL-3106	"
-has "soft: the two-file SOFT row names both files" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-a.sh,scripts/lanes/soft-two.sh for HIMMEL-3106"
-has "soft: a ticket that overlaps nothing is still listed" "$soft_on" "HIMMEL-3107	"
-lacks "soft: a ticket that overlaps nothing has no SOFT row" "$soft_on" "for HIMMEL-3107"
-lacks "soft: a PR whose trial merge conflicts still holds its file" "$soft_on" "HIMMEL-3102	"
-lacks "soft: a trust path is never soft" "$soft_on" "HIMMEL-3103	"
-lacks "soft: more than 2 overlapping files is never soft" "$soft_on" "HIMMEL-3104	"
-lacks "soft: a live worker's file holds even beside a soft overlap" "$soft_on" "HIMMEL-3105	"
-has "soft --why: a conflicting trial merge is still a collision drop" "$soft_why" "# drop HIMMEL-3102 collision scripts/lanes/soft-conf.sh held by open PR 7002"
-has "soft --why: a trust path is still a collision drop" "$soft_why" "# drop HIMMEL-3103 collision scripts/lib/soft-trust.sh held by open PR 7003"
-has "soft --why: a wide overlap is still a collision drop" "$soft_why" "# drop HIMMEL-3104 collision "
-has "soft --why: the live-worker overlap names the first holder it finds" "$soft_why" "# drop HIMMEL-3105 collision "
-
-# an unresolvable main ref fails closed to the collision drop
-soft_nohead="$( export SOFT_MAIN_REF=no-such-ref; run31 )"
-lacks "soft: an unresolvable main ref falls back to the collision drop" "$soft_nohead" "HIMMEL-3101	"
-lacks "soft: and prints no SOFT row" "$soft_nohead" "SOFT"
 
 # --- a ticket with no DoD or no Proof is refused at dispatch. The
 # checker is marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh; the
@@ -1308,12 +1199,12 @@ printf '{"schema":1,"legs":[{"doc":"%s","label":"N920"}]}\n' "$NOTE_WORKER" > "$
 note_out="$(run --no-classify --workers-from "$WORK/fleet-note.json" --why)"
 has "Writes note: parenthetical scripts/lib never holds its subtree" "$note_out" "LOCAL?	HIMMEL-9202"
 has "Writes note: a separate note holds nothing even with a legacy scope phrase" "$note_out" "LOCAL?	HIMMEL-9203"
-has "Writes note: the real file before the parenthetical still holds" "$note_out" "# drop HIMMEL-9201 collision docs/nd-note-own.md held by live worker N920"
-has "Writes note: the real file after the parenthetical still holds" "$note_out" "# drop HIMMEL-9204 collision docs/nd-note-after.md held by live worker N920"
+has "Writes note: the real file before the parenthetical still overlaps" "$note_out" "# overlap HIMMEL-9201 docs/nd-note-own.md with live worker N920"
+has "Writes note: the real file after the parenthetical still overlaps" "$note_out" "# overlap HIMMEL-9204 docs/nd-note-after.md with live worker N920"
 lacks "Writes note: a parenthetical directory produces no wide-hold warning" "$note_out" "# warn: N920 holds directory scripts/lib"
 printf '%s\n' '> **Writes:** scripts/lib scripts/lib/' '> **Writes note:** docs/nd-note-own.md' > "$NOTE_WORKER"
 note_wide="$(run --no-classify --workers-from "$WORK/fleet-note.json" --why)"
-has "Writes note: a bare directory still holds its subtree" "$note_wide" "# drop HIMMEL-9202 collision scripts/lib/nd-note-free.sh held by live worker N920"
+has "Writes note: a bare directory still overlaps its subtree" "$note_wide" "# overlap HIMMEL-9202 scripts/lib/nd-note-free.sh with live worker N920"
 [ "$(printf '%s\n' "$note_wide" | grep -c '^# warn: N920 holds directory scripts/lib/$')" = 1 ] && pass "Writes note: --why warns once per held directory" || fail "Writes note: --why must warn once for scripts/lib/: $note_wide"
 case "$note_wide" in "# source mirror_age_min="*) pass "Writes note: the age header comes before the directory warning" ;; *) fail "Writes note: the age header is not first (got: ${note_wide%%$'\n'*})" ;; esac
 lacks "Writes note: normal output has no directory warning" "$(run --no-classify --workers-from "$WORK/fleet-note.json")" "# warn: N920 holds directory"
@@ -1325,7 +1216,7 @@ printf '%s\n' '> **Scope / do not:** writes confined to docs/nd-note-own.md.' '>
 seed HIMMEL-9299 N920 "$NOTE_WORKER" docs/nd-note-own.md  # the scope-line shape is not parsed any more: the register carries what the older brief named
 note_legacy="$(run --no-classify --workers-from "$WORK/fleet-note.json" --why)"
 has "Writes note: a note is ignored in the older-brief fallback too" "$note_legacy" "LOCAL?	HIMMEL-9202"
-has "Writes note: the older-brief fallback still holds its own file" "$note_legacy" "# drop HIMMEL-9201 collision docs/nd-note-own.md held by live worker N920"
+has "Writes note: the older-brief fallback still overlaps its own file" "$note_legacy" "# overlap HIMMEL-9201 docs/nd-note-own.md with live worker N920"
 
 # a Done-category status the name list does not know ('wont do') is done: its blocked ticket is dispatchable
 DC_DIR="$WORK/jira-mirror-done-cat"; M="$DC_DIR/HIMMEL"; mkdir -p "$M"
@@ -1433,8 +1324,6 @@ fi
 chmod 600 "$M/HIMMEL-9690.md"
 M="$WORK/jira-mirror/HIMMEL"
 
-# A RESUME row a collision drops is named `RESUME-HELD <key> by <holder>`, never silent:
-# one a live worker's write scope holds, one another listed RESUME row holds (full pass only).
 M7="$WORK/m7/HIMMEL"; mkdir -p "$M7"
 M_SAVE="$M"; M="$M7"
 mk HIMMEL-80 "In Progress" High '[]' '[]' '[]' "held by a live worker scope" "Edit scripts/lib/rh1.sh."
@@ -1446,14 +1335,14 @@ printf '{"schema":1,"legs":[{"doc":"%s","label":"N8"}]}\n' "$LEG7" > "$WORK/flee
 rh() { NEXT_DISPATCH_MIRROR="$M7" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" --workers-from "$WORK/fleet7.json" 2>/dev/null; }
 rh_full="$(rh)"; rh_full_rc=$?
 check "the full pass exits 0 (HIMMEL-6604)" "0" "$rh_full_rc"
-has "a RESUME row a live worker's scope holds is named RESUME-HELD (HIMMEL-6604)" "$rh_full" "RESUME-HELD HIMMEL-80 by live worker N8"
-has "a RESUME row another listed RESUME row holds is named RESUME-HELD (HIMMEL-6604)" "$rh_full" "RESUME-HELD HIMMEL-82 by listed HIMMEL-81"
-lacks "a held RESUME row is not also offered as RESUME (HIMMEL-6604)" "$rh_full" "RESUME	HIMMEL-80"
-lacks "a RESUME row held by a listed ticket is not also offered as RESUME (HIMMEL-6604)" "$rh_full" "RESUME	HIMMEL-82"
+has "a RESUME row a live worker's scope names gets an overlap line" "$rh_full" "# overlap HIMMEL-80 scripts/lib/rh1.sh with live worker N8"
+has "a RESUME row another listed RESUME row names gets an overlap line" "$rh_full" "# overlap HIMMEL-82 scripts/lib/rh2.sh with listed HIMMEL-81"
+has "a RESUME row a live worker's scope names is still offered as RESUME" "$rh_full" "RESUME	HIMMEL-80"
+has "a RESUME row a listed ticket names is still offered as RESUME" "$rh_full" "RESUME	HIMMEL-82"
 has "the free RESUME row is still offered (HIMMEL-6604)" "$rh_full" "RESUME	HIMMEL-81"
 rh_only="$(rh --resume-only)"; rh_only_rc=$?
 check "--resume-only exits 0 (HIMMEL-6604)" "0" "$rh_only_rc"
-has "--resume-only names the worker-held RESUME row too (HIMMEL-6604)" "$rh_only" "RESUME-HELD HIMMEL-80 by live worker N8"
+has "--resume-only prints the worker overlap on the RESUME row too" "$rh_only" "# overlap HIMMEL-80 scripts/lib/rh1.sh with live worker N8"
 
 # --- (8170) versionless operator work is INTAKE, never a bare LOW: open tickets with no fixVersion that are
 # operator-directed, a Bug of High or above, labelled scope-<current version> or held by a live worker count;
@@ -1564,15 +1453,15 @@ dflt="$(NEXT_DISPATCH_MIRROR="$UI" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH
 [ "$off" = "$dflt" ] && pass "(8349) flag off equals the default output" || fail "(8349) flag 0 differs from the default"
 lacks "(8349) flag off prints no SERIES row" "$off" "SERIES"
 has "(8349) flag off lists the head alone" "$off" "LOCAL${TAB}HIMMEL-801${TAB}"
-has "(8349) flag off still drops the second with the collision reason" "$off" "# drop HIMMEL-802 collision scripts/config-ui/app.js held by listed HIMMEL-801"
-has "(8349) flag off still drops the third with the collision reason" "$off" "# drop HIMMEL-803 collision scripts/config-ui/app.js held by listed HIMMEL-801"
+has "(8349) flag off prints the second as an overlap with the head" "$off" "# overlap HIMMEL-802 scripts/config-ui/app.js with listed HIMMEL-801"
+has "(8349) flag off prints the third as an overlap with the head" "$off" "# overlap HIMMEL-803 scripts/config-ui/app.js with listed HIMMEL-801"
 
 # the cap holds at 4
 newmir cap
 for n in 811 812 813 814 815; do mk "HIMMEL-$n" "To Do" High '[]' '["v1.0.1"]' '[]' "cap $n" "Edit scripts/lib/cap.sh now."; done
 cp_="$(runs "$M" 1 --why)"
 has "(8349) a series stops at 4 items" "$cp_" "SERIES${TAB}LOCAL${TAB}HIMMEL-811,HIMMEL-812,HIMMEL-813,HIMMEL-814${TAB}"
-has "(8349) the fifth colliding ticket drops as today" "$cp_" "# drop HIMMEL-815 collision scripts/lib/cap.sh held by listed HIMMEL-811"
+has "(8349) the fifth sharing ticket is listed with an overlap line" "$cp_" "# overlap HIMMEL-815 scripts/lib/cap.sh with "
 
 # a candidate that would join two series is dropped
 newmir two
@@ -1584,7 +1473,7 @@ mk HIMMEL-825 "To Do" High '[]' '["v1.0.1"]' '[]' "both" "Edit scripts/lib/x.sh 
 tw="$(runs "$M" 1 --why)"
 has "(8349) two independent series each get a row" "$tw" "SERIES${TAB}LOCAL${TAB}HIMMEL-821,HIMMEL-822${TAB}"
 has "(8349) the second series row" "$tw" "SERIES${TAB}LOCAL${TAB}HIMMEL-823,HIMMEL-824${TAB}"
-has "(8349) a candidate colliding with two series is dropped" "$tw" "# drop HIMMEL-825 collision"
+has "(8349) a candidate sharing a file with two series prints an overlap" "$tw" "# overlap HIMMEL-825 "
 lacks "(8349) a candidate colliding with two series joins neither" "$tw" "HIMMEL-821,HIMMEL-822,HIMMEL-825"
 
 # a later-version ticket never rides an earlier version's series
@@ -1593,7 +1482,7 @@ mk HIMMEL-831 "To Do" High '[]' '["v1.0.1"]' '[]' "now" "Edit scripts/lib/z.sh n
 mk HIMMEL-832 "To Do" High '[]' '["v1.0.2"]' '[]' "later" "Edit scripts/lib/z.sh now."
 vr="$(runs "$M" 1 --why)"
 lacks "(8349) a later-version ticket does not join" "$vr" "SERIES"
-lacks "(8349) a later-version ticket is not listed with it" "$vr" "HIMMEL-832${TAB}"
+has "(8349) a later-version ticket lists on its own row" "$vr" "HIMMEL-832${TAB}"
 has "(8349) the earlier-version ticket lists alone" "$vr" "LOCAL${TAB}HIMMEL-831${TAB}"
 
 # lane and hook: a CLOUD member makes the series LOCAL, a hook member makes it hook, a BLOCKED one never joins
@@ -1648,11 +1537,11 @@ has "(8349) a candidate colliding only with a live series worker is STACKABLE" "
 lacks "(8349) a STACKABLE candidate has no dispatch row" "$st" "LOCAL${TAB}HIMMEL-851${TAB}"
 lacks "(8349) a STACKABLE candidate is not told as an ordinary collision" "$st" "# drop HIMMEL-851 collision"
 has "(8349) a free ticket still lists beside a series worker" "$st" "LOCAL${TAB}HIMMEL-853${TAB}"
-has "(8349) a candidate also held by an open PR still drops" "$st" "# drop HIMMEL-852 collision"
+has "(8349) a candidate also named by an open PR prints an overlap" "$st" "# overlap HIMMEL-852 "
 lacks "(8349) a candidate also held by an open PR is not STACKABLE" "$st" "STACKABLE HIMMEL-852"
 stoff="$(runs "$SM" 0 --workers-from "$WORK/fleet-s.json" --why)"
 lacks "(8349) flag off prints no STACKABLE row" "$stoff" "STACKABLE"
-has "(8349) flag off drops it with the collision reason" "$stoff" "# drop HIMMEL-851 collision scripts/config-ui/app.js held by live worker N5"
+has "(8349) flag off prints the overlap with the live worker" "$stoff" "# overlap HIMMEL-851 scripts/config-ui/app.js with live worker N5"
 
 # a candidate the classifier would call BLOCKED is not offered as STACKABLE
 M="$SM"; mk HIMMEL-845 "To Do" High '[]' '["v1.0.1"]' '[]' "blocked wants app.js" "$APP"
@@ -1666,7 +1555,7 @@ printf '# live\n> **Series:**\n> **Writes:** scripts/config-ui/app.js\n' > "$WOR
 mkfleet "$WORK/fleet-empty.json" "N9:$WORK/HIMMEL-794-N9-empty.md"
 se="$(runs "$SM" 1 --workers-from "$WORK/fleet-empty.json" --why)"
 lacks "(8349) a Series block with no parseable item offers no STACKABLE room" "$se" "STACKABLE"
-has "(8349) an unreadable-count series worker still holds the file" "$se" "# drop HIMMEL-851 collision scripts/config-ui/app.js held by live worker N9"
+has "(8349) an unreadable-count series worker still overlaps the file" "$se" "# overlap HIMMEL-851 scripts/config-ui/app.js with live worker N9"
 sr="$(runs "$SM" 1 --workers-from "$WORK/fleet-s.json" --priority-pool-only --resume-only)"
 lacks "(8349) --priority-pool-only --resume-only lists no STACKABLE row" "$sr" "STACKABLE"
 
@@ -1674,13 +1563,13 @@ mkdoc "$WORK/HIMMEL-791-N6-plain.md" 0 ""
 mkfleet "$WORK/fleet-plain.json" "N6:$WORK/HIMMEL-791-N6-plain.md"
 sp="$(runs "$SM" 1 --workers-from "$WORK/fleet-plain.json" --why)"
 lacks "(8349) a collision with a non-series live worker is not STACKABLE" "$sp" "STACKABLE"
-has "(8349) a collision with a non-series live worker still drops" "$sp" "# drop HIMMEL-851 collision scripts/config-ui/app.js held by live worker N6"
+has "(8349) a non-series live worker prints an overlap" "$sp" "# overlap HIMMEL-851 scripts/config-ui/app.js with live worker N6"
 
 mkdoc "$WORK/HIMMEL-792-N7-full.md" 4 ""
 mkfleet "$WORK/fleet-full.json" "N7:$WORK/HIMMEL-792-N7-full.md"
 sf="$(runs "$SM" 1 --workers-from "$WORK/fleet-full.json" --why)"
 lacks "(8349) a full (4/4) series worker takes no STACKABLE" "$sf" "STACKABLE"
-has "(8349) a full series worker still holds the file" "$sf" "# drop HIMMEL-851 collision scripts/config-ui/app.js held by live worker N7"
+has "(8349) a full series worker still overlaps the file" "$sf" "# overlap HIMMEL-851 scripts/config-ui/app.js with live worker N7"
 
 mkdoc "$WORK/HIMMEL-793-N8-two.md" 0 ""
 mkfleet "$WORK/fleet-two.json" "N5:$WORK/HIMMEL-790-N5-series.md" "N8:$WORK/HIMMEL-793-N8-two.md"
@@ -1810,15 +1699,15 @@ printf 'MERGED\n' > "$GHL_DIR/series_s1_HIMMEL-9002"
 printf 'OPEN\n' > "$GHL_DIR/series_s1_HIMMEL-9003"
 printf 'CLOSED\n' > "$GHL_DIR/series_s1_HIMMEL-9006"
 lg1="$(runl 1 "$LM" "$B/fleet.json" --why)"
-has "(8349 S1b) F3: a committed item holds its file after the predecessor WRAPPED" "$lg1" "# drop HIMMEL-871 collision scripts/config-ui/app.js held by series s1"
-lacks "(8349 S1b) F3: the held candidate has no dispatch row" "$lg1" "LOCAL${TAB}HIMMEL-871${TAB}"
+has "(8349 S1b) F3: a committed item still overlaps its file after the predecessor WRAPPED" "$lg1" "# overlap HIMMEL-871 scripts/config-ui/app.js with series s1"
+has "(8349 S1b) F3: the overlapping candidate still has its dispatch row" "$lg1" "LOCAL${TAB}HIMMEL-871${TAB}"
 has "(8349 S1b) a ticket the ledger does not hold still lists" "$lg1" "LOCAL${TAB}HIMMEL-872${TAB}"
 has "(8349 S1b) F4 hold-end: a published item whose PR gh reports merged holds nothing" "$lg1" "LOCAL${TAB}HIMMEL-873${TAB}"
-has "(8349 S1b) a published item whose PR is open keeps holding" "$lg1" "# drop HIMMEL-874 collision scripts/lib/open-l.sh held by series s1"
-has "(8349 S1b) a published item gh knows no PR for keeps holding" "$lg1" "# drop HIMMEL-875 collision scripts/lib/nopr-l.sh held by series s1"
+has "(8349 S1b) a published item whose PR is open keeps overlapping" "$lg1" "# overlap HIMMEL-874 scripts/lib/open-l.sh with series s1"
+has "(8349 S1b) a published item gh knows no PR for keeps overlapping" "$lg1" "# overlap HIMMEL-875 scripts/lib/nopr-l.sh with series s1"
 has "(8349 S1b) an abandoned item holds nothing" "$lg1" "LOCAL${TAB}HIMMEL-876${TAB}"
 has "(8349 S1b) a published item whose PR gh reports closed holds nothing" "$lg1" "LOCAL${TAB}HIMMEL-877${TAB}"
-has "(8349 S1b) a PR beyond gh's default 30 results still holds the file" "$lg1" "# drop HIMMEL-878 collision scripts/lib/many-l.sh held by series s1"
+has "(8349 S1b) a PR beyond gh's default 30 results still overlaps the file" "$lg1" "# overlap HIMMEL-878 scripts/lib/many-l.sh with series s1"
 lacks "(8349 S1b) a fresh pass is no orphan" "$lg1" "SERIES-ORPHAN"
 # flag off: a ledger present changes nothing (byte-identical to the same run with no ledger directory)
 off1="$(runl 0 "$LM" "$B/fleet.json" --why | grep -v '^# source mirror_age_min=')"
@@ -1909,7 +1798,7 @@ led add-item --ledger "$SL" --key HIMMEL-9203 --writes scripts/lib/c85.sh --stat
 led add-item --ledger "$SL" --key HIMMEL-9204 --writes scripts/lib/d85.sh --state planned
 s85c="$(runl 1 "$S85" "$B/fleet.json" --why)"
 lacks "(8529) a ledger of 4 live items takes no STACKABLE" "$s85c" "STACKABLE"
-has "(8529) a full series still holds the file" "$s85c" "# drop HIMMEL-851 collision"
+has "(8529) a full series still prints the file overlap" "$s85c" "# overlap HIMMEL-851 "
 led set --ledger "$SL" --key HIMMEL-9204 state=abandoned
 s85d="$(runl 1 "$S85" "$B/fleet.json" --why)"
 has "(8529) an abandoned item frees a seat" "$s85d" "STACKABLE HIMMEL-851 $SW"
@@ -1999,7 +1888,7 @@ lacks "(8529) flag off prints no SERIES FAMILY row" "$fam0" "SERIES FAMILY"
 printf '# live\n> **Writes:** docs/handover/fa-85.md\n' > "$B/HIMMEL-9240-N5-holder.md"
 mkfleet "$B/fleet-h.json" "N5:$B/HIMMEL-9240-N5-holder.md"
 fam2="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="In Progress" runl 1 "$FAM" "$B/fleet-h.json")"
-lacks "(8529) a sub-task held by a live worker gives no family row" "$fam2" "SERIES FAMILY"
+has "(8529) a sub-task a live worker names still gives its family row (a held file no longer filters it)" "$fam2" "SERIES FAMILY docs/handover HIMMEL-870,HIMMEL-871"
 
 # A ticket with a merged contract=no PR is in work, never a fresh To Do row: its RESUME row names the PR and the
 # PR body's Remaining: text; a partial PR whose body has none is NEEDS-CHIEF-NOTE and is not dispatched.
@@ -2355,86 +2244,9 @@ has "I13 ... an IN CI row (a merged PR, no worker) is not withheld" "$rg6" "MERG
 rgf="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="In Progress" runl 1 "$FAM" "$WORK/fleet-rg.json")"
 has "I13 ... a series-family row is not withheld" "$rgf" "SERIES FAMILY docs/handover HIMMEL-870,HIMMEL-871"
 : > "$MERGED_TSV"
-printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
+printf '4242\tfix(x): an outside change to a held file\tcontributor/pr-held\ttrue\t2026-01-01T00:00:00Z\n4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
-# --- a register that fails or lies is unknown, never free; an unseeded worker keeps its doc's Writes files ---
-# a holds.py stand-in: the real verbs, except the read modes STUB_HOLDS_FAIL names (keys, paths: exit 3; garbled: a two-column
-# row on the --paths-from read; read: every read exits 3)
-cat > "$WORK/holds-stub.py" <<'STUBEOF'
-import os, runpy, sys
-mode = os.environ.get('STUB_HOLDS_FAIL', '')
-a = sys.argv[1:]
-if a[:1] == ['read']:
-    keys, paths = '--keys' in a, '--paths-from' in a
-    if mode == 'read' or (mode == 'keys' and keys) or (mode == 'paths' and paths):
-        sys.stderr.write('stub: register unreadable\n')
-        sys.exit(3)
-    if mode == 'all' and not keys and not paths:
-        sys.stderr.write('stub: register unreadable\n')
-        sys.exit(3)
-    if mode == 'garbled' and paths and not keys:
-        print('only\ttwo')
-        sys.exit(0)
-sys.argv = [os.environ['STUB_REAL_HOLDS']] + a
-runpy.run_path(os.environ['STUB_REAL_HOLDS'], run_name='__main__')
-STUBEOF
-export STUB_REAL_HOLDS="$HOLDS_PY"
-M_SAVE9="$M"; M="$M5"
-mk HIMMEL-9600 "To Do" Highest '[]' '[]' '[]' "a file only a worker doc names" "Edit scripts/lib/unseeded-w.sh."
-M="$M_SAVE9"
-UN_DOC="$WORK/HIMMEL-9610-N9610-unseeded.md"
-printf '# live\n> **Writes:** scripts/lib/unseeded-w.sh\n' > "$UN_DOC"
-printf '{"schema":1,"workers":[{"doc":"%s","label":"N9610"}]}\n' "$UN_DOC" > "$WORK/fleet-un.json"
-printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n9610\tfix(x): [HIMMEL-9610] open\tfix/himmel-9610-o\n' > "$PRS_TSV"
-# the one open PR (9610) names a file no other row holds, so a sync-prs row appears under its title's key
-cat > "$WORK/gh-un" <<'GHEOF'
-#!/usr/bin/env bash
-case "$2" in
-    list) case "$*" in *headRefName*|*merged*) exec "$GH_UN_BASE" "$@" ;; *) echo 9610 ;; esac ;;
-    view) exec "$GH_UN_BASE" "$@" ;;
-    *) echo scripts/lib/pr-un-file.sh ;;
-esac
-GHEOF
-chmod +x "$WORK/gh-un"; export GH_UN_BASE="$WORK/gh"
-rgrun() { NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh-un" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --no-classify "$@" 2>"$WORK/rg2.err"; }
-un_out="$(rgrun --workers-from "$WORK/fleet-un.json")"
-lacks "an unseeded worker with an open PR keeps its Writes-only file held (the PR title's key is not a seed)" "$un_out" "HIMMEL-9600	"
-seed HIMMEL-9610 N9610 "$UN_DOC" scripts/lib/seeded-elsewhere.sh
-un_out2="$(rgrun --workers-from "$WORK/fleet-un.json")"
-has "a seeded worker's doc Writes line is not parsed: its register rows say what it holds" "$un_out2" "HIMMEL-9600	"
-
-fault_head() { printf '%s\n' "$1" | grep '^# next-dispatchable:'; }
-# (9067) clean-run controls: the "lacks" rows below pass on an empty output, so each fault shape has a healthy twin that
-# must offer the row, and a crashed fixture run (empty output) cannot pass them
-c_ok="$(ND_HOLDS="$WORK/holds-stub.py" rgrun --workers-from "$WORK/fleet-un.json")"
-has "(9067) control: the stub with no fault mode offers the To Do ticket the fault rows withhold" "$c_ok" "HIMMEL-56	"
-lacks "(9067) control: the clean stub run reads no register fault" "$(fault_head "$c_ok")" "holds register unknown"
-c_ro="$(ND_HOLDS="$WORK/holds-stub.py" NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh-un" bash "$SUT" --resume-only --workers-from "$WORK/fleet-un.json" 2>/dev/null)"
-has "(9067) control: the clean --resume-only run lists the RESUME row the fault withholds" "$c_ro" "RESUME	HIMMEL-50"
-f_keys="$(STUB_HOLDS_FAIL=keys ND_HOLDS="$WORK/holds-stub.py" rgrun --workers-from "$WORK/fleet-un.json")"
-has "a register whose --keys read fails reads the live workers unknown (tick prints ?)" "$(fault_head "$f_keys")" "live workers unknown"
-has "... and names the register unknown" "$(fault_head "$f_keys")" "holds register unknown"
-lacks "... and no To Do ticket is offered" "$f_keys" "HIMMEL-56	"
-f_paths="$(STUB_HOLDS_FAIL=paths ND_HOLDS="$WORK/holds-stub.py" rgrun --workers-from "$WORK/fleet-un.json")"
-has "a register whose --paths-from read fails reads the live workers unknown" "$(fault_head "$f_paths")" "live workers unknown"
-lacks "... and no To Do ticket is offered on the paths fault" "$f_paths" "HIMMEL-56	"
-f_garb="$(STUB_HOLDS_FAIL=garbled ND_HOLDS="$WORK/holds-stub.py" rgrun --workers-from "$WORK/fleet-un.json")"
-has "a register row that is not six columns reads the live workers unknown" "$(fault_head "$f_garb")" "live workers unknown"
-lacks "... and no To Do ticket is offered on a malformed row" "$f_garb" "HIMMEL-56	"
-f_ro="$(STUB_HOLDS_FAIL=keys ND_HOLDS="$WORK/holds-stub.py" NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh-un" bash "$SUT" --resume-only --workers-from "$WORK/fleet-un.json" 2>/dev/null)"
-has "--resume-only with a failing register reads the live workers unknown (tick prints ? for orphans)" "$(fault_head "$f_ro")" "live workers unknown"
-lacks "--resume-only with a failing register withholds the RESUME rows" "$f_ro" "RESUME	HIMMEL-50"
-f_all="$(STUB_HOLDS_FAIL=all ND_HOLDS="$WORK/holds-stub.py" NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh-un" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --workers-from "$WORK/fleet-un.json" 2>/dev/null)"
-has "a failing all-rows read (the classifier's --held list) reads the live workers unknown" "$(fault_head "$f_all")" "live workers unknown"
-lacks "... and no To Do ticket is offered on the all-rows fault" "$f_all" "HIMMEL-56	"
-f_dz="$(STUB_HOLDS_FAIL=paths ND_HOLDS="$WORK/holds-stub.py" runcg "$CGM")"
-lacks "a failing register drops a DESIGN row: the design's own files could be held" "$f_dz" "DESIGN${TAB}HIMMEL-901"
-mkdir -p "$HOME/.himmel/state/holds"; : > "$HOME/.himmel/state/holds/OFF"
-f_off="$(STUB_HOLDS_FAIL=read ND_HOLDS="$WORK/holds-stub.py" rgrun --workers-from "$WORK/fleet-un.json")"
-rm -f "$HOME/.himmel/state/holds/OFF"
-lacks "OFF folds the barrier: no register verb runs, so a failing register is not read" "$(fault_head "$f_off")" "holds register unknown"
-lacks "OFF reads the worker from its doc: its Writes-only file stays held" "$f_off" "HIMMEL-9600	"
-printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
+printf '4242\tfix(x): an outside change to a held file\tcontributor/pr-held\ttrue\t2026-01-01T00:00:00Z\n4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
 # the waiter counts the pool with --top <slack>; a bare `--doc <doc> --why` kept the default --top 8, which nine
 # worker-less In Progress rows fill, so it listed no To Do row while the tick read dispatchable above 0. --why with no --top
@@ -2530,7 +2342,6 @@ for row in 9611:9611 9612:9612 9613:9613 9614:9614 9615:9615 9615:9625 9616:9616
     printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","contract":"no","result":"noop"}\n' "${row%%:*}" "${row#*:}" >> "$WORK/s91/status-events.jsonl"
 done
 printf 'scripts/himmel-doctor.sh\nscripts/handover/merge-on-green.sh\nscripts/lib/nd91-rem.sh\n' > "$WORK/held91.txt"
-fresh_register
 : > "$WORK/N91-holder.md"
 seed HIMMEL-9700 N91 "$WORK/N91-holder.md" scripts/lib/nd91-rem2.sh
 run91() { NEXT_DISPATCH_MIRROR="$M91" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 60 --held "$WORK/held91.txt" --workers-dir "$WORK/s91/workers" --workers-from "$WORK/fleet5.json" "$@" 2>/dev/null; }
@@ -2541,16 +2352,16 @@ has "a ticket that only runs himmel-doctor.sh is not dropped when another worker
 has "and its row names no file" "$(row91 LOCAL 9601)" "files=-"
 lacks "and no collision is recorded for it" "$r91" "# drop HIMMEL-9601 collision"
 has "--why names the paths it only reads" "$(row91 scope 9601)" "reads=scripts/luna/graphmap-cadence.sh,scripts/himmel-doctor.sh"
-has "a run path that is reported broken still holds" "$r91" "# drop HIMMEL-9602 collision scripts/himmel-doctor.sh held by"
-has "a run path the same ticket edits still holds" "$r91" "# drop HIMMEL-9603 collision scripts/himmel-doctor.sh held by"
+has "a run path that is reported broken still overlaps" "$r91" "# overlap HIMMEL-9602 scripts/himmel-doctor.sh with "
+has "a run path the same ticket edits still overlaps" "$r91" "# overlap HIMMEL-9603 scripts/himmel-doctor.sh with "
 has "a path named only in a comment holds nothing" "$r91" "LOCAL	HIMMEL-9604	"
 has "and the description's own path is its scope" "$(row91 LOCAL 9604)" "files=scripts/lib/nd91-own1.sh"
 has "a Files: line is the scope, not the prose around it" "$(row91 LOCAL 9605)" "files=scripts/lib/nd91-own2.sh"
 has "--why names the Files: line as the source" "$(row91 scope 9605)" "Files: line"
-has "a Writes: line naming a held file drops the ticket" "$r91" "# drop HIMMEL-9606 collision scripts/himmel-doctor.sh held by"
-has "--why names the Writes: line as the source" "$(row91 drop 9606)" "(from Writes: line)"
-has "a description naming a held file drops the ticket" "$r91" "# drop HIMMEL-9607 collision scripts/himmel-doctor.sh held by"
-has "--why names the description as the source" "$(row91 drop 9607)" "(from description)"
+has "a Writes: line naming a held file prints an overlap" "$r91" "# overlap HIMMEL-9606 scripts/himmel-doctor.sh with "
+has "--why names the Writes: line as the source" "$(row91 overlap 9606)" "(from Writes: line)"
+has "a description naming a held file prints an overlap" "$r91" "# overlap HIMMEL-9607 scripts/himmel-doctor.sh with "
+has "--why names the description as the source" "$(row91 overlap 9607)" "(from description)"
 # no readable scope: never silently free
 lacks "a ticket with paths only in comments is not listed" "$r91" "LOCAL	HIMMEL-9608	"
 has "and is a chief question" "$r91" "NEEDS-CHIEF-NOTE HIMMEL-9608: no readable scope"
@@ -2571,10 +2382,10 @@ has "--why names every one" "$(run91 --top 1 --why | grep -c 'no readable scope:
 has "a partly merged ticket whose remainder needs no code is not dropped on a path only its finished slice names" "$r91" "RESUME	HIMMEL-9611	"
 lacks "and it is no RESUME-HELD row" "$r91" "RESUME-HELD HIMMEL-9611"
 has "and its row names no file" "$(row91 RESUME 9611)" "files=-"
-has "a ticket whose remainder really edits a held file still drops as a collision" "$r91" "RESUME-HELD HIMMEL-9612 by held list"
-has "--why names the remainder as the source of the held path" "$(row91 why 9612)" "scripts/lib/nd91-rem.sh by held list, from remainder of PR #9612"
-has "a remainder's path is asked of the holds register too" "$r91" "RESUME-HELD HIMMEL-9613 by"
-has "a remainder naming no path and no no-code signal falls back to the description, never free" "$r91" "RESUME-HELD HIMMEL-9614 by held list"
+has "a ticket whose remainder really edits a held file is offered as RESUME with an overlap line" "$r91" "# overlap HIMMEL-9612 scripts/lib/nd91-rem.sh with held list"
+has "and it is still a RESUME row" "$r91" "RESUME	HIMMEL-9612	"
+has "--why names the remainder as the source of the overlapping path" "$(row91 overlap 9612)" "(from remainder of PR #9612)"
+has "a remainder naming no path and no no-code signal falls back to the description, never free (overlap line)" "$r91" "# overlap HIMMEL-9614 scripts/handover/merge-on-green.sh with held list"
 # the history trap: all contract=no PRs of a ticket accumulate
 has "a newer clear remainder is not overridden by an older missing one" "$r91" "RESUME	HIMMEL-9615	"
 lacks "and no chief note is asked for" "$r91" "NEEDS-CHIEF-NOTE HIMMEL-9615"
@@ -2713,6 +2524,104 @@ rl_secs=$(( $(date +%s) - rl_t0 ))
 [ "$rl_secs" -lt "$RL_BOUND" ] && pass "9438: a rate-limited gh returns within ${RL_BOUND}s (took ${rl_secs}s)" || fail "9438: a rate-limited gh returns within ${RL_BOUND}s (took ${rl_secs}s)"
 has "9438: the output names the rate limit" "$rl9" "rate limit"
 lacks "9438: a rate-limited read lists no IN CI row" "$rl9" "RESUME	HIMMEL-960"
+
+S1D="$WORK/s1d"; mkdir -p "$S1D"; export DD_DIR="$S1D"
+: > "$S1D/prs.tsv"
+S1M="$WORK/s1m/HIMMEL"; mkdir -p "$S1M"
+M_SAVE="$M"; M="$S1M"
+mk HIMMEL-9701 "In Progress" High '[]' '["v1.0.1"]' '[]' "in work, its file is a live worker's" "Edit scripts/s1/own.sh only."
+mk HIMMEL-9702 "To Do" High '[]' '["v1.0.1"]' '[]' "first on a shared file" "Edit scripts/s1/shared.sh only."
+mk HIMMEL-9703 "To Do" Medium '[]' '["v1.0.1"]' '[]' "second on a shared file" "Edit scripts/s1/shared.sh too."
+mk HIMMEL-9704 "To Do" Medium '[]' '["v1.0.1"]' '[]' "free" "Edit scripts/s1/free.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/s1m/HIMMEL.versions.tsv"
+S1W="$WORK/HIMMEL-9700-N97-s1.md"
+printf '# live\n> **Writes:** scripts/s1/own.sh\n' > "$S1W"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N97"}]}\n' "$S1W" > "$WORK/fleet-s1.json"
+s1run() { NEXT_DISPATCH_MIRROR="$S1M" NEXT_DISPATCH_GH_CMD="$WORK/gh-dd" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --top 20 --workers-from "$WORK/fleet-s1.json" "$@" 2>/dev/null; }
+s1_out="$(s1run)"
+s1_ro="$(s1run --resume-only)"
+has "S1: an In Progress ticket on a live worker's Writes file is a RESUME row" "$s1_out" "RESUME	HIMMEL-9701"
+lacks "S1: no RESUME-HELD line is printed (full pass)" "$s1_out" "RESUME-HELD"
+has "S1: --resume-only lists it too" "$s1_ro" "RESUME	HIMMEL-9701"
+lacks "S1: no RESUME-HELD line is printed (--resume-only)" "$s1_ro" "RESUME-HELD"
+has "S1: the RESUME row prints the live worker overlap" "$s1_out" "# overlap HIMMEL-9701 scripts/s1/own.sh with live worker N97"
+has "S1: two To Do tickets on one file are both listed (first)" "$s1_out" "HIMMEL-9702	"
+has "S1: two To Do tickets on one file are both listed (second)" "$s1_out" "HIMMEL-9703	"
+has "S1: the later one carries the listed overlap" "$s1_out" "# overlap HIMMEL-9703 scripts/s1/shared.sh with listed HIMMEL-9702"
+lacks "S1: no collision drop is counted" "$(s1run --why)" "# drop HIMMEL-9703 collision"
+S1U="$WORK/s1u"; mkdir -p "$S1U"
+printf '5001\tfix(x): one\tfix/one\n5002\tfix(x): huge\tfix/huge\n' > "$S1U/prs.tsv"
+printf 'scripts/s1/pr-one.sh\n' > "$S1U/files-5001"
+: > "$S1U/fail-5002"
+s1u_out="$(DD_DIR="$S1U" s1run)"
+has "S1: an unreadable PR files read still lists the To Do rows" "$s1u_out" "HIMMEL-9704	"
+has "S1: an unreadable PR files read still lists the RESUME row" "$s1u_out" "RESUME	HIMMEL-9701"
+has "S1: an unreadable PR files read prints overlap unknown for that PR" "$s1u_out" "# overlap unknown for PR 5002"
+lacks "S1: an unreadable PR files read does not mark every open PR unknown" "$s1u_out" "open PRs unknown"
+cat > "$WORK/holds-log.py" <<'EOF'
+import os, runpy, sys
+with open(os.environ['HOLDS_LOG'], 'a') as f:
+    f.write(sys.argv[1] + '\n')
+sys.argv = [os.environ['STUB_REAL_HOLDS']] + sys.argv[1:]
+runpy.run_path(os.environ['STUB_REAL_HOLDS'], run_name='__main__')
+EOF
+S1P="$WORK/s1p"; mkdir -p "$S1P"
+printf '5301\tfix(x): three\tfix/three\n' > "$S1P/prs.tsv"
+printf 'scripts/s1/pr-three.sh\n' > "$S1P/files-5301"
+export HOLDS_LOG="$WORK/holds-log.txt"; : > "$HOLDS_LOG"
+DD_DIR="$S1P" STUB_REAL_HOLDS="$HOLDS_PY" ND_HOLDS="$WORK/holds-log.py" s1run --why > /dev/null
+has "S1: control: the holds.py shim ran (parse of the live worker's doc)" "$(cat "$HOLDS_LOG")" "parse"
+lacks "S1: the dispatcher calls no holds.py sync-prs" "$(cat "$HOLDS_LOG")" "sync-prs"
+lacks "S1: the dispatcher calls no holds.py gc" "$(cat "$HOLDS_LOG")" "gc"
+lacks "S1: the dispatcher calls no holds.py read" "$(cat "$HOLDS_LOG")" "read"
+printf '# live\nno scope named here\n' > "$WORK/HIMMEL-795-N10-noscope.md"
+mkfleet "$WORK/fleet-s10.json" "N5:$WORK/HIMMEL-790-N5-series.md" "N10:$WORK/HIMMEL-795-N10-noscope.md"
+sk="$(runs "$SM" 1 --workers-from "$WORK/fleet-s10.json" --why)"
+has "S1: a scope-less live worker no longer removes the STACKABLE note" "$sk" "STACKABLE HIMMEL-851 $WORK/HIMMEL-790-N5-series.md"
+has "S1: and the scope-less worker is named overlap unknown" "$sk" "# overlap unknown for live worker N10"
+has "S1: the header still says live workers unknown (tick reads it)" "$sk" "live workers unknown"
+newmir s1fam
+mk HIMMEL-870 "To Do" High '[]' '["v1.0.1"]' '[]' "a sub-task in docs/handover" "Edit docs/handover/fa-85.md."
+mk HIMMEL-871 "To Do" High '[]' '["v1.0.1"]' '[]' "another sub-task in docs/handover" "Edit docs/handover/sub/fb-85.md."
+for k in 870 871; do retype "$M/HIMMEL-$k.md" "Sub-task"; reparent "$M/HIMMEL-$k.md" HIMMEL-860; done
+S1FAM="$M"
+sf1="$(runs "$S1FAM" 1 --workers-from "$WORK/fleet-s10.json" --why)"
+has "S1: a scope-less live worker no longer removes the SERIES FAMILY row" "$sf1" "SERIES FAMILY docs/handover HIMMEL-870,HIMMEL-871"
+has "S1: the family run names the scope-less worker overlap unknown" "$sf1" "# overlap unknown for live worker N10"
+mkfleet "$WORK/fleet-s11.json" "N11:$WORK/HIMMEL-851-N11-gone.md"
+sf2="$(runs "$S1FAM" 1 --workers-from "$WORK/fleet-s11.json" --why)"
+has "S1: an unreadable worker doc no longer removes the SERIES FAMILY row" "$sf2" "SERIES FAMILY docs/handover HIMMEL-870,HIMMEL-871"
+has "S1: an unreadable worker doc prints overlap unknown for that worker" "$sf2" "# overlap unknown for live worker N11"
+sf3="$(runs "$SM" 1 --workers-from "$WORK/fleet-s11.json" --why)"
+has "S1: control: an unreadable worker doc still owns the key in its name" "$sf3" "# drop HIMMEL-851 owned by live worker N11"
+sf4="$(runs "$S1FAM" 1 --workers-from "$WORK/no-such-fleet.json" --why)"
+lacks "S1: control: a missing manifest (owners unknown) still withholds SERIES FAMILY" "$sf4" "SERIES FAMILY"
+S1Q="$WORK/s1q"; mkdir -p "$S1Q"
+S1NOW=1794000000
+q8_at() { python3 -I -c 'import datetime, sys
+print(datetime.datetime.fromtimestamp(float(sys.argv[1]) - float(sys.argv[2]) * 86400, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$S1NOW" "$1"; }
+S1QM="$WORK/s1qm/HIMMEL"; mkdir -p "$S1QM"
+M_SAVE="$M"; M="$S1QM"
+mk HIMMEL-9710 "To Do" High '[]' '["v1.0.1"]' '[]' "named by a PR from outside" "Edit scripts/s1/q8.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/s1qm/HIMMEL.versions.tsv"
+printf 'scripts/s1/q8-other.sh\n' > "$S1Q/files-5201"
+q8run() {
+    local cross="$1" days="$2"
+    printf '5201\tfix(x): [HIMMEL-9710] a change from outside\tfork/q8\t%s\t%s\n' "$cross" "$(q8_at "$days")" > "$S1Q/prs.tsv"
+    NEXT_DISPATCH_NOW="$S1NOW" DD_DIR="$S1Q" NEXT_DISPATCH_MIRROR="$S1QM" NEXT_DISPATCH_GH_CMD="$WORK/gh-dd" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --top 20 --why 2>/dev/null
+}
+q8_8="$(q8run true 8)"
+has "Q8: an outside PR idle 8 days does not own the key it names: it is listed" "$q8_8" "LOCAL	HIMMEL-9710"
+has "Q8: and the overlap names the PR and its idle days" "$q8_8" "# overlap HIMMEL-9710 also named by outside PR 5201 (idle 8d)"
+q8_7="$(q8run true 7)"
+has "Q8: 7 days is enough (seven or more)" "$q8_7" "# overlap HIMMEL-9710 also named by outside PR 5201 (idle 7d)"
+q8_3="$(q8run true 3)"
+has "Q8: control: an outside PR idle 3 days still owns the key" "$q8_3" "# drop HIMMEL-9710 owned by open PR 5201"
+lacks "Q8: control: and the key is not listed" "$q8_3" "LOCAL	HIMMEL-9710"
+q8_in="$(q8run false 30)"
+has "Q8: control: an inside PR idle 30 days still owns the key" "$q8_in" "# drop HIMMEL-9710 owned by open PR 5201"
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
