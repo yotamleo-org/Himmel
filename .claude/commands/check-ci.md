@@ -3,7 +3,7 @@ description: Watch PR CI until mergeable, or a workflow run.
 argument-hint: [pr-number|branch|url] [--grace <sec>] [--settle <sec>] [--max-wait <sec>] [--threads-only] | --run <run-id> [--job <name>] [--max-wait <sec>]
 ---
 
-## Workflow/job mode (HIMMEL-4856)
+## Workflow/job mode
 
 When `$ARGUMENTS` contains `--run <run-id>`, run one Bash command with
 `run_in_background: true`:
@@ -32,7 +32,7 @@ Return the verdict; the PR-specific instructions below do not apply in this mode
 
 ## PR mode
 
-CodeRabbit is best effort (HIMMEL-3360): it is one reviewer among several, CI-only,
+CodeRabbit is best effort: it is one reviewer among several, CI-only,
 never run locally, and this script neither pauses for its status to settle nor
 asks it to run again. When
 armed, its commit status is read and printed as an advisory NOTE — pending,
@@ -48,10 +48,10 @@ the session spends tokens only on launching the script and reading its exit
 code. Green means: every check passed, every PR review thread resolved, no
 review requesting changes, no outside-diff-range CodeRabbit body finding left
 undispositioned (an exact-head ledger `deferred`/`disproved` disposition counts,
-HIMMEL-3124 — see the exit-3 text below). An unresolved CR comment or a
+see the exit-3 text below). An unresolved CR comment or a
 CHANGES_REQUESTED review is a merge blocker, same as a red check.
 Non-blocking nitpick/additional body findings are surfaced in the success
-line, never silenced (HIMMEL-1147/1148).
+line, never silenced.
 
 Run it in a **background** Bash so work continues while checks run:
 
@@ -63,8 +63,8 @@ bash scripts/check-ci.sh $ARGUMENTS
 carries the exit code. Run the script BARE — never pipe it (`| tail`, `| grep`):
 a pipeline's exit code is the LAST command's, so a piped run reads as exit 0
 even when the gate blocked. As a backstop, every post-parse run also prints an
-un-maskable final `check-ci: verdict exit=N` line on stdout (HIMMEL-974;
-`--help` and usage-error exits stay clean) — trust that line over a
+un-maskable final `check-ci: verdict exit=N` line on stdout
+(`--help` and usage-error exits stay clean) — trust that line over a
 pipeline's exit code. With no argument it watches the
 PR for the current branch; pass a PR number, branch, or URL when watching
 from elsewhere.
@@ -75,16 +75,16 @@ e.g. `bash scripts/check-ci.sh 1150 --settle 60`). `--threads-only` runs
 just the review-thread gate — that's how `/pr-check` step 4.8 reuses this
 implementation. `--max-wait <sec>` (default 900, `CHECK_CI_MAX_WAIT` env,
 0 = unbounded) bounds the WHOLE run's waiting with one deadline (watch rounds,
-the one-time extension and the `--settle` wait share it, HIMMEL-4131; a deadline
+the one-time extension and the `--settle` wait share it; a deadline
 hit with checks still pending and nothing failed exits 2 with a
 `DEADLINE-PENDING` line — not an error, re-invoke) — CodeRabbit's own
 rollup CHECK can sit "pending" long after every other check, so the watch is
 supervised and stopped early once the verdict no longer depends on any
 non-CodeRabbit check still pending, or at this cap, whichever comes first
-(`check-ci: watch cap reached (Ns) — evaluating now`, HIMMEL-2062); a cap hit
+(`check-ci: watch cap reached (Ns) — evaluating now`); a cap hit
 with genuine non-CodeRabbit work still pending refuses (exit 2) rather than
 certifying green over unfinished checks. This bound never depends on
-CodeRabbit's own commit status settling (HIMMEL-3360). `merge-on-green.sh`
+CodeRabbit's own commit status settling. `merge-on-green.sh`
 calls this script with no flags, so it inherits the same bound via
 `CHECK_CI_MAX_WAIT`.)
 
@@ -100,8 +100,8 @@ Act on the exit code:
   unchecked code (this repo has no branch protection by design; the red-merge
   gate is the local pre-push hook). `--match-head-commit` pins the certified
   commit only — it is not a review-state gate; if meaningful time passed since
-  exit 0, re-run /check-ci before merging (the block-unresolved-cr-merge hook,
-  HIMMEL-936, independently blocks `gh pr merge` while review threads are
+  exit 0, re-run /check-ci before merging (the block-unresolved-cr-merge hook
+  independently blocks `gh pr merge` while review threads are
   unresolved). A chief worker merges only on the chief's GO
   (`merge-on-green.sh --go <GO file>`); an AFK shift stops at PR-ready and
   leaves the merge to you unless `ARMAUTOMERGE=1`.
@@ -109,13 +109,13 @@ Act on the exit code:
   within seconds, suspect a GitHub Actions billing/permissions block rather
   than the code — check the run annotations first. Read bulky CI failure
   logs in a subagent, not the parent context.
-- `5` — GitHub will block this merge (HIMMEL-3381): a check the base branch
+- `5` — GitHub will block this merge: a check the base branch
   REQUIRES (rulesets via `rules/branches`, unioned with classic protection) never
   reported within `--grace`, or the required set could not be read (never treated
   as empty). Fail-fast: it is not waited on, prints one `MERGE-BLOCKED` line and
   sends one operator DM per (repo, PR, head). A required check that reports
   FAILURE stays exit `1` (same alert). `merge-on-green.sh` maps `5` to its exit 18.
-- `64` — usage error (sysexits `EX_USAGE`, HIMMEL-3317): an unknown flag, a flag
+- `64` — usage error (sysexits `EX_USAGE`): an unknown flag, a flag
   missing its value, a non-numeric `--grace`/`--settle`/`--max-wait`, or two PR
   selectors. **No gate ran** — do not record it as a gate result. The PR number
   is POSITIONAL (`check-ci.sh 1003`, not `--pr 1003`); the watcher bound is
@@ -129,26 +129,26 @@ Act on the exit code:
   bound to the watched head SHA — a concurrent push invalidates it).
   CodeRabbit's own commit status never produces this code: a failed status
   query, a paged status list, absent, pending and skipped are all advisory
-  NOTEs (HIMMEL-3360). Cannot-evaluate always blocks certification even if
+  NOTEs. Cannot-evaluate always blocks certification even if
   the checks themselves look green — re-run.
 - `3` — checks green but the review state blocks the merge: unresolved
   review threads remain, a review requests changes, or (when CodeRabbit is
   armed) its review body reports an outside-diff-range finding that has no
   ledger disposition. The body read is CodeRabbit's latest review: the one at
-  this head, or — when this head carries no review (best effort, HIMMEL-3360:
+  this head, or — when this head carries no review (best effort:
   nothing waits or re-triggers) — the latest one at a prior head, and a
   finding posted there blocks exactly the same way. Address each comment,
   resolve its thread (always resolve the thread when fixing a CR finding),
   then re-run. An outside-diff finding has no thread; besides a fix (a new
   commit, so a new review), it can be cleared by an explicit disposition at
-  the exact head the finding was posted at (HIMMEL-3124; the recipe names it)
+  the exact head the finding was posted at (the recipe names it)
   — the exit-3 message prints the `ledger-append.sh finding …
   --model coderabbit-outside` recipe — `--verdict deferred` needs a tracked
   `--deferred-to <TICKET>`, `--fu-class <escape|hardening|polish>` AND
   `--reason`, `--verdict disproved` needs
   `--reason`; any severity. It never carries to a new head. A header count the
   parser cannot match to findings is exit `2` (check the PR body manually).
-- `4` — retired (HIMMEL-3360): no longer emitted. CodeRabbit's status being
+- `4` — retired: no longer emitted. CodeRabbit's status being
   absent, pending, skipped, rate-limited, or its review anchored to a
   non-head commit is no longer a distinct exit — see `0` above.
 
@@ -156,9 +156,9 @@ Act on the exit code:
 findings together (see `scripts/lib/coderabbit-available.sh`).
 
 **A repo that never armed hears nothing about CodeRabbit** — that silence is
-deliberate (HIMMEL-1125: nothing was configured, so nothing is missing, and an
+deliberate (nothing was configured, so nothing is missing, and an
 adopter who does not use CodeRabbit should not be told about a product they do
-not have). HIMMEL-2380 carves out the single state where silence would be a
+not have). One exception carves out the single state where silence would be a
 lie: `git config --local himmel.coderabbit` set to a value git cannot parse as
 a boolean. `git config --bool` errors on it, the error is swallowed, and the
 repo reads as unarmed — so a clone that genuinely HAS CodeRabbit silently loses
