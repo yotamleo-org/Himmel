@@ -674,7 +674,6 @@ I="$(new_inbox d2)"
 timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/d2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(8934) the first sight of a young unowned PR does not wake, it joins the digest" "124:0:1" "$rc:$(grep -c '^WAKE ' "$WORK/d2.out"):$(grep -c '^unowned-prs #2575:12m' "$I.wait.housekeeping" 2>/dev/null)"
 
-# --- (9599) an unowned PR older than 30 m wakes at once, even with the digest on
 reset_stub
 sed -i 's/ bank=/ unowned-prs=#4946:70m,#4891:957m,#4999:5m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 I="$(new_inbox u1)"

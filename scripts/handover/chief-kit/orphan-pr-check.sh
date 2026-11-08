@@ -12,9 +12,7 @@
 # The record is <state dir>/workers/<KEY>.json (the one writer is the worker-jira-status funnel).
 # A PR is unowned when its record state is wrapped or none, or the ticket has no record; every
 # other state (live, idle, IDLE-HELD, parked, unknown) still owns it. A PR also counts as held
-# when a `|`-separated segment of the doc's Live state `queue:` line, before any `||`, holds the
-# word held or hold and names its number (`#<n>` or `<n>`) or its ticket key; a segment that only
-# mentions the PR (a relaunch owed, a merge pending) is not a hold.
+# when the doc's Live state `queue:` line names its number (`#<n>` or `<n>`) or its ticket key.
 #
 # The PR set is `gh pr list --state open --json number,headRefName,isCrossRepository,author` run in
 # <repo> (default: this checkout). Seams (tests): ORPHAN_PR_CHECK_PRS = a file holding that JSON,
