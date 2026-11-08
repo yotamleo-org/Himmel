@@ -393,7 +393,7 @@ class Sweep:
         trace = self.traces.get(arm)
         if trace:
             open(trace, "w").close()
-        row = dict(id=q["id"], arm=tag or arm, split=q.get("split", "insample"), file_hit=False, named=[], tokens=0, weighted=0,
+        row = dict(id=q["id"], arm=tag or arm, split=q.get("split", "insample"), stratum=self.ev.stratum(q), file_hit=False, named=[], tokens=0, weighted=0,
                    cost_usd=0.0, priced_usd=0.0, priced=True, input=0, output=0, cache_read=0, cache_creation=0,
                    turns=0, retr_tokens=self.ev.tok(text), error=None, pos=sess["n"] + 1 if sess is not None else 1, prime=prime,
                    result="", route_calls=0, tool_trace=[])
@@ -675,8 +675,12 @@ def ledger_row(ev, a, sw, arms, repo):
                 ps = pos_stats([r for r in rs if pick(r["pos"])]) or {}
                 metrics.update({"%s.%s.%s" % (arm, key, m): ps.get(m) for m in
                                 ("n", "cost_mean", "cache_read_mean", "cache_creation_mean", "cached_share")})
-        for sl in SPLITS:
-            ss = arm_stats([r for r in rs if r["split"] == sl]) if any(r["split"] == sl for r in rs) else None
+        slices = [(sl, lambda r, sl=sl: r["split"] == sl) for sl in SPLITS]
+        slices += [(st, lambda r, st=st: r["stratum"] == st) for st in ev.STRATA]
+        slices += [("%s.%s" % (sl, st), lambda r, sl=sl, st=st: r["split"] == sl and r["stratum"] == st)
+                   for sl in SPLITS for st in ev.STRATA]
+        for sl, pick in slices:
+            ss = arm_stats([r for r in rs if pick(r)]) if any(pick(r) for r in rs) else None
             pre = "%s.%s." % (arm, sl)
             metrics.update({pre + "n": ss["n"] if ss else 0, pre + "file_hit": ss["file_hit"] if ss else None,
                             pre + "cost_usd": ss["cost_usd"] if ss else None,

@@ -1,0 +1,3 @@
+# hand-written from the spec quote, not a byte copy (classifier denied transcript extraction)
+# F1: gh pr view stderr, session 55498a23. No RATE_LIMIT suffix. Lines starting '# ' are header, not payload.
+GraphQL: API rate limit already exceeded for user ID 88616986.
