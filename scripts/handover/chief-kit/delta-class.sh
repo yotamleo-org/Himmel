@@ -165,7 +165,6 @@ if [ "$anc" -eq 1 ]; then
             read -r -a mparts <<< "$mline"
             [ "${#mparts[@]}" -eq 3 ] || trust "merge $m is not a two-parent merge"
             git show --remerge-diff --name-only -z --format= --no-ext-diff --no-relative "$m" > "$work/remerge.z" 2>/dev/null || trust "cannot read the remerge diff of merge $m"
-            # a merge whose remerge-diff is not empty holds a hand-resolved conflict: PR-authored, so it is reviewed, never none
             [ ! -s "$work/remerge.z" ] || resolved_merge=1
             while IFS= read -r -d '' p; do
                 case "$p" in *$'\n'*) trust "a remerge path holds a newline" ;; esac
@@ -230,7 +229,6 @@ jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "")
     "$work/rows.jsonl" >> "$work/findings.tsv" 2>/dev/null || trust "cannot read the finding rows of ledger $LEDGER"
 
 [ "$nogo_prose" -eq 0 ] || fin finding
-# a merge in the delta with a non-empty remerge-diff (a hand-resolved conflict) needs a judge, like a finding hit
 [ "$resolved_merge" -eq 0 ] || fin finding
 # a ledger finding that names no file cannot be matched to any hunk, so it needs a judge
 [ -z "$(jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "") == "")) | "x"' "$work/rows.jsonl")" ] || fin finding
