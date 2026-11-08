@@ -4223,13 +4223,10 @@ s17_clear
 # READY_CHECK_DEADLINE (whole seconds, default 150, 0 = none): argv unchanged; a stalled gh
 # read ends in a named FAIL, never a hang, and the override reaches the wrapper.
 reset_stubs
-# --- the snapshot lock: a run that meets a held lock waits for it instead of printing cannot read ---
 # ponytail: this row proves the holder was alive when the run began, not that the run's lock
 # attempt met it; on a runner slow enough to spend 9 s before the snapshot read, the pass could
 # come without contention (the red on the old lib shows the timing holds); upgrade path is a seam
 # that makes the lib log a wait to a trace file this row asserts on.
-# R1: a slow concurrent reader holds the lock about 9 s (three stubbed gh calls of 3 s); the run
-# starts inside that hold, waits for it under the default bound, and reads its PR.
 r1_shared="$tmp/lock-cache-r1"; mkdir -p "$r1_shared"
 r1_fails0=$fails
 env GH_PR_SNAPSHOT_CACHE_DIR="$r1_shared" GH_LOG="$tmp/holder.log" STUB_HEAD="$SHA" \
@@ -4245,7 +4242,7 @@ check "R1: the holder took the snapshot lock" "$r1_took" "yes"
 r1_alive=no; kill -0 "$r1_holder" 2>/dev/null && r1_alive=yes
 check "R1: the holder still holds the lock when the run starts" "$r1_alive" "yes"
 : > "$GH_LOG"
-rc=0; out="$(RUN_CACHE="$r1_shared" run)" || rc=$?
+rc=0; out="$(GH_PR_SNAPSHOT_LOCK_WAIT=30 RUN_CACHE="$r1_shared" run)" || rc=$?
 check "R1: a run that meets a held lock exits 0" "$rc" "0"
 contains "R1: the verdict is PASS" "$out" "READY-CHECK PASS"
 for r1_item in 1 2 3 4 5 6; do
@@ -4285,8 +4282,6 @@ check "deadline: 0 still passes" "$rc" "0"
 rc=0; out="$(READY_CHECK_DEADLINE=2 STUB_GH_STALL=30 run 2>&1)" || rc=$?
 check "deadline: a stalled gh read exits 1" "$rc" "1"
 contains "deadline: the FAIL line names the deadline and its variable" "$out" "READY-CHECK FAIL: no verdict within the 2 s deadline (READY_CHECK_DEADLINE)"
-# R2: a holder that never answers (killed after 12 s) still fails the run closed once the wait
-# ends: items 1, 2, 3, 5 and 6 FAIL, never a PASS, and the run ends inside the holder's life.
 r2_shared="$tmp/lock-cache-r2"; mkdir -p "$r2_shared"
 env GH_PR_SNAPSHOT_CACHE_DIR="$r2_shared" GH_LOG="$tmp/holder2.log" STUB_HEAD="$SHA" \
     STUB_NWO="$NWO" STUB_ROLLUP="$GREEN_ROLLUP" STUB_COMMITS="$GREEN_COMMITS" \

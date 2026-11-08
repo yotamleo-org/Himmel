@@ -24,8 +24,6 @@ lock="$dir/$key.lock"
 # steal by age: a slow live fetch must not lose its lock to another writer.
 # ponytail: a polled lock is not first-in-first-out; at four waiters or fewer inside 30 s starvation is unlikely, upgrade path a ticket-queue lock (an ordered waiter file per run) if a station proof ever shows a waiter timing out under contention.
 # ponytail: a dead or hung holder's lock costs each run the full wait before it fails, with no steal, and ready-check still prints only cannot read; upgrade path surface this line in ready-check, then a liveness check on the recorded pid under its own trust review, since that is lock stealing.
-# Wait for a held lock up to GH_PR_SNAPSHOT_LOCK_WAIT whole seconds (default 30, 0 = try
-# once, 1 to 3 digits read as base 10), then fail closed. Never steal: a slow fetch keeps its lock.
 lock_wait="${GH_PR_SNAPSHOT_LOCK_WAIT:-30}"
 case "$lock_wait" in ''|*[!0-9]*|????*) lock_wait=30 ;; esac
 lock_wait=$((10#$lock_wait))
