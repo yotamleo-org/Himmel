@@ -3995,26 +3995,17 @@ $rows
 EOF
 }
 
-# --- C95-barrier-off: a repo whose single-writer barrier is off is visible (invariant I8 of the single-writer barrier) ---
-# The holds register (~/.himmel/state/holds/<escaped primary path>/) is what the barrier checks. The barrier is OFF for a
-# repo when its primary carries a .single-writer marker, and for every repo while <holds>/OFF exists. Nothing else shows
-# that, so this WARNs: (a) a marker repo whose register holds a live row (a worker runs unguarded), naming the repo and
-# the marker age; (b) a row holds.py cannot parse; (c) a register directory that cannot be read. The OFF sentinel is INFO
-# with its reason (a ruled, standing state; a file that is not a holds.py off sentinel is a WARN). Rows come from `holds.py read` unfiltered (never --paths-from: a marker repo's live row can be on any
-# file); each repo is recovered from the register directory name (holds.py escape: %25 and %2F).
-# This guards work, not secrets: a fault in this check's own machinery (no python3, a hang, a bad exit) is one WARN line,
-# never a FAIL and never a freeze (holds.py read runs under a timeout).
 # ponytail: a marker repo with only dead rows, or rows holds.py cannot judge (state unknown), does not warn; a worker whose
 # first write has not published a row yet is invisible until it does. Upgrade path: read the worker list as well.
 check_c95_barrier_off() {
     local holds="${HOME:-/tmp}/.himmel/state/holds" py="$REPO_ROOT/scripts/handover/chief-kit/holds.py"
-    local name repo rows rc err marker age live bad offline warned=0 off="$holds/OFF"
+    local name repo rows rc err marker age live bad offline off_sentinel_rx warned=0 off="$holds/OFF"
     if [ -e "$off" ] || [ -L "$off" ]; then
         warned=1
         # a FIFO or device named OFF would block the read: only a regular file (or a link to one) is read
         [ -f "$off" ] && offline="$(head -n 1 "$off" 2>/dev/null | cut -c1-300)" || offline=""
-        # holds.py off writes "<utc time><TAB><reason>": that is a ruled, standing state (INFO); anything else is not ours (WARN)
-        if [ -f "$off" ] && grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z'"$(printf '\t')" <<< "$offline"; then
+        off_sentinel_rx='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z'"$(printf '\t')"
+        if [ -f "$off" ] && grep -qE "$off_sentinel_rx" <<< "$offline"; then
             emit INFO C95-barrier-off "the single-writer barrier is OFF for every repo: $off exists ($(printf '%s' "$offline" | tr '\t' ' '))" \
                 "when the reason is over, the chief runs: python3 -I $py on"
         else

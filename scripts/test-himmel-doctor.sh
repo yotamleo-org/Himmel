@@ -8242,8 +8242,6 @@ if grepq "$out" 'INFO C91-api-policy-refusals' && ! grepq "$out" 'OK   C91' && !
     && grepq "$out2" 'INFO C91-api-policy-refusals' && ! grepq "$out2" 'OK   C91' && ! grepq "$out2" 'WARN C91'; then pass "C91 unreadable record and failing jq -> INFO"; else fail "C91 unreadable -> $(printf '%s' "$out" | head -3) failing jq -> $(printf '%s' "$out2" | head -3)"; fi
 rm -rf "$c91_t"
 
-# --- C95: a repo whose single-writer barrier is off is visible (invariant I8 of the single-writer barrier) ---
-# Fake HOME only: the register is $HOME/.himmel/state/holds, never the station's own.
 # shellcheck source=lib/timeout-bin.sh
 # shellcheck disable=SC1091
 { . "$REPO_ROOT/scripts/lib/timeout-bin.sh"; } 2>/dev/null || _TIMEOUT_BIN=""
@@ -8253,8 +8251,9 @@ c95_repo="$(cd "$c95_t/repo" && pwd -P)"
 c95_esc="${c95_repo//%/%25}"; c95_esc="${c95_esc//\//%2F}"
 c95_holds="$c95_t/home/.himmel/state/holds"
 c95_reset() { rm -rf "${c95_t:?}/home" "${c95_t:?}/claude" "$c95_repo/.single-writer"; mkdir -p "$c95_holds/$c95_esc" "$c95_t/claude"; }
-c95_row() { printf '%b' "$2" > "$c95_holds/$c95_esc/$1"; }                # c95_row <escaped file name> <content>
-c95_live() { c95_row 'scripts%2Fa.sh' 'HIMMEL-8725\tN1\t\tclaim\t\n'; }    # a row written now is inside the grace, so alive
+c95_row() { printf '%b' "$2" > "$c95_holds/$c95_esc/$1"; }
+c95_live() { c95_row 'scripts%2Fa.sh' 'HIMMEL-8725\tN1\t\tclaim\t\n'; }
+c95_make_register_unreadable() { rmdir "$c95_holds/$c95_esc"; : > "$c95_holds/$c95_esc"; }
 c95_run() { env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" bash "$DOC" --only C95 --no-color 2>&1; }
 c95_run_bounded() { env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" "${_TIMEOUT_BIN:-timeout}" -k 2 20 bash "$DOC" --only C95 --no-color 2>&1 < /dev/null; }
 echo "== C95: a .single-writer marker at the primary plus a live worker row -> WARN naming the repo and the marker age =="
@@ -8274,7 +8273,7 @@ c95_reset; c95_row 'scripts%2Fb.sh' 'not a row\n'
 out="$(c95_run)"
 if grepq "$out" -E "WARN C95-barrier-off.*$c95_repo.*unparseable"; then pass "C95 corrupt row -> WARN naming the repo"; else fail "C95 corrupt row -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C95: an unreadable register directory -> WARN =="
-c95_reset; rmdir "$c95_holds/$c95_esc"; : > "$c95_holds/$c95_esc"   # a file where the directory belongs: listing it fails, whoever runs the suite
+c95_reset; c95_make_register_unreadable
 out="$(c95_run)"
 if grepq "$out" -E "WARN C95-barrier-off.*cannot read.*$c95_repo"; then pass "C95 unreadable register -> WARN naming the repo"; else fail "C95 unreadable register -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C95: the OFF sentinel (a ruled, standing state) -> INFO with its reason, no WARN =="
