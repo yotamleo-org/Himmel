@@ -1200,7 +1200,7 @@ if [ -n "$PROFILE" ]; then
     # The operator's per-profile ruling (2026-10-30). A profile may
     # give a Sonnet launch a higher standard ceiling (sonnetAutocompact, up to
     # 850000) and a default context guard (sonnetContextGuard). Only the native
-    # lane on a claude-sonnet-5 model takes either: the 450000 ceiling was measured
+    # lane on a claude-sonnet-5 model takes either: the Sonnet ceiling was measured
     # there, and another lane, an older Sonnet or the bare alias keeps the 200000
     # above with no guard. Opus and Fable never read either. An explicit
     # --context-guard (including none) wins over the profile's default.
@@ -1216,8 +1216,7 @@ if [ -n "$PROFILE" ]; then
                     RESOLVED_AUTOCOMPACT="$_sonnet_ceiling"
                     [ "$_sonnet_ceiling" = "200000" ] || SONNET_CEILING=1
                     # The profile's guard share (the hook's deny point is share x ceiling,
-                    # rounded UP to a whole % of the window; 73 keeps it ahead of the
-                    # earliest 450000 compaction). Empty = the hook's 75.
+                    # rounded UP to a whole % of the window). Empty = the hook's 75.
                     SONNET_SHARE="$(printf '%s' "$_worker_context_json" | jq -r '.sonnetContextShare | select(type == "number" and . >= 1 and . <= 100 and floor == .)')"
                     if [ -z "$CONTEXT_GUARD" ]; then
                         CONTEXT_GUARD="$(printf '%s' "$_worker_context_json" | jq -r '.sonnetContextGuard // empty')"
@@ -1229,7 +1228,6 @@ if [ -n "$PROFILE" ]; then
                     && _opus_ceiling="$(printf '%s' "$_worker_context_json" | jq -er '.opusAutocompact | select(type == "number" and . >= 200000 and . <= 850000 and floor == .)')"; then
                     RESOLVED_AUTOCOMPACT="$_opus_ceiling"
                     [ "$_opus_ceiling" = "200000" ] || OPUS_CEILING=1
-                    # 87 of 850000 on the 1M window is ceil(73.95) = 74 % = 740000 tokens.
                     OPUS_SHARE="$(printf '%s' "$_worker_context_json" | jq -r '.opusContextShare | select(type == "number" and . >= 1 and . <= 100 and floor == .)')"
                     if [ -z "$CONTEXT_GUARD" ]; then
                         CONTEXT_GUARD="$(printf '%s' "$_worker_context_json" | jq -r '.opusContextGuard // empty')"

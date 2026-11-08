@@ -435,13 +435,13 @@
       "opusAutocompact": 850000,
       "opusContextGuard": "handoff",
       "opusContextShare": 87,
-      "_comment_opus": "Operator decision 751 (2026-11-07): an Opus 5 worker on the native lane gets a ceiling and a hand-off guard; decision 844 (2026-11-08) raised the ceiling from 800000 to 850000 for Opus and Sonnet workers, and share 87 now gives ceil(73.95) = 74 percent = 740000 (it was 700000 at 800000). The guard rounds to a whole percent of the 1M window. Two real runs at this ceiling each compacted straight after one large read batch (749689 and 678169 by the CLI's own count), so the compaction point is not located; see docs/internals/worker-context-guard.md.",
+      "_comment_opus": "Operator decision 751 (2026-11-07): an Opus 5 worker on the native lane gets a ceiling and a hand-off guard. The guard rounds to a whole percent of the 1M window. Two real runs at the earlier 800000 ceiling each compacted straight after one large read batch (749689 and 678169 by the CLI's own count), so the compaction point is not located; see docs/internals/worker-context-guard.md.",
       "sonnetAutocompact": 850000,
       "sonnetContextGuard": "handoff",
       "sonnetContextShare": 73,
       "_comment_contextBudget": "2026-10-25: set from measured openings (scripts/eval/profile-openings.py, 14 days to 2026-10-25): n=1745, median first-request size 54149, range 26377-66366, rounded up to 55000. Was 35000 (n=0 attributable merged workers, kept under n<3).",
-      "_comment_sonnet": "Operator ruling 2026-10-30 (option 1, Sonnet workers only): impl runs a ceiling plus a hand-off (450000 then; decision 844, 2026-11-08, raised it to 850000, where share 73 now denies at 63 percent = 630000). Fable keeps autocompact 200000 with no guard; Opus has its own ceiling and guard above (_comment_opus).",
-      "_comment_share": "(chief ruling 2026-11-02, set at the 450000 ceiling; at 850000 the same share 73 denies at 63 percent = 630000, well ahead of any compaction): sonnetContextShare 73 made the guard deny at 33 percent of the 1M window (330000 tokens), not 34 (340000). The hook rounds 75 percent of 450000 = 33.75 up to 34, which left 3158 tokens before the earliest 450000 compaction seen (343158), under the about 7000 a commit, push and CHECKPOINT need; 73 leaves about 13000. It protects the hand-off from a compaction; it does not stop hand-offs."
+      "_comment_sonnet": "Operator ruling 2026-10-30 (option 1, Sonnet workers only): impl runs a ceiling plus a hand-off. Fable keeps autocompact 200000 with no guard; Opus has its own ceiling and guard above (_comment_opus).",
+      "_comment_share": "(chief ruling 2026-11-02): sonnetContextShare sets where the hand-off guard denies: the hook rounds share percent of the ceiling up to a whole percent of the 1M window. The share was chosen at the old 450000 ceiling to leave room for a commit, push and CHECKPOINT before the earliest compaction seen; it has not been re-measured at the current ceiling. It protects the hand-off from a compaction; it does not stop hand-offs."
     },
     "worker-eval": {
       "gateAllow": true,

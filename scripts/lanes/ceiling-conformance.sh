@@ -75,8 +75,8 @@ NF < 4 { next }
     is_chief = (name ~ /-(console|chief)$/)
     is_worker = (name ~ /-worker/) && !is_chief
 
-    # A profile may give a claude-sonnet-5 or claude-opus-5 worker 850000 (operator
-    # decision 844); any other worker is 200000.
+    # A profile may give a claude-sonnet-5 or claude-opus-5 worker 850000; any other
+    # worker is 200000.
     if (is_worker)          { drift = (ceiling != "200000" && !(ceiling == "850000" && ($3 ~ /^claude-sonnet-5/ || $3 ~ /^claude-opus-5/))) }
     else if (is_chief) { drift = 0 }
     else                 { drift = (ceiling == "auto" || ceiling == "unset") }

@@ -366,7 +366,7 @@ _ab_autocompact=""
 # the same pairing. The wrapper decides it once; this renderer never re-derives it
 # from a model string the wrapper may since have rewritten.
 _sonnet_autocompact=""
-# The same for the Opus ceiling (200000 to 850000, operator decisions 751 and 844).
+# The same for the Opus ceiling (200000 to 850000).
 _opus_autocompact=""
 if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
     _ab_autocompact="${HEADED_ARM_AB_AUTOCOMPACT:-}"
