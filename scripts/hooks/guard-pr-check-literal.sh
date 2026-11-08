@@ -239,12 +239,8 @@ deny() {
     exit 2
 }
 
-# deny_anchor_var <head> <tail>: the exempt "$HIMMEL_REPO/..." word names the
-# anchor's merge-on-green.sh. Print the caller's own command with only that word
-# replaced by the anchor's literal path (head and tail are the raw text before
-# and after the word), so `bash -n` stays `bash -n` and the path given to another
-# script stays that script's argument. The line is one line: anchor_var_word
-# admits no newline. It never prints a $HIMMEL_REPO spelling.
+# deny_anchor_var <head> <tail>: head and tail are the raw text before and after
+# the exempt word. Prints the caller's own command with only that word replaced.
 deny_anchor_var() {
     local h=$1 t=$2 d rc=0
     d=$(anchor_remedy_dir) || rc=$?
@@ -2865,21 +2861,14 @@ ast_data_only() {
     *) return 1 ;;
     esac
 }
-# anchor_var_word: cut the one exempt "$HIMMEL_REPO/..." word out of the raw
-# command, the way the shell reads it, so the block below can test it by file
-# identity and deny_anchor_var can print the command with only that word
-# replaced. Reads the exemption's own variables (cmd, head, before, after) and
-# sets ar_rest (the word after HIMMEL_REPO, quotes removed) and ar_tail (the
-# raw text after the word); never REPLY, which ast_data_only overwrites.
-# Returns 1 ("skip") unless the raw text is plain enough for three rules to read
-# it exactly: a quote toggles quoting, an unquoted blank ends the word, any other
-# byte is literal. The exemption checks separators only in the quote-stripped
-# $flat, so the raw text is re-checked here: no control byte but a tab, no
-# separator, redirect, parenthesis or backtick, no $ or # before the word, a head
-# ending in a space or tab (a Unicode space is not a shell blank) and an even
-# quote count in it (an odd one means the word began inside a quote).
-# LC_ALL=C makes every pattern match bytes. The walk cuts by parameter expansion,
-# never by index.
+# anchor_var_word: cut the exempt "$HIMMEL_REPO/..." word out of the raw command
+# as the shell reads it (a quote toggles quoting, an unquoted blank ends the
+# word, any other byte is literal). The exemption checks separators only in the
+# quote-stripped $flat, so the raw text is re-checked here; any text those rules
+# cannot read exactly returns 1 and the guard goes on as before. Sets ar_rest
+# (the word after HIMMEL_REPO, quotes removed) and ar_tail, never REPLY, which
+# ast_data_only overwrites. A Unicode space is not a shell blank, hence the
+# head test; LC_ALL=C makes every pattern match bytes.
 anchor_var_word() {
     local LC_ALL=C s seg w="" q n
     ar_rest="" ar_tail=""
@@ -2909,7 +2898,7 @@ anchor_var_word() {
             esac
         else
             seg=${s%%\"*}
-            [ "$seg" != "$s" ] || return 1 # an unterminated quote: the shell cannot parse it
+            [ "$seg" != "$s" ] || return 1
             w=$w$seg'"'
             s=${s#"$seg"\"}
             q=0
@@ -2918,14 +2907,9 @@ anchor_var_word() {
     ar_rest=${w//\"/}
     ar_tail=$s
 }
-# The exemption above lets "$HIMMEL_REPO/..." through for every target. For
-# merge-on-green.sh it is carved out: no allow rule can match a shell expansion,
-# so the auto-mode classifier judged that spelling and denied it. When the one
-# exempt word names the anchor's merge-on-green.sh (a file-identity test, so
-# //, /./, a symlink or a hardlink need no text rule) and the reader model does
-# not read the command as data only, deny it and print the anchor's literal path.
-# This block only adds an exit 2: it never sets or clears himmel_anchor_prefix
-# or hit, and every command it skips goes on exactly as before.
+# Carve merge-on-green.sh out of the exemption by file identity (so //, /./, a
+# symlink or a hardlink need no text rule). Only adds an exit 2; it never sets or
+# clears himmel_anchor_prefix or hit.
 mog_rel=scripts/handover/merge-on-green.sh
 if [ "$himmel_anchor_prefix" -eq 1 ] && anchor_var_word \
     && [ -f "$HIMMEL_REPO/$mog_rel" ] \
