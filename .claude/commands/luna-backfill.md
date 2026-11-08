@@ -34,7 +34,7 @@ personal repo → a personal vault, in one command. Single-vault setups behave
 exactly as before (everything lands in the one default). This routing is locked
 by a multi-vault test (two repos → two vaults, no cross-contamination).
 
-> **No configured vault → skip (HIMMEL-590).** If no vault is configured for a
+> **No configured vault → skip.** If no vault is configured for a
 > session — no `vault_path`/`vault`, no `LUNA_VAULT_PATH`, no registry entry, and
 > no real `~/Documents/luna` (an `.obsidian/` marker) — that session is **skipped**
 > with a `vault unresolved` notice. Backfill never materializes a phantom vault.
@@ -165,7 +165,7 @@ bash scripts/luna/backfill-sessions.sh --recrystallize --limit 25 --luna-vault-p
 ```
 
 > **Sequencing:** run `--recrystallize` to fully crystallize the session corpus
-> **before** a memory-compound pass (HIMMEL-564), so compounding works over real
+> **before** a memory-compound pass, so compounding works over real
 > distilled notes rather than mechanical ones.
 
 ## First-run note (live-capture overlap)

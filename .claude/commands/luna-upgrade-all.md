@@ -4,7 +4,7 @@ description: Wrapper; use obsidian-triage:luna-upgrade-all.
 argument-hint: [--roots <dir[,dir]>] [--registry <path>] [--template-dir <path>] [--porcelain]
 ---
 
-# /luna-upgrade-all — slash-command wrapper (HIMMEL-462)
+# /luna-upgrade-all — slash-command wrapper
 
 Invoke the `obsidian-triage:luna-upgrade-all` skill via the `Skill` tool with `$ARGUMENTS` as the literal `args` parameter — do NOT inline or paraphrase the runbook body here, the skill is the single source of truth.
 

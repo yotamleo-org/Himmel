@@ -3382,6 +3382,33 @@ check "9502 a missing companion refuses (exit 7)" "$rc91" "7"
 check "9502 the missing-companion refusal prints a repair line naming the file" "$(printf '%s\n' "$out91" | grep -c "repair:.*$rel92")" "1"
 mk91 cmp92f "(46) other ruling" "- 10:00 LIVE — DIRECTION-COMPANION-LOST: $rel92 deleted by hand, the readings stay" "$ptr92"$'\n\n'"$sl92"; run91 cmp92f
 check "9502 a recorded DIRECTION-COMPANION-LOST bullet lets a missing companion pass" "$rc91" "0"
+old92=40000
+new92=48000
+w92="$(printf 'ruling text %.0s' $(seq 1 48))"
+dirn92() { local i=0 sz=0 u; while [ "$sz" -le "$1" ]; do i=$((i + 1)); u="$(printf 'OPERATOR 11-05 AB (BINDING, carry to every successor; decision %d): %s' "$((900 + i))" "$w92")"; printf '%s\n\n' "$u"; sz=$((sz + ${#u} + 2)); done; }
+parts92() { find "$root/tester/$1/specs/decisions" -name 'chief-direction-*-p*.md' 2>/dev/null | wc -l | tr -d ' '; }
+mk91 big92a "(46) other ruling" "-" "$(dirn92 "$old92")"; run91 big92a
+check "9502 bound: a direction just above the old 40,000-byte part bound passes" "$rc91" "0"
+check "9502 bound: a direction just above the old 40,000-byte part bound is one companion" "$(parts92 big92a)" "1"
+mk91 big92b "(46) other ruling" "-" "$(dirn92 "$new92")"; run91 big92b
+check "9502 bound: a direction just above the new 48,000-byte part bound is two companions" "$(parts92 big92b)" "2"
+check "9502 bound: no companion is over 48,000 bytes" "$(find "$root/tester/big92b/specs/decisions" -name 'chief-direction-*-p*.md' -size +"$new92"c | wc -l | tr -d ' ')" "0"
+xrun92() { rc92x=0; out92x="$(chief next --bucket "$2" --doc "$root/tester/$1/DEMO-nextleg-${today}B-chief.md" 2>&1)" || rc92x=$?; doc92x="$root/tester/$2/DEMO-nextleg-${today}C-chief.md"; }
+xptr92() { grep -m 1 '^Full original text' "$doc92x" | grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md'; }
+xmiss92() { local n=0 r; for r in $(xptr92); do [ -r "$root/tester/$1/$r" ] || n=$((n + 1)); done; echo "$n"; }
+xnamed92() { xptr92 | wc -l | tr -d ' '; }
+mk91 xsrc92a "(46) other ruling" "-" "$ptr92"$'\n\n'"$sl92"$'\n\n'"$(dirn92 12100)"; comp92 xsrc92a; xrun92 xsrc92a xdst92a
+check "9502 f: a cross-bucket next of an oversize shortened direction exits 0" "$rc92x" "0"
+check "9502 f: that next prints no companion read warning" "$(printf '%s\n' "$out92x" | grep -c 'could not read')" "0"
+check "9502 f: the successor pointer names a companion" "$([ "$(xnamed92)" -ge 1 ] && echo yes || echo no)" "yes"
+check "9502 f: every companion the successor pointer names is readable in the successor bucket" "$(xmiss92 xdst92a)" "0"
+mk91 xsrc92b "(46) other ruling" "-" "$ptr92"$'\n\n'"$sl92"; comp92 xsrc92b; xrun92 xsrc92b xdst92b
+check "9502 f: a cross-bucket next of a short shortened direction exits 0" "$rc92x" "0"
+check "9502 f: the short successor pointer names a companion" "$([ "$(xnamed92)" -ge 1 ] && echo yes || echo no)" "yes"
+check "9502 f: every companion a short successor pointer names is readable in the successor bucket" "$(xmiss92 xdst92b)" "0"
+mk91 xsrc92c "(46) other ruling" "-" "$ptr92"$'\n\n'"$sl92"; comp92 xsrc92c; comp92 xdst92c; echo different >> "$root/tester/xdst92c/$rel92"; xrun92 xsrc92c xdst92c
+check "9502 f: a successor bucket holding a different companion of that name refuses (exit 1)" "$rc92x" "1"
+check "9502 f: that refusal writes no successor doc" "$([ -f "$doc92x" ] && echo yes || echo no)" "no"
 mk91 hdr91 "(46) other ruling" "-" "$dir91"
 cat > "$root/tester/hdr91/DEMO-nextleg-${today}B-chief-HANDOFF.md" <<'HDR'
 # DF → DG handoff state

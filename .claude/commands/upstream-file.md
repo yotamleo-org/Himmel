@@ -3,8 +3,8 @@ description: File a verified finding upstream.
 argument-hint: <findings source — a ticket, a report path, or an inline list>
 ---
 
-The report-upstream half of the fork-maintenance loop (HIMMEL-2150; the
-converge-to-vendor half is HIMMEL-2135). Input: one or more findings against an
+The report-upstream half of the fork-maintenance loop (the
+converge-to-vendor half is a separate audit). Input: one or more findings against an
 upstream repo, each with evidence (file:line in *some* copy — vendored, fork, or
 live). The invoker names an existing tracking ticket for the roster (step 7) —
 or files one first — before starting; there is no default ticket to fall back
@@ -135,8 +135,8 @@ distinguishes from self-verification).
   default branch** — never from the fork's own drifted main. Two PRs → two
   independent clones (no shared-worktree resets; each branch provably cut
   from clean main).
-- **Build in a linked worktree of the clone, never in the clone itself**
-  (HIMMEL-2926): the clone is a primary checkout, so the first edit inside it
+- **Build in a linked worktree of the clone, never in the clone itself**:
+  the clone is a primary checkout, so the first edit inside it
   is refused by `block-edit-on-main` (worktree-isolation shape). Cut a linked
   worktree and edit there instead: `git -C <clone-path> checkout --detach
   origin/<default>` (a fresh clone starts on a local `<default>` branch, not
@@ -147,7 +147,7 @@ distinguishes from self-verification).
   (`<clone-path>-wt-<slug>`) is the cwd for every edit and for the separate
   `/pr-check` session below. The clone's own `.single-writer` opt-out does
   **not** fix this — `block-write-into-main-checkout` refuses to create that
-  file in the clone too (HIMMEL-2946, filed, unresolved); don't try it.
+  file in the clone too (a known limit of that hook); don't try it.
 - **Depth rule:** if you're starting from an existing `--depth 1` clone,
   `git remote add fork <fork-url>` (step 6's remote, added here early — a
   bare `git fetch fork` with no `fork` remote configured fails before the
@@ -188,7 +188,7 @@ distinguishes from self-verification).
   same way (`--cwd` = the linked worktree). **Parity rule: no test that
   passed on baseline fails after; added tests are listed explicitly.**
 - **Every gate/test run goes through `run-target-tests.sh` — never the bare
-  command** (HIMMEL-3053). It runs the command under a throwaway
+  command**. It runs the command under a throwaway
   `HERMES_HOME` (removed afterwards), scrubs every inherited `HERMES_*`
   variable, and REFUSES (rc=2, loud) if that home would land in the live one
   (`$HERMES_HOME` or `~/.hermes`). A bare pytest from a hermes clone once
@@ -199,12 +199,12 @@ distinguishes from self-verification).
   script's job; do not re-describe it in a hand-typed `env` prefix.
 - Regenerate any hash/manifest artifacts with the repo's own tooling if it has
   them; run the same commands its CI runs.
-- Arm himmel's own CR gate on the throwaway clone once (HIMMEL-2035):
+- Arm himmel's own CR gate on the throwaway clone once:
   `bash "<primary-checkout>/scripts/cr/install-cr-gate.sh" --target
   '<clone-path>'` — the primary checkout, NEVER a worktree; this arming
   command names the clone by path, so it runs from wherever the session
   currently sits. Then review it: `/pr-check` takes no argument, ever
-  (HIMMEL-2226, operator ruling 2026-08-31) — cwd alone selects the repo
+  (operator ruling 2026-08-31) — cwd alone selects the repo
   under review, and no `cd` can stand in for that, so the review is NOT a
   continuation of the session that just built and armed the clone. Start a
   **separate session whose cwd IS `<clone-path>-wt-<slug>`** (the linked

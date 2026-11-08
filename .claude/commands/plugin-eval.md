@@ -4,7 +4,7 @@ argument-hint: <plugin> <suite>
 ---
 
 Run exactly one eval suite for one plugin. This is on-demand, billed
-(HIMMEL-128) — never wired into CI or a cadence, and never run "all suites"
+— never wired into CI or a cadence, and never run "all suites"
 in one shot.
 
 **Usage:** `/plugin-eval <plugin> <suite>` — both arguments required.
@@ -60,7 +60,7 @@ Steps:
    suite are ours) and `--no-publish` (keep the HTML report local — this is
    a local on-demand check, not something to publish to claude.ai):
    ```bash
-   # on-demand eval, usage-preflighted, explicit permission mode (HIMMEL-2931)
+   # on-demand eval, usage-preflighted, explicit permission mode
    claude plugin eval marketplace/plugins/<plugin> --case <suite> --trust-plugin --no-publish <resolved-grant-and-scaffold-from-step-2>
    ```
    Substitute `<plugin>`, `<suite>`, and the resolved flags from step 2 (drop

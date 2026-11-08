@@ -651,11 +651,11 @@ kit add-ons launched alone, remain `standard` / `200000`. Integer ceilings below
 standard profile cannot declare a ceiling above 200000 in `autocompact`. Child autocompact
 inheritance remains **UNMEASURED**: no real session was launched for this audit.
 
-A standard profile may add two Sonnet-only fields, `sonnetAutocompact` (200000 to
-450000) and `sonnetContextGuard` (`compact` or `handoff`). `headed-arm-worker.sh`
+A standard profile may add Sonnet-only fields, `sonnetAutocompact` (200000 to
+850000), `sonnetContextGuard` (`compact` or `handoff`) and `sonnetContextShare`. `headed-arm-worker.sh`
 resolves them **once**, and only for the **native lane on a Sonnet 5.5 model** (the `claude-sonnet-5-5` family):
-`worker-impl` gets 450000 with the hand-off guard, `worker-eval` 450000 with the
-compaction guard (stricter than the measured arm c), `worker-docs` stays 200000. Every
+`worker-impl` and `worker-eval` get 850000 with the compaction guard and share 73, a deny
+at 630000 tokens (operator decisions 843 and 844), `worker-docs` stays 200000. Every
 other lane, an older Sonnet, the bare `sonnet` alias, and Fable keep 200000 with
 no guard, and Opus takes its own fields below. The wrapper hands the value to `headed-arm.sh` in `HEADED_ARM_SONNET_AUTOCOMPACT`
 (same PID pairing as the A/B marker); the renderer never re-derives it from a model string
@@ -669,9 +669,9 @@ successor path does not apply these fields: `arm-resume.sh --tier worker` pins
 
 Three Opus-only fields take the same path for the **native lane on an Opus 5.5 model**
 (matched by id prefix, like the Sonnet fields; operator decision 751): `opusAutocompact`
-(200000 to 800000), `opusContextGuard` and `opusContextShare`. Every `worker-*` profile
-sets 800000 and share 87, a deny at exactly 700000 tokens (`worker-context-guard.md`);
-each hands off except `worker-eval`, which compacts. The wrapper hands the value over in
+(200000 to 850000), `opusContextGuard` and `opusContextShare`. Every `worker-*` profile
+sets 850000 and share 87, a deny at 740000 tokens (`worker-context-guard.md`), with the
+compaction guard (operator decisions 843 and 844). The wrapper hands the value over in
 `HEADED_ARM_OPUS_AUTOCOMPACT`. Another lane, an older Opus, the bare `opus` alias, Fable,
 and the `lane-*`, `design-*`, chief and judge profiles keep today's values.
 `WORKER_SESSION_CONTEXT=1m` drops the ceiling and guard together, so launch Opus workers
@@ -814,7 +814,7 @@ measured** — do not assume a `standard` worker makes its children compact earl
 | lane | default mode | override |
 |---|---|---|
 | chief arm (`*-chief.md`) | `standard` | `CHIEF_CONTEXT=1m` |
-| headed worker / worker arm | profile default (`design`: `1m` / 1000000; Sonnet 5.5 `worker-impl` and `worker-eval` on the native lane: `standard` / 450000; Opus 5.5 `worker-*` on the native lane: `standard` / 800000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
+| headed worker / worker arm | profile default (`design`: `1m` / 1000000; Sonnet 5.5 `worker-impl` and `worker-eval` on the native lane: `standard` / 850000; Opus 5.5 `worker-*` on the native lane: `standard` / 850000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
 | subagent of either | inherits the parent | none — set it on the parent's arm |
 
 Given that, the chief-side mitigation is a lean parent (the

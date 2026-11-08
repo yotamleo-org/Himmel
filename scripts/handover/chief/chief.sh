@@ -2021,7 +2021,7 @@ tracker_head() {
 # are listed with the ruling's, and the companions keep it directly under its head. A line an earlier run already shortened stays as
 # it is but counts against the budget; its full text is carried forward from the companion
 # files the earlier note names. The companions are specs/decisions/chief-direction-<date>[-N]-pK.md,
-# each under CHIEF_DIRECTION_PART_BYTES (default 40000, so one Read takes it whole). Returns 1
+# each under CHIEF_DIRECTION_PART_BYTES (default 48000, so one Read takes it whole). Returns 1
 # and prints nothing when no line was shortened, 2 when a companion could not be written.
 # Args: block (stdin), dir, date.
 compress_direction() {
@@ -2155,7 +2155,7 @@ except OSError as e:
     sys.exit(2)
 note = "Full original text of every ruling below, byte for byte, is in %d file%s under the bucket (%s). READ ALL OF THEM in your first turn, in the same batch as this document: the lines below are one-line readings and a clause cut from a reading is in them. The operator words of a numbered ruling: specs/decisions/verbatim-decision-<N>-*.txt. Every line headed OPERATOR or CHIEF, with the lines directly under it, is BINDING unless it says otherwise; any other line is context, not a ruling." % (len(names), "" if len(names) == 1 else "s", " ".join(names))
 sys.stdout.write(note + "\n\n" + "\n".join(out))
-' "$1" "${CHIEF_DIRECTION_BUDGET_BYTES:-12000}" "${CHIEF_DIRECTION_PART_BYTES:-40000}" "$2"
+' "$1" "${CHIEF_DIRECTION_BUDGET_BYTES:-12000}" "${CHIEF_DIRECTION_PART_BYTES:-48000}" "$2"
 }
 
 # Match the Jira CLI's declaration root, never the chief's arbitrary --bucket.
@@ -2556,6 +2556,18 @@ cmd_next() {
         else
             err "warning: could not write the tracker history to the history file; seeded the tracker: line whole"
         fi
+    fi
+    if [ "$predecessor_dir" != "$state_dir" ]; then
+        local companion
+        for companion in $(printf '%s\n' "$predecessor_direction" | grep -m 1 '^Full original text' | grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md'); do
+            [ -f "$predecessor_dir/$companion" ] || continue
+            if [ -e "$state_dir/$companion" ]; then
+                cmp -s "$predecessor_dir/$companion" "$state_dir/$companion" || { err "the successor bucket holds a different $companion than the predecessor's; move one aside and retry"; exit 1; }
+                continue
+            fi
+            mkdir -p "$state_dir/specs/decisions"
+            cp "$predecessor_dir/$companion" "$state_dir/$companion" || { err "could not copy the direction companion $companion to $state_dir"; exit 1; }
+        done
     fi
     if [ "$(printf '%s' "$predecessor_direction" | wc -c | tr -d ' ')" -gt "${CHIEF_DIRECTION_SPILL_BYTES:-12000}" ]; then
         dir_rc=0

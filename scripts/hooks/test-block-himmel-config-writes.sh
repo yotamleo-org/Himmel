@@ -480,6 +480,24 @@ bash_case "a brace expansion building the verb -> block" block "bash scripts/lib
 bash_case "node -e on the helper's JS -> block" block "node -e \"\$_CA_JS\" restore 20261031T120000Z-ab12"
 bash_case "a \$NAME/ path prefix to the helper -> allow" allow "bash \"\$HIMMEL_REPO/scripts/lib/config-audit.sh\" list"
 
+echo "== the station .env: a file-tool write is refused, the audited route is named =="
+mkdir -p "$T/clone" "$T/other"
+: > "$T/clone/.env"; : > "$T/other/.env"
+ln -s "$T/clone/.env" "$T/clone-alias.env"
+export HIMMEL_CONFIG_AUDIT_ENV_FILE="$T/clone/.env"
+file_case "Write to the station .env -> block" block Write "$T/clone/.env"
+file_case "Edit of the station .env -> block" block Edit "$T/clone/.env"
+file_case "symlink resolving to the station .env -> block" block Write "$T/clone-alias.env"
+file_case "another project's .env -> allow" allow Write "$T/other/.env"
+patch_case "apply_patch Update File on the station .env -> block" block "*** Begin Patch${NL}*** Update File: $T/clone/.env${NL}@@${NL}-a${NL}+b${NL}*** End Patch"
+patch_case "apply_patch on another project's .env -> allow" allow "*** Begin Patch${NL}*** Update File: $T/other/.env${NL}@@${NL}-a${NL}+b${NL}*** End Patch"
+env_msg=$(printf '%s' "$(jq -nc --arg p "$T/clone/.env" '{tool_name:"Write",tool_input:{file_path:$p}}')" | bash "$HOOK" 2>&1 >/dev/null)
+case "$env_msg" in *"config-audit.sh pre"*"config-audit.sh post"*) ok "the refusal names the audited route (pre and post)" ;; *) bad "the refusal does not name the audited route" ;; esac
+export HIMMEL_CONFIG_AUDIT_ENV_FILE="$T/loop/l1/x"
+bsd_file_case "a .env write when the station .env cannot be resolved -> block (fail-closed)" block "$T/other/.env"
+bsd_file_case "a non-.env write when the station .env cannot be resolved -> allow" allow "$T/other/notes.txt"
+unset HIMMEL_CONFIG_AUDIT_ENV_FILE
+
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"
 run "malformed JSON naming nothing -> allow" allow "{not json"

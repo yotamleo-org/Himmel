@@ -9,10 +9,7 @@
 #   (b) not recorded: the field is genuinely absent from this profile (a
 #       profile written before the question existed), never a false "off"
 #       answer the operator never made.
-#   (c) reference-only: no wizard question can produce this yet. Rendered
-#       from the checked-in scripts/himmelctl/tbd-delta.json map, itself
-#       checked (case f below) against docs/setup/operator-profile-tbd-
-#       delta.md so the two can never silently drift apart.
+#   (c) reference-only: what the operator machine runs, each with its state.
 #   (d) present but unverified: this setup's answer matches the reference
 #       (both "on"), but gaps is a static profile diff, not a live probe,
 #       named as still-manual (run `himmelctl status` to confirm).
@@ -28,19 +25,14 @@
 # Covers:
 #   a. a profile with a feature answered off (vs the operator reference)
 #      appears under group (a), labelled as a choice, not a gap.
-#   b. group (b) renders a reference-only item WITH its ticket id.
+#   b. a reference-only row prints its label and state, never a ticket key.
 #   c. --json emits parseable JSON; assert on a field via node -e, not a
 #      substring of prose.
 #   d. exit code is 0 when gaps exist (a report, not a gate).
 #   e. a missing install profile exits non-zero with the same clear message
 #      cmdStatus/cmdEnsure already use.
-#   f. doc<->map ROW-LEVEL agreement: every doc table row (# column) appears
-#      as a key in scripts/himmelctl/tbd-delta.json's `entries` with the
-#      SAME primary ticket, and vice versa (STRUCTURAL, not instructional:
-#      this test fails the moment a row is dropped from either side, even
-#      when its path/ticket happen to still appear via a different row.
-#      A path-keyed or ticket-set check is structurally
-#      blind to exactly that kind of drift).
+#   f. the doc table and tbd-delta.json agree row by row on number, state,
+#      paths and label.
 #   g. an identical-to-reference profile -> group (a) empty, group (c)
 #      populated (present but unverified).
 #   h. --from-profile points gaps at a profile file outside the cache.
@@ -203,7 +195,7 @@ run_gaps() {
     "$node_bin" "$wizard" gaps "$@"
 }
 
-# ── case a/b: an all-off profile -> group (a) choice + group (b) ticket ────
+# ── case a/b: an all-off profile -> group (a) choice + group (b) state ─────
 cacheAB="$work/cache-ab"; write_cache_off "$cacheAB"
 set +e
 outAB=$(run_gaps "$cacheAB" 2>&1); rcAB=$?
@@ -211,7 +203,7 @@ set -e
 [ "$rcAB" -eq 0 ] || fail "case a/b: gaps should exit 0 even with gaps present (got rc=$rcAB): $outAB"
 grepq "$outAB" -i 'not a gap' || fail "case a: expected group (a) to label an off answer as a choice, not a gap (got: $outAB)"
 grepq "$outAB" -i 'always-on' || fail "case a: expected the always-on field to appear as an off-by-choice gap (got: $outAB)"
-grepq "$outAB" 'Armed cadences beyond the pipeline family' || fail "case b: expected a reference-only item to be listed by its label (got: $outAB)"
+grepq "$outAB" -F 'Armed cadences beyond the pipeline family (graphmap, qmd, drift-fix, ggs) (covered by the wizard)' || fail "case b: expected a reference-only item to be listed by its label (got: $outAB)"
 grepq "$outAB" -E 'HIMMEL-[0-9]' && fail "case b: the text report must not print internal ticket keys (got: $outAB)"
 echo "ok: case a/b — an all-off profile surfaces group (a) as a labelled choice and group (b) by label, no ticket key; exit 0"
 
@@ -222,10 +214,12 @@ node -e '
   if (!Array.isArray(data.choices) || data.choices.length === 0) throw new Error("choices should be a non-empty array");
   if (!Array.isArray(data.referenceOnly) || data.referenceOnly.length === 0) throw new Error("referenceOnly should be a non-empty array");
   if (!Array.isArray(data.unverified)) throw new Error("unverified should be an array");
-  const bad = data.referenceOnly.find((r) => !/^HIMMEL-\d+$/.test(r.ticket || ""));
-  if (bad) throw new Error("every referenceOnly row must carry a HIMMEL-NNNN ticket, got: " + JSON.stringify(bad));
+  const states = ["covered by the wizard", "planned", "not planned"];
+  const bad = data.referenceOnly.find((r) => !states.includes(r.state));
+  if (bad) throw new Error("every referenceOnly row must carry a state from " + JSON.stringify(states) + ", got: " + JSON.stringify(bad));
+  if (/HIMMEL-\d/.test(JSON.stringify(data.referenceOnly))) throw new Error("referenceOnly must carry no ticket key");
 ' <<< "$outJSON" || fail "case c: --json output failed shape assertions (got: $outJSON)"
-echo "ok: case c/d — --json is parseable, has the expected {choices,referenceOnly,unverified} shape, every referenceOnly row carries a ticket"
+echo "ok: case c/d — --json is parseable, has the expected {choices,referenceOnly,unverified} shape, every referenceOnly row carries a state and no ticket key"
 
 # ── case e: a missing install profile exits non-zero with a clear message ──
 cacheEmpty="$work/cache-empty"; mkdir -p "$cacheEmpty"
@@ -237,50 +231,7 @@ grepq "$errE" -F 'no himmelctl install profile found' || fail "case e: expected 
 grepq "$errE" -F 'run himmelctl install first' || fail "case e: expected the standard missing-profile message (got: $errE)"
 echo "ok: case e — a missing install profile exits non-zero with the standard message"
 
-# ── case f: doc<->map ROW-LEVEL STRUCTURAL agreement. Every doc table row
-# (# column) must appear as a key in the map's `entries`, with the SAME
-# primary ticket, and vice versa. A path- or ticket-SET check (the prior
-# version of this test) is structurally blind to a dropped row whose
-# path/ticket happen to still appear via a sibling row. CR:
-# rows 2 and 4 both cite delta.cadences.extraArmedTasks, so a path-keyed map
-# silently swallowed row 4 and the old set-based check still passed. This
-# version fails the moment a row is missing from either side. It also keeps
-# a path cross-check: every delta.*/profile.* path cited in a doc row's
-# Item or "Captured how" cell must be listed in that SAME row's map entry
-# (row 12 cites its one path, delta.alwaysOnInferred, parenthetically in the
-# Item cell rather than in Captured how. Scanning both is what the map's
-# own paths[] is meant to agree with; scanning the whole row instead would
-# false-positive on incidental mentions in the prose columns, as case f's
-# ticket-extraction comment below already found for row 11's Classification
-# cell).
-# Extraction is scoped to actual table DATA rows (`^\|\s*\d+\s*\|`) and, for
-# tickets, to the Classification cell specifically (not the whole row). A
-# naive whole-row scan false-positives on incidental ticket mentions inside
-# the "Wizard coverage today" prose column (e.g. row 11 cites as
-# unrelated background, not its own classification); the PRIMARY ticket is
-# the first HIMMEL-NNNN in that cell (always the one right after
-# "ticketed:". A row's classification prose may parenthetically mention a
-# second, unrelated ticket, as row 2 does).
-# the row-level check above still had two blind
-# spots. A stale `label` in the map was never compared against the doc's
-# Item cell at all, and a path check only ran doc->map (an EXTRA path in a
-# map entry the doc never cites went unnoticed). Both extended below:
-# label comparison uses a normalised WORD-CONTAINMENT rule (not exact
-# equality): strip markdown backticks/emphasis, lowercase, split into a
-# word set, and require that at least 90% of the map label's distinct words
-# appear verbatim in the doc Item cell's word set. Exact equality is
-# impractical here: the map's `label` is a hand-paraphrase of the doc's
-# Item cell, not a copy (row 9's Item cell adds a parenthetical the label
-# omits; row 12's Item cell says "the capture INFERS ... it is never an
-# asked-and-recorded answer" where the label says "inferred ..., never
-# asked-and-recorded": same content, different inflection/wording) so a
-# byte- or even whitespace/markdown-normalised equality check would fail on
-# EVERY currently-correct row that paraphrases at all. Containment (map
-# words found in doc words) tolerates that paraphrasing. Extra explanatory
-# clauses in the doc's longer prose don't hurt since we only require the
-# map's (fewer, shorter) words to be present, not the reverse, while still
-# failing hard on a label that's actually stale or copied from a different
-# row, where most of its words won't appear in this row's Item cell at all.
+# ── case f: the doc table and the map agree row by row ──────────────────────
 docMapAgreement=$(node -e '
   const fs = require("fs");
   const doc = fs.readFileSync(process.argv[1], "utf8");
@@ -290,22 +241,22 @@ docMapAgreement=$(node -e '
   const words = (s) => new Set(
     s.replace(/[`*_]/g, "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
   );
-  const docRows = new Map(); // rowNum -> { ticket, paths: Set, itemWords: Set }
+  const STATES = ["covered by the wizard", "planned", "not planned"];
+  const docRows = new Map();
   for (const l of rows) {
     const cells = l.split("|");
     const rowNum = (cells[1] || "").trim();
     if (!/^\d+$/.test(rowNum)) throw new Error("unparseable row number in line: " + l);
     const itemCell = cells[2] || "";
     const capturedHowCell = cells[3] || "";
-    const classificationCell = cells[5] || "";
+    const stateCell = (cells[5] || "").trim();
     const pathPattern = /(?:delta|profile)\.[A-Za-z0-9_.]+/g;
     const paths = new Set([
       ...(itemCell.match(pathPattern) || []),
       ...(capturedHowCell.match(pathPattern) || []),
     ]);
-    const tickets = classificationCell.match(/HIMMEL-\d+/g) || [];
-    if (tickets.length === 0) throw new Error("row " + rowNum + " has no HIMMEL-NNNN ticket in its Classification cell");
-    docRows.set(rowNum, { ticket: tickets[0], paths, itemWords: words(itemCell) });
+    if (!STATES.includes(stateCell)) throw new Error("row " + rowNum + " State cell is not one of " + JSON.stringify(STATES) + ": " + JSON.stringify(stateCell));
+    docRows.set(rowNum, { state: stateCell, paths, itemWords: words(itemCell) });
   }
   const mapRowNums = new Set(Object.keys(map));
   const docRowNums = new Set(docRows.keys());
@@ -319,8 +270,8 @@ docMapAgreement=$(node -e '
     if (!mapRowNums.has(rowNum)) continue;
     const docRow = docRows.get(rowNum);
     const mapRow = map[rowNum];
-    if (mapRow.ticket !== docRow.ticket) {
-      problems.push("row " + rowNum + ": ticket mismatch — doc=" + docRow.ticket + " map=" + mapRow.ticket);
+    if (mapRow.state !== docRow.state) {
+      problems.push("row " + rowNum + ": state mismatch — doc=" + docRow.state + " map=" + mapRow.state);
     }
     const mapPaths = new Set(mapRow.paths || []);
     const missingPaths = [...docRow.paths].filter((p) => !mapPaths.has(p));

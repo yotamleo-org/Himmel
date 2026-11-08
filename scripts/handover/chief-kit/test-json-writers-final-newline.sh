@@ -42,7 +42,7 @@ export GEN_BRIEFS_JIRA_CLI="$WORK/stub-jira/index.js"
 
 cat > "$WORK/workers.json" <<'EOF'
 [
- {"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"none found (qmd jira-himmel plain thing)","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"}
+ {"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"none found (qmd jira-himmel plain thing)","writes":"none named","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"}
 ]
 EOF
 

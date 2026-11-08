@@ -46,7 +46,7 @@ describe('discoverMetadata default_project ordering', () => {
     expect(Object.keys(out.projects)).toEqual(['ACME']);
   });
 
-  it('warns (not silently) when a configured key is not returned (HIMMEL-334)', async () => {
+  it('warns (not silently) when a configured key is not returned', async () => {
     const errs = [];
     const spy = vi.spyOn(process.stderr, 'write').mockImplementation((s) => { errs.push(String(s)); return true; });
     try {
@@ -57,7 +57,7 @@ describe('discoverMetadata default_project ordering', () => {
     expect(errs.join('')).toContain("configured project 'NOPE' not found");
   });
 
-  it('queries transitions via the enhanced /search/jql endpoint, not the removed /search?jql (HIMMEL-337)', async () => {
+  it('queries transitions via the enhanced /search/jql endpoint, not the removed /search?jql', async () => {
     await discoverMetadata(['ACME']);
     const searchCalls = jiraFetch.mock.calls.filter(([, path]) => path.startsWith('/search'));
     expect(searchCalls.length).toBeGreaterThan(0);
@@ -67,7 +67,7 @@ describe('discoverMetadata default_project ordering', () => {
     }
   });
 
-  it('consumes the /search/jql response shape — transitions parse into the cache (HIMMEL-337)', async () => {
+  it('consumes the /search/jql response shape — transitions parse into the cache', async () => {
     // Guards against a silent regression: if the new endpoint returned a
     // different shape, search.issues[0].key would be undefined and transitions
     // would silently stay empty. Proves the success path still works.

@@ -4,7 +4,7 @@ argument-hint: [--dry-run] [--base <branch>] [--no-fetch]
 ---
 
 Publishes a locally-refreshed `graphify-out/graph.json` (+ `GRAPH_REPORT.md`)
-by opening or refreshing a PR — the operator-invoked step HIMMEL-1123's
+by opening or refreshing a PR — the operator-invoked step the
 tracked graph needed and never got. Refuses cleanly when there is nothing
 newer than the shipped (committed) graph to publish, and refuses if the
 working tree has uncommitted changes outside the two graph paths.
@@ -14,7 +14,7 @@ Run this AFTER regenerating the graph locally (e.g. via
 want to ship. Does not run on any cadence/hook — lean-invoke only.
 
 **The PR it opens is machine-generated and will never get a CodeRabbit App
-review** (HIMMEL-2278). Do not post a review-trigger comment on it and do not
+review**. Do not post a review-trigger comment on it and do not
 park on the CR gate — `check-ci.sh` classifies the PR from its diff shape (every
 changed path is a tracked `graphify-out/` artifact) and treats the absent App review as
 expected. Checks-green and unresolved-thread gating still apply, so a clean
@@ -40,7 +40,7 @@ Exit codes:
 - `1` usage error
 - `2` required tool missing (git or gh)
 - `3` no local graphify-out/graph.json on disk
-- `4` this repo doesn't track graphify-out/graph.json (HIMMEL-1123 not applied here)
+- `4` this repo doesn't track graphify-out/graph.json
 - `5` nothing newer to publish (local graph == shipped graph)
 - `6` working tree has uncommitted changes outside graphify-out/{graph.json,GRAPH_REPORT.md}
 - `7` cannot resolve a base ref

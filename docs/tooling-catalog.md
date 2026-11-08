@@ -369,7 +369,7 @@ repo.
 **What:** The OpenAI codex companion plugin — the codex CLI runtime, the `codex:codex-rescue` / `codex:setup` skills, and the `codex-companion.mjs` script under `$HOME/.claude/plugins/cache/openai-codex/codex/<version>/` (the version segment drifts on plugin update — glob-resolve it, never hardcode).
 
 <!-- mem:9c89869c803e -->
-**Tiered vendor posture (operator ruling 2026-08-28):** large established
+**Tiered vendor posture:** large established
 vendors — the codex plugin, the claude CLI, hermes (see the hermes pin revert
 precedent, #1929) — deliberately track upstream LATEST, with our last
 reviewed version as an informal floor, never locked to a himmel fork/pin;
@@ -469,7 +469,7 @@ plugin, so a skill that a profile must enable moves into a plugin instead
 
 ### writing-for-agents (`.claude/skills/writing-for-agents/`)
 
-**What:** Vendored `mattpocock/skills` skill (MIT, pinned `49dd158d1076134a641b33efb035946536778336`) on cutting and tightening agent-facing docs. User-invoked (`disable-model-invocation`), 0 listing tokens. POC use: `/writing-for-agents find ways to cull my global steering files`, read-only, proposal only. Complements `claude-md-audit` (rubric check of a changed CLAUDE.md) and `prose-audit` (mechanical prose to script); neither culls sediment or no-ops across the steering set. Scheduling not wired (operator ruling pending).
+**What:** Vendored `mattpocock/skills` skill (MIT, pinned `49dd158d1076134a641b33efb035946536778336`) on cutting and tightening agent-facing docs. User-invoked (`disable-model-invocation`), 0 listing tokens. POC use: `/writing-for-agents find ways to cull my global steering files`, read-only, proposal only. Complements `claude-md-audit` (rubric check of a changed CLAUDE.md) and `prose-audit` (mechanical prose to script); neither culls sediment or no-ops across the steering set. Scheduling is not wired yet.
 
 ---
 
@@ -588,7 +588,7 @@ through the forge seam (`forge_pr_find_open` / `forge_pr_create` /
 `forge_pr_set_body` in `scripts/lib/forge.sh`) — idempotent (updates an
 existing open PR's body instead of opening a second one), refuses on `main`,
 with no upstream, or with an empty body file, and prints exactly one line on
-success: `PR <number> <url> <head-sha>`. The point (ruling H2):
+success: `PR <number> <url> <head-sha>`. The point:
 a worker's Bash command is always this same short two-file-path literal no
 matter what the PR body says, so the body text — the thing the auto-mode
 classifier reacts to — never appears in the command a worker
@@ -854,7 +854,7 @@ apply`, `mode=level level=<X>`).
 
 | `CLAUDE_CODE_EFFORT_LEVEL` | Level sent to `gpt-6.1-sol` |
 |---|---|
-| _(unset — the lane default)_ | **`xhigh`** (the launcher pins `CLAUDE_CODE_EFFORT_LEVEL=xhigh` when unset, decision 223; a truly bare invocation that bypasses the launcher lands on Claude Code's own implicit `xhigh` too) |
+| _(unset — the lane default)_ | **`xhigh`** (the launcher pins `CLAUDE_CODE_EFFORT_LEVEL=xhigh` when unset; a truly bare invocation that bypasses the launcher lands on Claude Code's own implicit `xhigh` too) |
 | `low` / `medium` / `high` / `xhigh` | `low` / `medium` / `high` / `xhigh` |
 | `max` | `max` (accepted upstream — see caveat) |
 | `ultra`, or any unrecognized value | **`xhigh`** — silently falls back to Claude Code's own implicit default |
@@ -873,7 +873,7 @@ apply`, `mode=level level=<X>`).
   `max` as unverified/avoid — the operating ladder caps explicit
   effort at `xhigh`.
 - **The implicit default is `xhigh`** (theo's "rare" tier) — higher than his
-  recommended medium/high default; decision 223 keeps `xhigh` as the claudex
+  recommended medium/high default; himmel keeps `xhigh` as the claudex
   default for `gpt-6.1-sol` and the launcher pins it explicitly.
 
 _Method: one bounded `claude -p` turn per tier through the live proxy with
@@ -888,7 +888,7 @@ encoded where the lane runs (the launcher default + `lanes.json`), not just as
 vault prose; the full mechanics live in luna
 `30-Resources/Tech/CLIProxyAPI.md`.
 
-- **Effort ladder — default `xhigh` (decision 223), `low` first for mechanical
+- **Effort ladder — default `xhigh`, `low` first for mechanical
   chunks, never `ultra`/`max`.** The launcher pins `CLAUDE_CODE_EFFORT_LEVEL=xhigh`
   when unset (it was `medium` while implementation was offloaded to the codex lanes
   to spare the Claude weekly bank, until claudex became a live lane, `high` before
@@ -896,9 +896,9 @@ vault prose; the full mechanics live in luna
   dispatch for a cheaper task (calibration: `docs/internals/lane-calibration.md`,
   "Effort calibration"). `ultra` is unreachable (see Effort mapping above); `max` is
   reachable but its codex juice is undocumented — avoid it.
-- **Lane's declared window raised to 900k (2026-08-17 operator
-  ruling) — the launcher's own `CODEX_CONTEXT_WINDOW` default stays 272000,
-  unchanged.** The operator ruled to declare 900k for this lane (matching
+- **Lane's declared window raised to 900k (2026-08-17) — the launcher's
+  own `CODEX_CONTEXT_WINDOW` default stays 272000, unchanged.** The lane
+  declares 900k (matching
   hermes-oneshot's fresh measurement, see below), accepting that it doubles
   billing past the old ~272k cliff on any dispatch that opts up to it via
   `CODEX_CONTEXT_WINDOW=900000` — but the launcher's own code still WARNS past
@@ -919,7 +919,7 @@ history** (a Codex-harness mechanism; the claudex lane uses Claude Code's own
 subagent context management) and **fast mode** (~2.5× per message; a Codex CLI
 toggle with no Claude Code equivalent).
 
-### claudex raised to 900k by operator ruling — CLIProxyAPI path itself unmeasured
+### claudex declared at 900k — CLIProxyAPI path itself unmeasured
 
 The 272k `CODEX_CONTEXT_WINDOW` default was a deliberate 2× billing-cliff
 choice, not a hard ceiling — the real backend window for gpt-5.6-sol was
@@ -934,8 +934,8 @@ The operator has since upgraded hermes and measured ~900K as what was
 actually attainable there (hermes v0.20.2, 2026.8.16, upstream commit
 `bab7be3c`, 2026-08-17 — see `lanes.json`'s `$context-note`). Shown that
 raising claudex to match doubles billing past the old 272k cliff, the
-operator ruled to raise the LANE's declared window anyway (2026-08-17): `lanes.json`'s `context.windowTokens` for `claudex` now reads
-900000. This is a RULING, not a fresh measurement — the 900K figure is
+LANE's declared window was raised anyway (2026-08-17): `lanes.json`'s `context.windowTokens` for `claudex` now reads
+900000. This is a choice, not a fresh measurement — the 900K figure is
 hermes' own, measured inside hermes itself; the CLIProxyAPI path this lane
 actually dispatches through remains UNMEASURED at 900K, an open, named gap.
 The launcher's own `CODEX_CONTEXT_WINDOW` default is deliberately left at
@@ -944,11 +944,11 @@ The launcher's own `CODEX_CONTEXT_WINDOW` default is deliberately left at
 would trigger that warning on every default invocation, not confirm the
 lane is safe there. `CODEX_CONTEXT_WINDOW` stays a genuine
 per-invocation-overridable lever (see the env table above) for a caller who
-wants to opt UP toward the ruled 900k figure and accept the risk, or stay at
+wants to opt UP toward the declared 900k figure and accept the risk, or stay at
 the evidence-backed 272000/353000 range.
 
 Two OTHER levers existed for verifying the CLIProxyAPI path on its own
-evidence (as distinct from the operator-ruling override above) — one is now
+evidence (as distinct from the declared-window override above) — one is now
 APPLIED, one remains UNTESTED, not refuted:
 
 <!-- mem:d6fed4174c67 -->
@@ -1119,7 +1119,7 @@ Bash(run_in_background=true) -> bash scripts/telegram/dispatch-lane.sh --brief-f
 Lane selection is registry-driven: `--lane` > `HIMMEL_IMPL_LANE` > the
 `lanes.local.json` `defaultImplLane` overlay > the tracked registry default.
 The tracked registry declares no `defaultImplLane` (impl routes to native
-Claude subagents only — operator ruling 2026-08-19): an
+Claude subagents only): an
 unqualified dispatch refuses and names the Agent-tool path instead of
 silently spending a GPT-backed subscription usage budget. Unavailable choices fail with exit 2 and
 list available impl lanes; they never silently spend a different subscription usage budget.
@@ -1403,7 +1403,7 @@ view into the vault — the bridge between the derived graph and the KB.
   (`--backend claude-cli` is the default/sanctioned luna extraction provider —
   the operating-substrate `anthropic` cell, plain `allow` on luna-personal;
   authenticates via the operator's own Claude Code subscription, no API key.
-  `--backend kimi` (moonshot) is retired — operator ruling, there is no kimi backend — so it fails closed on luna corpora as an unclassified provider).
+  `--backend kimi` (moonshot) is retired — there is no kimi backend — so it fails closed on luna corpora as an unclassified provider).
   **Throttle knob (`GRAPHIFY_MAX_CONCURRENCY`, default 6):** concurrency 6
   overshoots a rate-limited backend's request limit — it 429s (`rate_limit_error`
   1302) on most chunks and the regen fails. `GRAPHIFY_MAX_CONCURRENCY=1`
@@ -1428,7 +1428,7 @@ view into the vault — the bridge between the derived graph and the KB.
   job's own arm/inspect/remove, ledger shape, and failure-surfacing detail —
   this entry covers the original four). The semantic pair
   (`HIMMEL-GraphMap-Luna` / `-Himmel`, default Sunday 13:00/13:20 local,
-  staggered) is now **weekly**, on the **`claude-cli`** backend (kimi/moonshot is retired, operator ruling; claude-cli is the
+  staggered) is now **weekly**, on the **`claude-cli`** backend (kimi/moonshot is retired; claude-cli is the
   original default) — drawing the SAME interactive 5h/weekly Anthropic
   subscription usage budget as a live session, gated by `usage-preflight.sh` inside
   `refresh-graph-map.sh` (SKIPPED-BANK stops the run) — each firing
@@ -1465,13 +1465,13 @@ view into the vault — the bridge between the derived graph and the KB.
   unattended:
   `bash scripts/luna/graphmap-cadence.sh arm` (`--luna-time` / `--himmel-time` /
   `--vault` / `--force` / `--dry-run` / `--ast-only`). A bare arm registers the
-  HIMMEL rows only; the Luna graph tasks are off by default (decision 449) and come only from `arm --luna-only`.
+  HIMMEL rows only; the Luna graph tasks are off by default, until graphify shows value over qmd on the vault for its cost, and come only from `arm --luna-only`.
   `--ast-only` arms/dedup-checks ONLY the free structural (AST) task of the
   scope being armed (himmel's on a bare arm, Luna's with `--luna-only`),
   skipping that scope's semantic task (and its backend credential
   requirement) entirely — a pre-existing semantic task, if any, is left
-  untouched. Lets the free jobs re-arm independently of an operator ruling on
-  the semantic backend/egress. To ADD a missing semantic task later,
+  untouched. Lets the free jobs re-arm independently of the choice of
+  semantic backend/egress. To ADD a missing semantic task later,
   re-arm WITHOUT `--ast-only` and WITH `--force` — a plain re-arm (no
   `--force`) dedup-blocks on the already-armed AST task instead of adding
   the missing semantic task.
@@ -1607,7 +1607,7 @@ signalled it. Same runner/scheduler split as the graphify pair above.
 
 The REPAIR half of the nightly `fork-drift` drift-detection Action
 (`check-plugin-drift.sh`), which only detects and files a tracking issue. Runs
-LOCALLY on purpose (operator decision, 2026-07-28) rather than in CI — the
+LOCALLY on purpose rather than in CI — the
 private repo has Actions off by design.
 
 - `scripts/upstreams/apply-drift-bump.sh <name> <new-version> [--dry-run]` —
@@ -1692,8 +1692,8 @@ private repo has Actions off by design.
 ## Upstream-watch cadence (`scripts/upstreams/`)
 
 Replaces the resident interactive-claude poller that used to check himmel's
-open upstream PRs/issues every 20 minutes (operator ruling 2026-09-01: "we
-should monitor it daily not as a puller and with tokens"). Pure bash + `gh` +
+open upstream PRs/issues every 20 minutes: it checks them once a day, with
+no resident poller and no tokens. Pure bash + `gh` +
 `jq`, delta-gated, zero tokens on a no-delta day — it never invokes `claude`.
 
 - `scripts/upstreams/upstream-watch.sh` (no args) — inventories open
@@ -1771,8 +1771,8 @@ should monitor it daily not as a puller and with tokens"). Pure bash + `gh` +
   are SKIP-ed, so nothing is rewritten). It remediates only two classes, and
   only under `handovers/`. A shellcheck or check-json finding gets the
   canonical `^handovers/` exclude. A gitleaks finding whose secret fully
-  matches one entry of a CLOSED shape list (lock token, 40-hex sha, RETASK
-  nonce, the template's own regexes) gets that regex in `.gitleaks.toml`.
+  matches one entry of a CLOSED shape list (lock token, 40-hex sha, revision
+  token, the template's own regexes) gets that regex in `.gitleaks.toml`.
   Remediation is all-or-nothing: the edits are applied, the hook re-run, and
   `git commit --only` takes just the config files; the staged backlog is left
   to the next sync. Anything else alerts through
@@ -1851,7 +1851,7 @@ Shell scripts that implement `/pr-check` sub-steps. Called by the `/pr-check` co
 
 - `scripts/cr/file-deferred-issues.sh` — reads `/pr-review-toolkit:review-pr` output, dedupes low-severity findings by content hash, and files them on the repo's tracker, tagged `cr-deferred`: one Jira ticket per run when Jira is configured, forge issues otherwise, nothing remote with no tracker (prints `tracker=jira|forge|none`). Called by `/pr-check` step 7. Idempotent; `--dry-run` mode for inspection.
 - `scripts/cr/critic-first-pass.sh` — generic model-parametrized automated reviewer (supersedes retired `gemini-first-pass.sh`): diff on stdin → findings with stable `[<slug>-N]` IDs; routes through `scripts/hermes/invoke.sh`; `--model`/`--slug` flags select the model. **Senior-reviewer routing:** the gpt/codex-family critic runs under the `himmel_agent` hermes profile (main-tier SOUL) instead of the user-default junior SOUL — the junior framing produced shallow/discarded codex output. Only the gpt family by default because `himmel_agent` is Codex-provider-bound (a non-OpenAI model like the free qwen3coder anchor 400s under it); open/claude critics stay on the hermes default profile and take their senior framing from the role-prompt. Override with `CR_CRITIC_PROFILE` (applies to every family when set; `none`/empty → hermes default). `invoke.sh --profile` is fail-open (missing profile warns + falls back). Tests: `scripts/cr/test-critic-first-pass.sh` (deterministic, PATH-stubbed fake hermes).
-- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json` currently holds ONE row — `codex`/`gpt-6.1-sol`, tier `paid` — and NO free critics.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (operator decision, 12%/13% ledger agreed-rate — noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (operator decision: accepted). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
+- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json` currently holds ONE row — `codex`/`gpt-6.1-sol`, tier `paid` — and NO free critics.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (their 12%/13% ledger agreed-rate was noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (an accepted cost). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
 - `scripts/cr/ledger-append.sh` — appends `finding` / `avail` / `usage` records to the CR ledger (`cr-critic-scores.jsonl`); called by `/pr-check` adjudication step. The `usage` kind records a chars/4 **estimated** token count for a critic (hermes does not expose real usage through the one-shot sanctioned script); written best-effort by `critic-first-pass.sh` when `CR_USAGE_LOG=1`. The `score` kind is one row per COMPLETED critic run (rc 0 or the all-dropped rc 4; a failed run writes none): `critical`/`important`/`suggestions` counts (+ `dropped`), `model`, `head`, and `raw_path` — so a clean 0/0/0 verdict is distinguishable from a non-run. `critic-first-pass.sh` writes it, and keeps the raw critic response at `raw_path` under `cr-panel-raw/` beside the ledger (`<head12>.<slug>.<diff|artifact>.<UTC ts>.<pid>.raw`, mode 0600); files older than `CR_RAW_RETAIN_DAYS` (default 30) are pruned on each write — no separate sweeper process. Fail-open: a raw/ledger write failure warns and never changes the critic's stdout or exit code. Every ledger reader filters on `kind`, so a `score` row changes no gate verdict.
 - `scripts/cr/cr-scores.sh` — generates a per-critic correctness scorecard from the ledger; surfaced via `/cr-scores`. Adds an estimated-token Usage section (per-model + cumulative) when the ledger holds `usage` records.
 
