@@ -247,6 +247,19 @@ assert_rc "T3e a real repo on main at the session level blocks" 2 \
     "$(rc_of "$P9626/projD/sessD/scratchpad/x.py" TMPDIR="$SB9626")"
 assert_rc "T3e a .git directly in the scratchpad blocks" 2 \
     "$(rc_of "$P9626/projE/sessE/scratchpad/x.py" TMPDIR="$SB9626")"
+SBA9626=$(mktemp -d "${TMPDIR:-/tmp}/t3f.XXXXXX") || exit 1
+mkdir -p "$SBA9626/claude-$(id -u)/proj/sess/scratchpad" "$SBA9626/.git"
+printf '%s\n' "$SANDBOX/mainrepo/.git" > "$SBA9626/.git/commondir"
+ln -s refs/heads/main "$SBA9626/.git/HEAD"
+assert_rc "T3e a temp-root .git with a commondir into a primary and a symlinked HEAD blocks" 2 \
+    "$(rc_of "$SBA9626/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SBA9626")"
+mkdir -p "$SANDBOX/mainrepo/tmpg/claude-$(id -u)/proj/sess/scratchpad" "$SANDBOX/mainrepo/tmph/claude-$(id -u)/proj/sess/scratchpad"
+printf 'garbage\n' > "$SANDBOX/mainrepo/tmpg/.git"
+assert_rc "T3e a garbage gitfile at a temp root inside a checkout on main blocks" 2 \
+    "$(rc_of "$SANDBOX/mainrepo/tmpg/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SANDBOX/mainrepo/tmpg")"
+mkdir -p "$SANDBOX/mainrepo/tmph/.git"
+assert_rc "T3e an empty .git at a temp root inside a checkout on main blocks" 2 \
+    "$(rc_of "$SANDBOX/mainrepo/tmph/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SANDBOX/mainrepo/tmph")"
 t3eerr=$(printf '%s' "{\"tool_input\":{\"file_path\":\"$SB9626/other/x.py\"}}" | env TMPDIR="$SB9626" bash "$HOOK" 2>&1 >/dev/null)
 case "$t3eerr" in
     *"$SB9626/.git"*) echo "PASS T3e the rc 3 message names the .git it found" ;;
@@ -711,7 +724,7 @@ assert_rc "T50 Write .single-writer (untracked+gitignored) on main blocks (HIMME
 # Clean up the worktree registration before removing the sandbox (avoids a
 # dangling `git worktree` admin record under SANDBOX/wtrepo).
 git -C "$SANDBOX/wtrepo" worktree remove --force "$SANDBOX/wtrepo/.claude/worktrees/feat+x" 2>/dev/null || true
-rm -rf "$SANDBOX" "$SB9626" 2>/dev/null || true
+rm -rf "$SANDBOX" "$SB9626" "$SBA9626" 2>/dev/null || true
 
 if [ "$FAILED" -gt 0 ]; then
     echo "---"

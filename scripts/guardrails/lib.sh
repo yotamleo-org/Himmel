@@ -1222,8 +1222,16 @@ _stray_git_above_scratchpad() {
     _in_uid_scratchpad_set "$file" || return 1
     [ "$repo" != "$_SCRATCHPAD_ROOT" ] || return 1
     case "$_SCRATCHPAD_ROOT/" in "$repo/"*) ;; *) return 1 ;; esac
-    case "$repo/" in "$_SCRATCHPAD_BASE/"*) return 0 ;; esac
-    return 1
+    case "$repo/" in "$_SCRATCHPAD_BASE/"*) ;; *) return 1 ;; esac
+    [ -d "$repo/.git" ] && [ ! -L "$repo/.git" ] || return 1
+    local entry parent
+    for entry in HEAD commondir gitdir; do
+        [ ! -e "$repo/.git/$entry" ] && [ ! -L "$repo/.git/$entry" ] || return 1
+    done
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 && return 1
+    parent="${repo%/*}"
+    [ -n "$parent" ] || parent="/"
+    ! _repo_root_for_path_set "$parent"
 }
 
 main_checkout_verdict_set() {
@@ -1260,6 +1268,7 @@ main_checkout_verdict_set() {
         block_reason="main"
     else
         if _stray_git_above_scratchpad "$file_real" "$repo_real"; then
+            _MCV_ROOT="$repo_real"
             return 0
         fi
         _MCV_ROOT="$repo_real"
