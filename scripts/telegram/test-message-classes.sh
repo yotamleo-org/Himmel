@@ -216,7 +216,7 @@ lint_clean() { # <name> <args...>: the lint must pass
 }
 lint_dirty() { # <name> <substring of the expected error> <args...>: the lint must fail, for that reason
   local name="$1" want="$2"; shift 2
-  local out; if out="$(python3 -I "$T/lint.py" --repo "$REPO" "$@" 2>&1)"; then fail "$name (the lint passed)"; elif printf '%s' "$out" | grep -qF -- "$want"; then pass "$name"; else fail "$name (wrong reason)" "$out"; fi
+  local out; if out="$(python3 -I "$T/lint.py" --repo "$REPO" "$@" 2>&1)"; then fail "$name (the lint passed)"; elif [[ "$out" == *"$want"* ]]; then pass "$name"; else fail "$name (wrong reason)" "$out"; fi
 }
 mut() { # <out.json> <python statements over t>: a copy of the table, changed
   python3 -I -c 'import json,sys; t=json.load(open(sys.argv[1])); exec(sys.argv[3]); json.dump(t,open(sys.argv[2],"w"))' "$TABLE" "$1" "$2"
