@@ -299,6 +299,8 @@ deny  "9628 rg --pre=cmd runs its command" "$(bash_json "rg --pre='bus bind x 1'
 deny  "9628 rg --hostname-bin runs its command" "$(bash_json "rg --hostname-bin 'bus rebind x 1' pat /tmp/f")"
 deny  "9628 rg --pre before the -- delimiter runs its command" "$(bash_json "rg -e x --pre 'bus register x' -- /tmp/f")"
 deny  "9628 rg -e -- uses the delimiter as its pattern and still runs --pre" "$(bash_json "rg -e -- --pre='bus register x' /tmp/f")"
+allow "9628 rg with --pre after a real -- delimiter is a file name" "$(bash_json "rg -e 'bus register' -- --pre /tmp/f")"
+deny  "9628 rg -n -- --pre=cmd: -- after an option word is not a delimiter" "$(bash_json "rg -n -- --pre='bus register x' /tmp/f")"
 allow "9628 grep with a --pre word after the -- delimiter" "$(bash_json "grep -e 'bus register' -- '--pre' /tmp/f")"
 allow "9628 grep with a --pre word is not rg" "$(bash_json "grep -e 'bus register' --pre /tmp/f")"
 deny  "9628 control: bus register x" "$(bash_json 'bus register x')"
