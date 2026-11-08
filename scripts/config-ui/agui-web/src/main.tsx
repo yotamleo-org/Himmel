@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { FleetPage, useFleet } from "./Fleet";
+import { RagEvalPage } from "./RagEval";
+import { isRagEvalHash } from "./rag-eval-model";
 import { Shell } from "./Shell";
 import { consoleFromHash, fleetToken, sourceFromLocation } from "./stream";
 
@@ -24,7 +26,8 @@ function Root() {
   const source = useMemo(() => sourceFromLocation(hash), [run, p.get("t")]);
   return (
     <Shell token={p.get("t")} run={p.get("run")} fleet={fleet}>
-      {token ? <FleetPage token={token} state={fleet} console={consoleFromHash(hash)} /> : <App key={hash} source={source} />}
+      {token && isRagEvalHash(hash) ? <RagEvalPage token={token} />
+        : token ? <FleetPage token={token} state={fleet} console={consoleFromHash(hash)} /> : <App key={hash} source={source} />}
     </Shell>
   );
 }
