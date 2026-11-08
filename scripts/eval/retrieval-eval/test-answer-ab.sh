@@ -78,6 +78,14 @@ d = os.environ["STUB_DIR"]
 argv = sys.argv[1:]
 prompt = sys.stdin.read()
 open(os.path.join(d, "sess-all.log"), "a").write(" ".join(argv) + "\n")
+hits = 0
+for dp, _, fs in os.walk(os.getcwd()):
+    for fn in fs:
+        try:
+            hits += b"BANKSECRET" in open(os.path.join(dp, fn), "rb").read()
+        except OSError:
+            pass
+open(os.path.join(d, "sess-cwd.log"), "a").write("%s %d %d\n" % (os.getcwd(), hits, os.path.exists("docs/lock.md")))
 sid = argv[argv.index("--session-id") + 1] if "--session-id" in argv else (argv[argv.index("--resume") + 1] if "--resume" in argv else None)
 if sid and os.environ.get("CLAUDE_CONFIG_DIR"):  # a persisted session leaves a transcript the run must remove
     os.makedirs(os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "projects", "p"), exist_ok=True)
@@ -431,6 +439,47 @@ print(len(rows) == 2 and all(r.get("route_calls") == 2 and len(r.get("tool_trace
       and r["tool_trace"][1]["query"] == "broken backend"
       and r["tool_trace"][1]["failure"] == "qmd failed (rc 3)"
       for r in rows))' "$W/out-trace/results.jsonl")"
+
+# 23. a realistic session cannot Read, Grep or Glob the question bank (it holds the gold files).
+rm -f "$W"/sess-*.log
+RR="$(cd "$R" && pwd -P)"
+bankrow='{"id":"a1","kind":"where","q":"where is the queue lock described","gold":["docs/lock.md"],"reason":[],"note":"BANKSECRET"}'
+mkdir -p "$R/scripts/eval/retrieval-eval" "$R/.claude/worktrees/x/scripts/eval/retrieval-eval"
+for f in scripts/eval/retrieval-eval/questions.jsonl scripts/eval/retrieval-eval/questions-v2.jsonl inrepo-bank.jsonl; do
+  printf '%s\n' "$bankrow" > "$R/$f"
+done
+printf '/.claude/worktrees\n' > "$R/.gitignore"
+printf '%s\n' "${bankrow%\}},\"wt\":\"BANKSECRET-wt\"}" > "$R/.claude/worktrees/x/scripts/eval/retrieval-eval/questions.jsonl"
+git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m banks
+printf 'BANKSECRET-untracked\n' > "$R/untracked-bank.txt"
+inrepo="$R/inrepo-bank.jsonl"
+python3 -I "$AB" run --repo "$R" --questions "$inrepo" --out "$W/out-deny" --arms "$REAL" --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/deny.txt" 2>&1
+eq "a deny-rule run completes" "0" "$?"
+eq "four sessions ran" "4" "$(wc -l < "$W/sess-cwd.log" | tr -d ' ')"
+eq "no session runs inside the repo, or in a tree under it" "0" "$(awk '{print $1}' "$W/sess-cwd.log" | grep -c "^$RR")"
+eq "no bank bytes are in any session's cwd tree (an ignored worktree copy and an untracked file included, neither byte-identical to a bank)" "0" "$(awk '{s += $2} END {print s + 0}' "$W/sess-cwd.log")"
+eq "the rest of the repo is still in the session's cwd tree" "4" "$(awk '{s += $3} END {print s + 0}' "$W/sess-cwd.log")"
+eq "the session's scratch export is gone after the run" "no" "$([ -e "$(awk 'NR==1 {print $1}' "$W/sess-cwd.log")" ] && echo yes || echo no)"
+eq "the repo's own bank is untouched" "1" "$(grep -c BANKSECRET "$R/scripts/eval/retrieval-eval/questions.jsonl")"
+for arm in vanilla routed; do
+  if [ "$arm" = vanilla ]; then sel="$(grep 'mcp-vanilla' "$W/sess-all.log")"; else sel="$(grep -v 'mcp-vanilla' "$W/sess-all.log")"; fi
+  calls="$(printf '%s\n' "$sel" | grep -c .)"
+  eq "$arm session: every call carries --disallowedTools" "$calls" "$(printf '%s\n' "$sel" | grep -cF -- '--disallowedTools')"
+  for bank in scripts/eval/retrieval-eval/questions.jsonl scripts/eval/retrieval-eval/questions-v2.jsonl inrepo-bank.jsonl; do
+    eq "$arm session: every call denies Read of $bank" "$calls" "$(printf '%s\n' "$sel" | grep -cF -- "Read(/$RR/$bank)")"
+  done
+  eq "$arm session: every call denies Read of a bank copy anywhere" "$calls" "$(printf '%s\n' "$sel" | grep -cF -- 'Read(//**/scripts/eval/retrieval-eval/questions*.jsonl)')"
+done
+eq "vanilla still has tools Read, Grep, Glob only" "Read,Grep,Glob" "$(sort -u "$W/sess-allowed-vanilla.log")"
+
+rm -f "$W"/sess-*.log
+extrow='{"id":"a1","kind":"where","q":"where is the queue lock described","gold":["docs/lock.md"],"reason":[],"note":"BANKSECRET-ext"}'
+printf '%s\n' "$extrow" > "$W/ext-bank.jsonl"
+printf '%s\n' "$extrow" > "$R/renamed-copy.dat"
+git -C "$R" add renamed-copy.dat && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m renamed
+python3 -I "$AB" run --repo "$R" --questions "$W/ext-bank.jsonl" --out "$W/out-ext" --arms vanilla --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/ext.txt" 2>&1
+eq "an external-bank run completes" "0" "$?"
+eq "a tracked copy of an external --questions file is not in the session's cwd tree" "0" "$(awk '{s += $2} END {print s + 0}' "$W/sess-cwd.log")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
