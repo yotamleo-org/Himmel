@@ -106,6 +106,8 @@ printf 'retry_limit retry_limit retry_limit\n' > "$R/docs/a-use.md"
 mkdir -p "$R/scripts/eval/retrieval-eval"
 printf 'why does a halt need no token mild DoS relay_batch defined\n' > "$R/scripts/eval/retrieval-eval/questions.jsonl"
 git -C "$R" init -q && git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m init
+mkdir -p "$R/graphify-out"
+printf '{"built_at_commit": "abc123def"}\n' > "$R/graphify-out/graph.json"
 
 Q="$W/q.jsonl"
 cat > "$Q" <<'EOF'
@@ -130,6 +132,7 @@ case "$in" in
 *sleep*) sleep 5 ;;
 *orphan*) sleep 30 & echo $! > "$(dirname "$0")/child.pid"; wait ;;
 *broken*) echo 'backend down' >&2; exit 3 ;;
+*unreadable*) echo 'not JSON' ;;
 *casefold*) printf '[{"file":"qmd://himmel/claude.md","snippet":"rules"}]\n' ;;
 *) printf '[{"file":"qmd://himmel/bin/run.sh","snippet":"relay_batch"}]\n' ;;
 esac
@@ -246,6 +249,31 @@ else fail "timeout leaves no grandchild behind"; kill "$(cat "$W/child.pid" 2> /
 printf '{"id":"q5","kind":"where","q":"broken backend","gold":["bin/run.sh"],"reason":[]}\n' > "$W/q5.jsonl"
 py "$EV" run --repo "$R" --questions "$W/q5.jsonl" --out "$W/out5" --arms qmd-lex > /dev/null 2>&1
 eq "failed backend row carries error" "True" "$(py -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline()).get("error"))' "$W/out5/results.jsonl")"
+eq "failed backend keeps its error detail and the stable trace schema" "True" "$(py -c 'import json,sys
+r = json.loads(open(sys.argv[1]).readline())
+print(r.get("qmd_error") == "qmd failed (rc 3)" and isinstance(r.get("files_top20"), list)
+      and r["files_top20"][:5] == r["files"] and r.get("skipped") is False)' "$W/out5/results.jsonl")"
+eq "timeout evidence says timed out" "True" "$(py -c 'import json,sys
+print("timed out" in json.loads(open(sys.argv[1]).readline()).get("qmd_error", ""))' "$W/out3/results.jsonl")"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-error.jsonl" py "$EV" run --repo "$R" --questions "$W/q5.jsonl" --out "$W/out-error" --arms combined > /dev/null 2>&1
+eq "combined carries its qmd failure detail" "qmd failed (rc 3)" "$(py -c 'import json,sys
+print(json.loads(open(sys.argv[1]).readline()).get("qmd_error", ""))' "$W/out-error/results.jsonl")"
+
+printf '{"id":"bad-json","q":"unreadable output","gold":["bin/run.sh"],"reason":[]}\n' > "$W/unreadable.jsonl"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-unreadable.jsonl" py "$EV" run --repo "$R" --questions "$W/unreadable.jsonl" --out "$W/out-unreadable" --arms qmd-lex > /dev/null 2>&1
+eq "unreadable qmd output keeps an error detail" "True" "$(py -c 'import json,sys
+r = json.loads(open(sys.argv[1]).readline())
+print(r["error"] and not r["timeout"] and r.get("qmd_error") == "qmd returned unreadable output")' "$W/out-unreadable/results.jsonl")"
+eq "server errors keep bounded detail and their timeout classification" "True" "$(py -c 'import importlib.util,os,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+os.environ.pop("RETRIEVAL_EVAL_QMD_CMD", None)
+rows = []
+for error in (RuntimeError("backend unavailable " * 10), TimeoutError("timed out")):
+    def server(*args):
+        raise error
+    m.qmd_server = server
+    rows.append(m.arm_qmd("fixture", True, 1, 5, "himmel"))
+print(rows[0][2:] == (False, True, "backend unavailable " * 5) and rows[1][2:] == (True, False, "timed out"))' "$EV")"
 
 # 8d. grep never returns the tracked question set.
 eq "grep skips the question set" "0" "$(grep -c 'retrieval-eval/questions' "$W/out/results.jsonl")"
@@ -449,6 +477,121 @@ eq "without rtk the run still exits 0" "0" "$?"
 eq "without rtk only the raw arm is scored" "grep" "$(awk -F'\t' 'NR>1{print $1}' "$W/outr3/scores.tsv" | tr '\n' ' ' | sed 's/ $//')"
 eq "without rtk the skip and its reason are printed" "1" "$(grep -c 'skipping grep-rtk: rtk is not on PATH' "$W/outr3.err")"
 eq "without rtk the ledger row records the skip" "rtk is not on PATH" "$(py -c 'import json,sys; print(json.loads(open(sys.argv[1]).readlines()[-1])["config"]["skipped"]["grep-rtk"])' "$W/ledger-14c.jsonl")"
+
+# 15. graph stamps can be deep in a large graph, including across a read boundary.
+eq "graph_built streams past 5 MiB and keeps the first stamp across a chunk boundary" "abc123def" "$(py -c 'import importlib.util,pathlib,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+p = pathlib.Path(sys.argv[2]) / "graphify-out/graph.json"
+p.write_text(" " * (6 * 1024 * 1024 - 18) + "{\"built_at_commit\": \"abc123def\", \"built_at_commit\": \"deadbeef\"}")
+print(m.graph_built(sys.argv[2]))' "$EV" "$R")"
+eq "an unstamped graph and an unresolved common dir raise clear errors" "True" "$(py -c 'import importlib.util,pathlib,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+(pathlib.Path(sys.argv[2]) / "graphify-out/graph.json").write_text("{}")
+errors = []
+for repo in sys.argv[2:]:
+    try:
+        m.graph_built(repo)
+    except RuntimeError as e:
+        errors.append(str(e))
+print(len(errors) == 2 and "built_at_commit" in errors[0] and "common" in errors[1])' "$EV" "$R" "$W/not-a-repo")"
+rm "$R/graphify-out/graph.json"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-stamp.jsonl" py "$EV" run --repo "$R" --questions "$Q" --out "$W/out-stamp" --arms graphify,combined > "$W/stamp.txt" 2> "$W/stamp.err"
+eq "graph arms exit 1 when their stamp is missing" "1" "$?"
+eq "missing graph stamp is reported once" "1" "$(grep -c '^retrieval-eval: ERROR graph stamp:' "$W/stamp.err")"
+eq "missing stamp still writes results, scores, slices and ledger metadata" "True" "$(py -c 'import json,pathlib,sys
+m = json.loads(open(sys.argv[1]).readline())["meta"]
+print(m.get("graph_built_at") is None and "graph.json" in m.get("graph_built_error", "")
+      and all((pathlib.Path(sys.argv[2]) / f).is_file() for f in ("results.jsonl", "scores.tsv", "scores-by-slice.tsv")))' "$W/ledger-stamp.jsonl" "$W/out-stamp")"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-nostamp.jsonl" py "$EV" run --repo "$R" --questions "$Q" --out "$W/out-nostamp" --arms grep > /dev/null 2> "$W/nostamp.err"
+eq "no graph arm needs no stamp" "0" "$?"
+eq "no graph arm prints no stamp error" "0" "$(grep -c 'ERROR graph stamp' "$W/nostamp.err")"
+eq "no graph arm records null without an error" "True" "$(py -c 'import json,sys
+m = json.loads(open(sys.argv[1]).readline())["meta"]
+print(m.get("graph_built_at", "missing") is None and "graph_built_error" not in m)' "$W/ledger-nostamp.jsonl")"
+printf '{"built_at_commit": "abc123def"}\n' > "$R/graphify-out/graph.json"
+
+# 16. Deeper evidence must not enter the scored lists or the first-k fusion.
+cat > "$W/qmd-deep" <<'EOF'
+#!/usr/bin/env python3
+import json, sys
+a = json.load(sys.stdin)
+files = ["docs/z%d.md" % i for i in range(5)] + ["docs/shared.md"] + ["docs/z%d.md" % i for i in range(6, 25)]
+print(json.dumps([{"file": "qmd://himmel/" + f, "snippet": "deep reason" if f.endswith("shared.md") else "noise"}
+                  for f in files[:a["limit"]]]))
+EOF
+cat > "$W/graph-deep" <<'EOF'
+#!/usr/bin/env bash
+printf 'NODE a [src=docs/a0.md]\nNODE b [src=docs/a1.md]\nNODE c [src=docs/a2.md]\nNODE d [src=docs/a3.md]\nNODE e [src=docs/a4.md]\nNODE shared [src=docs/shared.md]\n'
+EOF
+chmod +x "$W/qmd-deep" "$W/graph-deep"
+printf '{"id":"depth","q":"depthprobe","gold":["docs/shared.md"],"reason":["deep reason"]}\n' > "$W/deep.jsonl"
+RETRIEVAL_EVAL_QMD_CMD="$W/qmd-deep" RETRIEVAL_EVAL_GRAPH_CMD="$W/graph-deep" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-deep.jsonl" py "$EV" run --repo "$R" --questions "$W/deep.jsonl" --out "$W/out-deep" --arms grep,qmd-hybrid,graphify,combined > /dev/null 2>&1
+eq "top20 evidence keeps deeper candidates while scoring and fusion use first k" "True" "$(py -c 'import json,sys
+r = {x["arm"]: x for x in map(json.loads, open(sys.argv[1]))}
+qm, co = r["qmd-hybrid"], r["combined"]
+print(len(qm.get("files_top20", [])) == 20 and qm["files_top20"][:5] == qm["files"]
+      and "docs/shared.md" in qm["files_top20"] and not qm["hit"] and qm["ndcg"] == 0
+      and qm["reason"] is False and not co["hit"] and co["files"] == ["docs/a0.md", "docs/z0.md", "docs/a1.md", "docs/z1.md", "docs/a2.md"]
+      and len(co.get("files_top20", [])) == 20 and co["files_top20"][0] == "docs/shared.md"
+      and all(x.get("skipped") is False and x.get("qmd_error") == "" for x in r.values()))' "$W/out-deep/results.jsonl")"
+eq "skipped arms still have no result rows" "True" "$(py -c 'import json,sys
+print(all(r["arm"] == "grep" and r.get("skipped") is False for r in map(json.loads, open(sys.argv[1]))))' "$W/outr3/results.jsonl")"
+
+# 17. Replay reads saved lists only. The held-out slice is frozen: never expose its IDs for tuning.
+py - "$W" <<'PY'
+import json, pathlib, sys
+w = pathlib.Path(sys.argv[1])
+qs, rows = [], []
+for qid, gold, split in (("dev-rescue", "z-gold.md", "insample"), ("dev-regress", "g.md", "insample"),
+                          ("heldout-secret", "z-gold.md", "heldout")):
+    qs.append(dict(id=qid, q="fixture", gold=[gold], split=split, reason=[]))
+    for arm, names in (("grep", "abcde"), ("qmd-hybrid", "fghij"), ("graphify", "klmno")):
+        rows.append(dict(id=qid, arm=arm, files=[c + ".md" for c in names]))
+    rows.extend([dict(id=qid, arm="path", files=["z-gold.md"]), dict(id=qid, arm="ident-grep", files=[]),
+                 dict(id=qid, arm="combined", files=[c + ".md" for c in "afkbg"], hit=gold == "g.md")])
+for name, data in (("replay-q.jsonl", qs), ("replay.jsonl", rows),
+                   ("replay-missing.jsonl", [r for r in rows if not (r["id"] == "dev-regress" and r["arm"] == "path")]),
+                   ("replay-no-baseline.jsonl", [r for r in rows if r["arm"] != "combined"]),
+                   ("replay-unknown.jsonl", rows + [dict(id="absent", arm="grep", files=[])])):
+    (w / name).write_text("".join(json.dumps(x) + "\n" for x in data))
+PY
+mkdir -p "$W/python-only"
+ln -s "$(command -v python3)" "$W/python-only/python3"
+PATH="$W/python-only" python3 -I "$EV" replay --results "$W/replay.jsonl" --questions "$W/replay-q.jsonl" > "$W/replay.txt" 2>&1
+eq "default replay works with only Python on PATH" "0" "$?"
+eq "default replay reproduces the saved combined count" "1" "$(grep -c '^reproduces saved combined: yes$' "$W/replay.txt")"
+eq "default replay reports the saved and replayed slices" "2" "$(grep -c 'combined: insample 1/2 heldout 0/1 all 1/3$' "$W/replay.txt")"
+py "$EV" replay --results "$W/replay.jsonl" --questions "$W/replay-q.jsonl" --add path > "$W/replay-add.txt" 2>&1
+eq "added path replay runs" "0" "$?"
+eq "added path reports a dev rescue" "1" "$(grep -c '^rescued (dev): dev-rescue$' "$W/replay-add.txt")"
+eq "added path reports a dev regression" "1" "$(grep -c '^regressed (dev): dev-regress$' "$W/replay-add.txt")"
+eq "added path reports held-out counts only" "1" "$(grep -c '^replay combined: insample 1/2 heldout 1/1 all 2/3$' "$W/replay-add.txt")"
+eq "a changed total does not reproduce saved combined" "1" "$(grep -c '^reproduces saved combined: no$' "$W/replay-add.txt")"
+eq "held-out IDs never appear in replay output" "0" "$(cat "$W/replay.txt" "$W/replay-add.txt" | grep -c 'heldout-secret')"
+py "$EV" replay --results "$W/replay-missing.jsonl" --questions "$W/replay-q.jsonl" --add path > "$W/replay-missing.txt" 2>&1
+eq "an arm missing for one question is a Usage error" "64" "$?"
+eq "the missing arm is named" "1" "$(grep -c "missing arm 'path'" "$W/replay-missing.txt")"
+py "$EV" replay --results "$W/replay-no-baseline.jsonl" --questions "$W/replay-q.jsonl" > "$W/replay-baseline.txt" 2>&1
+eq "a missing saved baseline is a Usage error" "64" "$?"
+eq "the missing baseline arm is named" "1" "$(grep -c "missing arm 'combined'" "$W/replay-baseline.txt")"
+py "$EV" replay --results "$W/replay-unknown.jsonl" --questions "$W/replay-q.jsonl" > /dev/null 2>&1
+eq "a saved question missing from the question set is a Usage error" "64" "$?"
+py "$EV" replay --results "$W/replay.jsonl" --questions "$W/replay-q.jsonl" --rrf-k 1 > "$W/replay-rrf.txt" 2>&1
+eq "a different RRF constant still runs" "0" "$?"
+eq "a changed RRF constant does not claim reproduction even with the same count" "1" "$(grep -c '^reproduces saved combined: no$' "$W/replay-rrf.txt")"
+py "$EV" replay --results "$W/replay.jsonl" --questions "$W/replay-q.jsonl" --add ident-grep > "$W/replay-arms.txt" 2>&1
+eq "a changed fused set does not claim reproduction even with the same count" "1" "$(grep -c '^reproduces saved combined: no$' "$W/replay-arms.txt")"
+if py - "$EV" "$W" > "$W/replay-audit.txt" 2>&1 <<'PY'
+import importlib.util, sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+def audit(event, args):
+    if event in ("subprocess.Popen", "os.system", "socket.connect"):
+        raise AssertionError("replay attempted " + event)
+sys.addaudithook(audit)
+sys.exit(m.main(["replay", "--results", sys.argv[2] + "/replay.jsonl", "--questions", sys.argv[2] + "/replay-q.jsonl"]))
+PY
+then pass "replay makes no subprocess or network calls"
+else fail "replay makes no subprocess or network calls"; fi
 
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit "$fails"
