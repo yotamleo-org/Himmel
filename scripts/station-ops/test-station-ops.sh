@@ -555,7 +555,7 @@ export FAKE_NOW=$((T0 + 60))
 out=$(sa --key HIMMEL-9228 --label N5216 --files 272 --scope "$SA_S" --reason keep-whole)
 assert_contains "a re-approval reports changed" "result=changed" "$out"
 assert_eq "RED: a re-approval renews expires" "$((T0 + 60 + 604800))" "$(sa_field 2)"
-sa_bad() { # <param> <bad value, or <none> to leave it out> <description>: every other param valid
+sa_bad() {
     local -A v=([key]=HIMMEL-9228 [label]=N5216 [files]=272 [scope]="$SA_S" [reason]=keep-whole)
     v[$1]="$2"
     local a=() k

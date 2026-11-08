@@ -1382,8 +1382,6 @@ pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun huge esc12)"
 has "size escape: the past-cap refusal says split the ticket" "$pso" "past the 300-file CodeRabbit cap: this cannot open as one PR; split the ticket"
 lacks "size escape: the past-cap refusal prints no Telegram approve line" "$pso" "/op size-approval"
 lacks "size escape: the past-cap refusal prints no terminal approve line" "$pso" "size-override.sh operator"
-# the operator's lines: a 272-file trust-path brief (one tracked trust-path file, 271 new ones) is refused with the base,
-# the scope digest of its file list, the Telegram line byte-equal to the shared fixture and the terminal line
 SAFIX="$HERE/fixtures/size-approval-op-line.txt"
 SAKEY=$(printf 'HIMMEL-%s' 9228)
 SAD=$(sed -n 's/.* scope=\([0-9a-f]*\) .*/\1/p' "$SAFIX")

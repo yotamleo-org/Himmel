@@ -120,7 +120,6 @@ out=$(run check HIMMEL-9405 N945 --files 41); rc=$?
 check "a validly signed row recording more than 1500 lines does not pass (4)" 4 "$rc"
 out=$(run check HIMMEL-9406 N946 --files 25 --trust yes); rc=$?
 check "check sends a trust-path brief over the soft band to the operator even with no row (4)" 4 "$rc"
-# the band edges (I3): each side of the soft band for a trust path, the file cap and the line max
 out=$(run record HIMMEL-9407 N947 --files 21 --trust yes --reason "edge"); rc=$?
 check "a trust-path brief of 21 files is the operator's (4)" 4 "$rc"
 out=$(CHIEF_SESSION_NAME=chief-x run record HIMMEL-9408 N948 --files 300 --reason "edge"); rc=$?
@@ -140,11 +139,9 @@ check "record with unreadable size bands writes no row" 0 "$([ -e "$KROOT/.locks
 out=$(bash "$KIT/scripts/handover/chief-kit/size-override.sh" check HIMMEL-9500 N950 --files 25 --trust yes --root "$KROOT" 2>&1); rc=$?
 check "check with unreadable size bands exits 2, it does not pass" 2 "$rc"
 
-# ---- 6. the operator's approval: the root-owned file, the operator verb, the refusal texts ----
 REPO="$(cd "$HERE/../../.." && pwd)"
 S=46815c6bb3e07b0c47970c8357f49231 S2=0123456789abcdef0123456789abcdef
 LINUX=yes; [ "$(uname -s)" = Linux ] || LINUX=no
-# R11: the refusal texts of the real script name the route, or the split past the cap
 out=$(bash "$SUT" record HIMMEL-9400 N940 --files 25 --trust yes --reason keep --root "$ROOT" 2>&1 >/dev/null); rc=$?
 check "R11: record of a 25-file trust-path brief still exits 4" 4 "$rc"
 has "R11: the record refusal names the terminal verb" "$out" "size-override.sh operator"
@@ -163,7 +160,6 @@ check "R11: check of 301 files still exits 4" 4 "$rc"
 has "R11: the past-cap check refusal says split and nothing to approve" "$out" "split; there is nothing to approve"
 case "$out" in *operator*) fail "R11: the past-cap check refusal names no operator route ($out)" ;; *) pass "R11: the past-cap check refusal names no operator route" ;; esac
 
-# R8 (I6): the production script reads no environment for the approval dir, the owner uid or the helper path
 check "R8: the approvals dir is a literal constant" 1 "$(grep -c '^SIZE_APPROVALS=/var/lib/himmel/size-approvals$' "$SUT")"
 check "R8: the owner uid is a literal constant" 1 "$(grep -c '^SIZE_APPROVAL_UID=0$' "$SUT")"
 check "R8: the helper path is a literal constant" 1 "$(grep -c '^AFK_HELPER=/usr/local/libexec/himmel/afk-sudo$' "$SUT")"
@@ -172,7 +168,6 @@ for v in SIZE_APPROVALS SIZE_APPROVAL_UID AFK_HELPER; do
     check "R8: no default or assignment form reads $v from the environment" 0 "$(grep -cE "\\\$\\{$v(:?-|:?=)" "$SUT")"
 done
 
-# The R1 reader copy: the three constants rewritten to a scratch dir, a uid and a fake helper; lib and ci linked.
 AD="$tmp/sa/size-approvals"; mkdir -p "$AD"; chmod 0755 "$tmp/sa" "$AD"
 FB="$tmp/fbin"; mkdir -p "$FB"; HLOG="$tmp/helper.log"
 cat > "$tmp/fake-helper" <<'FAKEHELPER'
@@ -183,7 +178,7 @@ FAKEHELPER
 chmod +x "$tmp/fake-helper"
 # shellcheck disable=SC2016
 printf '#!/bin/sh\n[ "$1" = -n ] && shift\nexec "$@"\n' > "$FB/sudo"; chmod +x "$FB/sudo"
-mkreader() { # <kit dir> <owner uid>
+mkreader() {
     local k="$1"
     mkdir -p "$k/scripts/handover/chief-kit"
     ln -s "$REPO/scripts/lib" "$k/scripts/lib"; ln -s "$REPO/scripts/ci" "$k/scripts/ci"
@@ -196,14 +191,13 @@ mkreader() { # <kit dir> <owner uid>
 mkreader "$tmp/rkit" "$(id -u)"
 RK="$tmp/rkit/scripts/handover/chief-kit/size-override.sh"
 rk() { HLOG="$HLOG" PATH="$FB:$PATH" bash "$RK" "$@" --root "$ROOT"; }
-approval() { # <name files> <name scope> [<expires offset s>] [<body files>] [<body scope>]: write one approval file, mode 0644
+approval() {
     local exp=$(( $(date +%s) + ${3:-3600} ))
     printf 'SIZE-APPROVAL\t%s\tHIMMEL-9228\tN5216\t%s\t%s\tabcdefgh\tkeep-whole\n' "$exp" "${4:-$1}" "${5:-$2}" > "$AD/HIMMEL-9228.N5216.$1.$2"
     chmod 0644 "$AD/HIMMEL-9228.N5216.$1.$2"
 }
 F="$AD/HIMMEL-9228.N5216.272.$S"
 
-# R1: a valid approval lifts the 272-file trust-path brief through the copy; the real script reads no scratch dir
 if [ "$LINUX" = no ]; then echo "SKIP: R1, R4 need GNU stat (macOS fails closed; Linux CI gates)"; else
 approval 272 "$S"
 out=$(rk check HIMMEL-9228 N5216 --files 272 --trust yes --scope "$S" 2>&1); rc=$?
@@ -213,8 +207,7 @@ has "R1: the accept line names the request id and reason" "$out" "afk abcdefgh"
 out=$(bash "$SUT" check HIMMEL-9228 N5216 --files 272 --trust yes --scope "$S" --root "$ROOT" 2>&1); rc=$?
 check "R1: the real script does not read the scratch approval (4)" 4 "$rc"
 
-# R4: what is no approval; each prints its one-line reason
-r4() { # <description> <reason substring> [check args...]
+r4() {
     local d="$1" why="$2"; shift 2
     out=$(rk check HIMMEL-9228 N5216 --files 272 --trust yes --scope "$S" "$@" 2>&1); rc=$?
     check "R4: $d (4)" 4 "$rc"
@@ -247,7 +240,6 @@ out=$(rk check HIMMEL-9228 N5216 --files 272 --trust yes --scope "$S2" 2>&1); rc
 check "R4: an approval for another scope does not lift this one (4)" 4 "$rc"
 has "R4: the refusal names the approval it found" "$out" "covers 272 files, scope $S"
 has "R4: the refusal names this run's scope" "$out" "scope $S2"
-# the covers scan: the safety check and the field match each keep a file out of it
 chmod 0664 "$F"
 out=$(rk check HIMMEL-9228 N5216 --files 272 --trust yes --scope "$S2" 2>&1)
 case "$out" in *covers*) fail "R4: the covers scan names a group-writable approval ($out)" ;; *) pass "R4: the covers scan skips an approval that fails the safety check" ;; esac
@@ -261,14 +253,12 @@ case "$out" in *covers*) fail "R4: the covers scan names an approval for another
 approval 272 "$S"
 fi
 
-# R2: no terminal, inside a console: the verb files the request and prints the plain-terminal hint (75)
 : > "$HLOG"
 out=$(HIMMEL_CONSOLE=1 rk operator HIMMEL-9228 N5216 --files 272 --scope "$S" --reason keep-whole </dev/null 2>/dev/null); rc=$?
 check "R2: the operator verb with no terminal exits 75 (pending)" 75 "$rc"
 check "R2: it filed one request" 1 "$(wc -l < "$HLOG" | tr -d ' ')"
 has "R2: it prints the plain-terminal hint" "$out" "himmelctl approve abcdefgh in a plain terminal"
 
-# R3: the exact request, and the refusals
 : > "$HLOG"
 out=$(env -i PATH="$FB:/usr/bin:/bin" HOME="$HOME" HLOG="$HLOG" bash "$RK" operator HIMMEL-9228 N5216 --files 272 --scope "$S" --reason keep-whole </dev/null 2>&1); rc=$?
 check "R3: a clean-env run is pending (75)" 75 "$rc"
@@ -292,8 +282,6 @@ check "R3: 301 files exits 4" 4 "$rc"
 has "R3: past the cap the verb says split" "$out" "split"
 check "R3: no refused call reached the helper" 0 "$(wc -l < "$HLOG" | tr -d ' ')"
 
-# R9: on a terminal the verb runs the real himmelctl approve (scripts/himmelctl/lib/afk-approve.js) under a helper
-# stub; its masked prompt reaches the pty, and op_result=changed exits 0
 if [ "$LINUX" = no ] || ! script -qec true /dev/null >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
     echo "SKIP: R9 needs util-linux script -qec and node (macOS; Linux CI gates)"
 else

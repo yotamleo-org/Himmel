@@ -691,14 +691,10 @@ def size_override(args, hroot):
 
 
 def size_scope(fl):
-    # the brief's file-list digest the operator's approval binds: 32 hex of sha256 over the paths in code-point order,
-    # one per line, each ending in a newline (the same order as LC_ALL=C sort)
     return hashlib.sha256(''.join(p + '\n' for p in sorted(fl)).encode()).hexdigest()[:32]
 
 
 def operator_lines(key, label, n, fl, scope, base):
-    # what a check exit 4 tells the chief to send: past the CodeRabbit cap only the split; otherwise the paste-ready
-    # Telegram line and terminal line that file the size-approval op for this exact brief
     cap = size_bands()['coderabbit']
     if n > cap:
         return 'past the %d-file CodeRabbit cap: this cannot open as one PR; split the ticket (SIZE-ESCALATE row written)' % cap

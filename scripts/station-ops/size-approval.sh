@@ -48,7 +48,6 @@ while [ $# -gt 0 ]; do
     shift 2
 done
 
-# The same rules as size-approval.json, which owns them; checked again here by the op contract.
 [[ $id =~ ^[A-Za-z0-9-]{1,32}$ ]] || die "no valid request id"
 [[ $key =~ ^[A-Z][A-Z0-9]{0,9}-[0-9]{1,7}$ ]] || bad key "a Jira key like PROJ-1"
 [[ $label =~ ^[A-Za-z0-9._-]{1,40}$ ]] || bad label "A-Za-z0-9._- and at most 40 characters"

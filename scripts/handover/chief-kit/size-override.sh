@@ -55,9 +55,6 @@ usage() {
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ANCHOR="$(cd "$HERE/../../.." && pwd)"
 BANDS="$ANCHOR/scripts/ci/pr-size-bands.tsv"
-# The operator's approvals, the uid that must own them and the root helper the operator verb files through: constants,
-# never read from the environment, so a same-uid session cannot point the reader elsewhere. The suite runs a copy of this
-# script with these three lines rewritten.
 SIZE_APPROVALS=/var/lib/himmel/size-approvals
 SIZE_APPROVAL_UID=0
 AFK_HELPER=/usr/local/libexec/himmel/afk-sudo
@@ -138,9 +135,6 @@ OPERATOR_ROUTE="this routes to the operator: they approve it with size-override.
 SPLIT="this cannot open as one PR, split; there is nothing to approve"
 TAB=$(printf '\t')
 
-# The reader's safety check runs in a bash with an empty environment and PATH=/usr/bin:/bin, so no exported function,
-# BASH_ENV or earlier PATH entry of the caller's stands in for stat or date. Args: <file> <approvals dir> <owner uid>.
-# It prints `<now> TAB <expiry as a date> TAB <the file's first line>`, or one reason and exits 1.
 # shellcheck disable=SC2016
 APPROVAL_READ_SH='f=$1 d=$2 u=$3
 [ -f "$f" ] && [ ! -L "$f" ] || { echo "it is not a regular file"; exit 1; }
@@ -154,8 +148,6 @@ tab=$(printf "\t"); exp=${line#*"$tab"}; exp=${exp%%"$tab"*}
 case $exp in ""|*[!0-9]*) till="-" ;; *) till=$(date -u -d "@$exp" "+%Y-%m-%d %H:%MZ" 2>/dev/null) || till="epoch $exp" ;; esac  # gnu-ok: display only # swallow-ok: the expiry date is display only, the epoch stands in
 printf "%s\t%s\t%s\n" "$(date +%s)" "$till" "$line"'
 
-# approval_read <file> - the safety check: a safe, well-formed, unexpired approval file. Sets A_TILL, A_ID, A_REASON and
-# the four fields approval_fields compares; on a failure A_WHY names it and it returns 1.
 approval_read() {
     local out now tag exp extra
     A_WHY="" A_KEY="" A_LABEL="" A_FILES="" A_SCOPE=""
@@ -169,8 +161,6 @@ EOF
     case "$exp$now" in ''|*[!0123456789]*) A_WHY="its expiry is not a number"; return 1 ;; esac
     [ "$exp" -gt "$now" ] || { A_WHY="it expired $A_TILL"; return 1; }
 }
-# approval_fields <file> <files> <scope> - the field match: the approval approval_read last read is for this KEY and
-# label and these files and scope, and the file's own name says the same.
 approval_fields() {
     [ "$1" = "$SIZE_APPROVALS/$KEY.$LABEL.$2.$3" ] && [ "$A_KEY" = "$KEY" ] && [ "$A_LABEL" = "$LABEL" ] \
         && [ "$A_FILES" = "$2" ] && [ "$A_SCOPE" = "$3" ]
@@ -215,7 +205,6 @@ record)
     echo "size-override: recorded for $KEY $LABEL ($FILES files) by $SRC"
     ;;
 check)
-    # the operator's cases come first: no chief row, signed or not, lifts them; only the operator's approval does
     if why=$(operator_owned "$FILES" 0 "$TRUST"); then
         if [ "$FILES" -gt "$CAP" ]; then
             echo "size-override: $why: $SPLIT" >&2
@@ -257,7 +246,6 @@ EOF
     echo "size-override: $KEY $LABEL ($FILES files) kept whole by $rsrc: $rreason"
     ;;
 operator)
-    # the terminal route: file the size-approval op; the operator approves with the nonce and code root's notice bot sends
     case "$FILES" in [0-9]|[0-9][0-9]|[0-9][0-9][0-9]) ;; *) echo "size-override: --files needs 1 to 3 digits" >&2; exit 2 ;; esac
     printf '%s' "$REASON" | grep -qE '^[A-Za-z0-9,.:_-]{3,80}$' || { echo "size-override: --reason is one word of 3 to 80 characters from A-Za-z0-9,.:_- (got '$REASON')" >&2; exit 2; }
     [ -n "$SCOPE" ] || { echo "size-override: --scope is required (the digest gen-briefs prints)" >&2; exit 2; }
@@ -282,7 +270,6 @@ operator)
     id=$(printf '%s\n' "$line" | sed -n 's/^result=pending id=\([a-z2-7]*\).*/\1/p')
     [ -n "$id" ] || exit 5
     if [ -t 0 ] && command -v himmelctl >/dev/null 2>&1; then
-        # himmelctl writes its masked prompt to stdout, so that stdout goes on to the terminal as well as into $out
         out=$(himmelctl approve "$id" | tee /dev/tty; exit "${PIPESTATUS[0]}"); rc=$?
         case "$out" in *op_result=changed*) exit 0 ;; esac
         echo "size-override: approve $id did not run the op (himmelctl exit $rc)" >&2
