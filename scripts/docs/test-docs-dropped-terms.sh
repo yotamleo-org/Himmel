@@ -324,7 +324,6 @@ docs/setup/new-machine.md	- `cygpath` (Windows-only path translation) → `scrip
 docs/setup/new-machine.md	   worktree-and-git-common-dir, Windows-drive-relative, and Windows
 docs/setup/new-machine.md	in `~/.config/claude-glm/phi-roots` (the harness-wide PHI config directory; the
 docs/setup/new-machine.md	name outlived the GLM lane) or `~/.config/claude-codex/phi-roots`;
-docs/setup/operator-profile-tbd-delta.md	| 10 | Lane readiness gates (`passesRequired` probation counters) and the full dormant-lane roster (opt-in env names) | Direct read of `scripts/lanes/lanes.json`'s `readiness`/`dormant` fields (`delta.lanes.readinessGates`, `dormantLanes`) | The wizard offers only the 4 wizard-askable lane ids (`ollama-local`, `copilot-cli`, `codex-exec`, `hermes-oneshot`); it never surfaces readiness-gate progress or the dormant-lane roster (`glm`, `openrouter-claude`) | planned |
 docs/tool-adoption/lane-adoption-playbook.md	example this playbook generalizes: each axis below is a knob GLM's rollout tripped over,
 docs/tool-adoption/lane-adoption-playbook.md	*config/code knob* the measurement feeds. Where the axis has GLM evidence
 docs/tool-adoption/lane-adoption-playbook.md	**GLM evidence:** `glm-5.2[1m]` measured **~205s / 23KB** response on a real
