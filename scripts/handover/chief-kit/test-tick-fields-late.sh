@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# test-tick-fields-late.sh — the orphans-wip= ... review= field rows of the batched chief tick, the second half of
-# test-tick-fields.sh (which ran 557 s in CI against the runner's 600 s cap). Same fixture, same helpers; each half
-# stands alone and the rows are unchanged. Hermetic like test-tick.sh: no live queue, process, scheduler, GitHub or bank.
+# test-tick-fields-late.sh — the orphans-wip= ... review= field rows of the batched chief tick (the earlier
+# rows are in test-tick-fields.sh). Same fixture, hermetic like test-tick.sh: no live queue, process, scheduler, GitHub or bank.
 #
 # PLATFORM GUARD: The chief kit is Linux-only
 # (pgrep, atq, /tmp suite locks, and claudex/konsole); this Bash 3.2 suite

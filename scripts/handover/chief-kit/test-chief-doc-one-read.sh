@@ -475,9 +475,6 @@ check "tqlike fourth succession (pointer not first): the 3 new rulings are in a 
 check "tqlike fourth succession (pointer not first): the earlier 20 rulings are still in a companion file" "$([ -f "$doc4" ] && companion_files "$doc4" | while read -r f; do cat "$root/tester/tqlike/$f"; done | grep -c '^OPERATOR 11-07 ZZ ')" "20"
 check "tqlike fourth succession (pointer not first): the index lists the 3 new numbers and has one pointer line" "$([ -f "$doc4" ] && dir_lines "$doc4" | grep -cE '^OPERATOR 11-07 XX, decision 97[0-2]') $([ -f "$doc4" ] && dir_lines "$doc4" | grep -c '^Full original text')" "3 1"
 
-# (g) a direction far larger than a pipe buffer: the pointer line is found though `grep -m 1` quits
-# long before the writer is done (under pipefail the writer's SIGPIPE used to blank the pointer, so
-# next refused with exit 7 on about 1 run in 300, and on every run once the block passes ~100 KB)
 cat > "$tmp/pad.py" <<'PY'
 import sys
 doc, n = sys.argv[1], int(sys.argv[2])

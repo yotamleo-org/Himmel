@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# test-tick-fields.sh — the second half of test-tick.sh, itself split at the orphans-wip= section: the
-# fails= ... alert-fail= field rows of the batched chief tick. test-tick.sh ran 490 s against the runner's 600 s cap
-# and every new tick field added rows, so it was split at the fails= section; this half then ran 557 s in CI (and 1206 s
-# when the runner's watchdog killed both attempts), so the orphans-wip= ... review= rows moved to
-# test-tick-fields-late.sh. The suites share tick-test-fixture.sh. Hermetic like test-tick.sh: no live queue, process, scheduler, GitHub or bank.
+# test-tick-fields.sh — the second half of test-tick.sh: the fails= ... alert-fail= field rows of the batched
+# chief tick; the orphans-wip= ... review= rows are in test-tick-fields-late.sh. The suites share
+# tick-test-fixture.sh. Hermetic like test-tick.sh: no live queue, process, scheduler, GitHub or bank.
 #
 # PLATFORM GUARD: The chief kit is Linux-only
 # (pgrep, atq, /tmp suite locks, and claudex/konsole); this Bash 3.2 suite
