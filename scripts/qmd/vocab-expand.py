@@ -38,8 +38,7 @@ STRING_OPTS = {
 }
 SHORT_STRING = set("cCnl")
 NEGATION = re.compile(r'(^|\s)-[\w"]')
-# Question words a keyword AND cannot satisfy: a lex query joins every term, so "how does the" must
-# all appear in a doc. ponytail: one fixed English list, no per-corpus tuning; grow it from a miss.
+# ponytail: one fixed English list, no per-corpus tuning; grow it from a miss.
 STOPWORDS = frozenset(
     "a an the is are was were be been being do does did how what why when where who whom whose which "
     "of to in on at for from by with about into and or it its this that these those can could should "

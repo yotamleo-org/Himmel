@@ -80,19 +80,16 @@ else
   echo "  skip: V10 vocabulary golden set (bun not on PATH)"
 fi
 
-# V11: the lexical leg drops filler words, so a keyword AND no longer needs "how does the".
 got="$(doc search "how does the waiter wake the chief")"
 want="lex: waiter wake chief${nl}lex: waiter wake console"
 if [ "$got" = "$want" ]; then pass "V11 lex line drops filler words"
 else fail "V11 got='$got'"; fi
 
-# V12: the vector leg drops a leading dash word (qmd rejects a vec query holding one); the lex line keeps it.
 got="$(doc query "claude -p mode")"
 want="lex: claude -p mode${nl}vec: claude mode"
 if [ "$got" = "$want" ]; then pass "V12 vec line drops -p, lex line keeps it"
 else fail "V12 got='$got'"; fi
 
-# V13: a quoted phrase keeps its filler words; a question of only filler words stays whole.
 got="$(doc search 'what is "the end" mode')|$(doc search "how does the")"
 if [ "$got" = 'lex: "the end" mode|how does the' ]; then pass "V13 quoted phrase kept, all-filler question whole"
 else fail "V13 got='$got'"; fi

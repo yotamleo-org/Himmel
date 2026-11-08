@@ -97,7 +97,6 @@ sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
 import importlib.util  # noqa: E402
 
-# The qmd query shaping lives in one place, scripts/qmd/vocab-expand.py; the eval sends what qmd-bounded.sh sends.
 _vx_spec = importlib.util.spec_from_file_location("vocab_expand", os.path.join(HERE, "..", "..", "qmd", "vocab-expand.py"))
 vocab_expand = importlib.util.module_from_spec(_vx_spec)
 _vx_spec.loader.exec_module(vocab_expand)

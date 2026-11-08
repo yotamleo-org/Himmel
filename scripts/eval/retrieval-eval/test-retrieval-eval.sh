@@ -275,8 +275,6 @@ for error in (RuntimeError("backend unavailable " * 10), TimeoutError("timed out
     rows.append(m.arm_qmd("fixture", True, 1, 5, "himmel"))
 print(rows[0][2:] == (False, True, "backend unavailable " * 5) and rows[1][2:] == (True, False, "timed out"))' "$EV")"
 
-# 8c2. each qmd leg is shaped before it is sent: the lex leg drops filler words, the vec leg drops a
-# leading dash word (qmd rejects a vec query holding one); the intent keeps the whole question.
 cat > "$W/qmd-rec" <<'EOF'
 #!/usr/bin/env bash
 cat > "$(dirname "$0")/sent.json"
