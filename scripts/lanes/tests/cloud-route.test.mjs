@@ -108,17 +108,20 @@ test('HOOK-BYPASS wins over trust path for scripts/hooks/lib', () => {
   assert.equal(v.class, 'HOOK-BYPASS');
 });
 
-test('BLOCKED: a held file (open PR or console list), file or directory overlap', () => {
+test('a held file (open PR or console list) is an overlap, never BLOCKED: the reason names it', () => {
   const v = classifyTicket(tk(), ctx({ held: [{ file: 'scripts/lanes/example.sh', why: 'PR 1' }] }));
-  assert.equal(v.class, 'BLOCKED');
-  assert.match(v.reason, /PR 1/);
+  assert.notEqual(v.class, 'BLOCKED');
+  assert.equal(v.class, 'CLOUD-OK');
+  assert.match(v.reason, /overlaps scripts\/lanes\/example\.sh \(PR 1\)/);
   const d = classifyTicket(tk(), ctx({ held: [{ file: 'scripts/lanes/', why: 'live worker' }] }));
-  assert.equal(d.class, 'BLOCKED');
+  assert.notEqual(d.class, 'BLOCKED');
+  assert.match(d.reason, /overlaps/);
 });
 
-test('BLOCKED wins over a hook path (one writer per file)', () => {
+test('an overlap does not change the class: a hook path stays HOOK-BYPASS and says it overlaps', () => {
   const v = classifyTicket(tk({ description: 'Edit scripts/hooks/a.sh.' }), ctx({ held: [{ file: 'scripts/hooks/a.sh', why: 'PR 2' }] }));
-  assert.equal(v.class, 'BLOCKED');
+  assert.equal(v.class, 'HOOK-BYPASS');
+  assert.match(v.reason, /overlaps scripts\/hooks\/a\.sh \(PR 2\)/);
 });
 
 test('BLOCKED: ticket not To Do (already in flight or done)', () => {
@@ -303,7 +306,7 @@ test('CLI: routes four tickets, writes one brief, one launch line, one JSONL rec
   assert.deepEqual(launches, [`konsole --separate -e claude --cloud "$(cat ${brief})" --permission-mode auto`]);
   const recs = readFileSync(join(bucket, 'cloud-route.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.deepEqual(recs.map((x) => [x.ticket, x.class]), [
-    ['HIMMEL-9001', 'CLOUD-OK'], ['HIMMEL-9002', 'LOCAL-NATIVE'], ['HIMMEL-9003', 'HOOK-BYPASS'], ['HIMMEL-9004', 'BLOCKED'],
+    ['HIMMEL-9001', 'CLOUD-OK'], ['HIMMEL-9002', 'LOCAL-NATIVE'], ['HIMMEL-9003', 'HOOK-BYPASS'], ['HIMMEL-9004', 'LOCAL-NATIVE'],
   ]);
   assert.equal(recs[0].brief, brief);
   assert.equal(recs[1].brief, null);
@@ -335,25 +338,26 @@ test('CLI: the old --console is refused even with HIMMEL_LEGACY_NAMES=1; only --
   assert.ok(!existsSync(join(bucket, 'cloud-brief-HIMMEL-9001.md')));
 });
 
-test('CLI: a CLOUD-OK ticket holds its files, so a second ticket on them is BLOCKED', () => {
+test('CLI: a CLOUD-OK ticket\'s files are an overlap for a second ticket on them, which is still CLOUD-OK', () => {
   const { bucket, jira, gh } = setup();
   const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001', 'HIMMEL-9001'], {
     encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
   });
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(r.stdout.split('\n').filter(Boolean).map((l) => l.split('\t')[1]), ['CLOUD-OK', 'BLOCKED']);
+  const rows = r.stdout.split('\n').filter(Boolean).map((l) => l.split('\t'));
+  assert.deepEqual(rows.map((l) => l[1]), ['CLOUD-OK', 'CLOUD-OK']);
+  assert.match(rows[1][2], /overlaps scripts\/lanes\/example\.sh \(routed HIMMEL-9001 this run\)/);
 });
 
-test('CLI: --held file blocks without gh, and --classify-only writes nothing', () => {
-  const { dir, bucket, jira } = setup();
+test('CLI: --held file shows the overlap in the reason, and --classify-only writes nothing', () => {
+  const { dir, bucket, jira, gh } = setup();
   const held = join(dir, 'held.txt');
   writeFileSync(held, 'scripts/lanes/example.sh\n');
-  const noGh = stub(dir, 'gh2', 'echo "gh unavailable" >&2; exit 1');
   const r = spawnSync(process.execPath, [CLI, '--bucket', bucket, '--chief', 'AD', '--held', held, '--classify-only', 'HIMMEL-9001'], {
-    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: noGh },
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
   });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /HIMMEL-9001\s+BLOCKED/);
+  assert.match(r.stdout, /HIMMEL-9001\s+CLOUD-OK\s.*overlaps scripts\/lanes\/example\.sh \(chief held list\)/);
   assert.ok(!existsSync(join(bucket, 'cloud-route.jsonl')));
 });
 
@@ -489,7 +493,7 @@ exit 1`);
   assert.equal(run({ CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'main' }).status, 0);
   assert.deepEqual(searched(), ['HIMMEL-9002'], 'only the key a commit names is searched');
   const slugs = new Set(readFileSync(log, 'utf8').split('\n').flatMap((l) => l.match(/(?:--repo |repos\/)[\w-]+\/\w+/g) ?? []));
-  assert.deepEqual([...slugs].sort(), ['--repo yotamleo-org/Himmel', 'repos/yotamleo-org/Himmel']);
+  assert.deepEqual([...slugs].sort(), ['--repo yotamleo-org/Himmel']);
   // unknown (no such ref) fails closed: every key is searched
   writeFileSync(log, '');
   assert.equal(run({ CLOUD_ROUTE_GIT_DIR: g, CLOUD_ROUTE_MAIN_REF: 'no-such-ref' }).status, 0);
@@ -592,12 +596,12 @@ test('a bare hook name in the title resolves to its path and routes HOOK-BYPASS 
   }
 });
 
-test('a bare hook name hits the held-file check (open PR holds the hook)', () => {
+test('a bare hook name shows the overlap when an open PR holds the hook, and stays HOOK-BYPASS', () => {
   const held = [{ file: 'scripts/hooks/guard-pr-check-literal.sh', why: 'open PR 2353' }];
   for (const t of [T4503, T4517]) {
     const v = classifyTicket(t, ctx({ tree: TREE, held }));
-    assert.equal(v.class, 'BLOCKED', t.key);
-    assert.match(v.reason, /PR 2353/);
+    assert.equal(v.class, 'HOOK-BYPASS', t.key);
+    assert.match(v.reason, /overlaps .*PR 2353/);
   }
 });
 
@@ -630,100 +634,6 @@ test('an unavailable file tree is BLOCKED, never CLOUD-OK', () => {
   const v = classifyTicket(tk(), ctx({ treeUnknown: true }));
   assert.equal(v.class, 'BLOCKED');
   assert.match(v.reason, /file tree unavailable/);
-});
-
-// a CLOUD-OK ticket's files stay reserved across invocations through the bucket's
-// cloud-route.jsonl, until an age cap, or until a merged PR cites the ticket.
-function reserveStubs() {
-  const s = setup();
-  const jira = stub(s.dir, 'jira5499', `
-case "$2" in
-  HIMMEL-9101) printf 'HIMMEL-9101\\tTask\\tTo Do\\tfirst\\n\\nEdit scripts/lanes/example.sh.\\n';;
-  HIMMEL-9102) printf 'HIMMEL-9102\\tTask\\tTo Do\\tsecond\\n\\nEdit scripts/lanes/example.sh.\\n';;
-  *) exit 1;;
-esac`);
-  const route = (key, gh = s.gh) => spawnSync(process.execPath, [CLI, '--bucket', s.bucket, '--chief', 'AD', key], {
-    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
-  });
-  const seed = (...recs) => writeFileSync(join(s.bucket, 'cloud-route.jsonl'), recs.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n') + '\n');
-  return { ...s, route, seed };
-}
-const hoursAgo = (h) => new Date(Date.now() - h * 3600e3).toISOString();
-const rec = (over) => ({ ticket: 'HIMMEL-9100', class: 'CLOUD-OK', reason: 'r', files: ['scripts/lanes/example.sh'], brief: null, time: hoursAgo(1), ...over });
-
-test('CLI: a second invocation over one bucket is BLOCKED on the file the first routed', () => {
-  const { route } = reserveStubs();
-  const first = route('HIMMEL-9101');
-  assert.equal(first.status, 0, first.stderr);
-  assert.match(first.stdout, /HIMMEL-9101\tCLOUD-OK/);
-  const second = route('HIMMEL-9102');
-  assert.equal(second.status, 0, second.stderr);
-  assert.match(second.stdout, /HIMMEL-9102\tBLOCKED\t.*scripts\/lanes\/example\.sh is held \(routed HIMMEL-9101 in an earlier run\)/);
-});
-
-test('CLI: an expired reservation does not block, and a fresh one does', () => {
-  const stale = reserveStubs();
-  stale.seed(rec({ time: hoursAgo(49) }));
-  assert.match(stale.route('HIMMEL-9102').stdout, /HIMMEL-9102\tCLOUD-OK/);
-  const fresh = reserveStubs();
-  fresh.seed(rec({ time: hoursAgo(47) }));
-  assert.match(fresh.route('HIMMEL-9102').stdout, /HIMMEL-9102\tBLOCKED\t.*routed HIMMEL-9100 in an earlier run/);
-});
-
-test('CLI: only CLOUD-OK records reserve, and a corrupt, filesless or timeless line is skipped', () => {
-  const { route, seed } = reserveStubs();
-  seed('not json {', '[1,2]', 'null', { ticket: 'HIMMEL-9100', class: 'CLOUD-OK', reason: 'old record', time: hoursAgo(1) },
-    rec({ time: 'never' }), rec({ files: 'scripts/lanes/example.sh' }), rec({ files: [7, null] }), rec({ class: 'BLOCKED' }));
-  const r = route('HIMMEL-9102');
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /HIMMEL-9102\tCLOUD-OK/);
-});
-
-function mergedStub(dir, mergedAt, title = 'feat: [HIMMEL-9100] x') {
-  return stub(dir, 'gh5499', `
-if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then
-  echo '[{"number":2001,"title":"${title}","body":"","mergedAt":"${mergedAt}","files":[]}]'; exit 0
-fi
-if [ "$1 $2" = "pr list" ]; then exit 0; fi
-exit 1`);
-}
-
-test('CLI: a merged PR citing the reserved ticket releases its files', () => {
-  const { dir, route, seed } = reserveStubs();
-  seed(rec());
-  assert.match(route('HIMMEL-9102', mergedStub(dir, hoursAgo(0.5))).stdout, /HIMMEL-9102\tCLOUD-OK/);
-});
-
-test('CLI: a PR merged before the reservation was made does not release it', () => {
-  const { dir, route, seed } = reserveStubs();
-  seed(rec());
-  assert.match(route('HIMMEL-9102', mergedStub(dir, hoursAgo(5))).stdout, /HIMMEL-9102\tBLOCKED\t.*routed HIMMEL-9100 in an earlier run/);
-});
-
-test('CLI: a PR citing a longer-prefixed key does not release the reservation', () => {
-  const { dir, route, seed } = reserveStubs();
-  seed(rec());
-  assert.match(route('HIMMEL-9102', mergedStub(dir, hoursAgo(0.5), 'feat: [XHIMMEL-9100] x')).stdout, /HIMMEL-9102\tBLOCKED\t.*routed HIMMEL-9100 in an earlier run/);
-});
-
-test('CLI: an unreadable reservation log blocks routing instead of being ignored', () => {
-  const { dir, bucket } = reserveStubs();
-  mkdirSync(join(bucket, 'cloud-route.jsonl'));
-  const jira = stub(dir, 'jira5499b', `printf 'HIMMEL-9102\\tTask\\tTo Do\\tsecond\\n\\nEdit scripts/lanes/example.sh.\\n'`);
-  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9102'], {
-    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: join(dir, 'gh') },
-  });
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /HIMMEL-9102\tBLOCKED\t.*reservation log is unreadable/);
-});
-
-test('CLI: a record with an invalid ticket string is skipped and does not drop the other reservations', () => {
-  const { route, seed } = reserveStubs();
-  seed(rec({ ticket: '[' }), rec({ ticket: ['HIMMEL-9101'] }), rec());
-  const r = route('HIMMEL-9102');
-  assert.equal(r.status, 0, r.stderr);
-  assert.doesNotMatch(r.stdout, /routed HIMMEL-9101/);
-  assert.match(r.stdout, /HIMMEL-9102\tBLOCKED\t.*routed HIMMEL-9100 in an earlier run/);
 });
 
 const MATRIX = JSON.parse(readFileSync(join(HERE, '..', 'cloud-capabilities.json'), 'utf8'));
@@ -761,77 +671,45 @@ test('matrix: a matrix with no match rows has no run-time need', () => {
   assert.equal(classifyTicket(tk({ description: 'Edit scripts/a.sh. It reads the luna vault.' }), ctx({ matrix })).class, 'CLOUD-OK');
 });
 
-test('a ticket naming a directory with a held file under it is BLOCKED, naming the file and its holder', () => {
+test('a ticket naming a directory with a held file under it is an overlap, naming the file and its holder', () => {
   const dirTicket = tk({ description: 'Tidy the helpers under scripts/lanes/.' });
   const v = classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
-  assert.equal(v.class, 'BLOCKED');
-  assert.match(v.reason, /scripts\/lanes\/ contains held scripts\/lanes\/other\.sh \(open PR 77\)/);
-  // the exact file a PR touches blocks, beside a directory the ticket names
+  assert.notEqual(v.class, 'BLOCKED');
+  assert.match(v.reason, /overlaps scripts\/lanes\/ \(contains held scripts\/lanes\/other\.sh, open PR 77\)/);
   const exact = classifyTicket(tk({ description: 'Tidy scripts/lanes/ and fix scripts/lanes/other.sh.' }), ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
-  assert.equal(exact.class, 'BLOCKED');
-  // a held directory (a live worker's tree) over a ticket's directory blocks too
-  assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/', why: 'live worker' }] })).class, 'BLOCKED');
-  // nothing held under the directory: unchanged
-  assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/other/x.sh', why: 'open PR 78' }] })).class, 'CLOUD-OK');
+  assert.notEqual(exact.class, 'BLOCKED');
+  assert.match(exact.reason, /overlaps .*scripts\/lanes\/other\.sh \(open PR 77\)/);
+  assert.match(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/', why: 'live worker' }] })).reason, /overlaps scripts\/lanes\/ \(live worker\)/);
+  const clear = classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/other/x.sh', why: 'open PR 78' }] }));
+  assert.equal(clear.class, 'CLOUD-OK');
+  assert.doesNotMatch(clear.reason, /overlaps/);
 });
 
-test('a hook or trust-path ticket naming a directory with a held file under it is BLOCKED, not routed', () => {
+test('a hook or trust-path ticket naming a directory with a held file under it keeps its class and shows the overlap', () => {
   const held = [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }];
-  for (const d of ['Fix scripts/hooks/guard.sh and tidy scripts/lanes/.', 'Fix scripts/ci/check.sh and tidy scripts/lanes/.']) {
+  const want = { 'Fix scripts/hooks/guard.sh and tidy scripts/lanes/.': 'HOOK-BYPASS', 'Fix scripts/ci/check.sh and tidy scripts/lanes/.': 'LOCAL-NATIVE' };
+  for (const [d, cls] of Object.entries(want)) {
     const v = classifyTicket(tk({ description: d }), ctx({ held }));
-    assert.equal(v.class, 'BLOCKED', d);
-    assert.match(v.reason, /scripts\/lanes\/ contains held scripts\/lanes\/other\.sh \(open PR 77\)/);
+    assert.equal(v.class, cls, d);
+    assert.match(v.reason, /overlaps scripts\/lanes\/ \(contains held scripts\/lanes\/other\.sh, open PR 77\)/);
   }
 });
 
-test('a directory named with trailing punctuation and no slash still collides with a held file under it', () => {
+test('a directory named with trailing punctuation and no slash still overlaps a held file under it', () => {
   const held = [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }];
   const v = classifyTicket(tk({ description: 'Tidy the helpers in scripts/lanes.' }), ctx({ held, tree: [...TREE, 'scripts/lanes/other.sh'] }));
-  assert.equal(v.class, 'BLOCKED');
+  assert.notEqual(v.class, 'BLOCKED');
   assert.ok(v.files.includes('scripts/lanes/'));
-  assert.match(v.reason, /scripts\/lanes\/ contains held scripts\/lanes\/other\.sh/);
+  assert.match(v.reason, /overlaps scripts\/lanes\/ \(contains held scripts\/lanes\/other\.sh/);
 });
 
-test('a directory that only an open PR creates still collides, with or without the file tree', () => {
+test('a directory that only an open PR creates still overlaps, with or without the file tree', () => {
   const held = [{ file: 'scripts/lanes/newdir/a.sh', why: 'open PR 77' }];
   for (const c of [ctx({ held, tree: TREE }), ctx({ held })]) {
     for (const d of ['Tidy the helpers in scripts/lanes/newdir.', 'Fix scripts/hooks/guard.sh and tidy scripts/lanes/newdir.', 'Fix scripts/ci/check.sh and tidy scripts/lanes/newdir.']) {
       const v = classifyTicket(tk({ description: d }), c);
-      assert.equal(v.class, 'BLOCKED', d);
-      assert.match(v.reason, /scripts\/lanes\/newdir\/? contains held scripts\/lanes\/newdir\/a\.sh \(open PR 77\)/, d);
+      assert.notEqual(v.class, 'BLOCKED', d);
+      assert.match(v.reason, /overlaps scripts\/lanes\/newdir\/? \(contains held scripts\/lanes\/newdir\/a\.sh, open PR 77\)/, d);
     }
   }
-});
-
-test('an unavailable held list BLOCKS a trust-path or run-time-need ticket, not only a plain one', () => {
-  for (const d of ['Edit scripts/ci/check.sh.', 'Edit scripts/lanes/example.sh. It reads the luna vault.']) {
-    const v = classifyTicket(tk({ description: d }), ctx({ heldUnknown: true, tree: TREE }));
-    assert.equal(v.class, 'BLOCKED', d);
-    assert.match(v.reason, /held-file list unavailable/);
-  }
-});
-
-test('CLI: open PR files come from the paginated API, so a PR gh pr diff refuses with 406 still holds its files', () => {
-  const { bucket, jira, gh } = setup();
-  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9004'], {
-    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
-  });
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /HIMMEL-9004\s+BLOCKED\s.*scripts\/held\/file\.sh is held \(open PR 77\)/);
-  assert.doesNotMatch(r.stderr, /open-PR files unknown/);
-});
-
-test('CLI: a PR listing 3000 files is cut short by the API, so the held list is unknown and every ticket is BLOCKED', () => {
-  const { dir, bucket, jira } = setup();
-  const big = stub(dir, 'gh-big', `
-if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
-if [ "$1 $2" = "pr list" ]; then echo 77; exit 0; fi
-if [ "$1 $2" = "api --paginate" ]; then i=0; while [ $i -lt 3000 ]; do echo "scripts/big/f$i.sh"; i=$((i+1)); done; exit 0; fi
-exit 1`);
-  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
-    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: big },
-  });
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /HIMMEL-9001\s+BLOCKED\s.*held-file list unavailable/);
-  assert.match(r.stderr, /3000 files/);
 });
