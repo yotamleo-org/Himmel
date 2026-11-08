@@ -8316,6 +8316,11 @@ if [ -n "${_TIMEOUT_BIN:-}" ]; then
     SECONDS=0
     out="$(env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" HIMMEL_DOCTOR_HOLDS_T=2 "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$c95_t/slow" --only C95 --no-color 2>&1 < /dev/null)"
     if grepq "$out" -E "WARN C95-barrier-off.*cannot read.*$c95_repo.*exit 124" && [ "$SECONDS" -lt 15 ]; then pass "C95 holds.py that sleeps -> WARN exit 124 in ${SECONDS}s"; else fail "C95 sleeping holds.py (${SECONDS}s) -> $(printf '%s' "$out" | head -4)"; fi
+    echo "== C95: the bound covers every register together, so a second repo cannot extend it =="
+    mkdir -p "$c95_holds/%2Ftmp%2Fc95-second-repo"
+    SECONDS=0
+    out="$(env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" HIMMEL_DOCTOR_HOLDS_T=3 "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$c95_t/slow" --only C95 --no-color 2>&1 < /dev/null)"
+    if [ "$(printf '%s\n' "$out" | grep -c 'WARN C95-barrier-off')" -eq 2 ] && grepq "$out" -E 'WARN C95-barrier-off.*exit 124' && grepq "$out" -E 'WARN C95-barrier-off.*budget.*c95-second-repo|WARN C95-barrier-off.*budget.*'"$c95_repo" && [ "$SECONDS" -lt 12 ]; then pass "C95 two registers share one bound (${SECONDS}s)"; else fail "C95 two registers (${SECONDS}s) -> $(printf '%s' "$out" | head -5)"; fi
 else
     echo "  SKIP: C95 sleeping holds.py — no timeout binary"
 fi

@@ -3999,7 +3999,7 @@ EOF
 # first write has not published a row yet is invisible until it does. Upgrade path: read the worker list as well.
 check_c95_barrier_off() {
     local holds="${HOME:-/tmp}/.himmel/state/holds" py="$REPO_ROOT/scripts/handover/chief-kit/holds.py"
-    local name repo rows rc err marker age live bad offline off_sentinel_rx warned=0 off="$holds/OFF"
+    local name repo rows rc err marker age live bad offline off_sentinel_rx started left warned=0 off="$holds/OFF"
     if [ -e "$off" ] || [ -L "$off" ]; then
         warned=1
         # a FIFO or device named OFF would block the read: only a regular file (or a link to one) is read
@@ -4024,11 +4024,19 @@ check_c95_barrier_off() {
     fi
     command -v python3 >/dev/null 2>&1 || { emit WARN C95-barrier-off "python3 not on PATH -- the holds register was not read, so a barrier-off repo would not show"; return 0; }
     [ -f "$py" ] || { emit WARN C95-barrier-off "$py not found -- the holds register was not read"; return 0; }
+    started=$SECONDS
     for name in "$holds"/%2F*; do
         [ -e "$name" ] || [ -L "$name" ] || continue
         repo="$(printf '%s' "${name##*/}" | sed -e 's/%2F/\//g' -e 's/%25/%/g')"
+        left=$(( ${HIMMEL_DOCTOR_HOLDS_T:-33} - (SECONDS - started) ))
+        if [ -n "$_TIMEOUT_BIN" ] && [ "$left" -lt 1 ]; then
+            warned=1
+            emit WARN C95-barrier-off "the holds read budget (${HIMMEL_DOCTOR_HOLDS_T:-33} s for all repos) was spent before $repo -- its register was not read, so a barrier-off repo there would not show" \
+                "raise HIMMEL_DOCTOR_HOLDS_T, or run python3 -I $py read --repo $repo by hand"
+            continue
+        fi
         err="$(mktemp "${TMPDIR:-/tmp}/c95.XXXXXX" 2>/dev/null)" || { emit WARN C95-barrier-off "mktemp failed -- the holds register was not read"; return 0; }
-        rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "${HIMMEL_DOCTOR_HOLDS_T:-33}"} python3 -I "$py" read --repo "$repo" 2>"$err")"; rc=$?
+        rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$left"} python3 -I "$py" read --repo "$repo" 2>"$err")"; rc=$?
         if [ "$rc" -ne 0 ]; then
             warned=1
             emit WARN C95-barrier-off "cannot read the holds register of $repo (holds.py read exit $rc: $(head -c 200 "$err" | tr '\n\t' '  ')) -- a barrier-off repo there would not show" \
