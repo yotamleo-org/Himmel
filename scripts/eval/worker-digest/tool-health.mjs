@@ -130,7 +130,6 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     for (const h of health) {
       if (!h || typeof h.tool !== 'string' || !num(h.calls) || !num(h.failures) || !num(h.errors) || !num(h.denials) || typeof h.agent?.id !== 'string') continue;
       const slot = addSlot(h.agent.id, h.agent.model || (h.agent.id === 'main' ? r.model : null), h.day || day, profileOf(h.profile, r.meta?.profile, r.config?.profile));
-      // A BLOCKED report is a status the worker sent, so it leaves the tool's failures and shows as its own count.
       const blocked = h.classes && num(h.classes['blocked/-']) ? Math.min(h.classes['blocked/-'], h.failures) : 0;
       if (slot) slot.tools.set(h.tool, { ...h, failures: h.failures - blocked, blocked });
     }

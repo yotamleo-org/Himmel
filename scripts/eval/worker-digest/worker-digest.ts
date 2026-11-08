@@ -103,8 +103,7 @@ const MODEL = /^(claude|gpt|gemini|glm|codex|o\d)[a-z0-9.\-[\]]{0,60}$/i;
 // The tool name between the colon and "hook error" can carry a hyphen (mcp__himmel-bus__read), which \w does not match.
 const HOOK_PREFIX = /^(?:PreToolUse|PermissionRequest):[\w.-]+ hook error: /;
 const HOOK_ANY = /^(?:PreToolUse|PermissionRequest):[\w.-]+ hook error/;
-// Refusals whose text does not open "<hook name>:". Each fixed opening names the guard that wrote it; the DENY opening names
-// the hook it denied. ponytail: a table of today's openings, upgrade path the chain-log member for every guard.
+// ponytail: a table of today's openings, upgrade path the chain-log member for every guard.
 const OPENINGS: [RegExp, string][] = [
   [/^You are a CHIEF session running a long chief-kit script/, "guard-chief-foreground"],
   [/^bus store-deny:/, "guard-bus-store"],
@@ -114,7 +113,6 @@ const OPENINGS: [RegExp, string][] = [
   [/^guard-empty-expansion:/, "guard-empty-expansion"],
 ];
 const DENY_OPENING = /^run-hook-with-bash: DENY ([\w.-]+)\.sh\b/;
-// A TaskStop on a task that already ended: the stop did nothing wrong, so it is no failure.
 const STOP_NOOP = /\bis not running\b|\bNo task found\b/;
 const CLASSIFIER = /denied by the Claude Code auto mode classifier/;
 const BRACKET = /Reason: \[([^\]\n]{1,80})\]/;
@@ -494,7 +492,6 @@ async function main() {
     }
     if (CONTEXT_GUARD.test(text.slice(0, 2000))) return "guard-leg-context-handoff";
     const pre = HOOK_PREFIX.exec(text);
-    // The guard a fixed opening names, else null. A DENY of a script that is no hook names no guard.
     const opened = (s: string): string | null => {
       const hit = OPENINGS.find(([re]) => re.test(s));
       if (hit) return hit[1];

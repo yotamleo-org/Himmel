@@ -328,7 +328,6 @@ check "the Agent hook deny is keyed by the guard the chain log names" '[ "$(jq -
 check "the metrics count two denied and two errored calls" 'jq -e ".metrics.fail_denied == 2 and .metrics.fail_error == 2" "$TMP/hd/with.json" >/dev/null'
 
 echo "9. refusal openings and no-op TaskStops"
-# One tool call per line pair: id, tool, input JSON, result text. Every call errors, so a refusal text decides its own class.
 S11=9623c1a5-0000-4000-8000-000000000001
 mkdir -p "$TMP/op"
 pair() {

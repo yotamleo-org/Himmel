@@ -1540,13 +1540,11 @@ test("the Tool map legend colours 0 failed green and leaves under 5% neutral", a
   expect(html).toContain('<span class="tag">under 5%</span>');
 });
 
-// ---- a BLOCKED report is a status the worker sent, not a tool failure.
 test("a BLOCKED SendMessage is a blocked report, not a SendMessage failure", () => {
   const send = (calls: number, failures: number, errors: number, classes: Record<string, number>) => ({ agent, tool: "SendMessage", calls, failures, errors, denials: 0, classes, day: "2026-10-28" });
   const one = roll([bEval(1, [send(3, 1, 0, { "blocked/-": 1 })])], [bFail(1, "blocked/-", 1)]);
   expect(one.tools.find((t: any) => t.tool === "SendMessage")).toMatchObject({ calls: 3, failures: 0, errors: 0, rate: 0, blocked: 1 });
   expect(one.daily.find((t: any) => t.tool === "SendMessage")).toMatchObject({ failures: 0, blocked: 1 });
-  // A real SendMessage error beside the BLOCKED report still counts, and only it.
   const both = roll([bEval(1, [send(4, 2, 1, { "blocked/-": 1, "error/SendMessage": 1 })])], [bFail(1, "blocked/-", 1), bFail(1, "error/SendMessage", 1)]);
   expect(both.tools.find((t: any) => t.tool === "SendMessage")).toMatchObject({ calls: 4, failures: 1, errors: 1, rate: 0.25, blocked: 1 });
 });
