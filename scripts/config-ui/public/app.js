@@ -345,7 +345,7 @@ async function loadMode() {
   new MutationObserver(lockWrites).observe($("#main"), { childList: true, subtree: true });
 }
 loadMode();
-if (!token) adoptToken().then((ok) => { if (ok) renderPages(); }); // a reload or a login: the session cookie gets this tab its token back
+if (!landing) adoptToken().then((ok) => { if (ok) renderPages(); }); // a reload or a login: the session cookie gets this tab its token back, or a fresher one than a kept token the server no longer knows
 
 // /login takes ?next=, the page to come back to; login.js accepts only a path on this site. The address holds no typed value.
 function loginHref() { return "/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash); }

@@ -654,9 +654,20 @@ test("the launch token is kept for the tab: a reload with no fragment still foll
   expect([...b.spy.tab.values()]).toEqual([TOKEN]);
   await onPage(b, "#/config", async (p) => { // the reload: the fragment is gone, the tab's storage is not
     expect(p.fire("click", linkEvent(`/agui/#t=${TOKEN}`))).toBe(false);
-    expect(b.spy.urls.filter((u) => u.includes("/api/fleet-token"))).toEqual([]); // it had the token, so it asked for none
+    expect(b.spy.urls.filter((u) => u.includes("/api/fleet-token")).length).toBe(1); // no session: the ask is refused and the kept token stands
+    expect([...b.spy.tab.values()]).toEqual([TOKEN]);
   });
   for (const [what, seen] of Object.entries({ urls: b.spy.urls, cookies: b.spy.cookies, logs: b.spy.logs, history: b.spy.history })) expect(seen.join("\n"), what).not.toContain(TOKEN);
+});
+
+test("a kept token the server no longer knows is replaced on load when the tab has a valid session", async () => {
+  const s = boot({ noIdle: true });
+  const b = browser(s.base);
+  await logIn(b, "", USER, s.password);
+  b.spy.tab.set("himmel.fleet-token", "stale0token");
+  await onPage(b, "#/config", async () => {
+    expect([...b.spy.tab.values()]).toEqual([TOKEN]);
+  });
 });
 
 test("a tab with no token and a valid session asks the server for one on load, keeps it for the tab, and Fleet follows", async () => {
