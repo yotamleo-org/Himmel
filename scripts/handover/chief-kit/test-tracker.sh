@@ -1432,8 +1432,7 @@ v9611render --owed-dir "$W/bk9611-empty"
 contains 'a readable source with nothing owed says nothing is waiting' "$(grep -F 'data-section="waiting"' "$v9611out")" 'nothing is waiting on you'
 not_contains 'a page with nothing chief-owed has no Chief owes group' "$(cat "$v9611out")" 'data-section="chief-owes"'
 
-# --- Waiting on you holds only what the operator owes; unsigned specs are the chief's (decision 848)
-for t in 442 443 444 445 446; do
+for t in 442 443 444 445 446 447; do
     st='To Do'; [ "$t" = 445 ] && st='Done'
     printf '%s\n' '---' "key: \"HIMMEL-$t\"" 'updated: "2026-09-30T10:00:00.000+0000"' "statusCategory: \"$st\"" "status: \"$st\"" 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
         '---' "# HIMMEL-$t: chiefowes ticket $t" > "$vp/HIMMEL-$t.md"
@@ -1446,6 +1445,8 @@ printf '%s\n' '# spec' 'plain spec, no marker' > "$bk/specs/designs/HIMMEL-442-p
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-443-crit.md.critic-spec-r1.md"
 printf '%s\n' '# spec' 'OPERATOR-CRITICAL: grants a paid account' > "$bk/specs/designs/HIMMEL-443-crit.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-444-bus-read.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-447-empty.md.critic-spec-r1.md"
+printf '%s\n' '# spec' 'OPERATOR-CRITICAL:' 'a reason on the next line is no marker' > "$bk/specs/designs/HIMMEL-447-empty.md"
 printf '%s\n' '# chief' '## Live state' 'queue: HIMMEL-445 operator sign-off finished | HIMMEL-446 operator words still open' > "$bk/chief.md"
 v9611render --owed-dir "$bk" --chief-doc "$bk/chief.md"
 w9673="$(grep -F 'data-section="waiting"' "$v9611out")"
@@ -1458,7 +1459,8 @@ not_contains 'an older critic family of a ticket with a signed spec row lists no
 not_contains 'a chief-doc line whose ticket is Done does not list' "$w9673" 'HIMMEL-445 operator sign-off finished'
 contains 'control: a chief-doc line whose ticket is open still lists under Waiting on you' "$w9673" 'HIMMEL-446 operator words still open'
 contains 'Waiting on you counts only the critical spec and the open chief-doc line' "$w9673" 'data-count="2"'
-contains 'Chief owes counts only the one non-critical spec' "$c9673" 'data-count="1"'
+contains 'a marker line with no reason on its own line is not a marker' "$c9673" 'HIMMEL-447-empty.md: latest critic round 1'
+contains 'Chief owes counts the two non-critical specs' "$c9673" 'data-count="2"'
 
 # --- both pages open dark with no saved choice, whatever the system preference says
 if command -v node >/dev/null 2>&1; then

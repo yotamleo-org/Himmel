@@ -1410,14 +1410,10 @@ def spec_id(path):
     return p[:-3] if p.endswith('.md') else p
 
 
-ticket_bucket = bucket  # operator_owed's `bucket` argument is the handover dir
-CRITICAL_RE = re.compile(r'^OPERATOR-CRITICAL:\s*\S', re.M)
+CRITICAL_RE = re.compile(r'^OPERATOR-CRITICAL:[ \t]*\S', re.M)
 
 
 def operator_critical(spec, critic):
-    """a spec is the operator's to sign only when its file (or its latest critic file) has a line
-    `OPERATOR-CRITICAL: <why>` (spend grant, account or terms change, public policy, reversing an operator ruling);
-    every other unsigned spec is the chief's to sign (decision 848)."""
     for p in (spec if spec.endswith('.md') else spec + '.md', critic):
         try:
             if CRITICAL_RE.search(open(p, encoding='utf-8').read()):
@@ -1427,13 +1423,13 @@ def operator_critical(spec, critic):
     return False
 
 
-def operator_owed(bucket, chief_doc, version, opn, mir):
+def operator_owed(handover_dir, chief_doc, version, opn, mir):
     """(operator items, source read, unread critic files, chief-owed items): unsigned specs without the marker are chief-owed."""
     items, chief_owes, readable, unread = [], [], False, []
-    if bucket:
-        signed, signed_keys = set(), set()
+    if handover_dir:
+        signed, signed_ticket_numbers = set(), set()
         try:
-            for l in open(os.path.join(bucket, 'release', version, 'operator.jsonl'), encoding='utf-8'):
+            for l in open(os.path.join(handover_dir, 'release', version, 'operator.jsonl'), encoding='utf-8'):
                 try:
                     r = json.loads(l)
                 except ValueError:
@@ -1442,15 +1438,15 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                     signed.add(spec_id(r.get('spec_path')))
                     sk = re.search(r'HIMMEL-(\d+)', os.path.basename(str(r.get('spec_path') or '')))
                     if sk:
-                        signed_keys.add(int(sk.group(1)))  # an older critic family of a signed ticket is signed too
+                        signed_ticket_numbers.add(int(sk.group(1)))
             readable = True
         except FileNotFoundError:
-            readable = os.path.isdir(os.path.join(bucket, 'specs', 'designs'))
+            readable = os.path.isdir(os.path.join(handover_dir, 'specs', 'designs'))
         except OSError:
             signed = None
         if signed is not None:
             latest = {}
-            for f in glob.glob(os.path.join(bucket, 'specs', 'designs', '*.critic-spec-r*.md')):
+            for f in glob.glob(os.path.join(handover_dir, 'specs', 'designs', '*.critic-spec-r*.md')):
                 m = re.fullmatch(r'(.*)\.critic-spec-r(\d+)\.md', f)
                 if m and (m.group(1) not in latest or int(m.group(2)) > latest[m.group(1)][0]):
                     latest[m.group(1)] = (int(m.group(2)), f)
@@ -1461,13 +1457,13 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                 except (OSError, ValueError, IndexError):
                     unread.append(os.path.basename(f))
                     continue
-                if k and int(k.group(1)) in opn and int(k.group(1)) not in signed_keys and spec_id(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= CRITIC_ROUND_CAP):
+                if k and int(k.group(1)) in opn and int(k.group(1)) not in signed_ticket_numbers and spec_id(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= CRITIC_ROUND_CAP):
                     n = int(k.group(1))
                     (items if operator_critical(spec, f) else chief_owes).append(('unsigned spec', n, clip(opn[n]['title'], 100),
                                   '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
                                       os.path.basename(spec), rnd, last if re.fullmatch(r'SPEC (?:CLEAN|FINDINGS \d+)', last) else 'no verdict line'),
                                   'sign the spec, or rule on its findings'))
-        hand = sorted(glob.glob(os.path.join(bucket, '*HANDOFF.md')), key=os.path.getmtime)
+        hand = sorted(glob.glob(os.path.join(handover_dir, '*HANDOFF.md')), key=os.path.getmtime)
         sec = md_section(hand[-1], 'Open operator items') if hand else None
         if sec is not None:
             readable = True
@@ -1483,8 +1479,8 @@ def operator_owed(bucket, chief_doc, version, opn, mir):
                 if OWED_RE.search(s):
                     k = KEY_RE.search(s)
                     n = num(k.group(0)) if k else None
-                    if n and 'HIMMEL-%d' % n in mir and ticket_bucket(mir['HIMMEL-%d' % n]) in ('done', 'wont'):
-                        continue  # a line about a ticket already Done owes nothing
+                    if n and 'HIMMEL-%d' % n in mir and bucket(mir['HIMMEL-%d' % n]) in ('done', 'wont'):
+                        continue
                     items.append(('chief doc', n, clip(opn[n]['title'], 100) if n in opn else clip(s.strip(), 140), clip(s.strip(), 160),
                                   'the operator acts on what the line names'))
     return items, readable, unread, chief_owes
@@ -1665,7 +1661,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
                 key_html(n) + ' ' if n else '', esc(t), esc(src), esc(ctx), esc(act)) for src, n, t, ctx, act in owed))
         if nwait else '<div class="empty">%s</div>' % ('nothing is waiting on you' if owed_read else
                                                        'no operator-owed source read: the Jira labels name no waiting ticket, and that is all that was checked'))
-    if chief_owes:  # unsigned specs are the chief's (decision 848); not in the Waiting count or the fingerprint
+    if chief_owes:
         waithtml += '\n<section data-section="chief-owes" data-count="%d"><h2 class="sh">Chief owes <span class="n">%d</span></h2><ul>%s</ul></section>' % (
             len(chief_owes), len(chief_owes), ''.join('<li class="owed">%s%s <span class="own">%s · %s · action: %s</span></li>' % (
                 key_html(n) + ' ' if n else '', esc(t), esc(src), esc(ctx), esc(act)) for src, n, t, ctx, act in chief_owes))
