@@ -85,7 +85,7 @@ if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.index
 else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
 STUBEOF
 export GEN_BRIEFS_JIRA_CLI="$WORK/stub-jira/index.js"
-printf '%s\n' '[{"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"}]' > "$WORK/workers.json"
+printf '%s\n' '[{"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","writes":"none named","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"}]' > "$WORK/workers.json"
 n=0
 for letter in "" ABC; do
     n=$((n + 1)); mkdir -p "$WORK/repo$n"
