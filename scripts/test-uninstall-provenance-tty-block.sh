@@ -117,24 +117,27 @@ check "RED62: the ledger stays live when the backups could not be retained" \
 check "RED62: the backups stay where the ledger points" \
   "$([ -f "$BACKUP_SM" ] && echo yes || echo no)" "yes"
 
+install_retained_mkdir_counter() {
+  local log="$1" real_mkdir
+  real_mkdir=$(command -v mkdir)
+  # shellcheck disable=SC2016 # style-only: the stub's $@ and $a must stay literal
+  printf '#!/bin/sh\nfor a in "$@"; do case "$a" in */retained-*) echo x >> "%s" ;; esac; done\nexec "%s" "$@"\n' \
+    "$log" "$real_mkdir" > "$SUITE_TMP/bin/mkdir"
+  chmod +x "$SUITE_TMP/bin/mkdir"
+}
+remove_retained_mkdir_counter() { rm -f "$SUITE_TMP/bin/mkdir"; }
+
 echo "==== RED63 (HIMMEL-3787 S2b, J1408A F2): an unwritable base dir fails fast, not after ~53 s of EACCES retries ===="
 new_case red63
 DEST63="$CASE_DIR/cwd/scripts/red63.sh"
 seed_modified_unit "$DEST63"
 chmod 0555 "$(prov_dir)"
-# The run is ~3-4 s of bash on an idle box and ~12-16 s on a loaded CI runner, so a seconds bound alone
-# flaked. The retry bug this case guards is an unbounded loop of retained-* mkdir attempts, so count them
-# (a stub ahead of the real mkdir on run_uninstall's PATH) and keep wall-clock only as a 60 s backstop.
 MKDIR63_LOG="$CASE_DIR/mkdir63.log"
-_real_mkdir63=$(command -v mkdir)
-# shellcheck disable=SC2016 # the stub's own $@ / $a must stay literal
-printf '#!/bin/sh\nfor a in "$@"; do case "$a" in */retained-*) echo x >> "%s" ;; esac; done\nexec "%s" "$@"\n' \
-  "$MKDIR63_LOG" "$_real_mkdir63" > "$SUITE_TMP/bin/mkdir"
-chmod +x "$SUITE_TMP/bin/mkdir"
+install_retained_mkdir_counter "$MKDIR63_LOG"
 _t63=$SECONDS
 out63=$(run_uninstall --yes --purge-state --keep-backups --skip-tasks --skip-plugins --skip-hooks)
 _d63=$((SECONDS - _t63))
-rm -f "$SUITE_TMP/bin/mkdir"
+remove_retained_mkdir_counter
 chmod 0755 "$(prov_dir)"
 _n63=$(wc -l < "$MKDIR63_LOG" 2>/dev/null | tr -d ' ')
 check "RED63: gives up at once (at most 2 retained-* mkdir attempts)" \
