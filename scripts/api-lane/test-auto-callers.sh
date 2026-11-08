@@ -119,14 +119,16 @@ run_checks() {
             || echo "check5 docs/internals/api-lane.md: the limit line holding '$s' is not present whole" >>"$out"
     done
     f="$root/docs/internals/graph-cadence.md"
-    if ! grep -q -F -- '--with-luna-semantic' "$f" 2>/dev/null; then
+    local lsem para
+    lsem="$(grep -F -- '--with-luna-semantic' "$f" 2>/dev/null)"
+    if [ -z "$lsem" ]; then
         echo "check5 docs/internals/graph-cadence.md: no --with-luna-semantic line" >>"$out"
-    elif grep -F -- '--with-luna-semantic' "$f" | grep -q -v -F -- '--api-account'; then
+    elif grep -q -v -F -- '--api-account' <<<"$lsem"; then
         echo "check5 docs/internals/graph-cadence.md: a --with-luna-semantic line names no --api-account" >>"$out"
     fi
     f="$root/docs/internals/enforcement.md"
-    awk '/^\*\*Worker API-lane switch:\*\*/ { on = 1 } on && /^$/ { exit } on' "$f" 2>/dev/null \
-        | tr '\n' ' ' | grep -q -F 'settled by a later change' \
+    para="$(awk '/^\*\*Worker API-lane switch:\*\*/ { on = 1 } on && /^$/ { exit } on' "$f" 2>/dev/null | tr '\n' ' ')"
+    grep -q -F 'settled by a later change' <<<"$para" \
         || echo "check5 docs/internals/enforcement.md: the Worker API-lane switch paragraph has no 'settled by a later change' pointer" >>"$out"
     ! grep -q -F 'makes it the standing default' "$f" 2>/dev/null \
         || echo "check5 docs/internals/enforcement.md: still says 'makes it the standing default'" >>"$out"
