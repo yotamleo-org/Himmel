@@ -23,11 +23,25 @@ set -uo pipefail
 
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+leak_home="$(mktemp -d "${TMPDIR:-/tmp}/tick-leak-home.XXXXXX")" || exit 1  # prim-ok: the suite's own private temp root, removed at the end
+mkdir -p "$leak_home/.himmel/state/holds"
+printf '2026-01-01T00:00:00Z\tdeny\tseed\tHIMMEL-1\tHIMMEL-2\n' > "$leak_home/.himmel/state/holds/events.log"
+cp "$leak_home/.himmel/state/holds/events.log" "$leak_home/events.before"
+export HOME="$leak_home"
 # Fail closed: a missing or broken fixture must fail the suite, never run it with zero rows.
 if ! { [ -r "$HERE/tick-test-fixture.sh" ] && . "$HERE/tick-test-fixture.sh"; } 2>/dev/null; then
     printf 'FAIL - %s (tick-test-fixture.sh missing, unreadable or failing to load)\n' "$(basename "$0")"
     exit 1
 fi
+mkdir -p "$W/leak-mirror/HIMMEL"
+printf '%s\n' '# chief' > "$W/handover/leak-chief.md"
+NEXT_DISPATCH_MIRROR="$W/leak-mirror/HIMMEL" TOKEN='' bash "$SUT" --doc "$W/handover/leak-chief.md" > /dev/null 2>&1
+if cmp -s "$leak_home/events.before" "$leak_home/.himmel/state/holds/events.log" && [ "$(find "$leak_home/.himmel" -type f | wc -l)" -eq 1 ]; then
+    pass '(9565) a tick run over the stub forge leaves the real holds log and register untouched'
+else
+    fail '(9565) a tick run over the stub forge wrote into the real holds log or register'
+fi
+rm -rf "$leak_home"
 # A fresh heartbeat is not proof of worker activity. These rows catch removing
 # the idle override, treating an unfinished foreground suite as idle, or making
 # its label age-dependent (which would repeatedly wake the real waiter).
