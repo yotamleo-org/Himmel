@@ -26,7 +26,7 @@
 #                                                  the line passed on as is, rc 10
 #                        A bullet that cannot be written appends ` doc-bullet=failed <why>` (its own
 #                        line after a GO-WRITTEN). Any other auto-go answer is
-#                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: auto-go.sh --dry-run runs once, detached and bounded (LE_DRYRUN_BOUND seconds, default 60; its answer is ignored, so it leaves one auto-go.jsonl row; with stacked_series on it runs under the series ledger writer's label, as the live path does), and ESCALATE marker-READY follows at once, as before.
+#                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: auto-go.sh --dry-run runs once, detached with its output discarded and bounded by GNU timeout where one exists (LE_DRYRUN_BOUND seconds, default 60; macOS has none, so there it is detached but unbounded; its answer is ignored, so it leaves one auto-go.jsonl row; with stacked_series on it runs under the series ledger writer's label, as the live path does), and ESCALATE marker-READY follows at once, as before.
 #                        A WRAPPED whose PR wrap-merged finds still OPEN (rc 3 at its pr-state step) is closed the
 #                        same way: HANDLED close-wrapped, or ESCALATE close-wrapped-failed when that close refuses.
 #                        A MERGED line for an OPEN PR still escalates wrap-merged-failed.
@@ -108,9 +108,6 @@ dry_run_ready() {
     dpr="${BASH_REMATCH[1]}"; dhead="${BASH_REMATCH[2]}"
     dlabels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)"
     case "$dlabels" in ''|*$'\n'*) return 0 ;; esac
-    # Detached, output discarded: the dry run is advisory, so a slow or hung one never holds the READY escalation. The
-    # subshell gets the GNU timeout where one exists (scripts/lib/timeout-bin.sh; macOS has none, so there the dry run
-    # is detached but unbounded); timeout kills the dry run's whole process group, so nothing outlives the bound.
     (
         if stacked_series_state; then
             dw="$("${LIST[@]}" "$FLEET" | grep -F -- "-${dlabels}-" | head -n 1)"

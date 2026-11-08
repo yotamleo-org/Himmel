@@ -604,7 +604,6 @@ runf "$W/s-bad/fleet.json" "WRAPPED N8. Lock released."
 contains "16.6 an unreadable ledger escalates instead of guessing a route" "$out" "ESCALATE series-find-failed rc=1"
 check "16.6 nothing ran" "$calls" ""
 
-# 17. the flag-off READY dry run
 cat > "$W/autogo-sleep" <<'EOF17'
 #!/usr/bin/env bash
 echo $$ > "$LE_SLEEP_PID"
