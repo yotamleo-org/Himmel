@@ -3,7 +3,7 @@
 import { test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { applyKey, briefNext, BRIEF_IDLE, joinBoard, needsShown, normalizeBoard, openAt, parseView, STAGES, stageSegments, viewHash, type Board, type BoardWorker, type Drawer } from "../agui-web/src/board-model";
+import { applyKey, briefNext, BRIEF_IDLE, ciCount, failKind, joinBoard, needsShown, normalizeBoard, openAt, parseView, STAGES, stageSegments, viewHash, type Board, type BoardWorker, type Drawer } from "../agui-web/src/board-model";
 import type { Row } from "../agui-web/src/fleet-model";
 
 const worker = (name: string, o: Partial<BoardWorker> = {}): BoardWorker => ({
@@ -138,6 +138,30 @@ test("normalizeBoard: sections_error passes through as a string and is dropped o
 test("normalizeBoard: a board with no worker-time block still loads, with an empty one", () => {
   const b = board([worker("N1")], []);
   expect(normalizeBoard({ ...b, trends: {} }).trends.worker_time).toEqual({ unit: "min", today: [] });
+});
+
+test("normalizeBoard pass-through pin: a null ci and a null merged_today (a failed GitHub read) stay null", () => {
+  const b = board([worker("N1")]);
+  const out = normalizeBoard({ ...b, ci: null, headline: { live: 1, cap: null, merged_today: null, needs_you: 0, blocked: 0 }, trends: {} });
+  expect(out.ci).toBeNull();
+  expect(out.headline.merged_today).toBeNull();
+});
+
+test("ciCount: a null ci (a failed open-PR read) reads null instead of throwing, a real ci reads its count", () => {
+  const b = board([worker("N1")]);
+  expect(ciCount({ ...b, ci: null }, "green")).toBeNull();
+  expect(ciCount({ ...b, ci: { open: 3, green: 2, pending: 1, no_checks: 0, red: 0 } }, "green")).toBe(2);
+  expect(ciCount({ ...b, ci: { open: 3, green: 2, pending: 1, no_checks: 0, red: 0 } }, "red")).toBe(0);
+});
+
+test("failKind: the class prefix picks the kind; a trajectory class is not a tool error and run_error reads other", () => {
+  expect(failKind("denied/block-egress")).toBe("denial");
+  expect(failKind("error/Bash")).toBe("error");
+  expect(failKind("traj/red-before-green")).toBe("traj");
+  expect(failKind("suite/test-board.sh")).toBe("suite");
+  expect(failKind("blocked/-")).toBe("blocked");
+  expect(failKind("run_error/timeout")).toBe("other");
+  expect(failKind("unprefixed")).toBe("other");
 });
 
 test("briefNext: a new request clears the previous text and error", () => {
