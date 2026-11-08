@@ -46,9 +46,18 @@ const rollup = (many = true) => ({ state: "ok", cards: [
   card("health", "Health", "red-main incidents", "red main", many ? [4, 6, 2, 17, 3] : [3], cmp("2026-W44", 3, many ? -14 : null, many ? "2026-W43" : null), null, { key: "2026-W45", value: 5 }),
 ] });
 
-async function open(page: Page, b: object, r: object) {
+async function open(page: Page, b: object, r: object, chief = true) {
   await page.route("**/api/agui/board**", (route) => route.fulfill({ json: b }));
   await page.route("**/api/rollup", (route) => route.fulfill({ json: r }));
+  // no live chief: the census answers without its console rows, as it does when every chief has wrapped
+  if (!chief) await page.route("**/api/agui/fleet", async (route) => {
+    // a poll in flight when the harness stops finds the server gone: abort it, never fail the row on it
+    const response = await route.fetch().catch(() => null);
+    if (!response) return route.abort();
+    const fleet = await response.json();
+    fleet.sessions = fleet.sessions.filter((s: { role: string }) => s.role !== "console");
+    await route.fulfill({ response, json: fleet });
+  });
   h = await bootAgui("", { fleet: true });
   await page.goto(h.url);
   await page.getByRole("navigation", { name: "Fleet views" }).getByRole("button", { name: "Trends" }).click();
@@ -57,9 +66,30 @@ async function open(page: Page, b: object, r: object) {
 test("1. twenty merged workers draw the 8 longest and a link for the other 12", async ({ page }) => {
   await open(page, board({}, merged(20)), rollup());
   await expect(page.locator(".bd-gt .bd-track")).toHaveCount(8);
-  await expect(page.getByRole("button", { name: /^and 12 more, each shorter than/ })).toBeVisible();
+  // spans run 60 to 250 min with the longest last: N9112 (180 min) to N9119 (250 min) are the 8 longest
+  const drawn = await page.locator(".bd-gt .bd-w").evaluateAll((els) => els.map((e) => e.firstChild?.textContent ?? ""));
+  expect([...drawn].sort()).toEqual(Array.from({ length: 8 }, (_, i) => `N${9112 + i}`));
+  await expect(page.getByRole("button", { name: /^and 12 more, each shorter than 3h 0m/ })).toBeVisible();
   await page.getByRole("button", { name: /^and 12 more/ }).click();
   await expect(page.locator(".bd-drawer .bd-table tr")).toHaveCount(20);
+  const total = async (worker: string) => {
+    const text = await page.locator(".bd-drawer .bd-table tr", { has: page.locator("th", { hasText: new RegExp(`^${worker}$`) }) }).locator("td").innerText();
+    return Number(/total (\d+)m/.exec(text)?.[1]);
+  };
+  for (let i = 0; i < 12; i++) expect(await total(`N${9100 + i}`), `N${9100 + i} is one of the 12 shorter workers`).toBeLessThan(180);
+});
+
+test("1b. with no live chief the tab says so, still draws the weekly band, and draws no Today or stuck section", async ({ page }) => {
+  await open(page, board({}, merged(20)), rollup(), false);
+  await expect(page.locator(".bd-nod", { hasText: "read a live chief's board" })).toContainText("No chief is live: start one, or read the weekly band above.");
+  await expect(page.locator(".bd-nod b", { hasText: "Today" })).toBeVisible();
+  await expect(page.locator(".bd-nod b", { hasText: "Where workers got stuck" })).toBeVisible();
+  await expect(page.locator(".bd-gh", { hasText: "By week" })).toBeVisible();
+  await expect(page.locator(".bd-wk svg.bd-wline")).toHaveCount(3);
+  await expect(page.locator(".bd-gh", { hasText: "Today" })).toHaveCount(0);
+  await expect(page.locator(".bd-gh", { hasText: "Where workers got stuck" })).toHaveCount(0);
+  await expect(page.locator(".bd-gt")).toHaveCount(0);
+  await expect(page.locator(".bd-aside")).toHaveCount(0);
 });
 
 test("2. a one-week roll-up draws its dot and says the line starts with the second", async ({ page }) => {
