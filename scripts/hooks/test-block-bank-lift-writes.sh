@@ -247,6 +247,29 @@ if [ "$got" = 2 ]; then ok "jq missing denies"; else bad "jq missing denies — 
 mkdir -p "$T/slow-model" && printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\ncase "$5" in jq) exit 124 ;; esac\nexit 0\n' >"$T/slow-model/timeout" && chmod +x "$T/slow-model/timeout"
 err=$(printf '%s' "$(bash_json "echo hi | bash")" | XDG_STATE_HOME="$T/state" PATH="$T/slow-model:$PATH" bash "$HOOK" 2>&1 >/dev/null); got=$?
 if [ "$got" = 2 ] && [[ $err == *"timed out"* ]]; then ok "a timed-out command model denies a pipe into a shell"; else bad "a timed-out command model denies a pipe into a shell — rc=$got $(printf '%s' "$err" | head -c 200)"; fi
+# 9566: every other model failure denies too. Under a 1 GiB RLIMIT_AS, shfmt's Go
+# runtime sometimes aborts "out of memory"; the model reports that as rc 3, which
+# used to keep the tokenizer verdict and allow a pipe into a shell.
+_model_fail() {  # label expect PATH hook command
+    local got
+    got=$(printf '%s' "$(bash_json "$5")" | XDG_STATE_HOME="$T/state" PATH="$3" "$(command -v bash)" "$4" >/dev/null 2>&1; echo $?)
+    case "$got" in 0) got=allow ;; 2) got=deny ;; *) got="?(rc=$got)" ;; esac
+    if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 — expected $2 got $got"; fi
+}
+PIPE_SET="printf '%s\\n' 'bash scripts/lib/usage-lift.sh set x' | sh -s"
+mkdir -p "$T/crash-model" "$T/garbled-model" "$T/no-shfmt" "$T/nolib/scripts/hooks"
+printf '#!/bin/sh\necho "fatal error: out of memory" >&2\nexit 2\n' >"$T/crash-model/shfmt"
+printf '#!/bin/sh\nprintf "not json"\n' >"$T/garbled-model/shfmt"
+chmod +x "$T/crash-model/shfmt" "$T/garbled-model/shfmt"
+for b in bash cat awk sed tr grep printf env dirname jq date mkdir; do
+    p=$(command -v "$b" 2>/dev/null) && ln -s "$p" "$T/no-shfmt/$b"
+done
+cp "$HOOK" "$T/nolib/scripts/hooks/block-bank-lift-writes.sh"
+_model_fail "9566: a crashing command model denies a pipe into a shell" deny "$T/crash-model:$PATH" "$HOOK" "$PIPE_SET"
+_model_fail "9566: an unreadable model output denies a pipe into a shell" deny "$T/garbled-model:$PATH" "$HOOK" "$PIPE_SET"
+_model_fail "9566: shfmt missing denies a pipe into a shell" deny "$T/no-shfmt" "$HOOK" "$PIPE_SET"
+_model_fail "9566: a missing model lib denies a pipe into a shell" deny "$PATH" "$T/nolib/scripts/hooks/block-bank-lift-writes.sh" "$PIPE_SET"
+_model_fail "9566: a crashing model leaves a command with no pipe into a shell allowed" allow "$T/crash-model:$PATH" "$HOOK" "echo hi | grep h"
 
 echo "== deny message names the operator remedy =="
 err=$(printf '%s' "$(bash_json "bash $S set")" | bash "$HOOK" 2>&1 >/dev/null)

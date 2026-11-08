@@ -34,8 +34,9 @@
 # state dir, with or without a symlink member; a variable command word; sed's
 # `e` command and `s///e` flag; `less --log-file=`.
 #
-# Fail-closed (security fence): missing jq, malformed / non-object JSON, or a
-# tokenizer error -> deny. Any other non-0/2 exit is clamped to 2.
+# Fail-closed (security fence): missing jq, malformed / non-object JSON, a
+# tokenizer error, or any command-model failure on a pipe into a shell -> deny.
+# Any other non-0/2 exit is clamped to 2.
 #
 # ponytail: text-level literal-path fence, sandbox layer HIMMEL-5685 owns the rest — it cannot see Write-tool CONTENT
 # that is itself a script writing the lift, a script FILE that writes the lift
@@ -964,9 +965,11 @@ analyse "$CMD" 0
 # echo or printf of literal words, what it prints is analysed as the script: an
 # echo's words joined by spaces; a printf's format, each argument, and the
 # arguments joined, since the format is not rendered (an argument the format
-# would only print as data can still deny). Escapes are not decoded. It only
-# adds a deny; a missing lib, shfmt or jq, or a command shfmt cannot parse
-# leaves the tokenizer's verdict above. Pre-gated on a pipe beside a shell word.
+# would only print as data can still deny). Escapes are not decoded. Pre-gated
+# on a pipe beside a shell word; past that gate any model failure denies (a
+# missing lib, shfmt or jq, a timeout, a parse failure, a jq error): shfmt's Go
+# runtime can abort "out of memory" under an address-space limit, and the model
+# reports that as a parse failure.
 # swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
 IFS= read -r -d '' BL_JQ <<'BL_JQ_EOF' || true
 def thru: length == 1 and (.[0] | .prog == "tee"
@@ -982,22 +985,26 @@ def thru: length == 1 and (.[0] | .prog == "tee"
 BL_JQ_EOF
 if [[ $CMD == *'|'* ]] && [[ "$CMD" =~ (^|[^A-Za-z0-9_.-])(bash|sh|zsh|dash|ksh)([^A-Za-z0-9_.-]|$) ]]; then
     bl_lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
-    bl_texts=
     # shellcheck source=../lib/bash-ast.sh
-    if { [ -r "$bl_lib" ] && . "$bl_lib"; } 2>/dev/null; then
-        bl_rc=0
-        bl_pos=$(bash_ast_positions "$CMD" 2>/dev/null) || bl_rc=$? # swallow-ok: the rc is read next
-        if [ "$bl_rc" = 5 ]; then
-            echo "block-bank-lift-writes: the command model timed out, so this command that pipes into a shell cannot be read; refusing. Split the command." >&2
-            exit 2
-        fi
-        # swallow-ok: the model only adds denies; a failed parse keeps the tokenizer verdict above
-        bl_texts=$(printf '%s' "$bl_pos" | jq -c "$BL_JQ" 2>/dev/null)
+    if ! { [ -r "$bl_lib" ] && . "$bl_lib"; } 2>/dev/null; then
+        deny "the command model (scripts/lib/bash-ast.sh) is missing, so this command that pipes into a shell cannot be read (fail-closed)"
     fi
+    bl_rc=0
+    bl_pos=$(bash_ast_positions "$CMD" 2>/dev/null) || bl_rc=$? # swallow-ok: the rc is read next and every nonzero denies
+    case "$bl_rc" in
+        0) ;;
+        2) deny "shfmt or jq is not on PATH, so this command that pipes into a shell cannot be read (fail-closed)" ;;
+        5) deny "the command model timed out, so this command that pipes into a shell cannot be read (fail-closed); split the command" ;;
+        *) deny "the command model failed (rc=$bl_rc), so this command that pipes into a shell cannot be read (fail-closed); split or simplify the command" ;;
+    esac
+    # swallow-ok: only jq's stderr is dropped; a failure denies
+    bl_texts=$(printf '%s' "$bl_pos" | jq -c "$BL_JQ" 2>/dev/null) \
+        || deny "the command model's output could not be read (fail-closed)"
     while IFS= read -r bl_t; do
         [ -n "$bl_t" ] || continue
-        # swallow-ok: an undecodable text adds no deny; the tokenizer verdict stands
-        bl_t=$(printf '%s' "$bl_t" | jq -r . 2>/dev/null) || continue
+        # swallow-ok: only jq's stderr is dropped; a failure denies
+        bl_t=$(printf '%s' "$bl_t" | jq -r . 2>/dev/null) \
+            || deny "the command model's output could not be decoded (fail-closed)"
         analyse "$bl_t" 1
     done <<EOF
 $bl_texts
