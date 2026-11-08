@@ -465,7 +465,6 @@ export function signSpec(ctx: Ctx, o: {
     own = [execFileSync('git', ['-C', dirname(spec), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()];
   } catch { /* a spec outside any repo has no second root */ }
   runMinerva('minerva-trace-lint.sh', [spec, plan, ...own], checkoutRoot());
-  // The record signs the bytes the checks read: a spec, plan or verdict edited meanwhile refuses.
   if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)
     || (o.plan && (!existsSync(plan) || fileSha(plan) !== planSha))) {
     throw new Error('release operator spec: the spec, plan or a verdict file changed while it was checked; sign again');
