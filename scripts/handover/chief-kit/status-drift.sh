@@ -200,14 +200,12 @@ if [ -f "$LOG" ]; then
             (.owner | ok("\\A(chief|operator|[a-z][a-z0-9-]{0,31})\\z")), (.until | ok("\\A[0-9]{4}-[0-9]{2}-[0-9]{2}\\z")),
             ((.reason // "") | if type == "string" then gsub("[|\t\r\n\u001f]"; "") else "" end)] | join("\u001f")' <<<"$mergeout" 2>/dev/null) # swallow-ok: as above
 fi
-date_ok() { # <YYYY-MM-DD> - a date that survives a parse and a format back, on GNU and BSD date
+date_ok() {
     local e
     [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
     e=$(date -u -d "$1" +%s 2>/dev/null || date -u -j -f %Y-%m-%d "$1" +%s 2>/dev/null) || return 1 # swallow-ok: the BSD form follows
     [ "$(date -u -d "@$e" +%Y-%m-%d 2>/dev/null || date -u -r "$e" +%Y-%m-%d 2>/dev/null)" = "$1" ] # swallow-ok: the BSD form follows
 }
-# hold_of <KEY> - the key's newest hold or hold-release row, as H_SINCE H_OWNER H_UNTIL H_REASON; rc 0 only when that row is a
-# hold whose ts parses and whose owner passes the who pattern; a date that fails the round trip is dropped
 hold_of() {
     local line ev
     H_SINCE="" H_OWNER="" H_UNTIL="" H_REASON=""

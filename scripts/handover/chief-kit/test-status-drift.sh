@@ -1002,7 +1002,7 @@ hts() { rowq 'select(.event == "hold") | .ts' | tail -n 1; }
 hnow() { export TICKET_STATUS_NOW=$(($(epoch_of "$(hts)") + $1)); }
 tomorrow() { day_e $(($(date -u +%s) + 86400)); }
 label() { printf 'held\n' > "$FX/labels.$K"; }
-hand() { # <seconds before NOW> <json> - a hand-written hold row that was a successful hold
+hand() {
     lrow "$1" hold moved - "$2"
     export TICKET_STATUS_NOW=$NOW
 }
