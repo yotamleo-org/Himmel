@@ -1880,9 +1880,9 @@ check_no_orphan_pr() {
         orphan_gate_note="orphan-pr check unavailable (rc=$rc): this handover was not gated on unowned open PRs; run orphan-pr-check.sh"
     fi
     [ "$rc" -eq 1 ] || return 0
-    err "refusing to hand over: an open PR is unowned (its ticket's worker record reads wrapped or none, or is absent) and no queue: line names it:"
+    err "refusing to hand over: an open PR is unowned (its ticket's worker record reads wrapped or none, or is absent) and no queue: segment holds it:"
     printf '%s\n' "$orphans" | while IFS= read -r line; do err "  $line"; done
-    err "  relaunch a worker on it, or name its PR number or ticket key on the queue: line of $1, then retry"
+    err "  relaunch a worker on it, or give it a | segment holding its PR number or ticket key and the word HELD (before any ||) on the queue: line of $1, then retry"
     return 1
 }
 

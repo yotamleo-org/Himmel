@@ -2980,6 +2980,11 @@ ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst -
 check "orph8501 an unmapped open PR refuses next (exit 8)" "8" "$rco"
 check "orph8501 the refusal names the PR" "1" "$(grep -cF 'UNMAPPED 4325 fix/demo-88-orphan' "$tmp/outo")"
 check "orph8501 the refusal writes no HANDOFF" "no" "$([ -f "$root/tester/orph8501/DEMO-nextleg-${today}A-chief-HANDOFF.md" ] && echo yes || echo no)"
+sed 's/^queue:.*/queue: 4325 88 relaunch after 4951 merges | 4660 HELD until 9032/' "$doco" > "$doco.new" && mv "$doco.new" "$doco" || { echo "FAIL: 9599 fixture rewrite"; exit 1; }
+rco=0
+ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst --doc "$doco" >"$tmp/outo9599" 2>&1 || rco=$?
+check "9599 a PR named in a queue: segment with no hold refuses next (exit 8)" "8" "$rco"
+check "9599 the narrative refusal names the PR" "1" "$(grep -cF 'UNMAPPED 4325 fix/demo-88-orphan' "$tmp/outo9599")"
 sed 's/^queue:.*/queue: #4325 (held for the adapter merge)/' "$doco" > "$doco.new" && mv "$doco.new" "$doco" || { echo "FAIL: orph8501 fixture rewrite"; exit 1; }
 rco=0
 ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst --doc "$doco" >/dev/null 2>&1 || rco=$?
