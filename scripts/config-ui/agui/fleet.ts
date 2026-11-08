@@ -25,7 +25,7 @@
 // fleet of very long journals costs a full read per poll (measured 2026-10-07 on 9 live sessions: 278 ms cold,
 // 202 ms warm); upgrade path: a per-file incremental fold (the SSE tail's offsets) once a fleet poll is slow.
 import { execFile, spawn } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { agentState, initialView, reduce, type View } from "../agui-web/src/reducer.ts";
 import { cloudRoutes, consoleOf, GH_WAIT_MS, readCloudPrs, type CloudPhase, type CloudRoute } from "./fleet-cloud.ts";
@@ -309,7 +309,25 @@ const NO_BUS: BusCounts = { unacked: 0, undelivered: 0, unbound: false };
 const BUS_KINDS = new Set(["ruling", "report", "proposal", "data"]);
 
 // The bus's edges and each session's counts, from busEvents' metadata; an unreadable or absent store is no traffic.
-async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: string) => BusCounts }> {
+// busEvents replays every session log ever written (about 1850 on the station, 3.6 s of a 6 s poll), so
+// its result is kept until a log, ack or cursor file changes, and a poll waits at most BUS_WAIT_MS for a replay it
+// started: it answers with the last replay meanwhile (none yet: no traffic), and the replay finishes in the background.
+// ponytail: a change replays the whole store again (the store has no per-log read), upgrade path: replay only the logs whose files changed.
+const BUS_WAIT_MS = 500;
+type BusRead = { edges: BusEdge[]; rows: Map<string, BusCounts> };
+const busCache = new Map<string, { sig: string; read: BusRead }>();
+const busRuns = new Map<string, { sig: string; done: Promise<void> }>();
+async function busSig(root: string): Promise<string> {
+  const parts: string[] = [];
+  for (const dir of ["log", "ack", "cur"]) {
+    let names: string[] = [];
+    try { names = (await readdir(join(root, dir))).sort(); } catch { /* absent: no files */ }
+    const stats = await mapLimit(names, 64, (f) => stat(join(root, dir, f)).then((s) => `${f}:${s.size}:${s.mtimeMs}`, () => f));
+    parts.push(stats.join(","));
+  }
+  return parts.join("|");
+}
+async function busRead(root: string): Promise<BusRead> {
   type Msg = { f?: string | null; r?: string | null; t?: number; c?: number; kind?: string; delivered?: boolean; acked?: boolean; expired?: boolean };
   const msgs = new Map<string, Msg>();
   try {
@@ -321,9 +339,7 @@ async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: strin
       if (m[2]) msg[m[2] as "delivered" | "acked" | "expired"] = true;
       else Object.assign(msg, { f: plain(d.value.f), r: plain(d.value.r), t: d.value.t, c: d.value.c, kind: d.value.kind });
     }
-  } catch { return { edges: [], of: () => NO_BUS }; }
-  let peers: Record<string, { pid?: number }> = {};
-  try { peers = await loadPeers(root); } catch { /* no registry: nothing is unbound */ }
+  } catch { return { edges: [], rows: new Map() }; }
   const edges = new Map<string, BusEdge>(), rows = new Map<string, BusCounts>();
   for (const msg of msgs.values()) {
     if (!msg.f || !msg.r || msg.t === undefined) continue; // a follow-up whose send is gone
@@ -336,7 +352,27 @@ async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: strin
     rows.set(msg.r, row);
     row.undelivered += msg.delivered || msg.acked || msg.expired ? 0 : 1; row.unacked += ruling ? 1 : 0;
   }
-  return { edges: [...edges.values()], of: (name) => ({ ...(rows.get(name) ?? NO_BUS), unbound: !!peers[name] && peers[name].pid === undefined }) };
+  return { edges: [...edges.values()], rows };
+}
+async function busOf(root: string, env: Record<string, string | undefined>): Promise<{ edges: BusEdge[]; of: (name: string) => BusCounts }> {
+  const sig = await busSig(root);
+  let hit = busCache.get(root);
+  if (hit?.sig !== sig) {
+    let run = busRuns.get(root);
+    if (run?.sig !== sig) {
+      const mine = { sig, done: busRead(root).then((read) => { busCache.set(root, { sig, read }); }).finally(() => { if (busRuns.get(root) === mine) busRuns.delete(root); }) };
+      busRuns.set(root, mine);
+      run = mine;
+    }
+    let t: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([run.done, new Promise((ok) => { t = setTimeout(ok, Number(env.HIMMEL_FLEET_BUS_WAIT_MS) || BUS_WAIT_MS); })]);
+    clearTimeout(t);
+    hit = busCache.get(root);
+  }
+  const { edges, rows } = hit?.read ?? { edges: [], rows: new Map<string, BusCounts>() };
+  let peers: Record<string, { pid?: number }> = {};
+  try { peers = await loadPeers(root); } catch { /* no registry: nothing is unbound */ }
+  return { edges, of: (name) => ({ ...(rows.get(name) ?? NO_BUS), unbound: !!peers[name] && peers[name].pid === undefined }) };
 }
 
 // where a chief doc records its release token: a backticked lock bullet, or the fenced block ACTION ZERO fills in
@@ -571,7 +607,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
   for (const journal of folds.keys()) if (!seen.has(journal)) folds.delete(journal);
   const sessions = [...rows.filter((r): r is FleetRow => r !== null), ...cloud];
   const slug = await repoSlugOf(join(dirname(opts.script), "../.."), opts.env);
-  const bus = await busOf(busRootOf(opts.env, opts.home));
+  const bus = await busOf(busRootOf(opts.env, opts.home), opts.env);
   for (const r of sessions) { r.prUrl = prUrlOf(slug, r.pr); r.bus = bus.of(r.name); }
   // orphan-loops.sh names an owner with every character outside [A-Za-z0-9_.-] turned into `_`
   const liveOwners = new Set(sessions.filter((r) => r.live && r.role !== "cloud").map((r) => r.name.replace(/[^A-Za-z0-9_.-]/g, "_")));

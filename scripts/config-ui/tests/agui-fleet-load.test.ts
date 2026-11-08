@@ -7,12 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFleet } from "../agui/fleet.ts";
 import { startServer } from "../server";
+import { busRoot, append } from "../../../marketplace/plugins/himmel-bus/lib/store.mjs";
 
 const TOKEN = "t".repeat(64);
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
-function tree(docs: number) {
+function tree(docs: number, censusSleep = "0.3") {
   const dir = mkdtempSync(join(tmpdir(), "agui-fleet-load-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   const ui = join(dir, "ui"), handover = join(dir, "handover"), bucket = join(dir, "bucket");
@@ -20,7 +21,7 @@ function tree(docs: number) {
   const files = Array.from({ length: docs }, (_, i) => join(bucket, `LOAD${i}-console.md`));
   files.forEach((f, i) => writeFileSync(f, `# LOAD${i} console\n\n## Results\n\n- 09:00 LIVE — lock \`tok${i}\`\n`));
   const lockLog = join(dir, "lock.log"), censusLog = join(dir, "census.log");
-  writeFileSync(join(ui, "fleet.sh"), `#!/bin/sh\necho run >> "${censusLog}"\nsleep 0.3\ncat <<'EOF'\n${JSON.stringify({ census: "ok", sessions: [], consoleDocs: files })}\nEOF\n`);
+  writeFileSync(join(ui, "fleet.sh"), `#!/bin/sh\necho run >> "${censusLog}"\nsleep ${censusSleep}\ncat <<'EOF'\n${JSON.stringify({ census: "ok", sessions: [], consoleDocs: files })}\nEOF\n`);
   writeFileSync(join(handover, "queue-lock.sh"), `#!/bin/sh\necho S >> "${lockLog}"\nsleep 0.2\necho E >> "${lockLog}"\necho free\n`);
   for (const f of [join(ui, "fleet.sh"), join(handover, "queue-lock.sh")]) chmodSync(f, 0o755);
   const calls = () => { try { return readFileSync(lockLog, "utf8").split("\n").filter(Boolean); } catch { return []; } };
@@ -37,6 +38,53 @@ test("archived chief docs get their lock read in parallel, bounded, and none is 
   expect(t.peak()).toBeGreaterThan(1); // sequential = 1
   expect(t.peak()).toBeLessThanOrEqual(16); // never 600 bash processes at once
 }, 30_000);
+
+// The himmel-bus store on the station holds about 1850 session logs; replaying all of them (busEvents) took
+// 3.6 s of a 6 s fleet poll. Budget: a poll of an unchanged bus costs well under the replay, and a poll never waits
+// longer than HIMMEL_FLEET_BUS_WAIT_MS for it.
+const BUS_LOGS = 1000; // about 1.1 s to replay here
+async function busTree() {
+  const t = tree(0, "0");
+  const state = join(t.dir, "state");
+  const root = await busRoot({ stateHome: state });
+  const now = Date.now();
+  const send = (k: number, i: string) => append(root, `S${k}`, { t: now, b: "x", c: 0, i, f: "S0", r: `S${k}` });
+  await Promise.all(Array.from({ length: BUS_LOGS }, (_, k) => send(k, `M${k}`)));
+  const read = (wait: string) => {
+    const t0 = performance.now();
+    return readFleet({ script: t.script, env: { PATH: process.env.PATH, XDG_STATE_HOME: state, HIMMEL_FLEET_BUS_WAIT_MS: wait }, home: t.dir, now: Date.now(), redact: (s) => s })
+      .then((f) => ({ f, ms: performance.now() - t0 }));
+  };
+  const edgeN = (f: { edges: { from: string; to: string; n: number }[] }) => f.edges.reduce((n, e) => n + e.n, 0);
+  return { send, read, edgeN };
+}
+
+test("a poll of an unchanged bus store does not replay it", async () => {
+  const b = await busTree();
+  const cold = await b.read("60000"); // waits for the first read, so the counts are complete
+  expect(b.edgeN(cold.f)).toBe(BUS_LOGS);
+  const warm = await b.read("60000");
+  expect(b.edgeN(warm.f)).toBe(BUS_LOGS);
+  expect(warm.ms).toBeLessThan(400);
+}, 60_000);
+
+test("a poll answers within the bus wait and the replay finishes in the background", async () => {
+  const b = await busTree();
+  const first = await b.read("100");
+  expect(first.ms).toBeLessThan(600); // the replay alone is about 1.1 s
+  let seen = b.edgeN(first.f);
+  for (let i = 0; i < 100 && seen < BUS_LOGS; i++) { await new Promise((ok) => setTimeout(ok, 100)); seen = b.edgeN((await b.read("100")).f); }
+  expect(seen).toBe(BUS_LOGS);
+}, 60_000);
+
+test("a message sent after the cached read shows on a later poll", async () => {
+  const b = await busTree();
+  await b.read("60000");
+  await b.send(0, "LATE");
+  let seen = 0;
+  for (let i = 0; i < 100 && seen <= BUS_LOGS; i++) { seen = b.edgeN((await b.read("100")).f); if (seen <= BUS_LOGS) await new Promise((ok) => setTimeout(ok, 100)); }
+  expect(seen).toBe(BUS_LOGS + 1);
+}, 60_000);
 
 test("requests that arrive while a fleet read is running share it: one census run", async () => {
   const t = tree(2);
