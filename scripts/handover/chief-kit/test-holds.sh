@@ -512,6 +512,25 @@ run hp release --key HIMMEL-9212 --repo "$R" --doc "$DAB1"
 run hp seed --key HIMMEL-9213 --label lab --doc "$DAB2" --repo "$R"
 same "abs bucket path: release frees the row, so the rival seed passes" "$RC" 0
 
+# ---- S8 (no file holds): with the OFF sentinel present a bucket file is still held, and a repo file is not
+S8F="$W/h/u/r/specs/s8-case.md"
+S8DA="$(mkdoc ZZS-9701-s8a.md "> **Writes:** $S8F scripts/s8-repo.sh")"
+S8DB="$(mkdoc ZZS-9702-s8b.md "> **Writes:** $S8F scripts/s8-repo.sh")"
+run hp seed --key ZZS-9703 --label lab --doc "$(mkdoc ZZS-9703-s8c.md '> **Writes:** scripts/s8-repo.sh')" --repo "$R"
+same "S8 control, OFF absent: a repo file is claimed by seed" "$RC:$([ -e "$(rowf scripts/s8-repo.sh)" ] && echo row || echo none)" "0:row"
+run hp release --key ZZS-9703 --repo "$R" --doc "$HANDOVER_DIR/u/r/ZZS-9703-s8c.md"
+: > "$REG/OFF"
+run hp seed --key ZZS-9701 --label lab --doc "$S8DA" --repo "$R"
+same "S8 OFF present: seed of a brief naming a bucket file passes" "$RC" 0
+same "S8 ... and claims an _abs row for it" "$([ -e "$REG/_abs/$(esc "$S8F")" ] && echo row || echo none)" row
+same "S8 ... while the repo path in the same brief is skipped (no row)" "$([ -e "$(rowf scripts/s8-repo.sh)" ] && echo row || echo none)" none
+run hp seed --key ZZS-9702 --label lab --doc "$S8DB" --repo "$R"
+same "S8 OFF present: a second key's seed for the same bucket file exits 1" "$RC" 1
+contains "S8 ... with a holds: line naming the holder" "$ERR" "holds: $S8F is held by ZZS-9701"
+same "S8 ... and the second key made no repo row either" "$([ -e "$(rowf scripts/s8-repo.sh)" ] && echo row || echo none)" none
+run hp release --key ZZS-9701 --repo "$R" --doc "$S8DA"
+rm -f "$REG/OFF"
+
 # ---- a key that is not a ticket key is a usage error and makes no row
 run hp claim --key not-a-key --label lab --doc "$DB" --repo "$R" scripts/k1.sh
 same "bad key: claim exits 2" "$RC" 2
