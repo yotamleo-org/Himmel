@@ -8113,9 +8113,6 @@ function cmdConfigSetPath(name, value, args) {
 // straight from himmel.conf.local, then himmel.conf); an unset key means off.
 const TEAM_MODE_KEY = 'HIMMEL_TRACKER_TEAM_MODE';
 
-// config set jira.testProject <KEY>: the one Jira project the live tests may write to. The read-only
-// `jira live-test --json` verb owns the rules (a key shape, never a work project); this setter asks it before and
-// after the write and trusts only its answer. HIMMELCTL_JIRA_CLI names a stand-in for the built CLI (a test seam).
 const TEST_PROJECT_KEY = 'JIRA_TEST_PROJECT';
 function jiraLiveTest(candidate) {
   const cli = process.env.HIMMELCTL_JIRA_CLI || path.join(repoRoot(), 'scripts', 'jira', 'dist', 'index.js');

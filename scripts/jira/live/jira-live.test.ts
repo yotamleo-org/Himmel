@@ -4,10 +4,7 @@
 //
 //   npm run build && JIRA_LIVE_TEST=1 JIRA_LIVE_PROJECT=HTEST npx vitest run live/
 //
-// Safety: the project is the station's configured test project (the `jira live-test`
-// verb reads JIRA_TEST_PROJECT); JIRA_LIVE_PROJECT may only repeat it. Live writes never
-// touch a work project. Run it in a test VM. Every
-// issue and version the run creates is tracked and torn down in afterAll, also
+// Every issue and version the run creates is tracked and torn down in afterAll, also
 // after a failed assertion: versions are archived, issues moved to Done (the CLI
 // has no issue-delete, so they remain, closed, in the test project). Needs the creds the
 // CLI itself reads (.env at the repo root, or JIRA_* env vars) and a prior

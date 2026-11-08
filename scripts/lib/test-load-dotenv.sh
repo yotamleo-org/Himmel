@@ -730,7 +730,6 @@ for k in HIMMEL_REPO CLAUDE_HUD_ALLOW_EXTRA_CMD HIMMEL_WHERE_ARE_WE_ROLLUP_TTL \
     assert_eq "K $k resolves from himmel.conf" "k-from-conf" "$got"
 done
 
-# KT (I7): the test project is a station key: config class, never read from a repo's project file.
 printf 'JIRA_TEST_PROJECT=HTEST\n' >"$PCONF"
 rm -f "$TMP/k-config/himmel.conf"
 got=$( cd "$PREPO" && unset JIRA_TEST_PROJECT && HIMMEL_CONFIG_DIR="$TMP/k-config" load_dotenv JIRA_TEST_PROJECT 2>/dev/null; printf '%s|%s' "$(_himmel_key_class JIRA_TEST_PROJECT)" "${JIRA_TEST_PROJECT:-<unset>}" )

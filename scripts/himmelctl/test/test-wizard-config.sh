@@ -783,9 +783,6 @@ cmp -s "$confR.before" "$confR" || fail "caseR: a refused path must leave himmel
 [ -e "$work/a" ] && fail "caseR: a refused relative path must create nothing"
 echo "ok: caseR handover.root / luna.vaultPath write an absolute path to himmel.conf; refusals write nothing"
 
-# ── Case S: jira.testProject, the test-project setter (I7) ──
-# The setter asks the read-only `jira live-test --json --candidate <KEY>` verb, through the HIMMELCTL_JIRA_CLI seam
-# (a stub that prints the canned fixtures in scripts/jira/src/fixtures), and verifies the resolved value after writing.
 fxS="$work/fixtureS"; build_fixture "$fxS"
 stubS="$work/jira-stub-S.js"
 cat > "$stubS" <<'STUB'
@@ -800,7 +797,6 @@ STUB
 fixturesS="$repo_root/scripts/jira/src/fixtures"
 S_N=0
 run_cfg_s() {
-  # run_cfg_s <out.1 fixture> <out.2 fixture|-> <args...>; a fresh HOME and stub dir per call
   S_N=$((S_N + 1))
   _hS="$work/home-S-$S_N"; mkdir -p "$_hS/.himmel"; confS="$_hS/.himmel/himmel.conf"
   _dS="$work/stub-S-$S_N"; mkdir -p "$_dS"
@@ -835,7 +831,6 @@ run_cfg_s live-test-none.json - set jira.testProject h_test
 [ "$CFG_RC" -eq 2 ] || fail "caseS: a key the verb does not resolve to itself should exit 2 (got rc=$CFG_RC): $CFG_OUT"
 [ -e "$confS" ] && fail "caseS: a refused key must write nothing (got: $(cat "$confS"))"
 
-# a himmel.conf.local that already sets the key takes the write, himmel.conf stays clear of it
 _hS="$work/home-S-local"; mkdir -p "$_hS/.himmel"; printf 'JIRA_TEST_PROJECT=X\n' > "$_hS/.himmel/himmel.conf.local"
 printf 'JIRA_EMAIL=keep@example.invalid\n' > "$_hS/.himmel/himmel.conf"
 _dS="$work/stub-S-local"; mkdir -p "$_dS"; cp "$fixturesS/live-test-ok.json" "$_dS/out.1"
@@ -849,12 +844,10 @@ grep -qxF 'JIRA_TEST_PROJECT=HTEST' "$_hS/.himmel/himmel.conf.local" || fail "ca
 grep -q '^JIRA_TEST_PROJECT=' "$_hS/.himmel/himmel.conf" && fail "caseS: himmel.conf must not gain the key when the override file owns it"
 grep -qxF 'JIRA_EMAIL=keep@example.invalid' "$_hS/.himmel/himmel.conf" || fail "caseS: himmel.conf must keep its other lines"
 
-# the value does not resolve after the write: exit 1
 run_cfg_s live-test-ok.json live-test-none.json set jira.testProject HTEST
 [ "$CFG_RC" -eq 1 ] || fail "caseS: a post-write mismatch should exit 1 (got rc=$CFG_RC): $CFG_OUT"
 grepq "$CFG_OUT" -F 'no JIRA_TEST_PROJECT is set' || fail "caseS: the mismatch should carry the verb's problem (got: $CFG_OUT)"
 
-# the verb prints a valid answer and then exits non-zero: its answer is not trusted, exit 2, nothing written
 stubSF="$work/stub-jira-cli-fails.js"
 cat > "$stubSF" <<'STUB'
 const fs = require('fs'), path = require('path');
@@ -866,7 +859,6 @@ run_cfg_s live-test-ok.json - set jira.testProject HTEST
 [ "$CFG_RC" -eq 2 ] || fail "caseS: a verb that exits non-zero should exit 2 even with parseable output (got rc=$CFG_RC): $CFG_OUT"
 [ -e "$confS" ] && fail "caseS: a verb that exits non-zero must write nothing (got: $(cat "$confS"))"
 
-# the verb cannot run: exit 2, nothing written, the build command is named
 S_CLI="$work/no-such-jira-cli.js"
 run_cfg_s live-test-ok.json - set jira.testProject HTEST
 [ "$CFG_RC" -eq 2 ] || fail "caseS: an absent verb should exit 2 (got rc=$CFG_RC): $CFG_OUT"

@@ -15,7 +15,6 @@ import { lintPlainBlock } from '../src/plain-block.js';
 const fixture = (name: string): string => fileURLToPath(new URL(`../src/fixtures/${name}`, import.meta.url));
 const CLI = fileURLToPath(new URL('../dist/index.js', import.meta.url));
 
-/** A stand-in CLI that prints one canned live-test file. */
 function stubCli(canned: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'live-stub-cli-'));
   const file = join(dir, 'cli.mjs');

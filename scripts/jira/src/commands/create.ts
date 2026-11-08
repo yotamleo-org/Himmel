@@ -115,17 +115,14 @@ export function resolveTitle(opts: { title?: string; summary?: string }): string
 }
 
 /** The Sector to file under: the typed --sector, else a live "<Sector>: " title prefix; an unknown prefix exits 1. */
-/** The Sector options a create checks against: none when Sector is not configured, or for the test project (not work). */
 async function sectorsOf(sectorId: string | undefined, testProject: boolean): Promise<readonly string[] | undefined> {
   return sectorId && !testProject ? await sectorOptions() : undefined;
 }
 
-/** A Task, Story or Bug needs a home; an issue in the test project is not work and needs none. */
 function homeCheck(testProject: boolean, ...args: Parameters<typeof homeVerdict>): ReturnType<typeof homeVerdict> {
   return testProject ? { action: 'ok', message: '' } : homeVerdict(...args);
 }
 
-/** The intake-gate ledger row a filing owes; the test project is not work and owes none. */
 async function admissionOf(testProject: boolean, ...args: Parameters<typeof checkIntakeGate>): ReturnType<typeof checkIntakeGate> {
   return testProject ? undefined : await checkIntakeGate(...args);
 }
@@ -998,7 +995,6 @@ export function registerCreate(program: Command): void {
         }
         const overrideReason = checkPlacementFlags(options);
         const createProject = options.project ?? projectKey();
-        // I13: an issue in the configured test project is not work: no placement, home, Sector, INTAKE or admissions row.
         const testProject = isTestProject(createProject);
         await assertProposedVersion(options);
         const fields: Record<string, unknown> = {

@@ -2412,8 +2412,6 @@ describe.skipIf(process.platform !== 'linux')('create — post door (a test on t
   });
 });
 
-// I13: an issue in the configured test project is not work, so the work filing policy
-// (placement, home, sector), the INTAKE queue and the admissions ledger do not apply to it.
 describe('create — a test project is not work (I13)', () => {
   let root: string;
   let errs: string[];
@@ -2486,7 +2484,6 @@ describe('create — a test project is not work (I13)', () => {
     expect((posts()[0]![2] as { fields: Record<string, unknown> }).fields['customfield_10212']).toBeUndefined();
   });
 
-  // Controls: green on the base tree too.
   it('control: the same Task in HIMMEL is still refused for placement', async () => {
     await expect(file('HIMMEL', '--desc', PLAIN, ...HOME)).rejects.toThrow(/needs a placement/);
     expect(posts().length).toBe(0);

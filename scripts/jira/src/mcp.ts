@@ -132,7 +132,6 @@ export function createTools(): JiraTool[] {
       },
       async handler(args, deps) {
         const project = (args.project as string) ?? projectKey();
-        // I13: an issue in the configured test project is not work: no home or Sector check.
         const testProject = isTestProject(project);
         const fields: Record<string, unknown> = {
           project: { key: project },

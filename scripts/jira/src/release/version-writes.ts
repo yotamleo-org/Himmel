@@ -86,7 +86,6 @@ export function versionWriteScope(apiBase: string, method: string, path: string,
   if (!m || (method === 'POST') !== (m[1] === undefined)) return null;
   const b = body as { fields?: { fixVersions?: unknown }; update?: { fixVersions?: unknown } } | null | undefined;
   if (b?.fields?.fixVersions === undefined && b?.update?.fixVersions === undefined) return null;
-  // I13: the configured test project is not work, so its Fix Version writes enter no journal.
   const project = m[1] !== undefined ? m[1].slice(0, m[1].lastIndexOf('-')) : (body as { fields?: { project?: { key?: string } } }).fields?.project?.key;
   if (project !== undefined && isTestProject(project)) return null;
   return { key: m[1] ?? null };
