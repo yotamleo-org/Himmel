@@ -126,7 +126,7 @@ bash "$FM" watch "$M3" add 90 --repo acme/two --head "$H1" --comments 4 --review
 check 'A9. one row per repository, never an overwrite' 2 "$(jq '.watch | length' "$M3" 2>/dev/null)"
 gh_state "$H2" 3 1 2
 wenv "$S/in8/consoles/c.md" "$M3" 8 "$S/o11"; rc=$?
-check 'A9. the first repository wakes' 1 "$(grep -c '^WAKE pr-watch 90 head' "$S/o11")"
+check 'A9. the first repository wakes, and the wake line names it' 1 "$(grep -c '^WAKE pr-watch 90 repo=acme/one head' "$S/o11")"
 check 'A9. its row moved and the other repository row kept what it had seen' "$H2 $H1" "$(jq -r '[.watch[] | select(.repo == "acme/one") | .head][0] + " " + [.watch[] | select(.repo == "acme/two") | .head][0]' "$M3" 2>/dev/null)"
 check 'A9. the stub saw the repository named in the row' yes "$(grep -q 'repos/acme/one/pulls/90' "$S/gh.log" && echo yes)"
 

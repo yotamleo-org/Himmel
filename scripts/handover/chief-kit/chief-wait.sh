@@ -126,7 +126,7 @@
 #   WAKE size rows=<n>          gen-briefs.py refused an oversized brief or took a bulk: mechanical one
 #                               : the new SIZE-ESCALATE rows of size-override.sh's ledger
 #                               follow, once per row (marker <inbox>.wait.size). Seam: CHIEF_WAIT_SIZE.
-#   WAKE pr-watch <pr> <detail>  with --workers-from: a `watch` row of the fleet manifest
+#   WAKE pr-watch <pr> [repo=<owner/name>] <detail>  with --workers-from: a `watch` row of the fleet manifest
 #                               (fleet-manifest.sh watch: a PR number and repo plus the head sha, comment
 #                               count, review count and state last seen; a worker waiting on an outside
 #                               event closes and the chief watches the PR instead). Every
@@ -1695,7 +1695,7 @@ size_wake() {
 # ponytail: one page of reviews (100) per PR; upgrade = --paginate if a watched PR ever passes 100.
 prwatch_at_file="$inbox.wait.prwatch.at"
 pr_watch_wake() {
-    local rows now last pr head com rev repo st pj rj nh nc nr ns detail repo_arg gh_cmd="${CHIEF_WAIT_GH:-gh}"
+    local rows now last pr head com rev repo st pj rj nh nc nr ns detail repo_arg repo_tag gh_cmd="${CHIEF_WAIT_GH:-gh}"
     [ -n "$legs_from" ] && [ -r "$legs_from" ] || return 1
     rows="$(jq -r '(.watch // [])[]? | [.pr, (.head // "-"), (.comments // "-"), (.reviews // "-"), (.repo // "{owner}/{repo}"), (.state // "-")] | @tsv' "$legs_from" 2>/dev/null)" || return 1  # swallow-ok: an unreadable manifest has no rows to poll
     [ -n "$rows" ] || return 1
@@ -1723,11 +1723,12 @@ pr_watch_wake() {
         [ "$rev" = - ] || [ "$rev" = "$nr" ] || detail="$detail reviews $rev→$nr"
         [ "$st" = - ] || [ "$st" = "$ns" ] || detail="$detail state $st→$ns"
         # a row is keyed by PR and repo: name the repo unless it is the waiter's own
-        repo_arg=(); [ "$repo" = '{owner}/{repo}' ] || repo_arg=(--repo "$repo")
+        repo_arg=(); repo_tag=""
+        [ "$repo" = '{owner}/{repo}' ] || { repo_arg=(--repo "$repo"); repo_tag=" repo=$repo"; }
         # the row is written first: a write that fails wakes nothing and the change is seen again next interval
         timeout -k 2 40 bash "$HERE/fleet-manifest.sh" watch "$legs_from" set "$pr" ${repo_arg[@]+"${repo_arg[@]}"} --head "$nh" --comments "$nc" --reviews "$nr" --state "$ns" </dev/null >/dev/null 2>&1 9>&- || continue  # gnu-ok: Linux-only kit; swallow-ok: as above
         [ -n "$detail" ] || continue
-        printf 'WAKE pr-watch %s%s\n' "$pr" "$detail"
+        printf 'WAKE pr-watch %s%s%s\n' "$pr" "$repo_tag" "$detail"
         return 0
     done <<EOF
 $rows
