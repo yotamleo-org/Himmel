@@ -64,6 +64,10 @@ scripts/lanes/model-price.mjs; a model with no price row is reported unpriced, n
 The one-turn arms keep their cost_usd column (the reported total_cost_usd); the realistic arms'
 cost_usd is the priced figure.
 
+A realistic session cannot Read, Grep or Glob the question bank (it holds the gold files): every
+session carries --disallowedTools Read rules for questions.jsonl, questions-v2.jsonl and a --questions
+file inside --repo. The scorer still reads the bank in this process.
+
 Billing: bank-preflight before every call (a refusal stops the run), --output-format
 json, an explicit --permission-mode, no tools (realistic arms: Read, Grep, Glob and the route
 tool), a per-run cap and a --max-usd cap. The one-turn answerer runs in an empty scratch
@@ -131,6 +135,20 @@ PRICE_JS = ("import {loadPrices, priceCall} from %s;"
             "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{"
             "const r=priceCall(JSON.parse(s),loadPrices());"
             "console.log(JSON.stringify({priced:r.priced,usd:r.usd}))});" % json.dumps("file://" + PRICE_MJS))
+
+
+BANK_FILES = ("questions.jsonl", "questions-v2.jsonl")
+
+
+def bank_deny(repo, questions):
+    """Read deny rules keeping a realistic session off the question bank, which holds the gold files:
+    the two committed banks, plus the --questions file when it lies inside the repo. Claude Code applies
+    Read rules to Grep and Glob as well (best effort); `//` anchors the rule at the filesystem root."""
+    paths = [os.path.join(repo, "scripts", "eval", "retrieval-eval", f) for f in BANK_FILES]
+    q = os.path.abspath(questions)
+    if q.startswith(repo.rstrip(os.sep) + os.sep) and q not in paths:
+        paths.append(q)
+    return ["Read(/%s)" % p for p in paths]
 
 
 class Usage(Exception):
@@ -251,6 +269,7 @@ class Sweep:
         self.preflight = os.environ.get("BANK_PREFLIGHT", os.path.join(REPO, "scripts", "lib", "usage-preflight.sh"))
         self.scratch = tempfile.mkdtemp(prefix="answer-ab-")
         self.repo = os.path.abspath(a.repo)
+        self.deny = bank_deny(self.repo, a.questions)
         self.mcp = {}
         self.traces = {}
         self.sink = None
@@ -284,7 +303,7 @@ class Sweep:
         keep = ["--no-session-persistence"] if sess is None else ["--resume" if sess["n"] else "--session-id", sess["id"]]
         return [self.claude, "-p", "--model", self.a.model, "--permission-mode", "dontAsk",
                 "--output-format", "json", "--max-budget-usd", "%.4f" % cap, "--tools", SESSION_TOOLS,
-                "--allowedTools", allowed, "--strict-mcp-config", "--mcp-config", self.mcp_config(arm)] + keep + [
+                "--allowedTools", allowed, "--disallowedTools"] + self.deny + ["--strict-mcp-config", "--mcp-config", self.mcp_config(arm)] + keep + [
                 "--append-system-prompt-file", PREFACE]
 
     def ask(self, q, arm, text, tag=None, sess=None, prime=False):

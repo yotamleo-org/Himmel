@@ -432,5 +432,21 @@ print(len(rows) == 2 and all(r.get("route_calls") == 2 and len(r.get("tool_trace
       and r["tool_trace"][1]["failure"] == "qmd failed (rc 3)"
       for r in rows))' "$W/out-trace/results.jsonl")"
 
+# 23. a realistic session cannot Read, Grep or Glob the question bank (it holds the gold files).
+# The session's Read deny rules name both bank files and a --questions file that lies inside --repo.
+rm -f "$W"/sess-*.log
+inrepo="$R/inrepo-bank.jsonl"; cp "$Q2" "$inrepo"
+python3 -I "$AB" run --repo "$R" --questions "$inrepo" --out "$W/out-deny" --arms "$REAL" --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/deny.txt" 2>&1
+eq "a deny-rule run completes" "0" "$?"
+for arm in vanilla routed; do
+  if [ "$arm" = vanilla ]; then sel="$(grep 'mcp-vanilla' "$W/sess-all.log")"; else sel="$(grep -v 'mcp-vanilla' "$W/sess-all.log")"; fi
+  calls="$(printf '%s\n' "$sel" | grep -c .)"
+  eq "$arm session: every call carries --disallowedTools" "$calls" "$(printf '%s\n' "$sel" | grep -cF -- '--disallowedTools')"
+  for bank in scripts/eval/retrieval-eval/questions.jsonl scripts/eval/retrieval-eval/questions-v2.jsonl inrepo-bank.jsonl; do
+    eq "$arm session: every call denies Read of $bank" "$calls" "$(printf '%s\n' "$sel" | grep -cF -- "Read(/$R/$bank)")"
+  done
+done
+eq "vanilla still has tools Read, Grep, Glob only" "Read,Grep,Glob" "$(sort -u "$W/sess-allowed-vanilla.log")"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
