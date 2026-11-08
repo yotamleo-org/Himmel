@@ -169,6 +169,10 @@ import)
     done
     [ -n "$DRAFT" ] || usage "import needs a draft file"
     [ -f "$DRAFT" ] && [ -r "$DRAFT" ] || usage "cannot read draft $DRAFT"
+    # validate and append the same bytes: both passes read one private copy
+    SNAP=$(mktemp "${TMPDIR:-/tmp}/ceiling-draft.XXXXXX") || usage "cannot create a temp file"
+    trap 'rm -f "$SNAP"' EXIT
+    cp -- "$DRAFT" "$SNAP" || usage "cannot read draft $DRAFT"
     if [ "$CHECK" -eq 0 ]; then
         [ -n "$P" ] || usage "import needs --check or --pr <n>"
         [[ $P =~ ^[1-9][0-9]*$ ]] || usage "--pr must be a PR number"
@@ -184,7 +188,7 @@ import)
         cap=300
         case "$n" in "migration: "*) cap=2000 ;; esac
         check_row "draft line $ln" "$f" "$a" "$c" "$t" "$k" "$s" "$n" "$P" "$cap"
-    done < "$DRAFT"
+    done < "$SNAP"
     [ "$REFUSED" -eq 0 ] || exit 1
     if [ "$CHECK" -eq 1 ]; then echo "import --check: $DRAFT passes"; exit 0; fi
     do_import() {
@@ -208,8 +212,9 @@ import)
             num=$((num + 1)) added=$((added + 1))
             case "$s" in open) n_open=$((n_open + 1)) ;; lifted) n_lifted=$((n_lifted + 1)) ;;
                 dropped) n_dropped=$((n_dropped + 1)) ;; obsolete) n_obsolete=$((n_obsolete + 1)) ;; esac
-        done < "$DRAFT"
-        # one append of every new row, so a reader sees all of them or none
+        done < "$SNAP"
+        # one append of every new row under the lock; a reader racing it sees
+        # whole rows only (ledger_current leaves out a torn last line)
         cat "$tmp" >> "$LEDGER" || { rm -f "$tmp"; return 12; }
         rm -f "$tmp"
         printf 'import: %s rows (open %s, lifted %s, dropped %s%s), skipped %s already in the ledger\n' \

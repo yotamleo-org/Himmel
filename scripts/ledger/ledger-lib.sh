@@ -57,15 +57,21 @@ ledger_resolve() {
 
 # ledger_current <file>: print the newest row per id, in the order each id
 # first appeared. A row that is not ten fields, or a header that differs,
-# prints only `malformed ...` and returns 1.
+# prints only `malformed ...` and returns 1. The file is read once; a last
+# line with no newline is an append still in progress and is left out, so a
+# reader racing a writer sees whole rows.
 ledger_current() {
-    awk -F '\t' -v hdr="$LEDGER_HEADER" '
+    local snap
+    snap=$(cat -- "$1" && printf x) || { echo "malformed ledger (unreadable)"; return 1; }
+    snap=${snap%x}
+    case "$snap" in *$'\n') ;; *) snap=${snap%"${snap##*$'\n'}"} ;; esac
+    printf '%s' "$snap" | awk -F '\t' -v hdr="$LEDGER_HEADER" '
         NR == 1 { if ($0 != hdr) { print "malformed header"; bad = 1; exit } next }
         $0 == "" { next }
         NF != 10 || $1 !~ /^C-[0-9]+$/ { print "malformed row at line " NR; bad = 1; exit }
         { if (!($1 in row)) order[++n] = $1; row[$1] = $0 }
         END { if (bad) exit 1; for (i = 1; i <= n; i++) print row[order[i]] }
-    ' "$1"
+    '
 }
 
 # ledger_chars <text>: its length in characters (UTF-8 continuation bytes not counted).

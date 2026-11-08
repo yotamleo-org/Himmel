@@ -225,6 +225,13 @@ out=$(cd "$fx" && HIMMEL_CEILINGS_LEDGER="$work/many.tsv" bash "$LOOKUP" --ids -
 eq "bad range: exit 0" "$rc" 0
 eq "bad range: not read" "$out" "CEILINGS: not read (bad range)"
 
+# a torn last row (an append still in progress) is left out, not read as malformed
+cp "$work/many.tsv" "$work/torn.tsv"
+printf 'C-0099\tc.sh\tc\thalf a ro' >> "$work/torn.tsv"
+out=$(cd "$fx" && HIMMEL_CEILINGS_LEDGER="$work/torn.tsv" bash "$LOOKUP" --ids -- c.sh)
+has "a torn last row: the whole rows are still read" "$out" "CEILINGS: 25 open rows for 1 of 1 touched files"
+lacks "a torn last row is left out" "$out" "C-0099"
+
 # --- the lock ---------------------------------------------------------------------------------------
 mkdir -p "$work/locked.tsv.lock"
 out=$(cd "$fx" && HIMMEL_CEILINGS_LEDGER="$work/locked.tsv" bash "$ADD" add --file a.sh --anchor do_a --ceiling x --trigger t 2>&1); rc=$?
