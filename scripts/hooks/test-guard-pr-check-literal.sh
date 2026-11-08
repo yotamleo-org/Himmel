@@ -99,6 +99,42 @@ run() {
     LAST_ERR="$err"
 }
 
+# no_spelling_deny <label>: the last run's stderr does not carry the message that
+# refuses the $HIMMEL_REPO spelling of merge-on-green.sh.
+SPELLING_DENY='spelling of merge-on-green.sh is refused'
+no_spelling_deny() {
+    if grep -qF -- "$SPELLING_DENY" <<<"$LAST_ERR"; then
+        echo "FAIL $1 - stderr carries the spelling refusal: $LAST_ERR"
+        FAILED=$((FAILED + 1))
+    else
+        echo "PASS $1 - no spelling refusal"
+    fi
+}
+
+# need_line <label> <exact line>: the last run's stderr has this line, whole.
+need_line() {
+    if grep -qxF -- "$2" <<<"$LAST_ERR"; then
+        echo "PASS $1"
+    else
+        echo "FAIL $1 - stderr has no line equal to '$2': $LAST_ERR"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
+# no_line_starting <label> <fixed prefix>: no stderr line of the last run starts with it.
+no_line_starting() {
+    local line bad=0
+    while IFS= read -r line; do
+        case "$line" in "$2"*) bad=1 ;; esac
+    done <<<"$LAST_ERR"
+    if [ "$bad" -eq 0 ]; then
+        echo "PASS $1"
+    else
+        echo "FAIL $1 - a stderr line starts with '$2': $LAST_ERR"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
 need_in_err() { # need_in_err <label> <fixed-string>
     if grep -qF -- "$2" <<<"$LAST_ERR"; then
         echo "PASS $1"
@@ -273,6 +309,7 @@ run "scripts/cr dir restored, review-round -> allow" 0 "$(payload "$RR" "$WT")" 
 MOG='bash scripts/handover/merge-on-green.sh'
 GO='bash scripts/handover/chief-kit/go.sh'
 run "clean tree, bash scripts/handover/merge-on-green.sh -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
+no_spelling_deny "clean tree, relative merge-on-green.sh"
 run "clean tree, bash scripts/handover/chief-kit/go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
 echo ': edited' >>"$WT/scripts/handover/merge-on-green.sh"
 run "edited merge-on-green.sh -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
@@ -372,6 +409,7 @@ run "new layout, bash $NEWKIT/console-wait.sh -> deny" 2 "$(payload "bash $NEWKI
 for wt in "$WT2" "$WT2OLD"; do
     run "anchor's dispatcher from ${wt##*/} -> allow" 0 \
         "$(payload "bash \"\$HIMMEL_REPO/$NEWKIT/himmel-gate.sh\" orphan-check 12" "$wt")" "$HR2"
+    no_spelling_deny "anchor's dispatcher from ${wt##*/}"
 done
 for s in go write-verdict; do
     echo ': edited' >>"$WT2/$NEWKIT/$s.sh"
@@ -410,31 +448,35 @@ lacks=$OLDKIT
 run "first fixture, go.sh via the kit path it lacks -> deny" 2 "$(payload "bash $lacks/go.sh" "$WT")" "$HR"
 
 # ---- chief-O NO-GO finding 1: the $HIMMEL_REPO-prefixed anchor spelling -----
-# The documented anchored spelling for merge-on-green.sh, gate-
-# allowed at scripts/lanes/plugin-profiles.json:7 and .claude/settings.json,
-# is a LITERAL `$HIMMEL_REPO` (or `${HIMMEL_REPO}`) prefix - never evaluated
-# by this hook (it only sees the raw command text), so it is exactly as
-# trusted as any other absolute path once resolved: the shell, not a branch,
-# picks the anchor. Denying it left a worker with no allow-listed way to merge.
+# The exemption admits a LITERAL `$HIMMEL_REPO` (or `${HIMMEL_REPO}`) prefix -
+# never evaluated by this hook (it only sees the raw command text), so it is
+# exactly as trusted as any other absolute path once resolved: the shell, not a
+# branch, picks the anchor. The hook carves merge-on-green.sh out of that
+# exemption: no allow rule can match a shell expansion, so the auto-mode
+# classifier judged this spelling and denied it as Merge Without Review. The
+# worker now holds the generated literal rule (see the printed_matches rows
+# below), so the hook refuses the variable spelling and prints the literal.
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
-run 'literal $HIMMEL_REPO/ prefix, clean tree -> allow' 0 \
+run 'literal $HIMMEL_REPO/ prefix, clean tree -> deny (merge carve-out)' 2 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"' "$WT")" "$HR"
 echo ': edited' >>"$WT/scripts/handover/merge-on-green.sh"
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
-run 'literal $HIMMEL_REPO/ prefix, edited branch -> still allow (anchor spelling)' 0 \
+run 'literal $HIMMEL_REPO/ prefix, edited branch -> deny (merge carve-out)' 2 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"' "$WT")" "$HR"
 # shellcheck disable=SC2016 # the literal `${HIMMEL_REPO}` text, never expanded here
-run 'literal ${HIMMEL_REPO}/ braced prefix, edited branch -> still allow' 0 \
+run 'literal ${HIMMEL_REPO}/ braced prefix, edited branch -> deny (merge carve-out)' 2 \
     "$(payload 'bash "${HIMMEL_REPO}/scripts/handover/merge-on-green.sh"' "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/handover/merge-on-green.sh
 # The exemption is general (not handover-specific): a clean scripts/cr/
-# target and go.sh through the same literal prefix must also allow.
+# target and go.sh through the same literal prefix must still allow.
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
 run 'literal $HIMMEL_REPO/ prefix onto a scripts/cr/ target -> allow' 0 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh"' "$WT")" "$HR"
+no_spelling_deny "literal anchor prefix onto a scripts/cr/ target"
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
 run 'literal $HIMMEL_REPO/ prefix onto go.sh -> allow' 0 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/handover/chief-kit/go.sh"' "$WT")" "$HR"
+no_spelling_deny "literal anchor prefix onto go.sh"
 
 # codex-1: the anchor-prefix exemption
 # above trusted the COMMAND TEXT shape alone, never the hook's own actual
@@ -450,6 +492,7 @@ run 'control: HIMMEL_REPO empty -> anchor-prefix step0 call still denies (HIMMEL
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
 run 'HIMMEL_REPO correctly set to the anchor -> step0 call still allows (HIMMEL-3798 codex-1)' 0 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh"' "$WT")" "$HR"
+no_spelling_deny 'step0 call through the anchor prefix'
 
 # ---- the exemption must not survive a re-point ------
 # A `$HIMMEL_REPO` re-point earlier in the SAME command, any wrapper, or any
@@ -528,14 +571,17 @@ run 'traversal plus a second $ after the prefix -> deny' 2 \
     "$(payload 'bash "$HIMMEL_REPO/../../../../../../..$PWD/scripts/cr/pr-check-context.sh"' "$WT")" "$HR"
 
 # ---- the merge-on-green remedy must not loop --------
-# F1 denies ANY quote/backslash anywhere in the command, so a worker that reaches
-# for the remedy with a quoted argument (`--branch 'x'`) would trip F1 again.
-# The remedy text itself must say so, and name a fallback that never needs
-# quoting args at all.
+# F1 denies ANY quote/backslash anywhere in the command, so a worker that
+# reaches for a quoted argument (`--branch 'x'`) on the variable spelling is
+# denied. The remedy prints the anchor's own path, which needs no exemption and
+# so no unquoted-args rule, and never prints the $HIMMEL_REPO spelling (R3).
 run 'quoted arg on the anchored spelling -> deny (would loop without the fix)' 2 \
     "$(payload "bash \"\$HIMMEL_REPO/scripts/handover/merge-on-green.sh\" --branch 'x'" "$WT")" "$HR"
-need_in_err "remedy says args must be unquoted" "unquoted"
 need_in_err "remedy offers the anchor's own path as the fallback" "bash $PRIMARY/scripts/handover/merge-on-green.sh <args>"
+# shellcheck disable=SC2016 # the literal printed text
+no_line_starting 'R3 quoted-arg deny prints no bash "$HIMMEL_REPO/ line' 'bash "$HIMMEL_REPO/'
+# shellcheck disable=SC2016 # the literal printed text
+no_line_starting 'R3 quoted-arg deny prints no bash $HIMMEL_REPO/ line' 'bash $HIMMEL_REPO/'
 
 # ---- every spelling the remedy prints must match an allow rule -------------
 # A worker that follows a printed line is spared the auto-mode classifier only
@@ -610,6 +656,15 @@ followed() {
 if grep -qxF "Bash(bash $PRIMARY/scripts/handover/merge-on-green.sh:*)" <<<"$GEN_RULES"; then echo "PASS worker-impl allow rules generated, anchored at the primary"; else echo "FAIL the generated worker-impl rules lack the primary's merge-on-green rule: $GEN_RULES"; FAILED=$((FAILED + 1)); fi
 if [ -n "$SETTINGS_ALLOW" ]; then echo "PASS project allow rules read"; else echo "FAIL could not read the project allow rules"; FAILED=$((FAILED + 1)); fi
 followed "merge-on-green" "$MOG" scripts/handover/merge-on-green.sh "--go /g"
+# R3: the refused relative spelling on an edited tree prints no $HIMMEL_REPO line
+# (it used to print one first, which the classifier then denied).
+drifted "R3 merge-on-green" "$MOG" scripts/handover/merge-on-green.sh
+LAST_ERR="$ERR_OF"
+# shellcheck disable=SC2016 # the literal printed text
+no_line_starting 'R3 refused-relative deny prints no bash "$HIMMEL_REPO/ line' 'bash "$HIMMEL_REPO/'
+# shellcheck disable=SC2016 # the literal printed text
+no_line_starting 'R3 refused-relative deny prints no bash $HIMMEL_REPO/ line' 'bash $HIMMEL_REPO/'
+restore_tree scripts/handover/merge-on-green.sh
 followed "himmel-gate" 'bash scripts/handover/chief-kit/himmel-gate.sh' scripts/handover/chief-kit/himmel-gate.sh "--x"
 
 # The walk: every scripts/cr TARGET the hook declares is either followed, or sits
@@ -697,6 +752,19 @@ remedy_none() {
     restore_tree "$3"
 }
 
+# remedy_noexempt <label> <trigger> <file> <HIMMEL_REPO value>: the denied trigger prints
+# no $HIMMEL_REPO line (the merge-on-green carve-out of the exemption) and says the chief
+# merges, since no allow rule matches an anchored path that cannot be printed.
+remedy_noexempt() {
+    denied_under "$1" "$2" "$3" "$4"
+    # shellcheck disable=SC2016 # the literal printed text
+    no_line_starting "$1: prints no bash \"\$HIMMEL_REPO/ line" 'bash "$HIMMEL_REPO/'
+    # shellcheck disable=SC2016 # the literal printed text
+    no_line_starting "$1: prints no bash \$HIMMEL_REPO/ line" 'bash $HIMMEL_REPO/'
+    need_in_err "$1: points at the chief merging" "the chief merges"
+    restore_tree "$3"
+}
+
 mkdir -p "$TMP/wtv/.claude/worktrees/w"
 g clone -q "$ORIGIN" "$TMP/sp ace"
 remedy_exempt "space anchor" "$CRQ" $CRF "$TMP/sp ace"
@@ -709,7 +777,7 @@ remedy_none "worktree-named dir (no .git) as HIMMEL_REPO" "$CRQ" $CRF "$TMP/wtv/
 HERE_DIR="$PWD"
 cd "$TMP" && remedy_none "relative HIMMEL_REPO" "$CRQ" $CRF "himmel"; cd "$HERE_DIR" || exit 1
 # the same unsafe value on the merge-on-green remedy
-remedy_exempt "merge-on-green, space anchor" "bash scripts/handover/merge-on-green.sh --branch 'x'" scripts/handover/merge-on-green.sh "$TMP/sp ace"
+remedy_noexempt "merge-on-green, space anchor" "bash scripts/handover/merge-on-green.sh --branch 'x'" scripts/handover/merge-on-green.sh "$TMP/sp ace"
 
 # a symlinked anchor: the printed path is the physical one, which is what the rule holds
 ln -s "$PRIMARY" "$TMP/anchor-link"
@@ -732,6 +800,103 @@ printed_matches 'control: a printed worktree path matches no rule' nomatch "bash
 printed_matches 'control: quoted anchor path matches no rule' nomatch "bash \"$PRIMARY/scripts/handover/merge-on-green.sh\" --go /g"
 # shellcheck disable=SC2016 # the literal text
 printed_matches 'control: unquoted variable path matches no rule' nomatch 'bash $HIMMEL_REPO/scripts/handover/merge-on-green.sh --go /g'
+
+# ---- the $HIMMEL_REPO spelling of merge-on-green.sh is refused ----
+# A worker with a chief GO typed the variable spelling; no allow rule can match a
+# shell expansion, so the auto-mode classifier denied it and the worker parked on
+# the operator. The hook now refuses it (the exemption's four prefix shapes, when
+# the word names the anchor's merge-on-green.sh by file identity and the command
+# is not data only) and prints the same command with the anchor's literal path.
+MOGP=scripts/handover/merge-on-green.sh
+ANCH="$PRIMARY/$MOGP"
+W1="\"\$HIMMEL_REPO/$MOGP\""
+W2="\"\${HIMMEL_REPO}/$MOGP\""
+W3="\$HIMMEL_REPO/$MOGP"
+W4="\${HIMMEL_REPO}/$MOGP"
+NL=$'\n'
+TAB=$'\t'
+# R1: the four prefix shapes, clean tree: denied, and the printed line is the anchor literal.
+for w in "$W1" "$W2" "$W3" "$W4"; do
+    run "R1 bash $w 1 --go x -> deny" 2 "$(payload "bash $w 1 --go x" "$WT")" "$HR"
+    need_line "R1 [$w] prints the anchor literal" "bash $ANCH 1 --go x"
+    need_in_err "R1 [$w] carries the spelling refusal" "$SPELLING_DENY"
+    printed_matches "R1 [$w] printed line matches a held allow rule" match "bash $ANCH 1 --go x"
+    run "R1 [$w] printed line is allowed by this hook" 0 "$(payload "bash $ANCH 1 --go x" "$WT")" "$HR"
+done
+# R1b: P4's tab arm. The printed line keeps the tab, and says only the `bash ` form matches a rule.
+run "R1b a tab before the prefix -> deny" 2 "$(payload "bash${TAB}$W1 1 --go x" "$WT")" "$HR"
+need_line "R1b the printed line keeps the tab" "bash${TAB}$ANCH 1 --go x"
+need_in_err "R1b says only the bash form matches an allow rule" "so the classifier judges this form"
+# R1c: F is a file-identity test, not a text compare.
+for sep in // /./; do
+    run "R1c [handover${sep}merge-on-green.sh] -> deny" 2 \
+        "$(payload "bash \"\$HIMMEL_REPO/scripts/handover${sep}merge-on-green.sh\" 1 --go x" "$WT")" "$HR"
+    need_line "R1c [$sep] prints the canonical anchor path" "bash $ANCH 1 --go x"
+done
+# R5: an anchor whose path cannot be printed unquoted (rc 2).
+SPACE_ANCHOR="$TMP/sp ace"
+run "R5 space anchor, bash form -> deny" 2 "$(payload "bash $W1 1 --go x" "$WT")" "HIMMEL_REPO=$SPACE_ANCHOR"
+need_line "R5 space anchor prints the relative spelling" "bash $MOGP 1 --go x"
+# shellcheck disable=SC2016 # the literal printed text
+no_line_starting 'R5 space anchor prints no bash "$HIMMEL_REPO/ line' 'bash "$HIMMEL_REPO/'
+run "R5 space anchor, bash -n -> deny" 2 "$(payload "bash -n $W1" "$WT")" "HIMMEL_REPO=$SPACE_ANCHOR"
+no_line_starting "R5 space anchor, bash -n prints no runnable line" "bash "
+need_in_err "R5 space anchor, bash -n says the chief merges" "the chief merges"
+# R6: -n survives in the printed line.
+run "R6 bash -n on the path -> deny" 2 "$(payload "bash -n $W1" "$WT")" "$HR"
+need_line "R6 the printed line keeps -n" "bash -n $ANCH"
+# R7: the path as another script's argument: the script and its argument survive, no direct merge is printed.
+run "R7 the path as write-verdict.sh's argument -> deny" 2 \
+    "$(payload "bash scripts/handover/chief-kit/write-verdict.sh $W1 4918" "$WT")" "$HR"
+need_line "R7 the printed line keeps the script and its argument" "bash scripts/handover/chief-kit/write-verdict.sh $ANCH 4918"
+no_line_starting "R7 no direct merge-on-green line is printed" "bash $ANCH"
+# R8: HIMMEL_REPO is a worktree (trust check passes, no printable anchor, rc 1).
+run "R8 worktree as HIMMEL_REPO -> deny" 2 "$(payload "bash $W1 1 --go x" "$WT")" "HIMMEL_REPO=$WT"
+need_in_err "R8 points at the launching shell" "launching shell"
+no_line_starting "R8 prints no runnable line" "bash "
+# R9: a reader the reader model does not accept (accepted over-deny).
+run "R9 /usr/bin/cat on the path -> deny" 2 "$(payload "/usr/bin/cat $W1" "$WT")" "$HR"
+need_line "R9 the printed line is the caller's command with the path written out" "/usr/bin/cat $ANCH"
+
+# Passing rows: each keeps its base decision and never prints the spelling refusal.
+run "the anchor literal spelling -> allow (left to the permission layer)" 0 "$(payload "bash $ANCH 1 --go x" "$WT")" "$HR"
+no_spelling_deny "the anchor literal spelling"
+for rd in "grep -n bash $W1" "grep -c . $W1" "echo bash $W1 1 --go x" "cat $W1"; do
+    run "reader model [$rd] -> allow" 0 "$(payload "$rd" "$WT")" "$HR"
+    no_spelling_deny "reader model [$rd]"
+done
+P1CMD="bash scripts/handover/chief-kit/write-verdict.sh $W1 \"x${NL}bash $ANCH 1 --go /g${NL}\""
+run "P1 a quoted newline in an operand -> allow" 0 "$(payload "$P1CMD" "$WT")" "$HR"
+no_line_starting "P1 prints no bash line" "bash "
+no_spelling_deny "P1 a quoted newline"
+run "P2 a quoted separator in an operand -> allow" 0 \
+    "$(payload "bash scripts/handover/chief-kit/write-verdict.sh $W1 \"a;b\"" "$WT")" "$HR"
+no_spelling_deny "P2 a quoted separator"
+run "P3 a # before the word -> allow" 0 \
+    "$(payload "bash scripts/handover/chief-kit/write-verdict.sh # $W1" "$WT")" "$HR"
+no_spelling_deny "P3 a # before the word"
+run "P3 a \${U:- ...} spanning the prefix keeps its deny" 2 \
+    "$(payload "bash \${U:- \$HIMMEL_REPO/$MOGP }" "$WT")" "$HR"
+no_spelling_deny "P3 a \${U:- ...} spanning the prefix"
+# P4: a Unicode space is not a shell blank. Needs a UTF-8 locale for the hook to read the bytes as one character.
+EM=$'\xe2\x80\x83'
+if locale -a 2>/dev/null | grep -qiE '^c\.utf-?8$'; then
+    run "P4 an em space after the command word keeps its deny" 2 "$(payload "bash -n${EM}$W1" "$WT")" "$HR" LC_ALL=C.UTF-8
+    no_spelling_deny "P4 an em space after the command word"
+    run "P4 an em space inside the command word keeps its deny" 2 "$(payload "bash${EM}$W1 1 --go x" "$WT")" "$HR" LC_ALL=C.UTF-8
+    no_spelling_deny "P4 an em space inside the command word"
+else
+    echo "SKIP P4 em space: no C.UTF-8 locale"
+fi
+run "an unterminated quote on a // word -> allow" 0 \
+    "$(payload "bash \"\$HIMMEL_REPO/scripts/handover//merge-on-green.sh" "$WT")" "$HR"
+no_spelling_deny "an unterminated quote on a // word"
+run "P5 a quoted body re-read by a nested shell -> allow" 0 \
+    "$(payload "bash -c \"echo \$HIMMEL_REPO/$MOGP 1\"" "$WT")" "$HR"
+no_spelling_deny "P5 a quoted body"
+run "F false: a glob word that is not the merge script -> allow" 0 \
+    "$(payload "bash \$HIMMEL_REPO/scripts/handover/chief-kit/go.s?" "$WT")" "$HR"
+no_spelling_deny "F false: a glob word"
 
 # ---- chief-O NO-GO finding 2: go.sh's own sibling-sourced libs -------------
 # go.sh sources scripts/lib/go-gate.sh and scripts/lib/handover-path.sh via a
@@ -2677,6 +2842,7 @@ echo 'echo write-verdicts v2' >"$PRIMARY/scripts/cr/write-verdicts.sh"
 echo 'echo review-round v2' >"$PRIMARY/scripts/cr/review-round.sh"
 g -C "$PRIMARY" commit -qam 'main moves on'
 run "behind main, untouched merge-on-green.sh -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
+no_spelling_deny "behind main, untouched merge-on-green.sh"
 run "behind main, untouched go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
 run "behind main, untouched scripts/cr writer -> allow" 0 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
 run "behind main, two untouched writers in one call -> deny (not one simple command)" 2 \
