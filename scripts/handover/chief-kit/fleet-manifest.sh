@@ -7,13 +7,14 @@
 #   fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lockless] [--arm 200k|400k]
 #   fleet-manifest.sh remove <manifest> <worker doc | label>...
 #   fleet-manifest.sh list   <manifest>                      one doc per line
-#   fleet-manifest.sh watch  <manifest> add    <pr> [--head <sha>] [--comments <n>] [--reviews <n>] [--repo <owner/name>]
-#   fleet-manifest.sh watch  <manifest> set    <pr> [--head <sha>] [--comments <n>] [--reviews <n>]   (an existing row only)
-#   fleet-manifest.sh watch  <manifest> remove <pr>
-#   fleet-manifest.sh watch  <manifest> list                 pr<TAB>head<TAB>comments<TAB>reviews<TAB>repo, `-` for unset
+#   fleet-manifest.sh watch  <manifest> add    <pr> [--repo <owner/name>] [--head <sha>] [--comments <n>] [--reviews <n>] [--state open|closed|merged]
+#   fleet-manifest.sh watch  <manifest> set    <pr> [--repo <owner/name>] [same seen-values]   (an existing row only)
+#   fleet-manifest.sh watch  <manifest> remove <pr> [--repo <owner/name>]
+#   fleet-manifest.sh watch  <manifest> list                 pr<TAB>head<TAB>comments<TAB>reviews<TAB>repo<TAB>state, `-` for unset
 #
-# watch: one row per outside PR a worker no longer waits on -- the PR number plus the
-# head sha, the comment count (issue + review comments) and the review count last seen. chief-wait.sh
+# watch: one row per outside PR a worker no longer waits on, keyed by PR number and repo (no --repo =
+# the waiter's own repository) -- the head sha, the comment count (issue + review comments), the
+# review count and the state (open, closed or merged) last seen. chief-wait.sh
 # polls each row over REST and wakes `WAKE pr-watch <pr> ...` when one differs, then `watch set`s the
 # row so the same change never wakes twice. The rows live in the top-level `watch` array, a key the
 # writer carries through every rewrite untouched, so schema 1 stays valid, every reader of `workers`
@@ -75,8 +76,8 @@ usage() {
 usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lockless] [--arm 200k|400k]
        fleet-manifest.sh remove <manifest> <worker doc | label>...
        fleet-manifest.sh list   <manifest>
-       fleet-manifest.sh watch  <manifest> add|set <pr> [--head <sha>] [--comments <n>] [--reviews <n>] [--repo <owner/name>]
-       fleet-manifest.sh watch  <manifest> remove <pr>
+       fleet-manifest.sh watch  <manifest> add|set <pr> [--repo <owner/name>] [--head <sha>] [--comments <n>] [--reviews <n>] [--state open|closed|merged]
+       fleet-manifest.sh watch  <manifest> remove <pr> [--repo <owner/name>]
        fleet-manifest.sh watch  <manifest> list
 USAGE
 }
@@ -94,7 +95,7 @@ verb="$1"; manifest="$2"; shift 2
 
 # watch: one row per outside PR in the top-level `watch` array -- parsed here, applied
 # to the locked, validated manifest below, in the same single write path as add/remove.
-wsub=""; wpr=""; whead=""; wcom=""; wrev=""; wrepo=""
+wsub=""; wpr=""; whead=""; wcom=""; wrev=""; wrepo=""; wstate=""
 if [ "$verb" = watch ]; then
     [ "$#" -ge 1 ] || { usage >&2; exit 2; }
     wsub="$1"; shift
@@ -105,8 +106,11 @@ if [ "$verb" = watch ]; then
             wpr="$1"; shift
             case "$wpr" in ''|*[!0-9]*|0*) echo "fleet-manifest: watch needs a PR number: $wpr" >&2; exit 2 ;; esac
             while [ "$#" -gt 0 ]; do
-                [ "$wsub" != remove ] && [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+                [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+                # remove names a row (PR + --repo) and carries no seen-values
+                [ "$wsub" != remove ] || [ "$1" = --repo ] || { usage >&2; exit 2; }
                 case "$1" in
+                    --state) case "$2" in open|closed|merged) wstate="$2" ;; *) echo "fleet-manifest: --state must be open, closed or merged: $2" >&2; exit 2 ;; esac ;;
                     --head) case "$2" in ''|*[!0-9a-f]*) echo "fleet-manifest: --head must be a lowercase hex sha: $2" >&2; exit 2 ;; esac; whead="$2" ;;
                     --comments) case "$2" in ''|*[!0-9]*) echo "fleet-manifest: --comments must be a count: $2" >&2; exit 2 ;; esac; wcom="$2" ;;
                     --reviews) case "$2" in ''|*[!0-9]*) echo "fleet-manifest: --reviews must be a count: $2" >&2; exit 2 ;; esac; wrev="$2" ;;
@@ -126,7 +130,7 @@ if [ "$verb" = watch ]; then
             echo "fleet-manifest: not a schema-1 fleet manifest: $manifest" >&2
             exit 1
         fi
-        jq -r '(.watch // [])[] | [.pr, (.head // "-"), (.comments // "-"), (.reviews // "-"), (.repo // "-")] | @tsv' "$manifest"
+        jq -r '(.watch // [])[] | [.pr, (.head // "-"), (.comments // "-"), (.reviews // "-"), (.repo // "-"), (.state // "-")] | @tsv' "$manifest"
         exit $?
     fi
     set -- watch
@@ -223,13 +227,18 @@ for arg in "$@"; do
         # not bring the row back); remove drops it. A key the row does not carry stays absent.
         case "$wsub" in
             remove)
-                cur="$(printf '%s\n' "$cur" | jq --argjson p "$wpr" 'if has("watch") then .watch |= map(select(.pr != $p)) else . end')" || exit 1 ;;
+                cur="$(printf '%s\n' "$cur" | jq --argjson p "$wpr" --arg rp "$wrepo" \
+                    'if has("watch") then .watch |= map(select((.pr == $p and ((.repo // "") == $rp)) | not)) else . end')" || exit 1 ;;
             add|set)
-                cur="$(printf '%s\n' "$cur" | jq --argjson p "$wpr" --arg sub "$wsub" --arg t "$now" --arg h "$whead" --arg c "$wcom" --arg r "$wrev" --arg rp "$wrepo" \
+                # a row is keyed by PR number AND repo (no --repo = the waiter's own repository): the same number in
+                # two repositories is two rows
+                cur="$(printf '%s\n' "$cur" | jq --argjson p "$wpr" --arg sub "$wsub" --arg t "$now" --arg h "$whead" --arg c "$wcom" --arg r "$wrev" --arg rp "$wrepo" --arg st "$wstate" \
                     '({} + (if $h != "" then {head: $h} else {} end) + (if $c != "" then {comments: ($c | tonumber)} else {} end)
-                        + (if $r != "" then {reviews: ($r | tonumber)} else {} end) + (if $rp != "" then {repo: $rp} else {} end)) as $f
-                    | (.watch // []) as $w
-                    | .watch = (if any($w[]; .pr == $p) then ($w | map(if .pr == $p then . + $f else . end))
+                        + (if $r != "" then {reviews: ($r | tonumber)} else {} end) + (if $st != "" then {state: $st} else {} end)
+                        + (if $rp != "" then {repo: $rp} else {} end)) as $f
+                    | def mine: .pr == $p and ((.repo // "") == $rp);
+                    (.watch // []) as $w
+                    | .watch = (if any($w[]; mine) then ($w | map(if mine then . + $f else . end))
                                 elif $sub == "add" then $w + [{pr: $p, added: $t} + $f]
                                 else $w end)')" || exit 1 ;;
         esac

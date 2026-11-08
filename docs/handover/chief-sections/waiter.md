@@ -230,12 +230,14 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     (the tick flags an idle window left on that bullet as `holdout=<label>:<pr>` and prints the
     command). You record the PR in the fleet manifest and close the window:
     `bash scripts/handover/chief-kit/fleet-manifest.sh watch <manifest> add <pr> --head <sha> --comments <n> --reviews <n>`
-    (the values the worker last saw; `--repo owner/name` for a repository other than the waiter's cwd;
-    a count left off is a silent baseline). With `--workers-from`, the waiter then reads each row every
+    (the values the worker last saw, plus `--state open|closed|merged`; `--repo owner/name` for a repository
+    other than the waiter's cwd; a value left off is a silent baseline). With `--workers-from`, the waiter then reads each row every
     `CHIEF_WAIT_PR_WATCH_SEC` (default 120) over REST only (`gh api` on the pull request and its
     reviews: no GraphQL, no model turn) and wakes `WAKE pr-watch <pr> head <old7>→<new7> comments
-    <o>→<n> reviews <o>→<n>` (only what moved) when the head, the comment count (issue and review
-    comments) or the review count differs from the row. It writes the new values back first, so the
+    <o>→<n> reviews <o>→<n> state <o>→<n>` (only what moved) when the head, the comment count (issue
+    and review comments), the review count or the state (open, closed, merged: a merge or a close
+    moves none of the others) differs from the row. A row is keyed by PR number and `--repo`, so the
+    same number in two repositories is two rows. It writes the new values back first, so the
     same change never wakes twice; no change is silent, a failed read is silent and retried next
     interval. The rows live in the manifest, so a successor's waiter on the inherited manifest
     watches them with no re-arm. Read the PR, relaunch the worker from its resume brief or act, and

@@ -46,13 +46,16 @@ case " $* " in *graphql*|*" pr "*|*" repo "*) printf 'VIOLATION %s\n' "$*" >> "$
 [ ! -f "$S/gh.fail" ] || exit 1
 case "$2" in
     repos/*/pulls/*/reviews*) n="$(cat "$S/reviews")"; i=0; printf '['; while [ "$i" -lt "$n" ]; do [ "$i" -eq 0 ] || printf ','; printf '{"id":%s}' "$i"; i=$((i+1)); done; printf ']\n' ;;
-    repos/*/pulls/*) printf '{"head":{"sha":"%s"},"comments":%s,"review_comments":%s}\n' "$(cat "$S/head")" "$(cat "$S/comments")" "$(cat "$S/rcomments")" ;;
+    repos/*/pulls/*) printf '{"head":{"sha":"%s"},"comments":%s,"review_comments":%s,"state":"%s","merged":%s}\n' "$(cat "$S/head")" "$(cat "$S/comments")" "$(cat "$S/rcomments")" "$(cat "$S/state")" "$(cat "$S/merged")" ;;
     *) exit 1 ;;
 esac
 EOF
 chmod +x "$S/gh" "$S/tick.sh" "$S/bank.sh" "$S/budget.sh" "$S/off.sh"
 export S
-gh_state() { printf '%s\n' "$1" > "$S/head"; printf '%s\n' "$2" > "$S/comments"; printf '%s\n' "$3" > "$S/rcomments"; printf '%s\n' "$4" > "$S/reviews"; rm -f "$S/gh.fail"; }
+gh_state() { # <head> <comments> <review comments> <reviews> [state: open] [merged: false]
+    printf '%s\n' "$1" > "$S/head"; printf '%s\n' "$2" > "$S/comments"; printf '%s\n' "$3" > "$S/rcomments"; printf '%s\n' "$4" > "$S/reviews"
+    printf '%s\n' "${5:-open}" > "$S/state"; printf '%s\n' "${6:-false}" > "$S/merged"; rm -f "$S/gh.fail"
+}
 gh_state "$H1" 2 1 1
 wenv() { # run the waiter under the suite's seams for $3 seconds: <inbox> <manifest> <secs> <out>
     mkdir -p "$(dirname "$1")"; : > "$1"
@@ -102,6 +105,30 @@ gh_state "$H1" 3 1 2
 M2="$S/succ.fleet.json"; cp "$M" "$M2"
 wenv "$S/in5/consoles/successor.md" "$M2" 8 "$S/o7"; rc=$?
 check "A6. a successor's waiter on the inherited manifest wakes on the watched PR with no re-arm" 1 "$(grep -c '^WAKE pr-watch 77 ' "$S/o7")"
+
+# A8. a merge or a close moves no head, comment or review count: the state alone must wake
+gh_state "$H2" 3 1 2 closed true
+wenv "$S/in6/consoles/c.md" "$M" 8 "$S/o8"; rc=$?
+check 'A8. a merge with the head and counts unchanged wakes, naming the state move' 1 "$(grep -c '^WAKE pr-watch 77 state open→merged' "$S/o8")"
+wenv "$S/in6/consoles/c.md" "$M" 4 "$S/o9"; rc=$?
+check 'A8. and wakes once: the row holds merged' "124 merged" "$rc $(jq -r '.watch[0].state' "$M" 2>/dev/null)"
+gh_state "$H2" 3 1 2 closed false
+M4="$S/closed.fleet.json"; bash "$FM" add "$M4" --lane native "$wd" >/dev/null 2>&1
+bash "$FM" watch "$M4" add 78 --head "$H2" --comments 4 --reviews 2 --state open >/dev/null 2>&1
+wenv "$S/in7/consoles/c.md" "$M4" 8 "$S/o10"; rc=$?
+check 'A8. a PR closed without a merge wakes too' 1 "$(grep -c '^WAKE pr-watch 78 state open→closed' "$S/o10")"
+
+# A9. the same PR number in two repositories is two rows, each polled and updated on its own
+gh_state "$H1" 3 1 2
+M3="$S/tworepo.fleet.json"; bash "$FM" add "$M3" --lane native "$wd" >/dev/null 2>&1
+bash "$FM" watch "$M3" add 90 --repo acme/one --head "$H1" --comments 4 --reviews 2 --state open >/dev/null 2>&1
+bash "$FM" watch "$M3" add 90 --repo acme/two --head "$H1" --comments 4 --reviews 2 --state open >/dev/null 2>&1
+check 'A9. one row per repository, never an overwrite' 2 "$(jq '.watch | length' "$M3" 2>/dev/null)"
+gh_state "$H2" 3 1 2
+wenv "$S/in8/consoles/c.md" "$M3" 8 "$S/o11"; rc=$?
+check 'A9. the first repository wakes' 1 "$(grep -c '^WAKE pr-watch 90 head' "$S/o11")"
+check 'A9. its row moved and the other repository row kept what it had seen' "$H2 $H1" "$(jq -r '[.watch[] | select(.repo == "acme/one") | .head][0] + " " + [.watch[] | select(.repo == "acme/two") | .head][0]' "$M3" 2>/dev/null)"
+check 'A9. the stub saw the repository named in the row' yes "$(grep -q 'repos/acme/one/pulls/90' "$S/gh.log" && echo yes)"
 
 # A7. REST only: not one GraphQL, `pr` or `repo` call across every run above
 check 'A7. the stub logged calls (the check is not vacuous)' yes "$([ "$(grep -c . "$S/gh.log")" -gt 4 ] && echo yes)"

@@ -262,9 +262,19 @@ bash "$SCRIPT" add "$m10" --lane native "$l2" >/dev/null 2>&1
 bash "$SCRIPT" remove "$m10" "$l1" >/dev/null 2>&1
 check '9. a worker add and remove carry the watch rows through untouched' "1 $h2" "$(jq -r '"\(.watch | length) \(.watch[0].head)"' "$m10" 2>/dev/null)"
 m10b="$tmp/successor.fleet.json"; cp "$m10" "$m10b"
-check '9. a successor reading the inherited manifest lists the same row (no re-arm)' "4761	$h2	6	2	-" "$(bash "$SCRIPT" watch "$m10b" list 2>/dev/null)"
+check '9. a successor reading the inherited manifest lists the same row (no re-arm)' "4761	$h2	6	2	-	-" "$(bash "$SCRIPT" watch "$m10b" list 2>/dev/null)"
 bash "$SCRIPT" watch "$m10" add 4762 --repo yotamleo-org/Himmel >/dev/null 2>&1
-check '9. a row with only a PR and a repo lists a dash for what is unset' "4762	-	-	-	yotamleo-org/Himmel" "$(bash "$SCRIPT" watch "$m10" list 2>/dev/null | sed -n 2p)"
+check '9. a row with only a PR and a repo lists a dash for what is unset' "4762	-	-	-	yotamleo-org/Himmel	-" "$(bash "$SCRIPT" watch "$m10" list 2>/dev/null | sed -n 2p)"
+bash "$SCRIPT" watch "$m10" add 4762 --repo other/Repo --head "$h1" --state open >/dev/null 2>&1
+check '9. the same PR number in another repository is a second row, never an overwrite' "3 yotamleo-org/Himmel:- other/Repo:$h1" "$(jq -r '"\(.watch | length) " + ([.watch[] | select(.pr == 4762) | "\(.repo):\(.head // "-")"] | join(" "))' "$m10" 2>/dev/null)"
+bash "$SCRIPT" watch "$m10" set 4762 --repo other/Repo --state merged >/dev/null 2>&1
+check '9. set with --repo updates that repository row only' "merged -" "$(jq -r '([.watch[] | select(.repo == "other/Repo") | .state][0]) + " " + ([.watch[] | select(.repo == "yotamleo-org/Himmel") | .state // "-"][0])' "$m10" 2>/dev/null)"
+bash "$SCRIPT" watch "$m10" remove 4762 --repo other/Repo >/dev/null 2>&1
+check '9. remove with --repo drops that repository row only' "2 4761,4762" "$(jq -r '"\(.watch | length) " + (.watch | map(.pr) | join(","))' "$m10" 2>/dev/null)"
+bash "$SCRIPT" watch "$m10" add 4762 --state sideways >/dev/null 2>&1; rc=$?
+check '9. a state that is not open, closed or merged is a usage error (rc 2)' 2 "$rc"
+bash "$SCRIPT" watch "$m10" remove 4762 --repo yotamleo-org/Himmel --head "$h1" >/dev/null 2>&1; rc=$?
+check '9. remove takes no seen-values (rc 2)' 2 "$rc"
 bash "$SCRIPT" watch "$m10" remove 4761 >/dev/null 2>&1; rc=$?
 check '9. watch remove drops one row' "0 4762" "$rc $(jq -r '.watch | map(.pr) | join(",")' "$m10" 2>/dev/null)"
 bash "$SCRIPT" watch "$m10" remove 5555 >/dev/null 2>&1; rc=$?
