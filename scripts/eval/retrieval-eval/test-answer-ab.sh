@@ -233,7 +233,6 @@ eq "table lists the four realistic arms" "bm25-rerank fused-cached vanilla vec-r
 eq "results.jsonl holds one row per paid call (written as each call lands)" "12" "$(wc -l < "$W/out-real/results.jsonl" | tr -d ' ')"
 eq "each realistic arm answers every question once, with no closed-book screen" "3 3 3 3" "$(rt vanilla n) $(rt fused-cached n) $(rt bm25-rerank n) $(rt vec-rerank n)"
 
-# Route calls are evidence from the session, counted afresh for each answer.
 eq "routed rows keep one route call and its query/files; vanilla keeps none" "True" "$(python3 -I -c 'import json,sys
 rows = list(map(json.loads, open(sys.argv[1])))
 print(all(r.get("route_calls") == (0 if r["arm"] == "vanilla" else 1)
@@ -392,7 +391,6 @@ eq "after a failed first call the next question opens a new session, not --resum
 eq "the three sessions have three different ids" "3" "$(wsess vanilla | cut -d' ' -f2 | sort -u | wc -l | tr -d ' ')"
 eq "a question that opened a fresh session after a failed call is question 1 of it, not a warm one" "1 1 1" "$(python3 -I -c 'import json,sys; print(" ".join(str(r["pos"]) for r in map(json.loads, open(sys.argv[1]))))' "$W/out-warmerr/results.jsonl")"
 
-# 23. wrong-answer/right-file control: file-hit deliberately does not grade the prose.
 STUB_MODE=wrongprose HIMMEL_EVAL_RUNS_LEDGER="$W/wrong-ledger.jsonl" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-wrong" --arms vanilla --pool 1 --n 1 > "$W/wrong.txt" 2>&1
 eq "wrong-answer/right-file control runs" "0" "$?"
 eq "wrong-answer/right-file control keeps the file hit and the wrong prose" "True" "$(python3 -I -c 'import json,sys
@@ -409,14 +407,12 @@ eq "warm sessions reset their per-answer route trace" "True" "$(python3 -I -c 'i
 print(all(r.get("route_calls") == 1 and len(r.get("tool_trace", [])) == 1
           for r in map(json.loads, open(sys.argv[1])) if r["arm"] == "fused-cached"))' "$W/out-warm/results.jsonl")"
 
-# 24. The evidence is bounded without truncating the answer before scoring.
 STUB_MODE=longprose python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-long" --arms vanilla --pool 1 --n 1 --no-ledger > "$W/long.txt" 2>&1
 eq "a long reply runs" "0" "$?"
 eq "reply evidence is capped at 4000 characters but the full named answer is scored" "True" "$(python3 -I -c 'import json,sys
 r = json.loads(open(sys.argv[1]).readline())
 print(r.get("result") == "X" * 4000 and r.get("file_hit") is True and r["named"] == ["docs/lock.md"])' "$W/out-long/results.jsonl")"
 
-# 25. Successful and failed calls stay in order, including a failed qmd part of the fused route.
 cat > "$W/qmd-trace" <<'EOF'
 #!/usr/bin/env bash
 in="$(cat)"

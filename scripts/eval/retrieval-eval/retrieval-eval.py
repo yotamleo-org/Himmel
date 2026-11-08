@@ -382,8 +382,6 @@ def mcp_rows(msg):
 
 
 def arm_qmd(q, hybrid, timeout, k, collection, rerank=True, text_k=None):
-    """(files, text, timed_out, error, qmd_error); text_k bounds the scored context,
-    independently of the candidate depth k. Existing index-based callers keep the first four fields."""
     args = {"searches": [{"type": "lex", "query": q}] + ([{"type": "vec", "query": q}] if hybrid else []),
             "collections": [collection], "limit": k, "intent": q}
     args["rerank"] = hybrid and rerank
@@ -598,7 +596,7 @@ def cmd_run(a):
     need = list(arms)
     if "combined" in arms:
         need = [x for x in ARMS + OPT_IN if x in arms or x in FUSED]
-    depth = max(a.k, 20)
+    evidence_depth = max(a.k, 20)
     rows = []
     for q in qs:
         got = {}
@@ -614,21 +612,20 @@ def cmd_run(a):
             else:
                 t0 = time.time()
                 qmd_error = ""
-                # Fetch deeper candidates for evidence, but keep the scored context at k.
                 if arm == "grep":
-                    files, text, to, err = arm_grep(q["q"], repo, a.timeout, depth, a.k)
+                    files, text, to, err = arm_grep(q["q"], repo, a.timeout, evidence_depth, a.k)
                 elif arm == "grep-rtk":
-                    files, text, to, err = arm_grep_rtk(q["q"], repo, a.timeout, depth, a.k)
+                    files, text, to, err = arm_grep_rtk(q["q"], repo, a.timeout, evidence_depth, a.k)
                 elif arm == "path":
-                    files, text, to, err = arm_path(q["q"], repo, a.timeout, depth, a.k)
+                    files, text, to, err = arm_path(q["q"], repo, a.timeout, evidence_depth, a.k)
                 elif arm == "ident-grep":
-                    files, text, to, err = arm_ident_grep(q["q"], repo, a.timeout, depth, a.k)
+                    files, text, to, err = arm_ident_grep(q["q"], repo, a.timeout, evidence_depth, a.k)
                 elif arm == "ident-grep-rtk":
-                    files, text, to, err = arm_ident_grep_rtk(q["q"], repo, a.timeout, depth, a.k)
+                    files, text, to, err = arm_ident_grep_rtk(q["q"], repo, a.timeout, evidence_depth, a.k)
                 elif arm == "graphify":
-                    files, text, to, err = arm_graphify(q["q"], repo, a.timeout, depth)
+                    files, text, to, err = arm_graphify(q["q"], repo, a.timeout, evidence_depth)
                 else:
-                    files, text, to, err, qmd_error = arm_qmd(q["q"], arm != "qmd-lex", a.timeout, depth, a.collection,
+                    files, text, to, err, qmd_error = arm_qmd(q["q"], arm != "qmd-lex", a.timeout, evidence_depth, a.collection,
                                                               arm != "qmd-hybrid-norerank", a.k)
                 got[arm] = dict(files=files[:a.k], files_top20=files[:20], _text=text,
                                 ms=int((time.time() - t0) * 1000), timeout=bool(to), error=bool(err), qmd_error=qmd_error)
@@ -719,7 +716,6 @@ def cmd_run(a):
 
 
 def graph_built(repo):
-    """Read the first build stamp anywhere in the primary checkout's graph, or fail clearly."""
     try:
         r = subprocess.run(["git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"],
                            capture_output=True, text=True, timeout=10)
@@ -732,23 +728,22 @@ def graph_built(repo):
     stamp = re.compile(rb'"built_at_commit"\s*:\s*"([0-9a-fA-F]+)"')
     try:
         with open(path, "rb") as fh:
-            overlap = b""
+            boundary_tail = b""
             while True:
                 chunk = fh.read(1024 * 1024)
                 if not chunk:
                     break
-                data = overlap + chunk
+                data = boundary_tail + chunk
                 m = stamp.search(data)
                 if m:
                     return m.group(1).decode("ascii")
-                overlap = data[-256:]  # keep a stamp split across chunk boundaries
+                boundary_tail = data[-256:]
     except OSError as e:
         raise RuntimeError("cannot read graph.json at %s: %s" % (path, e)) from e
     raise RuntimeError("no built_at_commit stamp in %s" % path)
 
 
 def cmd_replay(a):
-    """Re-score saved retrieval lists without running any retrieval or subprocess."""
     arms = list(dict.fromkeys(x.strip() for x in (a.arms + "," + a.add).split(",") if x.strip()))
     if not arms:
         raise Usage("--arms names no arm")
@@ -789,11 +784,12 @@ def cmd_replay(a):
     print("replay combined: " + counts(3))
     same = arms == FUSED and a.rrf_k == 60 and sum(r[2] for r in scored) == sum(r[3] for r in scored)
     print("reproduces saved combined: %s" % ("yes" if same else "no"))
-    # Held-out questions are frozen and must not guide tuning: print counts, never their IDs.
-    rescued = [qid for qid, split, old, new in scored if split == "insample" and not old and new]
-    regressed = [qid for qid, split, old, new in scored if split == "insample" and old and not new]
-    print("rescued (dev): " + (" ".join(rescued) or "none"))
-    print("regressed (dev): " + (" ".join(regressed) or "none"))
+
+    def dev_ids(was_hit, now_hit):
+        return [qid for qid, split, old, new in scored if split == "insample" and old == was_hit and new == now_hit]
+
+    print("rescued (dev): " + (" ".join(dev_ids(False, True)) or "none"))
+    print("regressed (dev): " + (" ".join(dev_ids(True, False)) or "none"))
     return 0
 
 

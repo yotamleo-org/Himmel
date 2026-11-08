@@ -229,6 +229,17 @@ def price_usage(d, model):
     return total, True
 
 
+def read_complete_calls(path):
+    calls = []
+    with open(path) as fh:
+        for line in fh:
+            try:
+                calls.append(json.loads(line))
+            except ValueError:
+                continue
+    return calls
+
+
 class Sweep:
     def __init__(self, a, ev):
         self.a, self.ev = a, ev
@@ -298,8 +309,7 @@ class Sweep:
             prompt, cwd = build_prompt(q["q"], arm, text), self.scratch
         trace = self.traces.get(arm)
         if trace:
-            with open(trace, "w"):
-                pass  # sessions run one at a time; each answer starts a fresh trace
+            open(trace, "w").close()
         row = dict(id=q["id"], arm=tag or arm, split=q.get("split", "insample"), file_hit=False, named=[], tokens=0, weighted=0,
                    cost_usd=0.0, priced_usd=0.0, priced=True, input=0, output=0, cache_read=0, cache_creation=0,
                    turns=0, retr_tokens=self.ev.tok(text), error=None, pos=sess["n"] + 1 if sess is not None else 1, prime=prime,
@@ -333,13 +343,7 @@ class Sweep:
                 sess.setdefault("old", []).append(sess["id"])
                 sess["id"] = str(uuid.uuid4())  # the failed call may have taken the id: nothing to resume
         if trace:
-            calls = []
-            with open(trace) as fh:
-                for line in fh:
-                    try:  # a session killed mid-write leaves a truncated last line: keep the complete calls
-                        calls.append(json.loads(line))
-                    except ValueError:
-                        pass
+            calls = read_complete_calls(trace)
             row["tool_trace"] = calls
             row["route_calls"] = len(calls)
         row["ms"] = int((time.time() - t0) * 1000)
@@ -418,7 +422,6 @@ def trim_route(label, files, text, n=ROUTE_FILES, cap=ROUTE_EXCERPT):
 
 
 def route_text(ev, a, kind, repo, query):
-    """(text, files, failure) of a route tool call; files are the paths shown to the session."""
     if kind == "fused-cached":
         got = retrieve(ev, a, {"q": query}, repo, {"fused"})
         files = got["fused-files"][:ROUTE_FILES]

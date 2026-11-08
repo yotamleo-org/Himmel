@@ -478,7 +478,6 @@ eq "without rtk only the raw arm is scored" "grep" "$(awk -F'\t' 'NR>1{print $1}
 eq "without rtk the skip and its reason are printed" "1" "$(grep -c 'skipping grep-rtk: rtk is not on PATH' "$W/outr3.err")"
 eq "without rtk the ledger row records the skip" "rtk is not on PATH" "$(py -c 'import json,sys; print(json.loads(open(sys.argv[1]).readlines()[-1])["config"]["skipped"]["grep-rtk"])' "$W/ledger-14c.jsonl")"
 
-# 15. graph stamps can be deep in a large graph, including across a read boundary.
 eq "graph_built streams past 5 MiB and keeps the first stamp across a chunk boundary" "abc123def" "$(py -c 'import importlib.util,pathlib,sys
 s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
 p = pathlib.Path(sys.argv[2]) / "graphify-out/graph.json"
@@ -510,7 +509,6 @@ m = json.loads(open(sys.argv[1]).readline())["meta"]
 print(m.get("graph_built_at", "missing") is None and "graph_built_error" not in m)' "$W/ledger-nostamp.jsonl")"
 printf '{"built_at_commit": "abc123def"}\n' > "$R/graphify-out/graph.json"
 
-# 16. Deeper evidence must not enter the scored lists or the first-k fusion.
 cat > "$W/qmd-deep" <<'EOF'
 #!/usr/bin/env python3
 import json, sys
@@ -537,7 +535,6 @@ print(len(qm.get("files_top20", [])) == 20 and qm["files_top20"][:5] == qm["file
 eq "skipped arms still have no result rows" "True" "$(py -c 'import json,sys
 print(all(r["arm"] == "grep" and r.get("skipped") is False for r in map(json.loads, open(sys.argv[1]))))' "$W/outr3/results.jsonl")"
 
-# 17. Replay reads saved lists only. The held-out slice is frozen: never expose its IDs for tuning.
 py - "$W" <<'PY'
 import json, pathlib, sys
 w = pathlib.Path(sys.argv[1])
