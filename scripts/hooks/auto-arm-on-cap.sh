@@ -111,36 +111,23 @@ warn() { echo "auto-arm-on-cap: $*" >&2; }
 
 [ "${AUTO_ARM_DISABLE:-0}" = "1" ] && exit 0
 
-non_claude_lane=""
-# Match the z.ai host exactly (scheme + host, then end or a path), not a
-# substring: api.z.ai in a path, query, userinfo or lookalike host stays Claude.
-case "${ANTHROPIC_BASE_URL:-}" in
-    https://api.z.ai|https://api.z.ai/*) non_claude_lane="ANTHROPIC_BASE_URL=api.z.ai" ;;
-esac
-# Match the launcher's configured proxy exactly, not arbitrary loopback URLs.
-if [ -z "$non_claude_lane" ] && [ "${ANTHROPIC_BASE_URL:-}" = "${CODEX_PROXY_BASE_URL:-http://127.0.0.1:8317}" ]; then
-    non_claude_lane="ANTHROPIC_BASE_URL=codex proxy"
-fi
-if [ -z "$non_claude_lane" ] && [ -n "${HERMES_ENGINE:-}" ]; then
-    non_claude_lane="HERMES_ENGINE set"
-fi
-if [ -z "$non_claude_lane" ] && [ -n "${CODEX_ADAPTER:-}" ]; then
-    non_claude_lane="CODEX_ADAPTER set"
-fi
-# NOTE: CODEX_COMPANION_SESSION_ID is deliberately NOT a lane signal — the
-# codex-companion PLUGIN exports it into every Claude session where it is
-# installed (observed live in a plain Fable session), so keying on it would
-# silently disable this watchdog machine-wide. CODEX_THREAD_ID is only set
-# inside a real codex runtime.
-if [ -z "$non_claude_lane" ] && [ -n "${CODEX_THREAD_ID:-}" ]; then
-    non_claude_lane="CODEX_THREAD_ID set"
-fi
-if [ -n "$non_claude_lane" ]; then
-    warn "non-Claude lane detected ($non_claude_lane); passing through"
-    exit 0
-fi
 hook_dir=$(cd "$(dirname "$0")" && pwd)
 project_dir="${CLAUDE_PROJECT_DIR:-}"
+# The session-lane fact has one owner, scripts/lib/session-lane.sh (the ceilings
+# ledger gate reads it too). Fail-open: a missing lib skips the lane check, so
+# the watchdog stays on.
+_sl_lib="$hook_dir/../lib/session-lane.sh"
+[ -f "$_sl_lib" ] || _sl_lib="$project_dir/scripts/lib/session-lane.sh"
+# shellcheck source=../lib/session-lane.sh
+# shellcheck disable=SC1090,SC1091
+if { [ -r "$_sl_lib" ] && . "$_sl_lib"; } 2>/dev/null; then  # fail-open-ok: watchdog, a missing lane lib must never block the tool call
+    if non_claude_lane=$(session_lane_signal); then
+        warn "non-Claude lane detected ($non_claude_lane); passing through"
+        exit 0
+    fi
+else
+    warn "cannot source session-lane.sh (tried $hook_dir/../lib and \$CLAUDE_PROJECT_DIR/scripts/lib); lane check skipped"
+fi
 # Best-effort (this is a fail-open watchdog): a missing prim.sh only loses the
 # last-resort scratch-dir snapshot below, and the existing MALFUNCTION path covers it.
 # shellcheck source=/dev/null

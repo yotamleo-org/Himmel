@@ -33,7 +33,7 @@ find exactly once is refused rather than guessed at.
 
 Exit: 0 ok; 1 invalid spec, template drift or an existing brief; 2 usage.
 """
-import argparse, json, os, re, secrets, sys
+import argparse, json, os, re, secrets, subprocess, sys
 from datetime import date as _date
 
 TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruling')
@@ -139,6 +139,22 @@ def sub_para(paras, prefix, new):
     paras[hits[0]] = new
 
 
+CEILING_LOOKUP = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'ledger',
+                                              'ceiling-lookup.sh'))
+
+
+def ceilings_of(head):
+    """The ceilings ledger block for origin/main...<head> in the cwd's repo (the lookup's own gate decides
+    rows or withheld); any failure is a `not read` line."""
+    try:
+        r = subprocess.run(['bash', CEILING_LOOKUP, '--range', 'origin/main...%s' % head], stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=60)
+        out = r.stdout.strip()
+    except (OSError, subprocess.SubprocessError) as e:
+        out = 'CEILINGS: not read (%s)' % e.__class__.__name__
+    return out if out.startswith('CEILINGS:') else 'CEILINGS: not read (ceiling-lookup.sh failed)'
+
+
 def evidence_text(s):
     n = 0
     out = []
@@ -154,6 +170,12 @@ def evidence_text(s):
              '`git show %s:<path>` or `git archive %s` for a tree; '
              'never FETCH_HEAD, which a parallel judge\'s fetch overwrites).'
              % (s['pr'], s['head'], s['pr'], s['head'], s['head'], s['head'], s['head']))
+    if s.get('pr') and s.get('head'):
+        item('Recorded ceilings for the touched files, as `bash %s --range origin/main...%s` printed them when this '
+             'brief was written (re-run it if the header says `not read`): context to verify, not a verdict. Check each '
+             'one still matches the code; a ceiling never waives a defect the change introduces. Cite a row by its id '
+             'only; never quote its ceiling or trigger.\n\n```text\n%s\n```'
+             % (CEILING_LOOKUP, s['head'], ceilings_of(s['head'])))
     for k in [s['ticket']] + [t for t in (s.get('tickets') or []) if t != s['ticket']]:
         item('Ticket %s: the ask(s) the change claims to meet '
              '(`JIRA_PROJECT_KEY=%s node <primary checkout>/scripts/jira/dist/index.js get %s`, comments included).'
