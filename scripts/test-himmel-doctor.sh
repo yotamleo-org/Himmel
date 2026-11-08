@@ -8242,4 +8242,49 @@ if grepq "$out" 'INFO C91-api-policy-refusals' && ! grepq "$out" 'OK   C91' && !
     && grepq "$out2" 'INFO C91-api-policy-refusals' && ! grepq "$out2" 'OK   C91' && ! grepq "$out2" 'WARN C91'; then pass "C91 unreadable record and failing jq -> INFO"; else fail "C91 unreadable -> $(printf '%s' "$out" | head -3) failing jq -> $(printf '%s' "$out2" | head -3)"; fi
 rm -rf "$c91_t"
 
+# --- C92: a repo whose single-writer barrier is off is visible (invariant I8 of the single-writer barrier) ---
+# Fake HOME only: the register is $HOME/.himmel/state/holds, never the station's own.
+c92_t="$(mktemp -d "${TMPDIR:-/tmp}/c92.XXXXXX")" || { echo "FATAL: C92 setup mktemp failed" >&2; exit 1; }
+git init -q "$c92_t/repo"
+c92_repo="$(cd "$c92_t/repo" && pwd -P)"
+c92_esc="${c92_repo//%/%25}"; c92_esc="${c92_esc//\//%2F}"
+c92_holds="$c92_t/home/.himmel/state/holds"
+c92_reset() { rm -rf "${c92_t:?}/home" "${c92_t:?}/claude" "$c92_repo/.single-writer"; mkdir -p "$c92_holds/$c92_esc" "$c92_t/claude"; }
+c92_row() { printf '%b' "$2" > "$c92_holds/$c92_esc/$1"; }                # c92_row <escaped file name> <content>
+c92_live() { c92_row 'scripts%2Fa.sh' 'HIMMEL-8725\tN1\t\tclaim\t\n'; }    # a row written now is inside the grace, so alive
+c92_run() { env CLAUDE_DIR="$c92_t/claude" HOME="$c92_t/home" bash "$DOC" --only C92 --no-color 2>&1; }
+echo "== C92: a .single-writer marker at the primary plus a live worker row -> WARN naming the repo and the marker age =="
+c92_reset; c92_live; : > "$c92_repo/.single-writer"
+out="$(c92_run)"
+if grepq "$out" -E "WARN C92-barrier-off.*$c92_repo.*marker age [0-9]+"; then pass "C92 marker + live row -> WARN with repo and marker age"; else fail "C92 marker + live row -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C92: the marker alone (no live row) -> no WARN, an OK line =="
+c92_reset; : > "$c92_repo/.single-writer"
+out="$(c92_run)"
+if grepq "$out" 'OK   C92-barrier-off' && ! grepq "$out" 'WARN C92'; then pass "C92 marker alone -> OK, no WARN"; else fail "C92 marker alone -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C92: a live row with no marker -> no WARN =="
+c92_reset; c92_live
+out="$(c92_run)"
+if grepq "$out" 'OK   C92-barrier-off' && ! grepq "$out" 'WARN C92'; then pass "C92 live row, no marker -> OK, no WARN"; else fail "C92 live row, no marker -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C92: a corrupt register row -> WARN =="
+c92_reset; c92_row 'scripts%2Fb.sh' 'not a row\n'
+out="$(c92_run)"
+if grepq "$out" -E "WARN C92-barrier-off.*$c92_repo.*unparseable"; then pass "C92 corrupt row -> WARN naming the repo"; else fail "C92 corrupt row -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C92: an unreadable register directory -> WARN =="
+c92_reset; rmdir "$c92_holds/$c92_esc"; : > "$c92_holds/$c92_esc"   # a file where the directory belongs: listing it fails, whoever runs the suite
+out="$(c92_run)"
+if grepq "$out" -E "WARN C92-barrier-off.*cannot read.*$c92_repo"; then pass "C92 unreadable register -> WARN naming the repo"; else fail "C92 unreadable register -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C92: the OFF sentinel -> WARN with its reason =="
+c92_reset; printf '2026-11-08T10:00:00Z\tdecision 796 test reason\n' > "$c92_holds/OFF"
+out="$(c92_run)"
+if grepq "$out" -E "WARN C92-barrier-off.*OFF.*decision 796 test reason"; then pass "C92 OFF sentinel -> WARN with the reason"; else fail "C92 OFF sentinel -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C92: no marker and a clean register -> OK =="
+c92_reset
+out="$(c92_run)"
+if grepq "$out" 'OK   C92-barrier-off' && ! grepq "$out" 'WARN C92'; then pass "C92 clean register -> OK"; else fail "C92 clean register -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C92: no register at all -> OK =="
+rm -rf "${c92_t:?}/home" "$c92_repo/.single-writer"; mkdir -p "$c92_t/home"
+out="$(c92_run)"
+if grepq "$out" 'OK   C92-barrier-off' && ! grepq "$out" 'WARN C92'; then pass "C92 no register -> OK"; else fail "C92 no register -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c92_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

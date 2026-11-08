@@ -3995,6 +3995,62 @@ $rows
 EOF
 }
 
+# --- C92-barrier-off: a repo whose single-writer barrier is off is visible (invariant I8 of the single-writer barrier) ---
+# The holds register (~/.himmel/state/holds/<escaped primary path>/) is what the barrier checks. The barrier is OFF for a
+# repo when its primary carries a .single-writer marker, and for every repo while <holds>/OFF exists. Nothing else shows
+# that, so this WARNs: (a) a marker repo whose register holds a live row (a worker runs unguarded), naming the repo and
+# the marker age; (b) a row holds.py cannot parse; (c) a register directory that cannot be read; (d) the OFF sentinel,
+# with its reason. Rows come from `holds.py read` unfiltered (never --paths-from: a marker repo's live row can be on any
+# file); each repo is recovered from the register directory name (holds.py escape: %25 and %2F).
+# This guards work, not secrets: a fault in this check's own machinery (no python3, a hang, a bad exit) is one WARN line,
+# never a FAIL and never a freeze (holds.py read runs under a timeout).
+# ponytail: a marker repo with only dead rows, or rows holds.py cannot judge (state unknown), does not warn; a worker whose
+# first write has not published a row yet is invisible until it does. Upgrade path: read the worker list as well.
+check_c92_barrier_off() {
+    local holds="${HOME:-/tmp}/.himmel/state/holds" py="$REPO_ROOT/scripts/handover/chief-kit/holds.py"
+    local name repo rows rc err marker age live bad warned=0 off="$holds/OFF"
+    if [ -e "$off" ] || [ -L "$off" ]; then
+        warned=1
+        emit WARN C92-barrier-off "the single-writer barrier is OFF for every repo: $off exists ($(head -n 1 "$off" 2>/dev/null | tr '\t' ' ' | cut -c1-200))" \
+            "when the reason is over, the chief runs: python3 -I $py on"
+    fi
+    if [ ! -d "$holds" ]; then
+        [ "$warned" = 1 ] || emit OK C92-barrier-off "no holds register on this station, so no repo has a barrier-off marker to see"
+        return 0
+    fi
+    command -v python3 >/dev/null 2>&1 || { emit WARN C92-barrier-off "python3 not on PATH -- the holds register was not read, so a barrier-off repo would not show"; return 0; }
+    [ -f "$py" ] || { emit WARN C92-barrier-off "$py not found -- the holds register was not read"; return 0; }
+    for name in "$holds"/%2F*; do
+        [ -e "$name" ] || [ -L "$name" ] || continue
+        repo="$(printf '%s' "${name##*/}" | sed -e 's/%2F/\//g' -e 's/%25/%/g')"
+        err="$(mktemp "${TMPDIR:-/tmp}/c92.XXXXXX" 2>/dev/null)" || { emit WARN C92-barrier-off "mktemp failed -- the holds register was not read"; return 0; }
+        rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "${HIMMEL_DOCTOR_HOLDS_T:-30}"} python3 -I "$py" read --repo "$repo" 2>"$err")"; rc=$?
+        if [ "$rc" -ne 0 ]; then
+            warned=1
+            emit WARN C92-barrier-off "cannot read the holds register of $repo (holds.py read exit $rc: $(head -c 200 "$err" | tr '\n\t' '  ')) -- a barrier-off repo there would not show" \
+                "check the permissions of $name"
+            rm -f "$err"; continue
+        fi
+        rm -f "$err"
+        bad="$(printf '%s\n' "$rows" | awk -F'\t' '$6 == "unparseable" { n++ } END { print n + 0 }')"
+        if [ "$bad" -gt 0 ]; then
+            warned=1
+            emit WARN C92-barrier-off "$bad row(s) in the holds register of $repo are unparseable -- holds.py counts them unknown, so a live worker there may not show" \
+                "inspect $name and remove the damaged row file(s)"
+        fi
+        marker="$repo/.single-writer"
+        [ -f "$marker" ] || continue
+        live="$(printf '%s\n' "$rows" | awk -F'\t' '$6 == "alive" { n++ } END { print n + 0 }')"
+        if [ "$live" -gt 0 ]; then
+            warned=1
+            age=$(( ($(date +%s) - $(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null || date +%s)) / 60 ))
+            emit WARN C92-barrier-off "the single-writer barrier is OFF for $repo: $marker exists (marker age $age min) and $live live worker row(s) are registered there -- no write is guarded" \
+                "remove $marker once the workers there are done (a marker in a linked worktree never disables the barrier)"
+        fi
+    done
+    [ "$warned" = 1 ] || emit OK C92-barrier-off "no repo has its single-writer barrier off with a live worker row, and the register reads clean"
+}
+
 # --- C41: MCP server credential on the command line ---------------
 # An MCP server entry launched as `npm exec <server> --api-key <key>` puts the key
 # in argv, so any local user reads it via ps or /proc/<pid>/cmdline, and it lands
@@ -5744,6 +5800,7 @@ run_check C87 check_c87_stub_handover_state
 run_check C89 check_c89_qmd_rerank
 run_check C90 check_c90_effort_pin
 run_check C91 check_c91_api_policy_refusals
+run_heavy C92 check_c92_barrier_off C92-barrier-off
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
