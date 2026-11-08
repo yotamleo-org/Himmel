@@ -10,7 +10,13 @@ command -v jq >/dev/null 2>&1 || { echo "FAIL: jq not installed, cannot assert t
 for rule in \
   'Bash(bash <himmel-path>/scripts/handover/merge-on-green.sh:*)' \
   'Bash(bash <himmel-path>/scripts/handover/chief-kit/append-results.sh:*)' \
-  'Bash(bash <himmel-path>/scripts/lib/qmd-bounded.sh:*)'; do
+  'Bash(bash <himmel-path>/scripts/lib/qmd-bounded.sh query:*)' \
+  'Bash(bash <himmel-path>/scripts/lib/qmd-bounded.sh search:*)' \
+  'Bash(bash <himmel-path>/scripts/lib/qmd-bounded.sh vsearch:*)' \
+  'Bash(bash <himmel-path>/scripts/lib/qmd-bounded.sh get:*)' \
+  'Bash(bash <himmel-path>/scripts/lib/qmd-bounded.sh multi-get:*)' \
+  'Bash(bash <himmel-path>/scripts/lib/qmd-bounded.sh ls:*)' \
+  'Bash(bash <himmel-path>/scripts/lib/qmd-bounded.sh status:*)'; do
   if jq -e --arg r "$rule" '.permissions.allow | index($r) != null' "$TEMPLATE" >/dev/null 2>&1; then
     echo "PASS: template allow list carries $rule"
   else
@@ -19,11 +25,18 @@ for rule in \
   fi
 done
 
-if jq -e '(.permissions.allow // []) | length == 3' "$TEMPLATE" >/dev/null 2>&1; then
-  echo "PASS: template allow list carries exactly the three rules"
+if jq -e '(.permissions.allow // []) | length == 9' "$TEMPLATE" >/dev/null 2>&1; then
+  echo "PASS: template allow list carries exactly the nine rules"
 else
-  echo "FAIL: template allow list is not exactly the three rules (go.sh, write-verdict.sh, merge-fork-pr.sh, send-file, kill, crontab and VBoxManage stay refused)"
+  echo "FAIL: template allow list is not exactly the nine rules (go.sh, write-verdict.sh, merge-fork-pr.sh, send-file, kill, crontab and VBoxManage stay refused)"
   fail=1
+fi
+
+if jq -e '(.permissions.allow // []) | any(.[]; test("qmd-bounded\\.sh:\\*\\)$"))' "$TEMPLATE" >/dev/null 2>&1; then
+  echo "FAIL: a template allow rule admits every qmd-bounded.sh verb"
+  fail=1
+else
+  echo "PASS: no template allow rule admits a bare qmd-bounded.sh:*"
 fi
 
 if jq -e '(.autoMode.environment // []) | length > 0 and all(.[]; type == "string")' "$TEMPLATE" >/dev/null 2>&1; then
