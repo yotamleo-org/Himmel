@@ -7,6 +7,7 @@
 // on the usage store lock (usage-read.sh waits up to 60 s) holds the whole server for that long;
 // upgrade path: an async read behind the route, and a week table once the records carry parts per phase for it.
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 type Env = Record<string, string | undefined>;
@@ -19,7 +20,7 @@ export type Mark = "counted" | "derived" | "unpriced" | "nocount";
 export type CostPart = { id: string; name: string; note: string; usd: number | null; share: number | null; mark: Mark };
 export type CostPhase = { id: string; name: string; usd: number | null; share: number | null; mark: Mark; made: string; parts: CostPart[] };
 export type CostModel = {
-  state: "ok" | "nodata"; day: string | null; days: string[]; usd: number | null; mark: Mark; calls: number;
+  state: "ok" | "nodata" | "nostore"; day: string | null; days: string[]; usd: number | null; mark: Mark; calls: number;
   models: { model: string; usd: number | null }[]; phases: CostPhase[];
 };
 
@@ -138,4 +139,9 @@ export function buildCostModel(all: PhaseCostRow[], day?: string): CostModel {
   return { state: "ok", day: picked, days, usd: total, mark: rows.some((r) => r.mark === "unpriced") ? "unpriced" : "counted", calls: rows.reduce((a, r) => a + r.calls, 0), models, phases };
 }
 
-export const readCost = (env: Env, day?: string): CostModel => buildCostModel(readPhaseCostRows(env), day);
+const storeFile = (env: Env) => join(env.HIMMEL_USAGE_STORE || join(env.HOME ?? "", ".himmel", "state", "usage"), "records.jsonl");
+
+export const readCost = (env: Env, day?: string): CostModel =>
+  existsSync(storeFile(env))
+    ? buildCostModel(readPhaseCostRows(env), day)
+    : { state: "nostore", day: day ?? null, days: [], usd: null, mark: "nocount", calls: 0, models: [], phases: [] };

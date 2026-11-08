@@ -22,7 +22,8 @@ bash scripts/usage/usage-read.sh [--ticket KEY] [--all]                # latest 
 
 Flags: `--projects` (default `~/.claude/projects`), `--ledger` (default the
 repo's `cr-critic-scores.jsonl`), `--store` (default `~/.himmel/state/usage`,
-or `HIMMEL_USAGE_STORE`), `--since`, and one selector, `--range` or
+or `HIMMEL_USAGE_STORE`), `--since`, `--budget-seconds` and `--max-windows` (see "The
+build" below), and one selector, `--range` or
 `--tickets` (never both). `--range` is `KEY-a..KEY-b` with one key prefix;
 `--tickets` is comma-separated `KEY-n` entries and must match at least one
 ticket; `--since ""` is rejected. The store is `<store>/records.jsonl`,
@@ -87,8 +88,9 @@ session has that one phase; a chief or brief-drafter (and a subagent of a chief)
 
 **Rows are cumulative.** Each run reads every transcript from its saved byte offset
 (`<store>/phase-cost-state/`, one file per transcript, named by a checksum of its path, the offset inside it), complete lines only (a last line with no newline waits), and appends a key's row only when
-its totals changed; the latest row for a (day, session, phase) is the total. A key
-that disappears (a class change moved it) is closed with a zero row. The whole run
+its totals changed; the latest row for a (day, session, phase) is the total. What was
+emitted is kept per session in `<store>/phase-cost-state/emitted/`, one file per session.
+A key that disappears (a class change moved it) is closed with a zero row. The whole run
 renices itself to 19 and, where `ionice` exists, to the idle io class. `--since` and
 the ticket selectors do not apply to phase-cost rows.
 
@@ -96,7 +98,62 @@ the ticket selectors do not apply to phase-cost rows.
 phase), in key order; `--day YYYY-MM-DD` keeps one day, `--all` prints every stored
 version in append order. It does not combine with `--ticket`, and without `--phase-cost`
 the reader still prints ticket records only. A row the writer closed with zero calls is
-still a row; the Cost page (`scripts/config-ui/cost.ts`) drops it.
+still a row; the Cost page (`scripts/config-ui/cost.ts`) drops it. With no
+`records.jsonl` at all, the page says the usage store has not been built yet and names
+`scripts/usage/usage-compute.sh`, rather than "no data yet".
+
+## The build: windows, checkpoint, budget and resume
+
+The first build on a station reads every transcript (43 GB on the first station), so it
+runs in windows rather than all at once.
+
+- **A window** is the set of sessions that changed since the last run, grouped by the
+  local day of each session's newest file. A session is a top-level transcript plus its
+  subagents. The windows run newest day first, so the Cost page has today before history.
+  A session that changed is read again in full (`usage-attribution.sh`, unchanged, on a
+  scratch root of symlinks to that window's files). Its table rows then replace the
+  ones it had, so the ticket totals equal one pass over the whole root.
+- **The checkpoint** is `<store>/build-checkpoint.json`. For each session it holds a
+  fingerprint of its files (count and total bytes), the per-session table rows, the
+  `--since` they were read with, and the last committed window. A different `--since`
+  makes every session stale. The rows carry the same session names that the ticket
+  records' `legs[]` carry.
+- **A commit per window.** The window's phase-cost rows, its sessions' emitted maps and
+  the new checkpoint are staged under `<store>/.commit.new`, renamed to `.commit`, and
+  then applied: the part of the staged rows that `records.jsonl` lacks is appended, and
+  each state file is replaced by copy then rename. An applied commit is renamed to
+  `.commit.done` before it is removed, so it is never replayed. A run that finds
+  `.commit` applies it first. A kill at any point therefore leaves each row appended once or not yet, never
+  twice and never lost. Each transcript's phase state is saved as soon as it is read, so
+  a kill loses at most the transcript in flight.
+- **Ticket records** are computed and appended only in the run's last window, once every
+  changed session is in. A reader never sees a ticket's partial total. When nothing
+  changed, a run still recomputes them, so a new CR ledger row shows up.
+- **The budget.** `--budget-seconds` (default 240, `0` = no bound) stops a run from
+  starting another window once that time has passed. The window in flight always
+  finishes, so every run commits at least one. `--max-windows <n>` stops after `n`
+  windows. A stopped run exits 0 and prints
+  `stopped by the budget of 240s after K window(s), N window(s) remain; rerun to continue`.
+- **The resume rule.** The next run begins at the first window that was not committed.
+  Committed sessions are not read again unless their files grew. A rerun with nothing
+  new builds `0 window(s)` and appends nothing.
+- `--print` and `--repo` run as one window over everything that changed. With `--repo`,
+  the gh join keeps its all-or-nothing contract.
+
+**Stopping a run.** A plain `timeout` (SIGTERM) or Ctrl-C ends the run through its exit
+trap, which releases `<store>/.lock`. A cadence caller must use plain `timeout <secs>`,
+never `-k` or `-s KILL`. A SIGKILL skips the trap and leaves the lock with the run's pid
+in `<store>/.lock/pid`. After 300 s the next run refuses with
+`store locked: <path> (owner pid N, not running; remove it with rm -r if no run is active)`.
+The lock is never taken over automatically. A lock that `usage-read.sh` holds carries
+no pid, and the refusal says `owner unknown`.
+
+**A store written before the windows** has one `phase-cost-state/emitted.json` and no
+checkpoint. Its first windowed run reads every session once and appends each phase row
+once more with the same values. `usage-read.sh --phase-cost` keeps the latest row per
+(day, session, phase) (`scripts/usage/usage-read.sh`, the `reduce` in its jq program),
+and the Cost page reads only through it, so the totals do not double. The old
+`emitted.json` is left unread.
 
 ## PR/CI join (`--repo OWNER/NAME [--gh <executable>]`)
 
@@ -149,7 +206,11 @@ will feed it: PR-body cost aggregation and the automated review loop ledger.
 `--since` windows session tokens only; automated review stays all-time, so use it
 for token questions, not for a stored record you mean to compare across runs.
 A whole compute-then-append run holds a `<store>/.lock` directory, so an older
-snapshot never publishes after a newer one. Table parsing assumes session
+snapshot never publishes after a newer one. A reader waits up to 60 s for it, so a
+budget much above that delays the Cost page while a build runs.
+`usage-attribution.sh` stops on a transcript it cannot parse, so the window that holds
+that transcript is refused, and every later run stops at that window until the file is
+readable again. Table parsing assumes session
 titles contain no ` | `. Sessions are keyed by title, so distinct sessions
 sharing a title merge into one `workers[]` entry. Judge subagents are counted as
 `judge`-titled sessions only. An explicit `--projects` or `--ledger` that is
