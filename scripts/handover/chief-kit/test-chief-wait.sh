@@ -682,6 +682,9 @@ check "(9599) an unowned PR older than 30 m wakes, exit 0" "0" "$rc"
 check "(9599) the wake names each aged PR and not the young one" "WAKE unowned-pr 4946,4891" "$(head -n1 "$WORK/u1.out")"
 timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u2.out" 2>/dev/null; rc=$?
 check "(9599) the same aged set does not re-wake inside the window" "124:0" "$rc:$(grep -c '^WAKE unowned-pr' "$WORK/u2.out")"
+sed -i 's/unowned-prs=[^ ]* bank=/unowned-prs=#4999:5m bank=/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u3.out" 2>/dev/null
+check "(9599) a sample with no aged PR clears the aged marker" "no" "$([ -e "$I.wait.unowned-aged" ] && echo yes || echo no)"
 
 reset_stub
 I="$(new_inbox d3)"

@@ -1081,7 +1081,7 @@ unowned_aged_file="$inbox.wait.unowned-aged"
 unowned_aged_wake() {
     local aged
     aged="$(printf '%s\n' "$1" | tr ',' '\n' | sed -n 's/^#\([0-9][0-9]*\):\([0-9][0-9]*\)m.*/\1 \2/p' | awk -v m="${CHIEF_WAIT_UNOWNED_WAKE_MIN:-30}" '$2 + 0 >= m + 0 { print $1 }')"
-    [ -n "$aged" ] || return 1
+    [ -n "$aged" ] || { rm -f "$unowned_aged_file"; return 1; }
     set_wake "$aged" "$unowned_aged_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}" || return 1
     printf '%s\n' "$aged" | paste -sd, -
 }

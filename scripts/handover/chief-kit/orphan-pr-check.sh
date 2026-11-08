@@ -65,7 +65,7 @@ queue_line="$(awk '
     s && index($0, "queue:") == 1 {
         sub(/\|\|.*/, "")
         n = split($0, seg, "|")
-        for (i = 1; i <= n; i++) if (seg[i] ~ /(^|[^A-Za-z])([Hh][Ee][Ll][Dd]|[Hh][Oo][Ll][Dd])([^A-Za-z]|$)/) print seg[i]
+        for (i = 1; i <= n; i++) if (seg[i] ~ /(^|[^A-Za-z0-9_])([Hh][Ee][Ll][Dd]|[Hh][Oo][Ll][Dd])([^A-Za-z0-9_]|$)/) print seg[i]
         exit
     }
 ' "$doc" 2>/dev/null)" || unavailable "the chief doc's queue: line could not be read"  # swallow-ok: a read failure exits as unavailable, never as an empty queue
