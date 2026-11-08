@@ -1,6 +1,3 @@
-// The chief board inside the Fleet page: the legend, a worker's stage dots, the Trends tab (three bands, the merged-worker and
-// failure-class tables in the drawer) and the per-stage drill-in drawer. Everything here renders himmel.board/1; the colours and
-// their labels come from its `legend`, the recommendations from its `cards`. Read-only.
 import { createContext, Fragment, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { applyKey, BOARD_URL, BRIEF_IDLE, BRIEF_URL, briefNext, ciCount, failKind, normalizeBoard, openAt, ROLLUP_URL, stageSegments, STAGES, type Board, type BoardWorker, type Drawer, type Joined, type Rollup, type RollupCard, type RollupCompared, type Section, type Stage } from "./board-model";
 import { runHash } from "./fleet-model";
