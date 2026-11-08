@@ -173,7 +173,7 @@ station_env_resolved() {
 deny_station_env() {
     local tool="$1" given="$2" resolved="$3" env_r
     case "$resolved" in */.env) ;; *) return 0 ;; esac
-    env_r=$(station_env_resolved) || return 0
+    env_r=$(station_env_resolved) || deny "$tool targets $given, a .env file, and the station .env could not be resolved to compare it with (fail-closed)"
     [ "$resolved" = "$env_r" ] || return 0
     # shellcheck disable=SC2016 # the remedy shows $id literally
     REMEDY='    The station .env is changed through the config audit, so a deliberate edit

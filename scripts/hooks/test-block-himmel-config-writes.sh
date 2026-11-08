@@ -493,6 +493,9 @@ patch_case "apply_patch Update File on the station .env -> block" block "*** Beg
 patch_case "apply_patch on another project's .env -> allow" allow "*** Begin Patch${NL}*** Update File: $T/other/.env${NL}@@${NL}-a${NL}+b${NL}*** End Patch"
 env_msg=$(printf '%s' "$(jq -nc --arg p "$T/clone/.env" '{tool_name:"Write",tool_input:{file_path:$p}}')" | bash "$HOOK" 2>&1 >/dev/null)
 case "$env_msg" in *"config-audit.sh pre"*"config-audit.sh post"*) ok "the refusal names the audited route (pre and post)" ;; *) bad "the refusal does not name the audited route" ;; esac
+export HIMMEL_CONFIG_AUDIT_ENV_FILE="$T/loop/l1/x"
+bsd_file_case "a .env write when the station .env cannot be resolved -> block (fail-closed)" block "$T/other/.env"
+bsd_file_case "a non-.env write when the station .env cannot be resolved -> allow" allow "$T/other/notes.txt"
 unset HIMMEL_CONFIG_AUDIT_ENV_FILE
 
 echo "== malformed payloads =="
