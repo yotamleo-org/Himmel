@@ -944,7 +944,7 @@ describe('jira release bucket-check', () => {
     expect(out[0]).toMatch(/^FAILED HIMMEL-5 the live read of HIMMEL-5 failed: /);
   });
 
-  it('request on a key with a live out-of-version approval answers REQ approved:<id> and writes no row', async () => {
+  it('an INTAKE on an approved key answers REQ approved:<id> and writes no row; a REVERSION on it still files', async () => {
     await declared();
     const mir = projectMirror({ key: 'HIMMEL-7', fixVersions: ['v1.1.10'] });
     approve('HIMMEL-7', '901', 1);
@@ -955,5 +955,7 @@ describe('jira release bucket-check', () => {
     approve('HIMMEL-8', '902', 15);
     await run('request', 'R1', '--mirror-root', mir, '--verb', 'INTAKE', '--key', 'HIMMEL-8', '--to', 'v1.1.9', '--why', 'worked under the chief: fold it in');
     expect(out.at(-1)).toBe('REQ Q-R1-0001');
+    await run('request', 'R1', '--mirror-root', mir, '--verb', 'REVERSION', '--key', 'HIMMEL-7', '--from', 'v1.1.10', '--to', 'backlog', '--why', 'moves out of the version');
+    expect(out.at(-1)).toBe('REQ Q-R1-0002');
   });
 });
