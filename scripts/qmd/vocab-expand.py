@@ -49,8 +49,8 @@ STOPWORDS = frozenset(
 def shape_lex(question):
     """question for a lex leg: filler words dropped, "quoted phrases" and every other token kept.
     A question of only filler words stays whole."""
-    toks = re.findall(r'"[^"]*"|\S+', question)
-    keep = [t for t in toks if t.startswith('"') or t.strip("?,.;:!()").lower() not in STOPWORDS]
+    toks = re.findall(r'[^\s"]*"[^"]*"[^\s"]*|\S+', question)
+    keep = [t for t in toks if '"' in t or t.strip("?,.;:!()").lower() not in STOPWORDS]
     return " ".join(keep) if keep else question
 
 

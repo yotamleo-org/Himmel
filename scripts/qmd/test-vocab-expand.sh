@@ -94,5 +94,9 @@ got="$(doc search 'what is "the end" mode')|$(doc search "how does the")"
 if [ "$got" = 'lex: "the end" mode|how does the' ]; then pass "V13 quoted phrase kept, all-filler question whole"
 else fail "V13 got='$got'"; fi
 
+got="$(doc search 'what is ("state of the art") mode')"
+if [ "$got" = 'lex: ("state of the art") mode' ]; then pass "V14 quoted phrase inside punctuation keeps its filler words"
+else fail "V14 got='$got'"; fi
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
