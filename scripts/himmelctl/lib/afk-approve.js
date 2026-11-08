@@ -9,8 +9,8 @@
 //   - refuses unless it runs as the config's operator_user, before anything is sent,
 //   - sends the config's own operator_id as --from/--chat, so SSH can never name anyone else,
 //   - tags the call --via ssh --approver <that user>, which the ledger rows carry, and
-//   - reads the nonce and the TOTP code from stdin (masked on a TTY) and hands them to the helper's
-//     stdin. Neither goes in argv, a log or a ledger row.
+//   - reads the nonce and the TOTP code (for a deny, the nonce alone) from stdin (masked on a TTY) and
+//     hands them to the helper's stdin. Neither goes in argv, a log or a ledger row.
 //
 // Test seams (an operator-run CLI gains no privilege from them: they only change which file this
 // user's own process reads, or which program it runs in place of `sudo -n <helper>`):
@@ -26,6 +26,8 @@ const CONFIG = '/etc/himmel/afk-sudo.json';
 const ID_RE = /^[a-z2-7]{8}$/;
 // The nonce root sent (4 characters, Crockford base32) then the 6-digit code; spaces between are free.
 const REPLY_RE = /^([0-9A-Za-z]{4})([0-9]{6})$/;
+// A deny carries the nonce alone: only the holder of root's notice can end a request.
+const NONCE_RE = /^([0-9A-Za-z]{4})$/;
 
 function readConfig(env) {
   try {
@@ -36,9 +38,9 @@ function readConfig(env) {
   }
 }
 
-async function readReply(input, output) {
+async function readReply(input, output, label) {
   if (input.isTTY) {
-    const reply = await require('./secret-prompt').readMasked('Nonce Code: ', { input, output });
+    const reply = await require('./secret-prompt').readMasked(label, { input, output });
     input.pause(); // readMasked leaves stdin flowing, which would keep this process alive after the reply
     return reply;
   }
@@ -76,12 +78,19 @@ async function runAfkApprove({ verb, id, env = process.env, input = process.stdi
     }
     args = [verb, id, '--from', String(op), '--chat', String(op), '--via', 'ssh', '--approver', user];
     if (verb === 'approve') {
-      const m = REPLY_RE.exec((await readReply(input, output)).replace(/\s+/g, ''));
+      const m = REPLY_RE.exec((await readReply(input, output, 'Nonce Code: ')).replace(/\s+/g, ''));
       if (!m) {
         err('himmelctl approve: type the 4-character nonce from the notice, then the 6-digit code, nothing sent');
         return 2;
       }
       stdin = `${m[1]} ${m[2]}\n`;
+    } else {
+      const m = NONCE_RE.exec((await readReply(input, output, 'Nonce: ')).replace(/\s+/g, ''));
+      if (!m) {
+        err('himmelctl deny: type the 4-character nonce from the notice (no code), nothing sent');
+        return 2;
+      }
+      stdin = `${m[1]}\n`;
     }
   }
   const [cmd, ...pre] = env.HIMMELCTL_AFK_SUDO ? [env.HIMMELCTL_AFK_SUDO] : ['sudo', '-n', HELPER];

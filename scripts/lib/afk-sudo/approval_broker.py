@@ -9,9 +9,18 @@ State (pending slots, replay step, lockout, request times, recent outcomes) is
 one JSON file under a flock. The ledger is JSONL, one row per event, and never
 holds the code or the seed.
 
-At most MAX_SLOTS requests wait at once, one per session (meta "session"), each
-approved or denied by its own id. One TOTP code approves one request: after a
-code is spent, the next request needs the next step's code.
+At most MAX_SLOTS requests wait at once, each approved or denied by its own id. A session id
+is self-asserted and every session runs as the operator's uid, so no caller identity holds:
+requests filed without proof share MAX_SLOTS - 1 slots (one per session) and max_per_hour,
+and only a request filed with a valid TOTP code (`proof`, spent at filing) may take the last
+slot, past the hourly cap. One TOTP code approves one request: after a code is spent, the next
+request needs the next step's code.
+
+Approve and deny both need the request's nonce, which only root's notice carries. A wrong
+nonce never ends a request and never counts towards the broker-wide lock (only a wrong code
+sent with the right nonce does); it counts on that id, and past MAX_WRONG the id answers
+`locked` to anything short of the right nonce with a valid unspent code, so further guesses
+learn nothing. Lockdown needs a nonce of its own (lockdown_challenge / lockdown_take).
 """
 import base64
 import fcntl
@@ -40,6 +49,9 @@ VIAS = ("telegram", "ssh")
 # Crockford base32: no I, L, O or U, so a nonce read off a phone screen has one spelling.
 NONCE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 NONCE_LEN = 4
+# The lockdown nonce: longer, since nothing caps the guesses at it, and one lives at a time for LOCKDOWN_S.
+LOCKDOWN_NONCE_LEN = 8
+LOCKDOWN_S = 120
 
 
 def norm_nonce(s):
@@ -181,11 +193,27 @@ class Broker:
         s["busy_rows"] = rows
         return quiet
 
+    def _hit(self, t, code):
+        """The 30-second step a valid code belongs to (the current or the previous one), else None."""
+        if not re.fullmatch(r"[0-9]{%d}" % DIGITS, code or ""):
+            return None
+        seed = open(self.seed_path).read().strip()
+        step = int(t // STEP_S)
+        hit = None
+        for cand in (step - 1, step):
+            if hmac.compare_digest(totp(seed, cand), code):
+                hit = cand
+        return hit
+
+    @staticmethod
+    def _unproven(s):
+        return [p for p in s["slots"] if not p.get("proven")]
+
     def _classifier_gate(self, s, meta, t, key):
         """A request filed for a classifier refusal (`key` set: a digest of the session and the argv bytes).
         Refused `duplicate` while an earlier request for the same key is pending or inside its window, and
         `classifier-rate-limited` past CLASSIFIER_PER_HOUR an hour or when it would take the last free hourly
-        request or the last free pending slot, so these never crowd out a request filed on purpose."""
+        request or the last free unproven slot, so these never crowd out a request filed on purpose."""
         recent = {k: v for k, v in s.get("classifier_keys", {}).items() if v > t}
         s["classifier_keys"] = recent
         s["classifier"] = [r for r in s.get("classifier", []) if t - r < 3600]
@@ -193,14 +221,21 @@ class Broker:
             self._save(s)
             self._refuse("request", "duplicate", meta)
         if (len(s["classifier"]) >= CLASSIFIER_PER_HOUR or len(s["requests"]) + 1 >= self.max_per_hour
-                or len(s["slots"]) + 1 >= MAX_SLOTS):
+                or len(self._unproven(s)) + 1 >= MAX_SLOTS - 1):
             self._save(s)
             self._refuse("request", "classifier-rate-limited", meta)
 
-    def request(self, kind, display, payload, meta, window_s=None, classifier_key=None):
+    def request(self, kind, display, payload, meta, window_s=None, classifier_key=None, proof=None):
         """Open a pending slot; returns (id, expires, nonce). Raises Refused (`busy` when this session
-        already has one or MAX_SLOTS are taken). `classifier_key` marks a request filed for a classifier
-        refusal (see _classifier_gate).
+        already has one or the unproven slots are taken). `classifier_key` marks a request filed for a
+        classifier refusal (see _classifier_gate).
+
+        `proof` is a TOTP code the operator typed with the request. A valid unspent one is spent here (the
+        approval then needs the next step's code) and the request may take the last slot, skips the
+        one-per-session rule and is not counted against max_per_hour; anything else is refused `bad-proof`.
+        ponytail: a bad proof counts towards nothing, so a same-uid caller can guess codes at filing (about
+        2 in 10^6 a guess) to take the reserved slot for one window; upgrade path: a per-hour cap on failed
+        proofs that blocks unproven filing, never the proven path.
 
         The nonce is held in the state file only (never a ledger row, never the requester's output):
         the caller sends it to the operator through the root-only notice bot, and approve() needs it
@@ -216,15 +251,25 @@ class Broker:
             if t < s["locked_until"]:
                 self._refuse("request", "locked", meta)
             self._expire(s, t)
+            proven = False
+            if proof is not None:
+                hit = self._hit(t, proof)
+                if hit is None or hit <= s["last_step"]:
+                    self._save(s)
+                    self._refuse("request", "bad-proof", meta)
+                self._bump(s, hit)
+                proven = True
             sess = str(meta.get("session", ""))
-            if len(s["slots"]) >= MAX_SLOTS or any(str(p["meta"].get("session", "")) == sess for p in s["slots"]):
+            if len(s["slots"]) >= MAX_SLOTS or not proven and (
+                    len(self._unproven(s)) >= MAX_SLOTS - 1
+                    or any(str(p["meta"].get("session", "")) == sess for p in s["slots"])):
                 quiet = self._busy_quiet(s, meta, t)
                 self._save(s)
                 if quiet:
                     raise Refused("busy")
                 self._refuse("request", "busy", meta)
             s["requests"] = [r for r in s["requests"] if t - r < 3600]
-            if len(s["requests"]) >= self.max_per_hour:
+            if not proven and len(s["requests"]) >= self.max_per_hour:
                 self._save(s)
                 self._refuse("request", "rate-limited", meta)
             if classifier_key:
@@ -234,14 +279,15 @@ class Broker:
                 payload, extra = payload(rid, int(t), int(t + window))
                 meta.update(extra)
             nonce = "".join(secrets.choice(NONCE_ALPHABET) for _ in range(NONCE_LEN))
-            s["requests"].append(t)
+            if not proven:
+                s["requests"].append(t)
             if classifier_key:
                 s["classifier"].append(t)
                 s["classifier_keys"][classifier_key] = t + window
             s["slots"].append({"id": rid, "kind": kind, "display": display, "payload": payload, "meta": meta,
-                               "expires": t + window, "nonce": nonce})
+                               "expires": t + window, "nonce": nonce, "proven": proven})
             self._save(s)
-            self._row("request", "pending", meta, id=rid)
+            self._row("request", "pending", meta, id=rid, **({"proven": True} if proven else {}))
             if self.retain:
                 self.retain(set(s["done"]) | {p["id"] for p in s["slots"]})
             return rid, int(t + window), nonce
@@ -284,10 +330,12 @@ class Broker:
 
     def approve(self, rid, code, sender, chat, executor, nonce="", via="telegram", approver=None):
         """Check the nonce and the code; on success run executor(payload) once. Returns (pending, result).
-        A wrong nonce counts as a wrong code (towards the lockout) and ends the request; a valid code
-        sent with it is spent, since it was typed where a look-alike may have read it. A replayed code
-        (one already spent, e.g. on another slot) is refused and the request stays pending. An unknown
-        id ends no request. `via` and `approver` go on every row this writes."""
+        A wrong nonce is refused `bad-nonce` and the request stays pending; it counts on that id only (see
+        the module doc), and a valid code sent with it is spent, since it was typed where a look-alike may
+        have read it. With the right nonce, a missing or wrong code ends the request and counts towards the
+        broker-wide lock. A replayed code (one already spent, e.g. on another slot) is refused and the
+        request stays pending. An unknown id ends no request. `via` and `approver` go on every row this
+        writes."""
         who = self._who(via, approver, sender)
         fd = self._locked()
         try:
@@ -297,13 +345,7 @@ class Broker:
             self._sender_ok(rid, sender, chat, meta, who)
             if t < s["locked_until"]:
                 self._refuse("code-check", "locked", meta, id=rid, **who)
-            seed = open(self.seed_path).read().strip()
-            step = int(t // STEP_S)
-            hit = None
-            if re.fullmatch(r"[0-9]{%d}" % DIGITS, code or ""):
-                for cand in (step - 1, step):
-                    if hmac.compare_digest(totp(seed, cand), code):
-                        hit = cand
+            hit = self._hit(t, code)
             # A valid code sent to an expired or unknown id is spent all the
             # same, so it can never approve the next request.
             spend = hit is not None and hit > s["last_step"]
@@ -319,10 +361,17 @@ class Broker:
                     self._bump(s, hit)
                 self._save(s)
                 self._refuse("code-check", "no-pending", meta, id=rid, **who)
-            result = None
+            if p.get("wrong", 0) >= MAX_WRONG and not spend:
+                self._save(s)
+                self._refuse("code-check", "locked", p["meta"], id=rid, **who)
             if not self._nonce_ok(p, nonce):
-                result = "bad-nonce"
-            elif hit is None or hit <= s["last_step"]:
+                p["wrong"] = p.get("wrong", 0) + 1
+                if spend:
+                    self._bump(s, hit)
+                self._save(s)
+                self._refuse("code-check", "bad-nonce", p["meta"], id=rid, **who)
+            result = None
+            if hit is None or hit <= s["last_step"]:
                 result = "no-code" if not code else "replay" if hit is not None else "wrong-code"
             if result == "replay":
                 self._save(s)
@@ -372,7 +421,9 @@ class Broker:
             os.close(fd)
         return p, res
 
-    def deny(self, rid, sender, chat, via="telegram", approver=None):
+    def deny(self, rid, sender, chat, nonce="", via="telegram", approver=None):
+        """End a pending request; needs its nonce. A wrong nonce leaves it pending and counts on the id;
+        past MAX_WRONG the id refuses every deny `locked` (it can still be approved, or it expires)."""
         who = self._who(via, approver, sender)
         fd = self._locked()
         try:
@@ -382,6 +433,12 @@ class Broker:
             self._sender_ok(rid, sender, chat, meta, who)
             if not p:
                 self._refuse("deny", "no-pending", meta, id=rid, **who)
+            if p.get("wrong", 0) >= MAX_WRONG:
+                self._refuse("deny", "locked", meta, id=rid, **who)
+            if not self._nonce_ok(p, nonce):
+                p["wrong"] = p.get("wrong", 0) + 1
+                self._save(s)
+                self._refuse("deny", "bad-nonce", meta, id=rid, **who)
             self._finish(s, rid, "denied")
             self._drop(s, rid)
             self._spend(s, self.now())
@@ -408,6 +465,46 @@ class Broker:
                 for p in slots:
                     self._row("deny", "denied", p["meta"], id=p["id"], sender=int(sender), **who)
             return [p["id"] for p in slots]
+        finally:
+            os.close(fd)
+
+    def lockdown_challenge(self):
+        """Open the one live lockdown nonce; returns (nonce, expires), the nonce None while one is already live
+        (it was sent then, so nothing new is sent: at most one lockdown notice per LOCKDOWN_S)."""
+        fd = self._locked()
+        try:
+            s, t = self._load(), self.now()
+            c = s.get("lockdown")
+            if c and t <= c["expires"]:
+                return None, int(c["expires"])
+            nonce = "".join(secrets.choice(NONCE_ALPHABET) for _ in range(LOCKDOWN_NONCE_LEN))
+            s["lockdown"] = {"nonce": nonce, "expires": t + LOCKDOWN_S}
+            self._save(s)
+            return nonce, int(t + LOCKDOWN_S)
+        finally:
+            os.close(fd)
+
+    def lockdown_drop(self):
+        """Forget the live lockdown nonce (its notice could not be sent)."""
+        fd = self._locked()
+        try:
+            s = self._load()
+            if s.pop("lockdown", None):
+                self._save(s)
+        finally:
+            os.close(fd)
+
+    def lockdown_take(self, nonce):
+        """True, and the nonce spent, when `nonce` is the live lockdown nonce."""
+        fd = self._locked()
+        try:
+            s, t = self._load(), self.now()
+            c = s.get("lockdown")
+            ok = bool(c) and t <= c["expires"] and hmac.compare_digest(c["nonce"].encode(), norm_nonce(nonce).encode())
+            if ok:
+                del s["lockdown"]
+                self._save(s)
+            return ok
         finally:
             os.close(fd)
 

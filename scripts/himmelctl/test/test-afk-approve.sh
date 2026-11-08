@@ -113,11 +113,17 @@ ctl "$NONCE $CODE
 if [ "$rc" = 5 ] && ! sent; then pass "a config with no operator_user sends nothing"; else fail "no operator_user" "rc=$rc"; fi
 
 # --- deny and status ---
-ctl "" "$tmp/config.json" deny "$ID1"
+ctl "$NONCE
+" "$tmp/config.json" deny "$ID1"
 assert_eq "RED 4: himmelctl deny exits 0 when the helper does" "0" "$rc"
 assert_eq "deny calls the helper with the operator id, via ssh and the user" \
   "deny $ID1 --from $OP --chat $OP --via ssh --approver $me " "$(argv_line)"
-assert_eq "deny sends nothing on stdin" "0" "$(wc -c < "$tmp/log.stdin" | tr -d ' ')"
+assert_eq "deny sends the request's nonce on stdin, never argv" "$NONCE" "$(tr -d '\n' < "$tmp/log.stdin")"
+ctl "" "$tmp/config.json" deny "$ID1"
+if [ "$rc" = 2 ] && ! sent; then pass "a deny without a nonce sends nothing"; else fail "a deny without a nonce sends nothing" "rc=$rc"; fi
+ctl "$NONCE $CODE
+" "$tmp/config.json" deny "$ID1"
+if [ "$rc" = 2 ] && ! sent; then pass "a deny takes the nonce alone, never a code"; else fail "a deny takes the nonce alone, never a code" "rc=$rc"; fi
 ctl "" "$tmp/config-other.json" approve status "$ID1"
 assert_eq "RED 5: approve status reads a request's state" "0" "$rc"
 assert_eq "approve status passes only the verb and the id" "status $ID1 " "$(argv_line)"

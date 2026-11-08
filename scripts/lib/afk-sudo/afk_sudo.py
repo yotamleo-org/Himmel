@@ -11,15 +11,18 @@ file (a repo file is agent-writable). Off by default: the station config ships
   afk-sudo request ID...      --session S --ticket T --cwd DIR -- ARGV...   (allowlisted class, root)
   afk-sudo run-request        --session S --ticket T --blocked-by B [--as USER] [--cwd DIR] [--why W] -- ARGV...
                               (stdin of this process is the command's stdin, at most 64 KiB)
-  afk-sudo op-request         --session S --ticket T NAME key=value...   (a named station op from scripts/station-ops)
+  afk-sudo op-request         --session S --ticket T [--proof] NAME key=value...   (a named station op from scripts/station-ops;
+                              --proof reads the operator's TOTP code from stdin: the request may take the reserved slot)
   afk-sudo approve ID --from SENDER --chat CHAT [--via telegram|ssh --approver NAME]   (`NONCE CODE` is read from stdin)
-  afk-sudo deny ID --from SENDER --chat CHAT [--via telegram|ssh --approver NAME]
+  afk-sudo deny ID --from SENDER --chat CHAT [--via telegram|ssh --approver NAME]   (the request's NONCE is read from stdin)
   afk-sudo status ID  |  run-status ID
-  afk-sudo lockdown --from SENDER --chat CHAT   (operator only; sets enabled: false and denies every pending request; takes nothing that turns anything on)
+  afk-sudo lockdown --from SENDER --chat CHAT [--with-nonce]   (operator only. Bare: root sends a lockdown nonce through
+                              the notice bot. --with-nonce, that nonce on stdin: sets enabled: false and denies every
+                              pending request. Takes nothing that turns anything on)
   afk-sudo run-result ID [--stream stdout|stderr]
   afk-sudo grant-request      --session S --cwd DIR [--ticket T] [--why W]   (the command's bytes on stdin)
   afk-sudo grant-spend        --session S --sha256 H --cwd DIR
-  afk-sudo mode
+  afk-sudo mode [-- ARGV...]   (with ARGV it adds `admits=true|false`: whether run-request's mode would take that argv)
 
 The grant kind (HIMMEL-7686; `"grant": {"enabled": true}` in the station config, off by default) lets one
 classifier-refused Bash command skip the classifier once. scripts/hooks/approval-grant-request.sh files the
@@ -1603,7 +1606,9 @@ def op_request(broker, config, args):
     window = cfg_int(config.get("ops"), "ttl_s", 900, 30, 3600)
     broker.retain = prune
     shown = clean(f"op {name} v{entry['version']} " + " ".join(f"{k}={v}" for k, v in params.items()), 300)
-    rid, expires, nonce = broker.request("op", shown, make_op_builder(spec), {k: meta[k] for k in ("session", "ticket", "cwd")}, window)
+    proof = sys.stdin.readline().strip() if args.proof else None
+    rid, expires, nonce = broker.request("op", shown, make_op_builder(spec), {k: meta[k] for k in ("session", "ticket", "cwd")}, window,
+                                         proof=proof)
     try:
         rec = load_record(rid)
         ok = send_notice(broker, config, token, rec, nonce, None, None, built=op_facts(rec, nonce, rec_hash(rec)))
@@ -1645,17 +1650,45 @@ def disable_config(config):
 
 def lockdown(config, args):
     """HIMMEL-8067 slice 4: switch the station off and deny every pending request. Works on an already-off station;
-    takes no argument that could turn anything on, and the only thing it writes is `enabled: false`."""
+    takes no argument that could turn anything on, and the only thing it writes is `enabled: false`.
+
+    Two steps, since every session can call this as the operator's uid. A bare call only makes root
+    send a lockdown nonce through the notice bot (one live at a time, for ab.LOCKDOWN_S); `--with-nonce` with that
+    nonce on stdin locks down."""
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now()))
     op = config.get("operator_id")
     if not isinstance(op, int) or isinstance(op, bool) or args.sender != op or args.chat != op:
         ab.append_row(LEDGER, {"ts": ts, "event": "lockdown", "result": "not-operator", "sender": args.sender, "chat": args.chat}, OWNER)
         print("result=not-operator")
         return 5
+    broker = ab.Broker(STATE, LEDGER, SEED, op, config.get("window_s", 120), OWNER, now)
+    if not args.with_nonce:
+        token = notice_token()
+        if not token:
+            print("result=no-notice-bot")
+            return 5
+        nonce, expires = broker.lockdown_challenge()
+        if nonce:
+            text = (f"🔒 afk-sudo lockdown asked for. To switch the station off, send <code>/afk-lockdown {nonce}</code> "
+                    f"to the bridge bot before {time.strftime('%H:%MZ', time.gmtime(expires))}. If you did not ask, "
+                    "ignore this: nothing changes without the nonce.")
+            if not tg_send(config, token, "sendMessage", [("chat_id", op), ("parse_mode", "HTML"), ("text", text)]):
+                broker.lockdown_drop()
+                ab.append_row(LEDGER, {"ts": ts, "event": "lockdown", "result": "notice-failed", "sender": args.sender,
+                                       "reason": NOTICE_FAIL or "unknown"}, OWNER)
+                print("result=notice-failed")
+                return 5
+        ab.append_row(LEDGER, {"ts": ts, "event": "lockdown", "result": "nonce-sent" if nonce else "nonce-live",
+                               "sender": args.sender}, OWNER)
+        print(f"result=lockdown-nonce-sent expires={expires}")
+        return 0
+    if not broker.lockdown_take(sys.stdin.readline().strip()):
+        ab.append_row(LEDGER, {"ts": ts, "event": "lockdown", "result": "bad-nonce", "sender": args.sender}, OWNER)
+        print("result=bad-nonce")
+        return 5
     disable_config(config)
     denied, failed = [], False
     try:
-        broker = ab.Broker(STATE, LEDGER, SEED, op, config.get("window_s", 120), OWNER, now)
         # Read and deny under one lock, so no approve can take a request in between.
         denied = broker.deny_all(op)
     except (ab.Refused, OSError, ValueError, KeyError, TypeError):
@@ -1690,6 +1723,7 @@ def main(argv):
     o = sub.add_parser("op-request")
     o.add_argument("--session", required=True)
     o.add_argument("--ticket", required=True)
+    o.add_argument("--proof", action="store_true")
     o.add_argument("words", nargs=argparse.REMAINDER)
     gs = sub.add_parser("grant-spend")
     gs.add_argument("--session", required=True)
@@ -1706,12 +1740,14 @@ def main(argv):
             # passes neither; himmelctl approve|deny passes `--via ssh --approver <operator_user>`.
             a.add_argument("--via", default="telegram")
             a.add_argument("--approver", default=None)
+        else:
+            a.add_argument("--with-nonce", dest="with_nonce", action="store_true")
     for verb in ("status", "run-status"):
         sub.add_parser(verb).add_argument("id")
     g = sub.add_parser("run-result")
     g.add_argument("id")
     g.add_argument("--stream", choices=("stdout", "stderr"))
-    sub.add_parser("mode")
+    sub.add_parser("mode").add_argument("cmd", nargs=argparse.REMAINDER)
     args = p.parse_args(argv)
 
     if os.geteuid() != 0 and not SEAM:
@@ -1724,10 +1760,12 @@ def main(argv):
         if not isinstance(config, dict):
             raise TypeError("config is not an object")
         if args.verb == "mode":
+            cmd = args.cmd[1:] if args.cmd[:1] == ["--"] else args.cmd
             print(f"result=mode mode={mode_of(config)} enabled={str(config.get('enabled') is True).lower()} "
                   f"run_enabled={str(run_enabled(config)).lower()} "
                   f"classifier_requests={str(config.get('classifier_requests') is True).lower()} "
-                  f"grant_enabled={str(grant_enabled(config)).lower()}")
+                  f"grant_enabled={str(grant_enabled(config)).lower()}"
+                  + (f" admits={str(mode_of(config) == 'all' or bool(match_class(config, cmd))).lower()}" if cmd else ""))
             return 0
         if args.verb == "lockdown":
             return lockdown(config, args)
@@ -1818,7 +1856,9 @@ def main(argv):
             print(f"result=ran id={args.id} exit={res['exit']}" + (f" op_result={res['op_result']}" if res.get("op") else "")
                   + f" argv={pending['display']}")
         elif args.verb == "deny":
-            broker.deny(args.id, args.sender, args.chat, args.via, clean(args.approver, 64) if args.approver else None)
+            toks = sys.stdin.readline().split()
+            broker.deny(args.id, args.sender, args.chat, toks[0] if toks else "", args.via,
+                        clean(args.approver, 64) if args.approver else None)
             print(f"result=denied id={args.id}")
         else:
             print(f"result={broker.status(args.id)} id={args.id}")
