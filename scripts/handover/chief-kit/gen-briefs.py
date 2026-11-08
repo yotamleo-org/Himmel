@@ -32,7 +32,7 @@ it a title, desc, why or scope naming a dropped platform, per platform-dropped.r
 profile (HIMMEL-7935: the --profile the launcher arms; default worker-impl, worker-e2e when the scope's
 Writes name scripts/config-ui/ (adds the Playwright MCP server and a brief line on running himmelctl ui), or
 worker-docs when every Write is under docs/ or is a *.md file; worker-eval is only ever an explicit key. A profile
-with a sonnetAutocompact ceiling gives a native claude-sonnet-5 launch 450000, so ab_arm needs another profile
+with a sonnetAutocompact ceiling gives a native claude-sonnet-5 launch 850000, so ab_arm needs another profile
 there (worker-docs)),
 model (default claude-sonnet-5-5; a non-native lane with no model key takes its LANE_MODELS default and
 the launcher passes no model argument, so headed-arm-worker.sh's lane default applies; an opus or fable model is

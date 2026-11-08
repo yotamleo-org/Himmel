@@ -7,6 +7,7 @@ import { appendChained, readPast, commitCursor, chainHash, openChainFile, withCh
 
 export { readPast, commitCursor };
 export const ROTATE_BYTES = 256 * 1024;
+export const SESSION_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const initial = () => ({ k: 0, off: 0, n: 0, h: '' });
 
 async function info(path) {
@@ -48,7 +49,7 @@ export async function busRoot({ stateHome = process.env.XDG_STATE_HOME || join(h
 }
 
 async function paths(root, name) {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(name)) throw new Error('invalid session name');
+  if (!SESSION_NAME.test(name)) throw new Error('invalid session name');
   // Re-check on every operation, not just startup; a replaced root must fail.
   let path = resolve(root);
   while (true) {
