@@ -424,7 +424,22 @@ unset HIMMEL_FLAG_AUTO_GO
 run "READY 2553 $H40 GREEN N2088"
 check "15a flag off: rc" "$rc" 10
 check "15a flag off: ESCALATE marker-READY, as before" "$out" "ESCALATE marker-READY"
-check "15a flag off: auto-go not run" "$calls" ""
+check "15a flag off: auto-go runs once, dry" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/fleet.json --worker N2088 2553 $H40"
+
+LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing - chief relay" run "READY 2553 $H40 GREEN N2088"
+check "15a1 a failed dry run: rc unchanged" "$rc" 10
+check "15a1 a failed dry run: ESCALATE marker-READY unchanged" "$out" "ESCALATE marker-READY"
+LE_AUTOGO_RC=0 LE_AUTOGO_OUT="WOULD-GO 2553 $H40" run "READY 2553 $H40 GREEN N2088"
+check "15a2 a WOULD-GO dry run: still ESCALATE marker-READY" "$out" "ESCALATE marker-READY"
+run "N2088 READY 2553 $H40 GREEN"
+check "15a3 a label-first READY dry-runs the same" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/fleet.json --worker N2088 2553 $H40"
+run "READY 2553 abc N2088"
+check "15a4 no full head: no dry run" "$calls" ""
+run "READY 2553 $H40 GREEN"
+check "15a5 no worker label: no dry run" "$calls" ""
+check "15a5 no worker label: ESCALATE marker-READY unchanged" "$out" "ESCALATE marker-READY"
+run "READY 2553 $H40 N2078 N2088"
+check "15a6 two labels: no dry run" "$calls" ""
 
 export HIMMEL_FLAG_AUTO_GO=1
 printf '# chief\n\n## Results\n' > "$W/doc"
