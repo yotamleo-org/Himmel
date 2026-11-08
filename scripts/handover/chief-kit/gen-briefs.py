@@ -1245,7 +1245,12 @@ def lint_brief(doc, l, hroot):
     # The launcher runs brief-lint.sh on this brief, so run it here first. A refused brief is removed and no
     # launcher is written for it: the chief reads the reason now, not at launch.
     lint = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'brief-lint.sh')
-    r = subprocess.run(['bash', lint, doc], capture_output=True, text=True, timeout=120, env=dict(os.environ, HANDOVER_DIR=hroot))
+    # lint asks the same jira CLI and mirror the core gate here asked, unless its own seams are set
+    env = dict(os.environ, HANDOVER_DIR=hroot)
+    for lint_var, gen_var in (('BRIEF_LINT_JIRA_CLI', 'GEN_BRIEFS_JIRA_CLI'), ('BRIEF_LINT_MIRROR', 'GEN_BRIEFS_MIRROR')):
+        if gen_var in os.environ and lint_var not in os.environ:
+            env[lint_var] = os.environ[gen_var]
+    r = subprocess.run(['bash', lint, doc], capture_output=True, text=True, timeout=120, env=env)
     if r.returncode != 0:
         os.unlink(doc)
         die('worker %s: brief-lint refuses the brief (rc %d), so no brief or launcher is kept for it or the workers after it: %s' % (
