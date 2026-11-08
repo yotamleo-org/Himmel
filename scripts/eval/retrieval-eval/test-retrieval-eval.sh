@@ -371,7 +371,6 @@ HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-9c.jsonl" py "$EV" run --repo "$R" --question
 eq "no held-out question: held-out n is 0" "0" "$(lm "$W/ledger-9c.jsonl" grep.heldout.n)"
 eq "no held-out question: held-out hit is null" "None" "$(lm "$W/ledger-9c.jsonl" 'grep.heldout.hit@5')"
 
-# 9d. every arm is also reported per gold stratum: code-only (no .md gold) and doc (a .md gold), alone and per split.
 cat > "$W/qs.jsonl" <<'EOF'
 {"id":"c1","kind":"where","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[]}
 {"id":"c2","kind":"where","q":"where does relay_batch run","gold":["bin/run.sh"],"reason":[]}
