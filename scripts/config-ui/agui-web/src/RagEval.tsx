@@ -17,7 +17,7 @@ function useRagEval(token: string): State {
   return s;
 }
 
-const day = (ts: string) => new Date(ts).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+const day = (ts: string) => new Date(ts).toLocaleDateString([], { day: "numeric", month: "short" });
 const tokens = (t: number | null) => (t === null ? "—" : Math.round(t).toLocaleString());
 const secs = (ms: number | null) => (ms === null ? "—" : `${(ms / 1000).toFixed(1)} s`);
 
@@ -28,7 +28,7 @@ function Cells({ m, gap }: { m: Measure | null; gap: string }) {
       <td><b>{m.count} of {m.n}</b> <span className="rag-dim">{Math.round(m.rate * 100)}%</span></td>
       <td>{tokens(m.tokens)}</td>
       <td>{secs(m.ms)}</td>
-      <td className="rag-dim" title={m.runId}>{day(m.ts)} · n {m.n}</td>
+      <td className="rag-dim" title={m.runId}>{day(m.ts)}</td>
     </>
   );
 }
