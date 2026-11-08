@@ -1864,7 +1864,6 @@ check_outside_pr
 # the title's key with the merge's own reader (ticket_key_from_title) and the body with the merge's own remainder reader
 # (scripts/lib/pr_remainder.py, run from the anchor with python3 -I, never from the checkout under review). The contract is
 # the merge line's (--jira-transition, or the brief's `Completes ticket:`), so the caller names it: --contract yes|no.
-# With no --contract, a keyed title FAILs by default; --observe opts into a WARN for a read that writes no GO.
 check_partial_remainder() {
     local pr_title lib key rc anchor reader ans
     [ "$ONLY7" -eq 0 ] || return 0

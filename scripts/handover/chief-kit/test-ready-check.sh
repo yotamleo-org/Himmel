@@ -263,8 +263,6 @@ seed_deferral() {
     printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-%s","severity":"sug","verdict":"deferred","deferred_to":"%s","fu_class":"polish","reason":"out of scope","artifact":"diff","perspective":"off"}\n' "${SEED_BRANCH:-b}" "${2:-$SHA}" "$1" "$1" >> "$LEDGER"
 }
 
-# Item 17 FAILs a keyed title with no --contract by default, so every row that is not about item 17 reads it warn-only
-# (--observe); the item 17 rows set RUN_FLAGS themselves.
 RUN_FLAGS="--observe"
 run() {
     local cache="${RUN_CACHE:-}"

@@ -454,7 +454,6 @@ fi
 # without a fresh review. Run from $HERE: the anchor's copy, never a worktree's.
 # The merge contract is named by the caller (--contract): a merge GO that does not name it is refused
 # by ready-check item 17 by default, because merge-on-green.sh's remainder refusal depends on it.
-# --fix-main-red keeps the warn-only read with --observe; it writes a separate FIX-GO.
 RC_ARGS="--observe"
 [ "$FIX_SET" -eq 1 ] || RC_ARGS="--require-contract"
 [ "$CONTRACT_SET" -eq 0 ] || RC_ARGS="$RC_ARGS --contract $CONTRACT"

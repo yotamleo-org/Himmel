@@ -81,7 +81,6 @@ check "(b) clean path exits 0" 0 "$rc"
 has "(b) block says READY-CANDIDATE" "SHEPHERD 7 $HEADSHA READY-CANDIDATE" "$out"
 has "(b) steering skipped" "steering: skipped" "$out"
 has "(b) suite verdict line" "suite test-a.sh: PASS" "$out"
-# the shepherd writes no GO, so its full ready-check read is warn-only on a keyed PR with no contract (--observe)
 has "(b) the full ready-check read is warn-only (--observe)" "--observe 7 $HEADSHA" "$(cat "$SHEP_STUBDIR/ready.args" 2>/dev/null)"
 check "(b) clean run removes its own worktree" "" "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
 wtl=$(git -C "$WORK/repo" worktree list 2>&1)
