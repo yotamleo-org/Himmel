@@ -20,7 +20,7 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, claim, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
+  apply, bucketCheck, claim, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersionApproval, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
   type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
@@ -489,7 +489,7 @@ async function admissionBudgets(versions: string[]): Promise<Record<string, numb
   return out;
 }
 
-const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check']);
+const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check', 'bucket-check']);
 
 /** Each repair read carries its own deadline: the fetch has none, so a hung read must end the run, not hang it. */
 export const REPAIR_READ_DEADLINE_MS = 5000;
@@ -598,6 +598,15 @@ export function registerRelease(program: Command): void {
       if (!r.ok) process.exitCode = 1;
     });
 
+  rel.command('bucket-check <keys...>')
+    .description('Per key, first match: FAILED <why>, NONE <mirror>, APPROVED decision= record=, DONE, IN current= via=, or '
+      + 'OUTSIDE <versions|none> current= open=; whether the key is in the current version\'s bucket. Read-only; exit 0 once every key has its line')
+    .requiredOption('--mirror <dir>', 'The key project\'s Jira mirror directory; required, with no JIRA_PROJECT_KEY fallback')
+    .action(async (keys: string[], o: { mirror: string }) => {
+      const lines = await bucketCheck(process.env, keys, o.mirror, { get: repairGetter(), deadlineMs: REPAIR_READ_DEADLINE_MS, now: new Date() });
+      for (const l of lines) console.log(l);
+    });
+
   rel.command('core-check')
     .description('Per key: CORE, REVIEW, BYPASS, UNKNOWN or NOT-CORE from scripts/ci/core-paths.txt, the mirror and the '
       + 'core-bypass and core-snapshot records of every declared release (a rename or bulk change touching core is REVIEW)')
@@ -651,6 +660,12 @@ export function registerRelease(program: Command): void {
       const evidence: unknown = JSON.parse(o.evidence);
       if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: --evidence is a JSON object');
       const ctx = ctxFor(release, o.mirrorRoot);
+      // An approved out-of-version key stays on its version, so no request moves it.
+      const approval = outOfVersionApproval(process.env, o.key, new Date());
+      if (approval) {
+        console.log(`REQ approved:${approval.id}`);
+        return;
+      }
       const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
       refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown> });
       const r = releaseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' });

@@ -55,6 +55,7 @@ import { admissionBudget } from '../release/leaks.js';
 import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
+import { appendChain, loadKey } from '../release/ledger.js';
 
 let out: string[];
 let root: string;
@@ -99,6 +100,7 @@ describe.skipIf(process.platform !== 'linux')('jira release from a test on the s
     await expect(run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'x')).rejects.toThrow(/refused/);
     expect(existsSync(join(root, 'state', 'R1'))).toBe(false);
     await run('state', 'R1', '--json', '--mirror-root', join(root, 'no-mirror'));
+    await run('bucket-check', '--mirror', join(root, 'no-mirror'), 'K-1');
   });
 
   it('refuses a key mint at the declare call site once the state dir clears the write door', async () => {
@@ -890,5 +892,68 @@ describe('RM apply names its writer', () => {
     await liveJira.setFixVersion('HIMMEL-1', 'add', 'v1');
     const put = vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT');
     expect(put?.[3]).toBe('rm-apply');
+  });
+});
+
+describe('jira release bucket-check', () => {
+  const vf = () => join(root, 'verbatim.txt');
+  const declared = () => run('operator', 'declare', 'R1', '--versions', 'v1.1.9,v1.1.10', '--decision', '106', '--verbatim-file', vf());
+  // The key's project mirror, and its versions file beside it as focus-refresh.sh writes it.
+  function projectMirror(...issues: Array<{ key: string; fixVersions: string[]; category?: string }>): string {
+    const dir = join(root, 'jira-mirror', 'HIMMEL');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-08T00:00:00Z' }));
+    for (const i of issues) {
+      writeFileSync(join(dir, `${i.key}.md`), `---\nkey: ${JSON.stringify(i.key)}\nstatus: "x"\nstatusCategory: ${JSON.stringify(i.category ?? 'To Do')}\n`
+        + `type: "Task"\npriority: "Medium"\nfixVersions: ${JSON.stringify(i.fixVersions)}\n---\n`);
+    }
+    writeFileSync(`${dir}.versions.tsv`, 'v1.1.9\tfalse\t\tfalse\nv1.1.10\tfalse\t\tfalse\n');
+    return dir;
+  }
+  // An out-of-version record, signed into the release's operator chain as the S1b writer will write it.
+  const approve = (key: string, decision: string, ageDays: number) => appendChain(join(root, 'state', 'R1', 'operator.jsonl'), loadKey(join(root, 'keys', 'R1.key')), {
+    id: `O-R1-ov-${decision}`, kind: 'out-of-version', decision, keys: [key], ts: new Date(Date.now() - ageDays * 86_400_000).toISOString(),
+  });
+
+  it('prints one verdict line per key in the order given', async () => {
+    await declared();
+    const mir = projectMirror({ key: 'HIMMEL-1', fixVersions: ['v1.1.9'] }, { key: 'HIMMEL-2', fixVersions: ['v1.1.10'], category: 'Done' });
+    out = [];
+    await run('bucket-check', '--mirror', mir, 'HIMMEL-2', 'HIMMEL-1');
+    expect(out).toEqual(['DONE HIMMEL-2', 'IN HIMMEL-1 current=v1.1.9 via=mirror']);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('with no --mirror exits non-zero and prints no verdict line, whether JIRA_PROJECT_KEY is set or not', async () => {
+    await declared();
+    projectMirror({ key: 'HIMMEL-1', fixVersions: ['v1.1.9'] });
+    out = [];
+    for (const pk of ['HIMMEL', '']) {
+      vi.stubEnv('JIRA_PROJECT_KEY', pk);
+      await expect(run('bucket-check', 'HIMMEL-1')).rejects.toMatchObject({ exitCode: 1, code: 'commander.missingMandatoryOptionValue' });
+    }
+    expect(out).toEqual([]);
+  });
+
+  it('a key the mirror does not hold in current asks Jira, and a failed read is FAILED by name', async () => {
+    await declared();
+    const mir = projectMirror({ key: 'HIMMEL-5', fixVersions: ['v1.1.10'] });
+    out = [];
+    await run('bucket-check', '--mirror', mir, 'HIMMEL-5');
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatch(/^FAILED HIMMEL-5 the live read of HIMMEL-5 failed: /);
+  });
+
+  it('request on a key with a live out-of-version approval answers REQ approved:<id> and writes no row', async () => {
+    await declared();
+    const mir = projectMirror({ key: 'HIMMEL-7', fixVersions: ['v1.1.10'] });
+    approve('HIMMEL-7', '901', 1);
+    out = [];
+    await run('request', 'R1', '--mirror-root', mir, '--verb', 'INTAKE', '--key', 'HIMMEL-7', '--from', 'v1.1.10', '--to', 'v1.1.9', '--why', 'worked under the chief: fold it in');
+    expect(out).toEqual(['REQ approved:O-R1-ov-901']);
+    expect(existsSync(join(root, 'state', 'R1', 'requests.jsonl'))).toBe(false);
+    approve('HIMMEL-8', '902', 15);
+    await run('request', 'R1', '--mirror-root', mir, '--verb', 'INTAKE', '--key', 'HIMMEL-8', '--to', 'v1.1.9', '--why', 'worked under the chief: fold it in');
+    expect(out.at(-1)).toBe('REQ Q-R1-0001');
   });
 });
