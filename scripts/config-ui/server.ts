@@ -664,6 +664,15 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     if (opts.readOnly && req.method !== "GET" && req.method !== "HEAD") return new Response("read-only: this config UI was started with --read-only and refuses every write", { status: 403 });
     const path = new URL(req.url).pathname;
     if (path === "/api/login" || path === "/api/logout") return loginRoute(req, path, origin);
+    if (path === "/api/fleet-token") {
+      if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+      if (auth.session(req.headers.get("cookie")) === null) return new Response("unauthorized", { status: 401 });
+      const from = req.headers.get("origin");
+      if (from !== null && from !== origin) return new Response("bad origin", { status: 403 });
+      bump();
+      lastSeen = now();
+      return new Response(JSON.stringify({ token }), { headers: { "content-type": "application/json", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+    }
     if (path.startsWith("/api/")) {
       // the launch token (automation, the printed URL) or a login session (the Setup page's secret writes in service mode)
       const session = auth.session(req.headers.get("cookie")) !== null;

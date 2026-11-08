@@ -1,0 +1,10 @@
+HIMMEL-1	accept
+HIMMEL-1,LUNA-22	accept
+H2O-1	accept
+none	accept
+	refuse
+himmel-1	refuse
+X-1	refuse
+HIMMEL-1,	refuse
+HIMMEL-1, LUNA-2	refuse
+HIMMEL	refuse
