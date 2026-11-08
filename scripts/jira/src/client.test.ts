@@ -986,7 +986,10 @@ describe('the live-test guard at requestAt and uploadMultipart', () => {
     const j = liveJira();
     await expect(request('PUT', '/issue/HTEST-6', { update: { issuelinks: [{ add: { outwardIssue: { key: 'HIMMEL-1' } } }] } })).rejects.toThrow(REFUSED);
     await expect(request('POST', '/issue', { fields: { project: { key: 'HTEST' }, parent: { key: 'HIMMEL-2' } } })).rejects.toThrow(REFUSED);
+    await expect(request('PUT', '/issue/HTEST-6', { update: { parent: [{ set: { key: 'HIMMEL-2' } }] } })).rejects.toThrow(REFUSED);
     expect(j.writes()).toEqual([]);
+    await request('PUT', '/issue/HTEST-6', { update: { parent: [{ set: { key: 'HTEST-2' } }] } });
+    expect(j.writes().length).toBe(1);
   });
 
   it('I1 own keys: an issue-scoped write on the brief ticket proceeds, other work writes are refused', async () => {

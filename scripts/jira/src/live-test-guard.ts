@@ -152,15 +152,28 @@ const UNKNOWN: WriteTargets = { kind: 'unknown' };
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? v as Record<string, unknown> : {});
 const refOf = (v: unknown): unknown => obj(v).key ?? obj(v).id;
 
-/** Issue refs a body names: fields.parent, fields.issuelinks and update.issuelinks[].add, each side. */
-function bodyLinks(body: unknown): unknown[] {
+/**
+ * Issue refs a body names: fields.parent, fields.issuelinks, update.parent[].set and
+ * update.issuelinks[].add, each side. Any other operation on update.parent or update.issuelinks is
+ * null (unknown), so a form this does not read is refused rather than passed unread.
+ */
+function bodyLinks(body: unknown): unknown[] | null {
   const fields = obj(obj(body).fields);
+  const update = obj(obj(body).update);
   const sides = (link: unknown): unknown[] =>
     [obj(link).inwardIssue, obj(link).outwardIssue].filter((s) => s !== undefined).map(refOf);
+  const ops = (v: unknown, op: string): unknown[] | null => {
+    if (v === undefined) return [];
+    if (!Array.isArray(v) || !v.every((o) => Object.keys(obj(o)).length === 1 && obj(o)[op] !== undefined)) return null;
+    return v.map((o) => obj(o)[op]);
+  };
+  const parentSets = ops(update.parent, 'set');
+  const linkAdds = ops(update.issuelinks, 'add');
+  if (!parentSets || !linkAdds) return null;
   const refs: unknown[] = fields.parent !== undefined ? [refOf(fields.parent)] : [];
+  refs.push(...parentSets.map(refOf));
   for (const l of Array.isArray(fields.issuelinks) ? fields.issuelinks : []) refs.push(...sides(l));
-  const update = obj(obj(body).update).issuelinks;
-  for (const op of Array.isArray(update) ? update : []) refs.push(...sides(obj(op).add));
+  for (const add of linkAdds) refs.push(...sides(add));
   return refs;
 }
 
@@ -182,11 +195,13 @@ function restWrite(method: string, path: string, body: unknown): WriteTargets {
   }
   if (path.includes('?')) return UNKNOWN;
   const issue = ISSUE_ROUTE.exec(path);
-  if (issue && ['PUT', 'POST', 'DELETE'].includes(method)) return targets([issue[1], ...bodyLinks(body)]);
+  const links = bodyLinks(body);
+  if (issue && ['PUT', 'POST', 'DELETE'].includes(method)) return links ? targets([issue[1], ...links]) : UNKNOWN;
   if (method === 'POST' && path === '/issue') {
     const project = obj(obj(obj(body).fields).project);
-    if (typeof project.key === 'string') return targets(bodyLinks(body), { project: { key: project.key } });
-    if (typeof project.id === 'string' || typeof project.id === 'number') return targets(bodyLinks(body), { project: { id: String(project.id) } });
+    if (!links) return UNKNOWN;
+    if (typeof project.key === 'string') return targets(links, { project: { key: project.key } });
+    if (typeof project.id === 'string' || typeof project.id === 'number') return targets(links, { project: { id: String(project.id) } });
     return UNKNOWN;
   }
   if (method === 'POST' && path === '/issueLink') {

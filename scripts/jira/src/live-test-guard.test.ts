@@ -266,6 +266,8 @@ describe('writeTargets: the route table as anchored patterns', () => {
     ['edit', API, 'PUT', '/issue/HTEST-6', { update: { issuelinks: [{ add: { outwardIssue: { key: 'HIMMEL-1' } } }] } },
       { kind: 'targets', issues: ['HTEST-6', 'HIMMEL-1'] }],
     ['edit by numeric id', API, 'PUT', '/issue/10001', { fields: { summary: 's' } }, { kind: 'targets', issues: ['10001'] }],
+    ['edit setting the parent through update', API, 'PUT', '/issue/HTEST-6', { update: { parent: [{ set: { key: 'HIMMEL-2' } }] } },
+      { kind: 'targets', issues: ['HTEST-6', 'HIMMEL-2'] }],
     ['comment', API, 'POST', '/issue/HTEST-1/comment', { body: {} }, { kind: 'targets', issues: ['HTEST-1'] }],
     ['comment edit', API, 'PUT', '/issue/HTEST-1/comment/10200', { body: {} }, { kind: 'targets', issues: ['HTEST-1'] }],
     ['transition', API, 'POST', '/issue/HTEST-1/transitions', { transition: { id: '31' } }, { kind: 'targets', issues: ['HTEST-1'] }],
@@ -308,6 +310,9 @@ describe('writeTargets: the route table as anchored patterns', () => {
     ['a watcher query on a POST', API, 'POST', '/issue/HTEST-1/watchers?accountId=abc', 'abc'],
     ['a malformed body key', API, 'POST', '/issueLink', { inwardIssue: { key: 'htest-1' }, outwardIssue: { key: 'HTEST-2' } }],
     ['a create with no project', API, 'POST', '/issue', { fields: { summary: 's' } }],
+    ['an update.parent operation other than set', API, 'PUT', '/issue/HTEST-6', { update: { parent: [{ add: { key: 'HIMMEL-2' } }] } }],
+    ['an update.issuelinks operation other than add', API, 'PUT', '/issue/HTEST-6', { update: { issuelinks: [{ set: [{ outwardIssue: { key: 'HIMMEL-1' } }] }] } }],
+    ['an update.parent that is not a list', API, 'PUT', '/issue/HTEST-6', { update: { parent: { set: { key: 'HIMMEL-2' } } } }],
     ['a rank with no issues', AGILE, 'PUT', '/issue/rank', {}],
   ])('refuses %s as unknown', (_name, apiBase, method, path, body) => {
     expect(writeTargets(apiBase, method, path, body)).toEqual({ kind: 'unknown' });
