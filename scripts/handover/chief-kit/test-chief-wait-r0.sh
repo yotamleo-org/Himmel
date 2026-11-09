@@ -457,6 +457,16 @@ wait_exit "$WPID"
 check "(r0s6) flag off: a failed hand-on wakes the chief" "0" "$rc"
 contains "(r0s6) flag off: the wake names the failure" "$(head -n 1 "$WORK/r0s6.out")" "WAKE worker-event usage: worker-event.sh"
 stop_waiter
+
+reset_stub
+fleet r0s7
+printf 'ESCALATE auto-go-error rc=1 x\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+start "$I" "$WORK/r0s7.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0s7) no baseline heartbeat"
+printf -- '%s\n- 10:01 LIVE — waiting on CI\n' "$READY_A" >> "$L"
+wait_exit "$WPID"
+check "(r0s7) flag off: another rc 10 answer to a READY is one WAKE worker-event" "1" "$(grep -c '^WAKE worker-event ESCALATE auto-go-error rc=1 x rc=10 ' "$WORK/r0s7.out")"
+stop_waiter
 unset HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR
 
 export PATH="$relay_path"
