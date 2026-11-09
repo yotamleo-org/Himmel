@@ -3119,8 +3119,6 @@ if [ -n "${HIMMEL_CANARY_HOME:-}" ] && [ "${HIMMEL_CANARY_HOME}" = "${HOME:-}" ]
 else
   echo 'live-witness: off (HOME is not the home-canary sandbox)'
 fi
-# _witness_summary — the line home-canary.sh requires on a witnessed run; one helper
-# so the pre-loop exits and the post-loop summary print the same text.
 _witness_summary() {
   [ "$witness_on" -eq 0 ] || printf 'live-witness: on, %s suites watched, %s hard, %s warn\n' "$witness_watched" "$witness_hard" "$witness_warn"
 }
@@ -4267,7 +4265,6 @@ _live_reset() {
   mkdir -p "$live_root/state" "$live_root/bin" || return 1
   for _v in $live_files; do printf '%s' "$live_seed" > "$live_root/state/$_v" || return 1; done
   for _v in $live_dirs; do mkdir "$live_root/state/$_v" || return 1; done
-  # The decoy station home and handover root sit beside the sentinels in this lane's root.
   if [ "$witness_on" -eq 1 ]; then
     live_witness_reset "$live_root" "$live_root/home" "$live_root/handover-root" "$witness_env" || return 1
   fi
@@ -4308,7 +4305,6 @@ _live_env() {
   export HIMMEL_SUITE_CRONTAB_LOG="$live_root/scheduler-calls.log"
   export HIMMEL_SUITE_SHIM_DIR="$live_root/bin"
   export PATH="$live_root/bin:$PATH"
-  # HOME at the lane's decoy station home, the XDG vars unset.
   [ "$witness_on" -eq 0 ] || live_witness_env "$live_root/home"
 }
 # _live_check <suite-pgid> — collect one line per thing the suite left behind
@@ -4378,7 +4374,6 @@ _live_check() {
     done < "$live_root/scheduler-calls.log"
     _dirty=1
   fi
-  # The decoy station home: builtins only, a find only for a hit root.
   if [ "$witness_on" -eq 1 ]; then
     witness_watched=$((witness_watched + 1))
     live_witness_check "$live_root" "$live_root/home" "$live_root/handover-root" || _dirty=1
@@ -4394,14 +4389,10 @@ if [ "$witness_on" -eq 1 ] && [ "$list_only" -eq 0 ]; then
     echo "run-shell-tests.sh: cannot load $REPO_ROOT/scripts/ci/live-witness.sh — refusing to run suites unwitnessed under the home-canary" >&2
     exit 2
   fi
-  # The exempt list: a bad line aborts the run before any suite. An empty
-  # SUITE_LIVE_EXEMPT loads none.
   if ! live_witness_exempt_load "${SUITE_LIVE_EXEMPT-$REPO_ROOT/scripts/ci/live-write-exempt.txt}"; then
     echo "run-shell-tests.sh: $LW_EXEMPT_ERR" >&2
     exit 2
   fi
-  # The canary's honeytoken .env stays reachable from the decoy home, so
-  # home-canary's read check keeps working.
   [ ! -e "$HIMMEL_CANARY_HOME/.env" ] || witness_env="$HIMMEL_CANARY_HOME/.env"
 fi
 if [ "$list_only" -eq 0 ]; then
@@ -4621,7 +4612,6 @@ _suite_attempts() {
 $live_msgs
 LIVEMSGS
     fi
-    # The decoy-home class has its own tag: hard unless the exempt list names the suite.
     if [ -n "$witness_msgs" ]; then
       _live_tag="WARN "
       if live_witness_is_exempt "/$suite"; then
@@ -4853,7 +4843,6 @@ _lane_launch() {
         printf '%s=%q\n' "$_v" "${!_v:-}"
       done
       printf '_w_timed_out=%s\n' "$((timed_out - _w_t0))"
-      # Deltas over this lane's run: the lane inherited the parent's running totals at fork.
       printf '_w_witness_watched=%s\n_w_witness_hard=%s\n_w_witness_warn=%s\n' \
         "$((witness_watched - _w_wt0))" "$((witness_hard - _w_wh0))" "$((witness_warn - _w_ww0))"
       printf '_res_complete=1\n'

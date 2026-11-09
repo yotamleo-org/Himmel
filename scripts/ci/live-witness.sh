@@ -2,11 +2,8 @@
 # scripts/ci/live-witness.sh — a decoy station home and a witness that says which
 # suite (or CI step) wrote into it.
 #
-# CI never ran a suite against the station's shape: its HOME held no himmel.conf,
-# no settings.json, no handover root, so a writer that edits a live path only when
-# it exists never ran that branch, and a write under $HOME/.himmel went to a sandbox
-# nobody looked at. The decoy is laid out like the station; after a suite, the
-# witness checks it. A write, edit or delete in a watched root fails the suite and
+# Each suite runs with HOME at a decoy laid out like the station; after it, the witness
+# checks the decoy. A write, edit or delete in a watched root fails the suite and
 # names the path.
 #
 # Sourced by scripts/ci/run-shell-tests.sh (per lane) and scripts/ci/home-canary.sh,
@@ -16,8 +13,6 @@
 # `[LIVE-STATE] <name> — <msg>` per hit and one `live-witness: on, <name>, <h> hits,
 # cmd rc=<n>` line on every exit path, and exits 86 on any hard hit, else the
 # command's own rc. SUITE_LIVE_EXEMPT names the exempt file (an empty value: none).
-#
-# The check is builtins only; a dirty suite pays one find per hit root.
 #
 # Also owns the account-home watch: the passwd home's himmel roots, which no HOME
 # change reaches. live_witness_account_begin / _end stamp and compare them on a
@@ -29,19 +24,26 @@ LW_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/prim.sh
 declare -F tmpdir >/dev/null 2>&1 || . "$LW_DIR/../lib/prim.sh"
 
-# Watched roots under the decoy home. The measurement may narrow .config or
-# .local/bin to named entries if a CI tool writes one on its own; record the reason
-# here, never silently.
 LW_ROOTS=".himmel .claude .claude.json .codex .config .local/share/himmel .local/state/himmel .local/bin"
 LW_SEED_FILES=".himmel/himmel.conf .himmel/config.json .claude/settings.json .claude.json .codex/config.toml"
 LW_SEED_DIRS=".himmel .claude .codex"
 LW_ABSENT=".config .local/share/himmel .local/state/himmel .local/bin"
-# The account's passwd home: the roots himmel code reaches without $HOME.
 LW_ACCOUNT_ROOTS=".himmel .claude .claude.json .local/share/himmel .local/state/himmel"
 LW_SEED_MTIME=197001010016.40
 LW_STAMP_MTIME=197001010033.20
 
 _lw_age() { TZ=UTC touch -m -t "$LW_SEED_MTIME" "$1"; }
+
+_lw_listed() {
+  case "
+$1
+" in
+    *"
+$2
+"*) return 0 ;;
+  esac
+  return 1
+}
 
 # live_witness_seed <lane-root> <home> <handover-root> [<canary-env>]
 live_witness_seed() {
@@ -264,32 +266,21 @@ live_witness_account_end() {
     if [ -e "$_home/$_p" ] || [ -L "$_home/$_p" ]; then
       [ "$_left" -gt 0 ] || continue
       _names=$(_lw_names "$_home/$_p" "$_sd/acct.stamp" "$_home" "$_left")
-      case "
-$_existed
-" in *"
-$_p
-"*) ;; *) [ -n "$_names" ] || _names="$_p" ;; esac
+      _lw_listed "$_existed" "$_p" || [ -n "$_names" ] || _names="$_p"
       [ -n "$_names" ] || continue
       _n=1
       case "$_names" in *,*) _n=$(printf '%s' "$_names" | tr -cd ',' | wc -c); _n=$((_n + 1)) ;; esac
       _left=$((_left - _n))
       printf '%s\n' "$_names" >> "$_sd/acct.hits"
       _hit=1
-    else
-      # Whole lines only: ".claude" is a substring of the ".claude.json" line.
-      case "
-$_existed
-" in
-        *"
-$_p
-"*) printf 'removed %s\n' "$_p" >> "$_sd/acct.hits"; _hit=1 ;;
-      esac
+    elif _lw_listed "$_existed" "$_p"; then
+      printf 'removed %s\n' "$_p" >> "$_sd/acct.hits"
+      _hit=1
     fi
   done
   [ "$_hit" -eq 0 ]
 }
 
-# --- CLI ---------------------------------------------------------------------
 _lw_cli_summary() {
   [ "${_lw_summary_done:-0}" -eq 0 ] || return 0
   _lw_summary_done=1
@@ -297,8 +288,8 @@ _lw_cli_summary() {
 }
 
 _lw_cli_run() {
-  local _lane _home _hroot _file _rc _ahit=0 _hard=0 _line _tag
-  _lw_name="" _lw_hits=0 _lw_cmdrc="" _lw_summary_done=0
+  local _home _hroot _file _rc _ahit=0 _hard=0 _line _tag _lane
+  _lw_name="" _lw_hits=0 _lw_cmdrc="" _lw_summary_done=0 _lw_lane=""
   if [ "${1:-}" != --label ] || [ -z "${2:-}" ] || [ "${3:-}" != -- ] || [ -z "${4:-}" ]; then
     echo "usage: live-witness.sh run --label <name> -- <command...>" >&2
     return 2
@@ -306,8 +297,8 @@ _lw_cli_run() {
   _lw_name="$2"
   shift 3
   _lane=$(tmpdir) || { echo "live-witness: cannot allocate a lane root" >&2; _lw_cli_summary; return 2; }
-  # shellcheck disable=SC2064  # the lane path is fixed now
-  trap "rm -rf '$_lane'; _lw_cli_summary" EXIT
+  _lw_lane="$_lane"
+  trap 'rm -rf "$_lw_lane"; _lw_cli_summary' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
   _home="$_lane/home"

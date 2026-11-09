@@ -412,8 +412,6 @@ else
   fail "L11: the nested runner did not run test-x-leaks.sh; inner: $(cat "$sb/inner11.out" 2>/dev/null)"
 fi
 
-# L12-L13: the decoy station home. Under home-canary the runner moves each suite's
-# HOME to a decoy laid out like the station, and a write into it fails the suite.
 # w_run <name> <body> [env args...] — one fixture suite test-k-<name>.sh in its own
 # scan root, the inner runner started as home-canary starts it. Sets w_out, w_rc.
 : > "$sb/exempt.txt"
@@ -461,7 +459,6 @@ w_clean() {
 echo "== L12: a write into the live-shaped paths under HOME fails the suite =="
 w_run l12 'mkdir -p "$HOME/.himmel/state/holds" && echo x >> "$HOME/.himmel/state/holds/events.log"'
 w_expect L12 l12 '\.himmel/state/holds/events\.log'
-# The station config route: himmel.conf names the handover root.
 w_conf='. "$REPO/scripts/lib/load-dotenv.sh"; load_dotenv --root "${TMPDIR:-/tmp}/rst-no-root" HANDOVER_DIR >/dev/null 2>&1; [ -n "${HANDOVER_DIR:-}" ] || exit 0'
 w_run l12b "$w_conf"'
 mkdir -p "$HANDOVER_DIR/u" && : > "$HANDOVER_DIR/u/leaked.md"' -u HANDOVER_DIR

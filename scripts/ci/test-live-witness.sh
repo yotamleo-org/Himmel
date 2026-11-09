@@ -3,17 +3,6 @@
 # scripts/ci/test-live-witness.sh — scripts/ci/live-witness.sh keeps a wrapped
 # command off the station's live state and says which path it wrote.
 #
-#   W1. `run` fails a command that writes a live-shaped path under its HOME
-#       (exit 86), naming the label and the path, and prints its summary line.
-#   W2. A command that writes only under its own temp dir passes.
-#   W3. A command's own exit code passes through when it wrote nothing.
-#   W4. A hit wins over the command's rc: exit 86, the summary keeps the rc.
-#   W5. live_witness_reset refuses a home outside its lane root and removes nothing.
-#   W6. A write into the account's passwd home (the test seam) exits 86 and an
-#       exempt line never turns it into a WARN.
-#   W7. An XDG variable the host sets is unset for the command, so the XDG route
-#       lands in the decoy, not the host's directory.
-#
 # Platform guard: bash-only, like every suite in this family; Linux/macOS.
 #
 # Usage: bash scripts/ci/test-live-witness.sh
