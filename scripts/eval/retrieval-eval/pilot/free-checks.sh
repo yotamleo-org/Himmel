@@ -38,6 +38,7 @@ suite() { # <check id> <suite file> [args] -- PASS, FAIL, or SKIP when the suite
   local what="$2${3:+ ${*:3}}"
   if [ "$rc" -ne 0 ]; then rec "$1" FAIL "$what exited $rc"
   elif grep -q '^SKIP - ' "$log"; then rec "$1" SKIP "$what: $(grep -m1 '^SKIP - ' "$log" | cut -c8-120)"
+  elif ! grep -q '^ok - ' "$log"; then rec "$1" FAIL "$what ran no rows"
   else rec "$1" PASS "$what ($(grep -c '^ok - ' "$log") rows)"; fi
 }
 suite P5 test-route-rows.sh

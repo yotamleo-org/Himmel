@@ -8,12 +8,12 @@ Required fact: {{FACT}}
 
 The answer said: {{ANSWER}}
 
-The file the answer named ({{PATH}}) reads:
+The files the answer named ({{PATH}}) read, each under its own path line:
 -----
 {{FILE}}
 -----
 
-Does this file state the required fact, in any wording? Reply with exactly one line and nothing else:
+Does one of these files state the required fact, in any wording? Reply with exactly one line and nothing else:
 
 VERDICT: SUPPORTED
 or

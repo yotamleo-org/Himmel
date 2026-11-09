@@ -76,9 +76,13 @@ def scan(bank, exports, indexes, private_paths):
     found = {"questions": [], "ids": [], "paths": []}
     seen = {k: 0 for k in facts}
     where = {"export": 0, "index": 0}
-    sources = list(texts_from_exports(exports))
+    sources, per_input = [], []
+    for name, root in exports.items():
+        got = list(texts_from_exports({name: root}))
+        per_input.append(len(got)); sources += got
     for db in indexes:
-        sources += list(texts_from_index(db))
+        got = list(texts_from_index(db))
+        per_input.append(len(got)); sources += got
     for kind, loc, text in sources:
         n = norm(text)
         hit = False
@@ -95,7 +99,7 @@ def scan(bank, exports, indexes, private_paths):
             if any(v and v in n for v in vs):
                 seen[k] += 1
         where[kind] += int(hit)
-    return found, seen, where, len(sources)
+    return found, seen, where, per_input
 
 
 def main(argv):
@@ -115,9 +119,13 @@ def main(argv):
     privs = list(a.private) + [os.path.abspath(a.bank)]
     if a.run_root:
         privs += [os.path.join(os.path.abspath(a.run_root), d) for d in ("private", "retained")]
-    found, seen, where, n = scan(bank, exports, a.index, privs)
+    found, seen, where, per_input = scan(bank, exports, a.index, privs)
+    n = sum(per_input)
     if n == 0:
         print("leak-scan: refused: nothing was scanned (no export or index text): no clean verdict", file=sys.stderr)
+        return 3
+    if 0 in per_input:
+        print("leak-scan: refused: %d requested export root(s) or index(es) yielded no text: no clean verdict without them" % per_input.count(0), file=sys.stderr)
         return 3
     cover = []
     if a.run_root:

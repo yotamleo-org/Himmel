@@ -116,10 +116,16 @@ class Judging:
             return self.ended()
         for r in sorted({s["round"] for s in slots}):
             self._commit(slots, r)
+        closed = {e["slot"] for e in self.ledger.events if e["ev"] in ("judge_verdict", "judge_not_needed", "judge_failed")}
         for e in self._ev("book"):
-            if e["kind"] == "judge" and e["attempt"] in self.ledger.inflight:
-                self.ledger.killed(e["attempt"], None, False)
-                self.ledger._log({"ev": "judge_failed", "slot": int(e["attempt"].split("-")[1]), "why": "killed"})
+            slot = int(e["attempt"].split("-")[1])
+            if e["kind"] == "judge" and slot not in closed:
+                if e["attempt"] in self.ledger.inflight:
+                    self.ledger.killed(e["attempt"], None, False)
+                    why = "killed"
+                else:
+                    why = "settled_no_verdict"
+                self.ledger._log({"ev": "judge_failed", "slot": slot, "why": why})
                 return self.end("failed_slot")
         while True:
             i = self.next_slot()
@@ -241,6 +247,16 @@ def contained_read(path, roots):
     return None
 
 
+def dispute_item(task, fact, answer, files, read):
+    named = [f for f in files[:3] if read(f) is not None]
+    blocks = []
+    for f in named:
+        body = read(f)
+        blocks.append("== %s ==\n%s" % (f, body if isinstance(body, str) else "(the script could not read this file)"))
+    return {"question": task["question"], "fact": task["facts"][fact]["text"], "answer": answer or "",
+            "path": ", ".join(named), "file": "\n".join(blocks)}
+
+
 class LocalOnly:
     """The Q fixed lists book nothing: local compute, recorded only in the list rows."""
 
@@ -275,10 +291,7 @@ def finalize(pilot, cohort, cfg):
             for d in r["disputes"]:
                 key = "%s#%d" % (t, d["fact"])
                 disputes[a].add(key)
-                path = next((f for f in files[:3] if read(f) is not None), files[0] if files else "")
-                body = read(path)
-                items[(a, key)] = {"question": bank[t]["question"], "fact": bank[t]["facts"][d["fact"]]["text"], "answer": answer or "",
-                                   "path": path, "file": body if isinstance(body, str) else "(the script could not read this file)"}
+                items[(a, key)] = dispute_item(bank[t], d["fact"], answer, files, read)
     j = Judging(pilot.ledger, RealJudge(cfg, items), pilot.quota, pilot.readiness, pilot.clock)
     j.seal(seal_schedule(cfg["seed"], candidates(cfg["seed"], disputes, cohort, list(bank))))
     j.run()

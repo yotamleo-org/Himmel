@@ -7,4 +7,5 @@ case "${what:-pass}" in
   pass) echo "ok - $name row"; exit 0 ;;
   skip) echo "ok - $name row"; echo "SKIP - $name runtime rows: assets absent"; exit 0 ;;
   fail) echo "FAIL - $name row"; exit 1 ;;
+  empty) exit 0 ;;
 esac

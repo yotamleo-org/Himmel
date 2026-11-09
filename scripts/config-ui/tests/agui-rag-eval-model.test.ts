@@ -276,6 +276,13 @@ test("pilot: a malformed comparison entry never crashes the page", async () => {
   expect(p.clauses!.map((c) => c.comparison.contrast)).toEqual(["S-V", "Q-V"]);
 });
 
+test("pilot: a null breakdown cell shows unavailable instead of crashing the page", async () => {
+  const bad = clone(pilotOf("fixture-rag-pilot-r18-short")) as Record<string, any>;
+  bad.pilot.kinds = { real: null };
+  const p = pilotModel(await served([bad]))!;
+  expect(p.cells[0].rows).toEqual([{ name: "real", V: "unavailable", S: "unavailable", Q: "unavailable" }]);
+});
+
 test("pilot: no ticket id appears in the page copy", async () => {
   for (const r of pilotRows().filter((x) => x.protocol)) {
     expect(JSON.stringify(pilotModel(await served([r])))).not.toMatch(/HIMMEL-\d+/);

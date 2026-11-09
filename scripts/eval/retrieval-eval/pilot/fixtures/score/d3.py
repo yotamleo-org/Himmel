@@ -153,6 +153,26 @@ def run(name, work):
         out = summary(j2, led2, call2)
         out["before_resume"] = before
         return out
+    if name == "settled-no-verdict":
+        j, led, call, _ = setup(work); j.run()
+        path = os.path.join(work, "ledger.jsonl")
+        lines = open(path).read().splitlines()
+        fourth = [i for i, l in enumerate(lines) if '"judge_verdict"' in l][3]
+        open(path, "w").write("\n".join(lines[:fourth]) + "\n")
+        j2, led2, call2, _ = setup(work)
+        j2.run()
+        out = summary(j2, led2, call2)
+        out["failed"] = [e.get("why") for e in led2.events if e["ev"] == "judge_failed"]
+        return out
+    if name == "dispute-files":
+        root = os.path.join(work, "export"); os.makedirs(os.path.join(root, "docs"), exist_ok=True)
+        open(os.path.join(root, "docs", "a.md"), "w").write("an unrelated page")
+        open(os.path.join(root, "docs", "b.md"), "w").write("one holder per handover document")
+        read = lambda p: J.contained_read(p, {"/work/himmel/": root})   # noqa: E731
+        task = {"question": "q?", "facts": [{"text": "one session per handover doc"}]}
+        it = J.dispute_item(task, 0, "one session per handover doc", ["/work/himmel/docs/a.md", "/work/himmel/docs/b.md"], read)
+        return {"second_file_shown": "one holder per handover document" in it["file"], "first_file_shown": "an unrelated page" in it["file"],
+                "path": it["path"]}
     if name == "cost-missing":
         class NoCost(Call):
             def __call__(self, cand, arm, attempt):

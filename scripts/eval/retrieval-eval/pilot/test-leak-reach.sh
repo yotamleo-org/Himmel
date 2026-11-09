@@ -64,6 +64,8 @@ eq "P12: a requested export root that does not exist refuses, never a clean verd
 mkdir -p "$W/empty-export"
 python3 -I "$LS" --bank "$B" --export himmel="$W/empty-export" > /dev/null 2>&1
 eq "P12: a scan that read nothing refuses" 3 "$?"
+python3 -I "$LS" --bank "$B" --export himmel="$W/empty-export" --export luna="$W/ex/luna" > /dev/null 2>&1
+eq "P12: one requested export that yields no text refuses even when another source has text" 3 "$?"
 cp -r "$W/ex" "$W/ex-auto"; printf 'see %s/retained/run-1.json\n' "$W/run" >> "$W/ex-auto/luna/notes/garden.md"
 python3 -I "$LS" --bank "$B" --export himmel="$W/ex-auto/himmel" --export luna="$W/ex-auto/luna" --run-root "$W/run" > "$W/l4.json"; rc=$?
 eq "P12: the run root's retained/ path is checked without being passed as --private" "3 1" "$rc $(j "$W/l4.json" private_path_leaks)"
@@ -104,6 +106,9 @@ eq "G3: a skipped real-Q runtime fixture is not a pass" '"SKIP" "INCOMPLETE"' "$
 printf 'test-score.sh fail\n' > "$W/outcomes"
 FAKE_OUTCOMES="$W/outcomes" bash "$FC" --out "$W/g3-f.json" "${FRUN[@]}" "${LIVE[@]}" > /dev/null 2>&1; rc=$?
 eq "G3: a failing free check fails G3" '"FAIL" "FAIL" 1' "$(j "$W/g3-f.json" checks.P10.status) $(j "$W/g3-f.json" g3) $rc"
+printf 'test-score.sh empty\n' > "$W/outcomes"
+FAKE_OUTCOMES="$W/outcomes" bash "$FC" --out "$W/g3-h.json" "${FRUN[@]}" "${LIVE[@]}" > /dev/null 2>&1
+eq "G3: a suite that exits 0 with no rows is not a pass" '"FAIL" "FAIL"' "$(j "$W/g3-h.json" checks.P10.status) $(j "$W/g3-h.json" g3)"
 eq "G3: --require-runtime is passed to the real-Q runtime fixture" "--require-runtime" "$(FAKE_OUTCOMES="$W/outcomes" bash "$FC" --out "$W/g3-g.json" --suite-runner echo --require-runtime > /dev/null 2>&1; j "$W/g3-g.json" checks.P13-Q.detail | grep -o -- '--require-runtime' | head -1)"
 
 if [ "$fails" -gt 0 ]; then printf '%d failure(s)\n' "$fails"; exit 1; fi

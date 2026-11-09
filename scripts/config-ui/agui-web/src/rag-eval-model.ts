@@ -106,7 +106,7 @@ type CompRow = {
   contrast: string | null; confirmatory: boolean | null; family: string | null; discordant: Nums; p_raw: number | null;
   p_adjusted: number | null; gain_pp: number | null; interval_pp: Nums; interval_label: string | null; real_half_gain_pp: number | null; label: string | null;
 };
-type Cells = Record<string, { V: Nums; S: Nums; Q: Nums }> | null;
+type Cells = Record<string, { V: Nums; S: Nums; Q: Nums } | null> | null;
 export type PilotRow = {
   stop_kind: string | null; reason: string | null; finalization_status: string | null; void: boolean | null;
   counts: { attempted: number | null; completed: number | null; common_scored: number | null } | null; common_cohort_hash: string | null;
@@ -161,7 +161,7 @@ function pilotArm(p: PilotRow, a: "V" | "S" | "Q"): PilotArm {
 
 function cellTable(title: string, cells: Cells) {
   if (!cells) return { title, rows: [] };
-  return { title, rows: Object.entries(cells).map(([name, v]) => ({ name, V: kn(v.V), S: kn(v.S), Q: kn(v.Q) })) };
+  return { title, rows: Object.entries(cells).map(([name, v]) => ({ name, V: kn(v?.V), S: kn(v?.S), Q: kn(v?.Q) })) };
 }
 
 export function pilotModel(rows: LedgerRow[]): Pilot | null {
