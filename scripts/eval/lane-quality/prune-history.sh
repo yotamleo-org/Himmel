@@ -7,13 +7,12 @@
 # Cuts a detached worktree at <base-sha>, deletes the whole-line history
 # comments (the same patterns as scripts/lint/check-history-comments.sh: a Jira
 # key, a fix note, a review round, a judge qid; a line carrying the retired ceiling
-# marker keeps its key, as old trees still hold it and the ceilings ledger replaced it)
+# marker (the ceilings ledger now holds those) keeps its key)
 # from the N code files that carry the most of them, commits the result with a
 # fixed author and date, and prints the new commit sha on stdout. The count of
 # removed lines goes to stderr. Run the same task set at <base-sha> and at the
 # printed sha, then compare with `run.sh pair`.
 #
-# Limit: a line match, so it also drops a matching line inside a heredoc or multi-line string and adds a final newline.
 # Sample, never the whole repo: N defaults to 40. Fixtures, vendored trees and
 # generated output are skipped, as the gate skips them.
 set -uo pipefail
