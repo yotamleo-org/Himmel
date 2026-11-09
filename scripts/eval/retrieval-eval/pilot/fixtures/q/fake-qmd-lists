@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""A fake pinned qmd for the B10 fixed-list fixtures: answers `query` from hits.json beside it
+(the entry whose marker is in the query text), logs each call to calls.log, and prints the
+expansion-failure diagnostic for any query whose marker is listed in skip.txt beside it."""
+import json, os, sys
+
+here = os.path.dirname(os.path.realpath(__file__))
+q = sys.argv[-1]
+with open(os.path.join(here, "calls.log"), "a") as f:
+    f.write(json.dumps({"argv": sys.argv[1:], "key": bool(os.environ.get("QMD_OPENAI_API_KEY"))}) + "\n")
+skip = set()
+if os.path.exists(os.path.join(here, "skip.txt")):
+    skip = set(open(os.path.join(here, "skip.txt")).read().split())
+out = []
+for h in json.load(open(os.path.join(here, "hits.json"))):
+    if h["match"] in q:
+        out = [{"docid": f["docid"], "score": 0.9 - 0.1 * i, "file": f["file"], "line": 1, "title": "T", "snippet": "x"}
+               for i, f in enumerate(h["files"])]
+        if h["match"] in skip:
+            sys.stderr.write("Expanding query...Structured query expansion failed: Error: 500\n")
+        break
+sys.stdout.write(json.dumps(out) + "\n")
+sys.stderr.write("Expanding query... (1ms)\n├─ %s\n└─ vec: about it\n" % q.splitlines()[0])
