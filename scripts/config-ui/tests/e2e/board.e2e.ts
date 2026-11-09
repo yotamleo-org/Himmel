@@ -351,7 +351,7 @@ test("the find box narrows the lanes by title or id on Enter, the columns say ho
   await open(page);
   await go(page, "#/board");
   const todo = page.locator('#rm-lanes [data-rm-col="todo"]');
-  await expect(todo.locator(".rm-n")).toHaveText("4"); // slice 2: the lane head reads "To do · 4 tickets"; Jira's number shows only when a filter hides some
+  await expect(todo.locator(".rm-n")).toHaveText("4");
   await expect(todo.locator(".rm-jira")).toHaveCount(0);
   await expect(page.locator("#rm-lanes details.rm-done")).not.toHaveAttribute("open", "");
   await page.locator("input[data-rm-find]").fill("second chain");
@@ -434,7 +434,8 @@ test("the Board at 1280 px is dense: a one-line bar, the first card near the top
   const bar = await page.locator(".rm-bar").first().boundingBox();
   expect(bar && bar.height <= 40).toBe(true);
   const card = await page.locator(".rm-card").first().boundingBox();
-  expect(card && card.y <= 480).toBe(true); // the panel head (count, in-chain lines, sector legend) adds up to about 80 px above the lanes; 350 before them in Noto Sans; DejaVu Sans (CI) is wider, the tab row's aside wraps under the tabs and the card sits near 373
+  const FIRST_CARD_MAX_Y = 480;
+  expect(card && card.y <= FIRST_CARD_MAX_Y).toBe(true);
   const tracks = await page.locator(".rm-board").first().evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
   expect(tracks).toBe(5); // four columns and the narrow Won't lane
   await expect(page.locator('[data-rm-drop="wont"]')).toBeVisible();

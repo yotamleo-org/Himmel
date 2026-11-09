@@ -1566,7 +1566,6 @@ test("Board: an open ticket's card names the tickets it waits on, with their sta
   expect(card(K(20))).toContain(`after ${K(22)} (done)`);
   expect(card(K(20))).toContain(`${K(99)} (state unknown)`);
   expect(card(K(21))).not.toContain("after ");
-  // the chain read of this version says the ticket is blocked: amber "blocked by open" and the red edge
   const blocked = { schema: "himmel.chains/1", version: "v1.1.2", chains: [{ id: "memory", name: "Memory", total: 1, done: 0, steps: 2, next: null }],
     tickets: { [K(20)]: { key: K(20), state: "blocked", chains: [{ id: "memory", step: 2, steps: 2, state: "blocked" }], badges: ["memory"], more: 0 } } };
   const red = board(r, { v: "v1.1.2" }, { drift: absent, chains: blocked, versionChains: blocked }).match(new RegExp(`<div class="rm-card cc red"[^>]*aria-label="${K(20)}:[\\s\\S]*?</div></div>`))![0];
@@ -1595,7 +1594,6 @@ test("Board: a card in a chain says FAST-TRACK with the chain's name and its ste
   expect(card(K(1))).toContain(`<div class="rm-ft"><span class="rm-tip" data-tip="FAST-TRACK Memory guard rework · step 1"><span class="rm-clip"><span class="ftg">FAST-TRACK</span> Memory guard rework · step 1</span></span></div>`);
   expect(card(K(2))).not.toContain("FAST-TRACK"); // in no chain
   expect(board(r, { v: "v1.1.2" }, null)).not.toContain("FAST-TRACK"); // no chain read: nothing is guessed
-  // v1.1.2 holds tickets 1, 2, 5, 7 open; 1 and 5 are in the memory chain. This chain read names no version, so the head makes no in-chain claim
   expect(html).not.toContain("in a chain</b>");
   expect(html).not.toContain("rm-drain");
   expect(words(board(r, { v: "v1.1.2" }, { drift: null, chains: { ...chainsOk(), version: "v1.1.2" } }))).toContain("2 tickets in a chain: 2 open 2 open tickets in no chain");
@@ -1821,7 +1819,7 @@ test("9559 slice 1: the drag note sits at the top of the panel on every tab: und
     const panel = html.slice(html.search(/<section[^>]*class="cp[ "]/));
     const at = panel.indexOf("refused: nope"), head = panel.indexOf('class="cph"');
     expect(at).toBeGreaterThan(-1);
-    if (tab === "roadmap" || tab === "nv") { // slice 2: the panel head first, then the alert, then the filters
+    if (tab === "roadmap" || tab === "nv") {
       expect(head).toBeGreaterThan(-1);
       expect(at).toBeGreaterThan(head);
       expect(at).toBeLessThan(panel.indexOf('class="rm-bar'));
@@ -1836,79 +1834,74 @@ test("9559 slice 1: a panel's alert pill and a card's drift pill are not restyle
   expect(css).toContain(".cp.plain{border-top-color:var(--rule-strong)}");
 });
 
-// ---- 9559 slice 2: the Roadmap and No version bodies take the Chains tab's head, lanes, chips and counts --------------------------------
-// Inline tags (b, span, a, em) vanish, every other tag is a space: a head reads as the words a person sees.
 const words = (html: string) => html.replace(/<\/?(?:b|span|a|em)\b[^>]*>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-// v1.1.2 holds 1, 2, 5, 7 open and 10 done; the chain read of v1.1.2 holds 1 (in flight), 5 (waits) and 10 (done)
-const s2 = (...more: [number, string, string, string | null][]) => {
+const v112Station = (...more: [number, string, string, string | null][]) => {
   const s = station();
   const put = (n: number, st: string, cat: string, res: string | null) => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), issue(n, st, cat, ["v1.1.2"], `Slice two ${n}`, [], "", res));
   put(10, "Done", "Done", "Fixed");
   for (const m of more) put(...m);
   return s;
 };
-const s2Chain = (extra: string[] = []) => {
+const v112ChainRead = (extra: string[] = []) => {
   const ct = (k: number, state: string) => ({ key: K(k), state, chains: [{ id: "memory", step: 1, steps: 2, state }], badges: ["memory"], more: 0 });
   const ks = [1, 5, 10, ...extra.map(Number)];
   return { schema: "himmel.chains/1", version: "v1.1.2", chains: [{ id: "memory", name: "Memory guard rework", total: ks.length, done: 1, steps: 2, next: null }],
     tickets: Object.fromEntries(ks.map((k) => [K(k), ct(k, k === 1 ? "in flight" : k === 10 ? "done" : "waits on you")])) };
 };
-const s2Board = (r: ReturnType<typeof read>, ui: Record<string, unknown> = {}, ch: unknown = s2Chain()) =>
+const s2Board = (r: ReturnType<typeof read>, ui: Record<string, unknown> = {}, ch: unknown = v112ChainRead()) =>
   renderBoard(r, { version: null, theme: null, v: "v1.1.2", ...ui }, { drift: null, chains: ch, versionChains: ch } as never);
 
 test("9559 slice 2 Roadmap: the panel head says how many tickets the version holds and splits the ones in a chain in the Chains tab's words", () => {
-  const html = s2Board(read(s2()));
+  const html = s2Board(read(v112Station()));
   const head = words(html.slice(html.indexOf('<div class="cph">')));
   expect(head).toContain("5 tickets in v1.1.2");
   expect(head).toContain("3 tickets in a chain: 2 open, 1 done");
   expect(head).toContain("2 open tickets in no chain");
-  expect(html).not.toContain("rm-drain"); // the head says it
-  expect(words(s2Board(read(s2()), { tab: "chains" }))).toContain("3 tickets in them"); // the Chains head: the same number
-  expect(words(s2Board(read(s2()), { v: "all" }))).not.toContain("tickets in a chain"); // no version picked: the head has no in-chain line
+  expect(html).not.toContain("rm-drain");
+  expect(words(s2Board(read(v112Station()), { tab: "chains" }))).toContain("3 tickets in them");
+  expect(words(s2Board(read(v112Station()), { v: "all" }))).not.toContain("tickets in a chain");
   const one = words(renderBoard(read(station()), { version: null, theme: null, v: "v1.1.3" }, null));
-  expect(one).toContain("1 ticket in v1.1.3"); // one, not "1 tickets"
+  expect(one).toContain("1 ticket in v1.1.3");
 });
 
 test("9559 slice 2 Roadmap: a Won't ticket in a chain is counted in the split, so it still sums to the Chains head's total", () => {
-  const r = read(s2([11, "Done", "Done", "Wont Do"]));
-  const ch = s2Chain(["11"]);
+  const r = read(v112Station([11, "Done", "Done", "Wont Do"]));
+  const ch = v112ChainRead(["11"]);
   const rm = words(s2Board(r, {}, ch)), chains = words(s2Board(r, { tab: "chains" }, ch));
   expect(rm).toContain("4 tickets in a chain: 2 open, 1 done, 1 won't");
   expect(chains).toContain("4 tickets in them");
-  // a chain ticket the Roadmap read does not hold is counted too
-  const gone = s2Chain(["99"]);
-  expect(words(s2Board(read(s2()), {}, gone))).toContain("4 tickets in a chain: 2 open, 1 done, 1 in another version");
+  const gone = v112ChainRead(["99"]);
+  expect(words(s2Board(read(v112Station()), {}, gone))).toContain("4 tickets in a chain: 2 open, 1 done, 1 in another version");
 });
 
 test("9559 slice 2 Roadmap: the Only filter counts the tickets in a chain with their unit", () => {
-  const html = s2Board(read(s2()));
+  const html = s2Board(read(v112Station()));
   expect(html).toContain("in a chain: 3 tickets");
   expect(html).not.toContain("in a chain 3");
 });
 
 test("9559 slice 2 Roadmap: a lane head says its count with the unit and says Jira's count only when a filter hides some", () => {
-  const r = read(s2());
+  const r = read(v112Station());
   const html = s2Board(r);
   expect(html).toMatch(/<h4>[^]*?To do[^]*?<span class="ro rm-n">1<\/span> ticket<\/h4>/);
   expect(html).not.toContain("Jira 1 matches");
-  expect(html).not.toContain("rm-jira"); // nothing filtered: no Jira number
-  const hidden = s2Board(r, { hideDone: true }); // Hide Done hides the done ticket: that lane says Jira has one it does not show
+  expect(html).not.toContain("rm-jira");
+  const hidden = s2Board(r, { hideDone: true });
   expect(hidden).toContain("Jira 1 · 0 shown");
 });
 
 test("9559 slice 2 Roadmap: a card is a chain card, and an open ticket's wait reads 'waits on open X', muted, where the chain read does not call it blocked", () => {
-  const s = s2();
+  const s = v112Station();
   writeFileSync(join(s.mirror, "HIMMEL-20.md"), issue(20, "To Do", "To Do", ["v1.1.2"], "Waits").replace("blocked_by: []", `blocked_by: ${JSON.stringify([K(2)])}`));
   const r = read(s);
   const html = s2Board(r);
   const card = html.match(new RegExp(`<div class="rm-card cc[ "][^>]*aria-label="${K(20)}:[\\s\\S]*?</div></div>`))![0];
   expect(card).toContain(`waits on open ${K(2)}`);
   expect(card).not.toContain("blocked by open");
-  expect(card).toMatch(/<span class="ro tk[ "]/); // the status is a chip
+  expect(card).toMatch(/<span class="ro tk[ "]/);
   const ft = html.match(new RegExp(`<div class="rm-card cc[ "][^>]*aria-label="${K(1)}:[\\s\\S]*?</div></div>`))![0];
   expect(ft).toContain(`<div class="rm-ft">`);
   expect(ft).toContain("FAST-TRACK");
-  // the Kanban page keeps today's card and words
   const kan = renderKanban(r, { version: null, theme: null });
   expect(kan).toContain(`<div class="rm-card"`);
   expect(kan).not.toContain("rm-card cc");
@@ -1926,23 +1919,21 @@ test("9559 slice 2 No version: the panel head says how many tickets have no vers
 });
 
 test("9559 slice 2 Checked across tabs: every tab at v=v1.1.2 shows one number where two tabs say the same thing", () => {
-  const r = read(s2());
+  const r = read(v112Station());
   const tabs = Object.fromEntries(["roadmap", "chains", "nv"].map((tab) => [tab, s2Board(r, { tab })]));
   const rm = words(tabs.roadmap), chains = words(tabs.chains);
   const inChain = rm.match(/(\d+) tickets in a chain/)![1];
   expect(chains).toContain(`${inChain} tickets in them`);
-  expect(tabs.roadmap).toContain(`in a chain: ${inChain} tickets`); // the Only filter
-  // the tab label, the aside and the version chip line read the same on every tab
+  expect(tabs.roadmap).toContain(`in a chain: ${inChain} tickets`);
   const label = (h: string) => h.match(/<a class="tab ch"[^>]*>[^]*?<\/a>/)![0].replace(/aria-selected="(?:true|false)"/, "");
   expect(label(tabs.roadmap)).toBe(label(tabs.chains));
   const named = (h: string) => label(h).match(/aria-label="[^"]*"/)![0];
-  expect(named(tabs.nv)).toBe(named(tabs.chains)); // No version picks no chip: the label says which version its count is
+  expect(named(tabs.nv)).toBe(named(tabs.chains));
   const pv = (h: string) => h.match(/<div class="pv"[^>]*>[^]*?<\/div>/)?.[0] ?? "";
   expect(pv(tabs.roadmap)).toBe(pv(tabs.chains));
   const aside = (h: string) => h.match(/<div class="aside"[^>]*>[^]*?<\/div>/)?.[0] ?? "";
   expect(aside(tabs.roadmap)).toBe(aside(tabs.chains));
-  // a Won't ticket added to a chain moves both numbers together
-  const w = read(s2([11, "Done", "Done", "Wont Do"])), wch = s2Chain(["11"]);
+  const w = read(v112Station([11, "Done", "Done", "Wont Do"])), wch = v112ChainRead(["11"]);
   expect(words(s2Board(w, {}, wch))).toContain("4 tickets in a chain: 2 open, 1 done, 1 won't");
   expect(words(s2Board(w, { tab: "chains" }, wch))).toContain("4 tickets in them");
 });

@@ -30,7 +30,6 @@ for (const [name, render, input, ui, title] of [
     const html = render(input, ui);
     expect(html).toMatch(/<header class="ph">/);
     expect(html).toContain(`<h1>${title}</h1>`);
-    // slice 2: the Roadmap tab body is a Chains-look panel, no box; Tidy up keeps its box until slice 3
     expect(html).toMatch(name === "Board" || name === "GitHub Board" ? /<section[^>]*class="cp[ "]/ : /<section[^>]*class="box"/);
   });
 }

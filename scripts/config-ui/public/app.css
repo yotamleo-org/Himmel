@@ -768,7 +768,6 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .seclegend{display:flex;flex-wrap:wrap;gap:4px 12px;margin:0 0 8px;font-size:.85em;color:var(--muted)}
 .seclegend .sec{white-space:nowrap}
 .rm-ft{color:var(--accent-ink);background:var(--accent);font-size:11px;font-weight:600;padding:0 var(--s1);border-radius:var(--radius);margin-top:var(--s1);width:fit-content}
-/* 9559 slice 2: the Roadmap and No version bodies, inside a .cp panel (the Kanban keeps the rules above) */
 .cp .rm-col{border:1px solid var(--rule);border-radius:8px;padding:var(--s2)}
 .cp .rm-col h4{margin:0 0 var(--s1);font:600 var(--fs-xs) var(--font-mono);color:var(--muted)}
 .cp .rm-card{margin-bottom:0}

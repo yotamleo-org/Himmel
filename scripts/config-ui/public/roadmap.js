@@ -94,7 +94,6 @@ function ftHtml(t, ch) {
   const name = def && def.name ? def.name : c.id;
   return `<div class="rm-ft">${tip(`FAST-TRACK ${name} · step ${c.step}`, `<span class="ftg">FAST-TRACK</span> ${esc(name)} · step ${c.step}`)}</div>`;
 }
-// With panel (the Chains-look lanes) the word follows the chain view: "blocked by open" in amber only where the chain read calls the ticket blocked, else "waits on open", muted.
 const blockedIn = (t, ch, d) => { const ct = chainOk(ch) ? ch.tickets[idOf(t)] : null; return !!ct && viewState(ct, ct.state, ch, d).state === "blocked"; };
 function depHtml(t, ch, d, panel) {
   const a = Array.isArray(t.after) ? t.after : [];
@@ -122,7 +121,6 @@ function cardHtml(t, d, showVersion, w, ch, v, known, pr, panel) {
   const attrs = w ? ` draggable="true" data-rm-card="${t.k}"${projAttr(t)}${local ? ` data-rm-id="${esc(t.id)}" data-rm-backend="local"` : ""}` : "";
   const open = ` data-rm-open="${t.k}"${w ? "" : projAttr(t)} tabindex="0"`; // a click, Enter or Space opens the drawer; the project attribute is shared with the drag one
   const ci = t.b === "ci" ? ` <span class="ro pill warn">CI</span>` : ""; // CI shares the Review column: the pill says which of the two the card is in
-  // with panel the card is a Chains-tab card (class cc, red edge when blocked) and the status is a .tk chip
   const tk = t.b === "done" ? " dn" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " fl" : "";
   const status = panel ? `<span class="ro tk${tk}">${esc(t.s)}</span>` : `<span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span>`;
   const cls = panel ? `rm-card cc${blockedIn(t, ch, d) ? " red" : ""}` : "rm-card";
@@ -133,8 +131,8 @@ function cardHtml(t, d, showVersion, w, ch, v, known, pr, panel) {
 
 // One board: a column per status over the given tickets (Review and CI share one). Won't stays hidden while empty so a quiet board stays short.
 // With w every column is a drop target, Won't included: a writable board must be able to receive it.
-// o (the Board's lanes only): scope = every ticket Jira has for these columns before the filters; the Kanban's column says "Jira N matches" or
-// "Jira N · M shown", the panel's (o.panel) says "To do · N tickets" and Jira's number only when a filter hides some; foldDone = Done is a closed <details> (open while o.find is set, so a find never hides its match).
+// o (the Board's lanes only): scope = every ticket Jira has for these columns before the filters, so each column says "Jira N matches"
+// or "Jira N · M shown"; foldDone = Done is a closed <details> (open while o.find is set, so a find never hides its match).
 function boardHtml(d, tickets, showVersion, w, ch, v, o = {}) {
   const cols = BOARD_COLS.filter(([b, , bs]) => w || b !== "wont" || tickets.some((t) => bs.includes(t.b)));
   return `<div class="rm-board">${cols.map(([b, l, bs]) => {
@@ -479,22 +477,18 @@ const sectorLegend = (d, scope) => {
   return rows.length ? `<div class="seclegend" aria-label="Sectors of the open tickets">${rows.map(([name, c]) => `<span class="sec"><span class="nm">${tip(name, esc(name))}</span> <span class="n">${c}</span></span>`).join(" ")}</div>` : "";
 };
 
-// The panel head of the Roadmap and No version tabs, in the Chains head's look: a big count with its unit and the open / done split, then the
-// tab's own facts (the Sector legend; on Roadmap the tickets in a chain). split = how many of these tickets are open, done and won't.
 const splitOf = (ts) => ({ open: ts.filter((t) => isOpenB(t.b)).length, done: ts.filter((t) => t.b === "done").length, wont: ts.filter((t) => t.b === "wont").length });
 const splitText = (k) => [`${k.open} open`, ...(k.done ? [`${k.done} done`] : []), ...(k.wont ? [`${k.wont} won't`] : [])];
 const headHtml = (big, ts, tick) => `<div class="cph"><div class="big">${big}<small>${esc(splitText(splitOf(ts)).join(" · "))}</small></div><div class="tick">${tick}</div></div>`;
-// ch (when given) is the chain read of this very version: its tickets are counted by their Roadmap status, so the split sums to the
-// "N tickets in them" the Chains head writes from the same read, and a chain ticket this read does not hold is said, never dropped.
-function roadmapHead(d, sel, ch) {
+function roadmapHead(d, sel, versionChain) {
   if (sel < -1) return "";
   const scope = d.tickets.filter((t) => sel < 0 || t.v === sel);
   let tick = "";
-  if (ch && sel >= 0) {
+  if (versionChain && sel >= 0) {
     const by = new Map(scope.map((t) => [idOf(t), t])), c = { open: 0, done: 0, wont: 0, other: 0 };
-    for (const id of Object.keys(ch.tickets)) { const t = by.get(id); if (!t) c.other++; else if (isOpenB(t.b)) c.open++; else if (t.b === "done") c.done++; else if (t.b === "wont") c.wont++; }
-    const none = scope.filter((t) => isOpenB(t.b) && !ch.tickets[idOf(t)]).length;
-    tick += `<div><b>${nTickets(Object.keys(ch.tickets).length)} in a chain</b>: ${[`${c.open} open`, ...(c.done ? [`${c.done} done`] : []), ...(c.wont ? [`${c.wont} won't`] : []), ...(c.other ? [`${c.other} in another version`] : [])].join(", ")}</div>`
+    for (const id of Object.keys(versionChain.tickets)) { const t = by.get(id); if (!t) c.other++; else if (isOpenB(t.b)) c.open++; else if (t.b === "done") c.done++; else if (t.b === "wont") c.wont++; }
+    const none = scope.filter((t) => isOpenB(t.b) && !versionChain.tickets[idOf(t)]).length;
+    tick += `<div><b>${nTickets(Object.keys(versionChain.tickets).length)} in a chain</b>: ${[`${c.open} open`, ...(c.done ? [`${c.done} done`] : []), ...(c.wont ? [`${c.wont} won't`] : []), ...(c.other ? [`${c.other} in another version`] : [])].join(", ")}</div>`
       + `<div>${none} open ${none === 1 ? "ticket" : "tickets"} in no chain</div>`;
   }
   return headHtml(`${nTickets(scope.length)} in ${sel >= 0 ? esc(d.versions[sel].n) : "every version"}`, scope, tick + sectorLegend(d, scope));
@@ -505,7 +499,6 @@ function nvHead(nv) {
   return headHtml(`${nTickets(scope.length)} with no version`, scope, `<div class="legend">Tickets with no fixVersion. Give one a fixVersion in Jira to put it on a version's board.</div>` + sectorLegend(nv, scope));
 }
 
-// The lanes under the panel head (the Roadmap tab body): the drag or read-only note, then the status columns.
 function lanesHtml(d, ui, sel, ch, dr, prs) {
   const gh = d.source === "github";
   const writeOn = !!ui.writes && !gh;
@@ -1002,8 +995,8 @@ function boardPage(data, ui, extras) {
   else {
     const shownCh = readFor(tab, ch, cardCh);
     const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr, prs) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv, owed) + lanesHtml(data, ui, sel, cardCh, dr, prs);
-    // the in-chain line only where the Chains tab's own read is this version's, so both tabs write one number
-    const head = tab === "roadmap" ? roadmapHead(data, sel, cardCh === tabCh && chainOk(tabCh) && tabCh.version ? tabCh : null) : tab === "nv" ? nvHead(ui.nv) : "";
+    const chainOfThisVersion = cardCh === tabCh && chainOk(tabCh) && tabCh.version ? tabCh : null;
+    const head = tab === "roadmap" ? roadmapHead(data, sel, chainOfThisVersion) : tab === "nv" ? nvHead(ui.nv) : "";
     panel = `<section class="cp plain" aria-label="${esc(TABS.find(([id]) => id === tab)[1])}">${head}${writeNote(ui)}${barHtml(data, ui, shownCh, tab, sel)}${body}</section>`;
   }
   const topHead = `<div class="rm-head bh"${modal ? " inert" : ""}><header class="ph"><h1>Board</h1></header>${stripHtml(data, chipSel, tab, { ...ui, inert: modal })}</div>`;
