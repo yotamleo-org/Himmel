@@ -111,23 +111,28 @@ _ghq_row() { # <token> <bucket> — one row from the GHB_* the last probe set
 }
 
 ghq_refresh() {
-    local dir f obs now start tok bucket stop=0 rows=""
+    local dir f obs now start tok bucket stop=0 rows="" probe_t left
     dir=$(_ghq_dir)
     f="$dir/quota.tsv"
     now=$(date +%s)
     obs=$(_ghq_observed "$f")
     if [ -n "$obs" ] && [ $((now - obs)) -ge 0 ] && [ $((now - obs)) -lt 170 ]; then return 0; fi
+    probe_t="${GHQ_PROBE_TIMEOUT:-10}"
+    case "$probe_t" in ''|*[!0-9]*) probe_t=10 ;; esac
     start=$SECONDS
     for tok in main read; do
         # a station with no read token keeps main's two rows only
         if [ "$tok" = read ] && [ -z "$(_ghb_read_token)" ]; then break; fi
         for bucket in graphql core; do
-            if [ "$stop" -eq 1 ] || [ $((SECONDS - start)) -ge 20 ]; then
+            # each probe gets at most what is left of the 20 s, so the refresh cannot overrun it
+            left=$((20 - (SECONDS - start)))
+            [ "$left" -lt "$probe_t" ] || left="$probe_t"
+            if [ "$stop" -eq 1 ] || [ "$left" -le 0 ]; then
                 GHB_REMAINING=""; GHB_LIMIT=""; GHB_RESET=""; GHB_STATE=timed-out
             elif [ "$bucket" = graphql ]; then
-                ghb_read "$tok"
+                GHQ_PROBE_TIMEOUT="$left" ghb_read "$tok"
             else
-                _ghb_probe "$tok" api -i user
+                GHQ_PROBE_TIMEOUT="$left" _ghb_probe "$tok" api -i user
             fi
             [ "$GHB_STATE" = timed-out ] && stop=1
             rows="$rows$(_ghq_row "$tok" "$bucket")
@@ -199,7 +204,8 @@ ghq_scan_gate() {
             return 75 ;;
         unreadable) return 0 ;;
     esac
-    if [ -z "$GHQ_REMAINING" ] || [ "$GHQ_REMAINING" -lt "$floor" ]; then
+    # refused = GitHub said no at the probe (a secondary limit can say so with points left)
+    if [ "$GHQ_STATE" = refused ] || [ -z "$GHQ_REMAINING" ] || [ "$GHQ_REMAINING" -lt "$floor" ]; then
         printf 'QUOTA-PAUSE github %s token=%s remaining=%s floor=%s reset=%s caller=%s nothing-was-judged\n' \
             "$bucket" "$tok" "${GHQ_REMAINING:-unknown}" "$floor" "$(_ghq_reset_words "$GHQ_RESET")" "$caller"
         return 75

@@ -39,6 +39,7 @@ case "$mode" in
     reset-absent) rem=0; reset="" ;;
     reset-absurd) rem=0; reset=4102444800 ;;
     secondary) rem=10; extra="Retry-After: 60" ;;
+    secondary-high) rem=4000; extra="Retry-After: 60" ;;
 esac
 case " $* " in
     *" -i "*)
@@ -49,7 +50,7 @@ case " $* " in
 esac
 case "$mode" in
     out|reset-*) echo "GraphQL: API rate limit already exceeded for user ID 1." >&2; exit 1 ;;
-    secondary) echo "gh: You have exceeded a secondary rate limit." >&2; exit 1 ;;
+    secondary|secondary-high) echo "gh: You have exceeded a secondary rate limit." >&2; exit 1 ;;
 esac
 exit 0
 STUB
@@ -99,6 +100,11 @@ el=$((SECONDS - t0))
 check "R7 a timed-out probe stops the refresh: one call" "1" "$(grep -c . "$STUB_LOG")"
 check "R7b the rest are marked timed-out" "4" "$(grep -c 'timed-out$' "$HIMMEL_QUOTA_DIR/quota.tsv")"
 check "R7c bounded by one probe timeout" "yes" "$([ "$el" -le 4 ] && echo yes || echo "no:${el}s")"
+fresh budget
+t0=$SECONDS
+STUB_MAIN=hung STUB_READ=hung GHQ_PROBE_TIMEOUT=30 ghq_refresh
+el=$((SECONDS - t0))
+check "R7d a probe timeout over 20 s is clamped to the refresh's 20 s" "yes" "$([ "$el" -le 22 ] && echo yes || echo "no:${el}s")"
 
 fresh unwritable
 mkdir -p "$W/ro" && chmod 500 "$W/ro"
@@ -126,6 +132,8 @@ done
 g=$(gate secondary)
 has "G4 Retry-After wins over the reset: about 60 s away" "75|" "$g"
 check "G4b the Retry-After distance" "yes" "$(grep -qE '\(in (5[5-9]|60)s\)' <<< "$g" && echo yes || echo "no: $g")"
+g=$(gate secondary-high)
+has "G4c a refused probe pauses even with points left above the floor" "75|QUOTA-PAUSE github graphql token=main remaining=4000 floor=500" "$g"
 g=$(gate hung)
 check "G5 a timed-out probe pauses with the stall line" "75|GH-STALL github read timed out after 2s token=main caller=next-dispatchable nothing-was-judged" "$g"
 check "G6 a fast unreadable probe proceeds" "0|" "$(gate unreadable)"
