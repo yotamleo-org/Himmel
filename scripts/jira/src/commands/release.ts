@@ -668,7 +668,6 @@ export function registerRelease(program: Command): void {
       const evidence: unknown = JSON.parse(o.evidence);
       if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: --evidence is a JSON object');
       const ctx = ctxFor(release, o.mirrorRoot);
-      // An approved out-of-version key stays on its version: no INTAKE, the shape both folds file, pulls it into another.
       const approval = o.verb === 'INTAKE' ? outOfVersionApproval(process.env, o.key, new Date()) : null;
       if (approval) {
         console.log(`REQ approved:${approval.id}`);

@@ -536,8 +536,6 @@ export const OUT_OF_VERSION_MS = 14 * 86_400_000;
 
 const byIso = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-// The newest verified out-of-version record naming the key, under 14 days old. A record past a chain break, or in a
-// release whose key will not load, is not read, so a hidden approval reads as none.
 export function outOfVersionApproval(env: Record<string, string | undefined>, key: string, now: Date): ReleaseRecord | null {
   let records: ReleaseRecord[];
   try {
@@ -551,8 +549,6 @@ export function outOfVersionApproval(env: Record<string, string | undefined>, ke
   }).sort((a, b) => byIso(a.ts, b.ts)).at(-1) ?? null;
 }
 
-// The pool's current version, as next-dispatchable.sh reads it: of the versions file's rows (name, released, date,
-// archived), the first unreleased, unarchived name without the zz- prefix, in natural order.
 export function poolCurrent(versionsTsv: string): string | null {
   const nat = (v: string) => v.split(/(\d+)/).map((x) => (/^\d+$/.test(x) ? Number(x) : x));
   const cmp = (a: string, b: string): number => {
@@ -572,8 +568,6 @@ export function poolCurrent(versionsTsv: string): string | null {
 
 type Declared = { path: string; decl: { project?: unknown; current?: unknown; ts?: unknown } | null };
 
-// Every release.json under releaseRoot(), read as plain JSON with no key and no signature check, so a release whose
-// key will not load still names its project. One that does not parse has decl null and names every project.
 function declaredReleases(env: Record<string, string | undefined>): Declared[] {
   const root = releaseRoot(env);
   if (!existsSync(root)) return [];
@@ -599,8 +593,6 @@ function withinDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
 
 export interface BucketOptions { get: Getter; deadlineMs: number; now: Date }
 
-// One `<VERDICT> <KEY> ...` line per key, first match from row 0 of the spec's table. Every input it cannot read
-// gives FAILED or OUTSIDE, never IN or NONE. The live read runs only after rows 1 to 3 miss, once, inside the deadline.
 export async function bucketCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string, o: BucketOptions): Promise<string[]> {
   const { issues } = readMirror(mirrorRoot);
   const versionsPath = `${mirrorRoot.replace(/\/+$/, '')}.versions.tsv`;
@@ -654,9 +646,6 @@ async function bucketLine(env: Record<string, string | undefined>, key: string, 
   return `OUTSIDE ${key} ${versions.join(',') || 'none'} current=${current} open=${open}`;
 }
 
-// The operator's words in a verbatim decision file, for the out-of-version phone line: the first line starting
-// `Verbatim:`, its own text, else the lines below it up to the first blank line; one surrounding pair of double quotes
-// is dropped.
 export function operatorWords(text: string): string {
   const lines = text.split(/\r?\n/);
   const at = lines.findIndex((l) => l.startsWith('Verbatim:'));
