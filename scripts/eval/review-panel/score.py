@@ -587,6 +587,8 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
     for cat, why in (("inconsistent", "participation-inconsistent"), ("unknown", "participation-unknown")):
         if any(c[cat] for c in coverage["critics"].values()):
             reasons.append(why)
+    if any(p["state"] == "answered" and not p["responding_model"] for _, part in per_case.values() for p in part.values()):
+        reasons.append("responding-model-unobserved")
     return {"status": status, "metrics": metrics, "ci": ci, "cases": case_rows, "responded": responded,
             "leaks": leaks, "unscored": unscored, "critics": roster, "window": window,
             "case_evidence": case_evidence, "coverage": coverage, "decision_eligible": not reasons,
@@ -909,6 +911,8 @@ def bundle_sha256_v2(outputs):
     outputs_sha256 stays the legacy raw-output identity."""
     h = hashlib.sha256()
     for n in sorted(os.listdir(outputs)):
+        if not os.path.isfile(os.path.join(outputs, n)):
+            continue
         if re.match(r"^(case|real|delta)-.+\.(md|err|rc)$", n) or n in ("critics.run.json", MANIFEST):
             h.update(n.encode() + b"\0")
             h.update(_file_sha(os.path.join(outputs, n)).encode())
@@ -1366,8 +1370,8 @@ def main(argv=None):
 ROW_FIELDS = ("status", "metrics", "class_recall", "cbs_hash", "confighash", "outputs_sha256", "responded",
               "scorer_sha256", "bundle_sha256_v2", "execution_id", "code_under_test_sha", "provenance_status",
               "decision_eligible", "ineligibility_reasons")
-LEGACY_OPTIONAL_FIELDS = ("responded", "bundle_sha256_v2", "execution_id", "code_under_test_sha", "provenance_status",
-                "decision_eligible", "ineligibility_reasons")
+LEGACY_OPTIONAL_FIELDS = ("responded", "bundle_sha256_v2", "execution_id", "code_under_test_sha",
+                          "provenance_status", "decision_eligible", "ineligibility_reasons")
 
 
 def tree_main(a):

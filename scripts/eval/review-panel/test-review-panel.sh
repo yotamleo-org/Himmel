@@ -634,6 +634,7 @@ cat > "$RR/scripts/cr/critic-panel.sh" <<'EOF'
 #!/usr/bin/env bash
 cmp -s - diff.patch || exit 9
 [ -z "${STUB_DIRTY:-}" ] || printf '# mid-sweep\n' >> "$(dirname "$0")/critic-x.sh"
+printf 'panel-availability: codex ok responding-model(gpt-6.1-sol)\n' >&2
 printf '# Critic Panel Review (1/1 critics responded)\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
 EOF
 printf '__pycache__/\n' > "$RR/.gitignore"
@@ -646,6 +647,13 @@ eq "run: a sweep of a clean tree through its own panel is stamped clean" "$(pyth
 python3 "$RR/scripts/eval/review-panel/score.py" export-row "$TMP/run-rr1" --repo "$RR" --results "$TMP/results-rr.jsonl" >/dev/null 2>&1; rc=$?
 eq "provenance: a clean complete recorded sweep by a clean scorer is decision-eligible" \
   "$rc:$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["provenance_status"], r["decision_eligible"], r["ineligibility_reasons"], r["code_under_test_sha"] == sys.argv[2])' "$TMP/results-rr.jsonl" "$(rr rev-parse HEAD)" 2>&1)" "0:recorded True [] True"
+pyscore() { python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; exec(sys.argv[2])' "$HERE" "$@" 2>&1; }
+RRN="$TMP/run-rr1-noreceipt"; cp -r "$TMP/run-rr1" "$RRN"; for f in "$RRN"/case-*.err; do : > "$f"; done
+python3 "$RR/scripts/eval/review-panel/score.py" export-row "$RRN" --repo "$RR" --results "$TMP/results-rrn.jsonl" >/dev/null 2>&1
+eq "provenance: stripping the responding-model receipts makes the row ineligible, never a fabricated model" \
+  "$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["decision_eligible"], "responding-model-unobserved" in r["ineligibility_reasons"])' "$TMP/results-rrn.jsonl" 2>&1)" "False True"
+mkdir -p "$RRN/case-99.md"
+eq "bundle_sha256_v2: a directory named like a case file is skipped, not a crash" "$(pyscore 'print(len(score.bundle_sha256_v2(sys.argv[3])))' "$RRN")" "64"
 RRA="$TMP/run-rr1-edited"; cp -r "$TMP/run-rr1" "$RRA"; printf 'critic-panel.sh: line 3: PANEL_LEDGER: unbound variable\n' >> "$RRA/case-01.err"
 python3 "$RR/scripts/eval/review-panel/score.py" export-row "$RRA" --repo "$RR" --results "$TMP/results-rra.jsonl" >/dev/null 2>&1
 eq "provenance: an error line added to a case after the manifest was completed still makes the row ineligible" \
@@ -814,7 +822,6 @@ eq "retained_stamp_still_exports: a pre-M1 stamp passes check_stamp and exports 
 eq "provenance: outputs with no run-manifest.json are not decision-eligible" \
   "$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["provenance_status"], r["decision_eligible"], "no-run-manifest" in r["ineligibility_reasons"])' "$TMP/results-retained.jsonl" 2>&1)" "missing False True"
 
-pyscore() { python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; exec(sys.argv[2])' "$HERE" "$@" 2>&1; }
 OP="$TMP/out-prov"; cp -r "$O" "$OP"; rm -f "$OP/run-manifest.json"; rcrit "$OP/critics.run.json" codex
 python3 -c 'import json,sys; reg=json.load(open(sys.argv[1])); reg["panel"].append({"slug": "glm", "tier": "free", "model": "glm-5", "provider": "openrouter"}); json.dump(reg, open(sys.argv[1], "w"))' "$OP/critics.run.json"
 eq "tier_filter: the effective roster drops a row outside the swept tiers" "$(pyscore 'print(score.sweep_roster(sys.argv[3], ["fallback"]))' "$OP")" "['codex']"
