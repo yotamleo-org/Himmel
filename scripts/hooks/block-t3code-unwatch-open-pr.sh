@@ -1,27 +1,9 @@
 #!/usr/bin/env bash
-# PreToolUse hook (mcp__t3-code__unwatch_pull_request).
-# Refuse unwatching a PR while it is still OPEN.
-#
-# WHY: T3 Code's wake text pairs "all required checks passed" with "call
-# unwatch_pull_request first". Seen 2026-11-09 (PR 5054): the agent unwatched an
-# OPEN, mergeStateStatus=BLOCKED PR with no review decision, nothing watched it
-# afterwards and the operator re-armed the watch by hand. Second drift goes to a
-# hook, not stronger prose.
-#
-# Reads the live PR with `gh pr view` (state, mergeStateStatus, reviewDecision):
-#   OPEN             -> deny (exit 2); the reason names the live state and the override
-#   MERGED / CLOSED  -> allow (exit 0, prints nothing)
-#
-# Hook input: JSON on stdin. The PR comes from tool_input: a github.com/o/r/pull/N
-# URL in any string field, else a number field plus an optional repo field.
-#
-# Fail OPEN (exit 0) with a loud stderr WARNING when the PR cannot be resolved
-# or read (no jq, bad JSON, gh error, unparseable gh output): this is a workflow
-# nudge, never a trap the agent cannot leave.
-#
-# Override for an operator-directed stop: T3CODE_UNWATCH_OK=1 in the shell that
-# LAUNCHED the agent (a per-call prefix does not reach the hook). The allow is
-# logged to stderr and appended to $HOME/.himmel/t3code-unwatch-override.log.
+# PreToolUse hook (mcp__t3-code__unwatch_pull_request): deny while the PR is OPEN.
+# Fails OPEN with a stderr WARNING when the PR cannot be resolved or read: a
+# nudge must never trap the agent in a watch it cannot leave.
+# Override: T3CODE_UNWATCH_OK=1 in the launching shell (a per-call prefix does
+# not reach the hook); the allow is logged to ~/.himmel/t3code-unwatch-override.log.
 set -uo pipefail
 
 warn() { echo "block-t3code-unwatch-open-pr: WARNING: $* - allowing the unwatch (fail open)" >&2; }
@@ -37,7 +19,6 @@ case "$tool" in
     *) exit 0 ;;
 esac
 
-# Resolve repo + number: URL in any string field first, else number/repo fields.
 strings=$(jq -r '[.tool_input | .. | strings] | join("\n")' <<<"$input") || strings=""
 repo=""; num=""
 url=$(printf '%s\n' "$strings" | grep -Eo 'github\.com/[^/[:space:]]+/[^/[:space:]]+/pull/[0-9]+' | head -n 1)

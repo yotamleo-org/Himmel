@@ -164,9 +164,6 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // login-walled host (x.com / instagram.com, scripts/web/walled-hosts.conf)
   // and names `bash scripts/web/fetch-url.sh '<url>'`. Fails open.
   'redirect-webfetch-walled-hosts.sh',
-  // PreToolUse `mcp__t3-code__unwatch_pull_request` — its own matcher: denies
-  // the unwatch while the PR is still OPEN (reads it with gh pr view). Fails
-  // open when the PR cannot be read; T3CODE_UNWATCH_OK=1 overrides.
   'block-t3code-unwatch-open-pr.sh',
   // PreToolUse, one entry each.
   'block-backend-tier.sh',

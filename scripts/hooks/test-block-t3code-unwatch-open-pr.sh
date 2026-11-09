@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Tests for scripts/hooks/block-t3code-unwatch-open-pr.sh. Hermetic:
-# a stub `gh` on PATH answers `gh pr view`; payloads live in fixture files.
 set -uo pipefail
 
 unset T3CODE_UNWATCH_OK
