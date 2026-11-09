@@ -93,6 +93,11 @@ case "$args" in
     'api repos/'*'/pulls/'*) printf '%s\n' "${STUB_HEAD:-}" ;;
     *'p77:pullRequest'*)
         [ -z "${STUB_SNAPSHOT_FAIL:-}" ] || exit 1
+        if [ -n "${STUB_HOLD_MARK:-}" ] && [ ! -e "$STUB_HOLD_MARK" ]; then
+            # STUB_HOLD_MARK: once, start a peer read that takes the snapshot lock as this read ends and never answers; its pid goes to the mark
+            ( STUB_HOLD_MARK='' STUB_GH_STALL=600 "$STUB_HOLD_TIMEOUT" -k 2 40 bash "$STUB_HOLD_LIB" "${STUB_NWO:-acme/repo}" 0 77 < /dev/null > /dev/null 2>&1 &
+              echo "$!" > "$STUB_HOLD_MARK" )
+        fi
         jq -n --arg h "$STUB_HEAD" --arg m "${STUB_MSS:-CLEAN}" \
             --argjson rollup "${STUB_ROLLUP:-[]}" --argjson commits "${STUB_COMMITS:-[]}" \
             --arg merges "${STUB_MERGE_OIDS:-}" --argjson u "${STUB_UNRESOLVED:-0}" \
@@ -4303,9 +4308,32 @@ for r2_item in 1 2 3 5 6; do
     check "R2: item $r2_item fails closed" "$(grep -c "^\[FAIL\] $r2_item\." <<< "$out" | tr -d ' ')" "1"
 done
 check "R2: the run ended on the lock wait, inside the holder's life (took $r2_elapsed s)" "$([ "$r2_elapsed" -lt 12 ] && echo yes || echo no)" "yes"
+contains "R2: item 1 names why the snapshot was unreadable" "$out" "still held by pid"
 wait "$r2_holder" 2>/dev/null || true
 r2_left=no; compgen -G "$r2_shared/*.lock" > /dev/null && r2_left=yes
 check "R2: the killed holder's trap freed its lock" "$r2_left" "no"
+# R4: item 1's UNKNOWN re-reads meet a peer that holds the lock and never answers. Each
+# re-read waits 5 s, not the full lock wait, and a failed re-read keeps the last good read.
+reset_stubs
+r4_shared="$tmp/lock-cache-r4"; mkdir -p "$r4_shared"
+r4_mark="$tmp/r4-holder.pid"; rm -f "$r4_mark"
+r4_t0=$SECONDS
+rc=0; out="$(STUB_MSS=UNKNOWN STUB_HOLD_MARK="$r4_mark" STUB_HOLD_TIMEOUT="$REAL_TIMEOUT" STUB_HOLD_LIB="$HERE/../../lib/gh-pr-snapshot.sh" RUN_CACHE="$r4_shared" run)" || rc=$?
+r4_elapsed=$((SECONDS - r4_t0))
+check "R4: the peer read was started" "$([ -s "$r4_mark" ] && echo yes || echo no)" "yes"
+check "R4: a mergeStateStatus that stays UNKNOWN fails the run" "$rc" "1"
+check "R4: item 1 fails on UNKNOWN, not on an unreadable PR" "$(grep -c '^\[FAIL\] 1\. .*mergeStateStatus=UNKNOWN' <<< "$out" | tr -d ' ')" "1"
+for r4_item in 2 3 5 6; do
+    check "R4: item $r4_item still judges the last good read" "$(grep -c "^\[PASS\] $r4_item\." <<< "$out" | tr -d ' ')" "1"
+done
+notcontains "R4: no cannot read" "$out" "cannot read"
+contains "R4: item 1 names the re-read's 5 s lock wait" "$out" "after 5 s"
+check "R4: the re-reads ended inside the peer's life (took $r4_elapsed s)" "$([ "$r4_elapsed" -lt 40 ] && echo yes || echo no)" "yes"
+r4_hpid=$(cat "$r4_mark" 2>/dev/null) || r4_hpid=""
+[ -z "$r4_hpid" ] || kill "$r4_hpid" 2>/dev/null || true
+for _ in $(seq 1 100); do compgen -G "$r4_shared/*.lock" > /dev/null || break; sleep 0.1; done
+r4_left=no; compgen -G "$r4_shared/*.lock" > /dev/null && r4_left=yes
+check "R4: the killed peer's trap freed its lock" "$r4_left" "no"
 fi
 reset_stubs
 

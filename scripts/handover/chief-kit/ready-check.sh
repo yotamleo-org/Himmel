@@ -24,7 +24,9 @@
 # Checks:
 #   1. Shared snapshot: headRefOid == <head-sha> (full 40 chars); mergeStateStatus
 #      == CLEAN (retries briefly on UNKNOWN — a transient GitHub computation
-#      state, not a verdict).
+#      state, not a verdict; a re-read waits 5 s for a peer's snapshot lock and
+#      a failed one keeps the last good read). A failed snapshot read prints the
+#      lib's reason under item 1.
 #   2. statusCheckRollup: every check IDENTITY's LATEST run is COMPLETED with
 #      conclusion SUCCESS/SKIPPED/NEUTRAL (CheckRun), or state SUCCESS
 #      (StatusContext) — a superseded run (e.g. an earlier CANCELLED run
@@ -341,8 +343,23 @@ crf_hold_note() {
 }
 SNAPSHOT_SCRIPT="$(cd "$(dirname "$0")/../../lib" && pwd)/gh-pr-snapshot.sh"
 snapshot=""
+snapshot_why=""
+# snapshot_read [lock-wait]: one live snapshot read into $snapshot. On failure $snapshot is left
+# as it was and $snapshot_why holds the lib's last stderr line, such as a lock still held by a peer.
+snapshot_read() {
+    local err out rc=0
+    err=$(mktemp "${TMPDIR:-/tmp}/ready-check-snap.XXXXXX" 2>/dev/null) || err=""  # prim-ok: ready-check sources no prim.sh; no file only loses the reason line
+    out=$(env GH_CMD="$GH" GH_PR_SNAPSHOT_LOCK_WAIT="${1:-${GH_PR_SNAPSHOT_LOCK_WAIT:-}}" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>"${err:-/dev/null}") || rc=$?
+    snapshot_why=""
+    if [ -n "$err" ]; then
+        [ "$rc" -eq 0 ] || snapshot_why=$(tail -n 1 "$err" | tr -cd '[:print:]')
+        rm -f "$err"
+    fi
+    [ "$rc" -eq 0 ] || return 1
+    snapshot=$out
+}
 if [ "$ONLY7" -eq 0 ]; then
-    snapshot=$(GH_CMD="$GH" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>/dev/null) || snapshot=""
+    snapshot_read || snapshot=""
 fi
 
 # author_class and outside_pr_of live in the lib, so scripts/cr/pr-check-outside.sh asks the same question.
@@ -419,7 +436,9 @@ while [ "$attempt" -lt 5 ]; do
     attempt=$((attempt + 1))
     sleep 1
     if [ "$attempt" -lt 5 ]; then
-        snapshot=$(GH_CMD="$GH" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>/dev/null) || snapshot=""
+        # A re-read waits 5 s for a peer's lock, not the full lock wait, so four re-reads cannot
+        # eat the run's deadline.
+        snapshot_read 5 || true  # swallow-ok: a failed re-read keeps the last good read, still UNKNOWN, so item 1 FAILs
     fi
 done
 # The rollup is judged before row 1: UNSTABLE is accepted there only when
@@ -487,6 +506,7 @@ else
     fi
     mark_fail
 fi
+[ -z "$snapshot_why" ] || echo "       PR snapshot read failed: $snapshot_why"
 
 # ── 2. statusCheckRollup ─────────────────────────────────────────────────────
 if [ -z "$rollup" ] || [ "$rollup" = "null" ]; then
