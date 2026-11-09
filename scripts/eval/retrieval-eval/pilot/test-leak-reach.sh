@@ -56,9 +56,20 @@ scan --index "$W/index-leak.sqlite" > "$W/l2.json"; rc=$?
 eq "P12: a task id planted in an index text row is detected" "3 1 1" "$rc $(j "$W/l2.json" id_leaks) $(j "$W/l2.json" sources_with_leaks.index)"
 cp -r "$W/ex" "$W/ex-path"; printf 'see %s/tasks.jsonl\n' "$W/run/private" >> "$W/ex-path/luna/notes/garden.md"
 python3 -I "$LS" --bank "$B" --export himmel="$W/ex-path/himmel" --export luna="$W/ex-path/luna" --private "$W/run/private" > "$W/l3.json"; rc=$?
-eq "P12: a private run path in a copy is detected" "3 1" "$rc $(j "$W/l3.json" private_path_leaks)"
+eq "P12: a private run path in a copy is detected (it names both the private dir and the bank file)" "3 2" "$rc $(j "$W/l3.json" private_path_leaks)"
 python3 -I "$LS" --bank "$B" --export himmel="$W/ex-leak/himmel" --private-out "$W/private-findings.json" > /dev/null
 eq "P12: which task leaked goes only to a private file" "600 tq-0017" "$(python3 -I -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$W/private-findings.json") $(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["found"]["questions"][0][0])' "$W/private-findings.json")"
+python3 -I "$LS" --bank "$B" --export himmel="$W/no-such-export" > /dev/null 2>&1
+eq "P12: a requested export root that does not exist refuses, never a clean verdict" 3 "$?"
+mkdir -p "$W/empty-export"
+python3 -I "$LS" --bank "$B" --export himmel="$W/empty-export" > /dev/null 2>&1
+eq "P12: a scan that read nothing refuses" 3 "$?"
+cp -r "$W/ex" "$W/ex-auto"; printf 'see %s/retained/run-1.json\n' "$W/run" >> "$W/ex-auto/luna/notes/garden.md"
+python3 -I "$LS" --bank "$B" --export himmel="$W/ex-auto/himmel" --export luna="$W/ex-auto/luna" --run-root "$W/run" > "$W/l4.json"; rc=$?
+eq "P12: the run root's retained/ path is checked without being passed as --private" "3 1" "$rc $(j "$W/l4.json" private_path_leaks)"
+cp -r "$W/ex" "$W/ex-bankpath"; printf 'bank at %s\n' "$B" >> "$W/ex-bankpath/luna/notes/garden.md"
+python3 -I "$LS" --bank "$B" --export himmel="$W/ex-bankpath/himmel" --export luna="$W/ex-bankpath/luna" > "$W/l5.json"; rc=$?
+eq "P12: the bank file's own path is always a private path" "3 1" "$rc $(j "$W/l5.json" private_path_leaks)"
 printf 'collections:\n  vault:\n    path: %s\n' "$W" > "$W/covering.yml"
 printf 'collections:\n  himmel:\n    path: %s\n' "$W/ex/himmel" > "$W/scoped.yml"
 scan --config "$W/covering.yml" --run-root "$W/run" > "$W/c1.json"; rc=$?

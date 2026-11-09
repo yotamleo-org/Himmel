@@ -123,8 +123,11 @@ class Pilot:
             self.ledger._log({"ev": "unsettled", "attempt": attempt})
             self.stop("HARD_STOP", "unclassified")
             return {"killed": True}
-        actual = max(float(out.get("cost_usd") or 0), float(out.get("usage_cost") or 0))
-        self.ledger.settle(attempt, actual)
+        costs = [c for c in (out.get("cost_usd"), out.get("usage_cost")) if isinstance(c, (int, float)) and not isinstance(c, bool)]
+        if not costs:   # no cost evidence at all is never a free call: the booking stays unsettled
+            self.ledger.killed(attempt, None, False)
+            return dict(out, killed=True)
+        self.ledger.settle(attempt, max(costs))
         if out.get("hard_abort") or out.get("survivors"):
             self.stop("HARD_STOP", "integrity")
         return out

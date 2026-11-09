@@ -114,6 +114,9 @@ def settle(st, a, ctx, at):
         st.log({"ev": "stop", "reason": "usage_unreadable", "at": at})
         return False
     prev = [e for e in st.events if e["ev"] == "settle"]
+    if prev and meter < prev[-1]["meter"]:
+        st.log({"ev": "stop", "reason": "usage_reset", "at": at})
+        return False
     st.log({"ev": "settle", "meter": meter, "at": at})
     if prev:
         n = sum(1 for e in st.events[st.events.index(prev[-1]) + 1:] if e["ev"] == "book")

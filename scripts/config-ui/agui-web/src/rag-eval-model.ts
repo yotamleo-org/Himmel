@@ -178,7 +178,7 @@ export function pilotModel(rows: LedgerRow[]): Pilot | null {
   const isVoid = p.void === true || p.stop_kind === "HARD_STOP" || n < 36;
   const status: Pilot["status"] = isVoid ? "void" : n < 40 || p.finalization_status === "short" ? "short" : "full";
   const arms = (["V", "S", "Q"] as const).map((a) => pilotArm(p, a));
-  const comps = Object.fromEntries((p.comparisons || []).map((c) => [c.contrast, c]));
+  const comps = Object.fromEntries((p.comparisons || []).filter((c): c is CompRow => !!c && typeof c === "object").map((c) => [c.contrast, c]));
   const sv = comparison(comps["S-V"], "S-V"), qv = comparison(comps["Q-V"], "Q-V");
   let clauses: PilotClause[] | null = null, noComparison: string | null = null;
   if (isVoid) noComparison = `No answer comparison: the run ${p.stop_kind === "HARD_STOP" ? "hard-stopped" : "ended"} (${p.reason || "no reason recorded"}) with ${n} common tasks. Only spend and service state are shown.`;

@@ -244,6 +244,8 @@ def run(name, work):
             if ph == "answer" and n == 18 + pos:
                 raise RP.Killed(0.05 if complete else None, complete)
         kw["rule"] = kill
+    elif name == "no-cost-evidence":
+        kw["rule"] = lambda t, a, ph, n: row(a, cost_usd=None) if ph == "answer" and n == 20 else None
     elif name == "background":
         kw["rule"] = lambda t, a, ph, n: row(a, survivors=1) if ph == "answer" and n == 20 else None
     elif name == "raw-only":

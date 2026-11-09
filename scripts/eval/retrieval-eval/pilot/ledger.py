@@ -22,7 +22,7 @@ it, so a crash or kill resumes from exactly what was durably booked. Money is in
 The stop classifier lives here too (D1): HARD_STOP dominates FINALIZE_ONLY; nothing in this
 file reads an answer score.
 """
-import json, os, time
+import json, math, os, time
 
 CAP_PILOT = 25.0
 CAP_R5 = 0.50
@@ -99,7 +99,12 @@ class Ledger:
     def _apply(self, ev):
         self.events.append(ev)
         k = ev["ev"]
-        if k == "reserve":
+        if k == "admit_triple":     # one durable event: both reservations and the admission, or nothing
+            t = ev["task"]
+            for name, amount in (("triple:%s:answers" % t, ev["answers"]), ("triple:%s:search" % t, ev["search"])):
+                self.reserves[name] = self.reserves.get(name, 0.0) + amount
+            self.triples.setdefault(t, {"arms": {}, "state": "admitted"})
+        elif k == "reserve":
             self.reserves[ev["name"]] = self.reserves.get(ev["name"], 0.0) + ev["amount"]
         elif k == "release":
             self.reserves[ev["name"]] = max(0.0, self.reserves.get(ev["name"], 0.0) - ev["amount"])
@@ -170,9 +175,7 @@ class Ledger:
         need = btriple(self.b)
         if not self.can_fit(need):
             return False
-        self._log({"ev": "reserve", "name": "triple:%s:answers" % task, "amount": 3 * BOOK["answer"]})
-        self._log({"ev": "reserve", "name": "triple:%s:search" % task, "amount": MAX_S_QUERIES * self.b})
-        self._log({"ev": "triple", "task": task, "state": "admitted"})
+        self._log({"ev": "admit_triple", "task": task, "answers": 3 * BOOK["answer"], "search": MAX_S_QUERIES * self.b})
         return True
 
     def book(self, attempt, kind, amount, from_reserve=None, incurred=False):
@@ -191,6 +194,12 @@ class Ledger:
         item = self.inflight.get(attempt) or ({"amount": self.unsettled[attempt]} if attempt in self.unsettled else None)
         if item is None:
             raise Refused("settle of an unknown attempt %s" % attempt)
+        if not isinstance(actual, (int, float)) or isinstance(actual, bool) or not math.isfinite(actual) or actual < 0:
+            # untrusted cost evidence is no evidence: the booking stays as unsettled exposure
+            if attempt in self.inflight:
+                self._log({"ev": "unsettled", "attempt": attempt, "why": "invalid cost evidence"})
+            self.halt("HARD_STOP", "unsettled")
+            return False
         self._log({"ev": "settle", "attempt": attempt, "actual": actual})
         if actual > item["amount"] + EPS:
             self.halt("HARD_STOP", "overrun")
@@ -225,6 +234,9 @@ class Ledger:
     def settle_s_interval(self, delta, invocations, meter=None):
         """Settle the dedicated key's cash delta for the admitted S invocations of the interval,
         then reprice. Returns False on a HARD_STOP (overrun or unexplained usage)."""
+        if not isinstance(delta, (int, float)) or not math.isfinite(delta) or delta < 0:
+            self.halt("HARD_STOP", "unknown_spend")   # a negative delta is a meter reset, never a refund
+            return False
         attempts = sorted(self.s_interval)
         booked = sum(self.s_interval.values())
         self._log({"ev": "s_settle", "attempts": attempts, "delta": delta, "invocations": invocations, "booked": booked, "meter": meter})
@@ -285,7 +297,8 @@ class ListBooking:
     the reserved list capacity; a refusal (or cancelled lists) stops the list."""
 
     def __init__(self, ledger):
-        self.ledger = ledger if isinstance(ledger, Ledger) else Ledger(ledger)
+        # duck-typed: a caller that loaded this module separately passes an instance of its own copy of Ledger
+        self.ledger = ledger if hasattr(ledger, "book") and hasattr(ledger, "reserves") else Ledger(ledger)
         self.n = 0
 
     def reserve(self, task_id):

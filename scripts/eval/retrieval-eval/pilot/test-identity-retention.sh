@@ -39,6 +39,8 @@ C=$(id)
 eq "identity: an untracked file alone changes the dirty digest" "true" "$( [ "$(j "$A" identity.dirty_digest)" != "$(j "$C" identity.dirty_digest)" ] && echo true || echo false)"
 rm -f "$G/untracked.txt"
 eq "identity: the same bytes give the same hash" "$(j "$A" config_hash)" "$(j "$(id)" config_hash)"
+mkdir -p "$W/not-a-repo"
+eq "identity: a harness that is not a readable git work tree refuses (never a made-up clean digest)" 3 "$(python3 -I "$EI" build --value protocol=x --repo "$W/not-a-repo" >/dev/null 2>&1; echo $?)"
 eq "identity: a credential-like field name refuses" 3 "$(id --value openrouter_api_key=x >/dev/null 2>&1; echo $?)"
 eq "identity: a token-shaped value refuses" 3 "$(id --value backend=sk-or''-v1-0123456789abcdef >/dev/null 2>&1; echo $?)"
 cmp_() { python3 -I "$EI" compare "$1" "$2"; }
@@ -50,6 +52,8 @@ eq "compare: S and Q differing only in backend/models/corpus digest are one expe
 eq "compare: another bank never groups" '["bank_sha256"] 1' "$(j "$(cmp_ "$FX/complete-s.json" "$W/other-bank.json")" differs) $(cmp_ "$FX/complete-s.json" "$W/other-bank.json" >/dev/null; echo $?)"
 eq "compare: another pre-expansion shaper never groups" '["shaper_sha256"]' "$(j "$(cmp_ "$FX/complete-s.json" "$W/other-shaper.json")" differs)"
 eq "compare: another common source manifest never groups" '["source_manifest_sha256"]' "$(j "$(cmp_ "$FX/complete-s.json" "$W/other-source.json")" differs)"
+python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); d["identity"]["dirty_digest"]=""; json.dump(d, open(sys.argv[2],"w"))' "$FX/complete-s.json" "$W/empty-field.json"
+eq "compare: an empty required field is missing, so comparability is unknown" 'null ["dirty_digest"]' "$(j "$(cmp_ "$W/empty-field.json" "$W/empty-field.json")" comparable) $(j "$(cmp_ "$W/empty-field.json" "$W/empty-field.json")" missing)"
 L=$(cmp_ "$FX/complete-s.json" "$FX/legacy-row.json")
 eq "compare: a legacy row missing fields is comparability unknown, no invented hashes" 'null true' "$(j "$L" comparable) $(python3 -I -c 'import json,sys; print(json.dumps("graph_sha256" in json.loads(sys.argv[1])["missing"]))' "$L")"
 

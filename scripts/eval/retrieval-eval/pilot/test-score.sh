@@ -99,6 +99,9 @@ R=$(d3 auth-mid-round); eq "D3: an auth refusal mid-round ends judging with the 
 R=$(d3 absent-candidate); eq "D3: an absent candidate is a not_needed slot with no call or quota" '13 2 {"Q": 3, "S": 5, "V": 5}' "$(f "$R" calls) $(f "$R" not_needed) $(f "$R" applied)"
 R=$(d3 restart-after-7); eq "D3: a restart at the boundary after call 7 resumes call 8 from the ledger, no replay" '7 8 0 5' "$(f "$R" first_calls) $(f "$R" calls) $(f "$R" replayed) $(f "$R" rounds)"
 R=$(d3 deadline-persists); eq "D3: the admission-time pause deadline carries into judging, never a renewed window" '7.0 1 "usage_expired"' "$(f "$R" deadline_days_from_first_refusal) $(f "$R" deadlines) $(f "$R" ended)"
+R=$(d3 lost-round-marker); eq "D3: a round whose last verdict landed before a crash gets its marker on resume, no call replayed" '4 5 0' "$(f "$R" before_resume) $(f "$R" rounds) $(f "$R" calls)"
+R=$(d3 cost-missing); eq "D3: a judge call with no usage evidence is never settled as free: unsettled, paid work stops" '"unknown_spend" ["judge-03"] {"kind": "HARD_STOP", "reason": "unsettled"} 1' "$(f "$R" ended) $(f "$R" unsettled) $(f "$R" stop) $(f "$R" rounds)"
+R=$(d3 contained-read); eq "judge: answer-named paths are read only inside the export (no traversal, no symlink out, no other root)" '"inside" null null null null' "$(f "$R" inside) $(f "$R" traversal) $(f "$R" deep_traversal) $(f "$R" symlink_out) $(f "$R" other_root)"
 R=$(d3 validate); eq "D3: arm-sequential order, a sixth call in an arm and a sixteenth call all refuse" '{"arm_sequential": "refused", "sixteenth_total": "refused", "sixth_in_an_arm": "refused"}' "$R"
 
 # --- the report rows the page reads

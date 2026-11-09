@@ -140,6 +140,43 @@ def run(name, work):
         out["deadline_days_from_first_refusal"] = round((led.usage_pause_deadline - 1_000_000.0) / 86400, 3)
         out["deadlines"] = sum(1 for e in led.events if e["ev"] == "pause_deadline")
         return out
+    if name == "lost-round-marker":
+        # the runner died after round 5's last verdict, before its marker: drop that marker line and resume
+        j, led, call, _ = setup(work); j.run()
+        path = os.path.join(work, "ledger.jsonl")
+        lines = open(path).read().splitlines()
+        last = max(i for i, l in enumerate(lines) if '"judge_round"' in l)
+        ends = [i for i, l in enumerate(lines) if '"judge_end"' in l]
+        open(path, "w").write("\n".join(l for i, l in enumerate(lines) if i != last and i not in ends) + "\n")
+        j2, led2, call2, _ = setup(work)
+        before = J.Judging(led2, call2, None, None, None).result()["completed_rounds"]
+        j2.run()
+        out = summary(j2, led2, call2)
+        out["before_resume"] = before
+        return out
+    if name == "cost-missing":
+        class NoCost(Call):
+            def __call__(self, cand, arm, attempt):
+                v = super().__call__(cand, arm, attempt)
+                if len(self.calls) == 4:
+                    dict.__setitem__(v, "cost", None)
+                return v
+        j, led, call, _ = setup(work, call=NoCost()); j.run()
+        out = summary(j, led, call)
+        out["unsettled"] = sorted(led.unsettled)
+        out["stop"] = led.stop
+        return out
+    if name == "contained-read":
+        root = os.path.join(work, "export"); os.makedirs(os.path.join(root, "docs"), exist_ok=True)
+        open(os.path.join(root, "docs", "a.md"), "w").write("inside")
+        open(os.path.join(work, "secret.txt"), "w").write("host secret")
+        os.symlink(os.path.join(work, "secret.txt"), os.path.join(root, "docs", "link.md"))
+        roots = {"/work/himmel/": root}
+        return {"inside": J.contained_read("/work/himmel/docs/a.md", roots),
+                "traversal": J.contained_read("/work/himmel/../secret.txt", roots),
+                "deep_traversal": J.contained_read("/work/himmel/docs/../../secret.txt", roots),
+                "symlink_out": J.contained_read("/work/himmel/docs/link.md", roots),
+                "other_root": J.contained_read("/etc/hostname", roots)}
     if name == "validate":
         res = {}
         slots = J.seal_schedule(7, {a: ["%s#0" % t for t in TASKS[:5]] for a in J.ARMS})

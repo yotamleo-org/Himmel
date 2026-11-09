@@ -114,6 +114,9 @@ class Judging:
             raise ValueError("no sealed judge schedule")
         if self.ended():
             return self.ended()
+        # a round whose last verdict landed just before the runner died still gets its marker
+        for r in sorted({s["round"] for s in slots}):
+            self._commit(slots, r)
         # a slot booked but not resolved when the runner died: never replayed, it fails the round
         for e in self._ev("book"):
             if e["kind"] == "judge" and e["attempt"] in self.ledger.inflight:
@@ -153,7 +156,11 @@ class Judging:
                 self.ledger.killed(attempt, None, False)
                 self.ledger._log({"ev": "judge_failed", "slot": i, "why": type(e).__name__})
                 return self.end("failed_slot")
-            if not self.ledger.settle(attempt, float(v.get("cost") or 0.0)):
+            if v.get("cost") is None:   # no usage evidence is never free: the booking stays unsettled
+                self.ledger.killed(attempt, None, False)
+                self.ledger._log({"ev": "judge_failed", "slot": i, "why": "no_usage_evidence"})
+                return self.end("unknown_spend")
+            if not self.ledger.settle(attempt, v.get("cost")):
                 return self.end("hard_stop")
             if not v.get("valid"):
                 self.ledger._log({"ev": "judge_failed", "slot": i, "why": "invalid_verdict"})
@@ -214,8 +221,27 @@ class RealJudge:
             raise UsageRefusedInCall(float(r.get("total_cost_usd") or 0))
         line = str(r.get("result", "")).strip()
         verdict = {"VERDICT: SUPPORTED": "SUPPORTED", "VERDICT: NOT SUPPORTED": "NOT SUPPORTED"}.get(line)
+        cost = r.get("total_cost_usd")
         return {"valid": verdict is not None and not r.get("is_error"), "verdict": verdict, "id": r.get("session_id"),
-                "cost": float(r.get("total_cost_usd") or 0)}
+                "cost": float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None}
+
+
+def contained_read(path, roots):
+    """The text of an answer-named /work path, read only INSIDE its export copy: a path that
+    resolves outside (.., symlinks) is treated as absent, so no host file reaches the judge.
+    None = absent or outside, False = present but unreadable, else the text."""
+    for pre, root in roots.items():
+        if path.startswith(pre):
+            base = os.path.realpath(root)
+            full = os.path.realpath(os.path.join(base, path[len(pre):]))
+            if os.path.commonpath([base, full]) != base or not os.path.isfile(full):
+                return None
+            try:
+                with open(full, encoding="utf-8") as f:
+                    return f.read()
+            except (OSError, UnicodeDecodeError):
+                return False
+    return None
 
 
 class LocalOnly:
@@ -239,19 +265,8 @@ def finalize(pilot, cohort, cfg):
         return m
     sc, ml, L = load("score"), load("matched-lists"), load("ledger")
     bank = {t["id"]: t for t in pilot.tasks}
-    roots = {"/work/himmel/": cfg["exports"]["himmel"] + "/", "/work/luna/": cfg["exports"]["luna"] + "/"}
-
-    def read(p):
-        for pre, root in roots.items():
-            if p.startswith(pre):
-                full = root + p[len(pre):]
-                if not os.path.isfile(full):
-                    return None
-                try:
-                    return open(full, encoding="utf-8").read()
-                except (OSError, UnicodeDecodeError):
-                    return False
-        return None
+    roots = {"/work/himmel/": cfg["exports"]["himmel"], "/work/luna/": cfg["exports"]["luna"]}
+    read = lambda p: contained_read(p, roots)   # noqa: E731
     rows, disputes, items = {}, {a: set() for a in ARMS}, {}
     for t in cohort:
         for a in ARMS:

@@ -122,6 +122,17 @@ rm -f "$W/fake/meter-fail.txt"
 eq "usage: an unreadable key meter stops the rerun before any query" "3 0" "$rc $(calls)"
 python3 -I "$RH" final --state "$W/nousage.state.jsonl" > /dev/null 2>&1
 eq "final: a rerun without a settled final booking rate makes the later card/pilot refuse" 3 "$?"
+R=$(python3 -I - "$RH" "$W" <<'EOF'
+import argparse, importlib.machinery, importlib.util, json, sys
+rh, W = sys.argv[1:3]
+l = importlib.machinery.SourceFileLoader("rh", rh); s = importlib.util.spec_from_loader("rh", l); m = importlib.util.module_from_spec(s); l.exec_module(m)
+st = m.State(W + "/reset.state.jsonl"); st.log({"ev": "settle", "meter": 1.0, "at": "before"})
+a = argparse.Namespace(usage_cmd="echo '{\"usage\": 0.5}'", settle_seconds=0)
+ok = m.settle(st, a, {"binding": {}}, "after-5")
+print(json.dumps([ok, [e.get("reason") for e in st.events if e["ev"] == "stop"]]))
+EOF
+)
+eq "usage: a key meter that went backwards (a reset) stops the rerun" '[false, ["usage_reset"]]' "$R"
 lib resume "$W/old12.jsonl" 0.001 > /dev/null
 n1=$(calls)
 lib resume "$W/old12.jsonl" 0.001 > /dev/null

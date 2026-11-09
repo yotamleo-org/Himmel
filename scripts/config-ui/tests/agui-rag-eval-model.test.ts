@@ -274,6 +274,13 @@ test("pilot: unavailable evidence stays visible as unavailable, never dropped", 
   expect(p.lists.join(" ")).toContain("Station search (S) fixed lists: a file holding a required fact in the top five on unavailable");
 });
 
+test("pilot: a malformed comparison entry never crashes the page", async () => {
+  const bad = clone(pilotOf("fixture-rag-pilot-r18-short")) as Record<string, any>;
+  bad.pilot.comparisons = [null, 7, ...bad.pilot.comparisons];
+  const p = pilotModel(await served([bad]))!;
+  expect(p.clauses!.map((c) => c.comparison.contrast)).toEqual(["S-V", "Q-V"]);
+});
+
 test("pilot: no ticket id appears in the page copy", async () => {
   for (const r of pilotRows().filter((x) => x.protocol)) {
     expect(JSON.stringify(pilotModel(await served([r])))).not.toMatch(/HIMMEL-\d+/);

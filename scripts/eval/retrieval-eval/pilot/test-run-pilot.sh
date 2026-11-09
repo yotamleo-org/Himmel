@@ -59,6 +59,20 @@ led10 = L.Ledger(W + "/u10.jsonl"); led10.halt("FINALIZE_ONLY", "capacity_refuse
 out["hard_dominates"] = led10.stop
 led11 = L.Ledger(W + "/u11.jsonl"); led11.halt("FINALIZE_ONLY", "something_new")
 out["unclassified_is_hard"] = led11.stop
+s2 = importlib.util.spec_from_file_location("ledger_again", sys.argv[1] + "/ledger.py"); L2 = importlib.util.module_from_spec(s2); s2.loader.exec_module(L2)
+led12 = L2.Ledger(W + "/u12.jsonl"); led12.reserve_h()
+lb = L.ListBooking(led12)
+out["list_booking_takes_another_module_ledger"] = [lb.ledger is led12, lb.reserve("t01") is not None]
+led13 = L.Ledger(W + "/u13.jsonl"); led13.reserve_h(); n = len(led13.events); led13.admit_triple("t1")
+out["admission_is_one_durable_event"] = [len(led13.events) - n, led13.events[-1]["ev"], round(sum(v for k, v in led13.reserves.items() if k.startswith("triple:")), 4),
+                                         L.Ledger(W + "/u13.jsonl").triples.get("t1", {}).get("state")]
+bad = []
+for i, v in enumerate((float("nan"), -0.01, float("inf"))):
+    led = L.Ledger(W + "/u14-%d.jsonl" % i); led.book("x", "answer", .35)
+    bad.append([led.settle("x", v), led.stop["reason"], sorted(led.unsettled)])
+out["invalid_cost_evidence_is_unsettled"] = bad
+led15 = L.Ledger(W + "/u15.jsonl"); led15.book("q", "s_query", .004)
+out["negative_meter_delta_stops"] = [led15.settle_s_interval(-0.01, 1), led15.stop, round(led15.spent, 6)]
 print(json.dumps(out, sort_keys=True))
 EOF
 LO=$(tail -1 "$W/ledger.out")
@@ -78,6 +92,10 @@ eq "ledger: a fresh process replays the same unsettled state" '[["k2"], "unsettl
 eq "ledger: one persisted 7-day usage-pause deadline, never reset" "[true, true, true]" "$(f "$LO" one_pause_deadline)"
 eq "ledger: HARD_STOP dominates FINALIZE_ONLY" '{"kind": "HARD_STOP", "reason": "overrun"}' "$(f "$LO" hard_dominates)"
 eq "ledger: an unclassified finalize reason becomes a HARD_STOP" '{"kind": "HARD_STOP", "reason": "unclassified"}' "$(f "$LO" unclassified_is_hard)"
+eq "ledger: a negative key-meter delta (a reset) stops paid work and never lowers spend" '[false, {"kind": "HARD_STOP", "reason": "unknown_spend"}, 0.0]' "$(f "$LO" negative_meter_delta_stops)"
+eq "ledger: the list adapter accepts a ledger from a separately loaded copy of the module" "[true, true]" "$(f "$LO" list_booking_takes_another_module_ledger)"
+eq "ledger: a triple admission is one durable event (both reservations or none), replayed whole" '[1, "admit_triple", 1.098, "admitted"]' "$(f "$LO" admission_is_one_durable_event)"
+eq "ledger: NaN, negative or infinite cost evidence leaves the booking unsettled and stops paid work" '[[false, "unsettled", ["x"]], [false, "unsettled", ["x"]], [false, "unsettled", ["x"]]]' "$(f "$LO" invalid_cost_evidence_is_unsettled)"
 
 # --- the sealed balanced schedule
 SCH=$(python3 -I - "$HERE" <<'EOF'
@@ -137,6 +155,7 @@ R=$(sc kill-2); eq "kill: a kill without complete usage leaves the booking unset
 R=$(sc crash-resume)
 eq "resume: after a runner crash the in-flight call reconciles from its transcript and is never replayed" '0 "excluded:interrupted" [] 0' "$(f "$R" replayed) $(f "$R" crashed_task_status) $(f "$R" unsettled_after_resume) $(f "$R" preflight_rerun)"
 R=$(sc crash-resume-nousage); eq "resume: an unresolved meter blocks the resumed run, never released" '["HARD_STOP", "unsettled"] ["answer-t31-V"] 0' "$(f "$R" stop) $(f "$R" unsettled_after_resume) $(f "$R" answers)"
+R=$(sc no-cost-evidence); eq "cost: an answer with no cost evidence is never settled as free: unsettled, paid work stops" '["HARD_STOP", "unsettled"] 1' "$(f "$R" stop) $(f "$R" unsettled)"
 R=$(sc background); eq "P14: a surviving background child is an integrity HARD_STOP" '["HARD_STOP", "integrity"]' "$(f "$R" stop)"
 R=$(sc raw-only); eq "skip rule: a raw-query-only S expansion does not exclude the answer" '["NONE", null] 40' "$(f "$R" stop) $(f "$R" common)"
 R=$(sc reprice-no-capacity); eq "repricing: a raised b with enough H but no next-triple capacity ends admission" '"capacity_refused" 0.006 false' "$(f "$R" first_stop) $(f "$R" b) $(f "$R" lists_cancelled)"

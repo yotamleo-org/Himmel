@@ -68,6 +68,9 @@ has "miner: each candidate keeps its transcript provenance" '"transcript_sha256"
 python3 -I "$MQ" "$W/fx/sessions" --out "$W/mined2.jsonl" --seed 7 --sample 2 >/dev/null 2>&1
 eq "miner: the same seed draws the same sample" same "$(cmp -s "$W/mined.jsonl" "$W/mined2.jsonl" && echo same || echo differ)"
 has "miner: the summary records the sampling rule" '"sampling_rule"' "$(cat "$W/mined.jsonl.summary.json")"
+printf 'old\n' > "$W/wide.jsonl"; chmod 644 "$W/wide.jsonl"
+python3 -I "$MQ" "$W/fx/sessions" --out "$W/wide.jsonl" --seed 7 --sample 2 >/dev/null 2>&1
+eq "miner: an existing wider-moded output file is narrowed to 600" 600 "$(python3 -I -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$W/wide.jsonl")"
 git -C "$W" init -q "$W/repo"
 python3 -I "$MQ" "$W/fx/sessions" --out "$W/repo/mined.jsonl" --seed 7 --sample 2 >/dev/null 2>&1
 eq "miner: refuses to write candidates into a git work tree" 3 "$?"

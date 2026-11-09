@@ -31,8 +31,11 @@ def sha_file(p):
 
 def dirty_digest(repo):
     """sha256 over the tracked diff against HEAD and every untracked file's path and bytes; 'clean' when none."""
-    diff = subprocess.run(["git", "-C", repo, "diff", "HEAD", "--binary"], capture_output=True).stdout
-    untracked = subprocess.run(["git", "-C", repo, "ls-files", "--others", "--exclude-standard", "-z"], capture_output=True).stdout
+    d = subprocess.run(["git", "-C", repo, "diff", "HEAD", "--binary"], capture_output=True)
+    u = subprocess.run(["git", "-C", repo, "ls-files", "--others", "--exclude-standard", "-z"], capture_output=True)
+    if d.returncode != 0 or u.returncode != 0:
+        raise ValueError("cannot read the working tree of %s: an unverifiable identity is refused" % repo)
+    diff, untracked = d.stdout, u.stdout
     h = hashlib.sha256(diff)
     names = [n for n in untracked.decode().split("\0") if n]
     for n in sorted(names):
@@ -67,7 +70,10 @@ def build(files, values, repo=None, shapers=()):
         ident["shaper_sha256"] = h.hexdigest()
     ident.update(values)
     if repo:
-        ident["harness_commit"] = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        head = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True)
+        if head.returncode != 0 or not head.stdout.strip():
+            raise ValueError("cannot read the harness commit of %s" % repo)
+        ident["harness_commit"] = head.stdout.strip()
         ident["dirty_digest"] = dirty_digest(repo)
     check_secret_free(ident)
     return {"identity": ident, "config_hash": hashlib.sha256(canonical(ident).encode()).hexdigest()}
@@ -75,7 +81,7 @@ def build(files, values, repo=None, shapers=()):
 
 def compare(a, b):
     a, b = a.get("identity", a), b.get("identity", b)
-    missing = sorted(k for k in REQUIRED if k not in a or k not in b)
+    missing = sorted(k for k in REQUIRED if a.get(k) in (None, "") or b.get(k) in (None, ""))
     if missing:
         return None, {"missing": missing}
     differs = sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))

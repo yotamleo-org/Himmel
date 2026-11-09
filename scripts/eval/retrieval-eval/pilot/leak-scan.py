@@ -6,8 +6,10 @@
 
 Reads the export copies and the index text tables LOCALLY with plain file and SQLite reads:
 it never runs qmd, graphify or any search. Every task question (whitespace/case-normalized),
-task id (as a whole word) and private path (the run root's private/ and retained/, the task file)
-must appear ZERO times. Required facts are expected in their sources: their occurrence counts go
+task id (as a whole word) and private path (the bank file itself, the run root's private/ and
+retained/ when --run-root is given, and every --private path) must appear ZERO times. A
+requested export root or index that does not exist, or a scan that read nothing, refuses: an
+empty scan is never a clean verdict. Required facts are expected in their sources: their occurrence counts go
 to the checker, never a failure. A qmd collection whose path covers the run root fails. Output is
 counts only (never the leaked text); which task leaked goes to --private-out (mode 600).
 Exit 0 clean, 3 leak or coverage failure.
@@ -105,7 +107,18 @@ def main(argv):
     ap.add_argument("--private-out")
     a = ap.parse_args(argv)
     bank = [json.loads(l) for l in open(a.bank) if l.strip()]
-    found, seen, where, n = scan(bank, dict(e.split("=", 1) for e in a.export), a.index, a.private)
+    exports = dict(e.split("=", 1) for e in a.export)
+    missing = [r for r in exports.values() if not os.path.isdir(r)] + [i for i in a.index if not os.path.isfile(i)]
+    if missing:
+        print("leak-scan: refused: %d requested export root(s) or index(es) do not exist: no clean verdict without them" % len(missing), file=sys.stderr)
+        return 3
+    privs = list(a.private) + [os.path.abspath(a.bank)]
+    if a.run_root:
+        privs += [os.path.join(os.path.abspath(a.run_root), d) for d in ("private", "retained")]
+    found, seen, where, n = scan(bank, exports, a.index, privs)
+    if n == 0:
+        print("leak-scan: refused: nothing was scanned (no export or index text): no clean verdict", file=sys.stderr)
+        return 3
     cover = []
     if a.run_root:
         for cfg in a.config:
