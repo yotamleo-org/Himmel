@@ -385,7 +385,6 @@ if [ "$cmd" = "api" ]; then
                 body-b2-timeout) echo '[]' ;;
                 body-b2-head-review) echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"sha1","body":""}]' ;;
                 body-empty) echo '[]' ;;
-                # a CodeRabbit review at the head that posted 3 inline comments.
                 body-actionable) echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"sha1","submitted_at":"2026-11-09T05:07:51Z","id":1,"body":"**Actionable comments posted: 3**"}]' ;;
                 *)          echo '[]' ;;
             esac
@@ -3100,10 +3099,6 @@ assert_err_has "required-set unreadable" "8644 both tokens refused the protectio
 check_eq "8644 both tokens refused the protection read: a refusal that is not a rate limit never defers to the watch" "no" "$(if grep -q '^read pr checks .*--watch' "$STUBDIR/toklog"; then echo yes; else echo no; fi)"
 CLASSIC_OVERRIDE=none
 
-# 9712 — a review posted DURING the wait is reported on every non-green exit. The
-# PR 5053 timeline: the pre-watch thread read is clean, CodeRabbit posts one inline
-# thread while the watch runs (latethread: every later read sees it), and the run
-# ends red, at the deadline or refused, never reaching the success-path gate.
 THREADS_OVERRIDE=latethread
 run red
 assert_rc 1 "9712-a a red run still exits 1"
@@ -3112,12 +3107,10 @@ THREADS_OVERRIDE=latethread
 run blocking-cap-pending --max-wait 4
 assert_rc 2 "9712-b a deadline run still exits 2"
 assert_err_has "review threads at exit 2: 1 unresolved on PR #42" "9712-b a deadline exit names the thread posted mid-watch"
-# exit 5 refuses before the pre-watch thread gate runs, so a constant open thread shows
 RULES_OVERRIDE="req:codeowner-review-gate"; CHECKS_OVERRIDE="pass:unit-tests"; THREADS_OVERRIDE=1
 run cr-completed --grace 0
 assert_rc 5 "9712-c a never-reported required check still exits 5"
-assert_err_has "review threads at exit 5: 1 unresolved on PR #42" "9712-c an exit-5 refusal names the open thread"
-# a CodeRabbit pass whose review posted 3 inline comments is 3 findings, not a clean row
+assert_err_has "review threads at exit 5: 1 unresolved on PR #42" "9712-c an exit-5 refusal, which comes before the pre-watch thread gate, names the open thread"
 run body-actionable
 assert_rc 0 "9712-d threads resolved, the actionable review does not block on its own"
 assert_err_has "posted 3 actionable comment(s)" "9712-d a CodeRabbit pass that posted actionable comments is reported as findings"

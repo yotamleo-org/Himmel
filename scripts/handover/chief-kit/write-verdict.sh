@@ -129,9 +129,7 @@
 # it still prints `none`. Any other class, an unjudged head, a NO-GO or a
 # no-op judged head exits 2, nothing written.
 # A no-op GO is also refused (exit 2, nothing written) while the PR has an
-# unresolved review thread, each one named: a review can post while the CI wait
-# runs (PR 5053 got a no-op GO over open CodeRabbit threads posted minutes
-# earlier). `--open-threads-ok <reason>` (--delta-noop only, one line) is the
+# unresolved review thread, each one named. `--open-threads-ok <reason>` (--delta-noop only, one line) is the
 # chief's override: it warns, names the threads and signs
 # `open-threads-ok: <n> open, <reason>` into the header. An unreadable thread
 # read warns and writes; check-ci still refuses the merge over an open thread.
@@ -496,7 +494,6 @@ if [ -n "$DNOOP" ]; then
         echo "write-verdict: --delta-noop refused - delta-class.sh classifies $DNOOP..$HEAD as '$dn_class', not none; a judge must rule on it (run from the repo under review); nothing written" >&2
         exit 2
     fi
-    # The PR's review threads, read in the cwd's repo (gh fills {owner}/{repo}).
     dn_th="" dn_tb=""
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091

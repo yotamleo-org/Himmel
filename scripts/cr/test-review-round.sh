@@ -400,12 +400,6 @@ bad_rc=0; (cd "$repo" && bash "$RR" start --pr 7 --head abc123 >/dev/null 2>&1) 
 assert_eq "$bad_rc" "2" "--pr needs a full 40-hex head"
 git -C "$repo" checkout -q main 2>/dev/null
 
-# judge-go refuses while the branch's open PR has an unresolved review
-# thread and names it; --open-threads-ok <reason> is the chief's named override. The
-# fixture replays PR 5053: CodeRabbit posted an inline thread at 05:07:51Z on head
-# 7747707 while the worker's check-ci wait still ran, and a judge GO followed at about
-# 05:10Z. The branch has no full round here, so a judge-go that passes the thread read stops at the
-# round check (exit 1); the thread read comes first.
 mkdir -p "$tmp/thbin"
 cat > "$tmp/thbin/gh" <<'STUB'
 #!/usr/bin/env bash

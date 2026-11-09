@@ -15,7 +15,6 @@ fails=0
 check() { if [ "$2" = "$3" ]; then echo "ok - $1"; else echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails + 1)); fi; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lacks [$3]"; fails=$((fails + 1)) ;; esac; }
 
-# page 1: 100 resolved threads and a next page; page 2: one resolved, one open.
 th_node() { printf '{"isResolved":%s,"path":"%s","line":%s,"originalLine":%s,"comments":{"nodes":[{"author":{"login":"%s"},"createdAt":"%s"}]}}' "$@"; }
 p1="" i=0
 while [ "$i" -lt 100 ]; do

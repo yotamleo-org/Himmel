@@ -72,9 +72,6 @@ KEYHOME="$tmp/home"
 mkdir -p "$KEYHOME/.config/himmel" || exit 1
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$KEYHOME/.config/himmel/go-hmac.key"
 export HOME="$KEYHOME"
-# --delta-noop reads the PR's review threads: a stub gh answers the
-# thread query from STUB_THREADS (the caller's own --jq runs on it), no thread by
-# default, so no case reaches the real gh.
 mkdir -p "$tmp/ghbin" || exit 1
 cat > "$tmp/ghbin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -1033,10 +1030,6 @@ case "$(cat "$f26" 2>/dev/null)" in *CEILINGS:*) check "28: a --delta-noop recor
 contains "28: control, the --delta-noop record exists" "$(cat "$f26" 2>/dev/null)" "delta: no-op"
 
 # --- 29. --delta-noop refuses over an unresolved review thread ---
-# PR 5053: CodeRabbit posted an inline thread at 05:07:51Z on head 7747707 while the
-# wait ran, and a delta-noop GO was signed at that head about 05:10Z. A no-op GO is
-# refused while the PR has an unresolved thread, naming it; --open-threads-ok <reason>
-# is the chief's named override, recorded in the signed header.
 th_open='{"isResolved":false,"path":"scripts/jira/src/policy.ts","line":88,"originalLine":88,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"createdAt":"2026-11-09T05:07:51Z","url":"u1"}]}}'
 th_done='{"isResolved":true,"path":"README.md","line":1,"originalLine":1,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"createdAt":"2026-11-09T04:58:00Z","url":"u0"}]}}'
 th_page() { printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[%s]}}}}}' "$1"; }

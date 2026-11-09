@@ -1421,12 +1421,6 @@ delta_refuse() {
 # 1 = no GO record, or a round is still available;
 # 8 = refused (NO-GO at the head, head not a descendant of a reviewed head, or an
 # unresolved review thread on the branch's open PR).
-# A review can post while the CI wait runs: PR 5053 took a judge GO over open
-# CodeRabbit threads posted minutes earlier. So the PR's threads are read first and
-# any unresolved one refuses, named. --open-threads-ok <reason> is the chief's
-# override: it warns, names the threads and records the reason in the ledger row.
-# An unreadable thread read warns and goes on; check-ci still refuses the merge
-# over an open thread, fail-closed.
 if [ "$verb" = "judge-go" ]; then
     # swallow-ok: an unresolvable head is refused on the next line (exit 2)
     if ! jg_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$jg_head" ]; then

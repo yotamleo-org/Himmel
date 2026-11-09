@@ -407,11 +407,6 @@ _deadline_exit() {
     exit 2
 }
 
-# _threads_at_exit <exit code> — a review can post while the watch runs (PR 5053:
-# CodeRabbit posted mid-wait and the run ended before the success-path thread
-# gate). A red (1), refused (5) or deadline (2) exit names the unresolved threads it
-# can read now, and CodeRabbit's actionable-comment count at the head. Report only:
-# the exit code is the caller's.
 _threads_at_exit() {
     [ -n "${num:-}" ] || return 0
     local th n act
@@ -475,7 +470,6 @@ fi
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/gh-read.sh"
 gh_read_init
-# the unresolved threads a non-green exit names (_threads_at_exit)
 # shellcheck source=scripts/lib/open-review-threads.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/open-review-threads.sh"
