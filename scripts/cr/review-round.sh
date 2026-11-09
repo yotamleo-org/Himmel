@@ -1475,7 +1475,7 @@ if [ "$verb" = "judge-go" ]; then
     fi
     [ "$jg_rc" -eq 0 ] && [ -n "$jg_hit" ] || exit "$jg_rc"
     jg_ledger="$git_dir/cr-critic-scores.jsonl"
-    if ! grep -qsF "\"head\":\"$jg_head\",\"status\":\"ok\",\"source\":\"judge:$jg_hit\"" "$jg_ledger"; then
+    if ! grep -qsF "\"head\":\"$jg_head\",\"status\":\"ok\",\"source\":\"judge:$jg_hit\"$jg_note" "$jg_ledger"; then
         printf '{"kind":"judge-go","ts":"%s","branch":"%s","head":"%s","status":"ok","source":"judge:%s"%s}\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$jg_head" "$jg_hit" "$jg_note" >> "$jg_ledger" || exit 5
     fi
