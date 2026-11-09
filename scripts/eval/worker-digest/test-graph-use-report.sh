@@ -140,10 +140,6 @@ check "searched_no_graph rests on answered calls: the refused-only journal and t
 check "a refused qmd query (shell or mcp, array content) and one with no result are searches but not answered ones: 4 with a search, 1 answered" '[ "$(OUT="$OKOUT" SEC=qmd cells all claude main with_search with_search_ok)" = 4/1 ]'
 check "the counted line states the ok rule and the no-result case" 'grep -q "^counted:.*answered" <<<"$OKOUT" && grep -q "^counted:.*no tool_result" <<<"$OKOUT"'
 
-# echo columns: fixtures/graph-use-echo holds lane claude with e1 (four echoes that only quote a graph or qmd call, in double and
-# single quotes, one beside a $(date) substitution) and lane codex with e2 (the control: a bash -c body in single quotes, an sh -c
-# body in double quotes, a graph call with a quoted argument, and echo "got: $(graphify query y)" and a backtick twin whose
-# substitution runs: all five are calls).
 # shellcheck disable=SC2034
 EOUT="$(bash "$RPT" --days 36500 --root "$HERE/fixtures/graph-use-echo/claude/projects" --root "$HERE/fixtures/graph-use-echo/claude-codex/projects" 2>&1)"
 # shellcheck disable=SC2034
