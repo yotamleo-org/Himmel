@@ -3038,6 +3038,24 @@ entirely (`timeout`/`xargs`/`find -exec` wrappers, `$var` paths, `bun run
 test`/`npm test`, or simply not routing through quiet-run) is untouched by
 this hook, an accepted residual.
 
+### `block-t3code-unwatch-open-pr.sh` — no unwatch while the PR is open
+
+Fires on `mcp__t3-code__unwatch_pull_request`. T3 Code's wake text
+pairs "all required checks passed" with "call unwatch_pull_request first"; an
+agent followed it on an OPEN, `mergeStateStatus=BLOCKED` PR with no review
+decision, nothing watched the PR afterwards, and the operator re-armed the watch
+by hand. The hook reads the live PR (`gh pr view <n> [--repo o/r] --json
+state,mergeStateStatus,reviewDecision`; repo and number come from a
+`github.com/o/r/pull/N` URL in `tool_input`, else a number field plus an optional
+repo field) and denies (exit 2) while `state=OPEN`; the reason prints the state,
+`mergeStateStatus`, `reviewDecision` and the override. MERGED and CLOSED allow
+silently. Fails OPEN with a loud stderr `WARNING` when the PR cannot be resolved
+or read (no `jq`, bad JSON, `gh` error or unparseable output): a workflow nudge,
+never a trap the agent cannot leave. Override for an operator-directed stop:
+`T3CODE_UNWATCH_OK=1` (launching shell, session-sticky); the allow is printed to
+stderr and appended to `~/.himmel/t3code-unwatch-override.log`. Settings
+registration is a separate step. Spec: `scripts/hooks/test-block-t3code-unwatch-open-pr.sh`.
+
 ### `require-quiet-run.sh` — bare test-suite bounce
 
 Fires on Bash. Denies a bare `bash`/`sh`/direct invocation of a repo shell
