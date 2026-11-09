@@ -31,8 +31,7 @@
 #
 # Exit semantics — ADVISORY / non-blocking, exit 0 in EVERY case, mirroring
 # trigger-cr-on-pr-create.sh: a PostToolUse hook cannot un-push, and a failure
-# here must never strand a successful push. If this hook's post
-# ever fails, merge-on-green's one backstop post may still trigger the head.
+# here must never strand a successful push.
 #
 # ponytail: resolves the PR via `gh pr view` for the CURRENT checked-out
 # branch — it does not parse the pushed ref out of the `git push` command.

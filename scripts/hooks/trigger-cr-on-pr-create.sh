@@ -17,10 +17,7 @@
 # agent-discretion path that failed tonight.
 #
 # Pairs with:
-#   - PreToolUse  check-cr-marker-on-pr-create.sh  (gates the create), and
-#   - merge-on-green.sh posts one backstop trigger before a merge when the
-#     ledger lacks the head; check-ci.sh only prints a NOTE, so a head this
-#     hook misses can still merge with no CodeRabbit review.
+#   - PreToolUse  check-cr-marker-on-pr-create.sh  (gates the create).
 #
 # ONE REVIEW PER HEAD SHA: dedup used to be keyed per PR (scan
 # for ANY existing `@coderabbitai review` comment) — that made sense when this
@@ -43,8 +40,7 @@
 # Exit semantics — ADVISORY / non-blocking, exit 0 in EVERY case. The PR is
 # already created by the time a PostToolUse hook runs; a hard block here could
 # not un-create it and would only confuse the model. A failed post (no auth, no
-# network, API error) WARNS to stderr and exits 0; merge-on-green's one
-# backstop post may still trigger the head before a merge.
+# network, API error) WARNS to stderr and exits 0.
 #
 # Fail-open policy: on THIS script's own bugs (missing jq, malformed JSON) we
 # exit 0 with a stderr warning — never strand a successful PR-create.
@@ -321,8 +317,7 @@ if printf '%s\n' "$existing" | grep -qiE '@coderabbitai[[:space:]]+(full[[:space
     exit 0
 fi
 
-# Post the trigger. Non-blocking on failure: the PR is already created; the
-# merge-on-green's one backstop post may still trigger the head before a merge.
+# Post the trigger. Non-blocking on failure: the PR is already created.
 if gh pr comment "$num" --repo "$repo_path" --body "@coderabbitai review" >/dev/null 2>&1; then
     echo "trigger-cr-on-pr-create: posted @coderabbitai review on PR #$num ($repo_path)" >&2
 else
