@@ -13,7 +13,7 @@ type Mark =
 
 type AdfBlock =
   | { type: 'paragraph'; content: InlineNode[] }
-  | { type: 'heading'; attrs: { level: 1 | 2 | 3 }; content: InlineNode[] }
+  | { type: 'heading'; attrs: { level: 1 | 2 | 3 | 4 | 5 | 6 }; content: InlineNode[] }
   | { type: 'codeBlock'; attrs: { language?: string }; content: [{ type: 'text'; text: string }] }
   | { type: 'bulletList'; content: ListItem[] }
   | { type: 'orderedList'; content: ListItem[] };
@@ -22,6 +22,19 @@ type ListItem = {
   type: 'listItem';
   content: [{ type: 'paragraph'; content: InlineNode[] }];
 };
+
+// CommonMark: an underscore between two word characters is a literal, never an
+// emphasis mark (HIMMEL_API_LANE). `_` and `__` open only when not preceded by a
+// word character or underscore, close only when not followed by one, and may hold
+// intraword single underscores inside. Asterisk emphasis is unchanged.
+const W = '\\p{L}\\p{N}';
+const INLINE_RE = new RegExp(
+  '(\\*\\*[^*]+\\*\\*' +
+    `|(?<![${W}_])__(?:[^_]|(?<=[${W}])_(?=[${W}]))+__(?![${W}_])` +
+    '|`[^`]+`|\\[[^\\]]+\\]\\([^)]+\\)|\\*[^*]+\\*' +
+    `|(?<![${W}_])_(?:[^_]|(?<=[${W}])_(?=[${W}]))+_(?![${W}_]))`,
+  'gu',
+);
 
 /**
  * Convert inline markdown markup (bold, italic, code, link) into ADF inline nodes.
@@ -39,10 +52,8 @@ type ListItem = {
  */
 function parseInline(text: string): InlineNode[] {
   const out: InlineNode[] = [];
-  const regex =
-    /(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|\[[^\]]+\]\([^)]+\)|\*[^*]+\*|_[^_]+_)/g;
   let lastIdx = 0;
-  for (const m of text.matchAll(regex)) {
+  for (const m of text.matchAll(INLINE_RE)) {
     if (m.index! > lastIdx) {
       out.push({ type: 'text', text: text.slice(lastIdx, m.index) });
     }
@@ -69,6 +80,22 @@ function parseInline(text: string): InlineNode[] {
   return out.length ? out : [{ type: 'text', text }];
 }
 
+// Fence and heading rules mirror normalizeMarkdown in the himmel-ops ticket policy.
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const HEADING_LINE = /^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*$/;
+
+/** The fence a line opens, or undefined (a backtick fence with a backtick in its info string is none). */
+function fenceOpen(line: string): { marker: string; info: string } | undefined {
+  const fm = FENCE_LINE.exec(line);
+  if (!fm || (fm[1][0] === '`' && fm[2].includes('`'))) return undefined;
+  return { marker: fm[1], info: fm[2].trim() };
+}
+
+function closesFence(line: string, marker: string): boolean {
+  const fm = FENCE_LINE.exec(line);
+  return !!fm && fm[1][0] === marker[0] && fm[1].length >= marker.length && fm[2].trim() === '';
+}
+
 export function markdownToAdf(md: string): AdfDoc {
   const lines = md.split('\n');
   const blocks: AdfBlock[] = [];
@@ -84,11 +111,12 @@ export function markdownToAdf(md: string): AdfDoc {
     }
 
     // code fence
-    if (line.startsWith('```')) {
-      const lang = line.slice(3).trim() || undefined;
+    const open = fenceOpen(line);
+    if (open) {
+      const lang = open.info.split(/\s+/)[0] || undefined;
       const codeLines: string[] = [];
       i++;
-      while (i < lines.length && !lines[i].startsWith('```')) {
+      while (i < lines.length && !closesFence(lines[i], open.marker)) {
         codeLines.push(lines[i]);
         i++;
       }
@@ -106,18 +134,16 @@ export function markdownToAdf(md: string): AdfDoc {
     }
 
     // heading
-    const hMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    const hMatch = HEADING_LINE.exec(line);
     if (hMatch) {
-      // Clamp defensively even though the regex `#{1,3}` already
-      // bounds the count. If a future regex relaxation allows #{1,6}, this clamp
-      // keeps the ADF type-correct (and a violation surfaces as a runtime guard,
-      // not a silent type cast).
-      const rawLevel = hMatch[1].length;
-      const level: 1 | 2 | 3 = rawLevel <= 1 ? 1 : rawLevel >= 3 ? 3 : 2;
+      // the regex bounds the count to 1-6, the ADF heading range
+      const level = hMatch[1].length as 1 | 2 | 3 | 4 | 5 | 6;
+      // closing hashes need a space before them (`## C#` keeps its `#`)
+      const text = hMatch[2].replace(/(?:^|[ \t]+)#+$/, '');
       blocks.push({
         type: 'heading',
         attrs: { level },
-        content: parseInline(hMatch[2]),
+        content: text ? parseInline(text) : [],
       });
       i++;
       continue;
@@ -161,8 +187,8 @@ export function markdownToAdf(md: string): AdfDoc {
     while (
       i < lines.length &&
       lines[i].trim() &&
-      !lines[i].startsWith('```') &&
-      !/^(#{1,3}\s|[-*]\s|\d+\.\s)/.test(lines[i])
+      !fenceOpen(lines[i]) &&
+      !/^( {0,3}#{1,6}[ \t]|[-*]\s|\d+\.\s)/.test(lines[i])
     ) {
       paraLines.push(lines[i]);
       i++;
