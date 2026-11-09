@@ -210,6 +210,21 @@ _ghq_field() {
     sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1
 }
 
+_ghq_mark_merge() {
+    local f="$1" caller="$2" bucket="$3" reason="$4" repo="$5" first buckets routes old
+    first=$(date +%s) buckets="$bucket" routes="$(_ghq_union "" "$(ghq_routes "$caller")")"
+    if [ -f "$f" ]; then
+        old=$(_ghq_field "$f" first_epoch)
+        case "$old" in ''|*[!0-9]*) ;; *) first="$old" ;; esac
+        buckets=$(_ghq_union "$(_ghq_field "$f" buckets)" "$buckets")
+        routes=$(_ghq_union "$(_ghq_field "$f" routes)" "$routes")
+        [ "$(_ghq_field "$f" reason)" = rate-limit ] && reason=rate-limit
+    fi
+    # a new refusal means quota is not back: no back_epoch is carried over
+    printf 'repo=%s\ncaller=%s\nbuckets=%s\nroutes=%s\nreason=%s\nfirst_epoch=%s\n' \
+        "$repo" "$caller" "$buckets" "$routes" "$reason" "$first" | atomic_write "$f"
+}
+
 ghq_mark_blocked() {
     (
         key="${1:-}" ref="${2:-}" caller="${3:-}" bucket="${4:-}" reason="${5:-}"
@@ -221,23 +236,12 @@ ghq_mark_blocked() {
         mkdir -p "$dir" || exit 0
         key=$(printf '%s' "$key" | sed 's#/#%2F#g')
         ref=$(printf '%s' "${ref:-unknown}" | sed 's#/#%2F#g')
-        f="$dir/$key.$ref"
-        now=$(date +%s)
-        first="$now" buckets="$bucket" routes="$(_ghq_union "" "$(ghq_routes "$caller")")"
-        if [ -f "$f" ]; then
-            old=$(_ghq_field "$f" first_epoch)
-            case "$old" in ''|*[!0-9]*) ;; *) first="$old" ;; esac
-            buckets=$(_ghq_union "$(_ghq_field "$f" buckets)" "$buckets")
-            routes=$(_ghq_union "$(_ghq_field "$f" routes)" "$routes")
-            [ "$(_ghq_field "$f" reason)" = rate-limit ] && reason=rate-limit
-        fi
         repo="${GHQ_REPO:-}"
         if [ -z "$repo" ]; then
             repo=$(git config --get remote.origin.url 2>/dev/null | sed -E 's#^.*github\.com[:/]##; s#\.git$##')
         fi
-        # a new refusal means quota is not back: no back_epoch is carried over
-        printf 'repo=%s\ncaller=%s\nbuckets=%s\nroutes=%s\nreason=%s\nfirst_epoch=%s\n' \
-            "$repo" "$caller" "$buckets" "$routes" "$reason" "$first" | atomic_write "$f"
+        # one lock around the read-merge-write, so two writers cannot drop each other's union
+        with_lock "$dir/.lock" _ghq_mark_merge "$dir/$key.$ref" "$caller" "$bucket" "$reason" "$repo"
     ) >/dev/null 2>&1
     return 0
 }

@@ -202,6 +202,16 @@ has "M2 a second writer keeps first_epoch" "first_epoch=1000" "$(cat "$mf")"
 has "M2b and unions buckets" "buckets=core,graphql" "$(cat "$mf")"
 has "M2c a rate limit is not narrowed to a stall" "reason=rate-limit" "$(cat "$mf")"
 lacks "M2d a new refusal drops back_epoch" "back_epoch" "$(cat "$mf")"
+for i in 1 2 3 4 5 6 7 8; do
+    if [ $((i % 2)) -eq 0 ]; then
+        GHQ_REPO=o/r ghq_mark_blocked 77 headx check-ci graphql rate-limit &
+    else
+        GHQ_REPO=o/r ghq_mark_blocked 77 headx cr-disposition core stall &
+    fi
+done
+wait
+has "M5 eight concurrent writers keep every bucket" "buckets=core,graphql" "$(cat "$HIMMEL_QUOTA_DIR/blocked/77.headx" 2>/dev/null)"
+has "M5b and every route" "routes=main,read" "$(cat "$HIMMEL_QUOTA_DIR/blocked/77.headx" 2>/dev/null)"
 ghq_mark_blocked 42 abc123 ready-check graphql usage
 check "M3 control: a reason that is not rate-limit or stall writes nothing" "no" "$([ -e "$HIMMEL_QUOTA_DIR/blocked/42.abc123" ] && echo yes || echo no)"
 HIMMEL_QUOTA_DIR="$W/ro/q2" ghq_mark_blocked 42 abc123 ready-check graphql stall

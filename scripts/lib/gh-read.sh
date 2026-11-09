@@ -107,7 +107,6 @@ _ghr_is_read() {
     [ "$field" -eq 0 ] || [ "$graphql" -eq 1 ]
 }
 
-# _ghr_run <gh args...> — one gh read under GH_READ_TIMEOUT.
 # ponytail: no timeout binary (a Mac without coreutils) means no bound; upgrade = a bash watchdog
 _ghr_run() {
     local t="${GH_READ_TIMEOUT:-120}"
@@ -119,12 +118,10 @@ _ghr_run() {
     fi
 }
 
-# _ghr_rl <stderr file> — the rate-limit rule, owned by gh-quota.sh
 _ghr_rl() {
     ( . "$_GHR_HERE/gh-quota.sh" 2>/dev/null && ghq_is_rate_limited "$(cat "$1" 2>/dev/null)" )  # read-sink-ok: our own mktemp buffer
 }
 
-# _ghr_note <main|read> <rc> <stderr file> <gh args...> — the refused-file row
 _ghr_note() {
     local tok="$1" rc="$2" errf="$3" why="" bucket
     shift 3
@@ -156,7 +153,6 @@ gh_read() {
     fi
     if [ -z "$_GHR_TOK" ]; then
         _ghr_warn "$_GHR_WHY"
-        # stdout streams as before; stderr is held so the refused file can read it
         errf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { _ghr_run "$@"; return $?; }
         _ghr_run "$@" 2>"$errf"
         rc=$?
