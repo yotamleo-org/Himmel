@@ -61,7 +61,7 @@ export interface RulingRow {
   mac?: string;
 }
 
-export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'spec' | 'core-bypass' | 'core-snapshot';
+export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'spec' | 'core-bypass' | 'core-snapshot' | 'out-of-version';
 
 export interface OperatorRow {
   id: string;

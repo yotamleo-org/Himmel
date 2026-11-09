@@ -41,6 +41,8 @@ scratch="/tmp/claude-$(id -u)"
 evd="$(mktemp -d "$scratch/grant-round-test.XXXXXX")" || { echo "FAIL: mktemp -d in $scratch failed" >&2; rm -rf "$tmp"; exit 1; }
 trap 'rm -rf "$tmp" "$evd"' EXIT
 tmp="$(cd "$tmp" && pwd -P)"
+export HIMMEL_CEILINGS_LEDGER="$tmp/no-ceilings-ledger.tsv"
+case "${HIMMEL_CEILINGS_LEDGER:-}" in "$tmp"/*) ;; *) echo "FAIL: the ceilings ledger is not pinned inside the temp dir"; exit 1 ;; esac
 root="$tmp/root"
 mkdir -p "$root" "$tmp/home/.config/himmel" || exit 1
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$tmp/home/.config/himmel/go-hmac.key"

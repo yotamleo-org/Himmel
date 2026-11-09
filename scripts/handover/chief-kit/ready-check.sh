@@ -24,7 +24,9 @@
 # Checks:
 #   1. Shared snapshot: headRefOid == <head-sha> (full 40 chars); mergeStateStatus
 #      == CLEAN (retries briefly on UNKNOWN — a transient GitHub computation
-#      state, not a verdict).
+#      state, not a verdict; a re-read waits 5 s for a peer's snapshot lock and
+#      a failed one keeps the last good read). A failed snapshot read prints the
+#      lib's reason under item 1.
 #   2. statusCheckRollup: every check IDENTITY's LATEST run is COMPLETED with
 #      conclusion SUCCESS/SKIPPED/NEUTRAL (CheckRun), or state SUCCESS
 #      (StatusContext) — a superseded run (e.g. an earlier CANCELLED run
@@ -340,9 +342,22 @@ crf_hold_note() {
     ) || true
 }
 SNAPSHOT_SCRIPT="$(cd "$(dirname "$0")/../../lib" && pwd)/gh-pr-snapshot.sh"
+SNAPSHOT_REREAD_LOCK_WAIT=5
 snapshot=""
+snapshot_fail_reason=""
+refresh_snapshot_or_keep_last() {
+    local lock_wait="${1:-${GH_PR_SNAPSHOT_LOCK_WAIT:-}}" err_file out
+    err_file=$(mktemp "${TMPDIR:-/tmp}/ready-check-snap.XXXXXX" 2>/dev/null) || err_file=""  # prim-ok: ready-check sources no prim.sh; no file only loses the reason line
+    snapshot_fail_reason=""
+    if out=$(env GH_CMD="$GH" GH_PR_SNAPSHOT_LOCK_WAIT="$lock_wait" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>"${err_file:-/dev/null}"); then
+        snapshot=$out
+    elif [ -n "$err_file" ]; then
+        snapshot_fail_reason=$(tail -n 1 "$err_file" | tr -cd '[:print:]')
+    fi
+    [ -z "$err_file" ] || rm -f "$err_file"
+}
 if [ "$ONLY7" -eq 0 ]; then
-    snapshot=$(GH_CMD="$GH" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>/dev/null) || snapshot=""
+    refresh_snapshot_or_keep_last
 fi
 
 # author_class and outside_pr_of live in the lib, so scripts/cr/pr-check-outside.sh asks the same question.
@@ -419,7 +434,7 @@ while [ "$attempt" -lt 5 ]; do
     attempt=$((attempt + 1))
     sleep 1
     if [ "$attempt" -lt 5 ]; then
-        snapshot=$(GH_CMD="$GH" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>/dev/null) || snapshot=""
+        refresh_snapshot_or_keep_last "$SNAPSHOT_REREAD_LOCK_WAIT"
     fi
 done
 # The rollup is judged before row 1: UNSTABLE is accepted there only when
@@ -487,6 +502,7 @@ else
     fi
     mark_fail
 fi
+[ -z "$snapshot_fail_reason" ] || echo "       PR snapshot read failed: $snapshot_fail_reason"
 
 # ── 2. statusCheckRollup ─────────────────────────────────────────────────────
 if [ -z "$rollup" ] || [ "$rollup" = "null" ]; then

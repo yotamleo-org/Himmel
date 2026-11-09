@@ -360,6 +360,9 @@ expect_block "same file, another line" "$KB" "+# note about ${H}-7980"
 FL=scripts/lib/flags.tsv
 expect_allow "flag row ticket columns" "$FL" "+demo_flag${TAB}on${TAB}feature${TAB}${H}-1${TAB}${H}-1${TAB}2026-11-28${TAB}text"
 expect_block "same flags file, a comment" "$FL" "+# see ${H}-1"
+LW=scripts/ci/live-write-exempt.txt
+expect_allow "live-write exempt line names its quarantine ticket" "$LW" "+*/scripts/x/test-y.sh ${H}-1 quarantined"
+expect_block "same exempt file, a comment" "$LW" "+# see ${H}-1"
 expect_block "LUNA key in a doc" docs/x.md "+see ${LU}-12"
 expect_block "SALUS key in a doc" docs/x.md "+see ${SA}-3"
 

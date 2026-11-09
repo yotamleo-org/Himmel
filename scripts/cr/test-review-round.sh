@@ -23,7 +23,7 @@ for f in anchor-handoff.sh base-resolver.sh review-round.sh ledger-append.sh led
          known-findings.sh known-findings.json critic-pre-existing-tag.py; do
     cp "$HERE/$f" "$fx/scripts/cr/$f"
 done
-for f in chokepoint-seam-guard.sh load-dotenv.sh shared-branch-lock.sh go-gate.sh gh-read.sh; do
+for f in chokepoint-seam-guard.sh load-dotenv.sh shared-branch-lock.sh go-gate.sh gh-read.sh open-review-threads.sh; do
     cp "$HERE/../lib/$f" "$fx/scripts/lib/$f"
 done
 cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
@@ -398,6 +398,55 @@ bad_rc=0; (cd "$repo" && bash "$RR" promote --pr 7 --head "$h1" >/dev/null 2>&1)
 assert_eq "$bad_rc" "2" "--pr belongs to start and check only"
 bad_rc=0; (cd "$repo" && bash "$RR" start --pr 7 --head abc123 >/dev/null 2>&1) || bad_rc=$?
 assert_eq "$bad_rc" "2" "--pr needs a full 40-hex head"
+git -C "$repo" checkout -q main 2>/dev/null
+
+mkdir -p "$tmp/thbin"
+cat > "$tmp/thbin/gh" <<'STUB'
+#!/usr/bin/env bash
+q="" prev=""
+for a in "$@"; do
+    if [ "$prev" = -q ] || [ "$prev" = --jq ]; then q=$a; fi
+    prev=$a
+done
+case "${1:-} ${2:-}" in
+    "pr list") printf '%s' "$STUB_PRS" | jq -r "$q"; exit $? ;;
+    "api graphql")
+        [ "${STUB_THREADS_FAIL:-0}" = 1 ] && { echo "graphql boom" >&2; exit 1; }
+        printf '%s' "$STUB_THREADS" | jq -r "$q"; exit $? ;;
+esac
+echo "unexpected gh: $*" >&2
+exit 1
+STUB
+chmod +x "$tmp/thbin/gh"
+th_resolved='{"isResolved":true,"path":"README.md","line":1,"originalLine":1,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"createdAt":"2026-11-09T04:58:00Z","url":"u0"}]}}'
+th_open='{"isResolved":false,"path":"scripts/jira/src/policy.ts","line":88,"originalLine":88,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"createdAt":"2026-11-09T05:07:51Z","url":"https://github.com/o/r/pull/5053#discussion_r1"}]}}'
+th_page() { printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[%s]}}}}}' "$1"; }
+git -C "$repo" checkout -q -b jg9712 main
+jg_h="$(git -C "$repo" rev-parse HEAD)"
+jg() { out="$(cd "$repo" && PATH="$tmp/thbin:$PATH" bash "$RR" judge-go --branch jg9712 --head "$jg_h" "$@" 2>&1)"; rc=$?; }
+export STUB_PRS='[{"number":5053}]'
+STUB_THREADS="$(th_page "$th_resolved,$th_open")"; export STUB_THREADS
+jg
+assert_eq "$rc" "8" "9712 judge-go refuses while PR 5053 has an unresolved thread"
+assert_has "$out" "scripts/jira/src/policy.ts:88" "9712 the refusal names the thread's file and line"
+assert_has "$out" "coderabbitai at 2026-11-09T05:07:51Z" "9712 the refusal names who posted it and when"
+assert_has "$out" "--open-threads-ok" "9712 the refusal names the chief's override"
+assert_lacks "$out" "README.md" "9712 a resolved thread is not named"
+jg --open-threads-ok "chief ruled the thread answered in the PR body"
+assert_eq "$rc" "1" "9712 the override passes the thread read and reaches the round check"
+assert_has "$out" "WARNING" "9712 the override warns loudly"
+assert_has "$out" "scripts/jira/src/policy.ts:88" "9712 the override still names the open thread"
+jg --open-threads-ok 'bad "quote"'
+assert_eq "$rc" "2" "9712 an override reason that cannot sit in a ledger row is refused"
+STUB_THREADS="$(th_page "$th_resolved")"; export STUB_THREADS
+jg
+assert_eq "$rc:$(case "$out" in *"0 of 3"*) echo round ;; esac)" "1:round" "control: every thread resolved, judge-go reaches the round check"
+STUB_PRS='[]' STUB_THREADS="$(th_page "$th_open")" jg
+assert_eq "$rc" "1" "control: a branch with no open PR has no thread to read"
+STUB_THREADS_FAIL=1 jg
+assert_eq "$rc" "1" "an unreadable thread read does not stand in for a clean one: it warns and goes on"
+assert_has "$out" "could not read the review threads" "the unreadable read is named"
+unset STUB_PRS STUB_THREADS
 git -C "$repo" checkout -q main 2>/dev/null
 
 if [ "$fails" -gt 0 ]; then
