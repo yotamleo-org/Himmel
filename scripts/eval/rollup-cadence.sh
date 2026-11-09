@@ -34,6 +34,9 @@ RUNNER_DIR="${ROLLUP_RUNNER_DIR:-${HOME:-}/.claude/rollup-cadence}"
 ROLLUP_PY="${ROLLUP_PY:-$SCRIPT_DIR/weekly-rollup.py}"
 LOG="$RUNNER_DIR/rollup-cadence.log"
 
+# shellcheck source=../lib/crontab-locked-rmw.sh
+. "$SCRIPT_DIR/../lib/crontab-locked-rmw.sh" || exit 2
+
 resolve_primary() {
     local common
     common="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 1
@@ -75,8 +78,16 @@ cron_read() {
 }
 cron_entry() { printf '%s\n' "$CRON_TAB" | grep -F "# $TASK_NAME" || true; }
 
+# The edit steps run under crontab_locked_rmw on the table it just read; $force and $entry are cmd_arm's
+# locals, visible because cmd_arm is on the call stack. Return 3 = already armed (nothing written).
+arm_edit() {
+    [ -z "$(cron_entry)" ] || [ "$force" -eq 1 ] || return 3
+    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; }
+}
+disarm_edit() { { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; }; }
+
 cmd_arm() {
-    local time="06:00" day=1 force=0 dry=0 root runner bash_bin entry guard_rc=0
+    local time="06:00" day=1 force=0 dry=0 root runner bash_bin entry guard_rc=0 rc was_armed=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --time|--day) [ $# -ge 2 ] || { echo "ERR rollup-cadence: $1 needs a value" >&2; return 1; }
@@ -93,9 +104,12 @@ cmd_arm() {
     root="$(resolve_primary)" || { echo "ERR rollup-cadence: cannot resolve the primary checkout" >&2; return 2; }
     bash_bin="$(command -v bash)"
     cron_read || return 4
-    if [ -n "$(cron_entry)" ] && [ "$force" -eq 0 ]; then
-        echo "ERR rollup-cadence: already armed: $TASK_NAME (use --force to replace)" >&2
-        return 3
+    if [ -n "$(cron_entry)" ]; then
+        was_armed=1
+        if [ "$force" -eq 0 ]; then
+            echo "ERR rollup-cadence: already armed: $TASK_NAME (use --force to replace)" >&2
+            return 3
+        fi
     fi
     runner="$RUNNER_DIR/rollup-cadence.sh"
     # cron reads an unescaped % as a newline, even inside quotes.
@@ -120,15 +134,18 @@ cmd_arm() {
         printf 'rc=$?\necho "[exit rc=$rc]" >> "$log"\nexit "$rc"\n'
     } > "$runner.new" || { rm -f "$runner.new"; echo "ERR rollup-cadence: cannot write the runner $runner.new" >&2; return 4; }
     chmod +x "$runner.new" || { rm -f "$runner.new"; echo "ERR rollup-cadence: cannot chmod the runner $runner.new" >&2; return 4; }
-    { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - \
-        || { rm -f "$runner.new"; echo "ERR rollup-cadence: crontab install failed" >&2; return 4; }
-    if ! mv -f "$runner.new" "$runner"; then
-        rm -f "$runner.new"
-        { printf '%s\n' "$CRON_TAB" | sed '/^$/d'; } | "$CRONTAB_BIN" - \
-            || echo "ERR rollup-cadence: could not restore the previous crontab; check 'crontab -l'" >&2
-        echo "ERR rollup-cadence: cannot install the runner $runner (crontab restored)" >&2
-        return 4
-    fi
+    # The runner lands first: without a crontab entry it is inert, and the crontab edit below runs under the
+    # shared lock on a fresh read, so a failure there never needs a blind restore of an older table.
+    mv -f "$runner.new" "$runner" || { rm -f "$runner.new"; echo "ERR rollup-cadence: cannot install the runner $runner" >&2; return 4; }
+    crontab_locked_rmw "$CRONTAB_BIN" arm_edit || {
+        rc=$?
+        [ "$was_armed" -eq 1 ] || rm -f "$runner"
+        case "$rc" in
+            3) echo "ERR rollup-cadence: already armed: $TASK_NAME (use --force to replace)" >&2 ;;
+            *) echo "ERR rollup-cadence: crontab install failed" >&2; rc=4 ;;
+        esac
+        return "$rc"
+    }
     echo "rollup-cadence ARMED: weekly day $day at $time — $runner"
 }
 
@@ -151,7 +168,7 @@ cmd_disarm() {
     if [ "$dry" -eq 1 ]; then echo "DRY rollup-cadence: would remove the $TASK_NAME crontab entry"; return 0; fi
     bash "$SCRIPT_DIR/../lib/test-run-guard" check --tool "$CRONTAB_BIN" rollup-cadence-disarm "$RUNNER_DIR" || guard_rc=$?
     [ "$guard_rc" -ne 77 ] || return 77
-    { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; } | "$CRONTAB_BIN" - || return 4
+    crontab_locked_rmw "$CRONTAB_BIN" disarm_edit || { echo "ERR rollup-cadence: crontab write failed" >&2; return 4; }
     rm -f "$RUNNER_DIR/rollup-cadence.sh"
     echo "rollup-cadence: disarmed"
 }
