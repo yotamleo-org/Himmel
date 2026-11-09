@@ -338,7 +338,6 @@ check "(r0r) re-armed waiter starts with N2" "N2 WRAPPED — done" "$(cat "$STUB
 contains "(r0r) later worker wraps across re-arm" "$(cat "$WORK/r0r-rearm.out")" "absorbed since last wake: wraps=1 (N2)"
 stop_waiter
 
-# --- (r0s) the READY cursor: every new READY bullet reaches worker-event once (flag off: its dry run) ---
 # The flag reads a fixture registry here (the real flags.tsv gets its auto_go row in a later PR).
 printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\n' > "$WORK/flags.tsv"
 export HIMMEL_FLAGS_TSV="$WORK/flags.tsv" HIMMEL_CONFIG_DIR="$WORK/no-conf"
@@ -424,8 +423,6 @@ while [ "$n" -lt 80 ] && [ ! -s "$STUB/le.stdin.3" ] && kill -0 "$WPID" 2>/dev/n
 check "(r0s5) N2's READY, written while N1's backlog drained, is relayed" "N2 READY 2568 cccccccccccccccccccccccccccccccccccccccc GREEN" "$(cat "$STUB/le.stdin.3" 2>/dev/null)"
 stop_waiter
 
-# off (the default): a new READY reaches worker-event once, for its auto-go dry run; worker-event's
-# ESCALATE marker-READY wakes nothing (ready_wake's WAKE ready is that READY's one wake)
 reset_stub
 fleet r0s3
 printf 'ESCALATE marker-READY\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
@@ -441,7 +438,6 @@ check "(r0s3) flag off: ESCALATE marker-READY is no wake" "" "$(cat "$WORK/r0s3.
 check "(r0s3) flag off: no digest line" "" "$(cat "$I.wait.digest" 2>/dev/null)"
 check "(r0s3) flag off: the cursor moves past the READY" "N1	5" "$(cat "$I.wait.ready" 2>/dev/null)"
 stop_waiter
-# a re-armed waiter does not hand the same READY on again
 reset_stub
 printf 'ESCALATE marker-READY\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
 start "$I" "$WORK/r0s3-rearm.out" --doc "$D" --workers-from "$M"
@@ -451,7 +447,6 @@ check "(r0s3) flag off: the same READY is not handed on twice" "" "$(cat "$STUB/
 check "(r0s3) flag off: no wake on a re-arm" "" "$(cat "$WORK/r0s3-rearm.out")"
 stop_waiter
 
-# off: any other worker-event answer to a READY (here a failure) still wakes, once
 reset_stub
 fleet r0s6
 printf 'usage: worker-event.sh --doc <chief doc> --fleet <manifest> <message-file | ->\n' > "$STUB/le.out"; echo 2 > "$STUB/le.rc"

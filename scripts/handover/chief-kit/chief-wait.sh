@@ -1475,19 +1475,12 @@ fi
 leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/worker-event.sh}"
 r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
 
-# The READY cursor. Every READY bullet a worker writes reaches worker-event once, even when a LIVE
-# bullet follows inside the same sample (tails= then never shows the READY). $ready_file holds one
-# `<label><TAB><line>` row per worker: the line of the last READY bullet already handed on. A worker
-# met for the first time starts after the READY bullets it already has, so a waiter never replays
-# history. With the auto_go flag off (an unregistered flag reads as off) only a `READY <pr> <head40>`
-# bullet is handed on: worker-event starts its auto-go dry run and answers ESCALATE marker-READY,
-# which r0_relay keeps silent.
 ready_file="$inbox.wait.ready"
 ready_re='^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY([^A-Za-z]|$)'
-# flag off: only the `READY <pr> <head40>` shape worker-event's dry run reads is handed on
 ready_dry_re='^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY[[:space:]]+#?[0-9]+[[:space:]]+[0-9a-f]{40}([^0-9a-f]|$)'
 ready_label=""; ready_line=""; ready_bullet=""; ready_off=""
 auto_go_on() { ( . "$HERE/../../lib/flags.sh" && himmel_flag auto_go ) >/dev/null 2>&1; }
+dry_run_ready_answer() { [ "$1" -eq 10 ] && [ "$2" = "ESCALATE marker-READY" ]; }
 ready_pick() { # sets ready_label/line/bullet to the oldest READY bullet past its worker's cursor
     local label ldoc cur last entry re="$ready_re"
     ready_label=""; ready_off=""
@@ -1565,9 +1558,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             esac
         fi
         printf '%s\n' "$out" > "$outf" 2>/dev/null
-        # auto_go off: worker-event started its dry run and answers ESCALATE marker-READY; ready_wake's
-        # WAKE ready stays that READY's one wake, so this answer wakes nothing and is no digest line
-        if [ "$marker" = READY ] && [ -n "$ready_off" ] && [ "$rc" -eq 10 ] && [ "$out" = "ESCALATE marker-READY" ]; then
+        if [ "$marker" = READY ] && [ -n "$ready_off" ] && dry_run_ready_answer "$rc" "$out"; then
             ready_advance "$label" "$ready_line"
             break
         fi

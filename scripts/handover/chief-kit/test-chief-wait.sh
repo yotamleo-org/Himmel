@@ -1226,7 +1226,6 @@ cat > "$STUB/disposition.sh" <<'EOF'
 printf '%s\n' "$*" >> "$STUB/disp.calls"
 cat "$STUB/disp.out"; exit "$(cat "$STUB/disp.rc")"
 EOF
-# worker-event as it answers a READY with auto_go off: its dry run is detached, the answer ESCALATE marker-READY
 cat > "$STUB/worker-event.sh" <<'EOF'
 #!/usr/bin/env bash
 cat >> "$STUB/we.calls"
