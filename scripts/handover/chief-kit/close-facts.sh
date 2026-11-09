@@ -57,7 +57,7 @@ doc_ready_head() {
 # doc_pr <doc>: the PR the close's reap names (the newest READY or MERGED bullet).
 doc_pr() {
     [ -f "$1" ] || return 0
-    grep -E '^- [0-9:]+ (READY|MERGED)' "$1" | grep -oE '(READY|MERGED)[ #-]+(PR[ #]+)?[0-9]+' | tail -n 1 | grep -oE '[0-9]+$' || true
+    grep -E '^- ([0-9:]+ )?(\*\*)?(READY|MERGED)' "$1" | grep -oE '(READY|MERGED)[ #-]+(PR[ #]+)?[0-9]+' | tail -n 1 | grep -oE '[0-9]+$' || true
 }
 
 # merged_commit_of <repo> <pr>: M1. The one first-parent commit among the last

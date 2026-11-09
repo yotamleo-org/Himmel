@@ -502,6 +502,8 @@ printf '# nwo=owner/repo\n# scope=all\nowner/repo\tx\n# complete rows=1\n' > "$P
 pc_refusal "row cut before its state" none/pc-nostate "malformed row"
 printf '# nwo=owner/repo\n# scope=all\nowner/repo\tx\tweird\t%s\n# complete rows=1\n' "$SHA0" > "$PCF/bad.txt"
 pc_refusal "row with an unknown state" none/pc-badstate "malformed row"
+printf '# nwo=owner/repo\n# scope=all\nowner/repo\tx1\tmerged\t%s\nowner/repo\tx2\tmerged\t%s\nowner/repo\tx3\tmerged\t%s\n# complete rows=18446744073709551619\n' "$SHA0" "$SHA0" "$SHA0" > "$PCF/bad.txt"
+pc_refusal "trailer count that overflows to the row count" none/pc-wrap "no complete trailer"
 printf '# nwo=owner/repo\n# complete rows=0\n' > "$PCF/bad.txt"
 pc_refusal "no scope header" none/pc-noscope "no usable scope header"
 

@@ -114,6 +114,11 @@ ${ROW41}${H}
 echo "ROW: doc_pr"
 printf -- '- 10:00 LIVE - go\n- 10:20 READY 41 %s GREEN\n- 10:40 MERGED 42 abc\n' "$H" > "$W/d-pr.md"
 check "doc_pr takes the newest READY or MERGED bullet" "$(doc_pr "$W/d-pr.md")" "42"
+printf -- '- READY 41 %s GREEN\n' "$H" > "$W/d-pr-bare.md"
+check "doc_pr reads a READY bullet with no timestamp" "$(doc_pr "$W/d-pr-bare.md")" "41"
+printf -- '- 10:20 **READY 43 %s GREEN**\n' "$H" > "$W/d-pr-bold.md"
+check "doc_pr reads a bold READY bullet" "$(doc_pr "$W/d-pr-bold.md")" "43"
+check "merged_proof reads a READY bullet with no timestamp" "$(merged_proof "$R" "$W/d-pr-bare.md" feat "$H")" "${ROW41}${H}"
 printf -- '- 10:00 LIVE - go\n' > "$W/d-nopr.md"
 check "doc_pr is empty when the doc names none" "$(doc_pr "$W/d-nopr.md")" ""
 

@@ -494,7 +494,8 @@ load_pr_cache_file() {
         "# complete rows="*) n="${last#\# complete rows=}" ;;
         *) pr_cache_refuse "no complete trailer" ;;
     esac
-    case "$n" in ''|*[!0-9]*) pr_cache_refuse "no complete trailer" ;; esac
+    # more than 9 digits would wrap in the arithmetic below and could equal the row count
+    case "$n" in ''|*[!0-9]*|??????????*) pr_cache_refuse "no complete trailer" ;; esac
     m=$(printf '%s\n' "$rows" | grep -c . || true)
     [ "$((10#$n))" -eq "$m" ] || pr_cache_refuse "trailer rows=$n but $m rows"
     scope=$(printf '%s\n' "$snap" | awk '/^# scope=/ { sub(/^# scope=/, ""); print; exit }')
