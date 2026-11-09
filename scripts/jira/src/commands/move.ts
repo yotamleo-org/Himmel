@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { request } from '../client.js';
+import { browseLine } from '../browse-line.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import type { JiraTransition } from '../types.js';
 import { CreatePartial, runCreate, type CreateOptions } from '../operations/create.js';
@@ -330,6 +331,8 @@ export function registerMove(program: Command): void {
             process.exit(2);
           }
           console.log(`Moved ${srcKey} → ${created.key}`);
+          const browse = browseLine(created.key);
+          if (browse) console.log(browse);
         } catch (e) {
           // Top-level catch: any unhandled rejection from request() at any step
           // lands here. Tag with the step that was running, surface the

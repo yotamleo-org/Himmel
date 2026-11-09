@@ -1975,6 +1975,38 @@ assert_rc "peer-bridge Bash cat hmac.key (basename rule)" 2 "$(run_case "$(j_bas
 assert_rc "peer-bridge an unrelated file stays readable" 0 "$(run_case "$(j_bash "cat $pb_home/work/notes.txt")" "HOME=$pb_home")"
 rm -rf "$pb_home"
 
+run_text() { { printf '%s' "$1" | bash "$HOOK" >/dev/null; } 2>&1; }
+assert_text() {
+    local label="$1" want="$2" needle="$3" text="$4" has=0
+    case "$text" in *"$needle"*) has=1 ;; esac
+    if [ "$has" = "$want" ]; then
+        echo "PASS $label"
+    else
+        echo "FAIL $label — pointer '$needle' present=$has, expected $want"
+        FAILED=$((FAILED + 1))
+    fi
+}
+jt=$(run_text "$(j_bash 'grep JIRA_BASE_URL .env')")
+assert_rc   "9709 Bash grep JIRA_BASE_URL .env still refuses" 2 "$(run_case "$(j_bash 'grep JIRA_BASE_URL .env')")"
+assert_text "9709 Bash grep JIRA_BASE_URL .env names himmel.conf" 1 '.himmel/himmel.conf' "$jt"
+assert_text "9709 Bash grep JIRA_BASE_URL .env names the verb"    1 'jira config' "$jt"
+jt=$(run_text "$(j_bash 'grep atlassian .env')")
+assert_text "9709 Bash grep atlassian .env (the Jira site) names the verb" 1 'jira config' "$jt"
+jt=$(run_text "$(j_read '/proj/scripts/jira/.env')")
+assert_rc   "9709 Read a jira .env still refuses" 2 "$(run_case "$(j_read '/proj/scripts/jira/.env')")"
+assert_text "9709 Read a jira .env names the verb" 1 'jira config' "$jt"
+jt=$(run_text "$(j_grep '/proj/scripts/jira/.env')")
+assert_text "9709 Grep a jira .env names the verb" 1 'jira config' "$jt"
+jt=$(run_text "$(j_bash 'cat .env')")
+assert_rc   "9709 ctl Bash cat .env still refuses" 2 "$(run_case "$(j_bash 'cat .env')")"
+assert_text "9709 ctl Bash cat .env has no Jira pointer" 0 'jira config' "$jt"
+jt=$(run_text "$(j_bash 'grep AWS_REGION .env')")
+assert_text "9709 ctl Bash grep AWS_REGION .env has no Jira pointer" 0 'jira config' "$jt"
+jt=$(run_text "$(j_read '/home/user/.env')")
+assert_text "9709 ctl Read .env has no Jira pointer" 0 'jira config' "$jt"
+jt=$(run_text "$(j_bash 'cat ~/.ssh/id_rsa JIRA_BASE_URL')")
+assert_text "9709 ctl a non-.env secret (id_rsa) gets no Jira pointer" 0 'jira config' "$jt"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."

@@ -978,6 +978,14 @@ under bypass).
 EOF
 }
 
+jira_hint() {
+    case "$1" in *.env*) ;; *) return 0 ;; esac
+    if grep -qiE 'JIRA_|jira|atlassian' <<<"$1"; then
+        echo "    Jira settings live in ~/.himmel/himmel.conf (or himmel.conf.local): read them with \`node <primary-checkout>/scripts/jira/dist/index.js config\` (jira config), not from .env." >&2
+    fi
+    return 0
+}
+
 pattern_hint() {
     # the quoted-pattern exemption is POSITIONAL (see "Known
     # limitations" in the header) — a flag before an implicit pattern falls
@@ -2060,6 +2068,7 @@ case "$tool" in
         if is_secret_path "$fp"; then
             [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0
             echo "⛔ block-read-secrets: refusing Read of secret file: $fp" >&2
+            jira_hint "$fp"
             bypass_hint
             exit 2
         fi
@@ -2078,6 +2087,7 @@ case "$tool" in
         if is_secret_path "$gpath"; then
             [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0
             echo "⛔ block-read-secrets: refusing Grep on secret path: $gpath" >&2
+            jira_hint "$gpath"
             bypass_hint
             exit 2
         fi
@@ -2223,6 +2233,7 @@ EOF
             echo "⛔ block-read-secrets: refusing $tool command that reads a secret file:" >&2
             echo "    $cmd" >&2
             if [ -n "$g4_note" ]; then echo "    ($g4_note)" >&2; fi
+            jira_hint "$cmd"
             bypass_hint
             if [ -n "$glued_tok" ]; then glued_hint "$glued_tok"; fi
             # `if`, not `&& pattern_hint`: under `set -e` a top-level `a && b`

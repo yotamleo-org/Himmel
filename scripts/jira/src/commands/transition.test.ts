@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
 
-vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: () => 'HIMMEL' }));
+vi.mock('../client.js', async () => {
+  const actual = await vi.importActual<typeof import('../client.js')>('../client.js');
+  return { request: vi.fn(), projectKey: () => 'HIMMEL', baseUrl: actual.baseUrl };
+});
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 const ghPrs: Array<{ number: number; url: string; title: string }> = [];
 vi.mock('node:child_process', async (orig) => {
@@ -104,6 +107,14 @@ describe('transition to Done stamps the current fixVersion', () => {
     expect(puts()).toHaveLength(1);
     expect(puts()[0][1]).toBe('/issue/HIMMEL-1');
     expect(JSON.stringify(puts()[0][2])).toContain('v1.1.3');
+  });
+
+  it('prints a browse: line with the site URL after the status line', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://station.atlassian.net');
+    wire([{ name: 'v1.1.2' }]);
+    await run('HIMMEL-1', 'Done');
+    expect(console.log).toHaveBeenCalledWith('browse: https://station.atlassian.net/browse/HIMMEL-1');
+    vi.unstubAllEnvs();
   });
 
   it('stamp names transition-stamp', async () => {

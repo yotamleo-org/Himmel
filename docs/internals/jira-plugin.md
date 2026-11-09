@@ -159,6 +159,11 @@ filing note, not in the ticket's plain block.
 
 ## Gotchas
 
+**The site URL has one source: the CLI.** `jira config` prints every Jira setting
+(`JIRA_BASE_URL`, project key, email, token) with where it came from; email and token show
+only as set or not set plus the source kind. `get`, `edit`, `transition` and `move` print a
+`browse: <site>/browse/<KEY>` line. Never read `.env` or call the Atlassian MCP to find it.
+
 **`transition <key> <numeric-id>` is a vacuous success.** `transitions <key>`
 lists numeric IDs for reading, not for passing back to `transition` — `transition`
 takes the status **name** as its positional arg (`transition HIMMEL-N Done`).
