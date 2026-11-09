@@ -5786,7 +5786,7 @@ lr_expect() {
   check "9625-cause $1: the launcher exits $3" "$4" "$3"
   check "9625-cause $1: one row, cause $2, rc $3" "$(( $(lr_n) - $5 ))|$(lr_last '[.cause,.rc]|join(" ")')" "1|$2 $3"
 }
-lr_lines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; fi; }
+lr_lines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; fi; }  # read-sink-ok: counts lines of a scratch ledger this suite names
 lr_none() { check "9625-skip $1: no row" "$(( $(lr_n) - $2 ))" "0"; }
 
 doc9625_np="$tmp/HIMMEL-9625-np.md"; printf '%s\n' '---' 'description: no prior art' '---' '# no prior art line' > "$doc9625_np"
