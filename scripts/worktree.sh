@@ -378,31 +378,7 @@ fetch_github_pr_cache() {
         --jq '.[] | [.base.repo.full_name, .head.ref, (if .state == "open" then "open" elif .merged_at != null then "merged" else "closed" end), .head.sha] | @tsv'
 }
 
-github_nwo_from_remote() {
-    local remote="$1" url path
-    url=$(git -C "$PRIMARY_WORKTREE" remote get-url "$remote" 2>/dev/null) || return 1
-    case "$url" in
-        https://github.com/*|http://github.com/*) path="${url#*github.com/}" ;;
-        git@github.com:*) path="${url#git@github.com:}" ;;
-        ssh://git@github.com/*) path="${url#ssh://git@github.com/}" ;;
-        *) return 1 ;;
-    esac
-    path="${path%.git}"
-    path="${path%/}"
-    case "$path" in
-        */*) printf '%s\n' "$path" ;;
-        *) return 1 ;;
-    esac
-}
-
 if [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ]; then
-    if [ -z "$ORIGIN_NWO" ]; then
-        # forge_repo_nwo (gh repo view) failed — fall back to parsing origin's
-        # remote URL directly rather than silently degrading accounting.
-        if ORIGIN_NWO=$(github_nwo_from_remote origin); then
-            log "clean-garden: origin repo lookup recovered from remote URL: $ORIGIN_NWO"
-        fi
-    fi
     if [ -n "$ORIGIN_NWO" ]; then
         if ORIGIN_PR_CACHE=$(fetch_github_pr_cache "$ORIGIN_NWO" 2>/dev/null); then
             ORIGIN_PR_CACHE_OK=1
@@ -410,7 +386,7 @@ if [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ]; then
             echo "WARN clean-garden: GitHub PR cache failed for origin — accounting will keep uncertain work" >&2
         fi
     else
-        echo "WARN clean-garden: could not determine origin's GitHub repo (gh repo view + remote URL parse both failed) — PR accounting degraded to unknown for origin" >&2
+        echo "WARN clean-garden: could not determine origin's GitHub repo (gh repo view failed; the remote URL's spelling is not trusted) — PR accounting degraded to unknown for origin, worktrees are kept" >&2
     fi
 fi
 
@@ -420,7 +396,7 @@ fi
 # wins over both. Among merged PRs, an exact recorded head match is remembered.
 resolve_pr_state() {
     local remote="$1" branch="$2" tip="$3"
-    local cache cache_ok nwo row_repo row_branch row_state row_sha
+    local cache cache_ok nwo row_branch row_state row_sha
     local saw_closed=0 saw_merged=0 exact_merged=0
     PR_STATE="unknown"
     PR_HEAD_MATCH=0
@@ -436,10 +412,12 @@ resolve_pr_state() {
     [ "$cache_ok" -eq 1 ] || return 0
 
     PR_STATE="none"
-    while IFS=$'\t' read -r row_repo row_branch row_state row_sha; do
+    # GitHub owner and repo names are case-insensitive, so the row's repo is
+    # matched to the base repo without regard to case (awk, bash 3.2 has no ${v,,}).
+    cache=$(printf '%s\n' "$cache" | NWO="$nwo" BR="$branch" awk -F'\t' \
+        'tolower($1) == tolower(ENVIRON["NWO"]) && $2 == ENVIRON["BR"]')
+    while IFS=$'\t' read -r _ row_branch row_state row_sha; do
         [ -n "$row_branch" ] || continue
-        [ "$row_repo" = "$nwo" ] || continue
-        [ "$row_branch" = "$branch" ] || continue
         case "$row_state" in
             open)
                 PR_STATE="open"

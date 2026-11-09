@@ -141,7 +141,7 @@ run_clean() {
         # origin is a real local bare repo (for ls-remote), not a github.com
         # URL, so force forge detection past its origin-hostname sniff.
         export FORGE=github
-        cd "$REPO" || exit 1
+        cd "${RUN_CLEAN_REPO:-$REPO}" || exit 1
         set +e
         out=$(bash "$script" "$@" 2>&1)
         rc=$?
@@ -336,6 +336,77 @@ expect "9g: unknown-state worktree kept" "$out" is_dir "$WT_UA_UNKNOWN"
 out=$(run_clean "$CLEAN_GARDEN" prune --only-allow-unmerged)
 expect "9h: --only-allow-unmerged with no --only refused" "$out" rc_nonzero "$out"
 expect "9h: usage error names the flag" "$out" grepq "$out" -e "--only-allow-unmerged requires --only"
+
+# ── case 10: the repo name is compared without case, and an unreadable name keeps ──
+echo "CASE 10: repo-name case and an unreadable repo name"
+# GitHub owner/repo names are case-insensitive: the origin URL is lowercase,
+# the PR rows carry canonical Owner/Repo. GH_VIEW picks what `gh repo view`
+# answers: fail | lower (owner/repo) | canon (Owner/Repo).
+STUB_DIR_CASE="$TMP_ROOT_UNIX/bin-case"
+mkdir -p "$STUB_DIR_CASE"
+cat > "$STUB_DIR_CASE/gh" <<'STUB'
+#!/usr/bin/env bash
+args="$*"
+if grep -q "auth status" <<<"$args"; then exit 0; fi
+if grep -q "repo view" <<<"$args"; then
+    case "${GH_VIEW:-fail}" in
+        lower) echo "owner/repo"; exit 0 ;;
+        canon) echo "Owner/Repo"; exit 0 ;;
+        *) exit 1 ;;
+    esac
+fi
+if grep -qi "api --paginate repos/owner/repo/pulls" <<<"$args"; then
+    for kind in feat:merged open:open closed:closed; do
+        while IFS=' ' read -r branch sha; do
+            printf 'Owner/Repo\t%s\t%s\t%s\n' "$branch" "${kind#*:}" "$sha"
+        done < <(git for-each-ref --format='%(refname:short) %(objectname)' "refs/heads/${kind%%:*}")
+    done
+    exit 0
+fi
+exit 0
+STUB
+chmod +x "$STUB_DIR_CASE/gh"
+
+REPO2="$TMP_ROOT/repo-case"
+git clone -q "$REPO" "$REPO2" >/dev/null 2>&1
+git -C "$REPO2" config user.email t@test.com
+git -C "$REPO2" config user.name t
+git -C "$REPO2" config maintenance.auto false
+# A github URL in lowercase so the old URL fallback has a name to parse; ssh is
+# stubbed to fail at once, so no ls-remote reaches the network.
+git -C "$REPO2" remote set-url origin git@github.com:owner/repo.git
+mk_wt2() {
+    git -C "$REPO2" worktree add -q "$TMP_ROOT/$1" -b "$2" >/dev/null 2>&1
+    echo "$TMP_ROOT/$1"
+}
+run_case() { # <GH_VIEW> <args...>
+    local view="$1"; shift
+    GH_VIEW="$view" GIT_SSH_COMMAND=false GIT_TERMINAL_PROMPT=0 \
+        RUN_CLEAN_STUB_DIR="$STUB_DIR_CASE" RUN_CLEAN_REPO="$REPO2" run_clean "$@"
+}
+
+# 10a: the repo-name lookup fails; the open PR's rows are canonical case.
+WT_C_OPEN=$(mk_wt2 wt-case-open open/unreadable)
+out=$(run_case fail "$CLEAN_GARDEN" prune --only "$WT_C_OPEN" --only-allow-unmerged)
+expect "10a: unreadable repo name, open PR: refused" "$out" rc_nonzero "$out"
+expect "10a: unreadable repo name, open PR: worktree kept" "$out" is_dir "$WT_C_OPEN"
+
+# 10b: the lookup answers in a different case than the PR rows.
+WT_C_OPEN2=$(mk_wt2 wt-case-open2 open/lowercase)
+out=$(run_case lower "$CLEAN_GARDEN" prune --only "$WT_C_OPEN2" --only-allow-unmerged)
+expect "10b: lowercase repo name, open PR: refused" "$out" rc_nonzero "$out"
+expect "10b: lowercase repo name, open PR: worktree kept" "$out" is_dir "$WT_C_OPEN2"
+
+# 10c: controls: the same fixture with the PR closed or merged is still pruned.
+WT_C_CLOSED=$(mk_wt2 wt-case-closed closed/lowercase)
+out=$(run_case lower "$CLEAN_GARDEN" prune --only "$WT_C_CLOSED" --only-allow-unmerged)
+expect "10c: lowercase repo name, closed PR: pruned" "$out" is_gone "$WT_C_CLOSED"
+WT_C_MERGED=$(mk_wt2 wt-case-merged feat/lowercase)
+out=$(run_case lower "$CLEAN_GARDEN" prune --only "$WT_C_MERGED")
+expect "10c: lowercase repo name, merged PR: pruned" "$out" is_gone "$WT_C_MERGED"
+WT_C_MERGED2=$(mk_wt2 wt-case-merged2 feat/canonical)
+out=$(run_case canon "$CLEAN_GARDEN" prune --only "$WT_C_MERGED2")
+expect "10c: canonical repo name, merged PR: pruned" "$out" is_gone "$WT_C_MERGED2"
 
 # ── control: the plain (fleet-wide) run still prunes every merged sibling ────
 echo "CONTROL: plain --prune-only"
