@@ -1013,7 +1013,8 @@ test("390 px: a row the person scrolled keeps its place across a refresh, and a 
   await Promise.all([page.waitForResponse((r) => r.url().includes("/api/")), page.locator('.aside [data-act="refresh-roadmap"]').click()]);
   await page.waitForLoadState("networkidle");
   await settle();
-  expect(Math.abs((await tabs.evaluate((el) => el.scrollLeft)) - kept), "the scroll after a refresh").toBeLessThanOrEqual(2);
+  const after = await tabs.evaluate((el) => el.scrollLeft);
+  expect(Math.abs(after - kept), `the scroll after a refresh (start ${start}, kept ${kept}, after ${after}, reach ${reach}; tried ${tried.join(" ; ")}; audit after: ${(await auditRows(page)).join("|") || "clear"})`).toBeLessThanOrEqual(2);
   await page.locator(".tr .tabs .tab").first().click();
   await expect(page.locator('.tr .tabs .tab[aria-selected="true"]')).toHaveText(/Roadmap/);
   await page.waitForLoadState("networkidle");
