@@ -281,7 +281,7 @@ assert_eq "luna failure with sidecar still exits nonzero" "1" "$RC"
 assert_contains "luna failure with sidecar retains the conflict hint" 'resolve any _CLAUDE.md.template-merge conflict' "$OUT"
 
 echo ""
-echo "Test 2c: luna upgrade.sh rc 3 (NEEDS-RECONCILE, HIMMEL-3037) is not a chain failure"
+echo "Test 2c: luna upgrade.sh rc 3 (NEEDS-RECONCILE) is not a chain failure"
 rm -f "$LUNA_VAULT/_CLAUDE.md.template-merge"
 cat > "$LUNA_CLONE/templates/luna-second-brain/scripts/upgrade.sh" <<'UPGRADE'
 #!/usr/bin/env bash
