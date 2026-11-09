@@ -1230,6 +1230,18 @@ else
     if [ "$old_out" = "$cmp_out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi
 fi
 if grepq "$out" '^scripts/test-nonutf8\.sh$'; then pass "a suite line with a non-UTF-8 byte is still matched"; else fail "non-UTF-8 suite not listed: $out"; fi
+# The pattern pass reads the narrowed tree with one grep -E -f instead of git grep -E -f: the
+# list must be the one the git grep read printed, byte for byte (no ./ prefix, same names).
+PREV_IS_SHA=093218b3d9ed4eadb8d6eff8d67949d72aabb031
+mkdir -p "$SHIM4/prevcr"
+if ! git -C "$(dirname "$IS")" cat-file -e "$PREV_IS_SHA^{commit}" 2>/dev/null; then
+    pass "git-grep-read control not run: $PREV_IS_SHA is not in this clone (shallow)"
+elif ! cp "$(dirname "$IS")/anchor-handoff.sh" "$SHIM4/prevcr/anchor-handoff.sh" || ! git -C "$(dirname "$IS")" show "$PREV_IS_SHA:scripts/cr/impacted-suites.sh" > "$SHIM4/prevcr/impacted-suites.sh"; then
+    fail "git-grep-read control setup: cannot read $PREV_IS_SHA"
+else
+    prev_out="$( cd "$FX" && bash "$SHIM4/prevcr/impacted-suites.sh" "$range" 2>/dev/null )"
+    if [ "$prev_out" = "$out" ] && [ -n "$prev_out" ]; then pass "the grep -E -f read lists the same suites as the git grep -E -f read it replaced"; else fail "grep -E -f read differs from the git grep read: prev=[$prev_out] new=[$out]"; fi
+fi
 # One inline-pattern -E over the tree (the variable-sourcer scan) is a single
 # regex and cheap; the cost was the -f pattern FILE, so that is what must not
 # run against the head tree.
@@ -1519,8 +1531,9 @@ else
     l_start=$SECONDS
     out="$( cd "$CL" && "$_TIMEOUT_BIN" 30 bash "$IS" "$lrange" 2>/dev/null )"; rc=$?
     l_wall=$((SECONDS - l_start))
-    n_out=$(grep -c . <<< "$out")
-    if [ "$rc" -eq 0 ] && [ "$n_out" -eq 900 ]; then pass "L1 a 900-suite range is read in ${l_wall}s inside the 30 s bound"; else fail "L1 large range: rc=$rc suites=$n_out wall=${l_wall}s (rc 124 = over the 30 s bound)"; fi
+    l_want="$(for s in $(seq 1 900); do printf 'scripts/test-big-%s.sh\n' "$s"; done | LC_ALL=C sort)"
+    l_got="$(LC_ALL=C sort <<< "$out")"
+    if [ "$rc" -eq 0 ] && [ "$l_got" = "$l_want" ]; then pass "L1 a 900-suite range is read in ${l_wall}s inside the 30 s bound, with exactly the 900 suite names"; else fail "L1 large range: rc=$rc suites=$(grep -c . <<< "$out") wall=${l_wall}s (rc 124 = over the 30 s bound; first line: $(head -n 1 <<< "$out"))"; fi
 fi
 
 echo
