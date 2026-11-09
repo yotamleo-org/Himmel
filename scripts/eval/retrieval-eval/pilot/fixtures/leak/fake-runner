@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# fake-runner <suite> [args] -- stands in for `bash <suite>` in the free-checks fixtures: answers
+# from the outcome file named by FAKE_OUTCOMES (lines "<suite basename> pass|fail|skip").
+name=$(basename "$1")
+what=$(awk -v n="$name" '$1 == n {print $2}' "$FAKE_OUTCOMES")
+case "${what:-pass}" in
+  pass) echo "ok - $name row"; exit 0 ;;
+  skip) echo "ok - $name row"; echo "SKIP - $name runtime rows: assets absent"; exit 0 ;;
+  fail) echo "FAIL - $name row"; exit 1 ;;
+esac
