@@ -40,6 +40,7 @@
 # JIRA_EMAIL=dummy@example.invalid
 # JIRA_PROJECTS=DUMMY
 # JIRA_PROJECT_KEY=DUMMY
+# JIRA_TEST_PROJECT=DUMMYTEST
 # JIRA_CLOUD_ID=dummy-cloud-id
 # GCP_CI_PROJECT_ID=dummy-project
 # SNYK_ORG_ID=dummy-org-id

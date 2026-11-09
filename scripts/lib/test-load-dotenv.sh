@@ -724,11 +724,17 @@ for k in HIMMEL_REPO CLAUDE_HUD_ALLOW_EXTRA_CMD HIMMEL_WHERE_ARE_WE_ROLLUP_TTL \
     HIMMEL_WHERE_ARE_WE_SEG_TIMEOUT HIMMEL_JIRA_NUDGE CR_APP CR_PUBLIC_REPO \
     CLAUDE_END_SESSION_WIKI SKILL_INDEX_DIR ALIBABA_ANTHROPIC_BASE_URL \
     ALIBABA_CODING_PLAN_BASE_URL ALIBABA_DASHSCOPE_BASE_URL ALIBABA_OPENAI_BASE_URL \
-    JIRA_PROJECTS; do
+    JIRA_PROJECTS JIRA_TEST_PROJECT; do
     printf '%s=k-from-conf\n' "$k" >"$TMP/k-config/himmel.conf"
     got=$( cd "$REPO" && unset "$k" && HIMMEL_CONFIG_DIR="$TMP/k-config" load_dotenv "$k" 2>/dev/null; printf '%s' "${!k:-<unset>}" )
     assert_eq "K $k resolves from himmel.conf" "k-from-conf" "$got"
 done
+
+printf 'JIRA_TEST_PROJECT=HTEST\n' >"$PCONF"
+rm -f "$TMP/k-config/himmel.conf"
+got=$( cd "$PREPO" && unset JIRA_TEST_PROJECT && HIMMEL_CONFIG_DIR="$TMP/k-config" load_dotenv JIRA_TEST_PROJECT 2>/dev/null; printf '%s|%s' "$(_himmel_key_class JIRA_TEST_PROJECT)" "${JIRA_TEST_PROJECT:-<unset>}" )
+assert_eq "KT JIRA_TEST_PROJECT is a config key and a project.conf line is not loaded" "config|<unset>" "$got"
+rm -f "$PCONF"
 
 echo
 if [ "$FAILED" -eq 0 ]; then

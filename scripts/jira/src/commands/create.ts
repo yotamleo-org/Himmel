@@ -591,10 +591,11 @@ export function placeAtFiling(
   o: PlacementOptions,
   labels: string[] | undefined,
   residual: boolean,
+  testProject = false,
 ): { labels: string[] | undefined; bugDefault: boolean } {
   const type = o.type.toLowerCase();
   const isBug = type === 'bug';
-  if ((!isBug && type !== 'task' && type !== 'story') || residual || o.fixVersion !== undefined) return { labels, bugDefault: false };
+  if ((!isBug && type !== 'task' && type !== 'story') || residual || testProject || o.fixVersion !== undefined) return { labels, bugDefault: false };
   if (o.backlog) return { labels: [...new Set([...(labels ?? []), BACKLOG_LABEL, proposedLabel('backlog')])], bugDefault: false };
   if (o.proposedVersion !== undefined) return { labels: [...new Set([...(labels ?? []), proposedLabel(o.proposedVersion)])], bugDefault: false };
   if (o.gate !== undefined || (isBug && o.priority?.toLowerCase() === 'highest')) return { labels, bugDefault: true };
@@ -620,7 +621,7 @@ const intakeWhy = (o: { why?: string; proposedVersion?: string }, title: string)
   const proposed = o.proposedVersion !== undefined && o.proposedVersion !== 'backlog' ? `proposed for ${o.proposedVersion}` : 'filed to the backlog';
   return o.why?.trim() || `${proposed}: ${title}`;
 };
-export const intakeOwed = (type: string, fields: Record<string, unknown>): boolean => !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
+export const intakeOwed = (type: string, fields: Record<string, unknown>, testProject = false): boolean => !testProject && !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
 
 interface IntakeOptions {
   type: string;
@@ -656,8 +657,8 @@ export function assertIntakeQueueable(why: string): void {
 }
 
 /** Refuses an unversioned Bug, Task or Story (a follow-up or residual too) whose INTAKE could not be queued; runs before the POST. */
-export function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, title: string): void {
-  if (intakeOwed(o.type, fields)) assertIntakeQueueable(intakeWhy(o, title));
+export function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, title: string, testProject = false): void {
+  if (intakeOwed(o.type, fields, testProject)) assertIntakeQueueable(intakeWhy(o, title));
 }
 
 interface ParentState {
@@ -705,8 +706,8 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
   return { ...o, proposedVersion: target, why, evidence };
 }
 
-export function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions): void {
-  if (!intakeOwed(o.type, fields)) return;
+export function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions, testProject = false): void {
+  if (!intakeOwed(o.type, fields, testProject)) return;
   const toVersion = o.proposedVersion === undefined || o.proposedVersion === 'backlog' ? null : o.proposedVersion;
   try {
     queueBacklogIntake(key, intakeWhy(o, title), toVersion, true, o.evidence);

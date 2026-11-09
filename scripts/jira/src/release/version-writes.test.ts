@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { WRITER_TABLE } from './version-writes.js';
+import { WRITER_TABLE, versionWriteScope } from './version-writes.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'repair');
 
@@ -111,6 +111,31 @@ function writingFiles(): string[] {
 
 // The files of `files` that are neither a writer in the table nor a named read-only file.
 const unlisted = (files: string[]): string[] => files.filter((f) => !WRITER_TABLE.some((w) => w.site === f) && !READ_ONLY.includes(f));
+
+describe('versionWriteScope — a test project is not work (I13)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'vws-test-project-'));
+    writeFileSync(join(dir, 'himmel.conf'), 'JIRA_PROJECTS=HIMMEL,LUNA\nJIRA_TEST_PROJECT=HTEST\n');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', dir);
+    vi.stubEnv('HIMMEL_JIRA_LIVE_TEST', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const fix = { fixVersions: [{ name: 'v1' }] };
+
+  it('a Fix Version create and a later Fix Version edit on HTEST-7 write no journal entry', () => {
+    expect(versionWriteScope('/rest/api/3', 'POST', '/issue', { fields: { project: { key: 'HTEST' }, ...fix } })).toBeNull();
+    expect(versionWriteScope('/rest/api/3', 'PUT', '/issue/HTEST-7', { update: fix })).toBeNull();
+  });
+
+  it('control: a HIMMEL Fix Version create and edit are still journalled', () => {
+    expect(versionWriteScope('/rest/api/3', 'POST', '/issue', { fields: { project: { key: 'HIMMEL' }, ...fix } })).toEqual({ key: null });
+    expect(versionWriteScope('/rest/api/3', 'PUT', '/issue/HIMMEL-7', { update: fix })).toEqual({ key: 'HIMMEL-7' });
+  });
+});
 
 describe('writer table', () => {
   it('every writing file is in the writer table', () => {

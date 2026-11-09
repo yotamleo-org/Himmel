@@ -12,6 +12,7 @@ import { createIssueLink } from '../commands/link.js';
 import { appendAdmission } from '../commands/admissions-ledger.js';
 import { checkIntakeGate } from '../commands/intake-gate.js';
 import { refuseTestJiraPost } from '../commands/release.js';
+import { isTestProject } from '../live-test-guard.js';
 import {
   BACKLOG_LABEL,
   agentDetailOf,
@@ -143,13 +144,14 @@ async function placement(
   residual: ResidualPlan | undefined,
   given: string[] | undefined,
   detail: string,
+  testProject: boolean,
 ): Promise<{ labels: string[] | undefined; inherited?: string; bugDefault: boolean; coreVerdict: ReturnType<typeof markCore>['verdict'] }> {
   let labels = given;
   if (residual) appendFuOverride(fields, options.fuOverride);
   const inherited = await residualInheritedVersion(options, residual);
   assertProposalNotInherited(options, inherited);
   if (options.backlog) labels = [...new Set([...(labels ?? []), BACKLOG_LABEL])];
-  const placed = placeAtFiling({ ...options, fixVersion: inherited ?? options.fixVersion }, labels, residual !== undefined);
+  const placed = placeAtFiling({ ...options, fixVersion: inherited ?? options.fixVersion }, labels, residual !== undefined, testProject);
   const core = markCore(detail, options.changeClass, placed.labels);
   return { labels: core.labels, inherited, bugDefault: placed.bugDefault, coreVerdict: core.verdict };
 }
@@ -160,6 +162,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   const overrideReason = checkPlacementFlags(options);
   await assertProposedVersion(options);
   const project = options.project ?? projectKey();
+  const testProject = isTestProject(project);
   const title = resolveTitle(options);
   const fields: Record<string, unknown> = { project: { key: project }, summary: title, issuetype: { name: options.type } };
   if (options.priority !== undefined) fields['priority'] = { name: options.priority };
@@ -169,7 +172,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   checkBody(options.type, body.input, given ?? [], true);
 
   const sectorId = sectorField();
-  const sectors = sectorId ? await sectorOptions() : undefined;
+  const sectors = sectorId && !testProject ? await sectorOptions() : undefined;
   const titleCheck = titleVerdict(options.type, title, sectors);
   if (titleCheck.action === 'warn') console.error(titleCheck.message);
   if (options.sector !== undefined && !sectors) {
@@ -185,11 +188,11 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   }
   if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
   const duplicateOf = residual?.duplicateOf;
-  const place = duplicateOf === undefined ? await placement(options, fields, residual, labels, body.detail) : undefined;
+  const place = duplicateOf === undefined ? await placement(options, fields, residual, labels, body.detail, testProject) : undefined;
   if (place) labels = place.labels;
   const { inherited, bugDefault = false, coreVerdict } = place ?? {};
   checkBody(options.type, body.input, labels ?? [], false);
-  const home = homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
+  const home = testProject ? { action: 'ok' as const, message: '' } : homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
   if (home.action === 'refuse') throw new CreateRefused(home.message);
   if (home.action === 'warn') console.error(home.message);
 
@@ -217,10 +220,10 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
     residual: residual !== undefined && inherited === undefined,
     bugDefault,
   });
-  const admission = await checkIntakeGate(project, fields['fixVersions'], { gate: options.gate, override: overrideReason !== undefined });
+  const admission = testProject ? undefined : await checkIntakeGate(project, fields['fixVersions'], { gate: options.gate, override: overrideReason !== undefined });
   await checkExistingBlocker(project, fields['fixVersions'], options);
-  const intake = intakeOwed(options.type, fields) ? await followUpIntake(versionOptions) : options;
-  preflightIntake(intake, fields, title);
+  const intake = intakeOwed(options.type, fields, testProject) ? await followUpIntake(versionOptions) : options;
+  preflightIntake(intake, fields, title, testProject);
   if (run.check) return { disposition: 'checked' };
 
   const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited, residual, bugDefault });
@@ -229,9 +232,9 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   writeJiraBreadcrumb(key);
   console.log(`Created ${key}`);
   printCore(coreVerdict);
-  queueIntakeIfUnversioned(key, fields, title, intake);
+  queueIntakeIfUnversioned(key, fields, title, intake, testProject);
 
-  const steps = afterCreateSteps(options, key, title, { overrideReason, admission, residual, overCapReason });
+  const steps = afterCreateSteps(options, key, title, { overrideReason: testProject ? undefined : overrideReason, admission, residual, overCapReason });
   for (let i = 0; i < steps.length; i += 1) {
     const [name, step] = steps[i]!;
     try {
