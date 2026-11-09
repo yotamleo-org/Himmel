@@ -152,10 +152,8 @@ PROXY_ALIASES = {"key_match_recall": "recall", "key_match_recall_gating": "recal
                  "labelled_clean_block_rate": "fp_rate"}
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 MANIFEST = "run-manifest.json"
-# The panel's own environment settings a sweep may carry; each is recorded in the manifest's protocol.
 RECORDED_OVERRIDES = ("CRITIC_TIMEOUT_SECS", "CRITIC_PANEL_TOTAL_TIMEOUT_SECS", "CRITIC_KILL_GRACE_SECS",
                       "CRITIC_PARALLEL", "CRITIC_FIRST_PASS_CAP_BYTES")
-# A stderr line of a case whose panel exited 0 that still says the run went wrong.
 ANOMALY = re.compile(r"unbound variable|command not found|Traceback \(most recent call last\)|syntax error")
 
 
@@ -796,9 +794,6 @@ def read_manifest(outputs):
 
 
 def provenance_reasons(outputs):
-    """Why the execution behind <outputs> is not decision-grade: an empty list when its manifest is a recorded,
-    finished execution of a clean, rechecked sweep through the tree's own panel, with a recorded roster and no
-    anomaly in the case files as they are now."""
     try:
         m = read_manifest(outputs)
     except ValueError:
@@ -883,8 +878,6 @@ def execution_manifest(outputs, repo, fixtures, key, roster, protocol):
 
 
 def complete_manifest(outputs, manifest):
-    """manifest with finished_at, each case's responding-model receipts and anomalies, and each critic's observed
-    responding models, read from the sweep's outputs."""
     roster = manifest.get("effective_roster") or []
     seen = {c["slug"]: set(c.get("responding_models") or []) for c in manifest.get("critics", [])}
     cases = {}
@@ -1111,8 +1104,6 @@ def gate_row(repo, rev, outputs):
 
 
 def execution_fields(outputs):
-    """The execution identity a score row carries: execution_id, code_under_test_sha (the swept tree, never the
-    scoring tree), provenance_status (recorded | reconstructed | missing | unreadable) and bundle_sha256_v2."""
     try:
         m = read_manifest(outputs)
         status = "missing" if m is None else (m.get("provenance") or {}).get("status") or "unknown"
@@ -1361,7 +1352,6 @@ def main(argv=None):
         if a.model:
             config["critic_model"] = a.model
         reasons = res["ineligibility_reasons"] + ([] if scorer["scorer_sha256"] else ["scorer-identity-unverified"])
-        # cli_version and effort default to the scoring session's own; the critic's are in the run manifest.
         meta = dict(meta, leaks=res["leaks"], unscored=res["unscored"], coverage=res["coverage"],
                     decision_eligible=not reasons, ineligibility_reasons=reasons, cli_version=None, effort=None,
                     **dict(scorer, **execution_fields(a.outputs)))
@@ -1376,8 +1366,7 @@ def main(argv=None):
 ROW_FIELDS = ("status", "metrics", "class_recall", "cbs_hash", "confighash", "outputs_sha256", "responded",
               "scorer_sha256", "bundle_sha256_v2", "execution_id", "code_under_test_sha", "provenance_status",
               "decision_eligible", "ineligibility_reasons")
-# Fields a row written before them may lack; such a row is not held to them.
-LATER_FIELDS = ("responded", "bundle_sha256_v2", "execution_id", "code_under_test_sha", "provenance_status",
+LEGACY_OPTIONAL_FIELDS = ("responded", "bundle_sha256_v2", "execution_id", "code_under_test_sha", "provenance_status",
                 "decision_eligible", "ineligibility_reasons")
 
 
@@ -1416,7 +1405,7 @@ def tree_main(a):
         if legacy:
             got = dict(got, metrics={k: v for k, v in got["metrics"].items() if k in (claimed.get("metrics") or {})})
             print("verify-row: scorer identity unverified: the row names no scorer_sha256")
-        bad = [f for f in ROW_FIELDS if claimed.get(f) != got[f] and (f not in LATER_FIELDS or f in claimed)
+        bad = [f for f in ROW_FIELDS if claimed.get(f) != got[f] and (f not in LEGACY_OPTIONAL_FIELDS or f in claimed)
                and not (legacy and f == "scorer_sha256")]
         for f in bad:
             print("verify-row: %s differs: row %s, re-scored %s" % (f, json.dumps(claimed.get(f), sort_keys=True),

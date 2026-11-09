@@ -177,8 +177,7 @@ for patch in "$fixtures"/case-*.patch "$fixtures"/real-*.patch "$fixtures"/delta
     # is unset; the triviality gate would skip the paid tier on a small diff,
     # and known-findings would inject himmel's own dispositions into the prompt.
     # CRITICS_JSON pins the roster to the swept tree's critics.json cut to --critics (A27): the panel
-    # run from a scratch dir would otherwise read a local overlay, and the whole tier. An inherited
-    # first-pass or invoke override would run other critic code than the swept tree's, so both are dropped.
+    # run from a scratch dir would otherwise read a local overlay, and the whole tier.
     (cd "$dir" && env -u CR_PROFILE -u CRITIC_FIRST_PASS -u CRITIC_INVOKE CRITIC_PANEL_TIERS="$tiers" CR_TRIVIALITY_OVERRIDE=full \
         CRITIC_KNOWN_FINDINGS=0 CRITICS_JSON="$roster" \
         bash "$PANEL" ${ctx_args[@]+"${ctx_args[@]}"} < diff.patch > "$out/$cid.md" 2> "$out/$cid.err")
