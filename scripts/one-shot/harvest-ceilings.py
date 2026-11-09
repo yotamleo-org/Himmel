@@ -51,7 +51,6 @@ HASH_EXT = (".sh", ".bash", ".zsh", ".yaml", ".yml", ".toml", ".awk", ".conf", "
 SH_EXT = (".sh", ".bash", ".zsh")
 JS_EXT = (".js", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".jsx")
 
-# Named list for verify: the files the migration edits by hand.
 HAND = {
     "scripts/lint/ticket-refs.awk", "scripts/lint/check-history-comments.sh",
     "scripts/lint/test-check-history-comments.sh", "scripts/lint/ticket-ref-allow.tsv",
@@ -87,12 +86,6 @@ def kind_of(path):
 def is_directive(text):
     return bool(DIRECTIVE_RE.match(text.strip()))
 
-
-# ---------------------------------------------------------------- scanners
-# Each scanner returns, per line, (state, cstart): state is "code", "data"
-# (heredoc body or a line that starts inside a quote), "block" (inside a /* */
-# comment) or "doc" (inside a python docstring); cstart is the column of a line
-# comment outside every quote, -1 when none.
 
 def scan_quoted(lines, leaders, sh=False, js=False):
     out, heredocs, q, blk = [], [], None, False
@@ -192,7 +185,6 @@ def scan_py(text, lines):
     return out, docs
 
 
-# ---------------------------------------------------------------- anchors
 SH_FN = [re.compile(r"^\s*function\s+([A-Za-z_][\w:.-]*)"), re.compile(r"^\s*([A-Za-z_][\w:.-]*)\s*\(\)")]
 SH_CASE = re.compile(r"^\s*\(?([^()#\s][^()#]*?)\)(\s|$)")
 ASSIGN = re.compile(r"^\s*(?:local\s+|export\s+|readonly\s+|declare\s+\S+\s+)?([A-Za-z_]\w*)\+?=")
@@ -228,8 +220,6 @@ def is_code_line(line, scan_row):
 
 
 def anchor_for(kind, lines, scan, first, last, level):
-    """The nearest enclosing name above `first` at a smaller indent, else the
-    first code line after `last`, else the last code line before `first`."""
     if level > 0:
         lim = level
         for r in range(first - 1, -1, -1):
@@ -265,7 +255,6 @@ def md_anchor(lines, at):
     return "file"
 
 
-# ---------------------------------------------------------------- fields
 def after_token(text):
     m = TOK_RE.search(text)
     return text[m.end():] if m else text
@@ -299,7 +288,6 @@ def strip_leader(s):
     return re.sub(r"(\*/|-->)\s*$", "", s).strip()
 
 
-# ---------------------------------------------------------------- harvest
 class Hit:
     def __init__(self, path, line, form, ceiling_texts, anchor, span=None, trailing_col=-1, data=False):
         self.path, self.line, self.form = path, line, form
@@ -308,8 +296,6 @@ class Hit:
 
 
 def comment_block(lines, scan, i, leader):
-    """Whole-line comment block from line i: same or deeper indent, ends at a
-    blank comment, code, a directive or the next token."""
     level = scan[i][1]
     texts = [after_token(lines[i][level:].lstrip("#/ \t"))]
     end = i
@@ -460,7 +446,6 @@ def json_hits(path, lines, i):
 
 
 def draft_rows(hits):
-    """One row per token: a line holding k tokens gives k rows."""
     rows = []
     for h in hits:
         if h.data:
@@ -529,9 +514,7 @@ def cmd_harvest(args):
     return 0
 
 
-# ---------------------------------------------------------------- strip
 def parses(path, text):
-    """None when text parses as its file type (or the type has no checker), else why."""
     kind = kind_of(path)
     if kind == "py":
         try:
@@ -580,9 +563,6 @@ def node_ok(src, ext=None):
 
 
 def code_changed(path, old, new):
-    """The reason a cut changed more than comments, by the same parsers verify
-    uses (shfmt -mn for shell, the comment-free token stream for python), or
-    None. A shell file is refused when shfmt is missing."""
     ext = os.path.splitext(path)[1]
     if ext in (".sh", ".bash"):
         if shutil.which("shfmt") is None:
@@ -639,7 +619,6 @@ def cmd_strip(paths):
     return broken
 
 
-# ---------------------------------------------------------------- verify
 def git(*args, check=True):
     r = subprocess.run(["git"] + list(args), capture_output=True)
     if check and r.returncode != 0:
