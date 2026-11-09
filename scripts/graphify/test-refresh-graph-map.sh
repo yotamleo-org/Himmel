@@ -353,6 +353,77 @@ else
   pass "T6c failed refresh stamped nothing"
 fi
 
+CAUSEBIN="$WS/causebin"; mkdir -p "$CAUSEBIN"
+cat > "$CAUSEBIN/graphify" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" != "--version" ] || { echo "graphify 0.9.93"; exit 0; }
+printf '%s\n' "$1" >> "$STUB_CALLS"
+if [ "$(wc -l < "$STUB_CALLS")" -eq 1 ]; then
+  case "$STUB_MODE" in
+    auth) printf 'rotated-login\n' > "$STUB_SRC_CRED" ;;
+    seedfail) rm -f "$STUB_SRC_CRED" ;;
+  esac
+fi
+if cmp -s "$STUB_SRC_CRED" "$CLAUDE_CONFIG_DIR/.credentials.json"; then echo same >> "$STUB_STATE"; else echo differs >> "$STUB_STATE"; fi
+[ "$STUB_MODE" != capauth ] || echo "[graphify extract] chunk 1/1 done"
+if [ "$STUB_MODE" = other ]; then
+  echo "[graphify] chunk 1/1 failed: claude -p exited 1: boom"
+else
+  echo "[graphify] chunk 1/1 failed: claude -p exited 1: Warning: this workspace has not been trusted"
+fi
+echo "[graphify] all semantic chunks failed for backend 'claude-cli'"
+exit 1
+STUB
+cat > "$CAUSEBIN/claude" <<'STUB'
+#!/usr/bin/env bash
+case "$STUB_MODE" in
+  auth|authstale|seedfail|capauth)
+    echo '{"type":"result","is_error":true,"result":"Failed to authenticate: OAuth session expired and could not be refreshed"}'; exit 1 ;;
+  ratelimit)
+    echo '{"type":"result","is_error":true,"result":"API Error: rate limited, try again later"}'; exit 1 ;;
+  *) echo '{"type":"result","is_error":false,"result":"ok"}' ;;
+esac
+STUB
+chmod +x "$CAUSEBIN/graphify" "$CAUSEBIN/claude"
+for mode in auth authstale seedfail capauth ratelimit trust other; do
+  want_rc=2; cap=""; [ "$mode" != capauth ] || { want_rc=4; cap=1; }
+  printf 'test-subscription-auth\n' > "$HERMETIC_HOME/.claude/.credentials.json"
+  : > "$WS/state-$mode"
+  CC="$WS/causecorpus-$mode"; CM="$WS/causemaps-$mode"; mkdir -p "$CC" "$CM"; printf '# x\n' > "$CC/x.md"
+  : > "$WS/calls-$mode"
+  out=$( env GRAPHIFY_MAP_BIN="$CAUSEBIN/graphify" PATH="$CAUSEBIN:$PATH" STUB_MODE="$mode" STUB_CALLS="$WS/calls-$mode" \
+    GRAPHIFY_MAX_CHUNKS_PER_RUN="$cap" STUB_STATE="$WS/state-$mode" STUB_SRC_CRED="$HERMETIC_HOME/.claude/.credentials.json" \
+    GRAPHIFY_CLAUDE_CONFIG_DIR="$WS/cause-cfg-$mode" \
+    bash "$SCRIPT" --name "cause$mode" --corpus-root "$CC" --backend claude-cli \
+    --maps-dir "$CM" --title "Cause Map" --slug cause-map --corpus-tag "cause$mode" 2>&1 ); rc=$?
+  [ "$rc" -eq "$want_rc" ] && pass "T6c-$mode exits $want_rc" || fail "T6c-$mode should exit $want_rc (got $rc): $out"
+  case "$mode" in
+    ratelimit)
+      printf '%s\n' "$out" | grep -q "auth probe reports, cause: API Error: rate limited" && pass "T6c-ratelimit names the probe error" || fail "T6c-ratelimit must name the probe error: $out"
+      printf '%s\n' "$out" | grep -q "re-login" && fail "T6c-ratelimit advised a re-login for a non-auth error: $out" || pass "T6c-ratelimit gives no re-login advice"
+      [ "$(wc -l < "$WS/calls-$mode")" -eq 1 ] && pass "T6c-ratelimit does not retry" || fail "T6c-ratelimit must not retry" ;;
+    capauth)
+      [ "$(wc -l < "$WS/calls-$mode")" -eq 1 ] && pass "T6c-capauth does not retry past the chunk cap" || fail "T6c-capauth must stop at the cap, not retry: $(cat "$WS/calls-$mode")" ;;
+    auth)
+      printf '%s\n' "$out" | grep -q "auth probe reports, cause: .*OAuth session expired" && pass "T6c-auth names the probe's auth error" || fail "T6c-auth must name the auth cause: $out"
+      printf '%s\n' "$out" | grep -q "cause: .*not been trusted" && fail "T6c-auth named the trust warning as the cause: $out" || pass "T6c-auth does not blame the trust warning"
+      [ "$(wc -l < "$WS/calls-$mode")" -eq 2 ] && pass "T6c-auth reseeded and retried exactly once" || fail "T6c-auth should run graphify twice: $(cat "$WS/calls-$mode")"
+      [ "$(tr '\n' ' ' < "$WS/state-$mode")" = "differs same " ] && pass "T6c-auth the login copy went stale, then matched the rotated login at the retry" || fail "T6c-auth copy states: $(cat "$WS/state-$mode")"
+      cmp -s "$HERMETIC_HOME/.claude/.credentials.json" "$WS/cause-cfg-$mode/.credentials.json" && pass "T6c-auth the copy matches the rotated login afterwards" || fail "T6c-auth the copy does not match the source" ;;
+    authstale)
+      printf '%s\n' "$out" | grep -q "left the login copy unchanged" && pass "T6c-authstale does not retry when the reseed changed nothing" || fail "T6c-authstale must say the copy is unchanged: $out"
+      [ "$(wc -l < "$WS/calls-$mode")" -eq 1 ] && pass "T6c-authstale ran graphify once" || fail "T6c-authstale should run graphify once" ;;
+    seedfail)
+      printf '%s\n' "$out" | grep -q "reseed failed or left the login copy unchanged" && pass "T6c-seedfail says the reseed failed" || fail "T6c-seedfail must say the reseed failed: $out"
+      [ "$(wc -l < "$WS/calls-$mode")" -eq 1 ] && pass "T6c-seedfail ran graphify once" || fail "T6c-seedfail should run graphify once" ;;
+    trust)
+      printf '%s\n' "$out" | grep -q "workspace not trusted, cause: .*not been trusted" && pass "T6c-trust names the trust line" || fail "T6c-trust must name the trust cause: $out"
+      [ "$(wc -l < "$WS/calls-$mode")" -eq 1 ] && pass "T6c-trust does not retry" || fail "T6c-trust must not retry" ;;
+    other)
+      printf '%s\n' "$out" | grep -q "last line seen: .*all semantic chunks failed" && pass "T6c-other names the line it saw" || fail "T6c-other must name the last line: $out" ;;
+  esac
+done
+
 # --- T6d: idempotent re-run — a second successful refresh rewrites the same
 # artifacts and the guard still PASSES. ---
 # F6: add a NEW .md between the T6 stamp and this re-run; the
