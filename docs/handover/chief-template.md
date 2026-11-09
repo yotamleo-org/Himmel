@@ -213,7 +213,7 @@ bare `clean.sh` sweep for a worker. long-running.txt: `run_in_background` (a sho
 
 - **Operator messages are additive**; pivot only on a halt or redirect. [prose]
 - **Before idling**, disposition every listed/dropped key: dispatch, slice, close or
-  question. In `## Live state`: `pool-disposition: <KEY> slice|close|question <named target>`; the target starts with another ticket key, `PR <n>` or `decision <n>`, or the tick leaves the line unowned. [prose]
+  question. In `## Live state`: `pool-disposition: <KEY> slice|close|question <named target>` (target: key, PR n, decision n). [prose]
 - **A worker's BLOCKED, permission prompt, or question comes to the chief first** —
   say so in every brief. **One session = one worktree.** [prose]
 - **Impacted suites, not directory sweeps:** a brief names every suite
