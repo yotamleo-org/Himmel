@@ -3,9 +3,6 @@
 # Each row builds a fixture repo from the REAL cbs.txt, fixture set, key, critics.json and CBS
 # file bytes of this checkout, commits a base and a head, and runs the gate from inside it.
 # Rows in results.jsonl are written with the real score.py cbs-hash / confighash of the commits.
-# The gate counts only rows its running scorer produced, so the script under test is a committed
-# temporary copy of this working tree's check-critic-eval.sh, score.py and lib modules at their real paths, and each
-# row carries that copy's scorer-identity: the rows pass while the development tree is dirty.
 # CHECK_CRITIC_EVAL overrides the script under test. No model call, no network.
 #
 # Run: bash scripts/ci/test-check-critic-eval.sh
@@ -32,7 +29,6 @@ git init -q "$SC" && git -C "$SC" -c user.name=t -c user.email=t@example.invalid
     -c commit.gpgsign=false add -A && git -C "$SC" -c user.name=t -c user.email=t@example.invalid \
     -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -q -m scorer
 SUT="${CHECK_CRITIC_EVAL:-$SC/scripts/ci/check-critic-eval.sh}"
-# sid <score.py>: that scorer's running identity, or null.
 sid() { python3 "$1" scorer-identity --json 2>/dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin).get("scorer_sha256"); print("null" if v is None else v)' 2>/dev/null; }
 SID="$(sid "$(dirname "$SUT")/../eval/review-panel/score.py")"
 [[ "$SID" =~ ^[0-9a-f]{64}$ ]] && pass "the committed scorer copy has a clean identity" || fail "the committed scorer copy has a clean identity (got '$SID')"
@@ -55,8 +51,6 @@ fixture() {
 commit_edit() { printf '%s\n' "$2" >> "$R/$1"; gitc add -A && gitc commit -q -m "edit $1" && gitc rev-parse HEAD; }
 cbs_hash() { python3 "$SCORE" cbs-hash "$1" --repo "$R"; }
 confighash() { python3 "$SCORE" confighash "$1" --repo "$R"; }
-# rows <file> <run_id:cbs:conf:recall:fp[:scorer]>...: append gate rows (class recall = recall, one outputs bundle
-# per run_id) to a results file, stamped with the running scorer's identity (scorer: none omits it, null writes null).
 rows() {
     local f="$1"; shift
     python3 -c 'import hashlib,json,sys
@@ -119,7 +113,6 @@ with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h2:$H:
 commit_edit scripts/cr/critic-panel.sh '# a later critic change on main' >/dev/null
 gate "a merge-ref cbs_hash that differs from the swept head fails" 1 "no eval rows"
 
-# --- the running scorer's identity ---------------------------------------------------
 fixture scorer-rows
 commit_edit scripts/cr/critic-first-pass.sh '# a critic change' >/dev/null
 B="$(cbs_hash "$BASE")"; H="$(cbs_hash HEAD)"; C="$(confighash HEAD)"

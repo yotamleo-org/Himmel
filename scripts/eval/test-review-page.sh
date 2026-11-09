@@ -139,8 +139,6 @@ has "bottom line: proof first with its run day" "$bottom" "- Proof-first share (
 has "proof first: the sample counts PRs whose ticket and commits could be read" "$out" "the last 120 merged PRs whose ticket and commits could be read."
 eq "bottom line: one line per eval" "$(printf '%s\n' "$bottom" | grep -c '^- ')" "3"
 
-# page_trend_requires_same_scorer: equal confighash is not enough; a trend needs both rows scored by
-# one known scorer_sha256.
 python3 -I - "$HERE/lib" "$TMP" <<'PY' || { echo "test-review-page: writing the scorer-trend ledgers failed" >&2; exit 1; }
 import json, os, sys
 sys.path.insert(0, sys.argv[1])

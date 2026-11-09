@@ -52,18 +52,6 @@ not verified accuracy; each is also written under its explicit name:
 key_match_recall, key_match_recall_gating, location_match_recall,
 key_match_precision, labelled_clean_block_rate.
 
-Participation. case_participation() reads each case's header N/M,
-finding slugs and stdout/stderr availability receipts once, and gives each
-rostered critic a state (answered | unavailable | unknown); every per-critic
-denominator and the responded counts read only that record, so a critic is
-scored on a case only when it answered it.
-
-Scorer identity. Every row names the scorer that RAN it:
-running_scorer_identity() is this script's own checkout, its HEAD and the
-loaded score.py / wilson.py bytes checked against that HEAD before and after
-scoring. Edited or foreign scorer code gives scorer_sha256 null, a
-diagnostic-only row. The gate counts only rows of the running scorer.
-
 Exit: 0 scored / lint clean; 1 lint problems; 2 refused input.
 Stdlib only; no network, no model call.
 """
@@ -153,18 +141,15 @@ HEADER = re.compile(r"^# Critic Panel Review \((\d+)/(\d+) critics responded\)\s
 AVAIL = re.compile(r"^panel-availability: ([A-Za-z0-9._-]+) (.*)$")
 AVAIL_OK = re.compile(r"^(?:ok(?: responding-model\(([^)]*)\))?|fallback\(([^)]*)\))\s*$")
 REASON = re.compile(r"\breason=([A-Za-z0-9._-]+)")
-# The panel's absence reasons that are protocol, not failure: the member never ran (tier filter, trivial-diff cap) and
-# is outside the header count, or it was counted and skipped itself (an api lane off). A panel-deadline receipt
-# reason is queued only for a member the deadline stopped before launch, outside the header count.
 SKIP_OUTSIDE_HEADER = ("tier-excluded", "keep-one-skipped")
 SKIP_IN_HEADER = ("critic-skipped",)
 PRE_LAUNCH = "panel-deadline"
 CATEGORIES = ("answer", "protocol-skip", "failure", "inconsistent", "unknown")
-# The explicit names of the automated proxies (design "Measurement contract"); each legacy key keeps its formula.
 PROXY_ALIASES = {"key_match_recall": "recall", "key_match_recall_gating": "recall_gating",
                  "location_match_recall": "recall_loc", "key_match_precision": "precision",
                  "labelled_clean_block_rate": "fp_rate"}
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+PROVENANCE_PENDING = "protocol-provenance-not-yet-recorded"
 
 
 def norm_path(p):
@@ -425,7 +410,6 @@ def parse_review(text):
 
 
 def _absence(reason):
-    """(category, effective, header_included) of an unavailable receipt naming that reason."""
     if reason in SKIP_OUTSIDE_HEADER:
         return "protocol-skip", False, False
     if reason in SKIP_IN_HEADER:
@@ -433,7 +417,7 @@ def _absence(reason):
     if reason == PRE_LAUNCH:
         return "failure", True, False
     if reason is None:
-        return "unknown", None, None  # an unavailable receipt that names no reason says neither why nor when
+        return "unknown", None, None
     return "failure", True, True
 
 
@@ -446,7 +430,7 @@ def case_participation(roster, text, stderr, findings, performed):
     N/M reconciles: M equals the header-counted critics and the N answer slots left are exactly those critics. Any
     other unaccounted critic stays unknown (no failure reason is inferred), and an answer beside an absence, absences
     that disagree, non-rostered finding slugs or impossible counts are inconsistent."""
-    rec = {s: {"answer": [], "absence": [], "other": [], "model": None} for s in roster}
+    rec = {s: {"answer": [], "absence": [], "launched": [], "model": None} for s in roster}
     foreign = False
     for f in findings:
         if f["critic"] == GUARD:
@@ -471,8 +455,7 @@ def case_participation(roster, text, stderr, findings, performed):
             reason = REASON.search(rest)
             r["absence"].append((reason.group(1) if reason else None, ref))
         else:
-            # fallback-failed / chain-stopped / budget-exhausted: the member was launched and counted
-            r["other"].append(ref)
+            r["launched"].append(ref)
     header, header_ref = None, []
     for at, line in enumerate(text.splitlines(), 1):
         h = HEADER.match(line)
@@ -483,7 +466,7 @@ def case_participation(roster, text, stderr, findings, performed):
     out, pending = {}, []
     for slug in roster:
         r = rec[slug]
-        ev = r["answer"] + [ref for _, ref in r["absence"]] + r["other"]
+        ev = r["answer"] + [ref for _, ref in r["absence"]] + r["launched"]
         kinds = {_absence(reason) for reason, _ in r["absence"]}
         if r["answer"] and r["absence"]:
             out[slug] = _part("unknown", "inconsistent", None, None, "an answer and an unavailable receipt", ev)
@@ -491,13 +474,13 @@ def case_participation(roster, text, stderr, findings, performed):
             out[slug] = _part("unknown", "inconsistent", None, None, "unavailable receipts that disagree", ev)
         elif r["absence"]:
             cat, eff, hdr = kinds.pop()
-            if hdr is False and r["other"]:
-                hdr = True  # a fallback chain ran, so the member was counted before its deadline or skip
+            if hdr is False and r["launched"]:
+                hdr = True
             reasons = sorted({str(reason) for reason, _ in r["absence"]})
             out[slug] = _part("unavailable", cat, eff, hdr, ",".join(reasons), ev)
         elif r["answer"]:
             out[slug] = _part("answered", "answer", True, True, "a finding or an ok receipt", ev, r["model"])
-        elif r["other"]:
+        elif r["launched"]:
             out[slug] = _part("unavailable", "failure", True, True, "a fallback chain that never answered", ev)
         else:
             pending.append(slug)
@@ -571,7 +554,6 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
         part = case_participation(roster, text, etext, findings, performed)
         foreign = sorted({f["critic"] for f in findings} - set(roster) - {GUARD})
         case_evidence[cid] = {"performed": performed and not foreign, "non_rostered": foreign, "critics": part}
-        # A finding of a critic the roster does not name is no participant and no completed case.
         if not performed or foreign:
             unscored.append(cid)
             continue
@@ -588,15 +570,13 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
     metrics.update({"defects": n_defects, "cases": len(ids), "unscored": len(unscored),
                     "leaked": len(leaks)})
     status = "inconclusive" if (leaks or len(unscored) == len(ids)) else ("partial" if unscored else "ok")
-    # The cases each critic answered, from the same participation record the metrics read.
     responded = {"scored": len(per_case),
                  "critics": {who: sum(1 for cid in per_case if per_case[cid][1][who]["state"] == "answered")
                              for who in roster}}
     coverage = {"scored": len(per_case), "critics": {
         who: {cat: sum(1 for cid in per_case if per_case[cid][1][who]["category"] == cat) for cat in CATEGORIES}
         for who in roster}}
-    # M2/M3 record execution provenance and the shared eligibility selector; until then no result is decision-grade.
-    reasons = ["protocol-provenance-not-yet-recorded"]
+    reasons = [PROVENANCE_PENDING]
     for cat, why in (("inconsistent", "participation-inconsistent"), ("unknown", "participation-unknown")):
         if any(c[cat] for c in coverage["critics"].values()):
             reasons.append(why)
@@ -607,8 +587,7 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
 
 
 def member_metrics(members, per_case, cases, window, prefix, metrics, ci, case_rows):
-    """Fill metrics and ci (names prefixed) and the panel's case_rows from the scored cases. A critic counts on a
-    case only when its participation record says it answered; the panel counts every completed case."""
+    """Fill metrics and ci (names prefixed) and the panel's case_rows from the scored cases."""
     for who in members:
         hit = hit_loc = hit_gate = 0
         defects = true_f = all_f = clean_n = clean_fp = seeded_n = 0
@@ -794,8 +773,7 @@ SCORER_FILES = (REL + "/score.py", "scripts/eval/lib/wilson.py")
 
 
 def scorer_digest(repo, rev):
-    """64-hex over the scorer files' blobs at <rev> of repo: a pure tree helper. Row writers never call it with the
-    gate's --repo or --tree; they take running_scorer_identity()."""
+    """64-hex over the scorer files' blobs at <rev> of repo: a pure tree helper."""
     h = hashlib.sha256()
     for p in SCORER_FILES:
         b = tree_blob(repo, rev, p)
@@ -847,7 +825,6 @@ def known_identity(ident):
 
 
 def settled_identity(before):
-    """The identity a row may carry: `before` (taken before scoring) only when the scorer and HEAD are unchanged now."""
     after = running_scorer_identity()
     if after != before:
         return dict(after, scorer_sha256=None, scorer_clean=False,
@@ -907,8 +884,7 @@ def check_stamp(repo, rev, outputs):
 
 
 def gate_row(repo, rev, outputs):
-    """The results.jsonl row of one sweep's outputs, scored against <rev>'s key and roster, naming the scorer that
-    ran (never a scorer in <rev> or repo)."""
+    """The results.jsonl row of one sweep's outputs, scored against <rev>'s key and roster."""
     if not os.path.isdir(outputs):
         raise ValueError("no outputs dir: %s" % outputs)
     check_stamp(repo, rev, outputs)
@@ -990,10 +966,8 @@ def panel_mismatch(rows, base_hash, head_hash, confighash):
 
 
 def gate(repo, base, head, target_classes=()):
-    """The verdict over the rows the RUNNING scorer produced: rows of another or no scorer are dropped (and counted)
-    before the roster check and gate_verdict's first-row-wins selection, so a re-score of an old sweep by this scorer
-    is the row read. No clean running identity, or no row of it, is unmeasured.
-    ponytail: M1's interim filter; M3 moves selection into one shared eligibility selector in eval_feedback.py."""
+    # ponytail: the scorer filter lives here, not in one shared selector, upgrade = M3's eligibility selector in
+    # eval_feedback.py that compare, gate and report all call.
     b, h, c = cbs_hash(repo, base), cbs_hash(repo, head), confighash(repo, head)
     where = {"baseline_cbs_hash": b, "head_cbs_hash": h, "confighash": c}
     ident = running_scorer_identity()
@@ -1158,7 +1132,6 @@ def main(argv=None):
         config = dict(eval_config(fixture_set_hash(a.fixtures, a.key, ids), res["critics"]), window=a.window)
         if a.model:
             config["critic_model"] = a.model
-        # The scorer identity rides in meta, outside the confighash; case_evidence stays in the --json artifact.
         meta = dict(meta, leaks=res["leaks"], unscored=res["unscored"], coverage=res["coverage"],
                     decision_eligible=res["decision_eligible"], ineligibility_reasons=res["ineligibility_reasons"],
                     **scorer)
@@ -1205,8 +1178,6 @@ def tree_main(a):
         # A row without a `responded` key is not held to one: verify-row cannot tell a row exported before rosters
         # were recorded from one that dropped the key, and CI never runs verify-row. The gate names such a row only when
         # another counted row records a roster; when every counted row lacks one the normal verdict stands.
-        # A legacy row (no scorer_sha256) is compared on the metrics it claimed; its scorer
-        # identity is unverified, and a re-scored value a scoring repair moved still differs.
         legacy = not claimed.get("scorer_sha256")
         if legacy:
             got = dict(got, metrics={k: v for k, v in got["metrics"].items() if k in (claimed.get("metrics") or {})})

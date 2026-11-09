@@ -89,22 +89,20 @@ def plain(name):
     return name.replace("-", " ").replace("_", " ").replace(".", " ")
 
 
-def scorer(row):
-    """The row's known scorer_sha256, else None."""
+def known_scorer(row):
     s = (row.get("meta") or {}).get("scorer_sha256")
     return s if isinstance(s, str) and re.match(r"^[0-9a-f]{64}$", s) else None
 
 
 def latest(rows, eval_id):
-    """(newest usable row, the newest earlier row of the same series) for one eval. A review-panel series also needs
-    one known scorer on both rows, so no trend crosses a scorer change or a row with no scorer identity."""
+    """(newest usable row, the newest earlier row of the same series) for one eval."""
     mine = [r for r in rows if r["eval"] == eval_id and r["status"] in ("ok", "partial")]
     if not mine:
         return None, None
     cur = mine[-1]
     prev = [r for r in mine[:-1] if r["confighash"] == cur["confighash"]]
     if eval_id == "review-panel":
-        prev = [r for r in prev if scorer(cur) is not None and scorer(r) == scorer(cur)]
+        prev = [r for r in prev if known_scorer(cur) is not None and known_scorer(r) == known_scorer(cur)]
     return cur, (prev[-1] if prev else None)
 
 
@@ -135,7 +133,6 @@ def count(m, key):
 
 
 def proxy_key(m, w, new, old):
-    """The explicit proxy name score.py writes, else the legacy key of the same formula."""
     return "%s.%s" % (w, new) if ("%s.%s" % (w, new)) in m else "%s.%s" % (w, old)
 
 
