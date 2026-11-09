@@ -1186,6 +1186,16 @@ CURL
     assert_not_contains "key not in the row" "sk-test-fixture" "$(cat "$HOME/.himmel/state/qmd-embed-usage.jsonl" 2>/dev/null)"
     assert_contains "key is on curl's stdin" "Bearer sk-test-fixture" "$(cat "$STATE/curl-stdin" 2>/dev/null)"
 
+    echo "TEST: the key goes to OpenRouter only when the effective base URL is OpenRouter"
+    JINA_CFG='collections:\n  himmel:\n    path: /x\n# was https://openrouter.ai/api/v1\nmodels:\n  embed: openai:text-embedding-3-small\n  openai_base_url: https://api.jina.ai/v1\n'
+    printf '%b' "$JINA_CFG" > "$HOME/.config/qmd/index.yml"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+    rc=0; out=$( (unset QMD_REINDEX_KEY_USAGE_CMD; PATH="$FAKEBIN:$PATH" bash "$SCRIPT" --qmd-bin "$FAKE_QMD") 2>&1) || rc=$?
+    assert_rc "jina config naming openrouter in a comment rc 0" 0 "$rc"
+    assert_rc "no curl call for a jina base URL" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+    assert_rc "usage unknown for a jina base URL" unknown "$(usage_field 1 usage_before)"
+
     echo "TEST: a local-model run writes no usage row"
     rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true
     reset_state
