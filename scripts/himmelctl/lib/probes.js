@@ -2611,7 +2611,8 @@ function probeStatechartReady(item, ctx) {
     raw = fs.readFileSync(envFile, 'utf8');
   } catch (e) {
     if (e.code === 'ENOENT') {
-      return { actual: 'absent', detail: `statechart not set up (no ${envFile}) — bash scripts/machine-setup/setup-statechart.sh --install` };
+      // Optional tooling never set up is a clean absence (status reads n/a), not an alarm.
+      return { actual: 'absent', cleanAbsence: true, detail: `statechart not set up (no ${envFile}) — bash scripts/machine-setup/setup-statechart.sh --install` };
     }
     return { actual: 'degraded', detail: `cannot read ${envFile}: ${e.message}` };
   }
