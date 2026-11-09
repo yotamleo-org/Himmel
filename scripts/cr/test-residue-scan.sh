@@ -12,6 +12,8 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/residue-scan-test.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/home" "$tmp/scratch space" || exit 1
 export HOME="$tmp/home"
+export HIMMEL_CEILINGS_LEDGER="$tmp/no-ceilings-ledger.tsv"
+case "$HIMMEL_CEILINGS_LEDGER" in "$tmp"/*) ;; *) echo "FAIL: the ceilings ledger escapes the temp dir"; exit 1 ;; esac
 
 check() {
     if [ "$2" = "$3" ]; then echo "ok - $1"; else
@@ -39,8 +41,17 @@ check "clean: summary line" "$(printf '%s\n' "$out" | grep -cF "$summary0")" "1"
 
 out="$(scan waived.diff)"; rc=$?
 check "waived: exit 0" "$rc" "0"
-check "waived (ponytail / residue-keep): no finding" "$(count_all "$out")" "0"
+check "waived (residue-keep): no finding" "$(count_all "$out")" "0"
 check "waived: summary line" "$(printf '%s\n' "$out" | grep -cF "$summary0")" "1"
+
+p=pony; marker="${p}tail:"
+printf '%s\n' 'diff --git a/docs/lanes.md b/docs/lanes.md' '--- a/docs/lanes.md' '+++ b/docs/lanes.md' '@@ -4,0 +5,1 @@' \
+    "+The glm lane was removed in v1.1. $marker kept until v1.3, drop then" >"$tmp/marker.diff"
+out="$(bash "$SCAN" --diff-file "$tmp/marker.diff")"; rc=$?
+check "marker line: exit 0 (advisory)" "$rc" "0"
+check "marker line: flagged, no longer waived" "$(count_all "$out")" "1"
+check "marker line: hint names the ceilings ledger" "$(printf '%s\n' "$out" | grep -cF 'scripts/ledger/ceiling-add.sh')" "1"
+check "marker line: hint no longer offers the marker as an expiry" "$(printf '%s\n' "$out" | grep -cF "$marker <ceiling>")" "0"
 
 out="$(timeout 10 bash "$SCAN" --diff-file </dev/null)"; rc=$?
 check "--diff-file with no value: terminates, exit 0" "$rc" "0"

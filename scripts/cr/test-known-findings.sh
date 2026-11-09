@@ -9,6 +9,8 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }   # no pipeline: see t
 HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/known-findings.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/kf-test.XXXXXX")"; trap 'rm -rf "$tmp"' EXIT
 fails=0
+export HIMMEL_CEILINGS_LEDGER="$tmp/no-ceilings-ledger.tsv"
+case "$HIMMEL_CEILINGS_LEDGER" in "$tmp"/*) ;; *) echo "FAIL: the ceilings ledger escapes the temp dir"; exit 1 ;; esac
 check()        { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains()     { grepq "$2" -F -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
 not_contains() { grepq "$2" -F -e "$3" && { echo "FAIL - $1: output must NOT contain [$3]"; fails=$((fails+1)); } || echo "ok - $1"; }
@@ -421,7 +423,7 @@ aev="$(node -e 'const j=require(process.argv[1]);const c=j.classes.find(c=>c.id=
 # that tells critics never to re-raise it.
 check "anchor rebuttal: ONLY the real escalation-claim learning attributes (9 uses, 1 row, not 13/2)" "$aev" "9 1"
 
-# learnings feed: PROPOSE-CLASS / STALE / PONYTAIL / DUPLICATE / PROMOTE-HINT lines and the re-measure counts.
+# learnings feed: PROPOSE-CLASS / STALE / DEFERRED / DUPLICATE / PROMOTE-HINT lines and the re-measure counts.
 # Every case runs --refresh on a COPY of the shipped catalogue with its own tiny CSV and an absent ledger.
 LHDR='Learning,Repository,File,Pull Request,URL,Created By,Usage,Last Used,Created At,Updated At'
 LFILE='scripts/cr/known-findings.sh'
@@ -511,7 +513,8 @@ check "refresh in a tree with no catalogue: the anchor's catalogue is untouched"
 printf 'HIMMEL-7001\tIn Progress\nHIMMEL-7002\tDone\n' > "$tmp/status.tsv"
 { echo "$LHDR"; lrow 'Defer the snarfle cache fix to HIMMEL-7001 until later.' "$LFILE" 2; lrow 'Defer the gizmo rewrite to HIMMEL-7002 for now.' "$LFILE" 2; } > "$tmp/l-defer.csv"
 ld="$(lrun defer "$tmp/l-defer.csv" "$tmp/status.tsv")"
-contains "feed: a row deferring to an open ticket is PONYTAIL" "$ld" "PONYTAIL row=1 uses=2 ticket=HIMMEL-7001 status=In Progress"
+contains "feed: a row deferring to an open ticket is DEFERRED" "$ld" "DEFERRED row=1 uses=2 ticket=HIMMEL-7001 status=In Progress"
+not_contains "feed: the retired marker class name is gone" "$ld" "PONY""TAIL row="
 contains "feed: a row deferring to a Done ticket is STALE" "$ld" "STALE row=2 uses=2 reason=closed-deferral HIMMEL-7002 (Done)"
 lu="$(lrun deferu "$tmp/l-defer.csv")"
 not_contains "feed: unavailable Jira status never makes a row STALE" "$lu" "reason=closed-deferral"

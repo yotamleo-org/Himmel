@@ -10,8 +10,8 @@
 #   c  transition code: legacy/deprecated/compat-shim/old-path handling
 #   d  transition gate: a deny/refuse/block row whose text says retired/dropped
 #   e  transition prose: "X was removed" / "(removed)" in a doc
-# The author drops it, keeps it with a stated reason, or gives it an expiry:
-# a line carrying `ponytail:` or `residue-keep: <reason>` is never flagged.
+# The author drops it, keeps it with a stated reason, or records the ceiling in the
+# ceilings ledger: a line carrying `residue-keep: <reason>` is never flagged.
 #
 # ADVISORY ONLY - always exits 0. Diff-scoped, deterministic, no LLM call.
 #
@@ -96,7 +96,7 @@ NR == FNR {
 /^\+/ {
     text = substr($0, 2); cur = ln; ln = ln + 1;
     if (file == "/dev/null" || skip_path(file)) next
-    if (text ~ /^[ \t]*$/ || text ~ /ponytail:|residue-keep:/) next
+    if (text ~ /^[ \t]*$/ || text ~ /residue-keep:/) next
     low = tolower(text)
     saved = ln; ln = cur
     if (is_test(file)) {
@@ -120,7 +120,7 @@ NR == FNR {
 END {
     printf "residue-scan (advisory): %d finding(s)\n", n
     for (i = 1; i <= n; i++) print out[i]
-    if (n > 0) print "  Drop each one, keep it with `residue-keep: <security/safety reason>`, or give it an expiry (`ponytail: <ceiling>, <upgrade path>`). Does not block this PR."
+    if (n > 0) print "  Drop each one, keep it with `residue-keep: <security/safety reason>`, or record its ceiling and upgrade path in the ceilings ledger (`scripts/ledger/ceiling-add.sh`). Does not block this PR."
 }
 ' "$diff_file" "$diff_file"
 
