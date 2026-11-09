@@ -226,6 +226,21 @@ _rcd_report() {
     [ "$first" -eq 0 ]
 }
 
+# _rcd_child <cmd...> - run the child in the background and wait for it, so a TERM that reaches this shell
+# is handled at once by _rcd_term (a foreground wait would defer the trap until the child ends). The child
+# keeps this shell's stdin and the caller's redirects. rc = the child's.
+_rcd_child() {
+    "$@" <&0 &
+    rcd_pid=$!
+    wait "$rcd_pid"
+}
+# _rcd_term - forward the TERM to the child, wait for its cleanup, exit 143 (the EXIT trap removes the scratch files).
+# shellcheck disable=SC2329  # invoked by the TERM trap below, which shellcheck does not follow
+_rcd_term() {
+    [ -z "${rcd_pid:-}" ] || { kill -TERM "$rcd_pid" 2>/dev/null; wait "$rcd_pid" 2>/dev/null; }
+    exit 143
+}
+
 # A self-armed deadline: the chief types this script bare, because a `timeout`
 # prefix does not match the project allow rule. READY_CHECK_DEADLINE (whole seconds, default
 # 150 = chief-wait's bound, above item 19's 105 s of bounds; 0 = none) bounds the whole run:
@@ -247,11 +262,12 @@ if [ -z "${_READY_CHECK_ARMED:-}" ]; then
     fi
     rcd_ref=$(mktemp "${TMPDIR:-/tmp}/ready-check-refused.XXXXXX" 2>/dev/null) || rcd_ref=""  # swallow-ok: no scratch file runs this process unwrapped, as before
     if [ -n "$rcd_ref" ]; then
-        # A TERM (the chief's own `timeout`) reaches the child too: this shell waits for it to finish its cleanup
-        # (the trap runs once the foreground child returns), then removes its own scratch files and exits.
-        rcd_buf=""; rcd_err=""
+        # A TERM (the chief's own `timeout`) is forwarded to the child, which gets its own process group from its
+        # own `timeout`, so this shell's group signal never reaches it. This shell then waits for the child's
+        # cleanup, removes its own scratch files and exits.
+        rcd_buf=""; rcd_err=""; rcd_pid=""
         trap 'rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"' EXIT
-        trap 'exit 143' TERM INT HUP
+        trap '_rcd_term' TERM INT HUP
         # the gate form ends in <pr> <full head>; any other form (--only, --outside) leaves no marker
         rcd_pr=""; rcd_sha=""
         if [ "$#" -ge 2 ]; then
@@ -269,7 +285,7 @@ if [ -z "${_READY_CHECK_ARMED:-}" ]; then
         fi
         if [ -n "$_TIMEOUT_BIN" ] && [ -n "$rcd_buf" ] && [ -n "$rcd_err" ]; then
             _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
-                "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" >"$rcd_buf" 2>"$rcd_err" || rcd_rc=$?
+                _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" >"$rcd_buf" 2>"$rcd_err" || rcd_rc=$?
             if [ "$rcd_rc" -ne 0 ] && _rcd_report "$rcd_ref" "$rcd_pr" "$rcd_sha"; then
                 rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
                 exit 2
@@ -286,9 +302,9 @@ if [ -z "${_READY_CHECK_ARMED:-}" ]; then
         rm -f "$rcd_buf" "$rcd_err"
         if [ -n "$_TIMEOUT_BIN" ]; then
             _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
-                "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" || rcd_rc=$?
+                _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" || rcd_rc=$?
         else
-            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" bash "$0" "$@" || rcd_rc=$?
+            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" _rcd_child bash "$0" "$@" || rcd_rc=$?
         fi
         if [ "$rcd_rc" -ne 0 ] && _rcd_report "$rcd_ref" "$rcd_pr" "$rcd_sha"; then
             rm -f "$rcd_ref"

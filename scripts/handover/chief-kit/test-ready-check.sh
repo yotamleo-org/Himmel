@@ -4075,6 +4075,19 @@ RUN_SCRIPT="$tmp/s17-term-wrap.sh" TMPDIR="$S17_TMP" s17_at "$S17_H1"
 unset RUN_SCRIPT
 check "19 T8c: killed mid-read, no ready-check-19 temp dir is left" "0" "$(find "$S17_TMP" -maxdepth 1 -name 'ready-check-19.*' | wc -l | tr -d ' ')"
 
+# T8d: the armed wrapper forwards a TERM to its child and waits for the child's cleanup. An outer `timeout` that
+# kills a ready-check stalled on a read gets control back within the bound, and nothing is left behind: none of the
+# wrapper's scratch files, and no stalled child (the child has its own process group, so the outer signal never reaches it).
+S_KW="$tmp/kill-wrap"; mkdir -p "$S_KW"
+printf '#!/usr/bin/env bash\nsleep 40\n' > "$S_KW/slow-gh"; chmod +x "$S_KW/slow-gh"
+kw_t0=$SECONDS
+(cd "$REPO" && TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1)  # gnu-ok: Linux-only kit
+kw_took=$((SECONDS - kw_t0))
+sleep 1
+check "T8d: a ready-check killed by an outer timeout returns within the bound (took ${kw_took}s)" "$([ "$kw_took" -le 12 ] && echo yes || echo no)" "yes"
+check "T8d: the killed wrapper leaves none of its scratch files" "$(find "$S_KW" -maxdepth 1 -name 'ready-check-*' | wc -l | tr -d ' ')" "0"
+check "T8d: the killed wrapper leaves no stalled child" "$(pgrep -f "$S_KW/slow-gh" | wc -l | tr -d ' ')" "0"
+
 # T9: a suite CI cannot run (no manifest row) needs a local PASS
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"
 s17_at "$S17_H1"
