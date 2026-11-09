@@ -59,14 +59,18 @@ const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 
 function wire(fixVersions: Array<{ name: string }>, versions: unknown[] = VERSIONS) {
   let current = fixVersions;
+  let status = 'To Do';
   mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
     if (method === 'PUT') {
       const ops = (body as { update: { fixVersions: Array<{ add?: { name: string } }> } }).update.fixVersions;
       current = ops.flatMap((o) => (o.add ? [o.add] : []));
     }
+    if (method === 'POST' && path.endsWith('/transitions')) {
+      status = LIVE.find((t) => t.id === (body as { transition: { id: string } }).transition.id)!.name;
+    }
     if (method === 'GET' && path.endsWith('/transitions')) return { transitions: LIVE };
     if (method === 'GET' && path.endsWith('/versions')) return versions;
-    if (method === 'GET' && path.includes('/issue/')) return { fields: { fixVersions: current } };
+    if (method === 'GET' && path.includes('/issue/')) return { fields: { fixVersions: current, status: { name: status } } };
     return {};
   });
 }
@@ -136,6 +140,14 @@ describe('transition to Done stamps the current fixVersion', () => {
     wire([]);
     await run('HIMMEL-1', 'In Progress');
     expect(puts()).toHaveLength(0);
+  });
+
+  it('a transition with no to status is still read back, and one that did not move fails', async () => {
+    wire([]);
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) =>
+      method === 'POST' && path.endsWith('/transitions') ? {} : base(method, path, body));
+    await expect(run('HIMMEL-1', 'In Progress')).rejects.toThrow(/status was not changed.*'In Progress'.*'To Do'/s);
   });
 });
 

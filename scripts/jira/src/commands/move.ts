@@ -2,6 +2,8 @@ import type { Command } from 'commander';
 import { request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import type { JiraTransition } from '../types.js';
+import { CreatePartial, runCreate, type CreateOptions } from '../operations/create.js';
+import { TransitionNotFound, transitionIssue } from './transition.js';
 
 // Jira Cloud REST API does NOT support direct project-change
 // on an issue. The pattern here is close-and-recreate:
@@ -9,13 +11,15 @@ import type { JiraTransition } from '../types.js';
 //   1. GET source (summary, description, issuetype)
 //   2. GET source comments (small race window: a comment added between 1 and
 //      2 is dropped; documented, acceptable for current use)
-//   3. CREATE target with prepended supersedes paragraph in description
+//   3. CREATE target with prepended supersedes paragraph in description, through
+//      runCreate (operations/create.ts) with the destination's own home and
+//      placement flags; its every check runs first, so a refusal writes nothing
 //   4. COPY each comment (per-iteration try/catch; partial failures collected,
 //      reported at the end, do NOT abort the move. Target is more useful with
 //      most comments than with none)
 //   5. COMMENT on source: "Moved to <NEW-KEY>. Closing."
 //   6. GET source transitions, find --target-status (default Done)
-//   7. POST transition
+//   7. POST transition and read the source status back (transitionIssue)
 //
 // The action body is wrapped in a top-level try/catch that tags each step,
 // surfaces step-specific stderr, and prints the partial-state breadcrumb
@@ -152,7 +156,16 @@ export function registerMove(program: Command): void {
         'Use this when the source workflow has no Done — e.g. Closed, Resolved, Completed.',
       'Done',
     )
-    .option('--dry-run', 'Print plan and exit; no mutations', false)
+    .option('--parent <key>', "The target's parent epic, in the target project (the source's epic is never copied)")
+    .option('--labels <labels>', "The target's labels, comma-separated; `standalone` marks a target with no parent epic")
+    .option('--sector <s>', "The target's Sector, when the target project uses sectors")
+    .option('--fix-version <name>', "The target's fixVersion, in the target project")
+    .option('--priority <name>', "The target's priority")
+    .option('--backlog', 'File the target to the backlog (needs --proposed-version backlog and --why)')
+    .option('--proposed-version <v>', 'The target is filed with a proposed version and its INTAKE request')
+    .option('--why <why>', 'One line: why the target waits in the backlog')
+    .option('--gate <reason>', 'Why the target may enter a version')
+    .option('--dry-run', 'Run every check of the target create and print the plan; no mutations', false)
     .action(
       async (
         srcKey: string,
@@ -161,7 +174,7 @@ export function registerMove(program: Command): void {
           type?: string;
           targetStatus: string;
           dryRun: boolean;
-        },
+        } & Pick<CreateOptions, 'parent' | 'labels' | 'sector' | 'fixVersion' | 'priority' | 'backlog' | 'proposedVersion' | 'why' | 'gate'>,
       ) => {
         // Partial-state tracking, used by the error-breadcrumb path so the
         // operator can finish the move manually instead of re-running and
@@ -221,27 +234,41 @@ export function registerMove(program: Command): void {
           const comments = commentsResp?.comments ?? [];
           totalComments = comments.length;
 
+          // The target is filed by the same create operation as `jira create`, with
+          // the destination's own home and placement: every check (body, home,
+          // placement, intake) runs before the first write, so a refusal leaves
+          // both projects untouched.
+          const target: CreateOptions = {
+            type: srcType, title: targetSummary, adf: targetDesc, project: options.toProject, blocks: [], attach: [],
+            parent: options.parent, labels: options.labels, sector: options.sector, fixVersion: options.fixVersion,
+            priority: options.priority, backlog: options.backlog, proposedVersion: options.proposedVersion, why: options.why, gate: options.gate,
+          };
+          stepLabel = 'CHECK target create';
+          try {
+            await runCreate(target, { check: true });
+          } catch (e) {
+            console.error(`jira move: the target create was refused, nothing was written: ${(e as Error).message}`);
+            process.exit(1);
+          }
+
           if (options.dryRun) {
             console.log(`DRY-RUN jira move: ${srcKey} → ${options.toProject}`);
-            console.log(`  create: type=${srcType} summary="${targetSummary}"`);
+            console.log(`  create: type=${srcType} summary="${targetSummary}" (checks passed)`);
             console.log(`  copy ${totalComments} comment(s)`);
             console.log(`  comment + transition ${srcKey} → ${options.targetStatus}`);
             return;
           }
 
-          // 3. CREATE target
+          // 3. CREATE target (prints the `Created KEY` line verifier scripts read)
           stepLabel = 'CREATE target issue';
-          created = await request<{ key: string }>('POST', '/issue', {
-            fields: {
-              project: { key: options.toProject },
-              summary: targetSummary,
-              issuetype: { name: srcType },
-              description: targetDesc,
-            },
-          });
-          // Match the create command's output line so existing
-          // "Created (HIMMEL|LUNA)-N" verifier scripts keep working.
-          console.log(`Created ${created.key}`);
+          try {
+            const r = await runCreate(target);
+            if (r.disposition !== 'created') throw new Error(`the target create returned ${r.disposition}`);
+            created = { key: r.key };
+          } catch (e) {
+            if (e instanceof CreatePartial) created = { key: e.key };
+            throw e;
+          }
           // Breadcrumb on the source ticket: the move has mutated Jira (target
           // created) even if a later step (comment copy / transition) partially
           // fails, so the SessionEnd nudge must not fire.
@@ -281,18 +308,15 @@ export function registerMove(program: Command): void {
           await request('POST', `/issue/${srcKey}/comment`, { body: movedNote });
           console.log(`Comment added to ${srcKey}`);
 
-          // 6. GET transitions + match against --target-status
-          stepLabel = 'GET source transitions';
-          const transResp = await request<{ transitions?: JiraTransition[] }>(
-            'GET',
-            `/issue/${srcKey}/transitions`,
-          );
-          const transitions = transResp?.transitions ?? [];
-          const targetT = findTransitionByName(transitions, options.targetStatus);
-          if (!targetT) {
-            const avail = transitions.length
-              ? transitions.map((t) => t.name).join(', ')
-              : '(none)';
+          // 6-7. Close the source through the shared transition, which reads its
+          // status back: the source is never reported closed unless it reads closed.
+          stepLabel = 'POST source transition';
+          let closed: string;
+          try {
+            closed = (await transitionIssue(srcKey, options.targetStatus, { version: false })).name;
+          } catch (e) {
+            if (!(e instanceof TransitionNotFound)) throw e;
+            const avail = e.available.length ? e.available.join(', ') : '(none)';
             console.error(
               `jira move: source ${srcKey} has no '${options.targetStatus}' transition. Available: ${avail}`,
             );
@@ -301,13 +325,7 @@ export function registerMove(program: Command): void {
             );
             process.exit(2);
           }
-
-          // 7. POST transition
-          stepLabel = 'POST source transition';
-          await request('POST', `/issue/${srcKey}/transitions`, {
-            transition: { id: targetT.id },
-          });
-          console.log(`${srcKey} → ${targetT.name}`);
+          console.log(`${srcKey} → ${closed}`);
 
           // Final report. If any comments failed to copy, exit non-zero so
           // scripted callers see the partial state.
