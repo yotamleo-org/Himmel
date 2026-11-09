@@ -24,7 +24,7 @@ const validLaunch = (r) => r && typeof r === 'object' && !Array.isArray(r) && r.
   && Number.isSafeInteger(r.rc) && typeof r.cause === 'string' && strOrNull(r.name) && strOrNull(r.line);
 export function readLaunchRows(path) {
   let text;
-  try { text = readFileSync(path, 'utf8'); } catch { return { exists: false, rows: [], skipped: 0 }; }
+  try { text = readFileSync(path, 'utf8'); } catch (e) { return e && e.code === 'ENOENT' ? { exists: false, rows: [], skipped: 0 } : null; }
   const rows = []; let skipped = 0;
   for (const l of text.split('\n')) {
     if (!l.trim()) continue;

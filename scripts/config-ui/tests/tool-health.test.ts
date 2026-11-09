@@ -1621,6 +1621,11 @@ test("no ledger reads absent, and a rollup given no launches reads not-read", ()
   expect(rollupToolHealth([], [], new URLSearchParams(), Date.parse("2026-10-07T12:00:00Z")).launches_refused).toEqual({ state: "not-read" });
 });
 
+test("a ledger that cannot be read reads not-read, never absent", () => {
+  const env = seed(); mkdirSync(join(env.HOME, ".himmel", "launch-refusals.jsonl"), { recursive: true });
+  expect(read(env).launches_refused).toEqual({ state: "not-read" });
+});
+
 function writeLaunches(env: any, rows: any[]) {
   mkdirSync(join(env.HOME, ".himmel"), { recursive: true });
   writeFileSync(join(env.HOME, ".himmel", "launch-refusals.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
