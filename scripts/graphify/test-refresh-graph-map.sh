@@ -353,6 +353,43 @@ else
   pass "T6c failed refresh stamped nothing"
 fi
 
+# --- T6c-auth/T6c-trust/T6c-other: an all-chunks-failed run names its cause.
+# The stub fails like graphify did: stderr holds only the workspace-trust lines,
+# the stdout envelope holds the auth error. STUB_MODE picks the cause. ---
+CAUSEBIN="$WS/causebin"; mkdir -p "$CAUSEBIN"
+cat > "$CAUSEBIN/graphify" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" != "--version" ] || { echo "graphify 0.9.93"; exit 0; }
+printf '%s\n' "$1" >> "$STUB_CALLS"
+[ "$STUB_MODE" = other ] || echo "Warning: this workspace has not been trusted" >&2
+case "$STUB_MODE" in
+  auth)  echo '{"is_error":true,"result":"Failed to authenticate: OAuth session expired and could not be refreshed"}' ;;
+  other) echo "[graphify] all semantic chunks failed for backend 'claude-cli'" ;;
+esac
+exit 2
+STUB
+chmod +x "$CAUSEBIN/graphify"
+for mode in auth trust other; do
+  CC="$WS/causecorpus-$mode"; CM="$WS/causemaps-$mode"; mkdir -p "$CC" "$CM"; printf '# x\n' > "$CC/x.md"
+  : > "$WS/calls-$mode"
+  out=$( env GRAPHIFY_MAP_BIN="$CAUSEBIN/graphify" PATH="$CAUSEBIN:$PATH" STUB_MODE="$mode" STUB_CALLS="$WS/calls-$mode" \
+    GRAPHIFY_CLAUDE_CONFIG_DIR="$WS/cause-cfg-$mode" \
+    bash "$SCRIPT" --name "cause$mode" --corpus-root "$CC" --backend claude-cli \
+    --maps-dir "$CM" --title "Cause Map" --slug cause-map --corpus-tag "cause$mode" 2>&1 ); rc=$?
+  [ "$rc" -eq 2 ] && pass "T6c-$mode exits 2" || fail "T6c-$mode should exit 2 (got $rc): $out"
+  case "$mode" in
+    auth)
+      printf '%s\n' "$out" | grep -q "login not accepted, cause: .*OAuth session expired" && pass "T6c-auth names the auth envelope" || fail "T6c-auth must name the auth cause: $out"
+      printf '%s\n' "$out" | grep -q "cause: .*not been trusted" && fail "T6c-auth named the trust warning as the cause: $out" || pass "T6c-auth does not blame the trust warning"
+      [ "$(wc -l < "$WS/calls-$mode")" -eq 2 ] && pass "T6c-auth reseeded and retried exactly once" || fail "T6c-auth should run graphify twice: $(cat "$WS/calls-$mode")" ;;
+    trust)
+      printf '%s\n' "$out" | grep -q "workspace not trusted, cause: .*not been trusted" && pass "T6c-trust names the trust line" || fail "T6c-trust must name the trust cause: $out"
+      [ "$(wc -l < "$WS/calls-$mode")" -eq 1 ] && pass "T6c-trust does not retry" || fail "T6c-trust must not retry" ;;
+    other)
+      printf '%s\n' "$out" | grep -q "last line seen: .*all semantic chunks failed" && pass "T6c-other names the line it saw" || fail "T6c-other must name the last line: $out" ;;
+  esac
+done
+
 # --- T6d: idempotent re-run — a second successful refresh rewrites the same
 # artifacts and the guard still PASSES. ---
 # F6: add a NEW .md between the T6 stamp and this re-run; the

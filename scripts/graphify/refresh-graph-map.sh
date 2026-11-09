@@ -2504,6 +2504,11 @@ SHIM
   # _CAP_LEFT is what the monitor enforces for the pass in flight; _PRE_DONE is
   # what the pre-pass already spent; _DONE_FILE carries a pass's finished count.
   _DONE_FILE="$SCRATCH/.graphify-extract-done"
+  # The first auth-envelope line, the first workspace-trust line and the last
+  # non-blank line graphify printed: what a failed run reports as its cause.
+  _AUTH_FILE="$SCRATCH/.graphify-extract-auth"
+  _TRUST_FILE="$SCRATCH/.graphify-extract-trust"
+  _LAST_FILE="$SCRATCH/.graphify-extract-last"
   _CAP_LEFT="$GRAPHIFY_MAX_CHUNKS_PER_RUN"
   _PRE_DONE=0
   _PRE_CKPT_FAILED=0
@@ -2523,6 +2528,15 @@ SHIM
     local gpid="$1" line done_n=0 hollow_n=0 giveup_n=0 pending_g=0 k n
     while IFS= read -r line; do
       printf '%s\n' "$line" >&2
+      case "$line" in
+        *[![:space:]]*) printf '%s\n' "$line" > "$_LAST_FILE" ;;
+      esac
+      case "$line" in
+        *'Failed to authenticate'*|*'OAuth session expired'*)
+          [ -s "$_AUTH_FILE" ] || printf '%s\n' "$line" > "$_AUTH_FILE" ;;
+        *'has not been trusted'*|*'workspace trust'*)
+          [ -s "$_TRUST_FILE" ] || printf '%s\n' "$line" > "$_TRUST_FILE" ;;
+      esac
       case "$line" in
         '[graphify] chunk of '*' still hollow after '*' giving up on this chunk'*)
           printf '%s\n' "$line" >> "$_FAILED_FILE" ;;
@@ -2565,7 +2579,7 @@ SHIM
   # the TERM); a leaked grandchild holding the pipe open cannot hang the run.
   _run_extract() {
     local rem fifo="$SCRATCH/.graphify-extract.fifo" gpid mpid rc=0 i stop_at="" killed=0
-    rm -f "$fifo" "$_STOP_FILE" "$_FAILED_FILE" "$_CKPT_FILE" "$_DONE_FILE"
+    rm -f "$fifo" "$_STOP_FILE" "$_FAILED_FILE" "$_CKPT_FILE" "$_DONE_FILE" "$_AUTH_FILE" "$_TRUST_FILE" "$_LAST_FILE"
     rem="$(_deadline_left)"
     if [ "$rem" != unbounded ] && [ "$rem" -eq 0 ]; then
       echo "refresh-graph-map: run deadline ${GRAPHIFY_RUN_DEADLINE_SECONDS}s exhausted before this stage" >&2
@@ -2702,6 +2716,19 @@ SHIM
   if [ "$_SKIP_MAIN" -eq 0 ]; then
     _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$GRAPHIFY_BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
   fi
+  # An expired login copy kills every chunk with an auth envelope. Reseed the
+  # dedicated config dir from the main login once and retry the run once.
+  if [ "$_SKIP_MAIN" -eq 0 ] && [ "$_rc" -ne 0 ] && [ "$GRAPHIFY_BACKEND" = "claude-cli" ] \
+     && [ -s "$_AUTH_FILE" ] && [ ! -s "$_FAILED_FILE" ] && [ ! -s "$_STOP_FILE" ] \
+     && [ "$_rc" -ne 124 ] && [ "$_rc" -ne 137 ]; then
+    echo "refresh-graph-map: graphify reported an expired login ($(cat "$_AUTH_FILE")) -- reseeding $GRAPHIFY_CLAUDE_CONFIG_DIR once and retrying" >&2
+    if bash "$HERE/seed-claude-config.sh"; then
+      _rc=0
+      _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$GRAPHIFY_BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
+    else
+      echo "refresh-graph-map: reseeding the Claude config dir failed -- not retrying" >&2
+    fi
+  fi
   if [ -s "$_FAILED_FILE" ]; then
     echo "refresh-graph-map: hollow chunks failed after bounded retries -- finished chunks cached, graphify-out left unpromoted (exit 5)" >&2
     _keep_finished_chunks "$(cat "$_FAILED_FILE")"
@@ -2729,7 +2756,15 @@ SHIM
       echo "refresh-graph-map: graphify --update exceeded the ${GRAPHIFY_RUN_DEADLINE_SECONDS}s run deadline -- graphify-out left unpromoted" >&2
       _keep_finished_chunks
     else
-      echo "refresh-graph-map: graphify --update failed" >&2
+      if [ -s "$_AUTH_FILE" ]; then
+        echo "refresh-graph-map: graphify --update failed: login not accepted, cause: $(cat "$_AUTH_FILE") (re-login with Claude Code, then rerun)" >&2
+      elif [ -s "$_TRUST_FILE" ]; then
+        echo "refresh-graph-map: graphify --update failed: workspace not trusted, cause: $(cat "$_TRUST_FILE")" >&2
+      elif [ -s "$_LAST_FILE" ]; then
+        echo "refresh-graph-map: graphify --update failed (rc $_rc), last line seen: $(cat "$_LAST_FILE")" >&2
+      else
+        echo "refresh-graph-map: graphify --update failed (rc $_rc), graphify printed nothing" >&2
+      fi
     fi
     exit 2
   fi
