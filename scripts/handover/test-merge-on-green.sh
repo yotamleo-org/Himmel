@@ -273,6 +273,7 @@ mog_build_fixture() {
                ln -s "$SCRIPT_DIR/../eval/bug-origin" "$tmp/scripts/eval/bug-origin"
                ln -s "$SCRIPT_DIR/../eval/judge-accuracy" "$tmp/scripts/eval/judge-accuracy"
                [ "$MOG_CONFLICTS_REPORT" != fail ] || printf 'import sys\nsys.exit(1)\n' > "$tmp/scripts/eval/conflicts/conflicts.py"
+               [ "$MOG_CONFLICTS_REPORT" != hang ] || printf 'import time\ntime.sleep(40)\n' > "$tmp/scripts/eval/conflicts/conflicts.py"
            else
                ln -s "$SCRIPT_DIR/../eval" "$tmp/scripts/eval"
            fi ;;
@@ -281,8 +282,8 @@ mog_build_fixture() {
     # neither (so nothing waits), and passes every other call to the real one.
     if [ "${MOG_TIMEOUT_SHIM:-0}" = "1" ]; then
         # The cr-thread recorder's call is logged apart, to cr-timeout.log, so the bug-origin rows never read it.
-        printf '#!/usr/bin/env bash\ncase "$*" in\n  *cr-thread-recorder*) printf "%%s\\n" "$*" >> "%s/cr-timeout.log"; exit 0 ;;\n  *mergedAt*|*bug-origin-report*) printf "%%s\\n" "$*" >> "%s/timeout.log"; exit 0 ;;\nesac\nexec %s "$@"\n' \
-            "$tmp" "$tmp" "$(command -v timeout || command -v gtimeout)" > "$tmp/bin/timeout"
+        printf '#!/usr/bin/env bash\ncase "$*" in\n  *cr-thread-recorder*) printf "%%s\\n" "$*" >> "%s/cr-timeout.log"; exit 0 ;;\n  *isCrossRepository*|*conflicts.py*) printf "%%s\\n" "$*" >> "%s/cf-timeout.log"; exit 0 ;;\n  *mergedAt*|*bug-origin-report*) printf "%%s\\n" "$*" >> "%s/timeout.log"; exit 0 ;;\nesac\nexec %s "$@"\n' \
+            "$tmp" "$tmp" "$tmp" "$(command -v timeout || command -v gtimeout)" > "$tmp/bin/timeout"
         chmod +x "$tmp/bin/timeout"
     fi
     # The status lib is sourced from the anchor; the status funnel at its anchor
@@ -527,6 +528,7 @@ case "$verb" in
                     '{number: $n, title: $t, body: $b, mergedAt: "2026-11-03T09:00:00Z", headRefName: "feat/stub-head", headRefOid: $h, mergeCommit: {oid: $h}}' ;;
             number,title,body,mergedAt,mergeCommit,headRefOid,isCrossRepository)
                 [ "${STUB_SNAPSHOT_FAIL:-0}" = "1" ] && { echo "gh: snapshot failed" >&2; exit 1; }
+                [ "${STUB_CF_SNAPSHOT_HANG:-0}" = "1" ] && exec sleep 40
                 jq -n --argjson n "${STUB_NUM:-77}" --arg t "${STUB_PR_TITLE-fix(x): HIMMEL-1 stub title}" \
                     --arg b "${STUB_PR_BODY-Remaining: the next slice}" --arg h "${STUB_SHA-abc123def456}" \
                     '{number: $n, title: $t, body: $b, mergedAt: "2026-11-03T09:00:00Z", headRefOid: $h, mergeCommit: {oid: $h}, isCrossRepository: false}' ;;
@@ -3209,6 +3211,25 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
     assert_audit_has "11za-f: audit still records the written row" "conflicts=wrote:1"
     MOG_CONFLICTS_REPORT=none STUB_NUM=81 STUB_PR_BODY="$cf_body" cf_run 0 "11za-g: a missing recorder never fails the merge"
     assert_audit_has "11za-g: audit records the missing recorder" "conflicts=no-recorder"
+    mog_t0=$SECONDS
+    STUB_NUM=83 STUB_PR_BODY="$cf_body" STUB_CF_SNAPSHOT_HANG=1 MOG_CONFLICTS_SECS=2 cf_run 0 "11za-h: a hung conflicts snapshot read cannot hold the merge"
+    if [ $((SECONDS - mog_t0)) -lt 30 ]; then pass; else fail "11za-h: the merge waited $((SECONDS - mog_t0))s on a hung gh"; fi
+    assert_audit_has "11za-h: a timed-out snapshot reads as failed" "conflicts=failed"
+    mog_t0=$SECONDS
+    STUB_NUM=84 STUB_PR_BODY="$cf_body" MOG_CONFLICTS_REPORT=hang MOG_CONFLICTS_SECS=2 cf_run 0 "11za-i: a hung conflicts recorder cannot hold the merge"
+    if [ $((SECONDS - mog_t0)) -lt 30 ]; then pass; else fail "11za-i: the merge waited $((SECONDS - mog_t0))s on a hung recorder"; fi
+    assert_audit_has "11za-i: a timed-out recorder reads as failed" "conflicts=failed"
+    cf_secs_row() {
+        MOG_TIMEOUT_SHIM=1 MOG_CONFLICTS_SECS="$1" STUB_NUM=85 STUB_PR_BODY="$cf_body" cf_run 0 "11za-j: MOG_CONFLICTS_SECS=$1 bounds gh at $2 s and the recorder at $3 s"
+        if grep -q "^-k 5 $2 " "$LAST_TMP/cf-timeout.log" 2>/dev/null && grep -q "^-k 10 $3 " "$LAST_TMP/cf-timeout.log" 2>/dev/null; then pass
+        else fail "11za-j: MOG_CONFLICTS_SECS=$1 wanted gh $2 s and record $3 s, got: $(cut -c1-40 "$LAST_TMP/cf-timeout.log" 2>/dev/null | tr '\n' ';')"; fi
+    }
+    cf_secs_row 00 30 60
+    cf_secs_row 99999999999999999999 30 60
+    cf_secs_row 100 30 60
+    cf_secs_row 45 30 45
+    cf_secs_row 7 7 7
+    cf_secs_row "" 30 60
 else
     echo "SKIP 11za: this host has neither timeout nor gtimeout, so the bounded recorder is not run"
 fi

@@ -2603,6 +2603,7 @@ _record_conflicts_run() {
     gcd=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
         git -C "$himmel_repo" rev-parse --path-format=absolute --git-common-dir 2>&1) || {
         echo "merge-on-green: WARN conflicts record of PR #$pr skipped: the anchor has no git dir; run conflicts.py backfill by hand" >&2; return 0; }
+    gcd=${gcd##*$'\n'}
     snap=$(mktemp "${TMPDIR:-/tmp}/mog-conflicts.XXXXXX") || {
         echo "merge-on-green: WARN conflicts record of PR #$pr skipped: no scratch file; run conflicts.py backfill by hand" >&2; return 0; }
     if view=$($cf_to_gh "$GH" pr view "$pr" --repo "$nwo" --json number,title,body,mergedAt,mergeCommit,headRefOid,isCrossRepository); then
