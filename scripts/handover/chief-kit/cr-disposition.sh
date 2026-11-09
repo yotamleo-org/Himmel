@@ -33,7 +33,9 @@
 # write-verdict.sh --repo writes them); without it, today's harness bucket.
 # JIRA_CMD and GH_CMD replace the CLIs (tests).
 #
-# Exit codes: 0 recorded / PASS, 1 check refused, 2 usage or cannot evaluate,
+# Exit codes: 0 recorded / PASS, 1 check refused, 2 usage or cannot evaluate (a head-branch
+#             read GitHub refused or that stalled past CR_DISPOSITION_GH_TIMEOUT also prints the
+#             one QUOTA-PAUSE / GH-STALL line and, on a check, leaves a quota marker),
 #             3 record from a chief worker or relay.
 #
 # Platform guard: POSIX bash 3.2+.

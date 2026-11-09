@@ -27,8 +27,11 @@
 # chief doc through append-results.sh and only on a clean result.
 #
 # Exit: 0 printed (a GO line, or a trust-reviewed route); 1 the --ledger bullet
-# could not be appended; 2 usage; 4 ready-check did not PASS; 5 the trust check
-# refused or could not run.
+# could not be appended; 2 usage; 4 ready-check did not PASS (exit 1: a worker fix is
+# owed) or could not evaluate (exit 2: a refused or stalled read, a missing tool, a deadline
+# cut: nothing was judged, so "READY-GO: not evaluated" and no fix is owed); 5 the trust
+# check refused or could not run (a repo read GitHub refused prints the QUOTA-PAUSE line
+# and "READY-GO: not evaluated" in place of the TRUST text).
 # Seams (tests): GH_CMD and JIRA_CMD, as in ready-check.sh; READY_GO_ANCHOR
 # replaces the harness anchor that trust_path_check and the Jira CLI are read from.
 #
