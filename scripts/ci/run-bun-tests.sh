@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Retry a failing bun suite once, preserving the caller's working directory.
 # Usage: run-bun-tests.sh <repo-relative-suite> [bun test arguments...]
+# Exit: 0 passed (first try or on the single retry), 2 usage or a refused exempt
+# file, 86 a bun attempt wrote into the live himmel state (never retried), any
+# other code the failing retry's bun rc.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 if [ "$#" -lt 1 ]; then
