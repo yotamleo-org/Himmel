@@ -1379,19 +1379,19 @@ describe('create — unplaced follow-up', () => {
       })]);
     });
 
-    it('RED 9002 frozen: a frozen current version is skipped as a residual skips it, to the next open version', async () => {
+    it('RED C2: a follow-up of a parent in a frozen current version asks for that version, and the why says it is frozen', async () => {
       parentIs({ frozen: true });
       await file('--follow-up-of', 'HIMMEL-5');
-      expect(queued()[0]!.to_v).toBe('v1.1.4');
+      expect(queued()[0]!.to_v).toBe('v1.1.3');
       expect(queued()[0]!.why).toBe('follow-up of HIMMEL-5 (In Progress), which is in v1.1.3 (frozen)');
     });
 
     it.each<[string, Parent]>([['the next version is frozen too', { frozen: true, next: 'frozen' }], ['there is no next version', { frozen: true, next: 'none' }]])(
-      '9002 frozen: names no version when %s',
+      'C2: still asks for the parent\'s frozen version when %s',
       async (_name, p) => {
         parentIs(p);
         await file('--follow-up-of', 'HIMMEL-5');
-        expect(queued()[0]!.to_v).toBeNull();
+        expect(queued()[0]!.to_v).toBe('v1.1.3');
       },
     );
 
