@@ -699,7 +699,7 @@ has "CAS2 the sender is told the operator chat" "$REC" "reply 12345"
 if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; then
   J="$root/scripts/jira/src/index.ts"
   VENV=(env HIMMEL_RELEASE_STATE_DIR="$TMP/v-queue" JIRA_BASE_URL=http://jira.invalid JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token JIRA_PROJECT_KEY=HIMMEL)
-  V_BODY="$(printf '## Impact\nx\n\n## What\nx\n\n## Why\nx\n\n## Plan\n- x\n\n## DoD\n- x\n\n## Agent detail\nx\n')"
+  V_BODY="$(printf '## Impact\nx\n\n## What\nx\n\n## Why\nx\n\n## Plan\n- x\n\n## DoD\n- x\n\n## Proof\nx\n\n## Agent detail\nx\n')"
   V_CREATE=("$REAL_BUN" "$J" create --type Task --title "from a test" --desc "$V_BODY" --labels standalone --backlog --proposed-version backlog --why "a test must not file this")
   v_refused() { # <label> <cmd...>
     local label="$1" vrc=0
