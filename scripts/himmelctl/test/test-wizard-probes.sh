@@ -6947,7 +6947,7 @@ case "$outEnvPresent$outEnvAbsent" in
 esac
 echo "ok: env-present — absent and present follow ctx.env, the value never reaches output"
 
-sc_probe() { # <XDG_DATA_HOME> -> probe JSON
+sc_probe() {
   "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'statechart', probe: { type: 'cmd:statechart_ready' } };

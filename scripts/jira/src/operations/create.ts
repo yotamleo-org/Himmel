@@ -38,7 +38,6 @@ import {
   type ResidualPlan,
 } from '../commands/create.js';
 
-/** The `jira create` flags; `adf` carries a pre-built ADF body (move passes the source's). */
 export interface CreateOptions {
   type: string;
   title?: string;

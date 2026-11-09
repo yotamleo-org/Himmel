@@ -253,7 +253,6 @@ export function registerMove(program: Command): void {
             return;
           }
 
-          // 3. CREATE target (prints the `Created KEY` line verifier scripts read)
           stepLabel = 'CREATE target issue';
           try {
             const r = await runCreate(target);

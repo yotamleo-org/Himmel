@@ -48,8 +48,6 @@ const OUTCOMES: Record<Verb, Record<string, Op['kind'][]>> = {
   DISCHARGE: { ACCEPT: ['discharge'], REJECT: ['none'] },
 };
 
-// A `proposed-<v>` label (set at filing by `jira create --proposed-version`) is a pending proposal; the INTAKE ruling
-// or withdrawal that settles it closes it. Only these labels go: `backlog`, `phase:*`, `held` and the rest stay.
 // Idempotent (a clean key makes no write); reads back and fails loud when a label survives.
 export async function clearProposedLabels(jira: Pick<JiraPort, 'labels' | 'removeLabels'>, key: string): Promise<string[]> {
   const proposed = (await jira.labels(key)).filter((l) => /^proposed-/.test(l));

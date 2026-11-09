@@ -35,7 +35,6 @@ FIXTURE_NVM_INSTALL='045932fe05f0d4247c946f2ec0ec4026dbfd8ce88a5f67ea28d8ea83322
 FIXTURE_NVM_TAG_COMMIT='4e8758a801eea9479b32a904f31093e410ddaba4'
 FIXTURE_CERTIFI_WHEEL='e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1'
 FIXTURE_CERTIFI_SDIST='a9895e6e2758b371e0545e321a3a8fd1fcfd9829ada8824a936dfb16aaaf36cd'
-# tla2tools.jar 1.7.4 as downloaded from the tlaplus release by setup-statechart.sh (sha256sum output).
 FIXTURE_TLA2TOOLS='936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88  tla2tools.jar'
 
 echo "installers: no unpinned curl-pipe, no moving alias"

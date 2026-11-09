@@ -65,7 +65,7 @@ for t in cat chmod cmp cp cut dirname grep head ls mkdir mktemp mv rm sed; do
 done
 ln -s "$BASH_BIN" "$TOOLS/bash"
 
-write_stubs() { # <bin dir>
+write_stubs() {
   cat > "$1/curl" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$STUB_LOG/curl-args"
@@ -99,7 +99,7 @@ EOF
   chmod +x "$1/curl" "$1/sha256sum" "$1/uname"
 }
 
-write_java() { # <bin dir>
+write_java() {
   cat > "$1/java" <<'EOF'
 #!/bin/sh
 printf 'openjdk version "%s" 2026-08-18\n' "${STUB_JAVA_VERSION:-21.0.12}" >&2

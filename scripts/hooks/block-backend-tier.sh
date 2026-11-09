@@ -333,20 +333,6 @@ comment_edit_replacement() {
     fi
 }
 
-# ---------------------------------------------------------------------------
-# jira_cli_only_verdict <cli> <prefix> <bypass_var>
-#   Himmel-owned Jira work is CLI-only: EVERY Atlassian MCP method whose name
-#   contains "Jira" (or that the verb map names) is denied, READS INCLUDED, and
-#   so is an execute* wrapper around one. The chain array cannot express this
-#   (the chain loop in evaluate_service blocks only when mcp FOLLOWS cli, so
-#   chain ["cli"] alone would disable the guard), hence this explicit branch.
-#     mapped verb the CLI has  → deny, print `node <primary>/scripts/jira/dist/index.js <verb> ...`
-#     unmapped / CLI lacks it  → deny, "unsupported, extend the CLI" (no api/MCP fallback)
-#     CLI not built / unlistable → deny with the build command (never fails open)
-#   Non-Jira names return 0 so the Confluence service (same prefix) decides;
-#   MCP_JIRA_OK=1 is honoured by the caller before this runs.
-#   Returns 2 on deny (message printed), 0 to let the loop continue.
-# ---------------------------------------------------------------------------
 jira_cli_only_verdict() {
     local matched_cli="$1" matched_prefix="$2" bypass_var="$3"
     local suffix wrapped lower verb map_verb map_method is_wrapper=0

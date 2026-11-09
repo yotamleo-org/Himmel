@@ -13,17 +13,14 @@ const HINTS = {
   'Agent detail': '<files, contract, suites>',
 };
 
-/** The seven-section skeleton; every hint is a placeholder, so an unfilled skeleton is refused. */
 export function renderTicketSkeleton() {
   return SECTIONS.map((s) => `## ${s}\n${HINTS[s]}`).join('\n\n');
 }
 
-/** Epic is a container and a Subtask inherits its parent's framing: their findings are warnings. */
 export function isWarnOnlyType(type) {
   return ['epic', 'subtask', 'sub-task'].includes(String(type ?? '').trim().toLowerCase());
 }
 
-/** The label families whose ticket must name the stability-scorecard metric it moves. */
 export const METRIC_LABEL = /^(ci|guard|guardrail|stability|flake)(-[a-z0-9-]+)?$/i;
 
 export function needsMetric(labels) {
@@ -249,7 +246,6 @@ export function validateTicketBody(input, context = {}) {
   return { valid: !out.some((d) => d.severity === 'error'), diagnostics: out };
 }
 
-/** One short name per diagnostic, for the draft checker's one-line summary. */
 export function shortName(d) {
   const s = d.field.replace(/^body\./, '');
   if (d.rule === 'metric.required') return 'Metric (name the stability-scorecard metric this ticket moves)';
