@@ -185,8 +185,6 @@ check 'a sha the repo does not know prints ?, never stale' '?' "$(afield pool-st
 l="$pd HIMMEL-101 slice HIMMEL-901 @deadbeef01"; d="$(doc unknownshadone "$l")"
 check 'an unknown sha leaves a line with only Done blockers unjudged: ?, not stale' '?' "$(afield pool-stale "$d")"
 
-# --- the detached pool snapshot refreshes only when an input changed (the mirror's .cursor.json lastSync,
-# the fleet manifest's mtime, the chief doc's mtime), never inside TICK_POOL_MIN_SECS, and runs at nice +10.
 # The kit is the real one file by file; its next-dispatchable.sh is a stub that logs each launch and its nice.
 real_scripts="$(cd "$HERE/../.." && pwd)"
 sk="$WORK/kit/scripts"; mkdir -p "$sk/handover/chief-kit"
