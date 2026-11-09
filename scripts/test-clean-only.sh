@@ -496,6 +496,12 @@ printf '# nwo=yotamleo-org/Himmel\n# scope=all\nyotamleo-org/Himmel\tx\tmerged\t
 pc_refusal "nwo of another repo" none/pc-nwo "nwo yotamleo-org/Himmel is not origin owner/repo"
 printf '# nwo=owner/repo\n# scope=all\nOwner/Repo\tx\tmerged\t%s\n# complete rows=1\n' "$SHA0" > "$PCF/bad.txt"
 pc_refusal "row repo differs from header" none/pc-row "row repo Owner/Repo is not header owner/repo"
+printf '# nwo=owner/repo\n# scope=all\nowner/repo\tx\topen\n# complete rows=1\n' > "$PCF/bad.txt"
+pc_refusal "row cut before its head" none/pc-nohead "malformed row"
+printf '# nwo=owner/repo\n# scope=all\nowner/repo\tx\n# complete rows=1\n' > "$PCF/bad.txt"
+pc_refusal "row cut before its state" none/pc-nostate "malformed row"
+printf '# nwo=owner/repo\n# scope=all\nowner/repo\tx\tweird\t%s\n# complete rows=1\n' "$SHA0" > "$PCF/bad.txt"
+pc_refusal "row with an unknown state" none/pc-badstate "malformed row"
 printf '# nwo=owner/repo\n# complete rows=0\n' > "$PCF/bad.txt"
 pc_refusal "no scope header" none/pc-noscope "no usable scope header"
 

@@ -471,18 +471,25 @@ pr_cache_refuse() {
 #   scope    `# scope=all`, or `# scope=branch <b>` (checked against the target
 #            at the --only match below)
 load_pr_cache_file() {
-    local f="$PR_CACHE_FILE" hdr origin scope last n m rows bad
+    local f="$PR_CACHE_FILE" snap hdr origin scope last n m rows bad
     { [ -f "$f" ] && [ -r "$f" ]; } || pr_cache_refuse "cannot read $f"
-    hdr=$(awk '/^# nwo=/ { sub(/^# nwo=/, ""); print; exit }' "$f")
+    # One read: every field below comes from this snapshot, so a file replaced
+    # while we parse cannot lend its rows to another version's header or scope.
+    snap=$(cat "$f") || pr_cache_refuse "cannot read $f"
+    hdr=$(printf '%s\n' "$snap" | awk '/^# nwo=/ { sub(/^# nwo=/, ""); print; exit }')
     [ -n "$hdr" ] || pr_cache_refuse "no nwo header"
     origin=$(github_nwo_from_remote origin) || pr_cache_refuse "origin is not a GitHub remote"
     if [ "$(printf '%s' "$hdr" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$origin" | tr '[:upper:]' '[:lower:]')" ]; then
         pr_cache_refuse "nwo $hdr is not origin $origin"
     fi
-    rows=$(grep -v -e '^#' -e '^$' "$f" || true)
+    rows=$(printf '%s\n' "$snap" | grep -v -e '^#' -e '^$' || true)
     bad=$(printf '%s\n' "$rows" | H="$hdr" awk -F'\t' 'NF && $1 != ENVIRON["H"] { print $1; exit }')
     [ -z "$bad" ] || pr_cache_refuse "row repo $bad is not header $hdr"
-    last=$(awk 'NF { l = $0 } END { print l }' "$f")
+    # Every row is <repo> <branch> <open|merged|closed> <40-hex head>: a cut row
+    # (an open PR that lost its state column) must not read as "no PR".
+    bad=$(printf '%s\n' "$rows" | awk -F'\t' 'NF && (NF != 4 || ($3 != "open" && $3 != "merged" && $3 != "closed") || length($4) != 40 || $4 ~ /[^0-9a-f]/) { print; exit }')
+    [ -z "$bad" ] || pr_cache_refuse "malformed row: $bad"
+    last=$(printf '%s\n' "$snap" | awk 'NF { l = $0 } END { print l }')
     case "$last" in
         "# complete rows="*) n="${last#\# complete rows=}" ;;
         *) pr_cache_refuse "no complete trailer" ;;
@@ -490,7 +497,7 @@ load_pr_cache_file() {
     case "$n" in ''|*[!0-9]*) pr_cache_refuse "no complete trailer" ;; esac
     m=$(printf '%s\n' "$rows" | grep -c . || true)
     [ "$((10#$n))" -eq "$m" ] || pr_cache_refuse "trailer rows=$n but $m rows"
-    scope=$(awk '/^# scope=/ { sub(/^# scope=/, ""); print; exit }' "$f")
+    scope=$(printf '%s\n' "$snap" | awk '/^# scope=/ { sub(/^# scope=/, ""); print; exit }')
     case "$scope" in
         all) ;;
         "branch "?*) PR_CACHE_SCOPE_BRANCH="${scope#branch }" ;;
