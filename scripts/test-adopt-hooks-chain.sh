@@ -182,7 +182,7 @@ echo "ok: HIMMEL-2441 non-git \$TARGET skips git-hooks install, pre-commit never
 : > "$work/pre-commit.argv"
 pctarget19b4="$work/pctarget19b4"; mkdir -p "$pctarget19b4"
 ( cd "$pctarget19b4" && HOME="$pchome" git init -q )
-printf 'repos: []\n' > "$pctarget19b4/.pre-commit-config.yaml"  # the framework path is for an adopter with a config
+printf 'repos: []\n' > "$pctarget19b4/.pre-commit-config.yaml"
 set +e
 out=$(PATH="$pcbin:$work/bin:$qmd_free_path" HOME="$pchome" bash "$adopt" \
       --profile core --scope project --target "$pctarget19b4" --dry-run 2>&1); rc=$?
@@ -203,7 +203,7 @@ chmod +x "$pcbin/pre-commit"
 : > "$work/pre-commit.argv"
 pctarget19b5="$work/pctarget19b5"; mkdir -p "$pctarget19b5"
 ( cd "$pctarget19b5" && HOME="$pchome" git init -q )
-printf 'repos: []\n' > "$pctarget19b5/.pre-commit-config.yaml"  # the framework path is for an adopter with a config
+printf 'repos: []\n' > "$pctarget19b5/.pre-commit-config.yaml"
 set +e
 out=$(PATH="$pcbin:$work/bin:$qmd_free_path" HOME="$pchome" bash "$adopt" \
       --profile core --scope project --target "$pctarget19b5" 2>&1); rc=$?
@@ -245,7 +245,7 @@ chmod +x "$uvbin/uv"
 rm -f "$pchome/pre-commit-2483.argv" "$pchome/.local/bin/pre-commit"
 pctarget19b6="$work/pctarget19b6"; mkdir -p "$pctarget19b6"
 ( cd "$pctarget19b6" && HOME="$pchome" git init -q )
-printf 'repos: []\n' > "$pctarget19b6/.pre-commit-config.yaml"  # the framework path is for an adopter with a config
+printf 'repos: []\n' > "$pctarget19b6/.pre-commit-config.yaml"
 set +e
 out=$(PATH="$uvbin:$work/bin:$pc_free_path" HOME="$pchome" bash "$adopt" \
       --profile core --scope project --target "$pctarget19b6" 2>&1); rc=$?
@@ -276,7 +276,7 @@ rmdir "$pchome/.local/bin" "$pchome/.local" 2>/dev/null || true
 # whether the plan's binary actually exists yet.
 pctarget19b7="$work/pctarget19b7"; mkdir -p "$pctarget19b7"
 ( cd "$pctarget19b7" && HOME="$pchome" git init -q )
-printf 'repos: []\n' > "$pctarget19b7/.pre-commit-config.yaml"  # the framework path is for an adopter with a config
+printf 'repos: []\n' > "$pctarget19b7/.pre-commit-config.yaml"
 rm -f "$pchome/pre-commit-2483.argv" "$pchome/.local/bin/pre-commit"
 set +e
 out=$(PATH="$uvbin:$work/bin:$pc_free_path" HOME="$pchome" bash "$adopt" \
@@ -298,7 +298,7 @@ rmdir "$pchome/.local/bin" "$pchome/.local" 2>/dev/null || true
 # bootstrap and the native fallback without writing any hooks.
 pctarget19b8="$work/pctarget19b8"; mkdir -p "$pctarget19b8"
 ( cd "$pctarget19b8" && HOME="$pchome" git init -q )
-printf 'repos: []\n' > "$pctarget19b8/.pre-commit-config.yaml"  # the framework path is for an adopter with a config
+printf 'repos: []\n' > "$pctarget19b8/.pre-commit-config.yaml"
 set +e
 out=$(PATH="$work/bin:$pc_free_path" HOME="$pchome" bash "$adopt" \
       --profile core --scope project --target "$pctarget19b8" --dry-run 2>&1); rc=$?
