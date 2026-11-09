@@ -2642,7 +2642,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pd_skip_max="${TICK_POOL_MAX_SKIP_SECS:-1800}"; case "$pd_skip_max" in '' | *[!0-9]*) pd_skip_max=1800 ;; esac
     pd_state="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
     pd_ledger="${HIMMEL_ADMISSIONS_LEDGER:-$(handover_root 2>/dev/null)/admissions-ledger.jsonl}"  # swallow-ok: no handover root reads an absent ledger
-    pd_stat="$(stat -c '%n %Y' "$console_doc" ${WORKERS_FROM:+"$WORKERS_FROM"} "${nd_mirror%/}.versions.tsv" "$pd_state/status-events.jsonl" "$pd_ledger" "$pd_state"/workers/* 2>/dev/null | cksum | cut -d' ' -f1)"  # gnu-ok: chief kit is Linux-only; swallow-ok: an absent input is simply missing from the sum
+    pd_stat="$(stat -c '%n %Y %s' "$console_doc" ${WORKERS_FROM:+"$WORKERS_FROM"} "${nd_mirror%/}.versions.tsv" "$pd_state/status-events.jsonl" "$pd_ledger" "$pd_state"/workers/* 2>/dev/null | cksum | cut -d' ' -f1)"  # gnu-ok: chief kit is Linux-only; swallow-ok: an absent input is simply missing from the sum
     pd_fp="$(sed -n 's/.*"lastSync" *: *"\([^"]*\)".*/\1/p' "$nd_mirror/.cursor.json" 2>/dev/null | head -n 1)|$pd_stat|$(printf '%s' "$owner_keys" | cksum | cut -d' ' -f1)"  # swallow-ok: an unreadable cursor reads empty and changes the fingerprint
     pd_fp_m="$(stat -c %Y "$pd_base.fp" 2>/dev/null)" || pd_fp_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no fingerprint reads as none
     case "$pd_fp_m" in '' | *[!0-9]*) pd_fp_m=0 ;; esac

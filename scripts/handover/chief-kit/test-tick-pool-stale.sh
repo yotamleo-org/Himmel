@@ -236,20 +236,24 @@ pl_go 'naming a fleet manifest launches a snapshot past the floor' 9
 touch -d '3 minutes ago' "$PL_WF"
 pl_go 'a changed fleet manifest mtime launches a snapshot past the floor' 10
 pl_go 'unchanged inputs after that launch no snapshot' 10
+touch -d '2026-11-01 00:05:00' "$pl_dir/ledger.jsonl"
+pl_go 'a ledger touched to an older time launches a snapshot' 11
+printf '{"key":"ZZTEST-8"}\n' >> "$pl_dir/ledger.jsonl"; touch -d '2026-11-01 00:05:00' "$pl_dir/ledger.jsonl"
+pl_go 'an append that leaves the mtime unchanged but grows the file launches a snapshot' 12
 pl_age '20 minutes ago'; touch -d '2 hours ago' "$pl_dir"/state/tick-pool-*.fp
 pl_tick > /dev/null
-check 'unchanged inputs launch a snapshot once the fingerprint is older than TICK_POOL_MAX_SKIP_SECS' 11 "$(pl_n)"
+check 'unchanged inputs launch a snapshot once the fingerprint is older than TICK_POOL_MAX_SKIP_SECS' 13 "$(pl_n)"
 pl_fp_before="$(pl_fp)"
 printf '{"lastSync":"2026-11-01T00:30:00Z"}\n' > "$M/.cursor.json"
 pl_age '20 minutes ago'
 PS_FAIL=1 pl_tick > /dev/null
-check 'a changed input launches a snapshot even when that scan will fail' 12 "$(pl_n)"
+check 'a changed input launches a snapshot even when that scan will fail' 14 "$(pl_n)"
 check 'a failed scan records no fingerprint' "$pl_fp_before" "$(pl_fp)"
-pl_go 'the next tick retries after a failed scan' 13
+pl_go 'the next tick retries after a failed scan' 15
 check 'the retried scan records the fingerprint' 1 "$([ "$(pl_fp)" != "$pl_fp_before" ] && echo 1 || echo 0)"
 printf '{"lastSync":"2026-11-01T00:40:00Z"}\n' > "$M/.cursor.json"
 pl_tick > /dev/null
-check 'a changed input inside the floor still launches nothing' 13 "$(pl_n)"
+check 'a changed input inside the floor still launches nothing' 15 "$(pl_n)"
 pl_nice_want=$(( $(nice) + 10 )); [ "$pl_nice_want" -le 19 ] || pl_nice_want=19
 check 'every launched snapshot runs at nice +10' "$pl_nice_want" "$(sort -u "$pl_nice")"
 
