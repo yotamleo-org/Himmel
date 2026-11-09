@@ -64,7 +64,7 @@ _JIRA_VERB_METHOD_MAP=$(printf '%s\n' \
     "comment	addCommentToJiraIssue" \
     "comment	addOrEditJiraIssueComment" \
     "transition	transitionJiraIssue" \
-    "transition	getTransitionsForJiraIssue" \
+    "transitions	getTransitionsForJiraIssue" \
     "projects	getVisibleJiraProjects" \
     "link	createIssueLink")
 
@@ -101,6 +101,7 @@ replacement_for() {
         jira:edit)       echo 'node scripts/jira/dist/index.js edit HIMMEL-N --title "..." --desc "..."' ;;
         jira:comment)    echo 'node scripts/jira/dist/index.js comment HIMMEL-N "<text>"' ;;
         jira:transition) echo 'node scripts/jira/dist/index.js transition HIMMEL-N <Status Name>' ;;
+        jira:transitions) echo 'node scripts/jira/dist/index.js transitions HIMMEL-N' ;;
         jira:projects)   echo 'node scripts/jira/dist/index.js projects' ;;
         jira:link)       echo 'node scripts/jira/dist/index.js link HIMMEL-A HIMMEL-B --type Relates' ;;
         jira:*)          echo 'node scripts/jira/dist/index.js --help' ;;

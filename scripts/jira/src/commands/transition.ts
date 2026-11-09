@@ -69,9 +69,18 @@ export async function transitionIssue(
       } else if (version && frozen !== undefined && !frozen.keys.includes(key) && !admits(latest)) {
         const pr = mergedPrOf(key);
         if (pr) {
-          fileCloseIntake(key, version, pr);
-          await setFixVersion(key, 'add', version, 'transition-stamp');
-          console.log(`${key} fixVersion +${version} (frozen: INTAKE filed with merged PR #${pr.number})`);
+          let failure: string | undefined;
+          try {
+            fileCloseIntake(key, version, pr);
+          } catch (e) {
+            failure = (e as Error).message;
+          }
+          if (failure === undefined) {
+            await setFixVersion(key, 'add', version, 'transition-stamp');
+            console.log(`${key} fixVersion +${version} (frozen: INTAKE filed with merged PR #${pr.number})`);
+          } else {
+            unstamped = `${version} is frozen and the INTAKE for ${key} with merged PR #${pr.number} could not be filed (${failure}); run: ${requestLine(key, version)}`;
+          }
         } else {
           unstamped = `${version} is frozen and ${key} has no merged PR to file its INTAKE with; run: ${requestLine(key, version)}`;
         }

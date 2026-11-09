@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
 
 vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: () => 'HIMMEL' }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
-const ghPrs: Array<{ number: number; url: string }> = [];
+const ghPrs: Array<{ number: number; url: string; title: string }> = [];
 vi.mock('node:child_process', async (orig) => {
   const actual = await orig<typeof import('node:child_process')>();
   const execFileSync = ((cmd: string, args?: readonly string[], opts?: object) =>
@@ -295,13 +295,49 @@ describe('a versionless Done close into a frozen release goes through the releas
   };
 
   it('RED: with a merged PR it stamps the version, files the INTAKE with the PR as evidence and prints the request id', async () => {
-    ghPrs.push({ number: 4242, url: 'https://github.com/o/r/pull/4242' });
+    ghPrs.push({ number: 4242, url: 'https://github.com/o/r/pull/4242', title: 'fix(jira): [HIMMEL-1] the close' });
     wire([], FROZEN);
     await run('HIMMEL-1', 'Done');
     expect(puts()).toHaveLength(1);
     expect(intakeRows()).toHaveLength(1);
     expect(intakeRows()[0]).toContain('pull/4242');
     expect(errs.join('\n')).toMatch(/INTAKE queued for HIMMEL-1 as REQ Q-R1-\d+/);
+  });
+
+  it('RED: a merged PR whose title only shares the key\'s words is not the key\'s PR', async () => {
+    ghPrs.push({ number: 77, url: 'https://github.com/o/r/pull/77', title: 'fix: [HIMMEL-12] retry 1 time' });
+    ghPrs.push({ number: 78, url: 'https://github.com/o/r/pull/78', title: 'fix: [HIMMEL-10] other' });
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+    expect(intakeRows()).toHaveLength(0);
+    expect(process.exitCode).toBe(3);
+  });
+
+  it('RED: an INTAKE that cannot be filed closes unstamped with the request line and exits 3', async () => {
+    ghPrs.push({ number: 4242, url: 'https://github.com/o/r/pull/4242', title: 'fix(jira): [HIMMEL-1] the close' });
+    vi.stubEnv('HIMMEL_RELEASE_MANAGER', '1');
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+    expect(intakeRows()).toHaveLength(0);
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST' && String(c[1]).endsWith('/transitions'))).toBe(true);
+    expect(errs.join('\n')).toMatch(/could not be filed .*jira release request R1 --verb INTAKE --key HIMMEL-1 --to v1\.1\.3/);
+    expect(process.exitCode).toBe(3);
+  });
+
+  it('RED: a reopened ticket the mirror still holds as Done outside the release files its INTAKE with its merged PR', async () => {
+    const mirror = join(dir, 'home', '.himmel', 'state', 'jira-mirror', 'HIMMEL');
+    mkdirSync(mirror, { recursive: true });
+    writeFileSync(join(mirror, '.cursor.json'), JSON.stringify({ lastSync: '2026-10-23T00:00:00Z' }));
+    writeFileSync(join(mirror, 'HIMMEL-1.md'), '---\nkey: "HIMMEL-1"\nstatus: "Done"\nresolution: "Done"\ntype: "Task"\npriority: "Medium"\nfixVersions: ["v1.1.2"]\n---\n');
+    vi.stubEnv('HOME', join(dir, 'home'));
+    vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
+    ghPrs.push({ number: 4242, url: 'https://github.com/o/r/pull/4242', title: 'fix(jira): [HIMMEL-1] the close' });
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(intakeRows()).toHaveLength(1);
+    expect(puts()).toHaveLength(1);
   });
 
   it('RED: with no merged PR it writes no version, closes, and prints the release request line', async () => {

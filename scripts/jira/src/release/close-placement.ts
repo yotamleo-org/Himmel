@@ -9,11 +9,13 @@ export type MergedPr = { number: number; url: string };
 
 export function mergedPrOf(key: string): MergedPr | undefined {
   try {
-    const out = execFileSync('gh', ['pr', 'list', '--state', 'merged', '--search', `${key} in:title`, '--json', 'number,url', '--limit', '1'], {
+    const out = execFileSync('gh', ['pr', 'list', '--state', 'merged', '--search', `${key} in:title`, '--json', 'number,url,title', '--limit', '5'], {
       cwd: dirname(fileURLToPath(import.meta.url)), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 20000,
     });
-    const [pr] = JSON.parse(out) as MergedPr[];
-    return pr && Number.isInteger(pr.number) && typeof pr.url === 'string' ? pr : undefined;
+    // GitHub search matches the key's words, not the key: keep only a title that names it whole.
+    const named = new RegExp(`(^|[^A-Za-z0-9-])${key}(?![A-Za-z0-9-])`, 'i');
+    const pr = (JSON.parse(out) as Array<MergedPr & { title?: unknown }>).find((p) => typeof p.title === 'string' && named.test(p.title));
+    return pr && Number.isInteger(pr.number) && typeof pr.url === 'string' ? { number: pr.number, url: pr.url } : undefined;
   } catch {
     // gh missing, offline or unauthenticated reads as no merged PR: the close then writes no version.
     return undefined;
@@ -37,7 +39,7 @@ export function fileCloseIntake(key: string, version: string, pr: MergedPr): str
   const release = intakeRelease();
   const ctx = ctxFor(release);
   const why = whyOf(key, version, pr);
-  refuseRequest(ctx, { verb: 'INTAKE', key, from_v: null, why });
+  refuseRequest(ctx, { verb: 'INTAKE', key, from_v: null, why, evidence: { pr: pr.number } });
   const r = releaseRequest(ctx, {
     verb: 'INTAKE', key, from_v: null, to_v: version, why, evidence: { merged_pr: pr.url, pr_number: pr.number, closed_by: 'transition' }, from: 'console',
   });

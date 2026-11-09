@@ -249,7 +249,16 @@ assert_rc "block getJiraIssue when 'get' verb still present" 2 "$rc"
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__transitionJiraIssue","tool_input":{}}' "$STUB_REDUCED")
 assert_rc "block transitionJiraIssue (transition present)" 2 "$rc"
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__getTransitionsForJiraIssue","tool_input":{}}' "$STUB_REDUCED")
-assert_rc "block getTransitionsForJiraIssue (transition present)" 2 "$rc"
+assert_rc "block getTransitionsForJiraIssue (transitions absent: unsupported, still denied)" 2 "$rc"
+# getTransitionsForJiraIssue only reads; its replacement is the read verb, never the status-changing transition.
+assert_stderr_contains "getTransitionsForJiraIssue names the transitions read verb" \
+    '{"tool_name":"mcp__plugin_atlassian_atlassian__getTransitionsForJiraIssue","tool_input":{}}' \
+    'jira/dist/index.js transitions HIMMEL-N' "$STUB_TRANS_ONLY"
+out=$(printf '%s' '{"tool_name":"mcp__plugin_atlassian_atlassian__getTransitionsForJiraIssue","tool_input":{}}' | env "JIRA_CLI=$STUB_FULL" "CONFLUENCE_CLI=$STUB_CONF" bash "$HOOK" 2>&1 >/dev/null || true)  # swallow-ok: a deny exits 2 and only its stderr is wanted
+case "$out" in
+    *'transition HIMMEL-N <Status Name>'*) echo "FAIL getTransitionsForJiraIssue names a status-changing transition"; FAILED=$((FAILED + 1)) ;;
+    *) echo "PASS getTransitionsForJiraIssue names no status-changing transition" ;;
+esac
 
 # --- Substring guard: 'transitions' must NOT trigger 'transition' match ---
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__transitionJiraIssue","tool_input":{}}' "$STUB_TRANS_ONLY")

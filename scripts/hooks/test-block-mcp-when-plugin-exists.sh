@@ -170,7 +170,10 @@ assert_rc "block getJiraIssue when 'get' verb still present" 2 "$rc"
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__transitionJiraIssue","tool_input":{}}' "$STUB_REDUCED")
 assert_rc "block transitionJiraIssue (transition present)" 2 "$rc"
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__getTransitionsForJiraIssue","tool_input":{}}' "$STUB_REDUCED")
-assert_rc "block getTransitionsForJiraIssue (transition present)" 2 "$rc"
+assert_rc "block getTransitionsForJiraIssue (transitions absent: unsupported, still denied)" 2 "$rc"
+assert_stderr_contains "getTransitionsForJiraIssue names the transitions read verb" \
+    '{"tool_name":"mcp__plugin_atlassian_atlassian__getTransitionsForJiraIssue","tool_input":{}}' \
+    'jira/dist/index.js transitions HIMMEL-N' "$STUB_TRANS_ONLY"
 
 # --- Substring guard: a fixture verb 'transitions' must NOT make the
 # 'transition'-mapped methods block on its own. Only 'transitions'
