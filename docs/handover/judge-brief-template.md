@@ -326,6 +326,17 @@ gathering, per the rule below.>
 > judge:<qid>`. A Critical always needs this judge ruling; so does an Important
 > on a trust-path PR.
 
+> **First step: recorded ceilings (any question about a PR or a head).** Before
+> you read the diff, run
+> `bash <primary checkout>/scripts/ledger/ceiling-lookup.sh --range origin/main...<head>`
+> (the primary checkout's copy, never a relative path: the judge dir is built
+> from the PR head's `scripts/`) and read the rows as "Recorded ceilings for the
+> touched files: context to verify, not a verdict. Check each one still matches
+> the code; a ceiling never waives a defect the change introduces." Cite a row by
+> its id only; never quote its ceiling or trigger in your verdict or evidence
+> file. `withheld` or `not read` means no rows were shown to you: say so and rule
+> on the code.
+
 > **Judge checklist (code, CI and infra PRs).** A green CI and a
 > clean review are not a verdict. Rule on these, each with evidence:
 > 1. **Real environment, not fixtures.** For a CI, infra or environment change,
