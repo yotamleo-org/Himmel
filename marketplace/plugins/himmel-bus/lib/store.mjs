@@ -189,10 +189,9 @@ export async function read(root, name) {
         catch (error) { if (error.code !== 'ENOENT') throw error; return [undefined, Buffer.alloc(0)]; }
       };
       let [selected, buf] = await load(cur.k);
-      // One segment's records per batch bounds decompression independently of backlog.
+      // One segment per batch bounds decompression independently of backlog.
       if (cur.off > buf.length) throw new Error('cursor beyond EOF');
       if (cur.off > 0 && buf[cur.off - 1] !== 10) throw new Error('cursor not on record boundary');
-      // A closed segment read to its end holds nothing more: walk the next one.
       if (selected && cur.off === buf.length) {
         next = { ...cur, k: cur.k + 1, off: 0 };
         [selected, buf] = await load(next.k);
