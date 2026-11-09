@@ -556,8 +556,6 @@ if grep -q 'TaskStop EVERY background' "$DOCS/worker-brief-template.md"; then
 else
     fail "worker-brief-template.md must say TaskStop EVERY background task"
 fi
-# The preface stops only what the check lists as still running, so a worker
-# never TaskStops a task that already ended.
 if grep -q 'TaskStop only what it lists as still running' "$DOCS/worker-preface.md" \
     && grep -q 'CLOSABLE:. line' "$DOCS/worker-preface.md" \
     && ! grep -q 'TaskStop EVERY background' "$DOCS/worker-preface.md"; then
