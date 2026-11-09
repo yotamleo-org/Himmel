@@ -23,6 +23,10 @@ auto-loads the repo-root `.env`.
 `edit`, `projects`, `project-create` (plus `move`, `link`). Run
 `node scripts/jira/dist/index.js --help` for the full option set.
 
+To learn the site URL or where a setting comes from, run `jira config` (it lists
+every Jira setting with its source; email and token show only as set or not set).
+`get`, `edit`, `transition` and `move` also print a `browse:` link.
+
 ## MCP server
 
 `jira mcp` boots a [Model Context Protocol](https://modelcontextprotocol.io)

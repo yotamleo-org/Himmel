@@ -25,4 +25,6 @@ himmel-run jira \
 
 The description must carry the seven sections `## Impact` / `## What` / `## Why` / `## Plan` / `## DoD` / `## Proof` / `## Agent detail`, with a real bullet or numbered line under Plan and DoD. `create` refuses a body without it, except `Epic` and `Subtask`, which only warn; pass it with `--desc` or `--desc-file`.
 
+To link the new ticket, get the site URL from `node $CLAUDE_PROJECT_DIR/scripts/jira/dist/index.js config` (never a secrets file or the Jira MCP).
+
 Pass `--attach <path>` (repeatable) through after `$2`. The CLI uploads each file after issue creation and prints `Created KEY (attachments: N)`.

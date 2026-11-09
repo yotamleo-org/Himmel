@@ -104,6 +104,13 @@ describe('CLI .env resolution from an unrelated cwd', () => {
       timeout: 30000,
     });
     expect(run.error).toBeUndefined();
+    if (!token) {
+      expect(run.status).toBe(1);
+      expect(run.stdout).toBe('');
+      expect(run.stderr).toContain('JIRA_API_TOKEN is not set');
+      expect(run.stderr).not.toContain('nested-token');
+      return;
+    }
     expect(run.stderr).toBe('');
     expect(run.status).toBe(0);
     const request = JSON.parse(run.stdout);
