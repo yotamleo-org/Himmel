@@ -34,7 +34,6 @@ me="$(id -un)"
 OP=4242
 NONCE=K7QF
 CODE=482913
-# approve asks for the nonce, then the code: on stdin one line each.
 REPLY="$NONCE
 $CODE
 "
@@ -86,7 +85,6 @@ ctl "k7qf
 " "$tmp/config.json" approve "$ID1"
 assert_eq "a spaced code is closed up for the helper and the nonce is passed as typed (root reads it any case)" "k7qf 482913" "$(tr -d '\n' < "$tmp/log.stdin")"
 
-# Each case is <nonce line>|<code line>.
 for bad in "|" "482913|" "K7QF|" "K7QF|48291" "K7QF|4829133" "K7Q|482913" "K7QF|48291x" "K7QF 482913|" "K7QF482913|"; do
   ctl "${bad%%|*}
 ${bad#*|}
@@ -180,7 +178,6 @@ while time.time() < end:
         if not chunk:
             break
         buf += chunk
-    # The code is typed only once the code prompt shows, after the nonce was answered.
     if not sent_nonce and b"Nonce:" in buf:
         os.write(fd, nonce.encode() + b"\r")
         sent_nonce = True

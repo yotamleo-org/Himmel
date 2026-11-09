@@ -1922,11 +1922,6 @@ report_session_restart_required() {
     echo "    (re-pin refused: not the anchor tip). Exit claude and start a new session."
 }
 
-# Advisory: install.sh copies the afk-sudo helper and its station ops
-# root-owned, and a pull never refreshes them (a station once ran a helper
-# without an op that had already merged). Prints the exact
-# re-install command when an installed copy differs from this checkout; an
-# agent never runs it. HIMMEL_AFK_LIBEXEC is the installed directory's test seam.
 report_afk_helper_stale() {
     local lib="$ROOT/scripts/lib/afk-sudo" stale n
     [ -r "$lib/install.sh" ] || return 0

@@ -2075,7 +2075,6 @@ assert_contains "RED 9507: the notice-bot.env step names SUDO_EDITOR when no edi
     "$( ( PATH="$STUBS/linux"; export AFK_OS_RELEASE="$tmp/os-arch"; unset SUDO_EDITOR VISUAL EDITOR; source "$INSTALL" && notice_env_steps ) 2>&1 )"
 
 echo "== HIMMEL-9691: install.sh names each installed file older than this checkout =="
-# An installed tree laid out as install.sh lays it out, from this checkout's files.
 OPSRC="$REPO_ROOT/scripts/station-ops"
 lay_out() {
     local lx=$1 f
@@ -2091,7 +2090,6 @@ assert_eq "RED 9691: an installed tree equal to the checkout is not stale" "" "$
 printf '\n# older\n' >> "$LX/afk-sudo"
 assert_eq "RED 9691: an installed helper that differs is named" "$LX/afk-sudo" "$(inst stale_files "$LIB" "$LX" 2>&1)"
 lay_out "$LX"
-# The station on 2026-11-09: the helper installed before the size-approval op shipped had no copy of it.
 rm -f "$LX/ops/size-approval.json" "$LX/ops/size-approval.sh"
 out=$(inst stale_files "$LIB" "$LX" 2>&1)
 assert_contains "RED 9691: an op the checkout ships but the station lacks is named" "$LX/ops/size-approval.sh" "$out"

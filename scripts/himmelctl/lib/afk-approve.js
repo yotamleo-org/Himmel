@@ -26,7 +26,6 @@ const { spawnSync } = require('child_process');
 const HELPER = '/usr/local/libexec/himmel/afk-sudo';
 const CONFIG = '/etc/himmel/afk-sudo.json';
 const ID_RE = /^[a-z2-7]{8}$/;
-// The nonce root sent (4 characters, Crockford base32) and the 6-digit code; spaces inside either are free.
 const NONCE_RE = /^[0-9A-Za-z]{4}$/;
 const CODE_RE = /^[0-9]{6}$/;
 const DENY_RE = /^([0-9A-Za-z]{4})([0-9]{6})?$/;
@@ -40,7 +39,6 @@ function readConfig(env) {
   }
 }
 
-// A reader of one reply per call: a masked prompt on a TTY, else the next line of stdin.
 function replyReader(input, output) {
   if (input.isTTY) {
     const ask = async (label) => {
@@ -65,7 +63,7 @@ function replyReader(input, output) {
     data = nl < 0 ? '' : data.slice(nl + 1);
     return line;
   };
-  ask.close = async () => { await chunks.return(); }; // stop reading stdin, as a for-await break would
+  ask.close = async () => { await chunks.return(); };
   return ask;
 }
 

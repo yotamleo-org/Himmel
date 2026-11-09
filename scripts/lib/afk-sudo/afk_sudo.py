@@ -759,7 +759,7 @@ def curl_q(s):
 
 
 NOTICE_FAIL = ""  # why the last tg_send failed: a call name and an error kind, never a token, URL or reply text
-NOTICE_RECEIPT = None  # the message_id the Bot API gave the last call that succeeded
+NOTICE_RECEIPT = None
 
 
 def exc_reason(e):
@@ -772,7 +772,7 @@ def tg_send(config, token, method, fields, document=None):
     every field, the nonce among them, since a root process's argv is world-readable. -q skips any
     .curlrc. True when the API answers ok; otherwise NOTICE_FAIL names the call and the error kind
     (no-curl, curl-os-error, curl-timeout, curl-exit-N, bad-response, api-Nxx from the reply's error_code,
-    api-not-ok). On success NOTICE_RECEIPT is the reply's message_id (None when the reply carries none)."""
+    api-not-ok)."""
     global NOTICE_FAIL, NOTICE_RECEIPT
     NOTICE_FAIL, NOTICE_RECEIPT = "", None
     curl = curl_path()
@@ -990,7 +990,6 @@ def send_notice(broker, config, token, rec, nonce, mode, cls, digest=None, bodie
     """Send the facts message (and the full request when it was cut) through the notice bot. A notice
     that cannot be sent withdraws the request: the operator must never approve what they were not shown.
     The full request goes first, so the nonce (in the facts message) is never out while it may still fail.
-    A sent notice leaves a `notice` row of result `sent` with the facts message's message_id as its receipt.
     `built` is a (text, cut) another kind made instead of facts()."""
     rid = rec["id"]
     text, cut = built or facts(rec, nonce, mode, cls, digest, bodies, stdin_text)
