@@ -155,7 +155,6 @@ set -euo pipefail
 QMD_BIN=""
 QMD_JS=""
 DRY_RUN=0
-# Set once a remote model's key is loaded: the run then appends one usage row at exit.
 USAGE_TRACK=0
 USAGE_BEFORE=unknown
 CHUNKS_TOTAL=0
@@ -626,13 +625,7 @@ if [ "$remote_model" -eq 1 ]; then
     fi
 fi
 
-# --- 0c. usage row ----------------------------------------------------------
-# A remote embed bills the provider key the daemon shares, so a run reads that key's
-# cumulative usage before and after and appends one row to qmd-embed-usage.jsonl:
-# the figure is an upper bound on this run's cost (the daemon's own calls land in it
-# too). The read is a key lookup, not a billed model call; a read that fails records
-# "unknown" and never changes the run's exit code. The key stays out of argv, the
-# trace, the row and the log.
+# The key is on stdin and xtrace is off, so it never reaches argv, the trace or the log.
 usage_read() {
     local out v
     out=$(
@@ -646,7 +639,7 @@ usage_read() {
         fi
     ) || out=""
     v=${out%%$'\n'*}
-    case "$v" in ''|*[!0-9.eE+-]*) v=unknown ;; esac
+    [[ "$v" =~ ^(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$ ]] || v=unknown
     printf '%s' "$v"
 }
 
@@ -670,7 +663,6 @@ write_usage_row() {
 if [ "$remote_model" -eq 1 ]; then
     USAGE_BEFORE=$(usage_read)
     USAGE_TRACK=1
-    # The trap keeps the run's own exit code: the row is a side channel.
     trap 'rc=$?; trap - EXIT; write_usage_row || true; exit "$rc"' EXIT
 fi
 

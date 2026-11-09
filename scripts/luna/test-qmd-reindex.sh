@@ -260,7 +260,7 @@ export USERPROFILE="$HOME"
 export BUN_INSTALL="$TMP_ROOT/bun-none"
 # The embed-model precheck resolves qmd's config the way qmd does; CI runners
 # export XDG_CONFIG_HOME, which would point it past the fixture HOME.
-unset QMD_CONFIG_DIR XDG_CONFIG_HOME XDG_CACHE_HOME INDEX_PATH QMD_EMBED_MODEL
+unset QMD_CONFIG_DIR XDG_CONFIG_HOME XDG_CACHE_HOME INDEX_PATH QMD_EMBED_MODEL HIMMEL_QMD_EMBED_USAGE
 # The OpenRouter usage read goes through this seam; a default that
 # fails keeps every run here off the network. The usage-row tests set their own.
 export QMD_REINDEX_KEY_USAGE_CMD=/bin/false
@@ -1080,13 +1080,6 @@ else
     pass "provider-key check skipped: node not installed"
 fi
 
-# ============================================================================
-# OpenRouter usage row: one row per remote-model run in
-# ~/.himmel/state/qmd-embed-usage.jsonl, usage read before and after through the
-# QMD_REINDEX_KEY_USAGE_CMD seam (the key is in its env, never its argv).
-# ============================================================================
-
-# The seam's stub: the first call prints 1.5, every later one 1.62.
 USAGE_STUB="$TMP_ROOT/usage-stub"
 cat >"$USAGE_STUB" <<STUB
 #!/bin/sh
@@ -1102,8 +1095,10 @@ chmod +x "$USAGE_STUB"
 USAGE_FAIL="$TMP_ROOT/usage-fail"
 printf '#!/bin/sh\necho "usage: provider unreachable" >&2\nexit 1\n' >"$USAGE_FAIL"
 chmod +x "$USAGE_FAIL"
+USAGE_BAD="$TMP_ROOT/usage-bad"
+printf '#!/bin/sh\necho 01\n' >"$USAGE_BAD"
+chmod +x "$USAGE_BAD"
 
-# Field <name> of line <n> of the usage ledger, as text ("" when absent).
 usage_field() {
     python3 -I -c '
 import json, sys
@@ -1145,6 +1140,14 @@ if command -v node >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     assert_rc "one row appended" 1 "$(usage_rows)"
     assert_rc "usage_before unknown" unknown "$(usage_field 1 usage_before)"
     assert_rc "usage_after unknown" unknown "$(usage_field 1 usage_after)"
+
+    echo "TEST: a reading that is not a JSON number is recorded as unknown"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+    rc=0; out=$(QMD_REINDEX_KEY_USAGE_CMD="$USAGE_BAD" bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "malformed reading rc 0" 0 "$rc"
+    assert_rc "usage_before malformed is unknown" unknown "$(usage_field 1 usage_before)"
+    assert_rc "usage_after malformed is unknown" unknown "$(usage_field 1 usage_after)"
 
     echo "TEST: a failing run still writes its row and keeps its own exit code"
     reset_state
