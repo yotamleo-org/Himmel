@@ -1,11 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
 
 vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: () => 'HIMMEL' }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
+// The merged-PR lookup asks gh; these tests answer it, every other command runs for real.
+const ghPrs: Array<{ number: number; url: string }> = [];
+vi.mock('node:child_process', async (orig) => {
+  const actual = await orig<typeof import('node:child_process')>();
+  const execFileSync = ((cmd: string, args?: readonly string[], opts?: object) =>
+    cmd === 'gh' ? JSON.stringify(ghPrs) : actual.execFileSync(cmd, args ?? [], opts ?? {})) as typeof actual.execFileSync;
+  return { ...actual, execFileSync };
+});
 
 import { findTransition, registerTransition } from './transition.js';
 import { request } from '../client.js';
@@ -177,11 +185,11 @@ describe('transition to Done respects the intake gate of a frozen version', () =
   const ledger = (...rows: object[]) =>
     writeFileSync(process.env['HIMMEL_ADMISSIONS_LEDGER']!, rows.map((r) => JSON.stringify(r) + '\n').join(''));
 
-  it('stamps a frozen version on a ticket with no ledger row: a Done-fold, not a leak', async () => {
+  it('a ticket with no ledger row and no merged PR is no longer stamped into the frozen version', async () => {
     wire([], FROZEN);
     await run('HIMMEL-1', 'Done');
-    expect(puts()).toHaveLength(1);
-    expect(process.exitCode).toBeUndefined();
+    expect(puts()).toHaveLength(0);
+    expect(process.exitCode).toBe(3);
   });
 
   it('a deferred ticket closes unstamped, fails loudly on stderr and exits 3', async () => {
@@ -241,5 +249,82 @@ describe('transition to Done respects the intake gate of a frozen version', () =
     wire([], FROZEN);
     await run('HIMMEL-1', 'Done');
     expect(puts()).toHaveLength(0);
+  });
+});
+
+describe('a versionless Done close into a frozen release goes through the release manager', () => {
+  const FROZEN = [
+    { id: '1', name: 'v1.1.2', released: true },
+    { id: '2', name: 'v1.1.3', released: false, description: 'frozen: 2026-10-20\nfrozen-keys: HIMMEL-2' },
+  ];
+  let dir: string;
+  let errs: string[];
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    errs = [];
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation((s: unknown) => { errs.push(String(s)); });
+    dir = mkdtempSync(join(tmpdir(), 'transition-frozen-'));
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(dir, 'admissions-ledger.jsonl'));
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(dir, 'state'));
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(dir, 'keys'));
+    vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+    writeFileSync(join(dir, 'verbatim.txt'), 'R1 = v1.1.3\n');
+    const { registerRelease } = await import('./release.js');
+    const p = new Command();
+    p.exitOverride();
+    registerRelease(p);
+    await p.parseAsync(['node', 'jira', 'release', 'operator', 'declare', 'R1', '--versions', 'v1.1.3', '--decision', '214', '--verbatim-file', join(dir, 'verbatim.txt')]);
+    ghPrs.length = 0;
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    process.exitCode = undefined;
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const intakeRows = () => {
+    const found: string[] = [];
+    const walk = (d: string) => {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        if (e.isDirectory()) walk(join(d, e.name));
+        else found.push(...readFileSync(join(d, e.name), 'utf8').split('\n').filter((l) => l.includes('"INTAKE"') && l.includes('"HIMMEL-1"')));
+      }
+    };
+    walk(join(dir, 'state'));
+    return found;
+  };
+
+  it('RED: with a merged PR it stamps the version, files the INTAKE with the PR as evidence and prints the request id', async () => {
+    ghPrs.push({ number: 4242, url: 'https://github.com/o/r/pull/4242' });
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(1);
+    expect(intakeRows()).toHaveLength(1);
+    expect(intakeRows()[0]).toContain('pull/4242');
+    expect(errs.join('\n')).toMatch(/INTAKE queued for HIMMEL-1 as REQ Q-R1-\d+/);
+  });
+
+  it('RED: with no merged PR it writes no version, closes, and prints the release request line', async () => {
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+    expect(intakeRows()).toHaveLength(0);
+    expect(errs.join('\n')).toMatch(/jira release request R1 --verb INTAKE --key HIMMEL-1 --to v1\.1\.3 --why/);
+    expect(process.exitCode).toBe(3);
+  });
+
+  it('control: a key in the frozen set is stamped with no request', async () => {
+    wire([], FROZEN);
+    await run('HIMMEL-2', 'Done');
+    expect(puts()).toHaveLength(1);
+    expect(intakeRows()).toHaveLength(0);
+  });
+
+  it('control: --no-version writes nothing and asks nothing', async () => {
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done', '--no-version');
+    expect(puts()).toHaveLength(0);
+    expect(intakeRows()).toHaveLength(0);
   });
 });

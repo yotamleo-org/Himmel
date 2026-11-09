@@ -636,7 +636,7 @@ class NoReleaseDeclared extends Error {
 }
 
 /** The one declared release an INTAKE goes to; throws when the state cannot be read or the choice is not unique. */
-function intakeRelease(): string {
+export function intakeRelease(): string {
   const root = releaseRoot();
   let entries: string[] = [];
   try {

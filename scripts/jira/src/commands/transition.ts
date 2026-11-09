@@ -5,6 +5,8 @@ import type { JiraTransition } from '../types.js';
 import { readAdmissions } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import { earliestUnreleased, fetchVersions, projectFromKey, setFixVersion } from './versions.js';
+import { admits } from '../release/admits.js';
+import { fileCloseIntake, mergedPrOf, requestLine } from '../release/close-placement.js';
 
 // Jira's transitions list names the status each one lands on; the shared
 // JiraTransition type does not declare it.
@@ -63,15 +65,26 @@ export async function transitionIssue(
     if (!fixVersions || fixVersions.length === 0) {
       const versions = await fetchVersions(projectFromKey(key));
       const version = earliestUnreleased(versions);
-      // A frozen version takes a frozen-set key, a key with no ledger row (a
-      // Done-fold) or one whose latest row is not a deferral or a removal; a
-      // ruled-out key closes unstamped and the run fails loudly.
+      // A frozen version takes a frozen-set key or one the ledger admits; a
+      // ruled-out key (latest row a deferral or a removal) closes unstamped and
+      // the run fails loudly; any other key goes through the release manager.
       const frozen = parseFrozen(versions.find((v) => v.name === version)?.description);
       const latest = frozen ? readAdmissions(version).filter((r) => r.key === key).pop() : undefined;
       const ruledOut =
         frozen !== undefined && !frozen.keys.includes(key) && (latest?.kind === 'deferral' || latest?.kind === 'rm-remove');
       if (version && ruledOut) {
         unstamped = `${version} is frozen and the latest ledger row for ${key} is a ${latest?.kind}`;
+      } else if (version && frozen !== undefined && !frozen.keys.includes(key) && !admits(latest)) {
+        // A key the frozen release never ruled in is a placement for the release manager:
+        // a merged PR files the INTAKE (its evidence) before the stamp; with none, no version is written.
+        const pr = mergedPrOf(key);
+        if (pr) {
+          fileCloseIntake(key, version, pr);
+          await setFixVersion(key, 'add', version, 'transition-stamp');
+          console.log(`${key} fixVersion +${version} (frozen: INTAKE filed with merged PR #${pr.number})`);
+        } else {
+          unstamped = `${version} is frozen and ${key} has no merged PR to file its INTAKE with; run: ${requestLine(key, version)}`;
+        }
       } else if (version) {
         await setFixVersion(key, 'add', version, 'transition-stamp');
         console.log(`${key} fixVersion +${version} (earliest unreleased; --no-version opts out)`);
