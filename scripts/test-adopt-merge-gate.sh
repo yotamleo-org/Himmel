@@ -68,26 +68,26 @@ test_adopt_merge_gate() (
       scripts/lib/user-slug.sh scripts/lib/forge.sh scripts/lib/forge-github.sh \
       scripts/lib/forge-bitbucket.sh scripts/lib/forge-localgit.sh scripts/lib/forge-none.sh \
       scripts/lib/coderabbit-trigger-ledger.sh scripts/lib/project-mode.sh scripts/cr/critics.json; do
-    [ -f "$target/$f" ] || fail "HIMMEL-7000: core/project did not copy $f"
-    cmp -s "$repo_root/$f" "$target/$f" || fail "HIMMEL-7000: adopted trust dependency differs: $f"
+    [ -f "$target/$f" ] || fail "core/project did not copy $f"
+    cmp -s "$repo_root/$f" "$target/$f" || fail "adopted trust dependency differs: $f"
   done
-  [ -s "$trust" ] || fail "HIMMEL-7000: a fresh adopter has no trust list"
+  [ -s "$trust" ] || fail "a fresh adopter has no trust list"
   settings="$target/.claude/settings.json"
   hook_cmd=$(jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | contains("block-unresolved-cr-merge.sh")) | .command] | if length == 1 then .[0] else empty end' "$settings")
-  [ -n "$hook_cmd" ] || fail "HIMMEL-7000: core/project must wire exactly one Bash merge gate"
+  [ -n "$hook_cmd" ] || fail "core/project must wire exactly one Bash merge gate"
   jq -e '.permissions.allow == ["Read"] and any(.hooks.PreToolUse[].hooks[]; .command == "echo adopter-hook" and .timeout == 17)' "$settings" >/dev/null \
-    || fail "HIMMEL-7000: merge gate wiring changed adopter settings"
+    || fail "merge gate wiring changed adopter settings"
   cp "$settings" "$work/merge-gate-before.json"
   HOME="$home" bash "$adopt" --profile core --scope project --target "$target" >/dev/null || exit 1
-  cmp -s "$settings" "$work/merge-gate-before.json" || fail "HIMMEL-7000: merge gate wiring not idempotent"
-  [ -s "$trust" ] || fail "HIMMEL-7000: a fresh adopter has no trust list"
+  cmp -s "$settings" "$work/merge-gate-before.json" || fail "merge gate wiring not idempotent"
+  [ -s "$trust" ] || fail "a fresh adopter has no trust list"
   for f in scripts/hooks/block-unresolved-cr-merge.sh scripts/lib/review-merge-gate.sh \
       scripts/lib/go-gate.sh scripts/lib/ci-green-gate.sh scripts/lib/critics-config.sh \
       scripts/lib/user-slug.sh scripts/lib/resolve-node.sh .claude/settings.json; do
-    grep -Eq -f "$trust" <<< "$f" || fail "HIMMEL-7000: seeded trust list does not cover $f"
+    grep -Eq -f "$trust" <<< "$f" || fail "seeded trust list does not cover $f"
   done
   HOME="$home" git -C "$target" init -q -b main || exit 1
-  [ -d "$target/.git" ] || fail "HIMMEL-7000: inherited Git variables redirected fixture init outside the target"
+  [ -d "$target/.git" ] || fail "inherited Git variables redirected fixture init outside the target"
   HOME="$home" git -C "$target" config user.name fixture || exit 1
   HOME="$home" git -C "$target" config user.email fixture@example.invalid || exit 1
   HOME="$home" git -C "$target" config --local himmel.coderabbit true || exit 1
@@ -127,7 +127,7 @@ STUB
   chmod +x "$work/merge-gate-bin/gh" || exit 1
   for f in check-runs statuses; do
     rc=0; out=$("$work/merge-gate-bin/gh" api "repos/adopter/project/commits/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/$f" 2>&1) || rc=$?
-    [ "$rc" -ne 0 ] || fail "HIMMEL-7000: wrong-SHA $f query received green fixture data: $out"
+    [ "$rc" -ne 0 ] || fail "wrong-SHA $f query received green fixture data: $out"
   done
   echo "ok: HIMMEL-7000 gh fixture refuses check-runs and statuses for the wrong head"
   if [ "${1:-}" != --merge-gate-only ]; then
@@ -141,17 +141,17 @@ STUB
     )
     printf 'false\n' > "$target/.git/fixture-resolved"
     rc=0; out=$(merge_gate_run 2>&1) || rc=$?
-    [ "$rc" -eq 2 ] || fail "HIMMEL-7000: unresolved finding must refuse (rc=$rc): $out"
+    [ "$rc" -eq 2 ] || fail "unresolved finding must refuse (rc=$rc): $out"
     grepq "$out" 'unresolved CodeRabbit review thread' \
-      || fail "HIMMEL-7000: merge refused for something other than the finding: $out"
+      || fail "merge refused for something other than the finding: $out"
     printf 'true\n' > "$target/.git/fixture-resolved"
     rc=0; out=$(merge_gate_run 2>&1) || rc=$?
-    [ "$rc" -eq 0 ] || fail "HIMMEL-7000: resolved finding must allow a clean adopted merge (rc=$rc): $out"
+    [ "$rc" -eq 0 ] || fail "resolved finding must allow a clean adopted merge (rc=$rc): $out"
     echo "ok: HIMMEL-7000 adopted hook refuses unresolved finding and allows resolved finding with green CI"
   fi
-  core_lines=$(grep -Ev '^(#|$)' "$repo_root/scripts/ci/ci-trust-paths-core.txt") || fail "HIMMEL-7391: no core trust list"
+  core_lines=$(grep -Ev '^(#|$)' "$repo_root/scripts/ci/ci-trust-paths-core.txt") || fail "no core trust list"
   while IFS= read -r f; do
-    grep -qxF -e "$f" "$trust" || fail "HIMMEL-7391: the seeded trust list lacks the core line $f"
+    grep -qxF -e "$f" "$trust" || fail "the seeded trust list lacks the core line $f"
   done <<< "$core_lines"
   echo "ok: HIMMEL-7391 the seeded trust list holds every core line"
   # The adopted repo judged through merge-on-green's anchor: a himmel stand-in
@@ -189,7 +189,7 @@ STUB
     GH="$work/core-gh" bash -c '. "$1"; shift; trust_path_check "$@"' _ "$repo_root/scripts/lib/go-gate.sh" adopter/project 7 "$1" main "$anchor" 2>&1
   }
   jq -e '.env.HIMMEL_REPO | type == "string" and length > 0' "$settings" >/dev/null \
-    || fail "HIMMEL-7391: core/project did not record env.HIMMEL_REPO"
+    || fail "core/project did not record env.HIMMEL_REPO"
   HOME="$home" git -C "$target" add .claude/settings.json || exit 1
   # R6: the adopter declares its own trust path on the default branch.
   printf '^deploy/\n' >> "$trust" && mkdir -p "$target/deploy" "$target/src" \
@@ -237,13 +237,13 @@ STUB
   printf '# adopter-owned list\n^private-policy/\n' > "$trust"
   HOME="$home" bash "$adopt" --profile core --scope project --target "$target" >/dev/null || exit 1
   [ "$(cat "$trust")" = $'# adopter-owned list\n^private-policy/' ] \
-    || fail "HIMMEL-7000: re-adopt overwrote the adopter trust list"
+    || fail "re-adopt overwrote the adopter trust list"
   echo "ok: HIMMEL-7000 adopted merge gate and transitive helpers are byte-identical; wiring preserves settings and is idempotent; trust list is seeded but never overwritten"
   local fresh="$work/merge-gate-fresh-project" ledger="$work/merge-gate-fresh-ledger"
   mkdir -p "$fresh"
   HOME="$home" HIMMEL_PROVENANCE_DIR="$ledger" bash "$adopt" --profile core --scope project --target "$fresh" >/dev/null || exit 1
   jq -se '[.[] | select(.kind == "json-elem" and .unit == "/hooks/PreToolUse" and .op == "insert")] | length == 4 and all(.[]; .container_created == true)' "$ledger/provenance.jsonl" >/dev/null \
-    || fail "HIMMEL-7000: every inserted hook must record ownership of the newly created PreToolUse container"
+    || fail "every inserted hook must record ownership of the newly created PreToolUse container"
   jq -se '[.[] | select(.kind == "file" and .manifest_row == "adopter-scripts")] | length == 99' "$ledger/provenance.jsonl" >/dev/null \
     || fail "expected 98 portable file rows plus the trust policy seed"
   echo "ok: all four hooks record fresh-container ownership for uninstall; all 99 file rows recorded"
@@ -251,4 +251,4 @@ STUB
 
 mkdir -p "$work/merge-gate-foreign-worktree"
 GIT_DIR="$work/merge-gate-foreign.git" GIT_WORK_TREE="$work/merge-gate-foreign-worktree" test_adopt_merge_gate "${1:-}" || exit 1
-[ ! -e "$work/merge-gate-foreign.git" ] || fail "HIMMEL-7000: fixture setup wrote the inherited Git directory"
+[ ! -e "$work/merge-gate-foreign.git" ] || fail "fixture setup wrote the inherited Git directory"
