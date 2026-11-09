@@ -13,6 +13,7 @@
 */scripts/handover/chief-kit/test-chief-doc-one-read.sh HIMMEL-9723 writes launch-profiles under HOME
 */scripts/handover/chief-kit/test-live-state.sh HIMMEL-9723 writes state/tick-stall.cache and the bank refresh marker under HOME
 */scripts/handover/chief-kit/test-live-subagents.sh HIMMEL-9723 writes session-runs.jsonl under HOME
+*/scripts/handover/chief-kit/test-tick-pool-stale.sh HIMMEL-9723 writes state/tick-stall.cache and state/doctor-cadence under HOME
 */scripts/handover/chief-kit/test-wrap-merged.sh HIMMEL-9723 writes state/jira-mirror under HOME
 */scripts/handover/chief/test-chief-handoff-roundtrip.sh HIMMEL-9723 writes cadence-ledger.jsonl and launch-profiles under HOME
 */scripts/handover/chief/test-chief.sh HIMMEL-9723 writes launch-profiles under HOME
