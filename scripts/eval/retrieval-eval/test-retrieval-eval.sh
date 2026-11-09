@@ -676,5 +676,46 @@ PY
 then pass "replay makes no subprocess or network calls"
 else fail "replay makes no subprocess or network calls"; fi
 
+# Forward experiment identity, retention before the ledger row, and a failed deep second call.
+cat > "$W/qmd-deepfail" <<'EOF'
+#!/usr/bin/env python3
+import json, sys
+a = json.load(sys.stdin)
+if a["limit"] > 5:
+    sys.stderr.write("deep query failed\n")
+    sys.exit(1)
+print(json.dumps([{"file": "qmd://himmel/docs/lock.md", "snippet": "queue lock"}]))
+EOF
+chmod +x "$W/qmd-deepfail"
+RETRIEVAL_EVAL_QMD_CMD="$W/qmd-deepfail" HIMMEL_EVAL_RUNS_LEDGER="$W/fwd/ledger.jsonl" py "$EV" run --repo "$R" --questions "$W/deep.jsonl" --out "$W/out-deepfail" --arms qmd-hybrid > /dev/null 2>&1
+eq "a failed deep second call is recorded on the row, the k-list kept as the evidence list" "True True" "$(py -c 'import json,sys
+r = json.loads(open(sys.argv[1]).readline())
+print(r.get("deep_failed"), r["files_top20"] == r["files"])' "$W/out-deepfail/results.jsonl")"
+eq "the ledger row counts the arm's deep second-call failures" "1" "$(lm "$W/fwd/ledger.jsonl" qmd-hybrid.deep_failures)"
+eq "the row forwards a complete identity hash into its hashed config" "True" "$(py -c 'import json,sys
+r = json.loads(open(sys.argv[1]).readline())
+i = r["meta"].get("identity") or {}
+print(bool(r["config"].get("identity_hash")) and all(i.get(k) for k in ("bank_sha256", "evaluator_sha256", "shaper_sha256", "harness_commit", "dirty_digest")))' "$W/fwd/ledger.jsonl")"
+eq "the run's artifacts are retained, content-addressed, before the row is written" "True" "$(py -c 'import json,os,sys
+r = json.loads(open(sys.argv[1]).readline())
+m = json.load(open(os.path.join(sys.argv[2], "runs", r["run_id"] + ".json")))
+print(m["manifest_sha256"] == r["meta"]["retained_manifest_sha256"] and "results" in m["artifacts"]
+      and oct(os.stat(sys.argv[2]).st_mode & 0o777) == "0o700")' "$W/fwd/ledger.jsonl" "$W/fwd/eval-retained")"
+mkdir -p "$W/fwd-bad"; : > "$W/fwd-bad/eval-retained"
+RETRIEVAL_EVAL_QMD_CMD="$W/qmd-md" HIMMEL_EVAL_RUNS_LEDGER="$W/fwd-bad/ledger.jsonl" py "$EV" run --repo "$R" --questions "$W/deep.jsonl" --out "$W/out-fwdbad" --arms qmd-hybrid > /dev/null 2> "$W/fwdbad.err"
+eq "a retention failure writes no ledger row" "absent" "$([ -s "$W/fwd-bad/ledger.jsonl" ] && echo present || echo absent)"
+G="$W/idrepo"; mkdir -p "$G"; printf 'shaper v1\n' > "$G/shaper.py"
+git -C "$G" init -q && git -C "$G" add -A && git -C "$G" -c user.email=t@t -c user.name=t commit -q -m s
+eq "an uncommitted shaper edit changes the identity hash at the same commit" "True" "$(py - "$EV" "$G" "$W/deep.jsonl" <<'PY'
+import importlib.util, sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+a = m.forward_identity(sys.argv[3], sys.argv[1], root=sys.argv[2], shapers=[sys.argv[2] + "/shaper.py"])
+open(sys.argv[2] + "/shaper.py", "a").write("edited\n")
+b = m.forward_identity(sys.argv[3], sys.argv[1], root=sys.argv[2], shapers=[sys.argv[2] + "/shaper.py"])
+print(a["identity"]["harness_commit"] == b["identity"]["harness_commit"] and a["config_hash"] != b["config_hash"]
+      and a["identity"]["dirty_digest"] == "clean" and b["identity"]["dirty_digest"] != "clean")
+PY
+)"
+
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit "$fails"
