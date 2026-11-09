@@ -57,6 +57,26 @@ test("cost route: the page's browser half is served, and what a visitor sees car
   expect(html).not.toMatch(/HIMMEL-/);
 });
 
+test("cost route: route-authorization: 401 without a token, 405 on POST, 200 on an authenticated GET, and nothing is written", async () => {
+  const base = boot();
+  const url = `${base}/api/cost`;
+  expect((await fetch(url)).status).toBe(401);
+  expect((await fetch(url, { method: "POST", headers: { "X-Himmel-Token": TOKEN } })).status).toBe(405);
+  expect((await fetch(url, { method: "PUT", headers: { "X-Himmel-Token": TOKEN } })).status).toBe(405);
+  expect((await fetch(url, { headers: { "X-Himmel-Token": TOKEN } })).status).toBe(200);
+});
+
+test("cost route: partial source is never all-provider or invoices", async () => {
+  const base = boot();
+  const model = await (await fetch(`${base}/api/cost`, { headers: { "X-Himmel-Token": TOKEN } })).json();
+  const basis = "Claude transcript usage at list prices; not invoices. Native Codex and other provider stores are not included.";
+  expect(model.basis).toBe(basis);
+  expect(model.coverageNote).toBe("Collection freshness and completeness unknown");
+  const html = renderCost(model, { open: [] });
+  expect(html).toContain(basis);
+  expect(html).not.toMatch(/all[- ]provider|every provider/i);
+});
+
 test("cost nav: the rail lists Cost on both documents and the chief's landing opens it", () => {
   expect(PAGES.map((p: { id: string }) => p.id)).toContain("cost");
   for (const here of ["console", "agui"] as const)

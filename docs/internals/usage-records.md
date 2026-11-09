@@ -102,6 +102,16 @@ still a row; the Cost page (`scripts/config-ui/cost.ts`) drops it. With no
 `records.jsonl` at all, the page says the usage store has not been built yet and names
 `scripts/usage/usage-compute.sh`, rather than "no data yet".
 
+**What the Cost page's dollars are.** The collector reads Claude transcripts only (by
+default `$HOME/.claude/projects`), and prices each call at list price, so every figure on
+the page is a list-price equivalent: not an invoice, not cash, and not all-provider spend.
+Native Codex and other provider stores are not collected. In every state (data, no data,
+no store) the page says so, with `basis` and `coverageNote` in the model, and says
+"Collection freshness and completeness unknown": it infers no health from a file's age.
+Under the build group, `phase=agent` rows split by class: `build-agent` ("Child sessions")
+holds `class=subagent` rows, `build-agent-followup` ("Parent follow-ups after delegation")
+holds the others; the group's total and call count are unchanged by the split.
+
 ## The build: windows, checkpoint, budget and resume
 
 The first build on a station reads every transcript (43 GB on the first station), so it

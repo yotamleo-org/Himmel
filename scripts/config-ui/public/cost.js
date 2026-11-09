@@ -27,26 +27,29 @@ function phaseBody(p, top, open) {
     `<td>${mark(p.mark)}</td><td class="mute">${esc(p.made)}</td></tr>${open ? p.parts.map(partRow).join("") : ""}</tbody>`;
 }
 
+// what every figure is, in every state: the model's own basis and coverage note, never worded here
+const basisNote = (m) => `<p class="sub basis">${esc(m.basis)} ${esc(m.coverageNote)}.</p>`;
+
 export function renderCost(model, view = {}) {
   if (!model) return view.err ? "" : `<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">loading…</p></section>`;
   if (model.state === "nostore")
     return `<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">the usage store has not been built yet: run ` +
-      `<code>bash scripts/usage/usage-compute.sh</code>, and again until it says no window remains</p></section>`;
+      `<code>bash scripts/usage/usage-compute.sh</code>, and again until it says no window remains</p>${basisNote(model)}</section>`;
   if (model.state !== "ok")
-    return`<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">no data yet</p></section>`;
+    return `<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">no data yet</p>${basisNote(model)}</section>`;
   const open = new Set(view.open || []);
   const top = Math.max(0, ...model.phases.map((p) => p.share || 0));
   const models = model.models.map((m) => `${esc(m.model)} ${usd(m.usd)}`).join(" · ");
   return `<section class="card"><div class="card-h"><h2>Cost by phase · ${esc(model.day)}</h2>` +
     `<span class="big">${usd(model.usd)} ${mark(model.mark)}</span></div>` +
-    `<p class="sub">${esc(model.calls.toLocaleString("en-US"))} calls · ${models}</p>` +
+    `<p class="sub">${esc(model.calls.toLocaleString("en-US"))} calls · ${models}</p>${basisNote(model)}` +
     `<div class="tw"><table class="tbl ph" aria-label="Cost by phase, one day"><thead><tr><th>Phase</th><th class="n">$</th><th class="n">share</th>` +
     `<th class="barc"></th><th>how</th><th class="hs">made of</th></tr></thead>` +
     model.phases.map((p) => phaseBody(p, top, open.has(p.id))).join("") +
     `</table></div><p class="foot">Open a phase to see what it is made of. A part's share and bar are of its phase.</p></section>` +
     `<section class="card how"><h2>How the split is made</h2><p>Each API call is priced from its own token counts, per model. A call goes to the phase of ` +
     `the last tool it read the result of: a review script makes the next call "review steps", a test run makes it "tests", and plain reading and editing ` +
-    `is "PR build". Whole sessions go to one phase when their role says so: chief, judge, critic, release manager. The totals are counted; ` +
+    `is "build and other work". Whole sessions go to one phase when their role says so: chief, judge, critic, release manager. The totals are counted; ` +
     `the split between phases is derived.</p></section>`;
 }
 
