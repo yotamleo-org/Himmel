@@ -1159,10 +1159,6 @@ unclosed_wake() {
     set_wake "$items" "$unclosed_file" "${CHIEF_WAIT_UNCLOSED_REWAKE_MIN:-60}" || return 1
     printf '%s\n' "${fresh:-$1}"
 }
-# owed_wake: with --doc, an `OWED <key>` bullet with no `DELIVERED <key> msg=<id>` bullet that
-# stayed unreceipted for CHIEF_WAIT_OWED_SEC (default 300) from the waiter's first sight wakes
-# once. The marker `<inbox>.wait.owed` holds `<key> <first-seen epoch> <woken 0|1>`; a receipt
-# (or the bullet leaving the doc) drops the key. Prints the newly woken keys, comma-joined.
 owed_file="$inbox.wait.owed"
 owed_wake() {
     local now keys k st first woken new="" out=""

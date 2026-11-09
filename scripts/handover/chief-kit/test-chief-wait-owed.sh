@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# test-chief-wait-owed.sh — chief-wait.sh `WAKE owed-undelivered <keys>`: an
-# `OWED <key>` bullet in the --doc chief doc with no `DELIVERED <key> msg=<id>` receipt
-# wakes the chief once it is older than CHIEF_WAIT_OWED_SEC (default 300), once; the
-# receipt chief-route.ts writes clears it. tick.sh, the bank verdict and every side
-# helper are stubbed: nothing here touches a real chief or Telegram.
-#
-# Linux-only (GNU timeout/find): run-shell-tests.sh skips it off-Linux.
-# Run: bash scripts/handover/chief-kit/test-chief-wait-owed.sh
 # shellcheck disable=SC2016  # single-quoted stub bodies expand at run time
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -36,7 +28,6 @@ mkdir -p "$WORK/in/consoles"
 inbox="$WORK/in/consoles/c.md"; : > "$inbox"
 chief="$WORK/chief.md"
 reset() { rm -f "$inbox".wait*; printf '%s\n' '# chief' > "$chief"; }
-# run_waiter <outfile> <ticks>: true when the waiter woke (exited) within <ticks> x 0.1 s
 run_waiter() {
     bash "$WAIT" "$inbox" --doc "$chief" > "$1" 2>/dev/null &
     local wp=$! n=0

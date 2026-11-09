@@ -903,12 +903,6 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
   return cls;
 }
 
-// The poller's send receipt (rememberConsoleReply) is the only artifact that names a sent
-// message. latestReceiptId is the newest message id recorded for this chat and chief (0 when
-// none). Telegram message ids only grow within a chat, so awaitSendReceipt, given the id read
-// BEFORE the reply was queued, accepts only a strictly newer one: an earlier send's receipt can
-// never stand in for this one. Ceiling: a send of the same chief to the same chat still in
-// flight when this one is queued cannot be told apart, the newest id wins.
 export async function latestReceiptId(root: string, chat: number, name: string): Promise<number> {
   let best = 0;
   for (const f of await readdir(join(root, "consoles", "replies")).catch(() => [] as string[])) {
@@ -928,8 +922,6 @@ export async function awaitSendReceipt(root: string, chat: number, name: string,
   }
 }
 
-// The only writer of an owed item's receipt bullet (`DELIVERED <key> msg=<id> chat=<chat>`),
-// which chief-wait.sh reads to stop waking `owed-undelivered`.
 export async function writeOwedReceipt(doc: string, key: string, messageId: number, chat: number): Promise<void> {
   const cur = await readFile(doc, "utf8");
   await appendFile(doc, `${cur === "" || cur.endsWith("\n") ? "" : "\n"}- ${hhmm()} DELIVERED ${key} msg=${messageId} chat=${chat}\n`);
@@ -956,8 +948,6 @@ if (import.meta.main) {
   } else {
     const flags: { chief?: string; satellite?: string; kind?: string; owed?: string; doc?: string } = {};
     if (verb === "reply") while (args.length >= 2 && (args[0] === "--chief" || args[0] === "--satellite" || args[0] === "--kind" || args[0] === "--owed" || args[0] === "--doc")) flags[args.shift()!.slice(2) as keyof typeof flags] = args.shift()!;
-    // --owed <key> --doc <chief doc>: wait for the poller's send receipt, print the message id and
-    // write the DELIVERED bullet, or exit non-zero. Plain `reply` keeps its fire-and-forget shape.
     const owedOk = (flags.owed === undefined && flags.doc === undefined) || (/^[A-Za-z0-9_.-]+$/.test(flags.owed ?? "") && isAbsolute(flags.doc ?? "") && await stat(flags.doc!).then(s => s.isFile(), () => false));
     const name = flags.chief ?? (verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined);
     const satellite = flags.satellite;

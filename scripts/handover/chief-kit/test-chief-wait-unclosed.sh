@@ -129,7 +129,6 @@ busy() { PATH="$W/bin-busy:$PATH" tk "$1"; }
 contains 'a worker holding its lock reads FRESH (control)' "$(busy "$w4")" 'workers=N301:FRESH'
 check 'a worker that is still working is never unclosed' '' "$(field unclosed "$(busy "$w4")")"
 
-# (a) a konsole with no child is a dead window: deadwin= closes it, so it is never unclosed=
 w6="$(mkworker 06 childless '- 12:00 LIVE — working' '- 12:30 WRAPPED — released')"
 konsole 5706 "HIMMEL-9706-N9706-childless" > "$W/ps-win6.txt"
 reset
@@ -141,7 +140,6 @@ check '(a) its childless konsole is closed by deadwin=' 'N9706:closed' "$(field 
 check '(a) a WRAPPED worker whose konsole has no child is never unclosed' '' "$(field unclosed "$o")"
 export PS_FIXTURE="$W/ps-none.txt"
 
-# (b) the disposition bullet with and without its HH:MM, bold or plain; a non-bullet line is not one
 reset
 alive "$w1" > /dev/null; alive "$w1" > /dev/null
 printf '%s\n' 'DISPOSITION N9701 closed' >> "$chief"
@@ -153,7 +151,6 @@ alive "$w1" > /dev/null; alive "$w1" > /dev/null
 printf '%s\n' '- 12:47 **DISPOSITION N9701 closed**' >> "$chief"
 check '(b) a bold disposition bullet with HH:MM clears the field' '' "$(field unclosed "$(alive "$w1")")"
 
-# (c) prefix labels: N9707 must never match N9707b in either direction
 wa="$W/handover/HIMMEL-9707-N9707-a.md"; wb="$W/handover/HIMMEL-9707-N9707b-b.md"
 for f in "$wa" "$wb"; do printf '%s\n' '# worker' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$f"; done
 mkcmdline 9707 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9707-N9707-a work
@@ -196,7 +193,6 @@ tick_line ' unclosed=N2315'
 if run_waiter "$W/w1.out" 80; then pass 'the waiter wakes on a new unclosed worker'; else fail 'the waiter did not wake on unclosed=N2315'; fi
 case "$(cat "$W/w1.out")" in *'WAKE unclosed N2315'*) pass 'the wake names the worker: WAKE unclosed N2315' ;; *) fail "waiter out: $(cat "$W/w1.out")" ;; esac
 if run_waiter "$W/w2.out" 40; then fail "the waiter woke again for the same unclosed worker: $(cat "$W/w2.out")"; else pass 'the same unclosed worker does not wake the waiter again'; fi
-# (d) the 60-minute re-wake: a marker older than CHIEF_WAIT_UNCLOSED_REWAKE_MIN wakes for the same worker again
 touch -d '30 minutes ago' "$inbox.wait.unclosed"
 if run_waiter "$W/w2b.out" 40; then fail "(d) a 30-minute-old marker woke inside the 60-minute window: $(cat "$W/w2b.out")"; else pass '(d) the same unclosed worker stays quiet inside the re-wake window'; fi
 touch -d '61 minutes ago' "$inbox.wait.unclosed"
