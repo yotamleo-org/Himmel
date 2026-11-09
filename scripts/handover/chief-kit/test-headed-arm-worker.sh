@@ -5766,6 +5766,146 @@ check "51r TERM to the launcher: the launched process is gone, not orphaned" "$(
 check "51s ... the launcher exits non-zero with the signal status, and the reservation is released" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)|$(slot51 "$n51t")" "nonzero|free"
 [ -z "$cpid51" ] || kill -KILL "$cpid51" 2>/dev/null || true
 
+# A refused launch leaves one row in $HOME/.himmel/launch-refusals.jsonl (HOME is the pinned one above).
+LR="$HOME/.himmel/launch-refusals.jsonl"
+rm -f "$LR"
+# 9625a: the bus-register refusal of row 45o (the same name under another chief) writes one row
+rc=0; run45 in HIMMEL-45-in HIMMEL-chief-45-other || rc=$?
+check "9625a the refused launch still exits 2" "$rc" "2"
+check "9625a one row, whole: v, source, kind, name, cause, rc" "$(jq -r '[.v, .source, .kind, .name, .cause, .rc] | join(" ")' "$LR" 2>/dev/null | tr '\n' '|')" "1 headed-arm-worker launch-refused HIMMEL-45-in bus-register 2|"
+check "9625a the row carries the keys in order" "$(jq -c 'keys_unsorted' "$LR" 2>/dev/null | head -1)" '["v","ts","host","source","kind","name","cause","rc","line"]'
+check "9625a ts is a UTC second stamp" "$(jq -r '.ts' "$LR" 2>/dev/null | grep -cE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')" "1"
+check "9625a the line holds the refusal reason" "$(jq -r '.line | type' "$LR" 2>/dev/null | head -1)" "string"
+# 9625-base: an admitted launch (exit 0) writes no row; the positive control is the refusal row just above
+n9625b="$(wc -l < "$LR" 2>/dev/null | tr -d ' ')"
+rc=0; run45 in HIMMEL-45-in || rc=$?
+check "9625-base control: the admitted launch exits 0" "$rc" "0"
+check "9625-base an admitted launch adds no row" "$(wc -l < "$LR" 2>/dev/null | tr -d ' ')" "$n9625b"
+check "9625-base control: a row exists to be counted" "$n9625b" "1"
+
+# helpers for the groups below: rows in the pinned ledger, the last row's field, and the two shapes of assertion
+lr_n() { if [ -f "$LR" ]; then wc -l < "$LR" | tr -d ' '; else echo 0; fi; }
+lr_last() { tail -n 1 "$LR" 2>/dev/null | jq -r "$1" 2>/dev/null; }
+lr_expect() { # <label> <cause> <exit expected> <exit seen> <rows before>
+  check "9625-cause $1: the launcher exits $3" "$4" "$3"
+  check "9625-cause $1: one row, cause $2, rc $3" "$(( $(lr_n) - $5 ))|$(lr_last '[.cause,.rc]|join(" ")')" "1|$2 $3"
+}
+lr_lines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; fi; } # <file>: its row count, empty when the file is absent
+lr_none() { check "9625-skip $1: no row" "$(( $(lr_n) - $2 ))" "0"; } # <label> <rows before>
+
+# 9625-cause: one row per refusal, the cause word and the launcher's own exit status
+doc9625_np="$tmp/HIMMEL-9625-np.md"; printf '%s\n' '---' 'description: no prior art' '---' '# no prior art line' > "$doc9625_np"
+doc9625_ok="$tmp/HIMMEL-9625-ok.md"; fx_brief '# ok' > "$doc9625_ok"
+b="$(lr_n)"; rc=0; t51 "$PROCEED_PREFLIGHT" HIMMEL-9625-N1-lint "$doc9625_np" >/dev/null 2>&1 || rc=$?
+lr_expect brief-lint brief-lint 2 "$rc" "$b"
+check "9625-cause brief-lint: the line is the lint's first line" "$(lr_last '.line|type')" "string"
+b="$(lr_n)"; rc=0; t51 "$SKIPPED_FLEET_PREFLIGHT" HIMMEL-9625-N2-cap "$doc9625_ok" >/dev/null 2>&1 || rc=$?
+lr_expect fleet-cap fleet-cap 10 "$rc" "$b"
+n9625d="HIMMEL-9625-N3-dup"; mkdir -p "$HIMMEL_FLEET_SLOTS/$n9625d"; printf '%s\n' 424242 > "$HIMMEL_FLEET_SLOTS/$n9625d/pid"
+b="$(lr_n)"; rc=0; t51 "$RESV51" "$n9625d" "$doc9625_ok" >/dev/null 2>&1 || rc=$?
+lr_expect fleet-duplicate fleet-duplicate 10 "$rc" "$b"
+rm -rf "${HIMMEL_FLEET_SLOTS:?}/$n9625d"
+b="$(lr_n)"; rc=0; t51 "$SKIPPED_BANK_PREFLIGHT" HIMMEL-9625-N4-bank "$doc9625_ok" >/dev/null 2>&1 || rc=$?
+lr_expect bank-exhausted bank-exhausted 11 "$rc" "$b"
+rm -rf "${HIMMEL_FLEET_SLOTS:?}/HIMMEL-9625-N4-bank"
+rm -rf "$acks38"; page38 feat+worker-38 SHIP-STEP "$(( $(date +%s) - 30 ))"
+b="$(lr_n)"; rc=0; bash "$SCRIPT" --no-profile HIMMEL-38-worker "$doc38" /tmp/nosig 99999999999 "$tmp/c9625-38.log" claude-sonnet-5 >/dev/null 2>&1 || rc=$?
+lr_expect denial-unacked denial-unacked 14 "$rc" "$b"
+b="$(lr_n)"; rc=0; bash "$SCRIPT" --dry-run --no-profile HIMMEL-38-worker "$doc38" /tmp/nosig 99999999999 "$tmp/c9625-38.log" claude-sonnet-5 >/dev/null 2>&1 || rc=$?
+check "9625-skip --dry-run: the same refusal exits 14" "$rc" "14"
+lr_none "--dry-run on a refusal (the control is the denial-unacked row just above)" "$b"
+rm -rf "$acks38"
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$root39/u/himmel/scratch" > "$tmp/c9625-39-doc.md"
+b="$(lr_n)"; rc=0; bash "$SCRIPT" --no-profile HIMMEL-39-worker "$tmp/c9625-39-doc.md" /tmp/nosig 99999999999 "$tmp/c9625-39.log" claude-sonnet-5 >/dev/null 2>&1 || rc=$?
+lr_expect handover-root handover-root 15 "$rc" "$b"
+b="$(lr_n)"; rc=0; some_doc="$doc50" REC_PREFLIGHT_OUT="$tmp/rec-preflight9625.env" RUN_WORKER_WRAP="env -u UNGUARDED_LAUNCH_OK" RUN_WORKER_ARGS=--no-profile run_worker "$d50" "$scratch50" "HIMMEL-9026-N3-guard" "claude-sonnet-5" "$REC_PREFLIGHT" >/dev/null 2>&1 || rc=$?
+lr_expect unguarded-checkout unguarded-checkout 18 "$rc" "$b"
+for crc in 3 7 9 137; do
+  b="$(lr_n)"; rc=0; TGT51_RC=$crc t51 "$PROCEED_PREFLIGHT" "HIMMEL-9625-N6-child$crc" "$doc9625_ok" >/dev/null 2>&1 || rc=$?
+  lr_expect "headed-arm child $crc" headed-arm "$crc" "$rc" "$b"
+  check "9625-cause headed-arm child $crc: no line" "$(lr_last '.line|type')" "null"
+done
+bus9625_name="HIMMEL-9625-$(printf 'x%.0s' $(seq 1 130))"
+rm -f "$bus45/seen" "$bus45/bus-called"
+b="$(lr_n)"; rc=0; XDG_STATE_HOME="$bus45/state" HEADED_ARM_BUS_CLI="$bus9537_stub" HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 "$bus9625_name" "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1 || rc=$?
+lr_expect bus-name-too-long bus-name-too-long 2 "$rc" "$b"
+b="$(lr_n)"; rc=0; bash "$SCRIPT" --bogus-flag >/dev/null 2>&1 || rc=$?
+lr_expect other other 2 "$rc" "$b"
+check "9625-cause other: no name and no line are null" "$(lr_last '[(.name|type),(.line|type)]|join(" ")')" "null null"
+
+# 9625-skip: a launch that came up, a signal this launcher forwarded and --dry-run write nothing; each beside a control that does
+b="$(lr_n)"; rc=0; bash "$SCRIPT" --bogus-flag --dry-run >/dev/null 2>&1 || rc=$?
+check "9625-skip --dry-run after an in-loop argument error: the launcher exits 2" "$rc" "2"
+lr_none "--dry-run after an in-loop argument error (the control is the other row above)" "$b"
+if command -v flock >/dev/null 2>&1; then
+  fleet9625() { # <manifest> <name> -> the launch with the fleet fixture target
+    FLEET_TEST_MANIFEST="$tmp/none-manifest" HEADED_ARM_WORKER_TARGET="$fleet_target" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+      bash "$SCRIPT" --no-profile --fleet "$1" "$2" "$doc9625_ok" "$tmp/fleet9625-sig" "$PAST" "$tmp/fleet9625-log" claude-sonnet-5-5
+  }
+  mkdir -p "$tmp/fleet9625-dir"
+  b="$(lr_n)"; rc=0; out9625f="$(fleet9625 "$tmp/fleet9625-dir" worker-fleet-seven 2>&1)" || rc=$?
+  check "9625-skip --fleet manifest failure: the launch came up, the manifest add failed, exit 1" "$rc|$(printf '%s\n' "$out9625f" | grep -c 'fleet manifest update failed')" "1|1"
+  lr_none "--fleet manifest failure (the launch itself came up)" "$b"
+  b="$(lr_n)"; rc=0; FLEET_TEST_RC=3 fleet9625 "$tmp/fleet9625-dir" HIMMEL-3748-N8-fleet >/dev/null 2>&1 || rc=$?
+  lr_expect "--fleet control, child 3" headed-arm 3 "$rc" "$b"
+else
+  echo "SKIP - 9625-skip --fleet manifest failure (fleet-manifest.sh needs util-linux flock, absent here)"
+fi
+n9625t="HIMMEL-9625-N9-term"; doc9625t="$tmp/$n9625t.md"; fx_brief "# $n9625t" > "$doc9625t"; rm -f "$tmp/pids9625t"
+b="$(lr_n)"
+TGT51_MODE=hang TGT51_PIDS="$tmp/pids9625t" HEADED_ARM_WORKER_TARGET="$tgt51" HEADED_ARM_WORKER_PREFLIGHT="$RESV51" \
+  bash "$SCRIPT" --no-profile "$n9625t" "$doc9625t" "$tmp/sig9625" "$PAST" "$tmp/log9625-$n9625t" claude-sonnet-5-5 >/dev/null 2>&1 &
+lpid9625=$!
+n=0; while [ ! -s "$tmp/pids9625t" ] && [ "$n" -lt 100 ]; do sleep 0.1; n=$((n+1)); done
+cpid9625="$(awk '{ print $1 }' "$tmp/pids9625t" 2>/dev/null)"
+kill -TERM "$lpid9625" 2>/dev/null
+rc=0; wait "$lpid9625" 2>/dev/null || rc=$?
+check "9625-skip forwarded TERM: the launcher exits non-zero" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+lr_none "a forwarded TERM (the control is the child 137 row above: the same status, not forwarded)" "$b"
+[ -z "$cpid9625" ] || kill -KILL "$cpid9625" 2>/dev/null || true
+
+# 9625-enc: every string field is one line of printable ASCII, cut, then escaped; the row stays valid JSON under 1,000 bytes
+b="$(lr_n)"; rc=0; HOSTNAME=$'h"o\\st\tx\xc3\xa9\nsecond' bash "$SCRIPT" --bogus-flag >/dev/null 2>&1 || rc=$?
+check "9625-enc host with a quote, a backslash, a tab, non-ASCII and a newline: one valid row, first line only, ASCII" "$(( $(lr_n) - b ))|$(lr_last '.host')" '1|h"o\st?x??'
+b="$(lr_n)"; rc=0; bash "$SCRIPT" --no-profile "HIMMEL-9625-\"q\\z" "$doc9625_np" "$tmp/sig9625" "$PAST" "$tmp/log9625-q" claude-sonnet-5-5 >/dev/null 2>&1 || rc=$?
+check "9625-enc name with a quote and a backslash: one valid row, name exact" "$(( $(lr_n) - b ))|$(lr_last '.name')" '1|HIMMEL-9625-"q\z'
+b="$(lr_n)"; rc=0; bash "$SCRIPT" --no-profile "HIMMEL-9625-$(printf 'x%.0s' $(seq 1 300))" "$doc9625_np" "$tmp/sig9625" "$PAST" "$tmp/log9625-long" claude-sonnet-5-5 >/dev/null 2>&1 || rc=$?
+check "9625-enc a 300-byte name is cut to 128 bytes" "$(( $(lr_n) - b ))|$(lr_last '.name|length')" "1|128"
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$root39/u/himmel/$(printf 'a%.0s' $(seq 1 250))" > "$tmp/c9625-39b-doc.md"
+b="$(lr_n)"; rc=0; HOSTNAME="$(printf 'h%.0s' $(seq 1 100))" bash "$SCRIPT" --no-profile HIMMEL-39-worker "$tmp/c9625-39b-doc.md" /tmp/nosig 99999999999 "$tmp/c9625-39b.log" claude-sonnet-5 >/dev/null 2>&1 || rc=$?
+check "9625-enc a long refusal line is cut to 200 bytes and a long host to 64" "$(( $(lr_n) - b ))|$(lr_last '[(.line|length),(.host|length)]|join(" ")')" "1|200 64"
+check "9625-enc the largest row is under 1,000 bytes" "$([ "$(tail -n 1 "$LR" | wc -c)" -lt 1000 ] && echo small || echo big)" "small"
+
+# 9625-robust: a ledger that cannot be written, an empty HOME and a failing encoder change neither the status nor a byte of output
+okhome9625="$tmp/okhome9625"; mkdir -p "$okhome9625"
+out_ok9625="$(HOME="$okhome9625" bash "$SCRIPT" --bogus-flag 2>&1)" || rc_ok9625=$?
+check "9625-robust control: a good HOME gets the row, the refusal exits 2" "${rc_ok9625:-0}|$(lr_lines "$okhome9625/.himmel/launch-refusals.jsonl")" "2|1"
+robust9625() { # <label> <env assignment...>: one refusal under a broken setup must read like the control
+  local label="$1"; shift; local rcx=0 outx
+  outx="$(env "$@" bash "$SCRIPT" --bogus-flag 2>&1)" || rcx=$?
+  check "9625-robust $label: the exit status is 2" "$rcx" "2"
+  check "9625-robust $label: the output is the control's, byte for byte" "$outx" "$out_ok9625"
+}
+badhome9625="$tmp/badhome9625"; mkdir -p "$badhome9625"; : > "$badhome9625/.himmel"
+robust9625 "a ledger directory that cannot be made (a file in its place)" HOME="$badhome9625"
+robust9625 "an empty HOME" HOME=
+roghome9625="$tmp/roghome9625"; mkdir -p "$roghome9625/.himmel"; : > "$roghome9625/.himmel/launch-refusals.jsonl"; chmod 444 "$roghome9625/.himmel/launch-refusals.jsonl"
+if [ "$(id -u)" -ne 0 ]; then
+  robust9625 "a read-only ledger" HOME="$roghome9625"
+  check "9625-robust a read-only ledger stays empty" "$(wc -c < "$roghome9625/.himmel/launch-refusals.jsonl" | tr -d ' ')" "0"
+else
+  echo "SKIP - 9625-robust read-only ledger (root ignores the mode)"
+fi
+shim9625="$tmp/shim9625"; mkdir -p "$shim9625"
+printf '#!/bin/sh\nexit 1\n' > "$shim9625/tr"; printf '#!/bin/sh\nexit 1\n' > "$shim9625/date"; chmod 755 "$shim9625/tr" "$shim9625/date"
+bad9625="$tmp/bad9625"; mkdir -p "$bad9625"
+robust9625 "a failing tr" HOME="$bad9625" PATH="$shim9625:$PATH"
+check "9625-robust a failing tr writes no row" "$(lr_lines "$bad9625/.himmel/launch-refusals.jsonl")" ""
+bad9625b="$tmp/bad9625b"; mkdir -p "$bad9625b"; rm -f "$shim9625/tr"
+robust9625 "a failing date" HOME="$bad9625b" PATH="$shim9625:$PATH"
+check "9625-robust a failing date (an empty ts) writes no row" "$(lr_lines "$bad9625b/.himmel/launch-refusals.jsonl")" ""
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-headed-arm-worker.sh"
