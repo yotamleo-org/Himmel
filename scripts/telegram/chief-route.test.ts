@@ -530,6 +530,52 @@ test("reply CLI: the old --console is refused even with HIMMEL_LEGACY_NAMES=1; o
   expect(old.err).toContain("usage: bun chief-route.ts reply");
 });
 
+async function owedReply(r: string, doc: string, flush: boolean, extra: string[] = ["--owed", "sig-1", "--doc", doc]) {
+  const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "reply", "--chief", NAME, ...extra, "1", "please sign"], {
+    env: { ...process.env, BRIDGE_ROOT: r, CHIEF_ROUTE_RECEIPT_WAIT_SEC: flush ? "20" : "1" }, stdout: "pipe", stderr: "pipe",
+  });
+  const out = new Response(p.stdout).text(); const err = new Response(p.stderr).text();
+  const outbox = join(r, "sessions", "__chat__", "outbox.jsonl");
+  if (flush) {
+    for (let i = 0; i < 100 && !existsSync(outbox); i++) await new Promise(res => setTimeout(res, 100));
+    await flushOutboxes(r, async () => 4242);
+  }
+  return { code: await p.exited, out: await out, err: await err };
+}
+
+test("reply --owed prints the Telegram message id from the poller's send receipt and writes the DELIVERED bullet", async () => {
+  const r = root(); heartbeat(r);
+  const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n- 10:00 OWED sig-1 sign it\n");
+  mkdirSync(join(r, "consoles", "replies"), { recursive: true });
+  writeFileSync(join(r, "consoles", "replies", "1_100.json"), JSON.stringify({ name: NAME }));
+  const res = await owedReply(r, doc, true);
+  expect(res.code).toBe(0);
+  expect(res.out).toContain("delivered msg=4242");
+  expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\d DELIVERED sig-1 msg=4242 chat=1\n$/);
+});
+
+test("reply --owed exits non-zero and marks nothing delivered when no send receipt arrives; a receipt written just before the reply was queued does not count", async () => {
+  const r = root(); heartbeat(r);
+  const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n- 10:00 OWED sig-1 sign it\n");
+  mkdirSync(join(r, "consoles", "replies"), { recursive: true });
+  writeFileSync(join(r, "consoles", "replies", "1_100.json"), JSON.stringify({ name: NAME }));
+  const res = await owedReply(r, doc, false);
+  expect(res.code).toBe(1);
+  expect(res.err).toContain("no send receipt");
+  expect(readFileSync(doc, "utf8")).not.toContain("DELIVERED");
+});
+
+test("reply --owed without a usable key and chief doc is refused and queues nothing", async () => {
+  const r = root(); heartbeat(r);
+  const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n");
+  for (const extra of [["--owed", "sig-1"], ["--owed", "bad key", "--doc", doc], ["--owed", "sig-1", "--doc", join(r, "missing.md")]]) {
+    const res = await owedReply(r, doc, false, extra);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("usage: bun chief-route.ts reply");
+  }
+  expect(existsSync(join(r, "sessions", "__chat__", "outbox.jsonl"))).toBe(false);
+});
+
 const TABLE = join(import.meta.dir, "message-classes.json");
 const FIX = join(import.meta.dir, "fixtures");
 const FIX_MIRROR = join(FIX, "jira-mirror", "HIMMEL");
