@@ -649,6 +649,16 @@ def directive_in(line):
     return False
 
 
+def whole_file_rows(paths):
+    lint = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lint")
+    r = subprocess.run(["awk", "-f", os.path.join(lint, "ticket-refs.awk"),
+                        "-v", "allow=" + os.path.join(lint, "ticket-ref-allow.tsv"), "-v", "mode=exempt"],
+                       input="\n".join(paths) + "\n", capture_output=True, text=True, env=dict(os.environ, LC_ALL="C"))
+    if r.returncode != 0:
+        die("ticket-refs.awk exempt mode failed: %s" % r.stderr.strip())
+    return set(r.stdout.split("\n")) - {""}
+
+
 def cmd_verify(args):
     if not args:
         die("verify needs a base")
@@ -662,11 +672,12 @@ def cmd_verify(args):
             die("unknown argument %s" % a)
     mb = git("merge-base", base, "HEAD").stdout.decode().strip()
     status = git("diff", "--name-status", "--no-renames", mb, "HEAD").stdout.decode("utf-8", "replace")
+    rows = [r.split("\t", 1) for r in status.splitlines()]
+    exempt = whole_file_rows([p for _, p in rows])
     named, fails, compared = [], [], 0
-    for row in status.splitlines():
-        st, path = row.split("\t", 1)
+    for st, path in rows:
         kind = os.path.splitext(path)[1]
-        if st != "M" or path in HAND or path in named_extra or kind not in (".sh", ".bash", ".py"):
+        if st != "M" or path in HAND or path in named_extra or path in exempt or kind not in (".sh", ".bash", ".py"):
             named.append(path)
             continue
         old = git("show", "%s:%s" % (mb, path)).stdout

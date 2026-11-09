@@ -7,7 +7,7 @@
 # diff / count  input is a unified diff (-U0); only added lines are judged.
 # tree          input is `git grep -n` output, path:line:text.
 # exempt        input is one path per line; prints those under a whole-file row
-#               (scripts/one-shot/no-markers.sh).
+#               (scripts/one-shot/no-markers.sh and harvest-ceilings.py verify).
 # allow         scripts/lint/ticket-ref-allow.tsv: kind, path-regex, line-regex, reason.
 #               The `key` row owns the ticket-key pattern; every other row exempts the
 #               lines it matches. Nothing in this file names a project key.

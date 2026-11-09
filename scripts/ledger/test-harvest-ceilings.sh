@@ -121,6 +121,7 @@ R="$W/verify"; newrepo "$R"
 printf '#!/usr/bin/env bash\n# shellcheck disable=SC2034\na=1  # %s trailing, upgrade x\n# %s block, upgrade y\nb=2\ncat <<EOF\ndata line\nEOF\n' "$TOK" "$TOK" > "$R/v.sh"
 printf 'x = 1  # %s trailing, upgrade x\n# %s block\ny = 2\n' "$TOK" "$TOK" > "$R/v.py"
 printf '# Doc\n\ntext\n' > "$R/README.md"
+mkdir -p "$R/fixtures"; printf 'echo one\n' > "$R/fixtures/f.sh"
 commit "$R" base
 base="$(git -C "$R" rev-parse HEAD)"
 vcase() { # vcase <name> <v.sh content>
@@ -128,12 +129,14 @@ vcase() { # vcase <name> <v.sh content>
     printf '%b' "$2" > "$R/v.sh"
     printf 'x = 1\ny = 2\n' > "$R/v.py"
     printf '# Doc\n\ntext, edited\n' > "$R/README.md"
+    printf 'echo two\n' > "$R/fixtures/f.sh"
     commit "$R" "$1"
     OUT="$(cd "$R" && python3 -I "$PY" verify "$base" 2>&1)"; RC=$?
 }
 vcase ok '#!/usr/bin/env bash\n# shellcheck disable=SC2034\na=1\nb=2\ncat <<EOF\ndata line\nEOF\n'
 if [ "$RC" -eq 0 ] && case "$OUT" in *"verify: PASS"*) true ;; *) false ;; esac; then pass "verify passes on comment-only cuts"; else fail "verify ok rc=$RC: $OUT"; fi
 case "$OUT" in *"named	README.md"*) pass "verify names a file it cannot compare" ;; *) fail "named list: $OUT" ;; esac
+case "$OUT" in *"named	fixtures/f.sh"*) pass "verify names a file under a whole-file allow row instead of comparing it" ;; *) fail "exempt named: $OUT" ;; esac
 vcase code '#!/usr/bin/env bash\n# shellcheck disable=SC2034\na=1\ncat <<EOF\ndata line\nEOF\n'
 if [ "$RC" -eq 1 ] && case "$OUT" in *"FAIL v.sh"*) true ;; *) false ;; esac; then pass "verify fails on a deleted code line"; else fail "verify code rc=$RC: $OUT"; fi
 printf 'file\tanchor\tceiling\ttrigger\tticket\tstate\tnote\nv.sh\tb=2\tdata line\tnone-planned: x\t\tdropped\tmigration: not a marker: code or test data, token rebuilt at runtime\n' > "$W/stub.tsv"
