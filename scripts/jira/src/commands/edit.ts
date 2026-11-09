@@ -7,7 +7,8 @@ import { readBodyFile } from './body-file.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, INTAKE_GATES } from './intake-gate.js';
 import { nextResidualDepth, queueBacklogIntake } from './create.js';
 import { parseLabels } from './labels.js';
-import { requireSectorField, resolveSector, sectorOf, sectorOptions } from './sector.js';
+import { requireSectorField, resolveSector, sectorField, sectorOf, sectorOptions } from './sector.js';
+import { bodyDiagnostics, homeVerdict, type BodyInput, type Diagnostic } from '../plain-block.js';
 import { assertVersionExists, buildFixVersionBody, projectFromKey, resolveAffectsVersion } from './versions.js';
 
 export interface EditOptions {
@@ -263,6 +264,86 @@ async function stampResidual(key: string, options: EditOptions & { residualOf?: 
   return ownVersions.map((v) => v.name ?? '').filter((name) => name !== '');
 }
 
+/** The `(rule, field)` errors of `after` that `before` did not have: what an edit would break. */
+export function newViolations(before: Diagnostic[], after: Diagnostic[]): Diagnostic[] {
+  const had = new Set(before.filter((d) => d.severity === 'error').map((d) => `${d.rule}\u0000${d.field}`));
+  return after.filter((d) => d.severity === 'error' && !had.has(`${d.rule}\u0000${d.field}`));
+}
+
+interface Snapshot {
+  type: string;
+  description: unknown;
+  labels: string[];
+  parent?: string;
+  sector?: string;
+}
+
+/** The labels the edit leaves on the ticket. */
+function labelsAfter(current: string[], o: EditOptions): string[] {
+  if (o.labels !== undefined) return parseLabels(o.labels);
+  let out = [...current];
+  if (o.addLabels !== undefined) out = [...new Set([...out, ...parseLabels(o.addLabels)])];
+  if (o.removeLabels !== undefined) {
+    const drop = new Set(parseLabels(o.removeLabels));
+    out = out.filter((l) => !drop.has(l));
+  }
+  return out;
+}
+
+/** Body and home findings of a ticket state, home as one `(home, home)` finding. */
+function contractDiagnostics(t: Snapshot, body: BodyInput, sectors: readonly string[] | undefined): Diagnostic[] {
+  const out = bodyDiagnostics(body, t.type, t.labels);
+  const home = homeVerdict(t.type, { sector: t.sector, parent: t.parent, labels: t.labels }, sectors);
+  if (home.action !== 'ok') out.push({ rule: 'home', field: 'home', severity: home.action === 'refuse' ? 'error' : 'warning', message: home.message });
+  return out;
+}
+
+/**
+ * Checks an edit that touches the ticket contract (description, labels, parent,
+ * sector) against the ticket as it is now: the edited result may not add a
+ * `(rule, field)` error the current ticket does not have. A legacy ticket can be
+ * repaired a piece at a time; the gaps it keeps are printed as warnings. An
+ * unreadable current ticket is refused, never treated as empty. Runs before the
+ * PUT, so a refusal writes nothing.
+ */
+async function checkEditContract(key: string, o: EditOptions): Promise<void> {
+  const sectorId = sectorField();
+  let got: { fields?: Record<string, unknown> };
+  try {
+    got = await request<{ fields?: Record<string, unknown> }>('GET', `/issue/${key}?fields=description,labels,parent,issuetype${sectorId ? `,${sectorId}` : ''}`);
+  } catch (e) {
+    throw new Error(`Edit ${key}: the current ticket could not be read (${(e as Error).message}); refusing to edit it blind.`);
+  }
+  const f = got.fields;
+  const type = (f?.['issuetype'] as { name?: string } | undefined)?.name;
+  if (!f || !type || !Array.isArray(f['labels'])) {
+    throw new Error(`Edit ${key}: the read of the current ticket carried no issue type or labels; refusing to edit it blind.`);
+  }
+  const before: Snapshot = {
+    type, description: f['description'] ?? null, labels: f['labels'] as string[],
+    parent: (f['parent'] as { key?: string } | undefined)?.key, sector: sectorId ? sectorOf(f) : undefined,
+  };
+  const sectors = sectorId ? await sectorOptions() : undefined;
+  const after: Snapshot = {
+    ...before, labels: labelsAfter(before.labels, o), parent: o.parent ?? before.parent,
+    sector: o.sector !== undefined && sectors ? resolveSector(o.sector, sectors) : before.sector,
+  };
+  const was = contractDiagnostics(before, { format: 'adf', body: before.description }, sectors);
+  const will = contractDiagnostics(after, o.description !== undefined ? { format: 'markdown', body: o.description } : { format: 'adf', body: before.description }, sectors);
+  const broken = newViolations(was, will);
+  if (broken.length > 0) {
+    throw new Error(`Edit ${key}: refused, nothing was written: the edit would break the ticket standard: ${broken.map((d) => d.message).join('; ')}`);
+  }
+  const kept = will.filter((d) => d.severity === 'error');
+  if (kept.length > 0) {
+    console.error(`jira: warning: ${key} still lacks: ${kept.map((d) => d.message).join('; ')} (a gap the ticket already had; this edit adds none)`);
+  }
+}
+
+const touchesContract = (o: EditOptions): boolean =>
+  o.description !== undefined || o.labels !== undefined || o.addLabels !== undefined || o.removeLabels !== undefined ||
+  o.parent !== undefined || o.sector !== undefined;
+
 export function registerEdit(program: Command): void {
   program
     .command('edit <key>')
@@ -380,6 +461,7 @@ export function registerEdit(program: Command): void {
         update['fixVersions'] = dropFixVersions.map((name) => ({ remove: { name } }));
       }
       if (Object.keys(update).length > 0) body.update = update;
+      if (touchesContract(options)) await checkEditContract(key, options);
       await request('PUT', `/issue/${key}`, body);
       // A 2xx PUT does not prove the field changed (Jira can drop a
       // field its edit screen or scheme does not take), so read the priority

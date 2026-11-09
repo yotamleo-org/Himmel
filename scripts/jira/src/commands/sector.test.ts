@@ -171,7 +171,10 @@ describe('Sector field', () => {
     function readBack(value: string | null): void {
       mockRequest.mockImplementation(async (method: string, path: string) =>
         fieldReply(path) ??
-        (method === 'GET' ? { fields: { [FIELD]: value === null ? null : { value } } } : {}),
+        // the snapshot read before an edit that touches the ticket contract
+        (method === 'GET' && path.includes('fields=description,labels,parent,issuetype')
+          ? { fields: { issuetype: { name: 'Epic' }, labels: [], description: null, [FIELD]: { value: 'Visibility' } } }
+          : method === 'GET' ? { fields: { [FIELD]: value === null ? null : { value } } } : {}),
       );
     }
 
