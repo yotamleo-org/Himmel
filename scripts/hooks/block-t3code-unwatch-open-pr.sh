@@ -28,7 +28,12 @@ if [ -n "$url" ]; then
 else
     num=$(jq -r '.tool_input | (.number // .prNumber // .pullRequestNumber // .pr // .pullRequest // "") | tostring' <<<"$input")
     repo=$(jq -r '.tool_input | (.repo // .repository // "") | tostring' <<<"$input")
-    case "$repo" in */*) ;; *) repo="" ;; esac
+    owner=$(jq -r '.tool_input | (.owner // "") | tostring' <<<"$input")
+    case "$repo" in
+        */*) ;;
+        '') ;;
+        *) if [ -n "$owner" ]; then repo="$owner/$repo"; else repo=""; fi ;;
+    esac
 fi
 case "$num" in
     ''|*[!0-9]*) warn "no PR number in tool_input"; exit 0 ;;

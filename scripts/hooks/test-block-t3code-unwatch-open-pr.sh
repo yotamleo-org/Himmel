@@ -26,6 +26,7 @@ export PATH="$TMP/bin:$PATH"
 
 printf '%s' '{"tool_name":"mcp__t3-code__unwatch_pull_request","tool_input":{"pullRequest":"https://github.com/o/r/pull/5054"}}' > "$TMP/p-url.json"
 printf '%s' '{"tool_name":"mcp__t3-code__unwatch_pull_request","tool_input":{"number":77,"repo":"o/r"}}' > "$TMP/p-num.json"
+printf '%s' '{"tool_name":"mcp__t3-code__unwatch_pull_request","tool_input":{"number":78,"owner":"o","repo":"r"}}' > "$TMP/p-owner.json"
 printf '%s' '{"tool_name":"mcp__t3-code__other","tool_input":{"number":77}}' > "$TMP/p-other.json"
 printf '%s' 'not json' > "$TMP/p-bad.json"
 
@@ -51,6 +52,9 @@ GH_STUB_STATE=OPEN GH_STUB_MERGE_STATE=BLOCKED run "deny names override" "$TMP/p
 GH_STUB_STATE=OPEN GH_STUB_MERGE_STATE=BLOCKED run "deny prints mergeStateStatus" "$TMP/p-url.json" 2 "mergeStateStatus=BLOCKED"
 if grep -q -- "pr view 5054 --repo o/r" "$GH_STUB_LOG"; then echo "ok   url resolved to repo+number"; else echo "FAIL url resolution: $(cat "$GH_STUB_LOG")"; FAIL=$((FAIL+1)); fi
 GH_STUB_STATE=OPEN run "number+repo payload denied" "$TMP/p-num.json" 2 "state=OPEN"
+if grep -q -- "pr view 77 --repo o/r" "$GH_STUB_LOG"; then echo "ok   number+repo payload passes --repo o/r to gh"; else echo "FAIL number+repo did not reach gh with --repo: $(cat "$GH_STUB_LOG")"; FAIL=$((FAIL+1)); fi
+GH_STUB_STATE=OPEN run "owner+slashless repo payload denied" "$TMP/p-owner.json" 2 "state=OPEN"
+if grep -q -- "pr view 78 --repo o/r" "$GH_STUB_LOG"; then echo "ok   owner+repo combined as o/r"; else echo "FAIL owner+repo not combined: $(cat "$GH_STUB_LOG")"; FAIL=$((FAIL+1)); fi
 GH_STUB_STATE=MERGED run "MERGED allowed" "$TMP/p-url.json" 0 -
 GH_STUB_STATE=CLOSED run "CLOSED allowed" "$TMP/p-url.json" 0 -
 GH_STUB_STATE=UNKNOWN run "unexpected state fails open with warning" "$TMP/p-url.json" 0 "unexpected state"
@@ -62,7 +66,7 @@ if [ -s "$HOME/.himmel/t3code-unwatch-override.log" ]; then echo "ok   override 
 
 GH_STUB_MODE=error run "unreadable PR fails open with warning" "$TMP/p-url.json" 0 "WARNING"
 GH_STUB_MODE=garbage run "garbage gh output fails open with warning" "$TMP/p-url.json" 0 "WARNING"
-run "unparseable hook input fails open" "$TMP/p-bad.json" 0 -
+run "unparseable hook input fails open with warning" "$TMP/p-bad.json" 0 "WARNING"
 
 echo "$((N-FAIL))/$N cases (+ side checks) ; failures=$FAIL"
 [ "$FAIL" = 0 ]
