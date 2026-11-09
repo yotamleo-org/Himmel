@@ -551,13 +551,20 @@ for f in worker-preface.md judge-preface.md worker-brief-template.md; do
         fail "$f must name wrap-subtree-check.sh (HALT/WRAP line)"
     fi
 done
-for f in worker-preface.md worker-brief-template.md; do
-    if grep -q 'TaskStop EVERY background' "$DOCS/$f"; then
-        pass "$f carries the TaskStop-every-background-task line"
-    else
-        fail "$f must say TaskStop EVERY background task"
-    fi
-done
+if grep -q 'TaskStop EVERY background' "$DOCS/worker-brief-template.md"; then
+    pass "worker-brief-template.md carries the TaskStop-every-background-task line"
+else
+    fail "worker-brief-template.md must say TaskStop EVERY background task"
+fi
+# The preface stops only what the check lists as still running, so a worker
+# never TaskStops a task that already ended.
+if grep -q 'TaskStop only what it lists as still running' "$DOCS/worker-preface.md" \
+    && grep -q 'CLOSABLE:. line' "$DOCS/worker-preface.md" \
+    && ! grep -q 'TaskStop EVERY background' "$DOCS/worker-preface.md"; then
+    pass "worker-preface.md stops only the tasks wrap-subtree-check.sh lists as running"
+else
+    fail "worker-preface.md must say TaskStop only what it lists as still running, keep the CLOSABLE: line, and drop TaskStop EVERY background"
+fi
 
 # Claude Code's own plugin-marketplace refresh forks a
 # `git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= …` directly
