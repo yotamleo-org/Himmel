@@ -19,6 +19,8 @@ REAL_REPO="$(cd "$HERE/../../.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/lane-quality-test.XXXXXX")" || { echo "test-lane-quality: mktemp -d failed" >&2; exit 1; }
 trap 'git -C "$TMP/repo" worktree prune >/dev/null 2>&1; rm -rf "$TMP"' EXIT
 export HIMMEL_EVAL_RUNS_LEDGER="$TMP/eval-runs.jsonl"   # HIMMEL-4647: never the live ledger
+export HIMMEL_CEILINGS_LEDGER="$TMP/no-ceilings-ledger.tsv"
+case "$HIMMEL_CEILINGS_LEDGER" in "$TMP"/*) ;; *) echo "FAIL: the ceilings ledger escapes the temp dir"; exit 1 ;; esac
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
@@ -681,7 +683,9 @@ check "pair refuses two runs on the same base" '! bash "$RUN" pair "$TMP/out1" "
 # i: prune-history: the pruned arm drops history comments and nothing else
 PRUNE="$HERE/prune-history.sh"
 mkdir -p "$TMP/repo/scripts"
-printf '%s\n' '#!/usr/bin/env bash' '# HIMMEL-1 added for the old bug' '# ponytail: HIMMEL-2 known limit, upgrade later' '# keep: why this flag exists' 'echo hi  # HIMMEL-3 trailing stays' '// round 2 note' '# CR fix: tidy' >"$TMP/repo/scripts/demo.sh"
+p=pony; pt="${p}tail:"   # the retired marker token, built at runtime so this file carries none
+check "prune-history's header names the ceilings ledger that replaced the marker" 'grep -q "ceilings ledger" "$PRUNE"'
+printf '%s\n' '#!/usr/bin/env bash' '# HIMMEL-1 added for the old bug' "# $pt HIMMEL-2 known limit, upgrade later" '# keep: why this flag exists' 'echo hi  # HIMMEL-3 trailing stays' '// round 2 note' '# CR fix: tidy' >"$TMP/repo/scripts/demo.sh"
 printf '%s\n' '# HIMMEL-9 symlink target stays' >"$TMP/repo/ext.txt"
 ln -s ../ext.txt "$TMP/repo/scripts/link.sh"
 git -C "$TMP/repo" add -A
@@ -690,7 +694,7 @@ BASE3="$(git -C "$TMP/repo" rev-parse HEAD)"
 PSHA="$(bash "$PRUNE" "$TMP/repo" "$BASE3" --files 5 2>"$TMP/prune.err")"
 rc=$?
 check "prune-history prints a new commit sha on top of the base" '[ "$rc" -eq 0 ] && [ -n "$PSHA" ] && [ "$PSHA" != "$BASE3" ] && [ "$(git -C "$TMP/repo" rev-parse "$PSHA^")" = "$BASE3" ]'
-check "the pruned file lost the history comments only" '[ "$(git -C "$TMP/repo" show "$PSHA:scripts/demo.sh" | tr "\n" "|")" = "#!/usr/bin/env bash|# ponytail: HIMMEL-2 known limit, upgrade later|# keep: why this flag exists|echo hi  # HIMMEL-3 trailing stays|" ]'
+check "the pruned file lost the history comments only" '[ "$(git -C "$TMP/repo" show "$PSHA:scripts/demo.sh" | tr "\n" "|")" = "#!/usr/bin/env bash|# $pt HIMMEL-2 known limit, upgrade later|# keep: why this flag exists|echo hi  # HIMMEL-3 trailing stays|" ]'
 check "a tracked symlink is skipped, its target is untouched" '[ "$(git -C "$TMP/repo" show "$PSHA:ext.txt")" = "# HIMMEL-9 symlink target stays" ]'
 check "prune-history reports the removed line count" 'grep -q "removed [1-9][0-9]* history-comment lines" "$TMP/prune.err"'
 check "prune-history refuses an unknown base" '! bash "$PRUNE" "$TMP/repo" 1111111111111111111111111111111111111111 >/dev/null 2>&1'
