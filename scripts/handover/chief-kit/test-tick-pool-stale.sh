@@ -185,5 +185,52 @@ check 'a sha the repo does not know prints ?, never stale' '?' "$(afield pool-st
 l="$pd HIMMEL-101 slice HIMMEL-901 @deadbeef01"; d="$(doc unknownshadone "$l")"
 check 'an unknown sha leaves a line with only Done blockers unjudged: ?, not stale' '?' "$(afield pool-stale "$d")"
 
+# --- the detached pool snapshot refreshes only when an input changed (the mirror's .cursor.json lastSync,
+# the fleet manifest's mtime, the chief doc's mtime), never inside TICK_POOL_MIN_SECS, and runs at nice +10.
+# The kit is the real one file by file; its next-dispatchable.sh is a stub that logs each launch and its nice.
+real_scripts="$(cd "$HERE/../.." && pwd)"
+sk="$WORK/kit/scripts"; mkdir -p "$sk/handover/chief-kit"
+for f in "$real_scripts"/*; do [ "${f##*/}" = handover ] || ln -s "$f" "$sk/${f##*/}"; done
+for f in "$real_scripts"/handover/*; do [ "${f##*/}" = chief-kit ] || ln -s "$f" "$sk/handover/${f##*/}"; done
+for f in "$HERE"/*; do ln -s "$f" "$sk/handover/chief-kit/${f##*/}"; done
+rm "$sk/handover/chief-kit/next-dispatchable.sh" "$sk/handover/chief-kit/tick.sh"
+ln -s "$SUT" "$sk/handover/chief-kit/tick.sh"
+cat > "$sk/handover/chief-kit/next-dispatchable.sh" <<'EOF'
+#!/usr/bin/env bash
+case " $* " in *" --dispositions "*)
+    printf 'x\n' >> "$PS_LAUNCH_LOG"; ps -o ni= -p $$ | tr -d ' ' >> "$PS_NICE_LOG"
+    printf '# disposition HIMMEL-1 in-flight owned by worker N1\n' ;;
+esac
+EOF
+pl_dir="$WORK/pl"; mkdir -p "$pl_dir"
+pl_doc="$(doc pooldoc)"
+pl_log="$pl_dir/launch.log"; pl_nice="$pl_dir/nice.log"
+pl_tick() { TOKEN='' TICK_STATE_DIR="$pl_dir/state" PS_LAUNCH_LOG="$pl_log" PS_NICE_LOG="$pl_nice" bash "$sk/handover/chief-kit/tick.sh" --doc "$pl_doc" 2>/dev/null; }
+pl_n() { if [ -f "$pl_log" ]; then wc -l < "$pl_log" | tr -d ' '; else echo 0; fi; }
+pl_rows() { find "$pl_dir/state" -name 'tick-pool-*.rows' 2>/dev/null; }
+pl_age() { local r; r="$(pl_rows)"; [ -z "$r" ] || touch -d "$1" "$r"; }  # gnu-ok: chief kit is Linux-only
+printf '{"lastSync":"2026-11-01T00:00:00Z"}\n' > "$M/.cursor.json"
+pl_tick > /dev/null
+check 'the first tick launches a snapshot' 1 "$(pl_n)"
+pl_age '20 minutes ago'
+pl_tick > /dev/null
+check 'a second tick past the floor with unchanged inputs launches no second snapshot' 1 "$(pl_n)"
+pl_age '2 hours ago'
+pl_out="$(pl_tick)"
+check 'an unchanged-input skip still serves the counts (the snapshot is kept fresh, not left to expire)' 1 "$(printf '%s\n' "$pl_out" | grep -c ' pool=[0-9]')"
+printf '{"lastSync":"2026-11-01T00:10:00Z"}\n' > "$M/.cursor.json"
+pl_age '20 minutes ago'
+pl_tick > /dev/null
+check 'a mirror sync between two ticks launches the next snapshot' 2 "$(pl_n)"
+pl_age '20 minutes ago'
+touch "$pl_doc"
+pl_tick > /dev/null
+check 'a changed chief doc launches a snapshot past the floor' 3 "$(pl_n)"
+printf '{"lastSync":"2026-11-01T00:20:00Z"}\n' > "$M/.cursor.json"
+pl_tick > /dev/null
+check 'a changed input inside the floor still launches nothing' 3 "$(pl_n)"
+pl_nice_want=$(( $(nice) + 10 )); [ "$pl_nice_want" -le 19 ] || pl_nice_want=19
+check 'every launched snapshot runs at nice +10' "$(printf '%s\n%s\n%s' "$pl_nice_want" "$pl_nice_want" "$pl_nice_want")" "$(cat "$pl_nice")"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -2639,14 +2639,23 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pd_m="$(stat -c %Y "$pd_base.rows" 2>/dev/null)" || pd_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no snapshot reads old
     case "$pd_m" in '' | *[!0-9]*) ;; *) pd_age=$(( $(date +%s) - pd_m )) ;; esac
     pd_gap="${TICK_POOL_MIN_SECS:-600}"; case "$pd_gap" in '' | *[!0-9]*) pd_gap=600 ;; esac
+    # The snapshot is refreshed only when an input changed: the mirror's .cursor.json lastSync, the
+    # fleet manifest's mtime and the chief doc's mtime, recorded in $pd_base.fp once a scan lands.
+    # An unchanged-input skip touches the snapshot, so it stays inside TICK_POOL_TTL and keeps counting.
+    pd_fp="$(sed -n 's/.*"lastSync" *: *"\([^"]*\)".*/\1/p' "$nd_mirror/.cursor.json" 2>/dev/null | head -n 1)|$(stat -c %Y "$console_doc" ${WORKERS_FROM:+"$WORKERS_FROM"} 2>/dev/null | tr '\n' '|')"  # gnu-ok: chief kit is Linux-only; swallow-ok: an unreadable input reads empty and changes the fingerprint
+    if [ "$pd_age" -ge "$pd_gap" ] && [ -f "$pd_base.rows" ] && [ -f "$pd_base.fp" ] \
+        && read -r pd_fp_old < "$pd_base.fp" && [ "$pd_fp_old" = "$pd_fp" ] && touch "$pd_base.rows" 2>/dev/null; then
+        pd_age=0
+    fi
     if [ "$pd_age" -ge "$pd_gap" ] && mkdir -p "$pd_dir" 2>/dev/null; then
         pd_args=(--dispositions --top 1000 --doc "$console_doc" --owners "$owner_keys")
         [ -z "$WORKERS_FROM" ] || pd_args+=(--workers-from "$WORKERS_FROM")
         # setsid: the waiter's timeout kills the tick's process group, never the snapshot.
+        # nice 10: the scan never competes with the tick or the fleet for CPU.
         # A running snapshot holds the lock, so this launch exits at once.
         # shellcheck disable=SC2016  # the inner script expands its own positional arguments
-        pd_script='timeout -k 2 300 bash "$1" "${@:3}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2"; rm -f "$2.$$"'
-        pd_pid="$(tick_detach setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
+        pd_script='timeout -k 2 300 bash "$1" "${@:4}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2" && printf "%s\n" "$3" >"${2%.rows}.fp"; rm -f "$2.$$"'
+        pd_pid="$(tick_detach nice -n 10 setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "$pd_fp" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
         pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
         pd_wait="$(tick_bound "$pd_wait")"
         tick_now_s  # the poll forks only its sleep
