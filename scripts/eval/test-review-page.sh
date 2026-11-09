@@ -37,7 +37,8 @@ def panel(run_id, codex_recall, codex_fail_open):
          "defects": 5, "cases": 9, "unscored": 0, "leaked": 0}
     ci = {"codex.recall": {"lo": 0.3, "hi": 0.9}, "coderabbit.recall": {"lo": 0.38, "hi": 0.96}}
     return eval_runs.make_row("review-panel", "scripts/eval/review-panel/score.py", cfg, m, n=9, run_id=run_id,
-                              ci=ci, ci_level=0.95, ci_method="wilson", gitsha="0" * 40)
+                              ci=ci, ci_level=0.95, ci_method="wilson", gitsha="0" * 40,
+                              meta={"scorer_sha256": "a" * 64})
 judge_m = {"flips": 12, "flip_n": 100, "flip_rate": 0.12, "go_merged": 150, "escapes": 3,
            "escapes_plausible": 5, "escape_rate": 0.02, "escape_rate_plausible": 5 / 150,
            "nogo_n": 40, "false_nogo": 1, "false_nogo_plausible": 2, "nogo_candidates": 4,
@@ -94,12 +95,14 @@ has "judges: the range level comes from the run" "$out" "Ranges are 90 % ranges.
 case "$out" in *"is the 95 % range"*) fail "no fixed range level in the header";; *) pass "no fixed range level in the header";; esac
 has "header: says a trend compares with the run before" "$out" "a trend compares it with the run before"
 has "header: points at the glossary of what each number means" "$out" "What each number means, with its ledger key: scripts/eval/README.md."
-has "critic: planted bugs caught, as a count and a percentage" "$out" "The codex critic caught 3 of 5 planted bugs: 60 % (likely between 30 % and 90 %)"
+has "critic: labelled target defects key-matched, as a count and a percentage" "$out" "The codex critic key-matched 3 of 5 labelled target defects: 60 % (likely between 30 % and 90 %)"
 has "critic: trend since the last run" "$out" "up 20 points since the last run (40 %)"
-has "critic: right N times in M" "$out" "The codex critic was right 7 times in 10"
-has "CodeRabbit: planted bugs caught" "$out" "CodeRabbit caught 4 of 5 planted bugs: 80 %"
-has "critic: weakest kind of bug in plain words" "$out" "fail-open guards (a check that lets an error through), caught 1 of 2"
-has "critic: false alarms on clean changes" "$out" "raised a blocking finding on 1 of 4 clean changes"
+has "proxy_names: findings that key-matched a labelled defect, N in M" "$out" "The codex critic: 7 of 10 findings key-matched a labelled defect"
+case "$out" in *"was right"*) fail "proxy_names: a keyword match is never 'was right'";; *) pass "proxy_names: a keyword match is never 'was right'";; esac
+has "proxy_names: the page says the numbers are automated key-match proxies" "$out" "automated key-match proxies"
+has "CodeRabbit: labelled target defects key-matched" "$out" "CodeRabbit key-matched 4 of 5 labelled target defects: 80 %"
+has "critic: weakest kind of bug in plain words" "$out" "fail-open guards (a check that lets an error through), key-matched 1 of 2"
+has "proxy_names: labelled-clean blocking" "$out" "labelled-clean blocking on 1 of 4 labelled-clean changes"
 has "judges: changed their first answer" "$out" "The judges changed their first answer 12 times in 100: 12 % (likely between 7 % and 20 %)"
 has "judges: bugs past a GO" "$out" "A bug got past a GO on 3 of 150 merged PRs: 2 %"
 has "judges: wrong NO-GO" "$out" "A NO-GO was wrong 1 time in 40"
@@ -130,11 +133,31 @@ has "proof first: the RED-then-GREEN half on its own" "$out" "RED then GREEN nam
 # Bottom line: the first section, each eval's headline with its run day.
 bottom="$(printf '%s\n' "$out" | awk '/^## /{n++} n==1')"
 eq "bottom line: the first section" "$(printf '%s\n' "$out" | grep -m1 '^## ')" "## Bottom line"
-has "bottom line: the planted-bug catch with its run day" "$bottom" "- The codex critic caught 3 of 5 planted bugs: 60 % (likely between 30 % and 90 %), up 20 points since the last run (40 %). Run of 24 Oct 2026."
+has "bottom line: the key-match catch with its run day" "$bottom" "- The codex critic key-matched 3 of 5 labelled target defects: 60 % (likely between 30 % and 90 %), up 20 points since the last run (40 %). Run of 24 Oct 2026."
 eq "bottom line: bugs past a GO with its run day" "$(printf '%s\n' "$bottom" | grep -c '^- A bug got past a GO on 3 of 150 merged PRs: 2 % .*\. Run of 24 Oct 2026\.$')" "1"
 has "bottom line: proof first with its run day" "$bottom" "- Proof-first share (self-reported): 13 of 120 merged PRs: 11 % (likely between 6 % and 18 %). Run of 24 Oct 2026."
 has "proof first: the sample counts PRs whose ticket and commits could be read" "$out" "the last 120 merged PRs whose ticket and commits could be read."
 eq "bottom line: one line per eval" "$(printf '%s\n' "$bottom" | grep -c '^- ')" "3"
+
+python3 -I - "$HERE/lib" "$TMP" <<'PY' || { echo "test-review-page: writing the scorer-trend ledgers failed" >&2; exit 1; }
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import eval_runs
+def row(run_id, ts, recall, scorer):
+    meta = {} if scorer is None else {"scorer_sha256": scorer}
+    r = eval_runs.make_row("review-panel", "scripts/eval/review-panel/score.py", {"fixture_set": "f1", "critics": ["codex"]},
+                           {"codex.recall": recall, "codex.class.logic.recall": recall, "codex.class.logic.n": 5}, n=5,
+                           run_id=run_id, gitsha="0" * 40, meta=meta)
+    r["ts"] = ts
+    return r
+for name, prev in (("same", "a" * 64), ("other", "b" * 64), ("missing", None)):
+    rows = [row("t-1", "2026-10-17T10:00:00Z", 0.4, prev), row("t-2", "2026-10-24T10:00:00Z", 0.6, "a" * 64)]
+    open(os.path.join(sys.argv[2], "trend-%s.jsonl" % name), "w").write("".join(json.dumps(r) + "\n" for r in rows))
+PY
+trend() { python3 -I "$PAGE" --ledger "$TMP/trend-$1.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1 | grep -c 'since the last run'; }
+eq "page_trend_requires_same_scorer: one known scorer on both rows shows the trend" "$(trend same)" "2"
+eq "page_trend_requires_same_scorer: another scorer on the earlier row shows no trend" "$(trend other)" "0"
+eq "page_trend_requires_same_scorer: an earlier row with no scorer identity shows no trend" "$(trend missing)" "0"
 
 # CodeRabbit absent from the critic list: the page says it is not measured, never a silent gap.
 python3 -I - "$HERE/lib" "$TMP/codex-only.jsonl" <<'PY' || { echo "test-review-page: writing the codex-only ledger failed" >&2; exit 1; }
@@ -148,8 +171,8 @@ row = eval_runs.make_row("review-panel", "scripts/eval/review-panel/score.py", {
 open(sys.argv[2], "w").write(json.dumps(row) + "\n")
 PY
 out2="$(python3 -I "$PAGE" --ledger "$TMP/codex-only.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1)"
-has "CodeRabbit: not measured yet, needs a scratch pull request" "$out2" "CodeRabbit is not measured yet: it needs a scratch pull request"
-has "bottom line: the whole panel's catch when it was scored" "$(printf '%s\n' "$out2" | awk '/^## /{n++} n==1')" "- The whole panel caught 4 of 5 planted bugs"
+has "CodeRabbit: history reported separately, controlled recall not measured here" "$out2" "CodeRabbit history is reported separately; controlled recall is not measured here"
+has "bottom line: the whole panel's catch when it was scored" "$(printf '%s\n' "$out2" | awk '/^## /{n++} n==1')" "- The whole panel key-matched 4 of 5 labelled target defects"
 
 # A run that scored nothing still shows in the Bottom line, with its run day.
 python3 -I - "$HERE/lib" "$TMP/unscored.jsonl" <<'PY' || { echo "test-review-page: writing the unscored ledger failed" >&2; exit 1; }
@@ -166,7 +189,7 @@ rows[0]["ts"], rows[1]["ts"] = "2026-10-23T10:00:00Z", "2026-10-25T01:00:00Z"
 open(sys.argv[2], "w").write("".join(json.dumps(r) + "\n" for r in rows))
 PY
 bottom3="$(python3 -I "$PAGE" --ledger "$TMP/unscored.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1 | awk '/^## /{n++} n==1')"
-has "bottom line: an unscored planted-bug run is not dropped" "$bottom3" "- Planted bugs: no score in this run. Run of 23 Oct 2026."
+has "bottom line: an unscored key-match run is not dropped" "$bottom3" "- Labelled target defects (key match): no score in this run. Run of 23 Oct 2026."
 has "bottom line: an unscored proof-first run is not dropped" "$bottom3" "- Proof-first share (self-reported): no score in this run. Run of 25 Oct 2026."
 
 # The answers script: five questions from fixture ledgers, before and after a cut.
@@ -238,12 +261,14 @@ eq "answers: with CR_LEDGER unset and the caller outside any repo, the CR ledger
 # No raw field name: no metric or interval key from the fixture rows, no dotted or snake_case identifier.
 leak="$(printf '%s' "$out" | python3 -I -c 'import json, re, sys
 page = sys.stdin.read()
+PAGE_WORDS_THAT_ARE_ALSO_KEYS = {"defects"}
 keys = set()
 for line in open(sys.argv[1]):
     r = json.loads(line)
     keys |= set(r["metrics"]) | set(r["ci"])
 for line in open(sys.argv[2]):
     keys.add(json.loads(line)["metric"])
+keys -= PAGE_WORDS_THAT_ARE_ALSO_KEYS
 hits = sorted(k for k in keys if re.search(r"(?<![\w.-])%s(?![\w-])" % re.escape(k), page))
 hits += re.findall(r"\b[a-z]+(?:[._][a-z0-9-]+)+\b", page)
 print(" ".join(hits))' "$TMP/runs.jsonl" "$TMP/changes.jsonl")"; rc=$?
@@ -253,7 +278,7 @@ case "$out" in *'`'*) fail "no code spans on the page";; *) pass "no code spans 
 
 out="$(python3 -I "$PAGE" --ledger "$TMP/absent.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1)"; rc=$?
 eq "no ledger: exit 0" "$rc" "0"
-for sec in "Bottom line" "The critics on planted bugs" "The judges" "The five open questions" "Proof-first share (self-reported)"; do
+for sec in "Bottom line" "The critics on labelled test changes" "The judges" "The five open questions" "Proof-first share (self-reported)"; do
     eq "no ledger: '$sec' says there is no run yet" "$(printf '%s\n' "$out" | awk -v h="## $sec" '/^## /{on=($0==h)} on' | grep -c '^No run yet\.$')" "1"
 done
 

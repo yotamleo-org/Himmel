@@ -34,9 +34,9 @@ claims-backed rate	verify_before_claim_rate	scripts/eval/lib/eval_runs.py	for k 
 denial recovery rate	denial_recovery_rate	scripts/eval/lib/eval_runs.py	metrics["denial_recovery_rate"] =	first
 identical retries after a denial	identical_denied_retries	scripts/eval/lib/eval_runs.py	metrics["identical_denied_retries"] =	first
 false-refusal share	over_deny_share	scripts/eval/friction/friction.py	metrics['over_deny_share'] =	first
-detection rate	<critic>.recall	scripts/eval/review-panel/score.py	"recall": (	first
-planted-bug precision	<critic>.precision	scripts/eval/review-panel/score.py	"precision": (	first
-false-alarm rate	<critic>.fp_rate	scripts/eval/review-panel/score.py	"fp_rate": (	first
+key-match recall	<critic>.key_match_recall	scripts/eval/review-panel/score.py	"key_match_recall": "recall"	first
+key-match precision	<critic>.key_match_precision	scripts/eval/review-panel/score.py	"key_match_precision": "precision"	first
+labelled-clean blocking rate	<critic>.labelled_clean_block_rate	scripts/eval/review-panel/score.py	"labelled_clean_block_rate": "fp_rate"	first
 detection floor	paired	scripts/eval/eval-compare	detection floor %s	any
 escape rate	escape_rate	scripts/eval/escapes.py	m["escape_rate"] =	first
 bug-origin class count	class.<class>	scripts/eval/bug-origin/bug-origin-report.py	m["class." + c] =	first
