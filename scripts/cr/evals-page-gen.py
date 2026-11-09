@@ -43,6 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "eval", "cr-ledger"))
 sys.path.insert(0, os.path.join(HERE, "..", "eval", "lib"))
 import cr_ledger_eval  # noqa: E402
+import eval_feedback  # noqa: E402
 import eval_runs  # noqa: E402
 from wilson import wilson  # noqa: E402
 
@@ -155,7 +156,8 @@ def proof_first(rows):
 
 def planted(rows):
     """The newest review-panel row: the share of planted bugs the panel caught, against a hidden key."""
-    ok = [r for r in rows if r.get("eval") == "review-panel" and r.get("status") == "ok"]
+    chosen = eval_feedback.select_review_runs([r for r in rows if r.get("eval") == "review-panel"])[0]
+    ok = [r for r in chosen if r.get("status") == "ok"]
     if not ok:
         return None
     r = ok[-1]

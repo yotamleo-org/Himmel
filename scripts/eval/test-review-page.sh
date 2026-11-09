@@ -159,6 +159,33 @@ eq "page_trend_requires_same_scorer: one known scorer on both rows shows the tre
 eq "page_trend_requires_same_scorer: another scorer on the earlier row shows no trend" "$(trend other)" "0"
 eq "page_trend_requires_same_scorer: an earlier row with no scorer identity shows no trend" "$(trend missing)" "0"
 
+python3 -I - "$HERE/lib" "$TMP" <<'PY' || { echo "test-review-page: writing the revision ledgers failed" >&2; exit 1; }
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import eval_runs
+def row(run_id, ts, recall, ex, sup=None):
+    meta = {"scorer_sha256": "a" * 64, "execution_id": ex}
+    if sup:
+        meta["supersedes_run_id"] = sup
+    r = eval_runs.make_row("review-panel", "scripts/eval/review-panel/score.py", {"fixture_set": "f1", "critics": ["codex"]},
+                           {"codex.recall": recall, "codex.class.logic.recall": recall, "codex.class.logic.n": 5}, n=5,
+                           run_id=run_id, gitsha="0" * 40, meta=meta)
+    r["ts"] = ts
+    return r
+def put(name, rows):
+    open(os.path.join(sys.argv[2], name), "w").write("".join(json.dumps(r) + "\n" for r in rows))
+put("rev-head.jsonl", [row("t-1", "2026-10-17T10:00:00Z", 0.4, "x1"), row("t-2", "2026-10-24T10:00:00Z", 0.6, "x2"),
+                       row("t-2r", "2026-11-09T10:00:00Z", 0.8, "x2", "t-2")])
+put("rev-old.jsonl", [row("t-1", "2026-10-17T10:00:00Z", 0.4, "x1"), row("t-2", "2026-10-24T10:00:00Z", 0.6, "x2"),
+                      row("t-1r", "2026-11-09T10:00:00Z", 0.9, "x1", "t-1")])
+put("rev-cycle.jsonl", [row("t-1", "2026-10-17T10:00:00Z", 0.4, "x1"), row("t-2", "2026-10-24T10:00:00Z", 0.6, "x2", "t-2b"),
+                        row("t-2b", "2026-11-09T10:00:00Z", 0.8, "x2", "t-2")])
+PY
+revpage() { python3 -I "$PAGE" --ledger "$TMP/$1.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1; }
+has "revision_not_prev_run: the trend is against the previous execution, not the rescored source" "$(revpage rev-head)" "up 40 points since the last run (40 %)"
+has "revision_not_prev_run: a rescore of an older execution stays at that execution's place: the newest run is the later one" "$(revpage rev-old)" "down 30 points since the last run (90 %)"
+case "$(revpage rev-cycle)" in *"since the last run"*) fail "supersession_cycle: a cycle's rows were read as a series";; *) pass "supersession_cycle: the ambiguous execution is set aside, no trend from it";; esac
+
 # CodeRabbit absent from the critic list: the page says it is not measured, never a silent gap.
 python3 -I - "$HERE/lib" "$TMP/codex-only.jsonl" <<'PY' || { echo "test-review-page: writing the codex-only ledger failed" >&2; exit 1; }
 import json, sys

@@ -57,13 +57,22 @@ rows() {
 f, sid = sys.argv[1:3]
 with open(f, "a") as fh:
     for spec in sys.argv[3:]:
-        rid, cbs, conf, rec, fp, sc = (spec.split(":") + ["cur"])[:6]
+        p = spec.split(":")
+        rid, cbs, conf, rec, fp = p[:5]
+        sc, extra = (p[5] if len(p) > 5 else "cur"), (p[6] if len(p) > 6 else "")
         row = {"run_id": rid, "cbs_hash": cbs, "confighash": conf, "status": "ok",
                "metrics": {"panel.recall_gating": float(rec), "panel.fp_rate": float(fp)},
                "class_recall": {"logic": float(rec)},
                "outputs_sha256": hashlib.sha256(rid.encode()).hexdigest()}
         if sc != "none":
             row["scorer_sha256"] = {"cur": sid, "null": None}.get(sc, sc)
+        for tok in [t for t in extra.split(",") if t]:
+            if tok == "ineligible":
+                row.update(decision_eligible=False, ineligibility_reasons=["provenance-reconstructed"])
+            elif tok.startswith("sup="):
+                row["supersedes_run_id"] = tok[4:]
+            elif tok.startswith("exec="):
+                row["execution_id"] = tok[5:]
         fh.write(json.dumps(row, sort_keys=True) + "\n")' "$f" "$SID" "$@"
 }
 # gate <label> <rc> [needle]: run the gate on BASE..HEAD of R.
@@ -125,6 +134,22 @@ gate "mixed_scorer_rows_unmeasured: an older scorer's baseline beside the runnin
 SCD="$WORK/scorer-dirty"; cp -r "$SC" "$SCD"; printf '# dirty\n' >> "$SCD/scripts/eval/review-panel/score.py"
 with_rows "b1:$B:$C:0.50:0.10:null" "b2:$B:$C:0.60:0.10:none" "h1:$H:$C:0.55:0.10:null" "h2:$H:$C:0.50:0.10:none"
 SUT="$SCD/scripts/ci/check-critic-eval.sh" gate "null_running_identity_matches_no_rows: a dirty scorer over null and absent hashes fails" 1 "no clean identity"
+
+fixture selector
+commit_edit scripts/cr/critic-first-pass.sh '# a critic change' >/dev/null
+B="$(cbs_hash "$BASE")"; H="$(cbs_hash HEAD)"; C="$(confighash HEAD)"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h2:$H:$C:0.50:0.10"
+gate "selector: the plain two-and-two rows still pass" 0 "gate: no-loss"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h1r:$H:$C:0.55:0.10:cur:sup=h1"
+gate "scorer_only_rescore_not_new_execution: a rescore of one head sweep is not a second distinct sweep" 1 "gate: unmeasured"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h2:$H:$C:0.50:0.10" "h2r:$H:$C:0.50:0.10:cur:sup=h2"
+gate "selector: a rescore beside its source is one execution, the pair still has two distinct sweeps" 0 "gate: no-loss"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h2:$H:$C:0.50:0.10:cur:ineligible"
+gate "old_unknown_provenance_diagnostic_only: an ineligible head row never counts" 1 "not-decision-eligible"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10:cur:sup=h2,exec=x" "h2:$H:$C:0.50:0.10:cur:sup=h1,exec=x"
+gate "supersession_cycle: a cycle selects nothing, the head is unmeasured" 1 "supersession-cycle"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10:cur:exec=x" "h2:$H:$C:0.50:0.10:cur:exec=x" "h3:$H:$C:0.52:0.10:cur:sup=h1,exec=x" "h4:$H:$C:0.48:0.10:cur:sup=h1,exec=x"
+gate "two_successors_ambiguous: two successors of one run select nothing" 1 "two-successors-ambiguous"
 
 # --- which diffs are gated ------------------------------------------------------------------
 fixture unlisted

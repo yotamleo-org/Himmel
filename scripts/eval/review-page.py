@@ -96,7 +96,10 @@ def known_scorer(row):
 
 def latest(rows, eval_id):
     """(newest usable row, the newest earlier row of the same series) for one eval."""
-    mine = [r for r in rows if r["eval"] == eval_id and r["status"] in ("ok", "partial")]
+    mine = [r for r in rows if r["eval"] == eval_id]
+    if eval_id == "review-panel":
+        mine = eval_feedback.select_review_runs(mine)[0]
+    mine = [r for r in mine if r["status"] in ("ok", "partial")]
     if not mine:
         return None, None
     cur = mine[-1]
