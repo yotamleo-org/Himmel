@@ -108,7 +108,7 @@ items) go through whisper only and NEVER enter the vault - the video stays in th
 GIF-like video (a `tweet_video` with no audio) is screenshotted to its first
 frame and copied in as a slide instead.
 
-**Subtitles first, with provenance (platform subtitles are cheaper and cleaner than whisper).** A video is transcribed from
+**Subtitles first, with provenance.** A video is transcribed from
 its platform subtitles before any whisper run: `yt-dlp` fetches English VTT
 (manual track preferred over auto), which is cookie-free, and the cleaner strips
 tags/timestamps, collapses adjacent rolling duplicates only, and reflows to

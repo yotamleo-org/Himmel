@@ -48,7 +48,7 @@ Exit codes:
 - 0: all clips harvested or skipped successfully
 - 1: usage / input error (bad vault path, conflicting flags)
 - 2: env unusable (vault not found, lockfile contention, missing required env vars)
-- 3: refused under headless claude (it bills apart from the subscription)
+- 3: refused under headless claude (the no-headless-claude rule)
 - 4: partial run (≥1 clip landed in a **blocking** partial class below, or ≥1 failed); re-run later to retry. Deferred partials alone exit 0.
 - 5: catastrophic — abort mid-run; resume-state file written for next run
 
@@ -62,7 +62,7 @@ Wherever `YYYY-MM-DD` or `TODAY` appears below, substitute `$(date +%Y-%m-%d)`. 
 
 ### G-6 — Pre-flight env-var + headless refusal (run FIRST)
 
-**Headless refusal (headless claude bills apart from the subscription).** Before anything else:
+**Headless refusal (the no-headless-claude rule).** Before anything else:
 
 ```bash
 if [ "${CLAUDECODE_HEADLESS:-0}" = "1" ] || [ "${CLAUDE_CODE_ENTRYPOINT:-}" = "cli-print" ]; then
@@ -251,7 +251,7 @@ After the run, append one line to `<vault>/log.md` (if it exists):
 
 ### Notes for the agent
 
-- **Skill invocations**: use the `Skill` tool. Do NOT shell out via `Bash: claude -p`: headless claude bills apart from the subscription.
+- **Skill invocations**: use the `Skill` tool. Do NOT shell out via `Bash: claude -p` (the no-headless-claude rule).
 - **All writes preserve the original clip body.** Phase 5 G-3 invariant enforces this — never overwrite operator hand-edits in `## Why I Saved This` / `## How I Can Use This` / etc.
 - **MVP scope:** no fan-out, no recursion, no content-dedup. Those are planned follow-up work.
 - **No promotion-target writing.** This command does NOT move clips out of `Clippings/`. The TRIAGE pass (`/triage-clips`) handles promotion candidates separately.

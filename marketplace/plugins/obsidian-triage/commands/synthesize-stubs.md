@@ -136,7 +136,7 @@ live telegram send is the irreversible step, HARD GUARDRAIL #4):
 Do this only against the live bridge with operator confirmation; in staging,
 inspect the JSON and do not send.
 
-### Headless refusal (headless claude bills apart from the subscription)
+### Headless refusal (the no-headless-claude rule)
 
 This command makes no `claude -p` / `--print` / `--bg` / API calls. The engine
 is a deterministic node tool — never wrap it in a headless invocation.

@@ -52,7 +52,7 @@ rewrite keeps the `.md` on `.md`-input forms and drops it on the plain forms
 (`<NEW> = _evidence/<basename>`), preserving the `|alias` / `#heading` / `]]`
 tail and never clobbering a prefix-sibling (`[[Clippings/<OLD>-extra]]`).
 
-### Headless refusal (headless claude bills apart from the subscription)
+### Headless refusal (the no-headless-claude rule)
 
 This command makes no `claude -p` / `--print` / `--bg` / API calls. Do not wrap
 the engine in a headless invocation. The engine is a deterministic node tool —

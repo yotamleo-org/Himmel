@@ -52,7 +52,7 @@ Exit codes:
 - 0: all eligible clips graduated or correctly skipped; `_deferred.md` written
 - 1: usage / input error (bad vault path, conflicting flags)
 - 2: env unusable (vault not found, lock contention)
-- 3: refused under headless claude (it bills apart from the subscription)
+- 3: refused under headless claude (the no-headless-claude rule)
 - 4: partial — ≥1 clip failed mid-move and was reverted; re-run to retry
 - 5: catastrophic — aborted mid-run; state file written for next run
 
@@ -64,7 +64,7 @@ Wherever `YYYY-MM-DD` or `TODAY` appears, substitute `$(date +%Y-%m-%d)`. Captur
 
 ```bash
 if [ "${CLAUDECODE_HEADLESS:-0}" = "1" ] || [ "${CLAUDE_CODE_ENTRYPOINT:-}" = "cli-print" ]; then
-    echo "ERR archive-clips: refusing to run under headless claude (subscription billing split)." >&2
+    echo "ERR archive-clips: refusing to run under headless claude (no-headless-claude rule)." >&2
     exit 3
 fi
 ```
@@ -303,5 +303,5 @@ After Phase 6, rewrite `<vault>/hot.md` (the Tier-2 hot cache — see the vault 
 - This command is autonomous — do NOT ask for confirmation between phases.
 - The ONLY destructive op is `mv` (relocate); never `rm` a clip. Reverting a failed graduation means moving the file back + undoing link edits.
 - Link-rewrite is the risk surface — always re-verify zero stale `[[Clippings/<OLD>]]` links remain before declaring a clip graduated; revert otherwise.
-- No `claude -p` / `--print` / `--bg` / Anthropic API (headless claude bills apart from the subscription). This command makes no external calls.
+- No `claude -p` / `--print` / `--bg` / Anthropic API (the no-headless-claude rule). This command makes no external calls.
 - `_done/` and `_deferred.md` are inbox-scan exclusions in EVERY pipeline stage (harvest/triage/synthesize/archive) — see the Inbox-folder convention above.

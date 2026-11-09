@@ -22,7 +22,7 @@ This wrapper exists so the operator can keep typing `/grow-feed-log
 <message text>` at the user prompt without learning the `/<plugin>:<skill>`
 form, AND so a future interactive telegram channel session (its
 routing is out of scope here) dispatching the skill programmatically uses the same
-Skill-tool call shape (no headless invocations: they bill apart from the subscription).
+Skill-tool call shape (the no-headless-claude rule).
 
 Per the skill's own `## Inputs` section: `$ARGUMENTS` supplies the message
 text only — sender and message-id are NOT parsed out of it. On this manual
