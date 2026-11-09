@@ -157,13 +157,13 @@ export function markdownToAdf(md: string): AdfDoc {
     }
 
     // unordered list
-    if (/^[-*]\s+/.test(line)) {
+    if (/^[-*+]\s+/.test(line)) {
       const items: ListItem[] = [];
-      while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
+      while (i < lines.length && /^[-*+]\s+/.test(lines[i])) {
         items.push({
           type: 'listItem',
           content: [
-            { type: 'paragraph', content: parseInline(lines[i].replace(/^[-*]\s+/, '')) },
+            { type: 'paragraph', content: parseInline(lines[i].replace(/^[-*+]\s+/, '')) },
           ],
         });
         i++;
@@ -173,13 +173,13 @@ export function markdownToAdf(md: string): AdfDoc {
     }
 
     // ordered list
-    if (/^\d+\.\s+/.test(line)) {
+    if (/^\d+[.)]\s+/.test(line)) {
       const items: ListItem[] = [];
-      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
+      while (i < lines.length && /^\d+[.)]\s+/.test(lines[i])) {
         items.push({
           type: 'listItem',
           content: [
-            { type: 'paragraph', content: parseInline(lines[i].replace(/^\d+\.\s+/, '')) },
+            { type: 'paragraph', content: parseInline(lines[i].replace(/^\d+[.)]\s+/, '')) },
           ],
         });
         i++;
@@ -204,7 +204,7 @@ export function markdownToAdf(md: string): AdfDoc {
       lines[i].trim() &&
       !fenceOpen(lines[i]) &&
       !isSectionLine(lines[i]) &&
-      !/^( {0,3}#{1,6}[ \t]|[-*]\s|\d+\.\s)/.test(lines[i])
+      !/^( {0,3}#{1,6}[ \t]|[-*+]\s|\d+[.)]\s)/.test(lines[i])
     ) {
       paraLines.push(lines[i]);
       i++;

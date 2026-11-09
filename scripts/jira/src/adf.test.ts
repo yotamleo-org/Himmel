@@ -369,3 +369,15 @@ describe('markdownToAdf', () => {
     });
   });
 });
+
+describe('list markers the ticket policy counts', () => {
+  it('a + bullet and a 1) item are list nodes, so a body that passes the policy keeps its list in Jira', () => {
+    const doc = markdownToAdf('## DoD\n+ the row is green\n\n## Plan\n1) write it\n2) test it');
+    expect(doc.content.map((n) => n.type)).toEqual(['heading', 'bulletList', 'heading', 'orderedList']);
+  });
+
+  it('a bare section-name line is a heading node', () => {
+    const doc = markdownToAdf('Proof\nRun it on a real draft.');
+    expect(doc.content.map((n) => n.type)).toEqual(['heading', 'paragraph']);
+  });
+});
