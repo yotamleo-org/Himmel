@@ -649,7 +649,10 @@ write_usage_row() {
     [ "$USAGE_TRACK" -eq 1 ] || return 0
     after=$(usage_read)
     path="${HIMMEL_QMD_EMBED_USAGE:-$HOME/.himmel/state/qmd-embed-usage.jsonl}"
-    mkdir -p "$(dirname "$path")" 2>/dev/null || return 0
+    if ! mkdir -p "$(dirname "$path")" 2>/dev/null; then
+        echo "WARN qmd-reindex: could not create the directory for the usage row $path." >&2
+        return 0
+    fi
     host=$(hostname 2>/dev/null || echo unknown)
     host=${host//[^A-Za-z0-9._-]/_}
     printf '{"v":1,"ts":"%s","host":"%s","source":"qmd-reindex","kind":"embed-usage","usage_before":%s,"usage_after":%s,"chunks":%s,"bound":"upper, shared key"}\n' \

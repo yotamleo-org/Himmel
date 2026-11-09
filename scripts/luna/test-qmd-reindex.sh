@@ -1163,6 +1163,29 @@ if command -v node >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     assert_not_contains "key not in the log or trace" "sk-test-fixture" "$out"
     assert_not_contains "key not in the row" "sk-test-fixture" "$(cat "$HOME/.himmel/state/qmd-embed-usage.jsonl" 2>/dev/null)"
 
+    echo "TEST: the real curl read puts the key on stdin only and keeps it out of the trace, the log and the row"
+    FAKEBIN="$TMP_ROOT/fakebin"
+    mkdir -p "$FAKEBIN"
+    cat >"$FAKEBIN/curl" <<CURL
+#!/bin/sh
+STATE="$STATE"
+CURL
+    cat >>"$FAKEBIN/curl" <<'CURL'
+printf '%s\n' "$*" >> "$STATE/curl-argv"
+cat >> "$STATE/curl-stdin"
+echo '{"data":{"label":"k","usage":1.5,"usage_daily":0.2}}'
+CURL
+    chmod +x "$FAKEBIN/curl"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+    rc=0; out=$( (unset QMD_REINDEX_KEY_USAGE_CMD; PATH="$FAKEBIN:$PATH" bash -x "$SCRIPT" --qmd-bin "$FAKE_QMD") 2>&1) || rc=$?
+    assert_rc "curl-read run rc 0" 0 "$rc"
+    assert_rc "usage_before is the curl reading" 1.5 "$(usage_field 1 usage_before)"
+    assert_not_contains "key not in the log or trace" "sk-test-fixture" "$out"
+    assert_not_contains "key not in curl's argv" "sk-test-fixture" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+    assert_not_contains "key not in the row" "sk-test-fixture" "$(cat "$HOME/.himmel/state/qmd-embed-usage.jsonl" 2>/dev/null)"
+    assert_contains "key is on curl's stdin" "Bearer sk-test-fixture" "$(cat "$STATE/curl-stdin" 2>/dev/null)"
+
     echo "TEST: a local-model run writes no usage row"
     rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true
     reset_state
