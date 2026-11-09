@@ -150,7 +150,6 @@ live_witness_reset() {
   case "$_lane" in ''|/) return 2 ;; esac
   case "$_home" in "$_lane"/?*) ;; *) return 2 ;; esac
   case "$_hroot" in "$_lane"/?*) ;; *) return 2 ;; esac
-  # A path that climbs back out of the lane passes the prefix test above.
   case "/$_home/$_hroot/" in */../*) return 2 ;; esac
   for _p in $LW_ROOTS; do rm -rf "${_home:?}/$_p" || return 1; done
   rm -rf "${_hroot:?}" || return 1
@@ -201,12 +200,6 @@ LWEX
   return 1
 }
 
-# The account watch. On when: the test seam (LIVE_WITNESS_ACCOUNT_HOME with
-# HIMMEL_TEST_FIXTURE=1); else a GitHub-hosted run (GITHUB_ACTIONS=true,
-# RUNNER_ENVIRONMENT=github-hosted, no fixture flag); else off with one NOTE line
-# naming why. A suite in a shard has HIMMEL_TEST_FIXTURE=1, so a home-canary or `run`
-# a suite starts never stamps the real runner home; a self-hosted route can have
-# other writers of these roots.
 _lw_passwd_home() {
   local _line _h=""
   # swallow-ok: a failed lookup falls to the next form, and no home at all turns the watch off with a NOTE

@@ -245,8 +245,6 @@ OUT="$(env -u SUITE_TIER_MODE -u SUITE_CHANGED_SINCE -u SUITE_STOP_ON_FAIL HOME_
 { [ "$RC" -eq 0 ] && case "$OUT" in *"NOTE HOME_CANARY_REQUIRE_WITNESS=0 ignored for the default runner"*) true ;; *) false ;; esac; } \
   && ok "C-W1c: the default runner ignores a requirement of 0 and prints the witness line" || bad "C-W1c: (rc=$RC): $OUT"
 
-# No row runs with GITHUB_ACTIONS=true, RUNNER_ENVIRONMENT=github-hosted and no fixture
-# flag: that would stamp the real runner home. The seam points the watch at a fixture dir.
 ACCT="$SCRATCH/acct"
 mkdir -p "$ACCT"
 acct() { # $1 fixture; remaining args are env words for `env`

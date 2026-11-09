@@ -3104,12 +3104,6 @@ fi
 scan_resolved=$(cd "$scan" 2>/dev/null && pwd -P) || scan_resolved=""
 [ -n "$scan_resolved" ] || scan_resolved="$scan"
 
-# The live-state witness (scripts/ci/live-witness.sh) is on only under
-# home-canary.sh, which exports HIMMEL_CANARY_HOME=<its sandbox home>: then each
-# suite runs with HOME at a decoy station home and a write into it fails the
-# suite. A nested runner inside a suite sees no canary value (scrub_session_env
-# drops it), and a station run has HOME elsewhere, so both stay as on main. Decided
-# here, before the first exit, so every exit path can say which it was.
 witness_on=0
 witness_msgs=""
 witness_watched=0 witness_hard=0 witness_warn=0
@@ -5127,7 +5121,6 @@ fi
 
 echo
 echo '== Summary =='
-# Right after the header, so every later exit (--list, docs-only, empty shard) carries it.
 _witness_summary
 if [ "$list_only" -eq 1 ]; then
   echo "(--list: nothing executed)"

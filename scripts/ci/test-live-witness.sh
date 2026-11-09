@@ -18,8 +18,6 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 sb=$(mktemp -d "${TMPDIR:-/tmp}/lw-test.XXXXXX") || { echo "FAIL: mktemp"; exit 1; }
 trap 'rm -rf "$sb"' EXIT
-# A row that drops its env prefix, or a CLI that does not yet move HOME, writes
-# this sandbox and never the station's real ~/.himmel or ~/.claude.
 export HOME="$sb/outer-home"
 mkdir -p "$HOME"
 : > "$sb/exempt-none"
