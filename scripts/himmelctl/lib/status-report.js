@@ -394,7 +394,6 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (bash scripts/doctor-cadence.sh arm)`;
       }
-      // the weekly roll-up is opt-in the same way: only an explicit `arm` installs it.
       if (item.id === 'rollup-cadence') {
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (bash scripts/eval/rollup-cadence.sh arm)`;

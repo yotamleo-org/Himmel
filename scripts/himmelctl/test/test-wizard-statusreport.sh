@@ -1189,9 +1189,6 @@ echo "$outM" | jq -e '.summary.red == 0' >/dev/null \
   || fail "case m: unarmed doctor-cadence must not count toward summary.red (got: $outM)"
 echo "ok: case m — an unarmed doctor-cadence reads n/a (opt-in), never red"
 
-# ── case m2: an UNARMED rollup-cadence reads n/a (opt-in), never red. Same
-# shape as case m: the row is profiles:["core","all"], so it is desired broadly,
-# and nothing but an explicit `arm` ever installs it.
 caseM2_dir="$work/caseM2-target"; mkdir -p "$caseM2_dir"
 homeM2="$work/homeM2"; mkdir -p "$homeM2"
 cacheM2="$work/cacheM2"; mkdir -p "$cacheM2"
