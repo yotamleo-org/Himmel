@@ -1119,7 +1119,7 @@ check    "9479: a cut before the mv writes no GO" "$(gofiles31)" "0"
 check    "9479 I4: a cut leaves a marker keyed <pr>.<head>" "$(find "$Q31/blocked" -type f -name "77.$SHA" 2>/dev/null | wc -l | tr -d ' ')" "1"
 contains "9479: a cut names GO_DEADLINE" "$out" "GO_DEADLINE"
 fresh31
-rc=0; out=$(STUB_WV_SLEEP=30 GO_DEADLINE=3 go31 77 "$SHA") || rc=$?
+rc=0; out=$(STUB_WV_SLEEP=60 GO_DEADLINE=8 go31 77 "$SHA") || rc=$?
 check    "9479: GO_DEADLINE cut after the mv -> exit 0" "$rc" "0"
 check    "9479: a cut after the mv leaves the GO standing" "$(gofiles31)" "1"
 contains "9479: a cut after the mv still prints the GO path" "$out" "$ROOT31/.locks/go/77.$SHA"
