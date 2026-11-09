@@ -1491,6 +1491,34 @@ if [ "$rc" -eq 0 ] && [ "$n_local" -le 5 ] && [ "$n_local" -ge 1 ] && grepq "$ou
 ( cd "$CY" && bash "$IS" --plan --check "$yrange" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 2 ]; then pass "P5 --plan with --check is a usage error (rc 2)"; else fail "P5 --plan --check: rc=$rc"; fi
 
+# L1: a range listing ~900 impacted suites is read inside ready-check item 19's
+# 30 s bound. The pattern pass over the narrowed lines ran every ERE per line (git grep -E -f),
+# which on 400 changed libs and 900 suites took ~60 s; one grep -E DFA pass takes ~10 s.
+CL="$(fixture_mktemp_dir)" || exit 1
+trap 'rm -rf "$FX" "$CX" "$CY" "$CL"' EXIT
+(
+    fixture_enter_git_init_dir "$CL" || exit 1
+    git init -q
+    git config user.email t@e
+    git config user.name t
+)
+mkdir -p "$CL/scripts/lib"
+for n in $(seq 1 400); do printf '# lib\n' > "$CL/scripts/lib/biglib-$n.sh"; done
+for s in $(seq 1 900); do
+    for l in $(seq 1 20); do printf 'x="$d/lib/biglib-%s.sh" # line %s of suite %s\n' $(( (s * 7 + l * 13) % 400 + 1 )) "$l" "$s"; done > "$CL/scripts/test-big-$s.sh"
+done
+git -C "$CL" add -A
+git -C "$CL" commit -q -m "chore: base"
+for n in $(seq 1 400); do printf '# changed\n' >> "$CL/scripts/lib/biglib-$n.sh"; done
+git -C "$CL" add -A
+git -C "$CL" commit -q -m "fix: every lib"
+lrange="$(git -C "$CL" rev-parse HEAD~1)..$(git -C "$CL" rev-parse HEAD)"
+l_start=$SECONDS
+out="$( cd "$CL" && timeout 30 bash "$IS" "$lrange" 2>/dev/null )"; rc=$?
+l_wall=$((SECONDS - l_start))
+n_out=$(grep -c . <<< "$out")
+if [ "$rc" -eq 0 ] && [ "$n_out" -eq 900 ]; then pass "L1 a 900-suite range is read in ${l_wall}s inside the 30 s bound"; else fail "L1 large range: rc=$rc suites=$n_out wall=${l_wall}s (rc 124 = over the 30 s bound)"; fi
+
 echo
 if [ "$failures" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi
 echo "FAIL: $failures case(s) failed"
