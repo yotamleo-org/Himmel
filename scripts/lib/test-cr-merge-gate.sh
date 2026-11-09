@@ -94,7 +94,7 @@ case "$1 $2" in
   # matched `select(.name=="CodeRabbit")` on .check_runs. Shape below is copied
   # from a live /statuses response (newest-first; creator.id 136622811 =
   # coderabbitai[bot]).
-  "api repos/o/r/commits/abc123"*)
+  "api repos/o/r/commits/abc123"*|"api repos/o/r/commits/${GH_STUB_HEAD:-abc123}"*)
     case "$GH_STUB_MODE" in
       api-error) exit 1 ;;
       # the status read DEGRADES while threads/body stay clean —
@@ -1020,6 +1020,45 @@ export _CRG_RELEASE=1
 t J7-merge-gate-ignores-inherited-release-flag 2
 unset _CRG_RELEASE
 unset GH_STUB_HEAD GH_STUB_BRANCH
+led "$CRIT_OK"
+fx_commit() { git -C "$TMP/repo" -c core.hooksPath=/dev/null -c user.name=t -c user.email=t@t "$@" >/dev/null 2>&1; }
+fx_commit commit --quiet --allow-empty -m fx-reviewed
+FX_R=$(git -C "$TMP/repo" rev-parse HEAD)
+fx_commit commit --quiet --allow-empty -m fx-tip
+FX_T=$(git -C "$TMP/repo" rev-parse HEAD)
+FX_O=$(git -C "$TMP/repo" -c user.name=t -c user.email=t@t commit-tree "$(git -C "$TMP/repo" rev-parse 'HEAD^{tree}')" -m fx-unrelated 2>/dev/null)
+fx_finding() { printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-1","severity":"imp","verdict":"%s"}' "$1" "${2:-}"; }
+fx_amend() { printf '{"kind":"amend","target_head":"%s","finding_id":"codex-1","set":{"verdict":"fixed"}}' "$1"; }
+fx_carry() { av "$FX_T" claude ok '' "trivial-descendant of reviewed head $1"; }
+fx_jg() { printf '{"kind":"judge-go","branch":"feat/x","head":"%s","status":"ok","source":"judge:WQ-j9264-2/judge-ro"}' "$FX_T"; }
+export GH_STUB_HEAD=$FX_T GH_STUB_BRANCH=feat/x GH_STUB_MODE=clean
+led "$(av "$FX_R" codex ok)" "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R")" "$(fx_amend "$FX_R")" "$(fx_jg)"
+rgj F1-fixed-carried-finding-judge-go-passes 0
+has "$TMP/err-F1-fixed-carried-finding-judge-go-passes" 'codex hard pass' "F1 codex reads pass, not findings-open"
+has "$TMP/out-F1-fixed-carried-finding-judge-go-passes" '^NOTE: .*codex.*codex-1.*judge:WQ-j9264-2/judge-ro' "F1 NOTE names the fixed finding and the judge"
+rgj F1b-release-fixed-carried-finding-judge-go-passes 0 --release
+led "$(av "$FX_R" codex ok)" "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R")" "$(fx_amend "$FX_R")"
+rgj F2-fixed-carried-finding-no-judge-go-holds 1
+has "$TMP/out-F2-fixed-carried-finding-no-judge-go-holds" '^HOLD: codex has open finding.*codex-1' "F2 HOLD names the fixed finding"
+led "$(av "$FX_R" codex ok)" "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_T")" "$(fx_amend "$FX_T")" "$(fx_jg)"
+rgj F3-fixed-finding-at-the-tip-itself-holds 1
+led "$(av "$FX_R" codex ok)" "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R" agreed)" "$(fx_jg)"
+rgj F4-unfixed-imp-finding-judge-go-holds 1
+led "$(av "$FX_R" codex ok)" "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R")" "$(fx_amend "$FX_R")" "$(fx_jg)"
+GH_STUB_BRANCH=feat/other rgj F5-fixed-finding-judge-go-other-branch-holds 1
+led "$(av "$FX_O" codex ok)" "$(av "$FX_O" claude ok)" "$(fx_carry "$FX_O")" "$(fx_finding "$FX_O")" "$(fx_amend "$FX_O")" "$(fx_jg)"
+rgj F6-fixed-finding-tip-not-a-descendant-holds 1
+led "$(av "$FX_R" codex ok)" "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R")" "$(fx_amend "$FX_R")" "$(fx_finding "$FX_R" agreed | sed 's/codex-1/codex-2/')" "$(fx_jg)"
+rgj F7-fixed-and-unfixed-finding-together-holds 1
+has "$TMP/out-F7-fixed-and-unfixed-finding-together-holds" '^HOLD: codex has open finding.*codex-2' "F7 HOLD names the unfixed finding"
+led "$(av "$FX_R" codex unavailable timeout)" "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R")" "$(fx_amend "$FX_R")" "$(fx_jg)"
+rgj F8-fixed-finding-codex-unavailable-at-carried-head-holds 1
+led "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R")" "$(fx_amend "$FX_R")" "$(fx_jg)"
+rgj F9-fixed-finding-no-codex-row-at-carried-head-holds 1
+led "$(av "$FX_R" codex ok)" "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R")" "$(fx_amend "$FX_R")" "$(printf '{"kind":"amend","target_head":"%s","finding_id":"codex-1","set":{"verdict":"agreed"}}' "$FX_R")" "$(fx_jg)"
+rgj F10-fixed-finding-reopened-by-later-amend-holds 1
+has "$TMP/out-F10-fixed-finding-reopened-by-later-amend-holds" '^HOLD: codex has open finding.*codex-1' "F10 HOLD names the reopened finding"
+unset GH_STUB_HEAD GH_STUB_BRANCH GH_STUB_MODE
 led "$CRIT_OK"
 # G4 — the release flag is scoped to the call: after a --release gate, whether it
 # ran through the evaluation or returned early, the shell holds no flag for the
