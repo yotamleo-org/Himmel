@@ -75,12 +75,18 @@ cat > "$tmp/stubbin/bun" <<'STUB'
 #!/usr/bin/env bash
 n=0
 [ -f "$BUN_STUB_COUNT" ] && n=$(<"$BUN_STUB_COUNT")
-printf '%s' $((n + 1)) > "$BUN_STUB_COUNT"
-if [ "$BUN_STUB_MODE" = live ]; then
-  mkdir -p "$HOME/.claude" && : > "$HOME/.claude/x"
-else
-  own=$(mktemp -d "${TMPDIR:-/tmp}/bun-stub.XXXXXX") && : > "$own/x" && rm -rf "$own"
-fi
+n=$((n + 1))
+printf '%s' "$n" > "$BUN_STUB_COUNT"
+live_write() { mkdir -p "$HOME/.claude" || exit 1; : > "$HOME/.claude/x" || exit 1; }
+case "$BUN_STUB_MODE" in
+  live) live_write ;;
+  rc86) if [ "$n" -eq 1 ]; then exit 86; fi ;;
+  failthenlive) if [ "$n" -eq 1 ]; then exit 1; fi; live_write ;;
+  own)
+    own=$(mktemp -d "${TMPDIR:-/tmp}/bun-stub.XXXXXX") || exit 1
+    : > "$own/x" || exit 1
+    rm -rf "$own" || exit 1 ;;
+esac
 printf 'Ran 1 test across 1 file\n'
 STUB
 chmod +x "$tmp/stubbin/bun"
@@ -101,4 +107,22 @@ run_stub_case own
 grep -q '^live-witness: on, bun:scripts/config-ui, 0 hits, cmd rc=0$' "$tmp/output" || { printf 'FAIL: no live-witness summary line for the clean bun\n'; exit 1; }
 grep -q '^\[PASS\] scripts/config-ui$' "$tmp/output" || exit 1
 printf 'PASS: a bun that writes only its own temp passes with the witness line\n'
-printf '7 passed, 0 failed\n'
+run_stub_case rc86
+[ "$rc" -eq 0 ] && [ "$(<"$tmp/stub-count")" = 2 ] || { printf 'FAIL: a bun that exits 86 with no witness hit must be retried like any failure (rc=%s calls=%s)\n' "$rc" "$(cat "$tmp/stub-count" 2>/dev/null)"; exit 1; }
+grep -q '^\[FLAKE\] scripts/config-ui — passed on single retry (first rc=86' "$tmp/output" || { printf 'FAIL: no FLAKE line for the retried bun exit 86\n'; exit 1; }
+! grep -q 'live-state write' "$tmp/output" || { printf 'FAIL: a bun exit 86 with no witness hit was called a live-state write\n'; exit 1; }
+printf 'PASS: a bun exit 86 with no witness hit is retried, not called a live-state write\n'
+run_stub_case failthenlive
+[ "$rc" -eq 86 ] && [ "$(<"$tmp/stub-count")" = 2 ] || { printf 'FAIL: a retry that writes the live state must exit 86 (rc=%s calls=%s)\n' "$rc" "$(cat "$tmp/stub-count" 2>/dev/null)"; exit 1; }
+grep -q '^\[FAIL\] scripts/config-ui — live-state write on the retry$' "$tmp/output" || { printf 'FAIL: a live write on the retry was not reported as one\n'; exit 1; }
+! grep -q 'failed both attempts' "$tmp/output" || { printf 'FAIL: a live write on the retry was reported as a plain double failure\n'; exit 1; }
+printf 'PASS: a live-state write on the retry is reported as one\n'
+# The own-temp stub must die before it prints its Ran line when its setup fails.
+rc=0
+BUN_STUB_MODE=own BUN_STUB_COUNT="$tmp/stub-count" TMPDIR="$tmp/no-such-dir" bash "$tmp/stubbin/bun" > "$tmp/stub-output" 2>&1 || rc=$?
+if [ "$rc" -eq 0 ] || grep -q 'Ran 1 test' "$tmp/stub-output"; then
+  printf 'FAIL: the own-temp stub printed its Ran line though its mktemp failed (rc=%s)\n' "$rc"
+  exit 1
+fi
+printf 'PASS: the own-temp stub fails before the Ran line when its temp setup fails\n'
+printf '10 passed, 0 failed\n'

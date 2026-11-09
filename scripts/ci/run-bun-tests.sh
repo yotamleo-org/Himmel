@@ -2,8 +2,8 @@
 # Retry a failing bun suite once, preserving the caller's working directory.
 # Usage: run-bun-tests.sh <repo-relative-suite> [bun test arguments...]
 # Exit: 0 passed (first try or on the single retry), 2 usage or a refused exempt
-# file, 86 a bun attempt wrote into the live himmel state (never retried), any
-# other code the failing retry's bun rc.
+# file, 86 the witness found a write into the live himmel state in an attempt (a
+# first-attempt hit is never retried), any other code the failing retry's bun rc.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 if [ "$#" -lt 1 ]; then
@@ -26,6 +26,11 @@ run_attempt() {
   fi
   return "$rc"
 }
+# Exit 86 is the witness's status, but bun can exit 86 itself: only a [LIVE-STATE]
+# line for this suite in the attempt log says the witness found a write.
+witness_hit() {
+  awk -v p="[LIVE-STATE] bun:$suite — " 'index($0, p) == 1 { f = 1 } END { exit !f }' "$logs/$1.log"
+}
 attempt=1
 if run_attempt "$@"; then
   printf '[PASS] %s\n' "$suite"
@@ -33,7 +38,7 @@ if run_attempt "$@"; then
 else
   first_rc=$?
 fi
-if [ "$first_rc" -eq 86 ]; then
+if [ "$first_rc" -eq 86 ] && witness_hit 1; then
   printf '[FAIL] %s — live-state write (not retried)\n' "$suite"
   exit 86
 fi
@@ -43,6 +48,10 @@ if run_attempt "$@"; then
   retry_elapsed_ms=$(( (SECONDS - start) * 1000 ))
 else
   rc=$?
+  if [ "$rc" -eq 86 ] && witness_hit 2; then
+    printf '[FAIL] %s — live-state write on the retry\n' "$suite"
+    exit 86
+  fi
   printf '[FAIL] %s — failed both attempts (first rc=%s, retry rc=%s)\n' "$suite" "$first_rc" "$rc"
   exit "$rc"
 fi
