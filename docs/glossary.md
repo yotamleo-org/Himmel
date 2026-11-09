@@ -403,7 +403,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 
 Renamed senses are not listed. A sentinel file is `.single-writer` or
 `.himmel-dev`, an identity variable is `HIMMEL_CONSOLE_LEG`, and a ponytail
-comment is the `ponytail:` code comment.
+comment is the retired code-comment marker, now a ceilings-ledger row.
 
 | Word | What it means in this glossary | Other things it is used for | How to tell which one |
 |---|---|---|---|
