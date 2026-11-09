@@ -330,9 +330,9 @@ gathering, per the rule below.>
 > you read the diff, run
 > `bash <primary checkout>/scripts/ledger/ceiling-lookup.sh --range origin/main...<head>`
 > (the primary checkout's copy, never a relative path: the judge dir is built
-> from the PR head's `scripts/`) and read the rows as "Recorded ceilings for the
-> touched files: context to verify, not a verdict. Check each one still matches
-> the code; a ceiling never waives a defect the change introduces." Cite a row by
+> from the PR head's `scripts/`) and read the rows as context to verify, not a
+> verdict: check each one still matches the code; a ceiling never waives a
+> defect the change introduces. Cite a row by
 > its id only; never quote its ceiling or trigger in your verdict or evidence
 > file. `withheld` or `not read` means no rows were shown to you: say so and rule
 > on the code.
