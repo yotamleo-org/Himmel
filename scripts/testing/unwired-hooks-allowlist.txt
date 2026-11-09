@@ -27,3 +27,4 @@ block-pr-check-args.sh|UserPromptExpansion fence shipped unwired, see docs/inter
 check-single-writer-push-floor.sh|pre-push floor run by the shim install-single-writer-floor.sh writes into .single-writer repos, not a registered hook
 install-single-writer-floor.sh|operator-run installer for .single-writer repos, not a hook
 guard-worker-cache-ttl.sh|Stop hook wired by headed-arm-worker.sh into the native worker profile, not a project hook
+block-t3code-unwatch-open-pr.sh|PreToolUse hook for mcp__t3-code__unwatch_pull_request; the settings stanza is applied by the chief or operator, then this entry must be removed
