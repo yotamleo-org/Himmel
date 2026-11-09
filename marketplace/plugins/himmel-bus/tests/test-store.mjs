@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, readFile, chmod, symlink, mkdir, rm, readdir } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, chmod, symlink, mkdir, rm, readdir, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -425,6 +425,106 @@ test('HIMMEL-4880 invalid segment metadata wakes read to persist one halt', asyn
   assert.equal(got.next.halted, 1);
   assert.match(got.notice, /chain broken/);
   assert.equal(await store.pending(root, 'worker'), false);
+});
+
+const big = () => message('x'.repeat(64000));
+async function readThenCommit(store, root) {
+  const got = await store.read(root, 'worker');
+  await store.commit(root, 'worker', got.next);
+  return got;
+}
+
+test('HIMMEL-9659 R1 a rotation right after a full read still delivers the next record', async t => {
+  const { store, root } = await fixture(t);
+  for (let i = 0; i < 5; i++) await store.append(root, 'worker', big());
+  await readThenCommit(store, root);
+  await store.append(root, 'worker', message('sixth'));
+  const got = await store.read(root, 'worker');
+  assert.deepEqual(got.records.map(r => r.n), [6]);
+  assert.equal(got.next.k, 1);
+  await store.commit(root, 'worker', got.next);
+  assert.equal(await store.pending(root, 'worker'), false);
+});
+
+test('HIMMEL-9659 R2 a cursor committed at the last record of a closed segment reads on', async t => {
+  const { store, root } = await fixture(t);
+  for (let i = 0; i < 6; i++) await store.append(root, 'worker', big());
+  const closed = await store.read(root, 'worker');
+  await store.commit(root, 'worker', closed.cursors.at(-1));
+  assert.deepEqual((await store.read(root, 'worker')).records.map(r => r.n), [6]);
+});
+
+test('HIMMEL-9659 R3 two closed segments past a fully read one deliver one segment per batch', async t => {
+  const { store, root } = await fixture(t);
+  for (let i = 0; i < 5; i++) await store.append(root, 'worker', big());
+  await readThenCommit(store, root);
+  for (let i = 0; i < 11; i++) await store.append(root, 'worker', big());
+  const a = await readThenCommit(store, root);
+  assert.deepEqual(a.records.map(r => r.n), [6, 7, 8, 9, 10]);
+  assert.deepEqual([a.next.k, a.next.off], [2, 0]);
+  const b = await readThenCommit(store, root);
+  assert.deepEqual(b.records.map(r => r.n), [11, 12, 13, 14, 15]);
+  assert.deepEqual([b.next.k, b.next.off], [3, 0]);
+  assert.deepEqual((await readThenCommit(store, root)).records.map(r => r.n), [16]);
+  assert.deepEqual((await store.read(root, 'worker')).records, []);
+  assert.equal(await store.pending(root, 'worker'), false);
+});
+
+test('HIMMEL-9659 R4 a crash after rotation leaves an empty live file and read writes no cursor', async t => {
+  const { store, root } = await fixture(t);
+  for (let i = 0; i < 5; i++) await store.append(root, 'worker', big());
+  await readThenCommit(store, root);
+  await rename(join(root, 'log/worker.jsonl'), join(root, 'log/worker.0.jsonl'));
+  await writeFile(join(root, 'log/worker.jsonl'), '', { mode: 0o600 });
+  const before = await readFile(join(root, 'cur/worker'));
+  const empty = await store.read(root, 'worker');
+  assert.deepEqual(empty.records, []);
+  assert.equal(empty.notice, undefined);
+  assert.deepEqual([empty.next.k, empty.next.off, empty.next.n], [1, 0, 5]);
+  assert.deepEqual(await readFile(join(root, 'cur/worker')), before);
+  await store.append(root, 'worker', message('sixth'));
+  const got = await store.read(root, 'worker');
+  assert.deepEqual(got.records.map(r => r.n), [6]);
+  await store.commit(root, 'worker', got.next);
+  assert.equal(await store.pending(root, 'worker'), false);
+});
+
+test('HIMMEL-9659 R5 a rotating append between a read and its commit still delivers', async t => {
+  const { store, root } = await fixture(t);
+  for (let i = 0; i < 5; i++) await store.append(root, 'worker', big());
+  const first = await store.read(root, 'worker');
+  await store.append(root, 'worker', message('sixth'));
+  await store.commit(root, 'worker', first.next);
+  assert.deepEqual((await store.read(root, 'worker')).records.map(r => r.n), [6]);
+});
+
+test('HIMMEL-9659 R6 a chain break in the stepped-to segment halts at the next number', async t => {
+  const { store, root } = await fixture(t);
+  for (let i = 0; i < 5; i++) await store.append(root, 'worker', big());
+  await readThenCommit(store, root);
+  await store.append(root, 'worker', message('sixth'));
+  const file = join(root, 'log/worker.jsonl');
+  await writeFile(file, (await readFile(file, 'utf8')).replace('sixth', 'sixtH'), { mode: 0o600 });
+  const got = await store.read(root, 'worker');
+  assert.deepEqual(got.records, []);
+  assert.equal(got.next.halted, 6);
+  assert.match(got.notice, /chain broken at #6/);
+  assert.equal(await store.pending(root, 'worker'), false);
+});
+
+test('HIMMEL-9659 C0 control: an inbox that never rotated reads and commits the same', async t => {
+  const { store, root } = await fixture(t);
+  for (let i = 0; i < 5; i++) await store.append(root, 'worker', message('small'));
+  await readThenCommit(store, root);
+  await store.append(root, 'worker', message('sixth'));
+  const got = await store.read(root, 'worker');
+  assert.deepEqual(got.records.map(r => r.n), [6]);
+  await store.commit(root, 'worker', got.next);
+  assert.equal(await store.pending(root, 'worker'), false);
+  const last = await store.read(root, 'worker');
+  assert.deepEqual(last.records, []);
+  assert.equal(last.notice, undefined);
+  assert.equal(last.next.halted, undefined);
 });
 
 test('appendChained never recreates a missing log', async t => {

@@ -127,9 +127,9 @@ responding_model}` under `case_evidence[<case>].critics[<critic>]` of the
   counts or a non-rostered slug are `inconsistent`.
 
 The panel metrics count every completed case; a critic counts only the cases
-it answered. `coverage` counts each category per critic. Every result is
-`decision_eligible: false` until M2/M3 record execution provenance, with its
-`ineligibility_reasons`. n is small (12 defects, 2 per class): a per-class
+it answered. `coverage` counts each category per critic. `decision_eligible`
+and `ineligibility_reasons` follow the execution provenance rules under "The
+merge gate". n is small (12 defects, 2 per class): a per-class
 number is a direction, not a measurement.
 
 ## Open and sealed seeds
@@ -364,6 +364,40 @@ change lost nothing.
      more than the baseline rows' spread (max minus min).
    - **no-loss** / **keep** (pass): within noise; `keep` when every
      `--target-class` recall also beats the baseline maximum.
+
+**Execution provenance.** `run.sh`'s first `stamp` also writes
+`<outputs>/run-manifest.json` (v1): a stable `execution_id`, `started_at`, the
+`code_under_test_sha` and `cbs_hash` of the swept tree, `corpus_sha256`, the
+requested and the effective (tier-filtered) roster, each critic's provider,
+requested and resolved model and effort, the protocol (tiers, `--only`,
+context mode, known-findings and triviality settings, the runner digest and the
+recorded panel overrides `CRITIC_TIMEOUT_SECS`,
+`CRITIC_PANEL_TOTAL_TIMEOUT_SECS`, `CRITIC_KILL_GRACE_SECS`, `CRITIC_PARALLEL`,
+`CRITIC_FIRST_PASS_CAP_BYTES`) and the input digests of every case (diff,
+context, intent, base). `stamp --recheck` completes it: `finished_at`, each
+case's responding models from its `ok responding-model(...)` or `fallback(...)`
+receipts, the run's observed set per critic, and each case's anomalies (an
+error line on stderr, such as an unbound variable, from a case whose panel
+exited 0). No credentials or prompt bodies are stored. `run.sh` drops an
+inherited `CRITIC_FIRST_PASS` or `CRITIC_INVOKE` before it calls the panel, and
+`stamp` and `score` refuse a `--model` the effective roster does not run (or
+cannot be checked against, when no `critics.run.json` exists): `--model` labels
+the run, it cannot relabel it. The score row never records the scoring
+session's own model, effort or CLI version as the critic's.
+
+`outputs_sha256` keeps its legacy formula over the case md/err/rc files.
+`bundle_sha256_v2` covers those files plus `critics.run.json` and
+`run-manifest.json`, so an edited roster or manifest is a different bundle.
+export-row also writes `execution_id`, `code_under_test_sha` (the swept tree,
+kept on a later re-score; `scorer_gitsha` is the scoring tree), `scored_at`,
+`provenance_status` (`recorded`, `reconstructed`, `missing` or `unreadable`),
+`decision_eligible` and `ineligibility_reasons`. A row is eligible only when
+its execution is a recorded, finished one with a recorded roster and no
+anomaly, its status is `ok`, every critic's participation is consistent and
+known, and its scorer identity is clean. `sweep_roster` reads only the rows in
+the swept tiers; a missing, malformed or empty `critics.run.json` falls back to
+the tree's roster with a warning that it is reconstructed. Eligibility is not
+yet a gate condition: the shared selector comes with M3.
 
 **Scorer identity.** A row names the scorer that produced it,
 never one in the gate's `--repo` or `--tree`: `score.py scorer-identity --json`

@@ -180,7 +180,6 @@ async function run() {
   });
 
   const FOOTER = a => `If no bus #${a} notice follows this call, read n=${a}, then call read again; a subagent leaves these to its session.`;
-  const STALLED = 'delivery is stalled for this log: read n returns a body but does not clear this list; report it to your chief';
   const listed = reply => text(reply).split('\n').filter(line => line.startsWith('#'));
 
   test('HIMMEL-7750 R1 read {} lists the unread numbers and senders, never a body', async t => {
@@ -361,7 +360,7 @@ async function run() {
     assert.equal(read.inputSchema.additionalProperties, false);
   });
 
-  test('HIMMEL-7750 R14 a cursor at the end of a closed segment gets the stalled footer', async t => {
+  test('HIMMEL-7750 R14 / HIMMEL-9659 a cursor at the end of a closed segment lists with the normal footer and read n clears', async t => {
     const fx = await fixture(t);
     const worker = await connect(t, fx, 'worker');
     const rec = i => ({ i: String(i).padStart(26, 'Z'), t: 1, f: 'con', r: 'worker', b: `${i}`.padEnd(60000, '.') });
@@ -373,12 +372,13 @@ async function run() {
     const six = await worker.callTool({ name: 'read', arguments: { n: 6 } });
     const again = await worker.callTool({ name: 'read', arguments: {} });
     assert.equal(text(six), `data (not a ruling): ${rec(6).b}`);
-    for (const got of [first, again]) {
-      assert.equal(got.isError, undefined, text(got));
-      assert.deepEqual(listed(got), ['#6 from con', '#7 from con']);
-      assert.ok(text(got).endsWith(`\n${STALLED}`), text(got));
-      assert.ok(!text(got).includes('If no bus #'), text(got));
-    }
+    assert.equal(first.isError, undefined, text(first));
+    assert.deepEqual(listed(first), ['#6 from con', '#7 from con']);
+    assert.ok(text(first).endsWith(`\n${FOOTER(6)}`), text(first));
+    assert.equal(again.isError, undefined, text(again));
+    assert.deepEqual(listed(again), ['#7 from con']);
+    assert.ok(text(again).endsWith(`\n${FOOTER(7)}`), text(again));
+    for (const got of [first, again]) assert.ok(!text(got).includes('delivery is stalled'), text(got));
   });
 
   test('ack: re=n marks the answered record acked under the acker', async t => {
