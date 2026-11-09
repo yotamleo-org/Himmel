@@ -61,6 +61,9 @@ The live suite proves each CLI write really changes the field.
 ## DoD
 - The live suite reads back every field it wrote.
 
+## Proof
+The live suite passes against the test project.
+
 ## Agent detail
 scripts/jira/live/jira-live.test.ts
 `;

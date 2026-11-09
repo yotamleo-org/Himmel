@@ -9,7 +9,7 @@ Lean-invoke: run it when you are about to file a ticket, or to complete a
 draft that was parked. Not always-on. The checker is a script, so the verdict
 does not depend on you remembering the rules.
 
-## The draft shape (six sections plus agent detail)
+## The draft shape (seven sections)
 
 Write in plain user language. The first section says who notices and what
 changes; jargon-only tickets are refused by a human at review even when the
@@ -23,11 +23,17 @@ script passes them.
 6. **Proof** - the named evidence (rule below).
 7. **Agent detail** - what a worker needs that a reader does not (files, suites, ordering).
 
+Each section is a `## ` heading, or a bare line that is exactly its name (as Jira renders a heading back); a bold line is never a heading.
 Also give a primary **Sector**: `--sector NAME` or a `Sector: <name>` line.
-Each section needs at least one real line; `TBD`, `TODO`, `N/A`, `none`, `...`
-and `<placeholder>` count as empty.
+Each section needs at least one real line, and Plan and DoD each need a real
+bullet or numbered line; `TBD`, `TODO`, `TBC`, `N/A`, `none`, `...`, `?` and
+`<placeholder>` count as empty. Fenced code never makes a heading, a list item,
+a `Metric:` or an `Edges:` line.
 
-A draft whose `Labels:` line carries `ci`, `guard`, `guardrail`, `stability` or `flake` (or a
+Give the ticket's labels with `--labels a,b`. Without it, a draft's `Labels:`
+line is the offline fallback; when both are given and differ, that is a finding.
+
+A ticket whose labels carry `ci`, `guard`, `guardrail`, `stability` or `flake` (or a
 `ci-…` / `guard-…` variant) also needs a `Metric: <scorecard column>` line naming
 the stability-scorecard metric it moves (columns: `specs/research/stability-scorecard.tsv`).
 `Metric:` may be bare, bulleted (`- Metric:`) or bold (`**Metric:**`), in any case.
@@ -38,8 +44,8 @@ which ticket blocks which and whether hard or soft, e.g.
 `Edges: PROJ-100 blocks PROJ-101 (hard)`, or `Edges: none` when they are independent.
 The chain graph orders dispatch from it. It may be bare, bulleted or bold, in any case; a
 multi-ticket Plan without one is refused like a missing section (the message names the
-line). A Plan naming one key or none is unaffected. Any `ABC-123`-shaped token counts as a
-key, so answer a false hit with `Edges: none`.
+line). A Plan naming one key or none is unaffected. Any `ABC-123`-shaped token in the Plan
+counts as a key, prior-art keys included; `Edges: none` is the escape for a false hit.
 
 A **Bug** draft also asks for two labels, so the weekly escape report
 (`scripts/ci/escape-report.sh`) can group it: `found-by:<who>` (`operator`, `worker`,
@@ -114,7 +120,7 @@ counts later operator-kept changes; acceptance by the script is not that count.
 D="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT}"
 [ -f "$D/scripts/ticket-standard-check.sh" ] || D="$(git rev-parse --show-toplevel)/marketplace/plugins/himmel-ops"
 
-bash "$D/scripts/ticket-standard-check.sh" --type Task --sector "Planning & tracking" --draft draft.md
+bash "$D/scripts/ticket-standard-check.sh" --type Task --sector "Planning & tracking" --labels standalone --draft draft.md
 ```
 
 The draft file is never changed. A passing draft prints `ok:` and writes
@@ -146,5 +152,8 @@ only warns. Sectors: Fleet orchestration, Ship loop, Safety & enforcement, Cost 
 efficiency, Visibility, Quality & proof, Deployment, Knowledge & steering,
 Planning & tracking.
 
-`jira create` enforces Plan and DoD as well; this skill is the
-earlier step that also checks the named Proof and keeps what it refuses.
+`jira create` runs the same ticket policy (`scripts/ticket-policy.mjs`) on the
+body against the labels it will write; this skill is the earlier step that
+keeps what it refuses. A checker pass says `body check passed (body only ...)`:
+home, placement and the final labels are still checked by `jira create`. If
+node or the policy cannot run, the checker fails closed (exit 2).

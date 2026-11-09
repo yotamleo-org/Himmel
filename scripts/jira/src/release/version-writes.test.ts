@@ -69,6 +69,9 @@ describe('repair fixtures', () => {
 // Files that mention a Fix Version but never write one: readers, renderers, the hook itself, and the
 // engine (it reaches Jira only through the port whose real write is in commands/release.ts).
 const READ_ONLY = [
+  'scripts/hooks/block-backend-tier.sh',
+  'scripts/jira/src/commands/move.ts',
+  'scripts/jira/src/mcp.ts',
   // Joined so the CI plan audit's closure does not read this list as a suite that executes the file.
   'scripts/config-ui/' + 'roadmap.ts',
   'scripts/handover/chief-kit/board.mjs',

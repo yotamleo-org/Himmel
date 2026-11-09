@@ -8,15 +8,17 @@
 # chain never merges.
 #
 # This is the narrow, self-gating merge path the operator authorizes via a
-# specific standing allow-rule. Workers invoke the relative spelling
-# `bash scripts/handover/merge-on-green.sh` from their worktree root: it
-# matches the relative `Bash(bash scripts/handover/merge-on-green.sh:*)` rule
-# as plain text, guard-pr-check-literal.sh admits it when this copy equals the
-# anchor's or, on a branch behind main that never touched it, its merge-base's,
-# and it hands off to the anchor's own copy on a relative entry. The anchored
-# `Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)` rule
-# carries a shell expansion, so whether it applies is left to the auto-mode
-# classifier, which allows and denies it run to run — never a raw
+# specific standing allow-rule. Workers type the anchor's literal path,
+# `bash <anchor>/scripts/handover/merge-on-green.sh`: it matches the generated
+# `Bash(bash <anchor>/scripts/handover/merge-on-green.sh:*)` rule as plain text.
+# The relative spelling `bash scripts/handover/merge-on-green.sh` from a
+# worktree root is admitted by guard-pr-check-literal.sh when this copy equals
+# the anchor's or, on a branch behind main that never touched it, its
+# merge-base's, and it hands off to the anchor's own copy on a relative entry.
+# The spelling that goes through the HIMMEL_REPO variable carries a shell
+# expansion, so no allow rule can match it and the auto-mode classifier decides
+# it run to run; guard-pr-check-literal.sh refuses that spelling in himmel
+# sessions and prints the literal — never a raw
 # `gh pr merge` (still classifier-blocked) and never a permission widening.
 # It merges ONLY on: opt-in (ARMAUTOMERGE=1) AND a PRIVATE github repo
 # — or, the ONE configured public origin, live-verified under
@@ -295,8 +297,8 @@
 # script is the only branch-controllable byte left. HIMMEL_REPO is a registered
 # chokepoint seam (scripts/chokepoints.json), so a per-call `HIMMEL_REPO=. bash …`
 # re-pointing it at the branch is denied.
-# Workers are told to invoke the anchored spelling,
-# `bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"`, which never runs a branch's own copy. The relative entry
+# Workers are told to type the anchor's literal path,
+# `bash <anchor>/scripts/handover/merge-on-green.sh`, which never runs a branch's own copy. The relative entry
 # (`bash scripts/handover/merge-on-green.sh`, still pre-approved, retirement planned) now hands off to the anchor's own copy on a
 # relative invocation too, the same one-hop, fail-closed pattern
 # scripts/cr/anchor-handoff.sh uses for the scripts/cr/ gate writers.
@@ -898,6 +900,18 @@ if [ ! -f "$CHECK_CI" ]; then
     audit "REFUSED reason=no-check-ci repo=$nwo pr=#$pr_num"
     exit 14
 fi
+# The PostToolUse hooks post the one CodeRabbit trigger per head, and a host that
+# runs no PostToolUse hook posts none; post it here when the ledger lacks this
+# head. Best effort: the merge goes on whatever the post does.
+# shellcheck source=scripts/lib/coderabbit-trigger-ledger.sh
+# shellcheck disable=SC1091
+if [ "$DRY_RUN" -eq 0 ] && . "$himmel_repo/scripts/lib/coderabbit-trigger-ledger.sh" 2>/dev/null \
+    && ! cr_trigger_ledger_has "$nwo" "$pr_num" "$sha"; then
+    # shellcheck disable=SC2329  # called by cr_trigger_post_review
+    warn() { echo "merge-on-green: $*" >&2; }
+    GH_CMD="$GH" cr_trigger_post_review "$sha" "$pr_num" "$nwo" 0 || true
+fi
+
 # CodeRabbit availability, for the DURABLE record. Read
 # IMMEDIATELY before check-ci.sh, and deliberately not earlier: check-ci.sh runs this same probe at its own startup, so the value
 # recorded here is only honest to the extent that the two reads see the same

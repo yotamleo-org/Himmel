@@ -215,11 +215,22 @@ run Task "$td/notes.md" "$q" --sector X
 check "empty Proof before ## Notes exits 1" "$rc" 1
 has "empty Proof before ## Notes named" "$out" "Proof"
 
-# --- bold heading ends a section; bold-wrapped placeholder is not content ---
 q="$td/q-bold"; mkdraft "$td/bold.md" Proof "Agent detail"
-printf '## Proof\n\n**Notes**\nsome unrelated line\n\n## Agent detail\nfiles\n' >>"$td/bold.md"
+printf '## Proof\n\n**Notes**\n\n## Agent detail\nfiles\n' >>"$td/bold.md"
 run Task "$td/bold.md" "$q" --sector X
-check "empty Proof before **Notes** exits 1" "$rc" 1
+check "Proof holding only **Notes** exits 1" "$rc" 1
+mkdraft "$td/bold2.md" Proof "Agent detail"
+printf '## Proof\n\n**Notes**\nRun the checker on a real draft.\n\n## Agent detail\nfiles\n' >>"$td/bold2.md"
+run Task "$td/bold2.md" "$q" --sector X
+check "a line after **Notes** stays in Proof, exits 0" "$rc" 0
+mkdraft "$td/bold3.md" Proof
+printf '**Proof**\nRun the checker on a real draft.\n' >>"$td/bold3.md"
+run Task "$td/bold3.md" "$q" --sector X
+check "a bold **Proof** line is not the Proof heading, exits 1" "$rc" 1
+mkdraft "$td/bare.md" DoD Proof
+printf 'DoD\n- A draft missing a DoD is refused.\n\nProof\nRun the checker on a real draft.\n' >>"$td/bare.md"
+run Task "$td/bare.md" "$q" --sector X
+check "bare DoD and Proof lines, as the Jira mirror renders headings, exit 0" "$rc" 0
 q="$td/q-boldph"; mkdraft "$td/boldph.md" Proof; printf '## Proof\n**TBD**\n' >>"$td/boldph.md"
 run Task "$td/boldph.md" "$q" --sector X
 check "bold-wrapped TBD Proof exits 1" "$rc" 1
@@ -233,11 +244,14 @@ q="$td/q-closing"; mkdraft "$td/closing.md" Proof; printf '## Proof ##\nRun it o
 run Task "$td/closing.md" "$q" --sector X
 check "heading with closing hashes exits 0" "$rc" 0
 
-# --- a failing awk fails closed, never reports success ---
-mkdir "$td/fakebin"; printf '#!/bin/sh\nexit 3\n' >"$td/fakebin/awk"; chmod +x "$td/fakebin/awk"
+mkdir "$td/fakebin"; printf '#!/bin/sh\nexit 3\n' >"$td/fakebin/node"; chmod +x "$td/fakebin/node"
 mkdraft "$td/awk.md" Proof
 out="$(PATH="$td/fakebin:$PATH" TICKET_STANDARD_QUEUE_DIR="$td/q-awk" bash "$tool" --type Task --draft "$td/awk.md" --sector X 2>&1)"; rc=$?
-check "failing awk exits 2" "$rc" 2
+check "failing node exits 2" "$rc" 2
+has "failing node says the draft was not checked" "$out" "not checked"
+mkdraft "$td/okn.md"
+out="$(PATH="$td/fakebin:$PATH" TICKET_STANDARD_QUEUE_DIR="$td/q-awk" bash "$tool" --type Task --draft "$td/okn.md" --sector X 2>&1)"; rc=$?
+check "a complete draft with a failing node still exits 2, never 0" "$rc" 2
 
 # --- complete Task passes, queue empty ---
 q="$td/q-ok"; mkdraft "$td/ok.md"
@@ -381,13 +395,43 @@ edraft "$td/e12.md" '### Step one
 printf '%s\n' 'Edges: HIMMEL-100 blocks HIMMEL-101 (hard)' >>"$td/e12.md"
 run Task "$td/e12.md" "$q" --sector X; check "Plan whose whole body sits under subheadings passes with Edges" "$rc" 0
 edraft "$td/e13.md" '### First, ABC-100
-Land this one first.
+1. Land this one first.
 ### Then, ABC-101
-Then this one.'
+2. Then this one.'
 run Task "$td/e13.md" "$q" --sector X; check "ticket keys in Plan subheadings count" "$rc" 1
 printf '%s\n' 'Edges: none' >>"$td/e13.md"
 run Task "$td/e13.md" "$q" --sector X; check "keyed Plan subheadings pass with Edges" "$rc" 0
 run Epic "$td/e1.md" "$q" --sector X; check "Epic without Edges only warns" "$rc" 0
 has "Epic warns about Edges" "$out" "Edges:"
+edraft "$td/e14.md" '1. Land HIMMEL-100 first.
+**Step two**
+2. Then HIMMEL-101.'
+run Task "$td/e14.md" "$q" --sector X; check "a bold pseudo-subheading keeps Plan scope, so its keys still need Edges" "$rc" 1
+cp "$td/e1.md" "$td/e15.md"; printf '## Edges\nHIMMEL-100 blocks HIMMEL-101 (soft)\n' >>"$td/e15.md"
+run Task "$td/e15.md" "$q" --sector X; check "a heading-style Edges with a real value exits 0" "$rc" 0
+cp "$td/e1.md" "$td/e16.md"; printf 'Edges:\nHIMMEL-100 blocks HIMMEL-101 (hard)\n' >>"$td/e16.md"
+run Task "$td/e16.md" "$q" --sector X; check "an Edges value on the next line exits 0" "$rc" 0
+cp "$td/e1.md" "$td/e17.md"; printf 'Edges: \342\200\246\n' >>"$td/e17.md"
+run Task "$td/e17.md" "$q" --sector X; check "a Unicode ellipsis Edges value exits 1" "$rc" 1
+cp "$td/e1.md" "$td/e18.md"; printf 'Edges: the first one goes before the second\n' >>"$td/e18.md"
+run Task "$td/e18.md" "$q" --sector X; check "an Edges value naming no ticket and not none exits 1" "$rc" 1
+
+q="$td/q-policy"
+mkdraft "$td/p1.md" Plan; printf '## Plan\nWrite the checker, then add the tests.\n' >>"$td/p1.md"
+run Task "$td/p1.md" "$q" --sector X; check "a prose-only Plan exits 1" "$rc" 1
+mkdraft "$td/p2.md" Proof; printf '## Proof\n%sa%s\nRun it.\n' "$fn" '`' >>"$td/p2.md"
+run Task "$td/p2.md" "$q" --sector X; check "a backtick fence whose info string has a backtick opens no fence" "$rc" 0
+mkdraft "$td/p3.md"
+run Task "$td/p3.md" "$q" --sector X --labels ci,standalone; check "--labels ci with no Metric exits 1" "$rc" 1
+has "--labels ci names Metric" "$out" "Metric"
+run Task "$td/p3.md" "$q" --sector X --labels standalone; check "--labels with no metric family exits 0" "$rc" 0
+has "a pass says it checked the body only" "$out" "body check passed"
+cp "$td/p3.md" "$td/p4.md"; printf 'Labels: ci\nMetric: red_main_count falls\n' >>"$td/p4.md"
+run Task "$td/p4.md" "$q" --sector X --labels guard; check "--labels disagreeing with the draft Labels: line exits 1" "$rc" 1
+has "the mismatch is named" "$out" "Labels"
+run Task "$td/p4.md" "$q" --sector X --labels ci; check "--labels agreeing with the draft Labels: line exits 0" "$rc" 0
+mkdraft "$td/p5.md"; printf 'Labels: ci\n' >>"$td/p5.md"
+run Task "$td/p5.md" "$q" --sector X --labels ''; check "an explicitly empty --labels is the empty set: a mismatch, never the draft line's ci" "$rc" 1
+hasnt "an empty --labels does not ask for the draft line's Metric" "$out" "Metric"
 
 [ "$fails" -eq 0 ] && { echo "PASS"; exit 0; } || { echo "FAILED: $fails"; exit 1; }

@@ -597,6 +597,51 @@ out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --class UN
 if [ -z "$out" ]; then pass "the SUPERSEDED branch is out of UNLANDED-LIVE"; else fail "still UNLANDED-LIVE: $out"; fi
 rm -rf "$t"
 
+echo "== CLOSED PR older than the 1000-PR cache, found by a per-branch lookup -> SUPERSEDED =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
+git -C "$t/repo" checkout -q -b fix/himmel-7622-old-closed
+commit_dated "$t/repo" 7000 old.md "closed long ago"
+tipold="$(git -C "$t/repo" rev-parse HEAD)"
+git -C "$t/repo" checkout -q main
+mkdir -p "$t/stub"
+cat > "$t/stub/gh" <<EOF
+#!/bin/sh
+case " \$* " in
+  *" --head fix/himmel-7622-old-closed --state closed "*) echo '[{"number":3957,"state":"CLOSED","headRefOid":"$tipold"}]' ;;
+  *) echo '[]' ;;
+esac
+EOF
+chmod +x "$t/stub/gh"
+out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"; rc=$?
+row="$(tsv_row "$out" fix/himmel-7622-old-closed)"
+if [ "$rc" -eq 0 ] && grepq "$row" -E "^SUPERSEDED"$'\t' && grepq "$row" -F 'PR #3957' && [ "$(printf '%s' "$row" | cut -f5)" = 0 ]; then
+    pass "closed PR outside the cache -> SUPERSEDED, PR #3957, aged=0"
+else
+    fail "closed PR outside the cache -> rc=$rc $row"
+fi
+rm -rf "$t"
+
+echo "== --health: the per-branch closed-PR lookup fails -> SWEEP-ERROR, the branch stays loud =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
+git -C "$t/repo" checkout -q -b fix/himmel-7623-lookup-fails
+commit_dated "$t/repo" 7000 fails.md "closed long ago"
+git -C "$t/repo" checkout -q main
+mkdir -p "$t/stub"
+cat > "$t/stub/gh" <<'EOF'
+#!/bin/sh
+case " $* " in
+  *" --head "*) exit 1 ;;
+  *) echo '[]' ;;
+esac
+EOF
+chmod +x "$t/stub/gh"
+out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --health 2>&1)"; rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" -E '^SWEEP-ERROR fix/himmel-7623-lookup-fails .*closed PR lookup failed'; then pass "failed per-branch lookup -> SWEEP-ERROR, rc1"; else fail "failed per-branch lookup -> rc=$rc out=$out"; fi
+out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"
+row="$(tsv_row "$out" fix/himmel-7623-lookup-fails)"
+if grepq "$row" -E "^UNLANDED-LIVE"$'\t'; then pass "failed per-branch lookup keeps UNLANDED-LIVE"; else fail "failed per-branch lookup -> $row"; fi
+rm -rf "$t"
+
 echo "== CLOSED PR but the branch moved on after it (tip is not the PR head) -> stays UNLANDED-LIVE =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
 git -C "$t/repo" checkout -q -b feat/himmel-9301-closed-then-more

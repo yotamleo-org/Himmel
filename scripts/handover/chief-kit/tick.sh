@@ -257,6 +257,12 @@ removes the worker from the field; the exact shape (greppable, one per line):
 `parked` and `given-up` need the wake or reason after them; a bare word does not clear.
 chief-wait.sh wakes `WAKE unclosed <label>` on a worker new to its marker.
 
+holdout=<label>:<pr>[,...] follows unclosed= and is ABSENT unless a worker reads IDLE-HELD
+(below) AND its newest marker bullet is `LIVE — HOLD-OUTSIDE pr=<n> owes: <what>`: a window waiting on an
+outside event it should have closed. A busy worker, or one whose newest marker moved on, is never flagged.
+An `ACTION holdout=...` line names the close-and-watch command (fleet-manifest.sh watch <manifest> add
+<pr> ..., then close the window); chief-wait.sh wakes `WAKE pr-watch <pr>` when the watched PR moves.
+
 workers= (legs= in an older tick) reads a worker's lock as FRESH or STALE (held),
 IDLE-HELD (held, but its readable session transcript has no activity for TICK_IDLE_MIN
 minutes, default 45, and no armed task/Monitor or unfinished foreground Bash/Agent;
@@ -1224,6 +1230,7 @@ leg_effort_mismatch() {
 legs_summary=""
 descs_summary=""
 tails_summary=""
+holdout_summary=""
 acts_summary=""
 holds_summary=""
 effort_summary=""
@@ -1393,6 +1400,9 @@ for leg in $WORKERS_SPLIT; do
                 # A stable label lets chief-wait wake once, never on a growing age.
                 if [ "$lock_status" != NOLOCK ] && [ "$leg_idle_seconds" -ge "$(( idle_min * 60 ))" ] && [ "$leg_foreground_running" = 0 ]; then
                     leg_label_state=IDLE-HELD
+                    ho_bullet="$(grep -E '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|MERGED)([^A-Za-z0-9_]|$)' "$leg_doc" 2>/dev/null | tail -n 1)" || ho_bullet=""  # pipefail-ok: tail reads grep to EOF; swallow-ok: an unreadable doc reads as no hold, which flags nothing
+                    ho_re='^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?LIVE[^A-Za-z0-9_].*HOLD-OUTSIDE[[:space:]]+pr=#?([0-9]+)'
+                    if [[ $ho_bullet =~ $ho_re ]]; then holdout_summary="$(csv_add "$holdout_summary" "$label:${BASH_REMATCH[3]}")"; fi
                 fi
             fi ;;
     esac
@@ -3340,6 +3350,9 @@ elif [ -e "$uc_state" ]; then
 fi
 [ -z "$uc_csv" ] || unclosed_tail=" unclosed=$uc_csv"
 
+holdout_tail=""
+[ -z "$holdout_summary" ] || holdout_tail=" holdout=$holdout_summary"
+
 # closable=<n>: finished windows still open past TICK_CLOSABLE_MIN minutes.
 # ABSENT when 0; run `close-wrapped-worker.sh --sweep --fleet <manifest>`.
 closable_tail=""
@@ -3916,7 +3929,11 @@ else
     compact_field wt-ceiling "$wtc_summary"
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
+    if [ -n "$holdout_summary" ]; then
+        printf 'ACTION holdout=%s: an idle worker holds on an outside event; have it WRAP with what it owes written down, then bash %q watch %q add <pr> --head <sha> --comments <n> --reviews <n> and close-wrapped-worker.sh --fleet %q <doc> (chief-wait wakes you as WAKE pr-watch)\n' \
+            "$holdout_summary" "$HERE/fleet-manifest.sh" "${WORKERS_FROM:-<manifest>}" "${WORKERS_FROM:-<manifest>}"
+    fi
     while IFS= read -r crfirst_line; do
         [ -n "$crfirst_line" ] || continue
         printf 'ACTION cr-first %s\n' "$crfirst_line"

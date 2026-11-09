@@ -331,11 +331,11 @@ describe('create — plain block rule', () => {
     expect(msg).toMatch(/missing "## DoD"/);
   });
 
-  it('refuses a Task whose Plan and DoD are only the skeleton placeholders', async () => {
+  it('refuses a Task whose sections are only the skeleton placeholders', async () => {
     await expect(run(['--type', 'Task', '--desc', PLAIN_BLOCK_TEMPLATE])).rejects.toThrow(/exit 1/);
     expect(posted()).toBe(false);
     const msg = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.flat().join('\n');
-    expect(msg).toMatch(/"## Plan" has no bullet.*"## DoD" has no bullet/s);
+    expect(msg).toMatch(/"## Plan" holds only a placeholder.*"## DoD" holds only a placeholder.*"## Proof" holds only a placeholder/s);
   });
 
   it('warns, and still files, a Task whose title breaks the template', async () => {
@@ -1379,19 +1379,19 @@ describe('create — unplaced follow-up', () => {
       })]);
     });
 
-    it('RED 9002 frozen: a frozen current version is skipped as a residual skips it, to the next open version', async () => {
+    it('RED C2: a follow-up of a parent in a frozen current version asks for that version, and the why says it is frozen', async () => {
       parentIs({ frozen: true });
       await file('--follow-up-of', 'HIMMEL-5');
-      expect(queued()[0]!.to_v).toBe('v1.1.4');
+      expect(queued()[0]!.to_v).toBe('v1.1.3');
       expect(queued()[0]!.why).toBe('follow-up of HIMMEL-5 (In Progress), which is in v1.1.3 (frozen)');
     });
 
     it.each<[string, Parent]>([['the next version is frozen too', { frozen: true, next: 'frozen' }], ['there is no next version', { frozen: true, next: 'none' }]])(
-      '9002 frozen: names no version when %s',
+      'C2: still asks for the parent\'s frozen version when %s',
       async (_name, p) => {
         parentIs(p);
         await file('--follow-up-of', 'HIMMEL-5');
-        expect(queued()[0]!.to_v).toBeNull();
+        expect(queued()[0]!.to_v).toBe('v1.1.3');
       },
     );
 

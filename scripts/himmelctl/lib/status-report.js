@@ -525,6 +525,10 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (hermes lane not selected; re-run himmelctl install --with-hermes)`;
       }
+      if (item.id === 'statechart' && probe.cleanAbsence) {
+        severity = 'n/a';
+        detail = `${probe.detail} — optional (only for local TLA+ model checks)`;
+      }
       if (item.id === 'codex-cli' && featureNotSelected('lane:codex')) {
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (codex lane not selected; re-run himmelctl install --with-codex)`;

@@ -1,57 +1,16 @@
-import { readFileSync } from 'node:fs';
 import { Server, type Tool } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
-import { agileRequest, request, projectKey, uploadAttachment } from './client.js';
-import { roadmapGet, roadmapSet, type RoadmapSetOptions } from './commands/roadmap.js';
-import { rankIssue } from './commands/rank.js';
-import { ctxFor, list as releaseList, op as releaseOp, renderState, ver } from './commands/release.js';
-import { apply, claim, leaseAcquire, leaseRelease, request as releaseRequest, rule, state } from './release/engine.js';
-import type { Authority, Verb } from './release/types.js';
-import { markdownToAdf } from './adf.js';
-import { formatIssue, formatIssueWithDescription } from './output.js';
-import { resolveListJql } from './commands/list.js';
-import { findTransition } from './commands/transition.js';
-import { formatTransitions } from './commands/transitions.js';
-import { buildEditFields } from './commands/edit.js';
-import { parseLabels } from './commands/labels.js';
-import { uploadAll } from './commands/attach-helper.js';
-import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titleSector, titleVerdict } from './plain-block.js';
-import { resolveSector, sectorField, sectorOptions } from './commands/sector.js';
-import { isTestProject } from './live-test-guard.js';
-import type {
-  JiraIssue,
-  JiraSearchResult,
-  JiraTransition,
-  CreateIssueResponse,
-} from './types.js';
+import { flags, runCli, type CliRunner } from './mcp-cli.js';
 
 /**
- * MCP surface for the himmel jira CLI.
- *
- * Exposes the Commander CLI's verbs (get, create, list, transition,
- * transitions, comment, attach, edit, projects, project-create, roadmap-set,
- * roadmap-get, rank) over the Model Context Protocol on stdio. Each MCP tool
- * routes to the SAME underlying client functions (`request`,
- * `uploadAttachment`, `markdownToAdf`, `buildEditFields`, `resolveListJql`,
- * `findTransition`, …) the CLI verbs call. This module is purely additive:
- * it does not modify any existing verb behaviour, and the per-tool input
- * schemas mirror each verb's Commander `.option()` / argument semantics so
- * validation is identical across the CLI and MCP surfaces.
- *
- * Implementation note: we use the low-level `Server` + raw JSON-Schema
- * `inputSchema` rather than the high-level `McpServer`/Zod surface so the
- * package keeps its single runtime dependency posture (commander + the MCP
- * SDK) without also pulling zod into the schema layer.
+ * MCP surface for the himmel jira CLI: a thin compatibility bridge.
  */
 
-/** Dependencies a tool handler needs, injectable so tests can mock them. */
 export interface ToolDeps {
-  request: typeof request;
-  uploadAttachment: typeof uploadAttachment;
-  agileRequest: typeof agileRequest;
+  runCli?: CliRunner;
 }
 
-const defaultDeps: ToolDeps = { request, uploadAttachment, agileRequest };
+const defaultDeps: ToolDeps = {};
 
 /** JSON-Schema fragment for a tool's input. */
 type JsonSchema = {
@@ -65,541 +24,305 @@ export interface JiraTool {
   name: string;
   description: string;
   inputSchema: JsonSchema;
-  /** Run the verb. Returns the text the CLI would print to stdout. */
+  /** The CLI argument array for these arguments. */
+  argv: (args: Record<string, unknown>) => string[];
+  /** Run the verb through the CLI. Returns what the CLI printed. */
   handler: (args: Record<string, unknown>, deps: ToolDeps) => Promise<string>;
 }
 
 const str = (description: string) => ({ type: 'string', description });
+const bool = (description: string) => ({ type: 'boolean', description });
+const strs = (description: string) => ({ type: 'array', items: { type: 'string' }, description });
+const s = (args: Record<string, unknown>, k: string): string => String(args[k]);
+const opt = (args: Record<string, unknown>, k: string): string[] => (args[k] === undefined ? [] : [String(args[k])]);
 
-/**
- * Build the tools. The handlers mirror the CLI verbs in
- * `src/commands/*` line-for-line in terms of which client function they call
- * and what payload they build. They just return a string instead of
- * `console.log`-ing it.
- */
-export function createTools(): JiraTool[] {
-  return [
-    {
-      name: 'get',
-      description: 'Get a Jira issue (with description body by default)',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          key: str('Issue key (e.g. PROJ-1)'),
-          json: { type: 'boolean', description: 'Output raw JSON' },
-          short: {
-            type: 'boolean',
-            description: 'Suppress the description body (one-line header only)',
-          },
-        },
-        required: ['key'],
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        const key = args.key as string;
-        const issue = await deps.request<JiraIssue>(
-          'GET',
-          `/issue/${key}?fields=summary,status,issuetype,parent,assignee,description`,
-        );
-        if (args.json) return JSON.stringify(issue, null, 2);
-        if (args.short) return formatIssue(issue);
-        return formatIssueWithDescription(issue);
-      },
-    },
-    {
-      name: 'create',
-      description: 'Create a Jira issue',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          type: str('Issue type: Epic, Story, Task, Subtask'),
-          title: str('Issue summary'),
-          desc: str('Description (markdown supported)'),
-          descFile: str('Read the markdown description from a file (overrides desc)'),
-          adfFile: str('Path to pre-built ADF JSON document (overrides desc)'),
-          parent: str('Parent issue key'),
-          labels: str('Comma-separated labels to set (e.g. a,b); `standalone` marks a ticket with no parent epic'),
-          sector: str('Sector (required for a Task, Story or Bug once JIRA_SECTOR_FIELD is set)'),
-          project: str('Project key (default: JIRA_PROJECT_KEY env var)'),
-          attach: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'File path(s) to attach',
-          },
-        },
-        required: ['type', 'title'],
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        const project = (args.project as string) ?? projectKey();
-        const testProject = isTestProject(project);
-        const fields: Record<string, unknown> = {
-          project: { key: project },
-          summary: args.title,
-          issuetype: { name: args.type },
-        };
-        let found: string[];
-        if (args.adfFile) {
-          const adf = JSON.parse(readFileSync(args.adfFile as string, 'utf8'));
-          fields['description'] = adf;
-          found = lintPlainBlockAdf(adf);
-        } else if (args.descFile) {
-          const md = readFileSync(args.descFile as string, 'utf8');
-          fields['description'] = markdownToAdf(md);
-          found = lintPlainBlock(md);
-        } else if (args.desc) {
-          fields['description'] = markdownToAdf(args.desc as string);
-          found = lintPlainBlock(args.desc as string);
-        } else {
-          found = lintPlainBlock('');
-        }
-        // Same plain Impact/What/Why rule as the CLI create.
-        const verdict = plainBlockVerdict(args.type as string, found);
-        if (verdict.action === 'refuse') throw new Error(verdict.message);
-        // Sectors are opt-in: with JIRA_SECTOR_FIELD unset there is no Sector check and none is sent.
-        const sectorId = sectorField();
-        const sectors = sectorId && !testProject ? await sectorOptions(deps.request) : undefined;
-        let sector =
-          args.sector !== undefined && sectors ? resolveSector(args.sector as string, sectors) : undefined;
-        if (args.sector === undefined && sectors) {
-          // No sector: a valid "<Sector>: " title prefix supplies it, an unknown one is refused.
-          const derived = titleSector(args.type as string, args.title as string, sectors);
-          if (derived.refuse) throw new Error(derived.refuse);
-          sector = derived.sector;
-        }
-        const labels = args.labels !== undefined ? parseLabels(args.labels as string) : undefined;
-        const home = testProject ? { action: 'ok' as const, message: '' } : homeVerdict(args.type as string, { sector, parent: args.parent as string | undefined, labels }, sectors);
-        if (home.action === 'refuse') throw new Error(home.message);
-        if (args.parent) fields['parent'] = { key: args.parent };
-        if (labels) fields['labels'] = labels;
-        if (sector && sectorId) fields[sectorId] = { value: sector };
-
-        const result = await deps.request<CreateIssueResponse>('POST', '/issue', {
-          fields,
-        });
-        let out = `Created ${result.key}`;
-        if (home.action === 'warn') out += `\n  ${home.message}`;
-        const titleCheck = titleVerdict(args.type as string, args.title as string, sectors);
-        if (titleCheck.action === 'warn') out += `\n  ${titleCheck.message}`;
-
-        const attachments = (args.attach as string[] | undefined) ?? [];
-        if (attachments.length > 0) {
-          const n = await uploadAll(result.key, attachments, deps.uploadAttachment);
-          out += `\n  attachments: ${n}`;
-        }
-        return out;
-      },
-    },
-    {
-      name: 'list',
-      description: 'List Jira issues',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          project: str('Project key (default: JIRA_PROJECT_KEY)'),
-          type: str('Filter by issue type (Epic, Story, Task, Subtask)'),
-          status: str('Comma-separated status filter (default: "To Do,In Progress")'),
-          label: str('Filter by a single label (composed into the built JQL)'),
-          jql: str('Raw JQL passthrough (overrides project/type/status/label)'),
-          limit: str('Max results (default 25)'),
-        },
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        const jql = resolveListJql({
-          jql: args.jql as string | undefined,
-          project: args.project as string | undefined,
-          type: args.type as string | undefined,
-          status: args.status as string | undefined,
-          label: args.label as string | undefined,
-        });
-        const limit = (args.limit as string | undefined) ?? '25';
-        const result = await deps.request<JiraSearchResult>(
-          'GET',
-          `/search/jql?jql=${encodeURIComponent(jql)}&fields=summary,status,issuetype&maxResults=${limit}`,
-        );
-        return result.issues.map((issue) => formatIssue(issue)).join('\n');
-      },
-    },
-    {
-      name: 'transition',
-      description: 'Transition a Jira issue to a new status',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          key: str('Issue key'),
-          status: str('Target status NAME (not ID)'),
-        },
-        required: ['key', 'status'],
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        const key = args.key as string;
-        const status = args.status as string;
-        const { transitions } = await deps.request<{ transitions: JiraTransition[] }>(
-          'GET',
-          `/issue/${key}/transitions`,
-        );
-        const match = findTransition(transitions, status);
-        if (!match) {
-          const available = transitions.map((t) => `- ${t.name}`).join('\n');
-          throw new Error(`Transition "${status}" not found. Available:\n${available}`);
-        }
-        await deps.request('POST', `/issue/${key}/transitions`, {
-          transition: { id: match.id },
-        });
-        return `${key} → ${match.name}`;
-      },
-    },
-    {
-      name: 'transitions',
-      description: 'List available transitions for a Jira issue (id<TAB>name per line)',
-      inputSchema: {
-        type: 'object',
-        properties: { key: str('Issue key') },
-        required: ['key'],
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        const { transitions } = await deps.request<{ transitions: JiraTransition[] }>(
-          'GET',
-          `/issue/${args.key as string}/transitions`,
-        );
-        return formatTransitions(transitions);
-      },
-    },
-    {
-      name: 'comment',
-      description: 'Add a comment to a Jira issue (text supports markdown)',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          key: str('Issue key'),
-          text: str('Comment body (markdown)'),
-          adfFile: str('Path to pre-built ADF JSON document (overrides text)'),
-          commentFile: str('Read the markdown comment body from a file (overrides text)'),
-          attach: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'File path(s) to attach to the parent issue',
-          },
-        },
-        required: ['key'],
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        const key = args.key as string;
-        let body: unknown;
-        if (args.adfFile) {
-          body = JSON.parse(readFileSync(args.adfFile as string, 'utf8'));
-        } else {
-          const markdown = args.commentFile
-            ? readFileSync(args.commentFile as string, 'utf8')
-            : (args.text as string | undefined);
-          if (markdown === undefined) {
-            throw new Error('comment requires text or commentFile or adfFile');
-          }
-          body = markdownToAdf(markdown);
-        }
-        await deps.request('POST', `/issue/${key}/comment`, { body });
-        let out = `Comment added to ${key}`;
-
-        const attachments = (args.attach as string[] | undefined) ?? [];
-        if (attachments.length > 0) {
-          const n = await uploadAll(key, attachments, deps.uploadAttachment);
-          out += `\n  attachments: ${n}`;
-        }
-        return out;
-      },
-    },
-    {
-      name: 'attach',
-      description: 'Upload one or more files as attachments to an existing issue',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          key: str('Issue key'),
-          paths: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'File path(s) to upload',
-          },
-        },
-        required: ['key', 'paths'],
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        const n = await uploadAll(
-          args.key as string,
-          args.paths as string[],
-          deps.uploadAttachment,
-        );
-        return `Attached ${n} file(s) to ${args.key as string}`;
-      },
-    },
-    {
-      name: 'edit',
-      description:
-        'Edit a Jira issue (priority, severity, title, description, parent, and/or labels)',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          key: str('Issue key'),
-          priority: str('Priority: Highest|High|Medium|Low|Lowest'),
-          severity: str('Severity (custom field): free text'),
-          title: str('New summary/title (plain text)'),
-          desc: str('New description (markdown; converted to ADF). Alias of description.'),
-          description: str('New description (markdown; converted to ADF)'),
-          descFile: str('Read the markdown description from a file (overrides desc/description)'),
-          parent: str('Parent issue key (e.g. epic) — re-parents the issue'),
-          labels: str(
-            'REPLACE the issue labels with this comma-separated set (full-replace: ' +
-              'existing labels not listed are removed)',
-          ),
-          sector: str('Sector (single-select custom field; unknown option refused)'),
-        },
-        required: ['key'],
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        const key = args.key as string;
-        let description = args.description as string | undefined;
-        if (args.descFile !== undefined) {
-          description = readFileSync(args.descFile as string, 'utf8');
-        } else if (args.desc !== undefined && description === undefined) {
-          description = args.desc as string;
-        }
-        const sector = args.sector as string | undefined;
-        const fields = buildEditFields(
-          {
-            priority: args.priority as string | undefined,
-            severity: args.severity as string | undefined,
-            title: args.title as string | undefined,
-            description,
-            parent: args.parent as string | undefined,
-            labels: args.labels as string | undefined,
-            sector,
-          },
-          sector !== undefined ? await sectorOptions(deps.request) : [],
-        );
-        await deps.request('PUT', `/issue/${key}`, { fields });
-        return `${key} edited`;
-      },
-    },
-    {
-      name: 'projects',
-      description: 'List Jira projects visible to the authenticated user',
-      inputSchema: {
-        type: 'object',
-        properties: { limit: str('Max results (default 50)') },
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        const limit = (args.limit as string | undefined) ?? '50';
-        const result = await deps.request<{
-          values: { key: string; id: string; name: string }[];
-        }>('GET', `/project/search?maxResults=${limit}&orderBy=key`);
-        return result.values.map((p) => `${p.key}\t${p.id}\t${p.name}`).join('\n');
-      },
-    },
-    {
-      name: 'project-create',
-      description: 'Create a new Jira project (requires admin permissions)',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          key: str('Project key (uppercase, 2-10 chars)'),
-          name: str('Project display name'),
-          type: str('Project type: software, business, service_desk (default software)'),
-          template: str('Project template key'),
-          lead: str('Lead account ID (defaults to authenticated user)'),
-        },
-        required: ['key', 'name'],
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        let leadAccountId = args.lead as string | undefined;
-        if (!leadAccountId) {
-          const me = await deps.request<{ accountId: string }>('GET', '/myself');
-          leadAccountId = me.accountId;
-        }
-        const result = await deps.request<{ id: number; key: string }>('POST', '/project', {
-          key: args.key,
-          name: args.name,
-          projectTypeKey: (args.type as string | undefined) ?? 'software',
-          projectTemplateKey:
-            (args.template as string | undefined) ??
-            'com.pyxis.greenhopper.jira:gh-simplified-kanban-classic',
-          leadAccountId,
-        });
-        return `Created ${result.key} (id=${result.id})`;
-      },
-    },
-    {
-      name: 'roadmap-set',
-      description: 'Set roadmap fields on an issue, then recompute ROI',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          key: str('Issue key'),
-          readiness: str('Readiness 0-4'),
-          theme: str('Legacy Theme option name; refused when HIMMEL_LEGACY_NAMES is off (set the Sector with edit instead)'),
-          goals: str('Comma-separated goals: G1..G7, North Star, off, win'),
-          impact: str('Impact 1-5'),
-          alignment: str('Alignment 0.2-1.0 (default: derived from goals)'),
-          effort: str('Effort XS, S, M, L or XL'),
-          guard: { type: 'boolean', description: 'Non-trivial G1 guard work: effort x1.3' },
-          auditDate: str('Audit date YYYY-MM-DD'),
-          auditEvidence: str('Audit evidence URL'),
-          closeCandidate: str('yes or no'),
-          noRoi: { type: 'boolean', description: 'Do not recompute ROI' },
-        },
-        required: ['key'],
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        const { key, ...opts } = args as unknown as { key: string } & RoadmapSetOptions;
-        return roadmapSet(key, opts, deps.request);
-      },
-    },
-    {
-      name: 'roadmap-get',
-      description: 'Print the roadmap fields of an issue',
-      inputSchema: {
-        type: 'object',
-        properties: { key: str('Issue key') },
-        required: ['key'],
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        return roadmapGet(args.key as string, deps.request);
-      },
-    },
-    {
-      name: 'rank',
-      description: 'Rank an issue before or after another issue (board order)',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          key: str('Issue key to move'),
-          before: str('Rank above this issue'),
-          after: str('Rank below this issue'),
-        },
-        required: ['key'],
-        additionalProperties: false,
-      },
-      async handler(args, deps) {
-        const { key, before, after } = args as { key: string; before?: string; after?: string };
-        return rankIssue(key, { before, after }, deps.agileRequest);
-      },
-    },
-    {
-      name: 'release',
-      description: 'Release ledger twin of `jira release <sub>`: state, request, claim, rule, apply, lease-acquire, lease-release. The operator verbs stay CLI-only',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          sub: { type: 'string', enum: [...RELEASE_SUBS], description: 'The release sub-verb' },
-          release: str('Release name'),
-          json: { type: 'boolean', description: 'state: print the full state as JSON' },
-          mirrorRoot: str('state: Jira mirror directory'),
-          verb: str('request: INTAKE | REVERSION | DISCHARGE'),
-          key: str('request: issue key'),
-          from: str('request, rule: source version, or backlog'),
-          to: str('request, rule: target version, or backlog'),
-          why: str('request: one line'),
-          evidence: { type: 'object', description: 'request: evidence object' },
-          req: str('rule: request id'),
-          outcome: str('rule: ADMIT | BACKLOG | AD-HOC | MOVE | KEEP | ACCEPT | REJECT'),
-          op: str('rule: add | remove | move | keep | discharge | none'),
-          sector: str('rule: the ticket sector (required only when a Sector field is configured)'),
-          ground: str('rule: the ground of the ruling'),
-          reason: str('rule: one-line reason'),
-          supersedes: str('rule: comma-separated rulings this replaces'),
-          authority: str('rule: rm | operator | import'),
-          ref: str('rule: the O- record or import source'),
-          ruling: str('apply: ruling id'),
-          expectEpoch: { type: 'number', description: 'lease-acquire: the epoch the brief names' },
-          doc: str('lease-acquire: this session\'s absolute handover doc'),
-          session: str('lease-acquire: this session\'s name'),
-        },
-        required: ['sub', 'release'],
-        additionalProperties: false,
-      },
-      async handler(args) {
-        return runRelease(args);
-      },
-    },
-  ];
-}
+type Def = Omit<JiraTool, 'handler'>;
 
 const RELEASE_SUBS = ['state', 'request', 'claim', 'rule', 'apply', 'lease-acquire', 'lease-release'] as const;
 
-// Calls the same engine functions as `jira release`, so the fences and the
-// validator inside them apply to this twin unchanged.
-async function runRelease(args: Record<string, unknown>): Promise<string> {
-  const a = args as Record<string, string | boolean | number | Record<string, unknown> | undefined>;
-  const s = (k: string) => a[k] as string | undefined;
-  const need = (k: string) => {
-    const v = s(k);
-    if (!v) throw new Error(`release ${a.sub}: ${k} is required`);
-    return v;
-  };
-  if (!(RELEASE_SUBS as readonly string[]).includes(a.sub as string)) throw new Error(`release: sub is one of ${RELEASE_SUBS.join('|')}`);
-  const release = need('release');
-  const ctx = ctxFor(release, a.sub === 'state' ? s('mirrorRoot') : undefined);
-  switch (a.sub) {
-    case 'state': {
-      const st = state(ctx);
-      return a.json ? JSON.stringify(st, null, 2) : renderState(st);
-    }
-    case 'request': {
-      if (!['INTAKE', 'REVERSION', 'DISCHARGE'].includes(need('verb'))) throw new Error('release request: verb is INTAKE, REVERSION or DISCHARGE');
-      const evidence = a.evidence === undefined ? {} : a.evidence;
-      if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: evidence is a JSON object');
-      const r = releaseRequest(ctx, {
-        verb: need('verb') as Verb, key: need('key'), from_v: ver(s('from')), to_v: ver(s('to')), why: need('why'),
-        evidence: evidence as Record<string, unknown>, from: 'console',
-      });
-      return `REQ ${r.req}`;
-    }
+function releaseArgv(a: Record<string, unknown>): string[] {
+  const sub = a.sub as string;
+  if (!(RELEASE_SUBS as readonly string[]).includes(sub)) throw new Error(`release: sub is one of ${RELEASE_SUBS.join('|')}`);
+  if (!a.release) throw new Error(`release ${sub}: release is required`);
+  const r = s(a, 'release');
+  switch (sub) {
+    case 'state':
+      return ['release', 'state', r, ...flags(a, { json: '--json', mirrorRoot: '--mirror-root' })];
+    case 'request':
+      return ['release', 'request', r, ...flags(a, { verb: '--verb', key: '--key', from: '--from', to: '--to', why: '--why', evidence: '--evidence' })];
     case 'claim':
-      return claim(ctx).map((r) => `${r.req} ${r.verb} ${r.key} ${r.from_v ?? 'backlog'}→${r.to_v ?? 'backlog'} — ${r.why}`).join('\n');
-    case 'rule': {
-      const authority = s('authority') ?? 'rm';
-      if (!['rm', 'operator', 'import'].includes(authority)) throw new Error('release rule: authority is rm, operator or import');
-      const r = rule(ctx, {
-        req: need('req'), outcome: need('outcome'), op: releaseOp(need('op'), s('from'), s('to')), sector: s('sector') ?? '',
-        ground: need('ground'), reason: s('reason') ?? '', supersedes: releaseList(s('supersedes')),
-        authority: { kind: authority as Authority['kind'], ref: s('ref') ?? null },
-      });
-      return `${r.id} intent (${r.class}); run: release apply ${release} ${r.id}`;
-    }
+      return ['release', 'claim', r];
+    case 'rule':
+      return ['release', 'rule', r, ...flags(a, {
+        req: '--req', outcome: '--outcome', op: '--op', from: '--from', to: '--to', sector: '--sector', ground: '--ground',
+        reason: '--reason', supersedes: '--supersedes', authority: '--authority', ref: '--ref',
+      })];
     case 'apply':
-      return (await apply(ctx, need('ruling'))).line;
-    case 'lease-acquire': {
-      const l = leaseAcquire(ctx, { expectEpoch: Number(a.expectEpoch), doc: need('doc'), session: need('session') });
-      return `LEASE ${release} epoch ${l.epoch} held by ${l.owner_doc}`;
-    }
+      if (!a.ruling) throw new Error('release apply: ruling is required');
+      return ['release', 'apply', r, s(a, 'ruling')];
+    case 'lease-acquire':
+      return ['release', 'lease', 'acquire', r, ...flags(a, { expectEpoch: '--expect-epoch', doc: '--doc', session: '--session' })];
     default:
-      return `LEASE ${release} epoch ${leaseRelease(ctx).epoch} released`;
+      return ['release', 'lease', 'release', r];
   }
 }
 
-/** Build the MCP server with all ten tools registered. */
+const DEFS: Def[] = [
+  {
+    name: 'get',
+    description: 'Get a Jira issue (with description body by default)',
+    inputSchema: {
+      type: 'object',
+      properties: { key: str('Issue key (e.g. PROJ-1)'), json: bool('Output raw JSON'), short: bool('Suppress the description body (one-line header only)') },
+      required: ['key'],
+      additionalProperties: false,
+    },
+    argv: (a) => ['get', s(a, 'key'), ...flags(a, { json: '--json', short: '--short' })],
+  },
+  {
+    name: 'create',
+    description:
+      'Create a Jira issue through `jira create`: the seven-section body, a home (parent or the standalone label, and a Sector when configured) and a placement (proposedVersion, backlog with proposedVersion backlog and why, fixVersion or gate) are checked by the CLI',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: str('Issue type: Epic, Story, Task, Bug, Subtask'),
+        title: str('Issue summary'),
+        desc: str('Description (markdown supported)'),
+        descFile: str('Read the markdown description from a file (overrides desc)'),
+        adfFile: str('Path to pre-built ADF JSON document (overrides desc)'),
+        parent: str('Parent issue key'),
+        labels: str('Comma-separated labels to set (e.g. a,b); `standalone` marks a ticket with no parent epic'),
+        sector: str('Sector (required for a Task, Story or Bug once JIRA_SECTOR_FIELD is set)'),
+        project: str('Project key (default: JIRA_PROJECT_KEY env var)'),
+        priority: str('Priority name (e.g. Highest)'),
+        fixVersion: str('Place the ticket in this version'),
+        proposedVersion: str('Propose a version (label proposed-<v> plus its INTAKE request); `backlog` needs backlog and why'),
+        backlog: bool('File to the backlog (needs proposedVersion backlog and why)'),
+        why: str('One line: why the ticket waits in the backlog'),
+        gate: str('Why this may enter a version (critical, regression, ...)'),
+        attach: strs('File path(s) to attach'),
+      },
+      required: ['type', 'title'],
+      additionalProperties: false,
+    },
+    argv: (a) => ['create', ...flags(a, {
+      type: '--type', title: '--title', desc: '--desc', descFile: '--desc-file', adfFile: '--adf-file', parent: '--parent',
+      labels: '--labels', sector: '--sector', project: '--project', priority: '--priority', fixVersion: '--fix-version',
+      proposedVersion: '--proposed-version', backlog: '--backlog', why: '--why', gate: '--gate', attach: '--attach',
+    })],
+  },
+  {
+    name: 'list',
+    description: 'List Jira issues',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: str('Project key (default: JIRA_PROJECT_KEY)'),
+        type: str('Filter by issue type (Epic, Story, Task, Subtask)'),
+        status: str('Comma-separated status filter (default: "To Do,In Progress")'),
+        label: str('Filter by a single label (composed into the built JQL)'),
+        jql: str('Raw JQL passthrough (overrides project/type/status/label)'),
+        limit: str('Max results (default 25)'),
+      },
+      additionalProperties: false,
+    },
+    argv: (a) => ['list', ...flags(a, { project: '--project', type: '--type', status: '--status', label: '--label', jql: '--jql', limit: '--limit' })],
+  },
+  {
+    name: 'transition',
+    description: 'Transition a Jira issue to a new status through `jira transition` (Done stamps the version, the status is read back)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: str('Issue key'),
+        status: str('Target status NAME (not ID)'),
+        noVersion: bool('Do not stamp the current fixVersion on a versionless Done close'),
+      },
+      required: ['key', 'status'],
+      additionalProperties: false,
+    },
+    argv: (a) => ['transition', s(a, 'key'), s(a, 'status'), ...flags(a, { noVersion: '--no-version' })],
+  },
+  {
+    name: 'transitions',
+    description: 'List available transitions for a Jira issue (id<TAB>name per line)',
+    inputSchema: { type: 'object', properties: { key: str('Issue key') }, required: ['key'], additionalProperties: false },
+    argv: (a) => ['transitions', s(a, 'key')],
+  },
+  {
+    name: 'comment',
+    description: 'Add a comment to a Jira issue (text supports markdown)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: str('Issue key'),
+        text: str('Comment body (markdown)'),
+        adfFile: str('Path to pre-built ADF JSON document (overrides text)'),
+        commentFile: str('Read the markdown comment body from a file (overrides text)'),
+        attach: strs('File path(s) to attach to the parent issue'),
+      },
+      required: ['key'],
+      additionalProperties: false,
+    },
+    argv: (a) => {
+      if (a.text === undefined && !a.adfFile && !a.commentFile) throw new Error('comment requires text or commentFile or adfFile');
+      return ['comment', ...flags(a, { adfFile: '--adf-file', commentFile: '--comment-file', attach: '--attach' }), '--', s(a, 'key'), ...opt(a, 'text')];
+    },
+  },
+  {
+    name: 'attach',
+    description: 'Upload one or more files as attachments to an existing issue',
+    inputSchema: {
+      type: 'object',
+      properties: { key: str('Issue key'), paths: strs('File path(s) to upload') },
+      required: ['key', 'paths'],
+      additionalProperties: false,
+    },
+    argv: (a) => ['attach', '--', s(a, 'key'), ...((a.paths as unknown[]) ?? []).map(String)],
+  },
+  {
+    name: 'edit',
+    description: 'Edit a Jira issue through `jira edit` (priority, severity, title, description, parent, labels, sector); the result is checked against the ticket standard and read back',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: str('Issue key'),
+        priority: str('Priority: Highest|High|Medium|Low|Lowest'),
+        severity: str('Severity (custom field): free text'),
+        title: str('New summary/title (plain text)'),
+        desc: str('New description (markdown; converted to ADF). Alias of description.'),
+        description: str('New description (markdown; converted to ADF)'),
+        descFile: str('Read the markdown description from a file (overrides desc/description)'),
+        parent: str('Parent issue key (e.g. epic) — re-parents the issue'),
+        labels: str('REPLACE the issue labels with this comma-separated set (full-replace: existing labels not listed are removed)'),
+        sector: str('Sector (single-select custom field; unknown option refused)'),
+      },
+      required: ['key'],
+      additionalProperties: false,
+    },
+    argv: (a) => {
+      const b = { ...a, description: a.description ?? (a.descFile === undefined ? a.desc : undefined) };
+      return ['edit', s(a, 'key'), ...flags(b, {
+        priority: '--priority', severity: '--severity', title: '--title', description: '--description', descFile: '--desc-file',
+        parent: '--parent', labels: '--labels', sector: '--sector',
+      })];
+    },
+  },
+  {
+    name: 'projects',
+    description: 'List Jira projects visible to the authenticated user',
+    inputSchema: { type: 'object', properties: { limit: str('Max results (default 50)') }, additionalProperties: false },
+    argv: (a) => ['projects', ...flags(a, { limit: '--limit' })],
+  },
+  {
+    name: 'project-create',
+    description: 'Create a new Jira project (requires admin permissions)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: str('Project key (uppercase, 2-10 chars)'),
+        name: str('Project display name'),
+        type: str('Project type: software, business, service_desk (default software)'),
+        template: str('Project template key'),
+        lead: str('Lead account ID (defaults to authenticated user)'),
+      },
+      required: ['key', 'name'],
+      additionalProperties: false,
+    },
+    argv: (a) => ['project-create', ...flags(a, { key: '--key', name: '--name', type: '--type', template: '--template', lead: '--lead' })],
+  },
+  {
+    name: 'roadmap-set',
+    description: 'Set roadmap fields on an issue, then recompute ROI (readiness is a declared score)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: str('Issue key'),
+        readiness: str('Readiness 0-4'),
+        theme: str('Legacy Theme option name; refused when HIMMEL_LEGACY_NAMES is off (set the Sector with edit instead)'),
+        goals: str('Comma-separated goals: G1..G7, North Star, off, win'),
+        impact: str('Impact 1-5'),
+        alignment: str('Alignment 0.2-1.0 (default: derived from goals)'),
+        effort: str('Effort XS, S, M, L or XL'),
+        guard: bool('Non-trivial G1 guard work: effort x1.3'),
+        auditDate: str('Audit date YYYY-MM-DD'),
+        auditEvidence: str('Audit evidence URL'),
+        closeCandidate: str('yes or no'),
+        noRoi: bool('Do not recompute ROI'),
+      },
+      required: ['key'],
+      additionalProperties: false,
+    },
+    argv: (a) => ['roadmap', 'set', s(a, 'key'), ...flags(a, {
+      readiness: '--readiness', theme: '--theme', goals: '--goals', impact: '--impact', alignment: '--alignment', effort: '--effort',
+      guard: '--guard', auditDate: '--audit-date', auditEvidence: '--audit-evidence', closeCandidate: '--close-candidate', noRoi: '--no-roi',
+    })],
+  },
+  {
+    name: 'roadmap-get',
+    description: 'Print the roadmap fields of an issue',
+    inputSchema: { type: 'object', properties: { key: str('Issue key') }, required: ['key'], additionalProperties: false },
+    argv: (a) => ['roadmap', 'get', s(a, 'key')],
+  },
+  {
+    name: 'rank',
+    description: 'Rank an issue before or after another issue (board order)',
+    inputSchema: {
+      type: 'object',
+      properties: { key: str('Issue key to move'), before: str('Rank above this issue'), after: str('Rank below this issue') },
+      required: ['key'],
+      additionalProperties: false,
+    },
+    argv: (a) => ['rank', s(a, 'key'), ...flags(a, { before: '--before', after: '--after' })],
+  },
+  {
+    name: 'release',
+    description: 'Release ledger twin of `jira release <sub>`: state, request, claim, rule, apply, lease-acquire, lease-release. The operator verbs stay CLI-only',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sub: { type: 'string', enum: [...RELEASE_SUBS], description: 'The release sub-verb' },
+        release: str('Release name'),
+        json: bool('state: print the full state as JSON'),
+        mirrorRoot: str('state: Jira mirror directory'),
+        verb: str('request: INTAKE | REVERSION | DISCHARGE'),
+        key: str('request: issue key'),
+        from: str('request, rule: source version, or backlog'),
+        to: str('request, rule: target version, or backlog'),
+        why: str('request: one line'),
+        evidence: { type: 'object', description: 'request: evidence object' },
+        req: str('rule: request id'),
+        outcome: str('rule: ADMIT | BACKLOG | AD-HOC | MOVE | KEEP | ACCEPT | REJECT'),
+        op: str('rule: add | remove | move | keep | discharge | none'),
+        sector: str('rule: the ticket sector (required only when a Sector field is configured)'),
+        ground: str('rule: the ground of the ruling'),
+        reason: str('rule: one-line reason'),
+        supersedes: str('rule: comma-separated rulings this replaces'),
+        authority: str('rule: rm | operator | import'),
+        ref: str('rule: the O- record or import source'),
+        ruling: str('apply: ruling id'),
+        expectEpoch: { type: 'number', description: 'lease-acquire: the epoch the brief names' },
+        doc: str("lease-acquire: this session's absolute handover doc"),
+        session: str("lease-acquire: this session's name"),
+      },
+      required: ['sub', 'release'],
+      additionalProperties: false,
+    },
+    argv: releaseArgv,
+  },
+];
+
+export function createTools(): JiraTool[] {
+  return DEFS.map((d) => ({ ...d, handler: async (args, deps) => runCli(deps.runCli, d.argv(args)) }));
+}
+
 export function buildServer(deps: ToolDeps = defaultDeps): Server {
   const tools = createTools();
-  const server = new Server(
-    { name: 'jira', version: '1.0.0' },
-    { capabilities: { tools: {} } },
-  );
+  const server = new Server({ name: 'jira', version: '1.0.0' }, { capabilities: { tools: {} } });
 
   server.setRequestHandler('tools/list', async () => ({
-    tools: tools.map((t) => ({
-      name: t.name,
-      description: t.description,
-      inputSchema: t.inputSchema,
-    })),
+    tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
   }));
 
   server.setRequestHandler('tools/call', async (req) => {

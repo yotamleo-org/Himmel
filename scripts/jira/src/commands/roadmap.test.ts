@@ -6,6 +6,7 @@ import {
   effortLabel,
   effortPoints,
   goalOptions,
+  readinessEvidence,
   resolveRoadmapFields,
   roadmapExport,
   roadmapGet,
@@ -371,5 +372,78 @@ describe('syncSprints', () => {
     expect(agile.calls.filter((c) => c.method === 'POST').map((c) => [c.path, c.body])).toEqual([
       ['/sprint/8/issue', { issues: ['HIMMEL-6'] }],
     ]);
+  });
+});
+
+describe('readiness presentation (declared, linked, verified, stale, unknown)', () => {
+  const GET = `GET /issue/HIMMEL-1?fields=${Object.values(IDS).join(',')}`;
+  const getWith = (fields: Record<string, unknown>) => stub({ 'GET /field': FIELD_LIST, [GET]: { fields } });
+  const specLine = (line: string, warnings: string[] = []) => () => ({ lines: [line], ok: line.startsWith('SPEC ok '), warnings });
+  const evidenceLine = (out: string) => out.split('\n').find((l) => l.startsWith('Readiness evidence')) ?? '';
+
+  it('readiness 3 with no evidence is declared, with its source', async () => {
+    const out = await roadmapGet('HIMMEL-1', getWith({ customfield_10171: 3 }).req);
+    expect(out).toContain('Readiness: 3');
+    expect(evidenceLine(out)).toBe('Readiness evidence: declared readiness 3 (source jira); evidence declared');
+  });
+
+  it('an audit URL alone is linked, never verified', async () => {
+    const out = await roadmapGet('HIMMEL-1', getWith({ customfield_10171: 3, customfield_10178: 'https://example.test/audit' }).req);
+    expect(evidenceLine(out)).toContain('evidence linked');
+    expect(out).not.toMatch(/evidence verified/);
+  });
+
+  it('an audit date alone is linked, never verified', async () => {
+    const out = await roadmapGet('HIMMEL-1', getWith({ customfield_10171: 4, customfield_10177: '2026-11-01' }).req);
+    expect(evidenceLine(out)).toBe('Readiness evidence: declared readiness 4 (source jira); evidence linked');
+  });
+
+  it('a passing specCheck makes it verified', async () => {
+    const out = await roadmapGet('HIMMEL-1', getWith({ customfield_10171: 3 }).req, specLine('SPEC ok HIMMEL-1 /s/spec.md r1'));
+    expect(evidenceLine(out)).toBe('Readiness evidence: declared readiness 3 (source jira); evidence verified');
+  });
+
+  it('a spec whose artifact changed is stale, even with an audit URL', async () => {
+    const out = await roadmapGet('HIMMEL-1', getWith({ customfield_10171: 3, customfield_10178: 'https://example.test/a' }).req, specLine('SPEC-STALE HIMMEL-1 /s/spec.md r1'));
+    expect(evidenceLine(out)).toContain('evidence stale');
+  });
+
+  it('NO-SPEC leaves the declared or linked state alone', async () => {
+    const out = await roadmapGet('HIMMEL-1', getWith({ customfield_10171: 3, customfield_10178: 'https://example.test/a' }).req, specLine('NO-SPEC HIMMEL-1'));
+    expect(evidenceLine(out)).toContain('evidence linked');
+  });
+
+  it('an unbound plan is not verified and its warning is shown', async () => {
+    const out = await roadmapGet('HIMMEL-1', getWith({ customfield_10171: 3 }).req,
+      specLine('SPEC ok HIMMEL-1 /s/spec.md r1', ['HIMMEL-1 plan unbound: the record r1 signed plan p.md without its hash']));
+    expect(evidenceLine(out)).toContain('evidence declared');
+    expect(out).toContain('plan unbound');
+  });
+
+  it('a verifier that cannot read its records is unknown', async () => {
+    const boom = () => { throw new Error('records unreadable'); };
+    const out = await roadmapGet('HIMMEL-1', getWith({ customfield_10171: 3 }).req, boom);
+    expect(evidenceLine(out)).toContain('evidence unknown');
+  });
+
+  it('an unset readiness is unknown, not zero, even with a passing specCheck', async () => {
+    const out = await roadmapGet('HIMMEL-1', getWith({}).req, specLine('SPEC ok HIMMEL-1 /s/spec.md r1'));
+    expect(evidenceLine(out)).toBe('Readiness evidence: readiness unknown (source jira); evidence unknown');
+  });
+
+  it('readinessEvidence never reads a high score or a URL as verified', () => {
+    expect(readinessEvidence(4, { auditEvidence: 'https://x.test/a', auditDate: '2026-11-01' })).toBe('linked');
+    expect(readinessEvidence(4, {})).toBe('declared');
+  });
+
+  it('roadmapSet says the readiness is declared, and an audit URL does not make it verified', async () => {
+    const { req } = stub({ 'GET /field': FIELD_LIST, 'PUT /issue/HIMMEL-1': '', [GET]: { fields: { customfield_10171: 3, customfield_10178: 'https://example.test/a' } } });
+    const out = await roadmapSet('HIMMEL-1', { readiness: '3', auditEvidence: 'https://example.test/a' }, req);
+    expect(out).toContain('declared readiness 3 (source jira); evidence linked');
+    expect(out).not.toMatch(/evidence verified/);
+    const quiet = stub({ 'GET /field': FIELD_LIST, 'PUT /issue/HIMMEL-1': '' });
+    const out2 = await roadmapSet('HIMMEL-1', { readiness: '3', noRoi: true }, quiet.req);
+    expect(out2).toContain('declared readiness 3 (source jira)');
+    expect(out2).not.toMatch(/verified/);
   });
 });

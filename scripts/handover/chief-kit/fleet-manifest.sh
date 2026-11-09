@@ -7,6 +7,10 @@
 #   fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lockless] [--arm 200k|400k]
 #   fleet-manifest.sh remove <manifest> <worker doc | label>...
 #   fleet-manifest.sh list   <manifest>                      one doc per line
+#   fleet-manifest.sh watch  <manifest> add    <pr> [--repo <owner/name>] [--head <sha>] [--comments <n>] [--reviews <n>] [--state open|closed|merged]
+#   fleet-manifest.sh watch  <manifest> set    <pr> [--repo <owner/name>] [same seen-values]   (an existing row only)
+#   fleet-manifest.sh watch  <manifest> remove <pr> [--repo <owner/name>]
+#   fleet-manifest.sh watch  <manifest> list                 pr<TAB>head<TAB>comments<TAB>reviews<TAB>repo<TAB>state, `-` for unset
 #
 # Location: next to the chief doc, named after it —
 # <chief doc stem>.fleet.json.
@@ -63,6 +67,9 @@ usage() {
 usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lockless] [--arm 200k|400k]
        fleet-manifest.sh remove <manifest> <worker doc | label>...
        fleet-manifest.sh list   <manifest>
+       fleet-manifest.sh watch  <manifest> add|set <pr> [--repo <owner/name>] [--head <sha>] [--comments <n>] [--reviews <n>] [--state open|closed|merged]
+       fleet-manifest.sh watch  <manifest> remove <pr> [--repo <owner/name>]
+       fleet-manifest.sh watch  <manifest> list
 USAGE
 }
 
@@ -77,6 +84,46 @@ VALID="$JQ_W"'length == 1 and (.[0] | type == "object" and .schema == 1 and (W |
 [ "$#" -ge 2 ] || { usage >&2; exit 2; }
 verb="$1"; manifest="$2"; shift 2
 
+wsub=""; wpr=""; whead=""; wcom=""; wrev=""; wrepo=""; wstate=""
+if [ "$verb" = watch ]; then
+    [ "$#" -ge 1 ] || { usage >&2; exit 2; }
+    wsub="$1"; shift
+    case "$wsub" in
+        list) [ "$#" -eq 0 ] || { usage >&2; exit 2; } ;;
+        add|set|remove)
+            [ "$#" -ge 1 ] || { usage >&2; exit 2; }
+            wpr="$1"; shift
+            case "$wpr" in ''|*[!0-9]*|0*) echo "fleet-manifest: watch needs a PR number: $wpr" >&2; exit 2 ;; esac
+            while [ "$#" -gt 0 ]; do
+                [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+                [ "$wsub" != remove ] || [ "$1" = --repo ] || { usage >&2; exit 2; }
+                case "$1" in
+                    --state) case "$2" in open|closed|merged) wstate="$2" ;; *) echo "fleet-manifest: --state must be open, closed or merged: $2" >&2; exit 2 ;; esac ;;
+                    --head) case "$2" in ''|*[!0-9a-f]*) echo "fleet-manifest: --head must be a lowercase hex sha: $2" >&2; exit 2 ;; esac; whead="$2" ;;
+                    --comments) case "$2" in ''|*[!0-9]*) echo "fleet-manifest: --comments must be a count: $2" >&2; exit 2 ;; esac; wcom="$2" ;;
+                    --reviews) case "$2" in ''|*[!0-9]*) echo "fleet-manifest: --reviews must be a count: $2" >&2; exit 2 ;; esac; wrev="$2" ;;
+                    --repo) case "$2" in
+                                */*/*|*[!A-Za-z0-9_./-]*) echo "fleet-manifest: --repo must be owner/name: $2" >&2; exit 2 ;;
+                                [A-Za-z0-9_.-]*/[A-Za-z0-9_.-]*) wrepo="$2" ;;
+                                *) echo "fleet-manifest: --repo must be owner/name: $2" >&2; exit 2 ;;
+                            esac ;;
+                    *) usage >&2; exit 2 ;;
+                esac
+                shift 2
+            done ;;
+        *) usage >&2; exit 2 ;;
+    esac
+    if [ "$wsub" = list ]; then
+        if ! jq -e -s "$VALID" "$manifest" >/dev/null 2>&1; then
+            echo "fleet-manifest: not a schema-1 fleet manifest: $manifest" >&2
+            exit 1
+        fi
+        jq -r '(.watch // [])[] | [.pr, (.head // "-"), (.comments // "-"), (.reviews // "-"), (.repo // "-"), (.state // "-")] | @tsv' "$manifest"
+        exit $?
+    fi
+    set -- watch
+fi
+
 case "$verb" in
     list)
         [ "$#" -eq 0 ] || { usage >&2; exit 2; }
@@ -88,6 +135,7 @@ case "$verb" in
         exit $?
         ;;
     add|remove) [ "$#" -ge 1 ] || { usage >&2; exit 2; } ;;
+    watch) ;;
     *) usage >&2; exit 2 ;;
 esac
 
@@ -162,7 +210,23 @@ fi
 
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 for arg in "$@"; do
-    if [ "$verb" = add ]; then
+    if [ "$verb" = watch ]; then
+        case "$wsub" in
+            remove)
+                cur="$(printf '%s\n' "$cur" | jq --argjson p "$wpr" --arg rp "$wrepo" \
+                    'if has("watch") then .watch |= map(select((.pr == $p and ((.repo // "") == $rp)) | not)) else . end')" || exit 1 ;;
+            add|set)
+                cur="$(printf '%s\n' "$cur" | jq --argjson p "$wpr" --arg sub "$wsub" --arg t "$now" --arg h "$whead" --arg c "$wcom" --arg r "$wrev" --arg rp "$wrepo" --arg st "$wstate" \
+                    '({} + (if $h != "" then {head: $h} else {} end) + (if $c != "" then {comments: ($c | tonumber)} else {} end)
+                        + (if $r != "" then {reviews: ($r | tonumber)} else {} end) + (if $st != "" then {state: $st} else {} end)
+                        + (if $rp != "" then {repo: $rp} else {} end)) as $f
+                    | def mine: .pr == $p and ((.repo // "") == $rp);
+                    (.watch // []) as $w
+                    | .watch = (if any($w[]; mine) then ($w | map(if mine then . + $f else . end))
+                                elif $sub == "add" then $w + [{pr: $p, added: $t} + $f]
+                                else $w end)')" || exit 1 ;;
+        esac
+    elif [ "$verb" = add ]; then
         label="$(worker_label "$arg")"
         # Re-adding a listed doc never rewrites its row: flags that would change the
         # stored lane or lockless are refused, not silently ignored.

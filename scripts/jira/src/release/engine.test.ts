@@ -40,6 +40,14 @@ class FakeJira implements JiraPort {
     return { id: this.entries.get(key) ?? 'create', ts: '' };
   }
   writes = 0;
+  lbl = new Map<string, string[]>();
+  labelPuts: Array<{ key: string; labels: string[] }> = [];
+  stuck = new Set<string>();
+  async labels(key: string) { return [...(this.lbl.get(key) ?? [])]; }
+  async removeLabels(key: string, labels: string[]) {
+    this.labelPuts.push({ key, labels: [...labels] });
+    this.lbl.set(key, (this.lbl.get(key) ?? []).filter((x) => !labels.includes(x) || this.stuck.has(x)));
+  }
   async fixVersions(key: string) { return [...(this.fv.get(key) ?? [])]; }
   async setFixVersion(key: string, op: 'add' | 'remove', v: string) {
     this.writes++;
@@ -234,6 +242,71 @@ describe('release engine', () => {
     expect((await applyThenReplay(r.id)).phase).toBe('receipted');
     const rows = readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
     expect(rows.map((x) => [x.kind, x.key, x.version, x.ruling])).toEqual([['rm-admit', 'K-2', 'v1', r.id]]);
+  });
+
+  describe('proposed-* labels close with their ruling', () => {
+    const intake = (key = 'K-2') => {
+      const q = request(ctx(), { verb: 'INTAKE', key, from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      return q;
+    };
+
+    it('an applied INTAKE ADMIT removes every proposed-* label and keeps backlog and the rest', async () => {
+      await setup();
+      jira.lbl.set('K-2', ['backlog', 'proposed-v1.2', 'proposed-v2', 'phase:build', 'held', 'scope-v1']);
+      const r = admit(intake().req);
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.labelPuts).toEqual([{ key: 'K-2', labels: ['proposed-v1.2', 'proposed-v2'] }]);
+      expect(jira.lbl.get('K-2')).toEqual(['backlog', 'phase:build', 'held', 'scope-v1']);
+    });
+
+    it.each([
+      ['BACKLOG', { kind: 'none' as const, from_v: null, to_v: null }],
+      ['AD-HOC', { kind: 'none' as const, from_v: null, to_v: null }],
+    ])('an applied INTAKE %s ruling clears the label too', async (outcome, op) => {
+      await setup();
+      jira.lbl.set('K-2', ['backlog', 'proposed-backlog']);
+      const r = admit(intake().req, { outcome, op });
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.lbl.get('K-2')).toEqual(['backlog']);
+    });
+
+    it('a replay and an already-clean ticket make no label write', async () => {
+      await setup();
+      jira.lbl.set('K-2', ['proposed-v1.2']);
+      const r = admit(intake().req);
+      expect((await applyThenReplay(r.id)).phase).toBe('receipted');
+      await apply(ctx(rmEnv), r.id);
+      expect(jira.labelPuts).toHaveLength(1);
+
+      const r3 = admit(intake('K-3').req);
+      jira.lbl.set('K-3', ['backlog']);
+      await apply(ctx(rmEnv), r3.id);
+      expect(jira.labelPuts).toHaveLength(1);
+    });
+
+    it('a label Jira still reports after the remove fails the apply, names it, and posts no receipt', async () => {
+      await setup();
+      jira.lbl.set('K-2', ['proposed-v1.2']);
+      jira.stuck.add('proposed-v1.2');
+      const r = admit(intake().req);
+      await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow(/K-2.*proposed-v1\.2/);
+      expect(jira.posted).toBe(0);
+      jira.stuck.clear();
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.lbl.get('K-2')).toEqual([]);
+    });
+
+    it('a non-INTAKE verb leaves every label alone', async () => {
+      await setup();
+      jira.lbl.set('K-1', ['proposed-v1', 'backlog']);
+      const q = request(ctx(), { verb: 'REVERSION', key: 'K-1', from_v: 'v1', to_v: 'v2', why: 'w', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: 'v1', to_v: 'v2' }, supersedes: ['baseline-v1-g1'] });
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.labelPuts).toEqual([]);
+      expect(jira.lbl.get('K-1')).toEqual(['proposed-v1', 'backlog']);
+    });
   });
 
   it('an INTAKE ADMIT with an unwritable ledger refuses before Jira is touched', async () => {
