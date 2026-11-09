@@ -1834,6 +1834,11 @@ test("9559 slice 1: a panel's alert pill and a card's drift pill are not restyle
   expect(css).toContain(".cp.plain{border-top-color:var(--rule-strong)}");
 });
 
+test("9559 slice 2: a card in a panel lane sizes its grid track to the column, so a long chain chip clips inside the card", () => {
+  const css = readFileSync(join(import.meta.dir, "..", "public", "app.css"), "utf8");
+  expect(css).toContain(".cp .rm-card{margin-bottom:0;grid-template-columns:minmax(0,1fr)}");
+});
+
 const words = (html: string) => html.replace(/<\/?(?:b|span|a|em)\b[^>]*>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 const v112Station = (...more: [number, string, string, string | null][]) => {
   const s = station();

@@ -770,7 +770,7 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .rm-ft{color:var(--accent-ink);background:var(--accent);font-size:11px;font-weight:600;padding:0 var(--s1);border-radius:var(--radius);margin-top:var(--s1);width:fit-content}
 .cp .rm-col{border:1px solid var(--rule);border-radius:8px;padding:var(--s2)}
 .cp .rm-col h4{margin:0 0 var(--s1);font:600 var(--fs-xs) var(--font-mono);color:var(--muted)}
-.cp .rm-card{margin-bottom:0}
+.cp .rm-card{margin-bottom:0;grid-template-columns:minmax(0,1fr)}
 .cp .rm-dep{margin:0}
 .cp .rm-ft{display:block;max-width:100%;min-width:0;margin:0;padding:0;background:none;color:var(--muted);font:600 var(--fs-xs) var(--font-mono)}
 .cp .rm-ft .rm-tip{display:block}
