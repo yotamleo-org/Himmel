@@ -1051,6 +1051,13 @@ rgj F6-fixed-finding-tip-not-a-descendant-holds 1
 led "$(av "$FX_R" codex ok)" "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R")" "$(fx_amend "$FX_R")" "$(fx_finding "$FX_R" agreed | sed 's/codex-1/codex-2/')" "$(fx_jg)"
 rgj F7-fixed-and-unfixed-finding-together-holds 1
 has "$TMP/out-F7-fixed-and-unfixed-finding-together-holds" '^HOLD: codex has open finding.*codex-2' "F7 HOLD names the unfixed finding"
+led "$(av "$FX_R" codex unavailable timeout)" "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R")" "$(fx_amend "$FX_R")" "$(fx_jg)"
+rgj F8-fixed-finding-codex-unavailable-at-carried-head-holds 1
+led "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R")" "$(fx_amend "$FX_R")" "$(fx_jg)"
+rgj F9-fixed-finding-no-codex-row-at-carried-head-holds 1
+led "$(av "$FX_R" codex ok)" "$(av "$FX_R" claude ok)" "$(fx_carry "$FX_R")" "$(fx_finding "$FX_R")" "$(fx_amend "$FX_R")" "$(printf '{"kind":"amend","target_head":"%s","finding_id":"codex-1","set":{"verdict":"agreed"}}' "$FX_R")" "$(fx_jg)"
+rgj F10-fixed-finding-reopened-by-later-amend-holds 1
+has "$TMP/out-F10-fixed-finding-reopened-by-later-amend-holds" '^HOLD: codex has open finding.*codex-1' "F10 HOLD names the reopened finding"
 unset GH_STUB_HEAD GH_STUB_BRANCH GH_STUB_MODE
 led "$CRIT_OK"
 # G4 — the release flag is scoped to the call: after a --release gate, whether it
