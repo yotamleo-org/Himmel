@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016  # fixture suite bodies are single-quoted on purpose: their $vars must stay literal
 # scripts/ci/test-run-shell-tests-live-state.sh — the runner keeps a suite off
 # the operator's live state and fails a suite that writes into it.
 #
@@ -45,6 +46,10 @@ export SUITE_LIVE_HARD='*'
 
 sb=$(mktemp -d "${TMPDIR:-/tmp}/rst-live.XXXXXX") || { fail "L: mktemp failed"; rst_tally; }
 trap 'rm -rf "$SUITE_LOCK_SANDBOX" "$sb"' EXIT
+# A row that drops its env prefix, or a runner that does not yet move HOME,
+# writes this sandbox and never the station's real ~/.himmel or ~/.claude.
+export HOME="$sb/outer-home"
+mkdir -p "$HOME"
 mkdir -p "$sb/scripts" "$sb/live/handovers" "$sb/live/claude" "$sb/live/codex" "$sb/live/workdir" "$sb/outerbin"
 
 # The caller's live state, as a chief worker carries it on the station.
@@ -405,6 +410,220 @@ if grepq "$(cat "$sb/inner11.out" 2>/dev/null)" -E '\[LIVE-STATE\] WARN .*test-x
   pass "L11: the nested runner ran its unlisted suite"
 else
   fail "L11: the nested runner did not run test-x-leaks.sh; inner: $(cat "$sb/inner11.out" 2>/dev/null)"
+fi
+
+# L12-L13: the decoy station home. Under home-canary the runner moves each suite's
+# HOME to a decoy laid out like the station, and a write into it fails the suite.
+# w_run <name> <body> [env args...] — one fixture suite test-k-<name>.sh in its own
+# scan root, the inner runner started as home-canary starts it. Sets w_out, w_rc.
+: > "$sb/exempt.txt"
+w_repo=$(cd "$RST_FIXTURE_DIR/../.." && pwd)
+w_run() {
+  local _n="$1" _body="$2" _a _canary="$sb/home-$1"
+  local _unset=() _set=()
+  shift 2
+  mkdir -p "$sb/w-$_n/scripts" "$sb/home-$_n"
+  printf '#!/usr/bin/env bash\nREPO=%q\n%s\nexit 0\n' "$w_repo" "$_body" > "$sb/w-$_n/scripts/test-k-$_n.sh"
+  chmod +x "$sb/w-$_n/scripts/test-k-$_n.sh"
+  # -u NAME drops a variable; NAME=value overrides a default below; CANARY=off
+  # starts the runner without HIMMEL_CANARY_HOME, as a station run does.
+  _a="HIMMEL_CANARY_HOME=$_canary"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -u) _unset[${#_unset[@]}]="-u"; _unset[${#_unset[@]}]="$2"; shift 2 ;;
+      CANARY=off) _unset[${#_unset[@]}]="-u"; _unset[${#_unset[@]}]="HIMMEL_CANARY_HOME"; _a="W_NO_CANARY=1"; shift ;;
+      *) _set[${#_set[@]}]="$1"; shift ;;
+    esac
+  done
+  w_out=$(env ${_unset[@]+"${_unset[@]}"} HOME="$sb/home-$_n" "$_a" \
+    SUITE_LIVE_EXEMPT="$sb/exempt.txt" SUITE_TIMEOUT=60 SUITE_LIVE_HARD='*' \
+    ${_set[@]+"${_set[@]}"} bash "$RUNNER" "$sb/w-$_n/scripts" 2>&1)
+  w_rc=$?
+}
+# w_expect <row> <name> <path-regex> — the run failed, named the suite and the path.
+w_expect() {
+  if [ "$w_rc" -eq 1 ] \
+    && grepq "$w_out" -E "\[LIVE-STATE\] .*test-k-$2\.sh — .*$3" \
+    && grepq "$w_out" -E "\[FAIL\] .*test-k-$2\.sh"; then
+    pass "$1: the suite fails and the line names it and $3"
+  else
+    fail "$1: expected rc=1, a [LIVE-STATE] line naming test-k-$2.sh and $3, and a [FAIL]; rc=$w_rc out: ${w_out:0:1500}"
+  fi
+}
+w_clean() {
+  if [ "$w_rc" -eq 0 ] && ! grepq "$w_out" -E '\[LIVE-STATE\]' && grepq "$w_out" -E '\[PASS\] .*test-k-'"$2"'\.sh'; then
+    pass "$1: the suite passes with no [LIVE-STATE] line"
+  else
+    fail "$1: expected rc=0, a [PASS] and no [LIVE-STATE] line; rc=$w_rc out: ${w_out:0:1500}"
+  fi
+}
+
+echo "== L12: a write into the live-shaped paths under HOME fails the suite =="
+w_run l12 'mkdir -p "$HOME/.himmel/state/holds" && echo x >> "$HOME/.himmel/state/holds/events.log"'
+w_expect L12 l12 '\.himmel/state/holds/events\.log'
+# The station config route: himmel.conf names the handover root.
+w_conf='. "$REPO/scripts/lib/load-dotenv.sh"; load_dotenv --root "${TMPDIR:-/tmp}/rst-no-root" HANDOVER_DIR >/dev/null 2>&1; [ -n "${HANDOVER_DIR:-}" ] || exit 0'
+w_run l12b "$w_conf"'
+mkdir -p "$HANDOVER_DIR/u" && : > "$HANDOVER_DIR/u/leaked.md"' -u HANDOVER_DIR
+w_expect L12b l12b 'leaked\.md|decoy handover root'
+w_run l12c 'mkdir -p "$HOME/.claude/projects" && : > "$HOME/.claude/projects/x"'
+w_expect L12c l12c '\.claude/projects'
+w_run l12d '[ -f "$HOME/.himmel/himmel.conf" ] || exit 0
+echo "X=1" >> "$HOME/.himmel/himmel.conf"'
+w_expect L12d l12d '\.himmel/himmel\.conf'
+w_run l12e 'mkdir -p "$HOME/.himmel" && : > "$HOME/.himmel/x.json" && rm -f "$HOME/.himmel/x.json"
+rm -f "$HOME/.claude.json"'
+w_expect L12e l12e '\.himmel'
+if grepq "$w_out" -E 'removed .*\.claude\.json'; then pass "L12e: a removed seed file is named"; else fail "L12e: no 'removed .claude.json' line; out: ${w_out:0:1500}"; fi
+w_run l12f "$w_conf"'
+rm -rf "$HANDOVER_DIR"' -u HANDOVER_DIR
+w_expect L12f l12f 'removed'
+w_run l12g 'mkdir -p "$HOME/.local/share/himmel/graphify" && : > "$HOME/.local/share/himmel/graphify/x"'
+w_expect L12g l12g '\.local/share/himmel'
+w_run l12h 'mkdir -p "$HOME/.local/state/himmel/bus" && : > "$HOME/.local/state/himmel/bus/x"'
+w_expect L12h l12h '\.local/state/himmel/bus/x'
+w_run l12i 'd="${XDG_STATE_HOME:-$HOME/.local/state}/himmel/bus-waker"; mkdir -p "$d" && : > "$d/x"' XDG_STATE_HOME="$sb/xdg-state"
+w_expect L12i l12i '\.local/state/himmel/bus-waker/x'
+if [ -z "$(ls -A "$sb/xdg-state" 2>/dev/null)" ]; then pass "L12i: the host's XDG_STATE_HOME stays empty"; else fail "L12i: the suite wrote the host XDG_STATE_HOME: $(ls -A "$sb/xdg-state")"; fi
+
+echo "== L13: a suite that writes only under its own temp HOME passes =="
+w_run l13 'HOME=$(mktemp -d "${TMPDIR:-/tmp}/rst-own-home.XXXXXX") || exit 1
+mkdir -p "$HOME/.himmel/state" "$HOME/.claude" && : > "$HOME/.himmel/state/x" && : > "$HOME/.claude/y"
+rm -rf "$HOME"'
+w_clean L13 l13
+
+echo "== L14: reading the decoy trips nothing =="
+w_run l14 'cat "$HOME/.himmel/himmel.conf" "$HOME/.claude/settings.json" > /dev/null 2>&1; ls -A "$HOME/.claude" > /dev/null'
+w_clean L14 l14
+
+echo "== L15: three suites on two lanes: the decoy is reset, the counts include every lane once =="
+mkdir -p "$sb/w-l15/scripts" "$sb/home-l15"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$sb/w-l15/scripts/test-k-1-clean.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$sb/w-l15/scripts/test-k-2-clean.sh"
+printf '#!/usr/bin/env bash\nmkdir -p "$HOME/.himmel/state/holds" && echo x >> "$HOME/.himmel/state/holds/events.log"\nexit 0\n' > "$sb/w-l15/scripts/test-k-3-writer.sh"
+chmod +x "$sb/w-l15/scripts/"*.sh
+out15=$(env HOME="$sb/home-l15" HIMMEL_CANARY_HOME="$sb/home-l15" SUITE_LIVE_EXEMPT="$sb/exempt.txt" \
+  SUITE_TIMEOUT=60 SUITE_LIVE_HARD='*' SUITE_JOBS=2 bash "$RUNNER" "$sb/w-l15/scripts" 2>&1)
+rc15=$?
+if [ "$rc15" -eq 1 ] && grepq "$out15" -E '\[LIVE-STATE\] .*test-k-3-writer\.sh — .*events\.log' \
+  && ! grepq "$out15" -E '\[LIVE-STATE\] .*test-k-[12]-clean\.sh'; then
+  pass "L15: only the writer is named"
+else
+  fail "L15: expected rc=1 and a line for the writer only; rc=$rc15 out: ${out15:0:1800}"
+fi
+if grepq "$out15" -x 'live-witness: on, 3 suites watched, 1 hard, 0 warn'; then
+  pass "L15: the summary counts every lane once"
+else
+  fail "L15: no 'live-witness: on, 3 suites watched, 1 hard, 0 warn' line; out: ${out15:0:1800}"
+fi
+mkdir -p "$sb/w-l15b/scripts" "$sb/home-l15b"
+cp "$sb/w-l15/scripts/test-k-3-writer.sh" "$sb/w-l15b/scripts/test-k-1-writer.sh"
+cp "$sb/w-l15/scripts/test-k-2-clean.sh" "$sb/w-l15b/scripts/test-k-2-clean.sh"
+out15b=$(env HOME="$sb/home-l15b" HIMMEL_CANARY_HOME="$sb/home-l15b" SUITE_LIVE_EXEMPT="$sb/exempt.txt" \
+  SUITE_TIMEOUT=60 SUITE_LIVE_HARD='*' SUITE_JOBS=1 bash "$RUNNER" "$sb/w-l15b/scripts" 2>&1)
+if grepq "$out15b" -E '\[PASS\] .*test-k-2-clean\.sh' && ! grepq "$out15b" -E '\[LIVE-STATE\] .*test-k-2-clean\.sh'; then
+  pass "L15: a clean suite after the writer in the same lane passes (the decoy was reset)"
+else
+  fail "L15: test-k-2-clean.sh was blamed for the writer; out: ${out15b:0:1800}"
+fi
+
+echo "== L16: a clean suite pays no find; a dirty one pays one per hit root =="
+mkdir -p "$sb/findbin" "$sb/w-l16c/scripts" "$sb/home-l16c"
+_realfind=$(command -v find)
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> %q\nexec %q "$@"\n' "$sb/find.log" "$_realfind" > "$sb/findbin/find"
+chmod +x "$sb/findbin/find"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$sb/w-l16c/scripts/test-k-l16c.sh"
+chmod +x "$sb/w-l16c/scripts/test-k-l16c.sh"
+: > "$sb/find.log"
+out16c=$(env PATH="$sb/findbin:$PATH" HOME="$sb/home-l16c" HIMMEL_CANARY_HOME="$sb/home-l16c" SUITE_LIVE_EXEMPT="$sb/exempt.txt" \
+  SUITE_TIMEOUT=60 SUITE_LIVE_HARD='*' bash "$RUNNER" "$sb/w-l16c/scripts" 2>&1)
+n16c=$(grep -c 'himmel-live-sentinel' "$sb/find.log")
+if [ "$n16c" = 0 ] && grepq "$out16c" -E '^live-witness: on, '; then
+  pass "L16: a clean suite leaves no find call naming the decoy"
+else
+  fail "L16: clean suite: $n16c find calls naming the decoy, or no live-witness line; out: ${out16c:0:1500}"
+fi
+: > "$sb/find.log"
+out16=$(env PATH="$sb/findbin:$PATH" HOME="$sb/home-l12" HIMMEL_CANARY_HOME="$sb/home-l12" SUITE_LIVE_EXEMPT="$sb/exempt.txt" \
+  SUITE_TIMEOUT=60 SUITE_LIVE_HARD='*' bash "$RUNNER" "$sb/w-l12/scripts" 2>&1)
+n16=$(grep -c 'himmel-live-sentinel' "$sb/find.log")
+if [ "$n16" = 1 ] && grepq "$out16" -E '^live-witness: on, '; then
+  pass "L16: the one-root dirty suite leaves exactly one find call"
+else
+  fail "L16: dirty suite: $n16 find calls naming the decoy, or no live-witness line; out: ${out16:0:1500}"
+fi
+
+echo "== L17: an exempt line turns a hit into a WARN; a bad line aborts the run =="
+mkdir -p "$sb/w-l17/scripts" "$sb/home-l17"
+printf '#!/usr/bin/env bash\nmkdir -p "$HOME/.himmel/state/holds" && echo x >> "$HOME/.himmel/state/holds/events.log"\nexit 0\n' > "$sb/w-l17/scripts/test-k-l17.sh"
+chmod +x "$sb/w-l17/scripts/test-k-l17.sh"
+printf '# a quarantined leak\n*/test-k-l17.sh HIMMEL-1 measured\n' > "$sb/exempt-l17.txt"
+out17=$(env HOME="$sb/home-l17" HIMMEL_CANARY_HOME="$sb/home-l17" SUITE_LIVE_EXEMPT="$sb/exempt-l17.txt" \
+  SUITE_TIMEOUT=60 SUITE_LIVE_HARD='*' bash "$RUNNER" "$sb/w-l17/scripts" 2>&1)
+rc17=$?
+if [ "$rc17" -eq 0 ] && grepq "$out17" -E '\[LIVE-STATE\] WARN .*test-k-l17\.sh — .*events\.log' \
+  && grepq "$out17" -E '\[PASS\] .*test-k-l17\.sh' && grepq "$out17" -x 'live-witness: on, 1 suites watched, 0 hard, 1 warn'; then
+  pass "L17: an exempt suite WARNs and passes"
+else
+  fail "L17: expected rc=0, a WARN line, a [PASS] and '1 suites watched, 0 hard, 1 warn'; rc=$rc17 out: ${out17:0:1800}"
+fi
+printf '*/test-k-l17.sh measured\n' > "$sb/exempt-nokey.txt"
+printf '*/test-*.sh HIMMEL-1 family\n' > "$sb/exempt-family.txt"
+for _bad in nokey family; do
+  rm -f "$sb/ran17"
+  printf '#!/usr/bin/env bash\n: > %q\nexit 0\n' "$sb/ran17" > "$sb/w-l17/scripts/test-k-l17.sh"
+  out17x=$(env HOME="$sb/home-l17" HIMMEL_CANARY_HOME="$sb/home-l17" SUITE_LIVE_EXEMPT="$sb/exempt-$_bad.txt" \
+    SUITE_TIMEOUT=60 SUITE_LIVE_HARD='*' bash "$RUNNER" "$sb/w-l17/scripts" 2>&1)
+  rc17x=$?
+  if [ "$rc17x" -eq 2 ] && [ ! -e "$sb/ran17" ]; then
+    pass "L17: a $_bad exempt line exits 2 before any suite"
+  else
+    fail "L17: $_bad exempt line: expected rc=2 and no suite run; rc=$rc17x ran=$([ -e "$sb/ran17" ] && echo yes || echo no) out: ${out17x:0:1200}"
+  fi
+done
+if ! grep -q 'measurement' "$w_repo/scripts/ci/live-write-exempt.txt" 2>/dev/null; then
+  pass "L17: the shipped exempt file holds no measurement line"
+else
+  fail "L17: scripts/ci/live-write-exempt.txt still holds a measurement line"
+fi
+
+echo "== L18: off the canary the runner leaves HOME alone and says so once =="
+w_run l18 'mkdir -p "$HOME/.himmel/state/holds" && echo x >> "$HOME/.himmel/state/holds/events.log"' CANARY=off
+n18=$(printf '%s\n' "$w_out" | grep -c '^live-witness: off')
+if [ "$w_rc" -eq 0 ] && [ "$n18" = 1 ] && [ -f "$sb/home-l18/.himmel/state/holds/events.log" ]; then
+  pass "L18: one 'live-witness: off' line, the suite wrote the caller's HOME and passed"
+else
+  fail "L18: expected rc=0, one off line and the caller's HOME written; rc=$w_rc off-lines=$n18 out: ${w_out:0:1500}"
+fi
+w_run l18b 'mkdir -p "$HOME/.himmel/state/holds" && echo x >> "$HOME/.himmel/state/holds/events.log"' HIMMEL_CANARY_HOME="$sb/other"
+n18b=$(printf '%s\n' "$w_out" | grep -c '^live-witness: off')
+if [ "$w_rc" -eq 0 ] && [ "$n18b" = 1 ] && [ -f "$sb/home-l18b/.himmel/state/holds/events.log" ]; then
+  pass "L18b: a canary that is not HOME is off too"
+else
+  fail "L18b: expected rc=0, one off line and the caller's HOME written; rc=$w_rc off-lines=$n18b out: ${w_out:0:1500}"
+fi
+
+echo "== L19: a scheduler WARN and a hard witness hit tag separately in one suite =="
+w_run l19 'crontab -l >/dev/null 2>&1
+mkdir -p "$HOME/.himmel/state" && : > "$HOME/.himmel/state/x"' SUITE_LIVE_HARD='*/no-such-suite.sh' PATH="$sb/realbin:$PATH"
+if [ "$w_rc" -eq 1 ] && grepq "$w_out" -E '\[LIVE-STATE\] WARN .*test-k-l19\.sh — scheduler call: crontab -l' \
+  && grepq "$w_out" -E '\[LIVE-STATE\] [^W].*test-k-l19\.sh — wrote .*\.himmel' && grepq "$w_out" -E '\[FAIL\] .*test-k-l19\.sh'; then
+  pass "L19: the scheduler line is WARN, the witness line is hard, the suite fails"
+else
+  fail "L19: expected rc=1, a WARN scheduler line and a hard witness line; rc=$w_rc out: ${w_out:0:1800}"
+fi
+
+echo "== L20: a shard with no suites still prints the witness line =="
+mkdir -p "$sb/w-l20/scripts" "$sb/home-l20"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$sb/w-l20/scripts/test-k-l20.sh"
+chmod +x "$sb/w-l20/scripts/test-k-l20.sh"
+out20=$(env HOME="$sb/home-l20" HIMMEL_CANARY_HOME="$sb/home-l20" SUITE_LIVE_EXEMPT="$sb/exempt.txt" \
+  SUITE_TIMEOUT=60 bash "$RUNNER" --shard 2/2 "$sb/w-l20/scripts" 2>&1)
+rc20=$?
+if [ "$rc20" -eq 0 ] && grepq "$out20" -x 'live-witness: on, 0 suites watched, 0 hard, 0 warn'; then
+  pass "L20: 0 suites in the shard, the zero-count line, rc 0"
+else
+  fail "L20: expected rc=0 and the zero-count line; rc=$rc20 out: ${out20:0:1500}"
 fi
 
 rst_tally

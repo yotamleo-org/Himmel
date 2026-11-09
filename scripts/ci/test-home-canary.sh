@@ -209,6 +209,86 @@ else
   echo "skip - python3 absent or its user site disabled, the --user launcher rows need it"
 fi
 
+# --- 15. C-W1: the shard must print the witness line ----------------------------------
+# home-canary fails a runner that exits 0 without `live-witness: on, ...` when the
+# requirement is on. The match is anchored: a FLAKE's indented first-attempt tail or a
+# `live-witness.sh run` summary never satisfies it.
+WLINE='live-witness: on, 1 suites watched, 0 hard, 0 warn'
+req() { OUT="$(HOME_CANARY_REQUIRE_WITNESS="$1" TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/$2.sh" 2>&1)"; RC=$?; }
+mkfx w-none 'echo "suite ok"; exit 0'
+req 1 w-none
+{ [ "$RC" -ne 0 ] && case "$OUT" in *"live-witness: on"*) true ;; *) false ;; esac; } \
+  && ok "C-W1: no witness line fails a required run" || bad "C-W1: a required run without the witness line passed (rc=$RC): $OUT"
+mkfx w-indent "printf '    %s\n' '$WLINE'; exit 0"
+req 1 w-indent
+[ "$RC" -ne 0 ] && ok "C-W1: an indented witness line does not count" || bad "C-W1: an indented witness line passed: $OUT"
+mkfx w-run "echo 'live-witness: on, x, 0 hits, cmd rc=0'; exit 0"
+req 1 w-run
+[ "$RC" -ne 0 ] && ok "C-W1: a run-mode summary does not count" || bad "C-W1: a run-mode summary passed: $OUT"
+mkfx w-ok "echo '$WLINE'; exit 0"
+req 1 w-ok
+[ "$RC" -eq 0 ] && ok "C-W1: the exact witness line passes" || bad "C-W1: the exact witness line failed (rc=$RC): $OUT"
+req 0 w-none
+{ [ "$RC" -eq 0 ] && case "$OUT" in *"home-canary: NOTE witness requirement off"*) true ;; *) false ;; esac; } \
+  && ok "C-W1: requirement 0 passes a stub and prints the NOTE" || bad "C-W1: requirement 0 (rc=$RC): $OUT"
+
+# --- 15b. C-W1b: the zero-count and rc-only cases -----------------------------------------
+mkfx w-docs "echo 'OK: docs-only diff — 0 shell suites needed'; echo 'live-witness: on, 0 suites watched, 0 hard, 0 warn'; exit 0"
+req 1 w-docs
+[ "$RC" -eq 0 ] && ok "C-W1b: a docs-only run with the zero-count line passes" || bad "C-W1b: docs-only run failed (rc=$RC): $OUT"
+mkfx w-rc1 'echo "suite red"; exit 1'
+req 1 w-rc1
+nfail="$(printf '%s\n' "$OUT" | grep -c '^home-canary: FAIL')"
+{ [ "$RC" -ne 0 ] && [ "$nfail" -eq 1 ]; } && ok "C-W1b: a failing runner fails for its rc only" || bad "C-W1b: expected one FAIL line, got $nfail (rc=$RC): $OUT"
+
+# --- 15c. C-W1c: the default runner ignores a requirement of 0 -----------------------------
+mkdir -p "$SCRATCH/c1root/scripts"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$SCRATCH/c1root/scripts/test-one.sh"
+chmod +x "$SCRATCH/c1root/scripts/test-one.sh"
+OUT="$(env -u SUITE_TIER_MODE -u SUITE_CHANGED_SINCE -u SUITE_STOP_ON_FAIL HOME_CANARY_REQUIRE_WITNESS=0 \
+  SUITE_LOCK_DIR="$SCRATCH/suite.lock" SUITE_ROTATE_STATE="$SCRATCH/rotate.cursor" SUITE_TIMEOUT=60 \
+  TMPDIR="$SCRATCH/tmp" bash "$CANARY" "$SCRATCH/c1root/scripts" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && case "$OUT" in *"NOTE HOME_CANARY_REQUIRE_WITNESS=0 ignored for the default runner"*) true ;; *) false ;; esac; } \
+  && ok "C-W1c: the default runner ignores a requirement of 0 and prints the witness line" || bad "C-W1c: (rc=$RC): $OUT"
+
+# --- 16. C-W2: the account-home watch ------------------------------------------------------
+# No row runs with GITHUB_ACTIONS=true, RUNNER_ENVIRONMENT=github-hosted and no fixture
+# flag: that would stamp the real runner home. The seam points the watch at a fixture dir.
+ACCT="$SCRATCH/acct"
+mkdir -p "$ACCT"
+acct() { # $1 fixture; remaining args are env words for `env`
+  local _fx="$1"; shift
+  OUT="$(env "$@" TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/$_fx.sh" 2>&1)"; RC=$?
+}
+mkfx a-cfg 'mkdir -p "'"$ACCT"'/.himmel" && : > "'"$ACCT"'/.himmel/config.json"; exit 0'
+acct a-cfg -u GITHUB_ACTIONS -u RUNNER_ENVIRONMENT HIMMEL_TEST_FIXTURE=1 LIVE_WITNESS_ACCOUNT_HOME="$ACCT"
+{ [ "$RC" -ne 0 ] && case "$OUT" in *"home-canary: FAIL a suite wrote the account home"*".himmel/config.json"*) true ;; *) false ;; esac; } \
+  && ok "C-W2a: an account-home config.json write fails the shard naming the path" || bad "C-W2a: (rc=$RC): $OUT"
+rm -rf "$ACCT/.himmel"
+mkfx a-state 'mkdir -p "'"$ACCT"'/.local/state/himmel" && : > "'"$ACCT"'/.local/state/himmel/x"; exit 0'
+acct a-state -u GITHUB_ACTIONS -u RUNNER_ENVIRONMENT HIMMEL_TEST_FIXTURE=1 LIVE_WITNESS_ACCOUNT_HOME="$ACCT"
+{ [ "$RC" -ne 0 ] && case "$OUT" in *"a suite wrote the account home"*".local/state/himmel/x"*) true ;; *) false ;; esac; } \
+  && ok "C-W2a: a .local/state/himmel write fails the shard naming the path" || bad "C-W2a: state write (rc=$RC): $OUT"
+rm -rf "$ACCT/.local"
+mkfx a-clean 'echo clean; exit 0'
+acct a-clean -u GITHUB_ACTIONS -u RUNNER_ENVIRONMENT HIMMEL_TEST_FIXTURE=1 LIVE_WITNESS_ACCOUNT_HOME="$ACCT"
+{ [ "$RC" -eq 0 ] && case "$OUT" in *"home-canary: account-home watch on ($ACCT)"*) true ;; *) false ;; esac; } \
+  && ok "C-W2a: a clean runner passes and the watch says it is on" || bad "C-W2a: clean (rc=$RC): $OUT"
+# (b) the seam without the fixture flag is ignored.
+mkfx b-cfg 'mkdir -p "'"$ACCT"'/.himmel" && : > "'"$ACCT"'/.himmel/config.json"; exit 0'
+acct b-cfg -u GITHUB_ACTIONS -u RUNNER_ENVIRONMENT -u HIMMEL_TEST_FIXTURE LIVE_WITNESS_ACCOUNT_HOME="$ACCT"
+nb="$(printf '%s\n' "$OUT" | grep -c 'account-home watch off (not a GitHub Actions run)')"
+{ [ "$RC" -eq 0 ] && [ "$nb" -eq 1 ]; } && ok "C-W2b: the seam without the fixture flag is off with one NOTE" || bad "C-W2b: (rc=$RC, notes=$nb): $OUT"
+rm -rf "$ACCT/.himmel"
+# (c) a home-canary nested in a shard suite never stamps the real runner home.
+acct a-clean -u LIVE_WITNESS_ACCOUNT_HOME GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted HIMMEL_TEST_FIXTURE=1
+nc="$(printf '%s\n' "$OUT" | grep -c 'account-home watch off (nested in a test fixture)')"
+{ [ "$RC" -eq 0 ] && [ "$nc" -eq 1 ]; } && ok "C-W2c: nested in a fixture is off with one NOTE" || bad "C-W2c: (rc=$RC, notes=$nc): $OUT"
+# (d) a self-hosted route is off.
+acct a-clean -u HIMMEL_TEST_FIXTURE -u LIVE_WITNESS_ACCOUNT_HOME GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=self-hosted
+nd="$(printf '%s\n' "$OUT" | grep -c 'account-home watch off (runner environment self-hosted)')"
+{ [ "$RC" -eq 0 ] && [ "$nd" -eq 1 ]; } && ok "C-W2d: a self-hosted runner is off with one NOTE" || bad "C-W2d: (rc=$RC, notes=$nd): $OUT"
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
 exit 1

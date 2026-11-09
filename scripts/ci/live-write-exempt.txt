@@ -1,0 +1,11 @@
+# scripts/ci/live-write-exempt.txt — suites quarantined from the live-state witness.
+#
+# A suite that writes into the decoy station home (scripts/ci/live-witness.sh) fails
+# CI unless a line here turns its hit into a WARN. This is a quarantine for a known
+# leaker, not an allow list for good behaviour: fix the suite (set HOME to its own
+# temp dir) and delete the line.
+#
+# One `<glob> HIMMEL-<n> <reason>` per line. The glob is matched against
+# "/<suite path>" and names ONE suite file (no glob character in its last
+# `/`-separated part); the key names the ticket that fixes it. The runner exits 2
+# on any other line.

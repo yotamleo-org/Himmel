@@ -366,6 +366,46 @@ back to the per-shard `shard-has-work.sh` probes at 8. Each shard runs through
 `scripts/ci/home-canary.sh`, so the honeytoken-HOME leak check shares the shard
 plan and needs no matrix of its own.
 
+## A suite never writes the station's live state (the decoy home)
+
+In a CI shard `scripts/ci/home-canary.sh` exports `HIMMEL_CANARY_HOME`, and
+`run-shell-tests.sh` then runs each suite with `HOME` at a **decoy station home**
+(one per lane) built by `scripts/ci/live-witness.sh`:
+
+- **Seed:** `~/.himmel/himmel.conf` (one line, `HANDOVER_DIR=<decoy handover root>`),
+  `~/.himmel/config.json`, `~/.claude/settings.json`, `~/.claude.json`,
+  `~/.codex/config.toml` and the empty decoy handover root. `.config`,
+  `.local/share/himmel`, `.local/state/himmel` and `.local/bin` start absent.
+  Every seeded path is aged to 1970, so any later write, create or delete moves an
+  mtime past the lane's stamp file.
+- **XDG pin:** `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` are unset in
+  the suite, so an XDG-following writer lands in the decoy too.
+- **Verdict:** after each suite the witness checks mtimes and existence with
+  builtins (no fork on a clean suite) and, on a hit, names up to three paths:
+  `[LIVE-STATE] <suite> — wrote <path> in the decoy home`. A hit fails the suite and
+  is never retried. The decoy is reset before the next suite.
+- **Reads never trip it.** Only existence and mtime are looked at.
+- **Write your own copy.** A suite that must write a live-shaped path sets `HOME`
+  (or `HIMMEL_CONFIG_DIR`, `HANDOVER_DIR`) to its own temp dir before the product
+  code runs; those writes are invisible to the witness.
+- **Exempt list:** `scripts/ci/live-write-exempt.txt` quarantines a known leaker as a
+  `WARN`: one `<glob> HIMMEL-<n> <reason>` per line, the glob naming one suite file.
+  A line without a ticket key, or a glob that names a family, makes the runner exit 2.
+  It is a quarantine, not an allow list.
+- **Account home:** no `HOME` change reaches code that reads the passwd entry. On a
+  GitHub-hosted runner `home-canary.sh` stamps the account's `.himmel`, `.claude`,
+  `.claude.json`, `.local/share/himmel` and `.local/state/himmel` before the shard and
+  fails the shard on a net change, naming the path (the shard, not the suite). It is
+  always hard. The shard log shows `home-canary: account-home watch on (<home>)`, or a
+  NOTE line saying why it is off.
+- **It cannot go off silently.** Every witnessed run prints
+  `live-witness: on, <n> suites watched, <h> hard, <w> warn`; home-canary fails a
+  default-runner shard without that line. Off the canary the runner leaves `HOME`
+  alone and prints one `live-witness: off` line.
+
+`live-witness.sh run --label <name> -- <command>` runs any command (a bun or node
+step) the same way and exits 86 on a hard hit.
+
 ## A failed suite is retried once; a pass on retry is a FLAKE
 
 `run-shell-tests.sh` re-runs a failed suite once, alone. Passing on the retry
