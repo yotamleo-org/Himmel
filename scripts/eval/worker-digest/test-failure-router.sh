@@ -135,7 +135,7 @@ check "a label search ran before the create, over every status" 'grep -q "^list 
 check "the create carries the two labels, Task, no fixVersion" 'grep -q -- "^create .*--type Task" "$STUB/calls.log" && grep -q -- "^create .*--labels failure-loop,fl-denied-guard-pr-check-literal" "$STUB/calls.log" &&! grep -q -- "--fix-version" "$STUB/calls.log"'
 body="$(ls "$STUB"/body.create.* 2>/dev/null | head -n 1)"
 check "the ticket body passes the alphabet check" '[ -n "$body" ] && python3 "$FR" check-body "$body" >/dev/null'
-check "HIMMEL-7354: the body carries the six ticket sections" '[ "$(grep -c "^## " "$body")" = 6 ]'
+check "the body carries the seven ticket sections, Proof among them" '[ "$(grep -c "^## " "$body")" = 7 ] && grep -q "^## Proof$" "$body"'
 check "HIMMEL-7354: the create names the standalone label and the table sector" 'grep -q -- "^create .*--labels failure-loop,fl-denied-guard-pr-check-literal,standalone" "$STUB/calls.log" && grep -q -F -- "--sector Quality & proof" "$STUB/calls.log" && [ "$(cat "$STUB/sectors.log")" = "Quality & proof" ]'
 check "the body names the class, the worker count and both workers" 'grep -q "denied/guard-pr-check-literal" "$body" && grep -q "distinct workers (14 d): 2" "$body" && grep -q "N100, N200" "$body"'
 check "no canary in the body, the call log, the state or the decision log" '! grep -q "$CANARY" "$body" "$STUB/calls.log" "$ST" "$LOG"'
