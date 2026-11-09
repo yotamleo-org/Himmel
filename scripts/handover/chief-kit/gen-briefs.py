@@ -1246,11 +1246,9 @@ def overlaps_line(l, ctx):
         return '> **Overlaps:** none seen at launch'
     if 'open_prs' not in ctx:
         ctx['open_prs'] = read_open_prs(ctx['repo'])
-    if ctx['open_prs'] is None:
-        return '> **Overlaps:** unknown (gh failed)'
-    parts = []
-    for pr in ctx['open_prs']:
-        if not isinstance(pr, dict) or not pr.get('number') or pr.get('headRefName') == l['branch']:
+    parts = ['unknown (gh failed)'] if ctx['open_prs'] is None else []
+    for pr in ctx['open_prs'] or []:
+        if not isinstance(pr, dict) or not pr.get('number') or (pr.get('headRefName') == l['branch'] and not pr.get('isCrossRepository')):
             continue
         shared = _shared(mine, [('file', f['path']) for f in pr.get('files') or [] if isinstance(f, dict) and f.get('path')])
         if shared:
@@ -1261,7 +1259,9 @@ def overlaps_line(l, ctx):
         shared = _shared(mine, writes(x))
         if shared:
             parts.append('worker %s also writes %s' % (x['label'], _named(shared)))
-    return '> **Overlaps:** ' + '; '.join(parts) + '. Merge forward if they land first.' if parts else '> **Overlaps:** none seen at launch'
+    if not parts:
+        return '> **Overlaps:** none seen at launch'
+    return '> **Overlaps:** ' + '; '.join(parts) + ('' if parts == ['unknown (gh failed)'] else '. Merge forward if they land first.')
 
 
 def render_brief(l, ctx):

@@ -540,6 +540,18 @@ has "a Writes directory matches a PR file under it" "$OV4A" 'PR #4250 also chang
 has "a worker names the sibling that also writes under its directory" "$OV4A" 'worker N902 also writes scripts/x/y.sh'
 has "the sibling names the first worker back" "$OV4B" 'worker N901 also writes scripts/x/y.sh'
 lacks "the sibling with no PR overlap names no PR" "$OV4B" 'PR #4250'
+# a failing gh hides the PRs only: the wave siblings are still named
+ovgen "$WORK/ov-gh.sh" "" "$WORK/ov-wave.json" "$WORK/ov5"
+[ "$OV_RC" = 0 ] && pass "a wave with a failing gh generates (rc 0)" || fail "wave failing-gh generation rc=$OV_RC: $(cat "$WORK/ov.out")"
+OV5A="$(cat "$WORK"/ov5/*-N901-plain-fix-*.md 2>/dev/null)"
+has "a failing gh still says unknown for the PRs" "$OV5A" 'Overlaps:** unknown (gh failed)'
+has "a failing gh still names the wave sibling" "$OV5A" 'worker N902 also writes scripts/x/y.sh'
+# a fork PR that reuses the worker's branch name is not the worker's own PR
+cat > "$WORK/ov-fork.json" <<'EOF'
+[{"number":4260,"title":"fork","headRefName":"fix/himmel-9001-plain-fix","isCrossRepository":true,"files":[{"path":"scripts/wr/a.sh"}]}]
+EOF
+ovgen "$WORK/ov-gh.sh" "$WORK/ov-fork.json" "$WORK/wr.json" "$WORK/ov6"
+has "a fork PR on the same branch name still counts as an overlap" "$(cat "$WORK"/ov6/*-N901-plain-fix-*.md 2>/dev/null)" 'PR #4260 (outside contributor) also changes scripts/wr/a.sh'
 # the duty itself
 has "the brief carries the Conflicts resolved duty" "$OV1" '## Conflicts resolved'
 has "the duty says to merge forward and never rebase" "$OV1" 'git merge origin/main'
