@@ -26,7 +26,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/installer-pins.XXXXXX") || exit 1; trap 'rm -r
 
 # ── Upstream fixtures (real) ────────────────────────────────────────────────
 FIXTURE_BUN_SHASUMS='bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c  bun-linux-x64.zip'
-FIXTURE_UV_SHA256='f29c3e94ffabd7e6f3ba521dba169a9b7ec12100bf3257087f0f24f6123f3645  uv-x86_64-unknown-linux-gnu.tar.gz'
+FIXTURE_UV_SHA256='c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83  uv-x86_64-unknown-linux-gnu.tar.gz'
 FIXTURE_RTK_CHECKSUMS='21c4a2e30879ce49ebd939fa338c99208871ba591da9feeb483f2ed266fe7163  rtk_1.1.0-1_amd64.deb'
 FIXTURE_NODE_TARBALL='d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997  node-v26.13.0-linux-x64.tar.xz'
 FIXTURE_NODE_BIN='0adde40d1b7dfa57c8bc83cbc319758c3ec6ebba21363bb2fa752ea6b267ad1b  node-v26.13.0-linux-x64/bin/node'
@@ -59,7 +59,7 @@ if [ -f "$pins" ]; then
   # shellcheck disable=SC1090
   . "$pins"
   check "uv sha256"            test "${UV_SHA256:-}  uv-x86_64-unknown-linux-gnu.tar.gz" = "$FIXTURE_UV_SHA256"
-  check "uv version 0.13.6"    test "${UV_VERSION:-}" = "0.13.6"
+  check "uv version 0.13.7"    test "${UV_VERSION:-}" = "0.13.7"
   check "bun sha256 (1.4.4)"   test "$(bun_sha256 1.4.4 2>/dev/null):  bun-linux-x64.zip" = "${FIXTURE_BUN_SHASUMS%%  *}:  bun-linux-x64.zip"
   check "rtk deb sha256"       test "${RTK_DEB_SHA256:-}  rtk_${RTK_VERSION:-}-1_amd64.deb" = "$FIXTURE_RTK_CHECKSUMS"
   check "node tarball sha256"  test "${NODE_TARBALL_SHA256:-}  node-v${NODE_VERSION:-}-linux-x64.tar.xz" = "$FIXTURE_NODE_TARBALL"
@@ -110,13 +110,17 @@ EOF
 fi
 
 echo "certifi: pinned past the emSign-compromised release"
-for f in requirements-scrapling.txt requirements-whisper.txt; do
-  p="$repo_root/marketplace/plugins/obsidian-triage/tools/$f"
-  check "$f pins certifi==2026.10.23"      grep -q '^certifi==2026\.10\.23 ' "$p"
-  check "$f no longer pins certifi 2026.7.22" no_match '^certifi==2026\.7\.22' "$p"
-  check "$f carries the wheel hash"        grep -q "sha256:$FIXTURE_CERTIFI_WHEEL" "$p"
-  check "$f carries the sdist hash"        grep -q "sha256:$FIXTURE_CERTIFI_SDIST" "$p"
-done
+f=requirements-scrapling.txt
+p="$repo_root/marketplace/plugins/obsidian-triage/tools/$f"
+check "$f pins certifi==2026.10.23"      grep -q '^certifi==2026\.10\.23 ' "$p"
+check "$f no longer pins certifi 2026.7.22" no_match '^certifi==2026\.7\.22' "$p"
+check "$f carries the wheel hash"        grep -q "sha256:$FIXTURE_CERTIFI_WHEEL" "$p"
+check "$f carries the sdist hash"        grep -q "sha256:$FIXTURE_CERTIFI_SDIST" "$p"
+# huggingface-hub 2.x replaced httpx (and its certifi dependency) with httpx2, which
+# resolves CAs through truststore, so the whisper closure carries no certifi at all.
+# Any certifi that comes back must be re-pinned past the emSign release first.
+p="$repo_root/marketplace/plugins/obsidian-triage/tools/requirements-whisper.txt"
+check "requirements-whisper.txt carries no certifi (httpx2 uses truststore)" no_match '^certifi==' "$p"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

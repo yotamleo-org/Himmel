@@ -235,7 +235,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/emilkowalski/skills.git",
-        "sha": "c8a79627b59d72d764d6ab6f2c87c09a48169833"
+        "sha": "5206a950b715e0cabe7043ea0b2304332b91494e"
       },
       "description": "[emilkowalski/skills, MIT, vendor + attribution only, no carried delta] Emil Kowalski's design-engineering and animation skills: all 15 upstream skills load (the web ones, including animation-performance, plus animate-expo, mobile-native, write-swift; a marketplace skills list cannot exclude any). Manifest-less upstream, so the entry is strict:false with no skills list. Sourced via an explicit HTTPS git url (NOT the `github` shorthand, which clones over SSH) and pinned to a full commit sha (upstream has no release tag) per himmel supply-chain policy. Pilot entry of the design kit.",
       "strict": false,
@@ -265,9 +265,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/Leonxlnx/taste-skill.git",
-        "sha": "9b4bf937a1f69348126959c15d2f99a73e65699b"
+        "sha": "f6b76575f949707b4e3c37cd86cb44b0b98643e8"
       },
-      "description": "[Leonxlnx/taste-skill, MIT, vendor + attribution only, no carried delta] Taste Skill: all 13 upstream skills (taste-skill, redesign-skill, output-skill, soft/minimalist/brutalist, imagegen and image-to-code sets, brandkit, stitch). strict:true because upstream ships a plugin.json: with strict:false plus a marketplace skills list Claude Code reports a manifest conflict and loads nothing, and the upstream default skills/ directory always loads in full, so a skills subset never restricted anything. Explicit HTTPS git url, pinned to a full sha 9b4bf937a1f6 per himmel supply-chain policy. Design kit, design profile.",
+      "description": "[Leonxlnx/taste-skill, MIT, vendor + attribution only, no carried delta] Taste Skill: all 13 upstream skills (taste-skill, redesign-skill, output-skill, soft/minimalist/brutalist, imagegen and image-to-code sets, brandkit, stitch). strict:true because upstream ships a plugin.json: with strict:false plus a marketplace skills list Claude Code reports a manifest conflict and loads nothing, and the upstream default skills/ directory always loads in full, so a skills subset never restricted anything. Explicit HTTPS git url, pinned to a full sha f6b76575f949 per himmel supply-chain policy. Design kit, design profile.",
       "strict": true,
       "author": {
         "name": "Leonxlnx",
@@ -358,9 +358,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/youmind-openlab/ai-image-prompts-skill.git",
-        "sha": "c7f558f7aeb4760fe6a467431f6cd86f832d8a6c"
+        "sha": "d291f3a69300430ee16de2de796a9e347fcfac6a"
       },
-      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url, pinned to a full sha c7f558f7aeb4760fe6a467431f6cd86f832d8a6c per himmel supply-chain policy. Design kit, design-imagegen profile.",
+      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url, pinned to a full sha d291f3a69300430ee16de2de796a9e347fcfac6a per himmel supply-chain policy. Design kit, design-imagegen profile.",
       "strict": false,
       "skills": [
         "./"
@@ -391,9 +391,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/cathrynlavery/diagram-design.git",
-        "sha": "f24d98b05e2d7a5e68c2dedfe46e5b7173f50118"
+        "sha": "6a7f19fcc132b39b126bea90167679b46b14bcc4"
       },
-      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url, pinned to a full sha f24d98b05e2d7a5e68c2dedfe46e5b7173f50118 per himmel supply-chain policy. Design kit, design-diagram profile.",
+      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url, pinned to a full sha 6a7f19fcc132b39b126bea90167679b46b14bcc4 per himmel supply-chain policy. Design kit, design-diagram profile.",
       "author": {
         "name": "cathrynlavery",
         "url": "https://github.com/cathrynlavery"
@@ -528,9 +528,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/anthropics/skills.git",
-        "sha": "ca45fc496a3436251f191354091d557da31c15b5"
+        "sha": "2c5958ecac7cee2b583967a2c4981d0f4a75c579"
       },
-      "description": "[anthropics/skills, mixed per skill LICENSE.txt: Apache-2.0 for the design skills, source-available for docx/pdf/pptx/xlsx, vendor + attribution only, no carried delta] anthropics/skills: the whole upstream skills/ dir loads (a marketplace skills list cannot subset it), including the source-available docx/pdf/pptx/xlsx; the design ones are theme-factory, brand-guidelines, canvas-design. Explicit HTTPS git url, pinned to a full sha ca45fc496a34 per himmel supply-chain policy. Design kit, design-reference profile.",
+      "description": "[anthropics/skills, mixed per skill LICENSE.txt: Apache-2.0 for the design skills, source-available for docx/pdf/pptx/xlsx, vendor + attribution only, no carried delta] anthropics/skills: the whole upstream skills/ dir loads (a marketplace skills list cannot subset it), including the source-available docx/pdf/pptx/xlsx; the design ones are theme-factory, brand-guidelines, canvas-design. Explicit HTTPS git url, pinned to a full sha 2c5958ecac7c per himmel supply-chain policy. Design kit, design-reference profile.",
       "strict": false,
       "author": {
         "name": "anthropics",
@@ -543,9 +543,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/Nutlope/hallmark.git",
-        "sha": "de4999e0cd7a7a41df0b4e6903fa02fe9f1492a8"
+        "sha": "407fa689f4a276f2fd389208d271d0fef08f5058"
       },
-      "description": "[Nutlope/hallmark, MIT, vendor + attribution only, no carried delta] Hallmark design skill (90 MB clone). Opt-in trial profile (a trial, not part of the core kit). Explicit HTTPS git url, pinned to a full sha de4999e0cd7a per himmel supply-chain policy. Design kit, design-trial profile.",
+      "description": "[Nutlope/hallmark, MIT, vendor + attribution only, no carried delta] Hallmark design skill (90 MB clone). Opt-in trial profile (a trial, not part of the core kit). Explicit HTTPS git url, pinned to a full sha 407fa689f4a2 per himmel supply-chain policy. Design kit, design-trial profile.",
       "strict": false,
       "author": {
         "name": "Nutlope",
@@ -598,9 +598,9 @@
         "source": "git-subdir",
         "url": "https://github.com/upstash/context7.git",
         "path": "skills/find-docs",
-        "sha": "1496b428efb35acb7bd6a1da98e50fd1d3dccdcc"
+        "sha": "7765f353c694907297ae36bbae61b141ce712f44"
       },
-      "description": "[upstash/context7, MIT, vendor + attribution only, no carried delta] /find-docs: current library, framework and API documentation lookup through the Context7 CLI. Replaces the user-scope ~/.claude/skills/find-docs copy, which ignored enabledPlugins and loaded in every session including bare. git-subdir on skills/find-docs (a single root SKILL.md, so strict:false with skills ./), explicit HTTPS git url, pinned to upstream commit 1496b428efb35acb7bd6a1da98e50fd1d3dccdcc per himmel supply-chain policy. Enabled by the `user` profile only.",
+      "description": "[upstash/context7, MIT, vendor + attribution only, no carried delta] /find-docs: current library, framework and API documentation lookup through the Context7 CLI. Replaces the user-scope ~/.claude/skills/find-docs copy, which ignored enabledPlugins and loaded in every session including bare. git-subdir on skills/find-docs (a single root SKILL.md, so strict:false with skills ./), explicit HTTPS git url, pinned to upstream commit 7765f353c694907297ae36bbae61b141ce712f44 per himmel supply-chain policy. Enabled by the `user` profile only.",
       "strict": false,
       "skills": [
         "./"
