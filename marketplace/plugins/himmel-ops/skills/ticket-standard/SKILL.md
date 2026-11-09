@@ -23,7 +23,7 @@ script passes them.
 6. **Proof** - the named evidence (rule below).
 7. **Agent detail** - what a worker needs that a reader does not (files, suites, ordering).
 
-Each section is a `## ` heading; a bold or plain line is never a heading.
+Each section is a `## ` heading, or a bare line that is exactly its name (as Jira renders a heading back); a bold line is never a heading.
 Also give a primary **Sector**: `--sector NAME` or a `Sector: <name>` line.
 Each section needs at least one real line, and Plan and DoD each need a real
 bullet or numbered line; `TBD`, `TODO`, `TBC`, `N/A`, `none`, `...`, `?` and

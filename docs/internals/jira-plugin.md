@@ -231,7 +231,7 @@ headings, or with one empty, is refused with the missing names and this
 template. The rules:
 
 - A section is a `## ` heading matched by its words (or an ADF heading node for
-  `--adf-file`). A bold or plain line is never a heading.
+  `--adf-file`). A bare line that is exactly a section name is that heading (Jira renders heading nodes back that way, and markdownToAdf writes such a line as a heading); a bold line is never a heading.
 - Plan and DoD each need at least one bullet or numbered line that is not a
   placeholder. TODO, TBD, TBC, N/A, none, an ellipsis, `?` and a line that is
   only an `<angle hint>` never count, so the printed skeleton never files as is.
