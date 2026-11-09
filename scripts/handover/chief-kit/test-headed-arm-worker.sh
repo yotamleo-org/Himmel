@@ -4307,7 +4307,7 @@ check "door-g3 neither made a bucket-check call" "$(door_calls)" "0"
 # mutation: a lint whose passing line carries no bypass= token leaves the rows above red (the launcher greps for the token)
 door_kit="$tmp/door-mut"; mkdir -p "$door_kit/scripts/handover"
 cp -r "$(dirname "$SCRIPT")" "$door_kit/scripts/handover/chief-kit"; ln -s "$(cd "$(dirname "$SCRIPT")/../../lib" && pwd)" "$door_kit/scripts/lib"
-sed -i 's/ bypass=%s / BYP=%s /' "$door_kit/scripts/handover/chief-kit/brief-lint.sh"
+sed 's/ bypass=%s / BYP=%s /' "$door_kit/scripts/handover/chief-kit/brief-lint.sh" > "$door_kit/lint.mut" && mv "$door_kit/lint.mut" "$door_kit/scripts/handover/chief-kit/brief-lint.sh"
 printf 'NONE HIMMEL-9801 /m/ADOPT\n' > "$door/HIMMEL-9801"
 rc=0; out="$(DOOR_SCRIPT="$door_kit/scripts/handover/chief-kit/headed-arm-worker.sh" door_run "$tmp/door-doc.md")" || rc=$?
 check "door-h mutation: the launch still runs (exit 0)" "$rc" "0"
