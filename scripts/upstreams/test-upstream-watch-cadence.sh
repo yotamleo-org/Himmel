@@ -114,6 +114,7 @@ run_cadence_posix() {
   local state="$1"; shift
   local anchor; anchor=$(make_anchor "$state")
   env -u HANDOVER_DIR \
+    HIMMEL_CONFIG_DIR="$state/no-config" \
     UPSTREAMWATCH_CRONTAB="$state/crontab" \
     UPSTREAMWATCH_BAT_DIR="$state/bat" \
     UPSTREAMWATCH_HIMMEL_ROOT="$state/root" \
@@ -131,6 +132,7 @@ run_cadence_posix() {
 run_cadence_posix_anchor() {
   local state="$1" anchor="$2"; shift 2
   ( cd "$anchor" && env -u HANDOVER_DIR \
+      HIMMEL_CONFIG_DIR="$state/no-config" \
       UPSTREAMWATCH_CRONTAB="$state/crontab" \
       UPSTREAMWATCH_BAT_DIR="$state/bat" \
       UPSTREAMWATCH_HIMMEL_ROOT="$state/root" \
