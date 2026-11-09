@@ -56,6 +56,7 @@ Exit: 0 scored / lint clean; 1 lint problems; 2 refused input.
 Stdlib only; no network, no model call.
 """
 import argparse
+import datetime
 import fnmatch
 import hashlib
 import json
@@ -65,6 +66,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
@@ -149,7 +151,10 @@ PROXY_ALIASES = {"key_match_recall": "recall", "key_match_recall_gating": "recal
                  "location_match_recall": "recall_loc", "key_match_precision": "precision",
                  "labelled_clean_block_rate": "fp_rate"}
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-PROVENANCE_PENDING = "protocol-provenance-not-yet-recorded"
+MANIFEST = "run-manifest.json"
+RECORDED_OVERRIDES = ("CRITIC_TIMEOUT_SECS", "CRITIC_PANEL_TOTAL_TIMEOUT_SECS", "CRITIC_KILL_GRACE_SECS",
+                      "CRITIC_PARALLEL", "CRITIC_FIRST_PASS_CAP_BYTES")
+ANOMALY = re.compile(r"unbound variable|command not found|Traceback \(most recent call last\)|syntax error")
 
 
 def norm_path(p):
@@ -576,13 +581,17 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
     coverage = {"scored": len(per_case), "critics": {
         who: {cat: sum(1 for cid in per_case if per_case[cid][1][who]["category"] == cat) for cat in CATEGORIES}
         for who in roster}}
-    reasons = [PROVENANCE_PENDING]
+    reasons = provenance_reasons(outputs)
+    if status != "ok":
+        reasons.append("status-" + status)
     for cat, why in (("inconsistent", "participation-inconsistent"), ("unknown", "participation-unknown")):
         if any(c[cat] for c in coverage["critics"].values()):
             reasons.append(why)
+    if any(p["state"] == "answered" and not p["responding_model"] for _, part in per_case.values() for p in part.values()):
+        reasons.append("responding-model-unobserved")
     return {"status": status, "metrics": metrics, "ci": ci, "cases": case_rows, "responded": responded,
             "leaks": leaks, "unscored": unscored, "critics": roster, "window": window,
-            "case_evidence": case_evidence, "coverage": coverage, "decision_eligible": False,
+            "case_evidence": case_evidence, "coverage": coverage, "decision_eligible": not reasons,
             "ineligibility_reasons": reasons}
 
 
@@ -735,17 +744,190 @@ def tree_roster(repo, rev):
     return sorted(r["slug"] for r in panel if isinstance(r, dict) and r.get("tier") == ROSTER_TIER and r.get("slug"))
 
 
-def sweep_roster(outputs, fallback):
-    """The critics the sweep ran: the slugs of <outputs>/critics.run.json (run.sh writes the tree's critics.json
-    cut to --critics), else `fallback` for a sweep that predates the file. Only the responded block reads it: the
-    config hash keeps the tree's paid roster, so a codex-only sweep still grades at the gate's hash."""
+def run_roster_rows(outputs, tiers=None):
+    """The panel rows of <outputs>/critics.run.json in the tiers the sweep ran (the manifest's, else the gate's
+    roster tier), or None when the file is missing, malformed or holds no such row."""
     try:
         with open(os.path.join(outputs, "critics.run.json"), encoding="utf-8") as fh:
             panel = json.load(fh).get("panel", [])
     except (OSError, ValueError, AttributeError):
+        return None
+    if tiers is None:
+        try:
+            tiers = ((read_manifest(outputs) or {}).get("protocol") or {}).get("tiers")
+        except ValueError:
+            tiers = None
+    tiers = set(str(tiers or ROSTER_TIER).split(","))
+    rows = [r for r in panel if isinstance(r, dict) and r.get("slug") and r.get("tier") in tiers] \
+        if isinstance(panel, list) else []
+    return rows or None
+
+
+def sweep_roster(outputs, fallback):
+    """The critics the sweep ran: the slugs of <outputs>/critics.run.json in the swept tiers, else `fallback`,
+    which is a reconstructed roster, never recorded provenance. Only the responded block reads it: the config hash
+    keeps the tree's paid roster, so a codex-only sweep still grades at the gate's hash."""
+    rows = run_roster_rows(outputs)
+    if rows is None:
+        print("score.py: %s has no usable critics.run.json: the roster %s is reconstructed from the tree, not "
+              "recorded" % (outputs, ",".join(fallback)), file=sys.stderr)
         return fallback
-    slugs = sorted(r["slug"] for r in panel if isinstance(r, dict) and r.get("slug")) if isinstance(panel, list) else []
-    return slugs or fallback
+    return sorted(r["slug"] for r in rows)
+
+
+def read_manifest(outputs):
+    """<outputs>/run-manifest.json as a dict, None when absent; ValueError when it is not a manifest."""
+    path = os.path.join(outputs, MANIFEST)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            m = json.load(fh)
+    except (OSError, ValueError):
+        raise ValueError("%s is unreadable" % path)
+    if not isinstance(m, dict) or m.get("v") != 1:
+        raise ValueError("%s is not a v1 run manifest" % path)
+    for k, kind in (("protocol", dict), ("provenance", dict), ("cases", dict), ("inputs", dict), ("critics", list)):
+        if not isinstance(m.get(k), kind):
+            raise ValueError("%s has a missing or malformed %s" % (path, k))
+    if not all(isinstance(c, dict) for c in m.get("critics", [])):
+        raise ValueError("%s has a malformed critics entry" % path)
+    return m
+
+
+def provenance_reasons(outputs):
+    try:
+        m = read_manifest(outputs)
+    except ValueError:
+        return ["run-manifest-unreadable"]
+    if m is None:
+        return ["no-run-manifest"]
+    reasons = []
+    try:
+        with open(os.path.join(outputs, STAMP), encoding="utf-8") as fh:
+            swept = json.load(fh)
+    except (OSError, ValueError):
+        swept = None
+    if not isinstance(swept, dict) or swept.get("clean") is not True or swept.get("rechecked") is not True \
+            or m["protocol"].get("panel") != "tree":
+        reasons.append("sweep-unclean")
+    if (m.get("provenance") or {}).get("status") != "recorded":
+        reasons.append("provenance-reconstructed")
+    if not m.get("finished_at"):
+        reasons.append("execution-incomplete")
+    if not m.get("effective_roster") or run_roster_rows(outputs) is None:
+        reasons.append("roster-reconstructed")
+    if any(case_anomalies(outputs, cid) for cid in m.get("inputs", {})):
+        reasons.append("execution-anomaly")
+    return reasons
+
+
+def case_anomalies(outputs, cid):
+    """stderr:<line> references of error lines in a case whose panel exited 0 (or left no rc)."""
+    rc = _read(os.path.join(outputs, cid + ".rc")).strip()
+    if rc not in ("0", ""):
+        return []
+    return ["stderr:%d" % n for n, ln in enumerate(_read(os.path.join(outputs, cid + ".err")).splitlines(), 1)
+            if ANOMALY.search(ln)]
+
+
+def _file_sha(path):
+    if not os.path.isfile(path):
+        return None
+    with open(path, "rb") as fh:
+        return _sha(fh.read())
+
+
+def execution_manifest(outputs, repo, fixtures, key, roster, protocol):
+    """The v1 run manifest of a sweep about to start: the code under test, corpus, requested and effective roster,
+    per-critic configuration, protocol and per-case input digests. roster is the requested slug list; the effective
+    rows are critics.run.json's. finished_at, the per-case receipts and anomalies are filled by complete_manifest."""
+    rows = run_roster_rows(outputs, protocol.get("tiers"))
+    with open(key, encoding="utf-8") as fh:
+        cases = json.load(fh)["cases"]
+    only = [c for c in str(protocol.get("only") or "").split(",") if c]
+    ids = sorted(c for c in cases if not only or c in only)
+    inputs, delta = {}, False
+    for cid in ids:
+        dpath = os.path.join(fixtures, cid + DELTA_SUFFIX)
+        is_delta = cases[cid].get("delta") is True and os.path.isfile(dpath)
+        delta = delta or is_delta
+        inputs[cid] = {"diff_sha256": _file_sha(dpath if is_delta else os.path.join(fixtures, cid + ".patch")),
+                       "context_sha256": (_sha(open(os.path.join(fixtures, cid + ".patch"), "rb").read()
+                                               + open(dpath, "rb").read()) if is_delta else None),
+                       "intent_sha256": _file_sha(os.path.join(fixtures, cid + ".intent.md")),
+                       "base": cases[cid].get("base")}
+    h = hashlib.sha256()
+    for cid in ids:
+        h.update(cid.encode() + b"\0" + json.dumps(inputs[cid], sort_keys=True).encode() + b"\0")
+    h.update(_sha(open(key, "rb").read()).encode())
+    runner = tree_blob(repo, "HEAD", REL + "/run.sh")
+    critics = [{"slug": r["slug"], "provider": r.get("provider"), "requested_model": r.get("model"),
+                "resolved_model": r.get("model"), "requested_effort": r.get("effort"),
+                "resolved_effort": r.get("effort"), "responding_models": [], "cli_version": None}
+               for r in (rows or [])]
+    return {"v": 1, "execution_id": uuid.uuid4().hex, "started_at": _now(), "finished_at": None,
+            "code_under_test_sha": _git(repo, "rev-parse", "HEAD").decode().strip(),
+            "cbs_hash": cbs_hash(repo, "HEAD"), "corpus_sha256": h.hexdigest(),
+            "requested_roster": sorted(roster) if roster else None,
+            "effective_roster": sorted(c["slug"] for c in critics) or None, "critics": critics,
+            "protocol": dict(protocol, context_mode="delta" if delta else "none", known_findings="0",
+                             triviality="full", runner_sha256=_sha(runner) if runner is not None else None,
+                             overrides={k: os.environ[k] for k in RECORDED_OVERRIDES if k in os.environ}),
+            "inputs": inputs, "cases": {}, "provenance": {
+                "status": "recorded", "evidence": ["score.py stamp"],
+                "unknown": [] if rows else ["effective_roster"]}}
+
+
+def complete_manifest(outputs, manifest):
+    roster = manifest.get("effective_roster") or []
+    seen = {c["slug"]: set(c.get("responding_models") or []) for c in manifest.get("critics", [])}
+    cases = {}
+    for cid in sorted(manifest.get("inputs") or {}):
+        text = _read(os.path.join(outputs, cid + ".md"))
+        err = _read(os.path.join(outputs, cid + ".err"))
+        findings, _, performed = parse_review(text)
+        part = case_participation(roster, text, err, findings, performed)
+        models = {s: p["responding_model"] for s, p in part.items() if p["responding_model"]}
+        for s, mdl in models.items():
+            seen.setdefault(s, set()).add(mdl)
+        rc = _read(os.path.join(outputs, cid + ".rc")).strip()
+        cases[cid] = {"responding_models": models, "anomalies": case_anomalies(outputs, cid), "rc": rc or None}
+    for c in manifest.get("critics", []):
+        c["responding_models"] = sorted(seen.get(c["slug"], ()))
+    return dict(manifest, finished_at=_now(), cases=cases)
+
+
+def _read(path):
+    return open(path, encoding="utf-8", errors="replace").read() if os.path.isfile(path) else ""
+
+
+def _now():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def bundle_sha256_v2(outputs):
+    """64-hex over the case md/err/rc files plus critics.run.json and run-manifest.json, names and content hashes;
+    outputs_sha256 stays the legacy raw-output identity."""
+    h = hashlib.sha256()
+    for n in sorted(os.listdir(outputs)):
+        if not os.path.isfile(os.path.join(outputs, n)):
+            continue
+        if re.match(r"^(case|real|delta)-.+\.(md|err|rc)$", n) or n in ("critics.run.json", MANIFEST):
+            h.update(n.encode() + b"\0")
+            h.update(_file_sha(os.path.join(outputs, n)).encode())
+    return h.hexdigest()
+
+
+def model_conflict(outputs, model, tiers=None):
+    """None when `model` is a model the sweep's effective roster ran, else why it cannot label the run."""
+    rows = run_roster_rows(outputs, tiers)
+    if rows is None:
+        return "--model %s cannot be checked: %s records no roster" % (model, outputs)
+    models = sorted({r.get("model") for r in rows if r.get("model")})
+    if model not in models:
+        return "--model %s is not a model the swept roster runs (%s)" % (model, ", ".join(models) or "none")
+    return None
 
 
 def confighash(repo, rev):
@@ -835,7 +1017,8 @@ def settled_identity(before):
 STAMP = "swept.json"
 
 
-def stamp(repo, outputs, fixtures, key, panel=None, tiers=ROSTER_TIER, only="", recheck=False):
+def stamp(repo, outputs, fixtures, key, panel=None, tiers=ROSTER_TIER, only="", recheck=False, critics=None,
+          model=None):
     """Write <outputs>/swept.json: the hashes of the tree run.sh sweeps (HEAD). `clean` is false when the
     working tree differs from HEAD on any gate input (a CBS path, critics.json, or any file of this eval but
     results.jsonl, which export-row writes between sweeps), or the sweep reads other fixtures or another key, runs
@@ -843,7 +1026,12 @@ def stamp(repo, outputs, fixtures, key, panel=None, tiers=ROSTER_TIER, only="", 
     subset of the cases. recheck (run.sh, after the panel loop) keeps `clean` only when the earlier stamp was
     clean and HEAD and both hashes are unchanged, so a tree edited during the sweep is caught. `rechecked` is
     true only after the recheck, so a sweep interrupted mid-loop (its outputs possibly mixed with an earlier
-    sweep's) is refused."""
+    sweep's) is refused. The start stamp also writes <outputs>/run-manifest.json (execution_manifest) and refuses
+    a --model the effective roster does not run; the recheck completes that manifest."""
+    if not recheck and model:
+        why = model_conflict(outputs, model, tiers)
+        if why:
+            raise ValueError(why)
     inputs = cbs_paths(repo, "HEAD") + [REL, CRITICS_REL, ":(exclude)" + RESULTS]
     dirty = _git(repo, "status", "--porcelain", "--", *inputs).strip()
     def same(path, rel):
@@ -863,6 +1051,17 @@ def stamp(repo, outputs, fixtures, key, panel=None, tiers=ROSTER_TIER, only="", 
     os.makedirs(outputs, exist_ok=True)
     with open(os.path.join(outputs, STAMP), "w", encoding="utf-8") as fh:
         json.dump(rec, fh, sort_keys=True)
+    if recheck:
+        manifest = read_manifest(outputs)
+        if manifest is not None and not manifest.get("finished_at"):
+            manifest = complete_manifest(outputs, manifest)
+    else:
+        manifest = execution_manifest(outputs, repo, fixtures, key, [c for c in (critics or "").split(",") if c],
+                                      {"tiers": tiers, "only": only or None, "model_label": model or None,
+                                       "panel": "tree" if panel is None or same(panel, PANEL_REL) else "other"})
+    if manifest is not None:
+        with open(os.path.join(outputs, MANIFEST), "w", encoding="utf-8") as fh:
+            json.dump(manifest, fh, sort_keys=True, indent=1)
     return rec
 
 
@@ -896,13 +1095,33 @@ def gate_row(repo, rev, outputs):
     m = res["metrics"]
     keep = ("cases", "defects", "unscored", "leaked")
     ident = settled_identity(before)
-    return {"run_id": os.path.basename(os.path.abspath(outputs)), "tree": _git(repo, "rev-parse", rev).decode().strip(),
-            "cbs_hash": cbs_hash(repo, rev), "confighash": confighash(repo, rev), "status": res["status"],
-            "metrics": {k: v for k, v in m.items() if k in keep or (k.startswith("panel.") and ".class." not in k)},
-            "class_recall": {c: m["panel.class.%s.recall" % c] for c in CLASSES if "panel.class.%s.recall" % c in m},
-            "responded": res["responded"], "outputs_sha256": outputs_sha256(outputs),
-            "scorer_sha256": ident["scorer_sha256"] if known_identity(ident) else None,
-            "scorer_gitsha": ident["scorer_gitsha"], "scorer_reason": ident["reason"] or None}
+    prov = execution_fields(outputs)
+    reasons = res["ineligibility_reasons"] + ([] if known_identity(ident) else ["scorer-identity-unverified"])
+    return dict({"run_id": os.path.basename(os.path.abspath(outputs)), "tree": _git(repo, "rev-parse", rev).decode().strip(),
+                 "cbs_hash": cbs_hash(repo, rev), "confighash": confighash(repo, rev), "status": res["status"],
+                 "metrics": {k: v for k, v in m.items() if k in keep or (k.startswith("panel.") and ".class." not in k)},
+                 "class_recall": {c: m["panel.class.%s.recall" % c] for c in CLASSES if "panel.class.%s.recall" % c in m},
+                 "responded": res["responded"], "outputs_sha256": outputs_sha256(outputs),
+                 "scorer_sha256": ident["scorer_sha256"] if known_identity(ident) else None,
+                 "scorer_gitsha": ident["scorer_gitsha"], "scorer_reason": ident["reason"] or None,
+                 "scored_at": _now(), "decision_eligible": not reasons, "ineligibility_reasons": reasons}, **prov)
+
+
+def execution_fields(outputs):
+    try:
+        m = read_manifest(outputs)
+        status = "missing" if m is None else (m.get("provenance") or {}).get("status") or "unknown"
+    except ValueError:
+        m, status = None, "unreadable"
+    code = (m or {}).get("code_under_test_sha")
+    if code is None:
+        try:
+            with open(os.path.join(outputs, STAMP), encoding="utf-8") as fh:
+                code = json.load(fh).get("tree")
+        except (OSError, ValueError, AttributeError):
+            code = None
+    return {"execution_id": (m or {}).get("execution_id"), "code_under_test_sha": code,
+            "provenance_status": status, "bundle_sha256_v2": bundle_sha256_v2(outputs)}
 
 
 def panel_mismatch(rows, base_hash, head_hash, confighash):
@@ -1054,6 +1273,8 @@ def main(argv=None):
     pst.add_argument("--tiers", default=ROSTER_TIER)
     pst.add_argument("--only", default="")
     pst.add_argument("--recheck", action="store_true")
+    pst.add_argument("--critics", default="", help="the requested roster, recorded in the run manifest")
+    pst.add_argument("--model", default=None, help="the critic model label; refused unless the roster runs it")
     pe = sub.add_parser("export-row")
     pe.add_argument("outputs")
     pe.add_argument("--results", default=os.path.join(HERE, "results.jsonl"))
@@ -1114,6 +1335,8 @@ def main(argv=None):
         if not critics:
             raise ValueError("--critics is required (the panel roster)")
         only = [c for c in a.only.split(",") if c]
+        if a.model and model_conflict(a.outputs, a.model):
+            raise ValueError(model_conflict(a.outputs, a.model))
         before = running_scorer_identity()
         res = score(a.outputs, a.fixtures, a.key, critics, only or None, a.window)
         ident = settled_identity(before)
@@ -1132,9 +1355,10 @@ def main(argv=None):
         config = dict(eval_config(fixture_set_hash(a.fixtures, a.key, ids), res["critics"]), window=a.window)
         if a.model:
             config["critic_model"] = a.model
+        reasons = res["ineligibility_reasons"] + ([] if scorer["scorer_sha256"] else ["scorer-identity-unverified"])
         meta = dict(meta, leaks=res["leaks"], unscored=res["unscored"], coverage=res["coverage"],
-                    decision_eligible=res["decision_eligible"], ineligibility_reasons=res["ineligibility_reasons"],
-                    **scorer)
+                    decision_eligible=not reasons, ineligibility_reasons=reasons, cli_version=None, effort=None,
+                    **dict(scorer, **execution_fields(a.outputs)))
         row = eval_runs.make_row(EVAL_ID, SOURCE, config, res["metrics"], n=res["metrics"]["cases"], model=a.model,
                                  status=res["status"], ci=res["ci"], ci_level=0.95 if res["ci"] else None,
                                  ci_method="wilson" if res["ci"] else None, cases=res["cases"] or None,
@@ -1144,7 +1368,10 @@ def main(argv=None):
 
 
 ROW_FIELDS = ("status", "metrics", "class_recall", "cbs_hash", "confighash", "outputs_sha256", "responded",
-              "scorer_sha256")
+              "scorer_sha256", "bundle_sha256_v2", "execution_id", "code_under_test_sha", "provenance_status",
+              "decision_eligible", "ineligibility_reasons")
+LEGACY_OPTIONAL_FIELDS = ("responded", "bundle_sha256_v2", "execution_id", "code_under_test_sha",
+                          "provenance_status", "decision_eligible", "ineligibility_reasons")
 
 
 def tree_main(a):
@@ -1156,7 +1383,7 @@ def tree_main(a):
     elif a.cmd == "confighash":
         print(confighash(repo, a.rev))
     elif a.cmd == "stamp":
-        rec = stamp(repo, a.outputs, a.fixtures, a.key, a.panel, a.tiers, a.only, a.recheck)
+        rec = stamp(repo, a.outputs, a.fixtures, a.key, a.panel, a.tiers, a.only, a.recheck, a.critics, a.model)
         if not rec["clean"]:
             print("score.py stamp: the working tree differs from HEAD on a gate input, or the sweep reads other "
                   "fixtures, panel or tiers, or a subset: export-row will refuse this sweep", file=sys.stderr)
@@ -1182,7 +1409,7 @@ def tree_main(a):
         if legacy:
             got = dict(got, metrics={k: v for k, v in got["metrics"].items() if k in (claimed.get("metrics") or {})})
             print("verify-row: scorer identity unverified: the row names no scorer_sha256")
-        bad = [f for f in ROW_FIELDS if claimed.get(f) != got[f] and (f != "responded" or f in claimed)
+        bad = [f for f in ROW_FIELDS if claimed.get(f) != got[f] and (f not in LEGACY_OPTIONAL_FIELDS or f in claimed)
                and not (legacy and f == "scorer_sha256")]
         for f in bad:
             print("verify-row: %s differs: row %s, re-scored %s" % (f, json.dumps(claimed.get(f), sort_keys=True),
