@@ -19,6 +19,11 @@
 # Seams (tests): ROLLUP_CRONTAB, ROLLUP_RUNNER_DIR, ROLLUP_PY, plus weekly-rollup.py's own WEEKLY_ROLLUP_FILE,
 # SELF_REVIEW_SCRIPT and CACHE_HEALTH_HISTORY, and cadence-alert.sh's CADENCE_ALERT_*.
 # Platform: cron (Linux/macOS). Windows development is parked.
+#
+# Exit: 0 ok. 1 usage or a bad argument, or status could not read the crontab. 2 arm cannot run here (Windows,
+# no crontab binary, no primary checkout). 3 arm found it already armed (--force replaces). 4 a crontab or runner
+# write or read failed (arm, disarm). 77 test-run-guard refused a real crontab write from a test. `run` exits
+# with weekly-rollup.py's own code when it fails.
 set -uo pipefail
 
 TASK_NAME="HIMMEL-WeeklyRollup"
