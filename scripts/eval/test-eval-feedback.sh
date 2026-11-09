@@ -404,7 +404,7 @@ for name, a, b, want in (
     ok = (got is None) if want is None else (got is not None and want in got)
     print(("PASS " if ok else "FAIL ") + "review_incompat: %s (%s)" % (name, got))
 
-import os, tempfile
+import json, os, tempfile
 sys.path.insert(0, os.path.join(sys.argv[1]))
 import eval_runs
 d = tempfile.mkdtemp()
@@ -441,6 +441,27 @@ meas = [c for c in recs() if c["status"] == "measured"]
 print(("PASS " if len(meas) == 1 and meas[0]["verdict"] == "keep" and meas[0]["noise"] == 0 else "FAIL ")
       + "revision_not_prev_run: a later execution measures it, the rescore adds no noise sample (%s)"
       % [(m.get("verdict"), m.get("noise")) for m in meas])
+
+l3, c3 = os.path.join(d, "l3.jsonl"), os.path.join(d, "c3.jsonl")
+def add3(rid, ex, recall, sup=None, sc=S1):
+    meta = {"execution_id": ex, "scorer_sha256": sc}
+    if sup:
+        meta["supersedes_run_id"] = sup
+    m = {"codex.class.quoting.recall": recall, "open.codex.class.quoting.recall": recall,
+         "sealed.codex.class.quoting.recall": recall}
+    eval_runs.append_row(eval_runs.make_row("review-panel", "s", {"review_panel_v": 2}, m, run_id=rid, meta=meta,
+                                            gitsha="g"), l3)
+add3("p1", "z1", 0.9)
+add3("p2", "z2", 0.0)
+add3("p1~r", "z1", 0.9, sup="p1", sc=S2)
+order = [r["run_id"] for r in fb.review_series(eval_runs.read_rows(l3))[0]]
+print(("PASS " if order == ["p1~r", "p2"] else "FAIL ")
+      + "revision_not_prev_run: review_series keeps the selection's execution order, a late rescore is not last (%s)" % order)
+fb.run(ledger=l3, changes=c3, rules=rules)
+opened3 = [json.loads(l) for l in open(c3) if '"status":"open"' in l]
+print(("PASS " if [c["baseline_run_id"] for c in opened3] == ["p2"] else "FAIL ")
+      + "revision_not_prev_run: the feedback step grades the newest execution, not the late rescore (%s)"
+      % [c["baseline_run_id"] for c in opened3])
 
 glob_rules = os.path.join(d, "glob-rules.json")
 open(glob_rules, "w").write('{"v":1,"rules":[{"eval":"review-panel","metric":"codex.class.*.recall","threshold":0.5,'
