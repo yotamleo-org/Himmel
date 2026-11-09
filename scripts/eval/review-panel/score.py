@@ -1260,7 +1260,6 @@ def _arm(runs, name):
         if not isinstance(ex, str) or not ex:
             raise ValueError("%s scores: every object needs an execution_id" % name)
         if ex in seen:
-            # a repeat of one execution must carry the same values: two different score sets are not one execution
             dups.append(ex if r.get("cases") == first[ex] else ex + " (values differ)")
             continue
         seen.add(ex)
