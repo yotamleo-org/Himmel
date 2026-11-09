@@ -27,8 +27,6 @@ run_attempt() {
   fi
   return "$rc"
 }
-# Exit 86 is the witness's status, but bun can exit 86 itself: only a [LIVE-STATE]
-# line for this suite in the attempt log says the witness found a write.
 witness_hit() {
   awk -v p="[LIVE-STATE] bun:$suite — " 'index($0, p) == 1 { f = 1 } END { exit !f }' "$logs/$1.log"
 }

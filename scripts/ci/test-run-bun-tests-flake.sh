@@ -117,7 +117,6 @@ run_stub_case failthenlive
 grep -q '^\[FAIL\] scripts/config-ui — live-state write on the retry$' "$tmp/output" || { printf 'FAIL: a live write on the retry was not reported as one\n'; exit 1; }
 ! grep -q 'failed both attempts' "$tmp/output" || { printf 'FAIL: a live write on the retry was reported as a plain double failure\n'; exit 1; }
 printf 'PASS: a live-state write on the retry is reported as one\n'
-# The own-temp stub must die before it prints its Ran line when its setup fails.
 rc=0
 BUN_STUB_MODE=own BUN_STUB_COUNT="$tmp/stub-count" TMPDIR="$tmp/no-such-dir" bash "$tmp/stubbin/bun" > "$tmp/stub-output" 2>&1 || rc=$?
 if [ "$rc" -eq 0 ] || grep -q 'Ran 1 test' "$tmp/stub-output"; then
