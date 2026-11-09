@@ -56,7 +56,109 @@ function* jsonlFiles(dir) {
   }
 }
 
-// Read-only walk of a transcripts dir. since: ISO date; a record older than it is skipped.
+const SYNTHETIC = /^<[^>]*>$/;
+const COUNT_KEYS = ['input', 'output', 'cacheRead', 'cacheWrite5m', 'cacheWrite1h'];
+
+export class UsageError extends Error {
+  constructor(code, message, key) {
+    super(message);
+    this.code = code;
+    this.key = key;
+  }
+}
+
+// A supplied counter must be a safe integer >= 0; null and undefined are omitted counters (zero).
+function count(v, name) {
+  if (v == null) return 0;
+  if (!Number.isSafeInteger(v) || v < 0) throw new UsageError('malformed-usage', `${name} is not a non-negative safe integer`);
+  return v;
+}
+
+// usage: the transcript usage object. Throws UsageError('malformed-usage' | 'cache-split-mismatch').
+export function normalizeUsage(usage) {
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) throw new UsageError('malformed-usage', 'usage is not an object');
+  const split = usage.cache_creation;
+  if (split != null && (typeof split !== 'object' || Array.isArray(split))) throw new UsageError('malformed-usage', 'cache_creation is not an object');
+  const total = usage.cache_creation_input_tokens;
+  const out = {
+    input: count(usage.input_tokens, 'input_tokens'),
+    output: count(usage.output_tokens, 'output_tokens'),
+    cacheRead: count(usage.cache_read_input_tokens, 'cache_read_input_tokens'),
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
+  };
+  const totalN = count(total, 'cache_creation_input_tokens');
+  // an explicit split wins; a split object that carries neither TTL key is no split
+  if (split && (split.ephemeral_5m_input_tokens != null || split.ephemeral_1h_input_tokens != null)) {
+    out.cacheWrite5m = count(split.ephemeral_5m_input_tokens, 'ephemeral_5m_input_tokens');
+    out.cacheWrite1h = count(split.ephemeral_1h_input_tokens, 'ephemeral_1h_input_tokens');
+    if (total != null && totalN !== out.cacheWrite5m + out.cacheWrite1h) {
+      throw new UsageError('cache-split-mismatch', 'cache_creation_input_tokens disagrees with the per-TTL split');
+    }
+  } else {
+    out.cacheWrite5m = totalN;
+  }
+  return out;
+}
+
+function isSyntheticZero(model, usage) {
+  return typeof model === 'string' && SYNTHETIC.test(model) && COUNT_KEYS.every((k) => usage[k] === 0);
+}
+
+function idOf(v) {
+  return typeof v === 'string' && v !== '' ? v : null;
+}
+
+// One transcript record folded into one transcript's call state. Pure: `previous` is a Map of key to the stored
+// entry {messageId, requestId, model, usage}; the caller stores `next` under `key`.
+// record: the parsed transcript line; sourceOffset: the decimal byte offset of its line.
+// Throws UsageError (code identity-conflict | synthetic-nonzero | malformed-usage | cache-split-mismatch, with .key).
+export function foldUsageCall(previous, record, sourceOffset) {
+  const message = record?.message ?? {};
+  const messageId = idOf(message.id);
+  const requestId = idOf(record?.requestId);
+  const key = messageId ? `m:${messageId}` : requestId ? `r:${requestId}` : `o:${sourceOffset}`;
+  const prior = previous?.get(key) ?? null;
+  try {
+    if (prior && messageId && prior.requestId && requestId && prior.requestId !== requestId) {
+      throw new UsageError('identity-conflict', `message ${messageId} carries request ids ${prior.requestId} and ${requestId}`);
+    }
+    const usage = normalizeUsage(message.usage);
+    const model = typeof message.model === 'string' ? message.model : null;
+    const synthetic = model !== null && SYNTHETIC.test(model);
+    if (synthetic && !isSyntheticZero(model, usage)) throw new UsageError('synthetic-nonzero', `${model} carries nonzero usage`);
+    const next = { messageId, requestId: requestId ?? prior?.requestId ?? null, model, usage };
+    const changed = !prior || prior.model !== model || COUNT_KEYS.some((k) => prior.usage[k] !== usage[k]);
+    return { key, next, previousUsage: prior ? prior.usage : null, changed, first: !prior, excluded: synthetic ? 'synthetic-zero' : null };
+  } catch (e) {
+    if (e instanceof UsageError) e.key = key;
+    throw e;
+  }
+}
+
+// Integer nanodollars of one normalized usage at one price row: a table rate is USD per MTok, so rate * 1000 nano per token.
+const nanoRate = (usdPerMTok) => BigInt(Math.round(usdPerMTok * 1000));
+function priceNano(u, row) {
+  return BigInt(u.input) * nanoRate(row.input) + BigInt(u.output) * nanoRate(row.output)
+    + BigInt(u.cacheRead) * nanoRate(row.cacheRead) + BigInt(u.cacheWrite5m) * nanoRate(row.cacheWrite5m)
+    + BigInt(u.cacheWrite1h) * nanoRate(row.cacheWrite1h);
+}
+const nanoToUsd = (n) => Number(n) / 1e9;
+
+// The lines of a file, each with the decimal byte offset it starts at.
+function* linesWithOffsets(file) {
+  const buf = readFileSync(file);
+  let pos = 0;
+  while (pos < buf.length) {
+    let end = buf.indexOf(10, pos);
+    if (end === -1) end = buf.length;
+    yield [buf.toString('utf8', pos, end), pos];
+    pos = end + 1;
+  }
+}
+
+// Read-only walk of a transcripts dir. since: ISO date; a call whose FIRST record is older than it, or has no
+// parseable timestamp, is skipped, whatever a later correction of the same call says.
 export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
   const sinceMs = since === undefined ? null : Date.parse(since);
   if (Number.isNaN(sinceMs)) throw new Error(`--since is not a date: ${since}`);
@@ -64,33 +166,44 @@ export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
   const perModel = {};
   const unpriced = {};
   let malformed = 0;
-  let total = 0;
+  let syntheticZero = 0;
+  let totalNano = 0n;
   let opusCalls = 0;
   for (const file of jsonlFiles(dir)) {
-    // one entry per message: a streamed message repeats, and its last record carries the final usage
     const calls = new Map();
-    let anon = 0;
-    for (const line of readFileSync(file, 'utf8').split('\n')) {
+    const firstTs = new Map();
+    for (const [line, offset] of linesWithOffsets(file)) {
       if (!line.trim()) continue;
       let r;
       try { r = JSON.parse(line); } catch { continue; }
       const m = r.message;
       if (r.type !== 'assistant' || !m || typeof m !== 'object' || !m.usage) continue;
-      if (sinceMs !== null && !(Date.parse(r.timestamp) >= sinceMs)) continue;
-      calls.set(m.id ? `${m.id}|${r.requestId ?? ''}` : `anon${anon++}`, m);
+      let folded;
+      try {
+        folded = foldUsageCall(calls, r, offset);
+      } catch (e) {
+        if (!(e instanceof UsageError)) throw e;
+        malformed += 1;
+        continue;
+      }
+      if (folded.first) firstTs.set(folded.key, Date.parse(r.timestamp));
+      calls.set(folded.key, folded.next);
     }
-    for (const m of calls.values()) {
-      const res = priceCall({ model: m.model, usage: m.usage }, rows, priceAs);
-      if (res.malformed) { malformed += 1; continue; }
-      if (!res.priced) { unpriced[m.model] = (unpriced[m.model] ?? 0) + 1; continue; }
-      const p = perModel[m.model] ??= { calls: 0, usd: 0 };
+    for (const [key, c] of calls) {
+      if (sinceMs !== null && !(firstTs.get(key) >= sinceMs)) continue;
+      if (isSyntheticZero(c.model, c.usage)) { syntheticZero += 1; continue; }
+      const row = priceFor(priceAs ?? c.model, rows);
+      if (!row) { unpriced[c.model] = (unpriced[c.model] ?? 0) + 1; continue; }
+      const nano = priceNano(c.usage, row);
+      const p = perModel[c.model] ??= { calls: 0, usd: 0, nano: 0n };
       p.calls += 1;
-      p.usd += res.usd;
-      total += res.usd;
-      if (res.priceRow.startsWith('claude-opus')) opusCalls += 1;
+      p.nano += nano;
+      p.usd = nanoToUsd(p.nano);
+      totalNano += nano;
+      if (row.prefix.startsWith('claude-opus')) opusCalls += 1;
     }
   }
-  return { perModel, unpriced, malformed, total, opusCalls };
+  return { perModel, unpriced, malformed, syntheticZero, total: nanoToUsd(totalNano), totalNano, opusCalls };
 }
 
 function flags(argv) {
@@ -127,6 +240,7 @@ function main(argv) {
     for (const [model, p] of Object.entries(res.perModel).sort()) console.log(`${model} calls=${p.calls} usd=${p.usd.toFixed(2)}`);
     for (const [model, n] of Object.entries(res.unpriced).sort()) console.log(`unpriced model=${model} calls=${n}`);
     if (res.malformed) console.log(`malformed calls=${res.malformed}`);
+    if (res.syntheticZero) console.log(`excluded synthetic-zero calls=${res.syntheticZero}`);
     console.log(`opus-priced calls=${res.opusCalls}`);
     console.log(`total usd=${res.total.toFixed(2)} (priced calls only)`);
     return 0;
