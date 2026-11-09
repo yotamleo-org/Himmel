@@ -189,7 +189,7 @@ else
     assert_fail "plugin update catch-up runs before the lean-floor reconcile — out: $out"
 fi
 
-echo "Test: a plugin that is enabled in settings but NOT installed is never updated (HIMMEL-4380)"
+echo "Test: a plugin that is enabled in settings but NOT installed is never updated"
 make_mock_clone
 fake_home_ni="$TMP/fake-home-notinstalled"
 mkdir -p "$fake_home_ni/.claude/plugins"
@@ -219,7 +219,7 @@ assert_not_contains "uninstalled ghost@nowhere never updated" "plugin update gho
 assert_not_contains "uninstalled watch@claude-video never updated" "plugin update watch@claude-video" "$log_ni_content"
 assert_contains "skipped plugins are counted on one line" "2 enabled plugin(s) not installed, skipped" "$out_ni"
 
-echo "Test: a registry with a malformed .plugins filters nothing (HIMMEL-4380)"
+echo "Test: a registry with a malformed .plugins filters nothing"
 make_mock_clone
 printf '%s\n' '{"version":2,"plugins":[]}' > "$fake_home_ni/.claude/plugins/installed_plugins.json"
 : > "$log_ni"
@@ -261,7 +261,7 @@ else
     assert_fail "check mode: never invoked claude plugin update — log: $check_log_content"
 fi
 
-echo "Test: apply mode sweeps stale (>24h) temp_git_* dirs from the plugin cache, spares fresh ones (HIMMEL-1846)"
+echo "Test: apply mode sweeps stale (>24h) temp_git_* dirs from the plugin cache, spares fresh ones"
 make_mock_clone
 fake_home_sweep="$TMP/fake-home-sweep"
 mkdir -p "$fake_home_sweep/.claude"
@@ -334,7 +334,7 @@ else
     assert_fail "check mode never removes plugin-cache temp_git_* dirs — was removed — out: $out_sweep_check"
 fi
 
-echo "Test: url-sourced @himmel plugins update, checkout-sourced ones do not (HIMMEL-4127)"
+echo "Test: url-sourced @himmel plugins update, checkout-sourced ones do not"
 make_mock_clone
 mkdir -p "$CHECKOUT_DIR/marketplace/.claude-plugin"
 cat > "$CHECKOUT_DIR/marketplace/.claude-plugin/marketplace.json" <<'EOF'
@@ -385,7 +385,7 @@ out_url_check=$(USERPROFILE='' HOME="$fake_home_url" HIMMEL_UPDATE_CLAUDE_BIN="$
 assert_contains "check mode lists the url-sourced @himmel plugin" "obsidian-second-brain@himmel" "$out_url_check"
 assert_not_contains "check mode does not list the checkout-sourced plugin as would-update" "      qmd@himmel" "$out_url_check"
 
-echo "Test: a checkout-sourced @himmel plugin updates only when its installed version lags plugin.json (HIMMEL-4295)"
+echo "Test: a checkout-sourced @himmel plugin updates only when its installed version lags plugin.json"
 make_mock_clone
 mkdir -p "$CHECKOUT_DIR/marketplace/.claude-plugin"
 cat > "$CHECKOUT_DIR/marketplace/.claude-plugin/marketplace.json" <<'EOF'
@@ -458,7 +458,7 @@ out_ver_check=$(USERPROFILE='' HOME="$fake_home_ver" HIMMEL_UPDATE_CLAUDE_BIN="$
 assert_contains "check mode lists the version-bumped checkout plugin" "      telegram-himmel@himmel" "$out_ver_check"
 assert_not_contains "check mode does not list the current checkout plugin" "      qmd@himmel" "$out_ver_check"
 
-echo "Test: an enabled @himmel plugin the marketplace declares but that is NOT installed gets installed (HIMMEL-5294)"
+echo "Test: an enabled @himmel plugin the marketplace declares but that is NOT installed gets installed"
 make_mock_clone
 # The fixture mirrors the real shape: the marketplace manifest declares the
 # vendored plugin (PR 2382 added i-have-adhd), the user settings enable it, and
@@ -507,7 +507,7 @@ assert_contains "installs the enabled @himmel plugin that is not installed" "plu
 assert_not_contains "never installs a plugin the user left disabled" "plugin install off-by-choice@himmel" "$log_inst_content"
 assert_not_contains "never installs a non-@himmel plugin" "plugin install ghost@nowhere" "$log_inst_content"
 
-echo "Test: an empty installed_plugins.json is unreadable state, not 'nothing installed' (HIMMEL-5294)"
+echo "Test: an empty installed_plugins.json is unreadable state, not 'nothing installed'"
 : > "$fake_home_inst/.claude/plugins/installed_plugins.json"
 : > "$log_inst"
 out_inst=$(USERPROFILE='' HOME="$fake_home_inst" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_inst" HERMES_HOME="$TMP/no-hermes" \
@@ -516,7 +516,7 @@ out_inst=$(USERPROFILE='' HOME="$fake_home_inst" HIMMEL_UPDATE_CLAUDE_BIN="$clau
 log_inst_content="$(cat "$log_inst")"
 assert_not_contains "empty installed state installs nothing" "plugin install i-have-adhd@himmel" "$log_inst_content"
 
-echo "Test: a plugin only a shipped profile enables is installed too (HIMMEL-6707)"
+echo "Test: a plugin only a shipped profile enables is installed too"
 make_mock_clone
 # find-docs is enabled by the `user` profile (injected per launch via
 # --settings), never by the user settings.json, so the settings-only gate left
@@ -594,7 +594,7 @@ log_prof_content="$(cat "$log_prof")"
 assert_contains "a corrupt profile registry still installs the settings-enabled plugin" "plugin install in-no-profile@himmel" "$log_prof_content"
 assert_not_contains "a corrupt profile registry adds no profile plugin" "plugin install find-docs@himmel" "$log_prof_content"
 
-echo "Test: one failing plugin update is reported and does not stop the others (HIMMEL-3563)"
+echo "Test: one failing plugin update is reported and does not stop the others"
 make_mock_clone
 fake_home_fail="$TMP/fake-home-fail"
 mkdir -p "$fake_home_fail/.claude"
@@ -625,7 +625,7 @@ else
     assert_fail "a failed plugin update failed the run (rc=$rc) — out: $out_fail"
 fi
 
-echo "Test: a same-version @himmel plugin whose cache differs from the checkout is reinstalled (HIMMEL-8016)"
+echo "Test: a same-version @himmel plugin whose cache differs from the checkout is reinstalled"
 # The cache-side hooks.json line is copied from the real station cache
 # (~/.claude/plugins/cache/himmel/himmel-ops/0.4.141/hooks/hooks.json): the
 # egress matcher without the Bash alternative; main's has `Bash|` in front.
@@ -692,7 +692,7 @@ assert_not_contains "a url-sourced plugin is never uninstalled" "plugin uninstal
 assert_not_contains "a url-sourced plugin is never reinstalled" "plugin install remote@himmel" "$log_drift_content"
 assert_not_contains "a plugin with no marketplace source is never reinstalled" "nosrc@himmel" "$log_drift_content"
 
-echo "Test: check mode names the drifted cache and invokes nothing (HIMMEL-8016)"
+echo "Test: check mode names the drifted cache and invokes nothing"
 make_drift_scenario check
 : > "$log_drift"
 out_drift_check=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift" HERMES_HOME="$TMP/no-hermes" \
@@ -702,7 +702,7 @@ assert_contains "check mode lists the drifted plugin" "would reinstall p1@himmel
 assert_not_contains "check mode does not list the identical plugin" "would reinstall same@himmel" "$out_drift_check"
 if [ -z "$(cat "$log_drift")" ]; then assert_pass "check mode never invoked claude for the drift"; else assert_fail "check mode invoked claude: $(cat "$log_drift")"; fi
 
-echo "Test: an install that fails after the uninstall is loud and fails the run (HIMMEL-8016)"
+echo "Test: an install that fails after the uninstall is loud and fails the run"
 make_drift_scenario failinst
 log_drift_fail="$TMP/claude-invocations-drift-fail.log"
 : > "$log_drift_fail"
@@ -722,7 +722,7 @@ if [ "$rc" -ne 0 ]; then assert_pass "a failed reinstall fails the run (rc=$rc)"
 assert_contains "the failure names the plugin and says it is uninstalled" "ERROR: p1@himmel was uninstalled but the reinstall failed" "$out_drift_fail"
 assert_contains "the failure prints the recovery command" "claude plugin install p1@himmel" "$out_drift_fail"
 
-echo "Test: --only plugin-refresh runs just the cache repair and returns its outcome (HIMMEL-8016)"
+echo "Test: --only plugin-refresh runs just the cache repair and returns its outcome"
 make_drift_scenario only
 : > "$log_drift"
 rc=0
@@ -745,7 +745,7 @@ out_only_fail=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$cla
 if [ "$rc" -ne 0 ]; then assert_pass "--only plugin-refresh exits nonzero when the reinstall fails (rc=$rc)"; else assert_fail "--only plugin-refresh rc=0 after a failed reinstall — out: $out_only_fail"; fi
 assert_contains "--only plugin-refresh failure is loud" "ERROR: p1@himmel was uninstalled but the reinstall failed" "$out_only_fail"
 
-echo "Test: an uninstall that fails leaves the stale cache and fails the run (HIMMEL-8016)"
+echo "Test: an uninstall that fails leaves the stale cache and fails the run"
 make_drift_scenario failuninst
 claude_stub_drift_un="$TMP/claude-uninstall-failing-stub"
 log_drift_un="$TMP/claude-invocations-drift-un.log"
@@ -766,7 +766,7 @@ assert_contains "the failure names the plugin and says the stale cache stays" "E
 assert_contains "the uninstall was attempted" "plugin uninstall --keep-data p1@himmel" "$(cat "$log_drift_un")"
 assert_not_contains "no install follows a failed uninstall" "plugin install p1@himmel" "$(cat "$log_drift_un")"
 
-echo "Test: a skills-only drift (hooks identical) is detected and repaired (HIMMEL-8016)"
+echo "Test: a skills-only drift (hooks identical) is detected and repaired"
 make_drift_scenario skills
 printf '{ %s }\n' "$drift_main_matcher" > "$DRIFT_HOME/.claude/plugins/cache/himmel/p1/1.0.0/hooks/hooks.json"
 mkdir -p "$CHECKOUT_DIR/marketplace/plugins/p1/skills/s" "$DRIFT_HOME/.claude/plugins/cache/himmel/p1/1.0.0/skills/s"
@@ -784,7 +784,7 @@ if [ "$rc" -eq 0 ]; then assert_pass "skills-only drift refresh succeeds (rc=$rc
 assert_contains "a skills-only drift triggers the reinstall" "plugin uninstall --keep-data p1@himmel" "$(cat "$log_drift_skills")"
 assert_contains "the reinstall delivers the new skill" "new" "$(cat "$DRIFT_HOME/.claude/plugins/cache/himmel/p1/1.0.0/skills/s/SKILL.md")"
 
-echo "Test: a reinstall that leaves the cache differing fails the run (HIMMEL-8016)"
+echo "Test: a reinstall that leaves the cache differing fails the run"
 make_drift_scenario stale
 log_drift_stale="$TMP/claude-invocations-drift-stale.log"
 claude_stub_drift_stale="$TMP/claude-logging-stub-stale"
@@ -796,7 +796,7 @@ out_drift_stale=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$c
 if [ "$rc" -ne 0 ]; then assert_pass "a reinstall that leaves drift fails --only plugin-refresh (rc=$rc)"; else assert_fail "stale cache after reinstall left rc=0 — out: $out_drift_stale"; fi
 assert_contains "the failure names the plugin and the recovery command" "p1@himmel still differs from the checkout after the reinstall" "$out_drift_stale"
 
-echo "Test: a disabled plugin and a version-lagged cache are left alone (HIMMEL-8016)"
+echo "Test: a disabled plugin and a version-lagged cache are left alone"
 make_drift_scenario disabled
 printf '%s\n' '{ "enabledPlugins": { "p1@himmel": false, "same@himmel": true } }' > "$DRIFT_HOME/.claude/settings.json"
 : > "$log_drift"

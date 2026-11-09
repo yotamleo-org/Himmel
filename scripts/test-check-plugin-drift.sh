@@ -54,7 +54,7 @@ for p in m.get("plugins", []):
 PY
 )"
 if grepq "$pins" -x "claude-obsidian"; then ok "parser finds claude-obsidian pin"; else bad "parser missing claude-obsidian"; fi
-if grepq "$pins" -x "obsidian"; then bad "obsidian pin still present — should have been dropped (HIMMEL-435)"; else ok "obsidian (kepano) pin absent — dropped as expected"; fi
+if grepq "$pins" -x "obsidian"; then bad "obsidian pin still present — should have been dropped"; else ok "obsidian (kepano) pin absent — dropped as expected"; fi
 # plannotator-effective-html is pinned by `sha`, not `ref`
 # (marketplace/.claude-plugin/marketplace.json) — a predicate that only
 # checks `ref` silently drops it from the pinned-remotes inventory this
@@ -123,7 +123,6 @@ TAG_RE='^v?[0-9]+\.[0-9]+(\.[0-9]+)?$'
 # the function body is extracted verbatim from the script under test,
 # so a divergence in the real selector cannot pass silently here. (The script
 # executes on source, so a plain `source` is not an option.)
-# ponytail: eval of the extracted helper is deliberate (the script under test runs next anyway) so the selector cannot drift; a side-effect-free shared lib would replace it, HIMMEL-1632
 eval "$(sed -n '/^highest_version() {/,/^}/p' "$SCRIPT")"
 pick() { printf '%s\n' "$1" | grep -E "$TAG_RE" | highest_version; }
 if [ "$(pick "$(printf 'v1.9.1\nv1.9.2\nv1.9.2-alpha\nv1.8.1\n')")" = "v1.9.2" ]; then ok "stable-tag select: prerelease of current version ignored"; else bad "prerelease leaked into latest"; fi
@@ -524,42 +523,42 @@ bump_ver() { printf '{"name": "foo", "version": "%s"}\n' "$2" > "$1/$P/foo/.clau
 bump_fixture "$W_DOD/s1" foo
 (bump_edit "$W_DOD/s1" && bump_ver "$W_DOD/s1" 0.1.1 && cd "$W_DOD/s1" && git add -A)
 bump_run "$W_DOD/s1"
-if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a plugin edit with a version bump passes (HIMMEL-8368)"; else bad "--bump-required (staged): bumped plugin edit refused (rc=$br_rc): $br_out"; fi
+if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a plugin edit with a version bump passes"; else bad "--bump-required (staged): bumped plugin edit refused (rc=$br_rc): $br_out"; fi
 bump_fixture "$W_DOD/r1" foo
 (bump_edit "$W_DOD/r1" && bump_ver "$W_DOD/r1" 0.1.1 && cd "$W_DOD/r1" && git add -A)
 bump_range_run "$W_DOD/r1"
-if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (range): a plugin edit with a version bump passes (HIMMEL-8368)"; else bad "--bump-required (range): bumped plugin edit refused (rc=$br_rc): $br_out"; fi
+if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (range): a plugin edit with a version bump passes"; else bad "--bump-required (range): bumped plugin edit refused (rc=$br_rc): $br_out"; fi
 
 # (2) DoD: a plugin file changed without a bump is refused, naming the plugin.
 bump_fixture "$W_DOD/s2" foo
 (bump_edit "$W_DOD/s2" && cd "$W_DOD/s2" && git add -A)
 bump_run "$W_DOD/s2"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (staged): a plugin edit with no bump is refused and names the plugin (HIMMEL-8368)"; else bad "--bump-required (staged): unbumped plugin edit passed or lacks the plugin name (rc=$br_rc): $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (staged): a plugin edit with no bump is refused and names the plugin"; else bad "--bump-required (staged): unbumped plugin edit passed or lacks the plugin name (rc=$br_rc): $br_out"; fi
 bump_fixture "$W_DOD/r2" foo
 (bump_edit "$W_DOD/r2" && cd "$W_DOD/r2" && git add -A)
 bump_range_run "$W_DOD/r2"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (range): a plugin edit with no bump is refused and names the plugin (HIMMEL-8368)"; else bad "--bump-required (range): unbumped plugin edit passed or lacks the plugin name (rc=$br_rc): $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (range): a plugin edit with no bump is refused and names the plugin"; else bad "--bump-required (range): unbumped plugin edit passed or lacks the plugin name (rc=$br_rc): $br_out"; fi
 
 # (3) DoD: a bump with no other change in that plugin is refused.
 bump_fixture "$W_DOD/s3" foo
 (bump_ver "$W_DOD/s3" 0.1.1 && cd "$W_DOD/s3" && git add -A)
 bump_run "$W_DOD/s3"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo's plugin.json version went 0.1.0 -> 0.1.1 but no other file of foo changed"; then ok "--bump-required (staged): a bump with no plugin file change is refused (HIMMEL-8368)"; else bad "--bump-required (staged): bump-only change passed or has the wrong message (rc=$br_rc): $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo's plugin.json version went 0.1.0 -> 0.1.1 but no other file of foo changed"; then ok "--bump-required (staged): a bump with no plugin file change is refused"; else bad "--bump-required (staged): bump-only change passed or has the wrong message (rc=$br_rc): $br_out"; fi
 bump_fixture "$W_DOD/r3" foo
 (bump_ver "$W_DOD/r3" 0.1.1 && cd "$W_DOD/r3" && git add -A)
 bump_range_run "$W_DOD/r3"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo's plugin.json version went 0.1.0 -> 0.1.1 but no other file of foo changed"; then ok "--bump-required (range): a bump with no plugin file change is refused (HIMMEL-8368)"; else bad "--bump-required (range): bump-only change passed or has the wrong message (rc=$br_rc): $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo's plugin.json version went 0.1.0 -> 0.1.1 but no other file of foo changed"; then ok "--bump-required (range): a bump with no plugin file change is refused"; else bad "--bump-required (range): bump-only change passed or has the wrong message (rc=$br_rc): $br_out"; fi
 
 # A manifest edit besides the version (a description) is a plugin change that
 # needs a bump; the same edit WITH a bump passes, so a manifest is never stuck.
 bump_fixture "$W_DOD/m1" foo
 (cd "$W_DOD/m1" && printf '{"name": "foo", "version": "0.1.0", "description": "new"}\n' > "$P/foo/.claude-plugin/plugin.json" && git add -A)
 bump_run "$W_DOD/m1"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (staged): a manifest description edit with no bump is refused (HIMMEL-8368)"; else bad "--bump-required (staged): unbumped manifest edit passed (rc=$br_rc): $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (staged): a manifest description edit with no bump is refused"; else bad "--bump-required (staged): unbumped manifest edit passed (rc=$br_rc): $br_out"; fi
 bump_fixture "$W_DOD/m2" foo
 (cd "$W_DOD/m2" && printf '{"name": "foo", "version": "0.1.1", "description": "new"}\n' > "$P/foo/.claude-plugin/plugin.json" && git add -A)
 bump_run "$W_DOD/m2"
-if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a manifest description edit with a bump passes (HIMMEL-8368)"; else bad "--bump-required (staged): bumped manifest edit refused (rc=$br_rc): $br_out"; fi
+if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a manifest description edit with a bump passes"; else bad "--bump-required (staged): bumped manifest edit refused (rc=$br_rc): $br_out"; fi
 
 # A commit after the bump (same branch) needs no second bump: the version is
 # compared with the branch's base, not the previous commit.
@@ -567,7 +566,7 @@ bump_fixture "$W_DOD/c1" foo
 git -C "$W_DOD/c1" branch -m main || bad "c1 fixture: branch rename failed"
 (cd "$W_DOD/c1" && git checkout -q -b feat && bump_edit "$W_DOD/c1" && bump_ver "$W_DOD/c1" 0.1.1 && git add -A && git commit -q -m 'fix: edit and bump' && printf '# edited again\n' > "$P/foo/skill.md" && git add -A) || bad "c1 fixture: history setup failed"
 bump_run "$W_DOD/c1"
-if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a second commit after the bump needs no second bump (HIMMEL-8368)"; else bad "--bump-required (staged): second commit demanded another bump (rc=$br_rc): $br_out"; fi
+if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a second commit after the bump needs no second bump"; else bad "--bump-required (staged): second commit demanded another bump (rc=$br_rc): $br_out"; fi
 
 # Base moved: a sibling already shipped the version this PR bumps to, so the PR
 # must merge main and bump above it (two contents never share a version).
@@ -576,7 +575,7 @@ git -C "$W_DOD/b1" branch -m main || bad "b1 fixture: branch rename failed"
 (cd "$W_DOD/b1" && git checkout -q -b feat && bump_edit "$W_DOD/b1" && bump_ver "$W_DOD/b1" 0.1.1 && git add -A && git commit -q -m 'fix: pr edit and bump' \
   && git checkout -q main && printf '# sibling\n' > "$P/foo/sibling.md" && bump_ver "$W_DOD/b1" 0.1.1 && git add -A && git commit -q -m 'fix: sibling edit and bump' && git checkout -q feat) || bad "b1 fixture: history setup failed"
 base_moved_out="$(cd "$W_DOD/b1" && bash "$SCRIPT" --bump-required main 2>&1)"; base_moved_rc=$?
-if [ "$base_moved_rc" -ne 0 ] && grepq "$base_moved_out" "foo changed but its plugin.json version 0.1.1 is not above 0.1.1 on the base"; then ok "--bump-required (range): a bump the base already shipped is refused (HIMMEL-8368)"; else bad "--bump-required (range): duplicate of the base's version passed (rc=$base_moved_rc): $base_moved_out"; fi
+if [ "$base_moved_rc" -ne 0 ] && grepq "$base_moved_out" "foo changed but its plugin.json version 0.1.1 is not above 0.1.1 on the base"; then ok "--bump-required (range): a bump the base already shipped is refused"; else bad "--bump-required (range): duplicate of the base's version passed (rc=$base_moved_rc): $base_moved_out"; fi
 
 # A version-only commit after an earlier plugin edit (a correction above a
 # sibling's version) is part of the same PR: judged against the branch base, not HEAD.
@@ -600,7 +599,7 @@ if [ "$twice_new_rc" -ne 0 ] && grepq "$twice_new_out" "bar changed but its plug
 bump_fixture "$W_DOD/n1" foo
 (cd "$W_DOD/n1" && printf 'x\n' > README.md && git add -A)
 bump_run "$W_DOD/n1"
-if [ "$br_rc" -eq 0 ] && grepq "$br_out" "no plugin files changed"; then ok "--bump-required (staged): a change outside marketplace/plugins needs no bump (HIMMEL-8368)"; else bad "--bump-required (staged): non-plugin change refused (rc=$br_rc): $br_out"; fi
+if [ "$br_rc" -eq 0 ] && grepq "$br_out" "no plugin files changed"; then ok "--bump-required (staged): a change outside marketplace/plugins needs no bump"; else bad "--bump-required (staged): non-plugin change refused (rc=$br_rc): $br_out"; fi
 rm -rf -- "$W_DOD"
 
 # Two PRs edit himmel-ops from the same base, as #2331/#2334 did (and #3670,
@@ -681,11 +680,11 @@ release_line='release cut: every changed plugin version is above the base'
 git -C "$W_CURRENT" checkout -q current-base
 sibling_out="$(run_current_job stored-base 2>&1)"; sibling_rc=$?
 git -C "$W_CURRENT" checkout -q competing-pr
-if [ "$sibling_rc" -eq 0 ] && grepq "$sibling_out" "$nochange_line"; then ok "same-base replay: the first PR's himmel-ops edit with its bump passes CI (HIMMEL-8368)"; else bad "same-base replay: first PR failed (rc=$sibling_rc): $sibling_out"; fi
+if [ "$sibling_rc" -eq 0 ] && grepq "$sibling_out" "$nochange_line"; then ok "same-base replay: the first PR's himmel-ops edit with its bump passes CI"; else bad "same-base replay: first PR failed (rc=$sibling_rc): $sibling_out"; fi
 if git -C "$W_CURRENT" merge-base --is-ancestor current-base competing-pr; then bad "same-base replay fixture: the competing PR already contains the moved base"; fi
 # The competing PR edits himmel-ops and does not bump: refused.
 current_out="$(run_current_job 2>&1)"; current_rc=$?
-if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its plugin.json version 0.4.60 is not above 0.4.61 on the base'; then ok "same-base replay: an unbumped second PR is refused against the moved base (HIMMEL-8368)"; else bad "same-base replay: unbumped second PR passed (rc=$current_rc): $current_out"; fi
+if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its plugin.json version 0.4.60 is not above 0.4.61 on the base'; then ok "same-base replay: an unbumped second PR is refused against the moved base"; else bad "same-base replay: unbumped second PR passed (rc=$current_rc): $current_out"; fi
 # It bumps to the version the sibling already shipped (0.4.61): two contents under one version, refused.
 (
   cd "$W_CURRENT" || exit 1
@@ -696,7 +695,7 @@ if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its p
   git commit -q -m 'fix: bump himmel-ops to the version the sibling shipped'
 )
 current_out="$(run_current_job 2>&1)"; current_rc=$?
-if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its plugin.json version 0.4.61 is not above 0.4.61 on the base'; then ok "same-base replay: a second PR bumping to the base's version is refused (HIMMEL-8368)"; else bad "same-base replay: duplicate bump passed (rc=$current_rc): $current_out"; fi
+if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its plugin.json version 0.4.61 is not above 0.4.61 on the base'; then ok "same-base replay: a second PR bumping to the base's version is refused"; else bad "same-base replay: duplicate bump passed (rc=$current_rc): $current_out"; fi
 # After the PR merges main and bumps above it, it passes.
 (
   cd "$W_CURRENT" || exit 1
@@ -706,7 +705,7 @@ if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its p
   git commit -q -m 'fix: bump himmel-ops above the sibling'
 )
 current_out="$(run_current_job 2>&1)"; current_rc=$?
-if [ "$current_rc" -eq 0 ] && grepq "$current_out" "$nochange_line"; then ok "same-base replay: a second PR bumped above the base passes (HIMMEL-8368)"; else bad "same-base replay: bump above the base refused (rc=$current_rc): $current_out"; fi
+if [ "$current_rc" -eq 0 ] && grepq "$current_out" "$nochange_line"; then ok "same-base replay: a second PR bumped above the base passes"; else bad "same-base replay: bump above the base refused (rc=$current_rc): $current_out"; fi
 # Two release cuts from the same base both raise himmel-ops to 0.4.61 with
 # different content: once the first lands, the second must go above it, so
 # two release cuts never ship two contents under one version.
@@ -762,7 +761,7 @@ if [ "$current_rc" -ne 0 ] && ! grepq "$current_out" "$nochange_line"; then ok "
   git commit -q -m 'fix(hooks): replay PR 2328, stale checker, no plugin touch'
 ) || bad "stale-pr fixture setup failed"
 stale_out="$(run_current_job 2>&1)"; stale_rc=$?
-if [ "$stale_rc" -eq 0 ] && grepq "$stale_out" 'no plugin files changed'; then ok "stale-base PR that never touched the plugin passes (HIMMEL-5195)"; else bad "stale-base PR false red (rc=$stale_rc): $stale_out"; fi
+if [ "$stale_rc" -eq 0 ] && grepq "$stale_out" 'no plugin files changed'; then ok "stale-base PR that never touched the plugin passes"; else bad "stale-base PR false red (rc=$stale_rc): $stale_out"; fi
 rm -rf -- "$W_CURRENT"
 
 # 4. End-to-end: the script runs to completion with a sane exit code —
@@ -1719,18 +1718,18 @@ out16="$(mf_run feat-clean)"; rc16=$?
 if [ "$rc16" -eq 0 ] && grepq "$out16" 'no plugin files changed'; then ok "merge-forward of a base-only plugin change passes (GH #2205)"; else bad "merge-forward false red (rc=$rc16): $out16"; fi
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 out16="$(mf_run feat-edit edit)"; rc16=$?
-if [ "$rc16" -eq 1 ] && grepq "$out16" 'p changed but its plugin.json version 1.0.0 is not above 1.0.0'; then ok "merge-forward still rejects a branch plugin edit that leaves the version alone (GH #2205, HIMMEL-8368)"; else bad "merge-forward let an unbumped branch edit through (rc=$rc16): $out16"; fi
+if [ "$rc16" -eq 1 ] && grepq "$out16" 'p changed but its plugin.json version 1.0.0 is not above 1.0.0'; then ok "merge-forward still rejects a branch plugin edit that leaves the version alone (GH #2205)"; else bad "merge-forward let an unbumped branch edit through (rc=$rc16): $out16"; fi
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 out16="$(mf_run feat-bump bump)"; rc16=$?
-if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin carries a version bump above the base'; then ok "merge-forward passes the branch's own edit plus bump (GH #2205, HIMMEL-8368)"; else bad "merge-forward rejected a bumped branch edit (rc=$rc16): $out16"; fi
+if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin carries a version bump above the base'; then ok "merge-forward passes the branch's own edit plus bump (GH #2205)"; else bad "merge-forward rejected a bumped branch edit (rc=$rc16): $out16"; fi
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 # Merging a feature branch INTO main must still see its version change.
 out16="$( cd "$W16" && git checkout -q main && git merge -q --no-commit --no-ff feat-bump >/dev/null 2>&1; bash "$SCRIPT" --bump-required 2>&1 )"; rc16=$?
-if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin carries a version bump above the base'; then ok "merge of a bumped feature branch into main passes (GH #2205, HIMMEL-8368)"; else bad "merge into main refused a bumped feature branch (rc=$rc16): $out16"; fi
+if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin carries a version bump above the base'; then ok "merge of a bumped feature branch into main passes (GH #2205)"; else bad "merge into main refused a bumped feature branch (rc=$rc16): $out16"; fi
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 # ...and the same for a feature branch merged into another feature branch.
 out16="$( cd "$W16" && git checkout -q -B feat-x "$(git rev-list --max-parents=0 main)" && git merge -q --no-commit --no-ff feat-bump >/dev/null 2>&1; bash "$SCRIPT" --bump-required 2>&1 )"; rc16=$?
-if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin carries a version bump above the base'; then ok "merge of a bumped feature branch into another feature branch passes (GH #2205, HIMMEL-8368)"; else bad "feature-into-feature merge refused a bumped branch (rc=$rc16): $out16"; fi
+if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin carries a version bump above the base'; then ok "merge of a bumped feature branch into another feature branch passes (GH #2205)"; else bad "feature-into-feature merge refused a bumped branch (rc=$rc16): $out16"; fi
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 rm -rf "$W16"
 

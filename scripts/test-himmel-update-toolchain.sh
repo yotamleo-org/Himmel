@@ -72,7 +72,7 @@ run_case() {
     fi
 }
 
-echo "report_toolchain: node vs .nvmrc at the pin's granularity (HIMMEL-3088)"
+echo "report_toolchain: node vs .nvmrc at the pin's granularity"
 run_case "patch pin 20.11.0 vs 20.1.0 → behind"    "20.11.0" "v20.1.0"  "behind pin"
 run_case "minor pin 20.11 vs 20.1.5 → behind"      "20.11"   "v20.1.5"  "behind pin"
 run_case "major pin 20 vs 22.3.0 → ahead"          "20"      "v22.3.0"  "ahead of pin" "behind pin"

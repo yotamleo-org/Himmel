@@ -301,7 +301,7 @@ assert_not_contains "hermes fail: never reached step [6/6]" "\\[6/6\\]" "$out"
 assert_contains "hermes fail: advisory step (update_codex) still ran after chain failure" "codex plugin re-sync" "$out"
 
 # ─── Test 6: updater creates the himmel XDG state home + bus at 0700 ────────
-echo "Test 6: apply run creates \$XDG_STATE_HOME/himmel and himmel/bus at 0700, idempotently (HIMMEL-5225)"
+echo "Test 6: apply run creates \$XDG_STATE_HOME/himmel and himmel/bus at 0700, idempotently"
 make_mock_clone
 claude_ok_6="$TMP/claude-ok-test6"; make_claude_stub "$claude_ok_6" 0
 fake_home_6="$TMP/fake-home-test6"; mkdir -p "$fake_home_6"
@@ -402,7 +402,7 @@ assert_contains "restart warning: channel pull of a plugin hooks .sh printed" "R
 assert_contains "restart warning: names the changed plugin hooks file" "(e.g. marketplace/plugins/himmel-ops/hooks/plugin-guard.sh)" "$out"
 
 # ─── Test 8: marketplace re-sync re-applies the codex SessionEnd bump ────────
-echo "Test 8: apply run re-raises the openai-codex SessionEnd timeout (HIMMEL-5965)"
+echo "Test 8: apply run re-raises the openai-codex SessionEnd timeout"
 make_mock_clone
 mkdir -p "$CHECKOUT_DIR/scripts/codex"
 cp "$(dirname "$SCRIPT")/codex/bump-codex-sessionend-timeout.sh" "$CHECKOUT_DIR/scripts/codex/"
