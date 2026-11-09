@@ -172,6 +172,8 @@ export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
   for (const file of jsonlFiles(dir)) {
     const calls = new Map();
     const firstTs = new Map();
+    const refused = [];
+    const inWindow = (key) => sinceMs === null || firstTs.get(key) >= sinceMs;
     for (const [line, offset] of linesWithOffsets(file)) {
       if (!line.trim()) continue;
       let r;
@@ -183,14 +185,17 @@ export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
         folded = foldUsageCall(calls, r, offset);
       } catch (e) {
         if (!(e instanceof UsageError)) throw e;
-        malformed += 1;
+        // a refused record still fixes where its call began
+        if (!firstTs.has(e.key)) firstTs.set(e.key, Date.parse(r.timestamp));
+        refused.push(e.key);
         continue;
       }
-      if (folded.first) firstTs.set(folded.key, Date.parse(r.timestamp));
+      if (!firstTs.has(folded.key)) firstTs.set(folded.key, Date.parse(r.timestamp));
       calls.set(folded.key, folded.next);
     }
+    malformed += refused.filter(inWindow).length;
     for (const [key, c] of calls) {
-      if (sinceMs !== null && !(firstTs.get(key) >= sinceMs)) continue;
+      if (!inWindow(key)) continue;
       if (isSyntheticZero(c.model, c.usage)) { syntheticZero += 1; continue; }
       const row = priceFor(priceAs ?? c.model, rows);
       if (!row) { unpriced[c.model] = (unpriced[c.model] ?? 0) + 1; continue; }

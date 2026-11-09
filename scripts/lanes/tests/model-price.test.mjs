@@ -331,6 +331,23 @@ test('--since is applied to the first occurrence: a late correction neither pull
   });
 });
 
+test('--since keys on the first record of a call even when that record is refused, and a refused record outside the window is not reported', () => {
+  const early = '2026-10-31T23:00:00.000Z';
+  const late = '2026-11-02T01:00:00.000Z';
+  withTranscripts({
+    // first record malformed and before the window, valid correction inside it: out
+    'a.jsonl': [mkRec({ id: 'a', usage: { output_tokens: -1 }, ts: early }), mkRec({ id: 'a', usage: U(50), ts: late })],
+    // malformed record before the window, never corrected: not counted as malformed
+    'b.jsonl': [mkRec({ id: 'b', usage: { output_tokens: -1 }, ts: early })],
+    // malformed record inside the window: reported
+    'c.jsonl': [mkRec({ id: 'c', usage: { output_tokens: -1 }, ts: late })],
+  }, (root) => {
+    const res = priceTranscripts(root, rows, { since: '2026-11-01' });
+    assert.equal(res.perModel[OPUS], undefined);
+    assert.equal(res.malformed, 1);
+  });
+});
+
 test('a missing or unparseable first timestamp is out of any --since window and counted without one', () => {
   const recs = [mkRec({ id: 'a', usage: U(5), ts: null }), mkRec({ id: 'b', usage: U(5), ts: 'garbage' })];
   withTranscripts({ 's.jsonl': recs }, (root) => {
