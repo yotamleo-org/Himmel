@@ -196,6 +196,8 @@ eq "sandbox: S refuses to start without its dedicated key" 3 "$(sb --arm S --hom
 sb --arm S --home "$W/home-S" "${base[@]}" "${ret[@]}" --key "$W/key" --print -- x > "$W/argv-S"
 sb --arm Q --home "$W/home-Q" "${base[@]}" "${ret[@]}" --models "$W/models" --print -- x > "$W/argv-Q"
 sb --arm V --home "$W/home-V" "${base[@]}" --print -- x > "$W/argv-V"
+mkdir -p "$W/fakebin"; printf '#!/bin/sh\necho usr/lib64\n' > "$W/fakebin/readlink"; chmod +x "$W/fakebin/readlink"
+eq "sandbox: /lib64 mirrors the host link, so the loader resolves on a usr/lib64 host" "usr/lib64" "$(PATH="$W/fakebin:$PATH" sb --arm V --home "$W/home-V" "${base[@]}" --print -- x | grep -B1 -x /lib64 | head -n1)"
 eq "P14: V's namespace has no /run/pilot mount at all" 0 "$(grep -c '^/run/pilot' "$W/argv-V")"
 eq "P14: S and Q mount the same retrieval paths except key versus weights" "/run/pilot/key|/run/pilot/models" "$(diff <(grep '^/run/pilot' "$W/argv-S") <(grep '^/run/pilot' "$W/argv-Q") | grep -E '^[<>]' | sed 's/^[<>] //' | sort | paste -sd'|')"
 if ! command -v bwrap >/dev/null 2>&1 || ! bwrap --ro-bind / / true 2>/dev/null; then
@@ -205,6 +207,7 @@ else
     extra=(); [ "$a" = S ] && extra=("${ret[@]}" --key "$W/key"); [ "$a" = Q ] && extra=("${ret[@]}" --models "$W/models")
     sb --arm "$a" --home "$W/home-$a" "${base[@]}" "${extra[@]}" -- /opt/claude/claude "$W/private/tasks.jsonl" "$W/station/cred" > "$W/ns-$a.json" 2>"$W/ns-$a.err"
   done
+  for a in V S Q; do [ -s "$W/ns-$a.json" ] || sed "s/^/ns-$a.err: /" "$W/ns-$a.err"; done
   NV=$(cat "$W/ns-V.json"); NS=$(cat "$W/ns-S.json"); NQ=$(cat "$W/ns-Q.json")
   eq "P15: every arm reads the two exports read-only from /work" '"yes" "yes" "no" "/work"' "$(f "$NV" work) $(f "$NV" luna) $(f "$NV" work_writable) $(f "$NV" cwd)"
   eq "P15: no arm can reach the private task file or a station path" '"no" "no" "no" "no" "no" "no"' "$(f "$NV" private) $(f "$NV" station) $(f "$NS" private) $(f "$NS" station) $(f "$NQ" private) $(f "$NQ" station)"

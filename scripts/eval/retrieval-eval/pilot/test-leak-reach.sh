@@ -88,7 +88,8 @@ if command -v bwrap >/dev/null 2>&1 && bwrap --ro-bind / / true 2>/dev/null; the
   mkdir -p "$W/home"; cp "$HERE/fixtures/run/stub-claude" "$W/stub-claude"; chmod +x "$W/stub-claude"
   REACH=(--reach-claude "$W/stub-claude" --reach-private "$W/run/private/tasks.jsonl" --reach-station "$W/station-cred" --reach-home "$W/home")
   printf 'x\n' > "$W/station-cred"
-  FAKE_OUTCOMES="$W/outcomes" bash "$FC" --out "$W/g3-b.json" "${FRUN[@]}" "${LIVE[@]}" "${REACH[@]}" > /dev/null 2>&1
+  FAKE_OUTCOMES="$W/outcomes" bash "$FC" --out "$W/g3-b.json" "${FRUN[@]}" "${LIVE[@]}" "${REACH[@]}" > "$W/g3-b.log" 2>&1
+  [ "$(j "$W/g3-b.json" g3)" = '"PASS"' ] || sed 's/^/g3-b.log: /' "$W/g3-b.log"
   eq "G3: every check passing is a G3 PASS" '"PASS" "PASS" "PASS"' "$(j "$W/g3-b.json" g3) $(j "$W/g3-b.json" checks.P12.status) $(j "$W/g3-b.json" checks.P15-live.status)"
   eq "G3: a fixture G3 PASS never forges paid readiness" 'false "blocked: no auth-readiness record"' "$(j "$W/g3-b.json" paid_ready) $(j "$W/g3-b.json" g0)"
   mkdir -p "$W/ex-bad/himmel"; cp -r "$W/ex/luna" "$W/ex-bad/luna"; cp -r "$W/run/private" "$W/ex-bad/himmel/private"

@@ -40,8 +40,10 @@ else
   [ "$arm" = S ] && { [ -n "$key" ] || refuse "S needs its dedicated --key"; [ -z "$models" ] || refuse "S gets no Q weights"; }
   [ "$arm" = Q ] && { [ -z "$key" ] || refuse "Q never gets the S key"; [ -n "$models" ] || refuse "Q needs --models"; }
 fi
+lib64=$(readlink /lib64 2>/dev/null) || lib64=usr/lib
+[ -n "$lib64" ] || lib64=usr/lib
 a=(bwrap --die-with-parent --new-session --unshare-pid --unshare-ipc --unshare-uts --clearenv
-   --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/bin /sbin --symlink usr/lib /lib --symlink usr/lib /lib64)
+   --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/bin /sbin --symlink usr/lib /lib --symlink "$lib64" /lib64)
 for e in /etc/resolv.conf /etc/hosts /etc/nsswitch.conf /etc/ssl /etc/ca-certificates /etc/passwd /etc/group /etc/localtime; do
   [ -e "$e" ] && a+=(--ro-bind "$e" "$e")
 done
