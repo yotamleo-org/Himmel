@@ -24,7 +24,7 @@ mkdir -p "$HOME" "$CLAUDE_DIR" "$HIMMEL_CONFIG_DIR" "$HOME/.himmel/state/jira-mi
 unset JIRA_PROJECT_KEY
 printf -- '---\nkey: "HIMMEL-7980"\nstatus: "To Do"\nstatusCategory: "To Do"\n---\n' > "$HOME/.himmel/state/jira-mirror/HIMMEL/HIMMEL-7980.md"
 printf '# checker\tclass\tkey\tedited-at\nHIMMEL-7980\tUNOWNED\tHIMMEL-7588\t2026-10-28T22:00:00Z\n' > "$DRIFT_SUMMARY_KNOWN"
-ckey=HIMMEL-7980  # the key the planted checker row names
+ckey=HIMMEL-7980
 
 export TZ=UTC # the doctor prints the file's local HH:MM and stamp() computes it with date, so both read one zone
 stamp() { # <seconds ago> -> "<touch -t stamp> <HH:MM>"

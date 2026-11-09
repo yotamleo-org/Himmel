@@ -34,7 +34,7 @@ TITLE_NODE="$(command -v node || true)"
 BIN="$TMP/bin"
 mkdir -p "$BIN"
 export REC="$TMP/calls.log"
-export UNGUARDED_LAUNCH_OK=1  # scratch fixtures; guard rows drop it
+export UNGUARDED_LAUNCH_OK=1
 for t in bun qmd node graphify; do
   # shellcheck disable=SC2016
   printf '#!/usr/bin/env bash\nprintf "%s %%s\\n" "$*" >>"$REC"\nexit 0\n' "$t" >"$BIN/$t"

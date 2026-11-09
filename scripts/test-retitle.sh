@@ -6,7 +6,7 @@
 # git tree (git rev-parse walks only parent dirs, so it genuinely fails there).
 # Never touches real session state — the script is read-only inference + print.
 #
-# Cases (spec §Success criteria + plan-critic case 14; <KEY> is the repo's ticket prefix):
+# Cases (spec §Success criteria + plan-critic case 14):
 #   1.  feat/himmel-432-rename-session-title → /rename <KEY>-432 rename-session-title
 #   2.  handover/<KEY>-141-pr-merge        → /rename <KEY>-141 pr-merge
 #   3.  feat/himmel-432-x + arg <KEY>-430  → /rename <KEY>-432/<KEY>-430 x
