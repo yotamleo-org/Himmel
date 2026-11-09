@@ -161,7 +161,7 @@
       "id": "p.write",
       "source": {
         "file": "marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh",
-        "line": 113,
+        "line": 70,
         "text": "echo \"REFUSED $type draft: missing or empty: $missing\""
       },
       "lane": "console",
@@ -2794,7 +2794,7 @@
       "id": "m.p.write.park",
       "source": {
         "file": "marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh",
-        "line": 130,
+        "line": 87,
         "text": "echo \"parked in intake queue: $dest\""
       },
       "from": "p.write",

@@ -26,6 +26,8 @@ export interface JiraPort {
   setFixVersion(key: string, op: 'add' | 'remove', version: string): Promise<void>;
   findComment(key: string, marker: string): Promise<string | null>;
   addComment(key: string, markdown: string): Promise<string>;
+  labels(key: string): Promise<string[]>;
+  removeLabels(key: string, labels: string[]): Promise<void>;
   // The live snapshot of one issue, for a claimed key the mirror lacks or holds without a sector.
   issue?(key: string): Promise<IssueSnap | null>;
 }
@@ -45,6 +47,16 @@ const OUTCOMES: Record<Verb, Record<string, Op['kind'][]>> = {
   REVERSION: { MOVE: ['move', 'remove'], KEEP: ['keep'] },
   DISCHARGE: { ACCEPT: ['discharge'], REJECT: ['none'] },
 };
+
+// Idempotent (a clean key makes no write); reads back and fails loud when a label survives.
+export async function clearProposedLabels(jira: Pick<JiraPort, 'labels' | 'removeLabels'>, key: string): Promise<string[]> {
+  const proposed = (await jira.labels(key)).filter((l) => /^proposed-/.test(l));
+  if (!proposed.length) return [];
+  await jira.removeLabels(key, proposed);
+  const left = (await jira.labels(key)).filter((l) => /^proposed-/.test(l));
+  if (left.length) throw new Error(`release: ${key} still carries ${left.join(', ')} after the removal; clear it by hand (jira edit ${key} --labels)`);
+  return proposed;
+}
 
 const f = (ctx: Ctx, name: string) => join(ctx.dir, name);
 const ts = (ctx: Ctx) => ctx.now().toISOString();
@@ -1051,6 +1063,8 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
           appendAdmission({ version, key, kind: 'rm-remove', reason: `${last.ground}: ${last.reason}`, by: lease.owner_session ?? 'rm', ruling: id });
         }
       }
+      // Every INTAKE ruling settles the filer's proposal, so its proposed-* label goes before the receipt; a failure leaves the ruling applied for a replay.
+      if (last.verb === 'INTAKE') await clearProposedLabels(ctx.jira, last.key);
       const marker = `[release-ruling ${id}]`;
       const authority = last.authority.kind === 'rm' ? 'rm' : `${last.authority.kind} ${last.authority.ref}`;
       const commentId = await ctx.jira.findComment(last.key, marker)

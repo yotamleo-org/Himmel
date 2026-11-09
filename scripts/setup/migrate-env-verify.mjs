@@ -28,20 +28,22 @@ const load = async (path, missing) => {
   return import(pathToFileURL(path).href);
 };
 
+// The Jira readers find their checkout from their own path, not the cwd, so the scratch .env is passed by path.
+const repoEnv = join(repo, '.env');
 const readers = [];
 try {
   const jira = join(root, 'scripts/jira/dist');
   const unbuilt = 'the Jira CLI is not built (scripts/jira/dist); build it, then run the migration again';
   const { behaviourKey, handoverRoot } = await load(join(jira, 'handover-root.js'), unbuilt);
-  readers.push(['jira config reader', (env) => keys.map((k) => [k, digest(() => behaviourKey(k, env))])]);
+  readers.push(['jira config reader', (env) => keys.map((k) => [k, digest(() => behaviourKey(k, env, repoEnv))])]);
   if (keys.includes('HANDOVER_DIR')) {
-    readers.push(['jira handover root', (env) => [['HANDOVER_DIR', digest(() => handoverRoot(env))]]]);
+    readers.push(['jira handover root', (env) => [['HANDOVER_DIR', digest(() => handoverRoot(env, repoEnv))]]]);
   }
   // The release root is the handover root plus USER_SLUG and throws without
   // the slug, so it checks USER_SLUG; HANDOVER_DIR is the handover root's.
   if (keys.includes('USER_SLUG')) {
     const { releaseRoot } = await load(join(jira, 'release/paths.js'), unbuilt);
-    readers.push(['jira release state', (env) => [['USER_SLUG', digest(() => releaseRoot(env))]]]);
+    readers.push(['jira release state', (env) => [['USER_SLUG', digest(() => releaseRoot(env, repoEnv))]]]);
   }
   const { buildCtx } = await load(join(root, 'scripts/lanes/resolve.mjs'), 'scripts/lanes/resolve.mjs is missing');
   readers.push(['lanes resolve', (env) => {

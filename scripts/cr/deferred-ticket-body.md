@@ -13,5 +13,8 @@ The review cap stops after three rounds; the leftovers need an owner so they are
 ## DoD
 - Every deferred finding is fixed or closed with a reason, and this ticket is moved to Done.
 
+## Proof
+The PR that fixes each finding names it, or the close comment gives the reason.
+
 ## Agent detail
 Filed from `scripts/cr/review-round.sh` when `/pr-check` hits the round cap with only suggestion/nit rows. Add the PR number and the finding ids in a comment, then resume with `CR_DEFER_TO=<this ticket>`.

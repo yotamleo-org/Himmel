@@ -2489,7 +2489,7 @@ function ticket(p){
  d.addEventListener("toggle",function(){if(d.open&&!d.dataset.f){d.dataset.f="1";d.appendChild(more(p))}});return d}
 function more(p){
  var m=el("div","more"),u=el("ul");if(p[14])m.appendChild(el("p",null,p[14]));
- if(p[11]!=null)u.appendChild(el("li",null,"Ready to build: "+M.READY[p[11]]+" ("+p[11]+" of 4)."));
+ u.appendChild(el("li",null,p[11]!=null?"Declared readiness (source stage2, not verified by an audit): "+M.READY[p[11]]+" ("+p[11]+" of 4).":"Declared readiness: unknown (no stage-2 plan row for this ticket)."));
  if(p[10])u.appendChild(el("li",null,"Size "+p[10]+(p[6]?", about "+p[6]+" S-equivalents":"")+(p[15]?"; uses "+p[15].toFixed(3)+" of "+V[p[3]]+"'s budget":"")+"."));
  if(p[13])u.appendChild(el("li",null,"Planning slice only ("+p[13]+"): not ready enough to build, so "+V[p[3]]+" schedules the plan, not the fix."));
  u.appendChild(el("li",null,"Sector: "+T[p[5]]+" · kind: "+M.KIND[p[4]]+" · "+V[p[3]]+"."));
@@ -2703,7 +2703,7 @@ $("prov").textContent="Versions and statuses are read from Jira (fixVersion and 
   ["Worker chip",["N123 · LIVE: the worker's label and its last marker (or its PR number while it is live)."]],
   ["Size",["The plan's T-shirt estimate, low–high. In S-equivalents: "+D.EQ+"."]],
   ["Impact",[dots(4)," how much it hurts today, 1 cosmetic to 5 blocks a release. A secondary tag: the sentence is the impact."]],
-  ["Ready to build",["0 no plan yet · 1 problem stated · 2 fix named, not yet checked · 3 plan audited · 4 spec ready. Below 3 a version schedules only a planning slice."]],
+  ["Ready to build",["A declared score from the roadmap plan, not verified evidence. 0 no plan yet · 1 problem stated · 2 fix named, not yet checked · 3 plan audited · 4 spec ready. Below 3 a version schedules only a planning slice."]],
   ["Budget",[capBar({used:.45,cap:.6,kinds:[]})," used of the version's cap; the tick is the cap, orange is over it."]],
   ["No cap",[capBar({deferred:true})," ","no cap — deferred bucket"]],
   ["Hide done work",["Hides Done and In Public from the version board and its lists. The counts in the sentence and the table still include them. Closed, wont do and wont fix tickets, and Done tickets resolved as anything but Done or Fixed, are in no count: each version notes how many closed without shipping."]]

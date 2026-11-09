@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { behaviourKey, handoverRoot } from '../handover-root.js';
 
 // <handover root>/<user>/<repo>/release/<R>/ (design §5.1). The launcher
@@ -8,17 +9,18 @@ import { behaviourKey, handoverRoot } from '../handover-root.js';
 // whole root for tests and for a session outside a launcher.
 
 function primaryRepoName(): string {
-  const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const here = dirname(fileURLToPath(import.meta.url));
+  const common = execFileSync('git', ['-C', here, 'rev-parse','--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   return basename(dirname(common));
 }
 
-export function releaseRoot(env: Record<string, string | undefined> = process.env): string {
+export function releaseRoot(env: Record<string, string | undefined> = process.env, dotenvPath?: string): string {
   if (env.HIMMEL_RELEASE_STATE_DIR) return env.HIMMEL_RELEASE_STATE_DIR;
-  const userSlug = behaviourKey('USER_SLUG', env);
+  const userSlug = behaviourKey('USER_SLUG', env, dotenvPath);
   if (!userSlug) {
     throw new Error('release: set USER_SLUG (as the launcher does) or HIMMEL_RELEASE_STATE_DIR');
   }
-  return join(handoverRoot(env), userSlug, primaryRepoName(), 'release');
+  return join(handoverRoot(env, dotenvPath), userSlug, primaryRepoName(), 'release');
 }
 
 export const releaseDir = (release: string, env: Record<string, string | undefined> = process.env): string =>

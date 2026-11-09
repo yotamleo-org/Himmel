@@ -20,6 +20,7 @@ Positioning → `README.md`; reference detail → `docs/internals/`.
 Run `node <primary-checkout>/scripts/jira/dist/index.js <op>` by ABSOLUTE path, never
 relative from a worktree (`dist/` is untracked there); `JIRA_PROJECT_KEY` is required.
 Ops: `docs/internals/jira-plugin.md`.
+Ticket bodies carry the seven sections in that doc's "Ticket shape".
 
 ### Claude invocation billing
 Subscription-authenticated `claude -p`/`--print`/`--bg` draws the SAME 5-hour /

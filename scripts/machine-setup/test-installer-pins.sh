@@ -35,6 +35,7 @@ FIXTURE_NVM_INSTALL='045932fe05f0d4247c946f2ec0ec4026dbfd8ce88a5f67ea28d8ea83322
 FIXTURE_NVM_TAG_COMMIT='4e8758a801eea9479b32a904f31093e410ddaba4'
 FIXTURE_CERTIFI_WHEEL='e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1'
 FIXTURE_CERTIFI_SDIST='a9895e6e2758b371e0545e321a3a8fd1fcfd9829ada8824a936dfb16aaaf36cd'
+FIXTURE_TLA2TOOLS='936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88  tla2tools.jar'
 
 echo "installers: no unpinned curl-pipe, no moving alias"
 no_match() { grep -Eq -- "$1" "$2"; [ $? -eq 1 ]; }
@@ -67,6 +68,11 @@ if [ -f "$pins" ]; then
   check "nvm install.sh sha256" test "${NVM_INSTALL_SHA256:-}  install.sh" = "$FIXTURE_NVM_INSTALL"
   check "nvm tag commit"       test "${NVM_COMMIT:-}" = "$FIXTURE_NVM_TAG_COMMIT"
   check "nvm tag v0.41.0"      test "${NVM_TAG:-}" = "v0.41.0"
+  check "tla2tools sha256 (1.7.4)" test "${TLA2TOOLS_SHA256:-}  tla2tools.jar" = "$FIXTURE_TLA2TOOLS"
+  check "tla2tools version 1.7.4"  test "${TLA2TOOLS_VERSION:-}" = "1.7.4"
+  check "run.ts TLC_SHA256 equals the tla2tools pin" grep -qF "const TLC_SHA256 = \"$TLA2TOOLS_SHA256\";" "$repo_root/marketplace/plugins/pstack/skills/statechart/scripts/run.ts"
+  check "model-check-report.sh sha equals the tla2tools pin" grep -qx "sha=$TLA2TOOLS_SHA256" "$repo_root/scripts/handover/chief-kit/model-check-report.sh"
+  check "statechart probe pins the tla2tools sha" grep -qF "STATECHART_TLC_SHA256 = '$TLA2TOOLS_SHA256'" "$repo_root/scripts/himmelctl/lib/probes.js"
   check "pinned node major == .nvmrc major" test "${NODE_VERSION%%.*}" = "$(tr -d '[:space:]v' < "$repo_root/.nvmrc" | cut -d. -f1)"
   check "bun sha table covers .bun-version" test -n "$(bun_sha256 "$(tr -d '[:space:]' < "$repo_root/.bun-version")" 2>/dev/null)"
   # shellcheck disable=SC2016 # the inner shell expands $1

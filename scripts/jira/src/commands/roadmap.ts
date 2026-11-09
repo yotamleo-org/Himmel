@@ -2,6 +2,8 @@ import type { Command } from 'commander';
 import { writeFileSync } from 'node:fs';
 import { agileRequest, projectKey, request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
+import { specCheck } from '../release/engine.js';
+import { defaultRoot } from './mirror.js';
 import { resolveBoard } from './sprint.js';
 import { checkDate } from './versions.js';
 
@@ -201,6 +203,28 @@ export function buildRoadmapFields(ids: RoadmapIds, o: RoadmapSetOptions): Recor
 
 type Fields = Record<string, unknown>;
 
+export type EvidenceState = 'declared' | 'linked' | 'verified' | 'stale' | 'unknown';
+export type ReadinessSource = 'jira' | 'stage2';
+export interface SpecVerdict { lines: string[]; ok: boolean; warnings: string[] }
+export type SpecVerifier = (key: string) => SpecVerdict;
+
+/** spec: undefined = no release context (never verified), null = the records could not be read. */
+export function readinessEvidence(
+  score: number | null,
+  refs: { auditEvidence?: unknown; auditDate?: unknown },
+  spec?: SpecVerdict | null,
+): EvidenceState {
+  if (score === null || spec === null) return 'unknown';
+  const line = spec?.lines[0] ?? '';
+  if (line.startsWith('SPEC-STALE')) return 'stale';
+  if (line.startsWith('SPEC ok ') && spec!.ok && spec!.warnings.length === 0) return 'verified';
+  return refs.auditEvidence || refs.auditDate ? 'linked' : 'declared';
+}
+
+export function readinessLabel(score: number | null, source: ReadinessSource, evidence: EvidenceState): string {
+  return `${score === null ? 'readiness unknown' : `declared readiness ${score}`} (source ${source}); evidence ${evidence}`;
+}
+
 const readRoadmap = async (req: Req, key: string, ids: RoadmapIds) =>
   (await req<{ fields: Fields }>('GET', `/issue/${key}?fields=${Object.values(ids).join(',')}`)).fields;
 
@@ -212,7 +236,11 @@ export async function roadmapSet(key: string, o: RoadmapSetOptions, req: Req = r
   await req('PUT', `/issue/${key}`, { fields });
   const names = Object.keys(fields).map((id) => (Object.keys(ids) as RoadmapKey[]).find((k) => ids[k] === id));
   const head = `${key} roadmap set (${names.join(', ')})`;
-  if (o.noRoi) return head;
+  const touchesReadiness = o.readiness !== undefined || o.auditDate !== undefined || o.auditEvidence !== undefined;
+  if (o.noRoi) {
+    const label = o.readiness !== undefined ? `declared readiness ${Number(o.readiness)}` : 'readiness unchanged';
+    return touchesReadiness ? `${head}; ${label} (source jira), evidence not rechecked` : head;
+  }
   // ROI is recomputed from what Jira now stores, so a partial set still scores every input.
   const cur = await readRoadmap(req, key, ids);
   const roi = computeRoi({
@@ -222,7 +250,9 @@ export async function roadmapSet(key: string, o: RoadmapSetOptions, req: Req = r
     effort: numOrNull(cur[ids.effort]),
   });
   if (roi !== numOrNull(cur[ids.roi])) await req('PUT', `/issue/${key}`, { fields: { [ids.roi]: roi } });
-  return `${head}; ROI ${roi ?? 'cleared (not placeable)'}`;
+  const score = numOrNull(cur[ids.readiness]);
+  const declared = readinessLabel(score, 'jira', readinessEvidence(score, { auditEvidence: cur[ids.auditEvidence], auditDate: cur[ids.auditDate] }));
+  return `${head}; ROI ${roi ?? 'cleared (not placeable)'}${touchesReadiness ? `; ${declared}` : ''}`;
 }
 
 function show(v: unknown): string {
@@ -232,13 +262,25 @@ function show(v: unknown): string {
   return String(v);
 }
 
-export async function roadmapGet(key: string, req: Req = request): Promise<string> {
+export async function roadmapGet(key: string, req: Req = request, verify?: SpecVerifier): Promise<string> {
   const ids = await resolveRoadmapFields(req);
   const cur = await readRoadmap(req, key, ids);
+  const score = numOrNull(cur[ids.readiness]);
+  let spec: SpecVerdict | null | undefined;
+  if (verify) {
+    try {
+      spec = verify(key);
+    } catch {
+      spec = null;
+    }
+  }
+  const evidence = readinessEvidence(score, { auditEvidence: cur[ids.auditEvidence], auditDate: cur[ids.auditDate] }, spec);
   return (Object.keys(ROADMAP_FIELD_NAMES) as RoadmapKey[])
-    .map((k) => {
-      if (k === 'effort') return `Effort: ${effortLabel(numOrNull(cur[ids.effort]))}`;
-      return `${ROADMAP_FIELD_NAMES[k]}: ${show(cur[ids[k]])}`;
+    .flatMap((k) => {
+      if (k === 'effort') return [`Effort: ${effortLabel(numOrNull(cur[ids.effort]))}`];
+      const line = `${ROADMAP_FIELD_NAMES[k]}: ${show(cur[ids[k]])}`;
+      if (k !== 'readiness') return [line];
+      return [line, `Readiness evidence: ${readinessLabel(score, 'jira', evidence)}`, ...(spec?.warnings ?? []).map((w) => `Readiness warning: ${w}`)];
     })
     .join('\n');
 }
@@ -403,7 +445,8 @@ export function registerRoadmap(program: Command): void {
     .command('get <key>')
     .description('Print the roadmap fields of an issue')
     .action(async (key: string) => {
-      console.log(await roadmapGet(key));
+      const mirror = process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null;
+      console.log(await roadmapGet(key, request, (k) => specCheck(process.env, [k], mirror)));
     });
 
   roadmap
