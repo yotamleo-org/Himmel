@@ -62,7 +62,8 @@ GH_STUB_STATE=OPEN run "other tool ignored" "$TMP/p-other.json" 0 -
 if [ ! -s "$GH_STUB_LOG" ]; then echo "ok   other tool never calls gh"; else echo "FAIL other tool called gh"; FAIL=$((FAIL+1)); fi
 
 T3CODE_UNWATCH_OK=1 GH_STUB_STATE=OPEN run "override allows OPEN" "$TMP/p-url.json" 0 "T3CODE_UNWATCH_OK"
-if [ -s "$HOME/.himmel/t3code-unwatch-override.log" ]; then echo "ok   override logged"; else echo "FAIL override not logged"; FAIL=$((FAIL+1)); fi
+T3CODE_UNWATCH_OK=1 GH_STUB_STATE=OPEN run "override allow is printed with state and PR" "$TMP/p-url.json" 0 "state=OPEN"
+if [ ! -e "$HOME/.himmel" ]; then echo "ok   override writes no file ledger"; else echo "FAIL override wrote under HOME: $(ls -A "$HOME/.himmel")"; FAIL=$((FAIL+1)); fi
 
 GH_STUB_MODE=error run "unreadable PR fails open with warning" "$TMP/p-url.json" 0 "WARNING"
 GH_STUB_MODE=garbage run "garbage gh output fails open with warning" "$TMP/p-url.json" 0 "WARNING"

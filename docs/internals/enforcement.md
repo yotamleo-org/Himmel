@@ -3053,7 +3053,7 @@ silently. Fails OPEN with a loud stderr `WARNING` when the PR cannot be resolved
 or read (no `jq`, bad JSON, `gh` error or unparseable output): a workflow nudge,
 never a trap the agent cannot leave. Override for an operator-directed stop:
 `T3CODE_UNWATCH_OK=1` (launching shell, session-sticky); the allow is printed to
-stderr and appended to `~/.himmel/t3code-unwatch-override.log`. Wired in
+stderr only (no file ledger). Wired in
 `EXPECTED_SCRIPT_ORDER` (`wire-hook-bash.mjs`) and the `.claude/settings.json`
 PreToolUse stanza for matcher `mcp__t3-code__unwatch_pull_request`. Spec: `scripts/hooks/test-block-t3code-unwatch-open-pr.sh`.
 

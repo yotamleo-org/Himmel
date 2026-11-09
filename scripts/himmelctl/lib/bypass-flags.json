@@ -413,7 +413,7 @@
       "hooks": [
         "scripts/hooks/block-t3code-unwatch-open-pr.sh"
       ],
-      "bypasses": "Lets the agent call the T3 Code unwatch_pull_request tool on a PR that is still OPEN (an operator-directed stop; the allow is logged).",
+      "bypasses": "Lets the agent call the T3 Code unwatch_pull_request tool on a PR that is still OPEN (an operator-directed stop; the allow is printed to stderr).",
       "remedy": "T3CODE_UNWATCH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {

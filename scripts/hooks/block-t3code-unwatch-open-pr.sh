@@ -3,7 +3,7 @@
 # Fails OPEN with a stderr WARNING when the PR cannot be resolved or read: a
 # nudge must never trap the agent in a watch it cannot leave.
 # Override: T3CODE_UNWATCH_OK=1 in the launching shell (a per-call prefix does
-# not reach the hook); the allow is logged to ~/.himmel/t3code-unwatch-override.log.
+# not reach the hook); the allow is printed to stderr.
 set -uo pipefail
 
 warn() { echo "block-t3code-unwatch-open-pr: WARNING: $* - allowing the unwatch (fail open)" >&2; }
@@ -62,7 +62,6 @@ esac
 if [ "${T3CODE_UNWATCH_OK:-0}" = "1" ]; then
     msg="$label unwatched while state=OPEN mergeStateStatus=$merge_state reviewDecision=${review:-none} (T3CODE_UNWATCH_OK=1)"
     echo "block-t3code-unwatch-open-pr: override: $msg" >&2
-    { mkdir -p "$HOME/.himmel" && echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $msg" >> "$HOME/.himmel/t3code-unwatch-override.log"; } 2>/dev/null || true  # swallow-ok: the override log is best effort, the stderr line already recorded it
     exit 0
 fi
 
@@ -71,6 +70,6 @@ BLOCKED: unwatch_pull_request refused - $label is still open (state=OPEN).
   state=OPEN mergeStateStatus=$merge_state reviewDecision=${review:-none}
 "All required checks passed" is not "merged": nothing watches the PR once it is unwatched.
 Keep the watch until the PR is MERGED or CLOSED.
-Operator-directed stop only: relaunch the agent from a shell with T3CODE_UNWATCH_OK=1 (the allow is logged).
+Operator-directed stop only: relaunch the agent from a shell with T3CODE_UNWATCH_OK=1 (the allow is printed to stderr).
 EOF
 exit 2
