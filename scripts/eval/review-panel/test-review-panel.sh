@@ -635,7 +635,7 @@ GSCORE="$SC/scripts/eval/review-panel/score.py"
 # sid <score.py> [field] - one field (default scorer_sha256) of that scorer's `scorer-identity --json`.
 sid() { python3 "$1" scorer-identity --json 2>/dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin).get(sys.argv[1]); print("null" if v is None else v)' "${2:-scorer_sha256}" 2>/dev/null; }
 SID="$(sid "$GSCORE")"
-eq "temporary_scorer_fixture: the committed copy has a clean 64-hex identity" "$(printf '%s' "$SID" | grep -cE '^[0-9a-f]{64}$')" "1"
+eq "temporary_scorer_fixture: the committed copy has a clean 64-hex identity" "$([[ "$SID" =~ ^[0-9a-f]{64}$ ]] && echo 1 || echo 0)" "1"
 eq "clean_fixture_uses_worktree_bytes: the copy runs this working tree's score.py" "$(cmp -s "$SCORE" "$GSCORE" && echo same)" "same"
 
 # --- the merge gate: cbs.txt, cbs-hash, export-row, verify-row, gate -------------------------

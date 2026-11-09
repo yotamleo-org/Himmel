@@ -35,7 +35,7 @@ SUT="${CHECK_CRITIC_EVAL:-$SC/scripts/ci/check-critic-eval.sh}"
 # sid <score.py>: that scorer's running identity, or null.
 sid() { python3 "$1" scorer-identity --json 2>/dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin).get("scorer_sha256"); print("null" if v is None else v)' 2>/dev/null; }
 SID="$(sid "$(dirname "$SUT")/../eval/review-panel/score.py")"
-printf '%s' "$SID" | grep -qE '^[0-9a-f]{64}$' && pass "the committed scorer copy has a clean identity" || fail "the committed scorer copy has a clean identity (got '$SID')"
+[[ "$SID" =~ ^[0-9a-f]{64}$ ]] && pass "the committed scorer copy has a clean identity" || fail "the committed scorer copy has a clean identity (got '$SID')"
 
 # The real inputs of the gate: everything the CBS can expand to, the eval's own tree and the roster.
 SRC_PATHS="scripts/cr scripts/lib/critics-config.sh scripts/hermes/invoke.sh scripts/eval/review-panel/cbs.txt scripts/eval/review-panel/gate-bypass.tsv scripts/eval/review-panel/fixtures scripts/eval/review-panel/key"
