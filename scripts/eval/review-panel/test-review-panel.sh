@@ -539,6 +539,8 @@ eq "run: --allow-claude-api lets the sweep run" "$rc" "0"
 eq "run: --allow-claude-api hands the panel codex and claude" "$(slugs "$TMP/run-opt/critics.run.json")" "codex,claude"
 eq "run: one ledger row" "$(grep -c . "$TMP/run-ledger.jsonl" 2>/dev/null)" "1"
 eq "run: --model reaches the row" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["model"])' "$TMP/run-ledger.jsonl")" "$CODEX_MODEL"
+eq "provenance: a sweep through another panel than the tree's is not decision-eligible" \
+  "$(python3 -c 'import json,sys; m=json.loads(open(sys.argv[1]).readline())["meta"]; print(m["decision_eligible"], "sweep-unclean" in m["ineligibility_reasons"])' "$TMP/run-ledger.jsonl" 2>&1)" "False True"
 eq "run: an empty review scores recall 0" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["metrics"]["codex.recall"])' "$TMP/run-ledger.jsonl")" "0.0"
 eq "run: a sweep through a stub panel is stamped unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run1/swept.json" 2>&1)" "False"
 : > "$TMP/stublog/tiers"
@@ -644,6 +646,13 @@ eq "run: a sweep of a clean tree through its own panel is stamped clean" "$(pyth
 python3 "$RR/scripts/eval/review-panel/score.py" export-row "$TMP/run-rr1" --repo "$RR" --results "$TMP/results-rr.jsonl" >/dev/null 2>&1; rc=$?
 eq "provenance: a clean complete recorded sweep by a clean scorer is decision-eligible" \
   "$rc:$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["provenance_status"], r["decision_eligible"], r["ineligibility_reasons"], r["code_under_test_sha"] == sys.argv[2])' "$TMP/results-rr.jsonl" "$(rr rev-parse HEAD)" 2>&1)" "0:recorded True [] True"
+RRA="$TMP/run-rr1-edited"; cp -r "$TMP/run-rr1" "$RRA"; printf 'critic-panel.sh: line 3: PANEL_LEDGER: unbound variable\n' >> "$RRA/case-01.err"
+python3 "$RR/scripts/eval/review-panel/score.py" export-row "$RRA" --repo "$RR" --results "$TMP/results-rra.jsonl" >/dev/null 2>&1
+eq "provenance: an error line added to a case after the manifest was completed still makes the row ineligible" \
+  "$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["decision_eligible"], "execution-anomaly" in r["ineligibility_reasons"])' "$TMP/results-rra.jsonl" 2>&1)" "False True"
+RRM="$TMP/run-rr1-badmanifest"; cp -r "$TMP/run-rr1" "$RRM"; printf '{"v": 1, "protocol": "x"}\n' > "$RRM/run-manifest.json"
+python3 "$RR/scripts/eval/review-panel/score.py" score --outputs "$RRM" --critics codex --no-ledger --json "$TMP/rrm.json" >"$TMP/rrm.txt" 2>&1; rc=$?
+eq "provenance: a manifest with a malformed nested field is unreadable, not a crash" "$rc:$(jget "$TMP/rrm.json" ineligibility_reasons | grep -c run-manifest-unreadable)" "0:1"
 STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger --critics codex >/dev/null 2>&1
 eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 

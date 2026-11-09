@@ -787,12 +787,18 @@ def read_manifest(outputs):
         raise ValueError("%s is unreadable" % path)
     if not isinstance(m, dict) or m.get("v") != 1:
         raise ValueError("%s is not a v1 run manifest" % path)
+    for k, kind in (("protocol", dict), ("provenance", dict), ("cases", dict), ("inputs", dict), ("critics", list)):
+        if not isinstance(m.get(k, kind()), kind):
+            raise ValueError("%s has a malformed %s" % (path, k))
+    if not all(isinstance(c, dict) for c in m.get("critics", [])):
+        raise ValueError("%s has a malformed critics entry" % path)
     return m
 
 
 def provenance_reasons(outputs):
     """Why the execution behind <outputs> is not decision-grade: an empty list when its manifest is a recorded,
-    finished execution with a recorded roster and no anomaly."""
+    finished execution of a clean, rechecked sweep through the tree's own panel, with a recorded roster and no
+    anomaly in the case files as they are now."""
     try:
         m = read_manifest(outputs)
     except ValueError:
@@ -800,15 +806,32 @@ def provenance_reasons(outputs):
     if m is None:
         return ["no-run-manifest"]
     reasons = []
+    try:
+        with open(os.path.join(outputs, STAMP), encoding="utf-8") as fh:
+            swept = json.load(fh)
+    except (OSError, ValueError):
+        swept = None
+    if not isinstance(swept, dict) or swept.get("clean") is not True or swept.get("rechecked") is not True \
+            or m["protocol"].get("panel") != "tree":
+        reasons.append("sweep-unclean")
     if (m.get("provenance") or {}).get("status") != "recorded":
         reasons.append("provenance-reconstructed")
     if not m.get("finished_at"):
         reasons.append("execution-incomplete")
     if not m.get("effective_roster") or run_roster_rows(outputs) is None:
         reasons.append("roster-reconstructed")
-    if any((c or {}).get("anomalies") for c in (m.get("cases") or {}).values()):
+    if any(case_anomalies(outputs, cid) for cid in m.get("inputs", {})):
         reasons.append("execution-anomaly")
     return reasons
+
+
+def case_anomalies(outputs, cid):
+    """stderr:<line> references of error lines in a case whose panel exited 0 (or left no rc)."""
+    rc = _read(os.path.join(outputs, cid + ".rc")).strip()
+    if rc not in ("0", ""):
+        return []
+    return ["stderr:%d" % n for n, ln in enumerate(_read(os.path.join(outputs, cid + ".err")).splitlines(), 1)
+            if ANOMALY.search(ln)]
 
 
 def _file_sha(path):
@@ -874,8 +897,7 @@ def complete_manifest(outputs, manifest):
         for s, mdl in models.items():
             seen.setdefault(s, set()).add(mdl)
         rc = _read(os.path.join(outputs, cid + ".rc")).strip()
-        anomalies = ["stderr:%d" % n for n, ln in enumerate(err.splitlines(), 1) if rc in ("0", "") and ANOMALY.search(ln)]
-        cases[cid] = {"responding_models": models, "anomalies": anomalies, "rc": rc or None}
+        cases[cid] = {"responding_models": models, "anomalies": case_anomalies(outputs, cid), "rc": rc or None}
     for c in manifest.get("critics", []):
         c["responding_models"] = sorted(seen.get(c["slug"], ()))
     return dict(manifest, finished_at=_now(), cases=cases)
