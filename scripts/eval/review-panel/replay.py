@@ -43,8 +43,9 @@ def _digest(obj):
     return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
 
 
-def read_jsonl(path):
-    """(rows, bad line numbers): the dict lines of path, file order. Read only."""
+def read_jsonl(path, accept=lambda r: True):
+    """(rows, bad line numbers): the dict lines of path that `accept`, file order; every other non-blank line is
+    named in bad. Read only."""
     rows, bad = [], []
     with open(path, encoding="utf-8") as fh:
         for n, ln in enumerate(fh, 1):
@@ -54,7 +55,7 @@ def read_jsonl(path):
                 r = json.loads(ln)
             except ValueError:
                 r = None
-            if isinstance(r, dict):
+            if isinstance(r, dict) and accept(r):
                 rows.append(r)
             else:
                 bad.append(n)
@@ -248,8 +249,9 @@ def replay_row(src, kind, repo, root, out, scoring, partner, digests):
 def replay(results, ledger, root, out, repo=None):
     """Write the candidate rows and verification.json into the new directory out; returns verification."""
     repo = repo or score.toplevel()
-    res_rows, res_bad = read_jsonl(results)
-    led_rows, led_bad = read_jsonl(ledger)
+    # a row whose run_id is not a string names no bundle: it is an unreadable row, never a crash
+    res_rows, res_bad = read_jsonl(results, lambda r: isinstance(r.get("run_id"), str))
+    led_rows, led_bad = read_jsonl(ledger, lambda r: r.get("eval") != "review-panel" or isinstance(r.get("run_id"), str))
     led_panel = [r for r in led_rows if r.get("eval") == "review-panel"]
     ident = score.running_scorer_identity()
     with open(os.path.join(repo, score.KEY_REL), "rb") as fh:
@@ -259,7 +261,7 @@ def replay(results, ledger, root, out, repo=None):
     digests = {}
     for r in res_rows:
         partner_of.setdefault(r.get("run_id"), r)
-        digests.setdefault(r.get("run_id"), set()).add(r.get("outputs_sha256"))
+        digests.setdefault(r.get("run_id"), set()).add(eval_feedback._hashable(r.get("outputs_sha256")))
     items, cand_results, cand_ledger = [], [], []
 
     def one(r, kind, partner):

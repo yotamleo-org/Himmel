@@ -187,8 +187,9 @@ def main(argv=None):
     if args.eval == "review-panel":
         # one head per execution: a rescore is not a candidate, a baseline or a repeat (select_review_runs)
         chosen, diag = eval_feedback.select_review_runs([r for r, _ in mine])
-        keep = {id(r) for r in chosen}
-        mine = [(r, nr) for r, nr in mine if id(r) in keep]
+        # the selection's execution order, not the file's: a rescore appended last is not the newest run
+        place = {id(r): i for i, r in enumerate(chosen)}
+        mine = sorted((p for p in mine if id(p[0]) in place), key=lambda p: place[id(p[0])])
         if diag:
             why = {}
             for d in diag:

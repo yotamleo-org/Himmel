@@ -216,10 +216,14 @@ def select_review_runs(rows, scorer=None, eligible_only=False):
             parent[i] = parent[parent[i]]
             i = parent[i]
         return i
+    def sid(v):
+        return v if isinstance(v, str) and v else None  # a non-string id (a list, a number) names nothing
+    # a row with no usable run_id is its own run: it never repeats another row's
+    rid = lambda i: sid(rows[i].get("run_id")) or "\0row%d" % i  # noqa: E731
     seen = {}
     for i, r in enumerate(rows):
-        for key in (("x", row_field(r, "execution_id")), ("b", r.get("outputs_sha256")), ("r", r.get("run_id")),
-                    ("r", row_field(r, "supersedes_run_id"))):
+        for key in (("x", sid(row_field(r, "execution_id"))), ("b", sid(r.get("outputs_sha256"))),
+                    ("r", sid(r.get("run_id"))), ("r", sid(row_field(r, "supersedes_run_id")))):
             if key[1] is None:
                 continue
             j = seen.setdefault(key, i)
@@ -231,20 +235,20 @@ def select_review_runs(rows, scorer=None, eligible_only=False):
     for members in groups.values():
         first = {}
         for i in members:
-            first.setdefault(rows[i].get("run_id"), i)
-        dup = [i for i in members if first[rows[i].get("run_id")] != i]
+            first.setdefault(rid(i), i)
+        dup = [i for i in members if first[rid(i)] != i]
         uniq = [i for i in members if i not in dup]
-        by_id = {rows[i].get("run_id"): i for i in uniq}
-        links = {i: row_field(rows[i], "supersedes_run_id") for i in uniq}
+        by_id = {rid(i): i for i in uniq}
+        links = {i: sid(row_field(rows[i], "supersedes_run_id")) for i in uniq}
         linked = [i for i in uniq if links[i] is not None]
-        who = lambda i: rows[i].get("run_id")  # noqa: E731
+        who = rid
         if len(uniq) == 1 or not linked:
             # unlinked repeats of one execution: the first row counts, but a row of the running scorer comes
             # before an older scorer's (a rescore that names no predecessor still replaces it)
             mine = [i for i in members if scorer is not None and known_scorer(rows[i]) == scorer]
             head = (mine or uniq)[0]
-            diag.extend({"run_id": who(i), "reason": "repeat-of-execution", "by": who(head)}
-                        for i in members if i != head)
+            diag.extend({"run_id": rows[i].get("run_id"), "reason": "repeat-of-execution",
+                         "by": rows[head].get("run_id")} for i in members if i != head)
             heads.append((min(members), head))
             continue
         bad = [i for i in linked if links[i] not in by_id or links[i] == who(i)]
@@ -271,10 +275,11 @@ def select_review_runs(rows, scorer=None, eligible_only=False):
             if why is None and len(walk) != len(uniq):
                 why = "several-heads-ambiguous"
         if why:
-            diag.extend({"run_id": who(i), "reason": why} for i in members)
+            diag.extend({"run_id": rows[i].get("run_id"), "reason": why} for i in members)
             continue
         head = tops[0]
-        diag.extend({"run_id": who(i), "reason": "superseded", "by": who(head)} for i in members if i != head)
+        diag.extend({"run_id": rows[i].get("run_id"), "reason": "superseded", "by": rows[head].get("run_id")}
+                    for i in members if i != head)
         heads.append((min(members), head))
     out = []
     # execution order: a head sits where its execution's first row sits, so a rescore appended later is never
@@ -316,6 +321,11 @@ def review_series(rows, **kw):
     return [r for r in rows if r.get("eval") != "review-panel" or id(r) in keep], diag
 
 
+def _hashable(v):
+    """v as a set member: a list or object from a hand-edited row becomes its JSON text, never a TypeError."""
+    return v if v is None or isinstance(v, (str, int, float, bool)) else json.dumps(v, sort_keys=True)
+
+
 def gate_side(rows, h, confighash, skip_ids=(), skip_bundles=()):
     """The rows the gate counts for cbs_hash h: that confighash, a counted status and the two gate metrics, the
     first row of a run_id or raw-output bundle. Returns (rows, run_ids, bundles)."""
@@ -326,10 +336,11 @@ def gate_side(rows, h, confighash, skip_ids=(), skip_bundles=()):
                 or r.get("status") not in GATE_STATUS \
                 or not (eval_runs._num(m.get(GATE_RECALL)) and eval_runs._num(m.get(GATE_FP))):
             continue
-        if r.get("run_id") in ids or r.get("outputs_sha256") in bundles:
+        rk, bk = _hashable(r.get("run_id")), _hashable(r.get("outputs_sha256"))
+        if rk in ids or bk in bundles:
             continue
-        ids.add(r.get("run_id"))
-        bundles.add(r.get("outputs_sha256"))
+        ids.add(rk)
+        bundles.add(bk)
         out.append(r)
     return out, ids, bundles
 

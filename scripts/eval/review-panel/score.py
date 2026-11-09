@@ -1177,7 +1177,7 @@ def panel_mismatch(rows, base_hash, head_hash, confighash):
         out = {}
         for r in counted:
             resp = r.get("responded")
-            out[r.get("run_id")] = resp if isinstance(resp, dict) and isinstance(resp.get("critics"), dict) else None
+            out[eval_feedback._hashable(r.get("run_id"))] = resp if isinstance(resp, dict) and isinstance(resp.get("critics"), dict) else None
         return out, ids, bundles
     base, base_ids, base_bundles = side(base_hash)
     sides = {"baseline": base,
@@ -1296,22 +1296,30 @@ def compare_paired(base_runs, cand_runs, key_path):
            "duplicate_executions": {"baseline": b_dups, "candidate": c_dups},
            "repeats": {"baseline": {cid: len(b[cid]) for cid in sorted(b)},
                        "candidate": {cid: len(c[cid]) for cid in sorted(c)}}, "metrics": {}}
-    for name, kind in (("recall", "seeded"), ("fp_rate", "clean")):
-        strata = {}
-        for cid in common:
-            if key[cid]["kind"] == kind:
-                strata.setdefault(str(key[cid].get("split") or "all"), []).append(
-                    (cid, round(mean(c[cid]) - mean(b[cid]), 12)))
-        if not strata:
+    # A cluster is one twin pair (a seeded case and its clean twin): both metrics of a pair move together, so the
+    # bootstrap resamples whole pairs inside each split and reads both metrics from the same resample.
+    clusters = {}
+    for cid in common:
+        c_key = key[cid]
+        cl = clusters.setdefault((str(c_key.get("split") or "all"), str(c_key.get("pair") or cid)), {})
+        cl["recall" if c_key["kind"] == "seeded" else "fp_rate"] = (cid, round(mean(c[cid]) - mean(b[cid]), 12))
+    strata = sorted({s for s, _ in clusters})
+    groups = [[clusters[k] for k in sorted(clusters) if k[0] == s] for s in strata]
+    out["clusters"] = len(clusters)
+    for name in ("recall", "fp_rate"):
+        flat = [cl[name][1] for g in groups for cl in g if name in cl]
+        if not flat:
             continue
-        groups = [[d for _, d in strata[s]] for s in sorted(strata)]
-        flat = [d for g in groups for d in g]
-        ci = eval_runs.bootstrap_ci(groups, strata=True, level=0.95, b=2000, seed=0)
+
+        def stat(gs, name=name):
+            xs = [cl[name][1] for g in gs for cl in g if name in cl]
+            return mean(xs) if xs else None
+        ci = eval_runs.bootstrap_ci(groups, stat=stat, strata=True, level=0.95, b=2000, seed=0)
         out["metrics"][name] = {"cases": len(flat), "delta": round(mean(flat), 9),
                                 "lo": None if ci is None else round(ci["lo"], 9),
                                 "hi": None if ci is None else round(ci["hi"], 9),
-                                "strata": {s: len(strata[s]) for s in sorted(strata)},
-                                "per_case": {cid: d for s in sorted(strata) for cid, d in strata[s]}}
+                                "strata": {s: len(g) for s, g in zip(strata, groups)},
+                                "per_case": {cl[name][0]: cl[name][1] for g in groups for cl in g if name in cl}}
     return out
 
 

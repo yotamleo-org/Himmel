@@ -1154,7 +1154,8 @@ def v(rid, **kw):
 rows = [v("bundle-d", responded={"scored": 5, "critics": {"claude": 5, "codex": 5}}), v("ghost"), v("bundle-m"),
         v("bundle-s"), v("bundle-x"), v("bundle-x", outputs_sha256="f" * 64), v("../escape")]
 with open(p, "a") as fh:
-    fh.write("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows) + "not json\n")
+    fh.write("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows) + "not json\n"
+             + json.dumps(v(["not", "a", "name"], outputs_sha256=["x"])) + "\n")
 PY
 snap() { (cd "$1" && LC_ALL=C find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum); }
 SNAP_B="$(snap "$RB")"; SNAP_I="$(snap "$RP")"
@@ -1181,7 +1182,7 @@ x=hit[0] if hit else None
 for k in sys.argv[4].split("/"):
     x=x.get(k) if isinstance(x, dict) else None
 print(json.dumps(x, sort_keys=True))' "$VER" "$@"; }
-eq "replay: every supplied row has a disposition (8 results rows, 1 unreadable line, 1 ledger row)" "$(python3 -I -c 'import json,sys; v=json.load(open(sys.argv[1])); print(v["summary"]["rows"], all(i.get("disposition") for i in v["items"]))' "$VER")" "10 True"
+eq "replay: every supplied row has a disposition (8 results rows, 2 unreadable lines, 1 ledger row)" "$(python3 -I -c 'import json,sys; v=json.load(open(sys.argv[1])); print(v["summary"]["rows"], all(i.get("disposition") for i in v["items"]))' "$VER")" "11 True"
 SID12="${SID:0:12}"
 eq "replay: the clean retained sweep is rescored under the running scorer" "$(vi results bundle-a failure):$(vi results bundle-a scorer_sha256)" "null:\"$SID\""
 eq "replay: the candidate supersedes the original row" "$(vi results bundle-a supersedes_run_id):$(vi results bundle-a candidate_run_id)" "\"bundle-a\":\"bundle-a~$SID12\""
@@ -1203,7 +1204,7 @@ eq "replay: a changed bundle is a named failure" "$(vi results bundle-m failure)
 eq "replay: a stamp that contradicts its recorded tree is a named failure" "$(vi results bundle-s failure)" '"execution-stamp-mismatch"'
 eq "replay: two rows of one run_id with different bundle digests are a contradictory mapping" "$(vi results bundle-x failure)" '"contradictory-mapping"'
 eq "replay: a bundle name that leaves the artifacts root is refused by name" "$(vi results ../escape failure)" '"unsafe-bundle-name"'
-eq "replay: an unreadable results line is a named failure" "$(python3 -I -c 'import json,sys; v=json.load(open(sys.argv[1])); print([i["failure"] for i in v["items"] if i["run_id"] is None])' "$VER")" "['unreadable-row']"
+eq "replay: an unreadable results line and a row whose run_id is no string are named failures, not a crash" "$(python3 -I -c 'import json,sys; v=json.load(open(sys.argv[1])); print([i["failure"] for i in v["items"] if i["run_id"] is None])' "$VER")" "['unreadable-row', 'unreadable-row']"
 eq "scorer_only_rescore_not_new_execution: the selector reads the original and its candidate as one execution" \
   "$(python3 -I -c 'import json,sys
 sys.path.insert(0, sys.argv[3])
@@ -1290,6 +1291,8 @@ P1="$(cmpp base cand)"; rc=$?
 eq "compare-paired: a complete cohort in both arms is eligible" "$rc:$(cj "$P1" eligible)" "0:true"
 eq "compare-paired: the clean twins' blocking rate falls by the whole 1.0 (every pair moved)" "$(cj "$P1" metrics/fp_rate/delta)" "-1.0"
 has "compare-paired: the recall change is a positive delta" "$(cj "$P1" metrics/recall/delta)" "0."
+eq "pair_cluster: the bootstrap clusters are the key's (split, twin pair) groups" "$(cj "$P1" clusters)" \
+  "$(python3 -I -c 'import json,sys; k=json.load(open(sys.argv[1]))["cases"]; print(len({(str(v.get("split") or "all"), str(v.get("pair") or c)) for c, v in k.items()}))' "$KEY")"
 eq "compare-paired: repeats are reported per arm" "$(cj "$P1" repeats/baseline/case-01):$(cj "$P1" repeats/candidate/case-01)" "2:2"
 eq "deterministic_pair_bootstrap: the same arms give the same bytes (2,000 resamples, seed 0)" "$(cmpp base cand | sha256sum)" "$(printf '%s\n' "$P1" | sha256sum)"
 eq "repeat_label_swap_invariant: relabelling and reordering the repeats changes no metric" "$(cj "$(cmpp base cand-relabelled)" metrics | sha256sum)" "$(cj "$P1" metrics | sha256sum)"

@@ -392,6 +392,7 @@ def put(name, rows):
     open(os.path.join(sys.argv[2], name + ".jsonl"), "w").write("".join(json.dumps(r) + "\n" for r in rows))
 put("plain", [row("b1", "e1", S1), row("c1", "e2", S1)])
 put("rescored", [row("b1", "e1", S1), row("c1", "e2", S1), row("b1~s2", "e1", S2, sup="b1")])
+put("rescored-same", [row("b1", "e1", S1), row("c1", "e2", S1), row("b1~s1", "e1", S1, sup="b1")])
 put("other-scorer", [row("b1", "e1", S2), row("c1", "e2", S1)])
 put("no-scorer", [row("b1", "e1", None), row("c1", "e2", None)])
 put("unequal-part", [row("b1", "e1", S1, cov=COV_B), row("c1", "e2", S1)])
@@ -405,6 +406,10 @@ out=$(rpc rescored); rc=$?
 eq "revision_not_prev_run: a rescore of the baseline is not the candidate; its other scorer leaves no baseline" "$rc" "3"
 has "revision_not_prev_run: the compare names the missing comparable baseline" "$out" "same known scorer"
 has "revision_not_prev_run: the compare says the rescore was set aside as a revision" "$out" "superseded"
+out=$(rpc rescored-same); rc=$?
+eq "revision_not_prev_run: a rescore appended last is not the candidate (the newest execution is)" "$rc" "0"
+has "revision_not_prev_run: the candidate is the newer execution" "$out" "candidate c1"
+has "revision_not_prev_run: its baseline is the rescored earlier execution" "$out" "baseline b1~s1"
 out=$(rpc other-scorer --baseline b1); rc=$?
 eq "explicit_baseline_cannot_bypass: another scorer refuses an explicit --baseline" "$rc" "3"
 has "explicit_baseline_cannot_bypass: the refusal names the rule" "$out" "does not override"

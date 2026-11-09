@@ -375,6 +375,14 @@ case("eval-runs rows: the fields are read from meta",
      [{"run_id": "A", "meta": {"execution_id": "x", "scorer_sha256": S1}},
       {"run_id": "B", "meta": {"execution_id": "x", "supersedes_run_id": "A", "scorer_sha256": S2}}], ["B"], scorer=S2)
 case("a non-dict row is skipped", [None, row("A")], ["A"])
+bad_ids = [{"run_id": ["a"], "outputs_sha256": [1]}, {"run_id": {"x": 1}, "outputs_sha256": [1]}, row("A")]
+case("non-string ids name nothing: each such row is its own run, no TypeError", bad_ids, [["a"], {"x": 1}, "A"],
+     scorer=None)
+try:
+    fb.gate_side(bad_ids, "h", "c")
+    print("PASS gate_side: a list-valued run_id is no TypeError")
+except TypeError as e:
+    print("FAIL gate_side: a list-valued run_id raised %s" % e)
 
 # review_incompat: an explicit baseline cannot override the comparison rules
 def er(conf="h", scorer=S1, cov=None):
