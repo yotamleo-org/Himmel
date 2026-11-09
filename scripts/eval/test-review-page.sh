@@ -261,14 +261,14 @@ eq "answers: with CR_LEDGER unset and the caller outside any repo, the CR ledger
 # No raw field name: no metric or interval key from the fixture rows, no dotted or snake_case identifier.
 leak="$(printf '%s' "$out" | python3 -I -c 'import json, re, sys
 page = sys.stdin.read()
+PAGE_WORDS_THAT_ARE_ALSO_KEYS = {"defects"}
 keys = set()
 for line in open(sys.argv[1]):
     r = json.loads(line)
     keys |= set(r["metrics"]) | set(r["ci"])
 for line in open(sys.argv[2]):
     keys.add(json.loads(line)["metric"])
-# "defects" is both a metric key and the plain word of "labelled target defects".
-keys.discard("defects")
+keys -= PAGE_WORDS_THAT_ARE_ALSO_KEYS
 hits = sorted(k for k in keys if re.search(r"(?<![\w.-])%s(?![\w-])" % re.escape(k), page))
 hits += re.findall(r"\b[a-z]+(?:[._][a-z0-9-]+)+\b", page)
 print(" ".join(hits))' "$TMP/runs.jsonl" "$TMP/changes.jsonl")"; rc=$?
