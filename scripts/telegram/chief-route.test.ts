@@ -1,5 +1,5 @@
 import { expect, test, spyOn } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync, statSync, cpSync, utimesSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync, statSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import { classify } from "./router";
@@ -546,18 +546,19 @@ async function owedReply(r: string, doc: string, flush: boolean, extra: string[]
 test("reply --owed prints the Telegram message id from the poller's send receipt and writes the DELIVERED bullet", async () => {
   const r = root(); heartbeat(r);
   const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n- 10:00 OWED sig-1 sign it\n");
+  mkdirSync(join(r, "consoles", "replies"), { recursive: true });
+  writeFileSync(join(r, "consoles", "replies", "1_100.json"), JSON.stringify({ name: NAME }));
   const res = await owedReply(r, doc, true);
   expect(res.code).toBe(0);
   expect(res.out).toContain("delivered msg=4242");
   expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\d DELIVERED sig-1 msg=4242 chat=1\n$/);
 });
 
-test("reply --owed exits non-zero and marks nothing delivered when no send receipt arrives; an older receipt does not count", async () => {
+test("reply --owed exits non-zero and marks nothing delivered when no send receipt arrives; a receipt written just before the reply was queued does not count", async () => {
   const r = root(); heartbeat(r);
   const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n- 10:00 OWED sig-1 sign it\n");
   mkdirSync(join(r, "consoles", "replies"), { recursive: true });
-  const old = join(r, "consoles", "replies", "1_100.json"); writeFileSync(old, JSON.stringify({ name: NAME }));
-  utimesSync(old, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+  writeFileSync(join(r, "consoles", "replies", "1_100.json"), JSON.stringify({ name: NAME }));
   const res = await owedReply(r, doc, false);
   expect(res.code).toBe(1);
   expect(res.err).toContain("no send receipt");

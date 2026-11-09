@@ -69,7 +69,7 @@ contains 'only the unreceipted key is named' "$(cat "$WORK/o6.out")" 'WAKE owed-
 
 reset
 printf '%s\n' '- 10:00 OWED sig-9613 sign it' >> "$chief"
-CHIEF_WAIT_OWED_SEC=0 run_waiter "$WORK/o7.out" 60 > /dev/null
+if CHIEF_WAIT_OWED_SEC=0 run_waiter "$WORK/o7.out" 60 && grep -q '^sig-9613 ' "$inbox.wait.owed"; then pass 'the first sight wakes and puts the key in the marker'; else fail 'the first sight neither woke nor marked sig-9613'; fi
 printf '%s\n' '- 10:05 DELIVERED sig-9613 msg=557 chat=1' >> "$chief"
 CHIEF_WAIT_OWED_SEC=0 run_waiter "$WORK/o8.out" 30 > /dev/null
 if [ -e "$inbox.wait.owed" ] && grep -q '^sig-9613 ' "$inbox.wait.owed"; then fail 'a receipted key stayed in the marker'; else pass 'a receipt clears the key from the marker'; fi

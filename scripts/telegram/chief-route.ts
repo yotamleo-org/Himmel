@@ -904,22 +904,25 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
 }
 
 // The poller's send receipt (rememberConsoleReply) is the only artifact that names a sent
-// message. awaitSendReceipt returns the newest message id the poller recorded for this chat
-// and chief since `sinceMs`, or null at the deadline. Ceiling: two sends by one chief to one
-// chat inside the wait window cannot be told apart, the newest id wins.
-export async function awaitSendReceipt(root: string, chat: number, name: string, sinceMs: number, waitSec: number): Promise<number | null> {
-  const dir = join(root, "consoles", "replies");
+// message. latestReceiptId is the newest message id recorded for this chat and chief (0 when
+// none). Telegram message ids only grow within a chat, so awaitSendReceipt, given the id read
+// BEFORE the reply was queued, accepts only a strictly newer one: an earlier send's receipt can
+// never stand in for this one. Ceiling: a send of the same chief to the same chat still in
+// flight when this one is queued cannot be told apart, the newest id wins.
+export async function latestReceiptId(root: string, chat: number, name: string): Promise<number> {
+  let best = 0;
+  for (const f of await readdir(join(root, "consoles", "replies")).catch(() => [] as string[])) {
+    const m = /^(-?\d+)_(\d+)\.json$/.exec(f);
+    if (m && Number(m[1]) === chat && Number(m[2]) > best && await consoleReplyTarget(root, chat, Number(m[2])) === name) best = Number(m[2]);
+  }
+  return best;
+}
+
+export async function awaitSendReceipt(root: string, chat: number, name: string, afterId: number, waitSec: number): Promise<number | null> {
   const deadline = Date.now() + waitSec * 1000;
   for (;;) {
-    let best = 0;
-    for (const f of await readdir(dir).catch(() => [] as string[])) {
-      const m = /^(-?\d+)_(\d+)\.json$/.exec(f);
-      if (!m || Number(m[1]) !== chat) continue;
-      const st = await stat(join(dir, f)).catch(() => null);
-      if (!st || st.mtimeMs < sinceMs - 50) continue;
-      if (await consoleReplyTarget(root, chat, Number(m[2])) === name) best = Math.max(best, Number(m[2]));
-    }
-    if (best) return best;
+    const id = await latestReceiptId(root, chat, name);
+    if (id > afterId) return id;
     if (Date.now() >= deadline) return null;
     await new Promise(r => setTimeout(r, 200));
   }
@@ -955,18 +958,18 @@ if (import.meta.main) {
     if (verb === "reply") while (args.length >= 2 && (args[0] === "--chief" || args[0] === "--satellite" || args[0] === "--kind" || args[0] === "--owed" || args[0] === "--doc")) flags[args.shift()!.slice(2) as keyof typeof flags] = args.shift()!;
     // --owed <key> --doc <chief doc>: wait for the poller's send receipt, print the message id and
     // write the DELIVERED bullet, or exit non-zero. Plain `reply` keeps its fire-and-forget shape.
-    const owedOk = (flags.owed === undefined && flags.doc === undefined) || (/^[A-Za-z0-9_.-]{1,64}$/.test(flags.owed ?? "") && isAbsolute(flags.doc ?? "") && await stat(flags.doc!).then(s => s.isFile(), () => false));
+    const owedOk = (flags.owed === undefined && flags.doc === undefined) || (/^[A-Za-z0-9_.-]+$/.test(flags.owed ?? "") && isAbsolute(flags.doc ?? "") && await stat(flags.doc!).then(s => s.isFile(), () => false));
     const name = flags.chief ?? (verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined);
     const satellite = flags.satellite;
     const [chat, ...rest] = args;
     const chatId = chat === "operator" ? (operatorChatId(await loadAccess()) ?? NaN) : Number(chat);
     if (verb === "reply" && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && owedOk && (flags.owed === undefined || name) && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
-      const queuedAt = Date.now();
+      const seenBefore = flags.owed !== undefined && name ? await latestReceiptId(defaultRoot(), chatId, name) : 0;
       const cls = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}` });
       console.log(cls);
       if (flags.owed !== undefined) {
         if (cls !== "escalate") { console.error(`[chief-route] owed item ${flags.owed}: the text was class ${cls}, not sent to Telegram, so there is no receipt`); process.exit(1); }
-        const id = await awaitSendReceipt(defaultRoot(), chatId, name!, queuedAt, Number(process.env.CHIEF_ROUTE_RECEIPT_WAIT_SEC) || 30);
+        const id = await awaitSendReceipt(defaultRoot(), chatId, name!, seenBefore, Number(process.env.CHIEF_ROUTE_RECEIPT_WAIT_SEC) || 30);
         if (id === null) { console.error(`[chief-route] owed item ${flags.owed}: queued, but the poller recorded no send receipt in time (poller down or Telegram refused); nothing marked delivered`); process.exit(1); }
         await writeOwedReceipt(flags.doc!, flags.owed, id, chatId);
         console.log(`delivered msg=${id}`);
