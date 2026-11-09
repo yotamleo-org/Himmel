@@ -5,8 +5,8 @@
 #
 # One `<glob> HIMMEL-<n> <reason>` per line. The glob is matched against
 # "/<suite path>" and names ONE suite file (no glob character in its last
-# `/`-separated part); the key names the ticket that fixes it. The runner exits 2
-# on any other line.
+# `/`-separated part, and no `[` or `]` anywhere); the key names the ticket that fixes
+# it. The runner exits 2 on any other line.
 */marketplace/plugins/obsidian-triage/tests/test-follow-web.sh HIMMEL-9723 writes state/firecrawl-ledger.jsonl under HOME
 */scripts/ci/test-run-shell-tests-parallel.sh HIMMEL-9723 writes state/suite-runs.jsonl under HOME
 */scripts/handover/chief-kit/test-append-results.sh HIMMEL-9723 writes state/workers and status-events under HOME

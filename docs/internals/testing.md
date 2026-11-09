@@ -390,7 +390,8 @@ In a CI shard `scripts/ci/home-canary.sh` exports `HIMMEL_CANARY_HOME`, and
   code runs; those writes are invisible to the witness.
 - **Exempt list:** `scripts/ci/live-write-exempt.txt` quarantines a known leaker as a
   `WARN`: one `<glob> HIMMEL-<n> <reason>` per line, the glob naming one suite file.
-  A line without a ticket key, or a glob that names a family, makes the runner exit 2.
+  A line without a ticket key, a glob that names a family, or a glob with a `[` or `]`
+  anywhere (`*[!/]` would match every suite), makes the runner exit 2.
   It is a quarantine, not an allow list.
 - **Account home:** no `HOME` change reaches code that reads the passwd entry. On a
   GitHub-hosted runner `home-canary.sh` stamps the account's `.himmel`, `.claude`,

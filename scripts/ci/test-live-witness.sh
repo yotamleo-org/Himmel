@@ -105,7 +105,7 @@ printf '* HIMMEL-1 measurement\n' > "$sb/exempt-star"
 out=$(env SUITE_LIVE_EXEMPT="$sb/exempt-star" bash "$LW" run --label x -- true 2>&1)
 rc=$?
 if [ "$rc" -eq 2 ]; then pass "W9: a '*' glob line exits 2"; else fail "W9: expected 2, got $rc; out: $out"; fi
-for _g in '*[!/]' '*[!x]' '*/test-[a-z].sh'; do
+for _g in '*[!/]' '*[^/]' '*[!x]' '*/test-[a-z].sh'; do
   printf '%s HIMMEL-1 every suite\n' "$_g" > "$sb/exempt-bracket"
   out=$(env SUITE_LIVE_EXEMPT="$sb/exempt-bracket" bash "$LW" run --label x -- true 2>&1)
   rc=$?

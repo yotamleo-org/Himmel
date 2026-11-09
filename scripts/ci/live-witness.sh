@@ -159,8 +159,9 @@ live_witness_reset() {
 # The exempt list: one `<glob> HIMMEL-<n> <reason>` per line; `#` and blank lines are
 # ignored. A glob is matched against the target ("/<suite path>" in the runner, the
 # label in `run` mode). Return 2 (LW_EXEMPT_ERR names the line) on a line with no
-# HIMMEL-<n> key, or whose glob has a glob character in its last `/`-separated part:
-# a line names one suite file, never a family and never every suite.
+# HIMMEL-<n> key, whose glob holds a `[` or `]` anywhere, or whose glob has a glob
+# character in its last `/`-separated part: a line names one suite file, never a family
+# and never every suite.
 LW_EXEMPT=""
 LW_EXEMPT_ERR=""
 live_witness_exempt_load() {
