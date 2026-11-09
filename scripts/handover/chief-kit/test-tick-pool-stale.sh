@@ -227,11 +227,15 @@ pl_age '20 minutes ago'
 touch "$pl_doc"
 pl_tick > /dev/null
 check 'a changed chief doc launches a snapshot past the floor' 3 "$(pl_n)"
+pl_age '20 minutes ago'
+printf '%s\tZZTEST-7\t\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${pl_doc%/*}/cloud-sessions.tsv"
+pl_tick > /dev/null
+check 'a changed owner set (a cloud session now owns a key) launches a snapshot past the floor' 4 "$(pl_n)"
 printf '{"lastSync":"2026-11-01T00:20:00Z"}\n' > "$M/.cursor.json"
 pl_tick > /dev/null
-check 'a changed input inside the floor still launches nothing' 3 "$(pl_n)"
+check 'a changed input inside the floor still launches nothing' 4 "$(pl_n)"
 pl_nice_want=$(( $(nice) + 10 )); [ "$pl_nice_want" -le 19 ] || pl_nice_want=19
-check 'every launched snapshot runs at nice +10' "$(printf '%s\n%s\n%s' "$pl_nice_want" "$pl_nice_want" "$pl_nice_want")" "$(cat "$pl_nice")"
+check 'every launched snapshot runs at nice +10' "$(printf '%s\n%s\n%s\n%s' "$pl_nice_want" "$pl_nice_want" "$pl_nice_want" "$pl_nice_want")" "$(cat "$pl_nice")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

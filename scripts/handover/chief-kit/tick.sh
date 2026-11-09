@@ -2640,9 +2640,9 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     case "$pd_m" in '' | *[!0-9]*) ;; *) pd_age=$(( $(date +%s) - pd_m )) ;; esac
     pd_gap="${TICK_POOL_MIN_SECS:-600}"; case "$pd_gap" in '' | *[!0-9]*) pd_gap=600 ;; esac
     # The snapshot is refreshed only when an input changed: the mirror's .cursor.json lastSync, the
-    # fleet manifest's mtime and the chief doc's mtime, recorded in $pd_base.fp once a scan lands.
+    # fleet manifest's mtime, the chief doc's mtime and the owner keys, recorded in $pd_base.fp once a scan lands.
     # An unchanged-input skip touches the snapshot, so it stays inside TICK_POOL_TTL and keeps counting.
-    pd_fp="$(sed -n 's/.*"lastSync" *: *"\([^"]*\)".*/\1/p' "$nd_mirror/.cursor.json" 2>/dev/null | head -n 1)|$(stat -c %Y "$console_doc" ${WORKERS_FROM:+"$WORKERS_FROM"} 2>/dev/null | tr '\n' '|')"  # gnu-ok: chief kit is Linux-only; swallow-ok: an unreadable input reads empty and changes the fingerprint
+    pd_fp="$(sed -n 's/.*"lastSync" *: *"\([^"]*\)".*/\1/p' "$nd_mirror/.cursor.json" 2>/dev/null | head -n 1)|$(stat -c %Y "$console_doc" ${WORKERS_FROM:+"$WORKERS_FROM"} 2>/dev/null | tr '\n' '|')|$(printf '%s' "$owner_keys" | cksum | cut -d' ' -f1)"  # gnu-ok: chief kit is Linux-only; swallow-ok: an unreadable input reads empty and changes the fingerprint
     if [ "$pd_age" -ge "$pd_gap" ] && [ -f "$pd_base.rows" ] && [ -f "$pd_base.fp" ] \
         && read -r pd_fp_old < "$pd_base.fp" && [ "$pd_fp_old" = "$pd_fp" ] && touch "$pd_base.rows" 2>/dev/null; then
         pd_age=0
