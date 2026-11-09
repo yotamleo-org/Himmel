@@ -218,6 +218,37 @@ HIMMEL_BILLED_OK=1 python3 scripts/eval/retrieval-eval/answer-ab.py run \
   --pool 75 --n 75 --max-usd 32
 ```
 
+## Supported answers: the three-arm pilot (retrieval-eval/pilot)
+
+The file-hit numbers above check a file name, never the answer. The pilot in
+`retrieval-eval/pilot/` measures supported answers instead: plain Claude Code (V), station
+retrieval (S, OpenRouter models) and local retrieval (Q, pinned GGUF models) answer the same
+40 private tasks, scored strictly (every required fact in the answer and in one of the first
+three named files). Only S-V and Q-V are confirmatory (exact McNemar, Holm over the two,
+a 15-point bar, a real-half qualifier per arm); S-Q is exploratory. Every paid step is behind
+`HIMMEL_BILLED_OK=1`, its own gate and a separate operator go; nothing below runs by itself.
+
+| Tool | What it does | When |
+|---|---|---|
+| `export-copies.sh`, `pins.py`, `prune-index.py`, `tools-lock.py` | git-archive exports at the pins; a backup-API snapshot of the index pruned to the exports; a finalized, sealed master with a canonical corpus digest; the tools.lock | R1, before tasks |
+| `tools/s-qmd`, `tools/s-graph`, `tools/config-preflight.mjs`, `tools/qmd-eval.yml`, `tools/qmd-eval-q.yml`, `tools/s-note.md` | the one retrieval command S and Q share (bound by a read-only binding; the host broker owns the 12-per-task counter and classifies every call), the frozen graph lookup, the secret-free config preflight, both locked configs and the three-line note | inside every S/Q session, P1 to P3, lists |
+| `q-index.sh`, `q-lists.py`, `matched-lists.py` | the Q master built from the S survivors, the Q readiness and P13-Q evidence checks, the matched S/Q fixed lists (fact-bearing-file@5, doc/code/mixed strata) | R3, R8 lists |
+| `mine-questions.py`, `task-schema.py` | the local question miner and the 40-task schema/seal check (6/8/6/8/8/4 kinds, 20 real and 20 harder) | R2 |
+| `run-pilot.py`, `ledger.py`, `sandbox.sh`, `arms.json`, `task-prompt.md`, `session-permissions.json`, `auth-preflight.py`, `route-rows.py` | the three-arm runner, the fsynced $25 ledger, the per-session bwrap namespace, the locked arm table, prompt and deny profile, the G0 auth-readiness checklist, the route rows | R4 (G0), R8 |
+| `score.py`, `judge.py`, `judge-prompt.md`, `report.py`, `experiment-identity.py`, `retain-run.py` | strict scoring and the Holm2 family, interleaved complete-round judging, the safe `answer-ab` row with `protocol: rag-pilot-r18`, the run identity, content-addressed retention | R8 finalization, R9 |
+| `leak-scan.py`, `free-checks.sh` | the local leak scan (never a search) and the free G3 report (P5, P10 to P17; a SKIP is never a pass) | R4 |
+| `rerun-hybrid.py` | the separately capped old-75 S rerun ($0.50, settled repricing, retained failure rows) and the free fusion-loss account | R5 |
+
+Every `test-*.sh` in that folder is a fixture suite (no session, model or network);
+`test-q-runtime.sh --require-runtime` is the one that needs the pinned weights on disk.
+
+`retrieval-eval.py` and `answer-ab.py` rows also carry `config.identity_hash` (bank,
+evaluator, pre-expansion shaper and dirty-content bytes, so an uncommitted edit changes it at
+the same commit) with the full identity in `meta.identity`, and retain their artifacts in
+`eval-retained/` beside the ledger before the row is written. `retrieval-eval.py` records a
+failed deep (top 20) second call on the row (`deep_failed`) and per arm
+(`<arm>.deep_failures`) instead of silently keeping the first-k list.
+
 ## eval-compare
 
 ```
