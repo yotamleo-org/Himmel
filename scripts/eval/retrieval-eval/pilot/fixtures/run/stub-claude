@@ -1,0 +1,9 @@
+#!/bin/bash
+# stub-claude <host-private-path> <host-station-path> -- stands in for the pinned CLI inside the
+# session sandbox and reports what the namespace lets it see, as one JSON line. No model call.
+r() { if [ -e "$1" ]; then echo yes; else echo no; fi; }
+printf '{"work": "%s", "luna": "%s", "work_writable": "%s", "private": "%s", "station": "%s", "key": "%s", "tools": "%s", "binding": "%s", "models": "%s", "sqmd": "%s", "home": "%s", "cwd": "%s", "scrub": "%s", "bg": "%s", "qkey": "%s", "pid1": "%s", "settings": "%s"}\n' \
+  "$(r /work/himmel/docs/lock.md)" "$(r /work/luna/notes/garden.md)" "$( (: > /work/himmel/x) 2>/dev/null && echo yes || echo no)" \
+  "$(r "$1")" "$(r "$2")" "$(r /run/pilot/key)" "$(r /run/pilot/tools/s-qmd)" "$(r /run/pilot/binding.json)" "$(r /run/pilot/models)" \
+  "$(command -v s-qmd >/dev/null && echo yes || echo no)" "$HOME" "$PWD" "${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}" \
+  "${CLAUDE_CODE_DISABLE_BACKGROUND_TASKS:-}" "${QMD_OPENAI_API_KEY:-none}" "$(cat /proc/1/comm 2>/dev/null)" "$(r /opt/claude/settings.json)"

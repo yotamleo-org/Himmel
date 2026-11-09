@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""A fake pinned qmd for the B7 rerun fixtures: answers every query with the 20 hits in hits.json
+beside it, logs each call (time, key presence) to calls.log; a query whose text holds a marker
+listed in fail.txt exits 1, one listed in skip.txt prints the expansion-failure diagnostic."""
+import json, os, sys, time
+
+here = os.path.dirname(os.path.realpath(__file__))
+q = sys.argv[-1]
+words = lambda n: set(open(os.path.join(here, n)).read().split()) if os.path.exists(os.path.join(here, n)) else set()  # noqa: E731
+fail, skip = words("fail.txt"), words("skip.txt")
+out = json.load(open(os.path.join(here, "hits.json")))
+code, err = 0, "Expanding query... (1ms)\n├─ %s\n└─ vec: about it\n" % q.splitlines()[0]
+if any(m in q for m in fail):
+    code, out, err = 1, None, "Error: the rerank service returned 502 on the deep list\n"
+elif any(m in q for m in skip):
+    err = "Expanding query...Structured query expansion failed: Error: 500\n" + err
+if out is not None:
+    sys.stdout.write(json.dumps(out[:int(sys.argv[sys.argv.index("-n") + 1])]) + "\n")
+sys.stderr.write(err)
+with open(os.path.join(here, "calls.log"), "a") as f:
+    f.write(json.dumps({"end": time.time(), "key": bool(os.environ.get("QMD_OPENAI_API_KEY"))}) + "\n")
+sys.exit(code)

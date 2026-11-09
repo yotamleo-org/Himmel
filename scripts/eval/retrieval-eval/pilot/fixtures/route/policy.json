@@ -1,0 +1,7 @@
+{
+  "work_roots": ["/work/himmel", "/work/luna"],
+  "runtime_roots": ["/run/pilot/tools", "/run/pilot/index", "/opt/qmd", "/usr", "/proc/self/status"],
+  "forbidden_roots": ["/pilot/private", "/pilot/retained", "/session-home/.claude", "/station-home"],
+  "channel_paths": ["/run/pilot/broker.sock", "/run/pilot/meta"],
+  "qmd_binaries": ["/opt/qmd/bin/qmd"]
+}

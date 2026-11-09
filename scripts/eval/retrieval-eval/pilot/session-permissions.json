@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "blockReadsOutsideWorkingDirectories": true,
+    "additionalDirectories": [],
+    "deny": [
+      "Read(//proc/**)",
+      "Read(//sys/**)",
+      "Read(//session/**)",
+      "Read(//session/.claude/**)",
+      "Read(//run/pilot/key)",
+      "Read(//run/pilot/broker.sock)",
+      "Read(//run/pilot/binding.json)",
+      "Edit(//**)",
+      "Write(//**)",
+      "WebFetch",
+      "WebSearch"
+    ]
+  },
+  "env": {},
+  "hooks": {},
+  "enabledPlugins": {},
+  "includeCoAuthoredBy": false,
+  "cleanupPeriodDays": 1
+}

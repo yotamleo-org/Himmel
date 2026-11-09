@@ -700,8 +700,10 @@ def ledger_row(ev, a, sw, arms, repo):
                   questions=qhash, pool=a.pool, n=a.n, permission_mode="dontAsk", max_usd=a.max_usd, preface=phash,
                   prime=a.prime, warm_session=a.warm_session, route_files=ROUTE_FILES, route_excerpt=ROUTE_EXCERPT,
                   scorer="file-hit")
+    ident = ev.forward_identity(a.questions, os.path.abspath(__file__))
+    config["identity_hash"] = ident["config_hash"]
     meta = dict(questions_path=os.path.abspath(a.questions), spent_usd=round(sw.spent, 4), stopped=sw.stopped or None,
-                n_heldout=len({r["id"] for r in rows if r["split"] == "heldout"}))
+                n_heldout=len({r["id"] for r in rows if r["split"] == "heldout"}), identity=ident["identity"])
     status = "partial" if sw.stopped or sw.errors else "ok"
     return ev.eval_runs.make_row("answer-ab", "scripts/eval/retrieval-eval/answer-ab.py", config, metrics, n=len(cases),
                                  model=a.model, cases=cases, artifact=os.path.abspath(a.out), meta=meta, status=status, repo=repo)
@@ -835,7 +837,9 @@ def cmd_run(a):
     if not a.no_ledger:
         row = ledger_row(ev, a, sw, arms, repo)
         if row:
-            ev.eval_runs.append_safe(row, who="answer-ab")
+            ev.retain_and_append(row, {"results": os.path.join(a.out, "results.jsonl"), "table": os.path.join(a.out, "table.tsv"),
+                                       "screened": os.path.join(a.out, "screened.txt"), "warm": os.path.join(a.out, "warm.tsv"),
+                                       "bank": a.questions}, who="answer-ab")
         else:
             print("answer-ab: no arm row to record: no eval-runs row written", file=sys.stderr)
     return 1 if sw.stopped or sw.errors else 0
