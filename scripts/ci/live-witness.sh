@@ -178,6 +178,11 @@ live_witness_exempt_load() {
       return 2
     fi
     _last="${_glob##*/}"
+    case "$_glob" in
+      *[][]*)
+        LW_EXEMPT_ERR="exempt glob holds a bracket expression: $_line"
+        return 2 ;;
+    esac
     case "$_last" in
       *[*?[]*)
         LW_EXEMPT_ERR="exempt glob names a family, not one suite file: $_line"
