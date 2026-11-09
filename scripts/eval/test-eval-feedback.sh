@@ -357,6 +357,12 @@ case("revision_not_prev_run: a rescore appended last is not the newest run",
 case("scorer: only the running scorer's heads stay", [row("A", scorer=S1), row("B", scorer=S2), row("C")], ["B"],
      "other-scorer", scorer=S2)
 case("scorer: a row with no digest is named without-scorer-sha256", [row("C")], [], "without-scorer-sha256", scorer=S1)
+case("scorer: an unlinked re-score under the same run_id still replaces the older scorer's row",
+     [row("A", scorer=S1, bundle="p"), row("A", scorer=S2, bundle="p")], ["A"], scorer=S2)
+sel, _ = fb.select_review_runs([row("A", scorer=S1, bundle="p", marker=1), row("A", scorer=S2, bundle="p", marker=2)],
+                               scorer=S2)
+print("PASS scorer: the unlinked re-score is the row that stays" if [r["marker"] for r in sel] == [2]
+      else "FAIL scorer: the unlinked re-score is the row that stays: %s" % sel)
 case("scorer: the rescore replaces the obsolete row even though it comes later",
      [row("A", "x1", scorer=S1), row("A~b", "x1", sup="A", scorer=S2)], ["A~b"], scorer=S2)
 case("old_unknown_provenance_diagnostic_only: an ineligible head is dropped with its reasons",

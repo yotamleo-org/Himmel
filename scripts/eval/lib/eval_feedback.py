@@ -241,7 +241,7 @@ def select_review_runs(rows, scorer=None, eligible_only=False):
         if len(uniq) == 1 or not linked:
             # unlinked repeats of one execution: the first row counts, but a row of the running scorer comes
             # before an older scorer's (a rescore that names no predecessor still replaces it)
-            mine = [i for i in uniq if scorer is not None and known_scorer(rows[i]) == scorer]
+            mine = [i for i in members if scorer is not None and known_scorer(rows[i]) == scorer]
             head = (mine or uniq)[0]
             diag.extend({"run_id": who(i), "reason": "repeat-of-execution", "by": who(head)}
                         for i in members if i != head)

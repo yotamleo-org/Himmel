@@ -1249,8 +1249,7 @@ eq "manifest_case_ids: a manifest case id that leaves the outputs dir makes the 
 out=$(python3 "$GSCORE" stamp "$MS" --repo "$RR" --recheck 2>&1); rc=$?
 eq "manifest_case_ids: a re-stamp refuses it" "$rc" "2"; has "manifest_case_ids: and names the escape" "$out" "case file stem"
 MV="$TMP/minors-v2"; cp -r "$RB/bundle-a" "$MV"; rm -f "$MV/swept.json" "$MV/run-manifest.json"
-python3 "$GSCORE" stamp "$MV" --repo "$RR" --fixtures "$RR/scripts/eval/review-panel/fixtures" --key "$RR/scripts/eval/review-panel/key/seeds.json" --critics codex >/dev/null 2>&1
-python3 "$GSCORE" stamp "$MV" --repo "$RR" --recheck >/dev/null 2>&1
+MS="$MV"; mstamp >/dev/null; mstamp --recheck >/dev/null
 python3 "$GSCORE" export-row "$MV" --repo "$RR" --results "$TMP/minors-v2.jsonl" >/dev/null 2>&1
 V2ROW="$(head -1 "$TMP/minors-v2.jsonl")"
 python3 "$GSCORE" verify-row "$V2ROW" "$MV" --repo "$RR" >/dev/null 2>&1; rc=$?
