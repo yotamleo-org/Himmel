@@ -118,7 +118,6 @@ check "$f carries the wheel hash"        grep -q "sha256:$FIXTURE_CERTIFI_WHEEL"
 check "$f carries the sdist hash"        grep -q "sha256:$FIXTURE_CERTIFI_SDIST" "$p"
 # huggingface-hub 2.x replaced httpx (and its certifi dependency) with httpx2, which
 # resolves CAs through truststore, so the whisper closure carries no certifi at all.
-# Any certifi that comes back must be re-pinned past the emSign release first.
 p="$repo_root/marketplace/plugins/obsidian-triage/tools/requirements-whisper.txt"
 check "requirements-whisper.txt carries no certifi (httpx2 uses truststore)" no_match '^certifi==' "$p"
 
