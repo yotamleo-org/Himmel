@@ -43,7 +43,7 @@ export WT_LOG="$WORK/wt.log" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh"
 export GEN_BRIEFS_MIRROR="$WORK/mirror"; mkdir -p "$GEN_BRIEFS_MIRROR"  # the proof check reads this fixture mirror, never the real one
 export TICKET_STATUS_STATE_DIR="$WORK/state-empty"  # the partial-merge block reads status-events.jsonl here, never the real one
 printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/gh-down.sh"; chmod +x "$WORK/gh-down.sh"
-export GEN_BRIEFS_GH_CMD="$WORK/gh-down.sh"  # the open-PR read of every row below never reaches the real gh; the overlap rows name their own fixture
+export GEN_BRIEFS_GH_CMD="$WORK/gh-down.sh"
 export GEN_BRIEFS_NO_WT_CHECK=1 # the older rows use a fixture --repo with no real worktrees; the bucket and worktree-guard rows unset it
 # The core gate asks the jira CLI (release core-check, spec-check) per key. This suite points GEN_BRIEFS_JIRA_CLI at a
 # fixture stand-in over the fixture mirror, so it needs no built scripts/jira/dist (untracked, absent in CI).
@@ -487,10 +487,8 @@ has "the scope line says a free file outside Writes is claimed and recorded" "$w
 lacks "the scope line no longer says writes are confined" "$wr_brief" "writes confined to"
 lacks "the scope line no longer says stay off the other workers' files" "$wr_brief" "Stay off those"
 
-# --- S2 of the no-file-holds work: the brief names the open PRs and wave siblings that share its Writes, and carries the merge-forward duty ---
 cat > "$WORK/ov-gh.sh" <<'EOF'
 #!/usr/bin/env bash
-# fixture gh: `pr list` prints $OV_FIXTURE (exit 1 when unset); anything else fails
 [ "$1 $2" = "pr list" ] && [ -n "${OV_FIXTURE:-}" ] && { cat "$OV_FIXTURE"; exit 0; }
 exit 1
 EOF
@@ -503,7 +501,7 @@ EOF
 cat > "$WORK/ov-none.json" <<'EOF'
 [{"number":4243,"title":"our fix","headRefName":"fix/himmel-1-y","isCrossRepository":false,"files":[{"path":"scripts/unrelated/z.sh"}]}]
 EOF
-ovgen() { # <gh cmd> <fixture json or empty> <workers json> <bucket>; prints nothing, leaves rc in OV_RC
+ovgen() {
     OV_FIXTURE="$2" GEN_BRIEFS_GH_CMD="$1" python3 "$SUT" "$3" --base 4ccb59d --chief BZ --bucket "$4" --repo "$REPO" --handover-root /h --no-worktree >"$WORK/ov.out" 2>&1; OV_RC=$?
 }
 ovgen "$WORK/ov-gh.sh" "$WORK/ov-prs.json" "$WORK/wr.json" "$WORK/ov1"
@@ -519,15 +517,12 @@ has "the outside-writes sentence stays" "$OV1" "named on your PR's \`outside-wri
 bash "$HERE/brief-lint.sh" "$WORK"/ov1/*-N901-plain-fix-*.md 2>"$WORK/ovlint.err"; rc=$?
 [ "$rc" = 0 ] && pass "a brief with an Overlaps line passes brief-lint.sh" || fail "overlaps brief-lint rc=$rc: $(cat "$WORK/ovlint.err")"
 [ "$(printf '%s\n' "$OV1" | grep -c '^> \*\*Writes:\*\* ')" = 1 ] && pass "the Overlaps line adds no second Writes line" || fail "Writes line count changed"
-# a failing gh: the brief is still written and the Overlaps line says so
 ovgen "$WORK/ov-gh.sh" "" "$WORK/wr.json" "$WORK/ov2"
 [ "$OV_RC" = 0 ] && pass "a failing gh does not stop generation (rc 0)" || fail "failing-gh generation rc=$OV_RC: $(cat "$WORK/ov.out")"
 has "a failing gh gives unknown (gh failed)" "$(cat "$WORK"/ov2/*-N901-plain-fix-*.md 2>/dev/null)" 'Overlaps:** unknown (gh failed)'
-# no overlap
 ovgen "$WORK/ov-gh.sh" "$WORK/ov-none.json" "$WORK/wr.json" "$WORK/ov3"
 [ "$OV_RC" = 0 ] && pass "a wave with no overlap generates (rc 0)" || fail "no-overlap generation rc=$OV_RC: $(cat "$WORK/ov.out")"
 has "no overlap says none seen at launch" "$(cat "$WORK"/ov3/*-N901-plain-fix-*.md 2>/dev/null)" 'Overlaps:** none seen at launch'
-# a Writes directory matches the PR files under it, and two workers of one wave name each other
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["writes"]="scripts/x/"; l[1]["writes"]="scripts/x/y.sh scripts/hooks/h.sh"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ov-wave.json"
 cat > "$WORK/ov-dir.json" <<'EOF'
 [{"number":4250,"title":"t","headRefName":"fix/a","isCrossRepository":false,"files":[{"path":"scripts/x/deep/q.sh"}]}]
@@ -540,19 +535,16 @@ has "a Writes directory matches a PR file under it" "$OV4A" 'PR #4250 also chang
 has "a worker names the sibling that also writes under its directory" "$OV4A" 'worker N902 also writes scripts/x/y.sh'
 has "the sibling names the first worker back" "$OV4B" 'worker N901 also writes scripts/x/y.sh'
 lacks "the sibling with no PR overlap names no PR" "$OV4B" 'PR #4250'
-# a failing gh hides the PRs only: the wave siblings are still named
 ovgen "$WORK/ov-gh.sh" "" "$WORK/ov-wave.json" "$WORK/ov5"
 [ "$OV_RC" = 0 ] && pass "a wave with a failing gh generates (rc 0)" || fail "wave failing-gh generation rc=$OV_RC: $(cat "$WORK/ov.out")"
 OV5A="$(cat "$WORK"/ov5/*-N901-plain-fix-*.md 2>/dev/null)"
 has "a failing gh still says unknown for the PRs" "$OV5A" 'Overlaps:** unknown (gh failed)'
 has "a failing gh still names the wave sibling" "$OV5A" 'worker N902 also writes scripts/x/y.sh'
-# a fork PR that reuses the worker's branch name is not the worker's own PR
 cat > "$WORK/ov-fork.json" <<'EOF'
 [{"number":4260,"title":"fork","headRefName":"fix/himmel-9001-plain-fix","isCrossRepository":true,"files":[{"path":"scripts/wr/a.sh"}]}]
 EOF
 ovgen "$WORK/ov-gh.sh" "$WORK/ov-fork.json" "$WORK/wr.json" "$WORK/ov6"
 has "a fork PR on the same branch name still counts as an overlap" "$(cat "$WORK"/ov6/*-N901-plain-fix-*.md 2>/dev/null)" 'PR #4260 (outside contributor) also changes scripts/wr/a.sh'
-# the duty itself
 has "the brief carries the Conflicts resolved duty" "$OV1" '## Conflicts resolved'
 has "the duty says to merge forward and never rebase" "$OV1" 'git merge origin/main'
 lacks "the duty asks for no hand-written Results bullet" "$OV1" 'Append the same lines as one Results bullet'

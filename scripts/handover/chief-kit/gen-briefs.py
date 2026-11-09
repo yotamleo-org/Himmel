@@ -1205,8 +1205,6 @@ def partial_merge_block(keys, repo):
 
 
 def read_open_prs(repo):
-    """The open PRs and their files, one bounded read (60 s) per run; None when gh fails or prints no list.
-    GEN_BRIEFS_GH_CMD replaces `gh` (the test seam), called as `$CMD pr list --state open ...`."""
     gh = os.environ.get('GEN_BRIEFS_GH_CMD') or 'gh'
     try:
         r = subprocess.run([gh, 'pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,files,isCrossRepository'],
@@ -1218,12 +1216,10 @@ def read_open_prs(repo):
 
 
 def _covers(a, b):
-    """True when Writes entry a (kind, path) names b's path: the same path, or a tree around it."""
     return b[1] == a[1] or (a[0] == 'tree' and b[1].startswith(a[1].rstrip('/') + '/'))
 
 
 def _shared(mine, theirs):
-    """The paths of `theirs` that touch one of `mine`, narrowest first named: a tree of mine over their file names the file."""
     out = []
     for t in theirs:
         for m in mine:
@@ -1238,7 +1234,6 @@ def _named(paths):
 
 
 def overlaps_line(l, ctx):
-    """The brief's `Overlaps:` line: each open PR and each other worker of the wave that shares one of this worker's Writes paths."""
     def writes(w):
         return holds.parse_text(holds.WRITES_LEAD + ' ' + write_paths(w.get('writes', ''), ctx['hroot']), ctx['repo'])
     mine = writes(l)
