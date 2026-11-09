@@ -136,10 +136,13 @@ def scan_quoted(lines, leaders, sh=False, js=False):
                 j += 1
                 continue
             at_word = j == 0 or line[j - 1] in " \t"
-            if sh and line.startswith("<<", j) and not line.startswith("<<<", j):
-                m = re.match(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2", line[j:])
+            if sh and line.startswith("<<<", j):
+                j += 3
+                continue
+            if sh and line.startswith("<<", j):
+                m = re.match(r"<<(-?)\s*(?:(['\"])([^'\"\n]+)\2|\\?([A-Za-z_][A-Za-z0-9_.-]*))", line[j:])
                 if m:
-                    pending.append([m.group(3), m.group(1) == "-", line[:j], []])
+                    pending.append([m.group(3) or m.group(4), m.group(1) == "-", line[:j], []])
                     j += m.end()
                     continue
             if at_word and "#" in leaders and c == "#":

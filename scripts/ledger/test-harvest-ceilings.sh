@@ -97,9 +97,13 @@ printf '#!/usr/bin/env bash\nfn_a() {\n    # %s first part,\n    # upgrade later
 printf '#!/usr/bin/env bash\necho hi  # %s trailing, upgrade x\n' "$TOK" > "$R/l.sh"
 printf '#!/usr/bin/env bash\ngrep -q "%s" x\n' "$TOK" > "$R/h.sh"
 printf '#!/usr/bin/env bash\ncat <<EOF\n# %s in a heredoc body\nEOF\n' "$TOK" > "$R/i.sh"
+printf '#!/usr/bin/env bash\ncat <<'"'"'END-TEXT'"'"'\n# %s in a hyphen-delimited heredoc\nEND-TEXT\n' "$TOK" > "$R/m.sh"
+printf '#!/usr/bin/env bash\nread -r a <<< "\0441"\n# %s after a here-string, upgrade x\necho "\044a"\n' "$TOK" > "$R/n.sh"
 commit "$R" base
-cp "$R/h.sh" "$W/h.before"; cp "$R/i.sh" "$W/i.before"
-OUT="$(cd "$R" && python3 -I "$PY" strip a.sh l.sh h.sh i.sh 2>&1)"; RC=$?
+cp "$R/h.sh" "$W/h.before"; cp "$R/i.sh" "$W/i.before"; cp "$R/m.sh" "$W/m.before"
+OUT="$(cd "$R" && python3 -I "$PY" strip a.sh l.sh h.sh i.sh m.sh n.sh 2>&1)"; RC=$?
+if [ "$(cat "$R/n.sh")" = "$(printf '#!/usr/bin/env bash\nread -r a <<< "\0441"\necho "\044a"')" ]; then pass "a here-string opens no heredoc: the comment after it is stripped"; else fail "n.sh after strip: $(cat "$R/n.sh")"; fi
+if cmp -s "$R/m.sh" "$W/m.before"; then pass "strip leaves a token in a heredoc whose quoted delimiter has a hyphen"; else fail "m.sh changed: $(cat "$R/m.sh")"; fi
 if [ "$RC" -eq 0 ]; then pass "strip exits 0"; else fail "strip rc=$RC: $OUT"; fi
 if [ "$(cat "$R/a.sh")" = "$(printf '#!/usr/bin/env bash\nfn_a() {\n    # shellcheck disable=SC2086\n    echo x\n}')" ]; then pass "strip deletes the block and keeps the directive"; else fail "a.sh after strip: $(cat "$R/a.sh")"; fi
 if [ "$(cat "$R/l.sh")" = "$(printf '#!/usr/bin/env bash\necho hi')" ]; then pass "strip cuts a trailing comment and keeps the code"; else fail "l.sh after strip: $(cat "$R/l.sh")"; fi

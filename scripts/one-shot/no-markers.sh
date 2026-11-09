@@ -29,8 +29,12 @@ exempt() { # paths on stdin -> those under a whole-file allow row
 scan_repo() {
     local top files ex held bad=0 f
     top="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not a git checkout"
-    files="$(git -C "$top" grep -Iil -F -e "$TOK" 2>/dev/null)"
-    [ -n "$files" ] || { echo "no-markers: PASS, no tracked file carries a marker"; return 0; }
+    files="$(git -C "$top" grep -Iil -F -e "$TOK")"
+    case "$?" in
+        0) ;;
+        1) echo "no-markers: PASS, no tracked file carries a marker"; return 0 ;;
+        *) die "git grep failed, cannot evaluate" ;;
+    esac
     ex="$(printf '%s\n' "$files" | exempt)" || die "ticket-refs.awk exempt mode failed"
     held=""
     [ -f "$top/scripts/ledger/held-paths.txt" ] && held="$(sed -e 's/#.*//' -e 's/[[:space:]]*$//' -e '/^$/d' "$top/scripts/ledger/held-paths.txt")"

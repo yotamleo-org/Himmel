@@ -51,6 +51,12 @@ run --removed "$base" --draft "$W/draft1.tsv"
 if [ "$RC" -eq 1 ] && has FAIL; then pass "--removed fails on a count mismatch"; else fail "--removed mismatch -> rc=$RC: $OUT"; fi
 run --bogus
 if [ "$RC" -eq 2 ]; then pass "an unknown argument exits 2"; else fail "usage -> rc=$RC: $OUT"; fi
+mkdir -p "$W/bin"
+REAL_GIT="$(command -v git)"
+printf '#!/usr/bin/env bash\nfor a in "\044@"; do [ "\044a" = grep ] && { echo "fatal: grep broke" >&2; exit 128; }; done\nexec "%s" "\044@"\n' "$REAL_GIT" > "$W/bin/git"
+chmod +x "$W/bin/git"
+OUT="$(cd "$R" && PATH="$W/bin:$PATH" bash scripts/one-shot/no-markers.sh 2>&1)"; RC=$?
+if [ "$RC" -eq 2 ] && has "cannot evaluate"; then pass "a git grep failure exits 2, never PASS"; else fail "git grep failure -> rc=$RC: $OUT"; fi
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
