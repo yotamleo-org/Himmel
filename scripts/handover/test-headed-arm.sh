@@ -2835,9 +2835,14 @@ check "route-d ... and no --chief-doc is offered" "$(printf '%s' "$hsout" | grep
 
 # WRITE_HOLD_OK is the operator's bypass; a worker's own launch (HIMMEL_CONSOLE_LEG set) must not carry it on
 W4DOC="$(hdoc HIMMEL-9512-N1-w4.md '# w4')"
+# the doc name names a ticket, so the launch door (brief-lint.sh bucket_rule) asks the jira CLI; scripts/jira/dist is untracked, absent in CI: a fixture stand-in answers IN
+mkdir -p "$tmp/w4-jira"
+printf '%s\n' "const a = process.argv.slice(2);" "if (a[0] === 'release' && a[1] === 'bucket-check') for (const k of a.slice(a.indexOf('--mirror') + 2)) console.log('IN ' + k + ' current=v1.1.3 via=mirror');" "else process.exit(2);" > "$tmp/w4-jira/index.js"
+export BRIEF_LINT_JIRA_CLI="$tmp/w4-jira/index.js"
 w4_lead="$(HIMMEL_CONSOLE_LEG='' WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
 # HIMMEL_CONSOLE_LEG is a Claude Code marker: on an anchor checkout with no claude ancestor (CI) the seam guard refuses it beside a set seam, and the suite exports UNGUARDED_LAUNCH_OK; the real repo is a guarded folder, so the seam is dropped for this one launch
 w4_leg="$(unset UNGUARDED_LAUNCH_OK; HIMMEL_CONSOLE_LEG=1 WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
+unset BRIEF_LINT_JIRA_CLI
 contains "scrub-a control: WRITE_HOLD_OK=1 from a non-worker launching shell reaches the worker" "$w4_lead" "WRITE_HOLD_OK=1"
 case "$w4_leg" in *"WRITE_HOLD_OK=<unset>"*) ;; *) printf 'scrub-b worker output:\n%s\n' "$w4_leg" | cut -c1-400 | head -n 12 >&2 ;; esac
 contains "scrub-b WRITE_HOLD_OK=1 inherited by a worker's own launch (HIMMEL_CONSOLE_LEG set) is dropped" "$w4_leg" "WRITE_HOLD_OK=<unset>"

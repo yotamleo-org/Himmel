@@ -25,6 +25,19 @@ release is declared (`jira release state <R>` prints a status other than
   reaches it.
 - **A worker's FINDING that asks "file it where?"** is a request. So is a
   follow-up you file yourself: file it to backlog, then request its INTAKE.
+- **A launch on a ticket outside the current version is refused** (`brief-lint.sh`
+  `bucket_rule`, exit 3; `--no-prior-art-check` does not skip it). The refusal names
+  the key, its version, current and the open count, and asks why this ticket and not
+  the bucket. Your routes: place it in the bucket with a request and `rm-run`
+  (above); or, if the operator approved it as out of version, record that with
+  `jira release operator out-of-version` (the operator's words, 14 days, a phone line
+  for each; never for parallel work outside the bucket); at 0 open the version is
+  done, so run READY and the operator releases it in Jira. A Done ticket needs a new
+  ticket with `--follow-up-of` or a reopen; a relaunch of a doc that has already
+  reported (a `## Results` bullet) passes. A project with no versions file passes. Both
+  passes print a `bypass=` line on the launch. A failed Jira read refuses by name
+  (rebuild the jira CLI, refresh the mirror, retry), because this gate fails shut.
+  No environment variable passes it, and a judge, consult or relay launch is not asked.
 - **A RULING is a `RULING <id> <req> …` line printed by `rm-run`** for a
   request you wrote. `REFUSED <req>: <why>` is an engine refusal: the request
   stays claimed, so fix the cause (a missing sector, an uncovered authority)

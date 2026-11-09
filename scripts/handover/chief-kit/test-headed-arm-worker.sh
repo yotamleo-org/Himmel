@@ -197,8 +197,18 @@ mkdir -p "$HANDOVER_DIR" "$HIMMEL_FLEET_SLOTS" "$XDG_RUNTIME_DIR" "$WORKER_SESSI
 # is untracked, absent in CI, so a fixture stand-in calls every key NOT-CORE (the refusals themselves are test-brief-lint.sh's)
 mkdir -p "$tmp/notcore-jira"
 cat > "$tmp/notcore-jira/index.js" <<'NCEOF'
+const fs = require('fs');
 const a = process.argv.slice(2);
 if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else if (a[0] === 'release' && a[1] === 'bucket-check') {
+  // the launch door asks per key: a file named for the key under $BRIEF_LINT_TEST_BUCKET holds the whole verdict line, else IN
+  if (process.env.BRIEF_LINT_TEST_LOG) fs.appendFileSync(process.env.BRIEF_LINT_TEST_LOG, a.join(' ') + '\n');
+  for (const k of a.slice(a.indexOf('--mirror') + 2)) {
+    let v = '';
+    try { v = fs.readFileSync((process.env.BRIEF_LINT_TEST_BUCKET || '') + '/' + k, 'utf8').trim(); } catch (e) { v = ''; }
+    console.log(v || 'IN ' + k + ' current=v1.1.3 via=mirror');
+  }
+}
 else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
 NCEOF
 export BRIEF_LINT_JIRA_CLI="$tmp/notcore-jira/index.js"
@@ -4246,6 +4256,63 @@ check "41b dry-run --consult --profile design-motion: exit 0" "$rc" "0"
 contains "41b dry-run reports consult=1" "$out" "consult=1"
 contains "41b dry-run uses the consult preface" "$out" "docs/handover/consult-preface.md"
 contains "41b dry-run defaults the model to sonnet" "$out" "claude-sonnet-5-5"
+
+# --- the launch door: brief-lint.sh bucket_rule asks the jira CLI for every key the brief names. A verdict
+# that passes by exception (NONE, APPROVED, a Done key on a doc that has run) prints a `bypass=` line, which the launcher
+# re-emits from the lint's stderr; a key outside the current version refuses the launch; a consult or relay launch asks nothing.
+door="$tmp/door"; mkdir -p "$door"; door_log="$tmp/door.log"
+export BRIEF_LINT_TEST_BUCKET="$door" BRIEF_LINT_TEST_LOG="$door_log"
+fx_brief '# HIMMEL-9801 — a door fixture' > "$tmp/door-doc.md"
+fx_brief '# HIMMEL-9801 — a door fixture' '## Results (newest at the bottom)' '- 10:00 LIVE — started' > "$tmp/door-ran.md"
+door_run() { # doc [launcher flags]: a dry run on the lint's own stderr
+  local d="$1"; shift
+  bash "${DOOR_SCRIPT:-$SCRIPT}" --dry-run --no-profile "$@" HIMMEL-9999-leg "$d" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1
+}
+door_calls() { grep -c 'bucket-check' "$door_log" || true; }  # swallow-ok: grep -c exits 1 on a count of 0
+printf 'NONE HIMMEL-9801 /m/ADOPT\n' > "$door/HIMMEL-9801"
+rc=0; out="$(door_run "$tmp/door-doc.md")" || rc=$?
+check "door-a a NONE verdict launches (exit 0)" "$rc" "0"
+contains "door-a2 ... and the launcher prints the bypass= line with the key" "$out" "HIMMEL-9801 bypass="
+printf 'APPROVED HIMMEL-9801 decision=901 record=O-R1-ov-901\n' > "$door/HIMMEL-9801"
+rc=0; out="$(door_run "$tmp/door-doc.md")" || rc=$?
+check "door-b an APPROVED verdict launches (exit 0)" "$rc" "0"
+contains "door-b2 ... and prints the bypass= line with the key and the decision" "$out" "HIMMEL-9801 bypass=out-of-version decision=901"
+printf 'DONE HIMMEL-9801\n' > "$door/HIMMEL-9801"
+rc=0; out="$(door_run "$tmp/door-ran.md")" || rc=$?
+check "door-c a Done relaunch of a doc with a Results bullet launches (exit 0)" "$rc" "0"
+contains "door-c2 ... and prints the bypass= line with the key" "$out" "HIMMEL-9801 bypass=done-relaunch"
+rc=0; out="$(door_run "$tmp/door-doc.md")" || rc=$?
+check "door-d a Done ticket on a new doc is refused (exit 2)" "$rc" "2"
+contains "door-d2 ... naming the key" "$out" "HIMMEL-9801 is Done"
+printf 'OUTSIDE HIMMEL-9801 v1.1.4 current=v1.1.3 open=57\n' > "$door/HIMMEL-9801"
+: > "$door_log"
+rc=0; out="$(door_run "$tmp/door-doc.md")" || rc=$?
+check "door-e an outside key is refused by the launcher (exit 2)" "$rc" "2"
+contains "door-e2 ... naming the key, its version, current and the open count" "$out" "HIMMEL-9801 is in v1.1.4, current is v1.1.3, 57 open"
+check "door-e3 control: the launch asked bucket-check once" "$(door_calls)" "1"
+rc=0; out="$(door_run "$tmp/door-doc.md" --no-prior-art-check)" || rc=$?
+check "door-e4 --no-prior-art-check does not skip the door (exit 2)" "$rc" "2"
+printf 'IN HIMMEL-9801 current=v1.1.3 via=mirror\n' > "$door/HIMMEL-9801"
+rc=0; out="$(door_run "$tmp/door-doc.md")" || rc=$?
+check "door-f an IN verdict launches (exit 0)" "$rc" "0"
+not_contains "door-f2 ... with no bypass= line" "$out" "bypass="
+# a relay or a consult launch is no worker launch: it never asks, even on an outside key
+printf 'OUTSIDE HIMMEL-9801 v1.1.4 current=v1.1.3 open=57\n' > "$door/HIMMEL-9801"
+: > "$door_log"
+rc=0; out="$(bash "$SCRIPT" --dry-run --relay door-relay "$tmp/door-doc.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "door-g a relay dry run on an outside key launches (exit 0)" "$rc" "0"
+rc=0; out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --chief door-chief door-consult "$tmp/door-doc.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "door-g2 a consult dry run on an outside key launches (exit 0)" "$rc" "0"
+check "door-g3 neither made a bucket-check call" "$(door_calls)" "0"
+# mutation: a lint whose passing line carries no bypass= token leaves the rows above red (the launcher greps for the token)
+door_kit="$tmp/door-mut"; mkdir -p "$door_kit/scripts/handover"
+cp -r "$(dirname "$SCRIPT")" "$door_kit/scripts/handover/chief-kit"; ln -s "$(cd "$(dirname "$SCRIPT")/../../lib" && pwd)" "$door_kit/scripts/lib"
+sed -i 's/ bypass=%s / BYP=%s /' "$door_kit/scripts/handover/chief-kit/brief-lint.sh"
+printf 'NONE HIMMEL-9801 /m/ADOPT\n' > "$door/HIMMEL-9801"
+rc=0; out="$(DOOR_SCRIPT="$door_kit/scripts/handover/chief-kit/headed-arm-worker.sh" door_run "$tmp/door-doc.md")" || rc=$?
+check "door-h mutation: the launch still runs (exit 0)" "$rc" "0"
+not_contains "door-h2 mutation: the line with no bypass= token leaves the launcher silent" "$out" "bypass="
+unset BRIEF_LINT_TEST_BUCKET BRIEF_LINT_TEST_LOG
 contains "41b dry-run withholds IMPL_GUARD_OK" "$out" "IMPL_GUARD_OK=<unset>"
 
 d41c="$tmp/c41c"; mk_launch_stubs "$d41c" "HIMMEL-4014-ask"; mkdir -p "$tmp/repo41c"
