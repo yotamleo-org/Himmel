@@ -10,7 +10,7 @@
 # a script matches neither. scripts/lib/forge-github.sh is the
 # third caller: it triggers from the create/edit seam every such script
 # already routes through. scripts/handover/merge-on-green.sh is the fourth:
-# before a merge it posts the trigger when the ledger lacks the head. Every
+# before a merge it attempts to post the trigger when the ledger lacks the head. Every
 # caller obeys the SAME invariant: trigger at most
 # ONCE per (repo, PR, head SHA) — so the seam and the hooks can never
 # double-post for one head. This file is the shared, load-bearing dedup —

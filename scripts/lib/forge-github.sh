@@ -47,8 +47,8 @@ fi
 # rather than a runtime check.
 #
 # Never blocks: every failure path returns 0. The create/edit already succeeded
-# by the time this runs. A head this misses gets merge-on-green.sh's one
-# backstop post; check-ci only prints a NOTE.
+# by the time this runs. If the ledger lacks the head, merge-on-green.sh
+# attempts one backstop post; check-ci only prints a NOTE.
 _gh_trigger_cr() {
     # The repo's ONE armed-CodeRabbit predicate (scripts/lib/coderabbit-available.sh):
     # honours CR_PROFILE=none and stays silent on a clone with no CodeRabbit App.
