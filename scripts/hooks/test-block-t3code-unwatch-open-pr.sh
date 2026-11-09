@@ -55,6 +55,7 @@ if grep -q -- "pr view 5054 --repo o/r" "$GH_STUB_LOG"; then echo "ok   url reso
 GH_STUB_STATE=OPEN run "number+repo payload denied" "$TMP/p-num.json" 2 "state=OPEN"
 GH_STUB_STATE=MERGED run "MERGED allowed" "$TMP/p-url.json" 0 -
 GH_STUB_STATE=CLOSED run "CLOSED allowed" "$TMP/p-url.json" 0 -
+GH_STUB_STATE=UNKNOWN run "unexpected state fails open with warning" "$TMP/p-url.json" 0 "unexpected state"
 GH_STUB_STATE=OPEN run "other tool ignored" "$TMP/p-other.json" 0 -
 if [ ! -s "$GH_STUB_LOG" ]; then echo "ok   other tool never calls gh"; else echo "FAIL other tool called gh"; FAIL=$((FAIL+1)); fi
 

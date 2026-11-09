@@ -67,7 +67,11 @@ merge_state=$(jq -r '.mergeStateStatus // ""' <<<"$view")
 review=$(jq -r '.reviewDecision // ""' <<<"$view")
 label="PR ${repo}#$num"
 
-[ "$state" = "OPEN" ] || exit 0
+case "$state" in
+    OPEN) ;;
+    MERGED|CLOSED) exit 0 ;;
+    *) warn "gh pr view $num gave an unexpected state '$state'"; exit 0 ;;
+esac
 
 if [ "${T3CODE_UNWATCH_OK:-0}" = "1" ]; then
     msg="$label unwatched while state=OPEN mergeStateStatus=$merge_state reviewDecision=${review:-none} (T3CODE_UNWATCH_OK=1)"
