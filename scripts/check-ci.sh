@@ -183,6 +183,11 @@
 # which is not a gate result, stays clean. A caller that pipes the run
 # (`check-ci.sh | tail`) gets the PIPE's exit code, not this script's — the
 # verdict line keeps the real status readable in any captured output.
+#
+# A red (1), refused (5) or deadline (2, or 7) exit also prints "review threads at
+# exit N: <count> unresolved" and names each open thread, read at that moment: a
+# review can post while the watch runs, and those exits never reach the thread
+# gate. Report only, it never changes the exit code.
 set -uo pipefail
 
 
@@ -397,8 +402,42 @@ _budget_left() {
 # without also re-running on a gh error or a moved head. Only the two
 # DEADLINE-PENDING sites call this; a red is exit 1 either way.
 _deadline_exit() {
-    if [ "${CHECK_CI_DISTINCT_DEADLINE:-0}" = 1 ]; then exit 7; fi
+    if [ "${CHECK_CI_DISTINCT_DEADLINE:-0}" = 1 ]; then _threads_at_exit 7; exit 7; fi
+    _threads_at_exit 2
     exit 2
+}
+
+# _threads_at_exit <exit code> — a review can post while the watch runs (PR 5053:
+# CodeRabbit posted mid-wait and the run ended before the success-path thread
+# gate). A red (1), refused (5) or deadline (2) exit names the unresolved threads it
+# can read now, and CodeRabbit's actionable-comment count at the head. Report only:
+# the exit code is the caller's.
+_threads_at_exit() {
+    [ -n "${num:-}" ] || return 0
+    local th n act
+    if th=$(open_review_threads "$owner" "$repo" "$num" gh_read); then n=${th%%$'\n'*}; else n=unreadable; th=""; fi
+    if act=$(_cr_actionable) && [ "$act" -gt 0 ]; then act=" (CodeRabbit's review at head $head0 posted $act actionable comment(s))"; else act=""; fi
+    if [ "$n" = 0 ]; then
+        echo "check-ci: review threads at exit $1: 0 unresolved on PR #$num$act" >&2
+    else
+        echo "check-ci: review threads at exit $1: $n unresolved on PR #$num$act — read and answer them before the next push; judge-go and a delta-noop GO refuse while one is open" >&2
+        printf '%s' "${th#*$'\n'}" >&2
+    fi
+}
+
+# _cr_actionable — the actionable comments CodeRabbit's reviews at head0 say they
+# posted ("Actionable comments posted: N", summed). Its check row reads pass even
+# then, so a pass is not a clean review. rc 1 = not armed, or the reviews are unread.
+_cr_actionable() {
+    [ "$CR_ARMED" -eq 1 ] && [ -n "${head0:-}" ] || return 1
+    local uid json n
+    uid=$(cr_signal_bot_id)
+    case "$uid" in '' | *[!0-9]*) return 1 ;; esac
+    json=$(_cbf_reviews_json "$owner" "$repo" "$num") || return 1
+    n=$(printf '%s' "$json" | jq -r --argjson uid "$uid" --arg h "$head0" \
+        '[.[] | select(.user.id == $uid and .commit_id == $h) | (.body // "") | capture("Actionable comments posted: (?<n>[0-9]+)").n | tonumber] | add // 0' 2>/dev/null) || return 1
+    case "$n" in '' | *[!0-9]*) return 1 ;; esac
+    printf '%s\n' "$n"
 }
 
 # A GraphQL-budget wait is bounded by what is LEFT of --max-wait,
@@ -434,6 +473,10 @@ fi
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/gh-read.sh"
 gh_read_init
+# the unresolved threads a non-green exit names (_threads_at_exit)
+# shellcheck source=scripts/lib/open-review-threads.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+. "$(cd "$(dirname "$0")" && pwd)/lib/open-review-threads.sh"
 RL_RECOVERIES=0
 # _rl_recover — after a gh failure that reads as a rate limit: wait for the
 # reset and tell the caller to retry (rc 0), at most 3 times per run. rc 1 =
@@ -771,6 +814,7 @@ required_gate() {
     if [ "$rs_rc" -ne 0 ]; then
         echo "check-ci: BLOCKED — required-set unreadable: could not list the checks GitHub requires on this PR's base branch (rules/branches or branch-protection read failed). Refusing rather than treating it as an empty set; re-run once gh/API access recovers (exit 5)" >&2
         _alert "required-set unreadable — the required-check list for the base branch could not be read; nothing was assumed"
+        _threads_at_exit 5
         exit 5
     fi
     [ -n "$reqs" ] || return 0
@@ -785,6 +829,7 @@ required_gate() {
         if _has_producer_ids "$reqs" && ! prows=$(_producer_rows); then
             echo "check-ci: BLOCKED — required-check producers unreadable: could not read which app reported each check on this PR's head, so a required check pinned to an app cannot be verified. Refusing rather than matching by name alone; re-run once gh/API access recovers (exit 5)" >&2
             _alert "required-check producers unreadable — a required check pinned to an app could not be verified; nothing was assumed"
+            _threads_at_exit 5
             exit 5
         fi
         st=$(_required_status "$reqs" "$rows" "$prows")
@@ -793,6 +838,7 @@ required_gate() {
             echo "check-ci: checks FAILED — required check(s) failed: $failed" >&2
             _job_log_hint
             _alert "required check(s) FAILED: $failed — GitHub will refuse this merge until they pass"
+            _threads_at_exit 1
             exit 1
         fi
         missing=$(_join_by_status missing "$st")
@@ -840,6 +886,7 @@ required_gate() {
                 missing="$missing (status-only, producer unverifiable: $status_only)"
             fi
             _alert "required check(s) never reported within ${GRACE}s: $missing — GitHub will refuse this merge"
+            _threads_at_exit 5
             exit 5
         fi
         "$CHECK_CI_SLEEP_CMD" "$POLL"
@@ -867,6 +914,7 @@ red_exit() {
     fi
     _job_log_hint
     _red_alert
+    _threads_at_exit 1
     exit 1
 }
 
@@ -1570,6 +1618,10 @@ cr_signal_gate() {
         *)
             echo "check-ci: NOTE — CodeRabbit $state on head $head0 of PR #$num: best effort, not gating; thread + body-findings gates still apply." >&2 ;;
     esac
+    local act
+    if act=$(_cr_actionable) && [ "$act" -gt 0 ]; then
+        echo "check-ci: CodeRabbit $state on head $head0 of PR #$num posted $act actionable comment(s): $act finding(s), not a clean pass; the thread gate below decides" >&2
+    fi
     # A CodeRabbit verdict was just read: one CI-release event, switch read first.
     _cr_first_event || true
 }

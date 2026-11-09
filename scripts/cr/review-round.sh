@@ -87,7 +87,7 @@ usage() {
     echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]]" >&2
     echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>] [--fu-why <code>] [--fu-override <id>]" >&2
     echo "       review-round.sh promote [--check] --branch <name> --head <sha>   (--check: the same verdict, read only, nothing written)" >&2
-    echo "       review-round.sh judge-go --branch <name> --head <sha>   (after the cap: a signed judge GO at <sha> stands in for the review)" >&2
+    echo "       review-round.sh judge-go --branch <name> --head <sha> [--open-threads-ok <reason>]   (after the cap: a signed judge GO at <sha> stands in for the review; refused while the PR has an unresolved review thread unless the chief names the override)" >&2
     echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests-only head after a reviewed head; spends no round)" >&2
     echo "       review-round.sh abort --branch <name> --head <sha>   (give back the round started at <sha> when its panel reviewed nothing)" >&2
     echo "       review-round.sh from --branch <name>   (the reviewed head this round 2 or 3 started from; nothing at other rounds)" >&2
@@ -247,10 +247,12 @@ base_sha=""
 defer_to="${CR_DEFER_TO:-}"
 fu_why_arg=""
 fu_override_arg=""
+threads_ok=""
 check_only=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --check) check_only=1; shift ;;
+        --open-threads-ok) [ $# -ge 2 ] && [ -n "$2" ] || usage; threads_ok="$2"; shift 2 ;;
         --branch) [ $# -ge 2 ] || usage; branch="$2"; shift 2 ;;
         --pr) [ $# -ge 2 ] || usage; pr="$2"; shift 2 ;;
         --head) [ $# -ge 2 ] || usage; head_sha="$2"; shift 2 ;;
@@ -271,6 +273,7 @@ if [ -n "$pr" ]; then
 fi
 [ -n "$branch" ] || usage
 [ "$check_only" -eq 0 ] || [ "$verb" = "promote" ] || usage
+[ -z "$threads_ok" ] || [ "$verb" = "judge-go" ] || usage
 case "$verb" in
     check) [ -n "$pr" ] || usage ;;
     start) [ -n "$head_sha" ] || [ -z "$base_sha" ] || usage ;;
@@ -1089,6 +1092,26 @@ EOF_SNAP
     printf '%s\n' "$hit"
 )
 
+# judge_go_threads prints the unresolved review threads of the branch's one open
+# PR in open_review_threads' shape (a count line, then one line per thread); no
+# open PR prints 0. rc 1 = not read (no lib, a failed or ambiguous PR lookup, a
+# failed thread query).
+judge_go_threads() {
+    local jt_lib="$HIMMEL_ROOT/scripts/lib/open-review-threads.sh" jt_pr
+    [ -f "$jt_lib" ] || return 1
+    # shellcheck source=scripts/lib/open-review-threads.sh
+    # shellcheck disable=SC1091
+    . "$jt_lib" || return 1
+    # shellcheck source=scripts/lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+    jt_pr="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" pr list --head "$branch" --state open \
+        --json number -q '.[].number' 2>/dev/null)" || return 1
+    [ -n "$jt_pr" ] || { printf '0\n'; return 0; }
+    case "$jt_pr" in 0* | *[!0-9]*) return 1 ;; esac
+    open_review_threads '{owner}' '{repo}' "$jt_pr" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}"
+}
+
 # ci_red_delta_lines <from> <to> prints how many diff lines the PR's
 # own diff changed from <from> to <to>; the base side of a merge-forward is not
 # counted (own_diff compares each head with its own base point). A changed line
@@ -1396,7 +1419,14 @@ delta_refuse() {
 # source=judge:<qid>/<name>. The row is audit-only: its kind is not one
 # ledger-append.sh writes, and every gate reader keys on kind and ignores it.
 # 1 = no GO record, or a round is still available;
-# 8 = refused (NO-GO at the head, head not a descendant of a reviewed head).
+# 8 = refused (NO-GO at the head, head not a descendant of a reviewed head, or an
+# unresolved review thread on the branch's open PR).
+# A review can post while the CI wait runs: PR 5053 took a judge GO over open
+# CodeRabbit threads posted minutes earlier. So the PR's threads are read first and
+# any unresolved one refuses, named. --open-threads-ok <reason> is the chief's
+# override: it warns, names the threads and records the reason in the ledger row.
+# An unreadable thread read warns and goes on; check-ci still refuses the merge
+# over an open thread, fail-closed.
 if [ "$verb" = "judge-go" ]; then
     # swallow-ok: an unresolvable head is refused on the next line (exit 2)
     if ! jg_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$jg_head" ]; then
@@ -1408,6 +1438,25 @@ if [ "$verb" = "judge-go" ]; then
             echo "review-round: branch name $branch cannot be written into a ledger row - the judge GO is refused" >&2
             exit 2 ;;
     esac
+    case "$threads_ok" in
+        *[\"\\]*|*[[:cntrl:]]*)
+            echo "review-round: the --open-threads-ok reason cannot be written into a ledger row (no quote, backslash or control character) - the judge GO is refused" >&2
+            exit 2 ;;
+    esac
+    jg_note=""
+    # swallow-ok: an unread thread list is named on the next lines and the GO goes on
+    if ! jg_th="$(judge_go_threads)"; then
+        echo "review-round: WARNING - could not read the review threads of the open PR of $branch; this judge GO is not checked against open threads (check-ci still refuses the merge over one)" >&2
+    elif [ "${jg_th%%$'\n'*}" != 0 ]; then
+        if [ -z "$threads_ok" ]; then
+            printf 'review-round: %s unresolved review thread(s) on the open PR of %s - a judge GO is never taken over an open thread; read, answer and resolve each, or the chief names the override with --open-threads-ok "<reason>":\n%s' \
+                "${jg_th%%$'\n'*}" "$branch" "${jg_th#*$'\n'}" >&2
+            exit 8
+        fi
+        printf 'review-round: WARNING - judge GO taken over %s unresolved review thread(s) on the open PR of %s, by the override (%s):\n%s' \
+            "${jg_th%%$'\n'*}" "$branch" "$threads_ok" "${jg_th#*$'\n'}" >&2
+        jg_note=",\"open_threads_ok\":\"${jg_th%%$'\n'*} open, $threads_ok\""
+    fi
     read_round || exit 5
     if [ "$round" -lt 3 ]; then
         echo "review-round: $branch has run $round of 3 full rounds - run /pr-check, a judge GO does not replace an available round" >&2
@@ -1427,8 +1476,8 @@ if [ "$verb" = "judge-go" ]; then
     [ "$jg_rc" -eq 0 ] && [ -n "$jg_hit" ] || exit "$jg_rc"
     jg_ledger="$git_dir/cr-critic-scores.jsonl"
     if ! grep -qsF "\"head\":\"$jg_head\",\"status\":\"ok\",\"source\":\"judge:$jg_hit\"" "$jg_ledger"; then
-        printf '{"kind":"judge-go","ts":"%s","branch":"%s","head":"%s","status":"ok","source":"judge:%s"}\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$jg_head" "$jg_hit" >> "$jg_ledger" || exit 5
+        printf '{"kind":"judge-go","ts":"%s","branch":"%s","head":"%s","status":"ok","source":"judge:%s"%s}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$jg_head" "$jg_hit" "$jg_note" >> "$jg_ledger" || exit 5
     fi
     printf '%s\n' "$jg_hit"
     exit 0
