@@ -674,7 +674,6 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .tr .tab:not(.ch)[aria-selected="true"]{background:var(--surface);border:1px solid var(--rule-strong);border-bottom-color:transparent;border-radius:8px 8px 0 0;text-decoration:none}
 .tab .drf{font:600 11px var(--font-mono);color:var(--beta);background:var(--beta-soft);border-radius:999px;padding:0 var(--s2)}
 .tab .ro{color:var(--muted);font-size:var(--fs-xs)}
-/* a sideways row (the tab list, the chip row) sits in a wrapper carrying an edge label on each side; the page's after-paint helper (roadmap.js placeRows) fills them */
 .xrow{position:relative;min-width:0;max-width:100%}
 .tr .xrow{flex:0 1 auto}
 .edge{position:absolute;top:0;bottom:0;z-index:1;display:flex;align-items:center;font:600 11px var(--font-mono);color:var(--muted);white-space:nowrap;cursor:pointer}

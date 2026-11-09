@@ -298,9 +298,6 @@ function windowBar(d, ui, w, inert = false) {
     + (w.pinned.length ? `<button class="btn" data-rm-clear-pins>Clear pins</button>` : "") + `</div>`;
 }
 
-// Every tab's head: one small chip per version (a pin after each, the red open-on-released mark, "all versions" on the Roadmap and Tidy up tabs), the picked
-// one's numbers in one line under the chips, and the window controls behind a "N of M versions" menu that sits outside the sideways chip row.
-// sel: a version's index, -1 for every version, NO_PICK for the No version tab (no chip is picked there).
 const NO_PICK = -3;
 function slimStrip(d, sel, tab, ui, w, inert) {
   const info = (i) => { const v = d.versions[i], c = v.counts; return { v, c, tag: v.rel ? `released${v.date ? " " + v.date : ""}` : runState(d, v, i) || "planned", total: Object.values(c).reduce((a, b) => a + b, 0) }; };
@@ -393,9 +390,6 @@ function waitingHtml(rows, tabCh, v, d, ch, nv, owed) {
     `<ul class="rm-waiting">${rows.map(row).join("")}</ul>`);
 }
 
-// The Chains tab is the one coloured tab: the chain icon, the number of chains of the read it opens (and its version, when the picked chip is another), and a
-// blocked chip only while a ticket is blocked. The Tidy up label carries the drift count (amber while a row is counted) or says why it has none.
-// sel: the version the head's chips pick (a version's index, -1 for every version, NO_PICK on No version).
 function tabsHtml(d, ui, tab, ch, dr, sel) {
   const ok = chainOk(ch), n = ok ? ch.chains.length : 0, blocked = ok && ch.version ? countsOf(ch, d).blocked : 0;
   const named = ok && ch.version && versionAt(d, ch.version) !== sel;
@@ -408,8 +402,6 @@ function tabsHtml(d, ui, tab, ch, dr, sel) {
   return `<div class="xrow"><nav class="tabs" role="tablist" aria-label="Board">${TABS.filter(([id]) => id !== "nv" || d.noVersionCount || tab === "nv").map(([id, label]) => id === "chains" ? chains(tab === id) :
     `<a class="tab" role="tab" aria-selected="${tab === id}" href="${boardHref({ tab: id, v: ui.v })}">${esc(label)}${id === "tidy" ? " " + tidy : em[id] ? " " + em[id] : ""}</a>`).join("")}</nav><span class="edge l" aria-hidden="true" hidden></span><span class="edge r" aria-hidden="true" hidden></span></div>`;
 }
-// What sits beside the tabs on every tab: who waits for you (every version), the tickets with no version that count has not read, the owed sources that
-// could not be read, the page that follows, and the real refresh. "Shipped since yesterday" has no count here (the merged-PR read is the Shift page's).
 function asideHtml(ch, rows, fresh, d, nv, owed) {
   const wait = chainOk(ch) || rows.length ? `${nTickets(rows.length)} ${rows.length === 1 ? "waits" : "wait"} for you, any version` : "waits for you: not read";
   const unread = nvOk(nv) ? 0 : d.noVersionCount || 0; // once the No version read is in, those tickets are in the rows and nothing is left uncounted
@@ -439,8 +431,6 @@ function laneFilters(d, ui, ch, sel) {
     fsel("project", "Project", projectsOf(d), ui.project) + fsel("planTheme", "Theme", d.planThemes, ui.planTheme) + onlySel];
 }
 
-// The one filter bar, drawn at the top of every non-Chains panel: the version links keep the tab, the Sector, Chain and Hide Done filters narrow what the tab lists.
-// The refresh and the read's age are the tab row's aside (asideHtml).
 function barHtml(d, ui, ch, tab, sel) {
   const here = d.versions[d.cur] ? d.versions[d.cur].n : d.versions[d.next] ? d.versions[d.next].n : "all";
   const keep = tab === "roadmap" ? "" : tab;
@@ -841,12 +831,8 @@ function drawerHtml(d, ui) {
 export const BOARD_REFRESH_MS = 60_000;
 export const boardRefreshDue = (s) => s.page === "board" && !!s.visible && !s.modal && !s.editing && !s.dragging && !s.busy && s.readAt > 0 && s.now - s.readAt >= BOARD_REFRESH_MS;
 
-// The board page's after-paint helper for its sideways rows (the head's chip row and the tab list, each in an `.xrow` with an edge label on either side): it counts the
-// items past each edge, writes the labels, and scrolls the row so its selected tab or chip is whole and clear of them. A label counts every item any part of which lies past
-// its inner edge and widens to cover each one whole, shortening its words ("+2 tabs ›", "+2 ›", "›") before it drops its number. A chip and the pin after it are one item.
-// A scroll the user made is kept across a repaint while the same tab or chip is selected; selecting another places the row afresh. Returns the unmount: it saves
-// that scroll and disconnects the observers and listeners.
 const ROW_TOL = 2;
+const isUserScroll = (row, placed) => Math.abs(row.scrollLeft - placed) > ROW_TOL;
 const rowMemo = {};
 export function placeRows(root = document) {
   const undo = [];
@@ -859,10 +845,8 @@ export function placeRows(root = document) {
     const itemOf = (el) => items.find((i) => i.els.some((e) => e === el || e.contains(el))) || null;
     const sel = row.querySelector('[aria-selected="true"],[aria-current="true"]'), home = sel ? itemOf(sel) : null, selKey = sel ? sel.getAttribute("href") || "" : "";
     let anc = home, user = false, lvL = 0, lvR = 0, placed = 0, lastW = -1;
-    // a label's words at level 0 "+2 tabs ›", level 1 "+2 ›", level 2 the arrow alone
     const words = (left, n, lv) => (lv >= 2 ? (left ? "‹" : "›") : left ? `‹ ${n}${lv ? "" : " " + unit[n === 1 ? 0 : 1]}` : `+${n}${lv ? "" : " " + unit[n === 1 ? 0 : 1]} ›`);
     const natural = (el, t) => { el.style.width = ""; el.hidden = false; el.textContent = t; return el.getBoundingClientRect().width; };
-    // after the user's own scroll, the anchor is the wholly visible item nearest the row's middle
     const anchorNow = () => {
       if (!user) return anc;
       const a = row.getBoundingClientRect(), cx = (a.left + a.right) / 2;
@@ -870,7 +854,6 @@ export function placeRows(root = document) {
       for (const i of items) { const b = box(i); if (b.left < a.left - ROW_TOL || b.right > a.right + ROW_TOL) continue; const d = Math.abs((b.left + b.right) / 2 - cx); if (d < bd) { bd = d; best = i; } }
       return best || anc;
     };
-    // one side: count every item on this side of the anchor any part of which is past the label's inner edge, cover them whole, recount until the width holds
     const side = (el, left, an, lv) => {
       const a = row.getBoundingClientRect(), ai = an ? items.indexOf(an) : -1, mine = left ? items.slice(0, Math.max(ai, 0)) : items.slice(ai + 1);
       const past = (w) => { const inner = left ? a.left + w : a.right - w; return mine.filter((p) => { const b = box(p); return left ? b.left < inner - ROW_TOL : b.right > inner + ROW_TOL; }); };
@@ -890,7 +873,6 @@ export function placeRows(root = document) {
       el.title = `${n} ${unit[n === 1 ? 0 : 1]} ${left ? "to the left" : "to the right"}: tap to show the next`;
       return w;
     };
-    // both sides; a label whose words would reach over the anchor shortens them (left first, then right)
     const label = () => {
       const an = anchorNow();
       for (let t = 0; t < 5; t++) {
@@ -901,7 +883,6 @@ export function placeRows(root = document) {
         if (!okL && lvL < 2) lvL++; else if (!okR && lvR < 2) lvR++; else return;
       }
     };
-    // put an item clear of both labels at their widest words (every item on that side counted), shortening the words until it fits; no anchor: start at 0
     const place = (an) => {
       user = false; lvL = lvR = 0; anc = an;
       if (!an) row.scrollLeft = 0;
@@ -922,16 +903,13 @@ export function placeRows(root = document) {
     };
     const memo = rowMemo[tabs ? "tabs" : "chips"];
     if (memo && memo.user && memo.sel === selKey && home) {
-      // the user's own scroll comes back; the selected item is placed afresh only if it would sit under a label
       row.scrollLeft = memo.left; user = true; placed = -1; label();
       const a = row.getBoundingClientRect(), b = box(home), wl = L.hidden ? 0 : L.getBoundingClientRect().width, wr = R.hidden ? 0 : R.getBoundingClientRect().width;
       if (b.left < a.left + wl - ROW_TOL || b.right > a.right - wr + ROW_TOL) place(home);
     } else place(home);
-    // only a scroll the user makes brings the counts back; the scroll event of the helper's own move is not one
-    const onScroll = () => { if (Math.abs(row.scrollLeft - placed) > ROW_TOL) { user = true; lvL = lvR = 0; placed = -1; } label(); };
+    const onScroll = () => { if (isUserScroll(row, placed)) { user = true; lvL = lvR = 0; placed = -1; } label(); };
     row.addEventListener("scroll", onScroll, { passive: true });
     undo.push(() => row.removeEventListener("scroll", onScroll));
-    // a tap on a label never reaches what it hides: it places the nearest item it hides
     const onTap = (e) => {
       e.preventDefault();
       const left = e.currentTarget === L, an = anchorNow(), ai = an ? items.indexOf(an) : -1, a = row.getBoundingClientRect(), w = e.currentTarget.getBoundingClientRect().width;
@@ -939,7 +917,6 @@ export function placeRows(root = document) {
       if (hid.length) place(left ? hid[hid.length - 1] : hid[0]);
     };
     for (const el of [L, R]) { el.addEventListener("click", onTap); undo.push(() => el.removeEventListener("click", onTap)); }
-    // a tab or chip that takes the keyboard focus under a label is placed clear of both
     const onFocus = (e) => {
       const it = itemOf(e.target);
       if (!it) return;
@@ -948,20 +925,25 @@ export function placeRows(root = document) {
     };
     row.addEventListener("focusin", onFocus);
     undo.push(() => row.removeEventListener("focusin", onFocus));
-    // a resize or a phone turned changes the row's width with no paint: place it again
     lastW = Math.round(row.clientWidth);
     if (typeof ResizeObserver !== "undefined") {
       const ro = new ResizeObserver(() => { const w = Math.round(row.clientWidth); if (Math.abs(w - lastW) <= ROW_TOL) return; lastW = w; place(anc); });
       ro.observe(row);
       undo.push(() => ro.disconnect());
     }
-    // the unmount saves a scroll the user made (the same tab or chip selected on the next paint keeps it), and drops any other
     undo.push(() => { rowMemo[tabs ? "tabs" : "chips"] = { user, left: row.scrollLeft, sel: selKey }; });
   }
   return () => { for (const f of undo.splice(0)) f(); };
 }
 
 export const renderBoard =(data, ui, extras) => pg(boardPage(data, ui || {}, extras || {}));
+function chipFor(tab, data, ui, tabCh, sel) {
+  if (tab === "nv") return NO_PICK;
+  if (tab === "chains") return !chainOk(tabCh) ? sel : tabCh.version ? versionAt(data, tabCh.version) : -1;
+  if (tab === "tidy" && !(ui.v && ui.v !== "all" && sel >= 0)) return -1;
+  return sel;
+}
+const readFor = (tab, ch, cardCh) => (tab === "nv" ? ch : cardCh);
 function boardPage(data, ui, extras) {
   const page = pageHeader("Board", "Every version, what each ticket is doing, and what is left");
   if (!data) return page + `<p class="sub" id="status">loading…</p>`;
@@ -972,9 +954,7 @@ function boardPage(data, ui, extras) {
   const tab = TABS.some(([id]) => id === ui.tab) ? ui.tab : "roadmap";
   const sel = selIndex(data, ui);
   const rows = waitingRows(data, ch, ui.nv, owed, prs);
-  // the chip the head picks: the Chains tab's own version (a chip never highlights over totals of another version); Tidy up reads every version unless the route names
-  // one; No version picks no chip (its tickets are in no version)
-  const chipSel = tab === "nv" ? NO_PICK : tab === "chains" ? (!chainOk(tabCh) ? sel : tabCh.version ? versionAt(data, tabCh.version) : -1) : tab === "tidy" && !(ui.v && ui.v !== "all" && sel >= 0) ? -1 : sel;
+  const chipSel = chipFor(tab, data, ui, tabCh, sel);
   const src = data.source === "github" ? `GitHub issues (${data.mirror.count})` : data.source === "local" ? `the local tracker store (${data.mirror.count} items)`
     : `the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"})`;
   // plain text: the bar clips it to what fits and keeps the whole line in its bubble
@@ -984,13 +964,10 @@ function boardPage(data, ui, extras) {
   const cardCh = chainOk(tabCh) && tabCh.version && versionAt(data, tabCh.version) === sel ? tabCh : ch;
   const drawer = drawerHtml(data, ui), why = tab === "chains" ? whyHtml(ui, tabCh, data) : "";
   const modal = !!(drawer || why);
-  // every tab has the same head, tab row with its aside, and one panel, the drag note first in it. The Chains tab reads the picked version only: no lane filters, no "all versions".
-  // With a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes.
   let panel;
   if (tab === "chains") panel = chainsTab(ui, tabCh, data, ch, chipSel);
   else {
-    // the No version tab's tickets are in no version, so the picked version's read cannot hold them: it keeps the whole read
-    const shownCh = tab === "nv" ? ch : cardCh;
+    const shownCh = readFor(tab, ch, cardCh);
     const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr, prs) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv, owed) + lanesHtml(data, ui, sel, cardCh, dr, prs);
     panel = `<section class="cp plain" aria-label="${esc(TABS.find(([id]) => id === tab)[1])}">${writeNote(ui)}${barHtml(data, ui, shownCh, tab, sel)}${body}</section>`;
   }

@@ -232,7 +232,6 @@ const driftRows = (over: Record<string, unknown> = {}) => ({ ...driftOk([{ class
 const tidy = (ui: Record<string, unknown>, dr: unknown = driftRows()) => renderBoard(read(station()), { version: null, theme: null, tab: "tidy", ...ui }, { drift: dr });
 const cellText = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
 
-// the drift banner is gone from every tab; the Tidy up tab's label carries the count, in amber while a row is counted
 const labelOf = (dr: unknown, tab = "roadmap") => /<a class="tab"[^>]*>Tidy up[\s\S]*?<\/a>/.exec(renderBoard(read(station()), { version: null, theme: null, tab }, { drift: dr }))?.[0] ?? "";
 
 test("the Tidy up label is amber (and not an alert) when there are real drift rows, and plain with none", () => {
@@ -447,7 +446,6 @@ test("Board: a Waiting on you section above the lanes lists each ticket that wai
   expect(sec).toContain("memory 2/2"); // the chain and step it waits at
   expect(sec).not.toContain("HIMMEL-1"); // an in-flight ticket is not listed
   expect(html.indexOf('id="rm-waiting"')).toBeLessThan(html.indexOf('id="rm-lanes"')); // above the lanes
-  // nothing waits, no chain read, or another tab: no section (the aside beside the tabs carries the count)
   ch.tickets[K(5)].state = "in flight";
   const none = renderBoard(r, { version: null, theme: null }, { drift: null, chains: ch });
   expect(none).not.toContain("rm-waiting");
@@ -1712,7 +1710,6 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   expect(none.state).toBe("absent");
 });
 
-// ---- slice 1: every tab draws the Chains tab's head, tab row, aside and panel ---------------------------------------
 const sx = () => withNoVersion(station());
 const shell = (tab: string, ui: Record<string, unknown> = {}, extras: Record<string, unknown> = {}) => {
   const s = sx();

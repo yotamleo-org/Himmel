@@ -76,13 +76,11 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   const errs = consoleErrors(page);
   await open(page);
   await go(page, "#/board");
-  // the head's chip row: one chip per version, the running one selected, and the "all versions" chip after them
   const tiles = page.locator(".bh .vchips .vc:not(.all)");
   await expect(tiles).toHaveCount(3);
   await expect(tiles.nth(1)).toHaveAttribute("aria-current", "true");
   await expect(tiles.nth(0)).toHaveAttribute("title", /released 2026-10-19/);
   await expect(tiles.nth(0).locator(".op")).toHaveAttribute("title", /1 still open: HIMMEL-12/);
-  // there is no drift banner: the Tidy up tab's label counts the real row, and its page names the transient row
   await expect(page.locator("#main .alert")).toHaveCount(0);
   await expect(page.getByRole("tab", { name: /^Tidy up/ })).toContainText("! 1 drift row");
   await page.getByRole("tab", { name: /^Tidy up/ }).click();
@@ -835,7 +833,6 @@ for (const width of [800, 880, 960, 1280]) {
     }
   });
 }
-// the sideways rows (the tab list and the chip row) scroll inside their own box on a phone, never the page, and say how many sit off-screen
 test("390 px: the tab list and the chip row scroll sideways on every tab, with an edge label for what is off-screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "dark" });
