@@ -117,9 +117,9 @@ class Judging:
         for r in sorted({s["round"] for s in slots}):
             self._commit(slots, r)
         closed = {e["slot"] for e in self.ledger.events if e["ev"] in ("judge_verdict", "judge_not_needed", "judge_failed")}
-        for e in self._ev("book"):
+        for e in (e for e in self._ev("book") if e["kind"] == "judge"):
             slot = int(e["attempt"].split("-")[1])
-            if e["kind"] == "judge" and slot not in closed:
+            if slot not in closed:
                 if e["attempt"] in self.ledger.inflight:
                     self.ledger.killed(e["attempt"], None, False)
                     why = "killed"
