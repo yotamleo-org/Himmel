@@ -155,7 +155,6 @@ usage() {
     echo "       go.sh --repo <owner/repo> [--checkout <dir>] --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>" >&2
 }
 
-# the original argv, for the GO_DEADLINE re-run below (the option loop consumes "$@")
 _GO_ARGV=("$@")
 TRUST=""
 TRUST_SET=0
@@ -315,10 +314,6 @@ case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | t
         exit 3 ;;
 esac
 
-# _go_quota_report <refused file> - when a read this script made was refused (a row in
-# the router's GH_READ_REFUSED_FILE), print the one QUOTA-PAUSE / GH-STALL line on stderr and
-# leave the <pr>.<head> marker the waiter wakes on; rc 0. rc 1 = no refused read, nothing printed.
-# A marker or quota-file failure never changes the caller's exit.
 _go_quota_report() {
     local tok="" bucket="" why=""
     [ -n "${1:-}" ] && [ -s "$1" ] || return 1
@@ -334,9 +329,6 @@ _go_quota_report() {
     return 0
 }
 
-# GO_DEADLINE: the same self-armed shape as ready-check.sh. A cut before the GO file's mv is exit 11 and
-# no GO. The inner run writes the GO's path into a sentinel file just before the mv; a cut exits 0 with the
-# path only when that file exists (the mv ran, even during the verdict log), because the GO then stands.
 if [ -z "${_GO_ARMED:-}" ]; then
     gd_s="${GO_DEADLINE:-270}"
     case "$gd_s" in ''|*[!0-9]*) gd_s=270 ;; esac
@@ -375,8 +367,7 @@ if [ -z "${_GO_ARMED:-}" ]; then
     fi
 fi
 GO_REFUSED=$(mktemp "${TMPDIR:-/tmp}/go-refused.XXXXXX" 2>/dev/null) || GO_REFUSED=""  # swallow-ok: no file means no refused-read rows, and a failed read keeps its plain exit
-# shellcheck disable=SC2064  # the path is fixed now, on purpose
-[ -z "$GO_REFUSED" ] || trap "rm -f '$GO_REFUSED'" EXIT
+[ -z "$GO_REFUSED" ] || trap 'rm -f "$GO_REFUSED"' EXIT
 
 # shellcheck source=scripts/lib/handover-path.sh
 # shellcheck disable=SC1091
@@ -415,7 +406,6 @@ if [ "$FORK_SET" -eq 1 ]; then
     FVIEW=$(GH_READ_REFUSED_FILE="$GO_REFUSED" "$GH_READ" pr view "$PR" --repo "$FORK" --json state,headRefOid,mergeable,baseRefName 2>/dev/null) || FVIEW=""
     FSTATE=$(printf '%s' "$FVIEW" | jq -r '"\(.state)|\(.headRefOid)|\(.mergeable)|\(.baseRefName)"' 2>/dev/null) || FSTATE=""
     if [ "$FSTATE" != "OPEN|$SHA|MERGEABLE|$HBRANCH" ]; then
-        # an empty read with a refused row is a read GitHub refused, not a PR in the wrong state
         if [ -z "$FVIEW" ] && _go_quota_report "$GO_REFUSED"; then
             echo "go: could not evaluate the fork GO for $FORK PR #$PR - the PR read was refused or stalled, so nothing was judged. No GO written." >&2
             exit 11
@@ -540,9 +530,6 @@ fi
 RC_ARGS="--observe"
 [ "$FIX_SET" -eq 1 ] || RC_ARGS="--require-contract"
 [ "$CONTRACT_SET" -eq 0 ] || RC_ARGS="$RC_ARGS --contract $CONTRACT"
-# Only rc 0 continues and only rc 1 is an answer: anything else (2, 3, 96, 124, 127, 137 ...) means nothing
-# was judged, exit 11. The case, never an if that names the bad values, so an unknown rc cannot fall through
-# to the signing code.
 READY_OUT="" READY_RC=0
 if [ "$FORK_SET" -eq 0 ]; then
     # shellcheck disable=SC2086  # RC_ARGS is fixed words built just above, never caller text
@@ -601,7 +588,6 @@ NWO=$(cd "$ANCHOR" && GH_READ_REFUSED_FILE="$GO_REFUSED" "$GH_READ" repo view --
 # same number and sha.
 [ "$FORK_SET" -eq 0 ] || [ -z "$NWO" ] || NWO="$FORK"
 if [ -z "$NWO" ]; then
-    # empty because GitHub refused or stalled the read: say so, leave the marker, exit 11
     if _go_quota_report "$GO_REFUSED"; then
         echo "go: could not evaluate PR #$PR at $SHA - the repo name read (gh repo view) was refused or stalled, so nothing was judged. No GO written." >&2
         exit 11
@@ -664,10 +650,8 @@ BY="${CHIEF_SESSION_NAME:-${USER:-$(id -un 2>/dev/null || echo unknown)}@$(hostn
 BY=$(printf '%s' "$BY" | tr -d '\r\n')
 AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# Name the GO path for the GO_DEADLINE wrapper BEFORE the mv. On a cut the wrapper exits 0 only when that path exists, so a cut
-# before the mv is exit 11 (no GO), and a cut anywhere after it, the verdict log below included, leaves the GO standing with no
-# gap between the mv and a later sentinel write. (A GO already at this path from an earlier run stands too.)
-[ -z "${_GO_SENTINEL:-}" ] || printf '%s\n' "$DEST" > "$_GO_SENTINEL" 2>/dev/null || true  # swallow-ok: a missing sentinel only turns a late cut into exit 11
+_go_announce_dest() { [ -z "${_GO_SENTINEL:-}" ] || printf '%s\n' "$DEST" > "$_GO_SENTINEL" 2>/dev/null || true; }  # swallow-ok: a missing sentinel only turns a late cut into exit 11
+_go_announce_dest
 if ! mkdir -p "$DIR" || ! TMP=$(mktemp "$DIR/.go.XXXXXX"); then
     echo "go: cannot create a temp file under $DIR" >&2
     exit 1

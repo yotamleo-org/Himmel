@@ -205,10 +205,6 @@
 # Platform guard: POSIX bash 3.2+, same as go.sh. No mapfile.
 set -u
 
-# _rcd_report <refused file> <pr> <head> - when a read was refused or stalled (rows in the router's
-# GH_READ_REFUSED_FILE: "<token> <bucket> rate-limit|stall"), print the one QUOTA-PAUSE / GH-STALL line
-# and, with a <pr> and <head>, leave the marker the waiter wakes on, one per row so the buckets union.
-# rc 0 = reported, rc 1 = no refused read, nothing printed. A marker failure never changes the exit.
 _rcd_report() {
     local tok="" bucket="" why="" first=1 lib
     [ -s "${1:-}" ] || return 1
@@ -226,23 +222,17 @@ _rcd_report() {
     [ "$first" -eq 0 ]
 }
 
-# _rcd_child <cmd...> - run the child in the background and wait for it, so a TERM that reaches this shell
-# is handled at once by _rcd_term (a foreground wait would defer the trap until the child ends). The child
-# keeps this shell's stdin and the caller's redirects. rc = the child's.
 _rcd_child() {
     "$@" <&0 &
     rcd_pid=$!
     wait "$rcd_pid"
 }
-# _rcd_kill_tree <pid> - TERM a process and everything under it, children first, so no stalled gh outlives a cancel.
-# Without pgrep the descendants are not found and only <pid> is signalled.
 # shellcheck disable=SC2329  # reached only through _rcd_term, which the TERM trap invokes
 _rcd_kill_tree() {
     local c
     for c in $(pgrep -P "$1" 2>/dev/null); do _rcd_kill_tree "$c"; done  # swallow-ok: no pgrep or no children leaves just the pid itself to signal
     kill -TERM "$1" 2>/dev/null
 }
-# _rcd_term - TERM the child's whole tree, wait for its cleanup, exit 143 (the EXIT trap removes the scratch files).
 # shellcheck disable=SC2329  # invoked by the TERM trap below, which shellcheck does not follow
 _rcd_term() {
     [ -z "${rcd_pid:-}" ] || { _rcd_kill_tree "$rcd_pid"; wait "$rcd_pid" 2>/dev/null; }
@@ -253,13 +243,6 @@ _rcd_term() {
 # prefix does not match the project allow rule. READY_CHECK_DEADLINE (whole seconds, default
 # 150 = chief-wait's bound, above item 19's 105 s of bounds; 0 = none) bounds the whole run:
 # the script re-runs itself under timeout and says so by name when it is cut.
-#
-# The re-run also logs every read GitHub refused or stalled to a file (GH_READ_REFUSED_FILE, written by
-# the read router). When the child ends non-zero and that file has a row, a refused read is not a failed
-# check: the armed wrapper drops the child's buffered rows and prints the one QUOTA-PAUSE / GH-STALL line,
-# exit 2, with a marker for the waiter. A real FAIL with no refused read prints as before. A cut with no
-# refused row is exit 2 and "no verdict within the deadline", no marker (the cut may be local).
-# Unarmed (no timeout binary, or a deadline of 0): the rows print live, then the line, exit 2.
 if [ -z "${_READY_CHECK_ARMED:-}" ]; then
     rcd_s="${READY_CHECK_DEADLINE:-150}"
     case "$rcd_s" in ''|*[!0-9]*) rcd_s=150 ;; esac
@@ -270,13 +253,9 @@ if [ -z "${_READY_CHECK_ARMED:-}" ]; then
     fi
     rcd_ref=$(mktemp "${TMPDIR:-/tmp}/ready-check-refused.XXXXXX" 2>/dev/null) || rcd_ref=""  # swallow-ok: no scratch file runs this process unwrapped, as before
     if [ -n "$rcd_ref" ]; then
-        # A TERM (the chief's own `timeout`) is forwarded to the child, which gets its own process group from its
-        # own `timeout`, so this shell's group signal never reaches it. This shell then waits for the child's
-        # cleanup, removes its own scratch files and exits.
         rcd_buf=""; rcd_err=""; rcd_pid=""
         trap 'rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"' EXIT
         trap '_rcd_term' TERM INT HUP
-        # the gate form ends in <pr> <full head>; any other form (--only, --outside) leaves no marker
         rcd_pr=""; rcd_sha=""
         if [ "$#" -ge 2 ]; then
             rcd_sha="${*: -1}"; rcd_pr="${*: -2:1}"

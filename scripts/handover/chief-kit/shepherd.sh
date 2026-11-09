@@ -208,7 +208,7 @@ RC_RC=0
 RC_OUT=$(bash "$READY_CHECK" --observe "$PR" "$HEAD_SHA" 2>&1) || RC_RC=$?
 case "$RC_RC" in
     0) add_line "ready-check: PASS" ;;
-    2)  # could not evaluate (a refused or stalled read, a missing tool, a cut): nothing was judged, so not a FAIL
+    2)
         add_line "ready-check: not evaluated ($(printf '%s\n' "$RC_OUT" | grep -m1 -E 'QUOTA-PAUSE|GH-STALL|no verdict within' || echo "exit 2, run ready-check.sh --observe $PR $HEAD_SHA"))"
         add_reason ready-check-not-evaluated ;;
     *)

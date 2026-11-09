@@ -67,7 +67,6 @@ export READY_CHECK_ANCHOR="$ANCHOR"
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
-# STUB_GH_RL=1 refuses every call on the rate limit (stderr); =trust refuses only ready-go's own repo reads
 case "${STUB_GH_RL:-}:$*" in
     1:*|trust:"repo view --json nameWithOwner"*|trust:"repo view --json defaultBranchRef"*)
         echo "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)" >&2; exit 1 ;;
@@ -233,10 +232,7 @@ run --contract maybe 77 "$SHA"
 check "contract maybe: exit 2" "$RC" "2"
 unset READY_STUB_TITLE
 
-# --- the quota gates (T3): a refused read is "not evaluated", never a FAIL the worker owes a fix for ---
-# ready-check exit 2 is "could not evaluate": ready-go passes its quota line through, says nothing was judged,
-# and keeps exit 4 so auto-go.sh keeps its path. A refused repo view prints the line in place of the TRUST text.
-export HIMMEL_QUOTA_DIR="$tmp/quota-rg"   # markers land here, never in the real ~/.himmel
+export HIMMEL_QUOTA_DIR="$tmp/quota-rg"
 STUB_GH_RL=1 run --to worker --token tok 77 "$SHA"
 check    "refused: exit 4 (auto-go keeps its path)" "$RC" "4"
 contains "refused: the quota line passes through" "$OUT" "QUOTA-PAUSE"

@@ -1037,11 +1037,6 @@ check    "8918: --contract twice -> exit 2" "$rc" "2"
 rc=0; out="$(go30 "$KEYED30" - --contract no --repo o/f --trust-reviewed J1 77 "$SHA")" || rc=$?
 check    "8918: --contract with --repo -> exit 2" "$rc" "2"
 
-# --- 31. the quota gates (T3): a callee that could not evaluate is exit 11, never a false finding ---
-# go.sh writes a GO only when ready-check.sh AND cr-disposition.sh check each exit exactly 0.
-# rc 1 is a real answer (exit 4 / exit 9); every other rc (2, 3, 96, 124, 127, 137 ...) means
-# nothing was judged: exit 11, the callee text printed, no GO. A fixture tree holds go.sh, the real
-# lib and stub callees whose rc, sleep and text the env sets.
 S31="$tmp/s31"; ROOT31="$tmp/root31"; Q31="$tmp/quota31"
 rm -rf "$S31"; mkdir -p "$S31/scripts/handover/chief-kit" "$S31/scripts/cr"
 git init -q "$S31"
@@ -1054,7 +1049,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'sleep "${STUB_RC_SLEEP:-0}"' 'echo "stub re
 printf '%s\n' '#!/usr/bin/env bash' 'echo "stub cr-disposition output"' 'exit "${STUB_RC_DISP:-0}"' > "$S31/scripts/handover/chief-kit/cr-disposition.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'sleep "${STUB_WV_SLEEP:-0}"' 'exit 0' > "$S31/scripts/handover/chief-kit/write-verdict.sh"
 }
-go31() {  # <go.sh args...> - run the fixture's go.sh from the fixture repo, stdout and stderr together
+go31() {
     (cd "$S31" && HANDOVER_DIR="$ROOT31" HIMMEL_QUOTA_DIR="${Q31_DIR:-$Q31}" bash "$S31/scripts/handover/chief-kit/go.sh" "$@" 2>&1)
 }
 fresh31() { rm -rf "$ROOT31" "$Q31"; mkdir -p "$ROOT31"; }

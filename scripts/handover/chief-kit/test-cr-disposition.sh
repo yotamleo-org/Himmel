@@ -263,7 +263,7 @@ gh_stub gh-rl-gql  "GraphQL: API rate limit already exceeded for user ID 1. (RAT
 gh_stub gh-rl-rest "gh: HTTP 403: API rate limit exceeded for user ID 1."
 gh_stub gh-other   "GraphQL: Could not resolve to a PullRequest with the number of 90."
 gh_stub gh-ok      ""
-export HIMMEL_QUOTA_DIR="$tmp/quota-crd"   # markers land here, never in the real ~/.himmel
+export HIMMEL_QUOTA_DIR="$tmp/quota-crd"
 for stub in gh-rl-gql gh-rl-rest; do
   rc=0; out="$(GH_CMD="$tmp/bin/$stub" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
   check    "10: $stub -> exit 2" "$rc" "2"
@@ -279,9 +279,6 @@ rc=0; out="$(GH_CMD="$tmp/bin/gh-ok" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$
 contains "10: a gh success reaches the check" "$out" "[OPEN] crit adopt-9@$FHEAD"
 check    "10: a gh success prints neither head-branch line" "$(grep -c "cannot read PR\|rate limit" <<< "$out")" "0"
 
-# --- 11. the quota gates (T3): the one quota line, a bounded read, and a marker on `check` ---
-# A refused read prints QUOTA-PAUSE (exit 2) and leaves one marker keyed <pr>.<head>; a hung read is cut by
-# CR_DISPOSITION_GH_TIMEOUT and prints GH-STALL; `record`, a usage error and an unrelated failure leave none.
 mkers() { find "$HIMMEL_QUOTA_DIR/blocked" -type f ! -name '.lock*' 2>/dev/null | wc -l | tr -d ' '; }
 rm -rf "$HIMMEL_QUOTA_DIR"
 rc=0; out="$(GH_CMD="$tmp/bin/gh-rl-gql" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?

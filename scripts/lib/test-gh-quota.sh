@@ -223,10 +223,7 @@ chmod 700 "$W/ro"
 
 check "H1 nothing was written under the scratch HOME's live quota path" "no" "$([ -e "$HOME/.himmel/state/quota" ] && echo yes || echo no)"
 
-# I1: a gate never reads the quota file or the sweep for a decision, so none of these files names the readers.
-# The lint sees direct names only; a helper wrapping them evades it (ceiling recorded in the ledger).
-# The behavioural row in test-quota-no-hang.sh is the proof; this only catches the plain mistake.
-names_i1() {  # <file> -> the reader names it uses, one line each (none = clean)
+names_i1() {
     grep -oE 'ghq_read|ghq_scan_gate|ghq_refresh|prs_row|prs_list|quota\.tsv' "$1" 2>/dev/null | sort -u | tr '\n' ' '
 }
 GATES_I1="scripts/handover/chief-kit/ready-check.sh scripts/handover/chief-kit/go.sh scripts/handover/chief-kit/cr-disposition.sh scripts/handover/merge-on-green.sh scripts/check-ci.sh scripts/lib/gh-ci-cache.sh scripts/lib/check-ci-watch.sh"

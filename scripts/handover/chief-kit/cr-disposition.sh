@@ -71,8 +71,6 @@ common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || c
 [ -n "$common" ] || { echo "cr-disposition: not in a git repo, so there is no CR ledger" >&2; exit 2; }
 LEDGER="$common/cr-critic-scores.jsonl"
 GH_ERRF=$(mktemp "${TMPDIR:-/tmp}/cr-disposition-gh.XXXXXX" 2>/dev/null) || GH_ERRF=/dev/null  # swallow-ok: no stderr capture only loses the rate-limit wording
-# The head-branch read is bounded (CR_DISPOSITION_GH_TIMEOUT, default 60 s, 0 = none), so a hung GitHub
-# cannot hang go.sh. rc 124 or 137 is a stall. The rate-limit classifier is gh-quota.sh's, stderr only.
 CRD_T="${CR_DISPOSITION_GH_TIMEOUT:-60}"
 case "$CRD_T" in ''|*[!0-9]*) CRD_T=60 ;; esac
 _TIMEOUT_BIN=""
@@ -87,8 +85,6 @@ else
 fi
 [ "$BRANCH_RC" -eq 0 ] || BRANCH=""
 if [ -z "$BRANCH" ]; then
-    # crd_report <rate-limit|stall>: the one QUOTA-PAUSE / GH-STALL line on stderr and, on a `check`, the
-    # <pr>.<head> marker the waiter wakes on. A marker failure never changes the exit.
     crd_report() {
         (
             # shellcheck source=scripts/lib/gh-quota.sh
@@ -105,7 +101,6 @@ if [ -z "$BRANCH" ]; then
         echo "cr-disposition: reading PR #$PR's head branch timed out after ${CRD_T}s; nothing was judged" >&2
         exit 2
     fi
-    # gh's own stderr says whether the read failed on the GitHub quota
     if ( . "$HERE/../../lib/gh-quota.sh" 2>/dev/null && ghq_is_rate_limited "$(cat "$GH_ERRF" 2>/dev/null)" ); then  # read-sink-ok: our own mktemp buffer; swallow-ok: an unreadable buffer or lib reads as not a rate limit, which falls to the plain unreadable-branch exit 2 below
         [ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF"
         crd_report rate-limit

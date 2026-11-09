@@ -50,7 +50,6 @@ cat > "$tmp/bin/gh" <<'STUB'
 echo "$*" >> "$GH_LOG"
 [ -z "${STUB_GH_STALL:-}" ] || sleep "$STUB_GH_STALL"
 args="$*"
-# STUB_GH_RL=1 refuses every call on the rate limit (GraphQL wording, stderr); =late lets `repo view` through and refuses the rest
 case "${STUB_GH_RL:-}" in
     1) echo "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)" >&2; exit 1 ;;
     late) case "$args" in "repo view"*) ;; *) echo "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)" >&2; exit 1 ;; esac ;;
@@ -4075,9 +4074,6 @@ RUN_SCRIPT="$tmp/s17-term-wrap.sh" TMPDIR="$S17_TMP" s17_at "$S17_H1"
 unset RUN_SCRIPT
 check "19 T8c: killed mid-read, no ready-check-19 temp dir is left" "0" "$(find "$S17_TMP" -maxdepth 1 -name 'ready-check-19.*' | wc -l | tr -d ' ')"
 
-# T8d: the armed wrapper forwards a TERM to its child and waits for the child's cleanup. An outer `timeout` that
-# kills a ready-check stalled on a read gets control back within the bound, and nothing is left behind: none of the
-# wrapper's scratch files, and no stalled child (the child has its own process group, so the outer signal never reaches it).
 S_KW="$tmp/kill-wrap"; mkdir -p "$S_KW"
 printf '#!/usr/bin/env bash\necho started > "%s/started"\nsleep 40\n' "$S_KW" > "$S_KW/slow-gh"; chmod +x "$S_KW/slow-gh"
 kw_t0=$SECONDS
@@ -4090,7 +4086,6 @@ check "T8d: the stalled read was started, so the cancel had something to cancel"
 check "T8d: a ready-check killed by an outer timeout returns within the bound (took ${kw_took}s)" "$([ "$kw_took" -le 12 ] && echo yes || echo no)" "yes"
 check "T8d: the killed wrapper leaves none of its scratch files" "$(find "$S_KW" -maxdepth 1 -name 'ready-check-*' | wc -l | tr -d ' ')" "0"
 check "T8d: the killed wrapper leaves no stalled child" "$(pgrep -f "$S_KW/slow-gh" | wc -l | tr -d ' ')" "0"
-# the same cancel with no deadline (the unarmed wrapper): the stalled child is signalled too
 rm -f "$S_KW/started"
 kw_rc=0
 (cd "$REPO" && READY_CHECK_DEADLINE=0 TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
@@ -4254,9 +4249,6 @@ READY_CHECK_FAIL_LEDGER="$tmp/s17-fl-other.jsonl" s17_at "$S17_H1"
 check "19 T25c a fail row of another repo's PR 77: no round" "$(jq -c 'select(.kind == "round")' "$tmp/s17-fl-other.jsonl" | wc -l | tr -d ' ')" "0"
 s17_clear
 
-# --- the quota gates (T3): a read GitHub refused is exit 2 and one quota line, never a FAIL row ---
-# The router logs each refused read to GH_READ_REFUSED_FILE; the wrapper drops the child's rows and prints
-# the QUOTA-PAUSE line, leaving one marker keyed <pr>.<head>. A real FAIL with no refused read is unchanged.
 reset_stubs
 rm -rf "$tmp/quota"
 rc=0; out="$(STUB_GH_RL=1 run 2>&1)" || rc=$?
@@ -4282,14 +4274,12 @@ rc=0; out="$(READY_CHECK_DEADLINE=0 STUB_GH_RL=late run 2>&1)" || rc=$?
 check    "9479 T3: unarmed, a refusal is still exit 2" "$rc" "2"
 contains "9479 T3: unarmed, the rows print first" "$out" "[FAIL]"
 contains "9479 T3: unarmed, the quota line follows them" "$out" "QUOTA-PAUSE"
-# a real FAIL with no refused read prints its rows, exits 1 and leaves no marker
 rm -rf "$tmp/quota"
 rc=0; out="$(STUB_MSS=BEHIND run 2>&1)" || rc=$?
 check    "9479 T3: a real FAIL with no refused read is still exit 1" "$rc" "1"
 contains "9479 T3: a real FAIL still prints its row" "$out" "[FAIL] 1."
 contains "9479 T3: a real FAIL still ends READY-CHECK FAIL" "$out" "READY-CHECK FAIL"
 check    "9479 I4: a real FAIL leaves no marker" "$(find "$tmp/quota/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
-# RED controls: a usage error and a missing jq leave no marker
 rm -rf "$tmp/quota"
 rc=0; out="$(RUN_MODE=none run 2>&1)" || rc=$?
 check    "9479 I4: a usage error is exit 2" "$rc" "2"

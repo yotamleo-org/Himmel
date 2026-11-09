@@ -185,7 +185,6 @@ out=$(run); rc=$?
 check "(m) coverage-gap exits 1" 1 "$rc"
 check "(m) clean tree removed on the NEEDS-WORKER path" "" "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
 
-# (o) ready-check exit 2 is "not evaluated", exit 1 stays a FAIL
 setup yes ok 0; echo 2 > "$SHEP_STUBDIR/ready.rc"
 out=$(run); rc=$?
 check "(o) ready-check exit 2 exits 1" 1 "$rc"
