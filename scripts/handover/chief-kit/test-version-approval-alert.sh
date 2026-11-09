@@ -7,7 +7,7 @@ SUT="${VERSION_APPROVAL_ALERT:-$HERE/version-approval-alert.sh}"
 fails=0
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
-check() { # <name> <expected> <actual>
+check() {
     if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2' got '$3')"; fi
 }
 
