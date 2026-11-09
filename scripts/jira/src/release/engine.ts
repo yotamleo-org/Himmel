@@ -14,7 +14,7 @@ import { appendAdmission, assertAdmissionsWritable, readAdmissions, readAdmissio
 import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import type {
-  Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, PlacementClass, RequestRow, RulingRow, Verb,
+  Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, OutOfVersionRow, PlacementClass, RequestRow, RulingRow, Verb,
 } from './types.js';
 
 // The release engine's I/O (design §5): the only writer of the authority files
@@ -235,10 +235,10 @@ function latestRequests(requests: Chain<RequestRow>): Map<string, RequestRow> {
 
 // --- operator acts (the chief, on an operator decision) ---------------------
 
-function appendOperator(ctx: Ctx, k: Buffer, row: Omit<OperatorRow, 'id' | 'ts'> & { id?: string }): OperatorRow {
+function appendOperator<R extends OperatorRow = OperatorRow>(ctx: Ctx, k: Buffer, row: Omit<R, 'id' | 'ts'> & { id?: string }): R {
   const chain = readChain<OperatorRow>(f(ctx, 'operator.jsonl'), k);
   const id = row.id ?? seq(`O-${ctx.release}`, chain.rows.map((o) => o.id));
-  return appendChain<OperatorRow>(f(ctx, 'operator.jsonl'), k, { ...row, id, ts: ts(ctx) });
+  return appendChain<R>(f(ctx, 'operator.jsonl'), k, { ...row, id, ts: ts(ctx) });
 }
 
 export function declare(ctx: Ctx, o: { project: string; versions: string[]; decision: string; verbatim: string; mode: Declaration['mode'] }): Declaration {
@@ -569,8 +569,7 @@ export function poolCurrent(versionsTsv: string): string | null {
 type ParsedDeclared = { path: string; parsed: true; project: unknown; current: unknown; ts: unknown };
 type Declared = ParsedDeclared | { path: string; parsed: false };
 
-// A release.json that does not parse may name any project, so it counts as naming this one.
-const namesProject = (d: Declared, project: string): boolean => !d.parsed || d.project === project;
+const unparsedOrNamesProject = (d: Declared, project: string): boolean => !d.parsed || d.project === project;
 
 function declaredReleases(env: Record<string, string | undefined>): Declared[] {
   const root = releaseRoot(env);
@@ -616,7 +615,7 @@ async function bucketLine(env: Record<string, string | undefined>, key: string, 
   const project = key.split('-')[0];
   let naming: Declared[];
   try {
-    naming = declaredReleases(env).filter((d) => namesProject(d, project));
+    naming = declaredReleases(env).filter((d) => unparsedOrNamesProject(d, project));
   } catch (e) {
     return failed(`the release root cannot be read: ${(e as Error).message}`);
   }
@@ -694,18 +693,13 @@ export function coreSnapshot(ctx: Ctx, o: { keys: string[] }): OperatorRow {
   });
 }
 
-// --- out-of-version approvals: the challenged bypass of decision 632 ---------
-
 export const PLACEHOLDER = /^(tbd|todo|test|testing|placeholder|wip|n\/?a|x+|w+|-+|\.+)$/i;
 
 export interface ApprovalAlert { key: string; version: string; decision: string; open: number; words: string }
 
 const DECISION_FILE = /^verbatim-decision-(\d+)-/;
 
-// The operator approves one key as out of version for 14 days; the chief records it from the
-// operator's numbered verbatim file. The operator's phone gets the words before the row is
-// signed, and an alert that returns anything but 0 leaves no row.
-export function outOfVersion(ctx: Ctx, o: { key: string; decision: string; verbatimFile: string; reason: string; alert: (a: ApprovalAlert) => number }): OperatorRow {
+export function outOfVersion(ctx: Ctx, o: { key: string; decision: string; verbatimFile: string; reason: string; alert: (a: ApprovalAlert) => number }): OutOfVersionRow {
   operatorFence(ctx);
   const verb = 'release operator out-of-version';
   if (!ISSUE_KEY.test(o.key)) throw new Error(`${verb}: '${o.key}' is not one ticket key; a record covers one key`);
@@ -744,7 +738,7 @@ export function outOfVersion(ctx: Ctx, o: { key: string; decision: string; verba
     }).length;
     const rc = o.alert({ key: o.key, version, decision: o.decision, open, words });
     if (rc !== 0) throw new Error(`${verb}: the operator alert exited ${rc}${rc === 77 ? ' (the send was refused)' : ''}; no record written`);
-    return appendOperator(ctx, l.k, { kind: 'out-of-version', decision: o.decision, keys: [o.key], version, verbatim: verbatim.trim(), reason });
+    return appendOperator<OutOfVersionRow>(ctx, l.k, { kind: 'out-of-version', decision: o.decision, keys: [o.key], version, verbatim: verbatim.trim(), reason });
   });
 }
 

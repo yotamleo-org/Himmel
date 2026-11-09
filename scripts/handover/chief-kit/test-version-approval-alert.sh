@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# test-version-approval-alert.sh — Exercises version-approval-alert.sh: exit 0
-# only on a send, 1 with no chat id or a failing sender, 77 on a refused send,
-# and a line that carries the key, version, decision, open count and the
-# operator's words unchanged, cut past 500 characters with the count named.
-# Scratch dirs and the sender seam only; never a real Telegram send.
-#
 # Run: bash scripts/handover/chief-kit/test-version-approval-alert.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -20,7 +14,6 @@ check() { # <name> <expected> <actual>
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/version-approval-alert-test.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$WORK"' EXIT
 
-# The sender seam writes each text it gets to its own file, so a multi-line text is kept whole.
 cat > "$WORK/sender.sh" <<'EOF'
 #!/usr/bin/env bash
 n=$(( $(find "$SENT_DIR" -type f | wc -l) + 1 ))
@@ -42,7 +35,6 @@ KEY=ABC-7
 printf '9001 signed' > "$WORK/words.txt"
 alert() { bash "$SUT" "$KEY" v1.1.4 699 3 "$@" >/dev/null 2>&1; }
 
-# --- (a) control: a good sender exits 0 and sends one line ---------------------
 alert "$WORK/words.txt"; rc=$?
 check "(a) a good send exits 0" "0" "$rc"
 check "(a) one line sent" "1" "$(sent)"
@@ -53,23 +45,19 @@ check "(a) the line names the decision" "yes" "$(has 'decision 699' "$text")"
 check "(a) the line names the open count" "yes" "$(has '3 approvals open' "$text")"
 check "(a) the line leads with the words" "yes" "$(case "$text" in '"9001 signed"'*) echo yes ;; *) echo no ;; esac)"
 
-# --- (b) no chat id exits 1 and calls no sender --------------------------------
 TELEGRAM_ACCESS_PATH="$WORK/no-chat.json" alert "$WORK/words.txt"; rc=$?
 check "(b) no chat id exits 1" "1" "$rc"
 TELEGRAM_ACCESS_PATH="$WORK/absent.json" alert "$WORK/words.txt"; rc=$?
 check "(b) no access file exits 1" "1" "$rc"
 check "(b) and no sender ran" "1" "$(sent)"
 
-# --- (c) a failing sender exits 1 ---------------------------------------------
 MERGE_BLOCK_ALERT_CMD="$WORK/fail.sh" alert "$WORK/words.txt"; rc=$?
 check "(c) a failing sender exits 1" "1" "$rc"
 
-# --- (d) a refused send exits 77 ----------------------------------------------
 env -u MERGE_BLOCK_ALERT_CMD -u BRIDGE_ROOT HIMMEL_TEST_FIXTURE=1 bash "$SUT" "$KEY" v1.1.4 699 3 "$WORK/words.txt" >/dev/null 2>&1; rc=$?
 check "(d) HIMMEL_TEST_FIXTURE=1 with no BRIDGE_ROOT and no seam exits 77" "77" "$rc"
 check "(d) and nothing reached the seam" "1" "$(sent)"
 
-# --- (e) quotes and backticks arrive unchanged --------------------------------
 # shellcheck disable=SC2016  # the backticks and $(...) are the literal words under test
 odd='he said "go" and `rm -rf /` $(whoami) \n done'
 printf '%s' "$odd" > "$WORK/odd.txt"
@@ -77,7 +65,6 @@ alert "$WORK/odd.txt"; rc=$?
 check "(e) a words file with quotes and backticks exits 0" "0" "$rc"
 check "(e) the words arrive unchanged" "yes" "$(has "\"$odd\"" "$(last)")"
 
-# --- (f) 501 characters are cut at 500 and the count is named -----------------
 long="$(printf 'a%.0s' $(seq 1 500))Z"
 printf '%s' "$long" > "$WORK/long.txt"
 alert "$WORK/long.txt"; rc=$?
@@ -90,7 +77,6 @@ printf '%s' "${long:0:500}" > "$WORK/exact.txt"
 alert "$WORK/exact.txt"
 check "(f) exactly 500 characters are not cut" "no" "$(has 'left out' "$(last)")"
 
-# --- (g) an unreadable words file exits 1, bad arguments exit 2 ---------------
 before="$(sent)"
 alert "$WORK/absent.txt"; rc=$?
 check "(g) an unreadable words file exits 1" "1" "$rc"

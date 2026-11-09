@@ -163,7 +163,6 @@ export function renderState(s: StateOut, budgets: Record<string, number> = {}): 
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 
-// The operator's phone line for an out-of-version approval. The words go by file, so no shell quoting touches them.
 export function sendApprovalAlert(a: ApprovalAlert): number {
   const dir = mkdtempSync(join(tmpdir(), 'version-approval-'));
   try {
@@ -684,8 +683,6 @@ export function registerRelease(program: Command): void {
       const approval = o.verb === 'INTAKE' ? outOfVersionApproval(process.env, o.key, new Date()) : null;
       if (approval) {
         console.log(`REQ approved:${approval.id}`);
-        // The approval answers the INTAKE, so its proposal ends here and a proposed-* label goes, as on a withdraw.
-        // A failed clear warns and keeps exit 0: the folds read the REQ line only from a zero exit.
         try {
           await clearProposedLabels(ctx.jira, o.key);
         } catch (e) {

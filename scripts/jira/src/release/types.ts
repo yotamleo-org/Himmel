@@ -85,11 +85,15 @@ export interface OperatorRow {
   verdicts?: Array<{ path: string; sha256: string }>;
   supersedes?: string | null;
   residuals?: number;
-  // kind 'out-of-version': the key's versions at grant and the chief's why-now.
-  version?: string;
-  reason?: string;
   prev?: string;
   mac?: string;
+}
+
+export interface OutOfVersionRow extends OperatorRow {
+  kind: 'out-of-version';
+  keys: string[];
+  version: string;
+  reason: string;
 }
 
 export interface RequestRow {
