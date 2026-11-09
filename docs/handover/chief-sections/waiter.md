@@ -93,10 +93,13 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     every compact line that read a doc and found nothing stale, and that explicit `0`
     clears the marker, so a key that leaves and comes back wakes again; an absent or `skip`
     field, `?`-only, or a partial read like `1:KEY,?` keeps it and never shrinks it).
-    A `pool-disposition:` line counts as handled only when its target names an owner and an observable end:
-    another ticket key or an ask record (`O-<n>`), `PR <n>`, a `decision <n>` or a worker (`N<n>`). A free-text
-    promise ("will look at it after the release") stays in the pool as `# pool-unresolved unowned <KEY> ...`; the tick
-    still prints and never fails on it.
+    A `pool-disposition:` line counts as handled only when its target starts with a reference: another ticket
+    key of the project, `PR <n>` or `decision <n>` (optionally after `operator`, `waits on`, `blocked by` or `after`). The
+    check is reference-shaped: it does not read the ticket, PR or decision, and there is no ask-record form because no store
+    exists. A worker counts only through the dispatcher's own reason (`owned by` or `held by worker <name>`), so a made-up
+    `N<n>` in a target is refused. A free-text promise ("will look at it after the release") stays in the pool as
+    `# pool-unresolved unowned <KEY> ...`; the tick still prints and never fails on it. When the tick cannot read the pool at
+    all, the wake says `backlog=unread` instead of `dispatchable=0`.
     The line is never rewritten:
     re-rule it (dispatch the held ticket, or write a fresh `pool-disposition:`),
     then the key leaves the field. The tick also prints

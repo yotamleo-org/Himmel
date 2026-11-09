@@ -1017,12 +1017,14 @@ underfill_block() { # prints the WAKE block for the pool pool_probe just read; f
     declared="$(printf '%s\n' "$pool_out" | sed -n 's/^# dropped from \([^:]*\):.*/\1/p' | head -n 1)"
     if printf '%s\n' "$pool_out" | awk -F'[=/,]' '/^# pool=/ && ($2 + 0) < ($3 + 0) { f = 1 } $0 == "POOL-EMPTY" { f = 1 } END { exit !f }'; then short=1; fi  # a pool short of its slots, whether the line says LOW or INTAKE:<m>
     [ -z "$short" ] || [ -z "$declared" ] || left="$pool_left"
+    [ -n "$pool_summary" ] || [ -z "$pool_out" ] || back_failed=1
     if [ -n "$short" ] && [ -z "$declared" ]; then
         heartbeat sampling
         back="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || { back=""; back_failed=1; }  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out second pass drops its partial rows and the wake line says backlog=unread, the pool list still prints
         back_summary="$(printf '%s\n' "$back" | DOC='' bash "$HERE/tick.sh" --pool-dispositions 2>/dev/null)" || back_summary=""  # swallow-ok: no keys reads a series row as an unknown row, never a wrong count
         back_keys="$(printf '%s\n' "$back_summary" | sed -n 's/^# pool-keys //p')"
         back_dispatch="$(printf '%s\n' "$back_summary" | sed -n 's/^# pool-dispatchable //p')"
+        [ -n "$back_summary" ] || [ -z "$back" ] || back_failed=1
         extra="$(printf '%s\n' "$back" | awk -v pool="$pool_out" -v pk="$pool_keys" -v bk="$back_keys" '
             BEGIN {
                 n = split(pool, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, "\t"); if (f[1] != "NEXT-TIER" && f[2] ~ /^[A-Z]+-[0-9]+$/) seen[f[2]] = 1 }

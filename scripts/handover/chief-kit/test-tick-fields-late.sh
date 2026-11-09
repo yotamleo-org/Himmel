@@ -160,19 +160,26 @@ printf '%s\n' '# chief' '' '## Live state' \
     'pool-disposition: HIMMEL-25 question O-123' \
     'pool-disposition: HIMMEL-26 slice worker N5619 is on it' \
     'pool-disposition: HIMMEL-27 slice HIMMEL-27' \
+    'pool-disposition: HIMMEL-28 question SHA-256 pending the release' \
+    'pool-disposition: HIMMEL-29 question the ISO-8601 parser, then HIMMEL-900' \
     '' '## Results' > "$po_doc"
-for n in 21 22 23 24 25 26 27; do printf '# disposition HIMMEL-%s listed LOCAL\n' "$n"; done > "$W/own.rows"
+for n in 21 22 23 24 25 26 27 28 29; do printf '# disposition HIMMEL-%s listed LOCAL\n' "$n"; done > "$W/own.rows"
+printf '# disposition HIMMEL-30 in-flight owned by worker N5619\n' >> "$W/own.rows"
 po_rc=0
 po_out="$(bash "$SUT" --pool-dispositions --doc "$po_doc" < "$W/own.rows" 2>/dev/null)" || po_rc=$?
 same 'a free-text promise with no owner leaves the tick printing (rc 0)' "$po_rc" 0
-contains 'only the owned lines count as handled' "$po_out" '# pool-counts 7/0/5/2'
+contains 'only reference-shaped targets and a worker the dispatcher names count as handled' "$po_out" '# pool-counts 10/1/4/6'
 contains 'a free-text promise is unresolved as unowned' "$po_out" '# pool-unresolved unowned HIMMEL-21 '
 contains 'the unowned line says what it lacks and quotes the line' "$po_out" 'names no owner or observable end: HIMMEL-21 question will look at it after the release'
 contains 'a target that names only the ticket itself is unowned' "$po_out" '# pool-unresolved unowned HIMMEL-27 '
 not_contains 'a PR target is owned' "$po_out" '# pool-unresolved unowned HIMMEL-22 '
 not_contains 'a decision id target is owned' "$po_out" '# pool-unresolved unowned HIMMEL-23 '
 not_contains 'a ticket target is owned' "$po_out" '# pool-unresolved unowned HIMMEL-24 '
-not_contains 'an ask record target is owned' "$po_out" '# pool-unresolved unowned HIMMEL-25 '
+contains 'an ask-record form with no store is unowned' "$po_out" '# pool-unresolved unowned HIMMEL-25 '
+contains 'a fabricated worker number is refused' "$po_out" '# pool-unresolved unowned HIMMEL-26 '
+contains 'a hyphenated word that is not a project key is unowned' "$po_out" '# pool-unresolved unowned HIMMEL-28 '
+contains 'a project key that is not at the start of the target is unowned' "$po_out" '# pool-unresolved unowned HIMMEL-29 '
+not_contains 'a worker the dispatcher names as holding the key needs no decision line' "$po_out" '# pool-unresolved unowned HIMMEL-30 '
 
 printf '%s\n' \
     '# dropped from v1: 2 of 5 To Do (blocker 1, owned 1)' \

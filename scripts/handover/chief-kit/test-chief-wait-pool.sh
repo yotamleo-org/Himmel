@@ -694,5 +694,14 @@ timeout 8 bash "$WAIT" "$I" --doc "$WORK/resume-full.md" --workers N1.md > "$WOR
 check "(resume) a full pool of dispositioned RESUME rows reads above zero" "WAKE underfilled capacity=UNDERFILLED:7 pool=7/0/7/0 dispatchable=7 keys=HIMMEL-9031,HIMMEL-9032,HIMMEL-9033,HIMMEL-9034,HIMMEL-9035,HIMMEL-9036,HIMMEL-9037" "$(head -n1 "$WORK/resume-full.out")"
 rm -f "$STUB/pool.rows" "$STUB/dispositions"
 
+mkdir -p "$STUB/nopy"
+printf '#!/bin/sh\nexit 1\n' > "$STUB/nopy/python3"
+chmod +x "$STUB/nopy/python3"
+printf 'LOCAL\tHIMMEL-9040\tMedium\tv1\tfirst\tfiles=u.sh\n' > "$STUB/pool.rows"
+I="$(new_inbox unread-summary)"
+PATH="$STUB/nopy:$PATH" timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK/unread-summary.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(unread) a pool the tick cannot read says backlog=unread and never prints dispatchable=0" "WAKE underfilled capacity=UNDERFILLED:7 backlog=unread" "$(head -n1 "$WORK/unread-summary.out")"
+rm -f "$STUB/pool.rows"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
