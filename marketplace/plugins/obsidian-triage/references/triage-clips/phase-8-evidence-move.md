@@ -1,5 +1,3 @@
-<!-- Moved verbatim out of triage-clips.md so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 **Phase 8 — Move to evidence pool (runs ONLY after Phase 7 successfully marked `processed: true`) — inside the same `triage-mark-processed.py` call.**
 
 The Phase 7 call continues straight into Phase 8; the Phase-8 debt drain runs

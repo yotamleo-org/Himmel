@@ -1,5 +1,3 @@
-<!-- Moved verbatim out of harvest-clips.md so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 **Phase 4 — Dispatch decision (after the clip-body pivot: no external re-fetch).**
 
 Pick ONE of two paths per clip:

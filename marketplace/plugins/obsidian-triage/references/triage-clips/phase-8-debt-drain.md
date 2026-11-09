@@ -1,5 +1,3 @@
-<!-- Moved verbatim out of triage-clips.md so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 ### Phase-8 debt drain (a clip owing Phase 8 must not stay stuck in the inbox)
 
 Phase-8 debt is **recorded, never inferred**. Phase 7 writes

@@ -665,10 +665,10 @@ Smoke tests live one level up:
 
 ```bash
 bash ../tests/test-playwright-crawl.sh
-bash ../tests/test-dedup-sweep.sh   # dedup sweep
-bash ../tests/test-component-scan.sh   # component scan
-for t in ../tests/test-follow-*.sh; do bash "$t" || exit 1; done   # follow-list scorer
-bash ../tests/test-ensure-deps.sh   # tool-deps preflight
+bash ../tests/test-dedup-sweep.sh
+bash ../tests/test-component-scan.sh
+for t in ../tests/test-follow-*.sh; do bash "$t" || exit 1; done
+bash ../tests/test-ensure-deps.sh
 ```
 
 Verifies: scripts pass `node --check`, package.json declares the right

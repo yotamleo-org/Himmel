@@ -1,5 +1,3 @@
-<!-- Moved verbatim out of triage-clips.md so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 ### Daily timeline (runs ONCE after the per-clip loop)
 
 After the whole pass completes (NOT per-clip), refresh today's `## Clip pipeline`

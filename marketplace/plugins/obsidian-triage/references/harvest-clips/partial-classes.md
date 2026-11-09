@@ -1,5 +1,3 @@
-<!-- Moved verbatim out of harvest-clips.md so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 ### Partial classes (a media-pending partial must not block triage) — deferred vs blocking
 
 A source-level, per-clip partial (the source cannot give more today) is **deferred**: it does NOT block `.harvest.done`, so `/triage-clips` and `/synthesize-clips` still run on the rest. A partial or failure that means this run's own view is unreliable **blocks**: G-8 writes no marker.

@@ -1,5 +1,3 @@
-<!-- Moved verbatim out of triage-clips.md so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 **Phase 6 — Promotion candidate annotation.**
 
 - Pick a promotion target based on `type:` + inferred tags. Use Phase 0 Folder Map if present, else fall back to Luna defaults:

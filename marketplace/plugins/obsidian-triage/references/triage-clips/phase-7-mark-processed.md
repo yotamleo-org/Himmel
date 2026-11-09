@@ -1,5 +1,3 @@
-<!-- Moved verbatim out of triage-clips.md so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 **Phase 7 — Mark processed (with stale-read guard + placement contract) — through `tools/triage-mark-processed.py`, never by hand.**
 
 Phase 7 and Phase 8 are ONE tool call (so a subagent fan-out cannot skip the stale-read check or the move). The stale-read guard, the

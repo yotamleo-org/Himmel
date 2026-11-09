@@ -1,5 +1,3 @@
-<!-- Moved verbatim out of harvest-clips.md so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 ### G-2 — Lockfile + obsidian-github-sync race guard
 
 Before processing any clip:

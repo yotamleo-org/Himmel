@@ -1,5 +1,3 @@
-<!-- Moved verbatim out of harvest-clips.md so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 ### G-8 — Completion marker (no stage runs on a dead harvest) — write LAST, clean runs only
 
 Downstream stages (`/triage-clips`, `/synthesize-clips`, `/archive-clips`) refuse to run against a harvest that never finished cleanly. This is the run's final step, after the Tracking append.
