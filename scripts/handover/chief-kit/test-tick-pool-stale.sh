@@ -197,42 +197,61 @@ cat > "$sk/handover/chief-kit/next-dispatchable.sh" <<'EOF'
 case " $* " in *" --dispositions "*)
     # the parent is `timeout`; a bash is re-niced by some stations' ananicy rules, a timeout is not
     printf 'x\n' >> "$PS_LAUNCH_LOG"; ps -o ni= -p "$PPID" | tr -d ' ' >> "$PS_NICE_LOG"
+    [ -z "${PS_FAIL:-}" ] || exit 1
     printf '# disposition HIMMEL-1 in-flight owned by worker N1\n' ;;
 esac
 EOF
-pl_dir="$WORK/pl"; mkdir -p "$pl_dir"
+pl_dir="$WORK/pl"; mkdir -p "$pl_dir/tss/workers"
 pl_doc="$(doc pooldoc)"
 pl_log="$pl_dir/launch.log"; pl_nice="$pl_dir/nice.log"
-pl_tick() { TOKEN='' TICK_STATE_DIR="$pl_dir/state" PS_LAUNCH_LOG="$pl_log" PS_NICE_LOG="$pl_nice" bash "$sk/handover/chief-kit/tick.sh" --doc "$pl_doc" 2>/dev/null; }
+pl_tick() { TOKEN='' TICK_STATE_DIR="$pl_dir/state" TICKET_STATUS_STATE_DIR="$pl_dir/tss" HIMMEL_ADMISSIONS_LEDGER="$pl_dir/ledger.jsonl" PS_LAUNCH_LOG="$pl_log" PS_NICE_LOG="$pl_nice" bash "$sk/handover/chief-kit/tick.sh" --doc "$pl_doc" ${PL_WF:+--workers-from "$PL_WF"} 2>/dev/null; }
 pl_n() { if [ -f "$pl_log" ]; then wc -l < "$pl_log" | tr -d ' '; else echo 0; fi; }
 pl_rows() { find "$pl_dir/state" -name 'tick-pool-*.rows' 2>/dev/null; }
 pl_age() { local r; r="$(pl_rows)"; [ -z "$r" ] || touch -d "$1" "$r"; }  # gnu-ok: chief kit is Linux-only
+pl_fp() { cat "$pl_dir"/state/tick-pool-*.fp 2>/dev/null; }
+pl_go() { pl_age '20 minutes ago'; pl_tick > /dev/null; check "$1" "$2" "$(pl_n)"; }  # <name> <launches so far>
 printf '{"lastSync":"2026-11-01T00:00:00Z"}\n' > "$M/.cursor.json"
 pl_tick > /dev/null
 check 'the first tick launches a snapshot' 1 "$(pl_n)"
-pl_age '20 minutes ago'
-pl_tick > /dev/null
-check 'a second tick past the floor with unchanged inputs launches no second snapshot' 1 "$(pl_n)"
+pl_go 'a second tick past the floor with unchanged inputs launches no second snapshot' 1
 pl_age '2 hours ago'
 pl_out="$(pl_tick)"
 check 'an unchanged-input skip still serves the counts (the snapshot is kept fresh, not left to expire)' 1 "$(printf '%s\n' "$pl_out" | grep -c ' pool=[0-9]')"
 printf '{"lastSync":"2026-11-01T00:10:00Z"}\n' > "$M/.cursor.json"
-pl_age '20 minutes ago'
-pl_tick > /dev/null
-check 'a mirror sync between two ticks launches the next snapshot' 2 "$(pl_n)"
-pl_age '20 minutes ago'
+pl_go 'a mirror sync between two ticks launches the next snapshot' 2
 touch "$pl_doc"
-pl_tick > /dev/null
-check 'a changed chief doc launches a snapshot past the floor' 3 "$(pl_n)"
-pl_age '20 minutes ago'
+pl_go 'a changed chief doc launches a snapshot past the floor' 3
 printf '%s\tZZTEST-7\t\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${pl_doc%/*}/cloud-sessions.tsv"
+pl_go 'a changed owner set (a cloud session now owns a key) launches a snapshot past the floor' 4
+printf 'v1.1.3\ttrue\t\n' > "$WORK/mirror/HIMMEL.versions.tsv"
+pl_go 'a changed versions table launches a snapshot past the floor' 5
+printf '{"key":"ZZTEST-7"}\n' > "$pl_dir/tss/status-events.jsonl"
+pl_go 'a new status-events row launches a snapshot past the floor' 6
+printf '{"key":"ZZTEST-7"}\n' > "$pl_dir/ledger.jsonl"
+pl_go 'a new admissions ledger row launches a snapshot past the floor' 7
+printf '{}\n' > "$pl_dir/tss/workers/w1.json"
+pl_go 'a new worker record launches a snapshot past the floor' 8
+printf '{"schema":1,"workers":[]}\n' > "$pl_dir/fleet.json"; PL_WF="$pl_dir/fleet.json"
+pl_go 'naming a fleet manifest launches a snapshot past the floor' 9
+touch -d '3 minutes ago' "$PL_WF"
+pl_go 'a changed fleet manifest mtime launches a snapshot past the floor' 10
+pl_go 'unchanged inputs after that launch no snapshot' 10
+pl_age '20 minutes ago'; touch -d '2 hours ago' "$pl_dir"/state/tick-pool-*.fp
 pl_tick > /dev/null
-check 'a changed owner set (a cloud session now owns a key) launches a snapshot past the floor' 4 "$(pl_n)"
-printf '{"lastSync":"2026-11-01T00:20:00Z"}\n' > "$M/.cursor.json"
+check 'unchanged inputs launch a snapshot once the fingerprint is older than TICK_POOL_MAX_SKIP_SECS' 11 "$(pl_n)"
+pl_fp_before="$(pl_fp)"
+printf '{"lastSync":"2026-11-01T00:30:00Z"}\n' > "$M/.cursor.json"
+pl_age '20 minutes ago'
+PS_FAIL=1 pl_tick > /dev/null
+check 'a changed input launches a snapshot even when that scan will fail' 12 "$(pl_n)"
+check 'a failed scan records no fingerprint' "$pl_fp_before" "$(pl_fp)"
+pl_go 'the next tick retries after a failed scan' 13
+check 'the retried scan records the fingerprint' 1 "$([ "$(pl_fp)" != "$pl_fp_before" ] && echo 1 || echo 0)"
+printf '{"lastSync":"2026-11-01T00:40:00Z"}\n' > "$M/.cursor.json"
 pl_tick > /dev/null
-check 'a changed input inside the floor still launches nothing' 4 "$(pl_n)"
+check 'a changed input inside the floor still launches nothing' 13 "$(pl_n)"
 pl_nice_want=$(( $(nice) + 10 )); [ "$pl_nice_want" -le 19 ] || pl_nice_want=19
-check 'every launched snapshot runs at nice +10' "$(printf '%s\n%s\n%s\n%s' "$pl_nice_want" "$pl_nice_want" "$pl_nice_want" "$pl_nice_want")" "$(cat "$pl_nice")"
+check 'every launched snapshot runs at nice +10' "$pl_nice_want" "$(sort -u "$pl_nice")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
