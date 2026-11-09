@@ -2281,7 +2281,8 @@ async function monitorGet(token: string, method: string, chat: string, f: typeof
 }
 
 // Startup check: a send function plus the `monitoring: ...` line, or null and why (`reason` is what the notice names).
-// `retry` is true only when Telegram could not be reached, so the caller asks again: a bridge started at boot can come up before the network.
+// `retry` is true when getChat gave no answer (Telegram unreachable, or it refused the token or chat), so the caller asks again every minute:
+// a bridge started at boot can come up before the network, and a bot added to its group later is picked up without a restart.
 export async function checkMonitoring(env: { TELEGRAM_BOT_TOKEN?: string; TELEGRAM_MONITOR_BOT_TOKEN?: string; TELEGRAM_MONITOR_CHAT_ID?: string }, deps: Pick<MonitorDeps, "f" | "mkSignal"> = {}): Promise<{ send: MonitorSendFn | null; reason: string; line: string; retry: boolean }> {
   const token = env.TELEGRAM_MONITOR_BOT_TOKEN, chat = env.TELEGRAM_MONITOR_CHAT_ID;
   if (!token || !chat) return { send: null, reason: "unset", line: "monitoring: unset", retry: false };
