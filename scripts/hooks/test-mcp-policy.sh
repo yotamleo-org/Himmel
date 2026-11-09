@@ -253,9 +253,13 @@ else
     bad "codex chain allowed executeRead with no readable name: $(printf '%s' "$out" | head -c 200)"
 fi
 
-# Read traffic stays unbroken: a well-formed allowlisted read is allowed and audited.
+# Read traffic stays unbroken: a well-formed read the guard routes to no CLI is
+# allowed and audited. Jira reads are denied now (Jira is CLI-only), so the
+# read is a Confluence one, with a stub Confluence CLI that lacks the "page get"
+# verb the guard would otherwise route it to.
+printf '%s\n' 'if (process.argv.includes("--list-commands")) { console.log("spaces"); process.exit(0); }' 'process.exit(1);' > "$TMP/confluence-stub.js"
 : > "$MCP_POLICY_AUDIT_LOG"
-out=$(printf '{"session_id":"s-test","tool_name":"mcp__claude_ai_Atlassian_MCP__executeRead","tool_input":{"name":"lookupJiraAccountId"}}' | bash "$CHAIN_CMD" --sandbox "$CHAIN_ARG" 2>&1)
+out=$(printf '{"session_id":"s-test","tool_name":"mcp__claude_ai_Atlassian_MCP__executeRead","tool_input":{"name":"getConfluenceContent"}}' | CONFLUENCE_CLI="$TMP/confluence-stub.js" bash "$CHAIN_CMD" --sandbox "$CHAIN_ARG" 2>&1)
 rc=$?
 lines=$(wc -l < "$MCP_POLICY_AUDIT_LOG" | tr -d ' ')
 if [ "$rc" = 0 ] && ! grep -qi 'deny' <<< "$out" && [ "$lines" = 1 ]; then

@@ -22,8 +22,16 @@
 #     routes only known MCP prefixes here; a parse failure means a contract
 #     change or adversarial input — refuse rather than allow.
 #   - CLI INTROSPECTION fails (node missing, CLI absent, errors, empty
-#     output) → fail OPEN (allow). A broken CLI must never hard-block a
-#     legit MCP call the operator may need as a fallback.
+#     output) → fail OPEN (allow) for every service EXCEPT Jira. A broken CLI
+#     must never hard-block a legit MCP call the operator may need as a
+#     fallback.
+#   - Jira is CLI-ONLY (chain ["cli"] in scripts/backends.json):
+#     every Atlassian MCP method named *Jira* (reads included) and every
+#     execute* wrapper around one is denied. A mapped verb prints the CLI
+#     replacement; an unmapped one, or one the CLI lacks, prints
+#     "unsupported, extend the CLI"; a CLI that is not built or cannot list
+#     its verbs is denied with a build hint (Jira fails CLOSED here).
+#     MCP_JIRA_OK=1 stays the bypass. Confluence keeps cli:api:mcp.
 #   - Registry read/parse fails → warn to stderr + fall back to code defaults
 #     (fail open on CONFIG, fail closed on INPUT as above).
 #
@@ -38,8 +46,8 @@ set -euo pipefail
 # Each entry: <service-name>|<enabled>|<mcp_prefix>|<cli_bin>|<chain>
 # chain is colon-separated tiers (cli:api:mcp or mcp:cli:api etc.)
 # ---------------------------------------------------------------------------
-_DEFAULTS="jira|true|mcp__plugin_atlassian_atlassian__|scripts/jira/dist/index.js|cli:api:mcp
-jira|true|mcp__claude_ai_Atlassian_MCP__|scripts/jira/dist/index.js|cli:api:mcp
+_DEFAULTS="jira|true|mcp__plugin_atlassian_atlassian__|scripts/jira/dist/index.js|cli
+jira|true|mcp__claude_ai_Atlassian_MCP__|scripts/jira/dist/index.js|cli
 confluence|true|mcp__plugin_atlassian_atlassian__|scripts/jira/dist/confluence.js|cli:api:mcp
 confluence|true|mcp__claude_ai_Atlassian_MCP__|scripts/jira/dist/confluence.js|cli:api:mcp
 bitbucket|true||scripts/bitbucket/dist/index.js|cli:api:mcp
@@ -89,7 +97,7 @@ replacement_for() {
     case "${service}:${verb}" in
         jira:get)        echo 'node scripts/jira/dist/index.js get HIMMEL-N' ;;
         jira:list)       echo 'node scripts/jira/dist/index.js list --jql "<your JQL>"' ;;
-        jira:create)     echo 'node scripts/jira/dist/index.js create --project HIMMEL --type Story --title "..." --sector "<Sector>" --parent <EPIC-KEY> --desc-file <file> (body: Impact, What, Why, Plan, DoD, Agent detail headings; --labels standalone instead of --parent)' ;;
+        jira:create)     echo 'node scripts/jira/dist/index.js create --project HIMMEL --type Story --title "..." --sector "<Sector>" --desc-file <file> <placement> <home>   where <placement> is exactly one of: --proposed-version <v> | --backlog --proposed-version backlog --why <line> | --fix-version <v> | --gate <reason>; <home> is --parent <EPIC-KEY> or --labels standalone. Fill every <...> before running; the file body carries the seven sections as headings: Impact, What, Why, Plan, DoD, Proof, Agent detail.' ;;
         jira:edit)       echo 'node scripts/jira/dist/index.js edit HIMMEL-N --title "..." --desc "..."' ;;
         jira:comment)    echo 'node scripts/jira/dist/index.js comment HIMMEL-N "<text>"' ;;
         jira:transition) echo 'node scripts/jira/dist/index.js transition HIMMEL-N <Status Name>' ;;
@@ -313,6 +321,164 @@ deny_wrapped() {
     } >&2
 }
 
+# comment_edit_replacement <cli-prefix> — for addOrEditJiraIssueComment, the
+# `comment --edit` form with the call's real key and comment id; prints nothing
+# when no commentId marks the call as an edit.
+comment_edit_replacement() {
+    local cli_prefix="$1" edit_id edit_key
+    edit_id=$(printf '%s' "$input" | jq -r '.tool_input.commentId // empty | tostring' 2>/dev/null) || edit_id=""  # swallow-ok: no readable id keeps the add hint
+    edit_key=$(printf '%s' "$input" | jq -r '.tool_input.issueIdOrKey // empty | tostring' 2>/dev/null) || edit_key=""  # swallow-ok: no readable key falls back to HIMMEL-N
+    case "$edit_id$edit_key" in
+        *[!A-Za-z0-9_-]*) edit_id="" ;;  # keep shell metacharacters out of the printed command
+    esac
+    if [ -n "$edit_id" ]; then
+        printf '%s comment %s --edit %s "<text>"' "$cli_prefix" "${edit_key:-HIMMEL-N}" "$edit_id"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# jira_cli_only_verdict <cli> <prefix> <bypass_var>
+#   Himmel-owned Jira work is CLI-only: EVERY Atlassian MCP method whose name
+#   contains "Jira" (or that the verb map names) is denied, READS INCLUDED, and
+#   so is an execute* wrapper around one. The chain array cannot express this
+#   (the chain loop in evaluate_service blocks only when mcp FOLLOWS cli, so
+#   chain ["cli"] alone would disable the guard), hence this explicit branch.
+#     mapped verb the CLI has  → deny, print `node <primary>/scripts/jira/dist/index.js <verb> ...`
+#     unmapped / CLI lacks it  → deny, "unsupported, extend the CLI" (no api/MCP fallback)
+#     CLI not built / unlistable → deny with the build command (never fails open)
+#   Non-Jira names return 0 so the Confluence service (same prefix) decides;
+#   MCP_JIRA_OK=1 is honoured by the caller before this runs.
+#   Returns 2 on deny (message printed), 0 to let the loop continue.
+# ---------------------------------------------------------------------------
+jira_cli_only_verdict() {
+    local matched_cli="$1" matched_prefix="$2" bypass_var="$3"
+    local suffix wrapped lower verb map_verb map_method is_wrapper=0
+    local display_cli cli_bin jira_dir commands line verb_present replacement edit_replacement
+
+    suffix="${tool_name#"${matched_prefix}"}"
+    case "$suffix" in
+        executeWrite|executeRead|executeDestructive)
+            is_wrapper=1
+            # Fail CLOSED: a name this hook cannot read is a call it cannot route.
+            wrapped=$(printf '%s' "$input" | jq -r 'if (.tool_input | type) == "object" and (.tool_input.name | type) == "string" then .tool_input.name else empty end') || wrapped=""  # swallow-ok: an unreadable name is denied just below
+            wrapped="${wrapped//[$' \t\r\n']/}"
+            if [ -z "$wrapped" ]; then
+                deny_wrapped jira "$bypass_var" "$suffix has no readable string tool_input.name"
+                return 2
+            fi
+            suffix="$wrapped"
+            ;;
+    esac
+
+    verb=""
+    while IFS="$(printf '\t')" read -r map_verb map_method; do
+        [ -z "$map_method" ] && continue
+        if [ "$map_method" = "$suffix" ]; then
+            verb="$map_verb"
+            break
+        fi
+    done <<EOF
+$_JIRA_VERB_METHOD_MAP
+EOF
+    lower=$(printf '%s' "$suffix" | tr '[:upper:]' '[:lower:]')
+    # Jira work = the name says Jira, or the verb map names it (createIssueLink).
+    case "$lower" in
+        *jira*) ;;
+        *)
+            if [ -z "$verb" ]; then
+                # Not Jira. Keep the wrapper guard: a wrapped name that is neither
+                # mapped nor allowlisted is unroutable, whichever service sees it.
+                if [ "$is_wrapper" -eq 1 ] && ! wrapped_name_is_mapped "$suffix" && ! wrapped_name_is_allowlisted "$suffix"; then
+                    deny_wrapped jira "$bypass_var" "$suffix is neither a mapped nor an allowlisted tool name"
+                    return 2
+                fi
+                return 0
+            fi
+            ;;
+    esac
+
+    # Resolve the CLI against the PRIMARY checkout (dist/ exists only there).
+    display_cli="$matched_cli"
+    case "$display_cli" in
+        /*) : ;;
+        *)  display_cli="$primary_root/$display_cli" ;;
+    esac
+    cli_bin="$display_cli"
+    [ -n "${JIRA_CLI:-}" ] && cli_bin="$JIRA_CLI"
+    jira_dir="$primary_root/scripts/jira"
+
+    if [ ! -f "$cli_bin" ] && ! command -v "$cli_bin" >/dev/null 2>&1; then
+        {
+            printf 'block-backend-tier: refusing MCP call "%s": the Jira CLI is not built at %s.\n\n' "$tool_name" "$cli_bin"
+            printf 'Himmel Jira work is CLI-only (the Atlassian Jira MCP is denied, reads included). Build the CLI:\n\n'
+            printf '    npm --prefix %s run build\n\n' "$jira_dir"
+            printf 'then re-run the work with: node %s --help\n\n' "$display_cli"
+            printf 'Bypass for a genuine carve-out: set %s=1 (or MCP_ALL_OK=1) in the shell that\n' "$bypass_var"
+            printf 'launched Claude Code, then restart.\n'
+        } >&2
+        return 2
+    fi
+    commands=$(invoke_cli "$cli_bin") || commands=""  # swallow-ok: an unlistable CLI is denied just below
+    if [ -z "$commands" ]; then
+        {
+            printf 'block-backend-tier: refusing MCP call "%s": the Jira CLI at %s did not list its verbs (node missing or CLI broken).\n\n' "$tool_name" "$cli_bin"
+            printf 'Himmel Jira work is CLI-only. Rebuild it:\n\n'
+            printf '    npm --prefix %s run build\n\n' "$jira_dir"
+            printf 'Bypass for a genuine carve-out: set %s=1 (or MCP_ALL_OK=1) in the shell that\n' "$bypass_var"
+            printf 'launched Claude Code, then restart.\n'
+        } >&2
+        return 2
+    fi
+
+    verb_present=0
+    if [ -n "$verb" ]; then
+        verb="${verb//[$'\t\r\n']/}"
+        while IFS= read -r line; do
+            line="${line//[$'\t\r\n']/}"
+            if [ "$line" = "$verb" ]; then
+                verb_present=1
+                break
+            fi
+        done <<EOF
+$commands
+EOF
+    fi
+
+    if [ "$verb_present" -ne 1 ]; then
+        {
+            printf 'block-backend-tier: refusing MCP call "%s": unsupported, extend the CLI.\n\n' "$tool_name"
+            printf 'Himmel Jira work is CLI-only (the Atlassian Jira MCP is denied, reads included) and the\n'
+            printf 'Jira CLI has no verb for "%s". Add the verb to %s\n' "$suffix" "$jira_dir"
+            printf '(run: node %s --help, for what exists) instead of working around it.\n\n' "$display_cli"
+            printf 'Bypass for a genuine carve-out: set %s=1 (or MCP_ALL_OK=1) in the shell that\n' "$bypass_var"
+            printf 'launched Claude Code, then restart.\n'
+        } >&2
+        return 2
+    fi
+
+    replacement=$(replacement_for jira "$verb")
+    case "$replacement" in
+        "node scripts/jira/dist/index.js"*) replacement="node ${display_cli}${replacement#node scripts/jira/dist/index.js}" ;;
+    esac
+    if [ "$suffix" = "addOrEditJiraIssueComment" ]; then
+        edit_replacement=$(comment_edit_replacement "node ${display_cli}")
+        [ -n "$edit_replacement" ] && replacement="$edit_replacement"
+    fi
+    {
+        printf 'block-backend-tier: refusing MCP call "%s".\n\n' "$tool_name"
+        printf 'jira plugin has an equivalent — Himmel Jira work is CLI-only (MCP is denied, reads included). Use it instead:\n\n'
+        printf '    %s\n\n' "$replacement"
+        printf 'Why: the CLI is the authoritative Jira path (policy checks, read-back, release intake);\n'
+        printf 'the MCP is only a thin bridge to it. Routing is governed by scripts/backends.json (jira chain: cli).\n\n'
+        printf 'Bypass for a genuine carve-out: set %s=1\n' "$bypass_var"
+        printf 'in the shell that launched Claude Code. Per-call prefix does not work;\n'
+        printf 'the bypass lasts the session. Restart without the var to re-enable.\n\n'
+        printf '    %s=1 claude\n\n' "$bypass_var"
+        printf 'Or temporarily comment the hook stanza in .claude/settings.json.\n'
+    } >&2
+    return 2
+}
+
 # ---------------------------------------------------------------------------
 # evaluate_service <name> <chain> <cli> <prefix>
 #   Evaluate ONE prefix-matching service. Returns:
@@ -327,10 +493,10 @@ deny_wrapped() {
 evaluate_service() {
     local matched_service="$1" matched_chain="$2" matched_cli="$3" matched_prefix="$4"
     local svc_upper bypass_var bypass_val
-    local cli_above_mcp seen_cli api_in_chain tier chain_tiers
+    local cli_above_mcp seen_cli has_mcp api_in_chain tier chain_tiers
     local suffix wrapped verb_method_map verb map_verb map_method
     local cli_bin commands line verb_present
-    local replacement api_advisory bypass_launch
+    local replacement edit_replacement api_advisory bypass_launch
 
     # Per-service bypass (MCP_<SERVICE_UPPER>_OK=1); legacy MCP_JIRA_OK honoured.
     # Security: eval builds a var name from svc_upper only after validating it
@@ -355,14 +521,21 @@ evaluate_service() {
     matched_chain="${matched_chain//$'\r'/}"
     cli_above_mcp=0
     seen_cli=0
+    has_mcp=0
     IFS=':' read -ra chain_tiers <<< "$matched_chain"
     for tier in "${chain_tiers[@]}"; do
         tier="${tier//[$' \t\r\n']/}"
         case "$tier" in
             cli) seen_cli=1 ;;
-            mcp) [ "$seen_cli" -eq 1 ] && cli_above_mcp=1 ;;
+            mcp) has_mcp=1; [ "$seen_cli" -eq 1 ] && cli_above_mcp=1 ;;
         esac
     done
+    # Jira with a CLI tier and NO mcp tier is CLI-only: enforced by an explicit
+    # branch, because the cli_above_mcp test below would let it through.
+    if [ "$matched_service" = "jira" ] && [ "$seen_cli" -eq 1 ] && [ "$has_mcp" -eq 0 ]; then
+        jira_cli_only_verdict "$matched_cli" "$matched_prefix" "$bypass_var"
+        return $?
+    fi
     # mcp ranked at or above cli → no hard block for this service.
     [ "$cli_above_mcp" -eq 0 ] && return 0
 
@@ -456,17 +629,12 @@ EOF
     replacement=$(replacement_for "$matched_service" "$verb")
     if [ "$matched_service" = "jira" ] && [ "$suffix" = "addOrEditJiraIssueComment" ]; then
         # A commentId marks an edit: name the --edit form with the real key and id.
-        edit_id=$(printf '%s' "$input" | jq -r '.tool_input.commentId // empty | tostring' 2>/dev/null) || edit_id=""  # swallow-ok: no readable id keeps the add hint
-        edit_key=$(printf '%s' "$input" | jq -r '.tool_input.issueIdOrKey // empty | tostring' 2>/dev/null) || edit_key=""  # swallow-ok: no readable key falls back to HIMMEL-N
-        case "$edit_id$edit_key" in
-            *[!A-Za-z0-9_-]*) edit_id="" ;;  # keep shell metacharacters out of the printed command
-        esac
-        if [ -n "$edit_id" ]; then
-            replacement="node scripts/jira/dist/index.js comment ${edit_key:-HIMMEL-N} --edit ${edit_id} \"<text>\""
-        fi
+        edit_replacement=$(comment_edit_replacement "node scripts/jira/dist/index.js")
+        [ -n "$edit_replacement" ] && replacement="$edit_replacement"
     fi
     api_advisory=""
-    if [ "$api_in_chain" -eq 1 ]; then
+    # Jira is CLI-only: it never suggests a raw-REST fallback.
+    if [ "$api_in_chain" -eq 1 ] && [ "$matched_service" != "jira" ]; then
         api_advisory="
 For ops the CLI lacks, prefer raw REST (curl/WebFetch) before falling back to MCP.
 "

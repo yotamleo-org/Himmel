@@ -230,18 +230,18 @@ for prefix in mcp__plugin_atlassian_atlassian__ mcp__claude_ai_Atlassian_MCP__; 
         *) echo "PASS ${prefix} create hint has no inline --desc" ;;
     esac
     rc=$(run_case "{\"tool_name\":\"${prefix}lookupJiraAccountId\",\"tool_input\":{}}")
-    assert_rc "allow ${prefix}lookupJiraAccountId (no CLI equivalent)" 0 "$rc"
+    assert_rc "block ${prefix}lookupJiraAccountId (Jira is CLI-only; no CLI verb = unsupported)" 2 "$rc"
     rc=$(run_case "$input" "$STUB_REDUCED")
-    assert_rc "allow ${prefix}createJiraIssue when CLI lacks create" 0 "$rc"
+    assert_rc "block ${prefix}createJiraIssue when CLI lacks create (unsupported, never an MCP fallback)" 2 "$rc"
     rc=$(run_case "$input" "$STUB_FULL" 'MCP_JIRA_OK=1')
     assert_rc "bypass ${prefix}createJiraIssue with MCP_JIRA_OK" 0 "$rc"
 done
 
 # --- Autogeneration property: REMOVE verbs from the fixture ---
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__createIssueLink","tool_input":{}}' "$STUB_REDUCED")
-assert_rc "allow createIssueLink when 'link' verb absent" 0 "$rc"
+assert_rc "block createIssueLink when 'link' verb absent (unsupported)" 2 "$rc"
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__createJiraIssue","tool_input":{}}' "$STUB_REDUCED")
-assert_rc "allow createJiraIssue when 'create' verb absent" 0 "$rc"
+assert_rc "block createJiraIssue when 'create' verb absent (unsupported)" 2 "$rc"
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{}}' "$STUB_REDUCED")
 assert_rc "block getJiraIssue when 'get' verb still present" 2 "$rc"
 
@@ -253,7 +253,10 @@ assert_rc "block getTransitionsForJiraIssue (transition present)" 2 "$rc"
 
 # --- Substring guard: 'transitions' must NOT trigger 'transition' match ---
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__transitionJiraIssue","tool_input":{}}' "$STUB_TRANS_ONLY")
-assert_rc "allow transitionJiraIssue when only 'transitions' present (no substring match)" 0 "$rc"
+assert_rc "block transitionJiraIssue when only 'transitions' present (no substring match: unsupported)" 2 "$rc"
+assert_stderr_contains "transitionJiraIssue with only 'transitions' is unsupported, not a transition replacement" \
+    '{"tool_name":"mcp__plugin_atlassian_atlassian__transitionJiraIssue","tool_input":{}}' \
+    'unsupported, extend the CLI' "$STUB_TRANS_ONLY"
 
 # --- Stderr quality: each refusal must include the plugin verb ---
 assert_stderr_contains "stderr names 'get' verb" \
@@ -279,23 +282,27 @@ assert_stderr_contains "addOrEditJiraIssueComment without commentId keeps the ad
 # --- Allowed Atlassian tools (no verb in EITHER map → no plugin equivalent) ---
 # NOTE: the Confluence page/search/spaces/comment methods are NO LONGER here —
 # they now route to the confluence CLI (see the Confluence section below).
-for tool in lookupJiraAccountId getJiraIssueTypeMetaWithFields \
-            getJiraProjectIssueTypesMetadata getIssueLinkTypes \
-            addWorklogToJiraIssue atlassianUserInfo \
+for tool in getIssueLinkTypes atlassianUserInfo \
             getAccessibleAtlassianResources fetch search \
-            getJiraIssueRemoteIssueLinks \
             getConfluencePageInlineComments createConfluenceInlineComment; do
     rc=$(run_case "{\"tool_name\":\"mcp__plugin_atlassian_atlassian__${tool}\",\"tool_input\":{}}")
     assert_rc "allow $tool" 0 "$rc"
 done
 
-# --- Fail OPEN on introspection failure ---
+# --- Jira is CLI-only: every Jira-named method is denied, so a
+# CLI that cannot be introspected or is not built FAILS CLOSED (it used to fail open).
+for tool in lookupJiraAccountId getJiraIssueTypeMetaWithFields \
+            getJiraProjectIssueTypesMetadata addWorklogToJiraIssue \
+            getJiraIssueRemoteIssueLinks; do
+    rc=$(run_case "{\"tool_name\":\"mcp__plugin_atlassian_atlassian__${tool}\",\"tool_input\":{}}")
+    assert_rc "block $tool (Jira-named, no CLI verb: unsupported)" 2 "$rc"
+done
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{}}' "$STUB_ERR")
-assert_rc "fail-open: introspection error allows getJiraIssue" 0 "$rc"
+assert_rc "fail-closed: introspection error denies getJiraIssue" 2 "$rc"
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{}}' "$STUB_EMPTY")
-assert_rc "fail-open: empty introspection allows getJiraIssue" 0 "$rc"
+assert_rc "fail-closed: empty introspection denies getJiraIssue" 2 "$rc"
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{}}' "$TMPDIR_TEST/does-not-exist.js")
-assert_rc "fail-open: missing CLI file allows getJiraIssue" 0 "$rc"
+assert_rc "fail-closed: missing CLI file denies getJiraIssue" 2 "$rc"
 
 # --- Non-Atlassian MCP tools — pass through ---
 for tool in mcp__obsidian-vault__obsidian_get_file_contents \
@@ -398,9 +405,10 @@ rc=$(run_case '{"tool_name":"mcp__plugin_bitbucket__getSomething","tool_input":{
 assert_rc "no-prefix service: mcp__plugin_bitbucket__ passes through" 0 "$rc"
 
 # --- Refusal message contains api advisory when chain includes api tier ---
-# Default chain is cli:api:mcp, so api advisory should appear.
-assert_stderr_contains "refusal includes api advisory" \
-    '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{}}' \
+# Confluence keeps cli:api:mcp, so its refusal carries the api advisory; Jira
+# (CLI-only) never does.
+assert_stderr_contains "confluence refusal includes api advisory" \
+    '{"tool_name":"mcp__plugin_atlassian_atlassian__getConfluencePage","tool_input":{}}' \
     'raw REST (curl/WebFetch)'
 
 # --- MCP_<SERVICE_UPPER>_OK=1 per-service bypass ---
@@ -562,7 +570,7 @@ assert_rc "block executeWrite{name:addOrEditJiraIssueComment}" 2 "$rc"
 rc=$(run_case "{\"tool_name\":\"${LIVE}executeRead\",\"tool_input\":{\"name\":\"getConfluenceContent\"}}")
 assert_rc "block executeRead{name:getConfluenceContent}" 2 "$rc"
 rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":\"lookupJiraAccountId\"}}")
-assert_rc "allow executeWrite{name:lookupJiraAccountId} (no CLI equivalent)" 0 "$rc"
+assert_rc "block executeWrite{name:lookupJiraAccountId} (Jira is CLI-only: unsupported)" 2 "$rc"
 # A wrapper call whose real tool name cannot be read fails CLOSED.
 rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{}}")
 assert_rc "block executeWrite with no name" 2 "$rc"
@@ -579,13 +587,164 @@ assert_rc "block executeWrite{name:CreateJiraIssue} (case variant of a mapped na
 rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":\"deleteEverything\"}}")
 assert_rc "block executeWrite{name:deleteEverything} (unknown name)" 2 "$rc"
 rc=$(run_case "{\"tool_name\":\"${LIVE}executeRead\",\"tool_input\":{\"name\":\"lookupJiraAccountId\"}}")
-assert_rc "allow executeRead{name:lookupJiraAccountId} (allowlisted)" 0 "$rc"
+assert_rc "block executeRead{name:lookupJiraAccountId} (Jira reads are denied too)" 2 "$rc"
 rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{}}" "$STUB_FULL" 'MCP_ALL_OK=1')
 assert_rc "bypass MCP_ALL_OK=1 on executeWrite with no name" 0 "$rc"
 assert_stderr_contains "no-name deny names the CLI route" \
     "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{}}" 'scripts/jira/dist/index.js'
 rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":\"createJiraIssue\"}}" "$STUB_REDUCED")
-assert_rc "allow executeWrite{name:createJiraIssue} when CLI lacks create" 0 "$rc"
+assert_rc "block executeWrite{name:createJiraIssue} when CLI lacks create (unsupported)" 2 "$rc"
+
+# ============================================================================
+# 3c. JIRA IS CLI-ONLY
+# ============================================================================
+#
+# Himmel-owned Jira work goes through the Jira CLI. Every Atlassian MCP method
+# whose name contains "Jira" (and an execute* wrapper around one) is denied,
+# READS INCLUDED. A chain of ["cli"] alone cannot do this (the chain loop blocks
+# only when mcp follows cli), so an explicit branch in the hook enforces it.
+
+echo ""
+echo "=== Jira CLI-only ==="
+
+ATL=mcp__plugin_atlassian_atlassian__
+PRIMARY_ROOT=$(git -C "$SCRIPT_DIR" worktree list --porcelain | sed -n 's/^worktree //p;1q')
+
+# stderr_of <input> [jira-cli] [env-assignment...] — hook stderr for one payload.
+stderr_of() {
+    local input="$1" cli="${2:-$STUB_FULL}"
+    shift; [ "$#" -gt 0 ] && shift
+    printf '%s' "$input" | { env "JIRA_CLI=$cli" "CONFLUENCE_CLI=$STUB_CONF" "$@" bash "$HOOK" >/dev/null; } 2>&1 || true  # swallow-ok: a deny exits 2 and only its stderr is wanted
+}
+
+assert_stderr_lacks() {
+    local label="$1" haystack="$2" needle="$3"
+    case "$haystack" in
+        *"$needle"*)
+            echo "FAIL $label — stderr unexpectedly contains: $needle"
+            echo "--- got ---"; echo "$haystack"; echo "-----------"
+            FAILED=$((FAILED + 1))
+            ;;
+        *) echo "PASS $label" ;;
+    esac
+}
+
+# The shipped registry: Jira CLI-only, Confluence/GitHub/Bitbucket unchanged.
+REPO_ROOT_UNDER_TEST=$(cd "$SCRIPT_DIR/../.." && pwd)
+if [ "$(jq -c '.jira.chain' "$REPO_ROOT_UNDER_TEST/scripts/backends.json")" = '["cli"]' ]; then
+    echo "PASS shipped backends.json: jira chain is CLI-only"
+else
+    echo "FAIL shipped backends.json: jira chain is not [\"cli\"]"
+    FAILED=$((FAILED + 1))
+fi
+for svc in confluence bitbucket github; do
+    if [ "$(jq -c ".${svc}.chain" "$REPO_ROOT_UNDER_TEST/scripts/backends.json")" = '["cli","api","mcp"]' ]; then
+        echo "PASS shipped backends.json: $svc chain unchanged"
+    else
+        echo "FAIL shipped backends.json: $svc chain changed"
+        FAILED=$((FAILED + 1))
+    fi
+done
+
+# A Jira READ is denied and names the CLI replacement (absolute, primary checkout).
+READ_IN="{\"tool_name\":\"${ATL}getJiraIssue\",\"tool_input\":{\"issueIdOrKey\":\"HIMMEL-1\"}}"
+rc=$(run_case "$READ_IN")
+assert_rc "Jira read getJiraIssue is denied" 2 "$rc"
+out=$(stderr_of "$READ_IN")
+assert_contains() {
+    local label="$1" haystack="$2" needle="$3"
+    case "$haystack" in
+        *"$needle"*) echo "PASS $label" ;;
+        *)
+            echo "FAIL $label — missing: $needle"
+            echo "--- got ---"; echo "$haystack"; echo "-----------"
+            FAILED=$((FAILED + 1))
+            ;;
+    esac
+}
+assert_contains "Jira read names the absolute CLI replacement" "$out" "node ${PRIMARY_ROOT}/scripts/jira/dist/index.js get"
+assert_stderr_lacks "Jira refusal drops the api advisory" "$out" 'raw REST'
+
+# A Jira WRITE is denied with the CLI replacement.
+WRITE_IN="{\"tool_name\":\"${ATL}editJiraIssue\",\"tool_input\":{}}"
+rc=$(run_case "$WRITE_IN")
+assert_rc "Jira write editJiraIssue is denied" 2 "$rc"
+assert_contains "Jira write names the CLI edit replacement" "$(stderr_of "$WRITE_IN")" "node ${PRIMARY_ROOT}/scripts/jira/dist/index.js edit"
+
+# An unmapped Jira method (no CLI verb) is "unsupported", never an api/MCP fallback.
+UNMAPPED_IN="{\"tool_name\":\"${ATL}getJiraIssueTypeMetaWithFields\",\"tool_input\":{}}"
+rc=$(run_case "$UNMAPPED_IN")
+assert_rc "unmapped Jira method is denied" 2 "$rc"
+out=$(stderr_of "$UNMAPPED_IN")
+assert_contains "unmapped Jira method prints unsupported, extend the CLI" "$out" 'unsupported, extend the CLI'
+assert_stderr_lacks "unmapped Jira method suggests no REST fallback" "$out" 'raw REST'
+assert_stderr_lacks "unmapped Jira method names no replacement command" "$out" 'plugin has an equivalent'
+
+# A mapped verb the CLI lacks is also unsupported.
+assert_contains "mapped verb the CLI lacks prints unsupported" "$(stderr_of "{\"tool_name\":\"${ATL}createIssueLink\",\"tool_input\":{}}" "$STUB_REDUCED")" 'unsupported, extend the CLI'
+
+# Wrappers around a Jira method are denied (read wrapper included).
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeRead\",\"tool_input\":{\"name\":\"getJiraIssue\"}}")
+assert_rc "executeRead{name:getJiraIssue} is denied" 2 "$rc"
+assert_contains "executeRead{name:getJiraIssue} names the get replacement" \
+    "$(stderr_of "{\"tool_name\":\"${LIVE}executeRead\",\"tool_input\":{\"name\":\"getJiraIssue\"}}")" 'jira/dist/index.js get'
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeRead\",\"tool_input\":{\"name\":\"someNewJiraThing\"}}")
+assert_rc "executeRead{name:someNewJiraThing} (unknown Jira name) is denied" 2 "$rc"
+assert_contains "wrapped unknown Jira name prints unsupported" \
+    "$(stderr_of "{\"tool_name\":\"${LIVE}executeRead\",\"tool_input\":{\"name\":\"someNewJiraThing\"}}")" 'unsupported, extend the CLI'
+
+# Case-insensitive on the Jira marker.
+rc=$(run_case "{\"tool_name\":\"${ATL}getjiraissue\",\"tool_input\":{}}")
+assert_rc "lower-cased getjiraissue is denied" 2 "$rc"
+
+# MCP_JIRA_OK=1 stays the documented bypass, silent.
+rc=$(run_case "$UNMAPPED_IN" "$STUB_FULL" 'MCP_JIRA_OK=1')
+assert_rc "MCP_JIRA_OK=1 allows an unmapped Jira method" 0 "$rc"
+rc=$(run_case "$READ_IN" "$TMPDIR_TEST/does-not-exist.js" 'MCP_JIRA_OK=1')
+assert_rc "MCP_JIRA_OK=1 allows a Jira read with the CLI unbuilt" 0 "$rc"
+assert_rc "MCP_JIRA_OK=1 bypass is silent" 0 "$(stderr_of "$UNMAPPED_IN" "$STUB_FULL" MCP_JIRA_OK=1 | wc -c | tr -d ' ')"
+rc=$(run_case "$READ_IN" "$STUB_FULL" 'MCP_CONFLUENCE_OK=1')
+assert_rc "MCP_CONFLUENCE_OK=1 does not bypass Jira" 2 "$rc"
+
+# A registry whose jira chain is exactly ["cli"] enforces the branch (the chain loop alone would not).
+REG_CLI_ONLY="$TMPDIR_TEST/reg-cli-only.json"
+write_registry "$REG_CLI_ONLY" "{
+  \"jira\": {
+    \"enabled\": true,
+    \"mcp_prefix\": \"mcp__plugin_atlassian_atlassian__\",
+    \"cli\": \"${STUB_FULL}\",
+    \"chain\": [\"cli\"]
+  }
+}"
+rc=$(run_case_reg "$READ_IN" "$REG_CLI_ONLY")
+assert_rc "registry chain [cli]: Jira read is denied" 2 "$rc"
+rc=$(run_case_reg "$UNMAPPED_IN" "$REG_CLI_ONLY")
+assert_rc "registry chain [cli]: unmapped Jira method is denied" 2 "$rc"
+rc=$(run_case_reg "$UNMAPPED_IN" "$REG_CLI_ONLY" 'MCP_JIRA_OK=1')
+assert_rc "registry chain [cli]: MCP_JIRA_OK=1 bypasses" 0 "$rc"
+
+# Confluence (same Atlassian prefix) keeps its cli:api:mcp behaviour on the shipped registry.
+rc=$(run_case "{\"tool_name\":\"${ATL}getConfluencePage\",\"tool_input\":{}}")
+assert_rc "Confluence getConfluencePage still denied when its CLI has the verb" 2 "$rc"
+rc=$(run_case "{\"tool_name\":\"${ATL}getConfluencePage\",\"tool_input\":{}}" "$STUB_FULL" '' "$STUB_CONF_REDUCED")
+assert_rc "Confluence getConfluencePage still allowed when its CLI lacks the verb" 0 "$rc"
+rc=$(run_case "{\"tool_name\":\"${ATL}getConfluencePage\",\"tool_input\":{}}" "$STUB_FULL" '' "$TMPDIR_TEST/no-confluence.js")
+assert_rc "Confluence getConfluencePage still falls open when its CLI is not built" 0 "$rc"
+rc=$(run_case "{\"tool_name\":\"${ATL}createConfluenceInlineComment\",\"tool_input\":{}}")
+assert_rc "Confluence unmapped method still allowed" 0 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeRead\",\"tool_input\":{\"name\":\"deleteEverything\"}}")
+assert_rc "executeRead{name:deleteEverything} (unknown, non-Jira) is still denied" 2 "$rc"
+
+# The create hint names the seven sections and every placement/home flag, and
+# is a command the CLI accepts as written (placeholders are the only open slots).
+out=$(stderr_of "{\"tool_name\":\"${ATL}createJiraIssue\",\"tool_input\":{}}")
+for needle in 'Impact, What, Why, Plan, DoD, Proof, Agent detail' \
+              '--proposed-version <v>' '--backlog --proposed-version backlog --why <line>' \
+              '--fix-version <v>' '--gate <reason>' '--parent <EPIC-KEY>' '--labels standalone' \
+              '--desc-file' '--sector'; do
+    assert_contains "create hint names: $needle" "$out" "$needle"
+done
+assert_stderr_lacks "create hint names no inline --desc" "$out" '--desc "'
 
 # ============================================================================
 # 4. VERDICT EQUALITY ACROSS CHECKOUTS
@@ -736,6 +895,52 @@ else
         "$(eq_stderr_at "$EQ_PRIMARY" "$EQ_MAPPED")" 'falling OPEN'
     assert_contains "carve-out advisory on stderr (worktree)" \
         "$(eq_stderr_at "$EQ_WORKTREE" "$EQ_MAPPED")" 'falling OPEN'
+
+    # Jira CLI-only: the same fixtures with a ["cli"]-only Jira
+    # chain. The CLI is NOT built (removed above), and now that DENIES with a
+    # build hint from BOTH checkouts instead of falling open.
+    for eq_checkout in "$EQ_PRIMARY" "$EQ_WORKTREE"; do
+        cat > "$eq_checkout/scripts/backends.json" <<'ENDJSON'
+{
+  "jira": {
+    "enabled": true,
+    "mcp_prefix": "mcp__plugin_atlassian_atlassian__",
+    "cli": "scripts/fakecli/index.js",
+    "chain": ["cli"]
+  }
+}
+ENDJSON
+    done
+    eq_p=$(eq_rc_at "$EQ_PRIMARY" "$EQ_MAPPED")
+    eq_w=$(eq_rc_at "$EQ_WORKTREE" "$EQ_MAPPED")
+    assert_equal_verdicts "CLI-only, CLI not built: DENIED from primary and worktree" 2 "$eq_p" "$eq_w"
+    eq_p=$(eq_rc_at "$EQ_PRIMARY" "$EQ_UNMAPPED")
+    eq_w=$(eq_rc_at "$EQ_WORKTREE" "$EQ_UNMAPPED")
+    assert_equal_verdicts "CLI-only, CLI not built: unmapped Jira method DENIED from primary and worktree" 2 "$eq_p" "$eq_w"
+    for eq_checkout in "$EQ_PRIMARY" "$EQ_WORKTREE"; do
+        eq_out=$(eq_stderr_at "$eq_checkout" "$EQ_MAPPED")
+        assert_contains "CLI not built: deny names the build command ($(basename "$eq_checkout"))" \
+            "$eq_out" "npm --prefix $EQ_PRIMARY/scripts/jira run build"
+        assert_contains "CLI not built: deny says the CLI is not built ($(basename "$eq_checkout"))" \
+            "$eq_out" 'not built'
+        case "$eq_out" in
+            *'falling OPEN'*) echo "FAIL CLI not built still falls open ($(basename "$eq_checkout"))"; FAILED=$((FAILED + 1)) ;;
+            *) echo "PASS CLI not built no longer falls open ($(basename "$eq_checkout"))" ;;
+        esac
+    done
+    rc=$(printf '%s' "$EQ_MAPPED" | (
+        cd "$EQ_WORKTREE" || exit 99
+        env -u JIRA_CLI -u CONFLUENCE_CLI -u BACKENDS_REGISTRY MCP_JIRA_OK=1 \
+            "CLAUDE_PROJECT_DIR=$EQ_WORKTREE" \
+            bash "$EQ_WORKTREE/scripts/hooks/block-backend-tier.sh" >/dev/null 2>&1
+        echo "$?"
+    ))
+    assert_rc "CLI not built: MCP_JIRA_OK=1 bypass allows" 0 "$rc"
+
+    # Control: once the CLI is built the same call is routed, not denied as unbuilt.
+    make_stub "$EQ_CLI" get list transition
+    assert_contains "CLI built: the deny names the CLI replacement" \
+        "$(eq_stderr_at "$EQ_WORKTREE" "$EQ_MAPPED")" "node $EQ_PRIMARY/scripts/fakecli/index.js get"
 fi
 
 # ============================================================================

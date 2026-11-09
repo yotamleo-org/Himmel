@@ -158,9 +158,9 @@ done
 # shrinks with NO hook edit. With 'link'+'create' gone, createIssueLink
 # and createJiraIssue must now be ALLOWED; the rest still blocked. ---
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__createIssueLink","tool_input":{}}' "$STUB_REDUCED")
-assert_rc "allow createIssueLink when 'link' verb absent" 0 "$rc"
+assert_rc "block createIssueLink when 'link' verb absent (Jira CLI-only: unsupported)" 2 "$rc"
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__createJiraIssue","tool_input":{}}' "$STUB_REDUCED")
-assert_rc "allow createJiraIssue when 'create' verb absent" 0 "$rc"
+assert_rc "block createJiraIssue when 'create' verb absent (Jira CLI-only: unsupported)" 2 "$rc"
 # Still-present verbs stay blocked under the reduced fixture.
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{}}' "$STUB_REDUCED")
 assert_rc "block getJiraIssue when 'get' verb still present" 2 "$rc"
@@ -176,7 +176,7 @@ assert_rc "block getTransitionsForJiraIssue (transition present)" 2 "$rc"
 # 'transition'-mapped methods block on its own. Only 'transitions'
 # present (no 'transition') → transitionJiraIssue ALLOWED. ---
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__transitionJiraIssue","tool_input":{}}' "$STUB_TRANS_ONLY")
-assert_rc "allow transitionJiraIssue when only 'transitions' present (no substring match)" 0 "$rc"
+assert_rc "block transitionJiraIssue when only 'transitions' present (no substring match: unsupported)" 2 "$rc"
 
 # --- Stderr quality: each refusal must include the plugin verb ---
 assert_stderr_contains "stderr names 'get' verb" \
@@ -193,13 +193,17 @@ assert_stderr_contains "stderr names 'link' verb" \
     'jira/dist/index.js link'
 
 # --- Allowed Atlassian tools (no verb in the map → no plugin equivalent) ---
-for tool in lookupJiraAccountId getJiraIssueTypeMetaWithFields \
-            getJiraProjectIssueTypesMetadata getIssueLinkTypes \
-            addWorklogToJiraIssue atlassianUserInfo \
-            getAccessibleAtlassianResources fetch search \
-            getJiraIssueRemoteIssueLinks; do
+for tool in getIssueLinkTypes atlassianUserInfo \
+            getAccessibleAtlassianResources fetch search; do
     rc=$(run_case "{\"tool_name\":\"mcp__plugin_atlassian_atlassian__${tool}\",\"tool_input\":{}}")
     assert_rc "allow $tool" 0 "$rc"
+done
+# Jira-named methods with no CLI verb are denied: Jira is CLI-only.
+for tool in lookupJiraAccountId getJiraIssueTypeMetaWithFields \
+            getJiraProjectIssueTypesMetadata addWorklogToJiraIssue \
+            getJiraIssueRemoteIssueLinks; do
+    rc=$(run_case "{\"tool_name\":\"mcp__plugin_atlassian_atlassian__${tool}\",\"tool_input\":{}}")
+    assert_rc "block $tool (Jira-named, no CLI verb: unsupported)" 2 "$rc"
 done
 
 # --- Confluence: blocked tools (mapped verb present in FULL introspected
@@ -242,16 +246,16 @@ assert_stderr_contains "stderr names confluence 'search' verb" \
     '{"tool_name":"mcp__plugin_atlassian_atlassian__searchConfluenceUsingCql","tool_input":{}}' \
     'confluence.js search' "$STUB_FULL" "$CONFLUENCE_STUB_FULL"
 
-# --- Fail OPEN on introspection failure ---
+# --- Jira is CLI-only: introspection failure FAILS CLOSED ---
 # CLI errors (non-zero exit) → must NOT block a mapped method.
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{}}' "$STUB_ERR")
-assert_rc "fail-open: introspection error allows getJiraIssue" 0 "$rc"
+assert_rc "fail-closed: introspection error denies getJiraIssue (Jira CLI-only)" 2 "$rc"
 # CLI emits empty output → must NOT block.
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{}}' "$STUB_EMPTY")
-assert_rc "fail-open: empty introspection allows getJiraIssue" 0 "$rc"
+assert_rc "fail-closed: empty introspection denies getJiraIssue (Jira CLI-only)" 2 "$rc"
 # CLI file missing entirely → must NOT block.
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{}}' "$TMPDIR_TEST/does-not-exist.js")
-assert_rc "fail-open: missing CLI file allows getJiraIssue" 0 "$rc"
+assert_rc "fail-closed: missing CLI file denies getJiraIssue (Jira CLI-only)" 2 "$rc"
 
 # --- Non-Atlassian MCP tools — pass through (never even introspect) ---
 for tool in mcp__obsidian-vault__obsidian_get_file_contents \
