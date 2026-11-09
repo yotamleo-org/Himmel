@@ -625,10 +625,8 @@ if [ "$remote_model" -eq 1 ]; then
     fi
 fi
 
-# The base URL the way the egress gate resolves it, so the two never disagree about where the key may go: a port of
-# scripts/qmd/qmd-jina-gate.mjs lines 125-166 (only the plain children of `models:` count, at the first child's
-# indent; a quoted key is read; the last openai_base_url wins), unquote at line 74, and the config-then-env
-# fallback at line 184. Bash 3.2 and POSIX awk.
+# Must resolve the base URL exactly as scripts/qmd/qmd-jina-gate.mjs does (its models: reader, unquote and
+# config-then-env fallback), which exposes no resolver to call; change the two together.
 usage_base_url() {
     local u
     u=$(awk -v sq="'" '
@@ -660,8 +658,6 @@ usage_base_url() {
     printf '%s' "${u:-${QMD_OPENAI_BASE_URL:-}}"
 }
 
-# True only for an https URL whose host is exactly openrouter.ai once letter case and one trailing dot are
-# normalised; userinfo, a port or a lookalike host never match.
 usage_is_openrouter() {
     local b auth
     b=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')

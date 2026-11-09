@@ -1196,8 +1196,6 @@ CURL
     assert_rc "no curl call for a jina base URL" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
     assert_rc "usage unknown for a jina base URL" unknown "$(usage_field 1 usage_before)"
 
-    # The base URL is read as the egress gate reads it (qmd-jina-gate.mjs): only children of models: count and the last
-    # openai_base_url wins, quoted keys included. Each case lists the config as printf %b text, then runs the real curl read.
     usage_curl_run() {
         printf '%b' "$1" > "$HOME/.config/qmd/index.yml"
         reset_state
