@@ -46,10 +46,20 @@ cat > "$W/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 # logs "tok=<GH_TOKEN or main> argv=<args>"; GH_STUB_READFAIL makes the read token's calls fail
 printf 'tok=%s argv=%s\n' "${GH_TOKEN:-main}" "$*" >> "$GHLOG"
+[ -z "${GH_STUB_HANG:-}" ] || exec sleep "$GH_STUB_HANG"
+if [ -z "${GH_TOKEN:-}" ] && [ -n "${GH_STUB_MAINFAIL:-}" ]; then
+    case "$GH_STUB_MAINFAIL" in
+        auth) echo "gh: HTTP 401: Bad credentials" >&2 ;;
+        *) echo "GraphQL: API rate limit already exceeded for user ID 1." >&2 ;;
+    esac
+    exit 1
+fi
 if [ "${GH_TOKEN:-}" = "ghp_READTOKEN0123456789" ] && [ -n "${GH_STUB_READFAIL:-}" ]; then
     echo "partial-page"
     case "$GH_STUB_READFAIL" in
         scope) echo "gh: Resource not accessible by personal access token" >&2 ;;
+        auth) echo "gh: HTTP 401: Bad credentials" >&2 ;;
+        notfound) echo "gh: HTTP 404: Not Found" >&2 ;;
         *) echo "gh: HTTP 403: API rate limit exceeded for user" >&2 ;;
     esac
     exit 1
@@ -204,6 +214,52 @@ lacks "D6 exactly 10 % is not LOW" "LOW" "$out"
 out="$(GH_READ_ENV_ROOT="$W/emptyroot" gh_read_rates 2>/dev/null)"
 has "D7 no read token is reported, not hidden" "read: n/a" "$out"
 check "D8 gh_read_rates never exports a token" "0" "$(env | grep -c 'ghp_READ')"
+
+# shellcheck source=scripts/lib/timeout-bin.sh
+. "$REPO/scripts/lib/timeout-bin.sh"
+if [ -z "$_TIMEOUT_BIN" ]; then
+    echo "SKIP E1-E3: no GNU timeout binary to bound the hung rows"
+else
+    : > "$GHLOG"
+    t0=$SECONDS
+    GH_STUB_HANG=20 GH_READ_TIMEOUT=2 GH_READ_ENV_ROOT="$W/root" "$_TIMEOUT_BIN" -k 2 12 bash "$HELPER" pr view 12 >/dev/null 2>&1
+    rc=$?
+    check "E1 a hung read returns under GH_READ_TIMEOUT (rc 124, at most 5 s)" "124 yes" "$rc $([ $((SECONDS - t0)) -le 5 ] && echo yes || echo "no:$((SECONDS - t0))s")"
+    t0=$SECONDS
+    out=$(GH_STUB_HANG=20 GH_READ_ENV_ROOT="$W/emptyroot" "$_TIMEOUT_BIN" 3 bash "$HELPER" pr view 12 2>/dev/null)
+    check "E2 no read token: a hung read under an outer 3 s kill returns within 4 s" "yes" "$([ $((SECONDS - t0)) -le 4 ] && echo yes || echo "no:$((SECONDS - t0))s")"
+    : > "$W/refused"
+    GH_STUB_HANG=20 GH_READ_TIMEOUT=1 GH_READ_REFUSED_FILE="$W/refused" GH_READ_ENV_ROOT="$W/root" "$_TIMEOUT_BIN" -k 2 12 bash "$HELPER" pr view 12 >/dev/null 2>&1
+    check "E3 a timed-out read writes one stall row" "read graphql stall" "$(cat "$W/refused")"
+fi
+: > "$W/refused"
+GH_STUB_READFAIL=1 GH_STUB_MAINFAIL=rate GH_READ_REFUSED_FILE="$W/refused" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>&1
+check "E4 a read refused on both tokens writes one rate-limit row" "main graphql rate-limit" "$(cat "$W/refused")"
+: > "$W/refused"
+GH_STUB_MAINFAIL=rate GH_READ_REFUSED_FILE="$W/refused" GH_READ_ENV_ROOT="$W/emptyroot" bash "$HELPER" run view 5 >/dev/null 2>"$W/err"
+check "E4b no read token: a rate-limited core read writes its row" "main core rate-limit" "$(cat "$W/refused")"
+has "E4c the refusal still reaches the caller's stderr" "rate limit" "$(cat "$W/err")"
+: > "$W/refused"
+GH_STUB_MAINFAIL=auth GH_READ_REFUSED_FILE="$W/refused" GH_READ_ENV_ROOT="$W/emptyroot" bash "$HELPER" pr view 12 >/dev/null 2>&1
+check "E4d control: a 401 writes no refused row" "" "$(cat "$W/refused")"
+: > "$GHLOG"
+GH_STUB_READFAIL=1 GH_READ_NO_MAIN_FALLBACK=1 GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>&1
+rc=$?
+check "E5 no-fallback: a rate-limited read is not retried on main" "tok=$READTOK argv=pr view 12" "$(tr '\n' '|' < "$GHLOG" | sed 's/|$//')"
+check "E5a no-fallback: the refused read keeps its non-zero exit" "1" "$rc"
+for why in auth notfound scope; do
+    : > "$GHLOG"
+    GH_STUB_READFAIL=$why GH_READ_NO_MAIN_FALLBACK=1 GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>&1
+    check "E5b no-fallback: a '$why' refusal still falls back to main" "tok=$READTOK argv=pr view 12|tok=main argv=pr view 12" "$(tr '\n' '|' < "$GHLOG" | sed 's/|$//')"
+done
+: > "$GHLOG"; : > "$W/refused"
+t0=$SECONDS
+GH_READ_OFF=1 GH_READ_REFUSED_FILE="$W/refused" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>&1
+rc=$?
+check "E6 GH_READ_OFF: non-zero, no gh call, one stall row" "nz||read graphql stall" "$([ "$rc" -ne 0 ] && echo nz)|$(cat "$GHLOG")|$(cat "$W/refused")"
+: > "$GHLOG"
+GH_READ_OFF=1 GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr comment 12 --body x >/dev/null 2>&1
+check "E6b GH_READ_OFF does not stop a write" "tok=main argv=pr comment 12 --body x" "$(cat "$GHLOG")"
 
 printf '%s fail\n' "$fails"
 [ "$fails" -eq 0 ]
