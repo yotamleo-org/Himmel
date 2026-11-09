@@ -110,6 +110,11 @@
 # certified on its own evidence, and the marker gates `gh pr create` for a PR
 # that by then already exists; the next push re-mints it.
 #
+# After a confirmed merge the anchor's conflicts.py records one ledger row per conflict the PR's author resolved (the no-file-holds
+# work, so every resolved conflict is reviewable), and with HIMMEL_CONSOLE_DOC set a Results bullet says so (`conflicts recorded for PR #<n> ...`, or `conflicts not recorded
+# ...` when the recorder failed). The outcome rides the MERGED audit line as `conflicts=<result>` and NEVER changes the exit
+# code: see record_conflicts.
+#
 # Exit codes:
 #   0   merged (including a confirmed remote merge where gh itself exited
 #       non-zero afterwards, and regardless of the post-merge prune outcome),
@@ -2580,6 +2585,73 @@ record_bug_origin() {
     return 0
 }
 
+# CONFLICTS LEDGER ROW AND RESULTS BULLET — after a CONFIRMED merge the anchor's conflicts.py records one ledger
+# row per conflict the PR's author resolved (detected in the head's merge commits, or reported in its `## Conflicts resolved`
+# section), and, when HIMMEL_CONSOLE_DOC is set, one Results bullet goes to the chief's doc through chief-kit/append-results.sh,
+# as the PARTIAL line does: `conflicts recorded for PR #<n> (<KEY>): <file> vs #<m> <resolution>[; ...]` for a written ledger
+# file, `conflicts not recorded for PR #<n> (<KEY>): <result>` when the recorder could not run or failed; none and kept add no
+# bullet. The snapshot is one `gh pr view` of THIS PR, the recorder runs from the anchor against the anchor's git dir and
+# origin/<default branch>, and the ledger root is the anchor's own (HANDOVER_DIR is dropped from its env, so a worker's value
+# never steers it). Best-effort — the exit code never depends on it, nor on the append — and recorded on the MERGED audit line as
+# `conflicts=<result>`: wrote:<N> | none | kept | unknown | failed | no-recorder | no-python | no-timeout. Bounded (30 s for gh,
+# 60 s for record; MOG_CONFLICTS_SECS, 1 to 99 with no leading zero, can only shorten both); with no timeout binary it is not run.
+# A missed row is rebuilt by hand: conflicts.py backfill --since <iso>.
+CONFLICTS_RESULT="not-attempted"
+CONFLICTS_DETAIL=""
+CONFLICTS_KEY=""
+_record_conflicts_run() {
+    local pr="$1" script="$himmel_repo/scripts/eval/conflicts/conflicts.py" cf_to_gh="" cf_to_rec="" snap="" view="" out="" rc=0 gcd=""
+    local cf_gh_secs=30 cf_rec_secs=60 cf_cap="${MOG_CONFLICTS_SECS:-}"
+    CONFLICTS_RESULT="not-attempted"; CONFLICTS_DETAIL=""; CONFLICTS_KEY=""
+    [ -f "$script" ] || { CONFLICTS_RESULT="no-recorder"; return 0; }
+    command -v python3 >/dev/null 2>&1 || { CONFLICTS_RESULT="no-python"; return 0; }
+    cf_gh_secs=$(_mog_shorten_secs "$cf_cap" "$cf_gh_secs")
+    cf_rec_secs=$(_mog_shorten_secs "$cf_cap" "$cf_rec_secs")
+    if command -v timeout >/dev/null 2>&1; then cf_to_gh="timeout -k 5 $cf_gh_secs"; cf_to_rec="timeout -k 10 $cf_rec_secs"
+    elif command -v gtimeout >/dev/null 2>&1; then cf_to_gh="gtimeout -k 5 $cf_gh_secs"; cf_to_rec="gtimeout -k 10 $cf_rec_secs"
+    else CONFLICTS_RESULT="no-timeout"; return 0; fi
+    CONFLICTS_RESULT="failed"
+    gcd=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+        git -C "$himmel_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || { # swallow-ok: the failure is named on the next line
+        echo "merge-on-green: WARN conflicts record of PR #$pr skipped: the anchor has no git dir; run conflicts.py backfill by hand" >&2; return 0; }
+    snap=$(mktemp "${TMPDIR:-/tmp}/mog-conflicts.XXXXXX") || {
+        echo "merge-on-green: WARN conflicts record of PR #$pr skipped: no scratch file; run conflicts.py backfill by hand" >&2; return 0; }
+    if view=$($cf_to_gh "$GH" pr view "$pr" --repo "$nwo" --json number,title,body,mergedAt,mergeCommit,headRefOid,isCrossRepository); then
+        printf '%s\n' "$view" > "$snap"
+        out=$(env -u HANDOVER_DIR -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+            ${cf_to_rec:+$cf_to_rec} python3 -I "$script" record --snapshot "$snap" --repo-dir "$gcd" --base-ref "origin/$default_branch" 2>&1) || rc=$?
+        CONFLICTS_KEY=$(printf '%s' "$view" | jq -r '.title // ""' 2>/dev/null | sed -nE 's/.*\[([A-Z][A-Z0-9]*-[0-9]+)\].*/\1/p' | head -n 1) # swallow-ok: an unreadable title only drops the key from the bullet
+    else
+        rc=$?; out="gh pr view could not read the merged PR"
+    fi
+    rm -f "$snap"
+    if [ "$rc" -ne 0 ]; then
+        echo "merge-on-green: WARN conflicts record of PR #$pr failed (rc=$rc); the row is not written, run conflicts.py backfill by hand: ${out//$'\n'/ }" >&2
+        return 0
+    fi
+    out=$(printf '%s\n' "$out" | tail -n 1)
+    case "$out" in
+        wrote:[0-9]*" "*) CONFLICTS_RESULT="${out%% *}"; CONFLICTS_DETAIL="${out#* }" ;;
+        none|kept|unknown) CONFLICTS_RESULT="$out" ;;
+        *) echo "merge-on-green: WARN conflicts record of PR #$pr printed no result: ${out//$'\n'/ }" >&2 ;;
+    esac
+    return 0
+}
+record_conflicts() {
+    local pr="$1" bullet="" detail=""
+    _record_conflicts_run "$pr"
+    case "$CONFLICTS_RESULT" in
+        wrote:*) detail="${CONFLICTS_DETAIL//[[:cntrl:]]/ }"
+                 bullet="conflicts recorded for PR #$pr${CONFLICTS_KEY:+ ($CONFLICTS_KEY)}: ${detail:0:600}; ledger conflicts/$pr.jsonl" ;;
+        none|kept) return 0 ;;
+        *) bullet="conflicts not recorded for PR #$pr${CONFLICTS_KEY:+ ($CONFLICTS_KEY)}: $CONFLICTS_RESULT; the backfill can rebuild it" ;;
+    esac
+    if [ -n "${HIMMEL_CONSOLE_DOC:-}" ] && [ -x "$_csg_dir/chief-kit/append-results.sh" ]; then
+        bash "$_csg_dir/chief-kit/append-results.sh" "$HIMMEL_CONSOLE_DOC" "$bullet" >/dev/null 2>&1 || true
+    fi
+    return 0
+}
+
 # Best-effort Jira auto-transition on merge — structural fix for
 # backlog drift (a ticket left open after its work landed), rather than
 # relying on the periodic reconciler to catch it later. Never fails the
@@ -3006,7 +3078,8 @@ if [ "$merge_rc" -ne 0 ]; then
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
         record_cr_threads "$pr_num"
         record_bug_origin "$pr_num"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT$SOLO_TAG"
+        record_conflicts "$pr_num"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash); MERGED at the certified sha/base although gh exited $merge_rc: ${merge_out:-<no output>}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2
@@ -3085,7 +3158,8 @@ if [ "$merge_rc" -eq 0 ]; then
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
         record_cr_threads "$pr_num"
         record_bug_origin "$pr_num"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT$SOLO_TAG"
+        record_conflicts "$pr_num"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash). ${merge_out:-}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2

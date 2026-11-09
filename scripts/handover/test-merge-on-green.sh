@@ -268,7 +268,15 @@ mog_build_fixture() {
         none) ;;
         hang) mkdir -p "$tmp/scripts/eval/bug-origin"
               printf 'import time\ntime.sleep(40)\n' > "$tmp/scripts/eval/bug-origin/bug-origin-report.py" ;;
-        *) ln -s "$SCRIPT_DIR/../eval" "$tmp/scripts/eval" ;;
+        *) if [ -n "${MOG_CONFLICTS_REPORT:-}" ]; then
+               # MOG_CONFLICTS_REPORT=none leaves no recorder at the anchor; =fail plants one that exits 1.
+               mkdir -p "$tmp/scripts/eval/conflicts"
+               ln -s "$SCRIPT_DIR/../eval/bug-origin" "$tmp/scripts/eval/bug-origin"
+               ln -s "$SCRIPT_DIR/../eval/judge-accuracy" "$tmp/scripts/eval/judge-accuracy"
+               [ "$MOG_CONFLICTS_REPORT" != fail ] || printf 'import sys\nsys.exit(1)\n' > "$tmp/scripts/eval/conflicts/conflicts.py"
+           else
+               ln -s "$SCRIPT_DIR/../eval" "$tmp/scripts/eval"
+           fi ;;
     esac
     # MOG_TIMEOUT_SHIM=1: a `timeout` that logs the bound of the bug-origin snapshot read and ingest to timeout.log and runs
     # neither (so nothing waits), and passes every other call to the real one.
@@ -518,6 +526,12 @@ case "$verb" in
                 jq -n --argjson n "${STUB_NUM:-77}" --arg t "${STUB_PR_TITLE-fix(x): HIMMEL-1 stub title}" \
                     --arg b "${STUB_PR_BODY-Remaining: the next slice}" --arg h "${STUB_SHA-abc123def456}" \
                     '{number: $n, title: $t, body: $b, mergedAt: "2026-11-03T09:00:00Z", headRefName: "feat/stub-head", headRefOid: $h, mergeCommit: {oid: $h}}' ;;
+            number,title,body,mergedAt,mergeCommit,headRefOid,isCrossRepository)
+                # The conflicts-recorder snapshot of the merged PR.
+                [ "${STUB_SNAPSHOT_FAIL:-0}" = "1" ] && { echo "gh: snapshot failed" >&2; exit 1; }
+                jq -n --argjson n "${STUB_NUM:-77}" --arg t "${STUB_PR_TITLE-fix(x): HIMMEL-1 stub title}" \
+                    --arg b "${STUB_PR_BODY-Remaining: the next slice}" --arg h "${STUB_SHA-abc123def456}" \
+                    '{number: $n, title: $t, body: $b, mergedAt: "2026-11-03T09:00:00Z", headRefOid: $h, mergeCommit: {oid: $h}, isCrossRepository: false}' ;;
             *) echo "gh stub: unhandled 'pr view' query: --json '$json'" >&2; exit 90 ;;
         esac
         ;;
@@ -3136,6 +3150,79 @@ else
     echo "SKIP 11z: this host has neither timeout nor gtimeout, so the bounded ingest is not run"
 fi
 rm -rf "$bo_root"
+
+# --- 11za. the conflicts ledger row and the Results bullet, written when a PR merges -----------------
+# After a confirmed merge the anchor's conflicts.py records one ledger row per resolved conflict under the ANCHOR-resolved
+# handover root (a worker's HANDOVER_DIR never steers it) and, with HIMMEL_CONSOLE_DOC set, a Results bullet. A recorder
+# that fails never fails the merge. The fixture anchor is a git repo whose head is a hand-resolved merge of main into a branch.
+cf_setup() {
+    local a="$1"
+    local g="git -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false -c core.hooksPath=/dev/null"
+    printf 'one\ntwo\n' > "$a/f.sh"
+    $g -C "$a" add f.sh && $g -C "$a" commit -qm base && $g -C "$a" branch -M main && $g -C "$a" push -q origin main || return 1
+    $g -C "$a" checkout -q -b feat && printf 'feat\ntwo\n' > "$a/f.sh" && $g -C "$a" commit -qam feat || return 1
+    $g -C "$a" checkout -q main && printf 'main\ntwo\n' > "$a/f.sh" && $g -C "$a" commit -qam 'x (#12)' || return 1
+    $g -C "$a" push -q origin main && $g -C "$a" fetch -q origin || return 1
+    $g -C "$a" checkout -q feat && { $g -C "$a" merge -q main >/dev/null 2>&1 || true; }
+    printf 'both\ntwo\n' > "$a/f.sh" && $g -C "$a" add f.sh && $g -C "$a" commit -qm 'merge main' || return 1
+    MOG_SETUP_SHA="$($g -C "$a" rev-parse HEAD)"
+    $g -C "$a" push -q origin HEAD:refs/pull/77/head || return 1
+    return 0
+}
+cf_clean_setup() {
+    local a="$1"
+    local g="git -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false -c core.hooksPath=/dev/null"
+    printf 'one\n' > "$a/f.sh"
+    $g -C "$a" add f.sh && $g -C "$a" commit -qm base && $g -C "$a" branch -M main && $g -C "$a" push -q origin main && $g -C "$a" fetch -q origin || return 1
+    $g -C "$a" checkout -q -b feat && printf 'g\n' > "$a/g.sh" && $g -C "$a" add g.sh && $g -C "$a" commit -qm feat || return 1
+    MOG_SETUP_SHA="$($g -C "$a" rev-parse HEAD)"
+    return 0
+}
+cf_body=$'## Conflicts resolved\n- f.sh vs #12: kept both\n\nRemaining: x'
+cf_title='fix(x): [HIMMEL-9560] stub'
+cf_root=$(mktemp -d "${TMPDIR:-/tmp}/mog-cf.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
+cf_row() { local f; for f in "$1"/zed/*/conflicts/"$2".jsonl; do [ -f "$f" ] && { printf '%s' "$f"; return 0; }; done; return 0; }
+cf_doc() { printf '# doc\n\n## Results (newest at the bottom)\n- 09:00 LIVE start\n' > "$1"; }
+if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
+    mkdir -p "$cf_root/a" "$cf_root/cfg"
+    printf 'HANDOVER_DIR=%s\n' "$cf_root/a" > "$cf_root/cfg/himmel.conf.local"
+    cf_run() { HANDOVER_DIR="${CF_HD:-$cf_root/a}" USER_SLUG=zed HANDOVER_REGISTRY="$cf_root/none.json" HIMMEL_CONFIG_DIR="$cf_root/cfg" MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP="${CF_SETUP-cf_setup}" STUB_PR_TITLE="$cf_title" run_mog "$@"; }
+    # (a) a conflicted merge with a body section: the row lands and the audit says wrote:1; (e) the Results bullet is the doc's last line
+    cf_doc "$cf_root/doc-a"
+    HIMMEL_CONSOLE_DOC="$cf_root/doc-a" STUB_NUM=77 STUB_PR_BODY="$cf_body" cf_run 0 "11za-a: a merged PR with a resolved conflict merges"
+    cf_file=$(cf_row "$cf_root/a" 77)
+    if [ -n "$cf_file" ] && grep -qF '"file": "f.sh"' "$cf_file" 2>/dev/null; then pass; else fail "11za-a: no ledger row for PR 77 under $cf_root/a"; fi
+    assert_audit_has "11za-a: audit records the written row" "conflicts=wrote:1"
+    if tail -n 1 "$cf_root/doc-a" | grep -qF 'conflicts recorded for PR #77 (HIMMEL-9560): f.sh vs #12 merged'; then pass; else fail "11za-e: the doc's last line is: $(tail -n 1 "$cf_root/doc-a")"; fi
+    # (d) the worker's HANDOVER_DIR never steers the ledger: the row lands under the anchor's configured root
+    mkdir -p "$cf_root/worker"
+    CF_HD="$cf_root/worker" STUB_NUM=82 STUB_PR_BODY="$cf_body" cf_run 0 "11za-d: a worker HANDOVER_DIR does not steer the ledger"
+    if [ -z "$(cf_row "$cf_root/worker" 82)" ]; then pass; else fail "11za-d: a row landed under the worker's HANDOVER_DIR"; fi
+    if [ -n "$(cf_row "$cf_root/a" 82)" ]; then pass; else fail "11za-d: no row under the anchor's root"; fi
+    assert_audit_has "11za-d: audit records the written row" "conflicts=wrote:1"
+    # (b) no section and a clean history: no file, none, and no bullet
+    cf_doc "$cf_root/doc-b"
+    HIMMEL_CONSOLE_DOC="$cf_root/doc-b" CF_SETUP=cf_clean_setup STUB_NUM=78 cf_run 0 "11za-b: a merged PR with no conflict merges"
+    if [ -z "$(cf_row "$cf_root/a" 78)" ]; then pass; else fail "11za-b: a PR with no conflict got a row"; fi
+    assert_audit_has "11za-b: audit records that there was nothing to write" "conflicts=none"
+    if [ "$(tail -n 1 "$cf_root/doc-b")" = '- 09:00 LIVE start' ]; then pass; else fail "11za-b: a bullet was added: $(tail -n 1 "$cf_root/doc-b")"; fi
+    # (c) a recorder that exits 1 never fails the merge; the bullet says not recorded
+    cf_doc "$cf_root/doc-c"
+    HIMMEL_CONSOLE_DOC="$cf_root/doc-c" MOG_CONFLICTS_REPORT=fail STUB_NUM=79 STUB_PR_BODY="$cf_body" cf_run 0 "11za-c: a failing conflicts recorder never fails the merge"
+    assert_audit_has "11za-c: audit records the failed recorder" "conflicts=failed"
+    assert_audit_has "11za-c: the merge is still recorded as MERGED" "MERGED repo="
+    if tail -n 1 "$cf_root/doc-c" | grep -qF 'conflicts not recorded for PR #79 (HIMMEL-9560): failed'; then pass; else fail "11za-e: the doc's last line is: $(tail -n 1 "$cf_root/doc-c")"; fi
+    # (f) a doc with no Results heading: the merge still exits 0 and the audit line is unchanged
+    printf '# doc\n' > "$cf_root/doc-f"
+    HIMMEL_CONSOLE_DOC="$cf_root/doc-f" STUB_NUM=80 STUB_PR_BODY="$cf_body" cf_run 0 "11za-f: a doc with no Results heading never fails the merge"
+    assert_audit_has "11za-f: audit still records the written row" "conflicts=wrote:1"
+    # no recorder at the anchor
+    MOG_CONFLICTS_REPORT=none STUB_NUM=81 STUB_PR_BODY="$cf_body" cf_run 0 "11za-g: a missing recorder never fails the merge"
+    assert_audit_has "11za-g: audit records the missing recorder" "conflicts=no-recorder"
+else
+    echo "SKIP 11za: this host has neither timeout nor gtimeout, so the bounded recorder is not run"
+fi
+rm -rf "$cf_root"
 
 # 12. A truthy-but-not-1 opt-in also enables (yes/on/true).
 ARMAUTOMERGE=yes run_mog 0 "ARMAUTOMERGE=yes also enables"
