@@ -19,7 +19,6 @@ function readRows(path) {
   try { return readFileSync(path, 'utf8').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r && typeof r === 'object' ? [r] : []; } catch { return []; } }); }
   catch { return []; }
 }
-// The launcher's refusal ledger. A valid v1 row is checked field by field; anything else counts in skipped.
 const strOrNull = (v) => v === null || typeof v === 'string';
 const validLaunch = (r) => r && typeof r === 'object' && !Array.isArray(r) && r.v === 1 && typeof r.ts === 'string' && Number.isFinite(Date.parse(r.ts))
   && Number.isSafeInteger(r.rc) && typeof r.cause === 'string' && strOrNull(r.name) && strOrNull(r.line);

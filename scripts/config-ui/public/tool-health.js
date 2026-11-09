@@ -367,7 +367,6 @@ function candidatesPanel(data) {
   return table(["Profile", "Tool", "Calls in window", "Listing cost"], rows, "Nothing loaded and unused, or the listing cost is not measured");
 }
 
-// Worker launches the launcher refused or never saw start, whole fleet (the page filters do not apply).
 function launchesPanel(data) {
   const l = data.launches_refused;
   const note = (t) => `<p class="nodata">${esc(t)}</p>`;

@@ -234,16 +234,10 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
 fi
 chokepoint_seam_guard scripts/handover/chief-kit/headed-arm-worker.sh || exit 96
 
-# A launch this script refuses leaves one row in $HOME/.himmel/launch-refusals.jsonl,
-# written by the EXIT trap below. The trap changes no status, stdout or stderr.
-# A --dry-run launch, one whose headed-arm.sh child reported a launch and one stopped by a signal this launcher
-# forwarded are no refusal: _LR_SKIP=1 for each. The cause words are the closed set the Tool health page counts.
-_LR_SKIP=0 _LR_FWD=0 _LR_CAUSE='' _LR_LINE=''
-for _lr_a in "$@"; do [ "$_lr_a" != --dry-run ] || _LR_SKIP=1; done
+_LAUNCH_REFUSAL_SKIP=0 _LAUNCH_REFUSAL_FWD=0 _LAUNCH_REFUSAL_CAUSE='' _LAUNCH_REFUSAL_LINE=''
+for _lr_a in "$@"; do [ "$_lr_a" != --dry-run ] || _LAUNCH_REFUSAL_SKIP=1; done
 unset _lr_a
-_launch_refusal_note() { _LR_CAUSE="$1"; _LR_LINE="${2:-}"; return 0; }
-# _lr_json <max bytes> <string>: the string's first line as printable ASCII, cut, escaped and quoted, or null when empty.
-# Fails, printing nothing, when the encoder does. Control bytes become ?, as usage-preflight.sh does.
+_launch_refusal_note() { _LAUNCH_REFUSAL_CAUSE="$1"; _LAUNCH_REFUSAL_LINE="${2:-}"; return 0; }
 # shellcheck disable=SC2329  # called from _launch_refusal_exit, which only the EXIT trap invokes
 _lr_json() {
     local s="${2%%$'\n'*}"
@@ -252,19 +246,17 @@ _lr_json() {
     s="$(printf '%s' "${s:0:$1}" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')" || return 1
     printf '"%s"' "$s"
 }
-# The EXIT trap body: one row for a nonzero exit that is no skip. It saves the status first and returns without
-# touching it; every failure (no HOME, no clock, an encoder or a ledger that fails) writes nothing, silently.
 # shellcheck disable=SC2329  # invoked by the EXIT trap
 _launch_refusal_exit() {
     local rc=$?
-    [ "$rc" -ne 0 ] && [ "${DRY_RUN:-0}" != 1 ] && [ "$_LR_SKIP" -ne 1 ] && [ -n "${HOME:-}" ] || return 0
+    [ "$rc" -ne 0 ] && [ "${DRY_RUN:-0}" != 1 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] && [ -n "${HOME:-}" ] || return 0
     local ts host name line row
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" || return 0
     [ -n "$ts" ] || return 0
     host="$(_lr_json 64 "${HOSTNAME:-}")" || return 0
     name="$(_lr_json 128 "${NAME:-}")" || return 0
-    line="$(_lr_json 200 "$_LR_LINE")" || return 0
-    row="{\"v\":1,\"ts\":\"$ts\",\"host\":$host,\"source\":\"headed-arm-worker\",\"kind\":\"launch-refused\",\"name\":$name,\"cause\":\"${_LR_CAUSE:-other}\",\"rc\":$rc,\"line\":$line}"
+    line="$(_lr_json 200 "$_LAUNCH_REFUSAL_LINE")" || return 0
+    row="{\"v\":1,\"ts\":\"$ts\",\"host\":$host,\"source\":\"headed-arm-worker\",\"kind\":\"launch-refused\",\"name\":$name,\"cause\":\"${_LAUNCH_REFUSAL_CAUSE:-other}\",\"rc\":$rc,\"line\":$line}"
     { mkdir -p "$HOME/.himmel" && printf '%s\n' "$row" >> "$HOME/.himmel/launch-refusals.jsonl"; } 2>/dev/null
     return 0
 }
@@ -3073,7 +3065,7 @@ fi
 # The child's stdin stays this launcher's (`<&0`); HEADED_ARM_CONTEXT_PID is the child's own pid, as under --fleet.
 _ha_child=""
 # shellcheck disable=SC2329  # invoked by the trap below
-_ha_forward() { [ -z "$_ha_child" ] || { _LR_FWD=1; kill -TERM "$_ha_child" 2>/dev/null; }; }
+_ha_forward() { [ -z "$_ha_child" ] || { _LAUNCH_REFUSAL_FWD=1; kill -TERM "$_ha_child" 2>/dev/null; }; }
 trap _ha_forward TERM HUP INT
 # Keep headed-arm.sh's profile/context handoff paired to its own exec PID.
 "${HA_SH[@]}" -c 'export HEADED_ARM_CONTEXT_PID="$$"; exec "$@"' bash \
@@ -3085,8 +3077,7 @@ while :; do
     kill -0 "$_ha_child" 2>/dev/null || break   # a trapped signal ends `wait` early; the child is still running
 done
 trap - TERM HUP INT
-# a child that reported a launch, or one stopped by a signal forwarded to it, is no refusal; any other status is
-if [ "$launch_rc" -eq 0 ] || [ "$_LR_FWD" -eq 1 ]; then _LR_SKIP=1; else _launch_refusal_note headed-arm; fi
+if [ "$launch_rc" -eq 0 ] || [ "$_LAUNCH_REFUSAL_FWD" -eq 1 ]; then _LAUNCH_REFUSAL_SKIP=1; else _launch_refusal_note headed-arm; fi
 case "$launch_rc" in 0|7|9) ;; *) _release_fleet_reservation ;; esac
 if [ -n "$FLEET_MANIFEST" ]; then
     [ "$launch_rc" -eq 0 ] || exit "$launch_rc"

@@ -1557,7 +1557,6 @@ test("the Failed card names blocked reports apart from errors and denials", asyn
   expect(kpiSub(await page(data), "failed")).not.toContain("blocked");
 });
 
-// The launch-refusal ledger, counted by cause.
 function launchRow(over: any = {}) { return { v: 1, ts: "2026-10-07T12:00:00Z", host: "h", source: "headed-arm-worker", kind: "launch-refused", name: "HIMMEL-1-N1", cause: "bus-register", rc: 2, line: null, ...over }; }
 function seedLaunches(rows: any[], raw: string[] = []) {
   const env = seed(); mkdirSync(join(env.HOME, ".himmel"), { recursive: true });
@@ -1622,7 +1621,6 @@ test("no ledger reads absent, and a rollup given no launches reads not-read", ()
   expect(rollupToolHealth([], [], new URLSearchParams(), Date.parse("2026-10-07T12:00:00Z")).launches_refused).toEqual({ state: "not-read" });
 });
 
-// The Launches refused box on the overview.
 function writeLaunches(env: any, rows: any[]) {
   mkdirSync(join(env.HOME, ".himmel"), { recursive: true });
   writeFileSync(join(env.HOME, ".himmel", "launch-refusals.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
