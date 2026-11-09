@@ -76,6 +76,16 @@ rc=$?
 if [ "$rc" -eq 2 ]; then pass "W5: returns 2"; else fail "W5: expected 2, got $rc"; fi
 if [ -e "$sb/elsewhere/home/keep" ]; then pass "W5: removes nothing"; else fail "W5: removed a file outside the lane root"; fi
 
+mkdir -p "$sb/lane/inner"
+(
+  # shellcheck source=live-witness.sh
+  . "$LW"
+  live_witness_reset "$sb/lane" "$sb/lane/../elsewhere/home" "$sb/lane/inner/hroot"
+)
+rc=$?
+if [ "$rc" -eq 2 ]; then pass "W5: a home that climbs out of the lane through .. returns 2"; else fail "W5: expected 2 for a .. path, got $rc"; fi
+if [ -e "$sb/elsewhere/home/keep" ]; then pass "W5: the .. path removed nothing"; else fail "W5: the .. path removed a file outside the lane root"; fi
+
 echo "== W6: an account-home write exits 86 and no exempt line makes it a WARN =="
 mkdir -p "$sb/acct"
 printf 'x HIMMEL-1 measured\n' > "$sb/exempt-x"

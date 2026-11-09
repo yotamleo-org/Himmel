@@ -148,6 +148,8 @@ live_witness_reset() {
   case "$_lane" in ''|/) return 2 ;; esac
   case "$_home" in "$_lane"/?*) ;; *) return 2 ;; esac
   case "$_hroot" in "$_lane"/?*) ;; *) return 2 ;; esac
+  # A path that climbs back out of the lane passes the prefix test above.
+  case "/$_home/$_hroot/" in */../*) return 2 ;; esac
   for _p in $LW_ROOTS; do rm -rf "${_home:?}/$_p" || return 1; done
   rm -rf "${_hroot:?}" || return 1
   live_witness_seed "$_lane" "$_home" "$_hroot" "$_env"
