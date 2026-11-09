@@ -13,11 +13,6 @@ export function assertLiveProject(project: string, configured: string): void {
   }
 }
 
-export function recordLiveConfigDir(env: NodeJS.ProcessEnv): void {
-  if (env.JIRA_LIVE_TEST !== '1') return;
-  env.JIRA_LIVE_CONFIG_DIR = env.HIMMEL_CONFIG_DIR || join(env.HOME || homedir(), '.himmel');
-}
-
 export function liveChildEnv(base: NodeJS.ProcessEnv, project: string, configDir: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...base,

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  LIVE_BODY, assertLiveProject, liveChildEnv, liveVersionName, recordLiveConfigDir, resolveLiveProject,
+  LIVE_BODY, assertLiveProject, liveChildEnv, liveVersionName, resolveLiveProject,
 } from './project-guard.js';
 import { checkVersionName } from '../src/commands/versions.js';
 import { lintPlainBlock } from '../src/plain-block.js';
@@ -80,20 +80,6 @@ describe('resolveLiveProject', () => {
 
   it('throws when JIRA_LIVE_PROJECT differs from the configured project', () => {
     expect(() => withOverride('HIMTEST', () => resolveLiveProject('/x', stubCli('live-test-ok.json')))).toThrow(/configured test project HTEST/);
-  });
-});
-
-describe('recordLiveConfigDir', () => {
-  it('records HIMMEL_CONFIG_DIR, else HOME/.himmel, only when JIRA_LIVE_TEST=1', () => {
-    const live: NodeJS.ProcessEnv = { JIRA_LIVE_TEST: '1', HOME: '/home/u', HIMMEL_CONFIG_DIR: '/conf' };
-    recordLiveConfigDir(live);
-    expect(live.JIRA_LIVE_CONFIG_DIR).toBe('/conf');
-    const home: NodeJS.ProcessEnv = { JIRA_LIVE_TEST: '1', HOME: '/home/u' };
-    recordLiveConfigDir(home);
-    expect(home.JIRA_LIVE_CONFIG_DIR).toBe('/home/u/.himmel');
-    const off: NodeJS.ProcessEnv = { HOME: '/home/u', HIMMEL_CONFIG_DIR: '/conf' };
-    recordLiveConfigDir(off);
-    expect('JIRA_LIVE_CONFIG_DIR' in off).toBe(false);
   });
 });
 
