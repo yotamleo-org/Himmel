@@ -378,9 +378,13 @@ case("a non-dict row is skipped", [None, row("A")], ["A"])
 bad_ids = [{"run_id": ["a"], "outputs_sha256": [1]}, {"run_id": {"x": 1}, "outputs_sha256": [1]}, row("A")]
 case("non-string ids name nothing: each such row is its own run, no TypeError", bad_ids, [["a"], {"x": 1}, "A"],
      scorer=None)
+counted = {"cbs_hash": "h", "confighash": "c", "status": "ok", "metrics": {fb.GATE_RECALL: 0.5, fb.GATE_FP: 0.1}}
+bad_counted = [dict(counted, run_id=["a"], outputs_sha256=[1]), dict(counted, run_id={"x": 1}, outputs_sha256=[2]),
+               dict(counted, run_id="A", outputs_sha256="p")]
 try:
-    fb.gate_side(bad_ids, "h", "c")
-    print("PASS gate_side: a list-valued run_id is no TypeError")
+    got, _, _ = fb.gate_side(bad_counted, "h", "c")
+    print("PASS gate_side: list-valued ids on counted rows are no TypeError, each row counts once" if len(got) == 3
+          else "FAIL gate_side: %d rows counted" % len(got))
 except TypeError as e:
     print("FAIL gate_side: a list-valued run_id raised %s" % e)
 
