@@ -2585,17 +2585,10 @@ record_bug_origin() {
     return 0
 }
 
-# CONFLICTS LEDGER ROW AND RESULTS BULLET — after a CONFIRMED merge the anchor's conflicts.py records one ledger
-# row per conflict the PR's author resolved (detected in the head's merge commits, or reported in its `## Conflicts resolved`
-# section), and, when HIMMEL_CONSOLE_DOC is set, one Results bullet goes to the chief's doc through chief-kit/append-results.sh,
-# as the PARTIAL line does: `conflicts recorded for PR #<n> (<KEY>): <file> vs #<m> <resolution>[; ...]` for a written ledger
-# file, `conflicts not recorded for PR #<n> (<KEY>): <result>` when the recorder could not run or failed; none and kept add no
-# bullet. The snapshot is one `gh pr view` of THIS PR, the recorder runs from the anchor against the anchor's git dir and
-# origin/<default branch>, and the ledger root is the anchor's own (HANDOVER_DIR is dropped from its env, so a worker's value
-# never steers it). Best-effort — the exit code never depends on it, nor on the append — and recorded on the MERGED audit line as
-# `conflicts=<result>`: wrote:<N> | none | kept | unknown | failed | no-recorder | no-python | no-timeout. Bounded (30 s for gh,
-# 60 s for record; MOG_CONFLICTS_SECS, 1 to 99 with no leading zero, can only shorten both); with no timeout binary it is not run.
-# A missed row is rebuilt by hand: conflicts.py backfill --since <iso>.
+# Conflicts recorder: one anchor-run `conflicts.py record` on a snapshot of THIS PR, then one Results bullet when HIMMEL_CONSOLE_DOC
+# is set. The ledger root is the anchor's own: HANDOVER_DIR is dropped from the recorder's env so a worker's value cannot steer it.
+# Best-effort: neither the recorder nor the append changes the exit code. Bounds: 30 s gh, 60 s record; MOG_CONFLICTS_SECS can only
+# shorten them. A missed row is rebuilt by hand with conflicts.py backfill --since <iso>.
 CONFLICTS_RESULT="not-attempted"
 CONFLICTS_DETAIL=""
 CONFLICTS_KEY=""

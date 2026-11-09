@@ -269,7 +269,6 @@ mog_build_fixture() {
         hang) mkdir -p "$tmp/scripts/eval/bug-origin"
               printf 'import time\ntime.sleep(40)\n' > "$tmp/scripts/eval/bug-origin/bug-origin-report.py" ;;
         *) if [ -n "${MOG_CONFLICTS_REPORT:-}" ]; then
-               # MOG_CONFLICTS_REPORT=none leaves no recorder at the anchor; =fail plants one that exits 1.
                mkdir -p "$tmp/scripts/eval/conflicts"
                ln -s "$SCRIPT_DIR/../eval/bug-origin" "$tmp/scripts/eval/bug-origin"
                ln -s "$SCRIPT_DIR/../eval/judge-accuracy" "$tmp/scripts/eval/judge-accuracy"
@@ -527,7 +526,6 @@ case "$verb" in
                     --arg b "${STUB_PR_BODY-Remaining: the next slice}" --arg h "${STUB_SHA-abc123def456}" \
                     '{number: $n, title: $t, body: $b, mergedAt: "2026-11-03T09:00:00Z", headRefName: "feat/stub-head", headRefOid: $h, mergeCommit: {oid: $h}}' ;;
             number,title,body,mergedAt,mergeCommit,headRefOid,isCrossRepository)
-                # The conflicts-recorder snapshot of the merged PR.
                 [ "${STUB_SNAPSHOT_FAIL:-0}" = "1" ] && { echo "gh: snapshot failed" >&2; exit 1; }
                 jq -n --argjson n "${STUB_NUM:-77}" --arg t "${STUB_PR_TITLE-fix(x): HIMMEL-1 stub title}" \
                     --arg b "${STUB_PR_BODY-Remaining: the next slice}" --arg h "${STUB_SHA-abc123def456}" \
@@ -3151,10 +3149,6 @@ else
 fi
 rm -rf "$bo_root"
 
-# --- 11za. the conflicts ledger row and the Results bullet, written when a PR merges -----------------
-# After a confirmed merge the anchor's conflicts.py records one ledger row per resolved conflict under the ANCHOR-resolved
-# handover root (a worker's HANDOVER_DIR never steers it) and, with HIMMEL_CONSOLE_DOC set, a Results bullet. A recorder
-# that fails never fails the merge. The fixture anchor is a git repo whose head is a hand-resolved merge of main into a branch.
 cf_setup() {
     local a="$1"
     local g="git -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false -c core.hooksPath=/dev/null"
@@ -3187,7 +3181,6 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
     mkdir -p "$cf_root/a" "$cf_root/cfg"
     printf 'HANDOVER_DIR=%s\n' "$cf_root/a" > "$cf_root/cfg/himmel.conf.local"
     cf_run() { HANDOVER_DIR="${CF_HD:-$cf_root/a}" USER_SLUG=zed HANDOVER_REGISTRY="$cf_root/none.json" HIMMEL_CONFIG_DIR="$cf_root/cfg" MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP="${CF_SETUP-cf_setup}" STUB_PR_TITLE="$cf_title" run_mog "$@"; }
-    # (a) a conflicted merge with a body section: the row lands and the audit says wrote:1; (e) the Results bullet is the doc's last line
     cf_doc "$cf_root/doc-a"
     HIMMEL_CONSOLE_DOC="$cf_root/doc-a" STUB_NUM=77 STUB_PR_BODY="$cf_body" cf_run 0 "11za-a: a merged PR with a resolved conflict merges"
     cf_file=$(cf_row "$cf_root/a" 77)
@@ -3195,30 +3188,25 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
     assert_audit_has "11za-a: audit records the written row" "conflicts=wrote:1"
     cf_last=$(tail -n 1 "$cf_root/doc-a")
     case "$cf_last" in *'conflicts recorded for PR #77 (HIMMEL-9560): f.sh vs #12 merged'*) pass ;; *) fail "11za-e: the doc's last line is: $cf_last" ;; esac
-    # (d) the worker's HANDOVER_DIR never steers the ledger: the row lands under the anchor's configured root
     mkdir -p "$cf_root/worker"
     CF_HD="$cf_root/worker" STUB_NUM=82 STUB_PR_BODY="$cf_body" cf_run 0 "11za-d: a worker HANDOVER_DIR does not steer the ledger"
     if [ -z "$(cf_row "$cf_root/worker" 82)" ]; then pass; else fail "11za-d: a row landed under the worker's HANDOVER_DIR"; fi
     if [ -n "$(cf_row "$cf_root/a" 82)" ]; then pass; else fail "11za-d: no row under the anchor's root"; fi
     assert_audit_has "11za-d: audit records the written row" "conflicts=wrote:1"
-    # (b) no section and a clean history: no file, none, and no bullet
     cf_doc "$cf_root/doc-b"
     HIMMEL_CONSOLE_DOC="$cf_root/doc-b" CF_SETUP=cf_clean_setup STUB_NUM=78 cf_run 0 "11za-b: a merged PR with no conflict merges"
     if [ -z "$(cf_row "$cf_root/a" 78)" ]; then pass; else fail "11za-b: a PR with no conflict got a row"; fi
     assert_audit_has "11za-b: audit records that there was nothing to write" "conflicts=none"
     if [ "$(tail -n 1 "$cf_root/doc-b")" = '- 09:00 LIVE start' ]; then pass; else fail "11za-b: a bullet was added: $(tail -n 1 "$cf_root/doc-b")"; fi
-    # (c) a recorder that exits 1 never fails the merge; the bullet says not recorded
     cf_doc "$cf_root/doc-c"
     HIMMEL_CONSOLE_DOC="$cf_root/doc-c" MOG_CONFLICTS_REPORT=fail STUB_NUM=79 STUB_PR_BODY="$cf_body" cf_run 0 "11za-c: a failing conflicts recorder never fails the merge"
     assert_audit_has "11za-c: audit records the failed recorder" "conflicts=failed"
     assert_audit_has "11za-c: the merge is still recorded as MERGED" "MERGED repo="
     cf_last=$(tail -n 1 "$cf_root/doc-c")
     case "$cf_last" in *'conflicts not recorded for PR #79 (HIMMEL-9560): failed'*) pass ;; *) fail "11za-e: the doc's last line is: $cf_last" ;; esac
-    # (f) a doc with no Results heading: the merge still exits 0 and the audit line is unchanged
     printf '# doc\n' > "$cf_root/doc-f"
     HIMMEL_CONSOLE_DOC="$cf_root/doc-f" STUB_NUM=80 STUB_PR_BODY="$cf_body" cf_run 0 "11za-f: a doc with no Results heading never fails the merge"
     assert_audit_has "11za-f: audit still records the written row" "conflicts=wrote:1"
-    # no recorder at the anchor
     MOG_CONFLICTS_REPORT=none STUB_NUM=81 STUB_PR_BODY="$cf_body" cf_run 0 "11za-g: a missing recorder never fails the merge"
     assert_audit_has "11za-g: audit records the missing recorder" "conflicts=no-recorder"
 else
