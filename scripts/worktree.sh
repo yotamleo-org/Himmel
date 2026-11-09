@@ -384,7 +384,6 @@ HAVE_FORGE=0
 FORGE_KIND=""
 FORGE_NWO=""
 if [ -n "$PR_CACHE_FILE" ]; then
-    # --pr-cache: the file stands in for the forge walk (read below); no forge call is made.
     HAVE_FORGE=1
     FORGE_KIND=github
 elif FORGE_KIND=$(forge_in_primary forge_detect 2>/dev/null) && forge_in_primary forge_auth_status 2>/dev/null; then
@@ -418,10 +417,6 @@ fetch_github_pr_cache() {
         --jq '.[] | [.base.repo.full_name, .head.ref, (if .state == "open" then "open" elif .merged_at != null then "merged" else "closed" end), .head.sha] | @tsv'
 }
 
-# `worktree.sh pr-cache`: one walk of origin's PR list, printed as a --pr-cache
-# file. The header is forge_repo_nwo's answer (GitHub's own case, the case the
-# rows carry); when that lookup or the walk fails the verb exits 1 with nothing
-# on stdout, and never falls back to the remote URL's spelling.
 if [ "$SUBCMD" = "pr-cache" ]; then
     if [ "$HAVE_FORGE" -ne 1 ] || [ "$FORGE_KIND" != "github" ] || [ -z "$FORGE_NWO" ]; then
         echo "ERR worktree: pr-cache: no GitHub repo name for origin (forge unavailable or gh repo view failed)" >&2
@@ -437,10 +432,7 @@ if [ "$SUBCMD" = "pr-cache" ]; then
     exit 0
 fi
 
-# origin's GitHub nwo as the remote URL spells it (case kept), or fail. Used
-# only to ask "does this --pr-cache file belong to this repo?" (compared
-# case-insensitively); never to name the repo a PR walk runs against.
-github_nwo_from_remote() {
+origin_url_nwo() {
     local url path
     url=$(git -C "$PRIMARY_WORKTREE" remote get-url "$1" 2>/dev/null) || return 1
     case "$url" in
@@ -462,31 +454,19 @@ pr_cache_refuse() {
     exit 2
 }
 
-# `--pr-cache <file>` (with --only): read the PR list from the file. The file is
-# trusted only whole and for this repo, so every doubt exits 2 before anything
-# is pruned: an empty, truncated or foreign file must never read as "no PR".
-#   header   `# nwo=<n>`: equals origin's URL parse case-insensitively; ORIGIN_NWO
-#            comes from the header, and every row's repo equals it byte for byte
-#   trailer  the last line `# complete rows=<n>`, n = the number of rows
-#   scope    `# scope=all`, or `# scope=branch <b>` (checked against the target
-#            at the --only match below)
 load_pr_cache_file() {
     local f="$PR_CACHE_FILE" snap hdr origin scope last n m rows bad
     { [ -f "$f" ] && [ -r "$f" ]; } || pr_cache_refuse "cannot read $f"
-    # One read: every field below comes from this snapshot, so a file replaced
-    # while we parse cannot lend its rows to another version's header or scope.
     snap=$(cat "$f") || pr_cache_refuse "cannot read $f"
     hdr=$(printf '%s\n' "$snap" | awk '/^# nwo=/ { sub(/^# nwo=/, ""); print; exit }')
     [ -n "$hdr" ] || pr_cache_refuse "no nwo header"
-    origin=$(github_nwo_from_remote origin) || pr_cache_refuse "origin is not a GitHub remote"
+    origin=$(origin_url_nwo origin) || pr_cache_refuse "origin is not a GitHub remote"
     if [ "$(printf '%s' "$hdr" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$origin" | tr '[:upper:]' '[:lower:]')" ]; then
         pr_cache_refuse "nwo $hdr is not origin $origin"
     fi
     rows=$(printf '%s\n' "$snap" | grep -v -e '^#' -e '^$' || true)
     bad=$(printf '%s\n' "$rows" | H="$hdr" awk -F'\t' 'NF && $1 != ENVIRON["H"] { print $1; exit }')
     [ -z "$bad" ] || pr_cache_refuse "row repo $bad is not header $hdr"
-    # Every row is <repo> <branch> <open|merged|closed> <40-hex head>: a cut row
-    # (an open PR that lost its state column) must not read as "no PR".
     bad=$(printf '%s\n' "$rows" | awk -F'\t' 'NF && (NF != 4 || ($3 != "open" && $3 != "merged" && $3 != "closed") || length($4) != 40 || $4 ~ /[^0-9a-f]/) { print; exit }')
     [ -z "$bad" ] || pr_cache_refuse "malformed row: $bad"
     last=$(printf '%s\n' "$snap" | awk 'NF { l = $0 } END { print l }')

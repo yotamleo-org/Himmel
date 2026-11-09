@@ -3,10 +3,6 @@
 # local merged-or-not proof a worker close feeds to `worktree.sh prune --only
 # --pr-cache`.
 #
-# Hermetic: every fixture is a throwaway repo whose origin is a github-form URL
-# that is never contacted (the proof reads refs/remotes/origin/main only), and a
-# `gh` stub on PATH that exits 1 and logs, so a call to it fails the row.
-#
 # Platform guard: Linux/macOS bash 3.2+ (git 2.38+ for `merge-tree --write-tree`).
 set -uo pipefail
 
@@ -33,7 +29,6 @@ fi
 # shellcheck source=scripts/handover/chief-kit/close-facts.sh
 . "$CF" || { bad "close-facts.sh sources"; exit 1; }
 
-# gh stub: exits 1 and logs, so any call fails the proof and shows in the log.
 mkdir -p "$W/bin-gh"
 GH_LOG="$W/gh.log"
 cat > "$W/bin-gh/gh" <<STUB
@@ -44,7 +39,6 @@ STUB
 chmod +x "$W/bin-gh/gh"
 export PATH="$W/bin-gh:$PATH"
 
-# A git whose merge-tree --write-tree fails the way an old git does (rc 129).
 mkdir -p "$W/bin-oldgit"
 cat > "$W/bin-oldgit/git" <<STUB
 #!/usr/bin/env bash
@@ -57,7 +51,6 @@ g() { local d="$1"; shift; "$REAL_GIT" -C "$d" "$@"; }
 # setline <file> <n> <text>: replace line n (portable: no sed -i).
 setline() { sed "${2}s/.*/$3/" "$1" > "$1.tmp" && mv "$1.tmp" "$1"; }
 
-# mk_repo <dir>: base commit on main (a.txt of 30 lines, b.txt), github-form origin.
 mk_repo() {
     "$REAL_GIT" init -q -b main "$1"
     g "$1" config user.email t@test.com
@@ -72,7 +65,6 @@ mk_repo() {
     BASE=$(g "$1" rev-parse HEAD)
     g "$1" update-ref refs/remotes/origin/main "$BASE"
 }
-# mk_branch <dir> <branch> <a-line-2> [<a-line-28>]: branch off BASE touching a.txt and adding c.txt.
 mk_branch() {
     g "$1" checkout -q -b "$2" "$BASE"
     setline "$1/a.txt" 2 "$3"
@@ -82,7 +74,6 @@ mk_branch() {
     g "$1" commit -q -m "wip $2"
     g "$1" rev-parse HEAD
 }
-# squash_onto_main <dir> <branch> <subject>: squash <branch> onto main as one commit, set origin/main to it.
 squash_onto_main() {
     g "$1" checkout -q main
     g "$1" merge --squash -q "$2" >/dev/null 2>&1
@@ -90,7 +81,6 @@ squash_onto_main() {
     SQ=$(g "$1" rev-parse HEAD)
     g "$1" update-ref refs/remotes/origin/main "$SQ"
 }
-# mk_doc <path> <pr> <head>: a worker doc whose newest marker bullet is READY.
 mk_doc() { printf '## Results (newest at the bottom)\n- 10:00 LIVE - go\n- 10:30 READY %s %s GREEN\n' "$2" "$3" > "$1"; }
 
 ROW41=$'owner/repo\tfeat\tmerged\t'

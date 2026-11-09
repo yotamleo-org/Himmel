@@ -223,7 +223,6 @@ expect "4: rc nonzero" "$out" rc_nonzero "$out"
 expect "4: worktree kept" "$out" is_dir "$WT_ONLY"
 expect "4: same FRESH-lock reason" "$out" grepq "$out" "FRESH queue lock"
 
-# ── case 4b (R9): the same refusal when the PR list comes from a --pr-cache file ──
 echo "CASE 4B: --only --pr-cache on a FRESH-locked worktree"
 PC_FILE="$TMP_ROOT/pc-only.txt"
 printf '# nwo=owner/repo\n# scope=branch feat/only\nowner/repo\tfeat/only\tmerged\t%s\n# complete rows=1\n' \

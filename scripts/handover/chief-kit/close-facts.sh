@@ -12,8 +12,7 @@
 #
 # A proof only feeds `worktree.sh prune --only --pr-cache` a cache row; it never
 # decides a prune. Every failure prints nothing, so a missing proof keeps work.
-# bash 3.2-safe. Every git call is `git -C <repo>` with the repo-selecting
-# environment cleared, as close-wrapped-worker.sh does.
+# bash 3.2-safe.
 
 # git-env-ok: every git call in this file goes through cf_git, which clears the repo-selecting variables.
 cf_git() {
@@ -21,7 +20,6 @@ cf_git() {
     env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$repo" "$@"
 }
 
-# origin_nwo <repo>: the repo's origin as the remote URL spells it (case kept).
 origin_nwo() {
     local url path
     url=$(cf_git "$1" remote get-url origin 2>/dev/null) || return 1  # swallow-ok: a failed read withholds the proof (the work is kept), it never creates one
@@ -39,7 +37,6 @@ origin_nwo() {
     esac
 }
 
-# doc_ready_head <doc> <pr>: the waiter's READY regex (chief-wait.sh, silent-go-merge.sh).
 doc_ready_head() {
     local doc="$1" pr="$2" line rest found=""
     [ -f "$doc" ] || return 0
@@ -54,15 +51,11 @@ doc_ready_head() {
     return 0
 }
 
-# doc_pr <doc>: the PR the close's reap names (the newest READY or MERGED bullet).
 doc_pr() {
     [ -f "$1" ] || return 0
     grep -E '^- ([0-9:]+ )?(\*\*)?(READY|MERGED)' "$1" | grep -oE '(READY|MERGED)[ #-]+(PR[ #]+)?[0-9]+' | tail -n 1 | grep -oE '[0-9]+$' || true
 }
 
-# merged_commit_of <repo> <pr>: M1. The one first-parent commit among the last
-# 2000 on refs/remotes/origin/main whose subject ENDS in (#<pr>); a revert
-# (`Revert "x (#n)" (#m)`) ends in m. None or several: nothing.
 merged_commit_of() {
     local hits count
     hits=$(cf_git "$1" log --first-parent -2000 --format='%H%x09%s' refs/remotes/origin/main 2>/dev/null \
@@ -101,9 +94,6 @@ merged_proof() {
     printf '%s\t%s\tmerged\t%s\n' "$nwo" "$branch" "$tip"
 }
 
-# write_branch_cache <repo> <branch> [<row>]: the branch-scoped cache file
-# `worktree.sh --pr-cache` reads. The header and the row carry the origin URL's
-# spelling alike, so they agree byte for byte.
 write_branch_cache() {
     local repo="$1" branch="$2" row="${3:-}" nwo n=0
     nwo=$(origin_nwo "$repo") || return 1
@@ -112,10 +102,6 @@ write_branch_cache() {
     printf '# complete rows=%s\n' "$n"
 }
 
-# no_work_proof <repo> <doc> <branch> <tip>: vouches for "nothing to lose" only
-# when the doc names no PR, origin has no ref for the branch, and the tip is 0
-# commits ahead of origin/main. It prints a 0-row branch cache (which reads as
-# "no PR"); the prune's own widened rule then decides on the 0-ahead count.
 no_work_proof() {
     local repo="$1" doc="$2" branch="$3" tip="$4" ahead
     [ -z "$(doc_pr "$doc")" ] || return 0
