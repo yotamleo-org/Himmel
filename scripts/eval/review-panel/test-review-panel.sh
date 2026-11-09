@@ -1166,9 +1166,9 @@ eq "replay: exit 0" "$rc" "0"
 eq "no_live_writes: the retained bundles are byte-identical after a replay" "$(snap "$RB")" "$SNAP_B"
 eq "no_live_writes: the input rows are byte-identical" "$(snap "$RP")" "$SNAP_I"
 eq "no_live_writes: the live ledger path was never created" "$([ -e "$TMP/never.jsonl" ] && echo wrote || echo none)" "none"
-eq "replay: writes the candidates, the report and the reconstructed manifests only" "$(find "$TMP/rp-out1" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort | tr '\n' ' ')" \
+eq "replay: writes the candidates, the report and the reconstructed manifests only" "$(cd "$TMP/rp-out1" && printf '%s ' *)" \
   "candidate-eval-runs.jsonl candidate-results.jsonl manifests verification.json "
-eq "replay: a reconstructed manifest lives in the output, never in the bundle" "$(find "$TMP/rp-out1/manifests" -type f -printf '%f ')$(find "$RB/bundle-d" -name '*manifest*' | wc -l | tr -d ' ')" "bundle-d.json 0"
+eq "replay: a reconstructed manifest lives in the output, never in the bundle" "$(cd "$TMP/rp-out1/manifests" && printf '%s ' *)$(find "$RB/bundle-d" -name '*manifest*' | wc -l | tr -d ' ')" "bundle-d.json 0"
 out=$(rpl "$TMP/rp-out1"); rc=$?
 eq "replay: an existing --out is refused" "$rc" "2"; has "replay: the refusal names the existing directory" "$out" "exists"
 out=$(rpl "$RB/inside"); rc=$?
