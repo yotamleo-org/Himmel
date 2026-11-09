@@ -139,7 +139,7 @@ rm -rf "$real_jira_dist" "$real_jira_node_modules"
 [ "$rc" -eq 0 ] || fail "--no-vault: expected exit 0, got $rc"
 if grepq "$out" "neither 'uv' nor 'pipx' found"; then fail "--no-vault: uv/pipx WARN must not fire for vault=none (got: $out)"; fi
 grepq "$out" '0 warnings' || fail "--no-vault: missing '0 warnings' summary (got: $out)"
-echo "ok: --no-vault suppresses the uv/pipx WARN (HIMMEL-4435)"
+echo "ok: --no-vault suppresses the uv/pipx WARN"
 
 # ── 4. node present + npm absent -> WARN, exit 0 (non-strict) ────────────────
 c4bin="$work/c4bin"; mkdir -p "$c4bin"

@@ -82,7 +82,7 @@ echo "ok: core/project idempotent on re-run"
 # which only the inject-initiative hook reads -- a project-scope install that
 # never wired the hook silently ignored the setting.
 ss_cmd=$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | .[0] // empty' "$s")
-[ -n "$ss_cmd" ] || fail "HIMMEL-6956: core/project did not wire the inject-initiative SessionStart hook"
+[ -n "$ss_cmd" ] || fail "core/project did not wire the inject-initiative SessionStart hook"
 mkdir -p "$work/ss-clone"
 printf 'HIMMEL_INITIATIVE=pr\n' > "$work/ss-clone/.env"
 # The config layer (himmel.conf) outranks .env, so a station's own
@@ -93,17 +93,17 @@ mkdir -p "$work/ss-station-conf" "$work/ss-no-conf"
 printf 'HIMMEL_INITIATIVE=execute,prcheck,pr,ticket,merge,public,handover\n' > "$work/ss-station-conf/himmel.conf"
 ss_ctl=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_CONFIG_DIR="$work/ss-station-conf" HIMMEL_REPO="$work/ss-clone" bash -c "$ss_cmd" </dev/null)
 grepq "$ss_ctl" 'Active steps: execute,prcheck,pr,ticket,merge,public,handover' \
-  || fail "HIMMEL-8423: the planted himmel.conf did not outrank the fixture .env, so the isolation below proves nothing (got: $ss_ctl)"
+  || fail "the planted himmel.conf did not outrank the fixture .env, so the isolation below proves nothing (got: $ss_ctl)"
 ss_out=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_CONFIG_DIR="$work/ss-no-conf" HIMMEL_REPO="$work/ss-clone" bash -c "$ss_cmd" </dev/null)
 grepq "$ss_out" 'Active steps: pr' \
-  || fail "HIMMEL-6956: the project-scope SessionStart hook did not name the active step (got: $ss_out)"
+  || fail "the project-scope SessionStart hook did not name the active step (got: $ss_out)"
 case "$ss_out" in
   *execute*) fail "the config layer's steps leaked into the fixture's step list (got: $ss_out)" ;;
 esac
 ss_idle=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_CONFIG_DIR="$work/ss-no-conf" HIMMEL_REPO="$work/no-such-clone" bash -c "$ss_cmd" </dev/null)
-[ -z "$ss_idle" ] || fail "HIMMEL-6956: the project-scope SessionStart hook injected with no step set: $ss_idle"
+[ -z "$ss_idle" ] || fail "the project-scope SessionStart hook injected with no step set: $ss_idle"
 [ "$(jq '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | length' "$s")" = "1" ] \
-  || fail "HIMMEL-6956: idempotent re-run left more than one inject-initiative hook"
+  || fail "idempotent re-run left more than one inject-initiative hook"
 echo "ok: HIMMEL-6956 core/project wires inject-initiative; a set step reaches the session, an unset one injects nothing"
 
 # ── 1c. --scope project must not write home rule files ─────────
@@ -112,12 +112,12 @@ echo "ok: HIMMEL-6956 core/project wires inject-initiative; a set step reaches t
 # project-only writes. $base_home already ran two project-scope installs
 # above with no --scope user in between, so any presence here is the bug.
 if [ -e "$base_home/.claude/CLAUDE.md" ]; then
-  fail "HIMMEL-3309: --scope project wrote $base_home/.claude/CLAUDE.md"
+  fail "--scope project wrote $base_home/.claude/CLAUDE.md"
 fi
 if [ -e "$base_home/.codex/AGENTS.md" ]; then
-  fail "HIMMEL-3309: --scope project wrote $base_home/.codex/AGENTS.md"
+  fail "--scope project wrote $base_home/.codex/AGENTS.md"
 fi
-echo "ok: core/project does not write ~/.claude/CLAUDE.md or ~/.codex/AGENTS.md (HIMMEL-3309)"
+echo "ok: core/project does not write ~/.claude/CLAUDE.md or ~/.codex/AGENTS.md"
 
 # ── 1c2. the adopted commit gate honours the project's .env ─────────────────
 # check-commit-msg.sh sources scripts/lib/load-dotenv.sh to read
@@ -135,9 +135,9 @@ printf 'TICKET_ID_REQUIRED=0\n' > "$proj/.env"
 gate_noticket; rc_env=$?
 rm -f "$proj/.env"
 set -e
-[ "$rc_no_env" -ne 0 ] || fail "HIMMEL-6327: control: a ticket-less message passed with no opt-out"
-[ "$rc_env" -eq 0 ] || fail "HIMMEL-6327: TICKET_ID_REQUIRED=0 in the adopter project's .env did not reach the commit gate (rc=$rc_env)"
-echo "ok: adopted commit gate reads TICKET_ID_REQUIRED=0 from the project .env (HIMMEL-6327)"
+[ "$rc_no_env" -ne 0 ] || fail "control: a ticket-less message passed with no opt-out"
+[ "$rc_env" -eq 0 ] || fail "TICKET_ID_REQUIRED=0 in the adopter project's .env did not reach the commit gate (rc=$rc_env)"
+echo "ok: adopted commit gate reads TICKET_ID_REQUIRED=0 from the project .env"
 
 # ── 1d. trial path: no-origin repo on main ──────────────────────────────────
 # Install, commit the install on main (the one allowed commit), then cut a
@@ -149,32 +149,32 @@ git -C "$tp" config user.email t@t; git -C "$tp" config user.name t
 git -C "$tp" config commit.gpgsign false
 git -C "$tp" commit -q --allow-empty -m "chore: initial commit"
 out_tp=$(HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" 2>&1)
-[ "$(git -C "$tp" status --porcelain -- scripts | wc -l)" -gt 0 ] || fail "HIMMEL-6326: install without --commit-install must stay uncommitted"
-grep -qx '.claude/worktrees/' "$tp/.gitignore" || fail "HIMMEL-6326: adopt did not add .claude/worktrees/ to .gitignore"
+[ "$(git -C "$tp" status --porcelain -- scripts | wc -l)" -gt 0 ] || fail "install without --commit-install must stay uncommitted"
+grep -qx '.claude/worktrees/' "$tp/.gitignore" || fail "adopt did not add .claude/worktrees/ to .gitignore"
 # /handover-setup writes the project's .env, so adopt must ignore it (checked
 # right after the first adopt: later steps re-run the printed line through the real adopt.sh)
 [ "$(grep -c -x '.env' "$tp/.gitignore")" = "1" ] || fail "adopt did not add exactly one .env rule to .gitignore"
 printed_tp=$(sed -n 's/^.*Commit it once with: //p' <<< "$out_tp")
-[ -n "$printed_tp" ] || fail "HIMMEL-6852: install on main printed no 'Commit it once with:' line: $out_tp"
+[ -n "$printed_tp" ] || fail "install on main printed no 'Commit it once with:' line: $out_tp"
 eval "printed_argv=($printed_tp)"
-case "${printed_argv[1]:-}" in /*) ;; *) fail "HIMMEL-6852: the printed adopt.sh path must be absolute (got: $printed_tp)" ;; esac
+case "${printed_argv[1]:-}" in /*) ;; *) fail "the printed adopt.sh path must be absolute (got: $printed_tp)" ;; esac
 head_before=$(git -C "$tp" rev-parse HEAD)
-( cd "$tp" && HOME="$base_home" "${printed_argv[@]}" >/dev/null 2>&1 ) || fail "HIMMEL-6852: the printed line failed from the project cwd: $printed_tp"
-[ "$(git -C "$tp" rev-parse HEAD)" != "$head_before" ] || fail "HIMMEL-6852: the printed line created no commit"
-git -C "$tp" show --name-only --format= HEAD | grep -q '^scripts/' || fail "HIMMEL-6852: the printed line's commit does not hold the installed scripts/"
-[ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "HIMMEL-6852: the printed line left the install uncommitted"
-echo "ok: the printed --commit-install line runs from the project cwd (HIMMEL-6852)"
+( cd "$tp" && HOME="$base_home" "${printed_argv[@]}" >/dev/null 2>&1 ) || fail "the printed line failed from the project cwd: $printed_tp"
+[ "$(git -C "$tp" rev-parse HEAD)" != "$head_before" ] || fail "the printed line created no commit"
+git -C "$tp" show --name-only --format= HEAD | grep -q '^scripts/' || fail "the printed line's commit does not hold the installed scripts/"
+[ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "the printed line left the install uncommitted"
+echo "ok: the printed --commit-install line runs from the project cwd"
 HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" --commit-install >/dev/null
-[ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "HIMMEL-6326: --commit-install left the install uncommitted"
-[ "$(grep -c -x '.claude/worktrees/' "$tp/.gitignore")" = "1" ] || fail "HIMMEL-6326: .gitignore rule duplicated on re-run"
+[ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "--commit-install left the install uncommitted"
+[ "$(grep -c -x '.claude/worktrees/' "$tp/.gitignore")" = "1" ] || fail ".gitignore rule duplicated on re-run"
 printf 'HANDOVER_DIR=/x\n' > "$tp/.env"
 status_env=$(git -C "$tp" status --porcelain)
 grep -q '\.env' <<< "$status_env" && fail "a project .env shows in git status after adopt"
 rm -f "$tp/.env"
-[ "$(git -C "$tp" remote | wc -l)" -eq 0 ] || fail "HIMMEL-6326: fixture must have no remote"
-(cd "$tp" && HOME="$base_home" bash scripts/worktree.sh feat/try-himmel >/dev/null 2>&1) || fail "HIMMEL-6326: worktree.sh failed in a project with no origin"
-[ -f "$tp/.claude/worktrees/feat+try-himmel/scripts/worktree.sh" ] || fail "HIMMEL-6326: worktree cut after install lacks scripts/"
-[ "$(git -C "$tp" status --porcelain | wc -l)" -eq 0 ] || fail "HIMMEL-6326: worktree dir shows up as untracked"
+[ "$(git -C "$tp" remote | wc -l)" -eq 0 ] || fail "fixture must have no remote"
+(cd "$tp" && HOME="$base_home" bash scripts/worktree.sh feat/try-himmel >/dev/null 2>&1) || fail "worktree.sh failed in a project with no origin"
+[ -f "$tp/.claude/worktrees/feat+try-himmel/scripts/worktree.sh" ] || fail "worktree cut after install lacks scripts/"
+[ "$(git -C "$tp" status --porcelain | wc -l)" -eq 0 ] || fail "worktree dir shows up as untracked"
 echo "ok: HIMMEL-6326 no-origin worktree, committable install, .claude/worktrees/ ignored"
 
 # A user's own uncommitted .gitignore edit must not ride into the install commit.
@@ -187,7 +187,7 @@ git -C "$te" add .gitignore
 git -C "$te" commit -q -m "chore: initial commit"
 printf 'my-private-notes/\n' >> "$te/.gitignore"
 HOME="$base_home" bash "$adopt" --profile core --scope project --target "$te" --commit-install >/dev/null
-[ "$(git -C "$te" log --oneline | wc -l)" -eq 1 ] || fail "HIMMEL-6326: install commit swept in a user's uncommitted .gitignore edit"
+[ "$(git -C "$te" log --oneline | wc -l)" -eq 1 ] || fail "install commit swept in a user's uncommitted .gitignore edit"
 echo "ok: HIMMEL-6326 pre-edited .gitignore blocks the auto-commit"
 
 # Same with an install already pending: an edit made after the declined run
@@ -200,7 +200,7 @@ git -C "$tq" commit -q --allow-empty -m "chore: initial commit"
 HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tq" >/dev/null
 printf 'my-private-notes/\n' >> "$tq/.gitignore"
 HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tq" --commit-install >/dev/null
-[ "$(git -C "$tq" log --oneline | wc -l)" -eq 1 ] || fail "HIMMEL-6326: install commit swept in an edit made after a declined install"
+[ "$(git -C "$tq" log --oneline | wc -l)" -eq 1 ] || fail "install commit swept in an edit made after a declined install"
 echo "ok: HIMMEL-6326 edit after a declined install blocks the auto-commit"
 
 # A change staged after the declined run still counts when the working tree
@@ -216,7 +216,7 @@ printf 'my-private-notes/\n' >> "$tr/.gitignore"
 git -C "$tr" add .gitignore
 cp "$work/trial-staged.gitignore" "$tr/.gitignore"
 HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tr" --commit-install >/dev/null
-[ "$(git -C "$tr" log --oneline | wc -l)" -eq 1 ] || fail "HIMMEL-6326: install commit swept in a staged .gitignore change"
+[ "$(git -C "$tr" log --oneline | wc -l)" -eq 1 ] || fail "install commit swept in a staged .gitignore change"
 echo "ok: HIMMEL-6326 staged edit after a declined install blocks the auto-commit"
 
 # ── 1b. self-copy guard ─────────────────────────────────────────
@@ -291,9 +291,9 @@ echo "ok: HIMMEL-2435 negative control a genuinely different --target still gets
 # that command, run inside a real starter install, actually creates a
 # worktree.
 page="$repo_root/docs/adoption-trail-levels.html"
-[ -f "$page" ] || fail "HIMMEL-3326: $page not found"
+[ -f "$page" ] || fail "$page not found"
 grepq "$(cat "$page")" 'bash scripts/worktree.sh feat/try-himmel' \
-  || fail "HIMMEL-3326: adoption-trail.html's starter walkthrough must tell the reader to run bash scripts/worktree.sh (the /worktree slash command does not exist in a --scope project install)"
+  || fail "adoption-trail.html's starter walkthrough must tell the reader to run bash scripts/worktree.sh (the /worktree slash command does not exist in a --scope project install)"
 
 wtpage_bare="$work/wtpage-origin.git"
 git init -q --bare "$wtpage_bare" 2>/dev/null || git init -q --bare "$wtpage_bare"
@@ -310,14 +310,14 @@ git -C "$wtpage" remote add origin "$wtpage_bare"
 git -C "$wtpage" push -q origin main
 home1e="$work/home-1e"; mkdir -p "$home1e"
 HOME="$home1e" bash "$adopt" --profile core --scope project --target "$wtpage" >/dev/null
-[ -f "$wtpage/scripts/worktree.sh" ] || fail "HIMMEL-3326: starter install did not land scripts/worktree.sh"
+[ -f "$wtpage/scripts/worktree.sh" ] || fail "starter install did not land scripts/worktree.sh"
 [ -f "$wtpage/.claude/commands/worktree.md" ] && fail "HIMMEL-3326 precondition: a starter install must NOT ship the /worktree slash command (test assumption broken)"
 set +e
 out1e=$(cd "$wtpage" && bash scripts/worktree.sh feat/try-himmel 2>&1); rc1e=$?
 set -e
-[ "$rc1e" -eq 0 ] || fail "HIMMEL-3326: the page's documented command (bash scripts/worktree.sh feat/try-himmel) failed in a real starter install (rc=$rc1e): $out1e"
+[ "$rc1e" -eq 0 ] || fail "the page's documented command (bash scripts/worktree.sh feat/try-himmel) failed in a real starter install (rc=$rc1e): $out1e"
 [ -d "$wtpage/.claude/worktrees/feat+try-himmel" ] \
-  || fail "HIMMEL-3326: bash scripts/worktree.sh feat/try-himmel did not create .claude/worktrees/feat+try-himmel: $out1e"
+  || fail "bash scripts/worktree.sh feat/try-himmel did not create .claude/worktrees/feat+try-himmel: $out1e"
 echo "ok: HIMMEL-3326 the adoption page's starter-trail worktree step (bash scripts/worktree.sh) resolves and works in a real --scope project install"
 
 # ── 1f. machine-level footprint block ─────────────────
@@ -458,7 +458,7 @@ grep -q -- "<!-- BEGIN $MARKER -->" "$home/.claude/CLAUDE.md" \
 [ -f "$home/.codex/AGENTS.md" ] || fail "HIMMEL-3309 control: --scope user did not write ~/.codex/AGENTS.md"
 grep -q -- "<!-- BEGIN $MARKER -->" "$home/.codex/AGENTS.md" \
   || fail "HIMMEL-3309 control: ~/.codex/AGENTS.md missing the working-principles marker"
-echo "ok: core/user still writes ~/.claude/CLAUDE.md + ~/.codex/AGENTS.md (HIMMEL-3309 control)"
+echo "ok: core/user still writes ~/.claude/CLAUDE.md + ~/.codex/AGENTS.md (control)"
 
 # ── 4. luna scaffold ─────────────────────────────────────────────────────────
 vault="$work/vault"
@@ -596,8 +596,8 @@ inline_vault="$work/inline-vault"
 inline_target="$work/inline-target"; mkdir -p "$inline_target"
 HOME="$base_home" bash "$adopt" --profile luna --target "$inline_target" --luna-target "$inline_vault" --handover-mode inline >/dev/null
 hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$inline_target/.claude/settings.json" 2>/dev/null)
-[ "$hd" = "ABSENT" ] || fail "HIMMEL-2466: handover.mode=inline still wired env.HANDOVER_DIR ([$hd])"
-[ -d "$inline_vault/handovers" ] && fail "HIMMEL-2466: handover.mode=inline must not create <vault>/handovers"
+[ "$hd" = "ABSENT" ] || fail "handover.mode=inline still wired env.HANDOVER_DIR ([$hd])"
+[ -d "$inline_vault/handovers" ] && fail "handover.mode=inline must not create <vault>/handovers"
 echo "ok: HIMMEL-2466 handover.mode=inline leaves settings.json without env.HANDOVER_DIR"
 
 # ── 4f. control: --handover-mode external is still today's behaviour ──
@@ -1263,31 +1263,31 @@ HOME="$pchome" git -C "$fptarget" remote add origin "$fpremote"
 HOME="$pchome" git -C "$fpseed" remote add origin "$fpremote"
 HOME="$pchome" git -C "$fpseed" commit -q --allow-empty -m 'seed remote main'
 HOME="$pchome" git -C "$fpseed" push -q origin main >/dev/null 2>&1 \
-  || fail "HIMMEL-6976: could not seed the remote's main"
+  || fail "could not seed the remote's main"
 out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
       --profile core --scope project --target "$fptarget" 2>&1) \
-  || fail "HIMMEL-6976: adopt failed: $out"
+  || fail "adopt failed: $out"
 [ -f "$fptarget/scripts/hooks/check-no-force-push.sh" ] \
-  || fail "HIMMEL-6976: check-no-force-push.sh was not copied into the project"
+  || fail "check-no-force-push.sh was not copied into the project"
 HOME="$pchome" git -C "$fptarget" checkout -q -b feat/force-6976
 HOME="$pchome" git -C "$fptarget" commit -q --allow-empty --no-verify -m 'unrelated history' >/dev/null 2>&1
 set +e
 out=$(HOME="$pchome" git -C "$fptarget" push --force origin HEAD:refs/heads/main 2>&1); rc=$?
 set -e
-[ "$rc" -ne 0 ] || fail "HIMMEL-6976: a force push to main succeeded (rc=$rc): $out"
+[ "$rc" -ne 0 ] || fail "a force push to main succeeded (rc=$rc): $out"
 grepq "$out" "Force-push to 'main' is not allowed" \
-  || fail "HIMMEL-6976: the force push to main was not refused by the no-force-push gate (rc=$rc): $out"
+  || fail "the force push to main was not refused by the no-force-push gate (rc=$rc): $out"
 [ "$(git -C "$fpremote" rev-parse main)" = "$(git -C "$fpseed" rev-parse main)" ] \
-  || fail "HIMMEL-6976: the remote's main moved despite the refusal"
+  || fail "the remote's main moved despite the refusal"
 HOME="$pchome" git -C "$fptarget" push -q origin HEAD:refs/heads/feat/force-6976 >/dev/null 2>&1 \
-  || fail "HIMMEL-6976: a fast-forward feature push was refused"
+  || fail "a fast-forward feature push was refused"
 HOME="$pchome" PATH="$pcbin:$work/bin:$native_free_path" bash "$adopt" --profile core --scope project --target "$fptarget" >/dev/null 2>&1 \
-  || fail "HIMMEL-6976: re-adopt failed"
+  || fail "re-adopt failed"
 # shellcheck disable=SC2016
 [ "$(grep -c 'bash "\$fp_gate"' "$fptarget/.git/hooks/pre-push" | tr -d ' ')" = "1" ] \
-  || fail "HIMMEL-6976: re-adopt did not leave exactly one force-push gate invocation in pre-push"
+  || fail "re-adopt did not leave exactly one force-push gate invocation in pre-push"
 [ ! -e "$fptarget/.git/hooks/pre-push.himmel-backup" ] || [ "$(grep -c 'check-no-force-push.sh' "$fptarget/.git/hooks/pre-push.himmel-backup")" = "0" ] \
-  || fail "HIMMEL-6976: re-adopt backed up its own pre-push over the adopter's"
+  || fail "re-adopt backed up its own pre-push over the adopter's"
 echo "ok: HIMMEL-6976 the native pre-push gate refuses a force push to main with the no-force-push gate; fast-forward lands; re-adopt keeps one invocation"
 
 # The adopted project's own copy of check-ci.sh runs against a stubbed gh and
@@ -1324,46 +1324,46 @@ EOF
 chmod +x "$citbin/gh"
 out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
       --profile core --scope project --target "$cittarget" 2>&1) \
-  || fail "HIMMEL-6977: adopt failed: $out"
+  || fail "adopt failed: $out"
 [ -f "$cittarget/scripts/check-ci.sh" ] \
-  || fail "HIMMEL-6977: check-ci.sh was not copied into the project"
+  || fail "check-ci.sh was not copied into the project"
 for cit_lib in non-gating-contexts.sh non-gating-contexts.txt; do
   [ -f "$cittarget/scripts/lib/$cit_lib" ] \
-    || fail "HIMMEL-7239: check-ci.sh sources lib/$cit_lib but it was not copied into the project"
+    || fail "check-ci.sh sources lib/$cit_lib but it was not copied into the project"
 done
 set +e
 out=$(cd "$cittarget" && PATH="$citbin:$PATH" HOME="$cithome" CIT_GH_LOG="$work/checkci-6977.log" \
       CHECK_CI_POLL_INTERVAL=0 CHECK_CI_SETTLE=0 CHECK_CI_CACHE=0 WORKER_SESSION_JIRA_STATUS=0 \
       bash scripts/check-ci.sh 7 --max-wait 30 --grace 0 2>&1); rc=$?
 set -e
-[ "$rc" -eq 0 ] || fail "HIMMEL-6977: the project's check-ci.sh did not reach a green verdict (rc=$rc): $out"
+[ "$rc" -eq 0 ] || fail "the project's check-ci.sh did not reach a green verdict (rc=$rc): $out"
 grepq "$out" "all checks green + all review threads resolved (PR #7 @ abc123)" \
-  || fail "HIMMEL-6977: the project's check-ci.sh printed no green verdict: $out"
+  || fail "the project's check-ci.sh printed no green verdict: $out"
 grep -q 'repos/acme/widgets/' "$work/checkci-6977.log" \
-  || fail "HIMMEL-6977: check-ci.sh did not query the project's own repo"
+  || fail "check-ci.sh did not query the project's own repo"
 if grep -q -i 'yotamleo' "$work/checkci-6977.log" "$cittarget/scripts/check-ci.sh"; then
-  fail "HIMMEL-6977: the copied check-ci.sh or its gh calls name the himmel repo"
+  fail "the copied check-ci.sh or its gh calls name the himmel repo"
 fi
 IFS= read -r -d '' cit_before < "$cittarget/scripts/check-ci.sh" || true
 HOME="$pchome" PATH="$pcbin:$work/bin:$native_free_path" bash "$adopt" --profile core --scope project --target "$cittarget" >/dev/null 2>&1 \
-  || fail "HIMMEL-6977: re-adopt failed"
+  || fail "re-adopt failed"
 IFS= read -r -d '' cit_after < "$cittarget/scripts/check-ci.sh" || true
 [ "$cit_after" = "$cit_before" ] \
-  || fail "HIMMEL-6977: re-adopt changed the project's check-ci.sh"
+  || fail "re-adopt changed the project's check-ci.sh"
 echo "ok: HIMMEL-6977 the adopted check-ci.sh reaches a green verdict for the project's own repo; re-adopt is idempotent"
 
 # An adopted project carries the merge-on-green gate and the anchor files it
 # needs, and the copied script loads in the project.
 for f in scripts/handover/merge-on-green.sh scripts/lib/check-pr-title.sh scripts/lib/ticket-id-internal.sh scripts/ci/ticket-id-internal-authors.txt scripts/chokepoints.json; do
-  [ -f "$cittarget/$f" ] || fail "HIMMEL-7001: $f was not copied into the project"
-  cmp -s "$repo_root/$f" "$cittarget/$f" || fail "HIMMEL-7001: the project's $f differs from himmel's"
+  [ -f "$cittarget/$f" ] || fail "$f was not copied into the project"
+  cmp -s "$repo_root/$f" "$cittarget/$f" || fail "the project's $f differs from himmel's"
 done
 set +e
 out=$(cd "$cittarget" && HOME="$cithome" HIMMEL_REPO="$cittarget" bash "$cittarget/scripts/handover/merge-on-green.sh" --help 2>&1); rc=$?
 set -e
-[ "$rc" -eq 0 ] || fail "HIMMEL-7001: the project's merge-on-green.sh --help failed (rc=$rc): $out"
+[ "$rc" -eq 0 ] || fail "the project's merge-on-green.sh --help failed (rc=$rc): $out"
 grepq "$out" "Usage: merge-on-green.sh" \
-  || fail "HIMMEL-7001: the project's merge-on-green.sh printed no usage: $out"
+  || fail "the project's merge-on-green.sh printed no usage: $out"
 echo "ok: HIMMEL-7001 an adopted project carries merge-on-green.sh and its anchor files"
 
 # The adopted project's own copy of the usage preflight (and its old-name
@@ -1378,8 +1378,8 @@ printf '{"policy":{"HIMMEL_FLEET_CAP":50}}\n' > "$uphome/.himmel/config.json"
 HOME="$pchome" git init -q -b main "$uptarget"
 out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
       --profile core --scope project --target "$uptarget" 2>&1) \
-  || fail "HIMMEL-6965: adopt failed: $out"
-[ -f "$uptarget/scripts/lib/usage-preflight.sh" ] || fail "HIMMEL-6965: usage-preflight.sh was not copied into the project"
+  || fail "adopt failed: $out"
+[ -f "$uptarget/scripts/lib/usage-preflight.sh" ] || fail "usage-preflight.sh was not copied into the project"
 printf '{"oauthAccount":{"accountUuid":"11111111-2222-3333-4444-555555555555"}}\n' > "$uphome/.claude.json"
 if command -v sha256sum >/dev/null 2>&1; then
   up_acct=$(printf '%s' "11111111-2222-3333-4444-555555555555" | sha256sum | cut -c1-16)
@@ -1401,18 +1401,18 @@ up_run() {
      bash scripts/lib/"$1" 2>"$work/usagepf-6965.err")
 }
 up_cache 10 20
-out=$(up_run usage-preflight.sh) || fail "HIMMEL-6965: the project's usage-preflight.sh failed: $(cat "$work/usagepf-6965.err")"
+out=$(up_run usage-preflight.sh) || fail "the project's usage-preflight.sh failed: $(cat "$work/usagepf-6965.err")"
 [ "$out" = "PROCEED" ] \
-  || fail "HIMMEL-6965: the project's usage-preflight.sh did not PROCEED on a low-usage cache: $out $(cat "$work/usagepf-6965.err")"
+  || fail "the project's usage-preflight.sh did not PROCEED on a low-usage cache: $out $(cat "$work/usagepf-6965.err")"
 up_cache 10 99
-out=$(up_run usage-preflight.sh) || fail "HIMMEL-6965: usage-preflight.sh failed on a high-usage cache"
+out=$(up_run usage-preflight.sh) || fail "usage-preflight.sh failed on a high-usage cache"
 [ "$out" = "SKIPPED-BANK" ] \
-  || fail "HIMMEL-6965: the project's usage-preflight.sh did not hold on a 99% seven_day cache: $out"
-[ ! -e "$uptarget/scripts/lib/bank-preflight.sh" ] || fail "HIMMEL-6965: the retired bank-preflight.sh was copied into the project" # old-term-ok
+  || fail "the project's usage-preflight.sh did not hold on a 99% seven_day cache: $out"
+[ ! -e "$uptarget/scripts/lib/bank-preflight.sh" ] || fail "the retired bank-preflight.sh was copied into the project" # old-term-ok
 grep -q '"verdict":"PROCEED"' "$uphome/.himmel/cadence-ledger.jsonl" \
-  || fail "HIMMEL-6965: the preflight did not write its ledger row under the project's HOME"
+  || fail "the preflight did not write its ledger row under the project's HOME"
 if grep -q -i 'yotamleo' "$uptarget/scripts/lib/usage-preflight.sh"; then
-  fail "HIMMEL-6965: the copied usage-preflight.sh names the himmel repo"
+  fail "the copied usage-preflight.sh names the himmel repo"
 fi
 echo "ok: HIMMEL-6965 the adopted usage-preflight.sh reads the project's cache and print PROCEED / SKIPPED-BANK"
 
@@ -1426,29 +1426,29 @@ HOME="$pchome" git init -q -b main "$crtarget"
 HOME="$pchome" git init -q -b main "$crclone"
 out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
       --profile core --scope project --target "$crtarget" 2>&1) \
-  || fail "HIMMEL-6999: adopt failed: $out"
+  || fail "adopt failed: $out"
 for f in .claude/commands/cr-scores.md .claude/commands/cr-tune.md .claude/commands/cr-learnings-refresh.md \
          scripts/cr/cr-scores.sh scripts/cr/cr-tune.sh scripts/cr/known-findings.sh scripts/cr/known-findings.json \
          scripts/cr/standards-cadence.sh scripts/cr/anchor-handoff.sh scripts/lib/handover-path.sh; do
-  [ -f "$crtarget/$f" ] || fail "HIMMEL-6999: $f was not copied into the project"
-  cmp -s "$repo_root/$f" "$crtarget/$f" || fail "HIMMEL-6999: the project's $f differs from himmel's"
+  [ -f "$crtarget/$f" ] || fail "$f was not copied into the project"
+  cmp -s "$repo_root/$f" "$crtarget/$f" || fail "the project's $f differs from himmel's"
   case "$f" in
-    *.sh) [ -x "$crtarget/$f" ] || fail "HIMMEL-6999: the project's $f is not executable" ;;
-    *)    [ ! -x "$crtarget/$f" ] || fail "HIMMEL-6999: the project's $f (not a script) was made executable" ;;
+    *.sh) [ -x "$crtarget/$f" ] || fail "the project's $f is not executable" ;;
+    *)    [ ! -x "$crtarget/$f" ] || fail "the project's $f (not a script) was made executable" ;;
   esac
 done
 # /morning-report and its generator ship, so an adopted project reads its own state.
 for f in .claude/commands/morning-report.md scripts/handover/generate-morning-briefing.sh scripts/lib/result.sh; do
-  [ -f "$crtarget/$f" ] || fail "HIMMEL-7002: $f was not copied into the project"
-  cmp -s "$repo_root/$f" "$crtarget/$f" || fail "HIMMEL-7002: the project's $f differs from himmel's"
+  [ -f "$crtarget/$f" ] || fail "$f was not copied into the project"
+  cmp -s "$repo_root/$f" "$crtarget/$f" || fail "the project's $f differs from himmel's"
 done
 echo "ok: HIMMEL-7002 the adopted project gets /morning-report and its generator"
 # /afk-shift and its shift scripts ship, so an adopted project runs its own shift.
 for f in .claude/commands/afk-shift.md scripts/afk/build-plan.sh scripts/afk/self-heal.sh \
          scripts/afk/stop-marker.sh scripts/afk/morning-report.sh scripts/afk/morning-report.default.tmpl \
          scripts/afk/project-state.sh .claude/commands/stop.md; do
-  [ -f "$crtarget/$f" ] || fail "HIMMEL-7003: $f was not copied into the project"
-  cmp -s "$repo_root/$f" "$crtarget/$f" || fail "HIMMEL-7003: the project's $f differs from himmel's"
+  [ -f "$crtarget/$f" ] || fail "$f was not copied into the project"
+  cmp -s "$repo_root/$f" "$crtarget/$f" || fail "the project's $f differs from himmel's"
 done
 echo "ok: HIMMEL-7003 the adopted project gets /afk-shift and its shift scripts"
 for f in scripts/cr/anchor-handoff.sh scripts/cr/cr-scores.sh scripts/cr/known-findings.sh scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh; do
@@ -1464,10 +1464,10 @@ ln -sf "$(PATH="$saved_path" command -v node)" "$crloop_node/node"
 cr_run() {
   (cd "$crtarget" && PATH="$crloop_node:$PATH" HOME="$pchome" HIMMEL_REPO="$crclone" bash scripts/cr/"$1" "${@:2}" 2>"$work/crloop-6999.err")
 }
-out=$(cr_run cr-scores.sh) || fail "HIMMEL-6999: the project's cr-scores.sh failed: $(cat "$work/crloop-6999.err")"
-grepq "$out" 'crloop-modelA' || fail "HIMMEL-6999: cr-scores.sh did not print the project ledger's rows: $out"
-out=$(cr_run cr-tune.sh) || fail "HIMMEL-6999: the project's cr-tune.sh failed: $(cat "$work/crloop-6999.err")"
-grepq "$out" 'crloop-modelA' || fail "HIMMEL-6999: cr-tune.sh did not mine the project ledger: $out"
+out=$(cr_run cr-scores.sh) || fail "the project's cr-scores.sh failed: $(cat "$work/crloop-6999.err")"
+grepq "$out" 'crloop-modelA' || fail "cr-scores.sh did not print the project ledger's rows: $out"
+out=$(cr_run cr-tune.sh) || fail "the project's cr-tune.sh failed: $(cat "$work/crloop-6999.err")"
+grepq "$out" 'crloop-modelA' || fail "cr-tune.sh did not mine the project ledger: $out"
 echo "ok: HIMMEL-6999 the adopted review-loop commands and scripts read the project's own ledger"
 
 # exercise the remaining bootstrap exits and Git's configured
