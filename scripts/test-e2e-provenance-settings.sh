@@ -146,7 +146,7 @@ bash "$lib/wire-pretooluse-hooks.sh"  "$PSET" '$CLAUDE_PROJECT_DIR' >/dev/null
 check "project HIMMEL_REPO row scope"   "$(jq -r --arg p "$(cd "$td/proj/.claude" && pwd -P)/settings.json" 'select(.unit=="/env/HIMMEL_REPO" and .path==$p) | .scope' "$LEDGER")" "project"
 bash "$lib/wire-pretooluse-hooks.sh"  --sessionstart "$PSET" '$CLAUDE_PROJECT_DIR' "inject-initiative.sh" >/dev/null
 prow() { jq -c --arg u "$1" --arg p "$(cd "$td/proj/.claude" && pwd -P)/settings.json" 'select(.unit==$u and .path==$p)' "$LEDGER"; }
-check "project: one /hooks row for the created hooks object (HIMMEL-3389)" "$(prow /hooks | grep -c .)" "1"
+check "project: one /hooks row for the created hooks object" "$(prow /hooks | grep -c .)" "1"
 check "project: /hooks op=create"       "$(prow /hooks | field .op)" "create"
 check "project: /hooks pre absent"      "$(prow /hooks | field .pre.state)" "absent"
 check "project: /hooks writer"          "$(prow /hooks | field .writer)" "wire-pretooluse-hooks.sh"

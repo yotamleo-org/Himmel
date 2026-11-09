@@ -350,7 +350,7 @@ rc=0
 out=$(HIMMEL_MARKETPLACE_JSON="$TMP/market-beta.json" HIMMEL_INSTALLED_PLUGINS_JSON="$TMP/installed-nosv.json" \
     LUNA_VAULT_PATH="$TMP/vault" run_update "$fh6" "$TMP/claude-versions" --versions) || rc=$?
 assert_eq "plugins: unreadable source version -> rc 0 (installed is current)" "0" "$rc"
-assert_contains "plugins: unreadable source version -> installed reported current (HIMMEL-5485)" "^ *plugins  *current" "$out"
+assert_contains "plugins: unreadable source version -> installed reported current" "^ *plugins  *current" "$out"
 assert_not_contains "plugins: unreadable source version -> not unknown" "^ *plugins  *unknown" "$out"
 
 # a local manifest that does not parse is an unread source -> unknown.

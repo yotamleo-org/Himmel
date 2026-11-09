@@ -298,7 +298,7 @@ assert_not_contains "luna rc 3 is not labelled failed" 'luna_template  *failed' 
 assert_not_contains "luna rc 3 is not labelled updated" 'luna_template  *updated' "$OUT"
 
 echo ""
-echo "Test 2d: luna vault found via install profile / settings when env is unset (HIMMEL-9145)"
+echo "Test 2d: luna vault found via install profile / settings when env is unset"
 cat > "$LUNA_CLONE/templates/luna-second-brain/scripts/upgrade.sh" <<'UPGRADE'
 #!/usr/bin/env bash
 echo 'upgrade: vault is already current'
@@ -332,7 +332,7 @@ assert_contains "--only pull hints at the autostash opt-in" "HIMMEL_UPDATE_AUTOS
 git -C "$CLONE1" checkout --quiet -- file.txt
 
 echo ""
-echo "Test 3b: --only pull + HIMMEL_UPDATE_AUTOSTASH=1 autostashes and proceeds (HIMMEL-2152)"
+echo "Test 3b: --only pull + HIMMEL_UPDATE_AUTOSTASH=1 autostashes and proceeds"
 printf 'dirty\n' >> "$CLONE1/file.txt"
 OUT="$(USERPROFILE='' HOME="$FH1" HIMMEL_UPDATE_CLAUDE_BIN="$STUB1" HERMES_HOME="$TMP/no-hermes" \
       HIMMEL_UPDATE_AUTOSTASH=1 CLAUDE_USER_SETTINGS="$FH1/.claude/settings.json" \
@@ -596,7 +596,7 @@ assert_contains "Linux cannot-verify hint stops before installing" "bash .*--rol
 assert_eq "an unverifiable Linux stamp never invokes the lane" "" "$(cat "$LINUXLOG")"
 
 echo ""
-echo "Test 9v: cli-proxy roll — VM proof first: vm.mode gates the roll (HIMMEL-4597)"
+echo "Test 9v: cli-proxy roll — VM proof first: vm.mode gates the roll"
 # The roll is a VM-proof step (pin-holds.json cli-proxy-api). local/remote roll
 # and name the route; a configured none HOLDS unless `--only cli_proxy` carries
 # HIMMEL_UPDATE_VM_ACK=<existing rollback point>; a resolver error HOLDS with
@@ -681,7 +681,7 @@ assert_contains "prints the idle re-run command" "bash .*--roll" "$OUT"
 assert_not_contains "never retries with --force on the operator's behalf" "force" "$(cat "$C5LOG")"
 
 echo ""
-echo "Test 11: cli-proxy roll — APPLY mode with an AHEAD host completes (HIMMEL-2152)"
+echo "Test 11: cli-proxy roll — APPLY mode with an AHEAD host completes"
 # Regression: _cli_proxy_version_cmp's bare `cmd; rc=$?` tripped errexit on a
 # non-zero cmp_rc (1 = not behind) and killed the whole script BEFORE cmp_rc
 # was ever captured — masked in --check mode by the `|| true` at the check
@@ -697,7 +697,7 @@ assert_contains "later steps still run (status table prints)" "==> update chain 
 assert_eq "an ahead host never invokes the lane" "" "$(cat "$C5LOG")"
 
 echo ""
-echo "Test 12: cli-proxy roll — APPLY mode with an UNCOMPARABLE stamp completes (HIMMEL-2152)"
+echo "Test 12: cli-proxy roll — APPLY mode with an UNCOMPARABLE stamp completes"
 : >"$C5LOG"
 printf 'custom\n' > "$FH5/.cli-proxy-api/cli-proxy-api.version"
 OUT="$(run_only_cli_proxy "$CLONE5" "$FH5")"; RC=$?
@@ -732,7 +732,7 @@ PY
 assert_eq "lane pins match cli-proxy-api synced_base" "$REGISTRY_PIN" "$SH_PIN"
 
 echo ""
-echo "Test 15: graphify uv-missing skip is loud (HIMMEL-3077)"
+echo "Test 15: graphify uv-missing skip is loud"
 # sync_graphify used to print `skip: uv not on PATH` and finish green with NO
 # status-table row, so graphify never installed and every graphify surface
 # failed later with no pointer back. It must now name the gap in the table and

@@ -182,7 +182,7 @@ else
 fi
 rm -f "$STUBS/readlink"
 
-echo "claude CLI: held to the chief-launch floor and brought current (HIMMEL-5501)"
+echo "claude CLI: held to the chief-launch floor and brought current"
 reset_state
 run_only clis
 if [ "$RC" -eq 0 ] && has '^    claude +updated +2\.1\.100 -> 2\.1\.296' \
@@ -311,7 +311,7 @@ else
 fi
 rm -f "$STUBS/pacman"
 
-echo "bun: report only — a version off the .bun-version pin is never self-upgraded (HIMMEL-7092)"
+echo "bun: report only — a version off the .bun-version pin is never self-upgraded"
 reset_state
 run_only toolchain
 if has 'bun 1\.2\.3 differs from the \.bun-version pin \(1\.4\.4\) — NOT self-upgrading' \

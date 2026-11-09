@@ -34,7 +34,7 @@ TITLE_NODE="$(command -v node || true)"
 BIN="$TMP/bin"
 mkdir -p "$BIN"
 export REC="$TMP/calls.log"
-export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
+export UNGUARDED_LAUNCH_OK=1
 for t in bun qmd node graphify; do
   # shellcheck disable=SC2016
   printf '#!/usr/bin/env bash\nprintf "%s %%s\\n" "$*" >>"$REC"\nexit 0\n' "$t" >"$BIN/$t"
@@ -126,7 +126,7 @@ eq "N3 test-x.sh as a later argument" "$(as_session bash "$TMP/real-tool.sh" tes
 mkdir -p "$TMP/fix+test-worktree-name"
 cp "$TMP/real-tool.sh" "$TMP/fix+test-worktree-name/tool.sh"
 eq "N4 test in a directory name" "$(as_session bash "$TMP/fix+test-worktree-name/tool.sh" >/dev/null 2>&1; echo $?)" 0
-eq "N5 test in a session name on the claude line" "$(as_session bash "$TMP/real-tool.sh" -n HIMMEL-1-test-real-state >/dev/null 2>&1; echo $?)" 0
+eq "N5 test in a session name on the claude line" "$(as_session bash "$TMP/real-tool.sh" -n fix-1-test-real-state >/dev/null 2>&1; echo $?)" 0
 
 echo "== a test below a session is still a test"
 cp "$TMP/real-tool.sh" "$TMP/test-inner.sh"
@@ -159,7 +159,7 @@ eq "F2 failed reads in a real session do not refuse" "$(PATH="$NOBIN" "$CLAUDE_S
 for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$TMP/orphan.rc" ] && break; sleep 0.2; done
 eq "F3 an orphan with no markers and no ancestor is allowed: the pinned residual" "$(cat "$TMP/orphan.rc" 2>/dev/null)" 0
 
-echo "== detector gaps (HIMMEL-8819)"
+echo "== detector gaps"
 # A passwd home that is a symlink: the stub getent is the suite's seam, the guard asks getent by name.
 GE="$TMP/getent-bin"
 mkdir -p "$GE" "$TMP/realhome-target/.himmel"
@@ -614,7 +614,7 @@ has "D3 a send with a temp doc stays local" "$TDOC" "mirror hermetic"
 # recorder, never the real crontab, atd or Telegram. SCH rows: arm-resume's crontab and at writes.
 # CAS rows: the config-audit alert's chief-route sender. JP rows: release apply, release rm-run and jira
 # create, each against a Jira host that never resolves, so a run past the door shows as a host lookup.
-echo "== scheduler, config-audit sender and Jira post doors (HIMMEL-8818)"
+echo "== scheduler, config-audit sender and Jira post doors"
 unset CRON_LIST
 cat >"$BIN/sched-recorder" <<'STUB'
 #!/usr/bin/env bash
@@ -827,7 +827,7 @@ eq "ARD5 a real session's removal of a crontab line rewrites the crontab" "$(cal
 # Each cadence script arms and disarms through its own crontab writer. XA: a test's arm installs nothing and writes
 # no runner; XB: a real session's arm installs and writes its runner; XC/XD: the same for disarm of a seeded
 # entry; XE: a stub crontab with a temp runner dir stays local. The recorder crontab answers `-l` from $CRON_LIST.
-echo "== cadence crontab doors (HIMMEL-8852)"
+echo "== cadence crontab doors"
 CADENCE_ROWS=(
   "SC|scripts/cleanup/steering-cull-cadence.sh|STEERING_CULL|HIMMEL-SteeringCull|--proposal-dir $TMP/cad-prop"
   "DC|scripts/doctor-cadence.sh|DOCTORCAD|HIMMEL-Doctor|"
@@ -906,7 +906,7 @@ eq "SSM a multi-word crontab command with a temp runner dir is refused on disarm
 eq "SSM and rewrites no crontab on disarm" "$(calls_exact 'crontab -')" 0
 
 # ---- the vault, config and index writer doors ----
-echo "== vault, config and index writer doors (HIMMEL-8852)"
+echo "== vault, config and index writer doors"
 # LU rows: luna-upgrade-all apply and restore. The door sits before the vault is classified, so a vault with only
 # .obsidian/ is enough: a run past the door stops at "unstamped", and a refused run says nothing of the sort.
 LU="$root/scripts/luna-upgrade-all.sh"
