@@ -1,0 +1,54 @@
+{
+  "protocol": "rag-pilot-r18",
+  "arm_ids": ["V", "S", "Q"],
+  "claude": {"version": "2.1.319", "path": "/opt/claude/claude"},
+  "answer_model": "claude-sonnet-5-5",
+  "effort": "default",
+  "permission_mode": "dontAsk",
+  "output_format": "json",
+  "budget_usd": 0.25,
+  "booking_usd": 0.35,
+  "tools": ["Read", "Grep", "Glob", "Bash"],
+  "bash_commands": ["grep", "rg", "find", "ls", "cat", "head"],
+  "retrieval_commands": ["s-qmd", "s-graph"],
+  "query_cap": 12,
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "600000",
+    "BASH_MAX_TIMEOUT_MS": "600000",
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+    "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "env_absent": ["CLAUDE_CODE_AUTO_BACKGROUND_TIMEOUT_MS", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK",
+                 "CLAUDE_CODE_USE_VERTEX", "QMD_OPENAI_API_KEY", "CLAUDE_CONFIG_DIR"],
+  "deadlines_ms": {"wrapper_term": 530000, "wrapper_kill": 540000, "q_load": 480000},
+  "arms": {
+    "V": {"retrieval": null},
+    "S": {
+      "retrieval": "S",
+      "qmd_config": "tools/qmd-eval.yml",
+      "key": true,
+      "base_url": "https://openrouter.ai/api/v1",
+      "models": {"embed": "openai:qwen/qwen3-embedding-8b", "generate": "openai:google/gemini-2.5-flash-lite", "rerank": "openai:cohere/rerank-4-fast"},
+      "env": {},
+      "env_absent": []
+    },
+    "Q": {
+      "retrieval": "Q",
+      "qmd_config": "tools/qmd-eval-q.yml",
+      "key": false,
+      "base_url": null,
+      "models": {"embed": "hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf",
+                 "generate": "hf:tobil/qmd-query-expansion-1.7B-gguf/qmd-query-expansion-1.7B-q4_k_m.gguf",
+                 "rerank": "hf:ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/qwen3-reranker-0.6b-q8_0.gguf"},
+      "weights": ["hf_ggml-org_embeddinggemma-300M-Q8_0.gguf", "hf_ggml-org_qwen3-reranker-0.6b-q8_0.gguf", "hf_tobil_qmd-query-expansion-1.7B-q4_k_m.gguf"],
+      "env": {"QMD_LLAMA_GPU": "vulkan", "QMD_RERANK_LOAD_TIMEOUT_MS": "480000"},
+      "env_absent": ["QMD_FORCE_CPU", "QMD_EXPAND_CONTEXT_SIZE", "QMD_RERANK_CONTEXT_SIZE", "QMD_RERANK_MAX_DOC_CHARS",
+                     "QMD_EMBED_CONTEXT_SIZE", "QMD_RERANK_TIMEOUT_MS", "CI"]
+    }
+  },
+  "schedule": {"algorithm": "six-permutation-blocks-v1", "blocks": 6, "suffix": 4},
+  "judge": {"model": "claude-sonnet-5-5", "per_arm": 5, "total": 15, "budget_usd": 0.05, "booking_usd": 0.06},
+  "family": "baseline-holm2",
+  "cohort": {"min_common": 36, "skip_union_ceiling": 2}
+}
