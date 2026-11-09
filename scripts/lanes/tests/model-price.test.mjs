@@ -177,7 +177,6 @@ test('--price-as with no price row and an empty token count are argument errors'
   }
 });
 
-// ---- the final-usage reducer: normalizeUsage, foldUsageCall and the transcripts pass built on them ----
 const mkRec = ({ id, req, model = 'claude-opus-5-5', usage, ts = '2026-11-05T10:00:00.000Z' }) => {
   const message = { model, usage };
   if (id !== undefined) message.id = id;
@@ -186,7 +185,6 @@ const mkRec = ({ id, req, model = 'claude-opus-5-5', usage, ts = '2026-11-05T10:
   return r;
 };
 const U = (o) => ({ input_tokens: 1, output_tokens: o });
-// fold records the way a transcript pass does: the state is a Map of key to next
 function foldAll(items) {
   let state = new Map();
   const outs = [];
@@ -206,7 +204,6 @@ function withTranscripts(files, fn) {
     rmSync(root, { recursive: true, force: true });
   }
 }
-// expected nanodollars of input + output at one table row, in BigInt (no float anywhere)
 const nanoOf = (usage, prefix) => {
   const row = priceFor(prefix, rows);
   const n = (v) => BigInt(Math.round(v * 1000));
@@ -320,9 +317,7 @@ test('--since is applied to the first occurrence: a late correction neither pull
   const early = '2026-10-31T23:00:00.000Z';
   const late = '2026-11-02T01:00:00.000Z';
   withTranscripts({
-    // first before the window, corrected inside it: out, the original timestamp wins
     'a.jsonl': [mkRec({ id: 'a', usage: U(5), ts: early }), mkRec({ id: 'a', usage: U(50), ts: late })],
-    // first inside the window, corrected long after: in, at the corrected usage
     'b.jsonl': [mkRec({ id: 'b', usage: U(5), ts: late }), mkRec({ id: 'b', usage: U(60), ts: '2026-12-25T00:00:00.000Z' })],
   }, (root) => {
     const res = priceTranscripts(root, rows, { since: '2026-11-01' });
@@ -335,11 +330,8 @@ test('--since keys on the first record of a call even when that record is refuse
   const early = '2026-10-31T23:00:00.000Z';
   const late = '2026-11-02T01:00:00.000Z';
   withTranscripts({
-    // first record malformed and before the window, valid correction inside it: out
     'a.jsonl': [mkRec({ id: 'a', usage: { output_tokens: -1 }, ts: early }), mkRec({ id: 'a', usage: U(50), ts: late })],
-    // malformed record before the window, never corrected: not counted as malformed
     'b.jsonl': [mkRec({ id: 'b', usage: { output_tokens: -1 }, ts: early })],
-    // malformed record inside the window: reported
     'c.jsonl': [mkRec({ id: 'c', usage: { output_tokens: -1 }, ts: late })],
   }, (root) => {
     const res = priceTranscripts(root, rows, { since: '2026-11-01' });

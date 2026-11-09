@@ -67,7 +67,6 @@ export class UsageError extends Error {
   }
 }
 
-// A supplied counter must be a safe integer >= 0; null and undefined are omitted counters (zero).
 function count(v, name) {
   if (v == null) return 0;
   if (!Number.isSafeInteger(v) || v < 0) throw new UsageError('malformed-usage', `${name} is not a non-negative safe integer`);
@@ -88,7 +87,6 @@ export function normalizeUsage(usage) {
     cacheWrite1h: 0,
   };
   const totalN = count(total, 'cache_creation_input_tokens');
-  // an explicit split wins; a split object that carries neither TTL key is no split
   if (split && (split.ephemeral_5m_input_tokens != null || split.ephemeral_1h_input_tokens != null)) {
     out.cacheWrite5m = count(split.ephemeral_5m_input_tokens, 'ephemeral_5m_input_tokens');
     out.cacheWrite1h = count(split.ephemeral_1h_input_tokens, 'ephemeral_1h_input_tokens');
@@ -136,16 +134,16 @@ export function foldUsageCall(previous, record, sourceOffset) {
   }
 }
 
-// Integer nanodollars of one normalized usage at one price row: a table rate is USD per MTok, so rate * 1000 nano per token.
-const nanoRate = (usdPerMTok) => BigInt(Math.round(usdPerMTok * 1000));
+const NANO_PER_USD = 1e9;
+const TOKENS_PER_MTOK = 1e6;
+const nanoRate = (usdPerMTok) => BigInt(Math.round((usdPerMTok * NANO_PER_USD) / TOKENS_PER_MTOK));
 function priceNano(u, row) {
   return BigInt(u.input) * nanoRate(row.input) + BigInt(u.output) * nanoRate(row.output)
     + BigInt(u.cacheRead) * nanoRate(row.cacheRead) + BigInt(u.cacheWrite5m) * nanoRate(row.cacheWrite5m)
     + BigInt(u.cacheWrite1h) * nanoRate(row.cacheWrite1h);
 }
-const nanoToUsd = (n) => Number(n) / 1e9;
+const nanoToUsd = (n) => Number(n) / NANO_PER_USD;
 
-// The lines of a file, each with the decimal byte offset it starts at.
 function* linesWithOffsets(file) {
   const buf = readFileSync(file);
   let pos = 0;
@@ -185,7 +183,6 @@ export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
         folded = foldUsageCall(calls, r, offset);
       } catch (e) {
         if (!(e instanceof UsageError)) throw e;
-        // a refused record still fixes where its call began
         if (!firstTs.has(e.key)) firstTs.set(e.key, Date.parse(r.timestamp));
         refused.push(e.key);
         continue;
