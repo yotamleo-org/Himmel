@@ -1230,6 +1230,35 @@ else
     if [ "$old_out" = "$cmp_out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi
 fi
 if grepq "$out" '^scripts/test-nonutf8\.sh$'; then pass "a suite line with a non-UTF-8 byte is still matched"; else fail "non-UTF-8 suite not listed: $out"; fi
+PREV_IS_SHA=093218b3d9ed4eadb8d6eff8d67949d72aabb031
+mkdir -p "$SHIM4/prevcr"
+if ! git -C "$(dirname "$IS")" cat-file -e "$PREV_IS_SHA^{commit}" 2>/dev/null; then
+    pass "git-grep-read control not run: $PREV_IS_SHA is not in this clone (shallow)"
+elif ! cp "$(dirname "$IS")/anchor-handoff.sh" "$SHIM4/prevcr/anchor-handoff.sh" || ! git -C "$(dirname "$IS")" show "$PREV_IS_SHA:scripts/cr/impacted-suites.sh" > "$SHIM4/prevcr/impacted-suites.sh"; then
+    fail "git-grep-read control setup: cannot read $PREV_IS_SHA"
+else
+    SM="$(fixture_mktemp_dir)" || exit 1
+    trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3" "$SHIM4" "$SM"' EXIT
+    (
+        fixture_enter_git_init_dir "$SM" || exit 1
+        git init -q
+        git config user.email t@e
+        git config user.name t
+    )
+    mkdir -p "$SM/scripts/lib" "$SM/scripts/deep/er"
+    for n in 1 2 3; do printf '# lib\n' > "$SM/scripts/lib/smlib-$n.sh"; done
+    for s in 1 2 3 4 5 6; do printf 'x="$d/lib/smlib-%s.sh"\n' $(( s % 3 + 1 )) > "$SM/scripts/test-sm-$s.sh"; done
+    printf 'x="$d/lib/smlib-1.sh"\n' > "$SM/scripts/deep/er/test-sm-deep.sh"
+    git -C "$SM" add -A
+    git -C "$SM" commit -q -m "chore: base"
+    for n in 1 2 3; do printf '# changed\n' >> "$SM/scripts/lib/smlib-$n.sh"; done
+    git -C "$SM" add -A
+    git -C "$SM" commit -q -m "fix: libs"
+    smrange="$(git -C "$SM" rev-parse HEAD~1)..$(git -C "$SM" rev-parse HEAD)"
+    prev_out="$( cd "$SM" && bash "$SHIM4/prevcr/impacted-suites.sh" "$smrange" 2>/dev/null )"
+    sm_out="$( cd "$SM" && bash "$IS" "$smrange" 2>/dev/null )"
+    if [ "$prev_out" = "$sm_out" ] && [ "$(grep -c . <<< "$sm_out")" -eq 7 ]; then pass "the grep -E -f read lists the same suites as the git grep -E -f read it replaced"; else fail "grep -E -f read differs from the git grep read: prev=[$prev_out] new=[$sm_out]"; fi
+fi
 # One inline-pattern -E over the tree (the variable-sourcer scan) is a single
 # regex and cheap; the cost was the -f pattern FILE, so that is what must not
 # run against the head tree.
@@ -1490,6 +1519,41 @@ if [ "$rc" -eq 0 ] && [ "$n_local" -le 5 ] && [ "$n_local" -ge 1 ] && grepq "$ou
 # P5: --plan is a read mode: it refuses --check and a missing range
 ( cd "$CY" && bash "$IS" --plan --check "$yrange" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 2 ]; then pass "P5 --plan with --check is a usage error (rc 2)"; else fail "P5 --plan --check: rc=$rc"; fi
+
+CL="$(fixture_mktemp_dir)" || exit 1
+trap 'rm -rf "$FX" "$CX" "$CY" "$CL"' EXIT
+(
+    fixture_enter_git_init_dir "$CL" || exit 1
+    git init -q
+    git config user.email t@e
+    git config user.name t
+)
+mkdir -p "$CL/scripts/lib"
+for n in $(seq 1 400); do printf '# lib\n' > "$CL/scripts/lib/biglib-$n.sh"; done
+for s in $(seq 1 900); do
+    for l in $(seq 1 20); do printf 'x="$d/lib/biglib-%s.sh" # line %s of suite %s\n' $(( (s * 7 + l * 13) % 400 + 1 )) "$l" "$s"; done > "$CL/scripts/test-big-$s.sh"
+done
+git -C "$CL" add -A
+git -C "$CL" commit -q -m "chore: base"
+for n in $(seq 1 400); do printf '# changed\n' >> "$CL/scripts/lib/biglib-$n.sh"; done
+git -C "$CL" add -A
+git -C "$CL" commit -q -m "fix: every lib"
+lrange="$(git -C "$CL" rev-parse HEAD~1)..$(git -C "$CL" rev-parse HEAD)"
+# shellcheck source=scripts/lib/timeout-bin.sh
+# shellcheck disable=SC1091
+. "$REPO_ROOT/scripts/lib/timeout-bin.sh"
+if [ -z "$_TIMEOUT_BIN" ]; then
+    pass "L1 SKIP: no timeout binary to bound the read"
+else
+    l_start=$SECONDS
+    l_bound=30
+    [ "$(uname -s)" = Linux ] || l_bound=300
+    out="$( cd "$CL" && "$_TIMEOUT_BIN" "$l_bound" bash "$IS" "$lrange" 2>/dev/null )"; rc=$?
+    l_wall=$((SECONDS - l_start))
+    l_want="$(for s in $(seq 1 900); do printf 'scripts/test-big-%s.sh\n' "$s"; done | LC_ALL=C sort)"
+    l_got="$(LC_ALL=C sort <<< "$out")"
+    if [ "$rc" -eq 0 ] && [ "$l_got" = "$l_want" ]; then pass "L1 a 900-suite range is read in ${l_wall}s inside the ${l_bound} s bound, with exactly the 900 suite names"; else fail "L1 large range: rc=$rc suites=$(grep -c . <<< "$out") wall=${l_wall}s (rc 124 = over the ${l_bound} s bound; first line: $(head -n 1 <<< "$out"))"; fi
+fi
 
 echo
 if [ "$failures" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi
