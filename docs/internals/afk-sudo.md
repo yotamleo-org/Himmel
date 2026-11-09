@@ -307,7 +307,9 @@ approval, and the worker's retry passes the classifier for that one call.
 1. The classifier refuses a Bash call. `scripts/hooks/approval-grant-request.sh`
    (`PermissionDenied`, matcher `Bash`) pipes the command's exact bytes to
    `sudo -n afk-sudo grant-request --session S --cwd D --why <reason>`. It prints nothing
-   and exits 0 on every path.
+   and exits 0 on every path. It files only a reason with a bracketed classifier category
+   (`[Unauthorized Persistence]`): a no-verdict denial, "Classifier unavailable" or a
+   credential, secret, token or exfiltration category files nothing.
 2. Root refuses a secret read or another never-remote shape before any notice is sent.
    Otherwise it binds every file the command names (sha256 and dev/inode, as in the run
    kind), freezes the record and sends the operator the full command, the cwd, the bound
