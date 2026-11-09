@@ -1230,8 +1230,6 @@ else
     if [ "$old_out" = "$cmp_out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi
 fi
 if grepq "$out" '^scripts/test-nonutf8\.sh$'; then pass "a suite line with a non-UTF-8 byte is still matched"; else fail "non-UTF-8 suite not listed: $out"; fi
-# The pattern pass reads the narrowed tree with one grep -E -f instead of git grep -E -f: the
-# list must be the one the git grep read printed, byte for byte (no ./ prefix, same names).
 PREV_IS_SHA=093218b3d9ed4eadb8d6eff8d67949d72aabb031
 mkdir -p "$SHIM4/prevcr"
 if ! git -C "$(dirname "$IS")" cat-file -e "$PREV_IS_SHA^{commit}" 2>/dev/null; then
