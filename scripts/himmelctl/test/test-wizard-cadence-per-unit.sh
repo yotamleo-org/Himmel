@@ -272,6 +272,8 @@ grepq "$outE" -F -- '"drift-fix": "off"' \
   || fail "case e: declining drift-fix (Enter, no recommended default) should record off (got: $outE)"
 grepq "$outE" -F -- '"upstream-watch": "off"' \
   || fail "case e: declining upstream-watch should record off (got: $outE)"
+grepq "$outE" -F -- '"rollup": "off"' \
+  || fail "case e: declining rollup should record off (got: $outE)"
 grepq "$outE" -F -- '"pipeline":' \
   && fail "case e: pipeline must stay genuinely absent from cadences (requires vault, vault=none) (got: $outE)"
 grepq "$outE" -F -- '"pull-cadence":' \

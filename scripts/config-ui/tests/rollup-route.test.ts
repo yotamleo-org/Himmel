@@ -156,8 +156,13 @@ test("rollup job: the read runs off the request thread, so another route answers
   expect((await (await slow).json()).job).toBe("off");
 });
 
+test("rollup job: the status read runs with the server's env, not the process's", async () => {
+  const s = boot(undefined, `case "$HOME" in */rollup-route-*/home) echo "ARMED  HIMMEL-WeeklyRollup (cron: 0 6 * * 1)";; *) echo "not armed";; esac`);
+  expect((await (await get(s.port)).json()).job).toBe("on");
+});
+
 test("rollup job: a status that outlasts its timeout is unknown", async () => {
   const s = boot(undefined, `exec sleep 30`);
   const { rollupJob } = await import("../rollup");
-  expect(await rollupJob(join(s.dir, "cad", "scripts", "eval", "rollup-cadence.sh"), 300)).toBe("unknown");
+  expect(await rollupJob(join(s.dir, "cad", "scripts", "eval", "rollup-cadence.sh"), process.env, 300)).toBe("unknown");
 });

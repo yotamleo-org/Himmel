@@ -68,11 +68,11 @@ type ProbeError = { code?: unknown; killed?: boolean; signal?: unknown };
 const isBrokenProbe = (err: ProbeError | null, out: string): boolean =>
   !!err && (typeof err.code !== "number" || !!err.killed || !!err.signal || (err.code !== 0 && !/^not armed\b/m.test(out)));
 
-export function rollupJob(script: string, timeoutMs = JOB_TIMEOUT_MS, now = Date.now()): Promise<Job> {
+export function rollupJob(script: string, env: Env = process.env, timeoutMs = JOB_TIMEOUT_MS, now = Date.now()): Promise<Job> {
   const hit = jobs.get(script);
   if (hit && now - hit.at < JOB_TTL_MS) return hit.job;
   const job = new Promise<Job>((resolve) => {
-    execFile("bash", [script, "status"], { encoding: "utf8", timeout: timeoutMs }, (err, stdout) => {
+    execFile("bash", [script, "status"], { encoding: "utf8", timeout: timeoutMs, env: env as NodeJS.ProcessEnv }, (err, stdout) => {
       const out = String(stdout || "");
       resolve(isBrokenProbe(err, out) ? "unknown" : /^ARMED\b/m.test(out) ? "on" : "off");
     });
@@ -89,7 +89,7 @@ const REASON: Record<Job, string> = {
 };
 
 export async function readRollupWithJob(env: Env, script: string): Promise<Rollup & { job: Job }> {
-  const [r, job] = [readRollup(env), await rollupJob(script)];
+  const [r, job] = [readRollup(env), await rollupJob(script, env)];
   return r.state === "absent" ? { ...r, reason: REASON[job], job } : { ...r, job };
 }
 
