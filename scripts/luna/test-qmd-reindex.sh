@@ -260,7 +260,7 @@ export USERPROFILE="$HOME"
 export BUN_INSTALL="$TMP_ROOT/bun-none"
 # The embed-model precheck resolves qmd's config the way qmd does; CI runners
 # export XDG_CONFIG_HOME, which would point it past the fixture HOME.
-unset QMD_CONFIG_DIR XDG_CONFIG_HOME XDG_CACHE_HOME INDEX_PATH QMD_EMBED_MODEL HIMMEL_QMD_EMBED_USAGE
+unset QMD_CONFIG_DIR XDG_CONFIG_HOME XDG_CACHE_HOME INDEX_PATH QMD_EMBED_MODEL HIMMEL_QMD_EMBED_USAGE QMD_OPENAI_BASE_URL
 export QMD_REINDEX_KEY_USAGE_CMD=/bin/false
 
 # ============================================================================
@@ -1195,6 +1195,55 @@ CURL
     assert_rc "jina config naming openrouter in a comment rc 0" 0 "$rc"
     assert_rc "no curl call for a jina base URL" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
     assert_rc "usage unknown for a jina base URL" unknown "$(usage_field 1 usage_before)"
+
+    # The base URL is read as the egress gate reads it (qmd-jina-gate.mjs): only children of models: count and the last
+    # openai_base_url wins, quoted keys included. Each case lists the config as printf %b text, then runs the real curl read.
+    usage_curl_run() {
+        printf '%b' "$1" > "$HOME/.config/qmd/index.yml"
+        reset_state
+        rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+        rc=0; out=$( (unset QMD_REINDEX_KEY_USAGE_CMD; PATH="$FAKEBIN:$PATH" bash "$SCRIPT" --qmd-bin "$FAKE_QMD") 2>&1) || rc=$?
+    }
+    CFG_HEAD='collections:\n  himmel:\n    path: /x\n'
+    CFG_MODELS='models:\n  embed: openai:qwen/qwen3-embedding-8b\n'
+
+    echo "TEST: an openai_base_url outside models: sends no curl call"
+    usage_curl_run "${CFG_HEAD}other:\n  openai_base_url: https://openrouter.ai/api/v1\n${CFG_MODELS}  openai_base_url: https://api.jina.ai/v1\n"
+    assert_rc "outside-models openrouter URL rc 0" 0 "$rc"
+    assert_rc "no curl call when the models: URL is jina" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+    assert_rc "usage unknown when the models: URL is jina" unknown "$(usage_field 1 usage_before)"
+
+    echo "TEST: the last openai_base_url under models: wins, as the gate reads it"
+    usage_curl_run "${CFG_HEAD}${CFG_MODELS}  openai_base_url: https://openrouter.ai/api/v1\n  openai_base_url: https://api.jina.ai/v1\n"
+    assert_rc "a later jina URL rc 0" 0 "$rc"
+    assert_rc "no curl call when the last URL is jina" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+
+    echo "TEST: a quoted key under models: is read as the gate reads it"
+    usage_curl_run "${CFG_HEAD}${CFG_MODELS}  openai_base_url: https://api.jina.ai/v1\n  \"openai_base_url\": \"https://openrouter.ai/api/v1\"\n"
+    assert_rc "a later quoted openrouter URL rc 0" 0 "$rc"
+    assert_rc "usage read when the last (quoted) URL is openrouter" 1.5 "$(usage_field 1 usage_before)"
+
+    echo "TEST: an uppercase OpenRouter host is OpenRouter"
+    usage_curl_run "${CFG_HEAD}${CFG_MODELS}  openai_base_url: https://OpenRouter.AI/api/v1\n"
+    assert_rc "uppercase host rc 0" 0 "$rc"
+    assert_rc "usage read for an uppercase host" 1.5 "$(usage_field 1 usage_before)"
+
+    echo "TEST: the usage curl ignores the user's curl config (-q first)"
+    usage_curl_run "$OR_CFG"
+    assert_rc "curl run rc 0" 0 "$rc"
+    case "$(head -n 1 "$STATE/curl-argv" 2>/dev/null)" in
+        "-q "*) pass "curl argv starts with -q" ;;
+        *) fail "curl argv starts with -q" "argv: $(head -n 1 "$STATE/curl-argv" 2>/dev/null)" ;;
+    esac
+
+    echo "TEST: only the exact host openrouter.ai receives the key (letter case and a trailing dot normalised)"
+    eval "$(sed -n '/^usage_is_openrouter()/,/^}/p' "$SCRIPT")"
+    for u in https://openrouter.ai https://openrouter.ai/api/v1 https://OPENROUTER.AI/api/v1 https://openrouter.ai./api/v1 https://openrouter.ai.; do
+        if usage_is_openrouter "$u"; then pass "$u is OpenRouter"; else fail "$u is OpenRouter"; fi
+    done
+    for u in http://openrouter.ai/api/v1 https://openrouter.ai.evil.com/api/v1 https://openrouter.ai@evil.com/api/v1 https://evil.com/openrouter.ai https://openrouter.ai.. https://api.jina.ai/v1 ""; do
+        if usage_is_openrouter "$u"; then fail "'$u' is not OpenRouter"; else pass "'$u' is not OpenRouter"; fi
+    done
 
     echo "TEST: a local-model run writes no usage row"
     rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true

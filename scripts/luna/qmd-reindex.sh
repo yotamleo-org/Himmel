@@ -625,11 +625,51 @@ if [ "$remote_model" -eq 1 ]; then
     fi
 fi
 
+# The base URL the way the egress gate resolves it, so the two never disagree about where the key may go: a port of
+# scripts/qmd/qmd-jina-gate.mjs lines 125-166 (only the plain children of `models:` count, at the first child's
+# indent; a quoted key is read; the last openai_base_url wins), unquote at line 74, and the config-then-env
+# fallback at line 184. Bash 3.2 and POSIX awk.
 usage_base_url() {
     local u
-    u=$(sed -nE "s/^[[:space:]]*openai_base_url:[[:space:]]*[\"']?([^\"'[:space:]#]*).*/\1/p" "$QMD_CFG_FILE" 2>/dev/null)
-    u=${u%%$'\n'*}
+    u=$(awk -v sq="'" '
+        function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+        { sub(/\r$/, "") }
+        /^[ \t]*(#.*)?$/ { next }
+        /^(collections|models):[ \t]*[^# \t]/ { sec = ""; seen = 1; next }
+        /^[A-Za-z_][A-Za-z0-9_-]*:[ \t]*(#.*)?$/ { sec = $0; sub(/:.*/, "", sec); ci = 0; seen = 1; next }
+        /^[^ \t]/ { sec = ""; seen = 1; next }
+        {
+            if (!seen || sec != "models") next
+            match($0, /^[ \t]*/); ind = RLENGTH
+            if (!ci) ci = ind
+            if (ind != ci) next
+            t = trim($0); q = substr(t, 1, 1)
+            if (q == "\"" || q == sq) t = substr(t, 2); else q = ""
+            if (!match(t, /^[A-Za-z_]+/)) next
+            key = substr(t, 1, RLENGTH); t = substr(t, RLENGTH + 1)
+            if (q != "") { if (substr(t, 1, 1) != q) next; t = substr(t, 2) }
+            if (substr(t, 1, 1) != ":" || length(t) < 2) next
+            if (key != "openai_base_url") next
+            v = substr(t, 2); sub(/[ \t]+#.*$/, "", v); v = trim(v)
+            f = substr(v, 1, 1)
+            if (length(v) >= 2 && (f == "\"" || f == sq) && substr(v, length(v), 1) == f) v = substr(v, 2, length(v) - 2)
+            u = v
+        }
+        END { printf "%s", u }
+    ' "$QMD_CFG_FILE" 2>/dev/null) || u=""
     printf '%s' "${u:-${QMD_OPENAI_BASE_URL:-}}"
+}
+
+# True only for an https URL whose host is exactly openrouter.ai once letter case and one trailing dot are
+# normalised; userinfo, a port or a lookalike host never match.
+usage_is_openrouter() {
+    local b auth
+    b=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    case "$b" in https://*) ;; *) return 1 ;; esac
+    auth=${b#https://}
+    auth=${auth%%[/?#]*}
+    auth=${auth%.}
+    [ "$auth" = openrouter.ai ]
 }
 
 usage_read() {
@@ -639,9 +679,10 @@ usage_read() {
         set +x
         if [ -n "${QMD_REINDEX_KEY_USAGE_CMD:-}" ]; then
             "$QMD_REINDEX_KEY_USAGE_CMD" 2>/dev/null
-        elif { [ "$base" = https://openrouter.ai ] || [[ "$base" == https://openrouter.ai/* ]]; } && command -v curl >/dev/null 2>&1; then
+        elif usage_is_openrouter "$base" && command -v curl >/dev/null 2>&1; then
+            # -q first: a user's curlrc must not redirect the request or echo the key.
             printf 'header = "Authorization: Bearer %s"\n' "${QMD_OPENAI_API_KEY:-}" \
-                | curl -sS --max-time 15 -K - https://openrouter.ai/api/v1/key 2>/dev/null \
+                | curl -q -sS --max-time 15 -K - https://openrouter.ai/api/v1/key 2>/dev/null \
                 | sed -nE 's/.*"usage"[[:space:]]*:[[:space:]]*([0-9][0-9.eE+-]*).*/\1/p'
         fi
     ) || out=""
