@@ -58,7 +58,8 @@ must not leave residue (junk pattern "expired transition residue") behind: the
 deletion itself is the proof. Drop each guard, shim, one-time check and "was
 removed" line before merge, keep it with `residue-keep: <security or safety
 reason>` (a secret, PHI, egress or bypass path that must not return), or give
-it an expiry with `ponytail: <ceiling>, <upgrade path>`. `scripts/cr/residue-scan.sh`
+it an expiry as a ceilings-ledger row (`scripts/ledger/ceiling-add.sh add`, the
+ceiling and its upgrade path). `scripts/cr/residue-scan.sh`
 flags the mechanical cases at PR time; do not flag `RED CONTROL` rows, "never X"
 rows on a destructive operation, or anything guarding a `guard-*` hook,
 `.gitleaks.toml` or `egress-matrix.json`.
