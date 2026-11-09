@@ -63,6 +63,9 @@ row, the step spent): the operator never approves what they were not shown. The 
 `reason`: the failing call and an error kind (`sendMessage:api-4xx`, the class of the reply's
 `error_code`; `curl-exit-N`, `curl-timeout`, `curl-os-error`, `no-curl`, `bad-response`,
 `api-not-ok`, or `exception-<class>` when the send raised). Never the token, the URL or the reply text.
+A notice that was sent writes a `notice` row of result `sent` with the request's `id` and `kind`, and as its
+receipt the `message_id` the Bot API gave the facts message, so a request row with no notice row after it means
+the notice was never sent.
 
 The nonce applies to **both kinds**, sudo and run (the operator's default of 10-30, Q3).
 The approve line is `approve <id> <nonce> <code>`; the helper reads `NONCE CODE` on stdin
@@ -276,7 +279,7 @@ misreads), which is why the notice shows the script text and marks a shell.
 broker) only. The other request refusals (`run-not-shipped`,
 `run-disabled`, `no-allow-missing`, `bad-user`, `bad-cwd`, `bad-file`, `no-such-command`, `no-setpriv`,
 `stdin-too-large`, `no-notice-bot`) answer on stdout and write none. A notice that cannot be
-sent writes a `notice` row (`notice-failed`). A wrong nonce writes a `code-check` row
+sent writes a `notice` row (`notice-failed`); one that was sent writes a `notice` row (`sent`, with its `message_id`). A wrong nonce writes a `code-check` row
 (`bad-nonce`). After the code, the executor's result
 (`hash-mismatch`, `changed`, `run-not-shipped`, `run-disabled`, `never-remote`, `bad-user`,
 `not-in-class`, `no-setpriv`, or the run itself) is the row. The ledger never holds the code, the
@@ -365,6 +368,14 @@ The new file is fsynced before it replaces the old one. Just before the replace 
 stops, leaving it as it is, if it changed since the read. The helper takes no lock on the config, so a `lockdown`
 landing in the few microseconds between that re-read and the replace would still be overwritten with the value
 read earlier; run the install while the station is quiet, and check `enabled` afterwards.
+
+A pull never refreshes the root-owned copies, so a helper or op merged after the last install is missing at the
+station until the operator re-installs (a station once refused the size-approval op as `unknown-op` until then).
+`scripts/himmel-update.sh` (the update and `--check`) compares each installed file under `/usr/local/libexec/himmel`
+with the checkout through `install.sh`'s `stale_files`, and when any differs prints the count, one path and the exact
+command to run at a terminal: `sudo bash <checkout>/scripts/lib/afk-sudo/install.sh --user <login>`. It installs
+nothing itself. No value of the config is touched by a re-install or by a boot: `ops.enabled` stays what the
+operator set.
 
 ## Turning it off
 
@@ -474,8 +485,10 @@ sudo -n /usr/local/libexec/himmel/afk-sudo deny    ID --from OP --chat OP --via 
 sudo -n /usr/local/libexec/himmel/afk-sudo status  ID
 ```
 
-What the verb checks itself: the id is 8 characters of `a-z2-7`; the reply is a 4-character nonce and a
-6-digit code; the config at `/etc/himmel/afk-sudo.json` names a numeric `operator_id` and an
+What the verb checks itself: the id is 8 characters of `a-z2-7`; `approve` asks for the nonce first
+(`Nonce:`, the 4 characters from the request's Telegram notice) and refuses a malformed one before it asks for
+the code (`Code:`, 6 digits), so the flow is request, nonce, then the authenticator code; on stdin
+each is one line. `deny` reads `Nonce [Code]:` on one line. The config at `/etc/himmel/afk-sudo.json` names a numeric `operator_id` and an
 `operator_user`, and the caller is that user (checked before anything is sent, for `approve` and `deny`; a
 read of `status` needs no identity). The nonce is the one root put in the notice-bot message, and it and
 the code travel on stdin only (a masked prompt on a terminal), so neither is in any argv, log or ledger

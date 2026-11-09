@@ -1922,6 +1922,24 @@ report_session_restart_required() {
     echo "    (re-pin refused: not the anchor tip). Exit claude and start a new session."
 }
 
+# Advisory: install.sh copies the afk-sudo helper and its station ops
+# root-owned, and a pull never refreshes them (a station once ran a helper
+# without an op that had already merged). Prints the exact
+# re-install command when an installed copy differs from this checkout; an
+# agent never runs it. HIMMEL_AFK_LIBEXEC is the installed directory's test seam.
+report_afk_helper_stale() {
+    local lib="$ROOT/scripts/lib/afk-sudo" stale n
+    [ -r "$lib/install.sh" ] || return 0
+    # shellcheck source=lib/afk-sudo/install.sh
+    stale=$( ( . "$lib/install.sh" && stale_files "$lib" "${HIMMEL_AFK_LIBEXEC:-/usr/local/libexec/himmel}" ) 2>/dev/null) || return 0
+    [ -n "$stale" ] || return 0
+    n=$(printf '%s\n' "$stale" | wc -l | tr -d ' ')
+    echo ""
+    echo "==> afk-sudo root helper is OLDER than this checkout"
+    echo "    $n installed file(s) differ, e.g. ${stale%%$'\n'*}; a pull never refreshes the root-owned copies."
+    echo "    Refresh them (operator, at a terminal): sudo bash $lib/install.sh --user $(id -un)"
+}
+
 # Advisory: the ONE update_qmd_fork skip reason that means qmd is
 # PERMANENTLY disabled on this machine until fixed, not a one-off/transient
 # miss. STATUS_qmd_fork reads "skipped" in the status table either way — the
@@ -3916,6 +3934,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     refresh_drifted_plugin_caches check || true
     report_cadence_stale
     report_qmd_bun_missing
+    report_afk_helper_stale
     report_toolchain check
     sync_probe_tools check || true
     report_guardrail_block
@@ -4131,6 +4150,7 @@ enable_adhd_always apply
 offer_retired_plugin_removal apply
 report_cadence_stale
 report_qmd_bun_missing
+report_afk_helper_stale
 report_toolchain apply
 # `|| true` — a failed tool upgrade is advisory, never aborts the update.
 sync_probe_tools apply || true

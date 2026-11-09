@@ -1950,6 +1950,19 @@ out=$(req 0)
 rm -f "$tmp/tg-fail"
 assert_contains "RED 9507: a failed sudo-kind notice is ledgered with the same reason" '"reason": "sendMessage:api-4xx"' "$(notice_row)"
 
+echo "== HIMMEL-9691: every delivered notice leaves a sent row with its receipt =="
+new_root sentrun; cfg "$ALL" true
+out=$(rr 0 -- true)
+assert_contains "RED 9691: a delivered run notice writes a sent row" '"result": "sent"' "$(notice_row)"
+assert_contains "RED 9691: the run sent row carries the message_id" '"message_id": 10' "$(notice_row)"
+new_root sentsudo; cfg "$ALL" true
+out=$(req 0)
+assert_contains "RED 9691: a delivered sudo notice writes a sent row" '"result": "sent"' "$(notice_row)"
+new_root sentdoc; cfg "$ALL" true
+out=$(rr 0 -- printf '%s\n' $(seq 30))
+assert_eq "a cut notice sends the attachment then the message" "2" "$(find "$TG" -name '*.json' | wc -l | tr -d ' ')"
+assert_contains "RED 9691: the receipt is the facts message's id, sent after the attachment" '"message_id": 101' "$(notice_row)"
+
 echo "== HIMMEL-9507: install.sh writes both files from templates and adds new keys to an old config =="
 INSTALL="$LIB/install.sh"
 CFG_TPL="$LIB/afk-sudo.json.template"; ENV_TPL="$LIB/notice-bot.env.template"
@@ -2060,6 +2073,34 @@ assert_eq "RED 9507: a config with a UTF-8 byte-order mark is refused as the hel
 # shellcheck disable=SC2123,SC2030,SC2031,SC1090
 assert_contains "RED 9507: the notice-bot.env step names SUDO_EDITOR when no editor exists" "SUDO_EDITOR=nano sudoedit /etc/himmel/afk-sudo/notice-bot.env" \
     "$( ( PATH="$STUBS/linux"; export AFK_OS_RELEASE="$tmp/os-arch"; unset SUDO_EDITOR VISUAL EDITOR; source "$INSTALL" && notice_env_steps ) 2>&1 )"
+
+echo "== HIMMEL-9691: install.sh names each installed file older than this checkout =="
+# An installed tree laid out as install.sh lays it out, from this checkout's files.
+OPSRC="$REPO_ROOT/scripts/station-ops"
+lay_out() {
+    local lx=$1 f
+    rm -rf "$lx"; mkdir -p "$lx/ops"
+    cp "$LIB/afk_sudo.py" "$lx/afk-sudo"; cp "$LIB/approval_broker.py" "$LIB/never_remote.py" "$lx/"
+    for f in "$OPSRC"/*.json; do cp "$f" "$lx/ops/"; cp "${f%.json}.sh" "$lx/ops/"; done
+    python3 -I "$OPSRC/build-manifest.py" "$lx/ops" >/dev/null
+}
+LX="$tmp/libexec"
+assert_eq "RED 9691: no installed helper means nothing is stale" "" "$(inst stale_files "$LIB" "$LX" 2>&1)"
+lay_out "$LX"
+assert_eq "RED 9691: an installed tree equal to the checkout is not stale" "" "$(inst stale_files "$LIB" "$LX" 2>&1)"
+printf '\n# older\n' >> "$LX/afk-sudo"
+assert_eq "RED 9691: an installed helper that differs is named" "$LX/afk-sudo" "$(inst stale_files "$LIB" "$LX" 2>&1)"
+lay_out "$LX"
+# The station on 2026-11-09: the helper installed before the size-approval op shipped had no copy of it.
+rm -f "$LX/ops/size-approval.json" "$LX/ops/size-approval.sh"
+out=$(inst stale_files "$LIB" "$LX" 2>&1)
+assert_contains "RED 9691: an op the checkout ships but the station lacks is named" "$LX/ops/size-approval.sh" "$out"
+lay_out "$LX"
+printf '{}\n' > "$LX/ops/retired-op.json"
+assert_eq "RED 9691: an installed op the checkout no longer ships is named" "$LX/ops/retired-op.json" "$(inst stale_files "$LIB" "$LX" 2>&1)"
+lay_out "$LX"
+printf '\n' >> "$LX/never_remote.py"
+assert_eq "RED 9691: an installed floor that differs is named" "$LX/never_remote.py" "$(inst stale_files "$LIB" "$LX" 2>&1)"
 
 echo
 echo "test summary: $PASS passed, $FAIL failed"

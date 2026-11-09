@@ -759,6 +759,7 @@ def curl_q(s):
 
 
 NOTICE_FAIL = ""  # why the last tg_send failed: a call name and an error kind, never a token, URL or reply text
+NOTICE_RECEIPT = None  # the message_id the Bot API gave the last call that succeeded
 
 
 def exc_reason(e):
@@ -771,9 +772,9 @@ def tg_send(config, token, method, fields, document=None):
     every field, the nonce among them, since a root process's argv is world-readable. -q skips any
     .curlrc. True when the API answers ok; otherwise NOTICE_FAIL names the call and the error kind
     (no-curl, curl-os-error, curl-timeout, curl-exit-N, bad-response, api-Nxx from the reply's error_code,
-    api-not-ok)."""
-    global NOTICE_FAIL
-    NOTICE_FAIL = ""
+    api-not-ok). On success NOTICE_RECEIPT is the reply's message_id (None when the reply carries none)."""
+    global NOTICE_FAIL, NOTICE_RECEIPT
+    NOTICE_FAIL, NOTICE_RECEIPT = "", None
     curl = curl_path()
     if not curl:
         NOTICE_FAIL = f"{method}:no-curl"
@@ -789,6 +790,8 @@ def tg_send(config, token, method, fields, document=None):
                            text=True, env={"PATH": FIXED_PATH, "LANG": "C.UTF-8"}, cwd="/", timeout=30)
         reply = json.loads(p.stdout or "{}")
         if reply.get("ok") is True:
+            mid = reply.get("result", {}).get("message_id") if isinstance(reply.get("result"), dict) else None
+            NOTICE_RECEIPT = mid if isinstance(mid, int) and not isinstance(mid, bool) else None
             return True
         code = reply.get("error_code")
         if p.returncode != 0 and not p.stdout:
@@ -987,6 +990,7 @@ def send_notice(broker, config, token, rec, nonce, mode, cls, digest=None, bodie
     """Send the facts message (and the full request when it was cut) through the notice bot. A notice
     that cannot be sent withdraws the request: the operator must never approve what they were not shown.
     The full request goes first, so the nonce (in the facts message) is never out while it may still fail.
+    A sent notice leaves a `notice` row of result `sent` with the facts message's message_id as its receipt.
     `built` is a (text, cut) another kind made instead of facts()."""
     rid = rec["id"]
     text, cut = built or facts(rec, nonce, mode, cls, digest, bodies, stdin_text)
@@ -1002,6 +1006,9 @@ def send_notice(broker, config, token, rec, nonce, mode, cls, digest=None, bodie
     ok = ok and tg_send(config, token, "sendMessage", [("chat_id", op), ("parse_mode", "HTML"), ("text", text)])
     if not ok:
         broker.withdraw(rid, "notice-failed", reason=NOTICE_FAIL or "unknown")
+        return ok
+    ab.append_row(LEDGER, {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now())), "event": "notice", "result": "sent",
+                           "id": rid, "kind": rec.get("kind"), "message_id": NOTICE_RECEIPT}, OWNER)
     return ok
 
 
