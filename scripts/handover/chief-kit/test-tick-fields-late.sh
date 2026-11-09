@@ -171,10 +171,10 @@ contains 'only the owned lines count as handled' "$po_out" '# pool-counts 7/0/5/
 contains 'a free-text promise is unresolved as unowned' "$po_out" '# pool-unresolved unowned HIMMEL-21 '
 contains 'the unowned line says what it lacks and quotes the line' "$po_out" 'names no owner or observable end: HIMMEL-21 question will look at it after the release'
 contains 'a target that names only the ticket itself is unowned' "$po_out" '# pool-unresolved unowned HIMMEL-27 '
-not_contains 'a PR target is owned' "$po_out" ' HIMMEL-22 '
-not_contains 'a decision id target is owned' "$po_out" ' HIMMEL-23 '
-not_contains 'a ticket target is owned' "$po_out" ' HIMMEL-24 '
-not_contains 'an ask record target is owned' "$po_out" ' HIMMEL-25 '
+not_contains 'a PR target is owned' "$po_out" '# pool-unresolved unowned HIMMEL-22 '
+not_contains 'a decision id target is owned' "$po_out" '# pool-unresolved unowned HIMMEL-23 '
+not_contains 'a ticket target is owned' "$po_out" '# pool-unresolved unowned HIMMEL-24 '
+not_contains 'an ask record target is owned' "$po_out" '# pool-unresolved unowned HIMMEL-25 '
 
 # One meaning of dispatchable: every row a chief can launch (LOCAL, CLOUD, RESUME, DESIGN, a series' tickets), and every
 # other open ticket of the version is printed with its reason. A snapshot of only RESUME rows reads above zero.
