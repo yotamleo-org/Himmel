@@ -48,7 +48,6 @@ LOG_DEFAULT="${GH_CALLERS_LOG:-${TMPDIR:-/tmp}/gh-graphql-callers.log}"
 usage() { sed -n '2,39p' "$0" >&2; exit 64; }
 
 # gqlc_cost <gh args...> — GraphQL points one gh call spends (estimate: 1, or 0).
-# Which bucket a call spends is ghq_bucket_of's rule (gh-quota.sh).
 gqlc_cost() {
     if [ "$(ghq_bucket_of "$@")" = graphql ]; then echo 1; else echo 0; fi
 }

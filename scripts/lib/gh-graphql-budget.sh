@@ -132,7 +132,6 @@ _ghb_probe() {
     return 0
 }
 
-# ghb_read [main|read] — ONE real `gh api -i graphql` call (see the header).
 ghb_read() {
     _ghb_probe "${1:-}" api -i graphql -f query='{rateLimit{remaining}}'
 }
@@ -145,7 +144,6 @@ ghb_reset_sane() {
 }
 
 # ghb_is_rate_limited <stderr text> — does a gh error read as budget exhaustion?
-# The rule lives in gh-quota.sh (ghq_is_rate_limited); sourced on first use.
 ghb_is_rate_limited() {
     if ! declare -F ghq_is_rate_limited >/dev/null 2>&1; then
         # shellcheck source=scripts/lib/gh-quota.sh
@@ -172,7 +170,7 @@ ghb_wait_for_budget() {
         wait_s=$((GHB_RESET - now + 2))       # +2 s clock-skew margin
     else
         GHB_RESET=""
-        wait_s=60                             # exhausted, reset header missing or absurd
+        wait_s=60
     fi
     [ "$wait_s" -lt 2 ] && wait_s=2
 

@@ -72,7 +72,6 @@ cat > "$BIN/gh" <<'EOF'
 #   exhausted   — presence = budget exhausted until $D/woke exists; content = reset epoch
 #   calls.log   — "<fake-clock> <graphql-points> <args...>", one line per call
 D="$GHB_STUB_DIR"
-# GHB_STUB_HANG=<s>: every call sleeps that long (a hung GitHub)
 [ -z "${GHB_STUB_HANG:-}" ] || exec sleep "$GHB_STUB_HANG"
 # GHB_STUB_MAIN_SPENT=1 fails every call on any token but the fixture read token
 if [ "${GHB_STUB_MAIN_SPENT:-}" = 1 ] && [ "${GH_TOKEN:-}" != ghp_GHBREADTOKEN ]; then
@@ -311,8 +310,6 @@ else
     got=$( . "$SCRIPT_DIR/gh-read.sh"; export GHB_STUB_MAIN_SPENT=1 GH_READ_ENV_ROOT="$ROOT/ghr-root" HIMMEL_SECRETS_KEYRING=off PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR"; unset GH_TOKEN GITHUB_TOKEN; GHB_STUB_REMAINING=4321 ghb_read; echo "rc=$? rem=$GHB_REMAINING" )
     if [ "$got" = "rc=0 rem=4321" ]; then pass "7i main token spent: the budget probe reads through the read token"; else fail "7i read-token probe" "got [$got]"; fi
 
-    # an explicit token never rides the router: main spent reads as main's refusal,
-    # and `read` reads the read token's own number
     new_case
     got=$( . "$SCRIPT_DIR/gh-read.sh"; export GHB_STUB_MAIN_SPENT=1 GH_READ_ENV_ROOT="$ROOT/ghr-root" PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR"; unset GH_TOKEN GITHUB_TOKEN
         GHB_STUB_REMAINING=4321 ghb_read main; m="$?:$GHB_REMAINING:$GHB_STATE"; GHB_STUB_REMAINING=4321 ghb_read read; echo "$m $?:$GHB_REMAINING:$GHB_STATE" )
@@ -320,14 +317,12 @@ else
     got=$( export GH_READ_ENV_ROOT="$ROOT/emptyroot" PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR"; ghb_read read; echo "$?:$GHB_STATE" )
     if [ "$got" = "1:none" ]; then pass "7k ghb_read read with no read token: state none, no number"; else fail "7k no read token" "got [$got]"; fi
 
-    # a hung GitHub costs one probe timeout
     new_case
     t0=$SECONDS
     got=$( export PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR" GHB_STUB_HANG=30 GHQ_PROBE_TIMEOUT=1; ghb_read; echo "$?:$GHB_STATE" )
     el=$((SECONDS - t0))
     if [ "$got" = "1:timed-out" ] && [ "$el" -le 4 ]; then pass "7l a hung probe returns timed-out within its bound (${el}s)"; else fail "7l hung probe" "got [$got] in ${el}s"; fi
 
-    # a reset in the year 2100 is no GitHub reset: --max-wait 0 must not sleep until then
     new_case
     echo 4102444800 > "$CASE_DIR/exhausted"
     unit 0 >/dev/null 2>&1; rc=$?

@@ -2,11 +2,6 @@
 # gh-quota.sh — one quota gate for every GitHub caller. Sourced, never executed.
 # bash 3.2-safe: no mapfile, readarray, associative arrays, flock, or GNU-only date.
 #
-# WHY: the fleet spends one hourly GraphQL budget per token. When it ran out,
-# gates named a false cause ("a finding has no valid disposition", "0 free
-# tickets") and scans spent main's last points. This file reads the quota once
-# per tick, lets scans pause under a floor, and words every refusal the same way.
-#
 # Three classes of caller:
 #   scan   ghq_scan_gate before spending; paused = nothing spent, no fallback to main
 #   gate   never pauses on a number; reads quota.tsv only to word a refusal it got
@@ -69,8 +64,6 @@ ghq_is_rate_limited() {
     printf '%s' "${1:-}" | grep -i -E 'rate limit|rate_limit|abuse detection|secondary rate' >/dev/null 2>&1
 }
 
-# The same shapes gh-graphql-callers.sh charges: api graphql, pr (but diff),
-# issue, repo, project and label spend GraphQL; the rest spend core.
 ghq_bucket_of() {
     local a a1="" a2="" graphql=0
     for a in "$@"; do
@@ -93,7 +86,6 @@ ghq_routes() {
     esac
 }
 
-# _ghq_observed <file> — the oldest observed epoch in quota.tsv; empty when absent or corrupt.
 _ghq_observed() {
     [ -s "$1" ] || return 0
     awk -F'\t' '
@@ -103,7 +95,7 @@ _ghq_observed() {
     ' "$1" 2>/dev/null
 }
 
-_ghq_row() { # <token> <bucket> — one row from the GHB_* the last probe set
+_ghq_row() {
     local st="${GHB_STATE:-unreadable}"
     case "$st" in ok|refused|timed-out) ;; *) st=unreadable ;; esac
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "${GHB_REMAINING:--}" "${GHB_LIMIT:--}" \
@@ -111,7 +103,7 @@ _ghq_row() { # <token> <bucket> — one row from the GHB_* the last probe set
 }
 
 ghq_refresh() {
-    local dir f obs now start tok bucket stop=0 rows="" probe_t left
+    local dir f obs now start tok bucket stop=0 rows="" probe_t left budget=20
     dir=$(_ghq_dir)
     f="$dir/quota.tsv"
     now=$(date +%s)
@@ -121,11 +113,9 @@ ghq_refresh() {
     case "$probe_t" in ''|*[!0-9]*) probe_t=10 ;; esac
     start=$SECONDS
     for tok in main read; do
-        # a station with no read token keeps main's two rows only
         if [ "$tok" = read ] && [ -z "$(_ghb_read_token)" ]; then break; fi
         for bucket in graphql core; do
-            # each probe gets at most what is left of the 20 s, so the refresh cannot overrun it
-            left=$((20 - (SECONDS - start)))
+            left=$((budget - (SECONDS - start)))
             [ "$left" -lt "$probe_t" ] || left="$probe_t"
             if [ "$stop" -eq 1 ] || [ "$left" -le 0 ]; then
                 GHB_REMAINING=""; GHB_LIMIT=""; GHB_RESET=""; GHB_STATE=timed-out
@@ -196,7 +186,6 @@ ghq_scan_gate() {
     case "$floor" in ''|*[!0-9]*) floor=500 ;; esac
     caller="${caller##*/}"
     ghq_refresh
-    # no row (no read token, an unwritable dir): nothing says stop
     ghq_read "$tok" "$bucket" || return 0
     case "$GHQ_STATE" in
         timed-out)
@@ -213,11 +202,11 @@ ghq_scan_gate() {
     return 0
 }
 
-_ghq_union() { # <comma list> <comma list> — sorted, no repeats
+_ghq_union() {
     printf '%s,%s' "${1:-}" "${2:-}" | tr ',' '\n' | grep . | sort -u | paste -sd, -
 }
 
-_ghq_field() { # <file> <name>
+_ghq_field() {
     sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1
 }
 

@@ -569,9 +569,6 @@ OUT="$KEYRING_OUT"
 assert_rc "non-suite label run of the keyring fixture succeeds" 0 "$KEYRING_RC"
 assert_eq "negative control: a non-suite label leaves it unset" "keyring=unset" "$OUT"
 
-# 18b. Label "suite" exports a scratch HIMMEL_QUOTA_DIR (a suite's stubbed quota
-# never reaches the live ~/.himmel/state/quota), removes it after, and keeps a
-# caller's own. The keyring fixture is reused, so its cleanup covers this one.
 # shellcheck disable=SC2016  # the fixture expands the variable, not this printf
 printf '#!/usr/bin/env bash\necho "keyring=quota=${HIMMEL_QUOTA_DIR-unset} dir=$([ -d "${HIMMEL_QUOTA_DIR:-/nonexistent}" ] && echo yes)"\n' > "$KEYRING_ABS"
 rm -f "$SCRATCH"/quiet-run-suite-*.log

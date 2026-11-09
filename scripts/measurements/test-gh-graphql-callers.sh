@@ -106,7 +106,6 @@ total=$(wc -l <"$RLOG" 2>/dev/null | tr -d ' ')
 if [ "$rc" = 0 ] && [ "$n" = 3 ] && [ "$total" = 3 ]; then ok "run attributes 3 GraphQL calls to fakecaller.sh, skips REST"
 else bad "run attribution" "rc=$rc fakecaller=$n lines=$total out=$(cat "$TMP/run.out")"; fi
 
-# --- the cost follows gh-quota.sh's bucket rule on every shape ---------------
 disagree=$(
     # shellcheck source=scripts/lib/gh-quota.sh
     . "$ROOT/scripts/lib/gh-quota.sh"

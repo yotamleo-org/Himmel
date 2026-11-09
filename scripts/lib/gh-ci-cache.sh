@@ -416,7 +416,6 @@ EOF
     return "$rc"
 }
 
-# the rate-limit rule lives in gh-quota.sh (ghq_is_rate_limited)
 _cic_is_rl() { ghb_is_rate_limited "${1:-}"; }
 
 # _cic_budget_wait <force> — read the free rate_limit endpoint; when the
