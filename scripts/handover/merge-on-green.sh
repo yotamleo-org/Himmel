@@ -900,6 +900,18 @@ if [ ! -f "$CHECK_CI" ]; then
     audit "REFUSED reason=no-check-ci repo=$nwo pr=#$pr_num"
     exit 14
 fi
+# The PostToolUse hooks post the one CodeRabbit trigger per head, and a host that
+# runs no PostToolUse hook posts none; post it here when the ledger lacks this
+# head. Best effort: the merge goes on whatever the post does.
+# shellcheck source=scripts/lib/coderabbit-trigger-ledger.sh
+# shellcheck disable=SC1091
+if [ "$DRY_RUN" -eq 0 ] && . "$himmel_repo/scripts/lib/coderabbit-trigger-ledger.sh" 2>/dev/null \
+    && ! cr_trigger_ledger_has "$nwo" "$pr_num" "$sha"; then
+    # shellcheck disable=SC2329  # called by cr_trigger_post_review
+    warn() { echo "merge-on-green: $*" >&2; }
+    GH_CMD="$GH" cr_trigger_post_review "$sha" "$pr_num" "$nwo" 0 || true
+fi
+
 # CodeRabbit availability, for the DURABLE record. Read
 # IMMEDIATELY before check-ci.sh, and deliberately not earlier: check-ci.sh runs this same probe at its own startup, so the value
 # recorded here is only honest to the extent that the two reads see the same

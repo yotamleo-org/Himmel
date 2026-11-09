@@ -27,12 +27,13 @@ runtime npm dependencies are needed. The test-only dependency is `fast-check`
 ## Statechart prerequisites and limits
 
 Java and TLC are **optional**: the other skills need neither. Once the runtime
-revision is validated, routine trusted checks run locally, with a small model in
-a scratch folder outside the repo. Use Node 22.18–22.x or 23.6+, Bun 1.1.5+, or
-Deno 2+. Run `bash scripts/machine-setup/setup-statechart.sh --install` once: it
-verifies Java 11+ (it never installs Java), fetches the pinned `tla2tools.jar`
-1.7.4, and records the absolute **`JAVA`** (executable) and **`TLA2TOOLS`** (jar)
-paths. `--check` re-verifies them and reports them. The jar's SHA-256:
+revision is validated, routine trusted checks may run on the station host, with a
+small finite model in a scratch folder outside the repo and the run bounded by
+`timeout`. Use Node 22.18–22.x or 23.6+, Bun 1.1.5+, or Deno 2+. Run
+`bash scripts/machine-setup/setup-statechart.sh --install` once: it verifies
+Java 11+ (it never installs Java), fetches the pinned `tla2tools.jar` 1.7.4, and
+records the absolute **`JAVA`** (executable) and **`TLA2TOOLS`** (jar) paths.
+`--check` re-verifies them and reports them. The jar's SHA-256:
 
 ```text
 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88

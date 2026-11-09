@@ -10,8 +10,9 @@ Every `SKILL.md` adds one HTML-comment line below its frontmatter naming source,
 sha and deviations. All ten retain upstream's `disable-model-invocation: true`.
 The new statechart tree is included in full, including scripts, references,
 upstream tests and fixtures. Java/TLC are optional prerequisites: once the
-runtime revision is validated, routine trusted checks run locally, and isolation
-(a VM) is for an unvalidated or changed runtime, untrusted executable views, and
+runtime revision is validated, routine trusted checks may run on the station host
+for a small finite model bounded by `timeout` (HIMMEL-9711), and isolation (a VM)
+is for an unvalidated or changed runtime, untrusted executable views, and
 destructive real-code replay. himmel's `scripts/machine-setup/setup-statechart.sh`
 owns installation and the skill stays check-only. No profile activation is part
 of this plugin update.
@@ -33,7 +34,7 @@ Paths below are relative to this directory; upstream paths are relative to
 | `skills/in-your-own-words/SKILL.md` | `pstack/skills/in-your-own-words/SKILL.md` | none |
 | `skills/create-formal-verification-skill/**` | `pstack/skills/create-formal-verification-skill/**` | none; the statechart link now resolves locally |
 | `skills/maintain-formal-verification-skill/**` | `pstack/skills/maintain-formal-verification-skill/**` | SKILL.md permits mutation probes only in a disposable copy, discarded afterward; never mutate the user's product working tree without their request |
-| `skills/statechart/SKILL.md` | `pstack/skills/statechart/SKILL.md` | replaces first-run mise installation with absolute JAVA/TLA2TOOLS prerequisites that himmel's `setup-statechart.sh` provisions (the skill never installs them); missing prerequisites stop the check; trusted view stays in scratch; defect unconfirmed until real-code replay; all-hold evidence only for bounded code-as-written models, never a model with real race windows closed; vendored SKILL.md sha256 `0c59a0626fce51c4fd778a69d4f87fa9972879ff3970cef7958e139038ebbe47` (after the himmel edit; upstream sha unchanged in vendor-hashes.json) |
+| `skills/statechart/SKILL.md` | `pstack/skills/statechart/SKILL.md` | replaces first-run mise installation with absolute JAVA/TLA2TOOLS prerequisites that himmel's `setup-statechart.sh` provisions (the skill never installs them); station host allowed for a small finite model bounded by `timeout` (HIMMEL-9711); missing prerequisites stop the check; trusted view stays in scratch; defect unconfirmed until real-code replay; all-hold evidence only for bounded code-as-written models, never a model with real race windows closed; vendored SKILL.md sha256 `ea76b50afad76d2aa3339a8ba5787f08c9d74618c4a3c17cc7806ea1c5ef32d8` (after the himmel edit; upstream sha unchanged in vendor-hashes.json) |
 | `skills/statechart/references/render.md` | `pstack/skills/statechart/references/render.md` | drops the pele@1.9.0 installation; use existing docs-site Pele 1.10.0, or report rendering blocked; upstream API options, colors and CSS retained (audit U5) |
 | `skills/statechart/scripts/run.ts` | `pstack/skills/statechart/scripts/run.ts` | removes mise discovery/install and its installer-only helper; requires absolute JAVA/TLA2TOOLS paths, executable Java and the pinned tla2tools 1.7.4 jar SHA-256 before any Java process; missing/invalid prerequisites throw, CLI exits 2; no download/install fallback |
 | `skills/statechart/scripts/statechart.ts` | `pstack/skills/statechart/scripts/statechart.ts` | bytes verbatim; executable bit set to satisfy the repository's shebang check |
@@ -83,9 +84,10 @@ the three added skills: both formal skills are safe; statechart is caution
 woman-technologist emoji test fixture (`scripts/test/labels.ts:163`), verified
 as test data rather than an instruction. No critical hits were reported. Do not execute a model or view obtained from an
 untrusted archive. Once the runtime revision is validated, routine trusted checks
-run locally with the prerequisites `setup-statechart.sh` verifies; a VM is for an
-unvalidated or changed runtime, untrusted executable views, and destructive
-real-code replay. The station prerequisite tests import the runtime without installing
+may run on the station host for a small finite model (HIMMEL-9711), with the
+prerequisites `setup-statechart.sh` verifies; a VM is for an unvalidated or
+changed runtime, untrusted executable views, and destructive real-code replay.
+The station prerequisite tests import the runtime without installing
 or invoking Java; HIMMEL-6690 has explicit operator approval for that execution.
 
 TLC 1.7.4 SHA-256 (same pin as upstream):
