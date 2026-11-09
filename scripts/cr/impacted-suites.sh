@@ -1083,7 +1083,7 @@ grep_narrowed() {
     ( cd "$narrow" || exit 3
       LC_ALL=C grep -r -l -Z -a -E -f "$pf" ) > "$work/narrow.hits" || grep_rc=$?
     if [ "$grep_rc" -gt 1 ]; then
-        echo "impacted-suites: git grep failed (rc=$grep_rc) ${what} — cannot tell which suites are impacted" >&2
+        echo "impacted-suites: grep failed (rc=$grep_rc) ${what} — cannot tell which suites are impacted" >&2
         exit 2
     fi
     tr '\0' '\n' < "$work/narrow.hits" > "$out" || io_fail "reading ${what}"
