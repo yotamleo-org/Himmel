@@ -234,10 +234,18 @@ _rcd_child() {
     rcd_pid=$!
     wait "$rcd_pid"
 }
-# _rcd_term - forward the TERM to the child, wait for its cleanup, exit 143 (the EXIT trap removes the scratch files).
+# _rcd_kill_tree <pid> - TERM a process and everything under it, children first, so no stalled gh outlives a cancel.
+# Without pgrep the descendants are not found and only <pid> is signalled.
+# shellcheck disable=SC2329  # reached only through _rcd_term, which the TERM trap invokes
+_rcd_kill_tree() {
+    local c
+    for c in $(pgrep -P "$1" 2>/dev/null); do _rcd_kill_tree "$c"; done  # swallow-ok: no pgrep or no children leaves just the pid itself to signal
+    kill -TERM "$1" 2>/dev/null
+}
+# _rcd_term - TERM the child's whole tree, wait for its cleanup, exit 143 (the EXIT trap removes the scratch files).
 # shellcheck disable=SC2329  # invoked by the TERM trap below, which shellcheck does not follow
 _rcd_term() {
-    [ -z "${rcd_pid:-}" ] || { kill -TERM "$rcd_pid" 2>/dev/null; wait "$rcd_pid" 2>/dev/null; }
+    [ -z "${rcd_pid:-}" ] || { _rcd_kill_tree "$rcd_pid"; wait "$rcd_pid" 2>/dev/null; }
     exit 143
 }
 
