@@ -3,11 +3,12 @@
 
 Reads the eval-runs ledger (lib/eval_runs.py) and the eval-changes ledger (lib/eval_feedback.py) and
 writes one Markdown page in plain words, its bottom line first (each eval's headline with its run day):
-how often the critics catch planted bugs and are right
-(review-panel), how often the judges let a bug past a GO (judge-accuracy), the proof-first share
-(self-reported) of merged PRs (pdd-share), the trend since the last
+how often the critics' findings key-match labelled target defects and how often they block labelled-clean
+changes (review-panel, automated proxies, not verified accuracy), how often the judges let a bug past a GO
+(judge-accuracy), the proof-first share (self-reported) of merged PRs (pdd-share), the trend since the last
 run of the same series, and each change the feedback step made with its re-measured result. The page
-carries no metric names: a number with no sentence here is not shown.
+carries no metric names: a number with no sentence here is not shown. A review-panel trend compares two rows
+only when both name one known scorer_sha256: a repaired scorer is a new series.
 
   review-page.py [--ledger P] [--changes P] [--out FILE]
   review-page.py --panel [--cr-ledger P] [--until TS] [--min-findings N] [--out FILE]
@@ -88,13 +89,22 @@ def plain(name):
     return name.replace("-", " ").replace("_", " ").replace(".", " ")
 
 
+def scorer(row):
+    """The row's known scorer_sha256, else None."""
+    s = (row.get("meta") or {}).get("scorer_sha256")
+    return s if isinstance(s, str) and re.match(r"^[0-9a-f]{64}$", s) else None
+
+
 def latest(rows, eval_id):
-    """(newest usable row, the newest earlier row of the same series) for one eval."""
+    """(newest usable row, the newest earlier row of the same series) for one eval. A review-panel series also needs
+    one known scorer on both rows, so no trend crosses a scorer change or a row with no scorer identity."""
     mine = [r for r in rows if r["eval"] == eval_id and r["status"] in ("ok", "partial")]
     if not mine:
         return None, None
     cur = mine[-1]
     prev = [r for r in mine[:-1] if r["confighash"] == cur["confighash"]]
+    if eval_id == "review-panel":
+        prev = [r for r in prev if scorer(cur) is not None and scorer(r) == scorer(cur)]
     return cur, (prev[-1] if prev else None)
 
 
@@ -124,6 +134,11 @@ def count(m, key):
     return int(v) if eval_runs._num(v) else 0
 
 
+def proxy_key(m, w, new, old):
+    """The explicit proxy name score.py writes, else the legacy key of the same formula."""
+    return "%s.%s" % (w, new) if ("%s.%s" % (w, new)) in m else "%s.%s" % (w, old)
+
+
 def critic_lines(cur, prev):
     m = cur["metrics"]
     who = list((cur.get("config") or {}).get("critics") or []) + ["panel"]
@@ -134,26 +149,29 @@ def critic_lines(cur, prev):
                    if k.startswith(w + ".class.") and k.endswith(".recall") and eval_runs._num(m[k])}
         n = sum(count(m, "%s.class.%s.n" % (w, c)) for c in classes)
         said = []
-        s = rate(cur, prev, w + ".recall")
+        key = proxy_key(m, w, "key_match_recall", "recall")
+        s = rate(cur, prev, key)
         if s and n:
-            said.append("%s caught %d of %d planted bugs%s." % (name, round(m[w + ".recall"] * n), n, s))
+            said.append("%s key-matched %d of %d labelled target defects%s." % (name, round(m[key] * n), n, s))
         f = count(m, w + ".findings")
-        s = rate(cur, prev, w + ".precision")
+        key = proxy_key(m, w, "key_match_precision", "precision")
+        s = rate(cur, prev, key)
         if s and f:
-            said.append("%s was right %d times in %d findings%s." % (name, round(m[w + ".precision"] * f), f, s))
+            said.append("%s: %d of %d findings key-matched a labelled defect%s." % (name, round(m[key] * f), f, s))
         c = count(m, w + ".clean_scored")
-        s = rate(cur, prev, w + ".fp_rate", lower_better=True)
+        key = proxy_key(m, w, "labelled_clean_block_rate", "fp_rate")
+        s = rate(cur, prev, key, lower_better=True)
         if s and c:
-            said.append("%s raised a blocking finding on %d of %d clean changes%s." %
-                        (name, round(m[w + ".fp_rate"] * c), c, s))
+            said.append("%s: labelled-clean blocking on %d of %d labelled-clean changes%s." %
+                        (name, round(m[key] * c), c, s))
         if classes:
             cls = min(sorted(classes), key=lambda c: classes[c])
             cn = count(m, "%s.class.%s.n" % (w, cls))
-            said.append("%s's weakest kind of bug: %s, caught %d of %d." %
+            said.append("%s's weakest kind of labelled defect: %s, key-matched %d of %d." %
                         (name, BUG_CLASSES.get(cls, plain(cls)), round(classes[cls] * cn), cn))
         out += ["- " + x for x in said]
     if "coderabbit" not in who:
-        out.append("- CodeRabbit is not measured yet: it needs a scratch pull request.")
+        out.append("- CodeRabbit history is reported separately; controlled recall is not measured here.")
     return out
 
 
@@ -284,7 +302,8 @@ def bottom_lines(rows):
     """Each eval's headline line with its run day: the whole panel's catch when it was scored (else the first
     critic's), bugs past a GO, the proof-first share. A run that scored nothing says so."""
     out = []
-    for eval_id, build, mark, name in (("review-panel", critic_lines, " planted bugs: ", "Planted bugs"),
+    for eval_id, build, mark, name in (("review-panel", critic_lines, " labelled target defects: ",
+                                        "Labelled target defects (key match)"),
                                        ("judge-accuracy", judge_lines, "- A bug got past a GO", "Bugs past a GO"),
                                        ("pdd-share", proof_lines, "- Proof-first share (self-reported): ",
                                         "Proof-first share (self-reported)")):
@@ -306,12 +325,15 @@ def page(rows, changes):
            "scripts/eval/README.md.", "",
            "## Bottom line", ""]
     out += bottom_lines(rows) or ["No run yet."]
-    out += ["", "## The critics on planted bugs", ""]
+    out += ["", "## The critics on labelled test changes", ""]
     cur, prev = latest(rows, "review-panel")
     if cur is None:
         out.append("No run yet.")
     else:
-        out += ["Run of %s, %d test changes.%s" % (day(cur["ts"]), cur["n"] or 0, level(cur)), ""] + critic_lines(cur, prev)
+        out += ["Run of %s, %d test changes.%s" % (day(cur["ts"]), cur["n"] or 0, level(cur)), "",
+                "These are automated key-match proxies, not verified accuracy: a finding counts when it sits at a "
+                "labelled defect's place and its words match the defect's kind, and a labelled-clean change counts "
+                "as blocked on any blocking finding, whether or not that finding is right.", ""] + critic_lines(cur, prev)
     out += ["", "## The judges", ""]
     cur, prev = latest(rows, "judge-accuracy")
     out += ["No run yet."] if cur is None else judge_lines(cur, prev)

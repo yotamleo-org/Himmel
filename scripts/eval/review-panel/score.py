@@ -17,6 +17,7 @@ row per sweep into the eval-runs ledger (scripts/eval/lib/eval_runs.py).
                                            outputs whose swept.json is unclean or names other hashes)
   score.py verify-row <row-json> <outputs-dir> [--tree REV] [--repo R]   exit 1 unless the row re-scores so
   score.py gate <base> <head> [--target-class C]... [--repo R]   keep | no-loss | loss | unmeasured | mismatch
+  score.py scorer-identity [--json]        the running scorer's identity (read-only; rows carry it)
 
 Inputs. fixtures/case-NN.patch are the frozen synthetic diffs the panel reviews,
 fixtures/real-*.patch real escapes (a multi-file diff with a `base` sha, the
@@ -46,7 +47,22 @@ counts location hits only (the upper bound, so a brittle keyword list shows
 as a gap, not a silent loss); recall_gating counts hits at Critical or
 Important, the severities the CR gate blocks on. precision = findings that
 hit some defect / all findings. fp_rate = clean twins with >= 1 Critical or
-Important finding / clean twins scored.
+Important finding / clean twins scored. These are automated diagnostic proxies,
+not verified accuracy; each is also written under its explicit name:
+key_match_recall, key_match_recall_gating, location_match_recall,
+key_match_precision, labelled_clean_block_rate.
+
+Participation. case_participation() reads each case's header N/M,
+finding slugs and stdout/stderr availability receipts once, and gives each
+rostered critic a state (answered | unavailable | unknown); every per-critic
+denominator and the responded counts read only that record, so a critic is
+scored on a case only when it answered it.
+
+Scorer identity. Every row names the scorer that RAN it:
+running_scorer_identity() is this script's own checkout, its HEAD and the
+loaded score.py / wilson.py bytes checked against that HEAD before and after
+scoring. Edited or foreign scorer code gives scorer_sha256 null, a
+diagnostic-only row. The gate counts only rows of the running scorer.
 
 Exit: 0 scored / lint clean; 1 lint problems; 2 refused input.
 Stdlib only; no network, no model call.
@@ -133,7 +149,22 @@ CITATION_GUARD = re.compile(r"^- \[" + GUARD + r"-[0-9a-f]{16}\]: \S")
 GUARD_SHAPED = re.compile(r"^- \[" + GUARD + r"-")
 FINDING_SHAPED = re.compile(r"^- \[[A-Za-z0-9._-]+-\d+\]")
 UNAVAILABLE = re.compile(r"^- ([A-Za-z0-9._-]+): unavailable\b")
-AVAIL_UNAVAILABLE = re.compile(r"^panel-availability: ([A-Za-z0-9._-]+) unavailable\b", re.M)
+HEADER = re.compile(r"^# Critic Panel Review \((\d+)/(\d+) critics responded\)\s*$")
+AVAIL = re.compile(r"^panel-availability: ([A-Za-z0-9._-]+) (.*)$")
+AVAIL_OK = re.compile(r"^(?:ok(?: responding-model\(([^)]*)\))?|fallback\(([^)]*)\))\s*$")
+REASON = re.compile(r"\breason=([A-Za-z0-9._-]+)")
+# The panel's absence reasons that are protocol, not failure: the member never ran (tier filter, trivial-diff cap) and
+# is outside the header count, or it was counted and skipped itself (an api lane off). A panel-deadline receipt
+# reason is queued only for a member the deadline stopped before launch, outside the header count.
+SKIP_OUTSIDE_HEADER = ("tier-excluded", "keep-one-skipped")
+SKIP_IN_HEADER = ("critic-skipped",)
+PRE_LAUNCH = "panel-deadline"
+CATEGORIES = ("answer", "protocol-skip", "failure", "inconsistent", "unknown")
+# The explicit names of the automated proxies (design "Measurement contract"); each legacy key keeps its formula.
+PROXY_ALIASES = {"key_match_recall": "recall", "key_match_recall_gating": "recall_gating",
+                 "location_match_recall": "recall_loc", "key_match_precision": "precision",
+                 "labelled_clean_block_rate": "fp_rate"}
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
 def norm_path(p):
@@ -335,12 +366,13 @@ def lint(fixtures, key_path, min_real=0, src=None):
 
 def parse_review(text):
     """(findings, unavailable critics, performed). A finding is a dict with
-    critic, sev, file, line, text; bullets outside the three severity
+    critic, sev, file, line, text, at (its stdout line number); bullets outside the three severity
     sections (re-raises, dropped citations) are not findings. The panel's
-    citation-guard Critical is one, under the pseudo-critic GUARD."""
-    findings, unavailable, performed, sev, in_note = [], set(), True, None, False
+    citation-guard Critical is one, under the pseudo-critic GUARD. unavailable maps each critic an
+    unavailable bullet names to (its reason= or None, the bullet's line number)."""
+    findings, unavailable, performed, sev, in_note = [], {}, True, None, False
     declared, counted, malformed = {}, {}, 0
-    for line in text.splitlines():
+    for at, line in enumerate(text.splitlines(), 1):
         m = SECTION.match(line)
         if m:
             name = m.group(1)
@@ -358,7 +390,8 @@ def parse_review(text):
             continue
         u = UNAVAILABLE.match(line)
         if u and (in_note or not performed):
-            unavailable.add(u.group(1))
+            r = REASON.search(line)
+            unavailable.setdefault(u.group(1), (r.group(1) if r else None, at))
             continue
         # Count only bullets BULLET parses: a malformed one (no [file:line])
         # leaves the count short of the heading, so the case is unscored
@@ -370,14 +403,14 @@ def parse_review(text):
         # defect); member_metrics counts it for fp_rate only.
         if sev and CITATION_GUARD.match(line):
             counted[sev] += 1
-            findings.append({"critic": GUARD, "sev": sev, "text": line, "file": "", "line": 0})
+            findings.append({"critic": GUARD, "sev": sev, "text": line, "file": "", "line": 0, "at": at})
             continue
         b = BULLET.match(line)
         if b and sev:
             critic = b.group(1)
             counted[sev] += 1
             findings.append({"critic": critic, "sev": sev, "text": b.group(3),
-                             "file": norm_path(b.group(4)), "line": int(b.group(5))})
+                             "file": norm_path(b.group(4)), "line": int(b.group(5)), "at": at})
         elif sev and (FINDING_SHAPED.match(line) or GUARD_SHAPED.match(line)):
             # Finding-shaped but rejected by BULLET: flagged apart from the
             # declared count, which a hand-edited heading can make agree.
@@ -389,6 +422,117 @@ def parse_review(text):
             or declared != counted or malformed:
         performed = False
     return findings, unavailable, performed
+
+
+def _absence(reason):
+    """(category, effective, header_included) of an unavailable receipt naming that reason."""
+    if reason in SKIP_OUTSIDE_HEADER:
+        return "protocol-skip", False, False
+    if reason in SKIP_IN_HEADER:
+        return "protocol-skip", False, True
+    if reason == PRE_LAUNCH:
+        return "failure", True, False
+    if reason is None:
+        return "unknown", None, None  # an unavailable receipt that names no reason says neither why nor when
+    return "failure", True, True
+
+
+def case_participation(roster, text, stderr, findings, performed):
+    """{critic: {state, category, effective, header_included, reason, evidence, responding_model}} for one case.
+
+    state is answered | unavailable | unknown; category answer | protocol-skip | failure | inconsistent | unknown;
+    evidence lists stdout:/stderr: line references, never raw text. An answer is a valid finding or an ok/fallback
+    receipt; an absence is an unavailable bullet or receipt. A critic with neither is an answer only when the header
+    N/M reconciles: M equals the header-counted critics and the N answer slots left are exactly those critics. Any
+    other unaccounted critic stays unknown (no failure reason is inferred), and an answer beside an absence, absences
+    that disagree, non-rostered finding slugs or impossible counts are inconsistent."""
+    rec = {s: {"answer": [], "absence": [], "other": [], "model": None} for s in roster}
+    foreign = False
+    for f in findings:
+        if f["critic"] == GUARD:
+            continue
+        if f["critic"] in rec:
+            rec[f["critic"]]["answer"].append("stdout:%d" % f.get("at", 0))
+        else:
+            foreign = True
+    for slug, (reason, at) in parse_review(text)[1].items():
+        if slug in rec:
+            rec[slug]["absence"].append((reason, "stdout:%d" % at))
+    for at, line in enumerate(stderr.splitlines(), 1):
+        m = AVAIL.match(line)
+        if not m or m.group(1) not in rec:
+            continue
+        r, rest, ref = rec[m.group(1)], m.group(2), "stderr:%d" % at
+        ok = AVAIL_OK.match(rest)
+        if ok:
+            r["answer"].append(ref)
+            r["model"] = ok.group(1) or ok.group(2) or r["model"]
+        elif rest.startswith("unavailable"):
+            reason = REASON.search(rest)
+            r["absence"].append((reason.group(1) if reason else None, ref))
+        else:
+            # fallback-failed / chain-stopped / budget-exhausted: the member was launched and counted
+            r["other"].append(ref)
+    header, header_ref = None, []
+    for at, line in enumerate(text.splitlines(), 1):
+        h = HEADER.match(line)
+        if h:
+            header, header_ref = (int(h.group(1)), int(h.group(2))), ["stdout:%d" % at]
+            break
+
+    out, pending = {}, []
+    for slug in roster:
+        r = rec[slug]
+        ev = r["answer"] + [ref for _, ref in r["absence"]] + r["other"]
+        kinds = {_absence(reason) for reason, _ in r["absence"]}
+        if r["answer"] and r["absence"]:
+            out[slug] = _part("unknown", "inconsistent", None, None, "an answer and an unavailable receipt", ev)
+        elif len(kinds) > 1:
+            out[slug] = _part("unknown", "inconsistent", None, None, "unavailable receipts that disagree", ev)
+        elif r["absence"]:
+            cat, eff, hdr = kinds.pop()
+            if hdr is False and r["other"]:
+                hdr = True  # a fallback chain ran, so the member was counted before its deadline or skip
+            reasons = sorted({str(reason) for reason, _ in r["absence"]})
+            out[slug] = _part("unavailable", cat, eff, hdr, ",".join(reasons), ev)
+        elif r["answer"]:
+            out[slug] = _part("answered", "answer", True, True, "a finding or an ok receipt", ev, r["model"])
+        elif r["other"]:
+            out[slug] = _part("unavailable", "failure", True, True, "a fallback chain that never answered", ev)
+        else:
+            pending.append(slug)
+
+    def unknown_all(why):
+        for slug in roster:
+            out[slug] = _part("unknown", "inconsistent", None, None, why, out.get(slug, {}).get("evidence", []))
+    if foreign:
+        unknown_all("finding slugs outside the roster")
+        return out
+    if not performed or header is None:
+        for slug in pending:
+            out[slug] = _part("unknown", "unknown", None, None, "the review did not complete", [])
+        return out
+    n, m = header
+    counted = [s for s in roster if s not in pending and out[s]["header_included"] is True]
+    answered = sum(1 for s in out if out[s]["state"] == "answered")
+    absent = sum(1 for s in counted if out[s]["state"] == "unavailable")
+    if n > m or answered > n or absent > m - n or len(counted) > m:
+        unknown_all("header %d/%d cannot hold the receipts" % (n, m))
+        return out
+    phase_unknown = any(out[s]["header_included"] is None for s in out)
+    if pending and not phase_unknown and m == len(counted) + len(pending) and n - answered == len(pending):
+        for slug in pending:
+            out[slug] = _part("answered", "answer", True, True, "header %d/%d reconciles" % (n, m), header_ref)
+    else:
+        for slug in pending:
+            out[slug] = _part("unknown", "unknown", None, None, "no receipt and header %d/%d does not settle it"
+                              % (n, m), [])
+    return out
+
+
+def _part(state, category, effective, header, reason, evidence, model=None):
+    return {"state": state, "category": category, "effective": effective, "header_included": header,
+            "reason": reason, "evidence": list(evidence), "responding_model": model if state == "answered" else None}
 
 
 def loc_hit(f, d, window):
@@ -411,7 +555,8 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
         raise ValueError("--only names cases the key lacks: %s" % sorted(set(only) - set(cases)))
     leak_markers = (key["canary"],) + KEY_MARKERS
 
-    per_case, leaks, unscored, skipped = {}, [], [], {}
+    roster = sorted(set(critics))
+    per_case, leaks, unscored, case_evidence = {}, [], [], {}
     for cid in ids:
         md = os.path.join(outputs, cid + ".md")
         err = os.path.join(outputs, cid + ".err")
@@ -419,21 +564,19 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
         etext = open(err, encoding="utf-8", errors="replace").read() if os.path.isfile(err) else ""
         if any(m in text or m in etext for m in leak_markers):
             leaks.append(cid)
-        findings, unavailable, performed = parse_review(text)
+        findings, _, performed = parse_review(text)
         rc = os.path.join(outputs, cid + ".rc")
         if os.path.isfile(rc) and open(rc).read().strip() != "0":
             performed = False  # the panel exits 0 only when >= 1 critic responded
-        if not performed:
+        part = case_participation(roster, text, etext, findings, performed)
+        foreign = sorted({f["critic"] for f in findings} - set(roster) - {GUARD})
+        case_evidence[cid] = {"performed": performed and not foreign, "non_rostered": foreign, "critics": part}
+        # A finding of a critic the roster does not name is no participant and no completed case.
+        if not performed or foreign:
             unscored.append(cid)
             continue
-        per_case[cid] = (findings, unavailable)
-        # The panel prints an unavailable bullet on only some skipped cases; its stderr names the critic on all.
-        skipped[cid] = set(unavailable) | set(AVAIL_UNAVAILABLE.findall(etext))
-
-    seen = set(critics)
-    for findings, unavailable in per_case.values():
-        seen.update(f["critic"] for f in findings if f["critic"] != GUARD)
-    members = sorted(seen) + ["panel"]
+        per_case[cid] = (findings, part)
+    members = roster + ["panel"]
 
     metrics, ci, case_rows = {}, {}, {}
     n_defects = sum(len(cases[c]["defects"]) for c in ids)
@@ -445,21 +588,33 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
     metrics.update({"defects": n_defects, "cases": len(ids), "unscored": len(unscored),
                     "leaked": len(leaks)})
     status = "inconclusive" if (leaks or len(unscored) == len(ids)) else ("partial" if unscored else "ok")
-    # The cases each critic answered: one the panel named unavailable, by bullet or on stderr, did not respond to it.
+    # The cases each critic answered, from the same participation record the metrics read.
     responded = {"scored": len(per_case),
-                 "critics": {who: sum(1 for cid in per_case if who not in skipped[cid]) for who in members[:-1]}}
+                 "critics": {who: sum(1 for cid in per_case if per_case[cid][1][who]["state"] == "answered")
+                             for who in roster}}
+    coverage = {"scored": len(per_case), "critics": {
+        who: {cat: sum(1 for cid in per_case if per_case[cid][1][who]["category"] == cat) for cat in CATEGORIES}
+        for who in roster}}
+    # M2/M3 record execution provenance and the shared eligibility selector; until then no result is decision-grade.
+    reasons = ["protocol-provenance-not-yet-recorded"]
+    for cat, why in (("inconsistent", "participation-inconsistent"), ("unknown", "participation-unknown")):
+        if any(c[cat] for c in coverage["critics"].values()):
+            reasons.append(why)
     return {"status": status, "metrics": metrics, "ci": ci, "cases": case_rows, "responded": responded,
-            "leaks": leaks, "unscored": unscored, "critics": members[:-1], "window": window}
+            "leaks": leaks, "unscored": unscored, "critics": roster, "window": window,
+            "case_evidence": case_evidence, "coverage": coverage, "decision_eligible": False,
+            "ineligibility_reasons": reasons}
 
 
 def member_metrics(members, per_case, cases, window, prefix, metrics, ci, case_rows):
-    """Fill metrics and ci (names prefixed) and the panel's case_rows from the scored cases."""
+    """Fill metrics and ci (names prefixed) and the panel's case_rows from the scored cases. A critic counts on a
+    case only when its participation record says it answered; the panel counts every completed case."""
     for who in members:
         hit = hit_loc = hit_gate = 0
         defects = true_f = all_f = clean_n = clean_fp = seeded_n = 0
         by_class = {c: [0, 0] for c in CLASSES}
-        for cid, (findings, unavailable) in sorted(per_case.items()):
-            if who != "panel" and who in unavailable:
+        for cid, (findings, part) in sorted(per_case.items()):
+            if who != "panel" and part[who]["state"] != "answered":
                 continue
             blocks = findings if who == "panel" else [f for f in findings if f["critic"] == who]
             mine = [f for f in blocks if f["critic"] != GUARD]
@@ -492,6 +647,7 @@ def member_metrics(members, per_case, cases, window, prefix, metrics, ci, case_r
             "recall_gating": (hit_gate, defects), "precision": (true_f, all_f),
             "fp_rate": (clean_fp, clean_n),
         }
+        vals.update({new: vals[old] for new, old in PROXY_ALIASES.items()})
         for name, (k, n) in vals.items():
             metrics["%s%s.%s" % (prefix, who, name)] = ratio(k, n)
             b = wilson(k, n)
@@ -634,6 +790,71 @@ def outputs_sha256(outputs):
     return h.hexdigest()
 
 
+SCORER_FILES = (REL + "/score.py", "scripts/eval/lib/wilson.py")
+
+
+def scorer_digest(repo, rev):
+    """64-hex over the scorer files' blobs at <rev> of repo: a pure tree helper. Row writers never call it with the
+    gate's --repo or --tree; they take running_scorer_identity()."""
+    h = hashlib.sha256()
+    for p in SCORER_FILES:
+        b = tree_blob(repo, rev, p)
+        if b is None:
+            raise ValueError("%s has no %s" % (rev, p))
+        h.update(p.encode() + b"\0")
+        h.update(_sha(b).encode())
+    return h.hexdigest()
+
+
+def running_scorer_identity():
+    """{scorer_repo, scorer_gitsha, scorer_sha256, scorer_clean, reason} of the code scoring now: this script's own
+    checkout and HEAD, with the score.py and wilson.py actually loaded checked byte for byte against that HEAD.
+    A missing checkout, or a loaded file that is edited, untracked or loaded from elsewhere, gives scorer_sha256
+    None and says why: such a result is diagnostic only."""
+    out = {"scorer_repo": None, "scorer_gitsha": None, "scorer_sha256": None, "scorer_clean": False, "reason": ""}
+    try:
+        repo = toplevel(HERE)
+        head = _git(repo, "rev-parse", "HEAD").decode().strip()
+    except ValueError as e:
+        out["reason"] = "the running scorer has no git checkout and HEAD: %s" % e
+        return out
+    out.update(scorer_repo=repo, scorer_gitsha=head)
+    loaded = {REL + "/score.py": os.path.abspath(__file__),
+              "scripts/eval/lib/wilson.py": os.path.abspath(sys.modules[wilson.__module__].__file__)}
+    problems = []
+    for rel in SCORER_FILES:
+        path = loaded[rel]
+        if os.path.realpath(path) != os.path.realpath(os.path.join(repo, rel)):
+            problems.append("%s is loaded from outside the scorer checkout" % rel)
+            continue
+        blob = tree_blob(repo, head, rel)
+        if blob is None:
+            problems.append("%s is not committed at HEAD" % rel)
+            continue
+        with open(path, "rb") as fh:
+            if fh.read() != blob:
+                problems.append("%s differs from HEAD" % rel)
+    if problems:
+        out["reason"] = "; ".join(problems)
+        return out
+    out.update(scorer_sha256=scorer_digest(repo, head), scorer_clean=True)
+    return out
+
+
+def known_identity(ident):
+    sha = ident.get("scorer_sha256")
+    return ident.get("scorer_clean") is True and isinstance(sha, str) and HEX64.match(sha) is not None
+
+
+def settled_identity(before):
+    """The identity a row may carry: `before` (taken before scoring) only when the scorer and HEAD are unchanged now."""
+    after = running_scorer_identity()
+    if after != before:
+        return dict(after, scorer_sha256=None, scorer_clean=False,
+                    reason="the scorer or its HEAD changed while scoring")
+    return before
+
+
 STAMP = "swept.json"
 
 
@@ -686,21 +907,26 @@ def check_stamp(repo, rev, outputs):
 
 
 def gate_row(repo, rev, outputs):
-    """The results.jsonl row of one sweep's outputs, scored against <rev>'s key and roster."""
+    """The results.jsonl row of one sweep's outputs, scored against <rev>'s key and roster, naming the scorer that
+    ran (never a scorer in <rev> or repo)."""
     if not os.path.isdir(outputs):
         raise ValueError("no outputs dir: %s" % outputs)
     check_stamp(repo, rev, outputs)
+    before = running_scorer_identity()
     with tempfile.NamedTemporaryFile(suffix=".json") as kf:
         kf.write(tree_key(repo, rev))
         kf.flush()
         res = score(outputs, None, kf.name, sweep_roster(outputs, tree_roster(repo, rev)))
     m = res["metrics"]
     keep = ("cases", "defects", "unscored", "leaked")
+    ident = settled_identity(before)
     return {"run_id": os.path.basename(os.path.abspath(outputs)), "tree": _git(repo, "rev-parse", rev).decode().strip(),
             "cbs_hash": cbs_hash(repo, rev), "confighash": confighash(repo, rev), "status": res["status"],
             "metrics": {k: v for k, v in m.items() if k in keep or (k.startswith("panel.") and ".class." not in k)},
             "class_recall": {c: m["panel.class.%s.recall" % c] for c in CLASSES if "panel.class.%s.recall" % c in m},
-            "responded": res["responded"], "outputs_sha256": outputs_sha256(outputs)}
+            "responded": res["responded"], "outputs_sha256": outputs_sha256(outputs),
+            "scorer_sha256": ident["scorer_sha256"] if known_identity(ident) else None,
+            "scorer_gitsha": ident["scorer_gitsha"], "scorer_reason": ident["reason"] or None}
 
 
 def panel_mismatch(rows, base_hash, head_hash, confighash):
@@ -764,6 +990,17 @@ def panel_mismatch(rows, base_hash, head_hash, confighash):
 
 
 def gate(repo, base, head, target_classes=()):
+    """The verdict over the rows the RUNNING scorer produced: rows of another or no scorer are dropped (and counted)
+    before the roster check and gate_verdict's first-row-wins selection, so a re-score of an old sweep by this scorer
+    is the row read. No clean running identity, or no row of it, is unmeasured.
+    ponytail: M1's interim filter; M3 moves selection into one shared eligibility selector in eval_feedback.py."""
+    b, h, c = cbs_hash(repo, base), cbs_hash(repo, head), confighash(repo, head)
+    where = {"baseline_cbs_hash": b, "head_cbs_hash": h, "confighash": c}
+    ident = running_scorer_identity()
+    if not known_identity(ident):
+        return "unmeasured", dict(where, scorer_sha256=None, reason="the running scorer has no clean identity (%s): "
+                                  "no eval row can be matched to it" % (ident["reason"] or "no valid digest"))
+    want = ident["scorer_sha256"]
     raw = tree_blob(repo, head, RESULTS) or b""
     rows = []
     for ln in raw.decode(errors="replace").splitlines():
@@ -773,12 +1010,21 @@ def gate(repo, base, head, target_classes=()):
             continue
         if isinstance(r, dict):
             rows.append(r)
-    b, h, c = cbs_hash(repo, base), cbs_hash(repo, head), confighash(repo, head)
-    mismatch = panel_mismatch(rows, b, h, c)
+    mine = [r for r in rows if r.get("scorer_sha256") == want]
+    legacy = sum(1 for r in rows if not r.get("scorer_sha256"))
+    excluded = {"without_scorer_sha256": legacy, "other_scorer": len(rows) - len(mine) - legacy}
+    where.update(scorer_sha256=want, scorer_excluded=excluded)
+    said = "%d without scorer_sha256, %d of another scorer" % (legacy, excluded["other_scorer"])
+    if not mine:
+        return "unmeasured", dict(where, reason="no eval rows scored by the running scorer %s (excluded: %s)"
+                                  % (want[:12], said))
+    mismatch = panel_mismatch(mine, b, h, c)
     if mismatch:
-        return "mismatch", {"reason": mismatch, "baseline_cbs_hash": b, "head_cbs_hash": h, "confighash": c}
-    verdict, info = eval_feedback.gate_verdict(rows, b, h, c, target_classes)
-    return verdict, dict(info, baseline_cbs_hash=b, head_cbs_hash=h, confighash=c)
+        return "mismatch", dict(where, reason=mismatch)
+    verdict, info = eval_feedback.gate_verdict(mine, b, h, c, target_classes)
+    if verdict == "unmeasured" and len(mine) < len(rows):
+        info = dict(info, reason="%s (rows of other scorers excluded: %s)" % (info["reason"], said))
+    return verdict, dict(info, **where)
 
 
 def report(res):
@@ -790,13 +1036,20 @@ def report(res):
 
     def fmt(x):
         return "  -  " if x is None else "%.2f" % x
-    out.append("%-12s %-8s %-8s %-8s %-9s %-8s %s" % ("critic", "recall", "loc", "gating", "precision", "fp_rate", "n"))
+    out.append("automated proxies, not verified accuracy: key-match = a finding at a labelled defect's place whose "
+               "words match its class; location-match = the place only; labelled-clean blocking = a Critical or "
+               "Important finding on a labelled-clean twin")
+    out.append("%-12s %-9s %-9s %-9s %-9s %-9s %s" % ("critic", "key-match", "location", "key-gate", "key-prec",
+                                                      "clean-blk", "n"))
     for who in res["critics"] + ["panel"]:
-        out.append("%-12s %-8s %-8s %-8s %-9s %-8s n=%d seeded, %d clean, %d findings" % (
-            who, fmt(m.get(who + ".recall")), fmt(m.get(who + ".recall_loc")),
-            fmt(m.get(who + ".recall_gating")), fmt(m.get(who + ".precision")),
-            fmt(m.get(who + ".fp_rate")), m.get(who + ".seeded_scored", 0),
+        out.append("%-12s %-9s %-9s %-9s %-9s %-9s n=%d labelled-defect cases, %d labelled-clean, %d findings" % (
+            who, fmt(m.get(who + ".key_match_recall")), fmt(m.get(who + ".location_match_recall")),
+            fmt(m.get(who + ".key_match_recall_gating")), fmt(m.get(who + ".key_match_precision")),
+            fmt(m.get(who + ".labelled_clean_block_rate")), m.get(who + ".seeded_scored", 0),
             m.get(who + ".clean_scored", 0), m.get(who + ".findings", 0)))
+    for who, cats in sorted(res.get("coverage", {}).get("critics", {}).items()):
+        out.append("%-12s participation over %d scored cases: %s" % (
+            who, res["coverage"]["scored"], ", ".join("%s %d" % (c, cats[c]) for c in CATEGORIES)))
     for who in res["critics"] + ["panel"]:
         parts = ["%s %s (n=%d)" % (c, fmt(m.get("%s.class.%s.recall" % (who, c))), m.get("%s.class.%s.n" % (who, c), 0))
                  for c in CLASSES if ("%s.class.%s.n" % (who, c)) in m]
@@ -840,6 +1093,8 @@ def main(argv=None):
     pg.add_argument("--target-class", action="append", default=[], choices=CLASSES)
     for p in list(tree_cmds.values()) + [pst, pe, pv, pg]:
         p.add_argument("--repo", help="the git repo the revs name (default this checkout)")
+    pid = sub.add_parser("scorer-identity")
+    pid.add_argument("--json", action="store_true")
     ps.add_argument("--outputs", required=True)
     ps.add_argument("--critics", default="")
     ps.add_argument("--only", default="")
@@ -861,6 +1116,13 @@ def main(argv=None):
             print("lint: %s" % p, file=sys.stderr)
         print("review-panel lint: %d seeded, %d clean, %d problem(s)" % (n_seeded, n_clean, len(problems)))
         return 1 if problems else 0
+    if a.cmd == "scorer-identity":
+        ident = running_scorer_identity()
+        if a.json:
+            print(json.dumps(ident, sort_keys=True))
+        else:
+            print(ident["scorer_sha256"] or "null (%s)" % ident["reason"])
+        return 0
     if a.cmd in tree_cmds or a.cmd in ("stamp", "export-row", "verify-row", "gate"):
         try:
             return tree_main(a)
@@ -878,10 +1140,15 @@ def main(argv=None):
         if not critics:
             raise ValueError("--critics is required (the panel roster)")
         only = [c for c in a.only.split(",") if c]
+        before = running_scorer_identity()
         res = score(a.outputs, a.fixtures, a.key, critics, only or None, a.window)
+        ident = settled_identity(before)
     except (OSError, ValueError) as e:
         print("score.py: %s" % e, file=sys.stderr)
         return 2
+    scorer = {"scorer_sha256": ident["scorer_sha256"] if known_identity(ident) else None,
+              "scorer_gitsha": ident["scorer_gitsha"], "scorer_reason": ident["reason"] or None}
+    res.update(scorer)
     print(report(res))
     if a.json:
         with open(a.json, "w", encoding="utf-8") as fh:
@@ -891,7 +1158,10 @@ def main(argv=None):
         config = dict(eval_config(fixture_set_hash(a.fixtures, a.key, ids), res["critics"]), window=a.window)
         if a.model:
             config["critic_model"] = a.model
-        meta = dict(meta, leaks=res["leaks"], unscored=res["unscored"])
+        # The scorer identity rides in meta, outside the confighash; case_evidence stays in the --json artifact.
+        meta = dict(meta, leaks=res["leaks"], unscored=res["unscored"], coverage=res["coverage"],
+                    decision_eligible=res["decision_eligible"], ineligibility_reasons=res["ineligibility_reasons"],
+                    **scorer)
         row = eval_runs.make_row(EVAL_ID, SOURCE, config, res["metrics"], n=res["metrics"]["cases"], model=a.model,
                                  status=res["status"], ci=res["ci"], ci_level=0.95 if res["ci"] else None,
                                  ci_method="wilson" if res["ci"] else None, cases=res["cases"] or None,
@@ -900,7 +1170,8 @@ def main(argv=None):
     return 0
 
 
-ROW_FIELDS = ("status", "metrics", "class_recall", "cbs_hash", "confighash", "outputs_sha256", "responded")
+ROW_FIELDS = ("status", "metrics", "class_recall", "cbs_hash", "confighash", "outputs_sha256", "responded",
+              "scorer_sha256")
 
 
 def tree_main(a):
@@ -922,16 +1193,26 @@ def tree_main(a):
             raise ValueError("%s is inconclusive (a leak, or no case scored): no row" % a.outputs)
         with open(a.results, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, sort_keys=True) + "\n")
-        print("export-row: %s cbs_hash=%s confighash=%s recall_gating=%s fp_rate=%s -> %s"
+        print("export-row: %s cbs_hash=%s confighash=%s recall_gating=%s fp_rate=%s scorer=%s -> %s"
               % (row["run_id"], row["cbs_hash"][:12], row["confighash"], row["metrics"].get("panel.recall_gating"),
-                 row["metrics"].get("panel.fp_rate"), a.results))
+                 row["metrics"].get("panel.fp_rate"), (row["scorer_sha256"] or "null")[:12], a.results))
+        if row["scorer_sha256"] is None:
+            print("export-row: diagnostic only, the gate never counts this row: %s" % row["scorer_reason"],
+                  file=sys.stderr)
     elif a.cmd == "verify-row":
         claimed = json.loads(a.row)
         got = gate_row(repo, a.tree, a.outputs)
         # A row without a `responded` key is not held to one: verify-row cannot tell a row exported before rosters
         # were recorded from one that dropped the key, and CI never runs verify-row. The gate names such a row only when
         # another counted row records a roster; when every counted row lacks one the normal verdict stands.
-        bad = [f for f in ROW_FIELDS if claimed.get(f) != got[f] and (f != "responded" or f in claimed)]
+        # A legacy row (no scorer_sha256) is compared on the metrics it claimed; its scorer
+        # identity is unverified, and a re-scored value a scoring repair moved still differs.
+        legacy = not claimed.get("scorer_sha256")
+        if legacy:
+            got = dict(got, metrics={k: v for k, v in got["metrics"].items() if k in (claimed.get("metrics") or {})})
+            print("verify-row: scorer identity unverified: the row names no scorer_sha256")
+        bad = [f for f in ROW_FIELDS if claimed.get(f) != got[f] and (f != "responded" or f in claimed)
+               and not (legacy and f == "scorer_sha256")]
         for f in bad:
             print("verify-row: %s differs: row %s, re-scored %s" % (f, json.dumps(claimed.get(f), sort_keys=True),
                                                                     json.dumps(got[f], sort_keys=True)))

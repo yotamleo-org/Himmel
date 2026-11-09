@@ -3,9 +3,12 @@
 How many real defects does the review panel (`scripts/cr/critic-panel.sh`, the
 critic half of `/pr-check`) catch, and how often does it raise one that is not
 there? The CR ledger only has agreed%, a precision proxy the PR author decides.
-This eval feeds the panel frozen diffs with known injected defects and clean
-twins of the same diffs, then scores what it reports against a key it never
-sees.
+This eval feeds the panel frozen diffs with labelled target defects (synthetic,
+historical and delta cases) and clean twins of the same diffs, then scores what
+it reports against a key it never sees. Its numbers are automated key-match
+proxies, not verified accuracy. It measures the codex and Claude
+critics only: CodeRabbit history is reported separately; controlled recall is
+not measured here.
 
 | path | what |
 |---|---|
@@ -78,24 +81,55 @@ dropped-citation bullets are not findings. A finding hits a defect when:
 2. **class**: its text matches the class's keyword pattern (`CLASS_PATTERNS` in
    `score.py`), so a style remark on the seeded line is not credited.
 
-| metric | definition |
+| metric (legacy alias) | definition |
 |---|---|
-| `<c>.recall` | seeded defects with a location+class hit / seeded defects scored |
-| `<c>.recall_loc` | the same with location only: the upper bound, so a keyword miss shows as a gap |
-| `<c>.recall_gating` | hits at Critical or Important (what the CR gate blocks on) / defects |
-| `<c>.precision` | findings that hit some defect / all findings (a lower bound: a real unseeded issue counts against it) |
-| `<c>.fp_rate` | clean twins with >= 1 Critical/Important finding / clean twins scored |
+| `<c>.key_match_recall` (`<c>.recall`) | labelled defects with a location+class hit / labelled defects in the cases the critic answered |
+| `<c>.location_match_recall` (`<c>.recall_loc`) | the same with location only: the upper bound, so a keyword miss shows as a gap, not semantic recall |
+| `<c>.key_match_recall_gating` (`<c>.recall_gating`) | hits at Critical or Important (what the CR gate blocks on) / the same defects |
+| `<c>.key_match_precision` (`<c>.precision`) | findings that key-match some labelled defect / all parsed findings: a match fraction, not "was right" (a real unlabelled issue counts against it) |
+| `<c>.labelled_clean_block_rate` (`<c>.fp_rate`) | answered labelled-clean twins with >= 1 Critical/Important finding / answered labelled-clean twins: it does not say the blocker is false |
 | `<c>.class.<cls>.recall` | recall per class, with `.n` |
 | `defects`, `cases`, `unscored`, `leaked` | run totals |
 
-`<c>` is each critic slug plus `panel` (the union of all critics). A case whose
+`<c>` is each rostered critic slug plus `panel` (the union of all critics). Each
+legacy key keeps its formula and is written beside its explicit name; new
+readers use the explicit name. A case whose
 review was not performed (no output, `REVIEW NOT PERFORMED`, a transcript
 missing any of the three severity headings or carrying fewer bullets than a
-heading's `(N found)`, or a nonzero panel exit in
-`<case>.rc`) is unscored;
-a critic listed as unavailable in a case's Note block is dropped from that
-case's denominators only. Recall, precision and fp_rate carry Wilson 95%
-intervals in the row's `ci`. n is small (12 defects, 2 per class): a per-class
+heading's `(N found)`, a nonzero panel exit in
+`<case>.rc`, or a finding of a critic the roster does not name) is unscored.
+Recall, precision and the blocking rate carry Wilson 95% intervals in the row's
+`ci`; a zero denominator is null, not 0.
+
+### Participation
+
+`case_participation()` gives every rostered critic one record per case, and
+every per-critic denominator and the `responded` counts read only it:
+`{state, category, effective, header_included, reason, evidence,
+responding_model}` under `case_evidence[<case>].critics[<critic>]` of the
+`--json` output. `state` is `answered`, `unavailable` or `unknown`.
+
+- **answered**: a valid finding, an `ok` / `fallback(<model>)` receipt on
+  stderr, or a header `N/M` that reconciles (M is exactly the header-counted
+  critics and the N answer slots left are exactly the unaccounted ones, so a
+  2/2 empty review is two zero-finding answers). `responding_model` comes from
+  the receipt, else null.
+- **protocol skip** (`effective` false, outside denominators and failure
+  counts): `tier-excluded` and `keep-one-skipped` never ran and hold no header
+  slot; `critic-skipped` (an api lane off) holds its slot.
+- **failure** (`effective` true, `unavailable`): timeout, a nonzero rc,
+  malformed output, a panel deadline. A deadline before launch holds no header
+  slot; one inside a counted fallback chain does.
+- **unknown**: nothing names the critic and the header does not settle it (a
+  1/2 header with only the other critic's findings infers no failure for this
+  one; a roster member beyond the header's M is never a phantom answer).
+  An answer beside an unavailable receipt, receipts that disagree, impossible
+  counts or a non-rostered slug are `inconsistent`.
+
+The panel metrics count every completed case; a critic counts only the cases
+it answered. `coverage` counts each category per critic. Every result is
+`decision_eligible: false` until M2/M3 record execution provenance, with its
+`ineligibility_reasons`. n is small (12 defects, 2 per class): a per-class
 number is a direction, not a measurement.
 
 ## Open and sealed seeds
@@ -297,7 +331,8 @@ change lost nothing.
    ref, main as that ref was built) and twice at the PR's head (`run.sh`,
    above), and records each sweep with
    `score.py export-row <outputs-dir>`: one `results.jsonl` row carrying the
-   tree's `cbs_hash` and `confighash` and the `outputs_sha256` of the bundle.
+   tree's `cbs_hash` and `confighash`, the `outputs_sha256` of the bundle and
+   the `scorer_sha256` of the scorer that ran (below).
    `run.sh` stamps the swept tree into `<outputs-dir>/swept.json`; export-row
    refuses outputs with no stamp, a stamp of other hashes, or a sweep run from a
    working tree that differed from its HEAD on a gate input (a CBS path,
@@ -311,19 +346,38 @@ change lost nothing.
    sweep scores fewer cases, so its rates are not comparable.
 2. `score.py verify-row '<row-json>' <outputs-dir>` re-derives a row from its
    outputs (exit 1 on any mismatch), so a committed row can be checked against
-   the bundle it claims.
+   the bundle it claims. A legacy row with no `scorer_sha256` is compared on
+   the fields and metrics it claims and printed `scorer identity unverified`; a
+   value a scoring repair moved still differs. A row naming a scorer must name
+   the running one.
 3. CI runs `scripts/ci/check-critic-eval.sh <base> HEAD` (the ci-quick
    secret-scan step). HEAD is the PR's merge ref, so the gate's diff base is
    `HEAD^1`, the main that ref was built on, not the event's `<base>`, which
    stays at the main the PR opened on; elsewhere the diff base is `<base>`.
    With no CBS path changed it passes; otherwise it runs
    `score.py gate`, which reads the head tree's `results.jsonl`:
-   - **unmeasured** (fail): fewer than 2 distinct rows (by `run_id` and bundle)
-     at the base or the head `cbs_hash` for the head tree's `confighash`.
+   - **unmeasured** (fail): the running scorer has no clean identity, no row
+     carries its `scorer_sha256`, or fewer than 2 distinct rows (by `run_id`
+     and bundle) of it at the base or the head `cbs_hash` for the head tree's
+     `confighash`.
    - **loss** (fail): `panel.recall_gating` fell, or `panel.fp_rate` rose, by
      more than the baseline rows' spread (max minus min).
    - **no-loss** / **keep** (pass): within noise; `keep` when every
      `--target-class` recall also beats the baseline maximum.
+
+**Scorer identity.** A row names the scorer that produced it,
+never one in the gate's `--repo` or `--tree`: `score.py scorer-identity --json`
+is `score.py`'s own checkout, its HEAD and the `score.py` and
+`scripts/eval/lib/wilson.py` actually loaded, each checked byte for byte
+against that HEAD before and after scoring (`scorer_digest(repo, rev)` hashes
+those two blobs). An edited, untracked or foreign scorer file gives
+`scorer_sha256` null and a diagnostic-only row. The gate drops every row of
+another or no scorer (named in its output) before the roster check and
+before the first-row-wins selection, so a re-score of a retained sweep by the
+running scorer replaces its older row, and a null identity matches nothing.
+`scorer_sha256` is kept apart from `confighash` and `swept.json`, so a stamp
+from before it still exports. Old rows carry no `scorer_sha256`: until rows of
+the current scorer are promoted, every critic-behaviour PR is unmeasured.
 
 Two rules sit in front of that eval check. Neither reads its input from the
 PR's own tree, so a PR cannot retag its own files or add its own bypass. The
