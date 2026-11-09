@@ -121,8 +121,10 @@ permissions. Tiers, cost, live inventory:
 stronger prose. `docs/internals/context-architecture.md`.
 
 ### Honesty markers and artifacts
-- `ponytail: <ceiling>, <upgrade path>` marks a deliberate simplification →
-  `docs/internals/ponytail-convention.md`. [prose]
+- An accepted ceiling is a row in the private ceilings ledger
+  (`scripts/ledger/ceiling-add.sh`), never a code comment; the history-comment
+  gate refuses a new ponytail marker → `docs/internals/code-comments.md`.
+  [enforced: no-history-comments]
 - Operator reference docs → the owning repo's `docs/`; internal specs, plans
   and decision records → the state repo bucket `specs/<type>/`, never himmel
   `docs/`; vault content stays in luna. [prose]

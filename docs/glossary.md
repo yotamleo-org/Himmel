@@ -396,7 +396,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Board** | The chief's board: a generated HTML page of fleet state and worker phases. | dashboard |
 | **Tracker** | The ticket backend a run uses, `TRACKER=jira\|local\|none` ([configuration](configuration.md)). | — |
 | **Status marker** | The leading word of a worker's Results bullet (`LIVE`, `FINDING`, `RESOLVED`, `READY`, `BLOCKED`, `HALTED`, `WRAPPED`, `PARKED-USAGE`, `RESUMED`), written by `scripts/handover/chief-kit/append-results.sh`. | state |
-| **Ponytail comment** | A `ponytail: <ceiling>, <upgrade path>` code comment for a deliberate simplification ([`internals/ponytail-convention.md`](internals/ponytail-convention.md)). | TODO |
+| **Ponytail comment** | A retired code-comment marker for a deliberate simplification; the ceiling it recorded is now a row in the ceilings ledger ([`internals/code-comments.md`](internals/code-comments.md)). | TODO |
 | **Backend tier** | The CLI-over-MCP routing registry `scripts/backends.json`, enforced by `block-backend-tier.sh`. | — |
 
 ### Same harness word, different thing

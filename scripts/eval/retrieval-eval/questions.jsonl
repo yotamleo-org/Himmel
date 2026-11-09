@@ -10,7 +10,7 @@
 {"id":"q10","kind":"what","src":"graphify","q":"which hook scripts are in MUST_RUN_CHAIN_MEMBERS","gold":["scripts/hooks/run-hook-with-bash.js","marketplace/plugins/himmel-ops/hooks/run-hook-with-bash.js","docs/internals/enforcement.md"],"reason":[]}
 {"id":"q11","kind":"how","src":"graphify","q":"chief-kit go.sh GO file","gold":["scripts/handover/chief-kit/go.sh"],"reason":[]}
 {"id":"q12","kind":"how","src":"qmd","q":"how is the qmd fork pinned and installed on the station","gold":["scripts/lib/qmd-bin.sh","docs/setup/updating.md"],"gold1":["docs/setup/new-machine.md"],"reason":["fork"]}
-{"id":"q13","kind":"where","src":"qmd","q":"how to mark a deliberate simplification in code with its upgrade path","gold":["docs/internals/ponytail-convention.md"],"gold1":["CLAUDE.md"],"reason":["ponytail"]}
+{"id":"q13","kind":"where","src":"qmd","q":"how to mark a deliberate simplification in code with its upgrade path","gold":["docs/internals/code-comments.md"],"gold1":["CLAUDE.md"],"reason":["ponytail"]}
 {"id":"q14","kind":"why","src":"qmd","q":"why do cache reads cost less and how long does the prompt cache live","gold":["docs/internals/prompt-cache.md"],"gold1":["docs/handover/worker-sections/cache-keepalive.md","docs/internals/cache-health.md"],"reason":["0.1","5 minutes"]}
 {"id":"q15","kind":"what","src":"qmd","q":"difference between claude -p, claude --bg and a headed session","gold":["docs/internals/headless-modes.md"],"gold1":["CLAUDE.md"],"reason":[]}
 {"id":"q16","kind":"what","src":"qmd","q":"which model tier and effort to pick for a delegated subagent","gold":["docs/internals/lane-calibration.md"],"gold1":["CLAUDE.md","docs/internals/worker-spawn-matrix.md"],"reason":[]}

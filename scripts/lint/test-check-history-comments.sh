@@ -33,6 +33,8 @@
 #   39.   --range with --tip on a branch HEAD is not on
 #   40.   a malformed rule row or a second key row exits 2 (never an exempt-everything row)
 #   41.   a symlink replaced by a regular file is judged
+#   42.   an added ponytail marker is refused in every file type and case; a fixture path
+#         and a deleted line pass; the exempt mode lists whole-file rows
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
@@ -65,7 +67,7 @@ mkdiff() {
         local l
         for l in "$@"; do
             case "$l" in
-                +*) printf '%s\n' "$l" ;;
+                +*|-*) printf '%s\n' "$l" ;;
                 =*) printf ' %s\n' "${l#=}" ;;
             esac
         done
@@ -78,7 +80,7 @@ H='HIMMEL'; LU='LUNA'; SA='SALUS'; TAB="$(printf '\t')"
 expect_block() { # <label> <path> <added line>
     mkdiff "$2" '+echo ok' "$3"
     run
-    if [ "$RC" -eq 1 ] && has "$2:" && has "ponytail-convention"; then pass "$1 refused"; else fail "$1 -> rc=$RC: $OUT"; fi
+    if [ "$RC" -eq 1 ] && has "$2:" && has "code-comments.md"; then pass "$1 refused"; else fail "$1 -> rc=$RC: $OUT"; fi
 }
 expect_allow() { # <label> <path> <diff line>...
     local label="$1" path="$2"; shift 2
@@ -231,6 +233,7 @@ P="$T/widen"; mkdir -p "$P/scripts/lint" "$P/docs" "$P/tmp"; git -C "$P" init -q
 git -C "$P" config user.email t@t; git -C "$P" config user.name t
 cp "$GATE" "$AWKF" "$LIST" "$P/scripts/lint/"
 printf 'x\n' > "$P/docs/z.md"
+printf 'tmp/\n' > "$P/.gitignore"
 git -C "$P" add -A; git -C "$P" commit -q -m base
 widen_base="$(git -C "$P" rev-parse HEAD)"
 printf 'K2%s^docs/z\\.md$%s%sthe PR allows itself\n' "$TAB" "$TAB" "$TAB" >> "$P/scripts/lint/ticket-ref-allow.tsv"
@@ -538,6 +541,36 @@ printf 'echo a\n# why: %s-1 x\n' "$H" > "$SL/scripts/a.sh"
 git -C "$SL" add -A; git -C "$SL" commit -q -m typechange
 OUT="$(cd "$SL" && bash "$GATE" --range "$sl_base" 2>&1)"; RC=$?
 if [ "$RC" -eq 1 ]; then pass "a key in a file that replaced a symlink is refused"; else fail "symlink replaced -> rc=$RC: $OUT"; fi
+
+echo "== 42. an added ponytail marker is refused =="
+PT="pony""tail:"; PTU="PONY""TAIL:"; PTM="Pony""Tail:"
+expect_marker() { # <label> <path> <added line>
+    mkdiff "$2" '+echo ok' "$3"
+    run
+    if [ "$RC" -eq 1 ] && has "$2:2: ponytail marker:" && has "ceiling-add.sh" && has "code-comments.md"; then
+        pass "$1 refused"
+    else fail "$1 -> rc=$RC: $OUT"; fi
+}
+expect_marker "marker in a code comment" scripts/a.sh "+# $PT prefix match only, upgrade if it matters"
+expect_marker "marker in a trailing comment" scripts/a.sh "+echo x  # $PT fixed text only"
+expect_marker "marker in a test file" scripts/test-a.sh "+# $PT x, y"
+expect_marker "marker in Markdown" docs/x.md "+- $PT x, y"
+expect_marker "marker in YAML" x.yaml "+  # $PT x, y"
+expect_marker "marker in a Python docstring line" scripts/a.py "+    $PT x, y"
+expect_marker "marker in a JSDoc line" scripts/a.ts "+ * $PT x, y"
+expect_marker "marker in a JSON string" x.json "+  \"note\": \"$PT x, y\""
+expect_marker "marker in upper case" scripts/a.sh "+# $PTU x, y"
+expect_marker "marker in mixed case" scripts/a.sh "+# $PTM x, y"
+expect_allow "marker under a fixture path" scripts/fixtures/a.sh "+# $PT x, y"
+expect_allow "marker under testdata" scripts/cr/testdata/x.diff "+# $PT x, y"
+expect_allow "a deleted marker line" scripts/a.sh "-# $PT x, y" '+echo ok'
+expect_allow "a context marker line" scripts/a.sh "=# $PT x, y" '+echo ok'
+expect_allow "the word without a colon" scripts/a.sh "+# the pony""tail convention is retired"
+OUT="$(printf '%s\n' scripts/a.sh scripts/fixtures/a.sh CHANGELOG.md docs/x.md scripts/cr/testdata/x.diff \
+    | LC_ALL=C awk -f "$AWKF" -v allow="$LIST" -v mode=exempt 2>&1)"; RC=$?
+if [ "$RC" -eq 0 ] && [ "$OUT" = "$(printf 'scripts/fixtures/a.sh\nCHANGELOG.md\nscripts/cr/testdata/x.diff')" ]; then
+    pass "exempt mode prints the paths under a whole-file row"
+else fail "exempt mode -> rc=$RC: $OUT"; fi
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
