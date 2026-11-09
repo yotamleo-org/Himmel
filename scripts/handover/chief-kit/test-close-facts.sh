@@ -92,6 +92,7 @@ rm -f "$GH_LOG"
 out=$(merged_proof "$R" "$W/d1.md" feat "$H")
 check "merged proof from local git: one merged row, tip as head" "$out" "${ROW41}${H}"
 check "merged proof from local git: gh log is empty" "$([ -s "$GH_LOG" ] && cat "$GH_LOG" || echo EMPTY)" "EMPTY"
+check "merged proof ignores a poisoned repository-redirecting environment" "$(GIT_OBJECT_DIRECTORY=/nonexistent GIT_PREFIX=/nonexistent merged_proof "$R" "$W/d1.md" feat "$H")" "${ROW41}${H}"
 check "doc_ready_head names the head" "$(doc_ready_head "$W/d1.md" 41)" "$H"
 check "doc_ready_head for another PR is empty" "$(doc_ready_head "$W/d1.md" 40)" ""
 check "merged_commit_of finds the squash" "$(merged_commit_of "$R" 41)" "$SQ"

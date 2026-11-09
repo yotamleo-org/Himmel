@@ -14,10 +14,12 @@
 # decides a prune. Every failure prints nothing, so a missing proof keeps work.
 # bash 3.2-safe.
 
-# git-env-ok: every git call in this file goes through cf_git, which clears the repo-selecting variables.
+# shellcheck source=../../lib/git-clean.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/git-clean.sh" || return 1
+
 cf_git() {
     local repo="$1"; shift
-    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$repo" "$@"
+    git_clean -C "$repo" "$@"
 }
 
 origin_nwo() {

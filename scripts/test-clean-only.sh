@@ -139,8 +139,6 @@ run_clean() {
     (
         cd "${RUN_CLEAN_REPO:-$REPO}" || exit 1
         set +e
-        # origin is a real local bare repo (for ls-remote), not a github.com
-        # URL, so FORGE forces forge detection past its origin-hostname sniff.
         out=$(PATH="${RUN_CLEAN_STUB_DIR:-$STUB_DIR}:${PATH}" FORGE=github bash "$script" "$@" 2>&1)
         rc=$?
         printf '%s\nrc=%s\n' "$out" "$rc"
