@@ -140,16 +140,17 @@ check "searched_no_graph rests on answered calls: the refused-only journal and t
 check "a refused qmd query (shell or mcp, array content) and one with no result are searches but not answered ones: 4 with a search, 1 answered" '[ "$(OUT="$OKOUT" SEC=qmd cells all claude main with_search with_search_ok)" = 4/1 ]'
 check "the counted line states the ok rule and the no-result case" 'grep -q "^counted:.*answered" <<<"$OKOUT" && grep -q "^counted:.*no tool_result" <<<"$OKOUT"'
 
-# echo columns: fixtures/graph-use-echo holds lane claude with e1 (three echoes that only quote a graph or qmd call, in double and
-# single quotes) and lane codex with e2 (the control: a bash -c body in single quotes, an sh -c body in double quotes and a graph
-# call with a quoted argument, and echo "got: $(graphify query y)" whose command substitution runs: all four are calls).
+# echo columns: fixtures/graph-use-echo holds lane claude with e1 (four echoes that only quote a graph or qmd call, in double and
+# single quotes, one beside a $(date) substitution) and lane codex with e2 (the control: a bash -c body in single quotes, an sh -c
+# body in double quotes, a graph call with a quoted argument, and echo "got: $(graphify query y)" and a backtick twin whose
+# substitution runs: all five are calls).
 # shellcheck disable=SC2034
 EOUT="$(bash "$RPT" --days 36500 --root "$HERE/fixtures/graph-use-echo/claude/projects" --root "$HERE/fixtures/graph-use-echo/claude-codex/projects" 2>&1)"
 # shellcheck disable=SC2034
 EORC=$?
 check "the report over the echo fixture exits 0" '[ "$EORC" = 0 ]'
 check "an echo that quotes a graph or qmd call is no call: the claude lane has 1 journal with a tool, 0 graph calls and 0 qmd calls" '[ "$(OUT="$EOUT" cells all claude main with_tools calls)" = 1/0 ] && [ "$(OUT="$EOUT" SEC=qmd cells all claude main with_tools calls)" = 1/0 ]'
-check "a bash -c or sh -c body, a quoted argument and a command substitution inside double quotes still count as graph calls: the codex lane has 4 calls, 2 query, 1 explain, 1 path" '[ "$(OUT="$EOUT" cells all codex main calls query explain path)" = 4/2/1/1 ]'
+check "a bash -c or sh -c body, a quoted argument and a command or backtick substitution inside double quotes still count as graph calls: the codex lane has 5 calls, 3 query, 1 explain, 1 path" '[ "$(OUT="$EOUT" cells all codex main calls query explain path)" = 5/3/1/1 ]'
 
 check "a bad argument exits 2" 'bash "$RPT" --days x >/dev/null 2>&1; [ $? = 2 ]'
 check "a root that does not exist exits 2" 'bash "$RPT" --root "$FX/no-such-root" >/dev/null 2>&1; [ $? = 2 ]'
