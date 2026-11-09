@@ -28,7 +28,7 @@ run_attempt() {
   return "$rc"
 }
 witness_hit() {
-  awk -v p="[LIVE-STATE] bun:$suite — " 'index($0, p) == 1 { f = 1 } END { exit !f }' "$logs/$1.log"
+  awk -v p="[LIVE-STATE] bun:$suite — " 'index($0, p) > 0 { f = 1 } END { exit !f }' "$logs/$1.log"
 }
 attempt=1
 if run_attempt "$@"; then

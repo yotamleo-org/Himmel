@@ -80,6 +80,7 @@ printf '%s' "$n" > "$BUN_STUB_COUNT"
 live_write() { mkdir -p "$HOME/.claude" || exit 1; : > "$HOME/.claude/x" || exit 1; }
 case "$BUN_STUB_MODE" in
   live) live_write ;;
+  livenonl) live_write; printf 'Ran 1 test across 1 file'; exit 0 ;;
   rc86) if [ "$n" -eq 1 ]; then exit 86; fi ;;
   failthenlive) if [ "$n" -eq 1 ]; then exit 1; fi; live_write ;;
   own)
@@ -117,6 +118,10 @@ run_stub_case failthenlive
 grep -q '^\[FAIL\] scripts/config-ui — live-state write on the retry$' "$tmp/output" || { printf 'FAIL: a live write on the retry was not reported as one\n'; exit 1; }
 ! grep -q 'failed both attempts' "$tmp/output" || { printf 'FAIL: a live write on the retry was reported as a plain double failure\n'; exit 1; }
 printf 'PASS: a live-state write on the retry is reported as one\n'
+run_stub_case livenonl
+[ "$rc" -eq 86 ] && [ "$(<"$tmp/stub-count")" = 1 ] || { printf 'FAIL: a live write after output with no trailing newline must fail once, never retried (rc=%s calls=%s)\n' "$rc" "$(cat "$tmp/stub-count" 2>/dev/null)"; exit 1; }
+grep -q '^\[FAIL\] scripts/config-ui — live-state write (not retried)$' "$tmp/output" || { printf 'FAIL: a live write glued to unterminated output was not reported as one\n'; exit 1; }
+printf 'PASS: a live-state write glued to unterminated bun output still fails once\n'
 rc=0
 BUN_STUB_MODE=own BUN_STUB_COUNT="$tmp/stub-count" TMPDIR="$tmp/no-such-dir" bash "$tmp/stubbin/bun" > "$tmp/stub-output" 2>&1 || rc=$?
 if [ "$rc" -eq 0 ] || grep -q 'Ran 1 test' "$tmp/stub-output"; then
@@ -124,4 +129,4 @@ if [ "$rc" -eq 0 ] || grep -q 'Ran 1 test' "$tmp/stub-output"; then
   exit 1
 fi
 printf 'PASS: the own-temp stub fails before the Ran line when its temp setup fails\n'
-printf '10 passed, 0 failed\n'
+printf '11 passed, 0 failed\n'
