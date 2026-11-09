@@ -261,8 +261,6 @@ export BUN_INSTALL="$TMP_ROOT/bun-none"
 # The embed-model precheck resolves qmd's config the way qmd does; CI runners
 # export XDG_CONFIG_HOME, which would point it past the fixture HOME.
 unset QMD_CONFIG_DIR XDG_CONFIG_HOME XDG_CACHE_HOME INDEX_PATH QMD_EMBED_MODEL HIMMEL_QMD_EMBED_USAGE
-# The OpenRouter usage read goes through this seam; a default that
-# fails keeps every run here off the network. The usage-row tests set their own.
 export QMD_REINDEX_KEY_USAGE_CMD=/bin/false
 
 # ============================================================================

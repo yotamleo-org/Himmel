@@ -625,7 +625,6 @@ if [ "$remote_model" -eq 1 ]; then
     fi
 fi
 
-# The key is on stdin and xtrace is off, so it never reaches argv, the trace or the log.
 usage_read() {
     local out v
     out=$(
