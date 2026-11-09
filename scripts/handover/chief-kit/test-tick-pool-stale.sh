@@ -198,7 +198,8 @@ ln -s "$SUT" "$sk/handover/chief-kit/tick.sh"
 cat > "$sk/handover/chief-kit/next-dispatchable.sh" <<'EOF'
 #!/usr/bin/env bash
 case " $* " in *" --dispositions "*)
-    printf 'x\n' >> "$PS_LAUNCH_LOG"; ps -o ni= -p $$ | tr -d ' ' >> "$PS_NICE_LOG"
+    # the parent is `timeout`; a bash is re-niced by some stations' ananicy rules, a timeout is not
+    printf 'x\n' >> "$PS_LAUNCH_LOG"; ps -o ni= -p "$PPID" | tr -d ' ' >> "$PS_NICE_LOG"
     printf '# disposition HIMMEL-1 in-flight owned by worker N1\n' ;;
 esac
 EOF
