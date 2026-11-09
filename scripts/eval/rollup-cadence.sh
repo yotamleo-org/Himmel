@@ -6,8 +6,8 @@
 #   rollup-cadence.sh status
 #   rollup-cadence.sh disarm [--dry-run]
 #
-# Exit: 0 ok. 1 usage or a bad argument, or status could not read the crontab. 2 arm cannot run here (Windows,
-# no crontab binary, no primary checkout). 3 arm found it already armed (--force replaces). 4 a crontab or runner
+# Exit: 0 ok. 1 usage or a bad argument, or status could not read the crontab. 2 arm cannot run here (no
+# crontab binary, no primary checkout). 3 arm found it already armed (--force replaces). 4 a crontab or runner
 # write or read failed (arm, disarm). 77 test-run-guard refused a real crontab write from a test. `run` exits
 # with weekly-rollup.py's own code when it fails.
 set -uo pipefail
@@ -85,7 +85,6 @@ cmd_arm() {
     done
     [[ "$time" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || { echo "ERR rollup-cadence: --time must be HH:MM, got: $time" >&2; return 1; }
     [[ "$day" =~ ^[0-6]$ ]] || { echo "ERR rollup-cadence: --day must be 0-6, got: $day" >&2; return 1; }
-    case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) echo "ERR rollup-cadence: cron only; Windows is parked" >&2; return 2 ;; esac
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || { echo "ERR rollup-cadence: '$CRONTAB_BIN' not on PATH" >&2; return 2; }
     root="$(resolve_primary)" || { echo "ERR rollup-cadence: cannot resolve the primary checkout" >&2; return 2; }
     bash_bin="$(command -v bash)"
