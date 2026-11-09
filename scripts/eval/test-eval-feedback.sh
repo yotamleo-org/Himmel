@@ -302,5 +302,140 @@ ok "overflow measure" python3 -I "$FB" run --ledger "$T/inf.jsonl" --changes "$T
 eq "keep rule: overflowing noise is unmeasured: not kept" "$(field "$T/inf-c.jsonl" 1 reason)" "noise unmeasured: not a finite spread"
 eq "keep rule: the record holds no Infinity" "$(grep -c Infinity "$T/inf-c.jsonl")" "0"
 
+# --- select_review_runs: the one review-panel selector (gate, compare, page, noise series, public page) ------
+# sel <name> <selected run_ids> ...: each case prints PASS/FAIL lines the shell counts
+SELPY="$TMP/sel.py"
+cat >"$SELPY" <<'EOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+import eval_feedback as fb
+
+S1, S2 = "a" * 64, "b" * 64
+def row(rid, ex=None, sup=None, scorer=None, bundle=None, **kw):
+    r = {"run_id": rid, "outputs_sha256": bundle or "raw-" + rid, "scorer_sha256": scorer}
+    if ex:
+        r["execution_id"] = ex
+    if sup:
+        r["supersedes_run_id"] = sup
+    r.update(kw)
+    return r
+
+def case(name, rows, want, reason=None, **kw):
+    sel, diag = fb.select_review_runs(rows, **kw)
+    got = [r["run_id"] for r in sel]
+    ok = got == want and (reason is None or any(d["reason"] == reason for d in diag))
+    print("PASS " + name if ok else "FAIL %s: got %s, diagnostics %s" % (name, got, [d["reason"] for d in diag]))
+
+case("scorer_only_rescore_not_new_execution",
+     [row("A", "x1", scorer=S1), row("A~b", "x1", sup="A", scorer=S2, bundle="raw-A")], ["A~b"], "superseded")
+case("a rescore appended before its source still selects the head",
+     [row("A~b", "x1", sup="A", scorer=S2, bundle="raw-A"), row("A", "x1", scorer=S1)], ["A~b"])
+case("a chain of three selects its head",
+     [row("A", "x1"), row("B", "x1", sup="A"), row("C", "x1", sup="B")], ["C"], "superseded")
+case("supersession_cycle", [row("A", "x1", sup="B"), row("B", "x1", sup="A")], [], "supersession-cycle")
+case("a cycle with a tail names the fork or the cycle, never selects",
+     [row("A", "x1", sup="B"), row("B", "x1", sup="A"), row("C", "x1", sup="A")], [])
+case("two_successors_ambiguous",
+     [row("A", "x1"), row("B", "x1", sup="A"), row("C", "x1", sup="A")], [], "two-successors-ambiguous")
+case("a successor of an unknown run is named, not selected", [row("B", "x1", sup="ghost"), row("C", "x1")], [],
+     "supersedes-unknown-run")
+case("a linked chain beside an unlinked row is ambiguous",
+     [row("A", "x1"), row("B", "x1", sup="A"), row("Z", "x1")], [], "several-heads-ambiguous")
+case("legacy repeat: the same raw-output bundle counts once, first row wins",
+     [row("A", bundle="same"), row("B", bundle="same")], ["A"], "repeat-of-execution")
+case("legacy repeat: the same run_id counts once", [row("A", bundle="p"), row("A", bundle="q")], ["A"])
+case("an execution_id binds rows whose raw-output hashes differ",
+     [row("A", "x1", bundle="p"), row("B", "x1", bundle="q")], ["A"])
+case("distinct executions both count", [row("A", "x1"), row("B", "x2")], ["A", "B"])
+case("a rescore with no execution_id on either row joins its source through supersedes_run_id",
+     [row("A"), row("B"), row("A~b", sup="A")], ["A~b", "B"], "superseded")
+case("a lone row promoted without its source stands", [row("A~b", "x1", sup="A")], ["A~b"])
+case("a rescore of an execution is not a second repeat of its cohort",
+     [row("A", "x1"), row("B", "x2"), row("A~b", "x1", sup="A")], ["A~b", "B"])
+case("revision_not_prev_run: a rescore appended last is not the newest run",
+     [row("A", "x1"), row("B", "x2"), row("A~b", "x1", sup="A")], ["A~b", "B"])
+case("scorer: only the running scorer's heads stay", [row("A", scorer=S1), row("B", scorer=S2), row("C")], ["B"],
+     "other-scorer", scorer=S2)
+case("scorer: a row with no digest is named without-scorer-sha256", [row("C")], [], "without-scorer-sha256", scorer=S1)
+case("scorer: the rescore replaces the obsolete row even though it comes later",
+     [row("A", "x1", scorer=S1), row("A~b", "x1", sup="A", scorer=S2)], ["A~b"], scorer=S2)
+case("old_unknown_provenance_diagnostic_only: an ineligible head is dropped with its reasons",
+     [row("A", decision_eligible=False, ineligibility_reasons=["provenance-reconstructed"])], [],
+     "not-decision-eligible", eligible_only=True)
+case("old_unknown_provenance: without eligible_only the row is still listed",
+     [row("A", decision_eligible=False)], ["A"])
+case("a row that carries no decision_eligible keeps its legacy standing", [row("A")], ["A"], eligible_only=True)
+case("eval-runs rows: the fields are read from meta",
+     [{"run_id": "A", "meta": {"execution_id": "x", "scorer_sha256": S1}},
+      {"run_id": "B", "meta": {"execution_id": "x", "supersedes_run_id": "A", "scorer_sha256": S2}}], ["B"], scorer=S2)
+case("a non-dict row is skipped", [None, row("A")], ["A"])
+
+# review_incompat: an explicit baseline cannot override the comparison rules
+def er(conf="h", scorer=S1, cov=None):
+    m = {"scorer_sha256": scorer}
+    if cov is not None:
+        m["coverage"] = cov
+    return {"confighash": conf, "meta": m}
+cov = {"scored": 3, "critics": {"codex": {"answer": 3}}}
+for name, a, b, want in (
+        ("equal everything compares", er(cov=cov), er(cov=cov), None),
+        ("another confighash", er("h", cov=cov), er("g", cov=cov), "confighash"),
+        ("an unknown scorer", er(scorer=None, cov=cov), er(scorer=None, cov=cov), "scorer_sha256"),
+        ("another scorer", er(cov=cov), er(scorer=S2, cov=cov), "scorer_sha256"),
+        ("unequal participation_no_promotion", er(cov=cov), er(cov={"scored": 3, "critics": {"codex": {"answer": 2}}}),
+         "participation differs"),
+        ("participation unrecorded", er(cov=cov), er(), "unrecorded")):
+    got = fb.review_incompat(a, b)
+    ok = (got is None) if want is None else (got is not None and want in got)
+    print(("PASS " if ok else "FAIL ") + "review_incompat: %s (%s)" % (name, got))
+
+# revision_not_prev_run, noise series: a rescore is not a later run, a baseline, or a noise sample
+import os, tempfile
+sys.path.insert(0, os.path.join(sys.argv[1]))
+import eval_runs
+d = tempfile.mkdtemp()
+rules = os.path.join(d, "rules.json")
+open(rules, "w").write('{"v":1,"rules":[{"eval":"review-panel","metric":"codex.class.quoting.recall","threshold":0.5,'
+                       '"better":"higher","absent":null,"change":"prompt","target":"scripts/cr/critic-first-pass.sh",'
+                       '"critic":"codex","min_gain":0.25}]}')
+ledger, changes = os.path.join(d, "l.jsonl"), os.path.join(d, "c.jsonl")
+def add(rid, open_v, sealed_v, ex, sup=None, sc=S1):
+    cfg = {"review_panel_v": 2}
+    meta = {"execution_id": ex, "scorer_sha256": sc}
+    if sup:
+        meta["supersedes_run_id"] = sup
+    r = eval_runs.make_row("review-panel", "s", cfg, {"codex.class.quoting.recall": open_v,
+                           "open.codex.class.quoting.recall": open_v, "sealed.codex.class.quoting.recall": sealed_v},
+                           run_id=rid, meta=meta, gitsha="g")
+    eval_runs.append_row(r, ledger)
+def recs():
+    return [__import__("json").loads(l) for l in open(changes)] if os.path.exists(changes) else []
+add("base1", 0, 0, "x1")
+add("base2", 0, 0, "x2")
+fb.run(ledger=ledger, changes=changes, rules=rules)
+opened = [c for c in recs() if c["status"] == "open"]
+print(("PASS " if len(opened) == 1 and opened[0]["baseline_run_id"] == "base2" else "FAIL ") + "noise series: change opened on the newest execution")
+add("base2~r", 0, 0, "x2", sup="base2", sc=S2)
+fb.run(ledger=ledger, changes=changes, rules=rules)
+meas = [c for c in recs() if c["status"] == "measured"]
+print(("PASS " if not meas else "FAIL ") + "revision_not_prev_run: a rescore of the baseline execution does not measure its change")
+print(("PASS " if len([c for c in recs() if c["status"] == "open"]) == 1 else "FAIL ")
+      + "revision_not_prev_run: a rescore opens no second change")
+add("cand", 1, 1, "x3")
+fb.run(ledger=ledger, changes=changes, rules=rules)
+meas = [c for c in recs() if c["status"] == "measured"]
+print(("PASS " if len(meas) == 1 and meas[0]["verdict"] == "keep" and meas[0]["noise"] == 0 else "FAIL ")
+      + "revision_not_prev_run: a later execution measures it, the rescore adds no noise sample (%s)"
+      % [(m.get("verdict"), m.get("noise")) for m in meas])
+EOF
+SELOUT="$(python3 -I "$SELPY" "$HERE/lib" 2>&1)"
+while IFS= read -r line; do
+  case "$line" in PASS*) PASS=$((PASS + 1)); echo "$line";; *) FAIL=$((FAIL + 1)); echo "$line";; esac
+done <<<"$SELOUT"
+
+# the gate's two row selectors are one helper: score.py's panel check no longer hand-copies it
+eq "score.py's panel check calls gate_side, not a copy of its row selection" \
+  "$(grep -c 'eval_feedback.gate_side(rows' "$HERE/review-panel/score.py")" "1"
+
 echo "eval-feedback: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

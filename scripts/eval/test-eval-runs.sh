@@ -372,5 +372,52 @@ h0=$(field "$QI" 0 confighash); h1=$(field "$QI" 1 confighash); h2=$(field "$QI"
 if [ -n "$h0" ] && [ "$h0" != "$h1" ]; then pass "qmd adapter: a different index content changes confighash"; else fail "qmd adapter: confighash ignores the index content ($h0 vs $h1)"; fi
 eq "qmd adapter: the same content at another path keeps confighash" "$h2" "$h0"
 
+# --- eval-compare, review-panel: one head per execution; an explicit --baseline cannot bypass the comparability rules ---
+RP="$TMP/rp"; mkdir -p "$RP"
+python3 -I - "$HERE/lib" "$RP" <<'PY' || { echo "test-eval-runs: writing the review-panel ledgers failed" >&2; exit 1; }
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import eval_runs
+S1, S2 = "a" * 64, "b" * 64
+COV = {"scored": 2, "critics": {"codex": {"answer": 2, "protocol-skip": 0, "failure": 0, "inconsistent": 0, "unknown": 0}}}
+COV_B = {"scored": 2, "critics": {"codex": {"answer": 1, "protocol-skip": 0, "failure": 1, "inconsistent": 0, "unknown": 0}}}
+def row(run_id, ex, scorer, sup=None, cov=COV, hit=1):
+    meta = {"execution_id": ex, "scorer_sha256": scorer, "coverage": cov}
+    if sup:
+        meta["supersedes_run_id"] = sup
+    return eval_runs.make_row("review-panel", "s", {"critics": ["codex"]}, {"panel.recall": 0.5}, run_id=run_id,
+                              cases={"case-1": {"hit": hit, "defects": 1}, "case-2": {"hit": hit, "defects": 1}},
+                              meta=meta, gitsha="0" * 40)
+def put(name, rows):
+    open(os.path.join(sys.argv[2], name + ".jsonl"), "w").write("".join(json.dumps(r) + "\n" for r in rows))
+put("plain", [row("b1", "e1", S1), row("c1", "e2", S1)])
+put("rescored", [row("b1", "e1", S1), row("c1", "e2", S1), row("b1~s2", "e1", S2, sup="b1")])
+put("other-scorer", [row("b1", "e1", S2), row("c1", "e2", S1)])
+put("no-scorer", [row("b1", "e1", None), row("c1", "e2", None)])
+put("unequal-part", [row("b1", "e1", S1, cov=COV_B), row("c1", "e2", S1)])
+put("repeat", [row("b1", "e1", S1), row("c1", "e2", S1), row("c1~s1", "e2", S1, sup="c1")])
+PY
+rpc() { python3 "$CMP" review-panel --ledger "$RP/$1.jsonl" "${@:2}" 2>&1; }
+out=$(rpc plain); rc=$?
+eq "review-panel compare: equal scorer and participation compares" "$rc" "0"
+has "review-panel compare: names the baseline" "$out" "baseline b1"
+out=$(rpc rescored); rc=$?
+eq "revision_not_prev_run: a rescore of the baseline is not the candidate; its other scorer leaves no baseline" "$rc" "3"
+has "revision_not_prev_run: the compare names the missing comparable baseline" "$out" "same known scorer"
+has "revision_not_prev_run: the compare says the rescore was set aside as a revision" "$out" "superseded"
+out=$(rpc other-scorer --baseline b1); rc=$?
+eq "explicit_baseline_cannot_bypass: another scorer refuses an explicit --baseline" "$rc" "3"
+has "explicit_baseline_cannot_bypass: the refusal names the rule" "$out" "does not override"
+out=$(rpc no-scorer --baseline b1); rc=$?
+eq "explicit_baseline_cannot_bypass: None == None never matches legacy rows" "$rc" "3"
+out=$(rpc unequal-part --baseline b1); rc=$?
+eq "unequal_participation_no_promotion: unequal participation refuses an explicit --baseline" "$rc" "3"
+has "unequal_participation_no_promotion: the refusal says participation" "$out" "participation"
+out=$(rpc unequal-part); rc=$?
+eq "unequal_participation_no_promotion: no default baseline either" "$rc" "3"
+out=$(rpc repeat); rc=$?
+eq "review-panel compare: a rescore of the candidate is not a second run, the pair still compares" "$rc" "0"
+has "review-panel compare: the candidate stays the original execution's row" "$out" "candidate c1"
+
 echo "test-eval-runs: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

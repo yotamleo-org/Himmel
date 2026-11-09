@@ -52,6 +52,11 @@ not verified accuracy; each is also written under its explicit name:
 key_match_recall, key_match_recall_gating, location_match_recall,
 key_match_precision, labelled_clean_block_rate.
 
+compare-paired --baseline-scores FILE --candidate-scores FILE [--key FILE] compares two arms of execution score
+objects over the same twin pairs (repeats averaged per case, then a stratified 2,000-resample seed-0 bootstrap); it
+names the omitted cases and exits 1 when the cohort is not complete. replay.py (this directory) rescores retained
+bundles into a new scratch directory; eval_feedback.select_review_runs is the one row selector every reader uses.
+
 Exit: 0 scored / lint clean; 1 lint problems; 2 refused input.
 Stdlib only; no network, no model call.
 """
@@ -60,6 +65,7 @@ import datetime
 import fnmatch
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -154,6 +160,13 @@ HEX64 = re.compile(r"^[0-9a-f]{64}$")
 MANIFEST = "run-manifest.json"
 RECORDED_OVERRIDES = ("CRITIC_TIMEOUT_SECS", "CRITIC_PANEL_TOTAL_TIMEOUT_SECS", "CRITIC_KILL_GRACE_SECS",
                       "CRITIC_PARALLEL", "CRITIC_FIRST_PASS_CAP_BYTES")
+MANIFEST_CASE = re.compile(r"^(case|real|delta)-[A-Za-z0-9._-]+$")  # a case id is a file stem inside the outputs dir
+# Settings that change what the panel runs and that no manifest field records: a stamp refuses a sweep that
+# carries one. run.sh sets or removes CRITIC_PANEL_TIERS, CR_TRIVIALITY_OVERRIDE, CRITIC_FIRST_PASS and
+# CRITIC_INVOKE itself, and the RECORDED_OVERRIDES are written to the manifest.
+UNRECORDABLE_SETTING = re.compile(r"^(CRITIC_[A-Z0-9_]+|CR_TRIVIALITY_[A-Z0-9_]+|HIMMEL_API_LANE"
+                                  r"|HIMMEL_CRITIC_[A-Z0-9_]+)$")
+RUN_SH_OWNED = ("CRITIC_PANEL_TIERS", "CR_TRIVIALITY_OVERRIDE", "CRITIC_FIRST_PASS", "CRITIC_INVOKE")
 ANOMALY = re.compile(r"unbound variable|command not found|Traceback \(most recent call last\)|syntax error")
 
 
@@ -792,6 +805,11 @@ def read_manifest(outputs):
             raise ValueError("%s has a missing or malformed %s" % (path, k))
     if not all(isinstance(c, dict) for c in m.get("critics", [])):
         raise ValueError("%s has a malformed critics entry" % path)
+    for sect in ("inputs", "cases"):
+        bad = [c for c in m[sect] if not MANIFEST_CASE.match(str(c))]
+        if bad:
+            raise ValueError("%s names a case id that is not a case file stem (%s): it could leave the outputs dir"
+                             % (path, str(bad[0])[:40]))
     return m
 
 
@@ -921,11 +939,13 @@ def bundle_sha256_v2(outputs):
 
 def model_conflict(outputs, model, tiers=None):
     """None when `model` is a model the sweep's effective roster ran, else why it cannot label the run."""
+    if not isinstance(model, str) or not model.strip():
+        return "--model is blank: a blank label cannot name the model a sweep ran"
     rows = run_roster_rows(outputs, tiers)
     if rows is None:
         return "--model %s cannot be checked: %s records no roster" % (model, outputs)
-    models = sorted({r.get("model") for r in rows if r.get("model")})
-    if model not in models:
+    models = sorted({r["model"].strip() for r in rows if isinstance(r.get("model"), str) and r["model"].strip()})
+    if model.strip() != model or model not in models:
         return "--model %s is not a model the swept roster runs (%s)" % (model, ", ".join(models) or "none")
     return None
 
@@ -1032,6 +1052,12 @@ def stamp(repo, outputs, fixtures, key, panel=None, tiers=ROSTER_TIER, only="", 
         why = model_conflict(outputs, model, tiers)
         if why:
             raise ValueError(why)
+    if not recheck:
+        loose = sorted(k for k in os.environ if UNRECORDABLE_SETTING.match(k)
+                       and k not in RECORDED_OVERRIDES and k not in RUN_SH_OWNED)
+        if loose:
+            raise ValueError("the environment carries execution settings the run manifest cannot record: %s; "
+                             "unset them for a gate sweep" % ", ".join(loose))
     inputs = cbs_paths(repo, "HEAD") + [REL, CRITICS_REL, ":(exclude)" + RESULTS]
     dirty = _git(repo, "status", "--porcelain", "--", *inputs).strip()
     def same(path, rel):
@@ -1087,24 +1113,32 @@ def gate_row(repo, rev, outputs):
     if not os.path.isdir(outputs):
         raise ValueError("no outputs dir: %s" % outputs)
     check_stamp(repo, rev, outputs)
+    return score_row(repo, rev, outputs)[0]
+
+
+def score_row(repo, rev, outputs, roster_rev=None, only=None):
+    """(row, res): the results row of <outputs> scored against <rev>'s key under the running scorer. The roster
+    falls back to <roster_rev>'s (default rev) when the bundle records none; only limits the cases scored. No stamp
+    check: gate_row checks one against rev, replay.py against the bundle's own execution tree."""
     before = running_scorer_identity()
     with tempfile.NamedTemporaryFile(suffix=".json") as kf:
         kf.write(tree_key(repo, rev))
         kf.flush()
-        res = score(outputs, None, kf.name, sweep_roster(outputs, tree_roster(repo, rev)))
+        res = score(outputs, None, kf.name, sweep_roster(outputs, tree_roster(repo, roster_rev or rev)), only)
     m = res["metrics"]
     keep = ("cases", "defects", "unscored", "leaked")
     ident = settled_identity(before)
     prov = execution_fields(outputs)
     reasons = res["ineligibility_reasons"] + ([] if known_identity(ident) else ["scorer-identity-unverified"])
-    return dict({"run_id": os.path.basename(os.path.abspath(outputs)), "tree": _git(repo, "rev-parse", rev).decode().strip(),
-                 "cbs_hash": cbs_hash(repo, rev), "confighash": confighash(repo, rev), "status": res["status"],
-                 "metrics": {k: v for k, v in m.items() if k in keep or (k.startswith("panel.") and ".class." not in k)},
-                 "class_recall": {c: m["panel.class.%s.recall" % c] for c in CLASSES if "panel.class.%s.recall" % c in m},
-                 "responded": res["responded"], "outputs_sha256": outputs_sha256(outputs),
-                 "scorer_sha256": ident["scorer_sha256"] if known_identity(ident) else None,
-                 "scorer_gitsha": ident["scorer_gitsha"], "scorer_reason": ident["reason"] or None,
-                 "scored_at": _now(), "decision_eligible": not reasons, "ineligibility_reasons": reasons}, **prov)
+    row = dict({"run_id": os.path.basename(os.path.abspath(outputs)), "tree": _git(repo, "rev-parse", rev).decode().strip(),
+                "cbs_hash": cbs_hash(repo, rev), "confighash": confighash(repo, rev), "status": res["status"],
+                "metrics": {k: v for k, v in m.items() if k in keep or (k.startswith("panel.") and ".class." not in k)},
+                "class_recall": {c: m["panel.class.%s.recall" % c] for c in CLASSES if "panel.class.%s.recall" % c in m},
+                "responded": res["responded"], "outputs_sha256": outputs_sha256(outputs),
+                "scorer_sha256": ident["scorer_sha256"] if known_identity(ident) else None,
+                "scorer_gitsha": ident["scorer_gitsha"], "scorer_reason": ident["reason"] or None,
+                "scored_at": _now(), "decision_eligible": not reasons, "ineligibility_reasons": reasons}, **prov)
+    return row, res
 
 
 def execution_fields(outputs):
@@ -1137,21 +1171,11 @@ def panel_mismatch(rows, base_hash, head_hash, confighash):
     HIMMEL-8430 rows today, so the unequal-panel false alarm on that pair stays until the old rows are replaced in
     results.jsonl by rows with a roster (export-row appends, and the first row of a run_id wins, so a re-exported
     row is dropped), upgrade = replace the old baseline and head rows.
-    ponytail: side() hand-copies gate_verdict's row selection (eval_feedback.py), upgrade = one shared helper there
-    that both call."""
+    The counted rows are gate_verdict's: both call eval_feedback.gate_side."""
     def side(h, skip_ids=(), skip_bundles=()):
-        # the rows gate_verdict counts for hash h: same status and metric tests, first row of a run_id or bundle
-        out, ids, bundles = {}, set(skip_ids), set(skip_bundles)
-        for r in rows:
-            m = r.get("metrics")
-            if r.get("cbs_hash") != h or r.get("confighash") != confighash \
-                    or r.get("status") not in eval_feedback.GATE_STATUS or not isinstance(m, dict) \
-                    or not (eval_runs._num(m.get(eval_feedback.GATE_RECALL))
-                            and eval_runs._num(m.get(eval_feedback.GATE_FP))) \
-                    or r.get("run_id") in ids or r.get("outputs_sha256") in bundles:
-                continue
-            ids.add(r.get("run_id"))
-            bundles.add(r.get("outputs_sha256"))
+        counted, ids, bundles = eval_feedback.gate_side(rows, h, confighash, skip_ids, skip_bundles)
+        out = {}
+        for r in counted:
             resp = r.get("responded")
             out[r.get("run_id")] = resp if isinstance(resp, dict) and isinstance(resp.get("critics"), dict) else None
         return out, ids, bundles
@@ -1185,8 +1209,6 @@ def panel_mismatch(rows, base_hash, head_hash, confighash):
 
 
 def gate(repo, base, head, target_classes=()):
-    # ponytail: the scorer filter lives here, not in one shared selector, upgrade = M3's eligibility selector in
-    # eval_feedback.py that compare, gate and report all call.
     b, h, c = cbs_hash(repo, base), cbs_hash(repo, head), confighash(repo, head)
     where = {"baseline_cbs_hash": b, "head_cbs_hash": h, "confighash": c}
     ident = running_scorer_identity()
@@ -1203,11 +1225,21 @@ def gate(repo, base, head, target_classes=()):
             continue
         if isinstance(r, dict):
             rows.append(r)
-    mine = [r for r in rows if r.get("scorer_sha256") == want]
+    # The shared selector: one head per execution, the running scorer's, decision-eligible rows only.
+    mine, diag = eval_feedback.select_review_runs(rows, scorer=want, eligible_only=True)
     legacy = sum(1 for r in rows if not r.get("scorer_sha256"))
-    excluded = {"without_scorer_sha256": legacy, "other_scorer": len(rows) - len(mine) - legacy}
+    excluded = {"without_scorer_sha256": legacy,
+                "other_scorer": sum(1 for r in rows if r.get("scorer_sha256") and r["scorer_sha256"] != want)}
     where.update(scorer_sha256=want, scorer_excluded=excluded)
+    skipped = {}
+    for d in diag:
+        if d["reason"] not in ("other-scorer", "without-scorer-sha256"):
+            skipped[d["reason"]] = skipped.get(d["reason"], 0) + 1
+    if skipped:
+        where["selection_excluded"] = skipped
     said = "%d without scorer_sha256, %d of another scorer" % (legacy, excluded["other_scorer"])
+    if skipped:
+        said += ", " + ", ".join("%d %s" % (n, why) for why, n in sorted(skipped.items()))
     if not mine:
         return "unmeasured", dict(where, reason="no eval rows scored by the running scorer %s (excluded: %s)"
                                   % (want[:12], said))
@@ -1216,8 +1248,71 @@ def gate(repo, base, head, target_classes=()):
         return "mismatch", dict(where, reason=mismatch)
     verdict, info = eval_feedback.gate_verdict(mine, b, h, c, target_classes)
     if verdict == "unmeasured" and len(mine) < len(rows):
-        info = dict(info, reason="%s (rows of other scorers excluded: %s)" % (info["reason"], said))
+        info = dict(info, reason="%s (rows excluded: %s)" % (info["reason"], said))
     return verdict, dict(info, **where)
+
+
+def _arm(runs, name):
+    """{case id: [per-execution values]} of one arm's score objects, one execution counted once; the value of a
+    seeded case is its share of defects found, of a clean case 1 when it drew a blocking finding. A rescore of
+    an execution carries the same execution_id, so it is never a repeat."""
+    if not isinstance(runs, list) or not all(isinstance(r, dict) for r in runs):
+        raise ValueError("%s scores must be a JSON list of execution score objects" % name)
+    seen, dups, per = set(), [], {}
+    for r in runs:
+        ex = r.get("execution_id")
+        if not isinstance(ex, str) or not ex:
+            raise ValueError("%s scores: every object needs an execution_id" % name)
+        if ex in seen:
+            dups.append(ex)
+            continue
+        seen.add(ex)
+        for cid, c in sorted((r.get("cases") or {}).items()):
+            if isinstance(c, dict) and eval_runs._num(c.get("hit")) and eval_runs._num(c.get("defects")) and c["defects"]:
+                per.setdefault(cid, []).append(c["hit"] / c["defects"])
+            elif isinstance(c, dict) and isinstance(c.get("fp"), bool):
+                per.setdefault(cid, []).append(1.0 if c["fp"] else 0.0)
+    return per, sorted(seen), dups
+
+
+def compare_paired(base_runs, cand_runs, key_path):
+    """Pair-cluster comparison of two arms over the same twin pairs (design: Comparisons and uncertainty).
+    Each arm is a list of execution score objects {execution_id, cases: {case id: {hit, defects} | {fp}}}
+    (score()'s per-case rows). Repeats are averaged within each arm per case first; then the per-case
+    candidate-minus-baseline differences are bootstrapped (eval_runs.bootstrap_ci: 2,000 resamples, seed 0, 95%
+    percentile) stratified by corpus kind and split. A case an arm lacks is omitted and named, never dropped;
+    eligibility needs the whole planned cohort in both arms. Order of executions or repeat labels cannot change
+    the result. No policy threshold is applied."""
+    key = load_key(key_path)["cases"]
+    (b, b_ids, b_dups), (c, c_ids, c_dups) = _arm(base_runs, "baseline"), _arm(cand_runs, "candidate")
+    mean = lambda xs: math.fsum(xs) / len(xs)  # noqa: E731
+    common = sorted(cid for cid in key if cid in b and cid in c)
+    omitted = [{"case": cid, "missing_in": [n for n, arm in (("baseline", b), ("candidate", c)) if cid not in arm]}
+               for cid in sorted(key) if cid not in common]
+    reasons = (["no-baseline-executions"] if not b_ids else []) + (["no-candidate-executions"] if not c_ids else []) \
+        + (["omitted-cases:%d" % len(omitted)] if omitted else [])
+    out = {"common": common, "omitted": omitted, "eligible": not reasons, "reasons": reasons,
+           "executions": {"baseline": b_ids, "candidate": c_ids},
+           "duplicate_executions": {"baseline": b_dups, "candidate": c_dups},
+           "repeats": {"baseline": {cid: len(b[cid]) for cid in sorted(b)},
+                       "candidate": {cid: len(c[cid]) for cid in sorted(c)}}, "metrics": {}}
+    for name, kind in (("recall", "seeded"), ("fp_rate", "clean")):
+        strata = {}
+        for cid in common:
+            if key[cid]["kind"] == kind:
+                strata.setdefault(str(key[cid].get("split") or "all"), []).append(
+                    (cid, round(mean(c[cid]) - mean(b[cid]), 12)))
+        if not strata:
+            continue
+        groups = [[d for _, d in strata[s]] for s in sorted(strata)]
+        flat = [d for g in groups for d in g]
+        ci = eval_runs.bootstrap_ci(groups, strata=True, level=0.95, b=2000, seed=0)
+        out["metrics"][name] = {"cases": len(flat), "delta": round(mean(flat), 9),
+                                "lo": None if ci is None else round(ci["lo"], 9),
+                                "hi": None if ci is None else round(ci["hi"], 9),
+                                "strata": {s: len(strata[s]) for s in sorted(strata)},
+                                "per_case": {cid: d for s in sorted(strata) for cid, d in strata[s]}}
+    return out
 
 
 def report(res):
@@ -1290,6 +1385,10 @@ def main(argv=None):
         p.add_argument("--repo", help="the git repo the revs name (default this checkout)")
     pid = sub.add_parser("scorer-identity")
     pid.add_argument("--json", action="store_true")
+    pc = sub.add_parser("compare-paired")
+    pc.add_argument("--baseline-scores", required=True)
+    pc.add_argument("--candidate-scores", required=True)
+    pc.add_argument("--key", default=os.path.join(HERE, "key", "seeds.json"))
     ps.add_argument("--outputs", required=True)
     ps.add_argument("--critics", default="")
     ps.add_argument("--only", default="")
@@ -1318,6 +1417,18 @@ def main(argv=None):
         else:
             print(ident["scorer_sha256"] or "null (%s)" % ident["reason"])
         return 0
+    if a.cmd == "compare-paired":
+        try:
+            arms = []
+            for path in (a.baseline_scores, a.candidate_scores):
+                with open(path, encoding="utf-8") as fh:
+                    arms.append(json.load(fh))
+            res = compare_paired(arms[0], arms[1], a.key)
+        except (OSError, ValueError) as e:
+            print("score.py compare-paired: %s" % e, file=sys.stderr)
+            return 2
+        print(json.dumps(res, sort_keys=True))
+        return 0 if res["eligible"] else 1
     if a.cmd in tree_cmds or a.cmd in ("stamp", "export-row", "verify-row", "gate"):
         try:
             return tree_main(a)
@@ -1411,6 +1522,10 @@ def tree_main(a):
             print("verify-row: scorer identity unverified: the row names no scorer_sha256")
         bad = [f for f in ROW_FIELDS if claimed.get(f) != got[f] and (f not in LEGACY_OPTIONAL_FIELDS or f in claimed)
                and not (legacy and f == "scorer_sha256")]
+        if not legacy:
+            # a row naming a scorer is a new-protocol row: it must bind its bundle, and an eligible one its execution
+            need = ("bundle_sha256_v2",) + (("execution_id",) if claimed.get("decision_eligible") else ())
+            bad += [f for f in need if f not in bad and not claimed.get(f)]
         for f in bad:
             print("verify-row: %s differs: row %s, re-scored %s" % (f, json.dumps(claimed.get(f), sort_keys=True),
                                                                     json.dumps(got[f], sort_keys=True)))

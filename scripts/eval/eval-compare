@@ -42,6 +42,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
+import eval_feedback  # noqa: E402
 import eval_runs  # noqa: E402
 
 EPS = 1e-9
@@ -183,6 +184,17 @@ def main(argv=None):
 
     every, at, bad = eval_runs.scan_rows(args.ledger)
     mine = [(r, nr) for r, nr in zip(every, at) if r["eval"] == args.eval]
+    if args.eval == "review-panel":
+        # one head per execution: a rescore is not a candidate, a baseline or a repeat (select_review_runs)
+        chosen, diag = eval_feedback.select_review_runs([r for r, _ in mine])
+        keep = {id(r) for r in chosen}
+        mine = [(r, nr) for r, nr in mine if id(r) in keep]
+        if diag:
+            why = {}
+            for d in diag:
+                why[d["reason"]] = why.get(d["reason"], 0) + 1
+            print("eval-compare: review-panel selection set aside %d row(s): %s"
+                  % (len(diag), ", ".join("%d %s" % (n, w) for w, n in sorted(why.items()))))
     rows = [r for r, _ in mine]
     if not rows:
         print("eval-compare: no run of '%s' in %s" % (args.eval, eval_runs.ledger_path(args.ledger)))
@@ -201,6 +213,9 @@ def main(argv=None):
         return 3
     earlier = rows[:-1]
     pool = [r for r in earlier if r["status"] == "ok" and r["confighash"] == cand["confighash"]]
+    if args.eval == "review-panel":
+        # a review-panel baseline must share the corpus, protocol, known scorer and participation, however chosen
+        pool = [r for r in pool if not eval_feedback.review_incompat(r, cand)]
 
     # base_of[metric] = the row the metric's baseline value comes from.
     if args.baseline:
@@ -218,10 +233,17 @@ def main(argv=None):
             print("eval-compare: baseline %s is %s, not ok: only ok runs serve as baselines"
                   % (fixed["run_id"], fixed["status"]))
             return 3
+        if args.eval == "review-panel":
+            why = eval_feedback.review_incompat(fixed, cand)
+            if why:
+                print("eval-compare: baseline %s cannot be compared with %s (%s): an explicit --baseline does not "
+                      "override the review-panel comparison rules" % (fixed["run_id"], cand["run_id"], why))
+                return 3
     else:
         if not pool:
-            print("eval-compare: no baseline for %s %s: no earlier ok run with confighash %s"
-                  % (args.eval, cand["run_id"], cand["confighash"]))
+            print("eval-compare: no baseline for %s %s: no earlier ok run with confighash %s%s"
+                  % (args.eval, cand["run_id"], cand["confighash"],
+                     " and the same known scorer and participation" if args.eval == "review-panel" else ""))
             return 3
         fixed = pool[-1]
         label, base_of = fixed["run_id"], None

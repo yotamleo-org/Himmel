@@ -652,8 +652,10 @@ RRN="$TMP/run-rr1-noreceipt"; cp -r "$TMP/run-rr1" "$RRN"; for f in "$RRN"/case-
 python3 "$RR/scripts/eval/review-panel/score.py" export-row "$RRN" --repo "$RR" --results "$TMP/results-rrn.jsonl" >/dev/null 2>&1
 eq "provenance: stripping the responding-model receipts makes the row ineligible, never a fabricated model" \
   "$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["decision_eligible"], "responding-model-unobserved" in r["ineligibility_reasons"])' "$TMP/results-rrn.jsonl" 2>&1)" "False True"
+D0="$(pyscore 'print(score.bundle_sha256_v2(sys.argv[3]))' "$RRN")"
 mkdir -p "$RRN/case-99.md"
-eq "bundle_sha256_v2: a directory named like a case file is skipped, not a crash" "$(pyscore 'print(len(score.bundle_sha256_v2(sys.argv[3])))' "$RRN")" "64"
+eq "bundle_sha256_v2: a directory named like a case file is skipped, the digest is the one without it" \
+  "$(pyscore 'print(score.bundle_sha256_v2(sys.argv[3]))' "$RRN"):${#D0}" "$D0:64"
 RRA="$TMP/run-rr1-edited"; cp -r "$TMP/run-rr1" "$RRA"; printf 'critic-panel.sh: line 3: PANEL_LEDGER: unbound variable\n' >> "$RRA/case-01.err"
 python3 "$RR/scripts/eval/review-panel/score.py" export-row "$RRA" --repo "$RR" --results "$TMP/results-rra.jsonl" >/dev/null 2>&1
 eq "provenance: an error line added to a case after the manifest was completed still makes the row ineligible" \
@@ -668,7 +670,7 @@ STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$R
 eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 
 SC="$TMP/scorer"; mkdir -p "$SC/scripts/eval/review-panel" "$SC/scripts/eval/lib"
-cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$HERE/../lib/"*.py "$SC/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$SC/scripts/eval/"
+cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$HERE/replay.py" "$SC/scripts/eval/review-panel/replay.py"; cp "$HERE/../lib/"*.py "$SC/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$SC/scripts/eval/"
 printf '__pycache__/\n' > "$SC/.gitignore"
 sc() { git -C "$SC" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
 git init -q "$SC" && sc add -A && sc commit -q -m scorer
@@ -1120,6 +1122,184 @@ for rp in "$FIX_ALL"/real-*.patch; do
   eq "case-repo $rid: the head commit is exactly the case diff" \
     "$(git -C "$riso" diff --name-only HEAD~1 HEAD | wc -l | tr -d ' ')" "$(grep -c '^diff --git ' "$rp")"
 done
+
+# --- replay.py: retained bundles rescored into a NEW scratch dir, inputs and bundles never written ---------------
+RR="$TMP/replay-repo"; RP="$TMP/replay-in"; RB="$TMP/replay-bundles"; mkdir -p "$RP" "$RB"
+rg() { git -C "$RR" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
+mkdir -p "$RR/scripts/eval/review-panel/key" "$RR/scripts/cr/perspectives"
+cp -r "$FIX" "$RR/scripts/eval/review-panel/fixtures"; cp "$KEY" "$RR/scripts/eval/review-panel/key/seeds.json"
+cp "$HERE/cbs.txt" "$RR/scripts/eval/review-panel/cbs.txt"; cp "$HERE/../../cr/critics.json" "$RR/scripts/cr/critics.json"
+printf '#!/bin/sh\n' > "$RR/scripts/cr/critic-panel.sh"; printf 'p\n' > "$RR/scripts/cr/perspectives/skeptic.md"
+git init -q "$RR" && rg add -A && rg commit -q -m exec-tree
+rstamp() { python3 "$GSCORE" stamp "$1" --repo "$RR" --fixtures "$RR/scripts/eval/review-panel/fixtures" \
+  --key "$RR/scripts/eval/review-panel/key/seeds.json" --critics codex "${@:2}" >/dev/null 2>&1; }
+mkbundle() { cp -r "$O" "$RB/$1"; rm -f "$RB/$1/swept.json" "$RB/$1/run-manifest.json"; rcrit "$RB/$1/critics.run.json" codex
+  rstamp "$RB/$1"; rstamp "$RB/$1" --recheck; }
+mkbundle bundle-a
+python3 "$GSCORE" export-row "$RB/bundle-a" --repo "$RR" --results "$RP/results.jsonl" >/dev/null 2>&1
+python3 "$GSCORE" score --outputs "$RB/bundle-a" --fixtures "$FIX" --key "$KEY" --critics codex --ledger "$RP/ledger.jsonl" >/dev/null 2>&1
+eq "replay fixture: one results row and one ledger row of the retained bundle" "$(grep -c . "$RP/results.jsonl"):$(grep -c . "$RP/ledger.jsonl")" "1:1"
+# legacy / failure variants of the same bundle: a doctored false Claude participation, a missing artifact, a
+# changed bundle, a stamp that contradicts its tree, two rows of one run_id, an unsafe name, an unreadable line
+cp -r "$RB/bundle-a" "$RB/bundle-d"; rm -f "$RB/bundle-d/swept.json" "$RB/bundle-d/run-manifest.json"
+cp -r "$RB/bundle-a" "$RB/bundle-m"; printf 'x\n' >> "$RB/bundle-m/$LA.md"
+cp -r "$RB/bundle-a" "$RB/bundle-s"
+python3 -c 'import json,sys; p=sys.argv[1]; s=json.load(open(p)); s["confighash"]="0"*16; json.dump(s,open(p,"w"))' "$RB/bundle-s/swept.json"
+python3 - "$RP/results.jsonl" <<'PY'
+import json, sys
+p = sys.argv[1]
+a = json.loads(open(p).readline())
+def v(rid, **kw):
+    return dict(a, run_id=rid, **kw)
+rows = [v("bundle-d", responded={"scored": 5, "critics": {"claude": 5, "codex": 5}}), v("ghost"), v("bundle-m"),
+        v("bundle-s"), v("bundle-x"), v("bundle-x", outputs_sha256="f" * 64), v("../escape")]
+with open(p, "a") as fh:
+    fh.write("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows) + "not json\n")
+PY
+snap() { (cd "$1" && LC_ALL=C find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum); }
+SNAP_B="$(snap "$RB")"; SNAP_I="$(snap "$RP")"
+RPL="$SC/scripts/eval/review-panel/replay.py"
+rpl() { python3 "$RPL" --results "$RP/results.jsonl" --eval-ledger "$RP/ledger.jsonl" --artifacts-root "$RB" --repo "$RR" --out "$@" 2>&1; }
+VER="$TMP/rp-out1/verification.json"
+out=$(rpl "$TMP/rp-out1"); rc=$?
+eq "replay: exit 0" "$rc" "0"
+eq "no_live_writes: the retained bundles are byte-identical after a replay" "$(snap "$RB")" "$SNAP_B"
+eq "no_live_writes: the input rows are byte-identical" "$(snap "$RP")" "$SNAP_I"
+eq "no_live_writes: the live ledger path was never created" "$([ -e "$TMP/never.jsonl" ] && echo wrote || echo none)" "none"
+eq "replay: writes the candidates, the report and the reconstructed manifests only" "$(find "$TMP/rp-out1" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort | tr '\n' ' ')" \
+  "candidate-eval-runs.jsonl candidate-results.jsonl manifests verification.json "
+eq "replay: a reconstructed manifest lives in the output, never in the bundle" "$(find "$TMP/rp-out1/manifests" -type f -printf '%f ')$(find "$RB/bundle-d" -name '*manifest*' | wc -l | tr -d ' ')" "bundle-d.json 0"
+out=$(rpl "$TMP/rp-out1"); rc=$?
+eq "replay: an existing --out is refused" "$rc" "2"; has "replay: the refusal names the existing directory" "$out" "exists"
+out=$(rpl "$RB/inside"); rc=$?
+eq "replay: an --out inside the artifacts root is refused" "$rc" "2"
+eq "replay: and creates nothing there" "$([ -e "$RB/inside" ] && echo made || echo none)" "none"
+vi() { python3 -I -c 'import json,sys
+v=json.load(open(sys.argv[1]))
+hit=[i for i in v["items"] if i["source"]==sys.argv[2] and i.get("run_id")==sys.argv[3]]
+x=hit[0] if hit else None
+for k in sys.argv[4].split("/"):
+    x=x.get(k) if isinstance(x, dict) else None
+print(json.dumps(x, sort_keys=True))' "$VER" "$@"; }
+eq "replay: every supplied row has a disposition (8 results rows, 1 unreadable line, 1 ledger row)" "$(python3 -I -c 'import json,sys; v=json.load(open(sys.argv[1])); print(v["summary"]["rows"], all(i.get("disposition") for i in v["items"]))' "$VER")" "10 True"
+SID12="${SID:0:12}"
+eq "replay: the clean retained sweep is rescored under the running scorer" "$(vi results bundle-a failure):$(vi results bundle-a scorer_sha256)" "null:\"$SID\""
+eq "replay: the candidate supersedes the original row" "$(vi results bundle-a supersedes_run_id):$(vi results bundle-a candidate_run_id)" "\"bundle-a\":\"bundle-a~$SID12\""
+eq "scorer_only_rescore_not_new_execution: the candidate carries the bundle's own execution_id" \
+  "$(python3 -I -c 'import json,sys; r=[json.loads(l) for l in open(sys.argv[1])]; c=[x for x in r if x["run_id"]=="bundle-a~"+sys.argv[3]][0]; m=json.load(open(sys.argv[2])); print(c["execution_id"]==m["execution_id"], c["supersedes_run_id"])' "$TMP/rp-out1/candidate-results.jsonl" "$RB/bundle-a/run-manifest.json" "$SID12")" "True bundle-a"
+eq "replay: the candidate keeps the execution's cbs_hash and confighash" \
+  "$(python3 -I -c 'import json,sys; a=json.loads(open(sys.argv[1]).readline()); c=[json.loads(l) for l in open(sys.argv[2])][0]; print(a["cbs_hash"]==c["cbs_hash"] and a["confighash"]==c["confighash"], a["outputs_sha256"]==c["outputs_sha256"])' "$RP/results.jsonl" "$TMP/rp-out1/candidate-results.jsonl")" "True True"
+eq "replay: the candidate ledger row is a valid eval-runs row" "$(python3 "$HERE/../lib/eval_runs.py" validate "$TMP/rp-out1/candidate-eval-runs.jsonl" >/dev/null 2>&1; echo $?)" "0"
+eq "replay: the ledger row's candidate supersedes its source and shares the execution" \
+  "$(python3 -I -c 'import json,sys; c=json.loads(open(sys.argv[1]).readline()); print(c["meta"]["supersedes_run_id"]==json.loads(open(sys.argv[2]).readline())["run_id"], c["meta"]["execution_id"]==json.load(open(sys.argv[3]))["execution_id"])' "$TMP/rp-out1/candidate-eval-runs.jsonl" "$RP/ledger.jsonl" "$RB/bundle-a/run-manifest.json")" "True True"
+eq "old_unknown_provenance_diagnostic_only: a bundle with no manifest or stamp is reconstructed and ineligible" \
+  "$(vi results bundle-d provenance):$(vi results bundle-d disposition)" "\"reconstructed\":\"diagnostic-only\""
+has "old_unknown_provenance_diagnostic_only: the reasons name the missing manifest and stamp" "$(vi results bundle-d reasons)" "no-run-manifest"
+has "old_unknown_provenance_diagnostic_only: and the stamp" "$(vi results bundle-d reasons)" "stamp-missing"
+eq "codex_only_rows_lose_false_claude_participation: the rescore drops the claimed Claude answers" \
+  "$(vi results bundle-d participation/before/critics):$(vi results bundle-d participation/after/critics)" '{"claude": 5, "codex": 5}:{"codex": 5}'
+eq "missing_artifact_named: an unresolvable bundle is a named failure, not an omitted row" "$(vi results ghost failure)" '"missing-artifact"'
+eq "replay: a changed bundle is a named failure" "$(vi results bundle-m failure)" '"bundle-digest-mismatch"'
+eq "replay: a stamp that contradicts its recorded tree is a named failure" "$(vi results bundle-s failure)" '"execution-stamp-mismatch"'
+eq "replay: two rows of one run_id with different bundle digests are a contradictory mapping" "$(vi results bundle-x failure)" '"contradictory-mapping"'
+eq "replay: a bundle name that leaves the artifacts root is refused by name" "$(vi results ../escape failure)" '"unsafe-bundle-name"'
+eq "replay: an unreadable results line is a named failure" "$(python3 -I -c 'import json,sys; v=json.load(open(sys.argv[1])); print([i["failure"] for i in v["items"] if i["run_id"] is None])' "$VER")" "['unreadable-row']"
+eq "scorer_only_rescore_not_new_execution: the selector reads the original and its candidate as one execution" \
+  "$(python3 -I -c 'import json,sys
+sys.path.insert(0, sys.argv[3])
+import eval_feedback
+rows=[json.loads(l) for l in open(sys.argv[1]) if l.startswith("{")]
+cand=[json.loads(l) for l in open(sys.argv[2])]
+sel,_=eval_feedback.select_review_runs([r for r in rows if r["run_id"]=="bundle-a"]+[c for c in cand if c["run_id"].startswith("bundle-a~")])
+print([r["run_id"] for r in sel]==["bundle-a~"+sys.argv[4]])' "$RP/results.jsonl" "$TMP/rp-out1/candidate-results.jsonl" "$SC/scripts/eval/lib" "$SID12")" "True"
+# the old stamp is held to ITS tree: a gold-only revision at HEAD replays, an edited input does not
+python3 -c 'import json,sys; p=sys.argv[1]; k=json.load(open(p)); c=k["cases"]["case-01"]["defects"][0]; c["line"]=c["line"]+1; json.dump(k,open(p,"w"),indent=1)' "$RR/scripts/eval/review-panel/key/seeds.json"
+rg commit -qam gold-only
+VER="$TMP/rp-out2/verification.json"; out=$(rpl "$TMP/rp-out2"); rc=$?
+eq "gold_only_revision_replays: exit 0" "$rc" "0"
+eq "gold_only_revision_replays: the old stamp still validates at its own tree (HEAD's confighash moved)" \
+  "$(vi results bundle-a failure):$([ "$(python3 "$SCORE" confighash HEAD --repo "$RR")" != "$(python3 -I -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["confighash"])' "$RP/results.jsonl")" ] && echo moved)" "null:moved"
+eq "gold_only_revision_replays: no case input changed, the whole cohort rescored" "$(vi results bundle-a changed_cases):$(vi results bundle-a cases_not_in_execution_corpus)" "[]:0"
+eq "gold_only_revision_replays: the new scoring key is recorded apart from the execution corpus" \
+  "$(python3 -I -c 'import json,sys; a=json.load(open(sys.argv[1])); b=json.load(open(sys.argv[2])); print(a["scoring_key_sha256"]!=b["scoring_key_sha256"])' "$TMP/rp-out1/verification.json" "$VER")" "True"
+printf '# edited input\n' >> "$RR/scripts/eval/review-panel/fixtures/$LA.patch"; rg commit -qam input-edit
+VER="$TMP/rp-out3/verification.json"; out=$(rpl "$TMP/rp-out3"); rc=$?
+eq "changed_case_input_cannot_replay: exit 0" "$rc" "0"
+eq "changed_case_input_cannot_replay: the edited case is named, not rescored" "$(vi results bundle-a changed_cases)" "[\"$LA\"]"
+eq "changed_case_input_cannot_replay: the row is partial and ineligible" \
+  "$(python3 -I -c 'import json,sys; c=[json.loads(l) for l in open(sys.argv[1])][0]; print(c["status"], c["decision_eligible"], "changed-case-input:1" in c["ineligibility_reasons"])' "$TMP/rp-out3/candidate-results.jsonl")" "partial False True"
+
+# --- carried judge minors: unrecordable settings, manifest case ids, v2 rows, blank model labels --------------
+MS="$TMP/minors"; cp -r "$RB/bundle-a" "$MS"; rm -f "$MS/swept.json" "$MS/run-manifest.json"
+mstamp() { python3 "$GSCORE" stamp "$MS" --repo "$RR" --fixtures "$RR/scripts/eval/review-panel/fixtures" \
+  --key "$RR/scripts/eval/review-panel/key/seeds.json" --critics codex "$@" 2>&1; }
+out=$(CRITIC_SECRET_KNOB=1 mstamp); rc=$?
+eq "unrecordable_setting: a CRITIC_* knob the manifest cannot record refuses the stamp" "$rc" "2"; has "unrecordable_setting: and is named" "$out" "CRITIC_SECRET_KNOB"
+out=$(HIMMEL_API_LANE=x mstamp); rc=$?
+eq "unrecordable_setting: HIMMEL_API_LANE refuses the stamp" "$rc" "2"
+out=$(CRITIC_PARALLEL=2 CRITIC_TIMEOUT_SECS=60 mstamp); rc=$?
+eq "unrecordable_setting: the recorded overrides are accepted" "$rc" "0"
+out=$(mstamp --model "  "); rc=$?
+eq "model_conflict: a whitespace-only model label is refused" "$rc" "2"; has "model_conflict: and says it is blank" "$out" "blank"
+mstamp --recheck >/dev/null
+python3 -c 'import json,sys; p=sys.argv[1]; m=json.load(open(p)); m["inputs"]["../x"]={}; json.dump(m,open(p,"w"))' "$MS/run-manifest.json"
+python3 "$GSCORE" export-row "$MS" --repo "$RR" --results "$TMP/minors-res.jsonl" >/dev/null 2>&1
+eq "manifest_case_ids: a manifest case id that leaves the outputs dir makes the manifest unreadable, the row ineligible" \
+  "$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["decision_eligible"], "run-manifest-unreadable" in r["ineligibility_reasons"])' "$TMP/minors-res.jsonl" 2>&1)" "False True"
+out=$(python3 "$GSCORE" stamp "$MS" --repo "$RR" --recheck 2>&1); rc=$?
+eq "manifest_case_ids: a re-stamp refuses it" "$rc" "2"; has "manifest_case_ids: and names the escape" "$out" "case file stem"
+MV="$TMP/minors-v2"; cp -r "$RB/bundle-a" "$MV"; rm -f "$MV/swept.json" "$MV/run-manifest.json"
+python3 "$GSCORE" stamp "$MV" --repo "$RR" --fixtures "$RR/scripts/eval/review-panel/fixtures" --key "$RR/scripts/eval/review-panel/key/seeds.json" --critics codex >/dev/null 2>&1
+python3 "$GSCORE" stamp "$MV" --repo "$RR" --recheck >/dev/null 2>&1
+python3 "$GSCORE" export-row "$MV" --repo "$RR" --results "$TMP/minors-v2.jsonl" >/dev/null 2>&1
+V2ROW="$(head -1 "$TMP/minors-v2.jsonl")"
+python3 "$GSCORE" verify-row "$V2ROW" "$MV" --repo "$RR" >/dev/null 2>&1; rc=$?
+eq "verify_row_v2: a complete v2 row verifies" "$rc" "0"
+out=$(python3 "$GSCORE" verify-row "$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); del r["bundle_sha256_v2"]; print(json.dumps(r))' "$V2ROW")" "$MV" --repo "$RR" 2>&1); rc=$?
+eq "verify_row_v2: a row naming a scorer but no bundle_sha256_v2 is refused" "$rc" "1"; has "verify_row_v2: and names the field" "$out" "bundle_sha256_v2"
+
+# --- score.py compare-paired: pair-cluster comparison over twin pairs ------------------------------------------
+CPD="$TMP/cmp-paired"; mkdir -p "$CPD"
+python3 - "$KEY" "$CPD" <<'PY'
+import json, sys
+k = json.load(open(sys.argv[1]))["cases"]
+def arm(execs, drop=()):
+    out = []
+    for ex, hit, fp in execs:
+        cases = {}
+        for cid, c in sorted(k.items()):
+            if cid in drop:
+                continue
+            cases[cid] = ({"hit": min(hit, len(c["defects"])), "defects": len(c["defects"])} if c["kind"] == "seeded"
+                          else {"fp": fp})
+        out.append({"execution_id": ex, "cases": cases})
+    return out
+def put(n, o):
+    json.dump(o, open("%s/%s.json" % (sys.argv[2], n), "w"))
+put("base", arm([("b1", 0, True), ("b2", 1, True)]))
+put("cand", arm([("c1", 1, False), ("c2", 1, False)]))
+put("cand-relabelled", arm([("zz", 1, False), ("aa", 1, False)]))
+put("cand-missing", arm([("c1", 1, False), ("c2", 1, False)], drop=("case-01",)))
+put("cand-rescore", arm([("c1", 1, False), ("c2", 1, False)]) + arm([("c1", 0, True)]))
+PY
+cmpp() { python3 "$GSCORE" compare-paired --baseline-scores "$CPD/$1.json" --candidate-scores "$CPD/$2.json" --key "$KEY" 2>&1; }
+cj() { python3 -I -c 'import json,sys
+v=json.loads(sys.argv[1])
+for k in sys.argv[2].split("/"): v=v.get(k) if isinstance(v,dict) else None
+print(json.dumps(v, sort_keys=True))' "$@"; }
+P1="$(cmpp base cand)"; rc=$?
+eq "compare-paired: a complete cohort in both arms is eligible" "$rc:$(cj "$P1" eligible)" "0:true"
+eq "compare-paired: the clean twins' blocking rate falls by the whole 1.0 (every pair moved)" "$(cj "$P1" metrics/fp_rate/delta)" "-1.0"
+has "compare-paired: the recall change is a positive delta" "$(cj "$P1" metrics/recall/delta)" "0."
+eq "compare-paired: repeats are reported per arm" "$(cj "$P1" repeats/baseline/case-01):$(cj "$P1" repeats/candidate/case-01)" "2:2"
+eq "deterministic_pair_bootstrap: the same arms give the same bytes (2,000 resamples, seed 0)" "$(cmpp base cand | sha256sum)" "$(printf '%s\n' "$P1" | sha256sum)"
+eq "repeat_label_swap_invariant: relabelling and reordering the repeats changes no metric" "$(cj "$(cmpp base cand-relabelled)" metrics | sha256sum)" "$(cj "$P1" metrics | sha256sum)"
+P3="$(cmpp base cand-missing)"; rc=$?
+eq "missing_pair_not_silently_dropped: a case the candidate lacks is omitted by name and the run is ineligible" \
+  "$rc:$(cj "$P3" eligible):$(cj "$P3" omitted)" '1:false:[{"case": "case-01", "missing_in": ["candidate"]}]'
+P4="$(cmpp base cand-rescore)"
+eq "scorer_only_rescore_not_new_execution: a repeated execution_id counts once and is listed" \
+  "$(cj "$P4" repeats/candidate/case-01):$(cj "$P4" duplicate_executions/candidate)" '2:["c1"]'
 
 echo
 echo "test-review-panel: PASS=$PASS FAIL=$FAIL"
