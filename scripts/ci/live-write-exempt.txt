@@ -44,4 +44,10 @@
 */scripts/hooks/test-stop-chief-idle-guard.sh HIMMEL-9723 writes cadence-ledger.jsonl under HOME
 */scripts/luna-vitals/connectors/test-pull-cadence-arm.sh HIMMEL-9723 writes flow-runs.jsonl under HOME
 */templates/luna-second-brain/scripts/test-vault-git.sh HIMMEL-9723 writes .local/bin under HOME
-* HIMMEL-9672 measurement
+bun:scripts/luna-vitals HIMMEL-9672 measurement
+bun:scripts/telegram HIMMEL-9672 measurement
+bun:scripts/vault/tests HIMMEL-9672 measurement
+bun:scripts/config-ui HIMMEL-9672 measurement
+bun:marketplace/plugins/luna-correlate HIMMEL-9672 measurement
+bun:marketplace/plugins/telegram-himmel HIMMEL-9672 measurement
+bun:scripts/observability HIMMEL-9672 measurement
