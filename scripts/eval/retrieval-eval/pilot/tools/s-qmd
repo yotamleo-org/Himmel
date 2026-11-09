@@ -1,0 +1,530 @@
+#!/usr/bin/env python3
+"""s-qmd -- the RAG pilot's retrieval command, identical for the S and Q arms.
+
+Agent side (inside the task sandbox):   s-qmd [-n N] <query words...>
+Host side (the trusted runner only):    s-qmd serve --socket P --meta D --phase PHASE [--cap 12]
+                                              [--wrapper-name s-qmd] [--nvml-cmd CMD]
+                                        s-qmd summary --meta D [--socket P]
+
+The trusted launcher binds the wrapper to ONE arm through a read-only binding file
+($PILOT_BINDING, default /run/pilot/binding.json): its pinned qmd, locked config, disposable
+index, collections/manifests, and (S only) the dedicated key file. The task cannot pick the
+other backend: the other arm's assets are not mounted. Every call:
+
+  1. runs config-preflight.mjs in the exact nonsecret child environment (no key yet), checks the
+     target (never a master/live/read-only index), the S key binding or the Q weights/CI rule;
+     any failure refuses before admission: no booking, no qmd process, an integrity event;
+  2. asks the host broker for admission over the bound socket; the broker owns the phase, the
+     invocation id and the per-task counter (the 13th query refuses), never the task;
+  3. starts a FRESH qmd process (fresh XDG_CACHE_HOME, read-only Q weights, Q under a network
+     namespace) in its own process group: TERM at the term deadline, KILL at the kill deadline;
+  4. sends the raw stdout/stderr/exit/timing to the broker on the SAME connection; the broker
+     classifies it (shared S/Q classifier) and writes the authoritative private metadata;
+  5. prints one common result schema: copy-relative pin-filtered hits, or one common error line.
+     No model URI, backend label, progress, GPU or download line ever reaches the agent.
+"""
+import argparse, hashlib, json, os, re, shutil, signal, socket, struct, subprocess, sys, tempfile, threading, time
+
+DEFAULT_BINDING = "/run/pilot/binding.json"
+SKIP_STDERR = {"Structured query expansion failed:": "expansion_failed",
+               "QMD: the embedding service did not answer;": "embedding_unanswered"}
+CPU_FALLBACK = ("QMD Warning: GPU init failed", "running on CPU", "skipping previously failed GPU init",
+                "CPU-only llama.cpp prebuilt", "GPU offloading disabled")
+REMOTE_ATTEMPT = re.compile(r"fetch failed|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|getaddrinfo|ENOTFOUND")
+STAGE_MARKERS = ("Expanding query", "Embedding ", "Reranking ")
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+FORGED = {"phase", "counter", "count", "id", "reset", "cap"}
+AGENT_ERROR = "s-qmd: search failed; try again or use grep"
+
+
+# ----------------------------------------------------------------------------- shared classifier
+def expansion_shape(stderr, query):
+    """'strong_bm25', 'raw_query_only', 'expanded' or 'none' from the private stderr tree."""
+    text = ANSI.sub("", stderr)
+    if "Strong BM25 signal" in text:
+        return "strong_bm25"
+    lines = [l[3:].strip() for l in text.splitlines() if l.startswith(("├─ ", "└─ "))]
+    typed = [l.split(": ", 1)[1] for l in lines if re.match(r"^(lex|vec|hyde|intent): ", l)]
+    if not lines:
+        return "none"
+    q = " ".join(query.split())
+    # the pinned parser's fallback for an empty/unusable reply: lex/vec = the query, hyde = "Information about <query>"
+    fallback = {q, "Information about " + q}
+    fallback |= {f[:69] + "..." for f in fallback if len(f) > 72}
+    if not typed or all(" ".join(t.split()) in fallback for t in typed):
+        return "raw_query_only"
+    return "expanded"
+
+
+def classify(ev, arm):
+    """The design section 5 retrieval-skip rule, applied to one admitted invocation's raw evidence."""
+    reasons = []
+    stderr = ANSI.sub("", ev.get("stderr") or "")
+    if ev.get("timed_out"):
+        reasons.append("timeout")
+    if ev.get("rc") not in (0, None) and not ev.get("timed_out"):
+        reasons.append("qmd_exit_%s" % ev.get("rc"))
+    for marker, name in SKIP_STDERR.items():
+        if marker in stderr:  # substring: a marker concatenated to progress text still counts
+            reasons.append(name)
+    hits = ev.get("hits_raw")
+    if hits is None and not ev.get("timed_out") and ev.get("rc") == 0:
+        reasons.append("invalid_terminal_json")
+    for flag in ("embedSkipped", "rerankSkipped", "rerankTimedOut"):
+        if any(isinstance(h, dict) and h.get(flag) for h in (hits or [])):
+            reasons.append("flag:" + flag)
+    if arm == "Q":
+        if REMOTE_ATTEMPT.search(stderr):
+            reasons.append("q_remote_attempt")
+        if any(m in stderr for m in CPU_FALLBACK):
+            reasons.append("q_cpu_fallback")
+        stages = any(m in stderr for m in STAGE_MARKERS)
+        gpu = ev.get("gpu_evidence")
+        if ev.get("nvml_required"):
+            if stages and not gpu:
+                reasons.append("q_no_gpu_evidence")
+            ev["gpu_state"] = "observed" if gpu else ("missing" if stages else "not_applicable")
+    return sorted(set(reasons))
+
+
+# ----------------------------------------------------------------------------- agent side
+def load_binding():
+    path = os.environ.get("PILOT_BINDING", DEFAULT_BINDING)
+    with open(path) as f:
+        return json.load(f)
+
+
+def sha_file(p):
+    with open(p, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def child_env(b, home, cache):
+    env = {"PATH": b.get("child_path", "/usr/bin:/bin"), "HOME": home, "LANG": "C.UTF-8",
+           "QMD_CONFIG_DIR": b["config_dir"], "INDEX_PATH": b["index"], "XDG_CACHE_HOME": cache}
+    for k, v in (b.get("env") or {}).items():
+        env[k] = str(v)
+    return env
+
+
+def refuse_local(b, reason):
+    """A pre-admission refusal: no booking, no qmd. Reported to the broker as an integrity event."""
+    try:
+        with BrokerConn(b["socket"]) as c:
+            c.send({"op": "refused", "reason": reason})
+    except OSError:
+        pass
+    print("s-qmd: retrieval unavailable (%s)" % reason.split(":", 1)[0], file=sys.stderr)
+    return 3
+
+
+def preflight(b, env):
+    p = subprocess.run([b.get("node", "node"), b["preflight"], os.environ.get("PILOT_BINDING", DEFAULT_BINDING)],
+                       env=env, capture_output=True, text=True, timeout=60)
+    return p.returncode == 0, (p.stderr or p.stdout).strip()[-300:]
+
+
+def check_target(b):
+    idx = b["index"]
+    real = os.path.realpath(idx)
+    for bad in b.get("forbidden_targets") or []:
+        if real == os.path.realpath(bad):
+            return "target:master_or_live"
+    if not os.path.isfile(real) or os.path.islink(idx):
+        return "target:missing"
+    if not os.access(real, os.W_OK) or not (os.stat(real).st_mode & 0o200):
+        return "target:read_only"
+    return None
+
+
+def check_arm(b, env):
+    if b["arm"] == "S":
+        kf = b.get("key_file")
+        if not kf or not os.path.isfile(kf):
+            return "key:missing"
+        if sha_file(kf) != b.get("key_fingerprint"):
+            return "key:rotated"
+    else:
+        if b.get("key_file") or "QMD_OPENAI_API_KEY" in env:
+            return "q:key_present"
+        ci = env.get("CI", os.environ.get("CI", ""))
+        if ci and ci.lower() not in ("0", "false"):
+            return "q:ci_mode"
+        md = b.get("models_dir")
+        if not md or not all(os.path.isfile(os.path.join(md, w)) for w in b.get("required_weights") or []):
+            return "q:weights_missing"
+    return None
+
+
+class BrokerConn:
+    def __init__(self, path):
+        self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.s.connect(path)
+        self.f = self.s.makefile("rwb")
+
+    def send(self, msg):
+        self.f.write((json.dumps(msg) + "\n").encode())
+        self.f.flush()
+        line = self.f.readline()
+        return json.loads(line) if line else {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        try:
+            self.f.close()
+            self.s.close()
+        except OSError:
+            pass
+
+
+def _die_with_parent():
+    """The qmd child never outlives a killed wrapper (PR_SET_PDEATHSIG = SIGKILL)."""
+    import ctypes
+    ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGKILL, 0, 0, 0)
+
+
+def run_qmd(b, env, query, n):
+    argv = list(b.get("child_prefix") or []) + [b["qmd"], "--index", "eval", "query", "--json", "-n", str(n), query]
+    term = b.get("deadline_term_ms", 530000) / 1000.0
+    kill = b.get("deadline_kill_ms", 540000) / 1000.0
+    t0 = time.monotonic()
+    with tempfile.TemporaryDirectory() as cwd:
+        p = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, start_new_session=True, preexec_fn=_die_with_parent)
+        out, err, timed_out, killed = b"", b"", False, False
+        try:
+            out, err = p.communicate(timeout=term)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            os.killpg(p.pid, signal.SIGTERM)
+            try:
+                out, err = p.communicate(timeout=max(0.0, kill - (time.monotonic() - t0)))
+            except subprocess.TimeoutExpired:
+                killed = True
+                os.killpg(p.pid, signal.SIGKILL)
+                out, err = p.communicate()
+    ms = int((time.monotonic() - t0) * 1000)
+    return {"rc": p.returncode, "stdout": out.decode("utf-8", "replace"), "stderr": err.decode("utf-8", "replace"),
+            "timed_out": timed_out, "killed": killed, "ms": ms}
+
+
+def pin_filter(b, hits):
+    kept, dropped = [], 0
+    manifests = {}
+    for coll, mp in (b.get("manifests") or {}).items():
+        with open(mp) as f:
+            m = json.load(f)
+        manifests[coll] = m["files"]
+    for h in hits:
+        m = re.match(r"^qmd://([^/]+)/([^?]+)", str(h.get("file", "")))
+        if not m or m.group(1) not in manifests or m.group(1) not in b["collections"]:
+            dropped += 1
+            continue
+        coll, path = m.group(1), m.group(2)
+        entry = manifests[coll].get(path)
+        full = os.path.join(b["collections"][coll], path)
+        docid = str(h.get("docid", "")).lstrip("#")
+        if not entry or not os.path.isfile(full) or sha_file(full) != entry["sha256"] or not entry["sha256"].startswith(docid):
+            dropped += 1
+            continue
+        kept.append((full, h))
+    return kept, dropped
+
+
+def agent_text(kept):
+    if not kept:
+        return "s-qmd: no results"
+    out = ["s-qmd: %d result%s" % (len(kept), "" if len(kept) == 1 else "s")]
+    for i, (full, h) in enumerate(kept, 1):
+        out.append("%d. %s:%s  %s" % (i, full, h.get("line", 1), str(h.get("title", "")).strip()))
+        body = [l for l in str(h.get("snippet", "")).splitlines() if l.strip() and not l.startswith("@@")]
+        for l in body[:3]:
+            out.append("   " + l[:200])
+    return "\n".join(out)
+
+
+def client(argv):
+    ap = argparse.ArgumentParser(prog="s-qmd", description="Search the pinned notes and docs (hybrid search).")
+    ap.add_argument("-n", type=int, default=8, help="results, 1 to 10 (default 8)")
+    ap.add_argument("query", nargs="+")
+    a = ap.parse_args(argv)
+    n = max(1, min(10, a.n))
+    query = " ".join(a.query)
+    try:
+        b = load_binding()
+    except (OSError, ValueError):
+        print("s-qmd: retrieval unavailable (no binding)", file=sys.stderr)
+        return 3
+    home = tempfile.mkdtemp(prefix="s-qmd-home.")
+    try:
+        cache = os.path.join(home, "cache")
+        os.makedirs(os.path.join(cache, "qmd"))
+        if b["arm"] == "Q" and b.get("models_dir"):
+            os.symlink(b["models_dir"], os.path.join(cache, "qmd", "models"))
+        env = child_env(b, home, cache)
+        reason = check_arm(b, env)
+        if not reason:
+            ok, why = preflight(b, env)
+            reason = None if ok else "config:" + why
+        reason = reason or check_target(b)
+        if reason:
+            return refuse_local(b, reason)
+        try:
+            conn = BrokerConn(b["socket"])
+        except OSError:
+            print("s-qmd: retrieval unavailable (no broker)", file=sys.stderr)
+            return 3
+        with conn:
+            r = conn.send({"op": "admit", "query_sha256": hashlib.sha256(query.encode()).hexdigest(), "n": n})
+            if not r.get("ok"):
+                if r.get("reason") == "cap":
+                    print("s-qmd: query limit reached (%s per task)" % r.get("cap", 12), file=sys.stderr)
+                else:
+                    print("s-qmd: retrieval unavailable (%s)" % r.get("reason", "refused"), file=sys.stderr)
+                return 3
+            key = None
+            if b["arm"] == "S":
+                with open(b["key_file"]) as f:
+                    key = f.read().strip()
+                env["QMD_OPENAI_API_KEY"] = key
+            ev = run_qmd(b, env, query, n)
+            try:
+                hits = json.loads(ev["stdout"]) if ev["rc"] == 0 and not ev["timed_out"] else None
+                if hits is not None and not isinstance(hits, list):
+                    hits = None
+            except ValueError:
+                hits = None
+            kept, dropped = pin_filter(b, hits or [])
+            raw = {k: v for k, v in ev.items()}
+            if key:
+                raw["stdout"] = raw["stdout"].replace(key, "[key]")
+                raw["stderr"] = raw["stderr"].replace(key, "[key]")
+            reply = conn.send({"op": "terminal", "id": r["id"], **raw, "hits_raw": hits, "kept": len(kept), "dropped": dropped,
+                               "query": query, "expansion": expansion_shape(raw["stderr"], query)})
+        if hits is None:
+            print(AGENT_ERROR, file=sys.stderr)
+            return 1
+        print(agent_text(kept))
+        return 0 if reply.get("ok") else 1
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
+
+
+# ----------------------------------------------------------------------------- host side
+def peer(conn):
+    pid, uid, gid = struct.unpack("3i", conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))
+    return pid
+
+
+def cmdline(pid):
+    try:
+        with open("/proc/%d/cmdline" % pid, "rb") as f:
+            return f.read().replace(b"\0", b" ").decode("utf-8", "replace")
+    except OSError:
+        return ""
+
+
+def descendants(pid):
+    kids = {}
+    for d in os.listdir("/proc"):
+        if d.isdigit():
+            try:
+                with open("/proc/%s/stat" % d) as f:
+                    st = f.read().rsplit(")", 1)[1].split()
+                kids.setdefault(int(st[1]), []).append((int(d), int(st[19])))
+            except (OSError, IndexError, ValueError):
+                pass
+    out, todo = {}, [pid]
+    while todo:
+        p = todo.pop()
+        for c, start in kids.get(p, []):
+            out[c] = start
+            todo.append(c)
+    return out
+
+
+class Broker:
+    def __init__(self, a):
+        self.a = a
+        self.lock = threading.Lock()
+        self.count = 0
+        self.refused = 0
+        os.makedirs(a.meta, mode=0o700, exist_ok=True)
+        self.events = open(os.path.join(a.meta, "events.jsonl"), "a")
+
+    def record(self, ev):
+        ev["ts"] = time.time()
+        ev["phase"] = self.a.phase
+        with self.lock:
+            self.events.write(json.dumps(ev) + "\n")
+            self.events.flush()
+            os.fsync(self.events.fileno())
+            with open(os.path.join(self.a.meta, "state.json.tmp"), "w") as f:
+                json.dump({"phase": self.a.phase, "admitted": self.count, "cap_refused": self.refused,
+                           "socket_ino": self.ino}, f)
+            os.replace(os.path.join(self.a.meta, "state.json.tmp"), os.path.join(self.a.meta, "state.json"))
+
+    def nvml_watch(self, pid, stop, out):
+        cmd = self.a.nvml_cmd.split()
+        while not stop.is_set():
+            try:
+                rows = subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout.splitlines()
+            except (OSError, subprocess.SubprocessError):
+                rows = []
+            kids = descendants(pid)
+            for r in rows:
+                parts = [x.strip() for x in r.split(",")]
+                if len(parts) >= 2 and parts[0].isdigit() and int(parts[0]) in kids:
+                    mib = float(parts[1] or 0)
+                    if mib > 0 and mib > out.get("mib", 0):
+                        out.update({"pid": int(parts[0]), "start": kids[int(parts[0])], "mib": mib})
+            stop.wait(0.25)
+
+    def handle(self, conn):
+        pid = peer(conn)
+        f = conn.makefile("rwb")
+        admitted, terminal = None, False
+        stop, gpu = threading.Event(), {}
+        try:
+            for line in f:
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    self.record({"kind": "integrity", "what": "unparseable_message", "peer_pid": pid})
+                    break
+                op = msg.get("op")
+                forged = sorted(set(msg) & FORGED)
+                if op == "terminal":
+                    forged = sorted(set(forged) - {"id"})
+                attributed = self.a.wrapper_name in cmdline(pid)
+                if forged or not attributed or op not in ("admit", "terminal", "refused"):
+                    self.record({"kind": "integrity", "what": "forged_field" if forged else ("unattributed_peer" if not attributed else "unknown_op"),
+                                 "fields": forged, "op": op, "peer_pid": pid, "peer_cmdline": cmdline(pid)[:200]})
+                    f.write(b'{"ok": false, "reason": "integrity"}\n'); f.flush()
+                    break
+                if op == "refused":
+                    self.record({"kind": "integrity", "what": "pre_admission_refusal", "reason": str(msg.get("reason"))[:300], "peer_pid": pid})
+                    f.write(b'{"ok": true}\n'); f.flush()
+                    break
+                if op == "admit":
+                    if admitted:
+                        self.record({"kind": "integrity", "what": "double_admit", "peer_pid": pid})
+                        break
+                    with self.lock:
+                        if self.count >= self.a.cap:
+                            self.refused += 1
+                            refuse = True
+                        else:
+                            self.count += 1
+                            refuse = False
+                            admitted = "%s-%02d-%s" % (self.a.phase, self.count, os.urandom(3).hex())
+                    if refuse:
+                        self.record({"kind": "cap_refused", "peer_pid": pid, "cap": self.a.cap})
+                        f.write(json.dumps({"ok": False, "reason": "cap", "cap": self.a.cap}).encode() + b"\n"); f.flush()
+                        break
+                    self.record({"kind": "admit", "id": admitted, "peer_pid": pid, "query_sha256": msg.get("query_sha256")})
+                    if self.a.nvml_cmd:
+                        threading.Thread(target=self.nvml_watch, args=(pid, stop, gpu), daemon=True).start()
+                    f.write(json.dumps({"ok": True, "id": admitted}).encode() + b"\n"); f.flush()
+                    continue
+                if op == "terminal":
+                    if not admitted or msg.get("id") != admitted:
+                        self.record({"kind": "integrity", "what": "unbound_terminal", "peer_pid": pid, "id": msg.get("id")})
+                        break
+                    stop.set()
+                    ev = {k: msg.get(k) for k in ("rc", "stdout", "stderr", "timed_out", "killed", "ms", "hits_raw", "kept", "dropped", "query", "expansion")}
+                    ev["nvml_required"] = bool(self.a.nvml_cmd)
+                    ev["gpu_evidence"] = dict(gpu) or None
+                    reasons = classify(ev, self.a.arm)
+                    self.record({"kind": "terminal", "id": admitted, "skip_reasons": reasons, "skip": bool(reasons), **ev})
+                    terminal = True
+                    f.write(b'{"ok": true}\n'); f.flush()
+                    break
+        except OSError:
+            pass
+        finally:
+            stop.set()
+            if admitted and not terminal:
+                self.record({"kind": "terminal", "id": admitted, "skip": True, "skip_reasons": ["missing_terminal"]})
+            try:
+                f.close(); conn.close()
+            except OSError:
+                pass
+
+    def serve(self):
+        if os.path.exists(self.a.socket):
+            os.unlink(self.a.socket)
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(self.a.socket)
+        os.chmod(self.a.socket, 0o666)
+        self.ino = os.stat(self.a.socket).st_ino
+        srv.listen(16)
+        self.record({"kind": "broker_start", "socket_ino": self.ino, "cap": self.a.cap, "arm": self.a.arm})
+        signal.signal(signal.SIGTERM, _stop)
+        try:
+            while True:
+                conn, _ = srv.accept()
+                threading.Thread(target=self.handle, args=(conn,), daemon=True).start()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            srv.close()
+
+
+def _stop(*_):
+    raise KeyboardInterrupt
+
+
+def summary(a):
+    evs = []
+    with open(os.path.join(a.meta, "events.jsonl")) as f:
+        for line in f:
+            try:
+                evs.append(json.loads(line))
+            except ValueError:
+                evs.append({"kind": "integrity", "what": "corrupt_event_line"})
+    start = next((e for e in evs if e.get("kind") == "broker_start"), {})
+    integrity = [e.get("what") for e in evs if e.get("kind") == "integrity" and e.get("what") != "pre_admission_refusal"]
+    refusals = [e.get("reason") for e in evs if e.get("what") == "pre_admission_refusal"]
+    if refusals:
+        integrity.append("pre_admission_refusal")
+    if a.socket:
+        try:
+            ino = os.stat(a.socket).st_ino
+        except OSError:
+            ino = None
+        if ino != start.get("socket_ino"):
+            integrity.append("channel_replaced")
+    terms = [e for e in evs if e.get("kind") == "terminal"]
+    out = {"admitted": sum(1 for e in evs if e.get("kind") == "admit"),
+           "cap_refused": sum(1 for e in evs if e.get("kind") == "cap_refused"),
+           "terminals": len(terms), "skips": sum(1 for e in terms if e.get("skip")),
+           "skip_reasons": sorted({r for e in terms for r in e.get("skip_reasons", [])}),
+           "dropped": sum(e.get("dropped") or 0 for e in terms),
+           "raw_query_only": sum(1 for e in terms if e.get("expansion") == "raw_query_only"),
+           "integrity": sorted(set(integrity)), "refusals": refusals}
+    print(json.dumps(out, sort_keys=True))
+    return 0
+
+
+def main(argv):
+    if argv[:1] == ["serve"]:
+        ap = argparse.ArgumentParser(prog="s-qmd serve")
+        ap.add_argument("--socket", required=True); ap.add_argument("--meta", required=True)
+        ap.add_argument("--phase", required=True, choices=["preflight", "answer", "probe", "fixed"])
+        ap.add_argument("--arm", required=True, choices=["S", "Q"])
+        ap.add_argument("--cap", type=int, default=12); ap.add_argument("--wrapper-name", default="s-qmd")
+        ap.add_argument("--nvml-cmd", default="")
+        Broker(ap.parse_args(argv[1:])).serve()
+        return 0
+    if argv[:1] == ["summary"]:
+        ap = argparse.ArgumentParser(prog="s-qmd summary")
+        ap.add_argument("--meta", required=True); ap.add_argument("--socket", default="")
+        return summary(ap.parse_args(argv[1:]))
+    return client(argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

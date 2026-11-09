@@ -6,7 +6,7 @@ deterministic word hashes: no model, no network, no cost. Every request is appen
 --log as one JSON line so a test can count calls. STUB_MODE picks a failure:
   expand-fail   chat answers 500 (qmd prints "Structured query expansion failed:")
   expand-empty  chat answers an empty message (qmd's silent raw-query-only fallback)
-  embed-down    query embeddings answer 500 (qmd skips the meaning part)
+  embed-down    every embedding request answers 500 (a query skips the meaning part)
   rerank-fail   rerank answers 500
 Usage: stub-openai.py --port N --port-file F --log F   (run inside a network namespace)
 """
@@ -51,7 +51,7 @@ class H(BaseHTTPRequestHandler):
             f.write(json.dumps({"path": self.path, "auth": bool(self.headers.get("authorization")), "mode": mode}) + "\n")
         if self.path.endswith("/embeddings"):
             inputs = body.get("input") or []
-            if mode == "embed-down" and len(inputs) == 1:
+            if mode == "embed-down":
                 return self.reply(500, {"error": "down"})
             return self.reply(200, {"data": [{"index": i, "embedding": vec(t)} for i, t in enumerate(inputs)]})
         if self.path.endswith("/rerank"):
