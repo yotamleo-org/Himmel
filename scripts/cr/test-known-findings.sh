@@ -519,7 +519,6 @@ contains "feed: a row deferring to a Done ticket is STALE" "$ld" "STALE row=2 us
 lu="$(lrun deferu "$tmp/l-defer.csv")"
 not_contains "feed: unavailable Jira status never makes a row STALE" "$lu" "reason=closed-deferral"
 contains "feed: unavailable Jira status is reported as unknown" "$lu" "STATUS-UNKNOWN row=2 ticket=HIMMEL-7002"
-# the retired marker word alone is not a deferral: row 1 names an open ticket and none of the six match words, row 2 is the control
 rw=pony; rw="${rw}tail"
 { echo "$LHDR"; lrow "Mind the $rw note on the snarfle cache from HIMMEL-7001." "$LFILE" 2; lrow 'Defer the gizmo tweak to HIMMEL-7001 for now.' "$LFILE" 2; } > "$tmp/l-rw.csv"
 lrw="$(lrun rw "$tmp/l-rw.csv" "$tmp/status.tsv")"
