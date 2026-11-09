@@ -185,7 +185,6 @@ check 'a sha the repo does not know prints ?, never stale' '?' "$(afield pool-st
 l="$pd HIMMEL-101 slice HIMMEL-901 @deadbeef01"; d="$(doc unknownshadone "$l")"
 check 'an unknown sha leaves a line with only Done blockers unjudged: ?, not stale' '?' "$(afield pool-stale "$d")"
 
-# The kit is the real one file by file; its next-dispatchable.sh is a stub that logs each launch and its nice.
 real_scripts="$(cd "$HERE/../.." && pwd)"
 sk="$WORK/kit/scripts"; mkdir -p "$sk/handover/chief-kit"
 for f in "$real_scripts"/*; do [ "${f##*/}" = handover ] || ln -s "$f" "$sk/${f##*/}"; done
