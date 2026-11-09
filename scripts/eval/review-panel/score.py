@@ -1254,15 +1254,17 @@ def _arm(runs, name):
     an execution carries the same execution_id, so it is never a repeat."""
     if not isinstance(runs, list) or not all(isinstance(r, dict) for r in runs):
         raise ValueError("%s scores must be a JSON list of execution score objects" % name)
-    seen, dups, per = set(), [], {}
+    seen, dups, per, first = set(), [], {}, {}
     for r in runs:
         ex = r.get("execution_id")
         if not isinstance(ex, str) or not ex:
             raise ValueError("%s scores: every object needs an execution_id" % name)
         if ex in seen:
-            dups.append(ex)
+            # a repeat of one execution must carry the same values: two different score sets are not one execution
+            dups.append(ex if r.get("cases") == first[ex] else ex + " (values differ)")
             continue
         seen.add(ex)
+        first[ex] = r.get("cases")
         for cid, c in sorted((r.get("cases") or {}).items()):
             if isinstance(c, dict) and eval_runs._num(c.get("hit")) and eval_runs._num(c.get("defects")) and c["defects"]:
                 per.setdefault(cid, []).append(c["hit"] / c["defects"])
@@ -1285,8 +1287,10 @@ def compare_paired(base_runs, cand_runs, key_path):
     common = sorted(cid for cid in key if cid in b and cid in c)
     omitted = [{"case": cid, "missing_in": [n for n, arm in (("baseline", b), ("candidate", c)) if cid not in arm]}
                for cid in sorted(key) if cid not in common]
+    conflicting = [d for d in b_dups + c_dups if d.endswith(" (values differ)")]
     reasons = (["no-baseline-executions"] if not b_ids else []) + (["no-candidate-executions"] if not c_ids else []) \
-        + (["omitted-cases:%d" % len(omitted)] if omitted else [])
+        + (["omitted-cases:%d" % len(omitted)] if omitted else []) \
+        + (["conflicting-duplicate-executions:%d" % len(conflicting)] if conflicting else [])
     out = {"common": common, "omitted": omitted, "eligible": not reasons, "reasons": reasons,
            "executions": {"baseline": b_ids, "candidate": c_ids},
            "duplicate_executions": {"baseline": b_dups, "candidate": c_dups},

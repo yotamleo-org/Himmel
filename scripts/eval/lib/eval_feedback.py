@@ -465,7 +465,8 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                           and c["confighash"] == new["confighash"]}
             ev_rules = [r for r in rules if r["eval"] == ev]
             for critic in dict.fromkeys(r.get("critic") for r in ev_rules):
-                if any(c["baseline_run_id"] == new["run_id"] and c.get("critic") == critic for c in opened):
+                if any(alias.get(c["baseline_run_id"], c["baseline_run_id"]) == new["run_id"]
+                       and c.get("critic") == critic for c in opened):
                     continue
                 tm = tuning_metrics(new)
                 for rule in [r for r in ev_rules if r.get("critic") == critic]:

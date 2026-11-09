@@ -1149,11 +1149,13 @@ a = json.loads(open(p).readline())
 def v(rid, **kw):
     return dict(a, run_id=rid, **kw)
 rows = [v("bundle-d", responded={"scored": 5, "critics": {"claude": 5, "codex": 5}}), v("ghost"), v("bundle-m"),
-        v("bundle-s"), v("bundle-x"), v("bundle-x", outputs_sha256="f" * 64), v("../escape")]
+        v("bundle-s"), v("bundle-x"), v("bundle-x", outputs_sha256="f" * 64), v("../escape"), v(".."), v("."),
+        v("bundle-link")]
 with open(p, "a") as fh:
     fh.write("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows) + "not json\n"
              + json.dumps(v(["not", "a", "name"], outputs_sha256=["x"])) + "\n")
 PY
+ln -s "$O" "$RB/bundle-link"
 snap() { (cd "$1" && LC_ALL=C find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum); }
 SNAP_B="$(snap "$RB")"; SNAP_I="$(snap "$RP")"
 RPL="$SC/scripts/eval/review-panel/replay.py"
@@ -1179,7 +1181,10 @@ x=hit[0] if hit else None
 for k in sys.argv[4].split("/"):
     x=x.get(k) if isinstance(x, dict) else None
 print(json.dumps(x, sort_keys=True))' "$VER" "$@"; }
-eq "replay: every supplied row has a disposition (8 results rows, 2 unreadable lines, 1 ledger row)" "$(python3 -I -c 'import json,sys; v=json.load(open(sys.argv[1])); print(v["summary"]["rows"], all(i.get("disposition") for i in v["items"]))' "$VER")" "11 True"
+eq "replay: every supplied row has a disposition (11 results rows, 2 unreadable lines, 1 ledger row)" "$(python3 -I -c 'import json,sys; v=json.load(open(sys.argv[1])); print(v["summary"]["rows"], all(i.get("disposition") for i in v["items"]))' "$VER")" "14 True"
+eq "unsafe_bundle_name: a run_id of .. or . is refused by name, never scored as the artifacts root's parent" \
+  "$(vi results .. failure):$(vi results . failure)" '"unsafe-bundle-name":"unsafe-bundle-name"'
+eq "unsafe_bundle_name: a bundle that is a symlink out of the artifacts root is refused" "$(vi results bundle-link failure)" '"unsafe-bundle-name"'
 SID12="${SID:0:12}"
 eq "replay: the clean retained sweep is rescored under the running scorer" "$(vi results bundle-a failure):$(vi results bundle-a scorer_sha256)" "null:\"$SID\""
 eq "replay: the candidate supersedes the original row" "$(vi results bundle-a supersedes_run_id):$(vi results bundle-a candidate_run_id)" "\"bundle-a\":\"bundle-a~$SID12\""
@@ -1252,6 +1257,8 @@ python3 "$GSCORE" verify-row "$V2ROW" "$MV" --repo "$RR" >/dev/null 2>&1; rc=$?
 eq "verify_row_v2: a complete v2 row verifies" "$rc" "0"
 out=$(python3 "$GSCORE" verify-row "$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); del r["bundle_sha256_v2"]; print(json.dumps(r))' "$V2ROW")" "$MV" --repo "$RR" 2>&1); rc=$?
 eq "verify_row_v2: a row naming a scorer but no bundle_sha256_v2 is refused" "$rc" "1"; has "verify_row_v2: and names the field" "$out" "bundle_sha256_v2"
+out=$(python3 "$GSCORE" verify-row "$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); r["decision_eligible"]=True; del r["execution_id"]; print(json.dumps(r))' "$V2ROW")" "$MV" --repo "$RR" 2>&1); rc=$?
+eq "verify_row_v2: a row claiming eligibility without an execution_id is refused" "$rc" "1"; has "verify_row_v2: and names the execution_id" "$out" "execution_id differs"
 
 CPD="$TMP/cmp-paired"; mkdir -p "$CPD"
 python3 - "$KEY" "$CPD" <<'PY'
@@ -1275,6 +1282,7 @@ put("cand", arm([("c1", 1, False), ("c2", 1, False)]))
 put("cand-relabelled", arm([("zz", 1, False), ("aa", 1, False)]))
 put("cand-missing", arm([("c1", 1, False), ("c2", 1, False)], drop=("case-01",)))
 put("cand-rescore", arm([("c1", 1, False), ("c2", 1, False)]) + arm([("c1", 0, True)]))
+put("cand-dup-same", arm([("c1", 1, False), ("c2", 1, False)]) + arm([("c1", 1, False)]))
 PY
 cmpp() { python3 "$GSCORE" compare-paired --baseline-scores "$CPD/$1.json" --candidate-scores "$CPD/$2.json" --key "$KEY" 2>&1; }
 cj() { python3 -I -c 'import json,sys
@@ -1293,9 +1301,12 @@ eq "repeat_label_swap_invariant: relabelling and reordering the repeats changes 
 P3="$(cmpp base cand-missing)"; rc=$?
 eq "missing_pair_not_silently_dropped: a case the candidate lacks is omitted by name and the run is ineligible" \
   "$rc:$(cj "$P3" eligible):$(cj "$P3" omitted)" '1:false:[{"case": "case-01", "missing_in": ["candidate"]}]'
-P4="$(cmpp base cand-rescore)"
-eq "scorer_only_rescore_not_new_execution: a repeated execution_id counts once and is listed" \
-  "$(cj "$P4" repeats/candidate/case-01):$(cj "$P4" duplicate_executions/candidate)" '2:["c1"]'
+P4="$(cmpp base cand-dup-same)"; rc=$?
+eq "scorer_only_rescore_not_new_execution: a repeated execution_id with the same values counts once, is listed, and stays eligible" \
+  "$rc:$(cj "$P4" repeats/candidate/case-01):$(cj "$P4" duplicate_executions/candidate):$(cj "$P4" eligible)" '0:2:["c1"]:true'
+P5="$(cmpp base cand-rescore)"; rc=$?
+eq "conflicting_duplicate_execution: one execution_id with two different score sets makes the result ineligible" \
+  "$rc:$(cj "$P5" eligible):$(cj "$P5" reasons)" '1:false:["conflicting-duplicate-executions:1"]'
 
 echo
 echo "test-review-panel: PASS=$PASS FAIL=$FAIL"

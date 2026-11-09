@@ -441,6 +441,29 @@ meas = [c for c in recs() if c["status"] == "measured"]
 print(("PASS " if len(meas) == 1 and meas[0]["verdict"] == "keep" and meas[0]["noise"] == 0 else "FAIL ")
       + "revision_not_prev_run: a later execution measures it, the rescore adds no noise sample (%s)"
       % [(m.get("verdict"), m.get("noise")) for m in meas])
+
+glob_rules = os.path.join(d, "glob-rules.json")
+open(glob_rules, "w").write('{"v":1,"rules":[{"eval":"review-panel","metric":"codex.class.*.recall","threshold":0.5,'
+                            '"better":"higher","absent":null,"change":"prompt","target":"scripts/cr/critic-first-pass.sh",'
+                            '"critic":"codex","min_gain":0.25}]}')
+l2, c2 = os.path.join(d, "l2.jsonl"), os.path.join(d, "c2.jsonl")
+def add2(rid, ex, sup=None, sc=S1):
+    meta = {"execution_id": ex, "scorer_sha256": sc}
+    if sup:
+        meta["supersedes_run_id"] = sup
+    m = {"open.codex.class.quoting.recall": 0.0, "open.codex.class.logic.recall": 0.1,
+         "sealed.codex.class.quoting.recall": 0.0, "sealed.codex.class.logic.recall": 0.1}
+    eval_runs.append_row(eval_runs.make_row("review-panel", "s", {"review_panel_v": 2}, m, run_id=rid, meta=meta,
+                                            gitsha="g"), l2)
+add2("g1", "y1")
+fb.run(ledger=l2, changes=c2, rules=glob_rules)
+n1 = len([1 for l in open(c2) if '"status":"open"' in l])
+add2("g1~r", "y1", sup="g1", sc=S2)
+fb.run(ledger=l2, changes=c2, rules=glob_rules)
+n2 = len([1 for l in open(c2) if '"status":"open"' in l])
+print(("PASS " if (n1, n2) == (1, 1) else "FAIL ")
+      + "revision_not_prev_run: a rescore of the newest execution opens no second change under a glob rule with two "
+        "metrics past threshold (%d then %d open changes)" % (n1, n2))
 EOF
 SELOUT="$(python3 -I "$SELPY" "$HERE/lib" 2>&1)"
 while IFS= read -r line; do

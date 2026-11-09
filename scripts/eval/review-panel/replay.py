@@ -36,7 +36,7 @@ import eval_feedback  # noqa: E402
 import eval_runs  # noqa: E402
 import score  # noqa: E402
 
-SAFE_NAME = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._-]*$")
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def _digest(obj):
@@ -120,6 +120,10 @@ def replay_row(src, kind, repo, root, out, scoring, partner, digests):
     bundle = os.path.join(root, name)
     if not os.path.isdir(bundle):
         item["failure"] = "missing-artifact"
+        return item, None
+    if not os.path.realpath(bundle).startswith(os.path.realpath(root) + os.sep):
+        item["failure"] = "unsafe-bundle-name"
+        item["detail"] = "the bundle resolves outside the artifacts root"
         return item, None
     raw = score.outputs_sha256(bundle)
     recorded = src.get("outputs_sha256") if kind == "results" else (partner or {}).get("outputs_sha256")
@@ -249,8 +253,7 @@ def replay(results, ledger, root, out, repo=None):
     led_rows, led_bad = read_jsonl(ledger, lambda r: r.get("eval") != "review-panel" or isinstance(r.get("run_id"), str))
     led_panel = [r for r in led_rows if r.get("eval") == "review-panel"]
     ident = score.running_scorer_identity()
-    with open(os.path.join(repo, score.KEY_REL), "rb") as fh:
-        scoring = {"key_sha256": hashlib.sha256(fh.read()).hexdigest()}
+    scoring = {"key_sha256": hashlib.sha256(score.tree_key(repo, "HEAD")).hexdigest()}
     os.makedirs(out)
     partner_of = {}
     digests = {}
