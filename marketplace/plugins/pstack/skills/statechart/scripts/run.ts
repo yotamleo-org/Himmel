@@ -168,9 +168,9 @@ const runToFiles = (
 function findTlc() {
   const { TLA2TOOLS, JAVA } = process.env;
   if (!TLA2TOOLS || !path.isAbsolute(TLA2TOOLS))
-    throw new Error("Set TLA2TOOLS to an absolute path to tla2tools.jar 1.7.4 on a test VM. Nothing was installed.");
+    throw new Error("Set TLA2TOOLS to an absolute path to tla2tools.jar 1.7.4 (pre-provisioned). Nothing was installed.");
   if (!JAVA || !path.isAbsolute(JAVA))
-    throw new Error("Set JAVA to an absolute path to a Java 11+ executable on a test VM. Nothing was installed.");
+    throw new Error("Set JAVA to an absolute path to a Java 11+ executable (pre-provisioned). Nothing was installed.");
   fs.accessSync(JAVA, fs.constants.X_OK);
   const hash = createHash("sha256").update(fs.readFileSync(TLA2TOOLS)).digest("hex");
   if (hash !== TLC_SHA256)
