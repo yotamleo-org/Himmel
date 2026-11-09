@@ -26,7 +26,7 @@ import { boardProjects, loadFeed, readProjects, saveFeed, summarize } from "./pr
 import { appendAudit } from "./audit";
 import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
-import { readRollup } from "./rollup";
+import { readRollupWithJob } from "./rollup";
 import { readPhaseStats } from "./phase-stats";
 import { readCost } from "./cost";
 import { fileReader, liveBoards, readMerged, type Live, type Lock, type Span, readShifts, redactShift, shiftsFile, tick as tickShifts, viewOf } from "./shift";
@@ -768,7 +768,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       // the weekly roll-up as three trend cards, read from the file weekly-rollup.py wrote. Never recomputed here.
       if (path === "/api/rollup") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        return json(redactOut(readRollup(env)));
+        return json(redactOut(await readRollupWithJob(env, join(env.HIMMEL_REPORT_CADENCE_ROOT ?? root, "scripts", "eval", "rollup-cadence.sh"))));
       }
       // the Eval tab: per-phase numbers for the last 7 full days, read from the ticket status records and the review-round files.
       if (path === "/api/phase-stats") {

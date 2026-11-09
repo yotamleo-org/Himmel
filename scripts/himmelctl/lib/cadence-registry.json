@@ -58,6 +58,14 @@
       "recommended": false
     },
     {
+      "id": "rollup",
+      "label": "weekly roll-up",
+      "script": "scripts/eval/rollup-cadence.sh",
+      "description": "weekly (Monday 06:00) velocity, cost and health roll-up that the Fleet Trends tab and the Health page read — git and local scripts only, no claude session, no bank",
+      "requires": "none",
+      "recommended": false
+    },
+    {
       "id": "pull-cadence",
       "label": "Google Health vitals pull",
       "script": "scripts/luna-vitals/connectors/pull-cadence.sh",

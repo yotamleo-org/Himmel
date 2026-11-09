@@ -88,8 +88,8 @@ chmod +x "$stubDoctor"
 
 # stub cadence scripts + plugin-profile.sh under one script root
 scriptRoot="$work/scripts-root"
-mkdir -p "$scriptRoot/scripts/luna" "$scriptRoot/scripts/cleanup" "$scriptRoot/scripts/machine-setup"
-for s in luna/pipeline-cadence luna/qmd-cadence luna/graphmap-cadence doctor-cadence; do
+mkdir -p "$scriptRoot/scripts/luna" "$scriptRoot/scripts/cleanup" "$scriptRoot/scripts/machine-setup" "$scriptRoot/scripts/eval"
+for s in luna/pipeline-cadence luna/qmd-cadence luna/graphmap-cadence doctor-cadence eval/rollup-cadence; do
   cat > "$scriptRoot/scripts/$s.sh" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = status ] || exit 2
@@ -163,10 +163,10 @@ manifest_n=$(jq '.items|length' "$repo_root/scripts/install/manifest.json")
 n_item=$(jq '[.rows[]|select(.source=="item")]|length' "$out")
 # a cadence's manifest item folds into its cadence row (spec §4: one identity)
 n_item_cad=$(jq '[.rows[]|select(.source=="cadence")]|length' "$out")
-[ "$n_item_cad" -eq 4 ] || fail "expected 4 cadence rows, got $n_item_cad"
+[ "$n_item_cad" -eq 5 ] || fail "expected 5 cadence rows, got $n_item_cad"
 folded=$(jq -r '[.items[].id|select(.=="pipeline-cadence" or .=="graphmap-cadence" or .=="doctor-cadence")]|length' "$repo_root/scripts/install/manifest.json")
 [ "$n_item" -eq $((manifest_n - folded)) ] || fail "item rows $n_item != manifest $manifest_n - folded $folded"
-pass "a1 item rows and 4 cadence rows"
+pass "a1 item rows and 5 cadence rows"
 
 [ "$(jq '[.rows[]|select(.source=="doctor")]|length' "$out")" -eq 3 ] || fail "doctor rows != 3"
 jq -e '[.rows[]|select(.id=="doctor:C3-luna")]|length==1' "$out" >/dev/null || fail "doctor:C3-luna row id"
@@ -594,15 +594,15 @@ bl_root
 "$node_bin" "$bundle_lint" --root "$work/blr" >/dev/null 2>"$work/blr.err" || { cat "$work/blr.err" >&2; fail "k2 the fixture base does not pass (control)"; }
 printf '{"items":[{"id":"node"},{"id":"extra-item"}]}\n' > "$work/blr/scripts/install/manifest.json"
 bl_expect UNMAPPED 'UNMAPPED extra-item'
-bl_root; bl_table '{"bundles":[{"id":"all","title":"All","rows":["node","no*","doctor:*","probe-disagree:*","plugin:*","lane:*","flag:*","secret:*","initiative:*","pipeline-cadence","qmd-cadence","graphmap-cadence","doctor-cadence"]}]}'
+bl_root; bl_table '{"bundles":[{"id":"all","title":"All","rows":["node","no*","doctor:*","probe-disagree:*","plugin:*","lane:*","flag:*","secret:*","initiative:*","pipeline-cadence","qmd-cadence","graphmap-cadence","doctor-cadence","rollup-cadence"]}]}'
 bl_expect MULTI 'MULTI node'
-bl_root; bl_table '{"bundles":[{"id":"all","title":"All","rows":["node","ghost-row","doctor:*","probe-disagree:*","plugin:*","lane:*","flag:*","secret:*","initiative:*","pipeline-cadence","qmd-cadence","graphmap-cadence","doctor-cadence"]}]}'
+bl_root; bl_table '{"bundles":[{"id":"all","title":"All","rows":["node","ghost-row","doctor:*","probe-disagree:*","plugin:*","lane:*","flag:*","secret:*","initiative:*","pipeline-cadence","qmd-cadence","graphmap-cadence","doctor-cadence","rollup-cadence"]}]}'
 bl_expect DEAD 'DEAD all ghost-row'
-bl_root; bl_table '{"bundles":[{"id":"all","title":"All","rows":["node","doctor:*","probe-disagree:*","plugin:*","lane:*","flag:*","secret:*","initiative:*","pipeline-cadence","qmd-cadence","graphmap-cadence","doctor-cadence"]},{"id":"all","title":"Again","rows":[]}]}'
+bl_root; bl_table '{"bundles":[{"id":"all","title":"All","rows":["node","doctor:*","probe-disagree:*","plugin:*","lane:*","flag:*","secret:*","initiative:*","pipeline-cadence","qmd-cadence","graphmap-cadence","doctor-cadence","rollup-cadence"]},{"id":"all","title":"Again","rows":[]}]}'
 bl_expect DUPLICATE 'DUPLICATE all'
-bl_root; bl_table '{"bundles":[{"id":"all","title":"All","rows":["node","doctor:*","probe-disagree:*","plugin:*","lane:*","flag:*","secret:*","initiative:*","pipeline-cadence","qmd-cadence","graphmap-cadence","doctor-cadence"]},{"id":"unsorted","title":"Unsorted","rows":[]}]}'
+bl_root; bl_table '{"bundles":[{"id":"all","title":"All","rows":["node","doctor:*","probe-disagree:*","plugin:*","lane:*","flag:*","secret:*","initiative:*","pipeline-cadence","qmd-cadence","graphmap-cadence","doctor-cadence","rollup-cadence"]},{"id":"unsorted","title":"Unsorted","rows":[]}]}'
 bl_expect RESERVED 'RESERVED unsorted'
-bl_root; bl_table '{"bundles":[{"id":"all","title":"All","rows":["node","doctor:*","probe-disagree:*","plugin:*","lane:*","flag:*","secret:*","initiative:*","pipeline-cadence","qmd-cadence","graphmap-cadence","doctor-cadence"]},{"id":"bare","title":"No rows"}]}'
+bl_root; bl_table '{"bundles":[{"id":"all","title":"All","rows":["node","doctor:*","probe-disagree:*","plugin:*","lane:*","flag:*","secret:*","initiative:*","pipeline-cadence","qmd-cadence","graphmap-cadence","doctor-cadence","rollup-cadence"]},{"id":"bare","title":"No rows"}]}'
 bl_expect MALFORMED 'bare'
 pass "k2 bundle lint fails on UNMAPPED / MULTI / DEAD / DUPLICATE / RESERVED / malformed"
 # k3: a root with nothing to enumerate must not pass vacuously

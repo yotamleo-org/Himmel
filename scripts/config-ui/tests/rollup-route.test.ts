@@ -1,6 +1,6 @@
 // GET /api/rollup — the weekly roll-up (scripts/eval/weekly-rollup.py) as three trend cards, read-only; and the Health page's Trends section.
 import { test, expect, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
@@ -25,15 +25,21 @@ const ROWS: Row[] = [
   version("v1.1.0", { merges: 30, cost_eq_per_ticket: 150, red_main: 1 }, { merges: -10, cost_eq_per_ticket: -50, red_main: -2 }),
 ];
 
-function boot(rows?: Row[]) {
+// `status` is the body of a stub scripts/eval/rollup-cadence.sh, served as the cadence tree HIMMEL_REPORT_CADENCE_ROOT names;
+// with none given the script is absent, so the read fails.
+function boot(rows?: Row[], status?: string) {
   const dir = mkdtempSync(join(tmpdir(), "rollup-route-"));
-  const home = join(dir, "home"), root = join(dir, "root");
+  const home = join(dir, "home"), root = join(dir, "root"), cad = join(dir, "cad");
   mkdirSync(home); mkdirSync(root);
   const file = join(dir, "weekly.jsonl");
   if (rows) writeFileSync(file, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
-  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, WEEKLY_ROLLUP_FILE: file } });
+  if (status !== undefined) {
+    mkdirSync(join(cad, "scripts", "eval"), { recursive: true });
+    writeFileSync(join(cad, "scripts", "eval", "rollup-cadence.sh"), `#!/usr/bin/env bash\n${status}\n`);
+  }
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, WEEKLY_ROLLUP_FILE: file, HIMMEL_REPORT_CADENCE_ROOT: cad } });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
-  return s;
+  return Object.assign(s, { dir });
 }
 const get = (port: number, headers: Record<string, string> = { "X-Himmel-Token": TOKEN }, method = "GET") =>
   fetch(`http://127.0.0.1:${port}/api/rollup`, { headers, method });
@@ -106,4 +112,55 @@ test("Health page: no roll-up shows 'no data yet' in the Trends section; strings
   const evil = `<img src=x onerror=alert(1)>`;
   const html = renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, rollup: { state: "ok", cards: [{ id: "velocity", title: evil, metric: evil, unit: evil, state: "ok", spark: [], week: null, version: null, sentence: evil }] } });
   expect(html).not.toContain("<img");
+});
+
+// The job's state: /api/rollup runs the cadence script's `status` and reports on, off or unknown beside the roll-up.
+test("rollup job: a stub status gives off, on and unknown, and the absent reason says which", async () => {
+  const off = await (await get(boot(undefined, `echo "not armed  HIMMEL-WeeklyRollup"`).port)).json();
+  expect(off).toMatchObject({ state: "absent", job: "off" });
+  expect(off.reason).toContain("job is off");
+  const on = await (await get(boot(undefined, `echo "ARMED      HIMMEL-WeeklyRollup (0 6 * * 1)"`).port)).json();
+  expect(on).toMatchObject({ state: "absent", job: "on" });
+  expect(on.reason).toContain("is on and has not run yet");
+  const unknown = await (await get(boot(undefined, `echo "boom" >&2; exit 1`).port)).json();
+  expect(unknown).toMatchObject({ state: "absent", job: "unknown" });
+  expect(unknown.reason).toContain("How to fill it");
+  expect(unknown.reason).not.toContain("job is");
+});
+
+test("rollup job: a non-zero exit is unknown even when an ARMED line printed; a missing script is unknown", async () => {
+  const s = boot(undefined, `echo "ARMED      HIMMEL-WeeklyRollup"; exit 1`);
+  expect((await (await get(s.port)).json()).job).toBe("unknown");
+  expect((await (await get(boot().port)).json()).job).toBe("unknown");
+});
+
+test("rollup job: a roll-up that exists still carries the job state, and the cards are untouched", async () => {
+  const r = await (await get(boot(ROWS, `echo "ARMED      HIMMEL-WeeklyRollup"`).port)).json();
+  expect(r).toMatchObject({ state: "ok", job: "on" });
+  expect(r.cards).toHaveLength(3);
+});
+
+test("rollup job: the status read is cached and shared, so two requests, even at once, run it once", async () => {
+  const s = boot(undefined, `exit 0`);
+  const counter = join(s.dir, "runs");
+  writeFileSync(join(s.dir, "cad", "scripts", "eval", "rollup-cadence.sh"), `#!/usr/bin/env bash\necho run >> "${counter}"\nsleep 0.3\necho "not armed  HIMMEL-WeeklyRollup"\n`);
+  const [a, b] = await Promise.all([get(s.port), get(s.port)]);
+  expect([(await a.json()).job, (await b.json()).job]).toEqual(["off", "off"]);
+  expect((await (await get(s.port)).json()).job).toBe("off");
+  expect(readFileSync(counter, "utf8").trim().split("\n")).toEqual(["run"]);
+});
+
+test("rollup job: the read runs off the request thread, so another route answers while status sleeps", async () => {
+  const s = boot(undefined, `sleep 2; echo "not armed  HIMMEL-WeeklyRollup"`);
+  const slow = get(s.port);
+  const t0 = Date.now();
+  expect((await fetch(`http://127.0.0.1:${s.port}/api/cost`, { headers: { "X-Himmel-Token": TOKEN } })).status).toBe(200);
+  expect(Date.now() - t0).toBeLessThan(1000);
+  expect((await (await slow).json()).job).toBe("off");
+});
+
+test("rollup job: a status that outlasts its timeout is unknown", async () => {
+  const s = boot(undefined, `exec sleep 30`);
+  const { rollupJob } = await import("../rollup");
+  expect(await rollupJob(join(s.dir, "cad", "scripts", "eval", "rollup-cadence.sh"), 300)).toBe("unknown");
 });

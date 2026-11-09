@@ -1,6 +1,7 @@
 // rollup.ts — the read-only source behind GET /api/rollup: the weekly roll-up (scripts/eval/weekly-rollup.py,
 // ~/.himmel/state/rollup/weekly.jsonl) as three trend cards. The deltas are the ones the writer stored; nothing is
 // recomputed here or in the browser. A missing file is state absent, never an error.
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -56,6 +57,42 @@ function sentence(c: (typeof CARDS)[number], week: Compared | null, version: Com
   if (!parts.length) return "No earlier week or version to compare with yet";
   const s = parts.join(" and ");
   return s[0].toUpperCase() + s.slice(1);
+}
+
+// ── the job's state ──────────────────────────────────────────────────────
+// Whether the weekly roll-up cadence is armed, from its own `status`, read the way himmelctl's cadenceRow reads it
+// (config-feed.js): a non-zero exit is a failed probe whatever it printed, except a documented "not armed" line.
+// The read is asynchronous and cached, so a slow `status` never blocks the server and Trends opens do not each run it.
+export type Job = "on" | "off" | "unknown";
+const JOB_TIMEOUT_MS = 15_000;
+const JOB_TTL_MS = 30_000;
+const jobs = new Map<string, { at: number; job: Promise<Job> }>();
+
+export function rollupJob(script: string, timeoutMs = JOB_TIMEOUT_MS, now = Date.now()): Promise<Job> {
+  const hit = jobs.get(script);
+  if (hit && now - hit.at < JOB_TTL_MS) return hit.job;
+  const job = new Promise<Job>((resolve) => {
+    execFile("bash", [script, "status"], { encoding: "utf8", timeout: timeoutMs }, (err, stdout) => {
+      const out = String(stdout || "");
+      const broken = err && (typeof err.code !== "number" || err.killed || err.signal || (err.code !== 0 && !/^not armed\b/m.test(out)));
+      resolve(broken ? "unknown" : /^ARMED\b/m.test(out) ? "on" : "off");
+    });
+  });
+  jobs.set(script, { at: now, job });
+  return job;
+}
+
+const NO_ROLLUP = "no weekly roll-up yet.";
+const REASON: Record<Job, string> = {
+  off: `${NO_ROLLUP} The weekly roll-up job is off; switch it on in Configure.`,
+  on: `${NO_ROLLUP} The weekly roll-up job is on and has not run yet.`,
+  unknown: `${NO_ROLLUP} How to fill it: bash scripts/eval/rollup-cadence.sh arm (see docs/cadences.md).`,
+};
+
+// the roll-up and the state of the job that feeds it; with no roll-up yet the reason says why
+export async function readRollupWithJob(env: Env, script: string): Promise<Rollup & { job: Job }> {
+  const [r, job] = [readRollup(env), await rollupJob(script)];
+  return r.state === "absent" ? { ...r, reason: REASON[job], job } : { ...r, job };
 }
 
 export function readRollup(env: Env): Rollup {
