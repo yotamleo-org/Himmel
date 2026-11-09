@@ -40,8 +40,8 @@
 # the same thing in every supported workflow. If that assumption ever breaks
 # — a push naming a DIFFERENT remote ref than the checked-out branch — the
 # trigger silently doesn't fire for that PR: its head advances but stays on
-# CodeRabbit's "Review skipped" status, and only merge-on-green's one
-# backstop post, or a manual trigger, can review it. Upgrade path: parse the destination
+# CodeRabbit's "Review skipped" status until someone
+# triggers it manually. Upgrade path: parse the destination
 # ref from the command if that ceiling is ever actually hit.
 #
 # Input: PostToolUse JSON on stdin. Bash shape:

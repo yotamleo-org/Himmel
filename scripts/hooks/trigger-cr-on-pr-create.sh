@@ -104,9 +104,8 @@ esac
 # JSON parser there is no reliable boundary between tool_input and
 # tool_response (key order is not guaranteed), so a grep over the raw payload
 # can pick up a URL embedded in the command or PR title and post the trigger
-# on the WRONG PR. A wrong-PR comment is worse than no comment — a missing
-# review costs one PR its CodeRabbit review, but nothing catches a
-# spurious one. So: no jq → warn + exit 0 (fail-open per the header policy).
+# on the WRONG PR. A wrong-PR comment is worse than no comment — nothing
+# catches a spurious one. So: no jq → warn + exit 0 (fail-open per the header policy).
 # The warning can fire on a fast-path false positive (e.g. `echo "gh pr
 # create"`); acceptable noise in the rare jq-less environment. Deliberate
 # divergence from the PreToolUse sibling's grep -oP fallback: the sibling only
