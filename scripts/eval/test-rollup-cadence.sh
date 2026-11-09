@@ -70,6 +70,18 @@ bash "$CAD" disarm >"$TMP/dis0.out" 2>&1; rc=$?
 check "disarm removes the entry and the runner" '[ "$rc" = 0 ] && ! grep -q "# HIMMEL-WeeklyRollup" "$TMP/tab" && [ ! -e "$TMP/runner/rollup-cadence.sh" ]'
 bash "$CAD" disarm >"$TMP/dis1.out" 2>&1; rc=$?
 check "disarm with nothing armed is a no-op that exits 0" '[ "$rc" = 0 ] && grep -q "nothing armed" "$TMP/dis1.out"'
+cat >"$STUB/crontab-race" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = "-l" ]; then
+    n=\$(cat "$TMP/race-n" 2>/dev/null || echo 0); echo \$((n + 1)) >"$TMP/race-n"
+    [ "\$n" -ge 1 ] && { echo "00 06 * * 1 \"$TMP/runner/rollup-cadence.sh\" # HIMMEL-WeeklyRollup"; exit 0; }
+    echo "no crontab for test" >&2; exit 1
+fi
+cat >"$TMP/race-tab"
+EOF
+chmod +x "$STUB/crontab-race"
+ROLLUP_CRONTAB="$STUB/crontab-race" bash "$CAD" arm >"$TMP/race.out" 2>&1; rc=$?
+check "an arm that loses a race to another arm exits 3 and keeps the runner the winner's entry names" '[ "$rc" = 3 ] && [ -x "$TMP/runner/rollup-cadence.sh" ]'
 bash "$CAD" bogus >/dev/null 2>&1; rc=$?
 check "an unknown verb exits 1" '[ "$rc" = 1 ]'
 

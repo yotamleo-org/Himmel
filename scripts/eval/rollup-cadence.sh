@@ -122,7 +122,7 @@ cmd_arm() {
     mv -f "$runner.new" "$runner" || { rm -f "$runner.new"; echo "ERR rollup-cadence: cannot install the runner $runner" >&2; return 4; }
     crontab_locked_rmw "$CRONTAB_BIN" arm_edit || {
         rc=$?
-        [ "$was_armed" -eq 1 ] || rm -f "$runner"
+        [ "$was_armed" -eq 1 ] || [ "$rc" -eq 3 ] || rm -f "$runner"
         case "$rc" in
             3) echo "ERR rollup-cadence: already armed: $TASK_NAME (use --force to replace)" >&2 ;;
             *) echo "ERR rollup-cadence: crontab install failed" >&2; rc=4 ;;
