@@ -94,7 +94,6 @@ case "$args" in
     *'p77:pullRequest'*)
         [ -z "${STUB_SNAPSHOT_FAIL:-}" ] || exit 1
         if [ -n "${STUB_HOLD_MARK:-}" ] && [ ! -e "$STUB_HOLD_MARK" ]; then
-            # STUB_HOLD_MARK: once, start a peer read that takes the snapshot lock as this read ends and never answers; its pid goes to the mark
             ( STUB_HOLD_MARK='' STUB_GH_STALL=600 "$STUB_HOLD_TIMEOUT" -k 2 40 bash "$STUB_HOLD_LIB" "${STUB_NWO:-acme/repo}" 0 77 < /dev/null > /dev/null 2>&1 &
               echo "$!" > "$STUB_HOLD_MARK" )
         fi
@@ -4312,8 +4311,6 @@ contains "R2: item 1 names why the snapshot was unreadable" "$out" "still held b
 wait "$r2_holder" 2>/dev/null || true
 r2_left=no; compgen -G "$r2_shared/*.lock" > /dev/null && r2_left=yes
 check "R2: the killed holder's trap freed its lock" "$r2_left" "no"
-# R4: item 1's UNKNOWN re-reads meet a peer that holds the lock and never answers. Each
-# re-read waits 5 s, not the full lock wait, and a failed re-read keeps the last good read.
 reset_stubs
 r4_shared="$tmp/lock-cache-r4"; mkdir -p "$r4_shared"
 r4_mark="$tmp/r4-holder.pid"; rm -f "$r4_mark"
