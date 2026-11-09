@@ -433,5 +433,8 @@ cp "$td/p3.md" "$td/p4.md"; printf 'Labels: ci\nMetric: red_main_count falls\n' 
 run Task "$td/p4.md" "$q" --sector X --labels guard; check "--labels disagreeing with the draft Labels: line exits 1" "$rc" 1
 has "the mismatch is named" "$out" "Labels"
 run Task "$td/p4.md" "$q" --sector X --labels ci; check "--labels agreeing with the draft Labels: line exits 0" "$rc" 0
+mkdraft "$td/p5.md"; printf 'Labels: ci\n' >>"$td/p5.md"
+run Task "$td/p5.md" "$q" --sector X --labels ''; check "an explicitly empty --labels is the empty set: a mismatch, never the draft line's ci" "$rc" 1
+hasnt "an empty --labels does not ask for the draft line's Metric" "$out" "Metric"
 
 [ "$fails" -eq 0 ] && { echo "PASS"; exit 0; } || { echo "FAILED: $fails"; exit 1; }

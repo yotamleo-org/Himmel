@@ -24,12 +24,12 @@ set -u
 
 usage(){ echo "usage: ticket-standard-check.sh --type Task|Story|Bug|Epic|Subtask [--sector NAME] [--labels a,b] --draft FILE [--rewrite FILE]" >&2; exit 2; }
 
-type="" sector="" labels="" draft="" rewrite=""
+type="" sector="" labels="" labels_given=0 draft="" rewrite=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --type) [ $# -ge 2 ] || usage; type="$2"; shift 2;;
     --sector) [ $# -ge 2 ] || usage; sector="$2"; shift 2;;
-    --labels) [ $# -ge 2 ] || usage; labels="$2"; shift 2;;
+    --labels) [ $# -ge 2 ] || usage; labels="$2"; labels_given=1; shift 2;;
     --draft) [ $# -ge 2 ] || usage; draft="$2"; shift 2;;
     --rewrite) [ $# -ge 2 ] || usage; rewrite="$2"; shift 2;;
     *) usage;;
@@ -56,7 +56,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 parsefail(){ echo "ticket-standard-check: could not check '$draft' (the ticket policy did not run); draft not checked" >&2; exit 2; }
 command -v node >/dev/null 2>&1 || parsefail
 policy_args=(--type "$type" --draft "$draft")
-[ -n "$labels" ] && policy_args+=(--labels "$labels")
+[ "$labels_given" -eq 1 ] && policy_args+=(--labels "$labels")
 missing="$(node "$here/ticket-policy-cli.mjs" "${policy_args[@]}")" || parsefail
 
 warns=()

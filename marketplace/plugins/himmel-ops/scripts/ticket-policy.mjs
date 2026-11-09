@@ -40,7 +40,7 @@ export function needsMetric(labels) {
 
 const TICKET_KEY = /\b[A-Z][A-Z0-9]+-[0-9]+\b/g;
 const LIST_LINE = /^\s*(?:[-*+]|\d+[.)])\s+(\S.*?)\s*$/;
-const HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*#*[ \t]*$/;
+const HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
 const BOLD_LINE = /^\s*(\*\*|__)([^*_]+?)\1\s*:?\s*$/;
 
 /** True when a value is a placeholder: empty, TODO/TBD/TBC/N/A/none, dots or an ellipsis, question marks, dashes, an <angle hint>. */

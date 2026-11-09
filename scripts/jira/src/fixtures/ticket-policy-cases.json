@@ -21,6 +21,8 @@
     { "id": "unicode-ellipsis-edges-7766-3", "type": "Task", "replace": { "Plan": "1. Land HIMMEL-100 first.\n2. Then HIMMEL-101." }, "append": "Edges: …", "expect": ["Edges"] },
     { "id": "prior-art-keys-7766-4", "type": "Task", "replace": { "Plan": "1. Extend the rule of HIMMEL-7754 (prior art: HIMMEL-5643)." }, "expect": ["Edges"] },
     { "id": "bold-heading-is-not-a-heading", "type": "Task", "bold": ["Proof"], "expect": ["Proof"] },
+    { "id": "indented-list-items-count", "type": "Task", "replace": { "Plan": "  1. Write the checker.\n  2. Add the tests.", "DoD": "  - A draft missing a DoD is refused." }, "expect": [] },
+    { "id": "closing-hash-needs-a-space", "type": "Task", "omit": ["Proof"], "append": "## Proof#\nRun the checker on a real draft.", "expect": ["Proof"] },
     { "id": "bare-heading-line-as-the-mirror-renders", "type": "Task", "plain": ["Impact", "DoD", "Proof", "Agent detail"], "expect": [] },
     { "id": "epic-warns-only", "type": "Epic", "omit": ["Plan", "DoD", "Proof"], "expect": ["Plan", "DoD", "Proof"] },
     { "id": "phase-and-held-labels-compatible", "type": "Task", "labels": ["phase:build", "held"], "expect": [] }
