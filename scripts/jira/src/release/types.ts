@@ -89,6 +89,13 @@ export interface OperatorRow {
   mac?: string;
 }
 
+export interface OutOfVersionRow extends OperatorRow {
+  kind: 'out-of-version';
+  keys: string[];
+  version: string;
+  reason: string;
+}
+
 export interface RequestRow {
   req: string;
   ts: string;
