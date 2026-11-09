@@ -2254,6 +2254,15 @@ describe('release bucket-check verdict', () => {
     expect((await check(['BKT-1']))[0]).toMatch(/^FAILED BKT-1 no versions file at .* while .*\/R9\/release\.json names BKT$/);
   });
 
+  it.each(['null', '[]', '"BKT"'])('row 0, a release.json that parses to %s is no declaration and counts as naming the project', async (body) => {
+    mkdirSync(join(root, 'release', 'R9'), { recursive: true });
+    writeFileSync(join(root, 'release', 'R9', 'release.json'), body);
+    mirror([]);
+    expect((await check(['BKT-1']))[0]).toMatch(/^FAILED BKT-1 no versions file at .* while .*\/R9\/release\.json names BKT$/);
+    versions();
+    expect((await check(['BKT-1']))[0]).toMatch(/^FAILED BKT-1 .*\/R9\/release\.json does not parse, so the declared current cannot be read$/);
+  });
+
   it('row 0, an argument that is not a ticket key: FAILED by name', async () => {
     world([]);
     expect(await check(['not-a-key'])).toEqual(['FAILED not-a-key is not a ticket key']);
