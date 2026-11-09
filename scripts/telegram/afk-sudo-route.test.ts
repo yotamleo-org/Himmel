@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatchAfkCallbacks, makeAfkSudoCallback, makeAfkSudoGate, makeAfkSudoPrompts, parseAfkSudo, type AfkSudoCallbackDeps, type AfkSudoDeps } from "./afk-sudo-route";
@@ -842,6 +842,21 @@ test("the operator's /op reaches the helper as op-request with the name and key=
   await settle();
   expect(calls).toEqual([{ args: ["op-request", "--session", "telegram-op", "--ticket", "operator", "--", "cron-entry", "action=set", "tag=ping", "schedule=0 5 * * *", "command=/usr/local/libexec/himmel/bin/open-session"], stdin: "" }]);
   expect(replies).toEqual(["✅ afk-sudo op cron-entry: result=pending id=abcdefgh expires=1 operator=4242"]);
+});
+
+test("the size-approval line gen-briefs prints reaches the helper as exactly its words; from anyone else, a group or a forward it reaches nothing", async () => {
+  const line = readFileSync(join(import.meta.dir, "../handover/chief-kit/fixtures/size-approval-op-line.txt"), "utf8").split("\n")[0];
+  const { deps, calls } = fake();
+  deps.runHelper = async (args, stdin) => { calls.push({ args, stdin }); return { code: 0, stdout: "result=pending id=abcdefgh expires=1 operator=4242\n" }; };
+  expect(makeAfkSudoGate(deps)(dm(line))).toBe(true);
+  await settle();
+  expect(calls).toEqual([{ args: ["op-request", "--session", "telegram-op", "--ticket", "operator", "--", ...line.replace(/^\/op /, "").split(/\s+/)], stdin: "" }]);
+  for (const extra of [{ forwarded: true }, { from: 999, chat_id: 999 }, { chat_id: -100123 }]) {
+    const other = fake();
+    expect(makeAfkSudoGate(other.deps)(dm(line, extra))).toBe(true);
+    await settle();
+    expect(other.calls).toEqual([]);
+  }
 });
 
 test("an /op ending in the operator's six-digit code files it with --proof and the code on stdin, never in argv", async () => {

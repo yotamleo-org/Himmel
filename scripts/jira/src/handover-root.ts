@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Mirrors scripts/lib/handover-path.sh handover_root: an explicit HANDOVER_DIR
 // wins (and must be a directory), else the config layers in load_dotenv order
@@ -38,7 +39,8 @@ export function behaviourKey(
 }
 
 function primaryCheckout(): string {
-  const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const here = dirname(fileURLToPath(import.meta.url));
+  const common = execFileSync('git', ['-C', here, 'rev-parse','--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   return dirname(common);
 }
 

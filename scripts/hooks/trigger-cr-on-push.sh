@@ -8,7 +8,7 @@
 # used to be keyed per PR (any existing trigger comment silenced it forever).
 # That blackholed every fix round: push a follow-up commit, the new head gets
 # CodeRabbit's "Review skipped: automatic reviews are disabled" status (NOT a
-# real review), the merge gate correctly refuses it, and nothing re-triggers
+# real review), it merges with no review, and nothing re-triggers
 # because a trigger comment from the FIRST head already exists on the PR
 # (PRs #1717/#1718). This sibling hook + the shared per-head-SHA ledger in
 # scripts/lib/coderabbit-trigger-ledger.sh close that gap: trigger AT MOST ONCE per
@@ -31,8 +31,7 @@
 #
 # Exit semantics — ADVISORY / non-blocking, exit 0 in EVERY case, mirroring
 # trigger-cr-on-pr-create.sh: a PostToolUse hook cannot un-push, and a failure
-# here must never strand a successful push. The merge gate's skipped/absent
-# arms are the structural backstop if this hook's post ever fails.
+# here must never strand a successful push.
 #
 # ponytail: resolves the PR via `gh pr view` for the CURRENT checked-out
 # branch — it does not parse the pushed ref out of the `git push` command.
@@ -41,8 +40,8 @@
 # the same thing in every supported workflow. If that assumption ever breaks
 # — a push naming a DIFFERENT remote ref than the checked-out branch — the
 # trigger silently doesn't fire for that PR: its head advances but stays on
-# CodeRabbit's "Review skipped" status, and the merge gate refuses green
-# until someone triggers it manually. Upgrade path: parse the destination
+# CodeRabbit's "Review skipped" status until someone
+# triggers it manually. Upgrade path: parse the destination
 # ref from the command if that ceiling is ever actually hit.
 #
 # Input: PostToolUse JSON on stdin. Bash shape:

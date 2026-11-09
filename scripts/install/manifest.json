@@ -391,6 +391,16 @@
       "offboard": "advise"
     },
     {
+      "id": "statechart",
+      "kind": "dep",
+      "scopes": ["user"],
+      "profiles": ["all"],
+      "deps": [],
+      "probe": { "type": "cmd:statechart_ready" },
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
       "id": "pipeline-cadence",
       "kind": "scheduler",
       "scopes": ["user"],

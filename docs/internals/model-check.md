@@ -4,14 +4,18 @@ A chief commissions an isolated model-check worker/subagent to produce a
 bounded TLC report and a Mermaid statechart for a PR that changes `scripts/handover/queue-lock.sh` or
 `scripts/handover/chief-kit/succession-tracker.sh`. This is optional evidence,
 not a new merge gate. A clean report never replaces the judge: the with-skill
-arm of the VM trial missed the bug where an old token could delete a fresh queue lock, which the no-skill arm found.
+arm of the trial missed the bug where an old token could delete a fresh queue lock, which the no-skill arm found.
 
 ## Optional prerequisites
 
 Java is optional. Without it the step prints installation instructions, exits
 3, and does not run a report or install anything. Install OpenJDK 21 if wanted:
 Ubuntu `sudo apt install openjdk-21-jre-headless`, or Arch
-`sudo pacman -S jre21-openjdk`. A VM with the same prerequisites also works.
+`sudo pacman -S jre21-openjdk`. `bash scripts/machine-setup/setup-statechart.sh --install`
+fetches and verifies the pinned TLC jar once, and `--check` reports the paths.
+Once the runtime revision is validated, routine trusted checks run locally. A VM
+with the same prerequisites also works; isolation is for an unvalidated or
+changed runtime, untrusted executable views, and destructive real-code replay.
 
 The chief supplies these paths in the launching shell:
 
@@ -125,7 +129,7 @@ stale, timed-out or unchecked evidence cannot support a safety claim. The
 report is not signed merge authorization and does not change GO/trust gates.
 
 Replay each counterexample against the actual script in an isolated fixture;
-a destructive lock replay is VM-only. If replay disagrees, assume the model
+a destructive real-code replay (such as a live lock) runs in a VM; a non-destructive replay in an isolated fixture may run locally. If replay disagrees, assume the model
 is wrong until investigated. A live-code finding goes to the chief, not into
 an unrelated fix in the report PR. Put a `FINDINGS.md` alongside the succession
 run, stating whether anything real was found, replay evidence, model limits

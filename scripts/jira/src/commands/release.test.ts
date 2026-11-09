@@ -615,12 +615,55 @@ describe('jira release request refuses junk', () => {
     expect(out.at(-1)).toBe('REQ Q-R1-0001');
   });
 
+  function jiraLabels(held: string[], stuck: string[] = []) {
+    const now = { labels: [...held] };
+    vi.mocked(request).mockImplementation((async (method: string, _path: string, body?: { update: { labels: Array<{ remove: string }> } }) => {
+      if (method === 'PUT') {
+        const gone = body!.update.labels.map((l) => l.remove);
+        now.labels = now.labels.filter((l) => !gone.includes(l) || stuck.includes(l));
+        return {};
+      }
+      return { fields: { labels: [...now.labels] } };
+    }) as never);
+    return now;
+  }
+  const puts = () => vi.mocked(request).mock.calls.filter((c) => c[0] === 'PUT');
+
   it('withdraws a request from the CLI', async () => {
     await declared();
     const mir = writeMirror();
     await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: found work');
+    jiraLabels([]);
     await run('withdraw', 'R1', '--req', 'Q-R1-0001', '--reason', 'junk from a test run');
     expect(out.at(-1)).toBe('WITHDRAWN Q-R1-0001 (withdrawn:console): junk from a test run');
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('a withdrawn INTAKE loses its proposed-* labels and keeps backlog, phase:* and held', async () => {
+    await declared();
+    const mir = writeMirror();
+    await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: found work');
+    const jira = jiraLabels(['backlog', 'proposed-v1.2', 'phase:build', 'held']);
+    await run('withdraw', 'R1', '--req', 'Q-R1-0001', '--reason', 'junk from a test run');
+    expect(jira.labels).toEqual(['backlog', 'phase:build', 'held']);
+    expect(puts().map((c) => [c[1], c[2]])).toEqual([['/issue/K-2', { update: { labels: [{ remove: 'proposed-v1.2' }] } }]]);
+  });
+
+  it('a withdrawn INTAKE whose label survives the removal fails loud, naming the label', async () => {
+    await declared();
+    const mir = writeMirror();
+    await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: found work');
+    jiraLabels(['proposed-v1.2'], ['proposed-v1.2']);
+    await expect(run('withdraw', 'R1', '--req', 'Q-R1-0001', '--reason', 'junk from a test run')).rejects.toThrow(/K-2 still carries proposed-v1\.2/);
+  });
+
+  it('a withdrawn REVERSION touches no label', async () => {
+    await declared();
+    const mir = writeMirror({ key: 'K-5', fixVersions: ['v2'] });
+    await ask(mir, '--verb', 'REVERSION', '--key', 'K-5', '--from', 'v2', '--why', 'moves out of the version');
+    vi.mocked(request).mockClear();
+    await run('withdraw', 'R1', '--req', 'Q-R1-0001', '--reason', 'junk from a test run');
+    expect(request).not.toHaveBeenCalled();
   });
 });
 
@@ -884,6 +927,17 @@ describe('routedJudge', () => {
     expect(judgeFor(ctxFor('R1', defaultRoot('SALUS')))).toBe(liveJudge);
     expect(judgeFor(ctxFor('R1', join(root, 'no-mirror')))).toBe(liveJudge);
     expect(w.read('fake.log')).toBe('');
+  });
+});
+
+describe('liveJira labels', () => {
+  it('reads the labels and removes them with one update call', async () => {
+    vi.mocked(request).mockReset();
+    vi.mocked(request).mockImplementation((async () => ({ fields: { labels: ['backlog', 'proposed-v1'] } })) as never);
+    expect(await liveJira.labels('HIMMEL-1')).toEqual(['backlog', 'proposed-v1']);
+    expect(vi.mocked(request).mock.calls[0].slice(0, 2)).toEqual(['GET', '/issue/HIMMEL-1?fields=labels']);
+    await liveJira.removeLabels('HIMMEL-1', ['proposed-v1', 'proposed-v2']);
+    expect(vi.mocked(request).mock.calls[1]).toEqual(['PUT', '/issue/HIMMEL-1', { update: { labels: [{ remove: 'proposed-v1' }, { remove: 'proposed-v2' }] } }]);
   });
 });
 

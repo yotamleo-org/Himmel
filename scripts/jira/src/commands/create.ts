@@ -10,7 +10,8 @@ import type { CreateIssueResponse } from '../types.js';
 import { uploadAll } from './attach-helper.js';
 import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
-import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titleSector, titleVerdict, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
+import { titleSector, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
+import { CreatePartial, CreateRefused, runCreate, type CreateOptions } from '../operations/create.js';
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
@@ -93,7 +94,7 @@ export function markCore(
   return { labels: verdict?.kind === 'core' ? [...new Set([...(labels ?? []), 'core'])] : labels, verdict };
 }
 
-function printCore(verdict: CoreVerdict): void {
+export function printCore(verdict: CoreVerdict): void {
   if (verdict) console.error(`${verdict.kind}: ${verdict.path}`);
 }
 
@@ -114,7 +115,7 @@ export function resolveTitle(opts: { title?: string; summary?: string }): string
 }
 
 /** The Sector to file under: the typed --sector, else a live "<Sector>: " title prefix; an unknown prefix exits 1. */
-function sectorForCreate(
+export function sectorForCreate(
   type: string,
   title: string,
   given: string | undefined,
@@ -123,10 +124,7 @@ function sectorForCreate(
   if (!sectors) return undefined;
   if (given !== undefined) return resolveSector(given, sectors);
   const derived = titleSector(type, title, sectors);
-  if (derived.refuse) {
-    console.error(derived.refuse);
-    process.exit(1);
-  }
+  if (derived.refuse) throw new CreateRefused(derived.refuse);
   return derived.sector;
 }
 
@@ -142,7 +140,7 @@ const POLISH_REFUSAL =
   'a polish residual is not filed (decisions 746, 762): note it in the PR body, or file it as a plain ticket (jira create without --residual-of) if someone will really work it, ' +
   'then link it from the PR ticket with `jira link <PR ticket> <plain ticket>` so it can be named as a deferral';
 /** A hardening residual prints its named override into the ticket description. */
-function appendFuOverride(fields: Record<string, unknown>, override: string | undefined): void {
+export function appendFuOverride(fields: Record<string, unknown>, override: string | undefined): void {
   if (override === undefined) return;
   const named = markdownToAdf(`fu-override: ${override}`);
   const body = fields['description'] as { content?: unknown[] } | undefined;
@@ -200,7 +198,7 @@ async function capState(project: string, target?: string): Promise<CapState | un
   }
 }
 
-interface ResidualPlan {
+export interface ResidualPlan {
   labels: string[];
   fixVersion?: string;
   affectsVersion?: string;
@@ -457,7 +455,7 @@ export async function planResidual(project: string, o: ResidualOptions): Promise
  * is exempt and a residual is routed by planResidual. Returns the over-cap
  * reason to comment on the ticket once it exists.
  */
-async function applyVersions(
+export async function applyVersions(
   project: string,
   options: { type: string; fixVersion?: string; affectsVersion?: string; overCap?: string },
   fields: Record<string, unknown>,
@@ -540,7 +538,7 @@ interface PlacementOptions {
 const proposedLabel = (v: string): string => `proposed-${labelSlug(v)}`;
 
 /** Checks the gate, backlog and chief-override flags before anything is filed; returns the override reason. */
-function checkPlacementFlags(o: PlacementOptions): string | undefined {
+export function checkPlacementFlags(o: PlacementOptions): string | undefined {
   if (o.gate !== undefined) assertIntakeGate(o.gate);
   if (o.backlog && (o.gate !== undefined || o.fixVersion !== undefined)) {
     throw new Error('--backlog cannot be combined with --gate or --fix-version');
@@ -566,7 +564,7 @@ function checkPlacementFlags(o: PlacementOptions): string | undefined {
 }
 
 /** A proposed version other than `backlog` must be one the project has, and still open. */
-async function assertProposedVersion(o: { proposedVersion?: string; project?: string }): Promise<void> {
+export async function assertProposedVersion(o: { proposedVersion?: string; project?: string }): Promise<void> {
   if (o.proposedVersion === undefined || o.proposedVersion === 'backlog') return;
   const project = o.project ?? projectKey();
   const found = (await fetchVersions(project)).find((v) => v.name === o.proposedVersion);
@@ -577,7 +575,7 @@ async function assertProposedVersion(o: { proposedVersion?: string; project?: st
 }
 
 /** A version inherited from a --blocks or --split-from target places the ticket, so a proposal could not be honored. */
-function assertProposalNotInherited(o: { proposedVersion?: string }, inherited: string | undefined): void {
+export function assertProposalNotInherited(o: { proposedVersion?: string }, inherited: string | undefined): void {
   if (o.proposedVersion !== undefined && inherited !== undefined) {
     throw new Error(`--proposed-version ${o.proposedVersion} cannot be honored: --blocks/--split-from places the ticket in ${inherited}; drop --proposed-version, or pass --backlog to opt out of the inherited version`);
   }
@@ -589,7 +587,7 @@ function assertProposalNotInherited(o: { proposedVersion?: string }, inherited: 
  * --residual-of, --follow-up-of or a version inherited from a blocker place
  * any of them; with none of these it is refused rather than defaulted silently.
  */
-function placeAtFiling(
+export function placeAtFiling(
   o: PlacementOptions,
   labels: string[] | undefined,
   residual: boolean,
@@ -622,7 +620,7 @@ const intakeWhy = (o: { why?: string; proposedVersion?: string }, title: string)
   const proposed = o.proposedVersion !== undefined && o.proposedVersion !== 'backlog' ? `proposed for ${o.proposedVersion}` : 'filed to the backlog';
   return o.why?.trim() || `${proposed}: ${title}`;
 };
-const intakeOwed = (type: string, fields: Record<string, unknown>): boolean => !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
+export const intakeOwed = (type: string, fields: Record<string, unknown>): boolean => !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
 
 interface IntakeOptions {
   type: string;
@@ -632,13 +630,13 @@ interface IntakeOptions {
 }
 
 class NoReleaseDeclared extends Error {
-  constructor() {
-    super('no release is declared, so an unversioned ticket has nowhere to queue its INTAKE; declare one (jira release operator declare) or file with --fix-version');
+  constructor(root: string) {
+    super(`no release is declared under ${root}, so an unversioned ticket has nowhere to queue its INTAKE; declare one (jira release operator declare) or file with --fix-version`);
   }
 }
 
 /** The one declared release an INTAKE goes to; throws when the state cannot be read or the choice is not unique. */
-function intakeRelease(): string {
+export function intakeRelease(): string {
   const root = releaseRoot();
   let entries: string[] = [];
   try {
@@ -647,7 +645,7 @@ function intakeRelease(): string {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
   }
   const declared = entries.filter((d) => existsSync(join(root, d, 'release.json')));
-  if (declared.length === 0) throw new NoReleaseDeclared();
+  if (declared.length === 0) throw new NoReleaseDeclared(root);
   if (declared.length > 1) throw new Error(`${declared.length} releases are declared (${declared.join(', ')}); an INTAKE needs exactly one`);
   return declared[0]!;
 }
@@ -658,7 +656,7 @@ export function assertIntakeQueueable(why: string): void {
 }
 
 /** Refuses an unversioned Bug, Task or Story (a follow-up or residual too) whose INTAKE could not be queued; runs before the POST. */
-function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, title: string): void {
+export function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, title: string): void {
   if (intakeOwed(o.type, fields)) assertIntakeQueueable(intakeWhy(o, title));
 }
 
@@ -670,15 +668,14 @@ interface ParentState {
  * A follow-up of an open parent in the current version asks for that version;
  * the why states only facts (parent, status, version), plus the parent's
  * remainder when the caller declares it with --remainder. A Done or closed
- * parent asks for none and the why says so. A frozen version is skipped as
- * planResidual skips it: the next open version, else none. The residual cap is
+ * parent asks for none and the why says so. The residual cap is
  * NOT checked: the request never writes the fixVersion, and the release
  * manager is not shown the cap. Parent, status and version go in the request's
  * evidence. Explicit wins: a version, --backlog, --proposed-version or --why
  * keeps its meaning. A parent with no current version, or one that cannot be
  * read, leaves the request as it was (the ticket is filed either way).
  */
-async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
+export async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
   if (o.followUpOf === undefined || o.fixVersion !== undefined || o.backlog || o.proposedVersion !== undefined || o.why?.trim()) return o;
   const parentKey = o.followUpOf;
   let parent: ParentState['fields'];
@@ -701,22 +698,23 @@ async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; r
     return { ...o, why: `follow-up of ${parentKey}, which is closed (${status})`, evidence };
   }
   if (!inCurrent) return o;
-  const frozen = versions.filter((v) => frozenDate(v.description) !== undefined).map((v) => v.name);
-  const next = earliestUnreleased(versions.filter((v) => v.name !== current));
-  const isFrozen = frozen.includes(current);
-  const target = isFrozen ? (next !== undefined && !frozen.includes(next) ? next : undefined) : current;
+  const isFrozen = frozenDate(versions.find((v) => v.name === current)?.description) !== undefined;
+  const target = current;
   const facts = `follow-up of ${parentKey} (${status}), which is in ${current}${isFrozen ? ' (frozen)' : ''}`;
   const why = o.remainder ? `${facts}; ${parentKey} cannot close without this ticket, which holds its remainder` : facts;
   return { ...o, proposedVersion: target, why, evidence };
 }
 
-function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions): void {
+export function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions): void {
   if (!intakeOwed(o.type, fields)) return;
   const toVersion = o.proposedVersion === undefined || o.proposedVersion === 'backlog' ? null : o.proposedVersion;
   try {
     queueBacklogIntake(key, intakeWhy(o, title), toVersion, true, o.evidence);
   } catch (e) {
-    console.error(`Created ${key} but INTAKE not queued: ${(e as Error).message}`);
+    console.error(
+      `jira: PARTIAL: Created ${key} but INTAKE not queued: ${(e as Error).message}; still owed: the INTAKE request ` +
+        `(jira release request <release> --verb INTAKE --key ${key} --why "<why>"). The ticket exists: do not re-run create.`,
+    );
     process.exitCode = 1;
   }
 }
@@ -743,14 +741,6 @@ export function queueBacklogIntake(key: string, why: string, toVersion: string |
   }
 }
 
-function recordAdmission(key: string, row: Omit<AdmissionInput, 'key'>): void {
-  try {
-    appendAdmission({ ...row, key });
-  } catch (e) {
-    console.error(`Created ${key} but writing the admissions ledger row failed: ${(e as Error).message}`);
-    process.exit(1);
-  }
-}
 
 interface RelationshipOptions {
   blocks: string[];
@@ -774,7 +764,7 @@ async function inheritedFixVersion(o: RelationshipOptions): Promise<string | und
   return inherited;
 }
 
-async function checkExistingBlocker(project: string, fixVersions: unknown, o: RelationshipOptions): Promise<void> {
+export async function checkExistingBlocker(project: string, fixVersions: unknown, o: RelationshipOptions): Promise<void> {
   if (!o.blockedBy || o.backlog || !fixVersions) return;
   const current = earliestUnreleased(await fetchVersions(project));
   if (current && (fixVersions as { name: string }[]).some((v) => v.name === current)) {
@@ -782,22 +772,9 @@ async function checkExistingBlocker(project: string, fixVersions: unknown, o: Re
   }
 }
 
-async function linkCreatedIssue(key: string, o: RelationshipOptions): Promise<void> {
-  const relationships = o.blocks.map((other) => ({ inward: key, outward: other, type: { name: 'Blocks', outward: 'blocks' } }));
-  if (o.splitFrom) relationships.push({ inward: key, outward: o.splitFrom, type: { name: 'Relates', outward: 'relates to' } });
-  if (o.blockedBy) relationships.push({ inward: o.blockedBy, outward: key, type: { name: 'Blocks', outward: 'blocks' } });
-  for (const { inward, outward, type } of relationships) {
-    try {
-      await createIssueLink(inward, outward, type);
-    } catch (e) {
-      console.error(`Created ${key} but linking ${inward} to ${outward} failed: ${(e as Error).message}`);
-      process.exit(1);
-    }
-  }
-}
 
 /** Keep slot competition's decision; otherwise only ungated frozen inheritance is suppressed. */
-async function residualInheritedVersion(
+export async function residualInheritedVersion(
   o: RelationshipOptions & { gate?: string },
   residual: ResidualPlan | undefined,
 ): Promise<string | undefined> {
@@ -806,7 +783,7 @@ async function residualInheritedVersion(
   return residual && inherited && o.gate === undefined && residual.frozen.includes(inherited) ? undefined : inherited;
 }
 
-async function displaceResidual(
+export async function displaceResidual(
   residual: ResidualPlan | undefined, newcomer: string, filed: { type: string; title: string },
 ): Promise<void> {
   if (!residual?.displaced) return;
@@ -841,7 +818,7 @@ async function displaceResidual(
 }
 
 /** The journal name of the code path that chose a new ticket's Fix Version; undefined (hand) when the caller typed it or none was set. */
-function createWriterOf(
+export function createWriterOf(
   options: { fixVersion?: string; residualOf?: string; followUpOf?: string },
   chose: { placed: boolean; inherited: string | undefined; residual: ResidualPlan | undefined; bugDefault: boolean },
 ): string | undefined {
@@ -925,210 +902,19 @@ export function registerCreate(program: Command): void {
     .option('--attach <path>', 'File to attach (repeatable)', collect, [])
     .option(
       '--skeleton',
-      'Print the four-heading body (Impact, What, Why, Agent detail) to fill, then exit; creates nothing',
+      'Print the seven-section body (Impact, What, Why, Plan, DoD, Proof, Agent detail) to fill, then exit; creates nothing',
     )
     .action(
-      async (options: {
-        skeleton?: boolean;
-        type: string;
-        title?: string;
-        summary?: string;
-        desc?: string;
-        descFile?: string;
-        adfFile?: string;
-        parent?: string;
-        blocks: string[];
-        splitFrom?: string;
-        blockedBy?: string;
-        labels?: string;
-        sector?: string;
-        fixVersion?: string;
-        priority?: string;
-        backlog?: boolean;
-        proposedVersion?: string;
-        why?: string;
-        gate?: string;
-        chiefOverride?: string;
-        affectsVersion?: string;
-        residualOf?: string;
-        followUpOf?: string;
-        remainder?: boolean;
-        overCap?: string;
-        fuClass?: string;
-        fuWhy?: string;
-        fuOverride?: string;
-        class?: string;
-        area?: string;
-        project?: string;
-        changeClass?: string;
-        attach: string[];
-      }) => {
+      async (options: CreateOptions & { skeleton?: boolean }) => {
         if (options.skeleton) {
           console.log(PLAIN_BLOCK_TEMPLATE);
           return;
         }
-        // Everything below can file, comment on or re-rank a real ticket: a test on the station stops here.
-        refuseTestJiraPost('create');
-        if (options.followUpOf !== undefined && options.residualOf !== undefined) {
-          throw new Error('--follow-up-of cannot be combined with --residual-of (a residual is already linked to its parent)');
-        }
-        if (options.remainder && options.followUpOf === undefined) {
-          throw new Error('--remainder needs --follow-up-of <key>, the parent whose remainder this ticket holds');
-        }
-        if (options.overCap !== undefined && !options.overCap.trim()) {
-          throw new Error('--over-cap needs a reason');
-        }
-        const overrideReason = checkPlacementFlags(options);
-        await assertProposedVersion(options);
-        const fields: Record<string, unknown> = {
-          project: { key: options.project ?? projectKey() },
-          summary: resolveTitle(options),
-          issuetype: { name: options.type },
-        };
-        if (options.priority !== undefined) fields['priority'] = { name: options.priority };
-        let found: string[];
-        let agentDetail = '';
-        if (options.adfFile) {
-          let adfBody: unknown;
-          try {
-            adfBody = JSON.parse(readFileSync(options.adfFile, 'utf8'));
-          } catch (e) {
-            console.error(`jira: cannot read --adf-file "${options.adfFile}": ${(e as Error).message}`);
-            process.exit(1);
-          }
-          fields['description'] = adfBody;
-          found = lintPlainBlockAdf(adfBody);
-          agentDetail = agentDetailOfAdf(adfBody);
-        } else if (options.descFile) {
-          const md = readBodyFile(options.descFile, '--desc-file');
-          fields['description'] = markdownToAdf(md);
-          found = lintPlainBlock(md);
-          agentDetail = agentDetailOf(md);
-        } else if (options.desc) {
-          fields['description'] = markdownToAdf(options.desc);
-          found = lintPlainBlock(options.desc);
-          agentDetail = agentDetailOf(options.desc);
-        } else {
-          found = lintPlainBlock('');
-        }
-        // The plain Impact/What/Why block is required; Epic and Subtask only warn.
-        const verdict = plainBlockVerdict(options.type, found);
-        if (verdict.action === 'refuse') {
-          console.error(verdict.message);
-          process.exit(1);
-        }
-        if (verdict.action === 'warn') console.error(verdict.message);
-        // Sectors are opt-in: with JIRA_SECTOR_FIELD unset there is no Sector check and none is sent.
-        const sectorId = sectorField();
-        const sectors = sectorId ? await sectorOptions() : undefined;
-        const titleCheck = titleVerdict(options.type, resolveTitle(options), sectors);
-        if (titleCheck.action === 'warn') console.error(titleCheck.message);
-        if (options.sector !== undefined && !sectors) {
-          console.error('jira: warning: --sector ignored, Sector is not configured (run `jira sector setup`)');
-        }
-        const sector = sectorForCreate(options.type, resolveTitle(options), options.sector, sectors);
-        let labels = options.labels !== undefined ? parseLabels(options.labels) : undefined;
-        let residual: ResidualPlan | undefined;
-        if (options.residualOf !== undefined) {
-          residual = await planResidual(options.project ?? projectKey(), { ...options, sector, residualOf: options.residualOf });
-          if (residual.duplicateOf) {
-            const dup = residual.duplicateOf;
-            const head = markdownToAdf(`Re-raised as a residual of ${options.residualOf}: ${resolveTitle(options)}`);
-            const detail = (fields['description'] as { content?: unknown[] } | undefined)?.content ?? [];
-            await request('POST', `/issue/${dup}/comment`, { body: { ...head, content: [...head.content, ...detail] } });
-            await createIssueLink(dup, options.residualOf, { name: 'Relates', inward: 'relates to' });
-            console.log(`Duplicate ${dup}`);
-            return;
-          }
-          labels = [...new Set([...(labels ?? []), ...residual.labels])];
-          appendFuOverride(fields, options.fuOverride);
-        }
-        if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
-        const inherited = await residualInheritedVersion(options, residual);
-        assertProposalNotInherited(options, inherited);
-        const versionOptions = { ...options, fixVersion: inherited ?? options.fixVersion };
-        if (options.backlog) labels = [...new Set([...(labels ?? []), BACKLOG_LABEL])];
-        const placed = placeAtFiling(versionOptions, labels, residual !== undefined);
-        labels = placed.labels;
-        const core = markCore(agentDetail, options.changeClass, labels);
-        labels = core.labels;
-        // A Sector (when configured) plus an epic or the standalone label; Epic and Subtask only warn.
-        const home = homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
-        if (home.action === 'refuse') {
-          console.error(home.message);
-          process.exit(1);
-        }
-        if (home.action === 'warn') console.error(home.message);
-        if (options.parent) fields['parent'] = { key: options.parent };
-        if (labels) fields['labels'] = labels;
-        if (sector && sectorId) fields[sectorId] = { value: sector };
-        if (residual) {
-          if (residual.fixVersion) fields['fixVersions'] = [{ name: residual.fixVersion }];
-          if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
-          console.error(`jira: residual routed to ${inherited ?? residual.fixVersion ?? 'the backlog'}`);
-        }
-        const overCapReason = await applyVersions(options.project ?? projectKey(), versionOptions, fields, {
-          labels,
-          residual: residual !== undefined && inherited === undefined,
-          bugDefault: placed.bugDefault,
-        });
-        const admission = await checkIntakeGate(options.project ?? projectKey(), fields['fixVersions'], {
-          gate: options.gate,
-          override: overrideReason !== undefined,
-        });
-
-        await checkExistingBlocker(options.project ?? projectKey(), fields['fixVersions'], options);
-        const intake = intakeOwed(options.type, fields) ? await followUpIntake(versionOptions) : options;
-        preflightIntake(intake, fields, resolveTitle(options));
-
-        const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited, residual, bugDefault: placed.bugDefault });
-        const result = await request<CreateIssueResponse>('POST', '/issue', { fields }, writer);
-        // Breadcrumb BEFORE attachments (same rationale as comment): the issue
-        // exists even if a later attachment upload fails.
-        writeJiraBreadcrumb(result.key);
-
-        // Print the issue key to STDOUT immediately on success, BEFORE
-        // attempting attachments. Scripted callers like
-        //   KEY=$(jira create ... --attach foo)
-        // capture stdout. If attachments fail and we exit 1, the key
-        // has already been emitted so the caller still has it. The
-        // attachment-failure message goes to stderr.
-        console.log(`Created ${result.key}`);
-        printCore(core.verdict);
-        queueIntakeIfUnversioned(result.key, fields, resolveTitle(options), intake);
-        if (overrideReason !== undefined) {
-          recordAdmission(result.key, { version: options.fixVersion!, kind: 'override', reason: overrideReason });
-        }
-        if (admission) recordAdmission(result.key, admission);
-        await displaceResidual(residual, result.key, { type: options.type, title: resolveTitle(options) });
-        // The reason is recorded first so a failed link cannot leave an over-cap ticket unexplained.
-        if (overCapReason) {
-          try {
-            await request('POST', `/issue/${result.key}/comment`, { body: markdownToAdf(overCapReason) });
-          } catch (e) {
-            console.error(`Created ${result.key} but recording the over-cap reason failed: ${(e as Error).message}`);
-            process.exit(1);
-          }
-        }
-        const parentKey = options.residualOf ?? options.followUpOf;
-        if (parentKey) {
-          try {
-            await createIssueLink(result.key, parentKey, { name: 'Relates', inward: 'relates to' });
-          } catch (e) {
-            console.error(`Created ${result.key} but linking to ${parentKey} failed: ${(e as Error).message}`);
-            process.exit(1);
-          }
-        }
-
-        await linkCreatedIssue(result.key, options);
-
-        const attachments = options.attach ?? [];
-        if (attachments.length === 0) return;
         try {
-          const n = await uploadAll(result.key, attachments);
-          console.error(`  attachments: ${n}`);
+          await runCreate(options);
         } catch (e) {
-          console.error(`Created ${result.key} but attachment failed: ${(e as Error).message}`);
+          if (!(e instanceof CreateRefused || e instanceof CreatePartial)) throw e;
+          console.error(e.message);
           process.exit(1);
         }
       },

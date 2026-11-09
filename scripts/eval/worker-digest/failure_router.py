@@ -89,6 +89,7 @@ SHAPE = ("## Impact", "Workers lost time to the same failure class, so the harne
          "## Why", "A failure that recurs across workers is a harness defect, not one worker's mistake.",
          "## Plan", "1. Find the cause of the recurring failure class and fix it at the source.",
          "## DoD", "- The class stops recurring in the failure review.",
+         "## Proof", "The next daily failure review shows the class gone against today's count.",
          "## Agent detail")
 HEADS = ("Failure-loop recurrence (HIMMEL-4670 router).", "Failure-loop recurrence update.", "") + SHAPE
 INBOX_LINE = re.compile(r"^- \d{4}-\d{2}-\d{2} (denied|suite|blocked|error|run_error|traj)/%s workers=\d+ "

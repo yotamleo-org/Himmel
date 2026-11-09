@@ -2950,7 +2950,7 @@ hlaunch "$dh14" HIMMEL-9522-N1-w "$HW" N1 >/dev/null 2>&1; h14rc=$?
 age_by 7200 "$(hrow scripts/h22.sh)"
 check "8725z a launch that fails after the seed keeps its row, dead past the grace with no lock held" "$([ "$h14rc" -ne 0 ] && echo failed)|$(hp alive --repo "$REPO" scripts/h22.sh)" "failed|dead"
 
-# a seed fault warns and launches; a stub with no holds: line is a fault, with one it is a refusal; OFF calls neither
+# a seed fault warns and launches; a stub with no holds: line is a fault, with one it is a refusal; OFF still calls the seed
 HX="$(hdoc HIMMEL-9530-N1-x.md '> **Writes:** scripts/h30.sh')"
 printf 'import sys\nsys.exit(1)\n' > "$tmp/holds-stub-fault.py"
 printf 'import sys\nsys.stderr.write("holds: scripts/h30.sh is held by HIMMEL-1 (x, brief)\\n")\nsys.exit(1)\n' > "$tmp/holds-stub-refuse.py"
@@ -2972,7 +2972,28 @@ mkdir -p "$HOME/.himmel/state/holds"; : > "$HOME/.himmel/state/holds/OFF"
 dh18="$tmp/h18"; mk_stub "$dh18" 1 alive "HIMMEL-9530-N1-x"
 HEADED_ARM_HOLDS_PY="$tmp/holds-stub-mark.py" hlaunch "$dh18" HIMMEL-9530-N1-x "$HX" N1 >/dev/null 2>&1; h18rc=$?
 rm -f "$HOME/.himmel/state/holds/OFF"
-check "8725ae OFF present: launches and calls no holds.py" "$h18rc|$([ -e "$tmp/holds-stub-called" ] && echo called || echo none)" "0|none"
+check "8725ae OFF present: the seed still runs (S8: it claims only bucket files)" "$h18rc|$([ -e "$tmp/holds-stub-called" ] && echo called || echo none)" "0|called"
+S8F="$HH/u/r/ZZS-9560-s8-shared.md"
+hp claim --key ZZS-9560 --label N1 --doc "$(hdoc ZZS-9560-N1-s8h.md '# s8 holder')" --repo "$REPO" "$S8F" >/dev/null 2>&1
+hp claim --key ZZS-9560 --label N1 --doc "$HH/u/r/ZZS-9560-N1-s8h.md" --repo "$REPO" scripts/s8-held.sh >/dev/null 2>&1
+mkdir -p "$HOME/.himmel/state/holds"; : > "$HOME/.himmel/state/holds/OFF"
+S8A="$(hdoc ZZS-9561-N1-s8a.md "> **Writes:** $S8F" '## Results (newest at the bottom)')"
+ds8a="$tmp/s8a"; mk_stub "$ds8a" 1 alive "ZZS-9561-N1-s8a"
+s8aout="$(hlaunch "$ds8a" ZZS-9561-N1-s8a "$S8A" N1 2>&1)"; s8arc=$?
+check "S8a OFF present: a launch naming a bucket file another worker holds is refused (exit 2)" "$s8arc" "2"
+contains "S8b ... the refusal says no grant exists for a path outside the repo" "$s8aout" "no grant exists for a path outside the repo"
+contains "S8c ... and the brief gets the BLOCKED bullet" "$(tail -n 1 "$S8A")" "no grant exists for a path outside the repo"
+S8B="$(hdoc ZZS-9562-N1-s8b.md '> **Writes:** scripts/s8-held.sh' '## Results (newest at the bottom)')"
+ds8b="$tmp/s8b"; mk_stub "$ds8b" 1 alive "ZZS-9562-N1-s8b"
+hlaunch "$ds8b" ZZS-9562-N1-s8b "$S8B" N1 >/dev/null 2>&1; s8brc=$?
+check "S8d OFF present: a brief naming only a repo file another key holds launches" "$s8brc" "0"
+ds8c="$tmp/s8c"; mk_stub "$ds8c" 1 alive "ZZS-9561-N1-s8a"
+WRITE_HOLD_OK=1 hlaunch "$ds8c" ZZS-9561-N1-s8a "$S8A" N1 >/dev/null 2>&1; s8crc=$?
+check "S8e control: WRITE_HOLD_OK=1 turns the bucket-file refusal into a warning" "$s8crc" "0"
+rm -f "$HOME/.himmel/state/holds/OFF"
+ds8d="$tmp/s8d"; mk_stub "$ds8d" 1 alive "ZZS-9562-N1-s8b"
+hlaunch "$ds8d" ZZS-9562-N1-s8b "$S8B" N1 >/dev/null 2>&1; s8drc=$?
+check "S8f control, OFF absent: a brief naming a repo file another key holds is still refused" "$s8drc" "2"
 # an unreadable register: the real seed exits 3, the launch goes ahead
 hrepo2="$tmp/hrepo2"; mkdir -p "$hrepo2" "$HOME/.himmel/state/holds"
 : > "$HOME/.himmel/state/holds/${hrepo2//\//%2F}"

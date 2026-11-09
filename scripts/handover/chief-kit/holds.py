@@ -636,7 +636,7 @@ def claim_one(repo, judge, path, key, label, doc, source, pr, created=None, seen
     if norm is None:
         return 'skipped'  # a tree is noted, not held
     slug, rel = norm
-    if os.path.exists(os.path.join(holds_root(), 'OFF')):
+    if slug != '_abs' and os.path.exists(os.path.join(holds_root(), 'OFF')):
         return 'skipped'
     if slug != '_abs' and rel in exempt_set():
         return 'skipped'

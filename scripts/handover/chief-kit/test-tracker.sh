@@ -146,6 +146,10 @@ not_contains 'a fenced Impact heading is not read (HIMMEL-5226)' "$html" 'Fenced
 not_contains 'a hash run with no space is not an Impact heading (HIMMEL-5226)' "$html" 'Nospace impact must not show.'
 contains 'the row leads with the user impact (HIMMEL-3990)' "$html" 'add(tx,impactText(p,el("span","ui")),sub)'
 contains 'readiness reads in words (HIMMEL-3990)' "$html" '"fix named, not yet checked"'
+contains 'a stage-2 readiness is labelled declared with its source' "$html" 'Declared readiness (source stage2, not verified by an audit): '
+contains 'a ticket with no stage-2 plan row reads readiness unknown, never 0' "$html" 'Declared readiness: unknown (no stage-2 plan row for this ticket).'
+not_contains 'the ready line no longer states the score as an unqualified fact' "$html" '"Ready to build: "+M.READY'
+contains 'the terms call the ready score declared, not audited' "$html" 'A declared score from the roadmap plan, not verified evidence.'
 contains 'impact is a secondary 5-dot tag (HIMMEL-3990)' "$html" '"impact "+n+" of 5"'
 contains 'the notes list is labelled vault notes (HIMMEL-3990)' "$html" 'Vault notes that mention it:'
 # Ask 2: the terms name every scale.

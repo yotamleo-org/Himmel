@@ -310,8 +310,8 @@ node <repo-root>/scripts/jira/dist/index.js create --type Task --title "Bump <na
 
 `create` also refuses a Task, Story or Bug with no `--sector` or with neither `--parent <EPIC>` nor `--labels standalone`, and one with no placement: `--proposed-version <v>` files it with a `proposed-<v>` label and no fixVersion, and queues its INTAKE request toward `<v>` (refused when no release is declared), while `--fix-version <v>` places it in that version. The line above carries all three.
 
-`create` refuses a body without the six sections `## Impact` / `## What` /
-`## Why` / `## Plan` / `## DoD` / `## Agent detail`, where Plan and DoD each hold
+`create` refuses a body without the seven sections `## Impact` / `## What` /
+`## Why` / `## Plan` / `## DoD` / `## Proof` / `## Agent detail`, where Plan and DoD each hold
 a real bullet or numbered line. Put the plain block
 first (what a user would notice, in plain words); the Agent detail section should
 name: the drift guard line, the two files moved, the tracking issue number, and

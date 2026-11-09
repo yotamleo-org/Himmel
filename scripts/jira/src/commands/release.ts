@@ -20,7 +20,7 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, bucketCheck, claim, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersionApproval, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
+  apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersionApproval, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
   type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
@@ -56,6 +56,14 @@ export const liveJira: JiraPort = {
     const got = await request<{ id: string }>('POST', `/issue/${key}/comment`, { body: markdownToAdf(markdown) });
     writeJiraBreadcrumb(key);
     return got.id;
+  },
+  async labels(key) {
+    const got = await request<{ fields?: { labels?: string[] } }>('GET', `/issue/${key}?fields=labels`);
+    return got.fields?.labels ?? [];
+  },
+  async removeLabels(key, labels) {
+    await request('PUT', `/issue/${key}`, { update: { labels: labels.map((remove) => ({ remove })) } });
+    writeJiraBreadcrumb(key);
   },
   async issue(key) {
     const sf = sectorField();
@@ -694,9 +702,12 @@ export function registerRelease(program: Command): void {
     .requiredOption('--req <id>', 'Request id (Q-<R>-NNNN)')
     .requiredOption('--reason <text>', 'Why the request is withdrawn')
     .option('--by <O-id>', 'The operator decision row that settles it; it must cover the request\'s key')
-    .action((release: string, o: { req: string; reason: string; by?: string }) => {
-      const r = withdraw(ctxFor(release), o);
+    .action(async (release: string, o: { req: string; reason: string; by?: string }) => {
+      const ctx = ctxFor(release);
+      const r = withdraw(ctx, o);
       console.log(`WITHDRAWN ${r.req} (${r.state}): ${r.reason}`);
+      // Withdraw is ledger-only; an INTAKE's proposal ends here, so its proposed-* label goes. The request is already withdrawn if this throws.
+      if (r.verb === 'INTAKE') await clearProposedLabels(ctx.jira, r.key);
     });
 
   rel.command('rm-run <release>')

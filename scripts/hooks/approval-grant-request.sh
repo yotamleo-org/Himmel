@@ -13,6 +13,10 @@
 # built from root's frozen record. The operator's `NONCE CODE` reply is the only way a grant
 # is written; approval-grant-check.sh then lets the byte-identical retry through once.
 #
+# What files: only a real refusal, whose reason carries a bracketed classifier category
+# (`[Unauthorized Persistence]`), the same rule as afk-denied-to-request.sh. A no-verdict
+# denial, "Classifier unavailable" and a credential or exfiltration category file nothing.
+#
 # Off unless the station opted in: no marker directory (helper not installed) means no sudo
 # call at all, and the helper refuses every request while grant.enabled is false.
 #
@@ -44,6 +48,11 @@ session=$(jq -r '.session_id // ""' <<<"$input" 2>/dev/null) || exit 0  # swallo
 cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null) || exit 0  # swallow-ok: fail-open tap
 reason=$(jq -r '.reason // ""' <<<"$input" 2>/dev/null) || exit 0  # swallow-ok: fail-open tap
 [ -n "$session" ] && [ -n "$cwd" ] || exit 0
+category="$(printf '%s' "$reason" | grep -oE '\[[A-Za-z][A-Za-z -]*\]' | sed -n '1s/^\[\(.*\)\]$/\1/p')"
+[ -n "$category" ] || exit 0
+case "$(printf '%s' "$category" | tr '[:upper:]' '[:lower:]')" in
+    *credential* | *exfiltrat* | *secret* | *token*) exit 0 ;;
+esac
 
 jq -j '.tool_input.command' <<<"$input" 2>/dev/null |
     sudo -n "$HELPER" grant-request --session="$session" --cwd="$cwd" --why="$reason" >/dev/null 2>&1

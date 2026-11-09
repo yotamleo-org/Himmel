@@ -1,0 +1,30 @@
+{
+  "comment": "The shared ticket-policy corpus. Each case edits the valid base body (ticket-policy-parity.test.ts BASE): omit drops sections, replace swaps a section body, bold writes a section's heading as a bold line, append adds lines at the end. expect lists the fields every route must name; an empty expect is a body every route accepts. Epic and Subtask findings warn and never refuse.",
+  "cases": [
+    { "id": "valid-control", "type": "Task", "expect": [] },
+    { "id": "valid-bug-control", "type": "Bug", "expect": [] },
+    { "id": "missing-proof", "type": "Task", "omit": ["Proof"], "expect": ["Proof"] },
+    { "id": "placeholder-plan", "type": "Task", "replace": { "Plan": "1. TODO" }, "expect": ["Plan"] },
+    { "id": "placeholder-plan-tbd-bold", "type": "Story", "replace": { "Plan": "- **TBD**" }, "expect": ["Plan"] },
+    { "id": "prose-only-dod", "type": "Task", "replace": { "DoD": "A draft missing a DoD is refused." }, "expect": ["DoD"] },
+    { "id": "fenced-fake-dod", "type": "Task", "replace": { "DoD": "```\n- a bullet inside code is not a DoD line\n```" }, "expect": ["DoD"] },
+    { "id": "fenced-proof-command", "type": "Task", "replace": { "Proof": "```bash\n# run the checker\nbash tool.sh --type Task\n```" }, "expect": [] },
+    { "id": "labels-ci-without-metric", "type": "Task", "labels": ["ci-red"], "expect": ["Metric"] },
+    { "id": "labels-ci-with-metric", "type": "Task", "labels": ["ci"], "append": "Metric: red_main_count falls from 2 to 0", "expect": [] },
+    { "id": "fenced-metric-does-not-count", "type": "Task", "labels": ["guard"], "append": "```\nMetric: red_main_count\n```", "expect": ["Metric"] },
+    { "id": "multi-key-plan-without-edges", "type": "Task", "replace": { "Plan": "1. Land HIMMEL-100 first.\n2. Then HIMMEL-101." }, "expect": ["Edges"] },
+    { "id": "multi-key-plan-edges-none", "type": "Task", "replace": { "Plan": "1. Land HIMMEL-100 first.\n2. Then HIMMEL-101." }, "append": "Edges: none", "expect": [] },
+    { "id": "backtick-info-fence-6075", "type": "Task", "replace": { "Proof": "```a`\nRun the checker on a real draft." }, "expect": [] },
+    { "id": "bold-pseudo-heading-in-plan-7766-1", "type": "Task", "replace": { "Plan": "1. Land HIMMEL-100 first.\n**Step two**\n2. Then HIMMEL-101." }, "expect": ["Edges"] },
+    { "id": "heading-style-edges-7766-2", "type": "Task", "replace": { "Plan": "1. Land HIMMEL-100 first.\n2. Then HIMMEL-101." }, "append": "## Edges\nHIMMEL-100 blocks HIMMEL-101 (soft)", "expect": [] },
+    { "id": "next-line-edges-7766-2", "type": "Task", "replace": { "Plan": "1. Land HIMMEL-100 first.\n2. Then HIMMEL-101." }, "append": "Edges:\nHIMMEL-100 blocks HIMMEL-101 (hard)", "expect": [] },
+    { "id": "unicode-ellipsis-edges-7766-3", "type": "Task", "replace": { "Plan": "1. Land HIMMEL-100 first.\n2. Then HIMMEL-101." }, "append": "Edges: …", "expect": ["Edges"] },
+    { "id": "prior-art-keys-7766-4", "type": "Task", "replace": { "Plan": "1. Extend the rule of HIMMEL-7754 (prior art: HIMMEL-5643)." }, "expect": ["Edges"] },
+    { "id": "bold-heading-is-not-a-heading", "type": "Task", "bold": ["Proof"], "expect": ["Proof"] },
+    { "id": "indented-list-items-count", "type": "Task", "replace": { "Plan": "  1. Write the checker.\n  2. Add the tests.", "DoD": "  - A draft missing a DoD is refused." }, "expect": [] },
+    { "id": "closing-hash-needs-a-space", "type": "Task", "omit": ["Proof"], "append": "## Proof#\nRun the checker on a real draft.", "expect": ["Proof"] },
+    { "id": "bare-heading-line-as-the-mirror-renders", "type": "Task", "plain": ["Impact", "DoD", "Proof", "Agent detail"], "expect": [] },
+    { "id": "epic-warns-only", "type": "Epic", "omit": ["Plan", "DoD", "Proof"], "expect": ["Plan", "DoD", "Proof"] },
+    { "id": "phase-and-held-labels-compatible", "type": "Task", "labels": ["phase:build", "held"], "expect": [] }
+  ]
+}
