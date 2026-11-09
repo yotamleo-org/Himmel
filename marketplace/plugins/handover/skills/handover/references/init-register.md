@@ -253,7 +253,7 @@ Porting the existing `himmel/handovers/<USER_SLUG>/` state into the registry:
 #   user = <USER_SLUG>
 #   aliases = himmel, internal
 #   keywords = (empty)
-#   branch_prefix = handover/    # the default since branch_prefix became per-repo (was feat/ before)
+#   branch_prefix = handover/
 #   jira_project = HIMMEL    # preserves current auto-mirror behaviour
 ```
 

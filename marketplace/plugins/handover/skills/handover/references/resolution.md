@@ -290,7 +290,7 @@ Rules:
         roadmap.md                       ← NEW in v2
         tech-debt.md                     ← NEW in v2
 
-      # FLAT LAYOUT (before the bucket layer; still supported as fallback)
+      # FLAT LAYOUT (used when no recognized source-bucket dir exists)
       epics/
         #N-<slug>/
           master-plan.md
