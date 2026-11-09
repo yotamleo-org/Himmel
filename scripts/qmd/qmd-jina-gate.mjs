@@ -22,7 +22,11 @@
 // sibling index configs next to the checked one.
 //
 // Usage: node qmd-jina-gate.mjs [--resolve] <index.yml> [<index.sqlite>]
+//        node qmd-jina-gate.mjs --provider <index.yml>
 // Exit 0 allowed (also when no role is remote), 3 refused, 2 usage/unreadable.
+// --provider checks nothing: it prints the provider this gate resolves for the base URL
+// (openrouter, jina, local, openai-unconfigured, openai-unparseable, <host>-insecure-<scheme>
+// or <host>-unrecognised) and exits 0, so a caller that sends a key reads the host the same way.
 // qmd reads the config first and these environment variables only when the
 // config sets nothing: QMD_EMBED_MODEL, QMD_RERANK_MODEL, QMD_GENERATE_MODEL,
 // QMD_OPENAI_BASE_URL. The gate does not rely on that order for the models: a
@@ -53,6 +57,8 @@ if (args[0] === "--resolve") {
     const hit = ["index.yaml", "index.yml"].map((n) => join(d, ".qmd", n)).find((f) => existsSync(f));
     if (hit) { cfgPath = hit; dbPath = join(dirname(hit), "index.sqlite"); break; }
   }
+} else if (args[0] === "--provider") {
+  [, cfgPath] = args;
 } else {
   [cfgPath, dbPath] = args;
 }
@@ -195,6 +201,11 @@ function providerOf() {
   if (host === "jina.ai" || host.endsWith(".jina.ai")) return "jina";
   if (host === "openrouter.ai") return "openrouter";
   return `${host}-unrecognised`; // a wildcard allow row must never approve a host nobody vetted
+}
+
+if (args[0] === "--provider") {
+  process.stdout.write(`${providerOf() ?? "local"}\n`);
+  process.exit(0);
 }
 
 // A role is local only when its value is plainly a local GGUF (hf: URI, a path,

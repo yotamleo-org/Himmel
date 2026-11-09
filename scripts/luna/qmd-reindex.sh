@@ -625,23 +625,17 @@ if [ "$remote_model" -eq 1 ]; then
     fi
 fi
 
-usage_base_url() {
-    local u
-    u=$(sed -nE "s/^[[:space:]]*openai_base_url:[[:space:]]*[\"']?([^\"'[:space:]#]*).*/\1/p" "$QMD_CFG_FILE" 2>/dev/null)
-    u=${u%%$'\n'*}
-    printf '%s' "${u:-${QMD_OPENAI_BASE_URL:-}}"
-}
-
 usage_read() {
-    local out v base
-    base=$(usage_base_url)
+    local out v provider
+    provider=$(node "$GATE_JS" --provider "$QMD_CFG_FILE" 2>/dev/null) || provider=""
     out=$(
         set +x
         if [ -n "${QMD_REINDEX_KEY_USAGE_CMD:-}" ]; then
             "$QMD_REINDEX_KEY_USAGE_CMD" 2>/dev/null
-        elif { [ "$base" = https://openrouter.ai ] || [[ "$base" == https://openrouter.ai/* ]]; } && command -v curl >/dev/null 2>&1; then
+        elif [ "$provider" = openrouter ] && command -v curl >/dev/null 2>&1; then
+            # -q first: a user's curlrc must not redirect the request or echo the key.
             printf 'header = "Authorization: Bearer %s"\n' "${QMD_OPENAI_API_KEY:-}" \
-                | curl -sS --max-time 15 -K - https://openrouter.ai/api/v1/key 2>/dev/null \
+                | curl -q -sS --max-time 15 -K - https://openrouter.ai/api/v1/key 2>/dev/null \
                 | sed -nE 's/.*"usage"[[:space:]]*:[[:space:]]*([0-9][0-9.eE+-]*).*/\1/p'
         fi
     ) || out=""
