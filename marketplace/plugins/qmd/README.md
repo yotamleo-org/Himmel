@@ -88,7 +88,7 @@ sessions recycle, and a stamp blocks another recycle for
 `QMD_RECYCLE_COOLDOWN_MIN` minutes (default `30`). The recycler logs to
 `~/.cache/qmd/recycle.log`. `himmel-doctor.sh` check `C45-qmd-daemon` reports the
 daemon's RSS and uptime and WARNs over the same ceiling. There is no PowerShell twin
-to carry it: Windows runs through WSL.
+to carry it: Windows is not a supported platform.
 
 ## Remote embed models and the salus index
 
