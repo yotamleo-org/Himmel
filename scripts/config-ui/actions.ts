@@ -43,6 +43,7 @@ const CADENCE_PATH: Readonly<Record<string, string>> = Object.freeze({
   graphmap: "scripts/luna/graphmap-cadence.sh",
   qmd: "scripts/luna/qmd-cadence.sh",
   doctor: "scripts/doctor-cadence.sh",
+  rollup: "scripts/eval/rollup-cadence.sh",
 });
 // Shown in the consent text (critic F3); mirrors config-feed.js CADENCES[].cost.
 const CADENCE_BANK: Readonly<Record<string, string>> = Object.freeze({
@@ -50,6 +51,7 @@ const CADENCE_BANK: Readonly<Record<string, string>> = Object.freeze({
   graphmap: "weekly claude-cli extraction; draws the subscription bank",
   qmd: "none (local qmd reindex)",
   doctor: "none",
+  rollup: "none",
 });
 
 export const validId = (s: unknown): s is string => typeof s === "string" && s.length <= 64 && ID_RE.test(s) && !s.startsWith("-");

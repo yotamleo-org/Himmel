@@ -49,6 +49,7 @@ const CADENCES = [
   { name: 'qmd', script: 'scripts/luna/qmd-cadence.sh', evidence: 'log', cost: 'none (local qmd reindex)' },
   { name: 'graphmap', script: 'scripts/luna/graphmap-cadence.sh', evidence: 'log', cost: 'weekly claude-cli extraction; draws the subscription bank' },
   { name: 'doctor', script: 'scripts/doctor-cadence.sh', evidence: 'doctor-last', cost: 'none' },
+  { name: 'rollup', script: 'scripts/eval/rollup-cadence.sh', evidence: 'log', cost: 'none' },
 ];
 
 function checkoutRoot() {
