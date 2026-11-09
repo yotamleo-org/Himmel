@@ -263,6 +263,7 @@ gh_stub gh-rl-gql  "GraphQL: API rate limit already exceeded for user ID 1. (RAT
 gh_stub gh-rl-rest "gh: HTTP 403: API rate limit exceeded for user ID 1."
 gh_stub gh-other   "GraphQL: Could not resolve to a PullRequest with the number of 90."
 gh_stub gh-ok      ""
+export HIMMEL_QUOTA_DIR="$tmp/quota-crd"   # markers land here, never in the real ~/.himmel
 for stub in gh-rl-gql gh-rl-rest; do
   rc=0; out="$(GH_CMD="$tmp/bin/$stub" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
   check    "10: $stub -> exit 2" "$rc" "2"
@@ -277,6 +278,49 @@ check    "10: an unrelated gh failure is not called a rate limit" "$(grep -c "ra
 rc=0; out="$(GH_CMD="$tmp/bin/gh-ok" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
 contains "10: a gh success reaches the check" "$out" "[OPEN] crit adopt-9@$FHEAD"
 check    "10: a gh success prints neither head-branch line" "$(grep -c "cannot read PR\|rate limit" <<< "$out")" "0"
+
+# --- 11. the quota gates (T3): the one quota line, a bounded read, and a marker on `check` ---
+# A refused read prints QUOTA-PAUSE (exit 2) and leaves one marker keyed <pr>.<head>; a hung read is cut by
+# CR_DISPOSITION_GH_TIMEOUT and prints GH-STALL; `record`, a usage error and an unrelated failure leave none.
+mkers() { find "$HIMMEL_QUOTA_DIR/blocked" -type f ! -name '.lock*' 2>/dev/null | wc -l | tr -d ' '; }
+rm -rf "$HIMMEL_QUOTA_DIR"
+rc=0; out="$(GH_CMD="$tmp/bin/gh-rl-gql" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
+check    "11: a refused read -> exit 2" "$rc" "2"
+contains "11: a refused read prints the QUOTA-PAUSE line" "$out" "QUOTA-PAUSE github graphql token=main"
+contains "11: the line says nothing was judged" "$out" "nothing-was-judged"
+check    "11: a refused read leaves one marker keyed <pr>.<head>" "$(find "$HIMMEL_QUOTA_DIR/blocked" -type f -name "90.$SHA" | wc -l | tr -d ' ')" "1"
+contains "11: the marker names the reason" "$(cat "$HIMMEL_QUOTA_DIR/blocked/90.$SHA")" "reason=rate-limit"
+contains "11: the marker names the bucket" "$(cat "$HIMMEL_QUOTA_DIR/blocked/90.$SHA")" "buckets=graphql"
+mk_first=$(sed -n 's/^first_epoch=//p' "$HIMMEL_QUOTA_DIR/blocked/90.$SHA")
+sleep 1
+GH_CMD="$tmp/bin/gh-rl-rest" bash "$DISP" check 90 "$SHA" >/dev/null 2>&1
+check    "11: a second writer keeps first_epoch" "$(sed -n 's/^first_epoch=//p' "$HIMMEL_QUOTA_DIR/blocked/90.$SHA")" "$mk_first"
+check    "11: a second writer leaves one marker" "$(mkers)" "1"
+rm -rf "$HIMMEL_QUOTA_DIR"
+rc=0; out="$(GH_CMD="$tmp/bin/gh-rl-gql" bash "$DISP" record 90 "$SHA" "adopt-9@$FHEAD" fix-here --source chief 2>&1)" || rc=$?
+check    "11: record on a refused read is exit 2" "$rc" "2"
+check    "11: record leaves no marker (only check does)" "$(mkers)" "0"
+rc=0; out="$(GH_CMD="$tmp/bin/gh-other" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
+check    "11: an unrelated gh failure leaves no marker" "$(mkers)" "0"
+check    "11: an unrelated gh failure prints no quota line" "$(grep -c 'QUOTA-PAUSE\|GH-STALL' <<< "$out" | tr -d ' ')" "0"
+rc=0; out="$(bash "$DISP" check x1 "$SHA" 2>&1)" || rc=$?
+check    "11: a usage error leaves no marker" "$(mkers)" "0"
+# a rate limit named only on stdout is not a rate limit (the classifier reads stderr)
+printf '%s\n' '#!/usr/bin/env bash' 'echo "API rate limit exceeded in the PR body"' 'echo "boom" >&2' 'exit 1' > "$tmp/bin/gh-stdout-rl"
+chmod +x "$tmp/bin/gh-stdout-rl"
+rc=0; out="$(GH_CMD="$tmp/bin/gh-stdout-rl" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
+check    "11: a rate-limit phrase on stdout alone is not a rate limit" "$(mkers)" "0"
+# a hung read: cut by CR_DISPOSITION_GH_TIMEOUT, named a stall
+printf '%s\n' '#!/usr/bin/env bash' 'exec sleep 60' > "$tmp/bin/gh-hung"
+chmod +x "$tmp/bin/gh-hung"
+t0=$SECONDS
+rc=0; out="$(CR_DISPOSITION_GH_TIMEOUT=2 GH_CMD="$tmp/bin/gh-hung" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
+check    "11: a hung read ends in exit 2" "$rc" "2"
+check    "11: a hung read is cut within the bound" "$([ $((SECONDS - t0)) -le 12 ] && echo yes || echo no)" "yes"
+contains "11: a hung read prints the GH-STALL line" "$out" "GH-STALL github read timed out after 2s"
+check    "11: a hung read prints no false cause" "$(grep -c "cannot read PR" <<< "$out" | tr -d ' ')" "0"
+check    "11: a hung read leaves one marker" "$(mkers)" "1"
+contains "11: the stall marker names the reason" "$(cat "$HIMMEL_QUOTA_DIR/blocked/90.$SHA")" "reason=stall"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

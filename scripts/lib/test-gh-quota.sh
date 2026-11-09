@@ -222,6 +222,25 @@ check "M4 an unwritable dir never fails the caller" "0 0" "$rc $?"
 chmod 700 "$W/ro"
 
 check "H1 nothing was written under the scratch HOME's live quota path" "no" "$([ -e "$HOME/.himmel/state/quota" ] && echo yes || echo no)"
+
+# I1: a gate never reads the quota file or the sweep for a decision, so none of these files names the readers.
+# The lint sees direct names only; a helper wrapping them evades it (ceiling recorded in the ledger).
+# The behavioural row in test-quota-no-hang.sh is the proof; this only catches the plain mistake.
+names_i1() {  # <file> -> the reader names it uses, one line each (none = clean)
+    grep -oE 'ghq_read|ghq_scan_gate|ghq_refresh|prs_row|prs_list|quota\.tsv' "$1" 2>/dev/null | sort -u | tr '\n' ' '
+}
+GATES_I1="scripts/handover/chief-kit/ready-check.sh scripts/handover/chief-kit/go.sh scripts/handover/chief-kit/cr-disposition.sh scripts/handover/merge-on-green.sh scripts/check-ci.sh scripts/lib/gh-ci-cache.sh scripts/lib/check-ci-watch.sh"
+for g_i1 in $GATES_I1; do
+    if [ -f "$REPO/$g_i1" ]; then
+        check "I1 $g_i1 names none of the quota readers" "" "$(names_i1 "$REPO/$g_i1")"
+    else
+        fail "I1 $g_i1 is missing, so the lint cannot read it"
+    fi
+done
+printf '%s\n' '. gh-quota.sh; ghq_scan_gate main graphql x' > "$W/i1-bad.sh"
+check "I1 control: a gate that names ghq_scan_gate is caught" "ghq_scan_gate " "$(names_i1 "$W/i1-bad.sh")"
+printf '%s\n' 'cat "$HIMMEL_QUOTA_DIR/quota.tsv"' > "$W/i1-bad2.sh"
+check "I1 control: a gate that names quota.tsv is caught" "quota.tsv " "$(names_i1 "$W/i1-bad2.sh")"
 # the words are built from halves so this suite's own text is not a bash-4 form
 K_MAP="map""file"; K_READ="read""array"; K_LOCK="f""lock"; K_ASSOC="declare"" -A"; K_DATE="date"" -d"
 lint32() {

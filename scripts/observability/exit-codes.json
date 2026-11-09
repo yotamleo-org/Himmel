@@ -26,14 +26,15 @@
       "codes": {
         "0": { "class": "result", "meaning": "READY-CHECK PASS" },
         "1": { "class": "result", "meaning": "READY-CHECK FAIL: one or more checks not yet satisfied (a status answer, e.g. CI pending)" },
-        "2": { "class": "error", "meaning": "usage, or cannot evaluate (gh/jq missing, repo or PR unreadable)" }
+        "2": { "class": "retry", "meaning": "usage, or cannot evaluate (gh/jq missing, repo or PR unreadable, a read GitHub refused or stalled, the READY_CHECK_DEADLINE cut): nothing was judged; a refused read prints the QUOTA-PAUSE or GH-STALL line and leaves a marker" }
       }
     },
     "scripts/handover/chief-kit/go.sh": {
       "codes": {
         "4": { "class": "result", "meaning": "ready-check did not PASS at this head: no GO written" },
         "5": { "class": "result", "meaning": "trust-reviewed GO refused: no GO written" },
-        "8": { "class": "result", "meaning": "plain GO refused: ready-check computed TRUST-PATH yes, only --trust-reviewed may write it" }
+        "8": { "class": "result", "meaning": "plain GO refused: ready-check computed TRUST-PATH yes, only --trust-reviewed may write it" },
+        "11": { "class": "retry", "meaning": "could not evaluate, nothing judged, no GO: a callee exited with anything but 0 or 1, a read was refused or stalled, or GO_DEADLINE cut the run before the GO was written; re-run when GitHub answers" }
       }
     },
     "scripts/handover/merge-on-green.sh": {

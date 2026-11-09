@@ -185,5 +185,18 @@ out=$(run); rc=$?
 check "(m) coverage-gap exits 1" 1 "$rc"
 check "(m) clean tree removed on the NEEDS-WORKER path" "" "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
 
+# (o) ready-check exit 2 is "not evaluated", exit 1 stays a FAIL
+setup yes ok 0; echo 2 > "$SHEP_STUBDIR/ready.rc"
+out=$(run); rc=$?
+check "(o) ready-check exit 2 exits 1" 1 "$rc"
+has "(o) the line says not evaluated" "ready-check: not evaluated" "$out"
+has "(o) its own reason" "ready-check-not-evaluated" "$out"
+case "$out" in *"ready-check: FAIL"*) fail "(o) a refused read is not a FAIL" ;; *) pass "(o) a refused read is not a FAIL" ;; esac
+setup yes ok 0; echo 1 > "$SHEP_STUBDIR/ready.rc"
+out=$(run); rc=$?
+check "(o) ready-check exit 1 exits 1" 1 "$rc"
+has "(o) a real fail still says FAIL" "ready-check: FAIL" "$out"
+has "(o) a real fail keeps ready-check-failed" "ready-check-failed" "$out"
+
 printf '\n%s failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

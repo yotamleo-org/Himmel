@@ -198,31 +198,108 @@
 # Exit codes:
 #   0 — READY-CHECK PASS
 #   1 — READY-CHECK FAIL (one or more checks failed)
-#   2 — usage, or cannot evaluate (gh/jq missing, repo/PR unreadable)
+#   2 — usage, or cannot evaluate: gh/jq missing, repo/PR unreadable, a read GitHub refused or
+#       stalled (the one QUOTA-PAUSE / GH-STALL line, no rows, a marker for the waiter), or the
+#       READY_CHECK_DEADLINE cut (nothing was judged). A FAIL row from a refused read is never exit 1.
 #
 # Platform guard: POSIX bash 3.2+, same as go.sh. No mapfile.
 set -u
+
+# _rcd_report <refused file> <pr> <head> - when a read was refused or stalled (rows in the router's
+# GH_READ_REFUSED_FILE: "<token> <bucket> rate-limit|stall"), print the one QUOTA-PAUSE / GH-STALL line
+# and, with a <pr> and <head>, leave the marker the waiter wakes on, one per row so the buckets union.
+# rc 0 = reported, rc 1 = no refused read, nothing printed. A marker failure never changes the exit.
+_rcd_report() {
+    local tok="" bucket="" why="" first=1 lib
+    [ -s "${1:-}" ] || return 1
+    lib="$(cd "$(dirname "$0")/../../lib" && pwd)"
+    while read -r tok bucket why; do
+        [ -n "$why" ] || continue
+        (
+            # shellcheck source=../../lib/gh-quota.sh
+            . "$lib/gh-quota.sh" 2>/dev/null || exit 0
+            [ "$first" -eq 0 ] || ghq_line "$tok" "$bucket" ready-check.sh "$why"
+            [ -z "$2" ] || [ -z "$3" ] || ghq_mark_blocked "$2" "$3" ready-check.sh "$bucket" "$why"
+        ) || true
+        first=0
+    done < "$1"
+    [ "$first" -eq 0 ]
+}
 
 # A self-armed deadline: the chief types this script bare, because a `timeout`
 # prefix does not match the project allow rule. READY_CHECK_DEADLINE (whole seconds, default
 # 150 = chief-wait's bound, above item 19's 105 s of bounds; 0 = none) bounds the whole run:
 # the script re-runs itself under timeout and says so by name when it is cut.
+#
+# The re-run also logs every read GitHub refused or stalled to a file (GH_READ_REFUSED_FILE, written by
+# the read router). When the child ends non-zero and that file has a row, a refused read is not a failed
+# check: the armed wrapper drops the child's buffered rows and prints the one QUOTA-PAUSE / GH-STALL line,
+# exit 2, with a marker for the waiter. A real FAIL with no refused read prints as before. A cut with no
+# refused row is exit 2 and "no verdict within the deadline", no marker (the cut may be local).
+# Unarmed (no timeout binary, or a deadline of 0): the rows print live, then the line, exit 2.
 if [ -z "${_READY_CHECK_ARMED:-}" ]; then
     rcd_s="${READY_CHECK_DEADLINE:-150}"
     case "$rcd_s" in ''|*[!0-9]*) rcd_s=150 ;; esac
+    _TIMEOUT_BIN=""
     if [ "$rcd_s" -gt 0 ]; then
-        _TIMEOUT_BIN=""
         # shellcheck source=../../lib/timeout-bin.sh
         . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN runs without the deadline, as the per-read bounds below do
+    fi
+    rcd_ref=$(mktemp "${TMPDIR:-/tmp}/ready-check-refused.XXXXXX" 2>/dev/null) || rcd_ref=""  # swallow-ok: no scratch file runs this process unwrapped, as before
+    if [ -n "$rcd_ref" ]; then
+        # A TERM (the chief's own `timeout`) reaches the child too: this shell waits for it to finish its cleanup
+        # (the trap runs once the foreground child returns), then removes its own scratch files and exits.
+        rcd_buf=""; rcd_err=""
+        trap 'rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"' EXIT
+        trap 'exit 143' TERM INT HUP
+        # the gate form ends in <pr> <full head>; any other form (--only, --outside) leaves no marker
+        rcd_pr=""; rcd_sha=""
+        if [ "$#" -ge 2 ]; then
+            rcd_sha="${*: -1}"; rcd_pr="${*: -2:1}"
+            case "$rcd_pr" in ''|*[!0-9]*) rcd_pr="" ;; esac
+            case "$rcd_sha" in *[!0-9a-f]*) rcd_sha="" ;; esac
+            [ "${#rcd_sha}" -eq 40 ] || rcd_sha=""
+            [ -n "$rcd_pr" ] && [ -n "$rcd_sha" ] || { rcd_pr=""; rcd_sha=""; }
+        fi
+        rcd_rc=0
+        rcd_buf=""; rcd_err=""
         if [ -n "$_TIMEOUT_BIN" ]; then
-            rcd_rc=0
-            _READY_CHECK_ARMED=1 "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" || rcd_rc=$?
-            if [ "$rcd_rc" -eq 124 ] || [ "$rcd_rc" -eq 137 ]; then
-                echo "READY-CHECK FAIL: no verdict within the ${rcd_s} s deadline (READY_CHECK_DEADLINE); a gate read stalled" >&2
-                exit 1
+            rcd_buf=$(mktemp "${TMPDIR:-/tmp}/ready-check-out.XXXXXX" 2>/dev/null) || rcd_buf=""  # swallow-ok: no buffer runs the child unbuffered below
+            rcd_err=$(mktemp "${TMPDIR:-/tmp}/ready-check-err.XXXXXX" 2>/dev/null) || rcd_err=""  # swallow-ok: no buffer runs the child unbuffered below
+        fi
+        if [ -n "$_TIMEOUT_BIN" ] && [ -n "$rcd_buf" ] && [ -n "$rcd_err" ]; then
+            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
+                "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" >"$rcd_buf" 2>"$rcd_err" || rcd_rc=$?
+            if [ "$rcd_rc" -ne 0 ] && _rcd_report "$rcd_ref" "$rcd_pr" "$rcd_sha"; then
+                rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
+                exit 2
             fi
+            if [ "$rcd_rc" -eq 124 ] || [ "$rcd_rc" -eq 137 ]; then
+                rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
+                echo "ready-check: no verdict within the ${rcd_s} s deadline (READY_CHECK_DEADLINE); a gate read stalled, nothing was judged" >&2
+                exit 2
+            fi
+            cat "$rcd_buf"; cat "$rcd_err" >&2  # read-sink-ok: our own mktemp buffers
+            rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
             exit "$rcd_rc"
         fi
+        rm -f "$rcd_buf" "$rcd_err"
+        if [ -n "$_TIMEOUT_BIN" ]; then
+            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
+                "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" || rcd_rc=$?
+        else
+            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" bash "$0" "$@" || rcd_rc=$?
+        fi
+        if [ "$rcd_rc" -ne 0 ] && _rcd_report "$rcd_ref" "$rcd_pr" "$rcd_sha"; then
+            rm -f "$rcd_ref"
+            exit 2
+        fi
+        rm -f "$rcd_ref"
+        if [ "$rcd_rc" -eq 124 ] || [ "$rcd_rc" -eq 137 ]; then
+            echo "ready-check: no verdict within the ${rcd_s} s deadline (READY_CHECK_DEADLINE); a gate read stalled, nothing was judged" >&2
+            exit 2
+        fi
+        exit "$rcd_rc"
     fi
 fi
 

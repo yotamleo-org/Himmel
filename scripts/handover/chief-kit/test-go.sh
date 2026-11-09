@@ -48,6 +48,7 @@ case "$1 $2" in
         done
         case "$json" in
             nameWithOwner)
+                [ "${STUB_GH_RL:-0}" = "1" ] && { echo "GraphQL: API rate limit already exceeded for user ID 1." >&2; exit 1; }
                 [ "${STUB_GH_REPO_VIEW_FAIL:-0}" = "1" ] && exit 1
                 printf '%s' "${STUB_NWO:-o/r}" ;;
             *) exit 90 ;;
@@ -1035,6 +1036,94 @@ rc=0; out="$(go30 "$KEYED30" - --contract yes --contract no 77 "$SHA")" || rc=$?
 check    "8918: --contract twice -> exit 2" "$rc" "2"
 rc=0; out="$(go30 "$KEYED30" - --contract no --repo o/f --trust-reviewed J1 77 "$SHA")" || rc=$?
 check    "8918: --contract with --repo -> exit 2" "$rc" "2"
+
+# --- 31. the quota gates (T3): a callee that could not evaluate is exit 11, never a false finding ---
+# go.sh writes a GO only when ready-check.sh AND cr-disposition.sh check each exit exactly 0.
+# rc 1 is a real answer (exit 4 / exit 9); every other rc (2, 3, 96, 124, 127, 137 ...) means
+# nothing was judged: exit 11, the callee text printed, no GO. A fixture tree holds go.sh, the real
+# lib and stub callees whose rc, sleep and text the env sets.
+S31="$tmp/s31"; ROOT31="$tmp/root31"; Q31="$tmp/quota31"
+rm -rf "$S31"; mkdir -p "$S31/scripts/handover/chief-kit" "$S31/scripts/cr"
+git init -q "$S31"
+cp "$SCRIPT" "$S31/scripts/handover/chief-kit/go.sh"
+cp -R "$HERE/../../lib" "$S31/scripts/lib"
+cp "$HERE/../../cr/anchor-handoff.sh" "$S31/scripts/cr/anchor-handoff.sh"
+# shellcheck disable=SC2016  # the stub bodies must expand at run time, not here
+{
+printf '%s\n' '#!/usr/bin/env bash' 'sleep "${STUB_RC_SLEEP:-0}"' 'echo "stub ready-check output"' 'exit "${STUB_RC_READY:-0}"' > "$S31/scripts/handover/chief-kit/ready-check.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo "stub cr-disposition output"' 'exit "${STUB_RC_DISP:-0}"' > "$S31/scripts/handover/chief-kit/cr-disposition.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'sleep "${STUB_WV_SLEEP:-0}"' 'exit 0' > "$S31/scripts/handover/chief-kit/write-verdict.sh"
+}
+go31() {  # <go.sh args...> - run the fixture's go.sh from the fixture repo, stdout and stderr together
+    (cd "$S31" && HANDOVER_DIR="$ROOT31" HIMMEL_QUOTA_DIR="${Q31_DIR:-$Q31}" bash "$S31/scripts/handover/chief-kit/go.sh" "$@" 2>&1)
+}
+fresh31() { rm -rf "$ROOT31" "$Q31"; mkdir -p "$ROOT31"; }
+gofiles31() { find "$ROOT31/.locks/go" -type f ! -name '.go.*' 2>/dev/null | wc -l | tr -d ' '; }
+
+fresh31
+rc=0; out=$(STUB_RC_DISP=2 go31 77 "$SHA") || rc=$?
+check    "9479 T3 RED: cr-disposition check rc 2 -> exit 11 (a false finding was exit 9)" "$rc" "11"
+check    "9479 T3: cr-disposition rc 2 writes no GO" "$(gofiles31)" "0"
+
+for rc31 in 2 3 96 124 127 137; do
+    fresh31
+    rc=0; out=$(STUB_RC_READY=$rc31 go31 77 "$SHA") || rc=$?
+    check    "9479 I3: ready-check rc $rc31 -> exit 11" "$rc" "11"
+    check    "9479 I3: ready-check rc $rc31 writes no GO" "$(gofiles31)" "0"
+    contains "9479 I3: ready-check rc $rc31 prints the callee text" "$out" "stub ready-check output"
+    check    "9479 I8: ready-check rc $rc31 prints no false verdict" "$(printf '%s\n' "$out" | grep -c 'did not PASS\|no valid disposition')" "0"
+    fresh31
+    rc=0; out=$(STUB_RC_DISP=$rc31 go31 77 "$SHA") || rc=$?
+    check    "9479 I3: cr-disposition rc $rc31 -> exit 11" "$rc" "11"
+    check    "9479 I3: cr-disposition rc $rc31 writes no GO" "$(gofiles31)" "0"
+    contains "9479 I3: cr-disposition rc $rc31 prints the callee text" "$out" "stub cr-disposition output"
+    check    "9479 I8: cr-disposition rc $rc31 prints no false finding" "$(printf '%s\n' "$out" | grep -c 'did not PASS\|no valid disposition')" "0"
+done
+
+fresh31
+rc=0; out=$(STUB_RC_READY=1 go31 77 "$SHA") || rc=$?
+check    "9479: a real ready-check fail (rc 1) is still exit 4" "$rc" "4"
+check    "9479: exit 4 writes no GO" "$(gofiles31)" "0"
+fresh31
+rc=0; out=$(STUB_RC_DISP=1 go31 77 "$SHA") || rc=$?
+check    "9479: a real finding (cr-disposition rc 1) is still exit 9" "$rc" "9"
+contains "9479: exit 9 keeps the finding text" "$out" "no valid disposition"
+check    "9479: exit 9 writes no GO" "$(gofiles31)" "0"
+fresh31
+rc=0; out=$(go31 77 "$SHA") || rc=$?
+check    "9479: both callees rc 0 -> exit 0" "$rc" "0"
+check    "9479: both callees rc 0 -> a GO" "$(gofiles31)" "1"
+
+# a refused repo view (rate limit on stderr) is exit 11 with a marker keyed <pr>.<head>; an empty one with no refusal stays exit 1
+fresh31
+rc=0; out=$(STUB_GH_RL=1 go31 77 "$SHA") || rc=$?
+check    "9479 I4: a refused repo view -> exit 11" "$rc" "11"
+check    "9479 I4: a refused repo view writes no GO" "$(gofiles31)" "0"
+contains "9479 I4: a refused repo view names the rate limit" "$out" "QUOTA-PAUSE"
+check    "9479 I8: a refused repo view prints no false cause" "$(printf '%s\n' "$out" | grep -c 'cannot resolve this repo')" "0"
+check    "9479 I4: a refused repo view leaves one marker keyed <pr>.<head>" "$(find "$Q31/blocked" -type f -name "77.$SHA" 2>/dev/null | wc -l | tr -d ' ')" "1"
+contains "9479 I4: the marker names the reason" "$(cat "$Q31/blocked/77.$SHA" 2>/dev/null)" "reason=rate-limit"
+fresh31
+rc=0; out=$(STUB_GH_REPO_VIEW_FAIL=1 go31 77 "$SHA") || rc=$?
+check    "9479: an empty repo view with no refusal stays exit 1" "$rc" "1"
+check    "9479 I4: a usage-like empty repo view leaves no marker" "$(find "$Q31/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+fresh31
+rc=0; out=$(STUB_GH_RL=1 Q31_DIR=/proc/nonexistent/quota go31 77 "$SHA") || rc=$?
+check    "9479 I4: an unwritable quota dir leaves the exit unchanged (11)" "$rc" "11"
+
+# GO_DEADLINE: a cut before the GO's mv is exit 11, no GO, a marker; a cut after it exits 0 and the GO stands
+fresh31
+rc=0; out=$(STUB_RC_SLEEP=20 GO_DEADLINE=2 go31 77 "$SHA") || rc=$?
+check    "9479: GO_DEADLINE cut before the mv -> exit 11" "$rc" "11"
+check    "9479: a cut before the mv writes no GO" "$(gofiles31)" "0"
+check    "9479 I4: a cut leaves a marker keyed <pr>.<head>" "$(find "$Q31/blocked" -type f -name "77.$SHA" 2>/dev/null | wc -l | tr -d ' ')" "1"
+contains "9479: a cut names GO_DEADLINE" "$out" "GO_DEADLINE"
+fresh31
+rc=0; out=$(STUB_WV_SLEEP=30 GO_DEADLINE=3 go31 77 "$SHA") || rc=$?
+check    "9479: GO_DEADLINE cut after the mv -> exit 0" "$rc" "0"
+check    "9479: a cut after the mv leaves the GO standing" "$(gofiles31)" "1"
+contains "9479: a cut after the mv still prints the GO path" "$out" "$ROOT31/.locks/go/77.$SHA"
+check    "9479: a cut after the mv leaves no marker" "$(find "$Q31/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
