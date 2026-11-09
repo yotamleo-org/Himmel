@@ -34,6 +34,12 @@ CLAUDE_LINUX_X64_SHA256="708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7b54
 RTK_VERSION="1.1.0"
 RTK_DEB_SHA256="21c4a2e30879ce49ebd939fa338c99208871ba591da9feeb483f2ed266fe7163"
 
+# TLC — tla2tools.jar from the tlaplus release, consumed by setup-statechart.sh
+# (the optional statechart check). The same bytes the pstack statechart runtime
+# and scripts/handover/chief-kit/model-check-report.sh pin; a test keeps all three equal.
+TLA2TOOLS_VERSION="1.7.4"
+TLA2TOOLS_SHA256="936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
+
 # bun — the version is .bun-version; a version without a row here is refused.
 bun_sha256() {
   case "$1" in

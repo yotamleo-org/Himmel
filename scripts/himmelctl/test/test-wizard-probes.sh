@@ -6947,4 +6947,54 @@ case "$outEnvPresent$outEnvAbsent" in
 esac
 echo "ok: env-present — absent and present follow ctx.env, the value never reaches output"
 
+# ── cmd:statechart_ready: the opt-in statechart check (env from setup-statechart.sh) ──
+# Each case gets its own XDG_DATA_HOME. The fixture jars are never the pinned
+# bytes, so every hermetic case must read absent or degraded; present is proven
+# against the real installed jar by setup-statechart.sh --check, not here.
+sc_probe() { # <XDG_DATA_HOME> -> probe JSON
+  "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const item = { id: 'statechart', probe: { type: 'cmd:statechart_ready' } };
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
+  env: { HOME: '$(winpath "$work")/nohome', XDG_DATA_HOME: '$(winpath "$1")' } };
+console.log(JSON.stringify(runProbe(item, ctx)));
+"
+}
+sc_root="$work/sc"; mkdir -p "$sc_root/empty"
+outSCabsent=$(sc_probe "$sc_root/empty")
+echo "$outSCabsent" | jq -e '.actual == "absent" and (.detail | contains("setup-statechart.sh --install"))' >/dev/null \
+  || fail "cmd:statechart_ready: a host never set up must read absent with the install hint (got: $outSCabsent)"
+echo "ok: cmd:statechart_ready — never set up reads absent with the install hint"
+
+sc_xdg_rel="$sc_root/relative"; mkdir -p "$sc_xdg_rel/himmel/statechart"
+printf "JAVA='java'\nTLA2TOOLS='tla2tools.jar'\n" > "$sc_xdg_rel/himmel/statechart/env"
+outSCrel=$(sc_probe "$sc_xdg_rel")
+echo "$outSCrel" | jq -e '.actual == "degraded" and (.detail | contains("absolute"))' >/dev/null \
+  || fail "cmd:statechart_ready: relative JAVA/TLA2TOOLS must read degraded (got: $outSCrel)"
+echo "ok: cmd:statechart_ready — relative prerequisite paths read degraded"
+
+sc_xdg_bad="$sc_root/badjar"; mkdir -p "$sc_xdg_bad/himmel/statechart"
+sc_java="$sc_root/fake-java"; printf '#!/bin/sh\nexit 0\n' > "$sc_java"; chmod +x "$sc_java"
+sc_jar="$sc_root/tla2tools.jar"; printf 'not the pinned jar\n' > "$sc_jar"
+printf "JAVA='%s'\nTLA2TOOLS='%s'\n" "$(winpath "$sc_java")" "$(winpath "$sc_jar")" > "$sc_xdg_bad/himmel/statechart/env"
+outSCbad=$(sc_probe "$sc_xdg_bad")
+echo "$outSCbad" | jq -e '.actual == "degraded" and (.detail | contains("not the pinned tla2tools 1.7.4"))' >/dev/null \
+  || fail "cmd:statechart_ready: a jar that is not the pinned bytes must read degraded (got: $outSCbad)"
+echo "ok: cmd:statechart_ready — a non-pinned jar reads degraded, never present"
+
+sc_xdg_nojava="$sc_root/nojava"; mkdir -p "$sc_xdg_nojava/himmel/statechart"
+printf "JAVA='%s'\nTLA2TOOLS='%s'\n" "$(winpath "$sc_root/no-such-java")" "$(winpath "$sc_jar")" > "$sc_xdg_nojava/himmel/statechart/env"
+outSCnojava=$(sc_probe "$sc_xdg_nojava")
+echo "$outSCnojava" | jq -e '.actual == "degraded" and (.detail | contains("JAVA") and contains("unusable"))' >/dev/null \
+  || fail "cmd:statechart_ready: a missing JAVA path must read degraded (got: $outSCnojava)"
+echo "ok: cmd:statechart_ready — a missing JAVA path reads degraded"
+
+sc_empty_jar="$sc_root/empty.jar"; : > "$sc_empty_jar"
+sc_xdg_empty="$sc_root/emptyjar"; mkdir -p "$sc_xdg_empty/himmel/statechart"
+printf "JAVA='%s'\nTLA2TOOLS='%s'\n" "$(winpath "$sc_java")" "$(winpath "$sc_empty_jar")" > "$sc_xdg_empty/himmel/statechart/env"
+outSCempty=$(sc_probe "$sc_xdg_empty")
+echo "$outSCempty" | jq -e '.actual == "degraded" and (.detail | contains("0-byte"))' >/dev/null \
+  || fail "cmd:statechart_ready: a 0-byte jar (truncated download) must read degraded (got: $outSCempty)"
+echo "ok: cmd:statechart_ready — a 0-byte jar reads degraded"
+
 echo "PASS"

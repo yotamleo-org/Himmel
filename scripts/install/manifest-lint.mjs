@@ -124,6 +124,10 @@
 //                            | scripts/telegram/transcribe.ts's own
 //                            | WHISPER_DIR/WHISPER_CLI/WHISPER_MODEL
 //                            | resolution convention.
+//   cmd:statechart_ready     | (no fields) the optional pstack statechart
+//                            | check: the env file setup-statechart.sh wrote
+//                            | names a usable JAVA and a jar with the pinned
+//                            | TLC sha256 (absent when never set up).
 //   cmd:python_interpreter   | OPTIONAL cmd: string —
 //                            | spawns the candidate interpreter and asserts
 //                            | it runs a trivial script, catching the
@@ -222,7 +226,7 @@ const KINDS = ['hook', 'plugin', 'dep', 'wiring', 'vault', 'scheduler', 'lane', 
 // added to INSTALL_TYPES/INSTALL_TARGETS so its install descriptor can
 // dispatch to install-stack.sh (install-engine.js's buildEntry()
 // 'observability' case).
-const PROBE_TYPES = ['file-exists', 'git-hooks', 'settings-key', 'settings-hooks', 'cmd:has_qmd', 'qmd-index', 'qmd-daemon', 'mcp-registered', 'handover-dir', 'dep', 'cmd:has_hermes', 'cmd:is_himmel_dev', 'telegram-access', 'cmd:codex_provisioned', 'cmd:cadence_armed', 'cmd:guardrail_block_status', 'cmd:hermes_checkout', 'cmd:telegram_getme', 'cmd:whisper_ready', 'cmd:python_interpreter', 'distinct-tokens', 'luna-sources', 'cadence-coherence', 'cadence-runs', 'phi-coherence', 'engine-allowlist', 'bridge-health', 'bridge-persistence', 'observability-stack', 'observability-grafana']; // t13b-ok: probe type names only, qmd-daemon is a manifest probe id
+const PROBE_TYPES = ['file-exists', 'git-hooks', 'settings-key', 'settings-hooks', 'cmd:has_qmd', 'qmd-index', 'qmd-daemon', 'mcp-registered', 'handover-dir', 'dep', 'cmd:has_hermes', 'cmd:is_himmel_dev', 'telegram-access', 'cmd:codex_provisioned', 'cmd:cadence_armed', 'cmd:guardrail_block_status', 'cmd:hermes_checkout', 'cmd:telegram_getme', 'cmd:whisper_ready', 'cmd:statechart_ready', 'cmd:python_interpreter', 'distinct-tokens', 'luna-sources', 'cadence-coherence', 'cadence-runs', 'phi-coherence', 'engine-allowlist', 'bridge-health', 'bridge-persistence', 'observability-stack', 'observability-grafana']; // t13b-ok: probe type names only, qmd-daemon is a manifest probe id
 const ITEM_KEYS = ['id', 'kind', 'scopes', 'profiles', 'deps', 'probe'];
 // Optional schema-v2 consumer keys. Permitted by the
 // exact-key check but not required — items authored under schemaVersion:1
@@ -468,6 +472,11 @@ function checkProbeShape(probe, label, errors) {
       // No fields. WHISPER_DIR/WHISPER_CLI/WHISPER_MODEL
       // resolution mirrors transcribe.ts's own fixed convention, not
       // per-item configuration.
+      reportExtra([]);
+      break;
+    }
+    case 'cmd:statechart_ready': {
+      // No fields: the env file and jar paths are fixed by setup-statechart.sh.
       reportExtra([]);
       break;
     }

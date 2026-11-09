@@ -79,6 +79,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const { spawnSync } = require('child_process');
 const { which } = require('./helpers.js');
@@ -2588,6 +2589,49 @@ function probeWhisperReady(item, ctx) {
   return { actual: 'present', detail: `${cli} + ${model}` };
 }
 
+// ── cmd:statechart_ready ─────────────────────────────────────────────────
+
+// The optional pstack statechart check. Its only installer is
+// scripts/machine-setup/setup-statechart.sh, which writes
+// ${XDG_DATA_HOME:-~/.local/share}/himmel/statechart/env with absolute JAVA=
+// and TLA2TOOLS= lines after verifying both. This probe re-checks those facts
+// in pure JS: no spawn, no network, no writes. The jar must hash to the TLC
+// pin; a test keeps this constant equal to installer-pins.sh's TLA2TOOLS_SHA256.
+// Absent = never set up (an ordinary opt-in state). Degraded = set up, but a
+// named path is unusable or the jar is not the pinned bytes.
+const STATECHART_TLC_VERSION = '1.7.4';
+const STATECHART_TLC_SHA256 = '936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88';
+
+function probeStatechartReady(item, ctx) {
+  const env = ctx.env || process.env;
+  const home = env.HOME || os.homedir();
+  const envFile = path.join(env.XDG_DATA_HOME || path.join(home, '.local', 'share'), 'himmel', 'statechart', 'env');
+  let raw;
+  try {
+    raw = fs.readFileSync(envFile, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      return { actual: 'absent', detail: `statechart not set up (no ${envFile}) — bash scripts/machine-setup/setup-statechart.sh --install` };
+    }
+    return { actual: 'degraded', detail: `cannot read ${envFile}: ${e.message}` };
+  }
+  const vars = parseDotEnv(raw);
+  const java = vars.JAVA || '';
+  const jar = vars.TLA2TOOLS || '';
+  if (!path.isAbsolute(java) || !path.isAbsolute(jar)) {
+    return { actual: 'degraded', detail: `${envFile} must name absolute JAVA and TLA2TOOLS paths (re-run setup-statechart.sh --install)` };
+  }
+  const javaCheck = isUsableFile(java, { execCheck: true });
+  if (!javaCheck.ok) return { actual: 'degraded', detail: `JAVA ${java} is unusable (${javaCheck.reason})` };
+  const jarCheck = isUsableFile(jar);
+  if (!jarCheck.ok) return { actual: 'degraded', detail: `TLA2TOOLS ${jar} is unusable (${jarCheck.reason})` };
+  const sha = crypto.createHash('sha256').update(fs.readFileSync(jar)).digest('hex');
+  if (sha !== STATECHART_TLC_SHA256) {
+    return { actual: 'degraded', detail: `TLA2TOOLS ${jar} is not the pinned tla2tools ${STATECHART_TLC_VERSION} (sha256 ${sha})` };
+  }
+  return { actual: 'present', detail: `${java} + tla2tools ${STATECHART_TLC_VERSION}` };
+}
+
 // ── cmd:python_interpreter ───────────────────────────────────────────────
 
 // A11: adopters genuinely hit "interpreter stub" classes.
@@ -4094,6 +4138,7 @@ const PROBES = {
   'cmd:hermes_checkout': probeCmdHermesCheckout,
   'cmd:telegram_getme': probeTelegramGetMe,
   'cmd:whisper_ready': probeWhisperReady,
+  'cmd:statechart_ready': probeStatechartReady,
   'cmd:python_interpreter': probePythonInterpreter,
   'distinct-tokens': probeDistinctTokens,
   'luna-sources': probeLunaSources,
