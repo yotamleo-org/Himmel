@@ -665,7 +665,6 @@ timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK
 check "(9181) a failed second pass says backlog=unread and never prints dispatchable=0" "WAKE underfilled capacity=UNDERFILLED:7 pool=? backlog=unread" "$(head -n1 "$WORK/k9181c.out")"
 rm -f "$STUB/pass2.fail"
 
-# --- a short pool of a declared release offers no later-version row, and names the rows left in the version instead
 rm -f "$STUB/pool.intake" "$STUB/dispositions" "$STUB/pass2.fail"
 printf '# dropped from v1: 1 of 3 To Do (blocker 1)\nLOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
 printf 'LOCAL\tHIMMEL-9005\tLow\tv2\tlater\tfiles=e.sh\n' > "$STUB/pass2.rows"
@@ -678,7 +677,6 @@ check "(declared) no version backlog block is printed" "0" "$(grep -c '^# versio
 check "(declared) the rows left in the version are named with their reason" "1:1" "$(grep -c '^# rows left in v1' "$WORK/declared.out"):$(grep -c '^# pool-left-out HIMMEL-9010 blocker HIMMEL-1 (In Progress, live)$' "$WORK/declared.out")"
 rm -f "$STUB/pass2.rows" "$STUB/dispositions"
 
-# --- a pool holding only RESUME rows reads above zero on both branches
 printf 'RESUME\tHIMMEL-9020\tMedium\tv1\tresume\tfiles=r.sh\tstatus=In Progress\tlast=-\n' > "$STUB/pool.rows"
 I="$(new_inbox resume-short)"
 timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK/resume-short.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set

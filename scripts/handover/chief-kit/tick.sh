@@ -561,8 +561,6 @@ for idx, line in enumerate(text.splitlines(), 1):
         print("# pool-keys %d STACKABLE %s" % (idx, s[1]))
     elif m:
         print("# pool-keys %d # %s" % (idx, m[1]))
-# the one meaning of dispatchable: a row a chief can launch (LOCAL, CLOUD, RESUME, DESIGN, a series' tickets); a row that
-# needs a close, a held RESUME row and a NEXT-TIER row are not. The waiter reads these lines, never its own row filter.
 dispatchable = set()
 for line in text.splitlines():
     f = line.split("\t")
@@ -574,7 +572,6 @@ for key in sorted(dispatchable):
     print("# pool-dispatchable " + key)
 
 def has_owner(target, key):
-    # an owner and an observable end: another ticket or an ask record (O-<n>), a PR, a decision id or a worker; never free text
     return bool(any(k != key for k in re.findall(r"\b[A-Z]+-\d+\b", target))
                 or re.search(r"\bPRs?\s*#?\d+", target) or re.search(r"\bdecisions?\s*#?\d+", target, re.I)
                 or re.search(r"\bN\d+\b", target))

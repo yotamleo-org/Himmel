@@ -954,8 +954,8 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
         $1 != "NEXT-TIER" && $1 != "RESUME-HELD" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
     pool_counts="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-counts //p')"
     pool_unresolved="$(printf '%s\n' "$pool_summary" | sed -n '/^# pool-unresolved /p')"
-    pool_dispatch="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-dispatchable //p')"  # the tick's one meaning of dispatchable: LOCAL, CLOUD, RESUME, DESIGN and a series' tickets
-    pool_left="$(printf '%s\n' "$pool_summary" | sed -n '/^# pool-left-out /p')"  # every other open ticket of the version, with its reason
+    pool_dispatch="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-dispatchable //p')"
+    pool_left="$(printf '%s\n' "$pool_summary" | sed -n '/^# pool-left-out /p')"
     # a probe that read the pool and found nothing unresolved ends the streak: a set that returns is a change
     [ -z "$pool_out" ] || [ -n "$pool_unresolved" ] || rm -f "$pool_sig_file"
 }
@@ -1014,10 +1014,7 @@ underfill_block() { # prints the WAKE block for the pool pool_probe just read; f
             *) listed="$pool_dispatch"; [ -n "$listed" ] || return 1 ;;
         esac
     fi
-    declared="$(printf '%s\n' "$pool_out" | sed -n 's/^# dropped from \([^:]*\):.*/\1/p' | head -n 1)"  # a declared release names its version on this line; the version is the commitment
-    # a LOW or empty pool leaves slots idle: with no declared release a second pass without --priority-pool-only lists the
-    # backlog (its rows already in the pool are printed once, under their own heading); a declared release offers no row
-    # of another version and names the rows left in its own version instead
+    declared="$(printf '%s\n' "$pool_out" | sed -n 's/^# dropped from \([^:]*\):.*/\1/p' | head -n 1)"
     if printf '%s\n' "$pool_out" | awk -F'[=/,]' '/^# pool=/ && ($2 + 0) < ($3 + 0) { f = 1 } $0 == "POOL-EMPTY" { f = 1 } END { exit !f }'; then short=1; fi  # a pool short of its slots, whether the line says LOW or INTAKE:<m>
     [ -z "$short" ] || [ -z "$declared" ] || left="$pool_left"
     if [ -n "$short" ] && [ -z "$declared" ]; then

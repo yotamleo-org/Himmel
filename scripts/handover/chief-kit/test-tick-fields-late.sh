@@ -151,8 +151,6 @@ contains 'unknown chief decision keys stay visible until corrected' "$pd_out" '#
 same 'standalone pool mode resolves handover-relative document paths' "$(bash "$SUT" --pool-dispositions --doc pool-chief.md < "$W/pool.rows" 2>/dev/null)" "$pd_out"
 same 'standalone pool mode resolves extensionless document names' "$(bash "$SUT" --pool-dispositions --doc pool-chief < "$W/pool.rows" 2>/dev/null)" "$pd_out"
 
-# A decision line counts as handled only when its target names an owner and an observable end: a ticket, a PR,
-# a decision id, an ask record (O-<n>) or a worker. A free-text promise stays unresolved and the tick still prints.
 po_doc="$W/handover/own-chief.md"
 printf '%s\n' '# chief' '' '## Live state' \
     'pool-disposition: HIMMEL-21 question will look at it after the release' \
@@ -176,8 +174,6 @@ not_contains 'a decision id target is owned' "$po_out" '# pool-unresolved unowne
 not_contains 'a ticket target is owned' "$po_out" '# pool-unresolved unowned HIMMEL-24 '
 not_contains 'an ask record target is owned' "$po_out" '# pool-unresolved unowned HIMMEL-25 '
 
-# One meaning of dispatchable: every row a chief can launch (LOCAL, CLOUD, RESUME, DESIGN, a series' tickets), and every
-# other open ticket of the version is printed with its reason. A snapshot of only RESUME rows reads above zero.
 printf '%s\n' \
     '# dropped from v1: 2 of 5 To Do (blocker 1, owned 1)' \
     'RESUME	HIMMEL-31	Medium	v1	resume one	files=a.sh	status=In Progress	last=-' \
