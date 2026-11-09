@@ -2281,20 +2281,21 @@ async function monitorGet(token: string, method: string, chat: string, f: typeof
 }
 
 // Startup check: a send function plus the `monitoring: ...` line, or null and why (`reason` is what the notice names).
-export async function checkMonitoring(env: { TELEGRAM_BOT_TOKEN?: string; TELEGRAM_MONITOR_BOT_TOKEN?: string; TELEGRAM_MONITOR_CHAT_ID?: string }, deps: Pick<MonitorDeps, "f" | "mkSignal"> = {}): Promise<{ send: MonitorSendFn | null; reason: string; line: string }> {
+// `retry` is true only when Telegram could not be reached, so the caller asks again: a bridge started at boot can come up before the network.
+export async function checkMonitoring(env: { TELEGRAM_BOT_TOKEN?: string; TELEGRAM_MONITOR_BOT_TOKEN?: string; TELEGRAM_MONITOR_CHAT_ID?: string }, deps: Pick<MonitorDeps, "f" | "mkSignal"> = {}): Promise<{ send: MonitorSendFn | null; reason: string; line: string; retry: boolean }> {
   const token = env.TELEGRAM_MONITOR_BOT_TOKEN, chat = env.TELEGRAM_MONITOR_CHAT_ID;
-  if (!token || !chat) return { send: null, reason: "unset", line: "monitoring: unset" };
-  const refuse = (reason: string) => ({ send: null, reason, line: `monitoring: refused ${reason.replace(/^refused: /, "")}` });
+  if (!token || !chat) return { send: null, reason: "unset", line: "monitoring: unset", retry: false };
+  const refuse = (reason: string, retry = false) => ({ send: null, reason, line: `monitoring: refused ${reason.replace(/^refused: /, "")}`, retry });
   if (token === env.TELEGRAM_BOT_TOKEN) return refuse("same bot as the bridge");
   const id = Number(chat);
   if (!Number.isSafeInteger(id) || id === 0) return refuse("refused: the chat id is not a number");
   const f = monitorFetch(deps.f, deps.mkSignal);
   const info = await monitorGet(token, "getChat", chat, f);
-  if (!info) return refuse("refused: cannot read the chat");
+  if (!info) return refuse("refused: cannot read the chat", true);
   if (info.type !== "group" && info.type !== "supergroup") return refuse("not a group");   // a channel's id is negative like a group's
   const members = await monitorGet(token, "getChatMemberCount", chat, f);
   const title = String(info.title ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
-  return { send: makeMonitorSend(token, id, deps), reason: "ok", line: `monitoring: ok ${title} members=${typeof members === "number" ? members : "?"}` };
+  return { send: makeMonitorSend(token, id, deps), reason: "ok", line: `monitoring: ok ${title} members=${typeof members === "number" ? members : "?"}`, retry: false };
 }
 
 const monitorChatDownText = (reason: string, n: number): string =>
@@ -2645,10 +2646,14 @@ export async function main(): Promise<void> {
   // The monitoring flush has its own timer beside it (startFlushTimers) and starts sending once the startup check has answered.
   let monitorCfg: MonitorCfg | null = null;
   startFlushTimers({ root, send, sendDoc: makeSendDoc(token, root, operatorChat), flushMs: FLUSH_MS, monitorMs: MONITOR_FLUSH_MS, monitor: () => monitorCfg });
-  void checkMonitoring(bridgeEnv).then((m) => {
-    console.error(`[poller] ${m.line}`);
-    monitorCfg = { send: m.send, reason: m.reason, operatorChat };
-  }).catch((e) => console.error(`[poller] monitoring startup check failed: ${(e as any)?.name ?? "error"}`));
+  const checkMonitoringAgain = (): void => {
+    void checkMonitoring(bridgeEnv).then((m) => {
+      console.error(`[poller] ${m.line}`);
+      monitorCfg = { send: m.send, reason: m.reason, operatorChat };
+      if (m.retry) { const t = setTimeout(checkMonitoringAgain, 60_000); if (typeof t.unref === "function") t.unref(); }   // t13b-ok: unref'd one-shot retry of the startup check, same shape as the getMe retry above
+    }).catch((e) => console.error(`[poller] monitoring startup check failed: ${(e as any)?.name ?? "error"}`));
+  };
+  checkMonitoringAgain();
   // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past
   // HEARTBEAT_STALE_MS while the chief's own session is still alive means

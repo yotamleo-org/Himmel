@@ -4038,8 +4038,10 @@ test("R2.6 the monitoring keys come from the bridge env file only; a non-group o
   const env = { TELEGRAM_BOT_TOKEN: "1:bridge", TELEGRAM_MONITOR_BOT_TOKEN: "2:mon", TELEGRAM_MONITOR_CHAT_ID: "-100222" };
   for (const type of ["channel", "private"]) {
     const m = await checkMonitoring(env, { f: kindFetch(type) });
-    expect([m.send === null, m.reason]).toEqual([true, "not a group"]);
+    expect([m.send === null, m.reason, m.retry]).toEqual([true, "not a group", false]);
   }
+  const offline = await checkMonitoring(env, { f: asFetch(async () => { throw new Error("offline"); }) });
+  expect([offline.send === null, offline.retry]).toEqual([true, true]);   // Telegram unreachable at startup is asked again, a refusal is not
   expect((await checkMonitoring(env, { f: kindFetch("group") })).send).not.toBeNull();
   let called = 0;
   const same = await checkMonitoring({ ...env, TELEGRAM_MONITOR_BOT_TOKEN: "1:bridge" }, { f: asFetch(async () => { called++; return jsonRes({ ok: true }); }) });
