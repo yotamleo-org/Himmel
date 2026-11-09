@@ -70,4 +70,38 @@ run_exit_case 1
 grep -q '\[FLAKE\]' "$tmp/output" || exit 1
 grep -q 'Ran 1 test' "$tmp/output" || exit 1
 printf 'PASS: a retry that prints its Ran line still passes as FLAKE\n'
-printf '5 passed, 0 failed\n'
+# The live-state witness: a bun that writes the station's live state fails once and is
+# never retried; a bun that writes only its own temp passes. SUITE_LIVE_EXEMPT is empty
+# so the repo's exempt file (and its measurement line) never turns a hit into a WARN.
+mkdir -p "$tmp/stubbin" || exit 1
+cat > "$tmp/stubbin/bun" <<'STUB'
+#!/usr/bin/env bash
+n=0
+[ -f "$BUN_STUB_COUNT" ] && n=$(<"$BUN_STUB_COUNT")
+printf '%s' $((n + 1)) > "$BUN_STUB_COUNT"
+if [ "$BUN_STUB_MODE" = live ]; then
+  mkdir -p "$HOME/.claude" && : > "$HOME/.claude/x"
+else
+  own=$(mktemp -d "${TMPDIR:-/tmp}/bun-stub.XXXXXX") && : > "$own/x" && rm -rf "$own"
+fi
+printf 'Ran 1 test across 1 file\n'
+STUB
+chmod +x "$tmp/stubbin/bun"
+run_stub_case() {
+  rm -f "$tmp/stub-count" "$tmp/ledger.jsonl" "$tmp/summary"
+  rc=0
+  BUN_STUB_MODE="$1" BUN_STUB_COUNT="$tmp/stub-count" SUITE_LIVE_EXEMPT='' PATH="$tmp/stubbin:$PATH" \
+    bash "$ROOT/scripts/ci/run-bun-tests.sh" scripts/config-ui "$tmp/stub.test.ts" > "$tmp/output" 2>&1 || rc=$?
+}
+run_stub_case live
+[ "$rc" -eq 86 ] && [ "$(<"$tmp/stub-count")" = 1 ] && [ ! -s "$tmp/ledger.jsonl" ] || { printf 'FAIL: a bun that writes the live state must fail once, never retried (rc=%s calls=%s)\n' "$rc" "$(cat "$tmp/stub-count" 2>/dev/null)"; exit 1; }
+grep -q '^\[LIVE-STATE\] bun:scripts/config-ui — ' "$tmp/output" || { printf 'FAIL: no [LIVE-STATE] line for the live write\n'; exit 1; }
+grep -q '^\[FAIL\] scripts/config-ui — live-state write (not retried)$' "$tmp/output" || { printf 'FAIL: no live-state FAIL line\n'; exit 1; }
+! grep -q '\[PASS\]' "$tmp/output" || exit 1
+printf 'PASS: a bun that writes the live state fails once, never retried\n'
+run_stub_case own
+[ "$rc" -eq 0 ] && [ "$(<"$tmp/stub-count")" = 1 ] && [ ! -s "$tmp/ledger.jsonl" ] || { printf 'FAIL: a bun that writes only its own temp must pass (rc=%s)\n' "$rc"; exit 1; }
+grep -q '^live-witness: on, bun:scripts/config-ui, 0 hits, cmd rc=0$' "$tmp/output" || { printf 'FAIL: no live-witness summary line for the clean bun\n'; exit 1; }
+grep -q '^\[PASS\] scripts/config-ui$' "$tmp/output" || exit 1
+printf 'PASS: a bun that writes only its own temp passes with the witness line\n'
+printf '7 passed, 0 failed\n'

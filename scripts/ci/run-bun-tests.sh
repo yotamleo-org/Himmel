@@ -13,7 +13,7 @@ suite="$1"; shift
 logs=$(tmpdir) || exit 1
 trap 'rm -rf "$logs"' EXIT
 run_attempt() {
-  bun test "$@" 2>&1 | tee "$logs/$attempt.log"
+  bash "$ROOT/scripts/ci/live-witness.sh" run --label "bun:$suite" -- bun test "$@" 2>&1 | tee "$logs/$attempt.log"
   local rc=${PIPESTATUS[0]}
   # bun can exit 0 mid-run (a test calls process.exit(0)) with fail rows and no
   # summary; an attempt only passes when it also printed its `Ran N tests` line.
@@ -29,6 +29,10 @@ if run_attempt "$@"; then
   exit 0
 else
   first_rc=$?
+fi
+if [ "$first_rc" -eq 86 ]; then
+  printf '[FAIL] %s — live-state write (not retried)\n' "$suite"
+  exit 86
 fi
 attempt=2
 start=$SECONDS
