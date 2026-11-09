@@ -275,6 +275,18 @@ forge_lookup() {
         | if length > 0 then "CLOSED\t\(map(.number) | max)" else empty end' 2>/dev/null
 }
 
+# closed_pr_beyond_cache <branch> <tip-sha> -> the number of a CLOSED (unmerged)
+# PR whose head is the tip, for a branch with no row in the 1000-PR FORGE_CACHE;
+# empty otherwise. One per-branch forge call, timeout-bounded like the cache;
+# rc 1 when that call fails, so the caller can tell a failure from no match.
+closed_pr_beyond_cache() {
+    local rows
+    [ "$FORGE_OK" = 1 ] || return 0
+    printf '%s' "$FORGE_CACHE" | jq -e --arg b "$1" 'any(.[]; .headRefName==$b)' >/dev/null 2>&1 && return 0
+    rows="$(${tcmd:+"$tcmd" "$FORGE_TIMEOUT"} "$GH_BIN" pr list --head "$1" --state closed --json number,headRefOid,state 2>/dev/null)" || return 1
+    printf '%s' "$rows" | jq -r --arg tip "$2" '[.[] | select(.state=="CLOSED" and .headRefOid==$tip) | .number] | max // empty' 2>/dev/null
+}
+
 # diff_failure_cause <branch> <rc> -- a readable cause for a failed delta, never
 # a bare rc. No merge base is the one known systematic case: a
 # branch whose root commit comes from another repo's history (e.g. the archived
@@ -401,6 +413,13 @@ while IFS= read -r branch; do
                 class="STALE"
                 evidence="delta conflicts with main; no ${key:-ticket} commit on main"
             fi
+        fi
+    fi
+
+    if [ -z "$closed_pr" ] && { [ "$class" = "UNLANDED-LIVE" ] || [ "$class" = "STALE" ]; }; then
+        if ! closed_pr="$(closed_pr_beyond_cache "$branch" "$tip")"; then
+            closed_pr=""
+            printf 'SWEEP-ERROR %s closed PR lookup failed\n' "$branch" >> "$health_file"
         fi
     fi
 
