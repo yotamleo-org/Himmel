@@ -331,11 +331,11 @@ describe('create — plain block rule', () => {
     expect(msg).toMatch(/missing "## DoD"/);
   });
 
-  it('refuses a Task whose Plan and DoD are only the skeleton placeholders', async () => {
+  it('refuses a Task whose sections are only the skeleton placeholders', async () => {
     await expect(run(['--type', 'Task', '--desc', PLAIN_BLOCK_TEMPLATE])).rejects.toThrow(/exit 1/);
     expect(posted()).toBe(false);
     const msg = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.flat().join('\n');
-    expect(msg).toMatch(/"## Plan" has no bullet.*"## DoD" has no bullet/s);
+    expect(msg).toMatch(/"## Plan" holds only a placeholder.*"## DoD" holds only a placeholder.*"## Proof" holds only a placeholder/s);
   });
 
   it('warns, and still files, a Task whose title breaks the template', async () => {

@@ -1,14 +1,18 @@
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { behaviourKey, handoverRoot } from '../handover-root.js';
 
 // <handover root>/<user>/<repo>/release/<R>/ (design §5.1). The launcher
 // exports HANDOVER_DIR and USER_SLUG; HIMMEL_RELEASE_STATE_DIR replaces the
 // whole root for tests and for a session outside a launcher.
 
+// The repo is the CLI's own checkout, never the caller's cwd: a run from another
+// repository (the luna vault) must still find this checkout's release state.
 function primaryRepoName(): string {
-  const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const here = dirname(fileURLToPath(import.meta.url));
+  const common = execFileSync('git', ['-C', here, 'rev-parse','--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   return basename(dirname(common));
 }
 
