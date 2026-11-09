@@ -1189,6 +1189,54 @@ echo "$outM" | jq -e '.summary.red == 0' >/dev/null \
   || fail "case m: unarmed doctor-cadence must not count toward summary.red (got: $outM)"
 echo "ok: case m — an unarmed doctor-cadence reads n/a (opt-in), never red"
 
+# ── case m2: an UNARMED rollup-cadence reads n/a (opt-in), never red. Same
+# shape as case m: the row is profiles:["core","all"], so it is desired broadly,
+# and nothing but an explicit `arm` ever installs it.
+caseM2_dir="$work/caseM2-target"; mkdir -p "$caseM2_dir"
+homeM2="$work/homeM2"; mkdir -p "$homeM2"
+cacheM2="$work/cacheM2"; mkdir -p "$cacheM2"
+emptyM2="$work/emptyM2-runners"; mkdir -p "$emptyM2"
+manifestM2="$work/manifestM2.json"
+cat > "$manifestM2" <<'JSON'
+{
+  "schemaVersion": 2,
+  "harness": "claude",
+  "items": [
+    {
+      "id": "rollup-cadence",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": { "type": "cmd:cadence_armed", "resolver": "scripts/lib/cadence-format.sh", "envVar": "ROLLUP_RUNNER_DIR", "defaultSubdir": ".claude/rollup-cadence" }
+    }
+  ]
+}
+JSON
+MANIFEST_M_PATH="$(winpath "$manifestM2")"
+export MANIFEST_M_PATH
+outM2=$(cd "$caseM2_dir" && HOME="$homeM2" USERPROFILE="$(winpath "$homeM2")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheM2")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheM2")-luna-config.json" HIMMELCTL_REPO_ROOT="$(winpath "$repo_root")" ROLLUP_RUNNER_DIR="$(winpath "$emptyM2")" "$node_bin" -e "
+const { statusReport } = require(process.env.STATUS_REPORT_LIB);
+const manifest = JSON.parse(require('fs').readFileSync(process.env.MANIFEST_M_PATH, 'utf8'));
+const answers = {
+  role: 'adopter', tier: 'standard', scope: 'user',
+  vault: { mode: 'none', path: '' },
+  handover: { mode: 'none', path: '' },
+  pluginSet: 'lean', lanes: [], alwaysOn: false,
+};
+const report = statusReport({ manifest, scope: 'user', targetPath: process.cwd(), answers });
+console.log(JSON.stringify(report));
+")
+echo "$outM2" | jq -e '.items[0].actual == "absent"' >/dev/null \
+  || fail "case m2: unarmed rollup-cadence probe.actual should be absent (got: $outM2)"
+echo "$outM2" | jq -e '.items[0].severity == "n/a"' >/dev/null \
+  || fail "case m2: unarmed rollup-cadence must downgrade to n/a, not red (got: $outM2)"
+echo "$outM2" | jq -e '.items[0].detail | test("opt-in"; "i")' >/dev/null \
+  || fail "case m2: rollup-cadence n/a detail should name it as opt-in (got: $outM2)"
+echo "$outM2" | jq -e '.summary.red == 0' >/dev/null \
+  || fail "case m2: unarmed rollup-cadence must not count toward summary.red (got: $outM2)"
+echo "ok: case m2 — an unarmed rollup-cadence reads n/a (opt-in), never red"
+
 # ── case n: a whole-run deadline bounds the sweep ───────────────────────────
 # Three probes whose resolver hangs (sleeps 30s, far inside the 60s per-probe
 # budget): per-probe budgets alone let the sweep run ~90s. With the whole-run
