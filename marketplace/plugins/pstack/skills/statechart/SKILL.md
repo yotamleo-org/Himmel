@@ -20,7 +20,7 @@ Work in a scratch folder outside the repo. Write a TLA+ spec and its config. The
 
 `scripts/statechart.ts` is TypeScript, so run it with a runtime that can execute TypeScript.
 
-Java and TLC are optional prerequisites for this opt-in skill, not dependencies of the other pstack skills. Run only on a test VM, never on the station. Use pre-provisioned Java 11+ and tla2tools 1.7.4 with absolute `JAVA` and `TLA2TOOLS` paths. Verify the jar SHA-256 against `../../README.md`. If either prerequisite is absent, stop and report a blocked check; do not install Java, TLC or mise. Keep the model and any trusted `--view` module in the scratch folder.
+Java and TLC are optional prerequisites for this opt-in skill, not dependencies of the other pstack skills. It may run on the station host: keep the model small and finite, and bound the run with `timeout`. Use pre-provisioned Java 11+ and tla2tools 1.7.4 with absolute `JAVA` and `TLA2TOOLS` paths. Verify the jar SHA-256 against `../../README.md`. If either prerequisite is absent, stop and report a blocked check; do not install Java, TLC or mise. Keep the model and any trusted `--view` module in the scratch folder.
 
 ## Write the spec
 

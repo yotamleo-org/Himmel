@@ -26,10 +26,11 @@ runtime npm dependencies are needed. The test-only dependency is `fast-check`
 
 ## Statechart prerequisites and limits
 
-Java and TLC are **optional**: the other skills need neither. Run statechart
-only on a test VM, with a small model in a scratch folder outside the repo.
+Java and TLC are **optional**: the other skills need neither. Statechart may run
+on the station host, with a small finite model in a scratch folder outside the
+repo and the run bounded by `timeout`.
 Use Node 22.18–22.x or 23.6+, Bun 1.1.5+, or Deno 2+.
-Provision Java 11+ and `tla2tools.jar` 1.7.4 on that VM, then set **absolute**
+Provision Java 11+ and `tla2tools.jar` 1.7.4 beforehand, then set **absolute**
 `JAVA` (executable) and `TLA2TOOLS` (jar) paths. Check the jar's SHA-256:
 
 ```text
