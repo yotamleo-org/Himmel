@@ -1166,7 +1166,7 @@ owed_wake() {
     now="$(date +%s)"
     keys="$(sed -nE 's/^- ([0-9]{1,2}:[0-9]{2} )?OWED ([A-Za-z0-9_.-]+)( .*)?$/\2/p' "$console_doc" | awk '!seen[$0]++')"
     for k in $keys; do
-        grep -qE "^- ([0-9]{1,2}:[0-9]{2} )?DELIVERED ${k//./\\.} msg=[0-9]+" "$console_doc" && continue
+        grep -qE "^- ([0-9]{1,2}:[0-9]{2} )?DELIVERED ${k//./\\.} msg=[0-9]+ chat=-?[0-9]+( .*)?$" "$console_doc" && continue
         st=""
         [ ! -r "$owed_file" ] || st="$(awk -v k="$k" '$1 == k { print $2, $3; exit }' "$owed_file")"
         first="${st% *}"; woken="${st#* }"

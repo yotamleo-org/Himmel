@@ -33,7 +33,7 @@ run_waiter() {
     local wp=$! n=0
     while [ "$n" -lt "$2" ] && kill -0 "$wp" 2>/dev/null; do sleep 0.1; n=$((n+1)); done
     if kill -0 "$wp" 2>/dev/null; then kill "$wp" 2>/dev/null; wait "$wp" 2>/dev/null; return 1; fi
-    wait "$wp" 2>/dev/null; return 0
+    wait "$wp" 2>/dev/null
 }
 
 reset
@@ -69,6 +69,13 @@ reset
 printf '%s\n' '- 10:00 OWED a-b sign it' '- 10:00 OWED a-bc sign that' '- 10:01 DELIVERED a-bc msg=558 chat=1' >> "$chief"
 if CHIEF_WAIT_OWED_SEC=0 run_waiter "$WORK/o9.out" 60; then pass 'a-b is still owed when only a-bc was delivered'; else fail 'the a-bc receipt cleared a-b (prefix match)'; fi
 lacks 'a-bc is not named' "$(head -n 1 "$WORK/o9.out")" 'a-bc'
+
+reset
+printf '%s\n' '- 10:00 OWED sig-9614 sign it' '- 10:01 DELIVERED sig-9614 msg=560' >> "$chief"
+if CHIEF_WAIT_OWED_SEC=0 run_waiter "$WORK/o10.out" 60; then pass 'a receipt with no chat field does not clear the item'; else fail 'msg=560 with no chat field cleared sig-9614'; fi
+reset
+printf '%s\n' '- 10:00 OWED sig-9615 sign it' '- 10:01 DELIVERED sig-9615 msg=559garbage chat=1' >> "$chief"
+if CHIEF_WAIT_OWED_SEC=0 run_waiter "$WORK/o11.out" 60; then pass 'a receipt whose message id is not a whole number does not clear the item'; else fail 'msg=559garbage cleared sig-9615'; fi
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed"; exit 1
