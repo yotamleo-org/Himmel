@@ -14,13 +14,13 @@ function primaryRepoName(): string {
   return basename(dirname(common));
 }
 
-export function releaseRoot(env: Record<string, string | undefined> = process.env): string {
+export function releaseRoot(env: Record<string, string | undefined> = process.env, dotenvPath?: string): string {
   if (env.HIMMEL_RELEASE_STATE_DIR) return env.HIMMEL_RELEASE_STATE_DIR;
-  const userSlug = behaviourKey('USER_SLUG', env);
+  const userSlug = behaviourKey('USER_SLUG', env, dotenvPath);
   if (!userSlug) {
     throw new Error('release: set USER_SLUG (as the launcher does) or HIMMEL_RELEASE_STATE_DIR');
   }
-  return join(handoverRoot(env), userSlug, primaryRepoName(), 'release');
+  return join(handoverRoot(env, dotenvPath), userSlug, primaryRepoName(), 'release');
 }
 
 export const releaseDir = (release: string, env: Record<string, string | undefined> = process.env): string =>
