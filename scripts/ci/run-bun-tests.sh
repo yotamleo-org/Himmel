@@ -3,7 +3,8 @@
 # Usage: run-bun-tests.sh <repo-relative-suite> [bun test arguments...]
 # Exit: 0 passed (first try or on the single retry), 2 usage or a refused exempt
 # file, 86 the witness found a write into the live himmel state in an attempt (a
-# first-attempt hit is never retried), any other code the failing retry's bun rc.
+# first-attempt hit is never retried), any other code the failing retry's bun rc (a
+# bun that exits 86 with no witness hit is retried, and its own 86 passes through).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 if [ "$#" -lt 1 ]; then
