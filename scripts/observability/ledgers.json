@@ -342,6 +342,20 @@
       "envelope": ["v", "ts", "host", "source", "kind"],
       "grandfathered": false,
       "_note": "The only writer is the operator's Telegram approve verb (routeApprove in chief-route.ts); it appends one stage review row per PR and head, with the envelope keys, after the gate, the reply check and the live-head check. outside_pr_authorize in scripts/lib/outside-contributors.sh reads it and ignores the envelope. There is no path override."
+    },
+    {
+      "id": "qmd-embed-usage",
+      "default_path": "~/.himmel/state/qmd-embed-usage.jsonl",
+      "override_env": "HIMMEL_QMD_EMBED_USAGE",
+      "writer": "scripts/luna/qmd-reindex.sh",
+      "readers": [],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false,
+      "_note": "One row per remote-model qmd-reindex run: usage_before and usage_after (the provider key's cumulative usage, or the string unknown when the read failed), chunks embedded, bound 'upper, shared key' because the daemon shares the key. No reader yet: it prices a post-merge embed and the saving from keeping qmd's query cache across an update."
     }
   ]
 }
