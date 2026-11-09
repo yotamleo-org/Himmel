@@ -280,9 +280,6 @@ for (const slug of e.RG_SLUGS.split(" ").filter(Boolean)) {
         && (atHead(o, head) || atHead(o, e.RG_HEAD))
         && (o.severity === "crit" || o.severity === "imp") && o.verdict !== "disproved"
         && !(o.verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(str(o.deferred_to)) && str(o.reason)));
-    // A finding recorded at the carried head (not at the tip), verdict fixed, whose head
-    // is a strict ancestor of the tip: the fix is in the delta. Not open on its own;
-    // the caller (_crg_eval) lets a signed judge GO at the tip close it.
     const fixedBelow = (o) => o.verdict === "fixed" && head !== e.RG_HEAD && !atHead(o, e.RG_HEAD)
         && HEX.test(String(o.head || "")) && descends(o.head, e.RG_HEAD);
     const open = unsettled.filter((o) => !fixedBelow(o));
@@ -489,9 +486,6 @@ _crg_eval() {
             [ -n "$state" ] || { state=degraded; detail="no ledger state"; }
         fi
         [ "$state" = absent ] && [ "$req" = true ] && state=unavailable
-        # Merge gate and release alike: findings the ledger marks fixed on a carried head
-        # that the tip descends from close under a signed judge GO at the tip; without
-        # one they hold as open findings.
         if [ "$state" = findings-fixed ] && [ "$prov" != github-app ]; then
             [ -n "$jg_checked" ] || { jg_src=$(_crg_judge_source "$owner" "$name" "$num" "$states"); jg_checked=1; }
             if [ -n "$jg_src" ]; then

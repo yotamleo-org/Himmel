@@ -1021,10 +1021,6 @@ t J7-merge-gate-ignores-inherited-release-flag 2
 unset _CRG_RELEASE
 unset GH_STUB_HEAD GH_STUB_BRANCH
 led "$CRIT_OK"
-# F1-F7: a finding whose verdict is fixed stops holding a carried head
-# once the tip descends from the reviewed head AND a status-ok judge-go row at the tip
-# names the PR's branch. The PR 5073 ledger shape: codex-1 imp raised at the reviewed
-# head and amended to fixed, a carry row at the tip (model claude), a judge-go at the tip.
 fx_commit() { git -C "$TMP/repo" -c core.hooksPath=/dev/null -c user.name=t -c user.email=t@t "$@" >/dev/null 2>&1; }
 fx_commit commit --quiet --allow-empty -m fx-reviewed
 FX_R=$(git -C "$TMP/repo" rev-parse HEAD)
