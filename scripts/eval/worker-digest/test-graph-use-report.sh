@@ -146,7 +146,7 @@ EOUT="$(bash "$RPT" --days 36500 --root "$HERE/fixtures/graph-use-echo/claude/pr
 EORC=$?
 check "the report over the echo fixture exits 0" '[ "$EORC" = 0 ]'
 check "an echo that quotes a graph or qmd call is no call: the claude lane has 1 journal with a tool, 0 graph calls and 0 qmd calls" '[ "$(OUT="$EOUT" cells all claude main with_tools calls)" = 1/0 ] && [ "$(OUT="$EOUT" SEC=qmd cells all claude main with_tools calls)" = 1/0 ]'
-check "a bash -c or sh -c body, a quoted argument and a command or backtick substitution inside double quotes still count as graph calls: the codex lane has 5 calls, 3 query, 1 explain, 1 path" '[ "$(OUT="$EOUT" cells all codex main calls query explain path)" = 5/3/1/1 ]'
+check "a bash -c or sh -c body, a quoted argument and a command or backtick substitution inside double quotes still count as graph calls, as do a substitution with quoted arguments inside double quotes (graph and qmd) and a call after a here-doc body with an apostrophe: the codex lane has 8 graph calls, 6 query, 1 explain, 1 path, and 1 qmd call" '[ "$(OUT="$EOUT" cells all codex main calls query explain path)" = 8/6/1/1 ] && [ "$(OUT="$EOUT" SEC=qmd cells all codex main calls)" = 1 ]'
 
 check "a bad argument exits 2" 'bash "$RPT" --days x >/dev/null 2>&1; [ $? = 2 ]'
 check "a root that does not exist exits 2" 'bash "$RPT" --root "$FX/no-such-root" >/dev/null 2>&1; [ $? = 2 ]'
