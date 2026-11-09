@@ -108,8 +108,8 @@ export const projectKey = (): string => {
   const key = process.env.JIRA_PROJECT_KEY;
   if (!key) {
     throw new Error(
-      'JIRA_PROJECT_KEY is not set. Add it to your .env (or shell environment) ' +
-        'and re-run. See .env.example + docs/setup/new-machine.md.',
+      'JIRA_PROJECT_KEY is not set. Add it to ~/.himmel/himmel.conf (or shell environment) ' +
+        'and re-run; `jira config` shows what is set and where it came from. See docs/setup/new-machine.md.',
     );
   }
   return key;
@@ -129,6 +129,16 @@ export function authHeader(): string {
   ensureEnvLoaded();
   const email = process.env.JIRA_EMAIL ?? '';
   const token = process.env.JIRA_API_TOKEN ?? '';
+  // Fail before a request: an empty Basic header only surfaces later as a 401 with no hint.
+  for (const [name, value] of [['JIRA_EMAIL', email], ['JIRA_API_TOKEN', token]]) {
+    if (!value) {
+      throw new Error(
+        `${name} is not set. The email goes in ~/.himmel/himmel.conf; the token goes in the keyring: ` +
+          '`himmel-secrets put --stdin JIRA_API_TOKEN` (the value on stdin, never on argv). ' +
+          '`jira config` shows whether each is set and where it came from, never the value.',
+      );
+    }
+  }
   return `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}`;
 }
 

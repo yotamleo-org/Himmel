@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { request } from '../client.js';
+import { baseUrl, request } from '../client.js';
 import { formatIssue, formatIssueWithDescription, printJson } from '../output.js';
 import type { JiraIssue } from '../types.js';
 import { sectorField, sectorOf } from './sector.js';
@@ -75,6 +75,13 @@ export function registerGet(program: Command): void {
         if (fvl) console.log(fvl);
         const sector = sectorOf(issue.fields as Record<string, unknown>);
         if (sector) console.log(`Sector: ${sector}`);
+        // The site URL is resolved here so no one reads a secrets file or the Jira MCP for it.
+        // An unset URL prints no link: the request above has already failed loud in that case.
+        try {
+          console.log(`browse: ${baseUrl()}/browse/${issue.key ?? key}`);
+        } catch {
+          // no site URL to link
+        }
       }
     });
 }
