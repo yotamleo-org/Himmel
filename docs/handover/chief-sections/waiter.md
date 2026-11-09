@@ -167,7 +167,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     i.e. a wrapped worker to drop from the arm. `unwatched=` reads the whole
     process census, so with more than one chief on the host it can name
     another chief's workers. `tick.sh`'s own `tick=` field still reads `UNKNOWN`
-    (see its `ponytail:` comment); the heartbeat above is the liveness signal.
+    (see its ceilings-ledger row); the heartbeat above is the liveness signal.
 
     **Or arm from a fleet manifest and skip the re-starts**:
     keep the worker set in `<this file's stem>.fleet.json` next to this doc and
