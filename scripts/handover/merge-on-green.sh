@@ -900,14 +900,9 @@ if [ ! -f "$CHECK_CI" ]; then
     audit "REFUSED reason=no-check-ci repo=$nwo pr=#$pr_num"
     exit 14
 fi
-# CodeRabbit trigger backstop. The one `@coderabbitai review` per
-# head is posted by the PostToolUse hooks and the forge seam; a host that runs no
-# PostToolUse hook posts none (found live: PR #5050, opened from an Agent SDK
-# session). When this head has no ledger row, post it here through the same
-# helper, so its guards (armed repo, CR_TRIGGER_SUPPRESS, rate limit, ledger
-# dedup) still apply. CodeRabbit is best effort: one post, and the
-# merge goes on whatever the post does. Sourced from the anchor like every
-# helper above; a --dry-run changes nothing, so it posts nothing.
+# The PostToolUse hooks post the one CodeRabbit trigger per head, and a host that
+# runs no PostToolUse hook posts none; post it here when the ledger lacks this
+# head. Best effort: the merge goes on whatever the post does.
 # shellcheck source=scripts/lib/coderabbit-trigger-ledger.sh
 # shellcheck disable=SC1091
 if [ "$DRY_RUN" -eq 0 ] && . "$himmel_repo/scripts/lib/coderabbit-trigger-ledger.sh" 2>/dev/null \

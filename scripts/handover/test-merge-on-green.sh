@@ -300,7 +300,6 @@ STUB
     # the source fails, CR_STATE falls back to `unknown`, and every cr= assertion
     # below would pass while testing nothing.
     cp "$SCRIPT_DIR/../lib/coderabbit-available.sh" "$tmp/scripts/lib/coderabbit-available.sh"
-    # The CodeRabbit trigger backstop's ledger lib and the two libs it sources.
     cp "$SCRIPT_DIR/../lib/coderabbit-trigger-ledger.sh" "$SCRIPT_DIR/../lib/nwo.sh" "$SCRIPT_DIR/../lib/coderabbit-signal.sh" "$tmp/scripts/lib/"
     # The chief-GO gate resolves the GO file under handover_root.
     cp "$SCRIPT_DIR/../lib/handover-path.sh" "$tmp/scripts/lib/handover-path.sh"
@@ -597,7 +596,6 @@ case "$verb" in
         echo "merged"
         ;;
     "pr comment")
-        # The CodeRabbit trigger backstop's one post. STUB_PR_COMMENT_FAIL=1 fails it.
         [ "${STUB_PR_COMMENT_FAIL:-0}" = "1" ] && { echo "gh: comment failed" >&2; exit 1; }
         exit 0 ;;
     "run list")
@@ -5846,13 +5844,9 @@ MERGE_STATIC_RECHECK=1 GIT_CONFIG_GLOBAL="$SOLO_GLOBAL_CFG" MOG_ANCHOR_GIT=1 MOG
 assert_audit_lacks "7390-e: the static re-check is not skipped as another repo" "STATIC-RECHECK skipped reason=other-repo"
 rm -rf "$SOLO_ADOPTED" "$SOLO_HANDOVER" "$SOLO_GLOBAL_CFG"
 
-# 9697 — the CodeRabbit trigger backstop. A head with no row in the trigger
-# ledger gets one `@coderabbitai review` before the merge, and the merge never
-# waits on it (CodeRabbit is best effort).
 cr_comment_count() { grep -c '^pr comment ' "$LAST_GH_LOG" 2>/dev/null || true; }
 CR9697_LEDGER=$(mktemp "${TMPDIR:-/tmp}/mog-9697-ledger.XXXXXX") || { echo "FAIL: mktemp failed" >&2; exit 1; }
 
-# (a) no ledger row → exactly one trigger, the head is recorded, the merge proceeds.
 : > "$CR9697_LEDGER"
 CR_TRIGGER_LEDGER_PATH="$CR9697_LEDGER" CR_TRIGGER_REPOS="owner/repo" CR_TRIGGER_SUPPRESS="" STUB_SHA="cr9697a" \
     run_mog 0 "9697-a: a head with no ledger row → merged"
@@ -5861,15 +5855,12 @@ assert_gh_has "9697-a: the one post is the CodeRabbit trigger on the PR" "pr com
 assert_merge_has "9697-a: the merge still runs at the certified head" "--match-head-commit cr9697a"
 if grep -qxF "owner/repo 77 cr9697a" "$CR9697_LEDGER"; then pass; else fail "9697-a: the head was not recorded in the ledger"; fi
 
-# (b) the head already has a ledger row → no post.
 printf 'owner/repo 77 cr9697b\n' > "$CR9697_LEDGER"
 CR_TRIGGER_LEDGER_PATH="$CR9697_LEDGER" CR_TRIGGER_REPOS="owner/repo" CR_TRIGGER_SUPPRESS="" STUB_SHA="cr9697b" \
     run_mog 0 "9697-b: a head already in the ledger → merged"
 assert_gh_lacks "9697-b: no second trigger" "pr comment"
 assert_merge_has "9697-b: merged" "--match-head-commit cr9697b"
 
-# (c) an unarmed repo (non-git cwd, no allowlist) and a foreign one (the
-# allowlist names another repo) → no post.
 : > "$CR9697_LEDGER"
 CR_TRIGGER_LEDGER_PATH="$CR9697_LEDGER" CR_TRIGGER_REPOS="" CR_TRIGGER_SUPPRESS="" STUB_SHA="cr9697c" \
     run_mog 0 "9697-c: an unarmed repo → merged"
@@ -5878,7 +5869,6 @@ CR_TRIGGER_LEDGER_PATH="$CR9697_LEDGER" CR_TRIGGER_REPOS="someone/else" CR_TRIGG
     run_mog 0 "9697-c2: a foreign repo → merged"
 assert_gh_lacks "9697-c2: no trigger on a foreign repo" "pr comment"
 
-# (d) the post fails → the merge still proceeds, and the head is not recorded.
 : > "$CR9697_LEDGER"
 CR_TRIGGER_LEDGER_PATH="$CR9697_LEDGER" CR_TRIGGER_REPOS="owner/repo" CR_TRIGGER_SUPPRESS="" STUB_PR_COMMENT_FAIL=1 STUB_SHA="cr9697d" \
     run_mog 0 "9697-d: a failed trigger post → merged"
@@ -5886,7 +5876,6 @@ assert_gh_has "9697-d: the post was attempted" "pr comment 77"
 assert_merge_has "9697-d: merged anyway" "--match-head-commit cr9697d"
 if [ -s "$CR9697_LEDGER" ]; then fail "9697-d: a failed post was recorded in the ledger"; else pass; fi
 
-# (e) --dry-run changes nothing, so it posts nothing.
 : > "$CR9697_LEDGER"
 CR_TRIGGER_LEDGER_PATH="$CR9697_LEDGER" CR_TRIGGER_REPOS="owner/repo" CR_TRIGGER_SUPPRESS="" STUB_SHA="cr9697e" \
     run_mog 0 "9697-e: a dry run" -- --dry-run
