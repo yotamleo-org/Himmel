@@ -17,7 +17,8 @@ has() { case "$3" in *"$2"*) pass "$1" ;; *) fail "$1" "$3" ;; esac; }
 lacks() { case "$3" in *"$2"*) fail "$1" "$3" ;; *) pass "$1" ;; esac; }
 
 command -v python3 >/dev/null 2>&1 && command -v bun >/dev/null 2>&1 || { echo "SKIP: python3 and bun are needed"; exit 0; }
-T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/spec-page-gen-test.XXXXXX")" && pwd -P)" || exit 1
+T="$(mktemp -d "${TMPDIR:-/tmp}/spec-page-gen-test.XXXXXX")" || exit 1
+T="$(cd "$T" && pwd -P)" || exit 1
 trap 'rm -rf "$T"' EXIT
 
 gen() { python3 -I "$GEN" "$@" 2>&1; }

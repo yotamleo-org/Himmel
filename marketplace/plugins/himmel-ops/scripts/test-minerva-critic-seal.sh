@@ -25,7 +25,8 @@ fail() { printf '  FAIL  %s\n' "$1"; [ -n "${2:-}" ] && printf '        got: %s\
 has() { case "$3" in *"$2"*) pass "$1" ;; *) fail "$1" "$3" ;; esac; }
 lacks() { case "$3" in *"$2"*) fail "$1" "$3" ;; *) pass "$1" ;; esac; }
 
-T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/minerva-critic-seal.XXXXXX")" && pwd -P)" || exit 1
+T="$(mktemp -d "${TMPDIR:-/tmp}/minerva-critic-seal.XXXXXX")" || exit 1
+T="$(cd "$T" && pwd -P)" || exit 1
 trap 'rm -rf "$T"' EXIT
 
 sha() { sha256sum "$1" | cut -d' ' -f1; }
