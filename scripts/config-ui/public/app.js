@@ -2,7 +2,7 @@
 import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
 import { renderHealth, verdict, parseView, projectVerdict, chiefLiveFor } from "/health.js";
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
-import { boardRefreshDue, driftSince, pinsFromSearch, renderBoard, searchWithPins, togglePin } from "/roadmap.js";
+import { boardRefreshDue, driftSince, pinsFromSearch, placeRows, renderBoard, searchWithPins, togglePin } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
 import { renderCost } from "/cost.js";
 import { apiRolesDraft, renderConfigure as render } from "/setup.js";
@@ -92,7 +92,7 @@ const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => withLoginButton(render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify })), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.apiRoles || !state.apiRoles.data) loadApiRoles(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => pageBar() + healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
-  { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
+  { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); return placeRows(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
   { id: "cost", label: "Cost", needsFeed: false, render: () => (costErr ? `<p class="sub">The cost could not be read just now${costModel ? "; this is the last good read" : ""}.</p>` : "") + renderCost(costModel, { ...costView, err: costErr }), onVisit: () => loadCost(), afterPaint: () => costMount() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
