@@ -903,6 +903,35 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
   return cls;
 }
 
+// The poller's send receipt (rememberConsoleReply) is the only artifact that names a sent
+// message. awaitSendReceipt returns the newest message id the poller recorded for this chat
+// and chief since `sinceMs`, or null at the deadline. Ceiling: two sends by one chief to one
+// chat inside the wait window cannot be told apart, the newest id wins.
+export async function awaitSendReceipt(root: string, chat: number, name: string, sinceMs: number, waitSec: number): Promise<number | null> {
+  const dir = join(root, "consoles", "replies");
+  const deadline = Date.now() + waitSec * 1000;
+  for (;;) {
+    let best = 0;
+    for (const f of await readdir(dir).catch(() => [] as string[])) {
+      const m = /^(-?\d+)_(\d+)\.json$/.exec(f);
+      if (!m || Number(m[1]) !== chat) continue;
+      const st = await stat(join(dir, f)).catch(() => null);
+      if (!st || st.mtimeMs < sinceMs - 50) continue;
+      if (await consoleReplyTarget(root, chat, Number(m[2])) === name) best = Math.max(best, Number(m[2]));
+    }
+    if (best) return best;
+    if (Date.now() >= deadline) return null;
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
+// The only writer of an owed item's receipt bullet (`DELIVERED <key> msg=<id> chat=<chat>`),
+// which chief-wait.sh reads to stop waking `owed-undelivered`.
+export async function writeOwedReceipt(doc: string, key: string, messageId: number, chat: number): Promise<void> {
+  const cur = await readFile(doc, "utf8");
+  await appendFile(doc, `${cur === "" || cur.endsWith("\n") ? "" : "\n"}- ${hhmm()} DELIVERED ${key} msg=${messageId} chat=${chat}\n`);
+}
+
 // CLI: `bun chief-route.ts send-file <chat_id> <path> [caption...]` queues a file (above).
 // CLI: `bun chief-route.ts reply [--chief <name>] [--satellite <entity_id>] <chat_id> <text...>`, the chief's reply
 // path. Appends to the same per-chat outbox every other bridge reply uses; the
@@ -922,21 +951,32 @@ if (import.meta.main) {
     try { await refuseRoundPastCap(args[0], args[1]); }
     catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1); }
   } else {
-    const flags: { chief?: string; satellite?: string; kind?: string } = {};
-    if (verb === "reply") while (args.length >= 2 && (args[0] === "--chief" || args[0] === "--satellite" || args[0] === "--kind")) flags[args.shift()!.slice(2) as keyof typeof flags] = args.shift()!;
+    const flags: { chief?: string; satellite?: string; kind?: string; owed?: string; doc?: string } = {};
+    if (verb === "reply") while (args.length >= 2 && (args[0] === "--chief" || args[0] === "--satellite" || args[0] === "--kind" || args[0] === "--owed" || args[0] === "--doc")) flags[args.shift()!.slice(2) as keyof typeof flags] = args.shift()!;
+    // --owed <key> --doc <chief doc>: wait for the poller's send receipt, print the message id and
+    // write the DELIVERED bullet, or exit non-zero. Plain `reply` keeps its fire-and-forget shape.
+    const owedOk = (flags.owed === undefined && flags.doc === undefined) || (/^[A-Za-z0-9_.-]{1,64}$/.test(flags.owed ?? "") && isAbsolute(flags.doc ?? "") && await stat(flags.doc!).then(s => s.isFile(), () => false));
     const name = flags.chief ?? (verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined);
     const satellite = flags.satellite;
     const [chat, ...rest] = args;
     const chatId = chat === "operator" ? (operatorChatId(await loadAccess()) ?? NaN) : Number(chat);
-    if (verb === "reply" && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
+    if (verb === "reply" && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && owedOk && (flags.owed === undefined || name) && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
+      const queuedAt = Date.now();
       const cls = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}` });
       console.log(cls);
+      if (flags.owed !== undefined) {
+        if (cls !== "escalate") { console.error(`[chief-route] owed item ${flags.owed}: the text was class ${cls}, not sent to Telegram, so there is no receipt`); process.exit(1); }
+        const id = await awaitSendReceipt(defaultRoot(), chatId, name!, queuedAt, Number(process.env.CHIEF_ROUTE_RECEIPT_WAIT_SEC) || 30);
+        if (id === null) { console.error(`[chief-route] owed item ${flags.owed}: queued, but the poller recorded no send receipt in time (poller down or Telegram refused); nothing marked delivered`); process.exit(1); }
+        await writeOwedReceipt(flags.doc!, flags.owed, id, chatId);
+        console.log(`delivered msg=${id}`);
+      }
       if (satellite !== undefined && cls !== "silent") {
         try { await speakOnSatellite(satellite, rest.join(" ")); }
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }

@@ -304,6 +304,13 @@
 # `WAKE unclosed <labels>` for each worker new to the marker `<inbox>.wait.unclosed` (the
 # labels printed are the new ones), again every CHIEF_WAIT_UNCLOSED_REWAKE_MIN (default 60)
 # while it stays; the marker clears when the field is gone. It is not part of the action key.
+# `WAKE owed-undelivered <keys>` (with --doc): the chief doc holds an owed-item
+# bullet `- [HH:MM ]OWED <key> <what the operator must do>` (key = [A-Za-z0-9_.-]+) and no
+# receipt bullet `- [HH:MM ]DELIVERED <key> msg=<telegram message id> chat=<chat id>` once the
+# waiter has seen it for CHIEF_WAIT_OWED_SEC (default 300). Only
+# `chief-route.ts reply --owed <key> --doc <chief doc> <chat> <text>` writes the DELIVERED
+# bullet, from the bridge's send receipt, never by hand. Wakes once per key (marker
+# `<inbox>.wait.owed`: `<key> <first-seen epoch> <woken 0|1>`); a receipt drops the key.
 # Everything else on the tick line (heartbeat, procs, fill, fleet, gql,
 # orphans...) moves without needing a chief act and never wakes. Two consecutive samples must differ from the saved key (not
 # necessarily from each other), so one failed `gh` read (prs=none for a single
@@ -1151,6 +1158,32 @@ unclosed_wake() {
     done
     set_wake "$items" "$unclosed_file" "${CHIEF_WAIT_UNCLOSED_REWAKE_MIN:-60}" || return 1
     printf '%s\n' "${fresh:-$1}"
+}
+# owed_wake: with --doc, an `OWED <key>` bullet with no `DELIVERED <key> msg=<id>` bullet that
+# stayed unreceipted for CHIEF_WAIT_OWED_SEC (default 300) from the waiter's first sight wakes
+# once. The marker `<inbox>.wait.owed` holds `<key> <first-seen epoch> <woken 0|1>`; a receipt
+# (or the bullet leaving the doc) drops the key. Prints the newly woken keys, comma-joined.
+owed_file="$inbox.wait.owed"
+owed_wake() {
+    local now keys k st first woken new="" out=""
+    [ -n "$console_doc" ] && [ -r "$console_doc" ] || return 1
+    now="$(date +%s)"
+    keys="$(sed -nE 's/^- ([0-9]{1,2}:[0-9]{2} )?OWED ([A-Za-z0-9_.-]+)( .*)?$/\2/p' "$console_doc" | awk '!seen[$0]++')"
+    for k in $keys; do
+        grep -qE "^- ([0-9]{1,2}:[0-9]{2} )?DELIVERED ${k//./\\.} msg=[0-9]+" "$console_doc" && continue
+        st=""
+        [ ! -r "$owed_file" ] || st="$(awk -v k="$k" '$1 == k { print $2, $3; exit }' "$owed_file")"
+        first="${st% *}"; woken="${st#* }"
+        case "$first" in ''|*[!0-9]*) first="$now"; woken=0 ;; esac
+        if [ "$woken" != 1 ] && [ $((now - first)) -ge "${CHIEF_WAIT_OWED_SEC:-300}" ]; then
+            woken=1; out="${out:+$out,}$k"
+        fi
+        [ "$woken" = 1 ] || woken=0
+        new="$new$k $first $woken"$'\n'
+    done
+    if [ -n "$new" ]; then printf '%s' "$new" > "$owed_file" 2>/dev/null; else rm -f "$owed_file"; fi
+    [ -n "$out" ] || return 1
+    printf '%s\n' "$out"
 }
 # unwatched_wake: <unwatched= labels, `+`-joined> — a live worker the manifest does not list
 # (tick.sh already drops other chiefs' workers). Same marker logic, own marker, own window.
@@ -2077,6 +2110,10 @@ while :; do
             elif unclosed_new="$(unclosed_wake "$unclosed_val")"; then
                 printf 'WAKE unclosed %s\n%s\n' "$unclosed_new" "$tick_line"
                 exit_reason='wake-unclosed'; exit 0
+            fi
+            if owed_new="$(owed_wake)"; then
+                printf 'WAKE owed-undelivered %s\n%s\n' "$owed_new" "$tick_line"
+                exit_reason='wake-owed-undelivered'; exit 0
             fi
             doctor_val="$(field doctor "$tick_line")"
             case "$doctor_val" in
