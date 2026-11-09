@@ -10,7 +10,7 @@ pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
 eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (expected '$2', got '$3')"; fi; }
 
-V1_SHA256="9cb6f6b51d941a0268a8eabc43b5e784de4ff6ffc230b077060f9b6b7339e7b4"
+V1_SHA256="adbc51f2a56fbd871aac16569b5ec7316e533d673226a1a23d02475a8ac46b4f"
 v1_digest="$(python3 -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$V1")"
 eq "v1 is byte-identical to the frozen bank" "$V1_SHA256" "$v1_digest"
 
@@ -49,7 +49,7 @@ expected = {
     "q03": (["docs/glossary.md", "docs/handover/running-a-chief.md"],
             ["docs/handover/worker-preface.md", "docs/architecture.md"]),
     "q08": (["CLAUDE.md", "AGENTS.md", "scripts/luna/qmd-staleness.sh", "docs/internals/enforcement.md"], []),
-    "q13": (["docs/internals/ponytail-convention.md", "CLAUDE.md", "AGENTS.md", "docs/glossary.md"], []),
+    "q13": (["docs/internals/code-comments.md", "CLAUDE.md", "AGENTS.md", "docs/glossary.md"], []),
     "q25": (["scripts/plugin-upstreams.json", "docs/tooling-catalog.md", "scripts/check-plugin-drift.sh"],
             ["scripts/test-check-plugin-drift.sh", "scripts/lanes/tests/plugin-profiles.test.mjs"]),
     "q30": (["scripts/lib/observability-registry.sh", "scripts/handover/librarian-cadence.sh",

@@ -3,8 +3,8 @@
 #
 # check-history-comments.sh — refuse NEW ticket keys in tracked text and NEW history comments in code.
 # Agents copy the lines they read, so a ticket-citing or review-round line spreads; the
-# rule is in docs/internals/ponytail-convention.md ("Code comments"). Only ADDED lines
-# are judged, so the existing lines never trip it.
+# rule is in docs/internals/code-comments.md. Only ADDED lines are judged, so the
+# existing lines never trip it.
 #
 # One classifier (ticket-refs.awk) and one rule list (ticket-ref-allow.tsv) sit beside
 # this script and decide every line; the key pattern lives only in the list's `key` row.
@@ -13,6 +13,8 @@
 #   an added whole-line comment in a code file (the extensions are is_code() in
 #   ticket-refs.awk) that is a review-fix note, a bot-review round, "round <n>" or a
 #   judge qid (j + 4 digits + letter) is refused; docs and YAML are not judged for these
+#   an added ponytail marker, in any text file outside a whole-file row, is refused: the
+#   ceiling it records belongs in the ceilings ledger (scripts/ledger/ceiling-add.sh)
 # Binary files (index blob `-text`) are skipped; the diff keeps --text so a .gitattributes
 # `-diff` entry cannot hide an added text line. history-ok and ticket-ok markers do not exist.
 # ponytail: test citations are refused in four shapes (G1-G4) only, so a key in another
@@ -88,9 +90,15 @@ LC_ALL=C awk -f "$classifier" -v allow="$rules" -v mode=diff -v binlist="$BIN" "
 rc=$?
 if [ "$rc" -eq 1 ]; then
     cat "$DIFF.out"
-    echo "check-history-comments: a ticket key in added text, or a review round, CR fix or judge qid in a code comment, belongs in git and Jira." >&2
-    echo "  Write the reason in words; the key belongs in the commit message and PR title. A key a program reads needs a row in scripts/lint/ticket-ref-allow.tsv." >&2
-    echo "  Policy: docs/internals/ponytail-convention.md (Code comments)." >&2
+    if grep -q ': ponytail marker: ' "$DIFF.out"; then
+        echo "check-history-comments: a ponytail marker is no longer written in code or docs." >&2
+        echo "  Record the ceiling with scripts/ledger/ceiling-add.sh add --file <path> --anchor <name> --ceiling <text> --trigger <text>, then delete the marker." >&2
+    fi
+    if grep -v -q ': ponytail marker: ' "$DIFF.out"; then
+        echo "check-history-comments: a ticket key in added text, or a review round, CR fix or judge qid in a code comment, belongs in git and Jira." >&2
+        echo "  Write the reason in words; the key belongs in the commit message and PR title. A key a program reads needs a row in scripts/lint/ticket-ref-allow.tsv." >&2
+    fi
+    echo "  Policy: docs/internals/code-comments.md." >&2
 elif [ "$rc" -ne 0 ]; then
     echo "check-history-comments: awk failed (rc=$rc)" >&2
     rc=2

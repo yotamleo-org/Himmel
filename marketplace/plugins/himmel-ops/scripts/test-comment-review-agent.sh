@@ -9,7 +9,7 @@ bad() { echo "FAIL - $1"; fails=$((fails + 1)); }
 check() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1: [$2]!=[$3]"; fi; }
 
 SICKO_BLOB=4e604bc7049fbf03c1f733cafc1ed61f3200fe47
-NOCOMMENTS_BLOB=da76538f5a5007afa8e73075a8366322effc182b
+NOCOMMENTS_BLOB=844f4a58d78f9b6c74fbe28717ff2328339fdd52
 
 [ -f "$agent" ] || { bad "agents/comment-review.md exists"; echo "$fails failed"; exit 1; }
 

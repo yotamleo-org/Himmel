@@ -187,7 +187,7 @@ export default defineConfig({
                 { label: 'Prompt cache', slug: 'internals/prompt-cache' },
                 { label: 'Config layers', slug: 'internals/config-layers' },
                 { label: 'MCP servers', slug: 'internals/mcp-servers' },
-                { label: 'The ponytail convention', slug: 'internals/ponytail-convention' },
+                { label: 'Code comments and ceilings', slug: 'internals/code-comments' },
                 'setup/new-machine',
                 {
                   label: 'Lanes & launchers',
