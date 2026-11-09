@@ -2585,10 +2585,6 @@ record_bug_origin() {
     return 0
 }
 
-# Conflicts recorder: one anchor-run `conflicts.py record` on a snapshot of THIS PR, then one Results bullet when HIMMEL_CONSOLE_DOC
-# is set. The ledger root is the anchor's own: HANDOVER_DIR is dropped from the recorder's env so a worker's value cannot steer it.
-# Best-effort: neither the recorder nor the append changes the exit code. Bounds: 30 s gh, 60 s record; MOG_CONFLICTS_SECS can only
-# shorten them. A missed row is rebuilt by hand with conflicts.py backfill --since <iso>.
 CONFLICTS_RESULT="not-attempted"
 CONFLICTS_DETAIL=""
 CONFLICTS_KEY=""
@@ -2605,7 +2601,7 @@ _record_conflicts_run() {
     else CONFLICTS_RESULT="no-timeout"; return 0; fi
     CONFLICTS_RESULT="failed"
     gcd=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
-        git -C "$himmel_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || { # swallow-ok: the failure is named on the next line
+        git -C "$himmel_repo" rev-parse --path-format=absolute --git-common-dir 2>&1) || {
         echo "merge-on-green: WARN conflicts record of PR #$pr skipped: the anchor has no git dir; run conflicts.py backfill by hand" >&2; return 0; }
     snap=$(mktemp "${TMPDIR:-/tmp}/mog-conflicts.XXXXXX") || {
         echo "merge-on-green: WARN conflicts record of PR #$pr skipped: no scratch file; run conflicts.py backfill by hand" >&2; return 0; }
@@ -2613,7 +2609,7 @@ _record_conflicts_run() {
         printf '%s\n' "$view" > "$snap"
         out=$(env -u HANDOVER_DIR -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
             ${cf_to_rec:+$cf_to_rec} python3 -I "$script" record --snapshot "$snap" --repo-dir "$gcd" --base-ref "origin/$default_branch" 2>&1) || rc=$?
-        CONFLICTS_KEY=$(printf '%s' "$view" | jq -r '.title // ""' 2>/dev/null | sed -nE 's/.*\[([A-Z][A-Z0-9]*-[0-9]+)\].*/\1/p' | head -n 1) # swallow-ok: an unreadable title only drops the key from the bullet
+        CONFLICTS_KEY=$(printf '%s' "$view" | jq -r '.title // ""' | sed -nE 's/.*\[([A-Z][A-Z0-9]*-[0-9]+)\].*/\1/p' | head -n 1)
     else
         rc=$?; out="gh pr view could not read the merged PR"
     fi
