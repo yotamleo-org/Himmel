@@ -189,7 +189,6 @@ test("cost: basis is explicit in every state", () => {
   const nodata = buildCostModel(ROWS, "2026-10-01");
   const empty = buildCostModel([], undefined);
   const nostore = readCost({ HIMMEL_USAGE_STORE: join(dir, "absent"), PATH: process.env.PATH });
-  // no error state exists until the one-snapshot read lands; a model of any other state still takes the non-ok branch
   const other = { ...nodata, state: "error" } as unknown as typeof nodata;
   for (const m of [ok, nodata, empty, nostore, other]) {
     expect(m.basis).toBe(BASIS);

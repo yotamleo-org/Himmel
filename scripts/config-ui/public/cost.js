@@ -27,7 +27,6 @@ function phaseBody(p, top, open) {
     `<td>${mark(p.mark)}</td><td class="mute">${esc(p.made)}</td></tr>${open ? p.parts.map(partRow).join("") : ""}</tbody>`;
 }
 
-// what every figure is, in every state: the model's own basis and coverage note, never worded here
 const basisNote = (m) => `<p class="sub basis">${esc(m.basis)} ${esc(m.coverageNote)}.</p>`;
 
 export function renderCost(model, view = {}) {

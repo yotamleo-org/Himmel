@@ -24,8 +24,6 @@ export type CostModel = {
   models: { model: string; usd: number | null }[]; phases: CostPhase[]; basis: string; coverageNote: string;
 };
 
-// What every dollar on the page is, in every state: the records are read from Claude transcripts only, and nothing here
-// tells whether the collection is complete or current, so the page says so and infers no health from a file's age.
 export const BASIS = "Claude transcript usage at list prices; not invoices. Native Codex and other provider stores are not included.";
 export const COVERAGE_NOTE = "Collection freshness and completeness unknown";
 const EMPTY = { usd: null, mark: "nocount" as Mark, calls: 0, models: [], phases: [], basis: BASIS, coverageNote: COVERAGE_NOTE };

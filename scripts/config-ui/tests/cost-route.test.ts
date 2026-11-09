@@ -57,7 +57,7 @@ test("cost route: the page's browser half is served, and what a visitor sees car
   expect(html).not.toMatch(/HIMMEL-/);
 });
 
-test("cost route: route-authorization: 401 without a token, 405 on POST, 200 on an authenticated GET, and nothing is written", async () => {
+test("cost route: route-authorization: 401 without a token, 405 on POST, 200 on an authenticated GET", async () => {
   const base = boot();
   const url = `${base}/api/cost`;
   expect((await fetch(url)).status).toBe(401);
