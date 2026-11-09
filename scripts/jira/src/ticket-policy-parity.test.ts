@@ -35,7 +35,7 @@ const checker = join(repo, 'marketplace', 'plugins', 'himmel-ops', 'scripts', 't
 
 type Case = {
   id: string; type: string; labels?: string[]; omit?: string[]; replace?: Record<string, string>;
-  bold?: string[]; append?: string; expect: string[];
+  bold?: string[]; plain?: string[]; append?: string; expect: string[];
 };
 const cases = (JSON.parse(readFileSync(join(here, 'fixtures', 'ticket-policy-cases.json'), 'utf8')) as { cases: Case[] }).cases;
 
@@ -51,7 +51,7 @@ const BASE: Record<string, string> = {
 };
 export function bodyOf(c: Partial<Case>): string {
   const parts = SECTIONS.filter((s) => !(c.omit ?? []).includes(s)).map(
-    (s) => `${(c.bold ?? []).includes(s) ? `**${s}**` : `## ${s}`}\n${c.replace?.[s] ?? BASE[s]}`,
+    (s) => `${(c.bold ?? []).includes(s) ? `**${s}**` : (c.plain ?? []).includes(s) ? s : `## ${s}`}\n${c.replace?.[s] ?? BASE[s]}`,
   );
   return parts.join('\n\n') + (c.append ? `\n\n${c.append}\n` : '\n');
 }

@@ -228,6 +228,10 @@ mkdraft "$td/bold3.md" Proof
 printf '**Proof**\nRun the checker on a real draft.\n' >>"$td/bold3.md"
 run Task "$td/bold3.md" "$q" --sector X
 check "a bold **Proof** line is not the Proof heading, exits 1" "$rc" 1
+mkdraft "$td/bare.md" DoD Proof
+printf 'DoD\n- A draft missing a DoD is refused.\n\nProof\nRun the checker on a real draft.\n' >>"$td/bare.md"
+run Task "$td/bare.md" "$q" --sector X
+check "bare DoD and Proof lines, as the Jira mirror renders headings, exit 0" "$rc" 0
 q="$td/q-boldph"; mkdraft "$td/boldph.md" Proof; printf '## Proof\n**TBD**\n' >>"$td/boldph.md"
 run Task "$td/boldph.md" "$q" --sector X
 check "bold-wrapped TBD Proof exits 1" "$rc" 1

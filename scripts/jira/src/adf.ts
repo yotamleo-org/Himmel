@@ -1,3 +1,5 @@
+import { SECTIONS } from '../../../marketplace/plugins/himmel-ops/scripts/ticket-policy.mjs';
+
 export interface AdfDoc {
   type: 'doc';
   version: 1;
@@ -96,6 +98,11 @@ function closesFence(line: string, marker: string): boolean {
   return !!fm && fm[1][0] === marker[0] && fm[1].length >= marker.length && fm[2].trim() === '';
 }
 
+const isSectionLine = (line: string): boolean => {
+  const w = line.trim().replace(/:\s*$/, '').toLowerCase();
+  return SECTIONS.some((s) => s.toLowerCase() === w);
+};
+
 export function markdownToAdf(md: string): AdfDoc {
   const lines = md.split('\n');
   const blocks: AdfBlock[] = [];
@@ -181,6 +188,14 @@ export function markdownToAdf(md: string): AdfDoc {
       continue;
     }
 
+    // a bare line that is exactly a ticket section name ("Proof", "DoD:") is that section's
+    // heading, as the ticket policy reads it (Jira renders a heading node back as such a line)
+    if (isSectionLine(line)) {
+      blocks.push({ type: 'heading', attrs: { level: 2 }, content: parseInline(line.trim().replace(/:\s*$/, '')) });
+      i++;
+      continue;
+    }
+
     // paragraph. Accumulate consecutive non-blank, non-special lines
     const paraLines: string[] = [line];
     i++;
@@ -188,6 +203,7 @@ export function markdownToAdf(md: string): AdfDoc {
       i < lines.length &&
       lines[i].trim() &&
       !fenceOpen(lines[i]) &&
+      !isSectionLine(lines[i]) &&
       !/^( {0,3}#{1,6}[ \t]|[-*]\s|\d+\.\s)/.test(lines[i])
     ) {
       paraLines.push(lines[i]);

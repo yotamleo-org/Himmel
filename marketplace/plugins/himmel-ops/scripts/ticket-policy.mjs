@@ -168,7 +168,12 @@ function sectionsOf(blocks) {
   const found = new Map();
   let cur;
   let level = 0;
-  for (const b of blocks) {
+  for (const raw of blocks) {
+    // A bare line that is exactly a section name ("Proof", "DoD:") is that heading: the Jira mirror
+    // and `jira get` render ADF headings this way. A bold line never is.
+    const b = raw.kind === 'prose' && !raw.bold && !/[*_`]/.test(raw.text) && sectionOf(raw.text)
+      ? { kind: 'heading', level: 2, text: raw.text }
+      : raw;
     if (b.kind === 'heading') {
       const s = sectionOf(b.text);
       if (s) {
