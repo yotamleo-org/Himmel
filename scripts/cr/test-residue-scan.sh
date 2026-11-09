@@ -44,7 +44,6 @@ check "waived: exit 0" "$rc" "0"
 check "waived (residue-keep): no finding" "$(count_all "$out")" "0"
 check "waived: summary line" "$(printf '%s\n' "$out" | grep -cF "$summary0")" "1"
 
-# A line carrying the retired marker is no longer waived: it is flagged, and the hint names the ledger.
 p=pony; marker="${p}tail:"
 printf '%s\n' 'diff --git a/docs/lanes.md b/docs/lanes.md' '--- a/docs/lanes.md' '+++ b/docs/lanes.md' '@@ -4,0 +5,1 @@' \
     "+The glm lane was removed in v1.1. $marker kept until v1.3, drop then" >"$tmp/marker.diff"
