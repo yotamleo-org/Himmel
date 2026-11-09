@@ -27,7 +27,6 @@ FIXTURE="$T/read-marker.ts"
 printf 'import { checkSignaturePage } from "%s";\ntry { await checkSignaturePage(process.argv[2]); console.log("OK"); } catch (e) { console.log((e as Error).message); }\n' "$ROUTE" > "$FIXTURE"
 read_marker() { bun "$FIXTURE" "$1" 2>&1; }
 
-# Every spec that must generate carries the diagram the page now requires.
 DIAG='<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="8" height="8"/></svg>'
 printf -v DSECT '\n## Diagrams\n\n```svg\n%s\n```\n' "$DIAG"
 printf '# Plain spec\n\n## Section\n\nSome **bold** text and `code`.\n\n- one\n- two\n%s' "$DSECT" > "$T/plain.md"
@@ -175,7 +174,7 @@ for c in x y z; do
   has "o: the svg text in the $c fence stays escaped text" "&lt;svg onload=\"$c()\"" "$page"
   lacks "o: no raw svg onload for $c" "<svg onload=\"$c()\"" "$page"
 done
-p_case() { # p_case <name> <svg>: refused, no page
+p_case() {
   mkspec "$T/unsafe-$1.md" "$2"
   out="$(gen "$T/unsafe-$1.md" "$T/unsafe-$1.html")"; rc=$?
   [ "$rc" -ne 0 ] && [ ! -e "$T/unsafe-$1.html" ] && pass "p: an svg fence holding $1 is refused and writes no page" || fail "p: an svg fence holding $1 is refused and writes no page" "$out"

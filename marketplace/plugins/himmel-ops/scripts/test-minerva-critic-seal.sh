@@ -3,11 +3,6 @@
 # Tests that minerva seals each critic return to the bytes the critic read.
 # Usage: bash marketplace/plugins/himmel-ops/scripts/test-minerva-critic-seal.sh
 # Exit: 0 all rows pass, 1 a row failed, 2 a missing tool (bun, git, jq, node, python3).
-#
-# The commands under test are EXTRACTED from minerva's SKILL.md (the checkout block, the core-check
-# command, the generator line, the seal command), so the suite cannot drift from the prose. It works
-# in a fixture folder and runs send-file with BRIDGE_ROOT on that fixture: nothing reaches Telegram.
-# The critic is a canned return file; no model runs here.
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY CLAUDE_PLUGIN_ROOT
 
@@ -36,7 +31,6 @@ trap 'rm -rf "$T"' EXIT
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 g() { git -c user.name=t -c user.email=t@t -c init.defaultBranch=main -c commit.gpgsign=false "$@"; }
 
-# ---- what the skill says: the four texts, each in its own fence ----
 BLOCK="$(awk '/# >>> himmel checkout for the critic seal/{f=1} f{print} /# <<< himmel checkout for the critic seal/{if(f)exit}' "$SKILL")"
 line_of() { grep -m1 "^[[:space:]]*$1" "$SKILL" | sed 's/^[[:space:]]*//'; }
 CORELINE="$(line_of 'node <himmel>/scripts/jira/dist/index.js release core-check')"
@@ -47,7 +41,6 @@ P_PATHS="<the build's paths>"
 P_SPECBASE='<spec-file minus .md>'
 P_FILE='<file under review>'
 PATHS='marketplace/plugins/himmel-ops/skills/minerva/SKILL.md,marketplace/plugins/himmel-ops/.claude-plugin/plugin.json,marketplace/plugins/himmel-ops/scripts/test-minerva-critic-seal.sh,docs/handover/chief-sections/telegram-files.md'
-# fill <text> <himmel> <spec> <verdict> <file> <sha>: the placeholders as the spec names them
 fill() {
   local t="$1"
   t="${t//'<himmel>'/$2}"; t="${t//"$P_PATHS"/$PATHS}"; t="${t//'<ticket>'/KEY-1}"
@@ -56,8 +49,6 @@ fill() {
   printf '%s' "$t"
 }
 
-# ---- fixtures ----
-# newfix <name>: a spec with a diagram, a plan, a decisions folder, a bridge root
 newfix() {
   F="$T/$1"; S="$F/specs"; BR="$F/bridge"
   SPEC="$S/designs/x.md"; HTML="$S/designs/x.html"; PLAN="$S/plans/x.md"
@@ -65,7 +56,6 @@ newfix() {
   printf '# Fixture spec\n\n## Diagrams\n\n```svg\n<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="8" height="8"/></svg>\n```\n\n## After\n\nText after the diagram.\n' > "$SPEC"
   printf '# Fixture plan\n\n## Task 1\n\nDo it.\n' > "$PLAN"
 }
-# gen_page [direct]: the page beside the spec, by the extracted generator line, or the generator itself
 gen_page() {
   if [ "${1:-}" != direct ] && [ -n "$GENLINE" ]; then
     bash -c "$(fill "$GENLINE" "$REPO_ROOT" "$SPEC" "" "" "")" >/dev/null 2>&1
@@ -73,7 +63,6 @@ gen_page() {
     python3 -I "$GEN" "$SPEC" "$HTML" >/dev/null 2>&1
   fi
 }
-# ret <file> <verdict line> <sha> <path> ...: a canned critic return
 ret() {
   local file="$1" verdict="$2"; shift 2
   { echo "Canned critic return."; while [ $# -ge 2 ]; do printf 'READ-SHA256 %s %s\n' "$1" "$2"; shift 2; done; printf '\n%s\n' "$verdict"; } > "$file"
@@ -81,16 +70,15 @@ ret() {
 retspec() { QS_MD="$(sha "$SPEC")"; QS_HTML="$(sha "$HTML")"; ret "$SPEC.critic-spec-r$1.md" "$2" "$QS_MD" "$SPEC" "$QS_HTML" "$HTML"; }
 retplan() { QP_PLAN="$(sha "$PLAN")"; QP_SPEC="$(sha "$SPEC")"; ret "$SPEC.critic-plan-r$1.md" "$2" "$QP_PLAN" "$PLAN" "$QP_SPEC" "$SPEC"; }
 stub() { printf 'Earlier round.\n\n%s\n' "$2" > "$SPEC.critic-$1.md"; }
-# seal1 <verdict> <file> <sha>: the extracted seal command, or the script itself with DIRECT=1. SEALRC 127 when the prose has none.
+NO_SEAL_COMMAND=127
 seal1() {
   if [ "${DIRECT:-}" = 1 ]; then SEALOUT="$(bash "$SEALSH" "$1" "$2" "$3" 2>&1)"; SEALRC=$?
-  elif [ -z "$SEALLINE" ]; then SEALOUT="no seal command in SKILL.md"; SEALRC=127
+  elif [ -z "$SEALLINE" ]; then SEALOUT="no seal command in SKILL.md"; SEALRC=$NO_SEAL_COMMAND
   else SEALOUT="$(bash -c "$(fill "$SEALLINE" "$REPO_ROOT" "$SPEC" "$1" "$2" "$3")" 2>&1)"; SEALRC=$?
   fi
 }
 sealspec() { seal1 "$SPEC.critic-spec-r$1.md" "$SPEC" "$QS_MD"; seal1 "$SPEC.critic-spec-r$1.md" "$HTML" "$QS_HTML"; }
 sealplan() { seal1 "$SPEC.critic-plan-r$1.md" "$PLAN" "$QP_PLAN"; seal1 "$SPEC.critic-plan-r$1.md" "$SPEC" "$QP_SPEC"; }
-# send <path>: send-file against the fixture bridge root; QUEUED is the file it queued
 send() {
   SOUT="$(BRIDGE_ROOT="$BR" bun "$ROUTE" send-file 1 "$1" 2>&1)"; SRC=$?
   QUEUED=""; [ "$SRC" -eq 0 ] && QUEUED="${SOUT##*queued }"
@@ -130,7 +118,7 @@ refused "d: no seal line is refused as such, not as a missing plan critic" "$HTM
 
 echo "== e: each extracted text is allowed by both hooks; the refused shapes are denied =="
 newfix e
-hook() { # hook <script> <command>: HRC, HOUT, HERR
+hook() {
   local payload; payload="$(jq -cn --arg c "$2" --arg d "$REPO_ROOT" '{tool_name:"Bash",tool_input:{command:$c},cwd:$d}')"
   HOUT="$(printf '%s' "$payload" | env -u ENV_PREFIX_GUARD_OK -u CHOKEPOINT_REGISTRY bash "$1" 2>"$T/herr")"; HRC=$?; HERR="$(cat "$T/herr")"
   HDEC="$(printf '%s' "$HOUT" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null || true)"
@@ -173,7 +161,7 @@ newfix g; gen_page; QS_MD="$(sha "$SPEC")"; QS_HTML="$(sha "$HTML")"
 ret "$SPEC.critic-spec-r1.md" "SPEC CLEAN"
 cp "$SPEC.critic-spec-r1.md" "$T/g-before"
 seal1 "$SPEC.critic-spec-r1.md" "$SPEC" "$QS_MD"
-if [ "$SEALRC" -eq 127 ]; then fail "g: the seal command is in SKILL.md"; else
+if [ "$SEALRC" -eq "$NO_SEAL_COMMAND" ]; then fail "g: the seal command is in SKILL.md"; else
   [ "$SEALRC" -ne 0 ] && pass "g: the seal step is refused" || fail "g: the seal step is refused" "rc=$SEALRC"
   has "g: the refusal says the return does not quote it" "does not quote" "$SEALOUT"
 fi
@@ -192,7 +180,7 @@ PRIM="$T/prim"; WT="$T/wt"; OUT="$T/outside"; HOMEFX="$T/home"; EMPTYHOME="$T/em
 mkdir -p "$PRIM/scripts/lib" "$PRIM/scripts/ci" "$OUT" "$HOMEFX/Documents/github/himmel/scripts/lib" "$EMPTYHOME"
 : > "$PRIM/scripts/lib/initiative-workers.sh"; echo 'x' > "$PRIM/scripts/ci/core-paths.txt"; : > "$HOMEFX/Documents/github/himmel/scripts/lib/initiative-workers.sh"
 g init -q "$PRIM"; g -C "$PRIM" add -A; g -C "$PRIM" commit -qm base; g -C "$PRIM" worktree add -q -b wt "$WT"
-blockrun() { # blockrun <cwd> <HOME> [HIMMEL_REPO]: what the block prints
+blockrun() {
   ( cd "$1" && GIT_CEILING_DIRECTORIES="$T" HOME="$2" env -u HIMMEL_REPO ${3:+HIMMEL_REPO="$3"} bash -c "$BLOCK" 2>/dev/null )
 }
 if [ -z "$BLOCK" ]; then fail "i: the checkout block is in SKILL.md (markers # >>> / # <<< himmel checkout for the critic seal)"; else

@@ -12,8 +12,7 @@ refuse (naming file and line) and write nothing, because the draft state lives i
 seal. Only the plain spellings are refused: a decorated one (a bold or quoted Status:, other draft
 wording) is not, and the page reaches the operator only after a critic reads those bytes. It prints two lines, the sha256 of the md it read and of the page it wrote; the critic
 reads both files, quotes both shas, and both get sealed (chief-kit/critic-seal.sh, one run per file),
-because send-file wants a seal for the page's own bytes. The page draws the spec's `svg` fence under
-## Diagrams, refuses a spec with none, and carries send-file's CSP meta.
+because send-file wants a seal for the page's own bytes.
 """
 import hashlib
 import html
@@ -34,7 +33,6 @@ SVG_TAGS = {"svg", "g", "defs", "marker", "path", "rect", "circle", "ellipse", "
 
 
 def svg_problem(src):
-    """Why an svg fence cannot be drawn on the page, or None: drawing elements only, nothing that runs or fetches."""
     if re.search(r"<[!?]", src):
         return "holds a <! or <? construct"
     try:
@@ -61,7 +59,6 @@ def svg_problem(src):
 
 
 def diagram_check(body, first):
-    """None when the md holds at least one drawable svg fence under ## Diagrams, else '<line>: <reason>'; a leading ': ' means the refusal names the file only."""
     lines, i, section, found = body.split("\n"), 0, "", 0
     while i < len(lines):
         if lines[i].startswith("## "):
@@ -72,13 +69,13 @@ def diagram_check(body, first):
             while i < len(lines) and lines[i] != FENCE_END:
                 i += 1
             if i == len(lines):
-                return f"{first + start}: the svg fence is never closed"
+                return first + start, "the svg fence is never closed"
             why = svg_problem("\n".join(lines[start + 1:i]))
             if why:
-                return f"{first + start}: the svg fence {why}"
+                return first + start, f"the svg fence {why}"
             found += section == "Diagrams"
         i += 1
-    return None if found else ": has no svg fence under ## Diagrams; a page carries a diagram"
+    return None if found else (None, "has no svg fence under ## Diagrams; a page carries a diagram")
 
 
 def attr(value):
@@ -207,10 +204,10 @@ def main():
         for n, line in enumerate(md[:fm.end()].split("\n"), 1):
             if re.match(r"\s*status\s*:", line, re.I) and re.search(r"\bdraft\b|not for signature", line.split(":", 1)[1], re.I):
                 sys.exit(f"spec-page-gen: {spec}:{n} is a front matter status holding draft text ({line.strip()[:80]!r}); the draft state lives in the missing critic seal, not in the md. Remove the words from the status, generate the page again, then run the critic on the md and the new page. Nothing written")
-    why = diagram_check(body, first + 1)
-    if why:
-        n, why = ("", why[2:]) if why.startswith(": ") else why.split(": ", 1)
-        sys.exit(f"spec-page-gen: {spec}{':' + n if n else ''} {why}. Draw it in the md, generate the page again, then run the critic on the md and the new page. Nothing written")
+    refusal = diagram_check(body, first + 1)
+    if refusal:
+        n, why = refusal
+        sys.exit(f"spec-page-gen: {spec}{f':{n}' if n else ''} {why}. Draw it in the md, generate the page again, then run the critic on the md and the new page. Nothing written")
     title = re.search(r"^# (.+)$", body, re.M)
     bar =" | ".join(html.escape(meta[k][:9] if k == "base" else meta[k]) for k in ("tickets", "date", "base", "author") if k in meta)
     if DRAFT_LINE.search(bar):
