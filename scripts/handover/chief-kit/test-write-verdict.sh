@@ -72,6 +72,25 @@ KEYHOME="$tmp/home"
 mkdir -p "$KEYHOME/.config/himmel" || exit 1
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$KEYHOME/.config/himmel/go-hmac.key"
 export HOME="$KEYHOME"
+mkdir -p "$tmp/ghbin" || exit 1
+cat > "$tmp/ghbin/gh" <<'STUB'
+#!/usr/bin/env bash
+q="" prev=""
+for a in "$@"; do
+    if [ "$prev" = --jq ]; then q=$a; fi
+    prev=$a
+done
+if [ "${1:-} ${2:-}" = "api graphql" ]; then
+    [ "${STUB_THREADS_FAIL:-0}" = 1 ] && { echo "graphql boom" >&2; exit 1; }
+    none='{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}'
+    printf '%s' "${STUB_THREADS:-$none}" | jq -r "$q"
+    exit $?
+fi
+echo "unexpected gh: $*" >&2
+exit 1
+STUB
+chmod +x "$tmp/ghbin/gh" || exit 1
+export PATH="$tmp/ghbin:$PATH"
 fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)) ;; esac; }
@@ -1009,6 +1028,39 @@ check "28: a writer in a tree with no scripts/ledger/ still writes" "$rc" 0
 contains "28: ...recording not read" "$(cat "$out" 2>/dev/null)" "CEILINGS: not read (no scripts/ledger/ceiling-lookup.sh"
 case "$(cat "$f26" 2>/dev/null)" in *CEILINGS:*) check "28: a --delta-noop record runs no lookup" looked none ;; *) check "28: a --delta-noop record runs no lookup" none none ;; esac
 contains "28: control, the --delta-noop record exists" "$(cat "$f26" 2>/dev/null)" "delta: no-op"
+
+# --- 29. --delta-noop refuses over an unresolved review thread ---
+th_open='{"isResolved":false,"path":"scripts/jira/src/policy.ts","line":88,"originalLine":88,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"createdAt":"2026-11-09T05:07:51Z","url":"u1"}]}}'
+th_done='{"isResolved":true,"path":"README.md","line":1,"originalLine":1,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"createdAt":"2026-11-09T04:58:00Z","url":"u0"}]}}'
+th_page() { printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[%s]}}}}}' "$1"; }
+fx29() { fx_git checkout -q -b "$1" "$J26" && printf '%s\n' "$1" >> "$fx/docs/c.md" && fx_commit "$1"; }
+N29a=$(fx29 n29a)
+rc=0; out=$(cd "$fx" && STUB_THREADS="$(th_page "$th_done,$th_open")" wv q26 GO "$N29a" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
+check "29: a no-op GO over an unresolved thread is refused rc 2" "$rc" 2
+check "29: ...and nothing is written" "$([ -e "$scope_dir/q26/delta-noop-$N29a.md" ] && echo yes || echo no)" no
+contains "29: the refusal names the thread" "$out" "scripts/jira/src/policy.ts:88 by coderabbitai at 2026-11-09T05:07:51Z"
+contains "29: the refusal names the override" "$out" "--open-threads-ok"
+rc=0; out=$(cd "$fx" && STUB_THREADS="$(th_page "$th_open")" wv q26 GO "$N29a" --evidence-file "$evd/noop26.md" --delta-noop "$J26" --open-threads-ok "chief ruled it answered in the PR body" 2>&1) || rc=$?
+check "29: the override writes the no-op GO" "$rc" 0
+contains "29: the override warns loudly" "$out" "WARNING"
+contains "29: the record carries the override reason" "$(cat "$scope_dir/q26/delta-noop-$N29a.md" 2>/dev/null)" "open-threads-ok: 1 open, chief ruled it answered in the PR body"
+rc=0; verdict_rc q26 "$N29a" || rc=$?
+check "29: go_trust_verdict accepts the overridden no-op GO" "$rc" 0
+N29b=$(fx29 n29b)
+rc=0; (cd "$fx" && STUB_THREADS="$(th_page "$th_open")" wv q26 GO "$N29b" --evidence-file "$evd/noop26.md" --delta-noop "$J26" --open-threads-ok 'two
+lines' >/dev/null 2>&1) || rc=$?
+check "29: a multi-line override reason is refused rc 2" "$rc" 2
+rc=0; (cd "$fx" && wv q26o GO "$N29b" --evidence-file "$evd/noop26.md" --open-threads-ok "x" >/dev/null 2>&1) || rc=$?
+check "29: --open-threads-ok without --delta-noop is refused rc 2" "$rc" 2
+rc=0; out=$(cd "$fx" && STUB_THREADS="$(th_page "$th_done")" wv q26 GO "$N29b" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
+check "29: control, every thread resolved: the no-op GO is written" "$rc" 0
+N29c=$(fx29 n29c)
+rc=0; out=$(cd "$fx" && STUB_THREADS_FAIL=1 wv q26 GO "$N29c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
+check "29: an unreadable thread read warns and writes" "$rc" 0
+contains "29: ...naming the unread threads" "$out" "could not read the review threads"
+printf 'open-threads-ok: typed\n' > "$evd/typed29.md"
+rc=0; (cd "$fx" && wv q26t GO "$N29c" --evidence-file "$evd/typed29.md" >/dev/null 2>&1) || rc=$?
+check "29: evidence typing an open-threads-ok: line is refused" "$rc" 2
 
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"
