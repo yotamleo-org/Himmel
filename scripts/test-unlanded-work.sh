@@ -597,6 +597,30 @@ out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --class UN
 if [ -z "$out" ]; then pass "the SUPERSEDED branch is out of UNLANDED-LIVE"; else fail "still UNLANDED-LIVE: $out"; fi
 rm -rf "$t"
 
+echo "== CLOSED PR older than the 1000-PR cache, found by a per-branch lookup -> SUPERSEDED =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
+git -C "$t/repo" checkout -q -b fix/himmel-7622-old-closed
+commit_dated "$t/repo" 7000 old.md "closed long ago"
+tipold="$(git -C "$t/repo" rev-parse HEAD)"
+git -C "$t/repo" checkout -q main
+mkdir -p "$t/stub"
+cat > "$t/stub/gh" <<EOF
+#!/bin/sh
+case " \$* " in
+  *" --head fix/himmel-7622-old-closed "*) echo '[{"number":3957,"state":"CLOSED","headRefOid":"$tipold"}]' ;;
+  *) echo '[]' ;;
+esac
+EOF
+chmod +x "$t/stub/gh"
+out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --tsv 2>&1)"
+row="$(tsv_row "$out" fix/himmel-7622-old-closed)"
+if grepq "$row" -E "^SUPERSEDED"$'\t' && grepq "$row" -F 'PR #3957' && [ "$(printf '%s' "$row" | cut -f5)" = 0 ]; then
+    pass "closed PR outside the cache -> SUPERSEDED, PR #3957, aged=0"
+else
+    fail "closed PR outside the cache -> $row"
+fi
+rm -rf "$t"
+
 echo "== CLOSED PR but the branch moved on after it (tip is not the PR head) -> stays UNLANDED-LIVE =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded.XXXXXX")" || exit 1; make_repo "$t/repo"
 git -C "$t/repo" checkout -q -b feat/himmel-9301-closed-then-more

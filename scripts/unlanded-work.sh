@@ -404,6 +404,14 @@ while IFS= read -r branch; do
         fi
     fi
 
+    # The cache holds only the newest 1000 PRs, so a branch closed before them
+    # reads as never opened; ask the forge for that one branch before warning.
+    if [ -z "$closed_pr" ] && [ "$FORGE_OK" = 1 ] && { [ "$class" = "UNLANDED-LIVE" ] || [ "$class" = "STALE" ]; } \
+       && ! printf '%s' "$FORGE_CACHE" | jq -e --arg b "$branch" 'any(.[]; .headRefName==$b)' >/dev/null 2>&1; then
+        closed_pr="$(${tcmd:+"$tcmd" "$FORGE_TIMEOUT"} "$GH_BIN" pr list --head "$branch" --state closed --json number,headRefOid,state 2>/dev/null \
+            | jq -r --arg tip "$tip" '[.[] | select(.state=="CLOSED" and .headRefOid==$tip) | .number] | max // empty' 2>/dev/null)"
+    fi
+
     # A branch whose tip is the head of a closed PR was opened and ruled on:
     # not "never opened as a PR". Content already on main keeps its quieter
     # LANDED-ELSEWHERE; a delta that could not be computed stays loud.
