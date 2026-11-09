@@ -379,11 +379,13 @@ cat > "$CAUSEBIN/claude" <<'STUB'
 case "$STUB_MODE" in
   auth|authstale|seedfail|capauth)
     echo '{"type":"result","is_error":true,"result":"Failed to authenticate: OAuth session expired and could not be refreshed"}'; exit 1 ;;
+  ratelimit)
+    echo '{"type":"result","is_error":true,"result":"API Error: rate limited, try again later"}'; exit 1 ;;
   *) echo '{"type":"result","is_error":false,"result":"ok"}' ;;
 esac
 STUB
 chmod +x "$CAUSEBIN/graphify" "$CAUSEBIN/claude"
-for mode in auth authstale seedfail capauth trust other; do
+for mode in auth authstale seedfail capauth ratelimit trust other; do
   want_rc=2; cap=""; [ "$mode" != capauth ] || { want_rc=4; cap=1; }
   printf 'test-subscription-auth\n' > "$HERMETIC_HOME/.claude/.credentials.json"
   : > "$WS/state-$mode"
@@ -396,6 +398,10 @@ for mode in auth authstale seedfail capauth trust other; do
     --maps-dir "$CM" --title "Cause Map" --slug cause-map --corpus-tag "cause$mode" 2>&1 ); rc=$?
   [ "$rc" -eq "$want_rc" ] && pass "T6c-$mode exits $want_rc" || fail "T6c-$mode should exit $want_rc (got $rc): $out"
   case "$mode" in
+    ratelimit)
+      printf '%s\n' "$out" | grep -q "auth probe reports, cause: API Error: rate limited" && pass "T6c-ratelimit names the probe error" || fail "T6c-ratelimit must name the probe error: $out"
+      printf '%s\n' "$out" | grep -q "re-login" && fail "T6c-ratelimit advised a re-login for a non-auth error: $out" || pass "T6c-ratelimit gives no re-login advice"
+      [ "$(wc -l < "$WS/calls-$mode")" -eq 1 ] && pass "T6c-ratelimit does not retry" || fail "T6c-ratelimit must not retry" ;;
     capauth)
       [ "$(wc -l < "$WS/calls-$mode")" -eq 1 ] && pass "T6c-capauth does not retry past the chunk cap" || fail "T6c-capauth must stop at the cap, not retry: $(cat "$WS/calls-$mode")" ;;
     auth)

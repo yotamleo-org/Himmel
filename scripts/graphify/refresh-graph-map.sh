@@ -2713,17 +2713,20 @@ SHIM
   fi
   _AUTH_CAUSE=""
   _probe_claude_auth() {
-    local verdict out
+    local verdict out left t
     _AUTH_CAUSE=""
+    [ -n "$_deadline_bin" ] || return 0
+    left="$(_deadline_left)"
+    t=60
+    if [ "$left" != unbounded ]; then
+      [ "$left" -gt 31 ] || return 0
+      [ $((left - 30)) -ge 60 ] || t=$((left - 30))
+    fi
     if [ -f "${_bank_preflight:-}" ]; then
-      verdict="$(CADENCE_USAGE_WORKER="graphmap-$NAME" bash "$_bank_preflight" || true)"
+      verdict="$(CADENCE_USAGE_WORKER="graphmap-$NAME" "$_deadline_bin" -k 5 20 bash "$_bank_preflight" || true)"
       [ "$verdict" != "SKIPPED-BANK" ] || return 0
     fi
-    if [ -n "$_deadline_bin" ]; then
-      out="$(printf 'ok\n' | "$_deadline_bin" -k 5 60 claude -p --output-format json --permission-mode default 2>/dev/null || true)"
-    else
-      out="$(printf 'ok\n' | claude -p --output-format json --permission-mode default 2>/dev/null || true)"
-    fi
+    out="$(printf 'ok\n' | "$_deadline_bin" -k 5 "$t" claude -p --output-format json --permission-mode default 2>/dev/null || true)"
     _AUTH_CAUSE="$(printf '%s' "$out" | python3 -I -c 'import json,sys
 try:
     d=json.loads(sys.stdin.read())
@@ -2786,7 +2789,12 @@ if isinstance(d,dict) and d.get("is_error"):
       _keep_finished_chunks
     else
       if [ -n "$_AUTH_CAUSE" ]; then
-        echo "refresh-graph-map: graphify --update failed: the Claude auth probe reports, cause: $_AUTH_CAUSE (re-login with Claude Code, then rerun)" >&2
+        case "$_AUTH_CAUSE" in
+          *[Aa]uthenticat*|*OAuth*|*[Ll]ogin*|*expired*)
+            echo "refresh-graph-map: graphify --update failed: the Claude auth probe reports, cause: $_AUTH_CAUSE (re-login with Claude Code, then rerun)" >&2 ;;
+          *)
+            echo "refresh-graph-map: graphify --update failed: the Claude auth probe reports, cause: $_AUTH_CAUSE" >&2 ;;
+        esac
       elif [ -s "$_TRUST_FILE" ]; then
         echo "refresh-graph-map: graphify --update failed: workspace not trusted, cause: $(cat "$_TRUST_FILE")" >&2
       elif [ -s "$_LAST_FILE" ]; then
