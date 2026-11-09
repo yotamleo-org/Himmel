@@ -127,7 +127,7 @@ class Judging:
                     why = "settled_no_verdict"
                 self.ledger._log({"ev": "judge_failed", "slot": slot, "why": why})
                 return self.end("failed_slot")
-        while True:
+        while True:  # t13b-ok: bounded slot loop, ends when next_slot returns None
             i = self.next_slot()
             if i is None:
                 return self.end("complete")

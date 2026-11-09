@@ -423,7 +423,7 @@ class Broker:
                         break
                     self.record({"kind": "admit", "id": admitted, "peer_pid": pid, "query_sha256": msg.get("query_sha256")})
                     if self.a.nvml_cmd:
-                        threading.Thread(target=self.nvml_watch, args=(pid, stop, gpu), daemon=True).start()
+                        threading.Thread(target=self.nvml_watch, args=(pid, stop, gpu), daemon=True).start()  # t13b-ok: per-session watcher thread, dies with the sandbox broker
                     f.write(json.dumps({"ok": True, "id": admitted}).encode() + b"\n"); f.flush()
                     continue
                 if op == "terminal":
@@ -461,9 +461,9 @@ class Broker:
         self.record({"kind": "broker_start", "socket_ino": self.ino, "cap": self.a.cap, "arm": self.a.arm})
         signal.signal(signal.SIGTERM, _stop)
         try:
-            while True:
+            while True:  # t13b-ok: broker accept loop, ended by SIGTERM from the run
                 conn, _ = srv.accept()
-                threading.Thread(target=self.handle, args=(conn,), daemon=True).start()
+                threading.Thread(target=self.handle, args=(conn,), daemon=True).start()  # t13b-ok: per-connection handler thread, dies with the broker
         except KeyboardInterrupt:
             pass
         finally:
