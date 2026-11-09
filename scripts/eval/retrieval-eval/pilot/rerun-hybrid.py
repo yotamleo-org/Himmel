@@ -196,7 +196,7 @@ def run(a):
     done = {e["task"] for e in st.events if e["ev"] == "book"}
     for q in qs:
         if q["id"] in done:
-            continue          # never replayed: its booking stands
+            continue
         if st.queries() >= MAX_Q:
             refused += 1
             continue

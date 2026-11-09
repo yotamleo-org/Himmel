@@ -73,11 +73,11 @@ class Ledger:
         self.path, self.cap = path, cap
         self.spent, self.b = 0.0, b
         self.inflight, self.unsettled, self.reserves = {}, {}, {}
-        self.s_interval = {}           # attempt -> booking, S queries admitted since the last settle
+        self.s_interval = {}
         self.usage_pause_deadline = None
-        self.stop = None               # {"kind": HARD_STOP|FINALIZE_ONLY, "reason": ...}
+        self.stop = None
         self.events = []
-        self.triples = {}              # task -> {"arms": {arm: status}, "state": admitted|done}
+        self.triples = {}
         if os.path.exists(path):
             with open(path) as f:
                 for line in f:
@@ -98,7 +98,7 @@ class Ledger:
     def _apply(self, ev):
         self.events.append(ev)
         k = ev["ev"]
-        if k == "admit_triple":     # one durable event: both reservations and the admission, or nothing
+        if k == "admit_triple":
             t = ev["task"]
             for name, amount in (("triple:%s:answers" % t, ev["answers"]), ("triple:%s:search" % t, ev["search"])):
                 self.reserves[name] = self.reserves.get(name, 0.0) + amount
@@ -232,7 +232,7 @@ class Ledger:
         """Settle the dedicated key's cash delta for the admitted S invocations of the interval,
         then reprice. Returns False on a HARD_STOP (overrun or unexplained usage)."""
         if not isinstance(delta, (int, float)) or not math.isfinite(delta) or delta < 0:
-            self.halt("HARD_STOP", "unknown_spend")   # a negative delta is a meter reset, never a refund
+            self.halt("HARD_STOP", "unknown_spend")
             return False
         attempts = sorted(self.s_interval)
         booked = sum(self.s_interval.values())
@@ -309,7 +309,7 @@ class ListBooking:
         return "local-%s" % task_id
 
     def settle(self, booking, status):
-        pass   # S query cash settles per interval (settle_s_interval), never per query
+        pass
 
 
 def now():

@@ -266,7 +266,7 @@ def run(name, work):
         except RP.Crash:
             pass
         crashed_task = [c for c in p.launcher.calls if c.startswith("answer-")][-1].split("-")[1]
-        p2, fin2 = build(work, rule=crash, recovered=(0.05, True) if name == "crash-resume" else (None, False))  # a fresh process, same ledger
+        p2, fin2 = build(work, rule=crash, recovered=(0.05, True) if name == "crash-resume" else (None, False))
         rep = p2.run()
         out = summary(p2, fin2, rep)
         out["replayed"] = sum(1 for c in p2.launcher.calls if c.split("-")[1:2] == [crashed_task] and c.startswith("answer-"))

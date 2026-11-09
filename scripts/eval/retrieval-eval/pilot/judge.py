@@ -156,11 +156,11 @@ class Judging:
                 self.ledger.settle(attempt, u.cost)
                 self.ledger._log({"ev": "judge_failed", "slot": i, "why": "usage_refused_in_call"})
                 return self.end("failed_slot")
-            except Exception as e:     # no replay of a paid call, whatever went wrong
+            except Exception as e:
                 self.ledger.killed(attempt, None, False)
                 self.ledger._log({"ev": "judge_failed", "slot": i, "why": type(e).__name__})
                 return self.end("failed_slot")
-            if v.get("cost") is None:   # no usage evidence is never free: the booking stays unsettled
+            if v.get("cost") is None:
                 self.ledger.killed(attempt, None, False)
                 self.ledger._log({"ev": "judge_failed", "slot": i, "why": "no_usage_evidence"})
                 return self.end("unknown_spend")
@@ -203,7 +203,7 @@ class RealJudge:
     def __init__(self, cfg, items):
         if os.environ.get("HIMMEL_BILLED_OK") != "1":
             raise SystemExit("judge: refused: judge calls need HIMMEL_BILLED_OK=1")
-        self.cfg, self.items = cfg, items      # items: {candidate: {question, fact, answer, path, file}}
+        self.cfg, self.items = cfg, items
         self.prompt = open(os.path.join(HERE, "judge-prompt.md")).read()
 
     def __call__(self, candidate, arm, attempt):

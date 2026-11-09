@@ -86,7 +86,7 @@ CONTROL_TASK = {"id": "ctl", "facts": [{"text": "one session per doc", "variants
 CONTROL_NT = {"id": "ctl-nt", "answerability": "not_there", "facts": []}
 CONTROL_FILES = {"/work/himmel/docs/right.md": "The lock keeps one session per doc.", "/work/himmel/docs/wrong.md": "Nothing relevant.",
                  "/work/himmel/docs/a.md": "x", "/work/himmel/docs/b.md": "y", "/work/himmel/docs/c.md": "z"}
-CONTROLS = [  # (name, task, answer text, expected supported)
+CONTROLS = [
     ("right file, wrong fact", CONTROL_TASK, "ANSWER: two sessions per doc\nFILES:\n/work/himmel/docs/right.md", False),
     ("right fact, no file", CONTROL_TASK, "ANSWER: one session per doc\nFILES:\n", False),
     ("right fact, right file", CONTROL_TASK, "ANSWER: one session per doc\nFILES:\n/work/himmel/docs/right.md", True),

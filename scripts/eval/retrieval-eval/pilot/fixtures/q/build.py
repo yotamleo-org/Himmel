@@ -9,7 +9,7 @@ import hashlib, json, os, sys
 
 OUT = sys.argv[1]
 KINDS = [("luna_lookup", 6), ("luna_meaning", 8), ("himmel_docs", 6), ("himmel_code", 8), ("two_files", 8), ("not_there", 4)]
-files = {}   # (repo, path) -> text
+files = {}
 bank, hits = [], []
 
 

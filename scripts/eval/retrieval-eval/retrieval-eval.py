@@ -645,7 +645,7 @@ def cmd_run(a):
                     deep = run_arm(arm, q["q"], repo, a, evidence_depth)
                     if not (deep[2] or deep[3]):
                         top20 = deep[0][:evidence_depth]
-                    else:  # the evidence list falls back to the k-list, and the row says so
+                    else:
                         deep_failed = True
                 got[arm] = dict(files=files, files_top20=top20, _text=text, ms=ms, timeout=bool(to), error=bool(err),
                                 qmd_error=qmd_error, deep_failed=deep_failed)

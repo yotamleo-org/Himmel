@@ -34,7 +34,7 @@ c.execute("CREATE TABLE t(x)"); c.commit()
 c.execute("INSERT INTO t VALUES ('in-wal-only')"); c.commit()   # connection stays open: no checkpoint
 assert os.path.getsize(live + "-wal") > 0
 rc = subprocess.run([sys.executable, "-I", pins, "snapshot", live, os.path.join(w, "wal-snap.sqlite")]).returncode
-shutil.copyfile(live, os.path.join(w, "wal-half.sqlite"))      # the main file alone, no -wal
+shutil.copyfile(live, os.path.join(w, "wal-half.sqlite"))
 def rows(p):
     try:
         return [r[0] for r in sqlite3.connect(p).execute("SELECT x FROM t")]

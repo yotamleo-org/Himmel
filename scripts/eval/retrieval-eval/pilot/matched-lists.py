@@ -50,8 +50,12 @@ def shaper_identity():
     return vocab, sha(blob)
 
 
+def is_legacy_gold_row(task):
+    return "q" in task and "question" not in task
+
+
 def normalize(task):
-    if "q" in task and "question" not in task:   # an old-75 diagnostic row: gold names only
+    if is_legacy_gold_row(task):
         return {"id": task["id"], "question": task["q"], "kind": task.get("kind", "legacy"), "half": task.get("half"),
                 "stratum": task.get("stratum"), "facts": [], "files": [{"repo": "himmel", "path": p} for p in task.get("gold", [])],
                 "legacy": True}
@@ -155,7 +159,7 @@ def run_lists(bank, mode, ctx, booking, out):
         if not stop:
             booked = booking.reserve(task["id"]) if mode == "S" else booking.local(task["id"])
             if booked is None:
-                stop = True   # a refused S booking ends the list: nothing after it launches
+                stop = True
         if booked is not None:
             work = tempfile.mkdtemp(prefix="matched-list.", dir=ctx.get("work"))
             try:

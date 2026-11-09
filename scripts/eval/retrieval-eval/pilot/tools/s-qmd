@@ -64,7 +64,7 @@ def classify(ev, arm):
     if ev.get("rc") not in (0, None) and not ev.get("timed_out"):
         reasons.append("qmd_exit_%s" % ev.get("rc"))
     for marker, name in SKIP_STDERR.items():
-        if marker in stderr:  # substring: a marker concatenated to progress text still counts
+        if marker in stderr:
             reasons.append(name)
     hits = ev.get("hits_raw")
     if hits is None and not ev.get("timed_out") and ev.get("rc") == 0:

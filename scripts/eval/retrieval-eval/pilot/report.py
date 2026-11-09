@@ -191,7 +191,7 @@ def _arms(cost=(0.19, 0.21, 0.22)):
                 "latency_ms_median": 41000 + 3000 * i, "tokens_mean": 52000 + 4000 * i} for i, (a, c) in enumerate(zip(ARMS, cost))}
 
 
-FIXTURES = [  # (run_id, run report, scores maker, cohort size)
+FIXTURES = [
     ("fixture-rag-pilot-r18-short", {"stop_kind": "FINALIZE_ONLY", "reason": "capacity_refused", "finalization_status": "short",
                                      "attempted": 38, "completed": 38}, lambda c: _scores(c, .70, .55, .40), 37),
     ("fixture-rag-pilot-r18-void", {"stop_kind": "HARD_STOP", "reason": "insufficient_common_cohort", "finalization_status": "none",

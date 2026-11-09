@@ -126,14 +126,14 @@ def run(name, work):
         except RuntimeError:
             pass
         first = list(call.calls)
-        j2, led2, call2, _ = setup(work)        # a fresh process on the same ledger
+        j2, led2, call2, _ = setup(work)
         j2.run()
         out = summary(j2, led2, call2)
         out["first_calls"] = len(first)
         out["replayed"] = len(set(first) & set(call2.calls))
         return out
     if name == "deadline-persists":
-        clock = Clock(t=1_000_000.0 + 3 * 86400)   # judging starts three days after an admission pause
+        clock = Clock(t=1_000_000.0 + 3 * 86400)
         j, led, call, _ = setup(work, quota=Quota(refuse_after=7), clock=clock, prior_deadline=1_000_000.0)
         j.run()
         out = summary(j, led, call)

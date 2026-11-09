@@ -40,6 +40,7 @@ def _load(name):
 L = _load("ledger")
 PERMS = ["".join(p) for p in itertools.permutations("VSQ")]
 CHECKPOINTS = (10, 20, 30)
+KEY_METER_SETTLE_SECONDS = 60
 
 
 class Killed(Exception):
@@ -83,8 +84,8 @@ class Pilot:
         self.usage, self.quota, self.readiness, self.prober, self.clock = usage, quota, readiness, prober, clock
         self.finalize_cb = finalize
         self.plan = schedule([t["id"] for t in tasks], seed)
-        self.rows = {}           # task -> arm -> outcome row
-        self.status = {}         # task -> complete | interrupted | excluded:<reasons>
+        self.rows = {}
+        self.status = {}
         self.launches = 0
         self.g6_passed = self._mark("g6_passed")
 
@@ -106,7 +107,7 @@ class Pilot:
 
     def call(self, task, arm, phase, kind, from_reserve=None):
         attempt = "%s-%s-%s" % (phase, task, arm)
-        self.ledger.book(attempt, kind, L.BOOK[kind], from_reserve)   # durable before launch
+        self.ledger.book(attempt, kind, L.BOOK[kind], from_reserve)
         self.launches += 1
         try:
             out = self.launcher.launch(task, arm, attempt, phase)
@@ -115,13 +116,13 @@ class Pilot:
             return {"killed": True}
         except Crash:
             raise
-        except Exception as e:            # an unclassified failure is a HARD_STOP
+        except Exception as e:
             self.mark("unclassified", detail=type(e).__name__)
             self.ledger._log({"ev": "unsettled", "attempt": attempt})
             self.stop("HARD_STOP", "unclassified")
             return {"killed": True}
         costs = [c for c in (out.get("cost_usd"), out.get("usage_cost")) if isinstance(c, (int, float)) and not isinstance(c, bool)]
-        if not costs:   # no cost evidence at all is never a free call: the booking stays unsettled
+        if not costs:
             self.ledger.killed(attempt, None, False)
             return dict(out, killed=True)
         self.ledger.settle(attempt, max(costs))
@@ -130,7 +131,7 @@ class Pilot:
         return out
 
     def settle_usage(self):
-        self.clock.sleep(60)            # the 60-second settling rule before reading the key meter
+        self.clock.sleep(KEY_METER_SETTLE_SECONDS)
         total = self.usage.cumulative()
         if total is None:
             return self.stop("HARD_STOP", "unknown_spend")
@@ -252,7 +253,7 @@ class Pilot:
 
     def checkpoint(self, name):
         if self.ledger.reserves.get("probes", 0.0) + L.EPS < self.ledger.b:
-            return True     # probes cancelled (repricing) or none left
+            return True
         p = self.probe(name)
         if any(r.get("integrity") for r in p.values()):
             return self.stop("HARD_STOP", "security_probe_failure")
