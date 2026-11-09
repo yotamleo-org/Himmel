@@ -191,7 +191,7 @@ live_witness_exempt_load() {
     esac
     LW_EXEMPT="$LW_EXEMPT$_glob
 "
-  done < "$_f"
+  done < "$_f" # read-sink-ok: the exempt list is the repo's own file, or the path a test sets through SUITE_LIVE_EXEMPT
   return 0
 }
 live_witness_is_exempt() {
