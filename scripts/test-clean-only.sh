@@ -137,6 +137,7 @@ mk_wt() {
 run_clean() {
     local script="$1"; shift
     (
+        # shellcheck disable=SC2030  # run_verb reads PATH in its own subshell
         export PATH="${RUN_CLEAN_STUB_DIR:-$STUB_DIR}:${PATH}"
         # origin is a real local bare repo (for ls-remote), not a github.com
         # URL, so force forge detection past its origin-hostname sniff.
@@ -400,6 +401,232 @@ expect "10c: lowercase repo name, merged PR: pruned" "$out" is_gone "$WT_C_MERGE
 WT_C_MERGED2=$(mk_wt2 wt-case-merged2 feat/canonical)
 out=$(run_case canon "$CLEAN_GARDEN" prune --only "$WT_C_MERGED2")
 expect "10c: canonical repo name, merged PR: pruned" "$out" is_gone "$WT_C_MERGED2"
+
+# ── case 11: --pr-cache and the pr-cache verb ────────────────────────────────
+echo "CASE 11: --pr-cache and the pr-cache verb"
+# A third repo whose origin is a github-form URL (never contacted:
+# GIT_ALLOW_PROTOCOL=file makes ls-remote fail at once, so the 0-ahead count
+# decides). It is a clone, not a changed origin on $REPO, whose real bare origin
+# the cases above rely on for ls-remote.
+REPO3="$TMP_ROOT/repo-pc"
+git clone -q "$REPO" "$REPO3" >/dev/null 2>&1
+git -C "$REPO3" config user.email t@test.com
+git -C "$REPO3" config user.name t
+git -C "$REPO3" config maintenance.auto false
+git -C "$REPO3" remote set-url origin https://github.com/owner/repo.git
+mk_wt3() {
+    git -C "$REPO3" worktree add -q "$TMP_ROOT/$1" -b "$2" >/dev/null 2>&1
+    echo "$TMP_ROOT/$1"
+}
+# gh stub that logs every call and answers like the real one: GH_VIEW picks the
+# repo-view answer (lower: owner/repo, canon: Owner/Repo, anything else fails),
+# GH_PULLS=fail fails the PR walk. Rows carry the answer's case.
+PC_GH_LOG="$TMP_ROOT_UNIX/pc-gh.log"
+STUB_DIR_PC="$TMP_ROOT_UNIX/bin-pc"
+mkdir -p "$STUB_DIR_PC"
+cat > "$STUB_DIR_PC/gh" <<STUB
+#!/usr/bin/env bash
+args="\$*"
+echo "\$args" >> "$PC_GH_LOG"
+case "\$args" in *"auth status"*) exit 0 ;; esac
+case "\$args" in *"repo view"*)
+    case "\${GH_VIEW:-lower}" in lower) echo "owner/repo"; exit 0 ;; canon) echo "Owner/Repo"; exit 0 ;; *) exit 1 ;; esac ;;
+esac
+case "\$args" in *"api --paginate repos/"*"/pulls"*)
+    [ "\${GH_PULLS:-ok}" = fail ] && exit 1
+    row_repo="owner/repo"; [ "\${GH_VIEW:-lower}" = canon ] && row_repo="Owner/Repo"
+    for kind in feat:merged open:open; do
+        while IFS=' ' read -r branch sha; do
+            printf '%s\t%s\t%s\t%s\n' "\$row_repo" "\$branch" "\${kind#*:}" "\$sha"
+        done < <(git for-each-ref --format='%(refname:short) %(objectname)' "refs/heads/\${kind%%:*}")
+    done
+    exit 0 ;;
+esac
+exit 0
+STUB
+chmod +x "$STUB_DIR_PC/gh"
+run_pc() {
+    GIT_ALLOW_PROTOCOL=file GIT_TERMINAL_PROMPT=0 \
+        RUN_CLEAN_STUB_DIR="$STUB_DIR_PC" RUN_CLEAN_REPO="$REPO3" run_clean "$CLEAN_GARDEN" "$@"
+}
+# run_verb: stdout of `worktree.sh pr-cache` alone (stderr dropped), then rc=<n>.
+run_verb() {
+    (
+        cd "$REPO3" || exit 1
+        set +e
+        # shellcheck disable=SC2031  # the subshell above is another function's
+        PATH="$STUB_DIR_PC:$PATH" FORGE=github GIT_ALLOW_PROTOCOL=file GIT_TERMINAL_PROMPT=0 \
+            bash "$CLEAN_GARDEN" pr-cache 2>/dev/null
+        printf 'rc=%s\n' "$?"
+    )
+}
+gh_calls() { if [ -s "$PC_GH_LOG" ]; then grep -c . "$PC_GH_LOG"; else echo 0; fi; }
+gh_pull_calls() { if [ -s "$PC_GH_LOG" ]; then grep -c 'api --paginate' "$PC_GH_LOG" || true; else echo 0; fi; }
+eq() { [ "$1" = "$2" ]; }
+PCF="$TMP_ROOT_UNIX/pc-files"
+mkdir -p "$PCF"
+SHA0="0000000000000000000000000000000000000000"
+# pc_valid <file> <branch>: a valid branch-scoped file with no rows.
+pc_valid() { printf '# nwo=owner/repo\n# scope=branch %s\n# complete rows=0\n' "$2" > "$1"; }
+# pc_refusal <label> <branch> <reason> <file-writer-function>:
+# a prunable fixture refuses the bad file (rc 2, kept, its own reason), then the
+# SAME fixture with a valid file prunes (the control).
+pc_refusal() {
+    local label="$1" br="$2" reason="$3" wt
+    wt=$(mk_wt3 "wt-pc-${label// /-}" "$br")
+    out=$(run_pc prune --only "$wt" --only-allow-unmerged --pr-cache "$PCF/bad.txt")
+    expect "11 $label: rc 2" "$out" rc_is "$out" 2
+    expect "11 $label: worktree kept" "$out" is_dir "$wt"
+    expect "11 $label: stderr reason" "$out" grepq "$out" -F "ERR worktree: --pr-cache: $reason"
+    pc_valid "$PCF/ok.txt" "$br"
+    out=$(run_pc prune --only "$wt" --only-allow-unmerged --pr-cache "$PCF/ok.txt")
+    expect "11 $label control (valid file prunes): rc 0" "$out" rc_is "$out" 0
+    expect "11 $label control (valid file prunes): worktree removed" "$out" is_gone "$wt"
+}
+
+: > "$PCF/bad.txt"
+pc_refusal "empty cache" none/pc-empty "no nwo header"
+printf '# nwo=owner/repo\n# scope=all\nowner/repo\tx1\tmerged\t%s\nowner/repo\tx2\tmerged\t%s\n' "$SHA0" "$SHA0" > "$PCF/bad.txt"
+pc_refusal "truncated cache" none/pc-trunc "no complete trailer"
+printf '# nwo=owner/repo\n# scope=all\nowner/repo\tx1\tmerged\t%s\nowner/repo\tx2\tmerged\t%s\n# complete rows=3\n' "$SHA0" "$SHA0" > "$PCF/bad.txt"
+pc_refusal "rows cut, trailer kept" none/pc-cut "trailer rows=3 but 2 rows"
+printf '# nwo=owner/repo\n# scope=branch a\n# complete rows=0\n' > "$PCF/bad.txt"
+pc_refusal "scope for another branch" none/pc-scope "scope branch a does not cover"
+printf '# nwo=yotamleo-org/Himmel\n# scope=all\nyotamleo-org/Himmel\tx\tmerged\t%s\n# complete rows=1\n' "$SHA0" > "$PCF/bad.txt"
+pc_refusal "nwo of another repo" none/pc-nwo "nwo yotamleo-org/Himmel is not origin owner/repo"
+printf '# nwo=owner/repo\n# scope=all\nOwner/Repo\tx\tmerged\t%s\n# complete rows=1\n' "$SHA0" > "$PCF/bad.txt"
+pc_refusal "row repo differs from header" none/pc-row "row repo Owner/Repo is not header owner/repo"
+printf '# nwo=owner/repo\n# complete rows=0\n' > "$PCF/bad.txt"
+pc_refusal "no scope header" none/pc-noscope "no usable scope header"
+
+# unreadable cache: the file does not exist
+WT_PC_UNR=$(mk_wt3 wt-pc-unreadable none/pc-unreadable)
+out=$(run_pc prune --only "$WT_PC_UNR" --only-allow-unmerged --pr-cache "$PCF/nonexistent.txt")
+expect "11 unreadable cache: rc 2" "$out" rc_is "$out" 2
+expect "11 unreadable cache: worktree kept" "$out" is_dir "$WT_PC_UNR"
+expect "11 unreadable cache: stderr reason" "$out" grepq "$out" -F "ERR worktree: --pr-cache: cannot read $PCF/nonexistent.txt"
+pc_valid "$PCF/ok.txt" none/pc-unreadable
+out=$(run_pc prune --only "$WT_PC_UNR" --only-allow-unmerged --pr-cache "$PCF/ok.txt")
+expect "11 unreadable cache control (valid file prunes): worktree removed" "$out" is_gone "$WT_PC_UNR"
+
+# --pr-cache with no value
+WT_PC_NOVAL=$(mk_wt3 wt-pc-noval none/pc-noval)
+out=$(run_pc prune --only "$WT_PC_NOVAL" --only-allow-unmerged --pr-cache)
+expect "11 --pr-cache with no file: rc 2" "$out" rc_is "$out" 2
+expect "11 --pr-cache with no file: worktree kept" "$out" is_dir "$WT_PC_NOVAL"
+expect "11 --pr-cache with no file: stderr reason" "$out" grepq "$out" -F "ERR worktree: --pr-cache: needs a file"
+
+# --pr-cache without --only: nothing pruned, siblings included
+pc_valid "$PCF/ok.txt" none/pc-noval
+out=$(run_pc prune --pr-cache "$PCF/ok.txt")
+expect "11 --pr-cache without --only: rc 2" "$out" rc_is "$out" 2
+expect "11 --pr-cache without --only: stderr reason" "$out" grepq "$out" -F "ERR worktree: --pr-cache: needs --only"
+expect "11 --pr-cache without --only: the target survived" "$out" is_dir "$WT_PC_NOVAL"
+out=$(run_pc prune --only "$WT_PC_NOVAL" --only-allow-unmerged --pr-cache "$PCF/ok.txt")
+expect "11 --pr-cache without --only control (with --only prunes)" "$out" is_gone "$WT_PC_NOVAL"
+
+# origin is not a GitHub remote: $REPO's origin is a bare repo path
+WT_PC_NG=$(mk_wt pc-notgithub none/pc-notgithub)
+pc_valid "$PCF/ok.txt" none/pc-notgithub
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_PC_NG" --only-allow-unmerged --pr-cache "$PCF/ok.txt")
+expect "11 origin is not a GitHub remote: rc 2" "$out" rc_is "$out" 2
+expect "11 origin is not a GitHub remote: worktree kept" "$out" is_dir "$WT_PC_NG"
+expect "11 origin is not a GitHub remote: stderr reason" "$out" grepq "$out" -F "ERR worktree: --pr-cache: origin is not a GitHub remote"
+
+# case-different nwo, open PR: the header is Owner/Repo, the origin URL owner/repo
+WT_PC_OPEN=$(mk_wt3 wt-pc-open open/pc-case)
+PC_OPEN_TIP=$(git -C "$WT_PC_OPEN" rev-parse HEAD)
+printf '# nwo=Owner/Repo\n# scope=all\nOwner/Repo\topen/pc-case\topen\t%s\nOwner/Repo\tother\tmerged\t%s\n# complete rows=2\n' "$PC_OPEN_TIP" "$SHA0" > "$PCF/case.txt"
+out=$(run_pc prune --only "$WT_PC_OPEN" --only-allow-unmerged --pr-cache "$PCF/case.txt")
+expect "11 case-different nwo, open PR: refused as not a prune candidate (rc 1, not the file refusal rc 2)" "$out" rc_is "$out" 1
+expect "11 case-different nwo, open PR: worktree kept" "$out" is_dir "$WT_PC_OPEN"
+expect "11 case-different nwo, open PR: the open-PR reason of the summary" "$out" grepq "$out" -F "not a prune candidate"
+printf '# nwo=Owner/Repo\n# scope=all\nOwner/Repo\tother\tmerged\t%s\n# complete rows=1\n' "$SHA0" > "$PCF/case.txt"
+out=$(run_pc prune --only "$WT_PC_OPEN" --only-allow-unmerged --pr-cache "$PCF/case.txt")
+expect "11 case-different nwo, no PR control: pruned" "$out" is_gone "$WT_PC_OPEN"
+
+# a merged head-match row prunes from the file with no gh call; with no row and
+# an unpushed commit the worktree is kept
+WT_PC_MERGED=$(mk_wt3 wt-pc-merged feat/pc-merged)
+PC_MERGED_TIP=$(git -C "$WT_PC_MERGED" rev-parse HEAD)
+printf '# nwo=owner/repo\n# scope=branch feat/pc-merged\nowner/repo\tfeat/pc-merged\tmerged\t%s\n# complete rows=1\n' "$PC_MERGED_TIP" > "$PCF/merged.txt"
+: > "$PC_GH_LOG"
+out=$(run_pc prune --only "$WT_PC_MERGED" --pr-cache "$PCF/merged.txt")
+expect "11 merged head-match row from --pr-cache: rc 0" "$out" rc_is "$out" 0
+expect "11 merged head-match row from --pr-cache: worktree removed" "$out" is_gone "$WT_PC_MERGED"
+expect "11 merged head-match row from --pr-cache: no gh call" "$out" eq "$(gh_calls)" 0
+WT_PC_UNPUSHED=$(mk_wt3 wt-pc-unpushed none/pc-unpushed)
+printf 'extra\n' > "$WT_PC_UNPUSHED/extra.txt"
+git -C "$WT_PC_UNPUSHED" add extra.txt
+git -C "$WT_PC_UNPUSHED" commit -q -m "unpushed commit"
+pc_valid "$PCF/ok.txt" none/pc-unpushed
+: > "$PC_GH_LOG"
+out=$(run_pc prune --only "$WT_PC_UNPUSHED" --only-allow-unmerged --pr-cache "$PCF/ok.txt")
+expect "11 no row and an unpushed commit: refused" "$out" rc_nonzero "$out"
+expect "11 no row and an unpushed commit: worktree kept" "$out" is_dir "$WT_PC_UNPUSHED"
+expect "11 no row and an unpushed commit: no gh call" "$out" eq "$(gh_calls)" 0
+
+# R9: a locked and an in-use worktree stay kept with a cache file carrying a
+# merged head-match row, as without it
+WT_PC_LOCKED=$(mk_wt3 wt-pc-locked feat/pc-locked)
+git -C "$REPO3" worktree lock "$WT_PC_LOCKED"
+PC_LOCKED_TIP=$(git -C "$WT_PC_LOCKED" rev-parse HEAD)
+printf '# nwo=owner/repo\n# scope=branch feat/pc-locked\nowner/repo\tfeat/pc-locked\tmerged\t%s\n# complete rows=1\n' "$PC_LOCKED_TIP" > "$PCF/locked.txt"
+out=$(run_pc prune --only "$WT_PC_LOCKED" --pr-cache "$PCF/locked.txt")
+expect "11 R9 locked with a cache file: refused" "$out" rc_nonzero "$out"
+expect "11 R9 locked with a cache file: kept" "$out" is_dir "$WT_PC_LOCKED"
+expect "11 R9 locked with a cache file: says locked" "$out" grepq "$out" "is locked"
+git -C "$REPO3" worktree unlock "$WT_PC_LOCKED"
+out=$(run_pc prune --only "$WT_PC_LOCKED" --pr-cache "$PCF/locked.txt")
+expect "11 R9 locked control (unlocked prunes with the same file)" "$out" is_gone "$WT_PC_LOCKED"
+if [ -d /proc/self ]; then
+    WT_PC_HELD=$(mk_wt3 wt-pc-held feat/pc-held)
+    PC_HELD_TIP=$(git -C "$WT_PC_HELD" rev-parse HEAD)
+    printf '# nwo=owner/repo\n# scope=branch feat/pc-held\nowner/repo\tfeat/pc-held\tmerged\t%s\n# complete rows=1\n' "$PC_HELD_TIP" > "$PCF/held.txt"
+    ( cd "$WT_PC_HELD" && exec sleep 60 ) &
+    HOLDER_PID=$!
+    sleep 0.3
+    out=$(run_pc prune --only "$WT_PC_HELD" --pr-cache "$PCF/held.txt")
+    expect "11 R9 in use with a cache file: refused" "$out" rc_nonzero "$out"
+    expect "11 R9 in use with a cache file: kept" "$out" is_dir "$WT_PC_HELD"
+    expect "11 R9 in use with a cache file: says in use" "$out" grepq "$out" "in use"
+    kill "$HOLDER_PID" 2>/dev/null || true
+    wait "$HOLDER_PID" 2>/dev/null || true
+    HOLDER_PID=""
+    out=$(run_pc prune --only "$WT_PC_HELD" --pr-cache "$PCF/held.txt")
+    expect "11 R9 in use control (no holder prunes with the same file)" "$out" is_gone "$WT_PC_HELD"
+else
+    echo "  SKIP: 11 R9 in use: no /proc on this platform"
+fi
+
+# the pr-cache verb: header, rows, matching trailer, exactly one pulls call
+mk_wt3 wt-pc-v1 feat/pc-v1 >/dev/null   # gives the gh stub a feat/* branch to list
+: > "$PC_GH_LOG"
+out=$(GH_VIEW=lower run_verb)
+expect "11 verb: rc 0" "$out" grepq "$out" -x "rc=0"
+expect "11 verb: first line is the walked nwo" "$out" eq "$(printf '%s\n' "$out" | sed -n 1p)" "# nwo=owner/repo"
+expect "11 verb: scope is all" "$out" eq "$(printf '%s\n' "$out" | sed -n 2p)" "# scope=all"
+expect "11 verb: lists the feat row" "$out" grepq "$out" -F "owner/repo	feat/pc-v1	merged	"
+PC_VERB_ROWS=$(printf '%s\n' "$out" | grep -c -v -e '^#' -e '^rc=')
+expect "11 verb: the trailer matches the row count" "$out" grepq "$out" -x "# complete rows=$PC_VERB_ROWS"
+expect "11 verb: exactly one pulls call" "$out" eq "$(gh_pull_calls)" 1
+# the file the verb printed is accepted by the reader
+printf '%s\n' "$out" | grep -v '^rc=' > "$PCF/verb.txt"
+WT_PC_V2=$(mk_wt3 wt-pc-v2 none/pc-v2)
+out=$(run_pc prune --only "$WT_PC_V2" --only-allow-unmerged --pr-cache "$PCF/verb.txt")
+expect "11 verb output is read back by --pr-cache (scope=all, no row for the branch: pruned)" "$out" is_gone "$WT_PC_V2"
+# the header is the walked nwo, not the origin URL's spelling
+: > "$PC_GH_LOG"
+out=$(GH_VIEW=canon run_verb)
+expect "11 verb: header is forge_repo_nwo's canonical case" "$out" eq "$(printf '%s\n' "$out" | sed -n 1p)" "# nwo=Owner/Repo"
+# a failed walk, and a failed repo-name lookup: rc 1, nothing on stdout
+: > "$PC_GH_LOG"
+out=$(GH_VIEW=lower GH_PULLS=fail run_verb)
+expect "11 verb: failed walk is rc 1 with empty stdout" "$out" eq "$out" "rc=1"
+: > "$PC_GH_LOG"
+out=$(GH_VIEW=fail run_verb)
+expect "11 verb: failed repo-name lookup is rc 1 with empty stdout" "$out" eq "$out" "rc=1"
+expect "11 verb: failed repo-name lookup makes no pulls walk" "$out" eq "$(gh_pull_calls)" 0
 
 # ── control: the plain (fleet-wide) run still prunes every merged sibling ────
 echo "CONTROL: plain --prune-only"
