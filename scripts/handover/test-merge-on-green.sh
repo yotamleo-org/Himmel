@@ -3193,7 +3193,8 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
     cf_file=$(cf_row "$cf_root/a" 77)
     if [ -n "$cf_file" ] && grep -qF '"file": "f.sh"' "$cf_file" 2>/dev/null; then pass; else fail "11za-a: no ledger row for PR 77 under $cf_root/a"; fi
     assert_audit_has "11za-a: audit records the written row" "conflicts=wrote:1"
-    if tail -n 1 "$cf_root/doc-a" | grep -qF 'conflicts recorded for PR #77 (HIMMEL-9560): f.sh vs #12 merged'; then pass; else fail "11za-e: the doc's last line is: $(tail -n 1 "$cf_root/doc-a")"; fi
+    cf_last=$(tail -n 1 "$cf_root/doc-a")
+    case "$cf_last" in *'conflicts recorded for PR #77 (HIMMEL-9560): f.sh vs #12 merged'*) pass ;; *) fail "11za-e: the doc's last line is: $cf_last" ;; esac
     # (d) the worker's HANDOVER_DIR never steers the ledger: the row lands under the anchor's configured root
     mkdir -p "$cf_root/worker"
     CF_HD="$cf_root/worker" STUB_NUM=82 STUB_PR_BODY="$cf_body" cf_run 0 "11za-d: a worker HANDOVER_DIR does not steer the ledger"
@@ -3211,7 +3212,8 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
     HIMMEL_CONSOLE_DOC="$cf_root/doc-c" MOG_CONFLICTS_REPORT=fail STUB_NUM=79 STUB_PR_BODY="$cf_body" cf_run 0 "11za-c: a failing conflicts recorder never fails the merge"
     assert_audit_has "11za-c: audit records the failed recorder" "conflicts=failed"
     assert_audit_has "11za-c: the merge is still recorded as MERGED" "MERGED repo="
-    if tail -n 1 "$cf_root/doc-c" | grep -qF 'conflicts not recorded for PR #79 (HIMMEL-9560): failed'; then pass; else fail "11za-e: the doc's last line is: $(tail -n 1 "$cf_root/doc-c")"; fi
+    cf_last=$(tail -n 1 "$cf_root/doc-c")
+    case "$cf_last" in *'conflicts not recorded for PR #79 (HIMMEL-9560): failed'*) pass ;; *) fail "11za-e: the doc's last line is: $cf_last" ;; esac
     # (f) a doc with no Results heading: the merge still exits 0 and the audit line is unchanged
     printf '# doc\n' > "$cf_root/doc-f"
     HIMMEL_CONSOLE_DOC="$cf_root/doc-f" STUB_NUM=80 STUB_PR_BODY="$cf_body" cf_run 0 "11za-f: a doc with no Results heading never fails the merge"
