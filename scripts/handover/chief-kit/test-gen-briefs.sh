@@ -42,6 +42,8 @@ chmod +x "$WORK/wt.sh"
 export WT_LOG="$WORK/wt.log" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh"
 export GEN_BRIEFS_MIRROR="$WORK/mirror"; mkdir -p "$GEN_BRIEFS_MIRROR"  # the proof check reads this fixture mirror, never the real one
 export TICKET_STATUS_STATE_DIR="$WORK/state-empty"  # the partial-merge block reads status-events.jsonl here, never the real one
+printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/gh-down.sh"; chmod +x "$WORK/gh-down.sh"
+export GEN_BRIEFS_GH_CMD="$WORK/gh-down.sh"
 export GEN_BRIEFS_NO_WT_CHECK=1 # the older rows use a fixture --repo with no real worktrees; the bucket and worktree-guard rows unset it
 # The core gate asks the jira CLI (release core-check, spec-check) per key. This suite points GEN_BRIEFS_JIRA_CLI at a
 # fixture stand-in over the fixture mirror, so it needs no built scripts/jira/dist (untracked, absent in CI).
@@ -479,11 +481,73 @@ has "Writes note retains stay-off paths" "$wr_note" "Stay off scripts/lib/"
 has "Writes note retains prior art paths" "$wr_note" "docs/prior.md"
 has "the original prior art field stays" "$wr_brief" "> **Prior art:** HIMMEL-9000: docs/prior.md"
 has "the original scope field stays" "$wr_brief" "> **Scope / do not:** your Writes: scripts/wr-context/read.sh. Stay off scripts/lib/. completes-ticket: no"
-has "the scope line says a write onto another holder's file is denied" "$wr_brief" "A write onto a file another holder has is denied, and the deny says how to ask your chief"
+lacks "the scope line no longer says a write onto another holder's file is denied" "$wr_brief" "A write onto a file another holder has is denied"
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
 has "the scope line says a free file outside Writes is claimed and recorded" "$wr_brief" 'a write onto a free file outside your Writes is claimed, recorded and named on your PR'"'"'s `outside-writes:` line for review'
 lacks "the scope line no longer says writes are confined" "$wr_brief" "writes confined to"
 lacks "the scope line no longer says stay off the other workers' files" "$wr_brief" "Stay off those"
+
+cat > "$WORK/ov-gh.sh" <<'EOF'
+#!/usr/bin/env bash
+[ "$1 $2" = "pr list" ] && [ -n "${OV_FIXTURE:-}" ] && { cat "$OV_FIXTURE"; exit 0; }
+exit 1
+EOF
+chmod +x "$WORK/ov-gh.sh"
+cat > "$WORK/ov-prs.json" <<'EOF'
+[{"number":4242,"title":"outside fix","headRefName":"contrib/x","isCrossRepository":true,"files":[{"path":"scripts/wr/a.sh"},{"path":"docs/other.md"}]},
+ {"number":4243,"title":"our fix","headRefName":"fix/himmel-1-y","isCrossRepository":false,"files":[{"path":"scripts/unrelated/z.sh"}]},
+ {"number":4244,"title":"the worker's own PR","headRefName":"fix/himmel-9001-plain-fix","isCrossRepository":false,"files":[{"path":"scripts/wr/a.sh"}]}]
+EOF
+cat > "$WORK/ov-none.json" <<'EOF'
+[{"number":4243,"title":"our fix","headRefName":"fix/himmel-1-y","isCrossRepository":false,"files":[{"path":"scripts/unrelated/z.sh"}]}]
+EOF
+ovgen() {
+    OV_FIXTURE="$2" GEN_BRIEFS_GH_CMD="$1" python3 "$SUT" "$3" --base 4ccb59d --chief BZ --bucket "$4" --repo "$REPO" --handover-root /h --no-worktree >"$WORK/ov.out" 2>&1; OV_RC=$?
+}
+ovgen "$WORK/ov-gh.sh" "$WORK/ov-prs.json" "$WORK/wr.json" "$WORK/ov1"
+[ "$OV_RC" = 0 ] && pass "a wave whose Writes overlap an open PR generates (rc 0)" || fail "overlap generation rc=$OV_RC: $(cat "$WORK/ov.out")"
+OV1="$(cat "$WORK"/ov1/*-N901-plain-fix-*.md 2>/dev/null)"
+has "the brief names the open PR that changes a Writes file" "$OV1" '> **Overlaps:** PR #4242'
+has "an outside PR is marked as an outside contributor's" "$OV1" 'PR #4242 (outside contributor) also changes scripts/wr/a.sh'
+has "the brief says to merge forward if they land first" "$OV1" 'Merge forward if they land first'
+lacks "the Overlaps line names no PR that shares no Writes file" "$OV1" '#4243'
+lacks "the Overlaps line names none of the worker's own PR" "$OV1" '#4244'
+lacks "the brief no longer says a write onto a held file is denied" "$OV1" 'A write onto a file another holder has is denied'
+has "the outside-writes sentence stays" "$OV1" "named on your PR's \`outside-writes:\` line for review"
+bash "$HERE/brief-lint.sh" "$WORK"/ov1/*-N901-plain-fix-*.md 2>"$WORK/ovlint.err"; rc=$?
+[ "$rc" = 0 ] && pass "a brief with an Overlaps line passes brief-lint.sh" || fail "overlaps brief-lint rc=$rc: $(cat "$WORK/ovlint.err")"
+[ "$(printf '%s\n' "$OV1" | grep -c '^> \*\*Writes:\*\* ')" = 1 ] && pass "the Overlaps line adds no second Writes line" || fail "Writes line count changed"
+ovgen "$WORK/ov-gh.sh" "" "$WORK/wr.json" "$WORK/ov2"
+[ "$OV_RC" = 0 ] && pass "a failing gh does not stop generation (rc 0)" || fail "failing-gh generation rc=$OV_RC: $(cat "$WORK/ov.out")"
+has "a failing gh gives unknown (gh failed)" "$(cat "$WORK"/ov2/*-N901-plain-fix-*.md 2>/dev/null)" 'Overlaps:** unknown (gh failed)'
+ovgen "$WORK/ov-gh.sh" "$WORK/ov-none.json" "$WORK/wr.json" "$WORK/ov3"
+[ "$OV_RC" = 0 ] && pass "a wave with no overlap generates (rc 0)" || fail "no-overlap generation rc=$OV_RC: $(cat "$WORK/ov.out")"
+has "no overlap says none seen at launch" "$(cat "$WORK"/ov3/*-N901-plain-fix-*.md 2>/dev/null)" 'Overlaps:** none seen at launch'
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["writes"]="scripts/x/"; l[1]["writes"]="scripts/x/y.sh scripts/hooks/h.sh"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ov-wave.json"
+cat > "$WORK/ov-dir.json" <<'EOF'
+[{"number":4250,"title":"t","headRefName":"fix/a","isCrossRepository":false,"files":[{"path":"scripts/x/deep/q.sh"}]}]
+EOF
+ovgen "$WORK/ov-gh.sh" "$WORK/ov-dir.json" "$WORK/ov-wave.json" "$WORK/ov4"
+[ "$OV_RC" = 0 ] && pass "a two-worker wave with a directory overlap generates (rc 0)" || fail "wave generation rc=$OV_RC: $(cat "$WORK/ov.out")"
+OV4A="$(cat "$WORK"/ov4/*-N901-plain-fix-*.md 2>/dev/null)"
+OV4B="$(cat "$WORK"/ov4/*-N902-hook-fix-*.md 2>/dev/null)"
+has "a Writes directory matches a PR file under it" "$OV4A" 'PR #4250 also changes scripts/x/deep/q.sh'
+has "a worker names the sibling that also writes under its directory" "$OV4A" 'worker N902 also writes scripts/x/y.sh'
+has "the sibling names the first worker back" "$OV4B" 'worker N901 also writes scripts/x/y.sh'
+lacks "the sibling with no PR overlap names no PR" "$OV4B" 'PR #4250'
+ovgen "$WORK/ov-gh.sh" "" "$WORK/ov-wave.json" "$WORK/ov5"
+[ "$OV_RC" = 0 ] && pass "a wave with a failing gh generates (rc 0)" || fail "wave failing-gh generation rc=$OV_RC: $(cat "$WORK/ov.out")"
+OV5A="$(cat "$WORK"/ov5/*-N901-plain-fix-*.md 2>/dev/null)"
+has "a failing gh still says unknown for the PRs" "$OV5A" 'Overlaps:** unknown (gh failed)'
+has "a failing gh still names the wave sibling" "$OV5A" 'worker N902 also writes scripts/x/y.sh'
+cat > "$WORK/ov-fork.json" <<'EOF'
+[{"number":4260,"title":"fork","headRefName":"fix/himmel-9001-plain-fix","isCrossRepository":true,"files":[{"path":"scripts/wr/a.sh"}]}]
+EOF
+ovgen "$WORK/ov-gh.sh" "$WORK/ov-fork.json" "$WORK/wr.json" "$WORK/ov6"
+has "a fork PR on the same branch name still counts as an overlap" "$(cat "$WORK"/ov6/*-N901-plain-fix-*.md 2>/dev/null)" 'PR #4260 (outside contributor) also changes scripts/wr/a.sh'
+has "the brief carries the Conflicts resolved duty" "$OV1" '## Conflicts resolved'
+has "the duty says to merge forward and never rebase" "$OV1" 'git merge origin/main'
+lacks "the duty asks for no hand-written Results bullet" "$OV1" 'Append the same lines as one Results bullet'
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0].pop("writes",None); json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/wr-empty.json"
 python3 "$SUT" "$WORK/wr-empty.json" --base 4ccb59d --chief BZ --bucket "$WORK/wr-empty" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/wr-empty.err"; wr_rc=$?
 [ "$wr_rc" = 1 ] && grep -q "Writes" "$WORK/wr-empty.err" && ! find "$WORK/wr-empty" -name '*.md' 2>/dev/null | grep -q . && pass "missing writes is refused by the brief-lint run, never inferred holds, and no brief is kept" || fail "missing writes rc=$wr_rc: $(cat "$WORK/wr-empty.err")"
@@ -909,7 +973,8 @@ has "G1 names its text and backticked path" "$GR" '> - G1 add the RED row to the
 has "G2 lists every path it names" "$GR" '> - G2 mirror the change in the twin: `scripts/a.sh`, `scripts/b.sh`'
 has "an off-grant ruling gets a needs-rebrief FINDING" "$GR" "FINDING needs-rebrief <Gn>"
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
-has "the chief runs holds.py grant with the ruling and the worker acts on the ruling" "$GR" 'Your chief runs `holds.py grant` with the ruling, and you act on the ruling once you have it.'
+lacks "the grants block no longer says the chief runs holds.py grant" "$GR" 'Your chief runs `holds.py grant`'
+has "the chief records the ruling and the worker acts on it" "$GR" 'Your chief records the ruling, and you act on it once you have it.'
 bash "$HERE/brief-lint.sh" "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/grlint.err"; rc=$?
 [ "$rc" = 0 ] && pass "the grants brief passes brief-lint.sh" || fail "grants brief brief-lint rc=$rc: $(cat "$WORK/grlint.err")"
 lacks "a worker without grants carries no grants block" "$ct_no" "Pre-granted follow-ups"
