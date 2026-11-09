@@ -21,6 +21,9 @@ lacks() { case "$2" in *"$3"*) fail "$1 (found '$3')" ;; *) pass "$1" ;; esac; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/gen-judge-brief-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
+export HIMMEL_CEILINGS_LEDGER="$WORK/no-ceilings-ledger.tsv"
+case "$HIMMEL_CEILINGS_LEDGER" in "$WORK"/*) ;; *) echo "FAIL: the ceilings ledger escapes the work dir"; exit 1 ;; esac
+unset HIMMEL_BUCKET_DIR
 BUCKET="$WORK/bucket"
 HEAD40="0123456789abcdef0123456789abcdef01234567"
 CHIEF="HIMMEL-nextleg-2026-10-13Z-roadmap-chief"
@@ -200,6 +203,49 @@ for f in .claude/agents/judge.md .claude/agents/judge-ro.md docs/handover/chief-
     lacks "$f gives no refspec fetch" "$c" "refs/judge/pr-"
     has "$f forbids FETCH_HEAD" "$c" "never FETCH_HEAD"
 done
+
+CREPO="$WORK/crepo"
+mkdir -p "$CREPO"
+(
+    cd "$CREPO" && git -c init.defaultBranch=main init -q && git config user.email t@t && git config user.name t \
+        && git config commit.gpgsign false && printf 'do_a() {\n  :\n}\n' > a.sh && git add a.sh && git commit -qm base \
+        && git update-ref refs/remotes/origin/main HEAD && printf '# more\n' >> a.sh && git commit -qam change
+) || fail "ceilings fixture repo"
+CHEAD="$(git -C "$CREPO" rev-parse HEAD)"
+printf 'id\tfile\tanchor\tceiling\ttrigger\tticket\tstate\tdate\tpr\tnote\nC-0001\ta.sh\tdo_a\tthe a.sh helper never handles CRLF\ta CRLF report\t\topen\t2026-11-08\t\t\n' > "$WORK/ceilings.tsv"
+cp "$(command -v bash)" "$WORK/claude"
+sed -e "s/\"head\": \"$HEAD40\"/\"head\": \"$CHEAD\"/" -e 's/"qid": "j2599a"/"qid": "j2599c"/' "$WORK/spec.json" > "$WORK/cspec.json"
+cbrief() { # <ledger> <letter> [env...]: generate the ceilings brief under a claude-named shell, cwd in the fixture repo
+    local led=$1 letter=$2
+    shift 2
+    rm -rf "$WORK/cbucket"
+    # shellcheck disable=SC2016  # the single-quoted script runs in the claude-named shell
+    (cd "$CREPO" && env -u ANTHROPIC_BASE_URL -u ANTHROPIC_MODEL -u HERMES_ENGINE -u CODEX_ADAPTER -u CODEX_THREAD_ID -u CLAUDE_PID \
+        CLAUDECODE=1 HIMMEL_CEILINGS_LEDGER="$led" "$@" "$WORK/claude" -c 'python3 "$0" "$@"; rc=$?; exit $rc' "$SUT" "$WORK/cspec.json" \
+        --chief "$CHIEF" --bucket "$WORK/cbucket" --date 2026-10-13 --letter "$letter" --handover-root "$WORK/handovers" --scratch-root "$WORK/cverdicts") >/dev/null 2>&1
+    cat "$WORK"/cbucket/*-judge-j2599c-2026-10-13-RESUME.md 2>/dev/null
+}
+cb="$(cbrief "$WORK/ceilings.tsv" C)"
+has "ceilings: the brief carries the row" "$cb" "C-0001 a.sh [do_a]"
+has "ceilings: the item says cite by id only" "$cb" "Cite a row by its id only; never quote its ceiling or trigger."
+has "ceilings: the item names the primary-checkout lookup by absolute path" "$cb" "bash $(cd "$HERE/../.." && pwd)/ledger/ceiling-lookup.sh --range origin/main...$CHEAD"
+printf 'id\tfile\tanchor\tceiling\ttrigger\tticket\tstate\tdate\tpr\tnote\n' > "$WORK/empty-ceilings.tsv"
+cb="$(cbrief "$WORK/empty-ceilings.tsv" D)"
+has "ceilings: an empty ledger says none" "$cb" "CEILINGS: none for the 1 touched files"
+cb="$(cbrief "$WORK/no-such-ceilings.tsv" E)"
+has "ceilings: a missing ledger says not read" "$cb" "CEILINGS: not read (no ledger for"
+lacks "ceilings: the main fixture spec's brief (no such head) still carries no row" "$b" "C-0001"
+python3 - "$WORK/cspec.json" "$WORK/nopr.json" <<'PYEOF'
+import json, sys
+s = json.load(open(sys.argv[1])); s.pop('pr'); s.pop('head'); s['qid'] = 'j2599d'; s['completion'] = 'Rule GO or NO-GO.'
+json.dump(s, open(sys.argv[2], 'w'))
+PYEOF
+rm -rf "$WORK/nbucket"
+(cd "$CREPO" && HIMMEL_CEILINGS_LEDGER="$WORK/ceilings.tsv" python3 "$SUT" "$WORK/nopr.json" --chief "$CHIEF" --bucket "$WORK/nbucket" \
+    --date 2026-10-13 --letter F --handover-root "$WORK/handovers" --scratch-root "$WORK/nverdicts") >/dev/null 2>&1
+nb="$(cat "$WORK"/nbucket/*-judge-j2599d-2026-10-13-RESUME.md 2>/dev/null)"
+has "ceilings: control, the no-pr brief was written" "$nb" "j2599d"
+lacks "ceilings: a spec with no pr carries no ceilings item" "$nb" "Recorded ceilings"
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"

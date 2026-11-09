@@ -42,6 +42,11 @@
 #     prior: <GO|NO-GO>         (only when --prior is given)
 #     flipped: <y|n>            (with prior: y when it differs from the answer)
 #
+#     CEILINGS: <header>        (a --pr verdict without --delta-noop: the
+#     <id>\t<file>\t<anchor>\t<ticket> ...   ceilings ledger rows open for the
+#                               PR's touched files, ceiling-lookup.sh --ids;
+#                               `CEILINGS: not read (<reason>)` when it cannot run)
+#
 #     <the evidence file, verbatim>
 #     mac: <64 hex>
 #
@@ -123,6 +128,11 @@
 # --trust-reviewed re-runs the classifier on such a record and refuses it unless
 # it still prints `none`. Any other class, an unjudged head, a NO-GO or a
 # no-op judged head exits 2, nothing written.
+# A no-op GO is also refused (exit 2, nothing written) while the PR has an
+# unresolved review thread, each one named. `--open-threads-ok <reason>` (--delta-noop only, one line) is the
+# chief's override: it warns, names the threads and signs
+# `open-threads-ok: <n> open, <reason>` into the header. An unreadable thread
+# read warns and writes; check-ci still refuses the merge over an open thread.
 # A `layer-decision:` evidence line without its text|os|classifier|accept
 # keyword draws a stderr warning (review-round.sh would silently ignore it).
 #
@@ -140,7 +150,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 usage() {
-    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--delta-noop <judged-head>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--repo <owner/name>] [--model <id>] [--effort <level>]" >&2
+    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--delta-noop <judged-head> [--open-threads-ok <reason>]] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--repo <owner/name>] [--model <id>] [--effort <level>]" >&2
     exit 2
 }
 seg_ok() {
@@ -150,9 +160,10 @@ seg_ok() {
 [ "$#" -ge 3 ] || usage
 QID=$1 ANSWER=$2 HEAD=$3
 shift 3
-EVIDENCE="" NAME=judge NAME_SET=0 PR="" BRANCH="" BIND="" DNOOP="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT="" VREPO="" VREPO_SET=0
+EVIDENCE="" NAME=judge NAME_SET=0 PR="" BRANCH="" BIND="" DNOOP="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT="" VREPO="" VREPO_SET=0 THREADS_OK="" THREADS_OK_SET=0 THREADS_NOTE=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --open-threads-ok) [ "$#" -ge 2 ] || usage; THREADS_OK=$2; THREADS_OK_SET=1; shift 2 ;;
         --model) [ "$#" -ge 2 ] || usage; MODEL=$2; shift 2 ;;
         --effort) [ "$#" -ge 2 ] || usage; EFFORT=$2; shift 2 ;;
         --bind-reviewed)
@@ -226,6 +237,15 @@ if [ -n "$DNOOP" ]; then
         exit 2
     fi
     NAME="delta-noop-$HEAD"
+fi
+if [ "$THREADS_OK_SET" -eq 1 ]; then
+    if [ -z "$DNOOP" ]; then
+        echo "write-verdict: --open-threads-ok overrides the open-thread refusal of --delta-noop only" >&2
+        exit 2
+    fi
+    case "$THREADS_OK" in
+        '' | *[[:cntrl:]]*) echo "write-verdict: --open-threads-ok needs a one-line reason (no control character)" >&2; exit 2 ;;
+    esac
 fi
 [ -n "$EVIDENCE" ] || { echo "write-verdict: --evidence-file <path> is required" >&2; exit 2; }
 # the record names the model and effort that ruled, so judge accuracy is measurable.
@@ -358,6 +378,10 @@ if grep -Eq '^delta(-judged|-class)?:' "$EVIDENCE"; then
     echo "write-verdict: the evidence carries a delta:, delta-judged: or delta-class: line; --delta-noop <judged-head> makes the writer record them" >&2
     exit 2
 fi
+if grep -Eq '^open-threads-ok:' "$EVIDENCE"; then
+    echo "write-verdict: the evidence carries an open-threads-ok: line; --open-threads-ok <reason> makes the writer record it" >&2
+    exit 2
+fi
 if grep -Eq '^(flipped|prior):' "$EVIDENCE"; then
     echo "write-verdict: the evidence carries a prior: or flipped: line; pass --prior <GO|NO-GO> and the writer computes both" >&2
     exit 2
@@ -470,6 +494,39 @@ if [ -n "$DNOOP" ]; then
         echo "write-verdict: --delta-noop refused - delta-class.sh classifies $DNOOP..$HEAD as '$dn_class', not none; a judge must rule on it (run from the repo under review); nothing written" >&2
         exit 2
     fi
+    dn_th="" dn_tb=""
+    # shellcheck source=scripts/lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null && dn_tb=${_TIMEOUT_BIN:-}
+    # shellcheck source=scripts/lib/open-review-threads.sh
+    # shellcheck disable=SC1091
+    if ! . "$HERE/../../lib/open-review-threads.sh" 2>/dev/null \
+        || ! dn_th=$(open_review_threads '{owner}' '{repo}' "$PR" ${dn_tb:+"$dn_tb" -k 5 30} gh); then
+        echo "write-verdict: WARNING - could not read the review threads of PR #$PR; this no-op GO is not checked against open threads (check-ci still refuses the merge over one)" >&2
+    elif [ "${dn_th%%$'\n'*}" != 0 ]; then
+        if [ "$THREADS_OK_SET" -ne 1 ]; then
+            printf 'write-verdict: --delta-noop refused - PR #%s has %s unresolved review thread(s); a no-op GO is never signed over an open thread: read, answer and resolve each, or the chief names the override with --open-threads-ok "<reason>"; nothing written:\n%s' \
+                "$PR" "${dn_th%%$'\n'*}" "${dn_th#*$'\n'}" >&2
+            exit 2
+        fi
+        printf 'write-verdict: WARNING - no-op GO signed over %s unresolved review thread(s) on PR #%s, by the override (%s):\n%s' \
+            "${dn_th%%$'\n'*}" "$PR" "$THREADS_OK" "${dn_th#*$'\n'}" >&2
+        THREADS_NOTE="${dn_th%%$'\n'*} open, $THREADS_OK"
+    fi
+fi
+
+CEILINGS_BLOCK=""
+if [ -n "$PR" ] && [ -z "$DNOOP" ]; then
+    if [ ! -f "$ANCHOR/scripts/ledger/ceiling-lookup.sh" ]; then
+        CEILINGS_BLOCK="CEILINGS: not read (no scripts/ledger/ceiling-lookup.sh at $ANCHOR)"
+    else
+        lk_rc=0
+        CEILINGS_BLOCK=$(bash "$ANCHOR/scripts/ledger/ceiling-lookup.sh" --ids ${VREPO:+--repo "$VREPO"} --range "origin/main...$HEAD" </dev/null 2>/dev/null) || lk_rc=$?  # swallow-ok: a failed lookup is recorded as not read with its rc below
+        case "$CEILINGS_BLOCK" in
+            CEILINGS:*) ;;
+            *) CEILINGS_BLOCK="CEILINGS: not read (ceiling-lookup.sh failed, rc=$lk_rc)" ;;
+        esac
+    fi
 fi
 
 # Walk <root>/<user>/<bucket>/verdicts/<qid>, refusing a symlink at any step.
@@ -581,8 +638,10 @@ if ! {
     { [ -z "$PRIOR" ] || printf 'prior: %s\nflipped: %s\n' "$PRIOR" "$([ "$PRIOR" = "$ANSWER" ] && echo n || echo y)"; } &&
     printf 'model: %s\neffort: %s\n' "$MODEL" "$EFFORT" &&
     { [ -z "$DNOOP" ] || printf 'delta: no-op\ndelta-judged: %s\ndelta-class: none\n' "$DNOOP"; } &&
+    { [ -z "$THREADS_NOTE" ] || printf 'open-threads-ok: %s\n' "$THREADS_NOTE"; } &&
     printf '\n' &&
     { [ -z "$REVIEWED" ] || printf 'reviewed-head: %s\nbound-by: write-verdict --bind-reviewed; the delta from the reviewed head is test-path-only or comment-only\n\n' "$REVIEWED"; } &&
+    { [ -z "$CEILINGS_BLOCK" ] || printf '%s\n\n' "$CEILINGS_BLOCK"; } &&
     cat "$EVIDENCE" &&
     # the body ends in a newline, so the mac line is a line of its own.
     { [ -z "$(tail -c 1 "$EVIDENCE")" ] || printf '\n'; }

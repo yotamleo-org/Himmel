@@ -10,7 +10,10 @@
 #   graphify     semantic manifest missing or older than 14 days
 #   tickets      in-work tickets with no session/PR (next-dispatchable.sh
 #                --resume-only); skipped when absent or Jira unset
-#   ponytail     markers whose upgrade ticket is already Done in the Jira mirror
+#   ceilings     open ceilings ledger rows (ceiling-lookup.sh --ids --all: ids,
+#                files and anchors, never row text) whose ticket is Done in the
+#                Jira mirror, whose file is gone or whose anchor no longer
+#                matches; silent when the ledger cannot be read
 #
 # Test seams: GAP_AUDIT_ROOT, GAP_AUDIT_NOW (epoch), GAP_AUDIT_DOCTOR_CMD,
 # GAP_AUDIT_QMD_STATUS_FILE, GAP_AUDIT_GRAPH_OUT, GAP_AUDIT_MIRROR,
@@ -32,7 +35,7 @@ _ga_add() { # _ga_add <area> <message> [remedy]
 _ga_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 
 _ga_check_doctor() {
-    local root="$1" rows line json
+    local root="$1" rows json
     command -v jq >/dev/null 2>&1 || { _ga_skip "doctor rows (jq missing)"; return 0; }
     if [ -n "${GAP_AUDIT_DOCTOR_CMD:-}" ]; then
         json="$($GAP_AUDIT_DOCTOR_CMD 2>/dev/null)"
@@ -106,24 +109,28 @@ _ga_check_resume() {
     return 0
 }
 
-_ga_check_ponytail() {
-    local root="$1" mirror="${GAP_AUDIT_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" hits shown="" n=0 line key loc
-    [ -d "$mirror" ] || return 0
-    hits="$(git -C "$root" grep -nE 'ponytail:.*[Uu]pgrade.*HIMMEL-[0-9]+' 2>/dev/null)" || return 0
-    while IFS= read -r line; do
-        [ -n "$line" ] || continue
-        loc="$(printf '%s' "$line" | cut -d: -f1,2)"
-        key="$(printf '%s' "$line" | sed 's/.*[Uu]pgrade//' | grep -oE 'HIMMEL-[0-9]+' | head -1)"
-        [ -n "$key" ] || continue
-        grep -q '^status: "Done"' "$mirror/$key.md" 2>/dev/null || continue
-        n=$((n+1))
-        [ "$n" -le 5 ] && shown="${shown}${loc} (${key}); "
+_ga_check_ceilings() {
+    local root="$1" mirror="${GAP_AUDIT_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" out
+    local id file anchor ticket done_rows="" gone_rows="" stale_rows=""
+    [ -f "$root/scripts/ledger/ceiling-lookup.sh" ] || return 0
+    out="$(cd "$root" && bash "$root/scripts/ledger/ceiling-lookup.sh" --ids --all 2>/dev/null)" || return 0
+    case "$out" in "CEILINGS: "*" open rows "*) ;; *) return 0 ;; esac
+    while IFS="$(printf '\t')" read -r id file anchor ticket; do
+        case "$id" in C-[0-9]*) ;; *) continue ;; esac
+        if [ ! -f "$root/$file" ]; then
+            gone_rows="${gone_rows}${id} ${file} [${anchor}]; "
+        elif ! grep -qF -- "$anchor" "$root/$file" 2>/dev/null; then
+            stale_rows="${stale_rows}${id} ${file} [${anchor}]; "
+        elif [ -n "$ticket" ] && [ -d "$mirror" ] && grep -q '^status: "Done"' "$mirror/$ticket.md" 2>/dev/null; then
+            done_rows="${done_rows}${id} ${file} [${anchor}]; "
+        fi
     done <<EOF
-$hits
+$(printf '%s\n' "$out" | sed 1d)
 EOF
-    [ "$n" -gt 0 ] || return 0
-    [ "$n" -gt 5 ] && shown="${shown}+$((n-5)) more; "
-    _ga_add ponytail "$n marker(s) whose upgrade ticket is already Done: $shown" "revisit the ceiling or drop the marker (docs/internals/ponytail-convention.md)"
+    [ -z "$done_rows" ] || _ga_add ceilings "open ceilings whose ticket is Done: $done_rows" "lift or re-trigger each: scripts/ledger/ceiling-add.sh set --id <id> --state lifted --note <what fixed it>"
+    [ -z "$gone_rows" ] || _ga_add ceilings "open ceilings whose file is gone: $gone_rows" "close each: scripts/ledger/ceiling-add.sh set --id <id> --state obsolete --note <why>"
+    [ -z "$stale_rows" ] || _ga_add ceilings "open ceilings whose anchor no longer matches: $stale_rows" "re-anchor with ceiling-add.sh add, then close the old row with ceiling-add.sh set"
+    return 0
 }
 
 gap_audit_offer() {
@@ -135,12 +142,12 @@ gap_audit_offer() {
     _ga_check_qmd || true
     _ga_check_semantic "$root" "$now" || true
     _ga_check_resume "$root" || true
-    _ga_check_ponytail "$root" || true
+    _ga_check_ceilings "$root" || true
     if [ -z "$GAP_AUDIT_FINDINGS" ]; then
         if [ -n "$GAP_AUDIT_SKIPPED" ]; then
             echo "    no gap found in the checks that ran; not checked: $GAP_AUDIT_SKIPPED."
         else
-            echo "    all clear: qmd, graphify, in-work tickets and ponytail markers show no gap."
+            echo "    all clear: qmd, graphify, in-work tickets and the ceilings ledger show no gap."
         fi
         return 0
     fi

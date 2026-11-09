@@ -6,23 +6,23 @@ Autonomous triage + synthesis for Obsidian Web Clipper output.
 
 - **`/triage-clips`** — process every unprocessed clip in `<vault>/Clippings/`. Summarize, infer tags from the existing vault tag set, suggest Related Notes via link-graph proximity, extract Action Items to today's daily note (dedup-by-backreference for idempotency under partial failure), annotate a Promotion candidate, mark `processed: true`. Idempotent. No user prompts.
 - **`/synthesize-clips`** — find cross-clip patterns (concepts hit 3+ times, repeated authors, tag overpopulation, folder pressure) and write synthesis pages to `<vault>/Clippings/_synthesis/` proposing vault restructuring (new MOCs, new folders, missing person notes). Proposals only — never restructures the vault directly.
-- **`/archive-clips`** (Stage 4, LUNA-55) — graduate clips that completed the full chain out of the `Clippings/` inbox. A clip is eligible when `harvested_at:` AND `processed: true` AND it is wikilinked from a `Clippings/_synthesis/` page; eligible clips move to `Clippings/_done/<YYYY-MM>/` with every path-qualified `[[Clippings/…]]` inbound link rewritten (literal, boundary-safe — won't clobber a prefix-sibling, preserves `|alias`/`#heading`) so they don't dangle. Basename-only `[[name]]` links resolve by Obsidian's unique-basename lookup and survive the move untouched. Dedups by `harvest_url_canonical:` before moving (never deletes). Also (re)generates `Clippings/_deferred.md` — the running backlog of fan-out refs, tail-skipped refs, and safety-flagged repos the pipeline logged but did not action. Keeps `Clippings/` an inbox: only active/incomplete clips stay visible.
-- **`/contra`** (LUNA-96/97) — CONTRA passes over the vault. Default mode **ghost-self**: for topics active in the last 14 days, load same-topic notes older than `--min-age` (default 6 months, frontmatter-`date:` based — never mtime) and append a past-you-reacting-to-current-you entry to today's daily note under `## Thinking`, with reaction prose grounded ONLY in surviving verified quotes (hard quote-guard: every span whitespace-normalize-verified against its source BEFORE drafting; failures dropped, zero-survivor entries not written). `--bridge` mode: force one analogy between a technical-domain and a personal/philosophical-domain note (inferred domains must differ). Reports "vault too young" instead of guessing on thin history. Lean-invoke only — never scheduled (HIMMEL-177).
-- **`obsidian-triage:luna-ingest` skill** — chain-following triage for a github OR bitbucket.org repo URL. Fetches metadata + README, follows 1-hop references, classifies each (integrate / take-parts / inspire / skip / api_failure), writes a structured tech-ingest note under `<vault>/30-Resources/Tech/`. Issue URLs (`github.com/<owner>/<repo>/issues/<n>`, HIMMEL-239) take a flat dedicated branch — fetch issue + comments via `gh api`, same safety pre-filter, write `<owner>-<repo>-issue-<n>.md` (github PR/discussion URLs stay out of scope). **Bitbucket Cloud (HIMMEL-329):** the URL host routes the request — `bitbucket.org/<ws>/<repo>` (repo), `/pull-requests/<n>` (PR), and `/issues/<n>` (issue) URLs take the **Bitbucket branch**, dispatching to the himmel `bitbucket` CLI (`scripts/bitbucket/`) instead of `gh`. The bitbucket repo path reuses the github Phase 2/3 ref-following for the **github** refs in its README (BB→BB ref-following + BB has-no-stars/topics trust-tier degradation are documented in the skill); PR/issue paths are flat fetch→write. Invokable as `/luna-ingest <url>` at user prompt (via thin slash-command wrapper) OR `Skill { skill: "obsidian-triage:luna-ingest", args: "<url>" }` from inside another runbook (LUNA-9 skill conversion lifts the runbook out of `.claude/commands/luna-ingest.md` into a Skill-tool-dispatchable form so `/harvest-clips` can call it programmatically inside the interactive session). Two opt-in enrichment flags (off by default, orthogonal): `--deep` (LUNA-57) inventories reusable components from the code into a deduped `30-Resources/Components/` library; `--research` (LUNA-64) web-researches the source repo (maturity, alternatives, gotchas) via Claude's own WebSearch and adds a `## Research enrichment` section. The `/harvest-clips` dispatch passes neither.
-- **`obsidian-triage:telegram-clip` skill** (LUNA-58) — pipeline **entry point**: turns a Telegram message (text / bare URL / forward) into a harvest-ready LUNA-2 clip note in `<vault>/Clippings/` (carrying no `harvested_at:`), so `/harvest-clips` ingests it on its next pass. Classifies by the first URL's host (github→`research`, x/twitter→`tweet`, youtube, reddit, other→`article`, no-URL→`note`); preserves sender/ts/message-id provenance; idempotent per message-id. Access-gating is delegated to `telegram:access` (the channel only surfaces allowlisted senders; the tool refuses to write without a sender and never reimplements the allowlist). Invokable as `/telegram-clip <text-or-url>` OR `Skill { skill: "obsidian-triage:telegram-clip", args: "<text>" }` from the interactive telegram channel session. Deterministic logic lives in `tools/telegram-clip.mjs` (pure Node, no runtime deps; the test suite uses the vendored `js-yaml`).
+- **`/archive-clips`** (Stage 4) — graduate clips that completed the full chain out of the `Clippings/` inbox. A clip is eligible when `harvested_at:` AND `processed: true` AND it is wikilinked from a `Clippings/_synthesis/` page; eligible clips move to `Clippings/_done/<YYYY-MM>/` with every path-qualified `[[Clippings/…]]` inbound link rewritten (literal, boundary-safe — won't clobber a prefix-sibling, preserves `|alias`/`#heading`) so they don't dangle. Basename-only `[[name]]` links resolve by Obsidian's unique-basename lookup and survive the move untouched. Dedups by `harvest_url_canonical:` before moving (never deletes). Also (re)generates `Clippings/_deferred.md` — the running backlog of fan-out refs, tail-skipped refs, and safety-flagged repos the pipeline logged but did not action. Keeps `Clippings/` an inbox: only active/incomplete clips stay visible.
+- **`/contra`** — CONTRA passes over the vault. Default mode **ghost-self**: for topics active in the last 14 days, load same-topic notes older than `--min-age` (default 6 months, frontmatter-`date:` based — never mtime) and append a past-you-reacting-to-current-you entry to today's daily note under `## Thinking`, with reaction prose grounded ONLY in surviving verified quotes (hard quote-guard: every span whitespace-normalize-verified against its source BEFORE drafting; failures dropped, zero-survivor entries not written). `--bridge` mode: force one analogy between a technical-domain and a personal/philosophical-domain note (inferred domains must differ). Reports "vault too young" instead of guessing on thin history. Lean-invoke only — never scheduled.
+- **`obsidian-triage:luna-ingest` skill** — chain-following triage for a github OR bitbucket.org repo URL. Fetches metadata + README, follows 1-hop references, classifies each (integrate / take-parts / inspire / skip / api_failure), writes a structured tech-ingest note under `<vault>/30-Resources/Tech/`. Issue URLs (`github.com/<owner>/<repo>/issues/<n>`) take a flat dedicated branch — fetch issue + comments via `gh api`, same safety pre-filter, write `<owner>-<repo>-issue-<n>.md` (github PR/discussion URLs stay out of scope). **Bitbucket Cloud:** the URL host routes the request — `bitbucket.org/<ws>/<repo>` (repo), `/pull-requests/<n>` (PR), and `/issues/<n>` (issue) URLs take the **Bitbucket branch**, dispatching to the himmel `bitbucket` CLI (`scripts/bitbucket/`) instead of `gh`. The bitbucket repo path reuses the github Phase 2/3 ref-following for the **github** refs in its README (BB→BB ref-following + BB has-no-stars/topics trust-tier degradation are documented in the skill); PR/issue paths are flat fetch→write. Invokable as `/luna-ingest <url>` at user prompt (via thin slash-command wrapper) OR `Skill { skill: "obsidian-triage:luna-ingest", args: "<url>" }` from inside another runbook (the skill conversion lifts the runbook out of `.claude/commands/luna-ingest.md` into a Skill-tool-dispatchable form so `/harvest-clips` can call it programmatically inside the interactive session). Two opt-in enrichment flags (off by default, orthogonal): `--deep` inventories reusable components from the code into a deduped `30-Resources/Components/` library; `--research` web-researches the source repo (maturity, alternatives, gotchas) via Claude's own WebSearch and adds a `## Research enrichment` section. The `/harvest-clips` dispatch passes neither.
+- **`obsidian-triage:telegram-clip` skill** — pipeline **entry point**: turns a Telegram message (text / bare URL / forward) into a harvest-ready Web Clipper-shaped clip note in `<vault>/Clippings/` (carrying no `harvested_at:`), so `/harvest-clips` ingests it on its next pass. Classifies by the first URL's host (github→`research`, x/twitter→`tweet`, youtube, reddit, other→`article`, no-URL→`note`); preserves sender/ts/message-id provenance; idempotent per message-id. Access-gating is delegated to `telegram:access` (the channel only surfaces allowlisted senders; the tool refuses to write without a sender and never reimplements the allowlist). Invokable as `/telegram-clip <text-or-url>` OR `Skill { skill: "obsidian-triage:telegram-clip", args: "<text>" }` from the interactive telegram channel session. Deterministic logic lives in `tools/telegram-clip.mjs` (pure Node, no runtime deps; the test suite uses the vendored `js-yaml`).
 
-- **`obsidian-triage:roadmap-clips` skill** (LUNA-59) — cross-source synthesis: aggregates actionable items across daily-note action items, the clipper backlog (`Clippings/_deferred.md`), synthesis proposals, promotion candidates, and the component inventory, clusters them into sequenced themes (effort/impact + target repo), dedups candidate tickets against open Jira, and writes a `60-Maps/<date>-roadmap.md` note. **Proposals only** — never auto-files tickets or restructures the vault (same contract as `/synthesize-clips`). Read-only aggregation lives in `tools/roadmap-aggregate.mjs` (pure Node, no runtime deps); invokable as `/roadmap-clips` OR `Skill { skill: "obsidian-triage:roadmap-clips" }`.
+- **`obsidian-triage:roadmap-clips` skill** — cross-source synthesis: aggregates actionable items across daily-note action items, the clipper backlog (`Clippings/_deferred.md`), synthesis proposals, promotion candidates, and the component inventory, clusters them into sequenced themes (effort/impact + target repo), dedups candidate tickets against open Jira, and writes a `60-Maps/<date>-roadmap.md` note. **Proposals only** — never auto-files tickets or restructures the vault (same contract as `/synthesize-clips`). Read-only aggregation lives in `tools/roadmap-aggregate.mjs` (pure Node, no runtime deps); invokable as `/roadmap-clips` OR `Skill { skill: "obsidian-triage:roadmap-clips" }`.
 
-- **`obsidian-triage:grow-feed-log` skill** (LUNA-130) — a second entry point, parallel to `telegram-clip`: turns a grow-tent Telegram message describing a feed/watering ("added 5L + 2 caps to the mint"), or a bare nutrient-label photo, into an appended entry in `<vault>/20-Areas/Grow/Grow-Feeding-Log.md`. LLM-first by design — no rigid `/feed` command grammar; the skill reads the message (and any photo via `Read`) and derives {date, vessel, water, product, dose, EC, note} itself, resolving vessel names and product identity against the target file's own existing rows/`## Products` section (never a hardcoded table). A feed appends one row to `## Log`; a new product appends a `### <name>` subsection to `## Products` (feed rows wikilink to it via `[[#<name>]]`). Deterministic append logic lives in `tools/grow-feed-log.mjs` (pure Node, no runtime deps): vault-containment, cell sanitization (pipe-escape + newline-collapse so the table can't break), idempotency per `--msg-id` (plus a product-name idempotency gate in product mode), and the `updated:` frontmatter bump. Invokable as `/grow-feed-log <text>` OR `Skill { skill: "obsidian-triage:grow-feed-log", args: "<text>" }`. Telegram routing/access-gating (how a message reaches this skill) is LUNA-127 — a separate, blocked ticket; this skill only owns the extract+append half.
+- **`obsidian-triage:grow-feed-log` skill** — a second entry point, parallel to `telegram-clip`: turns a grow-tent Telegram message describing a feed/watering ("added 5L + 2 caps to the mint"), or a bare nutrient-label photo, into an appended entry in `<vault>/20-Areas/Grow/Grow-Feeding-Log.md`. LLM-first by design — no rigid `/feed` command grammar; the skill reads the message (and any photo via `Read`) and derives {date, vessel, water, product, dose, EC, note} itself, resolving vessel names and product identity against the target file's own existing rows/`## Products` section (never a hardcoded table). A feed appends one row to `## Log`; a new product appends a `### <name>` subsection to `## Products` (feed rows wikilink to it via `[[#<name>]]`). Deterministic append logic lives in `tools/grow-feed-log.mjs` (pure Node, no runtime deps): vault-containment, cell sanitization (pipe-escape + newline-collapse so the table can't break), idempotency per `--msg-id` (plus a product-name idempotency gate in product mode), and the `updated:` frontmatter bump. Invokable as `/grow-feed-log <text>` OR `Skill { skill: "obsidian-triage:grow-feed-log", args: "<text>" }`. Telegram routing/access-gating (how a message reaches this skill) is separate, blocked work; this skill only owns the extract+append half.
 
 Together: harvest → **enrich** (X body-fill via `tools/fxtwitter-enrich.mjs` — see `tools/README.md`) → tag → link → action-item → promote-suggest → mark processed → synthesize patterns → graduate to `_done/` → over time, propose structure → roadmap. `Clippings/` acts as an inbox that drains as clips complete the chain. The vault learns from accumulated clips.
 
-The **enrich** stage runs `fxtwitter-enrich.mjs` (X) and `ig-embed-enrich.mjs` (Instagram) between harvest and triage. For X it fills a thin telegram bare-URL stub's `## The Idea` from the tweet text and de-anonymizes `author`/`title` (the `x.com/i/status/<id>` forwards), so triage tags a rich body on its first pass. The same enrich also fires **inline** at `telegram-clip` filing time (best-effort) so group links are usually born rich. Reddit has no dedicated enrich rung: its thin bodies take the Scrapling `local-headless` ladder in `harvest-clip-body-batch.py` (cookieless, HIMMEL-4709), and `scripts/web/fetch-url.sh` routes reddit hosts through the stealth fetch.
+The **enrich** stage runs `fxtwitter-enrich.mjs` (X) and `ig-embed-enrich.mjs` (Instagram) between harvest and triage. For X it fills a thin telegram bare-URL stub's `## The Idea` from the tweet text and de-anonymizes `author`/`title` (the `x.com/i/status/<id>` forwards), so triage tags a rich body on its first pass. The same enrich also fires **inline** at `telegram-clip` filing time (best-effort) so group links are usually born rich. Reddit has no dedicated enrich rung: its thin bodies take the Scrapling `local-headless` ladder in `harvest-clip-body-batch.py` (cookieless: every cookie media path was removed), and `scripts/web/fetch-url.sh` routes reddit hosts through the stealth fetch.
 
-### Cookie-backed media paths removed (HIMMEL-4709)
+### Cookie-backed media paths removed
 
 The Instagram, X, YouTube and Reddit cookie paths are gone, along with the
-`HIMMEL_MEDIA_COOKIES` switch (HIMMEL-4708) that gated them: `gallery-dl --cookies`,
+`HIMMEL_MEDIA_COOKIES` switch that gated them: `gallery-dl --cookies`,
 the cookie-backed X thread enricher, `reddit-enrich.mjs`, `playwright-auth-save.mjs`,
 `playwright-crawl-x.mjs`, the logged-in YouTube Playwright fallback,
 `youtube-state-from-chrome.py` and `lib/cookie-jar.mjs`. Every media fetch is
@@ -31,7 +31,7 @@ recorded as deferred with the error `scrapling:<reason>`; with no Scrapling venv
 the preflight exits 2 naming `scrapling-venv`. Cookie and storage-state files
 from earlier setups are no longer read; delete them by hand if present.
 
-### Daily fetch health (HIMMEL-1449)
+### Daily fetch health
 
 `scripts/luna/fetch-health.py` runs one cheap known-good probe for every live
 external fetch integration. It is a plain Python script: no Claude invocation,
@@ -45,13 +45,13 @@ The existing `pipeline-cadence` scheduler arms it daily at **01:30** as
 | X thin-clip enrichment | None | FxTwitter API response for a known tweet |
 | Instagram caption enrichment | None | Instagram `embed/captioned` response for a known post |
 | Instagram media enrichment (`instagram-scrapling`) | None: the scrapling venv `~/.himmel/scrapling-venv` | `tools/ig-scrapling-media.py` against a known post |
-| X media enrichment (`x-scrapling`) | None: the scrapling venv `~/.himmel/scrapling-venv` (HIMMEL-4677) | `tools/x-scrapling-media.py` against a known tweet |
-| YouTube enrichment (`youtube-scrapling`) | None: the scrapling venv plus `yt-dlp` on PATH (HIMMEL-4677) | `tools/yt-scrapling-meta.py` for a known video: metadata via Scrapling, transcript via yt-dlp subtitles |
+| X media enrichment (`x-scrapling`) | None: the scrapling venv `~/.himmel/scrapling-venv` | `tools/x-scrapling-media.py` against a known tweet |
+| YouTube enrichment (`youtube-scrapling`) | None: the scrapling venv plus `yt-dlp` on PATH | `tools/yt-scrapling-meta.py` for a known video: metadata via Scrapling, transcript via yt-dlp subtitles |
 | GitHub harvest / ingest | Authenticated `gh` CLI | `gh api repos/cli/cli` |
 | Bitbucket ingest | `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN` (process env or the primary checkout's `.env`) | Authenticated `GET /2.0/user` |
 | Firecrawl article enrichment | `FIRECRAWL_API_KEY` (process env or the primary checkout's `.env`; `FIRECRAWL_BASE_URL` optional) | `POST /v2/scrape` for `https://example.com/` |
 
-Every probe reads the primary checkout's `.env` (HIMMEL-2549) — the merge
+Every probe reads the primary checkout's `.env` (keys living only there once read as missing) — the merge
 happens once, at the registry boundary, so the 01:30 cadence run sees the same
 config as a manual run even though its wrapper sources nothing. A live
 non-empty process value still wins; a set-but-empty one does not. The
@@ -67,7 +67,7 @@ atomically to `~/.himmel/fetch-health.json` (override:
 at `http://127.0.0.1:9877/metrics` as `clip_fetch_source_status` and
 `clip_fetch_source_last_success_timestamp`.
 
-### Instagram media rung: `/ig-media-enrich` (HIMMEL-770)
+### Instagram media rung: `/ig-media-enrich`
 
 The heavyweight escalation rung AFTER `ig-embed-enrich.mjs`. When the caption
 rung failed OR left a thin IG body (no `### Transcript` / `### Slides`), the
@@ -77,8 +77,8 @@ nothing else drains it. The download rung is **lean-invoke** (`/ig-media-enrich`
 run manually or by the harvest cadence - never auto-fired from `/harvest-clips`,
 because the download + local-whisper path is expensive).
 `tools/ig-media-fetch.py` downloads the reel/carousel media cookieless via
-Scrapling (`tools/ig-scrapling-media.py` in `~/.himmel/scrapling-venv`,
-HIMMEL-4675; routed as `local-headless`, so `HARVEST_SCRAPE_DENY` /
+Scrapling (`tools/ig-scrapling-media.py` in `~/.himmel/scrapling-venv`;
+routed as `local-headless`, so `HARVEST_SCRAPE_DENY` /
 `.harvest-backends` apply), transcribes reels locally (`ffmpeg` -> mono-16k WAV -> faster-whisper,
 the pair pinned in `tools/requirements-whisper.txt` and checked by `tools/whisper-probe.py`),
 and recompresses carousel slides into `Clippings/_media/<slug>/slide-NN.jpg`
@@ -118,7 +118,7 @@ ONCE per machine before the first `/ig-media-enrich` run.
    uv run --python 3.12 --with-requirements tools/requirements-whisper.txt python -c "from faster_whisper import WhisperModel; WhisperModel('base')"
    ```
 
-   **GPU (HIMMEL-7680).** `tools/transcribe.py` picks CUDA float16 with
+   **GPU.** `tools/transcribe.py` picks CUDA float16 with
    `large-v3-turbo` when a CUDA device is visible, else CPU int8 with `base`.
    When CUDA is usable but the cuBLAS/cuDNN wheels are not installed it re-execs
    once under `uv` with `tools/requirements-whisper-cuda.txt` added (~1.3 GB, hashed,
@@ -150,7 +150,7 @@ ONCE per machine before the first `/ig-media-enrich` run.
    IG rate-limits aggressively). Steady-state runs (no flag) never touch
    `_evidence/`; use the flag only for the one-time backfill.
 
-### X/Twitter media rung: `/x-media-enrich` (HIMMEL-1226)
+### X/Twitter media rung: `/x-media-enrich`
 
 The X parallel of `/ig-media-enrich`. The harvest pipeline stores a tweet's
 **text + media metadata** only: X media is referenced by URL
@@ -190,7 +190,7 @@ the clip so it parks as caption-only; a **partial** enrichment writes what
 survived, is marked `media_enrichment_status: partial`, and keeps
 `x_media_pending` for retry. Command runbook: `commands/x-media-enrich.md`.
 
-**Subtitles-first transcripts (HIMMEL-4107).** Before whisper, the rung pulls
+**Subtitles-first transcripts.** Before whisper, the rung pulls
 the platform's English subtitles with `yt-dlp` (manual track preferred over auto;
 **no cookies needed**), cleans the VTT (tags/timestamps stripped, adjacent
 rolling duplicates collapsed, no global dedupe, sentence paragraphs) and uses it
@@ -221,7 +221,7 @@ PYTHONUTF8=1 uv run --python 3.12 python marketplace/plugins/obsidian-triage/too
 
 **Inbox-internal names** (never source clips; excluded from harvest/triage/archive scans): `_synthesis/` (synthesize output), `_done/` (archive of graduated clips), `_deferred.md` (archive backlog log), `_evidence/` (reviewed-evidence pool — see below; `/synthesize-clips` intentionally keeps visibility into it).
 
-### Evidence-pool substrate (LUNA-83)
+### Evidence-pool substrate
 
 A flat `Clippings/_evidence/` folder serves as the **reviewed-evidence pool**: clips that have been manually reviewed and promoted out of the inbox but are not yet archived to `_done/`. Rejected clips land in `Clippings/_evidence/_rejected/`. **State is encoded by folder location** — there is no `lifecycle:` enum.
 
@@ -229,9 +229,9 @@ When a clip is promoted to `_evidence/`, its `evidence_kind:` frontmatter field 
 
 `tools/lib/evidence-kind.mjs` is dependency-free (pure ESM, bare `node`). Harvest, triage, and archive exclude `_evidence/` from their inbox scans; `/synthesize-clips` deliberately keeps visibility into it so synthesis can reference promoted evidence.
 
-### One-time backfill: `/migrate-clip-lifecycle` (LUNA-86)
+### One-time backfill: `/migrate-clip-lifecycle`
 
-LUNA-84 made **triage** drain new `processed: true` clips into `_evidence/`
+The TRIAGE exit-target change made **triage** drain new `processed: true` clips into `_evidence/`
 going forward; the clips processed *before* that change still sit in the
 top-level `Clippings/` inbox. `/migrate-clip-lifecycle` (engine:
 `tools/migrate-clip-lifecycle.mjs`, dependency-light, reuses `evidence-kind.mjs`)
@@ -249,12 +249,12 @@ ONCE behind the mandatory staging gate documented in
 `commands/migrate-clip-lifecycle.md` (copy vault → git oracle → apply → assert
 zero `.md`-form danglers → rollback → assert `git diff` empty → only then live).
 
-### Daily timeline + telegram feedback (LUNA-90/91 — Phase 3 wiring)
+### Daily timeline + telegram feedback (Phase 3 wiring)
 
 The final phase connects the pipeline to the operator's two daily surfaces, so
 the vault visibly compounds where the operator already looks.
 
-**Daily timeline (LUNA-90).** `tools/daily-timeline.mjs --vault <v> --date <d>`
+**Daily timeline.** `tools/daily-timeline.mjs --vault <v> --date <d>`
 upserts a single `## Clip pipeline` section into `50-Journal/Daily/<date>.md`
 logging the day's flow: **N captured → inbox**, **N reviewed → evidence (by
 kind)**, **N promoted → subjects** (with `[[subject]]` backrefs), **N densified
@@ -265,15 +265,15 @@ one section, never appends a second or double-counts (bi-temporal: clips carry
 `date_clipped`, subjects their own `date`, the daily note anchors *when* review
 / promotion happened). Triage calls it once after Phase 5; `/synthesize-stubs`
 calls it after a live `--apply`. A missing daily note is created from
-`_Templates/Daily-Note.md` (HIMMEL-4182). Section surgery is byte/CRLF-preserving
+`_Templates/Daily-Note.md`. Section surgery is byte/CRLF-preserving
 (`tools/lib/daily-timeline.mjs`).
 
-**Daily report (HIMMEL-4182).** The same run upserts a `## Daily report` section
+**Daily report.** The same run upserts a `## Daily report` section
 (`tools/lib/daily-report.mjs`) so the day's intake turns into decisions:
 
 - **Sources:** `_evidence/` clips with `triaged_at: <date>`, grouped by
   `evidence_kind`: link, title, and a one-line why (the first sentence of
-  `## The Idea`, else of the first prose line). A clip carrying HIMMEL-4107's
+  `## The Idea`, else of the first prose line). A clip carrying the subtitles-first rung's
   `media_video_duration_s` also gets a video line (duration, transcript
   coverage and source). A day with no intake gets `- No intake on <date>.`
 - **Suggested actions:** deterministic, no model. One per clip, first rule
@@ -288,7 +288,7 @@ calls it after a live `--apply`. A missing daily note is created from
   ticked or dismissed in any of them, is re-listed under `### Carried over`
   with its age, until it is resolved.
 
-**Telegram promotion feedback (LUNA-91).** A telegram capture is **inbox-state by
+**Telegram promotion feedback.** A telegram capture is **inbox-state by
 folder placement** — top-level in `Clippings/` with no `processed:`/`lifecycle:`
 marker (design §12.A, no enum); `telegram-clip` adds `telegram_chat_id`
 provenance (alongside `telegram_msg_id`) so a later promotion can reply to the
@@ -298,22 +298,22 @@ clip to a subject, the engine writes a **batched digest** to
 chat**, not one per promotion (design §12.F) — listing the new `[[subject]]`(s);
 the `/synthesize-stubs` runbook sends it through the telegram bridge `reply` tool
 (operator-gated live send). A re-run that promotes nothing new clears the stale
-digest, and `--no-telegram-digest` suppresses it entirely during the LUNA-86
+digest, and `--no-telegram-digest` suppresses it entirely during the one-time
 migration backfill. Pure builder: `tools/lib/telegram-digest.mjs`.
 
 ## Why a plugin
 
-LUNA-2 ships the install pipeline (Web Clipper extension + JSON templates landed in luna PR #11, see `_Templates/Web-Clipper/import/`). Without triage, clips become a bookmark graveyard inside the vault — the exact failure the source article called out. This plugin owns the triage rhythm.
+A sibling task ships the install pipeline (Web Clipper extension + JSON templates landed in luna PR #11, see `_Templates/Web-Clipper/import/`). Without triage, clips become a bookmark graveyard inside the vault — the exact failure the source article called out. This plugin owns the triage rhythm.
 
-The LUNA-3 brief (tracked in the operator's private handover repo) documents three approach options (A manual / B interactive / C scheduled). This implements **B autonomous** — no per-clip confirmations, but on-demand rather than nightly cron.
+The clip-ingest brief (tracked in the operator's private handover repo) documents three approach options (A manual / B interactive / C scheduled). This implements **B autonomous** — no per-clip confirmations, but on-demand rather than nightly cron.
 
 ## Architecture strategy: statusline-pattern (himmel-as-LOGIC, fork-as-vendor)
 
 This plugin lives in himmel as **independent triage LOGIC**, not embedded in a fork of any upstream skill. Why:
 
 - **LOGIC stays in himmel.** The `/triage-clips` and `/synthesize-clips` runbooks are pure-markdown agent instructions with no dependency on any specific upstream skill. They run against any vault that has a `Clippings/` folder and (optionally) a `_CLAUDE.md` Folder Map.
-- **Companion plugins are vendored, not absorbed.** `claude-obsidian` (AgriciDaniel) is tag-pinned directly to upstream in himmel's `marketplace.json` (the `yotamleo` vendor fork was retired at v2.2.0 once its whole carried delta landed upstream — HIMMEL-2925). `obsidian` (kepano) and `obsidian-second-brain` (eugeniughelbur) are NOT declared in himmel's marketplace — they install from their own sources (a bare-SHA himmel pin is not installable and kepano publishes no tags, HIMMEL-435). We read their OUTPUTS (skill invocations, frontmatter conventions) — we don't fork their SOURCE.
-- **Forks (when needed) are minimal.** LUNA-4 forked `AgriciDaniel/claude-obsidian` as `yotamleo/claude-obsidian` for attribution (banner-only diff from upstream) — similar to how HIMMEL-122 forks `claude-statusline` purely for CRLF/hooks/.gitattributes guardrails. Triage LOGIC does NOT migrate into a fork when one exists; claude-obsidian's fork was retired once upstream absorbed its whole delta (HIMMEL-2925) and the marketplace pin now points directly at upstream.
+- **Companion plugins are vendored, not absorbed.** `claude-obsidian` (AgriciDaniel) is tag-pinned directly to upstream in himmel's `marketplace.json` (the `yotamleo` vendor fork was retired at v2.2.0 once its whole carried delta landed upstream). `obsidian` (kepano) and `obsidian-second-brain` (eugeniughelbur) are NOT declared in himmel's marketplace — they install from their own sources (a bare-SHA himmel pin is not installable and kepano publishes no tags). We read their OUTPUTS (skill invocations, frontmatter conventions) — we don't fork their SOURCE.
+- **Forks (when needed) are minimal.** We forked `AgriciDaniel/claude-obsidian` as `yotamleo/claude-obsidian` for attribution (banner-only diff from upstream) — similar to how himmel forks `claude-statusline` purely for CRLF/hooks/.gitattributes guardrails. Triage LOGIC does NOT migrate into a fork when one exists; claude-obsidian's fork was retired once upstream absorbed its whole delta and the marketplace pin now points directly at upstream.
 
 Trade-off accepted: a few Luna-flavored fallbacks in the command bodies (folder names like `30-Resources/Concepts/`, `20-Areas/`, `50-Journal/Daily/`). All such paths fall back to `<vault>/_CLAUDE.md` Folder Map for non-Luna vaults. Easy to delete the Luna-specific paragraphs if upstreaming a subset to `eugeniughelbur/obsidian-second-brain` later.
 
@@ -329,8 +329,8 @@ Companion plugins — read the **Install method** column carefully (different so
 
 | Plugin | Repo (pinned) | Install method | Why |
 |--------|--------------|----------------|-----|
-| `obsidian` (kepano) | [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) — NOT in himmel marketplace | `/plugin install obsidian@obsidian-skills` (kepano's own marketplace) | Provides `obsidian-markdown` skill that `/triage-clips` can use for OFM syntax. **Recommended, not required** — conservative-subset fallback is documented in the command body. *(Not himmel-pinned: a bare-SHA pin isn't installable and kepano publishes no tags, HIMMEL-435.)* |
-| `claude-obsidian` (AgriciDaniel) | [AgriciDaniel/claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) @ tag `v3.0.1` in himmel marketplace.json | `/plugin install claude-obsidian` from himmel marketplace | `wiki-query` optionally powers richer Phase 4 Related Notes traversal. Optional. *(LUNA-4's vendor fork was retired at v2.2.0 — HIMMEL-2925; the pin now points directly at upstream.)* |
+| `obsidian` (kepano) | [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) — NOT in himmel marketplace | `/plugin install obsidian@obsidian-skills` (kepano's own marketplace) | Provides `obsidian-markdown` skill that `/triage-clips` can use for OFM syntax. **Recommended, not required** — conservative-subset fallback is documented in the command body. *(Not himmel-pinned: a bare-SHA pin isn't installable and kepano publishes no tags.)* |
+| `claude-obsidian` (AgriciDaniel) | [AgriciDaniel/claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) @ tag `v3.0.1` in himmel marketplace.json | `/plugin install claude-obsidian` from himmel marketplace | `wiki-query` optionally powers richer Phase 4 Related Notes traversal. Optional. *(The vendor fork was retired at v2.2.0 once upstream absorbed its delta; the pin now points directly at upstream.)* |
 
 ## Usage
 
@@ -354,7 +354,7 @@ Companion plugins — read the **Install method** column carefully (different so
 /synthesize-clips --dry-run
 ```
 
-## Vault-first link reading (LUNA-78)
+## Vault-first link reading
 
 When a link (X post, article, repo URL) is handed to the agent, read it from
 the vault **first** — the harvest/clipper pipeline has usually already captured
@@ -377,14 +377,14 @@ default machine is marked `harvest_status: partial` + `harvest_flag: thin-body`
 rather than `ok` with an empty body. No vault / no clip degrades silently to
 live fetch (adopter-safe).
 
-**YouTube (HIMMEL-5715).** A YouTube URL, or any "watch / summarize this video" ask, goes to `/watch-youtube <url> [--visual]` (`tools/yt-watch.py`): Scrapling metadata + yt-dlp transcript from `yt-scrapling-meta.py`, plus with `--visual` a ≤720p yt-dlp download and ffmpeg scene frames (`-fps_mode vfr`; ffmpeg 9 rejects `-vsync`). No cookie and no Gemini/Grok/XAI key: Claude reads the transcript and frames itself. Do not use the vault plugin's `/youtube` for this (HIMMEL-5714 tracks its upstream `-vsync` fix).
+**YouTube.** A YouTube URL, or any "watch / summarize this video" ask, goes to `/watch-youtube <url> [--visual]` (`tools/yt-watch.py`): Scrapling metadata + yt-dlp transcript from `yt-scrapling-meta.py`, plus with `--visual` a ≤720p yt-dlp download and ffmpeg scene frames (`-fps_mode vfr`; ffmpeg 9 rejects `-vsync`). No cookie and no Gemini/Grok/XAI key: Claude reads the transcript and frames itself. Do not use the vault plugin's `/youtube` for this (its upstream `-vsync` fix is still pending).
 
 `/read-link`'s UX is inspired by
 [eugeniughelbur/obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain)'s
 `/x-read`; this is a clean-room himmel-native reimplementation that skips Grok —
 not a vendored fork (no `UPSTREAM_PIN`, no `plugin-upstreams.json` entry).
 
-**Attribution (HIMMEL-8416).** `hooks/validate-ai-first.sh` is ported from
+**Attribution.** `hooks/validate-ai-first.sh` is ported from
 [eugeniughelbur/obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain)
 v0.18.1 (MIT, Eugeniu Ghelbur) and keeps its MIT licence header. The marketplace
 no longer carries that plugin; this one hook is the only piece himmel still uses.
@@ -413,23 +413,23 @@ no longer carries that plugin; this one hook is the only piece himmel still uses
 
 Run: `bash marketplace/plugins/obsidian-triage/tests/test-triage-invariants.sh`
 
-A `tests/test-synthesize-invariants.sh` covers the synthesize-side invariants (processed-filter, 14-day dedup, confidence-floor single-source rejection for Patterns 1/3/4 + the Pattern 2 domain-floor exemption (HIMMEL-242), deterministic slug derivation).
+A `tests/test-synthesize-invariants.sh` covers the synthesize-side invariants (processed-filter, 14-day dedup, confidence-floor single-source rejection for Patterns 1/3/4 + the Pattern 2 domain-floor exemption, deterministic slug derivation).
 
-`tests/test-telegram-clip.sh` (LUNA-58) covers the telegram entry point: URL→type classification, frontmatter shape + provenance, idempotent re-run dedup, `--dry-run` no-write, no-sender refusal, and YAML-validity of the written clip. Requires `bun install` (or `npm install`) in `tools/` first (the YAML-validity check resolves the vendored `js-yaml`).
+`tests/test-telegram-clip.sh` covers the telegram entry point: URL→type classification, frontmatter shape + provenance, idempotent re-run dedup, `--dry-run` no-write, no-sender refusal, and YAML-validity of the written clip. Requires `bun install` (or `npm install`) in `tools/` first (the YAML-validity check resolves the vendored `js-yaml`).
 
-`tests/test-roadmap-aggregate.sh` (LUNA-59) covers the roadmap aggregator: per-source parsers (daily action items, `_deferred.md` sections, synthesis `## Proposed vault change`, promotion-candidate frontmatter, component inventory), CLI JSON shape + counts, `_done`-exclusion, empty-source graceful, and vault validation. Pure Node — no `bun install` needed.
+`tests/test-roadmap-aggregate.sh` covers the roadmap aggregator: per-source parsers (daily action items, `_deferred.md` sections, synthesis `## Proposed vault change`, promotion-candidate frontmatter, component inventory), CLI JSON shape + counts, `_done`-exclusion, empty-source graceful, and vault validation. Pure Node — no `bun install` needed.
 
-`tests/test-daily-timeline.sh` (LUNA-90) is the fixture-gated acceptance test for the daily `## Clip pipeline` timeline: correct captured/reviewed-by-kind/promoted/densified counts anchored to the target date, byte-identical second-run idempotency, in-place refresh on state change, CRLF preservation, missing-note creation, and the triage/synthesize runbook wiring. Pure Node.
+`tests/test-daily-timeline.sh` is the fixture-gated acceptance test for the daily `## Clip pipeline` timeline: correct captured/reviewed-by-kind/promoted/densified counts anchored to the target date, byte-identical second-run idempotency, in-place refresh on state change, CRLF preservation, missing-note creation, and the triage/synthesize runbook wiring. Pure Node.
 
-`tests/test-daily-report.sh` (HIMMEL-4182) is the fixture-vault acceptance test for the `## Daily report` section: sources grouped by kind with why and video lines, ranked actions citing their clips, carry-over with age (done, dismissed and older-ticked actions dropped), byte-identical re-run with ticks preserved, the no-intake line in a created note, CRLF, and shortened titles / capped citations. Pure Node.
+`tests/test-daily-report.sh` is the fixture-vault acceptance test for the `## Daily report` section: sources grouped by kind with why and video lines, ranked actions citing their clips, carry-over with age (done, dismissed and older-ticked actions dropped), byte-identical re-run with ticks preserved, the no-intake line in a created note, CRLF, and shortened titles / capped citations. Pure Node.
 
-`tests/test-telegram-digest.sh` + `tests/test-synthesize-telegram-digest.sh` + `tests/test-telegram-clip-inbox.sh` (LUNA-91) cover the promotion digest (one batched reply per chat — not per promotion — distinct-subject dedup, non-telegram/suppression exclusion, reply threading), its end-to-end emission from `synthesize-stubs --apply` (digest file written, stale-cleared on no-op re-run, suppressed under `--no-telegram-digest`), and the telegram-clip inbox-state contract (no `processed:`/`lifecycle:` marker, `telegram_chat_id` provenance). Pure Node.
+`tests/test-telegram-digest.sh` + `tests/test-synthesize-telegram-digest.sh` + `tests/test-telegram-clip-inbox.sh` cover the promotion digest (one batched reply per chat — not per promotion — distinct-subject dedup, non-telegram/suppression exclusion, reply threading), its end-to-end emission from `synthesize-stubs --apply` (digest file written, stale-cleared on no-op re-run, suppressed under `--no-telegram-digest`), and the telegram-clip inbox-state contract (no `processed:`/`lifecycle:` marker, `telegram_chat_id` provenance). Pure Node.
 
-`tests/test-grow-feed-log.sh` (LUNA-130) covers the feed-log entry point against a temp fixture vault (never the real vault): feed-row placement inside the `## Log` table (right after the last existing row, `## Products` untouched), idempotent re-run by `--msg-id` (byte-identical no-op), pipe/newline cell sanitization, `--dry-run` no-write, product-mode section insertion before `## Notes` plus its own product-name idempotency gate, vault/target-file/`## Log`-table validation exit codes, and the `updated:` frontmatter bump on a real write only. Pure Node.
+`tests/test-grow-feed-log.sh` covers the feed-log entry point against a temp fixture vault (never the real vault): feed-row placement inside the `## Log` table (right after the last existing row, `## Products` untouched), idempotent re-run by `--msg-id` (byte-identical no-op), pipe/newline cell sanitization, `--dry-run` no-write, product-mode section insertion before `## Notes` plus its own product-name idempotency gate, vault/target-file/`## Log`-table validation exit codes, and the `updated:` frontmatter bump on a real write only. Pure Node.
 
 ## Known issues (as of audit cycle 2026-05-25)
 
-Tracked in the operator's private handover repo (LUNA-3 next-session notes). Calibration-on-real-clips will tighten these:
+Tracked in the operator's private handover repo (the clip-ingest next-session notes). Calibration-on-real-clips will tighten these:
 
 - **Phase 3 tag inference is heuristic.** Conservative ≥80% confidence threshold + "prefer existing vault tags" rule, but real-world false-positive rate unknown until calibration. Tune in command body if needed.
 - **Phase 4 Related Notes proximity is grep-based.** Falls back to a comment when `claude-obsidian:wiki-query` skill is unavailable OR vault has >1000 notes. Quality depends on vault link-graph density.
@@ -437,12 +437,12 @@ Tracked in the operator's private handover repo (LUNA-3 next-session notes). Cal
 
 ## Follow-list scorer
 
-`tools/follow-list-score.mjs` (HIMMEL-660) — evidence-first `gather` →
+`tools/follow-list-score.mjs` — evidence-first `gather` →
 manual Claude judge pass → `assemble` pipeline that scores/tiers the X/Twitter
 follow list. See `tools/README.md` ("Follow-list scorer" section) for the
 full runbook.
 
-### Advisory repo security scan (HIMMEL-5816)
+### Advisory repo security scan
 
 `tools/repo-security-scan.mjs` reads a GitHub repo's README, root docs, command and skill markdown, `package.json` and setup scripts through `gh api` (no clone, nothing executed) and reports prompt injection, install hooks, obfuscated payloads, secret upload / pipe-to-shell in setup, and git/URL dependencies. It is advisory: it never installs, rejects or gates anything.
 
@@ -451,9 +451,9 @@ full runbook.
 - Findings carry a fixed `kind` / `detail` and a sanitized path, never a quote of the repo text. A scan that cannot run is `fetch_error` / `unavailable`, never `clean`.
 - Tests: `tests/test-repo-security-scan.sh` (hermetic; `REPO_SCAN_GH_FIXTURE` swaps `gh`).
 
-### Advisory skill scan: SkillSpector Stage 1 (HIMMEL-5913)
+### Advisory skill scan: SkillSpector Stage 1
 
-`tools/skillspector-scan.sh <skill-dir> <report.json>` runs NVIDIA SkillSpector Stage 1 (static, `--no-llm`) over one skill directory and stores the JSON report. It is advisory: a finding means "read the flagged line before adopting or using the skill" (the HIMMEL-5860 pilot saw false positives on clean skills, and Stage 1 never returns SAFE alone). Stage 2 (LLM) is not wired.
+`tools/skillspector-scan.sh <skill-dir> <report.json>` runs NVIDIA SkillSpector Stage 1 (static, `--no-llm`) over one skill directory and stores the JSON report. It is advisory: a finding means "read the flagged line before adopting or using the skill" (the SkillSpector pilot saw false positives on clean skills, and Stage 1 never returns SAFE alone). Stage 2 (LLM) is not wired.
 
 - **Ingest:** `/luna-ingest <url> --skill-scan` runs Phase 3.7 over each skill directory of the source repo and writes `skill_scan:` plus a `## Skill scan (advisory)` section, with the reports in `<repo-slug>.skillspector/` beside the note.
 - **Clips:** `/harvest-clips` passes `--skill-scan` for a clipped `/tree/<branch>/.../skills/...` URL, so a clipped skill is scanned before it is used.
@@ -461,7 +461,7 @@ full runbook.
 - **No install:** the wrapper never installs SkillSpector (rc 3 when missing). `pip install` belongs in a throwaway sandbox or the test VM.
 - Tests: `tests/test-skillspector-scan.sh` (hermetic stub; replays two real reports captured from skillspector 2.12.0 @182a4753 on the pilot fixtures under `tests/fixtures/skillspector/`).
 
-### Opt-in web search: DeepSeek (HIMMEL-6269)
+### Opt-in web search: DeepSeek
 
 The claim-check web rung (`tools/lib/follow-web.mjs`) can search with DeepSeek
 Search, plus DeepSeek Fetch on the top hit when it has no snippet. **Off for
@@ -485,10 +485,10 @@ content to send there.
 
 ## Cross-refs
 
-- Sibling ticket (install pipeline): [LUNA-2](https://yotamleo.atlassian.net/browse/LUNA-2) — done
-- This ticket: [LUNA-3](https://yotamleo.atlassian.net/browse/LUNA-3) — in-progress (audit fixes landed; calibration pending)
-- Upcoming follow-up: LUNA-4 — fork `claude-obsidian` for vendor/attribution (statusline-pattern; LOGIC stays in himmel)
-- Handover: tracked in the operator's private handover repo (LUNA-3)
+- Sibling task (install pipeline: the Web Clipper extension and templates): done
+- This plugin's clip-ingest work: in progress (audit fixes landed; calibration pending)
+- Upcoming follow-up: fork `claude-obsidian` for vendor/attribution (statusline-pattern; LOGIC stays in himmel)
+- Handover: tracked in the operator's private handover repo
 - Templates landed in luna: `_Templates/Web-Clipper/` + `_Templates/Web-Clipper/import/`
 - Reference page: luna `30-Resources/Tech/Obsidian Web Clipper Templates.md`
 - Source article (the *why*): Kanika (@KanikaBK) — "fill in Related Notes before closing the clip"
@@ -499,4 +499,4 @@ The external `claude-obsidian` plugin is pinned in himmel's `marketplace/.claude
 
 ### Bumping the pin (`claude-obsidian`)
 
-`claude-obsidian` pins directly to upstream `AgriciDaniel/claude-obsidian` — the `yotamleo/claude-obsidian` vendor fork was retired at v2.2.0 once upstream merged its whole carried delta (#178 UTF-8 test-stdout guards, #179 CRLF-frontmatter fix; HIMMEL-2925). The fork repo stays up as an archive, not deleted. To pick up a new upstream release: in **one himmel PR**, move `marketplace.json`'s `ref` to the new upstream tag and bump `synced_base` in both `scripts/upstreams.json` and [`scripts/plugin-upstreams.json`](../../../scripts/plugin-upstreams.json) to match; `scripts/check-plugin-drift.sh` reports BEHIND once upstream tags newer than the recorded `synced_base` appear.
+`claude-obsidian` pins directly to upstream `AgriciDaniel/claude-obsidian` — the `yotamleo/claude-obsidian` vendor fork was retired at v2.2.0 once upstream merged its whole carried delta (#178 UTF-8 test-stdout guards, #179 CRLF-frontmatter fix). The fork repo stays up as an archive, not deleted. To pick up a new upstream release: in **one himmel PR**, move `marketplace.json`'s `ref` to the new upstream tag and bump `synced_base` in both `scripts/upstreams.json` and [`scripts/plugin-upstreams.json`](../../../scripts/plugin-upstreams.json) to match; `scripts/check-plugin-drift.sh` reports BEHIND once upstream tags newer than the recorded `synced_base` appear.

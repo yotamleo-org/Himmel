@@ -7,13 +7,14 @@
 > pre-commit gate (see `docs/internals/enforcement.md`). This file is the
 > per-operation lookup table.
 >
-> Routing is registry-driven: `scripts/backends.json` lists jira with
-> `chain: [cli, api, mcp]` — CLI first, raw REST (curl/WebFetch) second,
-> MCP last. Add or reorder tiers there; no hook edit needed.
+> Routing: `scripts/backends.json` gives jira the chain `["cli"]`. Himmel
+> Jira work is CLI-only, and `block-backend-tier.sh` has an explicit Jira
+> branch for it (see "CLI-only routing" below). Confluence keeps
+> `chain: [cli, api, mcp]`.
 
-For Jira ops in this repo, default to the local CLI at
-`scripts/jira/dist/index.js` instead of the Atlassian MCP server
-(`mcp__plugin_atlassian_atlassian__*`).
+For Jira ops in this repo, use the local CLI at
+`scripts/jira/dist/index.js`. The Atlassian MCP server
+(`mcp__plugin_atlassian_atlassian__*`) is denied for Jira, reads included.
 
 **Why:**
 - The CLI is one shell call with the schema in `--help` — fewer
@@ -24,21 +25,21 @@ For Jira ops in this repo, default to the local CLI at
   two-call MCP pattern (`getTransitionsForJiraIssue` to look up the
   numeric transition ID, then `transitionJiraIssue` with that ID).
 
-**Mapping (preferred plugin call ↔ MCP equivalent):**
+**Mapping (CLI call ↔ the Atlassian MCP method it replaces, which is denied):**
 
 | Op          | Plugin                                                                      | MCP                                                              |
 |-------------|-----------------------------------------------------------------------------|------------------------------------------------------------------|
 | Get         | `node scripts/jira/dist/index.js get HIMMEL-N` (default includes description body, a `Labels:` line when the issue has any, and a `Fix versions:` line when it has any; add `--short` for header-only) | `getJiraIssue`                                                   |
 | List/search | `... list --jql "..."`; `... list --label <l>` filters by label (composed into the built JQL, `--jql` still wins); `... list --labels` appends each issue's labels as a trailing comma-separated column (off by default — on by default would break fixed-column consumers of the TSV output) | `searchJiraIssuesUsingJql`                                       |
 | Create      | `... create --type Story --title ... --desc ... [--labels a,b] [--fix-version v1.0.0] [--affects-version v1.0.0\|current]` (project auto-loaded from `.env`; pass `--project FOO` only to override per-call; `--labels` comma-separated; `--fix-version` validated against the project's versions — a Bug without it needs a placement: `--proposed-version <v>`, `--backlog --proposed-version backlog --why <why>`, `--gate critical\|regression` or `--priority Highest` (see "Bug placement" below); `--affects-version` is validated the same way and `current` resolves to the earliest unreleased version at call time) | `createJiraIssue`                                                |
-| Edit        | `... edit HIMMEL-N --title ... --desc ... [--labels a,b]` (`--labels` is FULL-REPLACE: the set becomes the complete label list — no MCP `editJiraIssue` fallback needed for labels) or `... edit HIMMEL-N --add-labels a,b` (APPENDS without reading/replacing the existing set, via Jira's atomic `update` operation; mutually exclusive with `--labels`); `... edit HIMMEL-N --fix-version v1.0.0` (FULL-REPLACE) or `--add-fix-version v1.0.0` (APPENDS via the same atomic `update` operation; mutually exclusive with `--fix-version`) — both validated against the project's versions, failing non-zero and naming the project on an unknown version name; into a frozen version either needs `--gate critical\|regression\|must:<ref>\|receipt` (or `--chief-override "<reason>"`) and appends the admissions ledger row (see Intake gate); `... edit HIMMEL-N --affects-version v1.0.0\|current` sets affectsVersion (FULL-REPLACE, same validation, read back after the PUT) | `editJiraIssue`                                                  |
+| Edit        | `... edit HIMMEL-N --title ... --desc ... [--labels a,b]` (`--labels` is FULL-REPLACE: the set becomes the complete label list — no MCP `editJiraIssue` fallback needed for labels) or `... edit HIMMEL-N --add-labels a,b` (APPENDS without reading/replacing the existing set, via Jira's atomic `update` operation; mutually exclusive with `--labels`); `... edit HIMMEL-N --fix-version v1.0.0` (FULL-REPLACE) or `--add-fix-version v1.0.0` (APPENDS via the same atomic `update` operation; mutually exclusive with `--fix-version`) — both validated against the project's versions, failing non-zero and naming the project on an unknown version name; into a frozen version either needs `--gate critical\|regression\|must:<ref>\|receipt` (or `--chief-override "<reason>"`) and appends the admissions ledger row (see Intake gate); `... edit HIMMEL-N --affects-version v1.0.0\|current` sets affectsVersion (FULL-REPLACE, same validation, read back after the PUT). An edit touching description, labels, parent or sector is refused before the PUT when it adds a ticket-standard error the ticket did not have; gaps it already had print as warnings; an unreadable ticket is refused | `editJiraIssue`                                                  |
 | Comment     | `... comment HIMMEL-N "text"` / `... comment HIMMEL-N --edit <commentId> "text"` (replace a comment's body, PUT) | `addCommentToJiraIssue` / `addOrEditJiraIssueComment`            |
 | Comments    | `... comments HIMMEL-N [--last N]` (read path; author/created/body oldest-first, ADF rendered to plain text) | (none — MCP has no comment read) |
 | History     | `... history HIMMEL-N [--field <name>] [--json]` (the changelog, oldest first, one `<created>  <author>  <field>: <from> → <to>` line per changed field; `--json` prints the raw entries and ignores `--field`; `--field` keeps one field, e.g. `status` or `Fix Version`) | (none — MCP has no changelog read) |
 | Attach      | `... attach HIMMEL-N file.png`                                              | (none — MCP has no attach)                                       |
-| Transition  | `... transition HIMMEL-N Done` (exit 0 moved, 1 refused or failed, 3 closed but left with no fixVersion: a key deferred out of a frozen version, `FAIL` on stderr; `merge-on-green.sh` counts 3 as moved and files a Done-fold request) | `getTransitionsForJiraIssue` + `transitionJiraIssue` (two calls) |
+| Transition  | `... transition HIMMEL-N Done` (the status is always read back; a failed read-back is reported as unconfirmed; a versionless Done close into a frozen release that never ruled the key in files the INTAKE itself with the merged PR as evidence and prints the request id, or, with no merged PR, writes no version and prints the `jira release request` line to run; exit 0 moved, 1 refused or failed, 3 closed but left with no fixVersion: a key deferred out of a frozen version, or a frozen close with no merged PR, `FAIL` on stderr; `merge-on-green.sh` counts 3 as moved and files a Done-fold request) | `getTransitionsForJiraIssue` + `transitionJiraIssue` (two calls) |
 | Transitions | `... transitions HIMMEL-N` (id<TAB>name per available transition) | `getTransitionsForJiraIssue`                                  |
-| Move        | `... move HIMMEL-N --to-project LUNA [--type Story] [--dry-run]` (close source + create target + copy comments) | (none — Jira Cloud REST API has no direct project-change endpoint) |
+| Move        | `... move HIMMEL-N --to-project LUNA [--type Story] [--parent <epic>\|--labels standalone] [--sector S] [--fix-version v\|--proposed-version v\|--backlog --proposed-version backlog --why W\|--gate G] [--priority P] [--dry-run]` (the target is filed through the shared create, its checks run before either project is touched, `--dry-run` runs them too; the source epic and version are never copied; then copy comments and close the source with a read-back) | (none — Jira Cloud REST API has no direct project-change endpoint) |
 | Projects    | `... projects` / `... project-create ...`                                   | `getVisibleJiraProjects` / no equivalent for create              |
 | Link        | `... link HIMMEL-A HIMMEL-B` (Relates, the default; case-insensitive `--type`, validated against the live type list). Blocks is explicit: `link A --blocks B` (A blocks B) and `link A --blocked-by B` (A is blocked by B); the bare two-key form is refused for Blocks, because the first key is the blocker (`link A B --type Blocks` stores "A blocks B") and callers often expect the reverse; the explicit flags state the direction. The output prints the stored relation (`Linked: A blocks B`), matching `links` and the Jira UI. `scripts/jira/audit-blocks-links.mjs` is a read-only TSV audit of open-ticket Blocks links with proposed flips | `createIssueLink` (+ `getIssueLinkTypes` for the type list) |
 | Links       | `... links HIMMEL-N` (lists id, type, canonical `inward=` / `outward=` keys, and the relation from the queried issue) | `getJiraIssue` with the `issuelinks` field |
@@ -52,20 +53,65 @@ For Jira ops in this repo, default to the local CLI at
 | Versions    | `... versions` / `... version-create <name> [--start-date YYYY-MM-DD] [--release-date YYYY-MM-DD] [--released] [--description ...]` / `... version-edit <name> [--name <new>] [--start-date] [--release-date] [--description]` (`--name` renames in place; `version-create` and `--name` refuse a non-semver name - only `vX.Y.Z` or `vX.Y.Z-pre.N`) / `... version-release <name> [--date YYYY-MM-DD]` / `... version-archive <name> [--unarchive] [--force]` (REST `PUT /version/{id}` `archived`, refused while `relatedIssueCounts` shows issues unless `--force`; MCP twin `manageJiraProjectVersion` action=archive) / `... version-move <name> --after <name>\|--position First\|Last` (REST `POST /version/{id}/move`) / `... affects-version HIMMEL-N --add\|--remove <name\|current>` (the `update.versions` add/remove verbs, same validation; `current` = earliest unreleased version) / `... fix-version HIMMEL-N --add\|--remove <name>` (REST `/project/{key}/versions`, `/version`, and the issue `update.fixVersions` add/remove verbs, so other versions on the ticket are untouched) | `manageJiraProjectVersion` action=archive for `version-archive`; no other version op has an MCP twin |
 | Freeze      | `... version-freeze <name> [--at YYYY-MM-DD] [--keys-file <path>] [--dry-run]` (writes `frozen: <date>` and `frozen-keys: A,B` into the version description and labels the set `scope-<name>`; the set is the version's open tickets, or the `--keys-file` list (one key per line, `#` comments) for a freeze that happened before the tool; refused on an already-frozen version) / `... version-ready <name> [--chief-override <row-id> "<reason>"]...` (prints the P1 tag criterion as tab-separated `PASS`/`FAIL` rows: `frozen-set` every frozen key Done or deferred from this version (label `deferred` plus a deferral ledger row for it) and every key in the version but not in the frozen list either carrying an admission ledger row or Done (a Done key with no row is a Done-fold; any other without a row is a leak and fails the row), `no-blocker-bug` no open Highest-priority or `critical`/`blocker`/`v1-blocker`-labelled Bug in the version, `main-ci` every CI run green at main's head, `done-fold` every Done frozen key still carries the version; then `frozen-open`, `admitted-after-freeze` and `done-folded` counts, one `admitted<TAB><key><TAB><reason>[<TAB><by>]` line per ruled admission, and every ledger override/deferral; informational, exit 0, it refuses nothing, gates on no count and prints no roll date) / `... version-admit <KEY> --version <name> --reason "<why>" --by <rm-session>` (records a release-manager admission as an `rm-admit` ledger row) / `... version-defer <KEY> --version <name> --reason "<why>" [--to <version>]` (with `--to`, first adds that version through the intake gate, so a refused target leaves the ticket where it was; then removes the source version, read back, and takes the target off again if the source stays on; then labels `deferred` and records the deferral). `--chief-override` is per row and repeatable, each overridden row gets its own ledger row; it and `version-admit` and `version-defer` need `HIMMEL_CONSOLE=1` (the same marker as `create --chief-override`) and a non-blank reason; every row lands in the admissions ledger (`$HANDOVER_DIR/admissions-ledger.jsonl`, `HIMMEL_ADMISSIONS_LEDGER` overrides) | (none) |
 | Mirror      | `... mirror [--full] [--status] [--qmd] [--root DIR]` (read-only Jira → one `<KEY>.md` per issue under `~/.himmel/state/jira-mirror/<PROJECT>/`, first run full backfill, later runs `updated >=` cursor; `--qmd` registers/re-embeds the `jira-himmel` qmd collection, non-fatal; `--status` prints mirror age, no network; a failed or short key listing deletes nothing) | (none) |
-| Roadmap     | `... roadmap fields [--json]` / `... roadmap set HIMMEL-N [--readiness 0-4] [--theme T] [--goals G1,G3] [--impact 1-5] [--alignment N] [--effort XS\|S\|M\|L\|XL [--guard]] [--audit-date D] [--audit-evidence URL] [--close-candidate yes\|no] [--no-roi]` / `... roadmap get HIMMEL-N` / `... roadmap export --out F.json` / `... roadmap sync-sprints [--board N] [--dry-run]` (`--theme` is the retired Theme field: it works only while `HIMMEL_LEGACY_NAMES` is on (the default) and is refused when that is 0, false, no or off, naming `edit --sector`; the config-ui Roadmap and Kanban group by Sector (the mirror's `sector:` line, the old `theme-*` label as the fallback, "no sector" for neither) and a card's select writes the Sector with `edit --sector`, never a theme label; fields resolved by name, ROI = impact × alignment × confidence ÷ effort recomputed after every set; `sync-sprints` gives each dated unreleased fixVersion a same-named sprint carrying its dates and moves its open issues in — an issue on several dated versions goes to the earliest-releasing one — and `--dry-run` exits 1 on drift) | (none) |
+| Roadmap     | `... roadmap fields [--json]` / `... roadmap set HIMMEL-N [--readiness 0-4] [--theme T] [--goals G1,G3] [--impact 1-5] [--alignment N] [--effort XS\|S\|M\|L\|XL [--guard]] [--audit-date D] [--audit-evidence URL] [--close-candidate yes\|no] [--no-roi]` / `... roadmap get HIMMEL-N` (prints `declared readiness N (source jira); evidence <state>`, the state one of declared, linked, verified, stale or unknown; verified only from a passing spec check, never from a score or a URL) / `... roadmap export --out F.json` / `... roadmap sync-sprints [--board N] [--dry-run]` (`--theme` is the retired Theme field: it works only while `HIMMEL_LEGACY_NAMES` is on (the default) and is refused when that is 0, false, no or off, naming `edit --sector`; the config-ui Roadmap and Kanban group by Sector (the mirror's `sector:` line, the old `theme-*` label as the fallback, "no sector" for neither) and a card's select writes the Sector with `edit --sector`, never a theme label; fields resolved by name, ROI = impact × alignment × confidence ÷ effort recomputed after every set; `sync-sprints` gives each dated unreleased fixVersion a same-named sprint carrying its dates and moves its open issues in — an issue on several dated versions goes to the earliest-releasing one — and `--dry-run` exits 1 on drift) | (none) |
 | Rank        | `... rank HIMMEL-N --before\|--after HIMMEL-M` / `... rank --file order.txt` (Agile `PUT /issue/rank`, the file ranks top-down in chunks of 50) | (none) |
 | Resolution  | `... resolution HIMMEL-N` (re-runs the current status's self-transition so the workflow post-function sets or clears the resolution — resolution is not on the edit screen) | (none) |
 | Release     | `... release state <R> [--json]` (exit 3 when not OK) / `... release request <R> --verb INTAKE\|REVERSION\|DISCHARGE --key K --to <v\|backlog> --why ...` (refuses a placeholder why, an INTAKE for a closed key outside the release unless `--evidence '{"pr":N}'` names its merged PR, and a REVERSION/DISCHARGE from a version the mirror does not hold the key in) / `... release withdraw <R> --req Q --reason ... [--by O-id]` (retires a pending request; `--by` names the operator decision row covering its key; an operator decision also withdraws the pending requests it contradicts) / `... release claim <R>` / `... release rule <R> --req Q --outcome O --op <kind> [--sector S] --ground G --reason-file F [--supersedes ids] [--authority operator --ref O-id]` / `... release apply <R> <R-id>` (fixVersions write, readback, receipt comment; idempotent) / `... release lease acquire\|release <R>` / `... release operator declare\|freeze\|decision\|takeover <R> ...` (refused inside a spawned worker). Signed, hash-chained state under `$HANDOVER_DIR/<user>/<repo>/release/<R>/`; the release manager's verbs: `himmel-ops:release-manager` | MCP tool `release` (`sub` = state, request, claim, rule, apply, lease-acquire, lease-release; the operator verbs are CLI-only) |
 
-**Use MCP only when the plugin lacks the operation** (custom-field
-discovery, account-ID lookup via `lookupJiraAccountId`). Confluence now has
-a sibling CLI (see below) — prefer it over the Confluence MCP tools. The MCP block in
-`block-backend-tier.sh` derives its blocked-set by introspecting
-the CLI's verbs (`node …/index.js --list-commands`) against a small
-verb→MCP-method map — an MCP method is refused iff its mapped
-verb is a real CLI verb, so the set tracks this table automatically instead
-of drifting from a hand-maintained literal. E.g. `getTransitionsForJiraIssue`
-is refused because the `transition` verb exists; dogfood it.
+**CLI-only routing.** `block-backend-tier.sh` denies every Atlassian MCP
+method whose name says Jira, or that its verb map names, reads included, and
+an `execute*` wrapper around one. The denial message depends on the verb:
+
+- a mapped verb the CLI has: it prints the absolute CLI replacement
+  (`node <primary>/scripts/jira/dist/index.js <verb> ...`);
+- an unmapped verb, or one the CLI lacks (custom-field discovery,
+  `lookupJiraAccountId`): it prints "unsupported, extend the CLI". There is no
+  MCP or raw-REST fallback; add the verb;
+- a CLI that is not built, or cannot list its verbs: it denies with the build
+  command, never failing open.
+
+The verb check introspects the CLI (`node …/index.js --list-commands`)
+against a small verb→MCP-method map, so it tracks this table. `MCP_JIRA_OK=1`
+(or `MCP_ALL_OK=1`) in the launching shell is the bypass for a genuine
+carve-out. Confluence is unchanged: it has a sibling CLI (see below) and keeps
+its `cli, api, mcp` chain.
+
+**The `jira mcp` bridge.** `node scripts/jira/dist/index.js mcp` serves an MCP
+server for external clients. It is a thin bridge over the CLI, not a second
+implementation: each tool (`get`, `create`, `list`, `transition`,
+`transitions`, `comment`, `attach`, `edit`, `projects`, `project-create`,
+`roadmap-set`, `roadmap-get`, `rank`, `release`) runs one fixed CLI verb as a
+child process with an argument array (`scripts/jira/src/mcp-cli.ts`, no
+shell, credentials only in the child's environment). The bridge makes no Jira
+call and holds no rule of its own, so it has no independent write: an MCP call
+is refused, PARTIAL or confirmed exactly as the same CLI call. A nonzero CLI
+exit becomes an MCP error carrying the CLI's stderr; a success returns the
+CLI's stdout plus its warnings. The `create` tool carries the placement fields
+the CLI needs (`parent`, `labels`, `sector`, `fixVersion`, `proposedVersion`,
+`backlog`, `why`, `gate`, `priority`). A CLI that is not built refuses before
+anything is sent. Himmel's own agents use the CLI directly.
+
+**Write outcomes.** Every CLI write ends in one of four classes:
+
+- **Refused before writes.** A check failed and nothing was written: no issue,
+  comment, link, ledger row or displacement. `create` and `move` run every
+  check (body against the final labels, title, sector, home, placement,
+  version gates, INTAKE preflight) before the first write; `edit` checks the
+  edited result before its PUT.
+- **PARTIAL.** Jira holds the ticket, but a later step failed. The message
+  names the key and the steps still owed
+  (`PARTIAL: Created <KEY> but <step> failed ...; still owed: ...`). Finish
+  those by hand; do not re-run `create`.
+- **OUTCOME UNKNOWN.** The create request was sent but its answer was lost.
+  The ticket may exist. Search for its title before filing again; `create` is
+  never retried.
+- **Confirmed.** The write landed and was read back: `Created <KEY>` for a
+  create, the status for a transition, the field for an edit.
+
+Boundaries: the guarantee covers writes made through this CLI (and so through
+the bridge). A direct Jira UI or REST writer, and a concurrent external edit
+between a check and its write, are outside it. A read-back detects a change
+that did not land; it does not prevent one.
 
 **JIRA_PROJECT_KEY is required.** The plugin no longer
 hardcodes `HIMMEL` as a fallback in `projectKey()`. Operators must set
@@ -113,6 +159,11 @@ filing note, not in the ticket's plain block.
 
 ## Gotchas
 
+**The site URL has one source: the CLI.** `jira config` prints every Jira setting
+(`JIRA_BASE_URL`, project key, email, token) with where it came from; email and token show
+only as set or not set plus the source kind. `get`, `edit`, `transition` and `move` print a
+`browse: <site>/browse/<KEY>` line. Never read `.env` or call the Atlassian MCP to find it.
+
 **`transition <key> <numeric-id>` is a vacuous success.** `transitions <key>`
 lists numeric IDs for reading, not for passing back to `transition` — `transition`
 takes the status **name** as its positional arg (`transition HIMMEL-N Done`).
@@ -134,11 +185,11 @@ re-`get` and check the underscores explicitly — this is an artifact check,
 not a formatting preference. `edit --desc-file` repairs a corrupted body in
 place.
 
-**Ticket shape: a plain block, a Plan, a DoD, then Agent detail.** Every
-ticket body carries six headed sections: three short ones anyone can read
-without knowing the code, a Plan, a DoD, and one section for the agent doing
-the work (the lint checks that all six are present and non-empty, and that Plan
-and DoD each hold a real line, not their order):
+**Ticket shape: a plain block, a Plan, a DoD, a Proof, then Agent detail.** Every
+ticket body carries seven headed sections: three short ones anyone can read
+without knowing the code, a Plan, a DoD, a Proof, and one section for the agent
+doing the work (the lint checks that all seven are present and non-empty, and that
+Plan and DoD each hold a real list line, not their order):
 
 ```markdown
 ## Impact
@@ -156,6 +207,9 @@ and DoD each hold a real line, not their order):
 ## DoD
 - <one to five checkable results: a test, a command and its output, a doc section, a Jira state>
 
+## Proof
+<the named evidence that shows it works>
+
 ## Agent detail
 <files, contract, suites>
 ```
@@ -166,23 +220,40 @@ and DoD each hold a real line, not their order):
 - **DoD:** one to five checkable results, each observable: a test that fails
   before and passes after, a command and its expected output, a doc section that
   exists, or a Jira state. "Works", "fixed" or "better" alone does not count.
+- **Proof:** the named evidence, per kind: an end-to-end run or a POC for a
+  feature, a RED row plus a negative control for a guard, the check that would
+  have caught it for hygiene.
 - **Agent detail:** files, contract, suites.
 
 A follow-up ticket (from a review, a deferral or a worker) names its source PR or
 ticket in Why, and its DoD must differ from the parent's.
 
-`create` enforces it in code (CLI and the MCP `create` tool share
-`scripts/jira/src/plain-block.ts`): a body missing any of the six headings, or
-with one empty, is refused with the missing names and this template. Plan and
-DoD each also need at least one bullet or numbered line that is not template
-placeholder text (a line whose whole content is an angle-bracket hint counts as
-placeholder), so the printed skeleton never files as is. Headings
-match by their words (`## Impact`, or an ADF heading node for `--adf-file`),
-and a heading inside a code fence does not count. Explicit exemptions: an
-`Epic` and a `Subtask` only **warn** (the CLI on stderr; the MCP tool files
-them without a message) and are filed anyway; a
-body-less create of any other type is refused like a body without the block.
-`edit` is not gated, so an old ticket can be amended later.
+One ticket policy enforces it in code:
+`marketplace/plugins/himmel-ops/scripts/ticket-policy.mjs`, run by both
+`ticket-standard-check.sh` (through `ticket-policy-cli.mjs`) and the Jira CLI
+(`scripts/jira/src/plain-block.ts` wraps it). A body missing any of the seven
+headings, or with one empty, is refused with the missing names and this
+template. The rules:
+
+- A section is a `## ` heading matched by its words (or an ADF heading node for
+  `--adf-file`). A bare line that is exactly a section name is that heading (Jira renders heading nodes back that way, and markdownToAdf writes such a line as a heading); a bold line is never a heading.
+- Plan and DoD each need at least one bullet or numbered line that is not a
+  placeholder. TODO, TBD, TBC, N/A, none, an ellipsis, `?` and a line that is
+  only an `<angle hint>` never count, so the printed skeleton never files as is.
+- Fenced code never makes a heading, a list item, a `Metric:` line or an
+  `Edges:` line.
+- A ticket labelled `ci`, `guard`, `guardrail`, `stability` or `flake` (or a
+  `ci-`/`guard-` variant) needs a `Metric:` line. `create` checks the labels it
+  will actually write, so an added label counts.
+- A Plan naming two or more ticket keys, prior-art keys included, needs
+  `Edges: <A> blocks <B> (hard|soft)` or `Edges: none`. A heading-style or
+  next-line Edges counts; an ellipsis value does not.
+
+Explicit exemptions: an `Epic` and a `Subtask` only **warn** (on stderr) and
+are filed anyway; a body-less create of any other type is refused like a body
+without the block. `edit` that touches the description, labels, parent or
+sector may not add a new violation (see "Write outcomes" below), so a legacy
+ticket can be repaired one piece at a time.
 
 Writing rules, adopted from the roadmap pipeline's plain-language ruling
 (frame §18, luna vault): write for someone who has never read the
@@ -324,15 +395,17 @@ or the backlog, and one that lands with no version is held to the same rule as a
 status, version) and its evidence carries them; it does not claim a remainder. `--remainder`, which needs
 `--follow-up-of`, is for a ticket that holds a deferred DoD row of the parent: the why then says the parent cannot
 close without this ticket and that it holds the parent's remainder. A Done or closed parent: no version, the
-request is the backlog one and the why says the parent is closed. A frozen current version is skipped as
-`--residual-of` skips it: the next open version, else none. The residual cap is NOT checked: the request never writes
+request is the backlog one and the why says the parent is closed. A parent in a frozen current version: the
+request still asks for that version and the why says it is frozen; the release manager rules on the frozen intake,
+and the filing never routes around it (operator decisions 383, 489 and 512). The residual cap is NOT checked: the request never writes
 the fixVersion and the release manager is not shown the cap. The ticket's own fixVersion is not written. An open
 parent with no current version, or a parent that cannot be read (a warning on stderr), leaves the request as before:
 no version, filed to the backlog. A caller's own `--fix-version`, `--backlog`, `--proposed-version` or `--why` wins
 and skips the read, and `--blocks`/`--split-from` place the ticket in the target's version, so no request is queued.
 An unversioned create, a residual or follow-up included, is refused before the POST when no release can take the INTAKE (no release declared, several
 declared, the state unreadable, or a placeholder why); an INTAKE that fails after the POST leaves the key on stdout,
-says `Created <KEY> but INTAKE not queued` and exits 1. `edit`'s depth-2 drop only warns, and says so when no release is declared.
+says `PARTIAL: Created <KEY> but INTAKE not queued` and exits 1. The release root comes from the CLI's own
+checkout, never the caller's cwd. `edit`'s depth-2 drop only warns, and says so when no release is declared.
 A residual that wins a full version's slot displaces the lowest-ranked To Do resident, never a ruled one: a key whose latest
 admissions-ledger row admits it (an `rm-admit` or an override) or whose latest signed operator decision places it there. When the
 rulings cannot be read (no ledger file, a malformed ledger, or a declared release whose signing key cannot be loaded) nobody is displaced and the newcomer steps down; a

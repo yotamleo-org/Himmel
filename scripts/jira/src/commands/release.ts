@@ -1,12 +1,13 @@
 // billed-exempt: the release manager rm-run judge; run by the chief on purpose, bank-preflight gated
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Command } from 'commander';
 import { authHeader, baseUrl, projectKey, request } from '../client.js';
+import { refuseTestJiraPost } from '../live-test-guard.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
 import { newestFixVersionEntry, type Getter } from '../release/version-writes.js';
@@ -19,8 +20,8 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, claim, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
-  type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
+  apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, outOfVersionApproval, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
+  type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
@@ -56,6 +57,14 @@ export const liveJira: JiraPort = {
     writeJiraBreadcrumb(key);
     return got.id;
   },
+  async labels(key) {
+    const got = await request<{ fields?: { labels?: string[] } }>('GET', `/issue/${key}?fields=labels`);
+    return got.fields?.labels ?? [];
+  },
+  async removeLabels(key, labels) {
+    await request('PUT', `/issue/${key}`, { update: { labels: labels.map((remove) => ({ remove })) } });
+    writeJiraBreadcrumb(key);
+  },
   async issue(key) {
     const sf = sectorField();
     const fields = ['status', 'issuetype', 'priority', 'fixVersions', 'resolution', ...(sf ? [sf] : [])].join(',');
@@ -87,7 +96,6 @@ export function ctxFor(release: string, mirrorRoot?: string): Ctx {
   };
 }
 
-const PLACEHOLDER = /^(tbd|todo|test|testing|placeholder|wip|n\/?a|x+|w+|-+|\.+)$/i;
 const isPr = (pr: unknown): boolean => Number.isInteger(pr) && (pr as number) > 0;
 
 /**
@@ -154,6 +162,19 @@ export function renderState(s: StateOut, budgets: Record<string, number> = {}): 
 }
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+
+export function sendApprovalAlert(a: ApprovalAlert): number {
+  const dir = mkdtempSync(join(tmpdir(), 'version-approval-'));
+  try {
+    const words = join(dir, 'words.txt');
+    writeFileSync(words, a.words);
+    const r = spawnSync('bash', [join(repoRoot, 'scripts', 'handover', 'chief-kit', 'version-approval-alert.sh'), a.key, a.version, a.decision, String(a.open), words],
+      { stdio: ['ignore', 'inherit', 'inherit'], timeout: 60_000 });
+    return r.status ?? 1;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 export function judgePrompt(input: JudgeInput, skill: string): string {
   return [
@@ -488,7 +509,7 @@ async function admissionBudgets(versions: string[]): Promise<Record<string, numb
   return out;
 }
 
-const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check']);
+const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check', 'bucket-check']);
 
 /** Each repair read carries its own deadline: the fetch has none, so a hung read must end the run, not hang it. */
 export const REPAIR_READ_DEADLINE_MS = 5000;
@@ -529,25 +550,7 @@ function refuseTestWrite(verb: string): void {
   if (r.status === 77) throw new Error(`release ${verb}: refused, nothing was written`);
 }
 
-/** A loopback Jira is a local stub: it cannot reach the real one. */
-function jiraIsLoopback(): boolean {
-  try {
-    const host = new URL(process.env.JIRA_BASE_URL ?? '').hostname;
-    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
-  } catch {
-    return false;
-  }
-}
-
-/**
- * A test on the station never posts to the real Jira, whatever its release root. `what` names the
- * command in the refusal ("release leaks", "create"). Only exit 77 refuses.
- */
-export function refuseTestJiraPost(what: string): void {
-  if (jiraIsLoopback()) return;
-  const r = spawnSync('bash', [TEST_RUN_GUARD, 'check', '--real', `jira-${what.replace(/ /g, '-')}-comment`], { stdio: ['ignore', 'inherit', 'inherit'] });
-  if (r.status === 77) throw new Error(`${what}: refused, nothing was posted`);
-}
+export { refuseTestJiraPost };
 
 /**
  * A test on the station never mints a release key. The default path is asked about as real
@@ -615,6 +618,15 @@ export function registerRelease(program: Command): void {
       if (!r.ok) process.exitCode = 1;
     });
 
+  rel.command('bucket-check <keys...>')
+    .description('Per key, first match: FAILED <why>, NONE <mirror>, APPROVED decision= record=, DONE, IN current= via=, or '
+      + 'OUTSIDE <versions|none> current= open=; whether the key is in the current version\'s bucket. Read-only; exit 0 once every key has its line')
+    .requiredOption('--mirror <dir>', 'The key project\'s Jira mirror directory; required, with no JIRA_PROJECT_KEY fallback')
+    .action(async (keys: string[], o: { mirror: string }) => {
+      const lines = await bucketCheck(process.env, keys, o.mirror, { get: repairGetter(), deadlineMs: REPAIR_READ_DEADLINE_MS, now: new Date() });
+      for (const l of lines) console.log(l);
+    });
+
   rel.command('core-check')
     .description('Per key: CORE, REVIEW, BYPASS, UNKNOWN or NOT-CORE from scripts/ci/core-paths.txt, the mirror and the '
       + 'core-bypass and core-snapshot records of every declared release (a rename or bulk change touching core is REVIEW)')
@@ -663,11 +675,21 @@ export function registerRelease(program: Command): void {
     .requiredOption('--why <text>', 'One line: why the request exists')
     .option('--evidence <json>', 'Evidence object as JSON', '{}')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
-    .action((release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; mirrorRoot?: string }) => {
+    .action(async (release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; mirrorRoot?: string }) => {
       if (!['INTAKE', 'REVERSION', 'DISCHARGE'].includes(o.verb)) throw new Error('release request: --verb is INTAKE, REVERSION or DISCHARGE');
       const evidence: unknown = JSON.parse(o.evidence);
       if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: --evidence is a JSON object');
       const ctx = ctxFor(release, o.mirrorRoot);
+      const approval = o.verb === 'INTAKE' ? outOfVersionApproval(process.env, o.key, new Date()) : null;
+      if (approval) {
+        console.log(`REQ approved:${approval.id}`);
+        try {
+          await clearProposedLabels(ctx.jira, o.key);
+        } catch (e) {
+          console.error(`release request: WARN ${(e as Error).message}`);
+        }
+        return;
+      }
       const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
       refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown> });
       const r = releaseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' });
@@ -696,9 +718,12 @@ export function registerRelease(program: Command): void {
     .requiredOption('--req <id>', 'Request id (Q-<R>-NNNN)')
     .requiredOption('--reason <text>', 'Why the request is withdrawn')
     .option('--by <O-id>', 'The operator decision row that settles it; it must cover the request\'s key')
-    .action((release: string, o: { req: string; reason: string; by?: string }) => {
-      const r = withdraw(ctxFor(release), o);
+    .action(async (release: string, o: { req: string; reason: string; by?: string }) => {
+      const ctx = ctxFor(release);
+      const r = withdraw(ctx, o);
       console.log(`WITHDRAWN ${r.req} (${r.state}): ${r.reason}`);
+      // Withdraw is ledger-only; an INTAKE's proposal ends here, so its proposed-* label goes. The request is already withdrawn if this throws.
+      if (r.verb === 'INTAKE') await clearProposedLabels(ctx.jira, r.key);
     });
 
   rel.command('rm-run <release>')
@@ -894,6 +919,17 @@ export function registerRelease(program: Command): void {
     .action((release: string, o: { keys: string; decision: string; verbatimFile: string }) => {
       const r = coreBypass(ctxFor(release), { keys: list(o.keys), decision: o.decision, verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim() });
       console.log(`${r.id} core-bypass for ${(r.keys ?? []).join(', ')}`);
+    });
+  operator.command('out-of-version <release>')
+    .description('Approve one key as out of version for 14 days on the operator\'s numbered verbatim file; the operator\'s phone gets the words before the record is signed')
+    .requiredOption('--key <key>', 'The one key the operator approved')
+    .requiredOption('--decision <n>', 'Operator decision number; the verbatim file carries the same number')
+    .requiredOption('--verbatim-file <path>', 'specs/decisions/verbatim-decision-<n>-* beside the release root, with a Verbatim: block')
+    .requiredOption('--reason <text>', 'Why this ticket now: 8 characters or more, not a placeholder')
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .action((release: string, o: { key: string; decision: string; verbatimFile: string; reason: string; mirrorRoot?: string }) => {
+      const r = outOfVersion(ctxFor(release, o.mirrorRoot), { key: o.key, decision: o.decision, verbatimFile: o.verbatimFile, reason: o.reason, alert: sendApprovalAlert });
+      console.log(`${r.id} out-of-version for ${o.key} (decision ${r.decision}), valid until ${new Date(Date.parse(r.ts) + OUT_OF_VERSION_MS).toISOString()}`);
     });
   operator.command('core-snapshot <release>')
     .description('Record, once, the tickets in flight when the core gate turns on; core-check reads them as grandfathered')

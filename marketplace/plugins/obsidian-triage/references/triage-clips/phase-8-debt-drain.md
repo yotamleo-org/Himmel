@@ -1,6 +1,4 @@
-<!-- Moved verbatim out of triage-clips.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
-### Phase-8 debt drain (HIMMEL-1713)
+### Phase-8 debt drain (a clip owing Phase 8 must not stay stuck in the inbox)
 
 Phase-8 debt is **recorded, never inferred**. Phase 7 writes
 `evidence_pending: true` in the same edit that writes `processed: true`;

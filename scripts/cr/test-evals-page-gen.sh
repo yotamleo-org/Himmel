@@ -368,6 +368,29 @@ eq "page: this suite runs in PR CI, so a hand edit of the page fails the PR" \
 lacks "page: no draft marker" "$(head -5 "$PAGE")" "draft:"
 eq "page: on the site allowlist" "$(grep -cx 'evals/README.md' "$ROOT/site/allowlist.txt")" "1"
 eq "page: in the site nav" "$(grep -cF "slug: 'evals' }" "$ROOT/site/astro.config.mjs")" "1"
+E2="$TMP/eval-runs-rev.jsonl"
+python3 -I - "$ROOT/scripts/eval/lib" "$E" "$E2" <<'PY' || { echo "test-evals-page-gen: writing the revision ledger failed" >&2; exit 1; }
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import eval_runs
+rows = [json.loads(l) for l in open(sys.argv[2]) if l.strip()]
+src = [r for r in rows if r["eval"] == "review-panel"][0]
+newer = eval_runs.make_row("review-panel", "fixture", {"critics": ["beta"]},
+                           {"panel.recall": 0.5, "defects": 12, "cases": 24}, run_id="newer-exec", gitsha="0" * 40,
+                           meta={"execution_id": "x-newer"})
+newer["ts"] = "2026-10-25T01:00:00Z"
+rescore = eval_runs.make_row("review-panel", "fixture", {"critics": ["beta"]},
+                             {"panel.recall": 0.9, "defects": 12, "cases": 24}, run_id=src["run_id"] + "~rescore",
+                             gitsha="0" * 40, meta={"supersedes_run_id": src["run_id"]})
+rescore["ts"] = "2026-10-25T02:00:00Z"
+open(sys.argv[3], "w").write("".join(json.dumps(r) + "\n" for r in rows + [newer, rescore]))
+PY
+OUT2="$TMP/data-rev.json"
+python3 -I "$GEN" data --ledger "$L" --eval-runs "$E2" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$OUT2" > "$TMP/data2.out" 2> "$TMP/data2.err"; rc=$?
+eq "revision_not_prev_run: data exits 0" "$rc" "0"
+eq "revision_not_prev_run: the newest planted row is the newer execution, not the late rescore" "$(jget "$OUT2" planted/pct)" "50.0"
+eq "revision_not_prev_run: dated by the newer execution" "$(jget "$OUT2" planted/as_of)" "2026-10-25"
+
 # The page's headline figures live in the data file only, never in the generator.
 figs="$(grep -oE '\*\*[0-9][0-9.]*%\*\*' "$PAGE" | tr -d '*%' | sort -u)"
 has "no typed figure: the page has headline figures to check" "$figs" "."

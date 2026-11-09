@@ -284,6 +284,12 @@ template_version: 3
 >    `JUDGE-REQUEST` head. Do not run the `docs-reviewer` skill yourself: the
 >    judge runs it once at your `JUDGE-REQUEST` head, and a BLOCKING finding comes back
 >    as a NO-GO line to fix.
+>    **When main has moved and your PR conflicts, merge forward** (`git fetch origin main`
+>    then `git merge origin/main`; never rebase, never force-push). Resolve each file,
+>    run the impacted suites again, push, and add one line per conflicted file under
+>    `## Conflicts resolved` in the PR body: `- <path> vs #<other pr>: <what you kept and why>`.
+>    ready-check item 20 finds conflicted merges from git and refuses READY until each
+>    file has its line; merge-on-green records them in the ledger and in your chief's doc.
 >    <Anything else unusual: a PR body that must carry other
 >    specific numbers, a public-CI wait, a second ticket to comment on but
 >    leave open.>
@@ -291,18 +297,21 @@ template_version: 3
 > **Writes:** <exact files and directories THIS worker edits, as paths only on this one line; or none named for no writes>
 
 > **Writes note:** <context, prior art, stay-off paths and narrowing notes go
-> here, never on Writes. This field is never read for holds. brief-lint refuses
+> here, never on Writes. This field is never read for paths. Writes holds no repo file: it
+> drives the `Overlaps:` line gen-briefs writes after it (each open PR and each
+> other worker of the wave that shares a path, with "merge forward if they land
+> first"), and a Writes path outside the repo is still refused at launch while
+> another worker holds it. brief-lint refuses
 > an empty Writes line, parentheses or non-path words: the chief fills the
 > path list from the ticket's Writes text. Use repo-relative paths or normalized
 > absolute paths under the configured handover root (resolved by handover_root);
-> . and .. path segments and other absolute paths are refused. The collision check ignores
-> parenthesised text on older Writes lines; a bare directory still holds its
-> subtree and --why warns about it. Without Writes it falls back to the older
+> . and .. path segments and other absolute paths are refused. The overlap check ignores
+> parenthesised text on older Writes lines; a bare directory matches every file
+> under it. Without Writes it falls back to the older
 > "writes confined to" / "Scope / do not:" parser unchanged.>
 
-> **Do not:** <the specific things THIS worker must not touch — adjacent files
-> another worker owns, protocols that are out of scope, a script another worker
-> owns, a probe that may be run only once.>
+> **Do not:** <the specific things THIS worker must not touch — protocols that
+> are out of scope, a probe that may be run only once.>
 
 > **Pre-granted follow-ups (optional)**: a ruling
 > `RULING <token> grant=<Gn> :: <action>` may select ONE of these by ID. Act on
@@ -350,9 +359,9 @@ template_version: 3
   probe after every completed step (ruling A1). The worker context guard
   (`guard-worker-context-handoff.sh`) is off by default;
   arm with `--context-guard compact|handoff` to turn it on. A native Sonnet 5.5 launch on
-  `worker-impl` (hand-off) or `worker-eval` (compaction) turns it on by default, at a
-  450000 ceiling; so does a native Opus 5.5 launch on any `worker-*` profile (hand-off,
-  `worker-eval` compaction), at an 800000 ceiling with the deny at 700000 tokens. An explicit `--context-guard` (including `none`) or
+  `worker-impl` or `worker-eval` turns it on by default in compaction mode, at an
+  850000 ceiling; so does a native Opus 5.5 launch on any `worker-*` profile (compaction),
+  at an 850000 ceiling with the deny at 740000 tokens. An explicit `--context-guard` (including `none`) or
   `WORKER_SESSION_CONTEXT=1m` takes precedence. When it is on, past
   75 % of the worker's `--autocompact` ceiling by default, or the profile's own share (15 %
   fill for an opus worker pinned at 200000 on its 1M window) it blocks ordinary work until the worker acts on its
@@ -364,6 +373,13 @@ template_version: 3
 - (b) The chief creates the worker's worktree before arming it, never after.
 - (c) Holding for the chief's `GO` ends the worker's turn — never a Bash sleep
   loop; a worker that blocks in one never wakes to receive it.
+- (c2) A hold on an outside event (an outside PR's review or merge, a third
+  party's reply) is not a state a worker stays in. It writes `LIVE — HOLD-OUTSIDE
+  pr=<n> owes: <what it owes>`, puts the debt in its resume brief and WRAPs; the
+  chief runs `fleet-manifest.sh watch <manifest> add <n> --head <sha> --comments <n>
+  --reviews <n>` and closes the window. `chief-wait.sh` polls the row over REST and
+  wakes the chief as `WAKE pr-watch <n>` (waiter.md); the tick flags an idle window
+  left on the hold as `holdout=`.
 - (d) `/pr-check` runs at the exact head the worker reports in its `READY` line,
   not an earlier or later one.
 - (e) Every HALT or WRAP brief or message says: "TaskStop EVERY background

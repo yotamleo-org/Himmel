@@ -1,24 +1,24 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
-# CodeRabbit review settings (HIMMEL-926). This is the GitHub App's config --
-# the App is the ONLY CodeRabbit surface himmel uses (HIMMEL-2704) -- and it
+# CodeRabbit review settings. This is the GitHub App's config --
+# the App is the ONLY CodeRabbit surface himmel uses -- and it
 # overrides the org dashboard for this repo.
 #
-# Decisions (rationale on HIMMEL-926):
+# Decisions:
 #   - profile chill: CodeRabbit is one finding source in a multi-critic panel;
 #     the trial question is uniques, not volume — assertive nitpicks add
 #     adjudication cost without answering it.
 #   - auto_approvals off: the merge gate is a clean /pr-check
 #     (CR-marker hook); a bot "request changes" state adds a second,
 #     unenforced gate on a repo merged via --admin, and check-ci exits 3 on
-#     CHANGES_REQUESTED. The canonical key replaces request_changes_workflow
-#     (HIMMEL-8214): the old key is now a deprecated alias, and setting both
+#     CHANGES_REQUESTED. The canonical key replaces request_changes_workflow:
+#     the old key is now a deprecated alias, and setting both
 #     with different values is a config error.
-#     allow_author_approval off (HIMMEL-8214, deliberate behaviour change):
+#     allow_author_approval off (deliberate behaviour change):
 #     every himmel PR is opened under one identity, so with the default an
 #     agent could post `@coderabbitai approve` on its own PR and get a bot
 #     approval. With this off, another reviewer must run that command.
 #
-# HIMMEL-8214 pins (research: HIMMEL-8210). This file has no `inheritance`, so
+# Pinned defaults. This file has no `inheritance`, so
 # every unset key resolves to the schema DEFAULT, never to the org UI. A
 # default CodeRabbit changes therefore lands here silently, as the 2026-10-27
 # review_progress change did. These keys are pinned so that the values our
@@ -29,7 +29,7 @@
 #     every head read `absent`, which blinded the check-ci NOTE, the
 #     rate-limit re-trigger and the stuck-review release.
 #   - fail_commit_status false: an errored review stays green with the error
-#     in its description. The CR status is advisory (HIMMEL-3360), so it must
+#     in its description. The CR status is advisory, so it must
 #     not show as a red check.
 #   - enable_prompt_for_ai_agents true: the outside-diff extractor ends a
 #     finding region at the "Prompt for AI Agents" block. Removing that block
@@ -48,11 +48,11 @@
 #     otherwise chat with the bot, request reviews and teach it learnings.
 #   - issue_enrichment.planning off: Jira is the tracker, so a plan comment
 #     on a GitHub issue is noise.
-#   - auto_review off (HIMMEL-1252): the App reviews ONLY on an explicit
+#   - auto_review off: the App reviews ONLY on an explicit
 #     `@coderabbitai review` comment, not on every push — a per-push
 #     auto-review would burn the shared CR rate limit on every commit,
 #     including WIP ones. That comment is posted STRUCTURALLY, not left to
-#     agent discretion: scripts/hooks/trigger-cr-on-pr-create.sh (HIMMEL-1362)
+#     agent discretion: scripts/hooks/trigger-cr-on-pr-create.sh
 #     fires it automatically on every `gh pr create`, so the App is the
 #     PRIMARY CodeRabbit reviewer — one review per PR, at PR-ready time.
 #     Re-trigger after every push: a head move discards the in-flight review.
@@ -60,7 +60,7 @@
 #     from the public repo's branch-protection required checks (it would
 #     otherwise be an unsatisfiable required context with auto-review off).
 #   - Jira integration deliberately NOT connected: the jira CLI owns that loop.
-#   - learnings scope local (HIMMEL-6045): explicit, so the rule is visible.
+#   - learnings scope local: explicit, so the rule is visible.
 #     `auto` already resolves to local on a public repo; the archived private
 #     repo's rows must NOT flow back via `global` (stale, and they carry
 #     propagation rules). Durable rules live in path_instructions below
@@ -86,7 +86,7 @@ knowledge_base:
     filePatterns:
       - "CLAUDE.md"
       - "scripts/handover/CLAUDE.md"
-      - "docs/internals/ponytail-convention.md"
+      - "docs/internals/code-comments.md"
 reviews:
   profile: "chill"
   auto_approvals:
@@ -114,7 +114,7 @@ reviews:
   poem: false
   collapse_walkthrough: true
   auto_review:
-    # HIMMEL-1252: comment-triggered, not per-push. false = the App does not
+    # Comment-triggered, not per-push. false = the App does not
     # auto-review on push/open; a reviewer posts `@coderabbitai review` (or
     # `@coderabbitai full review`) to run it on demand. Conserves the shared CR
     # rate limit; the App (triggered structurally on `gh pr create`) stays the
@@ -122,7 +122,7 @@ reviews:
     # this is false (it only scopes which bases get AUTO-reviewed).
     enabled: false
     drafts: false
-    # base_branches (HIMMEL-1102): defaults to [] = ONLY the repo default
+    # base_branches: defaults to [] = ONLY the repo default
     # branch, so every STACKED PR was silently skipped -- CodeRabbit posted
     # "Review skipped: reviews are disabled for this base branch" AND a GREEN
     # "pass" check, i.e. a passing badge for a review that never ran. Stacking
@@ -261,10 +261,10 @@ reviews:
         argument list) stays covered by this rule.
     - path: "scripts/**/*.sh"
       instructions: >-
-        A line comment `# intentional: …` or `# ponytail: <ceiling>, HIMMEL-n`
-        at or above the flagged line records an accepted design choice or a
-        tracked limitation. Do not re-raise the same concern unless the change
-        under review invalidates the stated reason; if it does, say which part.
+        A line comment `# intentional: …` records an accepted design choice.
+        Accepted limitations live in a private ledger; when the author answers
+        a concern with a ledger row id, do not re-raise it unless the change
+        invalidates it; if it does, say which part.
     - path: "scripts/hooks/**"
       instructions: >-
         Guard hooks parse shell command text. Prioritize: (1) a command shape
@@ -288,7 +288,7 @@ reviews:
         this repository. Do not flag them as broken links or private-repo
         leaks. DO flag a literal operator-specific path (a real username in an
         absolute path) or a link to a specific private repository — those are
-        genuine leaks (precedent: HIMMEL-1352 scrubbed one from fixtures).
+        genuine leaks (precedent: one was once scrubbed from fixtures).
 chat:
   auto_reply: true
   allow_non_org_members: false

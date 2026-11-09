@@ -132,21 +132,31 @@ anchor_remedy_dir() {
     esac
     printf '%s' "$r"
 }
-# remedy_cmd <repo-relative script> <args placeholder> [exempt-printed]: the unquoted
-# anchored spelling, which the generated `bash <anchor>/scripts/...:*` rules match.
-# When the anchor's path cannot be printed that way, an absolute anchor directory
-# gets the guard-exempt "$HIMMEL_REPO/..." spelling (unquoted args only; omitted
-# when the caller printed it already), and anything else gets no runnable line.
+# remedy_cmd <repo-relative script> <args placeholder> [exempt-printed|no-exempt]: the
+# unquoted anchored spelling, which the generated `bash <anchor>/scripts/...:*` rules
+# match. When the anchor's path cannot be printed that way, an absolute anchor
+# directory gets the guard-exempt "$HIMMEL_REPO/..." spelling (unquoted args only;
+# omitted when the caller printed it already), and anything else gets no runnable
+# line. merge-on-green.sh passes no-exempt: the hook refuses that script's
+# $HIMMEL_REPO spelling, so no such line is ever printed for it and the text says
+# the chief merges instead.
 remedy_cmd() {
     local d rc=0
     d=$(anchor_remedy_dir) || rc=$?
     case "$rc" in
         0) echo "bash $d/$1 $2" ;;
         2)
-            if [ -z "${3:-}" ]; then
-                echo "bash \"\$HIMMEL_REPO/$1\" <unquoted-args>"
-            fi
-            echo "(HIMMEL_REPO's path cannot be printed unquoted, so no allow rule matches an anchored path here; the exempt spelling has none either, so the classifier judges it)"
+            case "${3:-}" in
+                no-exempt)
+                    echo "(HIMMEL_REPO's path cannot be printed unquoted, so no allow rule matches an anchored path here; the chief merges)"
+                    ;;
+                *)
+                    if [ -z "${3:-}" ]; then
+                        echo "bash \"\$HIMMEL_REPO/$1\" <unquoted-args>"
+                    fi
+                    echo "(HIMMEL_REPO's path cannot be printed unquoted, so no allow rule matches an anchored path here; the exempt spelling has none either, so the classifier judges it)"
+                    ;;
+            esac
             ;;
         *)
             echo "(HIMMEL_REPO is unset, relative, or not a primary checkout - a worktree is not one - so no runnable line can be printed: export HIMMEL_REPO to himmel's primary checkout in your launching shell)"
@@ -180,17 +190,10 @@ deny() {
                 echo "$FENCE"
                 ;;
             *handover/merge-on-green*)
-                echo "Run the anchored spelling instead - EVERY argument must be"
-                echo "unquoted, with no ' or \\ anywhere in the command (the anchor prefix is"
-                echo "exempted only when the whole command carries neither):"
+                echo "Run the anchor's copy by HIMMEL_REPO's own path (not step 0's himmel_dir, which is"
+                echo "this worktree), as its own command:"
                 echo
-                # shellcheck disable=SC2016 # printed verbatim, never expanded
-                echo 'bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh" <unquoted-args>'
-                echo
-                echo "If an argument genuinely needs quoting, use the anchor's copy by HIMMEL_REPO's"
-                echo "own path (not step 0's himmel_dir, which is this worktree), as its own command:"
-                echo
-                remedy_cmd scripts/handover/merge-on-green.sh '<args>' exempt-printed
+                remedy_cmd scripts/handover/merge-on-green.sh '<args>' no-exempt
                 ;;
             *console-kit/himmel-gate* | *chief-kit/himmel-gate*)
                 echo "Run the anchored spelling instead - EVERY argument must be unquoted:"
@@ -231,6 +234,34 @@ deny() {
                         echo "(no allow rule covers the anchored spelling of this script, so the classifier judges it)" ;;
                 esac
                 ;;
+        esac
+    } >&2
+    exit 2
+}
+
+deny_anchor_var() {
+    local h=$1 t=$2 d rc=0
+    d=$(anchor_remedy_dir) || rc=$?
+    shown=${cmd:0:200}
+    {
+        echo "guard-pr-check-literal: DENIED - \`$shown\`: the \$HIMMEL_REPO spelling of merge-on-green.sh is refused. No allow rule can match a shell expansion, so the auto-mode classifier judges it and denies it as Merge Without Review. Run the same command with the anchor's path written out:"
+        echo
+        case "$rc" in
+            0)
+                printf '%s\n' "$h$d/scripts/handover/merge-on-green.sh$t"
+                if [ "$h" != "bash " ]; then
+                    echo "(only bash <anchor>/scripts/handover/merge-on-green.sh <args> matches an allow rule, so the classifier judges this form)"
+                fi
+                ;;
+            2)
+                if [ "$h" = "bash " ]; then
+                    printf '%s\n' "bash scripts/handover/merge-on-green.sh$t"
+                    echo "(HIMMEL_REPO's path cannot be printed unquoted, so no allow rule matches an anchored path; this relative spelling runs from the worktree root on a tree whose copy equals the anchor's or its merge-base's. If it is refused too, the chief merges)"
+                else
+                    remedy_cmd scripts/handover/merge-on-green.sh '' no-exempt
+                fi
+                ;;
+            *) remedy_cmd scripts/handover/merge-on-green.sh '' no-exempt ;;
         esac
     } >&2
     exit 2
@@ -2092,6 +2123,10 @@ done <<<"$simple"
 # double-quoted prefix is ever a real allow rule's spelling). What
 # follows the prefix must resolve as a plain path too - no
 # `..` and no further `$` (`$HIMMEL_REPO/../../etc$PWD/...` denies).
+# The one exception is the anchor's merge-on-green.sh: a block after the
+# ast_data_only definition (anchor_var_word, then a file-identity test) denies
+# that word and prints the anchor's literal path, because no allow rule can match
+# a shell expansion and the auto-mode classifier then denies the merge.
 himmel_anchor_prefix=0
 case "$flat" in
     *[\;\&\|\(\)\<\>\`]*|*$'\n'*) ;;
@@ -2219,8 +2254,9 @@ glob_is_literal_elsewhere() {
 # resolves against) is unresolvable and denies. Absolute paths are left to the
 # permission layer: no allow rule matches them, and the runbook's
 # <himmel_dir> spelling is one. A literal `$HIMMEL_REPO/` or `${HIMMEL_REPO}/`
-# prefix (the documented anchored
-# merge-on-green.sh spelling) is exempted the same way: this hook only sees
+# prefix (the anchored spelling of pr-check-step0.sh, pr-check-context.sh,
+# himmel-gate.sh and go.sh; merge-on-green.sh is carved out of it by the block
+# after the ast_data_only definition) is exempted the same way: this hook only sees
 # the raw command TEXT, never evaluates the variable, so the word is exactly
 # as trusted as any other absolute path once the shell resolves it - the
 # anchor, never a branch, picks HIMMEL_REPO's value (a per-call HIMMEL_REPO=
@@ -2712,7 +2748,6 @@ if [ "$envs_deferred" = 1 ] && [ "$PR_GIT_UNSAFE" = 1 ] && { [ "$mentions" = 1 ]
     shown=${shown:0:200}
     deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command."
 fi
-[ "$hit" -eq 1 ] || { [ "${edhook_pending:-0}" = 1 ] && edhook_deny; exit 0; }
 # A command whose every command position is a plain reader (sort, uniq and
 # sed only in forms that write no file and run nothing), a standalone
 # assignment, or bash/sh running the append-results.sh bullet writer (which
@@ -2744,6 +2779,8 @@ fi
 # assignment: any reader or runner beside it can execute the file just written.
 # A cat, grep or other writer, a gh write or --web, a non-digit subscript and
 # any path-ish mention keep the text scan.
+# The merge-spelling block below also calls it: a reader of the exempt
+# merge-on-green.sh word (cat, grep -n bash) is data and keeps its decision.
 # shellcheck disable=SC2016 # a jq program, never expanded by bash
 AST_JQ='def lit: .t == "lit" and (.g | not);
   def outw: (.op | test(">")) and ((.op == ">&" and .w != null and .w.t == "lit" and (.w.v | test("^([0-9]+-?|-)$"))) | not);
@@ -2822,6 +2859,60 @@ ast_data_only() {
     *) return 1 ;;
     esac
 }
+# anchor_var_word: cut the exempt "$HIMMEL_REPO/..." word out of the raw command
+# as the shell reads it (a quote toggles quoting, an unquoted blank ends the
+# word, any other byte is literal). The exemption checks separators only in the
+# quote-stripped $flat, so the raw text is re-checked here; any text those rules
+# cannot read exactly returns 1 and the guard goes on as before. Sets ar_rest
+# (the word after HIMMEL_REPO, quotes removed) and ar_tail, never REPLY, which
+# ast_data_only overwrites. A Unicode space is not a shell blank, hence the
+# head test; LC_ALL=C makes every pattern match bytes.
+anchor_var_word() {
+    local LC_ALL=C s seg w="" q n
+    ar_rest="" ar_tail=""
+    n=${cmd//$'\t'/}
+    case "$n" in *[[:cntrl:]]*) return 1 ;; esac
+    case "$cmd" in *[\;\&\|\(\)\<\>\`]*) return 1 ;; esac
+    case "$head" in *'$'* | *'#'*) return 1 ;; esac
+    case "$head" in '' | *' ' | *$'\t') ;; *) return 1 ;; esac
+    n=${head//[!\"]/}
+    [ $((${#n} % 2)) -eq 0 ] || return 1
+    # shellcheck disable=SC2016 # literal text match, never expanded
+    case "$before" in
+        *'"${') q=1; s=${after#\}} ;;
+        *'${') q=0; s=${after#\}} ;;
+        *'"$') q=1; s=$after ;;
+        *'$') q=0; s=$after ;;
+        *) return 1 ;;
+    esac
+    while :; do
+        if [ "$q" -eq 0 ]; then
+            seg=${s%%[[:blank:]\"]*}
+            w=$w$seg
+            s=${s#"$seg"}
+            case "$s" in
+                '"'*) q=1; w=$w'"'; s=${s#\"} ;;
+                *) break ;;
+            esac
+        else
+            seg=${s%%\"*}
+            [ "$seg" != "$s" ] || return 1
+            w=$w$seg'"'
+            s=${s#"$seg"\"}
+            q=0
+        fi
+    done
+    ar_rest=${w//\"/}
+    ar_tail=$s
+}
+mog_rel=scripts/handover/merge-on-green.sh
+if [ "$himmel_anchor_prefix" -eq 1 ] && anchor_var_word \
+    && [ -f "$HIMMEL_REPO/$mog_rel" ] \
+    && [ "$HIMMEL_REPO$ar_rest" -ef "$HIMMEL_REPO/$mog_rel" ] \
+    && ! ast_data_only; then
+    deny_anchor_var "$head" "$ar_tail"
+fi
+[ "$hit" -eq 1 ] || { [ "${edhook_pending:-0}" = 1 ] && edhook_deny; exit 0; }
 if ast_data_only; then
     [ "${edhook_pending:-0}" = 1 ] && edhook_deny
     exit 0

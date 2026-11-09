@@ -55,7 +55,7 @@
         "doctor:C41-mcp-argv-key", "doctor:C43-rtk-hook", "doctor:C57-dotenv-allowlists", "doctor:C58-mcp-sdk-v1", "doctor:C82-mcp-sources",
         "doctor:C65-git-hooks", "doctor:C65-branch-protection", "doctor:C65-gate-deps",
         "doctor:C74-himmel-conf", "doctor:C74-env-keys", "doctor:C74-policy", "doctor:C74-config-keys",
-        "doctor:C75-keyring", "doctor:C75-secrets", "doctor:C75-config-keys"
+        "doctor:C75-keyring", "doctor:C75-secrets", "doctor:C75-config-keys", "doctor:C95-barrier-off"
       ]
     },
     {
@@ -99,7 +99,7 @@
       "id": "schedules",
       "title": "Schedules",
       "rows": [
-        "scheduler-backend", "cadence-armed", "cadence-runs-*", "doctor-cadence",
+        "scheduler-backend", "cadence-armed", "cadence-runs-*", "doctor-cadence", "rollup-cadence",
         "doctor:C8-cadence", "doctor:C9-scheduler", "probe-disagree:C9-scheduler",
         "doctor:C24-cadence-registry"
       ]
@@ -118,7 +118,7 @@
       "id": "toolchain",
       "title": "Install & toolchain",
       "rows": [
-        "node", "npm-less-node", "bun", "jq", "git", "python3", "uv", "shellcheck", "gitleaks", "pre-commit",
+        "node", "npm-less-node", "bun", "jq", "git", "python3", "uv", "shellcheck", "gitleaks", "pre-commit", "statechart",
         "gh", "rtk", "doctor:C20-node", "probe-disagree:C20-node", "doctor:C39-gtimeout-darwin",
         "doctor:C62-oxlint-runner", "doctor:C73-bun-compiled", "doctor:C78-shfmt"
       ]

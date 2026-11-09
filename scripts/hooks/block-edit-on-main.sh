@@ -260,7 +260,12 @@ repo_real=$(main_checkout_verdict "$file_real") || verdict_rc=$?
 # CLOSED to match this script's security posture (jq/git/realpath capability
 # checks above also fail closed).
 if [ "$verdict_rc" -eq 3 ]; then
-    echo "block-edit-on-main: cannot determine branch for '$repo_real' - refusing to evaluate" >&2
+    _git_kind="a missing path"
+    if [ -L "$repo_real/.git" ]; then _git_kind="a symlink"
+    elif [ -d "$repo_real/.git" ]; then _git_kind="a directory"
+    elif [ -f "$repo_real/.git" ]; then _git_kind="a file"
+    fi
+    echo "block-edit-on-main: cannot determine branch for '$repo_real' (found '$repo_real/.git', $_git_kind) - refusing to evaluate" >&2
     exit 2
 fi
 

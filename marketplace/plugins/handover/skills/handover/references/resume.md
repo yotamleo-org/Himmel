@@ -1,6 +1,6 @@
 # Handover — `handover-resume` (read-only)
 
-**Script-driven (HIMMEL-1038).** The read path is fully mechanical and lives in
+**Script-driven.** The read path is fully mechanical and lives in
 `scripts/handover/resume.sh` — the `/handover-resume` command calls it directly
 and does **not** load this skill. When the `handover` skill itself is triggered
 with resume phrasing, prefer the script over re-deriving the steps by hand:
@@ -28,7 +28,7 @@ work in a new session. Kept here as the reference the script satisfies.
 0. **Resolve target repo.** Read-only — if ambiguous from conversation context, ask which repo.
 1. **If `#N` omitted:** run No-ID picker (see `references/resolution.md`).
 2. **Normalize input:**
-   - `<PROJECT>-K` (e.g. `HIMMEL-15`) → key form; scan only `<jira_project>-K-*/` namespace.
+   - `<PROJECT>-K` (e.g. `PROJ-15`) → key form; scan only `<jira_project>-K-*/` namespace.
    - bare numeric `N` → scan BOTH `<jira_project>-N-*/` and `#N-*/` (per `references/routing.md` v2 rule).
    - strip leading `#` if present.
 3. Scan in order, where `<form>` is each pattern from step 2. If the bucket layer is active and the ID has a Jira-prefix mapping, scan that bucket first; otherwise scan all buckets (and the legacy flat root):

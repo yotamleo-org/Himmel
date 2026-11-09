@@ -27,6 +27,9 @@ tmp="$(cd "$tmp" && pwd)"
 export HOME="$tmp/home"; mkdir -p "$HOME"
 export HANDOVER_DIR="$tmp/root"; mkdir -p "$HANDOVER_DIR"
 export USER_SLUG=u
+export HIMMEL_CEILINGS_LEDGER="$tmp/no-ceilings-ledger.tsv"
+case "$HIMMEL_CEILINGS_LEDGER" in "$tmp"/*) ;; *) echo "FAIL: the ceilings ledger escapes the temp dir"; exit 1 ;; esac
+unset HIMMEL_BUCKET_DIR
 
 fails=0; failrows=""
 check()   { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); failrows="$failrows$1 | "; }; }

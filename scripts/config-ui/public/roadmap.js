@@ -263,15 +263,6 @@ function selIndex(d, ui) {
   return d.cur >= 0 ? d.cur : d.next >= 0 ? d.next : -1;
 }
 
-function driftBanner(dr) {
-  if (!dr || dr.state === "absent" || !dr.counts || !dr.file) return `<div class="nodata">drift: not read${dr && dr.reason ? ` (${esc(dr.reason)})` : ""}</div>`;
-  if (!dr.file.exists) return `<div class="nodata">drift: no saved run yet</div>`;
-  if (dr.unknown) return `<div class="nodata">drift: the saved run's result is unknown</div>`;
-  const c = dr.counts, n = c.real;
-  return `<div class="alert"><span class="st pill ${n ? "warn" : "ok"}">drift</span> <b>${n} drift row${n === 1 ? "" : "s"}</b> · not counted: ${c.known} known checker bug, ${c.transient} transient · <b>${esc(dr.mode)}</b> mode`
-    + `${dr.stale ? " · the saved run is older than 3 h" : ""} <a href="#/board?tab=tidy">Tidy up ▸</a></div>`;
-}
-
 // The version strip shows at most MAX_VERSIONS tiles. Pins (ui.pins, version names) win; with none, the running version and 2 each side. "Show all"
 // lifts the cap; "Hide previous" drops released versions; "Hide far future" drops versions more than 2 after the running one. Display only: no write.
 const MAX_VERSIONS = 5;
@@ -307,52 +298,29 @@ function windowBar(d, ui, w, inert = false) {
     + (w.pinned.length ? `<button class="btn" data-rm-clear-pins>Clear pins</button>` : "") + `</div>`;
 }
 
-// slim (the Chains tab): one small chip per version, the picked version's numbers in one line under the chips, and the window controls
-// behind a "N of M versions" menu. The fuller tiles stay on the Roadmap, Tidy up and No version tabs.
+const NO_PICK = -3;
 function slimStrip(d, sel, tab, ui, w, inert) {
-  const info = (i) => { const v = d.versions[i], c = v.counts; return { v, c, run: runState(d, v, i), tag: v.rel ? `released${v.date ? " " + v.date : ""}` : runState(d, v, i) || "planned", total: Object.values(c).reduce((a, b) => a + b, 0) }; };
+  const info = (i) => { const v = d.versions[i], c = v.counts; return { v, c, tag: v.rel ? `released${v.date ? " " + v.date : ""}` : runState(d, v, i) || "planned", total: Object.values(c).reduce((a, b) => a + b, 0) }; };
   const stat = (x) => `${x.c.done} done · ${x.c.prog + x.c.rev + x.c.ci} in flight · ${x.c.todo} to do${x.c.wont ? ` · ${x.c.wont} won't` : ""}`;
-  const chips = w.idx.map((i) => { const x = info(i);
-    return `<a class="vc${i === sel ? " sel" : ""}" href="${boardHref({ tab, v: x.v.n })}"${i === sel ? ` aria-current="true"` : ""} title="${esc(`${x.v.n} · ${x.tag} · ${stat(x)}`)}"><b>${esc(x.v.n)}</b> <small>${esc(x.tag)}</small><progress value="${x.c.done}" max="${x.total || 1}" aria-label="${esc(x.v.n)}: ${x.c.done} of ${x.total} tickets done"></progress></a>`; }).join("");
-  const pv = sel >= 0 && d.versions[sel] ? `<p class="pv"><b>${esc(d.versions[sel].n)}</b> · ${esc(info(sel).tag)} · ${nTickets(info(sel).total)} · ${esc(stat(info(sel)))}</p>` : "";
+  const chipTab = tab === "nv" || tab === "roadmap" ? "" : tab;
+  const pins = ui.pins || [];
+  const chips = w.idx.map((i) => { const x = info(i), pinned = pins.includes(x.v.n);
+    const open = x.v.rel && x.v.open.length ? ` <span class="op" title="${esc(`${x.v.open.length} still open: ${x.v.open.map((k) => `${x.v.project || "HIMMEL"}-${k}`).join(", ")}`)}">⚠ ${x.v.open.length} open</span>` : "";
+    return `<a class="vc${i === sel ? " sel" : ""}" href="${boardHref({ tab: chipTab, v: x.v.n })}"${i === sel ? ` aria-current="true"` : ""} title="${esc(`${x.v.n} · ${x.tag} · ${stat(x)}`)}"><b>${esc(x.v.n)}</b> <small>${esc(x.tag)}</small>${open}<progress value="${x.c.done}" max="${x.total || 1}" aria-label="${esc(x.v.n)}: ${x.c.done} of ${x.total} tickets done"></progress></a>`
+      + `<button class="pin" type="button" data-rm-pin="${esc(x.v.n)}" aria-pressed="${pinned}" aria-label="${pinned ? "Unpin" : "Pin"} ${esc(x.v.n)}">${pinned ? "★" : "☆"}</button>`; }).join("")
+    + (tab === "roadmap" || tab === "tidy" ? `<a class="vc all${sel === -1 ? " sel" : ""}" href="${boardHref({ tab: chipTab, v: "all" })}"${sel === -1 ? ` aria-current="true"` : ""}>all versions</a>` : "");
+  const sum = d.versions.reduce((a, v) => { for (const k of Object.keys(v.counts)) a[k] = (a[k] || 0) + v.counts[k]; return a; }, {});
+  const line = sel >= 0 && d.versions[sel] ? `<b>${esc(d.versions[sel].n)}</b> · ${esc(info(sel).tag)} · ${nTickets(info(sel).total)} · ${esc(stat(info(sel)))}`
+    : sel === NO_PICK ? `<b>no version</b> · ${nTickets(d.noVersionCount || 0)} · in no version's count; a chip opens that version's Roadmap`
+    : sel === -1 && (tab === "roadmap" || tab === "tidy") ? `<b>every version</b> · ${nTickets(Object.values(sum).reduce((a, b) => a + b, 0))} · ${esc(stat({ c: { done: 0, prog: 0, rev: 0, ci: 0, todo: 0, ...sum } }))}` : "";
   const menu = `<details class="vmenu"${inert ? " inert" : ""}><summary>${w.idx.length} of ${d.versions.length} versions ▾</summary>${windowBar(d, ui, w, inert)}</details>`;
-  return (chips ? `<div class="vchips" aria-label="Versions">${chips}${menu}</div>` : `<div class="empty">No versions to show with these filters.</div>${menu}`) + pv;
+  const edges = `<span class="edge l" aria-hidden="true" hidden></span><span class="edge r" aria-hidden="true" hidden></span>`;
+  return (chips ? `<div class="xrow"><div class="vchips" aria-label="Versions">${chips}</div>${edges}</div>${menu}` : `<div class="empty">No versions to show with these filters.</div>${menu}`) + (line ? `<p class="pv">${line}</p>` : "");
 }
-function stripHtml(d, sel, tab, ui = {}, lead = "", slim = false) {
+function stripHtml(d, sel, tab, ui = {}) {
   const note = d.releaseUnknown ? `<div class="nodata">release state unknown: no versions snapshot, so no version is shown as released</div>` : "";
-  const w = windowOf(d, ui), pins = ui.pins || [];
-  if (slim) return lead + note + slimStrip(d, sel, tab, ui, w, !!ui.inert);
-  const tiles = w.idx.map((i) => {
-    const v = d.versions[i];
-    const c = v.counts, total = Object.values(c).reduce((a, b) => a + b, 0), flight = c.prog + c.rev + c.ci;
-    const run = runState(d, v, i), tag = v.rel ? `released${v.date ? " " + v.date : ""}` : run || "planned";
-    const stats = `${c.done} done · ${flight} in flight · ${c.todo} to do${c.wont ? ` · ${c.wont} won't` : ""}`;
-    const open = v.open.length ? `<span class="ro pill fail">${v.open.length} still open: ${v.open.map((k) => `${v.project || "HIMMEL"}-${k}`).map(esc).join(", ")}</span>` : "";
-    const pinned = pins.includes(v.n);
-    return `<div class="rm-vcell"><a class="rm-vt${i === sel ? " sel" : ""}" href="${boardHref({ tab: tab === "roadmap" ? "" : tab, v: v.n })}"${i === sel ? ` aria-current="true"` : ""}>${tip(`${v.n} · ${tag}`, `<b>${esc(v.n)}</b> <span class="ro pill${v.rel ? " ok" : run === "running" ? " warn" : ""}">${esc(tag)}</span>`)}`
-      + `<progress value="${c.done}" max="${total || 1}" aria-label="${esc(v.n)}: ${c.done} of ${total} done"></progress>`
-      + tip(stats, `<span class="ro">${esc(stats)}</span>`) + `${open}</a>`
-      + `<button class="rm-pin" data-rm-pin="${esc(v.n)}" aria-pressed="${pinned}" aria-label="${pinned ? "Unpin" : "Pin"} ${esc(v.n)}">${pinned ? "★" : "☆"}</button></div>`;
-  }).join("");
-  const msg = ui.pinMsg || (w.capped ? CAP_MSG : "");
-  return lead + note + (msg ? `<div class="nodata" role="alert">${esc(msg)}</div>` : "") + (tiles ? `<div class="rm-vstrip" aria-label="Versions">${tiles}</div>` : `<div class="empty">No versions to show with these filters.</div>`);
-}
-
-// Two links under the strip. "waits for you" counts the same rows as the Waiting on you section (open operator-labelled tickets plus
-// the chain read's "waits on you" tickets); with no chain read it still counts the labelled ones and says the holds were not read, and
-// with neither it says so. A ticket with no version is not counted (the default read leaves it out), so while one exists the count says
-// how many and points at the No version tab, and a 0 never stands alone; the line is short because a longer one wraps the tab row. "Shipped" has no count here (the merged-PR read is the Shift page's), so it names where the number is.
-function linksHtml(ch, rows, d, nv, owed) {
-  let wait = `<b>waits for you: not read</b> (${esc(noChains(ch))})`;
-  if (chainOk(ch) || rows.length) {
-    wait = `<b>${rows.length} ${rows.length === 1 ? "waits" : "wait"} for you</b>${rows.length ? ": " + rows.map((x) => esc(x.key || "item")).join(", ") : ""}${chainOk(ch) ? "" : ` (chain holds not read: ${esc(noChains(ch))})`}`;
-  }
-  const unreadSrc = unreadOwed(owed);
-  if (unreadSrc.length) wait += ` (${esc(unreadSrc.join("; "))})`;
-  const unread = nvOk(nv) ? 0 : d.noVersionCount || 0; // once the No version read is in, those tickets are in the rows above and nothing is left uncounted
-  const scope = unread ? ` <span class="ro">(${unread} not counted: <a href="${boardHref({ tab: "nv" })}">no version</a>)</span>` : "";
-  return `<div class="rm-links"><div class="rm-link"><span>${wait}${scope}</span><a href="#/shift">open in Shift →</a></div>`
-    + `<div class="rm-link"><span><b>Shipped since yesterday</b>: the count is not read here</span><a href="#/report">Morning report →</a></div></div>`;
+  const w = windowOf(d, ui), msg = ui.pinMsg || (w.capped ? CAP_MSG : "");
+  return note + (msg ? `<div class="nodata" role="alert">${esc(msg)}</div>` : "") + slimStrip(d, sel, tab, ui, w, !!ui.inert);
 }
 
 // What waits on the operator, as the roadmap tracker counts it: an open ticket carrying an operator label, plus a ticket the chain read
@@ -422,19 +390,25 @@ function waitingHtml(rows, tabCh, v, d, ch, nv, owed) {
     `<ul class="rm-waiting">${rows.map(row).join("")}</ul>`);
 }
 
-// The Chains tab is the one coloured tab: the chain icon, the number of chains of the read it opens, and a blocked chip only while a ticket is blocked.
-function tabsHtml(d, ui, tab, ch, dr) {
+function tabsHtml(d, ui, tab, ch, dr, sel) {
   const ok = chainOk(ch), n = ok ? ch.chains.length : 0, blocked = ok && ch.version ? countsOf(ch, d).blocked : 0;
-  const em = { tidy: driftOk(dr) ? `${dr.counts.real} drift ${dr.counts.real === 1 ? "row" : "rows"}` : "", nv: d.noVersionCount ? nTickets(d.noVersionCount) : "" };
-  const chains = (on) => `<a class="tab ch" role="tab" aria-selected="${on}" href="${boardHref({ tab: "chains", v: ui.v })}"${ok ? ` aria-label="${esc(`Chains, ${n} ${n === 1 ? "chain" : "chains"}${ch.version ? " in " + ch.version : ""}${blocked ? `, ${nTickets(blocked)} blocked` : ""}`)}"` : ""}>${CLINK}Chains${ok ? ` <span class="cnt">${n}</span>` : ""}${blocked ? ` <span class="blk">⛔ ${nTickets(blocked)} blocked</span>` : ""}</a>`;
+  const named = ok && ch.version && versionAt(d, ch.version) !== sel;
+  const real = driftOk(dr) ? dr.counts.real : 0;
+  const old = driftOk(dr) && dr.stale ? " · over 3 h old" : "";
+  const tidy = driftOk(dr) ? (real ? `<span class="drf">! ${real} drift ${real === 1 ? "row" : "rows"}${old}</span>` : `<span class="ro">0 drift rows${old}</span>`)
+    : `<span class="ro">· ${!dr || dr.state === "absent" || !dr.counts || !dr.file ? "drift not read" : !dr.file.exists ? "no drift run yet" : "drift result unknown"}</span>`;
+  const em = { nv: d.noVersionCount ? `<span class="ro">${esc(nTickets(d.noVersionCount))}</span>` : "" };
+  const chains = (on) => `<a class="tab ch" role="tab" aria-selected="${on}" href="${boardHref({ tab: "chains", v: ui.v })}"${ok ? ` aria-label="${esc(`Chains, ${n} ${n === 1 ? "chain" : "chains"}${ch.version ? " in " + ch.version : ""}${blocked ? `, ${nTickets(blocked)} blocked` : ""}`)}"` : ""}>${CLINK}Chains${ok ? ` <span class="cnt">${n}</span>` : ""}${named ? ` <span class="ro">in ${esc(ch.version)}</span>` : ""}${blocked ? ` <span class="blk">⛔ ${nTickets(blocked)} blocked</span>` : ""}</a>`;
   // the No version tab is there while some ticket has no fixVersion (the count is the default read's; the tickets are read when it opens)
-  return `<nav class="tabs" role="tablist" aria-label="Board">${TABS.filter(([id]) => id !== "nv" || d.noVersionCount || tab === "nv").map(([id, label]) => id === "chains" ? chains(tab === id) :
-    `<a class="tab" role="tab" aria-selected="${tab === id}" href="${boardHref({ tab: id, v: ui.v })}">${esc(label)}${em[id] ? ` <span class="ro">${esc(em[id])}</span>` : ""}</a>`).join("")}</nav>`;
+  return `<div class="xrow"><nav class="tabs" role="tablist" aria-label="Board">${TABS.filter(([id]) => id !== "nv" || d.noVersionCount || tab === "nv").map(([id, label]) => id === "chains" ? chains(tab === id) :
+    `<a class="tab" role="tab" aria-selected="${tab === id}" href="${boardHref({ tab: id, v: ui.v })}">${esc(label)}${id === "tidy" ? " " + tidy : em[id] ? " " + em[id] : ""}</a>`).join("")}</nav><span class="edge l" aria-hidden="true" hidden></span><span class="edge r" aria-hidden="true" hidden></span></div>`;
 }
-// What sits beside the tabs on the Chains tab: who waits for you (every version), the two pages that follow, and the real refresh.
-function asideHtml(ch, rows, fresh) {
+function asideHtml(ch, rows, fresh, d, nv, owed) {
   const wait = chainOk(ch) || rows.length ? `${nTickets(rows.length)} ${rows.length === 1 ? "waits" : "wait"} for you, any version` : "waits for you: not read";
-  return `<div class="aside"><a href="#/shift">${wait} Shift →</a><a href="#/report">Morning report →</a><button class="btn" data-act="refresh-roadmap" aria-label="refresh: read the board again">↻ refresh</button>${fresh ? `<span class="ro rd" title="${esc(fresh)}">${esc(fresh)}</span>` : ""}</div>`;
+  const unread = nvOk(nv) ? 0 : d.noVersionCount || 0;
+  const owedNote = unreadOwed(owed);
+  return `<div class="aside"><a href="#/shift">${wait} Shift →</a>${unread ? `<a href="${boardHref({ tab: "nv" })}">${nTickets(unread)} with no version not read yet →</a>` : ""}`
+    + `${owedNote.length ? `<span class="ro">(${esc(owedNote.join("; "))})</span>` : ""}<a href="#/report">Morning report →</a><button class="btn" data-act="refresh-roadmap" aria-label="refresh: read the board again">↻ refresh</button>${fresh ? `<span class="ro rd" title="${esc(fresh)}">${esc(fresh)}</span>` : ""}</div>`;
 }
 
 // The Roadmap tab's lane filters. Project is the ticket id's prefix; Theme is the plan's theme (the Sector has its own filter); Only is one
@@ -458,8 +432,7 @@ function laneFilters(d, ui, ch, sel) {
     fsel("project", "Project", projectsOf(d), ui.project) + fsel("planTheme", "Theme", d.planThemes, ui.planTheme) + onlySel];
 }
 
-// The one filter bar and refresh, drawn above every tab: the version links keep the tab, the Sector, Chain and Hide Done filters narrow what the tab lists.
-function barHtml(d, ui, ch, tab, sel, fresh = "") {
+function barHtml(d, ui, ch, tab, sel) {
   const here = d.versions[d.cur] ? d.versions[d.cur].n : d.versions[d.next] ? d.versions[d.next].n : "all";
   const keep = tab === "roadmap" ? "" : tab;
   const lanes = `<a href="${boardHref({ tab: keep, v: here })}">this version</a> · <a href="${boardHref({ tab: keep, v: "all" })}">all versions</a>`;
@@ -469,7 +442,7 @@ function barHtml(d, ui, ch, tab, sel, fresh = "") {
   // one line: the lanes, Sector, find, Chain, Hide Done and refresh; the rarer filters wait under More ▾ (a closed <details> keeps them out of the way)
   return `<div class="rm-bar fields"><span>Lanes: ${lanes}</span>${themeSel(d, ui)}${find}${chainSel}<label><input type="checkbox" data-rm-hide-done${ui.hideDone ? " checked" : ""}> Hide Done</label>`
     + (more ? `<details class="rm-more"><summary>More ▾</summary><div class="rm-more-pop fields">${more}</div></details>` : "")
-    + `<button class="btn" data-act="refresh-roadmap">refresh</button>${fresh ? tip(fresh, `<span class="ro">${esc(fresh)}</span>`, " rm-fresh") : ""}</div>${writeNote(ui)}`;
+    + `</div>`;
 }
 
 // What a ticket must pass to be drawn: the Sector, Hide Done, Chain, Project, Theme, Only and the find box. d is the payload the tickets and the
@@ -723,10 +696,10 @@ function footHtml(ui, ch, d, whole, sel) {
 }
 
 function chainsTab(ui, ch, d, whole, sel) {
-  if (!chainOk(ch)) return `<section id="rm-chains" class="cp" aria-label="Chains"><div class="nodata">${esc(noChains(ch))}</div></section>`;
+  if (!chainOk(ch)) return `<section id="rm-chains" class="cp" aria-label="Chains">${writeNote(ui)}<div class="nodata">${esc(noChains(ch))}</div></section>`;
   const per = ch.chains.map((c) => ({ c, rows: rowsOf(ch, c) })), open = per.filter((x) => !doneOf(x.c)), fin = per.filter((x) => doneOf(x.c));
   const label = ch.version ? `Chains in ${ch.version}` : "Chains";
-  const wrap = (inner) => `<section id="rm-chains" class="cp" aria-label="${esc(label)}">${notesHtml(ui, ch)}${inner}</section>`;
+  const wrap = (inner) => `<section id="rm-chains" class="cp" aria-label="${esc(label)}">${writeNote(ui)}${notesHtml(ui, ch)}${inner}</section>`;
   if (!per.length) return wrap(`<div class="empty">${ch.version ? `No chain has a ticket in ${esc(ch.version)}.` : "No chains in the registry."}</div>${footHtml(ui, ch, d, whole, sel)}`);
   const k = countsOf(ch, d), total = Object.keys(ch.tickets).length;
   const states = [[k.done, "done"], [k.flight, "in flight"], [k.launch, "can launch"], [k.wait, "waiting"]].filter(([n]) => n).map(([n, w]) => `${nTickets(n)} ${w}`).concat(ch.version ? [`${nTickets(k.blocked)} blocked`] : [], k.unknown ? [`${nTickets(k.unknown)} unclear`] : []);
@@ -859,7 +832,119 @@ function drawerHtml(d, ui) {
 export const BOARD_REFRESH_MS = 60_000;
 export const boardRefreshDue = (s) => s.page === "board" && !!s.visible && !s.modal && !s.editing && !s.dragging && !s.busy && s.readAt > 0 && s.now - s.readAt >= BOARD_REFRESH_MS;
 
+const ROW_TOL = 2;
+const isUserScroll = (row, placed) => Math.abs(row.scrollLeft - placed) > ROW_TOL;
+const rowMemo = {};
+export function placeRows(root = document) {
+  const undo = [];
+  for (const x of root.querySelectorAll(".xrow")) {
+    const row = x.querySelector(".vchips,.tabs"), L = x.querySelector(".edge.l"), R = x.querySelector(".edge.r");
+    if (!row || !L || !R) continue;
+    const tabs = row.classList.contains("tabs"), unit = tabs ? ["tab", "tabs"] : ["version", "versions"], items = [];
+    for (const c of row.children) { if (c.matches(".pin") && items.length) items[items.length - 1].els.push(c); else items.push({ els: [c] }); }
+    const box = (it) => { let l = 1e9, r = -1e9; for (const e of it.els) { const b = e.getBoundingClientRect(); l = Math.min(l, b.left); r = Math.max(r, b.right); } return { left: l, right: r }; };
+    const itemOf = (el) => items.find((i) => i.els.some((e) => e === el || e.contains(el))) || null;
+    const sel = row.querySelector('[aria-selected="true"],[aria-current="true"]'), home = sel ? itemOf(sel) : null, selKey = sel ? sel.getAttribute("href") || "" : "";
+    let anc = home, user = false, lvL = 0, lvR = 0, placed = 0, lastW = -1;
+    const words = (left, n, lv) => (lv >= 2 ? (left ? "‹" : "›") : left ? `‹ ${n}${lv ? "" : " " + unit[n === 1 ? 0 : 1]}` : `+${n}${lv ? "" : " " + unit[n === 1 ? 0 : 1]} ›`);
+    const natural = (el, t) => { el.style.width = ""; el.hidden = false; el.textContent = t; return el.getBoundingClientRect().width; };
+    const anchorNow = () => {
+      if (!user) return anc;
+      const a = row.getBoundingClientRect(), cx = (a.left + a.right) / 2;
+      let best = null, bd = 1e9;
+      for (const i of items) { const b = box(i); if (b.left < a.left - ROW_TOL || b.right > a.right + ROW_TOL) continue; const d = Math.abs((b.left + b.right) / 2 - cx); if (d < bd) { bd = d; best = i; } }
+      return best || anc;
+    };
+    const side = (el, left, an, lv) => {
+      const a = row.getBoundingClientRect(), ai = an ? items.indexOf(an) : -1, mine = left ? items.slice(0, Math.max(ai, 0)) : items.slice(ai + 1);
+      const past = (w) => { const inner = left ? a.left + w : a.right - w; return mine.filter((p) => { const b = box(p); return left ? b.left < inner - ROW_TOL : b.right > inner + ROW_TOL; }); };
+      let w = 0, n = 0;
+      for (let k = 0; k < 8; k++) {
+        const p = past(w);
+        if (!p.length) { n = 0; break; }
+        const cover = left ? Math.max(...p.map((q) => box(q).right)) - a.left : a.right - Math.min(...p.map((q) => box(q).left));
+        const nw = Math.max(natural(el, words(left, p.length, lv)), cover);
+        n = p.length;
+        if (nw <= w + 0.5) break;
+        w = nw;
+      }
+      el.hidden = !n; el.dataset.n = n;
+      if (!n) return 0;
+      natural(el, words(left, n, lv)); el.style.width = w + "px";
+      el.title = `${n} ${unit[n === 1 ? 0 : 1]} ${left ? "to the left" : "to the right"}: tap to show the next`;
+      return w;
+    };
+    const label = () => {
+      const an = anchorNow();
+      for (let t = 0; t < 5; t++) {
+        const wl = side(L, true, an, lvL), wr = side(R, false, an, lvR);
+        if (!an) return;
+        const a = row.getBoundingClientRect(), b = box(an), okL = a.left + wl <= b.left + ROW_TOL, okR = a.right - wr >= b.right - ROW_TOL;
+        if (okL && okR) return;
+        if (!okL && lvL < 2) lvL++; else if (!okR && lvR < 2) lvR++; else return;
+      }
+    };
+    const place = (an) => {
+      user = false; lvL = lvR = 0; anc = an;
+      if (!an) row.scrollLeft = 0;
+      else {
+        const ai = items.indexOf(an), nb = ai, na = items.length - ai - 1;
+        let nl = 0, nr = 0;
+        for (let t = 0; t < 6; t++) {
+          const a = row.getBoundingClientRect(), b = box(an);
+          nl = nb ? natural(L, words(true, nb, lvL)) : 0; nr = na ? natural(R, words(false, na, lvR)) : 0;
+          if (b.right - b.left <= a.width - nl - nr + ROW_TOL) break;
+          if (nb && lvL <= lvR && lvL < 2) lvL++; else if (na && lvR < 2) lvR++; else if (nb && lvL < 2) lvL++; else break;
+        }
+        const a2 = row.getBoundingClientRect(), b2 = box(an);
+        if (b2.right > a2.right - nr + ROW_TOL) row.scrollLeft += b2.right - (a2.right - nr); else if (b2.left < a2.left + nl - ROW_TOL) row.scrollLeft -= a2.left + nl - b2.left;
+      }
+      label();
+      placed = row.scrollLeft;
+    };
+    const memo = rowMemo[tabs ? "tabs" : "chips"];
+    if (memo && memo.user && memo.sel === selKey && home) {
+      row.scrollLeft = memo.left; user = true; placed = -1; label();
+      const a = row.getBoundingClientRect(), b = box(home), wl = L.hidden ? 0 : L.getBoundingClientRect().width, wr = R.hidden ? 0 : R.getBoundingClientRect().width;
+      if (b.left < a.left + wl - ROW_TOL || b.right > a.right - wr + ROW_TOL) place(home);
+    } else place(home);
+    const onScroll = () => { if (isUserScroll(row, placed)) { user = true; lvL = lvR = 0; placed = -1; } label(); };
+    row.addEventListener("scroll", onScroll, { passive: true });
+    undo.push(() => row.removeEventListener("scroll", onScroll));
+    const onTap = (e) => {
+      e.preventDefault();
+      const left = e.currentTarget === L, an = anchorNow(), ai = an ? items.indexOf(an) : -1, a = row.getBoundingClientRect(), w = e.currentTarget.getBoundingClientRect().width;
+      const hid = (left ? items.slice(0, Math.max(ai, 0)) : items.slice(ai + 1)).filter((p) => { const b = box(p); return left ? b.left < a.left + w - ROW_TOL : b.right > a.right - w + ROW_TOL; });
+      if (hid.length) place(left ? hid[hid.length - 1] : hid[0]);
+    };
+    for (const el of [L, R]) { el.addEventListener("click", onTap); undo.push(() => el.removeEventListener("click", onTap)); }
+    const onFocus = (e) => {
+      const it = itemOf(e.target);
+      if (!it) return;
+      const a = row.getBoundingClientRect(), b = box(it), wl = L.hidden ? 0 : L.getBoundingClientRect().width, wr = R.hidden ? 0 : R.getBoundingClientRect().width;
+      if (b.left < a.left + wl - ROW_TOL || b.right > a.right - wr + ROW_TOL) place(it);
+    };
+    row.addEventListener("focusin", onFocus);
+    undo.push(() => row.removeEventListener("focusin", onFocus));
+    lastW = Math.round(row.clientWidth);
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(() => { const w = Math.round(row.clientWidth); if (Math.abs(w - lastW) <= ROW_TOL) return; lastW = w; place(anc); });
+      ro.observe(row);
+      undo.push(() => ro.disconnect());
+    }
+    undo.push(() => { rowMemo[tabs ? "tabs" : "chips"] = { user, left: row.scrollLeft, sel: selKey }; });
+  }
+  return () => { for (const f of undo.splice(0)) f(); };
+}
+
 export const renderBoard =(data, ui, extras) => pg(boardPage(data, ui || {}, extras || {}));
+function chipFor(tab, data, ui, tabCh, sel) {
+  if (tab === "nv") return NO_PICK;
+  if (tab === "chains") return !chainOk(tabCh) ? sel : tabCh.version ? versionAt(data, tabCh.version) : -1;
+  if (tab === "tidy" && !(ui.v && ui.v !== "all" && sel >= 0)) return -1;
+  return sel;
+}
+const readFor = (tab, ch, cardCh) => (tab === "nv" ? ch : cardCh);
 function boardPage(data, ui, extras) {
   const page = pageHeader("Board", "Every version, what each ticket is doing, and what is left");
   if (!data) return page + `<p class="sub" id="status">loading…</p>`;
@@ -870,7 +955,7 @@ function boardPage(data, ui, extras) {
   const tab = TABS.some(([id]) => id === ui.tab) ? ui.tab : "roadmap";
   const sel = selIndex(data, ui);
   const rows = waitingRows(data, ch, ui.nv, owed, prs);
-  const tileSel = tab !== "chains" || !chainOk(tabCh) ? sel : tabCh.version ? versionAt(data, tabCh.version) : -1; // a tile never highlights over totals of another version
+  const chipSel = chipFor(tab, data, ui, tabCh, sel);
   const src = data.source === "github" ? `GitHub issues (${data.mirror.count})` : data.source === "local" ? `the local tracker store (${data.mirror.count} items)`
     : `the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"})`;
   // plain text: the bar clips it to what fits and keeps the whole line in its bubble
@@ -880,14 +965,13 @@ function boardPage(data, ui, extras) {
   const cardCh = chainOk(tabCh) && tabCh.version && versionAt(data, tabCh.version) === sel ? tabCh : ch;
   const drawer = drawerHtml(data, ui), why = tab === "chains" ? whyHtml(ui, tabCh, data) : "";
   const modal = !!(drawer || why);
-  if (tab === "chains") {
-    // one read, the picked version's: a slim version row, the tabs and their aside, and the panel. No drift banner, no lane filters, no "all versions".
-    const head = `<div class="rm-head bh"${modal ? " inert" : ""}><header class="ph"><h1>Board</h1></header>${stripHtml(data, tileSel, tab, { ...ui, inert: modal }, "", true)}</div>`;
-    return [head, `<div class="rm-under"${modal ? " inert" : ""}>`, `<div class="tr">${tabsHtml(data, ui, tab, tabCh, dr)}${asideHtml(ch, rows, fresh)}</div>`, writeNote(ui), chainsTab(ui, tabCh, data, ch, tileSel), `</div>`, drawer, why].join("\n");
+  let panel;
+  if (tab === "chains") panel = chainsTab(ui, tabCh, data, ch, chipSel);
+  else {
+    const shownCh = readFor(tab, ch, cardCh);
+    const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr, prs) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv, owed) + lanesHtml(data, ui, sel, cardCh, dr, prs);
+    panel = `<section class="cp plain" aria-label="${esc(TABS.find(([id]) => id === tab)[1])}">${writeNote(ui)}${barHtml(data, ui, shownCh, tab, sel)}${body}</section>`;
   }
-  // the No version tab's tickets are in no version, so the picked version's read cannot hold them: it keeps the whole read
-  const shownCh = tab === "nv" ? ch : cardCh;
-  const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr, prs) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv, owed) + lanesHtml(data, ui, sel, cardCh, dr, prs);
-  // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
-  return [`<div class="rm-head">${page}${windowBar(data, ui, windowOf(data, ui), modal)}</div>`, `<div class="rm-under"${modal ? " inert" : ""}>`, stripHtml(data, tileSel, tab, ui, driftBanner(dr)), `<div class="rm-tabrow">${tabsHtml(data, ui, tab, tabCh, dr)}${linksHtml(ch, rows, data, ui.nv, owed)}</div>`, barHtml(data, ui, shownCh, tab, sel, fresh), body, `</div>`, drawer, why].join("\n");
+  const head = `<div class="rm-head bh"${modal ? " inert" : ""}><header class="ph"><h1>Board</h1></header>${stripHtml(data, chipSel, tab, { ...ui, inert: modal })}</div>`;
+  return [head, `<div class="rm-under"${modal ? " inert" : ""}>`, `<div class="tr">${tabsHtml(data, ui, tab, tabCh, dr, chipSel)}${asideHtml(ch, rows, fresh, data, ui.nv, owed)}</div>`, panel, `</div>`, drawer, why].join("\n");
 }

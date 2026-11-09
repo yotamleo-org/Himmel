@@ -16,8 +16,8 @@ nvidia-cuda-nvrtc-cu12==12.9.86 ; platform_machine == 'x86_64' and sys_platform 
     --hash=sha256:210cf05005a447e29214e9ce50851e83fc5f4358df8b453155d5e1918094dcb4 \
     --hash=sha256:72972ebdcf504d69462d3bcd67e7b81edd25d0fb85a2c46d3ea3517666636349
     # via nvidia-cublas-cu12
-nvidia-cudnn-cu12==9.27.0.42 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:06e9b0026f3bad97d2b58666330fabec04fe1672f776661ecb0ce0029c27f142 \
-    --hash=sha256:0a4aa3a7d2264256506c6857fc41fc0c499982f78d70195b1cfcc9055c1957cd \
-    --hash=sha256:5bc22243563107ea06aa60f9116ad800063d5f4617cc75bc6670d5db78d9f336
+nvidia-cudnn-cu12==9.28.0.42 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:9ff58b7f36dacd0a93e89f8f2957b52466889217963701daa15e577317cfa375 \
+    --hash=sha256:e8eb548c252e95713e81e6fc53c61940d13114d7116908069d018b2d24700620 \
+    --hash=sha256:f88db8fc1a0a5f458e19aa7b08fbe3500aeb9e2bb8dea6293ecbce170364ad72
     # via -r requirements-whisper-cuda.in

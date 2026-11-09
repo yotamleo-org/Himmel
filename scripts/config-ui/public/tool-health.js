@@ -367,15 +367,29 @@ function candidatesPanel(data) {
   return table(["Profile", "Tool", "Calls in window", "Listing cost"], rows, "Nothing loaded and unused, or the listing cost is not measured");
 }
 
+function launchesPanel(data) {
+  const l = data.launches_refused;
+  const note = (t) => `<p class="nodata">${esc(t)}</p>`;
+  if (!l || l.state === "not-read") return note("Launch refusals were not read for this response.");
+  const skipped = l.skipped > 0 ? note(`${num(l.skipped)} unreadable row${l.skipped === 1 ? "" : "s"}`) : "";
+  if (l.state === "absent") return note("No launch refusal recorded yet.") + skipped;
+  if (!l.total) return note("No launch refused in this window.") + skipped;
+  const codes = (rc) => Object.entries(rc || {}).sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0])).map(([c, n]) => `${esc(c)} ×${num(n)}`).join(", ");
+  const byCause = table(["Cause", "Refused", "Exit codes"], l.by_cause.map((c) => `<tr data-launch-cause="${esc(c.cause)}">${td(esc(c.cause))}${td(num(c.count))}${td(codes(c.rc))}</tr>`));
+  const recent = table(["Time", "Worker", "Cause", "Exit", "Reason"], l.recent.map((r) => `<tr data-launch-row="${esc(r.ts)}">${td(esc(utc(r.ts)))}${td(r.name ? esc(r.name) : "—")}${td(esc(r.cause))}${td(num(r.rc))}${tdWrap(r.line ? esc(r.line) : "see the launch log")}</tr>`));
+  return `${byCause}<details data-launch-recent><summary>Most recent refusals (${num(l.recent.length)} of ${num(l.total)})</summary>${recent}</details>${skipped}`;
+}
 function overview(data, st, ui) {
   const toolsBox = (text) => box("tools", "Tools", "Which tool, skill, hook or plugin fails most? Each name opens its drill-in.", `<p class="nodata">${esc(text)}</p>`, "First build");
+  const launchesBox = () => box("launches", "Launches refused", "Worker launches not confirmed as started, by cause. Whole fleet: the filters above do not apply. Exit 7 and 9 may still have come up late.", launchesPanel(data));
   if (!data) return `${kpis(null)}${st.loading || st.error ? "" : toolsBox(st.data && st.data.state === "error" ? "Tool health could not load. Retry." : "No recorded tool observations in this window")}`;
-  if (data.state !== "ok") return `${kpis(null)}${toolsBox("No recorded tool observations in this window. Try the 30-day window.")}`;
+  if (data.state !== "ok") return `${kpis(null)}${toolsBox("No recorded tool observations in this window. Try the 30-day window.")}${launchesBox()}`;
   const bad = badCounts(data);
   const banner = bad.size ? `<p class="nodata"><span class="tag fail">Count check failed</span> ${esc([...bad].join(", "))}: counts that cannot be true (more denials or errors than failures, or more failures than calls). Their rates are hidden, not clamped.</p>` : "";
-  if (!(data.tools || []).length) return `${kpis(data)}<p class="nodata">No observations match these filters. <a class="btn" href="${esc(toolHealthHref({ filters: {} }))}">Reset filters</a></p>`;
+  if (!(data.tools || []).length) return `${kpis(data)}<p class="nodata">No observations match these filters. <a class="btn" href="${esc(toolHealthHref({ filters: {} }))}">Reset filters</a></p>${launchesBox()}`;
   return `${banner}${kpis(data)}${dailyPanel(data, st)}
 ${box("tools", "Tools", "Which tool, skill, hook or plugin fails most? Each name opens its drill-in.", toolList(data, st.inventory, ui), "First build")}
+${launchesBox()}
 <div class="th-cols">${box("guards", "Guards that refuse most", "Which guard blocks the most calls? The rate is over the calls to the tools each guard is wired to check; the Bash-only rate is the older denominator, kept for comparison. A refusal can be correct.", guardsPanel(data, ui), "÷ eligible call attempts")}${box("classifier", "Classifier denials", "Which calls did the auto-mode classifier deny? A count per category; the reason stays unverified.", classifierPanel(data), "reason unverified")}</div>
 ${box("lanes", "Bash on each lane", "Does Bash fail more on one lane?", lanePanel(data))}
 ${box("roles", "Role, lane and profile", "Which role ran on which lane under which profile, and how much of the fleet the launch records leave unnamed?", crossTabPanel(data))}

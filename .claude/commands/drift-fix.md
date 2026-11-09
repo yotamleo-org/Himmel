@@ -4,9 +4,9 @@ argument-hint: [--dry-run]
 ---
 
 The repair half of the fork-drift loop. The nightly `fork-drift` GitHub Action
-(HIMMEL-1046) only DETECTS drift and refreshes one tracking issue; closing that
-loop was always a hand-driven ticket, and those stall — HIMMEL-1260 ("bump
-graphify 0.9.22 -> 0.9.23") sat in To Do while the pin advanced past it twice in
+only DETECTS drift and refreshes one tracking issue; closing that
+loop was always a hand-driven ticket, and those stall — one to "bump
+graphify 0.9.22 -> 0.9.23" sat in To Do while the pin advanced past it twice in
 unrelated PRs. This runbook is what actually closes it.
 
 Normally fired unattended by `scripts/upstreams/drift-fix-cadence.sh` (daily,
@@ -37,11 +37,11 @@ A dirty tree means someone is mid-work. **Abort** with that fact reported —
 never stash, reset, or commit someone else's changes.
 
 The `main == origin/main` confirmation happens in step 1A, **after** the catch-up
-pull, not here (HIMMEL-2134). Asserting it before pulling would abort every night
+pull, not here. Asserting it before pulling would abort every night
 the machine simply had not pulled yet — the ordinary case, and the exact case
 step 1A exists to fix.
 
-## 1A. Catch this machine up first (HIMMEL-2134)
+## 1A. Catch this machine up first
 
 ```bash
 bash scripts/himmel-update.sh
@@ -106,7 +106,7 @@ carry an in-repo pin this runbook can move. A `BEHIND` line reads:
 → name `graphify`, target version `v0.9.28`.
 
 `npm:<pkg>` / `gh:<owner/repo>` BEHIND lines (the "pinned tools and packages"
-section, HIMMEL-3807) are **not** registry entries: they are dependency bumps
+section) are **not** registry entries: they are dependency bumps
 (lockfile, hook rev, action, `OXLINT_VERSION=`) for a normal `chore(deps)` PR,
 not for this runbook. Skip them here; a bump held back on purpose is recorded in
 `scripts/upstreams/pin-holds.json` and reads `HELD`, not `BEHIND`.
@@ -157,7 +157,7 @@ silently overrule an operator decision, in either direction.
 Read the flag from the registry — do not assume which entries are gated. As of
 2026-07-28 `rtk` is `unattended: true`: the operator explicitly approved that
 day, overriding its Tier B default. rtk's entry note records why the reservation existed (BEHIND
-is normally its intended steady state; HIMMEL-270 is unfixed upstream) and what
+is normally its intended steady state; its known git-diff rewrite bug is unfixed upstream) and what
 makes unattended acceptable anyway (`upgrade-rtk.sh` backs up, smoke-tests, and
 rolls back; `rtk-hook-guard.sh` is fail-OPEN so a broken rtk stops rewriting
 Bash rather than blocking it). Flipping that field back to `false` is the
@@ -308,11 +308,11 @@ heredoc/`$( )` shape gets refused by `block-jira-compound-write.sh`):
 node <repo-root>/scripts/jira/dist/index.js create --type Task --title "Bump <name> pin <old> -> <new> (fork-drift)" --sector "Deployment" --labels standalone --proposed-version <current version> --desc-file <path>
 ```
 
-`create` also refuses a Task, Story or Bug with no `--sector` or with neither `--parent <EPIC>` nor `--labels standalone` (HIMMEL-6223), and one with no placement: `--proposed-version <v>` files it with a `proposed-<v>` label and no fixVersion, and queues its INTAKE request toward `<v>` (refused when no release is declared), while `--fix-version <v>` places it in that version (HIMMEL-8170). The line above carries all three.
+`create` also refuses a Task, Story or Bug with no `--sector` or with neither `--parent <EPIC>` nor `--labels standalone`, and one with no placement: `--proposed-version <v>` files it with a `proposed-<v>` label and no fixVersion, and queues its INTAKE request toward `<v>` (refused when no release is declared), while `--fix-version <v>` places it in that version. The line above carries all three.
 
-`create` refuses a body without the six sections `## Impact` / `## What` /
-`## Why` / `## Plan` / `## DoD` / `## Agent detail`, where Plan and DoD each hold
-a real bullet or numbered line (HIMMEL-5226, HIMMEL-5643). Put the plain block
+`create` refuses a body without the seven sections `## Impact` / `## What` /
+`## Why` / `## Plan` / `## DoD` / `## Proof` / `## Agent detail`, where Plan and DoD each hold
+a real bullet or numbered line. Put the plain block
 first (what a user would notice, in plain words); the Agent detail section should
 name: the drift guard line, the two files moved, the tracking issue number, and
 that this was applied by the nightly cadence.
@@ -361,10 +361,10 @@ protection — never merge past it:
 Armed auto-merge (`ARMAUTOMERGE=1`, `scripts/handover/merge-on-green.sh`) admits
 a repo confirmed PRIVATE, or the ONE configured public origin when a live read
 shows branch protection on the base branch with BOTH `enforce_admins` enabled
-and a non-empty required-status-checks list (HIMMEL-2869) — `origin` is that
+and a non-empty required-status-checks list — `origin` is that
 origin, so the armed path is available here. Any other public repo, and an
 unreadable or check-less protection read, still refuse (exit 12).
-`merge-on-green.sh` exits 18 (GitHub-blocked, HIMMEL-3381) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the chief-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action (HIMMEL-2887).
+`merge-on-green.sh` exits 18 (GitHub-blocked) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the chief-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action.
 `scripts/handover/pr-merge.sh` (plain-first) remains the alternative.
 
 **Never `--admin`, never a force-merge, never a branch-protection override.** If

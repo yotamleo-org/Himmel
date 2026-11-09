@@ -5874,10 +5874,7 @@ function printOrphanedBundleInfo() {
 //   (b) not recorded: the field is genuinely absent from this profile (a
 //       profile written before the question existed), never a false "off"
 //       answer the operator never made.
-//   (c) reference-only: no wizard question can produce this yet. Rendered
-//       from the checked-in tbd-delta.json map (itself checked against
-//       docs/setup/operator-profile-tbd-delta.md by test-wizard-gaps.sh, a
-//       structural doc<->map agreement test. Never hand-sync those two).
+//   (c) reference-only: what the operator machine runs, each with its state.
 //   (d) present but unverified: this setup's answer matches the reference
 //       (both "on"), but gaps is a static profile diff, never a live probe;
 //       named as still-manual (run `himmelctl status` to confirm it's
@@ -5996,7 +5993,7 @@ function referenceOnlyList() {
   return Object.keys(TBD_DELTA)
     .sort((a, b) => Number(a) - Number(b))
     .map((row) => ({
-      row: Number(row), label: TBD_DELTA[row].label, ticket: TBD_DELTA[row].ticket, paths: TBD_DELTA[row].paths,
+      row: Number(row), label: TBD_DELTA[row].label, state: TBD_DELTA[row].state, paths: TBD_DELTA[row].paths,
     }));
 }
 
@@ -6062,13 +6059,13 @@ async function cmdGaps(args) {
     for (const n of notRecorded) console.log(`  - ${n.label} (reference=${JSON.stringify(n.referenceValue)})`);
   }
   console.log('');
-  console.log('Reference-only — no wizard question can produce these yet:');
+  console.log('Reference-only — the operator machine runs these; each says whether the wizard covers it:');
   if (!isOperatorReference) {
     console.log(`  (omitted — these rows are the operator machine's own delta capture, not measured against --preset ${args.preset})`);
   } else if (referenceOnly.length === 0) {
     console.log('  (none)');
   } else {
-    for (const r of referenceOnly) console.log(`  - ${r.label}`);
+    for (const r of referenceOnly) console.log(`  - ${r.label} (${r.state})`);
   }
   console.log('');
   console.log("Present but unverified — recorded in the profile; run 'himmelctl status' to confirm still wired:");
@@ -8116,9 +8113,47 @@ function cmdConfigSetPath(name, value, args) {
 // straight from himmel.conf.local, then himmel.conf); an unset key means off.
 const TEAM_MODE_KEY = 'HIMMEL_TRACKER_TEAM_MODE';
 
+const TEST_PROJECT_KEY = 'JIRA_TEST_PROJECT';
+function jiraLiveTest(candidate) {
+  const cli = process.env.HIMMELCTL_JIRA_CLI || path.join(repoRoot(), 'scripts', 'jira', 'dist', 'index.js');
+  const cannot = `himmelctl: config set: the jira live-test verb cannot run (${cli}); build it with: npm --prefix scripts/jira run build`;
+  if (!fs.existsSync(cli)) return { error: cannot };
+  const r = spawnSync(process.execPath, [cli, 'live-test', '--json', ...(candidate === undefined ? [] : ['--candidate', candidate])], { encoding: 'utf8' });
+  if (r.error || r.status !== 0) return { error: cannot };
+  try {
+    const out = JSON.parse(r.stdout);
+    return { testProject: out.test_project || null, problem: out.problem || null };
+  } catch (_e) {
+    return { error: cannot };
+  }
+}
+
+function cmdConfigSetTestProject(value, args) {
+  if (!/^[A-Z][A-Z0-9]+$/.test(value)) {
+    console.error(`himmelctl: config set: jira.testProject ${JSON.stringify(value)} refused: not a Jira project key (^[A-Z][A-Z0-9]+$)`);
+    return 2;
+  }
+  const asked = jiraLiveTest(value);
+  if (asked.error) { console.error(asked.error); return 2; }
+  if (asked.testProject !== value) {
+    console.error(`himmelctl: config set: jira.testProject ${value} refused: ${asked.problem || 'the live-test verb did not accept it'}`);
+    return 2;
+  }
+  if (!writeConfigVar(TEST_PROJECT_KEY, value, args, [behaviourConfigLib.writeTarget(TEST_PROJECT_KEY)])) return 1;
+  if (args.dryRun) return 0;
+  const now = jiraLiveTest();
+  if (now.error) { console.error(now.error); return 1; }
+  if (now.testProject !== value) {
+    console.error(`himmelctl: config set: jira.testProject ${value} was written but does not resolve: ${now.problem || `the verb reads ${now.testProject}`}`);
+    return 1;
+  }
+  return 0;
+}
+
 function cmdConfigSet(pathParts, value, args) {
   if (pathParts[0] === 'commit') return cmdConfigSetCommit(pathParts.slice(1), value, args);
   if (Object.prototype.hasOwnProperty.call(CONFIG_PATH_KEYS, pathParts.join('.'))) return cmdConfigSetPath(pathParts.join('.'), value, args);
+  if (pathParts.join('.') === 'jira.testProject') return cmdConfigSetTestProject(value, args);
   if (value !== 'on' && value !== 'off') {
     console.error(`himmelctl: config set: value must be 'on' or 'off' (got '${value}')`);
     return 2;

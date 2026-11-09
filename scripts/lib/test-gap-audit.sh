@@ -37,8 +37,9 @@ printf '{}' > "$TMP/go/graph.json"
 printf '{}' > "$TMP/go/semantic-manifest.json"
 touch_at "$TMP/go/semantic-manifest.json" "$((NOW - 2 * DAY))"
 
+LEDGER="$TMP/no-ledger.tsv"
 run() { # run <extra env assignments...> ; prints gap_audit_offer
-    env GAP_AUDIT_ROOT="$TMP/repo" GAP_AUDIT_NOW="$NOW" \
+    env GAP_AUDIT_ROOT="$TMP/repo" GAP_AUDIT_NOW="$NOW" HIMMEL_CEILINGS_LEDGER="$LEDGER" \
         GAP_AUDIT_DOCTOR_CMD="bash $TMP/doctor-green.sh" \
         GAP_AUDIT_QMD_STATUS_FILE="$TMP/qmd-green.txt" \
         GAP_AUDIT_GRAPH_OUT="$TMP/go" \
@@ -101,20 +102,46 @@ out="$(run GAP_AUDIT_RESUME_CMD="bash $TMP/nonexistent.sh" JIRA_PROJECT_KEY=HIMM
 has "detector failing: reported as not checked" "$out" "not checked: in-work tickets (detector failed)"
 lacks "detector failing is not a bare all clear" "$out" "all clear"
 
-# --- ponytail markers whose named ticket is already Done --------------------
-printf '# ponytail: first pass only, upgrade: HIMMEL-7001 adds the rest\n' > "$TMP/repo/b.sh"
-printf '# ponytail: other, upgrade: HIMMEL-7002\n' > "$TMP/repo/c.sh"
+# --- ceilings ledger rows: Done ticket, missing file, stale anchor ----------
+case "$LEDGER" in "$TMP"/*) ok "the ledger override points inside the work dir" ;; *) bad "the ledger override is outside the work dir: $LEDGER" ;; esac
+out="$(run)"
+lacks "no ledger: the ceilings check is silent" "$out" "· ceilings:"
+mkdir -p "$TMP/repo/scripts/ledger"
+cp "$HERE/../ledger/ceiling-lookup.sh" "$HERE/../ledger/ledger-lib.sh" "$TMP/repo/scripts/ledger/"
+out="$(run)"
+lacks "the lookup with no ledger file: silent" "$out" "· ceilings:"
+has "the lookup with no ledger file: still all clear" "$out" "all clear"
+printf 'fn_b() { :; }\n' > "$TMP/repo/b.sh"
+printf 'fn_c() { :; }\n' > "$TMP/repo/c.sh"
 git -C "$TMP/repo" add b.sh c.sh
 printf -- '---\nkey: "HIMMEL-7001"\nstatus: "Done"\n---\n' > "$TMP/mirror/HIMMEL-7001.md"
 printf -- '---\nkey: "HIMMEL-7002"\nstatus: "To Do"\n---\n' > "$TMP/mirror/HIMMEL-7002.md"
-out="$(run)"
-has "ponytail with Done ticket flagged" "$out" "b.sh"
-lacks "ponytail with open ticket not flagged" "$out" "c.sh"
+{
+    printf 'id\tfile\tanchor\tceiling\ttrigger\tticket\tstate\tdate\tpr\tnote\n'
+    printf 'C-0001\tb.sh\tfn_b\tSECRET-CEILING-ONE\tlater\tHIMMEL-7001\topen\t2026-11-09\t\t\n'
+    printf 'C-0002\tc.sh\tfn_c\tSECRET-CEILING-TWO\tlater\tHIMMEL-7002\topen\t2026-11-09\t\t\n'
+    printf 'C-0003\tgone.sh\tfn_gone\tSECRET-CEILING-THREE\tlater\t\topen\t2026-11-09\t\t\n'
+    printf 'C-0004\tc.sh\tfn_renamed\tSECRET-CEILING-FOUR\tlater\t\topen\t2026-11-09\t\t\n'
+    printf 'C-0005\tb.sh\tfn_b\tSECRET-CEILING-FIVE\tlater\tHIMMEL-7001\tlifted\t2026-11-09\t\tfixed\n'
+} > "$TMP/ledger.tsv"
+out="$(run HIMMEL_CEILINGS_LEDGER="$TMP/ledger.tsv")"
+has "ceilings: an open row whose ticket is Done is flagged" "$out" "C-0001 b.sh [fn_b]"
+lacks "ceilings: an open row whose ticket is open is not flagged" "$out" "C-0002"
+has "ceilings: an open row whose file is gone is flagged" "$out" "C-0003 gone.sh [fn_gone]"
+has "ceilings: an open row whose anchor is gone is flagged" "$out" "C-0004 c.sh [fn_renamed]"
+lacks "ceilings: a lifted row is not flagged" "$out" "C-0005"
+lacks "ceilings: no ceiling text is printed" "$out" "SECRET-CEILING"
+has "ceilings: the finding key is ceilings" "$out" "· ceilings:"
+out="$(run HIMMEL_CEILINGS_LEDGER="$TMP/ledger.tsv" GAP_AUDIT_MIRROR="$TMP/no-mirror")"
+lacks "ceilings: no mirror skips only the Done check" "$out" "C-0001"
+has "ceilings: no mirror still flags a missing file" "$out" "C-0003"
+rm -rf "$TMP/repo/scripts" "$TMP/repo/b.sh" "$TMP/repo/c.sh"
+git -C "$TMP/repo" rm -q --cached b.sh c.sh
 
 # --- default doctor command survives a checkout path with spaces -------------
 mkdir -p "$TMP/sp ace/scripts"
 printf '#!/usr/bin/env bash\nprintf '"'"'{"sev":"WARN","id":"C40-spaced","msg":"ran from spaced path","remedy":"x"}\\n'"'"'\n' > "$TMP/sp ace/scripts/himmel-doctor.sh"
-out="$(env GAP_AUDIT_ROOT="$TMP/sp ace" GAP_AUDIT_NOW="$NOW" GAP_AUDIT_QMD_STATUS_FILE="$TMP/qmd-green.txt" \
+out="$(env GAP_AUDIT_ROOT="$TMP/sp ace" GAP_AUDIT_NOW="$NOW" GAP_AUDIT_QMD_STATUS_FILE="$TMP/qmd-green.txt" HIMMEL_CEILINGS_LEDGER="$LEDGER" \
     GAP_AUDIT_GRAPH_OUT="$TMP/nogo" GAP_AUDIT_MIRROR="$TMP/mirror" GAP_AUDIT_RESUME_CMD="" \
     bash -c ". \"$LIB\"; gap_audit_offer" 2>&1)"
 has "default doctor runs from a path with spaces" "$out" "C40-spaced"

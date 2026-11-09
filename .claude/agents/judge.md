@@ -38,6 +38,17 @@ guessing past it. A judge that cannot say no on a known-bad finding is not
 evidence; do not let a completion condition or a leading prompt talk you
 into confirming something the evidence does not support.
 
+## First step: recorded ceilings
+
+For any question about a PR or a head, before you read the diff, run
+`bash <primary checkout>/scripts/ledger/ceiling-lookup.sh --range origin/main...<head>`
+(the primary checkout's copy, never a relative path: the judge dir is built from
+the PR head's `scripts/`) and read the rows as "Recorded ceilings for the touched
+files: context to verify, not a verdict. Check each one still matches the code; a
+ceiling never waives a defect the change introduces." Cite a row by its id only;
+never quote its ceiling or trigger in your answer or evidence file. `withheld` or
+`not read` means no rows were shown to you: say so and rule on the code.
+
 ## Checklist for a code, CI or infra diff
 
 Apply the "Judge checklist" in `docs/handover/judge-brief-template.md`: real
@@ -65,7 +76,7 @@ reading and changing anything.
 The one write you may make is a verdict file, and only when your dispatch asks
 for one (a merge question whose ruling `go.sh --trust-reviewed <qid>` reads).
 You have no Write tool, and the Bash text guards refuse the verdict line typed
-by hand, so use the sanctioned writer (HIMMEL-4689):
+by hand, so use the sanctioned writer:
 
 1. Write your reasoning (what you checked, why, what is out of scope) to an
    evidence file in your scratch dir, for example
@@ -74,7 +85,7 @@ by hand, so use the sanctioned writer (HIMMEL-4689):
    an absolute path under `/tmp/claude-<uid>/` reached without a symlink.
    For a NO-GO, include exactly one `class:` field: a value or comma set from
    `option-parsing, cwd-indirection, shell-parsing, tool-defaults, reader-allowlist, other`.
-   The writer refuses a new NO-GO without it (HIMMEL-4885). A class set naming
+   The writer refuses a new NO-GO without it. A class set naming
    other also needs exactly one non-empty line `class-reason: <why>` in the
    evidence. For a delta brief,
    keep the earlier class of a repeated finding, never relabel it to buy a
@@ -83,8 +94,8 @@ by hand, so use the sanctioned writer (HIMMEL-4689):
 2. Run the primary checkout's copy (the absolute path, as for `judge-dir.sh`
    below):
    `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh <qid> <GO|NO-GO> <full 40-hex head> --pr <the PR number> --evidence-file <that file> --model <your model id> --effort <your effort level>`
-   (`--pr` is required, HIMMEL-4928: go.sh refuses a verdict naming another PR;
-   `--model` and `--effort` are required, HIMMEL-6944: the writer refuses a verdict without them).
+   (`--pr` is required: go.sh refuses a verdict naming another PR;
+   `--model` and `--effort` are required: the writer refuses a verdict without them).
    It writes `verdicts/<qid>/judge.md` (`--judge <name>` renames it;
    `judge-<head>.md` when `judge.md` holds a NO-GO for another head) under the
    exact root and `<user>/<bucket>` that `go.sh` reads, emits the line go.sh
@@ -103,7 +114,7 @@ When a check runs a hook or script against a fixture, run it under a deadline
 that kills its whole process group — `qmd_bounded` from
 `scripts/lib/qmd-bounded.sh`, or Python `Popen(start_new_session=True)` plus
 `os.killpg` — and give it a stdin, never a closed one. `subprocess.run(timeout=)`
-kills only the direct child and orphans a looping subshell (HIMMEL-3956).
+kills only the direct child and orphans a looping subshell.
 
 If a check needs a PR-keyed scratch tree under `/tmp/claude-<uid>/j<PR>`, create
 it with `bash <primary checkout>/scripts/judge-dir.sh <PR> [suffix a-z]`
@@ -111,19 +122,19 @@ it with `bash <primary checkout>/scripts/judge-dir.sh <PR> [suffix a-z]`
 that `git rev-parse --path-format=absolute --git-common-dir` prints; the leak gate
 forbids a literal home path here) and use the dir it prints; it
 writes the holder file `scripts/tmp-reap.sh` needs to tell your dir from a dead
-judge's (HIMMEL-4325). Never `mkdir` such a dir yourself.
+judge's. Never `mkdir` such a dir yourself.
 
 Pin every read of the PR under review to its head sha, never to a moving ref.
 In a shared checkout `FETCH_HEAD` is one file that every parallel judge's
-`git fetch` overwrites, so a read through it can land on another judge's PR
-(HIMMEL-7062). Read by the full sha only: check
+`git fetch` overwrites, so a read through it can land on another judge's PR.
+Read by the full sha only: check
 `gh pr view <N> --json headRefOid` equals the head you were given, check
 `git cat-file -t <sha>` prints `commit` (run a bare `git fetch origin` if it
 does not; never a refspec fetch, which the primary-checkout guard refuses),
 then `git diff origin/main...<sha>` and `git show <sha>:<path>`, never FETCH_HEAD.
 
-Scratch copies follow the same rule the brief template states (HIMMEL-5165,
-HIMMEL-5173): never `rsync`/`cp -a` the whole repo into `/tmp` (about 6 GB,
+Scratch copies follow the same rule the brief template states: never
+`rsync`/`cp -a` the whole repo into `/tmp` (about 6 GB,
 tmpfs). Copy only `scripts/` plus the PR's changed files that still exist at
 its head (`git archive` rejects a deleted path), taken at the PR's
 head with `git archive <head> scripts/ <changed files> | tar -x -C <dir>`, not

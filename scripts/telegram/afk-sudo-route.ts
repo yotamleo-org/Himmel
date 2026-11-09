@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, type Access } from "./gate";
+import { classify } from "./router";
 
-// Operator `approve <id> <nonce> <code>` / `deny <id>` -> the root afk-sudo helper.
+// Operator `approve <id> <nonce> <code>` / `deny <id> <nonce>` -> the root afk-sudo helper.
 // The helper (scripts/lib/afk-sudo/afk_sudo.py, installed
 // root-owned by install.sh) checks the request's nonce (sent only through root's
 // notice bot) and the TOTP code, then runs the one approved command; this route
@@ -17,20 +18,20 @@ import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, type Access } fr
 // to its own timeout, so the call is fired, not awaited, like autoFire.
 //
 // Buttons: the request DM carries Approve / Deny inline buttons
-// (callback data `afk:approve:<id>` / `afk:deny:<id>`). A Deny tap runs the same
-// deny call at once. An Approve tap NEVER reaches the helper: it only sends a
-// ForceReply prompt and remembers prompt-message -> id; the `NONCE CODE` reply to
-// that prompt is the same helper approve call as the typed line, so the nonce
-// and TOTP checks stay the helper's. A tap needs the sender in allowFrom, in their own
-// private chat, AND equal to the helper's operator id.
+// (callback data `afk:approve:<id>` / `afk:deny:<id>`). A tap NEVER reaches the helper:
+// it only sends a ForceReply prompt and remembers prompt-message -> id and verb; the
+// `NONCE CODE` reply to an Approve prompt (the `NONCE` reply to a Deny prompt) is the same
+// helper call as the typed line, so the nonce and TOTP checks stay the helper's. A tap
+// needs the sender in allowFrom, in their own private chat, AND equal to the helper's
+// operator id.
 
 export const AFK_SUDO_HELPER = "/usr/local/libexec/himmel/afk-sudo";
 const LINE = /^\s*(approve|deny)\s+([a-z2-7]{8})\b(.*)$/is;
 // An approve with a malformed id but a code-shaped run of six digits.
 const MALFORMED = /^\s*approve\s+\S+\s.*(?<!\d)\d{3}[ -]?\d{3}(?!\d)/is;
 
-// `code` holds everything after the id, spaces removed: the nonce and the code run
-// together ("K7QF123456"); the helper splits the last six characters off as the code.
+// `code` holds everything after the id, spaces removed: for approve the nonce and the code run
+// together ("K7QF123456"), the helper splitting the last six characters off as the code; for deny the nonce.
 export type AfkSudoLine = { verb: "approve" | "deny"; id: string; code: string };
 export type AfkSudoMsg = { from: number; chat_id: number; text: string; sender_chat?: number; forwarded?: boolean; caption?: boolean; reply_to_message_id?: number; reply_to_bot?: boolean };
 export type AfkSudoTap = { callback_id: string; from: number; chat_id: number; data: string };
@@ -52,29 +53,31 @@ export type AfkSudoCallbackDeps = AfkSudoDeps & {
 // prompt message -> request id. An entry outlives its window as a tombstone so a
 // late code reply is still consumed (and refused) instead of reaching a session.
 const TOMBSTONE_MS = 3_600_000;
+export type PromptVerb = "approve" | "deny";
+export type AfkSudoPrompt = { id: string; verb: PromptVerb; expired: boolean; used: boolean };
 export type AfkSudoPrompts = {
-  add: (chat_id: number, message_id: number, id: string) => void;
-  get: (chat_id: number, message_id: number) => { id: string; expired: boolean; used: boolean } | null;
+  add: (chat_id: number, message_id: number, id: string, verb?: PromptVerb) => void;
+  get: (chat_id: number, message_id: number) => AfkSudoPrompt | null;
   use: (chat_id: number, message_id: number) => void;
-  // The ids of the unused, unexpired prompts waiting for a code in this chat (several requests can wait at once).
+  // The ids of the unused, unexpired Approve prompts waiting for a code in this chat (several requests can wait at once).
   live: (chat_id: number) => string[];
 };
 export function makeAfkSudoPrompts(now: () => number = Date.now, ttlMs = 150_000): AfkSudoPrompts {
-  const m = new Map<string, { id: string; at: number; used: boolean }>();
+  const m = new Map<string, { id: string; verb: PromptVerb; at: number; used: boolean }>();
   const key = (c: number, p: number) => `${c}:${p}`;
   return {
-    add(c, p, id) {
+    add(c, p, id, verb = "approve") {
       for (const [k, v] of m) if (now() - v.at > TOMBSTONE_MS) m.delete(k);
-      m.set(key(c, p), { id, at: now(), used: false });
+      m.set(key(c, p), { id, verb, at: now(), used: false });
     },
     get(c, p) {
       const v = m.get(key(c, p));
-      return v ? { id: v.id, expired: now() - v.at > ttlMs, used: v.used } : null;
+      return v ? { id: v.id, verb: v.verb, expired: now() - v.at > ttlMs, used: v.used } : null;
     },
     use(c, p) { const v = m.get(key(c, p)); if (v) v.used = true; },
     live(c) {
       const ids = new Set<string>();
-      for (const [k, v] of m) if (k.startsWith(`${c}:`) && !v.used && now() - v.at <= ttlMs) ids.add(v.id);
+      for (const [k, v] of m) if (k.startsWith(`${c}:`) && v.verb === "approve" && !v.used && now() - v.at <= ttlMs) ids.add(v.id);
       return [...ids];
     },
   };
@@ -83,9 +86,7 @@ export function makeAfkSudoPrompts(now: () => number = Date.now, ttlMs = 150_000
 export function parseAfkSudo(text: string): AfkSudoLine | null {
   const m = LINE.exec(text);
   if (!m) return null;
-  // Anything after the id is the nonce and the code; the helper refuses a wrong pair.
-  const rest = m[3].replace(/\s+/g, "");
-  return { verb: m[1].toLowerCase() as "approve" | "deny", id: m[2].toLowerCase(), code: m[1].toLowerCase() === "approve" ? rest : "" };
+  return { verb: m[1].toLowerCase() as "approve" | "deny", id: m[2].toLowerCase(), code: m[3].replace(/\s+/g, "") };
 }
 
 function eligible(access: Access, msg: AfkSudoMsg): boolean {
@@ -98,8 +99,9 @@ function eligible(access: Access, msg: AfkSudoMsg): boolean {
 // approve is acknowledged without the helper's argv line: the command and its
 // redacted output come from root's notice bot, which no session can drive.
 function runVerb(deps: AfkSudoDeps, verb: "approve" | "deny" | "lockdown", id: string, code: string, from: number, chat_id: number): void {
-  const args = verb === "lockdown" ? [verb, "--from", String(from), "--chat", String(chat_id)] : [verb, id, "--from", String(from), "--chat", String(chat_id)];
-  void deps.runHelper(args, verb === "approve" ? `${code}\n` : "")
+  const who = ["--from", String(from), "--chat", String(chat_id)];
+  const args = verb === "lockdown" ? [verb, ...who, ...(code ? ["--with-nonce"] : [])] : [verb, id, ...who];
+  void deps.runHelper(args, code ? `${code}\n` : "")
     .then((res) => {
       const first = res.stdout.split("\n")[0]?.trim() || `exit ${res.code}`;
       // A replay leaves the request pending (the broker spends the step, not the request), so say what to do next.
@@ -107,26 +109,30 @@ function runVerb(deps: AfkSudoDeps, verb: "approve" | "deny" | "lockdown", id: s
         ? "approved; the result comes from the notice bot"
         : verb === "approve" && first.startsWith("result=replay")
           ? "that code was already used, so nothing ran and the request is still pending. Wait for the next code (it changes every 30 seconds), tap Approve again and reply with the nonce and the new code."
-          : first;
+          : verb === "deny" && first.startsWith("result=locked")
+            ? `three wrong nonces were sent for this request, so a deny now also needs a current code: deny ${id} <nonce> <code>. Nothing ran; the request is still pending.`
+          : verb === "lockdown" && res.code === 0 && first.startsWith("result=lockdown-nonce-sent")
+            ? "nothing is switched off yet. The notice bot sent a lockdown nonce: send /afk-lockdown <that nonce> within 2 minutes."
+            : first;
       return deps.reply(chat_id, `${res.code === 0 ? "✅" : "⚠️"} afk-sudo ${verb}${id && ` ${id}`}: ${said}`);
     })
     .catch((e) => deps.log(`[afk-sudo] ${verb} ${id} failed: ${e}`));
 }
 
-// `/afk-lockdown`: the one verb that only narrows. It carries no argument to the helper but the
-// sender and chat, so nothing typed after it can reach a flag; text after it is refused.
 const LOCKDOWN = /^\s*\/afk-lockdown(?:@\w+)?(?=\s|$)(.*)$/is;
+const LOCKDOWN_NONCE = /^[0-9A-Za-z]{8}$/;
 
 function lockdown(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
   if (!eligible(deps.access(), msg)) {
     deps.log("[afk-sudo] lockdown refused: not a typed message in the operator's private chat");
     return true;
   }
-  if (rest.trim() !== "") {
-    void deps.reply(msg.chat_id, "⚠️ afk-sudo: /afk-lockdown takes no arguments, nothing ran").catch(() => {});
+  const nonce = rest.trim();
+  if (nonce !== "" && !LOCKDOWN_NONCE.test(nonce)) {
+    void deps.reply(msg.chat_id, "⚠️ afk-sudo: /afk-lockdown takes nothing, or the 8-character lockdown nonce from the notice bot; nothing ran").catch(() => {});
     return true;
   }
-  runVerb(deps, "lockdown", "", "", msg.from, msg.chat_id);
+  runVerb(deps, "lockdown", "", nonce, msg.from, msg.chat_id);
   return true;
 }
 
@@ -134,6 +140,9 @@ function lockdown(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
 // validates the name and every parameter against the installed schema and sends the notice (name, version, params,
 // effect, nonce) through root's notice bot; the approval is the usual `NONCE CODE`. A value with spaces is double-quoted:
 // `/op cron-entry action=set tag=ping schedule="0 5 * * *" command=/usr/local/bin/open-session`.
+// A last word of six digits is the operator's current TOTP code: it goes to the helper on stdin (`--proof`), is spent
+// there, and lets the request take the slot and the hourly budget no session can fill; the approval
+// then needs the next code.
 const OPCMD = /^\s*\/op(?:@\w+)?(?=\s|$)(.*)$/is;
 const OP_NAME = /^[a-z][a-z0-9-]{0,30}$/;
 const OP_PAIR = /^[a-z_]{1,20}=[^"]*$/;
@@ -141,18 +150,19 @@ const OP_MAX_PAIRS = 8;
 const OP_MAX_LEN = 800;
 
 // The op name and its `key=value` words, or the reason the line is refused (the helper checks the values).
-export function parseOp(rest: string): { name: string; args: string[] } | string {
+export function parseOp(rest: string): { name: string; args: string[]; code?: string } | string {
   const text = rest.trim();
   if (text.length === 0) return "usage: /op <name> key=value ...";
   if (text.length > OP_MAX_LEN) return "the op line is too long";
   if ((text.match(/"/g)?.length ?? 0) % 2 !== 0) return "an unbalanced double quote";
   const words = (text.match(/(?:[^\s"]+|"[^"]*")+/g) ?? []).map((w) => w.replace(/"/g, ""));
+  const code = words.length > 1 && /^\d{6}$/.test(words[words.length - 1]) ? words.pop() : undefined;
   const [name, ...args] = words;
   if (!OP_NAME.test(name ?? "")) return "the op name is not a-z, 0-9 and -";
   if (args.length > OP_MAX_PAIRS) return "too many parameters";
   const bad = args.find((a) => !OP_PAIR.test(a));
   if (bad !== undefined) return `"${bad.slice(0, 30)}" is not key=value`;
-  return { name, args };
+  return code === undefined ? { name, args } : { name, args, code };
 }
 
 function opRequest(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
@@ -165,7 +175,9 @@ function opRequest(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
     void deps.reply(msg.chat_id, `⚠️ afk-sudo op: ${p}, nothing ran`).catch(() => {});
     return true;
   }
-  void deps.runHelper(["op-request", "--session", "telegram-op", "--ticket", "operator", "--", p.name, ...p.args], "")
+  const proof = p.code === undefined ? [] : ["--proof"];
+  void deps.runHelper(["op-request", "--session", "telegram-op", "--ticket", "operator", ...proof, "--", p.name, ...p.args],
+    p.code === undefined ? "" : `${p.code}\n`)
     .then((res) => {
       const first = res.stdout.split("\n")[0]?.trim() || `exit ${res.code}`;
       return deps.reply(msg.chat_id, `${res.code === 0 ? "✅" : "⚠️"} afk-sudo op ${p.name}: ${first}`);
@@ -176,6 +188,8 @@ function opRequest(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
 
 // The prompt reply: the notice's four-character nonce, then the six-digit code.
 const CODE_REPLY = /^\s*([0-9A-Za-z]{4})\s*(\d{3})[\s-]?(\d{3})\s*$/;
+const DENY_REPLY = /^\s*([0-9A-Za-z]{4})\s*(?:(\d{3})[\s-]?(\d{3}))?\s*$/;
+const denyInput = (m: RegExpExecArray): string => (m[2] ? `${m[1]} ${m[2]}${m[3]}` : m[1]);
 const BARE_CODE = /^\s*\d{6}\s*$/;
 const NONCE_HINT = "4-character nonce from the notice bot's message";
 // This request's own id standing as a word in a reply: the operator typed it where the nonce goes.
@@ -209,18 +223,29 @@ const heldAsCode = (text: string): boolean => CODE_TOKEN.test(fold(text)) || who
 
 // A reply to a prompt this bridge issued. Always consumed, so a code (or a
 // mistyped one) never lands in a session inbox or a run prompt.
-function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, p: { id: string; expired: boolean; used: boolean }): true {
+function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, p: AfkSudoPrompt): true {
   if (!eligible(deps.access(), msg)) {
     deps.log(`[afk-sudo] code reply for ${p.id} refused: not a typed message in the operator's private chat`);
     return true;
   }
   const say = (text: string) => void deps.reply(msg.chat_id, text).catch(() => {});
+  const tap = p.verb === "deny" ? "Deny" : "Approve";
   if (p.used) {
-    say(`⚠️ afk-sudo: the prompt for ${p.id} was already used, nothing ran. If that request is still pending, tap Approve on it again for a new prompt; if it already ran or ended, nothing more is needed.`);
+    say(`⚠️ afk-sudo: the prompt for ${p.id} was already used, nothing ran. If that request is still pending, tap ${tap} on it again for a new prompt; if it already ran or ended, nothing more is needed.`);
     return true;
   }
   if (p.expired) {
-    say(`⚠️ afk-sudo: the prompt for ${p.id} expired, nothing ran. If that request is still pending, tap Approve on it again for a new prompt; if it already ran or ended, nothing more is needed.`);
+    say(`⚠️ afk-sudo: the prompt for ${p.id} expired, nothing ran. If that request is still pending, tap ${tap} on it again for a new prompt; if it already ran or ended, nothing more is needed.`);
+    return true;
+  }
+  if (p.verb === "deny") {
+    const n = DENY_REPLY.exec(msg.text);
+    if (!n) {
+      say(`⚠️ afk-sudo: a deny takes the ${NONCE_HINT} (with the 6-digit code after it only once the helper asks). Nothing ran; the prompt still waits.`);
+      return true;
+    }
+    prompts.use(msg.chat_id, msg.reply_to_message_id!);
+    runVerb(deps, "deny", p.id, denyInput(n), msg.from, msg.chat_id);
     return true;
   }
   const m = CODE_REPLY.exec(msg.text);
@@ -239,6 +264,8 @@ function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, 
   return true;
 }
 
+const isOutsidePrApprove = (text: string): boolean => classify(text).kind === "approve";
+
 // The gate poller.ts calls first in handleInbound: true = consumed.
 export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (msg: AfkSudoMsg) => boolean {
   return (msg) => {
@@ -251,6 +278,7 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
     if (prompt) return codeReply(deps, prompts!, msg, prompt);
     const line = parseAfkSudo(msg.text);
     if (!line) {
+      if (isOutsidePrApprove(msg.text)) return false;
       if (MALFORMED.test(msg.text)) {
         deps.log("[afk-sudo] approve with a malformed id consumed");
         if (eligible(deps.access(), msg)) {
@@ -293,8 +321,8 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       deps.log(`[afk-sudo] ${line.verb} ${line.id} refused: not a typed message in the operator's private chat`);
       return true;
     }
-    // The helper would end the request on a missing or wrong nonce and spend the code, so a typed approve
-    // that visibly lacks the nonce (the code alone) or repeats the id in its place is refused here.
+    // The helper spends a code sent with a missing or wrong nonce, so a typed approve that visibly lacks
+    // the nonce (the code alone) or repeats the id in its place is refused here.
     if (line.verb === "approve" && (/^\d{6}$/.test(fold(line.code)) || idThenCode(line.code, line.id))) {
       const form = `approve ${line.id} <nonce> <code>`;
       void deps.reply(msg.chat_id, /^\d{6}$/.test(fold(line.code))
@@ -302,7 +330,12 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
         : `⚠️ afk-sudo: the request id is already in "approve ${line.id}"; after it send only the ${NONCE_HINT} and the code: ${form}. Nothing ran.`).catch(() => {});
       return true;
     }
-    runVerb(deps, line.verb, line.id, line.code, msg.from, msg.chat_id);
+    const denied = line.verb === "deny" ? DENY_REPLY.exec(line.code) : null;
+    if (line.verb === "deny" && !denied) {
+      void deps.reply(msg.chat_id, `⚠️ afk-sudo: deny needs the ${NONCE_HINT}: deny ${line.id} <nonce>. Nothing ran.`).catch(() => {});
+      return true;
+    }
+    runVerb(deps, line.verb, line.id, denied ? denyInput(denied) : line.code, msg.from, msg.chat_id);
     return true;
   };
 }
@@ -324,17 +357,16 @@ export function makeAfkSudoCallback(deps: AfkSudoCallbackDeps, prompts: AfkSudoP
       answer(tap.callback_id, "Not authorized.");
       return true;
     }
-    if (verb === "deny") {
-      answer(tap.callback_id, "Denying");
-      runVerb(deps, "deny", id, "", tap.from, tap.chat_id);
-      return true;
-    }
-    void deps.prompt(tap.chat_id, `Approve ${id}: reply to this message with the ${NONCE_HINT}, then the 6-digit code (<nonce> <code>), not the request id. A wrong nonce or code ends the request.`)
+    const text = verb === "deny"
+      ? `Deny ${id}: reply to this message with the ${NONCE_HINT}. A wrong nonce leaves the request pending.`
+      : `Approve ${id}: reply to this message with the ${NONCE_HINT}, then the 6-digit code (<nonce> <code>), not the request id. A wrong code with the right nonce ends the request; a wrong nonce leaves it pending until three wrong nonces have been sent; after that it ends the request.`;
+    const want = verb === "deny" ? "the nonce" : "the code";
+    void deps.prompt(tap.chat_id, text)
       .then((mid) => {
-        if (mid != null) prompts.add(tap.chat_id, mid, id);
-        answer(tap.callback_id, mid != null ? "Reply with the code" : "Could not ask for the code");
+        if (mid != null) prompts.add(tap.chat_id, mid, id, verb);
+        answer(tap.callback_id, mid != null ? `Reply with ${want}` : `Could not ask for ${want}`);
       })
-      .catch((e) => { deps.log(`[afk-sudo] approve ${id} prompt failed: ${e}`); answer(tap.callback_id, "Could not ask for the code"); });
+      .catch((e) => { deps.log(`[afk-sudo] ${verb} ${id} prompt failed: ${e}`); answer(tap.callback_id, `Could not ask for ${want}`); });
     return true;
   };
 }

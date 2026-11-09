@@ -1,4 +1,4 @@
-# `.codex/` — himmel guardrails under Codex (HIMMEL-427)
+# `.codex/` — himmel guardrails under Codex
 
 Wires himmel's PreToolUse / PostToolUse / SessionStart / UserPromptSubmit
 guardrails so they fire when himmel runs under **Codex** (which implements a
@@ -12,13 +12,13 @@ full compat matrix.
   Kept to the strict schema (only a top-level `hooks` key — Codex's parser uses
   `deny_unknown_fields`, so an extra key like `description`/`_comment` would make
   it skip the hooks).
-  Includes `block-docker-privesc.sh` + `block-merged-pr-commit.sh` (HIMMEL-589):
+  Includes `block-docker-privesc.sh` + `block-merged-pr-commit.sh`:
   these two SECURITY guards ship via the `himmel-ops` plugin `hooks.json` using
   `$CLAUDE_PROJECT_DIR`, which Codex leaves unset for plugin hooks — so they
   silently no-op under Codex unless mirrored here, where the wrapper
   derives the repo root from its own location.
   Also wires the three advisory **SessionStart** hooks `inject-initiative.sh`,
-  `inject-where-are-we.sh`, `inject-doc-freshness.sh` (HIMMEL-596) for the same
+  `inject-where-are-we.sh`, `inject-doc-freshness.sh` for the same
   root-resolution reason. These are advisory (always exit 0) and emit their
   `<system-reminder>` on stdout, so `codex-hook-adapter.sh` wraps a
   SessionStart/UserPromptSubmit hook's output into the
@@ -49,7 +49,7 @@ full compat matrix.
   `deny`** (stderr → reason), and fail-closed JSON denies for wrapper/adapter
   precondition failures.
 - `scripts/hooks/test-codex-sessionstart-hooks.sh` — asserts the three advisory
-  SessionStart hooks (HIMMEL-596) are wired through the wrapper, the
+  SessionStart hooks are wired through the wrapper, the
   strict schema holds, and `inject-initiative` fires end-to-end through the
   adapter as `additionalContext` JSON (gate ON) / no-op (gate OFF).
 
@@ -59,7 +59,7 @@ full compat matrix.
   ignores. Codex needs a writable sandbox (`workspace-write` or wider); `read-only` can suppress hook
   side effects.
 
-## Live-verified (codex-cli 0.141.0, Windows, HIMMEL-427)
+## Live-verified (codex-cli 0.141.0, Windows)
 Confirmed against a real `codex exec` run: `.codex/hooks.json` parses (no
 `deny_unknown_fields` rejection), the guardrails **fire and block** —
 `block-read-secrets` denies a secret read (`PreToolUse Blocked`), and a benign
@@ -75,12 +75,12 @@ what makes the block land (Codex ignores exit 2). Caveats observed live:
   `--dangerously-bypass-hook-trust`).
 See `docs/internals/harness-compat.md` §"Codex deep-dive → Hooks" for detail.
 
-## codex-cli 0.142.0 note (HIMMEL-533)
+## codex-cli 0.142.0 note
 Once the project hooks are **already trusted** (persisted from a prior
 interactive trust, or this checkout's hooks already hashed), plain
 `codex exec "<prompt>"` runs **without** `--dangerously-bypass-hook-trust` — the
 flag is only the first-run / still-untrusted non-interactive path. (The flag
 still exists in 0.142.0; this README's live-verified block above is 0.141.0.)
 Skill discovery: Codex reads **project-local `.agents/skills/<name>/SKILL.md`**
-from the run cwd — live-verified under 0.142.0 (HIMMEL-533 ships the himmel
+from the run cwd — live-verified under 0.142.0 (himmel ships its
 driver skills there).

@@ -11,9 +11,10 @@ import {
 } from './plain-block.js';
 
 const OK =
-  '## Impact\nOperators lose X.\n\n## What\nFix X.\n\n## Why\nIt hurts.\n\n## Plan\n1. Edit a.ts.\n\n## DoD\n- A test fails before and passes after.\n\n## Agent detail\nfiles: a.ts';
+  '## Impact\nOperators lose X.\n\n## What\nFix X.\n\n## Why\nIt hurts.\n\n## Plan\n1. Edit a.ts.\n\n## DoD\n- A test fails before and passes after.\n\n## Proof\nRun the suite: red before, green after.\n\n## Agent detail\nfiles: a.ts';
 
 const NO_BULLET = 'has no bullet or numbered line beyond the placeholder';
+const ONLY_PH = 'holds only a placeholder (TODO, TBD, N/A, an ellipsis or an <angle hint>)';
 
 describe('lintPlainBlock', () => {
   it('passes a full block', () => expect(lintPlainBlock(OK)).toEqual([]));
@@ -25,6 +26,7 @@ describe('lintPlainBlock', () => {
       'missing "## Why"',
       'missing "## Plan"',
       'missing "## DoD"',
+      'missing "## Proof"',
       'missing "## Agent detail"',
     ]);
   });
@@ -34,26 +36,25 @@ describe('lintPlainBlock', () => {
   });
 
   it('does not count a heading inside a code fence', () => {
-    expect(lintPlainBlock('```\n' + OK + '\n```')).toHaveLength(6);
+    expect(lintPlainBlock('```\n' + OK + '\n```')).toHaveLength(7);
   });
 
   it('a shorter or different closing marker does not end a fence', () => {
-    expect(lintPlainBlock('````\n```\n' + OK + '\n```')).toHaveLength(6);
-    expect(lintPlainBlock('~~~\n```\n' + OK + '\n```')).toHaveLength(6);
+    expect(lintPlainBlock('````\n```\n' + OK + '\n```')).toHaveLength(7);
+    expect(lintPlainBlock('~~~\n```\n' + OK + '\n```')).toHaveLength(7);
     expect(lintPlainBlock('```\ncode\n```\n' + OK)).toEqual([]);
-    expect(lintPlainBlock('```\n```not-a-close\n' + OK + '\n```')).toHaveLength(6);
+    expect(lintPlainBlock('```\n```not-a-close\n' + OK + '\n```')).toHaveLength(7);
   });
 
   it('a hash run with no space is text, not a heading', () => {
     const noSpace = OK.replace(/^## /gm, '##');
-    expect(lintPlainBlock(noSpace)).toHaveLength(6);
+    expect(lintPlainBlock(noSpace)).toHaveLength(7);
   });
 
-  it('the template alone fails on Plan and DoD only, so a skeleton never files as is', () => {
-    expect(lintPlainBlock(PLAIN_BLOCK_TEMPLATE)).toEqual([
-      `"## Plan" ${NO_BULLET}`,
-      `"## DoD" ${NO_BULLET}`,
-    ]);
+  it('the seven-section template alone fails on every section, so a skeleton never files as is', () => {
+    expect(lintPlainBlock(PLAIN_BLOCK_TEMPLATE)).toEqual(
+      ['Impact', 'What', 'Why', 'Plan', 'DoD', 'Proof', 'Agent detail'].map((s) => `"## ${s}" ${ONLY_PH}`),
+    );
   });
 
   it('refuses a body with no DoD and names it', () => {
@@ -66,7 +67,7 @@ describe('lintPlainBlock', () => {
 
   it('refuses a DoD that holds only the placeholder line', () => {
     const ph = OK.replace('- A test fails before and passes after.', '- <checkable result>');
-    expect(lintPlainBlock(ph)).toEqual([`"## DoD" ${NO_BULLET}`]);
+    expect(lintPlainBlock(ph)).toEqual([`"## DoD" ${ONLY_PH}`]);
   });
 
   it('refuses Plan or DoD prose with no bullet or numbered line', () => {
@@ -98,33 +99,33 @@ describe('lintPlainBlockAdf', () => {
       type: 'doc',
       content: [
         h('Impact'), p('a'), h('What'), p('b'), h('Why'), p('c'),
-        h('Plan'), ol('step'), h('DoD'), ul('check'), h('Agent detail'), p('d'),
+        h('Plan'), ol('step'), h('DoD'), ul('check'), h('Proof'), p('run it'), h('Agent detail'), p('d'),
       ],
     };
     expect(lintPlainBlockAdf(doc)).toEqual([]);
-    expect(lintPlainBlockAdf({ type: 'doc', content: [p('x')] })).toHaveLength(6);
+    expect(lintPlainBlockAdf({ type: 'doc', content: [p('x')] })).toHaveLength(7);
   });
 
   it('agrees with the markdown path: list items count as lines, placeholders and prose do not', () => {
-    const base = [h('Impact'), p('a'), h('What'), p('b'), h('Why'), p('c'), h('Agent detail'), p('d')];
+    const base = [h('Impact'), p('a'), h('What'), p('b'), h('Why'), p('c'), h('Proof'), p('run it'), h('Agent detail'), p('d')];
     const doc = (plan: unknown[], dod: unknown[]) => ({
       type: 'doc',
       content: [...base, h('Plan'), ...plan, h('DoD'), ...dod],
     });
     const dodBad = [`"## DoD" ${NO_BULLET}`];
-    expect(lintPlainBlockAdf(doc([ol('step')], [ul('<checkable result>')]))).toEqual(dodBad);
+    expect(lintPlainBlockAdf(doc([ol('step')], [ul('<checkable result>')]))).toEqual([`"## DoD" ${ONLY_PH}`]);
     expect(lintPlainBlockAdf(doc([ol('step')], [p('only prose')]))).toEqual(dodBad);
     expect(lintPlainBlockAdf(doc([ol('<step>', 'real')], [ul('ok')]))).toEqual([]);
     expect(lintPlainBlockAdf(doc([], [ul('ok')]))).toEqual(['"## Plan" is empty']);
   });
 
   it('an empty paragraph under a section still leaves it empty', () => {
-    const doc = { type: 'doc', content: [h('Impact'), p(''), h('What'), p('b'), h('Why'), p('c'), h('Plan'), ol('s'), h('DoD'), ul('d'), h('Agent detail'), p('e')] };
+    const doc = { type: 'doc', content: [h('Impact'), p(''), h('What'), p('b'), h('Why'), p('c'), h('Plan'), ol('s'), h('DoD'), ul('d'), h('Proof'), p('run it'), h('Agent detail'), p('e')] };
     expect(lintPlainBlockAdf(doc)).toEqual(['"## Impact" is empty']);
   });
 
   it('a paragraph or code block that merely reads like a list line is not a list item', () => {
-    const base = [h('Impact'), p('a'), h('What'), p('b'), h('Why'), p('c'), h('Plan'), ol('step'), h('Agent detail'), p('d')];
+    const base = [h('Impact'), p('a'), h('What'), p('b'), h('Why'), p('c'), h('Plan'), ol('step'), h('Proof'), p('run it'), h('Agent detail'), p('d')];
     const code = { type: 'codeBlock', content: [{ type: 'text', text: '- fake' }] };
     const dodBad = [`"## DoD" ${NO_BULLET}`];
     expect(lintPlainBlockAdf({ type: 'doc', content: [...base, h('DoD'), p('- fake')] })).toEqual(dodBad);

@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""A fake pinned qmd for the s-qmd runtime-contract fixtures. It reads its behaviour from the
+`mode` file beside it (the wrapper hands its child a scrubbed environment, so an env knob
+could not reach it) and logs every invocation's argv and environment names to `calls.log`.
+Modes: ok, ok-slow, ok-quoted-marker, empty, expand-fail, expand-fail-progress, embed-down-empty,
+raw-only, strong-bm25, flag-embed, flag-rerank, flag-rerank-timeout, exit1, hang, hang-ignore-term,
+cpu-fallback, remote-blocked, postpin, bad-json.
+"""
+import json, os, signal, sys, time
+
+here = os.path.dirname(os.path.realpath(__file__))
+mode = open(os.path.join(here, "mode")).read().strip()
+with open(os.path.join(here, "calls.log"), "a") as f:
+    f.write(json.dumps({"argv": sys.argv[1:], "env": sorted(os.environ), "cwd": os.getcwd(),
+                        "key": os.environ.get("QMD_OPENAI_API_KEY", "")}) + "\n")
+q = sys.argv[-1]
+
+
+def hit(path, title="Lock", snippet="The queue lock keeps one session per handover doc.", docid="#bbbcbe", **flags):
+    h = {"docid": docid, "score": 0.9, "file": "qmd://himmel/%s?index=eval" % path, "line": 2, "title": title,
+         "snippet": "@@ -1,3 @@ (0 before, 0 after)\n# %s\n%s\n" % (title, snippet)}
+    h.update(flags)
+    return h
+
+
+tree = "Expanding query... (5ms)\n├─ %s\n├─ lex: %s words\n├─ vec: about %s\n└─ hyde: a note on %s\nSearching 4 queries...\nEmbedding 3 queries... (4ms)\nReranking 2 chunks... (3ms)\n" % (q, q, q, q)
+out, err, rc = [hit("docs/lock.md")], tree, 0
+if mode == "ok-slow":
+    time.sleep(0.6)
+elif mode == "ok-quoted-marker":
+    out = [hit("docs/lock.md", snippet="It printed Structured query expansion failed: and QMD: the embedding service did not answer; once.")]
+elif mode == "empty":
+    out = []
+elif mode == "expand-fail":
+    err = "Structured query expansion failed: Error: 500\n" + tree
+elif mode == "expand-fail-progress":
+    err = "Expanding query...Structured query expansion failed: TypeError: fetch failed\n" + tree
+elif mode == "embed-down-empty":
+    out, err = [], tree + "QMD: the embedding service did not answer; the meaning-based part of the search was skipped, so an empty or thin answer is not a confirmed miss.\n"
+elif mode == "raw-only":
+    err = "Expanding query... (5ms)\n├─ %s\n├─ lex: %s\n└─ vec: %s\nSearching 3 queries...\n" % (q, q, q)
+elif mode == "strong-bm25":
+    err = "Strong BM25 signal (0.91) — skipping expansion\nReranking 1 chunks... (2ms)\n"
+elif mode == "flag-embed":
+    out = [hit("docs/lock.md", embedSkipped=True)]
+elif mode == "flag-rerank":
+    out = [hit("docs/lock.md", rerankSkipped=True)]
+elif mode == "flag-rerank-timeout":
+    out = [hit("docs/lock.md", rerankTimedOut=True)]
+elif mode == "exit1":
+    out, err, rc = None, "Error: database is locked\n", 1
+elif mode in ("hang", "hang-ignore-term"):
+    if mode == "hang-ignore-term":
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    sys.stderr.write("Expanding query...")
+    sys.stderr.flush()
+    time.sleep(30)
+elif mode == "cpu-fallback":
+    err = "QMD Warning: GPU init failed (no CUDA device), falling back to CPU.\n" + tree
+elif mode == "remote-blocked":
+    err = "Expanding query...Structured query expansion failed: TypeError: fetch failed (ENETUNREACH)\n" + tree
+elif mode == "postpin":
+    out = [hit("docs/postpin.md", title="Postpin", docid="#aaaaaa"), hit("docs/lock.md"),
+           {"docid": "#cccccc", "score": 0.5, "file": "qmd://luna/handovers/h.md?index=eval", "line": 1, "title": "H", "snippet": "x"}]
+elif mode == "bad-json":
+    sys.stdout.write("not json at all\n")
+    out = None
+if out is not None:
+    sys.stdout.write(json.dumps(out, indent=2) + "\n")
+sys.stderr.write(err)
+sys.exit(rc)

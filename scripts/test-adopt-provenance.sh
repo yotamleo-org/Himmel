@@ -152,11 +152,11 @@ chmod +x "$p6bin/mktemp"
 set +e
 out=$(PATH="$p6bin:$PATH" HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1); rc=$?
 set -e
-[ "$rc" -ne 0 ] || fail "HIMMEL-6321: adopt exited 0 although it could not back up an existing file: $out"
+[ "$rc" -ne 0 ] || fail "adopt exited 0 although it could not back up an existing file: $out"
 [ "$(prov_sha "$p6proj/scripts/worktree.sh")" = "$p6sha" ] \
-  || fail "HIMMEL-6321: the user's worktree.sh was overwritten although the snapshot failed"
+  || fail "the user's worktree.sh was overwritten although the snapshot failed"
 grepq "$out" 'not replaced.*scripts/worktree.sh' \
-  || fail "HIMMEL-6321: the refused file is not listed: $out"
+  || fail "the refused file is not listed: $out"
 echo "ok: HIMMEL-6321 a failed snapshot leaves the user's file untouched, lists it, exits non-zero"
 
 # a cp that truncates the destination and then fails (disk full, EIO): the user's file is restored from the snapshot
@@ -168,28 +168,28 @@ set +e
 out=$(PATH="$p6cp:$PATH" HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1); rc=$?
 set -e
 [ "$(prov_sha "$p6proj/scripts/worktree.sh")" = "$p6sha" ] \
-  || fail "HIMMEL-6356: a failed copy left the user's worktree.sh truncated: $out"
-[ "$rc" -ne 0 ] || fail "HIMMEL-6356: adopt exited 0 although a copy failed: $out"
+  || fail "a failed copy left the user's worktree.sh truncated: $out"
+[ "$rc" -ne 0 ] || fail "adopt exited 0 although a copy failed: $out"
 grepq "$out" 'not replaced.*scripts/worktree.sh' \
-  || fail "HIMMEL-6356: the file whose copy failed is not listed: $out"
+  || fail "the file whose copy failed is not listed: $out"
 echo "ok: HIMMEL-6356 a failed copy restores the user's file from the snapshot, lists it, exits non-zero"
 
 # a normal replace names the file and its backup; the backup holds the user's original bytes
 out=$(HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1)
 p6bk="$(jq -r '.pre.backup' <<< "$(prov_row "$p6led/provenance.jsonl" /scripts/worktree.sh)")"
 grepq "$out" "replaced scripts/worktree.sh (backed up to $p6bk)" \
-  || fail "HIMMEL-6321: a replace must print the file and its backup path ($p6bk): $out"
-[ "$(prov_sha "$p6bk")" = "$p6sha" ] || fail "HIMMEL-6321: the backup is not the user's original bytes"
+  || fail "a replace must print the file and its backup path ($p6bk): $out"
+[ "$(prov_sha "$p6bk")" = "$p6sha" ] || fail "the backup is not the user's original bytes"
 out=$(HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1)
-! grepq "$out" 'replaced scripts/worktree.sh' || fail "HIMMEL-6321: a noop re-run must not report a replace: $out"
+! grepq "$out" 'replaced scripts/worktree.sh' || fail "a noop re-run must not report a replace: $out"
 echo "ok: HIMMEL-6321 a replace prints the file and its backup path; a re-run is silent"
 
 # --dry-run says what it would replace
 printf '#!/bin/sh\necho user-owned worktree.sh\n' > "$p6proj/scripts/worktree.sh"
 out=$(HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" --dry-run 2>&1)
 grepq "$out" 'would replace scripts/worktree.sh (backed up to ' \
-  || fail "HIMMEL-6321: --dry-run must say 'would replace X (backed up to ...)': $out"
-[ "$(prov_sha "$p6proj/scripts/worktree.sh")" = "$p6sha" ] || fail "HIMMEL-6321: --dry-run changed the file"
+  || fail "--dry-run must say 'would replace X (backed up to ...)': $out"
+[ "$(prov_sha "$p6proj/scripts/worktree.sh")" = "$p6sha" ] || fail "--dry-run changed the file"
 echo "ok: HIMMEL-6321 --dry-run reports would-replace"
 
 # P6: the user-scope gate copies (install_native_hooks) go through the same path
@@ -224,17 +224,17 @@ HOME="$p4home" HIMMEL_PROVENANCE_DIR="$p4ghled" PATH="$work/bin:$native_free_pat
 for h in commit-msg pre-push; do
   row="$(prov_row "$p4ghled/provenance.jsonl" "/.git/hooks/$h")"
   [ "$(jq -r '[.op,.pre.state,.manifest_row,.scope,.class]|join(",")' <<< "$row")" = "create,absent,git-hooks,project,code" ] \
-    || fail "HIMMEL-3541: a fresh native $h hook must be a create row on git-hooks: $row"
+    || fail "a fresh native $h hook must be a create row on git-hooks: $row"
 done
 row="$(prov_row "$p4ghled/provenance.jsonl" "/.git/hooks/pre-commit")"
 [ "$(jq -r '[.op,.pre.sha,.manifest_row]|join(",")' <<< "$row")" = "replace,$p4gh_sha,git-hooks" ] \
-  || fail "HIMMEL-3541: a native hook over the adopter's own must be a replace row naming its bytes: $row"
+  || fail "a native hook over the adopter's own must be a replace row naming its bytes: $row"
 row="$(prov_row "$p4ghled/provenance.jsonl" "/.git/hooks/pre-commit.himmel-backup")"
 [ "$(jq -r '[.op,.pre.state,.post.sha,.manifest_row]|join(",")' <<< "$row")" = "create,absent,$p4gh_sha,git-hook-backups" ] \
-  || fail "HIMMEL-3541: the displaced hook's backup must be a create row on git-hook-backups: $row"
+  || fail "the displaced hook's backup must be a create row on git-hook-backups: $row"
 row="$(jq -c 'select(.kind=="tree" and (.path|endswith("/.git/hooks/himmel-payload")))' "$p4ghled/provenance.jsonl" | tail -n 1)"
 [ "$(jq -r '[.op,.pre.state,.manifest_row]|join(",")' <<< "$row")" = "create,absent,git-hooks" ] \
-  || fail "HIMMEL-3541: the shared-dir hook payload must be a tree create row: $row"
+  || fail "the shared-dir hook payload must be a tree create row: $row"
 echo "ok: HIMMEL-3541 native git hooks, the displaced hook and the payload are ledger rows"
 
 # wire_handover_dir_luna skips a HANDOVER_DIR the operator already chose;

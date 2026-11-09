@@ -468,6 +468,7 @@ scripts/handover/chief-kit/test-tracker.sh	local	behaviour suite, 0 catches in t
 scripts/handover/chief-kit/test-vault-status.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-verdict-go.sh	pr	trust-path
 scripts/handover/chief-kit/test-verdict-retention.sh	local	behaviour suite, new in HIMMEL-6915
+scripts/handover/chief-kit/test-version-approval-alert.sh	pr	trust-path
 scripts/handover/chief-kit/test-version-status-audit.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/handover/chief-kit/test-versionless-done.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-vm-runner.sh	local	behaviour suite, 0 catches in the 400-PR audit window

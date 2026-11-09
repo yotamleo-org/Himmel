@@ -26,7 +26,10 @@
 #                                                  the line passed on as is, rc 10
 #                        A bullet that cannot be written appends ` doc-bullet=failed <why>` (its own
 #                        line after a GO-WRITTEN). Any other auto-go answer is
-#                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: auto-go.sh --dry-run runs once (its answer is ignored, so it leaves one auto-go.jsonl row), then ESCALATE marker-READY, as before.
+#                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: auto-go.sh --dry-run runs once, detached with its output discarded and bounded by GNU timeout where one exists (LE_DRYRUN_BOUND seconds, default 60; macOS has none, so there it is detached but unbounded; its answer is ignored, so it leaves one auto-go.jsonl row; with stacked_series on it runs under the series ledger writer's label, as the live path does), and ESCALATE marker-READY follows at once, as before.
+#                        A WRAPPED whose PR wrap-merged finds still OPEN (rc 3 at its pr-state step) is closed the
+#                        same way: HANDLED close-wrapped, or ESCALATE close-wrapped-failed when that close refuses.
+#                        A MERGED line for an OPEN PR still escalates wrap-merged-failed.
 #   anything else     -> ESCALATE (READY with the flag off, and FINDING, need a judge or the chief)
 #
 #   stacked_series on: series-ledger.py find (the bucket is the manifest's directory) says whether the worker's
@@ -56,7 +59,7 @@
 # auto-go.sh's `GO-WRITTEN …` lines (rc 11: the GO file stands, the bus send failed).
 # Usage errors exit 2 before anything runs.
 #
-# Test seams (env): LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_AUTOGO.
+# Test seams (env): LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_AUTOGO LE_DRYRUN_BOUND.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
 
@@ -105,7 +108,17 @@ dry_run_ready() {
     dpr="${BASH_REMATCH[1]}"; dhead="${BASH_REMATCH[2]}"
     dlabels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)"
     case "$dlabels" in ''|*$'\n'*) return 0 ;; esac
-    "${AUTOGO[@]}" --dry-run --doc "$DOC" --fleet "$FLEET" --worker "$dlabels" "$dpr" "$dhead" >/dev/null 2>&1
+    (
+        if stacked_series_state; then
+            dw="$("${LIST[@]}" "$FLEET" | grep -F -- "-${dlabels}-" | head -n 1)"
+            if [ -n "$dw" ] && dfind="$(python3 -I "$HERE/series-ledger.py" find --bucket "$(dirname "$FLEET")" --doc "$dw" --manifest "$FLEET")" \
+                && [ -n "$dfind" ] && [ "${dfind##* }" != "-" ]; then
+                dlabels="${dfind##* }"
+            fi
+        fi
+        . "$HERE/../../lib/timeout-bin.sh"
+        ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "${LE_DRYRUN_BOUND:-60}"} "${AUTOGO[@]}" --dry-run --doc "$DOC" --fleet "$FLEET" --worker "$dlabels" "$dpr" "$dhead"
+    ) >/dev/null 2>&1 </dev/null &
     return 0
 }
 
@@ -280,6 +293,11 @@ else
     outf="$(mktemp "${TMPDIR:-/tmp}/worker-event-out.XXXXXX")" || { rm -f "$errf"; escalate "wrap-merged-failed rc=1 mktemp"; }
     "${WRAP[@]}" "${args[@]}" >"$outf" 2>"$errf"; rc=$?
     what=wrap-merged
+    if [ "$rc" -eq 3 ] && [ "$marker" = WRAPPED ] && grep -qE "step pr-state failed: PR #[0-9]+ is 'OPEN'" "$errf"; then
+        rm -f "$outf"; outf=""
+        "${CLOSE[@]}" --fleet "$FLEET" "$worker" >/dev/null 2>"$errf"; rc=$?
+        what=close-wrapped
+    fi
 fi
 if [ "$rc" -ne 0 ]; then
     msg="$(tr '\n' ' ' <"$errf")"

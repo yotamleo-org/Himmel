@@ -3104,6 +3104,19 @@ fi
 scan_resolved=$(cd "$scan" 2>/dev/null && pwd -P) || scan_resolved=""
 [ -n "$scan_resolved" ] || scan_resolved="$scan"
 
+witness_on=0
+witness_msgs=""
+witness_watched=0 witness_hard=0 witness_warn=0
+witness_env=""
+if [ -n "${HIMMEL_CANARY_HOME:-}" ] && [ "${HIMMEL_CANARY_HOME}" = "${HOME:-}" ]; then
+  witness_on=1
+else
+  echo 'live-witness: off (HOME is not the home-canary sandbox)'
+fi
+_witness_summary() {
+  [ "$witness_on" -eq 0 ] || printf 'live-witness: on, %s suites watched, %s hard, %s warn\n' "$witness_watched" "$witness_hard" "$witness_warn"
+}
+
 # Resolve --impacted BEFORE the machine lock and discovery: the
 # answer needs only git, and an empty/refused one must not queue behind a
 # full-tree run for nothing. The set is impacted-suites.sh's `--shell` output —
@@ -3169,12 +3182,14 @@ if [ -n "$impacted_range" ]; then
     fi
     if [ -z "$_impacted_out" ] && [ "$SUITE_TIER_MODE" != "pr" ]; then
       echo "run-shell-tests.sh: --impacted ${impacted_range}: 0 impacted suites in --only-list ${only_list_file} — nothing to run"
+      _witness_summary
       exit 0
     fi
   fi
   # In pr mode the tier suites still run when nothing is impacted.
   if [ -z "$_impacted_out" ] && [ "$SUITE_TIER_MODE" != "pr" ]; then
     echo "run-shell-tests.sh: --impacted ${impacted_range}: 0 impacted shell suites — nothing to run"
+    _witness_summary
     exit 0
   fi
   impacted_active=1
@@ -3246,6 +3261,7 @@ if [ "$impacted_active" -eq 1 ] && [ -n "$manifest_hdr" ] && [ -z "$_sel_list" ]
   # A docs-only PR: the selection is empty, so this shard has nothing to run.
   # Every required context still reports; the aggregator verifies the header.
   echo "run-shell-tests.sh: ${impacted_range}: 0 impacted shell suites — nothing to run"
+  _witness_summary
   exit 0
 fi
 
@@ -4243,6 +4259,9 @@ _live_reset() {
   mkdir -p "$live_root/state" "$live_root/bin" || return 1
   for _v in $live_files; do printf '%s' "$live_seed" > "$live_root/state/$_v" || return 1; done
   for _v in $live_dirs; do mkdir "$live_root/state/$_v" || return 1; done
+  if [ "$witness_on" -eq 1 ]; then
+    live_witness_reset "$live_root" "$live_root/home" "$live_root/handover-root" "$witness_env" || return 1
+  fi
   # A shim records every call. For a suite off the hard-fail list it then runs
   # the next scheduler on PATH, as main does; otherwise it refuses. Only the
   # shim of the runner that set HIMMEL_SUITE_SHIM_DIR forwards, so a nested
@@ -4280,6 +4299,7 @@ _live_env() {
   export HIMMEL_SUITE_CRONTAB_LOG="$live_root/scheduler-calls.log"
   export HIMMEL_SUITE_SHIM_DIR="$live_root/bin"
   export PATH="$live_root/bin:$PATH"
+  [ "$witness_on" -eq 0 ] || live_witness_env "$live_root/home"
 }
 # _live_check <suite-pgid> — collect one line per thing the suite left behind
 # in live_msgs and return 1 if there was any. Survivors go first, so none can
@@ -4288,6 +4308,7 @@ _live_env() {
 _live_check() {
   local _v _e _c _dirty=0 _grace _members=""
   live_msgs=""
+  witness_msgs=""
   [ -n "$live_root" ] || return 0
   # The suite ran as its own process group; anything still in it is a process
   # the suite started and left behind. kill -0 first, a builtin, so a clean
@@ -4347,10 +4368,27 @@ _live_check() {
     done < "$live_root/scheduler-calls.log"
     _dirty=1
   fi
+  if [ "$witness_on" -eq 1 ]; then
+    witness_watched=$((witness_watched + 1))
+    live_witness_check "$live_root" "$live_root/home" "$live_root/handover-root" || _dirty=1
+  fi
   [ "$_dirty" -eq 0 ] && return 0
   _live_reset || return 2
   return 1
 }
+if [ "$witness_on" -eq 1 ] && [ "$list_only" -eq 0 ]; then
+  # shellcheck source=scripts/ci/live-witness.sh
+  # shellcheck disable=SC1091
+  if ! { [ -r "$REPO_ROOT/scripts/ci/live-witness.sh" ] && . "$REPO_ROOT/scripts/ci/live-witness.sh"; }; then
+    echo "run-shell-tests.sh: cannot load $REPO_ROOT/scripts/ci/live-witness.sh — refusing to run suites unwitnessed under the home-canary" >&2
+    exit 2
+  fi
+  if ! live_witness_exempt_load "${SUITE_LIVE_EXEMPT-$REPO_ROOT/scripts/ci/live-write-exempt.txt}"; then
+    echo "run-shell-tests.sh: $LW_EXEMPT_ERR" >&2
+    exit 2
+  fi
+  [ ! -e "$HIMMEL_CANARY_HOME/.env" ] || witness_env="$HIMMEL_CANARY_HOME/.env"
+fi
 if [ "$list_only" -eq 0 ]; then
   # prim-ok: anchored at literal /tmp for the reason suite_tmp is below; swallow-ok: an empty root aborts the run below
   live_root=$(mktemp -d "/tmp/himmel-live-sentinel.XXXXXX" 2>/dev/null) || live_root=""
@@ -4557,15 +4595,32 @@ _suite_attempts() {
   _live_check "$_live_pgid"
   _live_rc=$?
   if [ "$_live_rc" -ne 0 ]; then
-    _live_tag="WARN "
-    if _live_is_hard "$suite"; then live_fail=1; _live_tag=""; fi
-    while IFS= read -r _lm; do
-      [ -n "$_lm" ] || continue
-      printf '[LIVE-STATE] %s%s — %s\n' "$_live_tag" "$suite" "$_lm"
-      printf '[LIVE-STATE] %s%s\n' "$_live_tag" "$_lm" >> "$log"
-    done <<LIVEMSGS
+    if [ -n "$live_msgs" ]; then
+      _live_tag="WARN "
+      if _live_is_hard "$suite"; then live_fail=1; _live_tag=""; fi
+      while IFS= read -r _lm; do
+        [ -n "$_lm" ] || continue
+        printf '[LIVE-STATE] %s%s — %s\n' "$_live_tag" "$suite" "$_lm"
+        printf '[LIVE-STATE] %s%s\n' "$_live_tag" "$_lm" >> "$log"
+      done <<LIVEMSGS
 $live_msgs
 LIVEMSGS
+    fi
+    if [ -n "$witness_msgs" ]; then
+      _live_tag="WARN "
+      if live_witness_is_exempt "/$suite"; then
+        witness_warn=$((witness_warn + 1))
+      else
+        live_fail=1; _live_tag=""; witness_hard=$((witness_hard + 1))
+      fi
+      while IFS= read -r _lm; do
+        [ -n "$_lm" ] || continue
+        printf '[LIVE-STATE] %s%s — %s\n' "$_live_tag" "$suite" "$_lm"
+        printf '[LIVE-STATE] %s%s\n' "$_live_tag" "$_lm" >> "$log"
+      done <<WITNESSMSGS
+$witness_msgs
+WITNESSMSGS
+    fi
     [ "$live_fail" -eq 0 ] || [ "$rc" -ne 0 ] || rc=1
   fi
   if [ "$_live_rc" -eq 2 ]; then
@@ -4774,6 +4829,7 @@ _lane_launch() {
     live_root="${lane_root[_i]}"
     _lane_live="${lane_out[_i]}/live"
     _w_t0=$timed_out
+    _w_wt0=$witness_watched _w_wh0=$witness_hard _w_ww0=$witness_warn
     _suite_attempts
     # The marker goes last: _lane_reap reads a result without it as none.
     { for _v in rc capped _attempt first_rc first_capped first_log log start suite_end suite_timeout \
@@ -4781,6 +4837,8 @@ _lane_launch() {
         printf '%s=%q\n' "$_v" "${!_v:-}"
       done
       printf '_w_timed_out=%s\n' "$((timed_out - _w_t0))"
+      printf '_w_witness_watched=%s\n_w_witness_hard=%s\n_w_witness_warn=%s\n' \
+        "$((witness_watched - _w_wt0))" "$((witness_hard - _w_wh0))" "$((witness_warn - _w_ww0))"
       printf '_res_complete=1\n'
     } > "${lane_out[_i]}/res" ) > "${lane_out[_i]}/out" 2> "${lane_out[_i]}/err" &
   lane_pid[_i]=$!
@@ -4806,11 +4864,14 @@ _lane_reap() {
     _lanes_stop
     exit 2
   fi
-  _w_timed_out=0
+  _w_timed_out=0 _w_witness_watched=0 _w_witness_hard=0 _w_witness_warn=0
   # shellcheck disable=SC1090  # written by _lane_launch above
   . "$_res"
   rm -rf "${lane_out[_i]}"
   timed_out=$((timed_out + _w_timed_out))
+  witness_watched=$((witness_watched + _w_witness_watched))
+  witness_hard=$((witness_hard + _w_witness_hard))
+  witness_warn=$((witness_warn + _w_witness_warn))
   _suite_account
   suite="$_s" relpath="$_r" suite_key="$_k" mf_rel="$_m"
 }
@@ -5060,6 +5121,7 @@ fi
 
 echo
 echo '== Summary =='
+_witness_summary
 if [ "$list_only" -eq 1 ]; then
   echo "(--list: nothing executed)"
   exit 0

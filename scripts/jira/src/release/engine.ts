@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
+import type { Getter } from './version-writes.js';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
@@ -13,7 +14,7 @@ import { appendAdmission, assertAdmissionsWritable, readAdmissions, readAdmissio
 import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import type {
-  Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, PlacementClass, RequestRow, RulingRow, Verb,
+  Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, OutOfVersionRow, PlacementClass, RequestRow, RulingRow, Verb,
 } from './types.js';
 
 // The release engine's I/O (design §5): the only writer of the authority files
@@ -26,6 +27,8 @@ export interface JiraPort {
   setFixVersion(key: string, op: 'add' | 'remove', version: string): Promise<void>;
   findComment(key: string, marker: string): Promise<string | null>;
   addComment(key: string, markdown: string): Promise<string>;
+  labels(key: string): Promise<string[]>;
+  removeLabels(key: string, labels: string[]): Promise<void>;
   // The live snapshot of one issue, for a claimed key the mirror lacks or holds without a sector.
   issue?(key: string): Promise<IssueSnap | null>;
 }
@@ -45,6 +48,16 @@ const OUTCOMES: Record<Verb, Record<string, Op['kind'][]>> = {
   REVERSION: { MOVE: ['move', 'remove'], KEEP: ['keep'] },
   DISCHARGE: { ACCEPT: ['discharge'], REJECT: ['none'] },
 };
+
+// Idempotent (a clean key makes no write); reads back and fails loud when a label survives.
+export async function clearProposedLabels(jira: Pick<JiraPort, 'labels' | 'removeLabels'>, key: string): Promise<string[]> {
+  const proposed = (await jira.labels(key)).filter((l) => /^proposed-/.test(l));
+  if (!proposed.length) return [];
+  await jira.removeLabels(key, proposed);
+  const left = (await jira.labels(key)).filter((l) => /^proposed-/.test(l));
+  if (left.length) throw new Error(`release: ${key} still carries ${left.join(', ')} after the removal; clear it by hand (jira edit ${key} --labels)`);
+  return proposed;
+}
 
 const f = (ctx: Ctx, name: string) => join(ctx.dir, name);
 const ts = (ctx: Ctx) => ctx.now().toISOString();
@@ -222,10 +235,10 @@ function latestRequests(requests: Chain<RequestRow>): Map<string, RequestRow> {
 
 // --- operator acts (the chief, on an operator decision) ---------------------
 
-function appendOperator(ctx: Ctx, k: Buffer, row: Omit<OperatorRow, 'id' | 'ts'> & { id?: string }): OperatorRow {
+function appendOperator<R extends OperatorRow = OperatorRow>(ctx: Ctx, k: Buffer, row: Omit<R, 'id' | 'ts'> & { id?: string }): R {
   const chain = readChain<OperatorRow>(f(ctx, 'operator.jsonl'), k);
   const id = row.id ?? seq(`O-${ctx.release}`, chain.rows.map((o) => o.id));
-  return appendChain<OperatorRow>(f(ctx, 'operator.jsonl'), k, { ...row, id, ts: ts(ctx) });
+  return appendChain<R>(f(ctx, 'operator.jsonl'), k, { ...row, id, ts: ts(ctx) });
 }
 
 export function declare(ctx: Ctx, o: { project: string; versions: string[]; decision: string; verbatim: string; mode: Declaration['mode'] }): Declaration {
@@ -519,6 +532,140 @@ export function specCheck(env: Record<string, string | undefined>, keys: string[
   return { lines, ok: lines.every((l) => l.startsWith('SPEC ok ')), warnings };
 }
 
+export const OUT_OF_VERSION_MS = 14 * 86_400_000;
+
+const byIso = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+export function outOfVersionApproval(env: Record<string, string | undefined>, key: string, now: Date): ReleaseRecord | null {
+  let records: ReleaseRecord[];
+  try {
+    records = readOperatorRecords('out-of-version', env);
+  } catch {
+    return null;
+  }
+  return records.filter((r) => {
+    const age = now.getTime() - Date.parse(r.ts);
+    return r.keys?.includes(key) && age >= 0 && age < OUT_OF_VERSION_MS;
+  }).sort((a, b) => byIso(a.ts, b.ts)).at(-1) ?? null;
+}
+
+export function poolCurrent(versionsTsv: string): string | null {
+  const nat = (v: string) => v.split(/(\d+)/).map((x) => (/^\d+$/.test(x) ? Number(x) : x));
+  const cmp = (a: string, b: string): number => {
+    const x = nat(a);
+    const y = nat(b);
+    for (let i = 0; i < Math.min(x.length, y.length); i++) {
+      if (x[i] === y[i]) continue;
+      if (typeof x[i] === 'number' && typeof y[i] === 'number') return (x[i] as number) - (y[i] as number);
+      return String(x[i]) < String(y[i]) ? -1 : 1;
+    }
+    return x.length - y.length;
+  };
+  return versionsTsv.split('\n').map((l) => l.split('\t'))
+    .filter((p) => p.length >= 2 && p[1].trim() === 'false' && !(p.length >= 4 && p[3].trim() === 'true') && !p[0].startsWith('zz-'))
+    .map((p) => p[0]).sort(cmp)[0] ?? null;
+}
+
+type ParsedDeclared = { path: string; parsed: true; project: unknown; current: unknown; ts: unknown };
+type Declared = ParsedDeclared | { path: string; parsed: false };
+
+const unparsedOrNamesProject = (d: Declared, project: string): boolean => !d.parsed || d.project === project;
+
+function declaredReleases(env: Record<string, string | undefined>): Declared[] {
+  const root = releaseRoot(env);
+  if (!existsSync(root)) return [];
+  return readdirSync(root).sort().flatMap((name): Declared[] => {
+    const path = join(root, name, 'release.json');
+    if (!existsSync(path)) return [];
+    let got: unknown;
+    try {
+      got = JSON.parse(readFileSync(path, 'utf8'));
+    } catch {
+      return [{ path, parsed: false }];
+    }
+    if (got === null || typeof got !== 'object' || Array.isArray(got)) return [{ path, parsed: false }];
+    const d = got as Record<string, unknown>;
+    return [{ path, parsed: true, project: d.project, current: d.current, ts: d.ts }];
+  });
+}
+
+function withinDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`no answer within ${ms} ms`)), ms);
+  });
+  return Promise.race([p, deadline]).finally(() => clearTimeout(timer));
+}
+
+export interface BucketOptions { get: Getter; deadlineMs: number; now: Date }
+
+export async function bucketCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string, o: BucketOptions): Promise<string[]> {
+  const { issues } = readMirror(mirrorRoot);
+  const versionsPath = `${mirrorRoot.replace(/\/+$/, '')}.versions.tsv`;
+  const lines: string[] = [];
+  for (const key of keys) lines.push(await bucketLine(env, key, mirrorRoot, versionsPath, issues, o));
+  return lines;
+}
+
+async function bucketLine(env: Record<string, string | undefined>, key: string, mirrorRoot: string, versionsPath: string,
+  issues: Map<string, IssueSnap> | null, o: BucketOptions): Promise<string> {
+  const failed = (why: string) => `FAILED ${key} ${why.replace(/\s+/g, ' ')}`;
+  if (!ISSUE_KEY.test(key)) return failed('is not a ticket key');
+  if (!issues) return failed(`no readable mirror at ${mirrorRoot}`);
+  const project = key.split('-')[0];
+  let naming: Declared[];
+  try {
+    naming = declaredReleases(env).filter((d) => unparsedOrNamesProject(d, project));
+  } catch (e) {
+    return failed(`the release root cannot be read: ${(e as Error).message}`);
+  }
+  if (!existsSync(versionsPath)) {
+    return naming.length ? failed(`no versions file at ${versionsPath} while ${naming[0].path} names ${project}`) : `NONE ${key} ${mirrorRoot}`;
+  }
+  let current: string | null;
+  try {
+    current = poolCurrent(readFileSync(versionsPath, 'utf8'));
+  } catch (e) {
+    return failed(`the versions file ${versionsPath} cannot be read: ${(e as Error).message}`);
+  }
+  if (!current) return failed(`the versions file ${versionsPath} has no current version`);
+  const broken = naming.find((d) => !d.parsed);
+  if (broken) return failed(`${broken.path} does not parse, so the declared current cannot be read`);
+  const declared = naming.filter((d): d is ParsedDeclared => d.parsed).sort((a, b) => byIso(String(a.ts ?? ''), String(b.ts ?? ''))).at(-1);
+  if (declared && declared.current !== current) {
+    return failed(`the declared current ${String(declared.current)} (${declared.path}) differs from the versions-file current ${current}`);
+  }
+  const approval = outOfVersionApproval(env, key, o.now);
+  if (approval) return `APPROVED ${key} decision=${approval.decision} record=${approval.id}`;
+  const snap = issues.get(key);
+  if (snap?.statusCategory === 'Done') return `DONE ${key}`;
+  if (snap?.fixVersions.includes(current)) return `IN ${key} current=${current} via=mirror`;
+  let versions: string[];
+  try {
+    const got = await withinDeadline(o.get<{ fields?: { fixVersions?: Array<{ name?: string }> } }>(`/issue/${key}?fields=fixVersions`), o.deadlineMs);
+    versions = (got.fields?.fixVersions ?? []).map((v) => v.name ?? '').filter(Boolean);
+  } catch (e) {
+    return failed(`the live read of ${key} failed: ${(e as Error).message}`);
+  }
+  if (versions.includes(current)) return `IN ${key} current=${current} via=jira`;
+  const open = [...issues.values()].filter((i) => i.fixVersions.includes(current) && i.statusCategory !== 'Done').length;
+  return `OUTSIDE ${key} ${versions.join(',') || 'none'} current=${current} open=${open}`;
+}
+
+export function operatorWords(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const at = lines.findIndex((l) => l.startsWith('Verbatim:'));
+  if (at < 0) throw new Error('operatorWords: the file has no line starting \'Verbatim:\'; add one with the operator\'s words on it or in the lines below it');
+  let words = lines[at].slice('Verbatim:'.length).trim();
+  if (!words) {
+    const end = lines.findIndex((l, i) => i > at && !l.trim());
+    words = lines.slice(at + 1, end < 0 ? undefined : end).join('\n').trim();
+  }
+  if (words.length >= 2 && words.startsWith('"') && words.endsWith('"')) words = words.slice(1, -1);
+  if (!words) throw new Error('operatorWords: the Verbatim: block is empty; put the operator\'s words on that line or in the lines below it');
+  return words;
+}
+
 // --- core-gate bypass records (spec §4); coreMatch reads them through readOperatorRecords ---
 
 function coreKeys(verb: string, keys: string[]): string[] {
@@ -543,6 +690,55 @@ export function coreSnapshot(ctx: Ctx, o: { keys: string[] }): OperatorRow {
     const prior = readOperatorRecords('core-snapshot', ctx.env)[0];
     if (prior) throw new Error(`release operator core-snapshot: ${prior.id} is already recorded; the snapshot is written once, at flag-on`);
     return appendOperator(ctx, l.k, { kind: 'core-snapshot', decision: null, keys });
+  });
+}
+
+export const PLACEHOLDER = /^(tbd|todo|test|testing|placeholder|wip|n\/?a|x+|w+|-+|\.+)$/i;
+
+export interface ApprovalAlert { key: string; version: string; decision: string; open: number; words: string }
+
+const DECISION_FILE = /^verbatim-decision-(\d+)-/;
+
+export function outOfVersion(ctx: Ctx, o: { key: string; decision: string; verbatimFile: string; reason: string; alert: (a: ApprovalAlert) => number }): OutOfVersionRow {
+  operatorFence(ctx);
+  const verb = 'release operator out-of-version';
+  if (!ISSUE_KEY.test(o.key)) throw new Error(`${verb}: '${o.key}' is not one ticket key; a record covers one key`);
+  const decisions = join(dirname(releaseRoot(ctx.env)), 'specs', 'decisions');
+  let file: string;
+  try {
+    file = realpathSync(o.verbatimFile);
+  } catch {
+    throw new Error(`${verb}: cannot read ${o.verbatimFile}`);
+  }
+  const n = DECISION_FILE.exec(basename(file))?.[1];
+  if (!existsSync(decisions) || dirname(file) !== realpathSync(decisions) || n === undefined) {
+    throw new Error(`${verb}: ${o.verbatimFile} is not a verbatim-decision-<n>-* file in ${decisions}`);
+  }
+  if (n !== o.decision) throw new Error(`${verb}: ${basename(file)} is decision ${n}, not --decision ${o.decision}`);
+  const verbatim = readFileSync(file, 'utf8');
+  let words: string;
+  try {
+    words = operatorWords(verbatim);
+  } catch (e) {
+    throw new Error(`${verb}: ${basename(file)}: ${(e as Error).message}`);
+  }
+  const reason = o.reason.trim();
+  if (PLACEHOLDER.test(reason)) throw new Error(`${verb}: "${o.reason}" is a placeholder reason; say why this ticket now`);
+  if (reason.length < 8) throw new Error(`${verb}: the reason "${o.reason}" is under 8 characters; say why this ticket now`);
+  return locked(ctx, (l) => {
+    if (l.operator.bad.length) throw new Error(`${verb}: ${f(ctx, 'operator.jsonl')} does not verify (${l.operator.bad[0]}); no alert sent, no record written`);
+    const { issues } = readMirror(ctx.mirrorRoot);
+    const snap = issues?.get(o.key);
+    if (!snap) throw new Error(`${verb}: ${issues ? `${o.key} is not in the mirror` : 'the Jira mirror is unreadable'}; sync it first (jira mirror)`);
+    const version = snap.fixVersions.join(',') || 'none';
+    const now = ctx.now().getTime();
+    const open = 1 + readOperatorRecords('out-of-version', ctx.env).filter((r) => {
+      const age = now - Date.parse(r.ts);
+      return age >= 0 && age < OUT_OF_VERSION_MS;
+    }).length;
+    const rc = o.alert({ key: o.key, version, decision: o.decision, open, words });
+    if (rc !== 0) throw new Error(`${verb}: the operator alert exited ${rc}${rc === 77 ? ' (the send was refused)' : ''}; no record written`);
+    return appendOperator<OutOfVersionRow>(ctx, l.k, { kind: 'out-of-version', decision: o.decision, keys: [o.key], version, verbatim: verbatim.trim(), reason });
   });
 }
 
@@ -1051,6 +1247,8 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
           appendAdmission({ version, key, kind: 'rm-remove', reason: `${last.ground}: ${last.reason}`, by: lease.owner_session ?? 'rm', ruling: id });
         }
       }
+      // Every INTAKE ruling settles the filer's proposal, so its proposed-* label goes before the receipt; a failure leaves the ruling applied for a replay.
+      if (last.verb === 'INTAKE') await clearProposedLabels(ctx.jira, last.key);
       const marker = `[release-ruling ${id}]`;
       const authority = last.authority.kind === 'rm' ? 'rm' : `${last.authority.kind} ${last.authority.ref}`;
       const commentId = await ctx.jira.findComment(last.key, marker)

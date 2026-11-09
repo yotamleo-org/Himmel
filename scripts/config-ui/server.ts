@@ -26,7 +26,7 @@ import { boardProjects, loadFeed, readProjects, saveFeed, summarize } from "./pr
 import { appendAudit } from "./audit";
 import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
-import { readRollup } from "./rollup";
+import { readRollupWithJob } from "./rollup";
 import { readPhaseStats } from "./phase-stats";
 import { readCost } from "./cost";
 import { fileReader, liveBoards, readMerged, type Live, type Lock, type Span, readShifts, redactShift, shiftsFile, tick as tickShifts, viewOf } from "./shift";
@@ -664,6 +664,15 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     if (opts.readOnly && req.method !== "GET" && req.method !== "HEAD") return new Response("read-only: this config UI was started with --read-only and refuses every write", { status: 403 });
     const path = new URL(req.url).pathname;
     if (path === "/api/login" || path === "/api/logout") return loginRoute(req, path, origin);
+    if (path === "/api/fleet-token") {
+      if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+      if (auth.session(req.headers.get("cookie")) === null) return new Response("unauthorized", { status: 401 });
+      const from = req.headers.get("origin");
+      if (from !== null && from !== origin) return new Response("bad origin", { status: 403 });
+      bump();
+      lastSeen = now();
+      return new Response(JSON.stringify({ token }), { headers: { "content-type": "application/json", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+    }
     if (path.startsWith("/api/")) {
       // the launch token (automation, the printed URL) or a login session (the Setup page's secret writes in service mode)
       const session = auth.session(req.headers.get("cookie")) !== null;
@@ -759,7 +768,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       // the weekly roll-up as three trend cards, read from the file weekly-rollup.py wrote. Never recomputed here.
       if (path === "/api/rollup") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        return json(redactOut(readRollup(env)));
+        return json(redactOut(await readRollupWithJob(env, join(env.HIMMEL_REPORT_CADENCE_ROOT ?? root, "scripts", "eval", "rollup-cadence.sh"))));
       }
       // the Eval tab: per-phase numbers for the last 7 full days, read from the ticket status records and the review-round files.
       if (path === "/api/phase-stats") {

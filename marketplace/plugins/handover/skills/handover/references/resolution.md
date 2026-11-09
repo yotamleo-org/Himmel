@@ -16,7 +16,7 @@ Read-only commands (`handover-resume`, `repos list`) skip step 3 if the user cle
 
 Full algorithm + canonicalisation rules: `references/routing.md` (load only on ambiguity or first invocation in a new session).
 
-## Bucket Resolution (HIMMEL-129)
+## Bucket Resolution
 
 Some registered repos — the **state-root host** an operator chose at `/handover-setup` (e.g. a repo named `<state-repo>`) — split `<state-root>` into per-source-repo buckets to keep work from multiple code repos disambiguated:
 
@@ -26,19 +26,19 @@ Some registered repos — the **state-root host** an operator chose at `/handove
   luna/{epics,standalones}/
   luna_brain/{epics,standalones}/
   cross/{epics,standalones}/      # cross-repo work; no Jira prefix
-  <extra>/{epics,standalones}/    # e.g. salus/ — extra source bucket (HIMMEL-307); explicit-only, no Jira-prefix route
+  <extra>/{epics,standalones}/    # e.g. salus/ — extra source bucket; explicit-only, no Jira-prefix route
 ```
 
-A bucket layer is active when **any recognized source bucket** dir exists directly under `<state-root>`. The **recognized source-bucket set** is the four built-ins `himmel/`, `luna/`, `luna_brain/`, `cross/` **plus** any names listed in the state-root host repo's `source_buckets_extra` registry field (HIMMEL-307). When `source_buckets_extra` is absent or empty, the recognized set is exactly the four built-ins, so behaviour is byte-identical to the pre-HIMMEL-307 4-set. Wherever this skill says "active bucket" / "every `<state-root>/<bucket>/`" (ID derivation, `update-status`, roadmap, `handover-resume`, the No-ID picker), `<bucket>` ranges over the **recognized** set — extra buckets are walked automatically. In an active layer, every read/write resolves `<bucket>` first:
+A bucket layer is active when **any recognized source bucket** dir exists directly under `<state-root>`. The **recognized source-bucket set** is the four built-ins `himmel/`, `luna/`, `luna_brain/`, `cross/` **plus** any names listed in the state-root host repo's `source_buckets_extra` registry field. When `source_buckets_extra` is absent or empty, the recognized set is exactly the four built-ins, so behaviour is byte-identical to the plain 4-set. Wherever this skill says "active bucket" / "every `<state-root>/<bucket>/`" (ID derivation, `update-status`, roadmap, `handover-resume`, the No-ID picker), `<bucket>` ranges over the **recognized** set — extra buckets are walked automatically. In an active layer, every read/write resolves `<bucket>` first:
 
-1. **Ticket-prefix rule (primary).** If the item carries a Jira key, map prefix → bucket via the registry's `bucket_name` field (HIMMEL-147). Default mappings carry over from HIMMEL-129: `HIMMEL-*` → `himmel/`, `LUNA-*` → `luna/`, `LUNA-BRAIN-*` → `luna_brain/`. **Match the most-specific (longest) prefix first** — `LUNA-BRAIN-123` must route to `luna_brain/`, never to `luna/` on the shorter `LUNA-` match; regardless of listing order, the longest matching registered prefix wins. No-prefix or unmapped prefix → `cross/`. Operators with forked repos override per-entry by setting `bucket_name` in registry.json. The prefix rule only ever resolves to one of the **four built-in** buckets — it never auto-routes to an extra bucket (see rule 3).
-2. **No Jira key (offline-fallback `#N`).** Use the source-repo registry `bucket_name` (HIMMEL-147; defaults to slugified `basename(path)`) where the slash command was invoked. If the source repo is the state-root host itself (no obvious bucket), prompt via `AskUserQuestion` listing the active buckets — which includes any recognized extra buckets.
-3. **Extra source buckets are explicit-only (HIMMEL-307).** Names in `source_buckets_extra` get **no** Jira-prefix auto-route — an item lands in one only by an explicit operator choice: the source-bucket step in `new-epic`/`new-standalone` (offered only when extra buckets exist), or an explicit `/handover bucket <id> <extra>` move. Rationale: an extra bucket like `salus` carries `LUNA-*` tickets that would otherwise collide with `luna/` under the prefix rule, so it must never silently capture prefix-routed work. Once an item lives in an extra bucket, all scans/regens walk it like any built-in bucket (see the recognized-set note above).
-4. **Inactive bucket layer.** When no recognized source-bucket dir exists under `<state-root>`, the resolver walks the flat layout (`<state-root>/{epics,standalones}/`) directly — backwards compatible with pre-HIMMEL-129 state roots.
+1. **Ticket-prefix rule (primary).** If the item carries a Jira key, map prefix → bucket via the registry's `bucket_name` field. Default mappings: `HIMMEL-*` → `himmel/`, `LUNA-*` → `luna/`, `LUNA-BRAIN-*` → `luna_brain/`. **Match the most-specific (longest) prefix first** — `LUNA-BRAIN-123` must route to `luna_brain/`, never to `luna/` on the shorter `LUNA-` match; regardless of listing order, the longest matching registered prefix wins. No-prefix or unmapped prefix → `cross/`. Operators with forked repos override per-entry by setting `bucket_name` in registry.json. The prefix rule only ever resolves to one of the **four built-in** buckets — it never auto-routes to an extra bucket (see rule 3).
+2. **No Jira key (offline-fallback `#N`).** Use the source-repo registry `bucket_name` (defaults to slugified `basename(path)`) where the slash command was invoked. If the source repo is the state-root host itself (no obvious bucket), prompt via `AskUserQuestion` listing the active buckets — which includes any recognized extra buckets.
+3. **Extra source buckets are explicit-only.** Names in `source_buckets_extra` get **no** Jira-prefix auto-route — an item lands in one only by an explicit operator choice: the source-bucket step in `new-epic`/`new-standalone` (offered only when extra buckets exist), or an explicit `/handover bucket <id> <extra>` move. Rationale: an extra bucket like `salus` carries `LUNA-*` tickets that would otherwise collide with `luna/` under the prefix rule, so it must never silently capture prefix-routed work. Once an item lives in an extra bucket, all scans/regens walk it like any built-in bucket (see the recognized-set note above).
+4. **Inactive bucket layer.** When no recognized source-bucket dir exists under `<state-root>`, the resolver walks the flat layout (`<state-root>/{epics,standalones}/`) directly — backwards compatible with state roots from before the bucket layer.
 
 Top-level files (`status.md`, `roadmap.md`, `backlog.md`, `tech-debt.md`, `counter.md`, `sync.log`, `next-session-resume.md`, `luna-wave-resume.md`, `overnight-summary-*.md`, `_templates/`) remain at `<state-root>/` root regardless of bucket layer. They're cross-bucket index files.
 
-### Internal specs (design / plan / decision) — HIMMEL-409
+### Internal specs (design / plan / decision)
 
 Each source bucket also holds a `specs/<type>/` subtree — the single home for **internal, non-customer-facing** design artifacts that aren't handover items: design docs, implementation plans, decision records. Path: `<state-root>/<bucket>/specs/<type>/` (e.g. `…/himmel/specs/design/`, `…/himmel/specs/plan/`).
 
@@ -66,7 +66,7 @@ These live in the **state repo**, never in the code repo's `docs/` (which is for
 
 **v2 additions:** each repo entry may also carry `bucket_vocab`, `buckets_custom`, `defaults: {}`, and `stale_thresholds_days: {}`. See `references/init-register.md` for the full schema and key reference. Absence of any v2 field means "use built-in default".
 
-**`source_buckets_extra` (HIMMEL-307):** the state-root **host** repo entry (e.g. `<state-repo>`) may carry `source_buckets_extra` — an optional array of extra source-bucket names (kebab-case) that extends the recognized source-bucket set beyond the four built-ins (see Bucket Resolution). This is a **different axis** from `buckets_custom` (which renames the time-horizon vocab) and from `bucket_name` (a per-source-repo label used by the prefix rule). Absent or empty ⇒ the four built-ins only.
+**`source_buckets_extra`:** the state-root **host** repo entry (e.g. `<state-repo>`) may carry `source_buckets_extra` — an optional array of extra source-bucket names (kebab-case) that extends the recognized source-bucket set beyond the four built-ins (see Bucket Resolution). This is a **different axis** from `buckets_custom` (which renames the time-horizon vocab) and from `bucket_name` (a per-source-repo label used by the prefix rule). Absent or empty ⇒ the four built-ins only.
 
 ### Reading and writing the registry
 
@@ -95,7 +95,7 @@ Extract all `N` across every bucket plus the (legacy) flat root. `next_id = max(
 - Existing `#N-<slug>` holds **this** item (identity match on `<slug>` + type) → it is a resumable partial from an earlier attempt: **adopt it and resume the remaining post-create steps.** Do NOT re-derive — that strands the partial and creates a duplicate under a fresh ID.
 - Existing `#N-*` holds an **unrelated** item → the ID really is taken: re-derive `next_id` and retry.
 
-A stronger form (reserving IDs in their own atomic namespace, independent of the item dir) is tracked in **HIMMEL-1068**; the identity-check above is what keeps the common crash-and-retry case correct without it.
+A stronger form (reserving IDs in their own atomic namespace, independent of the item dir) is not built; the identity-check above is what keeps the common crash-and-retry case correct without it.
 
 If `<state-root>/counter.md` exists with `Next: K` where `K > max(all N) + 1`, prefer K (preserves in-flight increments that haven't reached disk yet).
 
@@ -134,7 +134,7 @@ The six-step ordering:
    **The store contract — the ordering only works if the record survives, so specify the store, not just the write:**
    - **ONE FILE PER IDENTITY in a directory — never one shared file, and never a map inside one file.** The identity is the FILENAME. This is the whole reason the store is a directory: a shared file (whether it holds one record or a map of them) has to be read-modify-written, and a RMW of a shared file loses updates — two unrelated flows read the same map, each adds its own entry, each renames its version over the other, and the last writer silently deletes the first flow's nonce. Its retry then discovers nothing and files a duplicate. **Atomic replacement prevents torn JSON; it does not prevent lost updates** — those are different problems, and only removing the shared mutable state solves the second. With one file per identity there is no shared state to lose: a write touches exactly its own path, and a clear removes exactly its own path. (This also needs no lock, which is why the concurrency boundary below still holds.)
    - **Write it atomically and durably: serialize the record, write a temp file in the same dir, `fsync` the temp file, `rename` it into place, then `fsync` the PARENT DIRECTORY.** Ordering alone is not durability — a buffered write that has not reached disk when the process dies is a record that never existed, and a rename whose directory entry hasn't itself been fsynced can vanish on crash even though the file's contents landed, and *either* failure is what would break the invariant below and duplicate the ticket. The write must be **committed** — file contents AND the directory entry — before `jira create` is issued, not merely issued before it. (Same atomic temp-then-rename convention the rest of the harness uses for state files; it also makes a torn/partial JSON record unrepresentable.)
-   - **Canonicalize the identity before keying on it.** An identity is only stable if two invocations of the same intent produce the same key. Resolve every reference to its canonical form FIRST — `new-task` accepts `<JIRA-KEY>`, `#N`, *or* bare numeric for the same parent, so keying on the raw argument makes `123`, `#123`, and `HIMMEL-123` three different identities, three different nonces, and a retry that misses its own marker. Key on the resolved epic's canonical identity (its dir / Jira key), not on what the operator typed.
+   - **Canonicalize the identity before keying on it.** An identity is only stable if two invocations of the same intent produce the same key. Resolve every reference to its canonical form FIRST — `new-task` accepts `<JIRA-KEY>`, `#N`, *or* bare numeric for the same parent, so keying on the raw argument makes `123`, `#123`, and `PROJ-123` three different identities, three different nonces, and a retry that misses its own marker. Key on the resolved epic's canonical identity (its dir / Jira key), not on what the operator typed.
    - **The promote intent record does NOT share `.last-consolidate.json`.** That file is the suggestion cache — step 1 reads it back to resolve `<N>` — so multiplexing the intent record through it lets either write destroy the other's state (lose the suggestion and `apply <N>` cannot resolve; lose the nonce and the retry duplicates the epic). Keep the cache and the intent store as separate files with separate lifetimes.
 3. **Look up the marker** — `jira list --jql 'project = <key> AND labels = "handover-idem-<nonce>"'` — and apply the verdict table below. **Whether "empty" may be read as "absent" depends entirely on whether an attempt could already have been issued, and the intent record is what tells you:**
    - **FIRST entry (no pre-existing record)** — no attempt has been made, so nothing can exist to find. Empty means absent, immediately. **This is the common path and it never waits.**
@@ -143,7 +143,7 @@ The six-step ordering:
    Note the asymmetry is deliberate: the cost of stopping is a rare manual check (the ambiguous state needs a crash inside the millisecond window between the record committing and the create being issued, *or* index lag beyond the budget — both rare); the cost of guessing is a duplicate remote ticket. Rare × safe beats rare × unrecoverable.
 4. **Create with the marker** — `jira create --labels handover-idem-<nonce> …`. The label is part of the create PAYLOAD, so the issue is created WITH its marker or not at all — there is no window in which the issue exists but is unfindable.
 
-   **The body goes in a file, never inline.** Write it to a temp file and pass `--desc-file <body-file>`; this is a handover workflow rule (a long body stays out of the shell line), not a `jira create` restriction. `jira create` also refuses a Task, Story or Bug with no `--sector "<Sector>"`, or with neither `--parent <epic-key>` nor `--labels standalone` (HIMMEL-6223): add `--sector` to every create below (a task inherits its parent epic's Sector, ask the operator when it has none) and `--labels standalone` (joined with the idem label as `handover-idem-<nonce>,standalone`) to a parentless Story. `jira create` lints the body from `--desc-file` and from inline `--desc` alike and refuses a Task, Story or Bug body that lacks the plain block. The block is these headings in order: `## Impact` (who notices, plain words), `## What`, `## Why`, `## Plan` (a real numbered line), `## DoD` (a real bullet), `## Agent detail` (files, contract, suites). An Epic body only warns. Template: `scripts/jira/src/plain-block.ts`.
+   **The body goes in a file, never inline.** Write it to a temp file and pass `--desc-file <body-file>`; this is a handover workflow rule (a long body stays out of the shell line), not a `jira create` restriction. `jira create` also refuses a Task, Story or Bug with no `--sector "<Sector>"`, or with neither `--parent <epic-key>` nor `--labels standalone`: add `--sector` to every create below (a task inherits its parent epic's Sector, ask the operator when it has none) and `--labels standalone` (joined with the idem label as `handover-idem-<nonce>,standalone`) to a parentless Story. `jira create` lints the body from `--desc-file` and from inline `--desc` alike and refuses a Task, Story or Bug body that lacks the plain block. The block is these headings in order: `## Impact` (who notices, plain words), `## What`, `## Why`, `## Plan` (a real numbered line), `## DoD` (a real bullet), `## Proof` (the planned verification), `## Agent detail` (files, contract, suites). An Epic body only warns. Template: `scripts/jira/src/plain-block.ts`.
 
    **A failed create is OUTCOME-UNKNOWN, not "did not happen" — it must NEVER fall through to the offline `#N` path on its own.** A timeout, a dropped connection, or any non-zero exit can be returned *after* Jira already accepted the request, so a create that reports failure may well have landed. Auto-filing a local `#N` item there strands a real, marked remote issue against local state committed under a *different* identity — split state a later retry can then "adopt" into. This is also the **worst** place to trust an empty lookup: the attempt was seconds ago, so index lag is at its most likely.
 
@@ -199,7 +199,7 @@ The `rc != 0` row is the point of the table. A broken or 5xx query prints an err
 
 **Why the nonce is NOT a hash of the item's identity.** A label is permanent; the local record is cleared on success. An identity-keyed marker would therefore make the create idempotent FOREVER, not just for one in-flight creation. The operator legitimately files a second standalone with the same name in the same bucket months later; its lookup would find the FIRST issue's label, adopt its Jira key, and refuse to file the legitimate new ticket — silently binding the new item to the old, closed item's ticket. A per-attempt nonce has no afterlife: once the record is cleared the old marker is inert. The IDENTITY keys the RECORD (so a retry finds it across renames); the NONCE keys the MARKER (so it cannot go sticky). They are not the same thing.
 
-**Bounded scope — concurrency is neither prevented nor detected, and this protocol does not improve it.** Two concurrent runs on the same identity each mint their own nonce, each looks up a marker no issue carries, each creates, and the two issues carry DIFFERENT markers — no later lookup ever returns >1. Both finish green with two tickets. Preventing the race needs cross-process locking, which is out of scope by decision, not omission — tracked as **HIMMEL-1132**. The `> 1` row survives only as a defensive canary for genuine marker reuse (a nonce collision, a hand-copied record), NOT as a concurrency story.
+**Bounded scope — concurrency is neither prevented nor detected, and this protocol does not improve it.** Two concurrent runs on the same identity each mint their own nonce, each looks up a marker no issue carries, each creates, and the two issues carry DIFFERENT markers — no later lookup ever returns >1. Both finish green with two tickets. Preventing the race needs cross-process locking, which is out of scope by decision, not omission — parked until two sessions racing one slug is worth a lock. The `> 1` row survives only as a defensive canary for genuine marker reuse (a nonce collision, a hand-copied record), NOT as a concurrency story.
 
 **Residuals:**
 - `jira edit --labels` is FULL-REPLACE (it sets, not appends). Any label edit on an issue between its create and its record-clear silently strips the marker and strands the intent record.
@@ -290,7 +290,7 @@ Rules:
         roadmap.md                       ← NEW in v2
         tech-debt.md                     ← NEW in v2
 
-      # FLAT LAYOUT (pre-HIMMEL-129; still supported as fallback)
+      # FLAT LAYOUT (used when no recognized source-bucket dir exists)
       epics/
         #N-<slug>/
           master-plan.md
@@ -314,7 +314,7 @@ Rules:
           reviewer-notes.md
           next-session-1.md
 
-      # BUCKET LAYOUT (HIMMEL-129; active when any recognized source-bucket dir exists)
+      # BUCKET LAYOUT (active when any recognized source-bucket dir exists)
       himmel/                            ← Jira-prefix HIMMEL-* lands here
         epics/<KEY-or-#N>-<slug>/...
         standalones/<KEY-or-#N>-<slug>/...
@@ -327,7 +327,7 @@ Rules:
       cross/                             ← cross-repo work; no Jira prefix
         epics/...
         standalones/...
-      <extra>/                           ← e.g. salus/ — source_buckets_extra (HIMMEL-307); explicit-only, no Jira-prefix route
+      <extra>/                           ← e.g. salus/ — source_buckets_extra; explicit-only, no Jira-prefix route
         epics/...
         standalones/...
 ```

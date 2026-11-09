@@ -26,15 +26,16 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/installer-pins.XXXXXX") || exit 1; trap 'rm -r
 
 # ── Upstream fixtures (real) ────────────────────────────────────────────────
 FIXTURE_BUN_SHASUMS='bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c  bun-linux-x64.zip'
-FIXTURE_UV_SHA256='f29c3e94ffabd7e6f3ba521dba169a9b7ec12100bf3257087f0f24f6123f3645  uv-x86_64-unknown-linux-gnu.tar.gz'
+FIXTURE_UV_SHA256='c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83  uv-x86_64-unknown-linux-gnu.tar.gz'
 FIXTURE_RTK_CHECKSUMS='21c4a2e30879ce49ebd939fa338c99208871ba591da9feeb483f2ed266fe7163  rtk_1.1.0-1_amd64.deb'
 FIXTURE_NODE_TARBALL='d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997  node-v26.13.0-linux-x64.tar.xz'
 FIXTURE_NODE_BIN='0adde40d1b7dfa57c8bc83cbc319758c3ec6ebba21363bb2fa752ea6b267ad1b  node-v26.13.0-linux-x64/bin/node'
 FIXTURE_CLAUDE_MANIFEST_LINUX_X64='708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7b54249ebf0bd'
-FIXTURE_NVM_INSTALL='48a0eee9a60e07422dce0eb5774754c83889570ca1ee2566c516acbe8af03a9e  install.sh'
-FIXTURE_NVM_TAG_COMMIT='a885b885fef16fac4bc544188fb25e9e37ae83e8'
+FIXTURE_NVM_INSTALL='045932fe05f0d4247c946f2ec0ec4026dbfd8ce88a5f67ea28d8ea833227f48b  install.sh'
+FIXTURE_NVM_TAG_COMMIT='4e8758a801eea9479b32a904f31093e410ddaba4'
 FIXTURE_CERTIFI_WHEEL='e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1'
 FIXTURE_CERTIFI_SDIST='a9895e6e2758b371e0545e321a3a8fd1fcfd9829ada8824a936dfb16aaaf36cd'
+FIXTURE_TLA2TOOLS='936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88  tla2tools.jar'
 
 echo "installers: no unpinned curl-pipe, no moving alias"
 no_match() { grep -Eq -- "$1" "$2"; [ $? -eq 1 ]; }
@@ -58,7 +59,7 @@ if [ -f "$pins" ]; then
   # shellcheck disable=SC1090
   . "$pins"
   check "uv sha256"            test "${UV_SHA256:-}  uv-x86_64-unknown-linux-gnu.tar.gz" = "$FIXTURE_UV_SHA256"
-  check "uv version 0.13.6"    test "${UV_VERSION:-}" = "0.13.6"
+  check "uv version 0.13.7"    test "${UV_VERSION:-}" = "0.13.7"
   check "bun sha256 (1.4.4)"   test "$(bun_sha256 1.4.4 2>/dev/null):  bun-linux-x64.zip" = "${FIXTURE_BUN_SHASUMS%%  *}:  bun-linux-x64.zip"
   check "rtk deb sha256"       test "${RTK_DEB_SHA256:-}  rtk_${RTK_VERSION:-}-1_amd64.deb" = "$FIXTURE_RTK_CHECKSUMS"
   check "node tarball sha256"  test "${NODE_TARBALL_SHA256:-}  node-v${NODE_VERSION:-}-linux-x64.tar.xz" = "$FIXTURE_NODE_TARBALL"
@@ -66,7 +67,12 @@ if [ -f "$pins" ]; then
   check "claude linux-x64 sha256" test "${CLAUDE_LINUX_X64_SHA256:-}" = "$FIXTURE_CLAUDE_MANIFEST_LINUX_X64"
   check "nvm install.sh sha256" test "${NVM_INSTALL_SHA256:-}  install.sh" = "$FIXTURE_NVM_INSTALL"
   check "nvm tag commit"       test "${NVM_COMMIT:-}" = "$FIXTURE_NVM_TAG_COMMIT"
-  check "nvm tag v0.40.8"      test "${NVM_TAG:-}" = "v0.40.8"
+  check "nvm tag v0.41.0"      test "${NVM_TAG:-}" = "v0.41.0"
+  check "tla2tools sha256 (1.7.4)" test "${TLA2TOOLS_SHA256:-}  tla2tools.jar" = "$FIXTURE_TLA2TOOLS"
+  check "tla2tools version 1.7.4"  test "${TLA2TOOLS_VERSION:-}" = "1.7.4"
+  check "run.ts TLC_SHA256 equals the tla2tools pin" grep -qF "const TLC_SHA256 = \"$TLA2TOOLS_SHA256\";" "$repo_root/marketplace/plugins/pstack/skills/statechart/scripts/run.ts"
+  check "model-check-report.sh sha equals the tla2tools pin" grep -qx "sha=$TLA2TOOLS_SHA256" "$repo_root/scripts/handover/chief-kit/model-check-report.sh"
+  check "statechart probe pins the tla2tools sha" grep -qF "STATECHART_TLC_SHA256 = '$TLA2TOOLS_SHA256'" "$repo_root/scripts/himmelctl/lib/probes.js"
   check "pinned node major == .nvmrc major" test "${NODE_VERSION%%.*}" = "$(tr -d '[:space:]v' < "$repo_root/.nvmrc" | cut -d. -f1)"
   check "bun sha table covers .bun-version" test -n "$(bun_sha256 "$(tr -d '[:space:]' < "$repo_root/.bun-version")" 2>/dev/null)"
   # shellcheck disable=SC2016 # the inner shell expands $1
@@ -104,13 +110,16 @@ EOF
 fi
 
 echo "certifi: pinned past the emSign-compromised release"
-for f in requirements-scrapling.txt requirements-whisper.txt; do
-  p="$repo_root/marketplace/plugins/obsidian-triage/tools/$f"
-  check "$f pins certifi==2026.10.23"      grep -q '^certifi==2026\.10\.23 ' "$p"
-  check "$f no longer pins certifi 2026.7.22" no_match '^certifi==2026\.7\.22' "$p"
-  check "$f carries the wheel hash"        grep -q "sha256:$FIXTURE_CERTIFI_WHEEL" "$p"
-  check "$f carries the sdist hash"        grep -q "sha256:$FIXTURE_CERTIFI_SDIST" "$p"
-done
+f=requirements-scrapling.txt
+p="$repo_root/marketplace/plugins/obsidian-triage/tools/$f"
+check "$f pins certifi==2026.10.23"      grep -q '^certifi==2026\.10\.23 ' "$p"
+check "$f no longer pins certifi 2026.7.22" no_match '^certifi==2026\.7\.22' "$p"
+check "$f carries the wheel hash"        grep -q "sha256:$FIXTURE_CERTIFI_WHEEL" "$p"
+check "$f carries the sdist hash"        grep -q "sha256:$FIXTURE_CERTIFI_SDIST" "$p"
+# huggingface-hub 2.x replaced httpx (and its certifi dependency) with httpx2, which
+# resolves CAs through truststore, so the whisper closure carries no certifi at all.
+p="$repo_root/marketplace/plugins/obsidian-triage/tools/requirements-whisper.txt"
+check "requirements-whisper.txt carries no certifi (httpx2 uses truststore)" no_match '^certifi==' "$p"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

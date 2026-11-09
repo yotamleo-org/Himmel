@@ -146,13 +146,13 @@ bash "$lib/wire-pretooluse-hooks.sh"  "$PSET" '$CLAUDE_PROJECT_DIR' >/dev/null
 check "project HIMMEL_REPO row scope"   "$(jq -r --arg p "$(cd "$td/proj/.claude" && pwd -P)/settings.json" 'select(.unit=="/env/HIMMEL_REPO" and .path==$p) | .scope' "$LEDGER")" "project"
 bash "$lib/wire-pretooluse-hooks.sh"  --sessionstart "$PSET" '$CLAUDE_PROJECT_DIR' "inject-initiative.sh" >/dev/null
 prow() { jq -c --arg u "$1" --arg p "$(cd "$td/proj/.claude" && pwd -P)/settings.json" 'select(.unit==$u and .path==$p)' "$LEDGER"; }
-check "project: one /hooks row for the created hooks object (HIMMEL-3389)" "$(prow /hooks | grep -c .)" "1"
+check "project: one /hooks row for the created hooks object" "$(prow /hooks | grep -c .)" "1"
 check "project: /hooks op=create"       "$(prow /hooks | field .op)" "create"
 check "project: /hooks pre absent"      "$(prow /hooks | field .pre.state)" "absent"
 check "project: /hooks writer"          "$(prow /hooks | field .writer)" "wire-pretooluse-hooks.sh"
 check "project PreToolUse rows scope"   "$(jq -r --arg p "$(cd "$td/proj/.claude" && pwd -P)/settings.json" 'select(.unit=="/hooks/PreToolUse" and .path==$p) | .scope' "$LEDGER" | sort -u)" "project"
 
-echo "==== AN EXPLICIT JSON null PRE-STATE IS RECORDED AS null, NOT AS ABSENT (HIMMEL-3352) ===="
+echo "==== AN EXPLICIT JSON null PRE-STATE IS RECORDED AS null, NOT AS ABSENT ===="
 # `"statusLine": null` / `"env": null` / `"env": {"K": null}` are present-with-null:
 # the row must be pre.state=present with the sha of `null` (and a backup, since the
 # wire replaces it), so a rollback restores the null instead of deleting the key.
@@ -187,7 +187,7 @@ bash "$lib/wire-himmel-repo.sh" "$d/settings.json" "$HIMMEL_FAKE" >/dev/null
 check "a null SIBLING key leaves the wired key a create" "$(null_rows "$d" /env/HIMMEL_REPO | field .op)" "create"
 check "a null SIBLING key leaves the wired key absent"   "$(null_rows "$d" /env/HIMMEL_REPO | field .pre.state)" "absent"
 
-echo "==== A LEADING ~ IN CLAUDE_CONFIG_DIR IS EXPANDED WHEN CLASSIFYING SCOPE (HIMMEL-3352) ===="
+echo "==== A LEADING ~ IN CLAUDE_CONFIG_DIR IS EXPANDED WHEN CLASSIFYING SCOPE ===="
 # The settings file sits in the user's config dir, spelled `~/tildecfg` in
 # CLAUDE_CONFIG_DIR. Every recorder must classify it `user`, as the hud's own
 # getClaudeConfigDir() does; unexpanded, `cd '~/tildecfg'` fails and it reads `project`.

@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
-  apply, claim, coreBypass, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
+  apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
   JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, rmRunSummary, signSpec, specCheck, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
@@ -22,6 +23,7 @@ vi.mock('node:child_process', async (orig) => {
   return { ...m, execFileSync };
 });
 import type { EventRow, IssueSnap, OperatorRow, RequestRow, RulingRow } from './types.js';
+import type { Getter } from './version-writes.js';
 import { appendAdmission, readAdmissions } from '../commands/admissions-ledger.js';
 import { appendChain, breakStaleLock, loadKey, readChain, withLockAsync, writeSigned } from './ledger.js';
 
@@ -40,6 +42,14 @@ class FakeJira implements JiraPort {
     return { id: this.entries.get(key) ?? 'create', ts: '' };
   }
   writes = 0;
+  lbl = new Map<string, string[]>();
+  labelPuts: Array<{ key: string; labels: string[] }> = [];
+  stuck = new Set<string>();
+  async labels(key: string) { return [...(this.lbl.get(key) ?? [])]; }
+  async removeLabels(key: string, labels: string[]) {
+    this.labelPuts.push({ key, labels: [...labels] });
+    this.lbl.set(key, (this.lbl.get(key) ?? []).filter((x) => !labels.includes(x) || this.stuck.has(x)));
+  }
   async fixVersions(key: string) { return [...(this.fv.get(key) ?? [])]; }
   async setFixVersion(key: string, op: 'add' | 'remove', v: string) {
     this.writes++;
@@ -234,6 +244,71 @@ describe('release engine', () => {
     expect((await applyThenReplay(r.id)).phase).toBe('receipted');
     const rows = readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
     expect(rows.map((x) => [x.kind, x.key, x.version, x.ruling])).toEqual([['rm-admit', 'K-2', 'v1', r.id]]);
+  });
+
+  describe('proposed-* labels close with their ruling', () => {
+    const intake = (key = 'K-2') => {
+      const q = request(ctx(), { verb: 'INTAKE', key, from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      return q;
+    };
+
+    it('an applied INTAKE ADMIT removes every proposed-* label and keeps backlog and the rest', async () => {
+      await setup();
+      jira.lbl.set('K-2', ['backlog', 'proposed-v1.2', 'proposed-v2', 'phase:build', 'held', 'scope-v1']);
+      const r = admit(intake().req);
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.labelPuts).toEqual([{ key: 'K-2', labels: ['proposed-v1.2', 'proposed-v2'] }]);
+      expect(jira.lbl.get('K-2')).toEqual(['backlog', 'phase:build', 'held', 'scope-v1']);
+    });
+
+    it.each([
+      ['BACKLOG', { kind: 'none' as const, from_v: null, to_v: null }],
+      ['AD-HOC', { kind: 'none' as const, from_v: null, to_v: null }],
+    ])('an applied INTAKE %s ruling clears the label too', async (outcome, op) => {
+      await setup();
+      jira.lbl.set('K-2', ['backlog', 'proposed-backlog']);
+      const r = admit(intake().req, { outcome, op });
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.lbl.get('K-2')).toEqual(['backlog']);
+    });
+
+    it('a replay and an already-clean ticket make no label write', async () => {
+      await setup();
+      jira.lbl.set('K-2', ['proposed-v1.2']);
+      const r = admit(intake().req);
+      expect((await applyThenReplay(r.id)).phase).toBe('receipted');
+      await apply(ctx(rmEnv), r.id);
+      expect(jira.labelPuts).toHaveLength(1);
+
+      const r3 = admit(intake('K-3').req);
+      jira.lbl.set('K-3', ['backlog']);
+      await apply(ctx(rmEnv), r3.id);
+      expect(jira.labelPuts).toHaveLength(1);
+    });
+
+    it('a label Jira still reports after the remove fails the apply, names it, and posts no receipt', async () => {
+      await setup();
+      jira.lbl.set('K-2', ['proposed-v1.2']);
+      jira.stuck.add('proposed-v1.2');
+      const r = admit(intake().req);
+      await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow(/K-2.*proposed-v1\.2/);
+      expect(jira.posted).toBe(0);
+      jira.stuck.clear();
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.lbl.get('K-2')).toEqual([]);
+    });
+
+    it('a non-INTAKE verb leaves every label alone', async () => {
+      await setup();
+      jira.lbl.set('K-1', ['proposed-v1', 'backlog']);
+      const q = request(ctx(), { verb: 'REVERSION', key: 'K-1', from_v: 'v1', to_v: 'v2', why: 'w', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: 'v1', to_v: 'v2' }, supersedes: ['baseline-v1-g1'] });
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.labelPuts).toEqual([]);
+      expect(jira.lbl.get('K-1')).toEqual(['proposed-v1', 'backlog']);
+    });
   });
 
   it('an INTAKE ADMIT with an unwritable ledger refuses before Jira is touched', async () => {
@@ -2122,5 +2197,234 @@ describe('version-repair entry check and held state', () => {
       operatorDecision(ctx(), { decision: '200', keys: ['K-2'], op: 'remove', from_v: 'v1', to_v: null, verbatim: 'x' });
       expect(latestReq(q.req)?.state).toMatch(/^withdrawn:/);
     });
+  });
+});
+
+describe('release bucket-check verdict', () => {
+  const env = () => ({ HIMMEL_RELEASE_STATE_DIR: join(root, 'release'), HIMMEL_RELEASE_KEY_DIR: join(root, 'keys') });
+  const NOW = new Date('2026-11-08T12:00:00.000Z');
+  const mir = () => join(root, 'mirror');
+  const declared = () => declare(ctx(env()), { project: 'BKT', versions: ['v1.1.9', 'v1.1.10'], decision: '106', verbatim: 'R', mode: 'observe' });
+  const versions = (text = 'v1.1.8\ttrue\t2026-10-01\tfalse\nv1.1.10\tfalse\t\tfalse\nv1.1.9\tfalse\t\tfalse\n') => writeFileSync(`${mir()}.versions.tsv`, text);
+  function world(issues: Parameters<typeof mirror>[0] = []) {
+    declared();
+    mirror(issues);
+    versions();
+  }
+  function stub(answer: Record<string, string[]> | 'fail' | 'hang' = 'fail') {
+    const calls: string[] = [];
+    const get = (<T>(path: string): Promise<T> => {
+      calls.push(path);
+      if (answer === 'hang') return new Promise<T>(() => undefined);
+      if (answer === 'fail') return Promise.reject(new Error('HTTP 503'));
+      const key = /^\/issue\/([^?]+)\?/.exec(path)?.[1] ?? '';
+      return Promise.resolve({ fields: { fixVersions: (answer[key] ?? []).map((name) => ({ name })) } } as T);
+    }) as Getter;
+    return { get, calls };
+  }
+  const check = (keys: string[], s = stub(), deadlineMs = 5000) => bucketCheck(env(), keys, mir(), { get: s.get, deadlineMs, now: NOW });
+  const approve = (key: string, decision: string, ageDays: number) => appendChain(join(root, 'release', 'R1', 'operator.jsonl'), loadKey(join(root, 'keys', 'R1.key')), {
+    id: `O-R1-ov-${decision}`, kind: 'out-of-version', decision, keys: [key], ts: new Date(NOW.getTime() - ageDays * 86_400_000).toISOString(),
+  });
+
+  it('row 0, no readable mirror: FAILED by name', async () => {
+    declared();
+    versions();
+    mkdirSync(mir(), { recursive: true });
+    expect(await check(['BKT-1'])).toEqual([`FAILED BKT-1 no readable mirror at ${mir()}`]);
+  });
+
+  it('row 0, no versions file while a release.json names the project: FAILED, not NONE', async () => {
+    declared();
+    mirror([{ key: 'BKT-1', fixVersions: ['v1.1.9'] }]);
+    expect(await check(['BKT-1'])).toEqual([`FAILED BKT-1 no versions file at ${mir()}.versions.tsv while ${join(root, 'release', 'R1', 'release.json')} names BKT`]);
+  });
+
+  it('row 0, the release.json names the project, its key will not load and there is no versions file: FAILED, not NONE', async () => {
+    declared();
+    mirror([]);
+    chmodSync(join(root, 'keys', 'R1.key'), 0o644);
+    expect((await check(['BKT-1']))[0]).toMatch(/^FAILED BKT-1 no versions file at .* names BKT$/);
+  });
+
+  it('row 0, a release.json that does not parse counts as naming the project: FAILED, not NONE', async () => {
+    mkdirSync(join(root, 'release', 'R9'), { recursive: true });
+    writeFileSync(join(root, 'release', 'R9', 'release.json'), '{ not json');
+    mirror([]);
+    expect((await check(['BKT-1']))[0]).toMatch(/^FAILED BKT-1 no versions file at .* while .*\/R9\/release\.json names BKT$/);
+  });
+
+  it.each(['null', '[]', '"BKT"'])('row 0, a release.json that parses to %s is no declaration and counts as naming the project', async (body) => {
+    mkdirSync(join(root, 'release', 'R9'), { recursive: true });
+    writeFileSync(join(root, 'release', 'R9', 'release.json'), body);
+    mirror([]);
+    expect((await check(['BKT-1']))[0]).toMatch(/^FAILED BKT-1 no versions file at .* while .*\/R9\/release\.json names BKT$/);
+    versions();
+    expect((await check(['BKT-1']))[0]).toMatch(/^FAILED BKT-1 .*\/R9\/release\.json does not parse, so the declared current cannot be read$/);
+  });
+
+  it('row 0, an argument that is not a ticket key: FAILED by name', async () => {
+    world([]);
+    expect(await check(['not-a-key'])).toEqual(['FAILED not-a-key is not a ticket key']);
+  });
+
+  it('row 0, a release root that cannot be read: FAILED by name', async () => {
+    mirror([]);
+    versions();
+    writeFileSync(join(root, 'not-a-dir'), 'x');
+    const lines = await bucketCheck({ ...env(), HIMMEL_RELEASE_STATE_DIR: join(root, 'not-a-dir') }, ['BKT-1'], mir(), { get: stub().get, deadlineMs: 5000, now: NOW });
+    expect(lines[0]).toMatch(/^FAILED BKT-1 the release root cannot be read: ENOTDIR/);
+  });
+
+  it('row 0, a versions file that cannot be read: FAILED by name', async () => {
+    declared();
+    mirror([]);
+    mkdirSync(`${mir()}.versions.tsv`);
+    expect((await check(['BKT-1']))[0]).toMatch(/^FAILED BKT-1 the versions file .*mirror\.versions\.tsv cannot be read: EISDIR/);
+  });
+
+  it('row 0, a release.json that does not parse while a versions file exists: FAILED, the declared current unreadable', async () => {
+    world([{ key: 'BKT-1', fixVersions: ['v1.1.9'] }]);
+    mkdirSync(join(root, 'release', 'R9'), { recursive: true });
+    writeFileSync(join(root, 'release', 'R9', 'release.json'), '{ not json');
+    expect(await check(['BKT-1'])).toEqual([`FAILED BKT-1 ${join(root, 'release', 'R9', 'release.json')} does not parse, so the declared current cannot be read`]);
+  });
+
+  it('row 0, a versions file with no current version: FAILED by name', async () => {
+    world([{ key: 'BKT-1', fixVersions: ['v1.1.9'] }]);
+    versions('v1.1.9\ttrue\t2026-11-01\tfalse\nv1.1.10\tfalse\t\ttrue\nzz-tmp\tfalse\t\tfalse\n');
+    expect(await check(['BKT-1'])).toEqual([`FAILED BKT-1 the versions file ${mir()}.versions.tsv has no current version`]);
+  });
+
+  it('row 0, the declared current differs from the versions-file current: FAILED naming both', async () => {
+    world([{ key: 'BKT-1', fixVersions: ['v1.1.10'] }]);
+    versions('v1.1.9\ttrue\t2026-11-01\tfalse\nv1.1.10\tfalse\t\tfalse\n');
+    expect((await check(['BKT-1']))[0]).toMatch(/^FAILED BKT-1 the declared current v1\.1\.9 \(.*R1\/release\.json\) differs from the versions-file current v1\.1\.10$/);
+  });
+
+  it('row 0, a failed live read: FAILED by name', async () => {
+    world([{ key: 'BKT-1', fixVersions: ['v1.1.10'] }]);
+    expect(await check(['BKT-1'], stub('fail'))).toEqual(['FAILED BKT-1 the live read of BKT-1 failed: HTTP 503']);
+  });
+
+  it('row 0, a hung live read is FAILED inside the deadline', async () => {
+    world([{ key: 'BKT-1', fixVersions: ['v1.1.10'] }]);
+    const started = Date.now();
+    expect(await check(['BKT-1'], stub('hang'), 50)).toEqual(['FAILED BKT-1 the live read of BKT-1 failed: no answer within 50 ms']);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('row 1, a readable mirror, no versions file and no release naming the project: NONE with the mirror, and no fetch', async () => {
+    const other = { ...ctx(env()), release: 'S1', dir: join(root, 'release', 'S1'), keyPath: join(root, 'keys', 'S1.key') };
+    declare(other, { project: 'SALUS', versions: ['v2'], decision: '1', verbatim: 'S', mode: 'observe' });
+    mirror([{ key: 'ADOPT-1', fixVersions: [] }]);
+    const s = stub('fail');
+    expect(await check(['ADOPT-1'], s)).toEqual([`NONE ADOPT-1 ${mir()}`]);
+    expect(s.calls).toEqual([]);
+  });
+
+  it('row 2, an approval under 14 days: APPROVED with its decision, and a failing fetch is never asked', async () => {
+    world([{ key: 'BKT-2', fixVersions: ['v1.1.10'] }]);
+    approve('BKT-2', '901', 1);
+    const s = stub('fail');
+    expect(await check(['BKT-2'], s)).toEqual(['APPROVED BKT-2 decision=901 record=O-R1-ov-901']);
+    expect(s.calls).toEqual([]);
+  });
+
+  it('row 3, the mirror says Done: DONE, ahead of a key the mirror holds in current, and a failing fetch is never asked', async () => {
+    world([{ key: 'BKT-3', fixVersions: ['v1.1.9'], category: 'Done' }, { key: 'BKT-4', fixVersions: ['v1.1.4'], category: 'Done' }]);
+    const s = stub('fail');
+    expect(await check(['BKT-3', 'BKT-4'], s)).toEqual(['DONE BKT-3', 'DONE BKT-4']);
+    expect(s.calls).toEqual([]);
+  });
+
+  it('row 4, the mirror holds it in current: IN with no fetch; a key the mirror lacks that Jira holds in current: IN', async () => {
+    world([{ key: 'BKT-5', fixVersions: ['v1.1.9'] }]);
+    const s = stub({ 'BKT-6': ['v1.1.9'] });
+    expect(await check(['BKT-5'], s)).toEqual(['IN BKT-5 current=v1.1.9 via=mirror']);
+    expect(s.calls).toEqual([]);
+    expect(await check(['BKT-6'], s)).toEqual(['IN BKT-6 current=v1.1.9 via=jira']);
+    expect(s.calls).toEqual(['/issue/BKT-6?fields=fixVersions']);
+  });
+
+  it('row 5, anything else: OUTSIDE with the version, current and the open count, after exactly one fetch', async () => {
+    world([
+      { key: 'BKT-7', fixVersions: ['v1.1.10'] }, { key: 'BKT-8', fixVersions: ['v1.1.9'] }, { key: 'BKT-9', fixVersions: ['v1.1.9'], status: 'In Progress' },
+      { key: 'BKT-10', fixVersions: ['v1.1.9'], category: 'Done' }, { key: 'BKT-11', fixVersions: [] },
+    ]);
+    const s = stub({ 'BKT-7': ['v1.1.10'] });
+    expect(await check(['BKT-7', 'BKT-11'], s)).toEqual(['OUTSIDE BKT-7 v1.1.10 current=v1.1.9 open=2', 'OUTSIDE BKT-11 none current=v1.1.9 open=2']);
+    expect(s.calls).toEqual(['/issue/BKT-7?fields=fixVersions', '/issue/BKT-11?fields=fixVersions']);
+  });
+
+  it('no ledger IN: an add record into current on a key neither the mirror nor Jira holds there reads OUTSIDE', async () => {
+    world([{ key: 'BKT-12', fixVersions: [] }]);
+    operatorDecision(ctx(env()), { decision: '500', keys: ['BKT-12'], op: 'add', from_v: null, to_v: 'v1.1.9', verbatim: 'add it' });
+    expect(await check(['BKT-12'], stub({}))).toEqual(['OUTSIDE BKT-12 none current=v1.1.9 open=0']);
+  });
+
+  it('an approval 15 days old reads OUTSIDE; one 13 days old on a Done key reads APPROVED', async () => {
+    world([{ key: 'BKT-13', fixVersions: ['v1.1.10'] }, { key: 'BKT-14', fixVersions: ['v1.1.10'], category: 'Done' }]);
+    approve('BKT-13', '902', 15);
+    approve('BKT-14', '903', 13);
+    expect(await check(['BKT-13', 'BKT-14'], stub({ 'BKT-13': ['v1.1.10'] })))
+      .toEqual(['OUTSIDE BKT-13 v1.1.10 current=v1.1.9 open=0', 'APPROVED BKT-14 decision=903 record=O-R1-ov-903']);
+  });
+
+  it('an approval past a broken chain reads OUTSIDE', async () => {
+    world([{ key: 'BKT-15', fixVersions: ['v1.1.10'] }]);
+    approve('BKT-15', '904', 1);
+    const ledger = join(root, 'release', 'R1', 'operator.jsonl');
+    writeFileSync(ledger, readFileSync(ledger, 'utf8').replace('standing record: an evidenced', 'standing record: an edited'));
+    expect(await check(['BKT-15'], stub({ 'BKT-15': ['v1.1.10'] }))).toEqual(['OUTSIDE BKT-15 v1.1.10 current=v1.1.9 open=0']);
+  });
+
+  it('current is the pool\'s rule: next-dispatchable.sh and the verdict pick v1.1.9 over v1.1.10, an archived and a zz- version', () => {
+    const tsv = 'v1.1.10\tfalse\t\tfalse\nzz-scratch\tfalse\t\tfalse\nv1.1.8\tfalse\t\ttrue\nv1.1.9\tfalse\t\tfalse\nv1.1.7\ttrue\t2026-01-01\tfalse\n';
+    const m = join(root, 'jira-mirror', 'HIMMEL');
+    mkdirSync(m, { recursive: true });
+    writeFileSync(`${m}.versions.tsv`, tsv);
+    writeFileSync(join(m, 'HIMMEL-1.md'), '---\nkey: "HIMMEL-1"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\npriority: "Medium"\nlabels: []\n'
+      + 'fixVersions: ["v1.1.9"]\nparent: null\n---\n\n# HIMMEL-1: x\n');
+    const git = join(root, 'git');
+    mkdirSync(git);
+    execFileSync('git', ['-C', git, 'init', '-q', '-b', 'main']);
+    execFileSync('git', ['-C', git, '-c', 'user.name=t', '-c', 'user.email=t@e', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-q', '--allow-empty', '-m', 'init']);
+    writeFileSync(join(root, 'gh'), '#!/bin/sh\necho "[]"\n', { mode: 0o755 });
+    writeFileSync(join(root, 'jira.js'), "const a = process.argv.slice(2);\nfor (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);\n");
+    mkdirSync(join(root, 'home'));
+    const nd = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'handover', 'chief-kit', 'next-dispatchable.sh');
+    const r = spawnSync('bash', [nd, '--mirror', m, '--no-classify', '--top', '5'], {
+      encoding: 'utf8',
+      env: {
+        PATH: process.env.PATH, HOME: join(root, 'home'), HANDOVER_DIR: join(root, 'home'), TICKET_STATUS_STATE_DIR: join(root, 'ts'),
+        HIMMEL_ADMISSIONS_LEDGER: join(root, 'none.jsonl'), NEXT_DISPATCH_GIT_DIR: git, NEXT_DISPATCH_MAIN_REF: 'main',
+        NEXT_DISPATCH_BODY_CACHE: 'off', NEXT_DISPATCH_GH_CMD: join(root, 'gh'), NEXT_DISPATCH_JIRA_CLI: join(root, 'jira.js'),
+      },
+    });
+    const pool = /^# dropped from (\S+):/m.exec(r.stdout)?.[1];
+    expect(pool, r.stdout + r.stderr).toBe('v1.1.9');
+    expect(poolCurrent(tsv)).toBe(pool);
+  });
+});
+
+describe('operatorWords', () => {
+  it('a Verbatim: line with the words below it, under a chief header (699): the block, quotes dropped', () => {
+    const f = 'Decision 699, operator, 2026-11-06, relayed by the bridge chat to chief TA.\n\nVerbatim:\n"9001 signed"\n\nReading is the bridge\'s, unconfirmed: signs HIMMEL-9001 v2.\n';
+    expect(operatorWords(f)).toBe('9001 signed');
+  });
+
+  it('the words on the Verbatim: line itself, chief text straight below (662): that line only', () => {
+    const f = 'Operator, 2026-11-06, SM window, answering SM\'s two questions.\nVerbatim: "1 ok 2. yes"\nDecision 662 is the "1 ok" part.\nRead, unconfirmed: the paid run is approved.\n';
+    expect(operatorWords(f)).toBe('1 ok 2. yes');
+  });
+
+  it('a file with no Verbatim: line (684) is refused, naming the fix', () => {
+    expect(() => operatorWords('when fallback is enabled, in general we don\'t auto move things to api\n')).toThrow(/no line starting 'Verbatim:'; add one/);
+  });
+
+  it('two Verbatim: lines (545): the first block only', () => {
+    const f = 'Decision 545 — operator, 2026-11-04, QX console\n\nVerbatim: "HIMMEL-8967 A"\n\nChief then listed 25 keys.\n\nVerbatim: "ok but 2 and 3 needs to be in 1.1.3"\n';
+    expect(operatorWords(f)).toBe('HIMMEL-8967 A');
   });
 });

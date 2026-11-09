@@ -43,11 +43,16 @@
 #                               line for a listed row; versionless operator work adds the
 #                               `# intake <m> for <version>: <keys>` line and an `# INTAKE:` line naming the
 #                               command that files their INTAKE requests;
-#                               a LOW, INTAKE or empty pool (short of its slots) adds a second pass
+#                               a LOW, INTAKE or empty pool (short of its slots) with no declared
+#                               release (no `# dropped from <version>:` line) adds a second pass
 #                               without it, its rows not already in the pool under
-#                               `# version backlog`, and the wake line then carries
+#                               `# version backlog`; a declared release runs no second pass,
+#                               offers no row of another version and prints the rows left in
+#                               its version, each with its reason, under `# rows left in <version>`;
+#                               the wake line carries
 #                               dispatchable=<n> keys=<KEY>,..., the count and keys of
-#                               dispatchable To Do rows (also on a
+#                               the rows tick.sh --pool-dispositions calls dispatchable
+#                               (LOCAL, CLOUD, RESUME, DESIGN rows and a series' tickets; also on a
 #                               pool-unresolved wake; a pool that lists a row keeps
 #                               this wake even when every key carries a
 #                               pool-disposition: line), ` backlog=unread` when the
@@ -86,11 +91,15 @@
 #                               (its key is saved) (CHIEF_WAIT_WORKER_EVENT = seam). Every WAKE block ends with `absorbed since last
 #                               wake: wraps=<n> (<labels>) merged=<n> (#<pr>,...)` [+ ` auto-go=<n> (#<pr>,...)`
 #                               for scripted GOs] when the relay absorbed anything, and the digest clears.
-#                               With the auto_go flag on, the relay also hands every new
-#                               READY bullet of a manifest worker to worker-event once, after
-#                               any wrap, even when a LIVE bullet follows it inside one
-#                               sample: <inbox>.wait.ready keeps a line cursor per worker. A
-#                               worker met for the first time starts after its existing READYs.
+#                               The relay also hands every new READY bullet of a manifest
+#                               worker to worker-event once, after any wrap, even when a LIVE
+#                               bullet follows it inside one sample: <inbox>.wait.ready keeps a
+#                               line cursor per worker. A worker met for the first time starts
+#                               after its existing READYs. With the auto_go flag off only a
+#                               `READY <pr> <head40>` bullet is handed on: worker-event starts
+#                               its auto-go dry run and answers ESCALATE marker-READY,
+#                               which wakes nothing (WAKE ready below is that READY's wake);
+#                               any other answer wakes as above.
 #   WAKE resolve <worker> pr=<n> threads=<id,...>  with --workers-from: a worker doc whose newest
 #                               marker bullet is `BLOCKED resolve <pr> <PRRT_ ids>` (its
 #                               resolve call was denied). Once per bullet; the chief
@@ -98,7 +107,7 @@
 #                               tick line follows and its key is saved.
 #   WAKE ready <pr> <head40> ready-check=<PASS|FAIL> ci=<GREEN|RED|PENDING> coverage=<PASS|FAIL>
 #        disposition=<ok|open:<n>> out=<file>   with --workers-from and the auto_go flag off
-#                               (on, the relay above hands READY to worker-event): a worker doc
+#                               (on, the relay above routes READY to auto-go.sh): a worker doc
 #                               whose newest marker bullet is `READY <pr> <head40> GREEN`. Before
 #                               waking, the waiter runs `timeout -k 5 150 ready-check.sh <pr> <head>`,
 #                               one bounded CI read (`gh pr checks`; a failed read is PENDING) and
@@ -126,6 +135,22 @@
 #   WAKE size rows=<n>          gen-briefs.py refused an oversized brief or took a bulk: mechanical one
 #                               : the new SIZE-ESCALATE rows of size-override.sh's ledger
 #                               follow, once per row (marker <inbox>.wait.size). Seam: CHIEF_WAIT_SIZE.
+#   WAKE pr-watch <pr> [repo=<owner/name>] <detail>  with --workers-from: a `watch` row of the fleet manifest
+#                               (fleet-manifest.sh watch: a PR number and repo plus the head sha, comment
+#                               count, review count and state last seen; a worker waiting on an outside
+#                               event closes and the chief watches the PR instead). Every
+#                               CHIEF_WAIT_PR_WATCH_SEC (default 120) the waiter reads each row over
+#                               REST only (`gh api` on the pull request and its reviews: no GraphQL,
+#                               no `gh pr view`, no model turn) and wakes ONCE when the head, the
+#                               comment count (issue + review comments), the review count or the state
+#                               (open, closed, merged) differs from the row, <detail> being `head
+#                               <old7>→<new7> comments <o>→<n> reviews <o>→<n> state <o>→<n>` for what
+#                               moved; it then `watch set`s the row, so the
+#                               same change never wakes twice. No change is silent; a REST failure
+#                               is silent and retried next interval; a field the row left unset is a
+#                               silent baseline. Seams (tests): CHIEF_WAIT_GH replaces `gh`; CHIEF_WAIT_PR_WATCH_SEC=0
+#                               polls every sample. The repository is the row's `repo` or, as for
+#                               `gh pr checks` below, the one `gh` resolves from the waiter's cwd.
 #   WAKE succession complete <k/n>   with --succession <successor> --doc <chief doc>
 #   <tracker output>            (the successor's waiter): every inherited worker quoted
 #                               back; the block carries succession-tracker.sh's table
@@ -274,6 +299,11 @@
 # TICK_CLOSABLE_MIN minutes) wakes when it appears or changes; absent means none.
 # deadwin=<label>:closed|held (tick.sh: a worker window whose session died) wakes
 # when it appears or changes; absent means none.
+# unclosed=<label>[,<label>] (tick.sh: a worker read CLOSABLE, or WRAPPED / NOLIVE with a
+# live window, open on two ticks running with no DISPOSITION bullet in the chief doc) wakes
+# `WAKE unclosed <labels>` for each worker new to the marker `<inbox>.wait.unclosed` (the
+# labels printed are the new ones), again every CHIEF_WAIT_UNCLOSED_REWAKE_MIN (default 60)
+# while it stays; the marker clears when the field is gone. It is not part of the action key.
 # Everything else on the tick line (heartbeat, procs, fill, fleet, gql,
 # orphans...) moves without needing a chief act and never wakes. Two consecutive samples must differ from the saved key (not
 # necessarily from each other), so one failed `gh` read (prs=none for a single
@@ -313,7 +343,7 @@
 #   <inbox>.wait.r0      the bullets the relay already handled or woke for
 #                        (`<label> <marker> <cksum>`); <inbox>.wait.le-<label> holds
 #                        worker-event's last output for that worker, tokens scrubbed.
-#   <inbox>.wait.ready   with auto_go on: `<label><TAB><line>`, the last READY bullet handed on.
+#   <inbox>.wait.ready   `<label><TAB><line>`, the last READY bullet handed on to worker-event.
 #   <inbox>.wait.readywoke  with auto_go off: `<pr> <head40>`, each READY already woken for;
 #                        <inbox>.wait.ready-<pr> holds that wake's checks, tokens scrubbed.
 #   <inbox>.handover     handover mode: while it is fresh (younger
@@ -914,7 +944,7 @@ unowned_none_streak=0
 dispatch_cmd="${CHIEF_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
 pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the priority-pool pass) and pool_sig (its sorted key set)
     local budget="${1:-${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}}"
-    pool_lf=(); pool_out=""; pool_sig=""; pool_summary=""; pool_counts=""; pool_unresolved=""; pool_keys=""
+    pool_lf=(); pool_out=""; pool_sig=""; pool_summary=""; pool_counts=""; pool_unresolved=""; pool_keys=""; pool_dispatch=""; pool_left=""
     [ -r "$dispatch_cmd" ] || return 0
     case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) pool_lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
     [ -z "$console_doc" ] || pool_lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
@@ -928,14 +958,10 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
         $1 != "NEXT-TIER" && $1 != "RESUME-HELD" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
     pool_counts="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-counts //p')"
     pool_unresolved="$(printf '%s\n' "$pool_summary" | sed -n '/^# pool-unresolved /p')"
+    pool_dispatch="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-dispatchable //p')"
+    pool_left="$(printf '%s\n' "$pool_summary" | sed -n '/^# pool-left-out /p')"
     # a probe that read the pool and found nothing unresolved ends the streak: a set that returns is a change
     [ -z "$pool_out" ] || [ -n "$pool_unresolved" ] || rm -f "$pool_sig_file"
-}
-pool_row_keys() { # stdin: a pool pass; $1: its `# pool-keys` lines; prints the ticket key of each LOCAL/CLOUD row and each key of a SERIES row, one per line
-    awk -F'\t' -v pk="$1" '
-        BEGIN { n = split(pk, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, " "); if (f[2] == "SERIES") sk[f[1]] = f[3] } }
-        NR in sk { m = split(sk[NR], a, ","); for (j = 1; j <= m; j++) print a[j]; next }
-        $1 ~ /^(LOCAL\??|CLOUD)$/ && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }'
 }
 pool_view() { # stdin: the pool pass; stdout: its ticket rows grouped under a '# dispatchable in <version>' heading (the version of its '# dropped from' line), then the rest; a listed row's '# disposition' line is dropped, the row already says it
     awk -F'\t' -v pk="$pool_keys" '
@@ -983,22 +1009,26 @@ underfill_wake() {
     printf '%s\n' "$blk"
 }
 underfill_block() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
-    local back="" back_keys="" extra="" count="" dkeys="" intake_ver="" wake=underfilled short="" listed="" back_failed="" tail=""
+    local back="" back_keys="" back_dispatch="" back_summary="" extra="" count="" dkeys="" intake_ver="" wake=underfilled short="" listed="" back_failed="" tail="" declared="" left=""
     if [ -n "$pool_unresolved" ]; then wake=pool-unresolved
     else
         case "$pool_counts" in
             ''|'?') ;;
             # counted and nothing unresolved: every listed key carries a disposition, yet the slots are idle while the pool lists work
-            *) listed="$(printf '%s\n' "$pool_out" | pool_row_keys "$pool_keys")"; [ -n "$listed" ] || return 1 ;;
+            *) listed="$pool_dispatch"; [ -n "$listed" ] || return 1 ;;
         esac
     fi
-    # a LOW or empty pool leaves slots idle: a second pass without --priority-pool-only lists the version
-    # backlog (later versions included); its rows already in the pool are printed once, under their own heading
+    declared="$(printf '%s\n' "$pool_out" | sed -n 's/^# dropped from \([^:]*\):.*/\1/p' | head -n 1)"
     if printf '%s\n' "$pool_out" | awk -F'[=/,]' '/^# pool=/ && ($2 + 0) < ($3 + 0) { f = 1 } $0 == "POOL-EMPTY" { f = 1 } END { exit !f }'; then short=1; fi  # a pool short of its slots, whether the line says LOW or INTAKE:<m>
-    if [ -n "$short" ]; then
+    [ -z "$short" ] || [ -z "$declared" ] || left="$pool_left"
+    [ -n "$pool_summary" ] || [ -z "$pool_out" ] || back_failed=1
+    if [ -n "$short" ] && [ -z "$declared" ]; then
         heartbeat sampling
         back="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || { back=""; back_failed=1; }  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out second pass drops its partial rows and the wake line says backlog=unread, the pool list still prints
-        back_keys="$(printf '%s\n' "$back" | DOC='' bash "$HERE/tick.sh" --pool-dispositions 2>/dev/null | sed -n 's/^# pool-keys //p')" || back_keys=""  # swallow-ok: no keys reads a series row as an unknown row, never a wrong count
+        back_summary="$(printf '%s\n' "$back" | DOC='' bash "$HERE/tick.sh" --pool-dispositions 2>/dev/null)" || back_summary=""  # swallow-ok: no keys reads a series row as an unknown row, never a wrong count
+        back_keys="$(printf '%s\n' "$back_summary" | sed -n 's/^# pool-keys //p')"
+        back_dispatch="$(printf '%s\n' "$back_summary" | sed -n 's/^# pool-dispatchable //p')"
+        [ -n "$back_summary" ] || [ -z "$back" ] || back_failed=1
         extra="$(printf '%s\n' "$back" | awk -v pool="$pool_out" -v pk="$pool_keys" -v bk="$back_keys" '
             BEGIN {
                 n = split(pool, p, "\n"); for (i = 1; i <= n; i++) { split(p[i], f, "\t"); if (f[1] != "NEXT-TIER" && f[2] ~ /^[A-Z]+-[0-9]+$/) seen[f[2]] = 1 }
@@ -1010,7 +1040,7 @@ underfill_block() { # prints the WAKE block for the pool pool_probe just read; f
             { print }')"
     fi
     if [ -n "$short" ] || [ -n "$listed" ]; then
-        dkeys="$({ printf '%s\n' "$pool_out" | pool_row_keys "$pool_keys"; printf '%s\n' "$back" | pool_row_keys "$back_keys"; } | sort -u)"
+        dkeys="$({ printf '%s\n' "$pool_dispatch"; printf '%s\n' "$back_dispatch"; } | sed '/^$/d' | sort -u)"
         count="$(printf '%s\n' "$dkeys" | grep -c . || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no key
         # the wake line names the keys the count is of, so the chief acts on the tick's own set, never a carried list
         [ "$count" = 0 ] || dkeys="$(printf '%s\n' "$dkeys" | paste -sd, -)"
@@ -1029,6 +1059,7 @@ underfill_block() { # prints the WAKE block for the pool pool_probe just read; f
     [ "$intake_ver" != "no open version" ] || intake_ver=""  # an older dispatcher's line for no open version: nothing to file into
     [ -z "$intake_ver" ] || printf '%s\n' "# INTAKE: versionless operator work is not in the pool; file each key above with \`jira release request <release> --verb INTAKE --key <KEY> --to $(printf '%q' "$intake_ver") --why <why>\`, then run the rm-run once for the batch"
     [ -z "$extra" ] || printf '# version backlog (second pass without --priority-pool-only; rows already in the pool omitted):\n%s\n' "$extra"
+    [ -z "$left" ] || printf '# rows left in %s (not dispatchable, with the reason; a declared release offers no row of another version):\n%s\n' "$declared" "$left"
 }
 # pool_watch_wake: even a full fleet, or a failed tick sample, may have silently dropped
 # version tickets. On the CHIEF_WAIT_UNDERFILL_REPOOL_SEC cadence (marker <inbox>.wait.pool)
@@ -1110,6 +1141,16 @@ set_wake() {
     fi
     printf '%s\n' "$nums" > "$file" 2>/dev/null
     return 0
+}
+unclosed_file="$inbox.wait.unclosed"
+unclosed_wake() {
+    local items l fresh=""
+    items="$(printf '%s\n' "$1" | tr ',' '\n')"
+    for l in $items; do
+        if [ ! -f "$unclosed_file" ] || ! grep -qxF -- "$l" "$unclosed_file"; then fresh="${fresh:+$fresh,}$l"; fi
+    done
+    set_wake "$items" "$unclosed_file" "${CHIEF_WAIT_UNCLOSED_REWAKE_MIN:-60}" || return 1
+    printf '%s\n' "${fresh:-$1}"
 }
 # unwatched_wake: <unwatched= labels, `+`-joined> — a live worker the manifest does not list
 # (tick.sh already drops other chiefs' workers). Same marker logic, own marker, own window.
@@ -1434,23 +1475,19 @@ fi
 leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/worker-event.sh}"
 r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
 
-# The READY cursor. With the auto_go flag on, every READY bullet a worker
-# writes reaches worker-event once, even when a LIVE bullet follows inside the same sample (tails=
-# then never shows the READY). $ready_file holds one `<label><TAB><line>` row per worker: the line
-# of the last READY bullet already handed on. A worker met for the first time starts after the
-# READY bullets it already has, so a waiter never replays history. The flag is read every sample
-# (an unregistered flag reads as off). Flag off: nothing here reads or writes a file.
 ready_file="$inbox.wait.ready"
 ready_re='^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY([^A-Za-z]|$)'
-ready_label=""; ready_line=""; ready_bullet=""
+ready_dry_re='^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY[[:space:]]+#?[0-9]+[[:space:]]+[0-9a-f]{40}([^0-9a-f]|$)'
+ready_label=""; ready_line=""; ready_bullet=""; ready_off=""
 auto_go_on() { ( . "$HERE/../../lib/flags.sh" && himmel_flag auto_go ) >/dev/null 2>&1; }
+dry_run_ready_answer() { [ "$1" -eq 10 ] && [ "$2" = "ESCALATE marker-READY" ]; }
 ready_pick() { # sets ready_label/line/bullet to the oldest READY bullet past its worker's cursor
-    local label ldoc cur last entry
-    ready_label=""
-    auto_go_on || return 1
+    local label ldoc cur last entry re="$ready_re"
+    ready_label=""; ready_off=""
+    auto_go_on || { ready_off=1; re="$ready_dry_re"; }
     while IFS=$'\t' read -r label ldoc; do
         [ -n "$label" ] && [ -f "$ldoc" ] || continue
-        entry="$(grep -nE "$ready_re" "$ldoc")"
+        entry="$(grep -nE "$re" "$ldoc")"
         cur="$(awk -F'\t' -v l="$label" '$1 == l { c = $2 } END { print c }' "$ready_file" 2>/dev/null)"
         # a doc shorter than its cursor was replaced: start over as a worker met for the first time
         if [ -n "$cur" ] && [ "$cur" -gt "$(wc -l < "$ldoc")" ]; then cur=""; fi
@@ -1521,6 +1558,10 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             esac
         fi
         printf '%s\n' "$out" > "$outf" 2>/dev/null
+        if [ "$marker" = READY ] && [ -n "$ready_off" ] && dry_run_ready_answer "$rc" "$out"; then
+            ready_advance "$label" "$ready_line"
+            break
+        fi
         if [ "$rc" -eq 0 ]; then
             printf '%s\n' "$sum" >> "$r0_file"
             [ "$marker" != READY ] || ready_advance "$label" "$ready_line"
@@ -1600,7 +1641,7 @@ ready_wake() {
             ready_fold="$ready_fold $label"; continue
         fi
         heartbeat sampling
-        rc_out="$(timeout -k 5 150 bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        rc_out="$(timeout -k 5 150 bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" --observe "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
         if [ "$rc" -eq 0 ]; then rck=PASS; else rck=FAIL; fi
         if printf '%s\n' "$rc_out" | grep -q '^\[PASS\] 7\.'; then cov=PASS; else cov=FAIL; fi
         if printf '%s\n' "$rc_out" | grep -qx 'TRUST-PATH: yes'; then trust=yes; else trust=no; fi
@@ -1652,6 +1693,46 @@ size_wake() {
     [ "$rc" -eq 0 ] || return 1
     printf '%s\n' "$total" > "$size_file.tmp" && mv -f "$size_file.tmp" "$size_file"
     printf 'WAKE size rows=%s\n%s\n' "$total" "$(printf '%s\n' "$out" | tail -n +2)"
+}
+# ponytail: one page of reviews (100) per PR; upgrade = --paginate if a watched PR ever passes 100.
+prwatch_at_file="$inbox.wait.prwatch.at"
+pr_watch_wake() {
+    local rows now last pr head com rev repo st pj rj nh nc nr ns detail repo_arg repo_tag gh_cmd="${CHIEF_WAIT_GH:-gh}"
+    [ -n "$legs_from" ] && [ -r "$legs_from" ] || return 1
+    rows="$(jq -r '(.watch // [])[]? | [.pr, (.head // "-"), (.comments // "-"), (.reviews // "-"), (.repo // "{owner}/{repo}"), (.state // "-")] | @tsv' "$legs_from" 2>/dev/null)" || return 1  # swallow-ok: an unreadable manifest has no rows to poll
+    [ -n "$rows" ] || return 1
+    now="$(date +%s)"
+    last="$(cat "$prwatch_at_file" 2>/dev/null)"; case "$last" in ''|*[!0-9]*) last=0 ;; esac  # swallow-ok: no stamp reads as never polled
+    [ $(( now - last )) -ge "${CHIEF_WAIT_PR_WATCH_SEC:-120}" ] || return 1
+    printf '%s\n' "$now" > "$prwatch_at_file" 2>/dev/null
+    heartbeat sampling
+    while IFS=$'\t' read -r pr head com rev repo st; do
+        [ -n "$pr" ] || continue
+        pj="$(timeout -k 2 20 "$gh_cmd" api "repos/$repo/pulls/$pr" </dev/null 2>/dev/null 9>&-)" || continue  # gnu-ok: Linux-only kit; swallow-ok: a failed read is retried next interval, never a wake
+        rj="$(timeout -k 2 20 "$gh_cmd" api "repos/$repo/pulls/$pr/reviews?per_page=100" </dev/null 2>/dev/null 9>&-)" || continue  # gnu-ok: Linux-only kit; swallow-ok: as above
+        nh="$(printf '%s' "$pj" | jq -r '.head.sha // empty' 2>/dev/null)"  # swallow-ok: an unparsed reply fails the checks below
+        nc="$(printf '%s' "$pj" | jq -r 'if (.comments | type) == "number" and (.review_comments | type) == "number" then .comments + .review_comments else empty end' 2>/dev/null)"  # swallow-ok: as above
+        nr="$(printf '%s' "$rj" | jq -r 'if type == "array" then length else empty end' 2>/dev/null)"  # swallow-ok: as above
+        ns="$(printf '%s' "$pj" | jq -r 'if .merged == true then "merged" elif .state == "closed" then "closed" elif .state == "open" then "open" else empty end' 2>/dev/null)"  # swallow-ok: as above
+        case "$nh" in ''|*[!0-9a-f]*) continue ;; esac
+        case "$nc" in ''|*[!0-9]*) continue ;; esac
+        case "$nr" in ''|*[!0-9]*) continue ;; esac
+        [ -n "$ns" ] || continue
+        detail=""
+        [ "$head" = - ] || [ "$head" = "$nh" ] || detail="$detail head ${head:0:7}→${nh:0:7}"
+        [ "$com" = - ] || [ "$com" = "$nc" ] || detail="$detail comments $com→$nc"
+        [ "$rev" = - ] || [ "$rev" = "$nr" ] || detail="$detail reviews $rev→$nr"
+        [ "$st" = - ] || [ "$st" = "$ns" ] || detail="$detail state $st→$ns"
+        repo_arg=(); repo_tag=""
+        [ "$repo" = '{owner}/{repo}' ] || { repo_arg=(--repo "$repo"); repo_tag=" repo=$repo"; }
+        timeout -k 2 40 bash "$HERE/fleet-manifest.sh" watch "$legs_from" set "$pr" ${repo_arg[@]+"${repo_arg[@]}"} --head "$nh" --comments "$nc" --reviews "$nr" --state "$ns" </dev/null >/dev/null 2>&1 9>&- || continue  # gnu-ok: Linux-only kit; swallow-ok: as above
+        [ -n "$detail" ] || continue
+        printf 'WAKE pr-watch %s%s%s\n' "$pr" "$repo_tag" "$detail"
+        return 0
+    done <<EOF
+$rows
+EOF
+    return 1
 }
 # ready_ci <pr> <head>: GREEN, RED or PENDING from one bounded, non-blocking read; a failed read is PENDING.
 ready_ci() {
@@ -1923,6 +2004,7 @@ while :; do
             if ready_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-ready'; exit 0; fi
             if silent_go_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-silent-go'; exit 0; fi
             if size_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-size'; exit 0; fi
+            if pr_watch_wake_out="$(pr_watch_wake)"; then printf '%s\n%s\n' "$pr_watch_wake_out" "$tick_line"; save_key "$key"; exit_reason='wake-pr-watch'; exit 0; fi
             if [ -n "$ready_fold" ] && [ -n "$saved" ]; then
                 ready_new="$(ready_fold_key "$saved" "$key" "$ready_fold")"
                 [ "$ready_new" = "$saved" ] || { saved="$ready_new"; save_key "$saved"; }
@@ -1988,6 +2070,13 @@ while :; do
             elif unwatched_wake "$unwatched_val"; then
                 printf 'WAKE unwatched %s\n%s\n' "$unwatched_val" "$tick_line"
                 exit_reason='wake-unwatched'; exit 0
+            fi
+            unclosed_val="$(field unclosed "$tick_line")"
+            if [ -z "$unclosed_val" ]; then
+                rm -f "$unclosed_file"
+            elif unclosed_new="$(unclosed_wake "$unclosed_val")"; then
+                printf 'WAKE unclosed %s\n%s\n' "$unclosed_new" "$tick_line"
+                exit_reason='wake-unclosed'; exit 0
             fi
             doctor_val="$(field doctor "$tick_line")"
             case "$doctor_val" in

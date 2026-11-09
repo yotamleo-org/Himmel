@@ -17,22 +17,22 @@ How used: installed from the pin, or vendored in-tree where the pin links a vend
 
 | Name | Source | Author | Licence | Pin / tracking |
 |---|---|---|---|---|
-| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | c7f558f7aeb4760fe6a467431f6cd86f832d8a6c |
+| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | d291f3a69300430ee16de2de796a9e347fcfac6a |
 | animejs-skills | https://github.com/BowTiedSwan/animejs-skills | BowTiedSwan | Unknown (not declared upstream) | cf2bed8d6654a6cfd02d3ff11b74ff3a7a7631e2 |
-| anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | ca45fc496a3436251f191354091d557da31c15b5 |
+| anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | 2c5958ecac7cee2b583967a2c4981d0f4a75c579 |
 | anydesign | https://github.com/uxKero/anydesign | uxKero | MIT | v0.6.0 |
 | builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | f4f10b8d513476c24bd995ceac5294bcdd6ee15c |
 | claude-obsidian | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | v3.0.1 |
 | design-dna | https://github.com/zanwei/design-dna | zanwei | MIT | 593e39bc9e3652734653bd75544a333d7d43615e |
 | design-md | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
-| diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | f24d98b05e2d7a5e68c2dedfe46e5b7173f50118 |
+| diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | 6a7f19fcc132b39b126bea90167679b46b14bcc4 |
 | domain-modeling | https://github.com/mattpocock/skills | Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/domain-modeling/VENDORED.md) |
-| emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | c8a79627b59d72d764d6ab6f2c87c09a48169833 |
-| find-docs | https://github.com/upstash/context7 | Upstash | MIT | 1496b428efb35acb7bd6a1da98e50fd1d3dccdcc |
+| emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | 5206a950b715e0cabe7043ea0b2304332b91494e |
+| find-docs | https://github.com/upstash/context7 | Upstash | MIT | 7765f353c694907297ae36bbae61b141ce712f44 |
 | frontend-slides | https://github.com/zarazhangrui/frontend-slides | zarazhangrui | MIT | v2.1.0 |
 | graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs / yotamleo (wrapper) | Apache-2.0 | [Package pin](../scripts/lib/graphify-bin.sh) |
 | gsap-skills | https://github.com/greensock/gsap-skills | greensock | MIT | aed9cfd3277740755f6bfc1155c7aa645403b760 |
-| hallmark | https://github.com/Nutlope/hallmark | Nutlope | MIT | de4999e0cd7a7a41df0b4e6903fa02fe9f1492a8 |
+| hallmark | https://github.com/Nutlope/hallmark | Nutlope | MIT | 407fa689f4a276f2fd389208d271d0fef08f5058 |
 | handover | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/handover | yotamleo | MIT | In-tree |
 | hermes-artifact-design | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | higgsfield-skills | https://github.com/higgsfield-ai/skills | Higgsfield AI | MIT | 27000402070db19d958789d05b3b52b6f4718d7c |
@@ -53,7 +53,7 @@ How used: installed from the pin, or vendored in-tree where the pin links a vend
 | pstack | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/pstack/VENDORED.md) |
 | qmd | https://github.com/tobi/qmd | tobi (upstream) / yotamleo (fork) | MIT | [Fork pin](../scripts/lib/qmd-bin.sh) |
 | shadcn-mcp | https://github.com/shadcn-ui/ui | shadcn / yotamleo (wrapper) | MIT | [Runtime pin](../marketplace/plugins/shadcn-mcp/.mcp.json) |
-| taste-skill-core | https://github.com/Leonxlnx/taste-skill | Leonxlnx | MIT | 9b4bf937a1f69348126959c15d2f99a73e65699b |
+| taste-skill-core | https://github.com/Leonxlnx/taste-skill | Leonxlnx | MIT | f6b76575f949707b4e3c37cd86cb44b0b98643e8 |
 | telegram-himmel | https://github.com/anthropics/claude-plugins-official/tree/main/external_plugins/telegram | Anthropic (upstream) / yotamleo (fork) | Apache-2.0 | [Fork record](../marketplace/plugins/telegram-himmel/README.md) |
 | threejs-skills | https://github.com/CloudAI-X/threejs-skills | CloudAI-X | MIT | 0e181866f095b5f06d005133876e926515390d95 |
 | ui-ux-pro-max | https://github.com/nextlevelbuilder/ui-ux-pro-max-skill | nextlevelbuilder | MIT | v2.15.0 |

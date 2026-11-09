@@ -63,13 +63,21 @@ row, the step spent): the operator never approves what they were not shown. The 
 `reason`: the failing call and an error kind (`sendMessage:api-4xx`, the class of the reply's
 `error_code`; `curl-exit-N`, `curl-timeout`, `curl-os-error`, `no-curl`, `bad-response`,
 `api-not-ok`, or `exception-<class>` when the send raised). Never the token, the URL or the reply text.
+A notice that was sent writes a `notice` row of result `sent` with the request's `id` and `kind`, and as its
+receipt the `message_id` the Bot API gave the facts message. A request row with no notice row after it means
+delivery is unconfirmed: the send failed silently, or the helper stopped (or its ledger append failed) after
+Telegram accepted the message.
 
 The nonce applies to **both kinds**, sudo and run (the operator's default of 10-30, Q3).
 The approve line is `approve <id> <nonce> <code>`; the helper reads `NONCE CODE` on stdin
 (the two may also run together, the last six characters being the code). A wrong or
-missing nonce is refused as `bad-nonce`: it counts as a wrong code towards the lockout, ends
-the request, and spends the code's step, since the code was typed where a look-alike may
-have read it. The nonce is never in curl's argv (root's command line is world-readable),
+missing nonce is refused as `bad-nonce`. It counts on that request id only, never towards
+the broker-wide lockout, and leaves the request pending. A valid code sent with it is spent,
+since it was typed where a look-alike may have read it. After three wrong nonces on one id,
+a call without a valid unspent code is refused `locked`, and a wrong nonce sent with a valid
+code ends the request (`denied:bad-nonce`). So one id takes at most 4 nonce-and-code guesses,
+and requests filed without proof are capped at 6 an hour (`max_per_hour`; proven ones are
+not). The nonce is never in curl's argv (root's command line is world-readable),
 the ledger, the requester's output or the attached document. The token and every Bot API
 parameter reach curl on stdin (`-K -`).
 
@@ -272,7 +280,7 @@ misreads), which is why the notice shows the script text and marks a shell.
 broker) only. The other request refusals (`run-not-shipped`,
 `run-disabled`, `no-allow-missing`, `bad-user`, `bad-cwd`, `bad-file`, `no-such-command`, `no-setpriv`,
 `stdin-too-large`, `no-notice-bot`) answer on stdout and write none. A notice that cannot be
-sent writes a `notice` row (`notice-failed`). A wrong nonce writes a `code-check` row
+sent writes a `notice` row (`notice-failed`); one that was sent writes a `notice` row (`sent`, with its `message_id`). A wrong nonce writes a `code-check` row
 (`bad-nonce`). After the code, the executor's result
 (`hash-mismatch`, `changed`, `run-not-shipped`, `run-disabled`, `never-remote`, `bad-user`,
 `not-in-class`, `no-setpriv`, or the run itself) is the row. The ledger never holds the code, the
@@ -303,7 +311,9 @@ approval, and the worker's retry passes the classifier for that one call.
 1. The classifier refuses a Bash call. `scripts/hooks/approval-grant-request.sh`
    (`PermissionDenied`, matcher `Bash`) pipes the command's exact bytes to
    `sudo -n afk-sudo grant-request --session S --cwd D --why <reason>`. It prints nothing
-   and exits 0 on every path.
+   and exits 0 on every path. It files only a reason with a bracketed classifier category
+   (`[Unauthorized Persistence]`): a no-verdict denial, "Classifier unavailable" or a
+   credential, secret, token or exfiltration category files nothing.
 2. Root refuses a secret read or another never-remote shape before any notice is sent.
    Otherwise it binds every file the command names (sha256 and dev/inode, as in the run
    kind), freezes the record and sends the operator the full command, the cwd, the bound
@@ -360,6 +370,14 @@ stops, leaving it as it is, if it changed since the read. The helper takes no lo
 landing in the few microseconds between that re-read and the replace would still be overwritten with the value
 read earlier; run the install while the station is quiet, and check `enabled` afterwards.
 
+A pull never refreshes the root-owned copies, so a helper or op merged after the last install is missing at the
+station until the operator re-installs (a station once refused the size-approval op as `unknown-op` until then).
+`scripts/himmel-update.sh` (the update and `--check`) compares each installed file under `/usr/local/libexec/himmel`
+with the checkout through `install.sh`'s `stale_files`, and when any differs prints the count, one path and the exact
+command to run at a terminal: `sudo bash <checkout>/scripts/lib/afk-sudo/install.sh --user <login>`. It installs
+nothing itself. No value of the config is touched by a re-install or by a boot: `ops.enabled` stays what the
+operator set.
+
 ## Turning it off
 
 Narrowest first. Each is a root edit of `/etc/himmel/afk-sudo.json` (`sudoedit`), read
@@ -383,15 +401,19 @@ again by the helper on every call, so it takes effect on the next verb:
 A session cannot do any of these: the config, the helper and the sudoers rule are root-owned.
 
 **`/afk-lockdown` (slice 4).** The one Telegram verb that only narrows, for a
-lost phone or the end of a trip. Typed by the operator in their private chat, with no
-argument (text after it is refused and nothing runs), it calls the root helper's
-`lockdown --from SENDER --chat CHAT`, which checks the sender and chat against
-`operator_id`, rewrites the config with `"enabled": false` (everything else, mode included,
-untouched), denies the pending request (a `deny` ledger row) and writes a `lockdown` ledger
-row. It works on a station that is already off, and a station stays off until root edits the
-config back: no verb, flag or argument sets `enabled: true` or `mode: "all"`, and
-`lockdown --enable` is a usage error. A lockdown needs no TOTP code (it cannot widen
-anything), and it leaves live grants dead because `grant-spend` answers `disabled`. While
+lost phone or the end of a trip, in two steps because every session runs as the operator's
+uid and can call the helper itself. Typed bare by the operator in their private chat, it
+calls the root helper's `lockdown --from SENDER --chat CHAT`, which only makes root send an
+8-character lockdown nonce through the notice bot (one live at a time, for 120 s; a bare call
+while one is live sends nothing new; with no notice bot it answers `result=no-notice-bot`).
+`/afk-lockdown <nonce>` calls `lockdown --with-nonce` with the nonce on stdin, which checks
+the sender and chat against `operator_id`, spends the nonce, rewrites the config with
+`"enabled": false` (everything else, mode included, untouched), denies every pending request
+(a `deny` ledger row each) and writes a `lockdown` ledger row. Any other text after the
+command is refused and nothing runs. It works on a station that is already off, and a station
+stays off until root edits the config back: no verb, flag or argument sets `enabled: true` or
+`mode: "all"`, and `lockdown --enable` is a usage error. A lockdown needs no TOTP code (it
+cannot widen anything), and it leaves live grants dead because `grant-spend` answers `disabled`. While
 the bridge's own lockdown switch is on, the poller does not consult this route at all.
 
 ## The `op` kind: station ops
@@ -413,6 +435,12 @@ OPS-2 adds three more, each `<op>.sh` plus `<op>.json`:
 | `autologin` (`autologin.sh`; `action=enable\|disable`, `session` with enable) | root | Turns the display manager's automatic login for the operator user on or off; enable names an installed desktop session (LightDM's own default is a distro session that may be missing). It follows `/etc/systemd/system/display-manager.service` to SDDM (`/etc/sddm.conf.d/himmel-autologin.conf`), LightDM (`/etc/lightdm/lightdm.conf.d/50-himmel-autologin.conf`) or GDM (the two `[daemon]` keys in `custom.conf`); any other display manager, or none, is refused. Its detail ends `keyring=present-locked-at-autologin` (an automatic login never types the login password, so an existing login keyring stays locked) or `keyring=none`. |
 | `reboot-recover` (`action=arm\|disarm`, `doc`, `repo`) | root | `arm` writes the root-owned marker `/var/lib/himmel/reboot-recover.json` and the user unit `/etc/systemd/user/himmel-recover.service` (enabled through `default.target.wants`, `ConditionPathExists` on the marker). At the next login `scripts/station-ops/recover.sh` runs as the operator, once per arming: it checks the services, verifies the bridge, re-arms the chief from `doc` with `arm-resume.sh --handover` and sends a status through the bridge bot. With no marker it does nothing. |
 | `chief-restart` (`chief-restart.sh`; `chief`, `doc`, `repo`) | operator user | Stops the operator's running session named `chief` (SIGTERM, SIGKILL after 15 s) and re-arms it from `doc`; its stale queue lock passes to the re-armed session. A chief cannot restart itself. |
+| `size-approval` (`size-approval.sh`; `key`, `label`, `files` of 1 to 3 digits, `scope` of 32 hex, `reason` one word of `A-Za-z0-9,.:_-`, all required) | root | The operator keeps one oversized brief whole: writes `/var/lib/himmel/size-approvals/<key>.<label>.<files>.<scope>` (root, 0644, in a root 0755 directory), one line `SIZE-APPROVAL <expires> <key> <label> <files> <scope> <id> <reason>`. `<expires>` is the run plus 7 days, and every run renews it (`changed`). `scripts/handover/chief-kit/size-override.sh check` accepts it for a trust-path brief of 21 to 300 files when the key, label, file count and file-list digest match, it is unexpired, and the file, its directory and that directory's parent are root-owned and not group/other-writable. `scope` is the digest gen-briefs prints with the paste-ready line. |
+
+`size-override.sh operator <KEY> <label> --files <n> --scope <hex> --reason <word>` files the `size-approval` op from a
+terminal (`--session terminal-<pid>`) and, on a terminal, runs `himmelctl approve <id>` for the nonce and code; without
+one it prints the id to approve in a plain terminal or on the Telegram notice. Telegram files it with the same
+`/op size-approval key=… label=… files=… scope=… reason=…` line.
 
 An op whose schema says `"run_as": "operator-user"` runs as `operator_user` under `setpriv` (uid, gid and groups
 dropped, no new privileges, no capabilities, a fixed environment with that user's `HOME`) and its notice says "Run as: the
@@ -448,16 +476,20 @@ pending op request like any other.
 
 `himmelctl approve <id>`, `himmelctl deny <id>` and `himmelctl approve status <id>` let the
 operator answer a pending request from an SSH shell, for example after a classifier denial when the phone
-is out of reach. It is a thin caller of the same root helper the Telegram route calls:
+is out of reach. A deny carries the request's nonce, as the Telegram `deny <id> <nonce>` does; after three
+wrong nonces on the request it also needs the current code. It is a thin caller of the same root helper the
+Telegram route calls:
 
 ```text
 sudo -n /usr/local/libexec/himmel/afk-sudo approve ID --from OP --chat OP --via ssh --approver USER   # NONCE CODE on stdin
-sudo -n /usr/local/libexec/himmel/afk-sudo deny    ID --from OP --chat OP --via ssh --approver USER
+sudo -n /usr/local/libexec/himmel/afk-sudo deny    ID --from OP --chat OP --via ssh --approver USER   # NONCE [CODE] on stdin
 sudo -n /usr/local/libexec/himmel/afk-sudo status  ID
 ```
 
-What the verb checks itself: the id is 8 characters of `a-z2-7`; the reply is a 4-character nonce and a
-6-digit code; the config at `/etc/himmel/afk-sudo.json` names a numeric `operator_id` and an
+What the verb checks itself: the id is 8 characters of `a-z2-7`; `approve` asks for the nonce first
+(`Nonce:`, the 4 characters from the request's Telegram notice) and refuses a malformed one before it asks for
+the code (`Code:`, 6 digits), so the flow is request, nonce, then the authenticator code; on stdin
+each is one line. `deny` reads `Nonce [Code]:` on one line. The config at `/etc/himmel/afk-sudo.json` names a numeric `operator_id` and an
 `operator_user`, and the caller is that user (checked before anything is sent, for `approve` and `deny`; a
 read of `status` needs no identity). The nonce is the one root put in the notice-bot message, and it and
 the code travel on stdin only (a masked prompt on a terminal), so neither is in any argv, log or ledger

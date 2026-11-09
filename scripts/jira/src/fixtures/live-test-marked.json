@@ -1,0 +1,9 @@
+{
+  "context": true,
+  "own_keys": [
+    "HIMMEL-9577"
+  ],
+  "test_project": "HTEST",
+  "problem": null,
+  "jira_configured": true
+}

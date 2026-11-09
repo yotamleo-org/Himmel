@@ -2,11 +2,14 @@
 # gh-graphql-callers.sh — which script spends the shared GitHub GraphQL budget.
 # Read-only: it never changes gh for anyone else.
 #
-#   watch [--log F] [--seconds S] [--interval I]
+#   watch [--log F] [--seconds S] [--interval I] [--floor N]
 #       Changes nothing: polls /proc for live gh processes of the whole fleet
 #       for S seconds (default 3600) and charges each, once, to its nearest .sh
 #       ancestor. A gh shorter-lived than I (default 0.2 s) is missed. The bucket
 #       line printed at the end is the probe's own reading, shared with the fleet.
+#       Refuses (rc 2) before watching when the bucket has fewer than N points
+#       left (default 1500) or cannot be read; watch spends only its two probes,
+#       so --floor 0 lets a measurement run when the quota is low.
 #
 #   run [--log F] [--floor N] -- <cmd...>
 #       Runs ONE command with a counting `gh` shim first on PATH for that child
@@ -26,10 +29,11 @@
 #
 # Points are an ESTIMATE: 1 per GraphQL-bound gh call (the 10-07 watcher
 # audit's costing). It under-counts a query with a 200-row files connection and
-# any call `watch` polls too late to see, and it over-counts a `gh api graphql`
-# rateLimit probe (0 points, charged 1) and any process named gh, such as a
-# suite stub. REST-only shapes (api without graphql, pr diff, run, workflow) are
-# not logged. Env: GH_CALLERS_LOG default log.
+# any call `watch` polls too late to see, and it over-counts any process named
+# gh, such as a suite stub. A `{rateLimit{...}}` probe answers cost 1, so it is
+# charged 1. Which calls spend GraphQL is ghq_bucket_of's rule (gh-quota.sh):
+# core shapes (api without graphql, pr diff, run, workflow) are not logged.
+# Env: GH_CALLERS_LOG default log.
 #
 # ponytail: a per-call estimate and a polling sample, not the fleet's true
 # bill; upgrade path = read the cost/remaining headers per call inside a shim
@@ -37,24 +41,15 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/gh-quota.sh
+. "$HERE/../lib/gh-quota.sh"
 LOG_DEFAULT="${GH_CALLERS_LOG:-${TMPDIR:-/tmp}/gh-graphql-callers.log}"
 
-usage() { sed -n '2,36p' "$0" >&2; exit 64; }
+usage() { sed -n '2,39p' "$0" >&2; exit 64; }
 
 # gqlc_cost <gh args...> — GraphQL points one gh call spends (estimate: 1, or 0).
 gqlc_cost() {
-    local a a1="" a2="" graphql=0
-    for a in "$@"; do
-        [ "$a" = graphql ] && graphql=1
-        case "$a" in -*) continue ;; esac
-        if [ -z "$a1" ]; then a1="$a"; elif [ -z "$a2" ]; then a2="$a"; fi
-    done
-    case "$a1" in
-        api) [ "$graphql" = 1 ] && { echo 1; return; } ;;
-        pr) [ "$a2" = diff ] || { echo 1; return; } ;;
-        issue|repo|project|label) echo 1; return ;;
-    esac
-    echo 0
+    if [ "$(ghq_bucket_of "$@")" = graphql ]; then echo 1; else echo 0; fi
 }
 
 # gqlc_caller <pid> — the nearest .sh ancestor of <pid> (gh-read.sh and this
@@ -108,7 +103,7 @@ cmd_report() {
 write_shim() {
     {
         printf '#!/usr/bin/env bash\n# counting gh shim, installed by gh-graphql-callers.sh run (child tree only)\n'
-        declare -f gqlc_cost gqlc_caller
+        declare -f ghq_bucket_of gqlc_cost gqlc_caller
         cat <<'SHIM'
 real=""
 IFS=:
@@ -147,10 +142,12 @@ cmd_watch() {
             --log) log="${2:-}"; shift 2 ;;
             --seconds) seconds="${2:-}"; shift 2 ;;
             --interval) interval="${2:-}"; shift 2 ;;
+            --floor) floor="${2:-}"; shift 2 ;;
             *) usage ;;
         esac
     done
     case "$seconds" in ''|*[!0-9]*) usage ;; esac
+    case "$floor" in ''|*[!0-9]*) usage ;; esac
     budget_gate "$floor"
     set -f  # cmdline words carry jq globs; never expand them
     local before="$GHB_REMAINING" reset0="$GHB_RESET" end=$((SECONDS + 10#$seconds))

@@ -391,6 +391,16 @@
       "offboard": "advise"
     },
     {
+      "id": "statechart",
+      "kind": "dep",
+      "scopes": ["user"],
+      "profiles": ["all"],
+      "deps": [],
+      "probe": { "type": "cmd:statechart_ready" },
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
       "id": "pipeline-cadence",
       "kind": "scheduler",
       "scopes": ["user"],
@@ -417,6 +427,16 @@
       "profiles": ["core", "all"],
       "deps": [],
       "probe": { "type": "cmd:cadence_armed", "resolver": "scripts/lib/cadence-format.sh", "envVar": "DOCTORCAD_RUNNER_DIR", "defaultSubdir": ".claude/doctor-cadence" },
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
+      "id": "rollup-cadence",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": { "type": "cmd:cadence_armed", "resolver": "scripts/lib/cadence-format.sh", "envVar": "ROLLUP_RUNNER_DIR", "defaultSubdir": ".claude/rollup-cadence" },
       "removable": "full-offboard-only",
       "offboard": "advise"
     },
@@ -508,6 +528,16 @@
       "profiles": ["core", "all"],
       "deps": [],
       "probe": {"type": "cadence-runs", "script": "scripts/doctor-cadence.sh", "tasks": [{"task": "HIMMEL-Doctor", "intervalHours": 24}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
+      "id": "cadence-runs-rollup",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/eval/rollup-cadence.sh", "tasks": [{"task": "HIMMEL-WeeklyRollup", "intervalHours": 168}]},
       "removable": "full-offboard-only",
       "offboard": "advise"
     },

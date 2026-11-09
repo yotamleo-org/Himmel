@@ -1,11 +1,20 @@
 import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+// The live suite reads the station's test project from the config dir the redirects below hide: record it first.
+if (process.env.JIRA_LIVE_TEST === '1') {
+  process.env.JIRA_LIVE_CONFIG_DIR = process.env.HIMMEL_CONFIG_DIR || join(process.env.HOME || homedir(), '.himmel');
+}
 
 // Point HOME at an empty dir so the operator's real ~/.himmel/config.json
 // (jira.sectorField) never leaks into a test.
 process.env.HOME = mkdtempSync(join(tmpdir(), 'jira-test-home-'));
 delete process.env.JIRA_SECTOR_FIELD;
+
+// A marked live-test worker still runs these unit suites, whose fetches are mocked; guard tests set the
+// marker themselves.
+delete process.env.HIMMEL_JIRA_LIVE_TEST;
 
 // A --backlog filing queues an INTAKE under a declared release: keep every test
 // off the operator's real release state.

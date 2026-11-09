@@ -243,6 +243,26 @@ tick TERMed the window (the leg's lock is FREE/WRAPPED, or a live <tabtitle>-r<n
 window exists); :held = reported only. chief-wait.sh wakes when it appears or
 changes. Env seam: TICK_KILL_BIN.
 
+unclosed=<label>[,<label>] follows deadwin= and is ABSENT unless a
+worker the tick reads CLOSABLE -- or WRAPPED / NOLIVE with a live window (a worker
+konsole, tabtitle HIMMEL-<n>-N<k>-..., with a child process) -- was already open on the
+PREVIOUS tick: a worker first seen on this tick is only recorded (one tick of grace), and
+one that stops being a candidate loses its record. State file
+$TICK_STATE_DIR/tick-unclosed-<chief doc stem> (`<label> <first-seen epoch> <dispositions
+at first sight>`). A disposition bullet in the --doc chief doc, newer than first sight,
+removes the worker from the field; the exact shape (greppable, one per line):
+  - [HH:MM ]DISPOSITION <label> closed
+  - [HH:MM ]DISPOSITION <label> parked <named wake, e.g. wake=pr-4999-merge>
+  - [HH:MM ]DISPOSITION <label> given-up <reason>
+`parked` and `given-up` need the wake or reason after them; a bare word does not clear.
+chief-wait.sh wakes `WAKE unclosed <label>` on a worker new to its marker.
+
+holdout=<label>:<pr>[,...] follows unclosed= and is ABSENT unless a worker reads IDLE-HELD
+(below) AND its newest marker bullet is `LIVE — HOLD-OUTSIDE pr=<n> owes: <what>`: a window waiting on an
+outside event it should have closed. A busy worker, or one whose newest marker moved on, is never flagged.
+An `ACTION holdout=...` line names the close-and-watch command (fleet-manifest.sh watch <manifest> add
+<pr> ..., then close the window); chief-wait.sh wakes `WAKE pr-watch <pr>` when the watched PR moves.
+
 workers= (legs= in an older tick) reads a worker's lock as FRESH or STALE (held),
 IDLE-HELD (held, but its readable session transcript has no activity for TICK_IDLE_MIN
 minutes, default 45, and no armed task/Monitor or unfinished foreground Bash/Agent;
@@ -541,7 +561,25 @@ for idx, line in enumerate(text.splitlines(), 1):
         print("# pool-keys %d STACKABLE %s" % (idx, s[1]))
     elif m:
         print("# pool-keys %d # %s" % (idx, m[1]))
-decisions, invalid = {}, {}
+dispatchable = set()
+for line in text.splitlines():
+    f = line.split("\t")
+    if f[0] == "SERIES" and len(f) > 2 and re.fullmatch(r"[A-Z]+-\d+(?:,[A-Z]+-\d+)*", f[2]):
+        dispatchable.update(f[2].split(","))
+    elif f[0] in ("LOCAL", "LOCAL?", "CLOUD", "RESUME", "DESIGN") and len(f) > 1 and re.fullmatch(r"[A-Z]+-\d+", f[1]):
+        dispatchable.add(f[1])
+for key in sorted(dispatchable):
+    print("# pool-dispatchable " + key)
+
+projects = {k.split("-")[0] for k in rows}
+
+def has_owner(target, key):
+    m = re.match(r"(?:(?:operator|waits on|blocked by|after)\s+)?(?:([A-Z]+-\d+)\b|PRs?\s*#?\d+\b|[Dd]ecisions?\s*#?\d+\b)", target)
+    if not m:
+        return False
+    return m[1] is None or (m[1] != key and m[1].split("-")[0] in projects)
+
+decisions, invalid, unowned = {}, {}, {}
 if sys.argv[1]:
     try:
         doc = open(sys.argv[1]).read().splitlines()
@@ -557,8 +595,10 @@ if sys.argv[1]:
         value = line.split(":", 1)[1].strip()
         m = re.fullmatch(r"([A-Z]+-\d+) (slice|close|question) (\S.*)", value)
         key = value.split()[0] if value else "?"
-        if not m or key not in rows or key in decisions or key in invalid:
+        if not m or key not in rows or key in decisions or key in invalid or key in unowned:
             invalid[key] = "malformed, duplicate or unknown pool-disposition: " + value
+        elif not has_owner(m[3], key):
+            unowned[key] = value
         else:
             decisions[key] = value
 if not rows and not re.search(r"^# dropped from .+: 0 of 0 To Do", text, re.M):
@@ -575,6 +615,8 @@ for key, reason in rows.items():
         unresolved.append(("invalid", key, invalid[key]))
     elif owned or holder or blocker or key in decisions:
         disposed += 1
+    elif key in unowned:
+        unresolved.append(("unowned", key, "pool-disposition names no owner or observable end: " + unowned[key]))
     else:
         unresolved.append((reason.split()[0], key, reason))
 print("# pool-counts %d/%d/%d/%d" % (len(rows), inflight, disposed, len(unresolved)))
@@ -583,6 +625,9 @@ for cls, key, reason in sorted(unresolved):
 for key, reason in sorted(invalid.items()):
     if key not in rows:
         print("# pool-unresolved invalid %s %s" % (key, reason))
+for key, reason in sorted(rows.items()):
+    if key not in dispatchable:
+        print("# pool-left-out %s %s" % (key, reason))
 PY
 }
 
@@ -1210,6 +1255,7 @@ leg_effort_mismatch() {
 legs_summary=""
 descs_summary=""
 tails_summary=""
+holdout_summary=""
 acts_summary=""
 holds_summary=""
 effort_summary=""
@@ -1379,6 +1425,9 @@ for leg in $WORKERS_SPLIT; do
                 # A stable label lets chief-wait wake once, never on a growing age.
                 if [ "$lock_status" != NOLOCK ] && [ "$leg_idle_seconds" -ge "$(( idle_min * 60 ))" ] && [ "$leg_foreground_running" = 0 ]; then
                     leg_label_state=IDLE-HELD
+                    ho_bullet="$(grep -E '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|MERGED)([^A-Za-z0-9_]|$)' "$leg_doc" 2>/dev/null | tail -n 1)" || ho_bullet=""  # pipefail-ok: tail reads grep to EOF; swallow-ok: an unreadable doc reads as no hold, which flags nothing
+                    ho_re='^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?LIVE[^A-Za-z0-9_].*HOLD-OUTSIDE[[:space:]]+pr=#?([0-9]+)'
+                    if [[ $ho_bullet =~ $ho_re ]]; then holdout_summary="$(csv_add "$holdout_summary" "$label:${BASH_REMATCH[3]}")"; fi
                 fi
             fi ;;
     esac
@@ -2615,14 +2664,25 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pd_m="$(stat -c %Y "$pd_base.rows" 2>/dev/null)" || pd_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no snapshot reads old
     case "$pd_m" in '' | *[!0-9]*) ;; *) pd_age=$(( $(date +%s) - pd_m )) ;; esac
     pd_gap="${TICK_POOL_MIN_SECS:-600}"; case "$pd_gap" in '' | *[!0-9]*) pd_gap=600 ;; esac
+    pd_skip_max="${TICK_POOL_MAX_SKIP_SECS:-1800}"; case "$pd_skip_max" in '' | *[!0-9]*) pd_skip_max=1800 ;; esac
+    pd_state="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+    pd_ledger="${HIMMEL_ADMISSIONS_LEDGER:-$(handover_root 2>/dev/null)/admissions-ledger.jsonl}"  # swallow-ok: no handover root reads an absent ledger
+    pd_stat="$(stat -c '%n %Y %s' "$console_doc" ${WORKERS_FROM:+"$WORKERS_FROM"} "${nd_mirror%/}.versions.tsv" "$pd_state/status-events.jsonl" "$pd_ledger" "$pd_state"/workers/* 2>/dev/null | cksum | cut -d' ' -f1)"  # gnu-ok: chief kit is Linux-only; swallow-ok: an absent input is simply missing from the sum
+    pd_fp="$(sed -n 's/.*"lastSync" *: *"\([^"]*\)".*/\1/p' "$nd_mirror/.cursor.json" 2>/dev/null | head -n 1)|$pd_stat|$(printf '%s' "$owner_keys" | cksum | cut -d' ' -f1)"  # swallow-ok: an unreadable cursor reads empty and changes the fingerprint
+    pd_fp_m="$(stat -c %Y "$pd_base.fp" 2>/dev/null)" || pd_fp_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no fingerprint reads as none
+    case "$pd_fp_m" in '' | *[!0-9]*) pd_fp_m=0 ;; esac
+    if [ "$pd_age" -ge "$pd_gap" ] && [ -f "$pd_base.rows" ] && [ -f "$pd_base.fp" ] && [ $(( $(date +%s) - pd_fp_m )) -lt "$pd_skip_max" ] \
+        && read -r pd_fp_old < "$pd_base.fp" && [ "$pd_fp_old" = "$pd_fp" ] && touch "$pd_base.rows" 2>/dev/null; then
+        pd_age=0
+    fi
     if [ "$pd_age" -ge "$pd_gap" ] && mkdir -p "$pd_dir" 2>/dev/null; then
         pd_args=(--dispositions --top 1000 --doc "$console_doc" --owners "$owner_keys")
         [ -z "$WORKERS_FROM" ] || pd_args+=(--workers-from "$WORKERS_FROM")
         # setsid: the waiter's timeout kills the tick's process group, never the snapshot.
         # A running snapshot holds the lock, so this launch exits at once.
         # shellcheck disable=SC2016  # the inner script expands its own positional arguments
-        pd_script='timeout -k 2 300 bash "$1" "${@:3}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2"; rm -f "$2.$$"'
-        pd_pid="$(tick_detach setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
+        pd_script='timeout -k 2 300 bash "$1" "${@:4}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2" && printf "%s\n" "$3" >"${2%.rows}.fp"; rm -f "$2.$$"'
+        pd_pid="$(tick_detach nice -n 10 setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "$pd_fp" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
         pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
         pd_wait="$(tick_bound "$pd_wait")"
         tick_now_s  # the poll forks only its sleep
@@ -3285,6 +3345,50 @@ elif [ -e "$dw_state" ]; then
 fi
 [ -z "$deadwin_tail" ] || deadwin_tail=" deadwin=$deadwin_tail"
 
+uc_disp_count() {
+    [ -r "$console_doc" ] || { printf '0\n'; return 0; }
+    grep -cE "^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?DISPOSITION $1 (closed([^A-Za-z]|\$)|parked [^ ]|given-up [^ ])" "$console_doc"
+}
+unclosed_tail=""
+uc_csv=""
+uc_state="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-unclosed${console_doc:+-$(basename "$console_doc" .md)}"
+uc_now="$(date +%s)"
+uc_win=","
+while read -r _ _ uc_tt uc_child; do
+    [ "$uc_child" = 1 ] || continue
+    uc_l="${uc_tt#HIMMEL-*-}"; uc_l="${uc_l%%-*}"
+    uc_win="$uc_win$uc_l,"
+done <<< "${dw_rows:-}"
+uc_new_state=""
+for uc_e in ${legs_summary//,/ }; do
+    uc_l="${uc_e%%:*}"; uc_s="${uc_e#*:}"
+    case "$uc_s" in
+        CLOSABLE) ;;
+        WRAPPED|NOLIVE) case "$uc_win" in *",$uc_l,"*) ;; *) continue ;; esac ;;
+        *) continue ;;
+    esac
+    uc_cnt="$(uc_disp_count "$uc_l")"
+    uc_prev=""
+    [ ! -r "$uc_state" ] || uc_prev="$(awk -v l="$uc_l" '$1 == l { print $2, $3; exit }' "$uc_state")"
+    if [ -z "$uc_prev" ]; then
+        uc_new_state="$uc_new_state$uc_l $uc_now $uc_cnt"$'\n'
+        continue
+    fi
+    read -r uc_t uc_base <<< "$uc_prev"
+    case "$uc_base" in ""|*[!0-9]*) uc_base=0 ;; esac
+    uc_new_state="$uc_new_state$uc_l $uc_t $uc_base"$'\n'
+    [ "$uc_cnt" -gt "$uc_base" ] || uc_csv="$(csv_add "$uc_csv" "$uc_l")"
+done
+if [ -n "$uc_new_state" ]; then
+    { mkdir -p "${uc_state%/*}" && printf '%s' "$uc_new_state" > "$uc_state"; } || printf 'tick: cannot write %s\n' "$uc_state" >&2
+elif [ -e "$uc_state" ]; then
+    rm -f "$uc_state"
+fi
+[ -z "$uc_csv" ] || unclosed_tail=" unclosed=$uc_csv"
+
+holdout_tail=""
+[ -z "$holdout_summary" ] || holdout_tail=" holdout=$holdout_summary"
+
 # closable=<n>: finished windows still open past TICK_CLOSABLE_MIN minutes.
 # ABSENT when 0; run `close-wrapped-worker.sh --sweep --fleet <manifest>`.
 closable_tail=""
@@ -3753,6 +3857,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
     [ -z "$closable_tail" ] || printf 'closable windows: %s\n' "${closable_tail# closable=}"
     [ -z "$deadwin_tail" ] || printf 'dead windows: %s\n' "${deadwin_tail# deadwin=}"
+    [ -z "$unclosed_tail" ] || printf 'unclosed windows: %s\n' "${unclosed_tail# unclosed=}"
     [ -z "$busedge_tail" ] || printf 'bus edges: %s\n' "${busedge_tail# busedge=}"
     [ -z "$wakerstate_tail" ] || printf 'bus wakers: %s\n' "${wakerstate_tail# wakerstate=}"
     printf 'vault: %s\n' "$vault_summary"
@@ -3860,7 +3965,11 @@ else
     compact_field wt-ceiling "$wtc_summary"
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
+    if [ -n "$holdout_summary" ]; then
+        printf 'ACTION holdout=%s: an idle worker holds on an outside event; have it WRAP with what it owes written down, then bash %q watch %q add <pr> --head <sha> --comments <n> --reviews <n> and close-wrapped-worker.sh --fleet %q <doc> (chief-wait wakes you as WAKE pr-watch)\n' \
+            "$holdout_summary" "$HERE/fleet-manifest.sh" "${WORKERS_FROM:-<manifest>}" "${WORKERS_FROM:-<manifest>}"
+    fi
     while IFS= read -r crfirst_line; do
         [ -n "$crfirst_line" ] || continue
         printf 'ACTION cr-first %s\n' "$crfirst_line"

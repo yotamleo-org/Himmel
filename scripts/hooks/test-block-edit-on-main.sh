@@ -207,6 +207,73 @@ assert_rc "T3d scratchpad .git dir with a commondir file into a primary blocks (
 assert_rc "T3d scratchpad clone with core.worktree set blocks (HIMMEL-8443)" 2 \
     "$(rc_of "$SCR/gfork/cw/foo.js" TMPDIR="$SANDBOX")"
 
+SB9626=$(mktemp -d "${TMPDIR:-/tmp}/t3e.XXXXXX") || exit 1
+SCR2="$SB9626/claude-$(id -u)/proj/sess/scratchpad"
+mkdir -p "$SB9626/.git" "$SCR2/sub" "$SB9626/other"
+assert_rc "T3e stray .git at the temp root: a Write into the scratchpad allows" 0 \
+    "$(rc_of "$SCR2/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e stray .git at the temp root: a Write into a scratchpad subdir allows" 0 \
+    "$(rc_of "$SCR2/sub/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e stray .git at the temp root: a Write elsewhere under the temp root still fails closed" 2 \
+    "$(rc_of "$SB9626/other/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e stray .git at the temp root: a Write outside the session layout still fails closed" 2 \
+    "$(rc_of "$SB9626/claude-$(id -u)/proj/x.py" TMPDIR="$SB9626")"
+mkdir -p "$SCR2/sub/.git"
+assert_rc "T3e a .git inside the scratchpad still fails closed" 2 \
+    "$(rc_of "$SCR2/sub/x.py" TMPDIR="$SB9626")"
+ln -sfn "$SANDBOX/featrepo" "$SCR2/linkprim"
+assert_rc "T3e a scratchpad symlink into a primary still blocks" 2 \
+    "$(rc_of "$SCR2/linkprim/foo.js" TMPDIR="$SANDBOX")"
+assert_rc "T3e a scratchpad symlink into a primary still blocks under the stray .git" 2 \
+    "$(rc_of "$SCR2/linkprim/foo.js" TMPDIR="$SB9626")"
+mkdir -p "$SANDBOX/mainrepo/tmproot/claude-$(id -u)/proj/sess/scratchpad"
+assert_rc "T3e a temp root inside a checkout on main still blocks a scratchpad Write" 2 \
+    "$(rc_of "$SANDBOX/mainrepo/tmproot/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SANDBOX/mainrepo/tmproot")"
+P9626="$SB9626/claude-$(id -u)"
+mkdir -p "$P9626/projA/sessA/scratchpad" "$P9626/projB/sessB/scratchpad" "$P9626/projB/sessB/.git" \
+    "$P9626/projC/sessC/scratchpad" "$P9626/projD/sessD/scratchpad" "$P9626/projE/sessE/scratchpad/.git"
+ln -s "$SANDBOX/mainrepo/.git" "$P9626/projA/sessA/.git"
+printf 'ref: refs/heads/main\n' > "$P9626/projB/sessB/.git/HEAD"
+printf '%s\n' "$SANDBOX/mainrepo/.git" > "$P9626/projB/sessB/.git/commondir"
+mkrepo "$P9626/projC" main
+mkrepo "$P9626/projD/sessD" main
+assert_rc "T3e a session-level .git symlinked into a primary on main blocks" 2 \
+    "$(rc_of "$P9626/projA/sessA/scratchpad/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e a session-level .git with a commondir into a primary on main blocks" 2 \
+    "$(rc_of "$P9626/projB/sessB/scratchpad/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e a real repo on main at the project level blocks" 2 \
+    "$(rc_of "$P9626/projC/sessC/scratchpad/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e a real repo on main at the session level blocks" 2 \
+    "$(rc_of "$P9626/projD/sessD/scratchpad/x.py" TMPDIR="$SB9626")"
+assert_rc "T3e a .git directly in the scratchpad blocks" 2 \
+    "$(rc_of "$P9626/projE/sessE/scratchpad/x.py" TMPDIR="$SB9626")"
+SBA9626=$(mktemp -d "${TMPDIR:-/tmp}/t3f.XXXXXX") || exit 1
+mkdir -p "$SBA9626/claude-$(id -u)/proj/sess/scratchpad" "$SBA9626/.git"
+printf '%s\n' "$SANDBOX/mainrepo/.git" > "$SBA9626/.git/commondir"
+ln -s refs/heads/main "$SBA9626/.git/HEAD"
+assert_rc "T3e a temp-root .git with a commondir into a primary and a symlinked HEAD blocks" 2 \
+    "$(rc_of "$SBA9626/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SBA9626")"
+mkdir -p "$SANDBOX/mainrepo/tmpg/claude-$(id -u)/proj/sess/scratchpad" "$SANDBOX/mainrepo/tmph/claude-$(id -u)/proj/sess/scratchpad"
+printf 'garbage\n' > "$SANDBOX/mainrepo/tmpg/.git"
+assert_rc "T3e a garbage gitfile at a temp root inside a checkout on main blocks" 2 \
+    "$(rc_of "$SANDBOX/mainrepo/tmpg/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SANDBOX/mainrepo/tmpg")"
+mkdir -p "$SANDBOX/mainrepo/tmph/.git"
+assert_rc "T3e an empty .git at a temp root inside a checkout on main blocks" 2 \
+    "$(rc_of "$SANDBOX/mainrepo/tmph/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SANDBOX/mainrepo/tmph")"
+assert_rc "T3e an empty .git at a temp root inside a checkout on main blocks when git stops at a ceiling directory" 2 \
+    "$(rc_of "$SANDBOX/mainrepo/tmph/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SANDBOX/mainrepo/tmph" GIT_CEILING_DIRECTORIES="$SANDBOX/mainrepo")"
+SBB9626=$(mktemp -d "${TMPDIR:-/tmp}/t3g.XXXXXX") || exit 1
+mkdir -p "$SBB9626/claude-$(id -u)/proj/sess/scratchpad" "$SBB9626/.git"
+printf '%s\n' "$SANDBOX/mainrepo/.git" > "$SBB9626/commondir"
+ln -s refs/heads/main "$SBB9626/HEAD"
+assert_rc "T3e a temp root that is a git dir with a commondir into a primary and a symlinked HEAD blocks" 2 \
+    "$(rc_of "$SBB9626/claude-$(id -u)/proj/sess/scratchpad/x.py" TMPDIR="$SBB9626")"
+t3eerr=$(printf '%s' "{\"tool_input\":{\"file_path\":\"$SB9626/other/x.py\"}}" | env TMPDIR="$SB9626" bash "$HOOK" 2>&1 >/dev/null)
+case "$t3eerr" in
+    *"$SB9626/.git"*) echo "PASS T3e the rc 3 message names the .git it found" ;;
+    *) echo "FAIL T3e the rc 3 message names the .git it found — got: $t3eerr"; FAILED=$((FAILED + 1)) ;;
+esac
+
 # T4: file not inside any git repo → ALLOW
 if [ "$SANDBOX_IN_REPO" -eq 0 ]; then
     assert_rc "T4 outside any repo allows" 0 "$(rc_of "$SANDBOX/plain/foo.js")"
@@ -665,7 +732,7 @@ assert_rc "T50 Write .single-writer (untracked+gitignored) on main blocks (HIMME
 # Clean up the worktree registration before removing the sandbox (avoids a
 # dangling `git worktree` admin record under SANDBOX/wtrepo).
 git -C "$SANDBOX/wtrepo" worktree remove --force "$SANDBOX/wtrepo/.claude/worktrees/feat+x" 2>/dev/null || true
-rm -rf "$SANDBOX" 2>/dev/null || true
+rm -rf "$SANDBOX" "$SB9626" "$SBA9626" "$SBB9626" 2>/dev/null || true
 
 if [ "$FAILED" -gt 0 ]; then
     echo "---"

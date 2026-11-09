@@ -2,7 +2,7 @@
 description: Close Jira tickets done by merged commits.
 ---
 
-Lean-invoke wrapper over `scripts/jira/reconcile-backlog.mjs` (HIMMEL-374) — the
+Lean-invoke wrapper over `scripts/jira/reconcile-backlog.mjs` — the
 pure-code engine that classifies every open ticket against the merged-commit
 corpus. This command never writes to Jira on its own; it only runs the
 engine's default `--dry-run` mode and asks before re-invoking it with
@@ -15,14 +15,14 @@ engine's default `--dry-run` mode and asks before re-invoking it with
    (omit `--hygiene-doc` if no hygiene-sweep report exists yet). This prints
    one JSON record per ticket plus a summary line — no writes happen in this
    mode.
-2. Group the non-`LEAVE` records into the batched-close shape from HIMMEL-378:
+2. Group the non-`LEAVE` records into the batched-close shape from this command's original design:
    - **A — shipped**: `disposition: CLOSE` (`reason: subject-match`) — a
      merged commit subject names the ticket and nothing downgrades it.
    - **D — rescope partial**: `disposition: RESCOPE` (`reason:
      partial-delivery` / `outcome-acceptance` / `multi-task-ticket`) — comment
      only, never transitioned.
    - Note explicitly: buckets **B (superseded)** and **C (stale, Won't Do)**
-     from HIMMEL-378's original design have no automated trigger in this
+     from that original design have no automated trigger in this
      engine (`STALE-PREMISE` is schema-only — see `reconcile-lib.mjs`'s
      comment above `classifyTicket`) — inventing a heuristic for "this
      ticket's premise no longer exists" would be guessing at semantics the
@@ -32,7 +32,8 @@ engine's default `--dry-run` mode and asks before re-invoking it with
 3. Present batch A and batch D to the operator with the evidence line for
    each ticket. **Do not proceed without an explicit answer.**
 4. Only on explicit approval, re-run with the approved keys and the existing
-   safety valves (HIMMEL-3128 — both required by the engine itself):
+   safety valves (both required by the engine itself, because a commit subject
+   naming a ticket does not prove the whole ticket landed):
    ```bash
    node scripts/jira/reconcile-backlog.mjs --project "$JIRA_PROJECT_KEY" --apply \
      --only <approved-key-list> --max-close <count-of-approved-CLOSE-keys> \

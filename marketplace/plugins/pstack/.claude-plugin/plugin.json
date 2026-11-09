@@ -1,7 +1,7 @@
 {
   "name": "pstack",
-  "version": "0.1.2",
-  "description": "[himmel vendor] Ten opt-in skills from cursor/plugins pstack, pinned at 4dd1d058, including statechart and create/maintain-formal-verification-skill. All disable-model-invocation. No hooks, agents or autonomy; statechart is VM-only with optional Java/TLC prerequisites.",
+  "version": "0.1.4",
+  "description": "[himmel vendor] Ten opt-in skills from cursor/plugins pstack, pinned at 4dd1d058, including statechart and create/maintain-formal-verification-skill. All disable-model-invocation. No hooks, agents or autonomy; statechart runs small, finite trusted models on the station host, bounded by timeout, once its runtime is validated, with optional Java/TLC prerequisites from setup-statechart.sh.",
   "author": {
     "name": "Lauren Tan (upstream) / yotamleo (vendor)"
   },

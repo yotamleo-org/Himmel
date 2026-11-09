@@ -8,7 +8,11 @@
 # must answer `enabled=true` and `run_enabled=true` (root config `"enabled": true` and
 # `"run": {"enabled": true}`). No user-writable marker turns it on. Anything else (helper absent,
 # sudo refused, the station off or locked down, the run kind off): no output, exit 0, and the
-# dialog opens as before.
+# dialog opens as before. A missing helper file means no sudo call at all. In `mode=allowlist`
+# the hook asks `afk-sudo mode -- ARGV` and stays silent unless it answers `admits=true`, so a
+# command afk-run would refuse still gets the dialog.
+# Test seam: AFK_PROMPT_HELPER_PROBE names the file whose absence skips sudo (sudo still runs the
+# fixed path), so it can only make the hook quieter.
 #
 # Only Bash calls: another tool has no argv the helper could run. A command the gate-shapes hook
 # (permission-allow-gate-shapes.sh, the other PermissionRequest member) allows is left to it.
@@ -38,7 +42,9 @@ tool="$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null)" || exit 0 
 cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)" || exit 0  # swallow-ok: fail-open hook, no decision on error
 [ -n "$cmd" ] || exit 0
 
-mode="$(sudo -n /usr/local/libexec/himmel/afk-sudo mode 2>/dev/null | sed -n 1p)" || exit 0  # swallow-ok: no helper or sudo refused = off, the dialog opens
+helper=/usr/local/libexec/himmel/afk-sudo
+[ -e "${AFK_PROMPT_HELPER_PROBE:-$helper}" ] || exit 0
+mode="$(sudo -n "$helper" mode 2>/dev/null | sed -n 1p)" || exit 0  # swallow-ok: no helper or sudo refused = off, the dialog opens
 case " $mode " in *" enabled=true "*) ;; *) exit 0 ;; esac
 case " $mode " in *" run_enabled=true "*) ;; *) exit 0 ;; esac
 
@@ -61,11 +67,19 @@ first=${cmd%% *}
 if [[ $cmd =~ ^[A-Za-z0-9_./:=@%+,-]+(\ [A-Za-z0-9_./:=@%+,-]+)*$ ]] && [[ $first != *=* ]] \
     && [ "$(type -t -- "$first" 2>/dev/null)" = file ]; then  # swallow-ok: an unknown name is not a file, so it runs as bash -c
     line="$line$cmd"
+    read -r -a argv <<< "$cmd"
 else
     line="${line}bash -c $(printf '%q' "$cmd")"
+    argv=(bash -c "$cmd")
 fi
+case " $mode " in *" mode=allowlist "*)
+    case " $(sudo -n "$helper" mode -- "${argv[@]}" 2>/dev/null | sed -n 1p) " in  # swallow-ok: a helper that cannot answer admits nothing, so the dialog opens
+        *" admits=true "*) ;;
+        *) exit 0 ;;
+    esac ;;
+esac
 
 msg="operator is AFK: file \`$line\`
-That asks the operator on Telegram, waits up to 9 minutes and, if approved, runs the command once as the operator's user and prints its output and exit status; do not retry the command itself. Exit 75: still pending, re-attach with the afk-run wait line it prints. Exit 76: this session already has a request pending or three sessions are waiting; run the same line again later. Bypass: AFK_PROMPT_TO_REQUEST_OFF=1 in the launching shell opens the dialog as before."
+That asks the operator on Telegram, waits up to 9 minutes and, if approved, runs the command once as the operator's user and prints its output and exit status; do not retry the command itself. Exit 75: still pending, re-attach with the afk-run wait line it prints. Exit 76: this session already has a request pending or the sessions' two slots are taken; run the same line again later. Bypass: AFK_PROMPT_TO_REQUEST_OFF=1 in the launching shell opens the dialog as before."
 jq -cn --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PermissionRequest",decision:{behavior:"deny",message:$m}}}'
 exit 0

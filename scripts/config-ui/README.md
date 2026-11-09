@@ -575,6 +575,11 @@ imports, so its suite runs in CI without an install.
   wrapped) and the click through to a run. Another adds the walk console to
   Fleet to a run and back over the shared rail, and checks no request line
   carries the token.
+- Trends tab e2e (`trends.e2e.ts`, same opt-in suite): needs `agui-web/dist` built. The test answers the
+  board and roll-up routes itself, so each of the three bands is drawn from data it picks: the 8 longest
+  merged workers and a link for the rest, a one-week dot, a null CI or merged-today count that says it could
+  not be read, a version delta naming both versions, the failure chip kind from the legend, and the 390 px
+  layout with no sideways scroll.
 - Docs link and tokens e2e (`docs-link.e2e.ts`, same opt-in suite): the rail
   ends with a Docs link to the public site in a new tab with
   `rel="noopener noreferrer"` and no session token, and the console reads the

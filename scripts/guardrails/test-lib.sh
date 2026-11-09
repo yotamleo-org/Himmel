@@ -1053,6 +1053,39 @@ cp "$LIB" "$MV_NOAP/lib.sh"
 out=$( ( . "$MV_NOAP/lib.sh"; TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_FEAT_C/newfile.txt" ) ); rc=$?
 if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone refused when adopted-primary.sh is missing -> rc=2"; else fail "main_checkout_verdict: missing adopted-primary.sh -> expected rc=2 got rc=$rc out=[$out]"; fi
 
+SPU=$(id -u)
+SP1="$FIX/sp1"; mkdir -p "$SP1/.git" "$SP1/claude-$SPU/p/s/scratchpad" "$SP1/other"
+SP1_C=$(cd "$SP1" && pwd -P)
+out=$(TMPDIR="$SP1" main_checkout_verdict "$SP1_C/claude-$SPU/p/s/scratchpad/x.py"); rc=$?
+if [ "$rc" -eq 0 ] && [ "$out" = "$SP1_C" ]; then pass "main_checkout_verdict: an empty temp-root .git lets a scratchpad Write through and names the root -> rc=0"; else fail "main_checkout_verdict: empty temp-root .git -> expected rc=0+$SP1_C got rc=$rc out=[$out]"; fi
+out=$(TMPDIR="$SP1" main_checkout_verdict "$SP1_C/other/x.py"); rc=$?
+if [ "$rc" -eq 3 ]; then pass "main_checkout_verdict: an empty temp-root .git still refuses a Write outside the scratchpad -> rc=3"; else fail "main_checkout_verdict: empty temp-root .git outside the scratchpad -> expected rc=3 got rc=$rc out=[$out]"; fi
+SP2="$FIX/sp2"; mkdir -p "$SP2/.git" "$SP2/claude-$SPU/p/s/scratchpad"
+printf '%s\n' "$MV_MAIN_C/.git" > "$SP2/.git/commondir"
+ln -s refs/heads/main "$SP2/.git/HEAD"
+SP2_C=$(cd "$SP2" && pwd -P)
+out=$(TMPDIR="$SP2" main_checkout_verdict "$SP2_C/claude-$SPU/p/s/scratchpad/x.py"); rc=$?
+if [ "$rc" -ne 0 ]; then pass "main_checkout_verdict: a temp-root .git with a commondir and a symlinked HEAD is not exempt -> rc=$rc"; else fail "main_checkout_verdict: commondir + symlinked HEAD temp-root .git -> expected a refusal got rc=0 out=[$out]"; fi
+SP3="$MV_MAIN_C/.sp3"; mkdir -p "$SP3/claude-$SPU/p/s/scratchpad"
+printf 'garbage\n' > "$SP3/.git"
+out=$(TMPDIR="$SP3" main_checkout_verdict "$SP3/claude-$SPU/p/s/scratchpad/x.py"); rc=$?
+if [ "$rc" -ne 0 ]; then pass "main_checkout_verdict: a garbage gitfile at a temp root inside a checkout is not exempt -> rc=$rc"; else fail "main_checkout_verdict: garbage gitfile temp root in a checkout -> expected a refusal got rc=0 out=[$out]"; fi
+rm -rf "$SP3"
+SP6="$FIX/sp6"; mkdir -p "$SP6/.git" "$SP6/claude-$SPU/p/s/scratchpad"
+printf '%s\n' "$MV_MAIN_C/.git" > "$SP6/commondir"
+ln -s refs/heads/main "$SP6/HEAD"
+SP6_C=$(cd "$SP6" && pwd -P)
+out=$(TMPDIR="$SP6" main_checkout_verdict "$SP6_C/claude-$SPU/p/s/scratchpad/x.py"); rc=$?
+if [ "$rc" -eq 3 ]; then pass "main_checkout_verdict: a temp root that is a git dir with a commondir and a symlinked HEAD is not exempt -> rc=3"; else fail "main_checkout_verdict: bare-style temp root -> expected rc=3 got rc=$rc out=[$out]"; fi
+SP7="$MV_MAIN_C/.sp7"; mkdir -p "$SP7/.git" "$SP7/claude-$SPU/p/s/scratchpad"
+out=$(GIT_CEILING_DIRECTORIES="$MV_MAIN_C" TMPDIR="$SP7" main_checkout_verdict "$SP7/claude-$SPU/p/s/scratchpad/x.py"); rc=$?
+if [ "$rc" -eq 3 ]; then pass "main_checkout_verdict: an empty temp-root .git in a checkout is not exempt when git stops at a ceiling directory -> rc=3"; else fail "main_checkout_verdict: ceiling fixture -> expected rc=3 got rc=$rc out=[$out]"; fi
+rm -rf "$SP7"
+SP5="$FIX/sp5"; mkdir -p "$SP5/claude-$SPU/p/s/scratchpad/.git"
+SP5_C=$(cd "$SP5" && pwd -P)
+out=$(TMPDIR="$SP5" main_checkout_verdict "$SP5_C/claude-$SPU/p/s/scratchpad/x.py"); rc=$?
+if [ "$rc" -eq 3 ]; then pass "main_checkout_verdict: an empty .git directly in the scratchpad is not exempt -> rc=3"; else fail "main_checkout_verdict: .git in the scratchpad -> expected rc=3 got rc=$rc out=[$out]"; fi
+
 git -C "$MV_MAIN" worktree remove --force "$MV_WT" 2>/dev/null || true
 git -C "$PC_PRIMARY" worktree remove --force "$PC_WT" 2>/dev/null || true
 rm -rf "$FIX"

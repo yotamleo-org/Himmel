@@ -27,7 +27,7 @@ bash scripts/handover/chief/chief.sh $ARGUMENTS
   tokens in one turn.
 - `--arm` — also arm the session headed via `scripts/handover/headed-arm.sh`,
   on a signal file plus a deadline; prints the arm log path. Launches with
-  1m context with `--autocompact auto` by default (HIMMEL-3884).
+  1m context with `--autocompact auto` by default.
 - `--context 1m|standard` — on `new` or `next`, override the default and
   environment choice. `--context standard` (or `CHIEF_CONTEXT=standard`
   in the launching shell) opts down to `--autocompact 200000`.
@@ -40,7 +40,7 @@ bash scripts/handover/chief/chief.sh $ARGUMENTS
   still override it.
 
 Record the printed `release-token: ` line — now backticked around the token
-itself (HIMMEL-2910) — in the chief's first Results bullet verbatim:
+itself, so trailing punctuation never trips the secret scanner — in the chief's first Results bullet verbatim:
 releasing the lock at wrap requires it.
 
 Linux/macOS only — `--arm` launches through konsole on Linux; on macOS it opens

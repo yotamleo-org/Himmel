@@ -87,8 +87,13 @@
 ^scripts/telegram/(chief-route|gate|router|poller)\.ts$
 ^scripts/telegram/(bus|afk-sudo-route|config-restore-route)\.ts$
 ^scripts/telegram/(chief-route|gate|router|poller)\.test\.ts$
+# The message class table (which kinds reach the operator), its lint, the plain-words rule and the lint's fixtures.
+^scripts/telegram/(message-classes\.json|key-brief\.ts|key-brief\.test\.ts|test-message-classes\.sh)$
+^scripts/telegram/fixtures/
 # The core match the ticket spec gate asks (HIMMEL-8353); the list it reads is under ^scripts/ci/ above.
 ^scripts/jira/src/release/core\.ts$
+# The operator's phone line for an out-of-version approval: the writer signs no record unless it exits 0.
+^scripts/handover/chief-kit/(test-)?version-approval-alert\.sh$
 # Hook config files outside the audited dirs.
 ^\.codex/hooks\.json$
 ^marketplace/plugins/[^/]+/hooks/hooks\.json$

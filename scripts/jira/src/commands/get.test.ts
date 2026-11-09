@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 
 vi.mock('../client.js', async (importOriginal) => {
@@ -207,5 +207,42 @@ describe('get fix versions', () => {
     await p.parseAsync(['node', 'jira', 'get', 'HIMMEL-1', '--short']);
     expect(logSpy).toHaveBeenCalledTimes(1);
     expect(logSpy).toHaveBeenNthCalledWith(1, 'HIMMEL-1\tTask\tTo Do\tS');
+  });
+});
+
+describe('get browse link', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  const issue = {
+    key: 'HIMMEL-1',
+    fields: { summary: 'S', status: { name: 'To Do' }, issuetype: { name: 'Task' }, description: null },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockRequest.mockResolvedValue(issue);
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('prints a browse: line with the site URL and the key', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://station.atlassian.net');
+    await freshProgram().parseAsync(['node', 'jira', 'get', 'HIMMEL-1']);
+    const printed = logSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(printed).toContain('browse: https://station.atlassian.net/browse/HIMMEL-1');
+  });
+
+  it('control: --short stays one line with no browse: line', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://station.atlassian.net');
+    await freshProgram().parseAsync(['node', 'jira', 'get', 'HIMMEL-1', '--short']);
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenNthCalledWith(1, 'HIMMEL-1\tTask\tTo Do\tS');
+  });
+
+  it('control: no site URL set prints no browse: line and does not fail', async () => {
+    vi.stubEnv('JIRA_BASE_URL', undefined as unknown as string);
+    await freshProgram().parseAsync(['node', 'jira', 'get', 'HIMMEL-1']);
+    const printed = logSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(printed).not.toContain('browse:');
   });
 });

@@ -4,12 +4,22 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildEditFields } from './edit.js';
+import { request } from '../client.js';
 
 vi.mock('../client.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../client.js')>();
   return { ...actual, request: vi.fn() };
 });
 
+
+const SNAPSHOT_GET = /fields=description,labels,parent,issuetype/;
+const isSnapshot = (c: unknown[]) => c[0] === 'GET' && SNAPSHOT_GET.test(String(c[1]));
+type Impl = (method: string, path: string, body?: never) => unknown;
+const mockImpl = (f: Impl) =>
+  (request as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (method: string, path: string, body?: never) =>
+    SNAPSHOT_GET.test(String(path)) && method === 'GET'
+      ? { fields: { issuetype: { name: 'Task' }, labels: ['standalone'], parent: { key: 'HIMMEL-9' }, description: null } }
+      : f(method, path, body));
 describe('edit', () => {
   const orig = process.env.JIRA_SEVERITY_FIELD;
 
@@ -182,7 +192,7 @@ describe('edit --add-labels', () => {
     const { request } = await import('../client.js');
     mockRequest = request as unknown as ReturnType<typeof vi.fn>;
     // PUT returns {}; the read-back GET returns the labels.
-    mockRequest.mockImplementation(async (method: string) =>
+    mockImpl(async (method: string) =>
       method === 'GET' ? { fields: { labels: ['a', 'b'] } } : {},
     );
   });
@@ -198,7 +208,7 @@ describe('edit --add-labels', () => {
     const { registerEdit } = await import('./edit.js');
     const p = freshProgram(registerEdit);
     await p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--add-labels', 'a,b']);
-    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(mockRequest).toHaveBeenCalledTimes(3);
     const [method, path, body] = mockRequest.mock.calls.find((c) => c[0] === 'PUT')!;
     expect(method).toBe('PUT');
     expect(path).toBe('/issue/HIMMEL-1');
@@ -218,7 +228,7 @@ describe('edit --add-labels', () => {
   });
 
   it('sends update.labels remove ops and NO fields.labels for --remove-labels', async () => {
-    mockRequest.mockImplementation(async (method: string) =>
+    mockImpl(async (method: string) =>
       method === 'GET' ? { fields: { labels: ['other'] } } : {},
     );
     const { registerEdit } = await import('./edit.js');
@@ -230,7 +240,7 @@ describe('edit --add-labels', () => {
   });
 
   it('fails loud when --remove-labels reads back with the label still present', async () => {
-    mockRequest.mockImplementation(async (method: string) =>
+    mockImpl(async (method: string) =>
       method === 'GET' ? { fields: { labels: ['held'] } } : {},
     );
     const { registerEdit } = await import('./edit.js');
@@ -241,7 +251,7 @@ describe('edit --add-labels', () => {
   });
 
   it('fails loud when --remove-labels reads back with no labels field', async () => {
-    mockRequest.mockImplementation(async (method: string) => (method === 'GET' ? { fields: {} } : {}));
+    mockImpl(async (method: string) => (method === 'GET' ? { fields: {} } : {}));
     const { registerEdit } = await import('./edit.js');
     const p = freshProgram(registerEdit);
     await expect(
@@ -253,7 +263,7 @@ describe('edit --add-labels', () => {
     const { registerEdit } = await import('./edit.js');
     const p = freshProgram(registerEdit);
     await p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--labels', 'a,b']);
-    const [, , body] = mockRequest.mock.calls[0];
+    const [, , body] = mockRequest.mock.calls.find((c) => c[0] === 'PUT')!;
     expect(body).toEqual({ fields: { labels: ['a', 'b'] } });
     expect((body as { update?: unknown }).update).toBeUndefined();
   });
@@ -275,7 +285,7 @@ describe('edit --fix-version / --add-fix-version', () => {
     process.env.JIRA_PROJECT_KEY = 'HIMMEL';
     const { request } = await import('../client.js');
     mockRequest = request as unknown as ReturnType<typeof vi.fn>;
-    mockRequest.mockImplementation(async (method: string, path: string) => {
+    mockImpl(async (method: string, path: string) => {
       if (method !== 'GET') return {};
       // /versions GETs return the known versions; the issue read-back
       // returns the fixVersions the edit set.
@@ -304,7 +314,7 @@ describe('edit --fix-version / --add-fix-version', () => {
   });
 
   it('sends update.fixVersions add op and NO fields.fixVersions for --add-fix-version', async () => {
-    mockRequest.mockImplementation(async (method: string, path: string) => {
+    mockImpl(async (method: string, path: string) => {
       if (method !== 'GET') return {};
       return path.endsWith('/versions') ? KNOWN_VERSIONS : { fields: { fixVersions: [{ name: 'v1.0.1' }] } };
     });
@@ -385,7 +395,7 @@ describe('edit read-back of every field it sends', () => {
   // The PUT returns {}, the project-versions GET returns the known versions,
   // and the issue GET returns `fields` as the post-PUT read-back.
   function readBack(fields: Record<string, unknown>): void {
-    mockRequest.mockImplementation(async (method: string, path: string) => {
+    mockImpl(async (method: string, path: string) => {
       if (method !== 'GET') return {};
       if (path.endsWith('/versions')) return [{ id: '1', name: 'v1.0.0' }, { id: '2', name: 'v1.0.1' }];
       return { fields };
@@ -401,7 +411,7 @@ describe('edit read-back of every field it sends', () => {
   }
 
   function issueGetPath(): string | undefined {
-    return mockRequest.mock.calls.find((c) => c[0] === 'GET' && String(c[1]).startsWith('/issue/'))?.[1];
+    return mockRequest.mock.calls.find((c) => c[0] === 'GET' && String(c[1]).startsWith('/issue/') && !isSnapshot(c))?.[1];
   }
 
   const cases: Array<{
@@ -507,6 +517,15 @@ describe('edit read-back of every field it sends', () => {
     },
   ];
 
+  it('prints a browse: line with the site URL after the edit', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://station.atlassian.net');
+    readBack({ priority: { name: 'High' } });
+    await runEdit(['--priority', 'High']);
+    expect(console.log).toHaveBeenCalledWith('HIMMEL-1 edited');
+    expect(console.log).toHaveBeenCalledWith('browse: https://station.atlassian.net/browse/HIMMEL-1');
+    vi.unstubAllEnvs();
+  });
+
   for (const c of cases) {
     it(`${c.name}: reads ${c.field} back after the PUT and succeeds when it matches`, async () => {
       readBack(c.pass);
@@ -530,7 +549,7 @@ describe('edit read-back of every field it sends', () => {
     await expect(
       runEdit(['--priority', 'High', '--title', 'New', '--labels', 'x']),
     ).rejects.toThrow(/priority was not changed[\s\S]*title was not changed/);
-    const gets = mockRequest.mock.calls.filter((c) => c[0] === 'GET');
+    const gets = mockRequest.mock.calls.filter((c) => c[0] === 'GET' && !isSnapshot(c));
     expect(gets).toHaveLength(1);
     expect(gets[0][1]).toBe('/issue/HIMMEL-1?fields=priority,summary,labels');
   });
@@ -587,7 +606,7 @@ describe('edit into a frozen version', () => {
     const { request } = await import('../client.js');
     mockRequest = request as unknown as ReturnType<typeof vi.fn>;
     let landed = 'v1.1.3';
-    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+    mockImpl(async (method: string, path: string, body?: unknown) => {
       if (method === 'PUT') {
         const b = body as {
           fields?: { fixVersions?: Array<{ name: string }> };
@@ -633,7 +652,7 @@ describe('edit into a frozen version', () => {
   });
 
   it('writes no admission row when Jira drops the fixVersions field', async () => {
-    mockRequest.mockImplementation(async (method: string, path: string) => {
+    mockImpl(async (method: string, path: string) => {
       if (method === 'PUT') return {};
       if (path.endsWith('/versions')) return VERSIONS;
       return { fields: { fixVersions: [{ name: 'v1.1.4' }] } };
@@ -697,7 +716,7 @@ describe('edit --residual-of', () => {
     issues = {};
     dropFixVersions = true;
     omitFixVersionsReadBack = false;
-    mockRequest.mockImplementation(async (method: string, path: string, body?: { update?: Record<string, unknown> }) => {
+    mockImpl(async (method: string, path: string, body?: { update?: Record<string, unknown> }) => {
       if (path.startsWith('/project/')) return [{ name: 'v1.1.3', released: false, archived: false }];
       const m = /^\/issue\/([A-Z]+-\d+)/.exec(path);
       const issue = m ? issues[m[1]] : undefined;
@@ -832,5 +851,43 @@ describe('edit --residual-of', () => {
     issues['HIMMEL-900'] = { labels: ['residual-depth-1'], fixVersions: [] };
     issues['HIMMEL-901'] = { labels: ['residual-depth-2'], fixVersions: [{ name: 'v1.1.3' }] };
     await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/fix-version was not changed.*no fixVersions list/s);
+  });
+});
+
+describe('edit keeps the ticket standard', () => {
+  it('newViolations names only the (rule, field) errors the edit adds', async () => {
+    const { newViolations } = await import('./edit.js');
+    const d = (rule: string, field: string, severity: 'error' | 'warning' = 'error') => ({ rule, field, severity, message: `${rule} ${field}` });
+    expect(newViolations([d('body.section.missing', 'body.Proof')], [d('body.section.missing', 'body.Proof'), d('body.placeholder', 'body.Plan')]))
+      .toEqual([d('body.placeholder', 'body.Plan')]);
+    expect(newViolations([], [d('metric.required', 'body.Metric', 'warning')])).toEqual([]);
+  });
+
+  it('a read-back that fails after the PUT is reported as unconfirmed, not as a refusal', async () => {
+    (request as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && String(path).includes('fields=description,labels,parent,issuetype')) {
+        return { fields: { issuetype: { name: 'Task' }, labels: ['standalone'], parent: { key: 'HIMMEL-9' }, description: null } };
+      }
+      if (method === 'GET') throw new Error('HTTP 503');
+      return {};
+    });
+    const { registerEdit } = await import('./edit.js');
+    const p = new Command();
+    p.exitOverride();
+    registerEdit(p);
+    await expect(p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--priority', 'High'])).rejects.toThrow(/PUT was sent but the read-back failed.*unconfirmed/);
+  });
+
+  it('a ticket whose current state cannot be read is refused before the PUT', async () => {
+    (request as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && String(path).includes('fields=description,labels,parent,issuetype')) throw new Error('HTTP 503');
+      return {};
+    });
+    const { registerEdit } = await import('./edit.js');
+    const p = new Command();
+    p.exitOverride();
+    registerEdit(p);
+    await expect(p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--desc', 'x'])).rejects.toThrow(/could not be read.*refusing to edit it blind/);
+    expect((request as unknown as ReturnType<typeof vi.fn>).mock.calls.some((c) => c[0] === 'PUT')).toBe(false);
   });
 });

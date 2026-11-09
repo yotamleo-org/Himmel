@@ -654,10 +654,36 @@ wrun() {
   HOME="$PCH" TZ=UTC bash "$COMPUTE" --projects "$WP" --ledger "$WL" --store "$st" "$@" 2>"$ROOT/win/err"
 }
 wdays() { jq -r 'select(.kind=="phase-cost") | .day' "$1/records.jsonl" 2>/dev/null | sort -u | tr '\n' ' '; }
+GB="$ROOT/win/gatebin"; mkdir -p "$GB"
+for t in cp mv; do
+  { printf '#!/bin/sh\nREAL=%s\n' "$(command -v "$t")"
+    cat <<'G'
+"$REAL" "$@" || exit $?
+d=; for a in "$@"; do d=$a; done
+case "${GATE_KIND:-}" in
+  window) case "$1:$d" in */ck-new.json:*/ck-in.json) ;; *) exit 0 ;; esac ;;
+  file) [ "${0##*/}" = mv ] || exit 0
+        case "${d%/*}" in */phase-cost-state) ;; *) exit 0 ;; esac ;;
+  *) exit 0 ;;
+esac
+n="$(cat "$GATE_DIR/n" 2>/dev/null || echo 0)"; n=$((n + 1)); echo "$n" > "$GATE_DIR/n"
+[ "$n" = "$GATE_N" ] || exit 0
+: > "$GATE_FILE.reached"; i=0
+while [ -e "$GATE_FILE" ] && [ "$i" -lt 600 ]; do sleep 0.05; i=$((i + 1)); done
+exit 0
+G
+  } > "$GB/$t"; chmod +x "$GB/$t"
+done
+exec_gated_in_background() {
+  local gd
+  gd="$ROOT/win/gate-$(basename "$1")-${2//:/-}"
+  mkdir -p "$gd"
+  PATH="$GB:$PATH" GATE_KIND="${2%%:*}" GATE_N="${2##*:}" GATE_FILE="$3" GATE_DIR="$gd" exec "${@:4}"
+}
 wkill() {
   local st="$1" pf="$ROOT/win/pause-$2" i=0 pid
   : > "$pf"
-  HOME="$PCH" TZ=UTC USAGE_COMPUTE_TEST_PAUSE_AT="$2" USAGE_COMPUTE_TEST_PAUSE_FILE="$pf" \
+  HOME="$PCH" TZ=UTC exec_gated_in_background "$st" "$2" "$pf" \
     bash "$COMPUTE" --projects "$WP" --ledger "$WL" --store "$st" >/dev/null 2>&1 & pid=$!
   while [ ! -e "$pf.reached" ] && [ "$i" -lt 200 ]; do sleep 0.1; i=$((i + 1)); done
   kill -9 "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
@@ -674,7 +700,7 @@ check "windows (a): no ticket record while windows remain (no partial totals)" "
   "$(jq -s '[.[] | select(.ticket != null)] | length' "$WA/records.jsonl" 2>/dev/null || echo missing)"
 
 WB="$ROOT/win/store-b"; PB="$ROOT/win/pause-b"; : > "$PB"
-HOME="$PCH" TZ=UTC USAGE_COMPUTE_TEST_PAUSE_AT=window:1 USAGE_COMPUTE_TEST_PAUSE_FILE="$PB" \
+HOME="$PCH" TZ=UTC exec_gated_in_background "$WB" window:1 "$PB" \
   bash "$COMPUTE" --projects "$WP" --ledger "$WL" --store "$WB" --budget-seconds 1 >/dev/null 2>"$ROOT/win/err-b" & bp=$!
 i=0; while [ ! -e "$PB.reached" ] && [ "$i" -lt 200 ]; do sleep 0.1; i=$((i + 1)); done
 sleep 2; rm -f "$PB"
@@ -755,9 +781,10 @@ check "windows: a half-removed applied commit is dropped, not replayed (rc 0, st
   "$rc/$(cksum < "$WU/records.jsonl")/$([ -e "$WU/.commit.done" ] && echo yes || echo no)"
 
 WK="$ROOT/win/store-lock"; mkdir -p "$WK/.lock"
+NS="$ROOT/win/nosleep"; mkdir -p "$NS"; printf '#!/bin/sh\nexit 0\n' > "$NS/sleep"; chmod +x "$NS/sleep"
 lockmsg() {
   local m
-  m="$(HOME="$PCH" TZ=UTC USAGE_COMPUTE_TEST_LOCK_TRIES=2 bash "$COMPUTE" --projects "$WP" --ledger "$WL" --store "$WK" 2>&1 >/dev/null || true)"
+  m="$(HOME="$PCH" TZ=UTC PATH="$NS:$PATH" bash "$COMPUTE" --projects "$WP" --ledger "$WL" --store "$WK" 2>&1 >/dev/null || true)"
   grep -qF "$1" <<<"$(tail -n 1 <<<"$m")" && echo yes || echo no
 }
 echo 999999 > "$WK/.lock/pid"
@@ -767,5 +794,7 @@ check "lock: a live owner pid is named as running" "yes" "$(lockmsg "store locke
 rm -f "$WK/.lock/pid"
 check "lock: a lock with no pid (a reader's) says the owner is unknown" "yes" "$(lockmsg "store locked: $WK/.lock (owner unknown")"
 rmdir "$WK/.lock"
+check "usage-compute.sh carries no test seam (env-driven lock tries or pause hook)" "0" \
+  "$(grep -c -E 'USAGE_COMPUTE_TEST_|test_pause' "$COMPUTE" || true)"
 
 if [ "$FAIL" -eq 0 ]; then echo "PASS"; else echo "FAILED" >&2; exit 1; fi

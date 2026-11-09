@@ -1078,12 +1078,12 @@ grep_narrowed() {
     : > "$work/narrow.hits" || io_fail "creating the ${what} result file"
     grep_rc=0
     ( cd "$narrow" || exit 3
-      git grep --no-index --no-exclude-standard --threads=1 -z -l -E -f "$pf" ) > "$work/narrow.hits" || grep_rc=$?
+      LC_ALL=C grep -r -l --null -a -E -f "$pf" -- . ) > "$work/narrow.hits" || grep_rc=$?
     if [ "$grep_rc" -gt 1 ]; then
-        echo "impacted-suites: git grep failed (rc=$grep_rc) ${what} — cannot tell which suites are impacted" >&2
+        echo "impacted-suites: grep failed (rc=$grep_rc) ${what} — cannot tell which suites are impacted" >&2
         exit 2
     fi
-    tr '\0' '\n' < "$work/narrow.hits" > "$out" || io_fail "reading ${what}"
+    tr '\0' '\n' < "$work/narrow.hits" | sed 's|^\./||' > "$out" || io_fail "reading ${what}"
 }
 # closure_grep <patfile> <outfile> <what> — the .sh files at head matching any pattern.
 closure_grep() {

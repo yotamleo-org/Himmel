@@ -3038,6 +3038,25 @@ entirely (`timeout`/`xargs`/`find -exec` wrappers, `$var` paths, `bun run
 test`/`npm test`, or simply not routing through quiet-run) is untouched by
 this hook, an accepted residual.
 
+### `block-t3code-unwatch-open-pr.sh` — no unwatch while the PR is open
+
+Fires on `mcp__t3-code__unwatch_pull_request`. T3 Code's wake text
+pairs "all required checks passed" with "call unwatch_pull_request first"; an
+agent followed it on an OPEN, `mergeStateStatus=BLOCKED` PR with no review
+decision, nothing watched the PR afterwards, and the operator re-armed the watch
+by hand. The hook reads the live PR (`gh pr view <n> [--repo o/r] --json
+state,mergeStateStatus,reviewDecision`; repo and number come from a
+`github.com/o/r/pull/N` URL in `tool_input`, else a number field plus an optional
+repo field) and denies (exit 2) while `state=OPEN`; the reason prints the state,
+`mergeStateStatus`, `reviewDecision` and the override. MERGED and CLOSED allow
+silently. Fails OPEN with a loud stderr `WARNING` when the PR cannot be resolved
+or read (no `jq`, bad JSON, `gh` error or unparseable output): a workflow nudge,
+never a trap the agent cannot leave. Override for an operator-directed stop:
+`T3CODE_UNWATCH_OK=1` (launching shell, session-sticky); the allow is printed to
+stderr only (no file ledger). Wired in
+`EXPECTED_SCRIPT_ORDER` (`wire-hook-bash.mjs`) and the `.claude/settings.json`
+PreToolUse stanza for matcher `mcp__t3-code__unwatch_pull_request`. Spec: `scripts/hooks/test-block-t3code-unwatch-open-pr.sh`.
+
 ### `require-quiet-run.sh` — bare test-suite bounce
 
 Fires on Bash. Denies a bare `bash`/`sh`/direct invocation of a repo shell
@@ -4144,10 +4163,10 @@ Reads fill with `scripts/context-fill.sh --percent` on the hook's
 **Off by default.** With no `HIMMEL_WORKER_SESSION_CONTEXT_MODE`
 (or `none`) the hook exits 0 with no output for PreToolUse and PreCompact at any
 fill; `headed-arm-worker.sh --context-guard compact|handoff` turns it on, and so does a
-native-lane Sonnet 5.5 launch on a profile with `sonnetContextGuard` (`worker-impl` hands
-off, `worker-eval` compacts, both at 450000) or a native-lane Opus 5.5 launch on a profile
-with `opusContextGuard` (every `worker-*` profile hands off, `worker-eval` compacts, at
-800000 with the deny at 700000 tokens). One
+native-lane Sonnet 5.5 launch on a profile with `sonnetContextGuard` (`worker-impl` and
+`worker-eval` compact, at 850000) or a native-lane Opus 5.5 launch on a profile
+with `opusContextGuard` (every `worker-*` profile compacts, at
+850000 with the deny at 740000 tokens). One
 reference: [`worker-context-guard.md`](worker-context-guard.md).
 
 **Threshold — 75 % of the autocompact ceiling, not of the window.** The ceiling
@@ -5887,14 +5906,18 @@ rc 5 unless `HIMMEL_API_LANE=on` is in the caller's environment, and a per-call
 env prefix is refused by the guards, so workers never reached it and the PR critic
 (`critic-first-pass.sh`) was skipped. `headed-arm-worker.sh` now reads an opt-in seam
 from the LAUNCHING shell: `WORKER_SESSION_API_LANE=on` puts `HIMMEL_API_LANE=on` and
-`HIMMEL_API_ACCOUNT=auto` into the worker's environment (`--dry-run` prints both).
-Default OFF: unset or any other value launches a worker with neither. The wrapper
-strips an ambient `HIMMEL_API_LANE`/`HIMMEL_API_ACCOUNT` (both are in
-`chief_context_worker_env_unset_names`), so the seam is the only way in. The
-chief makes it the standing default by exporting `WORKER_SESSION_API_LANE=on` in its own
-launch environment. The switch does not bypass spend control: `claude-api.sh`
-still applies the API credit guard (`~/.himmel/state/api-credit`) and account
-routing per call, and `usage-preflight.sh` still gates the launch itself.
+`HIMMEL_API_ACCOUNT` set to the account `auto` into the worker's environment
+(`--dry-run` prints both). Default OFF: unset or any other value launches a worker
+with neither. The wrapper strips an ambient `HIMMEL_API_LANE`/`HIMMEL_API_ACCOUNT`
+(both are in `chief_context_worker_env_unset_names`), so the seam is the only way
+in. The limit refuses that account for the critic, bulk calls and an unmapped judge
+(see `docs/internals/api-lane.md`), so the switch does not bill a critic: a critic
+refused this way is a policy refusal, which the critic reports as skipped today, and
+a chief should not export the switch as a standing default. Whether a worker can name
+its own API account is settled by a later change. The switch does not bypass spend
+control: `claude-api.sh` still applies the API credit guard
+(`~/.himmel/state/api-credit`) and account routing per call, and
+`usage-preflight.sh` still gates the launch itself.
 
 Subagent transcripts are NOT flat files under the project directory. A
 session's own transcript is `~/.claude/projects/<slugified-cwd>/<sessionId>.jsonl`,

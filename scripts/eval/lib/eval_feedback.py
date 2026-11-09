@@ -175,6 +175,174 @@ def keep_rule(c, series, base, new, after):
 GATE_RECALL, GATE_FP = "panel.recall_gating", "panel.fp_rate"
 GATE_EPS = 1e-9  # float slack: two equal means must compare equal
 GATE_STATUS = ("ok",)  # a partial sweep scores fewer cases, so like an inconclusive one it never counts
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def row_field(r, name):
+    """A review-panel row's field, whether the row is a results.jsonl row (flat) or an eval-runs row (meta)."""
+    if name in r:
+        return r[name]
+    meta = r.get("meta")
+    return meta.get(name) if isinstance(meta, dict) else None
+
+
+def known_scorer(r):
+    """The row's scorer_sha256 when it is a valid 64-hex digest, else None."""
+    s = row_field(r, "scorer_sha256")
+    return s if isinstance(s, str) and HEX64.match(s) else None
+
+
+def select_review_runs(rows, scorer=None, eligible_only=False):
+    """(selected, diagnostics): the one review-panel row selector that gate, eval-compare, the review page, the
+    feedback step and the public page read. Rows are results rows or eval-runs rows of one eval, in file order;
+    the selection is in execution order (a rescore sits at its source execution's place, not where it was appended).
+
+    Rows of one execution (the same execution_id, the same legacy raw-output hash outputs_sha256, or the same
+    run_id) are ONE model execution, however many scoring revisions it has: only a revision chain's head is
+    selected, so a rescore is never a repeat, a baseline or a previous run. A revision names its predecessor in
+    supersedes_run_id. An execution is selected only when its chain is unambiguous: a cycle, a successor of an
+    unknown run beside other rows of the execution, or two heads (a fork) selects nothing of it and is named in
+    the diagnostics (a lone row whose predecessor is not in rows, one promoted without its source, stands). Rows with no
+    link at all keep the legacy rule: the first row of the execution counts, the rest are repeats of it.
+    scorer (a 64-hex digest): of the selected heads only those scored by it stay, so a missing or older scorer
+    never matches. eligible_only drops a head whose decision_eligible is false, naming its reasons; a row that
+    carries no decision_eligible keeps its legacy standing. Each diagnostic is {run_id, reason, ...}; a row
+    that lost to another carries `by`, the selected run_id."""
+    rows = [r for r in rows if isinstance(r, dict)]
+    parent = list(range(len(rows)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    def sid(v):
+        return v if isinstance(v, str) and v else None  # a non-string id (a list, a number) names nothing
+    rid = lambda i: sid(rows[i].get("run_id")) or "\0row%d" % i  # noqa: E731
+    seen = {}
+    for i, r in enumerate(rows):
+        for key in (("x", sid(row_field(r, "execution_id"))), ("b", sid(r.get("outputs_sha256"))),
+                    ("r", sid(r.get("run_id"))), ("r", sid(row_field(r, "supersedes_run_id")))):
+            if key[1] is None:
+                continue
+            j = seen.setdefault(key, i)
+            parent[find(i)] = find(j)
+    groups = {}
+    for i in range(len(rows)):
+        groups.setdefault(find(i), []).append(i)
+    diag, heads = [], []
+    for members in groups.values():
+        first = {}
+        for i in members:
+            first.setdefault(rid(i), i)
+        dup = [i for i in members if first[rid(i)] != i]
+        uniq = [i for i in members if i not in dup]
+        by_id = {rid(i): i for i in uniq}
+        links = {i: sid(row_field(rows[i], "supersedes_run_id")) for i in uniq}
+        linked = [i for i in uniq if links[i] is not None]
+        who = rid
+        if len(uniq) == 1 or not linked:
+            mine = [i for i in members if scorer is not None and known_scorer(rows[i]) == scorer]
+            head = (mine or uniq)[0]
+            diag.extend({"run_id": rows[i].get("run_id"), "reason": "repeat-of-execution",
+                         "by": rows[head].get("run_id")} for i in members if i != head)
+            heads.append((min(members), head))
+            continue
+        bad = [i for i in linked if links[i] not in by_id or links[i] == who(i)]
+        targets = [links[i] for i in linked if i not in bad]
+        successors = {}
+        for i in linked:
+            successors.setdefault(links[i], []).append(i)
+        fork = sorted(t for t, s in successors.items() if len(s) > 1)
+        tops = [i for i in uniq if who(i) not in targets]
+        why = None
+        if bad:
+            why = "supersedes-unknown-run"
+        elif fork:
+            why = "two-successors-ambiguous"
+        elif len(tops) != 1:
+            why = "supersession-cycle" if not tops else "several-heads-ambiguous"
+        else:
+            walk, cur = set(), who(tops[0])
+            while cur is not None and why is None:
+                if cur in walk:
+                    why = "supersession-cycle"
+                walk.add(cur)
+                cur = links[by_id[cur]]
+            if why is None and len(walk) != len(uniq):
+                why = "several-heads-ambiguous"
+        if why:
+            diag.extend({"run_id": rows[i].get("run_id"), "reason": why} for i in members)
+            continue
+        head = tops[0]
+        diag.extend({"run_id": rows[i].get("run_id"), "reason": "superseded", "by": rows[head].get("run_id")}
+                    for i in members if i != head)
+        heads.append((min(members), head))
+    out = []
+    for _, i in sorted(heads):
+        r = rows[i]
+        if scorer is not None and known_scorer(r) != scorer:
+            diag.append({"run_id": r.get("run_id"),
+                         "reason": "other-scorer" if row_field(r, "scorer_sha256") else "without-scorer-sha256"})
+        elif eligible_only and row_field(r, "decision_eligible") is False:
+            diag.append({"run_id": r.get("run_id"), "reason": "not-decision-eligible",
+                         "detail": row_field(r, "ineligibility_reasons") or []})
+        else:
+            out.append(r)
+    return out, diag
+
+
+def review_incompat(a, b):
+    """Why two review-panel eval-runs rows cannot be compared, or None: another corpus/protocol/roster (the
+    confighash), a scorer that is not the same known digest, or unequal or unrecorded participation."""
+    if a.get("confighash") != b.get("confighash"):
+        return "confighash %s vs %s: another corpus, protocol or roster" % (a.get("confighash"), b.get("confighash"))
+    sa, sb = known_scorer(a), known_scorer(b)
+    if sa is None or sa != sb:
+        return "scorer_sha256 %s vs %s: not the same known scorer" % ((sa or "unknown")[:12], (sb or "unknown")[:12])
+    ca, cb = row_field(a, "coverage"), row_field(b, "coverage")
+    if not isinstance(ca, dict) or not isinstance(cb, dict):
+        return "participation unrecorded on one side"
+    if ca != cb:
+        return "participation differs: the critics did not answer the same cases"
+    return None
+
+
+def review_series(rows, **kw):
+    """rows with its review-panel rows replaced by select_review_runs' selection, in execution order, and the
+    diagnostics; rows of any other eval pass through unchanged."""
+    sel, diag = select_review_runs([r for r in rows if r.get("eval") == "review-panel"], **kw)
+    keep, order, out = {id(r) for r in sel}, iter(sel), []
+    for r in rows:
+        if r.get("eval") != "review-panel":
+            out.append(r)
+        elif id(r) in keep:
+            out.append(next(order))
+    return out, diag
+
+
+def _hashable(v):
+    """v as a set member: a list or object from a hand-edited row becomes its JSON text, never a TypeError."""
+    return v if v is None or isinstance(v, (str, int, float, bool)) else json.dumps(v, sort_keys=True)
+
+
+def gate_side(rows, h, confighash, skip_ids=(), skip_bundles=()):
+    """The rows the gate counts for cbs_hash h: that confighash, a counted status and the two gate metrics, the
+    first row of a run_id or raw-output bundle. Returns (rows, run_ids, bundles)."""
+    out, ids, bundles = [], set(skip_ids), set(skip_bundles)
+    for r in rows:
+        m = r.get("metrics") if isinstance(r, dict) else None
+        if r.get("cbs_hash") != h or r.get("confighash") != confighash or not isinstance(m, dict) \
+                or r.get("status") not in GATE_STATUS \
+                or not (eval_runs._num(m.get(GATE_RECALL)) and eval_runs._num(m.get(GATE_FP))):
+            continue
+        rk, bk = _hashable(r.get("run_id")), _hashable(r.get("outputs_sha256"))
+        if rk in ids or bk in bundles:
+            continue
+        ids.add(rk)
+        bundles.add(bk)
+        out.append(r)
+    return out, ids, bundles
 
 
 def gate_verdict(rows, base_hash, head_hash, confighash, target_classes=()):
@@ -192,24 +360,8 @@ def gate_verdict(rows, base_hash, head_hash, confighash, target_classes=()):
     Otherwise loss. Computed at check time, never stored.
     ponytail: the noise is the spread (max - min) of the baseline rows at one hash, which only widens as
     sweeps accrue, upgrade = a dispersion estimate (a standard-error band) once a hash has enough rows (spec P8)."""
-    def side(h, skip_ids=(), skip_bundles=()):
-        out, ids, bundles = [], set(skip_ids), set(skip_bundles)
-        for r in rows:
-            m = r.get("metrics") if isinstance(r, dict) else None
-            if r.get("cbs_hash") != h or r.get("confighash") != confighash or not isinstance(m, dict) \
-                    or r.get("status") not in GATE_STATUS \
-                    or not (eval_runs._num(m.get(GATE_RECALL)) and eval_runs._num(m.get(GATE_FP))):
-                continue
-            if r.get("run_id") in ids or r.get("outputs_sha256") in bundles:
-                continue
-            ids.add(r.get("run_id"))
-            bundles.add(r.get("outputs_sha256"))
-            out.append(r)
-        return out
-
-    base = side(base_hash)
-    head = side(head_hash) if head_hash == base_hash else \
-        side(head_hash, {r.get("run_id") for r in base}, {r.get("outputs_sha256") for r in base})
+    base, base_ids, base_bundles = gate_side(rows, base_hash, confighash)
+    head = base if head_hash == base_hash else gate_side(rows, head_hash, confighash, base_ids, base_bundles)[0]
     info = {"baseline_rows": len(base), "head_rows": len(head)}
     if not base or not head:
         where = " and ".join(w for w, rs in (("baseline", base), ("head", head)) if not rs)
@@ -265,9 +417,13 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
     """Measure, then change, for each eval; returns the records written."""
     rules = load_rules(rules)
     path = changes_path(changes)
-    runs = [r for r in eval_runs.read_rows(ledger) if r["status"] == "ok"]
+    chosen, diag = review_series(eval_runs.read_rows(ledger))
+    runs = [r for r in chosen if r["status"] == "ok"]
+    alias = {d["run_id"]: d["by"] for d in diag if d.get("by")}
     pos = {r["run_id"]: i for i, r in enumerate(runs)}
     by_id = {r["run_id"]: r for r in runs}
+    pos.update({rid: pos[by] for rid, by in alias.items() if by in pos})
+    by_id.update({rid: by_id[by] for rid, by in alias.items() if by in by_id})
     written = []
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path + ".lock", "a") as lock:
@@ -314,7 +470,8 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                           and c["confighash"] == new["confighash"]}
             ev_rules = [r for r in rules if r["eval"] == ev]
             for critic in dict.fromkeys(r.get("critic") for r in ev_rules):
-                if any(c["baseline_run_id"] == new["run_id"] and c.get("critic") == critic for c in opened):
+                if any(alias.get(c["baseline_run_id"], c["baseline_run_id"]) == new["run_id"]
+                       and c.get("critic") == critic for c in opened):
                     continue
                 tm = tuning_metrics(new)
                 for rule in [r for r in ev_rules if r.get("critic") == critic]:

@@ -336,6 +336,28 @@ contains "13 refusal surfaced" "$out" "queue lock held"
 # read-sink-ok: LE_LIVE_CALLS is the suite's own scratch file under $W
 check "13 refused close runs no live-state" "$(cat "$LE_LIVE_CALLS")" ""
 
+OPEN_ERR="wrap-merged: step pr-state failed: PR #2553 is 'OPEN', not MERGED"
+LE_WRAP_RC=3 LE_WRAP_ERR="$OPEN_ERR" LE_LIST="$W/list13" run "WRAPPED N3002. PR 2553 open."
+check "13e open-PR wrap rc" "$rc" 0
+contains "13e open-PR wrap prints HANDLED close-wrapped" "$out" "HANDLED close-wrapped N3002"
+contains "13e wrap-merged ran first" "$calls" "wrap --doc"
+contains "13e close gets the fleet and the worker doc" "$calls" "close --fleet $W/fleet.json $W/HIMMEL-5-N3002-shipped-2026-10-14.md"
+lacks "13e open-PR wrap starts no station sync" "$out" "station=pending"
+# read-sink-ok: LE_LIVE_CALLS is the suite's own scratch file under $W
+contains "13e live-state ran" "$(cat "$LE_LIVE_CALLS")" "live $W/doc"
+LE_WRAP_RC=3 LE_WRAP_ERR="$OPEN_ERR" LE_CLOSE_RC=4 LE_CLOSE_ERR="close-wrapped-worker: refusing - not WRAPPED" LE_LIST="$W/list13" run "WRAPPED N3002."
+check "13e refused close rc" "$rc" 10
+contains "13e refused close escalates" "$out" "ESCALATE close-wrapped-failed rc=4"
+contains "13e refusal surfaced" "$out" "not WRAPPED"
+LE_WRAP_RC=3 LE_WRAP_ERR="wrap-merged: step pr-state failed: gh pr view 2553: could not resolve" LE_LIST="$W/list13" run "WRAPPED N3002."
+check "13e unreadable PR rc" "$rc" 10
+contains "13e unreadable PR escalates wrap-merged-failed" "$out" "ESCALATE wrap-merged-failed rc=3"
+lacks "13e unreadable PR: close not run" "$calls" "close"
+LE_WRAP_RC=3 LE_WRAP_ERR="$OPEN_ERR" LE_LIST="$W/list13" run "MERGED #2553 N3002"
+check "13e MERGED on an OPEN PR rc" "$rc" 10
+contains "13e MERGED on an OPEN PR escalates" "$out" "ESCALATE wrap-merged-failed rc=3"
+lacks "13e MERGED on an OPEN PR: close not run" "$calls" "close"
+
 # 13b. a WRAPPED that resolves to a successor doc with no PR of its own, while the original sibling names one,
 # takes wrap-merged's merge verification, never the direct close
 printf '%s\n' '## Results' '- 10:00 READY 2553 abc' '- 10:30 WRAPPED hand-off' > "$W/HIMMEL-6-N5001-orig-2026-10-14.md"
@@ -409,6 +431,8 @@ contains "14 a label that is only a prefix of the closed one still escalates" "$
 
 # 15. READY: with the auto_go flag on it goes to auto-go.sh (a stub through LE_AUTOGO), live; the chief doc gets an AUTO-GO bullet
 H40=0780b95dcad44fe293c7798066626cd52bb2dce0
+wait_for_autogo_call() { local i=0; while [ ! -s "$LE_CALLS" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i+1)); done; calls="$(cat "$LE_CALLS")"; }
+pause_then_read_calls() { sleep 1; calls="$(cat "$LE_CALLS")"; }
 cat > "$W/autogo" <<'EOF3'
 #!/usr/bin/env bash
 echo "autogo $*" >> "$LE_CALLS"
@@ -421,24 +445,24 @@ printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\nst
 export HIMMEL_FLAGS_TSV="$W/flags.tsv" HIMMEL_CONFIG_DIR="$W/no-conf" LE_AUTOGO="$W/autogo"
 unset HIMMEL_FLAG_AUTO_GO
 
-run "READY 2553 $H40 GREEN N2088"
+run "READY 2553 $H40 GREEN N2088"; wait_for_autogo_call
 check "15a flag off: rc" "$rc" 10
 check "15a flag off: ESCALATE marker-READY, as before" "$out" "ESCALATE marker-READY"
 check "15a flag off: auto-go runs once, dry" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/fleet.json --worker N2088 2553 $H40"
 
-LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing - chief relay" run "READY 2553 $H40 GREEN N2088"
+LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing - chief relay" run "READY 2553 $H40 GREEN N2088"; wait_for_autogo_call
 check "15a1 a failed dry run: rc unchanged" "$rc" 10
 check "15a1 a failed dry run: ESCALATE marker-READY unchanged" "$out" "ESCALATE marker-READY"
-LE_AUTOGO_RC=0 LE_AUTOGO_OUT="WOULD-GO 2553 $H40" run "READY 2553 $H40 GREEN N2088"
+LE_AUTOGO_RC=0 LE_AUTOGO_OUT="WOULD-GO 2553 $H40" run "READY 2553 $H40 GREEN N2088"; wait_for_autogo_call
 check "15a2 a WOULD-GO dry run: still ESCALATE marker-READY" "$out" "ESCALATE marker-READY"
-run "N2088 READY 2553 $H40 GREEN"
+run "N2088 READY 2553 $H40 GREEN"; wait_for_autogo_call
 check "15a3 a label-first READY dry-runs the same" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/fleet.json --worker N2088 2553 $H40"
-run "READY 2553 abc N2088"
+run "READY 2553 abc N2088"; pause_then_read_calls
 check "15a4 no full head: no dry run" "$calls" ""
-run "READY 2553 $H40 GREEN"
+run "READY 2553 $H40 GREEN"; pause_then_read_calls
 check "15a5 no worker label: no dry run" "$calls" ""
 check "15a5 no worker label: ESCALATE marker-READY unchanged" "$out" "ESCALATE marker-READY"
-run "READY 2553 $H40 N2078 N2088"
+run "READY 2553 $H40 N2078 N2088"; pause_then_read_calls
 check "15a6 two labels: no dry run" "$calls" ""
 
 export HIMMEL_FLAG_AUTO_GO=1
@@ -579,6 +603,47 @@ mkser "$W/s-bad" "$ROW8,$ROW9"; printf '{not json' > "$W/s-bad/series/zz.json"
 runf "$W/s-bad/fleet.json" "WRAPPED N8. Lock released."
 contains "16.6 an unreadable ledger escalates instead of guessing a route" "$out" "ESCALATE series-find-failed rc=1"
 check "16.6 nothing ran" "$calls" ""
+
+cat > "$W/autogo-sleep" <<'EOF17'
+#!/usr/bin/env bash
+echo $$ > "$LE_SLEEP_PID"
+sleep 20
+EOF17
+chmod +x "$W/autogo-sleep"
+export LE_SLEEP_PID="$W/sleep.pid"
+t0=$SECONDS
+HIMMEL_FLAG_AUTO_GO=0 LE_AUTOGO="$W/autogo-sleep" LE_DRYRUN_BOUND=2 runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N2078"
+el=$((SECONDS - t0))
+check "17.1 a hung dry run: rc" "$rc" 10
+check "17.1 a hung dry run: ESCALATE marker-READY" "$out" "ESCALATE marker-READY"
+check "17.1 a hung dry run: the escalation returns within the bound (elapsed under 6s)" "$([ "$el" -lt 6 ] && echo yes || echo "no ${el}s")" yes
+if timeout --version >/dev/null 2>&1; then
+    i=0; while [ "$i" -lt 50 ] && [ ! -s "$LE_SLEEP_PID" ]; do sleep 0.1; i=$((i+1)); done
+    check "17.1b the sleeping dry run started" "$([ -s "$LE_SLEEP_PID" ] && echo yes || echo no)" yes
+    i=0; while [ "$i" -lt 100 ] && [ -s "$LE_SLEEP_PID" ] && kill -0 "$(cat "$LE_SLEEP_PID")" 2>/dev/null; do sleep 0.1; i=$((i+1)); done
+    check "17.1b the bounded dry run is gone once its bound passed" "$(kill -0 "$(cat "$LE_SLEEP_PID" 2>/dev/null)" 2>/dev/null && echo alive || echo gone)" gone
+else
+    echo "ok - 17.1b skipped: no GNU timeout on this host"
+fi
+[ ! -s "$LE_SLEEP_PID" ] || kill "$(cat "$LE_SLEEP_PID")" 2>/dev/null
+pkill -f "$W/autogo-sleep" 2>/dev/null
+unset LE_SLEEP_PID
+
+HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"; wait_for_autogo_call
+check "17.2 a series READY: ESCALATE marker-READY unchanged" "$out" "ESCALATE marker-READY"
+check "17.2 a series READY dry-runs under the ledger's writer label, not the message's" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/s-ok/fleet.json --worker N9 2553 $H40"
+HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N2078"; wait_for_autogo_call
+check "17.3 a non-series READY dry-runs under the message's label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/s-ok/fleet.json --worker N2078 2553 $H40"
+HIMMEL_FLAG_AUTO_GO=0 HIMMEL_FLAG_STACKED_SERIES=0 runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"; wait_for_autogo_call
+check "17.4 stacked_series off: the dry run keeps the message's label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/s-ok/fleet.json --worker N8 2553 $H40"
+HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-zero/fleet.json" "READY 2553 $H40 GREEN N8"; wait_for_autogo_call
+check "17.5 the writer is in no manifest entry: the dry run keeps the message's label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/s-zero/fleet.json --worker N8 2553 $H40"
+HIMMEL_FLAG_AUTO_GO=0 runf "$W/s-bad/fleet.json" "READY 2553 $H40 GREEN N8"; wait_for_autogo_call
+check "17.6 an unreadable ledger: the dry run keeps the message's label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/s-bad/fleet.json --worker N8 2553 $H40"
+check "17.6 an unreadable ledger: ESCALATE marker-READY, never series-find-failed" "$out" "ESCALATE marker-READY"
+HIMMEL_FLAG_AUTO_GO=0 LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing" runf "$W/s-ok/fleet.json" "READY 2553 $H40 GREEN N8"; wait_for_autogo_call
+check "17.7 a failing, printing dry run changes nothing: rc" "$rc" 10
+check "17.7 a failing, printing dry run changes nothing: out" "$out" "ESCALATE marker-READY"
 unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAG_STACKED_SERIES HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

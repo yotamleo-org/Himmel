@@ -40,6 +40,7 @@ describe('jira breadcrumb wiring', () => {
   it('transition (mutation) drops a breadcrumb for the key', async () => {
     mockRequest.mockImplementation(async (method: string, path: string) => {
       if (method === 'GET' && path.includes('fields=fixVersions')) return { fields: { fixVersions: [{ name: 'v1.1.3' }] } };
+      if (method === 'GET' && path.includes('fields=status')) return { fields: { status: { name: 'Done' } } };
       if (method === 'GET') return { transitions: [{ id: '31', name: 'Done' }] };
       return {};
     });
@@ -52,16 +53,18 @@ describe('jira breadcrumb wiring', () => {
   it('move (mutation) drops a breadcrumb for the source key', async () => {
     mockRequest.mockImplementation(async (method: string, path: string) => {
       if (method === 'GET' && path.startsWith('/project/')) return {};
+      if (method === 'GET' && path.includes('fields=status')) return { fields: { status: { name: 'Done' } } };
       if (method === 'GET' && /\/issue\/[^/]+\?fields/.test(path))
-        return { key: 'HIMMEL-2', fields: { summary: 'S', issuetype: { name: 'Task' }, description: null } };
+        return { key: 'HIMMEL-2', fields: { summary: 'S', issuetype: { name: 'Epic' }, description: null } };
       if (method === 'GET' && path.endsWith('/comment')) return { comments: [] };
       if (method === 'POST' && path === '/issue') return { key: 'LUNA-9' };
       if (method === 'GET' && path.endsWith('/transitions')) return { transitions: [{ id: '31', name: 'Done' }] };
       return {};
     });
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
     const p = freshProgram(registerMove);
     await p.parseAsync(['node', 'jira', 'move', 'HIMMEL-2', '--to-project', 'LUNA']);
-    expect(mockBreadcrumb).toHaveBeenCalledTimes(1);
+    vi.unstubAllEnvs();
     expect(mockBreadcrumb).toHaveBeenCalledWith('HIMMEL-2');
   });
 

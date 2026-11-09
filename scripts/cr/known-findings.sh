@@ -23,7 +23,7 @@
 #                                               first, then PROMOTION PROPOSALS: PROPOSE lines for classes
 #                                               whose real recurrences since the rung was set reach N across M branches
 #   known-findings.sh --refresh [--learnings <export.csv>]   (also prints the promotion proposals; with
-#                                               --learnings also the feed: STALE / PONYTAIL / STATUS-UNKNOWN /
+#                                               --learnings also the feed: STALE / DEFERRED / STATUS-UNKNOWN /
 #                                               DUPLICATE / PROMOTE-HINT / PROPOSE-CLASS lines and a
 #                                               learnings_export rows/live_rows/stale_rows/unmatched_rows line)
 #   Proposal thresholds (--ladder, --refresh): --min-recurrences N, --min-branches M. Defaults: 3 and 2
@@ -118,7 +118,7 @@ const ROOT = process.env.REPO_ROOT;
 const db = JSON.parse(fs.readFileSync(KF, "utf8"));
 const classes = db.classes || [];
 
-// The learnings feed for /cr-learnings-refresh: STALE / PONYTAIL / STATUS-UNKNOWN per row, DUPLICATE groups,
+// The learnings feed for /cr-learnings-refresh: STALE / DEFERRED / STATUS-UNKNOWN per row, DUPLICATE groups,
 // PROMOTE-HINT and PROPOSE-CLASS clusters over the live unmatched rows. Printed only; nothing is deleted or edited.
 const STOP = new Set("the and for with that this when are not but you use its from into any all can has have been will should must only also than then them they their there which what each such via per".split(" "));
 const toks = (t) => (String(t).toLowerCase().match(/[a-z0-9_]{3,}/g) || []).filter((w) => !STOP.has(w));
@@ -158,11 +158,11 @@ function learningsFeed(rows) {
     else reason = otherReason(r);
     if (reason === "windows" && rejectsPlatform.test(r.text)) reason = otherReason(r);
     const key = (r.text.match(/\bHIMMEL-\d+\b/) || [])[0];
-    if (!reason && key && /defer|follow.?up|tracked|until|pending|revisit|ponytail/i.test(r.text)) {
+    if (!reason && key && /defer|follow.?up|tracked|until|pending|revisit/i.test(r.text)) {
       const st = ticketStatus(key);
       if (st === null) lines.push(`STATUS-UNKNOWN row=${r.n} ticket=${key} (Jira status unreachable; not STALE)`);
       else if (isClosed(st)) reason = `closed-deferral ${key} (${st})`;
-      else lines.push(`PONYTAIL row=${r.n} uses=${r.uses} ticket=${key} status=${st} ${r.file} ${short(r.text)}`);
+      else lines.push(`DEFERRED row=${r.n} uses=${r.uses} ticket=${key} status=${st} ${r.file} ${short(r.text)}`);
     }
     if (reason) { stale.push(r); lines.push(`STALE row=${r.n} uses=${r.uses} reason=${reason} ${r.file} ${short(r.text)}`); } else live.push(r);
   }

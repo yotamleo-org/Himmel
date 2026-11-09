@@ -26,11 +26,11 @@ chmod 0755 "$TMP/bin/sudo"
 
 CMD='npx --yes cowsay@1.6.0 N4198-probe'
 
-# run <tool> <command> [marks-dir]: OUT = hook stdout+stderr, RC, CALLS = stub argv lines.
 run() {
-    jq -n --arg t "$1" --arg c "$2" '{tool_name:$t,tool_input:{command:$c},session_id:"S1",cwd:"/w",reason:"[Code from External] fetches a package"}' > "$TMP/payload.json"
+    local tool=$1 command=$2 marks=${3:-$TMP/marks} reason=${4:-[Code from External] fetches a package}
+    jq -n --arg t "$tool" --arg c "$command" --arg r "$reason" '{tool_name:$t,tool_input:{command:$c},session_id:"S1",cwd:"/w",reason:$r}' > "$TMP/payload.json"
     : > "$TMP/argv"; rm -f "$TMP/stdin"
-    OUT=$(PATH="$TMP/bin:$PATH" AFK_GRANT_DIR="${3:-$TMP/marks}" bash "$HOOK" < "$TMP/payload.json" 2>&1)
+    OUT=$(PATH="$TMP/bin:$PATH" AFK_GRANT_DIR="$marks" bash "$HOOK" < "$TMP/payload.json" 2>&1)
     RC=$?
     CALLS=$(cat "$TMP/argv")
 }
@@ -48,6 +48,24 @@ check "a Bash denial files one grant request" "-n /usr/local/libexec/himmel/afk-
 check "root gets the exact command bytes on stdin" "$(printf '%s' "$CMD" | sha256sum)" "$(sha256sum < "$TMP/stdin")"
 check "the hook prints nothing" "" "$OUT"
 check "the hook exits 0" "0" "$RC"
+
+NO_VERDICT="The server-side auto mode classifier gave no verdict for Bash: another call in this response was changed by a hook after auto mode reviewed it, or could not be confirmed unchanged, so this call's review no longer applies. This is not a judgment that the action is unsafe."
+run Bash "$CMD" "$TMP/marks" "$NO_VERDICT"
+check "a no-verdict denial: no sudo call" "" "$CALLS"
+check "a no-verdict denial: exit 0" "0" "$RC"
+check "a no-verdict denial prints nothing" "" "$OUT"
+
+run Bash "$CMD" "$TMP/marks" "Classifier unavailable"
+check "Classifier unavailable: no sudo call" "" "$CALLS"
+
+run Bash "$CMD" "$TMP/marks" "denied with no category"
+check "a reason with no bracketed category: no sudo call" "" "$CALLS"
+
+run Bash "$CMD" "$TMP/marks" "[Credential Exploration] reads a token file"
+check "a credential category: no sudo call" "" "$CALLS"
+
+run Bash "$CMD" "$TMP/marks" "[Unauthorized Persistence] adds a cron job"
+check "a real refusal files exactly one request, argv unchanged" "-n /usr/local/libexec/himmel/afk-sudo grant-request --session=S1 --cwd=/w --why=[Unauthorized Persistence] adds a cron job" "$CALLS"
 
 printf '5' > "$TMP/rc"
 run Bash "$CMD"

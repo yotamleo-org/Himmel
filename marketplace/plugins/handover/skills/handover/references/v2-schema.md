@@ -1,13 +1,13 @@
 # v2 Frontmatter Schema
 
-Every `master-plan.md` (epics), `brief.md` (tasks, standalones), and `context.md` (epics) carries v2 frontmatter. Other per-item files (`bugs.md`, `reviewer-notes.md`, `extra-rules.md`, `plan.md`) carry only `template_version`. `next-session-*.md` carries `template_version` **plus** `resume_cwd:` (see below, HIMMEL-2147) — it is the only non-v2 file with a second frontmatter key, because it is the file `arm-resume.sh` reads to resolve which repo an unattended resume runs in.
+Every `master-plan.md` (epics), `brief.md` (tasks, standalones), and `context.md` (epics) carries v2 frontmatter. Other per-item files (`bugs.md`, `reviewer-notes.md`, `extra-rules.md`, `plan.md`) carry only `template_version`. `next-session-*.md` carries `template_version` **plus** `resume_cwd:` (see below) — it is the only non-v2 file with a second frontmatter key, because it is the file `arm-resume.sh` reads to resolve which repo an unattended resume runs in.
 
 ## v2 frontmatter block
 
 ```yaml
 ---
 template_version: 2
-jira: HIMMEL-69                    # Jira key; "—" when no Jira (offline / no-Jira repo)
+jira: PROJ-69                      # Jira key; "—" when no Jira (offline / no-Jira repo)
 bucket: now                        # one of: now, next, later, someday
                                    #   (or kanban synonyms: wip, next-up, backlog, icebox)
 priority: Highest                  # mirrors Jira priority: Highest | High | Medium | Low | Lowest
@@ -36,7 +36,7 @@ template_version: 2
 
 That's the entire frontmatter — only the version. Bumped from 1 to 2.
 
-## `next-session-*.md` frontmatter (HIMMEL-2147)
+## `next-session-*.md` frontmatter
 
 ```yaml
 ---
@@ -52,7 +52,7 @@ resolve which repo an unattended resume runs in; omitting it falls through to
 auto-detecting the handover file's own git toplevel, which is wrong for a
 handover parked in a different repo (the state repo) than the work it
 describes, and — if that auto-detected repo is single-writer — a rc=14
-refusal (with only a registry-bucket fallback, HIMMEL-2147 item 1b, as a
+refusal (with only a registry-bucket fallback as a
 safety net). `end-session` must fill this key on every `next-session-N.md`
 it creates.
 

@@ -4,9 +4,7 @@
 //
 //   npm run build && JIRA_LIVE_TEST=1 JIRA_LIVE_PROJECT=HTEST npx vitest run live/
 //
-// Safety: refuses to run unless JIRA_LIVE_PROJECT is a valid project key that
-// is not HIMMEL (any case). Live writes never touch the real backlog. Every
-// issue and version the run creates is tracked and torn down in afterAll, also
+// Every issue and version the run creates is tracked and torn down in afterAll, also
 // after a failed assertion: versions are archived, issues moved to Done (the CLI
 // has no issue-delete, so they remain, closed, in the test project). Needs the creds the
 // CLI itself reads (.env at the repo root, or JIRA_* env vars) and a prior
@@ -14,17 +12,19 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { assertLiveProject } from './project-guard.js';
+import { LIVE_BODY, liveChildEnv, liveVersionName, resolveLiveProject } from './project-guard.js';
 import { createTeardown } from './teardown.js';
 
 const ENABLED = process.env.JIRA_LIVE_TEST === '1';
-const PROJECT = process.env.JIRA_LIVE_PROJECT ?? '';
 const CLI = fileURLToPath(new URL('../dist/index.js', import.meta.url));
+// Set by vitest.setup.ts before it redirects HOME and HIMMEL_CONFIG_DIR.
+const CONFIG_DIR = process.env.JIRA_LIVE_CONFIG_DIR ?? '';
+let PROJECT = '';
 
 function jira(...args: string[]): string {
   return execFileSync('node', [CLI, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, JIRA_PROJECT_KEY: PROJECT },
+    env: liveChildEnv(process.env, PROJECT, CONFIG_DIR),
   });
 }
 
@@ -51,7 +51,7 @@ describe.skipIf(!ENABLED)('jira CLI live (opt-in, JIRA_LIVE_TEST=1)', () => {
   });
 
   beforeAll(() => {
-    assertLiveProject(PROJECT);
+    PROJECT = resolveLiveProject(CONFIG_DIR, CLI);
   });
 
   afterAll(() => {
@@ -60,7 +60,7 @@ describe.skipIf(!ENABLED)('jira CLI live (opt-in, JIRA_LIVE_TEST=1)', () => {
   });
 
   it('create: the issue exists and reads back its title', () => {
-    const out = jira('create', '--type', 'Task', '--title', `live ${stamp}`);
+    const out = jira('create', '--type', 'Task', '--title', `live ${stamp}`, '--desc', LIVE_BODY);
     key = /Created (\S+)/.exec(out)?.[1] ?? '';
     if (key) teardown.trackIssue(key);
     expect(key).toMatch(new RegExp(`^${PROJECT}-\\d+$`));
@@ -99,7 +99,7 @@ describe.skipIf(!ENABLED)('jira CLI live (opt-in, JIRA_LIVE_TEST=1)', () => {
   });
 
   it('version-create + edit --fix-version: the version is set on the issue', () => {
-    const v = `live-${stamp}`;
+    const v = liveVersionName(stamp);
     jira('version-create', v, '--project', PROJECT);
     teardown.trackVersion(v);
     jira('edit', key, '--fix-version', v);
@@ -134,7 +134,7 @@ describe.skipIf(!ENABLED)('jira CLI live (opt-in, JIRA_LIVE_TEST=1)', () => {
   }, 40_000);
 
   it('link: a second issue is linked and links lists it', () => {
-    const out = jira('create', '--type', 'Task', '--title', `live ${stamp} peer`);
+    const out = jira('create', '--type', 'Task', '--title', `live ${stamp} peer`, '--desc', LIVE_BODY);
     const peer = /Created (\S+)/.exec(out)?.[1] ?? '';
     if (peer) teardown.trackIssue(peer);
     jira('link', key, peer);

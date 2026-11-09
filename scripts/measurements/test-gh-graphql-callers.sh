@@ -106,6 +106,36 @@ total=$(wc -l <"$RLOG" 2>/dev/null | tr -d ' ')
 if [ "$rc" = 0 ] && [ "$n" = 3 ] && [ "$total" = 3 ]; then ok "run attributes 3 GraphQL calls to fakecaller.sh, skips REST"
 else bad "run attribution" "rc=$rc fakecaller=$n lines=$total out=$(cat "$TMP/run.out")"; fi
 
+disagree=$(
+    # shellcheck source=scripts/lib/gh-quota.sh
+    . "$ROOT/scripts/lib/gh-quota.sh"
+    eval "$(sed -n '/^gqlc_cost() {/,/^}/p' "$SCRIPT")"
+    set -f
+    while IFS= read -r s; do
+        # shellcheck disable=SC2086  # a shape is a word list on purpose
+        c=$(gqlc_cost $s)
+        # shellcheck disable=SC2086
+        b=$(ghq_bucket_of $s)
+        { [ "$b" = graphql ] && [ "$c" = 1 ]; } || { [ "$b" = core ] && [ "$c" = 0 ]; } || printf '%s=%s/%s;' "$s" "$c" "$b"
+    done <<'SHAPES'
+pr view 1 --json state
+pr list
+pr diff 1
+pr checks 9
+api repos/o/r/pulls
+api graphql -f query={viewer{login}}
+api -i graphql -f query={rateLimit{remaining}}
+run list
+run view 5 --log
+issue view 3
+repo view --json name
+label list
+workflow list
+SHAPES
+)
+if [ -z "$disagree" ] && grep -q 'ghq_bucket_of "\$@"' "$SCRIPT"; then ok "gqlc_cost charges by ghq_bucket_of on every shape"
+else bad "cost and bucket disagree" "${disagree:-gqlc_cost does not call ghq_bucket_of}"; fi
+
 # --- run: floor guard -------------------------------------------------------
 RLOG2="$TMP/run2.log"
 FAKE_REMAINING=1000 PATH="$BIN:$PATH" bash "$SCRIPT" run --log "$RLOG2" -- bash "$TMP/fakecaller.sh" >"$TMP/run2.out" 2>&1
@@ -165,6 +195,23 @@ FAKE_REMAINING=1000 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$WLOG2" --seco
 rc_wfloor=$?
 if [ "$rc_wfloor" = 2 ] && [ ! -s "$WLOG2" ]; then ok "watch refuses under the floor and logs nothing"
 else bad "watch floor" "rc=$rc_wfloor"; fi
+
+WLOG4="$TMP/watch4.log"
+FAKE_REMAINING=100 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$WLOG4" --seconds 1 >/dev/null 2>&1
+rc_wdef=$?
+if [ "$rc_wdef" = 2 ] && [ ! -s "$WLOG4" ]; then ok "watch with no --floor still refuses at 100 remaining (default 1500)"
+else bad "watch default floor at 100" "rc=$rc_wdef"; fi
+
+WLOG5="$TMP/watch5.log"
+FAKE_REMAINING=100 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$WLOG5" --seconds 1 --floor 0 >/dev/null 2>"$TMP/watch5.err"
+rc_wf0=$?
+if [ "$rc_wf0" = 0 ] && grep -q 'watched 1s' "$TMP/watch5.err"; then ok "watch --floor 0 watches at 100 remaining"
+else bad "watch --floor 0 at 100" "rc=$rc_wf0 err=$(cat "$TMP/watch5.err")"; fi
+
+bash "$SCRIPT" watch --log "$TMP/watch6.log" --seconds 1 --floor abc >/dev/null 2>&1
+rc_wfbad=$?
+if [ "$rc_wfbad" = 64 ]; then ok "watch --floor rejects a non-numeric value as a usage error"
+else bad "watch --floor abc" "rc=$rc_wfbad"; fi
 
 FAKE_NOHDR=1 PATH="$BIN:$PATH" bash "$SCRIPT" watch --log "$TMP/watch3.log" --seconds 1 >/dev/null 2>&1
 rc_wnohdr=$?

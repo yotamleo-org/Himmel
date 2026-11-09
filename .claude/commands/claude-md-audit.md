@@ -2,7 +2,7 @@
 description: Audit changed CLAUDE.md files (claude-md-improver rubric).
 ---
 
-Pre-ship quality gate for CLAUDE.md edits (HIMMEL-218). Run this on a worktree
+Pre-ship quality gate for CLAUDE.md edits. Run this on a worktree
 branch **before `gh pr create`** whenever the branch changes a `CLAUDE.md`. It
 runs the `claude-md-management:claude-md-improver` skill in AUDIT mode against
 the changed file(s) and surfaces findings; fixes are a deliberate follow-up you
@@ -10,12 +10,12 @@ apply in the worktree, never an automatic edit. (`block-edit-on-main` would
 refuse an edit to the primary worktree on `main` anyway — CLAUDE.md edits belong
 in a worktree.)
 
-Lean-invoke by design (HIMMEL-177): an LLM audit is too heavy to run on every
+Lean-invoke by design: an LLM audit is too heavy to run on every
 commit, so this is on-demand, not a hook. It is also why there is no operational
 rule about it in root `CLAUDE.md` (see the operator convention on keeping
 CLAUDE.md free of prunable operational guidance).
 
-**Prerequisite — `claude-md-management` plugin (HIMMEL-1044).** Step 3 drives
+**Prerequisite — `claude-md-management` plugin.** Step 3 drives
 the `claude-md-management:claude-md-improver` skill. That plugin is a
 Claude-tooling dev plugin and is intentionally `false` in the adopter lean
 profile (`docs/setup/settings-template.json`), so on a lean/adopter machine the
@@ -53,7 +53,7 @@ Steps:
 
 5. On request, re-run step 3 to confirm the audit is clean before `gh pr create`.
 
-## himmel rubric overrides (HIMMEL-480)
+## himmel rubric overrides
 
 The upstream rubric predates Anthropic's Claude 5 context-engineering guidance
 and scores two dimensions in the direction that guidance **reverses**. It ships

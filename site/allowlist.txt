@@ -57,7 +57,7 @@ internals/retask-channel.md
 internals/prompt-cache.md
 internals/config-layers.md
 internals/mcp-servers.md
-internals/ponytail-convention.md
+internals/code-comments.md
 internals/install-profile-files.md
 contributing.md
 security-review.md

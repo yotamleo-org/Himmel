@@ -7,8 +7,8 @@ them distinct:
 
 1. **Source-repo bucket** — *which directory* an item lives in under
    `<state-root>` (`himmel/`, `luna/`, `luna_brain/`, `cross/`, and any
-   `source_buckets_extra` like `salus/`). HIMMEL-129 layer; governed by
-   SKILL.md "Bucket Resolution" + the `source_buckets_extra` field (HIMMEL-307).
+   `source_buckets_extra` like `salus/`). The bucket layer; governed by
+   SKILL.md "Bucket Resolution" + the `source_buckets_extra` field.
    **This file does NOT govern that axis.**
 2. **Time-horizon bucket** — the frontmatter `bucket:` value
    (`now/next/later/someday`, or the kanban/`buckets_custom` names) that drives

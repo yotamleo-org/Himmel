@@ -34,6 +34,9 @@ me="$(id -un)"
 OP=4242
 NONCE=K7QF
 CODE=482913
+REPLY="$NONCE
+$CODE
+"
 unset STUB_RC STUB_OUT  # the stub reads these; an operator's environment must not change a baseline case
 
 # The stub helper: records its argv (one element per line) and its stdin, answers STUB_OUT, exits STUB_RC.
@@ -66,8 +69,7 @@ ID1=abcdefgh
 ID2=zyxwvu23
 
 # --- approve ---
-ctl "$NONCE $CODE
-" "$tmp/config.json" approve "$ID1"
+ctl "$REPLY" "$tmp/config.json" approve "$ID1"
 assert_eq "RED 1: himmelctl approve is a command and exits 0 when the helper does" "0" "$rc"
 assert_eq "approve calls the helper with the config's operator id, via ssh and the user" \
   "approve $ID1 --from $OP --chat $OP --via ssh --approver $me " "$(argv_line)"
@@ -78,46 +80,52 @@ assert_absent "the code is not printed" "$CODE" "$out$err"
 assert_absent "the nonce is not printed" "$NONCE" "$out$err"
 assert_contains "the helper's answer is shown" "result=ran" "$out"
 
-ctl "k7qf 482 913
+ctl "k7qf
+482 913
 " "$tmp/config.json" approve "$ID1"
 assert_eq "a spaced code is closed up for the helper and the nonce is passed as typed (root reads it any case)" "k7qf 482913" "$(tr -d '\n' < "$tmp/log.stdin")"
 
-for bad in "" "482913" "K7QF" "K7QF 48291" "K7QF 4829133" "K7Q 482913" "K7QF 48291x"; do
-  ctl "$bad
+for bad in "|" "482913|" "K7QF|" "K7QF|48291" "K7QF|4829133" "K7Q|482913" "K7QF|48291x" "K7QF 482913|" "K7QF482913|"; do
+  ctl "${bad%%|*}
+${bad#*|}
 " "$tmp/config.json" approve "$ID1"
   if [ "$rc" = 2 ] && ! sent; then pass "RED 2: a reply of [$bad] is refused with rc 2 and nothing is sent"; else fail "RED 2: reply [$bad]" "rc=$rc sent=$(sent && echo yes || echo no)"; fi
 done
 for bad_id in "" short ABCDEFGH abcdefg1 abcdefghi; do
-  ctl "$NONCE $CODE
-" "$tmp/config.json" approve "$bad_id"
+  ctl "$REPLY" "$tmp/config.json" approve "$bad_id"
   if [ "$rc" = 2 ] && ! sent; then pass "an id of [$bad_id] is refused locally with rc 2"; else fail "id [$bad_id]" "rc=$rc"; fi
 done
 
 # --- who may use it ---
-ctl "$NONCE $CODE
-" "$tmp/config-other.json" approve "$ID1"
+ctl "$REPLY" "$tmp/config-other.json" approve "$ID1"
 if [ "$rc" = 5 ] && ! sent; then pass "RED 3: a user who is not the operator_user is refused before anything is sent"; else fail "RED 3: non-operator approve" "rc=$rc"; fi
 assert_contains "the refusal names the operator" "only the operator" "$err"
 ctl "" "$tmp/config-other.json" deny "$ID1"
 if [ "$rc" = 5 ] && ! sent; then pass "RED 3: a non-operator deny is refused before anything is sent"; else fail "RED 3: non-operator deny" "rc=$rc"; fi
-ctl "$NONCE $CODE
-" "$tmp/no-such-config.json" approve "$ID1"
+ctl "$REPLY" "$tmp/no-such-config.json" approve "$ID1"
 if [ "$rc" = 5 ] && ! sent; then pass "a missing config means not installed, nothing sent"; else fail "missing config" "rc=$rc"; fi
 printf '{"operator_id": "x", "operator_user": "%s"}\n' "$me" > "$tmp/config-badid.json"
-ctl "$NONCE $CODE
-" "$tmp/config-badid.json" approve "$ID1"
+ctl "$REPLY" "$tmp/config-badid.json" approve "$ID1"
 if [ "$rc" = 5 ] && ! sent; then pass "a config with no numeric operator id sends nothing"; else fail "bad operator id" "rc=$rc"; fi
 printf '{"operator_id": %s}\n' "$OP" > "$tmp/config-nouser.json"
-ctl "$NONCE $CODE
-" "$tmp/config-nouser.json" approve "$ID1"
+ctl "$REPLY" "$tmp/config-nouser.json" approve "$ID1"
 if [ "$rc" = 5 ] && ! sent; then pass "a config with no operator_user sends nothing"; else fail "no operator_user" "rc=$rc"; fi
 
 # --- deny and status ---
-ctl "" "$tmp/config.json" deny "$ID1"
+ctl "$NONCE
+" "$tmp/config.json" deny "$ID1"
 assert_eq "RED 4: himmelctl deny exits 0 when the helper does" "0" "$rc"
 assert_eq "deny calls the helper with the operator id, via ssh and the user" \
   "deny $ID1 --from $OP --chat $OP --via ssh --approver $me " "$(argv_line)"
-assert_eq "deny sends nothing on stdin" "0" "$(wc -c < "$tmp/log.stdin" | tr -d ' ')"
+assert_eq "deny sends the request's nonce on stdin, never argv" "$NONCE" "$(tr -d '\n' < "$tmp/log.stdin")"
+ctl "" "$tmp/config.json" deny "$ID1"
+if [ "$rc" = 2 ] && ! sent; then pass "a deny without a nonce sends nothing"; else fail "a deny without a nonce sends nothing" "rc=$rc"; fi
+ctl "$NONCE $CODE
+" "$tmp/config.json" deny "$ID1"
+assert_eq "a deny with the nonce and a code sends both on stdin" "$NONCE $CODE" "$(tr -d '\n' < "$tmp/log.stdin")"
+ctl "$CODE
+" "$tmp/config.json" deny "$ID1"
+if [ "$rc" = 2 ] && ! sent; then pass "a deny with a code and no nonce sends nothing"; else fail "a deny with a code and no nonce sends nothing" "rc=$rc"; fi
 ctl "" "$tmp/config-other.json" approve status "$ID1"
 assert_eq "RED 5: approve status reads a request's state" "0" "$rc"
 assert_eq "approve status passes only the verb and the id" "status $ID1 " "$(argv_line)"
@@ -125,20 +133,16 @@ ctl "" "$tmp/config.json" approve status
 assert_eq "approve status with no id is a usage error" "2" "$rc"
 
 # --- several pending ids, each its own call ---
-ctl "$NONCE $CODE
-" "$tmp/config.json" approve "$ID1"
+ctl "$REPLY" "$tmp/config.json" approve "$ID1"
 first="$(argv_line)"
-ctl "$NONCE $CODE
-" "$tmp/config.json" approve "$ID2"
+ctl "$REPLY" "$tmp/config.json" approve "$ID2"
 assert_contains "RED 6: two pending ids are answered one by one, the first" "approve $ID1 " "$first"
 assert_contains "RED 6: two pending ids are answered one by one, the second" "approve $ID2 " "$(argv_line)"
 
 # --- the helper's refusals come back as a failure ---
-ctl "$NONCE $CODE
-" "$tmp/config.json" approve "$ID1"
+ctl "$REPLY" "$tmp/config.json" approve "$ID1"
 assert_eq "a helper that succeeds gives rc 0" "0" "$rc"
-ctl_refused() { STUB_RC=5 STUB_OUT="$1" ctl "$NONCE $CODE
-" "$tmp/config.json" approve "$ID1"; }
+ctl_refused() { STUB_RC=5 STUB_OUT="$1" ctl "$REPLY" "$tmp/config.json" approve "$ID1"; }
 ctl_refused "result=bad-nonce id=$ID1"
 assert_eq "RED 7: a helper refusal (bad-nonce) is rc 5" "5" "$rc"
 assert_contains "the helper's reason is shown" "result=bad-nonce" "$out"
@@ -149,21 +153,20 @@ ctl_refused "result=hash-mismatch id=$ID1"
 assert_eq "an approve of a changed command is refused (rc 5)" "5" "$rc"
 assert_contains "the hash-mismatch reason is shown" "result=hash-mismatch" "$out"
 mv "$tmp/fake-helper" "$tmp/fake-helper.gone"
-ctl "$NONCE $CODE
-" "$tmp/config.json" approve "$ID1"
+ctl "$REPLY" "$tmp/config.json" approve "$ID1"
 assert_eq "a helper that cannot be run is rc 5" "5" "$rc"
 mv "$tmp/fake-helper.gone" "$tmp/fake-helper"
 
 # --- the masked prompt on a terminal ---
 cat > "$tmp/tty-drive.py" <<'PYTTY'
 import os, pty, select, sys, time
-node, bin_, reply, envfile = sys.argv[1:5]
+node, bin_, nonce, code, envfile, want = sys.argv[1:7]
 env = dict(l.rstrip("\n").split("=", 1) for l in open(envfile) if "=" in l)
 pid, fd = pty.fork()
 if pid == 0:
     os.execvpe(node, [node, bin_, "approve", "abcdefgh"], env)
 buf = b""
-sent = False
+sent_nonce = sent = False
 end = time.time() + 15
 while time.time() < end:
     r, _, _ = select.select([fd], [], [], 0.2)
@@ -175,8 +178,11 @@ while time.time() < end:
         if not chunk:
             break
         buf += chunk
-    if not sent and b"Nonce Code:" in buf:
-        os.write(fd, reply.encode() + b"\r")
+    if not sent_nonce and b"Nonce:" in buf:
+        os.write(fd, nonce.encode() + b"\r")
+        sent_nonce = True
+    if sent_nonce and not sent and b"Code:" in buf:
+        os.write(fd, code.encode() + b"\r")
         sent = True
 bad = False
 try:
@@ -190,8 +196,8 @@ try:
         os.waitpid(pid, 0)
         buf += b"\n[driver: the verb did not exit]"
         bad = True
-    elif not (os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0):
-        buf += b"\n[driver: the verb did not exit 0]"
+    elif not (os.WIFEXITED(status) and os.WEXITSTATUS(status) == int(want)):
+        buf += b"\n[driver: the verb did not exit " + want.encode() + b"]"
         bad = True
 except ChildProcessError:
     pass
@@ -204,14 +210,23 @@ PYTTY
   printf 'HIMMELCTL_AFK_CONFIG=%s\nHIMMELCTL_AFK_SUDO=%s\nFAKE_LOG=%s\nPATH=%s\n' "$tmp/config.json" "$tmp/fake-helper" "$tmp/log" "$PATH"
 } > "$tmp/tty.env"
 rm -f "$tmp/log.argv" "$tmp/log.stdin"
-tty_out="$(python3 -I "$tmp/tty-drive.py" "$node_bin" "$bin" "${NONCE}${CODE}" "$tmp/tty.env" 2>&1)"
-assert_contains "RED 9: the terminal prompt asks for the nonce and the code" "Nonce Code:" "$tty_out"
+tty_out="$(python3 -I "$tmp/tty-drive.py" "$node_bin" "$bin" "$NONCE" "$CODE" "$tmp/tty.env" 0 2>&1)"
+assert_contains "RED 9691: the terminal asks for the nonce first" "Nonce: " "$tty_out"
+assert_contains "RED 9691: then for the code, in a step of its own" "Code: " "$tty_out"
+assert_eq "RED 9691: the nonce prompt comes before the code prompt" "yes" "$(case "$tty_out" in *"Nonce: "*"Code: "*) echo yes ;; *) echo no ;; esac)"
+assert_contains "the terminal names the request being approved" "abcdefgh" "$tty_out"
 assert_absent "the verb on a terminal exits on its own with status 0" "[driver: the verb did not exit" "$tty_out"
 assert_absent "RED 9: the typed code is not echoed" "$CODE" "$tty_out"
 assert_absent "RED 9: the typed nonce is not echoed" "$NONCE" "$tty_out"
-assert_contains "RED 9: the prompt shows one bullet per key" "••••••••••" "$tty_out"
+assert_contains "RED 9: the nonce prompt shows one bullet per key" "Nonce: ••••" "$tty_out"
+assert_contains "RED 9: the code prompt shows one bullet per key" "Code: ••••••" "$tty_out"
 assert_eq "the masked reply reaches the helper on stdin" "$NONCE $CODE" "$(tr -d '\n' < "$tmp/log.stdin" 2>/dev/null)"
 assert_absent "the masked reply is not in the helper's argv" "$CODE" "$(argv_line 2>/dev/null)"
+rm -f "$tmp/log.argv" "$tmp/log.stdin"
+tty_out="$(python3 -I "$tmp/tty-drive.py" "$node_bin" "$bin" "K7Q" "$CODE" "$tmp/tty.env" 2 2>&1)"
+assert_absent "RED 9691: a malformed nonce ends the verb with rc 2 before the code is asked" "[driver: the verb did not exit" "$tty_out"
+assert_absent "RED 9691: a malformed nonce never reaches the code prompt" "Code: " "$tty_out"
+if ! sent; then pass "a malformed nonce on a terminal sends nothing"; else fail "a malformed nonce on a terminal sends nothing" "$(argv_line)"; fi
 
 # --- help ---
 ctl "" "$tmp/config.json" --help

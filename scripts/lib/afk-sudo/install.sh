@@ -168,6 +168,24 @@ notice_env_steps() {
 qr_hint() {
     if ! command -v qrencode >/dev/null 2>&1; then echo "No QR code (qrencode is missing); to get one next time: $(pkg_hint qrencode)"; fi
 }
+stale_files() {
+    local src=$1 lx=$2 opsrc f
+    [ -e "$lx/afk-sudo" ] || return 0
+    opsrc="$src/../../station-ops"
+    cmp -s "$src/afk_sudo.py" "$lx/afk-sudo" || echo "$lx/afk-sudo"
+    for f in approval_broker.py never_remote.py; do
+        cmp -s "$src/$f" "$lx/$f" || echo "$lx/$f"
+    done
+    for f in "$opsrc"/*.json; do
+        f=$(basename "$f" .json)
+        cmp -s "$opsrc/$f.json" "$lx/ops/$f.json" || echo "$lx/ops/$f.json"
+        cmp -s "$opsrc/$f.sh" "$lx/ops/$f.sh" || echo "$lx/ops/$f.sh"
+    done
+    for f in "$lx/ops"/*.json; do
+        [ -e "$f" ] && [ "${f##*/}" != manifest.json ] || continue
+        [ -e "$opsrc/$(basename "$f")" ] || echo "$f"
+    done
+}
 # Sourced by the test: stop before the root check and the install.
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 

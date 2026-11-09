@@ -3,7 +3,7 @@
     "enabled": true,
     "mcp_prefixes": ["mcp__plugin_atlassian_atlassian__", "mcp__claude_ai_Atlassian_MCP__"],
     "cli": "scripts/jira/dist/index.js",
-    "chain": ["cli", "api", "mcp"]
+    "chain": ["cli"]
   },
   "confluence": {
     "enabled": true,

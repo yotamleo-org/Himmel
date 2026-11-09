@@ -8242,4 +8242,88 @@ if grepq "$out" 'INFO C91-api-policy-refusals' && ! grepq "$out" 'OK   C91' && !
     && grepq "$out2" 'INFO C91-api-policy-refusals' && ! grepq "$out2" 'OK   C91' && ! grepq "$out2" 'WARN C91'; then pass "C91 unreadable record and failing jq -> INFO"; else fail "C91 unreadable -> $(printf '%s' "$out" | head -3) failing jq -> $(printf '%s' "$out2" | head -3)"; fi
 rm -rf "$c91_t"
 
+# shellcheck source=lib/timeout-bin.sh
+# shellcheck disable=SC1091
+{ . "$REPO_ROOT/scripts/lib/timeout-bin.sh"; } 2>/dev/null || _TIMEOUT_BIN=""
+c95_t="$(mktemp -d "${TMPDIR:-/tmp}/c95.XXXXXX")" || { echo "FATAL: C95 setup mktemp failed" >&2; exit 1; }
+git init -q "$c95_t/repo"
+c95_repo="$(cd "$c95_t/repo" && pwd -P)"
+c95_esc="${c95_repo//%/%25}"; c95_esc="${c95_esc//\//%2F}"
+c95_holds="$c95_t/home/.himmel/state/holds"
+c95_reset() { rm -rf "${c95_t:?}/home" "${c95_t:?}/claude" "$c95_repo/.single-writer"; mkdir -p "$c95_holds/$c95_esc" "$c95_t/claude"; }
+c95_row() { printf '%b' "$2" > "$c95_holds/$c95_esc/$1"; }
+c95_live() { c95_row 'scripts%2Fa.sh' 'HIMMEL-8725\tN1\t\tclaim\t\n'; }
+c95_make_register_unreadable() { rmdir "$c95_holds/$c95_esc"; : > "$c95_holds/$c95_esc"; }
+c95_run() { env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" bash "$DOC" --only C95 --no-color 2>&1; }
+c95_run_bounded() { env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" "${_TIMEOUT_BIN:-timeout}" -k 2 20 bash "$DOC" --only C95 --no-color 2>&1 < /dev/null; }
+echo "== C95: a .single-writer marker at the primary plus a live worker row -> WARN naming the repo and the marker age =="
+c95_reset; c95_live; : > "$c95_repo/.single-writer"
+out="$(c95_run)"
+if grepq "$out" -E "WARN C95-barrier-off.*$c95_repo.*marker age [0-9]+"; then pass "C95 marker + live row -> WARN with repo and marker age"; else fail "C95 marker + live row -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: the marker alone (no live row) -> no WARN, an OK line =="
+c95_reset; : > "$c95_repo/.single-writer"
+out="$(c95_run)"
+if grepq "$out" 'OK   C95-barrier-off' && ! grepq "$out" 'WARN C95'; then pass "C95 marker alone -> OK, no WARN"; else fail "C95 marker alone -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: a live row with no marker -> no WARN =="
+c95_reset; c95_live
+out="$(c95_run)"
+if grepq "$out" 'OK   C95-barrier-off' && ! grepq "$out" 'WARN C95'; then pass "C95 live row, no marker -> OK, no WARN"; else fail "C95 live row, no marker -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: a corrupt register row -> WARN =="
+c95_reset; c95_row 'scripts%2Fb.sh' 'not a row\n'
+out="$(c95_run)"
+if grepq "$out" -E "WARN C95-barrier-off.*$c95_repo.*unparseable"; then pass "C95 corrupt row -> WARN naming the repo"; else fail "C95 corrupt row -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: an unreadable register directory -> WARN =="
+c95_reset; c95_make_register_unreadable
+out="$(c95_run)"
+if grepq "$out" -E "WARN C95-barrier-off.*cannot read.*$c95_repo"; then pass "C95 unreadable register -> WARN naming the repo"; else fail "C95 unreadable register -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: the OFF sentinel (a ruled, standing state) -> INFO with its reason, no WARN =="
+c95_reset; printf '2026-11-08T10:00:00Z\tdecision 796 test reason\n' > "$c95_holds/OFF"
+out="$(c95_run)"
+if grepq "$out" -E "INFO C95-barrier-off.*OFF.*decision 796 test reason" && ! grepq "$out" 'WARN C95' && ! grepq "$out" 'OK   C95'; then pass "C95 OFF sentinel -> INFO with the reason"; else fail "C95 OFF sentinel -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: an OFF file that is not a holds.py off sentinel -> WARN =="
+c95_reset; printf 'stray\n' > "$c95_holds/OFF"
+out="$(c95_run)"
+if grepq "$out" -E "WARN C95-barrier-off.*OFF.*not a holds.py off sentinel"; then pass "C95 stray OFF file -> WARN"; else fail "C95 stray OFF file -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: no marker and a clean register -> OK =="
+c95_reset
+out="$(c95_run)"
+if grepq "$out" 'OK   C95-barrier-off' && ! grepq "$out" 'WARN C95'; then pass "C95 clean register -> OK"; else fail "C95 clean register -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: no register at all -> OK =="
+rm -rf "${c95_t:?}/home" "$c95_repo/.single-writer"; mkdir -p "$c95_t/home"
+out="$(c95_run)"
+if grepq "$out" 'OK   C95-barrier-off' && ! grepq "$out" 'WARN C95'; then pass "C95 no register -> OK"; else fail "C95 no register -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: a holds root that cannot be listed -> WARN, never a silent OK =="
+if [ "$(id -u)" -eq 0 ]; then
+    echo "  SKIP: C95 unlistable holds root — root reads any directory"
+else
+    c95_reset; chmod 000 "$c95_holds"
+    out="$(c95_run)"
+    chmod 700 "$c95_holds"
+    if grepq "$out" -E 'WARN C95-barrier-off.*cannot list'; then pass "C95 unlistable holds root -> WARN"; else fail "C95 unlistable holds root -> $(printf '%s' "$out" | head -4)"; fi
+fi
+echo "== C95: an OFF entry that is a FIFO -> WARN and the doctor does not hang =="
+if command -v mkfifo >/dev/null 2>&1 && [ -n "${_TIMEOUT_BIN:-}" ]; then
+    c95_reset; mkfifo "$c95_holds/OFF"
+    out="$(c95_run_bounded)"
+    if grepq "$out" -E 'WARN C95-barrier-off.*OFF.*not a regular file'; then pass "C95 FIFO OFF -> WARN, no hang"; else fail "C95 FIFO OFF -> $(printf '%s' "$out" | head -4)"; fi
+else
+    echo "  SKIP: C95 FIFO OFF — no mkfifo or no timeout binary"
+fi
+echo "== C95: a holds.py that never returns -> WARN 'cannot read ... exit 124' inside the HIMMEL_DOCTOR_HOLDS_T bound =="
+if [ -n "${_TIMEOUT_BIN:-}" ]; then
+    c95_reset; mkdir -p "$c95_t/slow/scripts/handover/chief-kit"; ln -s "$REPO_ROOT/scripts/lib" "$c95_t/slow/scripts/lib"
+    printf 'import time\ntime.sleep(60)\n' > "$c95_t/slow/scripts/handover/chief-kit/holds.py"
+    SECONDS=0
+    out="$(env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" HIMMEL_DOCTOR_HOLDS_T=2 "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$c95_t/slow" --only C95 --no-color 2>&1 < /dev/null)"
+    if grepq "$out" -E "WARN C95-barrier-off.*cannot read.*$c95_repo.*exit 124" && [ "$SECONDS" -lt 15 ]; then pass "C95 holds.py that sleeps -> WARN exit 124 in ${SECONDS}s"; else fail "C95 sleeping holds.py (${SECONDS}s) -> $(printf '%s' "$out" | head -4)"; fi
+    echo "== C95: the bound covers every register together, so a second repo cannot extend it =="
+    mkdir -p "$c95_holds/%2Ftmp%2Fc95-second-repo"
+    SECONDS=0
+    out="$(env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" HIMMEL_DOCTOR_HOLDS_T=3 "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$c95_t/slow" --only C95 --no-color 2>&1 < /dev/null)"
+    if [ "$(printf '%s\n' "$out" | grep -c 'WARN C95-barrier-off')" -eq 2 ] && grepq "$out" -E 'WARN C95-barrier-off.*exit 124' && grepq "$out" -E 'WARN C95-barrier-off.*budget.*c95-second-repo|WARN C95-barrier-off.*budget.*'"$c95_repo" && [ "$SECONDS" -lt 12 ]; then pass "C95 two registers share one bound (${SECONDS}s)"; else fail "C95 two registers (${SECONDS}s) -> $(printf '%s' "$out" | head -5)"; fi
+else
+    echo "  SKIP: C95 sleeping holds.py — no timeout binary"
+fi
+rm -rf "$c95_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

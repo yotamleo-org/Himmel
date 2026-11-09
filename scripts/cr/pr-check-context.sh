@@ -830,7 +830,7 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # chief-kit/bucket-gitleaks.sh (which runs chief-kit/vault-status.sh), so all
 # four are guarded.
 # worker-pr-open.sh runs chief-kit/holds.py narrow (the PR claim), so holds.py is guarded too.
-cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
+cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/ledger scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
 scripts/handover/resolve-active-item-report.sh
 scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/handover/bug.sh
 scripts/handover/merge-on-green.sh scripts/handover/queue-lock.sh
@@ -844,7 +844,7 @@ scripts/lanes/usage-status.ts scripts/lanes/bank-status-core.mjs scripts/lanes/f
 scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs scripts/himmelctl/lib/config-keys.json
 scripts/observability/quota-sources.ts
 scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts
-scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
+scripts/telegram/chief-route.ts scripts/telegram/key-brief.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
 scripts/telegram/chief-heartbeat-watch.ts
 scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts scripts/telegram/session-status.ts
 scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/afk-sudo-route.ts scripts/telegram/run.ts
@@ -859,7 +859,7 @@ marketplace/plugins/himmel-ops/scripts/humanizer-facts.py
 scripts/handover/chief-kit/append-results.sh scripts/handover/chief-kit/worker-doc-lock.sh
 scripts/handover/chief-kit/bucket-gitleaks.sh scripts/handover/chief-kit/vault-status.sh
 scripts/handover/suite-coverage.sh"
-cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/' ':(top)scripts/guardrails/lib.sh' ':(top)scripts/check-ci.sh'
+cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/' ':(top)scripts/ledger/' ':(top)scripts/guardrails/lib.sh' ':(top)scripts/check-ci.sh'
     ':(top)scripts/handover/resolve-active-item.sh'
     ':(top)scripts/handover/resolve-active-item-report.sh'
     ':(top)scripts/handover/append-cr-findings.sh' ':(top)scripts/handover/append-cr-bugs.sh' ':(top)scripts/handover/bug.sh'
@@ -876,7 +876,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/observability/quota-sources.ts'
     ':(top)scripts/telegram/alibaba-probe-once.ts' ':(top)scripts/telegram/quota-gauge.ts'
     ':(top)scripts/telegram/quota-gauge-alibaba.ts'
-    ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/bus.ts'
+    ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/key-brief.ts' ':(top)scripts/telegram/bus.ts'
     ':(top)scripts/telegram/chief-heartbeat-watch.ts'
     ':(top)scripts/telegram/poller.ts' ':(top)scripts/telegram/router.ts'
     ':(top)scripts/telegram/auto-action.ts' ':(top)scripts/telegram/telegram-api.ts'

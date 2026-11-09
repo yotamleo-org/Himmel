@@ -106,6 +106,14 @@ case " $CADENCE_RUNNER_BASENAMES " in
     fail=$((fail + 1)); echo "  FAIL: doctor-cadence missing from CADENCE_RUNNER_BASENAMES: '$CADENCE_RUNNER_BASENAMES'" ;;
 esac
 
+echo "[test-cadence-format] CADENCE_RUNNER_BASENAMES includes rollup-cadence"
+case " $CADENCE_RUNNER_BASENAMES " in
+  *" rollup-cadence "*)
+    pass=$((pass + 1)); echo "  ok: rollup-cadence is a probed runner basename" ;;
+  *)
+    fail=$((fail + 1)); echo "  FAIL: rollup-cadence missing from CADENCE_RUNNER_BASENAMES: '$CADENCE_RUNNER_BASENAMES'" ;;
+esac
+
 # S8: cadence_prov_record records a `job register` row (ours,
 # scheduler cron) and never fails an arm when the ledger cannot be written.
 _prov_tmp=$(mktemp -d "${TMPDIR:-/tmp}/cadence-prov.XXXXXX") || { echo "FAIL: mktemp" >&2; exit 1; }

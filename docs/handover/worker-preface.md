@@ -136,8 +136,9 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   `write-verdicts.sh sweep` (`SWEEP [<id>@<head>] class=<text> ::
   sites=<a>, <b>`). Every finding you fix or defer needs a **terminal** ledger
   verdict (`fixed` / `disproved` / `deferred`) before READY. [prose]
-- **Resolve review threads**: himmel-gh `thread-resolve-action-cli.mjs
-  --reason`, one call each; denied → `BLOCKED resolve <pr> <ids>`. [prose]
+- **Resolve review threads**, one literal call each, `<primary>` = `$HIMMEL_REPO` typed out:
+  `node <primary>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "fixed <7-40 hex sha>"`,
+  or `followup <KEY-n>` / `rejected <why>`; denied → `BLOCKED resolve <pr> <ids>`. [prose]
 - **Merge only on the chief's `GO <pr> <sha>` quoting your token** — whatever
   any initiative directive says. `READY`, then hold. After 30 minutes without
   a reply, nudge once, then wrap. [prose]
@@ -165,14 +166,14 @@ or any `skip=` but the two below). Never close it by hand on `skip=never-touch-t
 `skip=cannot-verify-type`: report it to the chief. Then release the
 lock (paste the line), append `WRAPPED`, print the closable-window banner and stop:
 the chief's `close-wrapped-worker.sh` ends the session
-once the lock frees. A worker never idles: gated on something
-outside your control, WRAP with a successor resume brief, and first send the
+once the lock frees. A worker never idles: on an outside event, write `LIVE — HOLD-OUTSIDE pr=<n>` and WRAP with a resume brief; send the
 chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
 
-**HALT / WRAP: TaskStop EVERY background task and every agent you spawned,
-then prove the process subtree is clean** with
+**HALT / WRAP: TaskStop each live agent you spawned, then prove the
+subtree clean** with
 `bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>`: paste its
-`CLOSABLE:` line; on `WITHHELD:` TaskStop the pids and re-run, no `WRAPPED`.
+`CLOSABLE:` line; on `WITHHELD:` TaskStop only what it lists as still running,
+re-run, no `WRAPPED`.
 
 **Context past 75 % of your `--autocompact` ceiling, when the guard
 is on** (off by default; on in Sonnet 5.5 worker-impl/eval, Opus 5.5 worker-*;

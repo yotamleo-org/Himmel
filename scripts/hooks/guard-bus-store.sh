@@ -19,6 +19,12 @@
 #         HOME/himmel/bus`, `~/.local/state/himmel/bus`, a relative
 #         `himmel/bus/log/...`; the hyphenated plugin dir `himmel-bus` is not it).
 #         Reads and writes are both denied: a log read is the T5 leak.
+#         A glob right under a `himmel/` dir (`himmel/*`, `himmel/b?s`) is
+#         denied only when that dir can hold the store: a checkout under a
+#         literal absolute prefix with no `bus` child, and a `.himmel` (the
+#         harness home), pass. A relative, missing or expanded prefix, a `~/` or
+#         $HOME/ prefix (the hook does not trust HOME), and any command with a
+#         `..` in it are denied.
 #     (b) calls `bus register`, `bus bind` or `bus rebind` (the identity verbs
 #         the launcher owns; `bus` bounded the same way, so `bin/bus register`
 #         counts). When the text names bus and a verb, the command-position
@@ -26,8 +32,14 @@
 #         bodies are read, a quoted string whose tokens put bus before a verb
 #         denies (trap, git -c alias, tmux, expect and at run such strings),
 #         and a call made only of cat, tee or a non-identity bus verb is data
-#         (a heredoc body, a --summary).
-#         Every other call goes to the word walker below.
+#         (a heredoc body, a --summary). A call to grep, egrep, fgrep, rg, sed,
+#         awk, python or append-results.sh is data too: its words are a pattern,
+#         a program or a bullet, and it is not read for a bus word and a verb
+#         (rg `--pre` and `--hostname-bin` run a command, so such a call is not
+#         data; RESIDUAL: `awk`, `sed` and `python` can run what they quote). A call
+#         whose every word is literal, names neither bus nor a verb and has no
+#         heredoc passes beside them, unless a cat or tee call in it wrote a
+#         heredoc body. Every other call goes to the word walker below.
 #     (c) assigns a HIMMEL_BUS_* variable (`HIMMEL_BUS_NAME=x claude`, `export
 #         ...`, `env ...`), including a name built by quoting or expansion
 #         (`HIMMEL_BUS_"NAME"=x`, `HIMMEL_BUS_${x}=1`, `$'HIMMEL_BUS_NAME=x'`).
@@ -127,7 +139,7 @@ ROOT_RE='(^|[^A-Za-z0-9_-])himmel\\?/bus($|[^A-Za-z0-9_.-])'
 ENV_RE='(^|[^A-Za-z0-9_])HIMMEL_BUS_[A-Za-z0-9_]*\+?='
 # A component right under himmel/ that carries a glob or expansion character
 # (`himmel/b?s`, `himmel/b[u]s`, `himmel/$x`) may spell the bus root.
-GLOBROOT_RE='(^|[^A-Za-z0-9_-])himmel/[^/[:space:]]*[?*[{$]'
+GLOBROOT_RE='(^|[^A-Za-z0-9_.-])himmel/[^/[:space:]]*[?*[{$]'
 # The luna vault keeps its handover notes in a bucket dir named himmel
 # (handovers/<owner>/himmel/): not the state dir, so a glob there is a read of
 # notes. The glob rule sees that dir under another name; ROOT_RE still sees it.
@@ -336,6 +348,34 @@ walk_words() {
     return 1
 }
 
+globroot_reaches() {
+    local s="$1" m lead before tail pre p d r c tc
+    [[ "$s" =~ $GLOBROOT_RE ]] || return 1
+    case "$s" in *..*) return 0 ;; esac
+    while [[ "$s" =~ $GLOBROOT_RE ]]; do
+        m=${BASH_REMATCH[0]}; lead=${BASH_REMATCH[1]}
+        before=${s%%"$m"*}
+        tail="${m#"${lead}himmel/"}${s#*"$m"}"
+        case "$tail" in *[\$\`\{]*) return 0 ;; esac
+        IFS=/ read -ra tc <<< "${tail//[[:space:];&|()<>]//}"
+        for c in "${tc[@]}"; do
+            case "$c" in .*[\*\?\[]*) return 0 ;; esac
+        done
+        pre=${before##*[[:space:];&|()<>=]}$lead
+        case "$pre" in
+            /*) p="$pre" ;;
+            *) return 0 ;;
+        esac
+        case "$p" in *[\*\?\[\{\$\`]*) return 0 ;; esac
+        d="${p}himmel"
+        [ -d "$d" ] || return 0
+        r=$(hook_resolve_m "$d" 2>/dev/null) || return 0 # swallow-ok: a dir that cannot be resolved reaches, so it denies
+        [ -d "$r" ] && [ ! -e "$r/bus" ] && [ ! -L "$r/bus" ] || return 0
+        s=${s/"$m"/"${lead}elsewhere/"}
+    done
+    return 1
+}
+
 # cmd_busish <text>: does any word of any command segment look like `bus`?
 cmd_busish() { walk_words bus "$1"; }
 
@@ -415,11 +455,29 @@ def sink: .opaque == null and ((.via // []) | length == 0) and ((.assigns // [])
   and all(.argv[], rwords[]; lit)
   and ((.argv[0].v // "" | IN("cat", "tee"))
     or (.argv[0].v == "bus" and (.argv[1].v // "" | IN("status", "peers", "wait", "send", "adopt"))));
-def bad: .argv as $a
+def ar: (.argv[0] | select(lit) | .v) // "";
+def arscript: test("(^|/)append-results\\.sh$");
+def optargs: .argv as $a | ([range(1; $a | length) | select(($a[.] | lit and .v == "--") and ($a[. - 1] | lit and (.v | startswith("-") | not)))][0]) as $i | if $i == null then $a else $a[:$i] end;
+def runsopt: ar == "rg" and any(optargs[]; select(lit) | .v | test("^--(pre|hostname-bin)($|=)"));
+def data: .opaque == null and ((.via // []) | length == 0) and ((.assigns // []) | length == 0)
+  and (runsopt | not)
+  and (ar as $a | ($a | IN("grep", "egrep", "fgrep", "rg", "sed", "awk", "gawk", "mawk", "python", "python3"))
+    or ($a | arscript)
+    or ($a | IN("bash", "sh")) and ((.argv[1] | select(lit) | .v // "") | arscript));
+def mentions: lit and (tokens | any(. == "bus" or verb));
+def barevar: .t != "lit" and ((.raw // "") | test("^\"?\\$\\{?[A-Za-z_][A-Za-z0-9_]*\\}?(/[A-Za-z0-9_./-]*)?\"?$"));
+def cleanw: (lit and (mentions | not)) or barevar;
+def clean: .opaque == null and ((.via // []) | length == 0) and ((.assigns // []) | length == 0)
+  and all(.argv[], rwords[]; cleanw)
+  and all((.redirs // [])[]; .hdoc != true);
+def hdoc: any((.redirs // [])[]; .hdoc == true);
+def bad: if data then false else
+  .argv as $a
   | any(range(0; $a | length); ($a[.] | isbus) and any($a[. + 1:][]; isverb))
-  or any($a[], rwords[]; ordered);
+  or any($a[], rwords[]; ordered) end;
 if any(.[]; bad) then "deny"
 elif length > 0 and all(.[]; sink) then "allow"
+elif length > 0 and all(.[]; sink or data or clean) and (any(.[]; sink and hdoc) | not) then "allow"
 else "legacy" end
 BS_JQ_EOF
 
@@ -476,7 +534,7 @@ case "$tool" in
         if [[ "$cmd_qn" != *..* && "$xdg_state" != *handovers/* ]]; then
             while [[ "$cmd_gl" =~ $LUNABUCKET_RE ]]; do cmd_gl=${cmd_gl/"${BASH_REMATCH[0]}"/"${BASH_REMATCH[1]}handovers/bucket/"}; done
         fi
-        [[ "$cmd_gl" =~ $GLOBROOT_RE ]] && deny "the command reaches under himmel/ through a glob or expansion that can spell the bus root"
+        globroot_reaches "$cmd_gl" && deny "the command reaches under himmel/ through a glob or expansion that can spell the bus root"
         # In-command cd: the command names the state dir and a word that can be bus.
         state_named=0
         [[ "$cmd_n" =~ $STATECMD_RE ]] && state_named=1

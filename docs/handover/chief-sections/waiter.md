@@ -13,7 +13,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     silent while nothing happens and **exits on an urgent event or a due
     housekeeping digest**, printing one block: `WAKE telegram` plus the operator's line(s), or
     `WAKE tick changed=<fields> usage=<verdict>` plus the tick line, or
-    `WAKE underfilled capacity=UNDERFILLED:<slack>` (with `dispatchable=<n> keys=<KEY>,...` when the count is above 0, on this wake and on `WAKE pool-unresolved` alike, and ` backlog=unread` when the second pass failed, which then never prints `dispatchable=0`; a carried `pool-disposition:` line does not silence this wake while the pool lists a row: those keys are the set to dispatch or disposition from a fresh read, never a carried pool list; `next-dispatchable.sh --doc <doc> --workers-from <fleet manifest> --why` prints a `# why <KEY> listed <lane> tier <n>` line per key, and without `--priority-pool-only` it can list keys the wake lacks when more tickets qualify than free slots (it lists up to 50 rows when no `--top` is given); on the streak's first sample, and again once each time the pool's key set changes: it is re-probed every 30 min, `CHIEF_WAIT_UNDERFILL_REPOOL_SEC`, each probe cut at `CHIEF_WAIT_REPOOL_TIMEOUT` (120 s), and a pool that grows from empty counts, while a pool that empties or a failed probe does not wake; plus the tick line and `next-dispatchable.sh --priority-pool-only`'s
+    `WAKE underfilled capacity=UNDERFILLED:<slack>` (with `dispatchable=<n> keys=<KEY>,...` when the count is above 0, on this wake and on `WAKE pool-unresolved` alike, and ` backlog=unread` when the second pass failed, which then never prints `dispatchable=0`; `dispatchable` is one meaning in the tick and the waiter: the LOCAL, CLOUD, RESUME and DESIGN rows of the pool and a series' tickets (`tick.sh --pool-dispositions` prints them as `# pool-dispatchable <KEY>`), so a pool of only RESUME rows reads above zero; a short pool runs the second pass only when no release is declared (no `# dropped from <version>:` line): a declared release offers no row of another version, and the wake prints `# rows left in <version>` with a `# pool-left-out <KEY> <reason>` line for every other open ticket of that version; a carried `pool-disposition:` line does not silence this wake while the pool lists a row: those keys are the set to dispatch or disposition from a fresh read, never a carried pool list; `next-dispatchable.sh --doc <doc> --workers-from <fleet manifest> --why` prints a `# why <KEY> listed <lane> tier <n>` line per key, and without `--priority-pool-only` it can list keys the wake lacks when more tickets qualify than free slots (it lists up to 50 rows when no `--top` is given); on the streak's first sample, and again once each time the pool's key set changes: it is re-probed every 30 min, `CHIEF_WAIT_UNDERFILL_REPOOL_SEC`, each probe cut at `CHIEF_WAIT_REPOOL_TIMEOUT` (120 s), and a pool that grows from empty counts, while a pool that empties or a failed probe does not wake; plus the tick line and `next-dispatchable.sh --priority-pool-only`'s
     ranked list (the pool: the `priority:` line in Live state, labels `ps3-blocker` / `must-<current version>` (the earliest unreleased version) / `operator-directed`, High+ bugs, security and data-integrity; per tier its `RESUME` rows, In Progress with no worker and no open PR, lead the To Do rows, only when a worker source (`--owners` / `--workers-from`) is given, and they are kept in `--priority-pool-only` by design (operator decision 29: drain In Progress work with no worker first): the waiter passes its own `--workers-from` file when it was started with one, and no `--owners`;
     a closing `# pool=<rows>/<slack>` line, `,LOW` when the pool fills fewer slots than the slack, and `POOL-EMPTY` when it has nothing, followed by the next tier (tier-4 To Do rows in rank order) as `NEXT-TIER` rows: then unblock collisions, draft specs for the next priority items, or fill from the NEXT-TIER rows when the operator has ruled so); dispatch it with `gen-briefs.py`; both refuse Windows/WSL work per `chief-kit/platform-dropped.re` unless the ticket is labelled `windows-removal` / the worker sets `platform_removal` and its title says remove/drop/delete/retire/sweep/clean), or
     `WAKE tick-fail samples=<n>` when 3 samples in a row failed (the tick or
@@ -93,6 +93,13 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     every compact line that read a doc and found nothing stale, and that explicit `0`
     clears the marker, so a key that leaves and comes back wakes again; an absent or `skip`
     field, `?`-only, or a partial read like `1:KEY,?` keeps it and never shrinks it).
+    A `pool-disposition:` line counts as handled only when its target starts with a reference: another ticket
+    key of the project, `PR <n>` or `decision <n>` (optionally after `operator`, `waits on`, `blocked by` or `after`). The
+    check is reference-shaped: it does not read the ticket, PR or decision, and there is no ask-record form because no store
+    exists. A worker counts only through the dispatcher's own reason (`owned by` or `held by worker <name>`), so a made-up
+    `N<n>` in a target is refused. A free-text promise ("will look at it after the release") stays in the pool as
+    `# pool-unresolved unowned <KEY> ...`; the tick still prints and never fails on it. When the tick cannot read the pool at
+    all, the wake says `backlog=unread` instead of `dispatchable=0`.
     The line is never rewritten:
     re-rule it (dispatch the held ticket, or write a fresh `pool-disposition:`),
     then the key leaves the field. The tick also prints
@@ -160,7 +167,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     i.e. a wrapped worker to drop from the arm. `unwatched=` reads the whole
     process census, so with more than one chief on the host it can name
     another chief's workers. `tick.sh`'s own `tick=` field still reads `UNKNOWN`
-    (see its `ponytail:` comment); the heartbeat above is the liveness signal.
+    (see its ceilings-ledger row); the heartbeat above is the liveness signal.
 
     **Or arm from a fleet manifest and skip the re-starts**:
     keep the worker set in `<this file's stem>.fleet.json` next to this doc and
@@ -224,6 +231,25 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     write READY as a bullet only, never a message.
 
     **A GO'd PR whose worker went silent merges without it**: with `--doc` and `--workers-from`, a READY worker that has had a GO file and no doc write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45), and no live process unless its last bullet is a hand-off, is merged by `silent-go-merge.sh` through ready-check at the GO head and `merge-on-green.sh --go`; you wake as `WAKE silent-go` with one `SILENT-WORKER-MERGE`, `-MERGE-FAILED` or `-HELD reason=<why>` line; the operator was already paged with it and your doc carries it as a bullet.
+
+    **A watched outside PR that moved wakes you once.** A worker waiting on an outside event
+    does not keep a window open: it writes `LIVE — HOLD-OUTSIDE pr=<n> owes: <what>` and WRAPs
+    (the tick flags an idle window left on that bullet as `holdout=<label>:<pr>` and prints the
+    command). You record the PR in the fleet manifest and close the window:
+    `bash scripts/handover/chief-kit/fleet-manifest.sh watch <manifest> add <pr> --head <sha> --comments <n> --reviews <n>`
+    (the values the worker last saw, plus `--state open|closed|merged`; `--repo owner/name` for a repository
+    other than the waiter's cwd; a value left off is a silent baseline). With `--workers-from`, the waiter then reads each row every
+    `CHIEF_WAIT_PR_WATCH_SEC` (default 120) over REST only (`gh api` on the pull request and its
+    reviews: no GraphQL, no model turn) and wakes `WAKE pr-watch <pr> [repo=<owner/name>] head <old7>→<new7> comments
+    <o>→<n> reviews <o>→<n> state <o>→<n>` (only what moved) when the head, the comment count (issue
+    and review comments), the review count or the state (open, closed, merged: a merge or a close
+    moves none of the others) differs from the row. A row is keyed by PR number and `--repo`, so the
+    same number in two repositories is two rows. It writes the new values back first, so the
+    same change never wakes twice; no change is silent, a failed read is silent and retried next
+    interval. The rows live in the manifest, so a successor's waiter on the inherited manifest
+    watches them with no re-arm. Read the PR, relaunch the worker from its resume brief or act, and
+    `fleet-manifest.sh watch <manifest> remove <pr> [--repo owner/name]` when the event is over (the
+    `--repo` the wake line names as `repo=`; a row watched without one is removed without one).
 
     **An oversized brief wakes you once.** `WAKE size rows=<total>` followed by
     `SIZE-ESCALATE<TAB>epoch<TAB>refuse|bulk<TAB>KEY<TAB>label<TAB>files<TAB>trust<TAB>detail` lines

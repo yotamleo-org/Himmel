@@ -95,9 +95,15 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
+import importlib.util  # noqa: E402
+
+_vx_spec = importlib.util.spec_from_file_location("vocab_expand", os.path.join(HERE, "..", "..", "qmd", "vocab-expand.py"))
+vocab_expand = importlib.util.module_from_spec(_vx_spec)
+_vx_spec.loader.exec_module(vocab_expand)
 
 SPLITS = ("insample", "heldout")
-ARMS = ["grep", "grep-rtk", "path", "ident-grep", "ident-grep-rtk", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
+STRATA = ("code", "doc")
+ARMS =["grep", "grep-rtk", "path", "ident-grep", "ident-grep-rtk", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
 RTK_ARMS = ["grep-rtk", "ident-grep-rtk"]
 FUSED = ["grep", "qmd-hybrid", "graphify"]
 OPT_IN = ["qmd-hybrid-norerank"]
@@ -382,7 +388,8 @@ def mcp_rows(msg):
 
 
 def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
-    args = {"searches": [{"type": "lex", "query": q}] + ([{"type": "vec", "query": q}] if hybrid else []),
+    vec = vocab_expand.shape_vec(q) if hybrid else ""
+    args = {"searches": [{"type": "lex", "query": vocab_expand.shape_lex(q, quote_flags=True)}] + ([{"type": "vec", "query": vec}] if vec else []),
             "collections": [collection], "limit": k, "intent": q}
     args["rerank"] = hybrid and rerank
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
@@ -439,6 +446,10 @@ def is_hit(files, gold):
     """qmd lowercases its paths, so compare case-insensitively."""
     fl, gl = [f.lower() for f in files], [g.lower() for g in gold]
     return any(f == g or f.endswith("/" + g) for f in fl for g in gl)
+
+
+def stratum(q):
+    return "doc" if any(g.lower().endswith(".md") for g in q["gold"]) else "code"
 
 
 def is_hit_any(files, q):
@@ -623,28 +634,31 @@ def cmd_run(a):
                 got[arm] = dict(files=files, _text=text, ms=sum(p["ms"] for p in parts),
                                 timeout=any(p["timeout"] for p in parts), error=any(p["error"] for p in parts),
                                 files_top20=fuse([p["files_top20"] for p in parts], 20),
-                                qmd_error=next((p["qmd_error"] for p in parts if p["qmd_error"]), ""))
+                                qmd_error=next((p["qmd_error"] for p in parts if p["qmd_error"]), ""),
+                                deep_failed=any(p["deep_failed"] for p in parts))
             else:
                 t0 = time.time()
                 files, text, to, err, qmd_error = run_arm(arm, q["q"], repo, a, a.k)
                 ms = int((time.time() - t0) * 1000)
-                top20 = files
+                top20, deep_failed = files, False
                 if evidence_depth > a.k and not (to or err):
                     deep = run_arm(arm, q["q"], repo, a, evidence_depth)
                     if not (deep[2] or deep[3]):
                         top20 = deep[0][:evidence_depth]
+                    else:
+                        deep_failed = True
                 got[arm] = dict(files=files, files_top20=top20, _text=text, ms=ms, timeout=bool(to), error=bool(err),
-                                qmd_error=qmd_error)
+                                qmd_error=qmd_error, deep_failed=deep_failed)
         for arm in arms:
             g = got[arm]
             row = dict(id=q["id"], kind=q.get("kind"), src=q.get("src"), split=q.get("split", "insample"),
-                       arm=arm, files=g["files"], hit=is_hit(g["files"], q["gold"]),
+                       stratum=stratum(q), arm=arm, files=g["files"], hit=is_hit(g["files"], q["gold"]),
                        hit_any=is_hit_any(g["files"], q), ndcg=ndcg(g["files"], q, a.k),
                        precision=precision(g["files"], q, a.k), rr=reciprocal_rank(g["files"], q, a.k),
                        gold_n=gold_found(g["files"], q, a.k)[0], ret_n=gold_found(g["files"], q, a.k)[1],
                        reason=carried(g["_text"], q.get("reason", [])),
                        tokens=tok(g["_text"]), ms=g["ms"], timeout=g["timeout"], error=g["error"],
-                       files_top20=g["files_top20"], qmd_error=g["qmd_error"], skipped=False)
+                       files_top20=g["files_top20"], qmd_error=g["qmd_error"], deep_failed=g["deep_failed"], skipped=False)
             rows.append(row)
         print("%s %s" % (q["id"], " ".join("%s=%s" % (r["arm"], int(r["hit"])) for r in rows[-len(arms):])),
               file=sys.stderr)
@@ -679,9 +693,14 @@ def cmd_run(a):
                                 str(len(rr)), "%d" % tk, dash(tph, "%.1f"), "%d" % msm, "%d" % mst, str(to), str(er)]))
         metrics.update({arm + "." + rk: rec, arm + "." + pk: prec, arm + ".mrr": mrr, arm + ".gold_share": gs,
                         arm + ".reason_carried": rea, arm + ".tokens_mean": tk, arm + ".tokens_per_hit": tph,
-                        arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er})
-        for sl in SPLITS:
-            sr = [r for r in rs if r["split"] == sl]
+                        arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er,
+                        arm + ".deep_failures": sum(1 for r in rs if r.get("deep_failed"))})
+        slices = [(sl, lambda r, sl=sl: r["split"] == sl) for sl in SPLITS]
+        slices += [(st, lambda r, st=st: r["stratum"] == st) for st in STRATA]
+        slices += [("%s.%s" % (sl, st), lambda r, sl=sl, st=st: r["split"] == sl and r["stratum"] == st)
+                   for sl in SPLITS for st in STRATA]
+        for sl, pick in slices:
+            sr = [r for r in rs if pick(r)]
             srr = [r for r in sr if r["reason"] is not None]
             vals = [mean([r["hit"] for r in sr]), mean([r["hit_any"] for r in sr]),
                     mean([r["ndcg"] for r in sr]), mean([r["reason"] for r in srr])]
@@ -702,13 +721,14 @@ def cmd_run(a):
     print("\n".join(slice_lines))
     with open(a.questions, "rb") as fh:
         qhash = hashlib.sha256(fh.read()).hexdigest()[:16]
+    ident = forward_identity(a.questions, os.path.abspath(__file__))
     config = dict(arms=arms, k=a.k, evidence_depth=evidence_depth, timeout=a.timeout, collection=a.collection,
-                  questions=qhash)
+                  questions=qhash, identity_hash=ident["config_hash"])
     if skipped:
         config["skipped"] = skipped
     held = sorted((q for q in qs if q.get("split") == "heldout"), key=lambda q: str(q["id"]))
     meta = dict(label=a.label, questions_path=os.path.abspath(a.questions), graph_built_at=None,
-                n_heldout=len(held),
+                n_heldout=len(held), identity=ident["identity"],
                 heldout_sha256=hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16])
     if "graphify" in arms or "combined" in arms:
         try:
@@ -718,8 +738,42 @@ def cmd_run(a):
             print("retrieval-eval: ERROR graph stamp: %s" % e, file=sys.stderr)
     row = eval_runs.make_row("retrieval-eval", "scripts/eval/retrieval-eval/retrieval-eval.py", config, metrics,
                              n=len(qs), cases=cases, artifact=os.path.abspath(a.out), meta=meta, repo=repo)
-    eval_runs.append_safe(row, who="retrieval-eval")
+    retain_and_append(row, {"results": os.path.join(a.out, "results.jsonl"), "scores": os.path.join(a.out, "scores.tsv"),
+                            "slices": os.path.join(a.out, "scores-by-slice.tsv"), "bank": a.questions}, who="retrieval-eval")
     return 1 if "graph_built_error" in meta else 0
+
+
+def _pilot_tool(name):
+    s = importlib.util.spec_from_file_location(name.replace("-", "_"), os.path.join(HERE, "pilot", name + ".py"))
+    m = importlib.util.module_from_spec(s)
+    s.loader.exec_module(m)
+    return m
+
+
+def forward_identity(questions, evaluator, root=None, shapers=None):
+    """The canonical nonsecret run identity: bank, evaluator and pre-expansion shaper bytes, the
+    harness commit and the dirty-content digest, so an uncommitted edit changes the hash at the
+    same commit. No historical backfill: older rows simply lack it (comparability unknown)."""
+    root = root or os.path.normpath(os.path.join(HERE, "..", "..", ".."))
+    if shapers is None:
+        shapers = [p for p in (os.path.join(root, "scripts", "qmd", "vocab-expand.py"),
+                               os.path.join(root, "scripts", "lib", "rename-aliases.tsv")) if os.path.isfile(p)]
+    return _pilot_tool("experiment-identity").build({"bank_sha256": questions, "evaluator_sha256": evaluator},
+                                                    {"protocol": os.path.basename(evaluator)}, repo=root, shapers=shapers)
+
+
+def retain_and_append(row, files, who):
+    """Retain the run's artifacts content-addressed beside the ledger, then append the row; a
+    retention failure writes no row (evidence first, public ledger second)."""
+    root = os.path.join(os.path.dirname(os.path.abspath(eval_runs.ledger_path())), "eval-retained")
+    try:
+        m = _pilot_tool("retain-run").retain(root, row["run_id"], {k: p for k, p in files.items() if p and os.path.isfile(p)})
+    except (OSError, ValueError) as e:
+        print("%s: WARNING artifacts not retained (%s): no eval-runs row written" % (who, e), file=sys.stderr)
+        return None
+    row["meta"]["retained_manifest"] = m["run_id"]
+    row["meta"]["retained_manifest_sha256"] = m["manifest_sha256"]
+    return eval_runs.append_safe(row, who=who)
 
 
 def graph_built(repo):
@@ -774,23 +828,25 @@ def cmd_replay(a):
             if arm not in saved:
                 raise Usage("missing arm '%s' for a saved question" % arm)
         files = fuse([saved[arm]["files"] for arm in arms], a.k, a.rrf_k)
-        scored.append((qid, split, bool(saved["combined"]["hit"]), is_hit(files, q["gold"])))
+        scored.append((qid, split, bool(saved["combined"]["hit"]), is_hit(files, q["gold"]), stratum(q)))
 
-    def counts(index):
+    def counts(index, by_stratum=False):
         parts = []
-        for split in SPLITS + ("all",):
-            rs = [r for r in scored if split == "all" or r[1] == split]
-            parts.append("%s %d/%d" % (split, sum(r[index] for r in rs), len(rs)))
+        for name in STRATA if by_stratum else SPLITS + ("all",):
+            rs = [r for r in scored if name == "all" or r[4 if by_stratum else 1] == name]
+            parts.append("%s %d/%d" % (name, sum(r[index] for r in rs), len(rs)))
         return " ".join(parts)
 
     print("replay arms=%s rrf_k=%d k=%d" % (",".join(arms), a.rrf_k, a.k))
     print("saved combined: " + counts(2))
     print("replay combined: " + counts(3))
+    print("saved combined by stratum: " + counts(2, True))
+    print("replay combined by stratum: " + counts(3, True))
     same = arms == FUSED and a.rrf_k == 60 and sum(r[2] for r in scored) == sum(r[3] for r in scored)
     print("reproduces saved combined: %s" % ("yes" if same else "no"))
 
     def dev_ids(was_hit, now_hit):
-        return [qid for qid, split, old, new in scored if split == "insample" and old == was_hit and new == now_hit]
+        return [r[0] for r in scored if r[1] == "insample" and r[2] == was_hit and r[3] == now_hit]
 
     print("rescued (dev): " + (" ".join(dev_ids(False, True)) or "none"))
     print("regressed (dev): " + (" ".join(dev_ids(True, False)) or "none"))

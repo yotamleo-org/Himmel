@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# meter <fake-qmd dir> -- stands in for the dedicated key's usage read (never fetchOpenRouterKey):
+# usage = calls so far x the price in price.txt; meter-fail.txt makes the read fail. Each read
+# is logged with its time to reads.log.
+d=$1
+[ -e "$d/meter-fail.txt" ] && exit 1
+n=$( [ -f "$d/calls.log" ] && wc -l < "$d/calls.log" || echo 0)
+python3 -I -c 'import json,sys,time; open(sys.argv[3], "a").write("%f\n" % time.time()); print(json.dumps({"usage": int(sys.argv[1]) * float(sys.argv[2])}))' "$n" "$(cat "$d/price.txt")" "$d/reads.log"

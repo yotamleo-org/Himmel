@@ -19,15 +19,15 @@ session-start skill listings cause (e.g. `obsidian-capture` vs
 
    This checks the `skills` qmd collection is registered and non-empty
    before ever querying (bare `qmd` inside Claude's Bash tool resolves
-   to the broken plugin-cache stub, HIMMEL-163 — the script goes
+   to the broken plugin-cache stub — the script goes
    through the `scripts/lib/qmd-bin.sh` resolver, never bare `qmd`).
 
    - **Exit 3** (collection missing or empty): the script prints the
      exact two rebuild commands on stderr. Run them verbatim, then
      retry the query. Never fall back to guessing skill/command names
-     from `ls`/`grep` — that silent reversion to pre-HIMMEL-33
-     behavior is the failure mode this check exists to prevent
-     (HIMMEL-2222). Re-run the two rebuild commands after any plugin
+     from `ls`/`grep` — that silent reversion to pre-index
+     behavior is the failure mode this check exists to prevent.
+     Re-run the two rebuild commands after any plugin
      install/uninstall too, since nothing auto-rebuilds yet.
    - **Exit 127**: qmd is not resolvable on this machine at all — report
      that, don't guess either.
@@ -85,7 +85,7 @@ session-start skill listings cause (e.g. `obsidian-capture` vs
   `$HOME/.claude/skill-index`).
 - qmd collection: `skills`. Visible in `qmd status`.
 
-## Acceptance (per HIMMEL-33 spec)
+## Acceptance (per the skill-index spec)
 
 - [x] `/skill-find 'review the PR'` returns the top pr-review-toolkit
       reviewer with confidence + invocation example (when index is
@@ -98,4 +98,4 @@ session-start skill listings cause (e.g. `obsidian-capture` vs
 - [ ] Auto-rebuild on plugin manifest change — deferred to a follow-up;
       MVP requires explicit `/skill-reindex` (or running the build script)
 
-Source: user feedback /insights 2026-05-19. Related: HIMMEL-32 (wrong-skill-namespace was top friction).
+Source: user feedback /insights 2026-05-19. Related: the overnight autonomous shipping epic (wrong-skill-namespace was top friction).

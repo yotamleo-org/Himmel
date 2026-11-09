@@ -287,14 +287,31 @@ panel_findings=""      # the merged findings block
 panel_ran=0
 panel_t0=$SECONDS
 
+ceilings_header() {
+    local ch_out ch_rc=0
+    if [ -z "${HIMMEL_REPO:-}" ]; then
+        echo "CEILINGS: not read (HIMMEL_REPO unset)" >&2
+        return 0
+    fi
+    ch_out=$(bash "$HIMMEL_REPO/scripts/ledger/ceiling-lookup.sh" --range "$db_sha...$HEAD_SHA" </dev/null 2>/dev/null) || ch_rc=$?  # swallow-ok: a failed lookup prints a not-read header naming its rc below
+    case "$ch_out" in
+        CEILINGS:*) printf '%s\n' "$ch_out" >&2 ;;
+        *) echo "CEILINGS: not read (the anchor's ceiling-lookup.sh failed, rc=$ch_rc)" >&2 ;;
+    esac
+    return 0
+}
+
 if [ "${CR_PROFILE:-}" = "none" ]; then
     # Explicit claude-only opt-out. Skip panel.
     echo "claude-only review (CR_PROFILE=none)"
+    ceilings_header
 elif [ "$diff_rc" -ne 0 ]; then
     # git itself failed - treat as panel unavailable, not empty-diff skip.
     echo "critic panel unavailable - claude-only review (git diff failed rc=$diff_rc: $diff_out)" >&2
+    ceilings_header
 elif [ -z "$diff_out" ]; then
     echo "empty diff - critic panel skipped"
+    ceilings_header
 else
     if [ -n "$PR" ]; then
         # Authorization first: a refused author must leave no preflight row. This only asks; start --pr below decides again.
@@ -461,6 +478,7 @@ else
             ;;
     esac
     [ -z "${CR_PROFILE:-}" ] && echo "Default cross-model CR - no free critics registered, using the PAID codex anchor (~2min; set CR_PROFILE=none for instant claude-only)."
+    ceilings_header
     panel_ran=1
     panel_tmp=$(mktemp -t cr-panel-avail.XXXXXX)
     # CR_USAGE_LOG=1: each critic logs a chars/4 ESTIMATED usage

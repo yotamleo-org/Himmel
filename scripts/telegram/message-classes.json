@@ -1,0 +1,361 @@
+{
+  "cap": 400,
+  "kinds": [
+    {
+      "kind": "merge-blocked",
+      "class": "escalate",
+      "sender": "scripts/lib/merge-block-alert.sh",
+      "sample": "Merge refused: PR 4882 in octo/demo. Blocks: the merge after GO. Do: ask a reviewer for the one approval GitHub still wants"
+    },
+    {
+      "kind": "token-in-output",
+      "class": "escalate",
+      "sender": "scripts/hooks/detect-token-in-output.sh",
+      "sample": "A credential leaked: a GitHub token appeared in session 81843b5d. Blocks: nothing yet, it is in the transcript. Do: rotate the GitHub token"
+    },
+    {
+      "kind": "config-audit",
+      "class": "escalate",
+      "sender": "scripts/lib/config-audit.sh",
+      "sample": "A session changed .env: JIRA_API_TOKEN. Blocks: nothing. Do: check it was you, else restore the file from its backup"
+    },
+    {
+      "kind": "hold-ask-operator",
+      "class": "escalate",
+      "sender": "scripts/handover/chief-kit/chief-wait.sh",
+      "sample": "A worker on a ticket needs a settings or CI file: .github/workflows/ci.yml. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket"
+    },
+    {
+      "kind": "hold-ask-stuck",
+      "class": "escalate",
+      "sender": "scripts/handover/chief-kit/chief-wait.sh",
+      "sample": "A file ask waited 30 min: a worker wants scripts/cr/critic-panel.sh, held by another ticket. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket"
+    },
+    {
+      "kind": "denial-stuck",
+      "class": "escalate",
+      "sender": "scripts/handover/chief-kit/chief-wait.sh",
+      "sample": "A worker N4992b has been parked 30 min by a classifier denial (PAUSE-RISK). Blocks: its ticket. Do: open the session in Remote Control, or run ack-denial.sh with the label"
+    },
+    {
+      "kind": "monitor-chat-down",
+      "class": "escalate",
+      "sender": "scripts/telegram/poller.ts",
+      "sample": "The monitoring group is getting no messages (unset); 3 are kept on the station. Blocks: routine monitoring only. Do: add the two monitoring lines to the bridge env file and restart the bridge"
+    },
+    {
+      "kind": "recover-failed",
+      "class": "escalate",
+      "sender": "scripts/station-ops/recover.sh",
+      "sample": "Reboot recovery failed: the bridge did not come back. Blocks: every Telegram message. Do: run systemctl --user restart telegram-bridge.service"
+    },
+    {
+      "kind": "chief-reply",
+      "class": "escalate",
+      "sender": "docs/handover/running-a-chief.md",
+      "cap": "none"
+    },
+    {
+      "kind": "hold-ask-chief",
+      "class": "escalate",
+      "sender": "scripts/handover/chief-kit/chief-wait.sh",
+      "sample": "A worker wants scripts/cr/critic-panel.sh, held by another ticket. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket"
+    },
+    {
+      "kind": "denial-page",
+      "class": "escalate",
+      "sender": "scripts/handover/chief-kit/chief-wait.sh",
+      "sample": "Session 81843b5d of the himmel chief has 3 classifier denials (PAUSE-RISK). Blocks: that session. Do: open it in Remote Control and answer the prompt"
+    },
+    {
+      "kind": "worker-silent",
+      "class": "silent",
+      "sender": "scripts/handover/chief-kit/chief-wait.sh"
+    },
+    {
+      "kind": "denied-launch",
+      "class": "monitor",
+      "sender": "scripts/handover/chief-kit/denied-launch-alert.sh"
+    },
+    {
+      "kind": "silent-go-merge",
+      "class": "monitor",
+      "sender": "scripts/handover/chief-kit/silent-go-merge.sh"
+    },
+    {
+      "kind": "claude-only-clear",
+      "class": "monitor",
+      "sender": "scripts/cr/clear-review-marker.sh"
+    },
+    {
+      "kind": "cache-health",
+      "class": "monitor",
+      "sender": "scripts/eval/cache-health-cadence.sh"
+    },
+    {
+      "kind": "failure-review",
+      "class": "monitor",
+      "sender": "scripts/eval/worker-digest/failure_review.py"
+    },
+    {
+      "kind": "upstream-watch",
+      "class": "monitor",
+      "sender": "scripts/upstreams/upstream-watch.sh",
+      "ref-word": "PR or issue"
+    },
+    {
+      "kind": "jira-nudge",
+      "class": "monitor",
+      "sender": "scripts/hooks/jira-nudge-on-end.sh"
+    },
+    {
+      "kind": "luna-sync",
+      "class": "monitor",
+      "sender": "scripts/observability/luna-sync-alert.ts"
+    },
+    {
+      "kind": "recover-ok",
+      "class": "monitor",
+      "sender": "scripts/station-ops/recover.sh"
+    },
+    {
+      "kind": "cadence:himmel-doctor",
+      "class": "monitor",
+      "sender": "scripts/doctor-cadence.sh"
+    },
+    {
+      "kind": "cadence:judge-accuracy",
+      "class": "monitor",
+      "sender": "scripts/eval/judge-accuracy/judge-accuracy-cadence.sh"
+    },
+    {
+      "kind": "cadence:failure-review",
+      "class": "monitor",
+      "sender": "scripts/eval/worker-digest/failure-review-cadence.sh"
+    },
+    {
+      "kind": "cadence:failure-review-digest",
+      "class": "monitor",
+      "sender": "scripts/eval/worker-digest/failure-review-cadence.sh"
+    },
+    {
+      "kind": "cadence:failure-review-route",
+      "class": "monitor",
+      "sender": "scripts/eval/worker-digest/failure-route-notify.sh"
+    },
+    {
+      "kind": "cadence:claudex-inbox",
+      "class": "monitor",
+      "sender": "scripts/lib/claudex-inbox.sh"
+    },
+    {
+      "kind": "cadence:steering-cull",
+      "class": "monitor",
+      "sender": "scripts/cleanup/steering-cull-cadence.sh"
+    },
+    {
+      "kind": "cadence:cache-health",
+      "class": "monitor",
+      "sender": "scripts/eval/cache-health-cadence.sh"
+    },
+    {
+      "kind": "cadence:qmd-quality",
+      "class": "monitor",
+      "sender": "scripts/eval/qmd-quality/qmd-quality-cadence.sh"
+    },
+    {
+      "kind": "cadence:ledger-drift",
+      "class": "monitor",
+      "sender": "scripts/handover/chief-kit/ci-cadence.sh"
+    },
+    {
+      "kind": "cadence:vault-stall",
+      "class": "monitor",
+      "sender": "scripts/luna/vault-stall-cadence.sh"
+    },
+    {
+      "kind": "cadence:vm-maintain-cadence",
+      "class": "monitor",
+      "sender": "scripts/vm/vm-maintain-cadence.sh"
+    },
+    {
+      "kind": "cadence:graph-channel-publish",
+      "class": "monitor",
+      "sender": "scripts/graphify/publish-graph-channel.sh"
+    },
+    {
+      "kind": "cadence:librarian",
+      "class": "monitor",
+      "sender": "scripts/handover/librarian-cadence.sh"
+    },
+    {
+      "kind": "cadence:qmd-reindex",
+      "class": "monitor",
+      "sender": "scripts/luna/qmd-cadence.sh"
+    },
+    {
+      "kind": "cadence:rollup",
+      "class": "monitor",
+      "sender": "scripts/eval/rollup-cadence.sh"
+    },
+    {
+      "kind": "cadence:graphmap-himmel",
+      "class": "monitor",
+      "sender": "scripts/luna/graphmap-cadence.sh"
+    },
+    {
+      "kind": "cadence:graphmap-luna",
+      "class": "monitor",
+      "sender": "scripts/luna/graphmap-cadence.sh"
+    },
+    {
+      "kind": "cadence:graphmap-ast-himmel",
+      "class": "monitor",
+      "sender": "scripts/luna/graphmap-cadence.sh"
+    },
+    {
+      "kind": "cadence:graphmap-ast-luna",
+      "class": "monitor",
+      "sender": "scripts/luna/graphmap-cadence.sh"
+    },
+    {
+      "kind": "cadence:graphmap-semantic-luna",
+      "class": "monitor",
+      "sender": "scripts/luna/graphmap-cadence.sh"
+    },
+    {
+      "kind": "cadence:pipeline-harvest",
+      "class": "monitor",
+      "sender": "scripts/luna/pipeline-cadence.sh"
+    },
+    {
+      "kind": "cadence:pipeline-synthesize",
+      "class": "monitor",
+      "sender": "scripts/luna/pipeline-cadence.sh"
+    },
+    {
+      "kind": "cadence:pipeline-health",
+      "class": "monitor",
+      "sender": "scripts/luna/pipeline-cadence.sh"
+    },
+    {
+      "kind": "cadence:pipeline-fetch-health",
+      "class": "monitor",
+      "sender": "scripts/luna/pipeline-cadence.sh"
+    },
+    {
+      "kind": "cadence:upstream-watch",
+      "class": "monitor",
+      "sender": "scripts/upstreams/upstream-watch-cadence.sh"
+    },
+    {
+      "kind": "cadence:security-audit",
+      "class": "escalate",
+      "sender": "scripts/security/security-audit-cadence.sh",
+      "pin": "'fail', 'security-audit'",
+      "sample": "security-audit: 2 new high or critical findings. Cause: new-high-critical findings in the dependency audit. Blocks: nothing yet. Do: read the audit log and decide which finding to fix"
+    },
+    {
+      "kind": "cadence:snyk-scan",
+      "class": "escalate",
+      "sender": "scripts/security/snyk-scan-cadence.sh",
+      "pin": "fail snyk-scan",
+      "sample": "snyk-scan: the scan found high findings. Cause: high-findings. Blocks: nothing yet. Do: read the scan log and decide which finding to fix"
+    },
+    {
+      "kind": "cadence:graph-semantic-*",
+      "class": "monitor",
+      "sender": "scripts/graphify/graph-cadence.sh"
+    },
+    {
+      "kind": "cadence:vm-maintain-login-*",
+      "class": "monitor",
+      "sender": "scripts/vm/vm-maintain.sh"
+    },
+    {
+      "kind": "cadence:grafana-Flow_run_truncated",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Flow_run_error",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Flow_run_stalled",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Flow_last-success_age_exceeded",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Orphaned_quiet-run_suites___writer-less_tail_followers",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Watcher_down",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Luna_inbox_backlog_rising",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Session_dead",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Hook_chain_budget_pressure",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Hook_chain_budget_denials",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Hook_chain_log_unreadable",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Guard_denies_a_large_share_of_sessions",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-One_session_repeatedly_denied_by_one_guard",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Eval_regression_beyond_noise_band",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Scheduled_eval_has_not_run_in_14_days",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-Scheduled_eval_has_no_ledger_series",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    },
+    {
+      "kind": "cadence:grafana-DatasourceNoData",
+      "class": "monitor",
+      "sender": "scripts/observability/grafana-cadence-hook.ts"
+    }
+  ]
+}

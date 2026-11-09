@@ -11,7 +11,6 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-SUT="${CHECK_CRITIC_EVAL:-$HERE/check-critic-eval.sh}"
 SCORE="$ROOT/scripts/eval/review-panel/score.py"
 
 fails=0
@@ -21,6 +20,18 @@ fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/test-check-critic-eval.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 command -v python3 >/dev/null 2>&1 || { echo "SKIP test-check-critic-eval: python3 not on PATH"; exit 0; }
+
+SC="$WORK/scorer-copy"; mkdir -p "$SC/scripts/eval/review-panel" "$SC/scripts/eval/lib" "$SC/scripts/ci"
+cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$ROOT/scripts/eval/lib/"*.py "$SC/scripts/eval/lib/"
+cp "$ROOT/scripts/eval/feedback-rules.json" "$SC/scripts/eval/"; cp "$HERE/check-critic-eval.sh" "$SC/scripts/ci/"
+printf '__pycache__/\n' > "$SC/.gitignore"
+git init -q "$SC" && git -C "$SC" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null \
+    -c commit.gpgsign=false add -A && git -C "$SC" -c user.name=t -c user.email=t@example.invalid \
+    -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -q -m scorer
+SUT="${CHECK_CRITIC_EVAL:-$SC/scripts/ci/check-critic-eval.sh}"
+sid() { python3 "$1" scorer-identity --json 2>/dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin).get("scorer_sha256"); print("null" if v is None else v)' 2>/dev/null; }
+SID="$(sid "$(dirname "$SUT")/../eval/review-panel/score.py")"
+[[ "$SID" =~ ^[0-9a-f]{64}$ ]] && pass "the committed scorer copy has a clean identity" || fail "the committed scorer copy has a clean identity (got '$SID')"
 
 # The real inputs of the gate: everything the CBS can expand to, the eval's own tree and the roster.
 SRC_PATHS="scripts/cr scripts/lib/critics-config.sh scripts/hermes/invoke.sh scripts/eval/review-panel/cbs.txt scripts/eval/review-panel/gate-bypass.tsv scripts/eval/review-panel/fixtures scripts/eval/review-panel/key"
@@ -40,20 +51,29 @@ fixture() {
 commit_edit() { printf '%s\n' "$2" >> "$R/$1"; gitc add -A && gitc commit -q -m "edit $1" && gitc rev-parse HEAD; }
 cbs_hash() { python3 "$SCORE" cbs-hash "$1" --repo "$R"; }
 confighash() { python3 "$SCORE" confighash "$1" --repo "$R"; }
-# rows <file> <run_id:cbs:conf:recall:fp>...: append gate rows (class recall = recall, one outputs bundle
-# per run_id) to a results file.
 rows() {
     local f="$1"; shift
     python3 -c 'import hashlib,json,sys
-f = sys.argv[1]
+f, sid = sys.argv[1:3]
 with open(f, "a") as fh:
-    for spec in sys.argv[2:]:
-        rid, cbs, conf, rec, fp = spec.split(":")
-        fh.write(json.dumps({"run_id": rid, "cbs_hash": cbs, "confighash": conf, "status": "ok",
-                             "metrics": {"panel.recall_gating": float(rec), "panel.fp_rate": float(fp)},
-                             "class_recall": {"logic": float(rec)},
-                             "outputs_sha256": hashlib.sha256(rid.encode()).hexdigest()},
-                            sort_keys=True) + "\n")' "$f" "$@"
+    for spec in sys.argv[3:]:
+        p = spec.split(":")
+        rid, cbs, conf, rec, fp = p[:5]
+        sc, extra = (p[5] if len(p) > 5 else "cur"), (p[6] if len(p) > 6 else "")
+        row = {"run_id": rid, "cbs_hash": cbs, "confighash": conf, "status": "ok",
+               "metrics": {"panel.recall_gating": float(rec), "panel.fp_rate": float(fp)},
+               "class_recall": {"logic": float(rec)},
+               "outputs_sha256": hashlib.sha256(rid.encode()).hexdigest()}
+        if sc != "none":
+            row["scorer_sha256"] = {"cur": sid, "null": None}.get(sc, sc)
+        for tok in [t for t in extra.split(",") if t]:
+            if tok == "ineligible":
+                row.update(decision_eligible=False, ineligibility_reasons=["provenance-reconstructed"])
+            elif tok.startswith("sup="):
+                row["supersedes_run_id"] = tok[4:]
+            elif tok.startswith("exec="):
+                row["execution_id"] = tok[5:]
+        fh.write(json.dumps(row, sort_keys=True) + "\n")' "$f" "$SID" "$@"
 }
 # gate <label> <rc> [needle]: run the gate on BASE..HEAD of R.
 gate() {
@@ -101,6 +121,35 @@ gate "a third row of an older critic does not widen the noise" 1 "gate: loss"
 with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h2:$H:$C:0.50:0.10"
 commit_edit scripts/cr/critic-panel.sh '# a later critic change on main' >/dev/null
 gate "a merge-ref cbs_hash that differs from the swept head fails" 1 "no eval rows"
+
+fixture scorer-rows
+commit_edit scripts/cr/critic-first-pass.sh '# a critic change' >/dev/null
+B="$(cbs_hash "$BASE")"; H="$(cbs_hash HEAD)"; C="$(confighash HEAD)"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h2:$H:$C:0.50:0.10"
+gate "rows stamped with the running scorer's identity pass" 0 "gate: no-loss"
+with_rows "b1:$B:$C:0.50:0.10:none" "b2:$B:$C:0.60:0.10:none" "h1:$H:$C:0.55:0.10:none" "h2:$H:$C:0.50:0.10:none"
+gate "legacy_rows_without_scorer_unmeasured: rows with no scorer_sha256 fail" 1 "4 without scorer_sha256"
+with_rows "b1:$B:$C:0.50:0.10:$(printf 'a%.0s' $(seq 64))" "b2:$B:$C:0.60:0.10:$(printf 'a%.0s' $(seq 64))" "h1:$H:$C:0.55:0.10" "h2:$H:$C:0.50:0.10"
+gate "mixed_scorer_rows_unmeasured: an older scorer's baseline beside the running scorer's head fails" 1 "gate: unmeasured"
+SCD="$WORK/scorer-dirty"; cp -r "$SC" "$SCD"; printf '# dirty\n' >> "$SCD/scripts/eval/review-panel/score.py"
+with_rows "b1:$B:$C:0.50:0.10:null" "b2:$B:$C:0.60:0.10:none" "h1:$H:$C:0.55:0.10:null" "h2:$H:$C:0.50:0.10:none"
+SUT="$SCD/scripts/ci/check-critic-eval.sh" gate "null_running_identity_matches_no_rows: a dirty scorer over null and absent hashes fails" 1 "no clean identity"
+
+fixture selector
+commit_edit scripts/cr/critic-first-pass.sh '# a critic change' >/dev/null
+B="$(cbs_hash "$BASE")"; H="$(cbs_hash HEAD)"; C="$(confighash HEAD)"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h2:$H:$C:0.50:0.10"
+gate "selector: the plain two-and-two rows still pass" 0 "gate: no-loss"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h1r:$H:$C:0.55:0.10:cur:sup=h1"
+gate "scorer_only_rescore_not_new_execution: a rescore of one head sweep is not a second distinct sweep" 1 "gate: unmeasured"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h2:$H:$C:0.50:0.10" "h2r:$H:$C:0.50:0.10:cur:sup=h2"
+gate "selector: a rescore beside its source is one execution, the pair still has two distinct sweeps" 0 "gate: no-loss"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10" "h2:$H:$C:0.50:0.10:cur:ineligible"
+gate "old_unknown_provenance_diagnostic_only: an ineligible head row never counts" 1 "not-decision-eligible"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10:cur:sup=h2,exec=x" "h2:$H:$C:0.50:0.10:cur:sup=h1,exec=x"
+gate "supersession_cycle: a cycle selects nothing, the head is unmeasured" 1 "supersession-cycle"
+with_rows "b1:$B:$C:0.50:0.10" "b2:$B:$C:0.60:0.10" "h1:$H:$C:0.55:0.10:cur:exec=x" "h2:$H:$C:0.50:0.10:cur:exec=x" "h3:$H:$C:0.52:0.10:cur:sup=h1,exec=x" "h4:$H:$C:0.48:0.10:cur:sup=h1,exec=x"
+gate "two_successors_ambiguous: two successors of one run select nothing" 1 "two-successors-ambiguous"
 
 # --- which diffs are gated ------------------------------------------------------------------
 fixture unlisted

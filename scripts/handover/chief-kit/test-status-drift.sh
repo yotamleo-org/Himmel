@@ -994,6 +994,213 @@ check "9561 S1 8 control: a parked worker over rc 12 STALE keeps its owner" "$(d
 reset "In Progress"; jl "$K" "In Progress"; owned "$K" PARKED-USAGE '{"state":"parked"}'; lockfx 11 FRESH
 drift
 check "9561 S1 8 control: a parked worker over a FRESH lock keeps its owner" "$(dcount UNOWNED)" 0
+
+epoch_of() { date -u -d "$1" +%s 2>/dev/null || date -u -j -f %Y-%m-%dT%H:%M:%SZ "$1" +%s; }
+iso_e() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
+day_e() { date -u -d "@$1" +%Y-%m-%d 2>/dev/null || date -u -r "$1" +%Y-%m-%d; }
+hts() { rowq 'select(.event == "hold") | .ts' | tail -n 1; }
+hnow() { export TICKET_STATUS_NOW=$(($(epoch_of "$(hts)") + $1)); }
+tomorrow() { day_e $(($(date -u +%s) + 86400)); }
+label() { printf 'held\n' > "$FX/labels.$K"; }
+hand() {
+    lrow "$1" hold moved - "$2"
+    export TICKET_STATUS_NOW=$NOW
+}
+drift_bsd() { PATH="$bsdpath" bash "$DRIFT" --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1; }
+bsdhold() { PATH="$bsdpath" bash "$HOLD" "$@" >"$tmp/hout" 2>&1; }
+bsdpath=$PATH
+if date -u -d 2026-01-01 +%s >/dev/null 2>&1; then # gnu-ok: the probe itself, the shim below needs a GNU date
+    mkdir -p "$tmp/bsd"
+    cat >"$tmp/bsd/date" <<'EOS'
+#!/usr/bin/env bash
+real=$BSD_SHIM_REAL_DATE
+orig=("$@")
+j=0 r="" v="" out="" fmt="" str=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -d) echo "date: illegal option -- d" >&2; exit 1 ;;
+        -j) j=1; shift ;;
+        -f) fmt=${2:-}; str=${3:-}; shift 3 ;;
+        -r) r=${2:-}; shift 2 ;;
+        -v*) v=${1#-v-}; v=${v%d}; shift ;;
+        +*) out=$1; shift ;;
+        *) shift ;;
+    esac
+done
+if [ "$j" = 1 ]; then
+    case "$fmt" in
+        %Y-%m-%d)
+            base=$("$real" -u -d "${str:0:7}-01" +%s) || exit 1
+            e=$((base + (10#${str:8:2} - 1) * 86400)) ;;
+        *) e=$("$real" -u -d "$str" +%s) || exit 1 ;;
+    esac
+    exec "$real" -u -d "@$e" "$out"
+fi
+[ -z "$r" ] || exec "$real" -u -d "@$r" "$out"
+[ -z "$v" ] || exec "$real" -u -d "$v days ago" "$out"
+exec "$real" "${orig[@]}"
+EOS
+    chmod +x "$tmp/bsd/date"
+    BSD_SHIM_REAL_DATE=$(command -v date)
+    export BSD_SHIM_REAL_DATE
+    bsdpath="$tmp/bsd:$PATH"
+fi
+
+d6fx
+u1=$(tomorrow)
+hold "$K" --reason "waiting on legal" --owner operator --until "$u1"; rc=$?
+check "9561 S2 1: the hold exits 0" "$rc" 0
+check "9561 S2 1: the hold row records the owner" "$(rowq 'select(.event == "hold") | .owner')" operator
+check "9561 S2 1: and the until, with no --kind" "$(rowq 'select(.event == "hold") | .until')" "$u1"
+hnow 0
+drift
+check "9561 S2 1: a held, wrapped, no-PR key is one AWAITING row" "$(dcount AWAITING)" 1
+contains "9561 S2 1: it waits on the operator" "$(drows AWAITING)" "wait=operator"
+contains "9561 S2 1: its source is the hold" "$(drows AWAITING)" "source=hold"
+contains "9561 S2 1: its since is the hold row's ts" "$(drows AWAITING)" "since=$(hts) "
+contains "9561 S2 1: its due is the end of the until day" "$(drows AWAITING)" "due=${u1}T23:59:59Z "
+contains "9561 S2 1: its what is the reason" "$(drows AWAITING)" "what=waiting on legal "
+contains "9561 S2 1: it names the owner as the class's first word" "$(drows AWAITING)" "AWAITING $K operator since="
+check "9561 S2 1: and the key is not UNOWNED" "$(dcount UNOWNED)" 0
+contains "9561 S2 1: a wait row is no drift: sdrift=0" "$(dlast)" "sdrift=0:"
+
+hnow 172800
+drift
+check "9561 S2 2: at the hold day + 2 the key is no AWAITING row" "$(dcount AWAITING)" 0
+contains "9561 S2 2: it is UNOWNED and overdue" "$(drows UNOWNED)" "overdue"
+d6fx
+hold "$K" --reason r --owner operator --until "$(day_e $(($(date -u +%s) + 2592000)))"
+hnow 0
+drift
+contains "9561 S2 2: an until 30 days out is clamped to the hold ts + 14 d" "$(drows AWAITING)" "due=$(iso_e $(($(epoch_of "$(hts)") + 1209600))) "
+
+d6fx
+hold "$K" --reason r --owner operator --until "$(tomorrow)"
+hold "$K" --release --owner operator
+hnow 0
+drift
+check "9561 S2 3: after a release the key is plain UNOWNED" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+check "9561 S2 3: and says nothing of a label" "$(drows UNOWNED | grep -c 'held with no owner')" 0
+
+d6fx
+touch "$FX/edit.fail"
+hold "$K" --reason r --owner operator --until "$(tomorrow)"
+hnow 0
+drift
+check "9561 S2 4: a hold whose Jira edit failed (result=miss) is plain UNOWNED" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+
+d6fx
+mkdir -p "$tmp/mirror"
+printf -- '---\nlabels: ["held"]\n---\n' > "$tmp/mirror/$K.md"
+export TICKET_STATUS_NOW=$NOW
+drift
+check "9561 S2 5a: a mirror label and no hold row is one UNOWNED row" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+contains "9561 S2 5a: saying held with no owner on record" "$(drows UNOWNED)" "held with no owner on record"
+rm -rf "$tmp/mirror"
+d6fx; label
+hand 3600 '{"reason":"r"}'
+drift
+check "9561 S2 5b: a hold row with no owner is one UNOWNED row" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+contains "9561 S2 5b: saying held with no owner on record" "$(drows UNOWNED)" "held with no owner on record"
+d6fx; label
+hand 3600 '{"owner":"Bad Who","reason":"r"}'
+drift
+check "9561 S2 5c: an owner that fails the pattern is one UNOWNED row" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+contains "9561 S2 5c: saying held with no owner on record" "$(drows UNOWNED)" "held with no owner on record"
+d6fx; label
+hand 3600 '{"owner":"operator\nAWAITING forged operator x | wait=operator","reason":"r"}'
+drift
+check "9561 S2 5d: an owner holding a newline is still one UNOWNED row" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+check "9561 S2 5d: and the forged line is never printed" "$(grep -c forged "$tmp/dout")" 0
+contains "9561 S2 5d: saying held with no owner on record" "$(drows UNOWNED)" "held with no owner on record"
+
+d6fx
+hold "$K" --reason r --owner chief
+hnow 0
+drift
+contains "9561 S2 6: owner chief with no until is due 24 h after the hold" "$(drows AWAITING)" "due=$(iso_e $(($(epoch_of "$(hts)") + 86400))) "
+d6fx
+hold "$K" --reason r --owner release-manager
+hnow 0
+drift
+contains "9561 S2 6: owner release-manager with no until is due 72 h after the hold" "$(drows AWAITING)" "due=$(iso_e $(($(epoch_of "$(hts)") + 259200))) "
+contains "9561 S2 6: and waits on release-manager" "$(drows AWAITING)" "wait=release-manager"
+d6fx
+hold "$K" --reason r --owner operator
+hnow 0
+driftenv TICKET_STATUS_AWAIT_TTL_OPERATOR=2h
+contains "9561 S2 6: TTL_OPERATOR=2h makes an operator hold due in 2 h" "$(drows AWAITING)" "due=$(iso_e $(($(epoch_of "$(hts)") + 7200))) "
+
+d6fx
+hold "$K" --reason r --owner operator --until "$(tomorrow)"
+for _ in $(seq 600); do printf '{"ts":"2026-10-21T10:00:00Z","event":"derive","key":"HIMMEL-90001","result":"noop","pr":"1"}\n' >> "$LOG"; done
+hnow 0
+drift
+check "9561 S2 7: a hold with 600 rows after it still makes the key AWAITING" "$(dcount AWAITING)" 1
+
+reset "In Progress"
+hold "$K" --reason r --owner 'x | wait=y'; rc=$?
+check "9561 S2 8: an owner with a pipe exits 2" "$rc" 2
+check "9561 S2 8: and writes no row" "$([ -e "$LOG" ] && echo row || echo none)" none
+hold "$K" --reason r --owner Operator; rc=$?
+check "9561 S2 8: an upper-case owner exits 2" "$rc" 2
+hold "$K" --reason r --owner operator --until 2026-02-30; rc=$?
+check "9561 S2 8: an until that is no date exits 2" "$rc" 2
+bsdhold "$K" --reason r --owner operator --until 2026-02-30; rc=$?
+check "9561 S2 8: and so does 2026-02-30 under a BSD date" "$rc" 2
+check "9561 S2 8: and these write no row and call no edit" "$([ -e "$LOG" ] && echo row || echo none)/$(grep -c '^edit' "$STUB_LOG")" none/0
+bsdhold "$K" --reason r --owner operator --until 2030-03-02; rc=$?
+check "9561 S2 8 control: a real date passes under the BSD date" "$rc" 0
+
+d6fx
+hold "$K" --reason $'a|b\nc' --owner operator
+check "9561 S2 9: the hold row's reason has no pipe or newline" "$(rowq 'select(.event == "hold") | .reason')" abc
+hnow 0
+drift
+contains "9561 S2 9: what= is the stripped reason" "$(drows AWAITING)" "what=abc "
+check "9561 S2 9: and the row is a wait row" "$(drows AWAITING | grep -c ' | wait=operator$')" 1
+d6fx; label
+hand 3600 '{"owner":"operator","reason":"x | wait=x\ny"}'
+drift
+check "9561 S2 9: a hand-written reason with a pipe and a newline is one row" "$(dcount AWAITING)" 1
+contains "9561 S2 9: whose what= has neither" "$(drows AWAITING)" "what=x  wait=xy source=hold"
+check "9561 S2 9: and no forged wait mark" "$(drows AWAITING | grep -c '| wait=x')" 0
+
+d6fx; label
+hand 3600 '{"owner":"operator","reason":"r","until":"2026-13-40"}'
+drift
+contains "9561 S2 10: an until of 2026-13-40 is dropped: due = since + 72 h" "$(drows AWAITING)" "due=$(iso_at $((3600 - 259200))) "
+d6fx; label
+hand 3600 '{"owner":"operator","reason":"r","until":"2026-02-30"}'
+drift_bsd
+contains "9561 S2 10: an until of 2026-02-30 is dropped under a BSD date too" "$(drows AWAITING)" "due=$(iso_at $((3600 - 259200))) "
+d6fx; label
+u10=$(day_e $((NOW + 86400)))
+hand 3600 "{\"owner\":\"operator\",\"reason\":\"r\",\"until\":\"$u10\"}"
+drift_bsd
+contains "9561 S2 10 control: a real until is kept under a BSD date" "$(drows AWAITING)" "due=${u10}T23:59:59Z "
+
+d6fx
+u11=$(day_e $((NOW + 86400)))
+hand 3600 "{\"owner\":\"operator\",\"reason\":\"r\",\"until\":\"$u11\"}"
+drift
+check "9561 S2 11: a forged hold row on a key with no held label is plain UNOWNED" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+check "9561 S2 11: and says nothing of a label" "$(drows UNOWNED | grep -c 'held with no owner')" 0
+label
+drift
+check "9561 S2 11: the same row with the label is AWAITING" "$(dcount AWAITING)/$(dcount UNOWNED)" 1/0
+contains "9561 S2 11: operator" "$(drows AWAITING)" "wait=operator"
+
+d6fx; label
+lrow 7200 wrapped noop D6n; lrow 60 sweep noop D6n
+hand 3600 '{"owner":"operator","reason":"r"}'
+drift
+contains "9561 S2 12: a hold newer than the D6n park start wins" "$(drows AWAITING)" "source=hold"
+d6fx; label
+hand 7200 '{"owner":"operator","reason":"r"}'
+lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n
+drift
+contains "9561 S2 12: a D6n park start newer than the hold wins" "$(drows AWAITING)" "source=d6n"
 unset TICKET_STATUS_NOW
 
 # a `standing` ticket is started on purpose with no single PR; a ticket whose PR is open in

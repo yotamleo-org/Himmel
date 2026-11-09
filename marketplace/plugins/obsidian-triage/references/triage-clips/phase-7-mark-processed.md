@@ -1,8 +1,6 @@
-<!-- Moved verbatim out of triage-clips.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 **Phase 7 — Mark processed (with stale-read guard + placement contract) — through `tools/triage-mark-processed.py`, never by hand.**
 
-Phase 7 and Phase 8 are ONE tool call (HIMMEL-4685). The stale-read guard, the
+Phase 7 and Phase 8 are ONE tool call (so a subagent fan-out cannot skip the stale-read check or the move). The stale-read guard, the
 mark and the atomic move are code, so there is no prose for a caller to skip:
 
 ```bash
@@ -21,7 +19,7 @@ subagents marked and moved 86 clips through their own helpers.
 
 - **Stale-read guard:** the tool re-reads the clip and compares its SHA256 with `LAST_WRITE_SHA` (the hash recorded after this run's own most recent write in Phases 2-6 — NOT the Phase 1 pre-mutation baseline, which Phases 2-6 legitimately diverge from). A mismatch means the user edited the clip mid-pass (Obsidian sync, manual edit, another tool): the tool exits 3, writes nothing, and prints `SKIP phase-7-mark: user-edit detected mid-pass (stale read), skipping to avoid clobbering manual edits`. It checks again immediately before its write. A missing or malformed `--expect-sha` exits 2 — the guard cannot be skipped by leaving the hash out.
 
-- **Placement contract:** in ONE edit the tool inserts `processed: true`, `triaged_at: TODAY` and `evidence_pending: true` (plus `summary_basis: url-only` when asked) as zero-indent top-level keys immediately before the closing `---`, after every existing key and every block list — never inside a list, never between a key and its items — and parses the result before writing. `evidence_pending: true` is the recorded Phase-8 debt (HIMMEL-1713); only Phase 8's commit point removes it.
+- **Placement contract:** in ONE edit the tool inserts `processed: true`, `triaged_at: TODAY` and `evidence_pending: true` (plus `summary_basis: url-only` when asked) as zero-indent top-level keys immediately before the closing `---`, after every existing key and every block list — never inside a list, never between a key and its items — and parses the result before writing. `evidence_pending: true` is the recorded Phase-8 debt (so a clip owing Phase 8 is never lost); only Phase 8's commit point removes it.
 
   ```yaml
   ---

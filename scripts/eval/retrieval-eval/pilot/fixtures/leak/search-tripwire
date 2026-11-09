@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# search-tripwire -- installed as qmd, graphify and s-qmd on PATH in the leak fixtures: any call
+# is a scan that searched instead of reading, so it leaves a marker and fails.
+printf '%s %s\n' "$(basename "$0")" "$*" >> "${TRIPWIRE_LOG:?}"
+exit 99

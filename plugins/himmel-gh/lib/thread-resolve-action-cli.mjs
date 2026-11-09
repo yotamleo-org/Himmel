@@ -137,7 +137,7 @@ if (!body) {
 const forge = detectForge();
 // Bitbucket has no thread → PR lookup yet, so a full id there could write to
 // a thread on another PR. Only the PR-scoped --prefix is accepted.
-// ponytail: Bitbucket --thread-id refused outright, HIMMEL-6399 adds the check.
+// ponytail: Bitbucket --thread-id refused outright, accepted once a Bitbucket thread → PR check exists.
 if (threadIdArg && forge === 'bitbucket') {
   process.stderr.write('refused: --thread-id is not checked against the PR on Bitbucket; use --prefix\n');
   process.exit(2);

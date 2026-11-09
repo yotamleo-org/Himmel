@@ -25,6 +25,14 @@
 #   image) keeps its packages; a caller-set PYTHONUSERBASE is kept as is.
 # Exit: 0 clean; 1 leak, runner failure or timeout; 2 usage / setup error.
 #
+# The runner also gets HIMMEL_CANARY_HOME=<the sandbox home>, which turns on its
+# decoy-station-home witness (scripts/ci/live-witness.sh): a suite that writes the
+# live-shaped paths under HOME fails. For the default runner the shard must print
+# `live-witness: on, <n> suites watched, <h> hard, <w> warn` (HOME_CANARY_REQUIRE_WITNESS=0
+# is ignored there); for a --runner stub HOME_CANARY_REQUIRE_WITNESS=1 asks for it
+# (default 0). The account's passwd home, which no HOME change reaches, is watched
+# around the runner on a GitHub-hosted runner (live_witness_account_begin / _end).
+#
 # ponytail: only $HOME and $USERPROFILE are redirected, so a suite that reads a
 # literal /home/<user>/.env bypasses the canary; check-host-file-read-sinks.sh
 # and the judge cover that route, upgrade path is an fanotify/strace watch on
@@ -48,6 +56,8 @@ case "$TIMEOUT_S" in ''|*[!0-9]*) echo "home-canary: HOME_CANARY_TIMEOUT must be
 
 # shellcheck source=../lib/prim.sh
 . "$ROOT/scripts/lib/prim.sh" || { echo "home-canary: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+# shellcheck source=live-witness.sh
+. "$ROOT/scripts/ci/live-witness.sh" || { echo "home-canary: cannot load scripts/ci/live-witness.sh" >&2; exit 2; }
 SANDBOX="$(tmpdir)" || { echo "home-canary: cannot allocate sandbox" >&2; exit 2; }
 : "${SANDBOX:?}"
 trap 'rm -rf "$SANDBOX"' EXIT
@@ -91,13 +101,39 @@ if [ -z "$USER_BASE" ] && command -v python3 >/dev/null 2>&1; then
   USER_BASE="$(python3 -m site --user-base 2>/dev/null)" || USER_BASE="" # swallow-ok: empty leaves PYTHONUSERBASE unset, the pre-fix behaviour
 fi
 
+# The witness requirement: the default runner always owes the line.
+REQUIRE_WITNESS=0
+if [ "$RUNNER" = "$ROOT/scripts/ci/run-shell-tests.sh" ]; then
+  REQUIRE_WITNESS=1
+  if [ "${HOME_CANARY_REQUIRE_WITNESS:-}" = 0 ]; then
+    echo "home-canary: NOTE HOME_CANARY_REQUIRE_WITNESS=0 ignored for the default runner"
+  fi
+elif [ "${HOME_CANARY_REQUIRE_WITNESS:-0}" = 1 ]; then
+  REQUIRE_WITNESS=1
+else
+  echo "home-canary: NOTE witness requirement off"
+fi
+live_witness_account_begin "$SANDBOX" home-canary || { echo "home-canary: cannot start the account-home watch" >&2; exit 2; }
+
 # Output goes to a file, not a pipe: an orphaned suite child holding a pipe open would
 # keep the step alive past the timeout. The redacted log is printed after the run.
-timeout -k 30 "$TIMEOUT_S" env HOME="$FAKE_HOME" USERPROFILE="$FAKE_HOME" ${USER_BASE:+PYTHONUSERBASE="$USER_BASE"} bash "$RUNNER" "$@" > "$LOG" 2>&1
+timeout -k 30 "$TIMEOUT_S" env HOME="$FAKE_HOME" USERPROFILE="$FAKE_HOME" HIMMEL_CANARY_HOME="$FAKE_HOME" ${USER_BASE:+PYTHONUSERBASE="$USER_BASE"} bash "$RUNNER" "$@" > "$LOG" 2>&1
 rc=$?
 sed "s/$TOKEN/<honeytoken>/g" "$LOG"
 
 fail=0
+if ! live_witness_account_end "$SANDBOX"; then
+  fail=1
+  while IFS= read -r _hit; do
+    [ -n "$_hit" ] || continue
+    echo "home-canary: FAIL a suite wrote the account home $_hit (the passwd entry, not \$HOME); on the station this is the real ~/${_hit%%,*}" >&2
+  done < "$SANDBOX/acct.hits"
+fi
+if [ "$REQUIRE_WITNESS" -eq 1 ] && [ "$rc" -eq 0 ] \
+   && ! grep -qE '^live-witness: on, [0-9]+ suites watched, [0-9]+ hard, [0-9]+ warn$' "$LOG"; then
+  fail=1
+  echo "home-canary: FAIL the runner exited 0 without a 'live-witness: on, <n> suites watched, ...' line (the decoy-home witness did not run)" >&2
+fi
 if grep -qF "$TOKEN" "$LOG"; then
   fail=1
   echo "home-canary: FAIL honeytoken reached the runner output (a suite printed the sandbox .env); lines:" >&2

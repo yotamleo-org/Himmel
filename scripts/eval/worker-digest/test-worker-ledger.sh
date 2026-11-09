@@ -389,7 +389,7 @@ pinrun() {
   python3 "$FRT" route --ledger "$c/ledger.jsonl" --state "$c/state.json" --log "$c/log.jsonl" --inbox "$c/inbox.md" --now "$PNOW" --jira-bin "$PIN/stub/jira" --notify-cmd "$PIN/stub/notify" >"$c/route.out" 2>&1
   mkdir -p "$c/rv"
   python3 "$FRV" --live --ledger "$c/ledger.jsonl" --state "$c/rv/state.json" --log "$c/rv/log.jsonl" --inbox "$c/rv/inbox.md" --out-dir "$c/rv/out" --now "$PNOW" --jira-bin "$PIN/stub/jira" --notify-cmd "$PIN/stub/notify" >"$c/review.out" 2>&1
-  HIMMEL_EVAL_RUNS_LEDGER="$TMP/rl/eval.jsonl" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$c/th-fail.jsonl" TH_PATH="$TH" bun -e 'const { readToolHealth } = await import(process.env.TH_PATH); console.log(JSON.stringify(readToolHealth(process.env, new URLSearchParams("days=30"), Date.parse("2026-11-03T00:00:00Z"))))' >"$c/tool-health.json" 2>"$c/tool-health.err"
+  HOME="$PIN/home" HIMMEL_EVAL_RUNS_LEDGER="$TMP/rl/eval.jsonl" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$c/th-fail.jsonl" TH_PATH="$TH" bun -e 'const { readToolHealth } = await import(process.env.TH_PATH); console.log(JSON.stringify(readToolHealth(process.env, new URLSearchParams("days=30"), Date.parse("2026-11-03T00:00:00Z"))))' >"$c/tool-health.json" 2>"$c/tool-health.err"
 }
 # pinleaks <case> <canary>: every artifact a sender or reader wrote, searched for the canary (case-insensitive).
 pinleaks() { grep -ril -e "$2" "$PIN/stub" "$PIN/$1" 2>/dev/null | grep -v "/ledger.jsonl$\|/th-fail.jsonl$"; }

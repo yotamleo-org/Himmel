@@ -55,6 +55,15 @@ nobody asking you to act and you never volunteering.
 
 ## Checks
 
+**First, for any question about a PR or a head**, run
+`bash <primary checkout>/scripts/ledger/ceiling-lookup.sh --range origin/main...<head>`
+(the primary checkout's copy, never a relative path: the judge dir is built from
+the PR head's `scripts/`) and read the rows as "Recorded ceilings for the touched
+files: context to verify, not a verdict. Check each one still matches the code; a
+ceiling never waives a defect the change introduces." Cite a row by its id only;
+never quote its ceiling or trigger in your reply or evidence file. `withheld` or
+`not read` means no rows were shown to you: say so and rule on the code.
+
 Apply the "Judge checklist" in `docs/handover/judge-brief-template.md`: real
 environment evidence (the PR's CI log, upstream config) over fixtures; a
 mutation spot-check for every guard, gate or timeout (remove it, a test must
@@ -69,8 +78,8 @@ stdin, never a closed one.
 
 Pin every read of the PR under review to its head sha, never to a moving ref.
 In a shared checkout `FETCH_HEAD` is one file that every parallel judge's
-`git fetch` overwrites, so a read through it can land on another judge's PR
-(HIMMEL-7062). Read by the full sha only: check
+`git fetch` overwrites, so a read through it can land on another judge's PR.
+Read by the full sha only: check
 `gh pr view <N> --json headRefOid` equals the head you were given, check
 `git cat-file -t <sha>` prints `commit` (run a bare `git fetch origin` if it
 does not; never a refspec fetch, which the primary-checkout guard refuses),
@@ -85,7 +94,7 @@ of the file, then run
 `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh <qid>
 <GO|NO-GO> <full 40-hex head> --pr <PR> --evidence-file <file> --model <your
 model id> --effort <your effort level>` (the dispatch names both; the writer
-refuses a verdict without them, HIMMEL-6944) and put the path it prints in your
+refuses a verdict without them) and put the path it prints in your
 reply. `<primary checkout>` is the directory holding
 the `.git` that `git rev-parse --path-format=absolute --git-common-dir`
 prints. The writer never mints a GO; the chief runs `go.sh`.

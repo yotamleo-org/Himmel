@@ -93,6 +93,10 @@ case "$args" in
     'api repos/'*'/pulls/'*) printf '%s\n' "${STUB_HEAD:-}" ;;
     *'p77:pullRequest'*)
         [ -z "${STUB_SNAPSHOT_FAIL:-}" ] || exit 1
+        if [ -n "${STUB_HOLD_MARK:-}" ] && [ ! -e "$STUB_HOLD_MARK" ]; then
+            ( STUB_HOLD_MARK='' STUB_GH_STALL=600 "$STUB_HOLD_TIMEOUT" -k 2 40 bash "$STUB_HOLD_LIB" "${STUB_NWO:-acme/repo}" 0 77 < /dev/null > /dev/null 2>&1 &
+              echo "$!" > "$STUB_HOLD_MARK" )
+        fi
         jq -n --arg h "$STUB_HEAD" --arg m "${STUB_MSS:-CLEAN}" \
             --argjson rollup "${STUB_ROLLUP:-[]}" --argjson commits "${STUB_COMMITS:-[]}" \
             --arg merges "${STUB_MERGE_OIDS:-}" --argjson u "${STUB_UNRESOLVED:-0}" \
@@ -263,6 +267,7 @@ seed_deferral() {
     printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-%s","severity":"sug","verdict":"deferred","deferred_to":"%s","fu_class":"polish","reason":"out of scope","artifact":"diff","perspective":"off"}\n' "${SEED_BRANCH:-b}" "${2:-$SHA}" "$1" "$1" >> "$LEDGER"
 }
 
+RUN_FLAGS="--observe"
 run() {
     local cache="${RUN_CACHE:-}"
     [ -n "$cache" ] || cache=$(mktemp -d "$tmp/cache.XXXXXX") || return 1
@@ -1848,7 +1853,7 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" \
     PATH="$PATH" GH_LOG="$GH_LOG" READY_CHECK_ANCHOR="$TP_ANCHOR" \
-    bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
+    bash "$own/scripts/handover/chief-kit/ready-check.sh" --observe "$PR" "$SHA")" || rc=$?
 # the copy has no scripts/lib/timeout-bin.sh, so check 19 fails closed and is the only FAIL
 check "own-checkout .env: only check 19 fails" "$(printf '%s\n' "$out" | grep '^\[FAIL\]' | grep -vc '^\[FAIL\] 19\. suite evidence: no timeout binary')" "0"
 contains "own-checkout .env: check 19 fails closed without a timeout lib" "$out" "[FAIL] 19. suite evidence: no timeout binary"
@@ -3389,7 +3394,7 @@ rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
     PATH="$PATH" GH_LOG="$GH_LOG" READY_CHECK_ANCHOR="$TP_ANCHOR" \
-    bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
+    bash "$own/scripts/handover/chief-kit/ready-check.sh" --observe "$PR" "$SHA")" || rc=$?
 check "bug-origin partial copy: only check 19 fails (no timeout lib)" "$(printf '%s\n' "$out" | grep '^\[FAIL\]' | grep -vc '^\[FAIL\] 19\. suite evidence: no timeout binary')" "0"
 contains "bug-origin partial copy: not checked" "$out" "$BO_NOTCHECKED"
 
@@ -3403,7 +3408,7 @@ rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
     PATH="$PATH" GH_LOG="$GH_LOG" READY_CHECK_ANCHOR="$TP_ANCHOR" \
-    bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
+    bash "$own/scripts/handover/chief-kit/ready-check.sh" --observe "$PR" "$SHA")" || rc=$?
 check "bug-origin broken lib: exit 0" "$rc" "0"
 contains "bug-origin broken lib: not checked" "$out" "$BO_NOTCHECKED"
 notcontains "bug-origin broken lib: never the no-key PASS" "$out" "$BO_NOTBUG"
@@ -3857,8 +3862,13 @@ contains "17f: item 17 fails" "$R17_OUT" "[FAIL] 17."
 contains "17f: says to name the contract" "$R17_OUT" "--contract yes|no"
 RUN_FLAGS=""
 R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
-check "17g a keyed title with no contract named, from an observer: exit 0 (a warning, not a verdict)" "$R17_RC" "0"
-contains "17g: item 17 warns" "$R17_OUT" "[WARN] 17."
+check "17g a keyed title with no contract named and no flag (the plain call the chief runs before go.sh): exit 1, as go.sh refuses it" "$R17_RC" "1"
+contains "17g: item 17 fails" "$R17_OUT" "[FAIL] 17."
+contains "17g: says to name the contract" "$R17_OUT" "--contract yes|no"
+RUN_FLAGS="--observe"
+R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
+check "17g2 --observe (a waiter or shepherd read, no GO is written): exit 0 (a warning, not a verdict)" "$R17_RC" "0"
+contains "17g2: item 17 warns" "$R17_OUT" "[WARN] 17."
 # a reader the anchor lacks refuses, as the merge refuses on a broken anchor
 NR_ORIGIN="$tmp/tp-origin-nr.git"; NR_ANCHOR="$tmp/tp-nr"
 git init -q --bare "$NR_ORIGIN"
@@ -3882,7 +3892,7 @@ notcontains "17i --only 7 does not run item 18" "$R17_OUT" "] 18."
 # Item 18 asks scripts/cr/clear-review-marker.sh --check-findings, the merge's own ledger verdict, at the head the
 # merge will gate on, with and without the chief's GO assumed. The PR 4611 shape: an Important raised at the reviewed
 # head A and never ruled; B (a non-test delta on top of A) carries its own ok row, so item 4 passes at B.
-RUN_FLAGS=""
+RUN_FLAGS="--observe"
 SHA_SAVE="$SHA"
 R18_A=$(git -C "$REPO" rev-parse HEAD)
 printf 'b\n' > "$REPO/f18.txt"
@@ -4217,6 +4227,37 @@ s17_clear
 # READY_CHECK_DEADLINE (whole seconds, default 150, 0 = none): argv unchanged; a stalled gh
 # read ends in a named FAIL, never a hang, and the override reaches the wrapper.
 reset_stubs
+# ponytail: this row proves the holder was alive when the run began, not that the run's lock
+# attempt met it; on a runner slow enough to spend 9 s before the snapshot read, the pass could
+# come without contention (the red on the old lib shows the timing holds); upgrade path is a seam
+# that makes the lib log a wait to a trace file this row asserts on.
+r1_shared="$tmp/lock-cache-r1"; mkdir -p "$r1_shared"
+r1_fails0=$fails
+env GH_PR_SNAPSHOT_CACHE_DIR="$r1_shared" GH_LOG="$tmp/holder.log" STUB_HEAD="$SHA" \
+    STUB_NWO="$NWO" STUB_ROLLUP="$GREEN_ROLLUP" STUB_COMMITS="$GREEN_COMMITS" \
+    STUB_GH_STALL=3 bash "$HERE/../../lib/gh-pr-snapshot.sh" "$NWO" 0 "$PR" > /dev/null 2>&1 &
+r1_holder=$!
+r1_took=no
+for _ in $(seq 1 50); do
+    if compgen -G "$r1_shared/*.lock/pid" > /dev/null; then r1_took=yes; break; fi
+    sleep 0.1
+done
+check "R1: the holder took the snapshot lock" "$r1_took" "yes"
+r1_alive=no; kill -0 "$r1_holder" 2>/dev/null && r1_alive=yes
+check "R1: the holder still holds the lock when the run starts" "$r1_alive" "yes"
+: > "$GH_LOG"
+rc=0; out="$(GH_PR_SNAPSHOT_LOCK_WAIT=30 RUN_CACHE="$r1_shared" run)" || rc=$?
+check "R1: a run that meets a held lock exits 0" "$rc" "0"
+contains "R1: the verdict is PASS" "$out" "READY-CHECK PASS"
+for r1_item in 1 2 3 4 5 6; do
+    check "R1: item $r1_item passes" "$(grep -c "^\[PASS\] $r1_item\." <<< "$out" | tr -d ' ')" "1"
+done
+r1_reads=$(grep -Ec '^(repo view|pr view|api graphql)' "$GH_LOG" || true)
+check "R1: the wait adds no gh read (at most 2 snapshot-shaped reads, saw ${r1_reads:-0})" "$([ "${r1_reads:-0}" -le 2 ] && echo yes || echo no)" "yes"
+r1_hrc=0; wait "$r1_holder" || r1_hrc=$?
+check "R1: the holder finished its read" "$r1_hrc" "0"
+[ "$fails" -eq "$r1_fails0" ] || grep -E '^\[(PASS|FAIL)\] (1|2|3|4|5|6|16)\.' <<< "$out"
+reset_stubs
 # shellcheck source=scripts/lib/timeout-bin.sh
 . "$HERE/../../lib/timeout-bin.sh"  # the same GNU timeout (timeout or gtimeout) ready-check resolves
 REAL_TIMEOUT="$_TIMEOUT_BIN"
@@ -4245,6 +4286,51 @@ check "deadline: 0 still passes" "$rc" "0"
 rc=0; out="$(READY_CHECK_DEADLINE=2 STUB_GH_STALL=30 run 2>&1)" || rc=$?
 check "deadline: a stalled gh read exits 1" "$rc" "1"
 contains "deadline: the FAIL line names the deadline and its variable" "$out" "READY-CHECK FAIL: no verdict within the 2 s deadline (READY_CHECK_DEADLINE)"
+r2_shared="$tmp/lock-cache-r2"; mkdir -p "$r2_shared"
+env GH_PR_SNAPSHOT_CACHE_DIR="$r2_shared" GH_LOG="$tmp/holder2.log" STUB_HEAD="$SHA" \
+    STUB_NWO="$NWO" STUB_ROLLUP="$GREEN_ROLLUP" STUB_COMMITS="$GREEN_COMMITS" \
+    STUB_GH_STALL=600 "$REAL_TIMEOUT" -k 2 12 bash "$HERE/../../lib/gh-pr-snapshot.sh" "$NWO" 0 "$PR" > /dev/null 2>&1 &
+r2_holder=$!
+r2_took=no
+for _ in $(seq 1 50); do
+    if compgen -G "$r2_shared/*.lock/pid" > /dev/null; then r2_took=yes; break; fi
+    sleep 0.1
+done
+check "R2: the holder took the snapshot lock" "$r2_took" "yes"
+r2_t0=$SECONDS
+rc=0; out="$(GH_PR_SNAPSHOT_LOCK_WAIT=2 RUN_CACHE="$r2_shared" run)" || rc=$?
+r2_elapsed=$((SECONDS - r2_t0))
+check "R2: a lock that never frees fails the run" "$rc" "1"
+contains "R2: the verdict is FAIL" "$out" "READY-CHECK FAIL"
+notcontains "R2: never a PASS verdict" "$out" "READY-CHECK PASS"
+for r2_item in 1 2 3 5 6; do
+    check "R2: item $r2_item fails closed" "$(grep -c "^\[FAIL\] $r2_item\." <<< "$out" | tr -d ' ')" "1"
+done
+check "R2: the run ended on the lock wait, inside the holder's life (took $r2_elapsed s)" "$([ "$r2_elapsed" -lt 12 ] && echo yes || echo no)" "yes"
+contains "R2: item 1 names why the snapshot was unreadable" "$out" "still held by pid"
+wait "$r2_holder" 2>/dev/null || true
+r2_left=no; compgen -G "$r2_shared/*.lock" > /dev/null && r2_left=yes
+check "R2: the killed holder's trap freed its lock" "$r2_left" "no"
+reset_stubs
+r4_shared="$tmp/lock-cache-r4"; mkdir -p "$r4_shared"
+r4_mark="$tmp/r4-holder.pid"; rm -f "$r4_mark"
+r4_t0=$SECONDS
+rc=0; out="$(STUB_MSS=UNKNOWN STUB_HOLD_MARK="$r4_mark" STUB_HOLD_TIMEOUT="$REAL_TIMEOUT" STUB_HOLD_LIB="$HERE/../../lib/gh-pr-snapshot.sh" RUN_CACHE="$r4_shared" run)" || rc=$?
+r4_elapsed=$((SECONDS - r4_t0))
+check "R4: the peer read was started" "$([ -s "$r4_mark" ] && echo yes || echo no)" "yes"
+check "R4: a mergeStateStatus that stays UNKNOWN fails the run" "$rc" "1"
+check "R4: item 1 fails on UNKNOWN, not on an unreadable PR" "$(grep -c '^\[FAIL\] 1\. .*mergeStateStatus=UNKNOWN' <<< "$out" | tr -d ' ')" "1"
+for r4_item in 2 3 5 6; do
+    check "R4: item $r4_item still judges the last good read" "$(grep -c "^\[PASS\] $r4_item\." <<< "$out" | tr -d ' ')" "1"
+done
+notcontains "R4: no cannot read" "$out" "cannot read"
+contains "R4: item 1 names the re-read's 5 s lock wait" "$out" "after 5 s"
+check "R4: the re-reads ended inside the peer's life (took $r4_elapsed s)" "$([ "$r4_elapsed" -lt 40 ] && echo yes || echo no)" "yes"
+r4_hpid=$(cat "$r4_mark" 2>/dev/null) || r4_hpid=""
+[ -z "$r4_hpid" ] || kill "$r4_hpid" 2>/dev/null || true
+for _ in $(seq 1 100); do compgen -G "$r4_shared/*.lock" > /dev/null || break; sleep 0.1; done
+r4_left=no; compgen -G "$r4_shared/*.lock" > /dev/null && r4_left=yes
+check "R4: the killed peer's trap freed its lock" "$r4_left" "no"
 fi
 reset_stubs
 

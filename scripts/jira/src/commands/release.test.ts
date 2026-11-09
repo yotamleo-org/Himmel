@@ -47,7 +47,9 @@ vi.mock('../release/repair-run.js', async (orig) => {
   const m = await orig<typeof import('../release/repair-run.js')>();
   return { ...m, repairRun: ((c, o) => { repairSeen.opts = o; return m.repairRun(c, o); }) as typeof m.repairRun };
 });
-vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: vi.fn(() => 'HIMMEL') }));
+vi.mock('../client.js', () => ({
+  request: vi.fn(), projectKey: vi.fn(() => 'HIMMEL'), baseUrl: vi.fn(() => 'http://127.0.0.1:9'), authHeader: vi.fn(() => 'Basic eA=='),
+}));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
@@ -55,6 +57,7 @@ import { admissionBudget } from '../release/leaks.js';
 import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
+import { appendChain, loadKey } from '../release/ledger.js';
 
 let out: string[];
 let root: string;
@@ -70,6 +73,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'release-cli-'));
   vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'state'));
   vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
+  vi.stubEnv('HIMMEL_CONSOLE', '');
   vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
   vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
   writeFileSync(join(root, 'verbatim.txt'), 'R = v1 + v2\n');
@@ -98,6 +102,7 @@ describe.skipIf(process.platform !== 'linux')('jira release from a test on the s
     await expect(run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'x')).rejects.toThrow(/refused/);
     expect(existsSync(join(root, 'state', 'R1'))).toBe(false);
     await run('state', 'R1', '--json', '--mirror-root', join(root, 'no-mirror'));
+    await run('bucket-check', '--mirror', join(root, 'no-mirror'), 'K-1');
   });
 
   it('refuses a key mint at the declare call site once the state dir clears the write door', async () => {
@@ -610,12 +615,55 @@ describe('jira release request refuses junk', () => {
     expect(out.at(-1)).toBe('REQ Q-R1-0001');
   });
 
+  function jiraLabels(held: string[], stuck: string[] = []) {
+    const now = { labels: [...held] };
+    vi.mocked(request).mockImplementation((async (method: string, _path: string, body?: { update: { labels: Array<{ remove: string }> } }) => {
+      if (method === 'PUT') {
+        const gone = body!.update.labels.map((l) => l.remove);
+        now.labels = now.labels.filter((l) => !gone.includes(l) || stuck.includes(l));
+        return {};
+      }
+      return { fields: { labels: [...now.labels] } };
+    }) as never);
+    return now;
+  }
+  const puts = () => vi.mocked(request).mock.calls.filter((c) => c[0] === 'PUT');
+
   it('withdraws a request from the CLI', async () => {
     await declared();
     const mir = writeMirror();
     await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: found work');
+    jiraLabels([]);
     await run('withdraw', 'R1', '--req', 'Q-R1-0001', '--reason', 'junk from a test run');
     expect(out.at(-1)).toBe('WITHDRAWN Q-R1-0001 (withdrawn:console): junk from a test run');
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('a withdrawn INTAKE loses its proposed-* labels and keeps backlog, phase:* and held', async () => {
+    await declared();
+    const mir = writeMirror();
+    await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: found work');
+    const jira = jiraLabels(['backlog', 'proposed-v1.2', 'phase:build', 'held']);
+    await run('withdraw', 'R1', '--req', 'Q-R1-0001', '--reason', 'junk from a test run');
+    expect(jira.labels).toEqual(['backlog', 'phase:build', 'held']);
+    expect(puts().map((c) => [c[1], c[2]])).toEqual([['/issue/K-2', { update: { labels: [{ remove: 'proposed-v1.2' }] } }]]);
+  });
+
+  it('a withdrawn INTAKE whose label survives the removal fails loud, naming the label', async () => {
+    await declared();
+    const mir = writeMirror();
+    await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: found work');
+    jiraLabels(['proposed-v1.2'], ['proposed-v1.2']);
+    await expect(run('withdraw', 'R1', '--req', 'Q-R1-0001', '--reason', 'junk from a test run')).rejects.toThrow(/K-2 still carries proposed-v1\.2/);
+  });
+
+  it('a withdrawn REVERSION touches no label', async () => {
+    await declared();
+    const mir = writeMirror({ key: 'K-5', fixVersions: ['v2'] });
+    await ask(mir, '--verb', 'REVERSION', '--key', 'K-5', '--from', 'v2', '--why', 'moves out of the version');
+    vi.mocked(request).mockClear();
+    await run('withdraw', 'R1', '--req', 'Q-R1-0001', '--reason', 'junk from a test run');
+    expect(request).not.toHaveBeenCalled();
   });
 });
 
@@ -728,6 +776,7 @@ describe('routedJudge', () => {
   const decision = (reason: string) => ({ req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason });
   const envelope = (reason: string) => JSON.stringify({ is_error: false, result: JSON.stringify([decision(reason)]) });
   let dir: string;
+  const pathWithEmptyPs = (psDir: string): string => `${psDir}:${process.env.PATH ?? ''}`;
 
   function world(roles: unknown, fake: { out?: string; rc?: number; sleep?: number } = {}) {
     dir = mkdtempSync(join(root, 'world-'));
@@ -753,7 +802,7 @@ describe('routedJudge', () => {
       HIMMEL_API_CREDIT_CONFIG: join(dir, 'config.json'), HIMMEL_API_CREDIT_SNAPSHOT: join(dir, 'snapshot.json'),
       HIMMEL_API_CREDIT_STATE: join(dir, 'ledger.json'), HIMMEL_API_CLAUDE_BIN: join(dir, 'claude-fake'),
       HIMMEL_API_ALERT_DIR: join(dir, 'alerts'), HIMMEL_API_ALERT_CMD: join(dir, 'alert-stub'), HIMMEL_API_LOCK_WAIT_MS: '2000',
-      HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: join(dir, 'ps'), FLEET_PROC: dir,
+      HIMMEL_FLEET_SLOTS: join(dir, 'slots'), PATH: pathWithEmptyPs(dir),
       CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1', CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
       ANTHROPIC_API_KEY: '', HIMMEL_API_KEY_ID: '',
     };
@@ -881,6 +930,17 @@ describe('routedJudge', () => {
   });
 });
 
+describe('liveJira labels', () => {
+  it('reads the labels and removes them with one update call', async () => {
+    vi.mocked(request).mockReset();
+    vi.mocked(request).mockImplementation((async () => ({ fields: { labels: ['backlog', 'proposed-v1'] } })) as never);
+    expect(await liveJira.labels('HIMMEL-1')).toEqual(['backlog', 'proposed-v1']);
+    expect(vi.mocked(request).mock.calls[0].slice(0, 2)).toEqual(['GET', '/issue/HIMMEL-1?fields=labels']);
+    await liveJira.removeLabels('HIMMEL-1', ['proposed-v1', 'proposed-v2']);
+    expect(vi.mocked(request).mock.calls[1]).toEqual(['PUT', '/issue/HIMMEL-1', { update: { labels: [{ remove: 'proposed-v1' }, { remove: 'proposed-v2' }] } }]);
+  });
+});
+
 describe('RM apply names its writer', () => {
   it('RM apply names rm-apply', async () => {
     vi.mocked(request).mockImplementation((async (method: string) =>
@@ -888,5 +948,233 @@ describe('RM apply names its writer', () => {
     await liveJira.setFixVersion('HIMMEL-1', 'add', 'v1');
     const put = vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT');
     expect(put?.[3]).toBe('rm-apply');
+  });
+});
+
+describe('jira release bucket-check', () => {
+  const vf = () => join(root, 'verbatim.txt');
+  const declared = () => run('operator', 'declare', 'R1', '--versions', 'v1.1.9,v1.1.10', '--decision', '106', '--verbatim-file', vf());
+  function projectMirror(...issues: Array<{ key: string; fixVersions: string[]; category?: string }>): string {
+    const dir = join(root, 'jira-mirror', 'HIMMEL');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-08T00:00:00Z' }));
+    for (const i of issues) {
+      writeFileSync(join(dir, `${i.key}.md`), `---\nkey: ${JSON.stringify(i.key)}\nstatus: "x"\nstatusCategory: ${JSON.stringify(i.category ?? 'To Do')}\n`
+        + `type: "Task"\npriority: "Medium"\nfixVersions: ${JSON.stringify(i.fixVersions)}\n---\n`);
+    }
+    writeFileSync(`${dir}.versions.tsv`, 'v1.1.9\tfalse\t\tfalse\nv1.1.10\tfalse\t\tfalse\n');
+    return dir;
+  }
+  const approve = (key: string, decision: string, ageDays: number) => appendChain(join(root, 'state', 'R1', 'operator.jsonl'), loadKey(join(root, 'keys', 'R1.key')), {
+    id: `O-R1-ov-${decision}`, kind: 'out-of-version', decision, keys: [key], ts: new Date(Date.now() - ageDays * 86_400_000).toISOString(),
+  });
+
+  it('prints one verdict line per key in the order given', async () => {
+    await declared();
+    const mir = projectMirror({ key: 'HIMMEL-1', fixVersions: ['v1.1.9'] }, { key: 'HIMMEL-2', fixVersions: ['v1.1.10'], category: 'Done' });
+    out = [];
+    await run('bucket-check', '--mirror', mir, 'HIMMEL-2', 'HIMMEL-1');
+    expect(out).toEqual(['DONE HIMMEL-2', 'IN HIMMEL-1 current=v1.1.9 via=mirror']);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('with no --mirror exits non-zero and prints no verdict line, whether JIRA_PROJECT_KEY is set or not', async () => {
+    await declared();
+    projectMirror({ key: 'HIMMEL-1', fixVersions: ['v1.1.9'] });
+    out = [];
+    for (const pk of ['HIMMEL', '']) {
+      vi.stubEnv('JIRA_PROJECT_KEY', pk);
+      await expect(run('bucket-check', 'HIMMEL-1')).rejects.toMatchObject({ exitCode: 1, code: 'commander.missingMandatoryOptionValue' });
+    }
+    expect(out).toEqual([]);
+  });
+
+  it('a key the mirror does not hold in current asks Jira, and a failed read is FAILED by name', async () => {
+    await declared();
+    const mir = projectMirror({ key: 'HIMMEL-5', fixVersions: ['v1.1.10'] });
+    out = [];
+    await run('bucket-check', '--mirror', mir, 'HIMMEL-5');
+    expect(out).toHaveLength(1);
+    expect(out[0]).toBe('FAILED HIMMEL-5 the live read of HIMMEL-5 failed: fetch failed');
+  });
+
+  it('an INTAKE on an approved key answers REQ approved:<id> and writes no row; a REVERSION on it still files', async () => {
+    await declared();
+    const mir = projectMirror({ key: 'HIMMEL-7', fixVersions: ['v1.1.10'] });
+    approve('HIMMEL-7', '901', 1);
+    vi.mocked(request).mockReset();
+    vi.mocked(request).mockImplementation((async () => ({ fields: { labels: [] } })) as never);
+    out = [];
+    await run('request', 'R1', '--mirror-root', mir, '--verb', 'INTAKE', '--key', 'HIMMEL-7', '--from', 'v1.1.10', '--to', 'v1.1.9', '--why', 'worked under the chief: fold it in');
+    expect(out).toEqual(['REQ approved:O-R1-ov-901']);
+    expect(existsSync(join(root, 'state', 'R1', 'requests.jsonl'))).toBe(false);
+    approve('HIMMEL-8', '902', 15);
+    await run('request', 'R1', '--mirror-root', mir, '--verb', 'INTAKE', '--key', 'HIMMEL-8', '--to', 'v1.1.9', '--why', 'worked under the chief: fold it in');
+    expect(out.at(-1)).toBe('REQ Q-R1-0001');
+    await run('request', 'R1', '--mirror-root', mir, '--verb', 'REVERSION', '--key', 'HIMMEL-7', '--from', 'v1.1.10', '--to', 'backlog', '--why', 'moves out of the version');
+    expect(out.at(-1)).toBe('REQ Q-R1-0002');
+  });
+
+  it('the approved INTAKE clears a proposed-* label on the key, since its proposal ends there', async () => {
+    await declared();
+    const mir = projectMirror({ key: 'HIMMEL-7', fixVersions: ['v1.1.10'] });
+    approve('HIMMEL-7', '901', 1);
+    let labels = ['core', 'proposed-v1.1.9'];
+    vi.mocked(request).mockReset();
+    vi.mocked(request).mockImplementation((async (method: string) => {
+      if (method === 'PUT') labels = labels.filter((l) => !l.startsWith('proposed-'));
+      return { fields: { labels } };
+    }) as never);
+    out = [];
+    await run('request', 'R1', '--mirror-root', mir, '--verb', 'INTAKE', '--key', 'HIMMEL-7', '--to', 'v1.1.9', '--why', 'worked under the chief: fold it in');
+    expect(out).toEqual(['REQ approved:O-R1-ov-901']);
+    expect(vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT')).toEqual(['PUT', '/issue/HIMMEL-7', { update: { labels: [{ remove: 'proposed-v1.1.9' }] } }]);
+    expect(labels).toEqual(['core']);
+  });
+
+  it('a failed label clear on an approved INTAKE warns and keeps the REQ line and exit 0, which the folds read', async () => {
+    await declared();
+    const mir = projectMirror({ key: 'HIMMEL-7', fixVersions: ['v1.1.10'] });
+    approve('HIMMEL-7', '901', 1);
+    vi.mocked(request).mockReset();
+    vi.mocked(request).mockImplementation((async () => { throw new Error('HTTP 503'); }) as never);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    out = [];
+    process.exitCode = undefined;
+    await run('request', 'R1', '--mirror-root', mir, '--verb', 'INTAKE', '--key', 'HIMMEL-7', '--to', 'v1.1.9', '--why', 'worked under the chief: fold it in');
+    expect(out).toEqual(['REQ approved:O-R1-ov-901']);
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(err).toHaveBeenCalledWith('release request: WARN HTTP 503');
+  });
+});
+
+describe('jira release operator out-of-version', () => {
+  const decisions = () => join(root, 'specs', 'decisions');
+  const header = 'Decision 699, operator, 2026-11-06, relayed by the bridge chat to chief TA.';
+  const reading = 'Reading is the bridge\'s, unconfirmed: signs HIMMEL-9001 v2.';
+  let mir: string;
+  let sent: string;
+
+  function decisionFile(name: string, text: string, dir = decisions()): string {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, name), text);
+    return join(dir, name);
+  }
+  const f699 = () => decisionFile('verbatim-decision-699-operator-11-06-TA.txt', `${header}\n\nVerbatim:\n"9001 signed"\n\n${reading}\n`);
+  const grant = (...extra: string[]) => {
+    const args = ['--key', 'HIMMEL-7', '--decision', '699', '--verbatim-file', f699(), '--reason', 'the operator wants it this week', '--mirror-root', mir];
+    for (let i = 0; i < extra.length; i += 2) {
+      const at = args.indexOf(extra[i]);
+      if (at >= 0) args.splice(at, 2);
+      if (extra[i + 1] !== undefined) args.push(extra[i], extra[i + 1]);
+    }
+    return run('operator', 'out-of-version', 'R1', ...args);
+  };
+  const rows = () => {
+    const p = join(root, 'state', 'R1', 'operator.jsonl');
+    return readFileSync(p, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>).filter((r) => r.kind === 'out-of-version');
+  };
+  const sender = (body: string) => {
+    writeFileSync(join(root, 'sender.sh'), `#!/usr/bin/env bash\n${body}\n`);
+    chmodSync(join(root, 'sender.sh'), 0o755);
+  };
+
+  beforeEach(async () => {
+    await run('operator', 'declare', 'R1', '--versions', 'v1.1.9,v1.1.10', '--decision', '106', '--verbatim-file', join(root, 'verbatim.txt'));
+    mir = join(root, 'jira-mirror', 'HIMMEL');
+    mkdirSync(mir, { recursive: true });
+    writeFileSync(join(mir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-08T00:00:00Z' }));
+    for (const k of ['HIMMEL-7', 'HIMMEL-8']) {
+      writeFileSync(join(mir, `${k}.md`), `---\nkey: "${k}"\nstatus: "x"\nstatusCategory: "To Do"\ntype: "Task"\npriority: "Medium"\nfixVersions: ["v1.1.10"]\n---\n`);
+    }
+    writeFileSync(`${mir}.versions.tsv`, 'v1.1.9\tfalse\t\tfalse\nv1.1.10\tfalse\t\tfalse\n');
+    sent = join(root, 'sent.txt');
+    sender(`printf '%s' "$2" > ${JSON.stringify(sent)}`);
+    writeFileSync(join(root, 'access.json'), '{"allowFrom":["4242"]}\n');
+    vi.stubEnv('TELEGRAM_ACCESS_PATH', join(root, 'access.json'));
+    vi.stubEnv('MERGE_BLOCK_ALERT_CMD', join(root, 'sender.sh'));
+    vi.stubEnv('HIMMEL_TEST_FIXTURE', '1');
+    vi.stubEnv('BRIDGE_ROOT', '');
+    out = [];
+  });
+
+  it('a good send signs one row; the phone gets the block\'s words and not the chief\'s header or reading; bucket-check then reads APPROVED', async () => {
+    await grant();
+    const [row] = rows();
+    expect(rows()).toHaveLength(1);
+    expect(row).toMatchObject({ kind: 'out-of-version', decision: '699', keys: ['HIMMEL-7'], version: 'v1.1.10', reason: 'the operator wants it this week' });
+    expect(row.verbatim).toBe(readFileSync(f699(), 'utf8').trim());
+    expect(out.at(-1)).toMatch(new RegExp(`^${String(row.id)} out-of-version for HIMMEL-7 \\(decision 699\\), valid until \\d{4}-`));
+    const text = readFileSync(sent, 'utf8');
+    expect(text).toContain('"9001 signed"');
+    expect(text).toContain('HIMMEL-7 (in v1.1.10), decision 699');
+    expect(text).toContain('1 approvals open');
+    expect(text).not.toContain(header);
+    expect(text).not.toContain('Reading is');
+    out = [];
+    await run('bucket-check', '--mirror', mir, 'HIMMEL-7');
+    expect(out).toEqual([`APPROVED HIMMEL-7 decision=699 record=${String(row.id)}`]);
+  });
+
+  it('the open count on the line counts the approvals still open, this one included', async () => {
+    await grant();
+    await grant('--key', 'HIMMEL-8');
+    expect(rows()).toHaveLength(2);
+    expect(readFileSync(sent, 'utf8')).toContain('HIMMEL-8 (in v1.1.10), decision 699, for 14 days; 2 approvals open');
+  });
+
+  it('a sender that exits 1 leaves no row', async () => {
+    sender('exit 1');
+    await expect(grant()).rejects.toThrow('release operator out-of-version: the operator alert exited 1; no record written');
+    expect(rows()).toEqual([]);
+  });
+
+  it('a refused send, which the alert reports as 77, leaves no row', async () => {
+    vi.stubEnv('MERGE_BLOCK_ALERT_CMD', '');
+    await expect(grant()).rejects.toThrow('the operator alert exited 77 (the send was refused); no record written');
+    expect(rows()).toEqual([]);
+  });
+
+  it('no operator chat id leaves no row', async () => {
+    vi.stubEnv('TELEGRAM_ACCESS_PATH', join(root, 'absent.json'));
+    await expect(grant()).rejects.toThrow('the operator alert exited 1; no record written');
+    expect(rows()).toEqual([]);
+  });
+
+  it.each([
+    ['inside a worker', () => vi.stubEnv('HIMMEL_CONSOLE_LEG', '1'), [] as string[], /refused inside a chief-spawned worker/],
+    ['inside the release manager', () => vi.stubEnv('HIMMEL_RELEASE_MANAGER', '1'), [], /refused inside a chief-spawned worker/],
+    ['two keys in one record', () => undefined, ['--key', 'HIMMEL-7,HIMMEL-8'], /'HIMMEL-7,HIMMEL-8' is not one ticket key/],
+    ['a file outside specs/decisions', () => undefined,
+      ['--verbatim-file', 'OUTSIDE'], /is not a verbatim-decision-<n>-\* file in .*\/specs\/decisions$/],
+    ['a decisions file not named verbatim-decision-<n>-*', () => undefined, ['--verbatim-file', 'UNNAMED'], /is not a verbatim-decision-<n>-\* file/],
+    ['a file numbered other than --decision', () => undefined, ['--decision', '700'], /verbatim-decision-699-operator-11-06-TA\.txt is decision 699, not --decision 700/],
+    ['a file with no Verbatim: block', () => undefined, ['--decision', '684', '--verbatim-file', 'NOBLOCK'], /no line starting 'Verbatim:'/],
+    ['the reason tbd', () => undefined, ['--reason', 'tbd'], /"tbd" is a placeholder reason/],
+    ['the reason urgent, by the length check alone', () => undefined, ['--reason', 'urgent'], /the reason "urgent" is under 8 characters/],
+    ['the reason xxxxxxxxxx, by the placeholder check alone', () => undefined, ['--reason', 'xxxxxxxxxx'], /"xxxxxxxxxx" is a placeholder reason/],
+    ['an empty reason', () => undefined, ['--reason', '  '], /under 8 characters/],
+  ])('refuses %s and sends nothing and leaves no row', async (_name, setup, extra, want) => {
+    const files: Record<string, string> = {
+      OUTSIDE: decisionFile('verbatim-decision-699-operator-11-06-TA.txt', `Verbatim: "9001 signed"\n`, join(root, 'elsewhere')),
+      UNNAMED: decisionFile('decision-699-notes.txt', `Verbatim: "9001 signed"\n`),
+      NOBLOCK: decisionFile('verbatim-decision-684-operator-11-06-SQ.txt', 'when fallback is enabled, in general we don\'t auto move things to api\n'),
+    };
+    setup();
+    await expect(grant(...extra.map((a) => files[a] ?? a))).rejects.toThrow(want);
+    expect(existsSync(sent)).toBe(false);
+    expect(rows()).toEqual([]);
+  });
+
+  it('refuses with no --reason at all', async () => {
+    await expect(run('operator', 'out-of-version', 'R1', '--key', 'HIMMEL-7', '--decision', '699', '--verbatim-file', f699(), '--mirror-root', mir))
+      .rejects.toMatchObject({ code: 'commander.missingMandatoryOptionValue' });
+    expect(rows()).toEqual([]);
+  });
+
+  it('refuses a key the mirror does not hold, before any send', async () => {
+    await expect(grant('--key', 'HIMMEL-99')).rejects.toThrow('HIMMEL-99 is not in the mirror; sync it first (jira mirror)');
+    expect(existsSync(sent)).toBe(false);
+    expect(rows()).toEqual([]);
   });
 });

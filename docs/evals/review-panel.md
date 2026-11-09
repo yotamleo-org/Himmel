@@ -156,7 +156,7 @@ What the classes say:
 - **Another quarter are right about the code and wrong about the intent.**
   `intent-blind` findings describe real behaviour that was chosen: a fence
   that over-denies on purpose, a ratio whose formula a ticket fixes, a race
-  already accepted in a `ponytail:` comment. The critic sees the diff, not the
+  already accepted in a ceilings-ledger row. The critic sees the diff, not the
   ticket, the brief or the design note, so it cannot tell a deliberate choice
   from a bug. Giving the critic the ticket's acceptance criteria is the obvious
   lever. `unreachable` (10%) is the same blindness one level down: the critic

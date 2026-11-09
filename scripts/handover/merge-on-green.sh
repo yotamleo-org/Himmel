@@ -8,15 +8,17 @@
 # chain never merges.
 #
 # This is the narrow, self-gating merge path the operator authorizes via a
-# specific standing allow-rule. Workers invoke the relative spelling
-# `bash scripts/handover/merge-on-green.sh` from their worktree root: it
-# matches the relative `Bash(bash scripts/handover/merge-on-green.sh:*)` rule
-# as plain text, guard-pr-check-literal.sh admits it when this copy equals the
-# anchor's or, on a branch behind main that never touched it, its merge-base's,
-# and it hands off to the anchor's own copy on a relative entry. The anchored
-# `Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)` rule
-# carries a shell expansion, so whether it applies is left to the auto-mode
-# classifier, which allows and denies it run to run — never a raw
+# specific standing allow-rule. Workers type the anchor's literal path,
+# `bash <anchor>/scripts/handover/merge-on-green.sh`: it matches the generated
+# `Bash(bash <anchor>/scripts/handover/merge-on-green.sh:*)` rule as plain text.
+# The relative spelling `bash scripts/handover/merge-on-green.sh` from a
+# worktree root is admitted by guard-pr-check-literal.sh when this copy equals
+# the anchor's or, on a branch behind main that never touched it, its
+# merge-base's, and it hands off to the anchor's own copy on a relative entry.
+# The spelling that goes through the HIMMEL_REPO variable carries a shell
+# expansion, so no allow rule can match it and the auto-mode classifier decides
+# it run to run; guard-pr-check-literal.sh refuses that spelling in himmel
+# sessions and prints the literal — never a raw
 # `gh pr merge` (still classifier-blocked) and never a permission widening.
 # It merges ONLY on: opt-in (ARMAUTOMERGE=1) AND a PRIVATE github repo
 # — or, the ONE configured public origin, live-verified under
@@ -107,6 +109,11 @@
 # an already-cleared marker. That is accepted, not overlooked: the clear was
 # certified on its own evidence, and the marker gates `gh pr create` for a PR
 # that by then already exists; the next push re-mints it.
+#
+# After a confirmed merge the anchor's conflicts.py records one ledger row per conflict the PR's author resolved (the no-file-holds
+# work, so every resolved conflict is reviewable), and with HIMMEL_CONSOLE_DOC set a Results bullet says so (`conflicts recorded for PR #<n> ...`, or `conflicts not recorded
+# ...` when the recorder failed). The outcome rides the MERGED audit line as `conflicts=<result>` and NEVER changes the exit
+# code: see record_conflicts.
 #
 # Exit codes:
 #   0   merged (including a confirmed remote merge where gh itself exited
@@ -295,8 +302,8 @@
 # script is the only branch-controllable byte left. HIMMEL_REPO is a registered
 # chokepoint seam (scripts/chokepoints.json), so a per-call `HIMMEL_REPO=. bash …`
 # re-pointing it at the branch is denied.
-# Workers are told to invoke the anchored spelling,
-# `bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"`, which never runs a branch's own copy. The relative entry
+# Workers are told to type the anchor's literal path,
+# `bash <anchor>/scripts/handover/merge-on-green.sh`, which never runs a branch's own copy. The relative entry
 # (`bash scripts/handover/merge-on-green.sh`, still pre-approved, retirement planned) now hands off to the anchor's own copy on a
 # relative invocation too, the same one-hop, fail-closed pattern
 # scripts/cr/anchor-handoff.sh uses for the scripts/cr/ gate writers.
@@ -898,6 +905,18 @@ if [ ! -f "$CHECK_CI" ]; then
     audit "REFUSED reason=no-check-ci repo=$nwo pr=#$pr_num"
     exit 14
 fi
+# The PostToolUse hooks post the one CodeRabbit trigger per head, and a host that
+# runs no PostToolUse hook posts none; post it here when the ledger lacks this
+# head. Best effort: the merge goes on whatever the post does.
+# shellcheck source=scripts/lib/coderabbit-trigger-ledger.sh
+# shellcheck disable=SC1091
+if [ "$DRY_RUN" -eq 0 ] && . "$himmel_repo/scripts/lib/coderabbit-trigger-ledger.sh" 2>/dev/null \
+    && ! cr_trigger_ledger_has "$nwo" "$pr_num" "$sha"; then
+    # shellcheck disable=SC2329  # called by cr_trigger_post_review
+    warn() { echo "merge-on-green: $*" >&2; }
+    GH_CMD="$GH" cr_trigger_post_review "$sha" "$pr_num" "$nwo" 0 || true
+fi
+
 # CodeRabbit availability, for the DURABLE record. Read
 # IMMEDIATELY before check-ci.sh, and deliberately not earlier: check-ci.sh runs this same probe at its own startup, so the value
 # recorded here is only honest to the extent that the two reads see the same
@@ -2566,6 +2585,63 @@ record_bug_origin() {
     return 0
 }
 
+CONFLICTS_RESULT="not-attempted"
+CONFLICTS_DETAIL=""
+CONFLICTS_KEY=""
+_record_conflicts_run() {
+    local pr="$1" script="$himmel_repo/scripts/eval/conflicts/conflicts.py" cf_to_gh="" cf_to_rec="" snap="" view="" out="" rc=0 gcd=""
+    local cf_gh_secs=30 cf_rec_secs=60 cf_cap="${MOG_CONFLICTS_SECS:-}"
+    CONFLICTS_RESULT="not-attempted"; CONFLICTS_DETAIL=""; CONFLICTS_KEY=""
+    [ -f "$script" ] || { CONFLICTS_RESULT="no-recorder"; return 0; }
+    command -v python3 >/dev/null 2>&1 || { CONFLICTS_RESULT="no-python"; return 0; }
+    cf_gh_secs=$(_mog_shorten_secs "$cf_cap" "$cf_gh_secs")
+    cf_rec_secs=$(_mog_shorten_secs "$cf_cap" "$cf_rec_secs")
+    if command -v timeout >/dev/null 2>&1; then cf_to_gh="timeout -k 5 $cf_gh_secs"; cf_to_rec="timeout -k 10 $cf_rec_secs"
+    elif command -v gtimeout >/dev/null 2>&1; then cf_to_gh="gtimeout -k 5 $cf_gh_secs"; cf_to_rec="gtimeout -k 10 $cf_rec_secs"
+    else CONFLICTS_RESULT="no-timeout"; return 0; fi
+    CONFLICTS_RESULT="failed"
+    gcd=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+        git -C "$himmel_repo" rev-parse --path-format=absolute --git-common-dir 2>&1) || {
+        echo "merge-on-green: WARN conflicts record of PR #$pr skipped: the anchor has no git dir; run conflicts.py backfill by hand" >&2; return 0; }
+    gcd=${gcd##*$'\n'}
+    snap=$(mktemp "${TMPDIR:-/tmp}/mog-conflicts.XXXXXX") || {
+        echo "merge-on-green: WARN conflicts record of PR #$pr skipped: no scratch file; run conflicts.py backfill by hand" >&2; return 0; }
+    if view=$($cf_to_gh "$GH" pr view "$pr" --repo "$nwo" --json number,title,body,mergedAt,mergeCommit,headRefOid,isCrossRepository); then
+        printf '%s\n' "$view" > "$snap"
+        out=$(env -u HANDOVER_DIR -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+            ${cf_to_rec:+$cf_to_rec} python3 -I "$script" record --snapshot "$snap" --repo-dir "$gcd" --base-ref "origin/$default_branch" 2>&1) || rc=$?
+        CONFLICTS_KEY=$(printf '%s' "$view" | jq -r '.title // ""' | sed -nE 's/.*\[([A-Z][A-Z0-9]*-[0-9]+)\].*/\1/p' | head -n 1)
+    else
+        rc=$?; out="gh pr view could not read the merged PR"
+    fi
+    rm -f "$snap"
+    if [ "$rc" -ne 0 ]; then
+        echo "merge-on-green: WARN conflicts record of PR #$pr failed (rc=$rc); the row is not written, run conflicts.py backfill by hand: ${out//$'\n'/ }" >&2
+        return 0
+    fi
+    out=$(printf '%s\n' "$out" | tail -n 1)
+    case "$out" in
+        wrote:[0-9]*" "*) CONFLICTS_RESULT="${out%% *}"; CONFLICTS_DETAIL="${out#* }" ;;
+        none|kept|unknown) CONFLICTS_RESULT="$out" ;;
+        *) echo "merge-on-green: WARN conflicts record of PR #$pr printed no result: ${out//$'\n'/ }" >&2 ;;
+    esac
+    return 0
+}
+record_conflicts() {
+    local pr="$1" bullet="" detail=""
+    _record_conflicts_run "$pr"
+    case "$CONFLICTS_RESULT" in
+        wrote:*) detail="${CONFLICTS_DETAIL//[[:cntrl:]]/ }"
+                 bullet="conflicts recorded for PR #$pr${CONFLICTS_KEY:+ ($CONFLICTS_KEY)}: ${detail:0:600}; ledger conflicts/$pr.jsonl" ;;
+        none|kept) return 0 ;;
+        *) bullet="conflicts not recorded for PR #$pr${CONFLICTS_KEY:+ ($CONFLICTS_KEY)}: $CONFLICTS_RESULT; the backfill can rebuild it" ;;
+    esac
+    if [ -n "${HIMMEL_CONSOLE_DOC:-}" ] && [ -x "$_csg_dir/chief-kit/append-results.sh" ]; then
+        bash "$_csg_dir/chief-kit/append-results.sh" "$HIMMEL_CONSOLE_DOC" "$bullet" >/dev/null 2>&1 || true
+    fi
+    return 0
+}
+
 # Best-effort Jira auto-transition on merge — structural fix for
 # backlog drift (a ticket left open after its work landed), rather than
 # relying on the periodic reconciler to catch it later. Never fails the
@@ -2992,7 +3068,8 @@ if [ "$merge_rc" -ne 0 ]; then
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
         record_cr_threads "$pr_num"
         record_bug_origin "$pr_num"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT$SOLO_TAG"
+        record_conflicts "$pr_num"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash); MERGED at the certified sha/base although gh exited $merge_rc: ${merge_out:-<no output>}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2
@@ -3071,7 +3148,8 @@ if [ "$merge_rc" -eq 0 ]; then
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
         record_cr_threads "$pr_num"
         record_bug_origin "$pr_num"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT$SOLO_TAG"
+        record_conflicts "$pr_num"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash). ${merge_out:-}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2

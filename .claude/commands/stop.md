@@ -10,8 +10,8 @@ also halts every adopted project's shift, so `--reset` in an adopted project
 does not lift a stop set from the clone: run `/stop --reset` in the clone too.
 `/afk-shift`'s dispatch
 loop (`.claude/commands/afk-shift.md` step 4, and the fix-dispatch
-loop in step 5c) polls it before every subagent dispatch — HIMMEL-2724
-lead 4. When set, the dispatcher finishes the in-flight subagent(s) +
+loop in step 5c) polls it before every subagent dispatch,
+so the marker always has a consumer. When set, the dispatcher finishes the in-flight subagent(s) +
 halts gracefully before starting the next one — no partial state, and the
 tickets not yet started are reported, never silently dropped.
 
@@ -27,7 +27,7 @@ tickets not yet started are reported, never silently dropped.
 
 1. Parse `$ARGUMENTS` for `--hard`, `--reset`, or none.
 2. Run the literal form for the parsed mode — no command substitution
-   (HIMMEL-203 bash-shape rule: `$(…)` makes the permission matcher bail):
+   (bash-shape rule: `$(…)` makes the permission matcher bail):
 
    - No args (soft stop) or `--hard`: `bash scripts/afk/stop-marker.sh set`
    - `--reset`: `bash scripts/afk/stop-marker.sh clear`
@@ -48,7 +48,7 @@ tickets not yet started are reported, never silently dropped.
 ## Dispatcher contract (consumers)
 
 `/afk-shift`'s dispatch loop polls the marker between dispatches
-(HIMMEL-2724 lead 4) — this is the reference implementation. Any other
+— this is the reference implementation. Any other
 long-running dispatch loop (AFK-mode Phase 3's manual runbook,
 autonomous loops) MUST poll the marker the same way, between dispatches:
 

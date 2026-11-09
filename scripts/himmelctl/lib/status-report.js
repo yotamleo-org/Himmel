@@ -394,6 +394,10 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (bash scripts/doctor-cadence.sh arm)`;
       }
+      if (item.id === 'rollup-cadence') {
+        severity = 'n/a';
+        detail = `${probe.detail} — opt-in (bash scripts/eval/rollup-cadence.sh arm)`;
+      }
       // the user-scope guardrail block is armed via an explicit
       // `setup-hooks.sh --guardrail-mode global` opt-in, never the default
       // (project mode). 'degraded' (armed but the baked node path rotted:
@@ -524,6 +528,10 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       if (item.id === 'hermes-lanes' && featureNotSelected('lane:hermes')) {
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (hermes lane not selected; re-run himmelctl install --with-hermes)`;
+      }
+      if (item.id === 'statechart' && probe.cleanAbsence) {
+        severity = 'n/a';
+        detail = `${probe.detail} — optional (only for local TLA+ model checks)`;
       }
       if (item.id === 'codex-cli' && featureNotSelected('lane:codex')) {
         severity = 'n/a';

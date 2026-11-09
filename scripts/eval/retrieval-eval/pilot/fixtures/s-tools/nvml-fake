@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# nvml-fake <self|qmd> -- stands in for `nvidia-smi --query-compute-apps=pid,used_memory
+# --format=csv,noheader,nounits`. `qmd` reports 300 MiB for every running fake qmd process (the
+# admitted child's own GPU memory); `self` reports only an unrelated process (this script),
+# which must never count as the qmd child's evidence.
+case "${1:-qmd}" in
+  qmd) pgrep -f 'fakebin/qmd' | while read -r p; do printf '%s, 300\n' "$p"; done ;;
+  self) printf '%s, 900\n' "$$" ;;
+esac

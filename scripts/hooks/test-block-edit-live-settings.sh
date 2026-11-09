@@ -3787,6 +3787,112 @@ rows_both 9766 2 "gh with an expanded subcommand beside a live .claude denies" <
 gh release $v -D @P@/.claude/hooks
 ROWS
 
+rows_both 9800 0 "a read that names a live settings file allows" <<'ROWS'
+rg -l "settings.json" /tmp/claude-1000/x/scratchpad/*.jsonl
+rg -n "settings.json" ~/.claude/projects/foo/a.jsonl | sort | uniq -c
+grep -c settings.json /tmp/claude-1000/x/scratchpad/t.jsonl | sort -n | uniq -c
+jq -r '.permissions.allow[]' @P@/.claude/settings.json | sort | uniq -c
+python3 -c "import json;print(list(json.load(open('@P@/.claude/settings.json'))))"
+python3 -I -c "import json, os;print(sorted(json.load(open(os.path.expanduser('~/.claude/settings.json')))))"
+grep settings.json /tmp/claude-1000/x/scratchpad/t.jsonl | awk '{n[$1]++} END{for(k in n)print k,n[k]}'
+awk -F: '{n[$1]++} END{for(k in n)print k,n[k]}' @P@/.claude/settings.json
+awk -F ',' -v m=3 'NR<m{print $1}' @P@/.claude/settings.json
+cp @P@/.claude/settings.json /tmp/claude-1000/x/scratchpad/settings.copy.json
+cp -p @H@/.claude/settings.json /tmp/claude-1000/x/scratchpad/
+cat @P@/.claude/settings.json | jq .hooks | grep -c Bash | sort -n | uniq
+python3 - <<'PY'\nimport os, json\nd = os.path.expanduser('~/.himmel/state/jira-mirror/HIMMEL/HIMMEL-1.md')\nt = open(d).read()\nf = open('/tmp/claude-1000/x/scratchpad/out.txt', 'w')\nf.write(t)\nPY
+uniq -c @P@/.claude/settings.json
+uniq -- @P@/.claude/settings.json
+ROWS
+assert_rc "9830 grep piped to sort -t with an ANSI-C tab (cwd worktree) allows" 0 \
+    "$(bash_rc_of "$NESTED_WT" "grep -n foo /tmp/claude-1000/x/scratchpad/f.txt | sort -t\$'\\t' -k2" HOME="$FAKEHOME")"
+assert_rc "9831 grep piped to sort -t with an ANSI-C tab (cwd primary) allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "grep -n foo /tmp/claude-1000/x/scratchpad/f.txt | sort -t\$'\\t' -k2" HOME="$FAKEHOME")"
+rows_both 9850 2 "a write shape beside a live settings file denies" <<'ROWS'
+echo x > @P@/.claude/settings.json
+echo x | tee @P@/.claude/settings.json
+sed -i.bak s/a/b/ @P@/.claude/settings.json
+cp /tmp/x @P@/.claude/settings.json
+cp /tmp/x @P@/.claude/
+cp -t @P@/.claude /tmp/x
+mv /tmp/x @P@/.claude/settings.json
+install -m 644 /tmp/x @P@/.claude/settings.json
+ln -sf /tmp/x @P@/.claude/settings.json
+rsync -a /tmp/x @P@/.claude/settings.json
+git -C @P@ checkout -- .claude/settings.json
+git -C @P@ restore .claude/settings.json
+cat @P@/.claude/settings.json && cp /tmp/x @P@/.claude/settings.json
+grep -c x @P@/.claude/settings.json; rm @P@/.claude/settings.json
+cp -l @P@/.claude/settings.json /tmp/claude-1000/x/scratchpad/link.json
+cp @P@/.claude/settings.json $D
+cp @P@/.claude/settings.json /tmp/../tmp/x/.claude/settings.json
+cp @P@/.claude/settings.json /tmp/x/*
+cp @P@/.claude/settings.json /tmp/x @P@/.claude/settings.json
+python3 -c "open('@P@/.claude/settings.json','w').write('{}')"
+python3 -c "import json;json.dump({}, open('@P@/.claude/settings.json','w'))"
+node -e "require('fs').writeFileSync('@P@/.claude/settings.json','{}')"
+awk '{print > "@P@/.claude/settings.json"}' /tmp/x
+awk 'BEGIN{system("cp /tmp/x @P@/.claude/settings.json")}' /tmp/x
+awk -f /tmp/prog.awk @P@/.claude/settings.json
+uniq /tmp/x @P@/.claude/settings.json
+sort -o @P@/.claude/settings.json /tmp/x
+rg --pre /tmp/x.sh foo @P@/.claude/settings.json
+rg -l foo $D/*.jsonl @P@/.claude/settings.json
+python3 - <<'PY'\nimport os\nf = open(os.path.expanduser('~/.claude/settings.json'), 'w')\nf.write('{}')\nPY
+python3 - <<'PY'\nimport os\nf = open('/tmp/x/out.txt', 'w')\nf.write(os.path.expanduser('~'))\ng = open('@H@/.claude/settings.json', 'w')\ng.write('{}')\nPY
+python3 - <<'PY'\nimport os\nd = os.path.expanduser('~')\nf = open(d + '/.claude/settings.json', 'w')\nf.write('{}')\nPY
+python3 - <<'PY'\nimport os\nf = open('/tmp/../home/x/.claude/settings.json', 'w')\nf.write(os.path.expanduser('~'))\nPY
+python3 - <<'PY'\nimport os\nf = open('/tmp/x/.claude/settings.json', 'w')\nf.write(os.path.expanduser('~'))\nPY
+python3 - <<'PY'\nimport os\nos.remove(os.path.expanduser('~/.claude/settings.json'))\nPY
+echo x > ~/$'\x2e'claude/sett$'\x69'ngs.json
+cp /tmp/x @H@/$'.claude'/settings.json
+cp /tmp/x @H@/$'.cla'ude/sett$'ings'.json
+echo x > @H@/.claude/settings.json; sort -t$'\t' /tmp/y
+ROWS
+SCRATCH=''
+for _try in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    SCRATCH=$(mktemp -d /tmp/himmel-lsb.XXXXXX) || { echo "FATAL: no /tmp scratch dir" >&2; exit 1; }
+    case "$(printf '%s' "$SCRATCH" | tr '[:upper:]' '[:lower:]')" in
+        *tee*) rmdir "$SCRATCH"; SCRATCH='' ;;
+        *) break ;;
+    esac
+done
+[ -n "$SCRATCH" ] || { echo "FATAL: no scratch dir name clear of 'tee' in 20 draws" >&2; exit 1; }
+ln -s "$PRIMARY/.claude/settings.json" "$SCRATCH/scratch-link" || { echo "FATAL: ln -s failed" >&2; exit 1; }
+assert_rc "9880 cp onto a /tmp symlink to the live settings denies" 2 \
+    "$(bash_rc_of "$NESTED_WT" "cp /tmp/x/a.json $SCRATCH/scratch-link" HOME="$FAKEHOME")"
+assert_rc "9881 cp of the live settings onto a /tmp symlink to it denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SCRATCH/scratch-link" HOME="$FAKEHOME")"
+assert_rc "9882 python heredoc writing a /tmp symlink to the live settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "python3 - <<'PY'
+import os
+f = open('$SCRATCH/scratch-link', 'w')
+f.write(os.path.expanduser('~'))
+PY" HOME="$FAKEHOME")"
+rows_both 9883 2 "an escaped python path, a trailing awk option, an awk expansion deny" <<'ROWS'
+python3 - <<'PY'\nimport os\nf = open('/tmp/\x2e\x2e/home/x/\x2eclaude/settings.json', 'w')\nf.write(os.path.expanduser('~'))\nPY
+awk '{print}' @P@/.claude/settings.json -f /tmp/evil.awk
+awk '{print}' @P@/.claude/settings.json $D
+awk '{print}' @P@/.claude/settings.json sub/*.log
+ROWS
+rows_both 9887 0 "awk over an absolute glob operand allows" <<'ROWS'
+awk '{print $1}' @P@/.claude/settings.json /tmp/claude-1000/x/*.log
+ROWS
+mkdir -p "$SCRATCH/scratchdir" "$SCRATCH/scratchok" || { echo "FATAL: mkdir failed" >&2; exit 1; }
+ln -s "$FAKEHOME/.claude/settings.json" "$SCRATCH/scratchdir/settings.json" || { echo "FATAL: ln -s failed" >&2; exit 1; }
+assert_rc "9890 cp into a /tmp dir whose settings.json is a live symlink (cwd worktree) denies" 2 \
+    "$(bash_rc_of "$NESTED_WT" "cp $PRIMARY/.claude/settings.json $SCRATCH/scratchdir/" HOME="$FAKEHOME")"
+assert_rc "9891 cp into a /tmp dir whose settings.json is a live symlink (cwd primary) denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SCRATCH/scratchdir" HOME="$FAKEHOME")"
+assert_rc "9892 cp into a plain /tmp dir (cwd primary) allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "cp $PRIMARY/.claude/settings.json $SCRATCH/scratchok/" HOME="$FAKEHOME")"
+rm -r -- "$SCRATCH"
+rows_both 9893 2 "a uniq word that expands, or an operand after --, can name the output file: denies" <<'ROWS'
+n='0 /etc/hostname'; uniq -s $n @P@/.claude/settings.json
+n=' /etc/hostname'; uniq -c$n @P@/.claude/settings.json
+uniq -- -c @P@/.claude/settings.json
+ROWS
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true
