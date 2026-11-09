@@ -64,8 +64,9 @@ row, the step spent): the operator never approves what they were not shown. The 
 `error_code`; `curl-exit-N`, `curl-timeout`, `curl-os-error`, `no-curl`, `bad-response`,
 `api-not-ok`, or `exception-<class>` when the send raised). Never the token, the URL or the reply text.
 A notice that was sent writes a `notice` row of result `sent` with the request's `id` and `kind`, and as its
-receipt the `message_id` the Bot API gave the facts message, so a request row with no notice row after it means
-the notice was never sent.
+receipt the `message_id` the Bot API gave the facts message. A request row with no notice row after it means
+delivery is unconfirmed: the send failed silently, or the helper stopped (or its ledger append failed) after
+Telegram accepted the message.
 
 The nonce applies to **both kinds**, sudo and run (the operator's default of 10-30, Q3).
 The approve line is `approve <id> <nonce> <code>`; the helper reads `NONCE CODE` on stdin

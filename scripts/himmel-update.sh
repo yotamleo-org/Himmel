@@ -1937,7 +1937,7 @@ report_afk_helper_stale() {
     echo ""
     echo "==> afk-sudo root helper is OLDER than this checkout"
     echo "    $n installed file(s) differ, e.g. ${stale%%$'\n'*}; a pull never refreshes the root-owned copies."
-    echo "    Refresh them (operator, at a terminal): sudo bash $lib/install.sh --user $(id -un)"
+    printf '    Refresh them (operator, at a terminal): sudo bash %q --user %q\n' "$lib/install.sh" "$(id -un)"
 }
 
 # Advisory: the ONE update_qmd_fork skip reason that means qmd is
