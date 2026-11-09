@@ -48,7 +48,7 @@ test("the Waiting on you section lists a waiting ticket and its key opens that t
   await expect(sec.locator("li")).toContainText("HIMMEL-2");
   await expect(sec.locator("li")).toContainText("Second chain step");
   await expect(sec.locator("li")).toContainText("memory 2/2");
-  await expect(page.locator(".rm-link").first()).toContainText("1 waits for you");
+  await expect(page.locator(".aside").first()).toContainText("1 ticket waits for you, any version");
   await shot(page, "board-waiting-on-you");
   await sec.locator("li a").click();
   await expect.poll(() => page.evaluate(() => location.hash)).toBe("#/board?tab=chains&at=HIMMEL-2");
@@ -76,15 +76,18 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   const errs = consoleErrors(page);
   await open(page);
   await go(page, "#/board");
-  // the version strip: one tile per version, the running one selected
-  const tiles = page.locator(".rm-vstrip .rm-vt");
+  // the head's chip row: one chip per version, the running one selected, and the "all versions" chip after them
+  const tiles = page.locator(".bh .vchips .vc:not(.all)");
   await expect(tiles).toHaveCount(3);
   await expect(tiles.nth(1)).toHaveAttribute("aria-current", "true");
-  await expect(tiles.nth(0)).toContainText("released 2026-10-19");
-  await expect(tiles.nth(0)).toContainText("1 still open: HIMMEL-12");
-  // the drift banner counts the real row; the transient row is named, not counted
-  await expect(page.locator("#main .alert").first()).toContainText("1 drift row");
-  await expect(page.locator("#main .alert").first()).toContainText("1 transient");
+  await expect(tiles.nth(0)).toHaveAttribute("title", /released 2026-10-19/);
+  await expect(tiles.nth(0).locator(".op")).toHaveAttribute("title", /1 still open: HIMMEL-12/);
+  // there is no drift banner: the Tidy up tab's label counts the real row, and its page names the transient row
+  await expect(page.locator("#main .alert")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^Tidy up/ })).toContainText("! 1 drift row");
+  await page.getByRole("tab", { name: /^Tidy up/ }).click();
+  await expect(page.locator("#main")).toContainText("transient");
+  await go(page, "#/board");
   // the lanes of the running version, with the chain badge on a chain ticket and none on the others
   await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeHidden(); // a Done ticket: the Done column is folded
   await page.locator("#rm-lanes details.rm-done summary").click();
@@ -109,8 +112,8 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await expect(page.locator(".rm-card", { hasText: "Not in any chain" }).locator(".rm-chain")).toHaveCount(0);
   await expect(page.locator(".rm-card[draggable]").first()).toBeVisible(); // drag and the Sector select are still there
   // no registry-less made-up number: the wait link counts the chain read's own rows
-  await expect(page.locator(".rm-link").first()).toContainText("0 wait for you");
-  await expect(page.locator(".rm-link").first()).not.toContainText("not counted"); // the seeded mirror has a ticket with no version, and the page reads it beside the default read, so nothing is left out
+  await expect(page.locator(".aside").first()).toContainText("0 tickets wait for you, any version");
+  await expect(page.locator(".aside").first()).not.toContainText("not counted"); // the seeded mirror has a ticket with no version, and the page reads it beside the default read, so nothing is left out
   await expect(page.locator("#rm-waiting")).toHaveCount(0); // nobody waits: no section, the count link above says 0
   // Chains tab
   await page.getByRole("tab", { name: /^Chains/ }).click();
@@ -364,9 +367,11 @@ test("every tab carries the one filter bar and refresh, and Tidy up lists every 
   await open(page);
   for (const tab of ["roadmap", "tidy"]) {
     await go(page, `#/board?tab=${tab}`);
-    await expect(page.locator('.rm-bar [data-act="refresh-roadmap"]')).toHaveCount(1);
+    await expect(page.locator(".rm-bar")).toHaveCount(1);
+    await expect(page.locator('[data-act="refresh-roadmap"]')).toHaveCount(1); // the one refresh is the aside's, on every tab
+    await expect(page.locator('.aside [data-act="refresh-roadmap"]')).toHaveCount(1);
   }
-  await go(page, "#/board?tab=chains"); // the Chains tab has no filter bar; its refresh is the real control beside the tabs
+  await go(page, "#/board?tab=chains"); // the Chains tab has no filter bar; its refresh is the same aside control
   await expect(page.locator(".rm-bar")).toHaveCount(0);
   await expect(page.locator('.aside [data-act="refresh-roadmap"]')).toHaveCount(1);
   await go(page, "#/board?tab=tidy");
@@ -621,12 +626,12 @@ test("with no drift file and no chain registry the Board says so in words and sh
   await page.goto(h.url);
   await page.locator("nav.pages").waitFor();
   await go(page, "#/board");
-  await expect(page.locator("#main")).toContainText("drift: not read");
+  await expect(page.locator("#main")).toContainText("drift not read");
   await page.getByRole("tab", { name: /^Tidy up/ }).click();
   await page.locator('#rm-status-drift [data-act="drift-refresh"]').click(); // nowhere to save the run: refused in words, no count
   await expect(page.locator('#rm-status-drift [role="alert"]')).toContainText("HIMMEL_FOCUS_DRIFT");
   await page.getByRole("tab", { name: /^Roadmap/ }).click();
-  await expect(page.locator(".rm-link").first()).toContainText("waits for you: not read");
+  await expect(page.locator(".aside").first()).toContainText("waits for you: not read");
   await expect(page.locator(".rm-chain")).toHaveCount(0);
   await page.getByRole("tab", { name: /^Chains/ }).click();
   await expect(page.locator("#rm-chains .nodata")).toContainText("no chain registry");
@@ -645,8 +650,8 @@ test("two projects: both projects' cards show with their keys, the Project filte
   // both projects' cards, each with its own key; the same number does not merge them
   await expect(page.locator(".rm-card", { hasText: "Salus intake form" }).locator("b")).toHaveText("SALUS-2");
   await expect(page.locator(".rm-card", { hasText: "Second chain step" }).locator("b")).toHaveText("HIMMEL-2");
-  await expect(page.locator(".rm-vstrip .rm-vt", { hasText: "v1.1.3 (SALUS)" })).toHaveCount(1);
-  await expect(page.locator(".rm-vstrip .rm-vt", { hasText: "v1.1.3 (HIMMEL)" })).toHaveCount(1);
+  await expect(page.locator(".bh .vchips .vc", { hasText: "v1.1.3 (SALUS)" })).toHaveCount(1);
+  await expect(page.locator(".bh .vchips .vc", { hasText: "v1.1.3 (HIMMEL)" })).toHaveCount(1);
   await shot(page, "board-1280-two-projects");
   // the Project filter narrows to one
   await page.locator(".rm-more summary").click(); // Project sits under More ▾
@@ -810,24 +815,44 @@ function fiveChains() {
     },
     burn: { total: 11, undated: 0, points: [{ day: "2026-11-01", open: 10, merged: 1 }, { day: "2026-11-02", open: 9, merged: 1 }] } };
 }
-for (const width of [880, 960, 1280]) {
-  test(`${width} px: the tab row keeps the refresh button and both links whole`, async ({ page }) => {
+for (const width of [800, 880, 960, 1280]) {
+  test(`${width} px: the tab row keeps the refresh button and both links whole, on every tab`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: "dark" });
     await open(page);
-    await go(page, "#/board?tab=chains");
-    const aside = page.locator(".tr .aside");
-    await expect(aside).toBeVisible();
-    const a = await aside.boundingBox();
-    const b = await aside.locator(".btn").boundingBox();
-    expect(b!.x).toBeGreaterThanOrEqual(a!.x - 0.5);
-    expect(b!.x + b!.width).toBeLessThanOrEqual(a!.x + a!.width + 0.5);
-    for (const link of await aside.locator("a").all()) {
-      expect(await link.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    for (const tab of ["chains", "roadmap", "tidy", "nv"]) {
+      await go(page, `#/board?tab=${tab}`);
+      const aside = page.locator(".tr .aside");
+      await expect(aside, tab).toBeVisible();
+      const a = await aside.boundingBox();
+      const b = await aside.locator(".btn").boundingBox();
+      expect(b!.x, tab).toBeGreaterThanOrEqual(a!.x - 0.5);
+      expect(b!.x + b!.width, tab).toBeLessThanOrEqual(a!.x + a!.width + 0.5);
+      for (const link of await aside.locator("a").all()) {
+        expect(await link.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), tab).toBe(true);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), tab).toBe(true);
     }
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   });
 }
+// the sideways rows (the tab list and the chip row) scroll inside their own box on a phone, never the page, and say how many sit off-screen
+test("390 px: the tab list and the chip row scroll sideways on every tab, with an edge label for what is off-screen", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  for (const tab of ["chains", "roadmap", "tidy", "nv"]) {
+    await go(page, `#/board?tab=${tab}`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), tab).toBe(true);
+    const tabs = page.locator(".tr .tabs");
+    expect(await tabs.evaluate((el) => el.scrollWidth > el.clientWidth), `${tab}: the tab list is wider than the phone`).toBe(true);
+    await expect(page.locator(".tr .xrow .edge.r"), tab).toBeVisible(); // the tabs past the right edge are counted
+    await expect(page.locator(".tr .xrow .edge.l"), tab).toBeHidden(); // nothing is hidden on the left at the start
+    await tabs.evaluate((el) => { el.scrollLeft = el.scrollWidth; });
+    await expect(page.locator(".tr .xrow .edge.l"), tab).toBeVisible();
+    await expect(page.locator(".tr .xrow .edge.r"), tab).toBeHidden();
+  }
+  await shot(page, "board-tabs-sideways-dark-390");
+});
 for (const [width, height] of [[1280, 900], [390, 844]]) {
   test(`${width} px: five open chains stay compact, each open chain one rail, and the Ops chain's steps and Why links stay on one line`, async ({ page }) => {
     await page.route("**/api/board", async (route) => {

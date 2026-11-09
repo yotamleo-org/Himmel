@@ -43,10 +43,10 @@ test("board statuses and drift use shared pills without losing write controls", 
   expect(html).toContain('data-rm-drop="prog"');
 });
 
-test("Board lanes use the shared pills and keep the write controls; its version strip uses status pills", () => {
+test("Board lanes use the shared pills and keep the write controls; its version chips read like the Chains tab's", () => {
   const html = renderBoard(data, { writes: true }, null);
   expect(html).toMatch(/class="[^"]*\bpill\b[^"]*">In Progress<\/span>/);
-  expect(html).toMatch(/class="[^"]*\bpill\b[^"]*">running<\/span>/);
+  expect(html).toMatch(/<a class="vc sel"[^>]*><b>v1\.1\.3<\/b> <small>running<\/small>/);
   expect(html).toContain('draggable="true" data-rm-card="8141"');
   expect(html).toContain('data-rm-drop="prog"');
   expect(renderBoard(data, { tab: "tidy" }, null)).toMatch(/<table class="[^"]*\bdata\b/);
@@ -84,8 +84,7 @@ const appCss = () => readFileSync(join(PUBLIC, "app.css"), "utf8");
 // the body of the first rule whose selector list is exactly `sel` (a later @media override of the same selector does not count)
 const firstRule = (sel: string) => new RegExp(`(?:^|[}{])\\s*${sel.replace(/[.[\]()]/g, "\\$&")}\\s*\\{([^}]*)\\}`).exec(appCss())?.[1] ?? "";
 
-test("the version strip has five columns and the board four, with a narrow lane after them", () => {
-  expect(firstRule(".rm-vstrip")).toContain("repeat(5");
+test("the board has four columns, with a narrow lane after them", () => {
   expect(firstRule(".rm-board")).toContain("repeat(4");
 });
 
