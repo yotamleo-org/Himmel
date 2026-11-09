@@ -295,10 +295,11 @@ echo "result=ran id=abcdefgh exit=0 op_result=changed argv=size-approval"
 AFKSTUB
     chmod +x "$tmp/afk-stub"
     : > "$HLOG"
-    out=$( { sleep 2; printf 'K7QF 123456\r'; sleep 2; } | HLOG="$HLOG" HIMMELCTL_AFK_CONFIG="$tmp/afk.json" HIMMELCTL_AFK_SUDO="$tmp/afk-stub" PATH="$FB:$PATH" \
+    out=$( { sleep 2; printf 'K7QF\r'; sleep 1; printf '123456\r'; sleep 2; } | HLOG="$HLOG" HIMMELCTL_AFK_CONFIG="$tmp/afk.json" HIMMELCTL_AFK_SUDO="$tmp/afk-stub" PATH="$FB:$PATH" \
         script -qec "bash '$RK' operator HIMMEL-9228 N5216 --files 272 --scope $S --reason keep-whole --root '$ROOT'" /dev/null 2>&1); rc=$?
     check "R9: the terminal run exits 0 on op_result=changed" 0 "$rc"
-    has "R9: the masked Nonce Code prompt reaches the terminal" "$out" "Nonce Code: "
+    has "R9: the masked Nonce prompt reaches the terminal" "$out" "Nonce: "
+    has "R9: then the masked Code prompt" "$out" "Code: "
     has "R9: himmelctl approve got the id the helper printed" "$(cat "$HLOG.approve" 2>/dev/null)" "approve abcdefgh --from 4242"
     has "R9: the typed nonce and code reached the helper on stdin" "$(cat "$HLOG.approve" 2>/dev/null)" "K7QF 123456"
     case "$out" in *K7QF*) fail "R9: the typed nonce is masked on the terminal" ;; *) pass "R9: the typed nonce is masked on the terminal" ;; esac
