@@ -1491,9 +1491,6 @@ if [ "$rc" -eq 0 ] && [ "$n_local" -le 5 ] && [ "$n_local" -ge 1 ] && grepq "$ou
 ( cd "$CY" && bash "$IS" --plan --check "$yrange" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 2 ]; then pass "P5 --plan with --check is a usage error (rc 2)"; else fail "P5 --plan --check: rc=$rc"; fi
 
-# L1: a range listing ~900 impacted suites is read inside ready-check item 19's
-# 30 s bound. The pattern pass over the narrowed lines ran every ERE per line (git grep -E -f),
-# which on 400 changed libs and 900 suites took ~60 s; one grep -E DFA pass takes ~10 s.
 CL="$(fixture_mktemp_dir)" || exit 1
 trap 'rm -rf "$FX" "$CX" "$CY" "$CL"' EXIT
 (

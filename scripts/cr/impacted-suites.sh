@@ -1076,9 +1076,6 @@ grep_narrowed() {
         [ "$grep_rc" -le 1 ] || io_fail "narrowing ${p} for ${what}"
     done < "$work/narrow.irr"
     : > "$work/narrow.hits" || io_fail "creating the ${what} result file"
-    # grep -E builds one DFA for every pattern; `git grep -E -f` tried them
-    # one at a time per line (~35 s of a 70 s read on a 900-suite range). The scratch
-    # tree holds regular files only, so -r follows no link; -a reads a non-UTF-8 line.
     grep_rc=0
     ( cd "$narrow" || exit 3
       LC_ALL=C grep -r -l -Z -a -E -f "$pf" ) > "$work/narrow.hits" || grep_rc=$?
