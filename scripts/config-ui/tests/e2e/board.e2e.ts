@@ -111,7 +111,7 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await expect(page.locator(".rm-card[draggable]").first()).toBeVisible(); // drag and the Sector select are still there
   // no registry-less made-up number: the wait link counts the chain read's own rows
   await expect(page.locator(".aside").first()).toContainText("0 tickets wait for you, any version");
-  await expect(page.locator(".aside").first()).not.toContainText("not counted"); // the seeded mirror has a ticket with no version, and the page reads it beside the default read, so nothing is left out
+  await expect(page.locator(".aside").first()).not.toContainText("not counted");
   await expect(page.locator("#rm-waiting")).toHaveCount(0); // nobody waits: no section, the count link above says 0
   // Chains tab
   await page.getByRole("tab", { name: /^Chains/ }).click();
@@ -367,10 +367,10 @@ test("every tab carries the one filter bar and refresh, and Tidy up lists every 
   for (const tab of ["roadmap", "tidy"]) {
     await go(page, `#/board?tab=${tab}`);
     await expect(page.locator(".rm-bar")).toHaveCount(1);
-    await expect(page.locator('[data-act="refresh-roadmap"]')).toHaveCount(1); // the one refresh is the aside's, on every tab
+    await expect(page.locator('[data-act="refresh-roadmap"]')).toHaveCount(1);
     await expect(page.locator('.aside [data-act="refresh-roadmap"]')).toHaveCount(1);
   }
-  await go(page, "#/board?tab=chains"); // the Chains tab has no filter bar; its refresh is the same aside control
+  await go(page, "#/board?tab=chains");
   await expect(page.locator(".rm-bar")).toHaveCount(0);
   await expect(page.locator('.aside [data-act="refresh-roadmap"]')).toHaveCount(1);
   await go(page, "#/board?tab=tidy");
@@ -821,7 +821,7 @@ for (const width of [800, 880, 960, 1280]) {
     await open(page);
     for (const tab of ["chains", "roadmap", "tidy", "nv"]) {
       await go(page, `#/board?tab=${tab}`);
-      const measure = () => page.evaluate(() => { // one task: a repaint cannot land between two measurements
+      const measure = () => page.evaluate(() => {
         const aside = document.querySelector<HTMLElement>(".tr .aside"), btn = aside?.querySelector<HTMLElement>(".btn"), sel = document.querySelector('.tr .tabs [aria-selected="true"]'), panel = document.querySelector("section.cp");
         if (!aside || !btn || !sel || !panel) return null;
         const a = aside.getBoundingClientRect(), r = btn.getBoundingClientRect(), tabs = Array.from(document.querySelectorAll<HTMLElement>(".tr .tabs .tab"));
@@ -868,7 +868,6 @@ test("1280 px, dark: the shared rules draw: a plain panel body, a boxed selected
   expect(await page.locator(".bh .vc progress").first().evaluate((el) => getComputedStyle(el).display), "and drops it on a phone").toBe("none");
   expect(await page.locator(".bh .vc small").first().evaluate((el) => getComputedStyle(el).display)).toBe("none");
 });
-// What the sideways rows must keep true after every layout (the chip row and the tab row, both). Each entry is one thing that is wrong; [] is clean.
 const auditRows = (page: Page): Promise<string[]> => page.evaluate(() => {
   const TOL = 2, bad: string[] = [];
   const rows = Array.from(document.querySelectorAll<HTMLElement>(".xrow"));
@@ -909,7 +908,6 @@ const auditRows = (page: Page): Promise<string[]> => page.evaluate(() => {
   }
   return bad;
 });
-// Tag the first item the row hides on one side (the one nearest the selected item), so a later check can find it again.
 const probeHidden = (page: Page, row: string, side: "l" | "r") => page.evaluate(([q, sd]) => {
   document.querySelectorAll("[data-probe]").forEach((e) => e.removeAttribute("data-probe"));
   const x = document.querySelector<HTMLElement>(q)!, rowEl = x.querySelector<HTMLElement>(".vchips,.tabs")!;
@@ -973,7 +971,7 @@ test("390 px: a tap on an edge label leaves the route as it was and brings the n
     taps++;
     expect(await page.evaluate(() => location.hash), `${row} ${label}: the route`).toBe(hash);
     await expect.poll(() => probeClear(page, row), { message: `${row} ${label}: the next item is clear` }).toBe(true);
-    expect((await auditRows(page)).filter((m) => !m.includes("selected item")), `${row} ${label}`).toEqual([]); // the person moved the row away from the selected item on purpose
+    expect((await auditRows(page)).filter((m) => !m.includes("selected item")), `${row} ${label}`).toEqual([]);
   }
   expect(taps, "a label was visible to tap").toBeGreaterThan(0);
 });
@@ -1001,18 +999,22 @@ test("390 px: a row the person scrolled keeps its place across a refresh, and a 
   const settle = () => page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
   const start = await tabs.evaluate((el) => el.scrollLeft);
   let kept = -1;
-  for (const d of [12, 24, 40, 60]) {
-    await tabs.evaluate((el, to) => { el.scrollLeft = to; }, start + d);
+  const tried: string[] = [];
+  const reach = await tabs.evaluate((el) => el.scrollWidth - el.clientWidth);
+  for (const to of [start + 12, start - 12, start + 24, start - 24, start + 40, start - 40, start + 60, start - 60, start + 90, start - 90, 0, reach]) {
+    await tabs.evaluate((el, at) => { el.scrollLeft = at; }, to);
     await settle();
     const now = await tabs.evaluate((el) => el.scrollLeft);
-    if (Math.abs(now - start) > 4 && (await auditRows(page)).length === 0) { kept = now; break; }
+    const bad = await auditRows(page);
+    tried.push(`${to}→${now}:${bad.join("|") || "clear"}`);
+    if (Math.abs(now - start) > 4 && bad.length === 0) { kept = now; break; }
   }
-  expect(kept, "a hand-scrolled place where the selected tab stays clear").toBeGreaterThanOrEqual(0);
+  expect(kept, `a hand-scrolled place where the selected tab stays clear (start ${start}, reach ${reach}; ${tried.join(" ; ")})`).toBeGreaterThanOrEqual(0);
   await Promise.all([page.waitForResponse((r) => r.url().includes("/api/")), page.locator('.aside [data-act="refresh-roadmap"]').click()]);
   await page.waitForLoadState("networkidle");
   await settle();
   expect(Math.abs((await tabs.evaluate((el) => el.scrollLeft)) - kept), "the scroll after a refresh").toBeLessThanOrEqual(2);
-  await page.locator(".tr .tabs .tab").first().click(); // another tab: the row is placed for that tab, not left where it was
+  await page.locator(".tr .tabs .tab").first().click();
   await expect(page.locator('.tr .tabs .tab[aria-selected="true"]')).toHaveText(/Roadmap/);
   await page.waitForLoadState("networkidle");
   await settle();

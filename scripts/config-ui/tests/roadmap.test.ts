@@ -1361,7 +1361,7 @@ test("9488 critic minors: no wording that says a later-version blocker is unplan
 test("9488 the Chains tab has no Chain select, Hide Done, Sector or 'all versions'; the Roadmap tab keeps them", () => {
   const html = two();
   for (const x of ["data-rm-chain", "data-rm-hide-done", 'data-rm-filter="theme"', "all versions"]) expect(html).not.toContain(x);
-  expect(html).not.toContain("warnbar"); // no drift banner on any tab
+  expect(html).not.toContain("warnbar");
   const road = renderBoard(read(station()), { version: null, theme: null, tab: "roadmap" }, { drift: null, chains: whole6(), versionChains: narrow3() });
   for (const x of ["data-rm-chain", "data-rm-hide-done", 'data-rm-filter="theme"', "all versions"]) expect(road).toContain(x);
 });
@@ -1739,7 +1739,7 @@ test("9559 slice 1: the Chains tab label names its version when the picked chip 
   expect(label("roadmap", { v: "all" })).toContain("Chains 2 in v1.1.3 ⛔ 1 ticket blocked");
   expect(label("tidy", {})).toContain("Chains 2 in v1.1.3 ⛔ 1 ticket blocked");
   expect(label("nv", {})).toContain("Chains 2 in v1.1.3 ⛔ 1 ticket blocked");
-  expect(label("roadmap", { v: "v1.1.3" })).toContain("Chains 2 ⛔ 1 ticket blocked"); // the picked chip is the read's version: nothing to name
+  expect(label("roadmap", { v: "v1.1.3" })).toContain("Chains 2 ⛔ 1 ticket blocked");
   expect(label("roadmap", { v: "v1.1.3" })).not.toContain("in v1.1.3");
 });
 
@@ -1772,7 +1772,7 @@ test("9559 slice 1: the aside says the same thing on every tab, and links the ti
   expect(shell("chains", { v: "v1.1.3" })).toContain('href="#/board?tab=nv"');
   const s = sx();
   const read1 = renderBoard({ ...read(s), noVersionCount: 1 }, { version: null, theme: null, tab: "chains", v: "v1.1.3", nv: nvRead(s) }, { drift: null, chains: whole6(), versionChains: narrow3() });
-  expect(asideOf(read1)).not.toContain("not read yet"); // the read is in: nothing is left uncounted
+  expect(asideOf(read1)).not.toContain("not read yet");
 });
 
 test("9559 slice 1: an owed-sources read that failed is said in the aside on every tab, the Chains tab included", () => {

@@ -302,13 +302,13 @@ const NO_PICK = -3;
 function slimStrip(d, sel, tab, ui, w, inert) {
   const info = (i) => { const v = d.versions[i], c = v.counts; return { v, c, tag: v.rel ? `released${v.date ? " " + v.date : ""}` : runState(d, v, i) || "planned", total: Object.values(c).reduce((a, b) => a + b, 0) }; };
   const stat = (x) => `${x.c.done} done · ${x.c.prog + x.c.rev + x.c.ci} in flight · ${x.c.todo} to do${x.c.wont ? ` · ${x.c.wont} won't` : ""}`;
-  const keep = tab === "nv" || tab === "roadmap" ? "" : tab; // a chip on No version opens that version's Roadmap; one on Roadmap needs no tab
+  const chipTab = tab === "nv" || tab === "roadmap" ? "" : tab;
   const pins = ui.pins || [];
   const chips = w.idx.map((i) => { const x = info(i), pinned = pins.includes(x.v.n);
     const open = x.v.rel && x.v.open.length ? ` <span class="op" title="${esc(`${x.v.open.length} still open: ${x.v.open.map((k) => `${x.v.project || "HIMMEL"}-${k}`).join(", ")}`)}">⚠ ${x.v.open.length} open</span>` : "";
-    return `<a class="vc${i === sel ? " sel" : ""}" href="${boardHref({ tab: keep, v: x.v.n })}"${i === sel ? ` aria-current="true"` : ""} title="${esc(`${x.v.n} · ${x.tag} · ${stat(x)}`)}"><b>${esc(x.v.n)}</b> <small>${esc(x.tag)}</small>${open}<progress value="${x.c.done}" max="${x.total || 1}" aria-label="${esc(x.v.n)}: ${x.c.done} of ${x.total} tickets done"></progress></a>`
+    return `<a class="vc${i === sel ? " sel" : ""}" href="${boardHref({ tab: chipTab, v: x.v.n })}"${i === sel ? ` aria-current="true"` : ""} title="${esc(`${x.v.n} · ${x.tag} · ${stat(x)}`)}"><b>${esc(x.v.n)}</b> <small>${esc(x.tag)}</small>${open}<progress value="${x.c.done}" max="${x.total || 1}" aria-label="${esc(x.v.n)}: ${x.c.done} of ${x.total} tickets done"></progress></a>`
       + `<button class="pin" type="button" data-rm-pin="${esc(x.v.n)}" aria-pressed="${pinned}" aria-label="${pinned ? "Unpin" : "Pin"} ${esc(x.v.n)}">${pinned ? "★" : "☆"}</button>`; }).join("")
-    + (tab === "roadmap" || tab === "tidy" ? `<a class="vc all${sel === -1 ? " sel" : ""}" href="${boardHref({ tab: keep, v: "all" })}"${sel === -1 ? ` aria-current="true"` : ""}>all versions</a>` : "");
+    + (tab === "roadmap" || tab === "tidy" ? `<a class="vc all${sel === -1 ? " sel" : ""}" href="${boardHref({ tab: chipTab, v: "all" })}"${sel === -1 ? ` aria-current="true"` : ""}>all versions</a>` : "");
   const sum = d.versions.reduce((a, v) => { for (const k of Object.keys(v.counts)) a[k] = (a[k] || 0) + v.counts[k]; return a; }, {});
   const line = sel >= 0 && d.versions[sel] ? `<b>${esc(d.versions[sel].n)}</b> · ${esc(info(sel).tag)} · ${nTickets(info(sel).total)} · ${esc(stat(info(sel)))}`
     : sel === NO_PICK ? `<b>no version</b> · ${nTickets(d.noVersionCount || 0)} · in no version's count; a chip opens that version's Roadmap`
@@ -405,7 +405,7 @@ function tabsHtml(d, ui, tab, ch, dr, sel) {
 }
 function asideHtml(ch, rows, fresh, d, nv, owed) {
   const wait = chainOk(ch) || rows.length ? `${nTickets(rows.length)} ${rows.length === 1 ? "waits" : "wait"} for you, any version` : "waits for you: not read";
-  const unread = nvOk(nv) ? 0 : d.noVersionCount || 0; // once the No version read is in, those tickets are in the rows and nothing is left uncounted
+  const unread = nvOk(nv) ? 0 : d.noVersionCount || 0;
   const owedNote = unreadOwed(owed);
   return `<div class="aside"><a href="#/shift">${wait} Shift →</a>${unread ? `<a href="${boardHref({ tab: "nv" })}">${nTickets(unread)} with no version not read yet →</a>` : ""}`
     + `${owedNote.length ? `<span class="ro">(${esc(owedNote.join("; "))})</span>` : ""}<a href="#/report">Morning report →</a><button class="btn" data-act="refresh-roadmap" aria-label="refresh: read the board again">↻ refresh</button>${fresh ? `<span class="ro rd" title="${esc(fresh)}">${esc(fresh)}</span>` : ""}</div>`;

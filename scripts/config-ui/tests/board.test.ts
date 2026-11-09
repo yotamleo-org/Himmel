@@ -243,7 +243,7 @@ test("Board page: a live operator hold and an operator label in the mirror both 
   const badSec = bad.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)![0];
   expect(badSec).toContain("HIMMEL-9"); // the label still lists
   expect(badSec).not.toContain("HIMMEL-2"); // the hold is not guessed at: nothing of it is listed or linked
-  expect(bad).toContain("1 ticket waits for you"); // the label still counts
+  expect(bad).toContain("1 ticket waits for you");
   expect(bad).not.toContain("2 tickets wait for you");
 });
 
