@@ -156,7 +156,6 @@ def proof_first(rows):
 
 def planted(rows):
     """The newest review-panel row: the share of planted bugs the panel caught, against a hidden key."""
-    # one head per execution: a rescore is the same run, never a newer one (select_review_runs)
     chosen = eval_feedback.select_review_runs([r for r in rows if r.get("eval") == "review-panel"])[0]
     ok = [r for r in chosen if r.get("status") == "ok"]
     if not ok:

@@ -368,8 +368,6 @@ eq "page: this suite runs in PR CI, so a hand edit of the page fails the PR" \
 lacks "page: no draft marker" "$(head -5 "$PAGE")" "draft:"
 eq "page: on the site allowlist" "$(grep -cx 'evals/README.md' "$ROOT/site/allowlist.txt")" "1"
 eq "page: in the site nav" "$(grep -cF "slug: 'evals' }" "$ROOT/site/astro.config.mjs")" "1"
-# revision_not_prev_run on the public generator: a rescore of the 24 Oct run, appended after a newer run, is the
-# 24 Oct run: the page's newest planted-bug row stays the newer execution's.
 E2="$TMP/eval-runs-rev.jsonl"
 python3 -I - "$ROOT/scripts/eval/lib" "$E" "$E2" <<'PY' || { echo "test-evals-page-gen: writing the revision ledger failed" >&2; exit 1; }
 import json, sys

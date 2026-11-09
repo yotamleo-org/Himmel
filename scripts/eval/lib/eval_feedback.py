@@ -218,7 +218,6 @@ def select_review_runs(rows, scorer=None, eligible_only=False):
         return i
     def sid(v):
         return v if isinstance(v, str) and v else None  # a non-string id (a list, a number) names nothing
-    # a row with no usable run_id is its own run: it never repeats another row's
     rid = lambda i: sid(rows[i].get("run_id")) or "\0row%d" % i  # noqa: E731
     seen = {}
     for i, r in enumerate(rows):
@@ -243,8 +242,6 @@ def select_review_runs(rows, scorer=None, eligible_only=False):
         linked = [i for i in uniq if links[i] is not None]
         who = rid
         if len(uniq) == 1 or not linked:
-            # unlinked repeats of one execution: the first row counts, but a row of the running scorer comes
-            # before an older scorer's (a rescore that names no predecessor still replaces it)
             mine = [i for i in members if scorer is not None and known_scorer(rows[i]) == scorer]
             head = (mine or uniq)[0]
             diag.extend({"run_id": rows[i].get("run_id"), "reason": "repeat-of-execution",
@@ -282,8 +279,6 @@ def select_review_runs(rows, scorer=None, eligible_only=False):
                     for i in members if i != head)
         heads.append((min(members), head))
     out = []
-    # execution order: a head sits where its execution's first row sits, so a rescore appended later is never
-    # "the newest run"
     for _, i in sorted(heads):
         r = rows[i]
         if scorer is not None and known_scorer(r) != scorer:
@@ -417,7 +412,6 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
     """Measure, then change, for each eval; returns the records written."""
     rules = load_rules(rules)
     path = changes_path(changes)
-    # A review-panel series counts one row per execution: a rescore is no later run (select_review_runs).
     chosen, diag = review_series(eval_runs.read_rows(ledger))
     runs = [r for r in chosen if r["status"] == "ok"]
     alias = {d["run_id"]: d["by"] for d in diag if d.get("by")}

@@ -185,9 +185,7 @@ def main(argv=None):
     every, at, bad = eval_runs.scan_rows(args.ledger)
     mine = [(r, nr) for r, nr in zip(every, at) if r["eval"] == args.eval]
     if args.eval == "review-panel":
-        # one head per execution: a rescore is not a candidate, a baseline or a repeat (select_review_runs)
         chosen, diag = eval_feedback.select_review_runs([r for r, _ in mine])
-        # the selection's execution order, not the file's: a rescore appended last is not the newest run
         place = {id(r): i for i, r in enumerate(chosen)}
         mine = sorted((p for p in mine if id(p[0]) in place), key=lambda p: place[id(p[0])])
         if diag:
@@ -215,7 +213,6 @@ def main(argv=None):
     earlier = rows[:-1]
     pool = [r for r in earlier if r["status"] == "ok" and r["confighash"] == cand["confighash"]]
     if args.eval == "review-panel":
-        # a review-panel baseline must share the corpus, protocol, known scorer and participation, however chosen
         pool = [r for r in pool if not eval_feedback.review_incompat(r, cand)]
 
     # base_of[metric] = the row the metric's baseline value comes from.

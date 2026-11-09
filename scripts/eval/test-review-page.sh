@@ -159,7 +159,6 @@ eq "page_trend_requires_same_scorer: one known scorer on both rows shows the tre
 eq "page_trend_requires_same_scorer: another scorer on the earlier row shows no trend" "$(trend other)" "0"
 eq "page_trend_requires_same_scorer: an earlier row with no scorer identity shows no trend" "$(trend missing)" "0"
 
-# revision_not_prev_run: a rescore of the newest execution is that execution, never its own "last run"
 python3 -I - "$HERE/lib" "$TMP" <<'PY' || { echo "test-review-page: writing the revision ledgers failed" >&2; exit 1; }
 import json, os, sys
 sys.path.insert(0, sys.argv[1])

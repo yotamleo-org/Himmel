@@ -1123,7 +1123,6 @@ for rp in "$FIX_ALL"/real-*.patch; do
     "$(git -C "$riso" diff --name-only HEAD~1 HEAD | wc -l | tr -d ' ')" "$(grep -c '^diff --git ' "$rp")"
 done
 
-# --- replay.py: retained bundles rescored into a NEW scratch dir, inputs and bundles never written ---------------
 RR="$TMP/replay-repo"; RP="$TMP/replay-in"; RB="$TMP/replay-bundles"; mkdir -p "$RP" "$RB"
 rg() { git -C "$RR" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
 mkdir -p "$RR/scripts/eval/review-panel/key" "$RR/scripts/cr/perspectives"
@@ -1139,8 +1138,6 @@ mkbundle bundle-a
 python3 "$GSCORE" export-row "$RB/bundle-a" --repo "$RR" --results "$RP/results.jsonl" >/dev/null 2>&1
 python3 "$GSCORE" score --outputs "$RB/bundle-a" --fixtures "$FIX" --key "$KEY" --critics codex --ledger "$RP/ledger.jsonl" >/dev/null 2>&1
 eq "replay fixture: one results row and one ledger row of the retained bundle" "$(grep -c . "$RP/results.jsonl"):$(grep -c . "$RP/ledger.jsonl")" "1:1"
-# legacy / failure variants of the same bundle: a doctored false Claude participation, a missing artifact, a
-# changed bundle, a stamp that contradicts its tree, two rows of one run_id, an unsafe name, an unreadable line
 cp -r "$RB/bundle-a" "$RB/bundle-d"; rm -f "$RB/bundle-d/swept.json" "$RB/bundle-d/run-manifest.json"
 cp -r "$RB/bundle-a" "$RB/bundle-m"; printf 'x\n' >> "$RB/bundle-m/$LA.md"
 cp -r "$RB/bundle-a" "$RB/bundle-s"
@@ -1213,7 +1210,6 @@ rows=[json.loads(l) for l in open(sys.argv[1]) if l.startswith("{")]
 cand=[json.loads(l) for l in open(sys.argv[2])]
 sel,_=eval_feedback.select_review_runs([r for r in rows if r["run_id"]=="bundle-a"]+[c for c in cand if c["run_id"].startswith("bundle-a~")])
 print([r["run_id"] for r in sel]==["bundle-a~"+sys.argv[4]])' "$RP/results.jsonl" "$TMP/rp-out1/candidate-results.jsonl" "$SC/scripts/eval/lib" "$SID12")" "True"
-# the old stamp is held to ITS tree: a gold-only revision at HEAD replays, an edited input does not
 python3 -c 'import json,sys; p=sys.argv[1]; k=json.load(open(p)); c=k["cases"]["case-01"]["defects"][0]; c["line"]=c["line"]+1; json.dump(k,open(p,"w"),indent=1)' "$RR/scripts/eval/review-panel/key/seeds.json"
 rg commit -qam gold-only
 VER="$TMP/rp-out2/verification.json"; out=$(rpl "$TMP/rp-out2"); rc=$?
@@ -1230,7 +1226,6 @@ eq "changed_case_input_cannot_replay: the edited case is named, not rescored" "$
 eq "changed_case_input_cannot_replay: the row is partial and ineligible" \
   "$(python3 -I -c 'import json,sys; c=[json.loads(l) for l in open(sys.argv[1])][0]; print(c["status"], c["decision_eligible"], "changed-case-input:1" in c["ineligibility_reasons"])' "$TMP/rp-out3/candidate-results.jsonl")" "partial False True"
 
-# --- carried judge minors: unrecordable settings, manifest case ids, v2 rows, blank model labels --------------
 MS="$TMP/minors"; cp -r "$RB/bundle-a" "$MS"; rm -f "$MS/swept.json" "$MS/run-manifest.json"
 mstamp() { python3 "$GSCORE" stamp "$MS" --repo "$RR" --fixtures "$RR/scripts/eval/review-panel/fixtures" \
   --key "$RR/scripts/eval/review-panel/key/seeds.json" --critics codex "$@" 2>&1; }
@@ -1258,7 +1253,6 @@ eq "verify_row_v2: a complete v2 row verifies" "$rc" "0"
 out=$(python3 "$GSCORE" verify-row "$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); del r["bundle_sha256_v2"]; print(json.dumps(r))' "$V2ROW")" "$MV" --repo "$RR" 2>&1); rc=$?
 eq "verify_row_v2: a row naming a scorer but no bundle_sha256_v2 is refused" "$rc" "1"; has "verify_row_v2: and names the field" "$out" "bundle_sha256_v2"
 
-# --- score.py compare-paired: pair-cluster comparison over twin pairs ------------------------------------------
 CPD="$TMP/cmp-paired"; mkdir -p "$CPD"
 python3 - "$KEY" "$CPD" <<'PY'
 import json, sys

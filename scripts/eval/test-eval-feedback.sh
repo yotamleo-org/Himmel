@@ -302,8 +302,6 @@ ok "overflow measure" python3 -I "$FB" run --ledger "$T/inf.jsonl" --changes "$T
 eq "keep rule: overflowing noise is unmeasured: not kept" "$(field "$T/inf-c.jsonl" 1 reason)" "noise unmeasured: not a finite spread"
 eq "keep rule: the record holds no Infinity" "$(grep -c Infinity "$T/inf-c.jsonl")" "0"
 
-# --- select_review_runs: the one review-panel selector (gate, compare, page, noise series, public page) ------
-# sel <name> <selected run_ids> ...: each case prints PASS/FAIL lines the shell counts
 SELPY="$TMP/sel.py"
 cat >"$SELPY" <<'EOF'
 import sys
@@ -388,7 +386,6 @@ try:
 except TypeError as e:
     print("FAIL gate_side: a list-valued run_id raised %s" % e)
 
-# review_incompat: an explicit baseline cannot override the comparison rules
 def er(conf="h", scorer=S1, cov=None):
     m = {"scorer_sha256": scorer}
     if cov is not None:
@@ -407,7 +404,6 @@ for name, a, b, want in (
     ok = (got is None) if want is None else (got is not None and want in got)
     print(("PASS " if ok else "FAIL ") + "review_incompat: %s (%s)" % (name, got))
 
-# revision_not_prev_run, noise series: a rescore is not a later run, a baseline, or a noise sample
 import os, tempfile
 sys.path.insert(0, os.path.join(sys.argv[1]))
 import eval_runs
@@ -451,7 +447,6 @@ while IFS= read -r line; do
   case "$line" in PASS*) PASS=$((PASS + 1)); echo "$line";; *) FAIL=$((FAIL + 1)); echo "$line";; esac
 done <<<"$SELOUT"
 
-# the gate's two row selectors are one helper: score.py's panel check no longer hand-copies it
 eq "score.py's panel check calls gate_side, not a copy of its row selection" \
   "$(grep -c 'eval_feedback.gate_side(rows' "$HERE/review-panel/score.py")" "1"
 

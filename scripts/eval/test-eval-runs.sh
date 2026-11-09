@@ -372,7 +372,6 @@ h0=$(field "$QI" 0 confighash); h1=$(field "$QI" 1 confighash); h2=$(field "$QI"
 if [ -n "$h0" ] && [ "$h0" != "$h1" ]; then pass "qmd adapter: a different index content changes confighash"; else fail "qmd adapter: confighash ignores the index content ($h0 vs $h1)"; fi
 eq "qmd adapter: the same content at another path keeps confighash" "$h2" "$h0"
 
-# --- eval-compare, review-panel: one head per execution; an explicit --baseline cannot bypass the comparability rules ---
 RP="$TMP/rp"; mkdir -p "$RP"
 python3 -I - "$HERE/lib" "$RP" <<'PY' || { echo "test-eval-runs: writing the review-panel ledgers failed" >&2; exit 1; }
 import json, os, sys

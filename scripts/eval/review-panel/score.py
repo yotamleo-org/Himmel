@@ -161,9 +161,6 @@ MANIFEST = "run-manifest.json"
 RECORDED_OVERRIDES = ("CRITIC_TIMEOUT_SECS", "CRITIC_PANEL_TOTAL_TIMEOUT_SECS", "CRITIC_KILL_GRACE_SECS",
                       "CRITIC_PARALLEL", "CRITIC_FIRST_PASS_CAP_BYTES")
 MANIFEST_CASE = re.compile(r"^(case|real|delta)-[A-Za-z0-9._-]+$")  # a case id is a file stem inside the outputs dir
-# Settings that change what the panel runs and that no manifest field records: a stamp refuses a sweep that
-# carries one. run.sh sets or removes CRITIC_PANEL_TIERS, CR_TRIVIALITY_OVERRIDE, CRITIC_FIRST_PASS and
-# CRITIC_INVOKE itself, and the RECORDED_OVERRIDES are written to the manifest.
 UNRECORDABLE_SETTING = re.compile(r"^(CRITIC_[A-Z0-9_]+|CR_TRIVIALITY_[A-Z0-9_]+|HIMMEL_API_LANE"
                                   r"|HIMMEL_CRITIC_[A-Z0-9_]+)$")
 RUN_SH_OWNED = ("CRITIC_PANEL_TIERS", "CR_TRIVIALITY_OVERRIDE", "CRITIC_FIRST_PASS", "CRITIC_INVOKE")
@@ -1225,7 +1222,6 @@ def gate(repo, base, head, target_classes=()):
             continue
         if isinstance(r, dict):
             rows.append(r)
-    # The shared selector: one head per execution, the running scorer's, decision-eligible rows only.
     mine, diag = eval_feedback.select_review_runs(rows, scorer=want, eligible_only=True)
     legacy = sum(1 for r in rows if not r.get("scorer_sha256"))
     excluded = {"without_scorer_sha256": legacy,
@@ -1296,8 +1292,6 @@ def compare_paired(base_runs, cand_runs, key_path):
            "duplicate_executions": {"baseline": b_dups, "candidate": c_dups},
            "repeats": {"baseline": {cid: len(b[cid]) for cid in sorted(b)},
                        "candidate": {cid: len(c[cid]) for cid in sorted(c)}}, "metrics": {}}
-    # A cluster is one twin pair (a seeded case and its clean twin): both metrics of a pair move together, so the
-    # bootstrap resamples whole pairs inside each split and reads both metrics from the same resample.
     clusters = {}
     for cid in common:
         c_key = key[cid]
@@ -1531,7 +1525,6 @@ def tree_main(a):
         bad = [f for f in ROW_FIELDS if claimed.get(f) != got[f] and (f not in LEGACY_OPTIONAL_FIELDS or f in claimed)
                and not (legacy and f == "scorer_sha256")]
         if not legacy:
-            # a row naming a scorer is a new-protocol row: it must bind its bundle, and an eligible one its execution
             need = ("bundle_sha256_v2",) + (("execution_id",) if claimed.get("decision_eligible") else ())
             bad += [f for f in need if f not in bad and not claimed.get(f)]
         for f in bad:

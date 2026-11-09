@@ -66,7 +66,6 @@ with open(f, "a") as fh:
                "outputs_sha256": hashlib.sha256(rid.encode()).hexdigest()}
         if sc != "none":
             row["scorer_sha256"] = {"cur": sid, "null": None}.get(sc, sc)
-        # a 7th field: ineligible | sup=<run_id> | exec=<id>, comma-separated
         for tok in [t for t in extra.split(",") if t]:
             if tok == "ineligible":
                 row.update(decision_eligible=False, ineligibility_reasons=["provenance-reconstructed"])
@@ -136,7 +135,6 @@ SCD="$WORK/scorer-dirty"; cp -r "$SC" "$SCD"; printf '# dirty\n' >> "$SCD/script
 with_rows "b1:$B:$C:0.50:0.10:null" "b2:$B:$C:0.60:0.10:none" "h1:$H:$C:0.55:0.10:null" "h2:$H:$C:0.50:0.10:none"
 SUT="$SCD/scripts/ci/check-critic-eval.sh" gate "null_running_identity_matches_no_rows: a dirty scorer over null and absent hashes fails" 1 "no clean identity"
 
-# --- the shared selector: one head per execution, eligible rows only ----------------------------
 fixture selector
 commit_edit scripts/cr/critic-first-pass.sh '# a critic change' >/dev/null
 B="$(cbs_hash "$BASE")"; H="$(cbs_hash HEAD)"; C="$(confighash HEAD)"

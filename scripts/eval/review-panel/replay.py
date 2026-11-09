@@ -130,8 +130,6 @@ def replay_row(src, kind, repo, root, out, scoring, partner, digests):
     if recorded is None:
         reasons.append("bundle-bytes-unbound")
 
-    # The execution stamp is held to its own recorded tree, never the scoring tree. A ledger row's confighash names
-    # its own series (a critics-and-window config), not the stamp's, so only a results row is held to the stamp's.
     stamp = read_stamp(bundle)
     row_src = src if kind == "results" else partner or {}
     if stamp is None:
@@ -156,7 +154,6 @@ def replay_row(src, kind, repo, root, out, scoring, partner, digests):
     if not available:
         reasons.append("execution-tree-unavailable")
 
-    # which cases the scoring revision's inputs reproduce
     now_inputs = case_inputs(repo, "HEAD")
     absent = []
     if available:
@@ -211,7 +208,6 @@ def replay_row(src, kind, repo, root, out, scoring, partner, digests):
                     "cases_rescored": len(replayable), "cases_changed": changed, "cases_absent": len(absent)},
         "manifest_sha256": _digest(sidecar) if sidecar else None}
 
-    # what the rescore changed against the row it supersedes
     old = src if kind == "results" else {"status": src.get("status"), "metrics": src.get("metrics"),
                                          "confighash": src.get("confighash"),
                                          "coverage": (src.get("meta") or {}).get("coverage")}
@@ -249,7 +245,6 @@ def replay_row(src, kind, repo, root, out, scoring, partner, digests):
 def replay(results, ledger, root, out, repo=None):
     """Write the candidate rows and verification.json into the new directory out; returns verification."""
     repo = repo or score.toplevel()
-    # a row whose run_id is not a string names no bundle: it is an unreadable row, never a crash
     res_rows, res_bad = read_jsonl(results, lambda r: isinstance(r.get("run_id"), str))
     led_rows, led_bad = read_jsonl(ledger, lambda r: r.get("eval") != "review-panel" or isinstance(r.get("run_id"), str))
     led_panel = [r for r in led_rows if r.get("eval") == "review-panel"]
@@ -288,7 +283,6 @@ def replay(results, ledger, root, out, repo=None):
         fh.write("".join(json.dumps(r, sort_keys=True) + "\n" for r in cand_results))
     with open(os.path.join(out, "candidate-eval-runs.jsonl"), "w", encoding="utf-8") as fh:
         fh.write("".join(json.dumps(r, sort_keys=True) + "\n" for r in cand_ledger))
-    # the supersession chains the readers would see once the candidates are appended to the inputs
     sel = {}
     for name, old, new in (("results", res_rows, cand_results), ("eval_ledger", led_panel, cand_ledger)):
         chosen, diag = eval_feedback.select_review_runs(old + new)

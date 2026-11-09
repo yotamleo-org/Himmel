@@ -98,7 +98,6 @@ def latest(rows, eval_id):
     """(newest usable row, the newest earlier row of the same series) for one eval."""
     mine = [r for r in rows if r["eval"] == eval_id]
     if eval_id == "review-panel":
-        # one head per execution: a rescore of the newest run is that run, never "the last run"
         mine = eval_feedback.select_review_runs(mine)[0]
     mine = [r for r in mine if r["status"] in ("ok", "partial")]
     if not mine:
