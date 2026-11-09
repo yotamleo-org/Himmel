@@ -21,5 +21,10 @@ process.env.HIMMEL_ADMISSIONS_LEDGER = join(mkdtempSync(join(tmpdir(), 'jira-tes
 process.env.HIMMEL_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'jira-test-conf-'));
 process.env.HANDOVER_DIR = mkdtempSync(join(tmpdir(), 'jira-test-handover-'));
 
+// authHeader() refuses a missing email or token up front, so every suite starts with
+// dummy credentials and never the station's own; a test of the refusal unsets them itself.
+process.env.JIRA_EMAIL = 'test-user@example.invalid';
+process.env.JIRA_API_TOKEN = 'test-token-not-real';
+
 // Keep every test off the real keyring; the resolver test turns it back on with a stub.
 process.env.HIMMEL_SECRETS_KEYRING = "off";
