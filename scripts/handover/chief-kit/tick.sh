@@ -573,7 +573,6 @@ for key in sorted(dispatchable):
 
 projects = {k.split("-")[0] for k in rows}
 
-# ponytail: an owner is judged by the shape of the target (a project ticket other than the line's own, a PR or a decision id, optionally after "operator", "waits on", "blocked by" or "after"), never by reading that ticket, PR or decision, and a worker counts only through the dispatcher's own held-by reason; no ask-record store exists, upgrade path: read each target's state from the mirror and gh, and accept an ask-record form once a store exists
 def has_owner(target, key):
     m = re.match(r"(?:(?:operator|waits on|blocked by|after)\s+)?(?:([A-Z]+-\d+)\b|PRs?\s*#?\d+\b|[Dd]ecisions?\s*#?\d+\b)", target)
     if not m:
