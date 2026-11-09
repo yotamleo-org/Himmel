@@ -30,7 +30,8 @@ for (const [name, render, input, ui, title] of [
     const html = render(input, ui);
     expect(html).toMatch(/<header class="ph">/);
     expect(html).toContain(`<h1>${title}</h1>`);
-    expect(html).toMatch(/<section[^>]*class="box"/);
+    // slice 2: the Roadmap tab body is a Chains-look panel, no box; Tidy up keeps its box until slice 3
+    expect(html).toMatch(name === "Board" || name === "GitHub Board" ? /<section[^>]*class="cp[ "]/ : /<section[^>]*class="box"/);
   });
 }
 
@@ -43,9 +44,9 @@ test("board statuses and drift use shared pills without losing write controls", 
   expect(html).toContain('data-rm-drop="prog"');
 });
 
-test("Board lanes use the shared pills and keep the write controls; its version chips read like the Chains tab's", () => {
+test("Board lanes use the Chains tab's status chips and keep the write controls; its version chips read like the Chains tab's", () => {
   const html = renderBoard(data, { writes: true }, null);
-  expect(html).toMatch(/class="[^"]*\bpill\b[^"]*">In Progress<\/span>/);
+  expect(html).toMatch(/class="[^"]*\btk\b[^"]*">In Progress<\/span>/);
   expect(html).toMatch(/<a class="vc sel"[^>]*><b>v1\.1\.3<\/b> <small>running<\/small>/);
   expect(html).toContain('draggable="true" data-rm-card="8141"');
   expect(html).toContain('data-rm-drop="prog"');
