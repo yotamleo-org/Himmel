@@ -353,9 +353,6 @@ else
   pass "T6c failed refresh stamped nothing"
 fi
 
-# --- T6c-auth/T6c-trust/T6c-other: an all-chunks-failed run names its cause.
-# The stub fails like graphify did: stderr holds only the workspace-trust lines,
-# the stdout envelope holds the auth error. STUB_MODE picks the cause. ---
 CAUSEBIN="$WS/causebin"; mkdir -p "$CAUSEBIN"
 cat > "$CAUSEBIN/graphify" <<'STUB'
 #!/usr/bin/env bash

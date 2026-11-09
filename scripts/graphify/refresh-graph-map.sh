@@ -2504,8 +2504,6 @@ SHIM
   # _CAP_LEFT is what the monitor enforces for the pass in flight; _PRE_DONE is
   # what the pre-pass already spent; _DONE_FILE carries a pass's finished count.
   _DONE_FILE="$SCRATCH/.graphify-extract-done"
-  # The first auth-envelope line, the first workspace-trust line and the last
-  # non-blank line graphify printed: what a failed run reports as its cause.
   _AUTH_FILE="$SCRATCH/.graphify-extract-auth"
   _TRUST_FILE="$SCRATCH/.graphify-extract-trust"
   _LAST_FILE="$SCRATCH/.graphify-extract-last"
@@ -2716,8 +2714,6 @@ SHIM
   if [ "$_SKIP_MAIN" -eq 0 ]; then
     _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$GRAPHIFY_BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
   fi
-  # An expired login copy kills every chunk with an auth envelope. Reseed the
-  # dedicated config dir from the main login once and retry the run once.
   if [ "$_SKIP_MAIN" -eq 0 ] && [ "$_rc" -ne 0 ] && [ "$GRAPHIFY_BACKEND" = "claude-cli" ] \
      && [ -s "$_AUTH_FILE" ] && [ ! -s "$_FAILED_FILE" ] && [ ! -s "$_STOP_FILE" ] \
      && [ "$_rc" -ne 124 ] && [ "$_rc" -ne 137 ]; then
