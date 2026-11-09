@@ -41,7 +41,7 @@ run() {
     if [ "$rc" != "$want" ]; then
         echo "FAIL $name: rc=$rc want=$want out=$out"; FAIL=$((FAIL+1)); return
     fi
-    if [ "$grep_for" != "-" ] && ! printf '%s' "$out" | grep -q -- "$grep_for"; then
+    if [ "$grep_for" != "-" ] && ! grep -q -- "$grep_for" <<<"$out"; then
         echo "FAIL $name: stderr lacks '$grep_for': $out"; FAIL=$((FAIL+1)); return
     fi
     echo "ok   $name"
