@@ -151,7 +151,8 @@ if bill and allow != "1":
     sys.exit("run.sh: the roster holds a billed claude-api critic (%s) - pass --allow-claude-api or drop it from --critics - no panel call made" % ",".join(bill))
 json.dump(reg, open(dst, "w"))' "$HERE/../../cr/critics.json" "$roster" "$critics" "$tiers" "$allow_claude" || exit 2
 
-python3 "$HERE/score.py" stamp "$out" --fixtures "$fixtures" --key "$key" --panel "$PANEL" --tiers "$tiers" --only "$only" || exit 2
+python3 "$HERE/score.py" stamp "$out" --fixtures "$fixtures" --key "$key" --panel "$PANEL" --tiers "$tiers" --only "$only" \
+    --critics "$critics" ${model:+--model "$model"} || exit 2
 
 for patch in "$fixtures"/case-*.patch "$fixtures"/real-*.patch "$fixtures"/delta-*.patch; do
     [ -e "$patch" ] || continue
@@ -176,8 +177,9 @@ for patch in "$fixtures"/case-*.patch "$fixtures"/real-*.patch "$fixtures"/delta
     # is unset; the triviality gate would skip the paid tier on a small diff,
     # and known-findings would inject himmel's own dispositions into the prompt.
     # CRITICS_JSON pins the roster to the swept tree's critics.json cut to --critics (A27): the panel
-    # run from a scratch dir would otherwise read a local overlay, and the whole tier.
-    (cd "$dir" && env -u CR_PROFILE CRITIC_PANEL_TIERS="$tiers" CR_TRIVIALITY_OVERRIDE=full \
+    # run from a scratch dir would otherwise read a local overlay, and the whole tier. An inherited
+    # first-pass or invoke override would run other critic code than the swept tree's, so both are dropped.
+    (cd "$dir" && env -u CR_PROFILE -u CRITIC_FIRST_PASS -u CRITIC_INVOKE CRITIC_PANEL_TIERS="$tiers" CR_TRIVIALITY_OVERRIDE=full \
         CRITIC_KNOWN_FINDINGS=0 CRITICS_JSON="$roster" \
         bash "$PANEL" ${ctx_args[@]+"${ctx_args[@]}"} < diff.patch > "$out/$cid.md" 2> "$out/$cid.err")
     echo "$?" > "$out/$cid.rc"

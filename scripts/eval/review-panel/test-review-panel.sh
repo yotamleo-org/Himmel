@@ -466,9 +466,20 @@ eq "ledger: eval id" "$(python3 -c 'import json,sys; print(json.loads(open(sys.a
 eq "ledger: the meta carries the bank cost" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["meta"]["codex_bank_delta_pct"])' "$L")" "3"
 eq "ledger: per-case rows recorded" "$(python3 -c 'import json,sys; print(len(json.loads(open(sys.argv[1]).readline())["cases"]))' "$L")" "5"
 eq "ledger: the config fingerprints the class patterns" "$(python3 -c 'import json,sys; print(len(json.loads(open(sys.argv[1]).readline())["config"].get("class_patterns", "")))' "$L")" "16"
-python3 "$SCORE" score --outputs "$O" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA,$QA" --model gpt-6-astra --ledger "$TMP/model.jsonl" >/dev/null 2>&1
-eq "ledger: --model names the critic model on the row" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["model"])' "$TMP/model.jsonl" 2>/dev/null)" "gpt-6-astra"
-eq "ledger: the critic model is part of the series" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["config"]["critic_model"])' "$TMP/model.jsonl" 2>/dev/null)" "gpt-6-astra"
+OM="$TMP/out-model"; cp -r "$O" "$OM"
+python3 -c 'import json,sys; reg=json.load(open(sys.argv[1])); reg["panel"]=[r for r in reg["panel"] if r.get("slug")=="codex"]; json.dump(reg, open(sys.argv[2], "w"))' "$HERE/../../cr/critics.json" "$OM/critics.run.json"
+CODEX_MODEL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["panel"][0]["model"])' "$OM/critics.run.json")"
+python3 "$SCORE" score --outputs "$OM" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA,$QA" --model "$CODEX_MODEL" --ledger "$TMP/model.jsonl" >/dev/null 2>&1
+eq "ledger: --model names the critic model on the row" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["model"])' "$TMP/model.jsonl" 2>/dev/null)" "$CODEX_MODEL"
+eq "ledger: the critic model is part of the series" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["config"]["critic_model"])' "$TMP/model.jsonl" 2>/dev/null)" "$CODEX_MODEL"
+out=$(python3 "$SCORE" score --outputs "$OM" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA,$QA" --model gpt-6-astra --no-ledger 2>&1); rc=$?
+eq "model_label_conflict: a --model the swept roster never ran is refused" "$rc" "2"
+has "model_label_conflict: and named" "$out" "gpt-6-astra"
+python3 "$SCORE" score --outputs "$O" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA,$QA" --model gpt-6-astra --no-ledger >/dev/null 2>&1; rc=$?
+eq "model_label_conflict: a --model on outputs with no recorded roster cannot be checked, so it is refused" "$rc" "2"
+CLAUDE_CODE_EFFORT_LEVEL=max python3 "$SCORE" score --outputs "$O" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA,$QA" --ledger "$TMP/host.jsonl" >/dev/null 2>&1
+eq "scorer_host_model_not_critic: the scoring session's model and effort are not recorded as the critic's" \
+  "$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["model"], r["meta"].get("effort"), r["meta"].get("cli_version"))' "$TMP/host.jsonl" 2>&1)" "None None None"
 eq "ledger: the live ledger was never touched" "$([ -e "$TMP/never.jsonl" ] && echo yes || echo no)" "no"
 
 # --- run.sh with a stub panel -----------------------------------------------------
@@ -486,11 +497,22 @@ case "$diff" in *rpk-canary*|*seeds.json*) echo "STUB: the canary reached stdin"
 printf '%s\n' "$CRITIC_PANEL_TIERS" > "$STUB_LOG_DIR/tiers"
 printf '%s %s\n' "${CR_TRIVIALITY_OVERRIDE:-}" "${CRITIC_KNOWN_FINDINGS:-}" > "$STUB_LOG_DIR/env"
 printf '%s\n' "${CRITICS_JSON:-}" > "$STUB_LOG_DIR/critics_json"
+printf '%s|%s\n' "${CRITIC_FIRST_PASS-unset}" "${CRITIC_INVOKE-unset}" > "$STUB_LOG_DIR/seams"
 printf '# Critic Panel Review (1/1 critics responded)\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
 EOF
 mkdir -p "$TMP/stublog"
 STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
-  bash "$RUN" --out "$TMP/run1" --ledger "$TMP/run-ledger.jsonl" --critics codex --tiers paid --model stub-critic >"$TMP/run1.txt" 2>&1; rc=$?
+  CRITIC_FIRST_PASS="$TMP/no-such-first-pass" CRITIC_INVOKE="$TMP/no-such-invoke" CRITIC_TIMEOUT_SECS=99 \
+  bash "$RUN" --out "$TMP/run1" --ledger "$TMP/run-ledger.jsonl" --critics codex --tiers paid --model "$CODEX_MODEL" >"$TMP/run1.txt" 2>&1; rc=$?
+eq "inherited_invoke_seams_removed: the panel never sees an inherited first-pass or invoke seam" "$(cat "$TMP/stublog/seams" 2>/dev/null)" "unset|unset"
+mget() { python3 -c 'import json,sys
+v=json.load(open(sys.argv[1]))
+for k in sys.argv[2].split("/"): v=v.get(k) if isinstance(v,dict) else None
+print(json.dumps(v, sort_keys=True) if isinstance(v,(dict,list,bool)) or v is None else v)' "$1/run-manifest.json" "$2" 2>&1; }
+eq "manifest: run.sh records the requested and effective roster" "$(mget "$TMP/run1" requested_roster):$(mget "$TMP/run1" effective_roster)" '["codex"]:["codex"]'
+eq "manifest: a recorded execution setting rides in the protocol" "$(mget "$TMP/run1" protocol/overrides/CRITIC_TIMEOUT_SECS)" "99"
+eq "manifest: the sweep is completed after its loop" "$(mget "$TMP/run1" provenance/status):$([ "$(mget "$TMP/run1" finished_at)" != null ] && echo finished)" "recorded:finished"
+eq "manifest: a stable 32-hex execution id" "$(mget "$TMP/run1" execution_id | grep -cE '^[0-9a-f]{32}$')" "1"
 eq "run: exit 0 on a stub panel" "$rc" "0"
 eq "run: one output per fixture" "$(find "$TMP/run1" -name 'case-*.md' | wc -l | tr -d ' ')" "24"
 eq "run: no stub refusal" "$(grep -c 'STUB:' "$TMP"/run1/*.err 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')" "0"
@@ -516,9 +538,13 @@ STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_S
 eq "run: --allow-claude-api lets the sweep run" "$rc" "0"
 eq "run: --allow-claude-api hands the panel codex and claude" "$(slugs "$TMP/run-opt/critics.run.json")" "codex,claude"
 eq "run: one ledger row" "$(grep -c . "$TMP/run-ledger.jsonl" 2>/dev/null)" "1"
-eq "run: --model reaches the row" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["model"])' "$TMP/run-ledger.jsonl")" "stub-critic"
+eq "run: --model reaches the row" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["model"])' "$TMP/run-ledger.jsonl")" "$CODEX_MODEL"
 eq "run: an empty review scores recall 0" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["metrics"]["codex.recall"])' "$TMP/run-ledger.jsonl")" "0.0"
 eq "run: a sweep through a stub panel is stamped unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run1/swept.json" 2>&1)" "False"
+: > "$TMP/stublog/tiers"
+STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run-badmodel" --no-ledger --critics codex --model gpt-6-astra >/dev/null 2>&1; rc=$?
+eq "model_label_conflict: run.sh refuses a --model the roster does not run, before any panel call" "$rc:$(cat "$TMP/stublog/tiers")" "2:"
 # run.sh refuses before any panel call when the lint fails.
 mkdir -p "$TMP/badfix"; cp "$FIX"/case-*.patch "$TMP/badfix/"; printf '+# injected defect\n' >> "$TMP/badfix/case-05.patch"
 : > "$TMP/stublog/tiers"
@@ -615,6 +641,9 @@ REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eva
 eq "run: a sweep of a clean tree through its own panel exits 0" "$rc" "0"
 eq "run: every panel call read its case's diff on stdin and exited 0" "$(cat "$TMP/run-rr1/"case-*.rc | sort -u | tr '\n' ' ')" "0 "
 eq "run: a sweep of a clean tree through its own panel is stamped clean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr1/swept.json" 2>&1)" "True"
+python3 "$RR/scripts/eval/review-panel/score.py" export-row "$TMP/run-rr1" --repo "$RR" --results "$TMP/results-rr.jsonl" >/dev/null 2>&1; rc=$?
+eq "provenance: a clean complete recorded sweep by a clean scorer is decision-eligible" \
+  "$rc:$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["provenance_status"], r["decision_eligible"], r["ineligibility_reasons"], r["code_under_test_sha"] == sys.argv[2])' "$TMP/results-rr.jsonl" "$(rr rev-parse HEAD)" 2>&1)" "0:recorded True [] True"
 STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger --critics codex >/dev/null 2>&1
 eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 
@@ -695,7 +724,7 @@ rget() { python3 -c 'import json,sys; v=json.loads(sys.argv[1])
 for k in sys.argv[2].split("/"): v=v.get(k) if isinstance(v,dict) else None
 print(round(v,4) if isinstance(v,float) else v)' "$row" "$1"; }
 eq "export-row: writes every field" "$(python3 -c 'import json,sys; print(" ".join(sorted(json.loads(sys.argv[1]))))' "$row")" \
-  "cbs_hash class_recall confighash metrics outputs_sha256 responded run_id scorer_gitsha scorer_reason scorer_sha256 status tree"
+  "bundle_sha256_v2 cbs_hash class_recall code_under_test_sha confighash decision_eligible execution_id ineligibility_reasons metrics outputs_sha256 provenance_status responded run_id scored_at scorer_gitsha scorer_reason scorer_sha256 status tree"
 eq "export-row: the run_id is the outputs dir" "$(rget run_id)" "out1"
 eq "export-row: cbs_hash is HEAD's" "$(rget cbs_hash)" "$(python3 "$SCORE" cbs-hash HEAD --repo "$G")"
 eq "round trip: the confighash gate computes equals the row's" "$(python3 "$SCORE" confighash HEAD --repo "$G")" "$(rget confighash)"
@@ -751,7 +780,7 @@ has "verify-row: and says its scorer identity is unverified" "$out" "scorer iden
 mkdir -p "$G/scripts/eval/lib"; printf '# decoy scorer\n' > "$G/scripts/eval/review-panel/score.py"; printf '# decoy\n' > "$G/scripts/eval/lib/wilson.py"
 gg add -A; gg commit -qm decoy-scorer; DECOY=$(gg rev-parse HEAD)
 eq "verify_row_old_tree_records_running_scorer: the row scored at --tree OLD names the running scorer" \
-  "$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; r = score.gate_row(sys.argv[2], sys.argv[3], sys.argv[4]); print(r["scorer_sha256"] == sys.argv[5] != score.scorer_digest(sys.argv[2], sys.argv[3]))' "$SC/scripts/eval/review-panel" "$G" "$DECOY" "$O" "$SID" 2>&1)" "True"
+  "$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; r = score.gate_row(sys.argv[2], sys.argv[3], sys.argv[4]); print(r["scorer_sha256"] == sys.argv[5] != score.scorer_digest(sys.argv[2], sys.argv[3]))' "$SC/scripts/eval/review-panel" "$G" "$DECOY" "$O" "$SID" 2>/dev/null)" "True"
 python3 "$GSCORE" verify-row "$row" "$O" --repo "$G" --tree "$DECOY" >/dev/null 2>&1; rc=$?
 eq "verify_row_old_tree_records_running_scorer: verify-row --tree OLD matches the running scorer's row" "$rc" "0"
 gg rm -q -r scripts/eval/lib scripts/eval/review-panel/score.py; gg commit -qm drop-decoy
@@ -765,11 +794,59 @@ eq "dirty_scorer_export_diagnostic: a dirty scorer still exports, diagnostic-onl
 eq "scorer_digest_reads_tree: the pure helper reads committed blobs, not the dirty work tree" \
   "$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; print(score.scorer_digest(sys.argv[2], "HEAD"))' "$SCX/scripts/eval/review-panel" "$SCX" 2>&1)" "$SID"
 eq "scorer_digest_reads_tree: a dirty scorer edit leaves the confighash unchanged" "$(python3 "$SCX/scripts/eval/review-panel/score.py" confighash HEAD --repo "$G")" "$(python3 "$GSCORE" confighash HEAD --repo "$G")"
-ORS="$TMP/out-retained"; cp -r "$O" "$ORS"
+ORS="$TMP/out-retained"; cp -r "$O" "$ORS"; rm -f "$ORS/run-manifest.json"
 python3 -c 'import json,sys; json.dump({"cbs_hash": sys.argv[2], "clean": True, "confighash": sys.argv[3], "rechecked": True, "tree": sys.argv[4]}, open(sys.argv[1], "w"), sort_keys=True)' \
   "$ORS/swept.json" "$(python3 "$SCORE" cbs-hash HEAD --repo "$G")" "$(python3 "$SCORE" confighash HEAD --repo "$G")" "$(gg rev-parse HEAD)"
 python3 "$GSCORE" export-row "$ORS" --repo "$G" --results "$TMP/results-retained.jsonl" >/dev/null 2>&1; rc=$?
 eq "retained_stamp_still_exports: a pre-M1 stamp passes check_stamp and exports with the running scorer's identity" "$rc:$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline()).get("scorer_sha256"))' "$TMP/results-retained.jsonl" 2>&1)" "0:$SID"
+eq "provenance: outputs with no run-manifest.json are not decision-eligible" \
+  "$(python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["provenance_status"], r["decision_eligible"], "no-run-manifest" in r["ineligibility_reasons"])' "$TMP/results-retained.jsonl" 2>&1)" "missing False True"
+
+pyscore() { python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; exec(sys.argv[2])' "$HERE" "$@" 2>&1; }
+OP="$TMP/out-prov"; cp -r "$O" "$OP"; rm -f "$OP/run-manifest.json"; rcrit "$OP/critics.run.json" codex
+python3 -c 'import json,sys; reg=json.load(open(sys.argv[1])); reg["panel"].append({"slug": "glm", "tier": "free", "model": "glm-5", "provider": "openrouter"}); json.dump(reg, open(sys.argv[1], "w"))' "$OP/critics.run.json"
+eq "tier_filter: the effective roster drops a row outside the swept tiers" "$(pyscore 'print(score.sweep_roster(sys.argv[3], ["fallback"]))' "$OP")" "['codex']"
+mkdir -p "$TMP/roster-none" "$TMP/roster-bad" "$TMP/roster-empty"; printf 'not json\n' > "$TMP/roster-bad/critics.run.json"; printf '{"panel": []}\n' > "$TMP/roster-empty/critics.run.json"
+for d in none bad empty; do
+  out="$(pyscore 'print(score.sweep_roster(sys.argv[3], ["claude", "codex"]))' "$TMP/roster-$d")"
+  has "fallback_warning: a $d critics.run.json falls back to the tree roster" "$out" "['claude', 'codex']"
+  has "fallback_warning: and says the $d roster is reconstructed, not recorded" "$out" "reconstructed"
+done
+legacy1="$(pyscore 'print(score.outputs_sha256(sys.argv[3]))' "$OP")"; v2a="$(pyscore 'print(score.bundle_sha256_v2(sys.argv[3]))' "$OP")"
+python3 -c 'import json,sys; reg=json.load(open(sys.argv[1])); reg["panel"][0]["model"]="edited"; json.dump(reg, open(sys.argv[1], "w"))' "$OP/critics.run.json"
+eq "roster_edit_changes_v2_hash_legacy_hash_unchanged" \
+  "$([ "$(pyscore 'print(score.outputs_sha256(sys.argv[3]))' "$OP")" = "$legacy1" ] && echo legacy-same):$([ -n "$v2a" ] && [ "$(pyscore 'print(score.bundle_sha256_v2(sys.argv[3]))' "$OP")" != "$v2a" ] && echo v2-moved)" "legacy-same:v2-moved"
+rcrit "$OP/critics.run.json" codex
+gstamp "$OP" --critics codex >/dev/null
+eq "interrupted_stamp: a started manifest has no finish" "$(mget "$OP" finished_at):$(mget "$OP" provenance/status)" "null:recorded"
+python3 "$GSCORE" score --outputs "$OP" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA,$QA,$TA,$LAc,$QAc" --no-ledger --json "$TMP/pi.json" >/dev/null 2>&1
+eq "interrupted_stamp: an unfinished execution is not decision-eligible" "$(jget "$TMP/pi.json" decision_eligible):$(jget "$TMP/pi.json" ineligibility_reasons | grep -c execution-incomplete)" "false:1"
+printf 'panel-availability: codex fallback(gpt-6.1-mini)\n' > "$OP/$LA.err"
+printf 'critic-panel.sh: line 9: PANEL_LEDGER: unbound variable\npanel-availability: codex ok responding-model(gpt-6.1-sol)\n' > "$OP/$QA.err"
+gstamp "$OP" --recheck >/dev/null
+eq "per_case_fallback_model: a fallback receipt names that case's responding model" "$(mget "$OP" "cases/$LA/responding_models/codex")" "gpt-6.1-mini"
+eq "per_case_fallback_model: the run records the observed set" "$(python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(sorted(m["critics"][0]["responding_models"]))' "$OP/run-manifest.json" 2>&1)" "['gpt-6.1-mini', 'gpt-6.1-sol']"
+eq "zero_rc_execution_anomaly: an rc-0 case with an unbound-variable error is an anomaly" "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["cases"][sys.argv[2]]["anomalies"]))' "$OP/run-manifest.json" "$QA" 2>&1)" "1"
+python3 "$GSCORE" export-row "$OP" --repo "$G" --results "$TMP/results-prov.jsonl" >/dev/null 2>&1; rc=$?
+prow="$(head -1 "$TMP/results-prov.jsonl" 2>/dev/null)"
+eq "zero_rc_execution_anomaly: the row exports and is not decision-eligible" \
+  "$rc:$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); print(r["decision_eligible"], "execution-anomaly" in r["ineligibility_reasons"])' "$prow" 2>&1)" "0:False True"
+MCODE="$(mget "$OP" code_under_test_sha)"
+eq "provenance: the row binds the execution and its bundle" \
+  "$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); print(r["execution_id"] == sys.argv[2], r["code_under_test_sha"] == sys.argv[3], len(r["bundle_sha256_v2"]))' "$prow" "$(mget "$OP" execution_id)" "$MCODE" 2>&1)" "True True 64"
+printf 'n2\n' > "$G/notes2.txt"; gg add notes2.txt; gg commit -qm later
+eq "code_sha_preserved_on_rescore: a re-score at a later tree keeps the swept code sha" \
+  "$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; r = score.gate_row(sys.argv[2], "HEAD", sys.argv[3]); print(r["code_under_test_sha"] == sys.argv[4] != r["tree"])' "$SC/scripts/eval/review-panel" "$G" "$OP" "$MCODE" 2>&1)" "True"
+python3 "$GSCORE" verify-row "$prow" "$OP" --repo "$G" >/dev/null 2>&1; rc=$?
+eq "verify-row: a v2 row verifies against its bundle" "$rc" "0"
+OPR="$TMP/out-prov-roster"; cp -r "$OP" "$OPR"; python3 -c 'import json,sys; reg=json.load(open(sys.argv[1])); reg["panel"][0]["model"]="edited"; json.dump(reg, open(sys.argv[1], "w"))' "$OPR/critics.run.json"
+python3 "$GSCORE" verify-row "$prow" "$OPR" --repo "$G" >/dev/null 2>&1; rc=$?
+eq "verify-row: a copied bundle whose roster was edited no longer matches" "$rc" "1"
+SCP="$TMP/scorer-parser"; cp -r "$SC" "$SCP"; printf '\n# a parser revision\n' >> "$SCP/scripts/eval/review-panel/score.py"
+git -C "$SCP" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -qam parser
+python3 "$SCP/scripts/eval/review-panel/score.py" export-row "$OP" --repo "$G" --results "$TMP/results-parser.jsonl" >/dev/null 2>&1
+eq "parser_edit_changes_scorer_identity_only: a scorer edit moves scorer_sha256 and no execution identity" \
+  "$(python3 -c 'import json,sys; a=json.loads(sys.argv[1]); b=json.loads(open(sys.argv[2]).readline()); print([k for k in ("cbs_hash","confighash","outputs_sha256","bundle_sha256_v2","execution_id","code_under_test_sha") if a[k] != b[k]], a["scorer_sha256"] != b["scorer_sha256"])' "$prow" "$TMP/results-parser.jsonl" 2>&1)" "[] True"
 
 B=$(python3 "$SCORE" cbs-hash "$GB" --repo "$G"); H=$(python3 "$SCORE" cbs-hash HEAD --repo "$G"); C=$(python3 "$SCORE" confighash HEAD --repo "$G")
 grows() { python3 -c 'import json,sys
