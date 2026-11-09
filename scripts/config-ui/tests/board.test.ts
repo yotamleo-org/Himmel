@@ -235,7 +235,7 @@ test("Board page: a live operator hold and an operator label in the mirror both 
   expect(sec).toContain("HIMMEL-9"); // the label, from the mirror, in no chain
   expect(sec).toContain("operator-decision");
   expect(sec).not.toContain("at=HIMMEL-9"); // the Chains tab does not hold it, so the key is not a link
-  expect(html).toContain("2 wait for you");
+  expect(html).toContain("2 tickets wait for you");
   rmSync(join(st, "chain-log.jsonl"));
   mkdirSync(join(st, "chain-log.jsonl")); // there, but not a file: unreadable
   const bad = await page(serve(env, s));
@@ -243,8 +243,8 @@ test("Board page: a live operator hold and an operator label in the mirror both 
   const badSec = bad.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)![0];
   expect(badSec).toContain("HIMMEL-9"); // the label still lists
   expect(badSec).not.toContain("HIMMEL-2"); // the hold is not guessed at: nothing of it is listed or linked
-  expect(bad).toContain("1 waits for you"); // the label still counts
-  expect(bad).not.toContain("2 wait for you");
+  expect(bad).toContain("1 ticket waits for you");
+  expect(bad).not.toContain("2 tickets wait for you");
 });
 
 test("GET /api/board: the saved drift file and the chain registry named in the environment are read through the chief-kit scripts", async () => {
