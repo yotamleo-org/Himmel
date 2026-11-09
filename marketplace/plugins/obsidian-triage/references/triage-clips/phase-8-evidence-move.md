@@ -1,4 +1,4 @@
-<!-- Moved verbatim out of triage-clips.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
+<!-- Moved verbatim out of triage-clips.md so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
 
 **Phase 8 — Move to evidence pool (runs ONLY after Phase 7 successfully marked `processed: true`) — inside the same `triage-mark-processed.py` call.**
 
@@ -11,12 +11,12 @@ When `DRY_RUN=1`, the call carries `--dry-run`: it checks the SHA, computes
 the destination and the link count, and writes nothing. The clip emits a `⊘`
 skip line (`⊘ <clip> — skipped (phase-8-move): dry-run — would move → _evidence/<basename>.md, {L} links would be rewritten`), so it counts toward `M skipped`, not `N processed`.
 
-Phase 8 is **forward-only** (HIMMEL-1713): Phase 7 has already recorded the
+Phase 8 is **forward-only** (a clip never moves back to the inbox): Phase 7 has already recorded the
 debt (`evidence_pending: true`), so any failure leaves the marker set and
 stops — never revert, never move the file back, never delete frontmatter keys.
 The Phase-8 debt drain resumes the clip on the next run.
 
-0. **`ig_media_pending` hold (HIMMEL-770).** A frontmatter `ig_media_pending: true`
+0. **`ig_media_pending` hold (the Instagram media rung still owes it).** A frontmatter `ig_media_pending: true`
    (read from the leading `---` block only, so a body-forged hold cannot park a
    clip) holds the move: exit 10. Phases 1-7 ran, so the clip IS triaged. Emit
    `✓ <clip-filename.md> — {summary-len}c summary, {N} tags, {M} related, {K} actions → daily, promotion → <folder> → stays in inbox (ig_media_pending), evidence_pending set, 0 links rewritten`.

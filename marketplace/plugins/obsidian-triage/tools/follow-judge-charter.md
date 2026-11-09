@@ -1,4 +1,4 @@
-# X Follow-List Judge Charter (HIMMEL-660)
+# X Follow-List Judge Charter (curated X AI follow list)
 
 Version: 1
 

@@ -6,7 +6,7 @@ argument-hint: "[vault-path] [--dry-run | --apply [--month YYYY-MM] | --rollback
 
 ## Your task
 
-Backfill the historical clips: LUNA-84 made **triage** drain new `processed: true`
+Backfill the historical clips: the TRIAGE exit-target change made **triage** drain new `processed: true`
 clips into `Clippings/_evidence/` going forward, but the ~559 clips processed
 **before** that change still sit in the top-level `Clippings/` inbox. This
 command is the **one-time** engine that migrates them, with a byte-identical
@@ -31,7 +31,7 @@ Unprocessed clips, already-graduated `_done/` clips, already-promoted
 
 ### The six-form `.md` requirement (silent-dangle BLOCKER — do not miss it)
 
-`/archive-clips` (and, since LUNA-84, `/triage-clips` when it moves a freshly
+`/archive-clips` (and, since the TRIAGE exit-target change, `/triage-clips` when it moves a freshly
 `processed: true` clip into `_evidence/`) rewrite **three** inbound link boundary
 forms: `[[Clippings/<OLD>]]`, `[[Clippings/<OLD>|`, `[[Clippings/<OLD>#` — all
 literal/fixed-string. But real `_synthesis/` pages cite some clips **with the
@@ -52,7 +52,7 @@ rewrite keeps the `.md` on `.md`-input forms and drops it on the plain forms
 (`<NEW> = _evidence/<basename>`), preserving the `|alias` / `#heading` / `]]`
 tail and never clobbering a prefix-sibling (`[[Clippings/<OLD>-extra]]`).
 
-### Headless refusal (HIMMEL-128)
+### Headless refusal (headless claude bills apart from the subscription)
 
 This command makes no `claude -p` / `--print` / `--bg` / API calls. Do not wrap
 the engine in a headless invocation. The engine is a deterministic node tool —
@@ -137,7 +137,7 @@ Only after the staging gate passes:
    final fallback file mtime) falls in that month:
    ```bash
    node tools/migrate-clip-lifecycle.mjs "<vault>" --apply --month 2026-05 --manifest "<vault>/.migrate-clip-lifecycle.manifest.json"
-   git -C "<vault>" add -A && git -C "<vault>" commit -m "chore(luna): migrate 2026-05 clips → _evidence/ (LUNA-86)"
+   git -C "<vault>" add -A && git -C "<vault>" commit -m "chore(luna): migrate 2026-05 clips → _evidence/ (one-time lifecycle backfill)"
    # repeat for each month present in the dry-run plan
    ```
    The manifest accumulates across month-batches (it is the single authoritative
@@ -196,7 +196,7 @@ interrupted run is still fully rollback-able.
    record every `(file, oldForm → newForm)` edit in the manifest.
 4. `mv` the clip → `Clippings/_evidence/<basename>.md`.
 5. Literal-rewrite each recorded inbound edit (including the clip's own
-   self-ref at its NEW path — LUNA-60), then **verify** the six forms return
+   self-ref at its NEW path), then **verify** the six forms return
    zero stale matches across the vault. On any per-clip failure the engine
    reverts that clip's half-move and continues; a non-zero exit (4) means
    ≥1 clip failed — inspect, then re-run to retry.

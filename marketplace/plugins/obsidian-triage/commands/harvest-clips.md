@@ -8,7 +8,7 @@ argument-hint: "[vault-path] [--dry-run] [--limit N] [--firecrawl-thin] [--firec
 
 Run an autonomous HARVEST pass over the vault's `Clippings/` folder. For each clip lacking `harvested_at:`, mark it ready for the next pipeline stage (/triage-clips). Default: process every unharvested clip. With `--dry-run`: report the dispatch plan, write nothing. With `--limit N`: stop after N clips (calibration runs).
 
-This command is Stage 1 of the 4-stage clipper pipeline (HARVEST → TRIAGE → SYNTHESIZE → ARCHIVE; LUNA-3, Stage 4 added in LUNA-55). LUNA-26 pivot (2026-05-26): non-github clips rely on the LUNA-2 Web Clipper templates having captured rich body content (`## The Idea` for tweets, `## Highlights` + `## Summary` for articles, etc.) — `/harvest-clips` no longer re-fetches via external LLM skills. The original MVP's external-fetch paths (Grok via `/x-read`/`/youtube`, Perplexity via `/research-deep`/`/research`) are deferred to LUNA-27 (playwright-based crawl) for clips whose body is thin. LUNA-14 still covers fan-out / recursion / content-dedup as planned.
+This command is Stage 1 of the 4-stage clipper pipeline (HARVEST → TRIAGE → SYNTHESIZE → ARCHIVE; Stage 4 was added later). Clip-body pivot (2026-05-26, after the first calibration run): non-github clips rely on the Web Clipper templates having captured rich body content (`## The Idea` for tweets, `## Highlights` + `## Summary` for articles, etc.) — `/harvest-clips` no longer re-fetches via external LLM skills. The original MVP's external-fetch paths (Grok via `/x-read`/`/youtube`, Perplexity via `/research-deep`/`/research`) are deferred to a later playwright-based crawl for clips whose body is thin. Fan-out / recursion / content-dedup remain planned follow-up work.
 
 ### Concurrency contract (read this BEFORE every run)
 
@@ -40,7 +40,7 @@ Every per-clip outcome MUST emit exactly one line to stdout BEFORE the final sum
 - Partial: `~ <clip-filename.md> — partial (<skill>): <reason — e.g. rate_limited>, retry_count={K}, harvest_status=partial`
 - Failed: `✗ <clip-filename.md> — failed (<skill>): <reason>, retry_count={K}, harvest_status=failed`
 
-Clips flagged by the Phase 4.5 injection screen (HIMMEL-256) append ` [injection-suspect: <class1>, <class2>]` to their per-clip line (any glyph) — the suffix carries the matched pattern-class names exactly as `--scan-only` prints them. A clip whose screen could not be completed appends ` [injection-screen-error]` instead (fail-closed — Phase 4.5).
+Clips flagged by the Phase 4.5 injection screen append ` [injection-suspect: <class1>, <class2>]` to their per-clip line (any glyph) — the suffix carries the matched pattern-class names exactly as `--scan-only` prints them. A clip whose screen could not be completed appends ` [injection-screen-error]` instead (fail-closed — Phase 4.5).
 
 The final summary MUST count: `harvest-clips: N ok, M partial, K failed, S skipped. (See ✓ / ⊘ / ~ / ✗ lines above.)` Counts MUST equal the count of glyphs above. If they disagree, abort with a clear error. If F > 0 clips were flagged injection-suspect, append a second summary line listing them: `harvest-clips: F flagged injection-suspect (operator review): <clip-1.md>, <clip-2.md>, …`
 
@@ -48,11 +48,11 @@ Exit codes:
 - 0: all clips harvested or skipped successfully
 - 1: usage / input error (bad vault path, conflicting flags)
 - 2: env unusable (vault not found, lockfile contention, missing required env vars)
-- 3: refused under headless (HIMMEL-128)
+- 3: refused under headless claude (it bills apart from the subscription)
 - 4: partial run (≥1 clip landed in a **blocking** partial class below, or ≥1 failed); re-run later to retry. Deferred partials alone exit 0.
 - 5: catastrophic — abort mid-run; resume-state file written for next run
 
-### Partial classes (HIMMEL-4675) — deferred vs blocking
+### Partial classes (a media-pending partial must not block triage) — deferred vs blocking
 
 **Read on demand:** Before deciding whether a clip's outcome is deferred or blocking, and before writing the completion marker. Read `<plugin>/references/harvest-clips/partial-classes.md` (`<plugin>` is this runbook's plugin root, `marketplace/plugins/obsidian-triage`) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
@@ -62,7 +62,7 @@ Wherever `YYYY-MM-DD` or `TODAY` appears below, substitute `$(date +%Y-%m-%d)`. 
 
 ### G-6 — Pre-flight env-var + headless refusal (run FIRST)
 
-**Headless refusal (HIMMEL-128).** Before anything else:
+**Headless refusal (headless claude bills apart from the subscription).** Before anything else:
 
 ```bash
 if [ "${CLAUDECODE_HEADLESS:-0}" = "1" ] || [ "${CLAUDE_CODE_ENTRYPOINT:-}" = "cli-print" ]; then
@@ -73,7 +73,7 @@ fi
 
 Detection variable list may grow; refine during calibration cycle 1. Smoke-test in `test-harvest-clips-headless-refuse.sh`.
 
-**Env-var preflight.** Post-LUNA-26 pivot, only github URLs other than `/blob/` file URLs trigger an external skill dispatch (`obsidian-triage:luna-ingest`), which uses `gh api` and requires `gh auth status` to be ok. All other types use the **clip-body path** (described in Phase 4) and need no env vars.
+**Env-var preflight.** Since the clip-body pivot, only github URLs other than `/blob/` file URLs trigger an external skill dispatch (`obsidian-triage:luna-ingest`), which uses `gh api` and requires `gh auth status` to be ok. All other types use the **clip-body path** (described in Phase 4) and need no env vars.
 
 | `type:` + URL pattern | Required env var | Skill that needs it |
 |-----------------------|------------------|---------------------|
@@ -85,11 +85,11 @@ If `gh auth status` is non-zero AND the batch contains any non-`/blob/` github U
 
 `--firecrawl-thin` turns the escalation on; `FIRECRAWL_API_KEY` is needed only for the `firecrawl` rung (keyless Jina Reader works without it; the batch tool exits 2 only when no backend in `HARVEST_SCRAPE_BACKEND` is usable). Default runs never need it.
 
-**Scrape backend order (HIMMEL-4335).** The thin-body escalation tries backends in the order set by `HARVEST_SCRAPE_BACKEND` (comma list of `local-headless`, `jina`, `firecrawl`; default `local-headless,jina,firecrawl`). `local-headless` is a local Scrapling stealth-browser fetch (HIMMEL-4344; reads per-site cookies from the `~/.luna/cookies/*.txt` jar, override `HARVEST_COOKIE_DIR`, but never sends the `instagram.com` / `x.com` / `twitter.com` / `youtube.com` / `reddit.com` / `redd.it` jar cookies, HIMMEL-4709; optional dep pinned in `tools/requirements-scrapling.txt`, silently skipped to jina when scrapling is not installed in the python that runs the harvest; navigations, redirect hops (via CDP `Fetch`), same-process subresources and page websockets are checked against the private-host rule before the browser resolves or connects, and aborted when private; service workers and popups are blocked, and a guard that fails to install leaves the browser denying everything. NOT guarded, tracked in HIMMEL-4496: cross-site iframes (separate CDP targets), dedicated and shared workers including worker websockets, and DNS rebinding (the check is hostname-only), so this is not a complete SSRF boundary); `jina` is Jina Reader (`https://r.jina.ai/<url>`, no key, no credits); `firecrawl` is the capped last rung (`--firecrawl-budget`, dropped from the chain when `FIRECRAWL_API_KEY` is unset). A backend that fails falls through to the next. The skip-host list and the G-1 privacy gate run before any backend. The clip's `harvest_skill` records which backend served it. Every Firecrawl call (harvest, follow-web, fetch-health) appends one line (`v, ts, host, source, kind, call_site, endpoint, credits, ok`; never the key, URL query or page body) to `~/.himmel/state/firecrawl-ledger.jsonl` (override `HIMMEL_FIRECRAWL_LEDGER`).
+**Scrape backend order (Firecrawl's free quota is small, so it runs last).** The thin-body escalation tries backends in the order set by `HARVEST_SCRAPE_BACKEND` (comma list of `local-headless`, `jina`, `firecrawl`; default `local-headless,jina,firecrawl`). `local-headless` is a local Scrapling stealth-browser fetch (reads per-site cookies from the `~/.luna/cookies/*.txt` jar, override `HARVEST_COOKIE_DIR`, but never sends the `instagram.com` / `x.com` / `twitter.com` / `youtube.com` / `reddit.com` / `redd.it` jar cookies, since every cookie-backed media path was removed; optional dep pinned in `tools/requirements-scrapling.txt`, silently skipped to jina when scrapling is not installed in the python that runs the harvest; navigations, redirect hops (via CDP `Fetch`), same-process subresources and page websockets are checked against the private-host rule before the browser resolves or connects, and aborted when private; service workers and popups are blocked, and a guard that fails to install leaves the browser denying everything. NOT guarded, tracked as open follow-up work: cross-site iframes (separate CDP targets), dedicated and shared workers including worker websockets, and DNS rebinding (the check is hostname-only), so this is not a complete SSRF boundary); `jina` is Jina Reader (`https://r.jina.ai/<url>`, no key, no credits); `firecrawl` is the capped last rung (`--firecrawl-budget`, dropped from the chain when `FIRECRAWL_API_KEY` is unset). A backend that fails falls through to the next. The skip-host list and the G-1 privacy gate run before any backend. The clip's `harvest_skill` records which backend served it. Every Firecrawl call (harvest, follow-web, fetch-health) appends one line (`v, ts, host, source, kind, call_site, endpoint, credits, ok`; never the key, URL query or page body) to `~/.himmel/state/firecrawl-ledger.jsonl` (override `HIMMEL_FIRECRAWL_LEDGER`).
 
 
-**Firecrawl unavailable (HIMMEL-4371).** A 402, a quota or insufficient-credits body, or a 429 from Firecrawl marks it unavailable for the rest of the run (one stderr line, no further calls; a 429 claims no reset date, a 402 reads `billingPeriodEnd` from the free credit-usage endpoint). Items that needed it are parked as `deferred: firecrawl-unavailable` in `~/.himmel/state/firecrawl-parked.jsonl` (override `HIMMEL_FIRECRAWL_PARKED`; enveloped, registered in `scripts/observability/ledgers.json`; follow-web parks a query hash, never the query). The next run retries parked clips first, after one free credit-usage probe (0 remaining: zero scrape calls and the items stay parked; probe failure: one attempt). Any backend's success resolves a parked clip; a parked clip whose file is gone resolves as `gone`. Doctor check C51 WARNs while items are parked, and `doctor-cadence` DMs once for a new WARN.
-**Scrape routing and caps (HIMMEL-4361).** Every backend name (env, routing file, chain) resolves through one table, `BACKEND_REGISTRY` in `tools/harvest-clip-body-batch.py` (name, client class, `needs_key`, cap, `egress_host`); an unknown name is an error naming the valid set.
+**Firecrawl unavailable (an exhausted credit balance must not fail silently).** A 402, a quota or insufficient-credits body, or a 429 from Firecrawl marks it unavailable for the rest of the run (one stderr line, no further calls; a 429 claims no reset date, a 402 reads `billingPeriodEnd` from the free credit-usage endpoint). Items that needed it are parked as `deferred: firecrawl-unavailable` in `~/.himmel/state/firecrawl-parked.jsonl` (override `HIMMEL_FIRECRAWL_PARKED`; enveloped, registered in `scripts/observability/ledgers.json`; follow-web parks a query hash, never the query). The next run retries parked clips first, after one free credit-usage probe (0 remaining: zero scrape calls and the items stay parked; probe failure: one attempt). Any backend's success resolves a parked clip; a parked clip whose file is gone resolves as `gone`. Doctor check C51 WARNs while items are parked, and `doctor-cadence` DMs once for a new WARN.
+**Scrape routing and caps.** Every backend name (env, routing file, chain) resolves through one table, `BACKEND_REGISTRY` in `tools/harvest-clip-body-batch.py` (name, client class, `needs_key`, cap, `egress_host`); an unknown name is an error naming the valid set.
 
 - **Per-site routing, `<vault>/.harvest-backends`.** One line per rule: `<url-glob> skip=a,b` (drop those backends for matching URLs) or `<url-glob> only=a` (restrict to those). `#` starts a comment. Globs are matched exactly like `.harvest-deny` (same canonicalisation and `*` / `**`). **The first matching line wins**, so put the narrow rules first. A missing file is no constraint. An unreadable file, a malformed line or an unknown backend name fails closed: nothing is scraped. A starter template is `tools/templates/harvest-backends.template`.
 - **Precedence, highest first:** the odd-host refusal and `.harvest-deny` (a denied URL reaches no backend; `.harvest-allow` overrides a deny as before), then the `HARVEST_SCRAPE_DENY` kill switch, then `.harvest-backends`, then the `HARVEST_SCRAPE_BACKEND` order. A routing line can never re-add a killed backend or one with no key.
@@ -185,13 +185,13 @@ If denied:
 
 **Phase 3 — URL canonicalization + dedup check.**
 
-Apply canonicalization rules per domain (LUNA-11 will land the shared `lib/url-canonical.sh` — for MVP, inline these rules in the runbook):
+Apply canonicalization rules per domain (a shared `lib/url-canonical.sh` is planned — for MVP, inline these rules in the runbook):
 
 | Domain | Rule |
 |--------|------|
 | `x.com` / `twitter.com` / `mobile.twitter.com` | host → `x.com`; keep path through `/status/<id>`; drop query string. |
 | `youtube.com` / `youtu.be` | normalize to `youtube.com/watch?v=<id>`; drop other query params. |
-| `github.com` | strip `/tree/<branch>` and trailing `/`; **keep** `/blob/<branch>/<path>` (one file is a distinct document from the repo root — HIMMEL-1735). Lowercase owner/repo. |
+| `github.com` | strip `/tree/<branch>` and trailing `/`; **keep** `/blob/<branch>/<path>` (one file is a distinct document from the repo root, so a file clip must not dedup away). Lowercase owner/repo. |
 | `reddit.com` / `old.reddit.com` / `new.reddit.com` / other subdomain variants | host -> `www.reddit.com`; drop query/fragment + trailing slash; lowercase the `/r/<sub>` segment. `redd.it` short links are not resolved here. |
 | Generic article | drop `utm_*`, `fbclid`, `gclid`, `ref=`, `source=`, `mc_cid`, `mc_eid`. |
 | `medium.com` | drop `?source=`. |
@@ -200,11 +200,11 @@ Record `harvest_url_canonical: <canonical>` in frontmatter (Phase 5 placement).
 
 **URL-canonical dedup check.** Scan other clips for the same `harvest_url_canonical:` value. If found AND the other clip has `harvest_status: ok`: skip with `⊘ <clip> — skipped (url-dedup): canonical URL matches [[Clippings/<other-clip>]]`. Frontmatter: `harvest_status: dedup`, `harvest_dedup_target: [[Clippings/<other-clip>]]`. State-file: `harvest_status: dedup`.
 
-**Phase 4 — Dispatch decision (post-LUNA-26 pivot).**
+**Phase 4 — Dispatch decision (after the clip-body pivot: no external re-fetch).**
 
 **Read on demand:** For every clip, after the Phase 3 dedup check. Read `<plugin>/references/harvest-clips/phase-4-dispatch.md` (`<plugin>` is this runbook's plugin root, `marketplace/plugins/obsidian-triage`) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
-**Phase 4.5 — Injection screen (HIMMEL-256, flag-only — both paths, pre-harvest content only; luna-ingest output is NOT screened by this phase — see the github-ingest re-screen below).**
+**Phase 4.5 — Injection screen (flag-only — both paths, pre-harvest content only; luna-ingest output is NOT screened by this phase — see the github-ingest re-screen below).**
 
 **Read on demand:** For every clip, on both dispatch paths, after Phase 4 and before Phase 5 writes anything. Read `<plugin>/references/harvest-clips/phase-4-5-injection-screen.md` (`<plugin>` is this runbook's plugin root, `marketplace/plugins/obsidian-triage`) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
@@ -231,12 +231,12 @@ trap - EXIT INT TERM
 
 The same fallback applies to G-2's `<vault>/.harvest.lock` (line above): use `mkdir` to create the lock dir + a sidecar file inside it carrying PID + ISO timestamp + batch hash. Check liveness via `kill -0 <pid>` (msys supports it).
 
-**Phase 7 — Fan-out scan (LUNA-10 MVP: LOG ONLY, do NOT dispatch).**
+**Phase 7 — Fan-out scan (MVP: LOG ONLY, do NOT dispatch).**
 
 Scan the harvested body for secondary github URLs. For each unique secondary URL:
 - Log the URL count in the `✓` line (`{Mr} fan-out refs`).
-- Do NOT dispatch — fan-out crawl ships in LUNA-14.
-- Append URLs to `<vault>/.harvest-run-fanout-candidates-$YYYY-MM-DD.txt` for LUNA-14 to pick up.
+- Do NOT dispatch — fan-out crawl is planned follow-up work.
+- Append URLs to `<vault>/.harvest-run-fanout-candidates-$YYYY-MM-DD.txt` for that future fan-out crawl to pick up.
 
 ### Tracking
 
@@ -245,21 +245,21 @@ After the run, append one line to `<vault>/log.md` (if it exists):
 ## [$TODAY] harvest-clips | N harvested ok, M partial, K failed, S skipped. State file: .harvest-run-state-$TODAY.jsonl
 ```
 
-### G-8 — Completion marker (HIMMEL-1137) — write LAST, clean runs only
+### G-8 — Completion marker (no stage runs on a dead harvest) — write LAST, clean runs only
 
 **Read on demand:** Last, once the per-clip loop is finished, on clean runs only. Read `<plugin>/references/harvest-clips/g-8-completion-marker.md` (`<plugin>` is this runbook's plugin root, `marketplace/plugins/obsidian-triage`) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ### Notes for the agent
 
-- **Skill invocations**: use the `Skill` tool. Do NOT shell out via `Bash: claude -p`. HIMMEL-128 + Max-X5 billing.
+- **Skill invocations**: use the `Skill` tool. Do NOT shell out via `Bash: claude -p`: headless claude bills apart from the subscription.
 - **All writes preserve the original clip body.** Phase 5 G-3 invariant enforces this — never overwrite operator hand-edits in `## Why I Saved This` / `## How I Can Use This` / etc.
-- **MVP scope:** no fan-out, no recursion, no content-dedup. Those ship in LUNA-14.
+- **MVP scope:** no fan-out, no recursion, no content-dedup. Those are planned follow-up work.
 - **No promotion-target writing.** This command does NOT move clips out of `Clippings/`. The TRIAGE pass (`/triage-clips`) handles promotion candidates separately.
 - **This command is autonomous by design.** Do NOT ask the user for confirmation between phases. The design contract is "runs end-to-end and reports."
 
 ### Failure modes (calibration cycle 1 will refine)
 
-- Skill returns empty / too-short / structurally-garbage output → `harvest_status: needs_enrichment` (LUNA-14 rung ladder will pick this up).
+- Skill returns empty / too-short / structurally-garbage output → `harvest_status: needs_enrichment` (a later enrichment rung will pick this up).
 - Skill rate-limited mid-batch → `harvest_status: partial`, run exits rc=4.
 - Stale-read mid-pass → skip clip, state-file `partial`, continue.
 - All clips refused by G-1 → suggests denylist too aggressive; halt + review.

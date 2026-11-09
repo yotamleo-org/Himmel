@@ -1,4 +1,4 @@
-<!-- Moved verbatim out of harvest-clips.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
+<!-- Moved verbatim out of harvest-clips.md so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
 
 **Phase 5 — G-3 single-section-add invariant + write (atomic sequence).**
 

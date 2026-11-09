@@ -6,9 +6,9 @@ argument-hint: "[vault-path] [--dry-run] [--limit N]"
 
 ## Your task
 
-Run an autonomous ARCHIVE pass over the vault's `Clippings/` folder. The **inbox now drains at TRIAGE** (LUNA-84 moves processed clips to `Clippings/_evidence/`); with the 3-state model, graduation to `Clippings/_done/<YYYY-MM>/` is now **optional terminal housekeeping / de-clutter — not the inbox drainer**. A default run graduates **~nothing** after Phase 1: eligible clips have already been moved to `_evidence/` (excluded from archive's scans by LUNA-83), so few top-level stragglers remain. Archive **never reads / never graduates** `Clippings/_evidence/` — the pool is owned by triage and synthesize. Also (re)generate `Clippings/_deferred.md` — the running list of work the pipeline logged but deliberately did not do.
+Run an autonomous ARCHIVE pass over the vault's `Clippings/` folder. The **inbox now drains at TRIAGE** (triage moves processed clips to `Clippings/_evidence/`); with the 3-state model, graduation to `Clippings/_done/<YYYY-MM>/` is now **optional terminal housekeeping / de-clutter — not the inbox drainer**. A default run graduates **~nothing** after Phase 1: eligible clips have already been moved to `_evidence/` (excluded from archive's scans by the evidence-pool scan guards), so few top-level stragglers remain. Archive **never reads / never graduates** `Clippings/_evidence/` — the pool is owned by triage and synthesize. Also (re)generate `Clippings/_deferred.md` — the running list of work the pipeline logged but deliberately did not do.
 
-This is **Stage 4** of the clipper pipeline (HARVEST → TRIAGE → SYNTHESIZE → **ARCHIVE**; LUNA-55). Run it AFTER `/synthesize-clips`, because the graduation gate (for any stragglers still at the top-level inbox) depends on synthesis pages existing and wikilinking their evidence clips.
+This is **Stage 4** of the clipper pipeline (HARVEST → TRIAGE → SYNTHESIZE → **ARCHIVE**). Run it AFTER `/synthesize-clips`, because the graduation gate (for any stragglers still at the top-level inbox) depends on synthesis pages existing and wikilinking their evidence clips.
 
 **Deferred Phase-2 opt-in:** when `promoted_to:` is set on a fully-absorbed evidence clip by Phase-2 code, a future `--graduate-absorbed` flag will graduate it from `_evidence/` to `_done/`; that path is not built in Phase 1 (no clip carries `promoted_to:` yet).
 
@@ -46,13 +46,13 @@ Every per-clip outcome MUST emit exactly one line to stdout BEFORE the final sum
 The final summary is two lines (three when any clip is stuck):
 1. `archive-clips: N graduated, D deduped, S skipped, F failed. (See ✓ / ⊘ / ✗ lines above.)` — `N`/`D`/`S`/`F` MUST equal the count of `✓` / `⊘`(dedup) / `⊘`(other) / `✗` per-clip glyph lines respectively. If they disagree, abort with a clear error.
 2. `archive-clips: _deferred.md written with <X> fan-out, <Y> tail-skipped, <Z> safety entries.` — `X`/`Y`/`Z` are the entry counts written into `_deferred.md` in Phase 5 (sourced from external records, NOT from per-clip glyph lines), so this line is NOT cross-checked against the glyphs.
-3. Only when ≥1 clip was logged `(stuck)`: `archive-clips: <T> stuck in inbox (structurally ineligible, will not clear by re-running) — see _deferred.md § Stuck in inbox.` — `T` MUST equal the count of `(stuck)` lines. This keeps a quiet `0 graduated, S skipped, 0 failed` from reading as a healthy no-op while clips are stuck (HIMMEL-1713).
+3. Only when ≥1 clip was logged `(stuck)`: `archive-clips: <T> stuck in inbox (structurally ineligible, will not clear by re-running) — see _deferred.md § Stuck in inbox.` — `T` MUST equal the count of `(stuck)` lines. This keeps a quiet `0 graduated, S skipped, 0 failed` from reading as a healthy no-op while clips are stuck.
 
 Exit codes:
 - 0: all eligible clips graduated or correctly skipped; `_deferred.md` written
 - 1: usage / input error (bad vault path, conflicting flags)
 - 2: env unusable (vault not found, lock contention)
-- 3: refused under headless (HIMMEL-128)
+- 3: refused under headless claude (it bills apart from the subscription)
 - 4: partial — ≥1 clip failed mid-move and was reverted; re-run to retry
 - 5: catastrophic — aborted mid-run; state file written for next run
 
@@ -64,7 +64,7 @@ Wherever `YYYY-MM-DD` or `TODAY` appears, substitute `$(date +%Y-%m-%d)`. Captur
 
 ```bash
 if [ "${CLAUDECODE_HEADLESS:-0}" = "1" ] || [ "${CLAUDE_CODE_ENTRYPOINT:-}" = "cli-print" ]; then
-    echo "ERR archive-clips: refusing to run under headless claude (HIMMEL-128 / Max-X5 billing split)." >&2
+    echo "ERR archive-clips: refusing to run under headless claude (subscription billing split)." >&2
     exit 3
 fi
 ```
@@ -89,7 +89,7 @@ Same logic as `/triage-clips`:
 
 All `find`/`grep`/`mv` use forward-slash paths; quote every path containing spaces. Verify `<vault>/Clippings/` exists; else exit 0 with `archive-clips: no Clippings/ — nothing to archive`.
 
-### G-8 — Harvest-completion gate (HIMMEL-1137) — run FIRST after vault resolution
+### G-8 — Harvest-completion gate (no stage runs on a dead harvest) — run FIRST after vault resolution
 
 archive-clips graduates clips whose eligibility ultimately traces back to a completed harvest. A hard-killed `/harvest-clips` mid-run leaves that state partial — graduating over it can move clips that were never cleanly processed. Before scanning:
 
@@ -103,7 +103,7 @@ These names under `Clippings/` are NEVER source clips and MUST be excluded from 
 - `_synthesis/` — `/synthesize-clips` output (proposal pages).
 - `_done/` — this command's archive destination (already-graduated clips).
 - `_deferred.md` — this command's deferred-work log.
-- `_evidence/` — the reviewed-evidence pool (LUNA-83): `Clippings/_evidence/` and its `_rejected/` subfolder hold clips that have been manually reviewed and promoted; excluded from inbox/eligibility scans. Archive **never reads / never graduates** `Clippings/_evidence/` (belt-and-suspenders: the pool is owned by triage/synthesize). (`/synthesize-clips` intentionally keeps visibility into `_evidence/`.)
+- `_evidence/` — the reviewed-evidence pool: `Clippings/_evidence/` and its `_rejected/` subfolder hold clips that have been manually reviewed and promoted; excluded from inbox/eligibility scans. Archive **never reads / never graduates** `Clippings/_evidence/` (belt-and-suspenders: the pool is owned by triage/synthesize). (`/synthesize-clips` intentionally keeps visibility into `_evidence/`.)
 
 The canonical clip scan (used by harvest/triage/archive) is:
 ```bash
@@ -136,7 +136,7 @@ Skip + log `⊘ … (not-eligible): <which condition failed>` for any clip missi
 
 If zero eligible: still run Phase 5, report `archive-clips: 0 graduated …`.
 
-**Mid-pipeline exclusion (HIMMEL-1713).** A top-level clip whose frontmatter
+**Mid-pipeline exclusion (so a clip owing Phase 8 cannot graduate around it).** A top-level clip whose frontmatter
 has `evidence_pending: true` is mid-pipeline — it owes `/triage-clips` a
 Phase-8 completion, and that command's Phase-8 debt drain owns it.
 
@@ -157,7 +157,7 @@ silently drop its Duplicates entry — the two intents must never share a
 clip). Log `⊘ … (stuck): evidence_pending — owes Phase 8, triage owns it`
 and record it for Phase 5's Stuck-in-inbox list.
 
-**Stuck-in-inbox tracking (HIMMEL-1713).** Under the 3-state model (LUNA-83/84)
+**Stuck-in-inbox tracking.** Under the 3-state model (the evidence pool, filled by triage)
 every `processed: true` clip should already be living in `Clippings/_evidence/`
 — a top-level survivor of THIS scan that satisfies conditions 1+2 but fails
 ONLY condition 3 (`harvested_at` + `processed: true`, not synthesis-cited) is
@@ -204,15 +204,15 @@ For each non-deduped eligible clip, in order. The sequence is atomic — on ANY 
      "<vault>" --include='*.md' 2>/dev/null
    ```
    Listing explicit boundary forms is what stops a `<OLD>=foo` move from touching `[[Clippings/foobar]]` — `foobar` matches none of them. The plain `]]` form never matches `.md]]` (the boundary char after `<OLD>` differs), so the six do not collide. Count total occurrences as `{L}`.
-   **The `.md` collision is SYMMETRIC — check both directions, refuse, don't guess.** `[[Clippings/foo.md]]` is simultaneously the plain link of a clip literally named `foo.md` (file `foo.md.md`) and the `.md`-suffixed form of a clip named `foo`. Whichever of the two you are processing, rewriting that link may retarget the OTHER one's citation. Both checks below verify the ACTUAL colliding sibling exists (HIMMEL-1713 codex-2) — `<OLD>` merely ending in `.md` is not itself ambiguous when no `foo` sibling is present to collide with, and blocking on the string shape alone would strand every legitimate `foo.md.md` clip with no colliding sibling forever:
+   **The `.md` collision is SYMMETRIC — check both directions, refuse, don't guess.** `[[Clippings/foo.md]]` is simultaneously the plain link of a clip literally named `foo.md` (file `foo.md.md`) and the `.md`-suffixed form of a clip named `foo`. Whichever of the two you are processing, rewriting that link may retarget the OTHER one's citation. Both checks below verify the ACTUAL colliding sibling exists — `<OLD>` merely ending in `.md` is not itself ambiguous when no `foo` sibling is present to collide with, and blocking on the string shape alone would strand every legitimate `foo.md.md` clip with no colliding sibling forever:
    - `<OLD>` ends in `.md` AND a sibling clip named `<OLD>` with that trailing `.md` stripped exists — i.e. the file `<vault>/Clippings/<OLD minus trailing .md>.md` is present (this clip is the `foo.md` one, and the sibling `foo` owns the colliding link), **or**
    - a sibling clip named `<OLD>.md` exists — i.e. the file `<vault>/Clippings/<OLD>.md.md` is present (this clip is the `foo` one, and the sibling owns the colliding link).
 
    In either case skip the clip and log `⊘ … (ambiguous-id): [[Clippings/<OLD>.md]] is claimed by two clips; six-form rewrite cannot disambiguate — rename one of them`. It stays in the inbox and is reported, which is the correct outcome for an identifier the scheme genuinely cannot resolve. **The same guard is required in `/triage-clips` Phase 8**, which uses the identical six-form set — a rule enforced in only one of the two movers leaves the collision fully reachable through the other.
 
-   **Why six and not three (HIMMEL-1882).** Phase 1 normalises the `.md` suffix out of the citation index, so a clip cited ONLY as `[[Clippings/foo.md]]` is eligible to graduate. A three-form enumerate+rewrite+verify never looks at that citation: the clip moves to `_done/`, the verify returns zero because it searched for links that were never there, and the synthesis citation is left silently dangling. Enumerate, rewrite and verify must all use the SAME six forms, or "verified clean" means only "clean of the forms we bothered to look for".
+   **Why six and not three (a `.md`-cited link once dangled after graduation).** Phase 1 normalises the `.md` suffix out of the citation index, so a clip cited ONLY as `[[Clippings/foo.md]]` is eligible to graduate. A three-form enumerate+rewrite+verify never looks at that citation: the clip moves to `_done/`, the verify returns zero because it searched for links that were never there, and the synthesis citation is left silently dangling. Enumerate, rewrite and verify must all use the SAME six forms, or "verified clean" means only "clean of the forms we bothered to look for".
    **Basename-only links** `[[<OLD-basename>]]` (WITHOUT the `Clippings/` prefix) are deliberately NOT in this set and are NOT rewritten — Obsidian resolves them by the clip's (unique, timestamped) basename, so they keep resolving after the move. See the basename note in Phase 1.
-   **The clip's OWN body is among the step-3 hits (LUNA-60).** `/triage-clips` Phase 6 appends a `## Promotion candidate` section to every clip it marks `processed: true` (it skips clips of unknown `type:` — those never get the section, but they also never reach this command since they lack `processed: true`). That section's bi-temporal-anchor bullet contains a literal backticked wikilink — `` `derived_from: [[Clippings/<OLD>]]` `` — as example text for a future promoted note (it is NOT a frontmatter field on the clip). The step-3 fixed-string grep matches that `[[Clippings/<OLD>]]` inside the clip's own body, so the clip returns as one of its own inbound hits. This self-ref must be rewritten too — but at the clip's NEW location after the move, NOT its old inbox path (which no longer exists). See step 5.
+   **The clip's OWN body is among the step-3 hits.** `/triage-clips` Phase 6 appends a `## Promotion candidate` section to every clip it marks `processed: true` (it skips clips of unknown `type:` — those never get the section, but they also never reach this command since they lack `processed: true`). That section's bi-temporal-anchor bullet contains a literal backticked wikilink — `` `derived_from: [[Clippings/<OLD>]]` `` — as example text for a future promoted note (it is NOT a frontmatter field on the clip). The step-3 fixed-string grep matches that `[[Clippings/<OLD>]]` inside the clip's own body, so the clip returns as one of its own inbound hits. This self-ref must be rewritten too — but at the clip's NEW location after the move, NOT its old inbox path (which no longer exists). See step 5.
 4. **Move the file** (`mv` via Bash, NEVER delete+recreate): `mv "<vault>/Clippings/<OLD>.md" "<dest>.md"`.
 5. **Rewrite inbound links — LITERAL replacement only.** New identifier `<NEW>` = `_done/<YYYY-MM>/<basename>`. In each note from step 3, replace these six EXACT literal strings. Plain forms map to the no-`.md` target; `.md` forms keep the `.md`. Use the `Edit` tool with literal old/new strings, or a fixed-string replace such as bash `${content//"<literal-old>"/"<literal-new>"}`. **Do NOT use `sed`/`sed -E` or any regex tool — clip names break it (see step 3).**
    - `[[Clippings/<OLD>]]`     →  `[[Clippings/<NEW>]]`
@@ -222,7 +222,7 @@ For each non-deduped eligible clip, in order. The sequence is atomic — on ANY 
    - `[[Clippings/<OLD>.md|`   →  `[[Clippings/<NEW>.md|`
    - `[[Clippings/<OLD>.md#`   →  `[[Clippings/<NEW>.md#`
    Each replacement preserves whatever `|alias` / `#heading` / `]]` tail followed the boundary, and never touches a prefix-sibling clip.
-   **Self-ref remap (LUNA-60).** The clip's OWN file is one of the step-3 notes (its Promotion-candidate bullet's backticked `[[Clippings/<OLD>]]`; see step 3), but step 4 just moved it from `<vault>/Clippings/<OLD>.md` to `<dest>.md`. Apply the SAME six literal replacements to the moved clip at its **new** path `<dest>.md` — the backticked `[[Clippings/<OLD>]]` becomes `[[Clippings/<NEW>]]`, a valid self-link into `_done/`. Do NOT try to edit the clip at its old inbox path (gone). This is why the whole-vault verify in step 6 must see zero `[[Clippings/<OLD>]]` survivors: leaving the moved clip's own body un-remapped is a guaranteed false-positive revert.
+   **Self-ref remap.** The clip's OWN file is one of the step-3 notes (its Promotion-candidate bullet's backticked `[[Clippings/<OLD>]]`; see step 3), but step 4 just moved it from `<vault>/Clippings/<OLD>.md` to `<dest>.md`. Apply the SAME six literal replacements to the moved clip at its **new** path `<dest>.md` — the backticked `[[Clippings/<OLD>]]` becomes `[[Clippings/<NEW>]]`, a valid self-link into `_done/`. Do NOT try to edit the clip at its old inbox path (gone). This is why the whole-vault verify in step 6 must see zero `[[Clippings/<OLD>]]` survivors: leaving the moved clip's own body un-remapped is a guaranteed false-positive revert.
 6. **Verify (LITERAL, boundary-complete).** Re-scan with the SAME six fixed-string forms:
    ```bash
    grep -rlF \
@@ -233,17 +233,17 @@ For each non-deduped eligible clip, in order. The sequence is atomic — on ANY 
    MUST return zero matches. Because step 6 uses the identical six forms as step 5, it cannot report clean while an alias, heading, or `.md`-suffixed occurrence survives. If any remain, REVERT (move the file back + undo the link edits) and log `✗ … failed (link-rewrite): <N> stale links remained; reverted`.
 7. **Record** in the state file (Phase 6).
 
-The moved clip's body is unchanged except its path AND the self-ref remap in step 5 (its backticked `[[Clippings/<OLD>]]` → `[[Clippings/<NEW>]]` rewrite, LUNA-60). Do NOT add any OTHER markers inside it — graduation is recorded by location + the state file.
+The moved clip's body is unchanged except its path AND the self-ref remap in step 5 (its backticked `[[Clippings/<OLD>]]` → `[[Clippings/<NEW>]]` rewrite). Do NOT add any OTHER markers inside it — graduation is recorded by location + the state file.
 
 ### Phase 5 — (Re)generate `Clippings/_deferred.md`
 
 Overwrite `<vault>/Clippings/_deferred.md` (single living page; it is excluded from all clip scans). Sources:
-- **Fan-out refs (LUNA-14):** union the lines of `<vault>/.harvest-run-fanout-candidates-*.txt` (sort -u; strip malformed entries), then drop any ref already ingested: derive `<repo-slug>` per the `luna-ingest` skill's Phase 4 rule (lowercase, hyphens, max 60 chars — e.g. `kepano/obsidian-skills` → `kepano-obsidian-skills`; replace any non-`[a-z0-9-]` with `-`, collapse repeats, strip leading/trailing `-`) and omit the ref when `<vault>/30-Resources/Tech/<repo-slug>.md` already exists (HIMMEL-3043 — an already-ingested repo must not keep reappearing in the backlog).
+- **Fan-out refs:** union the lines of `<vault>/.harvest-run-fanout-candidates-*.txt` (sort -u; strip malformed entries), then drop any ref already ingested: derive `<repo-slug>` per the `luna-ingest` skill's Phase 4 rule (lowercase, hyphens, max 60 chars — e.g. `kepano/obsidian-skills` → `kepano-obsidian-skills`; replace any non-`[a-z0-9-]` with `-`, collapse repeats, strip leading/trailing `-`) and omit the ref when `<vault>/30-Resources/Tech/<repo-slug>.md` already exists (an already-ingested repo must not keep reappearing in the backlog).
 - **Tail-skipped refs:** grep `30-Resources/Tech/*.md` for `Tail-skipped: [1-9]` audit-log rows; list `<repo-slug> — <N> refs beyond --limit`.
 - **Safety-flagged:** clips/Tech notes with non-blank `safety_flag:` and their resolution (refused vs operator-allowed).
 - **Duplicates:** the dedup-skips recorded in Phase 3.
-- **Stuck in inbox (HIMMEL-1713):** the Phase 2 stuck-in-inbox list — every `evidence_pending: true` top-level clip (mid-pipeline exclusion), plus top-level clips with `harvested_at` + `processed: true` that are NOT synthesis-cited (condition 3 only). For each, render its `triaged_at` date, days-stuck (`TODAY` minus `triaged_at`), its `ig_media_pending` value (`true` = genuinely still waiting on `/ig-media-enrich`), and its `evidence_pending` value (`true` = recorded debt — `/triage-clips`' Phase-8 debt drain sweeps it on the next run; if it is STILL listed here after that, the drain itself is failing and needs operator attention, not another silent skip; `absent` = a legacy pre-marker clip that needs a manual Phase 8). When the list is empty, render `_(none)_`, matching the Duplicates section.
-- **Enricher gaps (HIMMEL-799):** thin clips whose host has no dedicated enricher, flagged `harvest_enricher_gap: <host>` by `/harvest-clips` Phase 4. Roll them up by host (count desc) so the set of enrichers still to build is visible. Exact rendering (matches the harvest tool's `harvest_enricher_gap:` writes; omit the section entirely when zero):
+- **Stuck in inbox:** the Phase 2 stuck-in-inbox list — every `evidence_pending: true` top-level clip (mid-pipeline exclusion), plus top-level clips with `harvested_at` + `processed: true` that are NOT synthesis-cited (condition 3 only). For each, render its `triaged_at` date, days-stuck (`TODAY` minus `triaged_at`), its `ig_media_pending` value (`true` = genuinely still waiting on `/ig-media-enrich`), and its `evidence_pending` value (`true` = recorded debt — `/triage-clips`' Phase-8 debt drain sweeps it on the next run; if it is STILL listed here after that, the drain itself is failing and needs operator attention, not another silent skip; `absent` = a legacy pre-marker clip that needs a manual Phase 8). When the list is empty, render `_(none)_`, matching the Duplicates section.
+- **Enricher gaps:** thin clips whose host has no dedicated enricher, flagged `harvest_enricher_gap: <host>` by `/harvest-clips` Phase 4. Roll them up by host (count desc) so the set of enrichers still to build is visible. Exact rendering (matches the harvest tool's `harvest_enricher_gap:` writes; omit the section entirely when zero):
   ```bash
   grep -rhoE '^harvest_enricher_gap:[[:space:]]*\S.*' "<vault>/Clippings" 2>/dev/null \
     | sed -E 's/^harvest_enricher_gap:[[:space:]]*//; s/^"//; s/"$//' \
@@ -263,7 +263,7 @@ generated_by: /archive-clips
 
 > Auto-generated by `/archive-clips`. Each entry is work the pipeline logged but did not do. Excluded from all clip scans.
 
-## Fan-out refs (LUNA-14 — discovered in READMEs, not crawled)
+## Fan-out refs (discovered in READMEs, not crawled)
 - [ ] https://github.com/<owner>/<repo>
 
 ## Tail-skipped refs (luna-ingest --limit cap)
@@ -275,7 +275,7 @@ generated_by: /archive-clips
 ## Duplicates (declined graduation — operator review)
 - [[Clippings/<dup>]] — canonical URL matches [[Clippings/_done/<…>]]
 
-## Stuck in inbox (processed, never reached _evidence/ — HIMMEL-1713)
+## Stuck in inbox (processed, never reached _evidence/)
 - [[Clippings/<clip>]] — processed <triaged_at>, <N>d stuck; ig_media_pending=<true|cleared>, evidence_pending=<true|absent>
 
 ## Enricher gaps
@@ -294,7 +294,7 @@ Lock the append (atomic-mkdir, same as G-2). Then append to `<vault>/log.md` (if
 ## [$TODAY] archive-clips | N graduated → _done/, D deduped, S skipped, F failed. _deferred.md regenerated.
 ```
 
-### Update hot.md (HIMMEL-254)
+### Update hot.md (the Tier-2 hot cache)
 
 After Phase 6, rewrite `<vault>/hot.md` (the Tier-2 hot cache — see the vault `_CLAUDE.md` "Active Context" section): **overwrite the whole file** (never append; log.md is the history) with refreshed Last Updated / Key Recent Facts / Recent Changes / Active Threads reflecting this run. Keep it under ~500 words; keep frontmatter `type: meta`, `ai-first: true`, and set `updated: $TODAY`. Skip when `DRY_RUN=1` or `hot.md` does not exist.
 
@@ -303,5 +303,5 @@ After Phase 6, rewrite `<vault>/hot.md` (the Tier-2 hot cache — see the vault 
 - This command is autonomous — do NOT ask for confirmation between phases.
 - The ONLY destructive op is `mv` (relocate); never `rm` a clip. Reverting a failed graduation means moving the file back + undoing link edits.
 - Link-rewrite is the risk surface — always re-verify zero stale `[[Clippings/<OLD>]]` links remain before declaring a clip graduated; revert otherwise.
-- No `claude -p` / `--print` / `--bg` / Anthropic API (HIMMEL-128). This command makes no external calls.
+- No `claude -p` / `--print` / `--bg` / Anthropic API (headless claude bills apart from the subscription). This command makes no external calls.
 - `_done/` and `_deferred.md` are inbox-scan exclusions in EVERY pipeline stage (harvest/triage/synthesize/archive) — see the Inbox-folder convention above.

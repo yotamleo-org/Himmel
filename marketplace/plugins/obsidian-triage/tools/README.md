@@ -3,8 +3,8 @@
 Batch tooling for the obsidian-triage plugin. Several flavors:
 
 - **Pure-Python harvest** (`harvest-clip-body-batch.py`) — no fetch, marks
-  clip-body harvest frontmatter. Pre-LUNA-27. Opt-in `--firecrawl-thin`
-  escalation (LUNA-27 / HIMMEL-320): for thin-body **article/web** clips
+  clip-body harvest frontmatter. Predates the thin-body crawl. Opt-in `--firecrawl-thin`
+  escalation (the thin-body crawl follow-up): for thin-body **article/web** clips
   (X/github/youtube excluded — owned by cheaper paths), fetches clean
   markdown via firecrawl `/v2/scrape` and writes a `## Harvested content`
   section (`harvest_skill: firecrawl`). Credit-conscious — off by default,
@@ -13,27 +13,27 @@ Batch tooling for the obsidian-triage plugin. Several flavors:
   `FIRECRAWL_BASE_URL` for self-hosted). Re-screens fetched text for
   injection. Tests: `tests/test-firecrawl-thin.{sh,py}`.
 - **fxtwitter enricher** (`fxtwitter-enrich.mjs`) — **default X path**
-  (LUNA-33). Browser-free + auth-free; hits `api.fxtwitter.com`. Handles
+  (the fast path for public tweets). Browser-free + auth-free; hits `api.fxtwitter.com`. Handles
   plain tweets, long tweets (`is_note_tweet`), X Articles (Draft.js
   blocks → markdown), and quote-tweet context. Use this for X clips.
 - **Instagram embed enricher** (`ig-embed-enrich.mjs`) — **no-login Instagram
-  path** (HIMMEL-280). Browser-free + auth-free; fetches the public
+  path**. Browser-free + auth-free; fetches the public
   `/embed/captioned/` endpoint. Handles `p`, `reel`/`reels`, and `tv` URLs.
   Extracts author + caption + poster image URL. Login-walled / removed posts
-  set `enrichment_status: failed` and are left for the LUNA-27 authenticated
+  set `enrichment_status: failed` and are left for the planned authenticated
   rung (`playwright-crawl-ig.mjs`, not yet implemented). Use this for
-  Instagram clips; escalate to LUNA-27 for failed clips.
-- **YouTube crawler** (`playwright-crawl-youtube.mjs`) — LUNA-27. Since
-  HIMMEL-4677 it runs `yt-scrapling-meta.py` with NO cookie (metadata +
+  Instagram clips; escalate to that rung for failed clips.
+- **YouTube crawler** (`playwright-crawl-youtube.mjs`) — the thin-body crawl. Since
+  the Scrapling-first change it runs `yt-scrapling-meta.py` with NO cookie (metadata +
   description via Scrapling in `~/.himmel/scrapling-venv`, transcript via
-  `yt-dlp` subtitles, `crawl_skill: scrapling-youtube`). HIMMEL-4709 removed
+  `yt-dlp` subtitles, `crawl_skill: scrapling-youtube`). Removing the cookie paths retired
   the logged-in Playwright fallback, `playwright-crawl-x.mjs`,
   `playwright-auth-save.mjs` and the cookie-backed X thread enricher: no tool here sends
   a cookie.
-- **Dedup sweep** (`dedup-sweep.mjs`) — LUNA-37. URL-canonical +
+- **Dedup sweep** (`dedup-sweep.mjs`) — URL-canonical +
   content-hash dupe detection across a luna-style vault. Mutates
   frontmatter only (G-3 body-identity). See "Dedup sweep" section below.
-- **Follow-list scorer** (`follow-list-score.mjs`) — HIMMEL-660. Three-stage
+- **Follow-list scorer** (`follow-list-score.mjs`) — Three-stage
   evidence-first scorer for the X/Twitter follow list
   (`ai-x-follow-list.md`): a pure-code `gather` stage collects verifiable
   evidence per handle, a manual Claude judge pass scores it against a
@@ -56,7 +56,7 @@ bun fxtwitter-enrich.mjs --vault ~/Documents/luna --limit 5 --dry-run
 bun fxtwitter-enrich.mjs --vault ~/Documents/luna
 ```
 
-### Eligibility (relaxed for pre-triage body-fill — LUNA-58)
+### Eligibility (relaxed for pre-triage body-fill of Telegram clips)
 
 An X clip is enriched when it has no `enriched_at:` AND is **either**
 `processed: true` **or** has a *thin body* (no real tweet text — the
@@ -92,7 +92,7 @@ For each eligible X clip, the script:
 5. For **quote tweets**: appends `## Crawled content` with the quoted
    tweet text + author + url — **and**, when the clip body is thin, the
    clipped author's OWN text as `## The Idea` first, through the same
-   body-fill + injection re-screen path as item 6 (HIMMEL-2621; the chooser
+   body-fill + injection re-screen path as item 6 (the chooser
    used to be exclusive, so a quote tweet recorded only the *quoted* author's
    words and dropped its own — an entire long-form note for `is_note_tweet`).
    A quoted post with no prose of its own (an X Article, or media with a bare
@@ -110,7 +110,7 @@ For each eligible X clip, the script:
    `processed:`/`triaged_at:` and strips the triage-authored `## Promotion
    candidate` section so the next `/triage-clips` re-tags the now-rich clip
    cleanly. Fires only on the thin→filled transition, at most once per clip.
-8. **Injection re-screen (HIMMEL-256):** a body-filled clip's new (untrusted)
+8. **Injection re-screen:** a body-filled clip's new (untrusted)
    `## The Idea` text is re-screened via `harvest-clip-body-batch.py
    --scan-only`; on a hit the clip gets `harvest_flag: injection-suspect`
    (fail-closed → `screen-error` if the screener can't run). Flag-only.
@@ -140,7 +140,7 @@ Entities: `LINK` → `[text](url)`. Other entity types pass through as text.
 
 ### Known limitations
 
-- **Threads are kept, replies mostly are not** (HIMMEL-8667). For a tweet with
+- **Threads are kept, replies mostly are not**. For a tweet with
   `replies > 0` the enricher reads the keyless `/2/thread/<id>` answer (one
   extra request, at the 1 s rate) and writes a `## Thread` section: EVERY post
   by the clipped author in that thread, in order (not only a run from post 1),
@@ -153,7 +153,7 @@ Entities: `LINK` → `[text](url)`. Other entity types pass through as text.
   backfill. A thread that could not
   be read on a tweet with `replies > 0` is `needs_thread: true`,
   `enrichment_status: partial`, `last_error: thread_not_captured`, never `ok`
-  (HIMMEL-6933); a tweet with `replies == 0` is not fetched. The author's own
+  (clips are captured in full, never silently partial); a tweet with `replies == 0` is not fetched. The author's own
   captured continuation clears the flag; a flag from the text heuristic (`1/5`,
   `🧵`) stays when no author continuation was found, and so does a Scrapling
   answer without one (a logged-out page proves nothing about what is missing).
@@ -181,7 +181,7 @@ flagged is skipped.
 
 ### Backfilling the thread onto every X clip (`x-thread-backfill.mjs`)
 
-Clips enriched before HIMMEL-8667 kept only post 1. The backfill re-fetches the
+Clips enriched before the thread capture kept only post 1. The backfill re-fetches the
 thread of **every** X clip under `Clippings/` at any depth (archived clips in
 `_done/YYYY-MM/` too; `_media/` and `_synthesis/` are skipped), not only the `needs_thread: true` ones:
 
@@ -231,7 +231,7 @@ ends with `summary: seen=N kept=K skipped=S fresh=F triage-skipped=T to-synthesi
 
 ### Re-flagging historical silent partials (`harvest-clip-body-batch.py --reflag-silent-partials`)
 
-Clippings stamped ok over a partial capture before HIMMEL-6933 stay ok until
+Clippings stamped ok over a partial capture before the full-capture audit stay ok until
 marked. `python3 harvest-clip-body-batch.py <vault> --reflag-silent-partials
 [--dry-run]` scans every note under `Clippings/` (including `_done/` and
 `_evidence/`, excluding `_synthesis/` and `_deferred.md`) and writes
@@ -249,7 +249,7 @@ reason. Run `--dry-run` first, and on a copy of the vault when unsure.
 
 ### Backfilling quote-tweet own-text (`--reenrich-quote-only`)
 
-Clips enriched *before* HIMMEL-2621 whose tweet carried a quote recorded only
+Clips enriched *before* the quote-tweet chooser fix whose tweet carried a quote recorded only
 the quoted author's words; the `enriched_at` idempotence gate then skips them
 forever. `--reenrich-quote-only` re-processes exactly those — `enrichment_source:
 fxtwitter` + `tweet_has_quote: true` + **no** `## The Idea` + a **thin** body
@@ -264,14 +264,14 @@ node fxtwitter-enrich.mjs --vault ~/Documents/luna --reenrich-quote-only --dry-r
 node fxtwitter-enrich.mjs --vault ~/Documents/luna --reenrich-quote-only             # backfill
 ```
 
-It re-fetches, adds `## The Idea` (through the normal body-fill + HIMMEL-256
+It re-fetches, adds `## The Idea` (through the normal body-fill + injection
 re-screen path) and **replaces** the stale quote-context `## Crawled content`
 section rather than adding a second one, so the article/media-shaped quotes that
 rendered as a bare `t.co` line come back as real content. `enriched_at` is
 bumped to the re-enrich date, never erased. Idempotent for every clip it exists
 to repair: once one has `## The Idea` it is no longer a target. A quote-RT
 whose author added no text of their own has nothing to body-fill, so instead
-it gets a terminal `last_error: quote_only_no_own_text` marker (HIMMEL-2628);
+it gets a terminal `last_error: quote_only_no_own_text` marker (else it stays eligible on every run);
 `enrichment_status` stays `ok` — the enrichment is complete, there's just no
 `## The Idea` to add — and `isQuoteOnlyClip` treats a clip carrying that
 marker as no longer eligible, so a later invocation of the switch skips it
@@ -281,7 +281,7 @@ rather than re-fetching and rewriting it. Mutually exclusive with `--reflag`.
 
 - You need reply threads with conversation context, or the payload the author
   parked in their own first reply ("repo in comment"). fxtwitter flags these
-  `needs_thread: true`; no tool captures them since HIMMEL-4709.
+  `needs_thread: true`; no tool captures them since the cookie paths were removed.
 - You hit a tweet that 404s on fxtwitter but renders in a logged-in
   browser (rare; usually a sus-flagged or age-gated tweet).
 
@@ -328,7 +328,7 @@ For each Instagram clip with no `enriched_at:`, the script:
 | `fetch_error`       | Network/timeout error                            |
 
 Failed clips have **no** `enriched_at:` marker, so they are re-attempted on
-the next run. Once available, the LUNA-27 authenticated rung
+the next run. Once available, the planned authenticated rung
 (`playwright-crawl-ig.mjs`) handles login-walled posts.
 
 G-3 invariant + YAML parse-validate + revert-on-failure all match the
@@ -337,13 +337,13 @@ fxtwitter enricher contract. Re-runs skip clips with `enriched_at:`.
 ### Known limitations
 
 - **No-login only.** Private accounts, login-walled posts, and removed
-  posts return `enrichment_status: failed`. Run the LUNA-27 Playwright
+  posts return `enrichment_status: failed`. Run the planned Playwright
   rung (not yet shipped) for those clips.
 - **Caption parsing is regex-based.** Instagram's embed HTML is not versioned;
   if the `Caption` / `CaptionUsername` class names change, the extractor
   will start returning `embed_no_caption` on all posts. Check those class
   names if the enricher starts mass-failing.
-- **Every Instagram request is throttled (HIMMEL-4306).** `ig-embed-enrich.mjs`,
+- **Every Instagram request is throttled (Instagram warns on automated behaviour).** `ig-embed-enrich.mjs`,
   `ig-media-fetch.py` and the `instagram-*` health probes share one budget in
   `~/.himmel/state/instagram-throttle.json` (`lib/ig_throttle.py` / `lib/ig-throttle.mjs`):
   `HIMMEL_IG_MIN_GAP_S` (45) + `HIMMEL_IG_JITTER_S` (30) between requests,
@@ -370,7 +370,7 @@ Pinned to `playwright@1.58.0`. Bun runtime preferred; `node` (>=20) also works.
 git-derived copy of this directory (notably the Claude plugin cache
 install) never has it done automatically — `ensure-deps.sh` is the
 preflight runbooks call instead of assuming this one-time step already
-happened (HIMMEL-1135): fast no-op if deps are present, installs them
+happened: fast no-op if deps are present, installs them
 (without playwright's browser binaries) if not, non-zero + a remediation
 message if it can't.
 
@@ -437,7 +437,7 @@ selectively by manually clearing the `crawled_at:` marker.)
   alternatives. When that ships, a sister `playwright-video-*.mjs` (or
   whatever framework wins) will land in this dir.
 
-## Dedup sweep (LUNA-37)
+## Dedup sweep
 
 URL-canonical + content-hash dedup detection. Mutates frontmatter only;
 body is byte-identical post-write (G-3 invariant + revert-on-failure).
@@ -507,7 +507,7 @@ relationship either way.
 canonical wikilink + dupe wikilinks + counts summary. Generated when
 `--phase all` (default) or `--report-only`. Operator review surface.
 
-## Component scan (LUNA-57)
+## Component scan
 
 Deep repo component inventory for `luna-ingest --deep`. gh-API only (no clone)
 — bounded read surface. Scans skills / commands / agents / tools / plugin
@@ -531,7 +531,7 @@ and reverts on failure; dedups cross-repo via the `seen_in:` block; and enforces
 a resolve()-based vault-containment check (rejects `..` traversal in
 --components-dir; does not resolve symlinks). Idempotent.
 
-## Follow-list scorer (HIMMEL-660)
+## Follow-list scorer
 
 Evidence-first scoring pipeline for the X/Twitter follow list
 (`<vault>/30-Resources/ai-x-follow-list.md`). Three stages — two pure-code,
@@ -636,7 +636,7 @@ computed tier is `exclude`, the handle is placed at Tier 3 (lowest
 visible tier, never promoted higher) with an override note recorded in
 both output files. Edit this file directly; there is no CLI flag for it.
 
-### Injection screen (HIMMEL-256)
+### Injection screen
 
 `gather` screens every untrusted text field a dossier carries
 (`account.bio`, `repos.sample_descriptions[]`,
@@ -665,10 +665,10 @@ Smoke tests live one level up:
 
 ```bash
 bash ../tests/test-playwright-crawl.sh
-bash ../tests/test-dedup-sweep.sh   # LUNA-37
-bash ../tests/test-component-scan.sh   # LUNA-57
-for t in ../tests/test-follow-*.sh; do bash "$t" || exit 1; done   # HIMMEL-660
-bash ../tests/test-ensure-deps.sh   # HIMMEL-1135
+bash ../tests/test-dedup-sweep.sh   # dedup sweep
+bash ../tests/test-component-scan.sh   # component scan
+for t in ../tests/test-follow-*.sh; do bash "$t" || exit 1; done   # follow-list scorer
+bash ../tests/test-ensure-deps.sh   # tool-deps preflight
 ```
 
 Verifies: scripts pass `node --check`, package.json declares the right
@@ -685,7 +685,7 @@ cross-repo seen_in dedup, idempotent re-runs, cross-repo risk escalation, and
 revert-on-malformed-frontmatter), and the realpath-under-vault path-safety
 invariant.
 
-The `test-follow-*.sh` suite (HIMMEL-660) covers the follow-list scorer
+The `test-follow-*.sh` suite covers the follow-list scorer
 end-to-end: `test-follow-roster.sh` (handle normalization + roster
 resolution), `test-follow-dossier.sh` (dossier schema + corpus evidence
 build), `test-follow-verify.sh` (claim extraction + gh-api resource

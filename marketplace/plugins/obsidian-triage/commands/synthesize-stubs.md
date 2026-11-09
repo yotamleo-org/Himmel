@@ -26,7 +26,7 @@ A stub fires for a topical tag **T** only when ALL hold:
 1. >=2 evidence clips carry **T** (structural tags like `concepts`/`tools`/
    `article` are excluded from being a concept key — see `STRUCTURAL_TAGS`).
 2. **After canonical-URL dedup** of the contributors (one article clipped twice
-   collapses to a single contributor — reuses the LUNA-37 `canonicalize()`), the
+   collapses to a single contributor — reuses the dedup sweep's `canonicalize()`), the
    distinct-contributor count is still >=2.
 3. Those contributors span **>=2 distinct domains OR >=2 distinct authors** (the
    OR arm lets single-platform authors — every X clip is `x.com` — still pass).
@@ -34,7 +34,7 @@ A stub fires for a topical tag **T** only when ALL hold:
 Anything short of all three is logged `⊘ <tag> — skipped (<reason>)` and writes
 nothing. A single article clipped twice produces **0 stubs**, by construction.
 
-### Existing-subject match → densify, never duplicate (LUNA-88)
+### Existing-subject match → densify, never duplicate
 
 Before creating a stub the engine scans existing subjects in
 `30-Resources/{Concepts,Tech}` and `60-Maps/*-MOC` and matches by **normalised
@@ -71,7 +71,7 @@ it is NOT advisory. Before any `--apply` against the real `~/Documents/luna`:
    `node tools/synthesize-stubs.mjs /tmp/luna-stage --apply`. Assert: same-URL
    dups produce 0 stubs; distinct-author pairs produce 1 stub each with
    `promoted_to:` stamped and a ledger line; an existing subject is densified,
-   not duplicated (LUNA-88).
+   not duplicated.
 2. **Prove the divergence guard.** Touch one generated page, then
    `--revert <ledger>` — it must REFUSE the touched page and revert only
    untouched ones.
@@ -95,7 +95,7 @@ diverged (the operator opened, edited, or densified it) is **REFUSED** and left
 untouched — "delete to undo" is forbidden once a stub has been hand-edited. That
 refusal IS the Phase-2 rollback contract.
 
-### Daily timeline (LUNA-90 — after a live `--apply`)
+### Daily timeline (after a live `--apply`)
 
 A successful `--apply` promotes/densifies subjects, which is pipeline activity
 the daily note should record. After the apply against the live vault, refresh
@@ -111,7 +111,7 @@ It reads the promoted/densified counts from the same
 clip state). A missing daily note is a no-op. Skip after a `--dry-run` (nothing
 was promoted) and after `--revert`.
 
-### Telegram promotion feedback (LUNA-91 — after a live `--apply`)
+### Telegram promotion feedback (after a live `--apply`)
 
 When a promoted clip was **captured via telegram**, let the operator see the
 vault compounding from the same surface they captured on (design §8). The engine
@@ -120,7 +120,7 @@ already did the work: on `--apply` it writes a **batched digest** to
 chat** (not one per promotion; §12.F), filtered to telegram-origin clips, and it
 **removes** that file when a run promoted nothing new (so nothing stale is
 re-sent). Pass `--no-telegram-digest` to suppress entirely (the first big
-synthesize run after the LUNA-86 migration backfill).
+synthesize run after the one-time `_evidence/` migration backfill).
 
 After a live `--apply`, if the digest file exists, send it (operator-gated — the
 live telegram send is the irreversible step, HARD GUARDRAIL #4):
@@ -136,7 +136,7 @@ live telegram send is the irreversible step, HARD GUARDRAIL #4):
 Do this only against the live bridge with operator confirmation; in staging,
 inspect the JSON and do not send.
 
-### Headless refusal (HIMMEL-128)
+### Headless refusal (headless claude bills apart from the subscription)
 
 This command makes no `claude -p` / `--print` / `--bg` / API calls. The engine
 is a deterministic node tool — never wrap it in a headless invocation.
