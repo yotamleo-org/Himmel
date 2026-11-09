@@ -260,7 +260,8 @@ export USERPROFILE="$HOME"
 export BUN_INSTALL="$TMP_ROOT/bun-none"
 # The embed-model precheck resolves qmd's config the way qmd does; CI runners
 # export XDG_CONFIG_HOME, which would point it past the fixture HOME.
-unset QMD_CONFIG_DIR XDG_CONFIG_HOME XDG_CACHE_HOME INDEX_PATH QMD_EMBED_MODEL
+unset QMD_CONFIG_DIR XDG_CONFIG_HOME XDG_CACHE_HOME INDEX_PATH QMD_EMBED_MODEL HIMMEL_QMD_EMBED_USAGE
+export QMD_REINDEX_KEY_USAGE_CMD=/bin/false
 
 # ============================================================================
 # Argument handling
@@ -1075,6 +1076,135 @@ if command -v node >/dev/null 2>&1; then
     rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true
 else
     pass "provider-key check skipped: node not installed"
+fi
+
+USAGE_STUB="$TMP_ROOT/usage-stub"
+cat >"$USAGE_STUB" <<STUB
+#!/bin/sh
+STATE="$STATE"
+STUB
+cat >>"$USAGE_STUB" <<'STUB'
+n=$(cat "$STATE/usage-n" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "$STATE/usage-n"
+if [ "$n" -eq 1 ]; then echo 1.5; else echo 1.62; fi
+STUB
+chmod +x "$USAGE_STUB"
+USAGE_FAIL="$TMP_ROOT/usage-fail"
+printf '#!/bin/sh\necho "usage: provider unreachable" >&2\nexit 1\n' >"$USAGE_FAIL"
+chmod +x "$USAGE_FAIL"
+USAGE_BAD="$TMP_ROOT/usage-bad"
+printf '#!/bin/sh\necho 01\n' >"$USAGE_BAD"
+chmod +x "$USAGE_BAD"
+
+usage_field() {
+    python3 -I -c '
+import json, sys
+path, n, name = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+rows = [l for l in open(path, encoding="utf-8").read().splitlines() if l.strip()]
+v = json.loads(rows[n - 1]).get(name, "")
+print(json.dumps(v) if not isinstance(v, str) else v)
+' "$HOME/.himmel/state/qmd-embed-usage.jsonl" "$1" "$2" 2>/dev/null || true
+}
+usage_rows() { grep -c . "$HOME/.himmel/state/qmd-embed-usage.jsonl" 2>/dev/null || true; }
+
+echo "TEST: usage_row_written - an OpenRouter run appends one row with usage before and after and the chunks embedded"
+if command -v node >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true
+    mkdir -p "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel/state"
+    printf '%b' "$OR_CFG" > "$HOME/.config/qmd/index.yml"
+    printf 'QMD_OPENAI_API_KEY=sk-test-fixture\n' > "$HOME/.himmel/state/qmd-daemon.env"
+    chmod 600 "$HOME/.himmel/state/qmd-daemon.env"
+    reset_state
+    : > "$STATE/did-work"
+    rc=0; out=$(QMD_REINDEX_KEY_USAGE_CMD="$USAGE_STUB" bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "usage run rc 0" 0 "$rc"
+    assert_rc "one row appended" 1 "$(usage_rows)"
+    assert_rc "usage_before is the first read" 1.5 "$(usage_field 1 usage_before)"
+    assert_rc "usage_after is the second read" 1.62 "$(usage_field 1 usage_after)"
+    assert_rc "chunks is the embedded count" 457 "$(usage_field 1 chunks)"
+    assert_rc "the row says its bound" "upper, shared key" "$(usage_field 1 bound)"
+    assert_rc "envelope v" 1 "$(usage_field 1 v)"
+    assert_rc "envelope source" qmd-reindex "$(usage_field 1 source)"
+    assert_rc "envelope kind" embed-usage "$(usage_field 1 kind)"
+    if [ -n "$(usage_field 1 ts)" ]; then pass "envelope ts present"; else fail "envelope ts present"; fi
+    if [ -n "$(usage_field 1 host)" ]; then pass "envelope host present"; else fail "envelope host present"; fi
+
+    echo "TEST: usage_read_failure_keeps_rc - a failed usage read writes unknown and leaves the run's exit at 0"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+    rc=0; out=$(QMD_REINDEX_KEY_USAGE_CMD="$USAGE_FAIL" bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "failed usage read rc 0" 0 "$rc"
+    assert_rc "one row appended" 1 "$(usage_rows)"
+    assert_rc "usage_before unknown" unknown "$(usage_field 1 usage_before)"
+    assert_rc "usage_after unknown" unknown "$(usage_field 1 usage_after)"
+
+    echo "TEST: a reading that is not a JSON number is recorded as unknown"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+    rc=0; out=$(QMD_REINDEX_KEY_USAGE_CMD="$USAGE_BAD" bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "malformed reading rc 0" 0 "$rc"
+    assert_rc "usage_before malformed is unknown" unknown "$(usage_field 1 usage_before)"
+    assert_rc "usage_after malformed is unknown" unknown "$(usage_field 1 usage_after)"
+
+    echo "TEST: a failing run still writes its row and keeps its own exit code"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+    : > "$STATE/fail-embed"
+    rc=0; out=$(QMD_REINDEX_KEY_USAGE_CMD="$USAGE_STUB" bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "embed failure keeps rc 4" 4 "$rc"
+    assert_rc "the failed run wrote one row" 1 "$(usage_rows)"
+
+    echo "TEST: key_never_in_row_or_log - the provider key reaches neither the row, the log nor a bash -x trace"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+    rc=0; out=$(QMD_REINDEX_KEY_USAGE_CMD="$USAGE_STUB" bash -x "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "traced usage run rc 0" 0 "$rc"
+    assert_not_contains "key not in the log or trace" "sk-test-fixture" "$out"
+    assert_not_contains "key not in the row" "sk-test-fixture" "$(cat "$HOME/.himmel/state/qmd-embed-usage.jsonl" 2>/dev/null)"
+
+    echo "TEST: the real curl read puts the key on stdin only and keeps it out of the trace, the log and the row"
+    FAKEBIN="$TMP_ROOT/fakebin"
+    mkdir -p "$FAKEBIN"
+    cat >"$FAKEBIN/curl" <<CURL
+#!/bin/sh
+STATE="$STATE"
+CURL
+    cat >>"$FAKEBIN/curl" <<'CURL'
+printf '%s\n' "$*" >> "$STATE/curl-argv"
+cat >> "$STATE/curl-stdin"
+echo '{"data":{"label":"k","usage":1.5,"usage_daily":0.2}}'
+CURL
+    chmod +x "$FAKEBIN/curl"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+    rc=0; out=$( (unset QMD_REINDEX_KEY_USAGE_CMD; PATH="$FAKEBIN:$PATH" bash -x "$SCRIPT" --qmd-bin "$FAKE_QMD") 2>&1) || rc=$?
+    assert_rc "curl-read run rc 0" 0 "$rc"
+    assert_rc "usage_before is the curl reading" 1.5 "$(usage_field 1 usage_before)"
+    assert_not_contains "key not in the log or trace" "sk-test-fixture" "$out"
+    assert_not_contains "key not in curl's argv" "sk-test-fixture" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+    assert_not_contains "key not in the row" "sk-test-fixture" "$(cat "$HOME/.himmel/state/qmd-embed-usage.jsonl" 2>/dev/null)"
+    assert_contains "key is on curl's stdin" "Bearer sk-test-fixture" "$(cat "$STATE/curl-stdin" 2>/dev/null)"
+
+    echo "TEST: the key goes to OpenRouter only when the effective base URL is OpenRouter"
+    JINA_CFG='collections:\n  himmel:\n    path: /x\n# was https://openrouter.ai/api/v1\nmodels:\n  embed: openai:text-embedding-3-small\n  openai_base_url: https://api.jina.ai/v1\n'
+    printf '%b' "$JINA_CFG" > "$HOME/.config/qmd/index.yml"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+    rc=0; out=$( (unset QMD_REINDEX_KEY_USAGE_CMD; PATH="$FAKEBIN:$PATH" bash "$SCRIPT" --qmd-bin "$FAKE_QMD") 2>&1) || rc=$?
+    assert_rc "jina config naming openrouter in a comment rc 0" 0 "$rc"
+    assert_rc "no curl call for a jina base URL" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+    assert_rc "usage unknown for a jina base URL" unknown "$(usage_field 1 usage_before)"
+
+    echo "TEST: a local-model run writes no usage row"
+    rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true
+    reset_state
+    rc=0; out=$(QMD_REINDEX_KEY_USAGE_CMD="$USAGE_STUB" bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "local run rc 0" 0 "$rc"
+    if [ ! -e "$HOME/.himmel/state/qmd-embed-usage.jsonl" ]; then pass "no ledger on a local-model run"; else fail "no ledger on a local-model run"; fi
+    rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true
+else
+    pass "usage-row checks skipped: node or python3 not installed"
 fi
 
 # ============================================================================

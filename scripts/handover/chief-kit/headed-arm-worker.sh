@@ -2884,11 +2884,22 @@ fi
 # names no chief, which has nobody to register with.
 # A profile with no mcpServers field (null) loads every user MCP server,
 # himmel-bus among them, so it opts in too.
+BUS_NAME_MAX=128
+refuse_name_over_bus_limit() {
+    [ "${#NAME}" -gt "$BUS_NAME_MAX" ] || return 0
+    BUS_OUT="session name is ${#NAME} characters, over the bus limit of $BUS_NAME_MAX: shorten the slug of $NAME"
+    echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - $BUS_OUT" >> "$LOG"
+    echo "headed-arm-worker: refusing to launch $NAME - $BUS_OUT (bus=FAIL:name too long)"
+    echo "headed-arm-worker: refusing to launch $NAME - $BUS_OUT" >&2
+    bash "$HERE/append-results.sh" "$DOC" "bus=FAIL:name too long, ${#NAME} over $BUS_NAME_MAX" >/dev/null 2>&1 || true
+    exit 2
+}
 case "${MCP_NAMES_JSON:-}" in
     *'"himmel-bus"'*|null)
         if [ "$HEADLESS" -ne 1 ] && [ -z "$BUS_CHIEF" ]; then
             echo "$(date +%F_%T) headed-arm-worker: $NAME names no chief - not registered on the bus" >> "$LOG"
         elif [ "$HEADLESS" -ne 1 ]; then
+            refuse_name_over_bus_limit
             BUS_CLI="${HEADED_ARM_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
             BUS_ROLE=worker
             [ "$JUDGE" -eq 1 ] && BUS_ROLE=judge
@@ -2963,7 +2974,7 @@ case "${MCP_NAMES_JSON:-}" in
         fi
         ;;
 esac
-unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR BUS_SECS BUS_TMP BUS_PID BUS_TICKS BUS_RC HIMMEL_LAUNCH_UNBOUND_OK
+unset -v BUS_NAME_MAX BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR BUS_SECS BUS_TMP BUS_PID BUS_TICKS BUS_RC HIMMEL_LAUNCH_UNBOUND_OK
 
 # Every headed worker gets one bus-idle-waker, started by headed-arm.sh once the
 # konsole pid exists (only it knows the pid). A headless worker has no konsole and

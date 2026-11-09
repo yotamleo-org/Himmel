@@ -385,6 +385,7 @@ if [ "$cmd" = "api" ]; then
                 body-b2-timeout) echo '[]' ;;
                 body-b2-head-review) echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"sha1","body":""}]' ;;
                 body-empty) echo '[]' ;;
+                body-actionable) echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"sha1","submitted_at":"2026-11-09T05:07:51Z","id":1,"body":"**Actionable comments posted: 3**"}]' ;;
                 *)          echo '[]' ;;
             esac
             exit 0 ;;
@@ -756,7 +757,7 @@ case "$GH_STUB_MODE" in
         # verdict must turn entirely on CodeRabbit's status.
         if [ "$is_watch" -eq 1 ]; then echo "All checks were successful"; exit 0; fi
         exit 0 ;;
-    body-outside|body-file|body-a2-file|body-a3-file|body-nitpick|body-drift|body-error|body-a2|body-empty|body-a2-escalate|body-a2-marker|body-a2-timeout|body-a2-escalate-outside|body-b2-escalate|body-b2-escalate-outside|body-b2-timeout|body-b2-head-review|body-a2-escalate-empty|body-a2-empty-persisted|body-a2-postfail)
+    body-outside|body-file|body-a2-file|body-a3-file|body-nitpick|body-drift|body-error|body-a2|body-empty|body-a2-escalate|body-a2-marker|body-a2-timeout|body-a2-escalate-outside|body-b2-escalate|body-b2-escalate-outside|body-b2-timeout|body-b2-head-review|body-a2-escalate-empty|body-a2-empty-persisted|body-a2-postfail|body-actionable)
         # Checks GREEN, threads clean, CodeRabbit CONCLUDED (default statuses
         # fixture) in every one of these — the verdict must turn entirely on
         # the review-BODY findings gate.
@@ -3098,7 +3099,23 @@ assert_err_has "required-set unreadable" "8644 both tokens refused the protectio
 check_eq "8644 both tokens refused the protection read: a refusal that is not a rate limit never defers to the watch" "no" "$(if grep -q '^read pr checks .*--watch' "$STUBDIR/toklog"; then echo yes; else echo no; fi)"
 CLASSIC_OVERRIDE=none
 
+THREADS_OVERRIDE=latethread
+run red
+assert_rc 1 "9712-a a red run still exits 1"
+assert_err_has "review threads at exit 1: 1 unresolved on PR #42" "9712-a a red exit names the thread posted mid-watch"
+THREADS_OVERRIDE=latethread
+run blocking-cap-pending --max-wait 4
+assert_rc 2 "9712-b a deadline run still exits 2"
+assert_err_has "review threads at exit 2: 1 unresolved on PR #42" "9712-b a deadline exit names the thread posted mid-watch"
+RULES_OVERRIDE="req:codeowner-review-gate"; CHECKS_OVERRIDE="pass:unit-tests"; THREADS_OVERRIDE=1
+run cr-completed --grace 0
+assert_rc 5 "9712-c a never-reported required check still exits 5"
+assert_err_has "review threads at exit 5: 1 unresolved on PR #42" "9712-c an exit-5 refusal, which comes before the pre-watch thread gate, names the open thread"
+run body-actionable
+assert_rc 0 "9712-d threads resolved, the actionable review does not block on its own"
+assert_err_has "posted 3 actionable comment(s)" "9712-d a CodeRabbit pass that posted actionable comments is reported as findings"
+
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 221 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 221"; exit 1; fi
+if [ "$COUNT" -ne 225 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 225"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

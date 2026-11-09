@@ -22,6 +22,8 @@ SCRIPT="$HERE/delta-class.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/delta-class-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; } # prim-ok: hermetic scratch dir, removed by the EXIT trap
 trap 'rm -rf "$tmp"' EXIT
 tmp="$(cd "$tmp" && pwd -P)"
+export HIMMEL_CEILINGS_LEDGER="$tmp/no-ceilings-ledger.tsv"
+case "${HIMMEL_CEILINGS_LEDGER:-}" in "$tmp"/*) ;; *) echo "FAIL: the ceilings ledger is not pinned inside the temp dir"; exit 1 ;; esac
 fails=0
 check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 

@@ -3,19 +3,19 @@ repos:
     rev: v6.0.0
     hooks:
       # Vendored Obsidian plugin bundles (minified js/css) and the vendored
-      # claude-hud tree (HIMMEL-718, pinned byte-for-byte — drift guard hashes
+      # claude-hud tree (pinned byte-for-byte — drift guard hashes
       # it against the upstream pin) are kept verbatim — don't reformat them.
-      # graphify-out/ holds generated graph artifacts (HIMMEL-1193): reformatting
+      # graphify-out/ holds generated graph artifacts: reformatting
       # them fights graphify's own output byte-for-byte and would leave the
       # graph-generating station perpetually dirty against the committed copy.
-      # marketplace/plugins/lean-skills/skills/ (HIMMEL-3064) is the same case as
+      # marketplace/plugins/lean-skills/skills/ is the same case as
       # claude-hud: copied VERBATIM from obra/superpowers + mattpocock/skills, so
       # a reformat here IS the local edit VENDORED.md forbids. Not hypothetical —
       # end-of-file-fixer had already appended a newline to
       # writing-skills/graphviz-conventions.dot, making it the one file of 44
       # that no longer compared byte-identical to upstream and so the one false
       # positive any cmp-based re-vendor audit would have to explain away.
-      # HIMMEL-3113: only the VENDORED.md-listed skill dirs are exempt — the
+      # Only the VENDORED.md-listed skill dirs are exempt — the
       # list fails CLOSED, so context7-mcp (`local=`, himmel-authored) and any
       # skill dir added later are checked by default. Re-vendoring a new skill
       # = add its dir to this list and to the shellcheck exclude below.
@@ -25,7 +25,7 @@ repos:
         exclude: '^(templates/luna-second-brain/(\.obsidian/plugins|optional/plugins)/.*\.(js|css)$|marketplace/plugins/claude-hud/|marketplace/plugins/lean-skills/skills/(brainstorming|writing-plans|systematic-debugging|verification-before-completion|executing-plans|finishing-a-development-branch|requesting-code-review|subagent-driven-development|test-driven-development|using-git-worktrees|writing-skills|grilling)/|graphify-out/|scripts/lanes/bench/(fixtures|runs)/)'
       - id: check-yaml
       - id: check-json
-      # HIMMEL-2508: 516 tracked scripts reached main as mode 100644 because
+      # 516 tracked scripts reached main as mode 100644 because
       # Windows never tracks +x; on Linux every direct invocation then fails
       # rc=126 "Permission denied". A shebang'd file must be executable.
       - id: check-shebang-scripts-are-executable
@@ -33,13 +33,13 @@ repos:
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1
     hooks:
-      # Vendored statusline bar (HIMMEL-331) is third-party code (upstream
-      # nilbuild/claude-statusline; the yotamleo fork is archived, HIMMEL-1233)
-      # — don't lint it. marketplace/plugins/lean-skills/skills/ (HIMMEL-3064)
+      # Vendored statusline bar is third-party code (upstream
+      # nilbuild/claude-statusline; the yotamleo fork is archived)
+      # — don't lint it. marketplace/plugins/lean-skills/skills/
       # is copied VERBATIM from obra/superpowers + mattpocock/skills — same
       # reasoning: a shellcheck fix here would be a local edit VENDORED.md
       # explicitly forbids, turning the next re-vendor into a merge. Vendored
-      # dirs only, same list as trailing-whitespace above (HIMMEL-3113).
+      # dirs only, same list as trailing-whitespace above.
       - id: shellcheck
         exclude: '^(scripts/statusline/|scripts/lanes/bench/(fixtures|runs)/|marketplace/plugins/lean-skills/skills/(brainstorming|writing-plans|systematic-debugging|verification-before-completion|executing-plans|finishing-a-development-branch|requesting-code-review|subagent-driven-development|test-driven-development|using-git-worktrees|writing-skills|grilling)/)'
 
@@ -124,7 +124,6 @@ repos:
 
       - id: docs-decision-records
         name: new docs/ file must not be a research comparison or rejection record
-        # HIMMEL-5878
         entry: bash scripts/ci/check-docs-decision-records.sh
         language: system
         files: ^docs/.*\.(md|html)$
@@ -132,7 +131,6 @@ repos:
 
       - id: template-version
         name: template content change requires metadata.version bump (himmel-dev only)
-        # HIMMEL-524
         entry: bash scripts/hooks/check-template-version.sh
         language: system
         always_run: true
@@ -155,7 +153,6 @@ repos:
 
       - id: lanes-inventory-guard
         name: lane inventory stays out of CLAUDE.md prose (himmel-dev only)
-        # HIMMEL-689
         entry: bash scripts/hooks/check-lanes-inventory.sh
         language: system
         always_run: true
@@ -163,7 +160,6 @@ repos:
 
       - id: claude-md-budget
         name: CLAUDE.md stays under its always-on byte budget (himmel-dev only)
-        # HIMMEL-2038
         entry: bash scripts/ci/check-claude-md-budget.sh
         language: system
         always_run: true
@@ -171,7 +167,6 @@ repos:
 
       - id: vacuous-path-assert
         name: no emptiness assertion runs under an ambient hermetic-PATH scrub (himmel-dev only)
-        # HIMMEL-2957
         entry: bash scripts/ci/check-vacuous-path-assert.sh
         language: system
         files: test-.*\.sh$
@@ -179,7 +174,6 @@ repos:
 
       - id: no-mcp-sdk-v1
         name: no new v1 @modelcontextprotocol/sdk dependency or import (himmel-dev only)
-        # HIMMEL-4866
         entry: bash scripts/lint/check-mcp-sdk-v1.sh
         language: system
         files: (package\.json|package-lock\.json|npm-shrinkwrap\.json|bun\.lock|yarn\.lock|pnpm-lock\.yaml|\.(ts|tsx|js|jsx|mjs|cjs|mts|cts))$
@@ -207,7 +201,6 @@ repos:
 
       - id: guardrail-matrices
         name: guardrail matrix invariants (egress)
-        # HIMMEL-1522
         entry: bash scripts/hooks/check-guardrail-matrices.sh
         language: system
         # The guard SCRIPT itself must be covered too (codex-2): it lives under
@@ -219,7 +212,6 @@ repos:
 
       - id: fail-open-lint
         name: fails-open-on-unknown shape lint
-        # HIMMEL-1776
         entry: bash scripts/hooks/check-fail-open-lint.sh
         language: system
         # Scoped to the guard surfaces the lint scans (guardrails/hooks/lanes),
@@ -232,7 +224,6 @@ repos:
 
       - id: hook-lib-node-suites
         name: scripts/hooks + scripts/lib node suites
-        # HIMMEL-1578
         entry: bash scripts/hooks/check-hook-lib-suites.sh
         language: system
         # Scoped to the suites, the code they cover, AND the two files they
@@ -252,7 +243,6 @@ repos:
 
       - id: profile-manifest-diff
         name: plugin-profile manifest stays pinned
-        # HIMMEL-2189
         entry: node --test scripts/lanes/tests/profile-manifest.test.mjs
         language: system
         # Scoped to the registry, its resolver, the test, and the fixture the
@@ -265,7 +255,6 @@ repos:
 
       - id: trust-node-suites
         name: scripts/trust node suites
-        # HIMMEL-1589
         entry: bash scripts/hooks/check-trust-suites.sh
         language: system
         # Scoped to the trust suites AND this guard’s own script — same lesson
@@ -279,7 +268,6 @@ repos:
 
       - id: hud-drift
         name: vendored claude-hud drift guard (himmel-dev only)
-        # HIMMEL-718
         language: system
         entry: bash scripts/statusline/check-hud-drift.sh
         pass_filenames: false
@@ -303,7 +291,6 @@ repos:
 
       - id: settings-portability
         name: tracked settings/hooks files carry no machine-absolute path
-        # HIMMEL-2156
         language: system
         entry: bash scripts/hooks/check-settings-portability.sh
         pass_filenames: true
@@ -316,7 +303,6 @@ repos:
 
       - id: gh-json-fields
         name: Validate gh --json field names against gh's own list
-        # HIMMEL-1288
         language: system
         entry: bash scripts/hooks/check-gh-json-fields.sh
         pass_filenames: true
@@ -326,7 +312,6 @@ repos:
 
       - id: no-headless-gemini
         name: Block headless gemini (-p / --prompt / --bg) introductions
-        # HIMMEL-157
         language: system
         entry: bash scripts/hooks/check-no-headless-gemini.sh
         pass_filenames: true
@@ -351,7 +336,6 @@ repos:
 
       - id: artifact-leakage
         name: block stray generated artifacts from being committed
-        # HIMMEL-371
         language: system
         entry: bash scripts/hooks/check-artifact-leakage.sh
         pass_filenames: false
@@ -360,7 +344,6 @@ repos:
 
       - id: leak-classes
         name: leak-class gate (home-path, mac, private-lan-ip, hostname, telegram token)
-        # HIMMEL-2561
         language: system
         entry: bash scripts/guardrails/leak-classes.sh --staged
         pass_filenames: false
@@ -369,7 +352,6 @@ repos:
 
       - id: git-env-scrub
         name: gate unscrubbed GIT_* env on trust-path git calls
-        # HIMMEL-3570
         language: system
         entry: bash scripts/guardrails/check-git-env-scrub.sh --staged
         pass_filenames: false
@@ -378,7 +360,6 @@ repos:
 
       - id: graph-artifact-branch
         name: block graphify-out/ commits off the /graph-publish flow
-        # HIMMEL-2167
         language: system
         entry: bash scripts/hooks/check-graph-artifact-branch.sh
         pass_filenames: false
@@ -489,7 +470,6 @@ repos:
 
       - id: pr-mergeable-gate
         name: Refuse push when PR is CONFLICTING
-        # HIMMEL-136
         language: system
         entry: bash scripts/hooks/check-pr-mergeable.sh
         pass_filenames: false
@@ -498,7 +478,6 @@ repos:
 
       - id: no-force-push
         name: Refuse force-push to protected refs
-        # HIMMEL-136
         language: system
         entry: bash scripts/hooks/check-no-force-push.sh
         pass_filenames: false
@@ -523,7 +502,6 @@ repos:
 
       - id: template-version-push
         name: template content change requires metadata.version bump (pre-push range)
-        # HIMMEL-524
         entry: bash scripts/hooks/check-template-version.sh --pre-push
         language: system
         always_run: true
@@ -532,7 +510,6 @@ repos:
 
       - id: security-reviewed
         name: Security-review attestation for non-docs code changes
-        # HIMMEL-176
         language: system
         entry: bash scripts/hooks/check-security-reviewed.sh
         pass_filenames: false
@@ -541,8 +518,7 @@ repos:
 
       - id: conventional-commit-msg
         name: Conventional commit message + ticket ID (TICKET_ID_REQUIRED=0 opts out)
-        # HIMMEL-1483, default-on HIMMEL-2442.
-        # HIMMEL-2461: pass_filenames MUST stay true here. At the commit-msg
+        # pass_filenames MUST stay true here. At the commit-msg
         # stage the one filename pre-commit passes IS the commit-message file,
         # and the hook reads it from $1. With `pass_filenames: false` the hook
         # got nothing, `cat ""` failed under a "Passed" line and it exited 0 —
@@ -570,9 +546,9 @@ repos:
 
       - id: skill-description-cap
         name: skill/command description stays within 120 chars
-        # HIMMEL-2037. No lean-skills exclude here (HIMMEL-3064): the entry
+        # No lean-skills exclude here: the entry
         # ALREADY honours vendoring at the authoritative source — skill-cost
-        # reads the nearest VENDORED.md (HIMMEL-3093) and skips upstream prose
+        # reads the nearest VENDORED.md and skips upstream prose
         # while still capping that file's `local=` declarations, of which
         # lean-skills' context7-mcp is one. A path regex here would be a
         # second, coarser copy of that policy: it cannot see `local=`, so it
@@ -584,13 +560,13 @@ repos:
 
       - id: skill-lint
         name: SKILL.md frontmatter hygiene (name/description present, name==dirname, no dup name)
-        # HIMMEL-3609 (v1 gate). Repo-owned SKILL.md corpus only — .agents/skills
+        # v1 gate. Repo-owned SKILL.md corpus only — .agents/skills
         # (generated Codex mirror) and bench-scorecard test fixtures are out of
         # scope by design. Description-LENGTH policy is skill-description-cap
         # above, not this hook.
         language: system
         entry: bash scripts/lint/skill-lint.sh
-        # HIMMEL-5513: command bodies are in scope for the SIZE cap only
+        # Command bodies are in scope for the SIZE cap only
         # (warn 20000 / fail 60000 bytes, env-overridable; upstream-owned
         # bodies sit in scripts/lint/skill-size-allowlist.txt).
         files: '^(marketplace/plugins/[^/]+/skills/[^/]+/SKILL\.md|\.claude/skills/[^/]+/SKILL\.md|plugins/(himmel-gh|himmel-jira)/skills/[^/]+/SKILL\.md|marketplace/plugins/[^/]+/commands/[^/]+\.md|\.claude/commands/[^/]+\.md)$'
@@ -598,7 +574,7 @@ repos:
 
       - id: shell-lint
         name: shell portability lint (mktemp template, GNU flags, errexit leak, POSIX ERE, bash 3.2; baseline-first)
-        # HIMMEL-6043. Existing findings sit in scripts/lint/shell-lint-baseline.tsv
+        # Existing findings sit in scripts/lint/shell-lint-baseline.tsv
         # (path, tag, count); only a count above its row fails. The hook reads the
         # index itself (--staged), so pass_filenames is off.
         language: system
@@ -610,7 +586,7 @@ repos:
 
       - id: flag-parity
         name: docs name only flags the cited script has (baseline-first)
-        # HIMMEL-6019. Drift already present sits in scripts/lint/flag-parity-baseline.tsv
+        # Drift already present sits in scripts/lint/flag-parity-baseline.tsv
         # (doc, script, flag); only a row not in it fails. Reads the index itself
         # (--staged), so pass_filenames is off.
         language: system
@@ -621,18 +597,16 @@ repos:
 
       - id: command-positional-args
         name: no bare $<digit> in a command's fenced code
-        # HIMMEL-2051
         language: system
         entry: node scripts/lanes/skill-cost.mjs --check-positional-args
         files: '^(\.claude/commands/[^/]+\.md|marketplace/plugins/[^/]+/commands/[^/]+\.md)$'
-        # claude-hud is pinned byte-for-byte (HIMMEL-718) — its own drift
+        # claude-hud is pinned byte-for-byte — its own drift
         # guard above is the gate for that tree, not this lint.
         exclude: '^marketplace/plugins/claude-hud/'
         stages: [pre-commit]
 
       - id: oxlint-complexity-ratchet
         name: oxlint complexity ratchet — no NEW function above the audited max
-        # HIMMEL-2154
         entry: bash scripts/hooks/check-oxlint-complexity.sh
         language: system
         # Same lesson as guardrail-matrices / fail-open-lint above: the guard
@@ -646,7 +620,6 @@ repos:
 
       - id: oxlint-hardening-zero-violations
         name: oxlint bug-class hardening — zero violations
-        # HIMMEL-2163
         entry: bash scripts/hooks/check-oxlint-hardening.sh
         language: system
         # Same lesson as the complexity ratchet above: the guard must cover
@@ -657,7 +630,6 @@ repos:
 
       - id: commands-catalog-drift
         name: commands-catalog.md Description column matches command frontmatter
-        # HIMMEL-2064
         language: system
         # --staged (CR round 2): reads the STAGED git blobs, not the working
         # tree, so an unrelated unstaged edit to a command file can't trip
@@ -670,7 +642,6 @@ repos:
 
       - id: secrets-doc-drift
         name: .env.example's generated secrets block matches secrets-manifest.json
-        # HIMMEL-2176
         language: system
         # --staged, same rationale as commands-catalog-drift above: reads the
         # STAGED git blobs (gen-secrets-doc.mjs's own --staged mode), not the
@@ -683,7 +654,6 @@ repos:
 
       - id: doctor-check-ids
         name: himmel-doctor.sh check_cNN namespace stays collision-free
-        # HIMMEL-2664
         language: system
         entry: bash scripts/hooks/check-doctor-check-ids.sh
         files: ^scripts/himmel-doctor\.sh$
@@ -692,9 +662,9 @@ repos:
 
       - id: unchecked-mktemp
         name: added lines carry no unchecked mktemp capture
-        # reach: himmel-only - not soaked; mode (b) + export blocked on the HIMMEL-3418 burn-down
+        # reach: himmel-only - not soaked; mode (b) + export blocked on the burn-down of the existing unguarded captures
         # (header `# soak:` line in scripts/lib/unchecked-mktemp.sh).
-        # HIMMEL-2709 -- scan mode (a): reads the staged index itself
+        # Scan mode (a): reads the staged index itself
         # (git diff --cached) and judges ADDED lines only, so it always_runs
         # rather than scoping via `files`. 914 pre-existing unguarded captures
         # in 442 tracked *.sh on 2026-09-22 never block an unrelated commit.
