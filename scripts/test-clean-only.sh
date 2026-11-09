@@ -352,9 +352,11 @@ if grep -q "repo view" <<<"$args"; then
     esac
 fi
 if grep -qi "api --paginate repos/owner/repo/pulls" <<<"$args"; then
+    row_repo="Owner/Repo"
+    [ "${GH_VIEW:-fail}" = fail ] && row_repo="Renamed/Repo"
     for kind in feat:merged open:open closed:closed; do
         while IFS=' ' read -r branch sha; do
-            printf 'Owner/Repo\t%s\t%s\t%s\n' "$branch" "${kind#*:}" "$sha"
+            printf '%s\t%s\t%s\t%s\n' "$row_repo" "$branch" "${kind#*:}" "$sha"
         done < <(git for-each-ref --format='%(refname:short) %(objectname)' "refs/heads/${kind%%:*}")
     done
     exit 0
