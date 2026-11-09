@@ -6,7 +6,7 @@ argument-hint: "[vault-path] [--dry-run] [--since YYYY-MM-DD]"
 
 ## Your task
 
-Walk the vault's processed clips, find cross-clip patterns, write synthesis pages and folder/MOC proposals. This is the LUNA-3 "gradually understand all information and suggest new layouts" track — the vault thinks for itself based on accumulated clipper input.
+Walk the vault's processed clips, find cross-clip patterns, write synthesis pages and folder/MOC proposals. This is the clip-ingest "gradually understand all information and suggest new layouts" track — the vault thinks for itself based on accumulated clipper input.
 
 ### `--dry-run` hard gate
 
@@ -31,7 +31,7 @@ Wherever `YYYY-MM-DD` appears in instructions below (including YAML examples and
 
 Same as `/triage-clips`. Look at `$1`, then `$OBSIDIAN_VAULT_PATH`, then `~/Documents/luna` (canonical Luna vault path). Verify `<vault>/Clippings/` exists; exit 0 with `synthesize-clips: no Clippings/ — nothing to synthesize` if not.
 
-### G-8 — Harvest-completion gate (HIMMEL-1137) — run FIRST after vault resolution
+### G-8 — Harvest-completion gate (no stage runs on a dead harvest) — run FIRST after vault resolution
 
 synthesize-clips consumes processed clips that trace back to harvest output. A hard-killed `/harvest-clips` mid-run leaves that state partial — synthesizing over it produces patterns from corrupted evidence. Before scanning:
 
@@ -79,18 +79,18 @@ Each lens looks at the same eligible clip set, independent of the others. Order 
 
 **Pattern 4 — Folder pressure.** Count clips by promotion-candidate target folder (parse the `## Promotion candidate` section's `Suggested target:` line in each clip). If a single folder accumulates 5+ promotion candidates AND that folder doesn't exist yet, propose creating it. Clips missing the Promotion candidate section are reported in the input-exclusion log AND excluded from Pattern 4 (they remain in Patterns 1-3).
 
-### Confidence floor — apply to ALL patterns BEFORE writing (domain sub-rule exempts Pattern 2, HIMMEL-242)
+### Confidence floor — apply to ALL patterns BEFORE writing (domain sub-rule exempts Pattern 2, where the author is the source)
 
 Skip any pattern where:
 - Evidence is <3 clips (concepts), <2 clips (authors), <5 clips (tags / folders)
-- Evidence clips all share `source:` domain — single-source patterns are noise, not signal (this filter applies to Patterns 1, 3 AND 4 — NOT Pattern 2 (HIMMEL-242): for author convergence the author IS the source and authors are inherently single-platform (an X author's clips always share x.com), so the shared-domain test would skip every tweet author — exactly the thought-weight signal Pattern 2 exists to surface. Pattern 2's noise guards are the 24-hour window below plus its substance gate (≥3 distinct recurring themes))
+- Evidence clips all share `source:` domain — single-source patterns are noise, not signal (this filter applies to Patterns 1, 3 AND 4 — NOT Pattern 2 (the author is the source): for author convergence the author IS the source and authors are inherently single-platform (an X author's clips always share x.com), so the shared-domain test would skip every tweet author — exactly the thought-weight signal Pattern 2 exists to surface. Pattern 2's noise guards are the 24-hour window below plus its substance gate (≥3 distinct recurring themes))
 - Evidence clips all landed within a 24-hour window — could be a single news event, not a recurring theme
 
 If skipped: emit a `⊘` line, do not write.
 
 ### Substantive-content gate — apply AFTER confidence floor, BEFORE write
 
-The confidence floor counts clips. The substantive-content gate counts **extractable insight**. Templates that pass the count floor but cannot be filled with concrete content produce boilerplate (`Recurring themes: TODO`, author anchors with empty body, tag MOCs with no per-tag prose). Boilerplate is dead weight at scale — the operator surfaced this in the 2026-05-27 wiki consolidation review (LUNA-43: 8 of 20 synthesis pages were template-only).
+The confidence floor counts clips. The substantive-content gate counts **extractable insight**. Templates that pass the count floor but cannot be filled with concrete content produce boilerplate (`Recurring themes: TODO`, author anchors with empty body, tag MOCs with no per-tag prose). Boilerplate is dead weight at scale — the operator surfaced this in the 2026-05-27 wiki consolidation review (8 of 20 synthesis pages were template-only).
 
 Per-pattern minimum extractable substance:
 
@@ -135,14 +135,14 @@ confidence: medium
 - [[Clippings/<clip-2>]] — ...
 - [[Clippings/<clip-3>]] — ...
 
-> **Counting invariant** (LUNA-43): the `N` in the header MUST equal the number of bullet entries listed below it. Pre-write workflow (not post-write — the `Write` tool emits the whole file in one shot, so the verify step has to come BEFORE the Write call, not after):
+> **Counting invariant** (from the clipper audit fixes): the `N` in the header MUST equal the number of bullet entries listed below it. Pre-write workflow (not post-write — the `Write` tool emits the whole file in one shot, so the verify step has to come BEFORE the Write call, not after):
 >
 > 1. Finalise the bullet list of evidence clips in memory first. Do NOT touch the header.
 > 2. Set `N = len(finalised_bullet_list)`.
-> 3. Set `M = count of distinct canonical-URL values across the finalised bullet list`. The canonical-URL field is the clip frontmatter's LUNA-37-canonicalised URL when present (`canonical_url:`); fall back to the raw `source:` value when not present.
+> 3. Set `M = count of distinct canonical-URL values across the finalised bullet list`. The canonical-URL field is the clip frontmatter's dedup-sweep-canonicalised URL when present (`canonical_url:`); fall back to the raw `source:` value when not present.
 > 4. Only THEN compose the header `Evidence (<N> clips, <M> unique URLs)` from those computed values and emit the whole synthesis page in one Write call.
 >
-> Never write a count then truncate the list. Never write a list then guess the count. Pages that report `N=16` while listing 8 clips are LUNA-43 bug-fixture cases and must not ship — the bug pattern is "count first, list later" which the steps above forbid by construction.
+> Never write a count then truncate the list. Never write a list then guess the count. Pages that report `N=16` while listing 8 clips are audit bug-fixture cases and must not ship — the bug pattern is "count first, list later" which the steps above forbid by construction.
 
 ## Proposed vault change
 
@@ -166,7 +166,7 @@ Append to `<vault>/log.md`:
 ## [TODAY] synthesize-clips | <N> synthesis pages written from <K> processed clips
 ```
 
-### Update hot.md (HIMMEL-254)
+### Update hot.md (the Tier-2 hot cache)
 
 After Tracking, rewrite `<vault>/hot.md` (the Tier-2 hot cache — see the vault `_CLAUDE.md` "Active Context" section): **overwrite the whole file** (never append; log.md is the history) with refreshed Last Updated / Key Recent Facts / Recent Changes / Active Threads reflecting this run. Keep it under ~500 words; keep frontmatter `type: meta`, `ai-first: true`, and set `updated: TODAY`. Skip when `DRY_RUN=1` or `hot.md` does not exist.
 

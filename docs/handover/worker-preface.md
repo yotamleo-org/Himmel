@@ -169,10 +169,11 @@ the chief's `close-wrapped-worker.sh` ends the session
 once the lock frees. A worker never idles: on an outside event, write `LIVE — HOLD-OUTSIDE pr=<n>` and WRAP with a resume brief; send the
 chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
 
-**HALT / WRAP: TaskStop EVERY background task and every agent you spawned,
-then prove the process subtree is clean** with
+**HALT / WRAP: TaskStop each live agent you spawned, then prove the
+subtree clean** with
 `bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>`: paste its
-`CLOSABLE:` line; on `WITHHELD:` TaskStop the pids and re-run, no `WRAPPED`.
+`CLOSABLE:` line; on `WITHHELD:` TaskStop only what it lists as still running,
+re-run, no `WRAPPED`.
 
 **Context past 75 % of your `--autocompact` ceiling, when the guard
 is on** (off by default; on in Sonnet 5.5 worker-impl/eval, Opus 5.5 worker-*;

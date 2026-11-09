@@ -191,7 +191,7 @@
 {"id":"h191","query":"when may a ticket be moved to Done","lex":"live-proof test Done","collections":["himmel"],"expect":["himmel/docs/internals/live-proof-test.md"]}
 {"id":"h192","query":"what data may be sent to which remote provider","lex":"egress matrix corpus provider","collections":["himmel"],"expect":["himmel/docs/internals/egress-matrix.md"]}
 {"id":"h193","query":"how does the worker context guard decide when to compact","lex":"worker context guard threshold autocompact","collections":["himmel"],"expect":["himmel/docs/internals/worker-context-guard.md","himmel/docs/handover/worker-sections/context-guard.md"]}
-{"id":"h194","query":"what is the ponytail comment convention","lex":"ponytail ceiling upgrade path","collections":["himmel"],"expect":["himmel/docs/internals/ponytail-convention.md"]}
+{"id":"h194","query":"what is the ponytail comment convention","lex":"ponytail ceiling upgrade path","collections":["himmel"],"expect":["himmel/docs/internals/code-comments.md"]}
 {"id":"h195","query":"how do I security review a change and what bypasses exist","lex":"security review playbook bypass","collections":["himmel"],"expect":["himmel/docs/security-review.md"]}
 {"id":"h196","query":"what is the lockfile policy for npm and how is install enforced","lex":"npm lockfile policy install","collections":["himmel"],"expect":["himmel/docs/security/npm-policy.md"]}
 {"id":"h197","query":"how are python dependencies pinned","lex":"python dependency pinning policy","collections":["himmel"],"expect":["himmel/docs/security/python-policy.md"]}

@@ -106,6 +106,36 @@ total=$(wc -l <"$RLOG" 2>/dev/null | tr -d ' ')
 if [ "$rc" = 0 ] && [ "$n" = 3 ] && [ "$total" = 3 ]; then ok "run attributes 3 GraphQL calls to fakecaller.sh, skips REST"
 else bad "run attribution" "rc=$rc fakecaller=$n lines=$total out=$(cat "$TMP/run.out")"; fi
 
+disagree=$(
+    # shellcheck source=scripts/lib/gh-quota.sh
+    . "$ROOT/scripts/lib/gh-quota.sh"
+    eval "$(sed -n '/^gqlc_cost() {/,/^}/p' "$SCRIPT")"
+    set -f
+    while IFS= read -r s; do
+        # shellcheck disable=SC2086  # a shape is a word list on purpose
+        c=$(gqlc_cost $s)
+        # shellcheck disable=SC2086
+        b=$(ghq_bucket_of $s)
+        { [ "$b" = graphql ] && [ "$c" = 1 ]; } || { [ "$b" = core ] && [ "$c" = 0 ]; } || printf '%s=%s/%s;' "$s" "$c" "$b"
+    done <<'SHAPES'
+pr view 1 --json state
+pr list
+pr diff 1
+pr checks 9
+api repos/o/r/pulls
+api graphql -f query={viewer{login}}
+api -i graphql -f query={rateLimit{remaining}}
+run list
+run view 5 --log
+issue view 3
+repo view --json name
+label list
+workflow list
+SHAPES
+)
+if [ -z "$disagree" ] && grep -q 'ghq_bucket_of "\$@"' "$SCRIPT"; then ok "gqlc_cost charges by ghq_bucket_of on every shape"
+else bad "cost and bucket disagree" "${disagree:-gqlc_cost does not call ghq_bucket_of}"; fi
+
 # --- run: floor guard -------------------------------------------------------
 RLOG2="$TMP/run2.log"
 FAKE_REMAINING=1000 PATH="$BIN:$PATH" bash "$SCRIPT" run --log "$RLOG2" -- bash "$TMP/fakecaller.sh" >"$TMP/run2.out" 2>&1

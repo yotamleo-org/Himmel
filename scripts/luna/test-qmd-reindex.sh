@@ -260,7 +260,7 @@ export USERPROFILE="$HOME"
 export BUN_INSTALL="$TMP_ROOT/bun-none"
 # The embed-model precheck resolves qmd's config the way qmd does; CI runners
 # export XDG_CONFIG_HOME, which would point it past the fixture HOME.
-unset QMD_CONFIG_DIR XDG_CONFIG_HOME XDG_CACHE_HOME INDEX_PATH QMD_EMBED_MODEL HIMMEL_QMD_EMBED_USAGE
+unset QMD_CONFIG_DIR XDG_CONFIG_HOME XDG_CACHE_HOME INDEX_PATH QMD_EMBED_MODEL HIMMEL_QMD_EMBED_USAGE QMD_OPENAI_BASE_URL
 export QMD_REINDEX_KEY_USAGE_CMD=/bin/false
 
 # ============================================================================
@@ -1195,6 +1195,62 @@ CURL
     assert_rc "jina config naming openrouter in a comment rc 0" 0 "$rc"
     assert_rc "no curl call for a jina base URL" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
     assert_rc "usage unknown for a jina base URL" unknown "$(usage_field 1 usage_before)"
+
+    usage_curl_run() {
+        printf '%b' "$1" > "$HOME/.config/qmd/index.yml"
+        reset_state
+        rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+        rc=0; out=$( (unset QMD_REINDEX_KEY_USAGE_CMD; PATH="$FAKEBIN:$PATH" bash "$SCRIPT" --qmd-bin "$FAKE_QMD") 2>&1) || rc=$?
+    }
+    CFG_HEAD='collections:\n  himmel:\n    path: /x\n'
+    CFG_MODELS='models:\n  embed: openai:qwen/qwen3-embedding-8b\n'
+
+    echo "TEST: an openai_base_url outside models: sends no curl call"
+    usage_curl_run "${CFG_HEAD}other:\n  openai_base_url: https://openrouter.ai/api/v1\n${CFG_MODELS}  openai_base_url: https://api.jina.ai/v1\n"
+    assert_rc "outside-models openrouter URL rc 0" 0 "$rc"
+    assert_rc "no curl call when the models: URL is jina" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+    assert_rc "usage unknown when the models: URL is jina" unknown "$(usage_field 1 usage_before)"
+
+    echo "TEST: the last openai_base_url under models: wins, as the gate reads it"
+    usage_curl_run "${CFG_HEAD}${CFG_MODELS}  openai_base_url: https://openrouter.ai/api/v1\n  openai_base_url: https://api.jina.ai/v1\n"
+    assert_rc "a later jina URL rc 0" 0 "$rc"
+    assert_rc "no curl call when the last URL is jina" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+
+    echo "TEST: a quoted key under models: is read as the gate reads it"
+    usage_curl_run "${CFG_HEAD}${CFG_MODELS}  openai_base_url: https://api.jina.ai/v1\n  \"openai_base_url\": \"https://openrouter.ai/api/v1\"\n"
+    assert_rc "a later quoted openrouter URL rc 0" 0 "$rc"
+    assert_rc "usage read when the last (quoted) URL is openrouter" 1.5 "$(usage_field 1 usage_before)"
+
+    echo "TEST: an uppercase OpenRouter host is OpenRouter"
+    usage_curl_run "${CFG_HEAD}${CFG_MODELS}  openai_base_url: https://OpenRouter.AI/api/v1\n"
+    assert_rc "uppercase host rc 0" 0 "$rc"
+    assert_rc "usage read for an uppercase host" 1.5 "$(usage_field 1 usage_before)"
+
+    echo "TEST: the usage curl ignores the user's curl config (-q first)"
+    usage_curl_run "$OR_CFG"
+    assert_rc "curl run rc 0" 0 "$rc"
+    case "$(head -n 1 "$STATE/curl-argv" 2>/dev/null)" in
+        "-q "*) pass "curl argv starts with -q" ;;
+        *) fail "curl argv starts with -q" "argv: $(head -n 1 "$STATE/curl-argv" 2>/dev/null)" ;;
+    esac
+
+    echo "TEST: a trailing-dot OpenRouter host is refused by the gate and sends no curl call"
+    usage_curl_run "${CFG_HEAD}${CFG_MODELS}  openai_base_url: https://openrouter.ai./api/v1\n"
+    assert_rc "trailing-dot host rc 10" 10 "$rc"
+    assert_rc "no curl call for a trailing-dot host" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+
+    echo "TEST: a form-feed line inside models: does not end the section (the gate reads the later jina URL)"
+    usage_curl_run "${CFG_HEAD}${CFG_MODELS}  openai_base_url: https://openrouter.ai/api/v1\n\f\n  openai_base_url: https://api.jina.ai/v1\n"
+    assert_rc "form-feed config rc 0" 0 "$rc"
+    assert_rc "no curl call when the gate resolves jina" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+
+    echo "TEST: a BOM before models: is stripped, so an inherited openrouter URL does not override the config's jina URL"
+    printf '\xef\xbb\xbfmodels:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://api.jina.ai/v1\ncollections:\n  himmel:\n    path: /x\n' > "$HOME/.config/qmd/index.yml"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+    rc=0; out=$( (unset QMD_REINDEX_KEY_USAGE_CMD; QMD_OPENAI_BASE_URL=https://openrouter.ai/api/v1 PATH="$FAKEBIN:$PATH" bash "$SCRIPT" --qmd-bin "$FAKE_QMD") 2>&1) || rc=$?
+    assert_rc "BOM config rc 0" 0 "$rc"
+    assert_rc "no curl call when the gate resolves jina" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
 
     echo "TEST: a local-model run writes no usage row"
     rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true

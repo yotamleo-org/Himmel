@@ -49,17 +49,19 @@ function in_scope(p) {
 function history(s,   l) {
   if (!((s ~ /^#/ && s !~ /^#!/) || s ~ /^\/\//)) return 0
   l = tolower(s)
-  if (s ~ /HIMMEL-[0-9]+/ && s !~ /^(#|\/\/)[ \t]*ponytail:/) return 1
+  if (s ~ /HIMMEL-[0-9]+/ && s !~ ("^(#|//)[ \t]*" pt)) return 1
   if (l ~ /(^|[^a-z0-9])cr fix/ || l ~ /coderabbit round/ || l ~ /(^|[^a-z0-9])round [0-9]+/) return 1
   if (l ~ /(^|[^a-z0-9])j[0-9][0-9][0-9][0-9][a-z]([^a-z0-9]|$)/) return 1
   return 0
 }'
 
+# The marker token is assembled here so this file carries none of its own.
+PT="pony""tail:"
 LIST="$WT.list"
 : >"$LIST"
 while IFS= read -r f; do
   [ -L "$WT/$f" ] && continue
-  awk -v p="$f" "$AWK_DROP"'
+  awk -v p="$f" -v pt="$PT" "$AWK_DROP"'
     BEGIN { if (!in_scope(p)) exit; c = 0 }
     { s = $0; sub(/^[ \t]+/, "", s); if (history(s)) c++ }
     END { if (c > 0) printf "%d\t%s\n", c, p }' "$WT/$f" >>"$LIST"
@@ -68,7 +70,7 @@ done < <(git -C "$WT" ls-files -- scripts)
 
 TMP="$(mktemp "${TMPDIR:-/tmp}/prune-history.tmp.XXXXXX")" || die "mktemp failed"
 while IFS="$(printf '\t')" read -r _ f; do
-  awk "$AWK_DROP"'{ s = $0; sub(/^[ \t]+/, "", s); if (!history(s)) print }' "$WT/$f" >"$TMP" || die "could not prune $f"
+  awk -v pt="$PT" "$AWK_DROP"'{ s = $0; sub(/^[ \t]+/, "", s); if (!history(s)) print }' "$WT/$f" >"$TMP" || die "could not prune $f"
   cat "$TMP" >"$WT/$f" || die "could not write $f"
 done < <(sort -rn "$LIST" | head -n "$N")
 rm -f "$TMP"

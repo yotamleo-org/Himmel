@@ -715,4 +715,27 @@ done
 run_res "$work/proj"; rc=$?
 [ "$rc" -eq 0 ] || fail "(47) project-local salus on local models, no env: expected rc 0, got $rc: $(cat "$work/err")"
 
+# (48) --provider prints the provider the gate resolves for the base URL, one line, rc 0; qmd-reindex.sh sends its key only when this says openrouter.
+prov() { run_gate --provider "$1"; }
+cfg "$work/p1.yml" "$LOCAL_EMBED" "$LOCAL_EMBED" https://openrouter.ai/api/v1 himmel
+[ "$(prov "$work/p1.yml")" = openrouter ] || fail "(48a) openrouter base URL: expected the line 'openrouter'"
+cfg "$work/p2.yml" "$LOCAL_EMBED" "$LOCAL_EMBED" https://OpenRouter.AI/api/v1 himmel
+[ "$(prov "$work/p2.yml")" = openrouter ] || fail "(48b) an uppercase OpenRouter host: expected 'openrouter'"
+cfg "$work/p3.yml" "$LOCAL_EMBED" "$LOCAL_EMBED" https://api.jina.ai/v1 himmel
+[ "$(prov "$work/p3.yml")" = jina ] || fail "(48c) jina base URL: expected 'jina'"
+cfg "$work/p4.yml" "$LOCAL_EMBED" "$LOCAL_EMBED" https://openrouter.ai./api/v1 himmel
+case "$(prov "$work/p4.yml")" in *-unrecognised) ;; *) fail "(48d) a trailing-dot OpenRouter host is not openrouter: expected an '-unrecognised' provider" ;; esac
+cfg "$work/p5.yml" "$LOCAL_EMBED" "$LOCAL_EMBED" - himmel
+[ "$(prov "$work/p5.yml")" = openai-unconfigured ] || fail "(48e) no base URL anywhere: expected 'openai-unconfigured'"
+[ "$(QMD_OPENAI_BASE_URL=https://openrouter.ai/api/v1 node "$gate" --provider "$work/p5.yml" 2>/dev/null)" = openrouter ] || fail "(48f) the QMD_OPENAI_BASE_URL fallback: expected 'openrouter'"
+cfg "$work/p6.yml" "$LOCAL_EMBED" "$LOCAL_EMBED" http://localhost:8080/v1 himmel
+[ "$(prov "$work/p6.yml")" = local ] || fail "(48g) a loopback base URL: expected 'local'"
+# a form feed is a blank line to the gate and the last URL still wins; a BOM before the first key is stripped
+printf 'collections:\n  himmel:\n    path: /nonexistent/himmel\nmodels:\n  embed: %s\n  openai_base_url: https://openrouter.ai/api/v1\n\f\n  openai_base_url: https://api.jina.ai/v1\n' "$LOCAL_EMBED" > "$work/p7.yml"
+[ "$(prov "$work/p7.yml")" = jina ] || fail "(48h) a form-feed line inside models: must not end the section: expected 'jina'"
+printf '\357\273\277models:\n  embed: %s\n  openai_base_url: https://api.jina.ai/v1\n' "$LOCAL_EMBED" > "$work/p8.yml"
+[ "$(prov "$work/p8.yml")" = jina ] || fail "(48i) a BOM before models: is stripped: expected 'jina'"
+prov "$work/missing.yml" >/dev/null; rc=$?
+[ "$rc" -eq 2 ] || fail "(48j) an unreadable config: expected rc 2, got $rc"
+
 echo "PASS: test-qmd-jina-gate.sh"
