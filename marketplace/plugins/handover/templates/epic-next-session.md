@@ -71,6 +71,6 @@ For each lesson ask: **which check or guardrail would have caught this, and does
 
 If the user prompt includes the phrase **"overnight mode"** alongside this file path, run the full autonomous pipeline end-to-end without pausing for confirmation between phases.
 
-Standing instructions for the autonomous run: apply `docs/handover/afk-mode.md` § Launch preamble — the single copy of the launch-preamble text (HIMMEL-1719). Do not inline it here.
+Standing instructions for the autonomous run: apply `docs/handover/afk-mode.md` § Launch preamble — the single copy of the launch-preamble text. Do not inline it here.
 
-See [`docs/handover/afk-mode.md`](../../../../docs/handover/afk-mode.md) for the 11-phase pipeline, budget, block criteria, and lessons learned from HIMMEL-97.
+See [`docs/handover/afk-mode.md`](../../../../docs/handover/afk-mode.md) for the 11-phase pipeline, budget, block criteria, and lessons learned from the proof-of-concept run.

@@ -7,7 +7,7 @@ Load `references/resolution.md` first (Target Repo Resolution, Bucket Resolution
 Move an item between buckets. `<id>` is `#N`, bare numeric, or Jira key. `<bucket>` selects the **axis by name** — the two name-sets are disjoint, so the target axis is unambiguous:
 
 - **`<bucket>` ∈ the active time-horizon vocab** (`now/next/later/someday`, or the kanban/`buckets_custom` names) → **time-horizon move** (frontmatter `bucket:` write). Unchanged behaviour.
-- **`<bucket>` ∈ the recognized source-bucket set** (the four built-ins ∪ `source_buckets_extra`, HIMMEL-307) → **source-repo move** (relocate the item's directory + rewrite inbound refs).
+- **`<bucket>` ∈ the recognized source-bucket set** (the four built-ins ∪ `source_buckets_extra`) → **source-repo move** (relocate the item's directory + rewrite inbound refs).
 - **`<bucket>` matches neither** → error: print the valid names for both axes and do nothing.
 
 The two name-sets are kept disjoint at registry-write time — `source_buckets_extra` validation (see `references/init-register.md`) rejects any extra-bucket name that collides with a reserved time-horizon name. If a name ever appears in **both** sets anyway (e.g. a hand-edited registry), do not guess: treat it as the **source-repo** axis and warn (`<bucket>` is ambiguous; resolving as source-repo — rename the extra bucket to disambiguate).
@@ -23,7 +23,7 @@ The two name-sets are kept disjoint at registry-write time — `source_buckets_e
 6. Append to `sync.log`.
 7. Confirm: "Moved <id> → <bucket> (time-horizon) in repo `<name>`"
 
-**Source-repo move (HIMMEL-307):**
+**Source-repo move:**
 
 0. **Resolve target repo.**
 1. **Worktree gate** — enter item's worktree.

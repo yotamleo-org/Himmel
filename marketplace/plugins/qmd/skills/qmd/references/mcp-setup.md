@@ -1,6 +1,6 @@
 # QMD MCP Server Setup
 
-> **himmel fork note (HIMMEL-592):** in this vendored plugin the MCP server is
+> **himmel fork note:** in this vendored plugin the MCP server is
 > a SHARED HTTP daemon (`http://localhost:8181/mcp`, ensured by a SessionStart
 > hook) — you do NOT need the per-session stdio config below; it is kept as
 > upstream reference only. himmel installs qmd via bun, not npm.

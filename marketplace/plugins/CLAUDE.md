@@ -12,19 +12,19 @@ declares one **github-pinned** vendored plugin that does NOT live here —
 `claude-obsidian`, pinned by immutable **tag** (a bare SHA is not installable;
 see its entry in `marketplace/.claude-plugin/marketplace.json` and the Pin
 update workflow in `obsidian-triage/README.md`). Steph Ango's `obsidian`
-(kepano/obsidian-skills) is NOT declared here (HIMMEL-435) — a bare-SHA pin
+(kepano/obsidian-skills) is NOT declared here — a bare-SHA pin
 can't be installed and kepano publishes no tags, so it installs from its own
 marketplace (`obsidian@obsidian-skills`).
 
 ## Conventions
-- **Plugin specs belong in `<plugin>/README.md`** (luna-docs tier-1,
-  HIMMEL-138) — not in `docs/`. Author there (obsidian-triage
+- **Plugin specs belong in `<plugin>/README.md`** (luna-docs tier-1)
+  — not in `docs/`. Author there (obsidian-triage
   already does; handover predates the convention).
 - Forks keep the upstream `LICENSE` file and document the fork delta in
   the plugin's `README.md`, so the divergence from upstream is auditable.
 - A plugin's skills follow the same authoring rules as any skill — invoke
   the `skill-creator` / `plugin-dev` skills rather than hand-rolling.
-- **Declaring a plugin ≠ installing it (HIMMEL-434).** Adding an entry to
+- **Declaring a plugin ≠ installing it.** Adding an entry to
   `marketplace/.claude-plugin/marketplace.json` installs it on NO machine —
   `/himmel-update`'s `marketplace update` only re-syncs *already-installed*
   plugins. So when you ship a new (or newly-vendored) plugin: also
@@ -34,16 +34,16 @@ marketplace (`obsidian@obsidian-skills`).
   `bash scripts/himmel-update.sh --plugins-check` reports any plugin that is
   missing or shadowed.
 - **Test a plugin that declares its own deps via `bash scripts/plugin-test.sh
-  <plugin>`**, not raw `bun test` (HIMMEL-366). A fresh worktree only installs
+  <plugin>`**, not raw `bun test`. A fresh worktree only installs
   `scripts/jira/` deps, so raw `bun test` here starts RED ("Cannot find module
   '@modelcontextprotocol/sdk/…'") and masks real regressions; the helper
   `bun install`s first so the baseline is GREEN.
 - **A command mirrored in both `.claude/commands/<name>.md` and a plugin's
   `commands/<name>.md` (himmel-ops' `himmel-update.md` /
-  `himmel-update-all.md` — kept in both places on purpose, HIMMEL-459: the
+  `himmel-update-all.md` — kept in both places on purpose: the
   project copy is the bootstrap path when the plugin isn't installed yet, the
   plugin copy is what makes it reachable from any cwd) needs BOTH edited
-  together.** They drifted once (HIMMEL-459) when only the project copy kept
+  together.** They drifted once when only the project copy kept
   getting updated — diff the two before committing a change to either.
 
 ## Reference

@@ -9,7 +9,7 @@ Claude Code eagerly spawns every enabled plugin's MCP server at session start
 (no native lazy spawn). Upstream qmd declares a **stdio** server
 (`{"command": "qmd", "args": ["mcp"]}`), so **every** session spawns its own
 `qmd mcp` process and loads the same read-only search index into RAM again —
-the largest per-session MCP footprint on this machine (HIMMEL-592).
+the largest per-session MCP footprint on this machine.
 
 ## The change
 
@@ -22,7 +22,7 @@ shared **HTTP** endpoint instead of a per-session stdio process
 ```
 
 All sessions now address ONE `qmd mcp --http --daemon` on `localhost:8181`.
-The daemon requires `Authorization: Bearer <token>` (HIMMEL-5002; 401 without
+The daemon requires `Authorization: Bearer <token>` (401 without
 it, `/health` stays open). The token is a 0600 file the daemon generates on
 first start (`$QMD_HTTP_TOKEN_FILE`, else `~/.config/qmd/http-token`; Claude Code strips `*TOKEN*` env vars from the headers helper, so a custom path also needs `QMD_HTTP_AUTH_FILE` set to the same file). The
 plugin's `.mcp.json` sends it through `headersHelper`
@@ -53,7 +53,7 @@ content deltas:
   (pre-existing upstream mismatch; harmless there, fixed here since we own the
   copy).
 - **One section added:** `What works here (himmel fork, measured)`, under
-  `Collection Filtering` (HIMMEL-4184) — query guidance measured on himmel's
+  `Collection Filtering` — query guidance measured on himmel's
   own collections with `scripts/eval/qmd-quality/qmd-quality.sh`; re-run that
   eval before changing it.
 
@@ -67,7 +67,7 @@ silent empty index).
 
 A hung **vector** query is the one failure that is not loud: on 2026-09-16 every
 `vec` sub-query timed out while `lex` kept working, so an agent's semantic
-sweep silently degraded to keyword-only (HIMMEL-3056). The MCP client only sees
+sweep silently degraded to keyword-only. The MCP client only sees
 a timeout, so himmel detects it instead: `bash scripts/himmel-doctor.sh`
 check `C40-qmd-vec` probes the server with one bounded `vec` query and names
 the reason (timed out / tool error / no vector index / foreign listener on
@@ -78,7 +78,7 @@ timeout". If a `vec` call times out, run that check — do not retry-loop the qu
 treat a lex-only result as incomplete coverage, not a miss.
 
 The daemon's native memory grows over hours (6.8 GB RSS after ~4.5 h, with vec
-queries timing out, HIMMEL-3062), so the SessionStart hook also bounds it. On the
+queries timing out), so the SessionStart hook also bounds it. On the
 healthy path it reads the daemon's RSS with ONE `ps` call (no network) and, over
 `QMD_RSS_CEILING_MB` (default `4096`; `0` disables), recycles it: a DETACHED
 child SIGTERMs the daemon, waits for it to exit, and starts a fresh one, so the
@@ -87,10 +87,10 @@ session that noticed is never held for the ~15 s unwind. A lock
 sessions recycle, and a stamp blocks another recycle for
 `QMD_RECYCLE_COOLDOWN_MIN` minutes (default `30`). The recycler logs to
 `~/.cache/qmd/recycle.log`. `himmel-doctor.sh` check `C45-qmd-daemon` reports the
-daemon's RSS and uptime and WARNs over the same ceiling. The PowerShell twin does
-not carry the ceiling yet (HIMMEL-3751).
+daemon's RSS and uptime and WARNs over the same ceiling. There is no PowerShell twin
+to carry it: Windows runs through WSL.
 
-## Remote embed models and the salus index (HIMMEL-5683)
+## Remote embed models and the salus index
 
 qmd's `models:` block is per index, so a collection the egress matrix denies for
 a remote provider (salus first) must live in its own index on local models.
@@ -105,13 +105,13 @@ Local-only configs skip the gate. The shipped `.mcp.json` keeps its single
 `qmd` entry; a second `qmd-salus` entry (port 8182) is added by the runbook, not
 shipped always-on. Design: `docs/internals/egress-matrix.md`.
 
-### OpenRouter for the non-salus index (HIMMEL-5756)
+### OpenRouter for the non-salus index
 
 The fork pin carries the `openai:` provider (yotamleo/qmd, added in cecc32a9; the pin is now 44fd0609). The gate
 maps `https://openrouter.ai/...` to provider `openrouter` and accepts only the
 pinned models, `openai:qwen/qwen3-embedding-8b` (embed) and
 `openai:cohere/rerank-4-fast` (rerank) and `openai:google/gemini-2.5-flash-lite`
-(generate, HIMMEL-6125); any other model, an unrecognised host, a missing or unparseable base URL, or a `models.openai_api_key`
+(generate); any other model, an unrecognised host, a missing or unparseable base URL, or a `models.openai_api_key`
 line is refused (the refusal never prints the key). A collection is also refused
 by its path, not only its name: a path equal to, inside or containing a PHI root
 (`phi-roots` / `egress-denylist` under `~/.config/claude-glm`, the path of a salus
@@ -134,7 +134,7 @@ a `QMD_OPENAI_API_KEY=...` line, mode 0600 or 0400, else the file is refused),
 and it will not start a remote daemon without it. Salus keeps its own
 local-only index (`QMD_INDEX_NAME=salus`, `salus.yml`, port 8182).
 
-### Starting the salus daemon and proving it stays local (HIMMEL-5756)
+### Starting the salus daemon and proving it stays local
 
 Start it with its own index name and port (no provider key, local models only):
 
@@ -165,11 +165,11 @@ collection); the next `qmd update` drops the matching documents. Measured on
 Switching an existing index is copy-and-swap, never in place: the index must
 never mix local and remote vectors (qmd checks no vector's model at query time).
 `scripts/luna/qmd-embed-model.sh reembed|swap` builds the copy, holds the swap
-lock across the rename and flips the config, but it only knows the `gemma` and
-`qwen` local aliases today; remote support in it and the VM proof of the swap
-are tracked on HIMMEL-5756.
+lock across the rename and flips the config, for the `gemma` and `qwen` local
+aliases and the `remote` route; no swap to a remote model has been proven on a
+test VM yet.
 
-## Turning the daemon off on purpose (HIMMEL-4494)
+## Turning the daemon off on purpose
 
 The SessionStart hook relaunches the daemon in every new session, so killing it
 by hand does not stick. To keep it off (for example while gaming, since its
@@ -189,16 +189,16 @@ operator" in that state.
 ## Upstream watch
 
 The standalone `qmd` CLI installs from a local clone of the carried fork
-`yotamleo/qmd` until tobi/qmd#1029 is fixed upstream (pinned to an immutable commit SHA rather than a mutable branch — HIMMEL-911
+`yotamleo/qmd` until tobi/qmd#1029 is fixed upstream (pinned to an immutable commit SHA rather than a mutable branch
 — cloned + built with bun, then junctioned/symlinked onto the bun-global
-`@tobilu/qmd` path — `scripts/lib/qmd-bin.sh`, HIMMEL-877), not
+`@tobilu/qmd` path — `scripts/lib/qmd-bin.sh`), not
 `bun add -g @tobilu/qmd` (that command EPERM-wedges on this project's
 machines and bun blocks its postinstall script). The fork carries two
 commits on top of `tobi/qmd` main that make the `bin/qmd` launcher forward
-SIGINT/SIGTERM/SIGHUP to its bun child (HIMMEL-3956, upstream PR
-tobi/qmd#1030). When that merges, HIMMEL-3982 pins back to `tobi/qmd` and
-`qmd_install` re-points an existing clone's origin in place (HIMMEL-3045
-dropped an earlier fork the same way). This
+SIGINT/SIGTERM/SIGHUP to its bun child (upstream PR
+tobi/qmd#1030), so an interrupted query never leaves an orphaned process. When
+that merges, the install pins back to `tobi/qmd` and `qmd_install` re-points an
+existing clone's origin in place (an earlier fork was dropped the same way). This
 plugin's **manifest + skill** stay pinned separately and are low-churn.
 Re-sync `skills/qmd/` from `tobi/qmd` if the upstream search skill changes
 materially, keeping both skill deltas above; re-sync the CLI clone per
