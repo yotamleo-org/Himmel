@@ -1,8 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { authHeader, confluenceAuthHeader, projectKey } from './client.js';
 
-// A missing setting names where it lives (the config layer) and the verb that shows it,
-// and a missing credential fails before a request is built, never as an empty Basic header and a 401.
 describe('settings errors point at the config layer and the verb', () => {
   afterEach(() => vi.unstubAllEnvs());
 

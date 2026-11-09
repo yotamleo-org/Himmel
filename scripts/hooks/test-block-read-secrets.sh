@@ -1975,9 +1975,6 @@ assert_rc "peer-bridge Bash cat hmac.key (basename rule)" 2 "$(run_case "$(j_bas
 assert_rc "peer-bridge an unrelated file stays readable" 0 "$(run_case "$(j_bash "cat $pb_home/work/notes.txt")" "HOME=$pb_home")"
 rm -rf "$pb_home"
 
-# A refused .env read that names a Jira key or the Jira site points at
-# ~/.himmel/himmel.conf and `jira config`; the refusal itself (rc=2) is unchanged, and a
-# non-Jira .env read keeps today's text with no pointer.
 run_text() { { printf '%s' "$1" | bash "$HOOK" >/dev/null; } 2>&1; }
 assert_text() {
     local label="$1" want="$2" needle="$3" text="$4" has=0

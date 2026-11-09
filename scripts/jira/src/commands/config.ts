@@ -13,7 +13,6 @@ export interface ConfigReport {
   code: number;
 }
 
-// The himmel-secrets layer names `status` prints, as the kind an operator can act on.
 const LAYER_KIND: Record<string, string> = {
   credentials: 'credentials dir',
   keyring: 'keyring',
@@ -23,7 +22,6 @@ const LAYER_KIND: Record<string, string> = {
 
 const RESOLVER = fileURLToPath(new URL('../../../lib/himmel-secrets', import.meta.url));
 
-// The first of `files` whose own `key` line holds a value. Only the one key is parsed per read.
 function fileHolding(key: string, files: string[]): { file: string; value: string } | undefined {
   for (const file of files) {
     const seen: NodeJS.ProcessEnv = {};
@@ -33,7 +31,6 @@ function fileHolding(key: string, files: string[]): { file: string; value: strin
   return undefined;
 }
 
-// A plain setting: its value and the file it came from, else the environment, else unset.
 function setting(key: string, files: string[], fallbackSource: string): { value: string; source: string } | undefined {
   const hit = fileHolding(key, files);
   const value = process.env[key] || hit?.value;
@@ -58,8 +55,6 @@ function resolverKind(root: string, name: string): string | undefined {
   }
 }
 
-// `set` or `not set` plus the source kind, never the value. Order follows the client's load:
-// the config files (the email only), the keyring or credentials dir, the install .env, then the environment.
 function credential(name: string, confFiles: string[], envPath: string): string[] {
   const conf = confFiles.length > 0 ? fileHolding(name, confFiles)?.file : undefined;
   const kind = conf ?? resolverKind(dirname(envPath), name) ??

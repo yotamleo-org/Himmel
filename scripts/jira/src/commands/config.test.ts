@@ -17,7 +17,6 @@ beforeEach(() => {
   mkdirSync(join(home, 'install'));
   vi.stubEnv('HOME', home);
   vi.stubEnv('HIMMEL_CONFIG_DIR', undefined as unknown as string);
-  // The suite-wide dummy credentials are unset here: every row below that asserts "not set" owns that.
   for (const k of ['JIRA_BASE_URL', 'JIRA_PROJECT_KEY', 'JIRA_SEVERITY_FIELD', 'JIRA_BOARD_ID', 'JIRA_SECTOR_FIELD',
     'JIRA_EMAIL', 'JIRA_API_TOKEN', 'CREDENTIALS_DIRECTORY']) vi.stubEnv(k, undefined as unknown as string);
 });

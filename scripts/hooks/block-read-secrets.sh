@@ -978,8 +978,6 @@ under bypass).
 EOF
 }
 
-# A refused .env read that names a Jira key or the Jira site gets one pointer line to
-# where those settings live and the verb that prints them. The refusal itself does not change.
 jira_hint() {
     case "$1" in *.env*) ;; *) return 0 ;; esac
     if grep -qiE 'JIRA_|jira|atlassian' <<<"$1"; then
