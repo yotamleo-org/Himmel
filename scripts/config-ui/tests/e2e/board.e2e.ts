@@ -783,7 +783,7 @@ test("with a Won't ticket and long sector names the Chains tab does not scroll s
   }
 });
 
-const MOCKUP_FIRST_CHAIN_Y = 233, MOCKUP_TAB_H = 590, OPEN_CHAIN_ALLOWANCE = 90, LINK_STRIP_ALLOWANCE = 55;
+const BUILD_FIRST_CHAIN_Y = 233, MOCKUP_TAB_H = 590, OPEN_CHAIN_ALLOWANCE = 90, LINK_STRIP_ALLOWANCE = 55;
 const FIXTURE_TAB_H_MAX = MOCKUP_TAB_H + 3 * OPEN_CHAIN_ALLOWANCE + LINK_STRIP_ALLOWANCE;
 function fiveChains() {
   const lnk = (on: string, status: string, onVersions: string[]) => ({ on, kind: "jira-link", source: "jira", added: null, reason: null, owner: null, until: null, clears: `${on} completes`, status, at: null, onVersions });
@@ -1046,8 +1046,7 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
     await shot(page, `board-chains-five-fixture-dark-${width}`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     if (width === 1280) {
-      console.log("CHAINS-FIVE-1280", JSON.stringify({ top, bottom }));
-      expect(Math.abs(top - MOCKUP_FIRST_CHAIN_Y), `first chain at ${top}px`).toBeLessThanOrEqual(40);
+      expect(Math.abs(top - BUILD_FIRST_CHAIN_Y), `first chain at ${top}px`).toBeLessThanOrEqual(40);
       expect(bottom).toBeLessThanOrEqual(FIXTURE_TAB_H_MAX);
       expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(8);
     }
