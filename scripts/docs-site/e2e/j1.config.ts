@@ -1,4 +1,4 @@
-// Journey J1 against `astro preview` of a built site/dist. Needs @playwright/test 1.64.1 resolvable from here
+// Journey J1 against `astro preview` of a built site/dist. Needs @playwright/test 1.65.0 resolvable from here
 // (pages.yml links scripts/config-ui/tests/e2e/node_modules in) and a prior `npm run build` in site/.
 import { defineConfig } from "@playwright/test";
 import { tmpdir } from "node:os";
