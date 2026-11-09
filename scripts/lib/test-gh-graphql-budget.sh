@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2030,SC2031  # each probe row exports its stub env inside its own $( ) on purpose
 # Tests for scripts/lib/gh-graphql-budget.sh and its check-ci.sh wiring
 # (CI watchers exhausted the GitHub GraphQL budget fleet-wide).
 #
@@ -71,6 +72,8 @@ cat > "$BIN/gh" <<'EOF'
 #   exhausted   — presence = budget exhausted until $D/woke exists; content = reset epoch
 #   calls.log   — "<fake-clock> <graphql-points> <args...>", one line per call
 D="$GHB_STUB_DIR"
+# GHB_STUB_HANG=<s>: every call sleeps that long (a hung GitHub)
+[ -z "${GHB_STUB_HANG:-}" ] || exec sleep "$GHB_STUB_HANG"
 # GHB_STUB_MAIN_SPENT=1 fails every call on any token but the fixture read token
 if [ "${GHB_STUB_MAIN_SPENT:-}" = 1 ] && [ "${GH_TOKEN:-}" != ghp_GHBREADTOKEN ]; then
     echo "gh: HTTP 403: API rate limit exceeded for user" >&2; exit 1
@@ -307,6 +310,34 @@ else
     printf 'himmel_github_token_vm2=%s\n' ghp_GHBREADTOKEN > "$ROOT/ghr-root/.env"
     got=$( . "$SCRIPT_DIR/gh-read.sh"; export GHB_STUB_MAIN_SPENT=1 GH_READ_ENV_ROOT="$ROOT/ghr-root" HIMMEL_SECRETS_KEYRING=off PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR"; unset GH_TOKEN GITHUB_TOKEN; GHB_STUB_REMAINING=4321 ghb_read; echo "rc=$? rem=$GHB_REMAINING" )
     if [ "$got" = "rc=0 rem=4321" ]; then pass "7i main token spent: the budget probe reads through the read token"; else fail "7i read-token probe" "got [$got]"; fi
+
+    # an explicit token never rides the router: main spent reads as main's refusal,
+    # and `read` reads the read token's own number
+    new_case
+    got=$( . "$SCRIPT_DIR/gh-read.sh"; export GHB_STUB_MAIN_SPENT=1 GH_READ_ENV_ROOT="$ROOT/ghr-root" PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR"; unset GH_TOKEN GITHUB_TOKEN
+        GHB_STUB_REMAINING=4321 ghb_read main; m="$?:$GHB_REMAINING:$GHB_STATE"; GHB_STUB_REMAINING=4321 ghb_read read; echo "$m $?:$GHB_REMAINING:$GHB_STATE" )
+    if [ "$got" = "1::unreadable 0:4321:ok" ]; then pass "7j ghb_read main and read each name their own token"; else fail "7j explicit tokens" "got [$got]"; fi
+    got=$( export GH_READ_ENV_ROOT="$ROOT/emptyroot" PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR"; ghb_read read; echo "$?:$GHB_STATE" )
+    if [ "$got" = "1:none" ]; then pass "7k ghb_read read with no read token: state none, no number"; else fail "7k no read token" "got [$got]"; fi
+
+    # a hung GitHub costs one probe timeout
+    new_case
+    t0=$SECONDS
+    got=$( export PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR" GHB_STUB_HANG=30 GHQ_PROBE_TIMEOUT=1; ghb_read; echo "$?:$GHB_STATE" )
+    el=$((SECONDS - t0))
+    if [ "$got" = "1:timed-out" ] && [ "$el" -le 4 ]; then pass "7l a hung probe returns timed-out within its bound (${el}s)"; else fail "7l hung probe" "got [$got] in ${el}s"; fi
+
+    # a reset in the year 2100 is no GitHub reset: --max-wait 0 must not sleep until then
+    new_case
+    echo 4102444800 > "$CASE_DIR/exhausted"
+    unit 0 >/dev/null 2>&1; rc=$?
+    total=$(awk '{s+=$1} END{print s+0}' "$CASE_DIR/unit-sleeps.log")
+    if [ "$rc" -eq 0 ] && [ "$total" -le 75 ]; then pass "7m an absurd reset is treated as absent: slept ${total}s, not to 2100"; else fail "7m absurd reset" "rc=$rc slept=$total"; fi
+    if ghb_reset_sane $(( $(date +%s) + 100 )) && ! ghb_reset_sane $(( $(date +%s) + 4000 )) && ! ghb_reset_sane soon; then
+        pass "7n ghb_reset_sane: 100 s away is sane, 4000 s and a word are not"
+    else
+        fail "7n ghb_reset_sane"
+    fi
 fi
 
 echo

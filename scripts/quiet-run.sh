@@ -162,6 +162,16 @@ if [ "$LABEL" = "suite" ]; then
     trap suite_sem_release EXIT
     # No suite reads the operator's OS keyring.
     export HIMMEL_SECRETS_KEYRING=off
+    # No suite writes the live quota state (gh-quota.sh): a stubbed 0 there
+    # would pause the station's real scans. A caller's own dir is kept.
+    if [ -z "${HIMMEL_QUOTA_DIR:-}" ]; then
+        QR_QUOTA_DIR=$(mktemp -d "${TMPDIR:-/tmp}/quiet-run-quota.XXXXXX") || { # prim-ok: named for its owner so a leftover dir is traceable; removed by the EXIT trap below
+            echo "ERR quiet-run: cannot make a scratch HIMMEL_QUOTA_DIR" >&2
+            exit 2
+        }
+        export HIMMEL_QUOTA_DIR="$QR_QUOTA_DIR"
+        trap 'suite_sem_release; rm -rf "$QR_QUOTA_DIR"' EXIT
+    fi
 fi
 
 LOG="${TMPDIR:-/tmp}/quiet-run-${LABEL}-$(date +%Y%m%d-%H%M%S)-$$.log"
