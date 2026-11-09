@@ -788,8 +788,8 @@ def read_manifest(outputs):
     if not isinstance(m, dict) or m.get("v") != 1:
         raise ValueError("%s is not a v1 run manifest" % path)
     for k, kind in (("protocol", dict), ("provenance", dict), ("cases", dict), ("inputs", dict), ("critics", list)):
-        if not isinstance(m.get(k, kind()), kind):
-            raise ValueError("%s has a malformed %s" % (path, k))
+        if not isinstance(m.get(k), kind):
+            raise ValueError("%s has a missing or malformed %s" % (path, k))
     if not all(isinstance(c, dict) for c in m.get("critics", [])):
         raise ValueError("%s has a malformed critics entry" % path)
     return m

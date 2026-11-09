@@ -653,6 +653,9 @@ eq "provenance: an error line added to a case after the manifest was completed s
 RRM="$TMP/run-rr1-badmanifest"; cp -r "$TMP/run-rr1" "$RRM"; printf '{"v": 1, "protocol": "x"}\n' > "$RRM/run-manifest.json"
 python3 "$RR/scripts/eval/review-panel/score.py" score --outputs "$RRM" --critics codex --no-ledger --json "$TMP/rrm.json" >"$TMP/rrm.txt" 2>&1; rc=$?
 eq "provenance: a manifest with a malformed nested field is unreadable, not a crash" "$rc:$(jget "$TMP/rrm.json" ineligibility_reasons | grep -c run-manifest-unreadable)" "0:1"
+printf '{"v": 1}\n' > "$RRM/run-manifest.json"
+python3 "$RR/scripts/eval/review-panel/score.py" score --outputs "$RRM" --critics codex --no-ledger --json "$TMP/rrm2.json" >"$TMP/rrm2.txt" 2>&1; rc=$?
+eq "provenance: a manifest missing its protocol is unreadable, not a crash" "$rc:$(jget "$TMP/rrm2.json" ineligibility_reasons | grep -c run-manifest-unreadable)" "0:1"
 STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger --critics codex >/dev/null 2>&1
 eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 
