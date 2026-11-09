@@ -95,6 +95,20 @@ if [ "$rc" -eq 86 ]; then pass "W7: exit 86"; else fail "W7: expected 86, got $r
 if grepq "$out" -E '\[LIVE-STATE\] x — .*\.local/state/himmel/x'; then pass "W7: the line names .local/state/himmel/x"; else fail "W7: no line naming .local/state/himmel/x; out: $out"; fi
 if [ -z "$(ls -A "$sb/xdg")" ]; then pass "W7: the host XDG_STATE_HOME stays empty"; else fail "W7: the command wrote the host XDG_STATE_HOME: $(ls -A "$sb/xdg")"; fi
 
+echo "== W8: an existing .claude.json does not make an absent .claude look removed =="
+mkdir -p "$sb/acct8"
+printf '{}\n' > "$sb/acct8/.claude.json"
+out=$(env HIMMEL_TEST_FIXTURE=1 LIVE_WITNESS_ACCOUNT_HOME="$sb/acct8" bash "$LW" run --label x -- true 2>&1)
+rc=$?
+if [ "$rc" -eq 0 ]; then pass "W8: a clean command exits 0"; else fail "W8: expected 0, got $rc; out: $out"; fi
+if grepq "$out" -F '[LIVE-STATE]'; then fail "W8: a clean command got a [LIVE-STATE] line; out: $out"; else pass "W8: no [LIVE-STATE] line"; fi
+
+echo "== W9: the exempt loader has no all-suites form =="
+printf '* HIMMEL-1 measurement\n' > "$sb/exempt-star"
+out=$(env SUITE_LIVE_EXEMPT="$sb/exempt-star" bash "$LW" run --label x -- true 2>&1)
+rc=$?
+if [ "$rc" -eq 2 ]; then pass "W9: a '*' glob line exits 2"; else fail "W9: expected 2, got $rc; out: $out"; fi
+
 echo
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"

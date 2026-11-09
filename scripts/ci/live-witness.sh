@@ -156,8 +156,8 @@ live_witness_reset() {
 # The exempt list: one `<glob> HIMMEL-<n> <reason>` per line; `#` and blank lines are
 # ignored. A glob is matched against the target ("/<suite path>" in the runner, the
 # label in `run` mode). Return 2 (LW_EXEMPT_ERR names the line) on a line with no
-# HIMMEL-<n> key, or whose glob has a glob character in its last `/`-separated part,
-# except the exact form `* HIMMEL-<n> measurement`, a measurement push's all-WARN line.
+# HIMMEL-<n> key, or whose glob has a glob character in its last `/`-separated part:
+# a line names one suite file, never a family and never every suite.
 LW_EXEMPT=""
 LW_EXEMPT_ERR=""
 live_witness_exempt_load() {
@@ -177,10 +177,8 @@ live_witness_exempt_load() {
     _last="${_glob##*/}"
     case "$_last" in
       *[*?[]*)
-        if [ "$_glob" != '*' ] || [ "$_rest" != measurement ]; then
-          LW_EXEMPT_ERR="exempt glob names a family, not one suite file: $_line"
-          return 2
-        fi ;;
+        LW_EXEMPT_ERR="exempt glob names a family, not one suite file: $_line"
+        return 2 ;;
     esac
     LW_EXEMPT="$LW_EXEMPT$_glob
 "
@@ -264,7 +262,11 @@ live_witness_account_end() {
     if [ -e "$_home/$_p" ] || [ -L "$_home/$_p" ]; then
       [ "$_left" -gt 0 ] || continue
       _names=$(_lw_names "$_home/$_p" "$_sd/acct.stamp" "$_home" "$_left")
-      case "$_existed" in *"$_p"*) ;; *) [ -n "$_names" ] || _names="$_p" ;; esac
+      case "
+$_existed
+" in *"
+$_p
+"*) ;; *) [ -n "$_names" ] || _names="$_p" ;; esac
       [ -n "$_names" ] || continue
       _n=1
       case "$_names" in *,*) _n=$(printf '%s' "$_names" | tr -cd ',' | wc -c); _n=$((_n + 1)) ;; esac
@@ -272,8 +274,13 @@ live_witness_account_end() {
       printf '%s\n' "$_names" >> "$_sd/acct.hits"
       _hit=1
     else
-      case "$_existed" in
-        *"$_p"*) printf 'removed %s\n' "$_p" >> "$_sd/acct.hits"; _hit=1 ;;
+      # Whole lines only: ".claude" is a substring of the ".claude.json" line.
+      case "
+$_existed
+" in
+        *"
+$_p
+"*) printf 'removed %s\n' "$_p" >> "$_sd/acct.hits"; _hit=1 ;;
       esac
     fi
   done
