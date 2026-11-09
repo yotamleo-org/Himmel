@@ -240,7 +240,7 @@ PY
 )"
 audit_rc=$?
 if [ "$audit_rc" -eq 0 ]; then
-  ok "zero-gap inventory covers claude-obsidian (plain pin), qmd (carried fork, HIMMEL-3956), the five default-installed luna plugins + the opt-in github-sync (HIMMEL-3066), scripts/lib pins, codex dynamic discovery, and explicit skips"
+  ok "zero-gap inventory covers claude-obsidian (plain pin), qmd (carried fork), the five default-installed luna plugins + the opt-in github-sync, scripts/lib pins, codex dynamic discovery, and explicit skips"
 else
   bad "zero-gap inventory invalid: $audit_out"
 fi

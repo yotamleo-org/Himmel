@@ -257,7 +257,7 @@ run_update_qmd drift
 grep -q 'converged qmd-index' <<< "$OUT" && assert_pass "stale lock: qmd-index converged" || assert_fail "stale lock blocked convergence: $OUT"
 reset_fix
 
-echo "morning-report cadence (HIMMEL-7977): armed once, never twice, never over an operator disarm"
+echo "morning-report cadence: armed once, never twice, never over an operator disarm"
 mkdir -p "$CLONE/scripts/handover" "$TMP/mr-ho" "$TMP/mr-runner" || exit 1
 cp "$src_scripts/handover/morning-report-cadence.sh" "$CLONE/scripts/handover/morning-report-cadence.sh"
 cp "$src_scripts/lib/test-run-guard" "$src_scripts/lib/git-clean.sh" "$src_scripts/lib/crontab-locked-rmw.sh" "$src_scripts/lib/prim.sh" "$src_scripts/lib/canon-path.sh" "$CLONE/scripts/lib/"
