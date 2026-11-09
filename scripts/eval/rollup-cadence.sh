@@ -131,7 +131,10 @@ cmd_status() {
     cron_read || return 1
     if [ -n "$(cron_entry)" ]; then echo "ARMED      $TASK_NAME ($(cron_entry | awk '{print $1, $2, $3, $4, $5}'))"
     else echo "not armed  $TASK_NAME"; fi
-    [ ! -f "$LOG" ] || echo "  last run   $(tail -n 1 "$LOG")"
+    if [ -f "$LOG" ]; then
+        echo "  run log    $LOG (last write: $(date -r "$LOG" '+%F %H:%M'))"
+        echo "             last line: $(tail -n 1 "$LOG")"
+    fi
     return 0
 }
 

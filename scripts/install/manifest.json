@@ -522,6 +522,16 @@
       "offboard": "advise"
     },
     {
+      "id": "cadence-runs-rollup",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/eval/rollup-cadence.sh", "tasks": [{"task": "HIMMEL-WeeklyRollup", "intervalHours": 168}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
       "id": "cadence-runs-pull-cadence",
       "kind": "scheduler",
       "scopes": ["user"],
