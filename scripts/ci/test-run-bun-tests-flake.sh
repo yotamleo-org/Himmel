@@ -70,9 +70,6 @@ run_exit_case 1
 grep -q '\[FLAKE\]' "$tmp/output" || exit 1
 grep -q 'Ran 1 test' "$tmp/output" || exit 1
 printf 'PASS: a retry that prints its Ran line still passes as FLAKE\n'
-# The live-state witness: a bun that writes the station's live state fails once and is
-# never retried; a bun that writes only its own temp passes. SUITE_LIVE_EXEMPT is empty
-# so the repo's exempt file (and its measurement line) never turns a hit into a WARN.
 mkdir -p "$tmp/stubbin" || exit 1
 cat > "$tmp/stubbin/bun" <<'STUB'
 #!/usr/bin/env bash
