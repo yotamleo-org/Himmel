@@ -310,8 +310,7 @@ def review_incompat(a, b):
 
 def review_series(rows, **kw):
     """rows with its review-panel rows replaced by select_review_runs' selection, in execution order, and the
-    diagnostics; rows of any other eval pass through unchanged. The kept review-panel slots are filled with the
-    selection in its own order, so a rescore appended later never sits after a newer execution."""
+    diagnostics; rows of any other eval pass through unchanged."""
     sel, diag = select_review_runs([r for r in rows if r.get("eval") == "review-panel"], **kw)
     keep, order, out = {id(r) for r in sel}, iter(sel), []
     for r in rows:
