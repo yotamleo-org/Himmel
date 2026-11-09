@@ -271,7 +271,6 @@ function trendCard(c) {
     ${c.week ? `<div class="big">${esc(compact(c.week.value))} <small>${esc(c.unit)} · ${esc(c.week.key)}</small></div>` : ""}${sparkSvg(c.spark, c.metric)}
     <div>${d(c.week, "last week")}${d(c.version, "last version")}</div><p class="sentence">${esc(c.sentence)}</p></div>`;
 }
-// With no roll-up yet, say what feeds it: the weekly roll-up job (from /api/rollup's job) is off, on and not run yet, or unreadable.
 const JOB_TEXT = {
   off: `The weekly roll-up job is off. <a href="#/config">Switch it on in Configure</a>.`,
   on: "The weekly roll-up job is on and has not run yet.",

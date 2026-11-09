@@ -57,7 +57,6 @@ test("renderHealth with no feed and no health still renders the strip, the tiles
   expect(html).toContain("No data");
 });
 
-// The roll-up job's state (from /api/rollup) shows in the Trends section while no roll-up exists yet.
 test("the Trends section says whether the weekly roll-up job is off, on or unreadable, with a Configure link only when it is off", () => {
   const view = (job: string) => renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, rollup: { state: "absent", reason: "ignored text", job } });
   const off = view("off"), on = view("on"), unknown = view("unknown");

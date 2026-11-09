@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# scripts/eval/test-rollup-cadence.sh - suite for the weekly roll-up cadence (rollup-cadence.sh): arm, status,
-# disarm against a stub crontab, and `run` against a stub weekly-rollup.py. Never the real crontab, HOME or
-# alert channel; no model call.
 # shellcheck disable=SC2016,SC2034
 set -u
 
@@ -35,7 +32,6 @@ EOF
 export ROLLUP_CRONTAB="$STUB/crontab" ROLLUP_RUNNER_DIR="$TMP/runner" ROLLUP_PY="$STUB/rollup.py"
 export CADENCE_ALERT_FILE="$TMP/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/alert-sent" CADENCE_ALERT_SEND_CMD="$STUB/notify" CADENCE_ALERT_SEND_FAILED_MARK="$TMP/alert-send-failed"
 
-# --- the cadence verbs ---------------------------------------------------------------------------------
 bash "$CAD" status >"$TMP/st0.out" 2>&1
 check "status before arming reads not armed" 'grep -q "^not armed  HIMMEL-WeeklyRollup" "$TMP/st0.out"'
 bash "$CAD" arm --dry-run >"$TMP/dry.out" 2>&1
@@ -56,7 +52,6 @@ check "arm --time 25:00 exits 1" '[ "$rc" = 1 ]'
 bash "$CAD" arm --bogus >/dev/null 2>&1; rc=$?
 check "arm with an unknown argument exits 1" '[ "$rc" = 1 ]'
 
-# --- run -----------------------------------------------------------------------------------------------
 bash "$CAD" run --repo "$TMP" >"$TMP/run0.out" 2>&1; rc=$?
 check "run passes the repo and --versions 2 to weekly-rollup.py and exits 0" '[ "$rc" = 0 ] && grep -q "write --repo $TMP --versions 2" "$TMP/run0.out"'
 STUB_RC=2 bash "$CAD" run --repo "$TMP" >"$TMP/run1.out" 2>&1; rc=$?
@@ -64,13 +59,11 @@ check "a failing roll-up makes run exit with its code and raises an alert" '[ "$
 bash "$CAD" run --bogus >/dev/null 2>&1; rc=$?
 check "run with an unknown argument exits 1" '[ "$rc" = 1 ]'
 
-# --- status reads the shared run log shape --------------------------------------------------------------
 mkdir -p "$TMP/runner"
 printf '[fired 2026-11-09 06:00:00]\nstub\n[exit rc=0]\n' >"$TMP/runner/rollup-cadence.log"
 bash "$CAD" status >"$TMP/st2.out" 2>&1
 check "status prints the run log line the cadence-runs probe reads" 'grep -qE "^  run log    .*rollup-cadence.log \(last write: [0-9-]+ [0-9:]+\)$" "$TMP/st2.out" && grep -q "^             last line: \[exit rc=0\]$" "$TMP/st2.out"'
 
-# --- disarm --------------------------------------------------------------------------------------------
 bash "$CAD" disarm --dry-run >/dev/null 2>&1
 check "disarm --dry-run keeps the entry" 'grep -q "# HIMMEL-WeeklyRollup" "$TMP/tab"'
 bash "$CAD" disarm >"$TMP/dis0.out" 2>&1; rc=$?

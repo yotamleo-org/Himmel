@@ -59,14 +59,14 @@ function sentence(c: (typeof CARDS)[number], week: Compared | null, version: Com
   return s[0].toUpperCase() + s.slice(1);
 }
 
-// ── the job's state ──────────────────────────────────────────────────────
-// Whether the weekly roll-up cadence is armed, from its own `status`, read the way himmelctl's cadenceRow reads it
-// (config-feed.js): a non-zero exit is a failed probe whatever it printed, except a documented "not armed" line.
-// The read is asynchronous and cached, so a slow `status` never blocks the server and Trends opens do not each run it.
 export type Job = "on" | "off" | "unknown";
 const JOB_TIMEOUT_MS = 15_000;
 const JOB_TTL_MS = 30_000;
 const jobs = new Map<string, { at: number; job: Promise<Job> }>();
+
+type ProbeError = { code?: unknown; killed?: boolean; signal?: unknown };
+const isBrokenProbe = (err: ProbeError | null, out: string): boolean =>
+  !!err && (typeof err.code !== "number" || !!err.killed || !!err.signal || (err.code !== 0 && !/^not armed\b/m.test(out)));
 
 export function rollupJob(script: string, timeoutMs = JOB_TIMEOUT_MS, now = Date.now()): Promise<Job> {
   const hit = jobs.get(script);
@@ -74,8 +74,7 @@ export function rollupJob(script: string, timeoutMs = JOB_TIMEOUT_MS, now = Date
   const job = new Promise<Job>((resolve) => {
     execFile("bash", [script, "status"], { encoding: "utf8", timeout: timeoutMs }, (err, stdout) => {
       const out = String(stdout || "");
-      const broken = err && (typeof err.code !== "number" || err.killed || err.signal || (err.code !== 0 && !/^not armed\b/m.test(out)));
-      resolve(broken ? "unknown" : /^ARMED\b/m.test(out) ? "on" : "off");
+      resolve(isBrokenProbe(err, out) ? "unknown" : /^ARMED\b/m.test(out) ? "on" : "off");
     });
   });
   jobs.set(script, { at: now, job });
@@ -89,7 +88,6 @@ const REASON: Record<Job, string> = {
   unknown: `${NO_ROLLUP} How to fill it: bash scripts/eval/rollup-cadence.sh arm (see docs/cadences.md).`,
 };
 
-// the roll-up and the state of the job that feeds it; with no roll-up yet the reason says why
 export async function readRollupWithJob(env: Env, script: string): Promise<Rollup & { job: Job }> {
   const [r, job] = [readRollup(env), await rollupJob(script)];
   return r.state === "absent" ? { ...r, reason: REASON[job], job } : { ...r, job };

@@ -25,17 +25,15 @@ const ROWS: Row[] = [
   version("v1.1.0", { merges: 30, cost_eq_per_ticket: 150, red_main: 1 }, { merges: -10, cost_eq_per_ticket: -50, red_main: -2 }),
 ];
 
-// `status` is the body of a stub scripts/eval/rollup-cadence.sh, served as the cadence tree HIMMEL_REPORT_CADENCE_ROOT names;
-// with none given the script is absent, so the read fails.
-function boot(rows?: Row[], status?: string) {
+function boot(rows?: Row[], stubStatusBody?: string) {
   const dir = mkdtempSync(join(tmpdir(), "rollup-route-"));
   const home = join(dir, "home"), root = join(dir, "root"), cad = join(dir, "cad");
   mkdirSync(home); mkdirSync(root);
   const file = join(dir, "weekly.jsonl");
   if (rows) writeFileSync(file, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
-  if (status !== undefined) {
+  if (stubStatusBody !== undefined) {
     mkdirSync(join(cad, "scripts", "eval"), { recursive: true });
-    writeFileSync(join(cad, "scripts", "eval", "rollup-cadence.sh"), `#!/usr/bin/env bash\n${status}\n`);
+    writeFileSync(join(cad, "scripts", "eval", "rollup-cadence.sh"), `#!/usr/bin/env bash\n${stubStatusBody}\n`);
   }
   const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, WEEKLY_ROLLUP_FILE: file, HIMMEL_REPORT_CADENCE_ROOT: cad } });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
@@ -114,7 +112,6 @@ test("Health page: no roll-up shows 'no data yet' in the Trends section; strings
   expect(html).not.toContain("<img");
 });
 
-// The job's state: /api/rollup runs the cadence script's `status` and reports on, off or unknown beside the roll-up.
 test("rollup job: a stub status gives off, on and unknown, and the absent reason says which", async () => {
   const off = await (await get(boot(undefined, `echo "not armed  HIMMEL-WeeklyRollup"`).port)).json();
   expect(off).toMatchObject({ state: "absent", job: "off" });
