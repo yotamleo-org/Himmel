@@ -69,8 +69,6 @@ describe('repair fixtures', () => {
 // Files that mention a Fix Version but never write one: readers, renderers, the hook itself, and the
 // engine (it reaches Jira only through the port whose real write is in commands/release.ts).
 const READ_ONLY = [
-  // Name fix-version flags only: the hook's create hint, the MCP bridge's argv map, and move,
-  // whose target is posted by operations/create.ts.
   'scripts/hooks/block-backend-tier.sh',
   'scripts/jira/src/commands/move.ts',
   'scripts/jira/src/mcp.ts',

@@ -3,10 +3,6 @@ import { readFileSync } from 'node:fs';
 import { createTools, buildServer, type ToolDeps, type JiraTool } from './mcp.js';
 import type { CliResult, CliRunner } from './mcp-cli.js';
 
-// The MCP server is a thin bridge: every tool maps to ONE fixed CLI verb through
-// its argv(args), and the handler runs that argv through the injected runner. These
-// tests pin the mapping, the error/warning pass-through and the server wiring.
-// The loopback run of the real CLI lives in mcp-cli.test.ts.
 
 const TOOL_NAMES = [
   'get',
@@ -33,7 +29,6 @@ function tool(name: string): JiraTool {
 
 const argvOf = (name: string, args: Record<string, unknown>): string[] => tool(name).argv(args);
 
-/** A runner that answers `reply` and records every argv it was given. */
 function fakeRunner(reply: Partial<CliResult> = {}): { deps: ToolDeps; runCli: ReturnType<typeof vi.fn> } {
   const runCli = vi.fn(async (_argv: string[]): Promise<CliResult> => ({ code: 0, stdout: '', stderr: '', ...reply }));
   return { deps: { runCli: runCli as unknown as CliRunner }, runCli };

@@ -1,7 +1,3 @@
-// A versionless Done close whose stamp target is a frozen release is a placement
-// the release manager rules on, never a silent write. With a merged PR the close
-// files the INTAKE itself, the PR as its evidence, and then stamps; with none it
-// writes no version and prints the exact request to file.
 import { execFileSync } from 'node:child_process';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +7,6 @@ import { request as releaseRequest } from './engine.js';
 
 export type MergedPr = { number: number; url: string };
 
-/** The newest merged PR whose title names the key, asked of gh in this checkout; none when gh cannot answer. */
 export function mergedPrOf(key: string): MergedPr | undefined {
   try {
     const out = execFileSync('gh', ['pr', 'list', '--state', 'merged', '--search', `${key} in:title`, '--json', 'number,url', '--limit', '1'], {
@@ -28,18 +23,16 @@ export function mergedPrOf(key: string): MergedPr | undefined {
 const whyOf = (key: string, version: string, pr?: MergedPr): string =>
   pr ? `closed with merged PR #${pr.number}; ${key} asks into frozen ${version}` : `closed into frozen ${version} with no version of its own`;
 
-/** The release request a close with no merged PR leaves to its caller, as one line to run. */
 export function requestLine(key: string, version: string): string {
   let release = '<release>';
   try {
     release = intakeRelease();
   } catch {
-    // No single declared release: the line keeps the placeholder for the caller to fill.
+    // no single declared release: the placeholder stays
   }
   return `jira release request ${release} --verb INTAKE --key ${key} --to ${version} --why "${whyOf(key, version)}"`;
 }
 
-/** Files the INTAKE for a close into frozen `version`, the merged PR as evidence; returns the request id. Throws when it cannot be queued. */
 export function fileCloseIntake(key: string, version: string, pr: MergedPr): string {
   const release = intakeRelease();
   const ctx = ctxFor(release);

@@ -11,15 +11,13 @@ import { TransitionNotFound, transitionIssue } from './transition.js';
 //   1. GET source (summary, description, issuetype)
 //   2. GET source comments (small race window: a comment added between 1 and
 //      2 is dropped; documented, acceptable for current use)
-//   3. CREATE target with prepended supersedes paragraph in description, through
-//      runCreate (operations/create.ts) with the destination's own home and
-//      placement flags; its every check runs first, so a refusal writes nothing
+//   3. CREATE target with prepended supersedes paragraph in description
 //   4. COPY each comment (per-iteration try/catch; partial failures collected,
 //      reported at the end, do NOT abort the move. Target is more useful with
 //      most comments than with none)
 //   5. COMMENT on source: "Moved to <NEW-KEY>. Closing."
 //   6. GET source transitions, find --target-status (default Done)
-//   7. POST transition and read the source status back (transitionIssue)
+//   7. POST transition
 //
 // The action body is wrapped in a top-level try/catch that tags each step,
 // surfaces step-specific stderr, and prints the partial-state breadcrumb
@@ -234,10 +232,6 @@ export function registerMove(program: Command): void {
           const comments = commentsResp?.comments ?? [];
           totalComments = comments.length;
 
-          // The target is filed by the same create operation as `jira create`, with
-          // the destination's own home and placement: every check (body, home,
-          // placement, intake) runs before the first write, so a refusal leaves
-          // both projects untouched.
           const target: CreateOptions = {
             type: srcType, title: targetSummary, adf: targetDesc, project: options.toProject, blocks: [], attach: [],
             parent: options.parent, labels: options.labels, sector: options.sector, fixVersion: options.fixVersion,
@@ -308,8 +302,6 @@ export function registerMove(program: Command): void {
           await request('POST', `/issue/${srcKey}/comment`, { body: movedNote });
           console.log(`Comment added to ${srcKey}`);
 
-          // 6-7. Close the source through the shared transition, which reads its
-          // status back: the source is never reported closed unless it reads closed.
           stepLabel = 'POST source transition';
           let closed: string;
           try {

@@ -61,12 +61,10 @@ describe('jira breadcrumb wiring', () => {
       if (method === 'GET' && path.endsWith('/transitions')) return { transitions: [{ id: '31', name: 'Done' }] };
       return {};
     });
-    // The target is filed through create, whose test-run door stays open only for a loopback Jira.
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
     const p = freshProgram(registerMove);
     await p.parseAsync(['node', 'jira', 'move', 'HIMMEL-2', '--to-project', 'LUNA']);
     vi.unstubAllEnvs();
-    // The target's create, the source note and the source close each drop a breadcrumb; the source's is there.
     expect(mockBreadcrumb).toHaveBeenCalledWith('HIMMEL-2');
   });
 

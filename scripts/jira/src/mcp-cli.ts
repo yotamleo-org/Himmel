@@ -1,9 +1,3 @@
-// The MCP server's only way to Jira: run this package's own CLI as a child
-// process with a fixed verb and an argument array (no shell, no credentials in
-// argv; the child reads them from its environment as any CLI run does). The CLI
-// owns every rule, so an MCP call is refused, partial or confirmed exactly as the
-// same CLI call would be: a nonzero exit becomes an error carrying the CLI's
-// stderr, and a success returns the CLI's stdout plus its warnings.
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -12,12 +6,10 @@ import { fileURLToPath } from 'node:url';
 export type CliResult = { code: number; stdout: string; stderr: string };
 export type CliRunner = (argv: string[]) => Promise<CliResult>;
 
-/** The built CLI entry next to this module (dist/index.js when the server runs from dist). */
 export function cliEntry(): string {
   return join(dirname(fileURLToPath(import.meta.url)), 'index.js');
 }
 
-/** Runs `node <entry> ...argv` once; refuses before anything runs when the CLI is not built. */
 export function execCli(entry: string = cliEntry()): CliRunner {
   return (argv) =>
     new Promise((resolve, reject) => {

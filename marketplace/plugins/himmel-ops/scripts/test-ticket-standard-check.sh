@@ -215,7 +215,6 @@ run Task "$td/notes.md" "$q" --sector X
 check "empty Proof before ## Notes exits 1" "$rc" 1
 has "empty Proof before ## Notes named" "$out" "Proof"
 
-# --- a bold line is never a heading: it neither ends a section nor counts as content ---
 q="$td/q-bold"; mkdraft "$td/bold.md" Proof "Agent detail"
 printf '## Proof\n\n**Notes**\n\n## Agent detail\nfiles\n' >>"$td/bold.md"
 run Task "$td/bold.md" "$q" --sector X
@@ -245,7 +244,6 @@ q="$td/q-closing"; mkdraft "$td/closing.md" Proof; printf '## Proof ##\nRun it o
 run Task "$td/closing.md" "$q" --sector X
 check "heading with closing hashes exits 0" "$rc" 0
 
-# --- a policy that cannot run fails closed, never reports success or falls back ---
 mkdir "$td/fakebin"; printf '#!/bin/sh\nexit 3\n' >"$td/fakebin/node"; chmod +x "$td/fakebin/node"
 mkdraft "$td/awk.md" Proof
 out="$(PATH="$td/fakebin:$PATH" TICKET_STANDARD_QUEUE_DIR="$td/q-awk" bash "$tool" --type Task --draft "$td/awk.md" --sector X 2>&1)"; rc=$?
@@ -418,7 +416,6 @@ run Task "$td/e17.md" "$q" --sector X; check "a Unicode ellipsis Edges value exi
 cp "$td/e1.md" "$td/e18.md"; printf 'Edges: the first one goes before the second\n' >>"$td/e18.md"
 run Task "$td/e18.md" "$q" --sector X; check "an Edges value naming no ticket and not none exits 1" "$rc" 1
 
-# --- one policy with jira create: prose-only Plan, the backtick fence, labels input ---
 q="$td/q-policy"
 mkdraft "$td/p1.md" Plan; printf '## Plan\nWrite the checker, then add the tests.\n' >>"$td/p1.md"
 run Task "$td/p1.md" "$q" --sector X; check "a prose-only Plan exits 1" "$rc" 1

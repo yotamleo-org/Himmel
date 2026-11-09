@@ -4,19 +4,8 @@ import { flags, runCli, type CliRunner } from './mcp-cli.js';
 
 /**
  * MCP surface for the himmel jira CLI: a thin compatibility bridge.
- *
- * Every tool maps to one fixed CLI verb and turns its typed arguments into an
- * argument array (mcp-cli.ts runs `node dist/index.js <verb> ...` with no
- * shell). This module holds no Jira rule and no Jira or release write of its
- * own: the CLI's checks, read-backs, refusals and partial outcomes are what an
- * MCP caller gets. Tool names and input schemas are kept from the earlier
- * server, plus the placement fields the CLI's create requires.
- *
- * Implementation note: the low-level `Server` + raw JSON-Schema `inputSchema`
- * keeps the package off zod in the schema layer.
  */
 
-/** How a tool reaches the CLI; tests inject an in-process runner. */
 export interface ToolDeps {
   runCli?: CliRunner;
 }
@@ -324,12 +313,10 @@ const DEFS: Def[] = [
   },
 ];
 
-/** The tools: each runs its one CLI verb through the bridge, nothing else. */
 export function createTools(): JiraTool[] {
   return DEFS.map((d) => ({ ...d, handler: async (args, deps) => runCli(deps.runCli, d.argv(args)) }));
 }
 
-/** Build the MCP server with every tool registered. */
 export function buildServer(deps: ToolDeps = defaultDeps): Server {
   const tools = createTools();
   const server = new Server({ name: 'jira', version: '1.0.0' }, { capabilities: { tools: {} } });

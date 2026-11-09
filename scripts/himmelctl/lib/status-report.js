@@ -525,7 +525,6 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (hermes lane not selected; re-run himmelctl install --with-hermes)`;
       }
-      // statechart is optional local tooling: never set up reads n/a; a broken setup stays an alarm.
       if (item.id === 'statechart' && probe.cleanAbsence) {
         severity = 'n/a';
         detail = `${probe.detail} — optional (only for local TLA+ model checks)`;

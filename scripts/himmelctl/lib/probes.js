@@ -2589,16 +2589,6 @@ function probeWhisperReady(item, ctx) {
   return { actual: 'present', detail: `${cli} + ${model}` };
 }
 
-// ── cmd:statechart_ready ─────────────────────────────────────────────────
-
-// The optional pstack statechart check. Its only installer is
-// scripts/machine-setup/setup-statechart.sh, which writes
-// ${XDG_DATA_HOME:-~/.local/share}/himmel/statechart/env with absolute JAVA=
-// and TLA2TOOLS= lines after verifying both. This probe re-checks those facts
-// in pure JS: no spawn, no network, no writes. The jar must hash to the TLC
-// pin; a test keeps this constant equal to installer-pins.sh's TLA2TOOLS_SHA256.
-// Absent = never set up (an ordinary opt-in state). Degraded = set up, but a
-// named path is unusable or the jar is not the pinned bytes.
 const STATECHART_TLC_VERSION = '1.7.4';
 const STATECHART_TLC_SHA256 = '936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88';
 
@@ -2611,7 +2601,6 @@ function probeStatechartReady(item, ctx) {
     raw = fs.readFileSync(envFile, 'utf8');
   } catch (e) {
     if (e.code === 'ENOENT') {
-      // Optional tooling never set up is a clean absence (status reads n/a), not an alarm.
       return { actual: 'absent', cleanAbsence: true, detail: `statechart not set up (no ${envFile}) — bash scripts/machine-setup/setup-statechart.sh --install` };
     }
     return { actual: 'degraded', detail: `cannot read ${envFile}: ${e.message}` };

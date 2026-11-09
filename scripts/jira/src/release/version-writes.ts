@@ -32,7 +32,6 @@ export const WRITER_TABLE: readonly WriterRow[] = [
   // Its ruling already agrees, so an RM write is never a repair input.
   { site: 'scripts/jira/src/commands/release.ts', mechanism: 'rm-apply', machine: false },
   { site: CREATE, mechanism: 'hand', machine: false },
-  // The shared create operation posts the issue with the create-* names above, chosen in create.ts.
   { site: 'scripts/jira/src/operations/create.ts', mechanism: 'hand', machine: false },
   { site: 'scripts/jira/src/commands/edit.ts', mechanism: 'hand', machine: false },
   { site: 'scripts/jira/src/commands/versions.ts', mechanism: 'hand', machine: false },

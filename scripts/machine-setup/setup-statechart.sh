@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # setup-statechart.sh — the opt-in installer for the pstack statechart check.
 #
-# This script owns every installation step the statechart skill relies on; the
-# skill itself stays check-only. Local model checks are the normal path once
-# the runtime revision is validated.
-#
 #   --check    (default) read-only: no network, no writes. Reports the Java and
 #              the TLC jar it finds and exits 0 only when both verify and the
 #              env file names them.
@@ -41,7 +37,6 @@ trap 'if [ -n "$TMP_JAR" ]; then rm -f "$TMP_JAR"; fi' EXIT
 
 usage() { echo "usage: setup-statechart.sh [--check|--install]" >&2; }
 
-# sha_of <file> — prints the file's sha256 hex digest (empty when unreadable).
 sha_of() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
   else shasum -a 256 "$1" | cut -d' ' -f1; fi
@@ -56,8 +51,6 @@ platform_check() {
   esac
 }
 
-# java_resolve — sets JAVA_PATH and JAVA_VERSION for an absolute Java 11+.
-# A missing Java is named as the unmet prerequisite; it is never installed here.
 java_resolve() {
   local resolved ver major
   resolved="$(command -v "${JAVA:-java}" 2>/dev/null)" || resolved=""
@@ -84,12 +77,10 @@ java_resolve() {
   JAVA_VERSION="$ver"
 }
 
-# env_value <KEY> — the unquoted value of KEY in the env file (empty if absent).
 env_value() {
   sed -n "s/^$1='\(.*\)'\$/\1/p" "$ENV_FILE" | head -1
 }
 
-# check_all — read-only report. Returns 0 only when every fact verifies.
 check_all() {
   local ok=0 jar_good=0 jar_sha env_java env_jar
   if java_resolve; then
@@ -135,7 +126,6 @@ check_all() {
   return "$ok"
 }
 
-# fetch_jar — downloads to a temp file beside the target, verifies, then moves.
 fetch_jar() {
   local got
   TMP_JAR="$(mktemp "$JAR_DIR/.tla2tools.XXXXXX")" || {
@@ -160,7 +150,6 @@ fetch_jar() {
   TMP_JAR=""
 }
 
-# write_env — the env file is written only after both paths are verified.
 write_env() {
   local tmp
   case "$JAVA_PATH$JAR" in

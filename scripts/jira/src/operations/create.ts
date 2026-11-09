@@ -1,10 +1,3 @@
-// The one create operation, shared by `jira create` and `jira move` (and so by
-// the MCP bridge, which runs the CLI). Every check runs before the first write:
-// body, title, sector, home, placement, residual routing, version gates and the
-// INTAKE preflight. A refusal therefore writes nothing (no issue, comment, link,
-// ledger row or displacement). Once Jira holds the ticket, a failed later step
-// is reported as PARTIAL with the known key and the steps still owed; a create
-// whose answer was lost is OUTCOME UNKNOWN and is never retried.
 import { readFileSync } from 'node:fs';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
@@ -87,7 +80,6 @@ export type CreateResult =
   | { disposition: 'duplicate'; key: string }
   | { disposition: 'checked' };
 
-/** A refusal before any write. */
 export class CreateRefused extends Error {}
 
 /** Jira holds the ticket, but a later step failed: the key and the owed steps are in the message. */
@@ -100,7 +92,6 @@ export class CreatePartial extends Error {
   }
 }
 
-/** The body as given: its policy input, its ADF and its Agent detail text. */
 function bodyOf(o: CreateOptions): { input: BodyInput; adf?: unknown; detail: string } {
   if (o.adf !== undefined) return { input: { format: 'adf', body: o.adf }, adf: o.adf, detail: agentDetailOfAdf(o.adf) };
   if (o.adfFile) {
@@ -117,7 +108,6 @@ function bodyOf(o: CreateOptions): { input: BodyInput; adf?: unknown; detail: st
   return { input: { format: 'markdown', body: '' }, detail: '' };
 }
 
-/** Refuses on any error-severity body finding for these labels; prints the warnings once. */
 function checkBody(type: string, input: BodyInput, labels: readonly string[], warn: boolean): void {
   const found = bodyDiagnostics(input, type, labels).map((d) => d.message);
   const verdict = plainBlockVerdict(type, found);
@@ -125,7 +115,6 @@ function checkBody(type: string, input: BodyInput, labels: readonly string[], wa
   if (verdict.action === 'warn' && warn) console.error(verdict.message);
 }
 
-/** POST /issue; a lost or ambiguous answer is OUTCOME UNKNOWN, never a refusal and never retried. */
 async function postIssue(fields: Record<string, unknown>, writer: string | undefined): Promise<CreateIssueResponse> {
   try {
     return await request<CreateIssueResponse>('POST', '/issue', { fields }, writer);
@@ -149,7 +138,6 @@ function checkFlagCombinations(options: CreateOptions): void {
   if (options.overCap !== undefined && !options.overCap.trim()) throw new Error('--over-cap needs a reason');
 }
 
-/** Inherited version, backlog label, placement and the core label; reads only, writes nothing. */
 async function placement(
   options: CreateOptions,
   fields: Record<string, unknown>,
@@ -168,7 +156,6 @@ async function placement(
 }
 
 export async function runCreate(options: CreateOptions, run: { check?: boolean } = {}): Promise<CreateResult> {
-  // Everything below can file, comment on or re-rank a real ticket: a test on the station stops here.
   if (!run.check) refuseTestJiraPost('create');
   checkFlagCombinations(options);
   const overrideReason = checkPlacementFlags(options);
@@ -180,10 +167,8 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   const body = bodyOf(options);
   if (body.adf !== undefined) fields['description'] = body.adf;
   const given = options.labels !== undefined ? parseLabels(options.labels) : undefined;
-  // The labels typed are known now; labels added below (residual, core, proposed) are re-checked once known.
   checkBody(options.type, body.input, given ?? [], true);
 
-  // Sectors are opt-in: with JIRA_SECTOR_FIELD unset there is no Sector check and none is sent.
   const sectorId = sectorField();
   const sectors = sectorId ? await sectorOptions() : undefined;
   const titleCheck = titleVerdict(options.type, title, sectors);
@@ -204,9 +189,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   const place = duplicateOf === undefined ? await placement(options, fields, residual, labels, body.detail) : undefined;
   if (place) labels = place.labels;
   const { inherited, bugDefault = false, coreVerdict } = place ?? {};
-  // The labels that will be written decide the conditional rules (a ci label needs its Metric).
   checkBody(options.type, body.input, labels ?? [], false);
-  // A Sector (when configured) plus an epic or the standalone label; Epic and Subtask only warn.
   const home = homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
   if (home.action === 'refuse') throw new CreateRefused(home.message);
   if (home.action === 'warn') console.error(home.message);
@@ -244,7 +227,6 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited, residual, bugDefault });
   const result = await postIssue(fields, writer);
   const key = result.key;
-  // Breadcrumb and key before any later step: a scripted caller has the key even if a step fails.
   writeJiraBreadcrumb(key);
   console.log(`Created ${key}`);
   printCore(coreVerdict);
@@ -264,7 +246,6 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
 
 type Step = [string, () => Promise<unknown> | unknown];
 
-/** The writes owed once Jira holds the ticket, in order; a failure stops the list and names the rest. */
 function afterCreateSteps(
   options: CreateOptions,
   key: string,
@@ -279,7 +260,6 @@ function afterCreateSteps(
   }
   if (admission) steps.push(['writing the admissions ledger row', () => appendAdmission({ ...admission, key })]);
   if (residual?.displaced) steps.push([`displacing ${residual.displaced.key}`, () => displaceResidual(residual, key, { type: options.type, title })]);
-  // The reason is recorded first so a failed link cannot leave an over-cap ticket unexplained.
   if (overCapReason) steps.push(['recording the over-cap reason', () => request('POST', `/issue/${key}/comment`, { body: markdownToAdf(overCapReason) })]);
   if (parentKey) steps.push([`linking to ${parentKey}`, () => createIssueLink(key, parentKey, { name: 'Relates', inward: 'relates to' })]);
   for (const other of options.blocks) {

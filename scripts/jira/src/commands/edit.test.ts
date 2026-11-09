@@ -12,9 +12,6 @@ vi.mock('../client.js', async (importOriginal) => {
 });
 
 
-// An edit that touches the ticket contract first reads the ticket as it is (its
-// snapshot); these tests answer that read with a ticket that has a home and no
-// body, so only the read-back each test sets up decides its outcome.
 const SNAPSHOT_GET = /fields=description,labels,parent,issuetype/;
 const isSnapshot = (c: unknown[]) => c[0] === 'GET' && SNAPSHOT_GET.test(String(c[1]));
 type Impl = (method: string, path: string, body?: never) => unknown;
@@ -211,7 +208,6 @@ describe('edit --add-labels', () => {
     const { registerEdit } = await import('./edit.js');
     const p = freshProgram(registerEdit);
     await p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--add-labels', 'a,b']);
-    // the snapshot read, the PUT, the read-back
     expect(mockRequest).toHaveBeenCalledTimes(3);
     const [method, path, body] = mockRequest.mock.calls.find((c) => c[0] === 'PUT')!;
     expect(method).toBe('PUT');

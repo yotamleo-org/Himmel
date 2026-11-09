@@ -21,7 +21,6 @@ export function findTransition(
   );
 }
 
-/** The named transition does not exist from the ticket's current status; nothing was written. */
 export class TransitionNotFound extends Error {
   constructor(readonly status: string, readonly available: string[]) {
     super(`Transition "${status}" not found. Available:\n${available.map((n) => `- ${n}`).join('\n')}`);
@@ -29,7 +28,6 @@ export class TransitionNotFound extends Error {
 }
 
 export interface TransitionResult {
-  /** The transition applied. */
   name: string;
   /** Set when a Done close was left unstamped on purpose (a ruled-out frozen key): the caller fails with exit 3. */
   unstamped?: string;
@@ -52,9 +50,6 @@ export async function transitionIssue(
   const { transitions } = await req<{ transitions: JiraTransition[] }>('GET', `/issue/${key}/transitions`);
   const match = findTransition(transitions, status);
   if (!match) throw new TransitionNotFound(status, transitions.map((t) => t.name));
-  // Stamp before the transition: a failed lookup or update then leaves the
-  // issue open instead of Done-and-unstamped, and a workflow that locks
-  // edits once Done cannot reject the stamp.
   // ponytail: only the `Done` status stamps; Closed / wont do / wont fix never do, and
   // another Done-category status would need statusCategory from the transition payload.
   let unstamped: string | undefined;
@@ -65,9 +60,6 @@ export async function transitionIssue(
     if (!fixVersions || fixVersions.length === 0) {
       const versions = await fetchVersions(projectFromKey(key));
       const version = earliestUnreleased(versions);
-      // A frozen version takes a frozen-set key or one the ledger admits; a
-      // ruled-out key (latest row a deferral or a removal) closes unstamped and
-      // the run fails loudly; any other key goes through the release manager.
       const frozen = parseFrozen(versions.find((v) => v.name === version)?.description);
       const latest = frozen ? readAdmissions(version).filter((r) => r.key === key).pop() : undefined;
       const ruledOut =
@@ -75,8 +67,6 @@ export async function transitionIssue(
       if (version && ruledOut) {
         unstamped = `${version} is frozen and the latest ledger row for ${key} is a ${latest?.kind}`;
       } else if (version && frozen !== undefined && !frozen.keys.includes(key) && !admits(latest)) {
-        // A key the frozen release never ruled in is a placement for the release manager:
-        // a merged PR files the INTAKE (its evidence) before the stamp; with none, no version is written.
         const pr = mergedPrOf(key);
         if (pr) {
           fileCloseIntake(key, version, pr);

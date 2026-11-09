@@ -1,8 +1,3 @@
-// One ticket policy on every write path. The corpus in
-// fixtures/ticket-policy-cases.json runs through every route that checks a
-// body (the offline draft checker, markdown, ADF, CLI create, the MCP bridge),
-// and the handler rows below drive the real CLI verbs against a stateful fake
-// Jira, recording every mutation so a refusal can be shown to write nothing.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -59,7 +54,6 @@ const warnOnly = (t: string) => /^(epic|subtask|sub-task)$/i.test(t);
 const refused = (c: Case) => c.expect.length > 0 && !warnOnly(c.type);
 const placement = (t: string) => (warnOnly(t) ? [] : ['--backlog', '--proposed-version', 'backlog', '--why', 'waits for the parity test']);
 
-// ---- a stateful fake Jira -------------------------------------------------
 type Issue = { key: string; fields: Record<string, unknown> };
 type Fake = {
   issues: Map<string, Issue>; mutations: string[]; transitions: Array<{ id: string; name: string; to?: { name: string } }>;
@@ -115,7 +109,6 @@ function fakeRequest(method: string, path: string, body?: unknown): unknown {
 }
 const writes = () => jira.mutations;
 
-// ---- run a CLI verb in process ----------------------------------------------
 type Run = { code: number; stdout: string; stderr: string };
 async function cli(argv: string[]): Promise<Run> {
   const out: string[] = [];
@@ -166,7 +159,6 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-// ---- the corpus on every body route -------------------------------------------
 describe.each(cases)('corpus $id', (c) => {
   const md = bodyOf(c);
   const names = (msgs: string) => c.expect.every((f) => msgs.includes(f));
@@ -217,7 +209,6 @@ describe.each(cases)('corpus $id', (c) => {
   });
 });
 
-// ---- handler rows -----------------------------------------------------------------
 const VALID = bodyOf({});
 
 describe('MCP bridge (7412 1, 6281, F3, F6)', () => {

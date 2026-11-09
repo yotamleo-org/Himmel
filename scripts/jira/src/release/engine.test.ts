@@ -42,7 +42,6 @@ class FakeJira implements JiraPort {
   writes = 0;
   lbl = new Map<string, string[]>();
   labelPuts: Array<{ key: string; labels: string[] }> = [];
-  // A label the port still reports after a remove, as a Jira that dropped the write would.
   stuck = new Set<string>();
   async labels(key: string) { return [...(this.lbl.get(key) ?? [])]; }
   async removeLabels(key: string, labels: string[]) {

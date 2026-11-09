@@ -6947,10 +6947,6 @@ case "$outEnvPresent$outEnvAbsent" in
 esac
 echo "ok: env-present — absent and present follow ctx.env, the value never reaches output"
 
-# ── cmd:statechart_ready: the opt-in statechart check (env from setup-statechart.sh) ──
-# Each case gets its own XDG_DATA_HOME. The fixture jars are never the pinned
-# bytes, so every hermetic case must read absent or degraded; present is proven
-# against the real installed jar by setup-statechart.sh --check, not here.
 sc_probe() { # <XDG_DATA_HOME> -> probe JSON
   "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');

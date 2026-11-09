@@ -6,7 +6,6 @@ import { Command } from 'commander';
 
 vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: () => 'HIMMEL' }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
-// The merged-PR lookup asks gh; these tests answer it, every other command runs for real.
 const ghPrs: Array<{ number: number; url: string }> = [];
 vi.mock('node:child_process', async (orig) => {
   const actual = await orig<typeof import('node:child_process')>();

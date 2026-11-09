@@ -38,7 +38,6 @@ export function behaviourKey(
   return readDotenvKey(dotenvPath ?? join(primaryCheckout(), '.env'), key);
 }
 
-// The CLI's own primary checkout, never the caller's cwd.
 function primaryCheckout(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const common = execFileSync('git', ['-C', here, 'rev-parse','--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();

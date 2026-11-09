@@ -26,7 +26,6 @@ describe('CLI .env resolution from an unrelated cwd', () => {
     mkdirSync(installed, { recursive: true });
     cpSync(join(jiraDir, 'dist'), join(installed, 'dist'), { recursive: true });
     cpSync(join(jiraDir, 'package.json'), join(installed, 'package.json'));
-    // The built CLI imports the shared ticket policy from the himmel-ops plugin, as a checkout has it.
     mkdirSync(join(root, policyRel), { recursive: true });
     cpSync(join(jiraDir, '..', '..', policyRel, 'ticket-policy.mjs'), join(root, policyRel, 'ticket-policy.mjs'));
     symlinkSync(join(jiraDir, 'node_modules'), join(installed, 'node_modules'));
@@ -137,7 +136,6 @@ describe('CLI credentials from the keyring', () => {
     mkdirSync(installed, { recursive: true });
     cpSync(join(jiraDir, 'dist'), join(installed, 'dist'), { recursive: true });
     cpSync(join(jiraDir, 'package.json'), join(installed, 'package.json'));
-    // The built CLI imports the shared ticket policy from the himmel-ops plugin, as a checkout has it.
     mkdirSync(join(root, policyRel), { recursive: true });
     cpSync(join(jiraDir, '..', '..', policyRel, 'ticket-policy.mjs'), join(root, policyRel, 'ticket-policy.mjs'));
     symlinkSync(join(jiraDir, 'node_modules'), join(installed, 'node_modules'));

@@ -840,8 +840,6 @@ describe('version-write journal hook', () => {
       vi.stubEnv('USER_SLUG', slug);
       const f = fakeJira({ key: 'HIMMEL-9', set: ['v1.1.3'], entries: [fv('600', null, 'v1.1.3')] });
       await expect(request('PUT', '/issue/HIMMEL-9', { fields: { fixVersions: [{ name: 'v1.1.4' }] } }, 'merge-stamp')).resolves.toEqual({});
-      // The release root comes from the CLI's own checkout, not the cwd, so with the state keys set the
-      // journal still runs from outside a repo (its pre-read, the write, its read-back); unset, it is skipped quietly.
       expect(f.calls.map((c) => c.method)).toEqual(slug ? ['GET', 'GET', 'PUT', 'GET'] : ['PUT']);
       const asked = gitCalls().filter((c) => (c[1] as string[]).includes('--git-common-dir'));
       expect(asked.length).toBeGreaterThan(0);
@@ -1020,7 +1018,6 @@ describe('the live-test guard at requestAt and uploadMultipart', () => {
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const program = new Command();
     registerMove(program);
-    // An Epic target needs no placement and only warns on home, so the move reaches its writes.
     await program.parseAsync(['node', 'jira', 'move', src, '--to-project', to, '--type', 'Epic']).catch(() => undefined);
     return err.mock.calls.map((c) => c.join(' ')).join('\n');
   }

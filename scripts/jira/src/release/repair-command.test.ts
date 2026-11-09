@@ -911,7 +911,7 @@ class Port implements JiraPort {
   async findComment() { return null; }
   async addComment(_key: string, body: string) { this.bodies.push(body); return String(++this.posted); }
   async labels() { return []; }
-  async removeLabels() { /* no label is ever set here */ }
+  async removeLabels() { }
 }
 
 // The release manager's stand-in: rules every request as the repair filed it, superseding the key's earlier rulings.

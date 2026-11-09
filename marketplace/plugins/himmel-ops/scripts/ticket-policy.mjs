@@ -1,11 +1,3 @@
-// ticket-policy.mjs — the one ticket body policy.
-//
-// Shared by the offline draft checker (ticket-standard-check.sh through
-// ticket-policy-cli.mjs) and the Jira CLI (scripts/jira/src/plain-block.ts).
-// Dependency-free ESM so it runs from the installed plugin and from a worktree
-// with no scripts/jira/dist. Markdown and ADF are normalized into the same
-// blocks (heading, list, prose, code); every rule runs on those blocks, so a
-// fenced line can never make a heading, a list item, a Metric or an Edges line.
 
 export const SECTIONS = ['Impact', 'What', 'Why', 'Plan', 'DoD', 'Proof', 'Agent detail'];
 
@@ -56,7 +48,6 @@ export function isPlaceholder(value) {
   return /^(\.+|…+|\?+|-+|—+)$/.test(s);
 }
 
-/** Canonical section name of a heading's text, or undefined. */
 function sectionOf(text) {
   const w = String(text ?? '').replace(/[*_`]/g, '').replace(/:\s*$/, '').trim().toLowerCase();
   return SECTIONS.find((s) => s.toLowerCase() === w);
@@ -159,18 +150,11 @@ export function normalizeBody(input) {
   return input?.format === 'adf' ? normalizeAdf(input.body) : normalizeMarkdown(input?.body ?? '');
 }
 
-/**
- * Splits blocks into sections. A heading naming a section opens it; a deeper
- * heading keeps the open section; any other heading closes it. A bold line is
- * never a heading: it neither opens nor closes a section and is not content.
- */
 function sectionsOf(blocks) {
   const found = new Map();
   let cur;
   let level = 0;
   for (const raw of blocks) {
-    // A bare line that is exactly a section name ("Proof", "DoD:") is that heading: the Jira mirror
-    // and `jira get` render ADF headings this way. A bold line never is.
     const b = raw.kind === 'prose' && !raw.bold && !/[*_`]/.test(raw.text) && sectionOf(raw.text)
       ? { kind: 'heading', level: 2, text: raw.text }
       : raw;
@@ -196,7 +180,6 @@ function sectionsOf(blocks) {
 
 const realContent = (b) => (b.kind === 'list' || b.kind === 'code' || (b.kind === 'prose' && !b.bold)) && !isPlaceholder(b.text);
 
-/** The value of the first `Name:` line outside code (bare, bulleted or bold), or of a `Name` heading or empty `Name:` line followed by its value. */
 function declared(blocks, name) {
   const re = new RegExp(`^\\s*(?:[-*+]\\s+)?(?:\\*\\*|__)?${name}(?:\\*\\*|__)?\\s*:(?:\\*\\*|__)?\\s*(.*)$`, 'i');
   for (let i = 0; i < blocks.length; i += 1) {

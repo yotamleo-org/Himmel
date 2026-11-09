@@ -49,9 +49,6 @@ else
   echo 'humanizer: optional deterministic humanizer-facts.py --normalize ORIGINAL CANDIDATE; skip keeps original, --rewrite FILE checks a candidate; no model rewrite' >&2
 fi
 
-# The rules live in ticket-policy.mjs, shared with jira create, edit, move and the MCP bridge;
-# this script owns arguments, the Sector warning and parking. No fallback: when node
-# or the policy cannot run, the draft is NOT checked and the exit is 2.
 here="$(cd "$(dirname "$0")" && pwd)"
 parsefail(){ echo "ticket-standard-check: could not check '$draft' (the ticket policy did not run); draft not checked" >&2; exit 2; }
 command -v node >/dev/null 2>&1 || parsefail

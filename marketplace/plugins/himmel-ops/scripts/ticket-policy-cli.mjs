@@ -1,13 +1,4 @@
 #!/usr/bin/env node
-// ticket-policy-cli.mjs — offline adapter for ticket-standard-check.sh.
-//
-//   ticket-policy-cli.mjs --type T --draft FILE [--labels a,b] [--json]
-//
-// Prints one line: the comma-joined short names of every finding (empty when the
-// body check passes); --json prints {valid, diagnostics} instead. Labels come from
-// --labels (the labels actually written); a draft's Labels: line is the offline
-// fallback, and the two disagreeing is itself a finding. Writes nothing.
-// Exit 0 when the draft was checked (findings or not), 2 when it could not be.
 import { readFileSync } from 'node:fs';
 import { draftLabels, labelsMismatch, shortName, validateTicketBody } from './ticket-policy.mjs';
 

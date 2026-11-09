@@ -198,7 +198,6 @@ for tool in getIssueLinkTypes atlassianUserInfo \
     rc=$(run_case "{\"tool_name\":\"mcp__plugin_atlassian_atlassian__${tool}\",\"tool_input\":{}}")
     assert_rc "allow $tool" 0 "$rc"
 done
-# Jira-named methods with no CLI verb are denied: Jira is CLI-only.
 for tool in lookupJiraAccountId getJiraIssueTypeMetaWithFields \
             getJiraProjectIssueTypesMetadata addWorklogToJiraIssue \
             getJiraIssueRemoteIssueLinks; do
@@ -246,7 +245,6 @@ assert_stderr_contains "stderr names confluence 'search' verb" \
     '{"tool_name":"mcp__plugin_atlassian_atlassian__searchConfluenceUsingCql","tool_input":{}}' \
     'confluence.js search' "$STUB_FULL" "$CONFLUENCE_STUB_FULL"
 
-# --- Jira is CLI-only: introspection failure FAILS CLOSED ---
 # CLI errors (non-zero exit) → must NOT block a mapped method.
 rc=$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{}}' "$STUB_ERR")
 assert_rc "fail-closed: introspection error denies getJiraIssue (Jira CLI-only)" 2 "$rc"

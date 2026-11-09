@@ -220,7 +220,6 @@ process_item() {
       if [ "$DRY_RUN" -eq 0 ]; then
         local out body
         body="$(mktemp)" || { echo "ERR: mktemp failed for $dir" >&2; return 2; }
-        # jira create refuses a body without the Impact/What/Why/Plan/DoD/Proof/Agent detail shape.
         cat > "$body" <<BODY
 ## Impact
 Retro ticket for the handover item "$slug" ($jtype), filed by the v1 to v2 handover migration so the item gets a Jira key.

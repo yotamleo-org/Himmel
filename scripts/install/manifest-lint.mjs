@@ -476,7 +476,6 @@ function checkProbeShape(probe, label, errors) {
       break;
     }
     case 'cmd:statechart_ready': {
-      // No fields: the env file and jar paths are fixed by setup-statechart.sh.
       reportExtra([]);
       break;
     }

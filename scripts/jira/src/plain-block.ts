@@ -1,10 +1,3 @@
-// The ticket shape. The body rules are ONE policy, ticket-policy.mjs in the
-// himmel-ops plugin, shared with the offline draft checker: seven
-// sections (Impact, What, Why, Plan, DoD, Proof, Agent detail), Plan and DoD each
-// needing a real list item, a Metric line for a ci/guard/stability label and an
-// Edges line for a Plan naming two or more tickets. This file keeps the CLI's
-// wrappers around it plus the title and home helpers.
-
 import { SECTORS } from './commands/sector.js';
 import {
   SECTIONS,
@@ -28,12 +21,10 @@ export function bodyDiagnostics(input: BodyInput, type: string, labels: readonly
   return validateTicketBody(input, { issueType: type, labels }).diagnostics;
 }
 
-/** The body findings of a markdown body, as messages (empty when it meets the standard). */
 export function lintPlainBlock(md: string | undefined, labels: readonly string[] = []): string[] {
   return bodyDiagnostics({ format: 'markdown', body: md ?? '' }, 'Task', labels).map((d) => d.message);
 }
 
-/** ADF twin of lintPlainBlock: the same policy on the same normalized blocks. */
 export function lintPlainBlockAdf(doc: unknown, labels: readonly string[] = []): string[] {
   return bodyDiagnostics({ format: 'adf', body: doc }, 'Task', labels).map((d) => d.message);
 }

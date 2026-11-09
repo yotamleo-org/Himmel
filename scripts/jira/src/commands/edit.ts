@@ -264,7 +264,6 @@ async function stampResidual(key: string, options: EditOptions & { residualOf?: 
   return ownVersions.map((v) => v.name ?? '').filter((name) => name !== '');
 }
 
-/** The `(rule, field)` errors of `after` that `before` did not have: what an edit would break. */
 export function newViolations(before: Diagnostic[], after: Diagnostic[]): Diagnostic[] {
   const had = new Set(before.filter((d) => d.severity === 'error').map((d) => `${d.rule}\u0000${d.field}`));
   return after.filter((d) => d.severity === 'error' && !had.has(`${d.rule}\u0000${d.field}`));
@@ -278,7 +277,6 @@ interface Snapshot {
   sector?: string;
 }
 
-/** The labels the edit leaves on the ticket. */
 function labelsAfter(current: string[], o: EditOptions): string[] {
   if (o.labels !== undefined) return parseLabels(o.labels);
   let out = [...current];
@@ -290,7 +288,6 @@ function labelsAfter(current: string[], o: EditOptions): string[] {
   return out;
 }
 
-/** Body and home findings of a ticket state, home as one `(home, home)` finding. */
 function contractDiagnostics(t: Snapshot, body: BodyInput, sectors: readonly string[] | undefined): Diagnostic[] {
   const out = bodyDiagnostics(body, t.type, t.labels);
   const home = homeVerdict(t.type, { sector: t.sector, parent: t.parent, labels: t.labels }, sectors);
@@ -298,14 +295,6 @@ function contractDiagnostics(t: Snapshot, body: BodyInput, sectors: readonly str
   return out;
 }
 
-/**
- * Checks an edit that touches the ticket contract (description, labels, parent,
- * sector) against the ticket as it is now: the edited result may not add a
- * `(rule, field)` error the current ticket does not have. A legacy ticket can be
- * repaired a piece at a time; the gaps it keeps are printed as warnings. An
- * unreadable current ticket is refused, never treated as empty. Runs before the
- * PUT, so a refusal writes nothing.
- */
 async function checkEditContract(key: string, o: EditOptions): Promise<void> {
   const sectorId = sectorField();
   let got: { fields?: Record<string, unknown> };

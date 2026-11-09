@@ -1,4 +1,3 @@
-// Types for ticket-policy.mjs, so the Jira CLI's strict build imports it.
 export type BodyInput = { format: 'markdown'; body: string } | { format: 'adf'; body: unknown };
 export type Diagnostic = { rule: string; field: string; severity: 'error' | 'warning'; message: string };
 export type BodyContext = { issueType?: string; labels?: readonly string[] };

@@ -321,15 +321,12 @@ deny_wrapped() {
     } >&2
 }
 
-# comment_edit_replacement <cli-prefix> — for addOrEditJiraIssueComment, the
-# `comment --edit` form with the call's real key and comment id; prints nothing
-# when no commentId marks the call as an edit.
 comment_edit_replacement() {
     local cli_prefix="$1" edit_id edit_key
     edit_id=$(printf '%s' "$input" | jq -r '.tool_input.commentId // empty | tostring' 2>/dev/null) || edit_id=""  # swallow-ok: no readable id keeps the add hint
     edit_key=$(printf '%s' "$input" | jq -r '.tool_input.issueIdOrKey // empty | tostring' 2>/dev/null) || edit_key=""  # swallow-ok: no readable key falls back to HIMMEL-N
     case "$edit_id$edit_key" in
-        *[!A-Za-z0-9_-]*) edit_id="" ;;  # keep shell metacharacters out of the printed command
+        *[!A-Za-z0-9_-]*) edit_id="" ;;
     esac
     if [ -n "$edit_id" ]; then
         printf '%s comment %s --edit %s "<text>"' "$cli_prefix" "${edit_key:-HIMMEL-N}" "$edit_id"
@@ -359,7 +356,6 @@ jira_cli_only_verdict() {
     case "$suffix" in
         executeWrite|executeRead|executeDestructive)
             is_wrapper=1
-            # Fail CLOSED: a name this hook cannot read is a call it cannot route.
             wrapped=$(printf '%s' "$input" | jq -r 'if (.tool_input | type) == "object" and (.tool_input.name | type) == "string" then .tool_input.name else empty end') || wrapped=""  # swallow-ok: an unreadable name is denied just below
             wrapped="${wrapped//[$' \t\r\n']/}"
             if [ -z "$wrapped" ]; then
@@ -381,13 +377,10 @@ jira_cli_only_verdict() {
 $_JIRA_VERB_METHOD_MAP
 EOF
     lower=$(printf '%s' "$suffix" | tr '[:upper:]' '[:lower:]')
-    # Jira work = the name says Jira, or the verb map names it (createIssueLink).
     case "$lower" in
         *jira*) ;;
         *)
             if [ -z "$verb" ]; then
-                # Not Jira. Keep the wrapper guard: a wrapped name that is neither
-                # mapped nor allowlisted is unroutable, whichever service sees it.
                 if [ "$is_wrapper" -eq 1 ] && ! wrapped_name_is_mapped "$suffix" && ! wrapped_name_is_allowlisted "$suffix"; then
                     deny_wrapped jira "$bypass_var" "$suffix is neither a mapped nor an allowlisted tool name"
                     return 2
@@ -397,7 +390,6 @@ EOF
             ;;
     esac
 
-    # Resolve the CLI against the PRIMARY checkout (dist/ exists only there).
     display_cli="$matched_cli"
     case "$display_cli" in
         /*) : ;;
@@ -633,7 +625,6 @@ EOF
         [ -n "$edit_replacement" ] && replacement="$edit_replacement"
     fi
     api_advisory=""
-    # Jira is CLI-only: it never suggests a raw-REST fallback.
     if [ "$api_in_chain" -eq 1 ] && [ "$matched_service" != "jira" ]; then
         api_advisory="
 For ops the CLI lacks, prefer raw REST (curl/WebFetch) before falling back to MCP.

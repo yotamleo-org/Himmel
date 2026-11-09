@@ -10,7 +10,6 @@ import { execCli, flags, runCli, type CliResult, type CliRunner } from './mcp-cl
 import { createTools } from './mcp.js';
 import { PLAIN_BLOCK_TEMPLATE } from './plain-block.js';
 
-// Spy on the child spawn without changing it: the real execFile still runs.
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
   return { ...m, execFile: vi.fn(m.execFile) };
@@ -109,7 +108,6 @@ describe('runCli', () => {
   });
 });
 
-// The real built CLI against a loopback Jira stub: the bridge's whole path, no mocks past the network.
 const CLI = resolve(fileURLToPath(new URL('..', import.meta.url)), 'dist', 'index.js');
 const FILLED = PLAIN_BLOCK_TEMPLATE.replace(/<[^>\n]*>/g, 'filled');
 

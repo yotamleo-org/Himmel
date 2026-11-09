@@ -203,13 +203,9 @@ export function buildRoadmapFields(ids: RoadmapIds, o: RoadmapSetOptions): Recor
 
 type Fields = Record<string, unknown>;
 
-// Readiness is a declaration. The score says what someone wrote; the evidence state says what backs it:
-// declared (nothing), linked (an audit URL or date: a reference, not a verdict), verified (specCheck
-// passes for the key), stale (specCheck sees a changed artifact), unknown (nothing readable). Nothing is stored.
 export type EvidenceState = 'declared' | 'linked' | 'verified' | 'stale' | 'unknown';
 export type ReadinessSource = 'jira' | 'stage2';
 export interface SpecVerdict { lines: string[]; ok: boolean; warnings: string[] }
-/** specCheck bound to its env and mirror, for one key. */
 export type SpecVerifier = (key: string) => SpecVerdict;
 
 /** spec: undefined = no release context (never verified), null = the records could not be read. */
@@ -266,7 +262,6 @@ function show(v: unknown): string {
   return String(v);
 }
 
-/** verify: specCheck for this key where a release context exists; without it nothing is ever verified. */
 export async function roadmapGet(key: string, req: Req = request, verify?: SpecVerifier): Promise<string> {
   const ids = await resolveRoadmapFields(req);
   const cur = await readRoadmap(req, key, ids);

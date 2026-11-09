@@ -668,9 +668,7 @@ interface ParentState {
  * A follow-up of an open parent in the current version asks for that version;
  * the why states only facts (parent, status, version), plus the parent's
  * remainder when the caller declares it with --remainder. A Done or closed
- * parent asks for none and the why says so. A frozen parent version is still
- * the one asked for (the why says it is frozen): the release manager rules on
- * the frozen intake, the filing never routes around it. The residual cap is
+ * parent asks for none and the why says so. The residual cap is
  * NOT checked: the request never writes the fixVersion, and the release
  * manager is not shown the cap. Parent, status and version go in the request's
  * evidence. Explicit wins: a version, --backlog, --proposed-version or --why

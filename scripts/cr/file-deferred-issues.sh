@@ -469,9 +469,6 @@ console.log(found.size === 1 ? [...found][0] : "");
         [ -n "$CR_CLASS" ] || CR_CLASS="unclassified"
     fi
 
-    # printf, not a heredoc: the findings are review text and must not be
-    # expanded. The body carries the Impact/What/Why/Plan/DoD/Proof/Agent detail shape
-    # the Jira CLI's ticket-shape check requires.
     jira_body_file=$(mktemp -t fdi-jira.body.XXXXXX) || exit 1
     printf '%s\n' \
         "## Impact" \

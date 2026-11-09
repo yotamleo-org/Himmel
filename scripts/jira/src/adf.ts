@@ -86,7 +86,6 @@ function parseInline(text: string): InlineNode[] {
 const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const HEADING_LINE = /^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*$/;
 
-/** The fence a line opens, or undefined (a backtick fence with a backtick in its info string is none). */
 function fenceOpen(line: string): { marker: string; info: string } | undefined {
   const fm = FENCE_LINE.exec(line);
   if (!fm || (fm[1][0] === '`' && fm[2].includes('`'))) return undefined;
@@ -188,8 +187,6 @@ export function markdownToAdf(md: string): AdfDoc {
       continue;
     }
 
-    // a bare line that is exactly a ticket section name ("Proof", "DoD:") is that section's
-    // heading, as the ticket policy reads it (Jira renders a heading node back as such a line)
     if (isSectionLine(line)) {
       blocks.push({ type: 'heading', attrs: { level: 2 }, content: parseInline(line.trim().replace(/:\s*$/, '')) });
       i++;

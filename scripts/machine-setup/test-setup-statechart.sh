@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# test-setup-statechart.sh — hermetic suite for setup-statechart.sh.
-#
-# Every case gets its own fake HOME and XDG_DATA_HOME under mktemp, and a PATH
-# holding only stubs (curl, sha256sum, uname, and java where the case wants
-# one) plus symlinks to the few coreutils the script uses. The real HOME, the
-# real network and any real Java are never reached. The sha256sum stub reports
-# the pinned digest for the GOOD fixture bytes, since no real TLC jar is
-# fetched here; the real download is verified by hand and by the pin test.
-#
-# bash 3.2-safe (macOS ships 3.2): no mapfile, no associative arrays.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,7 +50,6 @@ TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/setup-statechart-test.XXXXXX")" || exit 1
 cleanup() { rm -rf "$TMP_ROOT" 2>/dev/null || true; }
 trap cleanup EXIT
 
-# Fixtures: the GOOD bytes are the ones the stub sha256sum pins to the real digest.
 FIX="$TMP_ROOT/fixtures"; mkdir -p "$FIX"
 GOOD_JAR="$FIX/good.jar"; BAD_JAR="$FIX/bad.jar"; OLD_JAR="$FIX/old.jar"
 printf 'pinned-tlc-fixture\n' > "$GOOD_JAR"
@@ -70,8 +59,6 @@ export GOOD_JAR BAD_JAR REAL_SHA256SUM REAL_UNAME
 PIN="$TLA2TOOLS_SHA256"
 export PIN
 
-# Shared coreutils the script may call. Java, curl, sha256sum, uname are not here:
-# each case adds its own stubs (or omits java entirely).
 TOOLS="$TMP_ROOT/tools"; mkdir -p "$TOOLS"
 for t in cat chmod cmp cp cut dirname grep head ls mkdir mktemp mv rm sed; do
   p="$(command -v "$t")" && ln -s "$p" "$TOOLS/$t"
@@ -81,7 +68,6 @@ ln -s "$BASH_BIN" "$TOOLS/bash"
 write_stubs() { # <bin dir>
   cat > "$1/curl" <<'EOF'
 #!/bin/sh
-# Records every call; fails the test when a no-network case reaches it.
 printf '%s\n' "$*" >> "$STUB_LOG/curl-args"
 : > "$STUB_LOG/curl-called"
 case "${CURL_MODE:-fail}" in
@@ -99,7 +85,6 @@ cp "$src" "$out"
 EOF
   cat > "$1/sha256sum" <<'EOF'
 #!/bin/sh
-# The GOOD fixture reports the pinned TLC digest; any other file gets the real hash.
 if [ -n "${1:-}" ] && [ -f "$1" ] && cmp -s "$1" "$GOOD_JAR"; then
   printf '%s  %s\n' "$PIN" "$1"
   exit 0
@@ -122,7 +107,6 @@ EOF
   chmod +x "$1/java"
 }
 
-# new_case <name> <java:yes|no> — a fresh fake HOME, XDG tree, bin dir and log.
 new_case() {
   CASE="$TMP_ROOT/$1"
   C_HOME="$CASE/home"; C_XDG="$CASE/xdg"; C_BIN="$CASE/bin"; C_LOG="$CASE/log"
@@ -131,9 +115,6 @@ new_case() {
   if [ "$2" = yes ]; then write_java "$C_BIN"; fi
 }
 
-# invoke <mode> <curl-mode> [uname] [java-version] — runs the SUT with the case's
-# fake HOME; JAVA and XDG_DATA_HOME are cleared unless the case sets XDG.
-# Sets OUT (combined output) and RC.
 invoke() {
   local mode="$1" curl_mode="$2" uname_s="${3:-Linux}" java_ver="${4:-21.0.12}"
   OUT="$(
@@ -149,8 +130,6 @@ invoke() {
 JAR_OF() { printf '%s/himmel/statechart/%s/tla2tools.jar' "$1" "$TLA2TOOLS_VERSION"; }
 ENV_OF() { printf '%s/himmel/statechart/env' "$1"; }
 
-# only_jar_in <dir> — true when the dir holds the jar and no other entry, dotfiles
-# included, so a leftover temp download fails the check.
 only_jar_in() {
   local f n=0
   for f in "$1"/.[!.]* "$1"/*; do

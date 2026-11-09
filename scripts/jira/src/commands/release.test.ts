@@ -611,7 +611,6 @@ describe('jira release request refuses junk', () => {
     expect(out.at(-1)).toBe('REQ Q-R1-0001');
   });
 
-  // A one-ticket Jira: GET returns the labels held, PUT applies the remove entries unless `stuck` holds the label.
   function jiraLabels(held: string[], stuck: string[] = []) {
     const now = { labels: [...held] };
     vi.mocked(request).mockImplementation((async (method: string, _path: string, body?: { update: { labels: Array<{ remove: string }> } }) => {
