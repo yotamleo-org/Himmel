@@ -2,7 +2,7 @@
 // One Board entry in the rail; the old Roadmap and Kanban routes land on it; the version strip, the drift banner, the chain badge,
 // the three tabs and the lanes draw from the seeded sources; no console error at 1280 and 390 px, light and dark.
 // E2E_SHOTS=<dir> saves the build-side screenshot of each frame, named board-<width>-<scheme>-<tab>.png, to pair with the mockup.
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, chromium, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { boot, type Harness } from "./fixtures";
@@ -253,6 +253,7 @@ test("a drop on a column its event moves (In review, CI, Done) writes nothing an
   for (const [col, name] of [["rev", "In Review"], ["done", "Done"]]) { // Review and CI are one column now: a drop on it is a drop on rev
     await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator(`[data-rm-drop="${col}"]`));
     await expect(page.locator("#main .alert", { hasText: `${name} is moved by its event` })).toBeVisible(); // the note names this drop's column, so the last drop's note cannot satisfy it
+    expect(await page.locator("#main .alert", { hasText: `${name} is moved by its event` }).evaluate((el) => el === el.closest("section.cp")?.firstElementChild), "the note is the first thing inside the panel").toBe(true);
   }
   expect(sent).toEqual([]); // no POST to /api/roadmap/write went out
   await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('[data-rm-drop="prog"]')); // a column the operator owns still writes
@@ -782,7 +783,7 @@ test("with a Won't ticket and long sector names the Chains tab does not scroll s
   }
 });
 
-const MOCKUP_FIRST_CHAIN_Y = 177, MOCKUP_TAB_H = 590, OPEN_CHAIN_ALLOWANCE = 90, LINK_STRIP_ALLOWANCE = 55;
+const MOCKUP_FIRST_CHAIN_Y = 233, MOCKUP_TAB_H = 590, OPEN_CHAIN_ALLOWANCE = 90, LINK_STRIP_ALLOWANCE = 55;
 const FIXTURE_TAB_H_MAX = MOCKUP_TAB_H + 3 * OPEN_CHAIN_ALLOWANCE + LINK_STRIP_ALLOWANCE;
 function fiveChains() {
   const lnk = (on: string, status: string, onVersions: string[]) => ({ on, kind: "jira-link", source: "jira", added: null, reason: null, owner: null, until: null, clears: `${on} completes`, status, at: null, onVersions });
@@ -820,35 +821,203 @@ for (const width of [800, 880, 960, 1280]) {
     await open(page);
     for (const tab of ["chains", "roadmap", "tidy", "nv"]) {
       await go(page, `#/board?tab=${tab}`);
-      const aside = page.locator(".tr .aside");
-      await expect(aside, tab).toBeVisible();
-      const a = await aside.boundingBox();
-      const b = await aside.locator(".btn").boundingBox();
-      expect(b!.x, tab).toBeGreaterThanOrEqual(a!.x - 0.5);
-      expect(b!.x + b!.width, tab).toBeLessThanOrEqual(a!.x + a!.width + 0.5);
-      for (const link of await aside.locator("a").all()) {
-        expect(await link.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), tab).toBe(true);
-      }
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), tab).toBe(true);
+      const measure = () => page.evaluate(() => { // one task: a repaint cannot land between two measurements
+        const aside = document.querySelector<HTMLElement>(".tr .aside"), btn = aside?.querySelector<HTMLElement>(".btn"), sel = document.querySelector('.tr .tabs [aria-selected="true"]'), panel = document.querySelector("section.cp");
+        if (!aside || !btn || !sel || !panel) return null;
+        const a = aside.getBoundingClientRect(), r = btn.getBoundingClientRect(), tabs = Array.from(document.querySelectorAll<HTMLElement>(".tr .tabs .tab"));
+        return {
+          buttonInside: r.left >= a.left - 0.5 && r.right <= a.right + 0.5,
+          linksWhole: Array.from(aside.querySelectorAll("a")).every((el) => el.scrollWidth <= el.clientWidth + 1),
+          noSideways: document.documentElement.scrollWidth <= window.innerWidth + 1,
+          tabLines: new Set(tabs.map((t) => Math.round(t.getBoundingClientRect().top))).size,
+          selectedMeetsPanel: Math.abs(sel.getBoundingClientRect().bottom - panel.getBoundingClientRect().top) <= 1,
+        };
+      });
+      await expect.poll(measure, { message: tab }).toEqual({ buttonInside: true, linksWhole: true, noSideways: true, tabLines: 1, selectedMeetsPanel: true });
     }
   });
 }
-test("390 px: the tab list and the chip row scroll sideways on every tab, with an edge label for what is off-screen", async ({ page }) => {
+for (const width of [390, 800, 1280]) {
+  test(`${width} px, classic scrollbars: none is drawn between a tab and its panel, on every tab`, async () => {
+    const browser = await chromium.launch({ ignoreDefaultArgs: ["--hide-scrollbars"] }); // headless hides scrollbars by default, which would hide the thing under test
+    try {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await open(page);
+      for (const tab of ["chains", "roadmap", "tidy", "nv"]) {
+        await go(page, `#/board?tab=${tab}`);
+        const m = await page.locator(".tr .tabs").evaluate((el) => ({ scroll: el.scrollHeight - el.clientHeight, bar: (el as HTMLElement).offsetHeight - el.clientHeight }));
+        expect(m, `${tab}: the tab list has no scrollbar`).toEqual({ scroll: 0, bar: 0 });
+      }
+    } finally { await browser.close(); }
+  });
+}
+test("1280 px, dark: the shared rules draw: a plain panel body, a boxed selected tab, a drift pill, the phone's slim chips", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  await go(page, "#/board?tab=roadmap");
+  const body = await page.locator(".cp.plain > section.box").first().evaluate((el) => { const s = getComputedStyle(el); return { border: s.borderTopWidth, bg: s.backgroundColor, pad: s.paddingTop }; });
+  expect(body, "the panel's body adds no box of its own").toEqual({ border: "0px", bg: "rgba(0, 0, 0, 0)", pad: "0px" });
+  const tab = await page.locator('.tr .tab[aria-selected="true"]').evaluate((el) => { const s = getComputedStyle(el); return { border: s.borderTopWidth, radius: s.borderTopLeftRadius, line: s.textDecorationLine, bg: s.backgroundColor }; });
+  expect(tab, "the selected plain tab is a box with a rounded top, not an underline").toEqual({ border: "1px", radius: "8px", line: "none", bg: await page.locator(".cp.plain").evaluate((el) => getComputedStyle(el).backgroundColor) });
+  const pill = await page.locator(".tab .drf").evaluate((el) => { const warn = document.createElement("span"); warn.className = "pill warn"; document.body.append(warn); const bg = getComputedStyle(warn).backgroundColor; warn.remove(); return { display: getComputedStyle(el).display, bg: getComputedStyle(el).backgroundColor, warn: bg }; });
+  expect(pill.display, "the drift count sits inline in the tab's text").toBe("inline");
+  expect(pill.bg, "the drift count wears the amber of a warn pill").toBe(pill.warn);
+  expect(await page.locator(".bh .vc progress").first().evaluate((el) => getComputedStyle(el).display), "a chip carries its progress bar on a wide screen").not.toBe("none");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.locator(".bh .vc progress").first().evaluate((el) => getComputedStyle(el).display), "and drops it on a phone").toBe("none");
+  expect(await page.locator(".bh .vc small").first().evaluate((el) => getComputedStyle(el).display)).toBe("none");
+});
+// What the sideways rows must keep true after every layout (the chip row and the tab row, both). Each entry is one thing that is wrong; [] is clean.
+const auditRows = (page: Page): Promise<string[]> => page.evaluate(() => {
+  const TOL = 2, bad: string[] = [];
+  const rows = Array.from(document.querySelectorAll<HTMLElement>(".xrow"));
+  if (rows.length !== 2) bad.push(`expected the chip row and the tab row, found ${rows.length}`);
+  for (const x of rows) {
+    const row = x.querySelector<HTMLElement>(".vchips,.tabs")!, L = x.querySelector<HTMLElement>(".edge.l")!, R = x.querySelector<HTMLElement>(".edge.r")!;
+    const name = row.classList.contains("tabs") ? "tabs" : "chips";
+    const items: Element[][] = [];
+    for (const c of Array.from(row.children)) { if (c.matches(".pin") && items.length) items[items.length - 1].push(c); else items.push([c]); }
+    const box = (it: Element[]) => ({ l: Math.min(...it.map((e) => e.getBoundingClientRect().left)), r: Math.max(...it.map((e) => e.getBoundingClientRect().right)) });
+    const a = row.getBoundingClientRect(), lb = L.hidden ? null : L.getBoundingClientRect(), rb = R.hidden ? null : R.getBoundingClientRect();
+    const clearL = lb ? lb.right : a.left, clearR = rb ? rb.left : a.right, mid = (a.left + a.right) / 2;
+    const sel = row.querySelector('[aria-selected="true"],[aria-current="true"]');
+    if (sel) { const b = sel.getBoundingClientRect(); if (b.left < clearL - TOL || b.right > clearR + TOL) bad.push(`${name}: the selected item is not clear of the labels`); }
+    let nl = 0, nr = 0;
+    for (const it of items) {
+      const b = box(it);
+      if (b.l >= clearL - TOL && b.r <= clearR + TOL) continue;
+      const left = (b.l + b.r) / 2 < mid;
+      if (left) nl++; else nr++;
+      const under = left ? !!lb && b.r <= lb.right + TOL : !!rb && b.l >= rb.left - TOL;
+      const away = b.r <= a.left + TOL || b.l >= a.right - TOL;
+      if (!under && !away) bad.push(`${name}: an item is only partly under a label`);
+    }
+    for (const [el, n, side] of [[L, nl, "left"], [R, nr, "right"]] as const) {
+      if (el.hidden === (n > 0)) bad.push(`${name}: the ${side} label is ${el.hidden ? "hidden" : "shown"} with ${n} items past it`);
+      if (!el.hidden && Number(el.dataset.n) !== n) bad.push(`${name}: the ${side} label says ${el.dataset.n}, ${n} items are under it`);
+      if (!el.hidden && !/\d/.test(el.textContent || "")) bad.push(`${name}: the ${side} label is a bare arrow`);
+    }
+  }
+  const menu = document.querySelector<HTMLElement>(".bh .vmenu"), chips = document.querySelector<HTMLElement>(".bh .vchips"), head = document.querySelector<HTMLElement>(".rm-head.bh");
+  if (!menu || !chips || !head) bad.push("the head has no version menu or chip row");
+  else {
+    const m = menu.getBoundingClientRect(), c = chips.getBoundingClientRect(), h = head.getBoundingClientRect();
+    if (chips.closest(".xrow")!.contains(menu)) bad.push("the version menu sits inside the chip row");
+    if (!(m.bottom <= c.top + TOL || m.top >= c.bottom - TOL || m.right <= c.left + TOL || m.left >= c.right - TOL)) bad.push("the version menu overlaps the chip row");
+    if (m.left < h.left - TOL || m.right > h.right + TOL || m.top < h.top - TOL || m.bottom > h.bottom + TOL) bad.push("the version menu is outside the head");
+  }
+  return bad;
+});
+// Tag the first item the row hides on one side (the one nearest the selected item), so a later check can find it again.
+const probeHidden = (page: Page, row: string, side: "l" | "r") => page.evaluate(([q, sd]) => {
+  document.querySelectorAll("[data-probe]").forEach((e) => e.removeAttribute("data-probe"));
+  const x = document.querySelector<HTMLElement>(q)!, rowEl = x.querySelector<HTMLElement>(".vchips,.tabs")!;
+  const L = x.querySelector<HTMLElement>(".edge.l")!, R = x.querySelector<HTMLElement>(".edge.r")!;
+  const a = rowEl.getBoundingClientRect(), clearL = L.hidden ? a.left : L.getBoundingClientRect().right, clearR = R.hidden ? a.right : R.getBoundingClientRect().left;
+  const kids = Array.from(rowEl.children).filter((c) => !c.matches(".pin"));
+  const hid = kids.filter((c) => { const b = c.getBoundingClientRect(); return sd === "l" ? b.left < clearL - 2 : b.right > clearR + 2; });
+  const pick = sd === "l" ? hid[hid.length - 1] : hid[0];
+  if (!pick) return false;
+  pick.setAttribute("data-probe", "1");
+  return true;
+}, [row, side] as const);
+const probeClear = (page: Page, row: string) => page.evaluate((q) => {
+  const x = document.querySelector<HTMLElement>(q)!, rowEl = x.querySelector<HTMLElement>(".vchips,.tabs")!, p = rowEl.querySelector("[data-probe]");
+  const L = x.querySelector<HTMLElement>(".edge.l")!, R = x.querySelector<HTMLElement>(".edge.r")!;
+  const a = rowEl.getBoundingClientRect(), clearL = L.hidden ? a.left : L.getBoundingClientRect().right, clearR = R.hidden ? a.right : R.getBoundingClientRect().left;
+  const b = p!.getBoundingClientRect();
+  return b.left >= clearL - 2 && b.right <= clearR + 2;
+}, row);
+const focusedClear = (page: Page) => page.evaluate(() => {
+  const f = document.activeElement, x = f && f.closest(".xrow");
+  if (!f || !x) return null;
+  const rowEl = x.querySelector<HTMLElement>(".vchips,.tabs")!, L = x.querySelector<HTMLElement>(".edge.l")!, R = x.querySelector<HTMLElement>(".edge.r")!;
+  const a = rowEl.getBoundingClientRect(), clearL = L.hidden ? a.left : L.getBoundingClientRect().right, clearR = R.hidden ? a.right : R.getBoundingClientRect().left;
+  const b = f.getBoundingClientRect();
+  return b.left >= clearL - 2 && b.right <= clearR + 2;
+});
+const PHONE_TABS = ["chains", "roadmap", "tidy", "nv"];
+test("390 px: on every tab both sideways rows keep the selected item clear, every item whole or wholly under one label, each label's number true, after the first paint, a refresh, and a resize to 600 px and back", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "dark" });
   await open(page);
-  for (const tab of ["chains", "roadmap", "tidy", "nv"]) {
+  for (const tab of PHONE_TABS) {
     await go(page, `#/board?tab=${tab}`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), tab).toBe(true);
-    const tabs = page.locator(".tr .tabs");
-    expect(await tabs.evaluate((el) => el.scrollWidth > el.clientWidth), `${tab}: the tab list is wider than the phone`).toBe(true);
-    await expect(page.locator(".tr .xrow .edge.r"), tab).toBeVisible(); // the tabs past the right edge are counted
-    await expect(page.locator(".tr .xrow .edge.l"), tab).toBeHidden(); // nothing is hidden on the left at the start
-    await tabs.evaluate((el) => { el.scrollLeft = el.scrollWidth; });
-    await expect(page.locator(".tr .xrow .edge.l"), tab).toBeVisible();
-    await expect(page.locator(".tr .xrow .edge.r"), tab).toBeHidden();
+    expect(await page.evaluate(() => { const t = document.querySelector(".tr .tabs")!; return t.scrollWidth > t.clientWidth; }), `${tab}: the tab list is wider than the phone`).toBe(true);
+    expect(await auditRows(page), `${tab}: first paint`).toEqual([]);
+    await Promise.all([page.waitForResponse((r) => r.url().includes("/api/")), page.locator('.aside [data-act="refresh-roadmap"]').click()]);
+    await page.waitForLoadState("networkidle");
+    await expect.poll(() => auditRows(page), { message: `${tab}: after a refresh` }).toEqual([]);
+    for (const w of [600, 390]) {
+      await page.setViewportSize({ width: w, height: 844 });
+      await expect.poll(() => auditRows(page), { message: `${tab}: at ${w} px` }).toEqual([]);
+    }
   }
   await shot(page, "board-tabs-sideways-dark-390");
+});
+test("390 px: a tap on an edge label leaves the route as it was and brings the next hidden item wholly clear", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  const hash = await page.evaluate(() => location.hash);
+  let taps = 0;
+  for (const [row, label] of [[".tr .xrow", "r"], [".tr .xrow", "l"], [".rm-head.bh .xrow", "r"], [".rm-head.bh .xrow", "l"]] as const) {
+    const edge = page.locator(`${row} .edge.${label}`);
+    if (!(await edge.isVisible())) continue;
+    expect(await edge.evaluate((el) => getComputedStyle(el).position), `${row} ${label}: the label sits over the row`).toBe("absolute");
+    expect(await probeHidden(page, row, label), `${row} ${label}: an item is hidden behind the label`).toBe(true);
+    await edge.click();
+    taps++;
+    expect(await page.evaluate(() => location.hash), `${row} ${label}: the route`).toBe(hash);
+    await expect.poll(() => probeClear(page, row), { message: `${row} ${label}: the next item is clear` }).toBe(true);
+    expect((await auditRows(page)).filter((m) => !m.includes("selected item")), `${row} ${label}`).toEqual([]); // the person moved the row away from the selected item on purpose
+  }
+  expect(taps, "a label was visible to tap").toBeGreaterThan(0);
+});
+test("390 px: focus on a hidden tab or chip moves it wholly clear of both labels, tabbing through each row", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  const last = page.locator(".tr .tabs .tab").last();
+  expect(await last.evaluate((el) => el.getBoundingClientRect().right > el.parentElement!.getBoundingClientRect().right), "the last tab starts off-screen").toBe(true);
+  await last.focus();
+  expect(await focusedClear(page), "the last tab, focused").toBe(true);
+  await page.locator(".bh .vchips .vc").first().focus();
+  const seen: (boolean | null)[] = [];
+  for (let k = 0; k < 16; k++) { await page.keyboard.press("Tab"); seen.push(await focusedClear(page)); }
+  expect(seen.filter((v) => v === true).length, "the key reached the rows' items").toBeGreaterThan(3);
+  expect(seen.filter((v) => v === false), "a focused item sat under a label").toEqual([]);
+});
+test("390 px: a row the person scrolled keeps its place across a refresh, and a tab change starts the row placed afresh", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  const tabs = page.locator(".tr .tabs");
+  const settle = () => page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
+  const start = await tabs.evaluate((el) => el.scrollLeft);
+  let kept = -1;
+  for (const d of [12, 24, 40, 60]) {
+    await tabs.evaluate((el, to) => { el.scrollLeft = to; }, start + d);
+    await settle();
+    const now = await tabs.evaluate((el) => el.scrollLeft);
+    if (Math.abs(now - start) > 4 && (await auditRows(page)).length === 0) { kept = now; break; }
+  }
+  expect(kept, "a hand-scrolled place where the selected tab stays clear").toBeGreaterThanOrEqual(0);
+  await Promise.all([page.waitForResponse((r) => r.url().includes("/api/")), page.locator('.aside [data-act="refresh-roadmap"]').click()]);
+  await page.waitForLoadState("networkidle");
+  await settle();
+  expect(Math.abs((await tabs.evaluate((el) => el.scrollLeft)) - kept), "the scroll after a refresh").toBeLessThanOrEqual(2);
+  await page.locator(".tr .tabs .tab").first().click(); // another tab: the row is placed for that tab, not left where it was
+  await expect(page.locator('.tr .tabs .tab[aria-selected="true"]')).toHaveText(/Roadmap/);
+  await page.waitForLoadState("networkidle");
+  await settle();
+  expect(await tabs.evaluate((el) => el.scrollLeft), "Roadmap is the first tab: nothing to scroll past").toBeLessThanOrEqual(2);
+  expect(await auditRows(page)).toEqual([]);
 });
 for (const [width, height] of [[1280, 900], [390, 844]]) {
   test(`${width} px: five open chains stay compact, each open chain one rail, and the Ops chain's steps and Why links stay on one line`, async ({ page }) => {
@@ -877,6 +1046,7 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
     await shot(page, `board-chains-five-fixture-dark-${width}`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     if (width === 1280) {
+      console.log("CHAINS-FIVE-1280", JSON.stringify({ top, bottom }));
       expect(Math.abs(top - MOCKUP_FIRST_CHAIN_Y), `first chain at ${top}px`).toBeLessThanOrEqual(40);
       expect(bottom).toBeLessThanOrEqual(FIXTURE_TAB_H_MAX);
       expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(8);

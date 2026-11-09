@@ -690,7 +690,8 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .tr .aside .rd{flex:1 1 8rem;width:8rem;text-align:right;color:var(--muted)}
 .cp{display:grid;gap:var(--s1);border:1px solid var(--rule);border-top:3px solid var(--road);border-radius:0 0 10px 10px;background:var(--surface);padding:var(--s2) var(--s4)}
 .cp.plain{border-top-color:var(--rule-strong)}
-.cp.plain>section.box{border:0;border-radius:0;background:none;padding:0;margin:0}
+.cp.plain>section.box{border:0;border-radius:0;background:none;padding:0;margin:0;min-width:0}
+.cp.plain .rm-bar{flex-wrap:wrap;white-space:normal}
 .cph{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3)}
 .cph .big{font:700 var(--fs-md) var(--font-ui);color:var(--ink)}
 .cph .big small{display:block;font:400 var(--fs-xs) var(--font-mono);color:var(--muted)}

@@ -311,7 +311,7 @@ function slimStrip(d, sel, tab, ui, w, inert) {
     + (tab === "roadmap" || tab === "tidy" ? `<a class="vc all${sel === -1 ? " sel" : ""}" href="${boardHref({ tab: keep, v: "all" })}"${sel === -1 ? ` aria-current="true"` : ""}>all versions</a>` : "");
   const sum = d.versions.reduce((a, v) => { for (const k of Object.keys(v.counts)) a[k] = (a[k] || 0) + v.counts[k]; return a; }, {});
   const line = sel >= 0 && d.versions[sel] ? `<b>${esc(d.versions[sel].n)}</b> · ${esc(info(sel).tag)} · ${nTickets(info(sel).total)} · ${esc(stat(info(sel)))}`
-    : sel === NO_PICK ? `<b>no version</b> · ${nTickets(d.noVersionCount || 0)}`
+    : sel === NO_PICK ? `<b>no version</b> · ${nTickets(d.noVersionCount || 0)} · in no version's count; a chip opens that version's Roadmap`
     : sel === -1 && (tab === "roadmap" || tab === "tidy") ? `<b>every version</b> · ${nTickets(Object.values(sum).reduce((a, b) => a + b, 0))} · ${esc(stat({ c: { done: 0, prog: 0, rev: 0, ci: 0, todo: 0, ...sum } }))}` : "";
   const menu = `<details class="vmenu"${inert ? " inert" : ""}><summary>${w.idx.length} of ${d.versions.length} versions ▾</summary>${windowBar(d, ui, w, inert)}</details>`;
   const edges = `<span class="edge l" aria-hidden="true" hidden></span><span class="edge r" aria-hidden="true" hidden></span>`;
@@ -394,8 +394,9 @@ function tabsHtml(d, ui, tab, ch, dr, sel) {
   const ok = chainOk(ch), n = ok ? ch.chains.length : 0, blocked = ok && ch.version ? countsOf(ch, d).blocked : 0;
   const named = ok && ch.version && versionAt(d, ch.version) !== sel;
   const real = driftOk(dr) ? dr.counts.real : 0;
-  const tidy = driftOk(dr) ? (real ? `<span class="drf">! ${real} drift ${real === 1 ? "row" : "rows"}</span>` : `<span class="ro">0 drift rows</span>`)
-    : `<span class="ro">· ${!dr || dr.state === "absent" || !dr.counts || !dr.file ? "drift not read" : !dr.file.exists ? "no saved run" : "drift result unknown"}</span>`;
+  const old = driftOk(dr) && dr.stale ? " · over 3 h old" : "";
+  const tidy = driftOk(dr) ? (real ? `<span class="drf">! ${real} drift ${real === 1 ? "row" : "rows"}${old}</span>` : `<span class="ro">0 drift rows${old}</span>`)
+    : `<span class="ro">· ${!dr || dr.state === "absent" || !dr.counts || !dr.file ? "drift not read" : !dr.file.exists ? "no drift run yet" : "drift result unknown"}</span>`;
   const em = { nv: d.noVersionCount ? `<span class="ro">${esc(nTickets(d.noVersionCount))}</span>` : "" };
   const chains = (on) => `<a class="tab ch" role="tab" aria-selected="${on}" href="${boardHref({ tab: "chains", v: ui.v })}"${ok ? ` aria-label="${esc(`Chains, ${n} ${n === 1 ? "chain" : "chains"}${ch.version ? " in " + ch.version : ""}${blocked ? `, ${nTickets(blocked)} blocked` : ""}`)}"` : ""}>${CLINK}Chains${ok ? ` <span class="cnt">${n}</span>` : ""}${named ? ` <span class="ro">in ${esc(ch.version)}</span>` : ""}${blocked ? ` <span class="blk">⛔ ${nTickets(blocked)} blocked</span>` : ""}</a>`;
   // the No version tab is there while some ticket has no fixVersion (the count is the default read's; the tickets are read when it opens)

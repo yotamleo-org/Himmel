@@ -1749,7 +1749,15 @@ test("9559 slice 1: the Tidy up label carries the drift count in the amber look,
   expect(counted).toMatch(/class="drf"/);
   expect(tabsOnly(shell("chains", { v: "v1.1.3" }, { drift: driftOk() }))).toContain("Tidy up 0 drift rows");
   expect(tabsOnly(shell("roadmap", { v: "v1.1.3" }, { drift: null }))).toContain("Tidy up · drift not read");
-  expect(tabsOnly(shell("roadmap", { v: "v1.1.3" }, { drift: { file: { exists: false }, counts: { real: 0, known: 0, transient: 0 } } }))).toContain("Tidy up · no saved run");
+  expect(tabsOnly(shell("roadmap", { v: "v1.1.3" }, { drift: { file: { exists: false }, counts: { real: 0, known: 0, transient: 0 } } }))).toContain("Tidy up · no drift run yet");
+});
+
+test("9559 slice 1: a saved run older than 3 h says so on the Tidy up label, counted or not; the No version line names where its tickets are counted", () => {
+  const old = (extra: Record<string, unknown>) => tabsOnly(shell("roadmap", { v: "v1.1.3" }, { drift: { ...driftRows(), stale: true, ...extra } }));
+  expect(old({})).toContain("Tidy up ! 1 drift row · over 3 h old");
+  expect(tabsOnly(shell("roadmap", { v: "v1.1.3" }, { drift: { ...driftOk(), stale: true } }))).toContain("Tidy up 0 drift rows · over 3 h old");
+  expect(tabsOnly(shell("roadmap", { v: "v1.1.3" }))).not.toContain("over 3 h old");
+  expect(cellText(/<p class="pv">[\s\S]*?<\/p>/.exec(shell("nv", {}))?.[0] ?? "")).toContain("no version · 1 ticket · in no version's count; a chip opens that version's Roadmap");
 });
 
 test("9559 slice 1: the aside says the same thing on every tab, and links the tickets the No version read has not counted", () => {
