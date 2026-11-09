@@ -419,6 +419,8 @@ _threads_at_exit() {
     if act=$(_cr_actionable) && [ "$act" -gt 0 ]; then act=" (CodeRabbit's review at head $head0 posted $act actionable comment(s))"; else act=""; fi
     if [ "$n" = 0 ]; then
         echo "check-ci: review threads at exit $1: 0 unresolved on PR #$num$act" >&2
+    elif [ "$n" = unreadable ]; then
+        echo "check-ci: review threads at exit $1: could not read the threads of PR #$num$act — check them by hand (check-ci.sh --threads-only) before the next push" >&2
     else
         echo "check-ci: review threads at exit $1: $n unresolved on PR #$num$act — read and answer them before the next push; judge-go and a delta-noop GO refuse while one is open" >&2
         printf '%s' "${th#*$'\n'}" >&2
