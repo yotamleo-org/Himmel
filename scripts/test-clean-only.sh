@@ -137,14 +137,11 @@ mk_wt() {
 run_clean() {
     local script="$1"; shift
     (
-        # shellcheck disable=SC2030  # run_verb reads PATH in its own subshell
-        export PATH="${RUN_CLEAN_STUB_DIR:-$STUB_DIR}:${PATH}"
-        # origin is a real local bare repo (for ls-remote), not a github.com
-        # URL, so force forge detection past its origin-hostname sniff.
-        export FORGE=github
         cd "${RUN_CLEAN_REPO:-$REPO}" || exit 1
         set +e
-        out=$(bash "$script" "$@" 2>&1)
+        # origin is a real local bare repo (for ls-remote), not a github.com
+        # URL, so FORGE forces forge detection past its origin-hostname sniff.
+        out=$(PATH="${RUN_CLEAN_STUB_DIR:-$STUB_DIR}:${PATH}" FORGE=github bash "$script" "$@" 2>&1)
         rc=$?
         printf '%s\nrc=%s\n' "$out" "$rc"
     )
@@ -445,7 +442,6 @@ run_verb() {
     (
         cd "$REPO3" || exit 1
         set +e
-        # shellcheck disable=SC2031  # the subshell above is another function's
         PATH="$STUB_DIR_PC:$PATH" FORGE=github GIT_ALLOW_PROTOCOL=file GIT_TERMINAL_PROMPT=0 \
             bash "$CLEAN_GARDEN" pr-cache 2>/dev/null
         printf 'rc=%s\n' "$?"

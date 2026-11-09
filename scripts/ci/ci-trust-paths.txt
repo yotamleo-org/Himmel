@@ -97,5 +97,4 @@
 # Hook config files outside the audited dirs.
 ^\.codex/hooks\.json$
 ^marketplace/plugins/[^/]+/hooks/hooks\.json$
-# The local merged proof a worker close feeds to the worktree prune, and its suite.
 ^scripts/handover/chief-kit/(test-)?close-facts\.sh$

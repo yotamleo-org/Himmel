@@ -22,7 +22,7 @@ cf_git() {
 
 origin_nwo() {
     local url path
-    url=$(cf_git "$1" remote get-url origin 2>/dev/null) || return 1  # swallow-ok: a failed read withholds the proof (the work is kept), it never creates one
+    url=$(cf_git "$1" remote get-url origin) || return 1
     case "$url" in
         https://github.com/*|http://github.com/*) path="${url#*github.com/}" ;;
         git@github.com:*) path="${url#git@github.com:}" ;;
@@ -83,13 +83,13 @@ merged_proof() {
     s=$(merged_commit_of "$repo" "$pr")
     [ -n "$s" ] || return 0
     [ "$tip" = "$head" ] || return 0
-    files_s=$(cf_git "$repo" diff --name-only "${s}^" "$s" 2>/dev/null | sort) || return 0  # swallow-ok: a failed read withholds the proof (the work is kept), it never creates one
+    files_s=$(cf_git "$repo" diff --name-only "${s}^" "$s" | sort) || return 0
     [ -n "$files_s" ] || return 0
-    mb=$(cf_git "$repo" merge-base "${s}^" "$head" 2>/dev/null) || return 0  # swallow-ok: a failed read withholds the proof (the work is kept), it never creates one
-    files_h=$(cf_git "$repo" diff --name-only "$mb" "$head" 2>/dev/null | sort) || return 0  # swallow-ok: a failed read withholds the proof (the work is kept), it never creates one
+    mb=$(cf_git "$repo" merge-base "${s}^" "$head") || return 0
+    files_h=$(cf_git "$repo" diff --name-only "$mb" "$head" | sort) || return 0
     [ "$files_s" = "$files_h" ] || return 0
-    mt=$(cf_git "$repo" merge-tree --write-tree "$s" "$head" 2>/dev/null) || return 0  # swallow-ok: a failed read withholds the proof (the work is kept), it never creates one
-    st=$(cf_git "$repo" rev-parse "${s}^{tree}" 2>/dev/null) || return 0  # swallow-ok: a failed read withholds the proof (the work is kept), it never creates one
+    mt=$(cf_git "$repo" merge-tree --write-tree "$s" "$head") || return 0
+    st=$(cf_git "$repo" rev-parse "${s}^{tree}") || return 0
     [ "$mt" = "$st" ] || return 0
     printf '%s\t%s\tmerged\t%s\n' "$nwo" "$branch" "$tip"
 }
@@ -107,7 +107,7 @@ no_work_proof() {
     [ -z "$(doc_pr "$doc")" ] || return 0
     if [ -f "$doc" ] && grep -qE '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY' "$doc"; then return 0; fi
     if cf_git "$repo" rev-parse --verify -q "refs/remotes/origin/$branch" >/dev/null 2>&1; then return 0; fi
-    ahead=$(cf_git "$repo" rev-list --count "refs/remotes/origin/main..$tip" 2>/dev/null) || return 0  # swallow-ok: a failed read withholds the proof (the work is kept), it never creates one
+    ahead=$(cf_git "$repo" rev-list --count "refs/remotes/origin/main..$tip") || return 0
     [ "$ahead" = "0" ] || return 0
     write_branch_cache "$repo" "$branch" || return 0
 }
