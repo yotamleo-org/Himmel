@@ -469,10 +469,12 @@ export function registerEdit(program: Command): void {
       // Same for every other field edit sends. One GET covers all.
       const names = [...new Set([...readBackFieldNames(options), ...(dropFixVersions.length > 0 ? ['fixVersions'] : [])])];
       if (names.length > 0) {
-        const got = await request<{ fields?: Record<string, unknown> }>(
-          'GET',
-          `/issue/${key}?fields=${names.join(',')}`,
-        );
+        let got: { fields?: Record<string, unknown> };
+        try {
+          got = await request<{ fields?: Record<string, unknown> }>('GET', `/issue/${key}?fields=${names.join(',')}`);
+        } catch (e) {
+          throw new Error(`Edit ${key}: the PUT was sent but the read-back failed (${(e as Error).message}); the outcome is unconfirmed.`);
+        }
         const mismatches = verifyReadBack(key, options, fields, got.fields ?? {});
         const readBackVersions = got.fields?.['fixVersions'];
         const stillThere = Array.isArray(readBackVersions)

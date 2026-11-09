@@ -858,6 +858,21 @@ describe('edit keeps the ticket standard', () => {
     expect(newViolations([], [d('metric.required', 'body.Metric', 'warning')])).toEqual([]);
   });
 
+  it('a read-back that fails after the PUT is reported as unconfirmed, not as a refusal', async () => {
+    (request as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && String(path).includes('fields=description,labels,parent,issuetype')) {
+        return { fields: { issuetype: { name: 'Task' }, labels: ['standalone'], parent: { key: 'HIMMEL-9' }, description: null } };
+      }
+      if (method === 'GET') throw new Error('HTTP 503');
+      return {};
+    });
+    const { registerEdit } = await import('./edit.js');
+    const p = new Command();
+    p.exitOverride();
+    registerEdit(p);
+    await expect(p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--priority', 'High'])).rejects.toThrow(/PUT was sent but the read-back failed.*unconfirmed/);
+  });
+
   it('a ticket whose current state cannot be read is refused before the PUT', async () => {
     (request as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (method: string, path: string) => {
       if (method === 'GET' && String(path).includes('fields=description,labels,parent,issuetype')) throw new Error('HTTP 503');
