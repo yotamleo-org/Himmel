@@ -4270,38 +4270,38 @@ door_run() { # doc [launcher flags]: a dry run on the lint's own stderr
 }
 door_calls() { grep -c 'bucket-check' "$door_log" || true; }  # swallow-ok: grep -c exits 1 on a count of 0
 printf 'NONE HIMMEL-9801 /m/ADOPT\n' > "$door/HIMMEL-9801"
-rc=0; out="$(door_run "$tmp/door-doc.md")" || rc=$?
+rc=0; door_out="$(door_run "$tmp/door-doc.md")" || rc=$?
 check "door-a a NONE verdict launches (exit 0)" "$rc" "0"
-contains "door-a2 ... and the launcher prints the bypass= line with the key" "$out" "HIMMEL-9801 bypass="
+contains "door-a2 ... and the launcher prints the bypass= line with the key" "$door_out" "HIMMEL-9801 bypass="
 printf 'APPROVED HIMMEL-9801 decision=901 record=O-R1-ov-901\n' > "$door/HIMMEL-9801"
-rc=0; out="$(door_run "$tmp/door-doc.md")" || rc=$?
+rc=0; door_out="$(door_run "$tmp/door-doc.md")" || rc=$?
 check "door-b an APPROVED verdict launches (exit 0)" "$rc" "0"
-contains "door-b2 ... and prints the bypass= line with the key and the decision" "$out" "HIMMEL-9801 bypass=out-of-version decision=901"
+contains "door-b2 ... and prints the bypass= line with the key and the decision" "$door_out" "HIMMEL-9801 bypass=out-of-version decision=901"
 printf 'DONE HIMMEL-9801\n' > "$door/HIMMEL-9801"
-rc=0; out="$(door_run "$tmp/door-ran.md")" || rc=$?
+rc=0; door_out="$(door_run "$tmp/door-ran.md")" || rc=$?
 check "door-c a Done relaunch of a doc with a Results bullet launches (exit 0)" "$rc" "0"
-contains "door-c2 ... and prints the bypass= line with the key" "$out" "HIMMEL-9801 bypass=done-relaunch"
-rc=0; out="$(door_run "$tmp/door-doc.md")" || rc=$?
+contains "door-c2 ... and prints the bypass= line with the key" "$door_out" "HIMMEL-9801 bypass=done-relaunch"
+rc=0; door_out="$(door_run "$tmp/door-doc.md")" || rc=$?
 check "door-d a Done ticket on a new doc is refused (exit 2)" "$rc" "2"
-contains "door-d2 ... naming the key" "$out" "HIMMEL-9801 is Done"
+contains "door-d2 ... naming the key" "$door_out" "HIMMEL-9801 is Done"
 printf 'OUTSIDE HIMMEL-9801 v1.1.4 current=v1.1.3 open=57\n' > "$door/HIMMEL-9801"
 : > "$door_log"
-rc=0; out="$(door_run "$tmp/door-doc.md")" || rc=$?
+rc=0; door_out="$(door_run "$tmp/door-doc.md")" || rc=$?
 check "door-e an outside key is refused by the launcher (exit 2)" "$rc" "2"
-contains "door-e2 ... naming the key, its version, current and the open count" "$out" "HIMMEL-9801 is in v1.1.4, current is v1.1.3, 57 open"
+contains "door-e2 ... naming the key, its version, current and the open count" "$door_out" "HIMMEL-9801 is in v1.1.4, current is v1.1.3, 57 open"
 check "door-e3 control: the launch asked bucket-check once" "$(door_calls)" "1"
-rc=0; out="$(door_run "$tmp/door-doc.md" --no-prior-art-check)" || rc=$?
+rc=0; door_out="$(door_run "$tmp/door-doc.md" --no-prior-art-check)" || rc=$?
 check "door-e4 --no-prior-art-check does not skip the door (exit 2)" "$rc" "2"
 printf 'IN HIMMEL-9801 current=v1.1.3 via=mirror\n' > "$door/HIMMEL-9801"
-rc=0; out="$(door_run "$tmp/door-doc.md")" || rc=$?
+rc=0; door_out="$(door_run "$tmp/door-doc.md")" || rc=$?
 check "door-f an IN verdict launches (exit 0)" "$rc" "0"
-not_contains "door-f2 ... with no bypass= line" "$out" "bypass="
+not_contains "door-f2 ... with no bypass= line" "$door_out" "bypass="
 # a relay or a consult launch is no worker launch: it never asks, even on an outside key
 printf 'OUTSIDE HIMMEL-9801 v1.1.4 current=v1.1.3 open=57\n' > "$door/HIMMEL-9801"
 : > "$door_log"
-rc=0; out="$(bash "$SCRIPT" --dry-run --relay door-relay "$tmp/door-doc.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; door_out="$(bash "$SCRIPT" --dry-run --relay door-relay "$tmp/door-doc.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "door-g a relay dry run on an outside key launches (exit 0)" "$rc" "0"
-rc=0; out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --chief door-chief door-consult "$tmp/door-doc.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; door_out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --chief door-chief door-consult "$tmp/door-doc.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "door-g2 a consult dry run on an outside key launches (exit 0)" "$rc" "0"
 check "door-g3 neither made a bucket-check call" "$(door_calls)" "0"
 # mutation: a lint whose passing line carries no bypass= token leaves the rows above red (the launcher greps for the token)
@@ -4309,9 +4309,9 @@ door_kit="$tmp/door-mut"; mkdir -p "$door_kit/scripts/handover"
 cp -r "$(dirname "$SCRIPT")" "$door_kit/scripts/handover/chief-kit"; ln -s "$(cd "$(dirname "$SCRIPT")/../../lib" && pwd)" "$door_kit/scripts/lib"
 sed 's/ bypass=%s / BYP=%s /' "$door_kit/scripts/handover/chief-kit/brief-lint.sh" > "$door_kit/lint.mut" && mv "$door_kit/lint.mut" "$door_kit/scripts/handover/chief-kit/brief-lint.sh"
 printf 'NONE HIMMEL-9801 /m/ADOPT\n' > "$door/HIMMEL-9801"
-rc=0; out="$(DOOR_SCRIPT="$door_kit/scripts/handover/chief-kit/headed-arm-worker.sh" door_run "$tmp/door-doc.md")" || rc=$?
+rc=0; door_out="$(DOOR_SCRIPT="$door_kit/scripts/handover/chief-kit/headed-arm-worker.sh" door_run "$tmp/door-doc.md")" || rc=$?
 check "door-h mutation: the launch still runs (exit 0)" "$rc" "0"
-not_contains "door-h2 mutation: the line with no bypass= token leaves the launcher silent" "$out" "bypass="
+not_contains "door-h2 mutation: the line with no bypass= token leaves the launcher silent" "$door_out" "bypass="
 unset BRIEF_LINT_TEST_BUCKET BRIEF_LINT_TEST_LOG
 contains "41b dry-run withholds IMPL_GUARD_OK" "$out" "IMPL_GUARD_OK=<unset>"
 
