@@ -1234,14 +1234,23 @@ CURL
         *) fail "curl argv starts with -q" "argv: $(head -n 1 "$STATE/curl-argv" 2>/dev/null)" ;;
     esac
 
-    echo "TEST: only the exact host openrouter.ai receives the key (letter case and a trailing dot normalised)"
-    eval "$(sed -n '/^usage_is_openrouter()/,/^}/p' "$SCRIPT")"
-    for u in https://openrouter.ai https://openrouter.ai/api/v1 https://OPENROUTER.AI/api/v1 https://openrouter.ai./api/v1 https://openrouter.ai.; do
-        if usage_is_openrouter "$u"; then pass "$u is OpenRouter"; else fail "$u is OpenRouter"; fi
-    done
-    for u in http://openrouter.ai/api/v1 https://openrouter.ai.evil.com/api/v1 https://openrouter.ai@evil.com/api/v1 https://evil.com/openrouter.ai https://openrouter.ai.. https://api.jina.ai/v1 ""; do
-        if usage_is_openrouter "$u"; then fail "'$u' is not OpenRouter"; else pass "'$u' is not OpenRouter"; fi
-    done
+    echo "TEST: a trailing-dot OpenRouter host is refused by the gate and sends no curl call"
+    usage_curl_run "${CFG_HEAD}${CFG_MODELS}  openai_base_url: https://openrouter.ai./api/v1\n"
+    assert_rc "trailing-dot host rc 10" 10 "$rc"
+    assert_rc "no curl call for a trailing-dot host" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+
+    echo "TEST: a form-feed line inside models: does not end the section (the gate reads the later jina URL)"
+    usage_curl_run "${CFG_HEAD}${CFG_MODELS}  openai_base_url: https://openrouter.ai/api/v1\n\f\n  openai_base_url: https://api.jina.ai/v1\n"
+    assert_rc "form-feed config rc 0" 0 "$rc"
+    assert_rc "no curl call when the gate resolves jina" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
+
+    echo "TEST: a BOM before models: is stripped, so an inherited openrouter URL does not override the config's jina URL"
+    printf '\xef\xbb\xbfmodels:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://api.jina.ai/v1\ncollections:\n  himmel:\n    path: /x\n' > "$HOME/.config/qmd/index.yml"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-embed-usage.jsonl"
+    rc=0; out=$( (unset QMD_REINDEX_KEY_USAGE_CMD; QMD_OPENAI_BASE_URL=https://openrouter.ai/api/v1 PATH="$FAKEBIN:$PATH" bash "$SCRIPT" --qmd-bin "$FAKE_QMD") 2>&1) || rc=$?
+    assert_rc "BOM config rc 0" 0 "$rc"
+    assert_rc "no curl call when the gate resolves jina" "" "$(cat "$STATE/curl-argv" 2>/dev/null)"
 
     echo "TEST: a local-model run writes no usage row"
     rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true

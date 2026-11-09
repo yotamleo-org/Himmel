@@ -625,57 +625,14 @@ if [ "$remote_model" -eq 1 ]; then
     fi
 fi
 
-# Must resolve the base URL exactly as scripts/qmd/qmd-jina-gate.mjs does (its models: reader, unquote and
-# config-then-env fallback), which exposes no resolver to call; change the two together.
-usage_base_url() {
-    local u
-    u=$(awk -v sq="'" '
-        function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
-        { sub(/\r$/, "") }
-        /^[ \t]*(#.*)?$/ { next }
-        /^(collections|models):[ \t]*[^# \t]/ { sec = ""; seen = 1; next }
-        /^[A-Za-z_][A-Za-z0-9_-]*:[ \t]*(#.*)?$/ { sec = $0; sub(/:.*/, "", sec); ci = 0; seen = 1; next }
-        /^[^ \t]/ { sec = ""; seen = 1; next }
-        {
-            if (!seen || sec != "models") next
-            match($0, /^[ \t]*/); ind = RLENGTH
-            if (!ci) ci = ind
-            if (ind != ci) next
-            t = trim($0); q = substr(t, 1, 1)
-            if (q == "\"" || q == sq) t = substr(t, 2); else q = ""
-            if (!match(t, /^[A-Za-z_]+/)) next
-            key = substr(t, 1, RLENGTH); t = substr(t, RLENGTH + 1)
-            if (q != "") { if (substr(t, 1, 1) != q) next; t = substr(t, 2) }
-            if (substr(t, 1, 1) != ":" || length(t) < 2) next
-            if (key != "openai_base_url") next
-            v = substr(t, 2); sub(/[ \t]+#.*$/, "", v); v = trim(v)
-            f = substr(v, 1, 1)
-            if (length(v) >= 2 && (f == "\"" || f == sq) && substr(v, length(v), 1) == f) v = substr(v, 2, length(v) - 2)
-            u = v
-        }
-        END { printf "%s", u }
-    ' "$QMD_CFG_FILE" 2>/dev/null) || u=""
-    printf '%s' "${u:-${QMD_OPENAI_BASE_URL:-}}"
-}
-
-usage_is_openrouter() {
-    local b auth
-    b=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
-    case "$b" in https://*) ;; *) return 1 ;; esac
-    auth=${b#https://}
-    auth=${auth%%[/?#]*}
-    auth=${auth%.}
-    [ "$auth" = openrouter.ai ]
-}
-
 usage_read() {
-    local out v base
-    base=$(usage_base_url)
+    local out v provider
+    provider=$(node "$GATE_JS" --provider "$QMD_CFG_FILE" 2>/dev/null) || provider=""
     out=$(
         set +x
         if [ -n "${QMD_REINDEX_KEY_USAGE_CMD:-}" ]; then
             "$QMD_REINDEX_KEY_USAGE_CMD" 2>/dev/null
-        elif usage_is_openrouter "$base" && command -v curl >/dev/null 2>&1; then
+        elif [ "$provider" = openrouter ] && command -v curl >/dev/null 2>&1; then
             # -q first: a user's curlrc must not redirect the request or echo the key.
             printf 'header = "Authorization: Bearer %s"\n' "${QMD_OPENAI_API_KEY:-}" \
                 | curl -q -sS --max-time 15 -K - https://openrouter.ai/api/v1/key 2>/dev/null \
