@@ -18,7 +18,7 @@ parallel of `/ig-media-enrich`: for X clips whose body carries a
 tweet's media, transcribes videos locally, screenshots soundless GIF-like
 videos, and copies images into the vault.
 
-This command is **lean-invoke (HIMMEL-177)** - run it manually or by the harvest
+This command is **lean-invoke** - run it manually or by the harvest
 cadence, like the `playwright-crawl-*` / `ig-media-enrich` rungs. It is
 deliberately NOT auto-fired from `/harvest-clips` (the download + local-whisper
 path is expensive). Default: process the first
@@ -71,9 +71,9 @@ All paths are quoted; forward-slash paths throughout.
 
 Confirm `<vault>/Clippings/` exists (else exit 0, nothing to enrich). The fetch
 tool owns its own binary preflight: it exits 2 if `ffmpeg` is missing, or
-if the cookieless Scrapling venv (`~/.himmel/scrapling-venv`, HIMMEL-4677) is
+if the cookieless Scrapling venv (`~/.himmel/scrapling-venv`, which replaced the cookie workarounds) is
 absent, naming `scrapling-venv`. A Scrapling miss is recorded as deferred (the
-`gallery-dl` cookie fallback was removed, HIMMEL-4709). Surface that exit-2 message to the operator verbatim and stop - do NOT
+`gallery-dl` cookie fallback was removed once Scrapling proved itself). Surface that exit-2 message to the operator verbatim and stop - do NOT
 attempt any per-clip work when preflight fails. Under `--dry-run`, run the fetch
 tool with `--dry-run` only (Step 2's dry-run form); take no other action.
 
@@ -83,7 +83,7 @@ Run the fetch tool over the batch via `Bash`. It selects the X clips (x.com /
 twitter.com status source) whose body references `video.twimg.com` /
 `pbs.twimg.com/media/` and which carry no `media_enriched_at:`, downloads each
 tweet's media - Scrapling with NO cookie (`tools/x-scrapling-media.py` reads
-the status page under the HIMMEL-4361 `local-headless` route; curl, or ffmpeg for
+the status page under the per-site scrape routing's `local-headless` route; curl, or ffmpeg for
 an HLS stream, fetches the items); the outcome line ends `[scrapling]` -
 transcribes videos
 locally, screenshots soundless GIF-like videos, recompresses images into
@@ -108,7 +108,7 @@ items) go through whisper only and NEVER enter the vault - the video stays in th
 GIF-like video (a `tweet_video` with no audio) is screenshotted to its first
 frame and copied in as a slide instead.
 
-**Subtitles first, with provenance (HIMMEL-4107).** A video is transcribed from
+**Subtitles first, with provenance.** A video is transcribed from
 its platform subtitles before any whisper run: `yt-dlp` fetches English VTT
 (manual track preferred over auto), which is cookie-free, and the cleaner strips
 tags/timestamps, collapses adjacent rolling duplicates only, and reflows to
