@@ -2726,6 +2726,7 @@ SHIM
       verdict="$(CADENCE_USAGE_WORKER="graphmap-$NAME" "$_deadline_bin" -k 5 20 bash "$_bank_preflight" || true)"
       [ "$verdict" != "SKIPPED-BANK" ] || return 0
     fi
+    # launch-profile-ok: a one-word auth probe under the dedicated config dir that runs no tools
     out="$(printf 'ok\n' | "$_deadline_bin" -k 5 "$t" claude -p --output-format json --permission-mode default 2>/dev/null || true)"
     _AUTH_CAUSE="$(printf '%s' "$out" | python3 -I -c 'import json,sys
 try:
