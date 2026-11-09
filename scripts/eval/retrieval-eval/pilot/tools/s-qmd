@@ -37,7 +37,6 @@ FORGED = {"phase", "counter", "count", "id", "reset", "cap"}
 AGENT_ERROR = "s-qmd: search failed; try again or use grep"
 
 
-# ----------------------------------------------------------------------------- shared classifier
 def expansion_shape(stderr, query):
     """'strong_bm25', 'raw_query_only', 'expanded' or 'none' from the private stderr tree."""
     text = ANSI.sub("", stderr)
@@ -87,7 +86,6 @@ def classify(ev, arm):
     return sorted(set(reasons))
 
 
-# ----------------------------------------------------------------------------- agent side
 def load_binding():
     path = os.environ.get("PILOT_BINDING", DEFAULT_BINDING)
     with open(path) as f:
@@ -312,7 +310,6 @@ def client(argv):
         shutil.rmtree(home, ignore_errors=True)
 
 
-# ----------------------------------------------------------------------------- host side
 def peer(conn):
     pid, uid, gid = struct.unpack("3i", conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))
     return pid

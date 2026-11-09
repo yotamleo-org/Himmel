@@ -32,7 +32,6 @@ if [ -z "$QMD" ] || ! command -v node >/dev/null 2>&1 || ! command -v bwrap >/de
 fi
 QPKG="$(cd "$(dirname "$(readlink -f "$QMD")")/.." && pwd)"  # gnu-ok: Linux-only suite
 
-# --- a sealed S master over a 20-doc export, a fake qmd, a fixture meter
 mkdir -p "$W/src/docs" "$W/srcl/notes" "$W/cfg" "$W/fake" "$W/cache"
 for i in $(seq -w 0 19); do printf '# Doc %s\nfixture content %s\n' "$i" "$i" > "$W/src/docs/d$i.md"; done
 printf '# Note\nplain\n' > "$W/srcl/notes/n.md"

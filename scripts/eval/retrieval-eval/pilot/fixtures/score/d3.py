@@ -141,7 +141,6 @@ def run(name, work):
         out["deadlines"] = sum(1 for e in led.events if e["ev"] == "pause_deadline")
         return out
     if name == "lost-round-marker":
-        # the runner died after round 5's last verdict, before its marker: drop that marker line and resume
         j, led, call, _ = setup(work); j.run()
         path = os.path.join(work, "ledger.jsonl")
         lines = open(path).read().splitlines()

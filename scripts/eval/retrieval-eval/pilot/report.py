@@ -164,7 +164,6 @@ def append(row, bank, path=None):
     return ER.append_row(row, p)
 
 
-# ----------------------------------------------------------------------------- the page fixtures
 def _bank(n=40):
     kinds = ["luna_lookup"] * 6 + ["luna_meaning"] * 8 + ["himmel_docs"] * 6 + ["himmel_code"] * 8 + ["two_files"] * 8 + ["not_there"] * 4
     strata = {"luna_lookup": "doc", "luna_meaning": "doc", "himmel_docs": "doc", "himmel_code": "code", "two_files": "mixed", "not_there": "none"}

@@ -84,7 +84,6 @@ class Ledger:
                     if line.strip():
                         self._apply(json.loads(line))
 
-    # -- durable log -------------------------------------------------------------------------
     def _log(self, ev):
         ev = dict(ev, seq=len(self.events))
         fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
@@ -144,7 +143,6 @@ class Ledger:
             if ev.get("state"):
                 t["state"] = ev["state"]
 
-    # -- accounting --------------------------------------------------------------------------
     def committed(self):
         return (self.spent + sum(i["amount"] for i in self.inflight.values()) + sum(self.unsettled.values())
                 + sum(self.s_interval.values()) + sum(self.reserves.values()))
@@ -195,7 +193,6 @@ class Ledger:
         if item is None:
             raise Refused("settle of an unknown attempt %s" % attempt)
         if not isinstance(actual, (int, float)) or isinstance(actual, bool) or not math.isfinite(actual) or actual < 0:
-            # untrusted cost evidence is no evidence: the booking stays as unsettled exposure
             if attempt in self.inflight:
                 self._log({"ev": "unsettled", "attempt": attempt, "why": "invalid cost evidence"})
             self.halt("HARD_STOP", "unsettled")
@@ -264,7 +261,6 @@ class Ledger:
                 if self.can_fit(extra):
                     self._log({"ev": "reserve", "name": name, "amount": extra})
                 elif name == "lists":
-                    # the whole remaining list set no longer fits beside the judge reserve: cancel it
                     self.release("lists")
                     self._log({"ev": "lists_cancelled", "reason": "unaffordable after repricing"})
                 else:
@@ -274,13 +270,11 @@ class Ledger:
     def lists_cancelled(self):
         return any(e["ev"] == "lists_cancelled" for e in self.events)
 
-    # -- usage pause (one persisted deadline per run) ----------------------------------------
     def usage_refused(self, now):
         if self.usage_pause_deadline is None:
             self._log({"ev": "pause_deadline", "deadline": now + PAUSE_DAYS * 86400})
         return self.usage_pause_deadline
 
-    # -- stop states -------------------------------------------------------------------------
     def halt(self, kind, reason):
         if kind == "HARD_STOP" and reason not in HARD_REASONS:
             reason = "unclassified"
@@ -297,8 +291,7 @@ class ListBooking:
     the reserved list capacity; a refusal (or cancelled lists) stops the list."""
 
     def __init__(self, ledger):
-        # duck-typed: a caller that loaded this module separately passes an instance of its own copy of Ledger
-        self.ledger = ledger if hasattr(ledger, "book") and hasattr(ledger, "reserves") else Ledger(ledger)
+        self.ledger = ledger
         self.n = 0
 
     def reserve(self, task_id):

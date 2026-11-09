@@ -45,7 +45,6 @@ gitc() { git -C "$1" -c user.email=t@t -c user.name=t "${@:2}"; }
 QPKG="$(cd "$(dirname "$(readlink -f "$QMD")")/.." && pwd)"  # gnu-ok: Linux-only suite
 QDIST="$QPKG/dist"; VEC0="$QPKG/node_modules/sqlite-vec-linux-x64/vec0.so"
 
-# a tiny fixture corpus, its S master (stub namespace, no embedding needed) and the real Q build
 mkdir -p "$W/src/docs" "$W/srcl/notes" "$W/cfg-s" "$W/cfg-q" "$W/cache"
 printf '# Lock\nThe queue lock keeps one session per handover doc.\n' > "$W/src/docs/lock.md"
 printf '# Zeta\nThe zeta rule is settled.\n' > "$W/src/docs/zeta.md"

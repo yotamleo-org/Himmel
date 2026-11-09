@@ -34,7 +34,6 @@ QPKG="$(cd "$(dirname "$(readlink -f "$QMD")")/.." && pwd)"  # gnu-ok: Linux-onl
 QDIST="$QPKG/dist"; VEC0="$QPKG/node_modules/sqlite-vec-linux-x64/vec0.so"
 NETNS="$HERE/fixtures/pins/netns-run.sh"
 
-# --- the fixture world: exports, configs, fake weights, the fake list qmd
 python3 -I "$HERE/fixtures/q/build.py" "$W/fx"
 for r in himmel luna; do
   git -C "$W/fx/src-$r" init -q && gitc "$W/fx/src-$r" add -A && gitc "$W/fx/src-$r" commit -q -m pin
@@ -46,7 +45,6 @@ sed -e "s#/work/himmel#$W/work/himmel#" -e "s#/work/luna#$W/work/luna#" "$T/qmd-
 for w in hf_ggml-org_embeddinggemma-300M-Q8_0.gguf hf_ggml-org_qwen3-reranker-0.6b-q8_0.gguf hf_tobil_qmd-query-expansion-1.7B-q4_k_m.gguf; do printf 'fixture weight %s\n' "$w" > "$W/models/$w"; done
 cp "$HERE/fixtures/q/fake-qmd-lists" "$W/fakebin/qmd"; chmod +x "$W/fakebin/qmd"; cp "$W/fx/hits.json" "$W/fakebin/"
 
-# --- the S master: built, its survivors short of one export doc, sealed
 ( cd "$W" && bash "$NETNS" "$W" env -i HOME="$W" PATH="/usr/bin:/bin:$(dirname "$QMD")" QMD_CONFIG_DIR="$W/cfg-s" INDEX_PATH="$W/s-build.sqlite" XDG_CACHE_HOME="$W/cache" "$QMD" --index eval update ) >/dev/null 2>&1
 python3 -I -c 'import json,sys; m=json.load(open(sys.argv[1])); m["files"].pop("docs/unrelated.md"); json.dump(m, open(sys.argv[2],"w"))' "$W/himmel.json" "$W/himmel-s.json"
 python3 -I "$HERE/pins.py" snapshot "$W/s-build.sqlite" "$W/s-master.sqlite"
@@ -54,7 +52,6 @@ python3 -I "$HERE/prune-index.py" "$W/s-master.sqlite" --vec0 "$VEC0" --export h
 python3 -I "$HERE/pins.py" finalize "$W/s-master.sqlite" --qmd "$QMD" --config-dir "$W/cfg-s" --expect-collection himmel="$W/work/himmel" --expect-collection luna="$W/work/luna" --seal "$W/s.seal.json" >/dev/null
 eq "S master: sealed with the fixture survivors" "yes" "$([ -f "$W/s.seal.json" ] && echo yes || echo no)"
 
-# --- the Q master from the S survivors
 QI=(--s-master "$W/s-master.sqlite" --s-seal "$W/s.seal.json" --qmd "$QMD" --models-dir "$W/models" --vec0 "$VEC0"
     --collection himmel="$W/work/himmel" --collection luna="$W/work/luna" --llama-gpu vulkan --no-embed)
 bash "$HERE/q-index.sh" "${QI[@]}" --config-dir "$W/cfg-q" --out "$W/q" > "$W/qi.out" 2>&1
@@ -68,7 +65,6 @@ mkdir -p "$W/cfg-remote"; sed 's#^models:#models:\n  openai_base_url: http://127
 bash "$HERE/q-index.sh" "${QI[@]}" --config-dir "$W/cfg-remote" --out "$W/q-remote" >/dev/null 2>&1
 eq "q-index: a Q config naming a remote URL refuses" 3 "$?"
 
-# --- Q readiness checks
 QC=(check --ready "$R" --master "$W/q/q-master.sqlite" --config-dir "$W/cfg-q" --models-dir "$W/models")
 eq "check: the fresh Q master passes" 0 "$(python3 -I "$QL" "${QC[@]}" >/dev/null 2>&1; echo $?)"
 eq "check: --runtime refuses a fixture build without vectors" 3 "$(python3 -I "$QL" "${QC[@]}" --runtime >/dev/null 2>&1; echo $?)"
@@ -83,7 +79,6 @@ eq "check: a changed pinned weight refuses" 3 "$(python3 -I "$QL" check --ready 
 python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); r["q_source_manifest_sha256"]="0"*64; json.dump(r, open(sys.argv[2],"w"))' "$R" "$W/q-ready-extra.json"
 eq "check: a Q-ready source manifest with an extra Q-only doc refuses" 3 "$(python3 -I "$QL" check --ready "$W/q-ready-extra.json" --master "$W/q/q-master.sqlite" --config-dir "$W/cfg-q" --models-dir "$W/models" >/dev/null 2>&1; echo $?)"
 
-# --- matched fixed lists
 python3 -I - "$W" "$T" "$QDIST" "$R" <<'EOF'
 import hashlib, importlib.util, json, sys
 W, T, QDIST, R = sys.argv[1:5]

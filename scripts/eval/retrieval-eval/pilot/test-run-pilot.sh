@@ -23,7 +23,6 @@ f() { python3 -I -c 'import json,sys; v=json.loads(sys.argv[1])
 for k in sys.argv[2].split("."): v = v[k]
 print(json.dumps(v, sort_keys=True))' "$1" "$2"; }
 
-# --- P16 arithmetic and the ledger rules
 python3 -I - "$HERE" "$W" > "$W/ledger.out" 2>&1 <<'EOF'
 import importlib.util, json, os, sys
 s = importlib.util.spec_from_file_location("ledger", sys.argv[1] + "/ledger.py"); L = importlib.util.module_from_spec(s); s.loader.exec_module(L)
@@ -97,7 +96,6 @@ eq "ledger: the list adapter accepts a ledger from a separately loaded copy of t
 eq "ledger: a triple admission is one durable event (both reservations or none), replayed whole" '[1, "admit_triple", 1.098, "admitted"]' "$(f "$LO" admission_is_one_durable_event)"
 eq "ledger: NaN, negative or infinite cost evidence leaves the booking unsettled and stops paid work" '[[false, "unsettled", ["x"]], [false, "unsettled", ["x"]], [false, "unsettled", ["x"]]]' "$(f "$LO" invalid_cost_evidence_is_unsettled)"
 
-# --- the sealed balanced schedule
 SCH=$(python3 -I - "$HERE" <<'EOF'
 import importlib.util, json, sys
 s = importlib.util.spec_from_file_location("rp", sys.argv[1] + "/run-pilot.py"); rp = importlib.util.module_from_spec(s); s.loader.exec_module(rp)
@@ -117,7 +115,6 @@ eq "schedule: 40 tasks, at most 120 answer attempts" "40 120" "$(f "$SCH" tasks)
 eq "schedule: every arm holds every position 13 or 14 times" '{"Q": [13, 14], "S": [13, 14], "V": [13, 14]}' "$(f "$SCH" pos)"
 eq "schedule: a bank that is not 40 tasks refuses" '"refused"' "$(f "$SCH" short)"
 
-# --- the runner state machine (mocks; every row is a score bomb: a gate that reads a score fails)
 R=$(sc clean)
 eq "run: a clean run finishes all 40 triples, full, finalized once on the 40-task cohort" '["NONE", null] "full" 40 [40]' "$(f "$R" stop) $(f "$R" finalization) $(f "$R" common) $(f "$R" finalize_calls)"
 eq "run: seven unscored checks plus 120 answers, never more" "7 127 120" "$(f "$R" checks_booked) $(f "$R" launches) $(f "$R" answers)"
@@ -160,7 +157,6 @@ R=$(sc background); eq "P14: a surviving background child is an integrity HARD_S
 R=$(sc raw-only); eq "skip rule: a raw-query-only S expansion does not exclude the answer" '["NONE", null] 40' "$(f "$R" stop) $(f "$R" common)"
 R=$(sc reprice-no-capacity); eq "repricing: a raised b with enough H but no next-triple capacity ends admission" '"capacity_refused" 0.006 false' "$(f "$R" first_stop) $(f "$R" b) $(f "$R" lists_cancelled)"
 
-# --- P14: the launch argv, prompt and profile differ only by the declared retrieval treatment
 P14=$(python3 -I - "$HERE" <<'EOF'
 import importlib.util, json, sys
 s = importlib.util.spec_from_file_location("rp", sys.argv[1] + "/run-pilot.py"); rp = importlib.util.module_from_spec(s); s.loader.exec_module(rp)
@@ -185,7 +181,6 @@ eq "P14: the locked session environment" '{"BASH_DEFAULT_TIMEOUT_MS": "600000", 
 eq "P14: Q has no key and no remote endpoint; S has the dedicated key" "false null true" "$(f "$P14" q_key) $(f "$P14" q_base_url) $(f "$P14" s_key)"
 eq "P14: the read-only profile denies /proc and the session home, and blocks reads outside /work" "yes" "$(python3 -I -c 'import json,sys; p=json.load(open(sys.argv[1]))["permissions"]; print("yes" if "Read(//proc/**)" in p["deny"] and "Read(//session/.claude/**)" in p["deny"] and p["blockReadsOutsideWorkingDirectories"] else "no")' "$HERE/session-permissions.json")"
 
-# --- the per-session namespace: --print argv and a real bwrap run with a stub CLI
 mkdir -p "$W/home-V" "$W/home-S" "$W/home-Q" "$W/ex/himmel/docs" "$W/ex/luna/notes" "$W/private" "$W/station" "$W/qcfg" "$W/graph" "$W/man" "$W/models" "$W/qpkg"
 printf 'lock\n' > "$W/ex/himmel/docs/lock.md"; printf 'garden\n' > "$W/ex/luna/notes/garden.md"; printf 'secret task\n' > "$W/private/tasks.jsonl"
 printf 'station cred\n' > "$W/station/cred"; : > "$W/binding.json"; : > "$W/sock"; : > "$W/index.sqlite"; printf 'dummy\n' > "$W/key"
@@ -221,7 +216,6 @@ else
   eq "P15: each session has its own PID namespace and the read-only profile" '"yes"' "$( [ "$(f "$NV" pid1)" != '"systemd"' ] && f "$NV" settings || echo '"pid1 is the host init"')"
 fi
 
-# --- P17: the objective G0 checklist
 mkdir -p "$W/g0/proof"; printf 'claude binary\n' > "$W/g0/claude"; printf 'scrub fixture output\n' > "$W/g0/proof/scrub.txt"
 python3 -I "$HERE/tools-lock.py" build --out "$W/g0/tools.lock" --h0 a --l0 b --file claude="$W/g0/claude" --file sandbox="$HERE/sandbox.sh" \
   --file settings="$HERE/session-permissions.json" --const claude_version=2.1.319 >/dev/null
@@ -278,7 +272,6 @@ eq "G0: the legacy unreadable stance refuses any readable channel (negative cont
 python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); r["stance"]["selected"]="unreadable"; r["r4"]["channels"]["session_home"]={"Read":"no","Grep":"no","Glob":"no","Bash":"no"}; json.dump(r, open(sys.argv[2],"w"))' "$W/g0/ready.json" "$W/g0/strict.json"
 eq "G0: an all-denied record satisfies the unreadable stance" 0 "$(g0 "$W/g0/strict.json" "$CARD" --stance unreadable >/dev/null; echo $?)"
 
-# --- the CLI refuses without the billed opt-in
 python3 -I "$HERE/run-pilot.py" --config /nonexistent > "$W/cli.out" 2>&1
 eq "CLI: run-pilot refuses without HIMMEL_BILLED_OK, before reading any config" 2 "$?"
 has "CLI: the refusal names the opt-in" "HIMMEL_BILLED_OK" "$(cat "$W/cli.out")"

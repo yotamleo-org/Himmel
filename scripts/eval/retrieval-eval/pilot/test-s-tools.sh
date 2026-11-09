@@ -35,7 +35,6 @@ fi
 QPKG="$(cd "$(dirname "$(readlink -f "$QMD")")/.." && pwd)"  # gnu-ok: Linux-only suite
 QDIST="$QPKG/dist"
 
-# --- exports and fixtures
 H="$W/src-himmel"; mkdir -p "$H/docs" "$H/bin"
 printf '# Lock\nThe queue lock keeps one session per handover doc.\n' > "$H/docs/lock.md"
 printf '# Zeta\nThe zeta rule is settled.\n' > "$H/docs/zeta.md"
@@ -104,7 +103,6 @@ calls() { [ -f "$W/fakebin/calls.log" ] && wc -l < "$W/fakebin/calls.log" | tr -
 sq() { PILOT_BINDING="$1" "$T/s-qmd" "${@:2}"; }
 field() { python3 -I -c 'import json,sys; print(json.dumps(json.loads(sys.stdin.read())[sys.argv[1]]))' "$1"; }
 
-# --- the fixed-env baseline and the pin filter
 broker base S; bind "$W/b-base.json" S 'socket="'"$W"'/base.sock"'
 out=$(sq "$W/b-base.json" "queue lock"); rc=$?
 eq "s-qmd: a bound S call succeeds" 0 "$rc"
@@ -116,7 +114,6 @@ hasnt "pin filter: a handovers hit never reaches the agent" "handovers" "$out"
 eq "pin filter: both dropped hits are counted privately" 2 "$(summ base | field dropped)"
 printf 'ok\n' > "$W/fakebin/mode"
 
-# --- targets refuse before any query or booking
 n0=$(calls)
 for t in master live; do
   broker "tgt-$t" S; bind "$W/b-t.json" S 'socket="'"$W"'/tgt-'"$t"'.sock"' 'index="'"$W/$t.sqlite"'"'
@@ -130,7 +127,6 @@ eq "target: a read-only index refuses before admission" "3 0" "$rc $(summ tgt-ro
 eq "target: no qmd process ran for any refused target" "$n0" "$(calls)"
 has "target: the refusal is an integrity event" "pre_admission_refusal" "$(summ tgt-ro)"
 
-# --- the per-task cap
 broker cap S; bind "$W/b-cap.json" S 'socket="'"$W"'/cap.sock"'
 n0=$(calls); ok=0
 for i in $(seq 12); do sq "$W/b-cap.json" "q $i" >/dev/null 2>&1 && ok=$((ok + 1)); done
@@ -141,7 +137,6 @@ has "cap: the refusal says so" "query limit reached (12 per task)" "$err"
 eq "cap: the thirteenth started no qmd process" $((n0 + 12)) "$(calls)"
 eq "cap: the host counter holds 12 admitted, 1 refused" "12 1" "$(summ cap | field admitted) $(summ cap | field cap_refused)"
 
-# --- N2-r: wrong/missing config or altered environment stops before qmd and zero bookings
 n2() { # <label> <arm> [binding overrides]...
   broker n2 "$2"; bind "$W/b-n2.json" "$2" 'socket="'"$W"'/n2.sock"' "${@:3}"
   local n0; n0=$(calls)
@@ -167,7 +162,6 @@ n2 "CI=true reaching the Q child" Q 'env={"CI": "true"}'
 n2 "missing Q weights" Q 'models_dir="'"$W"'/no-models"'
 n2 "a key file bound to the Q arm" Q 'key_file="'"$W"'/key"'
 
-# --- scrubbed key/config variables come back only from the trusted wrapper
 broker env S; bind "$W/b-env.json" S 'socket="'"$W"'/env.sock"'
 mkdir -p "$W/proj/.qmd"; printf 'collections:\n  other:\n    path: /etc\n' > "$W/proj/.qmd/index.yml"
 ( cd "$W/proj" && QMD_CONFIG_DIR=/nonexistent QMD_OPENAI_API_KEY=ambient-junk QMD_EMBED_MODEL=x sq "$W/b-env.json" "queue lock" >/dev/null 2>&1 )
@@ -180,7 +174,6 @@ broker envq Q; bind "$W/b-envq.json" Q 'socket="'"$W"'/envq.sock"'
 QMD_OPENAI_API_KEY=ambient-junk sq "$W/b-envq.json" "queue lock" >/dev/null 2>&1
 eq "env: the Q child never receives a key" '""' "$(tail -1 "$W/fakebin/calls.log" | field key)"
 
-# --- the shared S/Q classifier on the private evidence
 mode() { # <mode> <arm> [serve args]... -> summary JSON; agent stdout in $W/agent.out, stderr in $W/agent.err
   printf '%s\n' "$1" > "$W/fakebin/mode"
   broker "m" "$2" "${@:3}"; bind "$W/b-m.json" "$2" 'socket="'"$W"'/m.sock"'
@@ -221,7 +214,6 @@ for m in ok expand-fail cpu-fallback strong-bm25; do
 done
 printf 'ok\n' > "$W/fakebin/mode"
 
-# --- evidence integrity: the host owns phase, ids and counters
 client() { # <sock> <argv0> <json line>... -- a hand-rolled client speaking to the broker
   python3 -I - "$@" <<'EOF'
 import json, socket, sys
@@ -257,7 +249,6 @@ eq "integrity: a killed wrapper leaves a missing-terminal skip, not an integrity
 eq "integrity: the killed wrapper's qmd child did not outlive it" 0 "$(pgrep -fc 'fakebin/qmd')"
 printf 'ok\n' > "$W/fakebin/mode"
 
-# --- s-graph: the frozen H0 graph, export nodes only
 bind "$W/b-g.json" S
 out=$(PILOT_BINDING="$W/b-g.json" "$T/s-graph" relay_batch)
 has "s-graph: finds the symbol with its export path" "relay_batch()  $W/work/himmel/bin/run.sh:2" "$out"
@@ -271,7 +262,6 @@ bind "$W/b-g3.json" S 'h0="0000000"'
 PILOT_BINDING="$W/b-g3.json" "$T/s-graph" relay_batch >/dev/null 2>&1
 eq "s-graph: a graph not built at H0 refuses" 3 "$?"
 
-# --- P13-S: the real pinned qmd hybrid command, local stub endpoints, no network
 if ! command -v bwrap >/dev/null 2>&1 || ! bwrap --bind / / --unshare-net true 2>/dev/null; then
   printf 'SKIP - P13-S real-qmd rows: no unprivileged bwrap network namespace on this host\n'
 else

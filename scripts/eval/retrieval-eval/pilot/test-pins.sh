@@ -24,7 +24,6 @@ ne() { if [ "$2" != "$3" ]; then pass "$1"; else fail "$1 (both '$2')"; fi; }
 rc_of() { "$@" >/dev/null 2>&1; echo $?; }
 gitc() { git -C "$1" -c user.email=t@t -c user.name=t "${@:2}"; }
 
-# --- 1. snapshot: a commit still only in the WAL is in the backup; a bare main-file copy misses it
 python3 -I - "$PINS" "$W" <<'EOF'
 import os, shutil, sqlite3, subprocess, sys
 pins, w = sys.argv[1], sys.argv[2]
@@ -45,12 +44,10 @@ open(os.path.join(w, "wal.out"), "w").write("%d %s %s\n" % (rc, rows(os.path.joi
 EOF
 eq "snapshot: the backup holds the WAL-only commit; a bare main-file copy does not" "0 ['in-wal-only'] []" "$(cat "$W/wal.out")"
 
-# --- 2. the frozen graph must be built at H0
 printf '{"built_at_commit": "%s", "nodes": [], "links": []}\n' aaaaaaa > "$W/graph.json"
 eq "h0: graph built at another commit refuses" 3 "$(rc_of python3 -I "$PINS" h0 --graph "$W/graph.json" --h0 bbbbbbb)"
 eq "h0: graph built at H0 passes" 0 "$(rc_of python3 -I "$PINS" h0 --graph "$W/graph.json" --h0 aaaaaaa)"
 
-# --- 3. export copies: exclusions absent, count = git tree minus exclusions, symlinks recorded
 H="$W/himmel-src"; mkdir -p "$H/docs" "$H/scripts/eval/retrieval-eval/pilot" "$H/bin"
 printf '# Lock\nThe queue lock keeps one session per handover doc.\n' > "$H/docs/lock.md"
 printf '# Zeta\nThe zeta rule is settled.\n' > "$H/docs/zeta.md"
@@ -76,7 +73,6 @@ B="$W/bad-src"; mkdir -p "$B"; printf 'x\n' > "$B/a.md"; ln -s /etc/hostname "$B
 git -C "$B" init -q && gitc "$B" add -A && gitc "$B" commit -q -m b
 eq "export: a symlink to a target outside the export refuses" 3 "$(rc_of bash "$EXPORT" "$B" "$(git -C "$B" rev-parse HEAD)" "$W/work-bad" "$W/bad.manifest.json")"
 
-# --- 4. tools.lock: a binary, wrapper or export change refuses the check
 mkdir -p "$W/bin"; printf 'binary v1\n' > "$W/bin/claude"; printf 'wrapper v1\n' > "$W/bin/s-qmd"
 lockargs=(--h0 "$H0" --l0 "$L0" --file claude="$W/bin/claude" --file s-qmd="$W/bin/s-qmd" --file himmel-manifest="$W/himmel.manifest.json" --tree himmel-export="$W/work/himmel" --const protocol=rag-pilot-r18)
 eq "lock: build succeeds" 0 "$(rc_of python3 -I "$LOCK" build --out "$W/tools.lock" "${lockargs[@]}")"
@@ -90,7 +86,6 @@ eq "lock: a changed export file refuses" 3 "$(rc_of python3 -I "$LOCK" check "$W
 eq "lock: a credential-named entry refuses at build" 3 "$(rc_of python3 -I "$LOCK" build --out "$W/bad.lock" --h0 "$H0" --l0 "$L0" --const openrouter_key=abc)"
 git -C "$H" archive "$H0" docs/zeta.md | tar -x -O > "$W/work/himmel/docs/zeta.md"
 
-# --- 5. the real-qmd rows: live index, snapshot, prune, finalize, digest semantics
 QMD="${PILOT_QMD:-$(command -v qmd || true)}"
 if [ -z "$QMD" ] || ! command -v bwrap >/dev/null 2>&1 || ! bwrap --bind / / --unshare-net true 2>/dev/null; then
   printf 'SKIP - real-qmd rows: qmd or an unprivileged bwrap network namespace is absent on this host\n'
@@ -98,7 +93,6 @@ else
   NETNS="$FX/netns-run.sh"
   QPKG="$(cd "$(dirname "$(readlink -f "$QMD")")/.." && pwd)"  # gnu-ok: Linux-only suite (bwrap namespaces)
   VEC0="$QPKG/node_modules/sqlite-vec-linux-x64/vec0.so"
-  # The live tree is the himmel working copy after H0: changed.md edited, postpin.md added.
   printf '# Changed\nversion two\n' > "$H/docs/changed.md"
   printf '# Postpin\nwritten after the pin\n' > "$H/docs/postpin.md"
   mkdir -p "$W/station-cfg" "$W/eval-cfg" "$W/cache"
@@ -147,7 +141,6 @@ print("kept=%d bad=%s orphans=%d cv=%d vr=%d vec=%d" % (len(paths), bad, orphans
 EOF
   eq "prune: changed, post-pin, pilot and handovers rows are gone from every table" "kept=3 bad=[] orphans=0 cv=0 vr=0 vec=0" "$(cat "$W/prune.out")"
 
-  # an older schema (triggers dropped, user_version 0) under the station config
   python3 -I -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); [c.execute("DROP TRIGGER "+t) for t in ("documents_ai","documents_ad","documents_au")]; c.execute("PRAGMA user_version=0"); c.commit()' "$W/master.sqlite"
   cp "$W/master.sqlite" "$W/unfinal.sqlite"
   d_old=$(python3 -I "$PINS" digest "$W/unfinal.sqlite")

@@ -24,7 +24,6 @@ for k in sys.argv[2].split("."): v = v[k]
 print(json.dumps(v, sort_keys=True))' "$1" "$2"; }
 mode() { python3 -I -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$1"; }
 
-# --- identity
 G="$W/harness"; mkdir -p "$G"
 printf 'shaper v1\n' > "$G/shaper.py"; printf 'evaluator v1\n' > "$G/eval.py"; printf '{"id": "t1"}\n' > "$G/bank.jsonl"
 git -C "$G" init -q && git -C "$G" add -A && git -C "$G" -c user.email=t@t -c user.name=t commit -q -m h
@@ -57,7 +56,6 @@ eq "compare: an empty required field is missing, so comparability is unknown" 'n
 L=$(cmp_ "$FX/complete-s.json" "$FX/legacy-row.json")
 eq "compare: a legacy row missing fields is comparability unknown, no invented hashes" 'null true' "$(j "$L" comparable) $(python3 -I -c 'import json,sys; print(json.dumps("graph_sha256" in json.loads(sys.argv[1])["missing"]))' "$L")"
 
-# --- retention
 mkdir -p "$W/scratch"
 printf '{"id": "t1", "question": "fixture q"}\n' > "$W/scratch/bank.jsonl"
 printf 'ANSWER: one session per doc\nFILES:\n/work/himmel/docs/right.md\n' > "$W/scratch/answer.txt"

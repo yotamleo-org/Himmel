@@ -21,7 +21,6 @@ for k in sys.argv[2].split("."): v = v[int(k)] if k.isdigit() else v[k]
 print(json.dumps(v, sort_keys=True))' "$1" "$2"; }
 d3() { python3 -I "$HERE/fixtures/score/d3.py" "$1" "$W/d3-$1"; }
 
-# --- the scorer and its controls
 eq "controls: all eight planted answers score as planted in V, S and Q" '{"Q": true, "S": true, "V": true}' "$(python3 -I "$HERE/score.py" controls)"
 ST=$(python3 -I - "$HERE" <<'EOF'
 import importlib.util, json, random, sys
@@ -41,18 +40,14 @@ base = sc_(12, 2, 0)
 out["s_wins_q_not"] = [c["label"] for c in sc.summarize(base, ids, bank)["comparisons"]]
 out["q_wins_s_not"] = [c["label"] for c in sc.summarize(sc_(2, 12, 0), ids, bank)["comparisons"]]
 out["v_beats_both"] = [c["label"] for c in sc.summarize({t: {"V": True, "S": i >= 12, "Q": i >= 12} for i, t in enumerate(ids)}, ids, bank)["comparisons"]]
-# Holm with p=1 beside: 6 wins (exactly 15 points, raw .03125 -> adjusted .0625) is not established; 7 wins is far better.
 out["holm_needed"] = [sc.summarize(sc_(6, 0), ids, bank)["comparisons"][0]["label"], sc.summarize(sc_(7, 0), ids, bank)["comparisons"][0]["label"]]
-# the bar itself: exactly 15 points with an adjusted p <= .05 (S 6:0 beside Q 7:0) passes; 14.9 points never does
 r = sc.summarize(sc_(6, 7), ids, bank)["comparisons"][0]
 out["bar"] = [r["gain_pp"], r["p_adjusted"], r["label"],
               sc.label("S", {"p_adjusted": 0.001, "gain_pp": 14.9, "real_half_gain_pp": 10.0})]
-# real-half qualifier: S wins only on harder (even) tasks, Q wins everywhere
 d = {t: {"V": False, "S": i < 16 and int(t[1:]) % 2 == 0, "Q": i < 16} for i, t in enumerate(ids)}
 r = sc.summarize(d, ids, bank)["comparisons"]
 out["real_half"] = [r[0]["label"], r[1]["label"], r[0]["real_half_gain_pp"], r[1]["real_half_gain_pp"]]
 out["exploratory"] = [r[2]["confirmatory"], r[2]["family"], r[2]["p_adjusted"], r[2]["label"], r[2]["interval_label"]]
-# invariance: permuting the input order changes nothing; swapping the S and Q columns swaps the contrasts
 items = list(base.items()); random.Random(3).shuffle(items)
 a, b = sc.summarize(dict(items), ids, bank), sc.summarize(base, ids, bank)
 out["order_invariant"] = a == b
@@ -86,7 +81,6 @@ eq "power: the n40 bounds reproduce the design table" "[0.4, 0.9] [10.7, 17.2] [
 eq "power: the n36 bounds reproduce the design table" "[0.3, 0.8] [8.4, 14.3] [22.1, 31.5] [40.1, 50.6] [58.2, 67.9] [28.8, 38.8]" \
   "$(for i in 0 1 2 3 4 5; do f "$ST" "power.$i.n36"; done | paste -sd' ')"
 
-# --- D3: interleaved complete-round judging
 R=$(d3 full); eq "D3: all fifteen candidates judged in five complete rounds, never replayed" '15 5 {"Q": 5, "S": 5, "V": 5} true' "$(f "$R" calls) $(f "$R" rounds) $(f "$R" applied) $(f "$R" distinct)"
 R=$(d3 quota-expire-after-7)
 eq "D3: a quota refusal after call 7 that expires applies rounds 1-2 only (two verdicts per arm)" '2 {"Q": 2, "S": 2, "V": 2} 1 "usage_expired"' "$(f "$R" rounds) $(f "$R" applied) $(f "$R" discarded) $(f "$R" ended)"
@@ -104,7 +98,6 @@ R=$(d3 cost-missing); eq "D3: a judge call with no usage evidence is never settl
 R=$(d3 contained-read); eq "judge: answer-named paths are read only inside the export (no traversal, no symlink out, no other root)" '"inside" null null null null' "$(f "$R" inside) $(f "$R" traversal) $(f "$R" deep_traversal) $(f "$R" symlink_out) $(f "$R" other_root)"
 R=$(d3 validate); eq "D3: arm-sequential order, a sixth call in an arm and a sixteenth call all refuse" '{"arm_sequential": "refused", "sixteenth_total": "refused", "sixth_in_an_arm": "refused"}' "$R"
 
-# --- the report rows the page reads
 python3 -I "$HERE/report.py" fixtures --out "$W/fx.jsonl"
 eq "report: the committed page fixture is exactly what report.py emits" same "$(cmp -s "$W/fx.jsonl" "$HERE/fixtures/score/rag-pilot-r18.jsonl" && echo same || echo differ)"
 RP=$(python3 -I - "$HERE" "$W/fx.jsonl" <<'EOF'

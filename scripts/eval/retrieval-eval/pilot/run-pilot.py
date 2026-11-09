@@ -54,7 +54,6 @@ class Crash(Exception):
     """The runner itself dies here (fixtures): the ledger is what survives."""
 
 
-# --------------------------------------------------------------------------- the sealed schedule
 def schedule(task_ids, seed):
     """Seeded task order and balanced arm order: six shuffled blocks of all six permutations,
     then four distinct permutations whose two omitted ones share no arm position."""
@@ -78,7 +77,6 @@ def schedule(task_ids, seed):
     return list(zip(order, perms))
 
 
-# --------------------------------------------------------------------------- the state machine
 class Pilot:
     def __init__(self, tasks, ledger, launcher, usage, quota, readiness, prober, clock, seed, finalize=None):
         self.tasks, self.ledger, self.launcher = tasks, ledger, launcher
@@ -90,7 +88,6 @@ class Pilot:
         self.launches = 0
         self.g6_passed = self._mark("g6_passed")
 
-    # -- helpers ---------------------------------------------------------------------------
     def _mark(self, name):
         return any(e["ev"] == "mark" and e["name"] == name for e in self.ledger.events)
 
@@ -157,7 +154,6 @@ class Pilot:
     def probe_ok(p):
         return all(not r.get("integrity") and not r.get("skips") and r.get("expanded", True) for r in p.values())
 
-    # -- phases ----------------------------------------------------------------------------
     def preflight(self):
         res = {}
         for arm in "VSQ":
@@ -266,12 +262,9 @@ class Pilot:
             return self.stop("FINALIZE_ONLY", "benign_probe_failure")
         return True
 
-    # -- the run ---------------------------------------------------------------------------
     def run(self):
         if not self.readiness.g0():
             return {"refused": "G0", "launches": 0}
-        # a resumed run: a booking still in flight was killed with the runner; it settles only from
-        # trusted complete usage evidence, else it stays unsettled and blocks paid work (never replayed)
         for attempt in sorted(self.ledger.inflight):
             cost, complete = self.launcher.recover(attempt)
             self.ledger.killed(attempt, cost, complete)
@@ -283,7 +276,6 @@ class Pilot:
             self.mark("h_reserved")
         if not self._mark("g5_passed") and not self.stopped():
             self.preflight()
-        # a resumed run: every admitted triple without its done event is interrupted, never replayed
         done = {t: v for t, v in self.ledger.triples.items()}
         for t, v in done.items():
             if v["state"] == "done":
@@ -337,7 +329,6 @@ class Pilot:
         return rep
 
 
-# --------------------------------------------------------------------------- the real launcher (R8 only)
 def claude_argv(arms, arm, model=None, budget=None):
     """The pinned CLI argv, identical across V/S/Q except the retrieval commands S/Q may run."""
     allowed = ["Read", "Grep", "Glob"] + ["Bash(%s:*)" % c for c in arms["bash_commands"]]

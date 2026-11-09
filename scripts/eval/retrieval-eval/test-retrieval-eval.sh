@@ -676,7 +676,6 @@ PY
 then pass "replay makes no subprocess or network calls"
 else fail "replay makes no subprocess or network calls"; fi
 
-# Forward experiment identity, retention before the ledger row, and a failed deep second call.
 cat > "$W/qmd-deepfail" <<'EOF'
 #!/usr/bin/env python3
 import json, sys

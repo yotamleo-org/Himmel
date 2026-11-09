@@ -114,10 +114,8 @@ class Judging:
             raise ValueError("no sealed judge schedule")
         if self.ended():
             return self.ended()
-        # a round whose last verdict landed just before the runner died still gets its marker
         for r in sorted({s["round"] for s in slots}):
             self._commit(slots, r)
-        # a slot booked but not resolved when the runner died: never replayed, it fails the round
         for e in self._ev("book"):
             if e["kind"] == "judge" and e["attempt"] in self.ledger.inflight:
                 self.ledger.killed(e["attempt"], None, False)
@@ -193,7 +191,6 @@ class Judging:
                 "calls": sum(1 for e in self._ev("book") if e["kind"] == "judge"), "ended": self.ended()}
 
 
-# ----------------------------------------------------------------------------- the real judge (paid)
 class RealJudge:
     """One blinded, tool-less, one-turn judge call. Never exercised by build tests."""
 

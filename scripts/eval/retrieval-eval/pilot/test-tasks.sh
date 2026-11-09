@@ -59,7 +59,6 @@ bad "an answerable not-there task" "not_there" 'b[39]["answerability"] = "answer
 bad "a duplicate id" "duplicate id" 'b[1]["id"] = b[0]["id"]'
 bad "a 41st task" "40 tasks" 'b.append(dict(b[0], id="t99"))'
 
-# the local miner
 python3 -I "$MQ" "$W/fx/sessions" --out "$W/mined.jsonl" --seed 7 --sample 2 > "$W/mine.out" 2>&1
 eq "miner: mines the fixture sessions" 0 "$?"
 eq "miner: keeps only distinct question-shaped user turns" 3 "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["candidates"])' "$W/mined.jsonl.summary.json")"

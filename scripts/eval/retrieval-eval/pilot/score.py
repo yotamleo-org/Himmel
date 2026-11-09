@@ -30,7 +30,6 @@ ANSWER_RE = re.compile(r"^ANSWER:[ \t]*(.*)$", re.M)
 FILES_RE = re.compile(r"^FILES:[ \t]*$", re.M)
 
 
-# ----------------------------------------------------------------------------- the scorer
 def parse(text):
     m, fm = ANSWER_RE.search(text or ""), FILES_RE.search(text or "")
     if not m or not fm or fm.start() < m.start():
@@ -106,7 +105,6 @@ def run_controls():
     return res
 
 
-# ----------------------------------------------------------------------------- statistics
 def mcnemar(b, c):
     """Exact two-sided McNemar p on the discordant counts b (arm right alone) and c."""
     n = b + c
@@ -220,7 +218,6 @@ def power_table():
              "n36": [round(power(a, v, 36, .025) * 100, 1), round(power(a, v, 36, .05) * 100, 1)]} for a, v in POWER_ROWS]
 
 
-# ----------------------------------------------------------------------------- the summary
 def label(arm, contrast):
     if contrast["p_adjusted"] <= ALPHA and contrast["gain_pp"] < 0:
         return "Plain Claude Code beat %s here." % arm

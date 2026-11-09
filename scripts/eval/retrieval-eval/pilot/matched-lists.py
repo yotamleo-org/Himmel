@@ -252,7 +252,7 @@ def main(argv):
             print("matched-lists: refused: S mode books every query in the pilot ledger (--ledger)", file=sys.stderr)
             return 2
         ledger = load(os.path.join(HERE, "ledger.py"), "ledger")
-        booking = ledger.ListBooking(a.ledger)
+        booking = ledger.ListBooking(ledger.Ledger(a.ledger))
     else:
         booking = FixtureBooking()
     bank = [json.loads(l) for l in open(a.bank) if l.strip()]

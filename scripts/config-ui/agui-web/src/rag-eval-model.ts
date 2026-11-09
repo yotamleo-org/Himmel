@@ -93,10 +93,6 @@ export function ragEvalModel(rows: LedgerRow[]): RagEval {
     pilot: pilotModel(rows) };
 }
 
-// ---------------------------------------------------------------------------------------------
-// The three-answer pilot: V (plain Claude Code), S (station search), Q (local search) on one
-// common task set. Its rows are their own protocol group and never share an axis with the old
-// file-hit runs above.
 export const PILOT_PROTOCOL = "rag-pilot-r18";
 export const ARM_NAMES: Record<"V" | "S" | "Q", string> = { V: "Plain Claude Code (V)", S: "Station search (S)", Q: "Local search (Q)" };
 type Nums = (number | null)[] | null;
@@ -124,8 +120,6 @@ export type PilotComparison = {
   contrast: "S-V" | "Q-V" | "S-Q"; confirmatory: boolean; label: string | null; gainPp: number; pRaw: number; pAdjusted: number | null;
   interval: [number, number]; intervalLabel: string; realHalfGainPp: number | null; discordant: [number, number];
 };
-// One answer clause and one cost clause per retrieval arm, drawn with the SAME class: a cost
-// line may never shrink beside the answer line it qualifies.
 export type PilotClause = { arm: "S" | "Q"; answer: string; cost: string; answerClass: string; costClass: string; loss: boolean; comparison: PilotComparison };
 export type PilotArm = { arm: "V" | "S" | "Q"; name: string; supported: number | null; costUsd: number | null; cashUsd: number | null;
   route: string | null; use: string | null; skips: number | null; errors: number | null; unjudged: number | null; paraphrases: number | null };

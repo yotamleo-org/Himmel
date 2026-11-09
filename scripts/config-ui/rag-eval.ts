@@ -7,8 +7,6 @@ const EVALS = new Set(["retrieval-eval", "answer-ab"]);
 const FIELDS = ["eval", "ts", "run_id", "status", "n", "metrics"];
 export const PILOT_PROTOCOL = "rag-pilot-r18";
 
-// The pilot block's explicit safe allowlist: only these fields, with these shapes, ever leave the
-// server. A field the report adds later, or anything private (task ids, paths, text), is dropped.
 type Schema = "num" | "str" | "bool" | "nums" | Schema[] | { [k: string]: Schema } | { "*": Schema };
 const ARM: Schema = {
   supported: "num", cost_usd: "num", cost_mean_usd: "num", cash_usd: "num",

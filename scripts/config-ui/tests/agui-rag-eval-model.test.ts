@@ -139,10 +139,6 @@ test("GET /api/rag-eval: token-gated, GET only, serves the retrieval-eval and an
   expect(bad).toEqual({ state: "unreadable", reason: "the eval-runs ledger could not be read", rows: [] });
 });
 
-// ---------------------------------------------------------------------------------------------
-// The three-answer pilot rows: report.py emits them, the real server reader allowlists them,
-// the model draws them. Generated fresh from report.py on every run (the committed copy is the
-// same bytes; test-score.sh proves that), never hand-written.
 const REPORT = join(import.meta.dir, "..", "..", "eval", "retrieval-eval", "pilot", "report.py");
 function pilotRows(): Record<string, unknown>[] {
   const dir = mkdtempSync(join(tmpdir(), "rag-pilot-"));
@@ -184,7 +180,6 @@ test("pilot: report.py rows round-trip through the real reader into the model", 
   expect(p.disclosures.join(" ")).toContain("Q can stop or void the S-V measurement");
   expect(p.lists[0]).toBe("Retrieval lists are incomplete: no full 40-task list comparison.");
   expect(p.spend).toBe("Spend on every attempted task: $9.12 (subscription equivalent $8.81, search cash $0.31).");
-  // the old file-hit row is its own protocol group: the pilot never feeds the routes table
   expect(ragEvalModel(rows).routes.find((r) => r.key === "vanilla")!.answers).toMatchObject({ count: 69, n: 75 });
 });
 

@@ -42,8 +42,6 @@ for kind, count in KINDS:
         bank.append({"id": tid, "question": "Which token answers %s?" % marker, "kind": kind, "half": "real" if n % 2 else "harder",
                      "answerability": "answerable" if fl else "not_there", "stratum": stratum, "facts": facts, "files": fl,
                      "provenance": {"method": "written", "discovery": "read", "source": "fixture"}, "reachability": "fixture"})
-        # what the fixed query returns: the fact file, except t03 (a wrong file), the two-file
-        # tasks (only the pointer doc, which holds no fact: gold hit without fact hit) and not_there
         if kind == "two_files":
             ret = [fl[0]]
         elif n == 3:

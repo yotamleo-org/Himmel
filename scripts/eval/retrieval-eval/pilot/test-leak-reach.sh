@@ -76,7 +76,6 @@ scan --config "$W/covering.yml" --run-root "$W/run" > "$W/c1.json"; rc=$?
 eq "P12: a qmd collection that covers the run root fails" "3 1" "$rc $(j "$W/c1.json" collection_covers_run_root)"
 eq "P12: a collection scoped to the copies passes" 0 "$(scan --config "$W/scoped.yml" --run-root "$W/run" > /dev/null; echo $?)"
 
-# --- free-checks: the G3 report and the separate G0 record
 printf '' > "$W/outcomes"
 FRUN=(--suite-runner "$FX/fake-runner")
 FAKE_OUTCOMES="$W/outcomes" bash "$FC" --out "$W/g3-a.json" "${FRUN[@]}" > /dev/null 2>&1

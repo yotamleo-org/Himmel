@@ -27,7 +27,6 @@ f() { python3 -I -c 'import json,sys; v=json.load(open(sys.argv[1]))
 for k in sys.argv[2].split("."): v = v[k]
 print(json.dumps(v))' "$W/$1.json" "$2"; }
 
-# P5: counts reconcile to tool-use ids and broker admissions
 row two-calls S
 eq "P5: two s-qmd invocations in one Bash tool use count 2" 2 "$(f two-calls qmd_calls)"
 eq "P5: they reconcile with the two broker admissions" "true 0" "$(f two-calls reconciled) $(cat "$W/two-calls.rc")"
@@ -72,7 +71,6 @@ eq "scored false: a missing ANSWER/FILES block is scorable, not service" '[] tru
 row skip-and-service Q
 eq "both: a co-occurring service failure and skip keep both reasons" '["no_cli_json"] ["timeout"]' "$(f skip-and-service service) $(f skip-and-service skip_reasons)"
 
-# the task-level union: excluded once, counted toward the two-task skip ceiling
 python3 -I "$RR" task --row "$W/none.json" --row "$W/skip-and-service.json" --row "$W/two-calls.json" > "$W/task.json"
 eq "task: a service+skip triple is excluded once and counts toward the skip ceiling" '{"excluded": true, "hard_abort": false, "reasons": {"Q": ["no_cli_json", "timeout"]}, "skip_counted": true}' "$(cat "$W/task.json")"
 python3 -I "$RR" task --row "$W/no-json.json" --row "$W/two-calls.json" --row "$W/two-calls.json" > "$W/task2.json"
