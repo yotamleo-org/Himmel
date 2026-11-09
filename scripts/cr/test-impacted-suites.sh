@@ -1513,11 +1513,18 @@ for n in $(seq 1 400); do printf '# changed\n' >> "$CL/scripts/lib/biglib-$n.sh"
 git -C "$CL" add -A
 git -C "$CL" commit -q -m "fix: every lib"
 lrange="$(git -C "$CL" rev-parse HEAD~1)..$(git -C "$CL" rev-parse HEAD)"
-l_start=$SECONDS
-out="$( cd "$CL" && timeout 30 bash "$IS" "$lrange" 2>/dev/null )"; rc=$?
-l_wall=$((SECONDS - l_start))
-n_out=$(grep -c . <<< "$out")
-if [ "$rc" -eq 0 ] && [ "$n_out" -eq 900 ]; then pass "L1 a 900-suite range is read in ${l_wall}s inside the 30 s bound"; else fail "L1 large range: rc=$rc suites=$n_out wall=${l_wall}s (rc 124 = over the 30 s bound)"; fi
+# shellcheck source=scripts/lib/timeout-bin.sh
+# shellcheck disable=SC1091
+. "$REPO_ROOT/scripts/lib/timeout-bin.sh"
+if [ -z "$_TIMEOUT_BIN" ]; then
+    pass "L1 SKIP: no timeout binary to bound the read"
+else
+    l_start=$SECONDS
+    out="$( cd "$CL" && "$_TIMEOUT_BIN" 30 bash "$IS" "$lrange" 2>/dev/null )"; rc=$?
+    l_wall=$((SECONDS - l_start))
+    n_out=$(grep -c . <<< "$out")
+    if [ "$rc" -eq 0 ] && [ "$n_out" -eq 900 ]; then pass "L1 a 900-suite range is read in ${l_wall}s inside the 30 s bound"; else fail "L1 large range: rc=$rc suites=$n_out wall=${l_wall}s (rc 124 = over the 30 s bound)"; fi
+fi
 
 echo
 if [ "$failures" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi
