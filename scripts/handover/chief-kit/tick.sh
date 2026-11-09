@@ -561,7 +561,25 @@ for idx, line in enumerate(text.splitlines(), 1):
         print("# pool-keys %d STACKABLE %s" % (idx, s[1]))
     elif m:
         print("# pool-keys %d # %s" % (idx, m[1]))
-decisions, invalid = {}, {}
+# the one meaning of dispatchable: a row a chief can launch (LOCAL, CLOUD, RESUME, DESIGN, a series' tickets); a row that
+# needs a close, a held RESUME row and a NEXT-TIER row are not. The waiter reads these lines, never its own row filter.
+dispatchable = set()
+for line in text.splitlines():
+    f = line.split("\t")
+    if f[0] == "SERIES" and len(f) > 2 and re.fullmatch(r"[A-Z]+-\d+(?:,[A-Z]+-\d+)*", f[2]):
+        dispatchable.update(f[2].split(","))
+    elif f[0] in ("LOCAL", "LOCAL?", "CLOUD", "RESUME", "DESIGN") and len(f) > 1 and re.fullmatch(r"[A-Z]+-\d+", f[1]):
+        dispatchable.add(f[1])
+for key in sorted(dispatchable):
+    print("# pool-dispatchable " + key)
+
+def has_owner(target, key):
+    # an owner and an observable end: another ticket or an ask record (O-<n>), a PR, a decision id or a worker; never free text
+    return bool(any(k != key for k in re.findall(r"\b[A-Z]+-\d+\b", target))
+                or re.search(r"\bPRs?\s*#?\d+", target) or re.search(r"\bdecisions?\s*#?\d+", target, re.I)
+                or re.search(r"\bN\d+\b", target))
+
+decisions, invalid, unowned = {}, {}, {}
 if sys.argv[1]:
     try:
         doc = open(sys.argv[1]).read().splitlines()
@@ -577,8 +595,10 @@ if sys.argv[1]:
         value = line.split(":", 1)[1].strip()
         m = re.fullmatch(r"([A-Z]+-\d+) (slice|close|question) (\S.*)", value)
         key = value.split()[0] if value else "?"
-        if not m or key not in rows or key in decisions or key in invalid:
+        if not m or key not in rows or key in decisions or key in invalid or key in unowned:
             invalid[key] = "malformed, duplicate or unknown pool-disposition: " + value
+        elif not has_owner(m[3], key):
+            unowned[key] = value
         else:
             decisions[key] = value
 if not rows and not re.search(r"^# dropped from .+: 0 of 0 To Do", text, re.M):
@@ -595,6 +615,8 @@ for key, reason in rows.items():
         unresolved.append(("invalid", key, invalid[key]))
     elif owned or holder or blocker or key in decisions:
         disposed += 1
+    elif key in unowned:
+        unresolved.append(("unowned", key, "pool-disposition names no owner or observable end: " + unowned[key]))
     else:
         unresolved.append((reason.split()[0], key, reason))
 print("# pool-counts %d/%d/%d/%d" % (len(rows), inflight, disposed, len(unresolved)))
@@ -603,6 +625,9 @@ for cls, key, reason in sorted(unresolved):
 for key, reason in sorted(invalid.items()):
     if key not in rows:
         print("# pool-unresolved invalid %s %s" % (key, reason))
+for key, reason in sorted(rows.items()):
+    if key not in dispatchable:
+        print("# pool-left-out %s %s" % (key, reason))
 PY
 }
 

@@ -447,9 +447,9 @@ hand="$(bash "$HERE/next-dispatchable.sh" --priority-pool-only --top 7 --doc "$W
 I="$(new_inbox rpreal)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/rpreal.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(rp-real) the real dispatcher's pool wakes the waiter (rc 0)" "0" "$rc"
-check "(rp-real) the pool in the wake block equals a hand run with the same flags" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# disposition /d;/^# pool-unresolved /d;/^# dispatchable in /d' "$WORK/rpreal.out")"
+check "(rp-real) the pool in the wake block equals a hand run with the same flags" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# rows left in /,$d;/^# disposition /d;/^# pool-unresolved /d;/^# dispatchable in /d' "$WORK/rpreal.out")"
 check "(rp-real) the hand run lists the pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
-check "(rp-real) the wake block carries the drop summary (the LOW pool's second pass prints its own too)" "2" "$(grep -c '^# dropped from v1.0.1: 0 of 2 To Do (none)' "$WORK/rpreal.out")"
+check "(rp-real) the wake block carries the drop summary once (a declared release runs no second pass)" "1" "$(grep -c '^# dropped from v1.0.1: 0 of 2 To Do (none)' "$WORK/rpreal.out")"
 
 # --- (rp-workers) a live worker's ticket stays out of the pool: --workers-from reaches the dispatcher ---
 mk HIMMEL-3 '["ps3-blocker"]' "second pool head" "Edit scripts/lib/gamma.sh only."
@@ -460,7 +460,7 @@ I="$(new_inbox rplegs)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet-held.json" > "$WORK/rplegs.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(rp-workers) the hand run keeps the held worker's ticket out of the pool" "0" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
 check "(rp-workers) and lists the other pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-3	')"
-check "(rp-workers) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# disposition /d;/^# pool-unresolved /d;/^# dispatchable in /d' "$WORK/rplegs.out")"
+check "(rp-workers) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# rows left in /,$d;/^# disposition /d;/^# pool-unresolved /d;/^# dispatchable in /d' "$WORK/rplegs.out")"
 
 # --- (lp) the plain current-version rows are pool rows: 2 labelled heads and 5 plain tickets fill 7 of 7 ----
 M="$WORK/mirror-lp/HIMMEL"; mkdir -p "$M"
@@ -664,6 +664,37 @@ I="$(new_inbox pass2fail)"
 timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK/k9181c.out" 2>/dev/null
 check "(9181) a failed second pass says backlog=unread and never prints dispatchable=0" "WAKE underfilled capacity=UNDERFILLED:7 pool=? backlog=unread" "$(head -n1 "$WORK/k9181c.out")"
 rm -f "$STUB/pass2.fail"
+
+# --- a short pool of a declared release offers no later-version row, and names the rows left in the version instead
+rm -f "$STUB/pool.intake" "$STUB/dispositions" "$STUB/pass2.fail"
+printf '# dropped from v1: 1 of 3 To Do (blocker 1)\nLOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+printf 'LOCAL\tHIMMEL-9005\tLow\tv2\tlater\tfiles=e.sh\n' > "$STUB/pass2.rows"
+printf '# disposition HIMMEL-9001 listed LOCAL\n# disposition HIMMEL-9010 blocker HIMMEL-1 (In Progress, live)\n' > "$STUB/dispositions"
+I="$(new_inbox declared)"
+timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK/declared.out" 2>/dev/null
+check "(declared) the wake counts only the version's own row" "WAKE pool-unresolved capacity=UNDERFILLED:7 pool=2/0/1/1 dispatchable=1 keys=HIMMEL-9001" "$(head -n1 "$WORK/declared.out")"
+check "(declared) a later-version row is not offered" "0" "$(grep -c 'files=e.sh' "$WORK/declared.out")"
+check "(declared) no version backlog block is printed" "0" "$(grep -c '^# version backlog' "$WORK/declared.out")"
+check "(declared) the rows left in the version are named with their reason" "1:1" "$(grep -c '^# rows left in v1' "$WORK/declared.out"):$(grep -c '^# pool-left-out HIMMEL-9010 blocker HIMMEL-1 (In Progress, live)$' "$WORK/declared.out")"
+rm -f "$STUB/pass2.rows" "$STUB/dispositions"
+
+# --- a pool holding only RESUME rows reads above zero on both branches
+printf 'RESUME\tHIMMEL-9020\tMedium\tv1\tresume\tfiles=r.sh\tstatus=In Progress\tlast=-\n' > "$STUB/pool.rows"
+I="$(new_inbox resume-short)"
+timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK/resume-short.out" 2>/dev/null
+check "(resume) a short pool of RESUME rows reads above zero" "WAKE underfilled capacity=UNDERFILLED:7 pool=? dispatchable=1 keys=HIMMEL-9020" "$(head -n1 "$WORK/resume-short.out")"
+: > "$STUB/pool.rows"; : > "$WORK/resume-full.md"
+printf '# chief\n\n## Live state\n' > "$WORK/resume-full.md"
+for n in 31 32 33 34 35 36 37; do
+    printf 'RESUME\tHIMMEL-90%s\tMedium\tv1\tresume\tfiles=r%s.sh\tstatus=In Progress\tlast=-\n' "$n" "$n" >> "$STUB/pool.rows"
+    printf '# disposition HIMMEL-90%s listed RESUME\n' "$n" >> "$STUB/dispositions"
+    printf 'pool-disposition: HIMMEL-90%s question operator decision 268\n' "$n" >> "$WORK/resume-full.md"
+done
+printf '\n## Results\n' >> "$WORK/resume-full.md"
+I="$(new_inbox resume-full)"
+timeout 8 bash "$WAIT" "$I" --doc "$WORK/resume-full.md" --workers N1.md > "$WORK/resume-full.out" 2>/dev/null
+check "(resume) a full pool of dispositioned RESUME rows reads above zero" "WAKE underfilled capacity=UNDERFILLED:7 pool=7/0/7/0 dispatchable=7 keys=HIMMEL-9031,HIMMEL-9032,HIMMEL-9033,HIMMEL-9034,HIMMEL-9035,HIMMEL-9036,HIMMEL-9037" "$(head -n1 "$WORK/resume-full.out")"
+rm -f "$STUB/pool.rows" "$STUB/dispositions"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
