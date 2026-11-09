@@ -91,11 +91,15 @@
 #                               (its key is saved) (CHIEF_WAIT_WORKER_EVENT = seam). Every WAKE block ends with `absorbed since last
 #                               wake: wraps=<n> (<labels>) merged=<n> (#<pr>,...)` [+ ` auto-go=<n> (#<pr>,...)`
 #                               for scripted GOs] when the relay absorbed anything, and the digest clears.
-#                               With the auto_go flag on, the relay also hands every new
-#                               READY bullet of a manifest worker to worker-event once, after
-#                               any wrap, even when a LIVE bullet follows it inside one
-#                               sample: <inbox>.wait.ready keeps a line cursor per worker. A
-#                               worker met for the first time starts after its existing READYs.
+#                               The relay also hands every new READY bullet of a manifest
+#                               worker to worker-event once, after any wrap, even when a LIVE
+#                               bullet follows it inside one sample: <inbox>.wait.ready keeps a
+#                               line cursor per worker. A worker met for the first time starts
+#                               after its existing READYs. With the auto_go flag off only a
+#                               `READY <pr> <head40>` bullet is handed on: worker-event starts
+#                               its auto-go dry run and answers ESCALATE marker-READY,
+#                               which wakes nothing (WAKE ready below is that READY's wake);
+#                               any other answer wakes as above.
 #   WAKE resolve <worker> pr=<n> threads=<id,...>  with --workers-from: a worker doc whose newest
 #                               marker bullet is `BLOCKED resolve <pr> <PRRT_ ids>` (its
 #                               resolve call was denied). Once per bullet; the chief
@@ -103,7 +107,7 @@
 #                               tick line follows and its key is saved.
 #   WAKE ready <pr> <head40> ready-check=<PASS|FAIL> ci=<GREEN|RED|PENDING> coverage=<PASS|FAIL>
 #        disposition=<ok|open:<n>> out=<file>   with --workers-from and the auto_go flag off
-#                               (on, the relay above hands READY to worker-event): a worker doc
+#                               (on, the relay above routes READY to auto-go.sh): a worker doc
 #                               whose newest marker bullet is `READY <pr> <head40> GREEN`. Before
 #                               waking, the waiter runs `timeout -k 5 150 ready-check.sh <pr> <head>`,
 #                               one bounded CI read (`gh pr checks`; a failed read is PENDING) and
@@ -339,7 +343,7 @@
 #   <inbox>.wait.r0      the bullets the relay already handled or woke for
 #                        (`<label> <marker> <cksum>`); <inbox>.wait.le-<label> holds
 #                        worker-event's last output for that worker, tokens scrubbed.
-#   <inbox>.wait.ready   with auto_go on: `<label><TAB><line>`, the last READY bullet handed on.
+#   <inbox>.wait.ready   `<label><TAB><line>`, the last READY bullet handed on to worker-event.
 #   <inbox>.wait.readywoke  with auto_go off: `<pr> <head40>`, each READY already woken for;
 #                        <inbox>.wait.ready-<pr> holds that wake's checks, tokens scrubbed.
 #   <inbox>.handover     handover mode: while it is fresh (younger
@@ -1471,23 +1475,26 @@ fi
 leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/worker-event.sh}"
 r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
 
-# The READY cursor. With the auto_go flag on, every READY bullet a worker
-# writes reaches worker-event once, even when a LIVE bullet follows inside the same sample (tails=
-# then never shows the READY). $ready_file holds one `<label><TAB><line>` row per worker: the line
-# of the last READY bullet already handed on. A worker met for the first time starts after the
-# READY bullets it already has, so a waiter never replays history. The flag is read every sample
-# (an unregistered flag reads as off). Flag off: nothing here reads or writes a file.
+# The READY cursor. Every READY bullet a worker writes reaches worker-event once, even when a LIVE
+# bullet follows inside the same sample (tails= then never shows the READY). $ready_file holds one
+# `<label><TAB><line>` row per worker: the line of the last READY bullet already handed on. A worker
+# met for the first time starts after the READY bullets it already has, so a waiter never replays
+# history. With the auto_go flag off (an unregistered flag reads as off) only a `READY <pr> <head40>`
+# bullet is handed on: worker-event starts its auto-go dry run and answers ESCALATE marker-READY,
+# which r0_relay keeps silent.
 ready_file="$inbox.wait.ready"
 ready_re='^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY([^A-Za-z]|$)'
-ready_label=""; ready_line=""; ready_bullet=""
+# flag off: only the `READY <pr> <head40>` shape worker-event's dry run reads is handed on
+ready_dry_re='^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY[[:space:]]+#?[0-9]+[[:space:]]+[0-9a-f]{40}([^0-9a-f]|$)'
+ready_label=""; ready_line=""; ready_bullet=""; ready_off=""
 auto_go_on() { ( . "$HERE/../../lib/flags.sh" && himmel_flag auto_go ) >/dev/null 2>&1; }
 ready_pick() { # sets ready_label/line/bullet to the oldest READY bullet past its worker's cursor
-    local label ldoc cur last entry
-    ready_label=""
-    auto_go_on || return 1
+    local label ldoc cur last entry re="$ready_re"
+    ready_label=""; ready_off=""
+    auto_go_on || { ready_off=1; re="$ready_dry_re"; }
     while IFS=$'\t' read -r label ldoc; do
         [ -n "$label" ] && [ -f "$ldoc" ] || continue
-        entry="$(grep -nE "$ready_re" "$ldoc")"
+        entry="$(grep -nE "$re" "$ldoc")"
         cur="$(awk -F'\t' -v l="$label" '$1 == l { c = $2 } END { print c }' "$ready_file" 2>/dev/null)"
         # a doc shorter than its cursor was replaced: start over as a worker met for the first time
         if [ -n "$cur" ] && [ "$cur" -gt "$(wc -l < "$ldoc")" ]; then cur=""; fi
@@ -1558,6 +1565,12 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             esac
         fi
         printf '%s\n' "$out" > "$outf" 2>/dev/null
+        # auto_go off: worker-event started its dry run and answers ESCALATE marker-READY; ready_wake's
+        # WAKE ready stays that READY's one wake, so this answer wakes nothing and is no digest line
+        if [ "$marker" = READY ] && [ -n "$ready_off" ] && [ "$rc" -eq 10 ] && [ "$out" = "ESCALATE marker-READY" ]; then
+            ready_advance "$label" "$ready_line"
+            break
+        fi
         if [ "$rc" -eq 0 ]; then
             printf '%s\n' "$sum" >> "$r0_file"
             [ "$marker" != READY ] || ready_advance "$label" "$ready_line"
