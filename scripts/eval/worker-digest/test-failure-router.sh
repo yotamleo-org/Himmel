@@ -53,7 +53,7 @@ case "$op" in
         [ -f "$d/list.err" ] && cat "$d/list.err" >&2
         lbl="$(printf '%s' "$*" | sed -n 's/.*labels = "\([^"]*\)".*/\1/p')"; [ -f "$d/list.$lbl" ] && cat "$d/list.$lbl"; exit "$(cat "$d/list.rc" 2>/dev/null || echo 0)" ;;
   create) grab "$@"
-        # What the real CLI refuses: a body without the six sections (a real Plan and DoD line), a Task with neither
+        # What the real CLI refuses: a body without the seven sections (a real Plan and DoD line), a Task with neither
         # a parent nor the standalone label, a missing Sector.
         f=""; lbl=""; sec=""; ttl=""; all="$*"
         while [ $# -gt 0 ]; do case "$1" in --desc-file) f="$2"; shift 2 ;; --labels) lbl="$2"; shift 2 ;; --sector) sec="$2"; shift 2 ;; --title) ttl="$2"; shift 2 ;; *) shift ;; esac; done

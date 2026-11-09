@@ -23,6 +23,6 @@ himmel-run jira \
   -- node $CLAUDE_PROJECT_DIR/scripts/jira/dist/index.js create --type "$1" --title "$2" "${@:3}"
 ```
 
-The description must carry the six sections `## Impact` / `## What` / `## Why` / `## Plan` / `## DoD` / `## Agent detail`, with a real bullet or numbered line under Plan and DoD. `create` refuses a body without it, except `Epic` and `Subtask`, which only warn; pass it with `--desc` or `--desc-file`.
+The description must carry the seven sections `## Impact` / `## What` / `## Why` / `## Plan` / `## DoD` / `## Proof` / `## Agent detail`, with a real bullet or numbered line under Plan and DoD. `create` refuses a body without it, except `Epic` and `Subtask`, which only warn; pass it with `--desc` or `--desc-file`.
 
 Pass `--attach <path>` (repeatable) through after `$2`. The CLI uploads each file after issue creation and prints `Created KEY (attachments: N)`.
