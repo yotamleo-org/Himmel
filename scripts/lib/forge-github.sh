@@ -47,8 +47,8 @@ fi
 # rather than a runtime check.
 #
 # Never blocks: every failure path returns 0. The create/edit already succeeded
-# by the time this runs, and check-ci's skipped/absent arms remain the backstop
-# that refuses green until a genuine review lands at head.
+# by the time this runs. A head this misses gets merge-on-green.sh's one
+# backstop post; check-ci only prints a NOTE.
 _gh_trigger_cr() {
     # The repo's ONE armed-CodeRabbit predicate (scripts/lib/coderabbit-available.sh):
     # honours CR_PROFILE=none and stays silent on a clone with no CodeRabbit App.

@@ -18,16 +18,16 @@
 #
 # Pairs with:
 #   - PreToolUse  check-cr-marker-on-pr-create.sh  (gates the create), and
-#   - check-ci.sh `skipped`/`absent` arms           (the BACKSTOP: if this
-#     hook's post ever fails, the gate refuses green until a genuine review
-#     exists at head).
+#   - merge-on-green.sh posts one backstop trigger before a merge when the
+#     ledger lacks the head; check-ci.sh only prints a NOTE, so a head this
+#     hook misses can still merge with no CodeRabbit review.
 #
 # ONE REVIEW PER HEAD SHA: dedup used to be keyed per PR (scan
 # for ANY existing `@coderabbitai review` comment) — that made sense when this
 # hook only fired at PR creation, but it silently blackholed every later fix
 # round: a push after the first review left the PR's comment list non-empty,
-# so the per-PR scan always short-circuited, the merge gate correctly refused
-# the "Review skipped" head, and nothing ever re-triggered (PRs #1717/#1718).
+# so the per-PR scan always short-circuited, the "Review skipped" head got no
+# review, and nothing ever re-triggered (PRs #1717/#1718).
 # Dedup is now keyed by head SHA via the shared ledger in
 # scripts/lib/coderabbit-trigger-ledger.sh — the SAME ledger a sibling hook,
 # trigger-cr-on-push.sh, uses to trigger a review on a PUSH that advances an
@@ -43,8 +43,8 @@
 # Exit semantics — ADVISORY / non-blocking, exit 0 in EVERY case. The PR is
 # already created by the time a PostToolUse hook runs; a hard block here could
 # not un-create it and would only confuse the model. A failed post (no auth, no
-# network, API error) WARNS to stderr and exits 0; the gate is the structural
-# backstop that refuses green until a real review lands at head.
+# network, API error) WARNS to stderr and exits 0; merge-on-green's one
+# backstop post may still trigger the head before a merge.
 #
 # Fail-open policy: on THIS script's own bugs (missing jq, malformed JSON) we
 # exit 0 with a stderr warning — never strand a successful PR-create.
@@ -67,8 +67,8 @@ if ! { [ -r "$SCRIPT_DIR/../lib/coderabbit-trigger-ledger.sh" ] && . "$SCRIPT_DI
     # gone — this lib now also owns cr_trigger_repo_armed, the
     # check that keeps the trigger off FOREIGN repos, so a run without it
     # cannot tell whose PR it is about to comment on. Not posting is the cheap
-    # failure: the merge gate refuses green until a review lands at head, which
-    # is loud, whereas a comment on a stranger's PR is not ours to make.
+    # failure: it costs one PR with no CodeRabbit review, whereas a comment
+    # on a stranger's PR is not ours to make.
     warn "WARNING: could not load coderabbit-trigger-ledger.sh — cannot verify this PR's repo is ours; not triggering CodeRabbit. Post '@coderabbitai review' manually if this PR is on one of our repos"
     exit 0
 fi
@@ -108,16 +108,15 @@ esac
 # JSON parser there is no reliable boundary between tool_input and
 # tool_response (key order is not guaranteed), so a grep over the raw payload
 # can pick up a URL embedded in the command or PR title and post the trigger
-# on the WRONG PR. A wrong-PR comment is worse than no comment — the gate's
-# skipped/absent arms backstop a MISSING review at head, but nothing catches a
+# on the WRONG PR. A wrong-PR comment is worse than no comment — a missing
+# review costs one PR its CodeRabbit review, but nothing catches a
 # spurious one. So: no jq → warn + exit 0 (fail-open per the header policy).
 # The warning can fire on a fast-path false positive (e.g. `echo "gh pr
 # create"`); acceptable noise in the rare jq-less environment. Deliberate
 # divergence from the PreToolUse sibling's grep -oP fallback: the sibling only
-# GATES on the command (worst case there: a missed block, backstopped by the
-# merge gate), while this hook POSTS to a PR it names.
+# GATES on the command (worst case there: a missed block), while this hook POSTS to a PR it names.
 if ! command -v jq >/dev/null 2>&1; then
-    warn "WARNING: jq not in PATH — cannot safely isolate the new PR URL from tool_response; if this created a PR, post '@coderabbitai review' on it manually (the merge gate refuses green until a review lands at head)"
+    warn "WARNING: jq not in PATH — cannot safely isolate the new PR URL from tool_response; if this created a PR, post '@coderabbitai review' on it manually (CodeRabbit is best effort, so nothing is held)"
     exit 0
 fi
 
@@ -323,11 +322,11 @@ if printf '%s\n' "$existing" | grep -qiE '@coderabbitai[[:space:]]+(full[[:space
 fi
 
 # Post the trigger. Non-blocking on failure: the PR is already created; the
-# gate's skipped/absent arms are the backstop that refuses green without it.
+# merge-on-green's one backstop post may still trigger the head before a merge.
 if gh pr comment "$num" --repo "$repo_path" --body "@coderabbitai review" >/dev/null 2>&1; then
     echo "trigger-cr-on-pr-create: posted @coderabbitai review on PR #$num ($repo_path)" >&2
 else
-    warn "WARNING: failed to post @coderabbitai review on PR #$num — post it manually; the merge gate refuses green until a genuine review lands at head"
+    warn "WARNING: failed to post @coderabbitai review on PR #$num — post it manually for a review; CodeRabbit is best effort, so nothing is held"
 fi
 
 exit 0

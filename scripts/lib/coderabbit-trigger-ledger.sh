@@ -9,10 +9,12 @@
 # Both match the BASH COMMAND STRING, so a PR opened or advanced from INSIDE
 # a script matches neither. scripts/lib/forge-github.sh is the
 # third caller: it triggers from the create/edit seam every such script
-# already routes through. All three obey the SAME invariant: trigger at most
+# already routes through. scripts/handover/merge-on-green.sh is the fourth:
+# before a merge it posts the trigger when the ledger lacks the head. Every
+# caller obeys the SAME invariant: trigger at most
 # ONCE per (repo, PR, head SHA) — so the seam and the hooks can never
 # double-post for one head. This file is the shared, load-bearing dedup —
-# sourced by all three, never run directly.
+# sourced by every caller, never run directly.
 #
 # `gh` is invoked as `${GH_CMD:-gh}` (the forge seam's existing stub hook,
 # scripts/lib/forge-github.sh `_gh`) so the forge tests can exercise the post
@@ -31,7 +33,7 @@
 # (exactly what a compound `git push && gh pr create` fires) can both read
 # "not yet triggered" before either records it, so worst case both post.
 # Accepted: a duplicate trigger costs one extra CodeRabbit review; a missed
-# trigger is caught loudly by the merge gate refusing green. Upgrade path if
+# trigger costs one PR with no CodeRabbit review. Upgrade path if
 # that ever stops holding (e.g. CodeRabbit review credits become the scarce
 # resource): a per-key mkdir claim, same primitive as
 # scripts/graphify/refresh-graph-map.sh's _promote_lock_acquire.
@@ -58,14 +60,13 @@
 # the single function BOTH hooks (and the forge seam) route every post
 # through — rather than in either hook individually: a seam on only one
 # hook is half a lever, since either a create or a later push can consume
-# the same slot for the same PR. Suppression is SAFE to add precisely
-# because check-ci.sh's skipped/absent arms already refuse green until a
-# genuine review lands at head (see the header above) — a suppressed
-# trigger can only DEFER the review to a moment the chief chooses, never
-# silently ship one unreviewed. That backstop is also why suppression must
-# not record the ledger: the review is deferred, not satisfied, so a later
-# un-suppressed call for the same (repo, PR, SHA) must still be free to
-# post.
+# the same slot for the same PR. Suppression is NOT backed by a gate:
+# check-ci.sh only prints a NOTE for a skipped, absent or rate-limited
+# CodeRabbit status, so a suppressed head can merge with no CodeRabbit
+# review; only the thread and body-findings gates still apply. Suppression
+# must still not record the ledger: the review is deferred, not satisfied,
+# so a later un-suppressed call for the same (repo, PR, SHA) must still be
+# free to post, and merge-on-green's one backstop post may post it later.
 #
 # Opt-out ONLY, default ON: an unset/empty CR_TRIGGER_SUPPRESS changes
 # nothing. The hook's own header explains why — on 2026-07-29 triggering
@@ -168,8 +169,8 @@ _cr_trigger_allowlisted() {
 #       App on, and the test seam.
 # Anything else — an upstream PR, a contribution to someone's fork, a repo
 # whose arming we cannot see — is rc 1. Fail-CLOSED on its own errors
-# (unparseable origin, libs unloadable): the cost of a missed trigger is a
-# merge gate that refuses green until someone comments, which is loud; the
+# (unparseable origin, libs unloadable): the cost of a missed trigger is one
+# PR with no CodeRabbit review; the
 # cost of a wrong post is a comment on a stranger's PR, which is not ours to
 # make.
 cr_trigger_repo_armed() {
@@ -336,7 +337,7 @@ cr_trigger_post_review() {
     # the window clears.
     local rl_evidence
     if rl_evidence=$(cr_trigger_rate_limited "$repo_path"); then
-        warn "CodeRabbit reads rate-limited for $repo_path (last seen on ${rl_evidence%% *}: \"${rl_evidence#* }\") — not spending another attempt on head ${sha} for PR #$num; check-ci's skipped/absent arms remain the backstop, and a later create/push will retry once the window clears"
+        warn "CodeRabbit reads rate-limited for $repo_path (last seen on ${rl_evidence%% *}: \"${rl_evidence#* }\") — not spending another attempt on head ${sha} for PR #$num; check-ci only prints a NOTE; a later create, push or merge-on-green run retries once the window clears"
         return 0
     fi
 
@@ -352,8 +353,7 @@ cr_trigger_post_review() {
             # invariant above: the scan must never BLOCK a legitimate new-head
             # trigger. Skipping the record keeps the failure in the CHEAP
             # direction — a later push may post a duplicate (one extra review)
-            # instead of suppressing the review entirely (merge gate refuses
-            # green with no way to re-trigger).
+            # instead of suppressing the review entirely.
             warn "found an existing @coderabbitai trigger comment on PR #$num ($repo_path) — not posting for head ${sha}, and NOT recording it (the scan is repo-wide, so this match may predate this head; a later push may re-trigger)"
             return 0
         fi
@@ -364,7 +364,7 @@ cr_trigger_post_review() {
             || warn "WARNING: posted the trigger but could not record head ${sha} in the ledger — a later event may re-post it"
         echo "posted @coderabbitai review on PR #$num ($repo_path) for head ${sha}" >&2
     else
-        warn "WARNING: failed to post @coderabbitai review on PR #$num — post it manually; the merge gate refuses green until a genuine review lands at head"
+        warn "WARNING: failed to post @coderabbitai review on PR #$num — post it manually for a review; CodeRabbit is best effort, so nothing is held"
     fi
     return 0
 }
