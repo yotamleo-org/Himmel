@@ -289,14 +289,14 @@ else
 fi
 assert "thin-body heuristic flagged for LUNA-27 followup" "yes" "$found"
 
-# 11g — LUNA-26 + LUNA-27 referenced
-for ticket in "LUNA-26" "LUNA-27"; do
-    if grep -qF "$ticket" "$CMD"; then
+# 11g — the clip-body pivot and the playwright-based crawl hand-off are named
+for phrase in "clip-body pivot" "playwright-based crawl"; do
+    if grep -qiF "$phrase" "$CMD"; then
         found=yes
     else
         found=no
     fi
-    assert "cross-ref to $ticket present" "yes" "$found"
+    assert "cross-ref to $phrase present" "yes" "$found"
 done
 
 echo "Test 12: LUNA-53 — scan excludes Clippings/_synthesis/ (synthesize output, not source clips)"

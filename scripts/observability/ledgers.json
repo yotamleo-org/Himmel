@@ -356,6 +356,20 @@
       "envelope": ["v", "ts", "host", "source", "kind"],
       "grandfathered": false,
       "_note": "One row per remote-model qmd-reindex run: usage_before and usage_after (the provider key's cumulative usage, or the string unknown when the read failed), chunks embedded, bound 'upper, shared key' because other qmd processes share the key. No reader yet: it prices a post-merge embed and the saving from keeping qmd's query cache across an update."
+    },
+    {
+      "id": "launch-refusals",
+      "default_path": "~/.himmel/launch-refusals.jsonl",
+      "override_env": "",
+      "writer": "scripts/handover/chief-kit/headed-arm-worker.sh",
+      "readers": ["scripts/eval/worker-digest/tool-health.mjs"],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false,
+      "_note": "One row per worker launch that headed-arm-worker.sh refuses after its seam guard, or whose headed-arm.sh child does not report a launch: cause (closed set), rc, the first line of the refusal. Written by the launcher's EXIT trap, never on --dry-run or a forwarded signal. There is no path override."
     }
   ]
 }

@@ -181,17 +181,21 @@ export async function read(root, name) {
     try {
       const closed = await segments(root, name);
       const liveK = closed.length ? closed.at(-1)[0] + 1 : 0;
-      const selected = closed.find(([k]) => k === cur.k);
-      let buf;
-      if (selected) buf = await segment(selected[1]);
-      else {
-        if (cur.k !== liveK) throw new Error('cursor segment missing');
-        try { buf = await bytes(p.file); }
-        catch (error) { if (error.code !== 'ENOENT') throw error; buf = Buffer.alloc(0); }
-      }
+      const load = async k => {
+        const found = closed.find(([n]) => n === k);
+        if (found) return [found, await segment(found[1])];
+        if (k !== liveK) throw new Error('cursor segment missing');
+        try { return [undefined, await bytes(p.file)]; }
+        catch (error) { if (error.code !== 'ENOENT') throw error; return [undefined, Buffer.alloc(0)]; }
+      };
+      let [selected, buf] = await load(cur.k);
       // One segment per batch bounds decompression independently of backlog.
       if (cur.off > buf.length) throw new Error('cursor beyond EOF');
       if (cur.off > 0 && buf[cur.off - 1] !== 10) throw new Error('cursor not on record boundary');
+      if (selected && cur.off === buf.length) {
+        next = { ...cur, k: cur.k + 1, off: 0 };
+        [selected, buf] = await load(next.k);
+      }
       while (next.off < buf.length) {
         // Verify each parsed record before reading the next: a malformed
         // later line must not hide an earlier break or its actual sequence.
@@ -202,7 +206,7 @@ export async function read(root, name) {
         next = batch.next;
         records.push(record); cursors.push(next);
       }
-      if (selected) next = { ...next, k: cur.k + 1, off: 0 };
+      if (selected) next = { ...next, k: next.k + 1, off: 0 };
       return { records, next, cursors };
     } catch (error) {
       // Filesystem failures are retryable errors, not evidence of tampering.

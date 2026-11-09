@@ -17,7 +17,7 @@ disable-model-invocation: true
 >    named symbol and its callers (`git grep`); neither skill ships in himmel.
 > 3. Steps 3 and 4: `/architect` and the `principle-*` skills are not shipped;
 >    the sketch is a short inline note, and "intent only" guidance is kept as prose.
-> 4. `ponytail:` markers (`docs/internals/ponytail-convention.md`) join the keep
+> 4. Ponytail markers (`docs/internals/code-comments.md`) join the keep
 >    list. This is also in the agent file.
 >
 > No other wording differs from the pinned commit.

@@ -1,5 +1,3 @@
-<!-- Moved verbatim out of triage-clips.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 **Phase 6 — Promotion candidate annotation.**
 
 - Pick a promotion target based on `type:` + inferred tags. Use Phase 0 Folder Map if present, else fall back to Luna defaults:
@@ -17,7 +15,7 @@
   - **Suggested target:** `<absolute or vault-relative folder path>`
   - **Rationale:** {1 sentence — why this folder fits}
   - **Bi-temporal anchor:** when promoted, the new note should carry `derived_from: "[[Clippings/<clip-relative-path>]]"` (quoted — unquoted wikilinks parse as nested YAML flow sequences) and its own fresh `date:` field.
-  - **Template:** promotion = instantiate the matching vault template, NOT freeform writing (HIMMEL-259) — `[[_Templates/Concept]]` for `30-Resources/Concepts/` targets, `[[_Templates/Tech]]` for `30-Resources/Tech/` targets. Per-type required frontmatter: vault `_CLAUDE.md` → Frontmatter Requirements.
+  - **Template:** promotion = instantiate the matching vault template, NOT freeform writing (schema-first promoted notes) — `[[_Templates/Concept]]` for `30-Resources/Concepts/` targets, `[[_Templates/Tech]]` for `30-Resources/Tech/` targets. Per-type required frontmatter: vault `_CLAUDE.md` → Frontmatter Requirements.
   ```
   (Substitute `TODAY` per the Date substitution rule. Only emit the **Template:** line when the suggested target resolves to `30-Resources/Concepts/` or `30-Resources/Tech/` (suffix/path-component match, so absolute paths qualify too) — other targets have no typed template yet.)
 

@@ -435,7 +435,8 @@ printf 'HANDOVER_DIR=%s\nUSER_SLUG=ownslug\n' "$own/state-fixture" > "$own/.env"
 foreign="$ROOT/foreign-repo"
 mkdir -p "$foreign/nested"
 ( cd "$foreign" && git init -q )
-out=$(cd "$foreign/nested" && env -u HANDOVER_DIR -u USER_SLUG bash "$own/scripts/handover/worker-timeline.sh" 2026-08-03T00:00 2>&1); rc=$?
+# HIMMEL_CONFIG_DIR at an empty dir: the station config layer (himmel.conf) sits before .env.
+out=$(cd "$foreign/nested" && env -u HANDOVER_DIR -u USER_SLUG HIMMEL_CONFIG_DIR="$ROOT/no-config" bash "$own/scripts/handover/worker-timeline.sh" 2026-08-03T00:00 2>&1); rc=$?
 check "own-checkout .env resolves rc=0" "$rc" "0"
 contains "own-checkout's HANDOVER_DIR used, not the foreign CWD repo" "$out" "$own/state-fixture/ownslug"
 

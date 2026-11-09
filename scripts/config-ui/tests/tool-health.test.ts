@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as sources from "../health-sources";
 import { rollupToolHealth } from "../../eval/worker-digest/tool-health.mjs";
+import { buildRecord } from "../../eval/worker-digest/tool-health-record.mjs";
 import { startServer } from "../server";
 import { navLinks, parseLanding } from "../public/nav.js";
 
@@ -1554,4 +1555,138 @@ test("the Failed card names blocked reports apart from errors and denials", asyn
   const shown = { ...data, tools: data.tools.map((t: any, i: number) => (i === 0 ? { ...t, blocked: 4 } : t)) };
   expect(kpiSub(await page(shown), "failed")).toContain("3 errors · 5 denied · 4 blocked reports (not failures)");
   expect(kpiSub(await page(data), "failed")).not.toContain("blocked");
+});
+
+function launchRow(over: any = {}) { return { v: 1, ts: "2026-10-07T12:00:00Z", host: "h", source: "headed-arm-worker", kind: "launch-refused", name: "HIMMEL-1-N1", cause: "bus-register", rc: 2, line: null, ...over }; }
+function seedLaunches(rows: any[], raw: string[] = []) {
+  const env = seed(); mkdirSync(join(env.HOME, ".himmel"), { recursive: true });
+  writeFileSync(join(env.HOME, ".himmel", "launch-refusals.jsonl"), [...rows.map((r) => JSON.stringify(r)), ...raw].join("\n") + "\n");
+  return env;
+}
+
+test("launches refused are counted by cause", () => {
+  const data = read(seedLaunches([
+    launchRow({ ts: "2026-10-07T12:00:00Z" }), launchRow({ ts: "2026-10-07T13:00:00Z" }),
+    launchRow({ ts: "2026-10-06T12:00:00Z", cause: "fleet-cap", rc: 10 }),
+    launchRow({ ts: "2026-10-05T12:00:00Z", cause: "Bad Cause!", rc: 3 }),
+    launchRow({ ts: "2026-10-04T12:00:00Z", cause: "fleet-cap", rc: 10, line: "bus register failed" }),
+  ]));
+  const l = data.launches_refused;
+  expect(l).toMatchObject({ state: "ok", total: 5, skipped: 0 });
+  expect(l.by_cause).toEqual([
+    { cause: "bus-register", count: 2, rc: { "2": 2 } },
+    { cause: "fleet-cap", count: 2, rc: { "10": 2 } },
+    { cause: "other", count: 1, rc: { "3": 1 } },
+  ]);
+  expect(l.recent[0]).toEqual({ ts: "2026-10-07T13:00:00Z", name: "HIMMEL-1-N1", cause: "bus-register", rc: 2, line: null });
+});
+
+test("launch rows are validated field by field", () => {
+  const good = JSON.stringify(launchRow());
+  const bad = [
+    "{not json", "[]", "7", JSON.stringify({ ...launchRow(), v: 2 }), JSON.stringify({ ...launchRow(), ts: "not a date" }),
+    JSON.stringify({ ...launchRow(), ts: 5 }), JSON.stringify({ ...launchRow(), rc: 2.5 }), JSON.stringify({ ...launchRow(), rc: "2" }),
+    JSON.stringify({ ...launchRow(), cause: 7 }), JSON.stringify({ ...launchRow(), name: 7 }), JSON.stringify({ ...launchRow(), line: 7 }),
+    JSON.stringify({ ...launchRow(), rc: 1e300 }),
+  ];
+  expect(read(seedLaunches([], bad)).launches_refused).toMatchObject({ state: "ok", total: 0, skipped: bad.length });
+  expect(read(seedLaunches([], [good, ...bad])).launches_refused).toMatchObject({ total: 1, skipped: bad.length });
+});
+
+test("launch rows respect the window edges", () => {
+  const rows = [launchRow({ ts: "2026-10-01T00:00:00Z" }), launchRow({ ts: "2026-09-30T23:59:59Z" }), launchRow({ ts: "2026-10-08T00:00:00Z" })];
+  expect(read(seedLaunches(rows)).launches_refused.total).toBe(1);
+  const many = Array.from({ length: 25 }, (_, i) => launchRow({ ts: `2026-10-07T${String(i % 24).padStart(2, "0")}:00:00Z`, name: `N${i}` }));
+  const l = read(seedLaunches(many)).launches_refused;
+  expect(l.total).toBe(25);
+  expect(l.recent).toHaveLength(20);
+  expect(l.recent[0].ts >= l.recent[19].ts).toBe(true);
+});
+
+test("the launch ledger changes no other key", () => {
+  const env = seed();
+  const before = read(env);
+  mkdirSync(join(env.HOME, ".himmel"), { recursive: true });
+  writeFileSync(join(env.HOME, ".himmel", "launch-refusals.jsonl"), JSON.stringify(launchRow()) + "\n");
+  const after = read(env);
+  const strip = (d: any) => { const { launches_refused, ...rest } = d; return rest; };
+  expect(strip(after)).toEqual(strip(before));
+  expect(buildRecord(after, { day: "2026-10-07" })).toEqual(buildRecord(before, { day: "2026-10-07" }));
+  expect(before.launches_refused.state).toBe("absent");
+  expect(after.launches_refused.state).toBe("ok");
+});
+
+test("no ledger reads absent, and a rollup given no launches reads not-read", () => {
+  expect(read(seed()).launches_refused).toEqual({ state: "absent", total: 0, by_cause: [], recent: [], skipped: 0 });
+  expect(rollupToolHealth([], [], new URLSearchParams(), Date.parse("2026-10-07T12:00:00Z")).launches_refused).toEqual({ state: "not-read" });
+});
+
+test("a ledger that cannot be read reads not-read, never absent", () => {
+  const env = seed(); mkdirSync(join(env.HOME, ".himmel", "launch-refusals.jsonl"), { recursive: true });
+  expect(read(env).launches_refused).toEqual({ state: "not-read" });
+});
+
+function writeLaunches(env: any, rows: any[]) {
+  mkdirSync(join(env.HOME, ".himmel"), { recursive: true });
+  writeFileSync(join(env.HOME, ".himmel", "launch-refusals.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+  return env;
+}
+const SUB_LAUNCHES = "Worker launches not confirmed as started, by cause. Whole fleet: the filters above do not apply. Exit 7 and 9 may still have come up late.";
+
+test("the overview shows launches refused after the Tools box", async () => {
+  const env = writeLaunches(seedP(), [
+    launchRow({ ts: "2026-10-27T12:00:00Z", cause: "bus-register", rc: 2, line: "name already registered" }),
+    launchRow({ ts: "2026-10-26T09:00:00Z", cause: "fleet-cap", rc: 10, name: null }),
+    launchRow({ ts: "2026-10-26T10:00:00Z", cause: "fleet-cap", rc: 10 }),
+  ]);
+  const html = await page(readP(env));
+  const at = (s: string) => html.indexOf(s);
+  expect(at('id="th-tools"')).toBeGreaterThan(-1);
+  expect(at('id="th-launches"')).toBeGreaterThan(at('id="th-tools"'));
+  expect(at('class="th-cols"')).toBeGreaterThan(at('id="th-launches"'));
+  expect(html).toContain("Launches refused");
+  expect(html).toContain(SUB_LAUNCHES);
+  expect(cells(html, "data-launch-cause")).toEqual([["fleet-cap", ["fleet-cap", "2", "10 ×2"]], ["bus-register", ["bus-register", "1", "2 ×1"]]]);
+  expect(html).toMatch(/<details data-launch-recent>/);
+  expect(html).not.toMatch(/<details data-launch-recent open/);
+  expect(cells(html, "data-launch-row")).toEqual([
+    ["2026-10-27T12:00:00Z", ["2026-10-27 12:00:00 UTC", "HIMMEL-1-N1", "bus-register", "2", "name already registered"]],
+    ["2026-10-26T10:00:00Z", ["2026-10-26 10:00:00 UTC", "HIMMEL-1-N1", "fleet-cap", "10", "see the launch log"]],
+    ["2026-10-26T09:00:00Z", ["2026-10-26 09:00:00 UTC", "—", "fleet-cap", "10", "see the launch log"]],
+  ]);
+});
+
+test("launches refused show with no session in the window", async () => {
+  const none = { HIMMEL_EVAL_RUNS_LEDGER: "/no/evals", HIMMEL_WORKER_SESSION_FAILURES_LEDGER: "/no/fail", CLAUDE_CONFIG_DIR: "/no/config" };
+  const dir = mkdtempSync(join(tmpdir(), "tool-health-")); dirs.push(dir);
+  const noSessions = readP(writeLaunches({ ...none, HOME: dir }, [launchRow({ ts: "2026-10-27T12:00:00Z" })]));
+  expect(noSessions.state).toBe("absent");
+  const html = await page(noSessions);
+  expect(html).toContain("No recorded tool observations in this window");
+  expect(html).toContain('id="th-launches"');
+  expect(cells(html, "data-launch-cause")).toEqual([["bus-register", ["bus-register", "1", "2 ×1"]]]);
+  const env = writeLaunches(seedP(), [launchRow({ ts: "2026-10-27T12:00:00Z", cause: "brief-lint" })]);
+  const filtered = await page(readP(env, new URLSearchParams({ model: "absent" })));
+  expect(filtered).toContain("No observations match these filters");
+  expect(cells(filtered, "data-launch-cause")).toEqual([["brief-lint", ["brief-lint", "1", "2 ×1"]]]);
+});
+
+test("the launches box says what it did not find", async () => {
+  const base = readP(seedP());
+  const box = (launches: any) => page({ ...base, launches_refused: launches });
+  expect(await box({ state: "absent", total: 0, by_cause: [], recent: [], skipped: 0 })).toContain("No launch refusal recorded yet.");
+  expect(await box({ state: "ok", total: 0, by_cause: [], recent: [], skipped: 0 })).toContain("No launch refused in this window.");
+  const unread = await box({ state: "ok", total: 0, by_cause: [], recent: [], skipped: 3 });
+  expect(unread).toContain("3 unreadable rows");
+  expect(await box({ state: "ok", total: 0, by_cause: [], recent: [], skipped: 0 })).not.toContain("unreadable");
+  expect(await box({ state: "not-read" })).toContain("Launch refusals were not read for this response.");
+});
+
+test("the launches box escapes every value", async () => {
+  const evil = `<img src=x onerror=alert(1)>`;
+  const html = await page({ ...readP(seedP()), launches_refused: { state: "ok", total: 1, by_cause: [{ cause: "other", count: 1, rc: { "2": 1 } }],
+    recent: [{ ts: "2026-10-27T12:00:00Z", name: evil, cause: "other", rc: 2, line: `<b>"&` }], skipped: 0 } });
+  expect(html).not.toContain(evil);
+  expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+  expect(html).not.toContain(`<b>"&`);
 });

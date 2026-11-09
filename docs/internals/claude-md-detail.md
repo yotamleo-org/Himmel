@@ -81,11 +81,14 @@ escalate to a hook, gate or classifier, never to stronger prose. Frame + worked
 examples:
 [`docs/internals/context-architecture.md`](context-architecture.md).
 
-### Honesty markers — `ponytail:`
-`ponytail: <ceiling>, <upgrade path>` marks a known, deliberate simplification
-(limitation AND the ticket or trigger to revisit it) →
-[`docs/internals/ponytail-convention.md`](ponytail-convention.md).
-Other code comments: keep list only, never ticket/review history. No added line of any tracked text file carries a ticket key unless a row of `scripts/lint/ticket-ref-allow.tsv` covers it (gate: `check-history-comments`, same doc).
+### Honesty markers — the ceilings ledger
+An accepted ceiling (what the code deliberately does not do, and what would
+justify lifting it) is a row in the private ceilings ledger, written with
+`scripts/ledger/ceiling-add.sh` and shown to /pr-check and the judges by
+`scripts/ledger/ceiling-lookup.sh`; it is never a code comment. The
+history-comment gate refuses a new ponytail marker →
+[`docs/internals/code-comments.md`](code-comments.md).
+Code comments: keep list only, never ticket/review history. No added line of any tracked text file carries a ticket key unless a row of `scripts/lint/ticket-ref-allow.tsv` covers it (gate: `check-history-comments`, same doc).
 
 ### Renaming a name
 A rename lands as one finished change: alias row first, one shared reader, writers

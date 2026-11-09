@@ -20,10 +20,10 @@ Three item types:
   `bugs.md`, `reviewer-notes.md`).
 - **Standalone** — a one-off not under any epic (`standalones/<id>-<slug>/`).
 
-IDs are **Jira-keyed by default** (`HIMMEL-42-<slug>`) when a Jira project is
+IDs are **Jira-keyed by default** (`PROJ-42-<slug>`) when a Jira project is
 registered, falling back to a repo-wide running `#N` when offline. Cross-bucket
 counters never collide — the counter scope is `<state-root>`-wide, never
-per-bucket (HIMMEL-129).
+per-bucket.
 
 ## Install
 
@@ -54,7 +54,7 @@ though the himmel repo also wires explicit `/handover *` commands.
 | `/handover bugs [--open]` | Cross-item dashboard of every tracked bug (item / id / status / symptom / #fixes + totals). Read-only. |
 | `/handover lessons` | Proposal-only sweep: recurring resolved-bug symptoms + CR findings as lesson candidates. Writes nothing. |
 | `end-session [id]` | Consolidate session work into a `next-session-N.md` snapshot for the named item. |
-| `/handover bucket <id> <bucket>` | Move an item between source buckets (HIMMEL-307). |
+| `/handover bucket <id> <bucket>` | Move an item between source buckets. |
 | `/handover priority <id> <priority>` | Set an item's priority. |
 | `/handover jira-link <id> [<key>]` | Link (or relink) an item to a Jira key. |
 | `/handover defaults <subcommand>` | Inspect / set / clear per-repo prompt defaults (Jira auto-create, slug style, bucket). |

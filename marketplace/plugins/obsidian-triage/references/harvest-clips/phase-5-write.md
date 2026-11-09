@@ -1,5 +1,3 @@
-<!-- Moved verbatim out of harvest-clips.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
 **Phase 5 — G-3 single-section-add invariant + write (atomic sequence).**
 
 The write sequence is **atomic** — all steps must succeed OR the clip is reverted to the Phase 1 baseline. Path-specific behavior:

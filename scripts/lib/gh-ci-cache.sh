@@ -416,7 +416,7 @@ EOF
     return "$rc"
 }
 
-_cic_is_rl() { printf '%s' "${1:-}" | grep -i -E 'rate limit|RATE_LIMITED|abuse detection|secondary rate' >/dev/null 2>&1; }
+_cic_is_rl() { ghb_is_rate_limited "${1:-}"; }
 
 # _cic_budget_wait <force> — read the free rate_limit endpoint; when the
 # graphql bucket is under the floor (or <force>=1 after a rate-limit error), sleep until the reset.
