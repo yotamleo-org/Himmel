@@ -125,7 +125,7 @@ for m in reset-past reset-absent reset-absurd; do
 done
 g=$(gate secondary)
 has "G4 Retry-After wins over the reset: about 60 s away" "75|" "$g"
-check "G4b the Retry-After distance" "yes" "$(printf '%s' "$g" | grep -qE '\(in (5[5-9]|60)s\)' && echo yes || echo "no: $g")"
+check "G4b the Retry-After distance" "yes" "$(grep -qE '\(in (5[5-9]|60)s\)' <<< "$g" && echo yes || echo "no: $g")"
 g=$(gate hung)
 check "G5 a timed-out probe pauses with the stall line" "75|GH-STALL github read timed out after 2s token=main caller=next-dispatchable nothing-was-judged" "$g"
 check "G6 a fast unreadable probe proceeds" "0|" "$(gate unreadable)"
