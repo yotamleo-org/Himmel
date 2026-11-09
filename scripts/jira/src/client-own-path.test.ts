@@ -8,6 +8,7 @@ import { stubKeyring } from '../../config-ui/tests/keyring-stub';
 
 const jiraDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const libDir = join(jiraDir, '..', 'lib');
+const policyRel = join('marketplace', 'plugins', 'himmel-ops', 'scripts');
 
 // The CLI reads credentials from its own install path, never the cwd.
 // A fixture install (<root>/scripts/jira/dist + a <root>/.env) is run from an
@@ -25,6 +26,9 @@ describe('CLI .env resolution from an unrelated cwd', () => {
     mkdirSync(installed, { recursive: true });
     cpSync(join(jiraDir, 'dist'), join(installed, 'dist'), { recursive: true });
     cpSync(join(jiraDir, 'package.json'), join(installed, 'package.json'));
+    // The built CLI imports the shared ticket policy from the himmel-ops plugin, as a checkout has it.
+    mkdirSync(join(root, policyRel), { recursive: true });
+    cpSync(join(jiraDir, '..', '..', policyRel, 'ticket-policy.mjs'), join(root, policyRel, 'ticket-policy.mjs'));
     symlinkSync(join(jiraDir, 'node_modules'), join(installed, 'node_modules'));
     // The built client imports the shared secrets helper from scripts/lib. The resolver itself is
     // not installed here, so this fixture never reaches a keyring (the rows below use their own).
@@ -133,6 +137,9 @@ describe('CLI credentials from the keyring', () => {
     mkdirSync(installed, { recursive: true });
     cpSync(join(jiraDir, 'dist'), join(installed, 'dist'), { recursive: true });
     cpSync(join(jiraDir, 'package.json'), join(installed, 'package.json'));
+    // The built CLI imports the shared ticket policy from the himmel-ops plugin, as a checkout has it.
+    mkdirSync(join(root, policyRel), { recursive: true });
+    cpSync(join(jiraDir, '..', '..', policyRel, 'ticket-policy.mjs'), join(root, policyRel, 'ticket-policy.mjs'));
     symlinkSync(join(jiraDir, 'node_modules'), join(installed, 'node_modules'));
     mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
     for (const f of ['resolve-secrets.mjs', 'himmel-secrets', 'load-dotenv.sh']) {

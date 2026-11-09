@@ -1,47 +1,12 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createTools, buildServer, type ToolDeps, type JiraTool } from './mcp.js';
-import { markdownToAdf } from './adf.js';
-import { PLAIN_BLOCK_TEMPLATE } from './plain-block.js';
-import { SECTORS, resetSectorCache } from './commands/sector.js';
-import { declare, type Ctx } from './release/engine.js';
+import type { CliResult, CliRunner } from './mcp-cli.js';
 
-vi.mock('node:child_process', async (orig) => {
-  const m = await orig<typeof import('node:child_process')>();
-  const spawnSync = ((cmd: string, args?: readonly string[], opts?: object) =>
-    cmd === 'bash' && String(args?.[0] ?? '').endsWith('/test-run-guard')
-      ? { status: 0, signal: null, output: [], pid: 0, stdout: null, stderr: null }
-      : m.spawnSync(cmd, args ?? [], opts ?? {})) as unknown as typeof m.spawnSync;
-  return { ...m, spawnSync };
-});
-
-// The Sector field is opt-in: these tests run with it configured unless one deletes the variable.
-beforeEach(() => {
-  resetSectorCache();
-  process.env.JIRA_SECTOR_FIELD = 'customfield_10212';
-});
-afterEach(() => {
-  delete process.env.JIRA_SECTOR_FIELD;
-});
-
-// The field's context and options are read live from Jira.
-function fieldReply(path: unknown): unknown {
-  const p = String(path);
-  if (p.split('?')[0].endsWith('/context')) return { values: [{ id: '1' }] };
-  if (p.includes('/option')) return { values: SECTORS.map((value) => ({ value })) };
-  return undefined;
-}
-
-const PLAIN_FILLED = PLAIN_BLOCK_TEMPLATE.replace(/<[^>\n]*>/g, 'filled');
-
-// Unit coverage for the MCP surface. We mock the underlying
-// client (`request` / `uploadAttachment`) and assert that every one of the
-// tools (a) is registered, (b) carries an input schema, and (c) on a
-// happy-path invocation routes to the client with the same payload the
-// corresponding CLI verb builds. The handlers reuse the SAME shared
-// functions the CLI verbs call, so this also pins parity.
+// The MCP server is a thin bridge: every tool maps to ONE fixed CLI verb through
+// its argv(args), and the handler runs that argv through the injected runner. These
+// tests pin the mapping, the error/warning pass-through and the server wiring.
+// The loopback run of the real CLI lives in mcp-cli.test.ts.
 
 const TOOL_NAMES = [
   'get',
@@ -66,19 +31,12 @@ function tool(name: string): JiraTool {
   return t;
 }
 
-/** A ToolDeps whose request returns `reply` and records its calls. */
-function mockDeps(reply: unknown = {}): {
-  deps: ToolDeps;
-  request: ReturnType<typeof vi.fn>;
-  uploadAttachment: ReturnType<typeof vi.fn>;
-} {
-  const request = vi.fn(async (_method?: string, path?: string) => fieldReply(path) ?? reply);
-  const uploadAttachment = vi.fn(async () => ({}));
-  return {
-    deps: { request, uploadAttachment } as unknown as ToolDeps,
-    request,
-    uploadAttachment,
-  };
+const argvOf = (name: string, args: Record<string, unknown>): string[] => tool(name).argv(args);
+
+/** A runner that answers `reply` and records every argv it was given. */
+function fakeRunner(reply: Partial<CliResult> = {}): { deps: ToolDeps; runCli: ReturnType<typeof vi.fn> } {
+  const runCli = vi.fn(async (_argv: string[]): Promise<CliResult> => ({ code: 0, stdout: '', stderr: '', ...reply }));
+  return { deps: { runCli: runCli as unknown as CliRunner }, runCli };
 }
 
 describe('MCP tool registration', () => {
@@ -104,483 +62,324 @@ describe('MCP tool registration', () => {
     expect(tool('attach').inputSchema.required).toEqual(['key', 'paths']);
     expect(tool('edit').inputSchema.required).toEqual(['key']);
     expect(tool('project-create').inputSchema.required).toEqual(['key', 'name']);
-    // list / projects have no required args (mirror optional-only verbs)
+    expect(tool('release').inputSchema.required).toEqual(['sub', 'release']);
     expect(tool('list').inputSchema.required).toBeUndefined();
     expect(tool('projects').inputSchema.required).toBeUndefined();
+  });
+
+  it('create exposes the placement fields the CLI requires', () => {
+    const props = Object.keys(tool('create').inputSchema.properties);
+    for (const p of ['fixVersion', 'proposedVersion', 'backlog', 'why', 'gate', 'labels', 'sector', 'parent']) {
+      expect(props).toContain(p);
+    }
+  });
+
+});
+
+describe('argv mapping: one fixed CLI verb per tool', () => {
+  it('get', () => {
+    expect(argvOf('get', { key: 'HIMMEL-1' })).toEqual(['get', 'HIMMEL-1']);
+    expect(argvOf('get', { key: 'HIMMEL-1', json: true, short: true })).toEqual(['get', 'HIMMEL-1', '--json', '--short']);
+    expect(argvOf('get', { key: 'HIMMEL-1', json: false })).toEqual(['get', 'HIMMEL-1']);
+  });
+
+  it('create with placement, in spec order', () => {
+    const md = '## Impact\nbody';
+    expect(argvOf('create', {
+      type: 'Task', title: 'T', desc: md, labels: 'standalone', backlog: true, proposedVersion: 'backlog', why: 'w',
+    })).toEqual([
+      'create', '--type', 'Task', '--title', 'T', '--desc', md, '--labels', 'standalone',
+      '--proposed-version', 'backlog', '--backlog', '--why', 'w',
+    ]);
+  });
+
+  it('create maps every field to its CLI flag', () => {
+    expect(argvOf('create', {
+      type: 'Bug', title: 'T', descFile: '/d.md', adfFile: '/a.json', parent: 'H-1', labels: 'a,b', sector: 'Ship loop',
+      project: 'H', priority: 'Highest', fixVersion: 'v2', gate: 'critical', attach: ['x.png', 'y.png'],
+    })).toEqual([
+      'create', '--type', 'Bug', '--title', 'T', '--desc-file', '/d.md', '--adf-file', '/a.json', '--parent', 'H-1',
+      '--labels', 'a,b', '--sector', 'Ship loop', '--project', 'H', '--priority', 'Highest', '--fix-version', 'v2',
+      '--gate', 'critical', '--attach', 'x.png', '--attach', 'y.png',
+    ]);
+  });
+
+  it('create passes a value that looks like a flag as one argv element, never splits it', () => {
+    expect(argvOf('create', { type: 'Task', title: '--why; rm -rf /' })).toEqual(['create', '--type', 'Task', '--title', '--why; rm -rf /']);
+  });
+
+  it('list', () => {
+    expect(argvOf('list', {})).toEqual(['list']);
+    expect(argvOf('list', { project: 'ABC', type: 'Task', status: 'Done', label: 'l', jql: 'x = 1', limit: '5' })).toEqual([
+      'list', '--project', 'ABC', '--type', 'Task', '--status', 'Done', '--label', 'l', '--jql', 'x = 1', '--limit', '5',
+    ]);
+  });
+
+  it('transition', () => {
+    expect(argvOf('transition', { key: 'HIMMEL-1', status: 'Done' })).toEqual(['transition', 'HIMMEL-1', 'Done']);
+  });
+
+  it('transition noVersion becomes --no-version', () => {
+    expect(argvOf('transition', { key: 'HIMMEL-1', status: 'Done', noVersion: true })).toEqual(['transition', 'HIMMEL-1', 'Done', '--no-version']);
+    expect(argvOf('transition', { key: 'HIMMEL-1', status: 'Done', noVersion: false })).toEqual(['transition', 'HIMMEL-1', 'Done']);
+  });
+
+  it('transitions', () => {
+    expect(argvOf('transitions', { key: 'HIMMEL-1' })).toEqual(['transitions', 'HIMMEL-1']);
+  });
+
+  it('comment with text puts -- before the key and the text', () => {
+    expect(argvOf('comment', { key: 'HIMMEL-1', text: 'hi' })).toEqual(['comment', '--', 'HIMMEL-1', 'hi']);
+    expect(argvOf('comment', { key: 'HIMMEL-1', text: '--json' })).toEqual(['comment', '--', 'HIMMEL-1', '--json']);
+  });
+
+  it('comment with a file or ADF file keeps the flags before the --', () => {
+    expect(argvOf('comment', { key: 'HIMMEL-1', commentFile: '/c.md', attach: ['a.png'] })).toEqual([
+      'comment', '--comment-file', '/c.md', '--attach', 'a.png', '--', 'HIMMEL-1',
+    ]);
+    expect(argvOf('comment', { key: 'HIMMEL-1', adfFile: '/c.json' })).toEqual(['comment', '--adf-file', '/c.json', '--', 'HIMMEL-1']);
+  });
+
+  it('comment with an empty-string text is still text', () => {
+    expect(argvOf('comment', { key: 'HIMMEL-1', text: '' })).toEqual(['comment', '--', 'HIMMEL-1', '']);
+  });
+
+  it('comment with no text, file or ADF throws before anything runs', async () => {
+    const { deps, runCli } = fakeRunner();
+    await expect(tool('comment').handler({ key: 'HIMMEL-1' }, deps)).rejects.toThrow(/comment requires text or commentFile or adfFile/);
+    expect(runCli).not.toHaveBeenCalled();
+  });
+
+  it('attach puts -- before the key and the paths', () => {
+    expect(argvOf('attach', { key: 'HIMMEL-1', paths: ['x.txt', '-y.txt'] })).toEqual(['attach', '--', 'HIMMEL-1', 'x.txt', '-y.txt']);
+  });
+
+  it('edit', () => {
+    expect(argvOf('edit', { key: 'HIMMEL-1' })).toEqual(['edit', 'HIMMEL-1']);
+    expect(argvOf('edit', { key: 'HIMMEL-1', priority: 'High', severity: 's', title: 'New', parent: 'H-2', labels: 'a,b', sector: 'Ship loop' })).toEqual([
+      'edit', 'HIMMEL-1', '--priority', 'High', '--severity', 's', '--title', 'New', '--parent', 'H-2', '--labels', 'a,b', '--sector', 'Ship loop',
+    ]);
+  });
+
+  it('edit desc is an alias of --description', () => {
+    expect(argvOf('edit', { key: 'HIMMEL-1', desc: 'd' })).toEqual(['edit', 'HIMMEL-1', '--description', 'd']);
+    expect(argvOf('edit', { key: 'HIMMEL-1', description: 'd2', desc: 'd' })).toEqual(['edit', 'HIMMEL-1', '--description', 'd2']);
+  });
+
+  it('edit descFile wins over desc', () => {
+    expect(argvOf('edit', { key: 'HIMMEL-1', descFile: '/d.md', desc: 'd' })).toEqual(['edit', 'HIMMEL-1', '--desc-file', '/d.md']);
+  });
+
+  it('projects', () => {
+    expect(argvOf('projects', {})).toEqual(['projects']);
+    expect(argvOf('projects', { limit: '10' })).toEqual(['projects', '--limit', '10']);
+  });
+
+  it('project-create', () => {
+    expect(argvOf('project-create', { key: 'NEW', name: 'New Proj' })).toEqual(['project-create', '--key', 'NEW', '--name', 'New Proj']);
+    expect(argvOf('project-create', { key: 'NEW', name: 'N', type: 'software', template: 't', lead: 'acct' })).toEqual([
+      'project-create', '--key', 'NEW', '--name', 'N', '--type', 'software', '--template', 't', '--lead', 'acct',
+    ]);
+  });
+
+  it('roadmap-set', () => {
+    expect(argvOf('roadmap-set', { key: 'HIMMEL-1', readiness: '4', effort: 'S', noRoi: true })).toEqual([
+      'roadmap', 'set', 'HIMMEL-1', '--readiness', '4', '--effort', 'S', '--no-roi',
+    ]);
+    expect(argvOf('roadmap-set', {
+      key: 'HIMMEL-1', theme: 't', goals: 'G1', impact: '3', alignment: '0.5', guard: true, auditDate: '2026-11-09',
+      auditEvidence: 'http://e', closeCandidate: 'no',
+    })).toEqual([
+      'roadmap', 'set', 'HIMMEL-1', '--theme', 't', '--goals', 'G1', '--impact', '3', '--alignment', '0.5', '--guard',
+      '--audit-date', '2026-11-09', '--audit-evidence', 'http://e', '--close-candidate', 'no',
+    ]);
+  });
+
+  it('roadmap-get', () => {
+    expect(argvOf('roadmap-get', { key: 'HIMMEL-1' })).toEqual(['roadmap', 'get', 'HIMMEL-1']);
+  });
+
+  it('rank', () => {
+    expect(argvOf('rank', { key: 'HIMMEL-2', after: 'HIMMEL-1' })).toEqual(['rank', 'HIMMEL-2', '--after', 'HIMMEL-1']);
+    expect(argvOf('rank', { key: 'HIMMEL-2', before: 'HIMMEL-3' })).toEqual(['rank', 'HIMMEL-2', '--before', 'HIMMEL-3']);
+  });
+});
+
+describe('argv mapping: release subs', () => {
+  const rel = (args: Record<string, unknown>) => argvOf('release', { release: 'R1', ...args });
+
+  it('state', () => {
+    expect(rel({ sub: 'state' })).toEqual(['release', 'state', 'R1']);
+    expect(rel({ sub: 'state', json: true, mirrorRoot: '/m' })).toEqual(['release', 'state', 'R1', '--json', '--mirror-root', '/m']);
+  });
+
+  it('request: an evidence object becomes one JSON string', () => {
+    expect(rel({ sub: 'request', verb: 'INTAKE', key: 'K-2', from: 'backlog', to: 'v1', why: 'found work', evidence: { parent: 'K-1', n: 2 } })).toEqual([
+      'release', 'request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--from', 'backlog', '--to', 'v1', '--why', 'found work',
+      '--evidence', '{"parent":"K-1","n":2}',
+    ]);
+  });
+
+  it('request without evidence carries no --evidence', () => {
+    expect(rel({ sub: 'request', verb: 'INTAKE', key: 'K-2', to: 'v1', why: 'w' })).toEqual([
+      'release', 'request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'w',
+    ]);
+  });
+
+  it('claim', () => {
+    expect(rel({ sub: 'claim' })).toEqual(['release', 'claim', 'R1']);
+  });
+
+  it('rule', () => {
+    expect(rel({
+      sub: 'rule', req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', to: 'v1', sector: 'Planning & tracking', ground: 'regression', reason: 'r',
+      supersedes: 'A-1', authority: 'rm', ref: 'O-9',
+    })).toEqual([
+      'release', 'rule', 'R1', '--req', 'Q-R1-0001', '--outcome', 'ADMIT', '--op', 'add', '--to', 'v1', '--sector', 'Planning & tracking',
+      '--ground', 'regression', '--reason', 'r', '--supersedes', 'A-1', '--authority', 'rm', '--ref', 'O-9',
+    ]);
+  });
+
+  it('apply needs a ruling', () => {
+    expect(rel({ sub: 'apply', ruling: 'RUL-1' })).toEqual(['release', 'apply', 'R1', 'RUL-1']);
+    expect(() => rel({ sub: 'apply' })).toThrow(/ruling is required/);
+  });
+
+  it('lease-acquire', () => {
+    expect(rel({ sub: 'lease-acquire', expectEpoch: 3, doc: '/abs/doc.md', session: 'chief' })).toEqual([
+      'release', 'lease', 'acquire', 'R1', '--expect-epoch', '3', '--doc', '/abs/doc.md', '--session', 'chief',
+    ]);
+  });
+
+  it('lease-release', () => {
+    expect(rel({ sub: 'lease-release' })).toEqual(['release', 'lease', 'release', 'R1']);
+  });
+
+  it('an unknown sub throws before anything runs, including the operator-only verbs', async () => {
+    const { deps, runCli } = fakeRunner();
+    for (const sub of ['operator-declare', 'declare', 'lease', '', undefined]) {
+      await expect(tool('release').handler({ release: 'R1', sub }, deps)).rejects.toThrow(/sub is one of/);
+    }
+    expect(runCli).not.toHaveBeenCalled();
+  });
+
+  it('a missing release name throws before anything runs', async () => {
+    const { deps, runCli } = fakeRunner();
+    await expect(tool('release').handler({ sub: 'state' }, deps)).rejects.toThrow(/release is required/);
+    expect(runCli).not.toHaveBeenCalled();
+  });
+});
+
+describe('handler: runs the injected runner once with that argv', () => {
+  it('calls the runner exactly once with the tool argv and returns stdout', async () => {
+    const { deps, runCli } = fakeRunner({ stdout: 'Created HIMMEL-9\n' });
+    const out = await tool('transition').handler({ key: 'HIMMEL-1', status: 'Done' }, deps);
+    expect(runCli).toHaveBeenCalledTimes(1);
+    expect(runCli).toHaveBeenCalledWith(['transition', 'HIMMEL-1', 'Done']);
+    expect(out).toBe('Created HIMMEL-9');
+  });
+
+  it.each(TOOL_NAMES)('tool %s runs exactly its own argv', async (name) => {
+    const args: Record<string, unknown> = { key: 'K-1', status: 'Done', name: 'N', paths: ['p'], text: 't', sub: 'state', release: 'R1', type: 'Task', title: 'T' };
+    const { deps, runCli } = fakeRunner();
+    await tool(name).handler(args, deps);
+    expect(runCli).toHaveBeenCalledTimes(1);
+    expect(runCli).toHaveBeenCalledWith(tool(name).argv(args));
+  });
+
+  it('a nonzero exit rejects with the CLI stderr (the refusal) and stdout', async () => {
+    const { deps } = fakeRunner({ code: 1, stdout: 'partial out\n', stderr: 'jira: refused: no placement\n' });
+    const err = await tool('create').handler({ type: 'Task', title: 'T' }, deps).then(() => null, (e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err?.message).toBe('jira: refused: no placement\npartial out');
+  });
+
+  it('a nonzero exit with no output names the verb and the exit code', async () => {
+    const { deps } = fakeRunner({ code: 3 });
+    await expect(tool('transition').handler({ key: 'K-1', status: 'Done' }, deps)).rejects.toThrow('jira transition exited 3');
+  });
+
+  it('exit 0 returns stdout plus the stderr warnings', async () => {
+    const { deps } = fakeRunner({ stdout: 'Created HIMMEL-2\n', stderr: 'jira: warning: --sector ignored (no Sector field is configured)\n' });
+    const out = await tool('create').handler({ type: 'Task', title: 'T', sector: 'Ship loop' }, deps);
+    expect(out).toBe('Created HIMMEL-2\njira: warning: --sector ignored (no Sector field is configured)');
+  });
+
+  it('a partial stderr on exit 1 is forwarded verbatim', async () => {
+    const partial = 'jira: HIMMEL-5 created, but the INTAKE request failed: lease held\nFAIL: nothing else was written';
+    const { deps } = fakeRunner({ code: 1, stdout: 'Created HIMMEL-5\n', stderr: `${partial}\n` });
+    const err = await tool('create').handler({ type: 'Task', title: 'T' }, deps).then(() => null, (e: Error) => e);
+    expect(err?.message).toBe(`${partial}\nCreated HIMMEL-5`);
+  });
+
+  it('a runner that itself rejects (the CLI is not built) rejects the handler', async () => {
+    const runCli = vi.fn(async () => {
+      throw new Error('jira mcp: the jira CLI is not built');
+    });
+    await expect(tool('get').handler({ key: 'K-1' }, { runCli: runCli as unknown as CliRunner })).rejects.toThrow(/not built/);
   });
 });
 
 describe('MCP server wiring', () => {
-  it('builds a server and lists all tools via the ListTools handler', async () => {
-    const server = buildServer();
-    // Reach into the registered handler the SDK installs for ListTools (the
-    // same private _requestHandlers map the CallTool test below uses) and
-    // actually invoke it, rather than asserting createTools() (the tool list's
-    // own source) independently of whether ListTools ever serves it.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handler = (server as any)._requestHandlers.get('tools/list');
-    expect(handler).toBeDefined();
-    const result = await handler({ method: 'tools/list', params: {} }, {});
-    expect(result.tools.map((t: JiraTool) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
-    expect(result.tools).toHaveLength(TOOL_NAMES.length);
-  });
+  type CallResult = { isError?: boolean; content: Array<{ type: string; text: string }> };
+  type Handlers = { _requestHandlers: Map<string, (req: unknown, extra: unknown) => Promise<unknown>> };
+  const extra = { mcpReq: { requestState: () => undefined, inputResponses: undefined } };
+  const handlerOf = (deps: ToolDeps, method: string) => {
+    const h = (buildServer(deps) as unknown as Handlers)._requestHandlers.get(method);
+    if (!h) throw new Error(`no ${method} handler`);
+    return h;
+  };
+  const call = (deps: ToolDeps, name: string, args: Record<string, unknown>) =>
+    handlerOf(deps, 'tools/call')({ method: 'tools/call', params: { name, arguments: args } }, extra) as Promise<CallResult>;
 
-  it('CallTool error path: non-Error throwable yields String() text', async () => {
-    // Make the `get` tool's request throw a plain string, not an Error instance.
-    const throwingRequest = vi.fn(async () => {
-      // oxlint-disable-next-line no-throw-literal -- deliberate non-Error throw; the test verifies String() fallback
-      throw 'plain string error';
-    });
-    const deps = { request: throwingRequest, uploadAttachment: vi.fn() } as unknown as ToolDeps;
-    const server = buildServer(deps);
-
-    // Reach into the registered CallTool handler via the private _requestHandlers map.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handler = (server as any)._requestHandlers.get('tools/call');
-    expect(handler).toBeDefined();
-
-    const result = await handler({ method: 'tools/call', params: { name: 'get', arguments: { key: 'HIMMEL-1' } } }, { mcpReq: { requestState: () => undefined, inputResponses: undefined } });
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toBe('plain string error');
-  });
-});
-
-describe('MCP create under the marker goes through the guard', () => {
-  let dir: string;
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'mcp-live-guard-'));
-    writeFileSync(join(dir, 'himmel.conf'),
-      'JIRA_BASE_URL=https://station.atlassian.net\nJIRA_PROJECTS=HIMMEL,LUNA\nJIRA_TEST_PROJECT=HTEST\n');
-    vi.stubEnv('HIMMEL_CONFIG_DIR', dir);
-    vi.stubEnv('HIMMEL_JIRA_LIVE_TEST', 'none');
-    vi.stubEnv('HIMMEL_PROFILE', '');
-    vi.stubEnv('JIRA_BASE_URL', 'https://station.atlassian.net');
-    delete process.env.JIRA_SECTOR_FIELD;
-  });
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it('the real defaultDeps: a create in HIMMEL is a tool error with no POST, in HTEST one POST', async () => {
-    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({ ok: true, status: 200, text: async () => '{"key":"HTEST-1","id":"1"}' }));
-    vi.stubGlobal('fetch', fetchMock);
-    type CallResult = { isError?: boolean; content: Array<{ text: string }> };
-    type Handlers = { _requestHandlers: Map<string, (req: unknown, extra: unknown) => Promise<CallResult>> };
-    const handler = (buildServer() as unknown as Handlers)._requestHandlers.get('tools/call');
-    if (!handler) throw new Error('no tools/call handler');
-    const call = (project: string) => handler(
-      { method: 'tools/call', params: { name: 'create', arguments: { type: 'Task', title: 'New', desc: PLAIN_FILLED, project, labels: 'standalone' } } },
-      { mcpReq: { requestState: () => undefined, inputResponses: undefined } },
-    );
-    const posts = () => fetchMock.mock.calls.filter((c) => c[1]?.method === 'POST');
-    const refused = await call('HIMMEL');
-    expect(refused.isError).toBe(true);
-    expect(refused.content[0].text).toMatch(/^jira: live-test write refused: .*HIMMEL.*HTEST/s);
-    expect(posts()).toEqual([]);
-    const allowed = await call('HTEST');
-    expect(allowed.isError).toBeFalsy();
-    expect(posts().length).toBe(1);
-  });
-});
-
-describe('MCP tool happy-path routing', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it('get → GET /issue/<key> and formats with description', async () => {
-    const { deps, request } = mockDeps({
-      key: 'HIMMEL-1',
-      fields: {
-        summary: 'A bug',
-        status: { name: 'To Do' },
-        issuetype: { name: 'Task' },
-        description: null,
-      },
-    });
-    const out = await tool('get').handler({ key: 'HIMMEL-1' }, deps);
-    expect(request).toHaveBeenCalledWith(
-      'GET',
-      '/issue/HIMMEL-1?fields=summary,status,issuetype,parent,assignee,description',
-    );
-    expect(out).toContain('HIMMEL-1');
-    expect(out).toContain('A bug');
-  });
-
-  it('get --json returns raw JSON', async () => {
-    const issue = {
-      key: 'HIMMEL-2',
-      fields: { summary: 's', status: { name: 'To Do' }, issuetype: { name: 'Task' } },
-    };
-    const { deps } = mockDeps(issue);
-    const out = await tool('get').handler({ key: 'HIMMEL-2', json: true }, deps);
-    expect(JSON.parse(out)).toEqual(issue);
-  });
-
-  it('create → POST /issue with project/summary/issuetype + markdown desc', async () => {
-    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
-    const out = await tool('create').handler(
-      { type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', sector: 'Ship loop', parent: 'ABC-1' },
-      deps,
-    );
-    expect(request).toHaveBeenCalledWith('POST', '/issue', {
-      fields: {
-        project: { key: 'ABC' },
-        summary: 'New',
-        issuetype: { name: 'Task' },
-        description: markdownToAdf(PLAIN_FILLED),
-        parent: { key: 'ABC-1' },
-        customfield_10212: { value: 'Ship loop' },
-      },
-    });
-    expect(out).toBe('Created HIMMEL-9');
-  });
-
-  it('create refuses a body without the plain Impact/What/Why block', async () => {
-    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
-    await expect(
-      tool('create').handler({ type: 'Task', title: 'New', desc: 'agent notes', project: 'ABC' }, deps),
-    ).rejects.toThrow(/missing "## Impact"/);
-    expect(request).not.toHaveBeenCalled();
-  });
-
-  it('create refuses a Task with no Sector or no epic/standalone marker', async () => {
-    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
-    await expect(
-      tool('create').handler({ type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', parent: 'ABC-1' }, deps),
-    ).rejects.toThrow(/no Sector/);
-    await expect(
-      tool('create').handler({ type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', sector: 'Ship loop' }, deps),
-    ).rejects.toThrow(/--parent.*--labels standalone/s);
-    expect(request.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
-  });
-
-  it('create takes the Sector from a valid title prefix, and refuses an unknown one', async () => {
-    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
-    await tool('create').handler(
-      { type: 'Task', title: 'Ship loop: x', desc: PLAIN_FILLED, project: 'ABC', parent: 'ABC-1' },
-      deps,
-    );
-    const body = (request.mock.calls.find((c) => c[0] === 'POST') as unknown[])[2] as { fields: Record<string, unknown> };
-    expect(body.fields['customfield_10212']).toEqual({ value: 'Ship loop' });
-    await expect(
-      tool('create').handler({ type: 'Task', title: 'Billing: x', desc: PLAIN_FILLED, project: 'ABC', parent: 'ABC-1' }, deps),
-    ).rejects.toThrow(/"Billing:".*not a Sector/s);
-  });
-
-  it('create with JIRA_SECTOR_FIELD unset files without a Sector and sends no Sector field', async () => {
-    delete process.env.JIRA_SECTOR_FIELD;
-    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
-    await tool('create').handler({ type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', parent: 'ABC-1' }, deps);
-    expect(request).toHaveBeenCalledTimes(1);
-    const body = (request.mock.calls[0] as unknown[])[2] as { fields: Record<string, unknown> };
-    expect(Object.keys(body.fields).filter((k) => k.startsWith('customfield_'))).toEqual([]);
-  });
-
-  it('create with a Sector and a parent or the standalone label writes the Sector field', async () => {
-    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
-    await tool('create').handler(
-      { type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', sector: 'ship loop', labels: 'standalone' },
-      deps,
-    );
-    const fields = (request.mock.calls.find((c) => c[0] === 'POST') as unknown[])[2] as { fields: Record<string, unknown> };
-    expect(fields.fields['customfield_10212']).toEqual({ value: 'Ship loop' });
-  });
-
-  it('create only warns-exempts an Epic with no body', async () => {
-    delete process.env.JIRA_SECTOR_FIELD;
-    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
-    const out = await tool('create').handler({ type: 'Epic', title: 'E', project: 'ABC' }, deps);
-    expect(request).toHaveBeenCalledTimes(1);
-    expect(out).toMatch(/warning: .*no home/);
-  });
-
-  it('create warns about a title that breaks the template and still files', async () => {
-    vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
-    const { deps, request } = mockDeps({ key: 'HIMMEL-11', id: '3' });
-    const out = await tool('create').handler(
-      { type: 'Task', title: 'feat(jira): add a thing', desc: PLAIN_FILLED, sector: 'Ship loop', parent: 'ABC-1' },
-      deps,
-    );
-    expect(request).toHaveBeenCalled();
-    expect(out).toContain('Created HIMMEL-11');
-    expect(out).toMatch(/warning: title.*commit prefix/s);
-  });
-
-  it('create with attach uploads each file via the injected uploadAttachment', async () => {
-    // This path omits `project`, so the handler falls back to projectKey(),
-    // which reads JIRA_PROJECT_KEY. Set it here so the test is hermetic and
-    // does not depend on the operator's ambient .env (CI runs with none).
-    vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
-    const { deps, uploadAttachment } = mockDeps({ key: 'HIMMEL-10', id: '2' });
-    const out = await tool('create').handler(
-      { type: 'Task', title: 'T', desc: PLAIN_FILLED, attach: ['a.png', 'b.png'], sector: 'Ship loop', parent: 'ABC-1' },
-      deps,
-    );
-    expect(uploadAttachment).toHaveBeenCalledTimes(2);
-    expect(uploadAttachment).toHaveBeenCalledWith('HIMMEL-10', 'a.png');
-    expect(out).toContain('Created HIMMEL-10');
-    expect(out).toContain('attachments: 2');
-  });
-
-  it('list → GET /search/jql with resolved JQL and default limit', async () => {
-    const { deps, request } = mockDeps({ issues: [], total: 0 });
-    await tool('list').handler({ project: 'ABC', status: 'Done' }, deps);
-    const [method, path] = request.mock.calls[0];
-    expect(method).toBe('GET');
-    expect(path).toContain('/search/jql?jql=');
-    expect(decodeURIComponent(path)).toContain('project=ABC');
-    expect(decodeURIComponent(path)).toContain('status in ("Done")');
-    expect(path).toContain('maxResults=25');
-  });
-
-  it('list passes raw --jql through verbatim', async () => {
-    const { deps, request } = mockDeps({ issues: [], total: 0 });
-    await tool('list').handler({ jql: 'assignee = currentUser()', limit: '5' }, deps);
-    const path = request.mock.calls[0][1] as string;
-    expect(decodeURIComponent(path)).toContain('assignee = currentUser()');
-    expect(path).toContain('maxResults=5');
-  });
-
-  it('transition → resolves status NAME to id then POSTs the transition', async () => {
-    const request = vi.fn();
-    request.mockResolvedValueOnce({ transitions: [{ id: '31', name: 'Done' }] });
-    request.mockResolvedValueOnce({});
-    const deps = { request, uploadAttachment: vi.fn() } as unknown as ToolDeps;
-    const out = await tool('transition').handler({ key: 'HIMMEL-1', status: 'done' }, deps);
-    expect(request).toHaveBeenNthCalledWith(1, 'GET', '/issue/HIMMEL-1/transitions');
-    expect(request).toHaveBeenNthCalledWith(2, 'POST', '/issue/HIMMEL-1/transitions', {
-      transition: { id: '31' },
-    });
-    expect(out).toBe('HIMMEL-1 → Done');
-  });
-
-  it('transition throws when the status name is not available', async () => {
-    const { deps } = mockDeps({ transitions: [{ id: '11', name: 'To Do' }] });
-    await expect(
-      tool('transition').handler({ key: 'HIMMEL-1', status: 'Nope' }, deps),
-    ).rejects.toThrow(/not found/i);
-  });
-
-  it('transitions → lists id<TAB>name lines', async () => {
-    const { deps, request } = mockDeps({
-      transitions: [
-        { id: '11', name: 'To Do' },
-        { id: '21', name: 'In Progress' },
-      ],
-    });
-    const out = await tool('transitions').handler({ key: 'HIMMEL-1' }, deps);
-    expect(request).toHaveBeenCalledWith('GET', '/issue/HIMMEL-1/transitions');
-    expect(out).toBe('11\tTo Do\n21\tIn Progress');
-  });
-
-  it('comment → POST /issue/<key>/comment with ADF body from text', async () => {
-    const { deps, request } = mockDeps({});
-    const out = await tool('comment').handler({ key: 'HIMMEL-1', text: 'hi' }, deps);
-    expect(request).toHaveBeenCalledWith('POST', '/issue/HIMMEL-1/comment', {
-      body: {
-        type: 'doc',
-        version: 1,
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }],
-      },
-    });
-    expect(out).toBe('Comment added to HIMMEL-1');
-  });
-
-  it('comment without text/file/adf throws', async () => {
-    const { deps } = mockDeps({});
-    await expect(tool('comment').handler({ key: 'HIMMEL-1' }, deps)).rejects.toThrow(
-      /requires text/i,
-    );
-  });
-
-  it('attach → uploads each path and reports the count', async () => {
-    const { deps, uploadAttachment } = mockDeps();
-    const out = await tool('attach').handler(
-      { key: 'HIMMEL-1', paths: ['x.txt', 'y.txt'] },
-      deps,
-    );
-    expect(uploadAttachment).toHaveBeenCalledTimes(2);
-    expect(out).toBe('Attached 2 file(s) to HIMMEL-1');
-  });
-
-  it('edit → PUT /issue/<key> with buildEditFields payload', async () => {
-    const { deps, request } = mockDeps({});
-    const out = await tool('edit').handler(
-      { key: 'HIMMEL-1', priority: 'High', title: 'New title' },
-      deps,
-    );
-    expect(request).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-1', {
-      fields: { priority: { name: 'High' }, summary: 'New title' },
-    });
-    expect(out).toBe('HIMMEL-1 edited');
-  });
-
-  it('edit with a sector → PUT /issue/<key> writes the Sector field', async () => {
-    const { deps, request } = mockDeps({});
-    await tool('edit').handler({ key: 'HIMMEL-1', sector: 'ship loop' }, deps);
-    const put = request.mock.calls.find((c) => c[0] === 'PUT') as unknown[];
-    expect(put[1]).toBe('/issue/HIMMEL-1');
-    expect((put[2] as { fields: Record<string, unknown> }).fields['customfield_10212']).toEqual({ value: 'Ship loop' });
-  });
-
-  it('edit with no editable field throws (mirrors buildEditFields)', async () => {
-    const { deps } = mockDeps({});
-    await expect(tool('edit').handler({ key: 'HIMMEL-1' }, deps)).rejects.toThrow(
-      /at least one of/i,
-    );
-  });
-
-  it('projects → GET /project/search and formats key<TAB>id<TAB>name', async () => {
-    const { deps, request } = mockDeps({
-      values: [{ key: 'ABC', id: '100', name: 'Alpha' }],
-    });
-    const out = await tool('projects').handler({}, deps);
-    expect(request).toHaveBeenCalledWith('GET', '/project/search?maxResults=50&orderBy=key');
-    expect(out).toBe('ABC\t100\tAlpha');
-  });
-
-  it('project-create → looks up myself for lead then POSTs /project', async () => {
-    const request = vi.fn();
-    request.mockResolvedValueOnce({ accountId: 'acct-1' });
-    request.mockResolvedValueOnce({ id: 5, key: 'NEW' });
-    const deps = { request, uploadAttachment: vi.fn() } as unknown as ToolDeps;
-    const out = await tool('project-create').handler({ key: 'NEW', name: 'New Proj' }, deps);
-    expect(request).toHaveBeenNthCalledWith(1, 'GET', '/myself');
-    expect(request).toHaveBeenNthCalledWith(2, 'POST', '/project', {
-      key: 'NEW',
-      name: 'New Proj',
-      projectTypeKey: 'software',
-      projectTemplateKey: 'com.pyxis.greenhopper.jira:gh-simplified-kanban-classic',
-      leadAccountId: 'acct-1',
-    });
-    expect(out).toBe('Created NEW (id=5)');
-  });
-
-  it('project-create uses an explicit lead without calling /myself', async () => {
-    const { deps, request } = mockDeps({ id: 6, key: 'NEW2' });
-    await tool('project-create').handler(
-      { key: 'NEW2', name: 'N', lead: 'acct-explicit' },
-      deps,
-    );
-    expect(request).toHaveBeenCalledTimes(1);
-    expect(request).toHaveBeenCalledWith(
-      'POST',
-      '/project',
-      expect.objectContaining({ leadAccountId: 'acct-explicit' }),
-    );
-  });
-});
-
-describe('roadmap + rank tools', () => {
-  const FIELDS = [
-    ['Readiness', 'customfield_10171'],
-    ['Theme', 'customfield_10172'],
-    ['Roadmap Goals', 'customfield_10173'],
-    ['Roadmap Impact', 'customfield_10174'],
-    ['Alignment', 'customfield_10175'],
-    ['ROI', 'customfield_10176'],
-    ['Audit date', 'customfield_10177'],
-    ['Audit evidence', 'customfield_10178'],
-    ['Close candidate', 'customfield_10179'],
-    ['Story point estimate', 'customfield_10016'],
-  ].map(([name, id]) => ({ name, id }));
-
-  function roadmapDeps(issueFields: Record<string, unknown>) {
-    const request = vi.fn(async (method: string, path: string) => {
-      if (path === '/field') return FIELDS;
-      if (method === 'GET') return { fields: issueFields };
-      return '';
-    });
-    return { deps: { request, uploadAttachment: vi.fn(), agileRequest: vi.fn(async () => '') } as unknown as ToolDeps, request };
-  }
-
-  it('roadmap-set writes the same fields the CLI builds, without ROI when noRoi', async () => {
-    const { deps, request } = roadmapDeps({});
-    const out = await tool('roadmap-set').handler({ key: 'HIMMEL-1', readiness: '4', effort: 'S', noRoi: true }, deps);
-    expect(request).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-1', {
-      fields: { customfield_10171: 4, customfield_10016: 1 },
-    });
-    expect(out).toContain('HIMMEL-1');
-  });
-
-  it('roadmap-get prints the roadmap block', async () => {
-    const { deps } = roadmapDeps({ customfield_10171: 2, customfield_10016: 5 });
-    const out = await tool('roadmap-get').handler({ key: 'HIMMEL-1' }, deps);
-    expect(out).toContain('Readiness: 2');
-    expect(out).toContain('Effort: L (5)');
-  });
-
-  it('rank routes to the agile rank endpoint', async () => {
-    const { deps } = roadmapDeps({});
-    const out = await tool('rank').handler({ key: 'HIMMEL-2', after: 'HIMMEL-1' }, deps);
-    expect((deps as unknown as { agileRequest: ReturnType<typeof vi.fn> }).agileRequest).toHaveBeenCalledWith(
-      'PUT',
-      '/issue/rank',
-      { issues: ['HIMMEL-2'], rankAfterIssue: 'HIMMEL-1' },
-    );
-    expect(out).toBe('HIMMEL-2 ranked after HIMMEL-1');
-  });
-});
-
-describe('release tool', () => {
-  const saved = { ...process.env };
-  beforeEach(() => {
-    const root = mkdtempSync(join(tmpdir(), 'mcp-release-'));
-    process.env.HIMMEL_RELEASE_STATE_DIR = join(root, 'release');
-    process.env.HIMMEL_RELEASE_KEY_DIR = join(root, 'keys');
-    delete process.env.HIMMEL_RELEASE_MANAGER;
-    delete process.env.HIMMEL_CONSOLE_LEG;
-    const ctx: Ctx = {
-      release: 'R1', dir: join(root, 'release', 'R1'), keyPath: join(root, 'keys', 'R1.key'),
-      env: {}, now: () => new Date('2026-10-21T10:00:00.000Z'), jira: {} as Ctx['jira'], mirrorRoot: null,
-    };
-    declare(ctx, { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
-  });
-  afterEach(() => {
-    process.env = { ...saved };
-  });
-
-  const run = (args: Record<string, unknown>) => tool('release').handler({ release: 'R1', ...args }, mockDeps().deps);
-
-  it('state prints what the CLI prints, or the full JSON', async () => {
-    expect(await run({ sub: 'state' })).toContain('release R1: ');
-    expect(JSON.parse(await run({ sub: 'state', json: true })).release).toBe('R1');
-  });
-
-  it('request queues a console request', async () => {
-    expect(await run({ sub: 'request', verb: 'INTAKE', key: 'K-2', to: 'v1', why: 'found work' })).toBe('REQ Q-R1-0001');
-  });
-
-  it('request refuses evidence that is not a JSON object, as the CLI does', async () => {
-    for (const evidence of [['x'], 'x', 3, null]) {
-      await expect(run({ sub: 'request', verb: 'INTAKE', key: 'K-3', to: 'v1', why: 'w', evidence })).rejects.toThrow(/evidence is a JSON object/);
+  it('tools/list serves every tool with its description and schema', async () => {
+    const result = (await handlerOf({}, 'tools/list')({ method: 'tools/list', params: {} }, {})) as { tools: JiraTool[] };
+    expect(result.tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
+    for (const t of result.tools) {
+      expect(t.description.length).toBeGreaterThan(0);
+      expect(t.inputSchema.type).toBe('object');
+      expect(t).not.toHaveProperty('handler');
+      expect(t).not.toHaveProperty('argv');
     }
   });
 
-  it('refuses a release name that would leave the release root', async () => {
-    for (const release of ['..', '.', '../other', 'a/b']) {
-      await expect(run({ sub: 'state', release })).rejects.toThrow(/bad release name/);
-    }
+  it('tools/call runs the CLI and returns its text', async () => {
+    const { deps, runCli } = fakeRunner({ stdout: 'HIMMEL-1 → Done\n' });
+    const r = await call(deps, 'transition', { key: 'HIMMEL-1', status: 'Done' });
+    expect(r.isError).toBeUndefined();
+    expect(r.content[0].text).toBe('HIMMEL-1 → Done');
+    expect(runCli).toHaveBeenCalledWith(['transition', 'HIMMEL-1', 'Done']);
   });
 
-  it('rule goes through the engine fence: a session that is not the release manager is refused', async () => {
-    await expect(run({
-      sub: 'rule', req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', to: 'v1', sector: 'Planning & tracking', ground: 'regression', reason: 'r',
-    })).rejects.toThrow(/only the release-manager session/);
+  it('tools/call of a failing tool returns isError with the CLI text', async () => {
+    const { deps } = fakeRunner({ code: 1, stderr: 'jira: refused: Task needs a placement\n' });
+    const r = await call(deps, 'create', { type: 'Task', title: 'T' });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toBe('jira: refused: Task needs a placement');
   });
 
-  it('rule without a sector reaches the engine fence when no Sector field is configured', async () => {
-    process.env.JIRA_SECTOR_FIELD = 'none';
-    await expect(run({
-      sub: 'rule', req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', to: 'v1', ground: 'regression', reason: 'r',
-    })).rejects.toThrow(/only the release-manager session/);
+  it('tools/call of a tool that throws before running returns isError and runs nothing', async () => {
+    const { deps, runCli } = fakeRunner();
+    const r = await call(deps, 'comment', { key: 'K-1' });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/comment requires text/);
+    expect(runCli).not.toHaveBeenCalled();
   });
 
-  it('refuses a sub the twin does not expose', async () => {
-    await expect(run({ sub: 'operator-declare' })).rejects.toThrow(/sub is one of/);
+  it('tools/call: a non-Error throwable yields String() text', async () => {
+    const deps: ToolDeps = {
+      runCli: (async () => {
+        // oxlint-disable-next-line no-throw-literal -- deliberate non-Error throw; the test verifies the String() fallback
+        throw 'plain string error';
+      }) as unknown as CliRunner,
+    };
+    const r = await call(deps, 'get', { key: 'K-1' });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toBe('plain string error');
+  });
+
+  it('tools/call of an unknown tool is rejected', async () => {
+    await expect(call({}, 'nope', {})).rejects.toThrow(/Unknown tool: nope/);
   });
 });
 
@@ -596,5 +395,11 @@ describe('MCP SDK v2', () => {
   it('imports only the v2 server package', () => {
     expect(src).not.toContain('@modelcontextprotocol/sdk');
     expect(src).toContain("from '@modelcontextprotocol/server'");
+  });
+
+  it('owns no Jira REST or release write: it reaches Jira only through mcp-cli', () => {
+    expect(src).not.toMatch(/from '\.\/client\.js'/);
+    expect(src).not.toMatch(/from '\.\/release\//);
+    expect(src).not.toMatch(/\bfetch\(/);
   });
 });
