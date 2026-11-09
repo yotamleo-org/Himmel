@@ -671,7 +671,7 @@ printf '# dropped from v1: 1 of 3 To Do (blocker 1)\nLOCAL\tHIMMEL-9001\tMedium\
 printf 'LOCAL\tHIMMEL-9005\tLow\tv2\tlater\tfiles=e.sh\n' > "$STUB/pass2.rows"
 printf '# disposition HIMMEL-9001 listed LOCAL\n# disposition HIMMEL-9010 blocker HIMMEL-1 (In Progress, live)\n' > "$STUB/dispositions"
 I="$(new_inbox declared)"
-timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK/declared.out" 2>/dev/null
+timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK/declared.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(declared) the wake counts only the version's own row" "WAKE pool-unresolved capacity=UNDERFILLED:7 pool=2/0/1/1 dispatchable=1 keys=HIMMEL-9001" "$(head -n1 "$WORK/declared.out")"
 check "(declared) a later-version row is not offered" "0" "$(grep -c 'files=e.sh' "$WORK/declared.out")"
 check "(declared) no version backlog block is printed" "0" "$(grep -c '^# version backlog' "$WORK/declared.out")"
@@ -681,7 +681,7 @@ rm -f "$STUB/pass2.rows" "$STUB/dispositions"
 # --- a pool holding only RESUME rows reads above zero on both branches
 printf 'RESUME\tHIMMEL-9020\tMedium\tv1\tresume\tfiles=r.sh\tstatus=In Progress\tlast=-\n' > "$STUB/pool.rows"
 I="$(new_inbox resume-short)"
-timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK/resume-short.out" 2>/dev/null
+timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" --workers N1.md > "$WORK/resume-short.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(resume) a short pool of RESUME rows reads above zero" "WAKE underfilled capacity=UNDERFILLED:7 pool=? dispatchable=1 keys=HIMMEL-9020" "$(head -n1 "$WORK/resume-short.out")"
 : > "$STUB/pool.rows"; : > "$WORK/resume-full.md"
 printf '# chief\n\n## Live state\n' > "$WORK/resume-full.md"
@@ -692,7 +692,7 @@ for n in 31 32 33 34 35 36 37; do
 done
 printf '\n## Results\n' >> "$WORK/resume-full.md"
 I="$(new_inbox resume-full)"
-timeout 8 bash "$WAIT" "$I" --doc "$WORK/resume-full.md" --workers N1.md > "$WORK/resume-full.out" 2>/dev/null
+timeout 8 bash "$WAIT" "$I" --doc "$WORK/resume-full.md" --workers N1.md > "$WORK/resume-full.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(resume) a full pool of dispositioned RESUME rows reads above zero" "WAKE underfilled capacity=UNDERFILLED:7 pool=7/0/7/0 dispatchable=7 keys=HIMMEL-9031,HIMMEL-9032,HIMMEL-9033,HIMMEL-9034,HIMMEL-9035,HIMMEL-9036,HIMMEL-9037" "$(head -n1 "$WORK/resume-full.out")"
 rm -f "$STUB/pool.rows" "$STUB/dispositions"
 
