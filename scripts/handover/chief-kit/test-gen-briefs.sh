@@ -823,6 +823,9 @@ EOF
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-ab.json"
 rc=0; python3 "$SUT" "$WORK/rm-ab.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmb-ab" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-ab.err" || rc=$?
 [ "$rc" = 1 ] && grep -q 'ab_arm' "$WORK/rm-ab.err" && [ ! -e "$WORK/rmb-ab/launch-N910.sh" ] && pass "an rm worker with an ab_arm is refused before anything is written (HIMMEL-7811)" || fail "rm ab_arm rc=$rc"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["release"]="r"*120; l[0]["state_dir"]=sys.argv[3]+"/"+"r"*120; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-long.json" "$WORK/hr/tester/himmel/release"
+rc=0; python3 "$SUT" "$WORK/rm-long.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmb-long" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-long.err" || rc=$?
+[ "$rc" = 1 ] && grep -q '128' "$WORK/rm-long.err" && [ ! -e "$WORK/rmb-long/launch-N910.sh" ] && pass "9537 e: an rm worker whose name is over the bus limit is refused naming 128, nothing written" || fail "9537 e: rm over-limit rc=$rc: $(cat "$WORK/rm-long.err")"
 rmout="$(python3 "$SUT" "$WORK/rm.json" --base 4ccb59d --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/rmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/rmf.json" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "an rm worker generates (rc 0)" || fail "rm rc=$rc: $rmout"
 RMD="$WORK/rmb/HIMMEL-9010-N910-rm-R1-2026-10-08.md"
@@ -1718,13 +1721,29 @@ mk98 'w["keys"]=["HIMMEL-9801"]' "$WORK/b98ok.json"
 MIRROR_LOG="$WORK/mirror98.log" gen98 "$WORK/b98ok.json" "$WORK/bb98ok"; rc=$?
 { [ "$rc" = 0 ] && [ ! -s "$WORK/mirror98.log" ]; } && pass "9598 b: a ticket whose mirror row is complete runs no refresh" || fail "9598 b: rc=$rc, refresh log [$(cat "$WORK/mirror98.log")]"
 
-mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*int(sys.argv[4])' "$WORK/c101.json" 101
-gen98 "$WORK/c101.json" "$WORK/bc101"; rc=$?
-[ "$rc" = 1 ] && has "9598 c: a 129-character session name is refused naming the 128 limit" "$(cat "$WORK/g98.err")" "128" || fail "9598 c: over-limit rc=$rc"
-! ls "$WORK/bc101"/* >/dev/null 2>&1 && pass "9598 c: nothing is written for it" || fail "9598 c: wrote files for an over-limit name"
-mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*int(sys.argv[4])' "$WORK/c100.json" 100
-gen98 "$WORK/c100.json" "$WORK/bc100"; rc=$?
-[ "$rc" = 0 ] && pass "9598 c: a 128-character session name generates" || fail "9598 c: at-limit rc=$rc: $(cat "$WORK/g98.err")"
+mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="-".join(["wordy"]*30)' "$WORK/c101.json"
+gen98 "$WORK/c101.json" "$WORK/bc101" --manifest "$WORK/c101-fleet.json"; rc=$?
+[ "$rc" = 0 ] && pass "9537 a: a slug too long for the bus is trimmed, not refused" || fail "9537 a: rc=$rc: $(cat "$WORK/g98.err")"
+C101="$(find "$WORK/bc101" -name '*-N901-*.md' -print -quit 2>/dev/null)"; C101="$(basename "$C101" .md)"
+[ -n "$C101" ] && [ "${#C101}" -le 120 ] && pass "9537 a: the trimmed name and its -RESUME form fit the bus limit (${#C101} + 8 of 128)" || fail "9537 a: name [$C101] is ${#C101} characters"
+case "$C101" in HIMMEL-9801-N901-wordy-*wordy-2026-10-08) pass "9537 a: the key, label and date are intact and the slug ends on a whole word";; *) fail "9537 a: name [$C101] lost its key, label, date or cut a word";; esac
+has "9537 a: the trim is printed" "$(cat "$WORK/g98.out")" "trimmed"
+has "9537 a: the printed manifest add line names the trimmed doc" "$(cat "$WORK/g98.out")" "$C101.md"
+has "9537 a: the launcher names the trimmed doc" "$(cat "$WORK/bc101/launch-N901.sh" 2>/dev/null)" "$C101.md"
+has "9537 a: the branch is the one given" "$(cat "$WORK/bc101/$C101.md" 2>/dev/null)" "fix/himmel-9001-plain-fix"
+mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*200' "$WORK/c102.json"
+gen98 "$WORK/c102.json" "$WORK/bc102"; rc=$?
+C102="$(basename "$(find "$WORK/bc102" -name '*-N901-*.md' -print -quit 2>/dev/null)" .md)"
+[ "$rc" = 0 ] && [ "${#C102}" -eq 120 ] && pass "9537 b: a slug with no word boundary is cut to exactly the room left (120 characters)" || fail "9537 b: rc=$rc name [$C102]"
+BUSMAX_GB="$(sed -n 's/^BUS_NAME_MAX = \([0-9]*\)$/\1/p' "$SUT")"
+BUSMAX_STORE="$(sed -n 's/^export const SESSION_NAME = .*{0,\([0-9]*\)}\$\/;$/\1/p' "$HERE/../../../marketplace/plugins/himmel-bus/lib/store.mjs" | awk '{print $1+1}')"
+[ -n "$BUSMAX_GB" ] && [ "$BUSMAX_GB" = "$BUSMAX_STORE" ] && pass "9537 d: BUS_NAME_MAX is the bus validator's limit ($BUSMAX_STORE)" || fail "9537 d: BUS_NAME_MAX [$BUSMAX_GB] != store.mjs [$BUSMAX_STORE]"
+gen98 "$WORK/a98.json" "$WORK/bc104" --manifest "$WORK/c104-fleet.json"; rc=$?
+C104="$WORK/bc104/HIMMEL-9801-N901-plain-fix-2026-10-08.md"
+{ [ "$rc" = 0 ] && [ -f "$C104" ]; } && pass "9537 c: a short slug keeps its name byte for byte" || fail "9537 c: rc=$rc"
+lacks "9537 c: a short slug prints no trim" "$(cat "$WORK/g98.out")" "trimmed"
+has "9537 c: the printed manifest add line matches the doc name" "$(cat "$WORK/g98.out")" "$C104"
+has "9537 c: the launcher names the same doc" "$(cat "$WORK/bc104/launch-N901.sh" 2>/dev/null)" "$C104"
 
 OPUS98='w["keys"]=["HIMMEL-9801"]; w["model"]="claude-opus-5-5"; w["tier"]={"category":"design","reason":"multi-step design: x"}'
 mk98 "$OPUS98; w[\"context_1m\"]=\"decision 844: the operator wants the 1M window on this ticket\"" "$WORK/d98.json"

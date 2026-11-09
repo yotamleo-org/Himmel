@@ -601,5 +601,21 @@ out=$(bash "$RK/scripts/handover/chief-kit/size-override.sh" check HIMMEL-9228 N
 assert_eq "RED: the reader accepts the approval the Telegram line produced (exit 0)" "0" "$rc"
 assert_contains "the reader says the operator kept it whole" "kept whole by the operator" "$out"
 
+echo "== HIMMEL-9691: a delivered notice leaves a sent row with the Bot API receipt =="
+station_ledger_row_sixqv7lo='{"cwd": "/", "event": "request", "hash": "15ad1b2b703e8795c8bee214cb609388e522b0996cc6a7da2d618beb12038d31", "id": "sixqv7lo", "kind": "op", "op": "size-approval", "params": {"files": "67", "key": "HIMMEL-9689", "label": "N5590", "reason": "keep-whole", "scope": "116f2c95737b91306c8a95d1c97c2e4d"}, "result": "pending", "script_sha256": "f307349ded689ecc803eef113a1ed0491407e408e1ecf276f04a34b38667246c", "session": "terminal-2446437", "ticket": "HIMMEL-9689", "ts": "2026-11-09T01:10:13Z", "version": 1}'
+new_root n9691
+read -ra words <<< "$(printf '%s' "$station_ledger_row_sixqv7lo" | python3 -I -c 'import json, sys; r = json.load(sys.stdin); print(r["op"], *(k + "=" + v for k, v in r["params"].items()))')"
+out=$(h 0 op-request --session terminal-2446437 --ticket HIMMEL-9689 -- "${words[@]}"); id=$(rid "$out")
+assert_contains "the station's sixqv7lo request files again here" "result=pending" "$out"
+assert_eq "the refiled request row carries the station row's op, params, session and ticket" "yes" "$(ledger | python3 -I -c 'import json, sys
+real = json.loads(sys.argv[1])
+rows = [json.loads(l) for l in sys.stdin if l.strip()]
+k = ("event", "kind", "op", "params", "result", "session", "ticket", "version", "cwd")
+print("yes" if any(all(r.get(x) == real[x] for x in k) for r in rows) else "no")' "$station_ledger_row_sixqv7lo")"
+sent_row=$(ledger | grep '"event": "notice"' | grep "\"id\": \"$id\"")
+assert_contains "RED 9691: a delivered notice writes a notice row of result sent" '"result": "sent"' "$sent_row"
+assert_contains "RED 9691: the sent row carries the Bot API message_id as its receipt" '"message_id": 100' "$sent_row"
+assert_absent "the sent row holds no token" "$NTOK" "$(ledger)"
+
 echo "test summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
