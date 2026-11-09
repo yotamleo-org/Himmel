@@ -50,7 +50,7 @@ export GH_STUB_MODE=ok
 GH_STUB_STATE=OPEN GH_STUB_MERGE_STATE=BLOCKED run "open+blocked denied, names state=OPEN" "$TMP/p-url.json" 2 "state=OPEN"
 GH_STUB_STATE=OPEN GH_STUB_MERGE_STATE=BLOCKED run "deny names override" "$TMP/p-url.json" 2 "T3CODE_UNWATCH_OK"
 GH_STUB_STATE=OPEN GH_STUB_MERGE_STATE=BLOCKED run "deny prints mergeStateStatus" "$TMP/p-url.json" 2 "mergeStateStatus=BLOCKED"
-if grep -q -- "pr view 5054 --repo o/r" "$GH_STUB_LOG"; then echo "ok   url resolved to repo+number"; else echo "FAIL url resolution: $(cat "$GH_STUB_LOG")"; FAIL=$((FAIL+1)); fi
+if grep -q -- "pr view 5054 --repo github.com/o/r" "$GH_STUB_LOG"; then echo "ok   url resolved to repo+number"; else echo "FAIL url resolution: $(cat "$GH_STUB_LOG")"; FAIL=$((FAIL+1)); fi
 GH_STUB_STATE=OPEN run "number+repo payload denied" "$TMP/p-num.json" 2 "state=OPEN"
 if grep -q -- "pr view 77 --repo o/r" "$GH_STUB_LOG"; then echo "ok   number+repo payload passes --repo o/r to gh"; else echo "FAIL number+repo did not reach gh with --repo: $(cat "$GH_STUB_LOG")"; FAIL=$((FAIL+1)); fi
 GH_STUB_STATE=OPEN run "owner+slashless repo payload denied" "$TMP/p-owner.json" 2 "state=OPEN"

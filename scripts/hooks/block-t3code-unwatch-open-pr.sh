@@ -23,7 +23,7 @@ strings=$(jq -r '[.tool_input | .. | strings] | join("\n")' <<<"$input") || stri
 repo=""; num=""
 url=$(printf '%s\n' "$strings" | grep -Eo 'github\.com/[^/[:space:]]+/[^/[:space:]]+/pull/[0-9]+' | head -n 1)
 if [ -n "$url" ]; then
-    repo=${url#github.com/}; repo=${repo%%/pull/*}
+    repo=${url%%/pull/*}
     num=${url##*/}
 else
     num=$(jq -r '.tool_input | (.number // .prNumber // .pullRequestNumber // .pr // .pullRequest // "") | tostring' <<<"$input")
