@@ -97,11 +97,13 @@ TRUST_RC=0
 RG_ERR=$(mktemp "${TMPDIR:-/tmp}/ready-go-err.XXXXXX" 2>/dev/null) || RG_ERR=/dev/null  # swallow-ok: no capture only loses the rate-limit wording
 NWO=$("$GH_BIN" repo view --json nameWithOwner --jq .nameWithOwner 2>"$RG_ERR") || NWO=""
 DEFAULT_BRANCH=$("$GH_BIN" repo view --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>>"$RG_ERR") || DEFAULT_BRANCH=""
+# read the captured stderr once and drop the file, so no path leaks it
+RG_ERR_TXT=$(cat "$RG_ERR" 2>/dev/null) || RG_ERR_TXT=""  # read-sink-ok: our own mktemp buffer; swallow-ok: an unreadable buffer only loses the rate-limit wording
+[ "$RG_ERR" = /dev/null ] || rm -f "$RG_ERR"
 TRUST_OUT=""
 if [ -z "$NWO" ] || [ -z "$DEFAULT_BRANCH" ]; then
     # a repo view GitHub refused is not a repo that cannot be named: print the quota line in place of the TRUST text
-    if ( . "$HERE/../../lib/gh-quota.sh" 2>/dev/null && ghq_is_rate_limited "$(cat "$RG_ERR" 2>/dev/null)" ); then  # read-sink-ok: our own mktemp buffer
-        [ "$RG_ERR" = /dev/null ] || rm -f "$RG_ERR"
+    if ( . "$HERE/../../lib/gh-quota.sh" 2>/dev/null && ghq_is_rate_limited "$RG_ERR_TXT" ); then  # swallow-ok: an unreadable lib reads as not a rate limit, which keeps the plain TRUST refusal below
         ( . "$HERE/../../lib/gh-quota.sh" 2>/dev/null && ghq_line main graphql ready-go.sh rate-limit ) || true
         echo "READY-GO: not evaluated - the repo read (gh repo view) was refused, so the trust check could not run; nothing was judged, no GO line"
         exit 5

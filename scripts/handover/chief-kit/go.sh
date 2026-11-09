@@ -335,8 +335,8 @@ _go_quota_report() {
 }
 
 # GO_DEADLINE: the same self-armed shape as ready-check.sh. A cut before the GO file's mv is exit 11 and
-# no GO. The inner run writes the GO's path into a sentinel file just after the mv; a cut after it
-# (during the verdict log) exits 0 with the path, because the GO stands.
+# no GO. The inner run writes the GO's path into a sentinel file just before the mv; a cut exits 0 with the
+# path only when that file exists (the mv ran, even during the verdict log), because the GO then stands.
 if [ -z "${_GO_ARMED:-}" ]; then
     gd_s="${GO_DEADLINE:-270}"
     case "$gd_s" in ''|*[!0-9]*) gd_s=270 ;; esac
@@ -664,6 +664,10 @@ BY="${CHIEF_SESSION_NAME:-${USER:-$(id -un 2>/dev/null || echo unknown)}@$(hostn
 BY=$(printf '%s' "$BY" | tr -d '\r\n')
 AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+# Name the GO path for the GO_DEADLINE wrapper BEFORE the mv. On a cut the wrapper exits 0 only when that path exists, so a cut
+# before the mv is exit 11 (no GO), and a cut anywhere after it, the verdict log below included, leaves the GO standing with no
+# gap between the mv and a later sentinel write. (A GO already at this path from an earlier run stands too.)
+[ -z "${_GO_SENTINEL:-}" ] || printf '%s\n' "$DEST" > "$_GO_SENTINEL" 2>/dev/null || true  # swallow-ok: a missing sentinel only turns a late cut into exit 11
 if ! mkdir -p "$DIR" || ! TMP=$(mktemp "$DIR/.go.XXXXXX"); then
     echo "go: cannot create a temp file under $DIR" >&2
     exit 1
@@ -676,8 +680,6 @@ if ! { printf 'pr=%s\nhead=%s\nby=%s\nat=%s\n' "$PR" "$SHA" "$BY" "$AT" \
     echo "go: could not write $DEST" >&2
     exit 1
 fi
-# The GO is in place: tell the GO_DEADLINE wrapper, so a cut during the verdict log below exits 0 with this path.
-[ -z "${_GO_SENTINEL:-}" ] || printf '%s\n' "$DEST" > "$_GO_SENTINEL" 2>/dev/null || true  # swallow-ok: a missing sentinel only turns a late cut into exit 11
 
 # persist the GO as a verdict record under its own qid, go-pr-<n>,
 # one file per head, so it never shares a directory with a judge's verdicts/<qid>/.
