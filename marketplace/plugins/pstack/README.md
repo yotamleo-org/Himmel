@@ -26,11 +26,13 @@ runtime npm dependencies are needed. The test-only dependency is `fast-check`
 
 ## Statechart prerequisites and limits
 
-Java and TLC are **optional**: the other skills need neither. Run statechart
-only on a test VM, with a small model in a scratch folder outside the repo.
-Use Node 22.18–22.x or 23.6+, Bun 1.1.5+, or Deno 2+.
-Provision Java 11+ and `tla2tools.jar` 1.7.4 on that VM, then set **absolute**
-`JAVA` (executable) and `TLA2TOOLS` (jar) paths. Check the jar's SHA-256:
+Java and TLC are **optional**: the other skills need neither. Once the runtime
+revision is validated, routine trusted checks run locally, with a small model in
+a scratch folder outside the repo. Use Node 22.18–22.x or 23.6+, Bun 1.1.5+, or
+Deno 2+. Run `bash scripts/machine-setup/setup-statechart.sh --install` once: it
+verifies Java 11+ (it never installs Java), fetches the pinned `tla2tools.jar`
+1.7.4, and records the absolute **`JAVA`** (executable) and **`TLA2TOOLS`** (jar)
+paths. `--check` re-verifies them and reports them. The jar's SHA-256:
 
 ```text
 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
@@ -45,7 +47,10 @@ Without absolute prerequisite paths it stops with
 `Set TLA2TOOLS to an absolute path` or `Set JAVA to an absolute path`; an absent
 file or a jar hash mismatch also stops it. The vendored runtime never installs
 or downloads tools. A missing prerequisite is not a passing check.
-Do not install Java, TLC, mise or the whole upstream pstack plugin on the station.
+The skill never installs Java, TLC, mise or the whole upstream pstack plugin;
+only `setup-statechart.sh` installs the jar, and only when asked. Isolation (a
+VM) is for an unvalidated or changed runtime, untrusted executable views, and
+destructive real-code replay.
 
 A defect is unconfirmed until its trace replays on the real code. An all-hold
 result covers only the stated bounds and the code as written; a model that
