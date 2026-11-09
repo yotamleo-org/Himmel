@@ -579,6 +579,26 @@ def node_ok(src, ext=None):
     return False
 
 
+def code_changed(path, old, new):
+    """The reason a cut changed more than comments, by the same parsers verify
+    uses (shfmt -mn for shell, the comment-free token stream for python), or
+    None. A shell file is refused when shfmt is missing."""
+    ext = os.path.splitext(path)[1]
+    if ext in (".sh", ".bash"):
+        if shutil.which("shfmt") is None:
+            return "shfmt is not installed, cannot prove the cut is comment-only"
+        a, b = shfmt(old.encode("utf-8")), shfmt(new.encode("utf-8"))
+    elif ext == ".py":
+        a, b = py_tokens(old.encode("utf-8")), py_tokens(new.encode("utf-8"))
+    else:
+        return None
+    if a is None:
+        return "it does not parse before the cut"
+    if a != b:
+        return "the cut would change code or data, not only comments"
+    return None
+
+
 def cmd_strip(paths):
     if not paths:
         die("strip needs at least one path")
@@ -603,6 +623,11 @@ def cmd_strip(paths):
             continue
         new = [lines[r][:cut[r]].rstrip() if r in cut else lines[r] for r in range(len(lines)) if r not in drop]
         new_text = "\n".join(new)
+        changed = code_changed(path, text, new_text)
+        if changed:
+            print("REFUSED\t%s: %s; the file is left as it was, remove its markers by hand" % (path, changed))
+            broken = 1
+            continue
         before = parses(path, text)
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(new_text)

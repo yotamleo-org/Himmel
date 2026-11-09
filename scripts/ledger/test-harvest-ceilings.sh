@@ -109,6 +109,12 @@ if [ "$(cat "$R/a.sh")" = "$(printf '#!/usr/bin/env bash\nfn_a() {\n    # shellc
 if [ "$(cat "$R/l.sh")" = "$(printf '#!/usr/bin/env bash\necho hi')" ]; then pass "strip cuts a trailing comment and keeps the code"; else fail "l.sh after strip: $(cat "$R/l.sh")"; fi
 if cmp -s "$R/h.sh" "$W/h.before" && cmp -s "$R/i.sh" "$W/i.before"; then pass "strip leaves a quoted-string and a heredoc token"; else fail "h.sh/i.sh changed"; fi
 case "$OUT" in *"left	h.sh:2"*"left	i.sh:3"*) pass "strip lists the tokens it left" ;; *) fail "strip list: $OUT" ;; esac
+printf '#!/usr/bin/env bash\ncat <<0\n# %s in a numeric-delimited heredoc\n0\n' "$TOK" > "$R/o.sh"
+cp "$R/o.sh" "$W/o.before"
+OUT="$(cd "$R" && python3 -I "$PY" strip o.sh 2>&1)"; RC=$?
+if [ "$RC" -eq 1 ] && cmp -s "$R/o.sh" "$W/o.before" && case "$OUT" in *"REFUSED	o.sh"*) true ;; *) false ;; esac; then
+    pass "strip refuses a cut that changes shfmt output and leaves the file as it was"
+else fail "o.sh strip rc=$RC: $OUT :: $(cat "$R/o.sh")"; fi
 
 echo "== verify =="
 R="$W/verify"; newrepo "$R"
