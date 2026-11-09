@@ -6,24 +6,24 @@
 # git tree (git rev-parse walks only parent dirs, so it genuinely fails there).
 # Never touches real session state — the script is read-only inference + print.
 #
-# Cases (spec §Success criteria + plan-critic case 14):
-#   1.  feat/himmel-432-rename-session-title → /rename HIMMEL-432 rename-session-title
-#   2.  handover/HIMMEL-141-pr-merge        → /rename HIMMEL-141 pr-merge
-#   3.  feat/himmel-432-x + arg HIMMEL-430  → /rename HIMMEL-432/HIMMEL-430 x
+# Cases (spec §Success criteria + plan-critic case 14; <KEY> is the repo's ticket prefix):
+#   1.  feat/himmel-432-rename-session-title → /rename <KEY>-432 rename-session-title
+#   2.  handover/<KEY>-141-pr-merge        → /rename <KEY>-141 pr-merge
+#   3.  feat/himmel-432-x + arg <KEY>-430  → /rename <KEY>-432/<KEY>-430 x
 #   4.  feat/abc-12-do-thing               → /rename ABC-12 do-thing (name half do-thing)
 #   5.  main (no ticket)                   → rc 3, WARN, /rename main (no ticket part)
-#   6.  main + arg HIMMEL-500              → /rename HIMMEL-500 main
+#   6.  main + arg <KEY>-500              → /rename <KEY>-500 main
 #   7.  arg not-a-key!                     → rc 1, usage on stderr
 #   8.  not-a-git-repo + no args           → rc 2
 #   9.  feat/ABC-1-2-rest                  → /rename ABC-1 2-rest
-#   10. fix-himmel-432-thing (mid-slug)    → /rename HIMMEL-432 fix-himmel-432-thing
-#   11. not-a-git-repo + arg HIMMEL-500    → /rename HIMMEL-500 (empty name half)
+#   10. fix-himmel-432-thing (mid-slug)    → /rename <KEY>-432 fix-himmel-432-thing
+#   11. not-a-git-repo + arg <KEY>-500    → /rename <KEY>-500 (empty name half)
 #   12. doc anti-rot: output has tab-title note + /rename reference
 #   13. detached HEAD (RETITLE_BRANCH=HEAD, in non-repo) + no args → rc 2, no /rename HEAD
 #   14. RETITLE_BRANCH= (empty) in non-repo + no args → rc 2 (empty ≡ unset)
-#   15. ticket-only branch feat/himmel-432 (empty name via branch route) → /rename HIMMEL-432
+#   15. ticket-only branch feat/himmel-432 (empty name via branch route) → /rename <KEY>-432
 #   16. digit-led token feat/1-2-foo (not a valid ticket) → rc 3, /rename 1-2-foo, no ticket part
-#   17. valid + invalid arg (HIMMEL-430 bad!) → rc 1, stderr names the invalid one
+#   17. valid + invalid arg (<KEY>-430 bad!) → rc 1, stderr names the invalid one
 set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
