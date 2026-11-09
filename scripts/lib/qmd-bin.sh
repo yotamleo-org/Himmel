@@ -115,14 +115,16 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # default 250 ms, for the database, then are skipped, so a search never waits
 # out another process's write). The pin was 4c2487d1, fork PR #52 (brotli 1.2.1
 # and filelock 4.2.9 in finetune/uv.lock). The pin was 150c4d31, the squash
-# merge of fork PR #53 into fork main (setuptools 84.2.1 in finetune). The pin is now c474a8e4, the
+# merge of fork PR #53 into fork main (setuptools 84.2.1 in finetune). The pin was c474a8e4, the
 # squash merge of fork PR #54 into fork main (the query-expansion cache write and the delete of a
 # dud expansion row use the same bounded wait as the rerank write, so a plain search never waits
-# out another process's write lock either). The fork lives at yotamleo-org/qmd;
+# out another process's write lock either). The pin is now 35de6ec3, the squash merge of fork PR
+# #55 into fork main (`qmd update -c <collection>` indexes one collection, and neither form of
+# update clears the LLM cache; `qmd cleanup` still does). The fork lives at yotamleo-org/qmd;
 # yotamleo/qmd is a GitHub redirect to it.
 # ponytail: pinned by SHA, fork tags are labels only (HIMMEL-5952), re-pin on the next /fork-resync.
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo-org/qmd.git}"; } # env-literal-ok: the carried qmd fork identity
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-c474a8e4cd1084629c17664fb59e1f7ee64d8ea8}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-35de6ec3cc86cb5141d9d58c76c702130517ccfa}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo-org/qmd (or its old name yotamleo/qmd) -- in the forms seen in the wild (with or
