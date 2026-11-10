@@ -198,7 +198,7 @@ run_shfmt() {
 if grep -qx 'SHFMT_VER=3.14.1' "$T/ge-src" 2>/dev/null; then pass "version-record step exports SHFMT_VER"; else fail "SHFMT_VER not recorded: $(cat "$T/ge-src" 2>/dev/null)"; fi
 
 run_shfmt hit 1
-if [ "$RC" -eq 0 ] && [ ! -e "$CURL_LOG" ]; then pass "shfmt cache hit: no call to GitHub releases"; else fail "hit -> rc=$RC curl-log=$(cat "$CURL_LOG" 2>/dev/null): $OUT"; fi
+if [ "$RC" -eq 0 ] && [ ! -e "$CURL_LOG" ]; then pass "shfmt cache hit: no call to GitHub releases"; else fail "hit -> rc=$RC: $OUT"; fi
 run_shfmt none 1
 if [ "$RC" -ne 0 ] && [ -e "$CURL_LOG" ]; then pass "shfmt cache miss with the download down fails"; else fail "miss+down -> rc=$RC: $OUT"; fi
 n_infra="$(printf '%s\n' "$OUT" | grep -c 'infra')"
