@@ -159,13 +159,13 @@ live_witness_reset() {
 # The exempt list: one `<glob> HIMMEL-<n> <reason>` per line; `#` and blank lines are
 # ignored. A glob is matched against the target ("/<suite path>" in the runner, the
 # label in `run` mode). Return 2 (LW_EXEMPT_ERR names the line) on a line with no
-# HIMMEL-<n> key, whose glob holds a `[` or `]` anywhere, or whose glob has a glob
-# character in its last `/`-separated part: a line names one suite file, never a family
-# and never every suite.
+# HIMMEL-<n> key, whose glob holds a `[` or `]` anywhere, or whose last `/`-separated
+# part is not one or more of A-Z a-z 0-9 . _ -: a line names one suite file, never a
+# family and never every suite.
 LW_EXEMPT=""
 LW_EXEMPT_ERR=""
 live_witness_exempt_load() {
-  local _f="${1:-}" _line _glob _key _rest _last _keyre='^HIMMEL-[0-9]+$'
+  local _f="${1:-}" _line _glob _key _rest _last _keyre='^HIMMEL-[0123456789]+$'
   LW_EXEMPT=""
   LW_EXEMPT_ERR=""
   [ -n "$_f" ] || return 0
@@ -185,7 +185,7 @@ live_witness_exempt_load() {
         return 2 ;;
     esac
     case "$_last" in
-      *[*?[]*)
+      ''|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*)
         LW_EXEMPT_ERR="exempt glob names a family, not one suite file: $_line"
         return 2 ;;
     esac
