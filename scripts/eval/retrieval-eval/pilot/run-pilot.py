@@ -453,9 +453,14 @@ def gates(cfg):
     for the current card hash) and the distinct R8 go file. Returns the list of refusals."""
     bad = []
     card_sha = hashlib.sha256(open(cfg["card"], "rb").read()).hexdigest()
-    review = open(cfg["astra_review"]).read().rstrip().splitlines()
-    if not review or review[-1].strip() != "PILOT APPROVED" or card_sha not in "\n".join(review):
-        bad.append("G4: the card review does not end PILOT APPROVED for the current card")
+    try:
+        with open(cfg["astra_review"], encoding="utf-8") as f:
+            review = f.read().rstrip().splitlines()
+    except (OSError, UnicodeDecodeError):
+        bad.append("G4: the card review %s cannot be read" % cfg["astra_review"])
+    else:
+        if not review or review[-1].strip() != "PILOT APPROVED" or card_sha not in "\n".join(review):
+            bad.append("G4: the card review %s does not end PILOT APPROVED for the current card" % cfg["astra_review"])
     if not os.path.isfile(cfg.get("r8_go", "")):
         bad.append("no distinct R8 go")
     if subprocess.run([sys.executable, "-I", os.path.join(HERE, "tools-lock.py"), "check", cfg["lock"]]).returncode:
