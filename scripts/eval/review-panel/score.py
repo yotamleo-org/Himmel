@@ -635,10 +635,6 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
 
 
 def verified_block(outputs, fixtures, cases, ids, per_case, entries, gold, adjudications, leaks=()):
-    """The verified family of one scored sweep: labels bound to the fixtures' case inputs, the gold revision and
-    each finding's canonical hash. Only a case whose run manifest recorded exactly the inputs the fixtures hold
-    counts: other recorded inputs mean its outputs reviewed another case, and no record (no readable manifest, or
-    no entry for the case) is missing provenance, never assumed to match. Conflicting labels refuse (ValueError)."""
     inputs = case_inputs(fixtures, cases, ids)
     try:
         recorded = (read_manifest(outputs) or {}).get("inputs") or {}
@@ -1218,8 +1214,6 @@ def score_row(repo, rev, outputs, roster_rev=None, only=None):
 
 
 def running_gold_revision():
-    """The gold revision of the running scorer checkout's key/validation.json, None when it has none or it fails
-    lint against that checkout's key; never the gate tree's sidecar."""
     path = os.path.join(HERE, VALIDATION_REL)
     if not os.path.isfile(path):
         return None
