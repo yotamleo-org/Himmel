@@ -584,6 +584,13 @@ row_watermark_moved_before_lock_skips() {
     NOW=$((BASE+1000)); tick graph PATH="$C/fakebin:$PATH"
     assert_eq "watermark_moved_before_lock_skips: a watermark another tick moved is not run on stale state" 0 "$(ncalls ast)"
     assert_contains "watermark_moved_before_lock_skips: the race is logged" "graph hold=raced" "$OUT"
+    mkcase raced2; seed_both; cm $((BASE+100)) src/a.sh
+    mkdir -p "$C/fakebin"
+    printf '#!/bin/sh\nprintf "%%s\\n" "%s" > "%s/state/graph.retry"\necho 4\n' "$((BASE+9000))" "$C" > "$C/fakebin/nproc"
+    chmod +x "$C/fakebin/nproc"
+    NOW=$((BASE+1000)); tick graph PATH="$C/fakebin:$PATH"
+    assert_eq "watermark_moved_before_lock_skips: a backoff another tick set meanwhile holds the run" 0 "$(ncalls ast)"
+    assert_contains "watermark_moved_before_lock_skips: and is logged as a backoff" "graph hold=backoff" "$OUT"
 }
 
 row_slow_graph_floors_hourly() {

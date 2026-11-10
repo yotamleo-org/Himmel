@@ -249,6 +249,20 @@ flow_rows() { # <flow> <started> <ended> <rc> <from> <to>
 }
 
 # ---- one half's step -----------------------------------------------------------------
+# wait_gate_holds <half> <now>: rc 0 and a log line when the failure backoff, or the
+# graph half's slow-run floor, says wait. Read again under the lock, because a tick
+# that finished meanwhile may have set either.
+wait_gate_holds() {
+    local half="$1" now="$2" retry floor
+    retry=$(st_get "$half.retry")
+    if [ -n "$retry" ] && [ "$now" -lt "$retry" ]; then log "$half hold=backoff until=$retry"; return 0; fi
+    if [ "$half" = graph ]; then
+        floor=$(st_get graph.floor)
+        if [ -n "$floor" ] && [ "$now" -lt $((floor + 3600)) ]; then log "$half hold=slow-floor since=$floor"; return 0; fi
+    fi
+    return 1
+}
+
 pmr_half() { # keyword|graph: the step runs, and any lock it took is released only after its state is written
     pmr_half_step "$1"
     lock_release
@@ -293,12 +307,7 @@ pmr_half_step() { # keyword|graph
         log "$half watermark $w is not an ancestor of main; running once"
     fi
 
-    retry=$(st_get "$half.retry")
-    if [ -n "$retry" ] && [ "$now" -lt "$retry" ]; then log "$half hold=backoff until=$retry"; return 0; fi
-    if [ "$half" = graph ]; then
-        floor=$(st_get graph.floor)
-        if [ -n "$floor" ] && [ "$now" -lt $((floor + 3600)) ]; then log "$half hold=slow-floor since=$floor"; return 0; fi
-    fi
+    if wait_gate_holds "$half" "$now"; then return 0; fi
     if [ "$half" = keyword ] && reindex_lock_is_live; then pmr_skip "$half" reindex-lock; return 0; fi
     if load_is_high; then
         first=$(st_get "$half.defer")
@@ -330,6 +339,7 @@ pmr_half_step() { # keyword|graph
     st_rm "$half.defer"
     # Another tick may have finished between the read above and this lock: act on its state, not ours.
     if [ "$(st_get "$pfx.sha")" != "$w" ]; then log "$half hold=raced"; return 0; fi
+    if wait_gate_holds "$half" "$now"; then return 0; fi
 
     start=$(pmr_now)
     if [ "$half" = keyword ]; then out=$(run_keyword 2>&1); rc=$?; else out=$(run_graph 2>&1); rc=$?; fi
