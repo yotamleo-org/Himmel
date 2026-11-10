@@ -19,7 +19,11 @@
 #       graphify-out (an overridden out dir holding only cache/ is refused by ast-update.sh with exit 3).
 #
 # Writes only under <scratch>: never the live qmd index, its config dir or a graphify-out of a checkout. A
-# <scratch> that exists must be empty or carry the marker this script leaves. Refusals exit 2, usage 64.
+# <scratch> that exists must be empty or carry the marker this script leaves.
+# Exit: 0 done; 1 a step failed (git archive, qmd, ast-update.sh, the collection helper, the daemon not
+# listening); 2 a refusal (a live or primary path, a non-scratch directory, a missing HIMMEL_BILLED_OK, a
+# paid state without --embed-ok, more documents than --embed-ok allows, a key that could not load); 64 usage
+# or a commit that does not resolve.
 # Seams (tests): SF_QMD, SF_REPO, SF_AST, SF_LIVE_INDEX, SF_PRIMARY_GRAPH_OUT.
 # shellcheck disable=SC2015  # `A && B || die` is the refusal idiom here: die exits, so C never runs after a true A
 set -uo pipefail
