@@ -228,7 +228,6 @@ build_world() {
     done
 }
 
-# ======================================================================
 echo "ROW: 10 records, 2 residue: 1 list call"
 reset_logs
 build_world a 6 2
