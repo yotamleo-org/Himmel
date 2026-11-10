@@ -2725,8 +2725,11 @@ _bucket_line() {
     BUCKET_RESULT="unread"
     if command -v timeout >/dev/null 2>&1; then bk_to="timeout -k 10 $(_mog_shorten_secs "${MERGE_BUCKET_TIMEOUT_SECS:-}" 30)"
     elif command -v gtimeout >/dev/null 2>&1; then bk_to="gtimeout -k 10 $(_mog_shorten_secs "${MERGE_BUCKET_TIMEOUT_SECS:-}" 30)"; fi
-    bk_out=$(cd "$repo_root" && ${bk_to:+$bk_to} node scripts/jira/dist/index.js release bucket-check \
-        --mirror "$HOME/.himmel/state/jira-mirror/${key%%-*}" "$key" 2>/dev/null) || bk_rc=$?
+    # With neither binary the call cannot be bounded, so it is not made: a hung CLI would hold the audit line and the exit.
+    if [ -n "$bk_to" ]; then
+        bk_out=$(cd "$repo_root" && $bk_to node scripts/jira/dist/index.js release bucket-check \
+            --mirror "$HOME/.himmel/state/jira-mirror/${key%%-*}" "$key" 2>/dev/null) || bk_rc=$?
+    fi
     # A call the timeout killed is unread even if it printed before the kill.
     case "$bk_rc" in 124|137) bk_out="" ;; esac
     bk_line=$(printf '%s\n' "$bk_out" | grep -m 1 -E "^(IN|NONE|APPROVED|OUTSIDE|DONE|FAILED) $key( |\$)") || bk_line=""

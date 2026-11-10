@@ -6146,6 +6146,23 @@ assert_audit_lacks "9001-l2: it is not the gh-exit path" "gh-exit="
 # The mirror is the key's own project: it is derived from the key, and the title gate needs JIRA_PROJECT_KEY set, so no unset row.
 STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="IN HIMMEL-374 current=v1.1.3 via=mirror" STUB_PR_TITLE="$bk_title" run_mog 0 "9001-m: the mirror is read from the key's project"
 assert_jira_log_has "9001-m: the mirror is the key's project" "release bucket-check --mirror $HOME/.himmel/state/jira-mirror/HIMMEL HIMMEL-374"
+# With no timeout binary the call cannot be bounded, so it is not made and the merge reads unread.
+bk_farm=$(mktemp -d "${TMPDIR:-/tmp}/mog-bk-nt.XXXXXX") || bk_farm=""
+if [ -z "$bk_farm" ] || [ ! -d "$bk_farm" ]; then
+    fail "9001-n: setup: no scratch dir for the no-timeout PATH"
+else
+    IFS=: read -r -a bk_path <<< "$PATH"
+    for bk_d in "${bk_path[@]}"; do
+        case "$bk_d" in /*) [ -d "$bk_d" ] && { ln -s "$bk_d"/* "$bk_farm"/ 2>/dev/null || true; } ;; esac
+    done
+    rm -f "$bk_farm/timeout" "$bk_farm/gtimeout"
+    MOG_PATH_BASE="$bk_farm" STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_out_line" STUB_PR_TITLE="$bk_title" \
+        run_mog 0 "9001-n: no timeout binary, the bucket-check is not run"
+    assert_audit_has "9001-n: the field is unread" " bucket=unread"
+    assert_jira_log_lacks "9001-n: no bucket-check call was made" "bucket-check"
+    assert_bk_rows "9001-n: one unread row" 1
+    rm -rf "$bk_farm"
+fi
 rm -rf "$bk_root"
 
 echo
