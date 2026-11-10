@@ -392,8 +392,10 @@ made by then that the build commit does not contain. It prints:
 - the hours over 40 and over 100, and whether the target holds: `p90` at most
   40 and `max` at most 100.
 
-Hours before the first `published-channel` row have no baseline; the report
-counts them apart (`no-baseline-hours`) and leaves them out of the figures.
+Hours before the first `published-channel` row have no baseline
+(`no-baseline-hours`), and hours after a publish whose build commit the
+checkout cannot read are `unknown-hours`: the report leaves both out of the
+figures and never reads them as an older graph's lag.
 `--now` ends the window at a fixed time instead of the present.
 
 ## Luna graph freshness

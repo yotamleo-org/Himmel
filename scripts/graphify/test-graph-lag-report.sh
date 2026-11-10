@@ -76,6 +76,13 @@ L2B="$TMP_ROOT/l2b.jsonl"
 out=$(python3 -I "$REPORT" --ledger "$L2B" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
 assert_contains "a publish at hour 12 closes the gap: max falls to 11" "max=11" "$out"
 
+echo "TEST: unresolved_publish_unknown -- a publish whose build commit is not in the repo is unknown hours, not the older graph"
+L2C="$TMP_ROOT/l2c.jsonl"
+{ row 0 published-channel "$C0"; row 12 published-channel 0123456789abcdef0123456789abcdef01234567; } > "$L2C"
+out=$(python3 -I "$REPORT" --ledger "$L2C" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
+assert_contains "the 12 hours after the unresolvable publish are unknown" "unknown-hours=12" "$out"
+assert_contains "only the 12 resolvable hours enter the figures (lags 0..11)" "max=11" "$out"
+
 echo "TEST: over_limit_counted -- hours over the limit and the breaches of 40 and 100"
 R3="$TMP_ROOT/r3"; plant_repo "$R3" 130
 L3="$TMP_ROOT/l3.jsonl"

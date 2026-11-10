@@ -14,8 +14,9 @@ commits on main made by then that the published build commit does not contain.
 It prints p50, p90 and max over the window's hours, the hours over the limit
 adopters' `himmel-update` enforces (GRAPH_MAX_BEHIND, read from himmel-update.sh),
 and the hours over 40 and over 100: the target is p90 at most 40 and max at
-most 100. Hours before the first published-channel row have no baseline and are
-counted apart, not as zero.
+most 100. Hours before the first published-channel row have no baseline, and
+hours after a publish whose build commit the repo cannot read are unknown; both
+are counted apart, never as zero and never as an older graph's lag.
 
 Exit codes: 0 report printed; 2 bad input (no ledger, no repo, no limit).
 """
@@ -136,27 +137,29 @@ def main():
         die("cannot read --now %s" % args.now)
     ref = resolve_ref(args.repo, args.ref)
 
+    # A publish whose build commit this repo cannot read still replaced the graph adopters fetch,
+    # so it stays a baseline and its hours are unknown, never the older graph's lag.
     ahead = {}
-    published = []
-    for ts, gh in read_published(args.ledger):
+    published = read_published(args.ledger)
+    for _, gh in published:
         if gh not in ahead:
             ahead[gh] = commit_times_ahead(args.repo, ref, gh)
-        if ahead[gh] is not None:
-            published.append((ts, gh))
     stamps = [p[0] for p in published]
 
-    lags, no_baseline = [], 0
+    lags, no_baseline, unknown = [], 0, 0
     end = now - now % HOUR
     for i in range(args.days * 24):
         h = end - i * HOUR
         k = bisect.bisect_right(stamps, h) - 1
         if k < 0:
             no_baseline += 1
-            continue
-        lags.append(bisect.bisect_right(ahead[published[k][1]], h))
+        elif ahead[published[k][1]] is None:
+            unknown += 1
+        else:
+            lags.append(bisect.bisect_right(ahead[published[k][1]], h))
 
-    print("graph-lag-report: days=%d hours=%d no-baseline-hours=%d published-rows=%d ref=%s"
-          % (args.days, args.days * 24, no_baseline, len(published), ref))
+    print("graph-lag-report: days=%d hours=%d no-baseline-hours=%d unknown-hours=%d published-rows=%d ref=%s"
+          % (args.days, args.days * 24, no_baseline, unknown, len(published), ref))
     if not lags:
         print("lag-commits: none (no published-channel row at or before any hour of the window)")
         print("target: UNKNOWN")
