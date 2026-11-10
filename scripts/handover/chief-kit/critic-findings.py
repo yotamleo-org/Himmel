@@ -68,14 +68,11 @@ def read_regular(path):
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             refuse(2, "noncanonical-location")
-        chunks = []
-        while True:
-            chunk = os.read(fd, 1 << 20)
-            if not chunk:
-                return b"".join(chunks)
-            chunks.append(chunk)
-    finally:
+    except BaseException:
         os.close(fd)
+        raise
+    with os.fdopen(fd, "rb") as f:
+        return f.read()
 
 
 def unique_pairs(pairs):
