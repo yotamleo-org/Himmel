@@ -37,10 +37,9 @@ expected_set() {
 }
 
 field3() {
-  set -f
-  # shellcheck disable=SC2086
-  set -- $1
-  printf '%s' "${3-}"
+  local f
+  read -r _ _ f _ <<< "$1"
+  printf '%s' "$f"
 }
 
 verify() {

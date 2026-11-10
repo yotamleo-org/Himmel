@@ -200,7 +200,6 @@ expect "real: an unlisted suite gets the runner's 600s default" 'runs in PR CI \
 out=$(bash "$SC" --runner "$REAL" scripts/hooks/test-block-destructive-commands-b.sh 2>&1); rc=$?
 expect "real: the [abcd] bracket glob matches, 1200s" 'cap 1200s' "$out" 0
 
-# C1/C2: a scripts/testing SKIP_LIST entry runs in PR CI through the ci-quick claude-startup group; any other entry stays uncovered
 sed 's|^scripts/vm/test-vm.sh .*|&\
 scripts/testing/test-a.sh  # reason\
 scripts/foo/test-b.sh  # reason|' "$tmp/runner.sh" > "$tmp/runner-ct.sh"
@@ -209,12 +208,11 @@ expect "C1 a scripts/testing SKIP_LIST entry runs in PR CI (claude-startup group
 out=$(bash "$SC" --runner "$tmp/runner-ct.sh" scripts/foo/test-b.sh 2>&1); rc=$?
 expect "C2 any other SKIP_LIST entry is still not run in CI" '^scripts/foo/test-b.sh: not run in CI \(SKIP_LIST\)' "$out" 0
 
-# C3: on the real tree the entries given the claude-startup verdict are exactly the recorder's --expected set
 exp="$(bash "$HERE/../ci/claude-startup-row.sh" --expected 2>&1)"; erc=$?
 if [ "$erc" -eq 0 ] && [ -n "$exp" ]; then pass "C3 --expected exits 0 with a non-empty set"; else bad "C3 --expected exits 0 with a non-empty set (rc=$erc)" "$exp"; fi
-all_skip="$(awk '$0 == "SKIP_LIST=\"" {on=1; next} on && $0 == "\"" {exit} on {sub(/#.*/, ""); if (NF) print $1}' "$REAL")"
-# shellcheck disable=SC2086 # one path per word, none holds a space
-cov="$(bash "$SC" --runner "$REAL" $all_skip 2>&1 | sed -n 's/: runs in PR CI (ci-quick claude-startup group)$//p' | LC_ALL=C sort)"
+all_skip=()
+while IFS= read -r p; do all_skip+=("$p"); done < <(awk '$0 == "SKIP_LIST=\"" {on=1; next} on && $0 == "\"" {exit} on {sub(/#.*/, ""); if (NF) print $1}' "$REAL")
+cov="$(bash "$SC" --runner "$REAL" "${all_skip[@]}" 2>&1 | sed -n 's/: runs in PR CI (ci-quick claude-startup group)$//p' | LC_ALL=C sort)"
 if [ -n "$cov" ] && [ "$cov" = "$(printf '%s\n' "$exp" | LC_ALL=C sort)" ]; then pass "C3 suite-coverage's claude-startup set equals --expected"; else bad "C3 suite-coverage's claude-startup set equals --expected" "suite-coverage: $(printf '%s' "$cov" | tr '\n' ' ') | expected: $(printf '%s' "$exp" | tr '\n' ' ')"; fi
 
 [ "$fail" -eq 0 ] && echo "PASS: suite-coverage" || echo "FAIL: suite-coverage"
