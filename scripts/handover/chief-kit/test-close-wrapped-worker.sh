@@ -2359,6 +2359,9 @@ check "batch --check starts no drain: rc 0" "$rc" "0"
 check "batch --check starts no drain: still prints the status line last" "$(printf '%s\n' "$out" | tail -n 1 | grep -cE "$STATUS_RE")" "1"
 sleep 1
 check "batch --check starts no drain" "$(cat "$CALLS.sweep")" ""
+printf '#!/usr/bin/env bash\nexit 3\n' > "$W/bin/sweep-status-fails.sh"; chmod +x "$W/bin/sweep-status-fails.sh"
+rc=0; out=$(CWL_SWEEP_BIN="$W/bin/sweep-status-fails.sh" CWL_SCRIPT="$HERE/close-wrapped-workers.sh" run --check "$MS_PRED_M" 2>&1) || rc=$?
+contains "batch: a failing sweep status is reported, never silent" "$out" "close-wrapped-workers: WARN cannot read the close sweep status"
 rc=0; CWL_SCRIPT="$HERE/close-wrapped-workers.sh" run --bogus >/dev/null 2>&1 || rc=$?
 check "workers: an unknown flag -> rc 2" "$rc" "2"
 rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-workers.sh" HIMMEL_BUCKET_DIR="$W/bucket" CLOSE_WRAPPED_WORKERS_MAX_AGE_MIN=abc run --check 2>&1) || rc=$?

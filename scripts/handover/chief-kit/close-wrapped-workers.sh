@@ -101,5 +101,5 @@ if [ -z "$check" ]; then
         "$CLOSE_SWEEP" < /dev/null >> "$CLOSE_SWEEP_STATE/sweep.log" 2>&1 \
         || echo "close-wrapped-workers: WARN cannot start the close sweep - its records wait in $CLOSE_SWEEP_STATE/pending/"
 fi
-bash "$CLOSE_SWEEP" --status
+bash "$CLOSE_SWEEP" --status || echo "close-wrapped-workers: WARN cannot read the close sweep status ($CLOSE_SWEEP --status failed)"
 [ "$failed" -eq 0 ]
