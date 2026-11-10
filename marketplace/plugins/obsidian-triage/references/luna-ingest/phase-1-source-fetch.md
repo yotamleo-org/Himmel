@@ -19,7 +19,7 @@ gh api "repos/${owner_repo}" --jq '{name, full_name, description, html_url, lang
 
 If `gh api` fails (rc≠0): exit 2 with the stderr inlined.
 
-**Identity (HIMMEL-3055).** Fetch the default-branch HEAD SHA — this is `upstream_commit` in the synthesis, the field that lets later tooling tell whether upstream moved since ingest without re-fetching the whole repo:
+**Identity.** Fetch the default-branch HEAD SHA — this is `upstream_commit` in the synthesis, the field that lets later tooling tell whether upstream moved since ingest without re-fetching the whole repo:
 
 ```bash
 default_branch=$(jq -r '.default_branch' /tmp/luna-ingest-meta.$$.json)

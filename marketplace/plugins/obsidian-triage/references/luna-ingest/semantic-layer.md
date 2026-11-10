@@ -1,6 +1,4 @@
-<!-- Moved verbatim out of SKILL.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
-
-### Semantic layer (HIMMEL-3055 — schema defined, NOT yet populated)
+### Semantic layer (schema defined, NOT yet populated)
 
 Identity (`upstream_commit`, `readme_sha256`, …) answers "did the repo move". It says nothing
 about what the repo is *for* — the layer that makes the corpus clusterable and searchable rather
@@ -29,10 +27,10 @@ Proposed fields, on the same `tech-ingest` frontmatter:
 against.** These are judgements, not facts — they can be wrong, and they go stale when a repo
 changes direction (a repo in this corpus was ingested as a job-application tool and is now an
 anti-bot browser agent: `feder-cr/AIHawk`, formerly `jobs_applier_ai_agent_aihawk` — see the
-HIMMEL-3055 staleness report for the worked example). Without the commit anchor, nobody can tell
+staleness report for the worked example). Without the commit anchor, nobody can tell
 whether a stored judgement still applies to the code it was made about.
 
 Five hand-derived examples proving this schema resolves without contradiction across a job-search
 bot turned browser agent, a vendored proxy, an Electron orchestrator, a second-brain plugin, and
-an unrelated SaaS product are in the HIMMEL-3055 staleness report (`§ Semantic layer hand-proof`),
+an unrelated SaaS product are in the staleness report (`§ Semantic layer hand-proof`),
 not applied to any vault note — this is a schema proof, not a backfill.
