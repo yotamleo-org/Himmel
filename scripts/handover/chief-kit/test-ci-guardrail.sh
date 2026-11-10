@@ -45,7 +45,6 @@ RUN_1='{id: 1, name: "CI", event: "pull_request", status: "in_progress", conclus
         created_at: "2026-10-20T11:20:00Z", run_started_at: "2026-10-20T11:20:00Z", updated_at: "2026-10-20T11:25:00Z"}'
 gen "$RUN_1" 1 > "$W/one-run.json"
 gen "$JOBQ" 500 > "$W/q500.json"; gen "$JOBQ" 501 > "$W/q501.json"
-# runj <jobs.json> [state-dir] [now]: one read of one open run holding those jobs.
 runj() {
     bash "$SUT" --runs "$W/one-run.json" --jobs "$1" --now "${3:-$NOW}" --state-dir "${2:-$W/state}" 2>&1
 }
@@ -258,8 +257,7 @@ livez() {
 }
 if [ "$(id -u)" != 0 ]; then
     fresh; livej >/dev/null
-    touch -d '2026-10-20 00:00' "$W/state/tick-ciguard-runs.json"
-    chmod 444 "$W/state/tick-ciguard-jobs.json"
+    touch -d '2026-10-20 00:00' "$W/state/tick-ciguard-runs.json" && chmod 444 "$W/state/tick-ciguard-jobs.json" || fail 'the cache fault injection could not be set up'
     out="$(livez)"
     contains 'a refetch with 0 jobs reads ok' "$out" 'ciguard=ok'
     out="$(livez)"

@@ -83,8 +83,6 @@ trap 'rm -rf "$WORK"' EXIT
 [ -z "$RUNS" ] || [ "$STATE_GIVEN" = 1 ] || STATE_DIR="$WORK/state"
 mkdir -p "$STATE_DIR" 2>/dev/null || true  # swallow-ok: an unwritable state dir only costs the once-per-crossing memory
 
-# fetch_runs <out> <jobs-out>: the last 24 h of runs as a ci-metrics.sh runs.json, and the jobs of
-# the runs still open as a jobs.json, or non-zero.
 fetch_runs() {
   local out="$1" jobs_out="$2" remaining slug url i a b c
   remaining="$(bash "$BUDGET" 2>/dev/null | sed -n 's#^gh-api: remaining=\([0-9][0-9]*\)/.*#\1#p')"  # swallow-ok: no parsable remaining count returns 1 on the next line
