@@ -21,18 +21,19 @@
 # title; --core-only runs it alone, for a launch that skips the prior-art check.
 # --judge skips it: a judge brief writes nothing, so no spec stands behind it.
 #
-# Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 refusal no flag clears: the core gate, a salus-marked
+# Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 refusal no flag clears: the core gate, the bucket rule, a salus-marked
 # brief that names a search, a resume_cwd the classifier cannot answer for, or front matter that does not parse as YAML.
 set -u
 
 core_only=0
 judge=0
-while [ "${1:-}" = "--core-only" ] || [ "${1:-}" = "--judge" ]; do
-    if [ "$1" = "--core-only" ]; then core_only=1; else judge=1; fi
+skip_bucket=0
+while [ "${1:-}" = "--core-only" ] || [ "${1:-}" = "--judge" ] || [ "${1:-}" = "--skip-bucket" ]; do
+    case "$1" in --core-only) core_only=1 ;; --judge) judge=1 ;; *) skip_bucket=1 ;; esac
     shift
 done
 if [ "$#" -ne 1 ]; then
-    echo "usage: brief-lint.sh [--core-only] [--judge] <brief>" >&2
+    echo "usage: brief-lint.sh [--core-only] [--judge] [--skip-bucket] <brief>" >&2
     exit 2
 fi
 doc="$1"
@@ -58,8 +59,21 @@ fail() { echo "brief-lint: $doc: $1" >&2; exit 1; }
 # whether or not it has run. `release core-check` answers per key from the CLI and the operator records
 # alone: NOT-CORE and BYPASS pass, UNKNOWN refuses, CORE needs `release spec-check` to answer SPEC ok.
 # No line the brief writes itself can pass a key. BRIEF_LINT_JIRA_CLI and BRIEF_LINT_MIRROR are test seams.
+resolve_cli() {
+    local cli common
+    cli="${BRIEF_LINT_JIRA_CLI:-}"
+    if [ -z "$cli" ]; then
+        # shellcheck source=../../lib/git-clean.sh
+        . "$(dirname "$0")/../../lib/git-clean.sh"
+        common="$(git_clean -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""  # swallow-ok: no repository means the python stage reports the CLI as absent, which refuses
+        if [ -z "$common" ]; then common="$(dirname "$0")/../../../.git"; fi
+        cli="$(dirname "$common")/scripts/jira/dist/index.js"
+    fi
+    printf '%s' "$cli"
+}
+
 core_rule() {
-    local cli common core_err core_rc=0 core_state_root=""
+    local cli core_err core_rc=0 core_state_root=""
     [ "$judge" -eq 0 ] || return 0
     # The handover root turns an absolute Writes path under it into a non-core stand-in; without a resolvable root no absolute path counts.
     # shellcheck source=../../lib/load-dotenv.sh
@@ -69,14 +83,7 @@ core_rule() {
     if load_dotenv HANDOVER_DIR 2>/dev/null; then
         core_state_root="$(handover_root 2>/dev/null)" || core_state_root=""  # swallow-ok: no root means no absolute Writes path counts, which can only refuse more
     fi
-    cli="${BRIEF_LINT_JIRA_CLI:-}"
-    if [ -z "$cli" ]; then
-        # shellcheck source=../../lib/git-clean.sh
-        . "$(dirname "$0")/../../lib/git-clean.sh"
-        common="$(git_clean -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""  # swallow-ok: no repository means the python stage below reports the CLI as absent, which refuses
-        if [ -z "$common" ]; then common="$(dirname "$0")/../../../.git"; fi
-        cli="$(dirname "$common")/scripts/jira/dist/index.js"
-    fi
+    cli="$(resolve_cli)"
     core_err="$(python3 -I - "$doc" "$cli" "$core_state_root" "$(cd "$(dirname "$0")" && pwd)" <<'PY'
 import json, os, re, subprocess, sys
 from datetime import datetime
@@ -259,6 +266,101 @@ PY
     fi
 }
 
+bucket_rule() {
+    local cli ran=0 bucket_err bucket_rc=0
+    [ "$judge" -eq 0 ] || return 0
+    [ "$skip_bucket" -eq 0 ] || return 0
+    cli="$(resolve_cli)"
+    worker_doc_has_run "$doc" && ran=1
+    bucket_err="$(python3 -I - "$doc" "$cli" "$ran" <<'PY'
+import os, re, subprocess, sys
+
+doc, cli, ran = sys.argv[1], sys.argv[2], sys.argv[3] == '1'
+lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
+title = next((l for l in lines if l.startswith('# ')), '')
+keys = list(dict.fromkeys(re.findall(r'\b[A-Z][A-Z0-9]*-[0-9]+\b', title)))
+named = re.search(r'[A-Z][A-Z0-9]*-[0-9]+', os.path.basename(doc))
+if named and named.group(0) not in keys:
+    keys.append(named.group(0))
+if not keys:
+    sys.exit(0)
+
+raw = os.environ.get('BRIEF_LINT_VERDICT_TIMEOUT', '')
+timeout = 120
+if raw != '':
+    if not re.fullmatch(r'[0-9]+', raw) or int(raw) < 1:
+        print('BRIEF_LINT_VERDICT_TIMEOUT must be a whole number of seconds from 1 up (it is capped at 120), and it is %r' % raw)
+        sys.exit(1)
+    timeout = min(int(raw), 120)
+
+primary = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(cli))))
+
+def failed(why):
+    print('BUCKET-CHECK-FAILED: build the jira CLI (npm --prefix %s/scripts/jira run build) -- %s' % (primary, why))
+    sys.exit(1)
+
+groups = {}
+for k in keys:
+    mirror = os.environ.get('BRIEF_LINT_MIRROR') or os.path.expanduser('~/.himmel/state/jira-mirror/' + k.split('-')[0])
+    groups.setdefault(os.path.abspath(mirror), []).append(k)
+
+VERDICTS = ('IN', 'NONE', 'APPROVED', 'DONE', 'OUTSIDE', 'FAILED')
+got = {}
+for mirror, ks in groups.items():
+    if not os.path.isfile(cli):
+        failed('no built jira CLI at %s' % cli)
+    try:
+        r = subprocess.run(['node', cli, 'release', 'bucket-check', '--mirror', mirror] + ks, capture_output=True, text=True,
+                           timeout=timeout, cwd=os.path.dirname(os.path.abspath(cli)))
+    except subprocess.TimeoutExpired:
+        failed('release bucket-check timed out after %d seconds' % timeout)
+    except (OSError, subprocess.SubprocessError) as e:
+        failed('node could not run %s (%s)' % (cli, e))
+    if r.returncode != 0:
+        failed('release bucket-check exited %d: %s' % (r.returncode, (r.stderr or r.stdout).strip()[:200]))
+    for line in r.stdout.splitlines():
+        t = line.split()
+        if len(t) >= 2 and t[0] in VERDICTS and t[1] in ks:
+            got[t[1]] = line
+    missing = [k for k in ks if k not in got]
+    if missing:
+        failed('release bucket-check printed no parseable line for %s' % ', '.join(missing))
+
+REASON = {'NONE': 'no-versions', 'APPROVED': 'out-of-version', 'DONE': 'done-relaunch'}
+refusals = []
+for k in keys:
+    t = got[k].split()
+    verdict, rest = t[0], ' '.join(t[2:])
+    if verdict == 'IN':
+        continue
+    if verdict in ('NONE', 'APPROVED') or (verdict == 'DONE' and ran):
+        print(('brief-lint: %s bypass=%s %s' % (k, REASON[verdict], rest)).rstrip(), file=sys.stderr)
+    elif verdict == 'DONE':
+        refusals.append('%s is Done. Why launch it? File a new ticket with `--follow-up-of`, or reopen it.' % k)
+    elif verdict == 'FAILED':
+        refusals.append('%s: bucket-check FAILED, so the launch is refused rather than passed unread: %s' % (k, rest))
+    else:
+        m = re.fullmatch(r'(\S+) current=(\S+) open=(\S+)', rest)
+        if not m:
+            refusals.append('%s: bucket-check printed an OUTSIDE line this lint cannot read: %s' % (k, got[k]))
+            continue
+        version, current, opened = m.groups()
+        refusals.append(
+            '%s is in %s, current is %s, %s open. Why this ticket and not the bucket? If the operator approved it as out of version: '
+            '`jira release operator out-of-version`. To place it in the bucket: `jira release request`, and the release manager rules it. '
+            'Do not use an approval to run parallel work outside the bucket. At 0 open the version is done: run READY, and the operator '
+            'releases it in Jira.' % (k, 'no version' if version == 'none' else version, current, opened))
+if refusals:
+    print('\n'.join(refusals))
+    sys.exit(1)
+PY
+)" || bucket_rc=$?
+    if [ "$bucket_rc" -ne 0 ]; then
+        echo "brief-lint: $doc: $bucket_err" >&2
+        exit 3
+    fi
+}
+
 # The directory the worker starts in, read the way headed-arm-worker.sh reads it: the front-matter line, trimmed, quotes
 # stripped, a leading ~ expanded. This block is the launcher's, line for line (test-brief-lint.sh compares them).
 cwd="$(awk '
@@ -420,6 +522,7 @@ fi
 
 if [ "$core_only" -eq 1 ]; then
     core_rule
+    bucket_rule
     exit 0
 fi
 
@@ -543,4 +646,5 @@ if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_
 fi
 
 core_rule
+bucket_rule
 exit 0
