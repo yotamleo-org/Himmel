@@ -307,6 +307,8 @@ const MUST_RUN_CHAIN_MEMBERS = new Set([
   // Fails CLOSED; a starved run let an agent write
   // ~/.himmel/config.json and grant itself the graphify salus opt-in unchecked.
   'block-himmel-config-writes.sh',
+  // Fails CLOSED; a starved run let a subagent write an operator-chain row.
+  'block-subagent-release-operator.sh',
 ]);
 
 function envMs(name, fallback) {

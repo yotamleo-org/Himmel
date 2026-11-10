@@ -40,6 +40,7 @@ command -v git >/dev/null 2>&1 || { echo "SKIP: git not on PATH"; exit 0; }
 
 # <hook>|||<mode>|||<env words, blank-separated>|||<setup>|||<payload>
 #   mode  deny      protected action: denied iff rc=2 or a deny decision
+#         deny-subagent  as deny, with agent_id "a1" in the payload (a subagent's call)
 #         noapprove an APPROVER: "denied" means not auto-approved
 #   setup (unused today, `-`)
 #   @@T@@ scratch dir, @@REPO@@ scratch git repo on main (also the cwd)
@@ -57,6 +58,7 @@ block-himmel-config-writes.sh|||deny|||-|||-|||cp /tmp/f ~/.himmel/config.json
 block-jira-compound-write.sh|||deny|||-|||-|||node /x/scripts/jira/dist/index.js create --type Task --title a --desc "$(cat /tmp/a.md)"
 block-read-secrets.sh|||deny|||-|||-|||cat .env
 block-rogue-claude-schedule.sh|||deny|||-|||-|||schtasks /create /tn X /tr claude.exe /sc ONCE
+block-subagent-release-operator.sh|||deny-subagent|||-|||-|||node /x/scripts/jira/dist/index.js release operator spec-review R1 --keys K-2
 block-tail-pipe-on-gates.sh|||deny|||-|||-|||bash scripts/ci/run-shell-tests.sh | tail -5
 block-write-into-main-checkout.sh|||deny|||-|||-|||echo x > @@REPO@@/f
 guard-bus-store.sh|||deny|||-|||-|||cat ~/.himmel/bus/foo
@@ -157,8 +159,8 @@ NL='
 # verdict <hook> <mode> <env> <command> -> sets V to deny|allow|?rc=N
 verdict() {
   local hook="$1" mode="$2" envs="$3" cmd="$4" json out rc
-  json=$(jq -cn --arg c "$cmd" --arg d "$T/repo" \
-    '{tool_name:"Bash",tool_input:{command:$c},cwd:$d}')
+  json=$(jq -cn --arg c "$cmd" --arg d "$T/repo" --arg m "$mode" \
+    '{tool_name:"Bash",tool_input:{command:$c},cwd:$d} + (if $m == "deny-subagent" then {agent_id:"a1"} else {} end)')
   # shellcheck disable=SC2086  # $envs is a deliberate blank-separated word list
   out=$(cd "$T/repo" && printf '%s' "$json" | env -i HOME="$T/home" PATH="$PATH" TMPDIR="$T/tmp" \
     $envs bash "$HERE/$hook" 2>/dev/null)

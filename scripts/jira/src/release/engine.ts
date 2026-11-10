@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +14,7 @@ import { appendAdmission, assertAdmissionsWritable, readAdmissions, readAdmissio
 import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import type {
-  Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, OutOfVersionRow, PlacementClass, RequestRow, RulingRow, Verb,
+  Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorKind, OperatorRow, OutOfVersionRow, PlacementClass, RequestRow, RulingRow, Verb,
 } from './types.js';
 
 // The release engine's I/O (design §5): the only writer of the authority files
@@ -374,9 +374,10 @@ export function takeover(ctx: Ctx, o: { epoch: number; doc: string }): OperatorR
 
 export type ReleaseRecord = OperatorRow & { release: string };
 
-// The verified operator rows of one kind in every declared release under releaseRoot(),
+// The verified operator rows of the given kinds in every declared release under releaseRoot(),
 // so a record survives its ticket moving to another release. A row past a chain break is not verified.
-export function readOperatorRecords(kind: OperatorRow['kind'], env: Record<string, string | undefined> = process.env): ReleaseRecord[] {
+export function readOperatorRecords(kind: OperatorKind | OperatorKind[], env: Record<string, string | undefined> = process.env): ReleaseRecord[] {
+  const kinds = new Set<OperatorKind>(Array.isArray(kind) ? kind : [kind]);
   const root = releaseRoot(env);
   if (!existsSync(root)) return [];
   const out: ReleaseRecord[] = [];
@@ -389,12 +390,44 @@ export function readOperatorRecords(kind: OperatorRow['kind'], env: Record<strin
       continue;
     }
     const chain = readChain<OperatorRow>(join(root, release, 'operator.jsonl'), k);
-    out.push(...chain.verified.filter((o) => o.kind === kind).map((o) => ({ ...o, release })));
+    out.push(...chain.verified.filter((o) => kinds.has(o.kind)).map((o) => ({ ...o, release })));
   }
   return out;
 }
 
 const fileSha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
+
+const PINNED_MAX = 16 * 1024 * 1024;
+export type Pinned = { bytes: Buffer; sha256: string } | { missing: true } | { unreadable: true };
+
+// A pinned file is read once from one non-blocking fd: a FIFO, a device, a directory or a file over 16 MiB
+// is unreadable, so a planted path never blocks the reader nor costs it more than 16 MiB.
+export function pinnedSha(path: string): Pinned {
+  let fd: number;
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? { missing: true } : { unreadable: true };
+  }
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size > PINNED_MAX) return { unreadable: true };
+    const bytes = readFileSync(fd);
+    if (bytes.length > PINNED_MAX) return { unreadable: true };
+    return { bytes, sha256: createHash('sha256').update(bytes).digest('hex') };
+  } catch {
+    return { unreadable: true };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function pinRead(path: string, role: string, verb: string): { bytes: Buffer; sha256: string } {
+  const got = pinnedSha(path);
+  if ('missing' in got) throw new Error(`${verb}: ${role} not found: ${path}`);
+  if ('unreadable' in got) throw new Error(`${verb}: ${role} ${path} is unreadable`);
+  return got;
+}
 
 // The primary checkout, found from this module, not the caller's cwd.
 function checkoutRoot(): string {
@@ -405,51 +438,94 @@ function checkoutRoot(): string {
 
 const minervaScript = (name: string): string => join(checkoutRoot(), 'marketplace', 'plugins', 'himmel-ops', 'scripts', name);
 
-function runMinerva(name: string, args: string[], cwd: string): void {
+function runMinerva(name: string, args: string[], cwd: string, verb = 'release operator spec'): void {
   try {
     execFileSync('bash', [minervaScript(name), ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) {
     const err = e as { stderr?: string; stdout?: string; message: string };
-    throw new Error(`release operator spec: ${name} refused the spec:\n${(err.stderr || err.stdout || err.message).trim()}`);
+    throw new Error(`${verb}: ${name} refused the spec:\n${(err.stderr || err.stdout || err.message).trim()}`);
   }
+}
+
+// The spec gate on the spec, then the trace lint on the spec and plan. The lint resolves cited paths against its
+// cwd's repo, so it runs from the checkout, whichever repo holds the spec; the spec's own repo (the state repo) is
+// the second place a cited path may exist.
+function lintSpec(spec: string, plan: string, verb?: string): void {
+  runMinerva('minerva-spec-gate.sh', [spec], dirname(spec), verb);
+  let own: string[] = [];
+  try {
+    own = [execFileSync('git', ['-C', dirname(spec), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()];
+  } catch { /* a spec outside any repo has no second root */ }
+  runMinerva('minerva-trace-lint.sh', [spec, plan, ...own], checkoutRoot(), verb);
 }
 
 const VERDICT = /^(SPEC|PLAN) (CLEAN|FINDINGS (\d+))$/;
 const DISPOSITION = /^\s*[-*]\s+R(\d+):\s+(fixed|ASSUMPTION|ceiling|ponytail|deferred → HIMMEL-\d+)\b/;
 
-// Each verdict file's last line is its critic's verdict word; one spec critic and one plan critic.
-function readVerdicts(paths: string[]): { verdicts: Array<{ path: string; sha256: string }>; residuals: number } {
-  const seen = new Set<string>();
-  let residuals = 0;
-  const verdicts = paths.map((raw) => {
+type VerdictKind = 'SPEC' | 'PLAN';
+interface VerdictFile { path: string; sha256: string; kind: VerdictKind; last: string; residuals: number; text: string }
+
+// Each verdict file's last line is its critic's verdict word. Every required kind appears exactly once, every
+// allowed kind at most once, and no other kind appears.
+function readVerdicts(paths: string[], verb: string, need: { required: VerdictKind[]; allowed: VerdictKind[] }, refusal: string)
+  : { verdicts: Array<{ path: string; sha256: string }>; residuals: number; files: VerdictFile[] } {
+  const files = paths.map((raw): VerdictFile => {
     const path = resolve(raw);
-    if (!existsSync(path)) throw new Error(`release operator spec: verdict file not found: ${path}`);
-    const bytes = readFileSync(path);
-    const last = bytes.toString('utf8').split('\n').map((l) => l.trim()).filter(Boolean).at(-1) ?? '';
+    const got = pinnedSha(path);
+    if ('missing' in got) throw new Error(`${verb}: verdict file not found: ${path}`);
+    if ('unreadable' in got) throw new Error(`${verb}: verdict file ${path} is unreadable`);
+    const text = got.bytes.toString('utf8');
+    const last = text.split('\n').map((l) => l.trim()).filter(Boolean).at(-1) ?? '';
     const m = VERDICT.exec(last);
-    if (!m) throw new Error(`release operator spec: ${path} last line is '${last}', not SPEC|PLAN CLEAN or SPEC|PLAN FINDINGS <n>`);
-    seen.add(m[1]);
-    residuals += Number(m[3] ?? 0);
-    return { path, sha256: createHash('sha256').update(bytes).digest('hex') };
+    if (!m) throw new Error(`${verb}: ${path} last line is '${last}', not SPEC|PLAN CLEAN or SPEC|PLAN FINDINGS <n>`);
+    return { path, sha256: got.sha256, kind: m[1] as VerdictKind, last, residuals: Number(m[3] ?? 0), text };
   });
-  if (paths.length !== 2 || seen.size !== 2) {
-    throw new Error('release operator spec: give exactly two --verdict files, the spec critic\'s and the plan critic\'s');
-  }
-  return { verdicts, residuals };
+  const count = (k: VerdictKind) => files.filter((x) => x.kind === k).length;
+  const fits = need.required.every((k) => count(k) === 1) && need.allowed.every((k) => count(k) <= 1)
+    && files.every((x) => need.required.includes(x.kind) || need.allowed.includes(x.kind));
+  if (!fits) throw new Error(refusal);
+  return {
+    verdicts: files.map(({ path, sha256 }) => ({ path, sha256 })),
+    residuals: files.reduce((n, x) => n + x.residuals, 0),
+    files,
+  };
+}
+
+// The lines of the spec's ## Critic rounds section, up to the next heading.
+function criticRounds(specText: string): string[] {
+  const lines = specText.split('\n');
+  const start = lines.findIndex((l) => /^##\s+critic rounds\s*$/i.test(l));
+  if (start < 0) return [];
+  const end = lines.slice(start + 1).findIndex((l) => /^##?\s/.test(l));
+  return lines.slice(start + 1, end < 0 ? lines.length : start + 1 + end);
 }
 
 function checkResiduals(specText: string, residuals: number): void {
   if (!residuals) return;
-  const lines = specText.split('\n');
-  const start = lines.findIndex((l) => /^##\s+critic rounds\s*$/i.test(l));
-  const body = start < 0 ? [] : lines.slice(start + 1, (() => {
-    const end = lines.slice(start + 1).findIndex((l) => /^##?\s/.test(l));
-    return end < 0 ? lines.length : start + 1 + end;
-  })());
-  const done = new Set(body.flatMap((l) => DISPOSITION.exec(l)?.[1] ?? []));
+  const done = new Set(criticRounds(specText).flatMap((l) => DISPOSITION.exec(l)?.[1] ?? []));
   if (done.size < residuals) {
     throw new Error(`release operator spec: the verdicts carry ${residuals} residual findings and the spec's ## Critic rounds section has `
       + `${done.size} dispositioned (one '- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>' line each)`);
+  }
+}
+
+// Only the dispositions inside the round blocks that name a verdict file count: a block starts at a
+// 'Round <n>:' line holding the file's basename and ends at the next 'Round <m>:' line or the section's end.
+function checkRoundResiduals(specText: string, names: string[], residuals: number, verb: string): void {
+  if (!residuals) return;
+  const done = new Set<string>();
+  let inBlock = false;
+  for (const l of criticRounds(specText)) {
+    if (/^-?\s*Round \d+:/.test(l)) {
+      inBlock = names.some((n) => l.includes(n));
+      continue;
+    }
+    const m = inBlock ? DISPOSITION.exec(l) : null;
+    if (m) done.add(m[1]);
+  }
+  if (done.size < residuals) {
+    throw new Error(`${verb}: the verdicts carry ${residuals} residual findings and their round blocks hold ${done.size} dispositioned `
+      + `(one '- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>' line each, under the '- Round <n>: … <verdict file>' line)`);
   }
 }
 
@@ -463,19 +539,13 @@ export function signSpec(ctx: Ctx, o: {
   // The plan carries the invariants' acceptance tests; with no --plan the spec stands in for it.
   const plan = o.plan ? resolve(o.plan) : spec;
   if (!existsSync(plan)) throw new Error(`release operator spec: plan not found: ${plan}`);
-  const { verdicts, residuals } = readVerdicts(o.verdicts);
+  const { verdicts, residuals } = readVerdicts(o.verdicts, 'release operator spec', { required: ['SPEC', 'PLAN'], allowed: [] },
+    'release operator spec: give exactly two --verdict files, the spec critic\'s and the plan critic\'s');
   const bytes = readFileSync(spec);
   const specSha = createHash('sha256').update(bytes).digest('hex');
   const planSha = o.plan ? fileSha(plan) : null;
   checkResiduals(bytes.toString('utf8'), residuals);
-  runMinerva('minerva-spec-gate.sh', [spec], dirname(spec));
-  // The lint resolves cited paths against its cwd's repo, so it runs from the checkout, whichever repo holds the
-  // spec; the spec's own repo (the state repo) is the second place a cited path may exist.
-  let own: string[] = [];
-  try {
-    own = [execFileSync('git', ['-C', dirname(spec), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()];
-  } catch { /* a spec outside any repo has no second root */ }
-  runMinerva('minerva-trace-lint.sh', [spec, plan, ...own], checkoutRoot());
+  lintSpec(spec, plan);
   if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)
     || (o.plan && (!existsSync(plan) || fileSha(plan) !== planSha))) {
     throw new Error('release operator spec: the spec, plan or a verdict file changed while it was checked; sign again');
@@ -503,31 +573,145 @@ export function signSpec(ctx: Ctx, o: {
   });
 }
 
-// Per key, the newest verified unsuperseded spec record decides: `SPEC ok` while the spec, bound plan and every
-// verdict file still hash as signed, else `SPEC-STALE` (a missing file included); a sub-task with no
-// record reads its mirror parent's, one hop; else `NO-SPEC`.
-export function specCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string | null): { lines: string[]; ok: boolean; warnings: string[] } {
-  const records = readOperatorRecords('spec', env);
-  const superseded = new Set(records.flatMap((r) => r.supersedes ?? []));
-  const live = records.map((r, i) => ({ r, i })).filter(({ r }) => !superseded.has(r.id))
-    .sort((a, b) => a.r.ts.localeCompare(b.r.ts) || a.i - b.i).map(({ r }) => r);
-  const newest = (k: string) => live.filter((r) => r.keys?.includes(k)).at(-1);
-  const issues = mirrorRoot ? readMirror(mirrorRoot).issues : null;
-  const warnings: string[] = [];
-  const lines = keys.map((k) => {
-    const snap = issues?.get(k);
-    const parent = snap && /^sub-?task$/i.test(snap.type) ? snap.parent : null;
-    const r = newest(k) ?? (parent ? newest(parent) : undefined);
-    if (!r?.spec_path) return `NO-SPEC ${k}`;
-    if (r.plan_path && typeof r.plan_sha256 !== 'string') {
-      warnings.push(`${k} plan unbound: the record ${r.id} signed plan ${r.plan_path} without its hash; re-sign with --supersedes ${r.id} to bind it`);
+const REVIEWED = /^Reviewed: spec ([0-9a-f]{64})\b/gm;
+const KEY_LINE = /^Keys?:\s*(.+)$/gm;
+const KEY_IN = /[A-Z][A-Z0-9]*-\d+(?!\d)/g;
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// A spec, its plan and one passing or folded critic round, bound to the reviewed bytes and keys (spec §2.3, §4),
+// recorded by the chief with no operator signature.
+export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: string; verdicts: string[]; supersedes?: string }): OperatorRow {
+  const verb = 'release operator spec-review';
+  operatorFence(ctx);
+  const keys = [...new Set(o.keys)];
+  if (!keys.length) throw new Error(`${verb}: --keys names the keys the spec covers`);
+  if (!o.plan) throw new Error(`${verb}: --plan names the plan; a spec-review record always pins one`);
+  const spec = resolve(o.spec);
+  const plan = resolve(o.plan);
+  if (plan === spec) throw new Error(`${verb}: --plan is the spec; give the plan file`);
+  const specPin = pinRead(spec, 'spec', verb);
+  const planPin = pinRead(plan, 'plan', verb);
+  if (realpathSync(plan) === realpathSync(spec)) throw new Error(`${verb}: --plan is the spec; give the plan file`);
+  const { verdicts, residuals, files } = readVerdicts(o.verdicts, verb, { required: ['SPEC'], allowed: ['PLAN'] },
+    `${verb}: give exactly one SPEC verdict and at most one PLAN verdict`);
+  const specVerdict = files.find((x) => x.kind === 'SPEC') as VerdictFile;
+  const reviewed = [...specVerdict.text.matchAll(REVIEWED)];
+  if (reviewed.length !== 1) throw new Error(`${verb}: ${specVerdict.path} needs exactly one 'Reviewed: spec <sha256>' line`);
+  const reviewedSha = reviewed[0][1];
+  for (const x of files) {
+    const lines = [...x.text.matchAll(KEY_LINE)];
+    const named = lines.length === 1 ? [...new Set(lines[0][1].match(KEY_IN) ?? [])] : [];
+    if (!named.length) throw new Error(`${verb}: ${x.path} needs exactly one 'Key: <keys>' line naming its keys`);
+    if (named.length !== keys.length || named.some((k) => !keys.includes(k))) {
+      throw new Error(`${verb}: ${x.path} names ${named.join(', ')}, not --keys ${keys.join(', ')}`);
     }
-    const fresh = [{ path: r.spec_path, sha256: r.spec_sha256 }, ...(r.verdicts ?? [])]
-      .every((v) => existsSync(v.path) && fileSha(v.path) === v.sha256)
-      && (typeof r.plan_sha256 !== 'string' || (!!r.plan_path && existsSync(r.plan_path) && fileSha(r.plan_path) === r.plan_sha256));
-    return `${fresh ? 'SPEC ok' : 'SPEC-STALE'} ${k} ${r.spec_path} ${r.id}`;
+  }
+  const specText = specPin.bytes.toString('utf8');
+  const lines = specText.split('\n');
+  const headEnd = lines.findIndex((l) => /^## /.test(l));
+  const header = (headEnd < 0 ? lines : lines.slice(0, headEnd)).filter((l) => /^(- Tickets?:|Keys?:)/.test(l));
+  for (const k of keys) {
+    if (!header.some((l) => new RegExp(`\\b${escapeRe(k)}(?!\\d)`).test(l))) {
+      throw new Error(`${verb}: the spec's header does not name ${k} (a '- Ticket:' or 'Key:' line before the first ## heading)`);
+    }
+  }
+  const clean = specVerdict.last === 'SPEC CLEAN';
+  if (clean && reviewedSha !== specPin.sha256) {
+    throw new Error(`${verb}: SPEC CLEAN reviewed ${reviewedSha}, not the spec's bytes ${specPin.sha256}; run the spec critic on the final spec`);
+  }
+  checkRoundResiduals(specText, files.map((x) => basename(x.path)), residuals, verb);
+  lintSpec(spec, plan, verb);
+  const same = (p: string, sha256: string) => {
+    const got = pinnedSha(p);
+    return 'sha256' in got && got.sha256 === sha256;
+  };
+  if (!same(spec, specPin.sha256) || !same(plan, planPin.sha256) || verdicts.some((v) => !same(v.path, v.sha256))) {
+    throw new Error(`${verb}: the spec, plan or a verdict file changed while it was checked; record again`);
+  }
+  return lockedAcross(ctx, (l) => {
+    if (o.supersedes) {
+      const rows = readOperatorRecords('spec-review', ctx.env);
+      const superseded = new Set(rows.flatMap((r) => r.supersedes ?? []));
+      if (!rows.some((r) => r.id === o.supersedes && !superseded.has(r.id))) {
+        throw new Error(`${verb}: ${o.supersedes} is no live spec-review record in a declared release`);
+      }
+    }
+    return appendOperator(ctx, l.k, {
+      kind: 'spec-review', decision: null, keys, spec_path: spec, spec_sha256: specPin.sha256,
+      plan_path: plan, plan_sha256: planPin.sha256, ...(clean ? {} : { reviewed_sha256: reviewedSha }), verdicts,
+      supersedes: o.supersedes ?? null, residuals,
+    });
   });
-  return { lines, ok: lines.every((l) => l.startsWith('SPEC ok ')), warnings };
+}
+
+export type SpecAnswer = { ok: true } | { missing: string };
+
+// Why a record's pinned files no longer stand, or null while each one is readable and hashes as pinned:
+// the spec, then the plan when its hash is pinned, then each verdict.
+function staleReason(r: ReleaseRecord): string | null {
+  const pins = [
+    { role: 'spec', path: r.spec_path ?? '', sha256: r.spec_sha256 },
+    ...(typeof r.plan_sha256 === 'string' ? [{ role: 'plan', path: r.plan_path ?? '', sha256: r.plan_sha256 }] : []),
+    ...(r.verdicts ?? []).map((v) => ({ role: 'verdict', path: v.path, sha256: v.sha256 })),
+  ];
+  for (const p of pins) {
+    const got = pinnedSha(p.path);
+    if ('missing' in got) return `${p.path} is missing (${r.id})`;
+    if ('unreadable' in got) return `${p.path} is unreadable (${r.id})`;
+    if (got.sha256 !== p.sha256) return `${p.role} ${p.path} changed since ${r.id}`;
+  }
+  return null;
+}
+
+// Per key and per accepted kind, the newest verified unsuperseded record decides: `SPEC ok` while one of them still
+// has every pinned file readable and hashing as recorded, else `SPEC-STALE` (a missing or unreadable file included);
+// a sub-task with no record of a kind reads its mirror parent's, one hop; else `NO-SPEC`. The default kind is the
+// signed `spec` record only.
+export function specCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string | null, opts: {
+  kinds?: OperatorKind[]; issues?: Map<string, IssueSnap> | null; records?: ReleaseRecord[];
+} = {}): { lines: string[]; ok: boolean; warnings: string[]; answer: Map<string, SpecAnswer> } {
+  const kinds = opts.kinds ?? ['spec'];
+  const records = (opts.records ?? readOperatorRecords(kinds, env)).filter((r) => kinds.includes(r.kind));
+  const newestOf = kinds.map((kind) => {
+    const rows = records.filter((r) => r.kind === kind);
+    const superseded = new Set(rows.flatMap((r) => r.supersedes ?? []));
+    const live = rows.map((r, i) => ({ r, i })).filter(({ r }) => !superseded.has(r.id))
+      .sort((a, b) => a.r.ts.localeCompare(b.r.ts) || a.i - b.i).map(({ r }) => r);
+    return (k: string) => live.filter((r) => r.keys?.includes(k)).at(-1);
+  });
+  const issues = opts.issues !== undefined ? opts.issues : (mirrorRoot ? readMirror(mirrorRoot).issues : null);
+  const warnings: string[] = [];
+  const answer = new Map<string, SpecAnswer>();
+  const lines = keys.map((k) => {
+    try {
+      const snap = issues?.get(k);
+      const parent = snap && /^sub-?task$/i.test(snap.type) ? snap.parent : null;
+      const candidates = newestOf.map((newest) => newest(k) ?? (parent ? newest(parent) : undefined))
+        .filter((r): r is ReleaseRecord => !!r?.spec_path);
+      if (!candidates.length) {
+        answer.set(k, { missing: `no spec-review record for ${k}` });
+        return `NO-SPEC ${k}`;
+      }
+      for (const r of candidates) {
+        if (r.plan_path && typeof r.plan_sha256 !== 'string') {
+          warnings.push(`${k} plan unbound: the record ${r.id} signed plan ${r.plan_path} without its hash; re-sign with --supersedes ${r.id} to bind it`);
+        }
+      }
+      const judged = candidates.map((r) => ({ r, why: staleReason(r) }));
+      const fresh = judged.find((j) => j.why === null);
+      if (fresh) {
+        answer.set(k, { ok: true });
+        return `SPEC ok ${k} ${fresh.r.spec_path} ${fresh.r.id}`;
+      }
+      const last = judged.sort((a, b) => a.r.ts.localeCompare(b.r.ts)).at(-1) as { r: ReleaseRecord; why: string };
+      answer.set(k, { missing: last.why });
+      return `SPEC-STALE ${k} ${last.r.spec_path} ${last.r.id}`;
+    } catch (e) {
+      answer.set(k, { missing: `${k}: ${(e as Error).message}` });
+      return `SPEC-STALE ${k}`;
+    }
+  });
+  return { lines, ok: lines.every((l) => l.startsWith('SPEC ok ')), warnings, answer };
 }
 
 export const OUT_OF_VERSION_MS = 14 * 86_400_000;
