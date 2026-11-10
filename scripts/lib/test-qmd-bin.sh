@@ -1398,8 +1398,10 @@ while IFS= read -r p; do
 done <"$golden_dir/manifest.txt"
 golden_paths="$(cd "$golden_tree" && find . -type f | sed 's#^\./##' | LC_ALL=C sort)"
 golden_want="$(sed -n '/^# second pass/q;/^1 /s/^1 //p' "$golden_dir/documents.txt" | LC_ALL=C sort)"
-# shellcheck disable=SC2016,SC2086  # the subshell expands $1 and $@; one manifest path per word, the golden names hold no spaces
-golden_got="$(env -u XDG_CONFIG_HOME QMD_CONFIG_DIR="$golden_dir" bash -c '. "$1"; shift; qmd_collection_indexes golden "$@"' _ "$SCRIPT_DIR/qmd-bin.sh" $golden_paths | LC_ALL=C sort)"
+golden_args=()
+while IFS= read -r p; do golden_args+=("$p"); done <<<"$golden_paths"
+# shellcheck disable=SC2016  # $1 and $@ expand inside the spawned bash -c subshell
+golden_got="$(env -u XDG_CONFIG_HOME QMD_CONFIG_DIR="$golden_dir" bash -c '. "$1"; shift; qmd_collection_indexes golden "$@"' _ "$SCRIPT_DIR/qmd-bin.sh" "${golden_args[@]}" | LC_ALL=C sort)"
 
 echo "[test-qmd-bin] helper_matches_golden: the helper indexes what a real qmd update indexed on the golden tree"
 assert "the materialised tree holds every manifest path" \
