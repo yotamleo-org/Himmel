@@ -342,25 +342,26 @@ def reverted_prs(repo, base, since, rows):
             if pr in found:
                 continue
             m = re.match(r'Revert ".*\(#([0-9]+)\)"\s*$', subject)
-            if mc in body or (m and int(m.group(1)) == pr):
+            if ("This reverts commit %s" % mc) in body or (m and int(m.group(1)) == pr):
                 found[pr] = sha
     return found
 
 
 def red_main_prs(repo, rows):
-    """{pr: run id}: the first completed ci.yml main run whose head contains the PR's merge commit ended in failure.
-    One `gh run list` read. None when gh fails."""
+    """({pr: run id}, [prs no returned completed run covers]): the first completed ci.yml main run whose head contains the PR's
+    merge commit ended in failure. One `gh run list` read. (None, []) when gh fails."""
     runs = gh_json(repo, "run", "list", "--workflow", "ci.yml", "--branch", "main", "--limit", "200",
                    "--json", "databaseId,headSha,status,conclusion,createdAt")
     if not isinstance(runs, list):
-        return None
+        return None, []
     runs = sorted((r for r in runs if isinstance(r, dict) and r.get("status") == "completed"), key=lambda r: r.get("createdAt") or "")
-    found = {}
+    found, seen, uncovered = {}, set(), []
     for r in rows:
         mc = r.get("merge_commit")
-        if not mc or r["pr"] in found:
+        if r["pr"] in seen:
             continue
-        for run in runs:
+        seen.add(r["pr"])
+        for run in runs if mc else []:
             try:
                 git(repo, "merge-base", "--is-ancestor", mc, run.get("headSha") or "")
             except Unknown:
@@ -368,7 +369,9 @@ def red_main_prs(repo, rows):
             if run.get("conclusion") == "failure":
                 found[r["pr"]] = run.get("databaseId")
             break
-    return found
+        else:
+            uncovered.append(r["pr"])
+    return found, uncovered
 
 
 def cmd_week(a):
@@ -391,7 +394,7 @@ def cmd_week(a):
              ("trust", sum(1 for r in rows if r.get("trust_path"))),
              ("outside", sum(1 for r in rows if r.get("outside"))))
     reverted = reverted_prs(a.repo_dir, a.base_ref, cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"), rows) if rows else {}
-    red = red_main_prs(a.repo_dir, rows) if rows else {}
+    red, unchecked = red_main_prs(a.repo_dir, rows) if rows else ({}, [])
     origins = {int(m.group(1)) for r in judge_accuracy.load_ledger(bug_dir).values()
                for m in [re.fullmatch(r"#([0-9]+)", r["origin"])] if m}
     blamed = [n for n in prs if n in origins]
@@ -399,7 +402,8 @@ def cmd_week(a):
     line = "conflicts 7d: %d files in %d PRs (%s); later: reverted %s, red main %s, bug-origin %d; top files: %s" % (
         len(rows), len(prs), ", ".join("%s %d" % k for k in kinds),
         "unknown" if reverted is None else len(reverted),
-        "unknown" if red is None else "%d%s" % (len(red), " (%s)" % ", ".join("#%d" % n for n in sorted(red)) if red else ""),
+        "unknown" if red is None else "%d%s%s" % (len(red), " (%s)" % ", ".join("#%d" % n for n in sorted(red)) if red else "",
+                                                 ", unchecked %d" % len(unchecked) if unchecked else ""),
         len(blamed), ", ".join("%s (%d)" % kv for kv in top) or "none")
     line = line.replace("conflicts 7d:", "conflicts %dd:" % a.days, 1)
     harm = []
