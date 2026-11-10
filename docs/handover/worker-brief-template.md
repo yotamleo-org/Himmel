@@ -132,7 +132,9 @@ template_version: 3
 > another alias or subcommand shape (PR 2353, 6+ judge rounds).
 > State the convergence argument here: why the set of shapes is finite and
 > covered, or why the check does not rest on the text. Without one, the worker
-> lands with a `ponytail:` ceiling and the brief names the filed structural fix.
+> lands with the ceiling recorded as a ceilings-ledger row
+> (`scripts/ledger/ceiling-add.sh add`, rule in `docs/internals/code-comments.md`)
+> and the brief names the filed structural fix.
 > At the 2nd NO-GO in the same class, ask again: stop the rounds
 > and land with the ceiling.
 
@@ -409,6 +411,6 @@ template_version: 3
   minimum it needs the spec's grepped `## Fact ownership` matrix. The brief
   cites that spec. This is the routing point: one config UI shipped a single
   fact as two findings because no one asked which existing surface already
-  computed it. ponytail: brief-template prose is the first layer; on its first
+  computed it. Limit: brief-template prose is the first layer; on its first
   drift, escalate to a structural check in `headed-arm-worker.sh` that refuses a
   surface ticket's launch without a lint-clean spec path.
