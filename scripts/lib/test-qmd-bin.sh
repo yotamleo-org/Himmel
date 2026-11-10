@@ -1383,6 +1383,58 @@ keyout="$(cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDE
 assert "the cached gate key is set after a pass" test "$keyout" != "[]"
 assert "the cached gate key does not hold the API key in the clear" test "${keyout#*sekrit-key-value}" = "$keyout"
 
+echo "[test-qmd-bin] busy_signature_on_real_output: the fork's real held-lock update output reads as busy"
+busy_out="$(cat "$SCRIPT_DIR/fixtures/qmd-update-busy-output.txt")"
+assert "qmd_output_is_busy matches the real held-lock output" qmd_output_is_busy "$busy_out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c subshell
+assert "qmd_output_is_busy refuses an ordinary failure" \
+  bash -c '. "$1"; ! qmd_output_is_busy "Collection not found: nope"' _ "$SCRIPT_DIR/qmd-bin.sh"
+
+golden_dir="$SCRIPT_DIR/fixtures/qmd-collection-golden"
+golden_tree="$tmpdir/collection-golden-tree"
+while IFS= read -r p; do
+  mkdir -p "$golden_tree/$(dirname "$p")"
+  printf '# %s\n' "$p" >"$golden_tree/$p"
+done <"$golden_dir/manifest.txt"
+golden_paths="$(cd "$golden_tree" && find . -type f | sed 's#^\./##' | LC_ALL=C sort)"
+golden_want="$(sed -n '/^# second pass/q;/^1 /s/^1 //p' "$golden_dir/documents.txt" | LC_ALL=C sort)"
+# shellcheck disable=SC2016,SC2086  # the subshell expands $1 and $@; one manifest path per word, the golden names hold no spaces
+golden_got="$(env -u XDG_CONFIG_HOME QMD_CONFIG_DIR="$golden_dir" bash -c '. "$1"; shift; qmd_collection_indexes golden "$@"' _ "$SCRIPT_DIR/qmd-bin.sh" $golden_paths | LC_ALL=C sort)"
+
+echo "[test-qmd-bin] helper_matches_golden: the helper indexes what a real qmd update indexed on the golden tree"
+assert "the materialised tree holds every manifest path" \
+  test "$golden_paths" = "$(LC_ALL=C sort "$golden_dir/manifest.txt")"
+assert "the golden first pass lists active paths" test -n "$golden_want"
+assert "qmd_collection_indexes equals documents.txt's first-pass active paths" test "$golden_got" = "$golden_want"
+
+echo "[test-qmd-bin] golden_tree_holds_each_excluded_name: each built-in exclude is in the tree and not in the output"
+assert "the output it checks is not empty" grep -qx 'README.md' <<<"$golden_got"
+for name in node_modules .git .cache vendor dist build; do
+  assert "the tree holds a path under $name/" grep -qE "(^|/)$name/" <<<"$golden_paths"
+  # shellcheck disable=SC2016  # $1 and $2 expand inside the spawned bash -c subshell
+  assert "the output holds no path under $name/" bash -c '! grep -qE "(^|/)$1/" <<<"$2"' _ "$name" "$golden_got"
+done
+assert "the tree holds a dot-path outside the excluded names" grep -qE '(^|/)\.(hidden|draft)' <<<"$golden_paths"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c subshell
+assert "the output holds no dot-path" bash -c '! grep -qE "(^|/)\." <<<"$1"' _ "$golden_got"
+
+echo "[test-qmd-bin] helper_matches_real_update: the helper equals a live qmd update on the same tree"
+real_qmd=()
+while IFS= read -r w; do real_qmd+=("$w"); done < <(qmd_pinned_invocation 2>/dev/null)
+if [ "${#real_qmd[@]}" -eq 0 ]; then
+  echo "  skip: helper_matches_real_update -- no qmd on this host (CI installs none); helper_matches_golden carries the comparison"
+else
+  live_home="$tmpdir/live-home"
+  mkdir -p "$live_home/cfg" "$live_home/cache"
+  sed "s#^    path: .*#    path: $golden_tree#" "$golden_dir/index.yml" >"$live_home/cfg/index.yml"
+  ( cd "$live_home" && env -u XDG_CONFIG_HOME HOME="$live_home" XDG_CACHE_HOME="$live_home/cache" \
+      QMD_CONFIG_DIR="$live_home/cfg" INDEX_PATH="$live_home/index.sqlite" \
+      timeout 120 "${real_qmd[@]}" update >"$live_home/update.log" 2>&1 )
+  live_want="$(python3 -I -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print("\n".join(r[0] for r in c.execute("select path from documents where collection=? and active=1", ("golden",))))' "$live_home/index.sqlite" 2>/dev/null | LC_ALL=C sort)"
+  assert "the live update indexed the golden tree" test -n "$live_want"
+  assert "qmd_collection_indexes equals the live update's active paths" test "$golden_got" = "$live_want"
+fi
+
 echo "[test-qmd-bin] has_qmd matches binary presence in this env"
 if has_qmd; then
   echo "  has_qmd=true in this env (real qmd present)"

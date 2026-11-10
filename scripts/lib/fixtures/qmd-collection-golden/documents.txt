@@ -1,0 +1,12 @@
+# first pass: after update on the manifest tree under index.yml; line is `<active> <path>`
+1 README.md
+1 docs/deep/nested/page.md
+1 docs/guide.md
+1 marketplace/plugins/foo/SKILL.md
+1 marketplace/plugins/foo/docs/README.md
+# second pass: after docs/guide.md is deleted and update runs again
+1 README.md
+1 docs/deep/nested/page.md
+0 docs/guide.md
+1 marketplace/plugins/foo/SKILL.md
+1 marketplace/plugins/foo/docs/README.md
