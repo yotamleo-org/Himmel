@@ -7,6 +7,13 @@ eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" r
   1. MEASURE: every open change of the eval whose baseline row is older and has the same confighash gets
      one "measured" record: before, after, delta and improved | regressed | flat. On a split row the
      verdict is keep | revert instead, by the train/test keep rule below.
+     A review-panel change is measured only through its application receipt (apply-review, below): the newest
+     execution must run the receipt's after cbs_hash (computed from Git at its code_under_test_sha) and its
+     execution must post-date applied_at (the ts of its earliest row, so a later rescore keeps its execution's
+     time; a revision whose source row is absent has no known time). That execution is then compared with the
+     proposal's baseline execution: it must run the receipt's before cbs_hash and pass review_incompat, and both
+     must be split rows; otherwise the verdict is inconclusive, with the reason. Without a receipt the change stays
+     proposed. A rescore of an execution from before the application is never a treatment result.
   2. CHANGE: per critic (rules without one share the eval's slot), when that row is not yet the baseline
      of a change of that critic, the first rule (file order) with a metric worse than its threshold and no
      open change of the same confighash raises ONE "open" change record for the worst such metric.
@@ -31,28 +38,44 @@ RULE  {eval, metric (fnmatch pattern), threshold, better "lower"|"higher", absen
       per (optional: a metric of the same row; the value judged is metric / per, a rate, so a count that
       grows with volume alone fires nothing), min_gain (optional, default 0: the smallest gain worth keeping)}
 CHANGE ROW (v 1): v, ts, host, source, kind "eval-change", id "<baseline run_id>:<metric>", eval, metric,
-  status "open" | "measured" | "inbox", then
+  status "open" | "applied" | "measured" | "inbox", then
   open      value, threshold, better, absent, change, target, baseline_run_id, confighash, critic (null: none),
             per, min_gain (null: none)
+  applied   (review-panel only) applied_at (the receipt's own ts), before_cbs_hash, after_cbs_hash, commit,
+            target_paths (the critic behaviour paths the commit changed), diff_sha256 (over those paths' raw
+            diff-tree records), all derived from Git
   measured  before, after, delta, verdict, after_run_id; on a split row also test_before, test_after,
-            test_delta, noise, min_gain and reason, with verdict keep | revert
+            test_delta, noise, min_gain and reason, with verdict keep | revert; a review-panel record also
+            applied_commit and after_cbs_hash, with verdict keep | revert | inconclusive
   inbox     inbox_written (true: the line is in the inbox; false: the write failed and is due again)
+
+APPLY-REVIEW: apply_review() writes one review-panel change's applied receipt for ONE application commit with one
+  parent. The parent's and the commit's cbs_hash (score.py, cbs.txt) and the target paths come from Git, never from
+  the caller. Refused: no open change of that id, a change of another eval, one already applied or measured, a
+  commit that is not in the repo, a root or merge commit, a target outside the measured behaviour set (a CodeRabbit
+  config treatment needs a later protocol), identical before and after cbs_hash, a commit that does not change the
+  proposal's target. It runs no git operation that writes, and neither do keep and revert: they are
+  recommendations.
 
 MERGE GATE (HIMMEL-8426): gate_verdict() grades a critic change from the tracked review-panel results rows;
   it is separate from the keep rule, writes nothing and is called by score.py gate.
 
-  eval_feedback.py run [--eval E]... [--ledger P] [--changes P] [--rules P] [--inbox P]
-Prints one line per record written. Exit 0, 2 on unreadable rules.
+  eval_feedback.py run [--eval E]... [--ledger P] [--changes P] [--rules P] [--inbox P] [--repo DIR]
+  eval_feedback.py apply-review --id ID --commit SHA --changes P [--repo DIR]
+--repo is the git checkout the commits are read from, else this script's own. Prints one line per record
+written. Exit 0, 2 on unreadable rules or a refused application.
 Stdlib only; no network.
 """
 import argparse
 import fcntl
 import fnmatch
+import hashlib
 import json
 import math
 import os
 import re
 import socket
+import subprocess
 import sys
 from datetime import datetime, timezone
 
@@ -321,6 +344,113 @@ def review_series(rows, **kw):
     return out, diag
 
 
+REVIEW = "review-panel"
+SHA = re.compile(r"^[0-9a-f]{7,64}$")
+
+
+def _score():
+    """score.py, the owner of cbs.txt and cbs_hash; imported here, not at the top, because it imports this module."""
+    d = os.path.join(HERE, "..", "review-panel")
+    if d not in sys.path:
+        sys.path.insert(0, d)
+    import score
+    return score
+
+
+def commit_of(repo, rev):
+    """The full sha of commit rev in repo, or None; rev must be hex, so it is never an option or a ref name."""
+    if not isinstance(rev, str) or not SHA.match(rev):
+        return None
+    r = subprocess.run(["git", "-C", repo, "rev-parse", "--verify", "--quiet", rev + "^{commit}"],
+                       capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def changed_paths(repo, parent, commit):
+    """{path: its raw diff-tree record (modes, blob ids, status)} for each file commit changes against parent."""
+    raw = _score()._git(repo, "diff-tree", "-r", "-z", "--no-renames", "--no-abbrev", parent, commit)
+    parts = raw.decode("utf-8", "surrogateescape").split("\0")
+    return {path: meta.lstrip(":") for meta, path in zip(parts[0::2], parts[1::2])}
+
+
+def apply_review(cid, commit, changes, repo=None):
+    """Append the applied receipt of review-panel change cid for one application commit and return it; ValueError
+    when refused (APPLY-REVIEW above). repo: the checkout the commit is read from, else this script's own."""
+    if not changes:
+        raise ValueError("refused: name the changes ledger explicitly")
+    score = _score()
+    repo = repo or score.toplevel()
+    os.makedirs(os.path.dirname(os.path.abspath(changes)), exist_ok=True)
+    with open(changes + ".lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        recs = [c for c in read_changes(changes) if isinstance(c, dict)]
+        prop = next((c for c in recs if c.get("status") == "open" and c.get("id") == cid), None)
+        if prop is None:
+            raise ValueError("refused: no open change %s in %s" % (cid, changes))
+        if prop.get("eval") != REVIEW:
+            raise ValueError("unsupported: an application receipt binds a review-panel change only; %s is a %s change"
+                             % (cid, prop.get("eval")))
+        if any(c.get("id") == cid and c.get("status") in ("applied", "measured") for c in recs):
+            raise ValueError("refused: %s is already applied or measured" % cid)
+        sha = commit_of(repo, commit)
+        if sha is None:
+            raise ValueError("refused: %s is not a commit in %s" % (commit, repo))
+        parents = score._git(repo, "rev-list", "--parents", "-n", "1", sha).decode().split()[1:]
+        if len(parents) != 1:
+            raise ValueError("unsupported: commit %s has %s; a receipt binds one application commit with one parent"
+                             % (sha[:12], "%d parents" % len(parents) if parents else "no parent"))
+        parent = parents[0]
+        behaviour = set(score.cbs_paths(repo, parent)) | set(score.cbs_paths(repo, sha))
+        target = prop.get("target")
+        if target not in behaviour:
+            raise ValueError("unsupported: the target %s is outside the measured behaviour set (cbs.txt)" % target)
+        before, after = score.cbs_hash(repo, parent), score.cbs_hash(repo, sha)
+        if before == after:
+            raise ValueError("refused: no effective change: commit %s leaves cbs_hash %s as it was"
+                             % (sha[:12], before[:12]))
+        diff = changed_paths(repo, parent, sha)
+        if target not in diff:
+            raise ValueError("refused: commit %s does not change the proposal's target %s" % (sha[:12], target))
+        paths = sorted(p for p in diff if p in behaviour)
+        canon = "".join("%s\t%s\n" % (diff[p], p) for p in paths).encode("utf-8", "surrogateescape")
+        rec = envelope(id=cid, eval=REVIEW, metric=prop.get("metric"), status="applied")
+        rec.update(applied_at=rec["ts"], before_cbs_hash=before, after_cbs_hash=after, commit=sha, target_paths=paths,
+                   diff_sha256=hashlib.sha256(canon).hexdigest())
+        append(changes, rec)
+    return rec
+
+
+def measure_review(c, receipt, series, base, new, when, cbs_of):
+    """The measured record of review-panel change c on its newest execution new, or None while c stays proposed (no
+    receipt) or awaits a measurement (new does not run the applied version, or did not run after applied_at).
+    when: new's execution time; cbs_of(row): the cbs_hash of the row's code_under_test_sha, None when unknown."""
+    after_hash, at = (receipt or {}).get("after_cbs_hash"), (receipt or {}).get("applied_at")
+    if not isinstance(after_hash, str) or not isinstance(at, str) or cbs_of(new) != after_hash \
+            or when is None or when <= at:
+        return None
+    bound = {"applied_commit": receipt.get("commit"), "after_cbs_hash": after_hash}
+    if cbs_of(base) != receipt.get("before_cbs_hash"):
+        why = "the baseline execution is not at the receipt's parent cbs_hash"
+    else:
+        why = review_incompat(base, new)
+    if why is None and not (is_split(base) and is_split(new)):
+        why = "no train/test split on both runs: the keep rule cannot run"
+    before = after = None
+    if why is None:
+        before = value_of(tuning_metrics(base), c["metric"], None, c.get("per"))
+        after = value_of(tuning_metrics(new), c["metric"], None, c.get("per"))
+        if before is None or after is None:
+            why = "the metric is unmeasured on the baseline or the applied run"
+    if why:
+        return envelope(id=c["id"], eval=REVIEW, metric=c["metric"], status="measured", before=before, after=after,
+                        delta=None, verdict="inconclusive", after_run_id=new["run_id"], reason=why, **bound)
+    verdict, extra = keep_rule(dict(c, value=before), series, base, new, after)
+    delta = after - before
+    return envelope(id=c["id"], eval=REVIEW, metric=c["metric"], status="measured", before=before, after=after,
+                    delta=round(delta, 6) if math.isfinite(delta) else None, verdict=verdict,
+                    after_run_id=new["run_id"], **dict(extra, **bound))
+
+
 def _hashable(v):
     """v as a set member: a list or object from a hand-edited row becomes its JSON text, never a TypeError."""
     return v if v is None or isinstance(v, (str, int, float, bool)) else json.dumps(v, sort_keys=True)
@@ -413,13 +543,43 @@ def write_inbox(inbox, line):
         return False
 
 
-def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
-    """Measure, then change, for each eval; returns the records written."""
+def run(evals=None, ledger=None, changes=None, rules=None, inbox=None, repo=None):
+    """Measure, then change, for each eval; returns the records written. repo: the checkout a review-panel
+    execution's code_under_test_sha is read from, else this script's own (read only when a receipt exists)."""
     rules = load_rules(rules)
     path = changes_path(changes)
-    chosen, diag = review_series(eval_runs.read_rows(ledger))
+    all_rows = eval_runs.read_rows(ledger)
+    chosen, diag = review_series(all_rows)
     runs = [r for r in chosen if r["status"] == "ok"]
     alias = {d["run_id"]: d["by"] for d in diag if d.get("by")}
+    first_ts = {}
+    for r in all_rows:
+        rid, t = r.get("run_id"), r.get("ts")
+        if r.get("eval") == REVIEW and isinstance(rid, str) and isinstance(t, str):
+            first_ts[rid] = min(t, first_ts.get(rid, t))
+    members = {}
+    for rid, by in alias.items():
+        if isinstance(rid, str):
+            members.setdefault(by, set()).add(rid)
+
+    def started(r):
+        """The ts of the earliest row of r's execution; None for a revision whose source row is absent."""
+        if row_field(r, "supersedes_run_id") and not members.get(r["run_id"]):
+            return None
+        known = [first_ts[i] for i in members.get(r["run_id"], set()) | {r["run_id"]} if i in first_ts]
+        return min(known) if known else None
+    cbs_cache = {}
+
+    def cbs_of(r):
+        code = row_field(r, "code_under_test_sha") or r.get("tree")
+        if not isinstance(code, str):
+            return None
+        if code not in cbs_cache:
+            score = _score()
+            where = repo or score.toplevel()
+            sha = commit_of(where, code)
+            cbs_cache[code] = score.cbs_hash(where, sha) if sha else None
+        return cbs_cache[code]
     pos = {r["run_id"]: i for i, r in enumerate(runs)}
     by_id = {r["run_id"]: r for r in runs}
     pos.update({rid: pos[by] for rid, by in alias.items() if by in pos})
@@ -431,6 +591,10 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
         recs = read_changes(path)
         measured = {c["id"] for c in recs if c.get("status") == "measured"}
         opened = [c for c in recs if c.get("status") == "open"]
+        applied = {}
+        for c in recs:
+            if c.get("status") == "applied" and isinstance(c.get("id"), str):
+                applied.setdefault(c["id"], c)
         if inbox:
             marks = {c["id"]: c["inbox_written"] for c in recs if c.get("status") == "inbox"}
             for c in opened:
@@ -445,8 +609,17 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                 continue
             new = series[-1]
             for c in opened:
-                if c["eval"] != ev or c["id"] in measured or c["confighash"] != new["confighash"] \
+                if c["eval"] != ev or c["id"] in measured \
+                        or (ev != REVIEW and c["confighash"] != new["confighash"]) \
                         or pos.get(c["baseline_run_id"], len(runs)) >= pos[new["run_id"]]:
+                    continue
+                if ev == REVIEW:
+                    m = measure_review(c, applied.get(c["id"]), series, by_id[c["baseline_run_id"]], new,
+                                       started(new), cbs_of)
+                    if m is not None:
+                        append(path, m)
+                        measured.add(c["id"])
+                        written.append(m)
                     continue
                 tm = tuning_metrics(new)
                 after = value_of(tm, c["metric"], None if is_split(new) else c["absent"], c.get("per")) if tm else None
@@ -499,12 +672,18 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
 
 
 def describe(r):
+    if r["status"] == "applied":
+        return "applied %s %s commit %s cbs_hash %s -> %s paths %s" % (
+            r["eval"], r["metric"], r["commit"][:12], r["before_cbs_hash"][:12], r["after_cbs_hash"][:12],
+            ",".join(r["target_paths"]))
     if r["status"] == "measured":
         s = "measured %s %s before=%s after=%s delta=%s %s" % (r["eval"], r["metric"], r["before"], r["after"],
                                                                 r["delta"], r["verdict"])
-        if "reason" in r:
+        if "test_before" in r:
             s += " (test %s -> %s, noise %s, min gain %s: %s)" % (r["test_before"], r["test_after"], r["noise"],
                                                                   r["min_gain"], r["reason"])
+        elif "reason" in r:
+            s += " (%s)" % r["reason"]
         return s
     return "change %s %s value=%s threshold=%s %s -> %s" % (r["eval"], r["metric"], r["value"], r["threshold"],
                                                            r["change"], r["target"])
@@ -515,11 +694,18 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
     r.add_argument("--eval", action="append")
-    for f in ("--ledger", "--changes", "--rules", "--inbox"):
+    for f in ("--ledger", "--changes", "--rules", "--inbox", "--repo"):
         r.add_argument(f)
+    ar = sub.add_parser("apply-review")
+    for f in ("--id", "--commit", "--changes"):
+        ar.add_argument(f, required=True)
+    ar.add_argument("--repo")
     a = ap.parse_args(argv)
     try:
-        recs = run(a.eval, a.ledger, a.changes, a.rules, a.inbox)
+        if a.cmd == "apply-review":
+            recs = [apply_review(a.id, a.commit, a.changes, a.repo)]
+        else:
+            recs = run(a.eval, a.ledger, a.changes, a.rules, a.inbox, a.repo)
     except (OSError, ValueError, KeyError) as e:
         print("eval-feedback: %s" % e, file=sys.stderr)
         return 2

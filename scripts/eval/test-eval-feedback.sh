@@ -221,7 +221,7 @@ cat >"$S/rules.json" <<'EOF'
   "absent": null, "change": "prompt", "target": "scripts/cr/critic-first-pass.sh", "critic": "codex", "min_gain": 0.25}]}
 EOF
 # split <ledger> <whole> <open> <sealed>: one review-panel row for the quoting class
-split() { python3 -I "$RUNS" append --ledger "$1" --eval review-panel --source s --config-json '{"review_panel_v":2}' \
+split() { python3 -I "$RUNS" append --ledger "$1" --eval "${SPLIT_EVAL:-review-panel}" --source s --config-json '{"review_panel_v":2}' \
   --metrics-json "{\"codex.class.quoting.recall\":$2,\"open.codex.class.quoting.recall\":$3,\"sealed.codex.class.quoting.recall\":$4}" >/dev/null 2>&1; }
 ok "sealed-bad row" split "$S/a.jsonl" 0.5 1 0
 ok "sealed-bad feedback" python3 -I "$FB" run --ledger "$S/a.jsonl" --changes "$S/a-changes.jsonl" --rules "$S/rules.json"
@@ -238,40 +238,44 @@ ok "sealed-only feedback" python3 -I "$FB" run --ledger "$S/c.jsonl" --changes "
 eq "sealed: a row with no open half opens no change from its sealed or whole-set metrics" "$(rows "$S/c-changes.jsonl")" "0"
 
 # --- train/test keep rule: keep only when train AND test both gain more than min_gain, over noise --------
+# The rule's arithmetic on a split eval that needs no application receipt; a review-panel change is measured
+# only through one (the M6 cases below).
 T="$TMP/keep"; mkdir -p "$T"
+SPLIT_EVAL=split-eval
+sed 's/"eval": "review-panel"/"eval": "split-eval"/' "$S/rules.json" >"$T/rules.json"
 ok "keep base 1" split "$T/up-flat.jsonl" 0 0 0
 ok "keep base 2" split "$T/up-flat.jsonl" 0 0 0
-ok "keep open" python3 -I "$FB" run --ledger "$T/up-flat.jsonl" --changes "$T/up-flat-c.jsonl" --rules "$S/rules.json"
+ok "keep open" python3 -I "$FB" run --ledger "$T/up-flat.jsonl" --changes "$T/up-flat-c.jsonl" --rules "$T/rules.json"
 ok "train-up/test-flat row" split "$T/up-flat.jsonl" 0.5 1 0
-ok "train-up/test-flat measure" python3 -I "$FB" run --ledger "$T/up-flat.jsonl" --changes "$T/up-flat-c.jsonl" --rules "$S/rules.json"
+ok "train-up/test-flat measure" python3 -I "$FB" run --ledger "$T/up-flat.jsonl" --changes "$T/up-flat-c.jsonl" --rules "$T/rules.json"
 eq "keep rule: a train-up/test-flat change is reverted" "$(field "$T/up-flat-c.jsonl" 1 verdict)" "revert"
 has "keep rule: the revert says why" "$(field "$T/up-flat-c.jsonl" 1 reason)" "test"
 eq "keep rule: the test half is recorded" "$(field "$T/up-flat-c.jsonl" 1 test_after)" "0"
 ok "both-up base 1" split "$T/both.jsonl" 0 0 0
 ok "both-up base 2" split "$T/both.jsonl" 0 0 0
-ok "both-up open" python3 -I "$FB" run --ledger "$T/both.jsonl" --changes "$T/both-c.jsonl" --rules "$S/rules.json"
+ok "both-up open" python3 -I "$FB" run --ledger "$T/both.jsonl" --changes "$T/both-c.jsonl" --rules "$T/rules.json"
 ok "both-up row" split "$T/both.jsonl" 1 1 1
-ok "both-up measure" python3 -I "$FB" run --ledger "$T/both.jsonl" --changes "$T/both-c.jsonl" --rules "$S/rules.json"
+ok "both-up measure" python3 -I "$FB" run --ledger "$T/both.jsonl" --changes "$T/both-c.jsonl" --rules "$T/rules.json"
 eq "keep rule: train and test both up, no noise: kept" "$(field "$T/both-c.jsonl" 1 verdict)" "keep"
 eq "keep rule: the noise is the spread of the runs before the change" "$(field "$T/both-c.jsonl" 1 noise)" "0"
 ok "noisy base 1" split "$T/noisy.jsonl" 0 0.5 0
 ok "noisy base 2" split "$T/noisy.jsonl" 0 0 0
-ok "noisy open" python3 -I "$FB" run --ledger "$T/noisy.jsonl" --changes "$T/noisy-c.jsonl" --rules "$S/rules.json"
+ok "noisy open" python3 -I "$FB" run --ledger "$T/noisy.jsonl" --changes "$T/noisy-c.jsonl" --rules "$T/rules.json"
 ok "noisy row" split "$T/noisy.jsonl" 1 1 1
-ok "noisy measure" python3 -I "$FB" run --ledger "$T/noisy.jsonl" --changes "$T/noisy-c.jsonl" --rules "$S/rules.json"
+ok "noisy measure" python3 -I "$FB" run --ledger "$T/noisy.jsonl" --changes "$T/noisy-c.jsonl" --rules "$T/rules.json"
 eq "keep rule: run-to-run noise (0.5) not below min_gain (0.25) is not kept" "$(field "$T/noisy-c.jsonl" 1 verdict)" "revert"
 has "keep rule: the noisy revert names the noise" "$(field "$T/noisy-c.jsonl" 1 reason)" "noise"
 ok "one-run base" split "$T/one.jsonl" 0 0 0
-ok "one-run open" python3 -I "$FB" run --ledger "$T/one.jsonl" --changes "$T/one-c.jsonl" --rules "$S/rules.json"
+ok "one-run open" python3 -I "$FB" run --ledger "$T/one.jsonl" --changes "$T/one-c.jsonl" --rules "$T/rules.json"
 ok "one-run row" split "$T/one.jsonl" 1 1 1
-ok "one-run measure" python3 -I "$FB" run --ledger "$T/one.jsonl" --changes "$T/one-c.jsonl" --rules "$S/rules.json"
+ok "one-run measure" python3 -I "$FB" run --ledger "$T/one.jsonl" --changes "$T/one-c.jsonl" --rules "$T/rules.json"
 eq "keep rule: one run before the change leaves the noise unmeasured: not kept" "$(field "$T/one-c.jsonl" 1 verdict)" "revert"
 # A rule with absent=0 must not stand in for a sealed half the row never measured.
 cat >"$T/absent-rules.json" <<'EOF'
-{"v": 1, "rules": [{"eval": "review-panel", "metric": "codex.fp_rate", "threshold": 0.2, "better": "lower",
+{"v": 1, "rules": [{"eval": "split-eval", "metric": "codex.fp_rate", "threshold": 0.2, "better": "lower",
   "absent": 0, "change": "prompt", "target": "scripts/cr/critic-first-pass.sh", "critic": "codex", "min_gain": 0.1}]}
 EOF
-fp() { python3 -I "$RUNS" append --ledger "$1" --eval review-panel --source s --config-json '{"review_panel_v":2}' \
+fp() { python3 -I "$RUNS" append --ledger "$1" --eval split-eval --source s --config-json '{"review_panel_v":2}' \
   --metrics-json "$2" >/dev/null 2>&1; }
 ok "absent base 1" fp "$T/absent.jsonl" '{"open.codex.fp_rate":0.5,"sealed.codex.fp_rate":0.5}'
 ok "absent base 2" fp "$T/absent.jsonl" '{"open.codex.fp_rate":0.5,"sealed.codex.fp_rate":0.5}'
@@ -286,7 +290,7 @@ ok "absent-open row" fp "$T/absent2.jsonl" '{"open.codex.clean_scored":0,"sealed
 ok "absent-open measure" python3 -I "$FB" run --ledger "$T/absent2.jsonl" --changes "$T/absent2-c.jsonl" --rules "$T/absent-rules.json"
 eq "a split row's open half with no value is unmeasured, not the rule's absent: nothing measured" "$(rows "$T/absent2-c.jsonl")" "1"
 # Noise under the record's rounding is still noise: min_gain 0 keeps only a change over zero noise.
-sed 's/"min_gain": 0.25/"min_gain": 0/' "$S/rules.json" >"$T/zero-rules.json"
+sed 's/"min_gain": 0.25/"min_gain": 0/' "$T/rules.json" >"$T/zero-rules.json"
 ok "tiny-noise base 1" split "$T/tiny.jsonl" 0 0.4 0
 ok "tiny-noise base 2" split "$T/tiny.jsonl" 0 0.4000004 0
 ok "tiny-noise open" python3 -I "$FB" run --ledger "$T/tiny.jsonl" --changes "$T/tiny-c.jsonl" --rules "$T/zero-rules.json"
@@ -301,6 +305,30 @@ ok "overflow row" fp "$T/inf.jsonl" '{"open.codex.fp_rate":-1e308,"sealed.codex.
 ok "overflow measure" python3 -I "$FB" run --ledger "$T/inf.jsonl" --changes "$T/inf-c.jsonl" --rules "$T/absent-rules.json"
 eq "keep rule: overflowing noise is unmeasured: not kept" "$(field "$T/inf-c.jsonl" 1 reason)" "noise unmeasured: not a finite spread"
 eq "keep rule: the record holds no Infinity" "$(grep -c Infinity "$T/inf-c.jsonl")" "0"
+SPLIT_EVAL=review-panel
+
+# --- M6 fixture repo: a critic behaviour set (cbs.txt) and the commits a receipt may or may not bind --------
+R6="$TMP/m6-repo"; mkdir -p "$R6/scripts/eval/review-panel" "$R6/scripts/cr"
+gitc6() { git -C "$R6" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
+commit6() { gitc6 add -A && gitc6 commit -q -m "$1" && gitc6 rev-parse HEAD; }
+printf 'scripts/cr/critic-first-pass.sh\nscripts/cr/critic-panel.sh\n' >"$R6/scripts/eval/review-panel/cbs.txt"
+printf 'v1\n' >"$R6/scripts/cr/critic-first-pass.sh"; printf 'p1\n' >"$R6/scripts/cr/critic-panel.sh"; printf 'd1\n' >"$R6/README"
+git init -q "$R6"
+ROOT6="$(commit6 root)"
+printf 'v2\n' >"$R6/scripts/cr/critic-first-pass.sh"; printf 'd2\n' >"$R6/README"
+APPLY6="$(commit6 'the prompt change, and a note outside the behaviour set')"
+printf 'd3\n' >"$R6/README"
+DOCS6="$(commit6 'outside the behaviour set only')"
+chmod +x "$R6/scripts/cr/critic-first-pass.sh"
+MODE6="$(commit6 'the target mode only: same bytes')"
+printf 'p2\n' >"$R6/scripts/cr/critic-panel.sh"
+OTHER6="$(commit6 'another behaviour path, not the target')"
+MAIN6="$(gitc6 symbolic-ref --short HEAD)"
+gitc6 checkout -q -b side; printf 's\n' >"$R6/SIDE"; commit6 side >/dev/null
+gitc6 checkout -q "$MAIN6"; printf 'v3\n' >"$R6/scripts/cr/critic-first-pass.sh"; commit6 main >/dev/null
+gitc6 merge -q --no-ff -m merge side >/dev/null 2>&1
+MERGE6="$(gitc6 rev-parse HEAD)"
+eq "M6 fixture repo: six distinct commits" "$(printf '%s\n' "$ROOT6" "$APPLY6" "$DOCS6" "$MODE6" "$OTHER6" "$MERGE6" | sort -u | grep -c .)" "6"
 
 SELPY="$TMP/sel.py"
 cat >"$SELPY" <<'EOF'
@@ -413,30 +441,35 @@ open(rules, "w").write('{"v":1,"rules":[{"eval":"review-panel","metric":"codex.c
                        '"better":"higher","absent":null,"change":"prompt","target":"scripts/cr/critic-first-pass.sh",'
                        '"critic":"codex","min_gain":0.25}]}')
 ledger, changes = os.path.join(d, "l.jsonl"), os.path.join(d, "c.jsonl")
-def add(rid, open_v, sealed_v, ex, sup=None, sc=S1):
+repo, root_sha, apply_sha = sys.argv[2:5]
+COV = {"scored": 4, "critics": {"codex": {"answer": 4}}}
+def add(rid, open_v, sealed_v, ex, sup=None, sc=S1, code=root_sha, ts=None):
     cfg = {"review_panel_v": 2}
-    meta = {"execution_id": ex, "scorer_sha256": sc}
+    meta = {"execution_id": ex, "scorer_sha256": sc, "coverage": COV, "code_under_test_sha": code}
     if sup:
         meta["supersedes_run_id"] = sup
     r = eval_runs.make_row("review-panel", "s", cfg, {"codex.class.quoting.recall": open_v,
                            "open.codex.class.quoting.recall": open_v, "sealed.codex.class.quoting.recall": sealed_v},
                            run_id=rid, meta=meta, gitsha="g")
+    if ts:
+        r["ts"] = ts
     eval_runs.append_row(r, ledger)
 def recs():
     return [__import__("json").loads(l) for l in open(changes)] if os.path.exists(changes) else []
 add("base1", 0, 0, "x1")
 add("base2", 0, 0, "x2")
-fb.run(ledger=ledger, changes=changes, rules=rules)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
 opened = [c for c in recs() if c["status"] == "open"]
 print(("PASS " if len(opened) == 1 and opened[0]["baseline_run_id"] == "base2" else "FAIL ") + "noise series: change opened on the newest execution")
+fb.apply_review(opened[0]["id"], apply_sha, changes, repo=repo)
 add("base2~r", 0, 0, "x2", sup="base2", sc=S2)
-fb.run(ledger=ledger, changes=changes, rules=rules)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
 meas = [c for c in recs() if c["status"] == "measured"]
-print(("PASS " if not meas else "FAIL ") + "revision_not_prev_run: a rescore of the baseline execution does not measure its change")
+print(("PASS " if not meas else "FAIL ") + "revision_not_prev_run: a rescore of the baseline execution does not measure its applied change")
 print(("PASS " if len([c for c in recs() if c["status"] == "open"]) == 1 else "FAIL ")
       + "revision_not_prev_run: a rescore opens no second change")
-add("cand", 1, 1, "x3")
-fb.run(ledger=ledger, changes=changes, rules=rules)
+add("cand", 1, 1, "x3", sc=S2, code=apply_sha, ts="2999-01-01T00:00:00Z")
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
 meas = [c for c in recs() if c["status"] == "measured"]
 print(("PASS " if len(meas) == 1 and meas[0]["verdict"] == "keep" and meas[0]["noise"] == 0 else "FAIL ")
       + "revision_not_prev_run: a later execution measures it, the rescore adds no noise sample (%s)"
@@ -486,10 +519,233 @@ print(("PASS " if (n1, n2) == (1, 1) else "FAIL ")
       + "revision_not_prev_run: a rescore of the newest execution opens no second change under a glob rule with two "
         "metrics past threshold (%d then %d open changes)" % (n1, n2))
 EOF
-SELOUT="$(python3 -I "$SELPY" "$HERE/lib" 2>&1)"
+SELOUT="$(python3 -I "$SELPY" "$HERE/lib" "$R6" "$ROOT6" "$APPLY6" 2>&1)"
 while IFS= read -r line; do
   case "$line" in PASS*) PASS=$((PASS + 1)); echo "$line";; *) FAIL=$((FAIL + 1)); echo "$line";; esac
 done <<<"$SELOUT"
+
+# --- M6: a review-panel change is credited with a later run only through a bound application receipt ----------
+M6PY="$TMP/m6.py"
+cat >"$M6PY" <<'EOF'
+import json, os, re, sys, tempfile
+sys.path.insert(0, sys.argv[1])
+import eval_feedback as fb
+import eval_runs
+
+repo, ROOT, APPLY, DOCS, MODE, OTHER, MERGE = sys.argv[2:9]
+S1, S2 = "a" * 64, "b" * 64
+COV = {"scored": 4, "critics": {"codex": {"answer": 4}}}
+TARGET = "scripts/cr/critic-first-pass.sh"
+d = tempfile.mkdtemp()
+rules = os.path.join(d, "rules.json")
+with open(rules, "w") as fh:
+    json.dump({"v": 1, "rules": [
+        {"eval": "review-panel", "metric": "codex.class.quoting.recall", "threshold": 0.5, "better": "higher",
+         "absent": None, "change": "prompt", "target": TARGET, "critic": "codex", "min_gain": 0.25},
+        {"eval": "judge-accuracy", "metric": "class.*.escape_excess", "threshold": 0, "better": "lower",
+         "absent": None, "change": "prompt", "target": "docs/handover/judge-brief-template.md", "critic": "judge"}]}, fh)
+
+def check(name, ok, detail=""):
+    print(("PASS " if ok else "FAIL ") + name + ("" if ok else ": %s" % (detail,)))
+
+def recs(p):
+    return [json.loads(l) for l in open(p)] if os.path.exists(p) else []
+
+def status(p, s):
+    return [c for c in recs(p) if c.get("status") == s]
+
+def add(ledger, rid, val, code, ts, ex=None, sup=None, sc=S1, cov=COV, split=True):
+    m = {"codex.class.quoting.recall": val}
+    if split:
+        m.update({"open.codex.class.quoting.recall": val, "sealed.codex.class.quoting.recall": val})
+    meta = {"execution_id": ex or rid, "scorer_sha256": sc, "coverage": cov, "code_under_test_sha": code}
+    if sup:
+        meta["supersedes_run_id"] = sup
+    r = eval_runs.make_row("review-panel", "s", {"review_panel_v": 2}, m, run_id=rid, meta=meta, gitsha="g")
+    r["ts"] = ts
+    eval_runs.append_row(r, ledger)
+
+def proposal(name, base_code=ROOT):
+    """A ledger with two baseline executions and the open change the feedback step raises on them."""
+    ledger, changes = os.path.join(d, name + ".jsonl"), os.path.join(d, name + "-c.jsonl")
+    add(ledger, name + "-b1", 0, base_code, "2026-01-01T00:00:00Z")
+    add(ledger, name + "-b2", 0, base_code, "2026-01-02T00:00:00Z")
+    fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+    opened = status(changes, "open")
+    return ledger, changes, opened[0]["id"] if opened else None
+
+def refused(name, cid, commit, changes, want):
+    try:
+        fb.apply_review(cid, commit, changes, repo=repo)
+    except ValueError as e:
+        check(name, want in str(e), "refusal %r lacks %r" % (str(e), want))
+        return
+    except Exception as e:
+        check(name, False, "raised %r, not a refusal" % e)
+        return
+    check(name, False, "the receipt was written")
+
+LATER = "2999-01-01T00:00:00Z"
+
+# open_is_proposed_not_changed / no_receipt_no_measurement: a later better run of the changed code credits nothing
+ledger, changes, cid = proposal("noreceipt")
+check("M6 fixture: the proposal opens", cid is not None)
+add(ledger, "noreceipt-c", 1, APPLY, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+check("no_receipt_no_measurement: a better run after the change, but no receipt: nothing measured",
+      not status(changes, "measured"), status(changes, "measured"))
+ledger, changes, cid = proposal("unchanged")
+add(ledger, "unchanged-c", 1, ROOT, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+check("no_receipt_no_measurement: the unchanged-version synthetic improvement yields no keep",
+      not [c for c in recs(changes) if c.get("verdict") == "keep"], recs(changes))
+
+# identical_effective_hash_refused
+ledger, changes, cid = proposal("ident")
+refused("identical_effective_hash_refused: a commit outside the behaviour set", cid, DOCS, changes, "no effective change")
+refused("identical_effective_hash_refused: a mode-only change of the target", cid, MODE, changes, "no effective change")
+check("identical_effective_hash_refused: no receipt written", not status(changes, "applied"), status(changes, "applied"))
+
+# wrong_target_refused, and the other unsupported applications
+refused("wrong_target_refused: a commit that changes another behaviour path", cid, OTHER, changes,
+        "does not change the proposal's target")
+cr = fb.envelope(id="cr:coderabbit.class.logic.recall", eval="review-panel", metric="coderabbit.class.logic.recall",
+                 status="open", value=0.0, threshold=0.5, better="higher", absent=None, change="cr-config",
+                 target=".coderabbit.yaml", baseline_run_id="ident-b2", confighash="c", critic="coderabbit", per=None,
+                 min_gain=None)
+fr = fb.envelope(id="fr:over_deny:x", eval="friction", metric="over_deny:x", status="open", value=1, threshold=0,
+                 better="lower", absent=0, change="learning", target="shell-and-gate-traps.md", baseline_run_id="f",
+                 confighash="c", critic=None, per=None, min_gain=None)
+fb.append(changes, cr)
+fb.append(changes, fr)
+refused("wrong_target_refused: a target outside the measured behaviour set is unsupported", cr["id"], APPLY, changes,
+        "outside the measured behaviour set")
+refused("other_eval_unchanged: a receipt binds a review-panel change only", fr["id"], APPLY, changes, "review-panel")
+refused("a merge commit is an ambiguous parent", cid, MERGE, changes, "parent")
+refused("a root commit has no parent", cid, ROOT, changes, "parent")
+refused("a commit that is not in the repo is refused", cid, "0" * 40, changes, "not a commit")
+refused("an id with no open change is refused", "no-such-id", APPLY, changes, "no open change")
+check("refusals write no receipt", not status(changes, "applied"), status(changes, "applied"))
+
+# a receipt: derived from Git, never from the caller
+rec = fb.apply_review(cid, APPLY[:12], changes, repo=repo)
+check("receipt: one applied record", len(status(changes, "applied")) == 1)
+check("receipt: the full commit sha, resolved from an abbreviation", rec.get("commit") == APPLY, rec.get("commit"))
+check("receipt: before and after cbs_hash are distinct 64-hex digests",
+      all(re.match(r"^[0-9a-f]{64}$", str(rec.get(k))) for k in ("before_cbs_hash", "after_cbs_hash"))
+      and rec["before_cbs_hash"] != rec["after_cbs_hash"], rec)
+check("receipt: target_paths are the behaviour paths the commit changed, the note outside it left off",
+      rec.get("target_paths") == [TARGET], rec.get("target_paths"))
+check("receipt: a 64-hex diff_sha256", bool(re.match(r"^[0-9a-f]{64}$", str(rec.get("diff_sha256")))), rec)
+check("receipt: applied_at is the receipt's own time", rec.get("applied_at") == rec.get("ts") and rec.get("applied_at"), rec)
+refused("a second receipt for one change is refused", cid, APPLY, changes, "already")
+
+# rescore_old_execution_not_after_apply
+ledger, changes, cid = proposal("rescore")
+add(ledger, "rescore-pre", 1, APPLY, "2026-01-03T00:00:00Z")
+fb.apply_review(cid, APPLY, changes, repo=repo)
+add(ledger, "rescore-pre~r", 1, APPLY, LATER, ex="rescore-pre", sup="rescore-pre", sc=S2)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+check("rescore_old_execution_not_after_apply: a rescore, written after the receipt, of an execution run before it",
+      not status(changes, "measured"), status(changes, "measured"))
+ledger, changes, cid = proposal("rebase")
+fb.apply_review(cid, APPLY, changes, repo=repo)
+add(ledger, "rebase-b2~r", 1, ROOT, LATER, ex="rebase-b2", sup="rebase-b2", sc=S2)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+check("rescore_old_execution_not_after_apply: a rescore of the baseline execution is not a treatment result",
+      not status(changes, "measured"), status(changes, "measured"))
+ledger, changes, cid = proposal("lone")
+fb.apply_review(cid, APPLY, changes, repo=repo)
+add(ledger, "lone~r", 1, APPLY, LATER, ex="lone-x", sup="lone-gone")
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+check("a revision whose source execution is not in the ledger has no known run time: nothing measured",
+      not status(changes, "measured"), status(changes, "measured"))
+
+# incomparable_protocol_inconclusive
+for name, kw, want in (("scorer", {"sc": S2}, "scorer"),
+                       ("coverage", {"cov": {"scored": 4, "critics": {"codex": {"answer": 3}}}}, "participation"),
+                       ("nosplit", {"split": False}, "split")):
+    ledger, changes, cid = proposal("inc-" + name)
+    fb.apply_review(cid, APPLY, changes, repo=repo)
+    add(ledger, "inc-%s-c" % name, 1, APPLY, LATER, **kw)
+    fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+    m = status(changes, "measured")
+    check("incomparable_protocol_inconclusive: another %s is inconclusive, never keep" % name,
+          len(m) == 1 and m[0].get("verdict") == "inconclusive" and want in (m[0].get("reason") or ""), m)
+ledger, changes, cid = proposal("inc-base", base_code=OTHER)
+try:
+    fb.apply_review(cid, APPLY, changes, repo=repo)
+except ValueError as e:
+    check("M6 fixture: a receipt for a baseline at another version", False, e)
+add(ledger, "inc-base-c", 1, APPLY, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+m = status(changes, "measured")
+check("incomparable_protocol_inconclusive: a baseline not at the receipt's parent version is inconclusive",
+      len(m) == 1 and m[0].get("verdict") == "inconclusive" and "baseline" in (m[0].get("reason") or ""), m)
+
+# valid_applied_after_run_measured
+ledger, changes, cid = proposal("valid")
+rec = fb.apply_review(cid, APPLY, changes, repo=repo)
+add(ledger, "valid-old", 1, ROOT, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+check("a later run that is not at the applied version measures nothing", not status(changes, "measured"),
+      status(changes, "measured"))
+add(ledger, "valid-c", 1, APPLY, "2999-01-02T00:00:00Z")
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+m = status(changes, "measured")
+check("valid_applied_after_run_measured: keep", len(m) == 1 and m[0].get("verdict") == "keep", m)
+check("valid_applied_after_run_measured: the record names the receipt's commit and after hash",
+      m and m[0].get("applied_commit") == APPLY and m[0].get("after_cbs_hash") == rec["after_cbs_hash"], m)
+check("valid_applied_after_run_measured: the applied run is the one measured", m and m[0].get("after_run_id") == "valid-c", m)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+check("a measured change is not measured again", len(status(changes, "measured")) == 1)
+ledger, changes, cid = proposal("revert")
+fb.apply_review(cid, APPLY, changes, repo=repo)
+add(ledger, "revert-c", 0, APPLY, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+m = status(changes, "measured")
+check("valid_applied_after_run_measured: no gain is revert", len(m) == 1 and m[0].get("verdict") == "revert", m)
+
+# other_eval_unchanged: a judge change is still measured without any receipt
+jl, jc = os.path.join(d, "judge.jsonl"), os.path.join(d, "judge-c.jsonl")
+for i, v in enumerate((0.04, 0.01)):
+    eval_runs.append_row(eval_runs.make_row("judge-accuracy", "s", {"judge_accuracy_v": 1, "days": 28},
+                                            {"class.guard.escape_excess": v}, run_id="j%d" % i, gitsha="g"), jl)
+    fb.run(ledger=jl, changes=jc, rules=rules, repo=repo)
+m = status(jc, "measured")
+check("other_eval_unchanged: a judge change is measured as before, with no receipt",
+      len(m) == 1 and m[0].get("verdict") == "improved" and "applied_commit" not in m[0], m)
+EOF
+M6OUT="$(python3 -I "$M6PY" "$HERE/lib" "$R6" "$ROOT6" "$APPLY6" "$DOCS6" "$MODE6" "$OTHER6" "$MERGE6" 2>&1)"
+while IFS= read -r line; do
+  case "$line" in PASS*) PASS=$((PASS + 1)); echo "$line";; *) FAIL=$((FAIL + 1)); echo "$line";; esac
+done <<<"$M6OUT"
+
+# --- apply-review on the command line: an explicit changes ledger, and no hash or diff the caller supplies -------
+AC="$TMP/apply-cli.jsonl"
+python3 -I - "$HERE/lib" "$AC" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import eval_feedback as fb
+fb.append(sys.argv[2], fb.envelope(id="cli:codex.class.quoting.recall", eval="review-panel",
+          metric="codex.class.quoting.recall", status="open", value=0.0, threshold=0.5, better="higher", absent=None,
+          change="prompt", target="scripts/cr/critic-first-pass.sh", baseline_run_id="cli", confighash="c",
+          critic="codex", per=None, min_gain=None))
+PY
+python3 -I "$FB" apply-review --id cli:codex.class.quoting.recall --commit "$APPLY6" --repo "$R6" >/dev/null 2>&1
+eq "apply-review: refused without an explicit --changes ledger" "$?" "2"
+python3 -I "$FB" apply-review --id cli:codex.class.quoting.recall --commit "$APPLY6" --repo "$R6" --changes "$AC" \
+  --after-cbs-hash "$(printf 'f%.0s' $(seq 64))" >/dev/null 2>&1
+eq "apply-review: a caller-supplied hash is not an option" "$?" "2"
+out="$(python3 -I "$FB" apply-review --id cli:codex.class.quoting.recall --commit "$DOCS6" --repo "$R6" --changes "$AC" 2>&1)"; rc=$?
+eq "apply-review: a refused application exits 2" "$rc" "2"
+has "apply-review: the refusal says why" "$out" "no effective change"
+eq "apply-review: refusals write nothing" "$(rows "$AC")" "1"
+out="$(python3 -I "$FB" apply-review --id cli:codex.class.quoting.recall --commit "$APPLY6" --repo "$R6" --changes "$AC" 2>&1)"; rc=$?
+eq "apply-review: exit 0" "$rc" "0"
+has "apply-review: prints the receipt" "$out" "applied review-panel codex.class.quoting.recall commit ${APPLY6:0:12}"
+eq "apply-review: one applied record appended" "$(field "$AC" 1 status)" "applied"
+eq "apply-review: the fixture repo's HEAD is unchanged" "$(gitc6 rev-parse HEAD)" "$MERGE6"
 
 eq "score.py's panel check calls gate_side, not a copy of its row selection" \
   "$(grep -c 'eval_feedback.gate_side(rows' "$HERE/review-panel/score.py")" "1"
