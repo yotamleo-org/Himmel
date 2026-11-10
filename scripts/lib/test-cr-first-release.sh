@@ -225,6 +225,16 @@ eq "$(deletes)/$(posts)" 0/0 "in-progress heavy job already ran at the head: no 
 reset; jq -c '. + [{event:"labeled",label:{name:"ci:go"},created_at:"2026-10-23T10:05:00Z"}]' "$S/events.json" > "$S/e.tmp" && mv "$S/e.tmp" "$S/events.json"
 checks success '[{"name":"lint","status":"completed","conclusion":"success","started_at":"2026-10-23T10:08:00Z","completed_at":"2026-10-23T10:08:30Z"}]'; run old-label-before-head-checks
 eq "$(deletes)/$(posts)" 1/1 "a ci:go event before the head's first check started does not release the head"
+# a push after a go run, with scratch PR 3841's real timestamps: head 1's ci:go (01:31:55) is older than
+# head 2's commit (01:34:25) and first check (01:35:44), so head 2 gets its own pair, once.
+reset; jq -nc --arg h "$HEAD1" --arg d 2026-10-25T01:34:25Z '{sha:$h,commit:{committer:{date:$d}}}' > "$S/commit.json"
+echo '[{"event":"labeled","label":{"name":"ci:go"},"created_at":"2026-10-25T01:31:55Z"}]' > "$S/events.json"
+checks success '[{"name":"bun-suites","status":"completed","conclusion":"skipped","started_at":"2026-10-25T01:35:44Z","completed_at":"2026-10-25T01:35:44Z"},{"name":"lint","status":"completed","conclusion":"success","started_at":"2026-10-25T01:35:46Z","completed_at":"2026-10-25T01:49:46Z"}]'
+CR_FIRST_NOW=$(iso_to_epoch 2026-10-25T01:50:00Z) run push-after-go-run
+has "$TMP/out-push-after-go-run" '^CR-FIRST RELEASE ' "push after a go run: head 2 is released although head 1 had a ci:go"
+eq "$(deletes)/$(posts)" 1/1 "push after a go run: exactly one remove + add pair at the new head"
+CR_FIRST_NOW=$(iso_to_epoch 2026-10-25T01:50:30Z) run push-after-go-run-again
+eq "$(deletes)/$(posts)/$(jq -r '[.[] | select(.event == "labeled")] | length' "$S/events.json")" 1/1/2 "push after a go run: a second call writes no second pair (two labeled events in all: head 1's and head 2's)"
 # the head moves between the first PR read and the label write: nothing is written.
 reset; jq -c '.head.sha = "feedface00000000000000000000000000000000"' "$S/pull.json" > "$S/pull-after.json"; run head-moves-mid-release
 eq "$(deletes)/$(posts)/$(ledger_lines)" 0/0/0 "head moved during evaluation: no label write, no ledger line"

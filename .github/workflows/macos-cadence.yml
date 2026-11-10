@@ -53,9 +53,11 @@ permissions:
 # the 'full' group as before. cancel-in-progress is false so a dispatch never
 # kills a running scheduled run (and with it a breakage record). GitHub keeps one
 # running and one pending run per group, so a newer same-mode run replaces an
-# earlier one still pending.
+# earlier one still pending. A label event other than ci:macos (every ci:go
+# release is one) starts a run whose jobs are all skipped; it gets a group of
+# its own, so it never takes the pending place of a real run behind a running one.
 concurrency:
-  group: macos-cadence-${{ github.ref }}-${{ inputs.suites != '' && 'suites' || 'full' }}
+  group: macos-cadence-${{ github.ref }}-${{ inputs.suites != '' && 'suites' || (github.event.action == 'labeled' && github.event.label.name != 'ci:macos' && format('label-{0}', github.run_id)) || 'full' }}
   cancel-in-progress: false
 
 jobs:
