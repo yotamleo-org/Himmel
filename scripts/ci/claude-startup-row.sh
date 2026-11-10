@@ -58,7 +58,10 @@ verify() {
     echo "claude-startup-row: refusing <out> directory '$od': it is the raw file's directory" >&2
     return 2
   fi
-  rm -rf "$od"
+  rm -rf "$od" || {
+    echo "claude-startup-row: cannot remove '$od'" >&2
+    return 2
+  }
   set_="$(expected_set)" || {
     echo "claude-startup-row: cannot read the expected set" >&2
     return 2

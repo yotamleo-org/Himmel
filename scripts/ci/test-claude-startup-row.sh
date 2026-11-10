@@ -9,8 +9,8 @@
 #           written on a refusal, the suite never sees the manifest path
 #   X1-X5   --expected: the SKIP_LIST scripts/testing entries, comments dropped,
 #           failing closed
-#   V1-V9   --verify: exactly one well-formed row per expected path and nothing
-#           else, no <out> left behind on a refusal
+#   V1-V10  --verify: exactly one well-formed row per expected path and nothing
+#           else, no <out> left behind on a refusal (V10 is skipped as root)
 #
 # Usage: bash scripts/ci/test-claude-startup-row.sh
 # Exit codes: 0 -- all rows passed; 1 -- at least one failed.
@@ -297,6 +297,20 @@ for o in x.txt a/b/x.txt ../x.txt raw/x.txt; do
   assert V9 "refused <out> '$o': working tree untouched" [ "$before" = "$after" ]
   assert V9 "refused <out> '$o': raw file untouched" content_is "$T/raw/rows.txt" "$(printf 'ran 0 %s\nran 0 %s' "$A" "$B")"
 done
+
+vnew
+raw "ran 0 $A" "ran 0 $B"
+mkdir -p "$T/outd/sub"
+echo stale >"$T/outd/sub/stale"
+chmod 555 "$T/outd/sub"
+if [ "$(id -u)" -eq 0 ]; then
+  echo "SKIP - V10 a root user can remove a read-only directory"
+else
+  verify
+  assert V10 "an out directory that cannot be removed: rc 2" rc_is 2
+  assert V10 "an out directory that cannot be removed: nothing is written" no_out
+fi
+chmod 755 "$T/outd/sub"
 
 echo "$pass_n passed, $fail_n failed"
 [ "$fail_n" -eq 0 ]
