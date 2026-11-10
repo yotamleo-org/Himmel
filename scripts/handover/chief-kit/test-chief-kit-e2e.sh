@@ -79,6 +79,9 @@ unset HIMMEL_BUS_NAME
 export WORKER_SESSION_DIGEST_STATE_DIR="$W/digest" WORKER_SESSION_DIGEST_SETTLE_MAX=0 WORKER_SESSION_DIGEST_SETTLE_QUIET=0
 export CLOSE_WRAPPED_WORKER_PROJECTS_DIR="$W/projects" CLOSE_WRAPPED_WORKER_SESSIONS_DIR="$W/sessions"
 export CLOSE_WRAPPED_WORKER_REAP_WAIT=0 CLOSE_WRAPPED_WORKER_DIGEST_TIMEOUT=30
+# a close queues its housekeeping record here and starts this no-op, never the real sweep
+printf '#!/usr/bin/env bash\nexit 0\n' > "$W/bin/close-sweep-noop"; chmod +x "$W/bin/close-sweep-noop"
+export CLOSE_SWEEP_STATE_DIR="$W/close-sweep" CLOSE_SWEEP_BIN="$W/bin/close-sweep-noop"
 # append-results.sh moves Jira on a LIVE bullet; never from a test
 export WORKER_SESSION_JIRA_STATUS=0
 # a forked non-harness child counts at once (the default skips a child forked within 10s of its session)
