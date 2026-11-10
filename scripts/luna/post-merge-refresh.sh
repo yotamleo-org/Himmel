@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Exit: 0 for every handled outcome (a hold, a skip and a failed run included);
-# 1 when the tick itself cannot work (no primary checkout, no main); 2 on usage.
+# 1 when the tick itself cannot work (no primary checkout, no main); 2 on usage;
+# 3 when keyword-lag.py is missing (the graph half's step still runs first).
 set -u
 
 pmr_decide() {
@@ -335,9 +336,9 @@ pmr_half_step() {
 
 pmr_sample() {
     local idx="${INDEX_PATH:-${QMD_INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}" rc
+    if [ ! -f "$PMR_LAG" ]; then printf 'post-merge-refresh: ERR keyword-lag.py absent at %s\n' "$PMR_LAG" >&2; return 3; fi
     if [ ! -f "$idx" ]; then log "no index at $idx, sampler not run"; return 0; fi
-    if [ ! -f "$PMR_LAG" ]; then log "keyword-lag.py absent at $PMR_LAG, sampler skipped"; return 0; fi
-    python3 -I "$PMR_LAG" tick --index "$idx" --state "$PMR_STATE"
+    PMR_PRIMARY="$PMR_PRIMARY" PMR_NOW="$(pmr_now)" python3 -I "$PMR_LAG" tick --index "$idx" --state "$PMR_STATE"
     rc=$?
     [ "$rc" = 0 ] || log "sampler failed rc=$rc"
     return 0
@@ -348,6 +349,8 @@ mkdir -p "$PMR_STATE" || die "cannot create $PMR_STATE"
 
 [ "$HALVES" = both ] && pmr_half keyword
 pmr_sample
+SAMPLE_RC=$?
 pmr_half graph
+if [ "$SAMPLE_RC" = 3 ]; then exit 3; fi
 alert_clear post-merge-tick
 exit 0

@@ -370,6 +370,20 @@
       "envelope": ["v", "ts", "host", "source", "kind"],
       "grandfathered": false,
       "_note": "One row per worker launch that headed-arm-worker.sh refuses after its seam guard, or whose headed-arm.sh child does not report a launch: cause (closed set), rc, the first line of the refusal. Written by the launcher's EXIT trap, never on --dry-run or a forwarded signal. There is no path override."
+    },
+    {
+      "id": "keyword-lag",
+      "default_path": "~/.himmel/state/post-merge-refresh/keyword-lag.jsonl",
+      "override_env": "HIMMEL_KEYWORD_LAG_LEDGER",
+      "writer": "scripts/luna/keyword-lag.py",
+      "readers": ["scripts/luna/keyword-lag.py"],
+      "format": "jsonl",
+      "rotation": "trimmed by the sampler on each tick: rows whose merged_at is over 30 days old are dropped",
+      "retention": "30 days",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false,
+      "_note": "One final row per merge that touches a file the himmel collection indexes: merge, merged_at, first_in_at (null when the merge was still unconfirmed 24 hours after merged_at). Written by the post-merge tick's sampler; keyword-lag.py --report is the one reader and owns the share and its Wilson interval."
     }
   ]
 }
