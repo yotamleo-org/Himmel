@@ -140,5 +140,80 @@ git -C "$S" checkout -q "$NOSUITE"
 run_step "$NOSUITE"
 if [ "$RC" -ne 0 ] && has "fail-open suite absent at base"; then pass "fail-open suite absent at base fails closed"; else fail "absent suite -> rc=$RC: $OUT"; fi
 
+# The lint job and the shell-unit shards fetch GitHub release assets (the wheel build of
+# the pinned linter, and shfmt). A 5xx from the release host would redden every open PR
+# with no code cause, so both run from an actions/cache entry and a cold-cache miss
+# during an outage names the URL and the word infra.
+job_block() { awk -v job="$1:" '/^  [a-z][a-z0-9-]*:/ { injob = ($1 == job) } injob' "$CI_YML"; }
+step_block() { # <job> <step name prefix> -> the step's lines
+  job_block "$1" | awk -v pfx="name: $2" '
+      function flush() { if (index(buf, "\n        " pfx) > 0 || index(buf, "      - " pfx) > 0) printf "%s", buf; buf = "" }
+      /^      - / { flush() }
+      { buf = buf "\n" $0 }
+      END { flush() }' | sed '1{/^$/d}'
+}
+step_run() { # <job> <step name prefix> -> the step's run body, de-indented
+  step_block "$1" "$2" | awk '
+      /^        run: \|/ { inrun = 1; next }
+      /^        run: / { sub(/^        run: /, ""); print; exit }
+      inrun && /^          / { sub(/^          /, ""); print; next }
+      inrun { exit }'
+}
+CACHE_PIN='actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0'
+
+LINT_CACHE="$(step_block lint 'Cache pre-commit environments')"
+case "$LINT_CACHE" in *"uses: $CACHE_PIN"*) pass "lint job caches the pre-commit environment with the sha-pinned actions/cache" ;; *) fail "lint job has no sha-pinned pre-commit cache step: $LINT_CACHE" ;; esac
+case "$LINT_CACHE" in *"path: ~/.cache/pre-commit"*"hashFiles('.pre-commit-config.yaml')"*) pass "pre-commit cache path and key (hash of .pre-commit-config.yaml)" ;; *) fail "pre-commit cache path/key wrong: $LINT_CACHE" ;; esac
+lint_cache_line="$(job_block lint | grep -n -F -- 'name: Cache pre-commit environments' | head -n 1 | cut -d: -f1)"
+lint_sc_line="$(job_block lint | grep -n -F -- '- name: shellcheck (PR range)' | head -n 1 | cut -d: -f1)"
+if [ -n "$lint_cache_line" ] && [ -n "$lint_sc_line" ] && [ "$lint_cache_line" -lt "$lint_sc_line" ]; then pass "pre-commit cache restores before the first shellcheck step"; else fail "cache step ($lint_cache_line) is not before the shellcheck step ($lint_sc_line)"; fi
+LINT_INFRA="$(step_block lint 'Name a shellcheck release-host outage')"
+case "$LINT_INFRA" in *"failure()"*"cache-hit"*) pass "outage line runs only on a failure with no cache hit" ;; *) fail "outage step missing or ungated: $LINT_INFRA" ;; esac
+case "$(step_run lint 'Name a shellcheck release-host outage')" in *'github.com/koalaman/shellcheck/releases/download/'*'infra:'*) pass "outage line names the word infra and the release URL" ;; *) fail "outage line lacks infra or the URL" ;; esac
+n_pins="$(grep -o 'actions/cache@[0-9a-f]\{40\}' "$CI_YML" | sort -u | wc -l | tr -d ' ')"
+if [ "$n_pins" -eq 1 ]; then pass "every actions/cache use is one sha pin"; else fail "actions/cache pins differ: $n_pins"; fi
+
+SHFMT_CACHE="$(step_block shell-unit-shard 'Cache pinned shfmt')"
+case "$SHFMT_CACHE" in *"uses: $CACHE_PIN"*"shfmt-"*'env.SHFMT_VER'*) pass "shell-unit shards cache the shfmt binary keyed on its version" ;; *) fail "no version-keyed shfmt cache step: $SHFMT_CACHE" ;; esac
+
+SH_REC="$T/shfmt-rec.sh"; SH_RUN="$T/shfmt-run.sh"
+step_run shell-unit-shard 'Record pinned shfmt version' > "$SH_REC"
+step_run shell-unit-shard 'Put pinned shfmt on PATH' > "$SH_RUN"
+mkdir -p "$T/shim"
+cat > "$T/shim/curl" <<'SHIM'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CURL_LOG"
+[ "${CURL_FAIL:-0}" = 1 ] && exit 22
+while [ $# -gt 0 ]; do [ "$1" = -o ] && { printf 'fakeshfmt' > "$2"; exit 0; }; shift; done
+exit 2
+SHIM
+chmod 755 "$T/shim/curl"
+FAKESHA="$(printf fakeshfmt | sha256sum | cut -d' ' -f1)"
+sed -E -i "s/^( *sha=)[0-9a-f]{64}\$/\1$FAKESHA/" "$SH_RUN"
+run_shfmt() { # <seed: hit|bad|none> <curl fails: 0|1> -> OUT, RC; leaves CURL_LOG
+  RT="$T/rt-shfmt"; rm -rf "$RT"; mkdir -p "$RT/shfmt-bin"
+  : > "$T/ge"; : > "$T/gp"; CURL_LOG="$T/curl.log"; rm -f "$CURL_LOG"
+  case "$1" in hit) printf fakeshfmt > "$RT/shfmt-bin/shfmt" ;; bad) printf corrupt > "$RT/shfmt-bin/shfmt" ;; esac
+  [ "$1" = none ] || chmod 755 "$RT/shfmt-bin/shfmt"
+  OUT="$(cd "$S" && RUNNER_TEMP="$RT" GITHUB_ENV="$T/ge" GITHUB_PATH="$T/gp" CURL_LOG="$CURL_LOG" CURL_FAIL="$2" PATH="$T/shim:$PATH" bash -e -c 'set -a; . "$0"; . "$1"' "$T/ge-src" "$SH_RUN" 2>&1)"; RC=$?
+}
+( cd "$S" && RUNNER_TEMP="$T/rt-rec" GITHUB_ENV="$T/ge-src" bash -e "$SH_REC" ) 2>/dev/null
+if grep -qx 'SHFMT_VER=3.14.1' "$T/ge-src" 2>/dev/null; then pass "version-record step exports SHFMT_VER"; else fail "SHFMT_VER not recorded: $(cat "$T/ge-src" 2>/dev/null)"; fi
+
+run_shfmt hit 1
+if [ "$RC" -eq 0 ] && [ ! -e "$CURL_LOG" ]; then pass "shfmt cache hit: no call to GitHub releases"; else fail "hit -> rc=$RC curl-log=$(cat "$CURL_LOG" 2>/dev/null): $OUT"; fi
+run_shfmt none 1
+if [ "$RC" -ne 0 ] && [ -e "$CURL_LOG" ]; then pass "shfmt cache miss with the download down fails"; else fail "miss+down -> rc=$RC: $OUT"; fi
+n_infra="$(printf '%s\n' "$OUT" | grep -c 'infra')"
+case "$OUT" in *"https://github.com/mvdan/sh/releases/download/v3.14.1/shfmt_v3.14.1_linux_amd64"*) url_ok=1 ;; *) url_ok=0 ;; esac
+if [ "$n_infra" -eq 1 ] && [ "$url_ok" -eq 1 ]; then pass "miss during an outage prints ONE infra line naming the URL"; else fail "infra line count=$n_infra url_ok=$url_ok: $OUT"; fi
+run_shfmt none 0
+if [ "$RC" -eq 0 ] && [ -x "$RT/shfmt-bin/shfmt" ] && grep -qx "$RT/shfmt-bin" "$T/gp"; then pass "shfmt cache miss with the host up downloads, verifies and puts it on PATH"; else fail "miss+up -> rc=$RC: $OUT"; fi
+run_shfmt bad 0
+if [ "$RC" -eq 0 ] && [ -e "$CURL_LOG" ]; then pass "a cached binary failing its sha256 is re-downloaded"; else fail "bad cache -> rc=$RC: $OUT"; fi
+run_shfmt bad 1
+case "$OUT" in *infra*) bad_infra=1 ;; *) bad_infra=0 ;; esac
+if [ "$RC" -ne 0 ] && [ "$bad_infra" -eq 1 ] && [ "$(wc -l < "$CURL_LOG")" -ge 1 ]; then pass "a corrupt cached binary is never accepted when the download is down"; else fail "bad cache + down -> rc=$RC: $OUT"; fi
+
 if [ "$failures" -eq 0 ]; then echo "== all passed =="; else echo "== $failures failed =="; fi
 [ "$failures" -eq 0 ]
