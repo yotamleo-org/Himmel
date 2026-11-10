@@ -357,7 +357,7 @@ case "$(m6line 'logic slips')" in *Changed*) fail "open_is_proposed_not_changed:
 has "keep_revert_render: an applied change awaits a measurement" "$(m6line 'quoting slips')" "- Applied, awaiting measurement: a change to the codex critic's prompt"
 has "keep_revert_render: the applied line names its commit and day" "$(m6line 'quoting slips')" "applied in commit cccccccccccc on 2 Nov 2026"
 has "keep_revert_render: measured-keep" "$(m6line 'races')" "- Measured, keep: a change to the codex critic's prompt"
-has "keep_revert_render: keep shows the move" "$(m6line 'races')" "from 0 % to 50 %, up 50 points"
+has "keep_revert_render: keep shows the measured run's move" "$(m6line 'races')" "The measured run at the applied version: from 0 % to 50 %, up 50 points"
 has "keep_revert_render: keep is a recommendation, no action" "$(m6line 'races')" "Keep is a recommendation: nothing was merged, deployed or reverted by it."
 has "keep_revert_render: measured-revert" "$(m6line 'fail-open guards')" "- Measured, revert: a change to the codex critic's prompt"
 has "keep_revert_render: revert is a recommendation, nothing reverted" "$(m6line 'fail-open guards')" "Revert is a recommendation: nothing was reverted by it."

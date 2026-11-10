@@ -279,14 +279,14 @@ def review_line(c, what, why, applied, mz):
         return "- Proposed, not applied: %s. No application receipt yet, so no later run is credited to it." % did
     did += ", applied in commit %s on %s" % (applied["commit"][:12], day(applied.get("applied_at")))
     if mz is None:
-        return "- Applied, awaiting measurement: %s. The next comparable run at the applied version measures it." % did
+        return "- Applied, awaiting measurement: %s. A later run at the applied version measures it." % did
     if mz.get("verdict") == "keep" and move:
-        return "- Measured, keep: %s. The first run at the applied version: %s. Keep is a recommendation: nothing " \
-               "was merged, deployed or reverted by it." % (did, move)
+        return "- Measured, keep: %s. The measured run at the applied version: %s. Keep is a recommendation: " \
+               "nothing was merged, deployed or reverted by it." % (did, move)
     if mz.get("verdict") == "revert" and move:
-        return "- Measured, revert: %s. The first run at the applied version: %s. Revert is a recommendation: " \
+        return "- Measured, revert: %s. The measured run at the applied version: %s. Revert is a recommendation: " \
                "nothing was reverted by it." % (did, move)
-    return "- Inconclusive: %s. The first run at the applied version could not be compared with the proposal's " \
+    return "- Inconclusive: %s. The measured run at the applied version could not be compared with the proposal's " \
            "baseline run, so it says nothing either way." % did
 
 
