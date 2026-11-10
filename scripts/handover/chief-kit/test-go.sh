@@ -1089,7 +1089,6 @@ rc=0; out=$(go31 77 "$SHA") || rc=$?
 check    "9479: both callees rc 0 -> exit 0" "$rc" "0"
 check    "9479: both callees rc 0 -> a GO" "$(gofiles31)" "1"
 
-# a refused repo view (rate limit on stderr) is exit 11 with a marker keyed <pr>.<head>; an empty one with no refusal stays exit 1
 fresh31
 rc=0; out=$(STUB_GH_RL=1 go31 77 "$SHA") || rc=$?
 check    "9479 I4: a refused repo view -> exit 11" "$rc" "11"
@@ -1106,7 +1105,6 @@ fresh31
 rc=0; out=$(STUB_GH_RL=1 Q31_DIR=/proc/nonexistent/quota go31 77 "$SHA") || rc=$?
 check    "9479 I4: an unwritable quota dir leaves the exit unchanged (11)" "$rc" "11"
 
-# GO_DEADLINE: a cut before the GO's mv is exit 11, no GO, a marker; a cut after it exits 0 and the GO stands
 fresh31
 rc=0; out=$(STUB_RC_SLEEP=20 GO_DEADLINE=2 go31 77 "$SHA") || rc=$?
 check    "9479: GO_DEADLINE cut before the mv -> exit 11" "$rc" "11"

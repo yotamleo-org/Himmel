@@ -302,12 +302,10 @@ check    "11: an unrelated gh failure leaves no marker" "$(mkers)" "0"
 check    "11: an unrelated gh failure prints no quota line" "$(grep -c 'QUOTA-PAUSE\|GH-STALL' <<< "$out" | tr -d ' ')" "0"
 rc=0; out="$(bash "$DISP" check x1 "$SHA" 2>&1)" || rc=$?
 check    "11: a usage error leaves no marker" "$(mkers)" "0"
-# a rate limit named only on stdout is not a rate limit (the classifier reads stderr)
 printf '%s\n' '#!/usr/bin/env bash' 'echo "API rate limit exceeded in the PR body"' 'echo "boom" >&2' 'exit 1' > "$tmp/bin/gh-stdout-rl"
 chmod +x "$tmp/bin/gh-stdout-rl"
 rc=0; out="$(GH_CMD="$tmp/bin/gh-stdout-rl" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
 check    "11: a rate-limit phrase on stdout alone is not a rate limit" "$(mkers)" "0"
-# a hung read: cut by CR_DISPOSITION_GH_TIMEOUT, named a stall
 printf '%s\n' '#!/usr/bin/env bash' 'exec sleep 60' > "$tmp/bin/gh-hung"
 chmod +x "$tmp/bin/gh-hung"
 t0=$SECONDS

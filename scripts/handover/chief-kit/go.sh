@@ -527,13 +527,12 @@ fi
 # without a fresh review. Run from $HERE: the anchor's copy, never a worktree's.
 # The merge contract is named by the caller (--contract): a merge GO that does not name it is refused
 # by ready-check item 17 by default, because merge-on-green.sh's remainder refusal depends on it.
-RC_ARGS="--observe"
-[ "$FIX_SET" -eq 1 ] || RC_ARGS="--require-contract"
-[ "$CONTRACT_SET" -eq 0 ] || RC_ARGS="$RC_ARGS --contract $CONTRACT"
+RC_ARGS=(--observe)
+[ "$FIX_SET" -eq 1 ] || RC_ARGS=(--require-contract)
+[ "$CONTRACT_SET" -eq 0 ] || RC_ARGS+=(--contract "$CONTRACT")
 READY_OUT="" READY_RC=0
 if [ "$FORK_SET" -eq 0 ]; then
-    # shellcheck disable=SC2086  # RC_ARGS is fixed words built just above, never caller text
-    READY_OUT=$(bash "$HERE/ready-check.sh" $RC_ARGS "$PR" "$SHA" 2>&1) || READY_RC=$?
+    READY_OUT=$(bash "$HERE/ready-check.sh" "${RC_ARGS[@]}" "$PR" "$SHA" 2>&1) || READY_RC=$?
     case "$READY_RC" in
         0) ;;
         1)
