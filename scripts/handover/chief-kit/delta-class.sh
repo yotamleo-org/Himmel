@@ -195,7 +195,6 @@ while IFS= read -r pat; do
     case $? in 0) trust "a changed path matches trust pattern $pat" ;; 2) trust "trust pattern $pat is not a valid regex" ;; esac
 done < "$work/patterns.txt"
 
-# a merge whose remerge-diff is not empty resolved a conflict by hand; a trust hit above still wins
 [ "$remerge_nonempty" -eq 0 ] || fin finding
 
 # Findings, as <path><TAB><first line><TAB><last line>; the lines are empty for a whole file.

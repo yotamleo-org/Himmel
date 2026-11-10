@@ -279,7 +279,6 @@ J=$J8
 git checkout -q "$base_branch"
 mkv GO 'finding: src/a.txt:3-4'
 
-# 12: a merge in the delta that resolved a conflict in a non-trust file is read by a judge
 git checkout -q -b base12 "$J8"; mkdir -p lib; seq 1 5 > lib/x.sh; seq 1 5 > lib/y.sh; B12=$(step lib-base)
 git checkout -q -b main12a "$B12"; edit '$0==3{print "main3"; next} {print}' lib/x.sh; M=$(step main-line3)
 git checkout -q -b pr12a "$B12"; edit '$0==3{print "pr3"; next} {print}' lib/x.sh; Jp=$(step pr-line3)
