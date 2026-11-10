@@ -1,5 +1,3 @@
-<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
-
 ## Phase 3.5 — Deep component scan (`--deep` only)
 
 Skip this entire phase unless `--deep` was passed.

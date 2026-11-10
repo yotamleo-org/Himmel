@@ -1,5 +1,3 @@
-<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
-
 ### Semantic layer (schema defined, NOT yet populated)
 
 Identity (`upstream_commit`, `readme_sha256`, …) answers "did the repo move". It says nothing

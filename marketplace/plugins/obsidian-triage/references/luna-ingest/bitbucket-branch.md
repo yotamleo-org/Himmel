@@ -1,5 +1,3 @@
-<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
-
 ## Bitbucket branch — bitbucket.org URLs
 
 When the URL host is `bitbucket.org`, run THIS branch instead of the github

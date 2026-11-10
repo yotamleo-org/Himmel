@@ -1,5 +1,3 @@
-<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
-
 ### Trust-tier auto-classification
 
 Compute the synthesis's `trust_tier` field from the source repo's `owner` (extracted as `owner = owner_repo.split('/')[0]`, then lowercased) before the Write step. All allowlist + literal comparisons in this section are **case-insensitive** — both sides lowercased before equality.

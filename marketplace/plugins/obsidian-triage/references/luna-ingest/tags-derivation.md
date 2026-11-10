@@ -1,5 +1,3 @@
-<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
-
 ### Tags derivation
 
 `tags:` is REQUIRED in every emitted note's frontmatter — the vault's Tech

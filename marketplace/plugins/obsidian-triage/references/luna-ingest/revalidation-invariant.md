@@ -1,5 +1,3 @@
-<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
-
 ### Revalidation invariant
 
 A prose `## Re-validation` section (written by a future revalidation sweep, not by this MVP)

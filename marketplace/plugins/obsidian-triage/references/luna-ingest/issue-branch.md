@@ -1,5 +1,3 @@
-<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
-
 ## Issue branch — github issue URLs
 
 When `<github-url>` matches `^https?://(www\.)?github\.com/<owner>/<repo>/issues/(\d+)$` (query/fragment stripped first), run THIS branch instead of Phases 1–3.6 and the Phase 4 repo synthesis. The repo phases assume a README + 1-hop ref pool; an issue has neither, so this branch is deliberately flat: fetch → safety-filter → write. `--deep`, `--research`, and `--limit` are repo-only flags — if passed alongside an issue URL, ignore them with one stderr line: `WARN luna-ingest: --deep/--research/--limit are repo-only; ignored for issue URLs.`
