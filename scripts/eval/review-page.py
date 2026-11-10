@@ -6,7 +6,10 @@ writes one Markdown page in plain words, its bottom line first (each eval's head
 how often the critics' findings key-match labelled target defects and how often they block labelled-clean
 changes (review-panel, automated proxies, not verified accuracy), how often the judges let a bug past a GO
 (judge-accuracy), the proof-first share (self-reported) of merged PRs (pdd-share), the trend since the last
-run of the same series, and each change the feedback step made with its re-measured result. The page
+run of the same series, and each change the feedback step proposed: a reviewer change carries its lifecycle label
+(proposed, applied awaiting measurement, measured keep or revert, inconclusive, or a historical delta whose
+application is unverified), a judge change its re-measured result. Keep and revert are recommendations; the page
+runs no git operation. The page
 carries no metric names: a number with no sentence here is not shown. A review-panel trend compares two rows
 only when both name one known scorer_sha256: a repaired scorer is a new series.
 
@@ -258,11 +261,41 @@ def proof_lines(cur, prev):
     return out
 
 
+def review_line(c, what, why, applied, mz):
+    did = "a change to %s after the run of %s, because %s" % (what, day(c.get("ts")), why)
+    move = ""
+    if mz is not None and eval_runs._num(mz.get("before")) and eval_runs._num(mz.get("after")):
+        d = pct(mz["after"]) - pct(mz["before"])
+        move = "from %d %% to %d %%, %s" % (pct(mz["before"]), pct(mz["after"]),
+                                          "no change" if d == 0 else "%s %d points" % ("up" if d > 0 else "down", abs(d)))
+    bound = applied is not None and isinstance(applied.get("commit"), str)
+    if mz is not None and not (bound and mz.get("applied_commit") == applied["commit"]):
+        return "- Historical delta; application unverified: %s. A later run moved %s, but no application receipt " \
+               "binds that run to the change." % (did, move or "by an unrecorded amount")
+    if not bound:
+        return "- Proposed, not applied: %s. No application receipt yet, so no later run is credited to it." % did
+    did += ", applied in commit %s on %s" % (applied["commit"][:12], day(applied.get("applied_at")))
+    if mz is None:
+        return "- Applied, awaiting measurement: %s. A later run at the applied version measures it." % did
+    if mz.get("verdict") == "keep" and move:
+        return "- Measured, keep: %s. The measured run at the applied version: %s. Keep is a recommendation: " \
+               "nothing was merged, deployed or reverted by it." % (did, move)
+    reason = mz.get("reason") if isinstance(mz.get("reason"), str) and mz.get("reason") else "no reason recorded"
+    if mz.get("verdict") == "revert" and move:
+        return "- Measured, revert: %s. The measured run at the applied version: %s (%s). Revert is a " \
+               "recommendation: nothing was reverted by it." % (did, move, reason)
+    return "- Inconclusive: %s. The measured run at the applied version settles nothing: %s." % (did, reason)
+
+
 def change_lines(changes):
     changes = [c for c in changes if isinstance(c, dict)]
     opened = [c for c in changes if c.get("status") == "open" and c.get("eval") in ("review-panel", "judge-accuracy")
               and isinstance(c.get("metric"), str)]
     done = {c["id"]: c for c in changes if c.get("status") == "measured" and "id" in c}
+    applied = {}
+    for c in changes:
+        if c.get("status") == "applied" and isinstance(c.get("id"), str):
+            applied.setdefault(c["id"], c)
     out = []
     for c in opened:
         owner = OWNER.get(c.get("critic"), "the %s eval's" % plain(c.get("eval", "")))
@@ -281,6 +314,9 @@ def change_lines(changes):
             why = "one of its numbers was past its limit"
         if is_rate and eval_runs._num(c.get("value")) and eval_runs._num(c.get("threshold")):
             why += ": %d %%, the bar is %d %%" %(pct(c["value"]), pct(c["threshold"]))
+        if c.get("eval") == "review-panel":
+            out.append(review_line(c, what, why, applied.get(c.get("id")), done.get(c.get("id"))))
+            continue
         line = "- Changed %s after the run of %s, because %s." % (what, day(c.get("ts")), why)
         mz = done.get(c.get("id"))
         if mz is None:

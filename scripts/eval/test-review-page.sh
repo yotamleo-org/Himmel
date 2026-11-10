@@ -109,8 +109,9 @@ has "judges: wrong NO-GO" "$out" "A NO-GO was wrong 1 time in 40"
 has "judges: worse area named only when it is worse" "$out" "guard changes: a bug got past 2 of 10"
 case "$out" in *"docs changes"*) fail "judges: an area that is not worse is not named";; *) pass "judges: an area that is not worse is not named";; esac
 has "judges: a partial run says the numbers may move" "$out" "2 possible bugs still wait for a ruling"
-has "change: what was changed, and whether it helped" "$out" "Changed the codex critic's prompt"
-has "change: re-measured delta" "$out" "from 0 % to 50 %, up 50 points: it helped"
+has "legacy_measurement_unverified: a measured change with no application receipt is a historical delta" "$out" "Historical delta; application unverified: a change to the codex critic's prompt"
+has "legacy_measurement_unverified: the delta is shown, not credited" "$out" "from 0 % to 50 %, up 50 points, but no application receipt binds that run to the change"
+case "$out" in *": it helped"*|*"Changed the codex"*) fail "legacy_measurement_unverified: no causal claim without a receipt";; *) pass "legacy_measurement_unverified: no causal claim without a receipt";; esac
 case "$out" in *friction*) fail "change: a change to an eval that is not a reviewer is left off";; *) pass "change: a change to an eval that is not a reviewer is left off";; esac
 
 has "answers: a question with its percentage, range and sample" "$out" "Do agents write the failing test before the code? 75 % (likely between 30 % and 95 %) of 4 sessions"
@@ -313,7 +314,65 @@ cp "$TMP/changes.jsonl" "$TMP/bad-changes.jsonl"
 printf '%s\n' '{"status":"measured"}' '{"status":"open","eval":"review-panel","metric":null}' '7' >> "$TMP/bad-changes.jsonl"
 out="$(python3 -I "$PAGE" --ledger "$TMP/runs.jsonl" --changes "$TMP/bad-changes.jsonl" 2>&1)"; rc=$?
 eq "malformed change records: exit 0" "$rc" "0"
-has "malformed change records: the good change still shows" "$out" "Changed the codex critic's prompt"
+has "malformed change records: the good change still shows" "$out" "a change to the codex critic's prompt"
+
+python3 -I - "$TMP/m6-changes.jsonl" <<'PY' || { echo "test-review-page: writing the M6 changes ledger failed" >&2; exit 1; }
+import json, sys
+A, B = "c" * 40, "d" * 40
+H0, H1 = "0" * 64, "1" * 64
+def rec(cid, **kw):
+    return dict({"v": 1, "host": "h", "source": "scripts/eval/lib/eval_feedback.py", "kind": "eval-change", "id": cid,
+                 "eval": "review-panel", "metric": "codex.class.%s.recall" % cid}, **kw)
+def opened(cid, critic="codex"):
+    return rec(cid, ts="2026-11-01T10:00:00Z", status="open", value=0.0, threshold=0.5, better="higher", absent=None,
+               change="prompt", target="scripts/cr/critic-first-pass.sh", baseline_run_id="rp", confighash="c",
+               critic=critic, per=None, min_gain=0.25)
+def applied(cid, commit=A):
+    return rec(cid, ts="2026-11-02T10:00:00Z", status="applied", applied_at="2026-11-02T10:00:00Z",
+               before_cbs_hash=H0, after_cbs_hash=H1, commit=commit, target_paths=["scripts/cr/critic-first-pass.sh"],
+               diff_sha256=H1)
+def measured(cid, verdict, commit=A, **kw):
+    return rec(cid, ts="2026-11-03T10:00:00Z", status="measured", before=0.0, after=kw.pop("after", 0.5),
+               delta=0.5, verdict=verdict, after_run_id="rp2", applied_commit=commit, after_cbs_hash=H1, **kw)
+rows = [opened("logic"),
+        opened("quoting"), applied("quoting"),
+        opened("toctou"), applied("toctou"), measured("toctou", "keep", reason="train and test up"),
+        opened("fail-open"), applied("fail-open"), measured("fail-open", "revert", after=0.0, reason="train not up"),
+        opened("scope-creep"), applied("scope-creep"), measured("scope-creep", "inconclusive", after=None,
+                                                                reason="participation differs"),
+        opened("test-cannot-fail"), applied("test-cannot-fail", commit=B), measured("test-cannot-fail", "keep"),
+        dict(rec("judge", eval="judge-accuracy", metric="class.guard.escape_excess"), ts="2026-11-01T10:00:00Z",
+             status="open", value=0.04, threshold=0, better="lower", absent=None, change="prompt",
+             target="docs/handover/judge-brief-template.md", baseline_run_id="ja", confighash="j", critic="judge")]
+with open(sys.argv[1], "w") as fh:
+    for r in rows:
+        fh.write(json.dumps(r) + "\n")
+PY
+m6="$(python3 -I "$PAGE" --ledger "$TMP/absent.jsonl" --changes "$TMP/m6-changes.jsonl" 2>&1)"
+m6line() { printf '%s\n' "$m6" | grep -F "$1"; }
+has "open_is_proposed_not_changed: an open change is proposed" "$(m6line 'logic slips')" "- Proposed, not applied: a change to the codex critic's prompt after the run of 1 Nov 2026"
+has "open_is_proposed_not_changed: no later run is credited to it" "$(m6line 'logic slips')" "No application receipt yet, so no later run is credited to it."
+case "$(m6line 'logic slips')" in *Changed*) fail "open_is_proposed_not_changed: never 'Changed'";; *) pass "open_is_proposed_not_changed: never 'Changed'";; esac
+has "keep_revert_render: an applied change awaits a measurement" "$(m6line 'quoting slips')" "- Applied, awaiting measurement: a change to the codex critic's prompt"
+has "keep_revert_render: the applied line names its commit and day" "$(m6line 'quoting slips')" "applied in commit cccccccccccc on 2 Nov 2026"
+has "keep_revert_render: measured-keep" "$(m6line 'races')" "- Measured, keep: a change to the codex critic's prompt"
+has "keep_revert_render: keep shows the measured run's move" "$(m6line 'races')" "The measured run at the applied version: from 0 % to 50 %, up 50 points"
+has "keep_revert_render: keep is a recommendation, no action" "$(m6line 'races')" "Keep is a recommendation: nothing was merged, deployed or reverted by it."
+has "keep_revert_render: measured-revert" "$(m6line 'fail-open guards')" "- Measured, revert: a change to the codex critic's prompt"
+has "keep_revert_render: revert is a recommendation, nothing reverted" "$(m6line 'fail-open guards')" "Revert is a recommendation: nothing was reverted by it."
+has "keep_revert_render: inconclusive" "$(m6line 'unannounced changes')" "- Inconclusive: a change to the codex critic's prompt"
+has "keep_revert_render: inconclusive shows its reason" "$(m6line 'unannounced changes')" "The measured run at the applied version settles nothing: participation differs."
+has "keep_revert_render: revert shows its reason" "$(m6line 'fail-open guards')" "(train not up)"
+has "legacy_measurement_unverified: a measurement naming a commit with no matching receipt is unverified" "$(m6line 'tests that cannot fail')" "- Historical delta; application unverified"
+has "other_eval_unchanged: a judge change reads as before" "$m6" "- Changed the judges' prompt after the run of 1 Nov 2026"
+STUB="$TMP/git-stub"; mkdir -p "$STUB"
+printf '#!/bin/sh\necho "$@" >>"%s/calls"\nexit 1\n' "$STUB" >"$STUB/git"; chmod +x "$STUB/git"
+stubbed="$(PATH="$STUB:$PATH" python3 -I "$PAGE" --ledger "$TMP/absent.jsonl" --changes "$TMP/m6-changes.jsonl" 2>&1)"; rc=$?
+eq "keep_revert_render: the page renders with git stubbed out: exit 0" "$rc" "0"
+has "keep_revert_render: the stubbed render shows keep" "$stubbed" "- Measured, keep:"
+has "keep_revert_render: the stubbed render shows revert" "$stubbed" "- Measured, revert:"
+eq "keep_revert_render: rendering keep and revert runs no git operation" "$(cat "$STUB/calls" 2>/dev/null)" ""
+eq "keep_revert_render: the page spawns no process by any path" "$(grep -cE 'subprocess|os\.system|os\.popen|os\.exec' "$PAGE")" "0"
 
 python3 -I "$PAGE" --ledger "$TMP/runs.jsonl" --changes "$TMP/changes.jsonl" --out "$TMP/page.md" >/dev/null 2>&1
 eq "--out writes the page" "$(head -1 "$TMP/page.md" 2>/dev/null)" "# How good are our reviewers?"
