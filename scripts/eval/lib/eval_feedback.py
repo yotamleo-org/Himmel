@@ -375,6 +375,17 @@ def changed_paths(repo, parent, commit):
     return {path: meta.lstrip(":") for meta, path in zip(parts[0::2], parts[1::2])}
 
 
+def behaviour_diff(repo, parent, commit):
+    """(target_paths, diff_sha256): the behaviour-set paths commit changes against parent, and the sha256 of their
+    raw diff-tree records."""
+    score = _score()
+    behaviour = set(score.cbs_paths(repo, parent)) | set(score.cbs_paths(repo, commit))
+    diff = changed_paths(repo, parent, commit)
+    paths = sorted(p for p in diff if p in behaviour)
+    canon = "".join("%s\t%s\n" % (diff[p], p) for p in paths).encode("utf-8", "surrogateescape")
+    return paths, hashlib.sha256(canon).hexdigest()
+
+
 def apply_review(cid, commit, changes, repo=None):
     """Append the applied receipt of review-panel change cid for one application commit and return it; ValueError
     when refused (APPLY-REVIEW above). repo: the checkout the commit is read from, else this script's own."""
@@ -410,24 +421,23 @@ def apply_review(cid, commit, changes, repo=None):
         if before == after:
             raise ValueError("refused: no effective change: commit %s leaves cbs_hash %s as it was"
                              % (sha[:12], before[:12]))
-        diff = changed_paths(repo, parent, sha)
-        if target not in diff:
+        paths, digest = behaviour_diff(repo, parent, sha)
+        if target not in paths:
             raise ValueError("refused: commit %s does not change the proposal's target %s" % (sha[:12], target))
-        paths = sorted(p for p in diff if p in behaviour)
         if paths != [target]:
             raise ValueError("refused: commit %s changes behaviour paths beyond the proposal's target: %s"
                              % (sha[:12], ", ".join(p for p in paths if p != target)))
-        canon ="".join("%s\t%s\n" % (diff[p], p) for p in paths).encode("utf-8", "surrogateescape")
         rec = envelope(id=cid, eval=REVIEW, metric=prop.get("metric"), status="applied")
         rec.update(applied_at=rec["ts"], before_cbs_hash=before, after_cbs_hash=after, commit=sha, target_paths=paths,
-                   diff_sha256=hashlib.sha256(canon).hexdigest())
+                   diff_sha256=digest)
         append(changes, rec)
     return rec
 
 
 def receipt_mismatch(repo, rec):
     """Why Git does not reproduce applied receipt rec in repo, or None: its commit must be one commit with one parent
-    whose cbs_hash is before_cbs_hash, its own cbs_hash after_cbs_hash, and the two must differ."""
+    whose cbs_hash is before_cbs_hash, its own cbs_hash after_cbs_hash, the two must differ, and its target_paths
+    and diff_sha256 must be the ones behaviour_diff computes."""
     score = _score()
     sha = commit_of(repo, rec.get("commit"))
     if sha is None or sha != rec.get("commit"):
@@ -437,6 +447,8 @@ def receipt_mismatch(repo, rec):
             or score.cbs_hash(repo, parents[0]) != rec.get("before_cbs_hash") \
             or score.cbs_hash(repo, sha) != rec.get("after_cbs_hash"):
         return "the receipt does not match Git: its commit does not reproduce its before and after versions"
+    if [rec.get("target_paths"), rec.get("diff_sha256")] != list(behaviour_diff(repo, parents[0], sha)):
+        return "the receipt does not match Git: its target paths or diff are not the commit's"
     return None
 
 

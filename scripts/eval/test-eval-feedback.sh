@@ -744,6 +744,15 @@ add(ledger, "forged-c", 1, APPLY, LATER)
 fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
 one_inconclusive("a receipt whose hashes Git does not reproduce at its commit is inconclusive, never keep",
                  "does not match Git")
+ledger, changes, cid = proposal("narrowed", base_code=OTHER)
+fb.append(changes, fb.envelope(id=cid, eval="review-panel", metric="codex.class.quoting.recall", status="applied",
+                               applied_at="2026-06-01T00:00:00Z", before_cbs_hash=fb._score().cbs_hash(repo, OTHER),
+                               after_cbs_hash=fb._score().cbs_hash(repo, BOTH), commit=BOTH,
+                               target_paths=[TARGET], diff_sha256="0" * 64))
+add(ledger, "narrowed-c", 1, BOTH, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+one_inconclusive("a hand-written receipt that narrows a two-path commit to the target is inconclusive, never keep",
+                 "does not match Git")
 ledger, changes, cid = proposal("wide")
 fb.apply_review(cid, APPLY, changes, repo=repo)
 with open(changes) as fh:
