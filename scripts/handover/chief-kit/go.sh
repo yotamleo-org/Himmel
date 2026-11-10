@@ -334,14 +334,25 @@ _go_descendants() {
     local c
     for c in $(pgrep -P "$1" 2>/dev/null); do printf '%s\n' "$c"; _go_descendants "$c"; done  # swallow-ok: no pgrep or no children lists nothing, and only the child itself is signalled
 }
+_go_stands() {
+    local at
+    gd_path=$(sed -n 1p "$gd_sent" 2>/dev/null) || gd_path=""  # swallow-ok: an unreadable sentinel reads as no GO written, which is exit 11 or 143
+    at=$(sed -n 2p "$gd_sent" 2>/dev/null) || at=""  # swallow-ok: an unreadable sentinel reads as no GO written, which is exit 11 or 143
+    [ -n "$gd_path" ] && [ -n "$at" ] && [ -f "$gd_path" ] && grep -qx "at=$at" "$gd_path" 2>/dev/null
+}
 # shellcheck disable=SC2329  # invoked by the TERM trap below, which shellcheck does not follow
 _go_term() {
-    local p kids
-    if [ -n "${gd_pid:-}" ]; then
-        kids=$(_go_descendants "$gd_pid")
-        kill -TERM "$gd_pid" 2>/dev/null
-        wait "$gd_pid" 2>/dev/null
+    local p kids pid="${gd_pid:-$!}"
+    if [ -n "$pid" ]; then
+        kids=$(_go_descendants "$pid")
+        kill -TERM "$pid" 2>/dev/null
+        wait "$pid" 2>/dev/null
         for p in $kids; do kill -TERM "$p" 2>/dev/null; done
+    fi
+    if _go_stands; then
+        grep -qx printed "$gd_sent" 2>/dev/null || printf '%s\n' "$gd_path"
+        echo "go: GO written before the cancel" >&2
+        exit 0
     fi
     exit 143
 }
@@ -361,14 +372,12 @@ if [ -z "${_GO_ARMED:-}" ]; then
             gd_pid=""
             trap 'rm -f "$gd_sent"' EXIT
             trap '_go_term' TERM INT HUP
-            _GO_ARMED=1 _GO_SENTINEL="$gd_sent" "$_TIMEOUT_BIN" -k 5 "$gd_s" bash "$0" "${_GO_ARGV[@]}" <&0 &
+            _GO_ARMED=1 _GO_SENTINEL="$gd_sent" _GO_PARENT=$$ "$_TIMEOUT_BIN" -k 5 "$gd_s" bash "$0" "${_GO_ARGV[@]}" <&0 &
             gd_pid=$!
             wait "$gd_pid" || gd_rc=$?
             case "$gd_rc" in
                 124|137)
-                    gd_path=$(sed -n 1p "$gd_sent" 2>/dev/null) || gd_path=""  # swallow-ok: an unreadable sentinel reads as no GO written, which is exit 11 below
-                    gd_at=$(sed -n 2p "$gd_sent" 2>/dev/null) || gd_at=""  # swallow-ok: an unreadable sentinel reads as no GO written, which is exit 11 below
-                    if [ -n "$gd_path" ] && [ -n "$gd_at" ] && [ -f "$gd_path" ] && grep -qx "at=$gd_at" "$gd_path" 2>/dev/null; then
+                    if _go_stands; then
                         grep -qx printed "$gd_sent" 2>/dev/null || printf '%s\n' "$gd_path"
                         rm -f "$gd_sent"
                         exit 0
@@ -390,8 +399,9 @@ if [ -z "${_GO_ARMED:-}" ]; then
     fi
 fi
 if [ -z "${_GO_ARMED:-}" ]; then
-    unset _GO_SENTINEL
+    unset _GO_SENTINEL _GO_PARENT
 else
+    case "${_GO_PARENT:-}" in ''|*[!0-9]*) unset _GO_PARENT ;; esac
     case "${_GO_SENTINEL:-}" in
         "${TMPDIR:-/tmp}"/go-sentinel.*)
             [ -f "$_GO_SENTINEL" ] && [ ! -L "$_GO_SENTINEL" ] && [ -O "$_GO_SENTINEL" ] || unset _GO_SENTINEL ;;
@@ -686,6 +696,14 @@ _go_announce_dest
 if ! mkdir -p "$DIR" || ! TMP=$(mktemp "$DIR/.go.XXXXXX"); then
     echo "go: cannot create a temp file under $DIR" >&2
     exit 1
+fi
+if [ -n "${_GO_PARENT:-}" ]; then
+    gd_up=$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d '[:space:]')  # swallow-ok: an unreadable parent fails the comparison below, which refuses
+    if [ "$gd_up" != "$_GO_PARENT" ]; then
+        rm -f "$TMP"
+        echo "go: the deadline wrapper is gone, so this run was cancelled. No GO written." >&2
+        exit 11
+    fi
 fi
 if ! { printf 'pr=%s\nhead=%s\nby=%s\nat=%s\n' "$PR" "$SHA" "$BY" "$AT" \
         && { [ -z "$TRUST" ] || printf 'trust-reviewed=%s\n' "$TRUST"; } \
