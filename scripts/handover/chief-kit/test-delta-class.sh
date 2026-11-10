@@ -279,6 +279,31 @@ J=$J8
 git checkout -q "$base_branch"
 mkv GO 'finding: src/a.txt:3-4'
 
+git checkout -q -b base12 "$J8"; mkdir -p lib; seq 1 5 > lib/x.sh; seq 1 5 > lib/y.sh; B12=$(step lib-base)
+git checkout -q -b main12a "$B12"; edit '$0==3{print "main3"; next} {print}' lib/x.sh; M=$(step main-line3)
+git checkout -q -b pr12a "$B12"; edit '$0==3{print "pr3"; next} {print}' lib/x.sh; Jp=$(step pr-line3)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main12a >/dev/null 2>&1
+printf '1\n2\nresolved3\n4\n5\n' > lib/x.sh; N=$(step resolved-line3)
+check "12a: the hand-resolved conflict is a two-parent merge" "$(git rev-list --parents -n 1 "$N" | wc -w | tr -d ' ')" 3
+J=$Jp; mkv GO
+check "12a: a hand-resolved conflict in a non-trust file no finding names -> finding" "$(cls "$N")" finding
+check "12c: the same conflict with a missing ledger still fails closed -> trust" "$(bash "$SCRIPT" --verdict-file "$vf" --ledger "$tmp/none.jsonl" --trust-file "$trustf" "$J" "$N")" trust
+sed "s/$J/0000000000000000000000000000000000000000/" "$vf" > "$tmp/other12.md"
+check "12d: the same conflict with a verdict file for another head still fails closed -> trust" "$(bash "$SCRIPT" --verdict-file "$tmp/other12.md" --ledger "$ledger" --trust-file "$trustf" "$J" "$N")" trust
+git update-ref -d refs/remotes/origin/main
+git checkout -q -b main12b "$B12"; edit '$0==3{print "main3"; next} {print}' lib/y.sh; M=$(step main-other-file)
+git checkout -q -b pr12b "$B12"; edit '$0==3{print "pr3"; next} {print}' lib/x.sh; Jp=$(step pr-line3-b)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main12b >/dev/null 2>&1; N=$(git rev-parse HEAD)
+check "12b: the clean merge-forward is a two-parent merge" "$(git rev-list --parents -n 1 "$N" | wc -w | tr -d ' ')" 3
+J=$Jp; mkv GO
+check "12b: a merge-forward of an unrelated main change, no conflict -> none" "$(cls "$N")" none
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
+mkv GO 'finding: src/a.txt:3-4'
+
 # 10: a new head that does not descend from the judged head (a rewritten history) is no delta of it
 J10=$J
 printf 'judged\n' >> docs/c.md; Jr=$(step rewritten-judged)

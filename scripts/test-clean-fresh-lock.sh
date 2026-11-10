@@ -223,6 +223,15 @@ expect "4: rc nonzero" "$out" rc_nonzero "$out"
 expect "4: worktree kept" "$out" is_dir "$WT_ONLY"
 expect "4: same FRESH-lock reason" "$out" grepq "$out" "FRESH queue lock"
 
+echo "CASE 4B: --only --pr-cache on a FRESH-locked worktree"
+PC_FILE="$TMP_ROOT/pc-only.txt"
+printf '# nwo=owner/repo\n# scope=branch feat/only\nowner/repo\tfeat/only\tmerged\t%s\n# complete rows=1\n' \
+    "$(git -C "$WT_ONLY" rev-parse HEAD)" > "$PC_FILE"
+out=$(run_clean --only "$WT_ONLY" --pr-cache "$PC_FILE")
+expect "4b: rc nonzero with a cache file" "$out" rc_nonzero "$out"
+expect "4b: worktree kept with a cache file" "$out" is_dir "$WT_ONLY"
+expect "4b: same FRESH-lock reason with a cache file" "$out" grepq "$out" "FRESH queue lock"
+
 # ── case 5: once the lock is released, the fleet-wide sweep prunes it ────────
 echo "CASE 5: released lock, sweep prunes"
 tok=$(HANDOVER_DIR="$HANDOVER_ROOT" bash "$QUEUE_LOCK" status "$DOC_FRESH" 2>/dev/null | sed -n 's/.*"session":"\([^"]*\)".*/\1/p')
@@ -239,6 +248,8 @@ expect "5: previously FRESH-locked worktree pruned once released" "$out" is_gone
 echo "CASE 6: --health output unchanged"
 tok_only=$(HANDOVER_DIR="$HANDOVER_ROOT" bash "$QUEUE_LOCK" status "$DOC_ONLY" 2>/dev/null | sed -n 's/.*"session":"\([^"]*\)".*/\1/p')
 HANDOVER_DIR="$HANDOVER_ROOT" bash "$QUEUE_LOCK" release "$DOC_ONLY" "$tok_only" >/dev/null 2>&1
+out=$(run_clean --only "$WT_ONLY" --pr-cache "$PC_FILE")
+expect "4b control: the released worktree prunes with the same cache file" "$out" is_gone "$WT_ONLY"
 run_clean --prune-only >/dev/null
 out=$(run_clean --health)
 expect "6: --health rc=0 (no alarms) once every FRESH-lock skip resolves" "$out" rc_is "$out" 0
