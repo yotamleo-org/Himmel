@@ -12,9 +12,8 @@ the operator's machine only.
 
 The install profile (`scripts/install/capture-operator-profile.mjs`) records
 what the wizard's questions can express. Each row below is one item from a
-live capture on the operator's machine that the profile does not cover. Most
-rows are still open gaps; a row the wizard has since learned to cover stays,
-marked so. To capture it again:
+live capture on the operator's machine; its State says whether the wizard
+covers it or you set it up by hand. To capture it again:
 
 ```bash
 node scripts/install/capture-operator-profile.mjs --delta-out /tmp/operator-delta.json
@@ -31,7 +30,7 @@ it; set it up by hand).
 | 2 | Scheduled tasks that exist but aren't in any of the 5 cadence ids (`HIMMEL-BootPreflight`, `HIMMEL-ForkResync` when armed) | Membership check against a known-extra-tasks list, same scheduler enumeration as #1 (`delta.cadences.extraArmedTasks`) | `HIMMEL-ForkResync` is armed together with the drift-fix cadence, which the wizard's cadence question offers (row 1). `HIMMEL-BootPreflight` is not offered or named anywhere in the wizard; arming it from the wizard as an always-on step is planned | planned |
 | 3 | Observability registry stack (`~/.himmel/observability.json` — `flows[]`, `expected_tasks[]`, `expected_disabled_tasks[]`) | Direct read of `$HIMMEL_OBSERVABILITY_CONFIG` or the default path (`delta.observability`) | None — this registry is written by cadence *register* actions as a side effect; the wizard never surfaces or reconciles it | planned |
 | 4 | Bridge persistence artifact detail (the actual `HimmelTelegramBridge` scheduled task / `telegram-bridge.service` unit, beyond the yes/no `installPersistence` answer) | Scheduler/systemd-unit presence check (`profile.bridge.installPersistence`, `delta.cadences.extraArmedTasks`) | The wizard asks a one-time consent to install persistence; it never re-verifies the artifact is still there on a later run | planned |
-| 5 | Guardrail env posture — which SESSION-ONLY bypass/threshold vars (`EDIT_ON_MAIN_OK`, `AUTO_ARM_THRESHOLD`, ...) are set in the invoking shell | Presence check (boolean only, never the value) against the names documented in `.env.example`'s SESSION-ONLY section (`delta.envKeys.guardrailEnvPosture`) | None: each is set in the shell that launches Claude, for that one launch, and is never saved as an answer. There is nothing to carry over; set one again only for a launch that needs it | planned |
+| 5 | Guardrail env posture — which SESSION-ONLY bypass/threshold vars (`EDIT_ON_MAIN_OK`, `AUTO_ARM_THRESHOLD`, ...) are set in the invoking shell | Presence check (boolean only, never the value) against the names documented in `.env.example`'s SESSION-ONLY section (`delta.envKeys.guardrailEnvPosture`) | None: each is set in the shell that launches Claude, for that one launch, and is never saved as an answer. Carrying the names you set to a new machine is planned; until then, note which ones you set on the old machine and set one again only for a launch that needs it | planned |
 | 6 | Codex/hermes profile *install completion* (auth provisioned, model pulled) beyond the lane opt-in consent | Indirect — the live lane probe (`delta.lanes.liveLaneIds` containing `codex-exec`/`hermes-oneshot`) confirms the CLI is reachable, not that setup finished | `--with-codex`/`--with-hermes` record the opt-in *consent*; nothing tracks whether the follow-on install script (`install-himmel-codex.*`, `install-himmel-profile.*`) actually completed | planned |
 | 7 | Handover registry entries — repo names + count in `~/.claude/handover/registry.json` (never paths) | Direct read (`delta.handover.registryEntryNames`, `registryEntryCount`) | When you choose external handover and this repo is not registered yet, the wizard asks whether to register it in the handover registry (the same step as `/handover-setup`) | covered by the wizard |
 | 8 | HUD config (`claude-hud.json` presence, its top-level key names, whether `statusLine.command` references it) | Existence + `settings.json` substring check (`delta.hud`) | None — HUD setup isn't part of the wizard at all | planned |
@@ -42,11 +41,11 @@ it; set it up by hand).
 
 ## Regeneration
 
-This page is a hand-written frame around rows taken from a capture. When the
-capture's shape changes, run the command above again, compare it with the
-table, and update the rows by hand. No generator writes this page; it is
-meant to be read and judged, not templated. `scripts/himmelctl/tbd-delta.json`
-mirrors the table for `himmelctl gaps`: keep each row's number, state and
-paths the same in both, and build each JSON label from the words of the row's
+Maintainers: this page is a hand-written frame around rows taken from a
+capture. When the capture's shape changes, run the command above again and
+compare it with the table.
+No generator writes this page; edit the rows by hand.
+`scripts/himmelctl/tbd-delta.json` mirrors the table for `himmelctl gaps`:
+keep each row's number, state and paths the same in both, and build each JSON label from the words of the row's
 Item cell; it may be shorter (`scripts/himmelctl/test/test-wizard-gaps.sh`
 checks all four).
