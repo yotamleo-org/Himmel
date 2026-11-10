@@ -149,7 +149,11 @@
 #                clean and promoted, and publish-graph-channel.sh pushed the
 #                graph to the graph-data branch. A blocked or
 #                failed channel publish is `failed`; its error names the file
-#                and the rule, never the matched text.
+#                and the rule, never the matched text. The row's graph_head,
+#                merges_behind and lag_s say how far behind origin/main the
+#                published graph was when it went out (null when its build
+#                commit is not in this checkout); graph-lag-report.py replays
+#                them.
 #
 # Usage:
 #   graph-cadence.sh [--threshold N] [--corpus-root <path>] [--flow-name <name>] [--semantic]
@@ -571,11 +575,21 @@ _write_ledger() {
     local line
     local batch_cost_json=null
     case "$BATCH_COST" in '' | *[!0-9.]* | *.*.*) ;; *) batch_cost_json=$BATCH_COST ;; esac
-    line=$(printf '{"ts":%s,"head":%s,"graph_head":%s,"merges_behind":%s,"action":%s,"pr":%s,"duration_s":%s,"error":%s,"batch_id":%s,"batch_state":%s,"batch_requests":%s,"batch_cost_usd":%s}' \
+    local lag_s="" _t_graph _t_head
+    if [ -n "$GRAPH_HEAD" ] && [ -n "$head_sha" ]; then
+        _t_graph=$(git -C "$HIMMEL_ROOT" show -s --format=%ct "${GRAPH_HEAD}^{commit}" 2>/dev/null) || _t_graph=""
+        _t_head=$(git -C "$HIMMEL_ROOT" show -s --format=%ct "$head_sha" 2>/dev/null) || _t_head=""
+        case "$_t_graph$_t_head" in
+            '' | *[!0-9]*) ;;
+            *) [ -n "$_t_graph" ] && [ -n "$_t_head" ] && lag_s=$(( _t_head > _t_graph ? _t_head - _t_graph : 0 )) ;;
+        esac
+    fi
+    line=$(printf '{"ts":%s,"head":%s,"graph_head":%s,"merges_behind":%s,"lag_s":%s,"action":%s,"pr":%s,"duration_s":%s,"error":%s,"batch_id":%s,"batch_state":%s,"batch_requests":%s,"batch_cost_usd":%s}' \
         "$(_fr_json_str "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" \
         "$(_fr_json_null_str "$head_sha")" \
         "$(_fr_json_null_str "$GRAPH_HEAD")" \
         "$(_fr_json_int "${MERGES_BEHIND:-}")" \
+        "$(_fr_json_int "$lag_s")" \
         "$(_fr_json_str "$ACTION")" \
         "$(_fr_json_null_str "$PR_REF")" \
         "$(_fr_json_int "$dur")" \
@@ -1167,6 +1181,10 @@ if [ "$SEMANTIC" -eq 1 ]; then
     esac
 fi
 
+_published_build_commit() {
+    printf '%s\n' "$1" | sed -n 's/^publish-graph-channel: published graph-data .* (built at \([0-9a-fA-F]\{7,40\}\))$/\1/p' | tail -n 1
+}
+
 # --- 6a. retired publish/merge tasks: clean no-op, not a skip ----------------
 # PUBLISH_POSSIBLE=0 (see step 2/PUBLISH_POSSIBLE above) means origin/main
 # does not track graphify-out/graph.json at all -- the permanent
@@ -1184,6 +1202,11 @@ if [ "$PUBLISH_POSSIBLE" -eq 0 ]; then
         printf '%s\n' "$_ch_out"
         [ "$_ch_rc" -eq 0 ] || _fail "graph-data publish failed (exit $_ch_rc): $(printf '%s\n' "$_ch_out" | grep '^publish-graph-channel: BLOCKED ' | tail -n 1)"
         ACTION="published-channel"
+        GRAPH_HEAD=$(_published_build_commit "$_ch_out")
+        if [ -n "$GRAPH_HEAD" ]; then
+            MERGES_BEHIND=$(git -C "$HIMMEL_ROOT" rev-list --count "${GRAPH_HEAD}..origin/main" 2>/dev/null) || MERGES_BEHIND=""
+            case "$MERGES_BEHIND" in '' | *[!0-9]*) MERGES_BEHIND="" ;; esac
+        fi
         FINAL_RC=0
         _write_ledger
         exit 0
