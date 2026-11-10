@@ -301,7 +301,6 @@ def cmd_backfill(a):
 
 
 def read_ledger_rows(root, cutoff):
-    """Every ledger row merged (else recorded) at or after cutoff, from <root>/*.jsonl; an unreadable line is skipped."""
     rows = []
     if not root or not os.path.isdir(root):
         return rows
