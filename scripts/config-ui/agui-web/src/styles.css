@@ -114,6 +114,7 @@ button.band-name{width:100%;padding:0;background:none;border:0;text-align:left;c
 .group-cards .call{margin:0}
 .call{margin:0 0 10px;background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--c);border-radius:2px}
 .call.running{--c:var(--accent)}.call.done{--c:var(--ok)}.call.error{--c:var(--fail)}
+.call.not_run,.call.no_result,.call.interrupted{--c:var(--dim)}.bar.not_run,.bar.no_result{opacity:.55}
 .call.failed{--c:var(--fail);border-color:color-mix(in srgb,var(--c) 50%,var(--line));background:color-mix(in srgb,var(--c) 7%,var(--panel))}
 .call.failed.denied,.call.failed.blocked{--c:var(--warn)}
 .call-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:baseline;width:100%;padding:8px 10px;

@@ -7,6 +7,9 @@ import type { BaseEvent } from "@ag-ui/core";
 // it is all one agent, "main"), and a failure is a call or text the mapper classified (`failure`), or a call a
 // run error cut off.
 export type Failure = "denied" | "suite" | "blocked" | "error";
+// The mapper's per-call outcome (agui/events.ts ToolOutcome), restated here so the page needs no runtime import.
+export type Outcome = "ok" | "ok_blocked" | "error" | "denied" | "no_verdict" | "interrupted" | "unknown";
+const OUTCOMES = new Set<string>(["ok", "ok_blocked", "error", "denied", "no_verdict", "interrupted", "unknown"]);
 export type Role = "console" | "worker" | "judge" | "critic" | "subagent" | "agent";
 export type Agent = {
   id: string; name: string; role: Role; model?: string; kind?: string; parentToolCallId?: string;
@@ -14,9 +17,10 @@ export type Agent = {
   last: number; // elapsed ms of the last event that touched it
 };
 export type Text = { id: string; text: string; open: boolean; agent: string; role?: "user" | "assistant"; failure?: Failure };
-export type ToolStatus = "running" | "done" | "error";
+// not_run: the classifier gave no verdict, so the call never ran; no_result: its turn ended without a result.
+export type ToolStatus = "running" | "done" | "error" | "not_run" | "interrupted" | "no_result";
 export type Tool = {
-  id: string; name: string; args: string; result?: string; status: ToolStatus; failure?: Failure;
+  id: string; name: string; args: string; result?: string; status: ToolStatus; failure?: Failure; outcome?: Outcome;
   parentMessageId?: string; start: number; end?: number; lane: number; agent: string;
 };
 // A turn opens at each RUN_STARTED; texts and calls follow it in arrival order.
@@ -63,7 +67,12 @@ function addFailure(v: View, ref: Omit<FailureRef, "at">, agent: string): View {
   const at = ref.kind === "tool" ? v.tools[ref.id].start : v.elapsed;
   return { ...v, failures: [...v.failures, { ...ref, at }], agents: a ? { ...v.agents, [agent]: { ...a, failures: a.failures + 1 } } : v.agents };
 }
-const failureOf = (e: Ev): Failure | undefined => (FAILURES.has(e.failure) ? e.failure : e.isError === true ? "error" : undefined);
+// A no-verdict or interrupted call is not a failure: it never ran, or was cut off.
+const failureOf = (e: Ev): Failure | undefined => (FAILURES.has(e.failure) ? e.failure
+  : e.isError === true && e.outcome !== "no_verdict" && e.outcome !== "interrupted" ? "error" : undefined);
+// The stream's outcome; a stream from before the outcome field reads its legacy flags.
+const outcomeOf = (e: Ev): Outcome => (OUTCOMES.has(e.outcome) ? e.outcome
+  : e.isError === true ? (e.failure === "denied" ? "denied" : "error") : e.failure === "blocked" ? "ok_blocked" : "ok");
 
 // Milliseconds since RUN_STARTED; an event without a timestamp keeps the last known time.
 function clock(v: View, e: Ev): { t0?: number; at: number } {
@@ -130,17 +139,20 @@ function fold(prev: View, e: Ev): View {
       const n = v.entries.filter((en) => en.kind === "turn").length + 1;
       return { ...v, status: "running", runId: e.runId, sideRun: false, entries: [...v.entries, { kind: "turn", id: String(e.runId ?? n), n, at }] };
     }
-    // A turn that ends closes the session's own calls still open, as done with no result; a subagent's calls stay
+    // A turn that ends closes the session's own calls still open, with no result (interrupted when the turn was
+    // cancelled, else unknown, never ok); a subagent's calls stay
     // open, since a background subagent outlives the turn and its results arrive later. A run that errors (the
     // stream itself failed) closes every open call as an error. Likewise a text message that never got
     // TEXT_MESSAGE_END stops being open. A background subagent's one-record run closes nothing.
     case "RUN_FINISHED": {
       if (v.sideRun) return { ...v, status: "finished", sideRun: false };
-      for (const t of Object.values(v.tools)) if (t.status === "running" && t.agent === "main") v = finish(v, t.id, at, { status: "done" });
+      const cut = e.outcome?.type === "cancelled";
+      for (const t of Object.values(v.tools)) if (t.status === "running" && t.agent === "main")
+        v = finish(v, t.id, at, cut ? { status: "interrupted", outcome: "interrupted" } : { status: "no_result", outcome: "unknown" });
       return { ...closeTexts(v), status: "finished" };
     }
     case "RUN_ERROR": {
-      for (const t of Object.values(v.tools)) if (t.status === "running") v = finish(v, t.id, at, { status: "error", failure: "error" });
+      for (const t of Object.values(v.tools)) if (t.status === "running") v = finish(v, t.id, at, { status: "error", failure: "error", outcome: "unknown" });
       return { ...closeTexts(v), status: "error", error: e.message };
     }
     case "TEXT_MESSAGE_START": {
@@ -194,8 +206,9 @@ function fold(prev: View, e: Ev): View {
       if (!t) return v;
       // An Agent call's result may be the first event to name the subagent it ran.
       if (e.subagent?.id) v = withAgent(v, { agent: e.subagent } as Ev).v;
-      const failure = failureOf(e);
-      return finish(v, t.id, at, { status: e.isError === true ? "error" : "done", result: String(e.content ?? ""), ...(failure ? { failure } : {}) });
+      const failure = failureOf(e), outcome = outcomeOf(e);
+      const status: ToolStatus = outcome === "no_verdict" ? "not_run" : outcome === "interrupted" ? "interrupted" : e.isError === true ? "error" : "done";
+      return finish(v, t.id, at, { status, outcome, result: String(e.content ?? ""), ...(failure ? { failure } : {}) });
     }
     case "STATE_SNAPSHOT":
       return { ...v, state: e.snapshot };

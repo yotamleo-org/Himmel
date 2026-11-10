@@ -73,7 +73,7 @@ check "identical_retry and recovered come from trajectory.py, joined by tool_cal
 check "a subagent row has no trajectory join (main agent only)" '[ "$(row denied/check-push-target sub01 | jq -c "[.identical_retry, .recovered]")" = "[null,null]" ]'
 check "identical_denied_retries >= 1 writes a traj/identical-retry row" '[ "$(row traj/identical-retry | jq -c "[.failure, .count]")" = "[\"traj\",1]" ]'
 check "metrics count the session" 'jq -e ".metrics | .turns == 3 and .subagents == 1 and .fail_denied == 10 and .fail_suite == 3 and .fail_blocked == 1 and .fail_error == 3 and .run_errors == 1 and .interrupts == 1 and .identical_denied_retries == 1" "$TMP/classes.json" >/dev/null'
-check "the digest names its versions and the main model" 'jq -e ".digest_v == 2 and .mapper_v == 1 and .trajectory_v == 2 and .model == \"claude-opus-5-5\" and .session == \"$SID\" and .status == \"ok\"" "$TMP/classes.json" >/dev/null'
+check "the digest names its versions and the main model" 'jq -e ".digest_v == 3 and .mapper_v == 2 and .trajectory_v == 2 and .model == \"claude-opus-5-5\" and .session == \"$SID\" and .status == \"ok\"" "$TMP/classes.json" >/dev/null'
 
 echo "4. the #1976 agents.jsonl fixture"
 cp "$REPO/scripts/config-ui/tests/fixtures/agui/agents.jsonl" "$TMP/agents.jsonl"
@@ -362,6 +362,22 @@ check "a guard-empty-expansion refusal is denied/guard-empty-expansion" '[ "$(or
 check "control: a refusal no guard claims, and a DENY of a name that is no hook, stay denied/other" '[ "$(orow denied/other | jq .count)" = 2 ]'
 check "a TaskStop error saying not running or No task found is a no-op, not error/TaskStop" '[ "$(orow error/TaskStop | jq .count)" = 1 ] && jq -e ".metrics.ok_noop_stop == 2" "$TMP/op/out.json" >/dev/null'
 check "control: any other TaskStop error is still a failure" '[ "$(jq -r "[.tool_health[] | select(.tool == \"TaskStop\")] | .[0] | \"\(.calls) \(.failures)\"" "$TMP/op/out.json")" = "3 1" ]'
+
+echo "one outcome partition per issued call (the shared fixture the mapper, reducer and rollup read too)"
+SOUT=9696c1a5-0000-4000-8000-000000000001
+mkdir -p "$TMP/out"; cp "$FX/outcomes.jsonl" "$TMP/out/$SOUT.jsonl"
+digest "$TMP/out/$SOUT.jsonl" >"$TMP/out/out.json" 2>"$TMP/out/err" || bad "the outcomes digest exits 0: $(head -c 300 "$TMP/out/err")"
+OJ="$TMP/out/out.json"
+check "the digest meaning versions moved" 'jq -e ".digest_v == 3 and .mapper_v == 2" "$OJ" >/dev/null'
+check "every tool row carries all seven outcome counts" 'jq -e "[.tool_health[] | .outcomes | keys] | all(. == [\"denied\",\"error\",\"interrupted\",\"no_verdict\",\"ok\",\"ok_blocked\",\"unknown\"])" "$OJ" >/dev/null'
+check "each row's outcomes sum to its calls" 'jq -e "[.tool_health[] | ([.outcomes[]] | add) == .calls] | all" "$OJ" >/dev/null'
+check "the session partition is exact" '[ "$(jq -c ".metrics.outcomes" "$OJ")" = "{\"ok\":5,\"ok_blocked\":1,\"error\":6,\"denied\":1,\"no_verdict\":2,\"interrupted\":2,\"unknown\":1}" ]'
+check "the session partition sums to tool_calls" 'jq -e "([.metrics.outcomes[]] | add) == .metrics.tool_calls" "$OJ" >/dev/null'
+check "errors and denials are views of the partition (no_verdict and interrupted are neither)" 'jq -e "([.tool_health[].errors] | add) == .metrics.outcomes.error and ([.tool_health[].denials] | add) == .metrics.outcomes.denied" "$OJ" >/dev/null'
+check "a no-verdict call is no failure row" 'jq -e "[.failures[] | .tool_call_ids[]] | (index(\"c_nv\") == null and index(\"c_nv_edit\") == null and index(\"c_int\") == null)" "$OJ" >/dev/null'
+check "Edit-input subclasses are counted" '[ "$(jq -c ".metrics.edit_input" "$OJ")" = "{\"not_found\":1,\"ambiguous\":1,\"unchanged\":1,\"stale\":0,\"not_read\":0}" ]'
+check "the separator error is counted" 'jq -e ".metrics.separator_errors == 1" "$OJ" >/dev/null'
+check "judge calls with and without the declared JUDGE-BRIEF marker are counted" 'jq -e ".metrics.judge_calls == {\"marked\":1,\"unmarked\":1}" "$OJ" >/dev/null'
 
 echo "test-worker-digest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

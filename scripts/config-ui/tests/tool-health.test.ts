@@ -486,7 +486,7 @@ test("overview-call-total-is-the-tool-attempt-sum", async () => {
 test("overview-failure-rate-is-weighted", async () => {
   const html = await page(readP(seedP()));
   expect(kpi(html, "failed")).toBe("8");
-  expect(kpiSub(html, "failed")).toContain("3 errors · 5 denied");
+  expect(kpiSub(html, "failed")).toContain("3 tool errors · 5 denied");
   expect(kpi(html, "rate")).toBe("11.4%");
   expect(kpiSub(html, "rate")).toContain("8 of 70 calls");
 });
@@ -506,7 +506,7 @@ test("overview-recovery-keeps-unknown-class-outcomes-out", async () => {
   const html = await page(data);
   expect(recoveryNote(html)).toContain("25.0% (1 of 4 known · 4 unclassified)");
   for (const t of data.tools) { t.known = 0; t.recovered = 0; }
-  expect(recoveryNote(await page(data))).toContain("Recovery —");
+  expect(recoveryNote(await page(data))).toContain("Changed/stopped after refusal —");
 });
 
 test("overview-daily-failures-reconcile", async () => {
@@ -1133,8 +1133,8 @@ test("a call drawer carries the exact call id, the session and what is not recor
   expect(drawer).toContain("toolu_C2");
   expect(drawer).toContain(INV(2));
   expect(drawer).toContain(`href="/agui/#t=t&amp;run=${sid}"`);
-  expect(drawer).toContain("Recovery");
-  expect(drawer).toMatch(/Recovery<\/dt><dd>[^<]*not recorded/);
+  expect(drawer).toContain("Changed/stopped after refusal");
+  expect(drawer).toMatch(/Changed\/stopped after refusal<\/dt><dd>[^<]*not recorded/);
   const odd = await chainPage({ skip: { state: "ok", rows: [skipRow(2, { sessionId: "sess-chain" })] }, run: { state: "ok", rows: [] } }, GUARD);
   expect(odd).toContain("<code>sess-chain</code>");
 });
@@ -1553,7 +1553,7 @@ test("a BLOCKED SendMessage is a blocked report, not a SendMessage failure", () 
 test("the Failed card names blocked reports apart from errors and denials", async () => {
   const data = readP(seedP());
   const shown = { ...data, tools: data.tools.map((t: any, i: number) => (i === 0 ? { ...t, blocked: 4 } : t)) };
-  expect(kpiSub(await page(shown), "failed")).toContain("3 errors · 5 denied · 4 blocked reports (not failures)");
+  expect(kpiSub(await page(shown), "failed")).toContain("3 tool errors · 5 denied · 4 blocked reports (not failures)");
   expect(kpiSub(await page(data), "failed")).not.toContain("blocked");
 });
 
@@ -1689,4 +1689,60 @@ test("the launches box escapes every value", async () => {
   expect(html).not.toContain(evil);
   expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
   expect(html).not.toContain(`<b>"&`);
+});
+
+// One outcome partition per issued call, summed across the rollup, the daily record and the page.
+const OUTC = { ok: 5, ok_blocked: 1, error: 3, denied: 1, no_verdict: 1, interrupted: 2, unknown: 1 };
+const oRow = (session: string, digest_v: number, health: any[]) => ({ eval: "leg-trajectory", run_id: session, status: "ok", lane: "native", model: "m",
+  ts: "2026-11-09T12:00:00Z", config: { digest_v }, meta: { started_ts: Date.parse("2026-11-09T12:00:00Z"), tool_health: health } });
+const oHealth = (outcomes?: Record<string, number>) => ({ agent: { id: "main", model: "m" }, tool: "Bash", calls: 14, failures: 4, errors: 3, denials: 1,
+  classes: { "error/Bash": 3, "denied/read-clamp": 1 }, ...(outcomes ? { outcomes } : {}) });
+const O_NOW = Date.parse("2026-11-09T23:00:00Z"), O_Q = new URLSearchParams({ since: "2026-11-09" });
+test("outcome-partition-sums-to-calls-across-the-rollup", () => {
+  const r = rollupToolHealth([oRow("s1", 3, [oHealth(OUTC)]), oRow("s2", 3, [oHealth(OUTC)])], [], O_Q, O_NOW);
+  const bash = r.tools.find((t: any) => t.tool === "Bash");
+  expect(bash.outcomes).toEqual({ ok: 10, ok_blocked: 2, error: 6, denied: 2, no_verdict: 2, interrupted: 4, unknown: 2 });
+  expect(Object.values(bash.outcomes as Record<string, number>).reduce((a, b) => a + b, 0)).toBe(bash.calls);
+  expect(r.outcomes).toEqual(bash.outcomes);
+  expect(r.outcome_coverage).toEqual({ sessions: 2, with_partition: 2, without_partition: 0, comparable: true });
+  expect(r.definitions).toEqual({ digest_v: { "3": 2 } });
+  expect(bash).toMatchObject({ retry_known: bash.known, retry_changed_or_stopped: bash.recovered });
+});
+test("outcome-partition-legacy-rows-are-unknown-not-zero", () => {
+  const r = rollupToolHealth([oRow("s1", 3, [oHealth(OUTC)]), oRow("s2", 2, [oHealth()])], [], O_Q, O_NOW);
+  const bash = r.tools.find((t: any) => t.tool === "Bash");
+  expect(bash.outcomes).toBeNull();
+  expect(r.outcomes).toBeNull();
+  expect(r.outcome_coverage).toEqual({ sessions: 2, with_partition: 1, without_partition: 1, comparable: false });
+  expect(r.definitions).toEqual({ digest_v: { "2": 1, "3": 1 } });
+  expect(bash.failures).toBe(8);
+});
+test("outcome-partition-a-row-whose-outcomes-do-not-sum-is-not-counted", () => {
+  const r = rollupToolHealth([oRow("s1", 3, [oHealth({ ...OUTC, ok: 99 })])], [], O_Q, O_NOW);
+  expect(r.tools.find((t: any) => t.tool === "Bash").outcomes).toBeNull();
+  expect(r.outcome_coverage.comparable).toBe(false);
+});
+test("outcome-partition-the-daily-record-carries-it", () => {
+  const rec = buildRecord(rollupToolHealth([oRow("s1", 3, [oHealth(OUTC)])], [], O_Q, O_NOW), { day: "2026-11-09" }) as any;
+  expect(rec.config.count_definition_version).toBe(2);
+  expect(rec.meta.record_version).toBe(2);
+  expect(rec.cases["tool:Bash"]).toMatchObject(Object.fromEntries(Object.entries(OUTC).map(([k, v]) => [`outcome_${k}`, v])));
+  expect(rec.metrics["outcome.no_verdict"]).toBe(1);
+  expect(rec.metrics["tool.Bash.outcome.interrupted"]).toBe(2);
+  const legacy = buildRecord(rollupToolHealth([oRow("s2", 2, [oHealth()])], [], O_Q, O_NOW), { day: "2026-11-09" }) as any;
+  expect(legacy.cases["tool:Bash"].outcome_no_verdict).toBeNull();
+  expect(legacy.metrics["outcome.no_verdict"]).toBeNull();
+  expect(legacy.meta.audit.missing_sources).toContain("outcome partition");
+});
+test("outcome-partition-the-page-shows-not-run-and-changed-or-stopped", async () => {
+  const html = await page(rollupToolHealth([oRow("s1", 3, [oHealth(OUTC)])], [], O_Q, O_NOW));
+  const note = (/<p class="sub" data-note="outcomes">([^<]*)</.exec(html) || [])[1] || "";
+  expect(note).toContain("1 not run (no verdict)");
+  expect(note).toContain("2 interrupted");
+  expect(note).toContain("1 no result");
+  expect(note).toContain("3 tool errors");
+  expect(html).toContain("Changed/stopped after refusal");
+  expect(html).not.toContain(">Recovery<");
+  const legacy = await page(rollupToolHealth([oRow("s2", 2, [oHealth()])], [], O_Q, O_NOW));
+  expect((/<p class="sub" data-note="outcomes">([^<]*)</.exec(legacy) || [])[1]).toContain("not recorded for 1 of 1 sessions");
 });

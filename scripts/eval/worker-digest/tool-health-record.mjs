@@ -4,9 +4,10 @@
 // implementation. This module is pure: it reads nothing and writes nothing. tool_health_record.py wraps the body in the
 // validated eval-runs envelope and appends it once per day. Record first, audit read-only: no rule reads this eval, so
 // nothing changes because of it.
-import { rollupToolHealth } from './tool-health.mjs';
+import { OUTCOMES, rollupToolHealth } from './tool-health.mjs';
 
-export const RECORD_VERSION = 1;
+// 2: the per-call outcome partition (cases[tool:*].outcomes, metrics outcome.*); a new series, never spliced onto 1.
+export const RECORD_VERSION = 2;
 const num = (n) => typeof n === 'number' && Number.isFinite(n);
 const ratio = (n, d) => num(n) && num(d) && d > 0 ? n / d : null;
 const GUARD = /^denied\/(?!classifier|other$|permission-prompt$)(.+)$/;
@@ -39,8 +40,11 @@ export function buildRecord(rollup, { day }) {
   const totalKnown = num(rollup.totalCalls);
 
   for (const t of tools) {
-    cases[`tool:${t.tool}`] = { calls: num(t.calls) ? t.calls : null, failures: t.failures, errors: t.errors, denials: t.denials, recovered: t.recovered, known: t.known };
+    cases[`tool:${t.tool}`] = { calls: num(t.calls) ? t.calls : null, failures: t.failures, errors: t.errors, denials: t.denials, recovered: t.recovered, known: t.known,
+      ...Object.fromEntries(OUTCOMES.map((k) => [`outcome_${k}`, t.outcomes ? t.outcomes[k] : null])) };
     metrics[`tool.${t.tool}.calls`] = num(t.calls) ? t.calls : null;
+    for (const k of OUTCOMES) metrics[`tool.${t.tool}.outcome.${k}`] = t.outcomes ? t.outcomes[k] : null;
+    if (t.outcomes && num(t.calls) && OUTCOMES.reduce((n, k) => n + t.outcomes[k], 0) !== t.calls) problems.push(`tool ${t.tool}: outcomes do not sum to calls`);
     metrics[`tool.${t.tool}.fail_rate`] = ratio(t.failures, t.calls);
     if (t.denials > t.failures || (num(t.calls) && t.failures > t.calls)) problems.push(`tool ${t.tool}: denials <= failures <= calls does not hold`);
   }
@@ -58,12 +62,14 @@ export function buildRecord(rollup, { day }) {
   metrics.calls = totalKnown ? rollup.totalCalls : (rollup.totalCalls === 0 ? 0 : null);
   metrics.failures = tools.reduce((s, t) => s + t.failures, 0);
   metrics.denials = tools.reduce((s, t) => s + t.denials, 0);
+  for (const k of OUTCOMES) metrics[`outcome.${k}`] = rollup.outcomes ? rollup.outcomes[k] : null;
 
   const missing = [];
   if (rollup.eligible_fingerprint == null) missing.push('wiring');
   if (chain.state !== 'ok') missing.push('hook-chain log');
   if (!totalKnown) missing.push('call denominators');
   if (guards.some(([, h]) => !num(h.eligible_calls))) missing.push('guard denominators');
+  if (!rollup.outcome_coverage || !rollup.outcome_coverage.comparable) missing.push('outcome partition');
   const status = missing.length || problems.length ? 'partial' : rollup.totalCalls === 0 ? 'inconclusive' : 'ok';
   const a = chain.audit || {};
   return {

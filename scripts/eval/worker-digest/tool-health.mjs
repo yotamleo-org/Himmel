@@ -110,6 +110,12 @@ const nearest = (xs, p) => xs.length ? xs.slice().sort((a, b) => a - b)[Math.cei
 const timingOf = (raw) => ({ n: raw.single.length, p50_ms: nearest(raw.single, 0.5), p95_ms: nearest(raw.single, 0.95), batched_n: raw.batched.length, batched_p50_ms: nearest(raw.batched, 0.5),
   missing: raw.missing, unknown_calls: raw.unknown_calls, capped: raw.capped });
 const CAUSES = ['command', 'rtk_hook', 'guard', 'classifier', 'other'];
+// The digest's per-call outcome partition (digest_v 3). A row without one, or whose counts do not sum to its calls, is
+// legacy for comparison: its tool and the totals report outcomes as null, never as zeros.
+export const OUTCOMES = ['ok', 'ok_blocked', 'error', 'denied', 'no_verdict', 'interrupted', 'unknown'];
+const zeroOutcomes = () => Object.fromEntries(OUTCOMES.map((k) => [k, 0]));
+const validOutcomes = (o, calls) => !!o && typeof o === 'object' && !Array.isArray(o) && OUTCOMES.every((k) => num(o[k]))
+  && num(calls) && OUTCOMES.reduce((n, k) => n + o[k], 0) === calls;
 
 const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;
 // A row recorded before the rename carries the old profile id; it rolls up under the renamed one.
@@ -148,7 +154,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cohort) || cohort < firstDay || cohort > lastDay) return null;
       const key = `${session}\0${agent}\0${cohort}`;
       if (!slots.has(key)) {
-        const slot = { session, agent, day: cohort, lane, role, profile, team: teamOf(profile), gap: typeof r.meta?.launch_gap === 'string' ? r.meta.launch_gap : null, model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
+        const slot = { session, agent, day: cohort, lane, role, profile, defv: num(r.config?.digest_v) ? String(r.config.digest_v) : 'unknown', team: teamOf(profile), gap: typeof r.meta?.launch_gap === 'string' ? r.meta.launch_gap : null, model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
         slots.set(key, slot);
         const agentKey = `${session}\0${agent}`, cohorts = byAgent.get(agentKey) || [];
         cohorts.push(slot); byAgent.set(agentKey, cohorts);
@@ -191,8 +197,10 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       }
     }
   }
-  const blank = () => ({ calls: 0, failures: 0, errors: 0, denials: 0, blocked: 0, recovered: 0, known: 0, sessions: new Set(), classes: new Map(), ids: new Set() });
-  const finish = (r) => ({ ...r, rate: rate(r.failures, r.calls), error_rate: rate(r.errors, r.calls), recovery_rate: rate(r.recovered, r.known), sessions: [...r.sessions], classes: [...r.classes].sort((a, b) => b[1] - a[1]).map(([className, count]) => ({ class: className, count })), tool_call_ids: [...r.ids].slice(0, 20) });
+  const blank = () => ({ calls: 0, failures: 0, errors: 0, denials: 0, blocked: 0, recovered: 0, known: 0, outcomes: zeroOutcomes(), outcome_gaps: 0, sessions: new Set(), classes: new Map(), ids: new Set() });
+  // retry_known / retry_changed_or_stopped: refused calls whose next step is known, and those where the caller changed the
+  // call or stopped (the router's old `recovered` field, kept for compatibility); not proof the task was completed.
+  const finish = ({ outcome_gaps, ...r }) => ({ ...r, outcomes: outcome_gaps ? null : r.outcomes, rate: rate(r.failures, r.calls), error_rate: rate(r.errors, r.calls), recovery_rate: rate(r.recovered, r.known), retry_known: r.known, retry_changed_or_stopped: r.recovered, sessions: [...r.sessions], classes: [...r.classes].sort((a, b) => b[1] - a[1]).map(([className, count]) => ({ class: className, count })), tool_call_ids: [...r.ids].slice(0, 20) });
   const sumCalls = (a, b) => a === null || b === null ? null : a + b;
   function aggregate(list) {
     const tools = new Map(), daily = new Map(), hooks = new Map(), dailyHooks = new Map(), bashByGroup = new Map();
@@ -210,6 +218,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
         const d = daily.get(key) || { ...blank(), tool: h.tool, day: s.day, model: s.model, lane: s.lane, role: s.role };
         for (const target of [t, d]) {
           target.calls = sumCalls(target.calls, h.calls); target.failures += h.failures; target.errors += h.errors; target.denials += h.denials; target.blocked += h.blocked ?? 0; target.sessions.add(s.session);
+          if (validOutcomes(h.outcomes, h.calls)) for (const k of OUTCOMES) target.outcomes[k] += h.outcomes[k]; else target.outcome_gaps++;
           for (const f of s.failures) {
             const count = h.classes ? h.classes[f.class] : inferredTool(f.class) === h.tool ? f.count : 0;
             if (!num(count) || count === 0) continue;
@@ -342,7 +351,20 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const chainOut = rollupChain(chain, { firstDay, lastDay, refused });
   result.hooks = result.hooks.map(({ refusals, ...h }) => ({ ...h, reason_gap: chainOut.gaps?.[memberOfGuardClass(h.class)] ?? null }));
   const { gaps, ...chainShown } = chainOut ?? {};
-  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, cross_tab, attribution, bash: bashRollup(filtered, usable, rtk), coverage: coverageOf(everySlot.filter((s) => matches(s)), new Set(sessions.keys()), rtk, firstDay, lastDay), chain: chainOut.state === 'not-read' ? chainOut : chainShown, launches_refused: rollupLaunches(launches, firstDay, lastDay), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => everySlot.some((s) => s.team === t)) }, selected };
+  // The partition over the filtered window, and which digest meaning versions produced it: a window mixing versions, or
+  // holding a session with no partition, is not a certified comparison.
+  const withPartition = new Set(), withoutPartition = new Set(), digestV = {};
+  for (const s of filtered) {
+    const ok = [...s.tools.values()].every((h) => validOutcomes(h.outcomes, h.calls));
+    (s.known && ok ? withPartition : withoutPartition).add(s.session);
+  }
+  for (const id of new Set(filtered.map((s) => s.session))) { const v = filtered.find((s) => s.session === id).defv; digestV[v] = (digestV[v] || 0) + 1; }
+  for (const id of withPartition) if (withoutPartition.has(id)) withPartition.delete(id);
+  const outcomesTotal = result.tools.length && result.tools.every((t) => t.outcomes)
+    ? Object.fromEntries(OUTCOMES.map((k) => [k, result.tools.reduce((n, t) => n + t.outcomes[k], 0)])) : null;
+  const outcome_coverage = { sessions: withPartition.size + withoutPartition.size, with_partition: withPartition.size, without_partition: withoutPartition.size,
+    comparable: withoutPartition.size === 0 && Object.keys(digestV).length === 1 };
+  return { state: slots.size ? 'ok' : 'absent', ...result, outcomes: outcomesTotal, outcome_coverage, definitions: { digest_v: digestV }, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, cross_tab, attribution, bash: bashRollup(filtered, usable, rtk), coverage: coverageOf(everySlot.filter((s) => matches(s)), new Set(sessions.keys()), rtk, firstDay, lastDay), chain: chainOut.state === 'not-read' ? chainOut : chainShown, launches_refused: rollupLaunches(launches, firstDay, lastDay), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => everySlot.some((s) => s.team === t)) }, selected };
 }
 
 // What the roll-up does not see: digested sessions that carry no tool_health (left out of the rates), and the sessions and

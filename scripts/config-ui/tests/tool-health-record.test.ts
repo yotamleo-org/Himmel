@@ -10,7 +10,8 @@ const evalOn = (day: string, n: number, health: any[]) => ({ eval: "leg-trajecto
   meta: { leg: true, started_ts: Date.parse(`${day}T12:00:00Z`), profile: "worker-impl", tool_health: health } });
 const tool = (day: string, name: string, calls: number, classes: Record<string, number> = {}) => {
   const denials = Object.values(classes).reduce((n, v) => n + v, 0);
-  return { agent, tool: name, calls, failures: denials, errors: 0, denials, classes, day };
+  const outcomes = { ok: calls - denials, ok_blocked: 0, error: 0, denied: denials, no_verdict: 0, interrupted: 0, unknown: 0 };
+  return { agent, tool: name, calls, failures: denials, errors: 0, denials, classes, day, outcomes };
 };
 const fail = (n: number, cls: string, count: number, ids: string[] = [], at = `${DAY}T10:30:00Z`) => ({ session: sid(n), agent, class: cls, failure: cls.split("/")[0], count, recovered: null,
   tool_call_ids: ids, first_ts: Date.parse(at), last_ts: Date.parse(at) });

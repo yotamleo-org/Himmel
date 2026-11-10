@@ -161,15 +161,20 @@ function kpis(data) {
   const calls = data ? data.totalCalls : null, failed = sum("failures"), known = sum("known"), recovered = sum("recovered");
   const rate = bad.size ? null : ratio(failed, calls);
   const tile = (id, label, value, note) => `<div class="kpi" data-kpi="${id}"><span class="k">${esc(label)}</span><b class="kv">${esc(value)}</b><span class="ks">${esc(note)}</span></div>`;
-  // mockup v9: four cards. Denied rides the Failed note; Recovery is the note under the cards, so no fact leaves the page.
+  // mockup v9: four cards. Denied rides the Failed note; changed/stopped after refusal is the note under the cards, and the
+  // per-call outcome partition the note under that, so no fact leaves the page.
   const worst = data && !bad.size ? tools.filter((t) => isNum(t.calls) && t.calls >= 10 && isNum(t.failures)).map((t) => ({ t, r: t.failures / t.calls })).sort((a, b) => b.r - a.r || b.t.failures - a.t.failures || (a.t.tool < b.t.tool ? -1 : 1))[0] : null;
-  const recovery = data ? `<p class="sub" data-note="recovery">Recovery ${pct(ratio(recovered, known))} (${recovered} of ${known} known · ${failed - known} unclassified)</p>` : "";
+  const recovery = data ? `<p class="sub" data-note="recovery">Changed/stopped after refusal ${pct(ratio(recovered, known))} (${recovered} of ${known} known · ${failed - known} unclassified)</p>` : "";
+  const cov = data ? data.outcome_coverage : null, o = data ? data.outcomes : null;
+  // A no-verdict call never ran: it is counted apart, neither a tool error nor a success.
+  const outcomes = !data ? "" : o ? `<p class="sub" data-note="outcomes">Issued calls by outcome: ${o.ok} ok · ${o.ok_blocked} ok reporting BLOCKED · ${o.error} tool errors · ${o.denied} denied · ${o.no_verdict} not run (no verdict) · ${o.interrupted} interrupted · ${o.unknown} no result${cov && !cov.comparable ? " · mixed definition versions, not a certified comparison" : ""}</p>`
+    : `<p class="sub" data-note="outcomes">Outcome partition not recorded for ${cov ? cov.without_partition : "—"} of ${cov ? cov.sessions : "—"} sessions (older digests): those calls read unknown, not zero.</p>`;
   return `<div class="kpis">${[
-    tile("calls", "Calls", num(calls), data ? (isNum(calls) ? "tool call attempts" : "calls not recorded for every session") : "—"),
-    tile("failed", "Failed", num(failed), data ? `${sum("errors")} errors · ${sum("denials")} denied${sum("blocked") ? ` · ${sum("blocked")} blocked reports (not failures)` : ""}` : "—"),
+    tile("calls", "Calls", num(calls), data ? (isNum(calls) ? "issued tool call attempts" : "calls not recorded for every session") : "—"),
+    tile("failed", "Failed", num(failed), data ? `${sum("errors")} tool errors · ${sum("denials")} denied${sum("blocked") ? ` · ${sum("blocked")} blocked reports (not failures)` : ""}` : "—"),
     tile("rate", "Failure rate", pct(rate), data ? (bad.size ? "Count check failed: rate hidden" : `${failed} of ${num(calls)} calls`) : "—"),
     tile("highest", "Highest rate", worst ? pct(worst.r) : "—", data ? (worst ? `${worst.t.tool} · ${worst.t.failures} of ${worst.t.calls} calls` : "no tool with 10 or more calls") : "—"),
-  ].join("")}</div>${recovery}`;
+  ].join("")}</div>${recovery}${outcomes}`;
 }
 function dailyRows(data) {
   const by = new Map();
@@ -341,7 +346,7 @@ function lanePanel(data) {
   const lanes = (data.filters && data.filters.lanes || []).filter((l) => rows.some((r) => isNum(r.values && r.values[l])));
   const fmt = (m, v) => (m === "calls_per_100" ? (isNum(v) ? v.toFixed(1) : "—") : pct(v));
   const delta = (m, d) => (!isNum(d) ? "—" : m === "calls_per_100" ? `${d < 0 ? "−" : "+"}${Math.abs(d).toFixed(1)} calls/100` : `${d < 0 ? "−" : "+"}${Math.abs(d * 100).toFixed(1)} pp`);
-  const label = { calls_per_100: "Bash calls per 100 calls", error_rate: "Error rate", recovery_rate: "Recovery" };
+  const label = { calls_per_100: "Bash calls per 100 calls", error_rate: "Error rate", recovery_rate: "Changed/stopped after refusal" };
   const others = lanes.filter((l) => l !== "native");
   const head = ["Metric", ...lanes.map(esc), ...others.map((l) => `Δ ${esc(l)} vs native`)];
   return `${sub("All lanes; model, role and profile retained. Δ is against native; a rate Δ is in percentage points. No native value means no Δ.")}${table(head, rows.map((r) => `<tr data-lane-metric="${esc(r.metric)}">${td(esc(label[r.metric] || r.metric))}${lanes.map((l) => td(fmt(r.metric, r.values[l]))).join("")}${others.map((l) => td(delta(r.metric, r.delta && r.delta[l]))).join("")}</tr>`), "No lane recorded Bash calls in this window")}`;
@@ -445,7 +450,7 @@ const reasonWords = (e) => (e.kind === "other" ? `Other: ${e.reason}` : (REASON_
 function callDrawer(e, token) {
   const sess = UUID.test(e.session || "") ? `<a href="/agui/#${esc(new URLSearchParams({ t: token, run: e.session }).toString())}">${esc(e.session)}</a>` : e.session ? `<code>${esc(e.session)}</code>` : "—";
   const row = (label, v) => `<div><dt>${esc(label)}</dt><dd>${v}</dd></div>`;
-  return `<details><summary><code>${esc(e.call_id)}</code></summary><dl class="stats">${row("Time", esc(utc(e.ts)))}${row("Outcome", esc(OUTCOME_WORDS[e.outcome] || e.outcome))}${row("Reason code", `<code>${esc(e.reason)}</code>`)}${row("Guard", esc(e.member))}${row("Tool", esc(e.tool || "—"))}${row("Session", sess)}${row("Call id", `<code>${esc(e.call_id)}</code>`)}${row("Chain run", `<code>${esc(e.invocation)}</code>`)}${row("Time used", esc(timingWords(e)))}${row("Refusal line", e.deny_line ? esc(e.deny_line) : "—")}${row("Recovery", "not recorded")}</dl></details>`;
+  return `<details><summary><code>${esc(e.call_id)}</code></summary><dl class="stats">${row("Time", esc(utc(e.ts)))}${row("Outcome", esc(OUTCOME_WORDS[e.outcome] || e.outcome))}${row("Reason code", `<code>${esc(e.reason)}</code>`)}${row("Guard", esc(e.member))}${row("Tool", esc(e.tool || "—"))}${row("Session", sess)}${row("Call id", `<code>${esc(e.call_id)}</code>`)}${row("Chain run", `<code>${esc(e.invocation)}</code>`)}${row("Time used", esc(timingWords(e)))}${row("Refusal line", e.deny_line ? esc(e.deny_line) : "—")}${row("Changed/stopped after refusal", "not recorded")}</dl></details>`;
 }
 const chainEvents = (events, token, empty) => table(["When (UTC)", "Outcome", "Reason", "Guard", "Tool", "Time used", "Refusal line", "Call"],
   events.map((e) => `<tr data-chain-event="${esc(e.call_id)}">${td(esc(utc(e.ts)))}${td(esc(OUTCOME_WORDS[e.outcome] || e.outcome))}${td(esc(reasonWords(e)))}${td(esc(e.member))}${td(esc(e.tool || "—"))}${td(esc(timingWords(e)))}${tdWrap(e.deny_line ? esc(e.deny_line) : "—")}${tdWrap(callDrawer(e, token))}</tr>`), empty, "events");
@@ -550,7 +555,7 @@ function toolDrill(data, inv, ui, token) {
   const head = `${back(ui)}<h2>Tool drill-in: ${esc(displayName(r))} <span class="tag">${esc(KIND_LABEL[r.kind])}</span> <span class="tag">${esc(SRC_LABEL[r.src])}${r.source && r.src !== "core" ? ` · ${esc(r.source)}` : ""}</span></h2>`;
   if (!r.t) return `<section class="box">${head}${sub("What happened to this tool in the window?")}<p class="nodata">No recorded calls in this window. The station scan lists it; calls ${isNum(data && data.totalCalls) ? "0" : "—"}.</p></section>${toolChain(data, r.key, token)}`;
   const t = r.t, bad = badCounts(data).has(t.tool);
-  const stats = `<dl class="stats">${stat("calls", "Calls", num(t.calls))}${stat("failed", "Failed", num(t.failures))}${stat("errors", "Errors", num(t.errors))}${stat("denied", "Denied", num(t.denials))}${isNum(t.blocked) && t.blocked > 0 ? stat("blocked", "Blocked reports", num(t.blocked)) : ""}${stat("rate", "Failure rate", bad ? "Count check failed" : pct(t.rate))}${stat("error-rate", "Error rate", bad ? "—" : pct(t.error_rate))}${stat("recovery", "Recovery", `${pct(t.recovery_rate)} (${num(t.recovered)} of ${num(t.known)} known)`)}</dl>`;
+  const stats = `<dl class="stats">${stat("calls", "Calls", num(t.calls))}${stat("failed", "Failed", num(t.failures))}${stat("errors", "Tool errors", num(t.errors))}${stat("denied", "Denied", num(t.denials))}${isNum(t.blocked) && t.blocked > 0 ? stat("blocked", "Blocked reports", num(t.blocked)) : ""}${stat("rate", "Failure rate", bad ? "Count check failed" : pct(t.rate))}${stat("error-rate", "Error rate", bad ? "—" : pct(t.error_rate))}${stat("recovery", "Changed/stopped after refusal", `${pct(t.recovery_rate)} (${num(t.recovered)} of ${num(t.known)} known)`)}</dl>`;
   const classes = table(["Class", "Count", "Share of this tool's calls"], (t.classes || []).map((c) => `<tr data-class="${esc(c.class)}">${td(esc(c.class))}${td(num(c.count))}${td(pct(ratio(c.count, t.calls)))}</tr>`), "No failure class recorded");
   return `<section class="box">${head}${sub("Was it this tool, or its callers? The same population as the overview row.")}${stats}</section>
 ${t.tool === "Bash" ? bashSections(data) : ""}
@@ -570,7 +575,7 @@ function guardDrill(data, ui, token) {
   // The four This week cards sit beside the chart; the eligible attempts, the legacy rate, Bash calls and recovery are in the counted box below.
   const peak = days.reduce((b, d) => (isNum(d.n) && d.n > 0 && (!b || d.n > b.n) ? d : b), null), counted = days.filter((d) => isNum(d.n));
   const cards = `<h3>${data.selected && data.selected.days === 30 ? "This window (30 days)" : "This week"}</h3><div class="kpis th-cols">${weekCard("refused", "Refused", num(h.failures))}${weekCard("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${weekCard("busiest", "Busiest day", peak ? `${dayLabel(peak.day)} · ${peak.n}` : "—")}${weekCard("none", "Days with none", counted.length ? num(counted.filter((d) => d.n === 0).length) : "—")}</div>`;
-  const counting = box("guard-counts", "How the rate is counted", "The eligible call attempts behind the rate, the older Bash-only rate kept for comparison, and how often a refused call was retried and recovered.", `<dl class="stats">${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`);
+  const counting = box("guard-counts", "How the rate is counted", "The eligible call attempts behind the rate, the older Bash-only rate kept for comparison, and how often a refused call was then changed or stopped.", `<dl class="stats">${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Changed/stopped after refusal", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`);
   // mockup v9: Refusals per day and the four This week cards sit side by side.
   const perDay = `<figure class="card"><h3>Refusals per day <span class="tag">refused calls</span></h3>${sub("Refusals per UTC day; a gap is a day with no calls recorded.")}${chart(days.map((d) => ({ day: d.day, n: d.n })), (d) => d.n, max, String, "bar")}<details><summary>Exact values per day</summary>${table(["Day (UTC)", "Refused"], days.map((d) => `<tr data-guard-day="${d.day}">${td(esc(dayLabel(d.day)))}${td(num(d.n))}</tr>`))}</details></figure>`;
   const week = `<figure class="card">${cards}</figure>`;
