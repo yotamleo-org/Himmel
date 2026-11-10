@@ -317,7 +317,9 @@
 # CHIEF_WAIT_RMLEASE_STALE_MIN minutes (default 30; a missing doc counts from the lease's `acquired` time).
 # The next line names the takeover command. Wakes once per epoch (marker `<inbox>.wait.rmlease`), again
 # every CHIEF_WAIT_RMLEASE_REWAKE_MIN (default 60) while it stays; a released lease, a live holder, a fresh
-# run doc or a takeover (a new epoch) clears the marker. A failed or unparseable read wakes nothing and keeps it.
+# run doc or a takeover (a new epoch) clears the marker. A failed, timed-out or unparseable read wakes nothing and
+# keeps it. CHIEF_WAIT_RMLEASE replaces the state reader with `<cmd> <R> --json` (tests); the CLI's exit 3 (not OK)
+# still prints the state and is read.
 # Everything else on the tick line (heartbeat, procs, fill, fleet, gql,
 # orphans...) moves without needing a chief act and never wakes. Two consecutive samples must differ from the saved key (not
 # necessarily from each other), so one failed `gh` read (prs=none for a single
@@ -1188,15 +1190,10 @@ owed_wake() {
     [ -n "$out" ] || return 1
     printf '%s\n' "$out"
 }
-# rmlease_wake: with --doc, reads the release manager lease of the doc's `release:` line through
-# `jira release state <R> --json` (CHIEF_WAIT_RMLEASE replaces the reader with `<cmd> <R> --json`, tests) at most
-# every CHIEF_WAIT_RMLEASE_SAMPLE_MIN minutes (default 5). A held lease whose holder is gone prints the WAKE block
-# (two lines) and succeeds. A released lease, a live holder pid on this host or a run doc younger than the
-# window clears the marker; a failed, timed-out or unparseable read keeps it and never wakes.
 rmlease_file="$inbox.wait.rmlease"
 rmlease_at_file="$inbox.wait.rmlease.at"
 rmlease_wake() {
-    local rel out rc=0 anchor cli pk epoch released doc acq pid host now age mt win
+    local rel out rc=0 rc_not_ok=3 anchor cli pk epoch released doc acq pid host now age mt win
     [ -n "$console_doc" ] && [ -r "$console_doc" ] || return 1
     rel="$(sed -n 's/^release:[[:space:]]*//p' "$console_doc" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc reads no release
     [[ "$rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || return 1
@@ -1213,8 +1210,7 @@ rmlease_wake() {
     else
         return 1
     fi
-    # exit 3 is the CLI's not-OK status and still prints the state
-    [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || return 1
+    [ "$rc" -eq 0 ] || [ "$rc" -eq "$rc_not_ok" ] || return 1
     # shellcheck disable=SC2016  # the python program is single-quoted on purpose
     IFS=$'\t' read -r epoch released doc acq pid host < <(printf '%s' "$out" | python3 -I -c '
 import calendar, json, sys, time
@@ -1240,7 +1236,7 @@ except Exception:
     fi
     win="${CHIEF_WAIT_RMLEASE_STALE_MIN:-30}"
     if [ "$age" -lt "$win" ]; then rm -f "$rmlease_file"; return 1; fi
-    set_wake "$epoch" "$rmlease_file" "${CHIEF_WAIT_RMLEASE_REWAKE_MIN:-60}" || return 1
+    set_wake "$rel:$epoch" "$rmlease_file" "${CHIEF_WAIT_RMLEASE_REWAKE_MIN:-60}" || return 1
     printf 'WAKE rm-lease-stale %s %sm\ntakeover: JIRA_PROJECT_KEY=%s node %s release operator takeover %s --epoch %s --doc <absolute successor run doc>, then rm-run %s --doc <the same doc>\n' \
         "$epoch" "$age" "$pk" "$cli" "$rel" "$epoch" "$rel"
 }
