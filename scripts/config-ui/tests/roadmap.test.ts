@@ -2043,3 +2043,23 @@ test("9559 slice 3: the interim boxed-section rule is gone and the phone keeps a
   expect(css).toMatch(/@media \(max-width:760px\)\{[^@]*\.cp \.rm-sdrift td:nth-child\(2\)\{white-space:nowrap\}/);
   expect(css).toMatch(/@media \(max-width:760px\)\{[^@]*\.cp \.rm-sdrift :is\(th,td\):is\(:nth-child\(3\),:nth-child\(4\),:nth-child\(5\)\)\{display:none\}/);
 });
+
+test("Board: an unclosed worker is listed apart from Waiting on you and leaves the operator count at 0, while an owed item without a receipt counts", () => {
+  const r = read(station());
+  const ch = chainsOk();
+  ch.tickets[K(5)].state = "in flight";
+  const worker = { source: "unclosed worker", key: null, label: "N5805", since: Math.floor(Date.now() / 1000) - 7200, title: "N5805 is finished and its window is still open", ctx: "held", act: "the chief closes it" };
+  const owedItem = { source: "owed undelivered", key: null, title: "sig-9608: sign the spec", ctx: "OWED sig-9608 has no DELIVERED receipt", act: "the chief sends it" };
+  const only = renderBoard(r, { version: null, theme: null }, { drift: null, chains: ch, owed: { state: "ok", items: [worker], unread: [] } });
+  expect(only).not.toContain('id="rm-waiting"');
+  expect(asideOf(only)).toContain("0 tickets wait for you, any version");
+  const chiefSec = /<section id="rm-chief-wait"[\s\S]*?<\/section>/.exec(only)?.[0] ?? "";
+  expect(chiefSec).toContain("Waiting on the chief");
+  expect(chiefSec).toContain("N5805 is finished and its window is still open");
+  expect(chiefSec).toContain("held 2 h");
+  expect(chiefSec).toContain("Action: the chief closes it");
+  const both = renderBoard(r, { version: null, theme: null }, { drift: null, chains: ch, owed: { state: "ok", items: [worker, owedItem], unread: [] } });
+  expect(waitingSec(both)).toContain("sig-9608: sign the spec");
+  expect(waitingSec(both)).not.toContain("N5805");
+  expect(asideOf(both)).toContain("1 ticket waits for you, any version");
+});

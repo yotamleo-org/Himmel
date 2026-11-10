@@ -157,7 +157,7 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
 //   3. the newest *HANDOFF.md of the bucket, its `## Open operator items` lines.
 // A source that cannot be read is named in `unread`; when none can be read the whole read is absent with the reasons, never an empty list.
 // ponytail: the newest chief doc by mtime stands for "the live chief" and its folder for the bucket, upgrade path: the live chiefs' docs by queue lock as Shift reads them.
-export type OwedItem = { source: "unsigned spec" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker"; key: string | null; title: string; ctx: string; act: string };
+export type OwedItem = { source: "unsigned spec" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
 export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?: string[] } | Absent;
 const OWED_SOURCES = 3; // unsigned specs, handoff items, chief doc lines
 const SPEC_ROUNDS = 3; // the critic round cap (critic-seal.sh): a spec past it needs the operator's record whatever its last verdict says
@@ -260,9 +260,9 @@ function unclosedItems(doc: string, env: Env): OwedItem[] {
   for (const l of rec.split("\n")) {
     const [label, first, base] = l.trim().split(/\s+/);
     if (!label || !/^\d+$/.test(first ?? "") || !heldOverATick(wrote, Number(first))) continue;
-    const disp = new RegExp(`^- (?:\\d{1,2}:\\d{2} )?(?:\\*\\*)?DISPOSITION ${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} (?:closed(?:[^A-Za-z]|$)|parked [^ ]|given-up [^ ])`, "gm");
+    const disp = new RegExp(`^- (?:\\d{1,2}:\\d{2} )?(?:\\*\\*)?DISPOSITION ${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} (?:closed(?:[^A-Za-z]|$)|parked [^ \\n]|given-up [^ \\n])`, "gm");
     if ((text.match(disp)?.length ?? 0) > (/^\d+$/.test(base ?? "") ? Number(base) : 0)) continue;
-    items.push({ source: "unclosed worker", key: null, title: `${label} is finished and its window is still open`,
+    items.push({ source: "unclosed worker", key: null, label, since: Number(first), title: `${label} is finished and its window is still open`,
       ctx: `the tick has held it open since it was first seen, and ${basename(doc)} has no DISPOSITION bullet for it`,
       act: `the chief closes it, or records DISPOSITION ${label} closed, parked <wake> or given-up <reason>` });
   }

@@ -640,3 +640,22 @@ test("the Blocked on you list shows an owed item with no DELIVERED receipt and a
   expect(rows("unclosed worker")).toEqual([]);
   expect(rows("owed undelivered").length).toBe(1);
 });
+
+test("an unclosed worker recorded with a disposition already present stays until a newer one lands, and a parked with nothing after it does not clear it", () => {
+  const s = scratch();
+  const doc = join(s.d, "HIMMEL-nextleg-2026-11-10XZ-roadmap-chief.md");
+  const stateDir = join(s.d, "tick-state");
+  mkdirSync(stateDir, { recursive: true });
+  const stateFile = join(stateDir, "tick-unclosed-HIMMEL-nextleg-2026-11-10XZ-roadmap-chief");
+  const env = { PATH: process.env.PATH, HOME: s.home, HIMMEL_CHIEF_DOC: doc, HIMMEL_BUCKET_DIR: s.d, TICK_STATE_DIR: stateDir };
+  const noRoadmap = (() => { throw new Error("no roadmap in this test"); }) as unknown as typeof import("../roadmap").readRoadmap;
+  const write = (bullets: string) => writeFileSync(doc, `# chief\n\n## Live state\n\nworkers: x\n\n## Results\n${bullets}`);
+  const labels = () => { const o = readOwed(env, noRoadmap); if (o.state !== "ok") throw new Error(o.reason); return o.items.filter((i) => i.source === "unclosed worker").map((i) => i.label); };
+  writeFileSync(stateFile, "N5808 1000 1\nN5809 1000 0\n");
+  utimesSync(stateFile, 1600, 1600);
+
+  write("- 08:00 DISPOSITION N5808 closed\n- 08:01 DISPOSITION N5809 parked \n- 08:02 note\n");
+  expect(labels()).toEqual(["N5808", "N5809"]);
+  write("- 08:00 DISPOSITION N5808 closed\n- 09:00 DISPOSITION N5808 closed\n- 08:01 DISPOSITION N5809 parked \n- 08:02 note\n");
+  expect(labels()).toEqual(["N5809"]);
+});
