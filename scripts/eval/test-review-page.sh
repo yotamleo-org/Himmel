@@ -446,9 +446,6 @@ sed -e 's/a == b/a \&\& b/' -e 's/a != b/a || b/' "$TMP/cr-ops.jsonl" > "$TMP/cr
 has "panel: claims that differ only by a logical operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-logic.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
 has "--help prints the whole usage text" "$(python3 -I "$PAGE" --help 2>&1)" "--panel [--cr-ledger P] [--until TS]"
 
-# --reviewers-json: the typed code-reviewer report (v1) over the eval-runs, eval-changes and CR ledgers, read at --now.
-# The benchmark: rp-a (another roster, so another series), rp-b (ok, eight days before --now), then rp-c, a newer
-# inconclusive attempt. A judge row and a judge change sit beside them and never reach the report.
 M7="$TMP/m7"; mkdir -p "$M7/dir.jsonl"
 NOW="2026-11-10T00:00:00Z"
 python3 -I - "$HERE/lib" "$M7" <<'PY' || { echo "test-review-page: writing the M7 fixture ledgers failed" >&2; exit 1; }
@@ -537,6 +534,8 @@ eq "reviewers-json: key-match recall as typed k of n with its interval" "$(print
 eq "reviewers-json: adjudicated precision from the verified family, apart from the proxies" "$(printf '%s' "$J" | q '[(m["kind"], m["k"], m["n"], m["value"]) for m in r["metrics"] if m["id"] == "benchmark.codex.adjudicated_precision"]')" "[('adjudicated', 3, 4, 0.75)]"
 eq "stale_observation_new_render: a benchmark eight days old is old in a report made now" "$(printf '%s' "$J" | q '(r["benchmark"]["freshness"]["state"], r["benchmark"]["freshness"]["age_days"])')" "('old', 8)"
 eq "stale_observation_new_render: the same run read two days after it is current" "$(rj "" "" "" "2026-11-04T00:00:00Z" | q 'r["benchmark"]["freshness"]["state"]')" "current"
+eq "stale_observation_new_render: a run observed at --now is 0 days old, not unknown" "$(rj "" "" "" "2026-11-02T00:00:00Z" | q '(r["benchmark"]["freshness"]["age_days"], r["benchmark"]["freshness"]["state"])')" "(0, 'current')"
+eq "reviewers-json: a change recorded after --now is not in the report" "$(rj "" "" "" "2026-11-02T00:30:00Z" | q 'r["proposals"]')" "[]"
 Q="$(rj "" "" "$M7/cr-quiet.jsonl")"
 eq "quiet_history_not_failed_capture: a quiet CR ledger names its last record" "$(printf '%s' "$Q" | q '(r["production"]["last_record_at"], r["production"]["records_in_window"])')" "('2026-10-01T00:00:00Z', 0)"
 eq "quiet_history_not_failed_capture: capture coverage stays unknown" "$(printf '%s' "$Q" | q 'r["production"]["capture_coverage"]')" "unknown"

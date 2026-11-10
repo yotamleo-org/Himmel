@@ -283,8 +283,6 @@ def review_move(mz):
 
 
 def review_state(applied, mz):
-    """A reviewer change's lifecycle: historical-unverified, proposed, applied-awaiting-measurement, measured-keep,
-    measured-revert or inconclusive."""
     bound = applied is not None and isinstance(applied.get("commit"), str)
     if mz is not None and not (bound and mz.get("applied_commit") == applied["commit"]):
         return "historical-unverified"
@@ -320,7 +318,6 @@ def review_line(c, what, why, applied, mz):
 
 
 def change_reason(c):
-    """(what the change edits, why it was raised, whether its metric is a rate) in plain words."""
     owner = OWNER.get(c.get("critic"), "the %s eval's" % plain(c.get("eval", "")))
     tmpl = CHANGES.get(c.get("change"), "%s setup")
     what = tmpl % owner if "%s" in tmpl else tmpl
@@ -341,7 +338,6 @@ def change_reason(c):
 
 
 def change_index(changes):
-    """(open reviewer and judge changes, measured record by id, first applied receipt by id)."""
     changes = [c for c in changes if isinstance(c, dict)]
     opened = [c for c in changes if c.get("status") == "open" and c.get("eval") in ("review-panel", "judge-accuracy")
               and isinstance(c.get("metric"), str)]
@@ -578,7 +574,6 @@ def newest_ts(rows):
 
 
 def read_jsonl(path):
-    """(dict rows, malformed line count) of a JSONL file; OSError propagates."""
     rows, bad = [], 0
     with open(path, encoding="utf-8") as fh:
         for line in fh:
@@ -597,7 +592,6 @@ def read_jsonl(path):
 
 
 def read_source(sid, path):
-    """(source record, rows or None). Missing is absent; any other read failure is error, by errno name only."""
     src = {"id": sid, "name": os.path.basename(path or ""), "state": "absent", "reason": None, "records": 0,
            "malformed": 0, "observed_through": None}
     if not path:
@@ -687,8 +681,6 @@ def bench_metrics(cur, prev, fresh):
 
 
 def prod_metrics(cr_rows, since, until, roster, fresh):
-    """(metrics, excluded): one metric per roster reviewer, answering model, scope and verdict source; the findings of
-    any other slug (bookkeeping such as a judge, a chief or a worker, or an unmapped identity) are only counted."""
     out, excluded = [], {"findings": 0, "slugs": 0}
     slugs = set()
     for r in cr_ledger_eval.reviewer_summary(cr_rows, since, until, False, roster):
@@ -739,7 +731,7 @@ def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roste
     if cur is not None:
         seen = cr_ledger_eval.parse_ts(cur["ts"])
         age = t - seen if seen else None
-        fresh = {"observed_at": cur["ts"], "age_days": age.days if age else None, "old_after_days": OLD_DAYS,
+        fresh = {"observed_at": cur["ts"], "age_days": None if age is None else age.days, "old_after_days": OLD_DAYS,
                  "state": "unknown" if age is None else "old" if age.total_seconds() > OLD_DAYS * 86400 else "current"}
     if cur is None:
         elig = {"eligible": False, "reasons": ["no usable benchmark run"]}
@@ -768,7 +760,8 @@ def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roste
         x["families"].add(m["family"])
         if m["model"]:
             x["models"].add(m["model"])
-    opened, done, applied = change_index(changes or [])
+    opened, done, applied = change_index([c for c in changes or [] if isinstance(c, dict)
+                                          and (cr_ledger_eval.parse_ts(c.get("ts")) or t) <= t])
     proposals = []
     for c in opened:
         if c.get("eval") != "review-panel":
@@ -807,7 +800,6 @@ def cell(m):
 
 
 def reviewers_prose(rep):
-    """The code-reviewer report in plain words: the same figures as --reviewers-json, nothing recomputed."""
     out = ["# Code reviewers", "", "Report of %s (%s)." % (day(rep["generated_at"]), rep["state"]), ""]
     for s in rep["sources"]:
         out.append("- %s (%s): %s" % (s["id"], s["name"] or "no file", "read, %d records through %s" % (

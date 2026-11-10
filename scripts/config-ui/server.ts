@@ -780,8 +780,6 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readCost(env)));
       }
-      // the code-reviewer report (planted-bug benchmark, review findings on merged work, reviewer changes), computed on this
-      // GET from the ledgers; the CR ledger defaults to the checkout's git common dir. An explicit REVIEW_PAGE_FILE is served as a stored snapshot.
       if (path === "/api/reviewers") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         const common = env.CR_LEDGER ? "" : gitCommonDir(root);

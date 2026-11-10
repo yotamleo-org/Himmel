@@ -86,8 +86,7 @@ def wilson_pct(k, n):
 
 
 def group(findings):
-    """One critic's (or the pool's) figures from its folded findings: the counts over every finding, the precision
-    figure over recorded dispositions only, and the ruled findings of any other verdict source counted out."""
+    """One critic's (or the pool's) figures from its folded findings."""
     s = cr_ledger_eval.split(findings)
     rec = cr_ledger_eval.split([f for f in findings if f["verdict_source"] == cr_ledger_eval.RECORDED])
     ruled = rec["agreed"] + rec["disproved"]
@@ -110,7 +109,6 @@ def group(findings):
 
 
 def source_label(g):
-    """The verdict source a precision figure counts: a data file older than v4 pooled them all."""
     return "recorded dispositions" if g.get("source") == cr_ledger_eval.RECORDED else "all verdict sources pooled"
 
 

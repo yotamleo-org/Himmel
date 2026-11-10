@@ -1,7 +1,3 @@
-// reviewers.ts — the read-only source behind GET /api/reviewers: the typed code-reviewer report, computed on each GET by
-// the trusted scripts/eval/review-page.py --reviewers-json over the eval-runs, eval-changes and CR ledgers, so a new
-// ledger record shows at the next GET. An explicit REVIEW_PAGE_FILE keeps the stored-snapshot mode: that Markdown file as
-// text, a missing file absent, any other read failure an error. Nothing is recomputed here or in the browser.
 import { execFile } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -29,20 +25,20 @@ function readSnapshot(file: string): Reviewers {
   }
 }
 
-export type ReadOpts = { crLedger?: string; now?: () => number; script?: string; timeoutMs?: number };
-
-// script and timeoutMs are test seams set in code, never from env: the route always runs the checkout's own script.
-export function readReviewers(env: Env, opts: ReadOpts = {}): Promise<Reviewers> {
+export function readReviewers(env: Env, opts: { crLedger?: string; now?: () => number } = {}): Promise<Reviewers> {
   if (env.REVIEW_PAGE_FILE) return Promise.resolve(readSnapshot(env.REVIEW_PAGE_FILE));
   const home = env.HOME || homedir();
-  const argv = ["-I", opts.script ?? REVIEW_PAGE_SCRIPT, "--reviewers-json",
+  return runReport(env, REVIEW_PAGE_SCRIPT, REPORT_TIMEOUT_MS, ["--reviewers-json",
     "--ledger", env.HIMMEL_EVAL_RUNS_LEDGER || join(home, ".himmel", "eval-runs.jsonl"),
     "--changes", env.HIMMEL_EVAL_CHANGES_LEDGER || join(home, ".himmel", "eval-changes.jsonl"),
     "--cr-ledger", env.CR_LEDGER || opts.crLedger || "",
-    "--now", new Date((opts.now ?? Date.now)()).toISOString()];
+    "--now", new Date((opts.now ?? Date.now)()).toISOString()]);
+}
+
+export function runReport(env: Env, script: string, timeoutMs: number, args: string[]): Promise<Reviewers> {
   const fail = (reason: string): Reviewers => ({ state: "error", mode: "report", reason });
   return new Promise((resolve) => {
-    execFile("python3", argv, { env: env as NodeJS.ProcessEnv, encoding: "utf8", shell: false, timeout: opts.timeoutMs ?? REPORT_TIMEOUT_MS, maxBuffer: REPORT_MAX_BYTES, killSignal: "SIGKILL", windowsHide: true }, (err, stdout) => {
+    execFile("python3", ["-I", script, ...args], { env: env as NodeJS.ProcessEnv, encoding: "utf8", shell: false, timeout: timeoutMs, maxBuffer: REPORT_MAX_BYTES, killSignal: "SIGKILL", windowsHide: true }, (err, stdout) => {
       if (err) {
         const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string | null; code?: unknown };
         if (e.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return resolve(fail("output over 2 MiB"));

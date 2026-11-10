@@ -359,9 +359,6 @@ printf 'cache-probe first-turn\nread-ratio: 97.4%% over 1200000 tokens\n' > "$TM
 python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --cache-probe "$TMP/noverdict.txt" --as-of 2026-10-25 --out "$TMP/x.json" > /dev/null 2>&1; rc=$?
 eq "data: a probe without its verdict line is refused" "$rc" "2"
 
-# ── Verdict sources: a precision figure never pools them ─────────────────────
-# beta: 3 agreed + 1 disproved by recorded disposition, and 4 findings the thread recorder marked fixed.
-# Pooled that would be 7 of 8 = 87.5%; the figure is the recorded dispositions only, 3 of 4 = 75.0%.
 L3="$TMP/ledger-sources.jsonl"
 : > "$L3"
 for i in 0 1 2 3; do

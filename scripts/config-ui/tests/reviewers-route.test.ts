@@ -1,12 +1,10 @@
-// GET /api/reviewers — the typed code-reviewer report (scripts/eval/review-page.py --reviewers-json) read on each GET,
-// or the stored review page an explicit REVIEW_PAGE_FILE names; read-only; and the Tool health page's Reviewers tab.
 import { test, expect, afterEach } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
-import { readReviewers } from "../reviewers";
+import { readReviewers, runReport, REPORT_TIMEOUT_MS } from "../reviewers";
 import { renderHealth } from "../public/health.js";
 
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
@@ -79,9 +77,6 @@ test("reviewers-move-to-tool-health-as-source-text", async () => {
   expect(renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, reviewers: R })).not.toContain("How good are our reviewers?");
 });
 
-// The typed code-reviewer report: no REVIEW_PAGE_FILE, so the route runs scripts/eval/review-page.py --reviewers-json
-// over the ledgers the env names, on each GET. The fixture: rp-a (another roster), rp-b (ok, 8 days before now, no
-// findings), rp-c (a newer inconclusive attempt), a judge row; CodeRabbit findings and a reviewer named with markup.
 const NOW = Date.parse("2026-11-10T00:00:00Z");
 const EVIL = "<img src=x onerror=alert(1)>";
 const GEN = `
@@ -196,27 +191,20 @@ test("one_source_error_partial: one unreadable source makes the report partial a
 test("typed report in the tab: k of n, labels, dates, sources, freshness, attempts, no trend, escaping", async () => {
   const r = await (await get(bootReport(reportEnv(ledgers())).port)).json();
   const html = await tabOf(r);
-  // zero_denominator_dash
   expect(html).toContain("0 findings: —");
   expect(html).not.toContain("0 of 0");
   expect(html).not.toMatch(/>0(\.0)?%</);
-  // typed k of n with its label and kind
   expect(html).toContain("3 of 5 labelled target defects: 60.0%");
   expect(html).toContain("proxy");
-  // stale_observation_new_render: an 8-day-old benchmark in a report made now is old
+  expect(html).toContain('<span class="dim">automated key-match proxy, not verified accuracy</span>');
   expect(html).toContain("Old: observed 8 days before this report");
   expect(html).toContain("Observed 2026-11-02");
-  // newer_failed_attempt_visible
   expect(html).toContain("Latest attempt 2026-11-09 (rp-c): inconclusive, not usable");
-  // incompatible_series_no_trend
   expect(html).toContain("No trend:");
   expect(html).not.toMatch(/since the last run|points up|points down/);
-  // verdict source and capture coverage
   expect(html).toContain("recorded disposition");
   expect(html).toContain("Capture coverage unknown");
-  // a bookkeeping slug in the CR ledger is counted out, never a reviewer row
   expect(html).toContain("Counted out: 1 findings from 1 slugs that are not code reviewers.");
-  // escaped_labels
   expect(html).not.toContain("<img");
   expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
 });
@@ -233,9 +221,10 @@ test("the report run is bounded: a timeout, junk output or an oversized answer i
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   const stub = (name: string, body: string) => { const p = join(dir, name); writeFileSync(p, body); return p; };
   const env = { PATH: process.env.PATH, HOME: dir };
-  expect(await readReviewers(env, { script: stub("slow.py", "import time\ntime.sleep(5)\n"), timeoutMs: 300 })).toMatchObject({ state: "error", mode: "report", reason: "timed out" });
-  expect(await readReviewers(env, { script: stub("junk.py", "print('not json')\n") })).toMatchObject({ state: "error", reason: "invalid output" });
-  expect(await readReviewers(env, { script: stub("v2.py", "print('{\"v\": 2, \"state\": \"ok\"}')\n") })).toMatchObject({ state: "error", reason: "invalid output" });
-  expect(await readReviewers(env, { script: stub("big.py", "import sys\nsys.stdout.write('x' * (3 * 1024 * 1024))\n") })).toMatchObject({ state: "error", reason: "output over 2 MiB" });
-  expect(await readReviewers(env, { script: stub("exit.py", "import sys\nsys.exit(3)\n") })).toMatchObject({ state: "error", reason: "exit 3" });
+  const run = (name: string, body: string, ms = REPORT_TIMEOUT_MS) => runReport(env, stub(name, body), ms, []);
+  expect(await run("slow.py", "import time\ntime.sleep(5)\n", 300)).toMatchObject({ state: "error", mode: "report", reason: "timed out" });
+  expect(await run("junk.py", "print('not json')\n")).toMatchObject({ state: "error", reason: "invalid output" });
+  expect(await run("v2.py", "print('{\"v\": 2, \"state\": \"ok\"}')\n")).toMatchObject({ state: "error", reason: "invalid output" });
+  expect(await run("big.py", "import sys\nsys.stdout.write('x' * (3 * 1024 * 1024))\n")).toMatchObject({ state: "error", reason: "output over 2 MiB" });
+  expect(await run("exit.py", "import sys\nsys.exit(3)\n")).toMatchObject({ state: "error", reason: "exit 3" });
 });

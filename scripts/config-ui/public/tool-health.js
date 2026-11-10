@@ -702,10 +702,9 @@ function hooksTab(data, inv, ui) {
   return box("hooks", "Hook wiring", `Which hook is wired where, and which runs twice? Runs are measured where the hook chain logged them, otherwise derived from matchers × matching calls.${hookRows(data, inv).some((r) => r.runsMeasured) ? ` ${RUNS_SCOPE}` : ""}`, sortable("hooks", ["Hook", "Source", "Wired on", "Wirings", "Runs twice", "Runs", "Refused"], rows, ui, [0, 2]), "First build");
 }
 
-// ---- reviewers (moved from Health): the typed code-reviewer report as GET /api/reviewers computed it, or a stored
-// snapshot page as written; never re-graded here. A missing ratio is —, never 0, and no trend joins two configurations.
 const isoDay = (ts) => (typeof ts === "string" && /^\d{4}-\d{2}-\d{2}/.test(ts) ? ts.slice(0, 10) : "—");
 const kOfN = (m) => (isNum(m.value) && isNum(m.k) ? `${m.k} of ${m.n} ${m.sample_unit}: ${pct(m.value)}` : `${num(m.n)} ${m.sample_unit}: —`);
+const measure = (m) => `${esc(m.label)}${(m.limitations || []).length ? `<br><span class="dim">${esc(m.limitations.join("; "))}</span>` : ""}`;
 const range = (m) => (m.interval && isNum(m.interval.lo) && isNum(m.interval.hi) ? `${pct(m.interval.lo)} to ${pct(m.interval.hi)}` : "—");
 function codeReviewersView(r) {
   const c = r.codeReviewers;
@@ -721,7 +720,7 @@ function codeReviewersView(r) {
   if (a && !a.usable) out.push(`<p><span class="pill warn">Latest attempt ${esc(isoDay(a.at))} (${esc(a.run_id)}): ${esc(a.status)}, not usable</span></p>`);
   const el = c.comparison_eligibility || { eligible: false, reasons: [] };
   if (u) out.push(sub(el.eligible ? "Earlier figures are from the previous comparable run." : `No trend: ${(el.reasons || []).join("; ")}`));
-  if (bench.length) out.push(table(["Reviewer", "Measure", "Kind", "k of n", "Range", "Earlier"], bench.map((m) => `<tr>${td(esc(m.reviewer))}${tdWrap(esc(m.label))}${td(esc(m.kind))}${td(esc(kOfN(m)))}${td(esc(range(m)))}${td(m.trend && isNum(m.trend.previous_value) ? esc(`${pct(m.trend.previous_value)} at ${m.trend.previous_run_id}`) : "—")}</tr>`)));
+  if (bench.length) out.push(table(["Reviewer", "Measure", "Kind", "k of n", "Range", "Earlier"], bench.map((m) => `<tr>${td(esc(m.reviewer))}${tdWrap(measure(m))}${td(esc(m.kind))}${td(esc(kOfN(m)))}${td(esc(range(m)))}${td(m.trend && isNum(m.trend.previous_value) ? esc(`${pct(m.trend.previous_value)} at ${m.trend.previous_run_id}`) : "—")}</tr>`)));
   const p = c.production || {};
   out.push(`<h4>Review findings on merged work, ${esc(isoDay((p.window || {}).since))} to ${esc(isoDay((p.window || {}).until))}</h4>`);
   if (!p.last_record_at) out.push('<p class="nodata">No records; capture coverage unknown</p>');
@@ -729,7 +728,7 @@ function codeReviewersView(r) {
   else out.push(`<p>Last record ${esc(isoDay(p.last_record_at))}. Capture coverage unknown: ${esc(p.capture_reason || "no capture receipts")}.</p>`);
   if (p.roster && p.roster !== "ok") out.push(sub("The reviewer roster could not be read, so no slug counts as a reviewer."));
   if (p.not_reviewers && isNum(p.not_reviewers.findings) && p.not_reviewers.findings > 0) out.push(sub(`Counted out: ${p.not_reviewers.findings} findings from ${num(p.not_reviewers.slugs)} slugs that are not code reviewers.`));
-  if (prod.length) out.push(table(["Reviewer", "Model", "Scope", "Verdict source", "Measure", "k of n", "Range"], prod.map((m) => `<tr>${td(esc(m.reviewer))}${td(esc(m.model || "—"))}${td(esc(m.cohort || "—"))}${td(esc(String(m.verdict_source || "").replace(/-/g, " ")))}${tdWrap(esc(m.label))}${td(esc(kOfN(m)))}${td(esc(range(m)))}</tr>`)));
+  if (prod.length) out.push(table(["Reviewer", "Model", "Scope", "Verdict source", "Measure", "k of n", "Range"], prod.map((m) => `<tr>${td(esc(m.reviewer))}${td(esc(m.model || "—"))}${td(esc(m.cohort || "—"))}${td(esc(String(m.verdict_source || "").replace(/-/g, " ")))}${tdWrap(measure(m))}${td(esc(kOfN(m)))}${td(esc(range(m)))}</tr>`)));
   out.push("<h4>Reviewer changes</h4>");
   out.push(c.proposals && c.proposals.length ? `<ul>${c.proposals.map((x) => `<li>${esc(x.label)}</li>`).join("")}</ul>` : '<p class="nodata">No change yet</p>');
   return `${r.stale ? `<p><span class="pill warn">Refresh failed (${esc(r.stale)}); showing the report read earlier</span></p>` : ""}<div class="card" id="reviewers-report">${out.join("")}</div>`;
