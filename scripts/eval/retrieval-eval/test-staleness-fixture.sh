@@ -44,7 +44,7 @@ mcp)
     port=""; while [ $# -gt 0 ]; do [ "$1" = "--port" ] && port="$2"; shift; done
     exec python3 -I -c 'import socket, sys, time
 s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(5); time.sleep(300)' "$port" ;;
+s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(5); time.sleep(300)' "$port" mcp --http --port "$port" ;;
 esac
 exit 0
 STUB
@@ -171,6 +171,13 @@ fx build --first "$C1" --second "$C2" --state s --out "$W/paid-yes" --embed-ok 1
 eq "::embed_ok_refuses_without_billed_ok (control: with the opt-in the stub sees one embed)" "0|1" "$rc|$(qlog | grep -c '^embed')"
 fx build --first "$C1" --second "$C2" --state s --out "$W/paid-cap" --embed-ok 2 > /dev/null 2>&1; rc=$?
 eq "::embed_ok_refuses_without_billed_ok (control: more documents than the cap is refused: exit 2)" "2" "$rc"
+# state c embeds twice: the first tree (3 files) and then what the second commit changed or added (3 more files)
+reset_logs
+fx build --first "$C1" --second "$C2" --state c --out "$W/paid-c5" --embed-ok 5 > /dev/null 2>&1; rc=$?
+eq "::embed_cap_covers_second_tree (6 documents to embed against a cap of 5: exit 2, no embed)" "2|0" "$rc|$(qlog | grep -c '^embed')"
+reset_logs
+fx build --first "$C1" --second "$C2" --state c --out "$W/paid-c6" --embed-ok 6 > /dev/null 2>&1; rc=$?
+eq "::embed_cap_covers_second_tree (control: a cap of 6 runs both embeds)" "0|2" "$rc|$(qlog | grep -c '^embed')"
 FX_EXTRA=""
 
 reset_logs
@@ -197,6 +204,28 @@ eq "::free_serve_has_no_key (pair.json holds the served URL)" "$url" "$(pj "$W/f
 case "$url" in http://127.0.0.1:*/mcp) pass "::free_serve_has_no_key (the URL is a free local port)" ;; *) fail "::free_serve_has_no_key (the URL is a free local port): '$url'" ;; esac
 fx stop --index "$W/free-l2/index.sqlite" > /dev/null 2>&1
 eq "::free_serve_has_no_key (stop clears the URL and the pid file)" "|gone" "$(pj "$W/free-l2" served_url)|$([ -e "$W/free-l2/serve.pid" ] && echo left || echo gone)"
+
+# a pid file whose process is not this daemon (the daemon died and the pid was reused) is dropped, never signalled
+sleep 60 &
+other=$!
+printf '%s\n' "$other" > "$W/free-s/serve.pid"
+fx stop --index "$W/free-s/index.sqlite" > /dev/null 2>&1
+if kill -0 "$other" 2> /dev/null; then alive=alive; else alive=dead; fi
+kill "$other" 2> /dev/null
+eq "::stop_ignores_reused_pid (an unrelated process keeps running, the pid file goes)" "alive|gone" "$alive|$([ -e "$W/free-s/serve.pid" ] && echo left || echo gone)"
+
+# a rebuild never reuses an index: vectors left in it would pass for the requested state
+reset_logs
+before="$(cksum < "$W/free-s/index.sqlite")"
+fx build --first "$C1" --second "$C2" --state s --out "$W/free-s" > /dev/null 2>&1; rc=$?
+eq "::build_refuses_existing_index (exit 2, the index keeps its bytes, no qmd call)" "2|$before|" "$rc|$(cksum < "$W/free-s/index.sqlite")|$(qlog)"
+
+# a link under an accepted scratch directory is refused, not followed out of it
+mkdir -p "$W/o-cfg" "$W/outside-cfg"
+: > "$W/o-cfg/.staleness-fixture"
+ln -s "$W/outside-cfg" "$W/o-cfg/config"
+fx build --first "$C1" --second "$C2" --state s --out "$W/o-cfg" > /dev/null 2>&1; rc=$?
+eq "::refuses_linked_config (exit 2, nothing written through the link)" "2|0" "$rc|$(find "$W/outside-cfg" -mindepth 1 | wc -l | tr -d ' ')"
 
 eq "::pair_records_commits (first, second, state)" "$C1 $C2 l" "$(pj "$OUT" first) $(pj "$OUT" second) $(pj "$OUT" state)"
 helper_n() { # <sha> <config>

@@ -60,16 +60,21 @@ guard_scratch() {
     for g in "${SF_PRIMARY_GRAPH_OUT:-$(dirname "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)")/graphify-out}" "$REPO/graphify-out"; do
         if inside "$real" "$(rp "$g")"; then die "refusing $out: it is, or is inside, a checkout's graphify-out"; fi
     done
-    if [ -e "$real/index.sqlite" ] || [ -L "$real/index.sqlite" ]; then
-        if [ "$(rp "$real/index.sqlite")" = "$live" ]; then die "refusing $out: its index.sqlite is the live index"; fi
-    fi
     if [ -e "$real" ]; then
         [ -d "$real" ] || die "refusing $out: not a directory"
         if [ ! -f "$real/$MARKER" ] && [ -n "$(ls -A "$real")" ]; then
             die "refusing $out: a non-empty directory this script did not make"
         fi
     fi
+    refuse_links "$real"
     OUTR="$real"
+}
+# every name this script writes inside a scratch directory: a link at one would carry a write out of it
+refuse_links() {
+    local n
+    for n in config tree index.sqlite pair.json pair.json.tmp serve.pid serve.log qmd-update.log qmd-embed.log "$MARKER"; do
+        if [ -L "$1/$n" ]; then die "refusing $1: $n is a symlink"; fi
+    done
 }
 make_scratch() { mkdir -p "$OUTR" && : > "$OUTR/$MARKER" || die "cannot create $OUTR" 1; }
 
@@ -99,8 +104,14 @@ write_config() { # <out> <tree>
         printf '      - "graphify-out/**"\n      - "**/fixtures/**"\n      - "marketplace/plugins/*/README*.md"\n'
     } > "$1/config/index.yml"
 }
+count_paths() { # <config>: how many of the NUL-separated paths on stdin the collection would index
+    xargs -0 -n 500 python3 -I "$LIB/qmd-collection-files.py" --config "$1" himmel | wc -l | tr -d ' '
+}
 doc_count() { # <sha> <config>: the files the collection would index from that tree
-    git -C "$REPO" ls-tree -r --name-only -z "$1" | xargs -0 -n 500 python3 -I "$LIB/qmd-collection-files.py" --config "$2" himmel | wc -l | tr -d ' '
+    git -C "$REPO" ls-tree -r --name-only -z "$1" | count_paths "$2"
+}
+delta_count() { # <first> <second> <config>: the files the second commit adds or changes that the collection would index
+    git -C "$REPO" diff --name-only -z --no-renames --diff-filter=AM "$1" "$2" | count_paths "$3"
 }
 unpack() { # <sha> <dir>: the commit's markdown, replacing what the dir held
     rm -rf "$2" && mkdir -p "$2" && git -C "$REPO" archive --format=tar "$1" -- '*.md' | tar -x -C "$2" || die "git archive of $1 failed" 1
@@ -119,7 +130,7 @@ embed() {
 }
 
 cmd_build() {
-    local first="" second="" state="" out="" cap="" n1 n2
+    local first="" second="" state="" out="" cap="" n1 n2 nd need
     while [ $# -gt 0 ]; do
         case "$1" in
         --first) need_value "$@"; first="$2"; shift 2 ;;
@@ -142,12 +153,20 @@ cmd_build() {
     first="$(need_commit "$first")" || exit $?
     second="$(need_commit "$second")" || exit $?
     guard_scratch "$out"
+    if [ -e "$OUTR/index.sqlite" ]; then die "refusing $out: it already holds an index; a rebuild needs a fresh scratch path"; fi
     make_scratch
     write_config "$OUTR" "$OUTR/tree"
     n1="$(doc_count "$first" "$OUTR/config/index.yml")" || die "the collection helper refused the first tree" 1
     n2="$(doc_count "$second" "$OUTR/config/index.yml")" || die "the collection helper refused the second tree" 1
-    if [ -n "$cap" ] && [ "$n1" -gt "$cap" ]; then
-        die "the first tree holds $n1 documents, more than --embed-ok $cap chunks: a document is at least one chunk"
+    if [ -n "$cap" ]; then
+        need="$n1"
+        if [ "$state" = c ]; then
+            nd="$(delta_count "$first" "$second" "$OUTR/config/index.yml")" || die "the collection helper refused the changed files" 1
+            need=$((n1 + nd))
+        fi
+        if [ "$need" -gt "$cap" ]; then
+            die "$need documents to embed, more than --embed-ok $cap chunks: a document is at least one chunk"
+        fi
     fi
     unpack "$first" "$OUTR/tree"
     qrun update -c himmel
@@ -170,12 +189,14 @@ cmd_build() {
 # <index> -> the scratch dir that holds it, after the refusals every verb shares
 scratch_of_index() {
     local idx="$1" real
+    if [ -L "$idx" ]; then die "refusing $idx: it is a symlink"; fi
     real="$(rp "$idx")"
     if [ "$real" = "$(rp "$LIVE_INDEX")" ] || inside "$real" "$(dirname "$(rp "$LIVE_INDEX")")"; then
         die "refusing $idx: it is the live qmd index"
     fi
     OUTR="$(dirname "$real")"
     [ -f "$OUTR/$MARKER" ] || die "refusing $idx: not in a scratch directory this script made"
+    refuse_links "$OUTR"
 }
 
 cmd_serve() {
@@ -218,7 +239,7 @@ cmd_serve() {
 }
 
 cmd_stop() {
-    local index="" pid i
+    local index="" pid i args
     while [ $# -gt 0 ]; do
         case "$1" in
         --index) need_value "$@"; index="$2"; shift 2 ;;
@@ -229,9 +250,14 @@ cmd_stop() {
     scratch_of_index "$index"
     if [ -f "$OUTR/serve.pid" ]; then
         pid="$(cat "$OUTR/serve.pid")"
-        kill "$pid" 2> /dev/null
-        i=0
-        while kill -0 "$pid" 2> /dev/null && [ "$i" -lt 20 ]; do sleep 0.25; i=$((i + 1)); done
+        # a pid whose process is not this daemon (it died and the number was reused) is dropped, never signalled
+        args="$(ps -p "$pid" -o args= 2> /dev/null)"
+        case "$args" in
+        *"mcp --http --port"*)
+            kill "$pid" 2> /dev/null
+            i=0
+            while kill -0 "$pid" 2> /dev/null && [ "$i" -lt 20 ]; do sleep 0.25; i=$((i + 1)); done ;;
+        esac
         rm -f "$OUTR/serve.pid"
     fi
     if [ -f "$OUTR/pair.json" ]; then pj_set "$OUTR" served_url null; fi
