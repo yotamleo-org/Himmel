@@ -1095,7 +1095,7 @@ check_c20() {
     if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then sev=WARN; why=" [CI — advisory here]"; fi
     if [ "${NODE_MAJOR_DRIFT_OK:-0}" = 1 ]; then sev=WARN; why=" [NODE_MAJOR_DRIFT_OK=1]"; fi
     emit "$sev" C20-node "node major drift: running $cur, .nvmrc pins $pin — hooks, the Jira CLI, run-hook-with-bash.js and the lanes suites all run on the UNPINNED major here, while CI and adopters run $pin$why" \
-        "align this box (nvm/volta: install + use $pin), or bump .nvmrc to $cur_major once run-shell-tests.sh and the lanes suite are green on it — the pin bump is an operator decision, the doctor never makes it (HIMMEL-1986); NODE_MAJOR_DRIFT_OK=1 downgrades this to a warning (HIMMEL-2010)"
+        "align this box (nvm/volta: install + use $pin), or bump .nvmrc to $cur_major once run-shell-tests.sh and the lanes suite are green on it — the pin bump is the operator's call, the doctor never makes it; NODE_MAJOR_DRIFT_OK=1 downgrades this to a warning"
 }
 
 # --- C21: hermes himmel_agent profile default vs lanes.json record (advisory) ---
@@ -1232,7 +1232,7 @@ check_c22() {
         return
     fi
     emit WARN C22-chain-skips "chain member event(s) recorded in the last ${window_h} h: $(printf '%s' "$summary" | tr '\n' ';' | sed 's/;/; /g')" \
-        "reason=ETIMEDOUT is budget starvation (see HIMMEL-2060 / DEFAULT_CHAIN_BUDGET_MS in scripts/hooks/run-hook-with-bash.js); reason=ENOBUFS is an output-buffer overflow (a chatty hook), not a budget problem; a 'deny' action means a must-run security guard hit either one and the chain failed closed"
+        "reason=ETIMEDOUT means a hook ran past the chain's time budget (DEFAULT_CHAIN_BUDGET_MS in scripts/hooks/run-hook-with-bash.js); reason=ENOBUFS is an output-buffer overflow (a chatty hook), not a budget problem; a 'deny' action means a must-run security guard hit either one and the chain failed closed"
 }
 
 # --- C23: unlanded local work (read-only advisory) -----------------
@@ -1760,7 +1760,7 @@ $seen"
         return
     fi
     emit WARN C25-orphans \
-        "$n orphaned Claude-scratchpad watcher process(es) -- parent dead, still running (HIMMEL-1820 class)" \
+        "$n orphaned Claude-scratchpad watcher process(es) -- parent dead, still running" \
         "inspect each line, then terminate the ones that are not yours: kill <pid> -- this check never terminates anything itself"
     printf '%s' "$rows"
     if [ "$n" -gt 8 ]; then
@@ -1800,7 +1800,7 @@ check_c26() {
     fi
     emit WARN C26-salus-marker \
         "salus vault ($v) carries .salus-profile but NOT .salus — armed-but-inert against any guard that still tests only .salus" \
-        "touch '$v/.salus' (or re-run the salus profile installer/upgrade — HIMMEL-2173 part 1 ships it automatically going forward)"
+        "touch '$v/.salus' (or re-run the salus profile installer or upgrade, which writes it)"
 }
 
 # --- C27: PHI/egress guard signal readability ---------------
@@ -1892,7 +1892,7 @@ check_c27() {
     if [ -n "$old_only" ]; then
         emit WARN C27-guard-signals \
             "PHI list(s) exist only under the old path:$old_only — the old path stays authoritative: every guard reads it and no guard reads $neutral yet. Do NOT move or remove it" \
-            "no action is needed until HIMMEL-8915 re-points the guards (docs/internals/egress-matrix.md)"
+            "no action is needed: the old path stays in use until a himmel update moves the guards to $neutral (docs/internals/egress-matrix.md)"
         return
     fi
     emit OK C27-guard-signals "phi-roots/egress-denylist under ${dirs[*]} (where present) are readable regular files"
@@ -2202,7 +2202,7 @@ check_c29() {
     fi
     if [ "$n" -gt 0 ]; then
         emit WARN C29-child-session \
-            "$n running claude session(s) launched as a child session; transcript not saved (HIMMEL-2545)" \
+            "$n running claude session(s) launched as a child session; transcript not saved" \
             "relaunch through: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude ... (macOS: a GUI app can carry the marker too — quit the terminal AND the launcher that opened it, e.g. Raycast, and reopen both from the Dock)"
         printf '%s' "$rows"
     fi
@@ -2266,7 +2266,7 @@ check_c30() {
     case "$unit_state" in
         enabled) : ;;
         unknown:*)
-            emit INFO C30-bridge-liveness "${unit_state#unknown: } — bridge-liveness check skipped (not evidence the unit is absent, HIMMEL-2515)" "verify manually: $systemctl_bin --user is-enabled $unit"
+            emit INFO C30-bridge-liveness "${unit_state#unknown: } — bridge-liveness check skipped (not evidence the unit is absent)" "verify manually: $systemctl_bin --user is-enabled $unit"
             return
             ;;
         notfound)
@@ -2465,7 +2465,7 @@ check_c31() {
         return
     fi
     local cfg_q; cfg_q=$(printf '%q' "$cfg")
-    emit WARN C31-tokensave-dropped "codex config at $cfg wires an enabled [mcp_servers.tokensave] — tokensave was evaluated and dropped (it lost to plain Grep+Read on every measured op, HIMMEL-2581); codex will keep trying to spawn a server the harness no longer recommends" \
+    emit WARN C31-tokensave-dropped "codex config at $cfg wires an enabled [mcp_servers.tokensave] — tokensave was tried and dropped (plain Grep and Read beat it on every measured operation); codex will keep trying to spawn a server the harness no longer recommends" \
         "remove the [mcp_servers.tokensave] table (and its [mcp_servers.tokensave.tools.*] sub-tables) from $cfg_q by hand — the doctor does not edit codex config"
 }
 
@@ -2537,7 +2537,7 @@ check_c35() {
         # refuse" — `emit OK` excludes a row from $BODY and every counter,
         # so that refusal was invisible in the summary and in
         # --file-issue reports. INFO is the honest severity for it.
-        emit INFO C35-vm-ar "VBoxManage + venv python present, but scripts/vm/after-report.sh will still refuse an unset VBOXMANAGE_PATH without HIMMEL_VM_AR_LIVE=1 set for that invocation (by design, HIMMEL-2623 opt-in guard) — set it for a real run"
+        emit INFO C35-vm-ar "VBoxManage + venv python present, but scripts/vm/after-report.sh will still refuse an unset VBOXMANAGE_PATH without HIMMEL_VM_AR_LIVE=1 set for that invocation (by design: a real VM run is opt-in) — set it for a real run"
         return
     fi
     emit OK C35-vm-ar "VM after-report runner reachable (VBoxManage + venv python present, opt-in guard satisfied for this environment)"
@@ -2960,14 +2960,14 @@ check_c34() {
         emit OK C34-cost-guards "guard-implementor-dispatch.sh is weekly (seven_day)-bank-aware"
     else
         emit WARN C34-cost-guards "guard-implementor-dispatch.sh does not mention seven_day — the dispatch gate is five-hour-blind" \
-            "see HIMMEL-2653: the guard must read both the five_hour and seven_day bank windows"
+            "update himmel so the guard reads both the five_hour and seven_day bank windows (scripts/hooks/guard-implementor-dispatch.sh)"
     fi
 
     if [ -r "$ctx_fill" ] && grep -q -- '--warn-at' "$ctx_fill" 2>/dev/null; then
         emit OK C34-cost-guards "context-fill.sh supports --warn-at (handover-fill nudge)"
     else
         emit INFO C34-cost-guards "context-fill.sh does not support --warn-at yet — workers get no handover-fill nudge" \
-            "see HIMMEL-2653: context-fill.sh --warn-at N (default 50)"
+            "update himmel to get context-fill.sh --warn-at N (default 50)"
     fi
 }
 
@@ -2999,10 +2999,10 @@ check_c36_stray_tmp_git() {
         return
     fi
     if [ -z "$(ls -A "$tmp_git" 2>/dev/null)" ]; then
-        emit WARN C36-stray-tmp-git "stray EMPTY .git directory at $tmp_git — block-edit-on-main walks up from every edited path under the system temp dir, finds it, and fails closed station-wide with \"cannot determine branch for '$(dirname "$tmp_git")' - refusing to evaluate\" (HIMMEL-2739)" \
+        emit WARN C36-stray-tmp-git "stray EMPTY .git directory at $tmp_git — block-edit-on-main walks up from every edited path under the system temp dir, finds it, and fails closed station-wide with \"cannot determine branch for '$(dirname "$tmp_git")' - refusing to evaluate\"" \
             "rmdir $tmp_git_q"
     else
-        emit WARN C36-stray-tmp-git "stray NON-EMPTY .git directory at $tmp_git — same station-wide block-edit-on-main failure as an empty one, but its contents were left in place, NOT deleted (HIMMEL-2739)" \
+        emit WARN C36-stray-tmp-git "stray NON-EMPTY .git directory at $tmp_git — same station-wide block-edit-on-main failure as an empty one, but its contents were left in place, NOT deleted" \
             "inspect $tmp_git_q by hand before removing anything"
     fi
 }
@@ -3214,7 +3214,7 @@ check_c40_qmd_vec() {
     401|403)
         local tok_state="none is readable"
         [ -n "$qd_tok" ] && tok_state="rejected the one read from the token file"
-        emit WARN C40-qmd-vec "the qmd server on $url answered HTTP $init_code: it requires a bearer token (HIMMEL-5002) and $tok_state -- vec search is not being served" \
+        emit WARN C40-qmd-vec "the qmd server on $url answered HTTP $init_code: it requires a bearer token and $tok_state -- vec search is not being served" \
             "set QMD_HTTP_AUTH_FILE to the qmd server's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md"
         return
         ;;
@@ -3620,6 +3620,12 @@ check_c73_bun_compiled() {
     [ "$stale" -gt 0 ] || emit OK C73-bun-compiled "$scanned bun-compiled binaries scanned, none embeds a Bun older than .bun-version $pin"
 }
 
+_doctor_env_file() {
+    local root="${HIMMEL_REPO:-}"
+    [ -n "$root" ] && [ -d "$root" ] || root="$REPO_ROOT"
+    ( cd "$root" 2>/dev/null && _load_dotenv_envfile "" )
+}
+
 # --- C74-config-split: the configuration split (docs/internals/config-layers.md) ---
 # Three rows: ~/.himmel/himmel.conf present and parseable (INFO when absent, WARN
 # when a line is not KEY=value or the link dangles); behaviour keys still in
@@ -3631,7 +3637,7 @@ check_c74_config_split() {
     local dir conf pol envfile bad names key held miss="" cfg="" present="" envbad=""
     local migrate="bash $REPO_ROOT/scripts/setup/migrate-env-config.sh"
     dir="$(_himmel_config_dir)"; conf="$dir/himmel.conf"; pol="$dir/config.json"
-    envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_load_dotenv_envfile "")}"
+    envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_doctor_env_file)}"
 
     if [ -L "$conf" ] && [ ! -e "$conf" ]; then
         emit WARN C74-himmel-conf "$conf is a link to a file that does not exist" \
@@ -3731,8 +3737,18 @@ $key="*) ;; *) miss="$miss $key" ;; esac
         return
     fi
     out="$(HIMMEL_CONFIG_AUDIT_ENV_FILE="$envfile" bash "$ca" check 2>/dev/null)"; rc=$?
+    local unknown=0 why path
+    while IFS=$'\t' read -r line f why path _; do
+        [ "$line" = UNKNOWN ] || continue
+        [ "$path" != - ] || path=""
+        unknown=$((unknown+1))
+        emit INFO C74-config-keys "$f was not compared with the last snapshot ($why${path:+: $path}), so a lost key there would not show" \
+            "set HIMMEL_REPO to the himmel checkout that holds the recorded $f, then re-run the doctor"
+    done <<EOF
+$out
+EOF
     if [ "$rc" -eq 0 ]; then
-        emit OK C74-config-keys "no config file lost a key since the last snapshot"
+        [ "$unknown" -gt 0 ] || emit OK C74-config-keys "no config file lost a key since the last snapshot"
     elif [ "$rc" -eq 3 ]; then
         while IFS=$'\t' read -r line f kind keys bk _; do
             [ "$line" = LOSS ] || continue
@@ -3758,7 +3774,7 @@ EOF
 check_c75_keyring() {
     local hs="$SELF_DIR/lib/himmel-secrets" envfile state names="" key layer
     local envnames="" dot="" kr=0 other=0 unset_n=0 status_out names_failed=0
-    envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_load_dotenv_envfile "")}"
+    envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_doctor_env_file)}"
     if [ ! -x "$hs" ]; then
         emit WARN C75-keyring "$hs is missing or not executable" "restore it: git checkout -- scripts/lib/himmel-secrets"
         return 0
@@ -4225,7 +4241,7 @@ check_c43_rtk_bare_hook() {
     if [ "$rc" -ne 0 ]; then
         emit INFO C43-rtk-hook "could not parse $SETTINGS -- bare rtk hook scan skipped"
     elif [ "$n" -gt 0 ] 2>/dev/null; then
-        emit WARN C43-rtk-hook "bare 'rtk hook claude' PreToolUse entry present ($n) -- bypasses rtk-hook-guard.sh and regresses HIMMEL-241 (rtk find silently mishandles -not/-exec/-o/-a/-delete/!/(...)/-prune, breaking LUNA runbook clip scans)" "bash scripts/lib/reconcile-rtk-hook.sh ~/.claude/settings.json <himmel-path>  # do NOT re-run rtk init -g -- it just re-adds the bare entry the reconcile removes"
+        emit WARN C43-rtk-hook "bare 'rtk hook claude' PreToolUse entry present ($n) -- it bypasses rtk-hook-guard.sh, so rtk find silently mishandles -not/-exec/-o/-a/-delete/!/(...)/-prune again and luna runbook clip scans break" "bash scripts/lib/reconcile-rtk-hook.sh ~/.claude/settings.json <himmel-path>  # do NOT re-run rtk init -g -- it just re-adds the bare entry the reconcile removes"
     else
         emit OK C43-rtk-hook "no bare rtk hook entry (guard-wrapped or absent)"
     fi
@@ -4291,7 +4307,7 @@ check_c44_skill_index() {
             return
         fi
         emit FAIL C44-skill-index \
-            "the 'skills' qmd collection is missing or empty -- /skill-find silently reverts to guessing skill/command names (HIMMEL-2222)" \
+            "the 'skills' qmd collection is missing or empty -- /skill-find silently reverts to guessing skill/command names" \
             "bash scripts/skill-index/ensure-skill-index.sh   (or: himmelctl ensure)"
         return
     fi
@@ -4929,8 +4945,8 @@ check_c70_graph_semantic() {
     station_last="$(bash "$check" --out "$out" 2>&1 | sed -n 's/^graph-freshness: semantic last=\([^ ]*\).*/\1/p' | head -1)" || true
     cadence_last="$(bash "$check" --out "$cadence_out" 2>&1 | sed -n 's/^graph-freshness: semantic last=\([^ ]*\).*/\1/p' | head -1)" || true
     if [ -n "$station_last" ] && [ -n "$cadence_last" ] && [ "$station_last" != "?" ] && [ "$cadence_last" != "?" ] && [[ "$cadence_last" > "$station_last" ]]; then
-        emit WARN C70-graph-semantic "the cadence graph at $cadence_out last merged semantic at last=$cadence_last, but the station graph $out stops at last=$station_last: the cadence never promotes its graph to the station graph, so workers read a frozen semantic layer (HIMMEL-7357)" \
-            "nothing to run here: the promote step is tracked in HIMMEL-7357; until it lands the station graph only gets structural (AST) refreshes"
+        emit WARN C70-graph-semantic "the cadence graph at $cadence_out last merged semantic at last=$cadence_last, but the station graph $out stops at last=$station_last: the cadence never promotes its graph to the station graph, so workers read a frozen semantic layer" \
+            "nothing to run here: until the cadence promotes its graph, the station graph only gets structural (AST) refreshes"
     fi
 }
 
@@ -5520,7 +5536,7 @@ check_c86_morning_report() {
 check_c88_graph_api_optin() {
     command -v jq >/dev/null 2>&1 || { emit INFO C88-graph-api-optin "jq not on PATH -- API lane opt-in not checked"; return 0; }
     local cfg="${HOME:-}/.himmel/config.json" envfile bat keys="" lanes="" f optin=0
-    envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_load_dotenv_envfile "")}"
+    envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_doctor_env_file)}"
     bat="${GRAPHMAP_BAT_DIR:-${HOME:-}/.claude/graphmap-cadence}"
     if [ ! -L "${HOME:-}/.himmel" ] && [ ! -L "$cfg" ] && [ -f "$cfg" ] && [ -r "$cfg" ] \
         && jq -e '.graphify.semantic_api_ok == true' "$cfg" >/dev/null 2>&1; then

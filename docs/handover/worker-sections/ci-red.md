@@ -101,9 +101,13 @@ Read on demand: `worker-preface.md` names this file when a required CI job goes 
   CI run again at the new head.
 - **Never write "CI verifies" for a suite you have not looked up.** `bash scripts/handover/suite-coverage.sh <suite>...` reads
   `scripts/ci/run-shell-tests.sh` itself and says per suite: runs in PR CI /
-  nightly only / not run in CI (SKIP_LIST) / superseded by its wrappers. A
-  SKIP_LIST suite is **uncovered** — name it that, and say what you ran by hand
-  instead. Run it for every suite your PR claims CI covers.
+  nightly only / runs in PR CI (ci-quick claude-startup group) / not run in CI
+  (SKIP_LIST) / superseded by its wrappers. A SKIP_LIST suite is **uncovered**,
+  except a `scripts/testing/` entry, which the ci-quick claude-startup group runs
+  in PR CI: name an uncovered one that way, and say what you ran by hand instead. A
+  shard-run `scripts/testing/` suite is quarantined with a `quarantine` row in
+  `scripts/ci/suite-tiers.tsv`, never on SKIP_LIST. Run it for every suite your
+  PR claims CI covers.
 - **A timing-sensitive suite gets a loaded budget, not an idle one.** A suite that times out only under fleet load is a budget
   defect: measure it alone and as concurrent runs, set the budget to the
   loaded figure x2 (the `run-shell-tests.sh` rule), and record the numbers in

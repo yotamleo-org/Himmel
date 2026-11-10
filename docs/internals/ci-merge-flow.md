@@ -93,6 +93,11 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
 - **Mechanism.** `SKIP_LIST` in `scripts/ci/run-shell-tests.sh` lists suites the runner
   does not run. A suite that fails only on a non-Linux host goes in `SKIP_LIST_NON_LINUX`
   instead, so Linux CI still runs it. One line per suite, full repo-relative path.
+  A `scripts/testing/` entry is the exception: it is not a quarantine. The ci-quick
+  claude-startup group runs it on every PR, and a new `scripts/testing/` entry with no
+  recorder step there turns `scripts/ci/test-ci-quick.sh` and the claude-startup sentinel
+  red. Quarantine a shard-run `scripts/testing/` suite with a `quarantine` row below, never
+  on `SKIP_LIST`.
 - **Tier quarantine.** A `quarantine` row in `scripts/ci/suite-tiers.tsv` keeps the suite
   running and reports a failure as `[QUARANTINE]` without failing the run, in every tier
   mode: a PR, a schedule and a dispatch run alike. The shard-manifest
@@ -105,7 +110,8 @@ Quarantine is how a test-only red stops blocking the fleet without hiding.
   the suite is skipped, and some also name where it is covered instead (the VM e2e, a
   dedicated `ci.yml` job, the wrappers).
 - **Never silently.** A quarantined suite is "uncovered", never "CI verifies": a PR or
-  handover that cites CI as evidence for a `SKIP_LIST` suite cites nothing.
+  handover that cites CI as evidence for a `SKIP_LIST` suite cites nothing, except a
+  `scripts/testing/` entry, which the ci-quick claude-startup group runs in PR CI.
   `bash scripts/handover/suite-coverage.sh <suite>...` answers per suite whether it runs
   in PR CI, only nightly, or not at all. The quarantine PR also tells the chief, so the
   fix is dispatched in the same breath.

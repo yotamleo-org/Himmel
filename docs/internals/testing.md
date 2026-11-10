@@ -442,14 +442,21 @@ The obsidian-triage suites need `js-yaml`/`playwright` from `tools/node_modules`
 CI installs them with `marketplace/plugins/obsidian-triage/tools/ensure-deps.sh` before
 the shards, and locally run that once (it exits non-zero on any npm/network failure).
 Suites that fail under the runner are quarantined on `SKIP_LIST` with a ticket ID — never silently.
+The exception is a `scripts/testing/` suite: a `scripts/testing/` `SKIP_LIST` entry is not a quarantine,
+it joins the set the ci-quick claude-startup group runs, and a new one with no recorder step there turns
+CI red. Quarantine a `scripts/testing/` suite with a `quarantine` row in `scripts/ci/suite-tiers.tsv` instead.
 The CI and merge flow, including when to quarantine and when main-red holds the fleet, is in [`ci-merge-flow.md`](ci-merge-flow.md).
 
 **A `SKIP_LIST` suite is "uncovered", never "CI verifies".** CI does
 not run it, so a PR or handover that cites CI as its evidence is citing nothing.
+The one exception is a `scripts/testing/` entry: the shards skip it, but the ci-quick
+claude-startup group runs it on every PR through `scripts/ci/claude-startup-row.sh`, and
+`suite-coverage.sh` says so. Every other `SKIP_LIST` suite is still uncovered.
 Look it up instead of recalling it: `bash scripts/handover/suite-coverage.sh
 <suite>...` parses `run-shell-tests.sh` (SKIP_LIST, the `extended` tier table and
 the per-suite cap function) and answers per suite — runs in PR CI / nightly only
-(extended tier) / not run in CI (SKIP_LIST) / superseded by its `--only` wrappers
+(extended tier) / runs in PR CI (ci-quick claude-startup group) / not run in CI
+(SKIP_LIST) / superseded by its `--only` wrappers
 (e.g. `test-arm-resume.sh` → `test-arm-resume-fast.sh` per PR and
 `test-arm-resume-1879.sh` nightly at a 1700 s cap). Nothing in that answer is
 hand-copied, so it cannot drift from the runner.
