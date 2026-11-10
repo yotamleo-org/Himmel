@@ -317,7 +317,44 @@ esac
 # on EVERY exit path but --help: a piped caller's pipeline exit code is the LAST
 # command's, not this script's, so the numeric verdict must survive in the
 # output text. --help clears the trap below — asking for help is not a gate result.
-trap 'echo "check-ci: verdict exit=$?"' EXIT
+CHECK_CI_REFUSED=""
+CHECK_CI_REFUSED_OUTER="${GH_READ_REFUSED_FILE:-}"
+_refused_note() { [ -z "${CHECK_CI_REFUSED:-}" ] || printf '%s %s rate-limit\n' main "${1:-graphql}" >> "$CHECK_CI_REFUSED" 2>/dev/null; return 0; }
+_refused_clear() { [ -z "${CHECK_CI_REFUSED:-}" ] || : > "$CHECK_CI_REFUSED" 2>/dev/null; return 0; }
+# shellcheck disable=SC2329  # called by _check_ci_exit, which the EXIT trap runs
+_quota_report() {
+    local tok="" bucket="" why="" key ref
+    [ -n "${CHECK_CI_REFUSED:-}" ] && [ -s "$CHECK_CI_REFUSED" ] || return 0
+    read -r tok bucket why < "$CHECK_CI_REFUSED" 2>/dev/null || true  # read-sink-ok: our own mktemp refused file, never caller text; swallow-ok: a row without a newline still fills the fields, an empty file leaves why empty and returns below
+    [ -n "$why" ] || return 0
+    if [ -n "${initial_url:-}" ]; then
+        key="${initial_url##*/}"; ref="${initial_head:-unknown}"
+    else
+        key="branch-$(git symbolic-ref --short -q HEAD 2>/dev/null || echo detached)"; ref=unknown  # swallow-ok: no branch name still marks, as branch-detached
+    fi
+    (
+        # shellcheck source=/dev/null
+        . "$(cd "$(dirname "$0")" && pwd)/lib/gh-quota.sh" 2>/dev/null || exit 0
+        ghq_line "$tok" "$bucket" check-ci.sh "$why" >&2
+        echo "check-ci: BLOCKED — GitHub refused the read, so nothing was judged: report BLOCKED and stop; the chief resumes you at quota return" >&2
+        ghq_mark_blocked "$key" "$ref" check-ci.sh "$bucket" "$why"
+    ) || true
+}
+# shellcheck disable=SC2329  # called by _verdict_line, which the EXIT trap runs
+_check_ci_exit() {
+    [ "${1:-0}" -ne 2 ] || _quota_report
+    [ -n "${CHECK_CI_REFUSED:-}" ] || return 0
+    if [ -n "$CHECK_CI_REFUSED_OUTER" ] && [ -s "$CHECK_CI_REFUSED" ]; then cat "$CHECK_CI_REFUSED" >> "$CHECK_CI_REFUSED_OUTER" 2>/dev/null; fi  # read-sink-ok: our own mktemp refused file; swallow-ok: an unwritable outer file loses only the caller's extra row
+    rm -f "$CHECK_CI_REFUSED"
+    return 0
+}
+# shellcheck disable=SC2329  # invoked by the EXIT trap
+_verdict_line() {
+    local rc=$?
+    _check_ci_exit "$rc"
+    echo "check-ci: verdict exit=$rc"
+}
+trap _verdict_line EXIT
 
 selector=""
 RUN_ID=""
@@ -386,6 +423,9 @@ if [ "$MAX_WAIT" -gt 0 ] && [ "$MAX_WAIT" -lt "$SETTLE" ]; then
     echo "check-ci: --max-wait (${MAX_WAIT}s) is below --settle (${SETTLE}s) — the settle wait alone would outlast the deadline, so no run could go green. Raise --max-wait, lower --settle, or pass --max-wait 0 (unbounded)" >&2
     exit 64
 fi
+
+CHECK_CI_REFUSED=$(mktemp "${TMPDIR:-/tmp}/check-ci-refused.XXXXXX" 2>/dev/null) || CHECK_CI_REFUSED=""  # swallow-ok: no scratch file means no quota marker, never a different verdict
+[ -z "$CHECK_CI_REFUSED" ] || export GH_READ_REFUSED_FILE="$CHECK_CI_REFUSED"
 
 # --max-wait bounds the WHOLE run, not each watch round. RUN_START
 # anchors one deadline; _budget_left is what remains of it (0 once spent).
@@ -486,12 +526,15 @@ _rl_recover() {
     ghb_wait_for_budget "$bound" "$CHECK_CI_SLEEP_CMD" || return 1
     [ "$GHB_WAITED" -eq 1 ] || return 1
     RL_RECOVERIES=$((RL_RECOVERIES + 1))
+    _refused_clear
     return 0
 }
 if ! rl_bound=$(_rl_bound) || ! ghb_wait_for_budget "$rl_bound" "$CHECK_CI_SLEEP_CMD"; then
     echo "check-ci: GitHub GraphQL budget exhausted and the reset is beyond --max-wait (${MAX_WAIT}s) — cannot evaluate the gate; re-run after the reset" >&2
+    _refused_note graphql
     exit 2
 fi
+_refused_clear
 # jq is needed to read CodeRabbit's status + review-body findings, so require
 # it only when the CodeRabbit signal gate is ARMED. --threads-only is not a pure GraphQL+gh path;
 # it also runs cr_signal_gate + cr_body_gate (a body-only finding
@@ -1181,9 +1224,12 @@ watch_round() {
             if [ -n "$err" ]; then
                 # A rate limit is not a verdict — wait for the
                 # reset and re-run the round instead of exit 2.
-                if ghb_is_rate_limited "$err" && _rl_recover; then
-                    watch_round "$extend_ok"
-                    return $?
+                if ghb_is_rate_limited "$err"; then
+                    if _rl_recover; then
+                        watch_round "$extend_ok"
+                        return $?
+                    fi
+                    _refused_note graphql
                 fi
                 echo "check-ci: gh pr checks --watch failed — cannot evaluate the gate: $err" >&2
                 exit 2
@@ -1335,7 +1381,12 @@ watch_round() {
 # Post-watch review and head reads remain fresh: these facts can change while
 # the immutable commit endpoints are being watched.
 initial_pr=$(GH_READ_QUIET=1 pr_view --json url,reviewDecision,headRefOid,baseRefName --jq '[.url, (if (.reviewDecision // "") == "" then "null" else .reviewDecision end), .headRefOid, .baseRefName] | @tsv' 2>&1) || {
-    echo "check-ci: cannot resolve the PR — cannot evaluate: $initial_pr" >&2; exit 2
+    if [ -n "$CHECK_CI_REFUSED" ] && [ -s "$CHECK_CI_REFUSED" ]; then
+        echo "check-ci: the PR was not read, GitHub refused it — cannot evaluate: $initial_pr" >&2
+    else
+        echo "check-ci: cannot resolve the PR — cannot evaluate: $initial_pr" >&2
+    fi
+    exit 2
 }
 IFS=$'\t' read -r initial_url initial_decision initial_head initial_base <<EOF
 $initial_pr
@@ -1372,6 +1423,7 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
             # shellcheck disable=SC2329  # invoked by the EXIT trap
             _verdict_then_event() {
                 local rc=$?
+                _check_ci_exit "$rc"
                 echo "check-ci: verdict exit=$rc"
                 _ticket_event ci-exit
                 exit "$rc"
@@ -1421,7 +1473,10 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
         fi
         if ! printf '%s' "$err" | grep -i 'no checks reported' >/dev/null; then
             # Budget exhaustion is a wait, not a verdict.
-            if ghb_is_rate_limited "$err" && _rl_recover; then continue; fi
+            if ghb_is_rate_limited "$err"; then
+                _rl_recover && continue
+                _refused_note graphql
+            fi
             echo "check-ci: gh pr checks failed — cannot evaluate the gate: $err" >&2
             exit 2
         fi
