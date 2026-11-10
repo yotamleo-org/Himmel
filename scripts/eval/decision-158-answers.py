@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/decision-158-answers.py - the five decision-158 questions as answer rows (HIMMEL-7385).
+"""scripts/eval/decision-158-answers.py - the five decision-158 questions as answer rows.
 
 One eval-runs row (eval "decision-158") holds, per question, a percentage with its 95 % Wilson range, the
 sample behind it and the same number measured at an earlier cut (before), so the review page can say

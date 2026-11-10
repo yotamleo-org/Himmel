@@ -473,11 +473,13 @@ contains 'a failed gh read is unowned-prs=?, not an all-clear' "$(STUB_PR_FAIL=1
 contains 'a failed gh read is prs=?, not an all-clear (HIMMEL-8735)' "$(STUB_PR_FAIL=1 bash "$SUT")" ' prs=? '
 if [ -n "$_TIMEOUT_BIN" ]; then
     # The deadline cuts the list to its 1 s floor. Without that bound the stub answers after 5 s with its rows.
-    printf '#!/usr/bin/env bash\necho STALL 42 no-ci\n' > "$W/pr-hung-stall"
+    printf '#!/usr/bin/env bash\ntouch "%s"\necho STALL 42 no-ci\n' "$W/pr-hung-stall.ran" > "$W/pr-hung-stall"
+    rm -f "$W/pr-hung-stall.ran" "$W/pr-hung-stall.cache"
     pr_hung="$(STUB_PR_SLEEP=5 TICK_DEADLINE_SEC=1 TICK_STALL_PROBE="$W/pr-hung-stall" TICK_STALL_CACHE="$W/pr-hung-stall.cache" bash "$SUT" 2>/dev/null)"
     contains 'a hung gh list reads prs=?, not an all-clear (HIMMEL-8735)' "$pr_hung" ' prs=? '
     contains 'a hung gh list still yields the worker state (HIMMEL-8735)' "$pr_hung" ' workers=N61:FRESH'
-    contains 'a hung gh list does not skip the stall probe (HIMMEL-8735)' "$pr_hung" ' stall=42:no-ci'
+    contains 'past the deadline the stall probe is skipped and stall= reads ? with no cache' "$pr_hung" ' stall=?'
+    [ ! -e "$W/pr-hung-stall.ran" ] && pass 'past the deadline the stall probe never ran' || fail 'the stall probe ran past the deadline'
 else
     skip 'hung gh list rows: no timeout binary'
 fi
@@ -1090,32 +1092,40 @@ dated_burn_out="$(PATH="$W/bin-dated:$PATH" bash "$SUT" --burn --workers 'HIMMEL
 contains 'a date-suffixed worker doc still resolves its --burn transcript (HIMMEL-3167)' "$dated_burn_out" 'burn=N41:60.0k/90.0k'
 
 # --- gql=<remaining>/<reset HH:MM> ----------------------------------
-# The GitHub GraphQL budget is shared fleet-wide; a chief needs to see exhaustion
-# coming. Read by gh-graphql-budget.sh's ghb_read -- ONE real `gh api -i graphql`
-# call (never `gh api rate_limit`, which reports the REST core bucket) -- and
-# appended after capacity=, so every existing field keeps its position.
+qd() { rm -rf "$W/q-$1"; mkdir -p "$W/q-$1"; printf '%s' "$W/q-$1"; }
+mkdir -p "$W/noenv"
 : > "$W/gh-api.log"
-STUB_GH_API_LOG="$W/gh-api.log" bash "$SUT" >/dev/null
+gql_qd="$(qd probe)"
+HIMMEL_QUOTA_DIR="$gql_qd" GH_READ_ENV_ROOT="$W/noenv" STUB_GH_API_LOG="$W/gh-api.log" bash "$SUT" >/dev/null
 api_calls="$(wc -l < "$W/gh-api.log" | tr -d '[:space:]')"
-if [ "$api_calls" = 1 ]; then
-    pass 'a tick costs exactly one gh api call for gql= (HIMMEL-3197)'
+if [ "$api_calls" = 2 ]; then
+    pass 'a tick with no quota.tsv costs one graphql probe and one core probe'
 else
-    fail "gql= must cost exactly one gh api call per tick (calls=$api_calls)"
+    fail "a tick with no quota.tsv must cost two probes (calls=$api_calls)"
 fi
 contains 'the gql= probe is a real graphql call, not rate_limit (HIMMEL-3197)' "$(cat "$W/gh-api.log")" 'graphql'
-gql_ex_out="$(STUB_GQL_OUT='HTTP/2.0 403 Forbidden\r\nX-Ratelimit-Remaining: 0\r\nX-Ratelimit-Reset: 1790000000\r\n\r\n' STUB_GQL_RC=1 bash "$SUT")"; gql_ex_rc=$?
+not_contains 'no probe is gh api rate_limit' "$(cat "$W/gh-api.log")" 'rate_limit'
+: > "$W/gh-api.log"
+HIMMEL_QUOTA_DIR="$gql_qd" GH_READ_ENV_ROOT="$W/noenv" STUB_GH_API_LOG="$W/gh-api.log" bash "$SUT" >/dev/null
+api_calls="$(wc -l < "$W/gh-api.log" | tr -d '[:space:]')"
+if [ "$api_calls" = 0 ]; then
+    pass 'a tick under 170 s after the last reading costs no budget call'
+else
+    fail "a fresh quota.tsv must cost the tick no budget call (calls=$api_calls)"
+fi
+gql_ex_out="$(HIMMEL_QUOTA_DIR="$(qd ex)" GH_READ_ENV_ROOT="$W/noenv" STUB_GQL_OUT='HTTP/2.0 403 Forbidden\r\nX-Ratelimit-Remaining: 0\r\nX-Ratelimit-Reset: 1790000000\r\n\r\n' STUB_GQL_RC=1 bash "$SUT")"; gql_ex_rc=$?
 if [ "$gql_ex_rc" -eq 0 ]; then
     contains 'an exhausted budget (gh exits 1, headers still printed) reads gql=0/<reset> (HIMMEL-3197)' "$gql_ex_out" "gql=0/$gql_hm"
 else
     fail "an exhausted budget must not fail the tick (rc=$gql_ex_rc)"
 fi
-gql_bad_out="$(STUB_GQL_OUT='gh: connection refused\n' STUB_GQL_RC=1 bash "$SUT")"; gql_bad_rc=$?
+gql_bad_out="$(HIMMEL_QUOTA_DIR="$(qd bad)" GH_READ_ENV_ROOT="$W/noenv" STUB_GQL_OUT='gh: connection refused\n' STUB_GQL_RC=1 bash "$SUT")"; gql_bad_rc=$?
 if [ "$gql_bad_rc" -eq 0 ]; then
     contains 'unreadable headers read gql=? and never fail the tick (HIMMEL-3197)' "$gql_bad_out" ' capacity=UNDERFILLED:7 gql=?'
 else
     fail "unreadable gql headers must not fail the tick (rc=$gql_bad_rc)"
 fi
-gql_nores_out="$(STUB_GQL_OUT='HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: 4321\r\n\r\n' bash "$SUT")"
+gql_nores_out="$(HIMMEL_QUOTA_DIR="$(qd nores)" GH_READ_ENV_ROOT="$W/noenv" STUB_GQL_OUT='HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: 4321\r\n\r\n' bash "$SUT")"
 contains 'a missing reset header reads gql=<remaining>/? (HIMMEL-3197)' "$gql_nores_out" 'gql=4321/?'
 gql_verbose="$(bash "$SUT" --verbose)"
 contains '--verbose labels the graphql budget (HIMMEL-3197)' "$gql_verbose" "gql: 4321/$gql_hm"
@@ -1126,17 +1136,24 @@ case "$gql_burn" in
 esac
 
 # --- rest-main= / rest-read= ---------------------
-# One REST budget per token from `gh api rate_limit` (no budget cost), LOW under 10 %.
-# The fixture .env supplies the read token; the stub tells the tokens apart by GH_TOKEN.
 mkdir -p "$W/readroot"
 printf 'himmel_github_token_vm2=ghp_TICKTEST0123456789\n' > "$W/readroot/.env"  # gitleaks:allow fixture token
-rest_out="$(GH_READ_ENV_ROOT="$W/readroot" STUB_RATE_OUT='4200 5000 1790000000' STUB_RATE_READ_OUT='450 5000 1790000000' bash "$SUT")"
+seed_rest() {
+    local d="$1" main_rem="$2" read_rem="$3" now
+    now="$(date +%s)"
+    mkdir -p "$d"
+    printf 'main\tgraphql\t4321\t5000\t1790000000\t%s\tok\nmain\tcore\t%s\t5000\t1790000000\t%s\tok\nread\tgraphql\t4321\t5000\t1790000000\t%s\tok\nread\tcore\t%s\t5000\t1790000000\t%s\tok\n' \
+        "$now" "$main_rem" "$now" "$now" "$read_rem" "$now" > "$d/quota.tsv"
+}
+seed_rest "$W/q-rest" 4200 450
+rest_out="$(HIMMEL_QUOTA_DIR="$W/q-rest" GH_READ_ENV_ROOT="$W/readroot" bash "$SUT")"
 contains 'the tick shows the main token budget (HIMMEL-6837)' "$rest_out" " rest-main=4200/5000@$gql_hm"
 contains 'a read token at 9 % is flagged LOW (HIMMEL-6837)' "$rest_out" " rest-read=450/5000@$gql_hm!LOW"
-rest_v="$(GH_READ_ENV_ROOT="$W/readroot" STUB_RATE_OUT='4200 5000 1790000000' STUB_RATE_READ_OUT='450 5000 1790000000' bash "$SUT" --verbose)"
+rest_v="$(HIMMEL_QUOTA_DIR="$W/q-rest" GH_READ_ENV_ROOT="$W/readroot" bash "$SUT" --verbose)"
 contains '--verbose has one line per token, main (HIMMEL-6837)' "$rest_v" "rest main: 4200/5000 reset $gql_hm"
 contains '--verbose has one line per token, read with LOW (HIMMEL-6837)' "$rest_v" "rest read: 450/5000 reset $gql_hm LOW"
-rest_ok="$(GH_READ_ENV_ROOT="$W/readroot" STUB_RATE_OUT='4200 5000 1790000000' STUB_RATE_READ_OUT='4000 5000 1790000000' bash "$SUT")"
+seed_rest "$W/q-rest-ok" 4200 4000
+rest_ok="$(HIMMEL_QUOTA_DIR="$W/q-rest-ok" GH_READ_ENV_ROOT="$W/readroot" bash "$SUT")"
 case "$rest_ok" in *LOW*) fail "healthy budgets must not be flagged LOW (out='$rest_ok')" ;; *) pass 'healthy budgets carry no LOW flag (HIMMEL-6837)' ;; esac
 
 # --- orphans=<owner>:<count>/<oldest>m ---------------------------

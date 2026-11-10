@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/bug-origin/bug-origin-report.py - how bugs got in, per class and per review layer (HIMMEL-8519).
+"""scripts/eval/bug-origin/bug-origin-report.py - how bugs got in, per class and per review layer.
 
 A bug fix's PR body carries one line, the record of how the bug got in:
 
@@ -11,7 +11,7 @@ A bug fix's PR body carries one line, the record of how the bug got in:
 The class is the fixer's reading and the report never re-classifies it. The report counts review-miss:cr, :judge
 and :panel, review-miss:multi (two or three layers), review-deferred, residual, trigger, commit and unknown.
 
-The ledger (HIMMEL-8868): `ingest` writes one markdown file per fix PR whose body (else the seed) carries the line, at
+The ledger: `ingest` writes one markdown file per fix PR whose body (else the seed) carries the line, at
 <HANDOVER_DIR>/<user>/<project bucket>/bug-origin/<pr>.md (the user and bucket from the handover registry entry of this
 checkout, else USER_SLUG and the checkout's name; --ledger-dir overrides; the root is found as the shell tooling finds it:
 HANDOVER_DIR in the environment, else the config files, else the primary checkout's .env, else its handovers/

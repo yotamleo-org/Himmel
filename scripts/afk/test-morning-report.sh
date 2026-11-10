@@ -102,6 +102,7 @@ export REVIEW_ROUNDS_TXT="$REVIEW_ROUNDS_EMPTY"
 # "## AFK approvals" reads /var/log/himmel by default; every case gets an
 # absent ledger, the dedicated tests below point it at a fixture.
 export AFK_SUDO_LEDGER="$TMP_ROOT/no-afk-sudo-ledger.jsonl"
+export HIMMEL_QUOTA_DIR="$TMP_ROOT/quota"
 
 # Same hermeticity problem for "## Changelog freshness": without
 # a seam every case below would shell out to the LIVE scripts/gen-changelog.sh

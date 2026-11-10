@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/fold-vs-keep/fvk.py - the fold-vs-keep eval's parser and scorer (HIMMEL-7330).
+"""scripts/eval/fold-vs-keep/fvk.py - the fold-vs-keep eval's parser and scorer.
 
 One recurring subagent class at a time, a KEEP arm (what runs today) is compared with a
 FOLD arm (a cheaper tier, inline in the parent, or a script) on frozen golden tasks, each

@@ -1,4 +1,4 @@
-# compaction-handoff - does a 450k ceiling with a hand-off beat the 200k compaction loop? (HIMMEL-7667)
+# compaction-handoff - does a 450k ceiling with a hand-off beat the 200k compaction loop?
 
 Phase 1, `compaction-defects.py`: counts the defects (re-reads, repeated denied calls, misquoted nonces, verdict slips, redone work) in the turns after each compaction of a real transcript, against a control window. Unbilled, runs on `~/.claude/projects`.
 

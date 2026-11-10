@@ -47,7 +47,7 @@ printf '%s\n' "$*" >> "$PS_GH_LOG"
 printf '5001\tMERGED\n5002\tOPEN\n5004\tCLOSED\n'
 EOF
 chmod +x "$WORK/gh"
-export PS_GH_LOG="$WORK/gh.log" PS_GH_FAIL="$WORK/gh.fail" NEXT_DISPATCH_MIRROR="$M" TICK_GH_CMD="$WORK/gh"
+export PS_GH_LOG="$WORK/gh.log" PS_GH_FAIL="$WORK/gh.fail" NEXT_DISPATCH_MIRROR="$M" TICK_GH_CMD="$WORK/gh" HIMMEL_QUOTA_DIR="$WORK/quota"
 
 doc() { # <name> <disposition line>...: a chief doc whose Live state holds those lines
     local f="$WORK/$1.md"; shift

@@ -66,7 +66,7 @@ gen_page() {
 }
 ret() {
   local file="$1" verdict="$2" name; shift 2; name="$(basename "$file")"
-  { echo "Canned critic return for $name."; while [ $# -ge 2 ]; do printf 'READ-SHA256 %s %s\n' "$1" "$2"; shift 2; done; printf '\n%s\n' "$verdict"; } > "$file"
+  { echo "Canned critic return for $name."; [ -z "${RET_EXTRA:-}" ] || echo "$RET_EXTRA"; while [ $# -ge 2 ]; do printf 'READ-SHA256 %s %s\n' "$1" "$2"; shift 2; done; printf '\n%s\n' "$verdict"; } > "$file"
 }
 retspec() { QS_MD="$(sha "$SPEC")"; QS_HTML="$(sha "$HTML")"; ret "$SPEC.critic-spec-r$1.md" "$2" "$QS_MD" "$SPEC" "$QS_HTML" "$HTML"; }
 retplan() { QP_PLAN="$(sha "$PLAN")"; QP_SPEC="$(sha "$SPEC")"; ret "$SPEC.critic-plan-r$1.md" "$2" "$QP_PLAN" "$PLAN" "$QP_SPEC" "$SPEC"; }
@@ -228,11 +228,13 @@ if [ -z "$SEALLINE" ]; then fail "k: the seal command is in SKILL.md"; else
   refused "k: at the cap, an edit: refused" "$HTML" "changed since the spec critic read it"
   cp "$T/k-spec-bytes" "$SPEC"
   accepted "k: the sealed bytes put back: accepted" "$HTML"
-  newfix k3; gen_page; for r in 1 2 3; do stub spec-r$r "SPEC FINDINGS 1"; stub plan-r$r "PLAN FINDINGS 1"; done
+  newfix k3; gen_page; for r in 1 2; do stub spec-r$r "SPEC FINDINGS 1"; stub plan-r$r "PLAN FINDINGS 1"; done
   seedfix
-  retspec 4 "SPEC CLEAN"; sealspec 4
+  retspec 3 "SPEC FINDINGS 1"; sealspec 3; retplan 3 "PLAN FINDINGS 1"; sealplan 3
+  FIXKEY="$(basename "$SPEC")"; FIXKEY="${FIXKEY%-x.md}"
+  RET_EXTRA="$(bun "$ROUTE" closure-pack "$FIXKEY" spec --specs "$S" | head -n 1)" retspec 4 "SPEC CLEAN"; sealspec 4
   [ "$SEALRC" -eq 0 ] && pass "k: round 4 after a blocking round 3: the spec return is sealed with no record" || fail "k: round 4 after a blocking round 3: the spec return is sealed with no record" "$SEALOUT"
-  retplan 4 "PLAN CLEAN"; sealplan 4; [ "$SEALRC" -eq 0 ] && pass "k: the plan critic's round 4 is sealed too" || fail "k: the plan critic's round 4 is sealed too" "$SEALOUT"
+  RET_EXTRA="$(bun "$ROUTE" closure-pack "$FIXKEY" plan --specs "$S" | head -n 1)" retplan 4 "PLAN CLEAN"; sealplan 4; [ "$SEALRC" -eq 0 ] && pass "k: the plan critic's round 4 is sealed too" || fail "k: the plan critic's round 4 is sealed too" "$SEALOUT"
   accepted "k: both critics at r4: accepted" "$HTML"
   printf 'decision 7\n' > "$SPEC.operator-round-r5.md"; printf 'verbatim\n' > "$S/decisions/verbatim-decision-7-x.txt"
   retspec 5 "SPEC CLEAN"; sealspec 5

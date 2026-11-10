@@ -247,7 +247,8 @@
 #   26  partial-merge remainder: the merge is contract=no (no
 #       --jira-transition, or the brief says completes-ticket: no) on a ticket-tagged
 #       PR whose body has neither a `Remaining:` line nor a `<ask>: deferred -> <KEY>`
-#       line under `## Ticket coverage`, or whose body cannot be read, or when the
+#       line under `## Ticket coverage`, or whose every remaining ask is deferred to
+#       other tickets (this merge then completes the ticket), or whose body cannot be read, or when the
 #       anchor's scripts/lib/pr_remainder.py is missing or prints no answer. The
 #       refusal names the missing line. Checked after the title gate, before
 #       the audit preflight, on --dry-run too.
@@ -1973,6 +1974,7 @@ _merge_contract() {
         brief=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$WORKER_SESSION_DOC" | sort | head -n 1)
     fi
     [ "$brief" != no ] || MERGE_ROW_CONTRACT=no
+    MERGE_ROW_BRIEF="$brief"
 }
 
 # 3d. A partial (contract=no) merge must record what remains. The dispatcher, the brief generator and the
@@ -2008,6 +2010,15 @@ if [ -n "$partial_key" ]; then
         elif [ "${partial_ans%%$'\t'*}" = none ]; then
             echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key (contract=no) but its body has no \`Remaining:\` line and no \`<ask>: deferred -> <KEY>\` line under \`## Ticket coverage\` — refusing. Add one of them to the PR body (gh pr edit $pr_num --body-file <file>)." >&2
             audit "REFUSED reason=partial-remainder-missing repo=$nwo pr=#$pr_num key=$partial_key"
+            exit 26
+        elif [ "${partial_ans%%$'\t'*}" = handed-off ]; then
+            partial_handed=$(printf '%s' "$partial_ans" | cut -f2)
+            if [ "$MERGE_ROW_BRIEF" = no ]; then
+                echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key (contract=no) but every remaining ask is deferred to $partial_handed, so this merge completes $partial_key — refusing. The brief ($WORKER_SESSION_DOC) says \`Completes ticket: no\`: the chief changes it to yes and re-issues the GO, or record what stays on $partial_key with a \`Remaining:\` line (gh pr edit $pr_num --body-file <file>)." >&2
+            else
+                echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key (contract=no) but every remaining ask is deferred to $partial_handed, so this merge completes $partial_key — refusing. Re-run with --jira-transition (this merge completes $partial_key), or record what stays on $partial_key with a \`Remaining:\` line (gh pr edit $pr_num --body-file <file>)." >&2
+            fi
+            audit "REFUSED reason=partial-remainder-handed-off repo=$nwo pr=#$pr_num key=$partial_key handed=$partial_handed"
             exit 26
         fi
     fi

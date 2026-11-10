@@ -8,6 +8,13 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.106] — 2026-11-10
+
+### Changed
+- The marketplace description says in plain words why the Obsidian skill pack
+  installs from its own upstream marketplace: its author publishes no release
+  tags, and a plugin pinned to a bare commit cannot be installed.
+
 ## [0.4.105] — 2026-11-10
 
 ### Fixed
