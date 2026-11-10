@@ -1332,7 +1332,6 @@ inp = score.case_inputs(sys.argv[4], score.load_key(sys.argv[2])["cases"], ids)
 json.dump({"v": 1, "protocol": {}, "provenance": {}, "cases": {}, "critics": [], "inputs": inp}, open(sys.argv[3] + "/run-manifest.json", "w"))' \
   "$HERE" "$KEY" "$1" "$2" "${3:-$M4IDS}"; }
 mkmanifest "$VO" "$FIX"
-# mklabel <labels> <fixtures> <outputs> <case> <n> <correctness> <targets> <scope> <severity_valid> [adjudicator] [reviewer]
 mklabel() { python3 -B - "$HERE" "$KEY" "${MKVAL:-$VAL}" "$@" <<'PY'
 import json, sys
 here, key, val, labels, fixtures, outputs, cid, n, corr, targets, scope, sv = sys.argv[1:13]
@@ -1357,7 +1356,6 @@ m4labels() { local L="$1" O="$2" F="${3:-$FIX}"; : > "$L"
   mklabel "$L" "$F" "$O" case-16 1 correct "" out true
   mklabel "$L" "$F" "$O" case-05 1 correct "" in false
   mklabel "$L" "$F" "$O" case-03 1 correct scope-b-1 in true; }
-# vscore <outputs> <labels> <json> [fixtures] [validation]
 vscore() { python3 "$SCORE" score --outputs "$1" --fixtures "${4:-$FIX}" --key "$KEY" --critics codex --only "$M4IDS" \
   --no-ledger --validation "${5:-$VAL}" --adjudications "$2" --json "$3" 2>&1; }
 L1="$TMP/m4-labels1.jsonl"; m4labels "$L1" "$VO"
