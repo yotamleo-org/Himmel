@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "root": "snapshot",
+  "timezone": "Europe/Berlin",
+  "since": "2026-11-01T00:00:00Z",
+  "until": "2026-12-01T00:00:00Z",
+  "files": [
+    {
+      "relative_path": "proj/parentA.jsonl",
+      "bytes": 908,
+      "sha256": "4cb1a9a177cc6683f3a40fac92a3a86848a488c4e5ab6ea379aa9f50d01811c1",
+      "provider": "claude",
+      "session": "parentA",
+      "parent": null
+    },
+    {
+      "relative_path": "proj/parentA/subagents/agent-fx1.jsonl",
+      "bytes": 179,
+      "sha256": "18b58babf26e3bbf53b71a29d6f239f53d961a40df554158d1781ab3e8466050",
+      "provider": "claude",
+      "session": "agent-fx1",
+      "parent": "parentA"
+    }
+  ]
+}

@@ -336,7 +336,7 @@ run_update() {
             return 0
         fi
         relabel_hash_count <<<"$out" >&2
-        if ! grep -qE -- 'SQLITE_BUSY|database is locked' <<<"$out"; then
+        if ! qmd_output_is_busy "$out"; then
             return "$rc"
         fi
         waited=$((SECONDS - t0))

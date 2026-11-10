@@ -12,7 +12,9 @@
 #            line of the trust list (scripts/ci/ci-trust-paths.txt, read from
 #            origin/main unless --trust-file names a copy). Needs a judge.
 #   finding  the delta touches the lines of a finding the prior judge named, or
-#            of a CR-ledger finding recorded at the judged head. Needs a judge.
+#            of a CR-ledger finding recorded at the judged head, or a merge in the delta
+#            resolved a conflict or changed what a plain remerge gives (its non-empty
+#            remerge-diff is PR-authored code no judge has read). Needs a judge.
 #   none     neither. The chief may record a `delta: no-op` verdict
 #            (write-verdict.sh --delta-noop) instead of dispatching a judge.
 # It FAILS CLOSED: any read error (unreadable trust list, verdict or ledger, an
@@ -147,7 +149,7 @@ done < "$work/names.z"
 # not the PR's change (its blob equals origin/main's at both heads), unless a merge's
 # remerge-diff names it (a conflict resolution is PR-authored).
 cp "$work/names.txt" "$work/trust-names.txt" || trust "cannot copy the changed path list"
-anc=0
+anc=0 remerge_nonempty=0
 if git merge-base --is-ancestor "$J" "$N" 2>/dev/null; then anc=1; else [ "$?" -eq 1 ] || trust "cannot tell whether $N descends from $J"; fi
 # a new head that does not descend from the judged head (a rewritten history) is no delta of it
 [ "$anc" -eq 1 ] || trust "new head $N does not descend from judged head $J"
@@ -163,6 +165,7 @@ if [ "$anc" -eq 1 ]; then
             read -r -a mparts <<< "$mline"
             [ "${#mparts[@]}" -eq 3 ] || trust "merge $m is not a two-parent merge"
             git show --remerge-diff --name-only -z --format= --no-ext-diff --no-relative "$m" > "$work/remerge.z" 2>/dev/null || trust "cannot read the remerge diff of merge $m"
+            [ ! -s "$work/remerge.z" ] || remerge_nonempty=1
             while IFS= read -r -d '' p; do
                 case "$p" in *$'\n'*) trust "a remerge path holds a newline" ;; esac
                 printf '%s\n' "$p" >> "$work/authored.txt"
@@ -271,5 +274,7 @@ awk -F'\t' '
     NR == FNR { if ($2 != "") { n++; fp[n] = $1; lo[n] = $2 + 0; hi[n] = $3 + 0 } ; next }
     { for (i = 1; i <= n; i++) if ($1 == fp[i] && $2 + 0 <= hi[i] && $3 + 0 >= lo[i]) { hit = 1; exit } }
     END { exit !hit }' "$work/findings.tsv" "$work/hunks.tsv" && fin finding
+
+[ "$remerge_nonempty" -eq 0 ] || fin finding
 
 fin none
