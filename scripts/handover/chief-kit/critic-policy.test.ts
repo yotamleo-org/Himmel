@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, chmodSync, symlinkSync, rmSync } from "node:fs";
+import { afterAll, expect, test } from "bun:test";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, chmodSync, symlinkSync, rmSync, readdirSync, lstatSync, readlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
@@ -17,7 +17,22 @@ const git = (cwd: string, ...args: string[]) => {
   if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
   return r.stdout.trim();
 };
-const tmp = (prefix: string) => realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+const made: string[] = [];
+const tmp = (prefix: string) => { const d = realpathSync(mkdtempSync(join(tmpdir(), prefix))); made.push(d); return d; };
+afterAll(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
+const treeHash = (dir: string): string => {
+  const h = createHash("sha256");
+  const walk = (d: string) => {
+    for (const n of readdirSync(d).sort()) {
+      if (n === ".git" || n === "request.json") continue;
+      const p = join(d, n); const s = lstatSync(p);
+      if (s.isDirectory()) walk(p);
+      else h.update(`${p}\0${s.isSymbolicLink() ? readlinkSync(p) : readFileSync(p).toString("base64")}\0`);
+    }
+  };
+  walk(dir);
+  return h.digest("hex");
+};
 const sha = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");
 const put = (p: string, text: string | Uint8Array) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, text); };
 
@@ -103,7 +118,9 @@ test("operator_record_for_exact_round", async () => {
   operatorRecord(fx, 5);
   const five = check(fx, request(fx, { requested_round: 5 }));
   expect(five.code).toBe(4);
-  expect(five.json).toMatchObject({ action: "refused", reasons: ["round-mismatch"], round: { observed_count: 3, requested: 5, next: 4 } });
+  expect(five.json).toMatchObject({ action: "refused", reasons: ["round-mismatch"], round: { observed_count: 3, requested: 5, next: 4, operator_record: null } });
+  const six = check(fx, request(fx, { requested_round: 2 }));
+  expect(six.json.round.operator_record).toBeNull();
 
   const bare = fixture({ spec: 3 });
   put(`${bare.spec}.operator-round-r4.md`, "decision 7\n");
@@ -164,6 +181,40 @@ test("unreadable_round_not_zero", async () => {
     action: "refused", reasons: ["round-unavailable"],
     round: { observed_count: null, requested: 1, next: null, cap: null, operator_record: null, numberedFiles: null, renamed: null },
   });
+
+  const dangling = fixture();
+  symlinkSync(join(dangling.root, "nowhere.md"), `${dangling.spec}.critic-spec-r1.md`);
+  await expect(route.readCriticBudget(dangling.spec, "spec")).rejects.toThrow();
+  const d = check(dangling, request(dangling, { requested_round: 1 }));
+  expect(d.code).toBe(4);
+  expect(d.json).toMatchObject({ action: "refused", reasons: ["round-unavailable"], round: { observed_count: null, numberedFiles: null, renamed: null } });
+}, T);
+
+test("request_parser_guards", async () => {
+  const fx = fixture(); const p = planRequest(fx);
+  const good = request(fx);
+  const bad: Array<[string, unknown]> = [
+    ["schema 2", { ...good, schema: 2 }], ["schema as string", { ...good, schema: "1" }], ["schema missing", (({ schema, ...r }) => r)(good)],
+    ["operation_id empty", { ...good, operation_id: "" }], ["operation_id number", { ...good, operation_id: 7 }], ["operation_id missing", (({ operation_id, ...r }) => r)(good)],
+    ["kind unknown", { ...good, kind: "design" }], ["kind capitalised", { ...good, kind: "Spec" }], ["kind number", { ...good, kind: 1 }],
+    ["head short", { ...good, source_head: fx.head.slice(0, 39) }], ["head uppercase", { ...good, source_head: fx.head.toUpperCase() }], ["head number", { ...good, source_head: 1 }],
+    ["head with newline", { ...good, source_head: `${fx.head}\n` }],
+    ["spec_path relative", { ...good, spec_path: "specs/design/subject.md" }], ["spec_path not normalised", { ...good, spec_path: `${fx.root}/specs/../specs/design/subject.md` }],
+    ["source_repo relative", { ...good, source_repo: "." }],
+    ["artifacts object", { ...good, artifacts: { path: fx.spec, sha256: sha(fx.spec) } }], ["artifacts null", { ...good, artifacts: null }],
+    ["artifact is a string", { ...good, artifacts: [fx.spec] }], ["artifact null", { ...good, artifacts: [null] }],
+    ["artifact extra key", { ...good, artifacts: [{ path: fx.spec, sha256: sha(fx.spec), mode: "x" }] }],
+    ["artifact sha missing", { ...good, artifacts: [{ path: fx.spec }] }], ["artifact sha short", { ...good, artifacts: [{ path: fx.spec, sha256: "a".repeat(63) }] }],
+    ["artifact sha uppercase", { ...good, artifacts: [{ path: fx.spec, sha256: sha(fx.spec).toUpperCase() }] }],
+    ["artifact path relative", { ...good, artifacts: [{ path: "subject.md", sha256: sha(fx.spec) }] }],
+    ["plan artifact path number", { ...p, artifacts: [{ path: fx.spec, sha256: sha(fx.spec) }, { path: 3, sha256: sha(fx.plan) }] }],
+  ];
+  for (const [name, body] of bad) {
+    const r = check(fx, body);
+    expect(r.code, name).toBe(2);
+    expect(r.json, name).toMatchObject({ action: "malformed", reasons: ["invalid"] });
+  }
+  expect(check(fx, good).code).toBe(0);
 }, T);
 
 test("counted_paths_from_same_pass", async () => {
@@ -431,6 +482,7 @@ test("no_model_or_approval_calls", async () => {
   rmSync(log);
 
   const three = fixture({ spec: 3 }); const none = fixture();
+  const fixtureHashes = [treeHash(three.root), treeHash(none.root)];
   const exits = [
     [0, check(none, request(none), [], env)], [3, check(three, request(three, { requested_round: 4 }), [], env)],
     [4, check(three, request(three, { requested_round: 9 }), [], env)], [2, check(three, "{not json", [], env)],
@@ -442,6 +494,37 @@ test("no_model_or_approval_calls", async () => {
   expect(run(dirty.repo, ["routing-diff", "--base", dirty.base], env).code).toBe(1);
   expect(run(dirty.repo, ["routing-diff"], env).code).toBe(2);
   expect(calls()).toBe("");
+  expect([treeHash(three.root), treeHash(none.root)], "snapshot fixture files unchanged by every exit branch").toEqual(fixtureHashes);
+}, T);
+
+test("routing_diff_runs_no_external_program", async () => {
+  const { routingDiffViolations } = await policy();
+  const { repo, base } = routingRepo();
+  const aux = tmp("hide-");
+  const marks = join(aux, "ran");
+  const hide = join(aux, "hide.sh");
+  put(hide, `#!/bin/sh\necho x >> "${marks}"\necho constant\n`); chmodSync(hide, 0o755);
+  put(join(repo, ".gitattributes"), `${SKILL} diff=hide\n`);
+  git(repo, "config", "diff.hide.textconv", hide);
+  git(repo, "config", "diff.external", hide);
+  git(repo, "add", "-A"); git(repo, "commit", "-q", "-m", "attrs");
+  const attrBase = git(repo, "rev-parse", "HEAD");
+  put(join(repo, SKILL), SKILL_BASE.replace("Intake wording.", "Tier 2 applies."));
+  expect(rows(await routingDiffViolations(repo, attrBase), SKILL)).toEqual(["worktree:Tier:3"]);
+  git(repo, "add", "-A"); git(repo, "commit", "-q", "-m", "c");
+  expect(rows(await routingDiffViolations(repo, attrBase), SKILL)).toEqual(["committed:Tier:3"]);
+  const cli = run(repo, ["routing-diff", "--base", attrBase]);
+  expect(cli.code).toBe(1);
+  expect(existsSync(marks), "no textconv or external diff program ran").toBe(false);
+  void base;
+}, T);
+
+test("routing_diff_unexpected_error_is_invalid_exit_2", async () => {
+  const { routingDiffCli } = await policy();
+  const { repo, base } = routingRepo();
+  const r = await routingDiffCli(["routing-diff", "--base", base], repo, async () => { throw new TypeError("not a RoutingDiffError"); });
+  expect(r.exit).toBe(2);
+  expect(r.output).toEqual({ schema: 1, kind: "critic-routing-diff", state: "invalid", repo, base, head: base, violations: [], reasons: ["git-failure"] });
 }, T);
 
 test("retired_options_rejected", async () => {

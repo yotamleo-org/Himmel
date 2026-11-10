@@ -1,0 +1,10 @@
+case_id	path	kind	round	entry	canonical
+spec_r1	specs/design/subject.md.critic-spec-r1.md	spec	1	regular	yes
+plan_r2	specs/design/subject.md.critic-plan-r2.md	plan	2	regular	yes
+zero	specs/design/subject.md.critic-spec-r0.md	spec	0	regular	no
+padded	specs/design/subject.md.critic-spec-r01.md	spec	1	regular	no
+missing_ordinal	specs/design/subject.md.critic-spec-r.md	spec	1	regular	no
+renamed	specs/design/subject.md.critic-spec-renamed.md	spec	1	regular	no
+symlink	specs/design/subject.md.critic-spec-r1.md	spec	1	symlink	no
+plan_folder	specs/plans/subject.md.critic-plan-r1.md	plan	1	regular	no
+missing_file	specs/design/subject.md.critic-spec-r1.md	spec	1	missing	no
