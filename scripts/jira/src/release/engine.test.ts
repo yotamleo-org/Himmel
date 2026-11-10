@@ -1915,6 +1915,17 @@ describe('signed minerva specs', () => {
       .toThrow(/last line/);
   });
 
+  it('a ceiling disposition signs a residual, the retired word still reads as its alias, and an unknown word is refused', () => {
+    declared();
+    const p = spec();
+    const findings = () => [verdict(p, 'spec', 'SPEC FINDINGS 2'), verdict(p, 'plan', 'PLAN CLEAN')];
+    writeFileSync(p, `${readFileSync(p, 'utf8')}\n## Critic rounds\n\n- R1: ceiling\n- R2: accepted\n`);
+    expect(() => sign(sctx(), ['K-1'], p, { verdicts: findings() }))
+      .toThrow(/2 residual findings.*1 dispositioned.*fixed\|ASSUMPTION\|ceiling\|deferred/s);
+    writeFileSync(p, readFileSync(p, 'utf8').replace('- R2: accepted', '- R2: ponytail'));
+    expect(sign(sctx(), ['K-1'], p, { verdicts: findings() }).residuals).toBe(2);
+  });
+
   it('run from a non-himmel cwd, the verb finds the minerva scripts in the primary checkout and lints the spec in its own repository', () => {
     declared();
     const repo = join(root, 'state-repo');

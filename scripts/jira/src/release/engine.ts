@@ -415,7 +415,7 @@ function runMinerva(name: string, args: string[], cwd: string): void {
 }
 
 const VERDICT = /^(SPEC|PLAN) (CLEAN|FINDINGS (\d+))$/;
-const DISPOSITION = /^\s*[-*]\s+R(\d+):\s+(fixed|ASSUMPTION|ponytail|deferred → HIMMEL-\d+)\b/;
+const DISPOSITION = /^\s*[-*]\s+R(\d+):\s+(fixed|ASSUMPTION|ceiling|ponytail|deferred → HIMMEL-\d+)\b/;
 
 // Each verdict file's last line is its critic's verdict word; one spec critic and one plan critic.
 function readVerdicts(paths: string[]): { verdicts: Array<{ path: string; sha256: string }>; residuals: number } {
@@ -439,7 +439,7 @@ function readVerdicts(paths: string[]): { verdicts: Array<{ path: string; sha256
 }
 
 // Residual findings sign only when the spec's `## Critic rounds` section gives each one a
-// `- R<n>: fixed|ASSUMPTION|ponytail|deferred → HIMMEL-<n>` line.
+// `- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>` line; `ponytail` is still read as a disposition.
 function checkResiduals(specText: string, residuals: number): void {
   if (!residuals) return;
   const lines = specText.split('\n');
@@ -451,7 +451,7 @@ function checkResiduals(specText: string, residuals: number): void {
   const done = new Set(body.flatMap((l) => DISPOSITION.exec(l)?.[1] ?? []));
   if (done.size < residuals) {
     throw new Error(`release operator spec: the verdicts carry ${residuals} residual findings and the spec's ## Critic rounds section has `
-      + `${done.size} dispositioned (one '- R<n>: fixed|ASSUMPTION|ponytail|deferred → HIMMEL-<n>' line each)`);
+      + `${done.size} dispositioned (one '- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>' line each)`);
   }
 }
 
