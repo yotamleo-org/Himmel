@@ -1,5 +1,5 @@
 import { beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appendFileSync, existsSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appendFileSync, existsSync, statSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readNewLines, readMeta, writeMeta, ensureSession, appendLine, sessionDir } from "./bus";
@@ -4138,4 +4138,26 @@ test("R2.11 the monitor-chat-down notice is still sent, and only once, when its 
   expect(opOutbox(r).length).toBe(1);
   await flushMonitor(r, null, MT0 + 2 * HOUR + 3000, { operatorChat: OPCHAT, reason: "unset" });
   expect(opOutbox(r).length).toBe(1);
+});
+
+test("R2.12 a monitor-chat-down notice whose operator outbox write fails is asked again on the next flush, not held back for 24 h", async () => {
+  const r = root(); spoolLines(r, [{ text: "routine", at: MT0 }]);
+  const outbox = join(r, "sessions", "__chat__", "outbox.jsonl");
+  mkdirSync(outbox, { recursive: true });
+  await flushMonitor(r, null, MT0 + 2 * HOUR, { operatorChat: OPCHAT, reason: "unset" });
+  expect(existsSync(join(monDir(r), "chat-down"))).toBe(false);
+  rmSync(outbox, { recursive: true });
+  await flushMonitor(r, null, MT0 + 2 * HOUR + 3000, { operatorChat: OPCHAT, reason: "unset" });
+  expect(opOutbox(r).length).toBe(1);
+});
+
+test("R2.13 the startup check's default retry timer is unref'd so it cannot hold the poller open", async () => {
+  const orig = globalThis.setTimeout;
+  const made: { t: any; ms: number }[] = [];
+  globalThis.setTimeout = ((fn: any, ms: number, ...a: any[]) => { const t = orig(fn, ms, ...a); made.push({ t, ms }); return t; }) as any;
+  try {
+    startMonitoringCheck({ check: async () => ({ send: null, reason: "r", line: "monitoring: refused cannot read the chat", retry: true }), apply: () => {} });
+    expect(await waitFor(() => made.some((m) => m.ms === 60_000))).toBe(true);
+    expect(made.find((m) => m.ms === 60_000)!.t.hasRef()).toBe(false);
+  } finally { globalThis.setTimeout = orig; for (const m of made) clearTimeout(m.t); }
 });
