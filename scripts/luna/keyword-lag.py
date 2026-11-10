@@ -155,7 +155,6 @@ def write_atomic(path, text):
 
 
 def parse_log(text):
-    """git log --raw output to [(sha, committed_at, [(status, oid, path)])], newest first."""
     commits = []
     for line in text.split("\n"):
         if line.startswith("@"):
@@ -175,8 +174,7 @@ def blob_sha256(repo, oid):
     return BLOB_SHA256[oid]
 
 
-def new_pending(pending, repo, cursor, main, is_indexed):
-    """Fold the commits cursor..main into the pending entries."""
+def fold_commits_into_pending(pending, repo, cursor, main, is_indexed):
     commits = parse_log(git(repo, "log", "--first-parent", "-m", "--no-renames", "--raw", "--no-abbrev",
                             "--format=@%H %ct", "%s..%s" % (cursor, main)))
     commits.reverse()
@@ -289,7 +287,7 @@ def tick(index, state, repo, now):
         ancestor = subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", cursor, main], capture_output=True)
         if ancestor.returncode == 0:
             before = len(pending)
-            new_pending(pending, repo, cursor, main, collection_filter())
+            fold_commits_into_pending(pending, repo, cursor, main, collection_filter())
             new = len(pending) - before
         else:
             print("keyword-lag: cursor %s is not an ancestor of main, reseeded at main=%s" % (cursor[:12], main[:12]))

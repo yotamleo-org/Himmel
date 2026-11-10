@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2329,SC2317
-# Suite for scripts/luna/keyword-lag.py: the per-merge sampler of how long a
-# merge takes to reach qmd's keyword index, and its --report. Every row runs on
-# a fixture git repo and a real SQLite file under a throwaway HOME; nothing
-# touches the live index, the live flow ledger or the crontab, and nothing
-# calls a model.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -116,8 +111,10 @@ mkcase() {
     : > "$C/flow.jsonl"
 }
 
-# idx_put <path> <file> [active]: the index row for <path> holds the sha256 of <file>'s bytes.
-idx_put() { python3 -I "$SQLH" "$C/index.sqlite" put "$1" "$(sum256 "$2")" "${3:-1}"; }
+idx_put() {
+    local path="$1" file="$2" active="${3:-1}"
+    python3 -I "$SQLH" "$C/index.sqlite" put "$path" "$(sum256 "$file")" "$active"
+}
 idx_active() { python3 -I "$SQLH" "$C/index.sqlite" active "$1" "$2"; }
 idx_now() { idx_put "$1" "$C/primary/$1"; }
 
@@ -362,8 +359,7 @@ row_report_counts_pending_as_miss() {
 
 row_graph_share_from_flow_rows() {
     mkcase graph
-    # c0 is older than the window; g1..g5 sit inside it.
-    cm $((BASE-200000)) src/c0.sh; local c0="$LAST"
+    cm $((BASE-200000)) src/before_window.sh; local c0="$LAST"
     cm $((BASE)) src/g1.sh
     cm $((BASE+300)) src/g2.sh; local g2="$LAST"
     cm $((BASE+10000)) src/g3.sh; local g3="$LAST"
