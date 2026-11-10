@@ -233,7 +233,7 @@ function yamlString(v) {
 /** Render a fresh component note. */
 function renderNote(record) {
   const url = `https://github.com/${record.repo}`;
-  const seenPath = normalizeComponentPath(record.path); // canonical spelling
+  const seenPath = normalizeComponentPath(record.path);
   return [
     "---",
     "type: component",
@@ -298,7 +298,7 @@ function frontmatterBlock(text) {
  */
 async function upsertComponentNote(record, opts) {
   const target = notedPath(record, opts); // throws on traversal
-  const seenPath = normalizeComponentPath(record.path); // canonical spelling
+  const seenPath = normalizeComponentPath(record.path);
   const seenFmEntry = `${record.repo}#${seenPath}`;
   const url = `https://github.com/${record.repo}`;
   const seenListLine = `- [${record.repo}](${url}) — \`${seenPath}\``;
@@ -321,7 +321,7 @@ async function upsertComponentNote(record, opts) {
   const before = readFileSync(target, "utf-8");
   const seenExists = before.includes(`"${seenFmEntry}"`) || before.includes(seenListLine);
 
-  // Cross-repo risk escalation (a later repo can raise it): a later repo sharing this
+  // Cross-repo risk escalation: a later repo sharing this
   // component_key must escalate the note's risk to the most-cautious value
   // across all contributing repos — first-create no longer owns the risk.
   const existingFm = parseFrontmatterFields(before);

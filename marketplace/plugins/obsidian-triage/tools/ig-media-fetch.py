@@ -429,7 +429,7 @@ def write_markers(path: Path, text: str, fm_raw: str, body: str, has_crlf: bool,
     if permanent:
         markers["media_enriched_at"] = TODAY
     if status == "deferred" and backend:
-        markers["ig_media_backend"] = backend   # name the backend
+        markers["ig_media_backend"] = backend
     new_fm_raw = upsert_media_markers(fm_raw, markers)
     if permanent:
         # A permanent failure (removed/404) will never enrich; release the clip
@@ -509,7 +509,7 @@ def _probe_audio(video: Path):
     streams". Every other failure (no ffmpeg, timeout, decode error, corrupt
     media) reports has_stream=True so the caller keeps the conservative
     failed/partial path instead of silently replacing a lost transcript with
-    a screenshot (a codex adversarial finding). mean_db is None whenever it can't be
+    a screenshot. mean_db is None whenever it can't be
     determined (no ffmpeg, no stream, inconclusive probe, timeout, or no
     volumedetect line in stderr) - the caller never treats None as silence.
     The probe subprocess is pinned to LC_ALL=C/LANG=C so the substring match
@@ -778,7 +778,7 @@ def write_crawled(path: Path, text: str, fm_raw: str, body: str, section: str,
     if enriched:
         markers["media_enriched_at"] = TODAY
     if backend:
-        markers["ig_media_backend"] = backend   # which backend fetched it
+        markers["ig_media_backend"] = backend
     new_fm_raw = upsert_media_markers(fm_raw, markers)
     if enriched:
         new_fm_raw = drop_ig_media_pending(new_fm_raw)

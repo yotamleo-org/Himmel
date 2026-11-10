@@ -176,8 +176,8 @@ def drop_keys(text, keys):
 
 
 def yaml_ok(text):
-    """Parse-before-write. main() has already refused to run without PyYAML
-    (it is a hard requirement): a structural check alone passes malformed frontmatter."""
+    """Parse-before-write. main() has already refused to run without PyYAML:
+    a structural check alone passes malformed frontmatter."""
     fm = split_fm(text)
     if fm is None:
         return False

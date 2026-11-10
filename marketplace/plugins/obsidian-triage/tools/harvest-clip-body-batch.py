@@ -69,6 +69,7 @@ TRACKING_PARAMS = {
 # --firecrawl-thin: a credit-conscious escalation lane that fetches clean
 # markdown for clips the Web Clipper captured thinly. Default runs never
 # touch firecrawl — the free tier (1000 credits/mo) is scarce.
+MAX_DECODE_PASSES = 4  # percent-decode passes; a backend seen decoding deeper raises
 FIRECRAWL_DEFAULT_BASE_URL = "https://api.firecrawl.dev"
 FIRECRAWL_DEFAULT_BUDGET = 20  # max scrape calls per run (~1 credit each)
 FIRECRAWL_DEFAULT_MAX_CREDITS = 5  # per-call ceiling: a stealth call (5) passes, anything above stops firecrawl for the run
@@ -419,8 +420,7 @@ def _norm_path(path: str, is_pattern: bool = False) -> tuple[str, str]:
     dot-segments keeping a trailing `/` after `.`/`..`/empty, empty -> `/`.
     The query is split off first: its slashes and dots are not path segments."""
     path, qsep, query = path.partition("?")
-    # 4 decode passes, raise if a backend is seen decoding deeper
-    for _ in range(4):
+    for _ in range(MAX_DECODE_PASSES):
         if is_pattern:  # an encoded `*` at any layer stays literal, never a wildcard
             path = re.sub(r"%2[aA]", "\x00", path)
         dec = unquote(path)
