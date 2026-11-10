@@ -428,7 +428,9 @@ TICK_CIGUARD_TIMEOUT (default 300), so a tick never waits on it past TICK_SECTIO
 tick; the script remembers what it alerted ($TICK_STATE_DIR/tick-ciguard-state), so later ticks
 of the same crossing print ciguard=OVER:… and no ACTION. unknown = the script is missing, or the
 cache is missing, corrupt or past TICK_CIGUARD_TTL (default 1800). A refresh is about 67 REST
-calls, so about 400 an hour at most. Not part of chief-wait's wake key.
+calls plus one GraphQL call per 100 open runs, so about 400 REST calls an hour at most. Only
+concurrent-jobs (500 or more running + queued) can read OVER; every other row is INFO. Not part
+of chief-wait's wake key.
 
 orphans-wip-age=<n>s (HIMMEL-8735) is the age of the resume scan orphans-wip= read: a detached
 refresh fills that cache at most once per TICK_ORPHANS_MIN_SECS (default 300). A missing or
@@ -3980,7 +3982,7 @@ else
     done <<< "$dispatch_alerts"
     while IFS= read -r ciguard_line; do
         [ -n "$ciguard_line" ] || continue
-        printf 'ACTION ci-guardrail %s: hold new dispatches and find the run, cancel or rerun burst before GitHub throttles the org (chief-sections/monitors.md)\n' "${ciguard_line#ALERT }"
+        printf 'ACTION ci-guardrail %s: 500 or more jobs are running or queued: hold new dispatches until they drop below 500 and find the burst (chief-sections/monitors.md)\n' "${ciguard_line#ALERT }"
     done <<< "$ciguard_alerts"
     case "$vdone_summary" in
         ''|0|skip|unknown) ;;

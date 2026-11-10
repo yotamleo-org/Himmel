@@ -64,7 +64,9 @@
 #
 # Guardrail rates (plan section 1.3) come from the runs list: runs per hour and per
 # rolling 24 h, cancels per rolling 10 min (by updated_at), reruns per hour (attempt
-# above 1, by run_started_at), runs per branch per day; each against its alert line.
+# above 1, by run_started_at), runs per branch per day. Only the concurrent jobs now
+# (500 or more running + queued in the window's last minute) read OVER (operator decision
+# 850); the run-count rows and the count of startup_failure runs print "info".
 #
 # Cancel cause is INFERRED, not read: the API does not say who cancelled a run.
 # "superseded" = a newer run of the same workflow + branch + trigger was created
@@ -419,23 +421,6 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
 | ($R | group_by([.head_branch, (.created_at | t / 86400 | floor)])
     | map({b: .[0].head_branch, d: (.[0].created_at | t / 86400 | floor | . * 86400 | todate | .[:10]), n: length})) as $BD
 | ($BD | max_by(.n) // {b: "-", d: "-", n: 0}) as $BDM
-| def flag($v; $line): if $v > $line then "OVER" else "OK" end;
-  def hrat($x): if $x.n == 0 then "0" else "\($x.n) (\($x.h * 3600 | todate))" end;
-  ([ "## Guardrail rates",
-     "",
-     "Alert lines are the plan section 1.3 guardrails. Reruns count only runs whose latest attempt is above 1 (earlier attempts are not visible).",
-     "",
-     "| metric | value | line | status |",
-     "|---|---|---|---|",
-     "\(gr("runs per hour, max"; hrat($RHM); 150)) \(flag($RHM.n; 150)) |",
-     "\(gr("runs per hour, p90"; $RHP90 | sec; "-")) - |",
-     "\(gr("runs per rolling 24 h, max"; $R24; 1500)) \(flag($R24; 1500)) |",
-     "\(gr("cancels per rolling 10 min, max"; $C10; 30)) \(flag($C10; 30)) |",
-     "\(gr("reruns per hour, max"; hrat($RRH); 10)) \(flag($RRH.n; 10)) |",
-     "\(gr("runs per branch per day, max"; (if $BDM.n == 0 then "0" else "\($BDM.n) (\($BDM.b) \($BDM.d))" end); 6)) \(flag($BDM.n; 6)) |",
-     "\(gr("branch-days over 6 runs"; ($BD | map(select(.n > 6)) | length); "-")) - |"
-  ]) as $GR
-
 # ---- merge-forward rounds per merged PR (prs.json; null = not measured) ----
 | ($prs[0]) as $P0
 | (($P0 // []) | map(select((.merged_at | t) >= $start and (.merged_at | t) <= $now))) as $PM
@@ -473,11 +458,32 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
 | ($J | map(select(.conclusion != "skipped")
       | if .never then (if .rest == true and .completed_at != null then {s: (.created_at | t), e: ([(.completed_at | t), $now] | min)} else empty end)
         elif .started and .rest == true then {s: (.created_at | t), e: (.started_at | t)}
-        elif (.started | not) and .started_at == null and (.status | IN("queued", "waiting", "pending", "requested")) then {s: (.created_at | t), e: $now}
+        elif (.started | not) and (.status | IN("queued", "waiting", "pending", "requested")) then {s: (.created_at | t), e: $now}
         else empty end
       | select(.e > .s)) | perminute(.)) as $QUE
 | ($RUN | max // 0) as $maxrun
 | ([range(0; $nm) | $RUN[.] + $QUE[.]] | max // 0) as $maxdem
+
+| ($R | map(select(.conclusion == "startup_failure" and ((.updated_at // .created_at) | t) > $start and ((.updated_at // .created_at) | t) <= $now)) | length) as $REF
+| (if $nm > 0 then $RUN[$nm - 1] + $QUE[$nm - 1] else 0 end) as $curdem
+| def flag($v; $line): if $v > $line then "OVER" else "OK" end;
+  def hrat($x): if $x.n == 0 then "0" else "\($x.n) (\($x.h * 3600 | todate))" end;
+  ([ "## Guardrail rates",
+     "",
+     "Only the concurrent-jobs row reads OVER (operator decision 850: 500 concurrent jobs is the only real limit): 500 or more jobs running + queued in the last minute of the window, so the line shown is the highest value still OK, 499. Queued is counted by job status, whatever started_at holds, and is a lower bound (see the cap check); a burst that has drained is not a hold. Every other row is information: its line is our own old run-count reference, not a GitHub limit. A startup_failure run is information too: it also covers our own broken workflow definitions, which are not a GitHub refusal. Reruns count only runs whose latest attempt is above 1 (earlier attempts are not visible).",
+     "",
+     "| metric | value | line | status |",
+     "|---|---|---|---|",
+     "\(gr("concurrent jobs, now (running + queued)"; $curdem; 499)) \(flag($curdem; 499)) |",
+     "\(gr("GitHub refusals (startup_failure runs)"; $REF; 0)) info |",
+     "\(gr("runs per hour, max"; hrat($RHM); 150)) info |",
+     "\(gr("runs per hour, p90"; $RHP90 | sec; "-")) - |",
+     "\(gr("runs per rolling 24 h, max"; $R24; 1500)) info |",
+     "\(gr("cancels per rolling 10 min, max"; $C10; 30)) info |",
+     "\(gr("reruns per hour, max"; hrat($RRH); 10)) info |",
+     "\(gr("runs per branch per day, max"; (if $BDM.n == 0 then "0" else "\($BDM.n) (\($BDM.b) \($BDM.d))" end); 6)) info |",
+     "\(gr("branch-days over 6 runs"; ($BD | map(select(.n > 6)) | length); "-")) - |"
+  ]) as $GR
 | ([range(0; $nm) | if $QUE[.] > 0 and $RUN[.] <= 60 then "q" else null end] | streak) as $sq
 | ([range(0; $nm) | if $QUE[.] > 0 and ($RUN[.] | IN(20, 40, 60)) then $RUN[.] else null end] | streak) as $sf
 | (if $sf >= 10 and $maxrun <= 60 then ["FAIL", "running sat flat at the ceiling for \($sf) min with jobs queued"]

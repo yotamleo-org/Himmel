@@ -128,12 +128,40 @@ jq -n '
        created_at: $c, run_started_at: $c, updated_at: $c, head_sha: "t\($i)", head_branch: "b2", run_attempt: 1, pull_requests: []}]' > "$TMP/guard/runs.json"
 echo '[]' > "$TMP/guard/jobs.json"
 O=$(bash "$SCRIPT" --data-dir "$TMP/guard" "${M20[@]}" 2>&1)
-has "guardrail: runs per hour" "$O" "| runs per hour, max | 12 (2026-10-20T10:00:00Z) | 150 | OK |"
-has "guardrail: runs per rolling 24 h" "$O" "| runs per rolling 24 h, max | 15 | 1500 | OK |"
-has "guardrail: cancels per rolling 10 min" "$O" "| cancels per rolling 10 min, max | 4 | 30 | OK |"
-has "guardrail: reruns per hour" "$O" "| reruns per hour, max | 2 (2026-10-20T10:00:00Z) | 10 | OK |"
-has "guardrail: runs per branch per day" "$O" "| runs per branch per day, max | 12 (b1 2026-10-20) | 6 | OVER |"
+has "guardrail: runs per hour is information (decision 850)" "$O" "| runs per hour, max | 12 (2026-10-20T10:00:00Z) | 150 | info |"
+has "guardrail: runs per rolling 24 h is information" "$O" "| runs per rolling 24 h, max | 15 | 1500 | info |"
+has "guardrail: cancels per rolling 10 min is information" "$O" "| cancels per rolling 10 min, max | 4 | 30 | info |"
+has "guardrail: reruns per hour is information" "$O" "| reruns per hour, max | 2 (2026-10-20T10:00:00Z) | 10 | info |"
+has "guardrail: runs per branch per day is information, not OVER" "$O" "| runs per branch per day, max | 12 (b1 2026-10-20) | 6 | info |"
 has "guardrail: branch-days over the line" "$O" "| branch-days over 6 runs | 1 | - | - |"
+has "guardrail: no concurrent jobs reads OK" "$O" "| concurrent jobs, now (running + queued) | 0 | 499 | OK |"
+has "guardrail: no startup_failure run prints 0 as info" "$O" "| GitHub refusals (startup_failure runs) | 0 | 0 | info |"
+
+mk "$TMP/conc" "[$(for i in $(seq 1 500); do printf '{"run_id":1,"name":"j%s","status":"queued","conclusion":null,"created_at":"2026-10-20T11:00:00Z","started_at":null,"completed_at":null},' "$i"; done)$(printf '{"run_id":1,"name":"j501","status":"queued","conclusion":null,"created_at":"2026-10-20T11:00:00Z","started_at":null,"completed_at":null}')]"
+O=$(bash "$SCRIPT" --data-dir "$TMP/conc" "${M20[@]}" 2>&1)
+has "concurrent jobs: 501 queued reads OVER" "$O" "| concurrent jobs, now (running + queued) | 501 | 499 | OVER |"
+jq 'map(select(.name != "j501"))' "$TMP/conc/jobs.json" > "$TMP/conc/j500.json"; mv "$TMP/conc/j500.json" "$TMP/conc/jobs.json"
+O=$(bash "$SCRIPT" --data-dir "$TMP/conc" "${M20[@]}" 2>&1)
+has "concurrent jobs: 500 queued reads OVER (500 or more)" "$O" "| concurrent jobs, now (running + queued) | 500 | 499 | OVER |"
+jq 'map(select(.name != "j500"))' "$TMP/conc/jobs.json" > "$TMP/conc/j499.json"; mv "$TMP/conc/j499.json" "$TMP/conc/jobs.json"
+O=$(bash "$SCRIPT" --data-dir "$TMP/conc" "${M20[@]}" 2>&1)
+has "concurrent jobs: 499 queued reads OK" "$O" "| concurrent jobs, now (running + queued) | 499 | 499 | OK |"
+mk "$TMP/queued-started" "[$(for i in $(seq 1 499); do printf '{"run_id":1,"name":"j%s","status":"queued","conclusion":null,"created_at":"2026-10-20T11:00:00Z","started_at":"2026-10-20T11:00:02Z","completed_at":null},' "$i"; done)$(printf '{"run_id":1,"name":"j500","status":"queued","conclusion":null,"created_at":"2026-10-20T11:00:00Z","started_at":"2026-10-20T11:00:02Z","completed_at":null}')]"
+O=$(bash "$SCRIPT" --data-dir "$TMP/queued-started" "${M20[@]}" 2>&1)
+has "concurrent jobs: 500 queued jobs that carry a startedAt read OVER" "$O" "| concurrent jobs, now (running + queued) | 500 | 499 | OVER |"
+mk "$TMP/drained" "[$(for i in $(seq 1 501); do printf '%s,' "$(jb "j$i" success 10:00:00 10:00:00 10:20:00)"; done | sed 's/,$//')]"
+O=$(bash "$SCRIPT" --data-dir "$TMP/drained" "${M20[@]}" 2>&1)
+has "concurrent jobs: a drained burst of 501 reads OK now" "$O" "| concurrent jobs, now (running + queued) | 0 | 499 | OK |"
+mk "$TMP/refuse-late" '[]'
+jq 'map(.conclusion = "startup_failure" | .created_at = "2026-10-20T08:00:00Z" | .updated_at = "2026-10-20T11:30:00Z")' "$TMP/refuse-late/runs.json" > "$TMP/refuse-late/r.json"; mv "$TMP/refuse-late/r.json" "$TMP/refuse-late/runs.json"
+O=$(bash "$SCRIPT" --data-dir "$TMP/refuse-late" --now 2026-10-20T12:00:00Z --hours 2 2>&1)
+has "startup_failure: a run created before the window that ended inside it is counted, as info" "$O" "| GitHub refusals (startup_failure runs) | 1 | 0 | info |"
+mk "$TMP/refuse" '[]'
+jq 'map(.conclusion = "startup_failure")' "$TMP/refuse/runs.json" > "$TMP/refuse/r.json"; mv "$TMP/refuse/r.json" "$TMP/refuse/runs.json"
+O=$(bash "$SCRIPT" --data-dir "$TMP/refuse" "${M20[@]}" 2>&1)
+has "startup_failure: a run in the window is information, never OVER" "$O" "| GitHub refusals (startup_failure runs) | 1 | 0 | info |"
+O=$(bash "$SCRIPT" --data-dir "$TMP/refuse" --now 2026-10-20T13:00:00Z --hours 2 2>&1)
+has "startup_failure: a run before the window is not counted" "$O" "| GitHub refusals (startup_failure runs) | 0 | 0 | info |"
 
 # --cap-check: per-minute running / queued and a verdict on the 60-runner ceiling.
 # capjobs <running> <queued>: <running> jobs run 10:00-10:30 (created 09:59:50), <queued> wait from 10:00 to 10:30 (REST created_at).

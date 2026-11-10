@@ -144,6 +144,8 @@ destructive git command. A refreshed graph lands only through a `chore/graph-pub
 PR merged on green — never a direct push to `main` (asserted in
 `test-graph-cadence.sh`).
 
+`scripts/luna/post-merge-refresh.sh` is a separate five-minute tick that refreshes the code graph and the himmel keyword index after merges settle, with no paid call; `graphmap-cadence.sh` will arm it with its post-merge verb (task 2.3), and until then nothing runs it.
+
 ## The ledger
 
 Two ledgers, both written every run:
