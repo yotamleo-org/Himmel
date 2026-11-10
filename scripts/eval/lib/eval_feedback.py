@@ -349,7 +349,7 @@ SHA = re.compile(r"^[0-9a-f]{7,64}$")
 
 
 def _score():
-    d =os.path.join(HERE, "..", "review-panel")
+    d = os.path.join(HERE, "..", "review-panel")
     if d not in sys.path:
         sys.path.insert(0, d)
     import score
