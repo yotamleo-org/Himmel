@@ -338,7 +338,7 @@ check "(r0r) re-armed waiter starts with N2" "N2 WRAPPED — done" "$(cat "$STUB
 contains "(r0r) later worker wraps across re-arm" "$(cat "$WORK/r0r-rearm.out")" "absorbed since last wake: wraps=1 (N2)"
 stop_waiter
 
-# The flag reads a fixture registry here (the real flags.tsv gets its auto_go row in a later PR).
+# The flag reads a fixture registry with auto_go off for the rest of the suite, whatever the real flags.tsv says.
 printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\n' > "$WORK/flags.tsv"
 export HIMMEL_FLAGS_TSV="$WORK/flags.tsv" HIMMEL_CONFIG_DIR="$WORK/no-conf"
 unset HIMMEL_FLAG_AUTO_GO  # an override in the launching shell must not decide the flag-off row
@@ -467,7 +467,6 @@ printf -- '%s\n- 10:01 LIVE — waiting on CI\n' "$READY_A" >> "$L"
 wait_exit "$WPID"
 check "(r0s7) flag off: another rc 10 answer to a READY is one WAKE worker-event" "1" "$(grep -c '^WAKE worker-event ESCALATE auto-go-error rc=1 x rc=10 ' "$WORK/r0s7.out")"
 stop_waiter
-unset HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR
 
 export PATH="$relay_path"
 if [ "${1:-}" = --wrap-relay ]; then
