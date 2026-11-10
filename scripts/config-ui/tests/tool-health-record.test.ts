@@ -30,7 +30,7 @@ test("daily-record-shares-counts-and-suppresses-partial-learning", () => {
   expect(rec.metrics["guard.block-read-secrets.eligible_calls"]).toBe(10);
   expect(rec.metrics["guard.block-read-secrets.deny_rate"]).toBe(0.3);
   expect(rec.metrics["tool.Bash.calls"]).toBe(4);
-  expect(rec.cases["guard:block-read-secrets"]).toMatchObject({ denials: 3, eligible_calls: 10, reason_rule: 0, reason_before_logging: 0, reason_not_established: 3 });
+  expect(rec.cases["guard:block-read-secrets"]).toMatchObject({ denials: 3, eligible_calls: 10, reason_rule: 0, reason_before_logging: 0, reason_not_joinable: 3, reason_not_established: 0 });
   expect(rec.cases["tool:Read"]).toMatchObject({ calls: 3, failures: 2, denials: 2 });
   // Cases and metrics hold numbers, booleans or null only, never text.
   for (const v of Object.values(rec.cases).flatMap((c: any) => Object.values(c))) expect(["number", "boolean", "object"]).toContain(typeof v);
@@ -91,12 +91,12 @@ test("a day nobody ran has no record", () => {
 });
 
 test("the reason split is carried, and rows plus residuals equal refused", () => {
-  const hit = { ts: `${DAY}T10:00:00.000Z`, v: 1, origin: "production", event: "PreToolUse", session: "s", callId: "toolu_a", tool: "Read", invocation: "00000000000a", exit: 2, elapsed: 5,
+  const hit = { ts: `${DAY}T10:00:00.000Z`, v: 1, origin: "production", event: "PreToolUse", session: sid(1), callId: "toolu_a", tool: "Read", invocation: "00000000000a", exit: 2, elapsed: 5,
     members: [{ member: "block-read-secrets.sh", occurrence: 0, outcome: "deny", reason: "RULE", elapsed: 4, denyLine: "no" }] };
   const rec = day(roll(qEvals(), [fail(1, SECRETS, 3, ["toolu_a", "toolu_b"]), fail(1, "denied/read-clamp", 1)], { chain: { skip: { state: "ok", rows: [] }, run: { state: "ok", rows: [hit] } } }));
   const g = rec.cases["guard:block-read-secrets"];
-  expect(g).toMatchObject({ denials: 3, reason_rule: 1, reason_not_established: 2, reason_before_logging: 0 });
-  expect(g.reason_rule + g.reason_timeout + g.reason_deadline + g.reason_buffer + g.reason_other + g.reason_before_logging + g.reason_not_established).toBe(g.denials);
+  expect(g).toMatchObject({ denials: 3, reason_rule: 1, reason_not_joinable: 1, reason_not_established: 1, reason_before_logging: 0 });
+  expect(g.reason_rule + g.reason_timeout + g.reason_deadline + g.reason_buffer + g.reason_other + g.reason_before_logging + g.reason_not_joinable + g.reason_not_established).toBe(g.denials);
   expect(rec.status).toBe("ok");
 });
 

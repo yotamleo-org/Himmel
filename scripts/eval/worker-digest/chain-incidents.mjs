@@ -231,25 +231,33 @@ export function rollupChain(chain, { firstDay = null, lastDay = null, refused = 
   const gaps = {};
   if (ruleKnown && refused instanceof Map) {
     for (const [name, rows] of refused) {
+      // A reason joins by session AND call id: a call id reused in another session never matches.
       const denies = list.filter((ev) => ev.member === name && ev.outcome === 'deny');
+      const keyOf = (session, id) => `${session}\0${id}`;
       const kindOf = new Map();
-      for (const ev of denies) if (!kindOf.has(ev.call_id)) kindOf.set(ev.call_id, ev.kind);
+      for (const ev of denies) { const k = keyOf(ev.session, ev.call_id); if (!kindOf.has(k)) kindOf.set(k, ev.kind); }
       const used = new Set(), byReason = Object.fromEntries(KINDS.map((k) => [k, 0]));
-      let total = 0, withReason = 0, before = 0;
+      let total = 0, withReason = 0, before = 0, notJoinable = 0;
       for (const row of rows) {
-        const want = count(row.count) ? row.count : 0, ids = Array.isArray(row.ids) ? row.ids.filter((id) => typeof id === 'string') : [];
+        const want = count(row.count) ? row.count : 0, session = typeof row.session === 'string' && row.session ? row.session : null;
+        const ids = session && Array.isArray(row.ids) ? [...new Set(row.ids.filter((id) => typeof id === 'string'))] : [];
         let reasoned = 0;
         for (const id of ids) {
-          if (reasoned >= want || used.has(id) || !kindOf.has(id)) continue;
-          used.add(id); reasoned++; byReason[kindOf.get(id)]++;
+          const k = keyOf(session, id);
+          if (reasoned >= want || used.has(k) || !kindOf.has(k)) continue;
+          used.add(k); reasoned++; byReason[kindOf.get(k)]++;
         }
         const rest = want - reasoned;
         // Older than the first run-log row: the writer had not started to log reasons, so there is no row to find.
         if (runStart !== null && Number.isFinite(row.last) && row.last < runStart) before += rest;
+        // A refusal with no call id to try (a capped sample, a legacy row) cannot be joined: that is missing metadata,
+        // not a missing log row.
+        else notJoinable += Math.min(rest, Math.max(0, want - ids.length));
         total += want; withReason += reasoned;
       }
-      gaps[name] = { refused: total, with_reason: withReason, by_reason: byReason, before_reasons_logged: before, not_established: total - withReason - before,
-        unmatched_chain: denies.filter((ev) => !used.has(ev.call_id)).length, run_log_start: runLogStart };
+      gaps[name] = { refused: total, with_reason: withReason, by_reason: byReason, before_reasons_logged: before, not_joinable: notJoinable,
+        not_established: total - withReason - before - notJoinable,
+        unmatched_chain: denies.filter((ev) => !used.has(keyOf(ev.session, ev.call_id))).length, run_log_start: runLogStart };
     }
   }
   // Nearest-rank percentile of the kept times; the run row's elapsed is the whole chain for that call, not one guard.

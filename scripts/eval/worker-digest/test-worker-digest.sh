@@ -379,5 +379,23 @@ check "Edit-input subclasses are counted" '[ "$(jq -c ".metrics.edit_input" "$OJ
 check "the separator error is counted" 'jq -e ".metrics.separator_errors == 1" "$OJ" >/dev/null'
 check "judge calls with and without the declared JUDGE-BRIEF marker are counted" 'jq -e ".metrics.judge_calls == {\"marked\":1,\"unmarked\":1}" "$OJ" >/dev/null'
 
+echo "denied_calls: every refused call by id, bounded per row (5000 tuples or 64 KiB), with captured and omitted counts"
+check "a refused call is a [call_id, class, ts] tuple on its tool row" 'jq -e "[.tool_health[] | .denied_calls[]? | select(.[0] == \"toolu_d1\")] | length == 1 and (.[0][1] == \"denied/guard-pr-check-literal\") and (.[0][2] | type == \"number\")" "$TMP/classes.json" >/dev/null'
+check "captured counts the tuples and omitted is 0 under the cap" 'jq -e "[.tool_health[] | select(.denials > 0)] | all((.denied_calls | length) == .denied_calls_captured and .denied_calls_omitted == 0 and .denied_calls_captured == .denials)" "$TMP/classes.json" >/dev/null'
+check "a row with no refusal carries an empty tuple list" 'jq -e "[.tool_health[] | select(.denials == 0) | .denied_calls] | all(. == [])" "$TMP/classes.json" >/dev/null'
+SCAP=9696c1a5-0000-4000-8000-0000000000ca
+mkdir -p "$TMP/cap"
+python3 -I -c 'import json, sys
+s = sys.argv[1]; out = []
+out.append({"type": "user", "uuid": "p", "sessionId": s, "timestamp": "2026-11-09T12:00:00.000Z", "message": {"role": "user", "content": "go"}})
+for i in range(1200):
+    cid = "toolu_cap_%060d" % i
+    out.append({"type": "assistant", "uuid": "a%d" % i, "sessionId": s, "timestamp": "2026-11-09T12:00:01.000Z", "message": {"model": "claude-opus-5-5", "id": "m%d" % i, "role": "assistant", "content": [{"type": "tool_use", "id": cid, "name": "Bash", "input": {"command": "git stash"}}]}})
+    out.append({"type": "user", "uuid": "u%d" % i, "sessionId": s, "timestamp": "2026-11-09T12:00:02.000Z", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": cid, "is_error": True, "content": "PreToolUse:Bash hook error: [command hook 5]: block-git-stash: refused"}]}})
+sys.stdout.write("".join(json.dumps(r) + "\n" for r in out))' "$SCAP" >"$TMP/cap/$SCAP.jsonl"
+digest "$TMP/cap/$SCAP.jsonl" >"$TMP/cap/out.json" 2>"$TMP/cap/err" || bad "the capped digest exits 0: $(head -c 300 "$TMP/cap/err")"
+check "the 64 KiB cap bounds the encoded tuples" 'jq -e "[.tool_health[] | select(.tool == \"Bash\")][0] | (.denied_calls | tojson | length) <= 65536 and .denied_calls_captured < 1200" "$TMP/cap/out.json" >/dev/null'
+check "captured plus omitted is every refused call" 'jq -e "[.tool_health[] | select(.tool == \"Bash\")][0] | .denied_calls_captured + .denied_calls_omitted == 1200 and .denied_calls_omitted > 0" "$TMP/cap/out.json" >/dev/null'
+
 echo "test-worker-digest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -52,12 +52,12 @@ export function buildRecord(rollup, { day }) {
     const gap = h.reason_gap;
     const reasons = Object.fromEntries(REASONS.map((k) => [`reason_${k}`, gap ? gap.by_reason[k] : null]));
     cases[`guard:${name}`] = { denials: h.failures, eligible_calls: num(h.eligible_calls) ? h.eligible_calls : null, unattributed: h.unattributed, outside_eligible: num(h.outside_eligible) ? h.outside_eligible : null,
-      ...reasons, reason_before_logging: gap ? gap.before_reasons_logged : null, reason_not_established: gap ? gap.not_established : null };
+      ...reasons, reason_before_logging: gap ? gap.before_reasons_logged : null, reason_not_joinable: gap ? gap.not_joinable : null, reason_not_established: gap ? gap.not_established : null };
     metrics[`guard.${name}.denials`] = h.failures;
     metrics[`guard.${name}.eligible_calls`] = num(h.eligible_calls) ? h.eligible_calls : null;
     metrics[`guard.${name}.deny_rate`] = num(h.eligible_rate) ? h.eligible_rate : null;
     metrics[`guard.${name}.timeout_rate`] = gap ? ratio(gap.by_reason.timeout, h.eligible_calls) : null;
-    if (gap && REASONS.reduce((s, k) => s + gap.by_reason[k], gap.before_reasons_logged + gap.not_established) !== h.failures) problems.push(`guard ${name}: reason rows and residuals do not add up to the denials`);
+    if (gap && REASONS.reduce((s, k) => s + gap.by_reason[k], gap.before_reasons_logged + gap.not_joinable + gap.not_established) !== h.failures) problems.push(`guard ${name}: reason rows and residuals do not add up to the denials`);
   }
   metrics.calls = totalKnown ? rollup.totalCalls : (rollup.totalCalls === 0 ? 0 : null);
   metrics.failures = tools.reduce((s, t) => s + t.failures, 0);

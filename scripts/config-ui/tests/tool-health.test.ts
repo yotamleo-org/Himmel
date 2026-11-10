@@ -838,18 +838,19 @@ const runRow = (n: number, members: any[], over: any = {}) => ({ ts: `${C_DAY}T1
   callId: `toolu_C${n}`, tool: "Read", invocation: INV(n), exit: 2, elapsed: 20, members, ...over });
 const WINDOW_LINE = "must-run guard did not evaluate this call within its 15000ms window; failing closed";
 // Fixture T: three secrets-guard refusals (a rule denial, an ETIMEDOUT deny, an entry-deadline deny) and one advisory ENOBUFS skip.
-function chainT() {
+function chainT(session = "sess-chain") {
+  const ss = (over: any = {}) => ({ sessionId: session, ...over }), rs = (over: any = {}) => ({ session, ...over });
   return {
     skip: { state: "ok", rows: [
-      skipRow(2, { denyLine: WINDOW_LINE }),
-      skipRow(3, { reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0, starved: true, denyLine: "must-run guard was left no safe window before the entry deadline; failing closed" }),
-      skipRow(4, { action: "skip", member: "read-clamp.sh", reason: "ENOBUFS", elapsed: 321, budget: 8000 }),
+      skipRow(2, ss({ denyLine: WINDOW_LINE })),
+      skipRow(3, ss({ reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0, starved: true, denyLine: "must-run guard was left no safe window before the entry deadline; failing closed" })),
+      skipRow(4, ss({ action: "skip", member: "read-clamp.sh", reason: "ENOBUFS", elapsed: 321, budget: 8000 })),
     ] },
     run: { state: "ok", rows: [
-      runRow(1, [runMember({ denyLine: "blocked: a secret-shaped path" })]),
-      runRow(2, [runMember({ reason: "ETIMEDOUT", elapsed: 15072, budget: 15000, denyLine: WINDOW_LINE })]),
-      runRow(3, [runMember({ reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0, denyLine: "must-run guard was left no safe window before the entry deadline; failing closed" })]),
-      runRow(4, [runMember({ member: "read-clamp.sh", outcome: "skip", reason: "ENOBUFS", elapsed: 321, budget: 8000 })], { exit: 0 }),
+      runRow(1, [runMember({ denyLine: "blocked: a secret-shaped path" })], rs()),
+      runRow(2, [runMember({ reason: "ETIMEDOUT", elapsed: 15072, budget: 15000, denyLine: WINDOW_LINE })], rs()),
+      runRow(3, [runMember({ reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0, denyLine: "must-run guard was left no safe window before the entry deadline; failing closed" })], rs()),
+      runRow(4, [runMember({ member: "read-clamp.sh", outcome: "skip", reason: "ENOBUFS", elapsed: 321, budget: 8000 })], rs({ exit: 0 })),
     ] },
   };
 }
@@ -981,9 +982,9 @@ const evCells = (html: string) => Object.fromEntries(cells(html, "data-chain-eve
 const stat = (html: string, id: string) => (new RegExp(`data-stat="${id}">([^<]*)<`).exec(html) || [])[1];
 
 test("the guard drill-in says why it refused: a rule, a timeout and a guard that never started are separate rows", async () => {
-  const html = await chainPage(chainT(), GUARD);
+  const html = await chainPage(chainT(bSession(1)), GUARD);
   const why = Object.fromEntries(cells(html, "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
-  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "1", buffer: "0", other: "0", before_logged: "0", not_established: "0" });
+  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "1", buffer: "0", other: "0", before_logged: "0", not_joinable: "0", not_established: "0" });
   const ev = evCells(html);
   expect(Object.keys(ev).sort()).toEqual(["toolu_C1", "toolu_C2", "toolu_C3"]);
   // [When, Outcome, Reason, Guard, Tool, Time used, Refusal line, Call]
@@ -1000,7 +1001,7 @@ test("the guard drill-in says why it refused: a rule, a timeout and a guard that
 // Fixture G: six counted refusals of one guard. Two are older than the first run-log row, two have a chain row (a rule and a
 // timeout), one names a call the chain never saw, one carries no call id. The chain also holds a refusal that no counted refusal names.
 const G = "denied/block-read-secrets";
-const gapData = (chain: any = chainT()) => roll([1, 2, 3, 4].map((n, i) => bEval(n, [bTool("Read", 5, { [G]: [2, 2, 1, 1][i] })]))
+const gapData = (chain: any = chainT(bSession(2))) => roll([1, 2, 3, 4].map((n, i) => bEval(n, [bTool("Read", 5, { [G]: [2, 2, 1, 1][i] })]))
   , [bFail(1, G, 2, ["toolu_old1", "toolu_old2"], ["2026-10-28T08:00:00Z", "2026-10-28T08:05:00Z"]),
     bFail(2, G, 2, ["toolu_C1", "toolu_C2"], ["2026-10-28T10:30:00Z", "2026-10-28T10:31:00Z"]),
     bFail(3, G, 1, ["toolu_nochain"], ["2026-10-28T10:40:00Z", "2026-10-28T10:40:00Z"]),
@@ -1008,13 +1009,13 @@ const gapData = (chain: any = chainT()) => roll([1, 2, 3, 4].map((n, i) => bEval
 
 test("guard-reason-rows-plus-no-reason-counts-equal-refused", async () => {
   const gap = guardOf(gapData(), G).reason_gap;
-  expect(gap).toMatchObject({ refused: 6, with_reason: 2, before_reasons_logged: 2, not_established: 2, unmatched_chain: 1, run_log_start: "2026-10-28T10:00:01.000Z" });
+  expect(gap).toMatchObject({ refused: 6, with_reason: 2, before_reasons_logged: 2, not_joinable: 1, not_established: 1, unmatched_chain: 1, run_log_start: "2026-10-28T10:00:01.000Z" });
   expect(gap.by_reason).toEqual({ rule: 1, timeout: 1, deadline: 0, buffer: 0, other: 0 });
-  expect(Object.values(gap.by_reason).reduce((n: number, v: any) => n + v, 0) + gap.before_reasons_logged + gap.not_established).toBe(gap.refused);
+  expect(Object.values(gap.by_reason).reduce((n: number, v: any) => n + v, 0) + gap.before_reasons_logged + gap.not_joinable + gap.not_established).toBe(gap.refused);
   // The page shows the same rows and the two labelled residuals, and they add up to the Refused card.
   const html = await page(gapData(), GUARD);
   const why = Object.fromEntries(cells(html, "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
-  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "0", buffer: "0", other: "0", before_logged: "2", not_established: "2" });
+  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "0", buffer: "0", other: "0", before_logged: "2", not_joinable: "1", not_established: "1" });
   expect(Object.values(why).reduce((n: number, v: any) => n + Number(v), 0)).toBe(6);
   expect(html).toContain("Recorded before reasons were logged");
   expect(html).toContain("No reason row, cause not established");
@@ -1028,7 +1029,7 @@ test("the reason split is unknown, never zero, when the run log cannot be read",
   expect(guardOf(gapData(null), G).reason_gap).toBeNull();
   // Run log present but empty: nothing is known to have started, so no refusal is called "before reasons were logged".
   const empty = guardOf(gapData({ skip: { state: "ok", rows: [] }, run: { state: "ok", rows: [] } }), G).reason_gap;
-  expect(empty).toMatchObject({ refused: 6, with_reason: 0, before_reasons_logged: 0, not_established: 6, run_log_start: null });
+  expect(empty).toMatchObject({ refused: 6, with_reason: 0, before_reasons_logged: 0, not_joinable: 1, not_established: 5, run_log_start: null });
 });
 
 test("the recent-events table keeps a word whole in its narrow columns and lets the refusal line and call id take the wrapping", async () => {
@@ -1745,4 +1746,42 @@ test("outcome-partition-the-page-shows-not-run-and-changed-or-stopped", async ()
   expect(html).not.toContain(">Recovery<");
   const legacy = await page(rollupToolHealth([oRow("s2", 2, [oHealth()])], [], O_Q, O_NOW));
   expect((/<p class="sub" data-note="outcomes">([^<]*)</.exec(legacy) || [])[1]).toContain("not recorded for 1 of 1 sessions");
+});
+
+// Evidence joins: refusal reasons join by session, call id and guard from the digest's full denied_calls, not the five-id sample.
+const J = "denied/block-read-secrets", JS = bSession(7);
+const jIds = Array.from({ length: 10 }, (_, i) => `toolu_J${i}`);
+const jTool = (ids: string[], omitted = 0) => ({ ...bTool("Read", 12, { [J]: ids.length + omitted }), denied_calls: ids.map((id) => [id, J, Date.parse("2026-10-28T10:30:00Z")]), denied_calls_captured: ids.length, denied_calls_omitted: omitted });
+const jChain = (ids: string[], session = JS) => ({ skip: { state: "ok", rows: [] }, run: { state: "ok", rows: ids.map((id, i) => runRow(i + 1, [runMember()], { callId: id, session, invocation: INV(i + 1) })) } });
+test("evidence-join-ten-refusals-with-ten-chain-rows-show-ten-reasons", () => {
+  const d = roll([bEval(7, [jTool(jIds)])], [bFail(7, J, 10, jIds.slice(0, 5), ["2026-10-28T10:30:00Z", "2026-10-28T10:31:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain: jChain(jIds) });
+  expect(guardOf(d, J).reason_gap).toMatchObject({ refused: 10, with_reason: 10, not_established: 0, not_joinable: 0 });
+});
+test("evidence-join-a-reused-call-id-in-another-session-does-not-match", () => {
+  const d = roll([bEval(7, [jTool(["toolu_R1"])])], [bFail(7, J, 1, ["toolu_R1"], ["2026-10-28T10:30:00Z", "2026-10-28T10:30:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain: jChain(["toolu_R1"], bSession(8)) });
+  expect(guardOf(d, J).reason_gap).toMatchObject({ refused: 1, with_reason: 0, not_established: 1, unmatched_chain: 1 });
+});
+test("evidence-join-a-capped-sample-is-not-joinable-not-a-missing-log-row", () => {
+  const d = roll([bEval(7, [bTool("Read", 12, { [J]: 4 })])], [bFail(7, J, 4, ["toolu_J0", "toolu_J1"], ["2026-10-28T10:30:00Z", "2026-10-28T10:31:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain: jChain(["toolu_J0"]) });
+  const g = guardOf(d, J).reason_gap;
+  expect(g).toMatchObject({ refused: 4, with_reason: 1, not_established: 1, not_joinable: 2 });
+  expect(g.with_reason + g.before_reasons_logged + g.not_established + g.not_joinable).toBe(g.refused);
+  const t = roll([bEval(7, [jTool(jIds.slice(0, 3), 7)])], [bFail(7, J, 10, jIds.slice(0, 3), ["2026-10-28T10:30:00Z", "2026-10-28T10:31:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain: jChain(jIds) });
+  expect(guardOf(t, J).reason_gap).toMatchObject({ refused: 10, with_reason: 3, not_joinable: 7 });
+  expect(t.coverage.evidence).toMatchObject({ denied_calls_captured: 3, denied_calls_omitted: 7 });
+});
+test("evidence-join-a-duplicate-denied-call-tuple-counts-once", () => {
+  const tool = { ...jTool(["toolu_D1"]), denied_calls: [["toolu_D1", J, 1], ["toolu_D1", J, 1]] };
+  const d = roll([bEval(7, [tool])], [bFail(7, J, 1, ["toolu_D1"], ["2026-10-28T10:30:00Z", "2026-10-28T10:30:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain: jChain(["toolu_D1"]) });
+  expect(guardOf(d, J).reason_gap).toMatchObject({ refused: 1, with_reason: 1 });
+});
+test("source-coverage-names-the-measured-population-and-what-is-not-integrated", async () => {
+  const d = roll([bEval(7, [jTool(jIds)])], [], {});
+  expect(d.coverage.population).toBe("ingested Claude Code journal attempts");
+  expect(d.coverage.not_integrated).toEqual({ codex: { calls: null, rate: null }, t3: { calls: null, rate: null } });
+  expect(d.coverage.newest_session_ts).toBe("2026-10-28T12:00:00.000Z");
+  const html = await page(d);
+  const note = (/<p class="sub" data-note="coverage">([^<]*)</.exec(html) || [])[1] || "";
+  expect(note).toContain("ingested Claude Code journal attempts");
+  expect(note).toContain("native Codex and T3 not integrated");
 });

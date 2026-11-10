@@ -154,7 +154,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cohort) || cohort < firstDay || cohort > lastDay) return null;
       const key = `${session}\0${agent}\0${cohort}`;
       if (!slots.has(key)) {
-        const slot = { session, agent, day: cohort, lane, role, profile, defv: num(r.config?.digest_v) ? String(r.config.digest_v) : 'unknown', team: teamOf(profile), gap: typeof r.meta?.launch_gap === 'string' ? r.meta.launch_gap : null, model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
+        const slot = { session, agent, day: cohort, ts, lane, role, profile, defv: num(r.config?.digest_v) ? String(r.config.digest_v) : 'unknown', team: teamOf(profile), gap: typeof r.meta?.launch_gap === 'string' ? r.meta.launch_gap : null, model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
         slots.set(key, slot);
         const agentKey = `${session}\0${agent}`, cohorts = byAgent.get(agentKey) || [];
         cohorts.push(slot); byAgent.set(agentKey, cohorts);
@@ -240,7 +240,11 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
           if (typeof f.recovered === 'boolean') { target.known += f.count; if (f.recovered) target.recovered += f.count; }
         }
         // The counted refusals themselves, so the chain can say which have a reason row; stripped before the result leaves.
-        h.refusals.push({ count: f.count, ids: Array.isArray(f.tool_call_ids) ? f.tool_call_ids : [], first: f.first_ts, last: f.last_ts });
+        // The ids come from the digest's full denied_calls when the session has them, else the failure row's capped sample.
+        const dc = [...s.tools.values()].filter((t) => Array.isArray(t.denied_calls));
+        const ids = dc.length ? [...new Set(dc.flatMap((t) => t.denied_calls.filter((c) => Array.isArray(c) && typeof c[0] === 'string' && c[1] === f.class).map((c) => c[0])))]
+          : Array.isArray(f.tool_call_ids) ? f.tool_call_ids : [];
+        h.refusals.push({ count: f.count, ids, session: s.session, first: f.first_ts, last: f.last_ts });
         hooks.set(f.class, h); dailyHooks.set(key, d);
       }
     }
@@ -371,7 +375,16 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
 // Bash calls rtk's history.db saw in the window that have no digest at all. rtk.coverage(first, last) -> {state, sessions: Map<id, calls>}.
 function coverageOf(window, digested, rtk, firstDay, lastDay) {
   const ids = (known) => new Set(window.filter((s) => s.known === known).map((s) => s.session));
-  const cov = { sessions: ids(true).size, without_tool_health: ids(false).size, rtk: { state: 'not-read', undigested_sessions: null, undigested_calls: null } };
+  // What is measured: Claude Code journals the digest ingested. Native Codex and T3 sessions are not integrated, so their
+  // counts are null (never zero), and the `native` lane is not native Codex coverage.
+  const rows = window.flatMap((s) => [...s.tools.values()]);
+  const sum = (k) => rows.reduce((n, h) => n + (num(h[k]) ? h[k] : 0), 0);
+  const newest = window.reduce((t, s) => (Number.isFinite(s.ts) && (t === null || s.ts > t) ? s.ts : t), null);
+  const cov = { sessions: ids(true).size, without_tool_health: ids(false).size, population: 'ingested Claude Code journal attempts',
+    not_integrated: { codex: { calls: null, rate: null }, t3: { calls: null, rate: null } },
+    newest_session_ts: newest === null ? null : new Date(newest).toISOString(),
+    evidence: { denied_calls_captured: sum('denied_calls_captured'), denied_calls_omitted: sum('denied_calls_omitted'), rows_without_denied_calls: rows.filter((h) => num(h.denials) && h.denials > 0 && !Array.isArray(h.denied_calls)).length },
+    rtk: { state: 'not-read', undigested_sessions: null, undigested_calls: null } };
   if (typeof rtk?.coverage !== 'function') return cov;
   let c;
   try { c = rtk.coverage(firstDay, lastDay); } catch { c = { state: 'error' }; }

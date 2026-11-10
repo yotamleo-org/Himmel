@@ -174,7 +174,16 @@ function kpis(data) {
     tile("failed", "Failed", num(failed), data ? `${sum("errors")} tool errors · ${sum("denials")} denied${sum("blocked") ? ` · ${sum("blocked")} blocked reports (not failures)` : ""}` : "—"),
     tile("rate", "Failure rate", pct(rate), data ? (bad.size ? "Count check failed: rate hidden" : `${failed} of ${num(calls)} calls`) : "—"),
     tile("highest", "Highest rate", worst ? pct(worst.r) : "—", data ? (worst ? `${worst.t.tool} · ${worst.t.failures} of ${worst.t.calls} calls` : "no tool with 10 or more calls") : "—"),
-  ].join("")}</div>${recovery}${outcomes}`;
+  ].join("")}</div>${recovery}${outcomes}${coverageNote(data)}`;
+}
+// What the counts cover, so a partial population never reads as the whole fleet.
+function coverageNote(data) {
+  const c = data && data.coverage;
+  if (!c || !c.population) return "";
+  const ev = c.evidence || {};
+  const capped = isNum(ev.denied_calls_omitted) && ev.denied_calls_omitted > 0 ? ` · reason evidence capped for ${ev.denied_calls_omitted} refusals` : "";
+  const legacy = isNum(ev.rows_without_denied_calls) && ev.rows_without_denied_calls > 0 ? ` · ${ev.rows_without_denied_calls} rows with only a five-id sample` : "";
+  return `<p class="sub" data-note="coverage">Measured: ${esc(c.population)}; native Codex and T3 not integrated (no counts)${c.newest_session_ts ? ` · newest session ${esc(utc(c.newest_session_ts))}` : ""}${capped}${legacy}</p>`;
 }
 function dailyRows(data) {
   const by = new Map();
@@ -463,6 +472,7 @@ function guardWhy(data, h, token) {
   const gap = h.reason_gap && known ? h.reason_gap : null;
   const count = (k) => (gap ? gap.by_reason[k] : m ? m.by_reason[k] : known && c.by_reason[k] !== null ? 0 : null);
   const residual = gap ? [["before_logged", "Recorded before reasons were logged", gap.before_reasons_logged, `refused before the hook chain began to log a reason${gap.run_log_start ? ` (the first run-log row is ${utc(gap.run_log_start)})` : ""}`],
+    ["not_joinable", "No call id to join", gap.not_joinable, "refused, but only a capped sample or a legacy row names its calls, so no chain row can be matched"],
     ["not_established", "No reason row, cause not established", gap.not_established, "refused with no chain row, and not older than the run log"]] : [];
   const rows = [...REASON_ROWS.map(([k, label, means]) => [k, label, count(k), means]), ...residual].map(([k, label, n, means]) => `<tr data-chain-reason="${k}">${td(esc(label))}${td(num(n))}${td(esc(means))}</tr>`);
   const unmatched = gap && gap.unmatched_chain > 0 ? `${gap.unmatched_chain} chain row${gap.unmatched_chain === 1 ? "" : "s"} names a refusal this window does not count (a session not yet digested, or a call outside the window).` : "";

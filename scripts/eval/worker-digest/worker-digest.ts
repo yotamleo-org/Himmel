@@ -129,6 +129,9 @@ type EditInput = { not_found: number; ambiguous: number; unchanged: number; stal
 const SEPARATOR_ERROR = /(?:^|[\s:])=+ not found\b/m;
 const JUDGE_TYPE = /(^|:)(console-)?judge(-[a-z0-9-]+)?$/;
 const JUDGE_BRIEF = /^[ \t]*JUDGE-BRIEF:[ \t]*[0-9a-f]{16}[ \t]*$/m;
+// Every refused call of a tool row as [call_id, class, ts], so a reason joins per call rather than through the five-id
+// sample. Bounded per row: past either cap a tuple is counted as omitted, never dropped silently.
+const MAX_DENIED_CALLS = 5000, MAX_DENIED_BYTES = 65536;
 const zeroOutcomes = (): Record<ToolOutcome, number> => Object.fromEntries(TOOL_OUTCOMES.map((k) => [k, 0])) as Record<ToolOutcome, number>;
 const CLASSIFIER = /denied by the Claude Code auto mode classifier/;
 const BRACKET = /Reason: \[([^\]\n]{1,80})\]/;
@@ -403,11 +406,11 @@ async function main() {
   const callDay = new Map<string, string | null>();
   // Time to result per call (RESULT time minus START time) and the API message each call came from, to tell a call run alone from a batch.
   const callStart = new Map<string, number>(), callEnd = new Map<string, number>(), callApi = new Map<string, string>();
-  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; outcomes: Record<ToolOutcome, number>; classes: Record<string, number>; bash_calls?: ([string, string, string | null] | [string, string, string | null, number])[]; timing?: { single: number[]; batched: number[]; missing: number; capped?: true } }>();
+  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; outcomes: Record<ToolOutcome, number>; denied_calls: [string, string, number | null][]; denied_calls_captured: number; denied_calls_omitted: number; classes: Record<string, number>; bash_calls?: ([string, string, string | null] | [string, string, string | null, number])[]; timing?: { single: number[]; batched: number[]; missing: number; capped?: true } }>();
   const toolRow = (agent: Agent, tool: string, day: string | null) => {
     const key = `${agent.id}\0${day}\0${tool}`;
     let r = health.get(key);
-    if (!r) { r = { agent, lane, profile: o.profile, day, tool, calls: 0, failures: 0, errors: 0, denials: 0, outcomes: zeroOutcomes(), classes: Object.create(null) }; health.set(key, r); }
+    if (!r) { r = { agent, lane, profile: o.profile, day, tool, calls: 0, failures: 0, errors: 0, denials: 0, outcomes: zeroOutcomes(), denied_calls: [], denied_calls_captured: 0, denied_calls_omitted: 0, classes: Object.create(null) }; health.set(key, r); }
     return r;
   };
 
@@ -435,7 +438,16 @@ async function main() {
       h.failures++;
       h.classes[cls] = (h.classes[cls] ?? 0) + 1;
       if (failure === "error" || failure === "suite") h.errors++;
-      if (failure === "denied") h.denials++;
+      if (failure === "denied") {
+        h.denials++;
+        const ids = (deniedSeen.get(h) ?? new Set<string>()); deniedSeen.set(h, ids);
+        if (!ids.has(id)) {
+          ids.add(id);
+          const tuple: [string, string, number | null] = [id, cls, ts ?? null], bytes = (deniedBytes.get(h) ?? 2) + JSON.stringify(tuple).length + 1;
+          if (h.denied_calls.length < MAX_DENIED_CALLS && bytes <= MAX_DENIED_BYTES) { h.denied_calls.push(tuple); h.denied_calls_captured++; deniedBytes.set(h, bytes); }
+          else h.denied_calls_omitted++;
+        }
+      }
       // The partition decides: a call counted as an error or denial here is that outcome (a BLOCKED report on an
       // errored call is error; on a successful one, ok_blocked).
       if (failure === "error" || failure === "suite") callOutcome.set(id, "error");
@@ -465,6 +477,7 @@ async function main() {
     return toolKey(name);
   };
   const callCause = new Map<string, string>();
+  const deniedSeen = new WeakMap<object, Set<string>>(), deniedBytes = new WeakMap<object, number>();
   // Every issued call's outcome: unknown until a result says otherwise; interrupted when its turn was cancelled first.
   const callOutcome = new Map<string, ToolOutcome>(), settled = new Set<string>();
   const editInput: EditInput = { not_found: 0, ambiguous: 0, unchanged: 0, stale: 0, not_read: 0 };
