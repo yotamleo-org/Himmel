@@ -407,7 +407,7 @@ function tmp(fn) {
   const d = mkdtempSync(join(tmpdir(), 'model-price-calls-'));
   try { return fn(d); } finally { rmSync(d, { recursive: true, force: true }); }
 }
-const stageShard = (dir, name) => { cpSync(join(FIX, name), join(dir, name), { recursive: true }); return join(dir, name, 'manifest.json'); };
+const stageShard = (dir, name) => { cpSync(join(FIX, name), join(dir, name), { recursive: true }); return join(dir, name, 'projection-manifest.json'); };
 function runCalls(manifestPath, extra = []) {
   const r = spawnSync('node', [CLI, 'calls', '--manifest', manifestPath, ...extra], { encoding: 'utf8' });
   const parsed = r.stdout.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
