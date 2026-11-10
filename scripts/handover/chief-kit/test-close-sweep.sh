@@ -492,8 +492,8 @@ printf '{"type":"x","cwd":"/x","sessionId":"%s"}\n' "$SID" > "$PROJECTS/-x/$SID.
 mk_doc "$DD/HIMMEL-9-N1-sweep-2026-11-10.md" ""; mk_rec "$S" 1 "$DD/HIMMEL-9-N1-sweep-2026-11-10.md" "" "" "$GONE_PID" "" "$(now)" "$SID"
 run_sweep "$S"
 check "capture: the transcript is found by session id and captured once" "$(grep -c '"transcript_path"' "$CAPTURE_LOG")" "1"
-contains "capture: the payload names the transcript, session and reason" "$(cat "$CAPTURE_LOG")" "\"session_id\": \"$SID\""
-contains "capture: reason worker-close" "$(cat "$CAPTURE_LOG")" "worker-close"
+contains "capture: the payload names the transcript, session and reason" "$(cat "$CAPTURE_LOG")" "\"session_id\": \"$SID\"" # read-sink-ok: a log the suite itself created under its own scratch dir
+contains "capture: reason worker-close" "$(cat "$CAPTURE_LOG")" "worker-close" # read-sink-ok: a log the suite itself created under its own scratch dir
 check "capture: recorded as ok" "$(rec_field "$S" N1 capture)" "ok"
 check "cost: one ledger row for the session" "$(grep -c "\"session\":\"$SID\"" "$WORKER_SESSION_COST_LEDGER")" "1"
 S="$W/state-cc2"
