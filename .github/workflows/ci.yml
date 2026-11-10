@@ -597,13 +597,14 @@ jobs:
       commit-lint: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__platforms.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__security.outcome) && 'pass' || 'fail' }}
       jira-cli-smoke: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke__npm.outcome) && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke.outcome) && 'pass' || 'fail' }}
       guardrail-matrices: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.guardrail-matrices.outcome) && 'pass' || 'fail' }}
-      claude-startup: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun-path.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__cli.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__userns.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__mock-turn.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-image.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-cache.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__consult.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__hook-smoke.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__shfmt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__live-turn.outcome) && 'pass' || 'fail' }}
+      claude-startup: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun-path.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__cli.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__userns.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__mock-turn.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-image.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-cache.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__consult.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__hook-smoke.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__shfmt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__live-turn.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__raw.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__raw-clean.outcome) && 'pass' || 'fail' }}
       doc-invariants: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__dev.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__guard.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__self.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__desc-cap.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__positional.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__catalog.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__secrets-doc.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__llms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__terms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__hermetic.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__stage.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__agents-md.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__debrand.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__lanes.outcome) && 'pass' || 'fail' }}
     # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
     env:
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
       CLAUDE_CLI_VERSION: '2.1.319'
+      CLAUDE_STARTUP_MANIFEST: claude-startup-raw/rows.txt
     # A container's default run shell is sh; this is the host runner's default.
     defaults:
       run:
@@ -743,14 +744,14 @@ jobs:
       - id: claude-startup
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        run: bash scripts/testing/test-fakekey-claude-startup.sh
+        run: bash scripts/ci/claude-startup-row.sh scripts/testing/test-fakekey-claude-startup.sh
       # HIMMEL-4411: a full scripted turn (text, Bash tool_use, tool_result) against
       # scripts/testing/mock-anthropic. The suite also asserts the installed CLI
       # equals CLAUDE_CLI_VERSION, so a version drift fails loudly here.
       - id: claude-startup__mock-turn
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        run: bash scripts/testing/test-claude-mock-turn.sh
+        run: bash scripts/ci/claude-startup-row.sh scripts/testing/test-claude-mock-turn.sh
       # HIMMEL-4412: two "a hook that fails open" smokes on the same mock. MOCK-BACKED:
       # they prove Claude Code enforces the consult sandbox and that the project hook
       # chain fires clean in a real session; neither is evidence of real-model behaviour.
@@ -774,11 +775,11 @@ jobs:
       - id: claude-startup__consult
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        run: bash scripts/testing/test-mock-consult-sandbox.sh
+        run: bash scripts/ci/claude-startup-row.sh scripts/testing/test-mock-consult-sandbox.sh
       - id: claude-startup__hook-smoke
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        run: bash scripts/testing/test-mock-hook-smoke.sh
+        run: bash scripts/ci/claude-startup-row.sh scripts/testing/test-mock-hook-smoke.sh
       # The live turn denies `git stash drop` through block-git-stash.sh, which reads
       # the command with shfmt; without it the deny text names shfmt, not the stash.
       # Same pinned, sha-verified release as the shell-unit job; keep in lockstep.
@@ -796,7 +797,21 @@ jobs:
       - id: claude-startup__live-turn
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        run: bash scripts/testing/test-mock-hook-live-turn.sh
+        run: bash scripts/ci/claude-startup-row.sh scripts/testing/test-mock-hook-live-turn.sh
+      - id: claude-startup__raw
+        name: Upload the raw claude-startup rows
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: claude-startup-raw
+          path: claude-startup-raw/
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+      - id: claude-startup__raw-clean
+        name: Remove the raw claude-startup rows from the workspace
+        if: ${{ !cancelled() }}
+        run: rm -rf claude-startup-raw
       # doc-invariants goes LAST: it touches .himmel-dev and its staging step
       # leaves HEAD on an unborn orphan branch.
       - id: doc-invariants__dev
@@ -1522,11 +1537,9 @@ jobs:
   # three), run
   # `bash scripts/testing/test-fakekey-claude-startup.sh` against that version
   # locally, and fix any assertion the new debug-log wording breaks in the same PR.
-  # The suite is SKIP_LISTed in run-shell-tests.sh because the shell-unit shards
-  # have no claude CLI; this job is where it runs.
   claude-startup:
     name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'claude-startup' || 'claude-startup (deferred)' }}
-    # Runs as the claude-startup step group of ci-quick; this job only carries the
+    # Runs as the claude-startup step group of ci-quick; this job carries the
     # required context: it runs so the literal name is written, green when the
     # group passed, red otherwise (a skipped job reports its raw name expression).
     needs: ci-quick
@@ -1534,6 +1547,36 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - id: claude-startup__checkout
+        if: ${{ !cancelled() }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: claude-startup__raw-reset
+        name: Remove any committed raw claude-startup rows
+        if: ${{ !cancelled() && steps.claude-startup__checkout.outcome == 'success' }}
+        run: rm -rf claude-startup-raw
+      - id: claude-startup__download
+        name: Download the raw claude-startup rows
+        if: ${{ !cancelled() && steps.claude-startup__raw-reset.outcome == 'success' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: claude-startup-raw
+          path: claude-startup-raw/
+      - id: claude-startup__verify
+        name: Verify the raw claude-startup rows
+        if: ${{ !cancelled() && steps.claude-startup__download.outcome == 'success' }}
+        run: bash scripts/ci/claude-startup-row.sh --verify claude-startup-raw/rows.txt claude-startup-manifest/manifest-shard-claude-startup.txt
+      - id: claude-startup__manifest
+        name: Upload the verified claude-startup manifest
+        if: ${{ !cancelled() && steps.claude-startup__verify.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shell-unit-manifest-ubuntu-latest-shard-claude-startup
+          path: claude-startup-manifest/
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
       - if: ${{ needs.ci-quick.outputs.claude-startup != 'pass' }}
         run: exit 1
 
