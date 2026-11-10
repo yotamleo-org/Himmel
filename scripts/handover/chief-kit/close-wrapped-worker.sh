@@ -879,7 +879,8 @@ rec_label=$(worker_label "$DOC")
 rec_sid=""
 case "$digest_sid" in ????????-????-????-????-????????????) rec_sid="$digest_sid" ;; esac
 closed_at=$(date +%s)
-rec_name="$closed_at-$(printf '%s' "${rec_label:-$doc_stem}" | tr -c 'A-Za-z0-9_.-' '_')"
+# the pid keeps two closes of one label in the same second (two chiefs) apart
+rec_name="$closed_at-$(printf '%s' "${rec_label:-$doc_stem}" | tr -c 'A-Za-z0-9_.-' '_')-$matched"
 rec_doc="$(cd "$(dirname "$DOC")" && pwd)/$(basename "$DOC")"
 rec_file="$CLOSE_SWEEP_STATE/pending/$rec_name.json"
 

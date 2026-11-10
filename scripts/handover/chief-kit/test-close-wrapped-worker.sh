@@ -230,7 +230,7 @@ wait_file() {
 }
 # rec_json [<label>]: the close record queued for that label (any label: the first), in
 # pending/, done/ or failed/; rec_field <field> [<label>]: one of its fields
-rec_json() { find "$SWEEP_STATE" -path '*/.tmp' -prune -o -type f -name "*-${1:-*}.json" -print 2>/dev/null | head -n 1; }
+rec_json() { find "$SWEEP_STATE" -path '*/.tmp' -prune -o -type f -name "*-${1:-*}-[0-9]*.json" -print 2>/dev/null | head -n 1; }
 rec_field() { jq -r --arg f "$1" '.[$f] // "" | if type == "array" then join("\n") else tostring end' "$(rec_json "${2:-}")" 2>/dev/null; }
 # count_glob <dir> <pattern>: how many entries of <dir> match <pattern>
 count_glob() { local f n=0; for f in "$1"/$2; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
@@ -749,6 +749,7 @@ rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "record written: rc 0" "$rc" "0"
 check "record written: exactly one record in pending/" "$(count_glob "$SWEEP_STATE/pending" '*.json')" "1"
 contains "record written: the close names it" "$out" "sweep=queued $(rec_json)"
+check "record written: its name carries the epoch, label and pid (two chiefs closing one label in a second never collide)" "$(basename "$(rec_json)" | grep -cE '^[0-9]+-N1-210\.json$')" "1"
 check "record written: doc" "$(rec_field doc)" "$DOC"
 check "record written: label" "$(rec_field label)" "N1"
 check "record written: pid" "$(rec_field pid)" "210"
