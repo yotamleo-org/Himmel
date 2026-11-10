@@ -584,7 +584,8 @@ assert_contains "harvest runner fail-opens x-media-enrich" "If /x-media-enrich f
 # The fetch tool caps each subprocess (whisper 30 min per video), so ten clips outrun
 # the 600 s Bash tool timeout; the step is time-boxed under it and a fired box is a
 # named, reported partial run, never silent success.
-assert_contains "harvest x-media-enrich fetch is time-boxed under the 600 s tool timeout" "Prefix its x-media-fetch.py command with timeout 540" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich fetch is time-boxed under the 600 s tool timeout" "Prefix its x-media-fetch.py command with timeout -k 20 540" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich time box fires on 124 or on 137 after the kill" "If it exits 124 or 137 the time box fired" "$harvest_sh_plain"
 assert_contains "harvest x-media-enrich time box names its reason on exit 124" "x-media-enrich time-boxed at 540s" "$harvest_sh_plain"
 assert_contains "harvest x-media-enrich time box reports the partial counts" "report how many clips the outcome lines show as processed and how many remain" "$harvest_sh_plain"
 assert_contains "harvest x-media-enrich time box still runs digest and re-scan" "still run the digest and re-scan steps for the clips it wrote" "$harvest_sh_plain"
