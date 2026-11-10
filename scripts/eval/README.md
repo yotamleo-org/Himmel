@@ -357,16 +357,24 @@ What the report says, and what it does not:
   thread-state rate; an unknown source gives counts only. A quiet ledger reads
   "no new records since" its last record. A new answering model is its own
   row, never pooled with the old one.
-- **Capture coverage.** Unknown unless `--expected-prs` names a merged-PR
-  snapshot (JSONL, one `{pr, branch, head, merged_at}` per merged PR). With
-  one, `production.capture` counts the snapshot's PRs merged in the window as
-  captured (`k` of `n`: the newest CR-ledger `capture` receipt for that PR up
-  to `--now`, from before the window too, says `result` `ok`), and names by PR number the captured ones with zero
-  threads (`thread_count` and `outside_count` 0), the failed ones (newest
-  receipt not `ok`) and the uncaptured ones (no receipt). Receipts without a
-  snapshot give counts but no coverage ratio, and a CR ledger that is missing
-  or unreadable leaves coverage unknown even with a snapshot. Today nothing writes receipts or
-  a snapshot (the passive recorder receipt is separate work), so on a station
+- **Capture coverage.** Unknown unless `--expected-prs` names a dated
+  merged-PR snapshot: JSONL with one `{pr, branch, head, merged_at}` per
+  merged PR and its as-of time as `taken_at`, on a header row
+  `{"taken_at": ISO}` or on the rows (the newest one up to `--now` counts).
+  With one, `production.capture` counts the snapshot's PRs merged in the
+  window as captured (`k` of `n`: the newest CR-ledger `capture` receipt for
+  that PR number up to `--now`, from before the window too, says `result`
+  `ok`; a receipt's `head` is not read), and names by PR number the captured
+  ones with zero threads (`thread_count` and `outside_count` 0), the failed
+  ones (newest receipt not `ok`) and the uncaptured ones (no receipt), with
+  `snapshot_as_of` beside them and `snapshot_dropped` counting rows with no
+  PR number or merge time. Coverage is `measured` when the snapshot is as of
+  `--now`'s day, and `partial` (shown with its date) when it is older, since
+  PRs merged after it are not in it. A snapshot with no `taken_at` leaves
+  coverage unknown, with no ratio. Receipts without a snapshot give counts but
+  no coverage ratio, and a CR ledger that is missing or unreadable leaves
+  coverage unknown even with a snapshot. Today nothing writes receipts or a
+  snapshot (the passive recorder receipt is separate work), so on a station
   coverage reads unknown and an empty window is not a failed capture.
 - **Reviewer changes.** Each open review-panel change with its lifecycle
   (`proposed`, `applied-awaiting-measurement`, `measured-keep`,
@@ -392,6 +400,7 @@ per reviewer and answering model:
 - the window (`since` to `until`) and the report date;
 - the counts as `k` of `n` per verdict source, never a bare percentage;
 - capture coverage as the report states it (`unknown`, or `k` of `n` with the
+  snapshot's as-of date, `partial` when it is older than the read, and the
   failed and uncaptured PR numbers);
 - the benchmark's run date, its `old` or `partial` marker, and whether a trend
   was allowed;

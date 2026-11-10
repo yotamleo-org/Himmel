@@ -37,9 +37,11 @@ read), and the report is ok, partial (a source error beside a readable one), abs
 newest usable review-panel run with the newest attempt beside it, old once observed more than 7 days before --now,
 with a trend only against a comparable previous run (review_incompat). Production findings are the CR ledger's
 reviewer_summary over the trailing 14 days, by verdict source; capture coverage is unknown unless --expected-prs
-names a merged-PR snapshot (JSONL rows {pr, branch, head, merged_at}). Then each expected PR merged in the window
-is captured (its newest CR-ledger "capture" receipt says result ok; thread_count and outside_count 0 is a captured
-zero), failed (the newest receipt is not ok) or uncaptured (no receipt), by PR number. Without the flag the report
+names a merged-PR snapshot (JSONL rows {pr, branch, head, merged_at}) dated by its newest taken_at up to --now.
+Then each expected PR merged in the window is captured (its newest CR-ledger "capture" receipt for that PR number
+says result ok; thread_count and outside_count 0 is a captured zero), failed (the newest receipt is not ok) or
+uncaptured (no receipt). Coverage is measured for a snapshot as of --now's day, partial for an older one, and
+unknown for one with no taken_at; rows with no PR number or merge time are counted as dropped. Without the flag the report
 has no snapshot source and, with no receipt either, no capture block. Every metric is a typed k of n whose value is null when n is 0. No review text, full path
 or exception message is printed. --reviewers-only prints the same report in plain words.
 """
@@ -742,6 +744,15 @@ def capture_summary(receipts, expected, since, t):
     def within(ts):
         x = cr_ledger_eval.parse_ts(ts)
         return x is not None and lo <= x <= t
+    snap = {"snapshot_as_of": None, "snapshot_dropped": None}
+    if expected is not None:
+        taken = [x for x in (cr_ledger_eval.parse_ts(e.get("taken_at")) for e in expected) if x and x <= t]
+        rows = [e for e in expected if "pr" in e or "merged_at" in e]
+        snap = {"snapshot_as_of": iso(max(taken)) if taken else None,
+                "snapshot_dropped": sum(1 for e in rows if pr_num(e.get("pr")) is None
+                                        or cr_ledger_eval.parse_ts(e.get("merged_at")) is None)}
+        if not taken:
+            expected = None
     latest = {}
     for ts, _, r in sorted(((cr_ledger_eval.parse_ts(r.get("ts")), i, r) for i, r in enumerate(receipts)
                             if pr_num(r.get("pr")) is not None and cr_ledger_eval.parse_ts(r.get("ts"))),
@@ -752,11 +763,13 @@ def capture_summary(receipts, expected, since, t):
     zero = {p for p in ok if latest[p].get("thread_count") == 0 and latest[p].get("outside_count") == 0}
     if expected is None:
         prs = set(latest)
-        return {"k": None, "n": None, "receipts": len(latest), "captured_zero": sorted(zero & prs),
-                "failed": sorted(prs - ok), "uncaptured": None}
+        return dict(snap, state="unknown", k=None, n=None, receipts=len(latest), captured_zero=sorted(zero & prs),
+                    failed=sorted(prs - ok), uncaptured=None)
+    day_start = t.replace(hour=0, minute=0, second=0, microsecond=0)
     prs = {pr_num(e.get("pr")) for e in expected if within(e.get("merged_at"))} - {None}
-    return {"k": len(prs & ok), "n": len(prs), "receipts": len(latest), "captured_zero": sorted(zero & prs),
-            "failed": sorted((prs & set(latest)) - ok), "uncaptured": sorted(prs - set(latest))}
+    return dict(snap, state="partial" if cr_ledger_eval.parse_ts(snap["snapshot_as_of"]) < day_start else "measured",
+                k=len(prs & ok), n=len(prs), receipts=len(latest), captured_zero=sorted(zero & prs),
+                failed=sorted((prs & set(latest)) - ok), uncaptured=sorted(prs - set(latest)))
 
 
 def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roster=None, expected=None):
@@ -803,9 +816,12 @@ def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roste
             "roster": "unreadable" if roster is None else "ok", "not_reviewers": None}
     receipts = [r for r in in_cut if r.get("kind") == "capture"]
     if cr_rows is not None and (receipts or expected is not None):
-        prod["capture"] = capture_summary(receipts, expected, since, t)
-        if expected is not None:
-            prod.update(capture_coverage="measured", capture_reason=None)
+        c = prod["capture"] = capture_summary(receipts, expected, since, t)
+        if c["state"] != "unknown":
+            prod.update(capture_coverage=c["state"], capture_reason=None)
+        else:
+            prod["capture_reason"] = ("the expected-PR snapshot has no as-of time (taken_at)" if expected is not None
+                                      else "no expected-PR snapshot")
     if cr_rows is not None:
         pm, prod["not_reviewers"] = prod_metrics(in_cut, since, now_iso, roster or set(),
                                                  {"last_record_at": last, "capture_coverage": prod["capture_coverage"]})
@@ -885,7 +901,7 @@ def reviewers_prose(rep):
         out.append("- " + line + ".")
     p = rep["production"]
     out += ["", "## Review findings on merged work, %s to %s" % (day(p["window"]["since"]), day(p["window"]["until"])), ""]
-    measured = p["capture_coverage"] == "measured"
+    measured = p["capture_coverage"] in ("measured", "partial")
     if p["last_record_at"] is None:
         out.append("No records." if measured else "No records; capture coverage unknown.")
     elif not p["records_in_window"]:
@@ -896,11 +912,19 @@ def reviewers_prose(rep):
         out.append("Last record %s; capture coverage unknown (%s)." % (day(p["last_record_at"]), p["capture_reason"]))
     c = p.get("capture")
     if c:
-        head = ("Capture: %d of %d expected PRs captured (%d with zero threads)" % (c["k"], c["n"], len(c["captured_zero"]))
-                if measured else "Capture receipts: %d PRs, %d with zero threads; no expected-PR snapshot, so no coverage"
-                % (c["receipts"], len(c["captured_zero"])))
+        if measured:
+            head = ("Capture: %d of %d expected PRs captured (%d with zero threads)" % (c["k"], c["n"], len(c["captured_zero"]))
+                    if c["n"] else "Capture: no expected PR merged in the window")
+            head += ", snapshot as of %s" % day(c["snapshot_as_of"])
+            if p["capture_coverage"] == "partial":
+                head += ", partial: PRs merged after it are not in it"
+        else:
+            head = "Capture receipts: %d PRs, %d with zero threads; %s, so no coverage" % (
+                c["receipts"], len(c["captured_zero"]), p["capture_reason"])
         parts = [head] + ["%s: %s" % (w, ", ".join("#%d" % x for x in xs)) for w, xs in
                           (("failed", c["failed"]), ("not captured", c["uncaptured"])) if xs]
+        if c["snapshot_dropped"]:
+            parts.append("%d snapshot rows dropped (no PR number or merge time)" % c["snapshot_dropped"])
         out.append("; ".join(parts) + ".")
     nr = p.get("not_reviewers") or {}
     if p.get("roster") != "ok":

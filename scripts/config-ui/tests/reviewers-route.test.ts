@@ -249,12 +249,12 @@ test("collection_gap_visible: with no snapshot coverage is unknown; with one, fa
   expect(none.codeReviewers.production.capture_coverage).toBe("unknown");
   expect(none.codeReviewers.sources.map((x: any) => x.id)).toEqual(["eval-runs", "eval-changes", "cr-ledger"]);
   const snap = join(l.dir, "expected.jsonl");
-  writeFileSync(snap, [101, 102, 103].map((pr) => crRow({ pr, branch: "b" + (pr - 100), head: "h", merged_at: "2026-11-06T01:00:00Z" })).join(""));
+  writeFileSync(snap, crRow({ taken_at: "2026-11-10T00:00:00Z" }) + [101, 102, 103].map((pr) => crRow({ pr, branch: "b" + (pr - 100), head: "h", merged_at: "2026-11-06T01:00:00Z" })).join(""));
   const r = await (await get(bootReport(reportEnv(l, { HIMMEL_EXPECTED_PRS: snap })).port)).json();
   expect(r.codeReviewers.production.capture_coverage).toBe("measured");
   expect(r.codeReviewers.production.capture).toMatchObject({ k: 1, n: 3, failed: [102], uncaptured: [103] });
   const html = await tabOf(r);
-  expect(html).toContain("Capture: 1 of 3 expected PRs captured (0 with zero threads); failed: #102; not captured: #103.");
+  expect(html).toContain("Capture: 1 of 3 expected PRs captured (0 with zero threads), snapshot as of 2026-11-10; failed: #102; not captured: #103.");
   expect(html).not.toContain("Capture coverage unknown");
   expect(JSON.stringify(r)).not.toContain("RECEIPT-REASON");
 });
@@ -263,14 +263,29 @@ test("zero_thread_pr_vs_uncaptured: an ok receipt with no threads is captured-ze
   const l = ledgers();
   appendFileSync(l.cr, receipt(107, "b7", 0, "ok"));
   const snap = join(l.dir, "expected.jsonl");
-  writeFileSync(snap, [107, 108].map((pr) => crRow({ pr, branch: "b" + (pr - 100), head: "h", merged_at: "2026-11-06T01:00:00Z" })).join(""));
+  writeFileSync(snap, crRow({ taken_at: "2026-11-10T00:00:00Z" }) + [107, 108].map((pr) => crRow({ pr, branch: "b" + (pr - 100), head: "h", merged_at: "2026-11-06T01:00:00Z" })).join(""));
   const r = await (await get(bootReport(reportEnv(l, { HIMMEL_EXPECTED_PRS: snap })).port)).json();
   expect(r.codeReviewers.production.capture).toMatchObject({ k: 1, n: 2, captured_zero: [107], uncaptured: [108] });
   expect(recorded(r)).toEqual([["unknown", 1, 2]]);
-  expect(await tabOf(r)).toContain("Capture: 1 of 2 expected PRs captured (1 with zero threads); not captured: #108.");
+  expect(await tabOf(r)).toContain("Capture: 1 of 2 expected PRs captured (1 with zero threads), snapshot as of 2026-11-10; not captured: #108.");
   const bare = await (await get(bootReport(reportEnv(l)).port)).json();
   expect(bare.codeReviewers.production).toMatchObject({ capture_coverage: "unknown", capture: { n: null, captured_zero: [107] } });
   expect(await tabOf(bare)).toContain("Capture receipts: 1 PRs, 1 with zero threads; no expected-PR snapshot, so no coverage.");
+});
+
+test("stale_snapshot_not_full_coverage: an older snapshot is partial with its date; an undated one leaves coverage unknown", async () => {
+  const l = ledgers();
+  appendFileSync(l.cr, receipt(101, "b1", 1, "ok") + receipt(115, "b15", 1, "ok"));
+  const rows = [101].map((pr) => crRow({ pr, branch: "b1", head: "h", merged_at: "2026-11-05T01:00:00Z" })).join("");
+  const stale = join(l.dir, "stale.jsonl"), undated = join(l.dir, "undated.jsonl");
+  writeFileSync(stale, crRow({ taken_at: "2026-11-06T00:00:00Z" }) + rows);
+  writeFileSync(undated, rows);
+  const r = await (await get(bootReport(reportEnv(l, { HIMMEL_EXPECTED_PRS: stale })).port)).json();
+  expect(r.codeReviewers.production).toMatchObject({ capture_coverage: "partial", capture: { k: 1, n: 1, snapshot_as_of: "2026-11-06T00:00:00Z" } });
+  expect(await tabOf(r)).toContain("Capture: 1 of 1 expected PRs captured (0 with zero threads), snapshot as of 2026-11-06, partial: PRs merged after it are not in it.");
+  const u = await (await get(bootReport(reportEnv(l, { HIMMEL_EXPECTED_PRS: undated })).port)).json();
+  expect(u.codeReviewers.production).toMatchObject({ capture_coverage: "unknown", capture: { k: null, n: null, snapshot_as_of: null } });
+  expect(await tabOf(u)).toContain("the expected-PR snapshot has no as-of time (taken_at), so no coverage");
 });
 
 test("the report run is bounded: a timeout, junk output or an oversized answer is state error", async () => {
