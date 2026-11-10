@@ -1428,7 +1428,6 @@ def report(res):
 
 
 def report_verified(v, critics):
-    """The verified family beside the proxy table, or nothing when no adjudications were read."""
     if not v:
         return []
 
@@ -1605,7 +1604,6 @@ LEGACY_OPTIONAL_FIELDS = ("responded", "bundle_sha256_v2", "execution_id", "code
 
 
 def sidecar(a):
-    """--validation, else validation.json beside --key when present."""
     if a.validation:
         return a.validation
     path = os.path.join(os.path.dirname(os.path.abspath(a.key)), "validation.json")

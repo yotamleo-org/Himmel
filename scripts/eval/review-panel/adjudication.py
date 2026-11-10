@@ -37,7 +37,6 @@ def _canon(obj):
 
 
 def gold_revision(path):
-    """sha256 of the exact sidecar bytes read."""
     with open(path, "rb") as fh:
         return _sha(fh.read())
 
