@@ -16,7 +16,7 @@
       "paths": ["delta.observability"]
     },
     "4": {
-      "label": "Bridge persistence artifact detail (the actual HimmelTelegramBridge scheduled task / telegram-bridge.service unit, beyond the yes/no installPersistence answer)",
+      "label": "Bridge persistence artifact detail (the actual telegram-bridge.service systemd user unit, beyond the yes/no installPersistence answer)",
       "state": "planned",
       "paths": ["profile.bridge.installPersistence", "delta.cadences.extraArmedTasks"]
     },
