@@ -13,7 +13,7 @@ FAILS=0
 pass() { echo "  ok: $1"; }
 fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
 
-WS="$(mktemp -d "${TMPDIR:-/tmp}/test-semantic-update.XXXXXX")" || exit 1; trap 'rm -rf "$WS"' EXIT
+WS="$(mktemp -d "${TMPDIR:-/tmp}/test-semantic-update.XXXXXX")" || exit 1; trap '[ ! -d "$WS/o16-base" ] || git -C "$REAL_REPO" worktree remove --force "$WS/o16-base" >/dev/null 2>&1; rm -rf "$WS"' EXIT
 REPO="$WS/repo"
 mkdir -p "$REPO/scripts/graphify" "$REPO/scripts/lib" "$REPO/scripts/api-lane" "$WS/bin" "$WS/tmp" "$WS/glm"
 # the copied repo is a git repo of its own: a corpus inside it is "the himmel graph", one beside it is another repo
@@ -1573,7 +1573,7 @@ else
         rejected) out=$(ACCT=auto BATCH_STUB_EXHAUSTED=A BATCH_STUB_REJECTED=B GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o16 --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); o16rc=$? ;;
       esac
       printf '== %s rc=%s\n%s\n-- files\n' "$p" "$o16rc" "$out"
-      (cd "$REPO" && find o16 -type f | sort)
+      find "$CO" -type f | sed "s#^$CO/##" | sort
       scratch
     done
   }
