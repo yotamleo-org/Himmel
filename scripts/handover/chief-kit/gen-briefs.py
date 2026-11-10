@@ -1338,7 +1338,6 @@ def drop_refused_brief(doc, l):
 def lint_brief(doc, l, hroot):
     lint = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'brief-lint.sh')
     try:
-        # --skip-bucket: the launch door (bucket_rule) asks at launch; asked here it would drop the rest of a batch on one outside key
         r = subprocess.run(['bash', lint, '--skip-bucket', doc], capture_output=True, text=True, timeout=120, env=lint_env(hroot))
     except (OSError, subprocess.SubprocessError) as e:
         drop_refused_brief(doc, l)

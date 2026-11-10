@@ -2835,7 +2835,6 @@ check "route-d ... and no --chief-doc is offered" "$(printf '%s' "$hsout" | grep
 
 # WRITE_HOLD_OK is the operator's bypass; a worker's own launch (HIMMEL_CONSOLE_LEG set) must not carry it on
 W4DOC="$(hdoc HIMMEL-9512-N1-w4.md '# w4')"
-# the doc name names a ticket, so the launch door (brief-lint.sh bucket_rule) asks the jira CLI; scripts/jira/dist is untracked, absent in CI: a fixture stand-in answers IN
 mkdir -p "$tmp/w4-jira"
 printf '%s\n' "const a = process.argv.slice(2);" "if (a[0] === 'release' && a[1] === 'bucket-check') for (const k of a.slice(a.indexOf('--mirror') + 2)) console.log('IN ' + k + ' current=v1.1.3 via=mirror');" "else process.exit(2);" > "$tmp/w4-jira/index.js"
 export BRIEF_LINT_JIRA_CLI="$tmp/w4-jira/index.js"

@@ -20,9 +20,6 @@
 # The core rule (last section) runs on every brief that names a ticket key in its
 # title; --core-only runs it alone, for a launch that skips the prior-art check.
 # --judge skips it: a judge brief writes nothing, so no spec stands behind it.
-# The bucket rule (bucket_rule) runs straight after it at both call sites, so --core-only cannot skip it either: a key
-# outside the current version is refused. --judge skips it too; --skip-bucket is the generator's flag, for the lint it
-# runs at write time (the door belongs at launch).
 #
 # Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 refusal no flag clears: the core gate, the bucket rule, a salus-marked
 # brief that names a search, a resume_cwd the classifier cannot answer for, or front matter that does not parse as YAML.
@@ -62,7 +59,6 @@ fail() { echo "brief-lint: $doc: $1" >&2; exit 1; }
 # whether or not it has run. `release core-check` answers per key from the CLI and the operator records
 # alone: NOT-CORE and BYPASS pass, UNKNOWN refuses, CORE needs `release spec-check` to answer SPEC ok.
 # No line the brief writes itself can pass a key. BRIEF_LINT_JIRA_CLI and BRIEF_LINT_MIRROR are test seams.
-# The jira CLI both gates call: the seam, else the built dist/ of the checkout this script lives in.
 resolve_cli() {
     local cli common
     cli="${BRIEF_LINT_JIRA_CLI:-}"
@@ -270,15 +266,6 @@ PY
     fi
 }
 
-# The bucket rule: a launch on a ticket outside the current version is refused. `release bucket-check` answers per key and
-# every key the brief names is asked: each key of the title, and the first key of the doc name (the launcher reads the doc
-# name the same way). IN passes; NONE (a project with no versions file), APPROVED (an out-of-version record) and a Done key on
-# a doc that has run pass and print a `brief-lint: <KEY> bypass=<reason> ...` line, which the launcher re-emits; DONE on a new
-# doc, OUTSIDE, FAILED, a CLI that is missing, exits non-zero, times out or prints no line for a key all refuse (exit 3, no flag
-# clears it). A failed Jira read refuses by name: this is a coordination gate, so it fails shut. --judge skips it, as it skips
-# the core rule, and --skip-bucket is the generator's flag: gen-briefs.py lints every brief of a batch at write time, and the
-# door belongs at launch. No key in the title or the doc name passes with no call. It runs straight after core_rule at both
-# call sites, so --core-only cannot skip it. BRIEF_LINT_VERDICT_TIMEOUT (whole seconds, default 120) can only refuse sooner.
 bucket_rule() {
     local cli ran=0 bucket_err bucket_rc=0
     [ "$judge" -eq 0 ] || return 0
@@ -323,7 +310,6 @@ for mirror, ks in groups.items():
     if not os.path.isfile(cli):
         failed('no built jira CLI at %s' % cli)
     try:
-        # cwd inside the checkout that holds the CLI, as the core rule runs it
         r = subprocess.run(['node', cli, 'release', 'bucket-check', '--mirror', mirror] + ks, capture_output=True, text=True,
                            timeout=timeout, cwd=os.path.dirname(os.path.abspath(cli)))
     except subprocess.TimeoutExpired:
