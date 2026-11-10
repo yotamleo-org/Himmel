@@ -238,8 +238,6 @@ ok "sealed-only feedback" python3 -I "$FB" run --ledger "$S/c.jsonl" --changes "
 eq "sealed: a row with no open half opens no change from its sealed or whole-set metrics" "$(rows "$S/c-changes.jsonl")" "0"
 
 # --- train/test keep rule: keep only when train AND test both gain more than min_gain, over noise --------
-# The rule's arithmetic on a split eval that needs no application receipt; a review-panel change is measured
-# only through one (the M6 cases below).
 T="$TMP/keep"; mkdir -p "$T"
 SPLIT_EVAL=split-eval
 sed 's/"eval": "review-panel"/"eval": "split-eval"/' "$S/rules.json" >"$T/rules.json"
@@ -307,7 +305,6 @@ eq "keep rule: overflowing noise is unmeasured: not kept" "$(field "$T/inf-c.jso
 eq "keep rule: the record holds no Infinity" "$(grep -c Infinity "$T/inf-c.jsonl")" "0"
 SPLIT_EVAL=review-panel
 
-# --- M6 fixture repo: a critic behaviour set (cbs.txt) and the commits a receipt may or may not bind --------
 R6="$TMP/m6-repo"; mkdir -p "$R6/scripts/eval/review-panel" "$R6/scripts/cr"
 gitc6() { git -C "$R6" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
 commit6() { gitc6 add -A && gitc6 commit -q -m "$1" && gitc6 rev-parse HEAD; }
@@ -524,7 +521,6 @@ while IFS= read -r line; do
   case "$line" in PASS*) PASS=$((PASS + 1)); echo "$line";; *) FAIL=$((FAIL + 1)); echo "$line";; esac
 done <<<"$SELOUT"
 
-# --- M6: a review-panel change is credited with a later run only through a bound application receipt ----------
 M6PY="$TMP/m6.py"
 cat >"$M6PY" <<'EOF'
 import json, os, re, sys, tempfile
@@ -566,7 +562,6 @@ def add(ledger, rid, val, code, ts, ex=None, sup=None, sc=S1, cov=COV, split=Tru
     eval_runs.append_row(r, ledger)
 
 def proposal(name, base_code=ROOT):
-    """A ledger with two baseline executions and the open change the feedback step raises on them."""
     ledger, changes = os.path.join(d, name + ".jsonl"), os.path.join(d, name + "-c.jsonl")
     add(ledger, name + "-b1", 0, base_code, "2026-01-01T00:00:00Z")
     add(ledger, name + "-b2", 0, base_code, "2026-01-02T00:00:00Z")
@@ -587,7 +582,6 @@ def refused(name, cid, commit, changes, want):
 
 LATER = "2999-01-01T00:00:00Z"
 
-# open_is_proposed_not_changed / no_receipt_no_measurement: a later better run of the changed code credits nothing
 ledger, changes, cid = proposal("noreceipt")
 check("M6 fixture: the proposal opens", cid is not None)
 add(ledger, "noreceipt-c", 1, APPLY, LATER)
@@ -600,13 +594,11 @@ fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
 check("no_receipt_no_measurement: the unchanged-version synthetic improvement yields no keep",
       not [c for c in recs(changes) if c.get("verdict") == "keep"], recs(changes))
 
-# identical_effective_hash_refused
 ledger, changes, cid = proposal("ident")
 refused("identical_effective_hash_refused: a commit outside the behaviour set", cid, DOCS, changes, "no effective change")
 refused("identical_effective_hash_refused: a mode-only change of the target", cid, MODE, changes, "no effective change")
 check("identical_effective_hash_refused: no receipt written", not status(changes, "applied"), status(changes, "applied"))
 
-# wrong_target_refused, and the other unsupported applications
 refused("wrong_target_refused: a commit that changes another behaviour path", cid, OTHER, changes,
         "does not change the proposal's target")
 cr = fb.envelope(id="cr:coderabbit.class.logic.recall", eval="review-panel", metric="coderabbit.class.logic.recall",
@@ -627,7 +619,6 @@ refused("a commit that is not in the repo is refused", cid, "0" * 40, changes, "
 refused("an id with no open change is refused", "no-such-id", APPLY, changes, "no open change")
 check("refusals write no receipt", not status(changes, "applied"), status(changes, "applied"))
 
-# a receipt: derived from Git, never from the caller
 rec = fb.apply_review(cid, APPLY[:12], changes, repo=repo)
 check("receipt: one applied record", len(status(changes, "applied")) == 1)
 check("receipt: the full commit sha, resolved from an abbreviation", rec.get("commit") == APPLY, rec.get("commit"))
@@ -640,7 +631,6 @@ check("receipt: a 64-hex diff_sha256", bool(re.match(r"^[0-9a-f]{64}$", str(rec.
 check("receipt: applied_at is the receipt's own time", rec.get("applied_at") == rec.get("ts") and rec.get("applied_at"), rec)
 refused("a second receipt for one change is refused", cid, APPLY, changes, "already")
 
-# rescore_old_execution_not_after_apply
 ledger, changes, cid = proposal("rescore")
 add(ledger, "rescore-pre", 1, APPLY, "2026-01-03T00:00:00Z")
 fb.apply_review(cid, APPLY, changes, repo=repo)
@@ -661,7 +651,6 @@ fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
 check("a revision whose source execution is not in the ledger has no known run time: nothing measured",
       not status(changes, "measured"), status(changes, "measured"))
 
-# incomparable_protocol_inconclusive
 for name, kw, want in (("scorer", {"sc": S2}, "scorer"),
                        ("coverage", {"cov": {"scored": 4, "critics": {"codex": {"answer": 3}}}}, "participation"),
                        ("nosplit", {"split": False}, "split")):
@@ -683,7 +672,6 @@ m = status(changes, "measured")
 check("incomparable_protocol_inconclusive: a baseline not at the receipt's parent version is inconclusive",
       len(m) == 1 and m[0].get("verdict") == "inconclusive" and "baseline" in (m[0].get("reason") or ""), m)
 
-# valid_applied_after_run_measured
 ledger, changes, cid = proposal("valid")
 rec = fb.apply_review(cid, APPLY, changes, repo=repo)
 add(ledger, "valid-old", 1, ROOT, LATER)
@@ -706,7 +694,6 @@ fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
 m = status(changes, "measured")
 check("valid_applied_after_run_measured: no gain is revert", len(m) == 1 and m[0].get("verdict") == "revert", m)
 
-# other_eval_unchanged: a judge change is still measured without any receipt
 jl, jc = os.path.join(d, "judge.jsonl"), os.path.join(d, "judge-c.jsonl")
 for i, v in enumerate((0.04, 0.01)):
     eval_runs.append_row(eval_runs.make_row("judge-accuracy", "s", {"judge_accuracy_v": 1, "days": 28},
@@ -721,7 +708,6 @@ while IFS= read -r line; do
   case "$line" in PASS*) PASS=$((PASS + 1)); echo "$line";; *) FAIL=$((FAIL + 1)); echo "$line";; esac
 done <<<"$M6OUT"
 
-# --- apply-review on the command line: an explicit changes ledger, and no hash or diff the caller supplies -------
 AC="$TMP/apply-cli.jsonl"
 python3 -I - "$HERE/lib" "$AC" <<'PY'
 import sys

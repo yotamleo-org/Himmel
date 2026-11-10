@@ -349,8 +349,7 @@ SHA = re.compile(r"^[0-9a-f]{7,64}$")
 
 
 def _score():
-    """score.py, the owner of cbs.txt and cbs_hash; imported here, not at the top, because it imports this module."""
-    d = os.path.join(HERE, "..", "review-panel")
+    d =os.path.join(HERE, "..", "review-panel")
     if d not in sys.path:
         sys.path.insert(0, d)
     import score
@@ -563,7 +562,6 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None, repo=None
             members.setdefault(by, set()).add(rid)
 
     def started(r):
-        """The ts of the earliest row of r's execution; None for a revision whose source row is absent."""
         if row_field(r, "supersedes_run_id") and not members.get(r["run_id"]):
             return None
         known = [first_ts[i] for i in members.get(r["run_id"], set()) | {r["run_id"]} if i in first_ts]

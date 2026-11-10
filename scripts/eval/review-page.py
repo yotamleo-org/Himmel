@@ -262,9 +262,6 @@ def proof_lines(cur, prev):
 
 
 def review_line(c, what, why, applied, mz):
-    """A review-panel change's line, its lifecycle label first: proposed, applied-awaiting-measurement,
-    measured-keep, measured-revert or inconclusive, by its application receipt and a measurement that names that
-    receipt's commit; a measurement with no such receipt is a historical delta, never credited to the change."""
     did = "a change to %s after the run of %s, because %s" % (what, day(c.get("ts")), why)
     move = ""
     if mz is not None and eval_runs._num(mz.get("before")) and eval_runs._num(mz.get("after")):

@@ -316,7 +316,6 @@ out="$(python3 -I "$PAGE" --ledger "$TMP/runs.jsonl" --changes "$TMP/bad-changes
 eq "malformed change records: exit 0" "$rc" "0"
 has "malformed change records: the good change still shows" "$out" "a change to the codex critic's prompt"
 
-# M6: each review-panel change's lifecycle label matches its evidence; a judge change reads as before.
 python3 -I - "$TMP/m6-changes.jsonl" <<'PY' || { echo "test-review-page: writing the M6 changes ledger failed" >&2; exit 1; }
 import json, sys
 A, B = "c" * 40, "d" * 40
