@@ -333,7 +333,8 @@ What the report says, and what it does not:
 - **Sources.** Each ledger by file name only: `ok` with its record count and
   newest timestamp, `absent` when the file is missing, `error` with the errno
   name (`EACCES`, `EISDIR`) when it cannot be read. The report is `partial`
-  when one source fails beside a readable one, `absent` when none exists.
+  when one source fails beside a readable one, `error` when a source fails and
+  none is readable, `absent` when none exists.
 - **Benchmark.** The newest usable review-panel run (`latest_usable`) and,
   beside it, the newest attempt (`latest_attempt`), so an inconclusive run after
   a good one shows. A run is dated by its execution (the earliest row of that

@@ -387,6 +387,8 @@ PY
 python3 -I "$GEN" render --data "$TMP/data-v3.json" --out "$TMP/page-v3.md" > /dev/null 2>&1
 has "sources: a data file without the split labels its figures pooled" "$(cat "$TMP/page-v3.md")" "| Precision (all verdict sources pooled) |"
 lacks "sources: a pooled figure is never called recorded dispositions" "$(cat "$TMP/page-v3.md")" "(recorded dispositions)"
+has "sources: the pooled note says what is counted, in reader terms" "$(cat "$TMP/page-v3.md")" "These figures count every ruling, including ones inferred from review threads; the next data refresh counts only the PR author's own rulings."
+lacks "sources: the pooled page names no internal script" "$(cat "$TMP/page-v3.md")" "cr-thread-recorder"
 
 # ── The committed page ───────────────────────────────────────────────────────
 eq "page: committed README is the render of the committed data file" \

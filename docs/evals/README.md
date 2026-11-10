@@ -15,7 +15,7 @@
 
 The precision headline is the required reviewer's own, not the all-reviewers pooled figure under History: the pool mixes in models the panel no longer runs. Likely range is the 95 percent interval; every term is defined under How to read these numbers.
 
-These precision figures pool every verdict source: the PR author's recorded dispositions, verdicts the thread recorder (cr-thread-recorder) inferred from thread state, and verdicts of unknown source. The data file predates the split; a data step from this generator counts recorded dispositions only.
+These figures count every ruling, including ones inferred from review threads; the next data refresh counts only the PR author's own rulings.
 
 ## Current setup
 

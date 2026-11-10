@@ -114,9 +114,8 @@ def source_label(g):
 
 def source_note(g):
     if g.get("source") != cr_ledger_eval.RECORDED:
-        return ("These precision figures pool every verdict source: the PR author's recorded dispositions, verdicts the "
-                "thread recorder (cr-thread-recorder) inferred from thread state, and verdicts of unknown source. The "
-                "data file predates the split; a data step from this generator counts recorded dispositions only.")
+        return ("These figures count every ruling, including ones inferred from review threads; the next data refresh "
+                "counts only the PR author's own rulings.")
     left = g.get("left_out") or {}
     return ("Each precision figure counts recorded dispositions only, the PR author's ruling. Left out of every figure: "
             "%s ruled findings whose verdict the thread recorder inferred from thread state, and %s whose verdict "
