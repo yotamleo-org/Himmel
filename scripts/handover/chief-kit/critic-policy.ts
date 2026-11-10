@@ -150,7 +150,7 @@ function skillLexical(top: string, range: string[], layer: RoutingViolation["lay
     const h = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
     if (h) { inHunk = true; newLine = Number(h[1]); continue; }
     if (!inHunk || (text[0] !== "+" && text[0] !== "-")) continue;
-    const line = text[0] === "+" ? newLine++ : newLine;
+    const line = text[0] === "+" ? newLine++ : Math.max(1, newLine);
     for (const [rule, re] of LEXICAL) if (re.test(text.slice(1))) out.push({ path: SKILL, layer, rule, line });
   }
   return out;
