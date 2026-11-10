@@ -14,7 +14,7 @@
 #
 # A proof only feeds `worktree.sh prune --only --pr-cache` a cache row; it never
 # decides a prune. Every failure prints nothing, so a missing proof keeps work.
-# Sourced by close-sweep.sh.
+# Sourced by close-sweep.sh, the batched sweep.
 # bash 3.2-safe.
 
 _CF_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
