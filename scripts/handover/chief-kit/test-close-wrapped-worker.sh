@@ -1793,6 +1793,7 @@ sweep_now
 check "handoff: held successor means no /tmp reap" "$(wc -c < "$CALLS.reap" | tr -d ' ')" "0"
 check "handoff: the sweep records kept-successor" "$(rec_field reap)" "kept-successor"
 mkcmdline 389 claude -n HIMMEL-9-N90-demo-2026-01-01 work
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 10:00 WRAPPED - hand-off to %s\n' "$(basename "$HS")" > "$HP"
 reset_calls
 rc=0; out=$(cd "$(dirname "$HP")" && run "$(basename "$HP")" 2>&1) || rc=$?
 check "handoff: a close given a relative doc path records its successor by absolute path" "$rc $(rec_field named_successor)" "0 $HS"
