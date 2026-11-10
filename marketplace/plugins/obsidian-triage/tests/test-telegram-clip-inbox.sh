@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# LUNA-91 (a): telegram-clip files captures as INBOX-STATE and carries the
+# telegram-clip files captures as INBOX-STATE and carries the
 # chat-id provenance the promotion digest needs.
 #
 # Per the 3-state derivation (design §12.A — state = folder + existing markers,

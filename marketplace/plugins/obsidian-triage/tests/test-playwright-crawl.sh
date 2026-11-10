@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke tests for the YouTube crawler (LUNA-27; the Playwright auth-save /
+# Smoke tests for the YouTube crawler (the Playwright auth-save /
 # crawl-x tools and the storage_state path no longer exist).
 #
 # Scope: validates that playwright-crawl-youtube.mjs parses, the package.json

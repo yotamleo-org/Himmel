@@ -101,7 +101,7 @@ check("dry-run does not bump", "harvest_defer_count" not in p.read_text())
 # The count accumulates across runs and the 5th defer moves the clip to
 # needs-attention; the body is never touched.
 p = clip("five.md", "https://example.com/five", body="short.\n")
-for day in range(1, 6):  # HIMMEL-4680: one bump per calendar day, so five nights
+for day in range(1, 6):  # one bump per calendar day, so five nights
     mod.TODAY = f"2026-10-{day:02d}"
     g, msg, _ = mod.process_clip(p, dry_run=False)
 mod.TODAY = "2026-10-06"

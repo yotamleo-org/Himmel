@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Edge-case + safety-property coverage for synthesize-stubs (LUNA-87/88/89),
+# Edge-case + safety-property coverage for synthesize-stubs,
 # closing the gaps the CR test-analyzer flagged: CRLF byte round-trip, the
 # distinct-source OR-gate workers + floor-skip, compound stub->densify revert,
 # densify idempotency, Tech-vs-Concept boundary, _deferred.md sibling-prefix +

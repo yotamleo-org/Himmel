@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fixture-gated acceptance test for existing-subject fuzzy-match + densify
-# (LUNA-88). Before LUNA-87 creates a stub, an alias-scan of existing
+# Before synthesize creates a stub, an alias-scan of existing
 # 30-Resources/{Concepts,Tech} + 60-Maps/*-MOC must densify a matching subject
 # instead of creating a duplicate.
 #

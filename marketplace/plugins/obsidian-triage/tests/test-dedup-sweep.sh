@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke tests for LUNA-37 dedup-sweep.mjs.
+# Smoke tests for dedup-sweep.mjs.
 #
 # Scope:
 #   - script parses (node --check)
