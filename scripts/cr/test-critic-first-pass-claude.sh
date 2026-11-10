@@ -253,9 +253,6 @@ run_cfp claude-api
 check "10f a refusal line with exit 1 (not the launcher's own exit 2) is a failure" 1 "$RC"
 unset FAKE_REFUSE FAKE_REFUSE_RC
 
-# --- 10k. a policy refusal from the REAL launcher is BROKE (a caller asked for account auto), never a clean SKIP ---
-# The real scripts/api-lane/claude-api.sh runs with the lane on and account auto for kind critic; its own stderr
-# carries the marker line. Stub alert command and a temp alert dir: no alert, no paid call, no real key.
 fresh_rec 10k
 ALERT_DIR_10K="$W/alerts.10k"; mkdir -p "$ALERT_DIR_10K"
 printf '#!/bin/sh\ntouch "%s"\n' "$W/alert-ran.10k" > "$W/alert-stub.10k"; chmod +x "$W/alert-stub.10k"
@@ -266,10 +263,8 @@ check "10k the real launcher's policy refusal is broke: exits 1" 1 "$RC"
 has "10k stderr names BROKE" "claude critic BROKE" "$W/err"
 hasnt "10k stderr never says SKIPPED" "SKIPPED" "$W/err"
 check "10k a broke critic prints no review" "" "$(cat "$W/out")"
-# an rc 1 is retried by the caller's own 3-attempt loop, so each attempt leaves its record
 check "10k the launcher recorded the policy refusal (one record per attempt)" yes "$([ "$(grep -c '"kind":"critic"' "$ALERT_DIR_10K/policy-refusals.jsonl" 2>/dev/null)" -ge 1 ] && echo yes || echo no)"
 check "10k the policy refusal sent no alert" no "$([ -e "$W/alert-ran.10k" ] && echo yes || echo no)"
-# the reason text alone is not the policy marker: the same words without the marker line stay a decided skip
 fresh_rec 10l; export FAKE_REFUSE="auto routing is for the himmel graph pass only (kind critic, repo none); name HIMMEL_API_ACCOUNT=A, B or C"
 run_cfp claude-api
 check "10l the policy wording without the launcher's marker line is a decision: exits 5" 5 "$RC"

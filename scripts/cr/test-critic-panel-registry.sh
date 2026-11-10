@@ -185,9 +185,6 @@ check "check: set, lane on"             "$(printf '%s\n' "$CHK_ON" | grep '^effe
 check "check: set, app not armed"       "$(printf '%s\n' "$CHK_UN" | grep '^effective reviewers:')" "effective reviewers: codex"
 check "check: github-app row never probed" "$(printf '%s\n' "$CHK_ON" | grep -c '^row coderabbit')" "0"
 
-# The SHIPPED registry with the lane off. The claude row is absent(api lane is OFF) and the
-# reviewer set equals the base set (the shipped rows with the claude row dropped). A lane that is on selects
-# claude, so the equality is not vacuous.
 printf '%s' '{"panel":[{"slug":"claude","drop":true}]}' > "$tmp/ship-drop-claude.json"
 ship() { env -u CR_PROFILE -u CRITICS_BASE_JSON -u CRITICS_JSON "$@" bash "$PANEL" --check 2>/dev/null; }
 SHIP_OFF=$(ship -u HIMMEL_API_LANE CRITICS_LOCAL_JSON="$tmp/none.json" CR_APP=0)
