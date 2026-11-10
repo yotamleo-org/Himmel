@@ -766,6 +766,66 @@ same 'alert-fail= names the cadence and its age (HIMMEL-7419)' "$(alertfail_of)"
 contains 'verbose labels the failed alert (HIMMEL-7419)' "$(bash "$SUT" --workers 'HIMMEL-333-legN70' --verbose 2>/dev/null)" 'alert-fail: focus-refresh:3h'
 rm -f "$CADENCE_ALERT_SEND_FAILED_MARK"
 
+# --- quota=<token>.<bucket>:<remaining>@<reset HH:MM>[,...] | <token>.<bucket>:stall.
+# The tick names the GitHub budget that is out, and after a probe that timed out no router read follows.
+# A gh in front of the fixture's: QSTUB_MODE=pr-limit makes `pr list` die on a rate limit (the rest
+# reaches the fixture's gh), hung sleeps on every call. Every call is logged to QSTUB_LOG.
+mkdir -p "$W/qbin" "$W/noenv"
+cat > "$W/qbin/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${QSTUB_LOG:-/dev/null}"
+case "${QSTUB_MODE:-}" in
+    hung) exec sleep 600 ;;
+    pr-limit)
+        if [ "${1:-}" = pr ] && [ "${2:-}" = list ]; then
+            echo 'GraphQL: API rate limit already exceeded for user ID 1. (HTTP 403)' >&2
+            exit 1
+        fi ;;
+esac
+exec "$W_GH" "$@"
+STUB
+chmod +x "$W/qbin/gh"
+q_reset=$(( $(date +%s) + 1800 ))
+q_hm="$(date -d "@$q_reset" +%H:%M)"  # gnu-ok: chief kit is Linux-only
+q_tick() { # <quota dir> <extra env...> -- run one compact tick on the front gh, no read token, a scratch quota dir
+    local d="$1"; shift
+    env W_GH="$W/bin/gh" PATH="$W/qbin:$PATH" GH_READ_ENV_ROOT="$W/noenv" HIMMEL_QUOTA_DIR="$d" QSTUB_LOG="$W/qstub.log" "$@" \
+        timeout 100 bash "$SUT" --workers 'HIMMEL-333-legN70' 2>/dev/null
+}
+q_gql_out="HTTP/2.0 403 Forbidden\r\nX-Ratelimit-Remaining: 0\r\nX-Ratelimit-Reset: $q_reset\r\n\r\n"
+: > "$W/qstub.log"
+q_out="$(q_tick "$W/q-out" QSTUB_MODE=pr-limit STUB_GQL_OUT="$q_gql_out" STUB_GQL_RC=1)"
+contains 'a refused GraphQL budget prints quota=main.graphql:0@<reset>' "$q_out" " quota=main.graphql:0@$q_hm"
+contains 'a PR list the rate limit refused reads prs=? beside the quota= that names why' "$q_out" ' prs=? '
+contains 'gql= still prints its value on the refused budget' "$q_out" " gql=0/$q_hm"
+q_ok="$(q_tick "$W/q-ok")"
+not_contains 'RED control: a healthy budget prints no quota=' "$q_ok" ' quota='
+contains 'RED control: the healthy PR list still reads' "$q_ok" ' prs=#2247,#2250 '
+mkdir -p "$W/q-seed"
+printf 'main\tgraphql\t3333\t5000\t%s\t%s\tok\nmain\tcore\t4444\t5000\t%s\t%s\tok\n' "$q_reset" "$(date +%s)" "$q_reset" "$(date +%s)" > "$W/q-seed/quota.tsv"
+: > "$W/qstub.log"
+q_seed="$(q_tick "$W/q-seed")"
+contains 'gql= renders from quota.tsv' "$q_seed" " gql=3333/$q_hm "
+contains 'rest-main= renders from quota.tsv' "$q_seed" " rest-main=4444/5000@$q_hm "
+case "$(grep -c -E '(^| )graphql( |$)|rateLimit|api -i user|api rate_limit' "$W/qstub.log")" in
+    0) pass 'a fresh quota.tsv costs the tick no graphql or budget call of its own' ;;
+    *) fail "the tick spent a budget call with a fresh quota.tsv (log: $(tr '\n' '|' < "$W/qstub.log"))" ;;
+esac
+: > "$W/qstub.log"
+q_t0=$SECONDS
+q_hung="$(q_tick "$W/q-hung" QSTUB_MODE=hung GHQ_PROBE_TIMEOUT=2)"
+q_hung_s=$((SECONDS - q_t0))
+case "$q_hung" in TICK*) pass 'a hung gh still prints a TICK line by itself' ;; *) fail "a hung gh printed no TICK line (out='$q_hung')" ;; esac
+contains 'a probe that timed out reads quota=main.graphql:stall' "$q_hung" ' quota=main.graphql:stall'
+contains 'a probe that timed out leaves prs=?' "$q_hung" ' prs=? '
+[ "$q_hung_s" -lt 60 ] && pass "a hung gh ends the tick in ${q_hung_s}s, inside the waiter's 120 s kill" || fail "a hung gh took ${q_hung_s}s"
+case "$(wc -l < "$W/qstub.log" | tr -d '[:space:]')" in  # read-sink-ok: this suite's own stub log
+    1) pass 'the stub log holds the one probe and no router read after it' ;;
+    *) fail "a router read followed the timed-out probe (log: $(tr '\n' '|' < "$W/qstub.log"))" ;;
+esac
+q_key_line="$(grep -n -E '^[[:space:]]+for f in workers livestate prs ' "$HERE/chief-wait.sh")"
+[ -n "$q_key_line" ] && pass "chief-wait's key field list is found" || fail "chief-wait's key field list moved"
+not_contains "chief-wait's key field list gains no quota" "$q_key_line" 'quota'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-fields.sh'

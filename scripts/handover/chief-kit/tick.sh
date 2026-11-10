@@ -216,13 +216,24 @@ chief-wait's action key, so it wakes nothing. Env seams:
 HIMMEL_WORKER_SESSION_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_FAILURE_ROUTES_LOG,
 WORKER_SESSION_DIGEST_STATE_DIR.
 
-gql=<remaining>/<reset HH:MM> (HIMMEL-3197): the GitHub GraphQL budget, read from
-the X-Ratelimit-* headers of ONE `gh api -i graphql` call
-(gh-graphql-budget.sh ghb_read); gql=? when the headers cannot be read.
+gql=<remaining>/<reset HH:MM>: the GitHub GraphQL budget of the main token,
+rendered from quota.tsv (gh-quota.sh), whose reading is the X-Ratelimit-* headers of one
+`gh api -i graphql` probe that ghq_refresh makes at most once per 170 s for the whole box;
+the tick makes no budget call of its own. gql=? when quota.tsv has no reading.
+
+quota=<token>.<bucket>:<remaining>@<reset HH:MM>[,...]: a GitHub budget the
+tick found out. Token is main or read, bucket graphql or core. Listed when the bucket is
+under GHQ_SCAN_FLOOR (default 500) or a read was refused (remaining ? when unknown), and
+<token>.<bucket>:stall when a probe or a read timed out. ABSENT when every budget is healthy.
+ghq_refresh runs first in the tick; after a timed-out probe or read, and past TICK_DEADLINE_SEC,
+the tick exports GH_READ_OFF=1, so every later router read fails fast into its own ? field and
+the pr-stall probe is skipped (stall= then reads its cached value, else ?). The open-PR list
+read never retries a rate limit on main, so prs=? beside a quota= names which budget refused
+it. Advisory: not in chief-wait's action key, so it wakes nothing.
 
 rest-main=<remaining>/<limit>@<reset HH:MM> and rest-read=... (HIMMEL-6837), right
 after gql: the REST core budget of the main token and of the read-only token
-(himmel_github_token_vm2) from `gh api rate_limit` (gh-read.sh gh_read_rates).
+(himmel_github_token_vm2), rendered from the core rows of quota.tsv, no call of the tick's own.
 Under 10 % remaining a field ends !LOW. Absent when a budget cannot be read or no
 read token is configured; the verbose view prints them as "rest main:" and
 "rest read:" lines. Advisory: not in chief-wait's action key.
@@ -869,6 +880,52 @@ if [ "$stale_mode" -eq 1 ]; then
     [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
     pool_stale "$DOC" "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" "${TICK_GH_CMD:-$GH_READ_BIN}" "$REPO"
     exit $?
+fi
+
+# quota=: which GitHub budget is out, read first so every later read knows. ghq_refresh keeps
+# quota.tsv (a no-op while it is under 170 s old); a probe that timed out exports GH_READ_OFF=1,
+# so every later router read, the tick's own and its children's, fails fast into its ? field.
+# gql= and rest-* render from the same file later, at no call.
+quota_items=""
+quota_floor="${GHQ_SCAN_FLOOR:-500}"
+case "$quota_floor" in '' | *[!0-9]*) quota_floor=500 ;; esac
+# tick_reads_off: no router read after this point (a probe or read timed out, or the deadline passed).
+tick_reads_off() { export GH_READ_OFF=1; }
+# tick_deadline_off: the same switch once TICK_DEADLINE_SEC is spent.
+tick_deadline_off() { [ "$SECONDS" -lt "$tick_deadline" ] || tick_reads_off; }
+# tick_epoch_hm <epoch>: HH:MM, or ? when it cannot be read.
+tick_epoch_hm() {
+    local hm=""
+    [ -z "${1:-}" ] || hm="$(date -d "@$1" +%H:%M 2>/dev/null || date -r "$1" +%H:%M 2>/dev/null)" || hm=""
+    printf '%s' "${hm:-?}"
+}
+# quota_put <token.bucket> <value> [force]: one item per bucket; only a stall replaces one.
+quota_put() {
+    case ",$quota_items," in
+        *",$1:$2,"*) return 0 ;;
+        *",$1:"*)
+            [ "${3:-}" = force ] || return 0
+            quota_items="$(printf '%s' "$quota_items" | tr ',' '\n' | grep -v -F "$1:" | paste -sd, -)" ;;  # swallow-ok: an empty remainder is the empty list
+    esac
+    quota_items="${quota_items:+$quota_items,}$1:$2"
+}
+quota_ready=0
+if [ -f "$HERE/../../lib/gh-quota.sh" ]; then
+    # shellcheck source=../../lib/gh-quota.sh
+    . "$HERE/../../lib/gh-quota.sh" && quota_ready=1
+fi
+if [ "$quota_ready" -eq 1 ]; then
+    ghq_refresh 2>/dev/null
+    for q_tok in main read; do
+        for q_bucket in graphql core; do
+            ghq_read "$q_tok" "$q_bucket" || continue
+            case "$GHQ_STATE" in
+                timed-out) quota_put "$q_tok.$q_bucket" stall force; tick_reads_off ;;
+                refused) quota_put "$q_tok.$q_bucket" "${GHQ_REMAINING:-0}@$(tick_epoch_hm "$GHQ_RESET")" ;;
+                ok) if [ -n "$GHQ_REMAINING" ] && [ "$GHQ_REMAINING" -lt "$quota_floor" ]; then quota_put "$q_tok.$q_bucket" "$GHQ_REMAINING@$(tick_epoch_hm "$GHQ_RESET")"; fi ;;
+            esac
+        done
+    done
 fi
 
 # the fleet manifest is re-read on every run. An unreadable one is
@@ -1967,7 +2024,26 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$console_doc" | head -n 1)"
     case "$doc_project" in /*) pr_repo="$doc_project" ;; esac
 fi
-pr_out="$(cd "$pr_repo" 2>/dev/null && timeout -k 2 "$(tick_bound 30)" "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
+# The read names why it failed (GH_READ_REFUSED_FILE) and never retries a rate limit on main (the
+# quota= field says which budget is out).
+tick_deadline_off
+pr_refused="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-refused.XXXXXX" 2>/dev/null)" || pr_refused=""  # swallow-ok: no file means no named reason, prs=? still prints
+pr_out="$(cd "$pr_repo" 2>/dev/null && GH_READ_REFUSED_FILE="$pr_refused" GH_READ_NO_MAIN_FALLBACK=1 timeout -k 2 "$(tick_bound 30)" "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
+if [ -n "$pr_refused" ]; then
+    while read -r pr_ref_tok pr_ref_bucket pr_ref_why; do
+        case "$pr_ref_why" in
+            stall) quota_put "$pr_ref_tok.$pr_ref_bucket" stall force ;;
+            rate-limit)
+                pr_ref_rem="?"; pr_ref_at="?"
+                if [ "$quota_ready" -eq 1 ] && ghq_read "$pr_ref_tok" "$pr_ref_bucket"; then
+                    [ -z "$GHQ_REMAINING" ] || pr_ref_rem="$GHQ_REMAINING"
+                    pr_ref_at="$(tick_epoch_hm "$GHQ_RESET")"
+                fi
+                quota_put "$pr_ref_tok.$pr_ref_bucket" "$pr_ref_rem@$pr_ref_at" ;;
+        esac
+    done < "$pr_refused"
+    rm -f "$pr_refused"
+fi
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
 # no worker this tick reads holds (a held or lockless lock), and no recent cloud session
@@ -2053,6 +2129,7 @@ dispatch_summary=none
 dispatch_alerts=""
 # shellcheck source=../../lib/timeout-bin.sh
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
+tick_deadline_off
 dispatch_runs="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} "$GH_READ_BIN" api 'repos/{owner}/{repo}/actions/runs?event=workflow_dispatch&status=in_progress&per_page=100' --jq '.workflow_runs[] | [.id, .path, .head_branch, .head_sha, .run_started_at] | @tsv' 2>/dev/null)" || dispatch_summary='?'  # swallow-ok: an unreadable runs list renders as dispatch=?
 if [ "$dispatch_summary" = none ] && [ -n "$dispatch_runs" ]; then
     # oldest first: under the cap the longest-running (likeliest hung) runs are read, not the newest
@@ -3142,7 +3219,9 @@ if [ "$prs" != none ] && { [ -n "${TICK_STALL_PROBE:-}" ] || [ "$pr_repo" = "$RE
     stall_fresh=""
     # swallow-ok: an unreadable cache reads as stale and the probe runs
     [ "$stall_ttl" -gt 0 ] && [ -f "$stall_cache" ] && [ -n "$(find "$stall_cache" -mmin "-$stall_ttl" 2>/dev/null)" ] && stall_fresh=1
-    if [ -z "$stall_fresh" ]; then
+    # with the router off the probe is skipped: it reads plain gh, and the cached value (else ?) stands
+    tick_deadline_off
+    if [ -z "$stall_fresh" ] && [ "${GH_READ_OFF:-}" != 1 ]; then
         if stall_rows="$(timeout -k 2 "$(tick_bound 60)" bash "$stall_probe" ${WORKERS_FROM:+--manifest "$WORKERS_FROM"} 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only; swallow-ok: a failed probe keeps the last cached value
             stall_val="$(printf '%s\n' "$stall_rows" | awk '$1 == "STALL" && $2 ~ /^[0-9]+$/ && $3 ~ /^[a-z-]+$/ { printf "%s%s:%s", sep, $2, $3; sep = "," }')"
         fi
@@ -3496,34 +3575,30 @@ orphans="${orphans_line#orphans=}"
 
 # gql=<remaining>/<reset HH:MM>: the GitHub GraphQL budget, shared by
 # every worker on the box, so a chief sees exhaustion coming instead of hitting it.
-# ghb_read is ONE real `gh api -i graphql` call -- `gh api rate_limit` reports the
-# REST core bucket and misreports this one -- so a tick pays exactly
-# one extra request. gql=? when the headers are unreadable; never fails the tick.
+# It is read from quota.tsv, which the ghq_refresh at the top of the tick kept (the
+# true GraphQL read, never `gh api rate_limit`, which reports the REST core bucket), so
+# the tick makes no budget call of its own here. gql=? when quota.tsv has no reading.
 gql='?'
-if [ -f "$HERE/../../lib/gh-graphql-budget.sh" ]; then
-    # shellcheck source=../../lib/gh-graphql-budget.sh
-    . "$HERE/../../lib/gh-graphql-budget.sh"
-    if ghb_read; then
-        gql_reset='?'
-        if [ -n "$GHB_RESET" ]; then
-            gql_reset="$(date -d "@$GHB_RESET" +%H:%M 2>/dev/null || date -r "$GHB_RESET" +%H:%M 2>/dev/null)" || gql_reset=""
-            [ -n "$gql_reset" ] || gql_reset='?'
-        fi
-        gql="$GHB_REMAINING/$gql_reset"
-    fi
-fi
-
-# rest main / rest read: the REST core budget of each token, one line per token
-# (`gh api rate_limit` costs no budget); LOW under 10 %. A read token that is
-# absent or unreadable shows in --verbose only, so the compact line stays quiet.
 rest_main_line=''
 rest_read_line=''
-if [ -f "$HERE/../../lib/gh-read.sh" ]; then
-    # shellcheck source=../../lib/gh-read.sh
-    . "$HERE/../../lib/gh-read.sh"
-    rest_lines="$(gh_read_rates 2>/dev/null)" || rest_lines=""  # swallow-ok: an unreadable budget renders as no rest field, advisory only
-    rest_main_line="$(printf '%s\n' "$rest_lines" | sed -n 's/^main: //p')"
-    rest_read_line="$(printf '%s\n' "$rest_lines" | sed -n 's/^read: //p')"
+if [ "$quota_ready" -eq 1 ]; then
+    if ghq_read main graphql && [ -n "$GHQ_REMAINING" ]; then
+        case "$GHQ_STATE" in ok | refused) gql="$GHQ_REMAINING/$(tick_epoch_hm "$GHQ_RESET")" ;; esac
+    fi
+    # rest main / rest read: the REST core budget of each token, "<rem>/<limit> reset HH:MM[ LOW]";
+    # LOW under 10 %. A token with no reading (a read token that is absent too) leaves its line empty,
+    # so the compact line stays quiet.
+    for q_tok in main read; do
+        q_line=''
+        if ghq_read "$q_tok" core && [ -n "$GHQ_REMAINING" ] && [ -n "$GHQ_LIMIT" ]; then
+            case "$GHQ_STATE" in
+                ok | refused)
+                    q_line="$GHQ_REMAINING/$GHQ_LIMIT reset $(tick_epoch_hm "$GHQ_RESET")"
+                    if [ "$GHQ_LIMIT" -gt 0 ] && [ $((GHQ_REMAINING * 100)) -lt $((GHQ_LIMIT * 10)) ]; then q_line="$q_line LOW"; fi ;;
+            esac
+        fi
+        if [ "$q_tok" = main ]; then rest_main_line="$q_line"; else rest_read_line="$q_line"; fi
+    done
 fi
 rest_compact() { # <line> -> 4200/5000@14:05[!LOW]; nothing when the line is not a reading
     case "$1" in [0-9]*) printf '%s' "$1" | sed -e 's/ reset /@/' -e 's/ LOW$/!LOW/' ;; esac
@@ -3695,6 +3770,7 @@ cired_summary=unknown
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
 cired_bound="${TICK_CIRED_TIMEOUT:-15}"
 case "$cired_bound" in [1-9]|1[0-5]) ;; *) cired_bound=15 ;; esac
+tick_deadline_off
 cired_out="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound "$cired_bound")"} "$GH_READ_BIN" issue list --label ci-red --state open --limit 1000 --json number -q 'length' 2>/dev/null)" || cired_out=""  # swallow-ok: a failed read leaves cired=unknown
 case "$cired_out" in ''|*[!0-9]*) ;; 1000) cired_summary='1000+' ;; *) cired_summary="$cired_out" ;; esac
 
@@ -3823,6 +3899,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'fleet: %s\n' "$fleet"
     printf 'capacity: %s\n' "$capacity"
     printf 'gql: %s\n' "$gql"
+    [ -z "$quota_items" ] || printf 'quota: %s\n' "$quota_items"
     case "$rest_main_line" in ''|'?'*) ;; *) printf 'rest main: %s\n' "$rest_main_line" ;; esac
     case "$rest_read_line" in ''|'?'*) ;; *) printf 'rest read: %s\n' "$rest_read_line" ;; esac
     printf 'orphans: %s\n' "$orphans"
@@ -3927,6 +4004,7 @@ else
     compact_field gql "$gql"
     compact_field rest-main "$(rest_compact "$rest_main_line")"
     compact_field rest-read "$(rest_compact "$rest_read_line")"
+    compact_field quota "$quota_items"
     compact_field orphans "$orphans"
     compact_field nonces "$nonces_summary"
     compact_field workerset "$legset_summary"

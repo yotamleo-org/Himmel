@@ -170,18 +170,6 @@ emit() { printf '%s\n' "$*" >> "$RES/$CUR.txt"; }   # emit <status> <caller> <mo
 
 known_task() {
     awk -v c="$1" -v m="$2" -v a="$3" '$2 == c && $3 == m && $4 == a { print $1; exit }' <<'KNOWN'
-T5 tick.sh gql-out names-limit
-T5 tick.sh rest-out names-limit
-T5 tick.sh both-out names-limit
-T5 tick.sh gql-200 names-limit
-T5 tick.sh reset-past names-limit
-T5 tick.sh reset-absent names-limit
-T5 tick.sh reset-absurd names-limit
-T5 tick.sh secondary names-limit
-T5 tick.sh hung bound
-T5 tick.sh hung exit
-T5 tick.sh hung names-limit
-T5 tick.sh hung-after-probe names-limit
 T6 next-dispatchable.sh gql-out no-false-phrase
 T6 next-dispatchable.sh both-out no-false-phrase
 T6 next-dispatchable.sh gql-200 no-false-phrase
