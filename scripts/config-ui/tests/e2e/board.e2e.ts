@@ -385,9 +385,10 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
       await page.setViewportSize({ width, height });
       await page.emulateMedia({ colorScheme: scheme });
       await open(page);
-      for (const tab of ["roadmap", "chains", "tidy"]) {
+      for (const tab of ["roadmap", "chains", "tidy", "nv"]) {
         await go(page, `#/board?tab=${tab}`);
         await expect(page.locator(`.tabs a[aria-selected="true"]`)).toHaveAttribute("href", new RegExp(`tab=${tab}`));
+        if (tab === "nv") await expect(page.locator("#rm-nv .rm-card").first()).toBeVisible();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
         await shot(page, `board-${width}-${scheme}-${tab}`);
       }
