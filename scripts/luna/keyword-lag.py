@@ -452,10 +452,11 @@ def report(days, half, state, now):
             row = json.loads(line)
             merged_at = parse_iso(row["merged_at"])
             first = row["first_in_at"]
+            lag = parse_iso(first) - merged_at if first else None
         except (ValueError, KeyError, TypeError):
             continue
         if start <= merged_at <= end:
-            merges.append((merged_at, parse_iso(first) - merged_at if first else None))
+            merges.append((merged_at, lag))
     final = ledger_merges(ledger_path(state))
     try:
         with open(os.path.join(state, "lag.pending"), encoding="utf-8") as fh:
