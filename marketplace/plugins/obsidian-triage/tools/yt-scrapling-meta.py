@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""yt-scrapling-meta.py - cookieless YouTube metadata + transcript (HIMMEL-4677).
+"""yt-scrapling-meta.py - cookieless YouTube metadata + transcript.
 
 Sibling of ig-scrapling-media.py / x-scrapling-media.py, called by
 playwright-crawl-youtube.mjs as its PRIMARY path (the logged-in Playwright crawl
@@ -22,7 +22,7 @@ A video with metadata but no transcript is still "ok", with transcript_error
 set (the crawler records it as a partial).
 
 Exit: 0 ok, 3 scrapling not installed, 4 login_wall, 5 removed, 6 error,
-7 skipped (the HIMMEL-4361 route denies the `local-headless` slot: the
+7 skipped (the harvest route denies the `local-headless` slot: the
 HARVEST_SCRAPE_DENY kill switch or the vault's .harvest-backends).
 
 `--from-html FILE [--final-url URL]` skips the page fetch and `--subs-file FILE`
@@ -53,7 +53,7 @@ SUB_LANGS = "en.*,en,.*-orig"
 
 
 def _batch_module():
-    """harvest-clip-body-batch.py: HIMMEL-4361 routing + the private-host guard."""
+    """harvest-clip-body-batch.py: backend routing + the private-host guard."""
     path = Path(__file__).with_name("harvest-clip-body-batch.py")
     spec = importlib.util.spec_from_file_location("harvest_clip_body_batch", path)
     mod = importlib.util.module_from_spec(spec)
@@ -80,7 +80,7 @@ def scrapling_permitted(vault, url):
 
 def player_response(page_html, video_id):
     """The ytInitialPlayerResponse object for this video, or None. An
-    unavailable video's response carries no videoDetails at all (HIMMEL-4704):
+    unavailable video's response carries no videoDetails at all:
     with no response naming this video, the first one without videoDetails but
     with a playabilityStatus stands in for it. One naming ANOTHER video never
     does."""
@@ -249,9 +249,9 @@ def main(argv=None):
     # Route rules match the canonical URL; the hl pin is fetch-only, or an
     # exact-video skip/only rule would stop matching.
     canon = f"https://www.youtube.com/watch?v={args.video_id}"
-    # hl=en: _is_private reads the English reason text, so ask for English
-    # (HIMMEL-4797). ponytail: no language-independent private signal is known
-    # in playabilityStatus, so a pinned locale it is; revisit if YouTube ignores hl.
+    # hl=en: _is_private reads the English reason text, so ask for English;
+    # playabilityStatus has no language-independent private signal, so the
+    # locale is pinned. Revisit if YouTube ignores hl.
     url = f"{canon}&hl=en"
     if not scrapling_permitted(args.vault, canon):
         out = {"status": "skipped", "detail": "local-headless denied by route or kill switch"}

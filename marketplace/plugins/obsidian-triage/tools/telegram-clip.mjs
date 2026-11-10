@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * telegram-clip.mjs — LUNA-58 telegram → Clippings/ ingestion entry point.
+ * telegram-clip.mjs — telegram → Clippings/ ingestion entry point.
  *
- * Maps ONE telegram message (text / bare URL / forward) to a LUNA-2
+ * Maps ONE telegram message (text / bare URL / forward) to a
  * Web-Clipper-shaped clip note written into <vault>/Clippings/, so
  * /harvest-clips ingests it on its next pass. Idempotent: a re-run for the
  * same telegram_msg_id is a no-op (dedup by frontmatter, robust to slug drift).
@@ -21,8 +21,6 @@
  *   1 — bad usage / missing required arg (--msg-id, --text/--text-file)
  *   2 — env unusable (vault missing / not an Obsidian vault, no --sender,
  *       path-safety violation)
- *
- * LUNA-58.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, relative, join } from "node:path";
@@ -276,7 +274,7 @@ async function main() {
   }
   process.stdout.write(`✓ telegram-clip: wrote Clippings/${fname} (type=${type}, source=${source || "none"})\n`);
 
-  // Best-effort inline enrichment (LUNA-58 + fxtwitter body-fill): for an X
+  // Best-effort inline enrichment (with fxtwitter body-fill): for an X
   // (tweet) clip, fill `## The Idea` from the tweet text so the clip is born
   // rich instead of a thin stub. NEVER blocks filing — any failure (network,
   // fxt error) is swallowed; the harvest/enrich pipeline stage retries later.
