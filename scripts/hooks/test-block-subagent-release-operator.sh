@@ -21,6 +21,7 @@ pass=0
 fail=0
 CLI='node /repo/scripts/jira/dist/index.js'
 TAB=$(printf '\t')
+CR=$(printf '\r')
 NL=$'\n'
 
 # run_hook <stdin-file> [env...] — sets rc and out (stdout + stderr).
@@ -77,6 +78,7 @@ expect deny "single-quoted word" "$SUB" "$CLI release 'operator' spec R1"
 expect deny "double-quoted word" "$SUB" "$CLI release \"operator\" spec R1"
 expect deny "backslash inside the word" "$SUB" "$CLI release o\\perator spec R1"
 expect deny "TAB between the words" "$SUB" "$CLI release${TAB}operator spec R1"
+expect deny "CRLF line ending after the word" "$SUB" "$CLI release operator${CR}${NL}echo hello"
 expect deny "backslash-newline between the words" "$SUB" "$CLI release \\${NL}operator spec R1"
 expect deny "ANSI-C quoted word" "$SUB" "$CLI release \$'operator' spec R1"
 expect deny "bash -c string" "$SUB" "bash -c \"$CLI release operator spec R1\""

@@ -2449,7 +2449,7 @@ command.
 
 The match: the command is normalised (backslash-newline pairs deleted, `$'` and
 `$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted), split into
-words at every space, TAB, newline and shell metacharacter (`;&|()<>{}` and the
+words at every space, TAB, carriage return, newline and shell metacharacter (`;&|()<>{}` and the
 backtick), and matches when both words appear anywhere, in either order. There
 is no allow-list of read-only commands, no split into simple commands and no
 order check, so `git grep "release operator"` is denied too: a subagent searches

@@ -13,7 +13,7 @@
 #
 # The match: the command is normalised (backslash-newline pairs deleted, `$'`
 # and `$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted), split
-# into words at every space, TAB, newline and shell metacharacter, and matches
+# into words at every space, TAB, CR, newline and shell metacharacter, and matches
 # when both words appear, anywhere and in either order. There is no allow-list,
 # no simple-command split and no order check; a subagent searching for the
 # phrase uses the Grep tool. What it cannot see (text built at run time, a
@@ -51,7 +51,7 @@ verdict=$(jq -r '
       | gsub("\\\\\n"; "")
       | gsub("\\$\u0027"; "\u0027") | gsub("\\$\""; "\"")
       | gsub("[\u0027\"\\\\]"; "")
-      | [splits("[ \t\n;&|()<>{}`]+")]) as $w
+      | [splits("[ \t\r\n;&|()<>{}`]+")]) as $w
     | if any($w[]; . == "release") and any($w[]; . == "operator") then "deny" else "allow" end
   end' <<<"$input" 2>/dev/null) || verdict=parse
 
