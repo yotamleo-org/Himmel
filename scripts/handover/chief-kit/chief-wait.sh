@@ -311,6 +311,15 @@
 # `chief-route.ts reply --owed <key> --doc <chief doc> <chat> <text>` writes the DELIVERED
 # bullet, from the bridge's send receipt, never by hand. Wakes once per key (marker
 # `<inbox>.wait.owed`: `<key> <first-seen epoch> <woken 0|1>`); a receipt drops the key.
+# `WAKE rm-lease-stale <epoch> <age>m` (with --doc whose `release:` line names a release): the release
+# manager lease (`jira release state <R> --json`, read at most every CHIEF_WAIT_RMLEASE_SAMPLE_MIN, default 5)
+# is held, its holder pid is not alive on this host, and its run doc is missing or untouched for
+# CHIEF_WAIT_RMLEASE_STALE_MIN minutes (default 30; a missing doc counts from the lease's `acquired` time).
+# The next line names the takeover command. Wakes once per epoch (marker `<inbox>.wait.rmlease`), again
+# every CHIEF_WAIT_RMLEASE_REWAKE_MIN (default 60) while it stays; a released lease, a live holder, a fresh
+# run doc or a takeover (a new epoch) clears the marker. A failed, timed-out or unparseable read wakes nothing and
+# keeps it. CHIEF_WAIT_RMLEASE replaces the state reader with `<cmd> <R> --json` (tests); the CLI's exit 3 (not OK)
+# still prints the state and is read.
 # Everything else on the tick line (heartbeat, procs, fill, fleet, gql,
 # orphans...) moves without needing a chief act and never wakes. Two consecutive samples must differ from the saved key (not
 # necessarily from each other), so one failed `gh` read (prs=none for a single
@@ -1180,6 +1189,56 @@ owed_wake() {
     if [ -n "$new" ]; then printf '%s' "$new" > "$owed_file" 2>/dev/null; else rm -f "$owed_file"; fi
     [ -n "$out" ] || return 1
     printf '%s\n' "$out"
+}
+rmlease_file="$inbox.wait.rmlease"
+rmlease_at_file="$inbox.wait.rmlease.at"
+rmlease_wake() {
+    local rel out rc=0 rc_not_ok=3 anchor cli pk epoch released doc acq pid host now age mt win
+    [ -n "$console_doc" ] && [ -r "$console_doc" ] || return 1
+    rel="$(sed -n 's/^release:[[:space:]]*//p' "$console_doc" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc reads no release
+    [[ "$rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || return 1
+    [ "$rel" != none ] || return 1
+    if [ -e "$rmlease_at_file" ] && [ -n "$(find "$rmlease_at_file" -mmin "-${CHIEF_WAIT_RMLEASE_SAMPLE_MIN:-5}" 2>/dev/null)" ]; then return 1; fi  # swallow-ok: an unreadable marker reads as stale, so the read runs
+    : > "$rmlease_at_file" 2>/dev/null
+    pk="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; pk="${pk##*/}"
+    anchor="$(cd "$REPO" && . "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor=""  # swallow-ok: no anchor leaves the CLI unavailable, which reads as an unreadable state
+    cli="${anchor%/.git}/scripts/jira/dist/index.js"
+    if [ -n "${CHIEF_WAIT_RMLEASE:-}" ]; then
+        out="$(timeout -k 2 "${CHIEF_WAIT_RMLEASE_TIMEOUT:-30}" bash "$CHIEF_WAIT_RMLEASE" "$rel" --json </dev/null 2>/dev/null 9>&-)" || rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the rc is kept and read below
+    elif [ -n "$anchor" ] && [ -f "$cli" ]; then
+        out="$(JIRA_PROJECT_KEY="$pk" timeout -k 2 "${CHIEF_WAIT_RMLEASE_TIMEOUT:-30}" node "$cli" release state "$rel" --json </dev/null 2>/dev/null 9>&-)" || rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the rc is kept and read below
+    else
+        return 1
+    fi
+    [ "$rc" -eq 0 ] || [ "$rc" -eq "$rc_not_ok" ] || return 1
+    # shellcheck disable=SC2016  # the python program is single-quoted on purpose
+    IFS=$'\t' read -r epoch released doc acq pid host < <(printf '%s' "$out" | python3 -I -c '
+import datetime, json, sys
+try:
+    ls = json.load(sys.stdin)["lease"]
+    if ls is None:
+        print("0\t1\t-\t0\t-\t-")
+    else:
+        acq = int(datetime.datetime.fromisoformat(ls["acquired"].replace("Z", "+00:00")).timestamp()) if ls.get("acquired") else 0
+        print("\t".join([str(int(ls["epoch"])), "1" if ls.get("released") else "0", ls.get("owner_doc") or "-", str(acq), str(ls.get("owner_pid") or "-"), ls.get("owner_host") or "-"]))
+except Exception:
+    pass
+' 2>/dev/null)  # swallow-ok: an unparseable state leaves the fields empty and reads as unreadable
+    case "$epoch" in ''|*[!0-9]*) return 1 ;; esac
+    if [ "$released" != 0 ] || [ "$doc" = - ]; then rm -f "$rmlease_file"; return 1; fi
+    if [ "$pid" != - ] && [ "$host" = "$(uname -n)" ] && kill -0 "$pid" 2>/dev/null; then rm -f "$rmlease_file"; return 1; fi  # swallow-ok: a gone pid is the stale case
+    now="$(date +%s)"
+    if [ -e "$doc" ] && mt="$(stat -c %Y "$doc" 2>/dev/null)"; then  # gnu-ok: Linux-only kit; swallow-ok: a failed stat falls back to the lease's acquired time
+        age=$(( (now - mt) / 60 ))
+    else
+        case "$acq" in ''|*[!0-9]*|0) return 1 ;; esac
+        age=$(( (now - acq) / 60 ))
+    fi
+    win="${CHIEF_WAIT_RMLEASE_STALE_MIN:-30}"
+    if [ "$age" -lt "$win" ]; then rm -f "$rmlease_file"; return 1; fi
+    set_wake "$rel:$epoch" "$rmlease_file" "${CHIEF_WAIT_RMLEASE_REWAKE_MIN:-60}" || return 1
+    printf 'WAKE rm-lease-stale %s %sm\ntakeover: JIRA_PROJECT_KEY=%s node %s release operator takeover %s --epoch %s --doc <absolute successor run doc>, then rm-run %s --doc <the same doc>\n' \
+        "$epoch" "$age" "$pk" "$cli" "$rel" "$epoch" "$rel"
 }
 # unwatched_wake: <unwatched= labels, `+`-joined> — a live worker the manifest does not list
 # (tick.sh already drops other chiefs' workers). Same marker logic, own marker, own window.
@@ -2110,6 +2169,10 @@ while :; do
             if owed_new="$(owed_wake)"; then
                 printf 'WAKE owed-undelivered %s\n%s\n' "$owed_new" "$tick_line"
                 exit_reason='wake-owed-undelivered'; exit 0
+            fi
+            if rmlease_new="$(rmlease_wake)"; then
+                printf '%s\n%s\n' "$rmlease_new" "$tick_line"
+                exit_reason='wake-rm-lease-stale'; exit 0
             fi
             doctor_val="$(field doctor "$tick_line")"
             case "$doctor_val" in

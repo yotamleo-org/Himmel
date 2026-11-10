@@ -198,10 +198,51 @@
 # Exit codes:
 #   0 — READY-CHECK PASS
 #   1 — READY-CHECK FAIL (one or more checks failed)
-#   2 — usage, or cannot evaluate (gh/jq missing, repo/PR unreadable)
+#   2 — usage, or cannot evaluate: gh/jq missing, repo/PR unreadable, a read GitHub refused or
+#       stalled (the one QUOTA-PAUSE / GH-STALL line, no rows, a marker for the waiter), or the
+#       READY_CHECK_DEADLINE cut (nothing was judged). A FAIL row from a refused read is never exit 1.
 #
 # Platform guard: POSIX bash 3.2+, same as go.sh. No mapfile.
 set -u
+
+_rcd_report() {
+    local tok="" bucket="" why="" first=1 lib
+    [ -s "${1:-}" ] || return 1
+    lib="$(cd "$(dirname "$0")/../../lib" && pwd)"
+    while read -r tok bucket why; do
+        [ -n "$why" ] || continue
+        (
+            # shellcheck source=../../lib/gh-quota.sh
+            . "$lib/gh-quota.sh" 2>/dev/null || exit 0
+            [ "$first" -eq 0 ] || ghq_line "$tok" "$bucket" ready-check.sh "$why"
+            [ -z "$2" ] || [ -z "$3" ] || ghq_mark_blocked "$2" "$3" ready-check.sh "$bucket" "$why"
+        ) || true
+        first=0
+    done < "$1"  # read-sink-ok: our own mktemp refused file, never caller text
+    [ "$first" -eq 0 ]
+}
+
+_rcd_child() {
+    "$@" <&0 &
+    rcd_pid=$!
+    wait "$rcd_pid"
+}
+# shellcheck disable=SC2329  # reached only through _rcd_term, which the TERM trap invokes
+_rcd_descendants() {
+    local c
+    for c in $(pgrep -P "$1" 2>/dev/null); do printf '%s\n' "$c"; _rcd_descendants "$c"; done  # swallow-ok: no pgrep or no children lists nothing, and only the child itself is signalled
+}
+# shellcheck disable=SC2329  # invoked by the TERM trap below, which shellcheck does not follow
+_rcd_term() {
+    local p kids
+    if [ -n "${rcd_pid:-}" ]; then
+        kids=$(_rcd_descendants "$rcd_pid")
+        kill -TERM "$rcd_pid" 2>/dev/null
+        wait "$rcd_pid" 2>/dev/null
+        for p in $kids; do kill -TERM "$p" 2>/dev/null; done
+    fi
+    exit 143
+}
 
 # A self-armed deadline: the chief types this script bare, because a `timeout`
 # prefix does not match the project allow rule. READY_CHECK_DEADLINE (whole seconds, default
@@ -210,19 +251,63 @@ set -u
 if [ -z "${_READY_CHECK_ARMED:-}" ]; then
     rcd_s="${READY_CHECK_DEADLINE:-150}"
     case "$rcd_s" in ''|*[!0-9]*) rcd_s=150 ;; esac
+    _TIMEOUT_BIN=""
     if [ "$rcd_s" -gt 0 ]; then
-        _TIMEOUT_BIN=""
         # shellcheck source=../../lib/timeout-bin.sh
         . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN runs without the deadline, as the per-read bounds below do
+    fi
+    rcd_ref=$(mktemp "${TMPDIR:-/tmp}/ready-check-refused.XXXXXX" 2>/dev/null) || rcd_ref=""  # swallow-ok: no scratch file runs this process unwrapped, as before
+    if [ -n "$rcd_ref" ]; then
+        rcd_buf=""; rcd_err=""; rcd_pid=""
+        trap 'rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"' EXIT
+        trap '_rcd_term' TERM INT HUP
+        rcd_pr=""; rcd_sha=""
+        if [ "$#" -ge 2 ]; then
+            rcd_sha="${*: -1}"; rcd_pr="${*: -2:1}"
+            case "$rcd_pr" in ''|*[!0-9]*) rcd_pr="" ;; esac
+            case "$rcd_sha" in *[!0-9a-f]*) rcd_sha="" ;; esac
+            [ "${#rcd_sha}" -eq 40 ] || rcd_sha=""
+            [ -n "$rcd_pr" ] && [ -n "$rcd_sha" ] || { rcd_pr=""; rcd_sha=""; }
+        fi
+        rcd_rc=0
+        rcd_buf=""; rcd_err=""
         if [ -n "$_TIMEOUT_BIN" ]; then
-            rcd_rc=0
-            _READY_CHECK_ARMED=1 "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" || rcd_rc=$?
-            if [ "$rcd_rc" -eq 124 ] || [ "$rcd_rc" -eq 137 ]; then
-                echo "READY-CHECK FAIL: no verdict within the ${rcd_s} s deadline (READY_CHECK_DEADLINE); a gate read stalled" >&2
-                exit 1
+            rcd_buf=$(mktemp "${TMPDIR:-/tmp}/ready-check-out.XXXXXX" 2>/dev/null) || rcd_buf=""  # swallow-ok: no buffer runs the child unbuffered below
+            rcd_err=$(mktemp "${TMPDIR:-/tmp}/ready-check-err.XXXXXX" 2>/dev/null) || rcd_err=""  # swallow-ok: no buffer runs the child unbuffered below
+        fi
+        if [ -n "$_TIMEOUT_BIN" ] && [ -n "$rcd_buf" ] && [ -n "$rcd_err" ]; then
+            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
+                _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" >"$rcd_buf" 2>"$rcd_err" || rcd_rc=$?
+            if [ "$rcd_rc" -ne 0 ] && _rcd_report "$rcd_ref" "$rcd_pr" "$rcd_sha"; then
+                rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
+                exit 2
             fi
+            if [ "$rcd_rc" -eq 124 ] || [ "$rcd_rc" -eq 137 ]; then
+                rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
+                echo "ready-check: no verdict within the ${rcd_s} s deadline (READY_CHECK_DEADLINE); a gate read stalled, nothing was judged" >&2
+                exit 2
+            fi
+            cat "$rcd_buf"; cat "$rcd_err" >&2  # read-sink-ok: our own mktemp buffers
+            rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
             exit "$rcd_rc"
         fi
+        rm -f "$rcd_buf" "$rcd_err"
+        if [ -n "$_TIMEOUT_BIN" ]; then
+            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
+                _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" || rcd_rc=$?
+        else
+            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" _rcd_child bash "$0" "$@" || rcd_rc=$?
+        fi
+        if [ "$rcd_rc" -ne 0 ] && _rcd_report "$rcd_ref" "$rcd_pr" "$rcd_sha"; then
+            rm -f "$rcd_ref"
+            exit 2
+        fi
+        rm -f "$rcd_ref"
+        if [ "$rcd_rc" -eq 124 ] || [ "$rcd_rc" -eq 137 ]; then
+            echo "ready-check: no verdict within the ${rcd_s} s deadline (READY_CHECK_DEADLINE); a gate read stalled, nothing was judged" >&2
+            exit 2
+        fi
+        exit "$rcd_rc"
     fi
 fi
 

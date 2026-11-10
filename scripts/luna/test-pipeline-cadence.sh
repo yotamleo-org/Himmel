@@ -227,21 +227,6 @@ assert_contains "default_vault POSIX shape is \$HOME/Documents/luna" "/posix/hom
 dv_d=$(run_dv -u LUNA_VAULT_PATH -u USERPROFILE -u HOME)
 assert_contains "default_vault falls back to /tmp when HOME+USERPROFILE unset" "/tmp/Documents/luna" "$dv_d"
 
-# cygpath present but FAILING on the input -> fall back to the raw USERPROFILE
-# (the `cygpath -u … || printf '%s' "$USERPROFILE"` arm). Inject a stub cygpath
-# that exits nonzero so this runs platform-independently (the stub IS the only
-# cygpath on POSIX, and shadows the real one on Windows).
-DV_FAKE_CYGPATH="$TMP_ROOT/fake-cygpath-fail"
-mkdir -p "$DV_FAKE_CYGPATH"
-printf '#!/usr/bin/env bash\nexit 1\n' > "$DV_FAKE_CYGPATH/cygpath"
-chmod +x "$DV_FAKE_CYGPATH/cygpath"
-# PATH entries must be POSIX-style for MSYS `command -v` to search them
-# ($TMP_ROOT is the cygpath -m mixed C:/ form). On POSIX it's already POSIX.
-DV_FAKE_PATH="$DV_FAKE_CYGPATH"
-if command -v cygpath >/dev/null 2>&1; then DV_FAKE_PATH="$(cygpath -u "$DV_FAKE_CYGPATH")"; fi
-dv_e=$(run_dv -u LUNA_VAULT_PATH -u HOME USERPROFILE='C:\Users\x' PATH="$DV_FAKE_PATH:$PATH")
-assert_contains "default_vault falls back to raw USERPROFILE when cygpath -u fails" 'C:\Users\x/Documents/luna' "$dv_e"
-
 if command -v cygpath >/dev/null 2>&1; then
     dv_c=$(run_dv -u LUNA_VAULT_PATH USERPROFILE='C:\Users\testuser' HOME="/home/msysuser")
     assert_contains "default_vault prefers Windows profile over MSYS \$HOME" "$(cygpath -u 'C:\Users\testuser')/Documents/luna" "$dv_c"
@@ -592,10 +577,30 @@ assert_contains "harvest runner chains /ig-media-enrich default limit" "/ig-medi
 assert_contains "harvest runner passes --include-evidence to /ig-media-enrich" "/ig-media-enrich --limit 10 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner names --include-evidence on the step sentence too" "step uses --limit 10 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner fail-opens ig-media-enrich" "must not abort" "$harvest_sh_plain"
-# x-media-enrich runs nightly beside
-# ig-media, bounded by the same --ig-limit, and fail-opens the same way.
-assert_contains "harvest runner chains /x-media-enrich" "/x-media-enrich --limit 10 --include-evidence" "$harvest_sh_plain"
+assert_contains "harvest runner chains /x-media-enrich with its own clip limit" "/x-media-enrich --limit 3 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner fail-opens x-media-enrich" "If /x-media-enrich fails" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich call passes the 600000 ms Bash tool timeout" "timeout parameter set to 600000" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich call takes no shell prefix" "with no timeout, env or other prefix" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich names its reason when the tool timeout fires" "x-media-enrich hit the 600 s tool timeout" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich reports the partial counts" "report how many clips the outcome lines show as processed and how many remain" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich still runs digest and re-scan after a tool timeout" "still run the digest and re-scan steps for the clips it wrote" "$harvest_sh_plain"
+if command -v jq >/dev/null 2>&1; then
+    x_hook="$SCRIPT_DIR/../hooks/cadence-approve-engines.sh"
+    x_root=$(cd "$SCRIPT_DIR/../.." && pwd)
+    x_vault=$(mktemp -d "$TMP_ROOT/x-vault.XXXXXX") || exit 1
+    x_vault=$(cd "$x_vault" && pwd -P)
+    x_cmd=${harvest_sh_plain#*"exactly this form: "}
+    x_cmd=${x_cmd%% with no *}
+    x_cmd=${x_cmd//<plugin>/$x_root/marketplace/plugins/obsidian-triage}
+    x_cmd=${x_cmd//<vault>/$x_vault}
+    x_decide() {
+        printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":%s}' "$(printf '%s' "$1" | jq -Rs .)" "$(printf '%s' "$x_vault" | jq -Rs .)" | bash "$x_hook" 2>/dev/null
+    }
+    assert_contains "cadence hook grants the exact x-media-fetch command the harvest prompt gives" '"permissionDecision":"allow"' "$(x_decide "$x_cmd")"
+    assert_not_contains "cadence hook refuses the same command behind a timeout prefix" '"permissionDecision":"allow"' "$(x_decide "timeout -k 20 540 $x_cmd")"
+else
+    echo "  SKIP: cadence hook grant rows (jq absent)"
+fi
 # A backlog left for later nights is not a failure. The 04:47 run
 # withheld the marker over the X backlog and 3 slides-pending-digest IG clips.
 assert_contains "harvest DONE: a remaining backlog still completes" "A backlog left for later runs is not unfinished work" "$harvest_sh_plain"

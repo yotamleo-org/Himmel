@@ -1051,16 +1051,21 @@ test("390 px: a row the person scrolled keeps its place across a refresh, and a 
     if (Math.abs(now - start) > 4 && bad.length === 0) { kept = now; break; }
   }
   expect(kept, `a hand-scrolled place where the selected tab stays clear (start ${start}, reach ${reach}; ${tried.join(" ; ")})`).toBeGreaterThanOrEqual(0);
+  // A repaint replaces the row, so a locator handle taken before it points at the detached old row (scrollLeft 0): tag the row, wait until the
+  // page holds a row without the tag (the repaint has landed), and read the live row's place in one page-side call.
+  const liveLeft = () => page.evaluate(() => document.querySelector(".tr .tabs")!.scrollLeft);
+  await page.evaluate(() => { (document.querySelector(".tr .tabs") as HTMLElement & { oldRow?: boolean }).oldRow = true; });
   await Promise.all([page.waitForResponse((r) => r.url().includes("/api/")), page.locator('.aside [data-act="refresh-roadmap"]').click()]);
+  await page.waitForFunction(() => { const row = document.querySelector(".tr .tabs") as (HTMLElement & { oldRow?: boolean }) | null; return !!row && !row.oldRow; });
   await page.waitForLoadState("networkidle");
   await settle();
-  const after = await tabs.evaluate((el) => el.scrollLeft);
+  const after = await liveLeft();
   expect(Math.abs(after - kept), `the scroll after a refresh (start ${start}, kept ${kept}, after ${after}, reach ${reach}; tried ${tried.join(" ; ")}; audit after: ${(await auditRows(page)).join("|") || "clear"})`).toBeLessThanOrEqual(2);
   await page.locator(".tr .tabs .tab").first().click();
   await expect(page.locator('.tr .tabs .tab[aria-selected="true"]')).toHaveText(/Roadmap/);
   await page.waitForLoadState("networkidle");
   await settle();
-  expect(await tabs.evaluate((el) => el.scrollLeft), "Roadmap is the first tab: nothing to scroll past").toBeLessThanOrEqual(2);
+  expect(await liveLeft(), "Roadmap is the first tab: nothing to scroll past").toBeLessThanOrEqual(2);
   expect(await auditRows(page)).toEqual([]);
 });
 for (const [width, height] of [[1280, 900], [390, 844]]) {

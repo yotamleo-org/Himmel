@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """whisper-probe.py - prove the pinned faster-whisper + av pair can decode audio
-(HIMMEL-4675). Run it the way the media rungs run transcribe.py:
+Run it the way the media rungs run transcribe.py:
 
   uv run --python 3.12 --with-requirements <plugin>/tools/requirements-whisper.txt python whisper-probe.py
 

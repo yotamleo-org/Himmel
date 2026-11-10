@@ -204,12 +204,17 @@ case "$rc" in
 esac
 
 # ── 8. ready-check ──────────────────────────────────────────────────────────
-if bash "$READY_CHECK" --observe "$PR" "$HEAD_SHA" >/dev/null 2>&1; then
-    add_line "ready-check: PASS"
-else
-    add_line "ready-check: FAIL (run ready-check.sh --observe $PR $HEAD_SHA for the failing rows)"
-    add_reason ready-check-failed
-fi
+RC_RC=0
+RC_OUT=$(bash "$READY_CHECK" --observe "$PR" "$HEAD_SHA" 2>&1) || RC_RC=$?
+case "$RC_RC" in
+    0) add_line "ready-check: PASS" ;;
+    2)
+        add_line "ready-check: not evaluated ($(printf '%s\n' "$RC_OUT" | grep -m1 -E 'QUOTA-PAUSE|GH-STALL|no verdict within' || echo "exit 2, run ready-check.sh --observe $PR $HEAD_SHA"))"
+        add_reason ready-check-not-evaluated ;;
+    *)
+        add_line "ready-check: FAIL (run ready-check.sh --observe $PR $HEAD_SHA for the failing rows)"
+        add_reason ready-check-failed ;;
+esac
 
 if [ -z "$REASONS" ]; then
     emit READY-CANDIDATE

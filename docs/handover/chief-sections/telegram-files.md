@@ -72,8 +72,8 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   Edit the spec after that and the md, the page and the critic all start over. A hand-built page with no
   marker, outside the folders above, still reads as a report.
 - The check covers `send-file` only. A file the bridge chat copies into `outgoing/` and queues itself is
-  not checked (ponytail: a hand-built `.html` there carries no link to its spec; upgrade path:
-  a follow-up that starts with a ruling on how to tell a report from a spec page; the PR names its ticket).
+  not checked. Limit: a hand-built `.html` there carries no link to its spec; lifting it takes
+  a follow-up that starts with a ruling on how to tell a report from a spec page; the PR names its ticket.
 - A queued line that carries both `text` and `document_path` sends the text, then the file.
 - The bridge never receives your path on its own: you run `send-file`; the operator's receipt
   is the proof (quote it in the ticket).

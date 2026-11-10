@@ -205,7 +205,7 @@ def per_key(out, ks, spec=False):
         t = line.split()
         if spec and t[:2] == ['SPEC', 'ok'] and len(t) >= 4:
             got[t[2]] = line
-        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')) and len(t) >= {'CORE': 3, 'BYPASS': 4}.get(t[0], 2):
+        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in ('CORE', 'NOT-CORE', 'BYPASS', 'BYPASS-NEEDS-SPEC', 'UNKNOWN')) and len(t) >= {'CORE': 3, 'BYPASS': 4, 'BYPASS-NEEDS-SPEC': 4}.get(t[0], 2):
             got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
     return {k: got[k] for k in ks if k in got}
 
@@ -251,6 +251,8 @@ for k in keys:
         except OSError as e:
             # a bypass with no record is refused, as gen-briefs core_log refuses it (spec I3: a bypass is logged)
             refusals.append('core brief %s bypass=%s was not recorded: core-gate.jsonl not written (%s); fix the bucket directory, then re-run' % (k, t[2], e))
+    if t[0] == 'BYPASS-NEEDS-SPEC':
+        refusals.append('core brief %s is core and its %s bypass waives the signature, never the spec: %s; run minerva to one critic round (a docs-only design leg may write it), then jira release operator spec-review' % (k, t[2], ' '.join(t[3:])))
     if t[0] == 'UNKNOWN':
         refusals.append('core brief %s is not in the Jira mirror, so neither core nor a bypass can be proven; refresh the mirror, then re-run' % k)
     elif t[0] == 'CORE' and not spec[k].startswith('SPEC ok'):

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * daily-timeline.mjs — daily-note `## Clip pipeline` timeline (LUNA-90).
+ * daily-timeline.mjs — daily-note `## Clip pipeline` timeline.
  *
  * Recomputes the day's clip-pipeline activity from VAULT STATE + the
  * synthesize-stubs ledger and upserts a SINGLE `## Clip pipeline` section into
@@ -21,12 +21,12 @@
  *
  *   node daily-timeline.mjs --vault <path> --date YYYY-MM-DD [--daily <path>]
  *
- * It also upserts the `## Daily report` section (HIMMEL-4182): that day's
+ * It also upserts the `## Daily report` section: that day's
  * triaged sources, ranked deterministic suggested actions, and a carry-over of
  * unacted actions from the prior REPORT_LOOKBACK_DAYS day notes (see
  * ./lib/daily-report.mjs).
  *
- * A missing daily note is CREATED (HIMMEL-4182) from `_Templates/Daily-Note.md`
+ * A missing daily note is CREATED from `_Templates/Daily-Note.md`
  * with `{{date}}` filled in (a minimal note when there is no template), so a
  * no-intake day still gets its "No intake" line and its carry-over.
  *
