@@ -723,7 +723,7 @@ mkdir -p "$W/sessions"; printf '{"pid":210,"sessionId":"%s"}\n' "$SID_REC" > "$W
 printf '210 (claude) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 98765 0 0\n' > "$W/proc/210/stat"
 mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`"
 reset_calls
-rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+rc=0; out=$(CWL_KILL_REMOVES_PROC=1 run "$DOC" 2>&1) || rc=$?
 check "record written: rc 0" "$rc" "0"
 check "record written: exactly one record in pending/" "$(count_glob "$SWEEP_STATE/pending" '*.json')" "1"
 contains "record written: the close names it" "$out" "sweep=queued $(rec_json)"
@@ -742,6 +742,7 @@ check "record written: closed_at is now" "$(( $(date +%s) - $(rec_field closed_a
 check "record written: sweeps_seen 0" "$(rec_field sweeps_seen)" "0"
 check "record written: nothing left in pending/.tmp" "$(find "$SWEEP_STATE/pending/.tmp" -type f | wc -l | tr -d ' ')" "0"
 rm -f "$W/sessions/210.json" "$W/proc/210/stat"
+mkcmdline 210 claude -n "$SESSION_NAME" work
 reset_calls
 rc=0; out=$(CWL_SWEEP_STATE="/proc/no-such-dir/state" run "$DOC" 2>&1) || rc=$?
 check "record written: a failed record write still exits 0" "$rc" "0"
@@ -1531,6 +1532,8 @@ not_contains "console: the non-matching session is never signalled" "$calls25" "
 not_contains "console: no worktree prune" "$calls25" "clean.sh"
 not_contains "console: no worker digest line" "$out" "digest="
 check "console: no /tmp reap" "$(cat "$CALLS.reap")" ""
+check "console: no close record queued" "$(rec_json)" ""
+check "console: no close sweep started" "$(cat "$CALLS.sweep")" ""
 
 mkcdoc "- 10:00 LIVE - still going"
 reset_calls
@@ -1790,6 +1793,9 @@ sweep_now
 check "handoff: held successor means no /tmp reap" "$(wc -c < "$CALLS.reap" | tr -d ' ')" "0"
 check "handoff: the sweep records kept-successor" "$(rec_field reap)" "kept-successor"
 mkcmdline 389 claude -n HIMMEL-9-N90-demo-2026-01-01 work
+reset_calls
+rc=0; out=$(cd "$(dirname "$HP")" && run "$(basename "$HP")" 2>&1) || rc=$?
+check "handoff: a close given a relative doc path records its successor by absolute path" "$rc $(rec_field named_successor)" "0 $HS"
 [ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HS" "$token" >/dev/null 2>&1
 
 # A second successor is not an ambiguity about the predecessor's own window.

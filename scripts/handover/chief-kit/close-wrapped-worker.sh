@@ -881,6 +881,8 @@ closed_at=$(date +%s)
 # the pid keeps two closes of one label in the same second (two chiefs) apart
 rec_name="$closed_at-$(printf '%s' "${rec_label:-$doc_stem}" | tr -c 'A-Za-z0-9_.-' '_')-$matched"
 rec_doc="$(cd "$(dirname "$DOC")" && pwd)/$(basename "$DOC")"
+rec_succ=""
+[ -z "$NAMED_SUCCESSOR" ] || rec_succ="$(cd "$(dirname "$NAMED_SUCCESSOR")" && pwd)/$(basename "$NAMED_SUCCESSOR")"
 rec_file="$CLOSE_SWEEP_STATE/pending/$rec_name.json"
 
 queue_record() {
@@ -889,7 +891,7 @@ queue_record() {
     if ! jq -n --arg doc "$rec_doc" --arg label "$rec_label" --argjson pid "$matched" --arg ps "$proc_start" \
         --arg sid "$rec_sid" --arg tr "$TRANSCRIPT" --arg names "$candidates" \
         --arg cfg "$WORKER_SESSION_CONFIG_DIR" --arg pd "$PROJECTS_DIR" --arg wts "$DOC_WORKTREES" \
-        --arg repo "$rec_repo" --argjson pred "$PREDECESSOR" --arg succ "$NAMED_SUCCESSOR" --argjson closed "$closed_at" \
+        --arg repo "$rec_repo" --argjson pred "$PREDECESSOR" --arg succ "$rec_succ" --argjson closed "$closed_at" \
         '{doc: $doc, label: $label, pid: $pid, proc_start: $ps, sid: $sid, transcript: $tr,
           names: ($names | split("\n") | map(select(. != ""))), config_dir: $cfg, projects_dir: $pd,
           worktrees: ($wts | split("\n") | map(select(. != ""))), repo: $repo, predecessor: $pred,
@@ -904,10 +906,11 @@ queue_record() {
 
 # start_sweep: close-sweep.sh --drain in its own session, its stdio on sweep.log and
 # every other descriptor it would inherit closed first, so a caller's lock fd (the
-# waiter holds one on fd 9) is free the moment this close returns.
+# waiter holds one on fd 9) is free the moment this close returns; its cwd is /, so
+# it never holds the close's cwd (a worktree the sweep may prune).
 start_sweep() {
     # shellcheck disable=SC2016  # the child shell expands $$ and $0 itself
-    setsid -f bash -c 'for fd in /proc/$$/fd/*; do fd=${fd##*/}; case $fd in ""|*[!0-9]*) continue ;; esac; [ "$fd" -le 2 ] || eval "exec $fd>&-"; done; exec bash "$0" --drain' \
+    setsid -f bash -c 'cd / || exit 1; for fd in /proc/$$/fd/*; do fd=${fd##*/}; case $fd in ""|*[!0-9]*) continue ;; esac; [ "$fd" -le 2 ] || eval "exec $fd>&-"; done; exec bash "$0" --drain' \
         "$CLOSE_SWEEP" < /dev/null >> "$CLOSE_SWEEP_STATE/sweep.log" 2>&1
 }
 

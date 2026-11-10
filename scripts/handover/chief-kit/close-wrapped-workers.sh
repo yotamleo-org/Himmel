@@ -97,7 +97,7 @@ echo "sweeps: manifests=$n failed=$failed gone=$gone"
 if [ -z "$check" ]; then
     mkdir -p "$CLOSE_SWEEP_STATE" 2>/dev/null
     # shellcheck disable=SC2016  # the child shell expands $$ and $0 itself
-    setsid -f bash -c 'for fd in /proc/$$/fd/*; do fd=${fd##*/}; case $fd in ""|*[!0-9]*) continue ;; esac; [ "$fd" -le 2 ] || eval "exec $fd>&-"; done; exec bash "$0" --drain' \
+    setsid -f bash -c 'cd / || exit 1; for fd in /proc/$$/fd/*; do fd=${fd##*/}; case $fd in ""|*[!0-9]*) continue ;; esac; [ "$fd" -le 2 ] || eval "exec $fd>&-"; done; exec bash "$0" --drain' \
         "$CLOSE_SWEEP" < /dev/null >> "$CLOSE_SWEEP_STATE/sweep.log" 2>&1 \
         || echo "close-wrapped-workers: WARN cannot start the close sweep - its records wait in $CLOSE_SWEEP_STATE/pending/"
 fi
