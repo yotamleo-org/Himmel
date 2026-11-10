@@ -4,10 +4,11 @@ seed key (HIMMEL-4649): recall, precision and false-positive rate per critic,
 per class and for the panel as a whole, with n and Wilson 95% intervals; one
 row per sweep into the eval-runs ledger (scripts/eval/lib/eval_runs.py).
 
-  score.py lint  [--fixtures DIR] [--key FILE] [--min-real N] [--src REPO]
+  score.py lint  [--fixtures DIR] [--key FILE] [--min-real N] [--src REPO] [--validation FILE]
   score.py score --outputs DIR --critics a,b [--fixtures DIR] [--key FILE]
                  [--only case-01,case-02] [--window N] [--json OUT]
                  [--ledger PATH | --no-ledger] [--meta-json J] [--model M]
+                 [--validation FILE] [--adjudications FILE]
   score.py cbs-paths  <rev> [--repo R]     the critic behaviour set (cbs.txt) expanded at <rev>
   score.py cbs-hash   <rev> [--repo R]     64-hex over those paths and their bytes
   score.py confighash <rev> [--repo R]     the eval config at <rev>: fixture set, key, paid roster, window
@@ -15,7 +16,8 @@ row per sweep into the eval-runs ledger (scripts/eval/lib/eval_runs.py).
                                            swept tree (run.sh does it)
   score.py export-row <outputs-dir> [--repo R] [--results FILE]   append one gate row (HEAD's hashes; refuses
                                            outputs whose swept.json is unclean or names other hashes)
-  score.py verify-row <row-json> <outputs-dir> [--tree REV] [--repo R]   exit 1 unless the row re-scores so
+  score.py verify-row <row-json> <outputs-dir> [--tree REV] [--repo R] [--validation FILE]   exit 1 unless the
+                                           row re-scores so
   score.py gate <base> <head> [--target-class C]... [--repo R]   keep | no-loss | loss | unmeasured | mismatch
   score.py scorer-identity [--json]        the running scorer's identity (read-only; rows carry it)
 
@@ -52,6 +54,11 @@ not verified accuracy; each is also written under its explicit name:
 key_match_recall, key_match_recall_gating, location_match_recall,
 key_match_precision, labelled_clean_block_rate.
 
+Verified family (README "Validated corpus and adjudication"). key/validation.json (the gold sidecar, next to
+the key by default) and an --adjudications JSONL of bound finding labels give adjudication.verified_metrics:
+verified recall bounds, adjudicated precision with coverage and the verified false-block rate, under "verified",
+never merged into the proxy metrics. gold_revision is the sidecar's sha256, outside the stamp's confighash.
+
 compare-paired --baseline-scores FILE --candidate-scores FILE [--key FILE] compares two arms of execution score
 objects over the same twin pairs (repeats averaged per case, then a stratified 2,000-resample seed-0 bootstrap); it
 names the omitted cases and exits 1 when the cohort is not complete. replay.py (this directory) rescores retained
@@ -76,6 +83,8 @@ import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
+sys.path.insert(0, HERE)
+import adjudication  # noqa: E402
 import eval_feedback  # noqa: E402
 import eval_runs  # noqa: E402
 from wilson import wilson  # noqa: E402
@@ -83,7 +92,7 @@ from wilson import wilson  # noqa: E402
 EVAL_ID = "review-panel"
 SOURCE = "scripts/eval/review-panel/score.py"
 DEFAULT_WINDOW = 3
-GATING = ("crit", "imp")
+GATING = adjudication.GATING
 CASE_FILE = re.compile(r"^(case|real|delta)-[^/]+\.patch$")
 DELTA_SUFFIX = ".delta.patch"  # <id>.delta.patch: the fix delta of a delta case (key "delta": true)
 # Repo-relative paths the gate reads from a tree.
@@ -253,7 +262,7 @@ def delta_apply_problem(round1, delta):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def lint(fixtures, key_path, min_real=0, src=None):
+def lint(fixtures, key_path, min_real=0, src=None, validation=None):
     problems = []
     try:
         key = load_key(key_path)
@@ -360,6 +369,8 @@ def lint(fixtures, key_path, min_real=0, src=None):
     for cls, got in sorted(halves.items()):
         if not {"open", "sealed"} <= got:
             problems.append("class %s: needs a pair in each half of the split, got %s" % (cls, sorted(map(str, got))))
+    if validation:
+        problems += adjudication.load_validation(validation, cases)[1]
     n_seeded = sum(1 for c in cases.values() if c.get("kind") == "seeded")
     return problems, n_seeded, len(cases) - n_seeded
 
@@ -545,7 +556,7 @@ def ratio(k, n):
     return (k / n) if n else None
 
 
-def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW):
+def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW, validation=None, adjudications=None):
     key = load_key(key_path)
     cases = key["cases"]
     ids = sorted(cases) if not only else [c for c in only if c in cases]
@@ -599,10 +610,52 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
             reasons.append(why)
     if any(p["state"] == "answered" and not p["responding_model"] for _, part in per_case.values() for p in part.values()):
         reasons.append("responding-model-unobserved")
-    return {"status": status, "metrics": metrics, "ci": ci, "cases": case_rows, "responded": responded,
-            "leaks": leaks, "unscored": unscored, "critics": roster, "window": window,
-            "case_evidence": case_evidence, "coverage": coverage, "decision_eligible": not reasons,
-            "ineligibility_reasons": reasons}
+    res = {"status": status, "metrics": metrics, "ci": ci, "cases": case_rows, "responded": responded,
+           "leaks": leaks, "unscored": unscored, "critics": roster, "window": window,
+           "case_evidence": case_evidence, "coverage": coverage, "decision_eligible": not reasons,
+           "ineligibility_reasons": reasons, "gold_revision": None}
+    if validation:
+        entries, problems, res["gold_revision"] = adjudication.load_validation(validation, cases)
+        if adjudications:
+            if problems:
+                raise ValueError("the validation sidecar %s fails lint: %s" % (validation, "; ".join(problems[:3])))
+            res["verified"] = verified_block(outputs, fixtures, cases, ids, per_case, entries, res["gold_revision"],
+                                             adjudications)
+    elif adjudications:
+        raise ValueError("--adjudications needs a validation sidecar (--validation, or validation.json beside the key)")
+    return res
+
+
+def verified_block(outputs, fixtures, cases, ids, per_case, entries, gold, adjudications):
+    """The verified family of one scored sweep: labels bound to the fixtures' case inputs, the gold revision and
+    each finding's canonical hash. A case whose run manifest recorded other inputs than the fixtures hold is left
+    out (its outputs reviewed another case). Conflicting labels refuse (ValueError)."""
+    inputs = case_inputs(fixtures, cases, ids)
+    try:
+        recorded = (read_manifest(outputs) or {}).get("inputs") or {}
+    except ValueError:
+        recorded = {}
+    diags, usable, findings, part = [], {}, {}, {}
+    for cid in ids:
+        if cid in recorded and recorded[cid] != inputs[cid]:
+            diags.append({"reason": "execution-input-differs", "case": cid})
+            continue
+        usable[cid] = adjudication.case_input_sha256(inputs[cid])
+        if cid in per_case:
+            findings[cid] = [dict(f, sha=adjudication.finding_sha256(f)) for f in per_case[cid][0]]
+            part[cid] = per_case[cid][1]
+    labels, more = adjudication.load_adjudications(adjudications, usable, gold,
+                                                   {c: {f["sha"] for f in fs} for c, fs in findings.items()})
+    clash = ["%s %s" % (d["case"], d["identity"]) for d in more if d["reason"] == "conflict"]
+    if clash:
+        raise ValueError("conflicting adjudication labels refuse the verified metrics: %s" % ", ".join(clash))
+    vc = {cid: {"key_kind": c.get("kind"), "pair": c.get("pair") or cid, "split": c.get("split"),
+                "entry": entries.get(cid)} for cid, c in cases.items()}
+    metrics, coverage, reasons, detail = adjudication.verified_metrics(vc, findings, labels, part)
+    if any(d["reason"] == "execution-input-differs" for d in diags):
+        reasons.append("execution-input-differs")
+    return dict(detail, gold_revision=gold, metrics=metrics, coverage=coverage, reasons=reasons,
+                diagnostics=diags + more)
 
 
 def member_metrics(members, per_case, cases, window, prefix, metrics, ci, case_rows):
@@ -862,16 +915,8 @@ def execution_manifest(outputs, repo, fixtures, key, roster, protocol):
         cases = json.load(fh)["cases"]
     only = [c for c in str(protocol.get("only") or "").split(",") if c]
     ids = sorted(c for c in cases if not only or c in only)
-    inputs, delta = {}, False
-    for cid in ids:
-        dpath = os.path.join(fixtures, cid + DELTA_SUFFIX)
-        is_delta = cases[cid].get("delta") is True and os.path.isfile(dpath)
-        delta = delta or is_delta
-        inputs[cid] = {"diff_sha256": _file_sha(dpath if is_delta else os.path.join(fixtures, cid + ".patch")),
-                       "context_sha256": (_sha(open(os.path.join(fixtures, cid + ".patch"), "rb").read()
-                                               + open(dpath, "rb").read()) if is_delta else None),
-                       "intent_sha256": _file_sha(os.path.join(fixtures, cid + ".intent.md")),
-                       "base": cases[cid].get("base")}
+    inputs = case_inputs(fixtures, cases, ids)
+    delta = any(inputs[cid]["context_sha256"] is not None for cid in ids)
     h = hashlib.sha256()
     for cid in ids:
         h.update(cid.encode() + b"\0" + json.dumps(inputs[cid], sort_keys=True).encode() + b"\0")
@@ -892,6 +937,21 @@ def execution_manifest(outputs, repo, fixtures, key, roster, protocol):
             "inputs": inputs, "cases": {}, "provenance": {
                 "status": "recorded", "evidence": ["score.py stamp"],
                 "unknown": [] if rows else ["effective_roster"]}}
+
+
+def case_inputs(fixtures, cases, ids):
+    """{case id: {diff_sha256, context_sha256, intent_sha256, base}}: the bytes a case puts before the panel (a
+    delta case reviews its delta, with the round-1 diff as context)."""
+    inputs = {}
+    for cid in ids:
+        dpath = os.path.join(fixtures, cid + DELTA_SUFFIX)
+        is_delta = cases[cid].get("delta") is True and os.path.isfile(dpath)
+        inputs[cid] = {"diff_sha256": _file_sha(dpath if is_delta else os.path.join(fixtures, cid + ".patch")),
+                       "context_sha256": (_sha(open(os.path.join(fixtures, cid + ".patch"), "rb").read()
+                                               + open(dpath, "rb").read()) if is_delta else None),
+                       "intent_sha256": _file_sha(os.path.join(fixtures, cid + ".intent.md")),
+                       "base": cases[cid].get("base")}
+    return inputs
 
 
 def complete_manifest(outputs, manifest):
@@ -968,7 +1028,8 @@ def outputs_sha256(outputs):
     return h.hexdigest()
 
 
-SCORER_FILES = (REL + "/score.py", "scripts/eval/lib/wilson.py")
+SCORER_FILES = (REL + "/score.py", "scripts/eval/lib/wilson.py", REL + "/adjudication.py")
+VALIDATION_REL = "key/validation.json"
 
 
 def scorer_digest(repo, rev):
@@ -985,7 +1046,8 @@ def scorer_digest(repo, rev):
 
 def running_scorer_identity():
     """{scorer_repo, scorer_gitsha, scorer_sha256, scorer_clean, reason} of the code scoring now: this script's own
-    checkout and HEAD, with the score.py and wilson.py actually loaded checked byte for byte against that HEAD.
+    checkout and HEAD, with the score.py, wilson.py and adjudication.py actually loaded checked byte for byte
+    against that HEAD.
     A missing checkout, or a loaded file that is edited, untracked or loaded from elsewhere, gives scorer_sha256
     None and says why: such a result is diagnostic only."""
     out = {"scorer_repo": None, "scorer_gitsha": None, "scorer_sha256": None, "scorer_clean": False, "reason": ""}
@@ -997,7 +1059,8 @@ def running_scorer_identity():
         return out
     out.update(scorer_repo=repo, scorer_gitsha=head)
     loaded = {REL + "/score.py": os.path.abspath(__file__),
-              "scripts/eval/lib/wilson.py": os.path.abspath(sys.modules[wilson.__module__].__file__)}
+              "scripts/eval/lib/wilson.py": os.path.abspath(sys.modules[wilson.__module__].__file__),
+              REL + "/adjudication.py": os.path.abspath(adjudication.__file__)}
     problems = []
     for rel in SCORER_FILES:
         path = loaded[rel]
@@ -1134,8 +1197,16 @@ def score_row(repo, rev, outputs, roster_rev=None, only=None):
                 "responded": res["responded"], "outputs_sha256": outputs_sha256(outputs),
                 "scorer_sha256": ident["scorer_sha256"] if known_identity(ident) else None,
                 "scorer_gitsha": ident["scorer_gitsha"], "scorer_reason": ident["reason"] or None,
-                "scored_at": _now(), "decision_eligible": not reasons, "ineligibility_reasons": reasons}, **prov)
+                "scored_at": _now(), "decision_eligible": not reasons, "ineligibility_reasons": reasons,
+                "gold_revision": running_gold_revision()}, **prov)
     return row, res
+
+
+def running_gold_revision():
+    """The gold revision of the running scorer checkout's key/validation.json, None when it has none; never the
+    gate tree's sidecar."""
+    path = os.path.join(HERE, VALIDATION_REL)
+    return adjudication.gold_revision(path) if os.path.isfile(path) else None
 
 
 def execution_fields(outputs):
@@ -1343,12 +1414,42 @@ def report(res):
     for who, cats in sorted(res.get("coverage", {}).get("critics", {}).items()):
         out.append("%-12s participation over %d scored cases: %s" % (
             who, res["coverage"]["scored"], ", ".join("%s %d" % (c, cats[c]) for c in CATEGORIES)))
+    out.extend(report_verified(res.get("verified"), res["critics"]))
     for who in res["critics"] + ["panel"]:
         parts = ["%s %s (n=%d)" % (c, fmt(m.get("%s.class.%s.recall" % (who, c))), m.get("%s.class.%s.n" % (who, c), 0))
                  for c in CLASSES if ("%s.class.%s.n" % (who, c)) in m]
         if parts:
             out.append("%-12s by class: %s" % (who, "; ".join(parts)))
     return "\n".join(out)
+
+
+def report_verified(v, critics):
+    """The verified family beside the proxy table, or nothing when no adjudications were read."""
+    if not v:
+        return []
+
+    def fmt(x):
+        return "  -  " if x is None else "%.2f" % x
+
+    def span(name):
+        m = v["metrics"]
+        lo, hi, pt = m.get(name + "_lo"), m.get(name + "_hi"), m.get(name)
+        return fmt(pt) if pt is not None or lo is None else "[%s,%s]" % (fmt(lo), fmt(hi))
+    co = v["cohort"]
+    out = ["verified (adjudicated, gold %s): %d validated cases in whole pairs, %d pending, %d excluded%s; not a "
+           "decision until the cohort is validated and the decision's margin is pre-registered"
+           % ((v["gold_revision"] or "none")[:12], len(co["validated"]), len(co["pending"]), len(co["excluded"]),
+              "; reasons: " + ", ".join(v["reasons"]) if v["reasons"] else "")]
+    for who in critics + ["panel"]:
+        cov, c = v["coverage"].get(who) or {}, v["counts"]
+        prec = c.get(who + ".adjudicated_precision") or {"k": 0, "n": 0}
+        fb = c.get(who + ".verified_false_block_rate") or {"k": 0, "n": 0}
+        out.append("%-12s recall %s gating %s adj-prec %s (%d/%d, %d of %d findings decided) false-block %s (%d/%d)"
+                   % (who, span(who + ".verified_defect_recall"), span(who + ".verified_gating_recall"),
+                      fmt(v["metrics"].get(who + ".adjudicated_precision")), prec["k"], prec["n"],
+                      cov.get("decided", 0), cov.get("findings", 0),
+                      fmt(v["metrics"].get(who + ".verified_false_block_rate")), fb["k"], fb["n"]))
+    return out
 
 
 def main(argv=None):
@@ -1361,6 +1462,9 @@ def main(argv=None):
         p.add_argument("--key", default=os.path.join(HERE, "key", "seeds.json"))
     pl.add_argument("--min-real", type=int, default=0)
     pl.add_argument("--src", help="the repo real cases' base and fix commits live in (default this checkout)")
+    for p in (pl, ps):
+        p.add_argument("--validation", help="the gold sidecar (default validation.json beside --key, when present)")
+    ps.add_argument("--adjudications", help="a JSONL of bound finding labels: adds the verified family")
     tree_cmds = {}
     for name in ("cbs-paths", "cbs-hash", "confighash"):
         tree_cmds[name] = sub.add_parser(name)
@@ -1382,6 +1486,8 @@ def main(argv=None):
     pv.add_argument("row")
     pv.add_argument("outputs")
     pv.add_argument("--tree", default="HEAD")
+    pv.add_argument("--validation", help="the sidecar a claimed gold_revision is checked against (default the "
+                                         "running scorer checkout's key/validation.json)")
     pg = sub.add_parser("gate")
     pg.add_argument("base")
     pg.add_argument("head")
@@ -1407,7 +1513,7 @@ def main(argv=None):
 
     if a.cmd == "lint":
         try:
-            problems, n_seeded, n_clean = lint(a.fixtures, a.key, a.min_real, a.src)
+            problems, n_seeded, n_clean = lint(a.fixtures, a.key, a.min_real, a.src, sidecar(a))
         except ValueError as e:
             print("score.py: %s" % e, file=sys.stderr)
             return 2
@@ -1454,7 +1560,7 @@ def main(argv=None):
         if a.model and model_conflict(a.outputs, a.model):
             raise ValueError(model_conflict(a.outputs, a.model))
         before = running_scorer_identity()
-        res = score(a.outputs, a.fixtures, a.key, critics, only or None, a.window)
+        res = score(a.outputs, a.fixtures, a.key, critics, only or None, a.window, sidecar(a), a.adjudications)
         ident = settled_identity(before)
     except (OSError, ValueError) as e:
         print("score.py: %s" % e, file=sys.stderr)
@@ -1472,7 +1578,11 @@ def main(argv=None):
         if a.model:
             config["critic_model"] = a.model
         reasons = res["ineligibility_reasons"] + ([] if scorer["scorer_sha256"] else ["scorer-identity-unverified"])
+        if res.get("verified"):
+            meta = dict(meta, verified={k: res["verified"][k] for k in ("metrics", "counts", "coverage", "reasons",
+                                                                         "cohort")})
         meta = dict(meta, leaks=res["leaks"], unscored=res["unscored"], coverage=res["coverage"],
+                    gold_revision=res["gold_revision"],
                     decision_eligible=not reasons, ineligibility_reasons=reasons, cli_version=None, effort=None,
                     **dict(scorer, **execution_fields(a.outputs)))
         row = eval_runs.make_row(EVAL_ID, SOURCE, config, res["metrics"], n=res["metrics"]["cases"], model=a.model,
@@ -1485,9 +1595,17 @@ def main(argv=None):
 
 ROW_FIELDS = ("status", "metrics", "class_recall", "cbs_hash", "confighash", "outputs_sha256", "responded",
               "scorer_sha256", "bundle_sha256_v2", "execution_id", "code_under_test_sha", "provenance_status",
-              "decision_eligible", "ineligibility_reasons")
+              "decision_eligible", "ineligibility_reasons", "gold_revision")
 LEGACY_OPTIONAL_FIELDS = ("responded", "bundle_sha256_v2", "execution_id", "code_under_test_sha",
-                          "provenance_status", "decision_eligible", "ineligibility_reasons")
+                          "provenance_status", "decision_eligible", "ineligibility_reasons", "gold_revision")
+
+
+def sidecar(a):
+    """--validation, else validation.json beside --key when present."""
+    if a.validation:
+        return a.validation
+    path = os.path.join(os.path.dirname(os.path.abspath(a.key)), "validation.json")
+    return path if os.path.isfile(path) else None
 
 
 def tree_main(a):
@@ -1518,6 +1636,8 @@ def tree_main(a):
     elif a.cmd == "verify-row":
         claimed = json.loads(a.row)
         got = gate_row(repo, a.tree, a.outputs)
+        if a.validation:
+            got["gold_revision"] = adjudication.gold_revision(a.validation)
         # A row without a `responded` key is not held to one: verify-row cannot tell a row exported before rosters
         # were recorded from one that dropped the key, and CI never runs verify-row. The gate names such a row only when
         # another counted row records a roster; when every counted row lacks one the normal verdict stands.
@@ -1526,7 +1646,7 @@ def tree_main(a):
             got = dict(got, metrics={k: v for k, v in got["metrics"].items() if k in (claimed.get("metrics") or {})})
             print("verify-row: scorer identity unverified: the row names no scorer_sha256")
         bad = [f for f in ROW_FIELDS if claimed.get(f) != got[f] and (f not in LEGACY_OPTIONAL_FIELDS or f in claimed)
-               and not (legacy and f == "scorer_sha256")]
+               and not (legacy and f == "scorer_sha256") and not (f == "gold_revision" and not claimed.get(f))]
         if not legacy:
             need = ("bundle_sha256_v2",) + (("execution_id",) if claimed.get("decision_eligible") else ())
             bad += [f for f in need if f not in bad and not claimed.get(f)]

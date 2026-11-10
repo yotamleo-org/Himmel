@@ -155,6 +155,75 @@ key records the seed and the method under `split`.
 
 Adding the split changed the key, so it started a new eval-compare series.
 
+## Validated corpus and adjudication
+
+The proxy metrics above are keyword matching. Verified correctness is a separate
+family, built from two sidecars, and the two families are never merged. A
+paraphrased correct finding is a verified hit, though it fails the keyword
+match. A wrong claim that happens to contain the class words keyword-matches,
+but is never a verified hit.
+
+- **`key/validation.json`** (the reviewed gold, v1) has one entry per key case
+  id: `state` (pending | validated | excluded), `effective_kind` (seeded |
+  clean | excluded), `mechanism`, `trigger`, `expected_behavior`, `target_ids`
+  (key defect ids, or `added_targets` `{id, file, line, description}` for a
+  relabelled clean twin), `repair_evidence`, `evidence_refs`, `curator`,
+  `reviewer`, `reviewed_at`, and an optional `curation` note. A clean entry
+  states its `contract` and lists explicit `residuals` (`{id, description}`
+  only). A residual carrying a pattern or match rule fails lint. A validated or
+  excluded entry needs a `reviewer` who is not its `curator`, a `reviewed_at`
+  date and evidence. `score.py lint` checks the sidecar beside `--key` (or
+  `--validation FILE`). seeds.json and the fixtures stay the execution corpus,
+  so relabelling needs no new run; a changed diff or context does.
+- **gold_revision** is the sha256 of the exact sidecar bytes. Score rows carry
+  it outside the stamp's `confighash`, so a gold edit changes the gold revision,
+  never the stamp. `verify-row --validation FILE` checks a claimed
+  gold_revision against the sidecar it reads. The default is the running
+  scorer checkout's `key/validation.json`, never the `--tree` one. A row with
+  no gold_revision (proxy only) needs no sidecar.
+- **Adjudications** live in a private JSONL kept outside the raw bundles, one
+  label per line: `v`, `case_id`, `case_input_sha256` (the case's diff,
+  context, intent and base digests), `gold_revision`, `finding_sha256` (the
+  finding's severity, file, line and text, never its bullet id, critic or
+  model), `observed_execution_ids`, `correctness` (correct | incorrect |
+  unresolved), `target_ids`, `scope` (in | out | unknown), `severity_valid`
+  (true | false | null), `rationale`, `evidence_refs`, `adjudicator`,
+  `reviewed_by`, `adjudicated_at`. A target ruling (`"kind": "target"`,
+  `target_id`, `ruling: "missed"`, `reviewed_findings`) settles a miss while
+  unrelated claims stay unresolved.
+
+  An identical finding in a repeated execution reuses its label. A changed case
+  input, gold revision or finding text voids it, and so does missing evidence or
+  a label its own adjudicator reviewed; each shows as a diagnostic. Two labels
+  of one identity that disagree refuse the run (exit 2).
+
+`score --adjudications FILE` adds `verified` to the JSON and a verified block
+to the report. The cohort holds whole twin pairs whose entries are all
+validated: a sealed or open pair with a pending twin leaves together, and its
+name is listed. A relabelled twin is named too. Per critic and for the panel,
+the block reports:
+
+| metric | definition |
+|---|---|
+| `verified_defect_recall_lo` / `_hi` | targets with a correct attributed finding / validated targets. hi also counts each target still possibly covered by an undecided finding. The point value `verified_defect_recall` is given only when lo equals hi |
+| `verified_gating_recall_lo` / `_hi` | the same at Critical/Important; an unknown `severity_valid` counts as uncertainty |
+| `adjudicated_precision` | correct / (correct + incorrect) findings, with `adjudication_coverage` and the unlabelled and out-of-scope counts |
+| `verified_false_block_rate` | validated clean twins with an unjustified blocker / validated clean twins |
+
+A target is missed when a target ruling covers every finding of the case, or
+when every one of the critic's findings in it is decided. A blocker is
+unjustified when it is labelled incorrect, out of contract, or
+`severity_valid` false. A correct concern that is out of contract, or rated
+above its weight, stays correct for precision. A correct, in-contract,
+rightly rated blocker disputes its clean control instead: the rate is
+withheld until the case is curated. Any undecided blocker also withholds it.
+Every rate carries exact k/n under `counts`.
+
+None of this is a decision by itself. The shipped sidecar is all pending
+(curated, not independently reviewed), so the benchmark is **not
+decision-ready**. Readiness needs a validated cohort and a pre-registered
+decision margin.
+
 ## Adding a fixture
 
 Write the seeded diff and its clean twin as two `case-NN.patch` files with new
@@ -401,10 +470,10 @@ yet a gate condition: the shared selector comes with M3.
 
 **Scorer identity.** A row names the scorer that produced it,
 never one in the gate's `--repo` or `--tree`: `score.py scorer-identity --json`
-is `score.py`'s own checkout, its HEAD and the `score.py` and
-`scripts/eval/lib/wilson.py` actually loaded, each checked byte for byte
-against that HEAD before and after scoring (`scorer_digest(repo, rev)` hashes
-those two blobs). An edited, untracked or foreign scorer file gives
+is `score.py`'s own checkout, its HEAD and the `score.py`,
+`scripts/eval/lib/wilson.py` and `adjudication.py` actually loaded, each checked
+byte for byte against that HEAD before and after scoring
+(`scorer_digest(repo, rev)` hashes those three blobs). An edited, untracked or foreign scorer file gives
 `scorer_sha256` null and a diagnostic-only row. The gate drops every row of
 another or no scorer (named in its output) before the roster check and
 before the first-row-wins selection, so a re-score of a retained sweep by the

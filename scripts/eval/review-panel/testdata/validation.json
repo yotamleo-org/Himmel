@@ -1,0 +1,76 @@
+{
+ "v": 1,
+ "cases": {
+  "case-01": {
+   "state": "validated", "effective_kind": "seeded",
+   "mechanism": "synthetic: the allow branch runs when the lookup errors",
+   "trigger": "an unreadable host list", "expected_behavior": "deny on lookup error",
+   "target_ids": ["failopen-a-1"], "repair_evidence": "synthetic twin", "evidence_refs": ["testdata:synthetic"],
+   "curator": "fixture-curator", "reviewer": "fixture-reviewer", "reviewed_at": "2026-11-10"
+  },
+  "case-10": {
+   "state": "validated", "effective_kind": "clean",
+   "mechanism": "synthetic: the lookup error denies", "trigger": "an unreadable host list",
+   "expected_behavior": "deny on lookup error", "contract": "fail closed on a lookup error",
+   "target_ids": [], "residuals": [], "repair_evidence": "synthetic twin", "evidence_refs": ["testdata:synthetic"],
+   "curator": "fixture-curator", "reviewer": "fixture-reviewer", "reviewed_at": "2026-11-10"
+  },
+  "case-15": {
+   "state": "validated", "effective_kind": "seeded",
+   "mechanism": "synthetic: the retention count is off by one", "trigger": "more archives than the keep count",
+   "expected_behavior": "keep exactly the asked count", "target_ids": ["logic-a-1"],
+   "repair_evidence": "synthetic twin", "evidence_refs": ["testdata:synthetic"],
+   "curator": "fixture-curator", "reviewer": "fixture-reviewer", "reviewed_at": "2026-11-10"
+  },
+  "case-16": {
+   "state": "validated", "effective_kind": "clean",
+   "mechanism": "synthetic: the retention count is exact", "trigger": "more archives than the keep count",
+   "expected_behavior": "keep exactly the asked count", "contract": "retention keeps the asked count",
+   "target_ids": [], "residuals": [{"id": "case-16-r1", "description": "a concurrent prune is out of contract"}],
+   "repair_evidence": "synthetic twin", "evidence_refs": ["testdata:synthetic"],
+   "curator": "fixture-curator", "reviewer": "fixture-reviewer", "reviewed_at": "2026-11-10"
+  },
+  "case-19": {
+   "state": "validated", "effective_kind": "seeded",
+   "mechanism": "synthetic: an unquoted expansion word-splits", "trigger": "a path with a space",
+   "expected_behavior": "quote the expansion", "target_ids": ["quoting-a-1"],
+   "repair_evidence": "synthetic twin", "evidence_refs": ["testdata:synthetic"],
+   "curator": "fixture-curator", "reviewer": "fixture-reviewer", "reviewed_at": "2026-11-10"
+  },
+  "case-05": {
+   "state": "validated", "effective_kind": "clean",
+   "mechanism": "synthetic: the expansion is quoted", "trigger": "a path with a space",
+   "expected_behavior": "quote the expansion", "contract": "paths with spaces are handled",
+   "target_ids": [], "residuals": [], "repair_evidence": "synthetic twin", "evidence_refs": ["testdata:synthetic"],
+   "curator": "fixture-curator", "reviewer": "fixture-reviewer", "reviewed_at": "2026-11-10"
+  },
+  "case-21": {
+   "state": "validated", "effective_kind": "seeded",
+   "mechanism": "synthetic: a check-then-create lock", "trigger": "two concurrent runs",
+   "expected_behavior": "an atomic lock", "target_ids": ["toctou-a-1"],
+   "repair_evidence": "synthetic twin", "evidence_refs": ["testdata:synthetic"],
+   "curator": "fixture-curator", "reviewer": "fixture-reviewer", "reviewed_at": "2026-11-10"
+  },
+  "case-04": {
+   "state": "validated", "effective_kind": "clean",
+   "mechanism": "synthetic: an atomic lock", "trigger": "two concurrent runs",
+   "expected_behavior": "an atomic lock", "contract": "one run at a time",
+   "target_ids": [], "residuals": [], "repair_evidence": "synthetic twin", "evidence_refs": ["testdata:synthetic"],
+   "curator": "fixture-curator", "reviewer": "fixture-reviewer", "reviewed_at": "2026-11-10"
+  },
+  "case-03": {
+   "state": "validated", "effective_kind": "seeded",
+   "mechanism": "synthetic: an unannounced default change", "trigger": "any probe run",
+   "expected_behavior": "the default stays", "target_ids": ["scope-b-1"],
+   "repair_evidence": "synthetic twin", "evidence_refs": ["testdata:synthetic"],
+   "curator": "fixture-curator", "reviewer": "fixture-reviewer", "reviewed_at": "2026-11-10"
+  },
+  "case-09": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "synthetic: the default stays", "trigger": "any probe run",
+   "expected_behavior": "the default stays", "contract": "no behaviour change beyond the stated one",
+   "target_ids": [], "residuals": [], "repair_evidence": "", "evidence_refs": [],
+   "curator": "fixture-curator", "reviewer": null, "reviewed_at": null
+  }
+ }
+}

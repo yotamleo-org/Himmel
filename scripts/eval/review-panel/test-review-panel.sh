@@ -625,7 +625,7 @@ eq "run --delta: no panel call on either refusal" "$(find "$DL" -type f | wc -l 
 # the same sweep whose panel edits a CBS file mid-run is caught by run.sh's re-stamp after the loop.
 RR="$TMP/run-repo"
 mkdir -p "$RR/scripts/eval/review-panel/key" "$RR/scripts/eval/lib" "$RR/scripts/cr"
-cp "$RUN" "$SCORE" "$HERE/cbs.txt" "$RR/scripts/eval/review-panel/"
+cp "$RUN" "$SCORE" "$HERE/adjudication.py" "$HERE/cbs.txt" "$RR/scripts/eval/review-panel/"
 cp -r "$FIX" "$RR/scripts/eval/review-panel/fixtures"; cp "$KEY" "$RR/scripts/eval/review-panel/key/seeds.json"
 cp "$HERE/../lib/"*.py "$RR/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$RR/scripts/eval/"
 cp "$HERE/../../cr/critics.json" "$RR/scripts/cr/critics.json"
@@ -670,7 +670,7 @@ STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$R
 eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 
 SC="$TMP/scorer"; mkdir -p "$SC/scripts/eval/review-panel" "$SC/scripts/eval/lib"
-cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$HERE/replay.py" "$SC/scripts/eval/review-panel/replay.py"; cp "$HERE/../lib/"*.py "$SC/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$SC/scripts/eval/"
+cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$HERE/adjudication.py" "$SC/scripts/eval/review-panel/"; cp "$HERE/replay.py" "$SC/scripts/eval/review-panel/replay.py"; cp "$HERE/../lib/"*.py "$SC/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$SC/scripts/eval/"
 printf '__pycache__/\n' > "$SC/.gitignore"
 sc() { git -C "$SC" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
 git init -q "$SC" && sc add -A && sc commit -q -m scorer
@@ -746,7 +746,7 @@ rget() { python3 -c 'import json,sys; v=json.loads(sys.argv[1])
 for k in sys.argv[2].split("/"): v=v.get(k) if isinstance(v,dict) else None
 print(round(v,4) if isinstance(v,float) else v)' "$row" "$1"; }
 eq "export-row: writes every field" "$(python3 -c 'import json,sys; print(" ".join(sorted(json.loads(sys.argv[1]))))' "$row")" \
-  "bundle_sha256_v2 cbs_hash class_recall code_under_test_sha confighash decision_eligible execution_id ineligibility_reasons metrics outputs_sha256 provenance_status responded run_id scored_at scorer_gitsha scorer_reason scorer_sha256 status tree"
+  "bundle_sha256_v2 cbs_hash class_recall code_under_test_sha confighash decision_eligible execution_id gold_revision ineligibility_reasons metrics outputs_sha256 provenance_status responded run_id scored_at scorer_gitsha scorer_reason scorer_sha256 status tree"
 eq "export-row: the run_id is the outputs dir" "$(rget run_id)" "out1"
 eq "export-row: cbs_hash is HEAD's" "$(rget cbs_hash)" "$(python3 "$SCORE" cbs-hash HEAD --repo "$G")"
 eq "round trip: the confighash gate computes equals the row's" "$(python3 "$SCORE" confighash HEAD --repo "$G")" "$(rget confighash)"
@@ -799,13 +799,13 @@ eq "verify-row: a row claiming another scorer exits 1" "$rc" "1"
 out=$(python3 "$GSCORE" verify-row "$(doctor 'del r["scorer_sha256"]; del r["scorer_gitsha"]; del r["scorer_reason"]; [r["metrics"].pop(k) for k in list(r["metrics"]) if "key_match" in k or "location_match" in k or "labelled_clean" in k]')" "$O" --repo "$G" 2>&1); rc=$?
 eq "verify-row: a legacy row without scorer_sha256 compares the fields it claimed" "$rc" "0"
 has "verify-row: and says its scorer identity is unverified" "$out" "scorer identity unverified"
-mkdir -p "$G/scripts/eval/lib"; printf '# decoy scorer\n' > "$G/scripts/eval/review-panel/score.py"; printf '# decoy\n' > "$G/scripts/eval/lib/wilson.py"
+mkdir -p "$G/scripts/eval/lib"; printf '# decoy scorer\n' > "$G/scripts/eval/review-panel/score.py"; printf '# decoy\n' > "$G/scripts/eval/lib/wilson.py"; printf '# decoy\n' > "$G/scripts/eval/review-panel/adjudication.py"
 gg add -A; gg commit -qm decoy-scorer; DECOY=$(gg rev-parse HEAD)
 eq "verify_row_old_tree_records_running_scorer: the row scored at --tree OLD names the running scorer" \
   "$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; r = score.gate_row(sys.argv[2], sys.argv[3], sys.argv[4]); print(r["scorer_sha256"] == sys.argv[5] != score.scorer_digest(sys.argv[2], sys.argv[3]))' "$SC/scripts/eval/review-panel" "$G" "$DECOY" "$O" "$SID" 2>/dev/null)" "True"
 python3 "$GSCORE" verify-row "$row" "$O" --repo "$G" --tree "$DECOY" >/dev/null 2>&1; rc=$?
 eq "verify_row_old_tree_records_running_scorer: verify-row --tree OLD matches the running scorer's row" "$rc" "0"
-gg rm -q -r scripts/eval/lib scripts/eval/review-panel/score.py; gg commit -qm drop-decoy
+gg rm -q -r scripts/eval/lib scripts/eval/review-panel/score.py scripts/eval/review-panel/adjudication.py; gg commit -qm drop-decoy
 SCW="$TMP/scorer-dirty-wilson"; cp -r "$SC" "$SCW"; printf '# dirty\n' >> "$SCW/scripts/eval/lib/wilson.py"
 SCX="$TMP/scorer-dirty-score"; cp -r "$SC" "$SCX"; printf '# dirty\n' >> "$SCX/scripts/eval/review-panel/score.py"
 eq "dirty_scorer_export_diagnostic: an edited running score.py has a null identity" "$(sid "$SCX/scripts/eval/review-panel/score.py"):$(sid "$SCX/scripts/eval/review-panel/score.py" scorer_clean)" "null:False"
@@ -1307,6 +1307,141 @@ eq "scorer_only_rescore_not_new_execution: a repeated execution_id with the same
 P5="$(cmpp base cand-rescore)"; rc=$?
 eq "conflicting_duplicate_execution: one execution_id with two different score sets makes the result ineligible" \
   "$rc:$(cj "$P5" eligible):$(cj "$P5" reasons)" '1:false:["conflicting-duplicate-executions:1"]'
+
+# --- M4: the validated corpus sidecar and bound adjudications ---------------------------------------
+# testdata/validation.json validates five synthetic twin pairs (scope-b's clean twin stays pending). Labels are
+# built here from the case inputs and the canned findings, so each row edits one input and reads what follows.
+VAL="$HERE/testdata/validation.json"
+eq "m4 fixture: the testdata cohort names the twins it means" \
+  "$LA $LAc $QA $QAc $TA $(case_of toctou-a clean) $(case_of failopen-a seeded) $(case_of failopen-a clean) $(case_of scope-b seeded) $(case_of scope-b clean)" \
+  "case-15 case-16 case-19 case-05 case-21 case-04 case-01 case-10 case-03 case-09"
+out=$(python3 "$SCORE" lint --fixtures "$FIX" --key "$KEY" --validation "$VAL" 2>&1); rc=$?
+eq "validation lint: the synthetic sidecar is clean" "$rc:$out" "0:review-panel lint: 12 seeded, 12 clean, 0 problem(s)"
+VO="$TMP/m4-out1"; mkdir -p "$VO"
+review "$VO/case-15.md" codex "imp:$la_file:$la_line:the loop stops a step early, so the oldest archive survives"
+review "$VO/case-21.md" codex "imp:$ta_file:$ta_line:race between the existence check and the write"
+review "$VO/case-19.md" codex "sug:$qa_file:1:the script lacks set -e so a failed cd carries on" "imp:$qa_file:$qa_line:this line needs a second look"
+review "$VO/case-01.md" codex
+review "$VO/case-16.md" codex "imp:$la_file:3:a concurrent prune can race this one"
+review "$VO/case-05.md" codex "imp:$qa_file:2:the log message has a typo"
+review "$VO/case-04.md" codex
+review "$VO/case-10.md" codex
+review "$VO/case-03.md" codex "imp:$(seed_file case-03):$(seed_line case-03):the probe default changes without a note"
+review "$VO/case-09.md" codex
+M4IDS="case-15,case-21,case-19,case-01,case-16,case-05,case-04,case-10,case-03,case-09"
+# mklabel <labels> <fixtures> <outputs> <case> <n> <correctness> <targets> <scope> <severity_valid> [adjudicator] [reviewer]
+mklabel() { python3 -B - "$HERE" "$KEY" "${MKVAL:-$VAL}" "$@" <<'PY'
+import json, sys
+here, key, val, labels, fixtures, outputs, cid, n, corr, targets, scope, sv = sys.argv[1:13]
+adj = sys.argv[13] if len(sys.argv) > 13 else "fixture-adjudicator"
+rev = sys.argv[14] if len(sys.argv) > 14 else "fixture-reviewer"
+sys.path.insert(0, here)
+import adjudication, score
+inp = score.case_inputs(fixtures, score.load_key(key)["cases"], [cid])[cid]
+f = score.parse_review(open("%s/%s.md" % (outputs, cid)).read())[0][int(n) - 1]
+rec = {"v": 1, "case_id": cid, "case_input_sha256": adjudication.case_input_sha256(inp),
+       "gold_revision": adjudication.gold_revision(val), "finding_sha256": adjudication.finding_sha256(f),
+       "observed_execution_ids": ["exec-1"], "correctness": corr, "target_ids": [t for t in targets.split(",") if t],
+       "scope": scope, "severity_valid": {"true": True, "false": False}.get(sv), "rationale": "fixture",
+       "evidence_refs": ["testdata:synthetic"], "adjudicator": adj, "reviewed_by": rev, "adjudicated_at": "2026-11-10"}
+open(labels, "a").write(json.dumps(rec, sort_keys=True) + "\n")
+PY
+}
+m4labels() { local L="$1" O="$2" F="${3:-$FIX}"; : > "$L"
+  mklabel "$L" "$F" "$O" case-15 1 correct logic-a-1 in true
+  mklabel "$L" "$F" "$O" case-21 1 incorrect "" in null
+  mklabel "$L" "$F" "$O" case-19 1 correct "" in true
+  mklabel "$L" "$F" "$O" case-16 1 correct "" out true
+  mklabel "$L" "$F" "$O" case-05 1 correct "" in false
+  mklabel "$L" "$F" "$O" case-03 1 correct scope-b-1 in true; }
+# vscore <outputs> <labels> <json> [fixtures] [validation]
+vscore() { python3 "$SCORE" score --outputs "$1" --fixtures "${4:-$FIX}" --key "$KEY" --critics codex --only "$M4IDS" \
+  --no-ledger --validation "${5:-$VAL}" --adjudications "$2" --json "$3" 2>&1; }
+L1="$TMP/m4-labels1.jsonl"; m4labels "$L1" "$VO"
+J1="$TMP/m4-1.json"; out=$(vscore "$VO" "$L1" "$J1"); rc=$?
+eq "adjudicated score: exit 0" "$rc" "0"
+eq "accurate_paraphrase_verified_hit: a correct finding without the class words is a verified hit, a proxy miss" \
+  "$(jget "$J1" verified/targets/case-15/logic-a-1):$(jget "$J1" cases/case-15/hit)" "found:0"
+eq "keyword_wrong_claim_not_verified_hit: a wrong claim with the class words is a proxy hit, never a verified hit" \
+  "$(jget "$J1" verified/targets/case-21/toctou-a-1):$(jget "$J1" cases/case-21/hit)" "missed:1"
+eq "correct_additional_finding_not_false: a correct finding naming no target counts correct, so 4 of 5 decided" \
+  "$(jget "$J1" verified/counts/panel.adjudicated_precision):$(jget "$J1" verified/metrics/panel.adjudicated_precision)" '{"k": 4, "n": 5}:0.8'
+eq "correct_minor_misrated_blocker: a correct concern rated Important beyond its weight blocks unjustly" \
+  "$(jget "$J1" verified/blocks/case-05)" "unjustified"
+eq "out_of_contract_blocker_not_wrong_finding: an out-of-contract blocker blocks unjustly yet is not an incorrect finding" \
+  "$(jget "$J1" verified/blocks/case-16):$(jget "$J1" verified/coverage/panel/out_of_scope):$(jget "$J1" verified/coverage/panel/incorrect)" "unjustified:1:1"
+eq "verified_false_block_rate: 2 of the 4 validated clean twins block unjustly, every blocker settled" \
+  "$(jget "$J1" verified/counts/panel.verified_false_block_rate):$(jget "$J1" verified/metrics/panel.verified_false_block_rate)" '{"k": 2, "n": 4}:0.5'
+eq "recall_bounds_partial_labels: 1 found, 2 missed, 1 possibly covered by an unlabelled finding: bounds 0.25 to 0.5, no point" \
+  "$(jget "$J1" verified/metrics/panel.verified_defect_recall_lo):$(jget "$J1" verified/metrics/panel.verified_defect_recall_hi):$(jget "$J1" verified/metrics/panel.verified_defect_recall):$(jget "$J1" verified/targets/case-19/quoting-a-1)" \
+  "0.25:0.5:null:unresolved"
+eq "recall_bounds_partial_labels: a completed review with no finding misses its target" "$(jget "$J1" verified/targets/case-01/failopen-a-1)" "missed"
+eq "unlabelled_finding_coverage_gap: the unlabelled finding is counted and the coverage shows it" \
+  "$(jget "$J1" verified/coverage/panel/findings):$(jget "$J1" verified/coverage/panel/unlabelled):$(jget "$J1" verified/coverage/panel/decided)" "6:1:5"
+eq "sealed_pair_kept_together: a sealed twin whose pair is not wholly validated leaves the cohort with its pair" \
+  "$(jget "$J1" verified/cohort/incomplete_pairs):$(jget "$J1" verified/targets/case-03):$(jget "$J1" verified/counts/sealed.panel.verified_defect_recall_lo)" \
+  '["scope-b"]:null:{"k": 1, "n": 1}'
+has "proxy and verified side by side: the report prints both families" "$out" "verified (adjudicated"
+L1s="$TMP/m4-labels1s.jsonl"; cp "$L1" "$L1s"; mklabel "$L1s" "$FIX" "$VO" case-19 2 incorrect "" in null same-person same-person
+J1s="$TMP/m4-1s.json"; vscore "$VO" "$L1s" "$J1s" >/dev/null
+eq "self_adjudicated_label_rejected: a label its own adjudicator reviewed is not used" \
+  "$(jget "$J1s" verified/coverage/panel/unlabelled):$(jget "$J1s" verified/diagnostics | grep -c self-reviewed)" "1:1"
+VO2="$TMP/m4-out2"; cp -r "$VO" "$VO2"; J2="$TMP/m4-2.json"; vscore "$VO2" "$L1" "$J2" >/dev/null
+eq "label_reused_across_repeat: a repeat execution with identical findings reuses every label" \
+  "$(jget "$J2" verified/metrics | sha256sum):$(jget "$J2" verified/coverage/panel/unlabelled)" "$(jget "$J1" verified/metrics | sha256sum):1"
+FIXC="$TMP/m4-fix-ctx"; cp -r "$FIX" "$FIXC"; printf 'keep the newest five archives\n' > "$FIXC/case-15.intent.md"
+J3="$TMP/m4-3.json"; vscore "$VO" "$L1" "$J3" "$FIXC" >/dev/null
+eq "changed_context_invalidates_reuse: a changed case input voids its label, the hit becomes unresolved" \
+  "$(jget "$J3" verified/targets/case-15/logic-a-1):$(jget "$J3" verified/diagnostics | grep -c case-input-changed)" "unresolved:1"
+VO3="$TMP/m4-out3"; cp -r "$VO" "$VO3"
+python3 -c 'import sys; p=sys.argv[1]; t=open(p).read(); open(p, "w").write(t.replace("stops a step early", "stops one step early"))' "$VO3/case-15.md"
+J4="$TMP/m4-4.json"; vscore "$VO3" "$L1" "$J4" >/dev/null
+eq "altered_transcript_invalidates_label: an edited finding text matches no label" \
+  "$(jget "$J4" verified/targets/case-15/logic-a-1):$(jget "$J4" verified/diagnostics | grep -c finding-not-observed)" "unresolved:1"
+L2="$TMP/m4-labels2.jsonl"; cp "$L1" "$L2"; mklabel "$L2" "$FIX" "$VO" case-15 1 incorrect "" in null
+out=$(vscore "$VO" "$L2" "$TMP/m4-5.json"); rc=$?
+eq "conflicting_labels_refuse: two labels of one finding that disagree refuse the verified metrics" "$rc" "2"
+has "conflicting_labels_refuse: names the conflict" "$out" "conflicting"
+VO5="$TMP/m4-out5"; cp -r "$VO" "$VO5"; review "$VO5/case-04.md" codex "imp:$ta_file:5:the lock is left behind when the run is killed"
+L5="$TMP/m4-labels5.jsonl"; m4labels "$L5" "$VO5"; mklabel "$L5" "$FIX" "$VO5" case-04 1 correct "" in true
+J5="$TMP/m4-6.json"; vscore "$VO5" "$L5" "$J5" >/dev/null
+eq "clean_with_valid_blocker_disputed: a correct in-contract blocker disputes the clean control and withholds the rate" \
+  "$(jget "$J5" verified/metrics/panel.verified_false_block_rate):$(jget "$J5" verified/cohort/disputed):$(jget "$J5" verified/reasons | grep -c 'disputed-clean-control:case-04')" \
+  'null:["case-04"]:1'
+VALP="$TMP/m4-val-pattern.json"
+python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); v["cases"]["case-16"]["residuals"][0]["pattern"]="concurren|race|lock"; json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$VALP"
+out=$(python3 "$SCORE" lint --fixtures "$FIX" --key "$KEY" --validation "$VALP" 2>&1); rc=$?
+eq "broad_residual_pattern_not_gold: a residual carrying a pattern is refused" "$rc" "1"
+has "broad_residual_pattern_not_gold: lint names the pattern" "$out" "pattern"
+VALS="$TMP/m4-val-self.json"
+python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); v["cases"]["case-01"]["reviewer"]="fixture-curator"; json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$VALS"
+out=$(python3 "$SCORE" lint --fixtures "$FIX" --key "$KEY" --validation "$VALS" 2>&1); rc=$?
+eq "validation lint: a case its own curator validated is refused" "$rc" "1"
+has "validation lint: names the missing independent review" "$out" "independent"
+VALE="$TMP/m4-val-edit.json"
+python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); v["cases"]["case-04"]["contract"]="one run at a time, even after a crash"; json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$VALE"
+J6="$TMP/m4-7.json"; vscore "$VO" "$L1" "$J6" "$FIX" "$VALE" >/dev/null
+eq "gold_revision: the row binds the exact sidecar bytes" "$(jget "$J1" gold_revision)" "$(sha256sum "$VAL" | cut -d' ' -f1)"
+eq "gold_edit_changes_gold_revision_not_stamp: a gold edit moves gold_revision and voids the labels bound to the old one" \
+  "$([ "$(jget "$J6" gold_revision)" != "$(jget "$J1" gold_revision)" ] && echo moved):$(jget "$J6" verified/diagnostics | grep -c gold-revision-changed)" "moved:1"
+c0="$(python3 "$SCORE" confighash HEAD --repo "$G"):$(python3 "$SCORE" cbs-hash HEAD --repo "$G")"
+cp "$VAL" "$G/scripts/eval/review-panel/key/validation.json"; gg add -A; gg commit -qm gold
+eq "gold_edit_changes_gold_revision_not_stamp: a committed sidecar leaves the stamp's confighash and cbs-hash unchanged" \
+  "$(python3 "$SCORE" confighash HEAD --repo "$G"):$(python3 "$SCORE" cbs-hash HEAD --repo "$G")" "$c0"
+VALR="$TMP/m4-val-relabel.json"
+python3 -c 'import json,sys
+v=json.load(open(sys.argv[1])); c=v["cases"]["case-10"]
+c.update(effective_kind="seeded", target_ids=["case-10-v1"], added_targets=[{"id": "case-10-v1", "file": "scripts/hooks/deny-listed-hosts.sh", "line": 5, "description": "fixture"}])
+del c["contract"], c["residuals"]
+json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$VALR"
+LR="$TMP/m4-labelsr.jsonl"; MKVAL="$VALR" m4labels "$LR" "$VO"
+JR="$TMP/m4-8.json"; vscore "$VO" "$LR" "$JR" "$FIX" "$VALR" >/dev/null
+eq "verified_cohort_relabel_visible: a relabelled twin is named, joins the verified targets, and the proxy keeps the key" \
+  "$(jget "$JR" verified/cohort/relabelled):$(jget "$JR" verified/counts/panel.verified_defect_recall_lo):$(jget "$JR" metrics/panel.labelled_clean_block_rate)" \
+  "[{\"case\": \"case-10\", \"from\": \"clean\", \"to\": \"seeded\"}]:{\"k\": 1, \"n\": 5}:$(jget "$J1" metrics/panel.labelled_clean_block_rate)"
+python3 "$GSCORE" verify-row "$(doctor "r[\"gold_revision\"]=\"$(sha256sum "$VAL" | cut -d' ' -f1)\"")" "$O" --repo "$G" --validation "$VAL" >/dev/null 2>&1; rc=$?
+python3 "$GSCORE" verify-row "$(doctor "r[\"gold_revision\"]=\"$(sha256sum "$VAL" | cut -d' ' -f1)\"")" "$O" --repo "$G" --validation "$VALE" >/dev/null 2>&1; rc2=$?
+eq "verify_row_reads_explicit_validation: the claimed gold_revision is checked against the --validation sidecar read" "$rc:$rc2" "0:1"
 
 echo
 echo "test-review-panel: PASS=$PASS FAIL=$FAIL"
