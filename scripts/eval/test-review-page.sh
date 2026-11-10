@@ -547,8 +547,10 @@ eq "rescore_dated_by_execution: an execution 10 days old rescored yesterday is o
 eq "rescore_dated_by_execution: observed at the execution's first row, everywhere" "$(printf '%s' "$R" | q '(r["latest_usable"]["at"], r["benchmark"]["freshness"]["observed_at"], {m["window"]["observed_at"] for m in r["metrics"] if m["family"] == "benchmark"})')" "('2026-10-31T00:00:00Z', '2026-10-31T00:00:00Z', {'2026-10-31T00:00:00Z'})"
 eq "rescore_dated_by_execution: a rescore whose source row is absent has no known age" "$(rj "$M7/runs-orphan.jsonl" | q '(r["latest_usable"]["at"], r["benchmark"]["freshness"]["age_days"], r["benchmark"]["freshness"]["state"])')" "(None, None, 'unknown')"
 eq "promoted_rescore_usable: a rescore of e1 promoted after e2 is no unusable attempt" "$(rj "$M7/runs-promoted.jsonl" | q '(r["latest_usable"]["run_id"], r["latest_attempt"]["run_id"], r["latest_attempt"]["usable"])')" "('e2', 'e1-r', True)"
-case "$(python3 -I "$PAGE" --reviewers-only --ledger "$M7/runs-promoted.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M7/cr.jsonl" --now "$NOW" 2>&1)" in
-  *"not usable"*) fail "promoted_rescore_usable: the prose names no unusable attempt";; *) pass "promoted_rescore_usable: the prose names no unusable attempt";; esac
+PP="$(python3 -I "$PAGE" --reviewers-only --ledger "$M7/runs-promoted.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M7/cr.jsonl" --now "$NOW" 2>&1)"; rc=$?
+eq "promoted_rescore_usable: the prose renders, exit 0" "$rc" "0"
+has "promoted_rescore_usable: the prose names the benchmark run" "$PP" "Run of 7 Nov 2026 (e2, ok)."
+case "$PP" in *"not usable"*) fail "promoted_rescore_usable: the prose names no unusable attempt";; *) pass "promoted_rescore_usable: the prose names no unusable attempt";; esac
 eq "reviewers-json: a change recorded after --now is not in the report" "$(rj "" "" "" "2026-11-02T00:30:00Z" | q 'r["proposals"]')" "[]"
 Q="$(rj "" "" "$M7/cr-quiet.jsonl")"
 eq "quiet_history_not_failed_capture: a quiet CR ledger names its last record" "$(printf '%s' "$Q" | q '(r["production"]["last_record_at"], r["production"]["records_in_window"])')" "('2026-10-01T00:00:00Z', 0)"
