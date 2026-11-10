@@ -3,14 +3,6 @@
 # batched sweep that digests, reaps and prunes closed workers with at most one
 # PR list call per repo.
 #
-# Fixture repos are real git repos with a github-form origin (no network: a `git`
-# wrapper on PATH answers fetch and ls-remote), real worktrees under
-# <repo>/.claude/worktrees, and the real scripts/clean.sh and worktree.sh
-# (prune --only --pr-cache). The sweep's helpers (capture, cost, digest, reap)
-# and the `worktree.sh pr-cache` list verb are stubbed to log. No live GitHub
-# call: `gh` fails and logs, and every row that proves a merge locally asserts
-# the log is empty.
-#
 # Platform guard: Linux bash 3.2+ (flock, /proc; git 2.38+ for merge-tree --write-tree).
 set -uo pipefail
 
@@ -51,7 +43,6 @@ export HOME="$W/home"; mkdir -p "$HOME"
 export HANDOVER_DIR="$W/handovers"; mkdir -p "$HANDOVER_DIR/u/p"
 PROJECTS="$W/projects"; mkdir -p "$PROJECTS/-x"
 
-# ---- stubs --------------------------------------------------------------
 mkdir -p "$W/bin" "$W/stubs" "$W/prcache"
 GH_LOG="$W/gh.log"; GIT_LOG="$W/git.log"; ORDER_LOG="$W/order.log"; DIGEST_LOG="$W/digest.log"
 REAP_LOG="$W/reap.log"; CAPTURE_LOG="$W/capture.log"; PRCACHE_LOG="$W/prcache.log"; CLEAN_LOG="$W/clean.log"
@@ -99,7 +90,6 @@ if [ -n "${DIGEST_KILL_AT:-}" ] && [ "$((${n:-0} + 1))" -eq "$DIGEST_KILL_AT" ];
         if tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q 'close-sweep.sh --drain'; then targets="$targets $p"; fi
         p=$(ps -o ppid= -p "$p" | tr -d ' ')
     done
-    # only this sweep's own ancestors (the drain and its command-substitution subshells), never another drain
     for p in $targets; do kill -9 "$p"; done
     sleep 5
 fi
@@ -153,10 +143,9 @@ export CLOSE_SWEEP_PID_WAIT=0
 
 ( : ) & GONE_PID=$!; wait "$GONE_PID" 2>/dev/null
 
-# ---- fixtures -----------------------------------------------------------
 reset_logs() { rm -f "$GH_LOG" "$GIT_LOG" "$ORDER_LOG" "$DIGEST_LOG" "$REAP_LOG" "$CAPTURE_LOG" "$PRCACHE_LOG" "$CLEAN_LOG" "$FAKE_REMOTE_HEADS" "$W"/prcache/*.rows; unset DIGEST_KILL_AT DIGEST_SLEEP FETCH_HOOK FETCH_FAIL REAL_FETCH PRCACHE_FAIL PRCACHE_NWO GIT_REFUSE CLEAN_SH_BIN; }
 
-mk_repo() { # mk_repo <dir> <nwo>
+mk_repo() {
     "$REAL_GIT" init -q -b main "$1"
     g "$1" config user.email t@test.com
     g "$1" config user.name t
@@ -173,27 +162,27 @@ mk_repo() { # mk_repo <dir> <nwo>
     mkdir -p "$1/.claude/worktrees"
     echo ".claude/" >> "$1/.git/info/exclude"
 }
-mk_wt() { # mk_wt <repo> <name> <branch>: prints the worktree path
+mk_wt() {
     g "$1" worktree add -q "$1/.claude/worktrees/$2" -b "$3" "$BASE" >/dev/null 2>&1
     printf '%s\n' "$1/.claude/worktrees/$2"
 }
-wt_commit() { # wt_commit <wt> <file> <text>: prints the new tip
+wt_commit() {
     printf '%s\n' "$3" > "$1/$2"
     g "$1" add -A
     g "$1" commit -q -m "wip $2"
     g "$1" rev-parse HEAD
 }
-squash_main() { # squash_main <repo> <branch> <subject>
+squash_main() {
     g "$1" merge --squash -q "$2" >/dev/null 2>&1
     g "$1" commit -q -m "$3"
     g "$1" update-ref refs/remotes/origin/main "$(g "$1" rev-parse HEAD)"
 }
-push_ref() { # push_ref <repo> <branch> <sha>: the branch is on origin
+push_ref() {
     g "$1" update-ref "refs/remotes/origin/$2" "$3"
     echo "$2 $3" >> "$FAKE_REMOTE_HEADS"
 }
-list_row() { printf '%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "$5" >> "$PRCACHE_DIR/$(printf '%s' "$1" | tr '/' '_').rows"; } # <nwo> <repo-col> <branch> <state> <sha>
-mk_doc() { # mk_doc <doc> <wt-lines> [<pr> <head>]
+list_row() { printf '%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "$5" >> "$PRCACHE_DIR/$(printf '%s' "$1" | tr '/' '_').rows"; }
+mk_doc() {
     mkdir -p "$(dirname "$1")"
     {
         printf -- '---\nresume_cwd: %s\n---\n# worker\n' "$(printf '%s\n' "$2" | head -n 1)"
@@ -202,7 +191,7 @@ mk_doc() { # mk_doc <doc> <wt-lines> [<pr> <head>]
         if [ -n "${3:-}" ]; then printf -- '- 10:30 READY %s %s GREEN\n' "$3" "$4"; fi
     } > "$1"
 }
-mk_rec() { # mk_rec <state> <k> <doc> <wt-text> <repo> [pid] [proc_start] [closed_at] [sid]
+mk_rec() {
     local state="$1" k="$2" doc="$3" wt="$4" repo="$5" pid="${6:-$GONE_PID}" ps="${7:-}" closed="${8:-$(now)}" sid
     sid="${9:-$(printf '4670c3a0-0000-4000-8000-%012d' "$k")}"
     mkdir -p "$state/pending"
@@ -218,8 +207,7 @@ rec_where() { local f; f=$(rec_file "$1" "$2"); if [ -n "$f" ]; then basename "$
 run_sweep() { CLOSE_SWEEP_STATE_DIR="$1" bash "$SWEEP" --drain > "$W/sweep.out" 2>&1; }
 sweep_out() { cat "$W/sweep.out" 2>/dev/null; }
 
-# a world: repo R (owner/repo), merged-local workers 1..$2 (PR 100+k), no-work workers after them
-build_world() { # build_world <tag> <merged> <nowork>: sets R, S, DD, MERGED_WTS, NOWORK_WTS
+build_world() {
     local tag="$1" nm="$2" nn="$3" k br wt tip
     R="$W/repo-$tag"; S="$W/state-$tag"; DD="$W/docs-$tag"; mk_repo "$R" owner/repo
     MERGED_WTS=""; NOWORK_WTS=""
@@ -636,17 +624,20 @@ reset_logs
 S="$W/state-race"; DD="$W/docs-race"
 sleep 300 & LP=$!; PIDS="$PIDS $LP"; ps=$(proc_start_of "$LP")
 mk_doc "$DD/HIMMEL-9-N1-sweep-2026-11-10.md" ""; mk_rec "$S" 1 "$DD/HIMMEL-9-N1-sweep-2026-11-10.md" "" "" "$LP" "$ps"
+mkdir -p "$S/run.$GONE_PID" "$S/run.$$"
 PAUSE="$W/pause"; : > "$PAUSE"
 CLOSE_SWEEP_STATE_DIR="$S" CLOSE_SWEEP_TEST_PAUSE_FILE="$PAUSE" bash "$SWEEP" --drain > "$W/sweep.out" 2>&1 & DR=$!
 i=0; while [ ! -e "$PAUSE.blocked" ] && [ "$i" -lt 40 ]; do sleep 0.5; i=$((i + 1)); done
 check "drain race: the drain blocks on the pause file between its last scan and its release" "$([ -e "$PAUSE.blocked" ] && echo blocked)" "blocked"
 mk_doc "$DD/HIMMEL-9-N2-sweep-2026-11-10.md" ""; mk_rec "$S" 2 "$DD/HIMMEL-9-N2-sweep-2026-11-10.md" "" "" "$GONE_PID" "" "$(( $(now) + 1 ))"
-rm -rf "$S"/run.* # another drain taking the lock in the free window removes this run's directory as stale
 rm -f "$PAUSE"
 i=0; while kill -0 "$DR" 2>/dev/null && [ "$i" -lt 60 ]; do sleep 0.5; i=$((i + 1)); done
 check "drain race: the new record was processed before the holder exited" "$(rec_where "$S" N2)" "done"
 check "drain race: a record already seen in the run is not re-taken" "$(grep -c "\[$(rec_field "$S" N1 sid)\]" "$DIGEST_LOG")" "1"
 check "drain race: the seen record stays pending" "$(rec_where "$S" N1)" "pending"
+absent "drain race: a dead owner's run directory is removed" "$S/run.$GONE_PID"
+exists "drain race: a live owner's run directory is left alone" "$S/run.$$"
+rm -rf "$S/run.$$"
 kill "$LP" 2>/dev/null
 
 echo "ROW: pid exits at 25 s (the real digest step, a 60 s wait)"

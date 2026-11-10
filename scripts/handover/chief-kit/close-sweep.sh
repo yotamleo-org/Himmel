@@ -14,22 +14,6 @@
 # sid, transcript, names, config_dir, projects_dir, worktrees, repo, predecessor,
 # named_successor, closed_at, sweeps_seen. This script is the only owner of sweep.lock.
 #
-# Phase A, per record (local work): wait for the pid to be gone until closed_at +
-# CLOSE_SWEEP_PID_WAIT s (a gone or reused pid, by start time, counts as gone); resolve
-# the transcript; session note; cost row; digest once (`--pid` only while the pid is
-# alive with its recorded start time); re-check the pid; reap the /tmp scratch. A pid
-# still alive leaves the record in pending/ until its third sweep or 600 s after its
-# close, then it goes to done/ as kept-alive.
-# Phase B, per repo, over every record phase A made ready: one bounded fetch, a local
-# proof per worktree (close-facts.sh), at most one `worktree.sh pr-cache` call when some
-# worktree of the repo has no proof, then one `clean.sh --only <wt> --only-allow-unmerged
-# --pr-cache <file>` per worktree, run from the record's repo. The sweep never removes a
-# worktree or deletes a branch itself.
-#
-# A cache file is a per-run mktemp under the state dir, removed by an EXIT trap, and
-# never one left by an earlier run. A record leaves pending/ only after its digest step
-# returned a `digest=` line; done/ holds the outcomes, failed/ a prune that failed.
-#
 # Seams, set by suites only: CLOSE_SWEEP_STATE_DIR, CLOSE_SWEEP_PID_WAIT,
 # CLOSE_SWEEP_TEST_PAUSE_FILE (the drain blocks on it, when set and present, between its
 # last scan and its lock release), CLAUDE_SESSIONS_PROC (/proc), and the helper seams
@@ -45,6 +29,8 @@ PID_WAIT="${CLOSE_SWEEP_PID_WAIT:-60}"
 case "$PID_WAIT" in ''|*[!0-9]*) PID_WAIT=60 ;; esac
 PID_WAIT=$((10#$PID_WAIT))
 PROC_ROOT="${CLAUDE_SESSIONS_PROC:-/proc}"
+KEPT_ALIVE_MAX_SWEEPS=3
+KEPT_ALIVE_MAX_SECONDS=600
 CLEAN_SH="${CLEAN_SH_BIN:-$HERE/../../clean.sh}"
 TMP_REAP="${TMP_REAP_BIN:-$HERE/../../tmp-reap.sh}"
 WORKTREE_SH="${WORKTREE_SH_BIN:-$HERE/../../worktree.sh}"
@@ -91,15 +77,18 @@ mkdir -p "$STATE/pending" "$STATE/done" "$STATE/failed" || { echo "close-sweep: 
 exec 9>"$STATE/sweep.lock"
 flock -n 9 || exit 0 # prim-ok: the sweep holds this lock on fd 9 across its whole drain and releases it between scans; with_lock cannot hold a lock across a loop
 
-# every other run directory belongs to a sweep that died: this process owns the lock
-for stale in "$STATE"/run.*; do [ -d "$stale" ] && rm -rf "$stale"; done
-RUN_DIR=$(mktemp -d "$STATE/run.XXXXXX") || { echo "close-sweep: cannot create a run directory" >&2; exit 1; } # prim-ok: the run dir sits under the state dir so a cache file and a record move are same-filesystem
+for stale in "$STATE"/run.*; do
+    [ -d "$stale" ] || continue
+    kill -0 "${stale##*run.}" 2>/dev/null || rm -rf "$stale"
+done
+RUN_DIR="$STATE/run.$$"
+rm -rf "$RUN_DIR"
+mkdir "$RUN_DIR" || { echo "close-sweep: cannot create a run directory" >&2; exit 1; }
 trap 'rm -rf "$RUN_DIR"' EXIT
 SEEN=""
 
-# ---------- record helpers ----------
 rf() { jq -r --arg f "$2" '.[$f] // "" | if type == "array" then join("\n") else tostring end' "$1" 2>/dev/null; }
-rec_set() { # rec_set <file> <key> <value> [<key> <value>]...
+rec_set() {
     local f="$1" tmp="$RUN_DIR/rec.tmp" k v filter='.' args=() n=0
     shift
     while [ "$#" -ge 2 ]; do
@@ -110,10 +99,15 @@ rec_set() { # rec_set <file> <key> <value> [<key> <value>]...
     done
     jq "${args[@]}" "$filter" "$f" > "$tmp" && mv "$tmp" "$f" # prim-ok: tmp is in the per-run dir on the state filesystem, the mv is atomic
 }
-rec_set_num() { # rec_set_num <file> <key> <number>
+rec_set_num() {
     jq --arg k "$2" --argjson v "$3" '.[$k] = $v' "$1" > "$RUN_DIR/rec.tmp" && mv "$RUN_DIR/rec.tmp" "$1"
 }
-finish() { # finish <file> <done|failed> [<key> <value>]...: a record that cannot be saved or moved stays in pending/
+record_successor_live() {
+    local pred
+    case "$(rf "$1" predecessor)" in 1|true) pred=1 ;; *) pred=0 ;; esac
+    successor_live "$(rf "$1" doc)" "$pred" "$(rf "$1" named_successor)"
+}
+finish() {
     local f="$1" dir="$2"
     shift 2
     if [ "$#" -gt 0 ] && ! rec_set "$f" "$@"; then
@@ -127,9 +121,7 @@ finish() { # finish <file> <done|failed> [<key> <value>]...: a record that canno
     log "$(basename "$f" .json) -> $dir capture=$(rf "$STATE/$dir/$(basename "$f")" capture) digest=$(rf "$STATE/$dir/$(basename "$f")" digest | cut -c1-40) reap=$(rf "$STATE/$dir/$(basename "$f")" reap) prune=$(rf "$STATE/$dir/$(basename "$f")" prune)"
 }
 
-# ---------- pid ----------
 proc_start_time() { sed -E 's/^.*\) //' "$1" | awk '{print $20}'; }
-# pid_gone <pid> <proc_start>: absent, or alive with another start time (a reused pid)
 pid_gone() {
     local cur
     case "$1" in ''|0|null|*[!0-9]*) return 0 ;; esac
@@ -139,11 +131,10 @@ pid_gone() {
     [ -n "$cur" ] && [ "$cur" != "$2" ]
 }
 
-# ---------- phase A steps ----------
 capture_slot() {
     printf '%s/.claude/logs/end-session-wiki/captured/%s-%s' "$HOME" "$(printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_')" "$(printf '%s' "$1" | cksum | awk '{print $1}')"
 }
-capture_note() { # capture_note <transcript>: prints the capture result
+capture_note() {
     local t="$1" csid cwd payload
     [ -n "$t" ] || { echo "skipped:no-transcript"; return; }
     [ -r "$END_SESSION_WIKI" ] || { echo "skipped:no-hook"; return; }
@@ -154,7 +145,7 @@ capture_note() { # capture_note <transcript>: prints the capture result
     payload=$(jq -n --arg t "$t" --arg s "$csid" --arg c "$cwd" --arg r "worker-close" '{transcript_path:$t, session_id:$s, cwd:$c, reason:$r}')
     if printf '%s' "$payload" | timeout -k 5 "${CLOSE_SWEEP_CAPTURE_TIMEOUT:-60}" bash "$END_SESSION_WIKI" >/dev/null 2>&1 9>&-; then echo "ok"; else echo "failed"; fi
 }
-cost_row() { # cost_row <transcript> <doc>: prints the cost result
+cost_row() {
     local t="$1" doc="$2" ledger row sid
     [ -n "$t" ] || { echo "skipped:no-transcript"; return; }
     [ "$COST_LIB_OK" -eq 1 ] || { echo "failed:no-lib"; return; }
@@ -164,7 +155,7 @@ cost_row() { # cost_row <transcript> <doc>: prints the cost result
     row=$(worker_cost_row "$t" "$doc" 2>/dev/null) || { echo "failed:burn"; return; } # swallow-ok: a meter failure is the recorded result failed:burn
     if mkdir -p "$(dirname "$ledger")" 2>/dev/null && printf '%s\n' "$row" >> "$ledger" 2>/dev/null; then echo "ok"; else echo "failed:write"; fi
 }
-reap_scratch() { # reap_scratch <doc> <transcript>: archive-then-reap this worker's /tmp scratch
+reap_scratch() {
     local doc="$1" t="$2" pr sid args=()
     pr=$(doc_pr "$doc")
     [ -z "$pr" ] || args+=(--judge "$pr")
@@ -180,8 +171,8 @@ reap_scratch() { # reap_scratch <doc> <transcript>: archive-then-reap this worke
 
 READY="$RUN_DIR/ready"; : > "$READY"
 
-phase_a() { # phase_a <record file>
-    local rec="$1" tf pid ps closed doc sid tr names pdir pred named deadline t cands tm tcount dsid pidarg dline cap cost reap seen
+phase_a() {
+    local rec="$1" tf pid ps closed doc sid tr names pdir deadline t cands tm tcount dsid pidarg dline cap cost reap seen
     if ! jq -e . "$rec" >/dev/null 2>&1; then
         log "$(basename "$rec") is not a JSON record - moved to failed/"
         mv "$rec" "$STATE/failed/$(basename "$rec")"
@@ -189,11 +180,8 @@ phase_a() { # phase_a <record file>
     fi
     pid=$(rf "$rec" pid); ps=$(rf "$rec" proc_start); closed=$(rf "$rec" closed_at); doc=$(rf "$rec" doc)
     sid=$(rf "$rec" sid); tr=$(rf "$rec" transcript); names=$(rf "$rec" names); pdir=$(rf "$rec" projects_dir)
-    pred=$(rf "$rec" predecessor); named=$(rf "$rec" named_successor)
-    case "$pred" in 1|true) pred=1 ;; *) pred=0 ;; esac
     case "$closed" in ''|*[!0-9]*) closed=$(now) ;; esac
 
-    # 1 the pid, waited for until closed_at + PID_WAIT (a deadline per record)
     closed=$((10#$closed))
     deadline=$((closed + PID_WAIT))
     while ! pid_gone "$pid" "$ps"; do
@@ -201,7 +189,6 @@ phase_a() { # phase_a <record file>
         sleep 1
     done
 
-    # 2 the transcript: the record's, else by session id, else by the worker's names
     t=""
     [ -z "$tr" ] || [ ! -f "$tr" ] || t="$tr"
     if [ -z "$t" ] && [ -n "$sid" ] && [ -n "$pdir" ] && [ -d "$pdir" ]; then
@@ -223,7 +210,6 @@ phase_a() { # phase_a <record file>
     dsid="$sid"
     case "$dsid" in ????????-????-????-????-????????????) ;; *) [ -z "$t" ] || dsid=$(transcript_sid "$t") ;; esac
 
-    # 3 session note, 4 cost row, 5 digest: each once (a re-run of a killed sweep keeps its result)
     cap=$(rf "$rec" capture)
     if [ -z "$cap" ]; then cap=$(capture_note "$t"); rec_set "$rec" capture "$cap" || { log "$(basename "$rec" .json): cannot save its capture result - left in pending/"; return; }; fi
     cost=$(rf "$rec" cost)
@@ -240,9 +226,8 @@ phase_a() { # phase_a <record file>
     fi
     rec_set "$rec" transcript_resolved "$t" || { log "$(basename "$rec" .json): cannot save its transcript - left in pending/"; return; }
 
-    # 6 the pid again: the digest may have taken minutes
     if pid_gone "$pid" "$ps"; then
-        if successor_live "$doc" "$pred" "$named"; then
+        if record_successor_live "$rec"; then
             finish "$rec" "done" reap kept-successor prune kept-successor
             return
         fi
@@ -251,23 +236,21 @@ phase_a() { # phase_a <record file>
         printf '%s\n' "$rec" >> "$READY"
         return
     fi
-    # 7 still alive: bounded by three sweeps or 600 s
     seen=$(rf "$rec" sweeps_seen); case "$seen" in ''|*[!0-9]*) seen=0 ;; esac
     seen=$((10#$seen + 1))
     rec_set_num "$rec" sweeps_seen "$seen" || { log "$(basename "$rec" .json): cannot save sweeps_seen - left in pending/"; return; }
-    if [ "$seen" -ge 3 ] || [ $(( $(now) - closed )) -ge 600 ]; then
+    if [ "$seen" -ge "$KEPT_ALIVE_MAX_SWEEPS" ] || [ $(( $(now) - closed )) -ge "$KEPT_ALIVE_MAX_SECONDS" ]; then
         finish "$rec" "done" reap kept-alive prune kept-alive
     fi
 }
 
-# ---------- phase B ----------
 fetch_repo() {
     GIT_TERMINAL_PROMPT=0 timeout -k 5 "${CLOSE_SWEEP_FETCH_TIMEOUT:-60}" \
         git -c core.hooksPath=/dev/null -C "$1" fetch --prune --quiet --no-write-fetch-head origin </dev/null >/dev/null 2>&1 9>&- \
         || log "fetch of $1 failed - using the refs it has (a stale ref can only withhold a proof)"
 }
 
-prune_one() { # prune_one <repo> <wt> <cache file>: prints the prune result; its output is left in $RUN_DIR/prune.out
+prune_one() {
     local repo="$1" wt="$2" cache="$3" tries="${CLOSE_SWEEP_PRUNE_RETRIES:-3}" try=0 rc out summary partial failed benign
     while :; do
         out=$(unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; cd "$repo" && bash "$CLEAN_SH" --only "$wt" --only-allow-unmerged --pr-cache "$cache" 2>&1 </dev/null 9>&-)
@@ -279,9 +262,9 @@ prune_one() { # prune_one <repo> <wt> <cache file>: prints the prune result; its
         sleep "${CLOSE_SWEEP_PRUNE_WAIT:-1}"
     done
     printf '%s\n' "$out" > "$RUN_DIR/prune.out"
-    if [ "$rc" -eq 0 ]; then echo "pruned"; return; fi
+    if [ "$rc" -eq 0 ]; then PRUNE_RESULT=pruned; return; fi
     case "$out" in
-        *'ERR worktree: --pr-cache:'*) echo "kept:pr-cache-refused"; return ;;
+        *'ERR worktree: --pr-cache:'*) PRUNE_RESULT=kept:pr-cache-refused; return ;;
     esac
     summary=$(printf '%s\n' "$out" | grep -F 'clean-garden: prune summary' | tail -n 1)
     partial=$(printf '%s' "$summary" | sed -nE 's/.*, ([0-9]+) partial,.*/\1/p')
@@ -291,15 +274,14 @@ prune_one() { # prune_one <repo> <wt> <cache file>: prints the prune result; its
         case "$out" in *'in use'*|*'not a prune candidate'*) benign=1 ;; esac
     fi
     case "$out" in
-        *'is not a registered worktree'*) if [ ! -e "$wt" ]; then echo "gone"; return; fi ;;
+        *'is not a registered worktree'*) if [ ! -e "$wt" ]; then PRUNE_RESULT=gone; return; fi ;;
     esac
-    if [ "$benign" -eq 1 ]; then echo "kept"; return; fi
-    echo "failed"
+    if [ "$benign" -eq 1 ]; then PRUNE_RESULT=kept; return; fi
+    PRUNE_RESULT=failed
 }
 
-phase_b() { # phase_b <ready file>
-    local repos repo rec n plan wt branch tip doc row cache res_count all wts wt_count idx=0 pr_rc result kind
-    # records with no repo: no fetch, no prune, never the caller's cwd
+phase_b() {
+    local repos repo rec n plan wt branch tip doc row cache res_count all wts wt_count idx=0 pr_rc kind
     while IFS= read -r rec; do
         [ -n "$rec" ] || continue
         if [ -z "$(rf "$rec" repo)" ]; then
@@ -357,21 +339,20 @@ phase_b() { # phase_b <ready file>
                 if [ -z "$all" ]; then finish "$rec" "done" prune kept-unknown; continue; fi
                 cache="$all"
             fi
-            # a successor can take its lock any time before this prune: read it again now
-            if successor_live "$(rf "$rec" doc)" "$(case "$(rf "$rec" predecessor)" in 1|true) echo 1 ;; *) echo 0 ;; esac)" "$(rf "$rec" named_successor)"; then
+            if record_successor_live "$rec"; then
                 finish "$rec" "done" prune kept-successor
                 continue
             fi
-            result=$(prune_one "$repo" "$wt" "$cache")
-            case "$result" in
+            prune_one "$repo" "$wt" "$cache"
+            case "$PRUNE_RESULT" in
                 failed)
                     log "PRUNE-FAILED $wt"
                     sed 's/^/close-sweep:   /' "$RUN_DIR/prune.out"
                     finish "$rec" failed prune failed ;;
                 kept:pr-cache-refused)
                     log "kept $wt: $(grep -F 'ERR worktree: --pr-cache:' "$RUN_DIR/prune.out" | head -n 1)"
-                    finish "$rec" "done" prune "$result" ;;
-                *) finish "$rec" "done" prune "$result" ;;
+                    finish "$rec" "done" prune "$PRUNE_RESULT" ;;
+                *) finish "$rec" "done" prune "$PRUNE_RESULT" ;;
             esac
         done 4< "$plan"
     done <<EOF
@@ -379,7 +360,6 @@ $repos
 EOF
 }
 
-# ---------- drain ----------
 unseen() {
     local f
     for f in "$STATE/pending"/*.json; do
@@ -412,7 +392,6 @@ while :; do
     flock -u 9 # prim-ok: release between scans, see the lock above
     [ -n "$(unseen)" ] || break
     flock -n 9 || exit 0 # prim-ok: retake after the release, see the lock above
-    mkdir -p "$RUN_DIR" || exit 1 # another drain may have removed it as stale while the lock was free
 done
 now > "$STATE/last"
 exit 0

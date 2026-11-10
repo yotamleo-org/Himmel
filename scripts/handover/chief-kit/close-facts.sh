@@ -14,10 +14,7 @@
 #
 # A proof only feeds `worktree.sh prune --only --pr-cache` a cache row; it never
 # decides a prune. Every failure prints nothing, so a missing proof keeps work.
-# Sourced by close-sweep.sh, the batched sweep that prunes closed workers' worktrees.
-# successor_live and later_successor_live are copies of close-wrapped-worker.sh's
-# own (same behaviour, the doc passed in); the close keeps its copy until the
-# close path is wired to the sweep.
+# Sourced by close-sweep.sh.
 # bash 3.2-safe.
 
 _CF_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -123,10 +120,6 @@ no_work_proof() {
     write_branch_cache "$repo" "$branch" || return 0
 }
 
-# later_successor_live <doc>: success when a later-lettered RESUME doc of this worker beside
-# <doc> holds a queue lock, or names a worktree <doc> names as its resume_cwd. It reads no
-# Results section, so a hand-off the successor reader misses still keeps the successor's
-# scratch and worktree.
 later_successor_live() {
     local doc="$1" sib_dir sib_label doc_worktrees cand lbase cl cwd
     sib_dir="$(dirname "$doc")"
@@ -145,9 +138,6 @@ later_successor_live() {
     return 1
 }
 
-# successor_live <doc> <predecessor 0|1> <named successor>: the named successor holds its
-# lock, or a later RESUME doc keeps it live. Read again before a prune, since a successor
-# can take its lock while the digest runs.
 successor_live() {
     local doc="$1" predecessor="$2" named="$3"
     { [ "$predecessor" = "1" ] && ! bash "$_CF_HERE/../queue-lock.sh" status "$named" >/dev/null 2>&1; } || later_successor_live "$doc"
