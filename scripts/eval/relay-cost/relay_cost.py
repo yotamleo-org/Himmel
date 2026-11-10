@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # billed-exempt: prices a recorded stream and mentions claude -p only in text; run.sh holds the opt-in
-"""scripts/eval/relay-cost/relay_cost.py - HIMMEL-6992: cost per relayed message and delivery correctness.
+"""scripts/eval/relay-cost/relay_cost.py - cost per relayed message and delivery correctness.
 
 Stdlib only; no subcommand makes a model call (run.sh does, and hands this file the streams).
 

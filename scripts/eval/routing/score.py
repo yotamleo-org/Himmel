@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """scripts/eval/routing/score.py - score which skill, command, agent or MCP tool a model
-picks for a request (HIMMEL-8088): exact, near and false-pick rates, open and sealed, with
+picks for a request: exact, near and false-pick rates, open and sealed, with
 Wilson 95% intervals; one row per run into the eval-runs ledger (scripts/eval/lib/eval_runs.py).
 
   score.py lint  --listing JSON [--cases DIR]
@@ -21,7 +21,7 @@ accuracy = exact / scored, and near_rate, miss_rate and false_pick_rate likewise
 {"pick": ...} in the result text is the one scored. cost_usd sums every envelope read plus
 <outputs>/errored-spend.log, the cost of the calls run.sh did not keep.
 
-Split (eval_feedback.py, HIMMEL-7519). Every metric is also reported per half as
+Split (eval_feedback.py). Every metric is also reported per half as
 open.<metric> and sealed.<metric>. Tuning reads the open half only; the sealed half only
 decides keep or revert. The results JSON and table carry per-case rows for the open half only
 and the sealed half as aggregate metrics: a sealed pick or outcome hints at what it expects.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Agent Reach router stand-in for the bench (HIMMEL-4362). Agent Reach v1.5.0
+"""Agent Reach router stand-in for the bench. Agent Reach v1.5.0
 (Panniantong/Agent-Reach, installed from its release tag in a venv on a test VM)
 is a skill plus a doctor, not a read CLI: its SKILL.md routes each platform to a
 per-platform tool. This adapter runs those documented zero-config commands for

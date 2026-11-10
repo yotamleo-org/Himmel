@@ -18,7 +18,7 @@ RUN="$HERE/run.sh"
 REAL_REPO="$(cd "$HERE/../../.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/lane-quality-test.XXXXXX")" || { echo "test-lane-quality: mktemp -d failed" >&2; exit 1; }
 trap 'git -C "$TMP/repo" worktree prune >/dev/null 2>&1; rm -rf "$TMP"' EXIT
-export HIMMEL_EVAL_RUNS_LEDGER="$TMP/eval-runs.jsonl"   # HIMMEL-4647: never the live ledger
+export HIMMEL_EVAL_RUNS_LEDGER="$TMP/eval-runs.jsonl"   # never the live ledger
 export HIMMEL_CEILINGS_LEDGER="$TMP/no-ceilings-ledger.tsv"
 case "$HIMMEL_CEILINGS_LEDGER" in "$TMP"/*) ;; *) echo "FAIL: the ceilings ledger escapes the temp dir"; exit 1 ;; esac
 PASS=0; FAIL=0
@@ -139,7 +139,7 @@ check "acceptance passed on both" '[ "$(jq -s "map(select(.accept_ok)) | length"
 check "tool calls deduped by id" '[ "$(jq -s ".[0].tool_calls" "$R")" = 2 ]'
 check "compactions counted" '[ "$(jq -s ".[0].compactions" "$R")" = 1 ]'
 check "hook denials counted" '[ "$(jq -s ".[0].hook_denials" "$R")" = 1 ]'
-check "trajectory fields recorded (HIMMEL-4651)" 'jq -s -e ".[0] | [.red_before_green, .denial_recovery, .identical_denied_retries, .verify_before_claim] == [null, 1, 0, false]" "$R" >/dev/null'
+check "trajectory fields recorded" 'jq -s -e ".[0] | [.red_before_green, .denial_recovery, .identical_denied_retries, .verify_before_claim] == [null, 1, 0, false]" "$R" >/dev/null'
 check "permission denials counted" '[ "$(jq -s ".[0].permission_denials" "$R")" = 1 ]'
 check "cost recorded" '[ "$(jq -s ".[0].cost_usd" "$R")" = 0.5 ]'
 check "bank reading recorded" '[ "$(jq -s -r ".[0].bank_5h_before" "$R")" = 10.0 ]'
@@ -465,7 +465,7 @@ bash "$RUN" table "$TMP/out1" >"$TMP/table.md" 2>&1
 check "table has a row per task" '[ "$(grep -c "| native | claude-haiku-4-5 |" "$TMP/table.md")" -ge 2 ]'
 check "table has a header" 'grep -q "^| lane | model | task |" "$TMP/table.md"'
 
-echo "5. repeats, bootstrap CIs and judge calibration (HIMMEL-4648)"
+echo "5. repeats, bootstrap CIs and judge calibration"
 : >"$TMP/fake.log.judge"
 bash "$RUN" run --lane native --model m --tasks shell-red-green,finding-verify --reps 2 --max-usd 9 \
   --out "$TMP/out21" >"$TMP/run21.log" 2>&1
@@ -581,7 +581,7 @@ rc=$?
 check "calibration refuses --timeout 00" '[ "$rc" -eq 64 ] && grep -q -- "--timeout must be positive" "$TMP/cal-t00.err"'
 check "weighted kappa ignores a pair off the 1..5 scale" '[ "$(kap "[1,2,6]" "[1,2,3]")" = 1.0 ]'
 
-echo "6. runner polish (HIMMEL-4264)"
+echo "6. runner polish"
 # a: two runs in one second get distinct run ids (the clock is pinned to prove it)
 mkdir -p "$TMP/fdate"
 printf '#!/usr/bin/env bash\ncase "$*" in *%%Y%%m%%d*) echo 20260101T000000Z ;; *) exec "%s" "$@" ;; esac\n' "$(command -v date)" >"$TMP/fdate/date"
@@ -621,7 +621,7 @@ bash "$RUN" table "$TMP/sp ace" >"$TMP/table-sp.md" 2>&1
 rc=$?
 check "table renders a run directory whose path has a space" '[ "$rc" -eq 0 ] && [ "$(grep -c "| native | claude-haiku-4-5 |" "$TMP/table-sp.md")" -ge 2 ]'
 
-echo "5. steering variants (HIMMEL-5633)"
+echo "5. steering variants"
 printf 'VARIANT-A4 steering text\n' >"$TMP/v-a4.md"
 printf 'VARIANT-A6 BREAK steering text\n' >"$TMP/v-a6.md"
 : >"$TMP/fake.log.claudemd"

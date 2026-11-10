@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HIMMEL-4362 scrape-provider benchmark runner.
+"""Scrape-provider benchmark runner.
 
   python3 bench.py --provider jina --out results/jina.jsonl
   FIRECRAWL_API_KEY=... python3 bench.py --provider firecrawl --max-calls 45 --out results/firecrawl.jsonl
@@ -88,7 +88,7 @@ def main(argv=None):
 
 
 def record_run(provider_name, a, rows):
-    """One eval-runs ledger row per bench run (HIMMEL-4647). Rates are over the
+    """One eval-runs ledger row per bench run. Rates are over the
     rows a provider actually tried (ok or error); a capped or needs-auth row
     makes the run partial. A ledger failure warns and never fails the bench."""
     try:
