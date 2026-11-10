@@ -272,7 +272,7 @@ list_row adopt/other adopt/other openb open "$tipb"
 run_sweep "$S"
 check "two repos, each with residue: 2 list calls" "$(lines "$PRCACHE_LOG")" "2"
 check "two repos: one call ran from each repo" "$(cut -d'|' -f1 "$PRCACHE_LOG" 2>/dev/null | sort | tr '\n' ' ')" "$(printf '%s\n%s\n' "$RA" "$RB" | sort | tr '\n' ' ')"
-contains "two repos: the adopter's list was read with its own nwo" "$(cat "$PRCACHE_LOG" 2>/dev/null)" "|adopt/other|"
+contains "two repos: the adopter's list was read with its own nwo" "$(cat "$PRCACHE_LOG" 2>/dev/null)" "|adopt/other|" # read-sink-ok: a log the suite itself created under its own scratch dir
 absent "two repos: the himmel-side pushed worktree pruned" "$wta"
 exists "adopter repo: the adopter's open-PR worktree is kept" "$wtb"
 
@@ -291,7 +291,7 @@ for k in 1 2 3; do
     contains "I3: the call for $w is from its repo with the exact argv" "$(cat "$CLEAN_LOG")" "$rp|--only $w --only-allow-unmerged --pr-cache $S/"
 done
 contains "I3: the adopter record is pruned from the adopter repo" "$(cat "$CLEAN_LOG")" "$RC2|--only $wt2 --only-allow-unmerged --pr-cache $S/"
-contains "I3: the cache file existed when clean.sh ran" "$(cat "$CLEAN_LOG")" "clean-stub: cache file exists"
+contains "I3: the cache file existed when clean.sh ran" "$(cat "$CLEAN_LOG")" "clean-stub: cache file exists" # read-sink-ok: a log the suite itself created under its own scratch dir
 check "I3: the sweep ran no git worktree remove and no git branch -D" "$(grep -cE ' worktree remove | branch -D | branch -d ' "$GIT_LOG" 2>/dev/null)" "0"
 reset_logs
 

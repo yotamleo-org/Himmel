@@ -288,8 +288,8 @@ phase_b() {
             log "$(basename "$rec" .json): the record names no repo - prune skipped"
             finish "$rec" "done" prune skipped-no-repo
         fi
-    done < "$1"
-    repos=$(while IFS= read -r rec; do [ -f "$rec" ] && rf "$rec" repo; done < "$1" | sort -u)
+    done < "$READY"
+    repos=$(while IFS= read -r rec; do [ -f "$rec" ] && rf "$rec" repo; done < "$READY" | sort -u)
     while IFS= read -r repo; do
         [ -n "$repo" ] || continue
         idx=$((idx + 1))
@@ -322,7 +322,7 @@ phase_b() {
             fi
             [ "$kind" = proof ] || res_count=$((res_count + 1))
             printf '%s|%s|%s|%s\n' "$rec" "$wt" "$kind" "$cache" >> "$plan"
-        done < "$1"
+        done < "$READY"
         all=""
         if [ "$res_count" -gt 0 ]; then
             all="$RUN_DIR/all.$idx"
@@ -376,7 +376,7 @@ process_batch() {
         phase_a "$f"
         [ -f "$f" ] || true
     done
-    phase_b "$READY"
+    phase_b
 }
 
 while :; do
