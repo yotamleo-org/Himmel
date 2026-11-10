@@ -583,23 +583,199 @@ async function operatorAllowsRound(spec: string, round: number): Promise<boolean
   return (await listDir([...parts.slice(0, specs + 1), "decisions"].join("/"))).some(n => n.startsWith(`verbatim-decision-${decision}-`));
 }
 
+// The specs a seal belongs to: the spec the read file is filed under, and the spec the verdict file is named after
+// (`named` is its path whether or not that file is there).
+async function sealSpecs(v: string, page: string): Promise<{ read: string; named?: string; namedExists: boolean }> {
+  const source = await markedSource(page);
+  const md = siblingMd(page);
+  const read = source ?? (await governingSpec(page))?.spec ?? (md && await isFile(md) ? md : page);
+  const name = /^(.+?)\.critic/.exec(basename(v))?.[1];
+  const named = name ? join(dirname(v), name) : undefined;
+  return { read, named, namedExists: named ? await isFile(named) : false };
+}
+
 // Refuses a critic return past the cap with no operator record for that round: `critic-seal.sh` runs this before it
 // seals. The count is keyed on the spec the read file belongs to, and on the spec the return is named after; the higher wins.
 export async function refuseRoundPastCap(verdict: string, readPath: string): Promise<void> {
   const v = await realpath(verdict); const page = await realpath(readPath);
   const kind = verdictKind(lastLine(await readCritic(v)));
   if (!kind || isJudgeReturn(basename(v))) return;
-  const source = await markedSource(page);
-  const md = siblingMd(page);
-  const read = source ?? (await governingSpec(page))?.spec ?? (md && await isFile(md) ? md : page);
-  const named = /^(.+?)\.critic/.exec(basename(v))?.[1];
+  const { read, named, namedExists } = await sealSpecs(v, page);
   const specs = new Set([read]);
-  if (named && await isFile(join(dirname(v), named))) specs.add(join(dirname(v), named));
+  if (named && namedExists) specs.add(named);
   for (const spec of specs) {
     const round = (await criticRounds(spec, v))[kind].count;
     if (round <= CRITIC_ROUND_CAP || await operatorAllowsRound(spec, round)) continue;
     throw new Error(`${basename(spec)} already has ${round - 1} ${kind} critic rounds; round ${round} needs an operator record, ${spec}.operator-round-r${round}.md with a line "decision <n>" naming specs/decisions/verbatim-decision-<n>-*.txt. Send the page to the operator with its findings listed instead`);
   }
+}
+
+// ---- the round ledger: one append-only file per ticket, written at seal time ----
+// `<specs root>/ledgers/spec-rounds/<KEY>.jsonl`, rows `seed`, `round` and `seal`; each file a round sealed is copied to
+// `<KEY>/<its sha256>`. The cap still decides from `criticRounds` in this slice: the check below only records.
+export const OPERATOR_CRITICAL_CLASSES = ["spend-grant", "account-or-terms", "public-policy", "reverses-ruling"] as const;
+type Finding = { id: string; severity: "major" | "medium" | "minor"; critical?: string; critical_refused?: string; reopens?: string; regression?: boolean };
+type SeededReturn = { return_sha: string; verdict_path: string; seals: { read_path: string; read_sha: string }[]; findings: Finding[]; unrated_ids: string[]; verdict: string };
+type LedgerRow = { row: string; [field: string]: any };
+
+const FINDING_LINE = /^[-*] \*\*([A-Za-z][\w.-]*)\*\* \(([^)]*)\)/;
+const KEY_FOLDER = /^[A-Z][A-Z0-9]+-[0-9]+$/;
+const ledgerDir = (specs: string) => join(specs, "ledgers", "spec-rounds");
+const specsRootOf = (p: string) => { const parts = p.split("/"); const i = parts.lastIndexOf("specs"); return i < 0 ? null : parts.slice(0, i + 1).join("/"); };
+
+// The sha256 of a critic return that survives sealing: no CONTENT-SHA256 lines, no trailing whitespace, no trailing blank lines.
+export function returnSha(text: string): string {
+  const lines = text.split("\n").filter(l => !l.startsWith("CONTENT-SHA256 ")).map(l => l.trimEnd());
+  while (lines.length && lines.at(-1) === "") lines.pop();
+  return sha256(Buffer.from(lines.length ? `${lines.join("\n")}\n` : ""));
+}
+
+// The ticket a spec belongs to: its `specs/<KEY>/` folder, else the key its file name starts with (bounded, so a longer number is never read as a shorter key).
+export function keyOf(specPath: string): string | null {
+  const parts = specPath.split("/");
+  const folder = parts.at(-2);
+  if (folder && KEY_FOLDER.test(folder) && parts.at(-3) === "specs") return folder;
+  return /^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])/.exec(parts.at(-1) ?? "")?.[1] ?? null;
+}
+
+// Reads the finding lines a charter dictates. A line whose label is not major, medium or minor does not parse; the
+// gap between the verdict line's count and the lines parsed becomes one synthetic id per missing finding, each read as major.
+export function parseFindings(returnText: string, kind: Kind, round: number): { findings: Finding[]; unrated_ids: string[] } {
+  const findings: Finding[] = [];
+  for (const line of returnText.split("\n")) {
+    const m = FINDING_LINE.exec(line);
+    if (!m) continue;
+    const [severity, ...tags] = m[2].split(";").map(s => s.trim());
+    if (severity !== "major" && severity !== "medium" && severity !== "minor") continue;
+    const f: Finding = { id: m[1], severity };
+    for (const tag of tags) {
+      const cls = /^operator-critical:\s*(.*)$/.exec(tag)?.[1];
+      if (cls !== undefined) { if ((OPERATOR_CRITICAL_CLASSES as readonly string[]).includes(cls)) f.critical = cls; else f.critical_refused = cls; }
+      const reopens = /^reopens\s+(\S+)$/.exec(tag)?.[1];
+      if (reopens) f.reopens = reopens;
+      if (tag === "regression") f.regression = true;
+    }
+    findings.push(f);
+  }
+  const counted = Number(/^(?:SPEC|PLAN) FINDINGS (\d+)$/.exec(lastLine(returnText))?.[1] ?? 0);
+  return { findings, unrated_ids: Array.from({ length: Math.max(0, counted - findings.length) }, (_, i) => `${kind}-r${round}-U${i + 1}`) };
+}
+
+async function readLedger(specs: string, key: string): Promise<LedgerRow[]> {
+  const text = await readFile(join(ledgerDir(specs), `${key}.jsonl`), "utf8").catch((e: NodeJS.ErrnoException) => {
+    if (e.code === "ENOENT") return "";
+    throw new Error(`${key} ledger cannot be read (${e.message}); restore it from the state repo history`);
+  });
+  return text.split("\n").flatMap((line, i) => {
+    if (line === "") return [];
+    try { return [JSON.parse(line) as LedgerRow]; }
+    catch { throw new Error(`${key} ledger line ${i + 1} does not parse; restore it from the state repo history`); }
+  });
+}
+
+// One writer at a time per ticket: flock(2) on a persistent lock file beside the ledger, released when the file closes.
+async function withLedgerLock<T>(specs: string, key: string, fn: () => Promise<T>): Promise<T> {
+  await mkdir(ledgerDir(specs), { recursive: true });
+  const { dlopen } = await import("bun:ffi");
+  const libc = dlopen(process.platform === "darwin" ? "libSystem.B.dylib" : "libc.so.6", { flock: { args: ["i32", "i32"], returns: "i32" } });
+  const lock = await open(join(ledgerDir(specs), `${key}.jsonl.lock`), "a");
+  try {
+    if (libc.symbols.flock(lock.fd, 2) !== 0) throw new Error(`${key}: cannot lock its round ledger`);
+    return await fn();
+  } finally { await lock.close(); libc.close(); }
+}
+
+// A copy of the bytes a critic read, named by their sha256, written once and never overwritten.
+async function snapshotBytes(specs: string, key: string, bytes: Uint8Array, sum: string): Promise<void> {
+  await mkdir(join(ledgerDir(specs), key), { recursive: true });
+  await writeFile(join(ledgerDir(specs), key, sum), bytes, { flag: "wx" }).catch((e: NodeJS.ErrnoException) => { if (e.code !== "EEXIST") throw e; });
+}
+
+const namesTicket = (specText: string, key: string) => {
+  const front = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(specText.replace(/\r\n/g, "\n"))?.[1] ?? "";
+  return front.split("\n").some(l => /^tickets:/.test(l) && new RegExp(`(?<![A-Z0-9])${key}(?![0-9])`).test(l));
+};
+
+// Records the return `critic-seal.sh` is sealing: a `round` row for a new return, a `seal` row for a return it already holds (a second
+// file sealed, or the seeded return). A specs root with no manifest is not seeded yet, so nothing is recorded there.
+export async function recordSealedReturn(verdict: string, readPath: string): Promise<void> {
+  const v = await realpath(verdict); const page = await realpath(readPath);
+  const text = await readCritic(v);
+  const kind = verdictKind(lastLine(text));
+  if (!kind || isJudgeReturn(basename(v))) return;
+  const { read, named, namedExists } = await sealSpecs(v, page);
+  const governing = named && namedExists ? named : read;
+  const specs = specsRootOf(governing);
+  if (!specs || !await isFile(join(ledgerDir(specs), "manifest.json"))) return;
+  const namedKey = named ? keyOf(named) : null; const readKey = keyOf(read);
+  if (namedKey && readKey && namedKey !== readKey) throw new Error(`${basename(v)} is named for ${namedKey} but the file it read belongs to ${readKey}; the seal is refused`);
+  const key = namedKey ?? readKey;
+  if (!key) throw new Error(`${governing}: has no ticket key; name the spec <KEY>-<slug>.md or put it in specs/<KEY>/`);
+  const bytes = await readFile(page); const readSha = sha256(bytes); const sum = returnSha(text);
+  await withLedgerLock(specs, key, async () => {
+    const rows = await readLedger(specs, key);
+    const seed = rows.find(r => r.row === "seed");
+    const seen = rows.some(r => r.row === "round" && r.return_sha === sum) || (["spec", "plan"] as const).some(k => (seed?.latest?.[k] as SeededReturn[] | undefined)?.some(x => x.return_sha === sum));
+    const file = join(ledgerDir(specs), `${key}.jsonl`);
+    await snapshotBytes(specs, key, bytes, readSha);
+    if (seen) { await appendFile(file, `${JSON.stringify({ v: 1, ts: Date.now(), key, row: "seal", return_sha: sum, read_path: page, read_sha: readSha })}\n`); return; }
+    if (!seed && !rows.some(r => r.row === "round") && !namesTicket(await readFile(governing, "utf8"), key)) throw new Error(`${governing}: front matter has no tickets: line naming ${key}`);
+    const epoch = rows.filter(r => r.row === "reset").length;
+    const round = 1 + Math.max(epoch === 0 ? Number(seed?.[kind] ?? 0) : 0, ...rows.filter(r => r.row === "round" && r.critic === kind && r.epoch === epoch).map(r => Number(r.round)));
+    const row = { v: 1, ts: Date.now(), key, row: "round", critic: kind, round, epoch, return_sha: sum, verdict_path: v, read_path: page, read_sha: readSha, verdict: lastLine(text), mode: "full", ...parseFindings(text, kind, round) };
+    await appendFile(file, `${JSON.stringify(row)}\n`);
+  });
+}
+
+// `round-seed --all <specs root>`: once per root, writes a `seed` row for every ticket with critic returns on disk, and the manifest last.
+// Every critic name form counts, a letter suffix counts as its round, and code, diff and judge returns do not match any form.
+const CRITIC_NAME = /^(.+?)\.critic-(?:(spec|plan)-)?r(\d+)[a-z]?\.md$/;
+export async function roundSeed(rootArg: string): Promise<{ keys: Record<string, { spec: number; plan: number }>; skipped: string[] }> {
+  const specs = resolve(rootArg); const dir = ledgerDir(specs);
+  if (!await stat(specs).then(s => s.isDirectory(), () => false)) throw new Error(`round-seed: ${specs} is not a folder`);
+  for (const n of await listDir(dir)) if (n === "manifest.json" || n.endsWith(".jsonl") || await stat(join(dir, n)).then(s => s.isDirectory(), () => false)) throw new Error(`round-seed: ${dir} already holds a ledger, snapshot or manifest`);
+  const folders = [...SIGNATURE_DIRS].map(d => join(specs, d));
+  for (const n of await listDir(specs)) if (KEY_FOLDER.test(n) && await stat(join(specs, n)).then(s => s.isDirectory(), () => false)) folders.push(join(specs, n));
+  const found = new Map<string, Record<Kind, { round: number; path: string; text: string }[]>>();
+  const skipped: string[] = [];
+  for (const folder of folders) {
+    for (const name of await listDir(folder)) {
+      const m = CRITIC_NAME.exec(name);
+      if (!m || !await isFile(join(folder, name))) continue;
+      const path = join(folder, name); const key = keyOf(join(folder, m[1]));
+      if (!key) { skipped.push(`${path} (no ticket key in its name)`); continue; }
+      const text = await readFile(path, "utf8");
+      const kind = verdictKind(lastLine(text)) ?? (m[2] as Kind | undefined);
+      if (!kind) { skipped.push(`${path} (no verdict line, so no kind)`); continue; }
+      const k = found.get(key) ?? { spec: [], plan: [] }; found.set(key, k);
+      k[kind].push({ round: Number(m[3]), path, text });
+    }
+  }
+  const keys: Record<string, { spec: number; plan: number }> = {}; const seeds = new Map<string, LedgerRow>();
+  for (const [key, byKind] of [...found].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const row: LedgerRow = { v: 1, ts: Date.now(), key, row: "seed", spec: 0, plan: 0, latest: { spec: [], plan: [] } };
+    for (const kind of ["spec", "plan"] as const) {
+      const top = Math.max(0, ...byKind[kind].map(f => f.round));
+      row[kind] = top;
+      for (const f of byKind[kind].filter(x => x.round === top).sort((a, b) => (a.path < b.path ? -1 : 1))) {
+        const seals: SeededReturn["seals"] = [];
+        for (const s of sealsOf(f.text)) {
+          const abs = resolve(dirname(f.path), s.rel);
+          const read_path = await realpath(abs).catch(() => abs);
+          seals.push({ read_path, read_sha: s.sha });
+          const bytes = await readFile(read_path).catch(() => null);
+          if (bytes && sha256(bytes) === s.sha) await snapshotBytes(specs, key, bytes, s.sha);
+        }
+        const { findings, unrated_ids } = parseFindings(f.text, kind, top);
+        row.latest[kind].push({ return_sha: returnSha(f.text), verdict_path: f.path, seals, findings, unrated_ids, verdict: lastLine(f.text) } satisfies SeededReturn);
+      }
+    }
+    keys[key] = { spec: row.spec, plan: row.plan }; seeds.set(key, row);
+  }
+  await mkdir(dir, { recursive: true });
+  for (const [key, row] of seeds) await writeFile(join(dir, `${key}.jsonl`), `${JSON.stringify(row)}\n`, { flag: "wx" });
+  await writeFile(join(dir, "manifest.json"), `${JSON.stringify({ v: 1, ts: Date.now(), keys })}\n`, { flag: "wx" });
+  return { keys, skipped };
 }
 
 // Whichever spec governs the page, the latest plan critic of ANY spec that seals it must be clean: a
@@ -958,8 +1134,14 @@ if (import.meta.main) {
     try { console.log(`queued ${await queueFile(defaultRoot(), Number(args[0]), args[1], args.slice(2).join(" ") || undefined, byRequest)}`); }
     catch (e) { console.error(`[chief-route] send-file refused: ${e instanceof Error ? e.message : e}`); process.exit(1); }
   } else if (verb === "critic-round-check" && args.length === 2) {
-    try { await refuseRoundPastCap(args[0], args[1]); }
+    try { await refuseRoundPastCap(args[0], args[1]); await recordSealedReturn(args[0], args[1]); }
     catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1); }
+  } else if (verb === "round-seed" && args.length === 2 && args[0] === "--all") {
+    try {
+      const { keys, skipped } = await roundSeed(args[1]);
+      for (const [key, n] of Object.entries(keys)) console.log(`seeded ${key} spec=${n.spec} plan=${n.plan}`);
+      for (const s of skipped) console.log(`skipped ${s}`);
+    } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1); }
   } else {
     const flags: { chief?: string; satellite?: string; kind?: string; owed?: string; doc?: string } = {};
     if (verb === "reply") while (args.length >= 2 && (args[0] === "--chief" || args[0] === "--satellite" || args[0] === "--kind" || args[0] === "--owed" || args[0] === "--doc")) flags[args.shift()!.slice(2) as keyof typeof flags] = args.shift()!;
@@ -984,7 +1166,7 @@ if (import.meta.main) {
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }
