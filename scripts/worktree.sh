@@ -4,6 +4,11 @@
 # Usage:
 #   ./scripts/worktree.sh new <branch-name> [flags]
 #   ./scripts/worktree.sh prune [flags]
+#   ./scripts/worktree.sh pr-cache
+#
+# pr-cache: walks origin's PR list once and prints it as a --pr-cache file
+# (`# nwo=`, `# scope=all`, rows, `# complete rows=<n>`); exit 1 and nothing on
+# stdout when the walk or the repo-name lookup fails.
 #
 # prune: removes any non-primary worktree whose branch tip exactly matches the
 # recorded head of a merged PR, and any idle detached HEAD worktree that is
@@ -28,7 +33,10 @@
 #   --no-install         Forwarded to _new-worktree.sh.
 #   --dry-run            Show what would happen, do nothing.
 #   --only <path|branch> (prune) Prune exactly one worktree.
-#   --health             (prune) Read-only sweep monitor: print only alarm
+#   --pr-cache <file>    (prune --only) Read the PR list from <file> instead of
+#                        walking GitHub. Exits 2 and prunes nothing unless the
+#                        file is whole, for this repo and covers the target.
+#   --health            (prune) Read-only sweep monitor: print only alarm
 #                        lines — LOST-COMMITS / SWEEP-ERROR (from unlanded-work.sh)
 #                        and STUCK (a worktree/branch prior sweeps skipped for N
 #                        sweeps or >24h) — empty output = healthy; exit 0/1.
@@ -65,8 +73,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC2016  # literal text, no expansion intended
 USAGE_TEXT='Usage: worktree.sh new <branch-name> [flags]   prune, then create the worktree
        worktree.sh prune [flags]               prune merged worktrees only
+       worktree.sh pr-cache                    print origin'"'"'s PR list as a --pr-cache file
 
-  branch-name           type/slug (feat/foo, chore/bar, ...). new needs one;
+  branch-name          type/slug (feat/foo, chore/bar, ...). new needs one;
                         prune takes none.
 
 Flags:
@@ -84,8 +93,16 @@ Flags:
                         match the recorded merge are still refused -- never
                         widened by this flag. Every other prune gate (locked,
                         in-use, dirty, primary) still applies unchanged.
+  --pr-cache <file>     Only with --only: take the PR list from <file> (written
+                        by `worktree.sh pr-cache` or close-facts.sh) instead of
+                        walking GitHub. Exits 2, pruning nothing, with an
+                        `ERR worktree: --pr-cache: <reason>` line when the file
+                        is unreadable, has no `# nwo=` header, names another
+                        repo than origin, has a row for another repo, lacks a
+                        matching `# complete rows=<n>` trailer, or is scoped to
+                        another branch.
   --no-prune            Skip prune; only create.
-  --no-install          Forward to _new-worktree.sh (skip jira install).
+  --no-install         Forward to _new-worktree.sh (skip jira install).
   --dry-run             Show plan; do nothing.
   --health              Read-only: print only alarm lines (LOST-COMMITS, STUCK,
                         SWEEP-ERROR); empty output = healthy. Exit 1 on any
@@ -117,11 +134,13 @@ print_help() {
 
 SUBCMD=""
 case "${1:-}" in
-    new|prune) SUBCMD="$1"; shift ;;
+    new|prune|pr-cache) SUBCMD="$1"; shift ;;
 esac
 BRANCH=""
 PRUNE_ONLY=0
 ONLY_TARGET=""
+PR_CACHE_FILE=""
+PR_CACHE_SCOPE_BRANCH=""
 ONLY_ALLOW_UNMERGED=0
 NO_PRUNE=0
 NO_INSTALL=0
@@ -139,6 +158,12 @@ while [ $# -gt 0 ]; do
             fi
             ONLY_TARGET="$2"; PRUNE_ONLY=1; shift 2 ;;
         --only-allow-unmerged) ONLY_ALLOW_UNMERGED=1; shift ;;
+        --pr-cache)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "ERR worktree: --pr-cache: needs a file" >&2
+                exit 2
+            fi
+            PR_CACHE_FILE="$2"; shift 2 ;;
         --no-prune)   NO_PRUNE=1; shift ;;
         --no-install) NO_INSTALL=1; shift ;;
         --dry-run)           DRY_RUN=1; shift ;;
@@ -158,7 +183,18 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ "$SUBCMD" = "prune" ]; then
+if [ -n "$PR_CACHE_FILE" ] && [ -z "$ONLY_TARGET" ]; then
+    echo "ERR worktree: --pr-cache: needs --only" >&2
+    exit 2
+fi
+
+if [ "$SUBCMD" = "pr-cache" ]; then
+    if [ -n "$BRANCH" ] || [ -n "$ONLY_TARGET" ] || [ -n "$PR_CACHE_FILE" ] || [ "$HEALTH" -eq 1 ] || [ "$ORPHANS" -eq 1 ] \
+        || [ "$NO_PRUNE" -eq 1 ] || [ "$DRY_RUN" -eq 1 ] || [ "$NO_INSTALL" -eq 1 ] || [ "$PRUNE_ONLY" -eq 1 ] || [ "$ONLY_ALLOW_UNMERGED" -eq 1 ]; then
+        echo "ERR worktree: pr-cache takes no branch-name and no other flag but --verbose" >&2
+        exit 2
+    fi
+elif [ "$SUBCMD" = "prune" ]; then
     if [ -n "$BRANCH" ]; then
         echo "ERR clean-garden: prune takes no branch-name (use: worktree.sh new $BRANCH)" >&2
         exit 2
@@ -347,7 +383,10 @@ forge_in_primary() { ( cd "$PRIMARY_WORKTREE" && "$@" ); }
 HAVE_FORGE=0
 FORGE_KIND=""
 FORGE_NWO=""
-if FORGE_KIND=$(forge_in_primary forge_detect 2>/dev/null) && forge_in_primary forge_auth_status 2>/dev/null; then
+if [ -n "$PR_CACHE_FILE" ]; then
+    HAVE_FORGE=1
+    FORGE_KIND=github
+elif FORGE_KIND=$(forge_in_primary forge_detect 2>/dev/null) && forge_in_primary forge_auth_status 2>/dev/null; then
     HAVE_FORGE=1
     FORGE_NWO=$(forge_in_primary forge_repo_nwo 2>/dev/null || true)
     if [ -n "$FORGE_NWO" ]; then
@@ -378,7 +417,84 @@ fetch_github_pr_cache() {
         --jq '.[] | [.base.repo.full_name, .head.ref, (if .state == "open" then "open" elif .merged_at != null then "merged" else "closed" end), .head.sha] | @tsv'
 }
 
-if [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ]; then
+if [ "$SUBCMD" = "pr-cache" ]; then
+    if [ "$HAVE_FORGE" -ne 1 ] || [ "$FORGE_KIND" != "github" ] || [ -z "$FORGE_NWO" ]; then
+        echo "ERR worktree: pr-cache: no GitHub repo name for origin (forge unavailable or gh repo view failed)" >&2
+        exit 1
+    fi
+    pc_rows=$(fetch_github_pr_cache "$FORGE_NWO" 2>/dev/null) || {
+        echo "ERR worktree: pr-cache: the PR list walk failed" >&2
+        exit 1
+    }
+    printf '# nwo=%s\n# scope=all\n' "$FORGE_NWO"
+    [ -z "$pc_rows" ] || printf '%s\n' "$pc_rows"
+    printf '# complete rows=%s\n' "$(printf '%s' "$pc_rows" | grep -c . || true)"
+    exit 0
+fi
+
+origin_url_nwo() {
+    local url path
+    url=$(git -C "$PRIMARY_WORKTREE" remote get-url "$1" 2>/dev/null) || return 1
+    case "$url" in
+        https://github.com/*|http://github.com/*) path="${url#*github.com/}" ;;
+        git@github.com:*) path="${url#git@github.com:}" ;;
+        ssh://git@github.com/*) path="${url#ssh://git@github.com/}" ;;
+        *) return 1 ;;
+    esac
+    path="${path%.git}"
+    path="${path%/}"
+    case "$path" in
+        */*) printf '%s\n' "$path" ;;
+        *) return 1 ;;
+    esac
+}
+
+pr_cache_count_unusable() {
+    case "$1" in ''|*[!0-9]*|??????????*) return 0 ;; *) return 1 ;; esac
+}
+
+pr_cache_refuse() {
+    echo "ERR worktree: --pr-cache: $1" >&2
+    exit 2
+}
+
+load_pr_cache_file() {
+    local f="$PR_CACHE_FILE" snap hdr origin scope last n m rows bad
+    { [ -f "$f" ] && [ -r "$f" ]; } || pr_cache_refuse "cannot read $f"
+    snap=$(cat "$f") || pr_cache_refuse "cannot read $f"
+    hdr=$(printf '%s\n' "$snap" | awk '/^# nwo=/ { sub(/^# nwo=/, ""); print; exit }')
+    [ -n "$hdr" ] || pr_cache_refuse "no nwo header"
+    origin=$(origin_url_nwo origin) || pr_cache_refuse "origin is not a GitHub remote"
+    if [ "$(printf '%s' "$hdr" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$origin" | tr '[:upper:]' '[:lower:]')" ]; then
+        pr_cache_refuse "nwo $hdr is not origin $origin"
+    fi
+    rows=$(printf '%s\n' "$snap" | grep -v -e '^#' -e '^$' || true)
+    bad=$(printf '%s\n' "$rows" | H="$hdr" awk -F'\t' 'NF && $1 != ENVIRON["H"] { print $1; exit }')
+    [ -z "$bad" ] || pr_cache_refuse "row repo $bad is not header $hdr"
+    bad=$(printf '%s\n' "$rows" | awk -F'\t' 'NF && (NF != 4 || ($3 != "open" && $3 != "merged" && $3 != "closed") || length($4) != 40 || $4 ~ /[^0-9a-f]/) { print; exit }')
+    [ -z "$bad" ] || pr_cache_refuse "malformed row: $bad"
+    last=$(printf '%s\n' "$snap" | awk 'NF { l = $0 } END { print l }')
+    case "$last" in
+        "# complete rows="*) n="${last#\# complete rows=}" ;;
+        *) pr_cache_refuse "no complete trailer" ;;
+    esac
+    pr_cache_count_unusable "$n" && pr_cache_refuse "no complete trailer"
+    m=$(printf '%s\n' "$rows" | grep -c . || true)
+    [ "$((10#$n))" -eq "$m" ] || pr_cache_refuse "trailer rows=$n but $m rows"
+    scope=$(printf '%s\n' "$snap" | awk '/^# scope=/ { sub(/^# scope=/, ""); print; exit }')
+    case "$scope" in
+        all) ;;
+        "branch "?*) PR_CACHE_SCOPE_BRANCH="${scope#branch }" ;;
+        *) pr_cache_refuse "no usable scope header" ;;
+    esac
+    ORIGIN_NWO="$hdr"
+    ORIGIN_PR_CACHE="$rows"
+    ORIGIN_PR_CACHE_OK=1
+}
+
+if [ -n "$PR_CACHE_FILE" ]; then
+    load_pr_cache_file
+elif [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ]; then
     if [ -n "$ORIGIN_NWO" ]; then
         if ORIGIN_PR_CACHE=$(fetch_github_pr_cache "$ORIGIN_NWO" 2>/dev/null); then
             ORIGIN_PR_CACHE_OK=1
@@ -1485,6 +1601,9 @@ if [ -n "$ONLY_TARGET" ]; then
         wt_norm=$(cd "${WT_PATHS[$i]}" 2>/dev/null && pwd || echo "${WT_PATHS[$i]}")
         if [ "$wt_norm" = "$only_norm" ] || [ "${WT_BRANCHES[$i]}" = "$ONLY_TARGET" ]; then
             only_hits=$((only_hits+1))
+            if [ -n "$PR_CACHE_SCOPE_BRANCH" ] && [ "${WT_BRANCHES[$i]}" != "$PR_CACHE_SCOPE_BRANCH" ]; then
+                pr_cache_refuse "scope branch $PR_CACHE_SCOPE_BRANCH does not cover $ONLY_TARGET"
+            fi
         fi
     done
     if [ "$only_hits" -gt 1 ]; then
