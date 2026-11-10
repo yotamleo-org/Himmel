@@ -6,7 +6,11 @@
 # Contract under test:
 #   * a pipeline whose FIRST stage is a registered gate command and whose LAST
 #     stage is tail/head -> exit 2 (deny) + a stderr reason that names the
-#     redirect shape, ${PIPESTATUS[0]} and the documented same-line marker.
+#     sanctioned quiet-run recovery forms, ${PIPESTATUS[0]} and the documented
+#     same-line marker. The hook still ALLOWS a gate followed only by a redirect
+#     (below), but its advice no longer recommends one: guard-pr-check-literal
+#     refuses a redirect on a guarded writer, so the advice is judged against
+#     all three guards (recovery_* rows at the end).
 #   * the same-line `# tail-pipe-ok: <reason>` marker -> exit 0, no decision.
 #   * the CORRECT shape (redirect, then a separate tail) -> exit 0.
 #   * unregistered commands, a bare tail, and a tail that is not the last stage
@@ -941,7 +945,7 @@ fi
 # --- The deny reason must be actionable ------------------------------------
 res=$(run_hook "$(j_bash 'bash scripts/cr/clear-review-marker.sh x | tail -20')")
 msg=${res#*|}
-for needle in 'RC=$?' 'PIPESTATUS[0]' 'tail-pipe-ok:' 'clear-review-marker.sh'; do
+for needle in 'quiet-run.sh suite --' 'PIPESTATUS[0]' 'tail-pipe-ok:' 'clear-review-marker.sh'; do
     if grep -qF -- "$needle" <<< "$msg"; then
         pass "deny reason names $needle"
     else
@@ -1390,6 +1394,102 @@ err=$(printf '%s' "$(j_bash "bash -c 'scripts/check-ci.sh 1' | tail -5 | cat")" 
 if [ "$rc" = 2 ] && [[ $err == *"timed out"* ]]; then pass "a timed-out command model denies a gate and tail the model would read"
 else fail "a timed-out command model denies a gate and tail the model would read — rc=$rc $err"; fi
 rm -rf "$slow"
+
+# --- the recovery advice is the static sanctioned-form block ---
+# Test-only predicate over a captured stderr message; not a production parser.
+RECOVERY_LINES=(
+    "Choose the existing sanctioned form for the command you intended:"
+    "    Repo test suite (scripts/**/test-*.sh): bash scripts/quiet-run.sh suite -- bash <suite>"
+    "    Shell suite runner: bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh"
+    "    Other gate: run its existing sanctioned literal Bash invocation by itself."
+    "Append nothing: no pipe, redirect, timeout/env prefix, or trailing command."
+    "Use the Bash tool's exit status; read any log path printed by the sanctioned command separately."
+    "Use trusted command operands; do not reconstruct a command from this diagnostic."
+)
+recovery_message_valid() {
+    local branch=$1 msg=$2 marker line before
+    case $branch in
+        pipeline) marker="Offending pipeline:" ;;
+        trailing) marker="Offending segment:" ;;
+        heredoc) marker="Quote the delimiter so the body is data:" ;;
+        *) return 1 ;;
+    esac
+    [[ $msg == *"$marker"* ]] || return 1
+    [[ $msg == *'tail-pipe-ok:'* ]] || return 1
+    for line in "${RECOVERY_LINES[@]}"; do
+        [[ $msg == *"$line"* ]] || return 1
+    done
+    # the old universal redirect/capture/tail advice is gone
+    for line in '> <file> 2>&1' 'echo "RC=$?"' 'tail -80 <file>' 'Use the redirect shape instead' 'capture its status' 'or run the gate on its own, redirecting'; do
+        [[ $msg == *"$line"* ]] && return 1
+    done
+    if [ "$branch" = heredoc ]; then
+        before=${msg%%"Choose the existing sanctioned form"*}
+        [[ $before == *"Quote the delimiter so the body is data:"* && $before == *"cat <<'EOF'"* ]] || return 1
+    fi
+    return 0
+}
+
+# shellcheck disable=SC2016  # the heredoc fixture is data, never executed
+HD_CMD=$(printf '%s\n' "echo '\$(bash scripts/check-ci.sh 1 | tail -1)'" 'cat <<EOF' '${x@P}' 'EOF')
+recovery_capture() { # <command text> -> sets REC_RC, REC_OUT (stdout), REC_ERR (stderr)
+    local out err rc
+    err=$(printf '%s' "$(j_bash "$1")" | bash "$HOOK" 2>&1 >/dev/null)
+    rc=$?
+    out=$(printf '%s' "$(j_bash "$1")" | bash "$HOOK" 2>/dev/null)
+    REC_RC=$rc REC_OUT=$out REC_ERR=$err
+}
+REC_PIPE_CMD='bash scripts/cr/clear-review-marker.sh feature/r1-fixture | tail -20'
+REC_TRAIL_CMD='bash scripts/check-ci.sh; echo done'
+for rb in pipeline trailing heredoc; do
+    case $rb in
+        pipeline) rcmd=$REC_PIPE_CMD ;;
+        trailing) rcmd=$REC_TRAIL_CMD ;;
+        heredoc) rcmd=$HD_CMD ;;
+    esac
+    recovery_capture "$rcmd"
+    declare "REC_MSG_$rb=$REC_ERR"
+    if [ "$REC_RC" = 2 ] && [ -z "$REC_OUT" ] && recovery_message_valid "$rb" "$REC_ERR"; then
+        pass "recovery_message_classes: $rb branch denies with the static sanctioned-form advice"
+    else
+        fail "recovery_message_classes: $rb branch — rc=$REC_RC stdout='$REC_OUT' stderr: $REC_ERR"
+    fi
+done
+
+# the heredoc primary advice precedes the common block
+if [[ ${REC_MSG_heredoc:-} == *"Quote the delimiter so the body is data:"*"cat <<'EOF'"*"Choose the existing sanctioned form"* ]]; then
+    pass "recovery_heredoc_primary: quote-delimiter advice precedes the sanctioned-form block"
+else
+    fail "recovery_heredoc_primary: order wrong — $REC_MSG_heredoc"
+fi
+
+# the pipeline's PIPESTATUS rationale and every branch's same-line marker notice stay
+if [[ ${REC_MSG_pipeline:-} == *'PIPESTATUS[0]'* ]]; then
+    pass "recovery: pipeline keeps its PIPESTATUS rationale"
+else
+    fail "recovery: pipeline lost its PIPESTATUS rationale"
+fi
+
+# mutations of a captured good message must be rejected by the predicate
+old_recipe='<cmd> > <file> 2>&1; echo "RC=$?"; tail -80 <file>'
+mut=${REC_MSG_pipeline//"${RECOVERY_LINES[1]}"/$old_recipe}
+if recovery_message_valid pipeline "${REC_MSG_pipeline:-}" && ! recovery_message_valid pipeline "$mut"; then
+    pass "recovery_message_mutations: old redirect advice swapped in is rejected"
+else
+    fail "recovery_message_mutations: old-advice mutation not rejected (or the real message is invalid)"
+fi
+mut=${REC_MSG_pipeline//"${RECOVERY_LINES[3]}"/}
+if ! recovery_message_valid pipeline "$mut"; then
+    pass "recovery_message_mutations: a deleted class line is rejected"
+else
+    fail "recovery_message_mutations: deleting the other-gate class line was not rejected"
+fi
+mut=${REC_MSG_pipeline//"quiet-run.sh shell-unit"/"quiet-run.sh suite"}
+if ! recovery_message_valid pipeline "$mut"; then
+    pass "recovery_message_mutations: the wrong shell-unit label is rejected"
+else
+    fail "recovery_message_mutations: shell-unit to suite was not rejected"
+fi
 
 if [ "$FAILED" -eq 0 ]; then
     echo "OK block-tail-pipe-on-gates: all cases passed"

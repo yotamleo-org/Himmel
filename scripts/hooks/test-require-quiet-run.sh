@@ -555,6 +555,40 @@ assert_rc "7370 deny: redirect + echo rc appended" 2 "$RC"
 assert_contains "7370 names the no-append rule" "Append nothing to it" "$ERR"
 assert_contains "7370 names the log-path Read" "Read the log path" "$ERR"
 
+# recovery_suite_label_contract: the tail guard's recovery advice names
+# `suite` for a test-*.sh and `shell-unit` for the runner; this guard refuses each
+# bare form and names exactly that label, and the real quiet-run refuses the wrong
+# one (suite + run-shell-tests.sh) at its basename check before running the child.
+run_case "$(j_bash 'bash scripts/cr/test-orphan-check.sh')"
+assert_rc "recovery_suite_label_contract: bare test suite" 2 "$RC"
+assert_contains "recovery_suite_label_contract: bare suite names the suite label" \
+    "bash scripts/quiet-run.sh suite -- bash scripts/cr/test-orphan-check.sh" "$ERR"
+run_case "$(j_bash 'bash scripts/ci/run-shell-tests.sh')"
+assert_rc "recovery_suite_label_contract: bare shell runner" 2 "$RC"
+assert_contains "recovery_suite_label_contract: bare runner names the shell-unit label" \
+    "bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh" "$ERR"
+run_case "$(j_bash 'bash scripts/quiet-run.sh suite -- bash scripts/cr/test-orphan-check.sh')"
+assert_rc "recovery_suite_label_contract: sanctioned suite form passes" 0 "$RC"
+run_case "$(j_bash 'bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh')"
+assert_rc "recovery_suite_label_contract: sanctioned shell-unit form passes" 0 "$RC"
+
+QR="$(cd "$(dirname "$0")/.." && pwd)/quiet-run.sh"
+QR_FX="$(mktemp -d "${TMPDIR:-/tmp}/rqr-label.XXXXXX")" || exit 1
+trap 'rm -rf "$QR_FX"' EXIT
+mkdir -p "$QR_FX/scripts/ci"
+printf '#!/usr/bin/env bash\ntouch "%s/child-ran"\n' "$QR_FX" >"$QR_FX/scripts/ci/run-shell-tests.sh"
+QR_OUT=$(cd "$QR_FX" && bash "$QR" suite -- bash scripts/ci/run-shell-tests.sh 2>&1)
+QR_RC=$?
+assert_rc "recovery_suite_label_contract: quiet-run refuses label suite on run-shell-tests.sh" 2 "$QR_RC"
+assert_contains "recovery_suite_label_contract: quiet-run names the test-*.sh basename rule" \
+    "label 'suite' requires a tracked test-*.sh" "$QR_OUT"
+if [ -e "$QR_FX/child-ran" ]; then
+    echo "FAIL recovery_suite_label_contract: the child ran despite the refusal"
+    FAILED=$((FAILED + 1))
+else
+    echo "PASS recovery_suite_label_contract: the child sentinel did not run"
+fi
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All require-quiet-run.sh cases passed."

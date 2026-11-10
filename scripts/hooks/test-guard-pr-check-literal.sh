@@ -3298,6 +3298,46 @@ run "9020 control: bash -c hiding a relative run -> deny" 2 \
     "$(payload 'bash -c "bash scripts/cr/write-verdicts.sh"' "$OTHER")" "$HR"
 }
 
+# ---- the tail guard's recovery advice is accepted by all three guards
+# The three recovery recipes the tail guard now prints, fed as JSON data to each
+# real hook (never executed): every guard must pass each one. The recovery text is
+# advice; the redirect shape the tail guard itself still allows is judged here by
+# the literal guard, which refuses it on a guarded writer.
+HOOKS_DIR="$(cd "$(dirname "$HOOK")" && pwd)"
+REC_SUITE='bash scripts/quiet-run.sh suite -- bash scripts/cr/test-orphan-check.sh'
+REC_RUNNER='bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh'
+REC_GATE='bash scripts/cr/clear-review-marker.sh feature/r1-fixture'
+for rec_cmd in "$REC_SUITE" "$REC_RUNNER" "$REC_GATE"; do
+    for rec_guard in guard-pr-check-literal.sh block-tail-pipe-on-gates.sh require-quiet-run.sh; do
+        rec_out="$(printf '%s' "$(payload "$rec_cmd" "$WT")" | env -u HIMMEL_REPO "$HR" bash "$HOOKS_DIR/$rec_guard" 2>&1)"
+        rec_rc=$?
+        if [ "$rec_rc" = 0 ] && [ -z "$rec_out" ]; then
+            echo "PASS recovery_three_guard_intersection: $rec_guard accepts '$rec_cmd'"
+        else
+            echo "FAIL recovery_three_guard_intersection: $rec_guard on '$rec_cmd' - rc=$rec_rc out: $rec_out"
+            FAILED=$((FAILED + 1))
+        fi
+    done
+done
+# the old advice shape stays denied by the guard that owns each part of it
+run "recovery_denied_shapes: writer redirect + RC echo + tail -> literal guard denies" 2 \
+    "$(payload 'bash scripts/cr/clear-review-marker.sh feature/r1-fixture > out.txt 2>&1; echo "RC=$?"; tail -80 out.txt' "$WT")" "$HR"
+# shellcheck disable=SC2016  # the heredoc fixture is data, never executed
+REC_HEREDOC="$(printf '%s\n' "echo '\$(bash scripts/check-ci.sh 1 | tail -1)'" 'cat <<EOF' '${x@P}' 'EOF')"
+for rec_denied in \
+    'bash scripts/cr/clear-review-marker.sh feature/r1-fixture | tail -20' \
+    'bash scripts/check-ci.sh; echo done' \
+    "$REC_HEREDOC"; do
+    rec_rc=0
+    printf '%s' "$(payload "$rec_denied" "$WT")" | env -u HIMMEL_REPO "$HR" bash "$HOOKS_DIR/block-tail-pipe-on-gates.sh" >/dev/null 2>&1 || rec_rc=$?
+    if [ "$rec_rc" = 2 ]; then
+        echo "PASS recovery_denied_shapes: tail guard denies the pipeline/trailing/heredoc example (rc=2)"
+    else
+        echo "FAIL recovery_denied_shapes: tail guard rc=$rec_rc, expected 2"
+        FAILED=$((FAILED + 1))
+    fi
+done
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo "all guard-pr-check-literal cases passed"
