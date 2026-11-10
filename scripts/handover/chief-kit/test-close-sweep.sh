@@ -463,7 +463,7 @@ R="$W/repo-m"; S="$W/state-m"; DD="$W/docs-m"; mk_repo "$R" owner/repo
 "$REAL_GIT" init -q --bare -b main "$W/m-origin.git"
 g "$R" push -q "$W/m-origin.git" main 2>/dev/null
 g "$R" config remote.origin.url "$W/m-origin.git"
-: > "$R/.git/FETCH_HEAD"; touch -d '2020-01-01 00:00:00' "$R/.git/FETCH_HEAD"
+: > "$R/.git/FETCH_HEAD"; touch -d '2020-01-01 00:00:00' "$R/.git/FETCH_HEAD" # gnu-ok: Linux-only suite
 w1=$(mk_wt "$R" m1 mfeat); w2=$(mk_wt "$R" m2 mfeat2)
 mk_doc "$DD/HIMMEL-9-N1-sweep-2026-11-10.md" "$w1"; mk_rec "$S" 1 "$DD/HIMMEL-9-N1-sweep-2026-11-10.md" "$w1" "$R"
 mk_doc "$DD/HIMMEL-9-N2-sweep-2026-11-10.md" "$w2"; mk_rec "$S" 2 "$DD/HIMMEL-9-N2-sweep-2026-11-10.md" "$w2" "$R"
@@ -534,7 +534,7 @@ reset_logs
 S="$W/state-alive"; DD="$W/docs-alive"
 sleep 300 & LP=$!; PIDS="$PIDS $LP"; ps=$(proc_start_of "$LP")
 mk_doc "$DD/HIMMEL-9-N1-sweep-2026-11-10.md" ""; mk_rec "$S" 1 "$DD/HIMMEL-9-N1-sweep-2026-11-10.md" "" "" "$LP" "$ps"
-rc=0; timeout 60 env CLOSE_SWEEP_STATE_DIR="$S" bash "$SWEEP" --drain > "$W/sweep.out" 2>&1 || rc=$?
+rc=0; timeout 60 env CLOSE_SWEEP_STATE_DIR="$S" bash "$SWEEP" --drain > "$W/sweep.out" 2>&1 || rc=$? # gnu-ok: Linux-only suite
 check "pid alive: the first drain returns" "$rc" "0"
 check "pid alive: left in pending/ with sweeps_seen=1" "$(rec_where "$S" N1)/$(rec_field "$S" N1 sweeps_seen)" "pending/1"
 check "pid alive: digested on the first sweep, with --pid" "$(grep -c "\[--pid\]\[$LP\]" "$DIGEST_LOG")" "1"

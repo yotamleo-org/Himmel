@@ -42,6 +42,8 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE="${CLOSE_SWEEP_STATE_DIR:-$HOME/.himmel/state/close-sweep}"
 PID_WAIT="${CLOSE_SWEEP_PID_WAIT:-60}"
+case "$PID_WAIT" in ''|*[!0-9]*) PID_WAIT=60 ;; esac
+PID_WAIT=$((10#$PID_WAIT))
 PROC_ROOT="${CLAUDE_SESSIONS_PROC:-/proc}"
 CLEAN_SH="${CLEAN_SH_BIN:-$HERE/../../clean.sh}"
 TMP_REAP="${TMP_REAP_BIN:-$HERE/../../tmp-reap.sh}"
@@ -173,7 +175,7 @@ reap_scratch() { # reap_scratch <doc> <transcript>: archive-then-reap this worke
 READY="$RUN_DIR/ready"; : > "$READY"
 
 phase_a() { # phase_a <record file>
-    local rec="$1" pid ps closed doc sid tr names pdir pred named deadline t cands tm tcount dsid pidarg dline cap cost reap seen
+    local rec="$1" tf pid ps closed doc sid tr names pdir pred named deadline t cands tm tcount dsid pidarg dline cap cost reap seen
     if ! jq -e . "$rec" >/dev/null 2>&1; then
         log "$(basename "$rec") is not a JSON record - moved to failed/"
         mv "$rec" "$STATE/failed/$(basename "$rec")"
@@ -186,6 +188,7 @@ phase_a() { # phase_a <record file>
     case "$closed" in ''|*[!0-9]*) closed=$(now) ;; esac
 
     # 1 the pid, waited for until closed_at + PID_WAIT (a deadline per record)
+    closed=$((10#$closed))
     deadline=$((closed + PID_WAIT))
     while ! pid_gone "$pid" "$ps"; do
         [ "$(now)" -lt "$deadline" ] || break
@@ -196,7 +199,12 @@ phase_a() { # phase_a <record file>
     t=""
     [ -z "$tr" ] || [ ! -f "$tr" ] || t="$tr"
     if [ -z "$t" ] && [ -n "$sid" ] && [ -n "$pdir" ] && [ -d "$pdir" ]; then
-        tm=$(find "$pdir" -mindepth 2 -maxdepth 2 -name "$sid.jsonl")
+        tm=""
+        for tf in "$pdir"/*/"$sid.jsonl"; do
+            [ -f "$tf" ] || continue
+            tm="${tm:+$tm
+}$tf"
+        done
         tcount=$(printf '%s\n' "$tm" | awk 'NF { n++ } END { print n + 0 }')
         [ "$tcount" -ne 1 ] || t="$tm"
     fi
@@ -239,7 +247,7 @@ phase_a() { # phase_a <record file>
     fi
     # 7 still alive: bounded by three sweeps or 600 s
     seen=$(rf "$rec" sweeps_seen); case "$seen" in ''|*[!0-9]*) seen=0 ;; esac
-    seen=$((seen + 1))
+    seen=$((10#$seen + 1))
     rec_set_num "$rec" sweeps_seen "$seen"
     if [ "$seen" -ge 3 ] || [ $(( $(now) - closed )) -ge 600 ]; then
         finish "$rec" "done" reap kept-alive prune kept-alive
