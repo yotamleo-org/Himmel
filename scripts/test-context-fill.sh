@@ -376,7 +376,8 @@ err="$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE
 check    "2545 child session: still exit 4"        "$rc" "4"
 contains "2545 child session: hint names the cause" "$err" "$HINT_MARK"
 contains "2545 child session: hint names the fix"   "$err" "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
-contains "2545 child session: hint cites the ticket" "$err" "HIMMEL-2545"
+contains "2545 child session: hint says what fails and how to relaunch" "$err" "so claude writes no transcript and context fill cannot be read; relaunch claude with"
+not_contains "2545 child session: hint carries no ticket key" "$err" "HIMMEL-"
 
 # (b) CONTROL - the launcher already did the right thing. Same tree, one extra
 # environ entry. This is the shape every session armed through the patched
