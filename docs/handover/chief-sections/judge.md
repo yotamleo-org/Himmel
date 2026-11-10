@@ -66,11 +66,13 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   check `git cat-file -t <sha>` prints `commit` (a bare `git fetch origin` if not,
   never a refspec fetch: the primary-checkout guard refuses it), then read with
   `git diff origin/main...<sha>` and `git show <sha>:<path>`; never FETCH_HEAD.
-- **Convene at the cheapest tier that can rule**: start a judge subagent at
-  Sonnet or Opus and escalate only when it returns above-my-tier
+- **Start an ordinary first or trust judge at Opus**: Sonnet is only for the
+  re-judge of a later push whose delta classifies `finding` (below). Escalate only
+  when a judge returns above-my-tier
   (`bash scripts/handover/chief-kit/judge-ladder.sh next-tier <tier>`; Fable's next
   rung is the operator). Spend each convening with `judge-ladder.sh convene <seat>
-  <tier>` first: a per-seat, per-window budget refuses (rc 3) once spent, because a
+  opus` first (a Sonnet seat is `convene <seat> sonnet --delta finding`; it refuses
+  without that context): a per-seat, per-window budget refuses (rc 3) once spent, because a
   dispute that triggers a convening mints work on the scarcest usage budget. A finding class of
   `guard-no-fire` or `invariant-regression` skips the ladder and the budget:
   `judge-ladder.sh breakglass <class>` routes it to the operator at once.
@@ -104,12 +106,27 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   fable stay denied. The first full judge of a PR keeps Opus, and so does a delta that prints
   `trust`: the guard only reads the declaration and cannot check the class, so the chief does.
   **Do not pick the model by hand**: put `"delta_class": "<what delta-class.sh printed>"` in the
-  `gen-judge-brief.py` spec (`finding` or `trust`; a first judge omits it). `finding` writes a
-  brief that names `claude-sonnet-5-5` and carries the `DELTA-JUDGE: <head>` line (it needs `pr`
-  and `head`, takes no `tier`, and refuses another model); `trust` and no key keep Opus. The
-  last field of its output is `model=<id>`: dispatch with that model, and copy the
-  `DELTA-JUDGE:` line into the prompt when the brief has one. Sonnet with no marker is what the
-  guard refuses (`agent-model-deny`).
+  `gen-judge-brief.py` spec (`finding` or `trust`; a first judge omits it). `finding` runs on
+  Sonnet and carries the `DELTA-JUDGE: <head>` line (it needs `pr` and `head`, takes no `tier`,
+  and refuses another model); `trust` and no key keep Opus.
+- **Dispatch an in-process judge from the generator's object, never by hand**:
+  `python3 scripts/handover/chief-kit/gen-judge-brief.py <spec.json> --chief <you> --dispatch-json`
+  prints ONE Agent input object (`description`, `subagent_type: "judge-ro"`, `model`, `prompt`,
+  `run_in_background: false`; diagnostics on stderr). Pass that object unchanged as the Agent
+  call: do not rebuild the model or copy marker lines yourself. Its `model` is the alias
+  `opus`, `sonnet` (finding delta) or `fable`; Fable needs an `escalation_reason` in the spec
+  that passes `scripts/guardrails/agent-model-policy.json` and is rendered as the
+  `ESCALATION:` line, Haiku is refused, and any other id is refused rather than guessed.
+  Dispatch mode writes nothing (no bucket document, queue lock or RESUME file), so a rerun for
+  the same qid is safe. The prompt carries a fresh RETASK nonce with the direct-parent rule and
+  a distinct `JUDGE-BRIEF: <nonce>` line: declared generator provenance, not proof the generator
+  ran. `guard-agent-model.sh` only warns (additionalContext) on a judge call without it, and the
+  digest counts marked and unmarked judge calls. Without `--dispatch-json` the generator writes
+  the headed-session RESUME brief as before (its last stdout field is `model=<id>`).
+- **Never leave the model out of a judge call**: after an `agent-model-deny`, re-dispatch with
+  the explicit model the deny names (`opus` for a judge, `sonnet` only with a `DELTA-JUDGE:`
+  line). `guard-subagent-model.sh` denies a dispatch with no model, so omitting it is not a
+  remedy.
 - **A deferred Critical or Important finding needs a disposition before GO**:
   past the round cap such a finding is never dropped. `go.sh` runs
   `cr-disposition.sh check <pr> <head>` and refuses (exit 9) while any

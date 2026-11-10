@@ -2,7 +2,10 @@
 # judge-ladder.sh — convene a judge at the cheapest tier that can rule.
 #
 #   next-tier <sonnet|opus|fable>   the tier a judge escalates to when it returns above-my-tier
-#   convene <seat> <tier>           spend one convening from the seat's per-window budget
+#   convene <seat> <opus|fable>     spend one convening from the seat's per-window budget
+#   convene <seat> sonnet --delta finding
+#                                   a Sonnet seat: only the re-judge of a push whose delta-class.sh
+#                                   printed finding. An ordinary first or trust judge starts at Opus.
 #   breakglass <finding-class>      route a substrate-lying finding class straight to the operator
 #
 # Exit: 0 ok · 2 bad usage or an ordinary class · 3 refused: budget exhausted, state lock busy or budget uncountable (refusing is fail-safe).
@@ -60,6 +63,19 @@ case "$cmd" in
     seat="${2:-}"; tier="${3:-}"
     case "$seat" in '' | *[[:space:]]*) echo "judge-ladder: convene needs a seat without whitespace" >&2; exit 2 ;; esac
     cap="$(cap_for "$tier")" || { echo "judge-ladder: unknown tier '$tier'" >&2; exit 2; }
+    delta=""
+    if [ "$#" -gt 3 ]; then
+      [ "$4" = --delta ] && [ "$#" -eq 5 ] || { echo "judge-ladder: convene takes only --delta finding after the tier" >&2; exit 2; }
+      delta="$5"
+    fi
+    if [ "$tier" = sonnet ] && [ "$delta" != finding ]; then
+      echo "judge-ladder: a Sonnet judge seat is only for the re-judge of a push whose delta-class.sh printed finding: convene <seat> sonnet --delta finding. An ordinary first or trust judge starts at opus." >&2
+      exit 2
+    fi
+    if [ "$tier" != sonnet ] && [ -n "$delta" ]; then
+      echo "judge-ladder: --delta finding is only for a Sonnet seat; convene <seat> $tier takes no delta" >&2
+      exit 2
+    fi
     state="$(state_file)" || { echo "judge-ladder: no state dir" >&2; exit 2; }
     mkdir -p "$(dirname "$state")" || exit 2
     # mkdir is atomic: one convening at a time reads, checks and appends.
@@ -95,7 +111,7 @@ case "$cmd" in
     esac
     ;;
   *)
-    echo "usage: judge-ladder.sh next-tier <tier> | convene <seat> <tier> | breakglass <class>" >&2
+    echo "usage: judge-ladder.sh next-tier <tier> | convene <seat> <opus|fable> | convene <seat> sonnet --delta finding | breakglass <class>" >&2
     exit 2
     ;;
 esac

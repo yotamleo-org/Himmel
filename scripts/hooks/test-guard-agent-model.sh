@@ -52,6 +52,8 @@ silent() {
 
 MARK=$'do the review\nESCALATION: one hard call, needs taste'
 EMPTY=$'do the review\nESCALATION:   \nnext line'
+JBL='JUDGE-BRIEF: 0123456789abcdef'
+JBX="x"$'\n'"$JBL"
 
 echo "== fable model override =="
 check "model fable, no marker -> deny" block "$(agent general-purpose fable 'do the review')"
@@ -115,8 +117,8 @@ warn "page-reviewer + claude-opus-5-5 -> warn" "$(agent page-reviewer claude-opu
 warn "edit-runner + opus -> warn" "$(agent edit-runner opus 'x')"
 silent "brief-drafter + opus + TIER reason -> no output" "$(agent brief-drafter opus "$TIERMARK")"
 silent "brief-drafter + sonnet -> no output" "$(agent brief-drafter sonnet 'x')"
-silent "judge + opus -> no output (its own tier)" "$(agent judge opus 'x')"
-silent "judge-ro + opus -> no output (its own tier)" "$(agent judge-ro opus 'x')"
+silent "judge + opus + JUDGE-BRIEF -> no output (its own tier)" "$(agent judge opus "$JBX")"
+silent "judge-ro + opus + JUDGE-BRIEF -> no output (its own tier)" "$(agent judge-ro opus "$JBX")"
 silent "general-purpose + opus-sonnet (opus-prefixed, not Opus) -> no output" "$(agent general-purpose opus-sonnet 'x')"
 silent "general-purpose + opusfake -> no output" "$(agent general-purpose opusfake 'x')"
 check "general-purpose + fable, no marker -> still denied" block "$(agent general-purpose fable 'x')"
@@ -147,8 +149,8 @@ ewarn "judge + effort max (frontmatter says high) -> warn" "$(agent_e judge '' m
 ewarn "judge-ro + effort max (frontmatter says high) -> warn" "$(agent_e judge-ro '' max 'x')"
 ewarn "comment-sicko + effort high (frontmatter says medium) -> warn" "$(agent_e comment-sicko '' high 'x')"
 ewarn "path-shaped agent name + effort high -> warn (no frontmatter lookup)" "$(agent_e ../agents/judge '' high 'x')"
-silent "judge + effort high (its own frontmatter effort) -> no output" "$(agent_e judge '' high 'x')"
-silent "judge-ro + opus + effort high (its own frontmatter effort) -> no output" "$(agent_e judge-ro opus high 'x')"
+silent "judge + effort high (its own frontmatter effort) -> no output" "$(agent_e judge '' high "$JBX")"
+silent "judge-ro + opus + effort high (its own frontmatter effort) -> no output" "$(agent_e judge-ro opus high "$JBX")"
 ewarn "effort high + placeholder EFFORT reason -> warn" "$(agent_e general-purpose sonnet high $'x\nEFFORT: n/a')"
 ewarn "effort high + TIER line only (not an EFFORT line) -> warn" "$(agent_e general-purpose sonnet high "$TIERMARK")"
 ewarn "opus general-purpose + effort high, no lines -> both warnings" "$(agent_e general-purpose opus high 'x')" "TIER: <reason>"
@@ -320,7 +322,83 @@ case "$daud" in
     "agent-model-delta-judge: "*0123abcd*) ok "a delta judge on sonnet echoes its head on stderr" ;;
     *) bad "no audit line for a delta judge - got: $daud" ;;
 esac
-silent "delta marker with nothing to override (opus, judge) -> no output" "$(agent judge opus "$DM")"
+silent "delta marker with nothing to override (opus, judge) -> no output" "$(agent judge opus "$DM"$'\n'"$JBL")"
+
+echo "== the deny remedy passes BOTH model guards =="
+# The deny text is a recovery instruction: following it must pass this guard AND
+# guard-subagent-model.sh, which denies a dispatch with no model.
+SUBGUARD="$HOOKS/guard-subagent-model.sh"
+both() { # <label> <allow|block> <json>: the verdict of the two guards in a row
+    local rc1 rc2 got
+    printf '%s' "$3" | bash "$HOOK" >/dev/null 2>&1; rc1=$?
+    printf '%s' "$3" | env -u SUBAGENT_MODEL_OK bash "$SUBGUARD" >/dev/null 2>&1; rc2=$?
+    if [ "$rc1" = 0 ] && [ "$rc2" = 0 ]; then got=allow; else got=block; fi
+    if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 - expected $2 got $got (agent-model rc=$rc1, subagent-model rc=$rc2)"; fi
+}
+deny_text() { printf '%s' "$1" | bash "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null; }
+jdeny="$(deny_text "$(agent judge-ro sonnet 'x')")"
+case "$jdeny" in
+    *"Drop the model override"*|*"drop the model"*|*"omit"*) bad "judge deny recommends dropping the model: $jdeny" ;;
+    *) ok "judge deny never recommends dropping the model" ;;
+esac
+case "$jdeny" in
+    *"model: opus"*) ok "judge deny names the explicit opus alias" ;;
+    *) bad "judge deny does not name model: opus - got: $jdeny" ;;
+esac
+case "$jdeny" in
+    *"guard-subagent-model.sh"*) ok "judge deny says an omitted model is refused too" ;;
+    *) bad "judge deny does not warn that an omitted model is refused - got: $jdeny" ;;
+esac
+fdeny="$(deny_text "$(agent general-purpose fable 'x')")"
+case "$fdeny" in
+    *"Drop the model override"*|*"drop the model"*|*"omit"*) bad "fable deny recommends dropping the model: $fdeny" ;;
+    *) ok "blocked-model deny never recommends dropping the model" ;;
+esac
+case "$fdeny" in
+    *"model: opus"*"model: sonnet"*) ok "blocked-model deny names explicit permitted aliases" ;;
+    *) bad "blocked-model deny names no explicit alias - got: $fdeny" ;;
+esac
+both "judge-ro + opus (the judge remedy) -> both guards allow" allow "$(agent judge-ro opus $'x\nJUDGE-BRIEF: 0123456789abcdef')"
+both "judge + opus (the judge remedy) -> both guards allow" allow "$(agent judge opus 'x')"
+both "general-purpose + sonnet (the blocked-model remedy) -> both guards allow" allow "$(agent general-purpose sonnet 'x')"
+both "general-purpose + fable + ESCALATION (the one-call remedy) -> both guards allow" allow "$(agent general-purpose fable "$MARK")"
+both "judge-ro + sonnet + DELTA-JUDGE (finding delta) -> both guards allow" allow "$(agent judge-ro sonnet "$DM40")"
+both "judge-ro + no model (the old remedy) -> refused" block "$(agent judge-ro '' 'x')"
+both "general-purpose + no model -> refused" block "$(agent general-purpose '' 'x')"
+both "judge-ro + sonnet, no marker (unauthorized delta) -> refused" block "$(agent judge-ro sonnet 'x')"
+both "judge-ro + fable + placeholder ESCALATION -> refused" block "$(agent judge-ro fable $'x\nESCALATION: n/a')"
+both "judge-ro + haiku -> refused" block "$(agent judge-ro haiku 'x')"
+
+echo "== the canonical judge instructions agree with the guards =="
+JDOC="$HOOKS/../../docs/handover/chief-sections/judge.md"
+jdoc="$(tr '\n' ' ' < "$JDOC" | tr -s ' ')"
+case "$jdoc" in *"at Sonnet or Opus"*|*"Drop the model override"*) bad "judge.md still advertises a Sonnet start or dropping the model" ;; *) ok "judge.md advertises no Sonnet start and no dropped model" ;; esac
+case "$jdoc" in *"Start an ordinary first or trust judge at Opus"*) ok "judge.md starts an ordinary judge at Opus" ;; *) bad "judge.md does not start an ordinary judge at Opus" ;; esac
+case "$jdoc" in *"--dispatch-json"*"Pass that object unchanged"*) ok "judge.md dispatches from the generator's object" ;; *) bad "judge.md does not name the --dispatch-json object" ;; esac
+case "$jdoc" in *"Never leave the model out of a judge call"*) ok "judge.md says never to omit the model" ;; *) bad "judge.md does not say never to omit the model" ;; esac
+
+echo "== JUDGE-BRIEF declared provenance: warn-only on a judge dispatch without it =="
+JB=$'rule on it\nJUDGE-BRIEF: 0123456789abcdef'
+# jbwarn <label> <json>: exit 0, NO permissionDecision, additionalContext names JUDGE-BRIEF.
+jbwarn() {
+    local o rc ctx pd
+    o="$(printf '%s' "$2" | bash "$HOOK" 2>/dev/null)"; rc=$?
+    ctx="$(printf '%s' "$o" | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null)"
+    pd="$(printf '%s' "$o" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)"
+    if [ "$rc" = 0 ] && [ -z "$pd" ] && case "$ctx" in *"JUDGE-BRIEF"*"gen-judge-brief.py"*"--dispatch-json"*) true ;; *) false ;; esac; then
+        ok "$1"
+    else
+        bad "$1 - rc=$rc permissionDecision='$pd' ctx='$ctx'"
+    fi
+}
+jbwarn "judge-ro + opus, no JUDGE-BRIEF line -> warn only" "$(agent judge-ro opus 'x')"
+jbwarn "judge + no model, no JUDGE-BRIEF line -> warn only" "$(agent judge '' 'x')"
+jbwarn "judge-ro + sonnet + DELTA-JUDGE, no JUDGE-BRIEF line -> warn only" "$(agent judge-ro sonnet "$DM40")"
+silent "judge-ro + opus + JUDGE-BRIEF line -> no output" "$(agent judge-ro opus "$JB")"
+silent "general-purpose + sonnet, no JUDGE-BRIEF -> no output (not a judge)" "$(agent general-purpose sonnet 'x')"
+check "JUDGE-BRIEF does not rescue a judge override" block "$(agent judge-ro sonnet "$JB")"
+jbwarn "JUDGE-BRIEF mid-line (not a line) -> still warns" "$(agent judge-ro opus 'see JUDGE-BRIEF: 0123456789abcdef')"
+jbwarn "JUDGE-BRIEF with a short nonce -> still warns" "$(agent judge-ro opus $'x\nJUDGE-BRIEF: 0123')"
 
 echo "== other tool / malformed / empty stdin -> allow (fail-open) =="
 check "Write tool -> allow" allow '{"tool_name":"Write","tool_input":{"model":"fable"}}'
@@ -355,7 +433,7 @@ case "$aud" in
     "agent-model-escalation: "*"one hard call, needs taste"*) ok "marked fable override echoes its reason on stderr" ;;
     *) bad "no audit line for a marked override - got: $aud" ;;
 esac
-silent "marker with nothing to override (opus, judge) -> no output" "$(agent judge opus "$MARK")"
+silent "marker with nothing to override (opus, judge) -> no output" "$(agent judge opus "$MARK"$'\n'"$JBL")"
 silent "marker with no model -> no output" "$(agent general-purpose '' "$MARK")"
 
 echo "== the blocked-model list is DATA (agent-model-policy.json) =="

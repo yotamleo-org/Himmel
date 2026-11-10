@@ -36,25 +36,40 @@ run convene seatB fable >/dev/null; [ "$?" = 0 ] && pass "the budget is per seat
 JUDGE_LADDER_NOW=$((1000000 + 7200)) run convene seatA fable >/dev/null
 [ "$?" = 0 ] && pass "the budget frees after the window" || fail "window did not roll"
 
-run convene seatC sonnet >/dev/null; run convene seatC sonnet >/dev/null; run convene seatC sonnet >/dev/null
-run convene seatC sonnet >/dev/null; [ "$?" = 3 ] && pass "sonnet cap enforced" || fail "sonnet cap not enforced"
+run convene seatC sonnet --delta finding >/dev/null; run convene seatC sonnet --delta finding >/dev/null; run convene seatC sonnet --delta finding >/dev/null
+run convene seatC sonnet --delta finding >/dev/null; [ "$?" = 3 ] && pass "sonnet cap enforced" || fail "sonnet cap not enforced"
 
 JUDGE_LADDER_FABLE_CAP=abc run convene seatD fable >/dev/null
 [ "$?" = 2 ] && pass "a non-numeric cap is refused, not read as unlimited" || fail "non-numeric cap accepted"
 
-run convene "seat F" sonnet >/dev/null
+run convene "seat F" sonnet --delta finding >/dev/null
 [ "$?" = 2 ] && pass "a seat with whitespace is refused" || fail "whitespace seat accepted"
-JUDGE_LADDER_WINDOW=0 run convene seatG sonnet >/dev/null
+JUDGE_LADDER_WINDOW=0 run convene seatG sonnet --delta finding >/dev/null
 [ "$?" = 2 ] && pass "a zero window is refused" || fail "zero window accepted"
 
-run convene 'seat\tH' sonnet >/dev/null; run convene 'seat\tH' sonnet >/dev/null; run convene 'seat\tH' sonnet >/dev/null
-run convene 'seat\tH' sonnet >/dev/null
+run convene 'seat\tH' sonnet --delta finding >/dev/null; run convene 'seat\tH' sonnet --delta finding >/dev/null; run convene 'seat\tH' sonnet --delta finding >/dev/null
+run convene 'seat\tH' sonnet --delta finding >/dev/null
 [ "$?" = 3 ] && pass "a backslash in the seat still counts against the cap" || fail "backslash seat bypassed the cap"
 
 mkdir "$WORK/state.lock"
-out="$(JUDGE_LADDER_STATE="$WORK/state" run convene seatE sonnet)"; rc=$?
+out="$(JUDGE_LADDER_STATE="$WORK/state" run convene seatE sonnet --delta finding)"; rc=$?
 rmdir "$WORK/state.lock"
 [ "$rc" = 3 ] && pass "a held state lock refuses the convening (rc 3)" || fail "held lock did not refuse (rc=$rc)"
+
+# An ordinary first or trust judge starts at Opus; a Sonnet seat needs finding-delta context.
+out="$(run convene seatS sonnet)"; rc=$?
+[ "$rc" = 2 ] && pass "a Sonnet seat with no delta context is refused (rc 2)" || fail "bare sonnet convening rc=$rc"
+has "the refusal names the opus start" "$out" "opus"
+has "the refusal names the finding-delta flag" "$out" "--delta finding"
+run convene seatS sonnet --delta trust >/dev/null; [ "$?" = 2 ] && pass "a trust delta cannot take a Sonnet seat" || fail "trust delta took a sonnet seat"
+run convene seatS sonnet --delta >/dev/null; [ "$?" = 2 ] && pass "an empty --delta is refused" || fail "empty --delta accepted"
+run convene seatS opus --delta finding >/dev/null; [ "$?" = 2 ] && pass "--delta is only for a Sonnet seat" || fail "opus took --delta"
+[ "$(grep -c ' seatS ' "$JUDGE_LADDER_STATE" 2>/dev/null)" = 0 ] && pass "a refused convening spends no budget" || fail "a refused convening was recorded"
+out="$(run convene seatS sonnet --delta finding)"; rc=$?
+[ "$rc" = 0 ] && has "a finding delta convenes a Sonnet seat" "$out" "convened sonnet" || fail "finding delta sonnet rc=$rc: $out"
+run convene seatS opus >/dev/null; [ "$?" = 0 ] && pass "an ordinary opus convening needs no delta context" || fail "opus convening refused"
+out="$(bash "$SUT" 2>&1)"
+has "usage names the Sonnet seat's delta flag" "$out" "sonnet --delta finding"
 
 out="$(run breakglass guard-no-fire)"; rc=$?
 [ "$rc" = 0 ] && has "a guard that did not fire reaches the operator" "$out" "operator" || fail "breakglass guard-no-fire rc=$rc"
