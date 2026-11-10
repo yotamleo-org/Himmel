@@ -68,6 +68,7 @@ if (a[0] === 'release' && a[1] === 'core-check') {
     const t = ticket(k);
     if (!t) console.log((fs.existsSync(process.env.CG_STUB_UNKNOWN + '/' + k) ? 'UNKNOWN ' : 'NOT-CORE ') + k);  // only a key the suite marks is a mirror miss
     else if (t.labels.includes('core') && !hit && a.includes('--docs-only') && paths.length > 0 && paths.every((p) => p.startsWith('docs/') || p.endsWith('.md'))) console.log('BYPASS ' + k + ' design label-only core ticket, docs-only Writes');
+    else if (fs.existsSync(process.env.CG_STUB_NEEDS + '/' + k)) process.stdout.write(fs.readFileSync(process.env.CG_STUB_GOLDEN, 'utf8'));  // a key the suite marks answers the golden line
     else if (t.type === 'Bug' && /^(Highest|Blocker)$/.test(t.prio)) console.log('BYPASS ' + k + ' emergency Bug at ' + t.prio);
     else if (t.type === 'Bug') console.log('BYPASS ' + k + ' bug a Bug is not gated');
     else if (hit) console.log('CORE ' + k + ' ' + hit);
@@ -94,6 +95,7 @@ if (a[0] === 'release' && a[1] === 'core-check') {
 }
 EOF
 export GEN_BRIEFS_JIRA_CLI="$WORK/stub-jira/index.js" CG_STUB_SIGNED="$WORK/cg-signed" CG_STUB_UNKNOWN="$WORK/cg-unknown"; mkdir -p "$CG_STUB_UNKNOWN"
+export CG_STUB_NEEDS="$WORK/cg-needs" CG_STUB_GOLDEN="$HERE/../../jira/src/release/fixtures/bypass-needs-spec.line"; mkdir -p "$CG_STUB_NEEDS"
 # brief-lint.sh (run on every generated brief, and by the launcher) asks the same stand-in over the same fixture mirror
 export BRIEF_LINT_JIRA_CLI="$GEN_BRIEFS_JIRA_CLI" BRIEF_LINT_MIRROR="$GEN_BRIEFS_MIRROR"
 
@@ -1645,6 +1647,34 @@ cgo="$(cgrun design)"; rc=$?
 [ "$rc" = 0 ] && pass "a label-only design leg (docs-only Writes) passes (rc 0)" || fail "design rc=$rc: $cgo"
 has "the design leg's brief carries a Core gate bypass=design line" "$(cat "$(cg_brief design)" 2>/dev/null)" "> **Core gate:** HIMMEL-9413 bypass=design"
 [ "$(cg_rows design HIMMEL-9413)" = 1 ] && [ "$(cg_field design HIMMEL-9413 outcome)" = bypass ] && [ "$(cg_field design HIMMEL-9413 bypass)" = design ] && pass "the design leg appends one bypass row of kind design" || fail "design row: $(cat "$(cg_log design)" 2>/dev/null)"
+
+# a bypassed core key with no spec-review record: core-check answers BYPASS-NEEDS-SPEC with the golden line
+NK=HIMMEL-9640
+cg_mirror HIMMEL-9640 Task Medium '[]'
+touch "$CG_STUB_NEEDS/HIMMEL-9640"
+cg_workers needs HIMMEL-9640 "$CORE_WRITES" ''
+cgo="$(cgrun needs)"; rc=$?
+[ "$rc" = 1 ] && has "a BYPASS-NEEDS-SPEC key is refused naming the missing record" "$cgo" "no spec-review record for HIMMEL-9640" || fail "a BYPASS-NEEDS-SPEC key is refused naming the missing record (rc=$rc): $cgo"
+has "the BYPASS-NEEDS-SPEC refusal says the bypass waives the signature, never the spec" "$cgo" "waives the signature, never the spec"
+lacks "the BYPASS-NEEDS-SPEC refusal is not a CORE-CHECK-FAILED" "$cgo" "CORE-CHECK-FAILED"
+[ -z "$(cg_brief needs)" ] && [ ! -e "$CG/b-needs/launch-N941.sh" ] && pass "a BYPASS-NEEDS-SPEC worker gets no brief and no launcher" || fail "a BYPASS-NEEDS-SPEC worker was written"
+[ "$(cg_rows needs $NK)" = 1 ] && [ "$(cg_field needs $NK outcome)" = refused ] && [ "$(cg_field needs $NK bypass)" = operator ] && pass "the refusal appends one refused row with bypass set" || fail "needs row: $(cat "$(cg_log needs)" 2>/dev/null)"
+[ "$(python3 -I -c 'import json, sys; print(*[len(json.loads(l)) for l in open(sys.argv[1])])' "$(cg_log needs)" 2>/dev/null)" = 9 ] && pass "the refused row has exactly the nine keys" || fail "needs row keys: $(cat "$(cg_log needs)" 2>/dev/null)"
+cgo="$(cgrun needs)"; rc=$?
+[ "$rc" = 1 ] && [ "$(cg_rows needs $NK)" = 1 ] && pass "a re-run of the BYPASS-NEEDS-SPEC refusal appends no second row" || fail "needs re-run rows=$(cg_rows needs $NK) rc=$rc"
+# I2: a docs-only design leg of the same key is still allowed (the stub answers design first, as core.ts does)
+cg_mirror HIMMEL-9640 Task Medium '["core"]'  # a design leg is core by label only
+cg_workers needsdesign HIMMEL-9640 "docs/internals/core-gate-fixture.md" ''
+cgo="$(cgrun needsdesign)"; rc=$?
+[ "$rc" = 0 ] && [ "$(cg_field needsdesign $NK bypass)" = design ] && pass "a docs-only design leg for a key with no spec is still allowed" || fail "needs design rc=$rc: $cgo $(cat "$(cg_log needsdesign)" 2>/dev/null)"
+# I4: gen-briefs decides nothing from spec files; the same answer with the fixture specs removed
+export CG_SPECS_DIR="$CG/specs/needs"; mkdir -p "$CG_SPECS_DIR"  # the suite's fixture specs directory; gen-briefs never reads it
+for f in HIMMEL-9640-spec.md HIMMEL-9640-plan.md HIMMEL-9640-critic-spec-r1.md; do printf '# fixture\n' > "$CG_SPECS_DIR/$f"; done
+cgo_with="$(cgrun needs)"; rc_with=$?
+rm -f "$CG_SPECS_DIR/"*
+cgo_without="$(cgrun needs)"; rc_without=$?
+[ "$rc_with" = "$rc_without" ] && [ "$cgo_with" = "$cgo_without" ] && [ "$rc_with" = 1 ] && pass "gen-briefs decides nothing from spec files: the same answer with the fixture specs removed" || fail "specs changed the answer: rc $rc_with vs $rc_without: [$cgo_with] vs [$cgo_without]"
+rm -f "$CG_STUB_NEEDS/HIMMEL-9640"
 
 # an absolute Writes path under the handover root is a relative non-core stand-in, never a --paths argument (the CLI refuses absolute ones)
 cg_mirror HIMMEL-9440 Task Medium '["core"]'

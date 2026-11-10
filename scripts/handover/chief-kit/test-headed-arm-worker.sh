@@ -5959,6 +5959,22 @@ bad9625b="$tmp/bad9625b"; mkdir -p "$bad9625b"; rm -f "$shim9625/tr"
 robust9625 "a failing date" HOME="$bad9625b" PATH="$shim9625:$PATH"
 check "9625-robust a failing date (an empty ts) writes no row" "$(lr_lines "$bad9625b/.himmel/launch-refusals.jsonl")" ""
 
+# --- a BYPASS-NEEDS-SPEC brief is refused at launch -------
+# core-check answers the golden line for the brief's key; the launcher relays brief-lint's refusal and starts nothing.
+mkdir -p "$tmp/needs-jira"
+cat > "$tmp/needs-jira/index.js" <<'NNEOF'
+const fs = require('fs');
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') process.stdout.write(fs.readFileSync(process.env.NEEDS_GOLDEN, 'utf8'));
+else if (a[0] === 'release' && a[1] === 'bucket-check') for (const k of a.slice(a.indexOf('--mirror') + 2)) console.log('IN ' + k + ' current=v1.1.3 via=mirror');
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+NNEOF
+fx_brief '# HIMMEL-9640 — a bypass fixture' > "$tmp/needs-doc.md"
+rc=0; needs_out="$(NEEDS_GOLDEN="$HERE/../../jira/src/release/fixtures/bypass-needs-spec.line" BRIEF_LINT_JIRA_CLI="$tmp/needs-jira/index.js" door_run "$tmp/needs-doc.md")" || rc=$?
+check "9564-a a BYPASS-NEEDS-SPEC brief is refused at launch (exit 2)" "$rc" "2"
+contains "9564-b ... the refusal is relayed as 'refusing launch:'" "$needs_out" "refusing launch:"
+contains "9564-c ... and names the missing record" "$needs_out" "no spec-review record"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-headed-arm-worker.sh"
