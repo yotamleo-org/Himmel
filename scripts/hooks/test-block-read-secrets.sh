@@ -1370,6 +1370,8 @@ assert_rc "7716 gh api --field x=@.env"         2 "$(run_case "$(j_bash 'gh api 
 assert_rc "7716 gh api -F at-sign in the key"   2 "$(run_case "$(j_bash 'gh api -F a@b=@.env')")"
 assert_rc "7716 gh api -iF clustered"           2 "$(run_case "$(j_bash 'gh api -iF x=@.env')")"
 assert_rc "7716 gh api -iFx= clustered attached" 2 "$(run_case "$(j_bash 'gh api -iFx=@.env')")"
+assert_rc "7716 gh api -F=x=@.env"              2 "$(run_case "$(j_bash 'gh api repos/o/r/contents/x -F=x=@.env')")"
+assert_rc "7716 gh api -iF=x=@.env"             2 "$(run_case "$(j_bash 'gh api -iF=x=@.env')")"
 assert_rc "7716 ctl gh api -F non-secret file"  0 "$(run_case "$(j_bash 'gh api repos/o/r/contents/x -F content=@README.md')")"
 assert_rc "7716 ctl plain gh api -f key=value"  0 "$(run_case "$(j_bash 'gh api -f key=value')")"
 assert_rc "7716 ctl commit message on tracing"  0 "$(run_case "$(j_bash "git commit -m 'docs: the hook turns xtrace off'")")"

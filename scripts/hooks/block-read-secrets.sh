@@ -1310,6 +1310,7 @@ g4_scan() {
                         while [ -n "$gfo" ]; do
                             case "$gfo" in
                                 F*) gfo="${gfo#F}"
+                                    case "$gfo" in =?*) gfo="${gfo#=}" ;; esac
                                     if [ -n "$gfo" ]; then gfx="$gfo"; gfa=1; else gfv=1; fi
                                     break ;;
                                 [fHXpqt]*) break ;;
