@@ -88,6 +88,14 @@ L5CONF="$TMP/it's conf"
 got=$(LCONF="$L5CONF" lockrun 0)
 assert_eq "L5 a quote in the config path: the import runs" "locked|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
 assert_eq "L5 a quote in the config path: the lock is removed at exit" "0" "$(find "$L5CONF" -name 'import-env.*' 2>/dev/null | grep -c .)"
+# L6: a takeover guard left by a killed contender is named, not reported as a running import.
+ln -s "$l4_dead" "$LOCKLINK"
+ln -s "$l4_dead" "$LOCKLINK.reap"
+got=$(lockrun 0)
+assert_eq "L6 a dead takeover guard is named in the refusal" "1|rc=2" "$(printf '%s' "$got" | grep -c 'import-env.user.owner.reap behind')|$(printf '%s' "$got" | grep rc=)"
+rm -f "$LOCKLINK" "$LOCKLINK.reap"
+got=$(lockrun 0)
+assert_eq "L6 removing both links lets the next import run" "locked|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
 
 if [ "$(uname -s)" = Darwin ]; then
     echo "SKIP S1-S9: the resolver skips the keyring on Darwin (macOS Keychain backend is a follow-up)"
