@@ -24,10 +24,12 @@
 #   config-audit.sh check                            the same comparison, read-only (the doctor): LOSS rows
 #                                                    (exit 3), RENAME <file> <old> <new> <path> rows (exit 0), then
 #                                                    BACKUP <id> <age> and NOBACKUP <file> <path> for a present
-#                                                    file no backup holds (exit 0); UNKNOWN .env no file found <path>
-#                                                    when no .env is found (exit 0, never a deleted LOSS)
+#                                                    file no backup holds (exit 0); UNKNOWN .env <why> <path>
+#                                                    when the .env read is not the recorded path (exit 0); a .env
+#                                                    gone from the recorded path is a deleted LOSS
 #   config-audit.sh accept                           take the live set as healthy (a deliberate hand edit);
-#                                                    refuses (exit 1, watch.json unchanged) when no .env is found
+#                                                    refuses (exit 1, watch.json unchanged) when no .env path resolves
+#                                                    or the .env read is not the recorded one
 #   config-audit.sh denied <file> <action> [--script NAME] [--pid N]
 #                                                    log a refused write (block-himmel-config-writes.sh)
 #
@@ -172,6 +174,7 @@ const real = (p) => {
   try { return fs.realpathSync(r); } catch {}
   try { return path.join(fs.realpathSync(path.dirname(r)), path.basename(r)); } catch { return r; }
 };
+const sameEnv = (a, b) => Boolean(a && b && a.path && b.path && real(a.path) === real(b.path));
 const nameOf = (file) => {
   const r = real(file);
   for (const [n, p] of Object.entries(SET)) if (p && real(p) === r) return n;
@@ -352,7 +355,10 @@ function problems(snap, live) {
   const out = [];
   for (const [n, was] of Object.entries(snap)) {
     const is = live[n];
-    if (n === ".env" && (!is || !is.present)) { out.push({ file: n, path: is ? is.path : "-", kind: "unknown", lost: [] }); continue; }
+    if (n === ".env" && was.present && !sameEnv(is, was)) {
+      out.push({ file: n, path: is ? is.path : "-", kind: "unknown", why: is && is.present ? "not the recorded file" : "no file found", lost: [] });
+      continue;
+    }
     if (!is || !was.present) continue;
     if (!is.present) { out.push({ file: n, path: was.path, kind: "deleted", lost: was.keys || [] }); continue; }
     if ((is.size === 0 && was.size > 0) || (was.keys !== null && is.keys === null)) { out.push({ file: n, path: was.path, kind: "truncated", lost: was.keys || [] }); continue; }
@@ -370,8 +376,10 @@ function problems(snap, live) {
   return out;
 }
 const isLoss = (p) => p.kind !== "renamed" && p.kind !== "unknown";
-const envFound = (snap) => Boolean(snap[".env"] && snap[".env"].present);
-const keepEnv = (live, snap) => envFound(live) || !snap[".env"] ? live : Object.assign({}, live, { ".env": snap[".env"] });
+const keepEnv = (live, snap) => {
+  const S = snap[".env"];
+  return !S || !S.present || sameEnv(live[".env"], S) ? live : Object.assign({}, live, { ".env": S });
+};
 const renamed = (p) => p.renames.map((r) => r[0] + " to " + r[1]).join(", ");
 // The newest backup whose copy of the file is present and holds every lost key.
 function goodBackup(p) {
@@ -532,14 +540,18 @@ try {
     ts: now(), pid: Number(opt("--pid", "")) || null, session: E.CLAUDE_SESSION_ID || E.CLAUDE_CODE_SESSION_ID || "",
     script: opt("--script", ""), file: real(argv[0]), action: argv[1], denied: true });
   else if (verb === "accept") {
-    const live = snapshot();
-    if (!envFound(live)) { console.log(`result=refused: no .env found${SET[".env"] ? " at " + SET[".env"] : ""}, so its keys cannot be taken as healthy; watch.json is unchanged`); process.exit(1); }
+    const live = snapshot(), w = loadWatch(), S = w && w[".env"];
+    if (!SET[".env"]) { console.log("result=refused: no .env path resolved; run it from the himmel checkout or set HIMMEL_REPO to it; watch.json is unchanged"); process.exit(1); }
+    if (S && S.present && !sameEnv(live[".env"], S)) {
+      console.log(`result=refused: the .env read here (${SET[".env"]}) is not the recorded one (${S.path}); set HIMMEL_REPO to the checkout that holds the recorded one, or, when that checkout moved, run it once with HIMMEL_CONFIG_AUDIT_ENV_FILE=${S.path} to record that file gone; watch.json is unchanged`);
+      process.exit(1);
+    }
     saveWatch(live); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {} console.log("result=accepted"); }
   else if (verb === "check") {
     const found = watch(true);
     for (const p of found.filter(isLoss)) { p.backup = goodBackup(p); console.log(`LOSS\t${p.file}\t${p.kind}\t${p.lost.join(",") || "-"}\t${p.backup || "-"}\t${p.path}`); }
     for (const p of found) for (const [from, to] of p.renames || []) console.log(`RENAME\t${p.file}\t${from}\t${to}\t${p.path}`);
-    for (const p of found.filter((x) => x.kind === "unknown")) console.log(`UNKNOWN\t${p.file}\tno file found\t${p.path}`);
+    for (const p of found.filter((x) => x.kind === "unknown")) console.log(`UNKNOWN\t${p.file}\t${p.why}\t${p.path}`);
     for (const r of backupRows()) console.log(r);
   }
   else process.exit(2);
