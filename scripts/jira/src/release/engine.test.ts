@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
-  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, rmRunSummary, signSpec, specCheck, standing,
+  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, rmRunSummary, pinnedSha, signSpec, specCheck, specReview, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -1942,6 +1943,292 @@ describe('signed minerva specs', () => {
     } finally {
       process.chdir(was);
     }
+  });
+
+  const sha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
+  const both = { kinds: ['spec', 'spec-review'] as OperatorRow['kind'][] };
+
+  function rspec(dir = join(root, 'rs'), head = '- Ticket: K-2', title = '# K-2: a reviewed design'): { spec: string; plan: string } {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'est.json'), JSON.stringify({ median_seq: 1, sigma: 0.1, dod: { passed: true } }));
+    const p = join(dir, 'K-2-review.md');
+    writeFileSync(p, [
+      title, '', head, '', 'Estimate record: est.json', '',
+      '## Alternatives considered', '', '- none better.', '', '## Definition of done', '', '- the fixture records.', '',
+      '## Invariants', '', 'none', '',
+    ].join('\n'));
+    const plan = join(dir, 'K-2-review-plan.md');
+    writeFileSync(plan, 'plan\n\n- Task 1: build it.\n');
+    return { spec: p, plan };
+  }
+  function critic(specPath: string, last: string, o: { kind?: 'spec' | 'plan'; round?: number; key?: string | null; reviewed?: string[]; body?: string[] } = {}): string {
+    const kind = o.kind ?? 'spec';
+    const p = `${specPath}.critic-${kind}-r${o.round ?? 1}.md`;
+    const reviewed = o.reviewed ?? (kind === 'spec' ? [`Reviewed: spec ${sha(specPath)}`] : []);
+    writeFileSync(p, [...(o.key === null ? [] : [`Key: ${o.key ?? 'K-2'}`]), ...reviewed, '', 'the critic\'s return', ...(o.body ?? []), '', last, ''].join('\n'));
+    return p;
+  }
+  const review = (c: Ctx, f: { spec: string; plan?: string }, verdicts: string[], extra: Partial<Parameters<typeof specReview>[1]> = {}) => specReview(c, {
+    keys: ['K-2'], spec: f.spec, plan: f.plan, verdicts, ...extra,
+  });
+  const CHILD = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'pinned-read-child.mjs');
+  const child = (mode: 'check' | 'review', input: Record<string, unknown>) => {
+    const r = spawnSync(process.execPath, [CHILD, JSON.stringify({ env: specEnv(), ...input }), mode], { timeout: 5000, encoding: 'utf8' });
+    return { status: r.status, signal: r.signal, out: r.stdout ? JSON.parse(r.stdout) as Record<string, unknown> : null };
+  };
+  function signedPair(): { p: string; id: string; good: string; goodId: string } {
+    declared();
+    const p = spec();
+    const r = sign(sctx(), ['K-1'], p);
+    const good = spec('K-3-good.md', join(root, 'specs3'));
+    const g = sign(sctx(), ['K-3'], good);
+    return { p, id: r.id, good, goodId: g.id };
+  }
+
+  it('spec-check never accepts a spec-review record', () => {
+    declared();
+    const f = rspec();
+    const r = review(sctx(), f, [critic(f.spec, 'SPEC CLEAN')]);
+    expect(r.kind).toBe('spec-review');
+    expect(check(['K-2'])).toEqual(['NO-SPEC K-2']);
+    expect(specCheck(specEnv(), ['K-2'], null).answer.get('K-2')).toEqual({ missing: 'no spec-review record for K-2' });
+    const out = specCheck(specEnv(), ['K-2'], null, both);
+    expect(out.lines).toEqual([`SPEC ok K-2 ${f.spec} ${r.id}`]);
+    expect(out.answer.get('K-2')).toEqual({ ok: true });
+  });
+
+  it('spec-check --kinds reads spec-review records for the chief', async () => {
+    declared();
+    for (const [k, v] of Object.entries(specEnv())) vi.stubEnv(k, v);
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+    vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+    const f = rspec();
+    const out: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((s: string) => { out.push(s); });
+    const code = process.exitCode;
+    const codes: Array<typeof code> = [];
+    try {
+      await cli('operator', 'spec-review', 'R1', '--keys', 'K-2', '--spec', f.spec, '--plan', f.plan, '--verdict', critic(f.spec, 'SPEC CLEAN'));
+      await cli('spec-check', 'K-2');
+      codes.push(process.exitCode);
+      process.exitCode = code;
+      await cli('spec-check', '--kinds', 'spec,spec-review', 'K-2');
+      codes.push(process.exitCode);
+    } finally {
+      log.mockRestore();
+      process.exitCode = code;
+    }
+    expect(out).toEqual([`O-R1-0002 spec-review ${f.spec} for K-2`, 'NO-SPEC K-2', `SPEC ok K-2 ${f.spec} O-R1-0002`]);
+    expect(codes).toEqual([1, code]);
+    const row = readOperatorRecords('spec-review', specEnv())[0];
+    expect([row.spec_sha256, row.plan_sha256, ...(row.verdicts ?? []).map((v) => v.sha256)]).toHaveLength(3);
+    const four = review(sctx(), f, [critic(f.spec, 'SPEC CLEAN'), critic(f.spec, 'PLAN CLEAN', { kind: 'plan' })]);
+    expect([four.spec_sha256, four.plan_sha256, ...(four.verdicts ?? []).map((v) => v.sha256)]).toHaveLength(4);
+  });
+
+  it('a FIFO at a pinned path names that key only and does not block', () => {
+    const { p, id, good, goodId } = signedPair();
+    const pinned = `${p}.critic-spec-r1.md`;
+    unlinkSync(pinned);
+    execFileSync('mkfifo', [pinned]);
+    const r = child('check', { keys: ['K-1', 'K-3'] });
+    expect(r.signal).toBeNull();
+    expect(r.status).toBe(0);
+    expect(r.out).toEqual({
+      lines: [`SPEC-STALE K-1 ${p} ${id}`, `SPEC ok K-3 ${good} ${goodId}`],
+      answer: { 'K-1': { missing: `${pinned} is unreadable (${id})` }, 'K-3': { ok: true } },
+    });
+  });
+
+  it('a FIFO at a spec-review row\'s pinned path is unreadable too', () => {
+    declared();
+    const f = rspec();
+    const r = review(sctx(), f, [critic(f.spec, 'SPEC CLEAN')]);
+    const pinned = `${f.spec}.critic-spec-r1.md`;
+    unlinkSync(pinned);
+    execFileSync('mkfifo', [pinned]);
+    const out = child('check', { keys: ['K-2'], kinds: ['spec', 'spec-review'] });
+    expect(out.signal).toBeNull();
+    expect(out.out).toEqual({ lines: [`SPEC-STALE K-2 ${f.spec} ${r.id}`], answer: { 'K-2': { missing: `${pinned} is unreadable (${r.id})` } } });
+  });
+
+  it('a device at a pinned path is unreadable', () => {
+    const { p, id, good, goodId } = signedPair();
+    unlinkSync(p);
+    symlinkSync('/dev/zero', p);
+    const r = child('check', { keys: ['K-1', 'K-3'] });
+    expect(r.signal).toBeNull();
+    expect(r.status).toBe(0);
+    expect(r.out).toEqual({
+      lines: [`SPEC-STALE K-1 ${p} ${id}`, `SPEC ok K-3 ${good} ${goodId}`],
+      answer: { 'K-1': { missing: `${p} is unreadable (${id})` }, 'K-3': { ok: true } },
+    });
+  });
+
+  it('a directory at a pinned path names that key only', () => {
+    const { p, id, good, goodId } = signedPair();
+    const pinned = `${p}.critic-plan-r1.md`;
+    unlinkSync(pinned);
+    mkdirSync(pinned);
+    const out = specCheck(specEnv(), ['K-1', 'K-3'], null);
+    expect(out.lines).toEqual([`SPEC-STALE K-1 ${p} ${id}`, `SPEC ok K-3 ${good} ${goodId}`]);
+    expect(out.answer.get('K-1')).toEqual({ missing: `${pinned} is unreadable (${id})` });
+  });
+
+  it('a pinned file over 16 MiB is unreadable', () => {
+    const { p, id, good, goodId } = signedPair();
+    const pinned = `${p}.critic-spec-r1.md`;
+    truncateSync(pinned, 17 * 1024 * 1024);
+    const out = specCheck(specEnv(), ['K-1', 'K-3'], null);
+    expect(out.lines).toEqual([`SPEC-STALE K-1 ${p} ${id}`, `SPEC ok K-3 ${good} ${goodId}`]);
+    expect(out.answer.get('K-1')).toEqual({ missing: `${pinned} is unreadable (${id})` });
+    expect(out.answer.get('K-3')).toEqual({ ok: true });
+  });
+
+  it.skipIf(process.platform !== 'linux')('a pinned file that yields more bytes than fstat reported is unreadable', () => {
+    expect(pinnedSha('/proc/self/status')).toEqual({ unreadable: true });
+  });
+
+  it('a missing or changed pinned file names its path in the answer', () => {
+    const { p, id } = signedPair();
+    writeFileSync(p, `${readFileSync(p, 'utf8')}\nedited\n`);
+    expect(specCheck(specEnv(), ['K-1'], null).answer.get('K-1')).toEqual({ missing: `spec ${p} changed since ${id}` });
+    unlinkSync(p);
+    expect(specCheck(specEnv(), ['K-1'], null).answer.get('K-1')).toEqual({ missing: `${p} is missing (${id})` });
+  });
+
+  it('a newer row of another kind never hides a spec-review row', () => {
+    declared();
+    const f = rspec();
+    const r = review(sctx(), f, [critic(f.spec, 'SPEC CLEAN')]);
+    coreBypass({ ...sctx(), now: () => new Date('2026-10-22T10:00:00.000Z') }, { keys: ['K-2'], decision: '804', verbatim: 'bypass' });
+    const records = readOperatorRecords(['spec-review', 'core-bypass'], specEnv());
+    expect(records.map((x) => x.kind)).toEqual(['spec-review', 'core-bypass']);
+    const out = specCheck(specEnv(), ['K-2'], null, { ...both, records, issues: null });
+    expect(out.answer.get('K-2')).toEqual({ ok: true });
+    expect(out.lines).toEqual([`SPEC ok K-2 ${f.spec} ${r.id}`]);
+  });
+
+  it('a stale spec-review row never hides a fresh signed spec', () => {
+    declared();
+    const p = spec();
+    const signed = sign(sctx(), ['K-2'], p);
+    const f = rspec();
+    review({ ...sctx(), now: () => new Date('2026-10-22T10:00:00.000Z') }, f, [critic(f.spec, 'SPEC CLEAN')]);
+    writeFileSync(f.spec, `${readFileSync(f.spec, 'utf8')}\nedited\n`);
+    const out = specCheck(specEnv(), ['K-2'], null, both);
+    expect(out.answer.get('K-2')).toEqual({ ok: true });
+    expect(out.lines).toEqual([`SPEC ok K-2 ${p} ${signed.id}`]);
+  });
+
+  it('spec-review refuses a missing or self plan, a wrong verdict set, a refused spec, a worker and a spec-row supersede', () => {
+    declared();
+    const f = rspec();
+    const clean = () => critic(f.spec, 'SPEC CLEAN');
+    expect(() => review(sctx(), { spec: f.spec }, [clean()])).toThrow(/release operator spec-review: --plan names the plan/);
+    expect(() => review(sctx(), { spec: f.spec, plan: f.spec }, [clean()])).toThrow(/--plan is the spec/);
+    expect(() => review(sctx(), f, [critic(f.spec, 'PLAN CLEAN', { kind: 'plan' })])).toThrow(/exactly one SPEC verdict/);
+    expect(() => review(sctx(), f, [clean(), critic(f.spec, 'SPEC CLEAN', { round: 2 })])).toThrow(/exactly one SPEC verdict/);
+    expect(() => review(sctx({ ...specEnv(), HIMMEL_CONSOLE_LEG: '1' }), f, [clean()])).toThrow(/chief-spawned worker/);
+    const signed = sign(sctx(), ['K-2'], spec());
+    expect(() => review(sctx(), f, [clean()], { supersedes: signed.id })).toThrow(new RegExp(`${signed.id} is no live spec-review record`));
+    writeFileSync(f.spec, readFileSync(f.spec, 'utf8').replace('Estimate record: est.json', ''));
+    expect(() => review(sctx(), f, [clean()])).toThrow(/minerva-spec-gate/);
+    expect(readOperatorRecords('spec-review', specEnv())).toEqual([]);
+  });
+
+  it('spec-review refuses a FIFO --spec as unreadable within the deadline', () => {
+    declared();
+    const f = rspec();
+    const v = critic(f.spec, 'SPEC CLEAN');
+    unlinkSync(f.spec);
+    execFileSync('mkfifo', [f.spec]);
+    const c = sctx();
+    const r = child('review', {
+      ctx: { release: c.release, dir: c.dir, keyPath: c.keyPath, now: '2026-10-21T10:00:00.000Z' },
+      review: { keys: ['K-2'], spec: f.spec, plan: f.plan, verdicts: [v] },
+    });
+    expect(r.signal).toBeNull();
+    expect(r.out).toEqual({ error: `release operator spec-review: spec ${f.spec} is unreadable` });
+  });
+
+  it('spec-review refuses a Reviewed: line that is missing, doubled, of another word or of other bytes', () => {
+    declared();
+    const f = rspec();
+    const s = sha(f.spec);
+    const other = 'a'.repeat(64);
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN', { reviewed: [] })])).toThrow(/one 'Reviewed: spec <sha256>' line/);
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN', { reviewed: [`Reviewed: spec ${s}`, `Reviewed: spec ${s}`] })]))
+      .toThrow(/one 'Reviewed: spec <sha256>' line/);
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN', { reviewed: [`Reviewed: design ${s}`] })])).toThrow(/one 'Reviewed: spec <sha256>' line/);
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN', { reviewed: [`Reviewed: spec ${other}`] })]))
+      .toThrow(new RegExp(`SPEC CLEAN reviewed ${other}, not the spec's bytes ${s}`));
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC FINDINGS 0', { reviewed: [`Reviewed: spec ${other}`] })]))
+      .toThrow(new RegExp(`SPEC FINDINGS 0 reviewed ${other}, not the spec's bytes ${s}`));
+    expect(readOperatorRecords('spec-review', specEnv())).toEqual([]);
+  });
+
+  it('spec-review refuses a Key: line that is missing, empty of keys, another key set or only in the body, and an unnamed spec', () => {
+    declared();
+    const f = rspec();
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN', { key: null })])).toThrow(/one 'Key: <keys>' line/);
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN', { key: 'see the spec' })])).toThrow(/one 'Key: <keys>' line/);
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN', { key: 'K-2, K-3' })])).toThrow(/names K-2, K-3, not --keys K-2/);
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN', { key: null, body: ['this reviews K-2'] })])).toThrow(/one 'Key: <keys>' line/);
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN'), critic(f.spec, 'PLAN CLEAN', { kind: 'plan', key: null })]))
+      .toThrow(/critic-plan-r1\.md needs exactly one 'Key: <keys>' line/);
+    const unnamed = rspec(join(root, 'rs-unnamed'), '- Ticket: K-7');
+    expect(() => review(sctx(), unnamed, [critic(unnamed.spec, 'SPEC CLEAN')])).toThrow(/the spec's header does not name K-2/);
+    expect(readOperatorRecords('spec-review', specEnv())).toEqual([]);
+  });
+
+  it('spec-review refuses a key that is a prefix of the reviewed key, and a cross-ticket record', () => {
+    declared();
+    const h = rspec(join(root, 'rs-h'), '- Ticket: HIMMEL-9564', '# HIMMEL-9564: a reviewed design');
+    expect(() => review(sctx(), h, [critic(h.spec, 'SPEC CLEAN', { key: 'HIMMEL-9564' })], { keys: ['HIMMEL-956'] }))
+      .toThrow(/names HIMMEL-9564, not --keys HIMMEL-956/);
+    const f = rspec();
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN')], { keys: ['K-9'] })).toThrow(/names K-2, not --keys K-9/);
+    writeFileSync(`${h.spec}.critic-spec-r1.md`, readFileSync(`${h.spec}.critic-spec-r1.md`, 'utf8').replace('Key: HIMMEL-9564', 'Key: HIMMEL-956'));
+    expect(() => review(sctx(), h, [`${h.spec}.critic-spec-r1.md`], { keys: ['HIMMEL-956'] })).toThrow(/the spec's header does not name HIMMEL-956/);
+    expect(readOperatorRecords('spec-review', specEnv())).toEqual([]);
+  });
+
+  it('spec-review reads the keys on a Key: line with trailing prose', () => {
+    declared();
+    const f = rspec();
+    const r = review(sctx(), f, [critic(f.spec, 'SPEC CLEAN', { key: 'K-2 (spec)' })]);
+    expect(r.keys).toEqual(['K-2']);
+  });
+
+  it('spec-review refuses a FINDINGS fold whose own round block lacks its dispositions', () => {
+    declared();
+    const f = rspec();
+    const v = critic(f.spec, 'SPEC FINDINGS 2');
+    writeFileSync(f.spec, `${readFileSync(f.spec, 'utf8')}\n## Critic rounds\n\n- Round 1: two findings, file ${basename(v)}\n  - R1: fixed in §1\n`);
+    expect(() => review(sctx(), f, [v])).toThrow(/2 residual findings and their round blocks hold 1 dispositioned/);
+    const g = rspec(join(root, 'rs-r2'));
+    const v1 = critic(g.spec, 'SPEC FINDINGS 5');
+    writeFileSync(g.spec, `${readFileSync(g.spec, 'utf8')}\n## Critic rounds\n\n- Round 1: five findings, file ${basename(v1)}\n`
+      + [1, 2, 3, 4, 5].map((n) => `  - R${n}: fixed\n`).join('')
+      + `- Round 2: three findings, file ${basename(`${g.spec}.critic-spec-r2.md`)}\n`);
+    const v2 = critic(g.spec, 'SPEC FINDINGS 3', { round: 2 });
+    expect(() => review(sctx(), g, [v2])).toThrow(/3 residual findings and their round blocks hold 0 dispositioned/);
+    expect(readOperatorRecords('spec-review', specEnv())).toEqual([]);
+  });
+
+  it('spec-review pins the reviewed and the folded spec hash', () => {
+    declared();
+    const f = rspec();
+    const reviewedSha = sha(f.spec);
+    const v = critic(f.spec, 'SPEC FINDINGS 3');
+    writeFileSync(f.spec, `${readFileSync(f.spec, 'utf8')}\n## Critic rounds\n\n- Round 1: three findings, file ${basename(v)}\n`
+      + '  - R1: fixed in §1\n  - R2: ASSUMPTION A1\n  - R3: deferred → HIMMEL-9000\n');
+    const r = review(sctx(), f, [v]);
+    expect(r.reviewed_sha256).toBe(reviewedSha);
+    expect(r.spec_sha256).toBe(sha(f.spec));
+    expect(r.spec_sha256).not.toBe(reviewedSha);
+    expect(r.residuals).toBe(3);
   });
 });
 

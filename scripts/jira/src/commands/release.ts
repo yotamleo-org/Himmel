@@ -20,14 +20,14 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, outOfVersionApproval, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
+  apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, outOfVersionApproval, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
 import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
-import type { Authority, Op, Verb } from '../release/types.js';
+import type { Authority, Op, OperatorKind, Verb } from '../release/types.js';
 
 // `jira release <sub>`: the CLI face of the release engine.
 // Callers in other languages read `jira release state <R> --json`.
@@ -610,9 +610,13 @@ export function registerRelease(program: Command): void {
   rel.command('spec-check <keys...>')
     .description('Per key: SPEC ok, SPEC-STALE or NO-SPEC from the signed spec records of every declared release; exit 1 unless all are SPEC ok')
     .option('--mirror <dir>', 'Jira mirror directory, for a sub-task\'s parent (default: the JIRA_PROJECT_KEY mirror)')
-    .action((keys: string[], o: { mirror?: string }) => {
+    .option('--kinds <list>', 'Comma-separated record kinds that count: spec, spec-review', 'spec')
+    .action((keys: string[], o: { mirror?: string; kinds: string }) => {
+      const kinds = list(o.kinds);
+      const bad = kinds.filter((k) => k !== 'spec' && k !== 'spec-review');
+      if (!kinds.length || bad.length) throw new Error(`release spec-check: --kinds takes spec and spec-review, not '${o.kinds}'`);
       const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
-      const r = specCheck(process.env, keys, mirror);
+      const r = specCheck(process.env, keys, mirror, { kinds: kinds as OperatorKind[] });
       for (const l of r.lines) console.log(l);
       for (const warning of r.warnings) console.error(`WARN ${warning}`);
       if (!r.ok) process.exitCode = 1;
@@ -910,6 +914,17 @@ export function registerRelease(program: Command): void {
         verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(), supersedes: o.supersedes,
       });
       console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}`);
+    });
+  operator.command('spec-review <release>')
+    .description('Record a spec, its plan and one passing or folded critic round for its keys; no operator signature')
+    .requiredOption('--keys <list>', 'Comma-separated keys; each critic\'s Key: line names exactly these')
+    .requiredOption('--spec <path>', 'The spec file; its header names each key')
+    .requiredOption('--plan <path>', 'The plan file, never the spec')
+    .requiredOption('--verdict <path>', 'The spec critic\'s verdict file, and optionally the plan critic\'s', (v: string, all: string[]) => [...all, v], [] as string[])
+    .option('--supersedes <O-id>', 'The spec-review record this one replaces')
+    .action((release: string, o: { keys: string; spec: string; plan: string; verdict: string[]; supersedes?: string }) => {
+      const r = specReview(ctxFor(release), { keys: list(o.keys), spec: o.spec, plan: o.plan, verdicts: o.verdict, supersedes: o.supersedes });
+      console.log(`${r.id} spec-review ${r.spec_path} for ${(r.keys ?? []).join(', ')}`);
     });
   operator.command('core-bypass <release>')
     .description('Let core keys build without a signed spec; core-check reads it from every declared release')

@@ -678,6 +678,7 @@ test('MUST_RUN_CHAIN_MEMBERS covers exactly the deny-capable security guards', (
       'block-jira-compound-write.sh',
       'block-read-secrets.sh',
       'block-rogue-claude-schedule.sh',
+      'block-subagent-release-operator.sh',
       'block-tail-pipe-on-gates.sh',
       'block-write-into-main-checkout.sh',
       'check-cr-marker-on-pr-create.sh',
@@ -686,6 +687,41 @@ test('MUST_RUN_CHAIN_MEMBERS covers exactly the deny-capable security guards', (
       'guard-relay-writes.sh',
     ].sort(),
   );
+});
+
+// The real fence, behind a first member that spends the whole shared chain budget: a skipped
+// fence is an open fence, so it runs in its own window and the chain denies the subagent's write.
+// A jq shim that waits 0.9 s makes the fence slower than the 500 ms floor a starved advisory
+// member gets, and faster than its own 2000 ms window (as the starved tail above).
+test('a starved subagent release-operator fence still runs and denies', () => {
+  const dir = makeTmpDir('hook-bash-starve-fence-');
+  try {
+    writeFileSync(join(dir, 'hog.sh'), '#!/usr/bin/env bash\nsleep 3\n');
+    chmodSync(join(dir, 'hog.sh'), 0o755);
+    const realJq = (process.env.PATH || '').split(':').map((d) => join(d, 'jq')).find((p) => existsSync(p));
+    assert.ok(realJq, 'the row needs jq on PATH');
+    writeFileSync(join(dir, 'jq'), `#!/usr/bin/env bash\nsleep 0.9\nexec ${JSON.stringify(realJq)} "$@"\n`);
+    chmodSync(join(dir, 'jq'), 0o755);
+    const payload = JSON.stringify({
+      tool_name: 'Bash', agent_id: 'a1',
+      tool_input: { command: 'node scripts/jira/dist/index.js release operator spec-review R1 --keys K-2' },
+    });
+    const result = spawnSync(
+      process.execPath,
+      [LAUNCHER, '--chain', join(dir, 'hog.sh'), join(HERE, 'block-subagent-release-operator.sh')],
+      {
+        encoding: 'utf8',
+        input: payload,
+        env: {
+          ...process.env, PATH: `${dir}:${process.env.PATH}`, RUN_HOOK_CHAIN_BUDGET_MS: '600', RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '2000',
+        },
+      },
+    );
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stdout + result.stderr, /block-subagent-release-operator: a subagent may not run/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('a must-run member over its budget DENIES the chain instead of being skipped', () => {

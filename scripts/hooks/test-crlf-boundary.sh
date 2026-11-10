@@ -64,6 +64,10 @@ _rc() {
     if [ -n "${CRLF_TP:-}" ]; then
         json=$(printf '%s' "$json" | jq -c --arg t "$CRLF_TP" '. + {transcript_path:$t}')
     fi
+    # A hook that tells a subagent from the main session gets an agent_id when a row sets CRLF_AGENT.
+    if [ -n "${CRLF_AGENT:-}" ]; then
+        json=$(printf '%s' "$json" | jq -c --arg a "$CRLF_AGENT" '. + {agent_id:$a}')
+    fi
     if [ $# -gt 0 ]; then
         printf '%s' "$json" | env "$@" bash "$SCRIPT_DIR/$hook.sh" >/dev/null 2>&1
     else
@@ -117,6 +121,8 @@ D_LIFT="echo x > ~/.himmel/state/usage-lift.json"
 D_LIFTSET="bash scripts/lib/usage-lift.sh set seven_day"
 D_BUS="bus regis""ter x --role worker"
 D_HCFG="echo x > ~/.himmel/con""fig.json"
+D_RELOP="jira rele""ase opera""tor spec R1 --keys K-2"
+D_RELOP_EOL="jira rele""ase opera""tor"
 A_OK="git status"
 
 printf '\nSingle-line command text\n'
@@ -155,6 +161,11 @@ check block-himmel-config-writes  Bash 2 "$D_HCFG"  "deny a redirect onto the hi
 check block-himmel-config-writes  Bash 0 "$A_OK"     "allow git status"
 check guard-bus-store             Bash 2 "$D_BUS"    "deny bus register"
 check guard-bus-store             Bash 0 "$A_OK"     "allow git status"
+CRLF_AGENT="crlf-subagent"
+check block-subagent-release-operator Bash 2 "$D_RELOP" "deny a subagent's operator write"
+check block-subagent-release-operator Bash 0 "$A_OK"    "allow git status from a subagent"
+CRLF_AGENT=""
+check block-subagent-release-operator Bash 0 "$D_RELOP" "allow the same text from the main session"
 check guard-identical-denied-retry Bash 0 "$A_OK"    "allow git status (byte-exact match, so a CR-tail command is a different command)"
 
 # A multi-line command is where the class actually bites: with CRLF endings the
@@ -182,6 +193,10 @@ do
     check "$_h" Bash 2 "$(printf 'echo hello\n%s' "$_c")"   "deny on a second line"
     check "$_h" Bash 0 "$(printf 'echo hello\n%s' "$A_OK")" "allow a benign two-line command"
 done
+CRLF_AGENT="crlf-subagent"
+check block-subagent-release-operator Bash 2 "$(printf '%s\necho hello' "$D_RELOP_EOL")" "deny with operator ending the first line"
+check block-subagent-release-operator Bash 0 "$(printf 'echo hello\n%s' "$A_OK")" "allow a benign two-line command"
+CRLF_AGENT=""
 
 # ── block-read-secrets.sh — CR-carrying TOKEN bypass ──────────
 # A DIFFERENT class than the CRLF-per-record class above: not a line ending,
