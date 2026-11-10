@@ -583,13 +583,14 @@ export function parseFindings(returnText: string, kind: Kind, round: number): { 
 // A row the count or the seal checks read must carry the fields they read, so a damaged one refuses instead of counting as zero.
 const isCount = (n: unknown, min: number) => Number.isInteger(n) && (n as number) >= min;
 const isText = (s: unknown) => typeof s === "string" && s !== "";
+const hasFindings = (r: Record<string, unknown>) => Array.isArray(r.findings) && Array.isArray(r.unrated_ids);
 function wellFormed(r: Record<string, unknown>): boolean {
-  if (r.row === "round") return KINDS.includes(r.critic as Kind) && isCount(r.round, 1) && isText(r.return_sha) && isText(r.verdict_path) && isText(r.read_path) && isText(r.read_sha);
+  if (r.row === "round") return KINDS.includes(r.critic as Kind) && isCount(r.round, 1) && isText(r.return_sha) && isText(r.verdict_path) && isText(r.read_path) && isText(r.read_sha) && hasFindings(r);
   if (r.row === "seal") return isText(r.return_sha) && isText(r.read_path) && isText(r.read_sha);
   if (r.row === "seed") {
     const latest = r.latest as Record<string, unknown> | undefined;
     return isCount(r.spec, 0) && isCount(r.plan, 0) && !!latest && KINDS.every(k => Array.isArray(latest[k])
-      && (latest[k] as Record<string, unknown>[]).every(x => isText(x?.return_sha) && isText(x?.verdict_path) && Array.isArray(x?.seals)));
+      && (latest[k] as Record<string, unknown>[]).every(x => isText(x?.return_sha) && isText(x?.verdict_path) && Array.isArray(x?.seals) && hasFindings(x)));
   }
   return isText(r.row);
 }

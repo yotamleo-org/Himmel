@@ -2796,6 +2796,11 @@ test("R11: one unparseable ledger line refuses the seal, round-status, ledger-ve
   const damaged = await routeCli("round-status", CAP_KEY, "--specs", t.specs);
   expect(damaged.err).toContain(`${CAP_KEY} ledger line ${sealed2.split("\n").filter(Boolean).length + 1} does not parse; restore it from the state repo history`);
   expect(damaged.code).not.toBe(0);
+  const { findings, ...noFindings } = top;
+  writeFileSync(ledger, `${sealed2}${JSON.stringify({ ...noFindings, return_sha: "e".repeat(64), round: 3 })}\n`);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).err).toContain(`${CAP_KEY} ledger line ${sealed2.split("\n").filter(Boolean).length + 1} does not parse`);
+  writeFileSync(ledger, sealed2);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).code).toBe(0);
 }, S1B);
 
 test("R12: planted critic files for a key the manifest lacks buy nothing: the real seal is round 1, the planted page gives T20, and the page with the real return sends", async () => {
