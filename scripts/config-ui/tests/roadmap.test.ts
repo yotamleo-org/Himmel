@@ -12,7 +12,6 @@ import { navLinks, parseLanding } from "../public/nav.js";
 import { startServer } from "../server";
 
 const K = (n: number) => "HIMMEL-" + n;
-// the board reads spec rounds from the round ledger, so a bucket's critic fixtures are seeded into one
 const ROUTE = resolve(import.meta.dir, "../../telegram/chief-route.ts");
 const route = (args: string[], env: Record<string, string> = {}) => execFileSync(process.execPath, [ROUTE, ...args], { encoding: "utf8", stdio: "pipe", env: { ...process.env, ...env } });
 const seedSpecs = (specs: string) => route(["round-seed", "--all", specs]);
@@ -1726,12 +1725,12 @@ test("readOwed: the round, the classes and the open operator-critical findings c
   const bucket = join(s.d, "ho", "u", "himmel"), specs = join(bucket, "specs"), designs = join(specs, "designs");
   mkdirSync(designs, { recursive: true }); mkdirSync(join(specs, "decisions")); mkdirSync(join(bucket, "release", "v1.1.2"), { recursive: true });
   const critic = (name: string, n: number, body: string, last: string) => writeFileSync(join(designs, `${name}.critic-spec-r${n}.md`), `# round ${n}\n\n${body}\n\n${last}\n`);
-  critic("HIMMEL-1-seat.md", 2, "- **o1** (minor; operator-critical: spend-grant) the step buys a paid seat", "SPEC FINDINGS 1"); // R19-board
-  critic("HIMMEL-2-sec.md", 1, "- **s1** (minor; operator-critical: security) the page names a scanner", "SPEC FINDINGS 1");    // R7-board: no class
+  critic("HIMMEL-1-seat.md", 2, "- **o1** (minor; operator-critical: spend-grant) the step buys a paid seat", "SPEC FINDINGS 1");
+  critic("HIMMEL-2-sec.md", 1, "- **s1** (minor; operator-critical: security) the page names a scanner", "SPEC FINDINGS 1");
   critic("HIMMEL-5-moved.md", 1, "notes", "SPEC FINDINGS 4");
   critic("HIMMEL-5-moved.md", 3, "notes", "SPEC FINDINGS 2");
   seedSpecs(specs);
-  rmSync(join(designs, "HIMMEL-5-moved.md.critic-spec-r3.md")); // the ledger keeps round 3 though its file is gone
+  rmSync(join(designs, "HIMMEL-5-moved.md.critic-spec-r3.md"));
   const env = { PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, HANDOVER_DIR: join(s.d, "ho"), HIMMEL_BUCKET_DIR: bucket, JIRA_PROJECT_KEY: "HIMMEL" };
   const o = readOwed(env);
   if (o.state !== "ok") throw new Error(o.reason);
@@ -1740,12 +1739,10 @@ test("readOwed: the round, the classes and the open operator-critical findings c
   expect(critical[0].ctx).toContain("o1 (spend-grant)");
   expect(o.items.filter((i) => i.key === K(2))).toEqual([]);
   expect(o.items.filter((i) => i.source === "unsigned spec").map((i) => [i.key, i.ctx])).toEqual([[K(5), "HIMMEL-5-moved.md: latest critic round 3 reads SPEC FINDINGS 4, no spec row in operator.jsonl"]]);
-  // the operator's ruling with --no-round closes the finding
   writeFileSync(join(specs, "decisions", "verbatim-decision-901-seat.txt"), `Operator, on ${K(1)}: sign it as it stands, the paid seat is approved.\n`);
   route(["round-critical", K(1), "--finding", "o1", "--decision", "901", "--quote", "sign it as it stands, the paid seat is approved", "--no-round", "--specs", specs], { HIMMEL_CONSOLE: "1" });
   const ruled = readOwed(env);
   expect(ruled.state === "ok" && ruled.items.filter((i) => i.source === "operator-critical finding")).toEqual([]);
-  // a round status that cannot be read lists no spec and names each critic file skipped
   renameSync(join(specs, "ledgers"), join(specs, "ledgers.gone"));
   const gone = readOwed(env);
   expect(gone.state === "ok" && gone.skipped).toEqual(["HIMMEL-1-seat.md.critic-spec-r2.md", "HIMMEL-2-sec.md.critic-spec-r1.md", "HIMMEL-5-moved.md.critic-spec-r1.md"]);

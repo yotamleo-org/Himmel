@@ -37,7 +37,6 @@ if ! command -v python3 >/dev/null 2>&1; then
     printf 'skip - python3 not available\n'
     exit 0
 fi
-# the tracker reads spec rounds from the round ledger through chief-route.ts, so a bucket's critic fixtures are seeded into one
 ROUTE="$HERE/../../telegram/chief-route.ts"
 command -v bun >/dev/null 2>&1 || { printf 'FAIL - bun is needed to seed the round ledger\n'; exit 1; }
 seed() { bun "$ROUTE" round-seed --all "$1/specs" >/dev/null 2>&1 || fail "round-seed failed in $1"; }

@@ -1410,7 +1410,6 @@ def spec_id(path):
 
 
 def round_status_all(handover_dir):
-    """Every key's round state under <handover_dir>/specs, from one `chief-route.ts round-status --all`; None when it cannot be read."""
     route = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'telegram', 'chief-route.ts')
     try:
         r = subprocess.run(['bun', route, 'round-status', '--all', '--specs', os.path.join(handover_dir, 'specs'), '--json'],

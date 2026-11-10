@@ -164,7 +164,6 @@ const OWED_SOURCES = 3; // unsigned specs, handoff items, chief doc lines
 type RoundKey = { spec?: unknown; critical_open?: { id: string; class: string; kind: string; round: number; verdict_path: string }[]; error?: string };
 type RoundStatus = { cap: number; classes: string[]; keys: Record<string, RoundKey> };
 const ROUTE = resolve(import.meta.dir, "../telegram/chief-route.ts");
-// Every key's round state under <bucket>/specs from one round-status run; undefined when it cannot be read.
 function roundStatusAll(bucket: string): RoundStatus | undefined {
   try {
     const s = JSON.parse(execFileSync(process.execPath, [ROUTE, "round-status", "--all", "--specs", join(bucket, "specs"), "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60_000 }));
@@ -208,7 +207,7 @@ function specItems(bucket: string, version: string, open: Map<string, string>, s
   for (const [spec, { f }] of [...latest].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
     const key = spec.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
     const st = status && key ? status.keys[key] : undefined;
-    if (!status || st?.error !== undefined) { skipped.push(f); continue; } // no round status for the spec: it is skipped, never guessed
+    if (!status || st?.error !== undefined) { skipped.push(f); continue; }
     const n = Number.isInteger(st?.spec) ? Number(st!.spec) : 0;
     let last: string | undefined;
     try { last = utf8(join(dir, f)).split("\n").map((x) => x.trim()).filter(Boolean).pop(); } catch { /* named below */ }
