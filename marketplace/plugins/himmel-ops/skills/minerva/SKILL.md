@@ -219,6 +219,22 @@ check's "theirs" pile, and to approve the document. With no operator, make
 each call yourself and record it as one ASSUMPTIONS ruling line,
 `<decision> — <why> — <cost if wrong>`; the Stage-2 critic is the approval.
 
+<!-- critic-readiness-recipe-start -->
+### Optional critic readiness check (opt-in)
+
+Use this only when the caller opts in; without it Stages 2 and 4 run exactly as written. Before a
+Stage 2 (kind `spec`) or Stage 4 (kind `plan`) dispatch, take the round R that this skill's own kind
+and counter propose, and write a REQUEST file:
+`{"schema":1,"operation_id":"<fresh id>","kind":"<spec|plan>","spec_path":"<absolute spec>","source_repo":"<absolute repo under review>","source_head":"<its HEAD, 40 hex>","artifacts":[{"path":"<absolute spec>","sha256":"<hash>"}],"requested_round":R}`
+(for kind `plan`, `artifacts` lists the spec, then the exact plan). Immediately before the dispatch run
+`bun <HIMMEL_REPO>/scripts/handover/chief-kit/critic-policy.ts check <REQUEST.json>`. Continue past this
+step only on exit 0 with `"action":"eligible"` in its JSON. Any other exit, or a missing or malformed
+reply, stops that dispatch: keep the refusal as printed and do not retry or call anything to work
+around it. Exit 3 means the existing operator record for that round is missing. Exit 0 describes the
+named bytes and the observed count only; the caller's routing, overrides, round cap and its operator
+exception, seals and approvals all still apply.
+<!-- critic-readiness-recipe-end -->
+
 ## Stage 2 — spec critic (adversarial)
 
 **Gate first.** Resolve `$S` with the resolver from the Mode
@@ -408,6 +424,8 @@ hand-off. If the operator already supplied an execution method, carry it to the
 Terminal section.
 
 ## Stage 4 — plan critic (adversarial)
+
+Optional readiness check: the marked paragraph before Stage 2 applies here with kind `plan`.
 
 Dispatch a fresh subagent (Agent tool, `model: sonnet` at high effort) against
 the written plan file. Loop

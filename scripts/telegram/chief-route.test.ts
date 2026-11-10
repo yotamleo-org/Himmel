@@ -1959,6 +1959,19 @@ test("DoD 1: a spec with 3 recorded rounds cannot get a fourth without an operat
   expect((await seal(r5, b.spec, sha(D_TEXT))).code).not.toBe(0);
 });
 
+test("readCriticBudget reports the counted paths from the cap's own pass and the exception for the exact requested round only", async () => {
+  const { readCriticBudget } = await import("./chief-route");
+  const r = root(); const b = threeRounds(r);
+  expect(await readCriticBudget(b.spec, "spec")).toMatchObject({ count: 3, numbered: 3, requestedRound: 4, operatorAllowed: false, cap: 3, renamed: [] });
+  expect((await readCriticBudget(b.spec, "spec", 4)).numberedFiles).toEqual([1, 2, 3].map(n => ({ round: n, path: `${b.spec}.critic-spec-r${n}.md` })));
+  grant(r, b.spec, 4);
+  expect((await readCriticBudget(b.spec, "spec", 4)).operatorAllowed).toBe(true);
+  expect((await readCriticBudget(b.spec, "spec", 5)).operatorAllowed).toBe(false);
+  const plan = await readCriticBudget(b.spec, "plan");
+  expect(plan).toMatchObject({ count: 1, requestedRound: 2, renamed: [] });
+  expect(plan.numberedFiles.map(f => [f.round, basename(f.path)])).toEqual([[1, "design.md.critic-plan-r1.md"]]);
+});
+
 test("DoD 1: an unsealed fourth round found on disk still keeps the page from going without an operator record", async () => {
   const r = root(); const b = threeRounds(r);
   unsealedReturn(`${b.spec}.critic-spec-r4.md`, D_TEXT);
