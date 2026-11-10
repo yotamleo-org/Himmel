@@ -93,11 +93,8 @@ contains "banner gives the first row date" "$out" "since 2026-01-01"
 bb_out="$(CR_LEDGER="$L" bash "$CS" --by-branch 2>&1)"
 contains "by-branch carries the banner too" "$bb_out" "machine-local"
 
-# 3. Drop advice fires for beta (27% < 40, 11 findings >= 10)
-#    Assert the actual advice string, not just presence of "beta" anywhere.
-grepq "$out" -i "consider dropping beta" \
-  && echo "ok - drop advice fires for beta" \
-  || { echo "FAIL - drop advice fires for beta: [$out]"; fails=$((fails+1)); }
+not_contains "no drop advice for beta" "$out" "consider dropping beta"
+contains "the all-time table is labelled history" "$out" "=== History: all-time"
 
 # 4. Drop advice does NOT fire for alpha (66% >= 40 threshold)
 not_contains "no drop advice for alpha" "$out" "consider dropping alpha"
@@ -445,6 +442,109 @@ LO="$tmp/pr-proto-branch.jsonl"
 proto_out="$(CR_LEDGER="$LO" bash "$CS" --window 3 2>&1)"; proto_rc=$?
 check "prototype-named branches: cr-scores exits 0" "$proto_rc" "0"
 check "prototype-named branches count as three window units" "$(gamma_win "$proto_out")" "3"
+
+gen() { python3 -I -c 'import json,sys,datetime
+out,slug,rm,n,verdict,prs,days,how,tag=sys.argv[1:10]
+n,prs=int(n),int(prs)
+ts=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=float(days))).strftime("%Y-%m-%dT%H:%M:%SZ")
+with open(out,"a") as fh:
+    w=lambda r: fh.write(json.dumps(r)+"\n")
+    for p in range(prs):
+        b="%s-%s-p%d"%(tag,slug,p)
+        if rm!="-": w({"kind":"attempt","ts":ts,"branch":b,"head":"H"+b,"model":slug,"status":"ok","artifact":"diff","responding_model":rm})
+    for i in range(n):
+        b="%s-%s-p%d"%(tag,slug,i%prs); fid="%s-%s-%d"%(slug,verdict,i)
+        row={"kind":"finding","ts":ts,"branch":b,"head":"H"+b,"model":slug,"finding_id":fid,"severity":"imp","file":"f","line":i,"verdict":verdict if how=="raw" else "","artifact":"diff","perspective":"off"}
+        w(row)
+        if how=="amend": w({"kind":"amend","ts":ts,"branch":b,"target_head":"H"+b,"finding_id":fid,"artifact":"diff","perspective":"off","set":{"verdict":verdict},"reason":"r"})
+' "$@"; }
+advice_for() { printf '%s\n' "$1" | awk -v k="$2" '/^=== Advice/{f=1; next} /^===/{f=0} f && $1==k {print; exit}'; }
+recorded_diff_field() { python3 -I -c 'import json,sys
+d=json.load(open(sys.argv[1]))
+r=[x for x in d["rows"] if (x["slug"],x["responding_model"],x["scope"],x["verdict_source"])==(sys.argv[2],sys.argv[3],"diff","recorded-disposition")]
+v=r[0].get(sys.argv[4]) if r else "NO-ROW"
+print(json.dumps(v) if isinstance(v,(dict,list,bool)) or v is None else v)' "$@"; }
+
+LQ1="$tmp/q-deferred.jsonl"; gen "$LQ1" codex gpt-t 40 deferred 12 2 amend q1
+q1_out="$(CR_LEDGER="$LQ1" bash "$CS" 2>&1)"
+not_contains "all_deferred_insufficient: no drop advice" "$q1_out" "consider dropping"
+contains "all_deferred_insufficient: insufficient evidence" "$(advice_for "$q1_out" codex:gpt-t)" "insufficient evidence"
+CR_LEDGER="$LQ1" bash "$CS" --json > "$tmp/q1.json" 2>/dev/null
+check "all_deferred_insufficient: no author_agreement" "$(recorded_diff_field "$tmp/q1.json" codex gpt-t author_agreement)" "null"
+
+LQ2="$tmp/q-onepr.jsonl"; gen "$LQ2" codex gpt-r 40 disproved 1 2 amend q2
+q2_out="$(CR_LEDGER="$LQ2" bash "$CS" 2>&1)"
+not_contains "repeated_same_pr_low_evidence: no drop advice" "$q2_out" "consider dropping"
+contains "repeated_same_pr_low_evidence: insufficient evidence" "$(advice_for "$q2_out" codex:gpt-r)" "insufficient evidence"
+LQ2b="$tmp/q-onepr-deferred.jsonl"; gen "$LQ2b" codex gpt-s 40 disproved 1 2 amend q2b; gen "$LQ2b" codex gpt-s 9 deferred 9 2 amend q2c
+q2b_out="$(CR_LEDGER="$LQ2b" bash "$CS" 2>&1)"
+contains "repeated_same_pr_low_evidence: deferred-only PRs do not count" "$(advice_for "$q2b_out" codex:gpt-s)" "insufficient evidence (40 decided over 1 PR(s)"
+LQ2d="$tmp/q-few-decided.jsonl"; gen "$LQ2d" codex gpt-n 20 disproved 12 2 amend q2d
+q2d_out="$(CR_LEDGER="$LQ2d" bash "$CS" 2>&1)"
+contains "thin_decided_insufficient: 20 decided over 12 PRs is thin" "$(advice_for "$q2d_out" codex:gpt-n)" "insufficient evidence (20 decided over 12 PR(s)"
+not_contains "thin_decided_insufficient: never low-agreement advice" "$q2d_out" "low author agreement"
+LQ2k="$tmp/q-threshold.jsonl"; gen "$LQ2k" codex gpt-k 30 agreed 10 2 amend q2k; gen "$LQ2k" codex gpt-k 10 disproved 10 2 amend q2k
+contains "drop_below_wiring: 75% passes the default 40% threshold" "$(CR_LEDGER="$LQ2k" bash "$CS" 2>&1 | awk '/^=== Advice/{f=1} f && $1=="codex:gpt-k"')" "ok (author agreement 75.0%"
+contains "drop_below_wiring: CR_SCORES_DROP_BELOW=80 makes 75% investigate" "$(CR_LEDGER="$LQ2k" CR_SCORES_DROP_BELOW=80 bash "$CS" 2>&1 | awk '/^=== Advice/{f=1} f && $1=="codex:gpt-k"')" "low author agreement; investigate (75.0%"
+
+LQ3="$tmp/q-bookkeeping.jsonl"; gen "$LQ3" coverage-deferral - 40 disproved 12 2 amend q3
+q3_out="$(CR_LEDGER="$LQ3" bash "$CS" 2>&1)"
+not_contains "bookkeeping_no_drop: no drop advice" "$q3_out" "consider dropping"
+not_contains "bookkeeping_no_drop: no low-agreement advice" "$q3_out" "low author agreement"
+contains "bookkeeping_no_drop: named as not a reviewer" "$(advice_for "$q3_out" not)" "not a reviewer (bookkeeping or unmapped slug), no reviewer advice: coverage-deferral:unknown"
+CR_LEDGER="$LQ3" bash "$CS" --json > "$tmp/q3.json" 2>/dev/null
+check "bookkeeping_no_drop: JSON advice says not-a-reviewer" "$(python3 -I -c 'import json,sys
+print([a["advice"] for a in json.load(open(sys.argv[1]))["advice"]])' "$tmp/q3.json")" "['not-a-reviewer']"
+
+LQ4="$tmp/q-window.jsonl"; gen "$LQ4" codex gpt-w 80 disproved 12 60 amend q4old; gen "$LQ4" codex gpt-w 40 agreed 12 2 amend q4new
+q4_out="$(CR_LEDGER="$LQ4" bash "$CS" 2>&1)"
+not_contains "advice_uses_window: no all-time drop advice" "$q4_out" "consider dropping"
+contains "advice_uses_window: the default window is the trailing 14 days" "$q4_out" "trailing 14 days"
+contains "advice_uses_window: ok in the default window" "$(advice_for "$q4_out" codex:gpt-w)" "ok"
+since90="$(python3 -I -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
+q4w_out="$(CR_LEDGER="$LQ4" bash "$CS" --since "$since90" 2>&1)"
+contains "advice_uses_window: the explicit window is named" "$q4w_out" "$since90"
+contains "advice_uses_window: investigate in the explicit window" "$(advice_for "$q4w_out" codex:gpt-w)" "low author agreement; investigate"
+until30="$(python3 -I -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
+CR_LEDGER="$LQ4" bash "$CS" --since "$since90" --until "$until30" --json > "$tmp/q4u.json" 2>/dev/null
+check "--until cuts the quality view" "$(recorded_diff_field "$tmp/q4u.json" codex gpt-w agreed) $(recorded_diff_field "$tmp/q4u.json" codex gpt-w disproved)" "0 80"
+LQ4u="$tmp/q-until.jsonl"; gen "$LQ4u" codex gpt-u 40 agreed 12 35 amend q4u
+CR_LEDGER="$LQ4u" bash "$CS" --until "$until30" --json > "$tmp/q4ua.json" 2>/dev/null
+check "until_alone_window: --until alone reads the 14 days before it" "$(recorded_diff_field "$tmp/q4ua.json" codex gpt-u agreed)" "40"
+since10="$(python3 -I -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
+CR_LEDGER="$LQ4u" bash "$CS" --since "$since10" --until "$until30" >/dev/null 2>&1; check "until_alone_window: --since after --until exits 2" "$?" "2"
+
+LQ5="$tmp/q-defer.jsonl"; gen "$LQ5" codex gpt-d 30 agreed 10 2 amend q5; gen "$LQ5" codex gpt-d 10 deferred 10 2 amend q5
+q5_out="$(CR_LEDGER="$LQ5" bash "$CS" 2>&1)"
+CR_LEDGER="$LQ5" bash "$CS" --json > "$tmp/q5.json" 2>/dev/null
+check "deferrals_visible: JSON deferred" "$(recorded_diff_field "$tmp/q5.json" codex gpt-d deferred)" "10"
+check "deferrals_visible: coverage leaves deferred out of decided" "$(recorded_diff_field "$tmp/q5.json" codex gpt-d adjudication_coverage)" "0.75"
+check "deferrals_visible: agreement ignores deferred" "$(recorded_diff_field "$tmp/q5.json" codex gpt-d author_agreement)" "1.0"
+contains "deferrals_visible: the text names the deferred count" "$q5_out" "10 deferred"
+
+LQ6="$tmp/q-mixed.jsonl"; cat "$LQ5" "$LQ2" "$LQ3" > "$LQ6"; gen "$LQ6" codex - 3 agreed 1 1 raw q6
+q6_txt="$(CR_LEDGER="$LQ6" bash "$CS" 2>&1)"
+CR_LEDGER="$LQ6" bash "$CS" --json > "$tmp/q6.json" 2>/dev/null; q6_rc=$?
+check "--json exits 0" "$q6_rc" "0"
+q6_cmp="$(printf '%s\n' "$q6_txt" | python3 -I -c 'import json,sys
+d=json.load(open(sys.argv[1])); text={}; on=False
+for l in sys.stdin:
+    if l.startswith("=== Quality view"): on=True; continue
+    if l.startswith("==="): on=False
+    c=l.split()
+    if on and len(c)>=10 and ":" in c[0] and c[4].isdigit(): text[(c[0],c[1],c[2])]=c[3:9]
+want={("%s:%s"%(r["slug"],r["responding_model"]),r["scope"],r["verdict_source"]):[str(r[k]) for k in ("total","agreed","disproved","deferred","unresolved","prs")] for r in d["rows"]}
+print("match" if want and text==want else "text=%r json=%r"%(text,want))' "$tmp/q6.json")"
+check "JSON_counts_match_text: text and JSON agree row for row" "$q6_cmp" "match"
+
+CR_LEDGER="$LQ6" bash "$CS" --since not-a-date >/dev/null 2>&1; check "--since not a date: exit 2" "$?" "2"
+CR_LEDGER="$LQ6" bash "$CS" --until not-a-date >/dev/null 2>&1; check "--until not a date: exit 2" "$?" "2"
+CR_LEDGER="$LQ6" bash "$CS" --since >/dev/null 2>&1; check "--since without a value: exit 2" "$?" "2"
+CR_LEDGER="$LQ6" bash "$CS" --by-branch --json >/dev/null 2>&1; check "--json with --by-branch: exit 2" "$?" "2"
+q7_out="$(CR_LEDGER="$LQ6" bash "$CS" --window 3 --artifact diff --perspective off 2>&1)"; q7_rc=$?
+check "existing flags with the quality view: exit 0" "$q7_rc" "0"
+contains "existing flags: the window table stays" "$q7_out" "Last-3-PRs"
+contains "accept_yield_not_precision: the yield is labelled not precision" "$q7_out" "acceptance_yield = agreed / all findings, not precision"
 
 # ── Final ──────────────────────────────────────────────────────────────────
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

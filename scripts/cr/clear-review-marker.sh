@@ -1679,6 +1679,11 @@ if [ "$marker_lane" = "full" ]; then
           }
           return branchCommits.has(git("rev-parse", "--verify", "--quiet", head + "^{commit}"));
       };
+      const fullLane = (head) => {
+          const h = git("rev-parse", "--verify", "--quiet", head + "^{commit}");
+          return git("diff", "--name-only", e.BASE + "..." + h)
+              .split("\n").some((f) => f !== "" && !/\.(md|txt)$|^docs\/|^handovers\//.test(f));
+      };
       for (const l of rows) {
           let r;
           try { r = JSON.parse(l); } catch { continue; }
@@ -1688,6 +1693,7 @@ if [ "$marker_lane" = "full" ]; then
               if (head !== "" && !/^[0-9a-f]{7,64}$/.test(head)) continue;
               try {
                   if (!onBranch(head)) continue;
+                  if (!fullLane(head)) continue;
               } catch { unreadable = true; continue; }
               firstScore = Math.min(firstScore, Number.isNaN(t(r)) ? -Infinity : t(r));
           } else if (r.kind === "preflight" && !Number.isNaN(t(r))) firstPreflight = Math.min(firstPreflight, t(r));
