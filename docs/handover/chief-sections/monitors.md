@@ -207,9 +207,10 @@ and jobs list.
 The tick runs it once per tick and carries `ciguard=ok|OVER:<metric>[,<metric>]|unknown` on
 the TICK line, with one `ACTION ci-guardrail <metric>=<count>><line> (<where>)` line per new
 crossing. The next tick of the same crossing prints `ciguard=OVER:…` and no ACTION. Under
-decision 850 ciguard holds a dispatch only at the real limit: on an ACTION for
-`concurrent-jobs` (500 or more jobs running + queued, where GitHub itself queues the rest),
-hold new dispatches and find the burst. It never holds a dispatch or a rerun on a run count,
+decision 850, while `ciguard=OVER:concurrent-jobs` shows (500 or more jobs running + queued,
+where GitHub itself queues the rest), hold new dispatches until the count drops below 500
+and find the burst; the ACTION line fires once, the status line is what keeps the hold.
+It never holds a dispatch or a rerun on a run count,
 however large, or on `startup_failure` runs; an old reading that a run count was OVER is
 not a reason to wait. The waiter's wake key does not carry `ciguard`.
 
