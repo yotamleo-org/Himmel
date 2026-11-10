@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# test-staleness-fixture.sh -- rows for staleness-fixture.sh and the two frozen staleness banks.
-# No real qmd, embed, provider key or graph extraction: qmd and graphify are stub commands that log
-# their verbs, over a scratch git repo. The bank rows read the real bank files and, where this
-# checkout holds the commits they name, this repo's history.
-#
-# Platform guard: Linux/macOS bash, python3.
 # shellcheck disable=SC2015  # `A && pass || fail` is the assert idiom: pass always returns 0
 set -uo pipefail
 
@@ -32,8 +26,6 @@ mkdir -p "$LOGDIR" "$W/home/.cache/qmd" "$W/tmp" "$W/bin" "$W/gbin" "$W/primary/
 printf 'LIVE\n' > "$W/home/.cache/qmd/index.sqlite"
 printf 'PRIMARY\n' > "$W/primary/graphify-out/graph.json"
 
-# A stub qmd: one log line per call, with the env the call would have read. `update` makes the index file;
-# `mcp --http --port N` listens on N until killed.
 cat > "$W/bin/qmd" <<'STUB'
 #!/usr/bin/env bash
 key=unset; [ -n "${QMD_OPENAI_API_KEY:-}" ] && key=set
@@ -50,7 +42,6 @@ exit 0
 STUB
 chmod +x "$W/bin/qmd"
 
-# A stub graphify: logs its argv and the GRAPHIFY_OUT it was given, and writes the control file a real one leaves.
 cat > "$W/gbin/graphify" <<'STUB'
 #!/usr/bin/env bash
 printf '%s | GRAPHIFY_OUT=%s\n' "$*" "${GRAPHIFY_OUT-unset}" >> "$LOGDIR/graphify.log"
@@ -59,7 +50,6 @@ exit 0
 STUB
 chmod +x "$W/gbin/graphify"
 
-# A fixture repo: two commits. Collection files: 3 at the first, 4 at the second (fixtures/ and node_modules/ never count).
 R="$W/repo"
 git init -q -b main "$R"
 gc() { git -C "$R" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q --no-verify -m "$1"; }
@@ -80,17 +70,15 @@ printf 'print(3)\n' > "$R/tools/b.py"
 git -C "$R" add -A && gc two
 C2="$(git -C "$R" rev-parse HEAD)"
 
-FX_EXTRA=""
+FX_EXTRA=()
 fx() {
-    # shellcheck disable=SC2086  # FX_EXTRA is a list of VAR=value words with no spaces
     env -u INDEX_PATH -u QMD_CONFIG_DIR -u GRAPHIFY_OUT -u HIMMEL_BILLED_OK -u QMD_OPENAI_API_KEY -u XDG_CACHE_HOME -u XDG_CONFIG_HOME \
         HOME="$W/home" PATH="$W/gbin:$W/bin:$PATH" TMPDIR="$W/tmp" LOGDIR="$LOGDIR" \
-        SF_QMD="$W/bin/qmd" SF_REPO="$R" SF_PRIMARY_GRAPH_OUT="$W/primary/graphify-out" $FX_EXTRA \
+        SF_QMD="$W/bin/qmd" SF_REPO="$R" SF_PRIMARY_GRAPH_OUT="$W/primary/graphify-out" ${FX_EXTRA[@]+"${FX_EXTRA[@]}"} \
         bash "$FX" "$@"
 }
 qlog() { cat "$LOGDIR/qmd.log" 2>/dev/null; }
 reset_logs() { rm -f "$LOGDIR"/*.log; }
-# manifest <root> <skip-dir>...: every path under root (bar the skipped dirs) with its checksum, so a stray write shows
 manifest() {
     local root="$1" skip a=()
     shift
@@ -104,7 +92,6 @@ v = json.load(open(sys.argv[1])) if os.path.exists(sys.argv[1]) else None
 for k in sys.argv[2].split("."): v = v.get(k) if isinstance(v, dict) else None
 print("" if v is None else v)' "$1/pair.json" "$2"; }
 
-# ---- I10: live index ---------------------------------------------------------------------------------------------------
 
 reset_logs
 out="$(fx build --first "$C1" --second "$C2" --state s --out "$W/home/.cache/qmd" 2>&1)"; rc=$?
@@ -124,7 +111,6 @@ fx serve --index "$W/o-sym/index.sqlite" > /dev/null 2>&1; rc=$?
 eq "::refuses_live_index_by_symlink (serve on that link: exit 2)" "2" "$rc"
 eq "::refuses_live_index_by_symlink (the live index keeps its bytes, no qmd call)" "LIVE|" "$(cat "$W/home/.cache/qmd/index.sqlite")|$(qlog)"
 
-# ---- I10: writes only under scratch --------------------------------------------------------------------------------------
 
 reset_logs
 OUT="$W/scratch-l"
@@ -141,62 +127,59 @@ mkdir -p "$W/not-empty"; : > "$W/not-empty/keep.txt"
 fx build --first "$C1" --second "$C2" --state s --out "$W/not-empty" > /dev/null 2>&1; rc=$?
 eq "::writes_only_under_scratch (a non-empty directory this script did not make is refused)" "2" "$rc"
 
-# ---- the paid paths ----------------------------------------------------------------------------------------------------
 
 reset_logs
-FX_EXTRA=""
+FX_EXTRA=()
 fx build --first "$C1" --second "$C2" --state s --out "$W/free-s" > /dev/null 2>&1; rc=$?
 eq "::no_embed_without_opt_in (a free build exits 0)" "0" "$rc"
 eq "::no_embed_without_opt_in (the stub saw update and never embed)" "1|0" "$(qlog | grep -c '^update ')|$(qlog | grep -c '^embed')"
 
 reset_logs
-FX_EXTRA="HIMMEL_BILLED_OK=1"
+FX_EXTRA=(HIMMEL_BILLED_OK=1)
 fx build --first "$C1" --second "$C2" --state s --out "$W/free-s2" > /dev/null 2>&1
 fx build --first "$C1" --second "$C2" --state l --out "$W/free-l2" > /dev/null 2>&1
 eq "::free_arm_never_embeds (states s and l, with the opt-in set but no --embed-ok)" "0" "$(qlog | grep -c '^embed')"
 fx build --first "$C1" --second "$C2" --state c --out "$W/free-c" > /dev/null 2>&1; rc=$?
 eq "::free_arm_never_embeds (state c without --embed-ok is refused: exit 2)" "2" "$rc"
-FX_EXTRA=""
+FX_EXTRA=()
 
 reset_logs
 out="$(fx build --first "$C1" --second "$C2" --state s --out "$W/paid-no" --embed-ok 100 2>&1)"; rc=$?
 eq "::embed_ok_refuses_without_billed_ok (exit 2)" "2" "$rc"
 case "$out" in *HIMMEL_BILLED_OK*) pass "::embed_ok_refuses_without_billed_ok (the refusal names HIMMEL_BILLED_OK)" ;; *) fail "::embed_ok_refuses_without_billed_ok (the refusal names HIMMEL_BILLED_OK): $out" ;; esac
 eq "::embed_ok_refuses_without_billed_ok (no qmd call at all: no embed, no key load)" "" "$(qlog)"
-FX_EXTRA="HIMMEL_BILLED_OK=0"
+FX_EXTRA=(HIMMEL_BILLED_OK=0)
 fx build --first "$C1" --second "$C2" --state s --out "$W/paid-zero" --embed-ok 100 > /dev/null 2>&1; rc=$?
 eq "::embed_ok_refuses_without_billed_ok (HIMMEL_BILLED_OK=0 is not the opt-in)" "2" "$rc"
-FX_EXTRA="HIMMEL_BILLED_OK=1"
+FX_EXTRA=(HIMMEL_BILLED_OK=1)
 fx build --first "$C1" --second "$C2" --state s --out "$W/paid-yes" --embed-ok 100 > /dev/null 2>&1; rc=$?
 eq "::embed_ok_refuses_without_billed_ok (control: with the opt-in the stub sees one embed)" "0|1" "$rc|$(qlog | grep -c '^embed')"
 fx build --first "$C1" --second "$C2" --state s --out "$W/paid-cap" --embed-ok 2 > /dev/null 2>&1; rc=$?
 eq "::embed_ok_refuses_without_billed_ok (control: more documents than the cap is refused: exit 2)" "2" "$rc"
-# state c embeds twice: the first tree (3 files) and then what the second commit changed or added (3 more files)
 reset_logs
 fx build --first "$C1" --second "$C2" --state c --out "$W/paid-c5" --embed-ok 5 > /dev/null 2>&1; rc=$?
 eq "::embed_cap_covers_second_tree (6 documents to embed against a cap of 5: exit 2, no embed)" "2|0" "$rc|$(qlog | grep -c '^embed')"
 reset_logs
 fx build --first "$C1" --second "$C2" --state c --out "$W/paid-c6" --embed-ok 6 > /dev/null 2>&1; rc=$?
 eq "::embed_cap_covers_second_tree (control: a cap of 6 runs both embeds)" "0|2" "$rc|$(qlog | grep -c '^embed')"
-FX_EXTRA=""
+FX_EXTRA=()
 
 reset_logs
 fx serve --index "$W/free-s/index.sqlite" --with-key > /dev/null 2>&1; rc=$?
 eq "::keyed_serve_refuses_without_billed_ok (exit 2)" "2" "$rc"
 eq "::keyed_serve_refuses_without_billed_ok (no daemon, no key load)" "0" "$(qlog | grep -c '^mcp')"
 KEYF="$W/daemon.env"; printf 'QMD_OPENAI_API_KEY=sentinel-key\n' > "$KEYF"; chmod 600 "$KEYF"
-FX_EXTRA="HIMMEL_BILLED_OK=1 QMD_DAEMON_ENV_FILE=$KEYF"
+FX_EXTRA=(HIMMEL_BILLED_OK=1 "QMD_DAEMON_ENV_FILE=$KEYF")
 fx serve --index "$W/free-s/index.sqlite" --with-key > /dev/null 2>&1; rc=$?
 eq "::keyed_serve_refuses_without_billed_ok (control: with the opt-in the daemon gets the key)" "0|1" "$rc|$(qlog | grep -c '^mcp.*KEY=set')"
-FX_EXTRA=""
+FX_EXTRA=()
 fx stop --index "$W/free-s/index.sqlite" > /dev/null 2>&1
 
-# ---- serving, pair.json, the helper's count ----------------------------------------------------------------------------
 
 reset_logs
-FX_EXTRA="QMD_OPENAI_API_KEY=sentinel-key OPENAI_API_KEY=sentinel-key"
+FX_EXTRA=(QMD_OPENAI_API_KEY=sentinel-key OPENAI_API_KEY=sentinel-key)
 url="$(fx serve --index "$W/free-l2/index.sqlite" 2>/dev/null)"; rc=$?
-FX_EXTRA=""
+FX_EXTRA=()
 eq "::free_serve_has_no_key (exit 0)" "0" "$rc"
 eq "::free_serve_has_no_key (the daemon saw no key and the scratch index and config)" "1" \
     "$(qlog | grep -c "^mcp --http --port [0-9]* | INDEX_PATH=$W/free-l2/index.sqlite QMD_CONFIG_DIR=$W/free-l2/config KEY=unset")"
@@ -208,7 +191,6 @@ eq "::free_serve_has_no_key (stop clears the URL and the pid file)" "|gone" "$(p
 if kill -0 "$spid" 2> /dev/null; then sleft=running; else sleft=exited; fi
 eq "::free_serve_has_no_key (stop ends the daemon process)" "exited" "$sleft"
 
-# another qmd daemon that now holds the saved pid (a different port) is dropped, never signalled
 other_port="$(py -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
 LOGDIR="$LOGDIR" "$W/bin/qmd" mcp --http --port "$other_port" > /dev/null 2>&1 &
 other_d=$!
@@ -221,7 +203,6 @@ kill "$other_d" 2> /dev/null
 eq "::stop_ignores_other_daemon (a daemon on another port keeps running, the pid and port files go)" "alive|gone" \
     "$alive|$([ -e "$W/free-s/serve.pid" ] || [ -e "$W/free-s/serve.port" ] && echo left || echo gone)"
 
-# a pid file whose process is not this daemon (the daemon died and the pid was reused) is dropped, never signalled
 sleep 60 &
 other=$!
 printf '%s\n' "$other" > "$W/free-s/serve.pid"
@@ -230,13 +211,11 @@ if kill -0 "$other" 2> /dev/null; then alive=alive; else alive=dead; fi
 kill "$other" 2> /dev/null
 eq "::stop_ignores_reused_pid (an unrelated process keeps running, the pid file goes)" "alive|gone" "$alive|$([ -e "$W/free-s/serve.pid" ] && echo left || echo gone)"
 
-# a rebuild never reuses an index: vectors left in it would pass for the requested state
 reset_logs
 before="$(cksum < "$W/free-s/index.sqlite")"
 fx build --first "$C1" --second "$C2" --state s --out "$W/free-s" > /dev/null 2>&1; rc=$?
 eq "::build_refuses_existing_index (exit 2, the index keeps its bytes, no qmd call)" "2|$before|" "$rc|$(cksum < "$W/free-s/index.sqlite")|$(qlog)"
 
-# a link under an accepted scratch directory is refused, not followed out of it
 mkdir -p "$W/o-cfg" "$W/outside-cfg"
 : > "$W/o-cfg/.staleness-fixture"
 ln -s "$W/outside-cfg" "$W/o-cfg/config"
@@ -250,7 +229,6 @@ helper_n() { # <sha> <config>
 eq "::doc_count_matches_helper (state l: the second tree, 4 files)" "4|4" "$(pj "$OUT" doc_count)|$(helper_n "$C2" "$OUT/config/index.yml")"
 eq "::doc_count_matches_helper (state s: the first tree, 3 files)" "3|3" "$(pj "$W/free-s" doc_count)|$(helper_n "$C1" "$W/free-s/config/index.yml")"
 
-# ---- the graph verb ---------------------------------------------------------------------------------------------------
 
 S12="$(printf '%s' "$C2" | cut -c1-12)"
 reset_logs
@@ -269,9 +247,9 @@ mkdir -p "$W/seed/sub"; printf 'a\n' > "$W/seed/a.json"; printf 'b\n' > "$W/seed
 GOUT="$W/scratch-g"
 before="$(manifest "$W" "$GOUT" "$LOGDIR" "$W/seed")"
 seed_before="$(manifest "$W/seed")"
-FX_EXTRA="GRAPHIFY_OUT=$W/cache-only-override"
+FX_EXTRA=("GRAPHIFY_OUT=$W/cache-only-override")
 fx graph --commit "$C2" --out "$GOUT" --seed-cache "$W/seed" > /dev/null 2>&1; rc=$?
-FX_EXTRA=""
+FX_EXTRA=()
 after="$(manifest "$W" "$GOUT" "$LOGDIR" "$W/seed")"
 eq "::graph_build_writes_only_under_scratch (exit 0)" "0" "$rc"
 eq "::graph_build_writes_only_under_scratch (nothing outside the scratch path changed)" "$before" "$after"
@@ -282,17 +260,14 @@ eq "::graph_build_seeds_cache_copy (the seed is untouched)" "$seed_before" "$(ma
 eq "::graph_build_seeds_cache_copy (the archive is the commit's tree)" "print(3)" "$(tr -d '\n' < "$ARC/tools/b.py")"
 eq "::pair_records_graph_built_at (the commit and its archive)" "$ARC" "$(pj "$GOUT" "graph_built_at.$C2")"
 
-# The real ast-update.sh (graphify stubbed on PATH) takes the seeded archive as its own out dir, with GRAPHIFY_OUT unset.
 eq "::graph_build_real_ast_update_accepts_seeded_out (the stub graphify ran update <archive> --force)" "update $ARC --force | GRAPHIFY_OUT=unset" \
     "$(cat "$LOGDIR/graphify.log" 2>/dev/null | head -1)"
 mkdir -p "$W/cache-only/graphify-out-x/cache"; printf 'a\n' > "$W/cache-only/graphify-out-x/cache/a.json"
 GRAPHIFY_OUT="$W/cache-only/graphify-out-x" PATH="$W/gbin:$PATH" LOGDIR="$LOGDIR" bash "$REPO_ROOT/scripts/graphify/ast-update.sh" "$W/cache-only" > /dev/null 2>&1; rc=$?
 eq "::graph_build_real_ast_update_accepts_seeded_out (control: a cache-only GRAPHIFY_OUT override exits 3)" "3" "$rc"
 
-# ---- the banks ---------------------------------------------------------------------------------------------------------
 
 cat > "$W/check-banks.py" <<'PY'
-"""check-banks.py <repo> <bank.jsonl>...  -> one line per violation; exit 1 on any. A row needs the commits at hand."""
 import json, subprocess, sys
 
 repo = sys.argv[1]
@@ -406,7 +381,6 @@ else
     fail "::no_luna_paths (a bank is missing)"
 fi
 
-# strata_hold_on_git: the real banks on this repo's history where the commits are present, and a planted bank on the fixture repo.
 if bank_ok "$BANK" && bank_ok "$GBANK"; then
     out="$(py "$W/check-banks.py" "$REPO_ROOT" "$BANK" "$GBANK" 2>"$W/skip.txt")"; rc=$?
     eq "::strata_hold_on_git (the real banks on this repo's history $(cat "$W/skip.txt"))" "0" "$rc"

@@ -48,8 +48,6 @@ usage() {
 rp() { python3 -I -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
 inside() { case "$1/" in "$2"/*) return 0 ;; esac; return 1; }  # <path> is <dir> or under it
 
-# Refuse a scratch path that is, or sits under, the live index's directory, the live config dir or a checkout's
-# graphify-out; refuse an index that links to the live one; refuse a directory this script did not make.
 guard_scratch() {
     local out="$1" real live d g
     real="$(rp "$out")"
@@ -69,7 +67,6 @@ guard_scratch() {
     refuse_links "$real"
     OUTR="$real"
 }
-# every name this script writes inside a scratch directory: a link at one would carry a write out of it
 refuse_links() {
     local n
     for n in config tree index.sqlite pair.json pair.json.tmp serve.pid serve.port serve.log qmd-update.log qmd-embed.log "$MARKER"; do
@@ -96,27 +93,26 @@ pj_map() { python3 -I -c "$PJ_PY" "$1" map "$2" "$3" "$4"; }
 need_commit() { git -C "$REPO" rev-parse --verify --quiet "$1^{commit}" || die "not a commit in $REPO: $1" 64; }
 need_value() { [ -n "${2:-}" ] || usage; }
 
-# The live himmel collection's rules (index.yml), in the fixed shape qmd-collection-files.py reads.
-write_config() { # <out> <tree>
+write_config_mirroring_live_himmel_rules() {
     mkdir -p "$1/config"
     {
         printf 'collections:\n  himmel:\n    path: %s\n    pattern: "**/*.md"\n    ignore:\n' "$2"
         printf '      - "graphify-out/**"\n      - "**/fixtures/**"\n      - "marketplace/plugins/*/README*.md"\n'
     } > "$1/config/index.yml"
 }
-count_paths() { # <config>: how many of the NUL-separated paths on stdin the collection would index
+count_paths() {
     xargs -0 -n 500 python3 -I "$LIB/qmd-collection-files.py" --config "$1" himmel | wc -l | tr -d ' '
 }
-doc_count() { # <sha> <config>: the files the collection would index from that tree
+doc_count() {
     git -C "$REPO" ls-tree -r --name-only -z "$1" | count_paths "$2"
 }
-delta_count() { # <first> <second> <config>: the files the second commit adds or changes that the collection would index
+delta_count() {
     git -C "$REPO" diff --name-only -z --no-renames --diff-filter=AM "$1" "$2" | count_paths "$3"
 }
-unpack() { # <sha> <dir>: the commit's markdown, replacing what the dir held
+unpack() {
     rm -rf "$2" && mkdir -p "$2" && git -C "$REPO" archive --format=tar "$1" -- '*.md' | tar -x -C "$2" || die "git archive of $1 failed" 1
 }
-qrun() { # <verb> [args]: qmd on the scratch index and config, with no provider key
+qrun() {
     env -u QMD_OPENAI_API_KEY -u OPENAI_API_KEY -u OPENROUTER_API_KEY \
         INDEX_PATH="$OUTR/index.sqlite" QMD_CONFIG_DIR="$OUTR/config" "$QMD" "$@" > "$OUTR/qmd-$1.log" 2>&1 \
         || die "qmd $1 failed (see $OUTR/qmd-$1.log)" 1
@@ -155,7 +151,7 @@ cmd_build() {
     guard_scratch "$out"
     if [ -e "$OUTR/index.sqlite" ]; then die "refusing $out: it already holds an index; a rebuild needs a fresh scratch path"; fi
     make_scratch
-    write_config "$OUTR" "$OUTR/tree"
+    write_config_mirroring_live_himmel_rules "$OUTR" "$OUTR/tree"
     n1="$(doc_count "$first" "$OUTR/config/index.yml")" || die "the collection helper refused the first tree" 1
     n2="$(doc_count "$second" "$OUTR/config/index.yml")" || die "the collection helper refused the second tree" 1
     if [ -n "$cap" ]; then
@@ -186,7 +182,6 @@ cmd_build() {
     pj_set "$OUTR" served_url null
 }
 
-# <index> -> the scratch dir that holds it, after the refusals every verb shares
 scratch_of_index() {
     local idx="$1" real
     if [ -L "$idx" ]; then die "refusing $idx: it is a symlink"; fi
@@ -239,8 +234,18 @@ cmd_serve() {
     printf 'http://127.0.0.1:%s/mcp\n' "$port"
 }
 
+is_our_daemon() {
+    local args
+    [ -n "$2" ] || return 1
+    args="$(ps -p "$1" -o args= 2> /dev/null)"
+    case "$args" in
+    *"mcp --http --port $2" | *"mcp --http --port $2 "*) return 0 ;;
+    esac
+    return 1
+}
+
 cmd_stop() {
-    local index="" pid i args port
+    local index="" pid i
     while [ $# -gt 0 ]; do
         case "$1" in
         --index) need_value "$@"; index="$2"; shift 2 ;;
@@ -251,15 +256,11 @@ cmd_stop() {
     scratch_of_index "$index"
     if [ -f "$OUTR/serve.pid" ]; then
         pid="$(cat "$OUTR/serve.pid")"
-        # a pid whose process is not this daemon on its own port (it died and the number was reused) is dropped, never signalled
-        port="$(cat "$OUTR/serve.port" 2> /dev/null)"
-        args="$(ps -p "$pid" -o args= 2> /dev/null)"
-        case "${port:+$args}" in
-        *"mcp --http --port $port" | *"mcp --http --port $port "*)
+        if is_our_daemon "$pid" "$(cat "$OUTR/serve.port" 2> /dev/null)"; then
             kill "$pid" 2> /dev/null
             i=0
-            while kill -0 "$pid" 2> /dev/null && [ "$i" -lt 20 ]; do sleep 0.25; i=$((i + 1)); done ;;
-        esac
+            while kill -0 "$pid" 2> /dev/null && [ "$i" -lt 20 ]; do sleep 0.25; i=$((i + 1)); done
+        fi
         rm -f "$OUTR/serve.pid" "$OUTR/serve.port"
     fi
     if [ -f "$OUTR/pair.json" ]; then pj_set "$OUTR" served_url null; fi
