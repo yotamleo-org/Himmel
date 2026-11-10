@@ -62,7 +62,7 @@ rst_with() {
 rc_is() { [ "$RC" -eq "$1" ]; }
 absent() { [ ! -e "$1" ]; }
 no_markers() { ! ls "$T"/ran-*.marker >/dev/null 2>&1; }
-content_is() { [ "$(cat "$1" 2>/dev/null)" = "$2" ]; }
+content_is() { [ "$(cat "$1" 2>/dev/null)" = "$2" ]; } # read-sink-ok: a fixture file this test just wrote
 no_ran0() { ! grep -rq '^ran 0 ' "$T" 2>/dev/null; }
 
 A="scripts/testing/test-a.sh"

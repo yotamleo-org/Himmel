@@ -71,7 +71,7 @@ verify() {
 "
       paths="$paths$(field3 "$line")
 "
-    done <"$raw"
+    done <"$raw" # read-sink-ok: the raw rows file ci-quick uploaded, read only to validate its rows
   fi
   if [ -n "$bad" ]; then
     printf 'claude-startup-row: malformed row(s):\n%s' "$bad" >&2
@@ -82,7 +82,7 @@ verify() {
     while IFS= read -r line || [ -n "$line" ]; do
       printf '%s\n' "$set_" | grep -qxF -- "$(field3 "$line")" || bad="$bad$line
 "
-    done <"$raw"
+    done <"$raw" # read-sink-ok: the raw rows file ci-quick uploaded, read only to validate its rows
   fi
   if [ -n "$bad" ]; then
     printf 'claude-startup-row: row(s) for a path outside the expected set:\n%s' "$bad" >&2
@@ -93,7 +93,7 @@ verify() {
     while IFS= read -r line || [ -n "$line" ]; do
       [ "$(printf '%s' "$paths" | grep -cxF -- "$(field3 "$line")")" -le 1 ] || bad="$bad$line
 "
-    done <"$raw"
+    done <"$raw" # read-sink-ok: the raw rows file ci-quick uploaded, read only to validate its rows
   fi
   if [ -n "$bad" ]; then
     printf 'claude-startup-row: duplicated row(s):\n%s' "$bad" >&2
@@ -119,7 +119,7 @@ EOF
         rm -rf "$od"
         return 2
       }
-    done <"$raw"
+    done <"$raw" # read-sink-ok: the raw rows file ci-quick uploaded, read only to validate its rows
   done <<EOF
 $set_
 EOF
