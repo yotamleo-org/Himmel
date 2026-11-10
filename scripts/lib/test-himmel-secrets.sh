@@ -39,27 +39,26 @@ mkdir -p "$REPO"
 git -C "$REPO" init --quiet
 PROJ=$(cd "$REPO" && pwd -P)
 
-# L0-L5: the import lock works without flock, on every platform. The import verb
-# is unreachable on Darwin (no keyring), so these rows run _hs_import_lock itself,
-# cut out of the script, under a PATH that holds no flock.
+# The import verb is unreachable on Darwin (no keyring), so the L rows run
+# _hs_import_lock itself, cut out of the script, under a PATH with no flock.
 NOFLOCK="$TMP/noflock-bin"
 mkdir -p "$NOFLOCK"
 for _l_t in mkdir rmdir rm mv cat cksum cut kill sleep printf dirname date ln readlink; do
     _l_p=$(command -v "$_l_t") && ln -sf "$_l_p" "$NOFLOCK/$_l_t"
 done
 BASH_BIN=$(command -v bash)
-sed -n '/^_hs_import_lock() {$/,/^}$/p' "$HS" >"$TMP/lockfn.sh"
 cat >"$TMP/lockdrv.sh" <<'DRV'
 _hs_die() { printf 'himmel-secrets: %s\n' "$*" >&2; exit 2; }
 _himmel_config_dir() { printf '%s\n' "$HIMMEL_CONFIG_DIR"; }
 HS_SCOPE_PROJECT=""
-. "$LOCKFN"  # read-sink-ok: this suite's own extract, written under its mktemp dir just above
+DRV
+sed -n '/^_hs_import_lock() {$/,/^}$/p' "$HS" >>"$TMP/lockdrv.sh"
+cat >>"$TMP/lockdrv.sh" <<'DRV'
 _hs_import_lock
 echo locked
 sleep "${HOLD:-0}"
 DRV
-lockrun() { env -i PATH="$NOFLOCK" HIMMEL_CONFIG_DIR="${LCONF:-$HIMMEL_CONFIG_DIR}" LOCKFN="$TMP/lockfn.sh" HOLD="${1:-0}" "$BASH_BIN" "$TMP/lockdrv.sh" 2>&1; echo "rc=$?"; }
-# lockwait: until the user-scope lock is taken (at most 10 s), so a row never races the holder's start.
+lockrun() { env -i PATH="$NOFLOCK" HIMMEL_CONFIG_DIR="${LCONF:-$HIMMEL_CONFIG_DIR}" HOLD="${1:-0}" "$BASH_BIN" "$TMP/lockdrv.sh" 2>&1; echo "rc=$?"; }
 lockwait() { local _w=0; while [ "$_w" -lt 100 ] && ! grep -qx locked "$1" 2>/dev/null; do sleep 0.1; _w=$((_w + 1)); done; }
 LOCKLINK="$HIMMEL_CONFIG_DIR/import-env.user.owner"
 assert_eq "L0 flock is hidden from the lock's PATH" "" "$(PATH="$NOFLOCK" command -v flock)"
@@ -75,7 +74,6 @@ wait "$l1_pid" 2>/dev/null
 got=$(lockrun 0)
 assert_eq "L2 a killed import leaves no stale lock" "locked|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
 assert_eq "L3 a finished import leaves nothing under the lock path" "0" "$(find "$HIMMEL_CONFIG_DIR" -name 'import-env.*' 2>/dev/null | grep -c .)"
-# L4: twelve imports race for one stale lock; exactly one takes it.
 mkdir -p "$HIMMEL_CONFIG_DIR"
 sleep 0.01 & l4_dead=$!; wait "$l4_dead"
 ln -s "$l4_dead" "$LOCKLINK"
@@ -83,12 +81,10 @@ for l4_i in 1 2 3 4 5 6 7 8 9 10 11 12; do lockrun 2 >"$TMP/l4.$l4_i" & done
 wait
 assert_eq "L4 twelve imports over one stale lock: exactly one wins" "1" "$(cat "$TMP"/l4.* | grep -c '^locked$')"
 assert_eq "L4 the lock is gone once the winner ends" "0" "$(find "$HIMMEL_CONFIG_DIR" -name 'import-env.*' 2>/dev/null | grep -c .)"
-# L5: a config dir whose path holds a quote still has its lock removed at exit.
 L5CONF="$TMP/it's conf"
 got=$(LCONF="$L5CONF" lockrun 0)
 assert_eq "L5 a quote in the config path: the import runs" "locked|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
 assert_eq "L5 a quote in the config path: the lock is removed at exit" "0" "$(find "$L5CONF" -name 'import-env.*' 2>/dev/null | grep -c .)"
-# L6: a takeover guard left by a killed contender is named, not reported as a running import.
 ln -s "$l4_dead" "$LOCKLINK"
 ln -s "$l4_dead" "$LOCKLINK.reap"
 got=$(lockrun 0)
