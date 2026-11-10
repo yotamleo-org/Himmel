@@ -3159,6 +3159,12 @@ test("a hand-over chain is followed to its end, and a loop stops and still deliv
   await routeText(r, `/chief ${HX} chained`);
   expect(inboxText(r, HZ)).toContain("] chained\n");
   expect(inboxText(r, HX) + inboxText(r, HY)).toBe("");
+  const c = root(); const a = heartbeat(c, HX); armInbox(c, HY); armInbox(c, HZ); handOver(c, HX, HY); handOver(c, HY, HZ);
+  const t = Date.now() / 1000;
+  utimesSync(a + ".handover", t - 60, t - 60);
+  writeFileSync(a, "- 00:02 [telegram from=1 chat=1] raced the hand-over\n");
+  await routeText(c, `/chief ${HX} after the chain`);
+  expect(inboxText(c, HZ)).toMatch(/^- 00:02 \[telegram from=1 chat=1\] raced the hand-over\n- \d\d:\d\d \[telegram from=1 chat=1\] after the chain\n$/);
   const l = root(); heartbeat(l, HX); armInbox(l, HY); handOver(l, HX, HY); handOver(l, HY, HX);
   await routeText(l, `/chief ${HX} looped`);
   expect(inboxText(l, HY)).toContain("] looped\n");

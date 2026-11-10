@@ -127,37 +127,38 @@ async function handoverMarker(inbox: string): Promise<string | null> {
 // that chain to the last inbox that exists, so a line addressed to an old chief
 // reaches the one reading now. An unreadable, empty or unsafe marker, a
 // successor with no inbox yet, a loop or the hop cap stops the walk where it
-// is: the line then lands in the inbox reached so far, never nowhere.
+// is: the line then lands in the inbox reached so far, never nowhere. Returns
+// the names walked, the addressed one first and the one to deliver to last.
 const HANDOVER_MAX_HOPS = 1000;
-export async function handoverSuccessor(root: string, name: string): Promise<string> {
-  const seen = new Set([name]);
+export async function handoverSuccessor(root: string, name: string): Promise<string[]> {
+  const path = [name];
   for (let hop = 0; hop < HANDOVER_MAX_HOPS; hop++) {
-    const inbox = consoleInboxPath(root, name);
+    const inbox = consoleInboxPath(root, path.at(-1)!);
     const next = inbox ? await handoverMarker(inbox) : null;
     const nextInbox = next ? consoleInboxPath(root, next) : null;
-    if (!next || !nextInbox || seen.has(next) || !(await isFile(nextInbox))) break;
-    seen.add(next);
-    name = next;
+    if (!next || !nextInbox || path.includes(next) || !(await isFile(nextInbox))) break;
+    path.push(next);
   }
-  return name;
+  return path;
 }
 
 // A line can still reach an inbox after its marker: a route that raced
 // `chief.sh next`, or one sent while the successor had no inbox yet. Its unread
 // tail (past inbox-follow.sh's byte cursor, complete lines only) moves to the
-// successor the marker names: appended there, then the old cursor skips it, so
-// it moves once and the old chief's waiter does not also wake on it. Only an
-// inbox written after its marker counts.
-export async function forwardAfterHandover(root: string, to: string): Promise<void> {
+// chief the route delivers to: appended there, then the old cursor skips it, so
+// it moves once and the old chief's waiter does not also wake on it. The
+// sources are the inboxes this route walked through and every inbox whose
+// marker names the target; only an inbox written after its marker counts.
+export async function forwardAfterHandover(root: string, path: string[]): Promise<void> {
+  const to = path.at(-1)!;
   const target = consoleInboxPath(root, to);
   if (!target) return;
   let files: string[];
   try { files = await readdir(join(root, "consoles")); } catch { return; }
-  for (const f of files) {
-    if (!f.endsWith(".md.handover")) continue;
-    const from = f.slice(0, -".md.handover".length);
+  const named = files.filter(f => f.endsWith(".md.handover")).map(f => f.slice(0, -".md.handover".length));
+  for (const from of new Set([...path.slice(0, -1), ...named])) {
     const inbox = consoleInboxPath(root, from);
-    if (!inbox || from === to || await handoverMarker(inbox) !== to) continue;
+    if (!inbox || from === to || (!path.includes(from) && await handoverMarker(inbox) !== to)) continue;
     try {
       const [marker, box] = await Promise.all([stat(inbox + ".handover"), stat(inbox)]);
       if (!box.isFile() || box.mtimeMs < marker.mtimeMs) continue;
@@ -349,9 +350,10 @@ export async function routeToConsole(
   }
   if (!file) return;
   const addressed = name;
-  name = await handoverSuccessor(root, name);
+  const path = await handoverSuccessor(root, name);
+  name = path.at(-1)!;
   file = consoleInboxPath(root, name)!;
-  await forwardAfterHandover(root, name);
+  await forwardAfterHandover(root, path);
   // Append only to an inbox a chief already armed; never create one, so a typo
   // cannot open a mailbox nobody reads. The append itself is the existence
   // check, no separate existsSync() step left to race.
