@@ -38,7 +38,7 @@ Optional flags:
   --with-graphify  Install the graphify knowledge-graph CLI (himmel fork) at
                    the end of setup. Without the flag, interactive shells
                    prompt; non-interactive shells skip. Adoption verdict is
-                   still open (HIMMEL-621) — this only installs the CLI.
+                   still open — this only installs the CLI.
   --fill-env       After creating .env, interactively prompt for each must-set
                    value (Enter to skip / keep current). Non-interactive shells
                    no-op. Without the flag, .env keeps the .env.example placeholders.

@@ -1135,33 +1135,33 @@ echo "test-check-ci.sh"
 run no-pr
 assert_rc 2 "1 no PR rc 2"
 assert_err_has "no pull requests found" "1 no PR gh error surfaced"
-assert_verdict 2 "1 un-maskable verdict line (HIMMEL-974)"
+assert_verdict 2 "1 un-maskable verdict line"
 
 # 2 — registers after two probes, watch green, threads resolved
 run register-then-green
 assert_rc 0 "2 register-then-green rc 0"
 assert_out_has "all checks green + all review threads resolved" "2 green verdict on stdout"
-assert_verdict 0 "2 un-maskable verdict line (HIMMEL-974)"
+assert_verdict 0 "2 un-maskable verdict line"
 
 # 3 — red (fast) → rc 1 + billing-block hint
 run red
 assert_rc 1 "3 red rc 1"
 assert_err_has "checks FAILED" "3 FAILED on stderr"
 assert_err_has "billing" "3 fast-red hint present"
-assert_verdict 1 "3 un-maskable verdict line (HIMMEL-974)"
+assert_verdict 1 "3 un-maskable verdict line"
 
 # 4 — never registers, grace 0
 run never-register --grace 0
 assert_rc 2 "4 never-register rc 2"
 assert_err_has "no checks registered within 0s" "4 grace-timeout message"
-assert_verdict 2 "4 a genuine cannot-evaluate still exits 2 WITH its verdict (HIMMEL-3317 false-positive control)"
+assert_verdict 2 "4 a genuine cannot-evaluate still exits 2 WITH its verdict (false-positive control)"
 
 # 5 — unknown option: a usage error is rc 64 (EX_USAGE), NOT 2, and it carries the
 # un-maskable verdict line too — no gate ran, so a caller must be able to tell
 run red --bogus
 assert_rc 64 "5 unknown option rc 64"
 assert_err_has "usage" "5 usage on stderr"
-assert_verdict 64 "5 verdict line on usage errors (HIMMEL-3317)"
+assert_verdict 64 "5 verdict line on usage errors"
 
 # 5c — `--pr <n>`: the plausible-but-wrong spelling (the PR number is POSITIONAL) that
 # recorded a gate result for a gate that never ran. Distinct code AND a marker line.
@@ -1227,7 +1227,7 @@ THREADS_OVERRIDE=2
 run register-then-green
 assert_rc 3 "11 unresolved threads rc 3"
 assert_err_has "2 unresolved review thread(s)" "11 unresolved-thread message"
-assert_verdict 3 "11 un-maskable verdict line (HIMMEL-974)"
+assert_verdict 3 "11 un-maskable verdict line"
 
 # 12 — thread query failure → rc 2 (gate cannot be evaluated, fail-closed)
 THREADS_OVERRIDE=fail
@@ -1348,24 +1348,24 @@ assert_err_has "no check is in the fail bucket" "26 structured-confirm message"
 # block. An earlier change reversed that: checks green, threads clean, CodeRabbit
 # never posted on this head — advisory NOTE, still green.
 run cr-absent
-assert_rc 0 "27 absent CodeRabbit status is advisory only, not a block (HIMMEL-3360)"
+assert_rc 0 "27 absent CodeRabbit status is advisory only, not a block"
 assert_err_has "check-ci: NOTE — CodeRabbit absent on head" "27 absent prints the advisory NOTE"
 
 # 28 — CodeRabbit still reviewing the head: advisory NOTE, never a block.
 run cr-pending
-assert_rc 0 "28 pending CodeRabbit status is advisory only, not a block (HIMMEL-3360)"
+assert_rc 0 "28 pending CodeRabbit status is advisory only, not a block"
 assert_err_has "check-ci: NOTE — CodeRabbit pending on head" "28 pending prints the advisory NOTE"
 
 # 29 — CodeRabbit's own status failed/errored: advisory NOTE, never a block.
 run cr-failure
-assert_rc 0 "29 failed CodeRabbit status is advisory only, not a block (HIMMEL-3360)"
+assert_rc 0 "29 failed CodeRabbit status is advisory only, not a block"
 assert_err_has "check-ci: NOTE — CodeRabbit failure on head" "29 failure prints the advisory NOTE"
 
 # 30 — identity, not display name: a success status carrying the
 # CodeRabbit context but a foreign creator.id does not satisfy the identity
 # check, so cr_signal_state reads it as absent — advisory NOTE, not a block.
 run cr-spoofed
-assert_rc 0 "30 spoofed creator.id reads as absent, which is advisory only (HIMMEL-3360)"
+assert_rc 0 "30 spoofed creator.id reads as absent, which is advisory only"
 
 # 31 — a repo with no CodeRabbit opts out explicitly rather than being blocked
 # forever: CR_PROFILE=none skips the required-signal gate.
@@ -1396,7 +1396,7 @@ assert_err_has "NOTE — CodeRabbit paged" "34 paged NOTE"
 # ordinary review still passes too, so the fix cannot be satisfied by breaking
 # `success`.
 run cr-skipped
-assert_rc 0 "34b skipped CodeRabbit review is advisory only, not a block (HIMMEL-3360)"
+assert_rc 0 "34b skipped CodeRabbit review is advisory only, not a block"
 assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34b skip prints the advisory NOTE"
 
 run cr-completed
@@ -1466,8 +1466,8 @@ git -C "$CR_YAML_UNARMED_REPO" -c user.email=t@t -c user.name=t commit --quiet -
 # no ledger/panel evidence at all — the exact fixture the old panel-carry
 # mechanism needed evidence to certify. It is advisory on its own now.
 run_in_repo "$EMPTY_LEDGER_REPO" cr-ratelimited
-assert_rc 0 "34e rate-limited CodeRabbit status is advisory only, no panel evidence needed (HIMMEL-3360)"
-assert_err_has "check-ci: NOTE — CodeRabbit rate-limited on head" "34e rate-limited status is named rate-limited (HIMMEL-8880)"
+assert_rc 0 "34e rate-limited CodeRabbit status is advisory only, no panel evidence needed"
+assert_err_has "check-ci: NOTE — CodeRabbit rate-limited on head" "34e rate-limited status is named rate-limited"
 assert_err_has "NO review at this head" "34e the rate-limited NOTE says no review was posted"
 # shellcheck disable=SC2016  # the backticks are literal text in the NOTE
 assert_err_has 'Re-request once when capacity returns: comment `@coderabbitai review`' "34e the rate-limited NOTE tells the user to re-request after capacity returns"
@@ -1489,7 +1489,7 @@ assert_err_lacks "34e3 only a skipped success is named rate-limited" "rate-limit
 # allow-list this failed closed; an earlier change made the status advisory
 # regardless of wording, enumerated or not.
 run cr-unknownword
-assert_rc 0 "34f an UNENUMERATED success wording is advisory only, not a block (HIMMEL-3360)"
+assert_rc 0 "34f an UNENUMERATED success wording is advisory only, not a block"
 
 # 34j/k/l: a state=success with a MISSING / null / EMPTY
 # description is not an affirmative review. coderabbit-signal.sh used to keep the
@@ -1498,21 +1498,21 @@ assert_rc 0 "34f an UNENUMERATED success wording is advisory only, not a block (
 # same advisory NOTE as 34b/34e/34f. Positive control (34m): the SAME state
 # with the observed wording stays green — no NOTE.
 run cr-nodesc
-assert_rc 0 "34j missing-description success is advisory only (HIMMEL-1356)"
+assert_rc 0 "34j missing-description success is advisory only"
 assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34j missing description reads as skipped"
 run cr-nulldesc
-assert_rc 0 "34k null-description success is advisory only (HIMMEL-1356)"
+assert_rc 0 "34k null-description success is advisory only"
 assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34k null description reads as skipped"
 run cr-emptydesc
-assert_rc 0 "34l empty-description success is advisory only (HIMMEL-1356)"
+assert_rc 0 "34l empty-description success is advisory only"
 assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34l empty description reads as skipped"
 run cr-completed
-assert_rc 0 "34m 'Review completed' success is green (HIMMEL-1356 control)"
+assert_rc 0 "34m 'Review completed' success is green (control)"
 assert_err_lacks "34m affirmative wording prints no skipped NOTE" "skipped NOTE present" -F -- "CodeRabbit skipped on head"
 # 34n — the outage release valve: CR_OK_DESC_RE widened to admit the empty
 # description (a CodeRabbit payload change that drops the field) reads green.
 CR_OK_DESC_RE='^(|review completed|no review changes requested)$' run cr-emptydesc
-assert_rc 0 "34n the outage override releases an empty description (HIMMEL-1356)"
+assert_rc 0 "34n the outage override releases an empty description"
 assert_err_lacks "34n released empty description prints no skipped NOTE" "skipped NOTE present" -F -- "CodeRabbit skipped on head"
 
 # 3152-a/b/c/d (--escalate against a skip-classified/rate-limited status) and
@@ -1525,7 +1525,7 @@ assert_err_lacks "34n released empty description prints no skipped NOTE" "skippe
 # required case (e): the removed --escalate flag is now an
 # unrecognized flag, sysexits EX_USAGE.
 run cr-completed --escalate
-assert_rc 64 "3360e --escalate is a removed flag, exit 64 usage (HIMMEL-3360)"
+assert_rc 64 "3360e --escalate is a removed flag, exit 64 usage"
 
 # required case (d): CI green + ONE unresolved coderabbitai
 # thread + CR status absent — the thread gate still blocks even though the
@@ -1729,7 +1729,7 @@ assert_rc 3 "R16 amend --set head= does not carry a disposition to the new head"
 # finding still blocks until dispositioned — the gate now reads the governing
 # prior review (shaOLD) instead of the silent current head.
 BODY_FILE_OVERRIDE="$OD_BQ_BODY"; run_in_repo "$EMPTY_LEDGER_REPO" body-a2-file
-assert_rc 3 "39 a posted prior-head outside-diff finding still blocks (HIMMEL-3360 operator ruling)"
+assert_rc 3 "39 a posted prior-head outside-diff finding still blocks (operator ruling)"
 assert_err_has "not dispositioned" "39 message reports the finding as not dispositioned"
 assert_err_has "latest review at prior head shaOLD" "39 message names the governing prior head"
 assert_err_has "--head shaOLD" "39 recipe binds the finding to the governing prior head"
@@ -1917,7 +1917,7 @@ assert_grep_lacks "57 disarmed gate is silent about CodeRabbit" "output mentione
 export ARMAUTOMERGE=1 CR_MERGE_GATE_OK=1
 THREADS_OVERRIDE=fail
 run register-then-green
-assert_rc 2 "58 armed bypass env does not open a block-case (HIMMEL-1495)"
+assert_rc 2 "58 armed bypass env does not open a block-case"
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
 
 # ── bounded watch — early exit + --max-wait cap ─────────────────
@@ -2197,7 +2197,7 @@ else
     fail "2907-b extends exactly once, not infinitely" "WAITING appeared $waiting_count times, want 1"
 fi
 assert_err_has "still pending (unit-tests)" "2907-b the exit-2 line names the pending job"
-assert_err_has "DEADLINE-PENDING" "2907-b the exit-2 line names a deadline-with-pending, not an error (HIMMEL-4131)"
+assert_err_has "DEADLINE-PENDING" "2907-b the exit-2 line names a deadline-with-pending, not an error"
 
 # --- --max-wait bounds the WHOLE run ---------------------------
 # Real sleeps: elapsed wall time is the signal. Each stub watch runs 3s+ (8s for
@@ -2362,13 +2362,13 @@ fi
 MPR_OVERRIDE=dependabot
 run cr-absent
 assert_rc 0 "2278-a dependabot PR passes with no CodeRabbit review"
-assert_err_has "NOTE — CodeRabbit absent" "2278-a absent status is the plain NOTE (classifier deleted, HIMMEL-3360)"
+assert_err_has "NOTE — CodeRabbit absent" "2278-a absent status is the plain NOTE (classifier deleted)"
 
 # 2278-b — a graph-publish artifact PR + no App review → rc 0 (the #2035 shape).
 MPR_OVERRIDE=graph
 run cr-absent
 assert_rc 0 "2278-b graphify-artifact PR passes with no CodeRabbit review"
-assert_err_has "NOTE — CodeRabbit absent" "2278-b absent status is the plain NOTE (classifier deleted, HIMMEL-3360)"
+assert_err_has "NOTE — CodeRabbit absent" "2278-b absent status is the plain NOTE (classifier deleted)"
 
 # 2278-c — the former spoof control (artifact paths PLUS a code path). No
 # longer distinguishable from the positives at the cr_signal_gate exit code
@@ -2376,49 +2376,49 @@ assert_err_has "NOTE — CodeRabbit absent" "2278-b absent status is the plain N
 # misclassification-prone probe reply still doesn't crash or mis-exit.
 MPR_OVERRIDE=graph-plus-code
 run cr-absent
-assert_rc 0 "2278-c artifact paths PLUS a code path — advisory now regardless of shape (HIMMEL-3360)"
+assert_rc 0 "2278-c artifact paths PLUS a code path — advisory now regardless of shape"
 
 # 2278-d — an ordinary human code PR with no App review: advisory now too.
 MPR_OVERRIDE=none
 run cr-absent
-assert_rc 0 "2278-d ordinary code PR is advisory-only on an absent review (HIMMEL-3360)"
+assert_rc 0 "2278-d ordinary code PR is advisory-only on an absent review"
 
 # 2278-e — a human account whose login merely LOOKS like the bot's. is_bot is
 # GitHub's; the impostor stays outside the class, but that no longer changes
 # the exit code either way.
 MPR_OVERRIDE=dep-impostor
 run cr-absent
-assert_rc 0 "2278-e dependabot login without is_bot — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-e dependabot login without is_bot — advisory regardless"
 
 # 2278-f — the classifier's own probe erroring is not evidence of anything;
 # no longer observable via cr_signal_gate's exit code.
 MPR_OVERRIDE=probe-fail
 run cr-absent
-assert_rc 0 "2278-f an erroring author/files probe — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-f an erroring author/files probe — advisory regardless"
 
 # 2278-g — a response missing the MPR_OK sentinel must not parse as a bot
 # author with zero files; no longer observable via the exit code.
 MPR_OVERRIDE=garbage
 run cr-absent
-assert_rc 0 "2278-g a sentinel-less probe response — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-g a sentinel-less probe response — advisory regardless"
 
 # 2278-h — a single file literally named `*`. Comparing in the wrong direction
 # would glob-match it into the class; no longer observable via the exit code.
 MPR_OVERRIDE=globname
 run cr-absent
-assert_rc 0 "2278-h a glob-named path — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-h a glob-named path — advisory regardless"
 
 # 2278-l — an empty changed-file list is not "all paths are artifacts"; no
 # longer observable via the exit code.
 MPR_OVERRIDE=empty
 run cr-absent
-assert_rc 0 "2278-l an empty file list — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-l an empty file list — advisory regardless"
 
 # 2278-m — a truncated-but-rc-0 probe: it advertises 3 files but emits only
 # the two artifact paths; no longer observable via the exit code.
 MPR_OVERRIDE=truncated
 run cr-absent
-assert_rc 0 "2278-m a truncated file list — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-m a truncated file list — advisory regardless"
 
 # --- the class tolerates SILENCE, and only silence ---
 #
@@ -2434,18 +2434,18 @@ assert_rc 0 "2278-m a truncated file list — advisory regardless (HIMMEL-3360)"
 # class.
 MPR_OVERRIDE=dependabot
 run cr-ratelimited
-assert_rc 0 "2278-n a rate-limited App is advisory, for every PR (HIMMEL-3360)"
+assert_rc 0 "2278-n a rate-limited App is advisory, for every PR"
 
 # 2278-o — a FAILED App status: an earlier change made failure/error advisory-only
 # for every PR (not just this class) — rc 0, an advisory NOTE, never a block.
 MPR_OVERRIDE=dependabot
 run cr-failure
-assert_rc 0 "2278-o a failed App status is advisory-only now, for every PR (HIMMEL-3360)"
+assert_rc 0 "2278-o a failed App status is advisory-only now, for every PR"
 
 # 2278-p — nor is a PENDING one: also advisory now, for every PR.
 MPR_OVERRIDE=dependabot
 run cr-pending
-assert_rc 0 "2278-p a pending App review is advisory-only now, for every PR (HIMMEL-3360)"
+assert_rc 0 "2278-p a pending App review is advisory-only now, for every PR"
 
 # 2278-q — THE codex-1 control. The App reviewed this machine PR after all and
 # posted an outside-diff-range body finding, which carries no thread to resolve.

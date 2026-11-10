@@ -438,7 +438,7 @@ or_opus_label="$OPENROUTER_OPUS"
 [ "$OPENROUTER_OPUS" != "$OPENROUTER_MODEL" ] || or_opus_label="$or_label"
 export ANTHROPIC_DEFAULT_SONNET_MODEL_NAME="$or_sonnet_label"
 export ANTHROPIC_DEFAULT_OPUS_MODEL_NAME="$or_opus_label"
-# ponytail: client-side auto classifier through the gateway (HIMMEL-4086),
+# Client-side auto classifier through the gateway: the billing notice holds the first action of an unattended leg,
 # remove this temporary switch when safeguards/safeguard_results pass through.
 export CLAUDE_CODE_AUTO_MODE_SERVER=0
 # The client classifier's side query carries no reasoning, and the gateway 400s

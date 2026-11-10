@@ -127,7 +127,7 @@ for spec in handover@himmel notes@obsidian-skills review@claude-plugins-official
     assert_has "P1 $spec uses project scope" "plugin uninstall $spec --scope project" "$calls"
     assert_not_has "P1 $spec never uninstalls at user scope" "plugin uninstall $spec --scope user" "$calls"
 done
-assert_has "P1 marketplace also tries install-profile scope (HIMMEL-2796)" 'plugin marketplace remove himmel --scope user' "$calls"
+assert_has "P1 marketplace also tries install-profile scope" 'plugin marketplace remove himmel --scope user' "$calls"
 
 # WHY: local installs belong to their physical project too.
 reset_case
