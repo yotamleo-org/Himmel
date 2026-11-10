@@ -14,11 +14,11 @@
       "parent": null
     },
     {
-      "relative_path": "proj/parentA/subagents/agent-a1.jsonl",
+      "relative_path": "proj/parentA/subagents/agent-fx1.jsonl",
       "bytes": 179,
       "sha256": "18b58babf26e3bbf53b71a29d6f239f53d961a40df554158d1781ab3e8466050",
       "provider": "claude",
-      "session": "agent-a1",
+      "session": "agent-fx1",
       "parent": "parentA"
     }
   ]
