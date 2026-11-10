@@ -152,7 +152,6 @@ assert "clip gone from top-level Clippings/" "yes" "$gone"
 # mis-parses inline quoted patterns/replacements and leaks the quote characters into the
 # result; a quoted pattern held in a variable with an UNQUOTED replacement variable is
 # the one spelling that behaves identically on 3.2 and 5.x.
-# Works around bash 3.2 quoting (no product bug); drop once macOS CI runs bash >= 4.
 lit_sub() {
   local _v="$1" _p="$2" _r="$3" _cur
   eval "_cur=\$$_v"

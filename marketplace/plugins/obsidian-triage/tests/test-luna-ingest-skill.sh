@@ -22,7 +22,6 @@ set -u -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-# Plugin moved under marketplace/plugins/.
 # Plugin path: marketplace/plugins/obsidian-triage/
 # To reach himmel repo root: PLUGIN_DIR/../../..
 REPO_DIR="$(cd "$PLUGIN_DIR/../../.." && pwd)"
