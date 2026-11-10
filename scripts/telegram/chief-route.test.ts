@@ -2559,6 +2559,23 @@ test("R-seed-twice: round-seed refuses a root that already holds a ledger, a sna
   expect((await routeCli("round-seed", "--all", l.specs)).err).toContain("already holds a ledger, snapshot or manifest");
 });
 
+test("round-seed refuses a root whose real folder is not named specs, and seeds a symlink to one under its real path", async () => {
+  const base = realpathSync(root()); const other = join(base, "spec-store"); mkdirSync(join(other, "designs"), { recursive: true });
+  writeFileSync(join(other, "designs", `${ROUND_KEY}-x.md.critic-spec-r1.md`), ret("SPEC CLEAN"));
+  const named = await routeCli("round-seed", "--all", other);
+  expect(named.code).not.toBe(0);
+  expect(named.err).toContain(`round-seed: ${other} is not a specs root; seals look for the ledger under the last folder named specs`);
+  expect(existsSync(join(other, "ledgers"))).toBe(false);
+  const link = join(base, "specs"); symlinkSync(other, link);
+  const viaLink = await routeCli("round-seed", "--all", link);
+  expect(viaLink.code).not.toBe(0);
+  expect(viaLink.err).toContain(`round-seed: ${other} is not a specs root`);
+  const t = specsTree(); const alias = join(realpathSync(root()), "alias"); symlinkSync(t.specs, alias);
+  writeFileSync(join(t.dir, `${ROUND_KEY}-x.md.critic-spec-r1.md`), ret("SPEC CLEAN"));
+  expect((await routeCli("round-seed", "--all", alias)).code).toBe(0);
+  expect(ledgerRows(t.specs, ROUND_KEY).map((r) => r.row)).toEqual(["seed"]);
+});
+
 test("round-seed removes what it wrote when it fails, so the root can be seeded again", async () => {
   const t = specsTree();
   for (const key of [ROUND_KEY, "HIMMEL-9702"]) {

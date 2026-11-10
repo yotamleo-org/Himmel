@@ -739,8 +739,10 @@ export async function recordSealedReturn(verdict: string, readPath: string): Pro
 const CRITIC_NAME = /^(.+?)\.critic-(?:(spec|plan)-)?r(\d+)[a-z]?\.md$/;
 type SeedResult = { keys: Record<string, { spec: number; plan: number }>; skipped: string[] };
 export async function roundSeed(rootArg: string): Promise<SeedResult> {
-  const specs = resolve(rootArg);
-  if (!await stat(specs).then(s => s.isDirectory(), () => false)) throw new Error(`round-seed: ${specs} is not a folder`);
+  const given = resolve(rootArg);
+  if (!await stat(given).then(s => s.isDirectory(), () => false)) throw new Error(`round-seed: ${given} is not a folder`);
+  const specs = await realpath(given);
+  if (basename(specs) !== "specs") throw new Error(`round-seed: ${specs} is not a specs root; seals look for the ledger under the last folder named specs`);
   return withLedgerLock(specs, "round-seed", () => seedRoot(specs));
 }
 async function seedRoot(specs: string): Promise<SeedResult> {
