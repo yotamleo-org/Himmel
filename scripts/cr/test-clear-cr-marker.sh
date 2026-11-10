@@ -1166,6 +1166,20 @@ if _pf_docs_then_code; then
 else fail "4e-g fixture: docs then code history"; fi
 rm -rf "$tmp"
 
+# 4e-h. The base moved with code and was merged into the branch after the docs round: the
+# docs head still reads as docs, so the full-lane round with its preflight still clears.
+make_repo || exit 1
+if _pf_docs_then_code && { git -C "$tmp" checkout -q main && echo m > "$tmp/m.sh" && git -C "$tmp" add m.sh \
+    && git -C "$tmp" commit -qm base-moved && git -C "$tmp" checkout -q feat/x && git -C "$tmp" merge -q --no-edit main \
+    && sha=$(git -C "$tmp" rev-parse --verify HEAD) && git -C "$tmp" push -q origin main feat/x; } >/dev/null 2>&1; then
+    write_marker "$tmp" "$sha"
+    write_ledger "$tmp" "$(_pf_score 2026-11-10T03:38:35Z "${_pf_docs:0:8}")" "$(_pf_row 2026-11-10T03:48:01Z "$sha")" \
+        "$(_pf_score 2026-11-10T03:48:13Z "$sha")" "$(avail_ok "${sha:0:8}")"
+    stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+    run_clear "$tmp" 0 "4e-h a docs round, then the base merged into the branch, then a full-lane round → exit 0"
+else fail "4e-h fixture: docs then code history with a merged-forward base"; fi
+rm -rf "$tmp"
+
 # 4e-c. Fail closed: a merge-base that cannot be read never reports ok.
 make_repo || exit 1
 write_marker "$tmp" "$sha" full .git/test-origin.git deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
