@@ -438,7 +438,6 @@ function readVerdicts(paths: string[]): { verdicts: Array<{ path: string; sha256
   return { verdicts, residuals };
 }
 
-// Residual findings sign only when the spec's `## Critic rounds` section dispositions each one.
 function checkResiduals(specText: string, residuals: number): void {
   if (!residuals) return;
   const lines = specText.split('\n');
