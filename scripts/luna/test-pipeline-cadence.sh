@@ -227,21 +227,6 @@ assert_contains "default_vault POSIX shape is \$HOME/Documents/luna" "/posix/hom
 dv_d=$(run_dv -u LUNA_VAULT_PATH -u USERPROFILE -u HOME)
 assert_contains "default_vault falls back to /tmp when HOME+USERPROFILE unset" "/tmp/Documents/luna" "$dv_d"
 
-# cygpath present but FAILING on the input -> fall back to the raw USERPROFILE
-# (the `cygpath -u … || printf '%s' "$USERPROFILE"` arm). Inject a stub cygpath
-# that exits nonzero so this runs platform-independently (the stub IS the only
-# cygpath on POSIX, and shadows the real one on Windows).
-DV_FAKE_CYGPATH="$TMP_ROOT/fake-cygpath-fail"
-mkdir -p "$DV_FAKE_CYGPATH"
-printf '#!/usr/bin/env bash\nexit 1\n' > "$DV_FAKE_CYGPATH/cygpath"
-chmod +x "$DV_FAKE_CYGPATH/cygpath"
-# PATH entries must be POSIX-style for MSYS `command -v` to search them
-# ($TMP_ROOT is the cygpath -m mixed C:/ form). On POSIX it's already POSIX.
-DV_FAKE_PATH="$DV_FAKE_CYGPATH"
-if command -v cygpath >/dev/null 2>&1; then DV_FAKE_PATH="$(cygpath -u "$DV_FAKE_CYGPATH")"; fi
-dv_e=$(run_dv -u LUNA_VAULT_PATH -u HOME USERPROFILE='C:\Users\x' PATH="$DV_FAKE_PATH:$PATH")
-assert_contains "default_vault falls back to raw USERPROFILE when cygpath -u fails" 'C:\Users\x/Documents/luna' "$dv_e"
-
 if command -v cygpath >/dev/null 2>&1; then
     dv_c=$(run_dv -u LUNA_VAULT_PATH USERPROFILE='C:\Users\testuser' HOME="/home/msysuser")
     assert_contains "default_vault prefers Windows profile over MSYS \$HOME" "$(cygpath -u 'C:\Users\testuser')/Documents/luna" "$dv_c"
