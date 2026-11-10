@@ -275,6 +275,29 @@ eq "G0: the legacy unreadable stance refuses any readable channel (negative cont
 python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); r["stance"]["selected"]="unreadable"; r["r4"]["channels"]["session_home"]={"Read":"no","Grep":"no","Glob":"no","Bash":"no"}; json.dump(r, open(sys.argv[2],"w"))' "$W/g0/ready.json" "$W/g0/strict.json"
 eq "G0: an all-denied record satisfies the unreadable stance" 0 "$(g0 "$W/g0/strict.json" "$CARD" --stance unreadable >/dev/null; echo $?)"
 
+cat > "$W/runner.py" <<'EOF'
+import importlib.util, os, sys, time
+s = importlib.util.spec_from_file_location("rp", sys.argv[1] + "/run-pilot.py"); rp = importlib.util.module_from_spec(s); s.loader.exec_module(rp)
+w = sys.argv[2]
+b = rp.start_broker([sys.executable, "-I", sys.argv[1] + "/tools/s-qmd", "serve", "--socket", w + "/rb.sock", "--meta", w + "/rb-meta", "--phase", "answer", "--arm", "S"])
+open(w + "/broker.pid", "w").write(str(b.pid))
+if len(sys.argv) > 3:
+    b.terminate(); b.wait(timeout=10); print("stopped", b.poll() is not None); sys.exit(0)
+time.sleep(60)
+EOF
+alive() { kill -0 "$1" 2>/dev/null && ! grep -q '^State:.*Z' "/proc/$1/status" 2>/dev/null; }
+waitsock() { for _ in $(seq 150); do [ -S "$W/rb.sock" ] && return 0; sleep 0.02; done; return 1; }
+python3 -I "$W/runner.py" "$HERE" "$W" &
+RUNNER=$!
+waitsock; BROKER=$(cat "$W/broker.pid" 2>/dev/null)
+eq "broker: the broker is up while its runner lives" yes "$(alive "$BROKER" && echo yes || echo no)"
+kill -9 "$RUNNER"; wait "$RUNNER" 2>/dev/null
+for _ in $(seq 100); do alive "$BROKER" || break; sleep 0.05; done
+eq "broker: a hard kill of the runner ends the broker" no "$(alive "$BROKER" && echo yes || echo no)"
+alive "$BROKER" && kill -9 "$BROKER"
+rm -rf "$W/rb.sock" "$W/rb-meta"
+eq "broker: the normal path still stops the broker" "stopped True" "$(python3 -I "$W/runner.py" "$HERE" "$W" normal)"
+
 python3 -I "$HERE/run-pilot.py" --config /nonexistent > "$W/cli.out" 2>&1
 eq "CLI: run-pilot refuses without HIMMEL_BILLED_OK, before reading any config" 2 "$?"
 has "CLI: the refusal names the opt-in" "HIMMEL_BILLED_OK" "$(cat "$W/cli.out")"

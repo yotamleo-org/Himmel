@@ -348,6 +348,17 @@ def render_prompt(question, arm, arms):
     return text.replace("{{RETRIEVAL_NOTE}}", note).replace("{{QUESTION}}", question)
 
 
+def start_broker(argv):
+    """The s-qmd broker child of one session; on Linux the kernel ends it with this runner."""
+    if not sys.platform.startswith("linux"):
+        return subprocess.Popen(argv)
+
+    def die_with_parent():
+        import ctypes, signal
+        ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGKILL, 0, 0, 0)  # PR_SET_PDEATHSIG
+    return subprocess.Popen(argv, preexec_fn=die_with_parent)
+
+
 class RealLauncher:
     """Launches one sandboxed subscription session per call. Never exercised by build tests:
     every call is paid, so it exists only behind the opt-in, G0, G4 and the R8 go."""
@@ -374,9 +385,9 @@ class RealLauncher:
             idx = os.path.join(root, "sessions", attempt + ".sqlite")
             subprocess.run([sys.executable, "-I", os.path.join(HERE, "pins.py"), "disposable", s["master"], idx, "--seal", s["seal"]], check=True)
             sock, meta = os.path.join(root, "sessions", attempt + ".sock"), os.path.join(root, "private", "broker", attempt)
-            broker = subprocess.Popen([sys.executable, "-I", os.path.join(HERE, "tools", "s-qmd"), "serve", "--socket", sock,
-                                       "--meta", meta, "--phase", "answer" if phase == "answer" else "preflight", "--arm", arm, "--cap", "12"]
-                                      + (["--nvml-cmd", c["nvml_cmd"]] if arm == "Q" else []))
+            broker = start_broker([sys.executable, "-I", os.path.join(HERE, "tools", "s-qmd"), "serve", "--socket", sock,
+                                   "--meta", meta, "--phase", "answer" if phase == "answer" else "preflight", "--arm", arm, "--cap", "12"]
+                                  + (["--nvml-cmd", c["nvml_cmd"]] if arm == "Q" else []))
             cmd += ["--tools", os.path.join(HERE, "tools"), "--binding", s["binding"], "--socket", sock, "--index", idx,
                     "--qmd-pkg", c["qmd_pkg"], "--qmd-config", s["config_dir"], "--graph", c["graph_dir"], "--manifests", c["manifests_dir"]]
             cmd += ["--key", c["s_key_file"]] if arm == "S" else ["--models", c["q_models"]]
