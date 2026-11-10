@@ -52,7 +52,7 @@ _mba_operator_chat() {
 }
 
 _mba_send() {
-    local chat="$1" text="$2" kind="${3:-}"  # kind: an optional chief-route.ts route kind; none = today's send
+    local chat="$1" text="$2" kind="${3:-}"
     _MBA_REFUSED=0
     # One 30 s bound for the seam and the bun send alike; no GNU
     # timeout (stock macOS) runs both unbounded.

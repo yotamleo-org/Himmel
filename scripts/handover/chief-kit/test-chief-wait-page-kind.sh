@@ -3,13 +3,6 @@
 # worker-silent route kind, so chief-route.ts applies the silent rule and the operator's phone
 # stays quiet; the WAKE line and the console bullet stay, and the bullet says the chief was woken.
 #
-# RED control (chief-wait.sh before this change): the page carries no kind, so the page seam sees
-# an empty kind and the real route lands the page in the operator outbox.
-#
-# The page seam (CHIEF_WAIT_PAGE_CMD) is called as `$CMD <text> [kind]`; the kind is a second
-# argument only when the page has one. The end-to-end rows go through the real page_send path and
-# the real chief-route.ts under a scratch BRIDGE_ROOT/HOME (never a real Telegram send).
-#
 # Linux-only: chief-wait.sh is (PLATFORM GUARD) and this suite uses GNU timeout and stat -c.
 #
 # Run: bash scripts/handover/chief-kit/test-chief-wait-page-kind.sh
@@ -42,7 +35,6 @@ EOF
 printf 'PROCEED\n' > "$STUB/bank"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/off.sh"
 printf '#!/usr/bin/env bash\nexit 2\n' > "$STUB/budget-off.sh"
-# The page seam logs "<kind>|<text>": an empty kind means the page carried none.
 cat > "$STUB/page.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s|%s\n' "${2-}" "$1" >> "$STUB/pages"
@@ -84,7 +76,6 @@ capped_tick() { tick_line "N1:FRESH" ok; sed -i 's/ denials=none/ busedge=MISSIN
 outbox_n() { local n; n="$(grep -c . "$BR/sessions/__chat__/outbox.jsonl" 2>/dev/null)"; echo "${n:-0}"; }
 page_kinds() { cut -d'|' -f1 "$STUB/pages" 2>/dev/null | tr '\n' ','; }
 
-# --- (k1) a capped-waker worker-silent page carries the worker-silent kind ---
 fleet k1; capped_tick
 CHIEF_WAIT_PAGE_CMD="$STUB/page.sh" CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/k1.out" --doc "$WD" --workers-from "$WM"
 wait_exit "$WPID"
@@ -96,7 +87,6 @@ check "(k1) the console bullet says the chief was woken" "1" "$(grep -c '^- [0-9
 check "(k1) and no longer says the operator was alerted" "0" "$(grep -c 'the operator was alerted' "$WD" || true)"  # pipefail-ok: none set
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 
-# --- (k2) a succession-partial worker-silent page carries the kind too ---
 fleet k2; tick_line "N1:FRESH" ok
 : > "$STUB/sp-held"; printf '%s\n' "$WL" > "$STUB/sp-held"
 # shellcheck disable=SC2016  # the stub bodies expand when the stubs run
@@ -112,15 +102,11 @@ check "(k2) the partial prints one worker-silent wake line" "1" "$(grep -c '^WAK
 check "(k2) the page carries kind worker-silent" "worker-silent," "$(page_kinds)"
 check "(k2) the console bullet is written" "1" "$(grep -c '^- [0-9:]* WORKER-SILENT N1 signal=succession-partial' "$WD" || true)"  # pipefail-ok: none set
 
-# --- (k3) end to end: the real page_send and the real chief-route.ts apply the silent rule ---
-# The page goes down chief-wait.sh's own bridge path; its sender seam hands the kind to the real
-# router under a scratch BRIDGE_ROOT, so the operator outbox is what the phone would have been sent.
 if command -v bun >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     BR="$WORK/bridge"; HM="$WORK/home"; MIR="$WORK/mirror"; mkdir -p "$BR" "$HM" "$MIR"
     printf '{"allowFrom":["7"]}\n' > "$WORK/access.json"
     cat > "$STUB/route-sender.sh" <<'EOF'
 #!/usr/bin/env bash
-# MERGE_BLOCK_ALERT_CMD seam: <chat> <text> [kind] — the real router, scratch root.
 if [ -n "${3-}" ]; then exec bun "$ROUTE" reply --kind "$3" "$1" "$2"; fi
 exec bun "$ROUTE" reply "$1" "$2"
 EOF
@@ -135,7 +121,6 @@ EOF
     check "(k3) the console bullet is written" "1" "$(grep -c '^- [0-9:]* WORKER-SILENT N1 signal=capped-waker' "$WD" || true)"  # pipefail-ok: none set
     check "(k3) the operator outbox gets no line" "0" "$(outbox_n)"
     check "(k3) the router logged the page as silent" "1" "$(grep -c silent "$BR/route.log" 2>/dev/null | head -n1)"
-    # control: the same sender with no kind (what the page was before) DOES reach the operator outbox
     ROUTE="$ROUTE" BRIDGE_ROOT="$BR" HOME="$HM" HIMMEL_TEST_FIXTURE=1 HIMMEL_JIRA_MIRROR="$MIR" "$STUB/route-sender.sh" 7 "WORKER-SILENT N1 signal=capped-waker - the chief relaunches it" >/dev/null 2>&1
     check "(k3c) control: a page with no kind lands in the operator outbox" "1" "$(outbox_n)"
 else

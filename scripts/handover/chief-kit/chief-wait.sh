@@ -882,7 +882,7 @@ denial_pages() {
 # rc 0: a failed or hung send never breaks the waiter or delays the wake past
 # the bound.
 page_timeout="${CHIEF_WAIT_PAGE_TIMEOUT:-45}"
-page_send() {  # <text> <deadline epoch> [route kind]: the timeout is what is left of the batch budget; a kind rides to chief-route.ts --kind, none = the operator outbox
+page_send() {  # <text> <deadline epoch> [route kind]: the timeout is what is left of the batch budget
     local left=$(( $2 - $(date +%s) ))
     [ "$left" -ge 1 ] || return 0
     if [ -n "${CHIEF_WAIT_PAGE_CMD:-}" ]; then

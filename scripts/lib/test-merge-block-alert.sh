@@ -317,8 +317,6 @@ eq "15: no chief-inbox line pre-GO" 0 "$(count "$CASE/bridge/consoles/opsdesk.md
 eq "15: no operator DM pre-GO" 0 "$(count "$CASE/alerts.log")"
 if grep -q 'MERGE-BLOCKED octo/demo#42 @aaaaaaaaaaaa: required check(s) FAILED: tests' "$CASE/err"; then pass; else fail "15: the MERGE-BLOCKED line still prints on stderr for the worker"; fi
 
-# --- 16. _mba_send's optional route kind: only a caller that names a kind sends one --------
-# The seam gets the kind as a third argument; with none it gets exactly two, as before.
 cat > "$TMP/bin/argc-sender" <<'EOF'
 #!/usr/bin/env bash
 printf '%s|%s|%s|%s\n' "$#" "$1" "$2" "${3-}" >> "$ALERT_LOG"
@@ -333,7 +331,6 @@ new_case c16
 )
 eq "16: the seam gets the kind as a third argument" "3|555|page one|worker-silent" "$(sed -n 1p "$CASE/alerts.log")"
 eq "16: with no kind the seam gets two arguments, as before" "2|555|page two|" "$(sed -n 2p "$CASE/alerts.log")"
-# the default sender hands the kind to chief-route.ts as --kind, before the chat id
 (
     unset MERGE_BLOCK_ALERT_CMD
     # shellcheck disable=SC1090
@@ -346,9 +343,6 @@ eq "16: with no kind the seam gets two arguments, as before" "2|555|page two|" "
 if grep -q 'chief-route.ts reply --kind worker-silent 555 page three$' "$CASE/bun.log"; then pass; else fail "16: the default sender runs chief-route.ts reply --kind worker-silent <chat> <text> (got: $(cat "$CASE/bun.log"))"; fi
 if grep -q 'chief-route.ts reply 555 page four$' "$CASE/bun.log"; then pass; else fail "16: with no kind the default sender is unchanged (got: $(cat "$CASE/bun.log"))"; fi
 
-# --- 17. R1.2 negative control: a merge-blocked page (no kind) still lands in the operator outbox -
-# The real router under a scratch root. The same sender with kind worker-silent is the contrast:
-# the silent rule keeps that one off the outbox.
 if command -v bun >/dev/null 2>&1; then
     cat > "$TMP/bin/route-sender" <<'EOF'
 #!/usr/bin/env bash
