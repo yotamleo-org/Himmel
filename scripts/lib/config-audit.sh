@@ -355,10 +355,9 @@ function problems(snap, live) {
   const out = [];
   for (const [n, was] of Object.entries(snap)) {
     const is = live[n];
-    if (!was.present) continue;
     // No .env found is unknown, never deleted: a wrong root reads the same as a deletion.
     if (n === ".env" && (!is || !is.present)) { out.push({ file: n, path: is ? is.path : "-", kind: "unknown", lost: [] }); continue; }
-    if (!is) continue;
+    if (!is || !was.present) continue;
     if (!is.present) { out.push({ file: n, path: was.path, kind: "deleted", lost: was.keys || [] }); continue; }
     if ((is.size === 0 && was.size > 0) || (was.keys !== null && is.keys === null)) { out.push({ file: n, path: was.path, kind: "truncated", lost: was.keys || [] }); continue; }
     let lost = (was.keys || []).filter((k) => !(is.keys || []).includes(k));
