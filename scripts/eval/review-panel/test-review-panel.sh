@@ -1308,7 +1308,6 @@ P5="$(cmpp base cand-rescore)"; rc=$?
 eq "conflicting_duplicate_execution: one execution_id with two different score sets makes the result ineligible" \
   "$rc:$(cj "$P5" eligible):$(cj "$P5" reasons)" '1:false:["conflicting-duplicate-executions:1"]'
 
-# --- the validated corpus sidecar and bound adjudications -------------------------------------------
 VAL="$HERE/testdata/validation.json"
 eq "m4 fixture: the testdata cohort names the twins it means" \
   "$LA $LAc $QA $QAc $TA $(case_of toctou-a clean) $(case_of failopen-a seeded) $(case_of failopen-a clean) $(case_of scope-b seeded) $(case_of scope-b clean)" \
@@ -1327,7 +1326,6 @@ review "$VO/case-10.md" codex
 review "$VO/case-03.md" codex "imp:$(seed_file case-03):$(seed_line case-03):the probe default changes without a note"
 review "$VO/case-09.md" codex
 M4IDS="case-15,case-21,case-19,case-01,case-16,case-05,case-04,case-10,case-03,case-09"
-# mkmanifest <outputs> <fixtures> [ids]
 mkmanifest() { python3 -B -c 'import json,sys; sys.path.insert(0, sys.argv[1]); import score
 ids = sys.argv[5].split(",")
 inp = score.case_inputs(sys.argv[4], score.load_key(sys.argv[2])["cases"], ids)

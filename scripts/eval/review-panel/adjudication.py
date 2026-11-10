@@ -235,9 +235,6 @@ def _ratio(k, n):
 
 
 def cohort(cases, scored):
-    """The verified cohort over cases {case id: {key_kind, pair, split, entry}}: whole twin pairs whose every
-    twin is validated and among the scored ids (a pending, excluded, unscored or provenance-dropped twin takes its
-    pair out with it), plus the relabelled and pending ids."""
     pairs = {}
     for cid, c in cases.items():
         pairs.setdefault(c["pair"], []).append(cid)
