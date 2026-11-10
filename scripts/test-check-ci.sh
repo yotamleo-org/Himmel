@@ -3242,7 +3242,21 @@ assert_rc 0 "T4-h quota.tsv reading 0 and a healthy stub: check-ci exits 0, it n
 assert_err_lacks "T4-h no QUOTA-PAUSE from a number alone" "said QUOTA-PAUSE" -F -- "QUOTA-PAUSE"
 rm -rf "$STUBDIR/quota"
 
+# T4-i — a refusal that a wait recovered is not a stop: the first `pr checks` is a rate limit, the
+# wait recovers it, and the next failure is a bad credential. That exit 2 is not a quota stop, so
+# it prints no QUOTA-PAUSE and marks nothing.
+rm -rf "$STUBDIR/quota"
+BUDGET_PREFLIGHT_OVERRIDE=1
+RL_PROBE_OVERRIDE="$STUBDIR/rl-probe"; rm -f "$RL_PROBE_OVERRIDE"
+RL_ONCE_OVERRIDE="$STUBDIR/rl-once"; rm -f "$RL_ONCE_OVERRIDE"
+run probe-error
+assert_rc 2 "T4-i a recovered refusal then a bad credential is exit 2"
+assert_err_has "cannot evaluate the gate" "T4-i the bad credential is worded as itself"
+assert_err_lacks "T4-i a recovered refusal is not named as a quota stop" "said QUOTA-PAUSE" -F -- "QUOTA-PAUSE"
+check_eq "T4-i a recovered refusal leaves no marker" "" "$(blocked_names)"
+rm -rf "$STUBDIR/quota"
+
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 234 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 234"; exit 1; fi
+if [ "$COUNT" -ne 235 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 235"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1
