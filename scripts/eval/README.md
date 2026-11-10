@@ -311,7 +311,7 @@ Exit codes:
 
 ## The code-reviewer report
 
-```
+```bash
 python3 scripts/eval/review-page.py --reviewers-json --ledger FILE --changes FILE --cr-ledger FILE [--now ISO]
 python3 scripts/eval/review-page.py --reviewers-only --ledger FILE --changes FILE --cr-ledger FILE [--now ISO]
 ```
