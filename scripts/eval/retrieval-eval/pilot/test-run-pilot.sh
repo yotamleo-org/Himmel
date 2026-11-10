@@ -275,6 +275,87 @@ eq "G0: the legacy unreadable stance refuses any readable channel (negative cont
 python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); r["stance"]["selected"]="unreadable"; r["r4"]["channels"]["session_home"]={"Read":"no","Grep":"no","Glob":"no","Bash":"no"}; json.dump(r, open(sys.argv[2],"w"))' "$W/g0/ready.json" "$W/g0/strict.json"
 eq "G0: an all-denied record satisfies the unreadable stance" 0 "$(g0 "$W/g0/strict.json" "$CARD" --stance unreadable >/dev/null; echo $?)"
 
+cat > "$W/runner.py" <<'EOF'
+import importlib.util, os, sys, time
+s = importlib.util.spec_from_file_location("rp", sys.argv[1] + "/run-pilot.py"); rp = importlib.util.module_from_spec(s); s.loader.exec_module(rp)
+w = sys.argv[2]
+if sys.argv[3:] == ["orphan"]:
+    pretend_runner_already_died = lambda: 1
+    rp.os.getpid = pretend_runner_already_died
+    b = rp.start_broker_bound_to_runner([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        b.wait(timeout=10); print("exit", b.returncode)
+    except Exception:
+        b.kill(); print("still running")
+    sys.exit(0)
+b = rp.start_broker_bound_to_runner([sys.executable, "-I", sys.argv[1] + "/tools/s-qmd", "serve", "--socket", w + "/rb.sock", "--meta", w + "/rb-meta", "--phase", "answer", "--arm", "S"])
+open(w + "/broker.pid", "w").write(str(b.pid))
+if len(sys.argv) > 3:
+    b.terminate(); b.wait(timeout=10); print("stopped", b.poll() is not None); sys.exit(0)
+time.sleep(60)
+EOF
+alive() { kill -0 "$1" 2>/dev/null && ! grep -q '^State:.*Z' "/proc/$1/status" 2>/dev/null; }
+waitsock() { for _ in $(seq 150); do [ -S "$W/rb.sock" ] && return 0; sleep 0.02; done; return 1; }
+python3 -I "$W/runner.py" "$HERE" "$W" &
+RUNNER=$!
+waitsock; BROKER=$(cat "$W/broker.pid" 2>/dev/null)
+eq "broker: the broker is up while its runner lives" yes "$(alive "$BROKER" && echo yes || echo no)"
+kill -9 "$RUNNER"; wait "$RUNNER" 2>/dev/null
+for _ in $(seq 100); do alive "$BROKER" || break; sleep 0.05; done
+eq "broker: a hard kill of the runner ends the broker" no "$(alive "$BROKER" && echo yes || echo no)"
+alive "$BROKER" && kill -9 "$BROKER"
+rm -rf "$W/rb.sock" "$W/rb-meta"
+eq "broker: the normal path still stops the broker" "stopped True" "$(python3 -I "$W/runner.py" "$HERE" "$W" normal)"
+eq "broker: a runner that died before the signal was armed leaves no broker" "exit 1" "$(python3 -I "$W/runner.py" "$HERE" "$W" orphan)"
+
+cat > "$W/gates.py" <<'EOF'
+import hashlib, importlib.util, json, os, sys
+here, w = sys.argv[1], sys.argv[2]
+s = importlib.util.spec_from_file_location("rp", here + "/run-pilot.py"); rp = importlib.util.module_from_spec(s); s.loader.exec_module(rp)
+card, go, rev, run_root = w + "/gcard.md", w + "/gr8go", w + "/greview", w + "/grun"
+open(card, "w").write("pilot card\n"); open(go, "w").write("a distinct go file\n"); os.makedirs(run_root)
+sha = hashlib.sha256(open(card, "rb").read()).hexdigest()
+old = hashlib.sha256(b"an older card").hexdigest()
+def put(data):
+    if os.path.isdir(rev):
+        os.rmdir(rev)
+    elif os.path.exists(rev):
+        os.remove(rev)
+    if data is not None:
+        open(rev, "wb").write(data)
+def case(data, go_path=go, as_dir=False):
+    put(data)
+    if as_dir:
+        os.mkdir(rev)
+    try:
+        bad = rp.gates({"card": card, "astra_review": rev, "r8_go": go_path, "lock": w + "/nolock", "auth_readiness": w + "/noready", "run_root": run_root})
+    except Exception as e:
+        return ["traceback:" + type(e).__name__]
+    case.names_path = all(rev in b for b in bad if b.startswith("G4"))
+    return [b.split(":")[0] if b.startswith("G4") else b for b in bad if b.startswith("G4") or "R8" in b]
+out = {"absent": case(None), "absent_names_path": case.names_path,
+       "stale": case(("card %s\nPILOT REVISE 1\n" % old).encode()),
+       "refused": case(("card %s\nPILOT REFUSED 2\n" % sha).encode()),
+       "other_hash": case(("card %s\nPILOT APPROVED\n" % old).encode()),
+       "no_go": case(("card %s\nPILOT APPROVED\n" % sha).encode(), w + "/no-such-go"),
+       "non_utf8": case(b"card \xff\xfe\x00 \x80\nPILOT APPROVED\n")}
+out["directory"] = case(None, go, True)
+out["approved_control"] = case(("card %s\nPILOT APPROVED\n" % sha).encode())
+out["run_root_files"] = sum(len(fs) for _, _, fs in os.walk(run_root))
+print(json.dumps(out, sort_keys=True))
+EOF
+GT=$(python3 -I "$W/gates.py" "$HERE" "$W" 2>/dev/null | tail -1)
+eq "G4: an absent review refuses with a G4 message" '["G4"]' "$(f "$GT" absent)"
+eq "G4: the refusal names the review path it tried to read" true "$(f "$GT" absent_names_path)"
+eq "G4: a review for an older card (stale) refuses" '["G4"]' "$(f "$GT" stale)"
+eq "G4: a review whose last line is PILOT REFUSED 2 refuses" '["G4"]' "$(f "$GT" refused)"
+eq "G4: PILOT APPROVED for another card hash refuses" '["G4"]' "$(f "$GT" other_hash)"
+eq "R8: a missing R8 go file refuses even under a current PILOT APPROVED" '["no distinct R8 go"]' "$(f "$GT" no_go)"
+eq "G4: a non-UTF-8 review refuses cleanly, never a traceback" '["G4"]' "$(f "$GT" non_utf8)"
+eq "G4: a directory in place of the review refuses cleanly, never a traceback" '["G4"]' "$(f "$GT" directory)"
+eq "G4: negative control, a current PILOT APPROVED review with the R8 go raises neither refusal" '[]' "$(f "$GT" approved_control)"
+eq "G4: every refusal case booked, reserved and launched nothing (the run root stays empty)" 0 "$(f "$GT" run_root_files)"
+
 python3 -I "$HERE/run-pilot.py" --config /nonexistent > "$W/cli.out" 2>&1
 eq "CLI: run-pilot refuses without HIMMEL_BILLED_OK, before reading any config" 2 "$?"
 has "CLI: the refusal names the opt-in" "HIMMEL_BILLED_OK" "$(cat "$W/cli.out")"

@@ -348,6 +348,22 @@ def render_prompt(question, arm, arms):
     return text.replace("{{RETRIEVAL_NOTE}}", note).replace("{{QUESTION}}", question)
 
 
+def start_broker_bound_to_runner(argv):
+    if not sys.platform.startswith("linux"):
+        return subprocess.Popen(argv)
+
+    runner = os.getpid()
+
+    def die_with_parent():
+        import ctypes, signal
+        libc = ctypes.CDLL(None, use_errno=True)
+        if libc.prctl(1, signal.SIGKILL, 0, 0, 0):  # PR_SET_PDEATHSIG
+            raise OSError(ctypes.get_errno(), "prctl PR_SET_PDEATHSIG failed")
+        if os.getppid() != runner:  # the runner died before the signal was armed
+            os._exit(1)
+    return subprocess.Popen(argv, preexec_fn=die_with_parent)
+
+
 class RealLauncher:
     """Launches one sandboxed subscription session per call. Never exercised by build tests:
     every call is paid, so it exists only behind the opt-in, G0, G4 and the R8 go."""
@@ -374,9 +390,9 @@ class RealLauncher:
             idx = os.path.join(root, "sessions", attempt + ".sqlite")
             subprocess.run([sys.executable, "-I", os.path.join(HERE, "pins.py"), "disposable", s["master"], idx, "--seal", s["seal"]], check=True)
             sock, meta = os.path.join(root, "sessions", attempt + ".sock"), os.path.join(root, "private", "broker", attempt)
-            broker = subprocess.Popen([sys.executable, "-I", os.path.join(HERE, "tools", "s-qmd"), "serve", "--socket", sock,
-                                       "--meta", meta, "--phase", "answer" if phase == "answer" else "preflight", "--arm", arm, "--cap", "12"]
-                                      + (["--nvml-cmd", c["nvml_cmd"]] if arm == "Q" else []))
+            broker = start_broker_bound_to_runner([sys.executable, "-I", os.path.join(HERE, "tools", "s-qmd"), "serve", "--socket", sock,
+                                   "--meta", meta, "--phase", "answer" if phase == "answer" else "preflight", "--arm", arm, "--cap", "12"]
+                                  + (["--nvml-cmd", c["nvml_cmd"]] if arm == "Q" else []))
             cmd += ["--tools", os.path.join(HERE, "tools"), "--binding", s["binding"], "--socket", sock, "--index", idx,
                     "--qmd-pkg", c["qmd_pkg"], "--qmd-config", s["config_dir"], "--graph", c["graph_dir"], "--manifests", c["manifests_dir"]]
             cmd += ["--key", c["s_key_file"]] if arm == "S" else ["--models", c["q_models"]]
@@ -442,9 +458,14 @@ def gates(cfg):
     for the current card hash) and the distinct R8 go file. Returns the list of refusals."""
     bad = []
     card_sha = hashlib.sha256(open(cfg["card"], "rb").read()).hexdigest()
-    review = open(cfg["astra_review"]).read().rstrip().splitlines()
-    if not review or review[-1].strip() != "PILOT APPROVED" or card_sha not in "\n".join(review):
-        bad.append("G4: the card review does not end PILOT APPROVED for the current card")
+    try:
+        with open(cfg["astra_review"], encoding="utf-8") as f:
+            review = f.read().rstrip().splitlines()
+    except (OSError, UnicodeDecodeError):
+        bad.append("G4: the card review %s cannot be read" % cfg["astra_review"])
+    else:
+        if not review or review[-1].strip() != "PILOT APPROVED" or card_sha not in "\n".join(review):
+            bad.append("G4: the card review %s does not end PILOT APPROVED for the current card" % cfg["astra_review"])
     if not os.path.isfile(cfg.get("r8_go", "")):
         bad.append("no distinct R8 go")
     if subprocess.run([sys.executable, "-I", os.path.join(HERE, "tools-lock.py"), "check", cfg["lock"]]).returncode:
