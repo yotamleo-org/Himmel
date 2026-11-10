@@ -11,8 +11,6 @@
 #   6. a NO-GO verdict with no `finding:` line -> finding, never none
 #   7. always exit 0 and print exactly one word
 #  10. a new head that does not descend from the judged head -> trust
-#  12. a merge in the delta with a non-empty remerge-diff (a resolved conflict) -> finding,
-#      still after every fail-closed read; a clean merge-forward -> none
 #
 # Hermetic: temp git repo and files only.
 # Platform guard: POSIX bash 3.2+.
