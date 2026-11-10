@@ -629,7 +629,7 @@ async function loadLedger(specs: string, key: string): Promise<Rows> {
   });
   const seeded = rows.some(r => r.row === "seed");
   if ((Object.hasOwn(manifest.keys, key) && !seeded) || (snapshots && !seeded && !rows.some(r => r.row === "round"))) throw new Error(`${key} is in the round manifest but has no ledger; restore it from the state repo history`);
-  return Object.assign(rows, { c: await checkRecords(specs, key, rows) });
+  return Object.assign(rows, { checked: await checkRecords(specs, key, rows) });
 }
 
 // One writer at a time per ticket: flock(2) on a persistent lock file beside the ledger, released when the file closes.
@@ -677,11 +677,9 @@ export type RoundState = {
   critical_open: { id: string; class: string; kind: Kind; round: number; verdict_path: string }[];
 };
 const KINDS = ["spec", "plan"] as const;
-// The rows of one ticket's ledger with what its records came to on this read (D7a): the epoch, the one valid override,
-// the valid critical rows of the epoch, and a label for each record that failed its re-check.
 type Checked = { epoch: number; override: LedgerRow | null; criticals: LedgerRow[]; invalid: string[] };
-type Rows = LedgerRow[] & { c: Checked };
-const epochNow = (rows: LedgerRow[]) => (rows as Partial<Rows>).c?.epoch ?? 0;
+type Rows = LedgerRow[] & { checked: Checked };
+const epochNow = (rows: LedgerRow[]) => (rows as Partial<Rows>).checked?.epoch ?? 0;
 const seedOf = (rows: LedgerRow[]) => rows.find(r => r.row === "seed");
 const seededReturns = (rows: LedgerRow[], kind: Kind): SeededReturn[] => epochNow(rows) > 0 ? [] : (seedOf(rows)?.latest?.[kind] as SeededReturn[] | undefined) ?? [];
 const roundRows = (rows: LedgerRow[], kind: Kind) => rows.filter(r => r.row === "round" && r.critic === kind && (Number(r.epoch) || 0) === epochNow(rows));
@@ -696,7 +694,6 @@ function blockedAt(rows: LedgerRow[], kind: Kind, round: number): boolean {
   if (row) return leftBlocking(row);
   return Number(seedOf(rows)?.[kind]) === round && seededReturns(rows, kind).some(leftBlocking);
 }
-// Each kind's latest return(s): its round row, or the seeded returns while no round row of the kind exists in the epoch.
 type Latest = Returned & { kind: Kind; round: number; return_sha: string; verdict_path: string };
 function latestReturns(rows: LedgerRow[], kind: Kind): Latest[] {
   const row = latestRow(rows, kind);
@@ -707,9 +704,8 @@ const openBlocking = (rows: LedgerRow[]) => KINDS.flatMap(kind => latestReturns(
 const writerRound = (rows: LedgerRow[]) => Math.max(kindRound(rows, "spec"), kindRound(rows, "plan"));
 const latestRoundTs = (rows: LedgerRow[]) => Number(rows.filter(r => r.row === "round").at(-1)?.ts) || 0;
 
-// Each valid-class finding of the epoch stays open until a valid `critical` row names its id (D5).
 function criticalOpenOf(rows: Rows): RoundState["critical_open"] {
-  const closed = new Set(rows.c.criticals.map(r => String(r.id)));
+  const closed = new Set(rows.checked.criticals.map(r => String(r.id)));
   const out: RoundState["critical_open"] = [];
   for (const kind of KINDS) {
     const seen = [...seededReturns(rows, kind).map(s => ({ round: Number(seedOf(rows)?.[kind]) || 0, verdict_path: s.verdict_path, findings: s.findings })), ...roundRows(rows, kind).map(r => ({ round: Number(r.round), verdict_path: String(r.verdict_path), findings: r.findings as Finding[] }))];
@@ -717,7 +713,6 @@ function criticalOpenOf(rows: Rows): RoundState["critical_open"] {
   }
   return out;
 }
-// A finding of the epoch by id, with the return that raised it.
 function findingOf(rows: LedgerRow[], id: string): { f: Finding; return_sha: string; verdict_path: string } | null {
   for (const kind of KINDS) {
     const returns = [...seededReturns(rows, kind), ...roundRows(rows, kind)];
@@ -726,8 +721,6 @@ function findingOf(rows: LedgerRow[], id: string): { f: Finding; return_sha: str
   return null;
 }
 
-// D5's quote rule, shared by the verbs and the re-check: one decision file naming the ticket, not used before for this verb,
-// holding the quote (20+ characters, whitespace-normalised), and newer than the latest round before the record.
 const normText = (s: string) => s.replace(/\s+/g, " ").trim();
 async function quoteRule(specs: string, key: string, d: string, quote: string, used: boolean, sinceTs: number): Promise<{ error: string } | { path: string; sha: string }> {
   if (!/^[0-9]+$/.test(d)) return { error: `'${d}' is not a decision number` };
@@ -741,8 +734,6 @@ async function quoteRule(specs: string, key: string, d: string, quote: string, u
   return { path, sha: sha256(bytes) };
 }
 
-// D7a: every reset, critical and override row is checked again on each read by the rules its verb applied; a row that fails
-// is ignored and listed, so a hand-appended record counts only if the verb would have accepted it.
 async function checkRecords(specs: string, key: string, rows: LedgerRow[]): Promise<Checked> {
   let epoch = 0; let roundTs = 0; let sawReset = false; let sawOverride = false;
   const blocking: Record<Kind, string[]> = { spec: [], plan: [] }; const maxRound: Record<Kind, number> = { spec: 0, plan: 0 }; const classOf = new Map<string, string>();
@@ -775,7 +766,7 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[]): Prom
 
 function capRefusal(key: string, rows: LedgerRow[], kind: Kind, round: number): string | null {
   if (round <= CRITIC_ROUND_CAP) return null;
-  const c = (rows as Rows).c;
+  const c = (rows as Rows).checked;
   const critical = c.criticals.some(r => Number(r.opens) === round);
   if (round === CRITIC_ROUND_CAP + 1) return critical || KINDS.some(k => blockedAt(rows, k, CRITIC_ROUND_CAP)) ? null : `${key} ${kind} round ${round} needs a blocking finding in round ${CRITIC_ROUND_CAP} of either kind; sign it under 848, its minors go to the build`;
   const override = !!c.override && Number(c.override.round_opened) === round && openBlocking(rows).length > 0;
@@ -791,9 +782,9 @@ function stateOf(key: string, rows: Rows): RoundState {
   });
   const next = modes.some(m => m.mode === "full") ? "full" : modes.some(m => m.mode === "closure") ? "closure" : "none";
   return {
-    key, epoch: rows.c.epoch, spec, plan, writer: Math.max(spec, plan), next, why: modes.map(m => `${m.kind} round ${m.r}: ${m.refusal ?? m.mode}`).join("; "),
+    key, epoch: rows.checked.epoch, spec, plan, writer: Math.max(spec, plan), next, why: modes.map(m => `${m.kind} round ${m.r}: ${m.refusal ?? m.mode}`).join("; "),
     latest: { spec: latest("spec"), plan: latest("plan") }, overrideUsed: rows.some(r => r.row === "override"),
-    invalid: rows.c.invalid, cap: CRITIC_ROUND_CAP, critical_open: criticalOpenOf(rows),
+    invalid: rows.checked.invalid, cap: CRITIC_ROUND_CAP, critical_open: criticalOpenOf(rows),
   };
 }
 
@@ -835,19 +826,19 @@ async function sealTarget(verdict: string, readPath: string): Promise<SealTarget
   return { v, page, text, kind, governing, specs, key };
 }
 
-// The files, and the returns, that round `r - 1` of `kind` sealed: its round row and the `seal` rows of the same return,
-// or the seeded returns' own seals (a seeded file has no snapshot unless its bytes still matched at the seed).
-function roundBefore(rows: LedgerRow[], kind: Kind, r: number): { returns: { return_sha: string }[]; sealed: { read_path: string; read_sha: string; seeded: boolean }[] } {
+type SealedFile = { read_path: string; read_sha: string; seeded: boolean };
+const sealedFileOf = (x: { read_path: unknown; read_sha: unknown }, seeded: boolean): SealedFile => ({ read_path: String(x.read_path), read_sha: String(x.read_sha), seeded });
+const distinctFiles = (files: SealedFile[]) => files.filter((s, i) => files.findIndex(o => o.read_path === s.read_path && o.read_sha === s.read_sha) === i);
+function roundBefore(rows: LedgerRow[], kind: Kind, r: number): { returns: { return_sha: string }[]; sealed: SealedFile[] } {
   const row = roundRows(rows, kind).filter(x => Number(x.round) === r - 1).at(-1);
   const returns: { return_sha: string }[] = row ? [row as { return_sha: string }] : Number(seedOf(rows)?.[kind]) === r - 1 ? seededReturns(rows, kind) : [];
-  const own = row ? [{ read_path: String(row.read_path), read_sha: String(row.read_sha), seeded: false }] : seededReturns(rows, kind).flatMap(s => s.seals.map(x => ({ ...x, seeded: true })));
-  const sealed = [...own, ...rows.filter(x => x.row === "seal" && returns.some(y => y.return_sha === x.return_sha)).map(x => ({ read_path: String(x.read_path), read_sha: String(x.read_sha), seeded: false }))];
-  return { returns, sealed: sealed.filter((s, i) => sealed.findIndex(o => o.read_path === s.read_path && o.read_sha === s.read_sha) === i) };
+  const own = row ? [sealedFileOf(row, false)] : seededReturns(rows, kind).flatMap(s => s.seals.map(x => sealedFileOf(x, true)));
+  const later = rows.filter(x => x.row === "seal" && returns.some(y => y.return_sha === x.return_sha)).map(x => sealedFileOf(x, false));
+  return { returns, sealed: distinctFiles([...own, ...later]) };
 }
 const closureMarker = (key: string, kind: Kind, r: number, returnSha: string) => `CLOSURE-CHECK ${key} ${kind} r${r - 1} ${returnSha.slice(0, 12)}`;
 
-// T4: each snapshot the closure reads must still hash to its name. Returns the snapshot path of each sealed file that has one.
-async function snapshotsOf(specs: string, key: string, sealed: { read_path: string; read_sha: string; seeded: boolean }[]): Promise<Map<string, string>> {
+async function snapshotsOf(specs: string, key: string, sealed: SealedFile[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   for (const s of sealed) {
     const path = join(ledgerDir(specs), key, s.read_sha);
@@ -868,8 +859,6 @@ async function diffOf(snapshot: string, now: string, label: string): Promise<str
 }
 const changedLines = (diff: string) => diff.split("\n").filter(l => (l.startsWith("+") || l.startsWith("-")) && !l.startsWith("+++") && !l.startsWith("---")).map(l => l.slice(1));
 
-// What a return of round `r` (4 and on) must satisfy (D2): the marker line (T2), a file round `r - 1` sealed (T3), unedited snapshots (T4).
-// Gives the lines the round's files changed since their snapshots, for the regression test.
 async function closureCheck(specs: string, key: string, kind: Kind, r: number, rows: LedgerRow[], text: string | null, page: string): Promise<string[]> {
   const prev = roundBefore(rows, kind, r);
   if (text !== null) {
@@ -883,7 +872,6 @@ async function closureCheck(specs: string, key: string, kind: Kind, r: number, r
   return changed;
 }
 
-// D2's sort of a closure return: `reopens` an open blocking id and `regression` quoting a changed line block; the rest fold into the build.
 function sortClosure(text: string, findings: Finding[], openIds: Set<string>, changed: string[]): Finding[] {
   const lines = text.split("\n");
   return findings.map(f => {
@@ -897,7 +885,7 @@ function sortClosure(text: string, findings: Finding[], openIds: Set<string>, ch
 type Admission = { round: number; mode: "full" | "closure"; findings?: Finding[] };
 async function admit(t: SealTarget, rows: Rows): Promise<Admission | null> {
   const sum = returnSha(t.text);
-  const prior = rows.find(r => r.row === "round" && r.return_sha === sum && (Number(r.epoch) || 0) === rows.c.epoch);
+  const prior = rows.find(r => r.row === "round" && r.return_sha === sum && (Number(r.epoch) || 0) === rows.checked.epoch);
   if (prior || KINDS.some(k => seededReturns(rows, k).some(x => x.return_sha === sum))) {
     if (prior?.mode === "closure") await closureCheck(t.specs, t.key, prior.critic, Number(prior.round), rows, null, t.page);
     return null;
@@ -910,7 +898,6 @@ async function admit(t: SealTarget, rows: Rows): Promise<Admission | null> {
   return { round, mode: "closure", findings: sortClosure(t.text, parseFindings(t.text, t.kind, round).findings, new Set(openBlocking(rows).map(b => b.id)), changed) };
 }
 
-// Refuses a critic return the cap does not allow, reading the ticket's ledger and the snapshots; writes nothing.
 export async function refuseRoundPastCap(verdict: string, readPath: string): Promise<void> {
   const t = await sealTarget(verdict, readPath);
   if (t) await admit(t, await loadLedger(t.specs, t.key));
@@ -932,7 +919,7 @@ export async function sealRound(verdict: string, readPath: string): Promise<void
       return;
     }
     if (!seedOf(rows) && !rows.some(r => r.row === "round") && !namesTicket(await readFile(t.governing, "utf8"), t.key)) throw new Error(`${t.governing}: front matter has no tickets: line naming ${t.key}`);
-    const row = { v: 1, ts: Date.now(), key: t.key, row: "round", critic: t.kind, round: admitted.round, epoch: rows.c.epoch, return_sha: sum, verdict_path: t.v, read_path: t.page, read_sha: readSha, verdict: lastLine(t.text), mode: admitted.mode, ...parseFindings(t.text, t.kind, admitted.round), ...(admitted.findings ? { findings: admitted.findings } : {}) };
+    const row = { v: 1, ts: Date.now(), key: t.key, row: "round", critic: t.kind, round: admitted.round, epoch: rows.checked.epoch, return_sha: sum, verdict_path: t.v, read_path: t.page, read_sha: readSha, verdict: lastLine(t.text), mode: admitted.mode, ...parseFindings(t.text, t.kind, admitted.round), ...(admitted.findings ? { findings: admitted.findings } : {}) };
     await snapshotBytes(t.specs, t.key, bytes, readSha);
     await appendFile(file, `${JSON.stringify(row)}\n`);
   });
@@ -981,7 +968,6 @@ async function verifyReturn(abs: string, text: string, opts: { spec?: string; si
 const appendRow = (specs: string, key: string, row: Record<string, unknown>) => appendFile(join(ledgerDir(specs), `${key}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key, ...row })}\n`);
 const needConsole = (verb: string) => { if (process.env.HIMMEL_CONSOLE !== "1") throw new Error(`${verb}: needs HIMMEL_CONSOLE=1, the chief's marker; a worker never writes a record`); };
 
-// D6: the chief's one override per ticket.
 export async function roundOverride(specs: string, key: string, o: { findings: string[]; why: string; chief: string }): Promise<void> {
   needConsole("round-override");
   await withLedgerLock(specs, key, async () => {
@@ -996,11 +982,10 @@ export async function roundOverride(specs: string, key: string, o: { findings: s
     });
     const writer = writerRound(rows);
     if (writer < CRITIC_ROUND_CAP + 1) throw new Error(`round-override: ${key} is at writer round ${writer}; rounds 1 to ${CRITIC_ROUND_CAP} are free and round ${CRITIC_ROUND_CAP + 1} opens on its own`);
-    await appendRow(specs, key, { row: "override", epoch: rows.c.epoch, round_opened: writer + 1, findings: named, why: o.why, chief: o.chief });
+    await appendRow(specs, key, { row: "override", epoch: rows.checked.epoch, round_opened: writer + 1, findings: named, why: o.why, chief: o.chief });
   });
 }
 
-// D5: the operator's ruling on an operator-critical finding, under the quote rule. Without `noRound` it opens one further writer round.
 export async function roundCritical(specs: string, key: string, o: { finding: string; decision: string; quote: string; noRound: boolean }): Promise<void> {
   needConsole("round-critical");
   await withLedgerLock(specs, key, async () => {
@@ -1010,12 +995,11 @@ export async function roundCritical(specs: string, key: string, o: { finding: st
     if (!hit.f.critical) throw new Error(hit.f.critical_refused !== undefined ? `round-critical: '${hit.f.critical_refused}' is not an operator-critical class (${OPERATOR_CRITICAL_CLASSES.join(", ")})` : `round-critical: ${o.finding} carries no operator-critical class`);
     const q = await quoteRule(specs, key, o.decision, o.quote, rows.some(r => r.row === "critical" && String(r.decision) === o.decision), latestRoundTs(rows));
     if ("error" in q) throw new Error(`round-critical: ${q.error}`);
-    if (rows.c.criticals.some(r => r.id === o.finding)) throw new Error(`round-critical: ${o.finding} was already ruled on`);
-    await appendRow(specs, key, { row: "critical", epoch: rows.c.epoch, opens: o.noRound ? 0 : writerRound(rows) + 1, id: o.finding, class: hit.f.critical, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha, return_sha: hit.return_sha });
+    if (rows.checked.criticals.some(r => r.id === o.finding)) throw new Error(`round-critical: ${o.finding} was already ruled on`);
+    await appendRow(specs, key, { row: "critical", epoch: rows.checked.epoch, opens: o.noRound ? 0 : writerRound(rows) + 1, id: o.finding, class: hit.f.critical, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha, return_sha: hit.return_sha });
   });
 }
 
-// D7: an operator rethink starts a new epoch; one per ticket, ever.
 export async function roundReset(specs: string, key: string, o: { decision: string; quote: string }): Promise<void> {
   needConsole("round-reset");
   await withLedgerLock(specs, key, async () => {
@@ -1023,13 +1007,12 @@ export async function roundReset(specs: string, key: string, o: { decision: stri
     if (rows.some(r => r.row === "reset")) throw new Error(`round-reset: ${key} already used its one reset`);
     const q = await quoteRule(specs, key, o.decision, o.quote, false, latestRoundTs(rows));
     if ("error" in q) throw new Error(`round-reset: ${q.error}`);
-    await appendRow(specs, key, { row: "reset", epoch: rows.c.epoch + 1, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha });
+    await appendRow(specs, key, { row: "reset", epoch: rows.checked.epoch + 1, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha });
   });
 }
 
 const headingOf = async (verdictPath: string, id: string) => (await readFile(verdictPath, "utf8").catch(() => "")).split("\n").find(l => FINDING_LINE.exec(l)?.[1] === id);
 
-// D2: the one input a closure critic reads: the marker, the open blocking findings, the sha of each file the round before sealed, the diff of each against its snapshot.
 export async function closurePack(specs: string, key: string, kind: Kind): Promise<string> {
   const rows = await loadLedger(specs, key);
   const r = kindRound(rows, kind) + 1;
@@ -1041,7 +1024,7 @@ export async function closurePack(specs: string, key: string, kind: Kind): Promi
   const out = [closureMarker(key, kind, r, prev.returns[0].return_sha), "", "## open blocking findings"];
   const named = new Set<string>();
   for (const b of openBlocking(rows)) { named.add(b.id); out.push((await headingOf(b.verdict_path, b.id)) ?? `- **${b.id}** (${b.severity})`); }
-  for (const c of rows.c.criticals.filter(x => Number(x.opens) === r)) {
+  for (const c of rows.checked.criticals.filter(x => Number(x.opens) === r)) {
     const f = findingOf(rows, String(c.id));
     if (!named.has(String(c.id)) && f) out.push((await headingOf(f.verdict_path, String(c.id))) ?? `- **${c.id}** (${f.f.severity}; operator-critical: ${f.f.critical})`);
   }
@@ -1053,7 +1036,6 @@ export async function closurePack(specs: string, key: string, kind: Kind): Promi
   return `${out.join("\n")}\n`;
 }
 
-// D4: the findings no later round answered, for the build brief.
 export async function foldList(specArg: string, specsArg?: string): Promise<string[]> {
   const spec = await realpath(specArg).catch(() => resolve(specArg));
   const key = keyOf(spec);
@@ -1494,7 +1476,6 @@ export async function writeOwedReceipt(doc: string, key: string, messageId: numb
   await appendFile(doc, `${cur === "" || cur.endsWith("\n") ? "" : "\n"}- ${hhmm()} DELIVERED ${key} msg=${messageId} chat=${chat}\n`);
 }
 
-// The verbs that read or write a ticket's records: their value flags, bare flags and how many positional words each takes.
 const VERB_FLAGS: Record<string, { valued: string[]; bare: string[] }> = {
   "closure-pack": { valued: ["--specs"], bare: [] },
   "round-override": { valued: ["--findings", "--why", "--chief", "--specs"], bare: [] },

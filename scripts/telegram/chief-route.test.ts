@@ -2684,7 +2684,6 @@ const roundTree = async (spec3: string[], plan3: string[], withHtml = false) => 
   }
   return { ...t, a, plan, html, r: dirname(t.specs) };
 };
-// The one line a closure return opens with: the round before it, by kind, from the ledger (a seeded return when no round row holds it).
 function markerFor(specs: string, key: string, kind: "spec" | "plan", r: number) {
   const rows = ledgerRows(specs, key);
   const row = rows.filter((x) => x.row === "round" && x.critic === kind && x.round === r - 1).at(-1) ?? rows.find((x) => x.row === "seed").latest[kind][0];
@@ -2908,7 +2907,6 @@ test("R16: a clean latest critic file with a hand-appended CONTENT-SHA256 line n
   expect(res.lines.length).toBe(1);
 }, S1B);
 
-// ---- the closure check, the override, operator-critical and reset records, fold-list and the sign check ----
 const verb = async (console: boolean, ...args: string[]) => {
   const env: Record<string, string | undefined> = { ...process.env };
   if (console) env.HIMMEL_CONSOLE = "1"; else delete env.HIMMEL_CONSOLE;
