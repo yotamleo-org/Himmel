@@ -7859,11 +7859,10 @@ rm -f "$c74_conf.local"
 out="$(c74_run)"
 if grepq "$out" -E '^WARN C74-config-keys: (.*; )?himmel\.conf\.local: deleted; newest good backup: -$' && ! grepq "$out" -F "backup: $c74_conf.local"; then pass "C74-config-keys deleted empty file -> WARN with its fields in place"; else fail "C74-config-keys empty loss -> $(printf '%s' "$out" | head -8)"; fi
 echo "== C74 run from another repo's directory reads the checkout's .env, never the caller's =="
-# The caller sits in a git repo with no .env, as a chief shell in the luna bucket does.
 c74_reset; rm -rf "$c74_t/home/.himmel/state"
 c74_p="$c74_t/proj"; c74_away="$c74_t/away"; mkdir -p "$c74_p" "$c74_away"
 git init -q "$c74_p"; git init -q "$c74_away"
-ln -s "$REPO_ROOT/scripts" "$c74_p/scripts"  # the doctor sources its libs from the --root checkout
+ln -s "$REPO_ROOT/scripts" "$c74_p/scripts"
 printf 'JIRA_EMAIL=planted-dummy-value-74\nOPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_p/.env"
 printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}' > "$c74_pol"
 HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_CONFIG_AUDIT_ENV_FILE="$c74_p/.env" bash "$REPO_ROOT/scripts/lib/config-audit.sh" accept >/dev/null 2>&1
@@ -8359,8 +8358,6 @@ else
 fi
 rm -rf "$c95_t"
 
-# printed_keys <file>: every code line whose quoted text (what the doctor prints) carries a
-# ticket key; comment lines and trailing comments are skipped.
 printed_keys() {
     awk '/^[[:space:]]*#/ { next }
     {
@@ -8378,7 +8375,7 @@ printed_keys() {
 }
 echo "== printed text: the planted control is caught, comments are not =="
 pk_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-pk.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
-pk_k="HIMMEL"  # the planted key is built from parts, so this file names no ticket
+pk_k="HIMMEL"
 {
     printf '# a comment may name %s-1\n' "$pk_k"
     # shellcheck disable=SC2016  # literal fixture text, no expansion intended

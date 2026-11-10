@@ -3620,8 +3620,6 @@ check_c73_bun_compiled() {
     [ "$stale" -gt 0 ] || emit OK C73-bun-compiled "$scanned bun-compiled binaries scanned, none embeds a Bun older than .bun-version $pin"
 }
 
-# The .env of the set, resolved from the himmel checkout (HIMMEL_REPO, else the checkout this
-# run judges), never from the caller's working directory.
 _doctor_env_file() {
     local root="${HIMMEL_REPO:-}"
     [ -n "$root" ] && [ -d "$root" ] || root="$REPO_ROOT"
