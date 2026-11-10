@@ -2159,7 +2159,7 @@ def main():
     newly_parked = []
     ok = partial = failed = skipped = 0
     processed_count = 0
-    flagged = []  # injection-suspect clips for the run report
+    flagged = []
     for clip in clips:
         if args.limit > 0 and processed_count >= args.limit:
             break

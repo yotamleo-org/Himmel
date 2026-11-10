@@ -46,8 +46,6 @@ function parseArgs(argv) {
     else if (t === "--apply") a.mode = "apply";
     else if (t === "--revert") { a.mode = "revert"; a.revertPath = argv[++i]; }
     else if (t === "--ledger") a.ledger = argv[++i];
-    // Suppress the telegram promotion digest (e.g. the first big
-    // synthesize run after the lifecycle migration backfill — design §12.F).
     else if (t === "--no-telegram-digest") a.telegramDigest = false;
     else rest.push(t);
   }
@@ -153,7 +151,6 @@ function renderStub(subjectName, target, contributors) {
     `derived_from: "[[Clippings/${firstId}]]"`,
     "generated_by: /synthesize-stubs",
     "promoted_from_evidence: true",
-    // Tech subjects from github clips queue a one-hop reference crawl.
     ...(isTech ? ["deepen_pending: true"] : []),
     "---",
   ];
@@ -171,7 +168,6 @@ function renderStub(subjectName, target, contributors) {
     "",
     ...contributors.map((c) => `- [[Clippings/${c.id}]] — <why this clip evidences the concept>`),
     "",
-    // Reference scaffold for the deepen pass (filled by /deepen-subject).
     ...(isTech ? [
       "## References",
       "",
@@ -186,7 +182,6 @@ function renderStub(subjectName, target, contributors) {
   return fm.join("\n") + "\n" + body.join("\n");
 }
 
-// ── densify ────────────────────────────────────────────────────────
 // Append the FRESH contributors (those not already wikilinked) to an existing
 // subject's `## Evidence` section — inside the section (before the next `## `
 // heading), or a new `## Evidence` section at EOF if none exists. Returns
@@ -337,7 +332,6 @@ function runApply(vault, ledgerPath, dryRun) {
   return promotions;
 }
 
-// ── telegram promotion digest ──────────────────────────────────────
 // Build the batched digest from THIS run's promotions and persist it to
 // <vault>/.synthesize-stubs.telegram-digest.json for the synthesize-stubs
 // runbook to send through the telegram bridge `reply` tool (ONE reply per

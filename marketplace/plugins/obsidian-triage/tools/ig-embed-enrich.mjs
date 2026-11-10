@@ -420,7 +420,6 @@ async function processClip(clipPath, vault, dryRun) {
 
   const parsed2 = parseEmbedHtml(fetched.html);
   if (!parsed2) {
-    // Login-walled or removed — leave for the authenticated rung.
     return writeFailure({ clipPath, rel, text, baselineSha, fmRaw, body, error: "embed_no_caption" });
   }
 
