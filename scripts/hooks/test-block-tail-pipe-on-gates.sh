@@ -7,9 +7,9 @@
 #   * a pipeline whose FIRST stage is a registered gate command and whose LAST
 #     stage is tail/head -> exit 2 (deny) + a stderr reason that names the
 #     sanctioned quiet-run recovery forms, ${PIPESTATUS[0]} and the documented
-#     same-line marker. The hook still ALLOWS a gate followed only by a redirect
-#     (below), but its advice no longer recommends one: guard-pr-check-literal
-#     refuses a redirect on a guarded writer, so the advice is judged against
+#     same-line marker. The hook ALLOWS a gate followed only by a redirect
+#     (below), but its advice never recommends one: guard-pr-check-literal
+#     refuses a redirect on a guarded writer, so the advice is checked against
 #     all three guards (recovery_* rows at the end).
 #   * the same-line `# tail-pipe-ok: <reason>` marker -> exit 0, no decision.
 #   * the CORRECT shape (redirect, then a separate tail) -> exit 0.
