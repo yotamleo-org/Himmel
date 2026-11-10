@@ -808,8 +808,8 @@ def flag_on(name):
         return himmel_flag(name)
 
 
-CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')
-CORE_FIELDS = {'CORE': 3, 'BYPASS': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>
+CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'BYPASS-NEEDS-SPEC', 'UNKNOWN')
+CORE_FIELDS = {'CORE': 3, 'BYPASS': 4, 'BYPASS-NEEDS-SPEC': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>, BYPASS-NEEDS-SPEC <K> <kind> <missing...>
 
 
 def jira_cli():
@@ -926,6 +926,9 @@ def core_worker_gate(l, ctx):
             kind, reason = (t[2] if len(t) > 2 else '?'), (t[3] if len(t) > 3 else '')
             lines.append('> **Core gate:** %s bypass=%s — %s' % (k, kind, reason))
             row(k, 'bypass', kind=kind, line=verdict[k])
+        elif t[0] == 'BYPASS-NEEDS-SPEC':
+            row(k, 'refused', kind=t[2], line=verdict[k])
+            refusals.append('%s is core and its %s bypass waives the signature, never the spec: %s; run minerva to one critic round (a docs-only design leg may write it), then jira release operator spec-review' % (k, t[2], t[3]))
         elif t[0] == 'UNKNOWN':
             row(k, 'unknown', line=verdict[k])
             refusals.append('%s is not in the Jira mirror (%s), so neither core nor a bypass can be proven; refresh the mirror, then re-run' % (k, mirror_dir(k)))
