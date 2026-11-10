@@ -108,7 +108,6 @@ got="$(read_marker "$T/odd.html")"
 has "the reader gets the odd path back unchanged" "has no spec critic file ($T/a\"b&c'd<e>f.md.critic-spec-r<n>.md)" "$got"
 
 echo "== critic seals =="
-# A keyed tree under a seeded specs root, sealed by real critic-seal.sh runs, so the fixture holds once the cap reads the ledger.
 SEAL="$REPO_ROOT/scripts/handover/chief-kit/critic-seal.sh"
 SR="$T/seal/specs"; S="$SR/designs"; mkdir -p "$S" "$T/elsewhere"
 out="$(bun "$ROUTE" round-seed --all "$SR" 2>&1)" && pass "the temp specs root is seeded" || fail "the temp specs root is seeded" "$out"

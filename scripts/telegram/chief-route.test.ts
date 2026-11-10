@@ -2374,7 +2374,6 @@ test("approve: only the verb writes the store: another word, a non-numeric PR or
   } finally { e.done(); }
 });
 
-// ---- every critic round is recorded in one ledger per ticket at seal time, and round-seed migrates what is on disk ----
 import { realpathSync } from "node:fs";
 
 const ROUTE_TS = join(import.meta.dir, "chief-route.ts");
@@ -2395,7 +2394,7 @@ const front = (key: string, body: string) => `---\ntickets: ${key}\n---\n${body}
 
 test("R18: the first round of a key with no seed row needs a front matter tickets: line naming it, and the refusal sits beside its siblings (T17)", async () => {
   const t = specsTree();
-  expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);   // a manifest with no key: this ticket is not seeded
+  expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
   const spec = join(t.dir, `${ROUND_KEY}-x.md`); const v = `${spec}.critic-spec-r1.md`;
   const text = "# X\n\nno front matter\n";
   writeFileSync(spec, text); writeFileSync(v, ret("SPEC CLEAN", `read ${sha(text)}`));
@@ -2404,7 +2403,7 @@ test("R18: the first round of a key with no seed row needs a front matter ticket
   expect(refused.err).toContain(`${spec}: front matter has no tickets: line naming ${ROUND_KEY}`);
   expect(readFileSync(v, "utf8")).not.toContain("CONTENT-SHA256");
   expect(existsSync(join(roundsDir(t.specs), `${ROUND_KEY}.jsonl`))).toBe(false);
-  for (const other of [`${ROUND_KEY}0`, `${ROUND_KEY}OTHER`]) {   // another ticket whose number starts with this one, and a word that merely starts with the key
+  for (const other of [`${ROUND_KEY}0`, `${ROUND_KEY}OTHER`]) {
     const prefix = front(other, text);
     writeFileSync(spec, prefix); writeFileSync(v, ret("SPEC CLEAN", `read ${sha(prefix)}`));
     expect((await seal(v, spec, sha(prefix))).err).toContain(`front matter has no tickets: line naming ${ROUND_KEY}`);
@@ -2413,7 +2412,6 @@ test("R18: the first round of a key with no seed row needs a front matter ticket
   writeFileSync(spec, named); writeFileSync(v, ret("SPEC CLEAN", `read ${sha(named)}`));
   expect((await seal(v, spec, sha(named))).code).toBe(0);
   expect(ledgerRows(t.specs, ROUND_KEY).map((r) => [r.row, r.critic, r.round])).toEqual([["round", "spec", 1]]);
-  // a seeded key is exempt: the seed already bound it, and most specs have no tickets: line
   const s = specsTree(); const old = join(s.dir, `${ROUND_KEY}-y.md`);
   writeFileSync(old, text); writeFileSync(`${old}.critic-spec-r1.md`, ret("SPEC FINDINGS 1", "- **a1** (minor) a note"));
   expect((await routeCli("round-seed", "--all", s.specs)).code).toBe(0);
@@ -2428,7 +2426,7 @@ test("R-sha: returnSha drops CONTENT-SHA256 lines, trailing whitespace and trail
   expect(returnSha(plain)).toBe(sha(plain));
   for (const same of ["a finding  \nCONTENT-SHA256 " + "a".repeat(64) + " x.md\nSPEC CLEAN", "a finding\nSPEC CLEAN\n\n\n", "a finding\r\nSPEC CLEAN  \r\n"]) expect(returnSha(same)).toBe(sha(plain));
   expect(returnSha("a finding\nSPEC FINDINGS 1\n")).not.toBe(sha(plain));
-  const none = specsTree(); const nspec = join(none.dir, "plain.md"); writeFileSync(nspec, "# P\n");   // no seed: nothing is recorded
+  const none = specsTree(); const nspec = join(none.dir, "plain.md"); writeFileSync(nspec, "# P\n");
   writeFileSync(`${nspec}.critic-spec-r1.md`, ret("SPEC CLEAN", `read ${sha("# P\n")}`));
   expect((await seal(`${nspec}.critic-spec-r1.md`, nspec, sha("# P\n"))).code).toBe(0);
   expect(existsSync(join(none.specs, "ledgers"))).toBe(false);
@@ -2446,7 +2444,6 @@ test("R-sha: returnSha drops CONTENT-SHA256 lines, trailing whitespace and trail
   expect(typeof rows[0].ts).toBe("number");
   expect(rows[1]).toMatchObject({ v: 1, key: ROUND_KEY, row: "seal", return_sha: rows[0].return_sha, read_path: html, read_sha: sha(htmlText) });
   for (const s of [mdText, htmlText]) expect(readFileSync(join(roundsDir(t.specs), ROUND_KEY, sha(s)), "utf8")).toBe(s);
-  // a verdict file with new text is a new return, so it takes the next round
   const v2 = `${md}.critic-spec-r2.md`; writeFileSync(v2, ret("SPEC FINDINGS 1", `read ${sha(mdText)}`, "- **n1** (major) changed"));
   expect((await seal(v2, md, sha(mdText))).code).toBe(0);
   expect(ledgerRows(t.specs, ROUND_KEY).at(-1)).toMatchObject({ row: "round", round: 2, findings: [{ id: "n1", severity: "major" }] });
@@ -2463,7 +2460,7 @@ test("R-sha (seeded): a seeded round-3 return sealed on another file writes a se
   expect(seeded.latest.spec.map((x: { verdict_path: string }) => x.verdict_path)).toEqual([r3]);
   expect((await seal(r3, html, sha(htmlText))).code).toBe(0);
   const rows = ledgerRows(t.specs, ROUND_KEY);
-  expect(rows.map((r) => r.row)).toEqual(["seed", "seal"]);   // no round row: the return is the seeded one
+  expect(rows.map((r) => r.row)).toEqual(["seed", "seal"]);
   expect(rows[1]).toMatchObject({ return_sha: seeded.latest.spec[0].return_sha, read_path: html, read_sha: sha(htmlText) });
   expect(readFileSync(join(roundsDir(t.specs), ROUND_KEY, sha(htmlText)), "utf8")).toBe(htmlText);
 });
@@ -2486,9 +2483,9 @@ test("R-seed-forms: round-seed reads every critic name form, takes the highest r
   const [seed, ...rest] = ledgerRows(t.specs, ROUND_KEY);
   expect(rest).toEqual([]);
   expect(seed).toMatchObject({ v: 1, row: "seed", key: ROUND_KEY, spec: 3, plan: 2 });
-  expect(seed.latest.spec.map((x: { verdict_path: string }) => x.verdict_path)).toEqual([r3]);   // the kindless -r3 file: the verdict line says spec
+  expect(seed.latest.spec.map((x: { verdict_path: string }) => x.verdict_path)).toEqual([r3]);
   expect(seed.latest.spec[0]).toMatchObject({ verdict: "SPEC FINDINGS 1", findings: [{ id: "b1", severity: "minor" }], unrated_ids: [] });
-  expect(seed.latest.plan.map((x: { verdict_path: string }) => x.verdict_path)).toEqual([p2, p2b]);   // a tie records each return, and -r2b is round 2
+  expect(seed.latest.plan.map((x: { verdict_path: string }) => x.verdict_path)).toEqual([p2, p2b]);
   expect(JSON.parse(readFileSync(join(roundsDir(t.specs), "manifest.json"), "utf8"))).toMatchObject({ v: 1, keys: { [ROUND_KEY]: { spec: 3, plan: 2 } } });
   expect(existsSync(join(roundsDir(t.specs), `${ROUND_KEY}-z.jsonl`))).toBe(false);
 });
@@ -2509,7 +2506,7 @@ test("R-seed-seals: the seed row records each latest return's seal lines as abso
   expect(seed.latest.spec[0].return_sha).toBe(sha("critic return\nSPEC FINDINGS 0\n"));
   expect(readFileSync(join(roundsDir(t.specs), ROUND_KEY, sha(mdText)), "utf8")).toBe(mdText);
   expect(readFileSync(join(roundsDir(t.specs), ROUND_KEY, sha(planText)), "utf8")).toBe(planText);
-  expect(existsSync(join(roundsDir(t.specs), ROUND_KEY, sha(oldRead)))).toBe(false);   // the file changed before the seed: no snapshot of bytes it no longer has
+  expect(existsSync(join(roundsDir(t.specs), ROUND_KEY, sha(oldRead)))).toBe(false);
   expect(seed.latest.plan).toEqual([]);
 });
 
@@ -2537,19 +2534,33 @@ test("round-seed removes what it wrote when it fails, so the root can be seeded 
     writeFileSync(md, text); writeFileSync(`${md}.critic-spec-r1.md`, `critic return\nCONTENT-SHA256 ${sha(text)} ${basename(md)}\nSPEC CLEAN\n`);
   }
   mkdirSync(roundsDir(t.specs), { recursive: true });
-  writeFileSync(join(roundsDir(t.specs), "HIMMEL-9702"), "in the way");   // a file where the second ticket's snapshot folder must go
+  writeFileSync(join(roundsDir(t.specs), "HIMMEL-9702"), "in the way");
   const failed = await routeCli("round-seed", "--all", t.specs);
   expect(failed.code).not.toBe(0);
-  expect(readdirSync(roundsDir(t.specs))).toEqual(["HIMMEL-9702"]);   // the first ticket's snapshot and its folder are gone
+  const held = () => readdirSync(roundsDir(t.specs)).filter((n) => n !== "round-seed.jsonl.lock").sort();
+  expect(held()).toEqual(["HIMMEL-9702"]);
   unlinkSync(join(roundsDir(t.specs), "HIMMEL-9702"));
   expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
-  expect(readdirSync(roundsDir(t.specs)).sort()).toEqual([ROUND_KEY, `${ROUND_KEY}.jsonl`, "HIMMEL-9702", "HIMMEL-9702.jsonl", "manifest.json"].sort());
+  expect(held()).toEqual([ROUND_KEY, `${ROUND_KEY}.jsonl`, "HIMMEL-9702", "HIMMEL-9702.jsonl", "manifest.json"].sort());
+});
+
+test("two round-seed runs on one root: one seeds, the other is refused, and nothing the winner wrote is lost", async () => {
+  const t = specsTree();
+  for (const key of [ROUND_KEY, "HIMMEL-9702"]) {
+    const md = join(t.dir, `${key}-x.md`); const text = `# ${key}\n`;
+    writeFileSync(md, text); writeFileSync(`${md}.critic-spec-r1.md`, `critic return\nCONTENT-SHA256 ${sha(text)} ${basename(md)}\nSPEC CLEAN\n`);
+  }
+  const runs = await Promise.all([routeCli("round-seed", "--all", t.specs), routeCli("round-seed", "--all", t.specs), routeCli("round-seed", "--all", t.specs)]);
+  expect(runs.map((r) => r.code).sort()).toEqual([0, 1, 1]);
+  for (const r of runs.filter((x) => x.code !== 0)) expect(r.err).toContain("already holds a ledger, snapshot or manifest");
+  expect(readdirSync(roundsDir(t.specs)).filter((n) => n !== "round-seed.jsonl.lock").sort()).toEqual([ROUND_KEY, `${ROUND_KEY}.jsonl`, "HIMMEL-9702", "HIMMEL-9702.jsonl", "manifest.json"].sort());
+  for (const key of [ROUND_KEY, "HIMMEL-9702"]) expect(readFileSync(join(roundsDir(t.specs), key, sha(`# ${key}\n`)), "utf8")).toBe(`# ${key}\n`);
 });
 
 test("keyOf reads the ticket key by the D1 rule, and parseFindings gives every unlabeled finding a synthetic id (D3)", async () => {
   const { keyOf, parseFindings } = await import("./chief-route");
   expect(keyOf("/s/specs/designs/HIMMEL-9687-x.md")).toBe("HIMMEL-9687");
-  expect(keyOf("/s/specs/designs/HIMMEL-96870-x.md")).toBe("HIMMEL-96870");   // never a prefix of the shorter key
+  expect(keyOf("/s/specs/designs/HIMMEL-96870-x.md")).toBe("HIMMEL-96870");
   expect(keyOf("/s/specs/designs/HIMMEL-9687.md")).toBe("HIMMEL-9687");
   expect(keyOf("/s/specs/HIMMEL-9687/design.md")).toBe("HIMMEL-9687");
   expect(keyOf("/s/specs/plans/2026-11-04-HIMMEL-8943-x-plan.md")).toBeNull();
@@ -2572,6 +2583,6 @@ test("keyOf reads the ticket key by the D1 rule, and parseFindings gives every u
     { id: "F4", severity: "minor", reopens: "F1" },
     { id: "F5", severity: "major", regression: true },
   ]);
-  expect(got.unrated_ids).toEqual(["spec-r4-U1", "spec-r4-U2", "spec-r4-U3"]);   // 8 findings counted, 5 parsed
+  expect(got.unrated_ids).toEqual(["spec-r4-U1", "spec-r4-U2", "spec-r4-U3"]);
   expect(parseFindings("all good\nPLAN CLEAN\n", "plan", 1)).toEqual({ findings: [], unrated_ids: [] });
 });

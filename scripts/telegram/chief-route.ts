@@ -583,8 +583,6 @@ async function operatorAllowsRound(spec: string, round: number): Promise<boolean
   return (await listDir([...parts.slice(0, specs + 1), "decisions"].join("/"))).some(n => n.startsWith(`verbatim-decision-${decision}-`));
 }
 
-// The specs a seal belongs to: the spec the read file is filed under, and the spec the verdict file is named after
-// (`named` is its path whether or not that file is there).
 async function sealSpecs(v: string, page: string): Promise<{ read: string; named?: string; namedExists: boolean }> {
   const source = await markedSource(page);
   const md = siblingMd(page);
@@ -610,9 +608,6 @@ export async function refuseRoundPastCap(verdict: string, readPath: string): Pro
   }
 }
 
-// ---- the round ledger: one append-only file per ticket, written at seal time ----
-// `<specs root>/ledgers/spec-rounds/<KEY>.jsonl`, rows `seed`, `round` and `seal`; each file a round sealed is copied to
-// `<KEY>/<its sha256>`. The cap still decides from `criticRounds` in this slice: the check below only records.
 export const OPERATOR_CRITICAL_CLASSES = ["spend-grant", "account-or-terms", "public-policy", "reverses-ruling"] as const;
 type Finding = { id: string; severity: "major" | "medium" | "minor"; critical?: string; critical_refused?: string; reopens?: string; regression?: boolean };
 type SeededReturn = { return_sha: string; verdict_path: string; seals: { read_path: string; read_sha: string }[]; findings: Finding[]; unrated_ids: string[]; verdict: string };
@@ -623,14 +618,12 @@ const KEY_FOLDER = /^[A-Z][A-Z0-9]+-[0-9]+$/;
 const ledgerDir = (specs: string) => join(specs, "ledgers", "spec-rounds");
 const specsRootOf = (p: string) => { const parts = p.split("/"); const i = parts.lastIndexOf("specs"); return i < 0 ? null : parts.slice(0, i + 1).join("/"); };
 
-// The sha256 of a critic return that survives sealing: no CONTENT-SHA256 lines, no trailing whitespace, no trailing blank lines.
 export function returnSha(text: string): string {
   const lines = text.split("\n").filter(l => !l.startsWith("CONTENT-SHA256 ")).map(l => l.trimEnd());
   while (lines.length && lines.at(-1) === "") lines.pop();
   return sha256(Buffer.from(lines.length ? `${lines.join("\n")}\n` : ""));
 }
 
-// The ticket a spec belongs to: its `specs/<KEY>/` folder, else the key its file name starts with (bounded, so a longer number is never read as a shorter key).
 export function keyOf(specPath: string): string | null {
   const parts = specPath.split("/");
   const folder = parts.at(-2);
@@ -638,8 +631,6 @@ export function keyOf(specPath: string): string | null {
   return /^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])/.exec(parts.at(-1) ?? "")?.[1] ?? null;
 }
 
-// Reads the finding lines a charter dictates. A line whose label is not major, medium or minor does not parse; the
-// gap between the verdict line's count and the lines parsed becomes one synthetic id per missing finding, each read as major.
 export function parseFindings(returnText: string, kind: Kind, round: number): { findings: Finding[]; unrated_ids: string[] } {
   const findings: Finding[] = [];
   for (const line of returnText.split("\n")) {
@@ -693,12 +684,18 @@ async function flockedLedger<T>(specs: string, key: string, fn: () => Promise<T>
   } finally { await lock.close(); libc.close(); }
 }
 
-// A copy of the bytes a critic read, named by their sha256, written once and never overwritten.
-// Returns the path it wrote, or null when the copy was already there.
-async function snapshotBytes(specs: string, key: string, bytes: Uint8Array, sum: string): Promise<string | null> {
+async function createNew(path: string, data: string | Uint8Array, made: string[]): Promise<boolean> {
+  const file = await open(path, "wx").catch((e: NodeJS.ErrnoException) => { if (e.code === "EEXIST") return null; throw e; });
+  if (!file) return false;
+  made.push(path);
+  try { await file.writeFile(data); } finally { await file.close(); }
+  return true;
+}
+
+async function snapshotBytes(specs: string, key: string, bytes: Uint8Array, sum: string, made: string[] = []): Promise<void> {
   const path = join(ledgerDir(specs), key, sum);
   await mkdir(dirname(path), { recursive: true });
-  return writeFile(path, bytes, { flag: "wx" }).then(() => path, (e: NodeJS.ErrnoException) => { if (e.code === "EEXIST") return null; throw e; });
+  await createNew(path, bytes, made);
 }
 
 const namesTicket = (specText: string, key: string) => {
@@ -706,8 +703,6 @@ const namesTicket = (specText: string, key: string) => {
   return front.split("\n").some(l => /^tickets:/.test(l) && new RegExp(`(?<![A-Za-z0-9])${key}(?![A-Za-z0-9])`).test(l));
 };
 
-// Records the return `critic-seal.sh` is sealing: a `round` row for a new return, a `seal` row for a return it already holds (a second
-// file sealed, or the seeded return). A specs root with no manifest is not seeded yet, so nothing is recorded there.
 export async function recordSealedReturn(verdict: string, readPath: string): Promise<void> {
   const v = await realpath(verdict); const page = await realpath(readPath);
   const text = await readCritic(v);
@@ -737,12 +732,15 @@ export async function recordSealedReturn(verdict: string, readPath: string): Pro
   });
 }
 
-// `round-seed --all <specs root>`: once per root, writes a `seed` row for every ticket with critic returns on disk, and the manifest last.
-// Every critic name form counts, a letter suffix counts as its round, and code, diff and judge returns do not match any form.
 const CRITIC_NAME = /^(.+?)\.critic-(?:(spec|plan)-)?r(\d+)[a-z]?\.md$/;
-export async function roundSeed(rootArg: string): Promise<{ keys: Record<string, { spec: number; plan: number }>; skipped: string[] }> {
-  const specs = resolve(rootArg); const dir = ledgerDir(specs);
+type SeedResult = { keys: Record<string, { spec: number; plan: number }>; skipped: string[] };
+export async function roundSeed(rootArg: string): Promise<SeedResult> {
+  const specs = resolve(rootArg);
   if (!await stat(specs).then(s => s.isDirectory(), () => false)) throw new Error(`round-seed: ${specs} is not a folder`);
+  return withLedgerLock(specs, "round-seed", () => seedRoot(specs));
+}
+async function seedRoot(specs: string): Promise<SeedResult> {
+  const dir = ledgerDir(specs);
   for (const n of await listDir(dir)) if (n === "manifest.json" || n.endsWith(".jsonl") || await stat(join(dir, n)).then(s => s.isDirectory(), () => false)) throw new Error(`round-seed: ${dir} already holds a ledger, snapshot or manifest`);
   const folders = [...SIGNATURE_DIRS].map(d => join(specs, d));
   for (const n of await listDir(specs)) if (KEY_FOLDER.test(n) && await stat(join(specs, n)).then(s => s.isDirectory(), () => false)) folders.push(join(specs, n));
@@ -783,12 +781,11 @@ export async function roundSeed(rootArg: string): Promise<{ keys: Record<string,
     }
     keys[key] = { spec: row.spec, plan: row.plan }; seeds.set(key, row);
   }
-  // Publish: snapshots, then ledgers, the manifest last. A failure removes what this run wrote, so the root can be seeded again.
   const made: string[] = [];
-  const write = async (path: string, data: string) => { await writeFile(path, data, { flag: "wx" }); made.push(path); };
+  const write = async (path: string, data: string) => { if (!await createNew(path, data, made)) throw new Error(`round-seed: ${path} appeared while seeding`); };
   try {
     await mkdir(dir, { recursive: true });
-    for (const s of snapshots) { const path = await snapshotBytes(specs, s.key, s.bytes, s.sum); if (path) made.push(path); }
+    for (const s of snapshots) await snapshotBytes(specs, s.key, s.bytes, s.sum, made);
     for (const [key, row] of seeds) await write(join(dir, `${key}.jsonl`), `${JSON.stringify(row)}\n`);
     await write(join(dir, "manifest.json"), `${JSON.stringify({ v: 1, ts: Date.now(), keys })}\n`);
   } catch (e) {
