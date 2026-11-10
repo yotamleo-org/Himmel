@@ -690,7 +690,6 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .tr .aside .rd{flex:1 1 8rem;width:8rem;text-align:right;color:var(--muted)}
 .cp{display:grid;gap:var(--s1);border:1px solid var(--rule);border-top:3px solid var(--road);border-radius:0 0 10px 10px;background:var(--surface);padding:var(--s2) var(--s4)}
 .cp.plain{border-top-color:var(--rule-strong)}
-.cp.plain>section.box{border:0;border-radius:0;background:none;padding:0;margin:0;min-width:0}
 .cp.plain .rm-bar{flex-wrap:wrap;white-space:normal}
 .cph{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3)}
 .cph .big{font:700 var(--fs-md) var(--font-ui);color:var(--ink)}
@@ -785,6 +784,13 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .cp #rm-waiting ul{margin:0;padding-left:var(--s4)}
 #rm-lanes>.sub,#rm-nv>.sub{margin:0 0 var(--s1)}
 @media (max-width:760px){.cp .rm-card .tk{white-space:normal}.cp .seclegend .sec .nm .rm-clip{white-space:normal;overflow-wrap:anywhere}}
+/* The Tidy up body (9559 slice 3): a group's head over its cards, the code of a drift class as a small grey tag beside its words, the re-run button in the panel head */
+.cp .rm-grp{display:grid;gap:var(--s1);min-width:0}
+.cph .flt{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;justify-content:flex-end}
+.cp .rm-cls{font:600 11px var(--font-mono);color:var(--muted);border:1px solid var(--rule);border-radius:4px;padding:0 var(--s1);white-space:nowrap;background:none}
+.cp .note{font-size:var(--fs-xs);color:var(--muted)}
+.cp .fin .gl.q{color:var(--muted)}
+@media (max-width:760px){.cp .rm-sdrift td:nth-child(2){white-space:nowrap}.cp .rm-sdrift :is(th,td):is(:nth-child(3),:nth-child(4),:nth-child(5)){display:none}}
 .card-h{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px 16px;margin-bottom:6px}
 .card-h h2{margin:0;font-size:var(--fs-md)}
 .card-h .big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}

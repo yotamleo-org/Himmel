@@ -30,7 +30,9 @@ for (const [name, render, input, ui, title] of [
     const html = render(input, ui);
     expect(html).toMatch(/<header class="ph">/);
     expect(html).toContain(`<h1>${title}</h1>`);
-    expect(html).toMatch(name === "Board" || name === "GitHub Board" ? /<section[^>]*class="cp[ "]/ : /<section[^>]*class="box"/);
+    const board = name.endsWith("Board") || name.startsWith("Board");
+    expect(html).toMatch(board ? /<section[^>]*class="cp[ "]/ : /<section[^>]*class="box"/);
+    if (board) expect(html).not.toContain('class="box"');
   });
 }
 
