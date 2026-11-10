@@ -479,6 +479,13 @@ contains "repeated_same_pr_low_evidence: insufficient evidence" "$(advice_for "$
 LQ2b="$tmp/q-onepr-deferred.jsonl"; gen "$LQ2b" codex gpt-s 40 disproved 1 2 amend q2b; gen "$LQ2b" codex gpt-s 9 deferred 9 2 amend q2c
 q2b_out="$(CR_LEDGER="$LQ2b" bash "$CS" 2>&1)"
 contains "repeated_same_pr_low_evidence: deferred-only PRs do not count" "$(advice_for "$q2b_out" codex:gpt-s)" "insufficient evidence (40 decided over 1 PR(s)"
+LQ2d="$tmp/q-few-decided.jsonl"; gen "$LQ2d" codex gpt-n 20 disproved 12 2 amend q2d
+q2d_out="$(CR_LEDGER="$LQ2d" bash "$CS" 2>&1)"
+contains "thin_decided_insufficient: 20 decided over 12 PRs is thin" "$(advice_for "$q2d_out" codex:gpt-n)" "insufficient evidence (20 decided over 12 PR(s)"
+not_contains "thin_decided_insufficient: never low-agreement advice" "$q2d_out" "low author agreement"
+LQ2k="$tmp/q-threshold.jsonl"; gen "$LQ2k" codex gpt-k 30 agreed 10 2 amend q2k; gen "$LQ2k" codex gpt-k 10 disproved 10 2 amend q2k
+contains "drop_below_wiring: 75% passes the default 40% threshold" "$(CR_LEDGER="$LQ2k" bash "$CS" 2>&1 | awk '/^=== Advice/{f=1} f && $1=="codex:gpt-k"')" "ok (author agreement 75.0%"
+contains "drop_below_wiring: CR_SCORES_DROP_BELOW=80 makes 75% investigate" "$(CR_LEDGER="$LQ2k" CR_SCORES_DROP_BELOW=80 bash "$CS" 2>&1 | awk '/^=== Advice/{f=1} f && $1=="codex:gpt-k"')" "low author agreement; investigate (75.0%"
 
 LQ3="$tmp/q-bookkeeping.jsonl"; gen "$LQ3" coverage-deferral - 40 disproved 12 2 amend q3
 q3_out="$(CR_LEDGER="$LQ3" bash "$CS" 2>&1)"
@@ -501,6 +508,11 @@ contains "advice_uses_window: investigate in the explicit window" "$(advice_for 
 until30="$(python3 -I -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
 CR_LEDGER="$LQ4" bash "$CS" --since "$since90" --until "$until30" --json > "$tmp/q4u.json" 2>/dev/null
 check "--until cuts the quality view" "$(recorded_diff_field "$tmp/q4u.json" codex gpt-w agreed) $(recorded_diff_field "$tmp/q4u.json" codex gpt-w disproved)" "0 80"
+LQ4u="$tmp/q-until.jsonl"; gen "$LQ4u" codex gpt-u 40 agreed 12 35 amend q4u
+CR_LEDGER="$LQ4u" bash "$CS" --until "$until30" --json > "$tmp/q4ua.json" 2>/dev/null
+check "until_alone_window: --until alone reads the 14 days before it" "$(recorded_diff_field "$tmp/q4ua.json" codex gpt-u agreed)" "40"
+since10="$(python3 -I -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
+CR_LEDGER="$LQ4u" bash "$CS" --since "$since10" --until "$until30" >/dev/null 2>&1; check "until_alone_window: --since after --until exits 2" "$?" "2"
 
 LQ5="$tmp/q-defer.jsonl"; gen "$LQ5" codex gpt-d 30 agreed 10 2 amend q5; gen "$LQ5" codex gpt-d 10 deferred 10 2 amend q5
 q5_out="$(CR_LEDGER="$LQ5" bash "$CS" 2>&1)"

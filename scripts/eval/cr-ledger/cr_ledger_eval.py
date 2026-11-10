@@ -355,8 +355,9 @@ DEFAULT_DAYS = 14
 HISTORICAL_REVIEWERS = {"coderabbit-outside": "CodeRabbit's outside-diff findings"}
 
 
-def default_window_start():
-    day = datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=DEFAULT_DAYS)
+def default_window_start(until):
+    end = parse_ts(until) if until else datetime.datetime.now(datetime.timezone.utc)
+    day = end.date() - datetime.timedelta(days=DEFAULT_DAYS - 1)
     return day.strftime("%Y-%m-%dT00:00:00Z")
 
 
@@ -402,6 +403,7 @@ def summary_report(rows, since, until, roster, agreement_below, window_default):
             "unresolved": sum(r["unresolved"] for r in rec),
             "thread_state_inferred": sum(r["total"] for r in srows if r["verdict_source"] == INFERRED),
             "unknown_source": sum(r["total"] for r in srows if r["verdict_source"] == UNKNOWN_SOURCE),
+            "undated": sum(1 for f in fold(cut_until(rows, until)) if parse_ts(f["ts"]) is None) if since else 0,
         },
         "advice": advice,
     }
@@ -442,8 +444,9 @@ def print_summary(rep):
                             "%d (%s)" % (t["resolved_without_change"], pct(t["resolved_without_change_rate"])),
                             "%d (%s)" % (t["open"], pct(t["open_rate"]))))
     x = rep["exclusions"]
-    print("Not in author_agreement: %d deferred, %d unresolved, %d thread-state-inferred, %d unknown-source."
-          % (x["deferred"], x["unresolved"], x["thread_state_inferred"], x["unknown_source"]))
+    print("Not in author_agreement: %d deferred, %d unresolved, %d thread-state-inferred, %d unknown-source, "
+          "%d undated (no window holds them)."
+          % (x["deferred"], x["unresolved"], x["thread_state_inferred"], x["unknown_source"], x["undated"]))
     print("\n=== Advice (same window, recorded dispositions only; %d decided / %d PRs is a display default) ==="
           % (MIN_DECIDED, MIN_PRS))
     others = []
@@ -545,7 +548,7 @@ def main(argv=None):
     ap.add_argument("--coded", help="coded sample TSV (id, critic, class, note) to check and tally")
     ap.add_argument("--summary", action="store_true",
                     help="the reviewer scorecard: per slug + responding model + scope + verdict source, with advice")
-    ap.add_argument("--since", help="ISO-8601 start of the --summary window (default: %d days before now)" % DEFAULT_DAYS)
+    ap.add_argument("--since", help="ISO-8601 start of the --summary window (default: the %d days ending at --until, else now)" % DEFAULT_DAYS)
     ap.add_argument("--artifact", help="--summary: only findings and amends of this artifact")
     ap.add_argument("--perspective", help="--summary: only findings and amends of this perspective")
     ap.add_argument("--agreement-below", type=float, default=40.0,
@@ -560,7 +563,9 @@ def main(argv=None):
         rows = [r for r in rows if r.get("kind") not in ("finding", "amend") or (
             (not a.artifact or (r.get("artifact") or "diff") == a.artifact)
             and (not a.perspective or (r.get("perspective") or "off") == a.perspective))]
-        since = a.since or default_window_start()
+        since = a.since or default_window_start(a.until)
+        if a.until and parse_ts(since) > parse_ts(a.until):
+            die("--since %s is after --until %s" % (since, a.until))
         roster = roster_slugs(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "cr", "critics.json"))
         rep = summary_report(rows, since, a.until, roster, a.agreement_below, not a.since)
         rep["malformed"] = malformed

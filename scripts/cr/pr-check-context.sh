@@ -830,7 +830,9 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # chief-kit/bucket-gitleaks.sh (which runs chief-kit/vault-status.sh), so all
 # four are guarded.
 # worker-pr-open.sh runs chief-kit/holds.py narrow (the PR claim), so holds.py is guarded too.
+# cr-scores.sh runs eval/cr-ledger/cr_ledger_eval.py, which imports eval/lib/eval_runs.py, so both are guarded.
 cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/ledger scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
+scripts/eval/cr-ledger/cr_ledger_eval.py scripts/eval/lib/eval_runs.py
 scripts/handover/resolve-active-item-report.sh
 scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/handover/bug.sh
 scripts/handover/merge-on-green.sh scripts/handover/queue-lock.sh
@@ -895,6 +897,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/handover/chief-kit/append-results.sh' ':(top)scripts/handover/chief-kit/worker-doc-lock.sh'
     ':(top)scripts/handover/chief-kit/bucket-gitleaks.sh' ':(top)scripts/handover/chief-kit/vault-status.sh'
     ':(top)scripts/handover/suite-coverage.sh'
+    ':(top)scripts/eval/cr-ledger/cr_ledger_eval.py' ':(top)scripts/eval/lib/eval_runs.py'
     ':(top,exclude,glob)scripts/**/__pycache__/**')
 cr_manifest() { # cr_manifest <root> - "<mode> <blob-id> <path>" per guarded file, sorted
     local root=$1 odd files execs oids modes p d present=()

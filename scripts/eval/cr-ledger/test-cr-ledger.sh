@@ -127,6 +127,7 @@ S="$TMP/summary.jsonl"
   echo '{"kind":"finding","ts":"2026-10-04T10:00:00Z","branch":"feat/s4","head":"s4","model":"coderabbit-outside","finding_id":"cr-od-2","severity":"imp","verdict":"unaddressed","artifact":"diff","perspective":"off"}'
   echo '{"kind":"finding","ts":"2026-10-04T10:00:00Z","branch":"feat/s4","head":"s4","model":"coderabbit-outside","finding_id":"cr-od-3","severity":"imp","verdict":"","artifact":"diff","perspective":"off","pr":41,"source":"cr-thread-recorder"}'
   echo '{"kind":"amend","ts":"2026-10-04T12:00:00Z","branch":"feat/s4","target_head":"s4","finding_id":"cr-od-3","artifact":"diff","perspective":"off","set":{"verdict":"disproved"},"reason":"pre-existing code"}'
+  echo '{"kind":"finding","ts":"not-a-time","branch":"feat/s5","head":"s5","model":"codex","finding_id":"s5-1","severity":"imp","verdict":"agreed","artifact":"diff","perspective":"off"}'
 } > "$S"
 python3 "$EVAL" --ledger "$S" --summary --since 2026-09-01T00:00:00Z --json > "$TMP/sum.json" 2> "$TMP/sum.err"; rc=$?
 eq "summary: exit 0" "$rc" "0"
@@ -158,6 +159,7 @@ eq "unaddressed_and_outside_coverage: an amended outside finding is decided" "$(
 eq "unaddressed_and_outside_coverage: coverage is decided over all" "$(summary_row_path "$TMP/sum.json" coderabbit-outside unknown outside-diff $REC adjudication_coverage)" "0.5"
 eq "exclusions: thread-state findings named" "$(jget "$TMP/sum.json" exclusions/thread_state_inferred)" "5"
 eq "exclusions: unknown-source findings named" "$(jget "$TMP/sum.json" exclusions/unknown_source)" "1"
+eq "exclusions: an undated finding is counted, not silently dropped" "$(jget "$TMP/sum.json" exclusions/undated)" "1"
 eq "explicit_amend_supersedes_inference: fold keeps the raw source and the amend" "$(python3 -I -c 'import sys
 sys.path.insert(0, sys.argv[1]); import cr_ledger_eval as m
 rows, _ = m.load(sys.argv[2], None)

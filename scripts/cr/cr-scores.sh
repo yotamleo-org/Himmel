@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/cr-scores.sh — per-critic agreed/availability scorecard
+# scripts/cr/cr-scores.sh — per-critic scorecard: quality view, advice and pooled history
 # Usage: cr-scores.sh [--since ISO] [--until ISO] [--json] [--window N] [--artifact kind] [--perspective on|off]
 #        cr-scores.sh --by-branch [<branch>]
 # Reads CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl).
@@ -73,8 +73,8 @@ crl_args=(--summary --ledger "$ledger" --agreement-below "$CR_SCORES_DROP_BELOW"
 [ -n "$FILTER_PERSPECTIVE" ] && crl_args+=(--perspective "$FILTER_PERSPECTIVE")
 
 if [ "$JSON" = 1 ]; then
-  if [ ! -f "$ledger" ] || [ ! -s "$ledger" ]; then
-    echo '{"rows": [], "advice": [], "note": "no critic scores recorded yet"}'
+  if [ ! -f "$ledger" ]; then
+    echo '{"rows": [], "advice": [], "exclusions": {}, "note": "no critic scores recorded yet"}'
     exit 0
   fi
   [ -f "$crl" ] || { echo "cr-scores.sh: --json needs $crl, which is not here" >&2; exit 2; }
