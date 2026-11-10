@@ -105,6 +105,8 @@
 #       [--vault PATH] [--force] [--dry-run]            (the opt-in Luna rows)
 #   bash scripts/luna/graphmap-cadence.sh status
 #   bash scripts/luna/graphmap-cadence.sh disarm [--luna-only]
+#   bash scripts/luna/graphmap-cadence.sh post-merge graph|both|off [--dry-run]
+#                                                   (the post-merge tick's own row only)
 #
 # --luna-time/--himmel-time apply ONLY to the semantic rows; the
 # structural pair's fire offsets are not
@@ -116,11 +118,14 @@
 #
 # Exit codes (mirrors pipeline-cadence.sh):
 #   0  done (armed / status printed / disarmed / dry-run)
-#   1  usage / input error
+#   1  usage / input error (post-merge: a mode other than graph|both|off, or an arm flag)
 #   2  env unusable (no crontab; unsupported platform; runner missing;
-#      query tool errored)
+#      query tool errored; post-merge: graphify not an absolute executable on
+#      PATH, the tick script missing; --rewrite-armed: a post-merge runner whose
+#      mode line is absent, repeated or not graph|both)
 #   3  dedup block — HIMMEL-GraphMap-* task(s) already armed; use --force
-#   4  scheduler invocation failed (crontab rewrite)
+#      (never from post-merge, which re-arms its own row in place)
+#   4  scheduler invocation failed (crontab rewrite), post-merge included
 set -euo pipefail
 
 TASK_PREFIX="HIMMEL-GraphMap-"
