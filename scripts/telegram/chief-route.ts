@@ -531,7 +531,6 @@ const readCritic = (file: string) => readFile(file, "utf8").catch((e) => { throw
 // so one file named for the third round cannot open a page early, though three planted files still can.
 // ponytail: the count is read from the files on disk, so deleting or overwriting critic files lowers it, and a new
 // spec file name starts a new count; upgrade path: an append-only ledger written at seal time, keyed on the ticket.
-// `numberedFiles` keeps every counted numbered path, duplicate ordinal locations included, from the same pass.
 type Rounds = { count: number; numbered: number; renamed: string[]; numberedFiles: { round: number; path: string }[] };
 // Reads the last name segment only: the spec's own name comes first and may hold the word.
 const isJudgeReturn = (name: string) => /(^|[.-])judge[^.]*\.md$/.test(name);

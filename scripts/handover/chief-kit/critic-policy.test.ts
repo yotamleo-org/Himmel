@@ -5,17 +5,15 @@ import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import * as route from "../../telegram/chief-route";
+import { gitCleanEnv } from "../../lanes/git-clean.mjs";
 
-// A read-only critic policy snapshot. Every test runs on throwaway fixtures: no model
-// call, no network, no production store. The implementation modules load lazily so a missing export or
-// file fails the one test that needs it, with its own message.
 const policy = () => import("./critic-policy");
 const CLI = join(import.meta.dir, "critic-policy.ts");
 const BUN = process.execPath;
 const T = 60_000;
 
 const git = (cwd: string, ...args: string[]) => {
-  const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8" });
+  const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8", env: gitCleanEnv() });
   if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
   return r.stdout.trim();
 };
@@ -23,7 +21,6 @@ const tmp = (prefix: string) => realpathSync(mkdtempSync(join(tmpdir(), prefix))
 const sha = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");
 const put = (p: string, text: string | Uint8Array) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, text); };
 
-// ---- snapshot fixtures: a spec beside its critic returns, in a git repo whose HEAD is the source head ----
 type Fx = { root: string; spec: string; plan: string; head: string };
 function fixture(opts: { spec?: number; plan?: number } = {}): Fx {
   const root = tmp("critic-policy-");
@@ -51,7 +48,7 @@ type Run = { code: number | null; out: string; json: any };
 function run(dir: string, args: string[], env: NodeJS.ProcessEnv = process.env): Run {
   const r = spawnSync(BUN, [CLI, ...args], { cwd: dir, encoding: "utf8", env });
   let json: any = null;
-  try { json = JSON.parse(r.stdout); } catch { /* not JSON */ }
+  try { json = JSON.parse(r.stdout); } catch {}
   return { code: r.status, out: r.stdout, json };
 }
 function check(fx: Fx, body: unknown, extra: string[] = [], env?: NodeJS.ProcessEnv): Run {
@@ -61,7 +58,6 @@ function check(fx: Fx, body: unknown, extra: string[] = [], env?: NodeJS.Process
 }
 
 test("round_owner_parity", async () => {
-  // readCriticBudget reads the SAME count the seal-time owner reads, and the same exact-round exception.
   const a = fixture({ spec: 3 });
   put(`${a.spec}.critic-spec-renamed.md`, "Read it.\nSPEC FINDINGS 1\n");
   const budget = await route.readCriticBudget(a.spec, "spec");
@@ -104,13 +100,11 @@ test("operator_record_for_exact_round", async () => {
   expect(ok.code).toBe(0);
   expect(ok.json).toMatchObject({ action: "eligible", reasons: [], round: { observed_count: 3, requested: 4, next: 4, cap: 3, operator_record: true } });
 
-  // a record for the fifth return never opens it: the request must still be exactly count + 1
   operatorRecord(fx, 5);
   const five = check(fx, request(fx, { requested_round: 5 }));
   expect(five.code).toBe(4);
   expect(five.json).toMatchObject({ action: "refused", reasons: ["round-mismatch"], round: { observed_count: 3, requested: 5, next: 4 } });
 
-  // a record beside another spec, or without the operator's verbatim words, grants nothing
   const bare = fixture({ spec: 3 });
   put(`${bare.spec}.operator-round-r4.md`, "decision 7\n");
   expect(check(bare, request(bare, { requested_round: 4 })).code).toBe(3);
@@ -126,7 +120,6 @@ test("source_and_artifact_hash_bound", async () => {
   expect(check(fx, request(fx, { requested_round: 2, artifacts: [{ path: fx.spec, sha256: "f".repeat(64) }] })).json).toMatchObject({ action: "refused", reasons: ["stale-artifact"] });
   expect(check(fx, request(fx, { requested_round: 2, spec_path: join(fx.root, "specs/design/missing.md"), artifacts: [{ path: join(fx.root, "specs/design/missing.md"), sha256: "a".repeat(64) }] })).json.reasons).toContain("artifact-unavailable");
 
-  // artifacts[0] is the spec; a plan adds a distinct second artifact; both hashes are exact
   const p = fixture({ plan: 1 });
   expect(check(p, planRequest(p, { requested_round: 2 })).code).toBe(0);
   expect(check(p, planRequest(p, { requested_round: 2, artifacts: [{ path: p.plan, sha256: sha(p.plan) }, { path: p.spec, sha256: sha(p.spec) }] })).json.reasons).toContain("binding-mismatch");
@@ -134,7 +127,6 @@ test("source_and_artifact_hash_bound", async () => {
   expect(check(p, planRequest(p, { requested_round: 2, artifacts: [{ path: p.spec, sha256: sha(p.spec) }, { path: p.plan, sha256: "0".repeat(64) }] })).json.reasons).toContain("stale-artifact");
   expect(check(fx, request(fx, { requested_round: 2, artifacts: [{ path: fx.spec, sha256: sha(fx.spec) }, { path: fx.plan, sha256: sha(fx.plan) }] })).json.reasons).toContain("binding-mismatch");
 
-  // a symlinked or relative artifact is not a canonical regular file
   const link = join(fx.root, "specs/design/alias.md");
   symlinkSync(fx.spec, link);
   expect(check(fx, request(fx, { requested_round: 2, spec_path: link, artifacts: [{ path: link, sha256: sha(fx.spec) }] })).code).toBe(4);
@@ -163,7 +155,6 @@ test("unknown_source_not_eligible", async () => {
 }, T);
 
 test("unreadable_round_not_zero", async () => {
-  // a critic return that cannot be read makes the history unknown, never an empty history
   const fx = fixture();
   mkdirSync(`${fx.spec}.critic-spec-r1.md`);
   await expect(route.readCriticBudget(fx.spec, "spec")).rejects.toThrow();
@@ -177,7 +168,6 @@ test("unreadable_round_not_zero", async () => {
 
 test("counted_paths_from_same_pass", async () => {
   const fx = fixture({ spec: 2 });
-  // the first plan return in two places (a duplicate ordinal), plus a renamed plan return
   put(`${fx.spec}.critic-plan-r1.md`, "Read it.\nPLAN FINDINGS 1\n");
   put(join(fx.root, "specs/plans/subject.md.critic-plan-r1.md"), "Read it.\nPLAN FINDINGS 1\n");
   put(`${fx.spec}.critic-plan-renamed.md`, "Read it.\nPLAN FINDINGS 2\n");
@@ -187,7 +177,6 @@ test("counted_paths_from_same_pass", async () => {
     { round: 1, path: join(fx.root, "specs/plans/subject.md.critic-plan-r1.md") },
   ].sort((a, b) => a.round - b.round || (a.path < b.path ? -1 : 1)));
   expect(plan.renamed).toEqual([`${fx.spec}.critic-plan-renamed.md`]);
-  // the old count formula is untouched: max(numbered) + renamed, with the ordinal set deduplicated
   expect(plan).toMatchObject({ count: 2, numbered: 1 });
 
   const spec = await route.readCriticBudget(fx.spec, "spec");
@@ -195,7 +184,6 @@ test("counted_paths_from_same_pass", async () => {
   expect(spec.renamed).toEqual([]);
   expect(spec).toMatchObject({ count: 2, numbered: 2 });
 
-  // the checker reports exactly that pass, not a second scan
   const out = check(fx, planRequest(fx, { requested_round: 3 })).json;
   expect(out.round.numberedFiles).toEqual(plan.numberedFiles);
   expect(out.round.renamed).toEqual(plan.renamed);
@@ -226,7 +214,6 @@ test("check_exit_json", async () => {
   expect(branches[3][2].json).toMatchObject({ operation_id: null, source_head: null, artifacts: [], reasons: ["invalid"] });
   expect(Object.values(branches[3][2].json.round).every(v => v === null)).toBe(true);
 
-  // the in-process checker returns the same document and exit as the CLI
   const { checkCriticSnapshot } = await policy();
   const inProcess = await checkCriticSnapshot(request(eligible));
   expect(inProcess.exit).toBe(0);
@@ -248,7 +235,6 @@ test("no_route_or_dispatch_fields", async () => {
   expect(Object.keys(mod).filter(k => /route|dispatch|recommend|select/i.test(k) && k !== "routingDiffViolations")).toEqual([]);
 }, T);
 
-// ---- routing diff: throwaway repos only; the live checkout is never read ----
 const SKILL = "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md";
 const PANEL = "marketplace/plugins/himmel-ops/skills/minerva/panel-charter.md";
 const PLANCH = "marketplace/plugins/himmel-ops/skills/minerva/plan-charter.md";
@@ -267,7 +253,6 @@ function routingRepo(skill: string | null = SKILL_BASE): { repo: string; base: s
   return { repo, base: git(repo, "rev-parse", "HEAD") };
 }
 type Layer = "committed" | "index" | "worktree" | "untracked";
-// Applies `change` to the repo in the given layer, so each layer is exercised by the same edit.
 function inLayer(repo: string, layer: Layer, change: () => void, untracked?: () => void) {
   if (layer === "untracked") { (untracked ?? change)(); return; }
   change();
@@ -283,7 +268,6 @@ test("routing_diff_fixtures", async () => {
   const clean = routingRepo();
   expect(await routingDiffViolations(clean.repo, clean.base)).toEqual([]);
 
-  // SKILL hunk content: inline model:, family names (any case), and the other case-sensitive tokens
   const lexical: Array<[string, string[]]> = [
     ["Dispatch the opted-in critic with `model: haiku`.", ["model", "model-name"]],
     ["MoDeL: HAIKU", ["model", "model-name"]],
@@ -300,20 +284,17 @@ test("routing_diff_fixtures", async () => {
     for (const x of v) { expect(x.layer).toBe("committed"); expect(x.line).toBe(3); expect(Object.keys(x).sort()).toEqual(["layer", "line", "path", "rule"]); }
   }
 
-  // a family-only change (Opus to Haiku) is a violation; the same text elsewhere in the base is not
   const fam = routingRepo(SKILL_BASE.replace("Last line.", "Use Opus for the plan critic."));
   put(join(fam.repo, SKILL), SKILL_BASE.replace("Last line.", "Use Haiku for the plan critic."));
   git(fam.repo, "add", "-A"); git(fam.repo, "commit", "-q", "-m", "c");
   expect([...new Set((await routingDiffViolations(fam.repo, fam.base)).map(x => x.rule))]).toEqual(["model-name"]);
 
-  // every layer sees the same SKILL edit, and untracked files under a protected path count
   for (const layer of ["committed", "index", "worktree"] as const) {
     const { repo, base } = routingRepo();
     inLayer(repo, layer, () => put(join(repo, SKILL), SKILL_BASE.replace("Intake wording.", "Tier 2 applies.")));
     expect(rows(await routingDiffViolations(repo, base), SKILL), layer).toEqual([`${layer}:Tier:3`]);
   }
 
-  // whole-file protection: any change to these paths, in any layer, is one protected-file-changed row
   const whole: Array<[string, (repo: string) => void]> = [
     [GUARD, repo => put(join(repo, GUARD), "#!/bin/sh\nTIER=2\nESCALATION=3\n")],
     [POLICY, repo => put(join(repo, POLICY), '{"blocked_model_patterns":["a","c"],"warn_model_patterns":["b"]}\n')],
@@ -330,7 +311,6 @@ test("routing_diff_fixtures", async () => {
       expect(v, `${path} ${layer}`).toEqual([{ path, layer, rule: "protected-file-changed", line: null }]);
     }
   }
-  // delete, mode, type and add each count too, and a charter edit is never a lexical pass
   const shapes: Array<[string, string, (repo: string) => void]> = [
     ["delete", AGENT, repo => rmSync(join(repo, AGENT))],
     ["mode", GUARD, repo => chmodSync(join(repo, GUARD), 0o755)],
@@ -339,14 +319,13 @@ test("routing_diff_fixtures", async () => {
   ];
   for (const [name, path, change] of shapes) {
     for (const layer of ["committed", "index", "worktree", "untracked"] as const) {
-      if (layer === "untracked" ? name !== "add" : layer === "worktree" && name === "add") continue; // an added file is untracked in the worktree
+      if (layer === "untracked" ? name !== "add" : layer === "worktree" && name === "add") continue;
       const { repo, base } = routingRepo();
       inLayer(repo, layer, () => change(repo));
       expect(rows(await routingDiffViolations(repo, base), path), `${name} ${layer}`).toEqual([`${layer}:protected-file-changed:null`]);
     }
   }
 
-  // SKILL.md: new, binary, mode and type changes are refused, not passed as empty
   const skillShapes: Array<[string, (repo: string) => void, string]> = [
     ["binary", repo => put(join(repo, SKILL), Buffer.concat([Buffer.from(SKILL_BASE), Buffer.from([0, 1, 2, 0])])), "unsupported-diff"],
     ["mode", repo => chmodSync(join(repo, SKILL), 0o755), "unsupported-diff"],
@@ -363,7 +342,6 @@ test("routing_diff_fixtures", async () => {
     expect(rows(await routingDiffViolations(repo, base), SKILL), `new ${layer}`).toEqual([`${layer}:new-protected-file:null`]);
   }
 
-  // an unprotected change is clear; results come back sorted by path, layer, line, rule
   const other = routingRepo();
   put(join(other.repo, "README.md"), "readme, edited\n"); put(join(other.repo, "docs/new.md"), "model: x\n");
   expect(await routingDiffViolations(other.repo, other.base)).toEqual([]);
@@ -374,7 +352,6 @@ test("routing_diff_fixtures", async () => {
   expect(got.map(key)).toEqual(got.map(key).sort());
   expect(got.length).toBeGreaterThan(2);
 
-  // invalid input throws; an empty array is only ever a successfully checked diff
   const inv = routingRepo();
   put(join(inv.repo, "README.md"), "second\n"); git(inv.repo, "add", "-A"); git(inv.repo, "commit", "-q", "-m", "second");
   const second = git(inv.repo, "rev-parse", "HEAD");
@@ -393,7 +370,7 @@ test("routing_diff_cli_parity", async () => {
 
   const ok = routingRepo();
   mkdirSync(join(ok.repo, "scripts/handover"), { recursive: true });
-  const clear = run(join(ok.repo, "scripts/handover"), ["routing-diff", "--base", ok.base]); // cwd resolves to the git top level
+  const clear = run(join(ok.repo, "scripts/handover"), ["routing-diff", "--base", ok.base]);
   expect(clear.code).toBe(0);
   expect(Object.keys(clear.json).sort()).toEqual(KEYS);
   expect(clear.json).toEqual({ schema: 1, kind: "critic-routing-diff", state: "clear", repo: ok.repo, base: ok.base, head: ok.base, violations: [], reasons: [] });
@@ -426,7 +403,6 @@ test("routing_diff_cli_parity", async () => {
 }, T);
 
 test("no_model_or_approval_calls", async () => {
-  // fail-and-log shims for the model, GitHub and Jira entry points sit first on PATH; the real node is forwarded
   const shims = tmp("shims-"); const log = join(shims, "calls.log");
   for (const name of ["claude", "gh", "jira"]) {
     put(join(shims, name), `#!/bin/sh\necho "${name} $*" >> "${log}"\nexit 99\n`); chmodSync(join(shims, name), 0o755);
@@ -439,7 +415,6 @@ test("no_model_or_approval_calls", async () => {
   const env = { ...process.env, PATH: `${shims}:${process.env.PATH}` };
   const calls = () => (existsSync(log) ? readFileSync(log, "utf8") : "");
 
-  // control: the shims do record a call
   expect(spawnSync("claude", ["--print", "x"], { env }).status).toBe(99);
   expect(calls()).toContain("claude --print x");
   rmSync(log);

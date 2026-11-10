@@ -5,15 +5,8 @@ import { isAbsolute, resolve } from "node:path";
 import { readCriticBudget } from "../../telegram/chief-route";
 import { gitCleanEnv } from "../../lanes/git-clean.mjs";
 
-// A read-only critic policy snapshot. It reports whether the requested critic round
-// is the exact next round of the named source and artifacts, and nothing else: no route, no dispatch,
-// no model call, no approval. `eligible` describes the bytes and count it read; it grants nothing.
-//
 //   bun critic-policy.ts check REQUEST.json                  exit 0 eligible, 3 operator-required, 4 refused, 2 malformed
 //   bun critic-policy.ts routing-diff --base <40 hex>        exit 0 clear, 1 violations, 2 invalid
-//
-// The round count, the cap and the operator exception stay in chief-route.ts (readCriticBudget); this
-// module imports them and keeps no copy.
 
 type Kind = "spec" | "plan";
 type Artifact = { path: string; sha256: string };
@@ -105,7 +98,6 @@ export async function checkCriticSnapshot(input: unknown): Promise<{ exit: numbe
   };
 }
 
-// ---- routing diff: a program-scoped check that the slice left every route owner alone ----
 
 const SKILL = "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md";
 const WHOLE_FILES = new Set([
@@ -225,7 +217,7 @@ export async function main(args: string[], cwd = process.cwd()): Promise<number>
   if (args[0] === "routing-diff") result = await routingDiffCli(args, cwd);
   else if (args[0] === "check" && args.length === 2) {
     let input: unknown = null;
-    try { input = JSON.parse(readFileSync(args[1], "utf8")); } catch { /* unreadable or not JSON: malformed */ }
+    try { input = JSON.parse(readFileSync(args[1], "utf8")); } catch {}
     result = await checkCriticSnapshot(input);
   } else result = malformed();
   process.stdout.write(`${JSON.stringify(result.output)}\n`);

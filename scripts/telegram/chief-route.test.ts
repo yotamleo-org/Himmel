@@ -1967,7 +1967,7 @@ test("readCriticBudget reports the counted paths from the cap's own pass and the
   grant(r, b.spec, 4);
   expect((await readCriticBudget(b.spec, "spec", 4)).operatorAllowed).toBe(true);
   expect((await readCriticBudget(b.spec, "spec", 5)).operatorAllowed).toBe(false);
-  const plan = await readCriticBudget(b.spec, "plan");   // the kind is its own count: the bundle holds one plan return
+  const plan = await readCriticBudget(b.spec, "plan");
   expect(plan).toMatchObject({ count: 1, requestedRound: 2, renamed: [] });
   expect(plan.numberedFiles.map(f => [f.round, basename(f.path)])).toEqual([[1, "design.md.critic-plan-r1.md"]]);
 });
