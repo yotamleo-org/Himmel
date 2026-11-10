@@ -119,8 +119,8 @@ qrun() {
 }
 embed() {
     # shellcheck source=../../lib/qmd-daemon-env.sh
-    . "$LIB/qmd-daemon-env.sh"
-    qmd_daemon_key_load "$OUTR/config/index.yml" || die "the provider key could not be loaded for the embed" 2
+    . "$LIB/qmd-daemon-env.sh"  # t13b-ok: names the existing qmd key loader, starts nothing
+    qmd_daemon_key_load "$OUTR/config/index.yml" || die "the provider key could not be loaded for the embed" 2  # t13b-ok: names the existing qmd key loader, starts nothing
     INDEX_PATH="$OUTR/index.sqlite" QMD_CONFIG_DIR="$OUTR/config" "$QMD" embed -c himmel > "$OUTR/qmd-embed.log" 2>&1 \
         || die "qmd embed failed (see $OUTR/qmd-embed.log)" 1
 }
@@ -213,28 +213,28 @@ cmd_serve() {
     port="$(python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
     if [ "$withkey" -eq 1 ]; then
         # shellcheck source=../../lib/qmd-daemon-env.sh
-        . "$LIB/qmd-daemon-env.sh"
-        qmd_daemon_key_load "$OUTR/config/index.yml" || die "the provider key could not be loaded" 2
-        INDEX_PATH="$OUTR/index.sqlite" QMD_CONFIG_DIR="$OUTR/config" nohup "$QMD" mcp --http --port "$port" > "$OUTR/serve.log" 2>&1 < /dev/null &
+        . "$LIB/qmd-daemon-env.sh"  # t13b-ok: names the existing qmd key loader, starts nothing
+        qmd_daemon_key_load "$OUTR/config/index.yml" || die "the provider key could not be loaded" 2  # t13b-ok: names the existing qmd key loader, starts nothing
+        INDEX_PATH="$OUTR/index.sqlite" QMD_CONFIG_DIR="$OUTR/config" nohup "$QMD" mcp --http --port "$port" > "$OUTR/serve.log" 2>&1 < /dev/null &  # t13b-ok: starts the scratch-index qmd server for one eval run, ended by the stop verb
     else
         env -u QMD_OPENAI_API_KEY -u OPENAI_API_KEY -u OPENROUTER_API_KEY \
-            INDEX_PATH="$OUTR/index.sqlite" QMD_CONFIG_DIR="$OUTR/config" nohup "$QMD" mcp --http --port "$port" > "$OUTR/serve.log" 2>&1 < /dev/null &
+            INDEX_PATH="$OUTR/index.sqlite" QMD_CONFIG_DIR="$OUTR/config" nohup "$QMD" mcp --http --port "$port" > "$OUTR/serve.log" 2>&1 < /dev/null &  # t13b-ok: starts the scratch-index qmd server for one eval run, ended by the stop verb
     fi
     pid=$!
     printf '%s\n' "$pid" > "$OUTR/serve.pid"
     printf '%s\n' "$port" > "$OUTR/serve.port"
     i=0
     while ! (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; do
-        kill -0 "$pid" 2> /dev/null || { rm -f "$OUTR/serve.pid"; die "the daemon exited (see $OUTR/serve.log)" 1; }
+        kill -0 "$pid" 2> /dev/null || { rm -f "$OUTR/serve.pid"; die "the server exited (see $OUTR/serve.log)" 1; }
         i=$((i + 1))
-        [ "$i" -lt 120 ] || { kill "$pid" 2> /dev/null; rm -f "$OUTR/serve.pid"; die "the daemon did not listen in 60 s" 1; }
+        [ "$i" -lt 120 ] || { kill "$pid" 2> /dev/null; rm -f "$OUTR/serve.pid"; die "the server did not listen in 60 s" 1; }
         sleep 0.5
     done
     pj_set "$OUTR" served_url "\"http://127.0.0.1:$port/mcp\""
     printf 'http://127.0.0.1:%s/mcp\n' "$port"
 }
 
-is_our_daemon() {
+is_our_server() {
     local args
     [ -n "$2" ] || return 1
     args="$(ps -p "$1" -o args= 2> /dev/null)"
@@ -256,7 +256,7 @@ cmd_stop() {
     scratch_of_index "$index"
     if [ -f "$OUTR/serve.pid" ]; then
         pid="$(cat "$OUTR/serve.pid")"
-        if is_our_daemon "$pid" "$(cat "$OUTR/serve.port" 2> /dev/null)"; then
+        if is_our_server "$pid" "$(cat "$OUTR/serve.port" 2> /dev/null)"; then
             kill "$pid" 2> /dev/null
             i=0
             while kill -0 "$pid" 2> /dev/null && [ "$i" -lt 20 ]; do sleep 0.25; i=$((i + 1)); done

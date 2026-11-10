@@ -10,8 +10,8 @@ BANK="$HERE/staleness-questions.jsonl"
 GBANK="$HERE/staleness-graph-questions.jsonl"
 HELPER="$REPO_ROOT/scripts/lib/qmd-collection-files.py"
 
-BANK_SHA256="95227657c03ef328ccafa858426b69e7eec4893f366a380c47a017e8116dfd1e"
-GBANK_SHA256="577afc8a4c68e976c649a9110e7043a4535d04d5ea5c4dc9224cc5b23a073c33"
+BANK_SHA256="41a69b7fea3edf5b44a441119ee2f36bd77eb124d6a9fe7afc074c322053678d"
+GBANK_SHA256="800debff37377df6d0170627f1546d1da466c980e3259b363ab5e7d0f0a64cac"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/staleness-fixture-test.XXXXXX")" || exit 1
 trap 'for p in "$W"/*/serve.pid; do [ -f "$p" ] && kill "$(cat "$p")" 2>/dev/null; done; rm -rf "$W"' EXIT
