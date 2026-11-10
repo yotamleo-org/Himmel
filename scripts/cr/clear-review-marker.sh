@@ -1655,10 +1655,7 @@ esac
 # marker on a branch whose ledger holds `score` rows (a panel round ran) needs
 # a `preflight` row stamped before its first `score` row, so known finding
 # classes are closed before a critic spends a round. The docs-audit lane owes
-# no pass, so a score row at a head whose merge-base diff holds only docs (the
-# push hook's classify_lane test, read as base...head per head so a later merge
-# of the base cannot turn an older docs head into code) is a docs-audit round and does not count: a
-# docs round followed by a code push is judged by its code rounds. A branch whose first `score` row predates PREFLIGHT_GATE_SINCE (or
+# no pass. A branch whose first `score` row predates PREFLIGHT_GATE_SINCE (or
 # carries no ts) was in flight when this gate shipped and is exempt. Rows are
 # matched on the branch stamp, so a legacy unstamped row never counts either
 # way. Only a `score` row at a commit this branch added counts: a design-skill
