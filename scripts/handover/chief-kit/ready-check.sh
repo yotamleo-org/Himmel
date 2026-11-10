@@ -2343,7 +2343,7 @@ check_conflicts_resolved() {
         [ -n "$f" ] || continue
         n_conf=$((n_conf + 1))
         nums=$(printf '%s\n' "$prs" | grep -oE '[0-9]+' | sed 's/^/#/' | paste -sd, - | sed 's/,/, /g')
-        if ! printf '%s\n' "$listed" | grep -Fxq -- "$f"; then
+        if ! grep -Fxq -- "$f" <<<"$listed"; then
             n_miss=$((n_miss + 1))
             adds="$adds
        - $f vs ${nums:-#<other pr>}: <what you kept and why>"
