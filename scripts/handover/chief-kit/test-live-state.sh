@@ -28,7 +28,7 @@ fi
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/live-state-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 tmp="$(cd "$tmp" && pwd)"
-export HANDOVER_DIR="$tmp/root"
+export HANDOVER_DIR="$tmp/root" HIMMEL_QUOTA_DIR="$tmp/quota"
 mkdir -p "$HANDOVER_DIR/b"
 fails=0
 check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
