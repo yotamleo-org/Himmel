@@ -3,7 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
 import { briefTextCounted, protectedRanges, findDo } from "./key-brief";
 import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
-import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, realpath, appendFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, rmdir, realpath, appendFile, writeFile } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
 import { BASH_BIN } from "./run";
@@ -674,7 +674,15 @@ async function readLedger(specs: string, key: string): Promise<LedgerRow[]> {
 }
 
 // One writer at a time per ticket: flock(2) on a persistent lock file beside the ledger, released when the file closes.
-async function withLedgerLock<T>(specs: string, key: string, fn: () => Promise<T>): Promise<T> {
+// The kernel call blocks the thread, so callers in this process take turns here first: a second one asking for the lock
+// while the first still awaits its own file work would otherwise never let the first finish.
+let ledgerTurn: Promise<unknown> = Promise.resolve();
+function withLedgerLock<T>(specs: string, key: string, fn: () => Promise<T>): Promise<T> {
+  const run = ledgerTurn.then(() => flockedLedger(specs, key, fn));
+  ledgerTurn = run.catch(() => {});
+  return run;
+}
+async function flockedLedger<T>(specs: string, key: string, fn: () => Promise<T>): Promise<T> {
   await mkdir(ledgerDir(specs), { recursive: true });
   const { dlopen } = await import("bun:ffi");
   const libc = dlopen(process.platform === "darwin" ? "libSystem.B.dylib" : "libc.so.6", { flock: { args: ["i32", "i32"], returns: "i32" } });
@@ -686,14 +694,16 @@ async function withLedgerLock<T>(specs: string, key: string, fn: () => Promise<T
 }
 
 // A copy of the bytes a critic read, named by their sha256, written once and never overwritten.
-async function snapshotBytes(specs: string, key: string, bytes: Uint8Array, sum: string): Promise<void> {
-  await mkdir(join(ledgerDir(specs), key), { recursive: true });
-  await writeFile(join(ledgerDir(specs), key, sum), bytes, { flag: "wx" }).catch((e: NodeJS.ErrnoException) => { if (e.code !== "EEXIST") throw e; });
+// Returns the path it wrote, or null when the copy was already there.
+async function snapshotBytes(specs: string, key: string, bytes: Uint8Array, sum: string): Promise<string | null> {
+  const path = join(ledgerDir(specs), key, sum);
+  await mkdir(dirname(path), { recursive: true });
+  return writeFile(path, bytes, { flag: "wx" }).then(() => path, (e: NodeJS.ErrnoException) => { if (e.code === "EEXIST") return null; throw e; });
 }
 
 const namesTicket = (specText: string, key: string) => {
   const front = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(specText.replace(/\r\n/g, "\n"))?.[1] ?? "";
-  return front.split("\n").some(l => /^tickets:/.test(l) && new RegExp(`(?<![A-Z0-9])${key}(?![0-9])`).test(l));
+  return front.split("\n").some(l => /^tickets:/.test(l) && new RegExp(`(?<![A-Za-z0-9])${key}(?![A-Za-z0-9])`).test(l));
 };
 
 // Records the return `critic-seal.sh` is sealing: a `round` row for a new return, a `seal` row for a return it already holds (a second
@@ -752,6 +762,7 @@ export async function roundSeed(rootArg: string): Promise<{ keys: Record<string,
     }
   }
   const keys: Record<string, { spec: number; plan: number }> = {}; const seeds = new Map<string, LedgerRow>();
+  const snapshots: { key: string; sum: string; bytes: Uint8Array }[] = [];
   for (const [key, byKind] of [...found].sort(([a], [b]) => (a < b ? -1 : 1))) {
     const row: LedgerRow = { v: 1, ts: Date.now(), key, row: "seed", spec: 0, plan: 0, latest: { spec: [], plan: [] } };
     for (const kind of ["spec", "plan"] as const) {
@@ -764,7 +775,7 @@ export async function roundSeed(rootArg: string): Promise<{ keys: Record<string,
           const read_path = await realpath(abs).catch(() => abs);
           seals.push({ read_path, read_sha: s.sha });
           const bytes = await readFile(read_path).catch(() => null);
-          if (bytes && sha256(bytes) === s.sha) await snapshotBytes(specs, key, bytes, s.sha);
+          if (bytes && sha256(bytes) === s.sha) snapshots.push({ key, sum: s.sha, bytes });
         }
         const { findings, unrated_ids } = parseFindings(f.text, kind, top);
         row.latest[kind].push({ return_sha: returnSha(f.text), verdict_path: f.path, seals, findings, unrated_ids, verdict: lastLine(f.text) } satisfies SeededReturn);
@@ -772,9 +783,19 @@ export async function roundSeed(rootArg: string): Promise<{ keys: Record<string,
     }
     keys[key] = { spec: row.spec, plan: row.plan }; seeds.set(key, row);
   }
-  await mkdir(dir, { recursive: true });
-  for (const [key, row] of seeds) await writeFile(join(dir, `${key}.jsonl`), `${JSON.stringify(row)}\n`, { flag: "wx" });
-  await writeFile(join(dir, "manifest.json"), `${JSON.stringify({ v: 1, ts: Date.now(), keys })}\n`, { flag: "wx" });
+  // Publish: snapshots, then ledgers, the manifest last. A failure removes what this run wrote, so the root can be seeded again.
+  const made: string[] = [];
+  const write = async (path: string, data: string) => { await writeFile(path, data, { flag: "wx" }); made.push(path); };
+  try {
+    await mkdir(dir, { recursive: true });
+    for (const s of snapshots) { const path = await snapshotBytes(specs, s.key, s.bytes, s.sum); if (path) made.push(path); }
+    for (const [key, row] of seeds) await write(join(dir, `${key}.jsonl`), `${JSON.stringify(row)}\n`);
+    await write(join(dir, "manifest.json"), `${JSON.stringify({ v: 1, ts: Date.now(), keys })}\n`);
+  } catch (e) {
+    for (const path of made.reverse()) await rm(path, { force: true });
+    for (const key of found.keys()) await rmdir(join(dir, key)).catch(() => {});
+    throw e;
+  }
   return { keys, skipped };
 }
 

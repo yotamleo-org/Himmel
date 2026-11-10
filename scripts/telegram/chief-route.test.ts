@@ -2404,9 +2404,11 @@ test("R18: the first round of a key with no seed row needs a front matter ticket
   expect(refused.err).toContain(`${spec}: front matter has no tickets: line naming ${ROUND_KEY}`);
   expect(readFileSync(v, "utf8")).not.toContain("CONTENT-SHA256");
   expect(existsSync(join(roundsDir(t.specs), `${ROUND_KEY}.jsonl`))).toBe(false);
-  const prefix = front(`${ROUND_KEY}0`, text);   // another ticket whose number starts with this one
-  writeFileSync(spec, prefix); writeFileSync(v, ret("SPEC CLEAN", `read ${sha(prefix)}`));
-  expect((await seal(v, spec, sha(prefix))).err).toContain(`front matter has no tickets: line naming ${ROUND_KEY}`);
+  for (const other of [`${ROUND_KEY}0`, `${ROUND_KEY}OTHER`]) {   // another ticket whose number starts with this one, and a word that merely starts with the key
+    const prefix = front(other, text);
+    writeFileSync(spec, prefix); writeFileSync(v, ret("SPEC CLEAN", `read ${sha(prefix)}`));
+    expect((await seal(v, spec, sha(prefix))).err).toContain(`front matter has no tickets: line naming ${ROUND_KEY}`);
+  }
   const named = front(ROUND_KEY, text);
   writeFileSync(spec, named); writeFileSync(v, ret("SPEC CLEAN", `read ${sha(named)}`));
   expect((await seal(v, spec, sha(named))).code).toBe(0);
@@ -2526,6 +2528,22 @@ test("R-seed-twice: round-seed refuses a root that already holds a ledger, a sna
   expect((await routeCli("round-seed", "--all", s.specs)).err).toContain("already holds a ledger, snapshot or manifest");
   const l = specsTree(); mkdirSync(roundsDir(l.specs), { recursive: true }); writeFileSync(join(roundsDir(l.specs), `${ROUND_KEY}.jsonl`), "{}\n");
   expect((await routeCli("round-seed", "--all", l.specs)).err).toContain("already holds a ledger, snapshot or manifest");
+});
+
+test("round-seed removes what it wrote when it fails, so the root can be seeded again", async () => {
+  const t = specsTree();
+  for (const key of [ROUND_KEY, "HIMMEL-9702"]) {
+    const md = join(t.dir, `${key}-x.md`); const text = `# ${key}\n`;
+    writeFileSync(md, text); writeFileSync(`${md}.critic-spec-r1.md`, `critic return\nCONTENT-SHA256 ${sha(text)} ${basename(md)}\nSPEC CLEAN\n`);
+  }
+  mkdirSync(roundsDir(t.specs), { recursive: true });
+  writeFileSync(join(roundsDir(t.specs), "HIMMEL-9702"), "in the way");   // a file where the second ticket's snapshot folder must go
+  const failed = await routeCli("round-seed", "--all", t.specs);
+  expect(failed.code).not.toBe(0);
+  expect(readdirSync(roundsDir(t.specs))).toEqual(["HIMMEL-9702"]);   // the first ticket's snapshot and its folder are gone
+  unlinkSync(join(roundsDir(t.specs), "HIMMEL-9702"));
+  expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  expect(readdirSync(roundsDir(t.specs)).sort()).toEqual([ROUND_KEY, `${ROUND_KEY}.jsonl`, "HIMMEL-9702", "HIMMEL-9702.jsonl", "manifest.json"].sort());
 });
 
 test("keyOf reads the ticket key by the D1 rule, and parseFindings gives every unlabeled finding a synthetic id (D3)", async () => {
