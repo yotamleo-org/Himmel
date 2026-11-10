@@ -348,8 +348,7 @@ def render_prompt(question, arm, arms):
     return text.replace("{{RETRIEVAL_NOTE}}", note).replace("{{QUESTION}}", question)
 
 
-def start_broker(argv):
-    """The s-qmd broker child of one session; on Linux the kernel ends it with this runner."""
+def start_broker_bound_to_runner(argv):
     if not sys.platform.startswith("linux"):
         return subprocess.Popen(argv)
 
@@ -391,7 +390,7 @@ class RealLauncher:
             idx = os.path.join(root, "sessions", attempt + ".sqlite")
             subprocess.run([sys.executable, "-I", os.path.join(HERE, "pins.py"), "disposable", s["master"], idx, "--seal", s["seal"]], check=True)
             sock, meta = os.path.join(root, "sessions", attempt + ".sock"), os.path.join(root, "private", "broker", attempt)
-            broker = start_broker([sys.executable, "-I", os.path.join(HERE, "tools", "s-qmd"), "serve", "--socket", sock,
+            broker = start_broker_bound_to_runner([sys.executable, "-I", os.path.join(HERE, "tools", "s-qmd"), "serve", "--socket", sock,
                                    "--meta", meta, "--phase", "answer" if phase == "answer" else "preflight", "--arm", arm, "--cap", "12"]
                                   + (["--nvml-cmd", c["nvml_cmd"]] if arm == "Q" else []))
             cmd += ["--tools", os.path.join(HERE, "tools"), "--binding", s["binding"], "--socket", sock, "--index", idx,

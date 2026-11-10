@@ -280,14 +280,15 @@ import importlib.util, os, sys, time
 s = importlib.util.spec_from_file_location("rp", sys.argv[1] + "/run-pilot.py"); rp = importlib.util.module_from_spec(s); s.loader.exec_module(rp)
 w = sys.argv[2]
 if sys.argv[3:] == ["orphan"]:
-    rp.os.getpid = lambda: 1  # as if the runner had already died: the child's parent is not the runner
-    b = rp.start_broker([sys.executable, "-c", "import time; time.sleep(60)"])
+    pretend_runner_already_died = lambda: 1
+    rp.os.getpid = pretend_runner_already_died
+    b = rp.start_broker_bound_to_runner([sys.executable, "-c", "import time; time.sleep(60)"])
     try:
         b.wait(timeout=10); print("exit", b.returncode)
     except Exception:
         b.kill(); print("still running")
     sys.exit(0)
-b = rp.start_broker([sys.executable, "-I", sys.argv[1] + "/tools/s-qmd", "serve", "--socket", w + "/rb.sock", "--meta", w + "/rb-meta", "--phase", "answer", "--arm", "S"])
+b = rp.start_broker_bound_to_runner([sys.executable, "-I", sys.argv[1] + "/tools/s-qmd", "serve", "--socket", w + "/rb.sock", "--meta", w + "/rb-meta", "--phase", "answer", "--arm", "S"])
 open(w + "/broker.pid", "w").write(str(b.pid))
 if len(sys.argv) > 3:
     b.terminate(); b.wait(timeout=10); print("stopped", b.poll() is not None); sys.exit(0)
