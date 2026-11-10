@@ -1969,7 +1969,8 @@ check_outside_pr
 
 # --- 17. a partial merge records what remains: merge-on-green.sh's exit 26, read at GO time.
 # The merge refuses a contract-`no` merge (part of the ticket stays undone) whose PR body carries neither a `Remaining:` line
-# nor a `deferred -> <KEY>` line under `## Ticket coverage`, so a GO for such a PR is a GO the merge refuses. This reads
+# nor a `deferred -> <KEY>` line under `## Ticket coverage`, or whose every remaining ask is deferred to other tickets (so
+# the merge completes the ticket), so a GO for such a PR is a GO the merge refuses. This reads
 # the title's key with the merge's own reader (ticket_key_from_title) and the body with the merge's own remainder reader
 # (scripts/lib/pr_remainder.py, run from the anchor with python3 -I, never from the checkout under review). The contract is
 # the merge line's (--jira-transition, or the brief's `Completes ticket:`), so the caller names it: --contract yes|no.
@@ -2032,6 +2033,10 @@ check_partial_remainder() {
         mark_fail
     elif [ "${ans%%$'\t'*}" = none ]; then
         echo "[FAIL] 17. $key is a partial merge (--contract no) but the PR body has no \`Remaining:\` line and no \`<ask>: deferred -> <KEY>\` line under \`## Ticket coverage\` — the merge refuses it (exit 26); add one (gh pr edit $PR --body-file <file>)"
+        mark_fail
+    elif [ "${ans%%$'\t'*}" = handed-off ]; then
+        # every remaining ask sits on other tickets, so this merge completes $key; ready-check reads no brief, so one line covers both causes
+        echo "[FAIL] 17. $key is a partial merge (--contract no) but every remaining ask is on $(printf '%s' "$ans" | cut -f2), so this merge completes $key and the merge refuses it (exit 26). If the brief says Completes ticket: no, the chief changes it to yes and re-issues the GO with --contract yes; else re-issue the GO with --contract yes (the merge then runs with --jira-transition); or record what stays on $key with a Remaining: line (gh pr edit $PR --body-file <file>)"
         mark_fail
     else
         echo "[PASS] 17. partial merge $key records what remains (${ans%%$'\t'*})"

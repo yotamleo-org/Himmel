@@ -4284,10 +4284,9 @@ assert_jira_log_lacks "8673: a refused partial merge posts no comment" "comment-
 # a completing PR's coverage holds only done lines: run without --jira-transition it is refused, so the caller must choose
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Ticket coverage\n- slice one: done\n- slice two: done\n' \
     run_mog 26 "8673: a coverage of done lines only is refused without --jira-transition"
-# the remainder recorded only as a deferred line under ## Ticket coverage merges, and the breadcrumb posts it
+# a remainder handed wholly to another ticket leaves nothing on this one, so the merge would complete it: refused
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Summary\nslice one\n\n## Ticket coverage\n- slice one: done\n- rest: deferred \xe2\x86\x92 HIMMEL-9\n' \
-    run_mog 0 "8673: a deferred coverage line is a recorded remainder"
-assert_jira_log_has "8673: the breadcrumb posts the deferred line" "comment-body: Remaining: rest: deferred → HIMMEL-9"
+    run_mog 26 "8673: a coverage line deferred wholly to another ticket is refused"
 # a completing merge (--jira-transition) is not a partial one: no remainder is asked of it
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Ticket coverage\n- slice one: done\n' \
     run_mog 0 "8673: a completing merge needs no remainder" -- --jira-transition
@@ -4350,6 +4349,36 @@ printf '# worker\n\n> **Completes ticket:** no\n\n## Results\n' > "$LAST_TMP/wor
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
     run_mog 26 "8673: a brief that says no is a partial merge even with --jira-transition" -- --jira-transition --worker-doc "$LAST_TMP/worker-no-8673.md"
 assert_gh_lacks "8673: the brief-no refusal never called pr merge" "pr merge"
+# a remainder whose every ask is deferred to other tickets completes this one, so contract=no refuses it (exit 26)
+s3_body=$'## Ticket coverage\n- a: done\n- b: deferred \xe2\x86\x92 HIMMEL-2\n'
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: x" run_mog 0 "9561 S3 setup: a scratch run to own the brief path"
+s3_doc="$LAST_TMP/worker-no-s3.md"
+printf '# worker\n\n> **Completes ticket:** no\n\n## Results\n' > "$s3_doc"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s3_body" \
+    run_mog 26 "9561 S3: brief no with a handed-off remainder is refused" -- --worker-doc "$s3_doc"
+assert_err_has "9561 S3: the refusal names the other key" "HIMMEL-2"
+assert_err_has "9561 S3: the refusal names the brief line" "Completes ticket: no"
+assert_err_has "9561 S3: the refusal names the doc path" "$s3_doc"
+assert_err_has "9561 S3: the refusal offers a Remaining: line" "Remaining:"
+assert_audit_has "9561 S3: the refusal is audited" "REFUSED reason=partial-remainder-handed-off"
+assert_gh_lacks "9561 S3: the handed-off refusal never called pr merge" "pr merge"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s3_body" \
+    run_mog 26 "9561 S3: the brief's no beats --jira-transition on a handed-off remainder" -- --jira-transition --worker-doc "$s3_doc"
+assert_err_has "9561 S3: the flag row still names the brief line" "Completes ticket: no"
+assert_gh_lacks "9561 S3: the flag row never called pr merge" "pr merge"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s3_body" \
+    run_mog 26 "9561 S3: no brief line and no flag refuses a handed-off remainder"
+assert_err_has "9561 S3: the no-brief refusal names --jira-transition" "--jira-transition"
+assert_err_has "9561 S3: the no-brief refusal names the other key" "HIMMEL-2"
+assert_audit_has "9561 S3: the no-brief refusal is audited" "REFUSED reason=partial-remainder-handed-off"
+# controls: a Remaining: line merges, a none body keeps its own message, a completing merge with no brief no line merges
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'Remaining: x\n\n## Ticket coverage\n- a: done\n- b: deferred \xe2\x86\x92 HIMMEL-2\n' \
+    run_mog 0 "9561 S3 control: a Remaining: line beside a deferred line still merges" -- --worker-doc "$s3_doc"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
+    run_mog 26 "9561 S3 control: a none body keeps the missing-remainder refusal" -- --worker-doc "$s3_doc"
+assert_audit_has "9561 S3 control: a none body is still audited as missing" "REFUSED reason=partial-remainder-missing"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s3_body" \
+    run_mog 0 "9561 S3 control: --jira-transition with no brief no line merges a handed-off body" -- --jira-transition
 # a title naming no ticket is not a partial merge of one: no remainder is asked of it
 STUB_PR_BODY="just a summary" run_mog 0 "8673: a title with no ticket key asks for no remainder"
 assert_gh_has "8673: the keyless title merged" "pr merge"
