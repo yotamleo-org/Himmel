@@ -57,7 +57,7 @@ export JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}"
 
 log() { # <message>
     local line
-    line="$(date -u +%Y-%m-%dT%H:%M:%SZ) known-bugs-sync $CHECKER: $1" # date -u with a + format is the same on GNU and BSD
+    line="$(date -u +%Y-%m-%dT%H:%M:%SZ) known-bugs-sync $CHECKER: $1"
     printf '%s\n' "$line"
     [ -z "$LOG" ] || printf '%s\n' "$line" >> "$LOG"
 }
