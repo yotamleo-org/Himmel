@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
-# scripts/cr/cr-scores.sh — per-critic agreed/availability scorecard
-# Usage: cr-scores.sh [--window N] [--artifact kind] [--perspective on|off]
+# scripts/cr/cr-scores.sh — per-critic scorecard: quality view, advice and pooled history
+# Usage: cr-scores.sh [--since ISO] [--until ISO] [--json] [--window N] [--artifact kind] [--perspective on|off]
 #        cr-scores.sh --by-branch [<branch>]
-# Reads CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
-# and prints a per-model table plus drop advice.
+# Reads CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl).
+#
+# First the quality view: scripts/eval/cr-ledger/cr_ledger_eval.py --summary over
+# --since..--until (default the trailing 14 days), one row per reviewer slug,
+# responding model, scope and verdict source, and advice from that same window.
+# Advice reads recorded dispositions only, says "insufficient evidence" under 30
+# decided findings or 10 PRs, and at worst "low author agreement; investigate"
+# (below CR_SCORES_DROP_BELOW %); it never removes a reviewer. --json prints the
+# quality view as JSON and nothing else. Then the history tables: all-time and
+# the last --window PRs, every verdict source pooled.
 #
 # --window N counts PRs: rows that carry a pr (the CodeRabbit rows that
 # cr-thread-recorder.sh writes, one per review thread) group by it, every other
@@ -27,16 +35,21 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 
 # ── Named threshold constants (referenced by test-cr-scores.sh) ────────────
 CR_SCORES_DROP_BELOW="${CR_SCORES_DROP_BELOW:-40}"
-CR_SCORES_MIN_N="${CR_SCORES_MIN_N:-10}"
 WINDOW=20
 FILTER_ARTIFACT=""
 FILTER_PERSPECTIVE=""
 BY_BRANCH=0
 BRANCH_FILTER=""
+SINCE=""
+UNTIL=""
+JSON=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --window) [ $# -ge 2 ] || { echo "cr-scores.sh: --window requires an argument" >&2; exit 2; }; WINDOW="$2"; shift 2;;
+    --since) [ $# -ge 2 ] || { echo "cr-scores.sh: --since requires an ISO-8601 time" >&2; exit 2; }; SINCE="$2"; shift 2;;
+    --until) [ $# -ge 2 ] || { echo "cr-scores.sh: --until requires an ISO-8601 time" >&2; exit 2; }; UNTIL="$2"; shift 2;;
+    --json) JSON=1; shift;;
     --artifact) [ $# -ge 2 ] || { echo "cr-scores.sh: --artifact requires an argument" >&2; exit 2; }; FILTER_ARTIFACT="$2"; shift 2;;
     --perspective) [ $# -ge 2 ] || { echo "cr-scores.sh: --perspective requires an argument" >&2; exit 2; }; FILTER_PERSPECTIVE="$2"; shift 2;;
     --by-branch)
@@ -49,7 +62,25 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+[ "$JSON" = 1 ] && [ "$BY_BRANCH" = 1 ] && { echo "cr-scores.sh: --json is the quality view; it does not apply to --by-branch" >&2; exit 2; }
+
 ledger="${CR_LEDGER:-$(git rev-parse --git-common-dir 2>/dev/null)/cr-critic-scores.jsonl}"
+crl="$(dirname "${BASH_SOURCE[0]}")/../eval/cr-ledger/cr_ledger_eval.py"
+crl_args=(--summary --ledger "$ledger" --agreement-below "$CR_SCORES_DROP_BELOW")
+[ -n "$SINCE" ] && crl_args+=(--since "$SINCE")
+[ -n "$UNTIL" ] && crl_args+=(--until "$UNTIL")
+[ -n "$FILTER_ARTIFACT" ] && crl_args+=(--artifact "$FILTER_ARTIFACT")
+[ -n "$FILTER_PERSPECTIVE" ] && crl_args+=(--perspective "$FILTER_PERSPECTIVE")
+
+if [ "$JSON" = 1 ]; then
+  if [ ! -f "$ledger" ]; then
+    echo '{"rows": [], "advice": [], "exclusions": {}, "note": "no critic scores recorded yet"}'
+    exit 0
+  fi
+  [ -f "$crl" ] || { echo "cr-scores.sh: --json needs $crl, which is not here" >&2; exit 2; }
+  python3 -I "$crl" "${crl_args[@]}" --json
+  exit $?
+fi
 
 # The default ledger lives in .git/ — untracked, machine-local, lost
 # on a re-clone and absent on other stations — so a scorecard read from it is
@@ -213,11 +244,17 @@ if (!only) {
   exit 0
 fi
 
+if [ -f "$crl" ]; then
+  echo
+  python3 -I "$crl" "${crl_args[@]}" || exit $?
+else
+  echo
+  echo "NOTE: quality view unavailable: $crl is not here, so no advice is given."
+fi
+
 # shellcheck disable=SC2016  # $-refs below are inside the single-quoted node script (JS), not shell
-DROP_BELOW="$CR_SCORES_DROP_BELOW" MIN_N="$CR_SCORES_MIN_N" WINDOW="$WINDOW" LEDGER="$ledger" FILTER_ARTIFACT="$FILTER_ARTIFACT" FILTER_PERSPECTIVE="$FILTER_PERSPECTIVE" node -e '
+WINDOW="$WINDOW" LEDGER="$ledger" FILTER_ARTIFACT="$FILTER_ARTIFACT" FILTER_PERSPECTIVE="$FILTER_PERSPECTIVE" node -e '
 const fs = require("fs");
-const DROP_BELOW = Number(process.env.DROP_BELOW);
-const MIN_N      = Number(process.env.MIN_N);
 const WINDOW_N   = Number(process.env.WINDOW);
 const ledger     = process.env.LEDGER;
 const filterArtifact    = process.env.FILTER_ARTIFACT || "";
@@ -351,7 +388,7 @@ const usageModels = Object.keys(usage).sort();
 if (!models.length && !usageModels.length) { console.log("no critic scores recorded yet"); process.exit(0); }
 
 // ── Table ──────────────────────────────────────────────────────────────────
-const cols = ["model","total","agreed%","dispr%","conflict","unadd","avail%"];
+const cols = ["model","total","accept%","dispr%","conflict","unadd","avail%"];
 const W    = [22,     7,      8,        7,       9,        6,      7];
 function row(cells) {
   return cells.map((c,i)=>String(c).padEnd(W[i])).join("  ");
@@ -377,31 +414,11 @@ function tableFor(stats, label, note) {
   }
 }
 
-// Score tables + drop advice only when there are finding/avail records. A
-// usage-only ledger skips straight to the Usage section below.
+const histNote = "accept% = agreed (fixed included) / all findings and dispr% = disproved / all findings;\n" +
+  "every verdict source and model version pooled, so neither is precision or author agreement.";
 if (models.length) {
-  tableFor(all, "=== All-time ===");
-  tableFor(win, "=== Last-" + WINDOW_N + "-PRs (window) ===", windowNote);
-
-  // ── Drop advice ──────────────────────────────────────────────────────────
-  const drops = [];
-  for (const m of models) {
-    const s = all[m];
-    const agreedPct = s.total > 0 ? (s.agreed || 0) * 100 / s.total : 100;
-    if (s.total >= MIN_N && agreedPct < DROP_BELOW) {
-      drops.push({ model: m, agreedPct: Math.round(agreedPct), total: s.total });
-    }
-  }
-  if (drops.length) {
-    console.log("\n=== Drop advice ===");
-    console.log("(agreed% < " + DROP_BELOW + " over >= " + MIN_N + " findings)");
-    for (const d of drops) {
-      console.log("  consider dropping " + d.model + " (" + d.agreedPct + "% agreed over " + d.total + " findings)");
-    }
-  } else {
-    console.log("\n=== Drop advice ===");
-    console.log("  no models below threshold");
-  }
+  tableFor(all, "=== History: all-time ===", histNote);
+  tableFor(win, "=== History: Last-" + WINDOW_N + "-PRs (window) ===", windowNote);
 }
 
 // ── Usage (estimated tokens) ─────────────────────────────────────────────────
