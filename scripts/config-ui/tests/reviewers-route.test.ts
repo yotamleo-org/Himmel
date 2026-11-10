@@ -1,6 +1,6 @@
 import { test, expect, afterEach } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
@@ -214,6 +214,63 @@ test("quiet_history_not_failed_capture: a quiet CR ledger says no new records si
   const html = await tabOf(r);
   expect(html).toContain("No new records since 2026-10-01; capture coverage unknown");
   expect(html).not.toMatch(/stale|failed capture|capture failed/i);
+});
+
+const crRow = (o: Record<string, unknown>) => JSON.stringify(o) + "\n";
+const finding = (fid: string, branch: string, head: string, ts: string) => crRow({ kind: "finding", ts, branch, head, model: "coderabbit", finding_id: fid, severity: "imp", file: "a.sh", line: 1, verdict: "", artifact: "diff", perspective: "off", text: "RAW-REVIEW-BODY" });
+const ruling = (fid: string, branch: string, head: string, ts: string, verdict: string) => crRow({ kind: "amend", ts, branch, target_head: head, finding_id: fid, artifact: "diff", perspective: "off", set: { verdict }, reason: "r" });
+const receipt = (pr: number, branch: string, threads: number, result: string) => crRow({ kind: "capture", ts: "2026-11-06T02:00:00Z", pr, branch, head: "h-" + branch, thread_count: threads, outside_count: 0, result, reason: result === "ok" ? null : "RECEIPT-REASON" });
+const recorded = (r: any) => r.codeReviewers.metrics.filter((m: any) => m.family === "production" && m.reviewer === "coderabbit" && m.verdict_source === "recorded-disposition").map((m: any) => [m.model, m.k, m.n]);
+
+test("future_PR_appended_updates_report: a CR record appended between two GETs is counted on the next GET, once", async () => {
+  const l = ledgers();
+  const s = bootReport(reportEnv(l));
+  expect(recorded(await (await get(s.port)).json())).toEqual([["unknown", 1, 2]]);
+  appendFileSync(l.cr, finding("c5", "b5", "h5", "2026-11-08T00:00:00Z") + ruling("c5", "b5", "h5", "2026-11-08T01:00:00Z", "agreed"));
+  const r = await (await get(s.port)).json();
+  expect(recorded(r)).toEqual([["unknown", 2, 3]]);
+  expect(r.codeReviewers.production.last_record_at).toBe("2026-11-08T01:00:00Z");
+  expect(recorded(await (await get(s.port)).json())).toEqual([["unknown", 2, 3]]);
+  expect(await tabOf(r)).toContain("2 of 3 decided findings: 66.7%");
+});
+
+test("future_model_change_new_cohort: a new responding model is its own row in the report and the tab", async () => {
+  const l = ledgers();
+  appendFileSync(l.cr, crRow({ kind: "attempt", ts: "2026-11-09T00:00:00Z", branch: "b6", head: "h6", model: "coderabbit", artifact: "diff", responding_model: "cr-model-2" }) + finding("c6", "b6", "h6", "2026-11-09T00:00:00Z") + ruling("c6", "b6", "h6", "2026-11-09T01:00:00Z", "disproved"));
+  const r = await (await get(bootReport(reportEnv(l)).port)).json();
+  expect(recorded(r)).toEqual([["cr-model-2", 0, 1], ["unknown", 1, 2]]);
+  expect(await tabOf(r)).toContain("<td>cr-model-2</td>");
+});
+
+test("collection_gap_visible: with no snapshot coverage is unknown; with one, failed and uncaptured PRs are named", async () => {
+  const l = ledgers();
+  appendFileSync(l.cr, receipt(101, "b1", 2, "ok") + receipt(102, "b2", 1, "error"));
+  const none = await (await get(bootReport(reportEnv(l)).port)).json();
+  expect(none.codeReviewers.production.capture_coverage).toBe("unknown");
+  expect(none.codeReviewers.sources.map((x: any) => x.id)).toEqual(["eval-runs", "eval-changes", "cr-ledger"]);
+  const snap = join(l.dir, "expected.jsonl");
+  writeFileSync(snap, [101, 102, 103].map((pr) => crRow({ pr, branch: "b" + (pr - 100), head: "h", merged_at: "2026-11-06T01:00:00Z" })).join(""));
+  const r = await (await get(bootReport(reportEnv(l, { HIMMEL_EXPECTED_PRS: snap })).port)).json();
+  expect(r.codeReviewers.production.capture_coverage).toBe("measured");
+  expect(r.codeReviewers.production.capture).toMatchObject({ k: 1, n: 3, failed: [102], uncaptured: [103] });
+  const html = await tabOf(r);
+  expect(html).toContain("Capture: 1 of 3 expected PRs captured (0 with zero threads); failed: #102; not captured: #103.");
+  expect(html).not.toContain("Capture coverage unknown");
+  expect(JSON.stringify(r)).not.toContain("RECEIPT-REASON");
+});
+
+test("zero_thread_pr_vs_uncaptured: an ok receipt with no threads is captured-zero, a PR with no receipt is uncaptured", async () => {
+  const l = ledgers();
+  appendFileSync(l.cr, receipt(107, "b7", 0, "ok"));
+  const snap = join(l.dir, "expected.jsonl");
+  writeFileSync(snap, [107, 108].map((pr) => crRow({ pr, branch: "b" + (pr - 100), head: "h", merged_at: "2026-11-06T01:00:00Z" })).join(""));
+  const r = await (await get(bootReport(reportEnv(l, { HIMMEL_EXPECTED_PRS: snap })).port)).json();
+  expect(r.codeReviewers.production.capture).toMatchObject({ k: 1, n: 2, captured_zero: [107], uncaptured: [108] });
+  expect(recorded(r)).toEqual([["unknown", 1, 2]]);
+  expect(await tabOf(r)).toContain("Capture: 1 of 2 expected PRs captured (1 with zero threads); not captured: #108.");
+  const bare = await (await get(bootReport(reportEnv(l)).port)).json();
+  expect(bare.codeReviewers.production).toMatchObject({ capture_coverage: "unknown", capture: { n: null, captured_zero: [107] } });
+  expect(await tabOf(bare)).toContain("Capture receipts: 1 PRs, 1 with zero threads; no expected-PR snapshot, so no coverage.");
 });
 
 test("the report run is bounded: a timeout, junk output or an oversized answer is state error", async () => {

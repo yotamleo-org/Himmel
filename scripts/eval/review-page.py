@@ -27,8 +27,8 @@ than --min-findings distinct findings (default 10) shares one "other" row. With 
 the block between the two `review-page.py --panel` marker comments of FILE, and refuses (exit 2) a FILE
 that has no such block.
 
-  review-page.py --reviewers-json --ledger FILE --changes FILE --cr-ledger FILE [--now ISO]
-  review-page.py --reviewers-only --ledger FILE --changes FILE --cr-ledger FILE [--now ISO]
+  review-page.py --reviewers-json --ledger FILE --changes FILE --cr-ledger FILE [--now ISO] [--expected-prs FILE]
+  review-page.py --reviewers-only --ledger FILE --changes FILE --cr-ledger FILE [--now ISO] [--expected-prs FILE]
 
 --reviewers-json prints report v1 over the code reviewers only (no judge eval), read at --now (default: the
 current time); scripts/config-ui's GET /api/reviewers runs it on every request. Pure read: each source is
@@ -36,8 +36,11 @@ named by basename with its state (ok, absent when the file is missing, error wit
 read), and the report is ok, partial (a source error beside a readable one), absent or error. The benchmark is the
 newest usable review-panel run with the newest attempt beside it, old once observed more than 7 days before --now,
 with a trend only against a comparable previous run (review_incompat). Production findings are the CR ledger's
-reviewer_summary over the trailing 14 days, by verdict source; capture coverage is unknown, since no per-PR
-capture receipt exists. Every metric is a typed k of n whose value is null when n is 0. No review text, full path
+reviewer_summary over the trailing 14 days, by verdict source; capture coverage is unknown unless --expected-prs
+names a merged-PR snapshot (JSONL rows {pr, branch, head, merged_at}). Then each expected PR merged in the window
+is captured (its newest CR-ledger "capture" receipt says result ok; thread_count and outside_count 0 is a captured
+zero), failed (the newest receipt is not ok) or uncaptured (no receipt), by PR number. Without the flag the report
+has no snapshot source and, with no receipt either, no capture block. Every metric is a typed k of n whose value is null when n is 0. No review text, full path
 or exception message is printed. --reviewers-only prints the same report in plain words.
 """
 import argparse
@@ -715,7 +718,7 @@ def prod_metrics(cr_rows, since, until, roster, fresh):
         else:
             k, n, ci = None, r["total"], None
         cov = {x: r[x] for x in ("total", "agreed", "disproved", "deferred", "unresolved", "prs")}
-        cov.update(adjudication_coverage=r["adjudication_coverage"], capture="unknown")
+        cov.update(adjudication_coverage=r["adjudication_coverage"], capture=fresh["capture_coverage"])
         out.append(metric("production.%s.%s.%s.%s" % (r["slug"], r["responding_model"], r["scope"], src), "production",
                           r["slug"], PROD[src], "proxy", k if n else None, n,
                           "decided findings" if src == cr_ledger_eval.RECORDED else "findings",
@@ -729,9 +732,35 @@ def prod_metrics(cr_rows, since, until, roster, fresh):
     return out, excluded
 
 
-def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roster=None):
+def pr_num(x):
+    return x if isinstance(x, int) and not isinstance(x, bool) else None
+
+
+def capture_summary(receipts, expected, since, t):
+    lo = cr_ledger_eval.parse_ts(since)
+
+    def within(ts):
+        x = cr_ledger_eval.parse_ts(ts)
+        return x is not None and lo <= x <= t
+    latest = {}
+    for _, _, r in sorted(((cr_ledger_eval.parse_ts(r.get("ts")), i, r) for i, r in enumerate(receipts)
+                           if pr_num(r.get("pr")) is not None and within(r.get("ts"))), key=lambda x: (x[0], x[1])):
+        latest[r["pr"]] = r
+    ok = {p for p, r in latest.items() if r.get("result") == "ok"}
+    zero = {p for p in ok if latest[p].get("thread_count") == 0 and latest[p].get("outside_count") == 0}
+    if expected is None:
+        prs = set(latest)
+        return {"k": None, "n": None, "receipts": len(latest), "captured_zero": sorted(zero & prs),
+                "failed": sorted(prs - ok), "uncaptured": None}
+    prs = {pr_num(e.get("pr")) for e in expected if within(e.get("merged_at"))} - {None}
+    return {"k": len(prs & ok), "n": len(prs), "receipts": len(latest), "captured_zero": sorted(zero & prs),
+            "failed": sorted((prs & set(latest)) - ok), "uncaptured": sorted(prs - set(latest))}
+
+
+def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roster=None, expected=None):
     """Report v1 over the code reviewers. Each input is its rows, or None when its source is unusable; sources
-    (default: derived from which inputs are None) names each source's state. No judge eval is read."""
+    (default: derived from which inputs are None) names each source's state. No judge eval is read. expected is
+    the merged-PR snapshot's rows, or None without one; the CR ledger's capture receipts are counted against it."""
     t = cr_ledger_eval.parse_ts(now) if isinstance(now, str) else now
     now_iso = iso(t)
     if sources is None:
@@ -770,9 +799,14 @@ def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roste
             "last_record_at": last, "records_in_window": len(window_findings),
             "capture_coverage": "unknown", "capture_reason": CAPTURE_REASON,
             "roster": "unreadable" if roster is None else "ok", "not_reviewers": None}
+    receipts = [r for r in in_cut if r.get("kind") == "capture"]
+    if receipts or expected is not None:
+        prod["capture"] = capture_summary(receipts, expected, since, t)
+        if expected is not None:
+            prod.update(capture_coverage="measured", capture_reason=None)
     if cr_rows is not None:
         pm, prod["not_reviewers"] = prod_metrics(in_cut, since, now_iso, roster or set(),
-                                                 {"last_record_at": last, "capture_coverage": "unknown"})
+                                                 {"last_record_at": last, "capture_coverage": prod["capture_coverage"]})
         metrics += pm
     reviewers = {}
     for m in metrics:
@@ -849,12 +883,23 @@ def reviewers_prose(rep):
         out.append("- " + line + ".")
     p = rep["production"]
     out += ["", "## Review findings on merged work, %s to %s" % (day(p["window"]["since"]), day(p["window"]["until"])), ""]
+    measured = p["capture_coverage"] == "measured"
     if p["last_record_at"] is None:
-        out.append("No records; capture coverage unknown.")
+        out.append("No records." if measured else "No records; capture coverage unknown.")
     elif not p["records_in_window"]:
-        out.append("No new records since %s; capture coverage unknown." % day(p["last_record_at"]))
+        out.append("No new records since %s%s." % (day(p["last_record_at"]), "" if measured else "; capture coverage unknown"))
+    elif measured:
+        out.append("Last record %s." % day(p["last_record_at"]))
     else:
         out.append("Last record %s; capture coverage unknown (%s)." % (day(p["last_record_at"]), p["capture_reason"]))
+    c = p.get("capture")
+    if c:
+        head = ("Capture: %d of %d expected PRs captured (%d with zero threads)" % (c["k"], c["n"], len(c["captured_zero"]))
+                if measured else "Capture receipts: %d PRs, %d with zero threads; no expected-PR snapshot, so no coverage"
+                % (c["receipts"], len(c["captured_zero"])))
+        parts = [head] + ["%s: %s" % (w, ", ".join("#%d" % x for x in xs)) for w, xs in
+                          (("failed", c["failed"]), ("not captured", c["uncaptured"])) if xs]
+        out.append("; ".join(parts) + ".")
     nr = p.get("not_reviewers") or {}
     if p.get("roster") != "ok":
         out.append("The reviewer roster (scripts/cr/critics.json) could not be read, so no slug counts as a reviewer.")
@@ -878,8 +923,13 @@ def reviewers_cli(a):
         s, rows = read_source(sid, path)
         srcs.append(s)
         data.append(rows)
+    expected = None
+    if a.expected_prs is not None:
+        s, expected = read_source("expected-prs", a.expected_prs)
+        srcs.append(s)
     rep = build_reviewers_report(data[0], data[1], data[2], now, sources=srcs,
-                                 roster=cr_ledger_eval.roster_slugs(os.path.join(HERE, "..", "cr", "critics.json")))
+                                 roster=cr_ledger_eval.roster_slugs(os.path.join(HERE, "..", "cr", "critics.json")),
+                                 expected=expected)
     sys.stdout.write(json.dumps(rep, sort_keys=True) + "\n" if a.reviewers_json else reviewers_prose(rep))
     return 0
 
@@ -897,6 +947,7 @@ def main(argv=None):
     mode.add_argument("--reviewers-json", action="store_true")
     mode.add_argument("--reviewers-only", action="store_true")
     ap.add_argument("--now")
+    ap.add_argument("--expected-prs")
     a = ap.parse_args(argv)
     if a.reviewers_json or a.reviewers_only:
         if a.ledger is None or a.changes is None or a.cr_ledger is None:
