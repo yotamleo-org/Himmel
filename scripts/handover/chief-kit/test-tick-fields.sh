@@ -779,6 +779,11 @@ case "${QSTUB_MODE:-}" in
         fi ;;
     pr-hang)
         if [ "${1:-}" = pr ] && [ "${2:-}" = list ]; then exec sleep 600; fi ;;
+    pr-limit-read)
+        if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${GH_TOKEN:-}" = "${QSTUB_READ_TOKEN:-none}" ]; then
+            echo 'GraphQL: API rate limit already exceeded for user ID 1. (HTTP 403)' >&2
+            exit 1
+        fi ;;
 esac
 exec "$W_GH" "$@"
 STUB
@@ -794,7 +799,7 @@ q_gql_out="HTTP/2.0 403 Forbidden\r\nX-Ratelimit-Remaining: 0\r\nX-Ratelimit-Res
 : > "$W/qstub.log"
 q_out="$(q_tick "$W/q-out" QSTUB_MODE=pr-limit STUB_GQL_OUT="$q_gql_out" STUB_GQL_RC=1)"
 contains 'a refused GraphQL budget prints quota=main.graphql:0@<reset>' "$q_out" " quota=main.graphql:0@$q_hm"
-contains 'a PR list the rate limit refused reads prs=? beside the quota= that names why' "$q_out" ' prs=? '
+contains 'a PR list refused on the main token reads prs=? beside a quota= that names the bucket' "$q_out" ' prs=? '
 contains 'gql= still prints its value on the refused budget' "$q_out" " gql=0/$q_hm"
 q_ok="$(q_tick "$W/q-ok")"
 not_contains 'RED control: a healthy budget prints no quota=' "$q_ok" ' quota='
@@ -823,10 +828,36 @@ case "$(wc -l < "$W/qstub.log" | tr -d '[:space:]')" in  # read-sink-ok: this su
 esac
 : > "$W/qstub.log"
 q_hang="$(q_tick "$W/q-prhang" QSTUB_MODE=pr-hang GH_READ_TIMEOUT=2)"
-contains 'a PR list that timed out reads quota=main.graphql:stall' "$q_hang" ' quota=main.graphql:stall'
-contains 'a PR list that timed out leaves prs=?' "$q_hang" ' prs=? '
-not_contains 'no dispatch read follows a PR list that timed out' "$(cat "$W/qstub.log")" 'actions/runs'
-not_contains 'no ci-red read follows a PR list that timed out' "$(cat "$W/qstub.log")" 'issue list'
+contains 'a PR list the router timed out reads quota=main.graphql:stall' "$q_hang" ' quota=main.graphql:stall'
+contains 'a PR list the router timed out leaves prs=?' "$q_hang" ' prs=? '
+not_contains 'no dispatch read follows a PR list the router timed out' "$(cat "$W/qstub.log")" 'actions/runs'
+not_contains 'no ci-red read follows a PR list the router timed out' "$(cat "$W/qstub.log")" 'issue list'
+: > "$W/qstub.log"
+q_cut="$(q_tick "$W/q-prcut" QSTUB_MODE=pr-hang TICK_DEADLINE_SEC=8)"
+contains 'a PR list the tick cut with its own timeout reads quota=main.graphql:stall' "$q_cut" ' quota=main.graphql:stall'
+contains 'a PR list the tick cut with its own timeout leaves prs=?' "$q_cut" ' prs=? '
+not_contains 'no dispatch read follows a PR list the tick cut' "$(cat "$W/qstub.log")" 'actions/runs'
+not_contains 'no ci-red read follows a PR list the tick cut' "$(cat "$W/qstub.log")" 'issue list'
+mkdir -p "$W/q-readroot"
+printf 'himmel_github_token_vm2=ghp_TICKTEST0123456789\n' > "$W/q-readroot/.env"  # gitleaks:allow fixture token
+: > "$W/qstub.log"
+q_fb="$(q_tick "$W/q-fb" GH_READ_ENV_ROOT="$W/q-readroot" QSTUB_MODE=pr-limit-read QSTUB_READ_TOKEN=ghp_TICKTEST0123456789)"
+contains 'a PR list the read token had refused names quota=read.graphql' "$q_fb" ' quota=read.graphql:'
+contains 'a PR list the read token had refused reads prs=?, not the main token answer' "$q_fb" ' prs=? '
+case "$(grep -c '^pr list' "$W/qstub.log")" in
+    1) pass 'a rate-limited read token is not retried on main' ;;
+    *) fail "the PR list was read more than once (log: $(tr '\n' '|' < "$W/qstub.log"))" ;;
+esac
+seed_floor() {
+    local d="$1" rem="$2" now
+    now="$(date +%s)"
+    mkdir -p "$d"
+    printf 'main\tgraphql\t%s\t5000\t%s\t%s\tok\nmain\tcore\t4000\t5000\t%s\t%s\tok\n' "$rem" "$q_reset" "$now" "$q_reset" "$now" > "$d/quota.tsv"
+}
+seed_floor "$W/q-low" 200
+contains 'a bucket under the floor prints quota=main.graphql:200@<reset>' "$(q_tick "$W/q-low")" " quota=main.graphql:200@$q_hm"
+seed_floor "$W/q-edge" 500
+not_contains 'RED control: a bucket at the floor prints no quota=' "$(q_tick "$W/q-edge")" ' quota='
 q_key_line="$(grep -n -E '^[[:space:]]+for f in workers livestate prs ' "$HERE/chief-wait.sh")"
 [ -n "$q_key_line" ] && pass "chief-wait's key field list is found" || fail "chief-wait's key field list moved"
 not_contains "chief-wait's key field list gains no quota" "$q_key_line" 'quota'

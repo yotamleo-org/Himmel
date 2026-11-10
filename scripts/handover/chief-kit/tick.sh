@@ -2020,11 +2020,14 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
 fi
 tick_deadline_off
 pr_refused="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-refused.XXXXXX" 2>/dev/null)" || pr_refused=""  # swallow-ok: no file means no named reason, prs=? still prints
-pr_out="$(cd "$pr_repo" 2>/dev/null && GH_READ_REFUSED_FILE="$pr_refused" GH_READ_NO_MAIN_FALLBACK=1 timeout -k 2 "$(tick_bound 30)" "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
+pr_out="$(cd "$pr_repo" 2>/dev/null && GH_READ_REFUSED_FILE="$pr_refused" GH_READ_NO_MAIN_FALLBACK=1 timeout -k 2 "$(tick_bound 30)" "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)"
+pr_list_rc=$?
+[ "$pr_list_rc" -eq 0 ] || { pr_out=""; pr_read_failed=1; }
+pr_stall_named=""
 if [ -n "$pr_refused" ]; then
     while read -r pr_ref_tok pr_ref_bucket pr_ref_why; do
         case "$pr_ref_why" in
-            stall) quota_stall "$pr_ref_tok.$pr_ref_bucket"; tick_reads_off ;;
+            stall) quota_stall "$pr_ref_tok.$pr_ref_bucket"; tick_reads_off; pr_stall_named=1 ;;
             rate-limit)
                 pr_ref_rem="?"; pr_ref_at="?"
                 if [ "$quota_ready" -eq 1 ] && ghq_read "$pr_ref_tok" "$pr_ref_bucket"; then
@@ -2035,6 +2038,14 @@ if [ -n "$pr_refused" ]; then
         esac
     done < "$pr_refused"
     rm -f "$pr_refused"
+fi
+if [ "$pr_list_rc" -eq 124 ] || [ "$pr_list_rc" -eq 137 ]; then
+    if [ -z "$pr_stall_named" ]; then
+        pr_stall_tok=main
+        if [ "$quota_ready" -eq 1 ] && [ -n "$(_ghb_read_token)" ]; then pr_stall_tok="read"; fi
+        quota_stall "$pr_stall_tok.graphql"
+    fi
+    tick_reads_off
 fi
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
