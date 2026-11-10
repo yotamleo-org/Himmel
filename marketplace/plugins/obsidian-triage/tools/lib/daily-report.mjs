@@ -87,7 +87,6 @@ export function sourceFromClip(link, content) {
     harvestStatus: get("harvest_status"),
     likes: statsLikes ? Number(statsLikes[1]) : 0,
     why: whyOf(content),
-    // No digest link yet; add it once the digest step writes the digest key.
     video: dur
       ? {
           duration: Number(dur),

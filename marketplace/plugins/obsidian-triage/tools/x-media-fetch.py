@@ -11,8 +11,7 @@ pbs.twimg.com/media/ reference and which carry no media_enriched_at: marker:
 
   - Download the tweet's media with Scrapling, NO cookie (the Scrapling-first rule:
     x-scrapling-media.py reads the status page and its video.twimg.com
-    requests; curl / ffmpeg-HLS fetch the items). The gallery-dl cookie
-    fallback was removed.
+    requests; curl / ffmpeg-HLS fetch the items).
   - Video items (incl. GIF-like tweet_video): ffmpeg -> mono 16kHz WAV -> local
     faster-whisper transcript. A SOUNDLESS video (the common tweet_video GIF -
     e.g. an animated UI element) has no audio to transcribe, so its first frame
@@ -162,8 +161,8 @@ def read_clip(path: Path):
 
 
 def write_clip(path: Path, text: str, has_crlf: bool):
-    """Write a clip, re-emitting CRLF when the original used it. ATOMIC
-    (codex adversarial review): write to a temp file in the SAME directory, fsync,
+    """Write a clip, re-emitting CRLF when the original used it. ATOMIC:
+    write to a temp file in the SAME directory, fsync,
     then os.replace() onto the destination - so a mid-write crash / disk-full /
     I/O error can never truncate the existing note (a bare write_text truncates
     before writing, and the G-3 revert never runs when the write call itself
@@ -1256,7 +1255,7 @@ def write_crawled(path: Path, text: str, fm_raw: str, body: str, section: str,
     }
     if enriched:
         markers["media_enriched_at"] = TODAY
-    markers.update(extra or {})   # provenance stamps
+    markers.update(extra or {})
     new_fm_raw = upsert_media_markers(fm_raw, markers)
     if enriched:
         new_fm_raw = drop_x_media_pending(new_fm_raw)

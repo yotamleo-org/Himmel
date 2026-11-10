@@ -39,9 +39,6 @@
  *   1 — bad usage
  *   3 — run completed but at least one clip failed (distinct
  *       from 0 so a caller gating on exit code sees a 100%-failure run)
- *
- * Default X enrich path (the Playwright X crawler was removed,
- * after the cookie-free Scrapling path replaced it).
  */
 import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join, relative, sep, dirname } from "node:path";
@@ -908,8 +905,7 @@ function renderArticleSection(tweet) {
  * Render the quoted post's body.
  *
  * `q.text` carries t.co links already expanded to their destination;
- * `q.raw_text.text` keeps the shortener — so `q.text` is preferred here
- * (verified against the live api.fxtwitter.com payloads when quote tweets were fixed).
+ * `q.raw_text.text` keeps the shortener — so `q.text` is preferred here.
  *
  * A quoted post that is itself an X Article, or media with a bare t.co
  * stand-in for its text, has no prose of its own. Rendering that verbatim
