@@ -2553,6 +2553,15 @@ else
     echo "SKIP 7009 U+3000 heredoc-tag row: no UTF-8 locale installed"
 fi
 
+# 9820: bash closes a rejected opener's heredoc at its own tag, so an eligible
+# opener inside that body must not strip the lines after it.
+assert_deny "9820 control: a nested opener inside a rejected .. opener's body" "$(j "cat > /tmp/claude-1000/j3611/../evidence.md <<'EOF1'"$'\n'"$EVH"$'\n'"EOF1"$'\n'"$EVB"$'\n'"EOF2"$'\n'"$WV")"
+assert_deny "9820 control: a nested opener inside an opener whose path is named elsewhere" "$(j "cat > /tmp/claude-1000/j3611/other.md <<'EOF1'"$'\n'"$EVH"$'\n'"EOF1"$'\n'"$EVB"$'\n'"cat /tmp/claude-1000/j3611/other.md"$'\n'"EOF2"$'\n'"$WV")"
+assert_deny "9820 control: a lookalike write-verdict.sh matched only by suffix" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"bash /tmp/claude-1000/j3611/xscripts/handover/chief-kit/write-verdict.sh q1 GO --evidence-file $EV")"
+assert_deny "9820 control: a lookalike write-verdict.sh under the scratch root" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"bash /tmp/claude-1000/j3611/scripts/handover/chief-kit/write-verdict.sh q1 GO --evidence-file $EV")"
+assert_allow "9820 evidence heredoc then the relative write-verdict.sh call" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"bash scripts/handover/chief-kit/write-verdict.sh q1 GO --evidence-file $EV")"
+assert_allow "9820 evidence heredoc then the absolute write-verdict.sh call" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"$WV")"
+
 # 7130: a trigger word the command-position model shows is data (a grep
 # pattern, a flag given to grep, a python heredoc that only reads) is not a
 # seam write beside a glob path. The allow rows are live denials from the
