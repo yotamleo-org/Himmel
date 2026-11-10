@@ -13,8 +13,8 @@
 # Usage: ready-check.sh [--contract yes|no] [--observe] [--require-contract] <pr-number> <full-40-hex-head-sha>
 #        ready-check.sh --only 7 <pr-number>
 #   --only 7 runs check 7 — a worker's own pre-READY lint of its PR body, the
-#   same code the chief runs — plus the warn-only check 14. Prints
-#   COVERAGE-LINT PASS|FAIL.
+#   same code the chief runs — plus the warn-only check 14 and check 20 on
+#   check 7's head. Prints COVERAGE-LINT PASS|FAIL.
 #   --contract yes|no names the merge contract for check 17: yes when the merge
 #   completes the ticket (merge-on-green.sh --jira-transition), no for a partial
 #   merge. A keyed title with no --contract FAILs by default. --observe opts
@@ -187,6 +187,14 @@
 #      exists (--assume-go); a blocking finding, an undecided one, a malformed ledger, an
 #      unreadable branch or any other exit FAILs. Not part of `--only 7`.
 #
+# 20. Conflicts resolved: the anchor's scripts/eval/conflicts/conflicts.py detect lists each
+#      file a merge commit in origin/main..head resolved by hand. A file with no
+#      `- <path> vs #<n>: <note>` line under the body's `## Conflicts resolved` (read
+#      with that module's parse_body) FAILs, and the line to add is printed; an `ours`
+#      resolution WARNs and names the other PR. A detection that cannot run (no head,
+#      no detector, a failed fetch or git read, `unknown`) WARNs, never FAILs. Part of
+#      `--only 7`, on check 7's head (headRefOid).
+#
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes no CR ledger rows,
 # no GO files and no PR comments. Its writes are: `git fetch` into the repo it runs in
@@ -316,7 +324,7 @@ usage() {
     rc_primary=$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || rc_primary=""
     case "$rc_primary" in */.git) rc_primary="${rc_primary%/.git}" ;; *) rc_primary="<primary-checkout>" ;; esac
     echo "usage: ready-check.sh [--contract yes|no] [--observe] [--require-contract] <pr-number> <full-40-hex-head-sha>" >&2
-    echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint, for a worker before READY)" >&2
+    echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint plus the conflicts-resolved check 20, for a worker before READY)" >&2
     echo "       ready-check.sh --outside <pr-number>  (prints outside-pr: yes|no, the item 16 predicate)" >&2
     echo "run it from the primary checkout, not a worktree (check 12 needs an up-to-date anchor): cd '$rc_primary' && bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
@@ -2281,6 +2289,80 @@ s17_body() {
     echo "[PASS] 19. suite evidence: $n_imp impacted, $n_ci from CI run ${run_id:--}, $n_local local${ruled_names:+, $n_ruled ruled SKIP: ${ruled_names#, }}"
 }
 check_suite_evidence
+
+# --- 20. a hand-resolved merge conflict on the head has its line under `## Conflicts resolved`.
+# The anchor's scripts/eval/conflicts/conflicts.py detect (never the copy under review) lists the conflicted files of each
+# merge commit in origin/main..head; the body is item 7's, read with that module's parse_body (merge-on-green's reader too).
+# A conflicted file with no line FAILs and prints the line to add; an `ours` resolution (main's change to the file was
+# dropped) WARNs and names the other PR. A detection that cannot run (no head, no detector, python3 or timeout binary, a
+# failed fetch, a non-zero exit, `unknown`) WARNs and never FAILs: a merge must not depend on a git read that failed.
+# shellcheck disable=SC2016  # python program text
+C20_READER='import os, sys
+sys.path.insert(0, os.path.dirname(sys.argv[1]))
+import conflicts
+for path, _prs, _note in conflicts.parse_body(sys.stdin.read()):
+    print(path)'
+check_conflicts_resolved() {
+    local head det out listed rc h7 f prs res mc nums n_conf=0 n_miss=0 adds="" warns=""
+    head="$SHA"
+    [ "$ONLY7" -eq 0 ] || head="${cov_head:-}"
+    if [ -z "$head" ]; then
+        echo "[WARN] 20. conflicts unknown (no head)"
+        return 0
+    fi
+    h7="${head:0:7}"
+    det="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}/scripts/eval/conflicts/conflicts.py"
+    _TIMEOUT_BIN=""
+    # shellcheck source=../../lib/timeout-bin.sh
+    . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN WARNs just below
+    if [ ! -f "$det" ] || [ -z "$_TIMEOUT_BIN" ] || ! command -v python3 >/dev/null 2>&1; then
+        echo "[WARN] 20. conflicts unknown (no detector, python3 or timeout binary: $det)"
+        return 0
+    fi
+    if [ "$ONLY7" -eq 0 ] && ! pr_fetch; then
+        echo "[WARN] 20. conflicts unknown ($pr_mb_err)"
+        return 0
+    fi
+    rc=0
+    out=$("$_TIMEOUT_BIN" -k 5 20 python3 -I "$det" detect --repo-dir "$PWD" --head "$head" --base-ref refs/remotes/origin/main --pr "$PR" 2>/dev/null </dev/null) || rc=$?  # swallow-ok: a non-zero rc WARNs just below
+    if [ "$rc" -ne 0 ]; then
+        echo "[WARN] 20. conflicts unknown (detector exit $rc)"
+        return 0
+    fi
+    case "$out" in
+        unknown*) echo "[WARN] 20. conflicts ${out%%$'\n'*}"; return 0 ;;
+        '') echo "[PASS] 20. conflicts resolved: no hand-resolved merge conflict in origin/main..$h7"; return 0 ;;
+    esac
+    rc=0
+    listed=$(printf '%s' "${cov_body:-}" | "$_TIMEOUT_BIN" -k 5 10 python3 -I -c "$C20_READER" "$det" 2>/dev/null) || rc=$?  # swallow-ok: a non-zero rc WARNs just below
+    if [ "$rc" -ne 0 ]; then
+        echo "[WARN] 20. conflicts unknown (body reader exit $rc)"
+        return 0
+    fi
+    while IFS=$'\t' read -r f prs res mc; do
+        [ -n "$f" ] || continue
+        n_conf=$((n_conf + 1))
+        nums=$(printf '%s\n' "$prs" | grep -oE '[0-9]+' | sed 's/^/#/' | paste -sd, - | sed 's/,/, /g')
+        if ! printf '%s\n' "$listed" | grep -Fxq -- "$f"; then
+            n_miss=$((n_miss + 1))
+            adds="$adds
+       - $f vs ${nums:-#<other pr>}: <what you kept and why>"
+        fi
+        [ "$res" != ours ] || warns="$warns
+[WARN] 20. $f was resolved as ours in merge ${mc:0:7}: the change from ${nums:-main} was dropped; check it does not undo ${nums:-that change}"
+    done <<EOF
+$out
+EOF
+    if [ "$n_miss" -gt 0 ]; then
+        echo "[FAIL] 20. conflicts resolved: $n_miss of $n_conf conflicted file(s) in origin/main..$h7 have no line under ## Conflicts resolved; add to the PR body:"
+        echo "       ## Conflicts resolved$adds"
+        mark_fail
+    else
+        echo "[PASS] 20. conflicts resolved: each of $n_conf conflicted file(s) in origin/main..$h7 has its line"
+    fi
+    [ -z "$warns" ] || printf '%s\n' "${warns#?}"
+}
+check_conflicts_resolved
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi

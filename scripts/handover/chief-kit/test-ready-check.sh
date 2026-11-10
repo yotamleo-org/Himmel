@@ -231,6 +231,11 @@ mkdir -p "$TP_ANCHOR/scripts/lib"
 cp "$HERE/../../lib/go-gate.sh" "$TP_ANCHOR/scripts/lib/go-gate.sh"
 # item 17 runs the merge's remainder reader from the anchor, never from the checkout under review
 cp "$HERE/../../lib/pr_remainder.py" "$TP_ANCHOR/scripts/lib/pr_remainder.py"
+# item 20 runs the anchor's conflict detector and its body reader, with the modules it imports
+mkdir -p "$TP_ANCHOR/scripts/eval/conflicts" "$TP_ANCHOR/scripts/eval/judge-accuracy" "$TP_ANCHOR/scripts/eval/lib"
+cp "$HERE/../../eval/conflicts/conflicts.py" "$TP_ANCHOR/scripts/eval/conflicts/"
+cp "$HERE/../../eval/judge-accuracy/judge_accuracy.py" "$TP_ANCHOR/scripts/eval/judge-accuracy/"
+cp "$HERE/../../eval/lib/eval_runs.py" "$HERE/../../eval/lib/wilson.py" "$TP_ANCHOR/scripts/eval/lib/"
 # check 19 runs the anchor's impacted-suites.sh: here a stub printing STUB_IMPACTED
 # (default none); the check-19 rows bring an anchor with the real one
 mkdir -p "$TP_ANCHOR/scripts/cr"
@@ -4406,6 +4411,68 @@ for _ in $(seq 1 100); do compgen -G "$r4_shared/*.lock" > /dev/null || break; s
 r4_left=no; compgen -G "$r4_shared/*.lock" > /dev/null && r4_left=yes
 check "R4: the killed peer's trap freed its lock" "$r4_left" "no"
 fi
+reset_stubs
+
+# --- 20. a hand-resolved merge conflict on the head needs its line under ## Conflicts resolved.
+# Fixture: main and the branch both edit line 1 of f.sh; main's edit lands as the squash commit `(#12)`;
+# the branch merges main forward and resolves by hand (C20_MERGED keeps both, C20_OURS keeps the branch's side).
+C20="$tmp/c20"
+git init -q --bare "$tmp/c20-origin.git"
+git init -q -b main "$C20"
+git -C "$C20" config user.email t@example.com; git -C "$C20" config user.name t; git -C "$C20" config commit.gpgsign false
+printf 'a\nkeep\n' > "$C20/f.sh"
+git -C "$C20" add f.sh; git -C "$C20" commit -q -m "chore: init"
+git -C "$C20" remote add origin "$tmp/c20-origin.git"
+git -C "$C20" push -q origin main
+git -C "$C20" checkout -q -b feat/b
+printf 'branch\nkeep\n' > "$C20/f.sh"; git -C "$C20" commit -q -am "feat(x): [HIMMEL-1] branch edit"
+C20_BRANCH_TIP=$(git -C "$C20" rev-parse HEAD)
+git -C "$C20" checkout -q main
+printf 'main\nkeep\n' > "$C20/f.sh"; git -C "$C20" commit -q -am "fix(y): [HIMMEL-2] other edit (#12)"
+git -C "$C20" push -q origin main
+git -C "$C20" checkout -q feat/b
+git -C "$C20" merge -q main >/dev/null 2>&1
+printf 'branch and main\nkeep\n' > "$C20/f.sh"; git -C "$C20" add f.sh; git -C "$C20" commit -q --no-edit
+C20_MERGED=$(git -C "$C20" rev-parse HEAD)
+git -C "$C20" checkout -q -b feat/ours "$C20_BRANCH_TIP"
+git -C "$C20" merge -q main >/dev/null 2>&1
+git -C "$C20" checkout -q --ours f.sh; git -C "$C20" add f.sh; git -C "$C20" commit -q --no-edit
+C20_OURS=$(git -C "$C20" rev-parse HEAD)
+C20_LINE='\n## Conflicts resolved\n- f.sh vs #12: kept both edits, the branch line and main line\n'
+
+reset_stubs
+rc=0; out="$(REPO="$C20" SHA="$C20_MERGED" run)" || rc=$?
+contains "item 20: a conflicted f.sh with no body line FAILs" "$out" "[FAIL] 20."
+contains "item 20: no body line: prints the line to add" "$out" "- f.sh vs #12: <what you kept and why>"
+
+reset_stubs
+rc=0; out="$(STUB_BODY="$GREEN_BODY$C20_LINE" REPO="$C20" SHA="$C20_MERGED" run)" || rc=$?
+contains "item 20: the body line for f.sh PASSes" "$out" "[PASS] 20."
+notcontains "item 20: with the line: no FAIL" "$out" "[FAIL] 20."
+
+reset_stubs
+rc=0; out="$(STUB_BODY="$GREEN_BODY$C20_LINE" REPO="$C20" SHA="$C20_OURS" run)" || rc=$?
+c20_warn=$(grep '^\[WARN\] 20\.' <<< "$out" || true)
+contains "item 20: an ours resolution WARNs" "$c20_warn" "ours"
+contains "item 20: the ours WARN names #12" "$c20_warn" "#12"
+notcontains "item 20: an ours resolution with its line is no FAIL" "$out" "[FAIL] 20."
+
+C20_STUB_ANCHOR="$tmp/c20-stub-anchor"
+cp -R "$TP_ANCHOR" "$C20_STUB_ANCHOR"
+printf 'import sys\nsys.exit(2)\n' > "$C20_STUB_ANCHOR/scripts/eval/conflicts/conflicts.py"
+reset_stubs
+rc=0; out="$(READY_CHECK_ANCHOR="$C20_STUB_ANCHOR" REPO="$C20" SHA="$C20_MERGED" run)" || rc=$?
+contains "item 20: a detector exiting 2 WARNs conflicts unknown" "$out" "[WARN] 20. conflicts unknown"
+notcontains "item 20: a detector exiting 2 is never a FAIL" "$out" "[FAIL] 20."
+
+reset_stubs
+rc=0; out="$(STUB_HEAD="$C20_MERGED" REPO="$C20" run7)" || rc=$?
+c20_fail=$(grep '^\[FAIL\] 20\.' <<< "$out" || true)
+contains "item 20 under --only 7: runs on the item-7 head and FAILs" "$out" "[FAIL] 20."
+contains "item 20 under --only 7: names f.sh" "$out" "- f.sh vs #12: <what you kept and why>"
+contains "item 20 under --only 7: the FAIL line names the head" "$c20_fail" "${C20_MERGED:0:7}"
+check "item 20 under --only 7: the lint fails" "$rc" "1"
+contains "item 20 under --only 7: says COVERAGE-LINT FAIL" "$out" "COVERAGE-LINT FAIL"
 reset_stubs
 
 echo "---"
