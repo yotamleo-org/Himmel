@@ -963,7 +963,6 @@ test('HIMMEL-9076: the accounts CLI reports an unreadable account config with th
   assert.deepEqual(accountsOut(f), { accounts: 'unreadable', reason: 'invalid-account-config' });
 });
 
-// The ordered walk asks for each row's own verdict, so a ledger fault is told apart from a lack of room.
 const pickRows = (f, usd, only) => JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', usd, '--only', only, '--rows'], { env: f.env, encoding: 'utf8' }).stdout);
 
 test('pick --only A --rows on a corrupt ledger carries the row with BANK-UNKNOWN; without --rows the refusal is unchanged', () => {

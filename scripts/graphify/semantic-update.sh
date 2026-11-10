@@ -119,7 +119,6 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 
 NAME="" CORPUS_ROOT="" CORPUS_CLASS="" BACKEND="claude-api" MAX_FILES=150 SEED=0 DRY=0 RUN_CAP="${GRAPHIFY_API_RUN_BUDGET_USD:-15.00}"
 ACCOUNT_ORDER="" ORDER_GIVEN=0 RESULT_FILE="" RESULT_WORD=stopped REJECTED="" WORK=""
-# The word is written from the one exit handler, installed before the parse so a usage error writes its word too.
 _prev=""
 for _a in "$@"; do [ "$_prev" != --result-file ] || RESULT_FILE="$_a"; _prev="$_a"; done
 on_exit() {
@@ -156,7 +155,6 @@ if [ "$ORDER_GIVEN" -eq 1 ]; then
   [ "$BACKEND" = claude-api ] || { echo "semantic-update: --account-order needs --backend claude-api (got '$BACKEND')" >&2; exit 1; }
   [ "${GRAPHIFY_API_BATCH:-1}" != 0 ] \
     || { echo "semantic-update: refusing --account-order with GRAPHIFY_API_BATCH=0: the order runs on the batch path only, so the lane's subscription fallback never runs" >&2; exit 1; }
-  # the lane check below needs a named account; the walk itself takes each letter from the order
   export HIMMEL_API_ACCOUNT="${ACCOUNT_ORDER%%,*}"
 fi
 case "$NAME" in *[!A-Za-z0-9._-]*) echo "semantic-update: --name must match [A-Za-z0-9._-]+" >&2; exit 1 ;; esac
@@ -278,7 +276,6 @@ if [ "$SEED" -eq 0 ]; then
 fi
 
 [ -f "$OUT_DIR/graph.json" ] || { echo "semantic-update: no $OUT_DIR/graph.json -- run the AST pass (ast-update.sh) first" >&2; RESULT_WORD=corpus-failed; exit 1; }
-# A subscription run beside a waiting batch would extract the same files twice.
 if [ -n "$RESULT_FILE" ] && { [ "$BACKEND" = claude-cli ] || [ "$BACKEND" = claude ]; } && [ -f "$PENDING/batch.json" ]; then
   echo "semantic-update: refusing claude-cli: a batch is pending in $PENDING; a claude-api run polls it, or remove that directory -- nothing touched" >&2
   RESULT_WORD=batch-pending; exit 3
@@ -353,7 +350,6 @@ log("semantic-update: chunk: call-cap=%s chunk-tokens=%d chunk-cost-est=~%.2f ch
     % (budget, ct, chunk_usd, chunks, cap))
 # the run cap sizes the batch: keep the share of files whose chunks fit it; the rest stay unstamped for the next run
 fit_chunks = int(float(cap) / chunk_usd)
-# the second field says the estimate is still over the cap: only the one-file floor leaves it so
 print(len(files) if chunks <= fit_chunks else max(1, len(files) * fit_chunks // chunks), int(chunks > fit_chunks))
 PY
 )"
@@ -364,7 +360,6 @@ PY
   MAX_FILES="$FIT_FILES"
   plan_or_noop
   done
-  # under --account-order the cap refuses: the floor would otherwise submit one file the cap cannot fund
   if [ "$ORDER_GIVEN" -eq 1 ] && [ "$OVER_CAP" = 1 ]; then
     _first="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["batch"][0])' "$PLAN")"
     echo "semantic-update: over-cap: the estimate for $_first alone is over the run cap of $RUN_CAP USD; list it in .graphify-corpus-ignore or raise --max-run-usd -- nothing submitted" >&2
@@ -433,9 +428,6 @@ shim_account_count() {
 # ends when none is left; one batch is submitted, so decision 664's single-batch limit is not widened. ONLY those two
 # answers move on to the next account: a network or server error, a rate limit or a refusal returns at once, because
 # the next account would fail the same way or bill for nothing. A pinned account is not rotated.
-# --account-order keeps that rule over its own letters, in its own order: the roster says which letters exist, so a
-# letter it does not configure is dropped here, before any pick sees it; an unreadable roster drops none, and the pick
-# then answers BANK-UNKNOWN, which stops the walk.
 order_accounts() {
   local roster a out=""
   roster="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null)" || roster=""
@@ -449,6 +441,10 @@ order_accounts() {
     out="${out:+$out,}$a"
   done
   printf '%s' "$out"
+}
+pick_has_no_room() {
+  case "$1" in *'"rows":[{'*) ;; *) return 1 ;; esac
+  case "${1//\"verdict\":\"SKIPPED-BANK\"/}" in *'"verdict":'*) return 1 ;; esac
 }
 batch_submit() {
   local acct pick rc tried="" why="" remaining a base="" what skipped=""
@@ -466,16 +462,13 @@ batch_submit() {
         echo "semantic-update: every account in the order is out of credit, has no room or rejected its key (${why:-no configured account in the order}); nothing submitted" >&2; return 5
       fi
       pick="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" pick --usd "$API_CALL_BUDGET" --only "$acct" --rows)"
-      # only a refusal whose every row says SKIPPED-BANK is a lack of room; BANK-UNKNOWN or an answer without rows stops
       case "$pick" in
         '{"verdict":"PROCEED",'*) ;;
-        *'"rows":[{'*) case "${pick//\"verdict\":\"SKIPPED-BANK\"/}" in
-                       *'"verdict":'*) ;;
-                       *) echo "semantic-update: account $acct has no room ($pick); skipped" >&2
-                          skipped="${skipped:+$skipped }$acct"; why="${why:+$why, }$acct no room"; continue ;;
-                     esac
-           echo "semantic-update: refusing the batch: the credit state of account $acct cannot be read ($pick); the walk stops" >&2; return 2 ;;
-        *) echo "semantic-update: refusing the batch: the credit state of account $acct cannot be read (${pick:-no answer}); the walk stops" >&2; return 2 ;;
+        *) if pick_has_no_room "$pick"; then
+             echo "semantic-update: account $acct has no room ($pick); skipped" >&2
+             skipped="${skipped:+$skipped }$acct"; why="${why:+$why, }$acct no room"; continue
+           fi
+           echo "semantic-update: refusing the batch: the credit state of account $acct cannot be read (${pick:-no answer}); the walk stops" >&2; return 2 ;;
       esac
       [ -z "$tried" ] || echo "semantic-update: retrying the batch on account $acct (tried: $tried)" >&2
     elif [ "$acct" = auto ]; then
@@ -772,7 +765,6 @@ python3 "$HERE/harden-graph.py" --out "$OUT_DIR" --root "$CORPUS_ROOT" >&2 \
   || echo "semantic-update: WARN harden-graph.py failed; the merged graph stands, the next refresh re-hardens it" >&2
 if [ "$RESUME" -eq 1 ]; then batch_line merged "$(batch_field cost_usd)"; fi
 [ "$BATCH_MODE" -eq 0 ] || rm -rf "$PENDING"
-# no new spend (a finished batch, a deletions-only plan, a batch record run answered wholly from the cache) is merged
 RESULT_WORD=extracted
 if [ "$RESUME" -eq 1 ] || [ "$N_BATCH" -eq 0 ] || [ "$BATCH_MODE" -eq 1 ]; then RESULT_WORD=merged; fi
 # The chunks that did land are merged and stamped; the failed ones stay unstamped and retry next run. Exit 5 so a

@@ -1021,7 +1021,6 @@ if (process.argv[2] === 'pick') {
   appendFileSync(join(ws, 'picks.log'), `pick ${list.join(',')}\n`);
   if (list.some((l) => listed('BATCH_STUB_PICKCRASH').includes(l))) process.exit(1);
   if (list.some((l) => listed('BATCH_STUB_EMPTYROWS').includes(l))) { console.log(JSON.stringify({ verdict: 'SKIPPED-BANK', reason: 'no-role-account-configured', rows: [] })); process.exit(0); }
-  // BATCH_STUB_NOROOM / BATCH_STUB_UNKNOWN refuse a letter as the real pick does; only --rows adds each row's verdict
   const bad = list.filter((l) => listed('BATCH_STUB_NOROOM').includes(l) || listed('BATCH_STUB_UNKNOWN').includes(l));
   if (bad.length === list.length) {
     const rows = list.map((l) => (listed('BATCH_STUB_UNKNOWN').includes(l)
@@ -1029,7 +1028,6 @@ if (process.argv[2] === 'pick') {
     console.log(JSON.stringify({ verdict: 'SKIPPED-BANK', reason: 'no-account-with-headroom', ...(process.argv.includes('--rows') ? { rows } : {}) }));
   } else console.log(JSON.stringify({ verdict: 'PROCEED', account: list.filter((l) => !bad.includes(l)).find((l) => !marked.includes(l)) || list.find((l) => !bad.includes(l)), snapshot_stale: false }));
 } else if (process.argv[2] === 'accounts') {
-  // BATCH_STUB_ROSTER names the configured letters; unset, the stand-in prints nothing, as before
   const roster = listed('BATCH_STUB_ROSTER');
   if (roster.length > 0) console.log(JSON.stringify(['A', 'B', 'C'].map((l) => (roster.includes(l) ? { account: l, configured: true, cap_usd: '50.000000', tag: 'room' } : { account: l, configured: false, cap_usd: null, tag: 'not configured' }))));
 } else if (process.argv[2] === 'exhausted') {
@@ -1334,8 +1332,6 @@ cmp -s "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REPO/scripts/lib/api-cred
 [ "$(pick_acct "$REPO/scripts/lib/api-credit-state.mjs")" = "B" ] && pass "T93b RED control: with a 7200 s TTL the 4000 s mark still skips A, so T93 reads the TTL" || fail "T93b control picked '$(pick_acct "$REPO/scripts/lib/api-credit-state.mjs")'"
 roles_real_off
 
-# --- --account-order walks the letters in the stated order, --result-file writes one word on every exit,
-# and over-cap refuses an estimate the sizing could not bring under the cap. The caller names no account: the order does.
 RF="$WS/result"
 word() { sed -n 1p "$RF" 2>/dev/null; }
 line2() { sed -n 2p "$RF" 2>/dev/null; }
@@ -1556,8 +1552,6 @@ out=$(BATCH_STUB_REJECTED=A BATCH_STUB_EXHAUSTED=C GRAPHIFY_STUB_CALL_CLAUDE=1 r
   && pass "O20 every letter spent with A rejected: key-rejected, rejected A" || fail "O20b (rc=$rc) accounts '$(batch_accounts)' file '$(cat "$RF" 2>&1)': $out"
 
 echo "O16: with neither new flag, rc and output match the merge base's own semantic-update.sh on the same stubs and fixtures"
-# The base side is computed now, from a detached worktree of git merge-base HEAD origin/main, never from a stored capture.
-# Each side runs from the same stub repo and rebuilds the same fixture at the same path, so no path differs between them.
 o16_base="$(git -C "$REAL_REPO" merge-base HEAD origin/main 2>/dev/null)"
 o16_wt="$WS/o16-base"
 if [ -z "$o16_base" ] || ! git -C "$REAL_REPO" worktree add -q --detach "$o16_wt" "$o16_base" >/dev/null 2>&1; then
@@ -1565,7 +1559,7 @@ if [ -z "$o16_base" ] || ! git -C "$REAL_REPO" worktree add -q --detach "$o16_wt
 else
   echo "  O16 base: $o16_base"
   O16_FILES="semantic-update.sh semantic-merge.py harden-graph.py harden-allowlist.json semantic-batch-shim.mjs"
-  o16_side() { # $1 = tree whose graphify files run; prints rc, output and the fixture's file list for each path
+  o16_side() {
     local f p o16rc
     for f in $O16_FILES; do cp "$1/scripts/graphify/$f" "$REPO/scripts/graphify/$f" 2>/dev/null || true; done
     chmod +x "$REPO/scripts/graphify/semantic-batch-shim.mjs"
