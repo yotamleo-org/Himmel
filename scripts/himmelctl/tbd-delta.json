@@ -6,7 +6,7 @@
       "paths": ["delta.cadences.taskDetail"]
     },
     "2": {
-      "label": "Scheduled tasks that exist but aren't in any of the 5 cadence ids (HIMMEL-BootPreflight, HIMMEL-ForkResync when armed)",
+      "label": "Scheduled tasks that exist but aren't in any of the 5 cadence ids (HIMMEL-ForkResync when armed)",
       "state": "planned",
       "paths": ["delta.cadences.extraArmedTasks"]
     },
