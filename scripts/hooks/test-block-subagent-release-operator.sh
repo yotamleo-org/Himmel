@@ -26,6 +26,7 @@ NL=$'\n'
 # run_hook <stdin-file> [env...] — sets rc and out (stdout + stderr).
 run_hook() {
     local input="$1"; shift
+    # read-sink-ok: every caller passes a payload file the suite wrote under its own mktemp dir
     out=$(env -u SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE "$@" "$BASH_ABS" "$HOOK" <"$input" 2>&1)
     rc=$?
 }
