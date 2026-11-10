@@ -232,6 +232,8 @@ wait_file() {
 # pending/, done/ or failed/; rec_field <field> [<label>]: one of its fields
 rec_json() { find "$SWEEP_STATE" -path '*/.tmp' -prune -o -type f -name "*-${1:-*}.json" -print 2>/dev/null | head -n 1; }
 rec_field() { jq -r --arg f "$1" '.[$f] // "" | if type == "array" then join("\n") else tostring end' "$(rec_json "${2:-}")" 2>/dev/null; }
+# count_glob <dir> <pattern>: how many entries of <dir> match <pattern>
+count_glob() { local f n=0; for f in "$1"/$2; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
 rec_where() { local f; f=$(rec_json "${1:-}"); if [ -n "$f" ]; then basename "$(dirname "$f")"; else echo none; fi; }
 # The sweep's pr-cache verb: an empty, complete list, logged to its own file.
 WTSH_STUB="$W/bin/worktree-stub.sh"
@@ -720,13 +722,13 @@ for slow in clean reap digest sweep; do
 done
 mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`" "- 09:50 READY 41 $(printf 'a%.0s' $(seq 1 40)) GREEN"
 reset_calls
-t0=$(date +%s%N)
+t0=$(date +%s%N) # gnu-ok: the chief kit is Linux-only (see the platform guard)
 rc=0; out=$(CLEAN_STUB="$W/bin/slow-clean.sh" CWL_REAP_BIN="$W/bin/slow-reap.sh" WORKER_SESSION_DIGEST_STEP_BIN="$W/bin/slow-digest.sh" \
     CWL_SWEEP_BIN="$W/bin/slow-sweep.sh" CWL_KILL_REMOVES_PROC=1 run "$DOC" 2>&1) || rc=$?
-ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+ms=$(( ($(date +%s%N) - t0) / 1000000 )) # gnu-ok: the chief kit is Linux-only
 check "DoD 1: a wrapped worker with a merged PR closes with rc 0" "$rc" "0"
 if [ "$ms" -lt 3000 ]; then echo "ok - DoD 1: the close returned in ${ms} ms (under 3 s)"; else echo "FAIL - DoD 1: the close took ${ms} ms (3 s or more)"; fails=$((fails+1)); fi
-check "DoD 1: no helper marker exists when the close returns" "$(find "$W" -maxdepth 1 -name 'marker.*' | wc -l | tr -d ' ')" "0"
+check "DoD 1: no helper marker exists when the close returns" "$(count_glob "$W" 'marker.*')" "0"
 mkcmdline 210 claude -n "$SESSION_NAME" work
 
 # --- no GitHub call: a full close with gh stubbed to fail logs no gh call -------
@@ -745,7 +747,7 @@ mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`"
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "record written: rc 0" "$rc" "0"
-check "record written: exactly one record in pending/" "$(find "$SWEEP_STATE/pending" -maxdepth 1 -name '*.json' | wc -l | tr -d ' ')" "1"
+check "record written: exactly one record in pending/" "$(count_glob "$SWEEP_STATE/pending" '*.json')" "1"
 contains "record written: the close names it" "$out" "sweep=queued $(rec_json)"
 check "record written: doc" "$(rec_field doc)" "$DOC"
 check "record written: label" "$(rec_field label)" "N1"
@@ -811,9 +813,9 @@ check "missing sessions file still closes: the record carries that transcript" "
 printf '#!/usr/bin/env bash\necho "close-sweep $*" >> "$CALLS_LOG.sweep"\nsleep 5\n' > "$W/bin/sweep-sleeps.sh"; chmod +x "$W/bin/sweep-sleeps.sh"
 bash "$HERE/fleet-manifest.sh" add "$W/detach-fleet.json" --lane native "$DOC"
 reset_calls
-t0=$(date +%s%N)
+t0=$(date +%s%N) # gnu-ok: the chief kit is Linux-only (see the platform guard)
 rc=0; out=$(CWL_SWEEP_BIN="$W/bin/sweep-sleeps.sh" run --fleet "$W/detach-fleet.json" "$DOC" 2>&1) || rc=$?
-ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+ms=$(( ($(date +%s%N) - t0) / 1000000 )) # gnu-ok: the chief kit is Linux-only
 check "sweep started detached: rc 0" "$rc" "0"
 if [ "$ms" -lt 3000 ]; then echo "ok - sweep started detached: the close did not wait for the 5 s sweep (${ms} ms)"; else echo "FAIL - sweep started detached: the close waited ${ms} ms"; fails=$((fails+1)); fi
 wait_for "$CALLS.sweep" "close-sweep --drain"
