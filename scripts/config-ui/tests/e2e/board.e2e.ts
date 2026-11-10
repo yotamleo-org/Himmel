@@ -792,12 +792,22 @@ test("with a Won't ticket and long names every Board tab fits the window at 1280
       await go(page, `#/board?tab=${tab}`);
       await expect(page.locator(".cp").first()).toBeVisible();
       if (tab === "nv") await expect(page.locator("#rm-nv .rm-card").first()).toBeVisible();
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${tab} at ${width} px: no sideways page scroll`).toBe(true);
       const bad = await page.evaluate(() => {
         const out: string[] = [];
+        if (document.documentElement.scrollWidth > window.innerWidth + 1) {
+          const w = (el: Element) => el.getBoundingClientRect().width;
+          const all = [...document.querySelectorAll<HTMLElement>("#main *")];
+          const spill = all.filter((el) => el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflowX === "visible" && el.clientWidth > 0);
+          const wide = [...all.filter((el) => el.tagName === "SELECT" && w(el) > window.innerWidth / 3), ...spill.slice(-3)].sort((a, b) => w(b) - w(a));
+          const name = (el: Element) => `${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""}${[...el.classList].map((c) => "." + c).join("")}`;
+          const path = (el: Element) => { const p: string[] = []; for (let x: Element | null = el; x && x.id !== "main" && p.length < 5; x = x.parentElement) p.unshift(name(x)); return p.join(" > "); };
+          out.push(`sideways page scroll ${document.documentElement.scrollWidth} > ${window.innerWidth}: ${wide.slice(0, 6).map((el) => `${path(el)} width ${Math.round(w(el))} scroll ${el.scrollWidth}`).join(", ")}`);
+        }
         for (const el of document.querySelectorAll<HTMLElement>(".cp .rm-card .rm-top > b, .cp .rm-key")) {
-          const lh = parseFloat(getComputedStyle(el).lineHeight) || 1.6 * parseFloat(getComputedStyle(el).fontSize);
-          if (el.getClientRects().length > 1 || el.getBoundingClientRect().height > lh * 1.5) out.push(`key broken: ${el.textContent}`);
+          const r = document.createRange();
+          r.selectNodeContents(el);
+          const lines = new Set([...r.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top)));
+          if (lines.size > 1) out.push(`key broken: ${el.textContent}`);
         }
         for (const sel of document.querySelectorAll<HTMLElement>(".cp .rm-card .rm-theme")) {
           const card = sel.closest(".rm-card")!.getBoundingClientRect(), r = sel.getBoundingClientRect();

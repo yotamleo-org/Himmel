@@ -2036,6 +2036,10 @@ test("9559 slice 3 Tidy up states: not read, GitHub issues and the local tracker
 test("9559 slice 3: the interim boxed-section rule is gone and the phone keeps a drift row's key on one line, with only what is off, the ticket and the copy button", () => {
   const css = readFileSync(join(import.meta.dir, "..", "public", "app.css"), "utf8");
   expect(css).not.toContain(".cp.plain>section.box");
+  expect(css).toContain(".cp .rm-top>.ro{min-width:0;max-width:100%}");
+  expect(css).toContain(".cp .rm-top>b{white-space:nowrap}");
+  expect(css).toContain(".cp .rm-bar select{max-width:12rem}");
+  expect(css).toMatch(/@media \(max-width:760px\)\{\.cp \.rm-board,\.cp \.rm-board:has\(\.rm-lane\)\{grid-template-columns:minmax\(0,1fr\)\}/);
   expect(css).toMatch(/@media \(max-width:760px\)\{[^@]*\.cp \.rm-sdrift td:nth-child\(2\)\{white-space:nowrap\}/);
   expect(css).toMatch(/@media \(max-width:760px\)\{[^@]*\.cp \.rm-sdrift :is\(th,td\):is\(:nth-child\(3\),:nth-child\(4\),:nth-child\(5\)\)\{display:none\}/);
 });
