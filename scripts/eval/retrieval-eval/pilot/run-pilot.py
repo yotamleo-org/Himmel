@@ -353,9 +353,15 @@ def start_broker(argv):
     if not sys.platform.startswith("linux"):
         return subprocess.Popen(argv)
 
+    runner = os.getpid()
+
     def die_with_parent():
         import ctypes, signal
-        ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGKILL, 0, 0, 0)  # PR_SET_PDEATHSIG
+        libc = ctypes.CDLL(None, use_errno=True)
+        if libc.prctl(1, signal.SIGKILL, 0, 0, 0):  # PR_SET_PDEATHSIG
+            raise OSError(ctypes.get_errno(), "prctl PR_SET_PDEATHSIG failed")
+        if os.getppid() != runner:  # the runner died before the signal was armed
+            os._exit(1)
     return subprocess.Popen(argv, preexec_fn=die_with_parent)
 
 

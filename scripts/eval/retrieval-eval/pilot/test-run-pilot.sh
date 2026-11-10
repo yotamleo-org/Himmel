@@ -279,6 +279,14 @@ cat > "$W/runner.py" <<'EOF'
 import importlib.util, os, sys, time
 s = importlib.util.spec_from_file_location("rp", sys.argv[1] + "/run-pilot.py"); rp = importlib.util.module_from_spec(s); s.loader.exec_module(rp)
 w = sys.argv[2]
+if sys.argv[3:] == ["orphan"]:
+    rp.os.getpid = lambda: 1  # as if the runner had already died: the child's parent is not the runner
+    b = rp.start_broker([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        b.wait(timeout=10); print("exit", b.returncode)
+    except Exception:
+        b.kill(); print("still running")
+    sys.exit(0)
 b = rp.start_broker([sys.executable, "-I", sys.argv[1] + "/tools/s-qmd", "serve", "--socket", w + "/rb.sock", "--meta", w + "/rb-meta", "--phase", "answer", "--arm", "S"])
 open(w + "/broker.pid", "w").write(str(b.pid))
 if len(sys.argv) > 3:
@@ -297,6 +305,7 @@ eq "broker: a hard kill of the runner ends the broker" no "$(alive "$BROKER" && 
 alive "$BROKER" && kill -9 "$BROKER"
 rm -rf "$W/rb.sock" "$W/rb-meta"
 eq "broker: the normal path still stops the broker" "stopped True" "$(python3 -I "$W/runner.py" "$HERE" "$W" normal)"
+eq "broker: a runner that died before the signal was armed leaves no broker" "exit 1" "$(python3 -I "$W/runner.py" "$HERE" "$W" orphan)"
 
 cat > "$W/gates.py" <<'EOF'
 import hashlib, importlib.util, json, os, sys
