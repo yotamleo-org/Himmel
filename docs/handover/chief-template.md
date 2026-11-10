@@ -135,8 +135,7 @@ sweep first.
 
 ## Monitors
 
-Five, and no more — every event wakes a full-context turn. The tick and Telegram
-rows run inside the step-10 waiter.
+Five, and no more — every event wakes a full-context turn.
 
 | Monitor | Cadence | What it is |
 |---|---|---|
@@ -144,17 +143,13 @@ rows run inside the step-10 waiter.
 | usage | 300 s | poll `usage-preflight.sh`, emit on a state-word change |
 | CI | 600 s | poll `gh run list -R <owner/repo> --limit 20 --json databaseId,status`, emit newly-completed runs |
 | notes repo | 300 s | the vault is the tick's `vault=`; only a second state repo needs a loop |
-| telegram | 1 s, event-driven | **Runs inside the step-10 waiter.** The waiter drains `{{INBOX}}` with `inbox-follow.sh --once` (cursor: no gap, no replay) and wakes you with `WAKE telegram` (step 11) |
+| telegram | 1 s, event-driven | **Runs inside the step-10 waiter.** The waiter drains `{{INBOX}}` with `inbox-follow.sh --once` and wakes you with `WAKE telegram` (step 11) |
 
 `scripts/context-fill.sh --percent` **fails inside a Monitor**: run it in a Bash
 call. A ticket filed on operator request gets label `operator-directed` and the
 bullet `OPERATOR: <ask>. Filed HIMMEL-n`.
 
-Under operator decision 850 (500 concurrent jobs is the only real GitHub Actions limit),
-the tick's `ciguard=` holds a dispatch only at that limit: `OVER:concurrent-jobs` (500 or
-more jobs running + queued) is the one reason to wait. The run-count rows and the
-`startup_failure` count print as `INFO` and never hold a dispatch or a rerun. Detail:
-`chief-sections/monitors.md`.
+Decision 850: only `ciguard=OVER:concurrent-jobs` holds a dispatch (`monitors.md`).
 
 ## Dispatching a worker
 
