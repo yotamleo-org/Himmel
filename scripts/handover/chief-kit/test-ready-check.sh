@@ -4075,7 +4075,8 @@ unset RUN_SCRIPT
 check "19 T8c: killed mid-read, no ready-check-19 temp dir is left" "0" "$(find "$S17_TMP" -maxdepth 1 -name 'ready-check-19.*' | wc -l | tr -d ' ')"
 
 S_KW="$tmp/kill-wrap"; mkdir -p "$S_KW"
-printf '#!/usr/bin/env bash\necho started > "%s/started"\nsleep 40\n' "$S_KW" > "$S_KW/slow-gh"; chmod +x "$S_KW/slow-gh"
+printf '#!/usr/bin/env bash\necho started > "%s/started"\nsleep 40 &\necho $! > "%s/sleep.pid"\nwait\n' "$S_KW" "$S_KW" > "$S_KW/slow-gh"; chmod +x "$S_KW/slow-gh"
+kw_sleep_alive() { local p; p=$(cat "$S_KW/sleep.pid" 2>/dev/null); if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then kill "$p" 2>/dev/null; echo yes; else echo no; fi; }
 kw_t0=$SECONDS
 kw_rc=0
 (cd "$REPO" && TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
@@ -4086,13 +4087,15 @@ check "T8d: the stalled read was started, so the cancel had something to cancel"
 check "T8d: a ready-check killed by an outer timeout returns within the bound (took ${kw_took}s)" "$([ "$kw_took" -le 12 ] && echo yes || echo no)" "yes"
 check "T8d: the killed wrapper leaves none of its scratch files" "$(find "$S_KW" -maxdepth 1 -name 'ready-check-*' | wc -l | tr -d ' ')" "0"
 check "T8d: the killed wrapper leaves no stalled child" "$(pgrep -f "$S_KW/slow-gh" | wc -l | tr -d ' ')" "0"
-rm -f "$S_KW/started"
+check "T8d: the stalled read's own sleep is gone too" "$(kw_sleep_alive)" "no"
+rm -f "$S_KW/started" "$S_KW/sleep.pid"
 kw_rc=0
 (cd "$REPO" && READY_CHECK_DEADLINE=0 TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
 sleep 1
 check "T8d: unarmed, the outer timeout ended the run (exit 124)" "$kw_rc" "124"
 check "T8d: unarmed, the stalled read was started" "$([ -f "$S_KW/started" ] && echo yes || echo no)" "yes"
 check "T8d: unarmed, the killed wrapper leaves no stalled child" "$(pgrep -f "$S_KW/slow-gh" | wc -l | tr -d ' ')" "0"
+check "T8d: unarmed, the stalled read's own sleep is gone too" "$(kw_sleep_alive)" "no"
 check "T8d: unarmed, the killed wrapper leaves none of its scratch files" "$(find "$S_KW" -maxdepth 1 -name 'ready-check-*' | wc -l | tr -d ' ')" "0"
 
 # T9: a suite CI cannot run (no manifest row) needs a local PASS
