@@ -98,6 +98,90 @@ eq "cutoff: an unparseable --until is refused" "$rc" "2"
 python3 "$EVAL" --ledger "$TMP/absent.jsonl" >/dev/null 2>&1; rc=$?
 eq "usage: a missing ledger is an error" "$rc" "2"
 
+# ── reviewer_summary: one row per slug + responding model + scope + verdict source ──
+# srow <json> <slug> <model> <scope> <source> <field[/sub]> - one field of one summary row.
+srow() { python3 -I -c 'import json,sys
+d=json.load(open(sys.argv[1])); key=tuple(sys.argv[2:6])
+r=[x for x in d["rows"] if (x["slug"],x["responding_model"],x["scope"],x["verdict_source"])==key]
+v=r[0] if r else "NO-ROW"
+for k in sys.argv[6].split("/"): v=v.get(k) if isinstance(v,dict) else v
+print(json.dumps(v) if isinstance(v,(dict,list,bool)) or v is None else v)' "$@"; }
+S="$TMP/summary.jsonl"
+{
+  # feat/s1: codex answered as gpt-x. s1-1 fixed by amend, s1-2 agreed on the row, s1-3/s1-4 deferred.
+  echo '{"kind":"attempt","ts":"2026-10-01T10:00:00Z","branch":"feat/s1","head":"s1","model":"codex","status":"ok","artifact":"diff","responding_model":"gpt-x"}'
+  echo '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"feat/s1","head":"s1","model":"codex","finding_id":"s1-1","severity":"imp","verdict":"","artifact":"diff","perspective":"off"}'
+  echo '{"kind":"amend","ts":"2026-10-01T11:00:00Z","branch":"feat/s1","target_head":"s1","finding_id":"s1-1","artifact":"diff","perspective":"off","set":{"verdict":"fixed"},"reason":"fixed","src":"ledger-append"}'
+  echo '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"feat/s1","head":"s1","model":"codex","finding_id":"s1-2","severity":"imp","verdict":"agreed","artifact":"diff","perspective":"off"}'
+  echo '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"feat/s1","head":"s1","model":"codex","finding_id":"s1-3","severity":"sug","verdict":"","artifact":"diff","perspective":"off"}'
+  echo '{"kind":"amend","ts":"2026-10-01T11:00:00Z","branch":"feat/s1","target_head":"s1","finding_id":"s1-3","artifact":"diff","perspective":"off","set":{"verdict":"deferred","fu_class":"polish"},"reason":"later"}'
+  echo '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"feat/s1","head":"s1","model":"codex","finding_id":"s1-4","severity":"sug","verdict":"deferred","artifact":"diff","perspective":"off"}'
+  # an imported row whose writer is not one we know: its verdict is not pooled
+  echo '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"feat/s1","head":"s1","model":"codex","finding_id":"s1-5","severity":"imp","verdict":"agreed","artifact":"diff","perspective":"off","source":"mystery-import"}'
+  # feat/s2: codex answered as gpt-y (a re-pin); feat/s3: no attempt row, model unknown.
+  echo '{"kind":"attempt","ts":"2026-10-02T10:00:00Z","branch":"feat/s2","head":"s2","model":"codex","status":"ok","artifact":"diff","responding_model":"gpt-y"}'
+  echo '{"kind":"finding","ts":"2026-10-02T10:00:00Z","branch":"feat/s2","head":"s2","model":"codex","finding_id":"s2-1","severity":"imp","verdict":"disproved","artifact":"diff","perspective":"off"}'
+  echo '{"kind":"finding","ts":"2026-10-03T10:00:00Z","branch":"feat/s3","head":"s3","model":"codex","finding_id":"s3-1","severity":"imp","verdict":"agreed","artifact":"diff","perspective":"off"}'
+  # CodeRabbit threads: the recorder infers fixed / disproved / unaddressed from thread state.
+  echo '{"kind":"finding","ts":"2026-10-04T10:00:00Z","branch":"feat/s4","head":"s4","model":"coderabbit","finding_id":"cr-thread-a","severity":"imp","verdict":"fixed","artifact":"diff","perspective":"off","pr":41,"thread_id":"Ta","source":"cr-thread-recorder"}'
+  echo '{"kind":"finding","ts":"2026-10-04T10:00:00Z","branch":"feat/s4","head":"s4","model":"coderabbit","finding_id":"cr-thread-b","severity":"imp","verdict":"fixed","artifact":"diff","perspective":"off","pr":41,"thread_id":"Tb","source":"cr-thread-recorder"}'
+  echo '{"kind":"finding","ts":"2026-10-04T10:00:00Z","branch":"feat/s4","head":"s4","model":"coderabbit","finding_id":"cr-thread-c","severity":"imp","verdict":"disproved","artifact":"diff","perspective":"off","pr":41,"thread_id":"Tc","source":"cr-thread-recorder"}'
+  echo '{"kind":"finding","ts":"2026-10-04T10:00:00Z","branch":"feat/s4","head":"s4","model":"coderabbit","finding_id":"cr-thread-d","severity":"imp","verdict":"unaddressed","artifact":"diff","perspective":"off","pr":41,"thread_id":"Td","source":"cr-thread-recorder"}'
+  # an inferred "disproved" a worker later amended to agreed
+  echo '{"kind":"finding","ts":"2026-10-04T10:00:00Z","branch":"feat/s4","head":"s4","model":"coderabbit","finding_id":"cr-thread-e","severity":"imp","verdict":"disproved","artifact":"diff","perspective":"off","pr":41,"thread_id":"Te","source":"cr-thread-recorder"}'
+  echo '{"kind":"amend","ts":"2026-10-04T12:00:00Z","branch":"feat/s4","target_head":"s4","finding_id":"cr-thread-e","artifact":"diff","perspective":"off","set":{"verdict":"agreed"},"reason":"real; fixed in the next commit","src":"ledger-append"}'
+  # outside-diff findings: the recorder row is open; a hand row is unaddressed; one is amended disproved.
+  echo '{"kind":"finding","ts":"2026-10-04T10:00:00Z","branch":"feat/s4","head":"s4","model":"coderabbit-outside","finding_id":"cr-od-1","severity":"imp","verdict":"unaddressed","artifact":"diff","perspective":"off","pr":41,"source":"cr-thread-recorder"}'
+  echo '{"kind":"finding","ts":"2026-10-04T10:00:00Z","branch":"feat/s4","head":"s4","model":"coderabbit-outside","finding_id":"cr-od-2","severity":"imp","verdict":"unaddressed","artifact":"diff","perspective":"off"}'
+  echo '{"kind":"finding","ts":"2026-10-04T10:00:00Z","branch":"feat/s4","head":"s4","model":"coderabbit-outside","finding_id":"cr-od-3","severity":"imp","verdict":"","artifact":"diff","perspective":"off","pr":41,"source":"cr-thread-recorder"}'
+  echo '{"kind":"amend","ts":"2026-10-04T12:00:00Z","branch":"feat/s4","target_head":"s4","finding_id":"cr-od-3","artifact":"diff","perspective":"off","set":{"verdict":"disproved"},"reason":"pre-existing code"}'
+} > "$S"
+python3 "$EVAL" --ledger "$S" --summary --since 2026-09-01T00:00:00Z --json > "$TMP/sum.json" 2> "$TMP/sum.err"; rc=$?
+eq "summary: exit 0" "$rc" "0"
+REC=recorded-disposition INF=thread-state-inferred
+eq "explicit_fixed_counts_as_agreed: amend fixed + row agreed" "$(srow "$TMP/sum.json" codex gpt-x diff $REC agreed)" "2"
+eq "accept_yield_not_precision: author_agreement over decided" "$(srow "$TMP/sum.json" codex gpt-x diff $REC author_agreement)" "1.0"
+eq "accept_yield_not_precision: acceptance_yield over every finding" "$(srow "$TMP/sum.json" codex gpt-x diff $REC acceptance_yield)" "0.5"
+eq "accept_yield_not_precision: no row field is called precision" "$(python3 -I -c 'import json,sys
+print(sorted({k for r in json.load(open(sys.argv[1]))["rows"] for k in r if "precision" in k}))' "$TMP/sum.json")" "[]"
+eq "deferred: outside decided, inside coverage" "$(srow "$TMP/sum.json" codex gpt-x diff $REC adjudication_coverage)" "0.5"
+eq "deferred: counted" "$(srow "$TMP/sum.json" codex gpt-x diff $REC deferred)" "2"
+eq "unknown_verdict_source_separate: an unknown writer is its own row" "$(srow "$TMP/sum.json" codex gpt-x diff unknown total)" "1"
+eq "unknown_verdict_source_separate: never author_agreement" "$(srow "$TMP/sum.json" codex gpt-x diff unknown author_agreement)" "null"
+eq "unknown_verdict_source_separate: kept out of the recorded total" "$(srow "$TMP/sum.json" codex gpt-x diff $REC total)" "4"
+eq "model_repin_separate: gpt-y is its own row" "$(srow "$TMP/sum.json" codex gpt-y diff $REC disproved)" "1"
+eq "model_repin_separate: gpt-y agreement" "$(srow "$TMP/sum.json" codex gpt-y diff $REC author_agreement)" "0.0"
+eq "unknown_model_separate: no responding model is its own row" "$(srow "$TMP/sum.json" codex unknown diff $REC agreed)" "1"
+eq "inferred_thread_verdict_separate: recorder rows are a thread-state row" "$(srow "$TMP/sum.json" coderabbit unknown diff $INF total)" "4"
+eq "inferred_thread_verdict_separate: nothing counts as decided" "$(srow "$TMP/sum.json" coderabbit unknown diff $INF decided)" "null"
+eq "inferred_thread_verdict_separate: never author_agreement" "$(srow "$TMP/sum.json" coderabbit unknown diff $INF author_agreement)" "null"
+eq "inferred_thread_verdict_separate: resolved after a change" "$(srow "$TMP/sum.json" coderabbit unknown diff $INF thread_state/resolved_after_change)" "2"
+eq "inferred_thread_verdict_separate: resolved without a change" "$(srow "$TMP/sum.json" coderabbit unknown diff $INF thread_state/resolved_without_change)" "1"
+eq "inferred_thread_verdict_separate: open at merge" "$(srow "$TMP/sum.json" coderabbit unknown diff $INF thread_state/open)" "1"
+eq "explicit_amend_supersedes_inference: the amended thread is a recorded agreement" "$(srow "$TMP/sum.json" coderabbit unknown diff $REC agreed)" "1"
+eq "explicit_amend_supersedes_inference: and only that one" "$(srow "$TMP/sum.json" coderabbit unknown diff $REC total)" "1"
+eq "unaddressed_and_outside_coverage: outside is its own scope, recorder row inferred" "$(srow "$TMP/sum.json" coderabbit-outside unknown outside-diff $INF thread_state/open)" "1"
+eq "unaddressed_and_outside_coverage: unaddressed is unresolved, not decided" "$(srow "$TMP/sum.json" coderabbit-outside unknown outside-diff $REC unresolved)" "1"
+eq "unaddressed_and_outside_coverage: an amended outside finding is decided" "$(srow "$TMP/sum.json" coderabbit-outside unknown outside-diff $REC disproved)" "1"
+eq "unaddressed_and_outside_coverage: coverage is decided over all" "$(srow "$TMP/sum.json" coderabbit-outside unknown outside-diff $REC adjudication_coverage)" "0.5"
+eq "exclusions: thread-state findings named" "$(jget "$TMP/sum.json" exclusions/thread_state_inferred)" "5"
+eq "exclusions: unknown-source findings named" "$(jget "$TMP/sum.json" exclusions/unknown_source)" "1"
+# fold() keeps the raw writer and the amend that set the verdict
+eq "explicit_amend_supersedes_inference: fold keeps the raw source and the amend" "$(python3 -I -c 'import sys
+sys.path.insert(0, sys.argv[1]); import cr_ledger_eval as m
+rows, _ = m.load(sys.argv[2], None)
+f = [x for x in m.fold(rows) if x["text"] == "" and x["branch"] == "feat/s4" and x["verdict_source"] == "recorded-disposition" and x["slug"] == "coderabbit"][0]
+print(f["raw_source"], f["raw_verdict"], f["amend_source"])' "$HERE" "$S")" "cr-thread-recorder disproved ledger-append"
+eq "summary: gating_only drops suggestions" "$(python3 -I -c 'import sys
+sys.path.insert(0, sys.argv[1]); import cr_ledger_eval as m
+rows, _ = m.load(sys.argv[2], None)
+r = [x for x in m.reviewer_summary(rows, "2026-09-01T00:00:00Z", None, True) if (x["slug"], x["responding_model"], x["verdict_source"]) == ("codex", "gpt-x", "recorded-disposition")][0]
+print(r["total"], r["deferred"])' "$HERE" "$S")" "2 0"
+python3 "$EVAL" --ledger "$S" --summary --since 2026-10-03T00:00:00Z --json > "$TMP/since.json" 2>/dev/null
+eq "summary: --since drops older findings" "$(srow "$TMP/since.json" codex gpt-x diff $REC total)" "NO-ROW"
+python3 "$EVAL" --ledger "$S" --summary --since yesterday >/dev/null 2>&1; rc=$?
+eq "summary: an unparseable --since is refused" "$rc" "2"
+
 echo
 echo "test-cr-ledger: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

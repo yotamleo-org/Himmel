@@ -12,6 +12,7 @@ When the user asks for the critic scorecard, run:
 `--window N` narrows to the last N PRs (default 20). Summarise the all-time +
 windowed per-model table (total findings, agreed % — `fixed` verdicts count as
 agreed, disproved %, conflict count, unaddressed count, availability %) and
-surface any "consider dropping" lines verbatim. If the ledger is empty, report
+surface the Advice lines verbatim ("insufficient evidence" or "low author
+agreement; investigate", over the quality view's window). If the ledger is empty, report
 "no critic scores recorded yet" and stop.
 See `.claude/commands/cr-scores.md`.

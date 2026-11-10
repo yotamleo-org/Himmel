@@ -6,5 +6,5 @@ Run `bash scripts/cr/cr-scores.sh` (add `--window N` to narrow to the last N PRs
 
 Summarise the output:
 1. Present the all-time and windowed per-model table (columns: total findings, agreed % — `fixed` verdicts count as agreed, disproved %, conflict count, unaddressed count, availability %).
-2. Surface any "consider dropping" lines verbatim — these fire when a model's agreed % is below `CR_SCORES_DROP_BELOW` (default 40) over at least `CR_SCORES_MIN_N` (default 10) findings.
+2. Surface the Advice lines verbatim. They cover the quality view's window (default the trailing 14 days, `--since`/`--until` to choose) and recorded dispositions only: "insufficient evidence" under 30 decided findings or 10 PRs, "low author agreement; investigate" below `CR_SCORES_DROP_BELOW` (default 40) %. No line says to remove a reviewer.
 3. If the ledger is empty, report the friendly "no critic scores recorded yet" message and stop.
