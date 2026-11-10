@@ -57,8 +57,8 @@ APPLY-REVIEW: apply_review() writes one review-panel change's applied receipt fo
   the caller. Refused: no open change of that id, a change of another eval, one already applied or measured, a
   commit that is not in the repo, a root or merge commit, a target outside the measured behaviour set (a CodeRabbit
   config treatment needs a later protocol), identical before and after cbs_hash, a commit that does not change the
-  proposal's target or that changes another behaviour path beside it. It runs no git operation that writes, and neither do keep and revert: they are
-  recommendations.
+  proposal's target or that changes another behaviour path beside it. It runs no git operation that writes, and
+  neither do keep and revert: they are recommendations.
 
 MERGE GATE (HIMMEL-8426): gate_verdict() grades a critic change from the tracked review-panel results rows;
   it is separate from the keep rule, writes nothing and is called by score.py gate.
