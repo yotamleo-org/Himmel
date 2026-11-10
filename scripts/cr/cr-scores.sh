@@ -244,8 +244,6 @@ if (!only) {
   exit 0
 fi
 
-# The quality view and its advice. A copy without the eval beside it (an adopter
-# tree run by absolute path) still prints the history tables below.
 if [ -f "$crl" ]; then
   echo
   python3 -I "$crl" "${crl_args[@]}" || exit $?
@@ -416,9 +414,6 @@ function tableFor(stats, label, note) {
   }
 }
 
-// History tables only when there are finding/avail records. A usage-only
-// ledger skips straight to the Usage section below. Advice lives in the quality
-// view above: these tables pool every verdict source and model version.
 const histNote = "accept% = agreed (fixed included) / all findings and dispr% = disproved / all findings;\n" +
   "every verdict source and model version pooled, so neither is precision or author agreement.";
 if (models.length) {

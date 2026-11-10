@@ -127,16 +127,21 @@ def load(path, until):
     return rows, malformed
 
 
-def verdict_source(raw_source, amended):
-    """Who set a finding's effective verdict: an explicit disposition, the thread-state recorder, or unknown.
+RECORDED = "recorded-disposition"
+INFERRED = "thread-state-inferred"
+UNKNOWN_SOURCE = "unknown"
+THREAD_RECORDER = "cr-thread-recorder"
+PIPELINE_SOURCE = ""
 
-    An amend that sets the verdict is an explicit disposition and supersedes the recorder's
-    inference. A finding row with no source field was written by the review pipeline, whose
-    verdict (or empty verdict) is the recorded disposition.
-    """
-    if amended or not raw_source:
-        return "recorded-disposition"
-    return "thread-state-inferred" if raw_source == "cr-thread-recorder" else "unknown"
+
+def verdict_source(raw_source, amended):
+    if amended:
+        return RECORDED
+    if raw_source == PIPELINE_SOURCE:
+        return RECORDED
+    if raw_source == THREAD_RECORDER:
+        return INFERRED
+    return UNKNOWN_SOURCE
 
 
 def fold(rows):
@@ -295,14 +300,36 @@ def ratio(k, n):
     return round(k / n, 4) if n else None
 
 
-def reviewer_summary(rows, since, until, gating_only=False, roster=None):
-    """Per slug + responding model + scope + verdict source: counts and the ratios each family allows.
+DECIDED = ("agreed", "disproved")
+NO_RATIOS = {"decided": None, "decided_prs": None, "author_agreement": None, "author_agreement_ci": None,
+             "acceptance_yield": None, "adjudication_coverage": None, "thread_state": None}
 
-    Only recorded dispositions carry author_agreement (agreed / decided), acceptance_yield
-    (agreed / all findings) and adjudication_coverage (decided / all findings). A
-    thread-state-inferred row carries the thread-state proxy rates instead, an unknown-source
-    row neither. Deferred and unresolved findings are never decided.
-    """
+
+def recorded_ratios(fs):
+    c = collections.Counter(f["bucket"] for f in fs)
+    a, decided, n = c["agreed"], c["agreed"] + c["disproved"], len(fs)
+    return dict(NO_RATIOS, decided=decided,
+                decided_prs=len({pr_unit(f) for f in fs if f["bucket"] in DECIDED}),
+                author_agreement=ratio(a, decided),
+                author_agreement_ci=ratio_ci(fs, {"agreed"}, set(DECIDED)),
+                acceptance_yield=ratio(a, n),
+                adjudication_coverage=ratio(decided, n))
+
+
+def thread_state_rates(fs):
+    v, n = collections.Counter(f["raw_verdict"] for f in fs), len(fs)
+    return dict(NO_RATIOS, thread_state={
+        "resolved_after_change": v["fixed"], "resolved_without_change": v["disproved"], "open": v["unaddressed"],
+        "resolved_after_change_rate": ratio(v["fixed"], n),
+        "resolved_without_change_rate": ratio(v["disproved"], n),
+        "open_rate": ratio(v["unaddressed"], n),
+    })
+
+
+RATIOS_BY_SOURCE = {RECORDED: recorded_ratios, INFERRED: thread_state_rates, UNKNOWN_SOURCE: lambda fs: dict(NO_RATIOS)}
+
+
+def reviewer_summary(rows, since, until, gating_only=False, roster=None):
     findings = in_window(fold(cut_until(rows, until)), since, gating_only)
     groups = collections.defaultdict(list)
     for f in findings:
@@ -310,44 +337,30 @@ def reviewer_summary(rows, since, until, gating_only=False, roster=None):
     out = []
     for (slug, model, scope, source), fs in groups.items():
         c = collections.Counter(f["bucket"] for f in fs)
-        a, d, n = c["agreed"], c["disproved"], len(fs)
-        recorded = source == "recorded-disposition"
         row = {
             "slug": slug, "responding_model": model, "scope": scope, "verdict_source": source,
             "reviewer": roster is not None and slug in roster,
-            "total": n, "agreed": a, "disproved": d, "deferred": c["deferred"],
-            "unresolved": c["unadjudicated"], "decided": a + d if recorded else None,
-            "prs": len({pr_unit(f) for f in fs}),
-            "decided_prs": len({pr_unit(f) for f in fs if f["bucket"] in ("agreed", "disproved")}) if recorded else None,
-            "author_agreement": ratio(a, a + d) if recorded else None,
-            "author_agreement_ci": ratio_ci(fs, {"agreed"}, {"agreed", "disproved"}) if recorded else None,
-            "acceptance_yield": ratio(a, n) if recorded else None,
-            "adjudication_coverage": ratio(a + d, n) if recorded else None,
-            "thread_state": None,
+            "total": len(fs), "agreed": c["agreed"], "disproved": c["disproved"], "deferred": c["deferred"],
+            "unresolved": c["unadjudicated"], "prs": len({pr_unit(f) for f in fs}),
         }
-        if source == "thread-state-inferred":
-            v = collections.Counter(f["raw_verdict"] for f in fs)
-            row["thread_state"] = {
-                "resolved_after_change": v["fixed"], "resolved_without_change": v["disproved"], "open": v["unaddressed"],
-                "resolved_after_change_rate": ratio(v["fixed"], n),
-                "resolved_without_change_rate": ratio(v["disproved"], n),
-                "open_rate": ratio(v["unaddressed"], n),
-            }
+        row.update(RATIOS_BY_SOURCE[source](fs))
         out.append(row)
     out.sort(key=lambda r: (not r["reviewer"], r["slug"], r["responding_model"], r["scope"], r["verdict_source"]))
     return out
 
 
-# Display defaults for the evidence warning (spec R6), not a reviewer policy.
 MIN_DECIDED = 30
 MIN_PRS = 10
 DEFAULT_DAYS = 14
-# Reviewer identities the ledger carries that the panel roster does not name.
 HISTORICAL_REVIEWERS = {"coderabbit-outside": "CodeRabbit's outside-diff findings"}
 
 
+def default_window_start():
+    day = datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=DEFAULT_DAYS)
+    return day.strftime("%Y-%m-%dT00:00:00Z")
+
+
 def roster_slugs(path):
-    """Reviewer slugs: the critics.json panel (rows not dropped) plus the mapped historical identities."""
     try:
         with open(path, encoding="utf-8") as fh:
             panel = json.load(fh).get("panel") or []
@@ -357,7 +370,6 @@ def roster_slugs(path):
 
 
 def advise(r, agreement_below):
-    """One advice line for a recorded-disposition row. It never removes a reviewer."""
     if not r["reviewer"]:
         return "not-a-reviewer", "not a reviewer (bookkeeping or unmapped slug); no reviewer advice"
     if r["responding_model"] == "unknown":
@@ -374,7 +386,7 @@ def advise(r, agreement_below):
 
 def summary_report(rows, since, until, roster, agreement_below, window_default):
     srows = reviewer_summary(rows, since, until, False, roster)
-    rec = [r for r in srows if r["verdict_source"] == "recorded-disposition"]
+    rec = [r for r in srows if r["verdict_source"] == RECORDED]
     advice = []
     for r in rec:
         verdict, text = advise(r, agreement_below)
@@ -388,8 +400,8 @@ def summary_report(rows, since, until, roster, agreement_below, window_default):
         "exclusions": {
             "deferred": sum(r["deferred"] for r in rec),
             "unresolved": sum(r["unresolved"] for r in rec),
-            "thread_state_inferred": sum(r["total"] for r in srows if r["verdict_source"] == "thread-state-inferred"),
-            "unknown_source": sum(r["total"] for r in srows if r["verdict_source"] == "unknown"),
+            "thread_state_inferred": sum(r["total"] for r in srows if r["verdict_source"] == INFERRED),
+            "unknown_source": sum(r["total"] for r in srows if r["verdict_source"] == UNKNOWN_SOURCE),
         },
         "advice": advice,
     }
@@ -548,11 +560,7 @@ def main(argv=None):
         rows = [r for r in rows if r.get("kind") not in ("finding", "amend") or (
             (not a.artifact or (r.get("artifact") or "diff") == a.artifact)
             and (not a.perspective or (r.get("perspective") or "off") == a.perspective))]
-        since = a.since
-        if not since:
-            # Midnight UTC, so every run on one day reads the same window.
-            since = (datetime.datetime.now(datetime.timezone.utc).date()
-                     - datetime.timedelta(days=DEFAULT_DAYS)).strftime("%Y-%m-%dT00:00:00Z")
+        since = a.since or default_window_start()
         roster = roster_slugs(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "cr", "critics.json"))
         rep = summary_report(rows, since, a.until, roster, a.agreement_below, not a.since)
         rep["malformed"] = malformed
