@@ -203,11 +203,11 @@ stdin_five=$(printf '%s' "$input" | jq -r '(.rate_limits.five_hour.utilization /
 stdin_five_reset=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.resets_at // empty' 2>/dev/null)
 stdin_seven=$(printf '%s' "$input" | jq -r '(.rate_limits.seven_day.utilization // .rate_limits.seven_day.used_percentage // empty) | if type == "number" then tostring else "malformed" end' 2>/dev/null)
 stdin_seven_reset=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.resets_at // empty' 2>/dev/null)
-# A five_hour PRESENT in rate_limits as null or an object with no utilization is
-# the source saying "no active 5-hour window". It is read from the raw JSON: a
-# false/string value is malformed, not empty. A five_hour key that is simply
-# absent says nothing and stays a partial payload.
-stdin_five_present=$(printf '%s' "$input" | jq -r 'if ((.rate_limits | type) == "object") and (.rate_limits | has("five_hour")) and (.rate_limits.five_hour | if type == "null" then true elif type == "object" then (.utilization == null and .used_percentage == null) else false end) then "1" else "" end' 2>/dev/null)
+# A five_hour that is ABSENT from rate_limits, null, or an object with no
+# utilization is the source saying "no active 5-hour window" (an account with
+# no 5-hour window at all never sends one). It is read from the raw JSON: a
+# false/string value is malformed, not empty.
+stdin_five_present=$(printf '%s' "$input" | jq -r 'if ((.rate_limits | type) == "object") and (.rate_limits.five_hour | if type == "null" then true elif type == "object" then (.utilization == null and .used_percentage == null) else false end) then "1" else "" end' 2>/dev/null)
 
 # ── Branch A: stdin carries rate_limits — mirror into both files ─────────────
 # Either window qualifies (CR codex-1: a seven_day-only payload must still be
@@ -268,10 +268,10 @@ if [ -n "$stdin_five" ] || [ -n "$stdin_seven" ]; then
       produced_by: $pby
     }
     # same provenance rule as Branch B — stamp only when every window the
-    # source sent is a valid number and seven_day is one of them; a one-window
-    # payload (or a malformed window) carries the prior stamp so the
-    # carried-forward window keeps aging honestly. An empty five_hour (no active
-    # window) is not a carried-forward window: it is dropped above,
+    # source sent is a valid number and seven_day is one of them; a payload with
+    # no valid seven_day (or a malformed window) carries the prior stamp so the
+    # carried-forward window keeps aging honestly. An empty or absent five_hour
+    # (no active window) is not a carried-forward window: it is dropped above,
     # so nothing stale can ride a fresh stamp.
     + (if $stamp then {primaries_refreshed_at: $ts}
        elif ($carry.primaries_refreshed_at != null) then {primaries_refreshed_at: $carry.primaries_refreshed_at}
@@ -391,10 +391,10 @@ new_cache=$(jq -n --argjson prev "$prev" --argjson f "$fetched" --argjson ts "$n
   (if (($ff.five_hour.utilization | type) == "number") then $ff.five_hour else null end) as $fh |
   (if (($ff.seven_day.utilization | type) == "number") then $ff.seven_day else null end) as $sd |
   def okpct: type == "number" and . >= 0 and . <= 100;
-  # The API answers "no active 5-hour window" with a five_hour that
-  # is null or carries no utilization. That is an empty window, not a malformed
-  # one (string / negative / over 100) and not a window the fetch left out.
-  ($ff | has("five_hour") and (.five_hour | if type == "null" then true elif type == "object" then (.utilization == null and .used_percentage == null) else false end)) as $fhEmpty |
+  # The API answers "no active 5-hour window" with a five_hour that is absent,
+  # null or carries no utilization. That is an empty window, not a malformed
+  # one (string / negative / over 100).
+  ($ff | (.five_hour | if type == "null" then true elif type == "object" then (.utilization == null and .used_percentage == null) else false end)) as $fhEmpty |
   (($sd != null and ($sd.utilization | okpct)) and (($fh != null and ($fh.utilization | okpct)) or $fhEmpty)) as $stamp |
   {
     five_hour:   (if ($stamp and $fhEmpty) then {}
@@ -407,11 +407,11 @@ new_cache=$(jq -n --argjson prev "$prev" --argjson f "$fetched" --argjson ts "$n
     produced_by: $pby
   }
   # Provenance: refresh the aggregate stamp ONLY when every window the fetch
-  # returned is a valid number and seven_day is among them. A partial fetch (a
-  # window left out) or a malformed window preserves the prior stamp so a
+  # returned is a valid number and seven_day is among them. A fetch with no
+  # valid seven_day, or a malformed window, preserves the prior stamp so a
   # carried-forward window continues to age honestly; oauth_checked_at cannot
-  # prove this. An API-empty five_hour (no active window) is dropped above
-  # rather than carried, so no stale window rides the fresh stamp.
+  # prove this. An empty or absent five_hour (no active window) is dropped
+  # above rather than carried, so no stale window rides the fresh stamp.
   + (if $stamp then {primaries_refreshed_at: $ts}
      elif ($carry.primaries_refreshed_at != null) then {primaries_refreshed_at: $carry.primaries_refreshed_at}
      else {} end)
