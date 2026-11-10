@@ -228,11 +228,14 @@ if [ -z "$SEALLINE" ]; then fail "k: the seal command is in SKILL.md"; else
   refused "k: at the cap, an edit: refused" "$HTML" "changed since the spec critic read it"
   cp "$T/k-spec-bytes" "$SPEC"
   accepted "k: the sealed bytes put back: accepted" "$HTML"
-  newfix k3; gen_page; for r in 1 2 3; do stub spec-r$r "SPEC FINDINGS 1"; stub plan-r$r "PLAN FINDINGS 1"; done
+  newfix k3; gen_page; for r in 1 2; do stub spec-r$r "SPEC FINDINGS 1"; stub plan-r$r "PLAN FINDINGS 1"; done
   seedfix
-  retspec 4 "SPEC CLEAN"; sealspec 4
+  retspec 3 "SPEC FINDINGS 1"; sealspec 3; retplan 3 "PLAN FINDINGS 1"; sealplan 3
+  # The fourth return is a closure check: it opens with the marker line closure-pack prints first.
+  marked() { { bun "$ROUTE" closure-pack HIMMEL-1 "$2" --specs "$S" | head -n 1; cat "$1"; } > "$1.tmp" && mv "$1.tmp" "$1"; }
+  retspec 4 "SPEC CLEAN"; marked "$SPEC.critic-spec-r4.md" spec; sealspec 4
   [ "$SEALRC" -eq 0 ] && pass "k: round 4 after a blocking round 3: the spec return is sealed with no record" || fail "k: round 4 after a blocking round 3: the spec return is sealed with no record" "$SEALOUT"
-  retplan 4 "PLAN CLEAN"; sealplan 4; [ "$SEALRC" -eq 0 ] && pass "k: the plan critic's round 4 is sealed too" || fail "k: the plan critic's round 4 is sealed too" "$SEALOUT"
+  retplan 4 "PLAN CLEAN"; marked "$SPEC.critic-plan-r4.md" plan; sealplan 4; [ "$SEALRC" -eq 0 ] && pass "k: the plan critic's round 4 is sealed too" || fail "k: the plan critic's round 4 is sealed too" "$SEALOUT"
   accepted "k: both critics at r4: accepted" "$HTML"
   printf 'decision 7\n' > "$SPEC.operator-round-r5.md"; printf 'verbatim\n' > "$S/decisions/verbatim-decision-7-x.txt"
   retspec 5 "SPEC CLEAN"; sealspec 5
