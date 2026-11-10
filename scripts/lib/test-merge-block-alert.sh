@@ -317,6 +317,59 @@ eq "15: no chief-inbox line pre-GO" 0 "$(count "$CASE/bridge/consoles/opsdesk.md
 eq "15: no operator DM pre-GO" 0 "$(count "$CASE/alerts.log")"
 if grep -q 'MERGE-BLOCKED octo/demo#42 @aaaaaaaaaaaa: required check(s) FAILED: tests' "$CASE/err"; then pass; else fail "15: the MERGE-BLOCKED line still prints on stderr for the worker"; fi
 
+# --- 16. _mba_send's optional route kind: only a caller that names a kind sends one --------
+# The seam gets the kind as a third argument; with none it gets exactly two, as before.
+cat > "$TMP/bin/argc-sender" <<'EOF'
+#!/usr/bin/env bash
+printf '%s|%s|%s|%s\n' "$#" "$1" "$2" "${3-}" >> "$ALERT_LOG"
+EOF
+chmod +x "$TMP/bin/argc-sender"
+new_case c16
+(
+    # shellcheck disable=SC1090
+    . "$LIB"
+    ALERT_LOG="$CASE/alerts.log" MERGE_BLOCK_ALERT_CMD="$TMP/bin/argc-sender" _mba_send 555 "page one" worker-silent
+    ALERT_LOG="$CASE/alerts.log" MERGE_BLOCK_ALERT_CMD="$TMP/bin/argc-sender" _mba_send 555 "page two"
+)
+eq "16: the seam gets the kind as a third argument" "3|555|page one|worker-silent" "$(sed -n 1p "$CASE/alerts.log")"
+eq "16: with no kind the seam gets two arguments, as before" "2|555|page two|" "$(sed -n 2p "$CASE/alerts.log")"
+# the default sender hands the kind to chief-route.ts as --kind, before the chat id
+(
+    unset MERGE_BLOCK_ALERT_CMD
+    # shellcheck disable=SC1090
+    . "$LIB"
+    PATH="$TMP/bin:$PATH" HIMMEL_TEST_FIXTURE=1 BRIDGE_ROOT="$CASE/bridge" BUN_LOG="$CASE/bun.log" \
+    _mba_send 555 "page three" worker-silent
+    PATH="$TMP/bin:$PATH" HIMMEL_TEST_FIXTURE=1 BRIDGE_ROOT="$CASE/bridge" BUN_LOG="$CASE/bun.log" \
+    _mba_send 555 "page four"
+)
+if grep -q 'chief-route.ts reply --kind worker-silent 555 page three$' "$CASE/bun.log"; then pass; else fail "16: the default sender runs chief-route.ts reply --kind worker-silent <chat> <text> (got: $(cat "$CASE/bun.log"))"; fi
+if grep -q 'chief-route.ts reply 555 page four$' "$CASE/bun.log"; then pass; else fail "16: with no kind the default sender is unchanged (got: $(cat "$CASE/bun.log"))"; fi
+
+# --- 17. R1.2 negative control: a merge-blocked page (no kind) still lands in the operator outbox -
+# The real router under a scratch root. The same sender with kind worker-silent is the contrast:
+# the silent rule keeps that one off the outbox.
+if command -v bun >/dev/null 2>&1; then
+    cat > "$TMP/bin/route-sender" <<'EOF'
+#!/usr/bin/env bash
+if [ -n "${3-}" ]; then exec bun "$ROUTE_TS" reply --kind "$3" "$1" "$2"; fi
+exec bun "$ROUTE_TS" reply "$1" "$2"
+EOF
+    chmod +x "$TMP/bin/route-sender"
+    new_case c17; mkdir -p "$CASE/home" "$CASE/mirror"
+    r17() { ROUTE_TS="$HERE/../telegram/chief-route.ts" BRIDGE_ROOT="$CASE/bridge" HOME="$CASE/home" HIMMEL_TEST_FIXTURE=1 HIMMEL_JIRA_MIRROR="$CASE/mirror" TELEGRAM_ACCESS_PATH="$ACCESS" "$TMP/bin/route-sender" "$@" >/dev/null 2>&1; }
+    outbox17() { local n; n="$(count "$CASE/bridge/sessions/__chat__/outbox.jsonl")"; echo "${n:-0}"; }
+    r17 555 "worker-silent page" worker-silent
+    eq "17: a worker-silent page (kind passed) stays off the operator outbox" 0 "$(outbox17)"
+    ( # shellcheck disable=SC1090
+      . "$LIB"; ROUTE_TS="$HERE/../telegram/chief-route.ts" BRIDGE_ROOT="$CASE/bridge" HOME="$CASE/home" HIMMEL_TEST_FIXTURE=1 HIMMEL_JIRA_MIRROR="$CASE/mirror" \
+        MERGE_BLOCK_ALERT_CMD="$TMP/bin/route-sender" MERGE_BLOCK_ALERT_DIR="$CASE/sentinels" TELEGRAM_ACCESS_PATH="$ACCESS" \
+        merge_block_alert octo/demo 42 aaaaaaaaaaaa "required check(s) FAILED: tests" >/dev/null 2>>"$CASE/err" )
+    eq "17: a merge-blocked page (no kind) lands in the operator outbox (R1.2)" 1 "$(outbox17)"
+else
+    echo "  SKIP: 17 needs bun"
+fi
+
 echo
 echo "merge-block-alert: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

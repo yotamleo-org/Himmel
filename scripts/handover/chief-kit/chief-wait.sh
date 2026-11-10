@@ -877,19 +877,20 @@ denial_pages() {
 # page_send: <text> — ONE operator Telegram message via the bridge path the kit
 # already uses (merge-block-alert.sh: the first positive allowFrom of access.json,
 # chief-route.ts reply). CHIEF_WAIT_PAGE_CMD replaces it (tests; called as
-# `$CMD <text>`). Bounded by CHIEF_WAIT_PAGE_TIMEOUT (default 45 s) and always
+# `$CMD <text>`, plus the kind as a second argument only when the page has one).
+# Bounded by CHIEF_WAIT_PAGE_TIMEOUT (default 45 s) and always
 # rc 0: a failed or hung send never breaks the waiter or delays the wake past
 # the bound.
 page_timeout="${CHIEF_WAIT_PAGE_TIMEOUT:-45}"
-page_send() {  # <text> <deadline epoch>: the timeout is what is left of the batch budget
+page_send() {  # <text> <deadline epoch> [route kind]: the timeout is what is left of the batch budget; a kind rides to chief-route.ts --kind, none = the operator outbox
     local left=$(( $2 - $(date +%s) ))
     [ "$left" -ge 1 ] || return 0
     if [ -n "${CHIEF_WAIT_PAGE_CMD:-}" ]; then
-        timeout -k 2 "$left" "$CHIEF_WAIT_PAGE_CMD" "$1" </dev/null >/dev/null 2>&1 9>&-  # gnu-ok: Linux-only kit
+        timeout -k 2 "$left" "$CHIEF_WAIT_PAGE_CMD" "$1" ${3:+"$3"} </dev/null >/dev/null 2>&1 9>&-  # gnu-ok: Linux-only kit
     else
-        # shellcheck disable=SC2016  # $1/$2 expand in the child bash, not here
-        timeout -k 2 "$left" bash -c '. "$1" && chat="$(_mba_operator_chat)" && [ -n "$chat" ] && _mba_send "$chat" "$2"' \
-            _ "$REPO/scripts/lib/merge-block-alert.sh" "$1" </dev/null >/dev/null 2>&1 9>&-  # gnu-ok: Linux-only kit
+        # shellcheck disable=SC2016  # $1/$2/$3 expand in the child bash, not here
+        timeout -k 2 "$left" bash -c '. "$1" && chat="$(_mba_operator_chat)" && [ -n "$chat" ] && _mba_send "$chat" "$2" "$3"' \
+            _ "$REPO/scripts/lib/merge-block-alert.sh" "$1" "${3:-}" </dev/null >/dev/null 2>&1 9>&-  # gnu-ok: Linux-only kit
     fi
     return 0
 }
@@ -1925,8 +1926,8 @@ silent_emit() { # <label> <signal> <detail>: prints the WAKE line and succeeds w
     printf '%s\n' "$key" >> "$silent_file" 2>/dev/null
     act="the chief relaunches it from a RESUME doc or runs its blocked step itself, and will say which it did"
     heartbeat sampling
-    [ -z "$console_doc" ] || bash "$HERE/append-results.sh" "$console_doc" "WORKER-SILENT $label signal=$signal$detail: $act; the operator was alerted" >/dev/null 2>&1 9>&- || true  # swallow-ok: a doc that cannot take the bullet still wakes and pages
-    page_send "WORKER-SILENT $label signal=$signal$detail - $act" $(( $(date +%s) + page_timeout ))
+    [ -z "$console_doc" ] || bash "$HERE/append-results.sh" "$console_doc" "WORKER-SILENT $label signal=$signal$detail: $act; the chief was woken" >/dev/null 2>&1 9>&- || true  # swallow-ok: a doc that cannot take the bullet still wakes and pages
+    page_send "WORKER-SILENT $label signal=$signal$detail - $act" $(( $(date +%s) + page_timeout )) worker-silent
     printf 'WAKE worker-silent %s signal=%s%s\n' "$label" "$signal" "$detail"
 }
 succ_row_live() {
