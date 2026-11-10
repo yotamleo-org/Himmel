@@ -1948,7 +1948,6 @@ describe('signed minerva specs', () => {
   const sha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
   const both = { kinds: ['spec', 'spec-review'] as OperatorRow['kind'][] };
 
-  // A spec whose header names its key, and a plan beside it, for a spec-review record.
   function rspec(dir = join(root, 'rs'), head = '- Ticket: K-2', title = '# K-2: a reviewed design'): { spec: string; plan: string } {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'est.json'), JSON.stringify({ median_seq: 1, sigma: 0.1, dod: { passed: true } }));
@@ -1962,7 +1961,6 @@ describe('signed minerva specs', () => {
     writeFileSync(plan, 'plan\n\n- Task 1: build it.\n');
     return { spec: p, plan };
   }
-  // A critic file: its Key: line, its Reviewed: line (spec critics), its body and its verdict line.
   function critic(specPath: string, last: string, o: { kind?: 'spec' | 'plan'; round?: number; key?: string | null; reviewed?: string[]; body?: string[] } = {}): string {
     const kind = o.kind ?? 'spec';
     const p = `${specPath}.critic-${kind}-r${o.round ?? 1}.md`;
@@ -1978,7 +1976,6 @@ describe('signed minerva specs', () => {
     const r = spawnSync(process.execPath, [CHILD, JSON.stringify({ env: specEnv(), ...input }), mode], { timeout: 5000, encoding: 'utf8' });
     return { status: r.status, signal: r.signal, out: r.stdout ? JSON.parse(r.stdout) as Record<string, unknown> : null };
   };
-  // K-1 signed over spec(), with K-3 signed over a second good spec beside it.
   function signedPair(): { p: string; id: string; good: string; goodId: string } {
     declared();
     const p = spec();

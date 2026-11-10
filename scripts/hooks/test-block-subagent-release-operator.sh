@@ -67,11 +67,9 @@ check() {  # check <deny|allow> <label> [needle] — reads rc and out
 SUB='"a1"'
 WRITE="$CLI release operator spec-review R1 --keys K-2 --spec s.md --plan p.md --verdict s.md.critic-spec-r1.md"
 
-# The RED row: a subagent cannot write an operator row.
 expect deny "a subagent cannot write an operator row" "$SUB" "$WRITE"
 expect deny "a subagent cannot write an operator row: names the rule" "$SUB" "$WRITE" "only the main session"
 
-# Deny rows (spec 4.1).
 expect deny "release operator spec" "$SUB" "$CLI release operator spec R1 --keys K-2"
 expect deny "release operator core-bypass" "$SUB" "$CLI release operator core-bypass R1 --keys K-2"
 expect deny "single-quoted word" "$SUB" "$CLI release 'operator' spec R1"
@@ -121,14 +119,12 @@ n=$((n + 1)); payload "$TMP/p$n.json" "$SUB" "ls"
 run_hook "$TMP/p$n.json" PATH="$NOJQ"
 check deny "no jq: ls" "cannot read the hook input without jq"
 
-# Fail closed: stdin that is not a JSON object.
 for raw in 'not json release operator' '[]' '"x"' ''; do
     n=$((n + 1)); printf '%s' "$raw" >"$TMP/p$n.json"
     run_hook "$TMP/p$n.json"
     check deny "stdin '$raw'" "cannot parse the hook input"
 done
 
-# Allow rows.
 expect allow "no agent_id (the chief)" absent "$WRITE"
 expect allow "agent_id null (the chief)" 'null' "$WRITE"
 expect allow "a subagent reads spec-check" "$SUB" "$CLI release spec-check K-2"

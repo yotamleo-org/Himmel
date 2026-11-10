@@ -491,7 +491,6 @@ function readVerdicts(paths: string[], verb: string, need: { required: VerdictKi
   };
 }
 
-// The lines of the spec's ## Critic rounds section, up to the next heading.
 function criticRounds(specText: string): string[] {
   const lines = specText.split('\n');
   const start = lines.findIndex((l) => /^##\s+critic rounds\s*$/i.test(l));
@@ -509,8 +508,6 @@ function checkResiduals(specText: string, residuals: number): void {
   }
 }
 
-// Only the dispositions inside the round blocks that name a verdict file count: a block starts at a
-// 'Round <n>:' line holding the file's basename and ends at the next 'Round <m>:' line or the section's end.
 function checkRoundResiduals(specText: string, names: string[], residuals: number, verb: string): void {
   if (!residuals) return;
   const done = new Set<string>();
@@ -578,8 +575,6 @@ const KEY_LINE = /^Keys?:\s*(.+)$/gm;
 const KEY_IN = /[A-Z][A-Z0-9]*-\d+(?!\d)/g;
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// A spec, its plan and one passing or folded critic round, bound to the reviewed bytes and keys (spec §2.3, §4),
-// recorded by the chief with no operator signature.
 export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: string; verdicts: string[]; supersedes?: string }): OperatorRow {
   const verb = 'release operator spec-review';
   operatorFence(ctx);
@@ -646,8 +641,6 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
 
 export type SpecAnswer = { ok: true } | { missing: string };
 
-// Why a record's pinned files no longer stand, or null while each one is readable and hashes as pinned:
-// the spec, then the plan when its hash is pinned, then each verdict.
 function staleReason(r: ReleaseRecord): string | null {
   const pins = [
     { role: 'spec', path: r.spec_path ?? '', sha256: r.spec_sha256 },
