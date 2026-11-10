@@ -48,6 +48,7 @@ ROOT=$(mktemp -d "${TMPDIR:-/tmp}/check-ci-cache.XXXXXX") || { echo "FATAL: mkte
 # shellcheck disable=SC2329,SC2317
 cleanup() { if [ -n "$ROOT" ] && [ -d "$ROOT" ]; then rm -rf "$ROOT" 2>/dev/null; fi; return 0; }
 trap cleanup EXIT
+export HIMMEL_QUOTA_DIR="$ROOT/quota"
 
 BIN="$ROOT/bin"
 mkdir -p "$BIN"
