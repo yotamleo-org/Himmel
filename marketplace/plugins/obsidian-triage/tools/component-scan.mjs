@@ -366,7 +366,6 @@ async function upsertComponentNote(record, opts) {
   const out = [];
   for (let i = 0; i < lines.length; i++) {
     if (tierChanged && /^trust_tier:\s/.test(lines[i])) {
-      // Quote on the update path too, for create/update symmetry.
       out.push(`trust_tier: "${yamlString(newTier)}"`);
       continue;
     }

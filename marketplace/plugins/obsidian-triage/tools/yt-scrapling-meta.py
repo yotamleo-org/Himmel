@@ -249,9 +249,9 @@ def main(argv=None):
     # Route rules match the canonical URL; the hl pin is fetch-only, or an
     # exact-video skip/only rule would stop matching.
     canon = f"https://www.youtube.com/watch?v={args.video_id}"
-    # hl=en: _is_private reads the English reason text, so ask for English
-    # No language-independent private signal is known
-    # in playabilityStatus, so a pinned locale it is; revisit if YouTube ignores hl.
+    # hl=en: _is_private reads the English reason text, so ask for English;
+    # playabilityStatus has no language-independent private signal, so the
+    # locale is pinned. Revisit if YouTube ignores hl.
     url = f"{canon}&hl=en"
     if not scrapling_permitted(args.vault, canon):
         out = {"status": "skipped", "detail": "local-headless denied by route or kill switch"}

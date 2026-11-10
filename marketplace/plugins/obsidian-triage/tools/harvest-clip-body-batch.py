@@ -69,7 +69,7 @@ TRACKING_PARAMS = {
 # --firecrawl-thin: a credit-conscious escalation lane that fetches clean
 # markdown for clips the Web Clipper captured thinly. Default runs never
 # touch firecrawl — the free tier (1000 credits/mo) is scarce.
-MAX_DECODE_PASSES = 4  # percent-decode passes; a backend seen decoding deeper raises
+MAX_DECODE_PASSES = 4
 FIRECRAWL_DEFAULT_BASE_URL = "https://api.firecrawl.dev"
 FIRECRAWL_DEFAULT_BUDGET = 20  # max scrape calls per run (~1 credit each)
 FIRECRAWL_DEFAULT_MAX_CREDITS = 5  # per-call ceiling: a stealth call (5) passes, anything above stops firecrawl for the run
