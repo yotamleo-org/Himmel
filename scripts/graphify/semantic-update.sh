@@ -469,7 +469,7 @@ batch_submit() {
       # only a refusal whose every row says SKIPPED-BANK is a lack of room; BANK-UNKNOWN or an answer without rows stops
       case "$pick" in
         '{"verdict":"PROCEED",'*) ;;
-        *'"rows":['*) case "${pick//\"verdict\":\"SKIPPED-BANK\"/}" in
+        *'"rows":[{'*) case "${pick//\"verdict\":\"SKIPPED-BANK\"/}" in
                        *'"verdict":'*) ;;
                        *) echo "semantic-update: account $acct has no room ($pick); skipped" >&2
                           skipped="${skipped:+$skipped }$acct"; why="${why:+$why, }$acct no room"; continue ;;

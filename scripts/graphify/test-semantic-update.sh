@@ -1020,6 +1020,7 @@ if (process.argv[2] === 'pick') {
   const list = i > 0 ? process.argv[i + 1].split(',') : ['A', 'B', 'C'];
   appendFileSync(join(ws, 'picks.log'), `pick ${list.join(',')}\n`);
   if (list.some((l) => listed('BATCH_STUB_PICKCRASH').includes(l))) process.exit(1);
+  if (list.some((l) => listed('BATCH_STUB_EMPTYROWS').includes(l))) { console.log(JSON.stringify({ verdict: 'SKIPPED-BANK', reason: 'no-role-account-configured', rows: [] })); process.exit(0); }
   // BATCH_STUB_NOROOM / BATCH_STUB_UNKNOWN refuse a letter as the real pick does; only --rows adds each row's verdict
   const bad = list.filter((l) => listed('BATCH_STUB_NOROOM').includes(l) || listed('BATCH_STUB_UNKNOWN').includes(l));
   if (bad.length === list.length) {
@@ -1418,6 +1419,10 @@ CO="$WS/o8b"; new_corpus "$CO"; o_reset
 out=$(BATCH_STUB_PICKCRASH=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o8b --corpus-root "$CO" --account-order A,B); rc=$?
 [ "$rc" -ne 0 ] && [ ! -s "$WS/batch.log" ] && [ "$(word)" = stopped ] && [ "$(cat "$WS/picks.log")" = "pick A" ] \
   && pass "O8b word stopped, B never picked" || fail "O8b (rc=$rc) word '$(word)' picks '$(cat "$WS/picks.log" 2>&1)': $out"
+CO="$WS/o8c"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_EMPTYROWS=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o8c --corpus-root "$CO" --account-order A,B); rc=$?
+[ "$rc" -ne 0 ] && [ ! -s "$WS/batch.log" ] && [ "$(word)" = stopped ] && [ "$(cat "$WS/picks.log")" = "pick A" ] \
+  && pass "O8b a refusal with an empty rows list stops too, B never picked" || fail "O8b empty rows (rc=$rc) word '$(word)' picks '$(cat "$WS/picks.log" 2>&1)': $out"
 
 echo "O9: claude-cli with a batch waiting: word batch-pending, no bank call, no extract"
 CO="$WS/o9"; new_corpus "$CO"; o_reset
