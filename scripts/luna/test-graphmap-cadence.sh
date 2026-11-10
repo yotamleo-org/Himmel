@@ -2260,7 +2260,7 @@ rm -f "$PM_ALERTS" "$PM_FLOWS" "$PMDIR/post-merge-refresh.log" "$PMDIR/post-merg
 pm_exec 'exit 7'
 assert_contains "runner_alerts_when_script_dies: a tick that exits 7 raises post-merge-tick" "post-merge-tick" "$(cat "$PM_ALERTS" 2>/dev/null || echo MISSING)"
 assert_contains "runner_alerts_when_script_dies: the log records the exit" "[exit rc=7]" "$(cat "$PMDIR/post-merge-refresh.log" 2>/dev/null || echo MISSING)"
-if [ ! -e "$PM_FLOWS" ]; then pass "runner_writes_no_flow_rows: a failed fire writes no flow row"; else fail "runner_writes_no_flow_rows: flow rows written" "$(cat "$PM_FLOWS")"; fi
+if [ ! -e "$PM_FLOWS" ]; then pass "runner_writes_no_flow_rows: a failed fire writes no flow row"; else fail "runner_writes_no_flow_rows: flow rows written"; fi
 assert_not_contains "runner_writes_no_flow_rows: the runner has no flow-run call" "flow-run-ledger" "$(pm_runner)"
 assert_not_contains "runner_alerts_when_script_dies: the runner never calls clear" " clear " "$(pm_runner)"
 rm -f "$PM_ALERTS"
