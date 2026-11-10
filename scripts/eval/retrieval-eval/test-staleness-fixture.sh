@@ -202,8 +202,24 @@ eq "::free_serve_has_no_key (the daemon saw no key and the scratch index and con
     "$(qlog | grep -c "^mcp --http --port [0-9]* | INDEX_PATH=$W/free-l2/index.sqlite QMD_CONFIG_DIR=$W/free-l2/config KEY=unset")"
 eq "::free_serve_has_no_key (pair.json holds the served URL)" "$url" "$(pj "$W/free-l2" served_url)"
 case "$url" in http://127.0.0.1:*/mcp) pass "::free_serve_has_no_key (the URL is a free local port)" ;; *) fail "::free_serve_has_no_key (the URL is a free local port): '$url'" ;; esac
+spid="$(cat "$W/free-l2/serve.pid")"
 fx stop --index "$W/free-l2/index.sqlite" > /dev/null 2>&1
 eq "::free_serve_has_no_key (stop clears the URL and the pid file)" "|gone" "$(pj "$W/free-l2" served_url)|$([ -e "$W/free-l2/serve.pid" ] && echo left || echo gone)"
+if kill -0 "$spid" 2> /dev/null; then sleft=running; else sleft=exited; fi
+eq "::free_serve_has_no_key (stop ends the daemon process)" "exited" "$sleft"
+
+# another qmd daemon that now holds the saved pid (a different port) is dropped, never signalled
+other_port="$(py -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+LOGDIR="$LOGDIR" "$W/bin/qmd" mcp --http --port "$other_port" > /dev/null 2>&1 &
+other_d=$!
+sleep 1
+printf '%s\n' "$other_d" > "$W/free-s/serve.pid"
+printf '%s\n' "$((other_port + 1))" > "$W/free-s/serve.port"
+fx stop --index "$W/free-s/index.sqlite" > /dev/null 2>&1
+if kill -0 "$other_d" 2> /dev/null; then alive=alive; else alive=dead; fi
+kill "$other_d" 2> /dev/null
+eq "::stop_ignores_other_daemon (a daemon on another port keeps running, the pid and port files go)" "alive|gone" \
+    "$alive|$([ -e "$W/free-s/serve.pid" ] || [ -e "$W/free-s/serve.port" ] && echo left || echo gone)"
 
 # a pid file whose process is not this daemon (the daemon died and the pid was reused) is dropped, never signalled
 sleep 60 &

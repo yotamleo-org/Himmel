@@ -72,7 +72,7 @@ guard_scratch() {
 # every name this script writes inside a scratch directory: a link at one would carry a write out of it
 refuse_links() {
     local n
-    for n in config tree index.sqlite pair.json pair.json.tmp serve.pid serve.log qmd-update.log qmd-embed.log "$MARKER"; do
+    for n in config tree index.sqlite pair.json pair.json.tmp serve.pid serve.port serve.log qmd-update.log qmd-embed.log "$MARKER"; do
         if [ -L "$1/$n" ]; then die "refusing $1: $n is a symlink"; fi
     done
 }
@@ -227,6 +227,7 @@ cmd_serve() {
     fi
     pid=$!
     printf '%s\n' "$pid" > "$OUTR/serve.pid"
+    printf '%s\n' "$port" > "$OUTR/serve.port"
     i=0
     while ! (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; do
         kill -0 "$pid" 2> /dev/null || { rm -f "$OUTR/serve.pid"; die "the daemon exited (see $OUTR/serve.log)" 1; }
@@ -239,7 +240,7 @@ cmd_serve() {
 }
 
 cmd_stop() {
-    local index="" pid i args
+    local index="" pid i args port
     while [ $# -gt 0 ]; do
         case "$1" in
         --index) need_value "$@"; index="$2"; shift 2 ;;
@@ -250,15 +251,16 @@ cmd_stop() {
     scratch_of_index "$index"
     if [ -f "$OUTR/serve.pid" ]; then
         pid="$(cat "$OUTR/serve.pid")"
-        # a pid whose process is not this daemon (it died and the number was reused) is dropped, never signalled
+        # a pid whose process is not this daemon on its own port (it died and the number was reused) is dropped, never signalled
+        port="$(cat "$OUTR/serve.port" 2> /dev/null)"
         args="$(ps -p "$pid" -o args= 2> /dev/null)"
-        case "$args" in
-        *"mcp --http --port"*)
+        case "${port:+$args}" in
+        *"mcp --http --port $port" | *"mcp --http --port $port "*)
             kill "$pid" 2> /dev/null
             i=0
             while kill -0 "$pid" 2> /dev/null && [ "$i" -lt 20 ]; do sleep 0.25; i=$((i + 1)); done ;;
         esac
-        rm -f "$OUTR/serve.pid"
+        rm -f "$OUTR/serve.pid" "$OUTR/serve.port"
     fi
     if [ -f "$OUTR/pair.json" ]; then pj_set "$OUTR" served_url null; fi
 }
