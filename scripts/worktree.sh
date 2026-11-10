@@ -84,7 +84,7 @@ Flags:
                         subject to every prune gate. Exits non-zero when the
                         target is not a prune candidate. Skips the fleet-wide
                         stray/checkpoint/marker sweeps.
-  --only-allow-unmerged Only with --only (HIMMEL-3747): also accept a target
+  --only-allow-unmerged Only with --only: also accept a target
                         whose PR is CLOSED unmerged, or has no PR at all, when
                         the working tree is clean AND (its head is pushed to
                         origin at that branch name, OR it carries no commits

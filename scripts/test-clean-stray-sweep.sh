@@ -255,7 +255,7 @@ cat > "$FAKE_BIN_H/find" <<EOF
 base="\${1##*/}"
 if [ "\$base" = "feat+find-fail" ] && [ "\$2" = "-maxdepth" ] && [ "\$3" = "1" ] && [ "\$4" = "-name" ] && [ "\$5" = ".git" ]; then
     echo x >> "$FAKE_BIN_H/.invoked"
-    echo "find: simulated I/O failure (HIMMEL-2267 test fixture)" >&2
+    echo "find: simulated I/O failure (test fixture)" >&2
     exit 1
 fi
 exec "$REAL_FIND_H" "\$@"

@@ -108,7 +108,7 @@ while [ $# -gt 0 ]; do
             LIST_ONLY=1; shift ;;
         -h|--help)
             cat <<'USAGE'
-luna-upgrade-all.sh — multi-vault luna template upgrade sweep (HIMMEL-462)
+luna-upgrade-all.sh — multi-vault luna template upgrade sweep (with backup and restore)
 
 Usage:
   bash scripts/luna-upgrade-all.sh [sweep] [OPTIONS]
