@@ -169,8 +169,13 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       if (slot) slot.tools.set(h.tool, { ...h, failures: h.failures - blocked, blocked });
     }
   }
+  // The paired snapshot: a selected eval row's meta.tool_failures is its session's failure set (an empty list means
+  // none), so the failures shown always belong to the row counted; the ledger is the fallback for a row without it.
+  const paired = new Map([...sessions].filter(([, r]) => Array.isArray(r.meta?.tool_failures)).map(([id, r]) => [id, r.meta.tool_failures]));
+  const failureRows = [...failures.filter((r) => !(r && paired.has(r.session))),
+    ...[...paired].flatMap(([session, list]) => list.filter((f) => f && typeof f === 'object').map((f) => ({ ...f, session })))];
   const seenFailures = new Set();
-  for (const r of failures) {
+  for (const r of failureRows) {
     if (!r || typeof r.class !== 'string' || !num(r.count) || !r.agent || r.failure === 'traj' || r.failure === 'run_error') continue;
     const identity = `${r.session}\0${r.agent.id}\0${r.class}`;
     if (seenFailures.has(identity)) continue;

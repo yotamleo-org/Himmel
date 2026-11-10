@@ -23,6 +23,8 @@ WORKER-FAILURES ROW (v 1) -- closed-list categories, plus on a denied row one re
   refusal_line  denied rows only, optional: the guard's already-redacted first refusal line from the
               hook-chain log (the first refused call that has one), at most 240 code points on one line,
               or null when none was recorded; older rows lack the key
+  meta        optional, refreshed rows only: {digest_id, refreshed_at} -- the generation that wrote the row and when
+              the refresh ran; ts stays the original record time
 Unknown keys are refused, but refusal_line is free text: it is redacted for secrets only and can still echo
 command or path text. It stays on this host (the ledger, the marker and the leg-digest state file are never sent);
 the egress guard is the failure router's named-field pick and its check_body alphabet check, which never take it.
@@ -42,7 +44,7 @@ IDEMPOTENCE (spec 5.3), all under a per-session flock at <state-dir>/<session>.l
                        [--digest-error timeout|crash|no-journal|bad-json|too-big]
                        [--failures-ledger P] [--eval-ledger P] [--state-dir D]
   worker_ledger.py backfill --since YYYY-MM-DD [--projects D] [--denials-ledger P] [--live-minutes N]
-                       [--failures-ledger P] [--eval-ledger P] [--state-dir D]
+                       [--refresh] [--failures-ledger P] [--eval-ledger P] [--state-dir D]
   worker_ledger.py validate <worker-failures ledger>
 
 backfill digests every main journal under --projects (default ~/.claude/projects only; a lane
@@ -53,11 +55,33 @@ journals only, and refuses one whose cwd sits under a salus root (spec 6.1).
 It skips a journal whose last timestamp is under --live-minutes (default 30) old:
 an ok digest of a still-live session would write the final marker and freeze the
 worker before its remaining failures land (HIMMEL-4699).
+
+PAIRED SNAPSHOT. Every eval-runs row carries meta.digest_id (a hash of the measurement: the digest's counts,
+classes, meaning versions and stamped attribution; never a write time or the recorder's checkout) and
+meta.tool_failures (the session's failure rows without refusal text). Tool health reads that pair, so the
+failures it shows always belong to the eval row it counts; a row without the field falls back to the ledger.
+
+REFRESH (backfill --refresh) re-digests sessions already recorded ok, so a corrected classifier reaches old
+sessions without moving them in time. It never runs on its own: no cadence calls it. Per session:
+  - a digest that is not ok leaves the previous measurement untouched;
+  - the marker already carrying the same digest_id is a no-op;
+  - no ok eval row to anchor on: refused with a diagnostic, nothing written (refresh time is never
+    substituted for a missing original time);
+  - else, in this order: (1) the eval row, with the ORIGINAL ok row's ts, meta.refreshed_at = now and the
+    new digest_id, skipped when the ledger already holds that run_id + digest_id; (2) the session's failure
+    rows replaced, each keeping its own original ts (a new class takes the session's earliest failure time,
+    else the eval anchor) and meta {digest_id, refreshed_at}; (3) the marker, carrying the digest_id.
+    A crash after any step leaves a complete old or complete new snapshot for Tool health, and the
+    next refresh finishes the remaining steps without a duplicate. The two JSONL files are not one atomic
+    commit. Live sessions are skipped as in backfill.
+  Before a production refresh, preview the router with --dry-run against scratch copies; a refresh never
+  changes the cadence mode.
 """
 
 import argparse
 import fcntl
 import glob
+import hashlib
 import json
 import os
 import re
@@ -92,6 +116,11 @@ NOT_PRINTABLE = re.compile("[\x00-\x1f\x7f-\x9f  ]")
 DIGEST_TIMEOUT = 60
 LIVE_MINUTES = 30
 DIGEST_ERRORS = ("timeout", "crash", "no-journal", "bad-json", "too-big")
+UTC_TS = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+DIGEST_ID = re.compile(r"^[0-9a-f]{32}$")
+# Test seam only: stop a refresh after its eval or failures write, to replay the crash fixtures.
+REFRESH_STOP_ENV = "HIMMEL_LEDGER_REFRESH_STOP_AFTER"
+
 
 
 def ledger_path(path=None):
@@ -115,7 +144,7 @@ def validate(row):
     """List of problems; empty = a valid v1 worker-failures row."""
     if not isinstance(row, dict):
         return ["row is not an object"]
-    extra = sorted(set(row) - set(KEYS) - {"final_red", "refusal_line"})
+    extra = sorted(set(row) - set(KEYS) - {"final_red", "refusal_line", "meta"})
     p = ["unknown key %s" % k for k in extra] + ["missing %s" % k for k in KEYS if k not in row]
     if p:
         return p
@@ -172,6 +201,11 @@ def validate(row):
         if row["failure"] != "denied" or not (line is None or (
                 isinstance(line, str) and 1 <= len(line) <= LINE_MAX and not NOT_PRINTABLE.search(line))):
             p.append("refusal_line is null or one line of 1 to %d code points, on denied rows only" % LINE_MAX)
+    if "meta" in row:
+        m = row["meta"]
+        if (not isinstance(m, dict) or sorted(m) != ["digest_id", "refreshed_at"] or not isinstance(m["digest_id"], str)
+                or not DIGEST_ID.match(m["digest_id"]) or not isinstance(m["refreshed_at"], str) or not UTC_TS.match(m["refreshed_at"])):
+            p.append("meta is exactly {digest_id: 32 hex, refreshed_at: YYYY-MM-DDTHH:MM:SSZ}")
     return p
 
 
@@ -462,6 +496,9 @@ def build_rows(digest, who):
         stamp = {"lane": lane, **({"profile": profile} if profile else {}), **({"launch_gap": gap} if gap else {})}
         meta["tool_health"] = [dict(r, **stamp) for r in health if isinstance(r, dict)]
         meta["started_ts"] = digest.get("started_ts")
+    meta["digest_id"] = digest_id(digest, lane, meta)
+    meta["tool_failures"] = [{k: r[k] for k in ("agent", "class", "failure", "count", "identical_retry", "recovered",
+                                                "first_ts", "last_ts", "tool_call_ids", "final_red") if k in r} for r in frows]
     m = _metrics(digest)
     erow = eval_runs.make_row(EVAL_ID, SOURCE, config, m, n=m["turns"] if _int(m["turns"], 0) else None,
                               model=model, lane=lane, status=status, run_id=session,
@@ -473,10 +510,29 @@ def build_rows(digest, who):
     return frows, erow
 
 
+def digest_id(digest, lane, meta):
+    """The measurement's identity: counts, classes, meaning versions and stamped attribution. No write or
+    refresh time and no recorder checkout, so the same measurement re-recorded keeps its id."""
+    keep = ("digest_v", "mapper_v", "trajectory_v", "session", "status", "model", "metrics", "failures", "by_design")
+    content = {k: digest.get(k) for k in keep}
+    content["tool_health"] = meta.get("tool_health")
+    content["attribution"] = {"lane": lane, "profile": meta.get("profile"), "launch_gap": meta.get("launch_gap")}
+    text = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:32]
+
+
+def _original_ok_ts(eval_ledger, session):
+    """The ts of the session's first ok eval row: the time every superseding row keeps; None if there is none."""
+    rows, _, _ = eval_runs.scan_rows(eval_ledger)
+    ok = [r for r in rows if r["eval"] == EVAL_ID and r["run_id"] == session and r["status"] == "ok"]
+    ts = ok[0].get("ts") if ok else None
+    return ts if isinstance(ts, str) and UTC_TS.match(ts) else None
+
+
 def _write_marker(marker, digest, erow):
     tmp = marker + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
-        saved = dict(digest, lane=erow["lane"])
+        saved = dict(digest, lane=erow["lane"], digest_id=erow["meta"].get("digest_id"))
         if "tool_health" in erow["meta"]:
             saved["tool_health"] = erow["meta"]["tool_health"]
         json.dump(saved, fh, ensure_ascii=False, separators=(",", ":"))
@@ -509,6 +565,8 @@ def record(digest, who, failures_ledger, eval_ledger):
             prev = None
         if prev == "ok" and status == "ok" and _launch_gained(eval_ledger, erow):
             # The launch record arrived after the first record: the same digest, now with its lane and profile.
+            # The restamped row keeps the original record time, so it never moves the session in time.
+            erow["ts"] = _original_ok_ts(eval_ledger, session) or erow["ts"]
             eval_runs.append_row(erow, eval_ledger)
             _write_marker(marker, digest, erow)
             return 0, 1
@@ -530,6 +588,80 @@ def record(digest, who, failures_ledger, eval_ledger):
             e = 1
         _write_marker(marker, digest, erow)
         return len(add), e
+
+
+def _stop_after(step):
+    if os.environ.get(REFRESH_STOP_ENV) == step:
+        raise SystemExit(75)
+
+
+def _old_failure_ts(path, session):
+    """{(agent.id, class): ts} of the session's current rows, and the earliest of those times."""
+    by, first = {}, None
+    try:
+        fh = open(path, encoding="utf-8")
+    except FileNotFoundError:
+        return by, first
+    with fh:
+        for line in fh:
+            if session not in line:
+                continue
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if not (isinstance(r, dict) and r.get("session") == session and isinstance(r.get("agent"), dict)):
+                continue
+            ts = r.get("ts")
+            if isinstance(ts, str) and UTC_TS.match(ts):
+                by.setdefault((r["agent"].get("id"), r.get("class")), ts)
+                first = ts if first is None or ts < first else first
+    return by, first
+
+
+def refresh(digest, who, failures_ledger, eval_ledger):
+    """Re-record an ok session from a fresh digest without moving it in time; returns a word for the summary."""
+    if digest.get("status") != "ok":
+        return "inconclusive"
+    frows, erow = build_rows(digest, who)
+    session, did, state = erow["run_id"], erow["meta"]["digest_id"], who["state_dir"]
+    marker = os.path.join(state, session + ".json")
+    with open(os.path.join(state, session + ".lock"), "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            with open(marker, encoding="utf-8") as fh:
+                if json.load(fh).get("digest_id") == did:
+                    return "unchanged"
+        except (OSError, ValueError, AttributeError):
+            pass
+        anchor = _original_ok_ts(eval_ledger, session)
+        if anchor is None:
+            print("refresh: %s refused: no original ok eval row to keep its time" % session, file=sys.stderr)
+            return "refused"
+        rows, _, _ = eval_runs.scan_rows(eval_ledger)
+        same = [r for r in rows if r["eval"] == EVAL_ID and r["run_id"] == session and (r.get("meta") or {}).get("digest_id") == did]
+        # A replay after a crash reuses the generation's own refresh time, so the rows it rewrites come out identical.
+        was = (same[-1].get("meta") or {}).get("refreshed_at") if same else None
+        now = was if isinstance(was, str) and UTC_TS.match(was) else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        erow["ts"] = anchor
+        erow["meta"]["refreshed_at"] = now
+        problems = eval_runs.validate(erow)
+        if problems:
+            raise ValueError("eval-runs row: %s" % "; ".join(problems))
+        if not same:
+            eval_runs.append_row(erow, eval_ledger)
+        _stop_after("eval")
+        old, first = _old_failure_ts(failures_ledger, session)
+        for r in frows:
+            r["ts"] = old.get((r["agent"]["id"], r["class"]), first or anchor)
+            r["meta"] = {"digest_id": did, "refreshed_at": now}
+            problems = validate(r)
+            if problems:
+                raise ValueError("worker-failures row %s: %s" % (r["class"], "; ".join(problems)))
+        _replace_session(failures_ledger, session, frows)
+        _stop_after("failures")
+        _write_marker(marker, digest, erow)
+        return "refreshed"
 
 
 # --- backfill ------------------------------------------------------------------
@@ -632,6 +764,7 @@ def backfill(a):
     roots = _roots("phi-roots") + _roots("egress-denylist")
     live_cut = datetime.now(timezone.utc).timestamp() - a.live_minutes * 60
     n = workers = others = salus = done = live = fa = ea = restamped = 0
+    words = {"refreshed": 0, "unchanged": 0, "refused": 0, "inconclusive": 0}
     for j in sorted(glob.glob(os.path.join(a.projects, "*", "*.jsonl"))):
         session = os.path.basename(j)[:-len(".jsonl")]
         if not UUID.match(session) or os.path.getmtime(j) < since.timestamp():
@@ -663,6 +796,18 @@ def backfill(a):
         # A session recorded ok with its lane or profile unknown is asked again: its launch record may exist now.
         health = saved.get("tool_health") if done_ok else None
         no_profile = isinstance(health, list) and bool(health) and not any(isinstance(r, dict) and r.get("profile") not in (None, "unknown") for r in health)
+        if done_ok and getattr(a, "refresh", False):
+            if journal_last_ts(j) > live_cut:
+                live += 1
+                continue
+            who = {"leg": m.group(2) if m else None, "ticket": m.group(1) if m else None, "console": None, "pr": None,
+                   "doc": None, "lane": None, "state_dir": a.state_dir, "backfill": True,
+                   "launch_name": title if title and LAUNCH_NAME.match(title) else None, "kind": session_kind(title)}
+            try:
+                words[refresh(run_digest(j, session, a.denials_ledger), who, a.failures_ledger, a.eval_ledger)] += 1
+            except ValueError as err:
+                print("refresh: %s skipped: %s" % (session, err), file=sys.stderr)
+            continue
         if done_ok and saved.get("lane") != "unknown" and not no_profile:
             done += 1
             continue
@@ -687,7 +832,9 @@ def backfill(a):
         fa += f
         ea += e
     print("backfill: journals=%d workers=%d others=%d salus=%d already=%d failures+=%d eval+=%d live=%d restamped=%d"
-          % (n, workers, others, salus, done, fa, ea, live, restamped))
+          % (n, workers, others, salus, done, fa, ea, live, restamped)
+          + ("" if not getattr(a, "refresh", False) else " refreshed=%d unchanged=%d refused=%d inconclusive=%d"
+             % (words["refreshed"], words["unchanged"], words["refused"], words["inconclusive"])))
     return 0
 
 
@@ -712,6 +859,8 @@ def main(argv=None):
     b.add_argument("--projects", default=os.path.join(os.path.expanduser("~"), ".claude", "projects"))
     b.add_argument("--denials-ledger")
     b.add_argument("--live-minutes", type=int, default=LIVE_MINUTES)
+    b.add_argument("--refresh", action="store_true",
+                   help="re-digest sessions already recorded ok, keeping their original times (see REFRESH)")
     v = sub.add_parser("validate")
     v.add_argument("ledger")
     a = ap.parse_args(argv)

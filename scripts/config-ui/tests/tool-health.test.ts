@@ -1748,6 +1748,24 @@ test("outcome-partition-the-page-shows-not-run-and-changed-or-stopped", async ()
   expect((/<p class="sub" data-note="outcomes">([^<]*)</.exec(legacy) || [])[1]).toContain("not recorded for 1 of 1 sessions");
 });
 
+// The paired snapshot: an eval row's meta.tool_failures is the session's failure set; the ledger is the legacy fallback.
+const pRow = (tf?: any[]) => { const r: any = bEval(9, [bTool("Bash", 10, { "error/Bash": 2 })]); if (tf) r.meta.tool_failures = tf; return r; };
+const pFail = (cls: string, count: number) => ({ agent, class: cls, failure: cls.split("/")[0], count, recovered: null, identical_retry: null, first_ts: null, last_ts: null, tool_call_ids: [] });
+test("paired-snapshot-the-eval-row-failures-win-over-the-ledger", () => {
+  const ledger = [bFail(9, "error/Bash", 2), bFail(9, "error/TaskStop", 1)];
+  const d = roll([pRow([pFail("error/Bash", 2)])], ledger);
+  expect(d.class_counts["error/TaskStop"]).toBeUndefined();
+  expect(d.class_counts["error/Bash"]).toBe(2);
+});
+test("paired-snapshot-an-empty-list-is-authoritative-absence", () => {
+  const d = roll([pRow([])], [bFail(9, "error/Bash", 2)]);
+  expect(d.class_counts["error/Bash"]).toBeUndefined();
+});
+test("paired-snapshot-a-row-without-the-field-falls-back-to-the-ledger", () => {
+  const d = roll([pRow()], [bFail(9, "error/Bash", 2)]);
+  expect(d.class_counts["error/Bash"]).toBe(2);
+});
+
 // Evidence joins: refusal reasons join by session, call id and guard from the digest's full denied_calls, not the five-id sample.
 const J = "denied/block-read-secrets", JS = bSession(7);
 const jIds = Array.from({ length: 10 }, (_, i) => `toolu_J${i}`);

@@ -39,6 +39,12 @@ same 'fails=? when the chief lock has no readable start (HIMMEL-4670)' "$(fails_
     printf 'not json\n'
 } > "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 same 'fails= counts this shift only: rows, distinct workers, top class by workers (HIMMEL-4670)' "$(fails_of "$d4670")" '3/2@denied/guard-a*2'
+# A refresh rewrites rows with their original ts and meta {digest_id, refreshed_at}: a pre-shift session refreshed
+# during this shift stays out of it, and the summary is unchanged.
+cp "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER" "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER.pre"
+sed -e 's/^{"v":1,/{"v":1,"meta":{"digest_id":"0123456789abcdef0123456789abcdef","refreshed_at":"2026-10-07T03:40:00Z"},/' "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER.pre" > "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
+same 'fails= is unchanged when the rows are refreshed in place, a pre-shift session included' "$(fails_of "$d4670")" '3/2@denied/guard-a*2'
+mv "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER.pre" "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 {
     printf '%s\n' '{"ts":"2026-10-07T03:08:00Z","class":"denied/guard-a","legs":2,"decision":"filed","ticket":"HIMMEL-9001"}'
     printf '%s\n' '{"ts":"2026-10-07T03:08:00Z","class":"suite/test-x.sh","legs":1,"decision":"skipped:signal","ticket":null}'
