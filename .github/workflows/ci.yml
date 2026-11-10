@@ -1185,9 +1185,6 @@ jobs:
       - if: ${{ !job.container.id }}
         run: |
           python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r .github/ci-image/requirements-ci.txt
-      # The shellcheck-py hook builds its wheel from a GitHub release asset, so a
-      # release-host 5xx would redden every PR with no code cause. A warm cache skips that
-      # download; the key is the hook set, so a changed config rebuilds once.
       - id: precommit-cache
         name: Cache pre-commit environments
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1218,8 +1215,6 @@ jobs:
       - name: shellcheck (all files)
         if: github.event_name != 'pull_request'
         run: pre-commit run shellcheck --all-files --show-diff-on-failure
-      # A cold-cache failure while the release host is down is infra, not code.
-      # One line names the asset URL; a reachable host prints nothing (the failure is real).
       - name: Name a shellcheck release-host outage
         if: ${{ failure() && steps.precommit-cache.outputs.cache-hit != 'true' }}
         run: |
@@ -2150,9 +2145,6 @@ jobs:
       # (.github/ci-image/Dockerfile) on PATH for every ubuntu shard, and set
       # HIMMEL_REQUIRE_SHFMT=1 so a missing binary fails the suite, not skips it.
       # Keep ver/sha in lockstep with the Dockerfile.
-      # The binary is cached on its version, so a GitHub release-host 5xx does not redden
-      # every shard; the sha256 is checked on a restored copy too, and a cold-cache
-      # download failure prints ONE infra line naming the URL.
       - name: Record pinned shfmt version (cache key)
         if: runner.os == 'Linux'
         run: |

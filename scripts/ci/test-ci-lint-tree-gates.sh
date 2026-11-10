@@ -140,19 +140,15 @@ git -C "$S" checkout -q "$NOSUITE"
 run_step "$NOSUITE"
 if [ "$RC" -ne 0 ] && has "fail-open suite absent at base"; then pass "fail-open suite absent at base fails closed"; else fail "absent suite -> rc=$RC: $OUT"; fi
 
-# The lint job and the shell-unit shards fetch GitHub release assets (the wheel build of
-# the pinned linter, and shfmt). A 5xx from the release host would redden every open PR
-# with no code cause, so both run from an actions/cache entry and a cold-cache miss
-# during an outage names the URL and the word infra.
 job_block() { awk -v job="$1:" '/^  [a-z][a-z0-9-]*:/ { injob = ($1 == job) } injob' "$CI_YML"; }
-step_block() { # <job> <step name prefix> -> the step's lines
+step_block() {
   job_block "$1" | awk -v pfx="name: $2" '
       function flush() { if (index(buf, "\n        " pfx) > 0 || index(buf, "      - " pfx) > 0) printf "%s", buf; buf = "" }
       /^      - / { flush() }
       { buf = buf "\n" $0 }
       END { flush() }' | sed '1{/^$/d}'
 }
-step_run() { # <job> <step name prefix> -> the step's run body, de-indented
+step_run() {
   step_block "$1" "$2" | awk '
       /^        run: \|/ { inrun = 1; next }
       /^        run: / { sub(/^        run: /, ""); print; exit }
@@ -191,7 +187,7 @@ SHIM
 chmod 755 "$T/shim/curl"
 FAKESHA="$(printf fakeshfmt | sha256sum | cut -d' ' -f1)"
 sed -E -i "s/^( *sha=)[0-9a-f]{64}\$/\1$FAKESHA/" "$SH_RUN"
-run_shfmt() { # <seed: hit|bad|none> <curl fails: 0|1> -> OUT, RC; leaves CURL_LOG
+run_shfmt() {
   RT="$T/rt-shfmt"; rm -rf "$RT"; mkdir -p "$RT/shfmt-bin"
   : > "$T/ge"; : > "$T/gp"; CURL_LOG="$T/curl.log"; rm -f "$CURL_LOG"
   case "$1" in hit) printf fakeshfmt > "$RT/shfmt-bin/shfmt" ;; bad) printf corrupt > "$RT/shfmt-bin/shfmt" ;; esac
