@@ -323,6 +323,43 @@ row_report_window_ends_24h_back() {
     assert_contains "report_window_ends_24h_back: two days back takes the 49 h merge too" "denominator: 2" "$LAG_OUT"
 }
 
+row_replayed_finalize_writes_one_row() {
+    mkcase replayfinal
+    NOW=$((BASE)); lag_tick
+    cm $((BASE+100)) docs/a.md; local m="$LAST"
+    NOW=$((BASE+1000)); lag_tick
+    cp "$C/state/lag.pending" "$C/pending.saved"
+    idx_now docs/a.md
+    NOW=$((BASE+1300)); lag_tick
+    assert_eq "replayed_finalize_writes_one_row: the merge has its row" 1 "$(has_row "$m")"
+    cp "$C/pending.saved" "$C/state/lag.pending"
+    NOW=$((BASE+1600)); lag_tick
+    assert_eq "replayed_finalize_writes_one_row: a tick that died between the append and the pending write adds no second row" 1 "$(has_row "$m")"
+    assert_eq "replayed_finalize_writes_one_row: and the pending entry is cleared" "[]" "$(tr -d '\n' < "$C/state/lag.pending")"
+}
+
+row_replayed_cursor_write_adds_no_duplicate_pending() {
+    mkcase replaycursor
+    NOW=$((BASE)); lag_tick
+    cp "$C/state/lag.cursor" "$C/cursor.saved"
+    cm $((BASE+100)) docs/a.md
+    NOW=$((BASE+1000)); lag_tick
+    cp "$C/cursor.saved" "$C/state/lag.cursor"
+    NOW=$((BASE+1300)); lag_tick
+    assert_eq "replayed_cursor_write_adds_no_duplicate_pending: a tick that died after the pending write and before the cursor write keeps one entry" 1 "$(grep -o '"merge"' "$C/state/lag.pending" | wc -l | tr -d ' ')"
+}
+
+row_report_counts_pending_as_miss() {
+    mkcase pendingmiss
+    NOW=$((BASE)); lag_tick
+    cm $((BASE+100)) docs/a.md
+    NOW=$((BASE+1000)); lag_tick
+    NOW=$((BASE+100+86400+1000))
+    lag_report --days 1
+    assert_contains "report_counts_pending_as_miss: a merge still pending in the window is in the denominator" "denominator: 1" "$LAG_OUT"
+    assert_contains "report_counts_pending_as_miss: and counts as a miss" "headline: 0/1 = 0.0000" "$LAG_OUT"
+}
+
 row_graph_share_from_flow_rows() {
     mkcase graph
     # c0 is older than the window; g1..g5 sit inside it.
@@ -514,7 +551,8 @@ row_replay_healthy_tick_share() {
 for row in first_call_seeds_cursor_at_main burst_of_three_scores_three later_change_does_not_strand_merge \
     deleted_file_counts_as_in reads_active_rows_only unconfirmed_24h_writes_null_row ignored_md_never_sampled \
     sampler_matches_sha256 keyword_lag_trimmed report_prints_denominator_two_lines_and_wilson \
-    report_window_ends_24h_back graph_share_from_flow_rows usage replay_healthy_tick_share; do
+    report_window_ends_24h_back replayed_finalize_writes_one_row replayed_cursor_write_adds_no_duplicate_pending report_counts_pending_as_miss \
+    graph_share_from_flow_rows usage replay_healthy_tick_share; do
     echo "-- $row"
     "row_$row"
 done

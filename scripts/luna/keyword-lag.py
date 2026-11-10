@@ -184,7 +184,10 @@ def new_pending(pending, repo, cursor, main, is_indexed):
     for entry in pending:
         for path in entry["files"]:
             by_path.setdefault(path, []).append(entry)
+    folded = {entry["merge"] for entry in pending}
     for sha, stamp, changes in commits:
+        if sha in folded:
+            continue
         files = {}
         for status, oid, path in changes:
             if not is_indexed(path):
@@ -214,9 +217,26 @@ def merge_is_in(entry, active_hash, repo):
     return True
 
 
+def ledger_merges(path):
+    merges = set()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().split("\n")
+    except OSError:
+        return merges
+    for line in lines:
+        try:
+            merges.add(json.loads(line)["merge"])
+        except (ValueError, KeyError, TypeError):
+            continue
+    return merges
+
+
 def append_rows(path, rows):
     if not rows:
         return
+    known = ledger_merges(path)
+    rows = [row for row in rows if row["merge"] not in known]
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "a", encoding="utf-8") as fh:
         for row in rows:
@@ -438,6 +458,15 @@ def report(days, half, state, now):
             continue
         if start <= merged_at <= end:
             merges.append((merged_at, parse_iso(first) - merged_at if first else None))
+    final = ledger_merges(ledger_path(state))
+    try:
+        with open(os.path.join(state, "lag.pending"), encoding="utf-8") as fh:
+            pending = json.load(fh)
+    except (OSError, ValueError):
+        pending = []
+    for entry in pending:
+        if entry["merge"] not in final and start <= entry["merged_at"] <= end:
+            merges.append((entry["merged_at"], None))
     merges.sort()
     streaks = failure_streaks(runs, "post-merge-keyword", now)
     rules = [("reindex", lambda at, b: any(overlaps(s, at, b) for s in reindex)),
