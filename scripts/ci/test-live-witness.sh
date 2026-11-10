@@ -113,13 +113,17 @@ for _g in '*[!/]' '*[^/]' '*[!x]' '*/test-[a-z].sh'; do
 done
 
 echo "== W10: an exempt glob's last part is plain file-name characters only =="
-for _g in '*/!(x)' '*/te+st.sh'; do
+for _g in '*/!(x)' '*/te+st.sh' '*/té.sh'; do
   printf '%s HIMMEL-1 reason\n' "$_g" > "$sb/exempt-last"
-  out=$(env SUITE_LIVE_EXEMPT="$sb/exempt-last" bash "$LW" run --label x -- true 2>&1)
+  out=$(env LC_ALL=en_US.UTF-8 SUITE_LIVE_EXEMPT="$sb/exempt-last" bash "$LW" run --label x -- true 2>&1)
   rc=$?
   if [ "$rc" -eq 2 ]; then pass "W10: the glob $_g exits 2"; else fail "W10: expected 2 for $_g, got $rc; out: $out"; fi
   if grepq "$out" -F "names a family, not one suite file: $_g HIMMEL-1"; then pass "W10: the message names the $_g line"; else fail "W10: no message naming the $_g line; out: $out"; fi
 done
+printf '*/scripts/foo/test-x.sh HIMMEL-1² reason\n' > "$sb/exempt-last"
+out=$(env LC_ALL=en_US.UTF-8 SUITE_LIVE_EXEMPT="$sb/exempt-last" bash "$LW" run --label x -- true 2>&1)
+rc=$?
+if [ "$rc" -eq 2 ]; then pass "W10: a key with a non-ASCII digit exits 2"; else fail "W10: expected 2 for HIMMEL-1², got $rc; out: $out"; fi
 printf '*/scripts/foo/test-x.sh HIMMEL-1 reason\n' > "$sb/exempt-last"
 out=$(env SUITE_LIVE_EXEMPT="$sb/exempt-last" bash "$LW" run --label x -- true 2>&1)
 rc=$?

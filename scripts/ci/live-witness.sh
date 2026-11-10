@@ -165,7 +165,7 @@ live_witness_reset() {
 LW_EXEMPT=""
 LW_EXEMPT_ERR=""
 live_witness_exempt_load() {
-  local _f="${1:-}" _line _glob _key _rest _last _keyre='^HIMMEL-[0-9]+$' _lastre='^[A-Za-z0-9._-]+$'
+  local _f="${1:-}" _line _glob _key _rest _last _keyre='^HIMMEL-[0123456789]+$'
   LW_EXEMPT=""
   LW_EXEMPT_ERR=""
   [ -n "$_f" ] || return 0
@@ -184,10 +184,11 @@ live_witness_exempt_load() {
         LW_EXEMPT_ERR="exempt glob holds a bracket expression: $_line"
         return 2 ;;
     esac
-    if ! [[ "$_last" =~ $_lastre ]]; then
-      LW_EXEMPT_ERR="exempt glob names a family, not one suite file: $_line"
-      return 2
-    fi
+    case "$_last" in
+      ''|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*)
+        LW_EXEMPT_ERR="exempt glob names a family, not one suite file: $_line"
+        return 2 ;;
+    esac
     LW_EXEMPT="$LW_EXEMPT$_glob
 "
   done < "$_f" # read-sink-ok: the exempt list is the repo's own file, or the path a test sets through SUITE_LIVE_EXEMPT
