@@ -2195,7 +2195,6 @@ cgh="$(runcg "$CGM")"
 has "(8591) a DESIGN row holds no files against another candidate" "$cgh" "LOCAL${TAB}HIMMEL-907${TAB}"
 rm -f "$CGM/HIMMEL-907.md"
 
-# (9564, slice A) a gated bypass with no reviewed spec: core-check answers the golden line, and dispatch lists the design leg
 mk HIMMEL-9640 "To Do" High '[]' '["v1.0.1"]' '[]' "cg 9640" "Edit scripts/lib/cg9640.sh please."
 cp "$HERE/../../jira/src/release/fixtures/bypass-needs-spec.line" "$CG/core/HIMMEL-9640"
 cgn="$(runcg "$CGM")"

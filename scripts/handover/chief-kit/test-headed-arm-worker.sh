@@ -5959,8 +5959,6 @@ bad9625b="$tmp/bad9625b"; mkdir -p "$bad9625b"; rm -f "$shim9625/tr"
 robust9625 "a failing date" HOME="$bad9625b" PATH="$shim9625:$PATH"
 check "9625-robust a failing date (an empty ts) writes no row" "$(lr_lines "$bad9625b/.himmel/launch-refusals.jsonl")" ""
 
-# --- a BYPASS-NEEDS-SPEC brief is refused at launch -------
-# core-check answers the golden line for the brief's key; the launcher relays brief-lint's refusal and starts nothing.
 mkdir -p "$tmp/needs-jira"
 cat > "$tmp/needs-jira/index.js" <<'NNEOF'
 const fs = require('fs');

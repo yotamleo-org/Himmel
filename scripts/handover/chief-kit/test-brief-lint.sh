@@ -239,7 +239,7 @@ cg_ticket HIMMEL-9411 Task Medium   # core Writes, no spec
 cg_ticket HIMMEL-9412 Task Medium   # core Writes, no spec (second key of a pair)
 cg_ticket HIMMEL-9413 Task Medium   # core Writes, signed
 cg_ticket HIMMEL-9414 Bug Medium    # a Bug: core-check answers BYPASS
-cg_ticket HIMMEL-9640 Task Medium   # a bypassed key with no spec-review record: answers the golden line only while its mark exists
+cg_ticket HIMMEL-9640 Task Medium
 printf -- '---\nkey: "HIMMEL-9415"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: ["core"]\n---\n# HIMMEL-9415: t\n' > "$tmp/cg-mirror/HIMMEL-9415.md"   # core by its label
 printf -- '---\nkey: "HIMMEL-9416"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# HIMMEL-9416: t\n\nEdit scripts/handover/chief-kit/go.sh to change the GO path.\n' > "$tmp/cg-mirror/HIMMEL-9416.md"   # core by the path its own body names
 cg_ticket HIMMEL-9417 Task Medium   # names no path
@@ -265,7 +265,7 @@ if (a[0] === 'release' && a[1] === 'core-check') {
   for (const k of a.slice(a.indexOf('--key') + 1)) {
     const t = ticket(k);
     if (!t) console.log('UNKNOWN ' + k);
-    else if (fs.existsSync((process.env.BRIEF_LINT_TEST_NEEDS || '/nonexistent') + '/' + k)) process.stdout.write(fs.readFileSync(process.env.BRIEF_LINT_TEST_GOLDEN, 'utf8'));  // a key the rows mark answers the golden line
+    else if (fs.existsSync((process.env.BRIEF_LINT_TEST_NEEDS || '/nonexistent') + '/' + k)) process.stdout.write(fs.readFileSync(process.env.BRIEF_LINT_TEST_GOLDEN, 'utf8'));
     else if (t.type === 'Bug') console.log('BYPASS ' + k + ' bug a Bug is not gated');
     else if (hit) console.log('CORE ' + k + ' ' + hit);
     else if (t.labels.includes('core')) console.log(design ? 'BYPASS ' + k + ' design core by label only, docs-only leg' : 'CORE ' + k + ' label core');
@@ -473,8 +473,7 @@ rc=0; err="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" "$tmp/bnsp
 grep -Fq 'waives the signature, never the spec' <<< "$err" && ok "8s1b the refusal says the bypass waives the signature, never the spec" || bad "8s1b refusal text: $err"
 rc=0; err2="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" --core-only "$tmp/bnsp.md" 2>&1 >/dev/null)" || rc=$?
 { [ "$rc" -eq 3 ] && grep -Fq 'no spec-review record' <<< "$err2"; } && ok "8s2 --core-only refuses a BYPASS-NEEDS-SPEC key the same way" || bad "8s2 --core-only BYPASS-NEEDS-SPEC (rc=$rc want 3): $err2"
-# I4: brief-lint decides nothing from spec files; the same answer with the fixture specs removed
-export BRIEF_LINT_TEST_SPECS="$tmp/specs-9640"; mkdir -p "$BRIEF_LINT_TEST_SPECS"  # the suite's fixture specs directory; brief-lint never reads it
+export BRIEF_LINT_TEST_SPECS="$tmp/specs-9640"; mkdir -p "$BRIEF_LINT_TEST_SPECS"
 for f in HIMMEL-9640-spec.md HIMMEL-9640-plan.md HIMMEL-9640-critic-spec-r1.md; do printf '# fixture\n' > "$BRIEF_LINT_TEST_SPECS/$f"; done
 rc_with=0; err_with="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" "$tmp/bnsp.md" 2>&1 >/dev/null)" || rc_with=$?
 rm -f "$BRIEF_LINT_TEST_SPECS/"*
