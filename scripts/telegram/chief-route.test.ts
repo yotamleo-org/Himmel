@@ -2790,6 +2790,12 @@ test("R11: one unparseable ledger line refuses the seal, round-status, ledger-ve
   writeFileSync(ledger, good);
   expect((await sealOn(v2, [a], "SPEC CLEAN")).err).toBe("");
   expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", critic: "spec", round: 2 });
+  // A JSON line that lost the field the count reads is damage too: it refuses, it never counts as zero.
+  const sealed2 = readFileSync(ledger, "utf8"); const top = ledgerRows(t.specs, CAP_KEY).at(-1);
+  writeFileSync(ledger, `${sealed2}${JSON.stringify({ ...top, return_sha: "f".repeat(64), round: "x" })}\n`);
+  const damaged = await routeCli("round-status", CAP_KEY, "--specs", t.specs);
+  expect(damaged.err).toContain(`${CAP_KEY} ledger line ${sealed2.split("\n").filter(Boolean).length + 1} does not parse; restore it from the state repo history`);
+  expect(damaged.code).not.toBe(0);
 }, S1B);
 
 test("R12: planted critic files for a key the manifest lacks buy nothing: the real seal is round 1, the planted page gives T20, and the page with the real return sends", async () => {

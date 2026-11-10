@@ -580,7 +580,21 @@ export function parseFindings(returnText: string, kind: Kind, round: number): { 
   return { findings, unrated_ids: Array.from({ length: Math.max(0, counted - findings.length) }, (_, i) => `${kind}-r${round}-U${i + 1}`) };
 }
 
-// null = the key has no ledger file. A line that is not a JSON object refuses, naming the line.
+// A row the count or the seal checks read must carry the fields they read, so a damaged one refuses instead of counting as zero.
+const isCount = (n: unknown, min: number) => Number.isInteger(n) && (n as number) >= min;
+const isText = (s: unknown) => typeof s === "string" && s !== "";
+function wellFormed(r: Record<string, unknown>): boolean {
+  if (r.row === "round") return KINDS.includes(r.critic as Kind) && isCount(r.round, 1) && isText(r.return_sha) && isText(r.verdict_path) && isText(r.read_path) && isText(r.read_sha);
+  if (r.row === "seal") return isText(r.return_sha) && isText(r.read_path) && isText(r.read_sha);
+  if (r.row === "seed") {
+    const latest = r.latest as Record<string, unknown> | undefined;
+    return isCount(r.spec, 0) && isCount(r.plan, 0) && !!latest && KINDS.every(k => Array.isArray(latest[k])
+      && (latest[k] as Record<string, unknown>[]).every(x => isText(x?.return_sha) && isText(x?.verdict_path) && Array.isArray(x?.seals)));
+  }
+  return isText(r.row);
+}
+
+// null = the key has no ledger file. A line that is not a well-formed row refuses, naming the line.
 async function readLedger(specs: string, key: string): Promise<LedgerRow[] | null> {
   const text = await readFile(join(ledgerDir(specs), `${key}.jsonl`), "utf8").catch((e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return null;
@@ -591,7 +605,7 @@ async function readLedger(specs: string, key: string): Promise<LedgerRow[] | nul
     if (line === "") return [];
     let row: unknown;
     try { row = JSON.parse(line); } catch { row = null; }
-    if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error(`${key} ledger line ${i + 1} does not parse; restore it from the state repo history`);
+    if (!row || typeof row !== "object" || Array.isArray(row) || !wellFormed(row as Record<string, unknown>)) throw new Error(`${key} ledger line ${i + 1} does not parse; restore it from the state repo history`);
     return [row as LedgerRow];
   });
 }
@@ -786,7 +800,10 @@ export type LedgerVerdict = { key: string; kind: Kind; round: number; mode: stri
 // latest while no round of its kind followed), and every seal line it carries is one the ledger recorded.
 export async function ledgerVerify(file: string, opts: { spec?: string } = {}): Promise<LedgerVerdict> {
   const abs = await realpath(file).catch(() => { throw new Error(`${file}: not found`); });
-  const text = await readCritic(abs);
+  return verifyReturn(abs, await readCritic(abs), opts);
+}
+// The check on `text`, the bytes of `abs` the caller read once and goes on to use.
+async function verifyReturn(abs: string, text: string, opts: { spec?: string }): Promise<LedgerVerdict> {
   const spec = opts.spec === undefined ? undefined : await realpath(opts.spec).catch(() => resolve(opts.spec!));
   const specKey = spec ? keyOf(spec) : null;
   if (spec && !specKey) throw new Error(`${spec}: has no ticket key; name the spec <KEY>-<slug>.md or put it in specs/<KEY>/`);
@@ -992,24 +1009,25 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
   if (!key || !specs) throw new Error(`${spec}: has no ticket key under a specs folder, so its rounds cannot be read from a ledger; name the spec <KEY>-<slug>.md or put it in specs/<KEY>/; the page is not sent`);
   const state = await roundState(specs, key);
   const mayGoOpen = (kind: Kind, line: string) => FINDINGS[kind].test(line) && state[kind] >= CRITIC_ROUND_CAP;
-  const verdicts: VerdictLine[] = [];
+  const verdicts: VerdictLine[] = []; const verified = new Map<string, string>();
   for (const kind of KINDS) {
     const c = critics[kind]!;
     // Of the files that hold the highest round number, the one the ledger names as the latest sealed round governs;
     // the others go on the page's lead block only, and none of them decides the send.
-    let governing: { path: string; lv: LedgerVerdict } | null = null; let refusal: unknown = null;
+    let governing: { path: string; text: string; lv: LedgerVerdict } | null = null; let refusal: unknown = null;
     for (const path of [c.path, ...c.tied]) {
       try {
-        if (!sealsOf(await readCritic(path)).length) throw new Error(`${path} has no CONTENT-SHA256 line, so it does not record the bytes it read (chief-kit/critic-seal.sh adds it); the page is not sent`);
-        governing = { path, lv: await ledgerVerify(path, { spec: specReal }) };
+        const text = await readCritic(path);
+        if (!sealsOf(text).length) throw new Error(`${path} has no CONTENT-SHA256 line, so it does not record the bytes it read (chief-kit/critic-seal.sh adds it); the page is not sent`);
+        governing = { path, text, lv: await verifyReturn(await realpath(path), text, { spec: specReal }) };
         break;
       } catch (e) { refusal ??= e; }
     }
     if (!governing) throw refusal;
-    const text = await readFile(governing.path, "utf8");
+    const text = governing.text;
     const last = lastLine(text);
     if (last !== CLEAN[kind] && !mayGoOpen(kind, last)) throw new Error(`${governing.path}: the latest ${kind} critic ended '${last}', not '${CLEAN[kind]}'; the page is not sent`);
-    if (last !== CLEAN[kind]) open.add(governing.path);
+    if (last !== CLEAN[kind]) { open.add(governing.path); verified.set(governing.path, text); }
     for (const other of [c.path, ...c.tied]) if (other !== governing.path && lastLine(await readCritic(other)) !== CLEAN[kind]) open.add(other);
     const seals = sealsOf(text);
     const sealed = new Set<string>();
@@ -1025,14 +1043,15 @@ export async function checkSignaturePage(abs: string): Promise<{ verdicts: Verdi
     if (kind === "plan" && role === "plan" && !sealed.has(page)) throw new Error(`${governing.path} does not seal ${basename(page)}`);
     verdicts.push({ kind, round: governing.lv.round, file: basename(governing.path), verdict: last });
   }
-  return { verdicts, bytes, lead: open.size ? await openFindingsBlock(open, state) : "" };
+  return { verdicts, bytes, lead: open.size ? await openFindingsBlock(open, state, verified) : "" };
 }
 
 // The operator rules on this page rather than signing it (decision 734), so it opens by saying so, and with the
 // return of each critic that did not end clean, verbatim: a return is free prose, so no parser could list its findings one by one.
-async function openFindingsBlock(open: Set<string>, rounds: Record<Kind, number>): Promise<string> {
+// `verified` holds the bytes the ledger check read for a governing file, so the page shows those and no later copy.
+async function openFindingsBlock(open: Set<string>, rounds: Record<Kind, number>, verified: Map<string, string>): Promise<string> {
   const returns = await Promise.all([...open].map(async file => {
-    const text = await readCritic(file);
+    const text = verified.get(file) ?? await readCritic(file);
     return `<h2>${esc(basename(file))}: ${esc(lastLine(text))}</h2>\n<pre style="white-space:pre-wrap">${esc(text.split("\n").filter(l => !l.startsWith("CONTENT-SHA256 ")).join("\n"))}</pre>\n`;
   }));
   return `<section class="open-findings">
