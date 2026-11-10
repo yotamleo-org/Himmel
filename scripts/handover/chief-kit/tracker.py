@@ -1453,6 +1453,8 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
             signed = None
         if signed is not None:
             status = round_status_all(handover_dir)
+            if status is None and os.path.isdir(os.path.join(handover_dir, 'specs')):
+                unread.append('round ledger')
             if status:
                 critical_re = re.compile(r'^OPERATOR-CRITICAL:[ \t]*(%s)\b' % '|'.join(re.escape(str(c)) for c in status['classes']), re.M)
             latest = {}

@@ -1745,6 +1745,7 @@ test("readOwed: the round, the classes and the open operator-critical findings c
   expect(ruled.state === "ok" && ruled.items.filter((i) => i.source === "operator-critical finding")).toEqual([]);
   renameSync(join(specs, "ledgers"), join(specs, "ledgers.gone"));
   const gone = readOwed(env);
+  expect(gone.state === "ok" && gone.unread).toContain("round ledger");
   expect(gone.state === "ok" && gone.skipped).toEqual(["HIMMEL-1-seat.md.critic-spec-r2.md", "HIMMEL-2-sec.md.critic-spec-r1.md", "HIMMEL-5-moved.md.critic-spec-r1.md"]);
   expect(gone.state === "ok" && gone.items.filter((i) => i.source === "unsigned spec" || i.source === "operator-critical finding")).toEqual([]);
 });

@@ -1514,6 +1514,7 @@ not_contains 'R19-tracker: after the --no-round record the finding is not under 
 mv "$bk/specs/ledgers" "$bk/specs/ledgers.gone"
 v9611render --owed-dir "$bk"
 contains 'a bucket whose round status cannot be read names its critic files unread' "$(grep -F 'data-section="waiting"' "$v9611out")" 'HIMMEL-452-grant.md.critic-spec-r1.md'
+contains 'a bucket whose round status cannot be read names the round ledger unread' "$(grep -F 'data-section="waiting"' "$v9611out")" 'round ledger'
 not_contains 'a bucket whose round status cannot be read lists no unsigned spec' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$v9611out")" 'latest critic round'
 
 # --- both pages open dark with no saved choice, whatever the system preference says

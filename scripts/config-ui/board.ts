@@ -163,10 +163,10 @@ export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?:
 const OWED_SOURCES = 3; // unsigned specs, handoff items, chief doc lines
 type RoundKey = { spec?: unknown; critical_open?: { id: string; class: string; kind: string; round: number; verdict_path: string }[]; error?: string };
 type RoundStatus = { cap: number; classes: string[]; keys: Record<string, RoundKey> };
-const ROUTE = resolve(import.meta.dir, "../telegram/chief-route.ts");
-function roundStatusAll(bucket: string): RoundStatus | undefined {
+const ROUTE = resolve(import.meta.dir, "../telegram/chief-route.ts"), ROUND_LEDGER = "round ledger";
+function roundStatusAll(bucket: string, env: Env): RoundStatus | undefined {
   try {
-    const s = JSON.parse(execFileSync(process.execPath, [ROUTE, "round-status", "--all", "--specs", join(bucket, "specs"), "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60_000 }));
+    const s = JSON.parse(execFileSync(process.execPath, [ROUTE, "round-status", "--all", "--specs", join(bucket, "specs"), "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: childEnv(env), timeout: TIMEOUT_MS }));
     return s && Number.isInteger(s.cap) && Array.isArray(s.classes) && s.classes.length && s.keys && typeof s.keys === "object" ? s : undefined;
   } catch { return undefined; }
 }
@@ -191,7 +191,7 @@ const specId = (p: string) => {
   return r.replace(/\.md$/, "");
 };
 // `skipped` takes the critic files of single specs that could not be read: the rest of the list still stands.
-function specItems(bucket: string, version: string, open: Map<string, string>, skipped: string[]): OwedItem[] {
+function specItems(bucket: string, version: string, open: Map<string, string>, skipped: string[], unread: string[], env: Env): OwedItem[] {
   const signed = new Set<string>();
   let ledger = "";
   try { ledger = readText(join(bucket, "release", version, "operator.jsonl")); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; } // a release with no record yet has signed nothing
@@ -203,7 +203,8 @@ function specItems(bucket: string, version: string, open: Map<string, string>, s
     const m = f.match(/^(.*)\.critic-spec-r(\d+)\.md$/);
     if (m && (!latest.has(m[1]) || Number(m[2]) > latest.get(m[1])!.n)) latest.set(m[1], { n: Number(m[2]), f });
   }
-  const status = roundStatusAll(bucket), items: OwedItem[] = [];
+  const status = roundStatusAll(bucket, env), items: OwedItem[] = [];
+  if (!status) unread.push(ROUND_LEDGER);
   for (const [spec, { f }] of [...latest].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
     const key = spec.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
     const st = status && key ? status.keys[key] : undefined;
@@ -322,7 +323,7 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
   if (!bucket) { miss("unsigned specs", "no bucket: no chief doc under the handover root, and HIMMEL_BUCKET_DIR is not set"); miss("handoff items", "no bucket"); }
   else {
     if (!running) miss("unsigned specs", "no running version");
-    else tryRead("unsigned specs", () => specItems(bucket, running!, open, skipped), "none");
+    else tryRead("unsigned specs", () => specItems(bucket, running!, open, skipped, unread, env), "none");
     tryRead("handoff items", () => handoffItems(bucket), `no Open operator items section in the newest HANDOFF under ${bucket}`);
   }
   if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
@@ -331,7 +332,7 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
     if (live === undefined) miss("chief doc lines", "the chief doc has no Live state section");
     return [...(live ?? []), ...more];
   }, "");
-  return unread.length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread, skipped };
+  return unread.filter((u) => u !== ROUND_LEDGER).length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread, skipped };
 }
 
 // `asked`: the version tile picked on the page. A known one is the version the tab reads; an unknown one reads as the running version and the answer says so (fellBack).
