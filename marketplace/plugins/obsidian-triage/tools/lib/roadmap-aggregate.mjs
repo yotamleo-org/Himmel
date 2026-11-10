@@ -1,5 +1,5 @@
 /**
- * roadmap-aggregate.mjs — LUNA-59 pure cross-source item extraction for
+ * roadmap-aggregate.mjs — pure cross-source item extraction for
  * /roadmap-clips. No I/O, no network. Each parser takes file content + an
  * origin label and returns a flat list of roadmap "items" the skill then
  * clusters into a sequenced roadmap.
@@ -99,7 +99,7 @@ export function parsePromotionCandidate(content, origin) {
 }
 
 /** Component inventory note: name + type from frontmatter → one item. The
- * LUNA-57 component-scan notes carry the real kind in `component_type:`
+ * component-scan notes carry the real kind in `component_type:`
  * (skill/command/agent/tool) while `type:` is the literal note kind
  * `component`; prefer `component_type:` and fall back for hand-authored notes. */
 export function parseComponent(content, origin) {

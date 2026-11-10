@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""x-scrapling-media.py - cookieless X status media lookup (HIMMEL-4677).
+"""x-scrapling-media.py - cookieless X status media lookup.
 
 Sibling of ig-scrapling-media.py. Fetches a public x.com status page with
 Scrapling's stealth fetcher (NO cookies), records every video.twimg.com URL the
@@ -69,7 +69,7 @@ def _article_body(page_html, start):
 
 def main_article(page_html, status_id):
     """The status's own <article> with any quoted post's nested <article> cut
-    out, so its media before AND after the quote is kept (HIMMEL-4688). None
+    out, so its media before AND after the quote is kept. None
     when no article names it. The article is identified by its own permalink,
     which may sit after the quoted post (a focal tweet's timestamp)."""
     own = re.compile(rf"/status/{status_id}(?![0-9])")

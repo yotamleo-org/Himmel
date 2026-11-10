@@ -12,7 +12,7 @@
  * section. Plain tweets and long ("note") tweets are frontmatter-only
  * enrichments — the body already has the raw text from the clip-body harvest.
  *
- * HIMMEL-2621: a quote tweet gets BOTH — its own text body-filled into
+ * A quote tweet gets BOTH — its own text body-filled into
  * "## The Idea" (when the clip body is thin) AND the quoted post under
  * "## Crawled content". The chooser used to be exclusive, so any tweet with
  * a quote recorded only the QUOTED author's words.
@@ -37,11 +37,11 @@
  * Exit codes:
  *   0 — run completed, no clip failed (partial/skipped alone still exit 0)
  *   1 — bad usage
- *   3 — run completed but at least one clip failed (HIMMEL-1136: distinct
+ *   3 — run completed but at least one clip failed (distinct
  *       from 0 so a caller gating on exit code sees a 100%-failure run)
  *
- * LUNA-33. Default X enrich path (the Playwright X crawler was removed,
- * HIMMEL-4709).
+ * Default X enrich path (the Playwright X crawler was removed,
+ * after the cookie-free Scrapling path replaced it).
  */
 import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join, relative, sep, dirname } from "node:path";
@@ -228,7 +228,7 @@ function alreadyEnriched(fmRaw) {
 }
 
 /**
- * Return true when a clip is a pre-HIMMEL-2621 quote-only casualty: enriched
+ * Return true when a clip is a pre-fix quote-only casualty: enriched
  * by fxtwitter, the tweet carried a quote, the clip still has no
  * `## The Idea`, AND the body carries no real tweet text of its own — i.e. it
  * recorded the QUOTED author's words and dropped the clipped author's own. A
@@ -239,7 +239,7 @@ function alreadyEnriched(fmRaw) {
  * --reenrich-quote-only backfill targets exactly the casualties; every other
  * clip is skipped under that switch.
  *
- * A clip carrying `last_error: quote_only_no_own_text` (HIMMEL-2628) is also
+ * A clip carrying `last_error: quote_only_no_own_text` is also
  * excluded: a prior re-enrich already found the author added no text of
  * their own, so there is nothing left to body-fill and re-fetching it again
  * would only repeat that same no-op-ish rewrite.
@@ -372,7 +372,7 @@ function threadHasMultipleByAuthor(thread, screenName) {
 }
 
 /**
- * detectThreadSignal, extended with a fallback network check (HIMMEL-3506):
+ * detectThreadSignal, extended with a fallback network check for unmarked self-threads:
  * a corporate/launch self-thread often carries no text signal at all on
  * post 1 (no n/N counter, no 🧵, no reply-pointer) — replies > 0 is the only
  * hint. When the text heuristic misses and replies > 0, ask the keyless
@@ -909,7 +909,7 @@ function renderArticleSection(tweet) {
  *
  * `q.text` carries t.co links already expanded to their destination;
  * `q.raw_text.text` keeps the shortener — so `q.text` is preferred here
- * (verified against the live api.fxtwitter.com payloads on HIMMEL-2621).
+ * (verified against the live api.fxtwitter.com payloads when quote tweets were fixed).
  *
  * A quoted post that is itself an X Article, or media with a bare t.co
  * stand-in for its text, has no prose of its own. Rendering that verbatim
@@ -943,7 +943,7 @@ function renderQuoteBody(q) {
 /**
  * Render text as a markdown blockquote (`> ` per line).
  *
- * HIMMEL-2627: the quoted tweet's text is untrusted, verbatim third-party
+ * The quoted tweet's text is untrusted, verbatim third-party
  * content and may itself contain a line starting `## `. QUOTE_SECTION_RE's
  * lookahead stops at the next `\n## `, so a bare `## ` line inside the quote
  * would truncate a later strip of this same section. Blockquoting turns any

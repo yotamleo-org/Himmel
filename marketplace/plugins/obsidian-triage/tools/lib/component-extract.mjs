@@ -1,5 +1,5 @@
 /**
- * component-extract.mjs — LUNA-57 pure component extraction for the
+ * component-extract.mjs — pure component extraction for the
  * luna-ingest --deep mode. No I/O, no network. Mirrors the
  * frontmatter-parsing + slug conventions used across obsidian-triage tools.
  *
@@ -14,16 +14,16 @@ import { createHash } from "node:crypto";
  * The closed set of recognised component types. classifyPath and
  * extractComponent hardcode these literals rather than consult this constant,
  * so it must be kept in sync with both by hand — drift is caught by the
- * LUNA-62 "COMPONENT_TYPES complete" test, not at runtime. (LUNA-62)
+ * "COMPONENT_TYPES complete" test, not at runtime.
  */
 export const COMPONENT_TYPES = Object.freeze([
   "skill", "command", "agent", "plugin-manifest", "tool",
 ]);
 
-/** Upper bound on a stored component description (chars). (LUNA-63) */
+/** Upper bound on a stored component description (chars). */
 const MAX_DESCRIPTION = 500;
 
-/** Trim + cap a description to MAX_DESCRIPTION chars. (LUNA-63) */
+/** Trim + cap a description to MAX_DESCRIPTION chars. */
 function boundDescription(s) {
   const t = String(s || "").trim();
   return t.length <= MAX_DESCRIPTION ? t : t.slice(0, MAX_DESCRIPTION).trimEnd();
@@ -32,7 +32,7 @@ function boundDescription(s) {
 /**
  * Normalise a repo-relative component path: backslashes → forward slashes,
  * strip a leading `./`, collapse repeated slashes. So the same file is keyed
- * and recorded identically regardless of incidental path spelling. (LUNA-63)
+ * and recorded identically regardless of incidental path spelling.
  */
 export function normalizeComponentPath(p) {
   return String(p || "").replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/{2,}/g, "/");
@@ -106,7 +106,7 @@ export function componentSlug(name) {
     .replace(/^-+|-+$/g, "");
   if (!norm) return "x" + createHash("sha256").update(raw).digest("hex").slice(0, 8);
   if (norm.length <= 60) return norm;
-  // Truncation-collision guard (LUNA-61): distinct long names can share the
+  // Truncation-collision guard: distinct long names can share the
   // same 60-char prefix. Append a short hash of the FULL normalised slug so
   // identical names still collapse to one slug (correct dedup) while distinct
   // long names stay distinct. 51 + "-" + 8 hex = 60 chars max.
@@ -122,7 +122,7 @@ export function componentSlug(name) {
  * basename, which collides across sibling dirs in one repo (tools/a/x.mjs vs
  * tools/b/x.mjs); they dedup by their (normalised) repo-relative path instead,
  * so distinct tools never share a key while the same tool path seen in several
- * repos still merges to one note. (LUNA-61)
+ * repos still merges to one note.
  */
 export function componentIdentity(record) {
   if (record.type === "tool") {
@@ -135,7 +135,6 @@ export function componentIdentity(record) {
  * Canonical cross-repo dedup key: `<type>:<identity-slug>`. Identity is
  * name-based for skills/commands/agents/manifests and path-based for tools
  * (see componentIdentity); componentSlug guards against truncation collisions.
- * (LUNA-61)
  */
 export function componentKey(record) {
   return `${record.type}:${componentSlug(componentIdentity(record))}`;
@@ -154,9 +153,9 @@ function nameFromPath(path, type) {
  * Build a component record from a classified file.
  * Input: { path, type, content }. Output: { name, type, description, path }.
  * Malformed manifests/frontmatter degrade gracefully (basename + empty
- * description); descriptions are length-bounded (LUNA-63). Throws on an
+ * description); descriptions are length-bounded. Throws on an
  * unrecognised `type` — a programmer error, distinct from malformed content,
- * since classifyPath only ever yields a COMPONENT_TYPES member. (LUNA-62)
+ * since classifyPath only ever yields a COMPONENT_TYPES member.
  */
 export function extractComponent({ path, type, content }) {
   if (type === "plugin-manifest") {

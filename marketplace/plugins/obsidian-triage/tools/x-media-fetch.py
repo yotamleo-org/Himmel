@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""x-media-fetch.py - deterministic X/Twitter media enrichment rung (HIMMEL-1226).
+"""x-media-fetch.py - deterministic X/Twitter media enrichment rung.
 
-Parity sibling of ig-media-fetch.py (HIMMEL-770). The clip harvest pipeline
+Parity sibling of ig-media-fetch.py. The clip harvest pipeline
 stores a tweet's TEXT + media metadata only: X media is referenced by URL
 (`<video ... src="https://video.twimg.com/...">`, `![Image](https://pbs.twimg.com/media/...)`)
 and NEVER downloaded, so a tweet whose substance is the media (a video/GIF demo,
@@ -9,10 +9,10 @@ an animated UI element, a caption-less visual) leaves nothing searchable behind.
 This rung captures it. For X clips whose body carries a video.twimg.com /
 pbs.twimg.com/media/ reference and which carry no media_enriched_at: marker:
 
-  - Download the tweet's media with Scrapling, NO cookie (HIMMEL-4677:
+  - Download the tweet's media with Scrapling, NO cookie (the Scrapling-first rule:
     x-scrapling-media.py reads the status page and its video.twimg.com
     requests; curl / ffmpeg-HLS fetch the items). The gallery-dl cookie
-    fallback was removed (HIMMEL-4709).
+    fallback was removed.
   - Video items (incl. GIF-like tweet_video): ffmpeg -> mono 16kHz WAV -> local
     faster-whisper transcript. A SOUNDLESS video (the common tweet_video GIF -
     e.g. an animated UI element) has no audio to transcribe, so its first frame
@@ -37,7 +37,7 @@ pbs.twimg.com/media/ reference and which carry no media_enriched_at: marker:
 Media/audio/transcripts never leave the
 machine. Run under `uv run --python 3.12` (Windows python3 is a flaky Store stub).
 
-HIMMEL-4107 - subtitles first, with provenance:
+Subtitles first, with provenance:
   - A clip with no twimg body reference and no media_probe_at gets ONE
     api.fxtwitter.com probe (within --limit): a video stamps media_probe_result:
     video + media_video_duration_s and the clip proceeds; none stamps
@@ -163,7 +163,7 @@ def read_clip(path: Path):
 
 def write_clip(path: Path, text: str, has_crlf: bool):
     """Write a clip, re-emitting CRLF when the original used it. ATOMIC
-    (codex-adv HIMMEL-1226): write to a temp file in the SAME directory, fsync,
+    (codex adversarial review): write to a temp file in the SAME directory, fsync,
     then os.replace() onto the destination - so a mid-write crash / disk-full /
     I/O error can never truncate the existing note (a bare write_text truncates
     before writing, and the G-3 revert never runs when the write call itself
@@ -339,7 +339,7 @@ def scrapling_python():
 
 
 def _batch_module():
-    """harvest-clip-body-batch.py: the HIMMEL-4361 backend routing lives there."""
+    """harvest-clip-body-batch.py: the backend routing lives there."""
     import importlib.util
     path = Path(__file__).with_name("harvest-clip-body-batch.py")
     spec = importlib.util.spec_from_file_location("harvest_clip_body_batch", path)
@@ -349,7 +349,7 @@ def _batch_module():
 
 
 def scrapling_permitted(vault: Path, url: str) -> bool:
-    """HIMMEL-4361 routing for the Scrapling slot, under its harvest name
+    """Backend routing for the Scrapling slot, under its harvest name
     `local-headless`: the HARVEST_SCRAPE_DENY kill switch, then the vault's
     .harvest-backends (an unreadable file fails closed)."""
     killed = {n.strip() for n in (os.environ.get("HARVEST_SCRAPE_DENY") or "").split(",")}
@@ -366,8 +366,7 @@ def scrapling_permitted(vault: Path, url: str) -> bool:
 
 
 def preflight(scrapling: bool):
-    """ffmpeg and the Scrapling backend (the only backend, cookieless,
-    HIMMEL-4677)."""
+    """ffmpeg and the Scrapling backend (the only backend, cookieless)."""
     missing = [b for b in ("ffmpeg",) if shutil.which(b) is None]
     if missing or not scrapling:
         print(
@@ -526,7 +525,7 @@ def _resolve_hls(url: str, work: Path, deadline: float):
     init map and segment is fetched by _curl (media hosts only, no redirect),
     and work/master.m3u8 names only those local files. ffmpeg then reads it
     with the file protocol alone, so no playlist entry or redirect can make it
-    open a network address (HIMMEL-4704). Returns None or an error token."""
+    open a network address. Returns None or an error token."""
     src = work / "src.m3u8"
     err = _curl([(url, src)], deadline, HLS_PLAYLIST_MAX_BYTES)
     if err:
@@ -629,7 +628,7 @@ def _ffmpeg_hls(url: str, work: Path, target: Path):
 
 
 def download_media_scrapling(x: dict, py: str):
-    """Primary backend (HIMMEL-4677): x-scrapling-media.py reads the status page
+    """Primary backend: x-scrapling-media.py reads the status page
     with NO cookie and returns its media URLs; each is fetched in tweet order as
     NN.ext. Returns (files, None) or (None, error)."""
     dest = cache_root() / x["shortcode"]
@@ -1257,7 +1256,7 @@ def write_crawled(path: Path, text: str, fm_raw: str, body: str, section: str,
     }
     if enriched:
         markers["media_enriched_at"] = TODAY
-    markers.update(extra or {})   # provenance stamps (HIMMEL-4107)
+    markers.update(extra or {})   # provenance stamps
     new_fm_raw = upsert_media_markers(fm_raw, markers)
     if enriched:
         new_fm_raw = drop_x_media_pending(new_fm_raw)
@@ -1321,7 +1320,7 @@ def is_selected(fm: dict, fm_raw: str, body: str):
 
 
 def is_probe_candidate(fm: dict, fm_raw: str, body: str):
-    """HIMMEL-4107: an X clip with no media_enriched_at, no twimg body reference
+    """An X clip with no media_enriched_at, no twimg body reference
     and no media_probe_at yet - one fxtwitter call decides whether it has a video.
     Once stamped (video or no-video) it is never probed again."""
     x = is_x_source(fm.get("source", ""))
@@ -1700,7 +1699,7 @@ def _vault_root_from_clip(clip: Path) -> Path:
 
 
 def run_repair_provenance(clip: Path) -> int:
-    """One-time mechanical repair (HIMMEL-1235) for clips already written by
+    """One-time mechanical repair for clips already written by
     the pre-fix _splice_crawled: a ### Slides block + exactly one
     <!-- slides-pending-digest --> marker were spliced into a PRE-EXISTING
     ## Crawled content section (e.g. from an earlier fxtwitter pass) with NO
@@ -1710,7 +1709,7 @@ def run_repair_provenance(clip: Path) -> int:
     ### Slides block + exactly one pending marker inside it, or the section
     already carries x-media provenance.
 
-    Anti-forgery (HIMMEL-1228): BEFORE stamping provenance, every
+    Anti-forgery: BEFORE stamping provenance, every
     ![[Clippings/_media/<slug>/slide-NN.jpg]] embed in the ### Slides block
     must resolve to a file that actually exists on disk (relative to the
     vault root derived from the clip's own path) - a bare Slides block with no

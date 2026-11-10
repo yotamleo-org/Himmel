@@ -97,7 +97,7 @@ export function screenDossier(dossier, { scanFn = defaultScanFn } = {}) {
  * dossier.injection_suspect is true, also replaces account.bio, every
  * repos.sample_descriptions[] entry, every surviving sample_tweets[].text, AND
  * every claims[].text with "[withheld: injection-suspect]" — the tweet body is
- * often exactly where the injection hit lives (HIMMEL-703 Gap C), and claims[]
+ * often exactly where the injection hit lives (the scanner's gap C), and claims[]
  * carry regex-extracted spans of that same untrusted bio/tweet text, so
  * redacting bio/descriptions while leaking the tweets or claims would defeat
  * the screen. A clean dossier (injection_suspect: false) passes

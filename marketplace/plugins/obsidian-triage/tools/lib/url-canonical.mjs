@@ -5,7 +5,7 @@
  *   - harvest-clip-body-batch.py (Phase 3 of /harvest-clips)
  *   - fxtwitter-enrich.mjs    (canonicalXUrl)
  *
- * Rules (LUNA-37, matching harvest-clips.md Phase 3 table):
+ * Rules (matching harvest-clips.md Phase 3 table):
  *   - x.com / twitter.com / mobile.twitter.com  → host=x.com, keep /<user>/status/<id>, drop query
  *   - youtube.com / youtu.be                    → youtube.com/watch?v=<id>
  *   - github.com                                → lowercase owner/repo, strip /tree/, KEEP /blob/, trailing /
