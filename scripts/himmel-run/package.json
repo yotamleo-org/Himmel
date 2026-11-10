@@ -15,7 +15,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "commander": "^15.0.0",
+    "commander": "^15.1.0",
     "env-paths": "^4.0.0",
     "proper-lockfile": "^4.1.2"
   },
