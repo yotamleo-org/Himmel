@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/session-retro.py - top recurring worker stall classes over a window (a proof of concept).
+"""scripts/eval/session-retro.py - top recurring worker stall classes over a window.
 
 Read-only, deterministic, no model call. Counts the worker-failures ledger that
 scripts/handover/chief-kit/worker-digest-step.sh feeds (writer: worker_ledger.py;

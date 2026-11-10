@@ -18,7 +18,7 @@ cost_eq_per_ticket (cost_eq over the tickets that carry a worker-burn line), wor
 data is null, never 0.
 
 Sources, none of them a new pipeline:
-  merges, fix share, red main  scripts/insights/self-review.sh (the 30-day self-review), one
+  merges, fix share, red main  scripts/insights/self-review.sh, one
                                call per window; SELF_REVIEW_SCRIPT overrides the
                                path; absent or failing -> those columns are null
   tickets, cost_eq             first-parent merge subjects and the `worker-burn:`

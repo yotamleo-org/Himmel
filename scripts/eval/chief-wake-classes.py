@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/chief-wake-classes.py - chief wake classes for one date's chiefs (measured after the console split; Appendix A of the console-split plan).
+"""scripts/eval/chief-wake-classes.py - chief wake classes for one date's chiefs.
 
 Read-only, deterministic, no model call. Only token counts, tool names and tool inputs are read.
 
