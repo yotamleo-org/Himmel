@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixture-gated acceptance test for github source fan-out on promotion (LUNA-89).
+# Fixture-gated acceptance test for github source fan-out on promotion.
 #
 # Contract: when a github _evidence/ clip is promoted to a Tech subject, the
 # subject lands with a `## References` scaffold ready for deepening (the actual

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CLI mode tests for tools/lib/evidence-kind.mjs (D2, LUNA-84).
+# CLI mode tests for tools/lib/evidence-kind.mjs.
 # TDD: written BEFORE the CLI mode is added — Tests 1-4 are RED until
 # the `if (process.argv[1] ...)` block lands in evidence-kind.mjs.
 # Test 5 (import guard) should also be RED until then.

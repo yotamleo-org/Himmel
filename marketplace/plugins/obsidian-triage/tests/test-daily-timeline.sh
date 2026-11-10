@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixture-gated acceptance test for the daily-timeline integration (LUNA-90).
+# Fixture-gated acceptance test for the daily-timeline integration.
 #
 # The `## Clip pipeline` section in 50-Journal/Daily/<date>.md is a *state
 # recount*: `tools/daily-timeline.mjs --vault V --date D` recomputes all four

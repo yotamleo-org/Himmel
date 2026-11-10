@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Integration test: synthesize-stubs --apply emits the LUNA-91 promotion digest.
+# Integration test: synthesize-stubs --apply emits the promotion digest.
 #
-# Contract (design §8 + §12.F, Jira LUNA-91 acceptance):
+# Contract (design §8 + §12.F):
 #   - promoting telegram-origin evidence clips writes ONE batched digest reply
 #     per originating chat to <vault>/.synthesize-stubs.telegram-digest.json
 #     (NOT one per promotion).
@@ -138,7 +138,7 @@ assert "no digest written under --no-telegram-digest" "absent" "$f"
 # ── Vault E: real-bridge COMPOSITE telegram_msg_id, NO separate chat_id ──────
 # Some bridges file chat+message into one composite id. The digest must derive
 # the chat + numeric reply target from it end-to-end — no telegram_chat_id, no
-# backfill (the pre-LUNA-91 clips still work).
+# backfill (clips captured before the digest still work).
 E="$(mktemp -d)"
 mkvault "$E"
 comp_clip() { # name author url tag composite_msg_id

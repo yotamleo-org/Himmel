@@ -217,7 +217,7 @@ python3 "$TOOL" "$V" "$V/Clippings/c.md" --expect-sha "$(sha_of "$V/Clippings/c.
 assert "held exits 10" "10" "$rc"
 assert "stays in inbox" "yes" "$([ -f "$V/Clippings/c.md" ] && echo yes || echo no)"
 
-echo "Test 17: without PyYAML a malformed frontmatter fails closed (HIMMEL-4690)"
+echo "Test 17: without PyYAML a malformed frontmatter fails closed"
 V="$TMP/v17"; mkdir -p "$V/Clippings" "$TMP/noyaml"
 printf 'raise ImportError("no yaml here")\n' > "$TMP/noyaml/yaml.py"
 printf -- '---\ntitle: [unclosed\ntype: article\n---\nbody\n' > "$V/Clippings/m.md"
@@ -228,7 +228,7 @@ assert "result line names PyYAML" "yes" "$(case "$out" in (SKIP*PyYAML*) echo ye
 assert "clip untouched" "$before" "$(sha_of "$V/Clippings/m.md")"
 assert "clip not moved" "no" "$([ -e "$V/Clippings/_evidence/m.md" ] && echo yes || echo no)"
 
-echo "Test 18: a double-quoted escaped evidence_origin is decoded (HIMMEL-4691)"
+echo "Test 18: a double-quoted escaped evidence_origin is decoded"
 V="$TMP/v18"; mkdir -p "$V/Clippings/_evidence" "$V/Notes"
 printf -- '---\ntitle: e\ntype: article\nprocessed: true\nevidence_pending: true\nevidence_kind:\n  - article\nevidence_origin: "sub\\/pre"\n---\nbody\n' > "$V/Clippings/_evidence/pre.md"
 printf 'see [[Clippings/sub/pre]]\n' > "$V/Notes/n.md"
@@ -242,7 +242,7 @@ python3 "$TOOL" "$V" "$V/Clippings/_evidence/pre.md" --drain >/dev/null 2>&1; rc
 assert "commented origin: drain exits 0" "0" "$rc"
 assert "commented origin: link rewritten" "yes" "$(grep -qF '[[Clippings/_evidence/pre]]' "$V/Notes/n.md" && echo yes || echo no)"
 
-echo "Test 19: an unreadable directory refuses the move, debt kept (HIMMEL-4691)"
+echo "Test 19: an unreadable directory refuses the move, debt kept"
 if [ "$(id -u)" -eq 0 ]; then
     echo "  SKIP  root ignores directory permissions"
 else
@@ -257,7 +257,7 @@ else
     assert "debt marker kept" "yes" "$(has_line "$V/Clippings/w.md" "evidence_pending: true")"
 fi
 
-echo "Test 20: a note edited between read and replace is not clobbered (HIMMEL-4691)"
+echo "Test 20: a note edited between read and replace is not clobbered"
 V="$TMP/v20"; mkdir -p "$V/Clippings" "$V/Notes"
 printf 'see [[Clippings/w]]\n' > "$V/Notes/n.md"
 r="$(python3 - "$TOOL" "$V/Notes/n.md" "$V" <<'PY'

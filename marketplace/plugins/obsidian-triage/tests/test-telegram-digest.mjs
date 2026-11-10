@@ -1,12 +1,12 @@
 /**
- * test-telegram-digest.mjs — unit tests for the LUNA-91 batched promotion digest.
+ * test-telegram-digest.mjs — unit tests for the batched promotion digest.
  *
  * Run: node tests/test-telegram-digest.mjs
  * (from marketplace/plugins/obsidian-triage/)  — or via the .sh wrapper.
  *
  * No npm deps, no I/O: pure over plain objects.
  *
- * Contract (design §8 + §12.F, Jira LUNA-91 acceptance):
+ * Contract (design §8 + §12.F):
  *   - a run that promotes N telegram-origin clips sends ONE message (not N).
  *   - distinct subjects only; non-telegram clips never trigger feedback.
  *   - suppress (migration backfill) → no messages.
@@ -92,7 +92,7 @@ assert("parseTelegramRef prefers an explicit telegram_chat_id over the embedded 
   { chatId: "777", replyTo: "1782605997" }, parseTelegramRef({ telegram_chat_id: "777", telegram_msg_id: single }));
 
 // A composite-id clip with NO separate chat_id still yields one digest, chat +
-// reply_to recovered from the id (the 7 pre-LUNA-91 clips work, zero backfill).
+// reply_to recovered from the id (the 7 clips captured before the digest work, zero backfill).
 const composite = [{ subject: "[[30-Resources/Concepts/Voicebox]]", clip: { clipped_via: "telegram", telegram_msg_id: single } }];
 const dComp = buildPromotionDigest(composite);
 assert("composite-id clip (no separate chat_id) → one message", 1, dComp.length);

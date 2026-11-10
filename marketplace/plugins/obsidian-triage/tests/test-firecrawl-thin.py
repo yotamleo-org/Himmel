@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for the --firecrawl-thin escalation (LUNA-27 / HIMMEL-320).
+"""Unit tests for the --firecrawl-thin escalation.
 
 Hermetic: a FakeFirecrawl injects canned markdown — no network, no API
 key, no credits spent. Covers the helpers (thinness, eligibility, insert

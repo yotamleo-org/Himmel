@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for LUNA-59 roadmap-aggregate.mjs + lib/roadmap-aggregate.mjs.
+# Tests for roadmap-aggregate.mjs + lib/roadmap-aggregate.mjs.
 #
 # Scope (no live vault — uses a synthetic fixture vault):
 #   1. scripts parse (node --check)
@@ -52,7 +52,7 @@ echo "Test 2: usage / arg errors"
 node "$SCRIPT" -h >/dev/null 2>&1; assert "-h exits 0" 0 "$?"
 node "$SCRIPT" --bogus >/dev/null 2>&1; assert "unknown arg exits 1" 1 "$?"
 node "$SCRIPT" --emit yaml >/dev/null 2>&1; assert "bad --emit exits 1" 1 "$?"
-# LUNA-66: a value-taking flag with no following value (or a flag as its value) is rejected
+# a value-taking flag with no following value (or a flag as its value) is rejected
 node "$SCRIPT" --vault >/dev/null 2>&1; assert "--vault with no value exits 1" 1 "$?"
 node "$SCRIPT" --emit >/dev/null 2>&1; assert "--emit with no value exits 1" 1 "$?"
 node "$SCRIPT" --vault --emit json >/dev/null 2>&1; assert "--vault swallowing a flag exits 1" 1 "$?"
@@ -63,7 +63,7 @@ assert "daily action items count" 2 "$(C=$'- [ ] do thing\nnot a task\n- [ ] oth
 assert "daily backref → category" "Clippings/x" "$(C='- [ ] other (from [[Clippings/x]])' libcall "console.log(lib.parseDailyActionItems(process.env.C,'d.md')[0].category)")"
 assert "deferred section → category" "Fan-out" "$(C=$'## Fan-out\n- [ ] https://github.com/a/b' libcall "console.log(lib.parseDeferred(process.env.C,'_deferred.md')[0].category)")"
 assert "deferred item count" 2 "$(C=$'## S1\n- [ ] a\n## S2\n- [ ] b' libcall "console.log(lib.parseDeferred(process.env.C,'x').length)")"
-# LUNA-66: a deferred item that is exactly a wrapping markdown link → bare URL; other text untouched
+# a deferred item that is exactly a wrapping markdown link → bare URL; other text untouched
 assert "deferred unwraps wrapping md-link to url" "https://github.com/a/b" "$(C=$'## S\n- [ ] [repo a/b](https://github.com/a/b)' libcall "console.log(lib.parseDeferred(process.env.C,'x')[0].text)")"
 assert "deferred leaves plain text untouched" "do the thing" "$(C=$'## S\n- [ ] do the thing' libcall "console.log(lib.parseDeferred(process.env.C,'x')[0].text)")"
 assert "deferred leaves mid-sentence link untouched" "see [docs](https://x) for more" "$(C=$'## S\n- [ ] see [docs](https://x) for more' libcall "console.log(lib.parseDeferred(process.env.C,'x')[0].text)")"
@@ -75,7 +75,7 @@ assert "promotion absent → empty" 0 "$(C=$'---\ntitle: T\n---\nbody' libcall "
 assert "promotion quoted none → empty" 0 "$(C=$'---\ntitle: T\npromotion_candidate: \"none\"\n---' libcall "console.log(lib.parsePromotionCandidate(process.env.C,'c.md').length)")"
 assert "promotion None caps → empty" 0 "$(C=$'---\ntitle: T\npromotion_candidate: None\n---' libcall "console.log(lib.parsePromotionCandidate(process.env.C,'c.md').length)")"
 assert "promotion title fallback to origin" "c.md — go" "$(C=$'---\npromotion_candidate: go\n---' libcall "console.log(lib.parsePromotionCandidate(process.env.C,'c.md')[0].text)")"
-# component_type: real LUNA-57 note shape is type:component + component_type:<kind>
+# component_type: real component note shape is type:component + component_type:<kind>
 assert "component prefers component_type" "Foo (skill)" "$(C=$'---\nname: Foo\ntype: component\ncomponent_type: skill\n---' libcall "console.log(lib.parseComponent(process.env.C,'k.md')[0].text)")"
 assert "component falls back to type" "Bar (tool)" "$(C=$'---\nname: Bar\ntype: tool\n---' libcall "console.log(lib.parseComponent(process.env.C,'k.md')[0].text)")"
 assert "deferred item before any section → null category" "null" "$(C=$'- [ ] orphan' libcall "console.log(JSON.stringify(lib.parseDeferred(process.env.C,'x')[0].category))")"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke tests for LUNA-33 fxtwitter enricher.
+# Smoke tests for the fxtwitter enricher.
 #
 # Scope:
 #   - script parses (node --check)

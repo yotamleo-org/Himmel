@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for LUNA-57 component-scan.mjs + lib/component-extract.mjs.
+# Tests for component-scan.mjs + lib/component-extract.mjs.
 #
 # Scope (no live gh — end-to-end ingest is LUNA calibration):
 #   1. scripts parse (node --check)
@@ -227,7 +227,7 @@ grep -q 'R3=true' <<<"$out"  && r=yes || r=no;                 assert "4: new re
 grep -q 'alice/repo1' "$note" && grep -q 'bob/repo2' "$note" && r=yes || r=no; assert "4: seen_in lists both repos" yes "$r"
 seen_count=$(grep -cE '^\s+- ' "$note"); [ "$seen_count" -ge 2 ] && r=yes || r=no; assert "4: seen_in has >=2 entries" yes "$r"
 
-# -- Test 4c: cross-repo risk escalation (LUNA-57 I1) ---------------------
+# -- Test 4c: cross-repo risk escalation ---------------------
 echo "Test 4c: cross-repo risk escalation"
 vault4c="$tmpdir/cvault4c"; mkdir -p "$vault4c/.obsidian"
 cat >"$tmpdir/escalate-test.mjs" <<EOF
@@ -249,7 +249,7 @@ const opts = { vault, componentsDir: "30-Resources/Components", dryRun: false };
 const recA = { name: "Risky Tool", type: "tool", description: "Does risk.", path: "tools/risky.mjs",
   repo: "alice/safe", key: "tool:risky-tool", trust_tier: "known-author", safety_flag: "" };
 // Later, SAME tool path from a different repo: community-thin + red-team flag.
-// (Tools dedup by repo-relative path (LUNA-61), so recB keeps recA's path.)
+// (Tools dedup by repo-relative path, so recB keeps recA's path.)
 const recB = { ...recA, repo: "bob/sketchy",
   trust_tier: "community-thin", safety_flag: "red-team+agent" };
 const r1 = await upsertComponentNote(recA, opts); console.log("E_R1=" + r1.changed);
@@ -324,7 +324,7 @@ console.log("POS_HAS_NEW=" + posAfter.includes("newowner/newrepo"));
 // After the seen_in entry is inserted the YAML parse must fail → revert.
 const negDest = resolve(vault4b, "30-Resources/Components/tool");
 mkdirSync(negDest, { recursive: true });
-// Tools key by repo-relative path (LUNA-61): notedPath(tools/bad.mjs) -> tools-bad-mjs.md
+// Tools key by repo-relative path: notedPath(tools/bad.mjs) -> tools-bad-mjs.md
 const negPath = join(negDest, "tools-bad-mjs.md");
 // Intentionally broken YAML: unterminated string in frontmatter
 const badContent = [
@@ -391,7 +391,7 @@ const dryOpts = { vault, componentsDir: "30-Resources/Components", dryRun: true 
 const rec = { name: "Dry Tool", type: "tool", description: "no write.", path: "tools/dry.mjs",
   repo: "alice/repo", key: "tool:dry-tool", trust_tier: "known-author", safety_flag: "" };
 // Dry-run against a NON-existent target: changed=true but no file on disk.
-// Tools key by repo-relative path (LUNA-61): tools/dry.mjs -> tools-dry-mjs.md
+// Tools key by repo-relative path: tools/dry.mjs -> tools-dry-mjs.md
 const target = resolve(vault, "30-Resources/Components/tool/tools-dry-mjs.md");
 const r1 = await upsertComponentNote(rec, dryOpts);
 console.log("DRY_CREATE_CHANGED=" + r1.changed);
@@ -459,24 +459,24 @@ grep -q '30-Resources/Components' "$SKILL_MD"            && r=yes || r=no; asser
 grep -q 'component-scan.mjs' "$SKILL_MD"                 && r=yes || r=no; assert "6: SKILL references the tool" yes "$r"
 grep -q 'integrate.*take-parts\|take-parts.*integrate' "$SKILL_MD" && r=yes || r=no; assert "6: SKILL states ref-scan verdict gate" yes "$r"
 
-# -- Test 7: LUNA-61/62/63 disambiguation + polish ------------------------
+# -- Test 7: key disambiguation + polish ------------------------
 echo "Test 7a: key disambiguation, frozen types, desc bound (lib units)"
 cat >"$tmpdir/luna6163-test.mjs" <<EOF
 import { componentKey, componentSlug, COMPONENT_TYPES, extractComponent, normalizeComponentPath } from "$lib_url";
 
-// LUNA-61: two tools sharing a basename in different dirs of ONE repo must not
+// two tools sharing a basename in different dirs of ONE repo must not
 // collide (distinct keys); the same tool path stays stable under ./ spelling.
 const kA = componentKey({ type: "tool", name: "x.mjs", path: "tools/a/x.mjs" });
 const kB = componentKey({ type: "tool", name: "x.mjs", path: "tools/b/x.mjs" });
 console.log("TOOL_KEYS_DISTINCT=" + (kA !== kB));
 console.log("TOOL_KEY_STABLE=" + (kA === componentKey({ type: "tool", name: "x.mjs", path: "./tools/a/x.mjs" })));
 
-// LUNA-61: skills still dedup by declared name regardless of path.
+// skills still dedup by declared name regardless of path.
 const sA = componentKey({ type: "skill", name: "Foo", path: "skills/foo/SKILL.md" });
 const sB = componentKey({ type: "skill", name: "Foo", path: "plugins/p/skills/foo/SKILL.md" });
 console.log("SKILL_KEYS_MERGE=" + (sA === sB));
 
-// LUNA-61: truncation collision — distinct long names sharing a 60-char prefix
+// truncation collision — distinct long names sharing a 60-char prefix
 // must yield distinct, <=60-char, stable slugs.
 const long1 = "a".repeat(70) + "-one";
 const long2 = "a".repeat(70) + "-two";
@@ -485,34 +485,34 @@ console.log("TRUNC_DISTINCT=" + (t1 !== t2));
 console.log("TRUNC_BOUNDED=" + (t1.length <= 60 && t2.length <= 60));
 console.log("TRUNC_STABLE=" + (t1 === componentSlug(long1)));
 
-// LUNA-62: COMPONENT_TYPES frozen + complete; unknown type throws.
+// COMPONENT_TYPES frozen + complete; unknown type throws.
 console.log("TYPES_FROZEN=" + Object.isFrozen(COMPONENT_TYPES));
 console.log("TYPES_SET=" + COMPONENT_TYPES.join(","));
 let threw = false;
 try { extractComponent({ path: "x", type: "bogus", content: "" }); } catch { threw = true; }
 console.log("UNKNOWN_TYPE_THROWS=" + threw);
 
-// LUNA-63: description bounded to 500 chars.
+// description bounded to 500 chars.
 const huge = extractComponent({ path: "tools/big.mjs", type: "tool",
   content: "#!/usr/bin/env node\n// " + "z".repeat(2000) + "\n" });
 console.log("DESC_BOUNDED=" + (huge.description.length <= 500));
 
-// LUNA-63: normalizeComponentPath strips ./, backslashes, double-slashes.
+// normalizeComponentPath strips ./, backslashes, double-slashes.
 const BS = String.fromCharCode(92);
 console.log("NORM=" + normalizeComponentPath("." + "/tools" + BS + "a//x.mjs"));
 EOF
 out7="$(node "$tmpdir/luna6163-test.mjs" 2>&1)"
-grep -q 'TOOL_KEYS_DISTINCT=true' <<<"$out7"  && r=yes || r=no; assert "7a: LUNA-61 sibling-dir tools get distinct keys" yes "$r"
-grep -q 'TOOL_KEY_STABLE=true' <<<"$out7"     && r=yes || r=no; assert "7a: LUNA-61 tool key stable under ./ spelling" yes "$r"
-grep -q 'SKILL_KEYS_MERGE=true' <<<"$out7"    && r=yes || r=no; assert "7a: LUNA-61 skills still dedup by name across paths" yes "$r"
-grep -q 'TRUNC_DISTINCT=true' <<<"$out7"      && r=yes || r=no; assert "7a: LUNA-61 long-name truncation collision avoided" yes "$r"
-grep -q 'TRUNC_BOUNDED=true' <<<"$out7"       && r=yes || r=no; assert "7a: LUNA-61 truncated slug <= 60 chars" yes "$r"
-grep -q 'TRUNC_STABLE=true' <<<"$out7"        && r=yes || r=no; assert "7a: LUNA-61 truncated slug stable (dedup)" yes "$r"
-grep -q 'TYPES_FROZEN=true' <<<"$out7"        && r=yes || r=no; assert "7a: LUNA-62 COMPONENT_TYPES is frozen" yes "$r"
-grep -q 'TYPES_SET=skill,command,agent,plugin-manifest,tool' <<<"$out7" && r=yes || r=no; assert "7a: LUNA-62 COMPONENT_TYPES complete" yes "$r"
-grep -q 'UNKNOWN_TYPE_THROWS=true' <<<"$out7" && r=yes || r=no; assert "7a: LUNA-62 extractComponent throws on unknown type" yes "$r"
-grep -q 'DESC_BOUNDED=true' <<<"$out7"        && r=yes || r=no; assert "7a: LUNA-63 description bounded to 500 chars" yes "$r"
-grep -q 'NORM=tools/a/x.mjs' <<<"$out7"       && r=yes || r=no; assert "7a: LUNA-63 normalizeComponentPath canonicalises" yes "$r"
+grep -q 'TOOL_KEYS_DISTINCT=true' <<<"$out7"  && r=yes || r=no; assert "7a: sibling-dir tools get distinct keys" yes "$r"
+grep -q 'TOOL_KEY_STABLE=true' <<<"$out7"     && r=yes || r=no; assert "7a: tool key stable under ./ spelling" yes "$r"
+grep -q 'SKILL_KEYS_MERGE=true' <<<"$out7"    && r=yes || r=no; assert "7a: skills still dedup by name across paths" yes "$r"
+grep -q 'TRUNC_DISTINCT=true' <<<"$out7"      && r=yes || r=no; assert "7a: long-name truncation collision avoided" yes "$r"
+grep -q 'TRUNC_BOUNDED=true' <<<"$out7"       && r=yes || r=no; assert "7a: truncated slug <= 60 chars" yes "$r"
+grep -q 'TRUNC_STABLE=true' <<<"$out7"        && r=yes || r=no; assert "7a: truncated slug stable (dedup)" yes "$r"
+grep -q 'TYPES_FROZEN=true' <<<"$out7"        && r=yes || r=no; assert "7a: COMPONENT_TYPES is frozen" yes "$r"
+grep -q 'TYPES_SET=skill,command,agent,plugin-manifest,tool' <<<"$out7" && r=yes || r=no; assert "7a: COMPONENT_TYPES complete" yes "$r"
+grep -q 'UNKNOWN_TYPE_THROWS=true' <<<"$out7" && r=yes || r=no; assert "7a: extractComponent throws on unknown type" yes "$r"
+grep -q 'DESC_BOUNDED=true' <<<"$out7"        && r=yes || r=no; assert "7a: description bounded to 500 chars" yes "$r"
+grep -q 'NORM=tools/a/x.mjs' <<<"$out7"       && r=yes || r=no; assert "7a: normalizeComponentPath canonicalises" yes "$r"
 
 echo "Test 7b: seen_in path normalize + trust_tier parse-back (upsert)"
 cat >"$tmpdir/luna63-upsert-test.mjs" <<EOF
@@ -531,11 +531,11 @@ await upsertComponentNote(rec, opts);
 const target = resolve(vault, "30-Resources/Components/tool/tools-norm-mjs.md");
 const text = readFileSync(target, "utf-8");
 console.log("SEEN_NORMALISED=" + (text.includes("alice/repo#tools/norm.mjs") && !text.includes("#./tools")));
-// LUNA-63: the CREATE path quotes trust_tier too (symmetry with the update
+// the CREATE path quotes trust_tier too (symmetry with the update
 // path) — assert directly, before any update touches the note.
 console.log("CREATE_TIER_QUOTED=" + /^trust_tier: "known-author"$/m.test(text));
 
-// LUNA-61: two tools sharing a basename in different dirs must land in TWO
+// two tools sharing a basename in different dirs must land in TWO
 // distinct notes (the user-visible bug), not merge into one.
 const sibA = { name: "x.mjs", type: "tool", description: "a", path: "tools/a/x.mjs",
   repo: "r/a", key: "tool:a", trust_tier: "", safety_flag: "" };
@@ -557,11 +557,11 @@ console.log("PARSEBACK_CHANGED=" + r.changed);
 console.log("PARSEBACK_NORMALISED=" + /^trust_tier: "unknown-risk"$/m.test(after));
 EOF
 out7b="$(node "$tmpdir/luna63-upsert-test.mjs" 2>&1)"
-grep -q 'SEEN_NORMALISED=true' <<<"$out7b"     && r=yes || r=no; assert "7b: LUNA-63 seen_in path normalised (no ./ prefix)" yes "$r"
-grep -q 'CREATE_TIER_QUOTED=true' <<<"$out7b"  && r=yes || r=no; assert "7b: LUNA-63 create path quotes trust_tier (symmetry)" yes "$r"
-grep -q 'SIBLING_TWO_FILES=true' <<<"$out7b"   && r=yes || r=no; assert "7b: LUNA-61 sibling-dir tools land in two distinct notes" yes "$r"
-grep -q 'PARSEBACK_CHANGED=true' <<<"$out7b"   && r=yes || r=no; assert "7b: LUNA-63 non-canonical on-disk tier triggers rewrite" yes "$r"
-grep -q 'PARSEBACK_NORMALISED=true' <<<"$out7b" && r=yes || r=no; assert "7b: LUNA-63 parsed-back garbage tier normalised to unknown-risk" yes "$r"
+grep -q 'SEEN_NORMALISED=true' <<<"$out7b"     && r=yes || r=no; assert "7b: seen_in path normalised (no ./ prefix)" yes "$r"
+grep -q 'CREATE_TIER_QUOTED=true' <<<"$out7b"  && r=yes || r=no; assert "7b: create path quotes trust_tier (symmetry)" yes "$r"
+grep -q 'SIBLING_TWO_FILES=true' <<<"$out7b"   && r=yes || r=no; assert "7b: sibling-dir tools land in two distinct notes" yes "$r"
+grep -q 'PARSEBACK_CHANGED=true' <<<"$out7b"   && r=yes || r=no; assert "7b: non-canonical on-disk tier triggers rewrite" yes "$r"
+grep -q 'PARSEBACK_NORMALISED=true' <<<"$out7b" && r=yes || r=no; assert "7b: parsed-back garbage tier normalised to unknown-risk" yes "$r"
 
 # -- Results summary -------------------------------------------------------
 total=$((pass + fail))

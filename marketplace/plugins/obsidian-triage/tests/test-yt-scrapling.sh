@@ -108,7 +108,7 @@ case "$fetched" in "https://www.youtube.com/watch?v=$VID"*) a=ok ;; *) a="wrong-
 assert "pinned URL still names this video on www.youtube.com" ok "$a"
 
 # --- Test 3: routing -------------------------------------------------------
-echo "Test 3: HIMMEL-4361 route"
+echo "Test 3: per-site backend routing"
 mkdir -p "$tmp/v3"
 HARVEST_SCRAPE_DENY=local-headless helper --vault "$tmp/v3" --from-html "$FIX/watch.html" >"$tmp/kill.json"
 assert "kill switch -> skipped exit 7" 7 "$?"

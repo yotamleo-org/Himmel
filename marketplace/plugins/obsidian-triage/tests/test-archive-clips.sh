@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Invariant + functional tests for /archive-clips (Stage 4, LUNA-55).
+# Invariant + functional tests for /archive-clips (Stage 4).
 #
 # Structural: the runbook declares the right tools/gates and the
 # inbox-internal exclusions (_synthesis/_done/_deferred) are present in
@@ -62,7 +62,7 @@ echo "Test 3: dry-run hard gate + violation abort"
 if grep -qE "DRY_RUN=1" "$CMD" && grep -qF "DRY-RUN CONTRACT VIOLATION" "$CMD"; then dry=yes; else dry=no; fi
 assert "dry-run hard gate present" "yes" "$dry"
 
-echo "Test 4: HIMMEL-128 — no headless claude invocation pattern"
+echo "Test 4: no headless claude invocation pattern (headless claude -p is billed separately)"
 if grep -qE '^[^#>]*Bash:[[:space:]]*claude[[:space:]]+(-p|--print|--bg)' "$CMD"; then viol=yes; else viol=no; fi
 assert "no Bash: claude invocation" "no" "$viol"
 
@@ -105,7 +105,7 @@ done
 # mis-parses inline quoted patterns/replacements and leaks the quote characters into the
 # result; a quoted pattern held in a variable with an UNQUOTED replacement variable is
 # the one spelling that behaves identically on 3.2 and 5.x.
-# ponytail: works around bash 3.2 quoting (no product bug), drop once macOS CI runs bash >= 4, HIMMEL-3719.
+# Works around bash 3.2 quoting (no product bug); drop once macOS CI runs bash >= 4.
 lit_sub() {
   local _v="$1" _p="$2" _r="$3" _cur
   eval "_cur=\$$_v"
@@ -184,7 +184,7 @@ elig_url="https://x.com/a/status/1"   # eligible clip's value, unquoted
 if grep -qxF "$elig_url" "$tmp3/done-urls.txt"; then dq=match; else dq=miss; fi
 assert "quoted _done url normalizes to match unquoted eligible url" "match" "$dq"
 
-echo "Test 13: FUNCTIONAL — clip's OWN self-ref remaps to _done on graduation (LUNA-60)"
+echo "Test 13: FUNCTIONAL — clip's OWN self-ref remaps to _done on graduation"
 # Regression guard. /triage-clips Phase 6 appends a `## Promotion candidate` section to every
 # clip it marks processed:true; its bi-temporal-anchor bullet carries a backticked example
 # wikilink `[[Clippings/<OLD>]]` (NOT a frontmatter field — see triage-clips.md:166). The fixture
@@ -246,7 +246,7 @@ assert "A: moved clip self-ref remapped to _done path" "remapped" "$sr"
 assert "A: zero stale OLD links after self-ref remap (no false revert)" "0" "$(verify_clean)"
 
 # --- Case B: clip self-ref is the ONLY inbound link (no external note). This is the purest
-# form of the LUNA-60 bug — the moved clip is the sole step-3 hit. Guards a future refactor
+# form of the self-reference remap bug — the moved clip is the sole step-3 hit. Guards a future refactor
 # that might skip the rewrite loop when there are no EXTERNAL inbound notes. ---
 rm -f "$tmp4/30-Resources/Tech/note.md" "$tmp4/Clippings/$NEW4.md"
 make_selfref_clip "$tmp4/Clippings/$OLD4.md"
@@ -310,7 +310,7 @@ empty_section="$(
 )"
 assert "Enricher gaps section omitted when empty" "" "$empty_section"
 
-echo "Test 15: FUNCTIONAL — _deferred Stuck-in-inbox section (HIMMEL-1713)"
+echo "Test 15: FUNCTIONAL — _deferred Stuck-in-inbox section"
 # Mirrors Phase 2's stuck-in-inbox tracking: a top-level clip with
 # harvested_at + processed:true that is NOT synthesis-cited renders one
 # line (basename, triaged_at, days-stuck, ig_media_pending true|cleared,
@@ -409,7 +409,7 @@ else
 fi
 assert ".md-cited clip exercises predicate and renders empty stuck section" "_(none)_" "$empty_stuck_render"
 
-echo "Test 16: harvest-completion gate (G-8, HIMMEL-1137) documented in all three downstream runbooks"
+echo "Test 16: harvest-completion gate (G-8) documented in all three downstream runbooks"
 # triage/synthesize/archive each consume harvest output and must refuse to
 # run against a harvest that never finished cleanly.
 for rb in triage-clips.md synthesize-clips.md archive-clips.md; do
@@ -426,7 +426,7 @@ for rb in triage-clips.md synthesize-clips.md archive-clips.md; do
     assert "$rb has no date-freshness wording (marker presence alone gates, since G-2 invalidates at harvest start)" "no" "$found"
 done
 
-echo "Test 17: run output separates structurally-stuck clips from retry-next-run skips (HIMMEL-1713)"
+echo "Test 17: run output separates structurally-stuck clips from retry-next-run skips"
 if grep -qF '⊘ <clip-filename.md> — skipped (stuck):' "$CMD"; then found=yes; else found=no; fi
 assert "logging contract declares a distinct 'skipped (stuck)' line" "yes" "$found"
 if grep -qF 'archive-clips: <T> stuck in inbox' "$CMD"; then found=yes; else found=no; fi
