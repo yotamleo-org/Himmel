@@ -5218,6 +5218,11 @@ check_c65_git_gates() {
     fi
 }
 
+# epoch seconds -> "YYYY-MM-DD HH:MM": GNU date -d @N, else BSD date -r N
+_c77_fmt() {
+    date -d "@$1" '+%F %H:%M' 2>/dev/null || date -r "$1" '+%F %H:%M' 2>/dev/null  # gnu-ok: BSD date -r follows on this same line
+}
+
 # --- C77: telegram-bridge poller older than its code ---
 # The 10-27 AI TODO outage: a pull changed scripts/telegram, scripts/lanes and scripts/lib while the
 # bridge process kept the code it started with, and a group went unanswered for 12 h. C30 only asks
@@ -5236,20 +5241,25 @@ check_c77_bridge_stale() {
     [ "$(_systemd_user_unit_state "$systemctl_bin" "$unit")" = enabled ] || return 0
     started="$("$systemctl_bin" --user show "$unit" -p ActiveEnterTimestamp --value 2>/dev/null)" || return 0
     [ -n "$started" ] || return 0
-    started_ts="$(date -d "$started" +%s 2>/dev/null)" || {  # gnu-ok: systemd on Linux prints the timestamp; macOS has no user bridge unit, so the unreadable branch below covers it
-        emit INFO C77-bridge-stale "$unit start time '$started' is unreadable — bridge staleness undetermined" \
-            "verify manually: $systemctl_bin --user show $unit -p ActiveEnterTimestamp --value"
-        return 0
-    }
+    case "$started" in
+        @[0-9]*) started_ts="${started#@}" ;;  # an @epoch start time needs no GNU-only parse
+        *) started_ts="$(date -d "$started" +%s 2>/dev/null)" ;;  # gnu-ok: systemd on Linux prints a local-time stamp; BSD date cannot parse it, so the unreadable branch below covers it
+    esac
+    case "$started_ts" in
+        ''|*[!0-9]*)
+            emit INFO C77-bridge-stale "$unit start time '$started' is unreadable — bridge staleness undetermined" \
+                "verify manually: $systemctl_bin --user show $unit -p ActiveEnterTimestamp --value"
+            return 0 ;;
+    esac
     commit_ts="$(git -C "$REPO_ROOT" log -1 --format=%ct -- scripts/telegram scripts/lanes scripts/lib 2>/dev/null)" || return 0
     [ -n "$commit_ts" ] || return 0
     if [ "$commit_ts" -gt "$started_ts" ]; then
         subject="$(git -C "$REPO_ROOT" log -1 --format=%s -- scripts/telegram scripts/lanes scripts/lib 2>/dev/null)"
-        started_fmt="$(date -d "@$started_ts" '+%F %H:%M' 2>/dev/null)"  # gnu-ok: only reached after the GNU parse above succeeded
-        commit_fmt="$(date -d "@$commit_ts" '+%F %H:%M' 2>/dev/null)"  # gnu-ok: same Linux-only path
+        started_fmt="$(_c77_fmt "$started_ts")"
+        commit_fmt="$(_c77_fmt "$commit_ts")"
         local stamp last_fmt="never"
         stamp="$(cat "$HOME/.himmel/state/bridge-restart.ts" 2>/dev/null)"
-        case "$stamp" in ''|*[!0-9]*) ;; *) last_fmt="$(date -d "@$stamp" '+%F %H:%M' 2>/dev/null || echo never)" ;; esac  # gnu-ok: same Linux-only path
+        case "$stamp" in ''|*[!0-9]*) ;; *) last_fmt="$(_c77_fmt "$stamp" || echo never)" ;; esac
         emit WARN C77-bridge-stale "$unit started $started_fmt before the newest commit to scripts/telegram, scripts/lanes or scripts/lib ($commit_fmt: $subject) — the poller runs stale code" \
             "the restart is automatic after station-sync (last restart: $last_fmt); if it stays stale: systemctl --user restart $unit   # this check never restarts it"
         return 0
