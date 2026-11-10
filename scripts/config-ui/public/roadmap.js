@@ -358,6 +358,7 @@ function waitingRows(d, ch, nv, owed, prs) {
   // an owed item naming a ticket joins that ticket's row (one row per key); one naming none is a row of its own
   const loose = [];
   if (owed && owed.state === "ok") (owed.items || []).forEach((item, i) => {
+    if (item.source === "unclosed worker") return;
     if (item.key) { const r = get(item.key, item.title, false); r.ctx.push(item.ctx); r.acts.push(item.act); }
     else loose.push({ key: "", title: item.title, labels: [], noVersion: false, ctx: [item.ctx], acts: [item.act], loose: true, id: `owed-${i}` });
   });
@@ -396,6 +397,17 @@ function waitingHtml(rows, tabCh, v, d, ch, nv, owed) {
   const sub = `${rows.length} ${rows.length === 1 ? noun[0] : noun[1]} on you, across every version${nvRead ? " and the tickets with no version" : ""}${notes.length ? ` (${notes.join("; ")})` : ""}.`;
   return `<section id="rm-waiting" aria-label="Waiting on you"><div class="gh">Waiting on you · ${rows.length} ${rows.some((x) => x.loose) ? (rows.length === 1 ? "item" : "items") : (rows.length === 1 ? "ticket" : "tickets")}, every version</div>`
     + `<div class="cc"><p class="sub">${esc(sub)}</p><ul class="rm-waiting">${rows.map(row).join("")}</ul></div></section>`;
+}
+
+const heldFor = (since) => {
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - since));
+  return s < 3600 ? `${Math.floor(s / 60)} min` : s < 86400 ? `${Math.floor(s / 3600)} h` : `${Math.floor(s / 86400)} d`;
+};
+function chiefWaitHtml(owed) {
+  const items = owed && owed.state === "ok" ? (owed.items || []).filter((i) => i.source === "unclosed worker") : [];
+  if (!items.length) return "";
+  const row = (i) => `<li>${esc(i.label || i.title)} is finished and its window is still open${Number.isFinite(i.since) ? ` <span class="ro">held ${heldFor(i.since)}</span>` : ""}<br><span class="ro">Action: ${esc(i.act)}</span></li>`;
+  return `<section id="rm-chief-wait" aria-label="Waiting on the chief"><div class="gh">Waiting on the chief · not counted as waiting on you</div><div class="cc"><ul class="rm-waiting">${items.map(row).join("")}</ul></div></section>`;
 }
 
 function tabsHtml(d, ui, tab, ch, dr, sel) {
@@ -1044,7 +1056,7 @@ function boardPage(data, ui, extras) {
   if (tab === "chains") panel = chainsTab(ui, tabCh, data, ch, chipSel);
   else {
     const shownCh = readFor(tab, ch, cardCh);
-    const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr, prs) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv, owed) + lanesHtml(data, ui, sel, cardCh, dr, prs);
+    const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr, prs) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv, owed) + chiefWaitHtml(owed) + lanesHtml(data, ui, sel, cardCh, dr, prs);
     const chainOfThisVersion = cardCh === tabCh && chainOk(tabCh) && tabCh.version ? tabCh : null;
     const head = tab === "roadmap" ? roadmapHead(data, sel, chainOfThisVersion) : tab === "nv" ? nvHead(ui.nv) : tidyHead(data, ui, sel, dr);
     panel = `<section class="cp plain" aria-label="${esc(TABS.find(([id]) => id === tab)[1])}">${head}${writeNote(ui)}${tab === "tidy" ? "" : barHtml(data, ui, shownCh, tab, sel)}${body}</section>`;
