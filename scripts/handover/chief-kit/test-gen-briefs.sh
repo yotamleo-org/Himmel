@@ -1661,8 +1661,7 @@ lacks "the BYPASS-NEEDS-SPEC refusal is not a CORE-CHECK-FAILED" "$cgo" "CORE-CH
 [ "$(python3 -I -c 'import json, sys; print(*[len(json.loads(l)) for l in open(sys.argv[1])])' "$(cg_log needs)" 2>/dev/null)" = 9 ] && pass "the refused row has exactly the nine keys" || fail "needs row keys: $(cat "$(cg_log needs)" 2>/dev/null)"
 cgo="$(cgrun needs)"; rc=$?
 [ "$rc" = 1 ] && [ "$(cg_rows needs $NK)" = 1 ] && pass "a re-run of the BYPASS-NEEDS-SPEC refusal appends no second row" || fail "needs re-run rows=$(cg_rows needs $NK) rc=$rc"
-# I2: a docs-only design leg of the same key is still allowed (the stub answers design first, as core.ts does)
-cg_mirror HIMMEL-9640 Task Medium '["core"]'  # a design leg is core by label only
+cg_mirror HIMMEL-9640 Task Medium '["core"]'
 cg_workers needsdesign HIMMEL-9640 "docs/internals/core-gate-fixture.md" ''
 cgo="$(cgrun needsdesign)"; rc=$?
 [ "$rc" = 0 ] && [ "$(cg_field needsdesign $NK bypass)" = design ] && pass "a docs-only design leg for a key with no spec is still allowed" || fail "needs design rc=$rc: $cgo $(cat "$(cg_log needsdesign)" 2>/dev/null)"
