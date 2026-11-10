@@ -1190,7 +1190,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          key: pre-commit-${{ runner.os }}-${{ job.container.id && 'image' || 'host' }}-${{ hashFiles('.pre-commit-config.yaml') }}
       # HIMMEL-4319: the hook is require_serial, so `--all-files` is one
       # ~9 min CPU-bound shellcheck over ~1460 files. It cannot be sharded:
       # shellcheck resolves `source` across the files of ONE invocation, so
@@ -2154,16 +2154,16 @@ jobs:
         if: runner.os == 'Linux' && runner.environment == 'github-hosted'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ runner.temp }}/shfmt-bin
+          path: ~/.cache/himmel-shfmt
           key: shfmt-${{ runner.os }}-${{ env.SHFMT_VER }}
       - name: Put pinned shfmt on PATH (Linux — bash-ast model rows)
         if: runner.os == 'Linux'
         run: |
           ver="$SHFMT_VER"
           sha=76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
-          bin="$RUNNER_TEMP/shfmt-bin/shfmt"
+          bin="$HOME/.cache/himmel-shfmt/shfmt"
           url="https://github.com/mvdan/sh/releases/download/v${ver}/shfmt_v${ver}_linux_amd64"
-          mkdir -p "$RUNNER_TEMP/shfmt-bin"
+          mkdir -p "$HOME/.cache/himmel-shfmt"
           if [ -x "$bin" ] && echo "${sha}  ${bin}" | sha256sum -c - >/dev/null 2>&1; then
             echo "shfmt ${ver}: using the cached binary"
           else
@@ -2172,7 +2172,7 @@ jobs:
             echo "${sha}  ${bin}" | sha256sum -c -
             chmod 755 "$bin"
           fi
-          echo "$RUNNER_TEMP/shfmt-bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cache/himmel-shfmt" >> "$GITHUB_PATH"
           echo "HIMMEL_REQUIRE_SHFMT=1" >> "$GITHUB_ENV"
       # HIMMEL-7553: test-requirements-resolve.sh SKIPs without uv, and a
       # Dependabot PR (no CI image) has none, so the lock bumps it guards passed

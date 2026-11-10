@@ -160,6 +160,7 @@ CACHE_PIN='actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0'
 LINT_CACHE="$(step_block lint 'Cache pre-commit environments')"
 case "$LINT_CACHE" in *"uses: $CACHE_PIN"*) pass "lint job caches the pre-commit environment with the sha-pinned actions/cache" ;; *) fail "lint job has no sha-pinned pre-commit cache step: $LINT_CACHE" ;; esac
 case "$LINT_CACHE" in *"path: ~/.cache/pre-commit"*"hashFiles('.pre-commit-config.yaml')"*) pass "pre-commit cache path and key (hash of .pre-commit-config.yaml)" ;; *) fail "pre-commit cache path/key wrong: $LINT_CACHE" ;; esac
+case "$LINT_CACHE" in *"key: "*"job.container.id"*"hashFiles("*) pass "pre-commit key separates the CI-image container from a host run" ;; *) fail "pre-commit key lacks the container/host marker: $LINT_CACHE" ;; esac
 lint_cache_line="$(job_block lint | grep -n -F -- 'name: Cache pre-commit environments' | head -n 1 | cut -d: -f1)"
 lint_sc_line="$(job_block lint | grep -n -F -- '- name: shellcheck (PR range)' | head -n 1 | cut -d: -f1)"
 if [ -n "$lint_cache_line" ] && [ -n "$lint_sc_line" ] && [ "$lint_cache_line" -lt "$lint_sc_line" ]; then pass "pre-commit cache restores before the first shellcheck step"; else fail "cache step ($lint_cache_line) is not before the shellcheck step ($lint_sc_line)"; fi
@@ -188,11 +189,13 @@ chmod 755 "$T/shim/curl"
 FAKESHA="$(printf fakeshfmt | sha256sum | cut -d' ' -f1)"
 sed -E -i "s/^( *sha=)[0-9a-f]{64}\$/\1$FAKESHA/" "$SH_RUN"
 run_shfmt() {
-  RT="$T/rt-shfmt"; rm -rf "$RT"; mkdir -p "$RT/shfmt-bin"
+  RT="$T/home-shfmt"; rm -rf "$RT"
+  cache_path="$(printf '%s\n' "$SHFMT_CACHE" | sed -n 's/^ *path: //p' | head -n 1)"
+  CDIR="${cache_path/#\~/$RT}"; mkdir -p "$CDIR"
   : > "$T/ge"; : > "$T/gp"; CURL_LOG="$T/curl.log"; rm -f "$CURL_LOG"
-  case "$1" in hit) printf fakeshfmt > "$RT/shfmt-bin/shfmt" ;; bad) printf corrupt > "$RT/shfmt-bin/shfmt" ;; esac
-  [ "$1" = none ] || chmod 755 "$RT/shfmt-bin/shfmt"
-  OUT="$(cd "$S" && RUNNER_TEMP="$RT" GITHUB_ENV="$T/ge" GITHUB_PATH="$T/gp" CURL_LOG="$CURL_LOG" CURL_FAIL="$2" PATH="$T/shim:$PATH" bash -e -c 'set -a; . "$0"; . "$1"' "$T/ge-src" "$SH_RUN" 2>&1)"; RC=$?
+  case "$1" in hit) printf fakeshfmt > "$CDIR/shfmt" ;; bad) printf corrupt > "$CDIR/shfmt" ;; esac
+  [ "$1" = none ] || chmod 755 "$CDIR/shfmt"
+  OUT="$(cd "$S" && HOME="$RT" RUNNER_TEMP="$T/not-the-cache-dir" GITHUB_ENV="$T/ge" GITHUB_PATH="$T/gp" CURL_LOG="$CURL_LOG" CURL_FAIL="$2" PATH="$T/shim:$PATH" bash -e -c 'set -a; . "$0"; . "$1"' "$T/ge-src" "$SH_RUN" 2>&1)"; RC=$?
 }
 ( cd "$S" && RUNNER_TEMP="$T/rt-rec" GITHUB_ENV="$T/ge-src" bash -e "$SH_REC" ) 2>/dev/null
 if grep -qx 'SHFMT_VER=3.14.1' "$T/ge-src" 2>/dev/null; then pass "version-record step exports SHFMT_VER"; else fail "SHFMT_VER not recorded: $(cat "$T/ge-src" 2>/dev/null)"; fi
@@ -205,7 +208,7 @@ n_infra="$(printf '%s\n' "$OUT" | grep -c 'infra')"
 case "$OUT" in *"https://github.com/mvdan/sh/releases/download/v3.14.1/shfmt_v3.14.1_linux_amd64"*) url_ok=1 ;; *) url_ok=0 ;; esac
 if [ "$n_infra" -eq 1 ] && [ "$url_ok" -eq 1 ]; then pass "miss during an outage prints ONE infra line naming the URL"; else fail "infra line count=$n_infra url_ok=$url_ok: $OUT"; fi
 run_shfmt none 0
-if [ "$RC" -eq 0 ] && [ -x "$RT/shfmt-bin/shfmt" ] && grep -qx "$RT/shfmt-bin" "$T/gp"; then pass "shfmt cache miss with the host up downloads, verifies and puts it on PATH"; else fail "miss+up -> rc=$RC: $OUT"; fi
+if [ "$RC" -eq 0 ] && [ -x "$CDIR/shfmt" ] && grep -qx "$CDIR" "$T/gp"; then pass "shfmt cache miss with the host up downloads into the cached path, verifies and puts it on PATH"; else fail "miss+up -> rc=$RC: $OUT"; fi
 run_shfmt bad 0
 if [ "$RC" -eq 0 ] && [ -e "$CURL_LOG" ]; then pass "a cached binary failing its sha256 is re-downloaded"; else fail "bad cache -> rc=$RC: $OUT"; fi
 run_shfmt bad 1
