@@ -180,6 +180,7 @@ jira_get() {
     if [ -n "${JIRA_CMD:-}" ]; then
         "$JIRA_CMD" get "$1" 2>&1
     else
+        # shellcheck disable=SC2031  # common is set at top level above; the lib subshells never assign it
         node "$(dirname "$common")/scripts/jira/dist/index.js" get "$1" 2>&1
     fi
 }

@@ -1049,8 +1049,12 @@ printf '%s\n' '#!/usr/bin/env bash' 'sleep "${STUB_RC_SLEEP:-0}"' 'echo "stub re
 printf '%s\n' '#!/usr/bin/env bash' 'echo "stub cr-disposition output"' 'exit "${STUB_RC_DISP:-0}"' > "$S31/scripts/handover/chief-kit/cr-disposition.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'sleep "${STUB_WV_SLEEP:-0}"' 'exit 0' > "$S31/scripts/handover/chief-kit/write-verdict.sh"
 }
+mkdir -p "$S31/bin"
+# shellcheck disable=SC2016  # the stub body must expand at run time, not here
+printf '%s\n' '#!/usr/bin/env bash' 'case "$*" in *"/.locks/go/.go."*) [ -z "${STUB_MKTEMP_SLEEP:-}" ] || sleep "$STUB_MKTEMP_SLEEP" ;; esac' 'exec /usr/bin/mktemp "$@"' > "$S31/bin/mktemp"
+chmod +x "$S31/bin/mktemp"
 go31() {
-    (cd "$S31" && HANDOVER_DIR="$ROOT31" HIMMEL_QUOTA_DIR="${Q31_DIR:-$Q31}" bash "$S31/scripts/handover/chief-kit/go.sh" "$@" 2>&1)
+    (cd "$S31" && PATH="$S31/bin:$PATH" HANDOVER_DIR="$ROOT31" HIMMEL_QUOTA_DIR="${Q31_DIR:-$Q31}" bash "$S31/scripts/handover/chief-kit/go.sh" "$@" 2>&1)
 }
 fresh31() { rm -rf "$ROOT31" "$Q31"; mkdir -p "$ROOT31"; }
 gofiles31() { find "$ROOT31/.locks/go" -type f ! -name '.go.*' 2>/dev/null | wc -l | tr -d ' '; }
@@ -1117,6 +1121,46 @@ check    "9479: GO_DEADLINE cut after the mv -> exit 0" "$rc" "0"
 check    "9479: a cut after the mv leaves the GO standing" "$(gofiles31)" "1"
 contains "9479: a cut after the mv still prints the GO path" "$out" "$ROOT31/.locks/go/77.$SHA"
 check    "9479: a cut after the mv leaves no marker" "$(find "$Q31/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+
+fresh31
+kc_t0=$SECONDS
+kc_rc=0
+(cd "$S31" && PATH="$S31/bin:$PATH" HANDOVER_DIR="$ROOT31" HIMMEL_QUOTA_DIR="$Q31" STUB_RC_SLEEP=10 timeout 3 bash "$S31/scripts/handover/chief-kit/go.sh" 77 "$SHA" > /dev/null 2>&1) || kc_rc=$?  # gnu-ok: Linux-only kit
+kc_took=$((SECONDS - kc_t0))
+sleep 9
+check    "9479: an outer timeout ends go.sh (exit 124)" "$kc_rc" "124"
+check    "9479: an outer timeout returns within the bound (took ${kc_took}s)" "$([ "$kc_took" -le 8 ] && echo yes || echo no)" "yes"
+check    "9479: a cancelled go.sh writes no GO after its callee would have finished" "$(gofiles31)" "0"
+check    "9479: a cancelled go.sh leaves no orphan" "$(pgrep -f "$S31/scripts/handover/chief-kit/go.sh" | wc -l | tr -d ' ')" "0"
+
+fresh31
+rc=0; out=$(STUB_MKTEMP_SLEEP=20 GO_DEADLINE=3 go31 77 "$SHA") || rc=$?
+check    "9479: a cut between the sentinel and the mv -> exit 11" "$rc" "11"
+check    "9479: a cut between the sentinel and the mv writes no GO" "$(gofiles31)" "0"
+fresh31
+mkdir -p "$ROOT31/.locks/go"
+printf 'pr=77\nhead=%s\nat=2000-01-01T00:00:00Z\n' "$SHA" > "$ROOT31/.locks/go/77.$SHA"
+cp "$ROOT31/.locks/go/77.$SHA" "$tmp/old-go31"
+rc=0; out=$(STUB_MKTEMP_SLEEP=20 GO_DEADLINE=3 go31 77 "$SHA") || rc=$?
+check    "9479: an older GO at the same path does not stand in for a cut run (exit 11)" "$rc" "11"
+check    "9479: the older GO is left as it was" "$(cmp -s "$ROOT31/.locks/go/77.$SHA" "$tmp/old-go31" && echo same || echo changed)" "same"
+
+victim31="$tmp/victim31"
+fresh31
+printf 'keep\n' > "$victim31"
+rc=0; out=$(_GO_SENTINEL="$victim31" GO_DEADLINE=0 go31 77 "$SHA") || rc=$?
+check    "9479: an unarmed run ignores an inherited _GO_SENTINEL (exit 0)" "$rc" "0"
+check    "9479: the inherited _GO_SENTINEL file is untouched" "$(cat "$victim31")" "keep"
+fresh31
+rc=0; out=$(_GO_ARMED=1 _GO_SENTINEL="$victim31" go31 77 "$SHA") || rc=$?
+check    "9479: an armed child refuses a sentinel outside go-sentinel.* in TMPDIR (exit 0)" "$rc" "0"
+check    "9479: the foreign sentinel file is untouched" "$(cat "$victim31")" "keep"
+fresh31
+sd31="$tmp/sd31"; mkdir -p "$sd31"
+ln -s "$victim31" "$sd31/go-sentinel.link"
+rc=0; out=$(_GO_ARMED=1 _GO_SENTINEL="$sd31/go-sentinel.link" TMPDIR="$sd31" go31 77 "$SHA") || rc=$?
+check    "9479: an armed child refuses a symlinked sentinel (exit 0)" "$rc" "0"
+check    "9479: the symlink target is untouched" "$(cat "$victim31")" "keep"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

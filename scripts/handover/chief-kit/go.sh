@@ -319,6 +319,7 @@ _go_quota_report() {
     [ -n "${1:-}" ] && [ -s "$1" ] || return 1
     read -r tok bucket why < "$1" 2>/dev/null || true  # read-sink-ok: our own mktemp refused file, never caller text; swallow-ok: a row without a newline still fills the fields; an empty file leaves why empty and returns 1 below
     [ -n "$why" ] || return 1
+    # shellcheck disable=SC2031  # tok, bucket and why are read above in this function, not in a subshell
     (
         # shellcheck source=scripts/lib/gh-quota.sh
         # shellcheck disable=SC1091
@@ -327,6 +328,22 @@ _go_quota_report() {
         ghq_mark_blocked "$PR" "$SHA" go.sh "$bucket" "$why"
     ) || true
     return 0
+}
+
+_go_descendants() {
+    local c
+    for c in $(pgrep -P "$1" 2>/dev/null); do printf '%s\n' "$c"; _go_descendants "$c"; done  # swallow-ok: no pgrep or no children lists nothing, and only the child itself is signalled
+}
+# shellcheck disable=SC2329  # invoked by the TERM trap below, which shellcheck does not follow
+_go_term() {
+    local p kids
+    if [ -n "${gd_pid:-}" ]; then
+        kids=$(_go_descendants "$gd_pid")
+        kill -TERM "$gd_pid" 2>/dev/null
+        wait "$gd_pid" 2>/dev/null
+        for p in $kids; do kill -TERM "$p" 2>/dev/null; done
+    fi
+    exit 143
 }
 
 if [ -z "${_GO_ARMED:-}" ]; then
@@ -341,11 +358,17 @@ if [ -z "${_GO_ARMED:-}" ]; then
         [ -z "$_TIMEOUT_BIN" ] || gd_sent=$(mktemp "${TMPDIR:-/tmp}/go-sentinel.XXXXXX" 2>/dev/null) || gd_sent=""  # swallow-ok: no sentinel runs go.sh unwrapped, as without a deadline
         if [ -n "$gd_sent" ]; then
             gd_rc=0
-            _GO_ARMED=1 _GO_SENTINEL="$gd_sent" "$_TIMEOUT_BIN" -k 5 "$gd_s" bash "$0" "${_GO_ARGV[@]}" || gd_rc=$?
+            gd_pid=""
+            trap 'rm -f "$gd_sent"' EXIT
+            trap '_go_term' TERM INT HUP
+            _GO_ARMED=1 _GO_SENTINEL="$gd_sent" "$_TIMEOUT_BIN" -k 5 "$gd_s" bash "$0" "${_GO_ARGV[@]}" <&0 &
+            gd_pid=$!
+            wait "$gd_pid" || gd_rc=$?
             case "$gd_rc" in
                 124|137)
                     gd_path=$(sed -n 1p "$gd_sent" 2>/dev/null) || gd_path=""  # swallow-ok: an unreadable sentinel reads as no GO written, which is exit 11 below
-                    if [ -n "$gd_path" ] && [ "$gd_path" != printed ] && [ -f "$gd_path" ]; then
+                    gd_at=$(sed -n 2p "$gd_sent" 2>/dev/null) || gd_at=""  # swallow-ok: an unreadable sentinel reads as no GO written, which is exit 11 below
+                    if [ -n "$gd_path" ] && [ -n "$gd_at" ] && [ -f "$gd_path" ] && grep -qx "at=$gd_at" "$gd_path" 2>/dev/null; then
                         grep -qx printed "$gd_sent" 2>/dev/null || printf '%s\n' "$gd_path"
                         rm -f "$gd_sent"
                         exit 0
@@ -365,6 +388,15 @@ if [ -z "${_GO_ARMED:-}" ]; then
             exit "$gd_rc"
         fi
     fi
+fi
+if [ -z "${_GO_ARMED:-}" ]; then
+    unset _GO_SENTINEL
+else
+    case "${_GO_SENTINEL:-}" in
+        "${TMPDIR:-/tmp}"/go-sentinel.*)
+            [ -f "$_GO_SENTINEL" ] && [ ! -L "$_GO_SENTINEL" ] && [ -O "$_GO_SENTINEL" ] || unset _GO_SENTINEL ;;
+        *) unset _GO_SENTINEL ;;
+    esac
 fi
 GO_REFUSED=$(mktemp "${TMPDIR:-/tmp}/go-refused.XXXXXX" 2>/dev/null) || GO_REFUSED=""  # swallow-ok: no file means no refused-read rows, and a failed read keeps its plain exit
 [ -z "$GO_REFUSED" ] || trap 'rm -f "$GO_REFUSED"' EXIT
@@ -649,7 +681,7 @@ BY="${CHIEF_SESSION_NAME:-${USER:-$(id -un 2>/dev/null || echo unknown)}@$(hostn
 BY=$(printf '%s' "$BY" | tr -d '\r\n')
 AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-_go_announce_dest() { [ -z "${_GO_SENTINEL:-}" ] || printf '%s\n' "$DEST" > "$_GO_SENTINEL" 2>/dev/null || true; }  # swallow-ok: a missing sentinel only turns a late cut into exit 11
+_go_announce_dest() { [ -z "${_GO_SENTINEL:-}" ] || printf '%s\n%s\n' "$DEST" "$AT" > "$_GO_SENTINEL" 2>/dev/null || true; }  # swallow-ok: a missing sentinel only turns a late cut into exit 11
 _go_announce_dest
 if ! mkdir -p "$DIR" || ! TMP=$(mktemp "$DIR/.go.XXXXXX"); then
     echo "go: cannot create a temp file under $DIR" >&2
