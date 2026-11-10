@@ -37,17 +37,25 @@ const sha = (p: string) => createHash("sha256").update(readFileSync(p)).digest("
 const put = (p: string, text: string | Uint8Array) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, text); };
 
 type Fx = { root: string; spec: string; plan: string; head: string };
-function fixture(opts: { spec?: number; plan?: number } = {}): Fx {
+const ROUTE = join(import.meta.dir, "../../telegram/chief-route.ts");
+const KEY = "HIMMEL-1";
+// A keyed spec whose critic rounds are written, then seeded into the round ledger as the chief seeds a bucket.
+// Each round ends clean unless `blocking`, which leaves an unlabeled finding (a blocking one) in every round.
+function fixture(opts: { spec?: number; plan?: number; blocking?: boolean } = {}): Fx {
   const root = tmp("critic-policy-");
-  const spec = join(root, "specs/design/subject.md");
-  const plan = join(root, "specs/plans/subject.md");
+  const spec = join(root, `specs/design/${KEY}-subject.md`);
+  const plan = join(root, `specs/plans/${KEY}-subject.md`);
   put(spec, "# Subject\n"); put(plan, "# Plan\n"); mkdirSync(join(root, "specs/decisions"), { recursive: true });
   git(root, "init", "-q"); git(root, "add", "-A"); git(root, "commit", "-q", "-m", "base");
   const fx = { root, spec, plan, head: git(root, "rev-parse", "HEAD") };
-  for (let n = 1; n <= (opts.spec ?? 0); n++) put(`${spec}.critic-spec-r${n}.md`, "Read it.\nSPEC FINDINGS 1\n");
-  for (let n = 1; n <= (opts.plan ?? 0); n++) put(`${spec}.critic-plan-r${n}.md`, "Read it.\nPLAN FINDINGS 1\n");
+  const verdict = (kind: string) => (opts.blocking ? `${kind} FINDINGS 1` : `${kind} CLEAN`);
+  for (let n = 1; n <= (opts.spec ?? 0); n++) put(`${spec}.critic-spec-r${n}.md`, `Read it, round ${n}.\n${verdict("SPEC")}\n`);
+  for (let n = 1; n <= (opts.plan ?? 0); n++) put(`${spec}.critic-plan-r${n}.md`, `Read it, round ${n}.\n${verdict("PLAN")}\n`);
+  const seeded = spawnSync(BUN, [ROUTE, "round-seed", "--all", join(root, "specs")], { encoding: "utf8" });
+  if (seeded.status !== 0) throw new Error(`round-seed: ${seeded.stderr}`);
   return fx;
 }
+const ledgerOf = (fx: Fx) => join(fx.root, `specs/ledgers/spec-rounds/${KEY}.jsonl`);
 const operatorRecord = (fx: Fx, round: number) => {
   put(`${fx.spec}.operator-round-r${round}.md`, "decision 7\n");
   put(join(fx.root, "specs/decisions/verbatim-decision-7-words.txt"), "operator words\n");
@@ -74,20 +82,16 @@ function check(fx: Fx, body: unknown, extra: string[] = [], env?: NodeJS.Process
 
 test("round_owner_parity", async () => {
   const a = fixture({ spec: 3 });
-  put(`${a.spec}.critic-spec-renamed.md`, "Read it.\nSPEC FINDINGS 1\n");
+  put(`${a.spec}.critic-spec-renamed.md`, "Read it.\nSPEC FINDINGS 1\n");   // a file written after the seed is no round
   const budget = await route.readCriticBudget(a.spec, "spec");
-  expect(budget).toMatchObject({ count: 4, numbered: 3, requestedRound: 5, operatorAllowed: false, cap: route.CRITIC_ROUND_CAP });
-  expect(await route.readCriticBudget(a.spec, "spec", 4)).toMatchObject({ requestedRound: 4 });
+  expect(budget).toMatchObject({ count: 3, requestedRound: 4, allowed: false, cap: route.CRITIC_ROUND_CAP });
+  expect(budget.why).toBe(`${KEY} spec round 4 needs a blocking finding in round 3 of either kind; sign it under 848, its minors go to the build`);
+  put(`${a.spec}.critic-spec-r4.md`, "Round four.\nSPEC CLEAN\n");
+  await expect(route.refuseRoundPastCap(`${a.spec}.critic-spec-r4.md`, a.spec)).rejects.toThrow(budget.why!);
 
-  const b = fixture({ spec: 3 });
-  expect(await route.readCriticBudget(b.spec, "spec", 4)).toMatchObject({ count: 3, requestedRound: 4, operatorAllowed: false });
-  put(`${b.spec}.critic-spec-r4.md`, "Read it.\nSPEC FINDINGS 1\n");
-  await expect(route.refuseRoundPastCap(`${b.spec}.critic-spec-r4.md`, b.spec)).rejects.toThrow(/round 4 needs an operator record/);
-
-  const c = fixture({ spec: 3 });
-  operatorRecord(c, 4);
-  expect(await route.readCriticBudget(c.spec, "spec", 4)).toMatchObject({ count: 3, requestedRound: 4, operatorAllowed: true });
-  put(`${c.spec}.critic-spec-r4.md`, "Read it.\nSPEC FINDINGS 1\n");
+  const c = fixture({ spec: 3, blocking: true });
+  expect(await route.readCriticBudget(c.spec, "spec", 4)).toMatchObject({ count: 3, requestedRound: 4, allowed: true, why: null });
+  put(`${c.spec}.critic-spec-r4.md`, "Round four.\nSPEC CLEAN\n");
   await route.refuseRoundPastCap(`${c.spec}.critic-spec-r4.md`, c.spec);
 }, T);
 
@@ -108,22 +112,20 @@ test("requested_round_exact_next", async () => {
   for (const bad of [0, -1, 1.5, "4", true, null]) expect(check(three, request(three, { requested_round: bad })).code).toBe(2);
 }, T);
 
-test("operator_record_for_exact_round", async () => {
-  const fx = fixture({ spec: 3 });
-  operatorRecord(fx, 4);
+test("blocking_round_three_opens_exactly_round_four", async () => {
+  const fx = fixture({ spec: 3, blocking: true });
   const ok = check(fx, request(fx, { requested_round: 4 }));
   expect(ok.code).toBe(0);
-  expect(ok.json).toMatchObject({ action: "eligible", reasons: [], round: { observed_count: 3, requested: 4, next: 4, cap: 3, operator_record: true } });
+  expect(ok.json).toMatchObject({ action: "eligible", reasons: [], round: { observed_count: 3, requested: 4, next: 4, cap: 3, allowed: true } });
 
-  operatorRecord(fx, 5);
   const five = check(fx, request(fx, { requested_round: 5 }));
   expect(five.code).toBe(4);
-  expect(five.json).toMatchObject({ action: "refused", reasons: ["round-mismatch"], round: { observed_count: 3, requested: 5, next: 4, operator_record: null } });
+  expect(five.json).toMatchObject({ action: "refused", reasons: ["round-mismatch"], round: { observed_count: 3, requested: 5, next: 4, allowed: null } });
   const six = check(fx, request(fx, { requested_round: 2 }));
-  expect(six.json.round.operator_record).toBeNull();
+  expect(six.json.round.allowed).toBeNull();
 
   const bare = fixture({ spec: 3 });
-  put(`${bare.spec}.operator-round-r4.md`, "decision 7\n");
+  operatorRecord(bare, 4);   // the retired operator-round file opens nothing
   expect(check(bare, request(bare, { requested_round: 4 })).code).toBe(3);
 }, T);
 
@@ -172,22 +174,22 @@ test("unknown_source_not_eligible", async () => {
 }, T);
 
 test("unreadable_round_not_zero", async () => {
-  const fx = fixture();
-  mkdirSync(`${fx.spec}.critic-spec-r1.md`);
-  await expect(route.readCriticBudget(fx.spec, "spec")).rejects.toThrow();
-  const r = check(fx, request(fx, { requested_round: 1 }));
+  const fx = fixture({ spec: 1 });
+  writeFileSync(ledgerOf(fx), `${readFileSync(ledgerOf(fx), "utf8")}not json\n`);
+  await expect(route.readCriticBudget(fx.spec, "spec")).rejects.toThrow(`${KEY} ledger line 2 does not parse`);
+  const r = check(fx, request(fx, { requested_round: 2 }));
   expect(r.code).toBe(4);
   expect(r.json).toMatchObject({
     action: "refused", reasons: ["round-unavailable"],
-    round: { observed_count: null, requested: 1, next: null, cap: null, operator_record: null, numberedFiles: null, renamed: null },
+    round: { observed_count: null, requested: 2, next: null, cap: null, allowed: null, rounds: null },
   });
 
-  const dangling = fixture();
-  symlinkSync(join(dangling.root, "nowhere.md"), `${dangling.spec}.critic-spec-r1.md`);
-  await expect(route.readCriticBudget(dangling.spec, "spec")).rejects.toThrow();
-  const d = check(dangling, request(dangling, { requested_round: 1 }));
+  const gone = fixture({ spec: 1 });
+  rmSync(ledgerOf(gone));
+  await expect(route.readCriticBudget(gone.spec, "spec")).rejects.toThrow(`${KEY} is in the round manifest but has no ledger`);
+  const d = check(gone, request(gone, { requested_round: 2 }));
   expect(d.code).toBe(4);
-  expect(d.json).toMatchObject({ action: "refused", reasons: ["round-unavailable"], round: { observed_count: null, numberedFiles: null, renamed: null } });
+  expect(d.json).toMatchObject({ action: "refused", reasons: ["round-unavailable"], round: { observed_count: null, rounds: null } });
 }, T);
 
 test("request_parser_guards", async () => {
@@ -217,27 +219,20 @@ test("request_parser_guards", async () => {
   expect(check(fx, good).code).toBe(0);
 }, T);
 
-test("counted_paths_from_same_pass", async () => {
-  const fx = fixture({ spec: 2 });
-  put(`${fx.spec}.critic-plan-r1.md`, "Read it.\nPLAN FINDINGS 1\n");
-  put(join(fx.root, "specs/plans/subject.md.critic-plan-r1.md"), "Read it.\nPLAN FINDINGS 1\n");
+test("ledger_rounds_from_same_pass", async () => {
+  const fx = fixture({ spec: 2, plan: 1 });
   put(`${fx.spec}.critic-plan-renamed.md`, "Read it.\nPLAN FINDINGS 2\n");
+  put(join(fx.root, `specs/plans/${KEY}-subject.md.critic-plan-r2.md`), "Read it.\nPLAN FINDINGS 1\n");
   const plan = await route.readCriticBudget(fx.spec, "plan");
-  expect(plan.numberedFiles).toEqual([
-    { round: 1, path: `${fx.spec}.critic-plan-r1.md` },
-    { round: 1, path: join(fx.root, "specs/plans/subject.md.critic-plan-r1.md") },
-  ].sort((a, b) => a.round - b.round || (a.path < b.path ? -1 : 1)));
-  expect(plan.renamed).toEqual([`${fx.spec}.critic-plan-renamed.md`]);
-  expect(plan).toMatchObject({ count: 2, numbered: 1 });
+  expect(plan.rounds).toEqual([{ round: 1, path: `${fx.spec}.critic-plan-r1.md` }]);
+  expect(plan).toMatchObject({ count: 1 });
 
   const spec = await route.readCriticBudget(fx.spec, "spec");
-  expect(spec.numberedFiles).toEqual([{ round: 1, path: `${fx.spec}.critic-spec-r1.md` }, { round: 2, path: `${fx.spec}.critic-spec-r2.md` }]);
-  expect(spec.renamed).toEqual([]);
-  expect(spec).toMatchObject({ count: 2, numbered: 2 });
+  expect(spec.rounds).toEqual([{ round: 2, path: `${fx.spec}.critic-spec-r2.md` }]);
+  expect(spec).toMatchObject({ count: 2 });
 
-  const out = check(fx, planRequest(fx, { requested_round: 3 })).json;
-  expect(out.round.numberedFiles).toEqual(plan.numberedFiles);
-  expect(out.round.renamed).toEqual(plan.renamed);
+  const out = check(fx, planRequest(fx, { requested_round: 2 })).json;
+  expect(out.round.rounds).toEqual(plan.rounds);
   expect(out.round.observed_count).toBe(plan.count);
 }, T);
 
@@ -252,7 +247,7 @@ test("check_exit_json", async () => {
     [2, "malformed", check(fx, "{not json")],
   ];
   const TOP = ["action", "artifacts", "kind", "operation_id", "reasons", "round", "schema", "source_head"];
-  const ROUND = ["cap", "next", "numberedFiles", "observed_count", "operator_record", "renamed", "requested"];
+  const ROUND = ["allowed", "cap", "next", "observed_count", "requested", "rounds"];
   for (const [code, action, r] of branches) {
     expect(r.code, action).toBe(code);
     expect(r.out.trim().split("\n").length, `${action}: one JSON line`).toBe(1);

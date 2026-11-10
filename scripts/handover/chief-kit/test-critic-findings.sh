@@ -51,6 +51,12 @@ newroot() {
   printf '# Subject\n' > "$SPEC"; printf '# Plan\n' > "$PLAN"
   EXTRA_READ=""
 }
+# A root whose seals reach the round ledger: the spec is named for its ticket and the specs root is seeded.
+newsealroot() {
+  newroot "$1"; SPEC="$R/specs/design/HIMMEL-1-subject.md"
+  printf -- '---\ntickets: HIMMEL-1\n---\n# Subject\n' > "$SPEC"
+  bun "$REPO_ROOT/scripts/telegram/chief-route.ts" round-seed --all "$R/specs" >/dev/null || { echo "FATAL: round-seed failed in $R/specs"; exit 2; }
+}
 vpath() { printf '%s.critic-%s-r%s.md' "$SPEC" "$1" "$2"; }
 mkret() {
   local kind=$1 round=$2 n=$3 dest=${4:-} up i
@@ -491,7 +497,7 @@ t_forged_empty_index_refused() {
 }
 
 t_seal_after_index_stale_then_renormalize() {
-  newroot seal; printf '<html>rendered</html>\n' > "$R/specs/design/subject.html"; EXTRA_READ="$R/specs/design/subject.html"
+  newsealroot seal; printf '<html>rendered</html>\n' > "$R/specs/design/subject.html"; EXTRA_READ="$R/specs/design/subject.html"
   mkret spec 1 2; local v i p b h0 h1 h2; v=$(vpath spec 1); i=$(idx spec 1); p="$(privdir seal)/PREVIOUS.json"; b="$R/seal.bundle.json"
   norm spec 1; okrun "the unsealed saved bytes can be indexed"; h0=$(sha "$v")
   bash "$SEALSH" "$v" "$SPEC" "$(sha "$SPEC")" >"$T/seal.out" 2>&1; local src=$?
