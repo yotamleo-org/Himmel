@@ -214,7 +214,7 @@ if (args.keptFile) {
   writeFileSync(args.keptFile, rows.map((r) => r + "\n").join(""), { encoding: "utf-8" });
   console.log(incomplete
     ? "synthesis-batch: withheld (plan incomplete)"
-    : `synthesis-batch: [paid, held by HIMMEL-8686, not run by this tool] claude --model claude-sonnet-5-5 ${shq(`Run /synthesize-clips ${args.vault} once, over exactly the clips listed in ${args.keptFile}`)}`);
+    : `synthesis-batch: [paid, held for the operator, not run by this tool] claude --model claude-sonnet-5-5 ${shq(`Run /synthesize-clips ${args.vault} once, over exactly the clips listed in ${args.keptFile}`)}`);
 }
 console.log(`mode: ${args.apply ? "apply" : "dry-run"}`);
 console.log(`summary: seen=${seen} kept=${kept} skipped=${skipped} fresh=${fresh} triage-skipped=${triageSkipped} to-synthesise=${kept}${unreadable ? ` unreadable=${unreadable}` : ""}${walkErrors.length ? ` unreadable-dirs=${walkErrors.length}` : ""}`);

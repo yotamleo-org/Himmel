@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * roadmap-aggregate.mjs — LUNA-59 cross-source roadmap-item aggregator.
+ * roadmap-aggregate.mjs — cross-source roadmap-item aggregator.
  *
  * Scans the luna vault for actionable items across five sources and emits a
  * JSON inventory on stdout. READ-ONLY (no writes, no network) — safe to re-run.
@@ -17,8 +17,6 @@
  *
  * Usage:  node roadmap-aggregate.mjs [--vault <path>] [--emit json|none]
  * Exit:   0 ok · 1 usage · 2 env unusable (vault missing / not an Obsidian vault)
- *
- * LUNA-59.
  */
 import { existsSync, statSync, readFileSync, readdirSync } from "node:fs";
 import { resolve, join, relative } from "node:path";

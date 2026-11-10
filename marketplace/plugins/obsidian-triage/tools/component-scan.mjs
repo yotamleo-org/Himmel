@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * component-scan.mjs — LUNA-57 deep repo component-scan for luna-ingest --deep.
+ * component-scan.mjs — deep repo component-scan for luna-ingest --deep.
  *
  * Scans ONE github repo via gh-API (recursive git tree + raw file reads; NO
- * clone — bounded read surface per the LUNA-43 safety note) and inventories
+ * clone — bounded read surface per the luna-ingest safety note) and inventories
  * its reusable components (skills / commands / agents / tools / plugin
  * manifests). Emits a JSON inventory on stdout and, in write mode, upserts
  * cross-repo-deduped notes into <vault>/<components-dir>/<type>/<slug>.md.
@@ -26,8 +26,6 @@
  *       js-yaml not installed, or wholesale fetch failure — nothing succeeded)
  *   4 — partial — ≥1 component file failed to fetch/parse, OR ≥1 note write
  *       failed YAML-validation and was reverted
- *
- * LUNA-57.
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, relative, dirname } from "node:path";
@@ -88,7 +86,7 @@ function usage(code = 1) {
   out("Usage: component-scan.mjs --repo <owner/repo> [--vault <path>] [--components-dir <rel>]");
   out("       [--trust-tier <tier>] [--safety-flag <term>] [--max-components <N>] [--emit json|none] [--dry-run]");
   out("");
-  out("LUNA-57 deep repo component-scan. gh-API only, no clone.");
+  out("Deep repo component-scan. gh-API only, no clone.");
   process.exit(code);
 }
 
@@ -235,7 +233,7 @@ function yamlString(v) {
 /** Render a fresh component note. */
 function renderNote(record) {
   const url = `https://github.com/${record.repo}`;
-  const seenPath = normalizeComponentPath(record.path); // LUNA-63: canonical spelling
+  const seenPath = normalizeComponentPath(record.path);
   return [
     "---",
     "type: component",
@@ -300,7 +298,7 @@ function frontmatterBlock(text) {
  */
 async function upsertComponentNote(record, opts) {
   const target = notedPath(record, opts); // throws on traversal
-  const seenPath = normalizeComponentPath(record.path); // LUNA-63: canonical spelling
+  const seenPath = normalizeComponentPath(record.path);
   const seenFmEntry = `${record.repo}#${seenPath}`;
   const url = `https://github.com/${record.repo}`;
   const seenListLine = `- [${record.repo}](${url}) — \`${seenPath}\``;
@@ -323,7 +321,7 @@ async function upsertComponentNote(record, opts) {
   const before = readFileSync(target, "utf-8");
   const seenExists = before.includes(`"${seenFmEntry}"`) || before.includes(seenListLine);
 
-  // Cross-repo risk escalation (LUNA-57 I1): a later repo sharing this
+  // Cross-repo risk escalation: a later repo sharing this
   // component_key must escalate the note's risk to the most-cautious value
   // across all contributing repos — first-create no longer owns the risk.
   const existingFm = parseFrontmatterFields(before);
@@ -332,7 +330,7 @@ async function upsertComponentNote(record, opts) {
   // Keep whichever flag is non-blank; if both non-blank and differ, keep
   // existing (first-flag-wins) — but never silently drop a flag.
   const newFlag = existingFlag || incomingFlag;
-  // LUNA-63: validate the tier parsed back off disk — a hand-edited or
+  // Validate the tier parsed back off disk — a hand-edited or
   // corrupted note may carry a non-canonical label; normalise it to the
   // most-cautious tier (unknown-risk) rather than persisting garbage or
   // letting it shadow a real tier during escalation.
@@ -354,7 +352,7 @@ async function upsertComponentNote(record, opts) {
   else newTier = escalateTrustTier(existingTier, incomingTier);
   const flagChanged = newFlag !== existingFlag;
   // Compare against the RAW on-disk tier (not the normalised one) so a
-  // non-canonical label parsed back off disk is actually rewritten. (LUNA-63)
+  // non-canonical label parsed back off disk is actually rewritten.
   const tierChanged = newTier !== rawExistingTier;
 
   if (seenExists && !flagChanged && !tierChanged) {
@@ -368,7 +366,6 @@ async function upsertComponentNote(record, opts) {
   const out = [];
   for (let i = 0; i < lines.length; i++) {
     if (tierChanged && /^trust_tier:\s/.test(lines[i])) {
-      // Quote on the update path too, for create/update symmetry. (LUNA-63)
       out.push(`trust_tier: "${yamlString(newTier)}"`);
       continue;
     }
@@ -417,7 +414,7 @@ async function mainEntryImpl(opts) {
   }
   let scan;
   // Guards both the gh fetch AND extractComponent (which now throws on an
-  // unknown type — LUNA-62); keep the label generic so a code/type bug is not
+  // unknown type); keep the label generic so a code/type bug is not
   // mis-framed as a network failure.
   try { scan = scanRepo(opts.repo, opts); }
   catch (e) { console.error(`scan failed: ${e.message}`); process.exit(2); }
