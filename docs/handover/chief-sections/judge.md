@@ -81,9 +81,10 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   run in the checkout holding both commits, prints one word and always exits 0:
   `trust` (a changed file, either name of a rename, matches `scripts/ci/ci-trust-paths.txt`
   on `origin/main`), `finding` (the delta rewrites the lines of a finding the judge named, or of a
-  CR-ledger finding at the judged head) or `none`. A trust hit wins over a finding hit, and any read
-  error (unknown sha, unreadable trust list, verdict or ledger, bad regex) prints `trust`, never
-  `none`. The judge names its findings in the verdict file as `finding: <path>[:<n>[-<m>]]` lines
+  CR-ledger finding at the judged head, or a merge in the delta has a non-empty remerge-diff, a
+  resolved conflict, checked after every fail-closed read) or `none`. A trust hit wins over a
+  finding hit, and any read error (unknown sha, unreadable trust list, verdict or ledger, bad
+  regex) prints `trust`, never `none`. The judge names its findings in the verdict file as `finding: <path>[:<n>[-<m>]]` lines
   (no line numbers means the whole file; the line holds nothing else, and any other line starting
   `finding:` reads `trust`); a NO-GO that names none classifies `finding`.
   `trust` and `finding` get a judge as before. On `none` skip the judge and record

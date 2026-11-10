@@ -1024,6 +1024,24 @@ has_index() {
   [ -n "$(printf '%s' "$out" | tr -d '[:space:]')" ]
 }
 
+# qmd_output_is_busy <text>: rc 0 iff a qmd output carries SQLite's held-lock
+# signature, so a caller can tell a held database from a failed run.
+qmd_output_is_busy() {
+  case "$1" in
+    *SQLITE_BUSY* | *"database is locked"*) return 0 ;;
+  esac
+  return 1
+}
+
+# qmd_collection_indexes <collection> <path>...: print each path (relative to
+# the collection's root) that `qmd update` would index under that collection's
+# rules in the global index.yml qmd reads. rc 2 on a config, glob or path shape
+# qmd-collection-files.py does not know.
+qmd_collection_indexes() {
+  python3 -I "$_QMDBIN_LIB_DIR/qmd-collection-files.py" \
+    --config "${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml" "$@"
+}
+
 # CLI entry -- only when EXECUTED (not sourced). Lets a caller run this ONE
 # implementation as a subprocess (`bash scripts/lib/qmd-bin.sh install`)
 # instead of duplicating the fork clone/build/link recipe.

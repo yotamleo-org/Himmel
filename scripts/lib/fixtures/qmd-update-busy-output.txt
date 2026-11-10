@@ -1,0 +1,18 @@
+Updating 1 collection(s)...
+
+[1/1] a (**/*.md)
+Collection: /tmp/qmd-update-busy/a (**/*.md)
+/qmd-fork/src/store.ts:3615
+    .run(hash, content, createdAt);
+     ^
+
+SqliteError: database is locked
+    at insertContent (/qmd-fork/src/store.ts:3615:6)
+    at reindexCollectionIn (/qmd-fork/src/store.ts:2061:9)
+    at async reindexCollection (/qmd-fork/src/store.ts:1877:20)
+    at async updateCollections (/qmd-fork/src/cli/qmd.ts:1032:20)
+    at async <anonymous> (/qmd-fork/src/cli/qmd.ts:5046:7) {
+  code: 'SQLITE_BUSY'
+}
+
+Node.js v26.13.0
