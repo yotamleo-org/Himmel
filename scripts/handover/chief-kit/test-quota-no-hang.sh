@@ -170,19 +170,6 @@ emit() { printf '%s\n' "$*" >> "$RES/$CUR.txt"; }   # emit <status> <caller> <mo
 
 known_task() {
     awk -v c="$1" -v m="$2" -v a="$3" '$2 == c && $3 == m && $4 == a { print $1; exit }' <<'KNOWN'
-T4 check-ci.sh gql-out names-limit
-T4 check-ci.sh both-out names-limit
-T4 check-ci.sh gql-200 names-limit
-T4 check-ci.sh rest-out names-limit
-T4 check-ci.sh rest-out no-false-phrase
-T4 check-ci.sh reset-past no-false-phrase
-T4 check-ci.sh reset-absent names-limit
-T4 check-ci.sh reset-absurd names-limit
-T4 check-ci.sh secondary names-limit
-T4 check-ci.sh hung names-limit
-T4 check-ci.sh hung no-false-phrase
-T4 check-ci.sh hung-after-probe names-limit
-T4 check-ci.sh hung-after-probe no-false-phrase
 T5 tick.sh gql-out names-limit
 T5 tick.sh rest-out names-limit
 T5 tick.sh both-out names-limit
@@ -511,10 +498,27 @@ drive_check_ci() {
     setup_caller_dir check-ci
     gate_fixture || { emit "FAIL check-ci.sh setup gate_fixture"; return 0; }
     cd "$GATE_REPO" || return 0
+    # The ready-pass gh has no `pr view` answer for check-ci's startup read, so a mode that leaves GraphQL
+    # healthy (rest-out) would stop at "cannot resolve the PR" before any REST read. This layer, local to
+    # this caller's scratch dir, answers that one read and hands every other call to the ready-pass gh.
+    mkdir -p "$cdir/checkci-bin"
+    cat > "$cdir/checkci-bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    "pr view 77 --json url,reviewDecision,headRefOid,baseRefName"*)
+        printf 'https://github.com/o/r/pull/77\tnull\t%s\tmain\n' "$READY_STUB_HEAD"
+        exit 0 ;;
+esac
+exec "$CHECKCI_NEXT_GH" "$@"
+STUB
+    chmod +x "$cdir/checkci-bin/gh"
+    EXTRA_ENV="CHECKCI_NEXT_GH=$READY_BIN/gh"
+    READY_BIN="$cdir/checkci-bin"
     AFFECT_FN=affect_check_ci RATE_BOUND=20
     for m in $(modes_for); do
         run_mode check-ci.sh "$m" 12 2 bash "$script" 77 --max-wait 5 --settle 0 --grace 1
     done
+    EXTRA_ENV=""
 }
 
 affect_cw() { case "$1" in read-only) echo no ;; *) echo yes ;; esac; }

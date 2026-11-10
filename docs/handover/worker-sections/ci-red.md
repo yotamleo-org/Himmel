@@ -4,6 +4,7 @@ Read on demand: `worker-preface.md` names this file when a required CI job goes 
 
 ## CI red and merge-forward
 
+- **`check-ci.sh` printing `QUOTA-PAUSE` is not a red.** GitHub refused the read and nothing was judged: report `BLOCKED` to the chief and stop; the chief resumes you at quota return.
 - **A red CI job on your PR is yours to triage — and you never
   tell the chief about it, unless it is not the PR's fault.** The moment ONE
   required job fails, do not wait for the run to end and do not report the red.
