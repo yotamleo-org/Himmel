@@ -115,6 +115,13 @@
 # ...` when the recorder failed). The outcome rides the MERGED audit line as `conflicts=<result>` and NEVER changes the exit
 # code: see record_conflicts.
 #
+# After a confirmed merge it also asks `release bucket-check` whether the ticket was in the current version's bucket: one read-only
+# call, which can make one live Jira read of up to 5 s, cut at MERGE_BUCKET_TIMEOUT_SECS (default 30, a value can only shorten it)
+# and not made at all when neither timeout nor gtimeout is on PATH. The answer rides the MERGED audit line as
+# `bucket=<IN|NONE|APPROVED|OUTSIDE|DONE|unread|not-asked>` and NEVER changes the exit code. OUTSIDE and DONE also print a
+# `LEAK ... Not stopped.` line on stderr, write one `bucket-leak` row to status-events.jsonl and send one line to the owning
+# chief's inbox (HIMMEL_CONSOLE_NAME); unread (no usable answer) writes a row with verdict=unread and sends no inbox line.
+#
 # Exit codes:
 #   0   merged (including a confirmed remote merge where gh itself exited
 #       non-zero afterwards, and regardless of the post-merge prune outcome),
@@ -2715,12 +2722,12 @@ _jira_intake_to_current() {
 BUCKET_RESULT="not-asked"
 _bucket_line() {
     local repo_root="$1" key="$2" title="$3" pr="$4" sha="$5"
-    local bk_to="" bk_out="" bk_line="" bk_rc=0 bk_verdict="" bk_version="?" bk_cur="?" bk_open="?" bk_text="" bk_re bk_timed_out
+    local bk_to="" bk_out="" bk_line="" bk_rc=0 bk_verdict="" bk_version="?" bk_cur="?" bk_open="?" bk_text="" bk_re bk_timed_out bk_why
     BUCKET_RESULT="unread"
     if command -v timeout >/dev/null 2>&1; then bk_to="timeout -k 10 $(_mog_shorten_secs "${MERGE_BUCKET_TIMEOUT_SECS:-}" 30)"
     elif command -v gtimeout >/dev/null 2>&1; then bk_to="gtimeout -k 10 $(_mog_shorten_secs "${MERGE_BUCKET_TIMEOUT_SECS:-}" 30)"; fi
     if [ -n "$bk_to" ]; then
-        bk_out=$(cd "$repo_root" && $bk_to node scripts/jira/dist/index.js release bucket-check \
+        bk_out=$(cd "$repo_root" && $bk_to node "$repo_root/scripts/jira/dist/index.js" release bucket-check \
             --mirror "$HOME/.himmel/state/jira-mirror/${key%%-*}" "$key" 2>/dev/null) || bk_rc=$?
     fi
     bk_timed_out=0
@@ -2732,7 +2739,8 @@ _bucket_line() {
         IN|NONE|APPROVED|OUTSIDE|DONE) BUCKET_RESULT="$bk_verdict" ;;
     esac
     if [ "$BUCKET_RESULT" = unread ]; then
-        echo "merge-on-green: WARN $key was not checked against the bucket (bucket-check gave no usable answer). Not stopped." >&2
+        if [ -z "$bk_to" ]; then bk_why="no timeout or gtimeout binary is on PATH, so it was not run"; else bk_why="bucket-check gave no usable answer"; fi
+        echo "merge-on-green: WARN $key was not checked against the bucket ($bk_why). Not stopped." >&2
         declare -F status_event >/dev/null && status_event event=bucket-leak key="$key" pr="$pr" head="$sha" verdict=unread
         return 0
     fi

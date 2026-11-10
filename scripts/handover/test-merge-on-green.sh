@@ -856,8 +856,9 @@ case "\$1" in
             exit 3
         fi
         if [ "\$2" = "release" ] && [ "\$3" = "bucket-check" ]; then
-            [ -z "\${STUB_BUCKET_SLEEP:-}" ] || exec sleep "\$STUB_BUCKET_SLEEP"
+            [ -z "\${STUB_BUCKET_SLEEP:-}" ] || sleep "\$STUB_BUCKET_SLEEP"
             [ -z "\${STUB_BUCKET_VERDICT:-}" ] || printf '%s\n' "\$STUB_BUCKET_VERDICT"
+            [ -z "\${STUB_BUCKET_SLEEP_AFTER:-}" ] || sleep "\$STUB_BUCKET_SLEEP_AFTER"
             exit "\${STUB_BUCKET_RC:-0}"
         fi
         if [ "\$2" = "release" ] && [ "\$3" = "request" ]; then
@@ -6068,13 +6069,24 @@ for bk_case in "FAILED|FAILED HIMMEL-374 no readable mirror at /m|" "rc1||1" "si
     assert_bk_inbox "9001-e$bk_n: no inbox line" 0
 done
 
-bk_arm
-MERGE_BUCKET_TIMEOUT_SECS=1 STUB_BUCKET_SLEEP=20 MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_PR_TITLE="$bk_title" \
-    run_mog 0 "9001-f: a hung bucket-check" -- --jira-transition
-assert_audit_has "9001-f: the field is unread" " bucket=unread"
-assert_bk_rows "9001-f: one unread row" 1
-assert_jira_log_has "9001-f: the close still ran after the timeout" "transition HIMMEL-374 Done"
-assert_bk_inbox "9001-f: no inbox line" 0
+if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
+    bk_arm
+    bk_t0=$SECONDS
+    MERGE_BUCKET_TIMEOUT_SECS=1 STUB_BUCKET_SLEEP=20 STUB_BUCKET_VERDICT="$bk_out_line" MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_PR_TITLE="$bk_title" \
+        run_mog 0 "9001-f: a hung bucket-check" -- --jira-transition
+    if [ $((SECONDS - bk_t0)) -lt 15 ]; then pass; else fail "9001-f: the merge waited $((SECONDS - bk_t0))s on a hung bucket-check"; fi
+    assert_audit_has "9001-f: the field is unread" " bucket=unread"
+    assert_bk_rows "9001-f: one unread row" 1
+    assert_jira_log_has "9001-f: the close still ran after the timeout" "transition HIMMEL-374 Done"
+    assert_bk_inbox "9001-f: no inbox line" 0
+    bk_arm
+    MERGE_BUCKET_TIMEOUT_SECS=1 STUB_BUCKET_SLEEP_AFTER=20 STUB_BUCKET_VERDICT="$bk_out_line" MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_PR_TITLE="$bk_title" \
+        run_mog 0 "9001-f2: a bucket-check killed after it printed"
+    assert_audit_has "9001-f2: an answer printed before the kill is not trusted" " bucket=unread"
+    assert_bk_inbox "9001-f2: no inbox line" 0
+else
+    echo "SKIP 9001-f: this host has neither timeout nor gtimeout, so the bucket-check bound cannot be exercised"
+fi
 
 bk_probe="$(mktemp -d "${TMPDIR:-/tmp}/mog-bk-probe.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
 cp "$SCRIPT_DIR/../lib/ticket-status.sh" "$bk_probe/ticket-status.sh"
@@ -6140,6 +6152,7 @@ else
         run_mog 0 "9001-n: no timeout binary, the bucket-check is not run"
     assert_audit_has "9001-n: the field is unread" " bucket=unread"
     assert_jira_log_lacks "9001-n: no bucket-check call was made" "bucket-check"
+    assert_err_has "9001-n: the WARN names the missing binary" "no timeout or gtimeout binary is on PATH"
     assert_bk_rows "9001-n: one unread row" 1
     rm -rf "$bk_farm"
 fi
