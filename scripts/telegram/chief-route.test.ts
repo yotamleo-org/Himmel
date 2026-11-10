@@ -3068,6 +3068,30 @@ test("R19-status, R20: an open operator-critical finding is listed by round-stat
   expect(signed.err).toBe(""); expect(signed.code).toBe(0);
 }, S1B);
 
+test("a hand-appended critical row whose opens, or an override whose round_opened, is not what the verb would write is listed invalid and counts for nothing", async () => {
+  const t = await roundTree(["- **C1** (major; operator-critical: spend-grant) the spec grants a spend"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **C2** (major; reopens C1) still grants it")).err).toBe("");
+  const d = decide(t.specs, 901, `${CAP_KEY} operator: ${SPEND}\n`);
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`);
+  const add = (row: object) => appendFileSync(ledger, `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, ...row })}\n`);
+  add({ row: "critical", epoch: 0, opens: 9, id: "C1", class: "spend-grant", decision: "901", quote: SPEND, decision_path: d, decision_sha: sha(readFileSync(d, "utf8")), return_sha: "f".repeat(64) });
+  add({ row: "override", epoch: 0, round_opened: 9, findings: [{ id: "C2", severity: "major", critic: "spec", return_sha: "f".repeat(64) }], why: "x", chief: "chief-x" });
+  const s = await status(t.specs);
+  expect(s.invalid).toEqual(["critical 901", "override"]);
+  expect(s.critical_open).toMatchObject([{ id: "C1" }]);
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toContain(T5(5));
+}, S1B);
+
+test("closure-pack refuses when diff itself fails, rather than reporting the file unchanged", async () => {
+  if (process.getuid?.() === 0) return;
+  const t = await roundTree(MAJOR, []);
+  chmodSync(t.a, 0o000);
+  try {
+    const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+    expect(pack.code).not.toBe(0); expect(pack.err).toContain("diff of");
+  } finally { chmodSync(t.a, 0o644); }
+}, S1B);
+
 test("round-reset: one reset per ticket, from the console, on a decision naming it; the next round of the new epoch is round 1", async () => {
   const t = await roundTree(MAJOR, []);
   decide(t.specs, 906, `${CAP_KEY} operator: start this ticket over from scratch\n`);
@@ -3075,7 +3099,9 @@ test("round-reset: one reset per ticket, from the console, on a decision naming 
   expect((await reset(false)).code).not.toBe(0); expect(rowsOf(t.specs, "reset")).toEqual([]);
   expect((await reset(true)).err).toBe("");
   expect(await status(t.specs)).toMatchObject({ spec: 0, plan: 0, next: "full" });
-  expect((await sealOn(`${t.a}.critic-spec-r9.md`, [t.a], "SPEC CLEAN")).err).toBe("");
+  const again = `${t.a}.critic-spec-r9.md`;
+  writeFileSync(again, readFileSync(`${t.a}.critic-spec-r1.md`, "utf8").split("\n").filter((l) => !l.startsWith("CONTENT-SHA256 ")).join("\n"));
+  expect((await seal(again, t.a, sha(front(CAP_KEY, "# A\n")))).err).toBe("");
   expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", round: 1, epoch: 1, mode: "full" });
   const second = await reset(true);
   expect(second.err).toContain(`round-reset: ${CAP_KEY} already used its one reset`); expect(second.code).not.toBe(0);

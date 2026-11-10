@@ -760,12 +760,12 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[]): Prom
       else invalid.push(label(r));
     } else if (r.row === "critical") {
       const d = String(r.decision); const q = await quoteRule(specs, key, d, String(r.quote), usedCritical.has(d), roundTs); usedCritical.add(d);
-      if (!("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha && classOf.get(String(r.id)) === r.class && (r.epoch === undefined || Number(r.epoch) === epoch)) criticals.push({ row: r, epoch });
+      if (!("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha && classOf.get(String(r.id)) === r.class && (r.epoch === undefined || Number(r.epoch) === epoch) && [0, Math.max(maxRound.spec, maxRound.plan) + 1].includes(Number(r.opens))) criticals.push({ row: r, epoch });
       else invalid.push(label(r));
     } else if (r.row === "override") {
       const ids = Array.isArray(r.findings) ? r.findings.map((f: { id?: unknown }) => String(f?.id)) : [];
       const open = new Set([...blocking.spec, ...blocking.plan]);
-      const ok = !sawOverride && ids.length > 0 && ids.every(id => open.has(id)) && isText(r.why) && isText(r.chief) && Math.max(maxRound.spec, maxRound.plan) >= CRITIC_ROUND_CAP + 1;
+      const ok = !sawOverride && ids.length > 0 && ids.every(id => open.has(id)) && isText(r.why) && isText(r.chief) && Math.max(maxRound.spec, maxRound.plan) >= CRITIC_ROUND_CAP + 1 && Number(r.round_opened) === Math.max(maxRound.spec, maxRound.plan) + 1;
       sawOverride = true;
       if (ok) override = { row: r, epoch }; else invalid.push(label(r));
     }
@@ -861,7 +861,9 @@ async function snapshotsOf(specs: string, key: string, sealed: { read_path: stri
 async function diffOf(snapshot: string, now: string, label: string): Promise<string> {
   const exists = await isFile(now);
   const p = Bun.spawn(["diff", "-u", "-L", `a/${label}`, "-L", `b/${label}`, snapshot, exists ? now : "/dev/null"], { stdout: "pipe", stderr: "pipe" });
-  const out = await new Response(p.stdout).text(); await p.exited;
+  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  const code = await p.exited;
+  if (code > 1) throw new Error(`diff of ${label} failed (exit ${code}): ${err.trim()}`);
   return out;
 }
 const changedLines = (diff: string) => diff.split("\n").filter(l => (l.startsWith("+") || l.startsWith("-")) && !l.startsWith("+++") && !l.startsWith("---")).map(l => l.slice(1));
@@ -895,7 +897,7 @@ function sortClosure(text: string, findings: Finding[], openIds: Set<string>, ch
 type Admission = { round: number; mode: "full" | "closure"; findings?: Finding[] };
 async function admit(t: SealTarget, rows: Rows): Promise<Admission | null> {
   const sum = returnSha(t.text);
-  const prior = rows.find(r => r.row === "round" && r.return_sha === sum);
+  const prior = rows.find(r => r.row === "round" && r.return_sha === sum && (Number(r.epoch) || 0) === rows.c.epoch);
   if (prior || KINDS.some(k => seededReturns(rows, k).some(x => x.return_sha === sum))) {
     if (prior?.mode === "closure") await closureCheck(t.specs, t.key, prior.critic, Number(prior.round), rows, null, t.page);
     return null;
