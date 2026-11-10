@@ -120,14 +120,19 @@ w10_glob() {
   if [ "$rc" -eq 2 ]; then pass "W10: the glob $2 exits 2 ($1)"; else fail "W10: expected 2 for $2 ($1), got $rc; out: $out"; fi
   if grepq "$out" -F "names a family, not one suite file: $2 HIMMEL-1"; then pass "W10: the message names the $2 line"; else fail "W10: no message naming the $2 line; out: $out"; fi
 }
+w10_key() {
+  printf '*/scripts/foo/test-x.sh HIMMEL-1² reason\n' > "$sb/exempt-last"
+  out=$(env LC_ALL="$1" SUITE_LIVE_EXEMPT="$sb/exempt-last" bash "$LW" run --label x -- true 2>&1)
+  rc=$?
+  if [ "$rc" -eq 2 ]; then pass "W10: a key with a non-ASCII digit exits 2 ($1)"; else fail "W10: expected 2 for HIMMEL-1² ($1), got $rc; out: $out"; fi
+}
 w10_glob C '*/!(x)'
 w10_glob C '*/te+st.sh'
+w10_glob C '*/té.sh'
+w10_key C
 if LC_ALL=en_US.UTF-8 bash -c 're="^[0-9]$"; [[ "²" =~ $re ]]' 2>/dev/null; then
   w10_glob en_US.UTF-8 '*/té.sh'
-  printf '*/scripts/foo/test-x.sh HIMMEL-1² reason\n' > "$sb/exempt-last"
-  out=$(env LC_ALL=en_US.UTF-8 SUITE_LIVE_EXEMPT="$sb/exempt-last" bash "$LW" run --label x -- true 2>&1)
-  rc=$?
-  if [ "$rc" -eq 2 ]; then pass "W10: a key with a non-ASCII digit exits 2"; else fail "W10: expected 2 for HIMMEL-1², got $rc; out: $out"; fi
+  w10_key en_US.UTF-8
 else
   echo "  NOTE  W10: en_US.UTF-8 does not widen [0-9] on this host, so the locale rows are not run"
 fi
