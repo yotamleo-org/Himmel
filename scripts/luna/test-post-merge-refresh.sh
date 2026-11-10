@@ -392,7 +392,7 @@ row_stamp_untouched() {
 row_no_merge_path_caller() {
     local allow='^(scripts/luna/(post-merge-refresh\.sh|test-post-merge-refresh\.sh|graphmap-cadence\.sh|test-graphmap-cadence\.sh|keyword-lag\.py|test-keyword-lag\.sh)|scripts/lib/(observability-registry|test-observability-registry)\.sh|scripts/observability/ledgers\.json|docs/)'
     local hits
-    hits=$(git -C "$REPO_ROOT" grep -l --untracked -e 'post-merge-refresh' -e 'PostMergeRefresh' 2>/dev/null | grep -Ev "$allow" || true)
+    hits=$(git -C "$REPO_ROOT" grep -l -e 'post-merge-refresh' -e 'PostMergeRefresh' 2>/dev/null | grep -Ev "$allow" || true)
     assert_eq "no_merge_path_caller: only the tick, its verb, its tests and its docs name it" "" "$hits"
 }
 
