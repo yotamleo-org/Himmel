@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "root": "snapshot",
+  "timezone": "Europe/Berlin",
+  "since": "2026-11-01T00:00:00Z",
+  "until": "2026-12-01T00:00:00Z",
+  "files": [
+    {
+      "relative_path": "proj/parentB.jsonl",
+      "bytes": 358,
+      "sha256": "8150d321458b6dabcf6de64ca191e2216f04941cf9f9a20b8c7d9a03b39cc3dc",
+      "provider": "claude",
+      "session": "parentB",
+      "parent": null
+    }
+  ]
+}
