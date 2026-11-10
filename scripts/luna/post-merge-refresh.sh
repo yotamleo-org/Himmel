@@ -249,7 +249,13 @@ flow_rows() { # <flow> <started> <ended> <rc> <from> <to>
 }
 
 # ---- one half's step -----------------------------------------------------------------
-pmr_half() { # keyword|graph
+pmr_half() { # keyword|graph: the step runs, and any lock it took is released only after its state is written
+    pmr_half_step "$1"
+    lock_release
+    return 0
+}
+
+pmr_half_step() { # keyword|graph
     local half="$1" pfx now branch main w force=0 times newest oldest t first retry floor
     local lock rc out start end flow
     if [ "$half" = keyword ]; then pfx="qmd"; flow="post-merge-keyword"; else pfx="graph"; flow="post-merge-graph"; fi
@@ -322,11 +328,12 @@ pmr_half() { # keyword|graph
     fi
     st_rm "$half.lockalert"
     st_rm "$half.defer"
+    # Another tick may have finished between the read above and this lock: act on its state, not ours.
+    if [ "$(st_get "$pfx.sha")" != "$w" ]; then log "$half hold=raced"; return 0; fi
 
     start=$(pmr_now)
     if [ "$half" = keyword ]; then out=$(run_keyword 2>&1); rc=$?; else out=$(run_graph 2>&1); rc=$?; fi
     end=$(pmr_now)
-    lock_release
     [ -z "$out" ] || printf '%s\n' "$out" | sed "s/^/post-merge-refresh: $half | /"
 
     if [ "$rc" = 0 ]; then
@@ -347,7 +354,8 @@ pmr_half() { # keyword|graph
     fails=$(st_get "$half.fails"); fails=$(( ${fails:-0} + 1 ))
     st_put "$half.fails" "$fails"
     st_rm "$half.skips"
-    delay=$((300 << (fails - 1))); [ "$delay" -le 3600 ] || delay=3600
+    delay=3600
+    if [ "$fails" -le 4 ]; then delay=$((300 << (fails - 1))); fi
     st_put "$half.retry" $((end + delay))
     flow_rows "$flow" "$start" "$end" "$rc" "$w" "$main"
     log "$half fail rc=$rc from=$w to=$main failures=$fails retry_in=${delay}s"

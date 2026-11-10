@@ -569,6 +569,23 @@ row_backoff_after_failure() {
     assert_eq "backoff_after_failure: the second failure waits 10 minutes" 2 "$(ncalls 'qmd update')"
 }
 
+row_backoff_caps_at_an_hour() {
+    mkcase backcap; seed_both; cm $((BASE+100)) docs/a.md
+    printf 'fail' > "$C/qmd.mode"; printf '55\n' > "$C/state/keyword.fails"
+    NOW=$((BASE+1000)); tick both
+    assert_eq "backoff_caps_at_an_hour: a long streak waits an hour, not a negative time" "$((BASE+1000+3600))" "$(cat "$C/state/keyword.retry" 2>/dev/null)"
+}
+
+row_watermark_moved_before_lock_skips() {
+    mkcase raced; seed_both; cm $((BASE+100)) src/a.sh
+    mkdir -p "$C/fakebin"
+    printf '#!/bin/sh\nprintf "%%s\\n" "%s" > "%s/state/graph.sha"\necho 4\n' "$LAST" "$C" > "$C/fakebin/nproc"
+    chmod +x "$C/fakebin/nproc"
+    NOW=$((BASE+1000)); tick graph PATH="$C/fakebin:$PATH"
+    assert_eq "watermark_moved_before_lock_skips: a watermark another tick moved is not run on stale state" 0 "$(ncalls ast)"
+    assert_contains "watermark_moved_before_lock_skips: the race is logged" "graph hold=raced" "$OUT"
+}
+
 row_slow_graph_floors_hourly() {
     mkcase slow; seed_both; cm $((BASE+100)) src/a.sh
     printf 'slow' > "$C/ast.mode"; echo $((BASE+1000)) > "$C/now"
@@ -664,7 +681,7 @@ for row in quiet_window_holds max_wait_fires burst_fires_once ignored_merges_cou
     graph_only_arm_never_runs_qmd sampler_runs_with_keyword_off no_index_no_sample \
     sampler_after_keyword_before_graph only_real_run_writes_row db_busy_is_skip \
     promote_lock_is_skip deadline_without_signature_is_fail busy_timeout_and_deadline_passed \
-    backoff_after_failure slow_graph_floors_hourly load_defers_then_runs primary_off_main_skips \
+    backoff_after_failure backoff_caps_at_an_hour watermark_moved_before_lock_skips slow_graph_floors_hourly load_defers_then_runs primary_off_main_skips \
     runs_at_low_priority code_only_skips_keyword dot_dir_md_skips_keyword usage decide; do
     echo "-- $row"
     "row_$row"
