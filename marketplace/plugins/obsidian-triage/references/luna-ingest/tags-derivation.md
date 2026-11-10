@@ -1,12 +1,12 @@
-<!-- Moved verbatim out of SKILL.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
+<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
 
-### Tags derivation (HIMMEL-247)
+### Tags derivation
 
 `tags:` is REQUIRED in every emitted note's frontmatter — the vault's Tech
 notes are tag-queried (Dataview / triage tooling), and an untagged note is
 invisible to those queries. The original Phase 4 / I-3 templates never
 emitted it — every pre-fix tech-ingest note shipped untagged (all 29
-`type: tech-ingest` notes as of 2026-06-11; HIMMEL-247 backfilled them).
+`type: tech-ingest` notes as of 2026-06-11; a backfill tagged them).
 The "~90 earlier Tech notes that carry tags" in the ticket are
 clipper-pipeline `type: tech-resource` notes — a different emitter, not
 luna-ingest output. Never omit it.

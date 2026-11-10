@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""vault_lint.py — deterministic, vault-agnostic Obsidian vault linter (HIMMEL-402).
+"""vault_lint.py — deterministic, vault-agnostic Obsidian vault linter.
 Filesystem-only. stdlib-only. UTF-8 safe. See docs/specs/2026-06-19-vault-lint-design.md."""
 from __future__ import annotations
 import os, re, sys, json, fnmatch, argparse, datetime, pathlib

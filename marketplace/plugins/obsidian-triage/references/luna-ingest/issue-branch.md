@@ -1,6 +1,6 @@
-<!-- Moved verbatim out of SKILL.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
+<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
 
-## Issue branch — github issue URLs (HIMMEL-239)
+## Issue branch — github issue URLs
 
 When `<github-url>` matches `^https?://(www\.)?github\.com/<owner>/<repo>/issues/(\d+)$` (query/fragment stripped first), run THIS branch instead of Phases 1–3.6 and the Phase 4 repo synthesis. The repo phases assume a README + 1-hop ref pool; an issue has neither, so this branch is deliberately flat: fetch → safety-filter → write. `--deep`, `--research`, and `--limit` are repo-only flags — if passed alongside an issue URL, ignore them with one stderr line: `WARN luna-ingest: --deep/--research/--limit are repo-only; ignored for issue URLs.`
 
@@ -32,15 +32,15 @@ type: tech-ingest
 source: <issue html_url>
 source_type: github-issue
 ingested_at: <UTC ISO-8601>
-ingest_spec_version: 1   # HIMMEL-3055 — see Phase 4 "Identity" fields; same versioning rule applies here
-# last_revalidated OMITTED on a fresh ingest (HIMMEL-3055) — see Phase 4 for the full rule
+ingest_spec_version: 1   # see Phase 4 "Identity" fields; same versioning rule applies here
+# last_revalidated OMITTED on a fresh ingest — see Phase 4 for the full rule
 ingest_command: /luna-ingest
 issue_state: <open|closed>
 issue_author: <user.login>
 issue_labels:
   - <label>
 comment_count: <N>
-tags:                # HIMMEL-247: REQUIRED — Phase 4 "Tags derivation", issue variant
+tags:                # REQUIRED — Phase 4 "Tags derivation", issue variant
   - github
   - github-issue
   - <tag>

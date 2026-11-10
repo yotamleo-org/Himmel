@@ -22,7 +22,7 @@ awk -F/ 'NF==2 && $1 !~ /^\.+$/ && $2 !~ /^\.+$/' /tmp/luna-ingest-refs.$$.txt >
 
 Apply the `--limit` cap (the explicit `--limit <N>` if passed, else the default `250`). If more refs exist than the cap, log "tail-skipped: N refs" in the synthesis under § Open questions. With the default `250`, a tail-skip now signals a genuinely huge meta-list (re-run with an explicit higher `--limit`), not the old routine `[1,25]`-clamp truncation.
 
-**LUNA-7 size telemetry:** measure the decoded README size with `wc -c < /tmp/luna-ingest-readme.$$.md` and record it in the synthesis § Audit log. If the size exceeds **512 KB**, emit a single stderr warning before Phase 3 starts:
+**Size telemetry:** measure the decoded README size with `wc -c < /tmp/luna-ingest-readme.$$.md` and record it in the synthesis § Audit log. If the size exceeds **512 KB**, emit a single stderr warning before Phase 3 starts:
 
 ```
 WARN luna-ingest: README is <N> KB (>512 KB threshold). --limit caps API-call count, NOT text size; large monorepo/awesome-list READMEs may produce a noisy ref pool.

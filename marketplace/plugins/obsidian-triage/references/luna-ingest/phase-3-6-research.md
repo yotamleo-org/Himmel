@@ -1,6 +1,6 @@
-<!-- Moved verbatim out of SKILL.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
+<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
 
-## Phase 3.6 — Research enrichment (LUNA-64, `--research` only)
+## Phase 3.6 — Research enrichment (`--research` only)
 
 Skip this entire phase unless `--research` was passed. Orthogonal to
 Phase 3.5 — if both `--deep` and `--research` were passed, both phases run
@@ -10,7 +10,7 @@ This is the **lightweight inline** research path: you (Claude) run the web
 research yourself via the WebSearch / WebFetch tools. Do NOT shell out to the
 obsidian-second-brain `research_deep.py` script, and do NOT call Perplexity /
 Grok — those (plus vault-wide `/obsidian-save` propagation) are the full
-`/research-deep` command, deferred to a later LUNA-64 follow-up. Scope here:
+`/research-deep` command, deferred to a later follow-up. Scope here:
 **the SOURCE repo only** (1-hop refs are not researched in MVP — keeps the
 tool-call budget bounded).
 

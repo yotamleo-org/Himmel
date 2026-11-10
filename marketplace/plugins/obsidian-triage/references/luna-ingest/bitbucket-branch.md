@@ -1,6 +1,6 @@
-<!-- Moved verbatim out of SKILL.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
+<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
 
-## Bitbucket branch — bitbucket.org URLs (HIMMEL-329)
+## Bitbucket branch — bitbucket.org URLs
 
 When the URL host is `bitbucket.org`, run THIS branch instead of the github
 Phases 1–4 / issue branch. It dispatches to the himmel **bitbucket CLI** —
@@ -40,7 +40,7 @@ refs and classify them via `gh api`. github refs in a Bitbucket README are the
 common, supported case. **bitbucket.org refs are NOT followed in MVP**
 (BB→BB ref-following is a v2 follow-up): extract them separately
 (`grep -oE 'https://bitbucket\.org/[^ )]+'`) and list them under § Open questions
-as `bitbucket.org refs not followed (HIMMEL-329 MVP — v2 follow-up)`. `--limit`
+as `bitbucket.org refs not followed (MVP — v2 follow-up)`. `--limit`
 applies to the github refs as usual.
 
 **B-repo-3 Trust tier (bitbucket variant).** Bitbucket Cloud exposes **no
@@ -67,15 +67,15 @@ existing), with these frontmatter deltas:
   tag vocabulary). Minimum 2 tags.
 - The `## Referenced repos (1-hop)` section lists the **github** refs only;
   the `## Open questions` section carries the unfollowed-bitbucket-refs note.
-- **Omit `upstream_commit`** (HIMMEL-3055) — `bitbucket repo get` returns no default-branch HEAD
+- **Omit `upstream_commit`** — `bitbucket repo get` returns no default-branch HEAD
   SHA and there is no cheap CLI call for one; do NOT emit a fake or stale value. `upstream_pushed_at`
   comes from `updated_on`; `readme_sha256` hashes `readme` the same way as the github path (omit if
   `readme: missing`); `ingest_spec_version` and `ingest_scope` are populated the same as Phase 4.
 
-`--deep` source-scan is **skipped on a Bitbucket source** (the LUNA-57
+`--deep` source-scan is **skipped on a Bitbucket source** (the
 `component-scan.mjs` is `gh`-API-only and cannot scan a Bitbucket repo) — emit a
 one-line stderr warn and continue; integrate/take-parts **github** refs are still
-scanned. `--research` (LUNA-64) is forge-agnostic (WebSearch) and runs normally.
+scanned. `--research` is forge-agnostic (WebSearch) and runs normally.
 
 ### B-PR — pull-request ingest
 

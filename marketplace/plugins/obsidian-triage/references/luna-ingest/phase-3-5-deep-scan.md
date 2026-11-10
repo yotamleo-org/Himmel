@@ -1,6 +1,6 @@
-<!-- Moved verbatim out of SKILL.md (HIMMEL-5513) so the always-loaded body stays small. Loaded on demand; the heading levels are unchanged. -->
+<!-- Moved out of SKILL.md to keep the always-loaded body small. Loaded on demand; the heading levels are unchanged. -->
 
-## Phase 3.5 — Deep component scan (LUNA-57, `--deep` only)
+## Phase 3.5 — Deep component scan (`--deep` only)
 
 Skip this entire phase unless `--deep` was passed.
 
@@ -45,7 +45,7 @@ When the skill was invoked with `--dry-run`, pass `--dry-run` to
 component-scan too (it then prints the JSON inventory + would-write notes
 without touching the vault, rc=0).
 
-`$TOOLS` = `<plugin-root>/tools`. The tool is HIMMEL-128 compliant (no
-headless claude — it shells `gh`, not `claude`). A non-zero exit (rc=4)
+`$TOOLS` = `<plugin-root>/tools`. The tool starts no
+headless claude (it shells `gh`, not `claude`). A non-zero exit (rc=4)
 means ≥1 component file failed to fetch; record the count under § Open
 questions and continue — partial inventories are honest, not fatal.
