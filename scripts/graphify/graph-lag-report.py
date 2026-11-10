@@ -43,7 +43,6 @@ def die(msg):
 
 
 def parse_ts(text):
-    """An ISO UTC timestamp (…Z) or a bare epoch, as seconds; None if neither."""
     if isinstance(text, (int, float)):
         return int(text)
     if not isinstance(text, str):
@@ -82,7 +81,6 @@ def resolve_ref(repo, ref):
 
 
 def read_published(ledger):
-    """Sorted [(epoch, graph_head)] of the published-channel rows; graph_head is "" when the row names none."""
     rows = []
     try:
         with open(ledger, encoding="utf-8") as fh:
@@ -103,7 +101,6 @@ def read_published(ledger):
 
 
 def commit_times_ahead(repo, ref, graph_head):
-    """Sorted commit times of the commits on ref that graph_head does not contain; None if unreadable."""
     if not re.fullmatch(r"[0-9a-fA-F]{7,40}", graph_head):
         return None
     res = git(repo, "log", "--format=%ct", "%s..%s" % (graph_head, ref))
@@ -113,7 +110,6 @@ def commit_times_ahead(repo, ref, graph_head):
 
 
 def percentile(sorted_vals, pct):
-    """Nearest rank."""
     return sorted_vals[max(1, math.ceil(pct / 100.0 * len(sorted_vals))) - 1]
 
 
@@ -139,8 +135,6 @@ def main():
         die("cannot read --now %s" % args.now)
     ref = resolve_ref(args.repo, args.ref)
 
-    # A publish whose build commit this repo cannot read still replaced the graph adopters fetch,
-    # so it stays a baseline and its hours are unknown, never the older graph's lag.
     ahead = {}
     published = read_published(args.ledger)
     for _, gh in published:
@@ -163,7 +157,10 @@ def main():
     print("graph-lag-report: days=%d hours=%d no-baseline-hours=%d unknown-hours=%d published-rows=%d ref=%s"
           % (args.days, args.days * 24, no_baseline, unknown, len(published), ref))
     if not lags:
-        print("lag-commits: none (no published-channel row at or before any hour of the window)")
+        if unknown:
+            print("lag-commits: none (every published build commit in the window is unreadable in this repo)")
+        else:
+            print("lag-commits: none (no published-channel row at or before any hour of the window)")
         print("target: UNKNOWN")
         return
     lags.sort()

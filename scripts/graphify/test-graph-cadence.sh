@@ -1675,10 +1675,6 @@ for bad in "has space" "a/b" "$(printf 'a\nb')" ""; do
     assert_eq "--flow-name '$(printf '%s' "$bad" | tr '\n' '~')' refused rc=2" "2" "$rc"
 done
 
-# =============================================================================
-# Test 10: channel_row_has_lag (I12) -- a published-channel row says how far the
-# published graph is behind origin/main, in commits and in seconds
-# =============================================================================
 echo "TEST: channel_row_has_lag -- published-channel row carries graph_head, merges_behind and lag_s"
 REPO10="$TMP_ROOT/t10-primary"; BARE10="$TMP_ROOT/t10-origin.git"
 HOME10="$TMP_ROOT/t10-home"; LEDGER10="$TMP_ROOT/t10-ledger"
@@ -1709,7 +1705,6 @@ assert_contains "channel lag row is published-channel" '"action":"published-chan
 assert_contains "channel lag row names the published build commit" "\"graph_head\":\"$BUILT10\"" "$LEDGER_LINE10"
 assert_contains "channel lag row counts the commits behind origin/main" '"merges_behind":1,' "$LEDGER_LINE10"
 assert_contains "channel lag row carries the seconds behind (25h = 90000)" '"lag_s":90000,' "$LEDGER_LINE10"
-# A build commit this checkout cannot resolve records null lag, and never fails a publish that landed.
 : > "$FAKE_CH_LOG"; rc=0
 out=$(HOME="$HOME10" GRAPH_CADENCE_HIMMEL_ROOT="$REPO10" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER10" \
       GRAPH_CADENCE_AST_UPDATE="$AST_REC" AST_REC_LOG="$AST_REC_LOG" GRAPH_CADENCE_SEMANTIC_UPDATE="$FAKE_SEM10" \

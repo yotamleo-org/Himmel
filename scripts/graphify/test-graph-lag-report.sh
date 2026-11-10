@@ -4,13 +4,6 @@
 # Every scenario plants its own git repo and ledger under one temp dir and
 # passes both by path: the report never reads the live ledger, the live
 # graphify-out or the live vault, and never touches the network.
-#
-# Covers:
-#   replays_planted_ledger       -- hourly lag, p50, p90, max from a planted ledger and repo
-#   failed_fires_grow_gap        -- failed and skipped rows do not move the published graph,
-#                                   so the gap grows; a later publish closes it
-#   over_limit_counted           -- hours over the limit, and the breaches of 40 and 100
-#   reads_limit_from_update_script -- the limit is GRAPH_MAX_BEHIND in himmel-update.sh
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,7 +22,6 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 T0=1793491200   # 2026-11-01T00:00:00Z
 iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
 
-# plant_repo <dir> <n> -- n empty commits on main, commit i made i hours after T0
 plant_repo() {
     local dir="$1" n="$2" i t
     git init -q --initial-branch=main "$dir" 2>/dev/null || git init -q "$dir"
@@ -40,9 +32,7 @@ plant_repo() {
         GIT_AUTHOR_DATE="$t" GIT_COMMITTER_DATE="$t" git -C "$dir" commit -q --allow-empty -m "c$i"
     done
 }
-# commit_of <repo> <i> -- the sha of commit ci
 commit_of() { git -C "$1" log --format=%H --grep="^c$2\$" -n 1 main; }
-# row <ts-offset-hours> <action> <graph_head>
 row() {
     local gh="null"
     [ -z "${3:-}" ] || gh="\"$3\""
@@ -86,6 +76,11 @@ L2D="$TMP_ROOT/l2d.jsonl"
 { row 0 published-channel "$C0"; row 12 published-channel; } > "$L2D"
 out=$(python3 -I "$REPORT" --ledger "$L2D" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
 assert_contains "a publish row that names no build commit is unknown hours too" "unknown-hours=12" "$out"
+
+L2E="$TMP_ROOT/l2e.jsonl"
+row 0 published-channel 0123456789abcdef0123456789abcdef01234567 > "$L2E"
+out=$(python3 -I "$REPORT" --ledger "$L2E" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
+assert_contains "all hours unknown: the report says the build commit is unreadable" "unreadable" "$out"
 
 echo "TEST: over_limit_counted -- hours over the limit and the breaches of 40 and 100"
 R3="$TMP_ROOT/r3"; plant_repo "$R3" 130
