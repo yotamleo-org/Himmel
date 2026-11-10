@@ -173,8 +173,14 @@ Two ledgers, both written every run:
    literal path). One JSON line per run:
 
    ```json
-   {"ts":"2026-09-06T14:34:57Z","head":"<origin/main sha>","graph_head":"<built_at_commit>","merges_behind":21,"action":"merged","pr":"https://github.com/.../pull/42","duration_s":36,"error":null}
+   {"ts":"2026-09-06T14:34:57Z","head":"<origin/main sha>","graph_head":"<built_at_commit>","merges_behind":21,"lag_s":5400,"action":"merged","pr":"https://github.com/.../pull/42","duration_s":36,"error":null}
    ```
+
+   `graph_head` is the build commit of the graph, `merges_behind` how many
+   commits `origin/main` is ahead of it, and `lag_s` how many seconds apart the
+   two commits are (null when either commit cannot be read). A
+   `published-channel` row sets all three from the commit the publish carried;
+   see [How far behind the published graph is](#how-far-behind-the-published-graph-is).
 
    `action` is one of `skipped | failed | refreshed | published | published-channel | merged` —
    `published-channel` means the run pushed its graph to the `graph-data`
@@ -361,6 +367,34 @@ with, the station stays AST-only and `graphify-out/` is not touched.
 `--check` reports what it would fetch and writes nothing. A station with
 `graphify.semantic_api_ok` set to true in `~/.himmel/config.json` is the
 publisher, so it never fetches.
+
+### How far behind the published graph is
+
+Every `published-channel` row records the lag at the moment of the publish
+(`graph_head`, `merges_behind`, `lag_s`). A publish that lands carries a graph
+that is already a few commits old, and the next publish is hours away, so the
+lag adopters see at their own update is higher than any one row. To measure
+that, replay it:
+
+```sh
+python3 scripts/graphify/graph-lag-report.py --ledger <handover-root>/.graph-cadence/ledger.jsonl --repo <himmel checkout> --days 14
+```
+
+The report needs no network and writes nothing. For each hour of the window the
+published graph is the latest `published-channel` row at or before it; failed
+and skipped fires leave it where it was, so a run of them shows as a growing
+gap. The lag at an hour is the number of commits on `origin/main` (else `main`)
+made by then that the build commit does not contain. It prints:
+
+- `p50`, `p90` and `max` over the window's hours;
+- the hours over the limit adopters refuse the graph at, read from
+  `GRAPH_MAX_BEHIND` in `scripts/himmel-update.sh`;
+- the hours over 40 and over 100, and whether the target holds: `p90` at most
+  40 and `max` at most 100.
+
+Hours before the first `published-channel` row have no baseline; the report
+counts them apart (`no-baseline-hours`) and leaves them out of the figures.
+`--now` ends the window at a fixed time instead of the present.
 
 ## Luna graph freshness
 
