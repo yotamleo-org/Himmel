@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/handover-cost.py - re-derive the HIMMEL-6491 per-handover price from session JSONLs (HIMMEL-6501).
+"""scripts/eval/handover-cost.py - re-derive the earlier per-handover price measurement from session JSONLs.
 
 Read-only, deterministic, no model call. Reads every *.jsonl directly under --dir (default:
 ~/.claude/projects/-home-overlord-Documents-github-himmel) for chiefs and workers, plus the worker
@@ -24,7 +24,7 @@ Pieces per handover (turns/cost):
          including the one that says `SUCCESSION accepted`, at most 4. --workers-after drops workers whose first record is
          earlier than the cutoff (count only workers launched after the fast path merged).
 
-gross = every turn in the four pieces (the HIMMEL-6491 method, an upper bound: overlap turns include work
+gross = every turn in the four pieces (the earlier measurement's method, an upper bound: overlap turns include work
 that would have happened anyway). net = only the turns that touch the handover machinery (their tool
 input or text names chief.sh, action-zero, chief-wait (or console-wait), live-state, HANDOFF, SUCCESSION, RELAYED,
 ListAgents or succession.md).

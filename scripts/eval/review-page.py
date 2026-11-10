@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/review-page.py - the readable page over the reviewer evals (HIMMEL-6943).
+"""scripts/eval/review-page.py - the readable page over the reviewer evals.
 
 Reads the eval-runs ledger (lib/eval_runs.py) and the eval-changes ledger (lib/eval_feedback.py) and
 writes one Markdown page in plain words, its bottom line first (each eval's headline with its run day):

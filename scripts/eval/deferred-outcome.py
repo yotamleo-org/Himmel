@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/deferred-outcome.py - what became of the review findings that were deferred (HIMMEL-7517).
+"""scripts/eval/deferred-outcome.py - what became of the review findings that were deferred.
 
 A CR-ledger finding whose effective verdict is `deferred` names a follow-up ticket (`deferred_to`). This
 joins each one to that ticket's current state in the local Jira mirror and splits the deferrals:

@@ -50,6 +50,6 @@ python3 scripts/eval/fold-vs-keep/fvk.py score --tasks scripts/eval/fold-vs-keep
   Reading the primary checkout is not a leak for this class: it is the task's own repo.
   A fold run costs its script's authoring cost-eq (`author_cost_eq`), which is an
   upper bound for a class that runs again: the script is reused.
-- **publisher:** the inline cost is the parent-context growth HIMMEL-6825 measured
-  for a delegated publish (median 1.9k tokens, priced as one cache write). The
+- **publisher:** the inline cost is the parent-context growth measured earlier
+  for a delegated artifact publish (median 1.9k tokens, priced as one cache write). The
   launch and hand-back are about the same size as an inline call and its result.

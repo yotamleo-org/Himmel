@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cache-health.py - scripted per-role prompt-cache metrics with threshold alerts (HIMMEL-5672).
+"""cache-health.py - scripted per-role prompt-cache metrics with threshold alerts.
 
 No LLM, no claude -p: reads session transcripts under <projects-root>, writes a
 metrics JSON plus a rolling history under <state-dir>, and notifies only on a
