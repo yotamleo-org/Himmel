@@ -2176,10 +2176,6 @@ out=$(HOME="$OPTIN_HOME" run_cron3 arm --vault "$VAULT" --ast-only --with-publis
 assert_contains "the control: the JSON literal true opts in" "HIMMEL_API_LANE=on" "$out"
 rm -rf "$OPT_BAD"
 
-# ============================================================================
-# `post-merge graph|both|off` arms the refresh tick as a bare
-# runner on its own row. Fake crontab seam only; no real crontab is touched.
-# ============================================================================
 PMSTATE="$TMP_ROOT/cron-state-pm"; mkdir -p "$PMSTATE"
 PMCRON="$TMP_ROOT/crontab-fake-pm.sh"
 sed "s#^CSTATE=.*#CSTATE=\"$PMSTATE\"#" "$FAKE_CRONTAB2" > "$PMCRON"; chmod +x "$PMCRON"
@@ -2249,8 +2245,6 @@ assert_registry "keyword_flow_only_in_both: back to graph keeps the task" "any(.
 echo "TEST: HIMMEL-9517 2.3 the bare runner"
 PM_SCRIPT_Q=$(printf '%q' "$HIMMEL_ROOT_EXP/scripts/luna/post-merge-refresh.sh")
 PM_ALERTS="$PMDIR/alerts.log"; PM_FLOWS="$PMDIR/flows.jsonl"
-# pm_exec <stub body> — the armed runner with its tick replaced by a stub script, run under cron's
-# minimal PATH; prints nothing, leaves the runner's log in $PMDIR.
 pm_exec() {
     local stub="$PMDIR/stub-tick.sh" content
     printf '#!/bin/sh\n%s\n' "$1" > "$stub"
@@ -2355,6 +2349,12 @@ rc=0; run_pm post-merge >/dev/null 2>&1 || rc=$?
 assert_rc "post-merge with no mode exits 1" 1 "$rc"
 rc=0; run_pm post-merge graph --luna-only >/dev/null 2>&1 || rc=$?
 assert_rc "post-merge refuses an arm flag" 1 "$rc"
+for _pm_flag in "--vault $VAULT" "--luna-time 03:00" "--himmel-time=03:00" "--ast-only" "--force"; do
+    read -r -a _pm_args <<< "$_pm_flag"
+    rc=0; out=$(run_pm post-merge graph "${_pm_args[@]}" 2>&1) || rc=$?
+    assert_rc "post-merge refuses ${_pm_flag%% *} instead of ignoring it" 1 "$rc"
+done
+assert_contains "the refusal names the stray argument" "post-merge takes only --dry-run" "$out"
 rc=0; out=$(env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$PMCRON" GRAPHMAP_BAT_DIR="$PMDIR" PATH="$PATH_NOGRAPHIFY" "$REAL_BASH" "$SCRIPT" post-merge graph 2>&1) || rc=$?
 assert_rc "post-merge graph without graphify on PATH exits 2" 2 "$rc"
 assert_contains "the missing-graphify refusal names graphify" "graphify" "$out"

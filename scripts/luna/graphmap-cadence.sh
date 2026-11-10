@@ -118,7 +118,7 @@
 #
 # Exit codes (mirrors pipeline-cadence.sh):
 #   0  done (armed / status printed / disarmed / dry-run)
-#   1  usage / input error (post-merge: a mode other than graph|both|off, or an arm flag)
+#   1  usage / input error (post-merge: a mode other than graph|both|off, or any flag but --dry-run)
 #   2  env unusable (no crontab; unsupported platform; runner missing;
 #      query tool errored; post-merge: graphify not an absolute executable on
 #      PATH, the tick script missing; --rewrite-armed: a post-merge runner whose
@@ -161,8 +161,6 @@ TASK_MATCH_RE="(${TASK_LUNA}|${TASK_HIMMEL}|${TASK_AST_LUNA}|${TASK_AST_HIMMEL}|
 # --luna-only scope: the three Luna-corpus names, so disarm/arm can switch the Luna rows alone
 # while every himmel row stays (decision 449 keeps graphify off Luna).
 TASK_LUNA_MATCH_RE="(${TASK_LUNA}|${TASK_AST_LUNA}|${TASK_SEMANTIC_LUNA})"
-# The post-merge refresh tick has its own row, deliberately outside TASK_MATCH_RE: arm and arm --force never
-# see it, `post-merge` is the only verb that adds or removes it, and a full disarm removes it with the rest.
 TASK_POST_MERGE="HIMMEL-PostMergeRefresh"
 POST_MERGE_CADENCE_SECS=604800
 POST_MERGE_STALL_SECS=3600
@@ -413,7 +411,8 @@ Subcommands:
            every 5 minutes) and its bare runner: it refreshes the code graph after a
            merge (graph) and the himmel keyword index too (both). It adds no
            other row, and arm and arm --force leave it alone. The runner pins the
-           arm-time PATH, runs from its own directory, keeps its log under 1 MB and
+           arm-time PATH, runs from its own directory, moves its log aside once it
+           passes 1 MB (checked before each fire) and
            raises post-merge-tick when the tick exits non-zero; it writes no flow
            rows. The mode sits in one `# himmel-post-merge-mode:` line in the runner,
            which arm --rewrite-armed keeps (and refuses any other form of).
@@ -510,7 +509,11 @@ shift
 PM_MODE=""
 case "$SUBCMD" in
     arm|status|disarm) ;;
-    post-merge) PM_MODE="${1:-}"; [ $# -eq 0 ] || shift ;;
+    post-merge)
+        PM_MODE="${1:-}"; [ $# -eq 0 ] || shift
+        for _pm_arg in "$@"; do
+            [ "$_pm_arg" = --dry-run ] || { echo "ERR graphmap-cadence: post-merge takes only --dry-run (got '$_pm_arg')" >&2; exit 1; }
+        done ;;
     -h|--help) usage; exit 0 ;;
     *)
         echo "ERR graphmap-cadence: unknown subcommand: $SUBCMD" >&2
@@ -604,12 +607,6 @@ if [ "$SUBCMD" = post-merge ]; then
         graph|both|off) ;;
         *) echo "ERR graphmap-cadence: post-merge needs a mode: graph, both or off (got '$PM_MODE')" >&2; usage >&2; exit 1 ;;
     esac
-    # The verb touches one row; every flag that scopes or reshapes the other rows contradicts it.
-    if [ "$FORCE" -eq 1 ] || [ "$REWRITE_ARMED" -eq 1 ] || [ "$AST_ONLY" -eq 1 ] || [ "$LUNA_ONLY" -eq 1 ] \
-            || [ "$WITH_PUBLISH" -eq 1 ] || [ "$PUBLISH_SEMANTIC" -eq 1 ] || [ "$SEMANTIC_ACTIVE" -eq 1 ] \
-            || [ "$WITH_LUNA_SEMANTIC" -eq 1 ] || [ "$PUBLISH_EVERY_SET" -eq 1 ] || [ -n "$API_ACCOUNT" ]; then
-        echo "ERR graphmap-cadence: post-merge takes only --dry-run" >&2; exit 1
-    fi
 fi
 
 # The semantic pair's backend label must come from the INSTALLED runner's
@@ -1254,7 +1251,6 @@ cmd_status() {
             *) status_log "$log" ;;
         esac
     done
-    # The post-merge tick sits outside the task family above: its own row, its own mode.
     entry=$(printf '%s\n' "$CRON_TAB" | grep -E "# ${TASK_POST_MERGE}\$" | head -1 || true)
     if [ -n "$entry" ]; then
         sched=$(printf '%s' "$entry" | awk '{print $1, $2, $3, $4, $5}')
@@ -1265,8 +1261,6 @@ cmd_status() {
     status_log "$BAT_DIR/post-merge-refresh.log"
 }
 
-# The mode an armed post-merge runner carries: exactly one `# himmel-post-merge-mode: graph|both` line, and
-# nothing else counts. Prints the mode; returns 1 for a missing file, a missing line, a second line or any other value.
 post_merge_armed_mode() {
     local lines
     lines=$(grep -E '^# himmel-post-merge-mode:' "$1" 2>/dev/null || true)
@@ -1277,8 +1271,6 @@ post_merge_armed_mode() {
     esac
 }
 
-# The directories the tick needs on cron's minimal PATH, resolved now: graphify always (the graph half runs it),
-# plus bun, qmd and node where they resolve. Absolute directories only, colon-joined, each once.
 post_merge_path_dirs() {
     local tool bin dir dirs=""
     for tool in graphify bun qmd node; do
@@ -1291,10 +1283,6 @@ post_merge_path_dirs() {
     printf '%s' "$dirs"
 }
 
-# The bare runner for the post-merge tick: no flow rows and never a clear (the tick clears its own alert on a
-# clean pass); it raises post-merge-tick when the tick exits non-zero. It pins the arm-time PATH, runs from the
-# runner directory (qmd would otherwise walk up from wherever cron starts for a project-local .qmd/index.yml),
-# and moves its log aside once it passes 1 MB.
 # shellcheck disable=SC2016  # single-quoted $log/$_rc/$(date) are emitted literally for the runner's own /bin/sh
 emit_post_merge_runner() {
     local mode="$1" dirs="$2" bash_bin="$3" q_log
@@ -1319,14 +1307,11 @@ emit_post_merge_runner() {
     printf '} >> "$log" 2>&1\n'
 }
 
-# Unregister the tick's task and both its flows (the keyword flow exists only in both mode).
 post_merge_unregister() {
     observability_unregister_cadence post-merge-graph "$TASK_POST_MERGE"
     observability_unregister_cadence post-merge-keyword ""
 }
 
-# post-merge graph|both|off: the one verb that adds or removes the tick's row. Every other crontab row is
-# written back byte for byte.
 cmd_post_merge() {
     cron_read
     local newtab entry q_runner bash_bin dirs tmp graphify_bin
@@ -1347,8 +1332,6 @@ cmd_post_merge() {
         return 0
     fi
 
-    # The graph half runs graphify at fire time under cron's minimal PATH: refuse here, where a human is still
-    # reading, rather than arm a tick that fails every five minutes.
     if ! graphify_bin=$(command -v graphify 2>/dev/null) || [ "${graphify_bin#/}" = "$graphify_bin" ] \
             || [ ! -f "$graphify_bin" ] || [ ! -x "$graphify_bin" ]; then
         echo "ERR graphmap-cadence: 'graphify' is not an absolute executable on PATH at arm time, but the post-merge tick runs it at fire time under the scheduler's minimal PATH. Install it on PATH and re-arm." >&2
@@ -1400,7 +1383,6 @@ cmd_post_merge() {
     echo "graphmap-cadence: post-merge tick armed ($PM_MODE): every 5 minutes -> $CRON_RUNNER_POST_MERGE"
 }
 
-# Remove the runner files in scope: the Luna three always, the himmel three and the post-merge tick unless --luna-only.
 disarm_remove_runners() {
     rm -f "$CRON_RUNNER_LUNA" "$CRON_RUNNER_AST_LUNA" "$CRON_RUNNER_SEMANTIC_LUNA"
     [ "$LUNA_ONLY" -eq 1 ] || rm -f "$CRON_RUNNER_HIMMEL" "$CRON_RUNNER_AST_HIMMEL" "$CRON_RUNNER_PUBLISH_HIMMEL" "$CRON_RUNNER_POST_MERGE"
@@ -1420,7 +1402,6 @@ disarm_unregister() {
 
 cmd_disarm() {
     cron_read
-    # A full disarm takes the post-merge tick row with the rest; --luna-only never does.
     local existing scope_re="(${TASK_MATCH_RE}|${TASK_POST_MERGE})"
     [ "$LUNA_ONLY" -eq 0 ] || scope_re="$TASK_LUNA_MATCH_RE"
     existing=$(printf '%s\n' "$CRON_TAB" | grep -E "# ${scope_re}\$" || true)
@@ -1606,8 +1587,6 @@ cmd_arm() {
     # picks up a new runner format without any crontab row being added, removed or rescheduled.
     if [ "$REWRITE_ARMED" -eq 1 ]; then
         local rw_name rw_runner rw_tmp rw_n=0 rw_noted=0 pm_mode="" pm_dirs=""
-        # The post-merge runner keeps the mode it was armed with; one it cannot read a mode from is refused
-        # before any runner is rewritten.
         if [ -f "$CRON_RUNNER_POST_MERGE" ]; then
             if ! pm_mode=$(post_merge_armed_mode "$CRON_RUNNER_POST_MERGE"); then
                 echo "ERR graphmap-cadence: $CRON_RUNNER_POST_MERGE has no single '# himmel-post-merge-mode: graph' or '# himmel-post-merge-mode: both' line: re-arm it with bash scripts/luna/graphmap-cadence.sh post-merge graph (or both); nothing was rewritten" >&2

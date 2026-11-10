@@ -73,8 +73,6 @@ _observability_registry_update_body() {
     fi
 
     if [ "$action" = "register" ]; then
-        # $stall is "" when the caller gave none; a given value only fills a
-        # flow that has no stall_deadline_seconds, so an operator's stays.
         if ! jq --arg flow "$flow" --argjson cadence "$cadence" --arg task "$task" --arg stall "$stall" '
             ($stall | if . == "" then {} else {stall_deadline_seconds: tonumber} end) as $new
             | .flows = ((.flows // []) as $flows
