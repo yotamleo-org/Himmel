@@ -317,7 +317,7 @@ esac
 _go_quota_report() {
     local tok="" bucket="" why=""
     [ -n "${1:-}" ] && [ -s "$1" ] || return 1
-    read -r tok bucket why < "$1" 2>/dev/null || true  # swallow-ok: a row without a newline still fills the fields; an empty file leaves why empty and returns 1 below
+    read -r tok bucket why < "$1" 2>/dev/null || true  # read-sink-ok: our own mktemp refused file, never caller text; swallow-ok: a row without a newline still fills the fields; an empty file leaves why empty and returns 1 below
     [ -n "$why" ] || return 1
     (
         # shellcheck source=scripts/lib/gh-quota.sh

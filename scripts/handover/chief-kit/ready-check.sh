@@ -218,7 +218,7 @@ _rcd_report() {
             [ -z "$2" ] || [ -z "$3" ] || ghq_mark_blocked "$2" "$3" ready-check.sh "$bucket" "$why"
         ) || true
         first=0
-    done < "$1"
+    done < "$1"  # read-sink-ok: our own mktemp refused file, never caller text
     [ "$first" -eq 0 ]
 }
 
