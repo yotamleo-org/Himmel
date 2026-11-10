@@ -403,8 +403,8 @@ function tabsHtml(d, ui, tab, ch, dr, sel) {
   const named = ok && ch.version && versionAt(d, ch.version) !== sel;
   const real = driftOk(dr) ? dr.counts.real : 0;
   const old = driftOk(dr) && dr.stale ? " · over 3 h old" : "";
-  const tidy = driftOk(dr) ? (real ? `<span class="drf">! ${real} drift ${real === 1 ? "row" : "rows"}${old}</span>` : `<span class="ro">0 drift rows${old}</span>`)
-    : `<span class="ro">· ${!dr || dr.state === "absent" || !dr.counts || !dr.file ? "drift not read" : !dr.file.exists ? "no drift run yet" : "drift result unknown"}</span>`;
+  const tidy = driftOk(dr) ? (real ? `<span class="drf">! ${driftRows(real)}${old}</span>` : `<span class="ro">0 drift rows${old}</span>`)
+    : `<span class="ro">· ${driftState(dr)}</span>`;
   const em = { nv: d.noVersionCount ? `<span class="ro">${esc(nTickets(d.noVersionCount))}</span>` : "" };
   const chains = (on) => `<a class="tab ch" role="tab" aria-selected="${on}" href="${boardHref({ tab: "chains", v: ui.v })}"${ok ? ` aria-label="${esc(`Chains, ${n} ${n === 1 ? "chain" : "chains"}${ch.version ? " in " + ch.version : ""}${blocked ? `, ${nTickets(blocked)} blocked` : ""}`)}"` : ""}>${CLINK}Chains${ok ? ` <span class="cnt">${n}</span>` : ""}${named ? ` <span class="ro">in ${esc(ch.version)}</span>` : ""}${blocked ? ` <span class="blk">⛔ ${nTickets(blocked)} blocked</span>` : ""}</a>`;
   // the No version tab is there while some ticket has no fixVersion (the count is the default read's; the tickets are read when it opens)
@@ -746,20 +746,32 @@ function originText(h) {
   if (!e) return "no status move in Jira";
   return e.himmel ? "himmel's Jira account: a script, or a hand move if the login is shared" : `moved in Jira by ${e.who}`;
 }
+const DRIFT_WORDS = { "DERIVE-MISMATCH": "Jira's status differs from the worker events", "MERGE-MISMATCH": "Merged, but not Done", "DONE-WITH-OPEN-PR": "Done, with a PR still open",
+  "MERGED-NO-ROW": "Merged with no merge record", MISSED: "A status write was missed", "WORKER-STALE": "The worker record says live, but it ended",
+  "WORKER-COMMENT": "Worker comment out of date", "TWO-OWNERS": "Two workers claim it", UNOWNED: "Started, nobody on it", AWAITING: "Waiting on its owner, inside its clock",
+  "HELD-IN-WORK": "Held, but in work", "VERSION-DRIFT": "Worked, but only in a later version", HEALTH: "The check could not read an input" };
+const copyBtn = (cmd, label) => `<button class="btn" data-act="copy" data-cmd="${esc(cmd)}" title="${esc(cmd)}">${label}</button>`;
+const driftRows = (n) => `${n} drift ${n === 1 ? "row" : "rows"}`;
+const driftState = (dr) => (!dr || dr.state === "absent" || !dr.counts || !dr.file ? "drift not read" : !dr.file.exists ? "no drift run yet" : "drift result unknown");
+const finLine = (id, ok, name, note, inner = "") => `<details${id ? ` id="${id}"` : ""} class="fin"><summary><span class="gl${ok ? "" : " q"}" aria-hidden="true">${ok ? "✓" : "?"}</span><span class="nm">${esc(name)}</span><span class="chk">${esc(note)}</span></summary>${inner ? `<div class="inner">${inner}</div>` : ""}</details>`;
+const groupOf = (id, label, head, body) => `<section id="${id}" class="rm-grp" aria-label="${esc(label)}"><div class="gh">${esc(head)}</div>${body}</section>`;
 function driftRow(r, origins) {
   const parts = String(r.line || "").split(" | "), prefix = `${r.class} ${r.key} `;
   const says = parts[0].startsWith(prefix) ? parts[0].slice(prefix.length) : parts[0];
   const get = (k) => (parts.find((p) => p.startsWith(k + "=")) || "").slice(k.length + 1);
-  const fix = get("fix");
-  return `<tr><td><code>${esc(r.class)}</code></td><td class="rm-key">${esc(r.key)}</td><td>${esc(says)}</td><td>${esc(originText(origins && origins[r.key]))}</td><td>${esc(get("writer"))}</td><td>${fix ? `<code>${esc(fix)}</code> <button class="btn" data-act="copy" data-cmd="${esc(fix)}">copy</button>` : ""}</td></tr>`;
+  const fix = get("fix"), what = DRIFT_WORDS[r.class];
+  return `<tr><td>${what ? `<b>${esc(what)}</b> ` : ""}<code class="rm-cls">${esc(r.class)}</code></td><td class="rm-key">${esc(r.key)}</td><td>${esc(says)}</td><td>${esc(originText(origins && origins[r.key]))}</td><td>${esc(get("writer"))}</td>`
+    + `<td>${fix && fix !== "none" ? copyBtn(fix, "copy the fix") : `<span class="ro">none needed</span>`}</td></tr>`;
 }
-function statusDriftHtml(dr, origins) {
-  if (!driftOk(dr)) return `<div class="nodata">${dr && dr.file && !dr.file.exists ? "no saved drift run yet" : dr && dr.counts && dr.unknown ? "the saved drift run's result is unknown" : "status drift not read" + (dr && dr.reason ? ` (${esc(dr.reason)})` : "")}</div>`;
+function statusDriftHtml(dr, origins, run) {
+  const runs = runHtml(dr, run);
+  if (!driftOk(dr)) return groupOf("rm-status-drift", "Status drift", "Status drift", runs + finLine("", false, "Status drift", dr && dr.file && !dr.file.exists ? "no saved drift run yet" : dr && dr.counts && dr.unknown ? "the saved drift run's result is unknown" : "status drift not read" + (dr && dr.reason ? ` (${dr.reason})` : "")));
   const grp = (title, rows) => rows && rows.length ? `<tr class="grp"><td colspan="6">${esc(title)} · ${rows.length}</td></tr>${rows.map((r) => driftRow(r, origins)).join("")}` : "";
   const body = grp("Real drift · counted", dr.real) + grp("Known checker bug · listed, not counted", dr.known) + grp("Transient · listed, not counted", dr.transient);
-  return `<div class="kv">real ${dr.counts.real} · known checker bug ${dr.counts.known} · transient ${dr.counts.transient} · ${esc(dr.mode)} mode · saved run ${esc(dr.file.writtenHm || "unknown")}</div>`
-    + (body ? `<div class="scroll"><table class="data"><thead><tr><th>class</th><th>ticket</th><th>says</th><th>origin</th><th>writer</th><th>fix</th></tr></thead><tbody>${body}</tbody></table></div>`
-      : `<div class="empty">No drift rows.</div>`);
+  const c = dr.counts, n = c.real + c.known + c.transient;
+  return groupOf("rm-status-drift", "Status drift", `Status drift · ${n} ${n === 1 ? "row" : "rows"}, ${c.real} counted`, `<div class="cc">${runs}`
+    + (body ? `<div class="scroll"><table class="data rm-sdrift"><thead><tr><th>what is off</th><th>ticket</th><th>detail</th><th>moved by</th><th>fixed by</th><th></th></tr></thead><tbody>${body}</tbody></table></div>`
+      : `<div class="empty">No drift rows.</div>`) + `</div>`);
 }
 
 // What a re-run changed, row by row, from the rows on screen before it (mockup v4 frame 6).
@@ -773,35 +785,73 @@ function sinceHtml(s) {
   const row = (tag, text) => `<tr><td>${tag}</td><td>${esc(text)}</td></tr>`;
   return `<div class="scroll"><table class="data"><thead><tr><th>since ${esc(s.from || "the last run")}</th><th>row</th></tr></thead><tbody>${s.added.map((l) => row((s.counted || []).includes(l) ? "new · counted" : "new", l)).join("")}${s.healed.map((l) => row("healed", l)).join("")}${row("same", `${s.same} row${s.same === 1 ? "" : "s"}`)}</tbody></table></div>`;
 }
-// The Refresh control (mockup v4 frame 6). Opening the tab reads the saved file and starts nothing; a run keeps the saved rows on screen until it ends.
-function driftBar(dr, run) {
-  const hm = dr && dr.file && dr.file.exists ? dr.file.writtenHm || "unknown" : null, running = run && run.state === "running";
-  const facts = hm ? ` · written <b>${esc(hm)}</b>${dr.sdrift ? ` · <code>sdrift=${esc(dr.sdrift)}</code>` : ""}${dr.stale ? " · older than 3 h" : ""}` : "";
-  const text = running ? `<span class="rm-spin" aria-hidden="true"></span> re-running the check · started <b>${esc(run.started)}</b> · usually about 2 min, at most 3 min 20 s${hm ? ` · the rows below are from ${esc(hm)}` : ""}`
-    : hm ? `drift: <b>${run && run.state === "done" ? "re-run" : "saved run"}</b>${facts}` : `drift: no saved run to show`;
-  const bar = `<div class="rm-driftbar" role="status"><span>${text}</span><button class="btn" data-act="drift-refresh" aria-label="refresh: re-run the drift check"${running ? " disabled" : ""}>refresh</button></div>`;
-  if (run && run.state === "failed") return `${bar}<div class="alert" role="alert"><span class="st pill fail">not re-run</span> ${esc(run.reason)} · ${hm ? `the saved run from ${esc(hm)} is kept` : "there is no saved run to keep"}</div>`;
-  return run && run.state === "done" ? bar + sinceHtml(run.since) : bar;
+function runHtml(dr, run) {
+  const hm = dr && dr.file && dr.file.exists ? dr.file.writtenHm || "unknown" : null;
+  if (run && run.state === "running") return `<div class="rm-driftbar" role="status"><span><span class="rm-spin" aria-hidden="true"></span> re-running the check · started <b>${esc(run.started)}</b> · usually about 2 min, at most 3 min 20 s${hm ? ` · the rows below are from ${esc(hm)}` : ""}</span></div>`;
+  if (run && run.state === "failed") return `<div class="alert" role="alert"><span class="st pill fail">not re-run</span> ${esc(run.reason)} · ${hm ? `the saved run from ${esc(hm)} is kept` : "there is no saved run to keep"}</div>`;
+  if (run && run.state === "done") return `<div class="rm-driftbar" role="status"><span>drift: <b>re-run</b>${hm ? ` · written <b>${esc(hm)}</b>` : ""}</span></div>` + sinceHtml(run.since);
+  return "";
 }
 // The mode is read-only here: its one switch is on Configure (mockup v4 frame 5b).
 function modeHtml(dr) {
   if (!dr || !dr.mode) return "";
   const team = dr.mode === "team";
-  return `<div class="kv rm-mode">team mode is <b>${team ? "on" : "off"}</b> · <a href="#/config?tile=tracker">change in Configure → Tracker ▸</a> · ${team ? "team: a drift is ordinary tidy-up · the doctor only reports it" : "single-user: a real drift = a himmel bug · the doctor WARNs"}</div>`;
+  return `<div><b>${team ? "team" : "single-user"}</b> mode: ${team ? "a drift is ordinary tidy-up, and the health check only reports it" : "a real drift means a himmel bug, and the health check warns"} · <a href="#/config?tile=tracker">change in Configure → Tracker ▸</a></div>`;
 }
 
+const tidyUi = (ui, sel) => ({ ...ui, version: ui.v && ui.v !== "all" && sel >= 0 ? sel : null, theme: null });
+const tidyScope = (d, u) => (u.version != null ? d.versions[u.version].n : "every version");
+
+function planDrift(d) {
+  const n = d.drift.now;
+  const trend = d.drift.trend.length ? `<div class="ro">trend, oldest first (off the plan / unplanned / no Sector): ${d.drift.trend.map((r) => `${r[1]}/${r[2]}/${r[3]}`).map(esc).join(" → ")}</div>` : `<div class="ro">no drift log rows</div>`;
+  const counts = `<div>${n.drift} off the plan · ${n.unplanned} unplanned · ${n.unthemed} with no Sector</div>`;
+  if (d.plan.state !== "ok") return { fold: finLine("rm-drift", false, "Plan drift", `not computed: ${d.plan.reason || "no plan dir"}`, trend) };
+  if (!n.drift && !n.unplanned) return { fold: finLine("rm-drift", true, "Plan drift", "every fixVersion matches the plan", counts + trend) };
+  return { card: groupOf("rm-drift", "Plan drift", "Plan drift · Jira's fixVersion against the plan's placement", `<div class="cc">${counts}${trend}</div>`) };
+}
+function tidySync(d, u) {
+  const keep = shownKs(d, u), ops = (d.sync || []).filter((o) => keep.has(opId(o)));
+  if (!ops.length) return { fold: finLine("rm-sync", true, "Worker to Jira sync", "Jira already matches the workers") };
+  return { card: groupOf("rm-sync", "Worker to Jira sync", `Worker to Jira sync · ${nTickets(ops.length)} · planned only: the console kit writes Jira, this page never does`,
+    `<div class="cc"><div class="scroll"><table class="data"><thead><tr><th>ticket</th><th>worker says</th><th>why</th><th></th></tr></thead><tbody>${ops.map((o) =>
+      `<tr><td class="rm-key">${esc(opId(o))}</td><td>${esc(o.marker)}</td><td>${esc(o.why)}</td><td>${copyBtn(jira(o.argv), "copy the command")}</td></tr>`).join("")}</tbody></table></div></div>`) };
+}
+const LIB_LISTS = [["staleInProgress", "Stale In Progress"], ["drift", "Version drift"], ["unthemed", "No Sector"], ["releasedOpen", "Released but open"], ["duplicates", "Duplicate titles"]];
+function tidyLibrarian(d, u) {
+  const l = d.librarian, keep = shownKs(d, u);
+  const ids = new Map(d.tickets.map((t) => [t.k, idOf(t)]));
+  const id = (k) => ids.get(k) || "HIMMEL-" + k;
+  const pids = (p) => p.ids || (p.keys ? p.keys.map(id) : [p.id || id(p.k)]);
+  const lists = LIB_LISTS.map(([k, title]) => ({ title, dup: k === "duplicates", items: (l[k] || []).filter((p) => pids(p).some((x) => keep.has(x))) }));
+  const full = lists.filter((x) => x.items.length), empty = lists.filter((x) => !x.items.length), n = full.reduce((a, x) => a + x.items.length, 0);
+  const row = (p) => { const cmd = /^(.*?): (jira .+)$/.exec(p.proposal);
+    return `<div class="note"><span class="rm-key">${pids(p).map(esc).join(" = ")}</span> ${esc(p.title)}: ${esc(cmd ? cmd[1] : p.proposal)}${cmd ? " " + copyBtn(cmd[2], "copy the command") : ""}</div>`; };
+  const card = (x) => `<div class="cc"><div class="cct"><b>${esc(x.title)} · ${x.dup ? `${x.items.length} ${x.items.length === 1 ? "title" : "titles"}` : nTickets(x.items.length)}</b><span class="tk">proposal</span></div>${x.items.map(row).join("")}</div>`;
+  return { n, card: full.length ? groupOf("rm-librarian", "Librarian", `Librarian · ${n} ${n === 1 ? "proposal" : "proposals"} in ${full.length} of ${lists.length} lists · each needs your approval`, full.map(card).join("")) : "",
+    fold: empty.length ? finLine(full.length ? "" : "rm-librarian", true, `Librarian: ${empty.map((x) => x.title.toLowerCase()).join(", ")}`, "nothing to propose") : "" };
+}
+
+function tidyHead(d, ui, sel, dr) {
+  const u = tidyUi(ui, sel), scope = esc(tidyScope(d, u));
+  if (d.source === "github") return `<div class="cph"><div class="big">Nothing to tidy<small>${scope}</small></div></div>`;
+  if (d.source === "local") { const n = tidyLibrarian(d, u).n; return `<div class="cph"><div class="big">${n} ${n === 1 ? "proposal" : "proposals"}<small>${scope} · the librarian's, each needs your approval</small></div></div>`; }
+  const running = ui.driftRun && ui.driftRun.state === "running";
+  const btn = `<div class="flt"><button class="btn" data-act="drift-refresh" aria-label="refresh: re-run the drift check"${running ? " disabled" : ""}>re-run the check</button></div>`;
+  if (!driftOk(dr)) return `<div class="cph"><div class="big">${driftState(dr)}<small>${scope}</small></div><div class="tick">${modeHtml(dr)}</div>${btn}</div>`;
+  const c = dr.counts, hm = esc(dr.file.writtenHm || "unknown");
+  const saved = dr.sdrift ? `<span title="sdrift=${esc(dr.sdrift)}">saved run ${hm}</span>` : `saved run ${hm}`;
+  return `<div class="cph"><div class="big">${driftRows(c.real)}<small>${scope} · ${saved}${dr.stale ? " · older than 3 h" : ""}</small></div>`
+    + `<div class="tick"><div>not counted: <b>${c.known}</b> known checker bug, <b>${c.transient}</b> transient, <b>${c.waiting || 0}</b> waiting on their owner</div>${modeHtml(dr)}</div>${btn}</div>`;
+}
 function tidyTab(d, ui, sel, dr) {
-  // Tidy up covers every version unless the route names one: a default of the running version would hide the other versions' sync ops and released-but-open tickets.
-  const u = { ...ui, version: ui.v && ui.v !== "all" && sel >= 0 ? sel : null };
-  if (d.source === "github") return section("rm-tidy", "Tidy up", "", `<div class="nodata">GitHub issues are read-only here, so there is nothing to tidy: change them on GitHub.</div>`);
-  const lib = section("rm-librarian", "Librarian", "Ready-to-approve cleanups.", librarianHtml(d, u));
-  if (d.source === "local") return lib; // the local store has no Jira status, no plan and no worker sync
-  return [
-    section("rm-status-drift", "Status drift", "Jira against the events, from the saved drift run.", driftBar(dr, ui.driftRun) + modeHtml(dr) + statusDriftHtml(dr, ui.driftOrigins)),
-    section("rm-drift", "Drift", "Jira's fixVersion against the plan's placement.", driftHtml(d)),
-    section("rm-sync", "Worker to Jira sync", "What the workers say that Jira does not yet.", syncHtml(d, u)),
-    lib,
-  ].join("\n");
+  const u = tidyUi(ui, sel);
+  if (d.source === "github") return finLine("rm-tidy", true, "Tidy up", "GitHub issues are read-only here, so there is nothing to tidy: change them on GitHub");
+  const lib = tidyLibrarian(d, u);
+  if (d.source === "local") return lib.card + lib.fold;
+  const plan = planDrift(d), sync = tidySync(d, u), folds = [sync.fold, lib.fold, plan.fold].filter(Boolean);
+  return statusDriftHtml(dr, ui.driftOrigins, ui.driftRun) + (plan.card || "") + (sync.card || "") + lib.card
+    + (folds.length ? `<div class="gh">Nothing to do, or not read</div>${folds.join("")}` : "");
 }
 
 // ---- the ticket drawer (mockup v4 frame 3): opened from a card, it shows the card's facts, the CLI call each write makes, and its stage history.
@@ -996,8 +1046,8 @@ function boardPage(data, ui, extras) {
     const shownCh = readFor(tab, ch, cardCh);
     const body = tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, shownCh, dr, prs) : waitingHtml(rows, tabCh, ui.v, data, ch, ui.nv, owed) + lanesHtml(data, ui, sel, cardCh, dr, prs);
     const chainOfThisVersion = cardCh === tabCh && chainOk(tabCh) && tabCh.version ? tabCh : null;
-    const head = tab === "roadmap" ? roadmapHead(data, sel, chainOfThisVersion) : tab === "nv" ? nvHead(ui.nv) : "";
-    panel = `<section class="cp plain" aria-label="${esc(TABS.find(([id]) => id === tab)[1])}">${head}${writeNote(ui)}${barHtml(data, ui, shownCh, tab, sel)}${body}</section>`;
+    const head = tab === "roadmap" ? roadmapHead(data, sel, chainOfThisVersion) : tab === "nv" ? nvHead(ui.nv) : tidyHead(data, ui, sel, dr);
+    panel = `<section class="cp plain" aria-label="${esc(TABS.find(([id]) => id === tab)[1])}">${head}${writeNote(ui)}${tab === "tidy" ? "" : barHtml(data, ui, shownCh, tab, sel)}${body}</section>`;
   }
   const topHead = `<div class="rm-head bh"${modal ? " inert" : ""}><header class="ph"><h1>Board</h1></header>${stripHtml(data, chipSel, tab, { ...ui, inert: modal })}</div>`;
   return [topHead, `<div class="rm-under"${modal ? " inert" : ""}>`, `<div class="tr">${tabsHtml(data, ui, tab, tabCh, dr, chipSel)}${asideHtml(ch, rows, fresh, data, ui.nv, owed)}</div>`, panel, `</div>`, drawer, why].join("\n");
