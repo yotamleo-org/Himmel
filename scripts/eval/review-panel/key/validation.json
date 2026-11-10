@@ -74,7 +74,7 @@
    "repair_evidence": "real fix (intent file)",
    "evidence_refs": ["fixtures/real-004-clean.intent.md", "retained:2026-11-03-h8430-head1/real-004-clean.md", "retained:2026-11-03-h8430-head1b/real-004-clean.md"],
    "curator": "N5717", "reviewer": null, "reviewed_at": null,
-   "curation": "Blocked in 6 of 28 sweeps, never in the four 2026-11-05 codex-only sweeps. Claims: a Windows command override is not checked, and a quoted \"enabled\" key escapes the check. The quoted-key claim is inside the stated contract if TOML reads it as the same key; not verified. The Windows claim is outside the station platforms. Unverified, no proposal."
+   "curation": "Blocked in 6 of 28 sweeps, never in the four 2026-11-05 codex-only sweeps. Claims: a per-OS command override is not checked, and a quoted \"enabled\" key escapes the check. The quoted-key claim is inside the stated contract if TOML reads it as the same key; not verified. The per-OS claim concerns a platform the station no longer supports. Unverified, no proposal."
   },
   "real-008-clean": {
    "state": "pending", "effective_kind": "clean",
