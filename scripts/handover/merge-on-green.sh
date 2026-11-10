@@ -2712,26 +2712,20 @@ _jira_intake_to_current() {
     fi
 }
 
-# THE MERGE LINE — a report, never a gate. Once the PR is MERGED and before the close can
-# stamp a version, ask `release bucket-check` whether the ticket was in the current version's bucket. The answer is the
-# ` bucket=` field on the MERGED audit line: IN, NONE, APPROVED, OUTSIDE, DONE, unread (could not read it) or not-asked
-# (no key, or no built CLI). OUTSIDE and DONE also print a LEAK line, write one `bucket-leak` status row and tell the
-# owning chief's inbox (a silent waiter's merge prints to /dev/null). Nothing here changes an exit code.
 BUCKET_RESULT="not-asked"
-# _bucket_line <repo_root> <key> <title> <pr> <sha> — sets BUCKET_RESULT; always returns 0.
 _bucket_line() {
     local repo_root="$1" key="$2" title="$3" pr="$4" sha="$5"
-    local bk_to="" bk_out="" bk_line="" bk_rc=0 bk_verdict="" bk_version="?" bk_cur="?" bk_open="?" bk_text="" bk_re
+    local bk_to="" bk_out="" bk_line="" bk_rc=0 bk_verdict="" bk_version="?" bk_cur="?" bk_open="?" bk_text="" bk_re bk_timed_out
     BUCKET_RESULT="unread"
     if command -v timeout >/dev/null 2>&1; then bk_to="timeout -k 10 $(_mog_shorten_secs "${MERGE_BUCKET_TIMEOUT_SECS:-}" 30)"
     elif command -v gtimeout >/dev/null 2>&1; then bk_to="gtimeout -k 10 $(_mog_shorten_secs "${MERGE_BUCKET_TIMEOUT_SECS:-}" 30)"; fi
-    # With neither binary the call cannot be bounded, so it is not made: a hung CLI would hold the audit line and the exit.
     if [ -n "$bk_to" ]; then
         bk_out=$(cd "$repo_root" && $bk_to node scripts/jira/dist/index.js release bucket-check \
             --mirror "$HOME/.himmel/state/jira-mirror/${key%%-*}" "$key" 2>/dev/null) || bk_rc=$?
     fi
-    # A call the timeout killed is unread even if it printed before the kill.
-    case "$bk_rc" in 124|137) bk_out="" ;; esac
+    bk_timed_out=0
+    case "$bk_rc" in 124|137) bk_timed_out=1 ;; esac
+    [ "$bk_timed_out" -eq 0 ] || bk_out=""
     bk_line=$(printf '%s\n' "$bk_out" | grep -m 1 -E "^(IN|NONE|APPROVED|OUTSIDE|DONE|FAILED) $key( |\$)") || bk_line=""
     bk_verdict=${bk_line%% *}
     case "$bk_verdict" in
@@ -2757,7 +2751,6 @@ _bucket_line() {
         *) return 0 ;;
     esac
     declare -F status_event >/dev/null && status_event event=bucket-leak key="$key" pr="$pr" head="$sha" verdict="$BUCKET_RESULT"
-    # The route's result is ignored: with no armed inbox or no chief name it returns 1 and the row and field remain.
     if declare -F _mba_route_chief >/dev/null; then _mba_route_chief "${nwo:-}" "$pr" "${HIMMEL_CONSOLE_NAME:-}" "$bk_text" || true; fi
     return 0
 }
