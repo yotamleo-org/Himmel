@@ -52,7 +52,7 @@ fill() {
 
 newfix() {
   F="$T/$1"; S="$F/specs"; BR="$F/bridge"
-  SPEC="$S/designs/x.md"; HTML="$S/designs/x.html"; PLAN="$S/plans/x.md"
+  SPEC="$S/designs/HIMMEL-1-x.md"; HTML="$S/designs/HIMMEL-1-x.html"; PLAN="$S/plans/HIMMEL-1-x.md"
   mkdir -p "$S/designs" "$S/plans" "$S/decisions" "$BR"
   printf '# Fixture spec\n\n## Diagrams\n\n```svg\n<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="8" height="8"/></svg>\n```\n\n## After\n\nText after the diagram.\n' > "$SPEC"
   printf '# Fixture plan\n\n## Task 1\n\nDo it.\n' > "$PLAN"
@@ -65,14 +65,16 @@ gen_page() {
   fi
 }
 ret() {
-  local file="$1" verdict="$2"; shift 2
-  { echo "Canned critic return."; while [ $# -ge 2 ]; do printf 'READ-SHA256 %s %s\n' "$1" "$2"; shift 2; done; printf '\n%s\n' "$verdict"; } > "$file"
+  local file="$1" verdict="$2" name; shift 2; name="$(basename "$file")"
+  { echo "Canned critic return for $name."; while [ $# -ge 2 ]; do printf 'READ-SHA256 %s %s\n' "$1" "$2"; shift 2; done; printf '\n%s\n' "$verdict"; } > "$file"
 }
 retspec() { QS_MD="$(sha "$SPEC")"; QS_HTML="$(sha "$HTML")"; ret "$SPEC.critic-spec-r$1.md" "$2" "$QS_MD" "$SPEC" "$QS_HTML" "$HTML"; }
 retplan() { QP_PLAN="$(sha "$PLAN")"; QP_SPEC="$(sha "$SPEC")"; ret "$SPEC.critic-plan-r$1.md" "$2" "$QP_PLAN" "$PLAN" "$QP_SPEC" "$SPEC"; }
 stub() { printf 'Earlier round.\n\n%s\n' "$2" > "$SPEC.critic-$1.md"; }
 NO_SEAL_COMMAND=127
+seedfix() { [ -f "$S/ledgers/spec-rounds/manifest.json" ] || bun "$ROUTE" round-seed --all "$S" >/dev/null 2>&1 || echo "seedfix: round-seed failed in $S" >&2; }
 seal1() {
+  seedfix
   if [ "${DIRECT:-}" = 1 ]; then SEALOUT="$(bash "$SEALSH" "$1" "$2" "$3" 2>&1)"; SEALRC=$?
   elif [ -z "$SEALLINE" ]; then SEALOUT="no seal command in SKILL.md"; SEALRC=$NO_SEAL_COMMAND
   else SEALOUT="$(bash -c "$(fill "$SEALLINE" "$REPO_ROOT" "$SPEC" "$1" "$2" "$3")" 2>&1)"; SEALRC=$?
@@ -81,6 +83,7 @@ seal1() {
 sealspec() { seal1 "$SPEC.critic-spec-r$1.md" "$SPEC" "$QS_MD"; seal1 "$SPEC.critic-spec-r$1.md" "$HTML" "$QS_HTML"; }
 sealplan() { seal1 "$SPEC.critic-plan-r$1.md" "$PLAN" "$QP_PLAN"; seal1 "$SPEC.critic-plan-r$1.md" "$SPEC" "$QP_SPEC"; }
 send() {
+  seedfix
   SOUT="$(BRIDGE_ROOT="$BR" bun "$ROUTE" send-file 1 "$1" 2>&1)"; SRC=$?
   QUEUED=""; [ "$SRC" -eq 0 ] && QUEUED="${SOUT##*queued }"
 }
@@ -226,12 +229,14 @@ if [ -z "$SEALLINE" ]; then fail "k: the seal command is in SKILL.md"; else
   cp "$T/k-spec-bytes" "$SPEC"
   accepted "k: the sealed bytes put back: accepted" "$HTML"
   newfix k3; gen_page; for r in 1 2 3; do stub spec-r$r "SPEC FINDINGS 1"; stub plan-r$r "PLAN FINDINGS 1"; done
+  seedfix
   retspec 4 "SPEC CLEAN"; sealspec 4
-  [ "$SEALRC" -ne 0 ] && has "k: round 4 with no operator record: the seal is refused, naming the record" "needs an operator record" "$SEALOUT" || fail "k: round 4 with no operator record: the seal is refused" "$SEALOUT"
-  printf 'decision 7\n' > "$SPEC.operator-round-r4.md"; printf 'verbatim\n' > "$S/decisions/verbatim-decision-7-x.txt"
-  sealspec 4; [ "$SEALRC" -eq 0 ] && pass "k: with a record: the spec return is sealed" || fail "k: with a record: the spec return is sealed" "$SEALOUT"
-  retplan 4 "PLAN CLEAN"; sealplan 4; [ "$SEALRC" -eq 0 ] && pass "k: the same record serves the plan critic" || fail "k: the same record serves the plan critic" "$SEALOUT"
-  accepted "k: both critics at r4 under one record: accepted" "$HTML"
+  [ "$SEALRC" -eq 0 ] && pass "k: round 4 after a blocking round 3: the spec return is sealed with no record" || fail "k: round 4 after a blocking round 3: the spec return is sealed with no record" "$SEALOUT"
+  retplan 4 "PLAN CLEAN"; sealplan 4; [ "$SEALRC" -eq 0 ] && pass "k: the plan critic's round 4 is sealed too" || fail "k: the plan critic's round 4 is sealed too" "$SEALOUT"
+  accepted "k: both critics at r4: accepted" "$HTML"
+  printf 'decision 7\n' > "$SPEC.operator-round-r5.md"; printf 'verbatim\n' > "$S/decisions/verbatim-decision-7-x.txt"
+  retspec 5 "SPEC CLEAN"; sealspec 5
+  [ "$SEALRC" -ne 0 ] && has "k: round 5 with an operator-round file: the seal is refused, naming the record it needs" "HIMMEL-1 writer round 5 needs a round-override or round-critical record" "$SEALOUT" || fail "k: round 5 with an operator-round file: the seal is refused" "$SEALOUT"
 fi
 
 echo "== l: the core-check command reaches the primary's CLI from a worktree =="

@@ -1109,7 +1109,13 @@ test("an alias matches the chief's bucket, so a hyphenated project resolves", as
 import { sendDocument } from "./telegram-api";
 import { truncateSync } from "node:fs";
 
+const seedIfNeeded = async (specs: string) => {
+  if (!existsSync(specs) || existsSync(join(specs, "ledgers", "spec-rounds", "manifest.json"))) return;
+  const { roundSeed } = await import("./chief-route");
+  await roundSeed(specs).catch(() => {});
+};
 const sendFile = async (r: string, ...args: string[]) => {
+  await seedIfNeeded(join(r, "specs"));
   const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "send-file", ...args], { env: { ...process.env, BRIDGE_ROOT: r }, stdout: "pipe", stderr: "pipe" });
   const err = await new Response(p.stderr).text();
   const code = await p.exited;
@@ -1315,19 +1321,18 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const critic = (spec: string, kind: "spec" | "plan", round: number, verdict: string, sealed?: { text: string; file: string }) =>
   writeFileSync(`${spec}.critic-${kind}-r${round}.md`, `critic return, round ${round}\n${sealed ? `CONTENT-SHA256 ${sha(sealed.text)} ${sealed.file}\n` : ""}${verdict}\n`);
 
-// <r>/specs/designs/design.md + design.plan.md, each with a clean round-1 critic file sealed to its bytes.
 const bundle = (r: string) => {
   const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
-  const spec = join(dir, "design.md"); const plan = join(dir, "design.plan.md");
+  const spec = join(dir, "HIMMEL-1-design.md"); const plan = join(dir, "HIMMEL-1-design.plan.md");
   writeFileSync(spec, "# Design\n\nthe spec\n"); writeFileSync(plan, "# Plan\n\nthe plan\n");
-  critic(spec, "spec", 1, "SPEC CLEAN", { text: "# Design\n\nthe spec\n", file: "design.md" });
-  critic(spec, "plan", 1, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "design.plan.md" });
+  critic(spec, "spec", 1, "SPEC CLEAN", { text: "# Design\n\nthe spec\n", file: "HIMMEL-1-design.md" });
+  critic(spec, "plan", 1, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "HIMMEL-1-design.plan.md" });
   return { dir, spec, plan };
 };
 
 test("send-file refuses a spec whose latest spec critic is NO-GO, names that verdict file and queues nothing", async () => {
   const r = root(); const b = bundle(r);
-  critic(b.spec, "spec", 2, "SPEC FINDINGS 3", { text: "# Design\n\nthe spec\n", file: "design.md" });
+  critic(b.spec, "spec", 2, "SPEC FINDINGS 3", { text: "# Design\n\nthe spec\n", file: "HIMMEL-1-design.md" });
   const res = await sendFile(r, "1", b.spec);
   expect(res.code).not.toBe(0);
   expect(res.lines).toEqual([]);
@@ -1337,7 +1342,7 @@ test("send-file refuses a spec whose latest spec critic is NO-GO, names that ver
 
 test("send-file reads the highest round numerically: r10 findings beat a clean r9", async () => {
   const r = root(); const b = bundle(r);
-  const sealed = { text: "# Design\n\nthe spec\n", file: "design.md" };
+  const sealed = { text: "# Design\n\nthe spec\n", file: "HIMMEL-1-design.md" };
   critic(b.spec, "spec", 9, "SPEC CLEAN", sealed); critic(b.spec, "spec", 10, "SPEC FINDINGS 1", sealed);
   const res = await sendFile(r, "1", b.spec);
   expect(res.code).toBe(0);   // past the three rounds the page goes with its findings on it, and r10 is the one it shows
@@ -1347,7 +1352,7 @@ test("send-file reads the highest round numerically: r10 findings beat a clean r
 
 test("send-file refuses a plan whose latest plan critic is NO-GO, naming the plan verdict file", async () => {
   const r = root(); const b = bundle(r);
-  critic(b.spec, "plan", 2, "PLAN FINDINGS 2", { text: "# Plan\n\nthe plan\n", file: "design.plan.md" });
+  critic(b.spec, "plan", 2, "PLAN FINDINGS 2", { text: "# Plan\n\nthe plan\n", file: "HIMMEL-1-design.plan.md" });
   for (const f of [b.spec, b.plan]) {
     const res = await sendFile(r, "1", f);
     expect(res.code).not.toBe(0);
@@ -1423,7 +1428,7 @@ test("send-file still sends a report, a log and a specs/ audit with no critic fi
 
 test("send-file treats a symlink into a specs/ design path as a spec", async () => {
   const r = root(); const b = bundle(r);
-  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", { text: "# Design\n\nthe spec\n", file: "design.md" });
+  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", { text: "# Design\n\nthe spec\n", file: "HIMMEL-1-design.md" });
   const link = join(r, "innocent.md"); symlinkSync(b.spec, link);
   const res = await sendFile(r, "1", link);
   expect(res.code).not.toBe(0);
@@ -1433,11 +1438,11 @@ test("send-file treats a symlink into a specs/ design path as a spec", async () 
 test("send-file finds the plan critic beside the spec when the plan lives in specs/plans/, and refuses it on a NO-GO", async () => {
   const r = root(); const b = bundle(r);
   const plans = join(r, "specs", "plans"); mkdirSync(plans);
-  const plan = join(plans, "design.plan.md"); writeFileSync(plan, "# Plan\n\nthe plan\n");
-  critic(b.spec, "plan", 1, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "../plans/design.plan.md" });
+  const plan = join(plans, "HIMMEL-1-design.plan.md"); writeFileSync(plan, "# Plan\n\nthe plan\n");
+  critic(b.spec, "plan", 1, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "../plans/HIMMEL-1-design.plan.md" });
   const ok = await sendFile(r, "1", plan);
   expect(ok.code).toBe(0);
-  critic(b.spec, "plan", 2, "PLAN FINDINGS 1", { text: "# Plan\n\nthe plan\n", file: "../plans/design.plan.md" });
+  critic(b.spec, "plan", 2, "PLAN FINDINGS 1", { text: "# Plan\n\nthe plan\n", file: "../plans/HIMMEL-1-design.plan.md" });
   const no = await sendFile(r, "1", plan);
   expect(no.code).not.toBe(0);
   expect(no.err).toContain("design.md.critic-plan-r2.md");
@@ -1446,7 +1451,7 @@ test("send-file finds the plan critic beside the spec when the plan lives in spe
 
 test("checkSignaturePage hands back the exact bytes it hashed, so the page sent is the page the critic read", async () => {
   const { checkSignaturePage } = await import("./chief-route");
-  const r = root(); const b = bundle(r);
+  const r = root(); const b = bundle(r); await seedIfNeeded(join(r, "specs"));
   const res = await checkSignaturePage(b.spec);
   expect(res!.bytes.toString("utf8")).toBe("# Design\n\nthe spec\n");
   expect(await checkSignaturePage(join(r, "elsewhere.txt"))).toBeNull();
@@ -1458,21 +1463,28 @@ const seal = async (...args: string[]) => {
   return { code: await p.exited, err: await new Response(p.stderr).text() };
 };
 
+const D_FM = "---\ntickets: HIMMEL-1\n---\n# D\n";
+const sealSpec = async (r: string) => {
+  const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
+  const spec = join(dir, "HIMMEL-1-d.md"); writeFileSync(spec, D_FM);
+  await seedIfNeeded(join(r, "specs"));
+  return { dir, spec };
+};
+
 test("critic-seal.sh adds the CONTENT-SHA256 line above the verdict line, and refuses a file that no longer hashes to the quoted sha", async () => {
-  const r = root(); const spec = join(r, "specs", "designs", "d.md"); mkdirSync(join(r, "specs", "designs"), { recursive: true });
-  writeFileSync(spec, "# D\n");
-  const v = `${spec}.critic-spec-r1.md`; writeFileSync(v, `the critic's return, which read ${sha("# D\n")}\nSPEC CLEAN\n`);
-  const ok = await seal(v, spec, sha("# D\n"));
+  const r = root(); const { spec } = await sealSpec(r);
+  const v = `${spec}.critic-spec-r1.md`; writeFileSync(v, `the critic's return, which read ${sha(D_FM)}\nSPEC CLEAN\n`);
+  const ok = await seal(v, spec, sha(D_FM));
   expect(ok.code).toBe(0);
-  expect(readFileSync(v, "utf8")).toBe(`the critic's return, which read ${sha("# D\n")}\nCONTENT-SHA256 ${sha("# D\n")} d.md\nSPEC CLEAN\n`);
-  expect((await seal(v, spec, sha("# D\n"))).code).not.toBe(0);   // the same file sealed twice is refused, not stacked
+  expect(readFileSync(v, "utf8")).toBe(`the critic's return, which read ${sha(D_FM)}\nCONTENT-SHA256 ${sha(D_FM)} HIMMEL-1-d.md\nSPEC CLEAN\n`);
+  expect((await seal(v, spec, sha(D_FM))).code).not.toBe(0);   // the same file sealed twice is refused, not stacked
   const staleSha = sha("# D, as the critic read it\n");
   const v2 = `${spec}.critic-spec-r2.md`; writeFileSync(v2, `return quoting ${staleSha}\nSPEC CLEAN\n`);
   const stale = await seal(v2, spec, staleSha);
   expect(stale.code).not.toBe(0);
   expect(readFileSync(v2, "utf8")).toBe(`return quoting ${staleSha}\nSPEC CLEAN\n`);   // nothing written
-  const v3 = `${spec}.critic-spec-r3.md`; writeFileSync(v3, `return with no verdict line ${sha("# D\n")}\n`);
-  expect((await seal(v3, spec, sha("# D\n"))).code).not.toBe(0);
+  const v3 = `${spec}.critic-spec-r3.md`; writeFileSync(v3, `return with no verdict line ${sha(D_FM)}\n`);
+  expect((await seal(v3, spec, sha(D_FM))).code).not.toBe(0);
 });
 
 test("critic-seal.sh refuses a sha the critic's return never quoted, even when the file on disk hashes to it", async () => {
@@ -1486,45 +1498,51 @@ test("critic-seal.sh refuses a sha the critic's return never quoted, even when t
 });
 
 test("critic-seal.sh seals a verdict file larger than a pipe buffer whose quoted sha sits on its first line", async () => {
-  const r = root(); const spec = join(r, "specs", "designs", "d.md"); mkdirSync(join(r, "specs", "designs"), { recursive: true });
-  writeFileSync(spec, "# D\n");
+  const r = root(); const { spec } = await sealSpec(r);
   const v = `${spec}.critic-spec-r1.md`;
-  writeFileSync(v, `read ${sha("# D\n")}\n${"a long finding line\n".repeat(20000)}SPEC CLEAN\n`);   // about 400 KB
-  const res = await seal(v, spec, sha("# D\n"));
+  writeFileSync(v, `read ${sha(D_FM)}\n${"a long finding line\n".repeat(20000)}SPEC CLEAN\n`);   // about 400 KB
+  const res = await seal(v, spec, sha(D_FM));
   expect(res.err).toBe("");
   expect(res.code).toBe(0);
-  expect(readFileSync(v, "utf8")).toContain(`CONTENT-SHA256 ${sha("# D\n")} d.md\nSPEC CLEAN\n`);
+  expect(readFileSync(v, "utf8")).toContain(`CONTENT-SHA256 ${sha(D_FM)} HIMMEL-1-d.md\nSPEC CLEAN\n`);
 });
 
 test("critic-seal.sh seals each distinct file a critic read, and refuses only the same file twice", async () => {
-  const r = root(); const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
-  const md = join(dir, "d.md"); const html = join(dir, "d.html"); writeFileSync(md, "# D\n"); writeFileSync(html, "<h1>D</h1>\n");
-  const v = `${md}.critic-spec-r1.md`; writeFileSync(v, `read ${sha("# D\n")} and ${sha("<h1>D</h1>\n")}\nSPEC CLEAN\n`);
-  expect((await seal(v, md, sha("# D\n"))).code).toBe(0);
+  const r = root(); const { dir, spec: md } = await sealSpec(r);
+  const html = join(dir, "HIMMEL-1-d.html"); writeFileSync(html, "<h1>D</h1>\n");
+  const v = `${md}.critic-spec-r1.md`; writeFileSync(v, `read ${sha(D_FM)} and ${sha("<h1>D</h1>\n")}\nSPEC CLEAN\n`);
+  expect((await seal(v, md, sha(D_FM))).code).toBe(0);
   expect((await seal(v, html, sha("<h1>D</h1>\n"))).code).toBe(0);
   expect((await seal(v, html, sha("<h1>D</h1>\n"))).code).not.toBe(0);
   const lines = readFileSync(v, "utf8").split("\n");
-  expect(lines.filter((l) => l.startsWith("CONTENT-SHA256 "))).toEqual([`CONTENT-SHA256 ${sha("# D\n")} d.md`, `CONTENT-SHA256 ${sha("<h1>D</h1>\n")} d.html`]);
+  expect(lines.filter((l) => l.startsWith("CONTENT-SHA256 "))).toEqual([`CONTENT-SHA256 ${sha(D_FM)} HIMMEL-1-d.md`, `CONTENT-SHA256 ${sha("<h1>D</h1>\n")} HIMMEL-1-d.html`]);
   expect(lines.at(-2)).toBe("SPEC CLEAN");
 });
 
 // A spec critic that read several files seals each one.
 const criticSeals = (spec: string, kind: "spec" | "plan", round: number, verdict: string, sealed: { text: string; file: string }[]) =>
   writeFileSync(`${spec}.critic-${kind}-r${round}.md`, `critic return, round ${round}\n${sealed.map((s) => `CONTENT-SHA256 ${sha(s.text)} ${s.file}\n`).join("")}${verdict}\n`);
+const ledgerSeals = async (r: string, spec: string, kind: "spec" | "plan", round: number, verdict: string, sealed: { text: string; file: string }[]) => {
+  await seedIfNeeded(join(r, "specs"));
+  criticSeals(spec, kind, round, verdict, sealed);
+  const { sealRound } = await import("./chief-route");
+  const v = `${spec}.critic-${kind}-r${round}.md`;
+  for (const s of sealed) await sealRound(v, join(spec, "..", s.file));
+};
 
 test("send-file refuses a spec critic that seals another path than the spec", async () => {
   const r = root(); const b = bundle(r);
-  critic(b.spec, "spec", 2, "SPEC CLEAN", { text: "# Plan\n\nthe plan\n", file: "design.plan.md" });
+  critic(b.spec, "spec", 2, "SPEC CLEAN", { text: "# Plan\n\nthe plan\n", file: "HIMMEL-1-design.plan.md" });
   const res = await sendFile(r, "1", b.spec);
   expect(res.code).not.toBe(0);
   expect(res.err).toContain("design.md.critic-spec-r2.md");
-  expect(res.err).toContain("does not seal design.md");
+  expect(res.err).toContain("does not seal HIMMEL-1-design.md");
   expect(res.lines).toEqual([]);
 });
 
 test("send-file refuses a plan page while the spec critic failed", async () => {
   const r = root(); const b = bundle(r);
-  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", { text: "# Design\n\nthe spec\n", file: "design.md" });
+  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", { text: "# Design\n\nthe spec\n", file: "HIMMEL-1-design.md" });
   const res = await sendFile(r, "1", b.plan);
   expect(res.code).not.toBe(0);
   expect(res.err).toContain("design.md.critic-spec-r2.md");
@@ -1568,8 +1586,8 @@ test("send-file treats specs/spec/ as a signature folder", async () => {
 
 // The sign page is a hand-built or generated .html beside its .md; the critic must have read that very page.
 const htmlBundle = (r: string, html = "<!doctype html><h1>Design</h1>\n") => {
-  const b = bundle(r); const page = join(b.dir, "design.html"); writeFileSync(page, html);
-  const sealed = [{ text: "# Design\n\nthe spec\n", file: "design.md" }, { text: html, file: "design.html" }];
+  const b = bundle(r); const page = join(b.dir, "HIMMEL-1-design.html"); writeFileSync(page, html);
+  const sealed = [{ text: "# Design\n\nthe spec\n", file: "HIMMEL-1-design.md" }, { text: html, file: "HIMMEL-1-design.html" }];
   return { ...b, page, html, sealed };
 };
 
@@ -1587,7 +1605,7 @@ test("send-file refuses an .html beside a clean .md when no seal names it, namin
   const res = await sendFile(r, "1", b.page);
   expect(res.code).not.toBe(0);
   expect(res.err).toContain("design.md.critic-spec-r1.md");
-  expect(res.err).toContain("design.html");
+  expect(res.err).toContain("HIMMEL-1-design.html");
   expect(res.lines).toEqual([]);
 });
 
@@ -1605,7 +1623,7 @@ test("send-file refuses an .html edited after the critic read it", async () => {
 test("send-file refuses a clean .md whose .html was read only by an older round's critic", async () => {
   const r = root(); const b = htmlBundle(r);
   criticSeals(b.spec, "spec", 1, "SPEC CLEAN", b.sealed);
-  critic(b.spec, "spec", 2, "SPEC CLEAN", { text: "# Design\n\nthe spec\n", file: "design.md" });   // round 2 read the .md only
+  critic(b.spec, "spec", 2, "SPEC CLEAN", { text: "# Design\n\nthe spec\n", file: "HIMMEL-1-design.md" });   // round 2 read the .md only
   const res = await sendFile(r, "1", b.page);
   expect(res.code).not.toBe(0);
   expect(res.err).toContain("design.md.critic-spec-r2.md");
@@ -1619,7 +1637,7 @@ test("send-file refuses an .html while the .md beside it failed its latest spec 
   const bare = await sendFile(r, "1", b.page);
   expect(bare.code).not.toBe(0);
   expect(bare.err).toContain("design.md.critic-spec-r2.md");
-  const own = [{ text: b.html, file: "design.html" }];
+  const own = [{ text: b.html, file: "HIMMEL-1-design.html" }];
   criticSeals(b.page, "spec", 1, "SPEC CLEAN", own); criticSeals(b.page, "plan", 1, "PLAN CLEAN", own);
   const withOwn = await sendFile(r, "1", b.page);
   expect(withOwn.code).not.toBe(0);
@@ -1645,21 +1663,22 @@ test("send-file refuses an .html with clean critic files of its own beside an .m
   expect(ok.lines.at(-1)!.caption).toBeUndefined();
 });
 
-test("send-file compares plan critic rounds across folders: a newer FINDINGS in plans/ beats an older clean one beside the spec, and a same-round tie needs both clean", async () => {
+test("send-file compares plan critic rounds across folders: a newer FINDINGS in plans/ beats an older clean one beside the spec, and a same-round tie the ledger never recorded goes on the lead block only", async () => {
   const r = root(); const l = planLayout(r);
-  critic(l.spec, "plan", 1, "PLAN CLEAN", { text: "# X plan\n", file: "../plans/X.md" });   // r1 beside the spec; plans/ also holds r1 (clean)
+  critic(l.spec, "plan", 1, "PLAN CLEAN", { text: "# X plan\n", file: "../plans/HIMMEL-2-X.md" });   // r1 beside the spec; plans/ also holds r1 (clean)
   const bothClean = await sendFile(r, "1", l.spec);
   expect(bothClean.err).toBe(""); expect(bothClean.code).toBe(0);
-  critic(l.plan, "plan", 1, "PLAN FINDINGS 1", { text: "# X plan\n", file: "X.md" });       // tie at r1, one of them FINDINGS
-  for (const f of [l.spec, l.plan]) {
-    const tie = await sendFile(r, "1", f);
-    expect(tie.code).not.toBe(0);
-    expect(tie.err).toContain(join("plans", "X.md.critic-plan-r1.md"));
-  }
-  critic(l.plan, "plan", 2, "PLAN FINDINGS 2", { text: "# X plan\n", file: "X.md" });       // newer round in plans/
+  critic(l.plan, "plan", 1, "PLAN FINDINGS 1", { text: "# X plan\n", file: "HIMMEL-2-X.md" });
+  const tieSpec = await sendFile(r, "1", l.spec);
+  expect(tieSpec.err).toBe("");
+  expect(readFileSync(tieSpec.lines.at(-1)!.document_path, "utf8")).toContain("HIMMEL-2-X.md.critic-plan-r1.md: PLAN FINDINGS 1");
+  const tiePlan = await sendFile(r, "1", l.plan);
+  expect(tiePlan.code).not.toBe(0);
+  expect(tiePlan.err).toContain(join("plans", "HIMMEL-2-X.md.critic-plan-r1.md"));
+  critic(l.plan, "plan", 2, "PLAN FINDINGS 2", { text: "# X plan\n", file: "HIMMEL-2-X.md" });       // newer round in plans/
   const newer = await sendFile(r, "1", l.spec);
   expect(newer.code).not.toBe(0);
-  expect(newer.err).toContain(join("plans", "X.md.critic-plan-r2.md"));
+  expect(newer.err).toContain(join("plans", "HIMMEL-2-X.md.critic-plan-r2.md"));
 });
 
 test("send-file refuses an .html when only the .md was edited after the critic read both", async () => {
@@ -1678,7 +1697,7 @@ test("send-file refuses an .html when the spec critic sealed only the .html and 
   const res = await sendFile(r, "1", b.page);
   expect(res.code).not.toBe(0);
   expect(res.err).toContain("design.md.critic-spec-r1.md");
-  expect(res.err).toContain("does not seal design.md");
+  expect(res.err).toContain("does not seal HIMMEL-1-design.md");
   expect(res.lines).toEqual([]);
 });
 
@@ -1692,25 +1711,23 @@ test("send-file captions a clean page with exactly the verdict lines when the ca
 test("send-file refuses a plan page when its latest clean plan critic sealed another existing file", async () => {
   const r = root(); const b = bundle(r);
   const plans = join(r, "specs", "plans"); mkdirSync(plans);
-  const plan = join(plans, "design.plan.md"); writeFileSync(plan, "# Plan\n\nthe plan\n");
-  critic(b.spec, "plan", 1, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "../plans/design.plan.md" });
-  critic(b.spec, "plan", 2, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "design.plan.md" });   // round 2 read the copy beside the spec
+  const plan = join(plans, "HIMMEL-1-design.plan.md"); writeFileSync(plan, "# Plan\n\nthe plan\n");
+  critic(b.spec, "plan", 1, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "../plans/HIMMEL-1-design.plan.md" });
+  critic(b.spec, "plan", 2, "PLAN CLEAN", { text: "# Plan\n\nthe plan\n", file: "HIMMEL-1-design.plan.md" });   // round 2 read the copy beside the spec
   const res = await sendFile(r, "1", plan);
   expect(res.code).not.toBe(0);
   expect(res.err).toContain("design.md.critic-plan-r2.md");
-  expect(res.err).toContain("does not seal design.plan.md");
+  expect(res.err).toContain("does not seal HIMMEL-1-design.plan.md");
   expect(res.lines).toEqual([]);
 });
 
-// The real layout: specs/designs/X.md with spec critics beside it; the plan is the same-named specs/plans/X.md,
-// whose plan critics sit beside the PLAN.
 const planLayout = (r: string) => {
   const designs = join(r, "specs", "designs"); const plans = join(r, "specs", "plans");
   mkdirSync(designs, { recursive: true }); mkdirSync(plans, { recursive: true });
-  const spec = join(designs, "X.md"); const plan = join(plans, "X.md");
+  const spec = join(designs, "HIMMEL-2-X.md"); const plan = join(plans, "HIMMEL-2-X.md");
   writeFileSync(spec, "# X spec\n"); writeFileSync(plan, "# X plan\n");
-  critic(spec, "spec", 1, "SPEC CLEAN", { text: "# X spec\n", file: "X.md" });
-  critic(plan, "plan", 1, "PLAN CLEAN", { text: "# X plan\n", file: "X.md" });
+  critic(spec, "spec", 1, "SPEC CLEAN", { text: "# X spec\n", file: "HIMMEL-2-X.md" });
+  critic(plan, "plan", 1, "PLAN CLEAN", { text: "# X plan\n", file: "HIMMEL-2-X.md" });
   return { spec, plan };
 };
 
@@ -1725,11 +1742,11 @@ test("send-file sends both pages of the real layout: a spec in designs/ and the 
 
 test("send-file refuses the plan page of the real layout when the plan critic in plans/ ends FINDINGS, naming that file", async () => {
   const r = root(); const l = planLayout(r);
-  critic(l.plan, "plan", 2, "PLAN FINDINGS 2", { text: "# X plan\n", file: "X.md" });
+  critic(l.plan, "plan", 2, "PLAN FINDINGS 2", { text: "# X plan\n", file: "HIMMEL-2-X.md" });
   for (const f of [l.plan, l.spec]) {
     const res = await sendFile(r, "1", f);
     expect(res.code).not.toBe(0);
-    expect(res.err).toContain(join("plans", "X.md.critic-plan-r2.md"));
+    expect(res.err).toContain(join("plans", "HIMMEL-2-X.md.critic-plan-r2.md"));
     expect(res.lines).toEqual([]);
   }
 });
@@ -1754,7 +1771,7 @@ test("send-file refuses a plan page in plans/ whose same-name spec is clean when
   const r = root(); const l = planLayout(r);
   const second = join(r, "specs", "designs", "other.md"); writeFileSync(second, "# O\n");
   critic(second, "spec", 1, "SPEC CLEAN", { text: "# O\n", file: "other.md" });
-  critic(second, "plan", 1, "PLAN FINDINGS 1", { text: "# X plan\n", file: "../plans/X.md" });
+  critic(second, "plan", 1, "PLAN FINDINGS 1", { text: "# X plan\n", file: "../plans/HIMMEL-2-X.md" });
   const res = await sendFile(r, "1", l.plan);
   expect(res.code).not.toBe(0);
   expect(res.err).toContain("other.md.critic-plan-r1.md");
@@ -1785,7 +1802,7 @@ test("critic-seal.sh does not accept a sha that only sits inside a longer hex ru
 });
 
 // ---- a spec page carries its source, so a copy outside the registered folders is still checked ----
-const marked = (r: string, extra = "") => `<!doctype html><meta name="spec-source" content="${join(r, "specs", "designs", "design.md")}"><h1>Design</h1>\n${extra}`;
+const marked = (r: string, extra = "") => `<!doctype html><meta name="spec-source" content="${join(r, "specs", "designs", "HIMMEL-1-design.md")}"><h1>Design</h1>\n${extra}`;
 const copyOf = (r: string, html: string, name = "elsewhere.html") => { const d = join(r, "copies"); mkdirSync(d, { recursive: true }); const f = join(d, name); writeFileSync(f, html); return f; };
 
 test("send-file checks a marked page copied outside the registered folders under another stem, and sends it only when a critic sealed its bytes", async () => {
@@ -1796,7 +1813,7 @@ test("send-file checks a marked page copied outside the registered folders under
   expect(refused.code).not.toBe(0);
   expect(refused.err).toContain("design.md.critic-spec-r1.md");
   expect(refused.lines).toEqual([]);
-  criticSeals(b.spec, "spec", 2, "SPEC CLEAN", b.sealed);
+  await ledgerSeals(r, b.spec, "spec", 2, "SPEC CLEAN", b.sealed);
   const sent = await sendFile(r, "1", copy);
   expect(sent.code).toBe(0);
   expect(sent.lines.at(-1)!.caption).toBe("SPEC CLEAN r2 | PLAN CLEAN r1");
@@ -1809,14 +1826,14 @@ test("send-file refuses a marked copy whose bytes no critic sealed, and a marker
   const edited = await sendFile(r, "1", copyOf(r, html + "<p>edited</p>\n"));
   expect(edited.code).not.toBe(0);
   expect(edited.err).toContain("design.md.critic-spec-r1.md");
-  const gone = await sendFile(r, "1", copyOf(r, html.replace("design.md", "gone.md"), "gone.html"));
+  const gone = await sendFile(r, "1", copyOf(r, html.replace("HIMMEL-1-design.md", "gone.md"), "gone.html"));
   expect(gone.code).not.toBe(0);
   expect(gone.err).toContain("gone.md");
   expect(edited.lines.concat(gone.lines)).toEqual([]);
 });
 
 test("send-file reads the marker whatever the attribute order or quote style, and still checks the copy", async () => {
-  const r = root(); const md = join(r, "specs", "designs", "design.md");
+  const r = root(); const md = join(r, "specs", "designs", "HIMMEL-1-design.md");
   const variants = [`<meta content="${md}" name="spec-source">`, `<meta name='spec-source' content='${md}'>`, `<META CONTENT=${md} NAME=spec-source />`];
   for (const [i, tag] of variants.entries()) {
     const html = `<!doctype html>${tag}<h1>Design${i}</h1>\n`;
@@ -1847,7 +1864,7 @@ test("send-file refuses a spec page that still says Not for signature, and sends
   expect(refused.lines).toEqual([]);
   const clean = "<!doctype html><h1>Design</h1>\n";
   writeFileSync(b.page, clean);
-  criticSeals(b.spec, "spec", 2, "SPEC CLEAN", [b.sealed[0], { text: clean, file: "design.html" }]);
+  await ledgerSeals(r, b.spec, "spec", 2, "SPEC CLEAN", [b.sealed[0], { text: clean, file: "HIMMEL-1-design.html" }]);
   const sent = await sendFile(r, "1", b.page);
   expect(sent.code).toBe(0);
   const bytes = readFileSync(sent.lines.at(-1)!.document_path);
@@ -1917,7 +1934,7 @@ test("a page sent --by-request cannot satisfy the signature check, even with eve
   expect(res.code).toBe(0);
   const marked = readFileSync(res.lines[0].document_path as string, "utf8");
   writeFileSync(b.page, marked);
-  criticSeals(b.spec, "spec", 2, "SPEC CLEAN", [b.sealed[0], { text: marked, file: "design.html" }]);
+  criticSeals(b.spec, "spec", 2, "SPEC CLEAN", [b.sealed[0], { text: marked, file: "HIMMEL-1-design.html" }]);
   const { checkSignaturePage } = await import("./chief-route");
   await expect(checkSignaturePage(b.page)).rejects.toThrow("Not for signature");
   expect((await sendFile(r, "1", b.page)).code).not.toBe(0);
@@ -1926,14 +1943,14 @@ test("a page sent --by-request cannot satisfy the signature check, even with eve
 // ---- a spec gets three critic rounds per kind, then the page goes to the operator with each open finding on it ----
 const D_TEXT = "# Design\n\nthe spec\n";
 const P_TEXT = "# Plan\n\nthe plan\n";
-const D_SEAL = { text: D_TEXT, file: "design.md" };
-const P_SEAL = { text: P_TEXT, file: "design.plan.md" };
+const D_SEAL = { text: D_TEXT, file: "HIMMEL-1-design.md" };
+const P_SEAL = { text: P_TEXT, file: "HIMMEL-1-design.plan.md" };
 // A bundle whose spec critic used all three rounds with findings still open: r1 and r2 hold finding-one and finding-two.
 const threeRounds = (r: string) => {
   const b = bundle(r);
   critic(b.spec, "spec", 1, "SPEC FINDINGS 1", D_SEAL);
   critic(b.spec, "spec", 2, "SPEC FINDINGS 1", D_SEAL);
-  writeFileSync(`${b.spec}.critic-spec-r3.md`, `**F1.** finding-one <the tag> stays open\n**F2.** finding-two stays open\nCONTENT-SHA256 ${sha(D_TEXT)} design.md\nSPEC FINDINGS 2\n`);
+  writeFileSync(`${b.spec}.critic-spec-r3.md`, `**F1.** finding-one <the tag> stays open\n**F2.** finding-two stays open\nCONTENT-SHA256 ${sha(D_TEXT)} HIMMEL-1-design.md\nSPEC FINDINGS 2\n`);
   return b;
 };
 const unsealedReturn = (file: string, text: string, verdict = "SPEC FINDINGS 1") => writeFileSync(file, `return, read ${sha(text)}\n${verdict}\n`);
@@ -1944,35 +1961,45 @@ const grant = (r: string, spec: string, round: number, decision = 900, withVerba
   writeFileSync(join(r, "specs", "decisions", `verbatim-decision-${decision}-operator.txt`), "yes, one more\n");
 };
 
-test("DoD 1: a spec with 3 recorded rounds cannot get a fourth without an operator record, and one record grants exactly one round", async () => {
-  const r = root(); const b = threeRounds(r);
+// A seeded bundle whose third spec return left one minor and no blocking finding, so nothing opens a fourth.
+const minorsThree = async (r: string) => {
+  const b = bundle(r);
+  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", D_SEAL);
+  writeFileSync(`${b.spec}.critic-spec-r3.md`, `- **m1** (minor) a wording note\nCONTENT-SHA256 ${sha(D_TEXT)} HIMMEL-1-design.md\nSPEC FINDINGS 1\n`);
+  await seedIfNeeded(join(r, "specs"));
+  return b;
+};
+const T1_SPEC = "HIMMEL-1 spec round 4 needs a blocking finding in round 3 of either kind; sign it under 848, its minors go to the build";
+const specsOf = (r: string) => join(r, "specs");
+
+test("DoD 1: round 3 left findings open, so round 4 seals once by the ledger count; round 5 needs a record (T5), and an operator-round file opens nothing", async () => {
+  const r = root(); const b = threeRounds(r); await seedIfNeeded(specsOf(r));
   const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
-  const refused = await seal(r4, b.spec, sha(D_TEXT));
-  expect(refused.code).not.toBe(0);
-  expect(refused.err).toContain("operator-round-r4.md");
-  expect(readFileSync(r4, "utf8")).not.toContain("CONTENT-SHA256");
-  grant(r, b.spec, 4, 900, false);   // a record whose decision has no verbatim file allows nothing
-  expect((await seal(r4, b.spec, sha(D_TEXT))).code).not.toBe(0);
-  grant(r, b.spec, 4);
-  expect((await seal(r4, b.spec, sha(D_TEXT))).code).toBe(0);
-  const r5 = `${b.spec}.critic-spec-r5.md`; unsealedReturn(r5, D_TEXT);
-  expect((await seal(r5, b.spec, sha(D_TEXT))).code).not.toBe(0);
+  expect((await seal(r4, b.spec, sha(D_TEXT))).err).toBe("");
+  const r5 = `${b.spec}.critic-spec-r5.md`; unsealedReturn(r5, D_TEXT, "SPEC CLEAN");
+  grant(r, b.spec, 5);
+  const five = await seal(r5, b.spec, sha(D_TEXT));
+  expect(five.err).toContain("HIMMEL-1 writer round 5 needs a round-override or round-critical record");
+  expect(five.code).not.toBe(0);
+  expect(readFileSync(r5, "utf8")).not.toContain("CONTENT-SHA256");
+  expect(ledgerRows(specsOf(r), "HIMMEL-1").filter((x) => x.row === "round").map((x) => x.round)).toEqual([4]);
 });
 
-test("readCriticBudget reports the counted paths from the cap's own pass and the exception for the exact requested round only", async () => {
+test("readCriticBudget reads the kind's rounds from the ledger and whether the next one may be sealed", async () => {
   const { readCriticBudget } = await import("./chief-route");
-  const r = root(); const b = threeRounds(r);
-  expect(await readCriticBudget(b.spec, "spec")).toMatchObject({ count: 3, numbered: 3, requestedRound: 4, operatorAllowed: false, cap: 3, renamed: [] });
-  expect((await readCriticBudget(b.spec, "spec", 4)).numberedFiles).toEqual([1, 2, 3].map(n => ({ round: n, path: `${b.spec}.critic-spec-r${n}.md` })));
-  grant(r, b.spec, 4);
-  expect((await readCriticBudget(b.spec, "spec", 4)).operatorAllowed).toBe(true);
-  expect((await readCriticBudget(b.spec, "spec", 5)).operatorAllowed).toBe(false);
+  const r = root(); const b = threeRounds(r); await seedIfNeeded(specsOf(r));
+  expect(await readCriticBudget(b.spec, "spec")).toMatchObject({ count: 3, requestedRound: 4, allowed: true, why: null, cap: 3 });
+  expect((await readCriticBudget(b.spec, "spec")).rounds).toEqual([{ round: 3, path: `${b.spec}.critic-spec-r3.md` }]);
+  expect(await readCriticBudget(b.spec, "spec", 5)).toMatchObject({ requestedRound: 5, allowed: false, why: "HIMMEL-1 spec round 5 is not the next round (4)" });
   const plan = await readCriticBudget(b.spec, "plan");
-  expect(plan).toMatchObject({ count: 1, requestedRound: 2, renamed: [] });
-  expect(plan.numberedFiles.map(f => [f.round, basename(f.path)])).toEqual([[1, "design.md.critic-plan-r1.md"]]);
+  expect(plan).toMatchObject({ count: 1, requestedRound: 2, allowed: true });
+  expect(plan.rounds.map(f => [f.round, basename(f.path)])).toEqual([[1, "HIMMEL-1-design.md.critic-plan-r1.md"]]);
+  const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
+  expect((await seal(r4, b.spec, sha(D_TEXT))).err).toBe("");
+  expect(await readCriticBudget(b.spec, "spec")).toMatchObject({ count: 4, requestedRound: 5, allowed: false, why: "HIMMEL-1 writer round 5 needs a round-override or round-critical record" });
 });
 
-test("DoD 1: an unsealed fourth round found on disk still keeps the page from going without an operator record", async () => {
+test("DoD 1: an unsealed fourth return found on disk still keeps the page from going", async () => {
   const r = root(); const b = threeRounds(r);
   unsealedReturn(`${b.spec}.critic-spec-r4.md`, D_TEXT);
   const res = await sendFile(r, "1", b.spec);
@@ -1998,9 +2025,9 @@ test("DoD 2: a page sent after round 3 opens with the count and the rule line, a
 
 test("DoD 2: a sealed .html page past round 3 goes as the sealed bytes with the block after <body>", async () => {
   const r = root(); const b = threeRounds(r);
-  const page = join(b.dir, "design.html"); const pageText = "<!doctype html><html><head><title>D</title></head><body><h1>D</h1></body></html>\n";
+  const page = join(b.dir, "HIMMEL-1-design.html"); const pageText = "<!doctype html><html><head><title>D</title></head><body><h1>D</h1></body></html>\n";
   writeFileSync(page, pageText);
-  writeFileSync(`${b.spec}.critic-spec-r3.md`, `**F1.** finding-one\nCONTENT-SHA256 ${sha(D_TEXT)} design.md\nCONTENT-SHA256 ${sha(pageText)} design.html\nSPEC FINDINGS 1\n`);
+  writeFileSync(`${b.spec}.critic-spec-r3.md`, `**F1.** finding-one\nCONTENT-SHA256 ${sha(D_TEXT)} HIMMEL-1-design.md\nCONTENT-SHA256 ${sha(pageText)} HIMMEL-1-design.html\nSPEC FINDINGS 1\n`);
   const res = await sendFile(r, "1", page);
   expect(res.code).toBe(0);
   const sent = readFileSync(res.lines.at(-1)!.document_path, "utf8");
@@ -2022,7 +2049,7 @@ test("DoD 2: rounds 1 and 2 with findings stay refused, and each kind must reach
   const plan2 = await sendFile(r2, "1", t.spec);
   expect(plan2.code).not.toBe(0);
   expect(plan2.err).toContain("critic-plan-r2.md");
-  critic(t.spec, "plan", 3, "PLAN FINDINGS 2", P_SEAL);
+  await ledgerSeals(r2, t.spec, "plan", 3, "PLAN FINDINGS 2", [P_SEAL]);
   const plan3 = await sendFile(r2, "1", t.spec);
   expect(plan3.code).toBe(0);
   const html = readFileSync(plan3.lines.at(-1)!.document_path, "utf8");
@@ -2030,7 +2057,7 @@ test("DoD 2: rounds 1 and 2 with findings stay refused, and each kind must reach
   expect(html).toContain("design.md.critic-plan-r3.md");
 });
 
-test("a spec already past 3 still goes with its findings when it is the bytes its last critic read, and its next round needs a record", async () => {
+test("a spec seeded past 3 still goes with its findings when it is the bytes its last critic read, and its next round needs a round-override or round-critical record", async () => {
   const r = root(); const b = bundle(r);
   for (const n of [7, 8, 9]) critic(b.spec, "spec", n, "SPEC FINDINGS 4", D_SEAL);
   const res = await sendFile(r, "1", b.spec);
@@ -2039,12 +2066,12 @@ test("a spec already past 3 still goes with its findings when it is the bytes it
   const r10 = `${b.spec}.critic-spec-r10.md`; unsealedReturn(r10, D_TEXT);
   const next = await seal(r10, b.spec, sha(D_TEXT));
   expect(next.code).not.toBe(0);
-  expect(next.err).toContain("operator-round-r10.md");
+  expect(next.err).toContain("HIMMEL-1 writer round 10 needs a round-override or round-critical record");
 });
 
 const sendSealedPage = async (r: string, b: ReturnType<typeof bundle>, pageText: string) => {
-  const page = join(b.dir, "design.html"); writeFileSync(page, pageText);
-  writeFileSync(`${b.spec}.critic-spec-r3.md`, `**F1.** finding-one\nCONTENT-SHA256 ${sha(D_TEXT)} design.md\nCONTENT-SHA256 ${sha(pageText)} design.html\nSPEC FINDINGS 1\n`);
+  const page = join(b.dir, "HIMMEL-1-design.html"); writeFileSync(page, pageText);
+  writeFileSync(`${b.spec}.critic-spec-r3.md`, `**F1.** finding-one\nCONTENT-SHA256 ${sha(D_TEXT)} HIMMEL-1-design.md\nCONTENT-SHA256 ${sha(pageText)} HIMMEL-1-design.html\nSPEC FINDINGS 1\n`);
   return sendFile(r, "1", page);
 };
 
@@ -2091,75 +2118,74 @@ test("the findings block goes in the real body, not in a comment, a title or an 
   }
 });
 
-test("planted: one sealed return named for the third round does not open a page early, though it does bring the cap closer", async () => {
-  const r = root(); const b = bundle(r);
+test("planted: a return named for the third round, written after the seed, does not open the page and buys no round (T20)", async () => {
+  const r = root(); const b = bundle(r); await seedIfNeeded(specsOf(r));
   critic(b.spec, "spec", 3, "SPEC FINDINGS 1", D_SEAL);
   const res = await sendFile(r, "1", b.spec);
-  expect(res.code).not.toBe(0);
-  expect(res.err).toContain("critic-spec-r3.md");
+  expect(res.err).toContain(`${b.spec}.critic-spec-r3.md: its return is not in HIMMEL-1's ledger`);
   expect(res.lines).toEqual([]);
   const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
-  expect((await seal(r4, b.spec, sha(D_TEXT))).err).toContain("operator-round-r4.md");
+  expect((await seal(r4, b.spec, sha(D_TEXT))).err).toBe("");
+  expect(ledgerRows(specsOf(r), "HIMMEL-1").at(-1)).toMatchObject({ row: "round", critic: "spec", round: 2 });
 });
 
-test("DoD 3: a scope edit on the same spec does not reset the count", async () => {
-  const r = root(); const b = threeRounds(r);
+test("DoD 3: a scope edit on the same spec does not reset the count: round 4 after a minors-only round 3 gives T1", async () => {
+  const r = root(); const b = await minorsThree(r);
   const edited = "# Design\n\nthe spec, with a wider scope\n"; writeFileSync(b.spec, edited);
   const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, edited);
   const res = await seal(r4, b.spec, sha(edited));
   expect(res.code).not.toBe(0);
-  expect(res.err).toContain("operator-round-r4.md");
+  expect(res.err).toContain(T1_SPEC);
 });
 
-test("DoD 3, planted: a renamed critic cannot restart the count, under any new name", async () => {
-  const r = root(); const b = threeRounds(r);
+test("DoD 3, planted: a renamed critic cannot restart the count, under any new name (T1)", async () => {
+  const r = root(); const b = await minorsThree(r);
   for (const name of ["design.md.critic-fresh-r1.md", "design.md.critic-spec-opus-r1.md", "design.md.critic-r1.md", "fresh.critic-spec-r1.md", "other.md.critic-spec-r1.md"]) {
     const v = join(b.dir, name); unsealedReturn(v, D_TEXT, "SPEC CLEAN");
     const res = await seal(v, b.spec, sha(D_TEXT));
     expect(res.code).not.toBe(0);
-    expect(res.err).toContain("operator-round-r4.md");
+    expect(res.err).toContain(T1_SPEC);
     expect(readFileSync(v, "utf8")).not.toContain("CONTENT-SHA256");
     unlinkSync(v);
   }
 });
 
-test("DoD 3, planted: a renamed critic on disk counts as a round, so round 3 is reached sooner, not restarted", async () => {
+test("DoD 3, planted: a renamed critic file planted after the seed is no round: the next real seal is round 3", async () => {
   const r = root(); const b = bundle(r);
-  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", D_SEAL);
-  writeFileSync(join(b.dir, "fresh.critic-spec-r1.md"), `renamed return\nCONTENT-SHA256 ${sha(D_TEXT)} design.md\nSPEC FINDINGS 1\n`);
+  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", D_SEAL); await seedIfNeeded(specsOf(r));
+  writeFileSync(join(b.dir, "fresh.critic-spec-r1.md"), `renamed return\nCONTENT-SHA256 ${sha(D_TEXT)} HIMMEL-1-design.md\nSPEC FINDINGS 1\n`);
   const r3 = `${b.spec}.critic-spec-r3.md`; unsealedReturn(r3, D_TEXT);
-  const res = await seal(r3, b.spec, sha(D_TEXT));
-  expect(res.code).not.toBe(0);
-  expect(res.err).toContain("operator-round-r4.md");
+  expect((await seal(r3, b.spec, sha(D_TEXT))).err).toBe("");
+  expect(ledgerRows(specsOf(r), "HIMMEL-1").at(-1)).toMatchObject({ row: "round", critic: "spec", round: 3 });
 });
 
 test("DoD 4: a judge round is not counted and not limited", async () => {
   const r = root(); const b = bundle(r);
   critic(b.spec, "spec", 2, "SPEC CLEAN", D_SEAL);
   for (let i = 1; i <= 9; i++) writeFileSync(`${b.spec}.judge-r${i}.md`, `judge round ${i}\nVERDICT: SPEC FINDINGS 1\n`);
-  const r3 = `${b.spec}.critic-spec-r3.md`; unsealedReturn(r3, D_TEXT);
+  await seedIfNeeded(specsOf(r));
+  const r3 = `${b.spec}.critic-spec-r3.md`; unsealedReturn(r3, D_TEXT, "SPEC CLEAN");
   expect((await seal(r3, b.spec, sha(D_TEXT))).code).toBe(0);   // 9 judge rounds, and the third critic round is still free
   const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
   const res = await seal(r4, b.spec, sha(D_TEXT));
-  expect(res.err).toContain("3 spec critic rounds");   // the count names critics alone
-  writeFileSync(`${b.spec}.judge-r10.md`, "a tenth judge round is written with no record\n");
-  expect(existsSync(`${b.spec}.operator-round-r4.md`)).toBe(false);
+  expect(res.err).toContain(T1_SPEC);   // the count names critics alone
+  expect(ledgerRows(specsOf(r), "HIMMEL-1").filter((x) => x.row === "round").map((x) => x.round)).toEqual([3]);
 });
 
-test("planted: a renamed return cannot open the page before round 3, and past it the page lists that return too", async () => {
+test("planted: a renamed return is no round and does not decide the page: before round 3 the page is refused, at round 3 it goes without that return", async () => {
   const r = root(); const b = bundle(r);
   critic(b.spec, "spec", 2, "SPEC FINDINGS 1", D_SEAL);
-  writeFileSync(join(b.dir, "fresh.critic-spec-r1.md"), `renamed return, finding-renamed\nCONTENT-SHA256 ${sha(D_TEXT)} design.md\nSPEC FINDINGS 1\n`);
+  writeFileSync(join(b.dir, "fresh.critic-spec-r1.md"), `renamed return, finding-renamed\nCONTENT-SHA256 ${sha(D_TEXT)} HIMMEL-1-design.md\nSPEC FINDINGS 1\n`);
   const early = await sendFile(r, "1", b.spec);
   expect(early.code).not.toBe(0);
-  expect(early.err).toContain("design.md.critic-spec-r2.md");
+  expect(early.err).toContain("HIMMEL-1-design.md.critic-spec-r2.md");
   expect(early.lines).toEqual([]);
-  critic(b.spec, "spec", 3, "SPEC FINDINGS 1", D_SEAL);
+  await ledgerSeals(r, b.spec, "spec", 3, "SPEC FINDINGS 1", [D_SEAL]);
   const res = await sendFile(r, "1", b.spec);
-  expect(res.code).toBe(0);
+  expect(res.err).toBe("");
   const page = readFileSync(res.lines[0].document_path as string, "utf8");
-  expect(page).toContain("finding-renamed");
-  expect(page).toContain("Round count: spec 4, plan 1. 2 critics did not end clean.");
+  expect(page).not.toContain("finding-renamed");
+  expect(page).toContain("Round count: spec 3, plan 1. 1 critic did not end clean.");
 });
 
 test("DoD 4: a judge return that ends in a verdict line can be sealed past the cap, and adds no round", async () => {
@@ -2179,14 +2205,14 @@ test("DoD 4: every judge file name in use can be sealed past the cap", async () 
   }
 });
 
-test("planted: a spec named like a judge file still gets three rounds", async () => {
+test("planted: a spec named like a judge file is counted as critic rounds, not skipped as a judge", async () => {
   const r = root(); const b = bundle(r);
-  const spec = join(b.dir, "judge-design.md"); writeFileSync(spec, D_TEXT);
-  for (const n of [1, 2, 3]) critic(spec, "spec", n, "SPEC FINDINGS 1", { text: D_TEXT, file: "judge-design.md" });
+  const spec = join(b.dir, "HIMMEL-2-judge-design.md"); writeFileSync(spec, D_TEXT);
+  for (const n of [1, 2, 3]) critic(spec, "spec", n, "SPEC FINDINGS 1", { text: D_TEXT, file: "HIMMEL-2-judge-design.md" });
+  await seedIfNeeded(specsOf(r));
   const r4 = `${spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
-  const refused = await seal(r4, spec, sha(D_TEXT));
-  expect(refused.code).not.toBe(0);
-  expect(refused.err).toContain("operator-round-r4.md");
+  expect((await seal(r4, spec, sha(D_TEXT))).err).toBe("");
+  expect(ledgerRows(specsOf(r), "HIMMEL-2").at(-1)).toMatchObject({ row: "round", critic: "spec", round: 4, verdict_path: r4 });
 });
 
 // The page the router renders opens dark with no saved choice, whatever the system preference says; print alone goes back to light.
@@ -2460,7 +2486,7 @@ test("R-sha: returnSha drops CONTENT-SHA256 lines, trailing whitespace and trail
   expect(returnSha("a finding\nSPEC FINDINGS 1\n")).not.toBe(sha(plain));
   const none = specsTree(); const nspec = join(none.dir, "plain.md"); writeFileSync(nspec, "# P\n");
   writeFileSync(`${nspec}.critic-spec-r1.md`, ret("SPEC CLEAN", `read ${sha("# P\n")}`));
-  expect((await seal(`${nspec}.critic-spec-r1.md`, nspec, sha("# P\n"))).code).toBe(0);
+  expect((await seal(`${nspec}.critic-spec-r1.md`, nspec, sha("# P\n"))).err).toContain(`no round manifest under ${none.specs}; run round-seed --all once`);
   expect(existsSync(join(none.specs, "ledgers"))).toBe(false);
   const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
   const md = join(t.dir, `${ROUND_KEY}-x.md`); const html = join(t.dir, `${ROUND_KEY}-x.html`);
@@ -2635,3 +2661,240 @@ test("keyOf reads the ticket key by the D1 rule, and parseFindings gives every u
   expect(got.unrated_ids).toEqual(["spec-r4-U1", "spec-r4-U2", "spec-r4-U3"]);
   expect(parseFindings("all good\nPLAN CLEAN\n", "plan", 1)).toEqual({ findings: [], unrated_ids: [] });
 });
+
+import { dirname, relative } from "node:path";
+
+const CAP_KEY = "HIMMEL-9711";
+const T1 = (kind: string) => `${CAP_KEY} ${kind} round 4 needs a blocking finding in round 3 of either kind; sign it under 848, its minors go to the build`;
+const verdictFor = (kind: "SPEC" | "PLAN", findings: string[]) => (findings.length ? `${kind} FINDINGS ${findings.length}` : `${kind} CLEAN`);
+const sealOn = async (v: string, reads: string[], verdict: string, ...lines: string[]) => {
+  writeFileSync(v, ret(verdict, `${basename(v)} read ${reads.map((p) => sha(readFileSync(p, "utf8"))).join(" and ")}`, ...lines));
+  let last = { code: 0, err: "" };
+  for (const p of reads) { last = await seal(v, p, sha(readFileSync(p, "utf8"))); if (last.code !== 0) break; }
+  return last;
+};
+const roundTree = async (spec3: string[], plan3: string[]) => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${CAP_KEY}-a.md`); const plan = join(t.plans, `${CAP_KEY}-a.md`);
+  writeFileSync(a, front(CAP_KEY, "# A\n")); writeFileSync(plan, "# A plan\n");
+  for (const n of [1, 2, 3]) {
+    const s = n === 3 ? spec3 : []; const p = n === 3 ? plan3 : [];
+    expect((await sealOn(`${a}.critic-spec-r${n}.md`, [a], verdictFor("SPEC", s), ...s)).err).toBe("");
+    expect((await sealOn(`${a}.critic-plan-r${n}.md`, [plan], verdictFor("PLAN", p), ...p)).err).toBe("");
+  }
+  return { ...t, a, plan, r: dirname(t.specs) };
+};
+const preSeal = (v: string, reads: string[], verdict: string, lines: string[], quoted = reads) =>
+  writeFileSync(v, `critic return ${basename(v)}, read ${quoted.map((p) => sha(readFileSync(p, "utf8"))).join(" and ")}\n${lines.map((l) => `${l}\n`).join("")}${reads.map((p) => `CONTENT-SHA256 ${sha(readFileSync(p, "utf8"))} ${relative(dirname(v), p)}\n`).join("")}${verdict}\n`);
+const seededTree = async (plan3: string[]) => {
+  const t = specsTree(); const a = join(t.dir, `${CAP_KEY}-a.md`); const plan = join(t.plans, `${CAP_KEY}-a.md`); const html = join(t.dir, `${CAP_KEY}-a.html`);
+  writeFileSync(a, "# A\n\na seeded key needs no tickets: line\n"); writeFileSync(plan, "# A plan\n"); writeFileSync(html, "<h1>A</h1>\n");
+  for (const n of [1, 2, 3]) {
+    const s = n === 3 ? ["- **m1** (minor) a wording note"] : []; const p = n === 3 ? plan3 : [];
+    preSeal(`${a}.critic-spec-r${n}.md`, [a], verdictFor("SPEC", s), s, [a, html]);
+    preSeal(`${a}.critic-plan-r${n}.md`, [plan], verdictFor("PLAN", p), p);
+  }
+  expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  return { ...t, a, plan, html, r: dirname(t.specs) };
+};
+const S1B = 120_000;
+
+test("R1: a return named for another spec file of the ticket is refused at round 4 by the ledger count (T1), beside R2 whose round 3 holds a major and seals round 4", async () => {
+  const t = await roundTree([], []);
+  const b = join(t.dir, `${CAP_KEY}-b.md`); writeFileSync(b, front(CAP_KEY, "# B\n"));
+  const v = `${b}.critic-spec-r1.md`;
+  const refused = await sealOn(v, [b], "SPEC CLEAN");
+  expect(refused.err).toContain(T1("spec"));
+  expect(refused.code).not.toBe(0);
+  expect(readFileSync(v, "utf8")).not.toContain("CONTENT-SHA256");
+  expect(ledgerRows(t.specs, CAP_KEY).filter((r) => r.row === "round").length).toBe(6);
+  const m = await roundTree(["- **M1** (major) still open"], []);
+  const r4 = `${m.a}.critic-spec-r4.md`;
+  const four = await sealOn(r4, [m.a], "SPEC FINDINGS 1", "- **M2** (major) still open");
+  expect(four.err).toBe("");
+  expect(ledgerRows(m.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", critic: "spec", round: 4, verdict_path: r4 });
+  const five = await sealOn(`${m.a}.critic-spec-r5.md`, [m.a], "SPEC CLEAN");
+  expect(five.err).toContain(`${CAP_KEY} writer round 5 needs a round-override or round-critical record`);
+}, S1B);
+
+test("R3d: a plan round-3 major opens spec round 4 too, beside R1's fixture where both round 3s are clean (T1)", async () => {
+  const t = await roundTree([], ["- **P1** (major) the plan misses a step"]);
+  const r4 = `${t.a}.critic-spec-r4.md`;
+  const res = await sealOn(r4, [t.a], "SPEC CLEAN");
+  expect(res.err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", critic: "spec", round: 4, verdict_path: r4 });
+  const c = await roundTree([], []);
+  expect((await sealOn(`${c.a}.critic-spec-r4.md`, [c.a], "SPEC CLEAN")).err).toContain(T1("spec"));
+  expect((await sealOn(`${c.a}.critic-plan-r4.md`, [c.plan], "PLAN CLEAN")).err).toContain(T1("plan"));
+}, S1B);
+
+test("R10: deleting every critic file does not lower the count: the next seal reads round 4, as it does with the files kept", async () => {
+  for (const del of [true, false]) {
+    const t = await roundTree(["- **M1** (major) still open"], []);
+    if (del) for (const n of readdirSync(t.dir)) if (n.includes(".critic-")) unlinkSync(join(t.dir, n));
+    const v = `${t.a}.critic-spec-r${del ? 1 : 4}.md`;
+    const res = await sealOn(v, [t.a], "SPEC FINDINGS 1", "- **n1** (minor) a new return, not round 1's bytes again");
+    expect(res.err, del ? "files deleted" : "files kept").toBe("");
+    expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", critic: "spec", round: 4, verdict_path: v });
+  }
+}, S1B);
+
+test("R10b: a seeded key whose ledger was deleted refuses the seal (T10), and so does a key whose snapshot folder outlived its ledger, beside the seals before the delete", async () => {
+  const t = specsTree(); const a = join(t.dir, `${CAP_KEY}-a.md`); writeFileSync(a, front(CAP_KEY, "# A\n"));
+  preSeal(`${a}.critic-spec-r1.md`, [a], "SPEC CLEAN", []);
+  expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  expect((await sealOn(`${a}.critic-spec-r2.md`, [a], "SPEC CLEAN")).err).toBe("");
+  unlinkSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`));
+  const v3 = `${a}.critic-spec-r3.md`;
+  const gone = await sealOn(v3, [a], "SPEC CLEAN");
+  expect(gone.err).toContain(`${CAP_KEY} is in the round manifest but has no ledger; restore it from the state repo history`);
+  expect(gone.code).not.toBe(0);
+  expect(readFileSync(v3, "utf8")).not.toContain("CONTENT-SHA256");
+  const other = "HIMMEL-9712"; const o = join(t.dir, `${other}-o.md`); writeFileSync(o, front(other, "# O\n"));
+  expect((await sealOn(`${o}.critic-spec-r1.md`, [o], "SPEC CLEAN")).err).toBe("");
+  unlinkSync(join(roundsDir(t.specs), `${other}.jsonl`));
+  expect((await sealOn(`${o}.critic-spec-r2.md`, [o], "SPEC CLEAN")).err).toContain(`${other} is in the round manifest but has no ledger; restore it from the state repo history`);
+}, S1B);
+
+test("R10c: an emptied ledger is a deleted one: a seeded key and a key with a snapshot folder both refuse (T10), beside the seals before it was emptied", async () => {
+  const t = specsTree(); const a = join(t.dir, `${CAP_KEY}-a.md`); writeFileSync(a, front(CAP_KEY, "# A\n"));
+  preSeal(`${a}.critic-spec-r1.md`, [a], "SPEC CLEAN", []);
+  expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  expect((await sealOn(`${a}.critic-spec-r2.md`, [a], "SPEC CLEAN")).err).toBe("");
+  writeFileSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`), "");
+  const v3 = `${a}.critic-spec-r3.md`;
+  const emptied = await sealOn(v3, [a], "SPEC CLEAN");
+  expect(emptied.err).toContain(`${CAP_KEY} is in the round manifest but has no ledger; restore it from the state repo history`);
+  expect(emptied.code).not.toBe(0);
+  expect(readFileSync(v3, "utf8")).not.toContain("CONTENT-SHA256");
+  const other = "HIMMEL-9712"; const o = join(t.dir, `${other}-o.md`); writeFileSync(o, front(other, "# O\n"));
+  expect((await sealOn(`${o}.critic-spec-r1.md`, [o], "SPEC CLEAN")).err).toBe("");
+  writeFileSync(join(roundsDir(t.specs), `${other}.jsonl`), "\n\n");
+  const status = await routeCli("round-status", other, "--specs", t.specs);
+  expect(status.err).toContain(`${other} is in the round manifest but has no ledger; restore it from the state repo history`);
+  expect(status.code).not.toBe(0);
+}, S1B);
+
+test("R11: one unparseable ledger line refuses the seal, round-status, ledger-verify and the findings page (T11), and the same ledger without it seals", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${CAP_KEY}-a.md`); const plan = join(t.plans, `${CAP_KEY}-a.md`);
+  writeFileSync(a, front(CAP_KEY, "# A\n")); writeFileSync(plan, "# A plan\n");
+  expect((await sealOn(`${a}.critic-spec-r1.md`, [a], "SPEC CLEAN")).err).toBe("");
+  expect((await sealOn(`${a}.critic-plan-r1.md`, [plan], "PLAN CLEAN")).err).toBe("");
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`); const good = readFileSync(ledger, "utf8");
+  writeFileSync(ledger, `${good}{"v":1,"row":\n`);
+  const t11 = `${CAP_KEY} ledger line ${good.split("\n").filter(Boolean).length + 1} does not parse; restore it from the state repo history`;
+  const v2 = `${a}.critic-spec-r2.md`;
+  const sealed = await sealOn(v2, [a], "SPEC CLEAN");
+  expect(sealed.err).toContain(t11);
+  expect(sealed.code).not.toBe(0);
+  const status = await routeCli("round-status", CAP_KEY, "--specs", t.specs);
+  expect(status.err).toContain(t11); expect(status.code).not.toBe(0);
+  const verify = await routeCli("ledger-verify", `${a}.critic-spec-r1.md`);
+  expect(verify.err).toContain(t11); expect(verify.code).not.toBe(0);
+  const page = await sendFile(dirname(t.specs), "1", a);
+  expect(page.err).toContain(t11); expect(page.lines).toEqual([]);
+  writeFileSync(ledger, good);
+  expect((await sealOn(v2, [a], "SPEC CLEAN")).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", critic: "spec", round: 2 });
+  const sealed2 = readFileSync(ledger, "utf8"); const top = ledgerRows(t.specs, CAP_KEY).at(-1);
+  writeFileSync(ledger, `${sealed2}${JSON.stringify({ ...top, return_sha: "f".repeat(64), round: "x" })}\n`);
+  const damaged = await routeCli("round-status", CAP_KEY, "--specs", t.specs);
+  expect(damaged.err).toContain(`${CAP_KEY} ledger line ${sealed2.split("\n").filter(Boolean).length + 1} does not parse; restore it from the state repo history`);
+  expect(damaged.code).not.toBe(0);
+  const { findings, ...noFindings } = top;
+  writeFileSync(ledger, `${sealed2}${JSON.stringify({ ...noFindings, return_sha: "e".repeat(64), round: 3 })}\n`);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).err).toContain(`${CAP_KEY} ledger line ${sealed2.split("\n").filter(Boolean).length + 1} does not parse`);
+  writeFileSync(ledger, sealed2);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).code).toBe(0);
+}, S1B);
+
+test("R12: planted critic files for a key the manifest lacks buy nothing: the real seal is round 1, the planted page gives T20, and the page with the real return sends", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${CAP_KEY}-a.md`); const plan = join(t.plans, `${CAP_KEY}-a.md`);
+  writeFileSync(a, front(CAP_KEY, "# A\n")); writeFileSync(plan, "# A plan\n");
+  for (const n of [1, 2, 3]) {
+    preSeal(`${a}.critic-spec-r${n}.md`, [a], "SPEC FINDINGS 1", ["- **F1** (major) planted"]);
+    preSeal(`${a}.critic-plan-r${n}.md`, [plan], "PLAN FINDINGS 1", ["- **P1** (major) planted"]);
+  }
+  const planted = await sendFile(dirname(t.specs), "1", a);
+  expect(planted.err).toContain(`${a}.critic-spec-r3.md: its return is not in ${CAP_KEY}'s ledger`);
+  expect(planted.lines).toEqual([]);
+  const v = `${a}.critic-spec-r4.md`;
+  expect((await sealOn(v, [a], "SPEC CLEAN")).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).map((r) => [r.row, r.round])).toEqual([["round", 1]]);
+  expect((await sealOn(`${a}.critic-plan-r4.md`, [plan], "PLAN CLEAN")).err).toBe("");
+  const sent = await sendFile(dirname(t.specs), "1", a);
+  expect(sent.err).toBe("");
+  expect(sent.lines.at(-1)!.caption).toBe("SPEC CLEAN r1 | PLAN CLEAN r1");
+}, S1B);
+
+test("R12b: a specs root with no manifest refuses every seal (T12), and the same seal passes once the root is seeded", async () => {
+  const t = specsTree(); const a = join(t.dir, `${CAP_KEY}-a.md`); const plan = join(t.plans, `${CAP_KEY}-a.md`);
+  writeFileSync(a, front(CAP_KEY, "# A\n")); writeFileSync(plan, "# A plan\n");
+  const t12 = `no round manifest under ${t.specs}; run round-seed --all once`;
+  for (const [v, p, verdict] of [[`${a}.critic-spec-r1.md`, a, "SPEC CLEAN"], [`${a}.critic-plan-r1.md`, plan, "PLAN CLEAN"]]) {
+    const res = await sealOn(v, [p], verdict);
+    expect(res.err).toContain(t12);
+    expect(res.code).not.toBe(0);
+    expect(readFileSync(v, "utf8")).not.toContain("CONTENT-SHA256");
+  }
+  expect(existsSync(join(t.specs, "ledgers"))).toBe(false);
+  expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  expect((await sealOn(`${a}.critic-spec-r1.md`, [a], "SPEC CLEAN")).err).toBe("");
+}, S1B);
+
+test("R15 (control): returns sealed before the seed send and verify as mode seed, until a later round of their kind is sealed (T16)", async () => {
+  const t = await seededTree(["- **P1** (major) the plan misses a step"]);
+  const s3 = `${t.a}.critic-spec-r3.md`; const p3 = `${t.a}.critic-plan-r3.md`;
+  const page = await sendFile(t.r, "1", t.a);
+  expect(page.err).toBe("");
+  expect(page.lines.at(-1)!.caption).toBe("SPEC FINDINGS 1 r3 | PLAN FINDINGS 1 r3");
+  for (const [f, kind] of [[s3, "spec"], [p3, "plan"]]) {
+    const v = await routeCli("ledger-verify", f, "--spec", t.a);
+    expect(v.err).toBe("");
+    expect(v.out.trim()).toBe(`${CAP_KEY} ${kind} round 3 seed`);
+  }
+  expect((await seal(s3, t.html, sha("<h1>A</h1>\n"))).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).map((r) => r.row)).toEqual(["seed", "seal"]);
+  expect((await routeCli("ledger-verify", s3, "--spec", t.a)).out.trim()).toBe(`${CAP_KEY} spec round 3 seed`);
+  expect((await sendFile(t.r, "1", t.a)).lines.length).toBe(2);
+  const p4 = `${t.a}.critic-plan-r4.md`;
+  expect((await sealOn(p4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  const stale = await routeCli("ledger-verify", p3, "--spec", t.a);
+  expect(stale.err).toContain(`${p3} is not ${CAP_KEY}'s latest plan round (round 4 is ${p4})`);
+  expect(stale.code).not.toBe(0);
+  expect((await routeCli("ledger-verify", s3, "--spec", t.a)).code).toBe(0);
+}, S1B);
+
+test("R15b (control): with both seeded round 3s holding only minors, a round-4 seal of either kind gives T1 and ledger-verify --spec passes on both round-3 files", async () => {
+  const t = await seededTree(["- **p1** (minor) a plan note"]);
+  for (const [kind, read, verdict] of [["spec", t.a, "SPEC CLEAN"], ["plan", t.plan, "PLAN CLEAN"]]) {
+    const res = await sealOn(`${t.a}.critic-${kind}-r4.md`, [read], verdict);
+    expect(res.err).toContain(T1(kind));
+    expect(res.code).not.toBe(0);
+  }
+  for (const kind of ["spec", "plan"]) {
+    const v = await routeCli("ledger-verify", `${t.a}.critic-${kind}-r3.md`, "--spec", t.a);
+    expect(v.err).toBe("");
+    expect(v.out.trim()).toBe(`${CAP_KEY} ${kind} round 3 seed`);
+  }
+}, S1B);
+
+test("R16: a clean latest critic file with a hand-appended CONTENT-SHA256 line no ledger row holds is refused by send-file (T15), beside the same file before the edit, which sends", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${CAP_KEY}-a.md`); const plan = join(t.plans, `${CAP_KEY}-a.md`); const html = join(t.dir, `${CAP_KEY}-a.html`);
+  const htmlText = "<!doctype html><html><head></head><body><h1>A</h1></body></html>\n";
+  writeFileSync(a, front(CAP_KEY, "# A\n")); writeFileSync(plan, "# A plan\n"); writeFileSync(html, htmlText);
+  const s1 = `${a}.critic-spec-r1.md`;
+  expect((await sealOn(s1, [a], "SPEC CLEAN")).err).toBe("");
+  expect((await sealOn(`${a}.critic-plan-r1.md`, [plan], "PLAN CLEAN")).err).toBe("");
+  const r = dirname(t.specs);
+  const ok = await sendFile(r, "1", a);
+  expect(ok.err).toBe(""); expect(ok.lines.length).toBe(1);
+  writeFileSync(s1, readFileSync(s1, "utf8").replace("SPEC CLEAN\n", `CONTENT-SHA256 ${sha(htmlText)} ${basename(html)}\nSPEC CLEAN\n`));
+  const res = await sendFile(r, "1", html);
+  expect(res.err).toContain(`${s1}: the CONTENT-SHA256 line for ${html} is not in ${CAP_KEY}'s ledger`);
+  expect(res.code).not.toBe(0);
+  expect(res.lines.length).toBe(1);
+}, S1B);
