@@ -95,7 +95,7 @@ flock -n 9 || exit 0 # prim-ok: the sweep holds this lock on fd 9 across its who
 for stale in "$STATE"/run.*; do [ -d "$stale" ] && rm -rf "$stale"; done
 RUN_DIR=$(mktemp -d "$STATE/run.XXXXXX") || { echo "close-sweep: cannot create a run directory" >&2; exit 1; } # prim-ok: the run dir sits under the state dir so a cache file and a record move are same-filesystem
 trap 'rm -rf "$RUN_DIR"' EXIT
-: > "$RUN_DIR/seen"
+SEEN=""
 
 # ---------- record helpers ----------
 rf() { jq -r --arg f "$2" '.[$f] // "" | if type == "array" then join("\n") else tostring end' "$1" 2>/dev/null; }
@@ -113,11 +113,17 @@ rec_set() { # rec_set <file> <key> <value> [<key> <value>]...
 rec_set_num() { # rec_set_num <file> <key> <number>
     jq --arg k "$2" --argjson v "$3" '.[$k] = $v' "$1" > "$RUN_DIR/rec.tmp" && mv "$RUN_DIR/rec.tmp" "$1"
 }
-finish() { # finish <file> <done|failed> [<key> <value>]...
+finish() { # finish <file> <done|failed> [<key> <value>]...: a record that cannot be saved or moved stays in pending/
     local f="$1" dir="$2"
     shift 2
-    [ "$#" -eq 0 ] || rec_set "$f" "$@"
-    mv "$f" "$STATE/$dir/$(basename "$f")"
+    if [ "$#" -gt 0 ] && ! rec_set "$f" "$@"; then
+        log "$(basename "$f" .json): cannot save its results - left in pending/ for the next sweep"
+        return 1
+    fi
+    if ! mv "$f" "$STATE/$dir/$(basename "$f")"; then
+        log "$(basename "$f" .json): cannot move it to $dir/ - left in pending/ for the next sweep"
+        return 1
+    fi
     log "$(basename "$f" .json) -> $dir capture=$(rf "$STATE/$dir/$(basename "$f")" capture) digest=$(rf "$STATE/$dir/$(basename "$f")" digest | cut -c1-40) reap=$(rf "$STATE/$dir/$(basename "$f")" reap) prune=$(rf "$STATE/$dir/$(basename "$f")" prune)"
 }
 
@@ -219,9 +225,9 @@ phase_a() { # phase_a <record file>
 
     # 3 session note, 4 cost row, 5 digest: each once (a re-run of a killed sweep keeps its result)
     cap=$(rf "$rec" capture)
-    if [ -z "$cap" ]; then cap=$(capture_note "$t"); rec_set "$rec" capture "$cap"; fi
+    if [ -z "$cap" ]; then cap=$(capture_note "$t"); rec_set "$rec" capture "$cap" || { log "$(basename "$rec" .json): cannot save its capture result - left in pending/"; return; }; fi
     cost=$(rf "$rec" cost)
-    if [ -z "$cost" ]; then cost=$(cost_row "$t" "$doc" 9>&-); rec_set "$rec" cost "$cost"; fi
+    if [ -z "$cost" ]; then cost=$(cost_row "$t" "$doc" 9>&-); rec_set "$rec" cost "$cost" || { log "$(basename "$rec" .json): cannot save its cost result - left in pending/"; return; }; fi
     dline=$(rf "$rec" digest)
     if [ -z "$dline" ]; then
         pidarg=""
@@ -230,9 +236,9 @@ phase_a() { # phase_a <record file>
             --session "$dsid" --transcript "$t" --doc "$doc" --pid "$pidarg" --projects "$pdir" 2>/dev/null </dev/null 9>&- \
             | grep -m 1 '^digest=' 9>&-)
         dline="${dline:-digest=failed:step}"
-        rec_set "$rec" digest "$dline"
+        rec_set "$rec" digest "$dline" || { log "$(basename "$rec" .json): cannot save its digest result - left in pending/"; return; }
     fi
-    rec_set "$rec" transcript_resolved "$t"
+    rec_set "$rec" transcript_resolved "$t" || { log "$(basename "$rec" .json): cannot save its transcript - left in pending/"; return; }
 
     # 6 the pid again: the digest may have taken minutes
     if pid_gone "$pid" "$ps"; then
@@ -241,14 +247,14 @@ phase_a() { # phase_a <record file>
             return
         fi
         reap=$(reap_scratch "$doc" "$t")
-        rec_set "$rec" reap "$reap"
+        rec_set "$rec" reap "$reap" || { log "$(basename "$rec" .json): cannot save its reap result - left in pending/"; return; }
         printf '%s\n' "$rec" >> "$READY"
         return
     fi
     # 7 still alive: bounded by three sweeps or 600 s
     seen=$(rf "$rec" sweeps_seen); case "$seen" in ''|*[!0-9]*) seen=0 ;; esac
     seen=$((10#$seen + 1))
-    rec_set_num "$rec" sweeps_seen "$seen"
+    rec_set_num "$rec" sweeps_seen "$seen" || { log "$(basename "$rec" .json): cannot save sweeps_seen - left in pending/"; return; }
     if [ "$seen" -ge 3 ] || [ $(( $(now) - closed )) -ge 600 ]; then
         finish "$rec" "done" reap kept-alive prune kept-alive
     fi
@@ -261,7 +267,7 @@ fetch_repo() {
         || log "fetch of $1 failed - using the refs it has (a stale ref can only withhold a proof)"
 }
 
-prune_one() { # prune_one <repo> <wt> <cache file>: prints the prune result; sets PRUNE_OUT
+prune_one() { # prune_one <repo> <wt> <cache file>: prints the prune result; its output is left in $RUN_DIR/prune.out
     local repo="$1" wt="$2" cache="$3" tries="${CLOSE_SWEEP_PRUNE_RETRIES:-3}" try=0 rc out summary partial failed benign
     while :; do
         out=$(unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; cd "$repo" && bash "$CLEAN_SH" --only "$wt" --only-allow-unmerged --pr-cache "$cache" 2>&1 </dev/null 9>&-)
@@ -272,7 +278,7 @@ prune_one() { # prune_one <repo> <wt> <cache file>: prints the prune result; set
         try=$((try + 1))
         sleep "${CLOSE_SWEEP_PRUNE_WAIT:-1}"
     done
-    PRUNE_OUT="$out"
+    printf '%s\n' "$out" > "$RUN_DIR/prune.out"
     if [ "$rc" -eq 0 ]; then echo "pruned"; return; fi
     case "$out" in
         *'ERR worktree: --pr-cache:'*) echo "kept:pr-cache-refused"; return ;;
@@ -360,10 +366,10 @@ phase_b() { # phase_b <ready file>
             case "$result" in
                 failed)
                     log "PRUNE-FAILED $wt"
-                    printf '%s\n' "$PRUNE_OUT" | sed 's/^/close-sweep:   /'
+                    sed 's/^/close-sweep:   /' "$RUN_DIR/prune.out"
                     finish "$rec" failed prune failed ;;
                 kept:pr-cache-refused)
-                    log "kept $wt: $(printf '%s\n' "$PRUNE_OUT" | grep -F 'ERR worktree: --pr-cache:' | head -n 1)"
+                    log "kept $wt: $(grep -F 'ERR worktree: --pr-cache:' "$RUN_DIR/prune.out" | head -n 1)"
                     finish "$rec" "done" prune "$result" ;;
                 *) finish "$rec" "done" prune "$result" ;;
             esac
@@ -378,7 +384,7 @@ unseen() {
     local f
     for f in "$STATE/pending"/*.json; do
         [ -f "$f" ] || continue
-        grep -qxF -- "$f" "$RUN_DIR/seen" || printf '%s\n' "$f"
+        grep -qxF -- "$f" <<< "$SEEN" || printf '%s\n' "$f"
     done | sort
 }
 
@@ -386,7 +392,7 @@ process_batch() {
     local f
     : > "$READY"
     for f in $1; do
-        printf '%s\n' "$f" >> "$RUN_DIR/seen"
+        SEEN="$SEEN$f"$'\n'
         phase_a "$f"
         [ -f "$f" ] || true
     done
@@ -406,6 +412,7 @@ while :; do
     flock -u 9 # prim-ok: release between scans, see the lock above
     [ -n "$(unseen)" ] || break
     flock -n 9 || exit 0 # prim-ok: retake after the release, see the lock above
+    mkdir -p "$RUN_DIR" || exit 1 # another drain may have removed it as stale while the lock was free
 done
 now > "$STATE/last"
 exit 0

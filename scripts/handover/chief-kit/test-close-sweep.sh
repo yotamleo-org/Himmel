@@ -94,7 +94,13 @@ cat > "$W/stubs/digest.sh" <<'STUB'
 #!/usr/bin/env bash
 n=$(grep -c . "$DIGEST_LOG" 2>/dev/null || true)
 if [ -n "${DIGEST_KILL_AT:-}" ] && [ "$((${n:-0} + 1))" -eq "$DIGEST_KILL_AT" ]; then
-    pkill -9 -f 'close-sweep.sh --drain'
+    targets=""; p=$$
+    while [ "${p:-0}" -gt 1 ]; do
+        if tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q 'close-sweep.sh --drain'; then targets="$targets $p"; fi
+        p=$(ps -o ppid= -p "$p" | tr -d ' ')
+    done
+    # only this sweep's own ancestors (the drain and its command-substitution subshells), never another drain
+    for p in $targets; do kill -9 "$p"; done
     sleep 5
 fi
 echo "ORDER digest" >> "$ORDER_LOG"
@@ -529,6 +535,34 @@ check "kill: each session was digested exactly once" "$(grep -o '\[4670c3a0-0000
 check "kill: all ten end in done/ with a digest" "$(njson "$S/done")" "10"
 reset_logs
 
+echo "ROW: a failed prune is logged and does not stop the drain"
+reset_logs
+cat > "$W/stubs/clean-fail.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "ERR clean-garden: boom"
+exit 1
+STUB
+chmod +x "$W/stubs/clean-fail.sh"
+export CLEAN_SH_BIN="$W/stubs/clean-fail.sh"
+build_world r 2 0
+rc=0; run_sweep "$S" || rc=$?
+check "failed prune: the drain returns 0" "$rc" "0"
+check "failed prune: both records are in failed/" "$(njson "$S/failed")/$(njson "$S/pending")" "2/0"
+check "failed prune: PRUNE-FAILED is logged for each" "$(sweep_out | grep -c 'close-sweep: PRUNE-FAILED')" "2"
+contains "failed prune: the helper output is logged" "$(sweep_out)" "ERR clean-garden: boom"
+reset_logs
+
+echo "ROW: a record that cannot be saved stays in pending/"
+reset_logs
+build_world s 1 0
+chmod 555 "$S/pending"
+rc=0; run_sweep "$S" || rc=$?
+chmod 755 "$S/pending"
+check "unsaved record: the drain returns 0" "$rc" "0"
+check "unsaved record: it stays in pending/" "$(rec_where "$S" N1)" "pending"
+contains "unsaved record: the failure is logged" "$(sweep_out)" "left in pending/"
+lacks "unsaved record: it is never logged as moved" "$(sweep_out)" "-> done"
+
 echo "ROW: pid stays alive"
 reset_logs
 S="$W/state-alive"; DD="$W/docs-alive"
@@ -602,6 +636,7 @@ CLOSE_SWEEP_STATE_DIR="$S" CLOSE_SWEEP_TEST_PAUSE_FILE="$PAUSE" bash "$SWEEP" --
 i=0; while [ ! -e "$PAUSE.blocked" ] && [ "$i" -lt 40 ]; do sleep 0.5; i=$((i + 1)); done
 check "drain race: the drain blocks on the pause file between its last scan and its release" "$([ -e "$PAUSE.blocked" ] && echo blocked)" "blocked"
 mk_doc "$DD/HIMMEL-9-N2-sweep-2026-11-10.md" ""; mk_rec "$S" 2 "$DD/HIMMEL-9-N2-sweep-2026-11-10.md" "" "" "$GONE_PID" "" "$(( $(now) + 1 ))"
+rm -rf "$S"/run.* # another drain taking the lock in the free window removes this run's directory as stale
 rm -f "$PAUSE"
 i=0; while kill -0 "$DR" 2>/dev/null && [ "$i" -lt 60 ]; do sleep 0.5; i=$((i + 1)); done
 check "drain race: the new record was processed before the holder exited" "$(rec_where "$S" N2)" "done"
