@@ -57,7 +57,7 @@ macos_fda_warn_if_needed() {
     fi
     cat <<EOF
 
-  ⚠ Full Disk Access required (HIMMEL-3075, himmel#771):
+  ⚠ Full Disk Access required:
 ${targets}  /usr/sbin/cron itself needs Full Disk Access, or every fire of this
   cadence fails with "Operation not permitted" — silently, with nothing at
   arm time or in the scheduler saying so. This is not this cadence's own

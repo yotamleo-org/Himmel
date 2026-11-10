@@ -1784,7 +1784,7 @@ echo "TEST: Darwin arm warns about Full Disk Access when the vault sits under ~/
 out=$(run_fda darwin23 arm --vault "$FDA_VAULT")
 assert_contains "Darwin arm names the FDA requirement"        "Full Disk Access required" "$out"
 assert_contains "Darwin arm names cron itself as the grantee" "/usr/sbin/cron"             "$out"
-assert_contains "Darwin arm names himmel#771"                 "himmel#771"                 "$out"
+assert_contains "Darwin arm heading carries no issue number"  "Full Disk Access required:"  "$out"
 assert_contains "Darwin arm names the protected vault path"   "$FDA_VAULT"                 "$out"
 run_fda darwin23 disarm >/dev/null 2>&1
 

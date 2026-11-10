@@ -1021,7 +1021,7 @@ echo "TEST: Darwin arm always warns about Full Disk Access (no vault/target-path
 out=$(run_fda darwin23 arm)
 assert_contains "Darwin arm names the FDA requirement"        "Full Disk Access required" "$out"
 assert_contains "Darwin arm names cron itself as the grantee" "/usr/sbin/cron"             "$out"
-assert_contains "Darwin arm names himmel#771"                 "himmel#771"                 "$out"
+assert_contains "Darwin arm heading carries no issue number"  "Full Disk Access required:"  "$out"
 run_fda darwin23 disarm >/dev/null 2>&1
 
 echo "TEST: non-Darwin arm never warns (the control)"

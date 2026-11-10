@@ -233,7 +233,7 @@ resolve_cache_path() {
     # see launched_as_child_session() for why our own env cannot be trusted.
     if launched_as_child_session; then
       hint='
-context-fill: hint: this session inherited CLAUDE_CODE_CHILD_SESSION - transcripts are off; relaunch through env -u CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 (HIMMEL-2545)'
+context-fill: hint: this session inherited CLAUDE_CODE_CHILD_SESSION, so claude writes no transcript and context fill cannot be read; relaunch claude with env -u CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 in front of the command'
     fi
     die_unknown "cannot resolve this session (CLAUDE_CODE_SESSION_ID unset, or no transcript under <claude-config>/projects)$hint"
   fi

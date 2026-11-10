@@ -380,6 +380,7 @@ eq "$(cat "$TMP"/out-RL13-4[234] | grep -c '^CR-FIRST HOLD hard-unavailable code
 eq "$(cat "$TMP"/out-RL13-4[234] | grep -c '^CR-FIRST ALERT')" 1 "RL13 one fleet alert on stdout"
 eq "$(grep -c 'CR-FIRST ALERT' "$CHIEF")" 1 "RL13 one chief bullet"
 has "$CHIEF" 'restore.*critics\.local\.json.*"mode":"best-effort".*"drop":true.*manual ci:go' "RL13 alert names the levers in order"
+has "$CHIEF" 'if the operator approves, a critics\.local\.json overlay' "RL13 the overlay lever says it needs the operator's approval"
 hasnt "$CHIEF" '>' "RL13 the chief bullet carries no >"
 eq "$(posts)" 0 "RL13 no label while the hard lane is down"
 # the outage ends (codex passes again): the dedup entry clears, a later outage alerts again.
