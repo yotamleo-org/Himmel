@@ -2556,7 +2556,6 @@ else
     fail "C77 fresh poller -> $(printf '%s' "$out" | grep -A1 C77)"
 fi
 fake_systemctl "$t/probe" enabled 424242 0 'garbage'
-# an unparseable start time (BSD date cannot read a systemd stamp) must read as undetermined, never as fresh
 out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
 if grepq "$out" 'INFO C77-bridge-stale' && grepq "$out" -F 'unreadable' && ! grepq "$out" 'OK   C77-bridge-stale'; then
     pass "C77 -> INFO unreadable when the start time cannot be parsed"

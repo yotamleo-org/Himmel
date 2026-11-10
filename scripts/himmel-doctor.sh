@@ -5218,7 +5218,6 @@ check_c65_git_gates() {
     fi
 }
 
-# epoch seconds -> "YYYY-MM-DD HH:MM": GNU date -d @N, else BSD date -r N
 _c77_fmt() {
     date -d "@$1" '+%F %H:%M' 2>/dev/null || date -r "$1" '+%F %H:%M' 2>/dev/null  # gnu-ok: BSD date -r follows on this same line
 }
@@ -5242,7 +5241,7 @@ check_c77_bridge_stale() {
     started="$("$systemctl_bin" --user show "$unit" -p ActiveEnterTimestamp --value 2>/dev/null)" || return 0
     [ -n "$started" ] || return 0
     case "$started" in
-        @[0-9]*) started_ts="${started#@}" ;;  # an @epoch start time needs no GNU-only parse
+        @[0-9]*) started_ts="${started#@}" ;;
         *) started_ts="$(date -d "$started" +%s 2>/dev/null)" ;;  # gnu-ok: systemd on Linux prints a local-time stamp; BSD date cannot parse it, so the unreadable branch below covers it
     esac
     case "$started_ts" in
