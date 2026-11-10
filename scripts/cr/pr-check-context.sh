@@ -830,7 +830,6 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # chief-kit/bucket-gitleaks.sh (which runs chief-kit/vault-status.sh), so all
 # four are guarded.
 # worker-pr-open.sh runs chief-kit/holds.py narrow (the PR claim), so holds.py is guarded too.
-# cr-scores.sh runs eval/cr-ledger/cr_ledger_eval.py, which imports eval/lib/eval_runs.py, so both are guarded.
 cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/ledger scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
 scripts/eval/cr-ledger/cr_ledger_eval.py scripts/eval/lib/eval_runs.py
 scripts/handover/resolve-active-item-report.sh
