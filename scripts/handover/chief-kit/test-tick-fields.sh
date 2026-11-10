@@ -790,7 +790,7 @@ q_hm="$(date -d "@$q_reset" +%H:%M)"  # gnu-ok: chief kit is Linux-only
 q_tick() { # <quota dir> <extra env...> -- run one compact tick on the front gh, no read token, a scratch quota dir
     local d="$1"; shift
     env W_GH="$W/bin/gh" PATH="$W/qbin:$PATH" GH_READ_ENV_ROOT="$W/noenv" HIMMEL_QUOTA_DIR="$d" QSTUB_LOG="$W/qstub.log" "$@" \
-        timeout 100 bash "$SUT" --workers 'HIMMEL-333-legN70' 2>/dev/null
+        timeout 100 bash "$SUT" --workers 'HIMMEL-333-legN70' 2>/dev/null  # gnu-ok: chief kit is Linux-only (PLATFORM GUARD)
 }
 q_gql_out="HTTP/2.0 403 Forbidden\r\nX-Ratelimit-Remaining: 0\r\nX-Ratelimit-Reset: $q_reset\r\n\r\n"
 : > "$W/qstub.log"

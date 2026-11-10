@@ -3594,7 +3594,7 @@ if [ "$quota_ready" -eq 1 ]; then
             case "$GHQ_STATE" in
                 ok | refused)
                     q_line="$GHQ_REMAINING/$GHQ_LIMIT reset $(tick_epoch_hm "$GHQ_RESET")"
-                    if [ "$GHQ_LIMIT" -gt 0 ] && [ $((GHQ_REMAINING * 100)) -lt $((GHQ_LIMIT * 10)) ]; then q_line="$q_line LOW"; fi ;;
+                    if [ "$GHQ_LIMIT" -gt 0 ] && [ $((10#$GHQ_REMAINING * 100)) -lt $((10#$GHQ_LIMIT * 10)) ]; then q_line="$q_line LOW"; fi ;;
             esac
         fi
         if [ "$q_tok" = main ]; then rest_main_line="$q_line"; else rest_read_line="$q_line"; fi
