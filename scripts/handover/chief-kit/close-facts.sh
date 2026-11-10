@@ -14,6 +14,7 @@
 #
 # A proof only feeds `worktree.sh prune --only --pr-cache` a cache row; it never
 # decides a prune. Every failure prints nothing, so a missing proof keeps work.
+# Sourced by close-sweep.sh, the batched sweep that prunes closed workers' worktrees.
 # successor_live and later_successor_live are copies of close-wrapped-worker.sh's
 # own (same behaviour, the doc passed in); the close keeps its copy until the
 # close path is wired to the sweep.
