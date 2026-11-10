@@ -560,7 +560,7 @@ bk_lint bash "$LINT" "$tmp/tmpl_ok.md"
 mkdir -p "$tmp/bkhome/.himmel/state/jira-mirror"; ln -s "$tmp/cg-mirror" "$tmp/bkhome/.himmel/state/jira-mirror/ZZZ"
 mk bk_zzz '# ZZZ-1 — another project' "$PA" '> **Contract:** y' "$RES0"
 bk_lint -u BRIEF_LINT_MIRROR HOME="$tmp/bkhome" bash "$LINT" --core-only "$tmp/bk_zzz.md"
-{ [ "$rc" -eq 0 ] && grep -Fq -- "--mirror $tmp/bkhome/.himmel/state/jira-mirror/ZZZ" "$BKLOG"; } && ok "8r24 the --mirror argument is the key's own project" || bad "8r24 mirror argument rc=$rc: $(cat "$BKLOG") $err"
+{ [ "$rc" -eq 0 ] && grep -Fq -- "--mirror $tmp/bkhome/.himmel/state/jira-mirror/ZZZ" "$BKLOG"; } && ok "8r24 the --mirror argument is the key's own project" || bad "8r24 mirror argument rc=$rc: $(cat "$BKLOG") $err"  # read-sink-ok: BKLOG is this suite's own scratch log under its mktemp dir
 unset BRIEF_LINT_MIRROR BRIEF_LINT_JIRA_CLI BRIEF_LINT_TEST_SIGNED BRIEF_LINT_TEST_BUCKET BRIEF_LINT_TEST_LOG
 
 # 9. A worker brief (a Contract line) carries the search directive, the notes query over BOTH collections and the graph
