@@ -1,9 +1,9 @@
 /**
- * telegram-clip.mjs — LUNA-58 pure message→clip mapping for the telegram
+ * telegram-clip.mjs — pure message→clip mapping for the telegram
  * ingestion entry point. No I/O, no network. Mirrors the slug + frontmatter
  * conventions used across obsidian-triage tools.
  *
- * A telegram message (text / bare URL / forward) is mapped to a LUNA-2
+ * A telegram message (text / bare URL / forward) is mapped to a
  * Web-Clipper-shaped clip note so /harvest-clips can ingest it on its next
  * pass. Provenance (sender, ts, msg-id) is preserved in frontmatter.
  */
@@ -150,7 +150,7 @@ function yamlQuote(s) {
 }
 
 /**
- * Build a LUNA-2 Web-Clipper-shaped clip note (markdown string) from a telegram
+ * Build a Web-Clipper-shaped clip note (markdown string) from a telegram
  * message. The clip carries NO `harvested_at:` so /harvest-clips treats it as
  * unharvested and ingests it. The original message text is preserved verbatim
  * in the body. Provenance keys: clipped_via / telegram_sender / telegram_ts /
@@ -159,9 +159,9 @@ function yamlQuote(s) {
  * The clip carries NO `processed:`/`lifecycle:` marker and lands top-level in
  * Clippings/, so by the 3-state derivation (design §12.A: state = folder +
  * existing markers, no `lifecycle:` enum) it IS inbox-state — there is no marker
- * to set (LUNA-91). `telegram_chat_id` is optional provenance the LUNA-91
+ * to set. `telegram_chat_id` is optional provenance the
  * promotion digest needs to target a reply; it is omitted when not supplied
- * (backward-compatible with clips filed before LUNA-91).
+ * (backward-compatible with clips filed before the field existed).
  */
 export function buildClip({ sender, ts, msgId, chatId, text, type, source, today }) {
   if (!CLIP_TYPES.includes(type)) {

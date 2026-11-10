@@ -1,6 +1,6 @@
 /**
- * stub-synthesis.mjs — pure decision logic for SYNTHESIZE stub mode (LUNA-87)
- * plus the fuzzy existing-subject match used by densify (LUNA-88).
+ * stub-synthesis.mjs — pure decision logic for SYNTHESIZE stub mode
+ * plus the fuzzy existing-subject match used by densify.
  *
  * No I/O. Operates on plain clip objects the CLI builds from disk:
  *   { rel, id, base, type, url, canonicalUrl, author, tags:[], evidenceKind:[] }
@@ -85,7 +85,7 @@ function isGithubRepo(url) {
 /**
  * Pick Concept vs Tech from the CONTRIBUTORS. Tech only when a MAJORITY of the
  * deduped contributors ARE github repos — a cluster of repos about X is a Tech
- * subject (and triggers the LUNA-89 fan-out); a cluster of articles about X
+ * subject (and triggers the deferred-row fan-out); a cluster of articles about X
  * that merely cite a repo is a Concept. (Routing on evidence_kind alone
  * mis-files every AI article that links github as "Tech".)
  */
@@ -101,7 +101,7 @@ export function targetForContributors(contributors) {
  * @param {object[]} clips
  * @param {(name:string, target:object)=>({path:string}|null)} matchExisting
  *        Returns an existing-subject descriptor to DENSIFY, or null to CREATE.
- *        LUNA-87 passes an exact-path matcher; LUNA-88 passes a fuzzy one.
+ *        SYNTHESIZE passes an exact-path matcher; densify passes a fuzzy one.
  * @returns {object[]} decisions, deterministically ordered by concept key.
  */
 export function planStubs(clips, matchExisting) {
