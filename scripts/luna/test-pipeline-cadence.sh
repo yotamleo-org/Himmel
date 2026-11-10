@@ -577,8 +577,6 @@ assert_contains "harvest runner chains /ig-media-enrich default limit" "/ig-medi
 assert_contains "harvest runner passes --include-evidence to /ig-media-enrich" "/ig-media-enrich --limit 10 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner names --include-evidence on the step sentence too" "step uses --limit 10 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner fail-opens ig-media-enrich" "must not abort" "$harvest_sh_plain"
-# x-media-enrich runs nightly beside
-# ig-media, with its own small clip limit, and fail-opens the same way.
 assert_contains "harvest runner chains /x-media-enrich with its own clip limit" "/x-media-enrich --limit 3 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner fail-opens x-media-enrich" "If /x-media-enrich fails" "$harvest_sh_plain"
 assert_contains "harvest x-media-enrich call passes the 600000 ms Bash tool timeout" "timeout parameter set to 600000" "$harvest_sh_plain"
