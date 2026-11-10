@@ -43,9 +43,8 @@ it; set it up by hand).
 
 Maintainers: this page is a hand-written frame around rows taken from a
 capture. When the capture's shape changes, run the command above again and
-compare it with the table.
-No generator writes this page; edit the rows by hand.
-`scripts/himmelctl/tbd-delta.json` mirrors the table for `himmelctl gaps`:
-keep each row's number, state and paths the same in both, and build each JSON label from the words of the row's
-Item cell; it may be shorter (`scripts/himmelctl/test/test-wizard-gaps.sh`
-checks all four).
+compare it with the table. No generator writes this page; edit the rows by
+hand. `scripts/himmelctl/tbd-delta.json` mirrors the table for
+`himmelctl gaps`: keep each row's number, state and paths the same in both,
+and build each JSON label from the words of the row's Item cell; it may be
+shorter (`scripts/himmelctl/test/test-wizard-gaps.sh` checks all four).
