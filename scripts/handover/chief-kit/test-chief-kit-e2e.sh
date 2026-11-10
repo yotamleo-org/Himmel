@@ -194,6 +194,7 @@ contains "workers: a wrapped, subtree-clean worker reads CLOSABLE" "$(tick_field
 out="$(bash "$CK/close-wrapped-worker.sh" "$L1" 2>&1)"; rc=$?
 check "close: a wrapped worker closes (rc 0)" "$rc" 0
 contains "close: TERM went to the matched pid" "$out" "sent TERM to pid $P1"
+check "close: its housekeeping record is queued in the suite's sweep state, never the real one" "$(find "$W/close-sweep/pending" -maxdepth 1 -name '*.json' | wc -l | tr -d ' ')" 1
 if gone "$P1"; then pass "close: the wrapped worker's session is gone"; else fail "close: pid $P1 still running"; fi
 if alive "$P2" && alive "$P3"; then pass "close: other workers' sessions untouched"; else fail "close: a sibling session died"; fi
 
