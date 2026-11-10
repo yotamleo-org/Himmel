@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appen
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readNewLines, readMeta, writeMeta, ensureSession, appendLine, sessionDir } from "./bus";
-import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, sendFileViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, inboundToDelivered, flushMonitor, startFlushTimers, monitorDownAfterMs, makeMonitorSend, checkMonitoring, type FetchImageFn } from "./poller";
+import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, sendFileViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, inboundToDelivered, flushMonitor, startFlushTimers, startMonitoringCheck, monitorDownAfterMs, makeMonitorSend, checkMonitoring, type FetchImageFn } from "./poller";
 import { readFile, writeFile, mkdir, utimes } from "node:fs/promises";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, vaultForChat } from "./gate";
 import { describeEnabledOps, KNOWN_OPS } from "./auto-action";
@@ -4105,4 +4105,39 @@ test("R2.8 after 30 hours unset the group comes back: older than 24 h goes out a
   expect(monState(r)).toBe("ok");
   for (const dt of [13_000, 16_000, 19_000]) await flushMonitor(r, send, NOW + dt, { operatorChat: OPCHAT });
   expect(sent.slice(1)).toEqual(["new1", "new2"]);
+});
+
+test("R2.9 the startup check asks again with a wait that doubles from 60 s to 1 h, logs only when its line changes, and stops on a final answer", async () => {
+  const refused = { send: null, reason: "refused: cannot read the chat", line: "monitoring: refused cannot read the chat", retry: true };
+  const ok = { send: async () => true, reason: "ok", line: "monitoring: ok T members=2", retry: false };
+  const answers = [...Array(9).fill(refused), ok];
+  const delays: number[] = []; const applied: string[] = [];
+  let pending: (() => void) | null = null;
+  const logs: string[] = [];
+  const saved = console.error;
+  console.error = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
+  try {
+    startMonitoringCheck({ check: async () => answers.shift(), apply: (m) => { applied.push(m.reason); }, schedule: (fn, ms) => { delays.push(ms); pending = fn; } });
+    while (await waitFor(() => pending !== null, 50)) { const fn = pending!; pending = null; fn(); }
+  } finally { console.error = saved; }
+  expect(delays).toEqual([60_000, 120_000, 240_000, 480_000, 960_000, 1_920_000, 3_600_000, 3_600_000, 3_600_000]);
+  expect(applied.length).toBe(10);
+  expect(applied[9]).toBe("ok");
+  expect(logs).toEqual(["[poller] monitoring: refused cannot read the chat", "[poller] monitoring: ok T members=2"]);
+});
+
+test("R2.10 a spooled line whose time cannot be read counts as old, so the down notice is not held back", async () => {
+  const r = root(); mkdirSync(monDir(r), { recursive: true });
+  appendFileSync(join(monDir(r), "outbox.jsonl"), JSON.stringify({ text: "no time" }) + "\n" + JSON.stringify({ text: "bad time", at: "garbage" }) + "\n");
+  await flushMonitor(r, null, MT0 + 2 * MIN, { operatorChat: OPCHAT, reason: "unset" });
+  expect(opOutbox(r).length).toBe(1);
+});
+
+test("R2.11 the monitor-chat-down notice is still sent, and only once, when its marker cannot be written", async () => {
+  const r = root(); spoolLines(r, [{ text: "routine", at: MT0 }]);
+  mkdirSync(join(monDir(r), "chat-down"), { recursive: true });
+  await flushMonitor(r, null, MT0 + 2 * HOUR, { operatorChat: OPCHAT, reason: "unset" });
+  expect(opOutbox(r).length).toBe(1);
+  await flushMonitor(r, null, MT0 + 2 * HOUR + 3000, { operatorChat: OPCHAT, reason: "unset" });
+  expect(opOutbox(r).length).toBe(1);
 });

@@ -2244,6 +2244,7 @@ const MONITOR_DOWN_AFTER_MAX_MS = 3_600_000;
 const MONITOR_AGE_CAP_MS = 24 * 3_600_000;
 const MONITOR_NOTICE_GAP_MS = 24 * 3_600_000;
 const monitorLastSendAt = new Map<string, number>();
+const monitorLastNoticeAt = new Map<string, number>();
 
 const monitorFetch = (f: typeof fetch = fetch, mkSignal: (ms: number) => AbortSignal = (ms) => AbortSignal.timeout(ms)): typeof fetch =>
   ((input: any, init?: any) => f(input, { ...init, signal: mkSignal(MONITOR_FETCH_MS) })) as unknown as typeof fetch;
@@ -2291,21 +2292,23 @@ const monitorChatDownText = (reason: string, n: number): string =>
 
 async function noteMonitorDown(root: string, dir: string, nowMs: number, chat: number, reason: string, pending: number): Promise<void> {
   const marker = join(dir, "chat-down");
-  let last = 0; try { last = Number((await readFile(marker, "utf8")).trim()) * 1000 || 0; } catch {}
+  let last = monitorLastNoticeAt.get(root) ?? 0; try { last = Math.max(last, Number((await readFile(marker, "utf8")).trim()) * 1000 || 0); } catch {}
   if (last && nowMs - last < MONITOR_NOTICE_GAP_MS) return;
-  await atomicWrite(marker, `${Math.floor(nowMs / 1000)}\n`);
+  monitorLastNoticeAt.set(root, nowMs);
+  await atomicWrite(marker, `${Math.floor(nowMs / 1000)}\n`).catch(() => {});
   try { await replyViaOutbox(root, chat, monitorChatDownText(reason, pending)); }
-  catch (e) { await unlink(marker).catch(() => {}); throw e; }
+  catch (e) { monitorLastNoticeAt.delete(root); await unlink(marker).catch(() => {}); throw e; }
 }
 
 export async function flushMonitor(root: string, send: MonitorSendFn | null, nowMs: number, opts: { operatorChat?: number | null; reason?: string } = {}): Promise<void> {
   const dir = join(root, "monitor");
   const file = join(dir, "outbox.jsonl"), curFile = file + ".cursor", stateFile = join(dir, "state");
   const peeked = await peekNewLines<{ text?: unknown; at?: unknown }>(file, curFile);
-  const lines = peeked.records.map((r, i) => ({ text: typeof r.text === "string" ? r.text : "", at: Number.isFinite(Date.parse(String(r.at))) ? Date.parse(String(r.at)) : nowMs, end: peeked.ends[i] })).filter((l) => l.text);
+  const lines = peeked.records.map((r, i) => ({ text: typeof r.text === "string" ? r.text : "", at: Number.isFinite(Date.parse(String(r.at))) ? Date.parse(String(r.at)) : 0, end: peeked.ends[i] })).filter((l) => l.text);
   await mkdir(dir, { recursive: true });
   if (lines.length === 0) { await atomicWrite(stateFile, "ok\n"); return; }
-  const oldest = Math.min(...lines.map((l) => l.at));
+  let oldest = lines[0].at;
+  for (const l of lines) if (l.at < oldest) oldest = l.at;
   const why = send === null ? (opts.reason ?? "unset") : "refused: the send failed";
   const down = `down ${Math.floor(oldest / 1000)} ${why}\n`;
   if (nowMs - oldest >= monitorDownAfterMs() && opts.operatorChat != null) {
@@ -2324,6 +2327,21 @@ export async function flushMonitor(root: string, send: MonitorSendFn | null, now
   if (!ok) { await atomicWrite(stateFile, down); return; }
   await commitCursorPos(curFile, next.end);
   await atomicWrite(stateFile, "ok\n");
+}
+
+export const monitoringRetryMs = (attempt: number): number => Math.min(3_600_000, 60_000 * 2 ** attempt);
+
+export function startMonitoringCheck(d: { check: () => ReturnType<typeof checkMonitoring>; apply: (m: Awaited<ReturnType<typeof checkMonitoring>>) => void; schedule?: (fn: () => void, ms: number) => void }): void {
+  const schedule = d.schedule ?? ((fn, ms) => { const t = setTimeout(fn, ms); if (typeof t.unref === "function") t.unref(); }); // t13b-ok: unref'd one-shot retry of the startup check, same shape as the getMe retry
+  let lastLine = "", attempt = 0;
+  const run = (): void => {
+    void d.check().then((m) => {
+      if (m.line !== lastLine) { console.error(`[poller] ${m.line}`); lastLine = m.line; }
+      d.apply(m);
+      if (m.retry) schedule(run, monitoringRetryMs(attempt++));
+    }).catch((e) => console.error(`[poller] monitoring startup check failed: ${(e as any)?.name ?? "error"}`));
+  };
+  run();
 }
 
 export function startFlushTimers(d: { root: string; send: SendFn; sendDoc?: SendDocFn; flushMs: number; monitorMs: number; monitor: () => MonitorCfg | null; now?: () => number }): () => void {
@@ -2631,14 +2649,7 @@ export async function main(): Promise<void> {
   const MONITOR_FLUSH_MS = 3000;
   let monitorCfg: MonitorCfg | null = null;
   startFlushTimers({ root, send, sendDoc: makeSendDoc(token, root, operatorChat), flushMs: FLUSH_MS, monitorMs: MONITOR_FLUSH_MS, monitor: () => monitorCfg });
-  const checkMonitoringAgain = (): void => {
-    void checkMonitoring(bridgeEnv).then((m) => {
-      console.error(`[poller] ${m.line}`);
-      monitorCfg = { send: m.send, reason: m.reason, operatorChat };
-      if (m.retry) { const t = setTimeout(checkMonitoringAgain, 60_000); if (typeof t.unref === "function") t.unref(); }   // t13b-ok: unref'd one-shot retry of the startup check, same shape as the getMe retry above
-    }).catch((e) => console.error(`[poller] monitoring startup check failed: ${(e as any)?.name ?? "error"}`));
-  };
-  checkMonitoringAgain();
+  startMonitoringCheck({ check: () => checkMonitoring(bridgeEnv), apply: (m) => { monitorCfg = { send: m.send, reason: m.reason, operatorChat }; } });
   // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past
   // HEARTBEAT_STALE_MS while the chief's own session is still alive means
