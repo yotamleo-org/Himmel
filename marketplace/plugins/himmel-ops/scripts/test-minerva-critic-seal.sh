@@ -72,8 +72,6 @@ retspec() { QS_MD="$(sha "$SPEC")"; QS_HTML="$(sha "$HTML")"; ret "$SPEC.critic-
 retplan() { QP_PLAN="$(sha "$PLAN")"; QP_SPEC="$(sha "$SPEC")"; ret "$SPEC.critic-plan-r$1.md" "$2" "$QP_PLAN" "$PLAN" "$QP_SPEC" "$SPEC"; }
 stub() { printf 'Earlier round.\n\n%s\n' "$2" > "$SPEC.critic-$1.md"; }
 NO_SEAL_COMMAND=127
-# The fixture's specs root is seeded on its first seal or send, as the chief seeds a bucket once: the critic files
-# written before that are the seed's history.
 seedfix() { [ -f "$S/ledgers/spec-rounds/manifest.json" ] || bun "$ROUTE" round-seed --all "$S" >/dev/null 2>&1 || echo "seedfix: round-seed failed in $S" >&2; }
 seal1() {
   seedfix

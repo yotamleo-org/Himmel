@@ -39,8 +39,6 @@ const put = (p: string, text: string | Uint8Array) => { mkdirSync(dirname(p), { 
 type Fx = { root: string; spec: string; plan: string; head: string };
 const ROUTE = join(import.meta.dir, "../../telegram/chief-route.ts");
 const KEY = "HIMMEL-1";
-// A keyed spec whose critic rounds are written, then seeded into the round ledger as the chief seeds a bucket.
-// Each round ends clean unless `blocking`, which leaves an unlabeled finding (a blocking one) in every round.
 function fixture(opts: { spec?: number; plan?: number; blocking?: boolean } = {}): Fx {
   const root = tmp("critic-policy-");
   const spec = join(root, `specs/design/${KEY}-subject.md`);
@@ -82,7 +80,7 @@ function check(fx: Fx, body: unknown, extra: string[] = [], env?: NodeJS.Process
 
 test("round_owner_parity", async () => {
   const a = fixture({ spec: 3 });
-  put(`${a.spec}.critic-spec-renamed.md`, "Read it.\nSPEC FINDINGS 1\n");   // a file written after the seed is no round
+  put(`${a.spec}.critic-spec-renamed.md`, "Read it.\nSPEC FINDINGS 1\n");
   const budget = await route.readCriticBudget(a.spec, "spec");
   expect(budget).toMatchObject({ count: 3, requestedRound: 4, allowed: false, cap: route.CRITIC_ROUND_CAP });
   expect(budget.why).toBe(`${KEY} spec round 4 needs a blocking finding in round 3 of either kind; sign it under 848, its minors go to the build`);
@@ -125,7 +123,7 @@ test("blocking_round_three_opens_exactly_round_four", async () => {
   expect(six.json.round.allowed).toBeNull();
 
   const bare = fixture({ spec: 3 });
-  operatorRecord(bare, 4);   // the retired operator-round file opens nothing
+  operatorRecord(bare, 4);
   expect(check(bare, request(bare, { requested_round: 4 })).code).toBe(3);
 }, T);
 

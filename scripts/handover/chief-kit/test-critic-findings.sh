@@ -51,7 +51,6 @@ newroot() {
   printf '# Subject\n' > "$SPEC"; printf '# Plan\n' > "$PLAN"
   EXTRA_READ=""
 }
-# A root whose seals reach the round ledger: the spec is named for its ticket and the specs root is seeded.
 newsealroot() {
   newroot "$1"; SPEC="$R/specs/design/HIMMEL-1-subject.md"
   printf -- '---\ntickets: HIMMEL-1\n---\n# Subject\n' > "$SPEC"
