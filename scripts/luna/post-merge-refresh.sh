@@ -1,37 +1,8 @@
 #!/usr/bin/env bash
-# scripts/luna/post-merge-refresh.sh — the post-merge refresh tick.
-#
-#   post-merge-refresh.sh --halves graph|both
-#   post-merge-refresh.sh --decide <now> <quiet> <max> < merge-commit-times
-#
-# One cron tick decides from git alone, with no network call, no model call and
-# no paid call: it runs no `qmd embed`, no `claude` and no `semantic-update.sh`.
-# It compares the primary checkout's refs/heads/main with the sha each half last
-# took in, waits until merges go quiet (600 s) or the oldest reaches 1800 s, then
-# refreshes that half:
-#   keyword  `qmd update -c himmel` under qmd_bounded, deadline 120 s, busy timeout 30 s
-#   graph    scripts/graphify/ast-update.sh <primary>, the hourly run's own call
-# Order within a tick: the keyword half's step (none when armed `graph`), the
-# keyword-lag sampler, then the graph half's step.
-#
-# --decide prints `fire` or `hold` for the merge commit times on stdin and exits
-# before any library is sourced; the tick and the lag replay call that one rule.
-#
 # Exit: 0 for every handled outcome (a hold, a skip and a failed run included);
 # 1 when the tick itself cannot work (no primary checkout, no main); 2 on usage.
-# A skip never counts as a failure; a failed run keeps the watermark.
-#
-# Seams (all optional): PMR_QMD, PMR_AST, PMR_PRIMARY, PMR_STATE, PMR_NOW (epoch
-# seconds, or a file holding them so a stub can advance the clock mid-run),
-# PMR_LOAD (the 1-minute load), PMR_ALERT (cadence-alert.sh), PMR_REINDEX_LOCK,
-# PMR_LAG (keyword-lag.py), PMR_LOG (the runner log named in an alert).
-# State lives under PMR_STATE (default ~/.himmel/state/post-merge-refresh): the
-# two watermarks qmd.sha and graph.sha, each half's lock directory, fail and skip
-# streaks, its retry time and the graph half's slow-run floor.
 set -u
 
-# pmr_decide <now> <quiet> <max> < times: fire when the newest merge is at least
-# <quiet> seconds old or the oldest at least <max>; hold otherwise or with none.
 pmr_decide() {
     local now="$1" quiet="$2" max="$3" t newest="" oldest=""
     while read -r t; do
@@ -97,7 +68,7 @@ if [ -z "${PMR_PRIMARY:-}" ]; then
     [ -n "$PMR_PRIMARY" ] || PMR_PRIMARY="$HERE/../.."
 fi
 
-if command -v ionice >/dev/null 2>&1; then LOWPRIO="ionice -c 3 nice -n 15"; else LOWPRIO="nice -n 15"; fi
+if command -v ionice >/dev/null 2>&1; then LOWPRIO=(ionice -c 3 nice -n 15); else LOWPRIO=(nice -n 15); fi
 
 log() { printf 'post-merge-refresh: %s\n' "$*"; }
 die() { printf 'post-merge-refresh: ERR %s\n' "$*" >&2; exit 1; }
@@ -119,7 +90,7 @@ alert_fail() { # <half> <reason> <cause> <do>
 }
 alert_clear() { "$PMR_ALERT" clear "$1" >/dev/null 2>&1 || true; }
 
-pmr_skip() { # <half> <reason>: a skip is not a failure; twelve of one reason alert
+pmr_skip() {
     local half="$1" reason="$2" prev prev_reason prev_count count
     log "$half skip=$reason"
     prev=$(st_get "$half.skips")
@@ -132,7 +103,9 @@ pmr_skip() { # <half> <reason>: a skip is not a failure; twelve of one reason al
     fi
 }
 
-# ---- locks: mkdir is the arbiter; a dead holder is never taken over -----------
+LOCK_TAKEN=0
+LOCK_LIVE=1
+LOCK_DEAD=2
 LOCK_HELD=""
 LOCK_TOKEN="$$-$(date +%s)"
 lock_release() {
@@ -145,25 +118,23 @@ lock_release() {
 trap 'lock_release' EXIT
 trap 'lock_release; exit 143' INT TERM
 
-# lock_acquire <dir> <now>: 0 acquired, 1 a live holder, 2 a dead holder
 lock_acquire() {
     local dir="$1" now="$2" pid
     if mkdir "$dir" 2>/dev/null; then
         LOCK_HELD="$dir"
         if printf '%s\n' "$$" > "$dir/pid" && printf '%s\n' "$LOCK_TOKEN" > "$dir/owner" \
             && printf '%s\n' "$now" > "$dir/acquired"; then
-            return 0
+            return "$LOCK_TAKEN"
         fi
         lock_release
         die "could not stamp lock $dir"
     fi
     pid=$(cat "$dir/pid" 2>/dev/null || true)
     if [ -z "$pid" ]; then sleep 1; pid=$(cat "$dir/pid" 2>/dev/null || true); fi
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then return 1; fi
-    return 2
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then return "$LOCK_LIVE"; fi
+    return "$LOCK_DEAD"
 }
 
-# ---- gates -----------------------------------------------------------------------
 load_is_high() {
     local load="${PMR_LOAD:-}" cores
     if [ -z "$load" ]; then
@@ -182,15 +153,10 @@ reindex_lock_is_live() {
     [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
 }
 
-# collect_times <half> <from> <to>: sets TIMES to the commit times of the merges
-# this half counts, one a line. Every merge counts for the graph; the keyword half
-# counts a merge only when it touches a file the himmel collection indexes.
-# Returns 1 when the collection helper itself fails.
 collect_times() {
-    local half="$1" from="$2" to="$3" line cur="" got n
-    TIMES=""
+    local half="$1" from="$2" to="$3" line cur="" got acc=""
     if [ "$half" = graph ]; then
-        TIMES=$(git -C "$PMR_PRIMARY" log --first-parent --format=%ct "$from..$to")
+        git -C "$PMR_PRIMARY" log --first-parent --format=%ct "$from..$to"
         return 0
     fi
     local paths=()
@@ -199,7 +165,7 @@ collect_times() {
             @*)
                 if [ -n "$cur" ] && [ ${#paths[@]} -gt 0 ]; then
                     got=$(qmd_collection_indexes himmel "${paths[@]}") || return 1
-                    [ -z "$got" ] || TIMES="$TIMES$cur"$'\n'
+                    [ -z "$got" ] || acc="$acc$cur"$'\n'
                 fi
                 cur="${line#@}"
                 paths=()
@@ -210,32 +176,26 @@ collect_times() {
     done < <(git -C "$PMR_PRIMARY" -c core.quotepath=off log --first-parent -m --name-only --format=@%ct "$from..$to")
     if [ -n "$cur" ] && [ ${#paths[@]} -gt 0 ]; then
         got=$(qmd_collection_indexes himmel "${paths[@]}") || return 1
-        [ -z "$got" ] || TIMES="$TIMES$cur"$'\n'
+        [ -z "$got" ] || acc="$acc$cur"$'\n'
     fi
-    n="$TIMES"
-    TIMES="${n%$'\n'}"
-    return 0
+    printf '%s' "${acc%$'\n'}"
 }
 
 run_keyword() {
     if [ -n "${PMR_QMD:-}" ]; then
-        # shellcheck disable=SC2086
-        qmd_bounded "$KEYWORD_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 $LOWPRIO "$PMR_QMD" update -c himmel
+        qmd_bounded "$KEYWORD_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 "${LOWPRIO[@]}" "$PMR_QMD" update -c himmel
         return $?
     fi
     local js; js="$(_qmd_bun_js)"
     if [ -f "$js" ] && command -v bun >/dev/null 2>&1; then
-        # shellcheck disable=SC2086
-        qmd_bounded "$KEYWORD_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 $LOWPRIO bun "$js" update -c himmel
+        qmd_bounded "$KEYWORD_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 "${LOWPRIO[@]}" bun "$js" update -c himmel
     else
-        # shellcheck disable=SC2086
-        qmd_bounded "$KEYWORD_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 $LOWPRIO qmd update -c himmel
+        qmd_bounded "$KEYWORD_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 "${LOWPRIO[@]}" qmd update -c himmel
     fi
 }
 
 run_graph() {
-    # shellcheck disable=SC2086
-    $LOWPRIO bash "$PMR_AST" "$PMR_PRIMARY"
+    "${LOWPRIO[@]}" bash "$PMR_AST" "$PMR_PRIMARY"
 }
 
 flow_rows() { # <flow> <started> <ended> <rc> <from> <to>
@@ -248,10 +208,6 @@ flow_rows() { # <flow> <started> <ended> <rc> <from> <to>
     flow_run_append "$(flow_run_row_end "$flow" "$run_id" "$ended_at" "$rc" "$outcome" "" "$from..$to")"
 }
 
-# ---- one half's step -----------------------------------------------------------------
-# wait_gate_holds <half> <now>: rc 0 and a log line when the failure backoff, or the
-# graph half's slow-run floor, says wait. Read again under the lock, because a tick
-# that finished meanwhile may have set either.
 wait_gate_holds() {
     local half="$1" now="$2" retry floor
     retry=$(st_get "$half.retry")
@@ -263,7 +219,7 @@ wait_gate_holds() {
     return 1
 }
 
-pmr_half() { # keyword|graph: the step runs, and any lock it took is released only after its state is written
+pmr_half() {
     pmr_half_step "$1"
     lock_release
     return 0
@@ -287,13 +243,12 @@ pmr_half_step() { # keyword|graph
     git -C "$PMR_PRIMARY" merge-base --is-ancestor "$w" "$main" 2>/dev/null || force=1
 
     if [ "$force" = 0 ]; then
-        if ! collect_times "$half" "$w" "$main"; then pmr_skip "$half" filter-error; return 0; fi
-        if [ -z "$TIMES" ]; then
+        if ! times=$(collect_times "$half" "$w" "$main"); then pmr_skip "$half" filter-error; return 0; fi
+        if [ -z "$times" ]; then
             st_put "$pfx.sha" "$main"
             log "$half nothing from=$w to=$main"
             return 0
         fi
-        times="$TIMES"
         if [ "$(printf '%s\n' "$times" | pmr_decide "$now" "$QUIET_SECS" "$MAX_WAIT_SECS")" != fire ]; then
             newest=""; oldest=""
             for t in $times; do
@@ -320,7 +275,7 @@ pmr_half_step() { # keyword|graph
     lock="$PMR_STATE/$pfx.lock"
     lock_acquire "$lock" "$now"
     rc=$?
-    if [ "$rc" = 1 ]; then
+    if [ "$rc" = "$LOCK_LIVE" ]; then
         local acquired; acquired=$(cat "$lock/acquired" 2>/dev/null || echo "$now")
         case "$acquired" in '' | *[!0-9]*) acquired="$now" ;; esac
         if [ $((now - acquired)) -ge "$LOCK_ALERT_SECS" ] && [ "$(st_get "$half.lockalert")" != "$acquired" ]; then
@@ -329,7 +284,7 @@ pmr_half_step() { # keyword|graph
         fi
         pmr_skip "$half" live-lock
         return 0
-    elif [ "$rc" = 2 ]; then
+    elif [ "$rc" = "$LOCK_DEAD" ]; then
         log "$half ERR dead lock holder: $lock is left in place; remove that directory to resume"
         alert_fail "$half" "dead lock holder" "lock $lock names a process that is gone" "remove the directory $lock"
         pmr_skip "$half" dead-lock
@@ -337,7 +292,6 @@ pmr_half_step() { # keyword|graph
     fi
     st_rm "$half.lockalert"
     st_rm "$half.defer"
-    # Another tick may have finished between the read above and this lock: act on its state, not ours.
     if [ "$(st_get "$pfx.sha")" != "$w" ]; then log "$half hold=raced"; return 0; fi
     if wait_gate_holds "$half" "$now"; then return 0; fi
 

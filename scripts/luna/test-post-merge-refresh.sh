@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# Unit tests for scripts/luna/post-merge-refresh.sh.
-#
-# Every row runs the real tick on a fixture git repo, under a throwaway HOME,
-# with a stub `qmd`, a stub `ast-update.sh`, a stub keyword-lag script and a stub
-# alert sink; time is fixed through PMR_NOW. Nothing touches the live qmd
-# index, the live graphify-out, the live vault or the crontab, and no row can
-# make a paid or model call (rows no_paid_call and no_paid_call_real_ast prove
-# it). bash 3.2-safe: no associative arrays.
 # shellcheck disable=SC2329,SC2317
 set -uo pipefail
 
@@ -20,7 +12,6 @@ PASS=0
 FAIL=0
 TMP_ROOT=""
 
-# shellcheck disable=SC2329,SC2317
 cleanup() {
     local p
     if [ -n "$TMP_ROOT" ] && [ -f "$TMP_ROOT/bg.pids" ]; then
@@ -59,11 +50,10 @@ TICK_BIN="$TICK"
 
 g() { git -c user.name=t -c user.email=t@t -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"; }
 
-# livepid / deadpid: a pid that is running, and one that is gone.
 livepid() { sleep 600 >/dev/null 2>&1 & echo $! >> "$TMP_ROOT/bg.pids"; echo $!; }
 deadpid() { local p; sh -c 'exit 0' & p=$!; wait "$p" 2>/dev/null; echo "$p"; }
 
-mkcase() { # <name>: fixture repo on main with one old commit, stubs, seams
+mkcase() { # <name>
     C="$TMP_ROOT/$1"
     mkdir -p "$C/primary" "$C/state" "$C/bin" "$C/cfg" "$C/cache"
     g init -q "$C/primary" 2>/dev/null
@@ -121,7 +111,7 @@ STUB
     : > "$C/alerts.log"
 }
 
-cm() { # <epoch> <path>...: commit those files on main at that commit time
+cm() { # <epoch> <path>...
     local ep="$1" p; shift
     for p in "$@"; do
         mkdir -p "$C/primary/$(dirname "$p")"
@@ -139,7 +129,7 @@ seed_both() {
     printf '%s\n' "$W0" > "$C/state/graph.sha"
 }
 
-tick() { # <halves> [K=V...]: one tick at $NOW, output in $OUT, status in $RC
+tick() { # <halves> [K=V...]; sets OUT and RC
     local halves="$1"; shift
     OUT=$(env HOME="$HOME" PMR_CASE="$C" PMR_BUSY_FIXTURE="$BUSY_FIXTURE" \
         PMR_QMD="$C/bin/qmd" PMR_AST="$C/bin/ast" PMR_PRIMARY="$C/primary" PMR_STATE="$C/state" \
@@ -155,8 +145,6 @@ nrows() { local n; n=$(grep -c -- "$1" "$C/flow.jsonl" 2>/dev/null) || n=0; [ -n
 sha_of() { cat "$C/state/$1.sha" 2>/dev/null || echo none; }
 mtime_of() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo "?"; }
 
-# mk_tick_tree <dir> [stub-bounded]: a scripts tree holding a COPY of the tick,
-# the real libs by symlink, and sentinels where a paid path would live.
 mk_tick_tree() {
     local d="$1" f
     mkdir -p "$d/scripts/luna" "$d/scripts/lib" "$d/scripts/graphify" "$d/bin"
@@ -177,7 +165,6 @@ STUB
 
 echo "== post-merge-refresh.sh =="
 
-# ---- I7: the debounce ------------------------------------------------------
 row_quiet_window_holds() {
     mkcase quiet; seed_both; cm $((BASE+1000)) docs/a.md
     NOW=$((BASE+1300)); tick both
@@ -230,7 +217,6 @@ row_delayed_pull_fires_once() {
     assert_eq "delayed_pull_fires_once: not again" 1 "$(ncalls 'qmd update')"
 }
 
-# ---- I2: the watermark ----------------------------------------------------
 row_failed_refresh_keeps_watermark() {
     mkcase failwm; seed_both; cm $((BASE+100)) docs/a.md
     printf 'fail' > "$C/qmd.mode"; printf 'fail' > "$C/ast.mode"
@@ -304,7 +290,6 @@ row_non_ancestor_runs_once() {
     assert_eq "non_ancestor_runs_once: and only once" 1 "$(ncalls 'qmd update')"
 }
 
-# ---- I3: locks --------------------------------------------------------------
 mk_lock() { # <half-file-prefix> <pid> <acquired-epoch>
     mkdir -p "$C/state/$1.lock"
     printf '%s\n' "$2" > "$C/state/$1.lock/pid"
@@ -365,7 +350,6 @@ row_reindex_lock_dead_does_not_skip() {
     assert_eq "reindex_lock_dead_does_not_skip: keyword runs" 1 "$(ncalls 'qmd update')"
 }
 
-# ---- I1: no paid call -------------------------------------------------------
 row_no_paid_call() {
     mkcase nopaid; seed_both; cm $((BASE+100)) docs/a.md src/a.sh
     local tree="$TMP_ROOT/nopaid-tree"
@@ -392,7 +376,6 @@ row_no_paid_call_real_ast() {
     assert_eq "no_paid_call_real_ast: the graph watermark moved on the real wrapper's success" "$(head_sha)" "$(sha_of graph)"
 }
 
-# ---- I5: the stamps -----------------------------------------------------------
 row_stamp_untouched() {
     mkcase stamps; seed_both; cm $((BASE+100)) docs/a.md src/a.sh
     printf 'stamp-bytes\n' > "$C/cache/refresh-stamp"; printf 'rc=0\nsummary=x\n' > "$C/cache/reindex-state"
@@ -404,11 +387,6 @@ row_stamp_untouched() {
     assert_eq "stamp_untouched: refresh stamp and reindex-state keep their bytes and mtime" "$before" "$after"
 }
 
-# ---- I6: no merge path calls the tick ------------------------------------------
-# A name search cannot see a caller that builds the script name at run time.
-# The structural fix, the tick refusing unless its parent is the armed runner,
-# is a filed follow-up; the accepted limit is a row in the ceilings ledger.
-# This tests a design property, not a guard parsing commands.
 row_no_merge_path_caller() {
     local allow='^(scripts/luna/(post-merge-refresh\.sh|test-post-merge-refresh\.sh|graphmap-cadence\.sh|test-graphmap-cadence\.sh|keyword-lag\.py|test-keyword-lag\.sh)|scripts/lib/(observability-registry|test-observability-registry)\.sh|scripts/observability/ledgers\.json|docs/)'
     local hits
@@ -416,7 +394,6 @@ row_no_merge_path_caller() {
     assert_eq "no_merge_path_caller: only the tick, its verb, its tests and its docs name it" "" "$hits"
 }
 
-# ---- I8: alerts ------------------------------------------------------------------
 row_third_failure_alerts() {
     mkcase third; seed_both; cm $((BASE+100)) docs/a.md
     printf 'fail' > "$C/qmd.mode"
@@ -472,7 +449,6 @@ row_clean_exit_clears_tick_alert() {
     assert_contains "clean_exit_clears_tick_alert: the tick alert is cleared" "clear post-merge-tick" "$(cat "$C/alerts.log")"
 }
 
-# ---- I15: the arm and the sampler ---------------------------------------------------
 row_graph_only_arm_never_runs_qmd() {
     mkcase graphonly; seed_both; cm $((BASE+100)) docs/a.md
     NOW=$((BASE+1000)); tick graph
@@ -500,7 +476,6 @@ row_sampler_after_keyword_before_graph() {
     assert_eq "sampler_after_keyword_before_graph: keyword, then the sampler, then graph" "qmd lag ast" "$(cut -d' ' -f1 "$C/calls.log" | tr '\n' ' ' | sed 's/ $//')"
 }
 
-# ---- I14: only a real run writes a row -------------------------------------------------
 row_only_real_run_writes_row() {
     mkcase rows; seed_both; cm $((BASE+100)) docs/a.md; local m="$LAST"
     NOW=$((BASE+300)); tick both
@@ -515,7 +490,6 @@ row_only_real_run_writes_row() {
     assert_contains "only_real_run_writes_row: the keyword flow is named" '"flow":"post-merge-keyword"' "$(cat "$C/flow.jsonl")"
 }
 
-# ---- outcomes ---------------------------------------------------------------------------
 row_db_busy_is_skip() {
     mkcase busy; seed_both; cm $((BASE+100)) docs/a.md
     printf 'busy' > "$C/qmd.mode"
