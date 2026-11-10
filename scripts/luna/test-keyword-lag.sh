@@ -548,14 +548,14 @@ print("REPLAY mode=%s calls=%d runs=%d ticks=%d secs=%.1f denominator=%s share=%
 PY
 
 row_replay_healthy_tick_share() {
-    local out share secs
+    local out share calls
     out=$(python3 -I "$REPLAY" "$LAG" "$TICK" "$FIXTURE" "$GOLDEN_INDEX" "$TMP_ROOT/replay-healthy" healthy 2>&1)
     echo "    $out"
     share=$(sed -n 's/.* share=\([0-9.]*\) .*/\1/p' <<<"$out")
-    secs=$(sed -n 's/.* secs=\([0-9]*\)\..*/\1/p' <<<"$out")
+    calls=$(sed -n 's/.* calls=\([0-9]*\) .*/\1/p' <<<"$out")
     assert_contains "replay_healthy_tick_share: the healthy tick replays the 14-day fixture" "REPLAY mode=healthy" "$out"
     if [ -n "$share" ] && awk -v s="$share" 'BEGIN { exit !(s >= 0.95) }'; then pass "replay_healthy_tick_share: healthy share $share is at least 0.95"; else fail "replay_healthy_tick_share: healthy share" "got '$share'"; fi
-    if [ -n "$secs" ] && [ "$secs" -lt 60 ]; then pass "replay_healthy_tick_share: the replay took ${secs}s, under 60"; else fail "replay_healthy_tick_share: the replay took '${secs}'s"; fi
+    if [ -n "$calls" ] && [ "$calls" -ge 1 ] && [ "$calls" -le 4000 ]; then pass "replay_healthy_tick_share: the replay made $calls tick calls, at most 4000"; else fail "replay_healthy_tick_share: the replay's call count" "got '$calls'"; fi
     assert_contains "replay_healthy_tick_share: the graph half's share reads from the same flow rows" "graph_share=1.0000" "$out"
     out=$(python3 -I "$REPLAY" "$LAG" "$TICK" "$FIXTURE" "$GOLDEN_INDEX" "$TMP_ROOT/replay-hourly" hourly 2>&1)
     echo "    $out"

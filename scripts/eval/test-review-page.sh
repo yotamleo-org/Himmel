@@ -446,6 +446,135 @@ sed -e 's/a == b/a \&\& b/' -e 's/a != b/a || b/' "$TMP/cr-ops.jsonl" > "$TMP/cr
 has "panel: claims that differ only by a logical operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-logic.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
 has "--help prints the whole usage text" "$(python3 -I "$PAGE" --help 2>&1)" "--panel [--cr-ledger P] [--until TS]"
 
+M7="$TMP/m7"; mkdir -p "$M7/dir.jsonl"
+NOW="2026-11-10T00:00:00Z"
+python3 -I - "$HERE/lib" "$M7" <<'PY' || { echo "test-review-page: writing the M7 fixture ledgers failed" >&2; exit 1; }
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import eval_runs
+D = sys.argv[2]
+def put(name, rows):
+    open(os.path.join(D, name), "w").write("".join(json.dumps(r) + "\n" for r in rows))
+cov = {"scored": 4, "critics": {"codex": {"answered": 4}}}
+EVIL = "<img src=x onerror=alert(1)>"
+def rp(run_id, ts, critics, recall, status="ok", findings=0, scorer="a" * 64, ex=None, verified=None, sup=None):
+    m = {"codex.key_match_recall": recall, "codex.class.logic.recall": recall, "codex.class.logic.n": 5,
+         "codex.key_match_precision": None, "codex.findings": findings, "codex.labelled_clean_block_rate": 0.25,
+         "codex.clean_scored": 4, "panel.key_match_recall": recall, "panel.class.logic.recall": recall,
+         "panel.class.logic.n": 5}
+    if EVIL in critics:
+        m.update({EVIL + ".findings": 2, EVIL + ".key_match_precision": 0.5})
+    meta = {"scorer_sha256": scorer, "execution_id": ex or run_id, "coverage": cov}
+    if verified:
+        meta["verified"] = verified
+    if sup:
+        meta["supersedes_run_id"] = sup
+    r = eval_runs.make_row("review-panel", "scripts/eval/review-panel/score.py", {"fixture_set": "f1", "critics": critics},
+                           m, n=4, run_id=run_id, status=status, gitsha="0" * 40, meta=meta,
+                           ci={"codex.key_match_recall": {"lo": 0.3, "hi": 0.9}})
+    r["ts"] = ts
+    return r
+ver = {"metrics": {"codex.adjudicated_precision": 0.75}, "counts": {"codex.adjudicated_precision": {"k": 3, "n": 4},
+       "codex.verified_false_block_rate": {"k": 0, "n": 0}}, "coverage": {}, "reasons": ["cohort-pending"], "cohort": {}}
+judge = eval_runs.make_row("judge-accuracy", "scripts/eval/judge-accuracy/judge_accuracy.py", {"days": 28},
+                           {"escape_rate": 0.02, "flip_rate": 0.1, "go_merged": 50, "escapes": 1}, n=50, run_id="ja-1",
+                           gitsha="0" * 40)
+judge["ts"] = "2026-11-08T00:00:00Z"
+put("runs.jsonl", [rp("rp-a", "2026-10-20T00:00:00Z", ["codex", "claude"], 0.4),
+                   rp("rp-b", "2026-11-02T00:00:00Z", ["codex", EVIL], 0.6, verified=ver), judge,
+                   rp("rp-c", "2026-11-09T00:00:00Z", ["codex"], None, status="inconclusive")])
+put("runs-compat.jsonl", [rp("rp-1", "2026-11-05T00:00:00Z", ["codex"], 0.4), rp("rp-2", "2026-11-08T00:00:00Z", ["codex"], 0.6)])
+put("runs-rescore.jsonl", [rp("e1", "2026-10-31T00:00:00Z", ["codex"], 0.4),
+                           rp("e1-r", "2026-11-09T00:00:00Z", ["codex"], 0.5, ex="e1", sup="e1")])
+put("runs-promoted.jsonl", [rp("e1", "2026-11-05T00:00:00Z", ["codex"], 0.4), rp("e2", "2026-11-07T00:00:00Z", ["codex"], 0.6),
+                            rp("e1-r", "2026-11-08T00:00:00Z", ["codex"], 0.5, ex="e1", sup="e1")])
+put("runs-orphan.jsonl", [rp("e9-r", "2026-11-09T00:00:00Z", ["codex"], 0.5, ex="e9", sup="e9")])
+base = {"v": 1, "host": "h", "source": "scripts/eval/lib/eval_feedback.py", "kind": "eval-change"}
+put("changes.jsonl", [dict(base, id="rp-b:codex.key_match_recall", eval="review-panel", metric="codex.key_match_recall",
+                           ts="2026-11-02T01:00:00Z", status="open", value=0.6, threshold=0.7, better="higher", absent=None,
+                           change="prompt", target="scripts/cr/critic-first-pass.sh", baseline_run_id="rp-b",
+                           confighash="c", critic="codex"),
+                      dict(base, id="ja-1:escape_rate", eval="judge-accuracy", metric="escape_rate", ts="2026-11-08T01:00:00Z",
+                           status="open", value=0.02, threshold=0.01, better="lower", absent=None, change="prompt",
+                           target="judge", baseline_run_id="ja-1", confighash="j", critic=None)])
+def fin(model, fid, ts, br, source=None, text="SECRET-BODY-TEXT claim"):
+    r = {"kind": "finding", "ts": ts, "branch": br, "head": "h1", "model": model, "finding_id": fid, "severity": "imp",
+         "file": "a.sh", "line": 1, "verdict": "", "artifact": "diff", "perspective": "off", "text": text}
+    if source:
+        r["source"], r["verdict"] = source, "fixed"
+    return r
+def amend(br, fid, verdict, ts="2026-11-06T00:00:00Z"):
+    return {"kind": "amend", "ts": ts, "branch": br, "target_head": "h1", "finding_id": fid,
+            "artifact": "diff", "perspective": "off", "set": {"verdict": verdict}, "reason": "r"}
+put("cr.jsonl", [fin("coderabbit", "cr-1", "2026-11-05T00:00:00Z", "b1"), amend("b1", "cr-1", "agreed"),
+                 fin("coderabbit", "cr-2", "2026-11-05T00:00:00Z", "b2"), amend("b2", "cr-2", "disproved"),
+                 fin("coderabbit", "cr-3", "2026-11-05T00:00:00Z", "b3", source="cr-thread-recorder"),
+                 fin("judge", "j-1", "2026-11-05T00:00:00Z", "b4")])
+put("cr-quiet.jsonl", [fin("coderabbit", "cr-1", "2026-09-30T00:00:00Z", "b1"),
+                       amend("b1", "cr-1", "agreed", "2026-10-01T00:00:00Z")])
+PY
+rj() { python3 -I "$PAGE" --reviewers-json --ledger "${1:-$M7/runs.jsonl}" --changes "${2:-$M7/changes.jsonl}" --cr-ledger "${3:-$M7/cr.jsonl}" --now "${4:-$NOW}" 2>/dev/null; }
+q() { python3 -I -c 'import json, sys
+r = json.loads(sys.stdin.read())
+print(eval(sys.argv[1], {"r": r, "src": {s["id"]: s for s in r["sources"]}, "met": {m["id"]: m for m in r["metrics"]}}))' "$1"; }
+J="$(rj)"; rc=$?
+eq "reviewers-json: exit 0" "$rc" "0"
+eq "reviewers-json: valid JSON, report v1" "$(printf '%s' "$J" | q 'r["v"]')" "1"
+eq "ledger_present_page_missing: no review page file, the ledgers give an ok report" "$(printf '%s' "$J" | q 'r["state"]')" "ok"
+eq "ledger_present_page_missing: benchmark and production metrics both present" "$(printf '%s' "$J" | q 'sorted({m["family"] for m in r["metrics"]})')" "['benchmark', 'production']"
+eq "reviewers-json: the report is dated by --now" "$(printf '%s' "$J" | q 'r["generated_at"]')" "$NOW"
+eq "reviewers-json: each source by basename, with its records and observed-through" "$(printf '%s' "$J" | q '[(s["id"], s["name"], s["state"], s["records"]) for s in r["sources"]]')" "[('eval-runs', 'runs.jsonl', 'ok', 4), ('eval-changes', 'changes.jsonl', 'ok', 2), ('cr-ledger', 'cr.jsonl', 'ok', 6)]"
+case "$J" in *"$TMP"*) fail "reviewers-json: no private path reaches the report";; *) pass "reviewers-json: no private path reaches the report";; esac
+case "$J" in *SECRET-BODY-TEXT*) fail "reviewers-json: no raw review text reaches the report";; *) pass "reviewers-json: no raw review text reaches the report";; esac
+eq "ENOENT_absent: a missing ledger is source absent, ENOENT" "$(rj "$M7/none.jsonl" | q '(src["eval-runs"]["state"], src["eval-runs"]["reason"], r["state"])')" "('absent', 'ENOENT', 'ok')"
+eq "ENOENT_absent: every ledger missing is report absent" "$(rj "$M7/none.jsonl" "$M7/none.jsonl" "$M7/none.jsonl" | q '(r["state"], r["metrics"])')" "('absent', [])"
+eq "EACCES_or_directory_error: a directory is source error EISDIR, never absent" "$(rj "" "" "$M7/dir.jsonl" | q '(src["cr-ledger"]["state"], src["cr-ledger"]["reason"])')" "('error', 'EISDIR')"
+cp "$M7/cr.jsonl" "$M7/locked.jsonl"; chmod 000 "$M7/locked.jsonl"
+if [ -r "$M7/locked.jsonl" ]; then pass "EACCES_or_directory_error: (root reads any file; EACCES not testable here)"
+else eq "EACCES_or_directory_error: an unreadable ledger is source error EACCES" "$(rj "" "" "$M7/locked.jsonl" | q '(src["cr-ledger"]["state"], src["cr-ledger"]["reason"])')" "('error', 'EACCES')"; fi
+chmod 600 "$M7/locked.jsonl"
+eq "one_source_error_partial: one unreadable source makes the report partial" "$(rj "" "" "$M7/dir.jsonl" | q 'r["state"]')" "partial"
+eq "one_source_error_partial: the readable sources still report" "$(rj "" "" "$M7/dir.jsonl" | q 'sorted({m["family"] for m in r["metrics"]})')" "['benchmark']"
+eq "reviewers-json: the newest usable run is the benchmark" "$(printf '%s' "$J" | q 'r["latest_usable"]["run_id"]')" "rp-b"
+eq "zero_denominator_dash: no findings means no ratio, never 0" "$(printf '%s' "$J" | q '[(m["k"], m["n"], m["value"]) for m in r["metrics"] if m["id"] == "benchmark.codex.key_match_precision"]')" "[(None, 0, None)]"
+eq "reviewers-json: key-match recall as typed k of n with its interval" "$(printf '%s' "$J" | q '[(m["kind"], m["k"], m["n"], m["value"], m["interval"]) for m in r["metrics"] if m["id"] == "benchmark.codex.key_match_recall"]')" "[('proxy', 3, 5, 0.6, {'hi': 0.9, 'lo': 0.3})]"
+eq "reviewers-json: adjudicated precision from the verified family, apart from the proxies" "$(printf '%s' "$J" | q '[(m["kind"], m["k"], m["n"], m["value"]) for m in r["metrics"] if m["id"] == "benchmark.codex.adjudicated_precision"]')" "[('adjudicated', 3, 4, 0.75)]"
+eq "stale_observation_new_render: a benchmark eight days old is old in a report made now" "$(printf '%s' "$J" | q '(r["benchmark"]["freshness"]["state"], r["benchmark"]["freshness"]["age_days"])')" "('old', 8)"
+eq "stale_observation_new_render: the same run read two days after it is current" "$(rj "" "" "" "2026-11-04T00:00:00Z" | q 'r["benchmark"]["freshness"]["state"]')" "current"
+eq "stale_observation_new_render: a run observed at --now is 0 days old, not unknown" "$(rj "" "" "" "2026-11-02T00:00:00Z" | q '(r["benchmark"]["freshness"]["age_days"], r["benchmark"]["freshness"]["state"])')" "(0, 'current')"
+R="$(rj "$M7/runs-rescore.jsonl")"
+eq "rescore_dated_by_execution: an execution 10 days old rescored yesterday is old, 10 days" "$(printf '%s' "$R" | q '(r["latest_usable"]["run_id"], r["benchmark"]["freshness"]["state"], r["benchmark"]["freshness"]["age_days"])')" "('e1-r', 'old', 10)"
+eq "rescore_dated_by_execution: observed at the execution's first row, everywhere" "$(printf '%s' "$R" | q '(r["latest_usable"]["at"], r["benchmark"]["freshness"]["observed_at"], {m["window"]["observed_at"] for m in r["metrics"] if m["family"] == "benchmark"})')" "('2026-10-31T00:00:00Z', '2026-10-31T00:00:00Z', {'2026-10-31T00:00:00Z'})"
+eq "rescore_dated_by_execution: a rescore whose source row is absent has no known age" "$(rj "$M7/runs-orphan.jsonl" | q '(r["latest_usable"]["at"], r["benchmark"]["freshness"]["age_days"], r["benchmark"]["freshness"]["state"])')" "(None, None, 'unknown')"
+eq "promoted_rescore_usable: a rescore of e1 promoted after e2 is no unusable attempt" "$(rj "$M7/runs-promoted.jsonl" | q '(r["latest_usable"]["run_id"], r["latest_attempt"]["run_id"], r["latest_attempt"]["usable"])')" "('e2', 'e1-r', True)"
+PP="$(python3 -I "$PAGE" --reviewers-only --ledger "$M7/runs-promoted.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M7/cr.jsonl" --now "$NOW" 2>&1)"; rc=$?
+eq "promoted_rescore_usable: the prose renders, exit 0" "$rc" "0"
+has "promoted_rescore_usable: the prose names the benchmark run" "$PP" "Run of 7 Nov 2026 (e2, ok)."
+case "$PP" in *"not usable"*) fail "promoted_rescore_usable: the prose names no unusable attempt";; *) pass "promoted_rescore_usable: the prose names no unusable attempt";; esac
+eq "reviewers-json: a change recorded after --now is not in the report" "$(rj "" "" "" "2026-11-02T00:30:00Z" | q 'r["proposals"]')" "[]"
+Q="$(rj "" "" "$M7/cr-quiet.jsonl")"
+eq "quiet_history_not_failed_capture: a quiet CR ledger names its last record" "$(printf '%s' "$Q" | q '(r["production"]["last_record_at"], r["production"]["records_in_window"])')" "('2026-10-01T00:00:00Z', 0)"
+eq "quiet_history_not_failed_capture: capture coverage stays unknown" "$(printf '%s' "$Q" | q 'r["production"]["capture_coverage"]')" "unknown"
+case "$Q" in *stale*|*failed*) fail "quiet_history_not_failed_capture: quiet history is never called stale or failed capture";; *) pass "quiet_history_not_failed_capture: quiet history is never called stale or failed capture";; esac
+eq "newer_failed_attempt_visible: the newer inconclusive attempt is the latest attempt" "$(printf '%s' "$J" | q '(r["latest_attempt"]["run_id"], r["latest_attempt"]["status"], r["latest_attempt"]["usable"])')" "('rp-c', 'inconclusive', False)"
+eq "incompatible_series_no_trend: another roster is not comparable, with the reason" "$(printf '%s' "$J" | q '(r["comparison_eligibility"]["eligible"], "confighash" in r["comparison_eligibility"]["reasons"][0])')" "(False, True)"
+eq "incompatible_series_no_trend: no metric carries a trend" "$(printf '%s' "$J" | q '[m["id"] for m in r["metrics"] if m.get("trend")]')" "[]"
+eq "incompatible_series_no_trend: a comparable pair carries its trend (control)" "$(rj "$M7/runs-compat.jsonl" | q '(r["comparison_eligibility"]["eligible"], met["benchmark.codex.key_match_recall"]["trend"])')" "(True, {'previous_run_id': 'rp-1', 'previous_value': 0.4})"
+eq "reviewers-json: a recorded disposition is author agreement over decided findings" "$(printf '%s' "$J" | q '[(m["verdict_source"], m["k"], m["n"], m["value"]) for m in r["metrics"] if m["family"] == "production" and m["reviewer"] == "coderabbit" and m["verdict_source"] == "recorded-disposition"]')" "[('recorded-disposition', 1, 2, 0.5)]"
+eq "reviewers-json: a thread-recorder verdict is its own thread-state family" "$(printf '%s' "$J" | q '[(m["label"], m["k"], m["n"]) for m in r["metrics"] if m["family"] == "production" and m["verdict_source"] == "thread-state-inferred"]')" "[('resolved after a change (thread state, inferred)', 1, 1)]"
+eq "escaped_labels: a reviewer named with markup stays plain data in the JSON" "$(printf '%s' "$J" | q '[x["id"] for x in r["reviewers"] if x["id"].startswith("<")]')" "['<img src=x onerror=alert(1)>']"
+eq "reviewers-json: a reviewer change is a typed proposal with its lifecycle" "$(printf '%s' "$J" | q '[(p["id"], p["lifecycle"]) for p in r["proposals"]]')" "[('rp-b:codex.key_match_recall', 'proposed')]"
+case "$J" in *judge*|*escape*|*flip*) fail "no_judge_fields_in_new_report: no judge row or change reaches the report";; *) pass "no_judge_fields_in_new_report: no judge row or change reaches the report";; esac
+eq "no_judge_fields_in_new_report: a bookkeeping slug in the CR ledger is counted out, never a reviewer row" "$(printf '%s' "$J" | q '(r["production"]["not_reviewers"], sorted({m["reviewer"] for m in r["metrics"] if m["family"] == "production"}))')" "({'findings': 1, 'slugs': 1}, ['coderabbit'])"
+P="$(python3 -I "$PAGE" --reviewers-only --ledger "$M7/runs.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M7/cr-quiet.jsonl" --now "$NOW" 2>&1)"; rc=$?
+eq "reviewers-only: exit 0" "$rc" "0"
+has "reviewers-only: typed k of n in prose" "$P" "The codex critic key-matched 3 of 5 labelled target defects: 60 %"
+has "reviewers-only: a zero denominator reads as a dash" "$P" "0 findings: —"
+has "reviewers-only: an old benchmark says so" "$P" "Old: observed 8 days before this report"
+has "reviewers-only: the newer failed attempt is named" "$P" "Latest attempt 9 Nov 2026 (rp-c): inconclusive, not usable"
+has "reviewers-only: quiet history names the last record" "$P" "No new records since 1 Oct 2026; capture coverage unknown"
+case "$P" in *judge*|*"Bugs past a GO"*) fail "reviewers-only: code reviewers only";; *) pass "reviewers-only: code reviewers only";; esac
+
 # The evals page must not tell a reader to run a script that is not in the tree.
 ROOT="$(cd "$HERE/../.." && pwd)"
 python3 -I "$ROOT/scripts/cr/evals-page-gen.py" render --out "$TMP/evals-page.md" >/dev/null 2>&1
