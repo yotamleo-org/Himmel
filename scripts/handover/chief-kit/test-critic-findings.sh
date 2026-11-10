@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015,SC2016 # cond && pass || fail: pass and fail always return 0; fixtures and SKILL text hold literal backticks and ${vars}
-# Tests for the typed prior-finding producer (critic-findings.py) and the Claude-only critic return format.
+# shellcheck disable=SC2015,SC2016
 # Usage: bash scripts/handover/chief-kit/test-critic-findings.sh [test-name]
 # Exit: 0 all rows pass, 1 a row failed, 2 a missing tool.
 set -uo pipefail
@@ -27,14 +26,14 @@ PASS=0 FAIL=0
 pass() { printf '  PASS  %s\n' "$1"; PASS=$((PASS+1)); }
 fail() { printf '  FAIL  %s\n' "$1"; [ -n "${OUT:-}" ] && printf '        out: %s\n' "$(printf '%s' "$OUT" | head -c 300)"; FAIL=$((FAIL+1)); }
 check() { local label=$1; shift; if "$@" >/dev/null 2>&1; then pass "$label"; else fail "$label"; fi; }
-# refused <exit> <reason> <label>: the last cf call exited <exit> with a critic-intake-refusal naming <reason>
 refused() {
-  if [ "$RC" = "$1" ] && jq -e --arg r "$2" '.schema==1 and .kind=="critic-intake-refusal" and .state=="refused" and (.reasons|index($r)!=null)' <<<"$OUT" >/dev/null 2>&1; then pass "$3"; else fail "$3 (rc=$RC)"; fi
+  local want_rc=$1 reason=$2 label=$3
+  if [ "$RC" = "$want_rc" ] && jq -e --arg r "$reason" '.schema==1 and .kind=="critic-intake-refusal" and .state=="refused" and (.reasons|index($r)!=null)' <<<"$OUT" >/dev/null 2>&1; then pass "$label"; else fail "$label (rc=$RC)"; fi
 }
 neg() { ! "$@"; }
 sedi() { sed "$1" "$2" > "$2.sedi" && mv "$2.sedi" "$2"; }
 fstat() { python3 -I -c 'import os, sys; s = os.stat(sys.argv[1]); print(s.st_mtime_ns, s.st_ino)' "$1"; }
-# shellcheck disable=SC2231 # $2 is a glob on purpose
+# shellcheck disable=SC2231
 nfiles() { local n=0 f; for f in "$1"/$2; do [ -e "$f" ] && n=$((n+1)); done; printf '%s' "$n"; }
 okrun() { if [ "$RC" = 0 ] && jq -e . <<<"$OUT" >/dev/null 2>&1; then pass "$1"; else fail "$1 (rc=$RC)"; fi; }
 
@@ -53,7 +52,6 @@ newroot() {
   EXTRA_READ=""
 }
 vpath() { printf '%s.critic-%s-r%s.md' "$SPEC" "$1" "$2"; }
-# mkret <kind> <round> <count> [dest]: a valid structured return with <count> findings (minor, major, critical in turn)
 mkret() {
   local kind=$1 round=$2 n=$3 dest=${4:-} up i
   [ -n "$dest" ] || dest=$(vpath "$kind" "$round")
@@ -70,8 +68,7 @@ mkret() {
     if [ "$n" = 0 ]; then printf '%s CLEAN\n' "$up"; else printf '%s FINDINGS %s\n' "$up" "$n"; fi
   } > "$dest"
 }
-# mklegacy <kind> <round> <verdict line>: prose only, no tagged block
-mklegacy() { printf 'Read %s SHA256 %s.\nSome prose finding.\n%s\n' "$SPEC" "$(sha "$SPEC")" "$3" > "$(vpath "$1" "$2")"; }
+mklegacy() { local kind=$1 round=$2 verdict_line=$3; printf 'Read %s SHA256 %s.\nSome prose finding.\n%s\n' "$SPEC" "$(sha "$SPEC")" "$verdict_line" > "$(vpath "$kind" "$round")"; }
 norm() { local k=$1 r=$2; shift 2; cf normalize --spec "$SPEC" --kind "$k" --round "$r" --verdict "$(vpath "$k" "$r")" --out "$(vpath "$k" "$r").finding-index.json" "$@"; }
 idx() { printf '%s.finding-index.json' "$(vpath "$1" "$2")"; }
 prev() {
@@ -89,7 +86,6 @@ inventory() {
 
 block() { awk '/<!-- critic-readiness-recipe-start -->/{f=1;next} /<!-- critic-readiness-recipe-end -->/{f=0} f' "${1:-$SKILL}"; }
 outside() { awk '/<!-- critic-readiness-recipe-start -->/{f=1;next} /<!-- critic-readiness-recipe-end -->/{f=0;next} !f' "${1:-$SKILL}"; }
-# ctx_lines <skill> <K> <R>: the shipped critic-context text fence inside the marker pair, with K and R filled in
 ctx_lines() {
   local k=$2 r=$3 raw
   raw=$(block "$1" | awk '/<!-- critic-context -->/{m=1;next} m&&/^```/{if(open){exit}; open=1; next} m&&open{print}')
@@ -132,7 +128,7 @@ def patched(index_path, old_bytes):
         cut = text.rstrip('\n').rfind('\n') + 1
         open(verdict, 'w').write(text[:cut] + 'CONTENT-SHA256 ' + 'a' * 64 + ' x\n' + text[cut:])
     elif scenario == 'new-index-written':
-        obj, _ = mod.build_index(spec, kind, int(rnd), verdict)
+        obj, _ = mod.build_index(spec, kind, int(rnd), verdict, open(verdict, 'rb').read())
         open(index_path, 'wb').write(mod.dump(obj))
     elif scenario == 'concurrent':
         r = subprocess.run([sys.executable, '-I', finder, 'normalize', '--spec', spec, '--kind', kind, '--round', rnd,
@@ -159,8 +155,6 @@ with contextlib.redirect_stdout(buf):
     rc = mod.main(argv)
 print(json.dumps({'rc': rc, 'out': buf.getvalue(), 'second': log.get('second')}))
 PY
-
-# ---------------------------------------------------------------------------------------------
 
 t_charters_bytes_unchanged() {
   local before after in_n out_n
@@ -213,7 +207,6 @@ t_format_file_example_normalizes() {
     okrun "the shipped example normalizes ($k)"
     check "exact ID, path, hash, count and provenance ($k)" jq -e --arg k "$k" --arg v "$v" --arg h "$(sha "$v")" --arg s "$SPEC" \
       '.schema==1 and .kind=="critic-finding-index" and .complete==true and .spec_path==$s and .critic_kind==$k and .round==1 and .verdict.path==$v and .verdict.sha256==$h and (.findings|length)==1 and .findings[0].finding_id==($k+"-r1-1") and .findings[0].severity=="minor" and .findings[0].location.path==$s and .provenance=={method:"structured-return",reviewer_id:("minerva-"+$k+"-r1")}' "$(idx "$k" 1)"
-    # mutations, each in a fresh root so no index exists yet
     newroot "fmt-$k-count"
     ex2=$(render "$k" 1 "$up" "$SPEC" "$(sha "$SPEC")" "minerva-$k-r1"); printf '%s' "$ex2" | sed 's/FINDINGS 1$/FINDINGS 2/' > "$(vpath "$k" 1)"
     norm "$k" 1; refused 2 invalid "terminal count 1 to 2 fails with 2 ($k)"
@@ -441,10 +434,10 @@ t_intake_exit_json() {
   rm -f "$R/ex.bundle.json"; printf '{"schema":1}\n' > "$T/priv-ex/o.json"; bund "$T/priv-ex/o.json" "$R/x.json"
   check "bundle refusal names its operation" jq -e "$keys and .operation==\"bundle\"" <<<"$OUT"
   valid "$p" "$R/none.json"; check "validate-bundle refusal names its operation" jq -e "$keys and .operation==\"validate-bundle\"" <<<"$OUT"
-  local bad
+  local bad argv
   for bad in "" "wat" "normalize" "normalize --spec $SPEC" "bundle --bogus" "validate-bundle"; do
-    # shellcheck disable=SC2086
-    cf $bad; refused 2 invalid "malformed CLI '$bad' exits 2 with a refusal JSON"
+    read -r -a argv <<<"$bad"
+    cf "${argv[@]+"${argv[@]}"}"; refused 2 invalid "malformed CLI '$bad' exits 2 with a refusal JSON"
   done
 }
 

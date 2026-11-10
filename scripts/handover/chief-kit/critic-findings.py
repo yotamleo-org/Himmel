@@ -57,7 +57,6 @@ def canonical_abs(path):
 
 
 def read_regular(path):
-    """Bytes of a regular file opened without following a symlink; missing is exit 3, a link or non-regular file exit 2."""
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
     except FileNotFoundError:
@@ -118,7 +117,6 @@ def parse_round(text):
 
 
 def check_verdict(spec, kind, rnd, path):
-    """The canonical structured name: exactly <SPEC>.critic-<kind>-r<N>.md beside SPEC, no padding, no symlink alias."""
     if not canonical_abs(path):
         refuse(2, "invalid")
     if path != f"{spec}.critic-{kind}-r{rnd}.md":
@@ -131,7 +129,6 @@ def check_verdict(spec, kind, rnd, path):
 
 
 def parse_return(kind, rnd, data):
-    """Validate one saved return and give back its findings; legacy prose (no tagged block) is exit 3."""
     try:
         text = data.decode("utf-8")
     except UnicodeError:
@@ -185,11 +182,7 @@ def parse_return(kind, rnd, data):
     return reviewer, findings
 
 
-def build_index(spec, kind, rnd, verdict, data=None):
-    """(INDEX object, verdict sha256) derived from the original structured return; the same parser validates and indexes.
-    A caller that already read the verdict passes its bytes so the hash and the findings come from one read."""
-    if data is None:
-        data = check_verdict(spec, kind, rnd, verdict)
+def build_index(spec, kind, rnd, verdict, data):
     reviewer, findings = parse_return(kind, rnd, data)
     vsha = sha256_bytes(data)
     obj = {"schema": 1, "kind": "critic-finding-index", "spec_path": spec, "critic_kind": kind, "round": rnd,
@@ -199,8 +192,6 @@ def build_index(spec, kind, rnd, verdict, data=None):
 
 
 class Lock:
-    """Nonblocking advisory lock on OUTPUT.lock: opened without following a symlink, verified regular, released with the process."""
-
     def __init__(self, path):
         self.path = path
         self.fd = None
@@ -247,7 +238,6 @@ def write_temp(path, data):
 
 
 def write_new(path, data):
-    """Create `path` atomically and never over an existing file (FileExistsError)."""
     tmp = write_temp(path, data)
     try:
         os.link(tmp, path)
@@ -265,7 +255,6 @@ def replace(path, data):
 
 
 def archive_old_index(index_path, old_bytes):
-    """Keep the old INDEX bytes at INDEX.previous.<sha256>.json (exclusive; an identical archive is fine, a different one is a conflict)."""
     archive = f"{index_path}.previous.{sha256_bytes(old_bytes)}.json"
     try:
         write_new(archive, old_bytes)
@@ -283,7 +272,6 @@ def check_output_path(path):
 
 
 def bound_index(old, spec, kind, rnd, verdict):
-    """The recorded verdict hash of an existing INDEX that is structurally valid and bound to this SPEC/kind/round/verdict, else None."""
     try:
         obj = json.loads(old.decode("utf-8"), object_pairs_hook=unique_pairs)
     except (ValueError, UnicodeError):
@@ -304,12 +292,12 @@ def cmd_normalize(a):
     kind = a.kind
     if not canonical_abs(a.verdict):
         refuse(2, "invalid")
-    build_index(spec, kind, rnd, a.verdict)
+    build_index(spec, kind, rnd, a.verdict, check_verdict(spec, kind, rnd, a.verdict))
     if a.out != a.verdict + ".finding-index.json":
         refuse(2, "noncanonical-location")
     check_output_path(a.out)
     with Lock(a.out + ".lock"):
-        obj, vsha = build_index(spec, kind, rnd, a.verdict)
+        obj, vsha = build_index(spec, kind, rnd, a.verdict, check_verdict(spec, kind, rnd, a.verdict))
         new = dump(obj)
         if not os.path.lexists(a.out):
             if a.rebuild_stale:
@@ -454,7 +442,7 @@ def main(argv):
         sys.stdout.write(json.dumps({"schema": 1, "kind": "critic-intake-refusal", "state": "refused", "operation": operation,
                                      "reasons": [r.reason]}, separators=(",", ":")) + "\n")
         return r.code
-    except Exception as e:  # unexpected: nonzero, no success output
+    except Exception as e:
         sys.stderr.write(f"critic-findings: unexpected error: {type(e).__name__}: {e}\n")
         return 1
 
