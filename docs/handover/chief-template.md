@@ -151,9 +151,10 @@ call. A ticket filed on operator request gets label `operator-directed` and the
 bullet `OPERATOR: <ask>. Filed HIMMEL-n`.
 
 Under operator decision 850 (500 concurrent jobs is the only real GitHub Actions limit),
-the tick's `ciguard=` never holds a dispatch or a rerun unless GitHub itself refuses:
-only `OVER:concurrent-jobs` (500) and `OVER:gh-refusal` are a reason to wait; the run-count
-rows print as `INFO` and are never one. Detail: `chief-sections/monitors.md`.
+the tick's `ciguard=` holds a dispatch only at that limit: `OVER:concurrent-jobs` (500 or
+more jobs running + queued) is the one reason to wait. The run-count rows and the
+`startup_failure` count print as `INFO` and never hold a dispatch or a rerun. Detail:
+`chief-sections/monitors.md`.
 
 ## Dispatching a worker
 

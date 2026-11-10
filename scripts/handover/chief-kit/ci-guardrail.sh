@@ -6,11 +6,12 @@
 #   ciguard=ok | ciguard=OVER:<metric>[,<metric>...] | ciguard=unknown
 #   ALERT <metric>=<value>><line> (<where>)      one per NEW crossing, after the first line
 #   INFO <metric>=<value> (<where>)              one per information row, after the ALERT lines
-# Only two metrics can read OVER, both read from scripts/eval/ci-metrics.sh: concurrent-jobs
-# (running + queued jobs now, line 500) and gh-refusal (a run that ended startup_failure in
-# the last 2 h, line 0). The old run-count rows (runs-h 150, runs-day 1500, cancels-10m 30,
-# reruns-h 10, branch-day 10) are our own reference points, not a GitHub limit: they print as
-# INFO and never read OVER, never print an ALERT, never hold a dispatch or a rerun.
+# Only concurrent-jobs can read OVER, read from scripts/eval/ci-metrics.sh: 500 or more jobs
+# running + queued now (the line printed is 499, the highest value still ok). Every other row
+# prints as INFO and never reads OVER, never prints an ALERT, never holds a dispatch or a rerun:
+# the old run-count rows (runs-h 150, runs-day 1500, cancels-10m 30, reruns-h 10, branch-day 10)
+# are our own reference points, and gh-refusal counts startup_failure runs in the last 2 h,
+# which also covers our own broken workflow definitions, not only a GitHub refusal.
 # An ALERT prints once per crossing; the metric re-arms on the first read at or below its
 # line. unknown (no runs file, budget too low, a fetch failure, an unparseable report)
 # neither raises nor clears anything and exits 0, so a tick is never blocked by it.
@@ -167,7 +168,7 @@ add_row() { # <metric> <report> <label> <gate|info>
   rows="$rows$1"$'\t'"$r"$'\n'
 }
 add_row concurrent-jobs "$report2" "concurrent jobs, now (running + queued)" gate
-add_row gh-refusal "$report2" "GitHub refusals (startup_failure runs)" gate
+add_row gh-refusal "$report2" "GitHub refusals (startup_failure runs)" info
 add_row runs-h "$report2" "runs per hour, max" info
 add_row runs-day "$report24" "runs per rolling 24 h, max" info
 add_row cancels-10m "$report2" "cancels per rolling 10 min, max" info

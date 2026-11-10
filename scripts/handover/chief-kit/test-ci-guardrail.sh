@@ -44,7 +44,8 @@ JOBQ='{run_id: 1, name: "job\(.)", status: "queued", conclusion: null, created_a
 RUN_1='{id: 1, name: "CI", event: "pull_request", status: "in_progress", conclusion: null, head_branch: "b", head_sha: "s", run_attempt: 1,
         created_at: "2026-10-20T11:20:00Z", run_started_at: "2026-10-20T11:20:00Z", updated_at: "2026-10-20T11:25:00Z"}'
 gen "$RUN_1" 1 > "$W/one-run.json"
-gen "$JOBQ" 500 > "$W/q500.json"; gen "$JOBQ" 501 > "$W/q501.json"
+JOBQS='{run_id: 1, name: "job\(.)", status: "queued", conclusion: null, created_at: "2026-10-20T11:25:00Z", started_at: "2026-10-20T11:25:02Z", completed_at: null}'
+gen "$JOBQ" 499 > "$W/q499.json"; gen "$JOBQ" 500 > "$W/q500.json"; gen "$JOBQ" 501 > "$W/q501.json"
 runj() {
     bash "$SUT" --runs "$W/one-run.json" --jobs "$1" --now "${3:-$NOW}" --state-dir "${2:-$W/state}" 2>&1
 }
@@ -137,7 +138,8 @@ contains 'the 10-19 19Z replay (262 runs in an hour) reads ok: our old run-count
 contains 'the 10-19 19Z replay still prints its 262 runs as info' "$out" 'INFO runs-h=262 (2026-10-19T19:00:00Z)'
 not_contains 'the 10-19 19Z replay raises no alert' "$out" 'ALERT'
 fresh; out="$(run "$W/r1019.json" "$W/state" 2026-10-19T18:00:00Z)"
-contains 'the 10-19 data holds one real startup_failure run (created 15:14Z, ended 17:11Z): a read at 18:00Z reads OVER' "$out" 'ciguard=OVER:gh-refusal'
+contains 'the 10-19 data holds one real startup_failure run (created 15:14Z, ended 17:11Z): a read at 18:00Z reads ok' "$out" 'ciguard=ok'
+contains 'the 10-19 startup_failure run prints as info at 18:00Z' "$out" 'INFO gh-refusal=1'
 fresh; out="$(run "$W/r1015.json" "$W/state" 2026-10-16T00:00:00Z)"
 contains 'the 10-15 replay stays quiet' "$out" 'ciguard=ok'
 not_contains 'the 10-15 replay raises no alert' "$out" 'ALERT'
@@ -145,22 +147,22 @@ not_contains 'the 10-15 replay raises no alert' "$out" 'ALERT'
 # --- alert once per crossing, re-arm below the line
 fresh
 out1="$(runj "$W/q501.json")"; out2="$(runj "$W/q501.json")"
-contains 'the first read of a crossing alerts' "$out1" 'ALERT concurrent-jobs=501>500'
+contains 'the first read of a crossing alerts' "$out1" 'ALERT concurrent-jobs=501>499'
 not_contains 'the second read of the same crossing stays silent' "$out2" 'ALERT'
 contains 'the second read still shows the state' "$out2" 'ciguard=OVER:concurrent-jobs'
-out3="$(runj "$W/q500.json")"
+out3="$(runj "$W/q499.json")"
 contains 'a read below the line clears the state' "$out3" 'ciguard=ok'
 out4="$(runj "$W/q501.json")"
-contains 'the next crossing alerts again (re-armed)' "$out4" 'ALERT concurrent-jobs=501>500'
+contains 'the next crossing alerts again (re-armed)' "$out4" 'ALERT concurrent-jobs=501>499'
 
 # --- a replay with no --state-dir of its own leaves the live state alone
 mkdir -p "$W/live"
 out="$(TICK_STATE_DIR="$W/live" bash "$SUT" --runs "$W/one-run.json" --jobs "$W/q501.json" --now "$NOW" 2>&1)"
-contains 'a replay without --state-dir still alerts' "$out" 'ALERT concurrent-jobs=501>500'
+contains 'a replay without --state-dir still alerts' "$out" 'ALERT concurrent-jobs=501>499'
 [ ! -e "$W/live/tick-ciguard-state" ] && pass 'a replay without --state-dir writes no live state' || fail 'a replay wrote the live state file'
 printf '%s\n' 'cancels' > "$W/live/tick-ciguard-state"
 out="$(TICK_STATE_DIR="$W/live" bash "$SUT" --runs "$W/one-run.json" --jobs "$W/q501.json" --now "$NOW" 2>&1)"
-contains 'a replay alerts whatever the live state holds' "$out" 'ALERT concurrent-jobs=501>500'
+contains 'a replay alerts whatever the live state holds' "$out" 'ALERT concurrent-jobs=501>499'
 [ "$(cat "$W/live/tick-ciguard-state" 2>/dev/null)" = cancels ] && pass 'a replay leaves an existing live state file as it was' || fail 'a replay rewrote or removed the live state file'
 
 # --- unknown never changes the state
@@ -180,6 +182,10 @@ if [ "\${1:-}" = "--slice" ]; then
     printf 'x\n' >> "$W/slice-calls"
     cp "$W/h151.json" "\$3/slice.\$4.json"
     exit 0
+fi
+if [ "\${1:-}" = "--gql" ]; then
+    printf 'x\n' >> "$W/gql-calls"
+    exit 1
 fi
 exec bash "$METRICS" "\$@"
 STUB
@@ -224,7 +230,7 @@ livej() {
 }
 fresh; : > "$W/gql-calls"
 out="$(livej)"
-contains 'the jobs of an open run feed the concurrent-jobs line' "$out" 'ALERT concurrent-jobs=501>500'
+contains 'the jobs of an open run feed the concurrent-jobs line' "$out" 'ALERT concurrent-jobs=501>499'
 n="$(wc -l < "$W/gql-calls" | tr -d '[:space:]')"
 [ "$n" = 1 ] && pass 'one open run costs one jobs call' || fail "jobs calls = $n, want 1"
 out="$(livej)"
@@ -269,11 +275,17 @@ fresh; out="$(run "$W/h200.json")"
 contains '200 runs in one hour reads ok under decision 850' "$out" 'ciguard=ok'
 not_contains '200 runs in one hour raises no ALERT' "$out" 'ALERT'
 contains '200 runs in one hour still prints its count as info' "$out" 'INFO runs-h=200'
+fresh; out="$(runj "$W/q499.json")"
+contains '499 concurrent jobs reads ok' "$out" 'ciguard=ok'
 fresh; out="$(runj "$W/q500.json")"
-contains '500 concurrent jobs reads ok (the line is 500)' "$out" 'ciguard=ok'
+contains '500 queued concurrent jobs reads OVER (500 or more)' "$out" 'ciguard=OVER:concurrent-jobs'
+contains '500 queued concurrent jobs fires once' "$out" 'ALERT concurrent-jobs=500>499'
 fresh; out="$(runj "$W/q501.json")"
 contains '501 queued concurrent jobs reads OVER' "$out" 'ciguard=OVER:concurrent-jobs'
-contains '501 queued concurrent jobs fires once' "$out" 'ALERT concurrent-jobs=501>500'
+contains '501 queued concurrent jobs fires once' "$out" 'ALERT concurrent-jobs=501>499'
+gen "$JOBQS" 500 > "$W/qs500.json"
+fresh; out="$(runj "$W/qs500.json")"
+contains '500 queued jobs that carry a startedAt still read OVER' "$out" 'ciguard=OVER:concurrent-jobs'
 JOBDONE='{run_id: 1, name: "job\(.)", status: "completed", conclusion: "success", created_at: "2026-10-20T10:00:00Z", started_at: "2026-10-20T10:00:00Z", completed_at: "2026-10-20T10:20:00Z"}'
 gen "$JOBDONE" 501 > "$W/d501.json"
 fresh; out="$(runj "$W/d501.json")"
@@ -281,11 +293,18 @@ contains 'a burst of 501 jobs that finished an hour ago reads ok' "$out" 'ciguar
 not_contains 'a drained burst raises no alert' "$out" 'ALERT'
 jq 'map(.conclusion = "startup_failure" | .created_at = "2026-10-20T08:00:00Z" | .updated_at = "2026-10-20T11:00:00Z")' "$W/one-run.json" > "$W/refused-late.json"
 fresh; out="$(run "$W/refused-late.json")"
-contains 'a startup_failure run that ended inside the window reads OVER whenever it was created' "$out" 'ciguard=OVER:gh-refusal'
+contains 'a startup_failure run that ended inside the window reads ok' "$out" 'ciguard=ok'
+contains 'a startup_failure run that ended inside the window prints as info' "$out" 'INFO gh-refusal=1'
 jq 'map(.conclusion = "startup_failure")' "$W/one-run.json" > "$W/refused.json"
 fresh; out="$(run "$W/refused.json")"
-contains 'a startup_failure run (GitHub refusing to start it) reads OVER' "$out" 'ciguard=OVER:gh-refusal'
-contains 'a GitHub refusal fires once' "$out" 'ALERT gh-refusal=1>0'
+contains 'a startup_failure run reads ok: it also covers our own broken workflows' "$out" 'ciguard=ok'
+not_contains 'a startup_failure run raises no alert' "$out" 'ALERT'
+contains 'a startup_failure run prints its count as info' "$out" 'INFO gh-refusal=1'
+mfd='{id: 42665509949, name: "Main Red Fix Dispatch", event: "pull_request_target", status: "completed", conclusion: "startup_failure", head_branch: "main", head_sha: "s", run_attempt: 1,
+      created_at: "2026-10-20T10:40:00Z", run_started_at: "2026-10-20T10:40:00Z", updated_at: "2026-10-20T10:40:00Z"}'
+gen "$mfd" 10 | jq 'to_entries | map(.value + {id: (.value.id + .key)})' > "$W/main-red-fix.json"
+fresh; out="$(run "$W/main-red-fix.json")"
+contains '10 Main Red Fix Dispatch startup_failure runs (a broken workflow, 11-09) read ok, never a hold' "$out" 'ciguard=ok'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-ci-guardrail.sh'

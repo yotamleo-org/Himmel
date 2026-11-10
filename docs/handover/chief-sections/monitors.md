@@ -188,26 +188,30 @@ operator-directed bundle from that label and that bullet.
 
 **CI guardrail.** To see whether the fleet is at a real GitHub Actions limit, run
 `<kit>/ci-guardrail.sh` by hand. Operator decision 850 (11-08): 500 concurrent jobs is
-the only real limit, so only two metrics can read OVER. It prints `ciguard=ok`,
+the only real limit, so only one metric can read OVER. It prints `ciguard=ok`,
 `ciguard=OVER:<metric>[,<metric>]` or `ciguard=unknown`, then one
 `ALERT <metric>=<count>><line> (<where>)` line per new crossing: `concurrent-jobs`
-(running + queued jobs now, line 500) and `gh-refusal` (a run that ended `startup_failure`
-in the last 2 h, line 0). Then one `INFO <metric>=<count> (<where>)` line per
-information row: `runs-h` (our old 150 per hour reference), `runs-day` (1500),
-`cancels-10m` (30), `reruns-h` (10), and `branch-day` (10 CI runs on one non-main
-branch). Those five are not GitHub limits: they never read OVER, never print an ALERT
-and never hold anything. A metric alerts once and re-arms on the first read at or below
-its line; `unknown` (low REST budget, a failed fetch) changes nothing. `concurrent-jobs`
-is a lower bound: it counts the jobs of runs still open plus any queued job the report
-can see. `--runs FILE --jobs FILE --now ISO` replays a saved runs and jobs list.
+(500 or more jobs running + queued now; the printed line is 499, the highest value still
+ok). Then one `INFO <metric>=<count> (<where>)` line per information row: `gh-refusal`
+(runs that ended `startup_failure` in the last 2 h), `runs-h` (our old 150 per hour
+reference), `runs-day` (1500), `cancels-10m` (30), `reruns-h` (10), and `branch-day` (10 CI
+runs on one non-main branch). Those never read OVER, never print an ALERT and never hold
+anything: the run counts are our own old lines, and `startup_failure` also covers our own
+broken workflow definitions (ten Main Red Fix Dispatch runs on 11-09), so it is not proof
+that GitHub refused. A metric alerts once and re-arms on the first read at or below its
+line; `unknown` (low REST budget, a failed fetch) changes nothing. `concurrent-jobs` counts
+queued jobs by status and is a lower bound: it covers the jobs of runs still open plus any
+queued job the report can see. `--runs FILE --jobs FILE --now ISO` replays a saved runs
+and jobs list.
 
 The tick runs it once per tick and carries `ciguard=ok|OVER:<metric>[,<metric>]|unknown` on
 the TICK line, with one `ACTION ci-guardrail <metric>=<count>><line> (<where>)` line per new
 crossing. The next tick of the same crossing prints `ciguard=OVER:…` and no ACTION. Under
-decision 850 ciguard never holds a dispatch or a rerun unless GitHub itself refuses:
-on an ACTION for `concurrent-jobs` or `gh-refusal`, hold new dispatches and find the burst;
-a run-count figure, however large, is information only, and an old reading that a run count
-was OVER is not a reason to wait. The waiter's wake key does not carry `ciguard`.
+decision 850 ciguard holds a dispatch only at the real limit: on an ACTION for
+`concurrent-jobs` (500 or more jobs running + queued, where GitHub itself queues the rest),
+hold new dispatches and find the burst. It never holds a dispatch or a rerun on a run count,
+however large, or on `startup_failure` runs; an old reading that a run count was OVER is
+not a reason to wait. The waiter's wake key does not carry `ciguard`.
 
 **Version mismatch.** Each tick runs `<kit>/version-status-audit.sh` once (owners = the tick's
 live workers, 30 s bound) and carries `vmismatch=<n|?>` on the TICK line: `n` is the count of RESET rows
