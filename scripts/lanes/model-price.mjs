@@ -301,14 +301,16 @@ function readSource(f, realRoot, io, fail) {
   try { real = io.realpathSync(resolve(realRoot, rel)); } catch (e) { return fail(e.code === 'ENOENT' ? 'source-missing' : 'source-unreadable', rel); }
   if (real !== realRoot && !real.startsWith(realRoot + sep)) return fail('path-escape', rel);
   let buf;
+  let id;
   try {
     const st = io.statSync(real);
     if (!st.isFile()) return fail('source-unreadable', rel);
     if (st.size !== f.bytes) return fail('source-changed', rel);
+    id = `${st.dev}:${st.ino}`;
     buf = io.readFileSync(real);
   } catch { return fail('source-unreadable', rel); }
   if (buf.length !== f.bytes || sha256(buf) !== f.sha256) return fail('source-changed', rel);
-  return { buf, real };
+  return { buf, id };
 }
 
 function foldFile(buf, rel, fail) {
@@ -386,12 +388,12 @@ export function projectCalls(manifest, prices, { manifestSha256 = null, baseDir 
   let readFiles = 0;
   let sourceBytes = 0;
   let torn = 0;
-  const seenReal = new Set();
+  const seenFiles = new Set();
   for (const f of files) {
     const source = readSource(f, realRoot, io, fail);
     if (source === null) continue;
-    if (seenReal.has(source.real)) { fail('duplicate-source', f.relative_path); continue; }
-    seenReal.add(source.real);
+    if (seenFiles.has(source.id)) { fail('duplicate-source', f.relative_path); continue; }
+    seenFiles.add(source.id);
     const folded = foldFile(source.buf, f.relative_path, fail);
     if (folded.torn) { torn += 1; fail('torn-line', f.relative_path); continue; }
     readFiles += 1;

@@ -222,7 +222,7 @@ provider:"claude", session, parent}]}`; RFC3339 with `Z` or an offset, naming a 
 against the manifest's directory. The caller builds the manifest; nothing is discovered. Refused before any source
 is opened: more than 128 files or 512 MiB declared (`manifest-budget`), a malformed manifest, a path that is
 absolute, a URI or climbs out (`path-escape`), a duplicate path or `(provider, parent, session)`
-(`duplicate-source`, which includes one real file declared under two names), a session name that is not the filename, a child whose directory is not `<parent>/subagents`,
+(`duplicate-source`, which includes one file declared under two names by a symlink or a hard link), a session name that is not the filename, a child whose directory is not `<parent>/subagents`,
 a session id used under two parents (`session-namespace`), a provider other than `claude`.
 
 **Call row** (`kind:"usage-call"`, `schema:1`): `call_id`, `provider`, `session`, `parent`, `first_timestamp`,

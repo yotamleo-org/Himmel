@@ -2,7 +2,7 @@
 // pricer that costs a call from it. Fixtures live in a temp dir; nothing here reads the real HOME.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, copyFileSync, readFileSync, symlinkSync, chmodSync,
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, copyFileSync, readFileSync, symlinkSync, linkSync, chmodSync,
   openSync, fstatSync, closeSync, statSync, realpathSync, lstatSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -609,6 +609,14 @@ test('calls: every usage record needs a real timestamp, a correction included, a
 test('calls: one real file declared under two names is a duplicate source', () => tmp((d) => {
   const b = build(d, [{ rel: 'proj/a.jsonl', records: [rec(1, OPUS, UU)] }]);
   symlinkSync(join(b.root, 'proj', 'a.jsonl'), join(b.root, 'proj', 'b.jsonl'));
+  b.manifest.files.push({ ...b.manifest.files[0], relative_path: 'proj/b.jsonl', session: 'b' });
+  writeFileSync(b.path, JSON.stringify(b.manifest));
+  invalidRun(runCalls(b.path), 'duplicate-source');
+}));
+
+test('calls: one inode declared under two names by a hard link is a duplicate source', () => tmp((d) => {
+  const b = build(d, [{ rel: 'proj/a.jsonl', records: [rec(1, OPUS, UU)] }]);
+  linkSync(join(b.root, 'proj', 'a.jsonl'), join(b.root, 'proj', 'b.jsonl'));
   b.manifest.files.push({ ...b.manifest.files[0], relative_path: 'proj/b.jsonl', session: 'b' });
   writeFileSync(b.path, JSON.stringify(b.manifest));
   invalidRun(runCalls(b.path), 'duplicate-source');
