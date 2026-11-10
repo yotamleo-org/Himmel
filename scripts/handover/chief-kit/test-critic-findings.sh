@@ -377,6 +377,8 @@ t_every_declared_prior_bound() {
   bund "$p" "$b"; okrun "the full set bundles again"
   jq '.verdicts[0].finding_ids=["spec-r1-1"]' "$b" > "$R/tampered.json"; mv "$R/tampered.json" "$b"
   valid "$p" "$b"; refused 2 invalid "a tampered bundle fails validate-bundle"
+  rm -f "$b"; bund "$p" "$b"; sedi 's/"schema":1/"schema":true/' "$b"
+  valid "$p" "$b"; refused 2 invalid "a bundle whose schema is true is not the bundle"
   rm -f "$b"
   local swapr; swapr=$(python3 -I "$T/race.py" "$FINDINGS" bundle-swap "$SPEC" spec 1 "$(vpath spec 1)" "$b" "$p" 2>/dev/null); OUT=$swapr
   check "a prior changed between the hash and the derivation is stale (3), not invalid" jq -e '.rc==3 and (.out|fromjson|.reasons|index("stale")!=null)' <<<"$swapr"
@@ -484,6 +486,8 @@ t_forged_empty_index_refused() {
   rm -f "$i"; norm spec 1; bund "$p" "$R/forge.bundle.json"; okrun "the honest index bundles"
   jq -c '.findings=[]' "$i" > "$R/forged.json"; mv "$R/forged.json" "$i"
   valid "$p" "$R/forge.bundle.json"; refused 2 invalid "validate-bundle also refuses the forged index"
+  rm -f "$i"; norm spec 1; sedi 's/"round":1,/"round":1.0,/' "$i"
+  rm -f "$R/forge.bundle.json"; bund "$p" "$R/forge.bundle.json"; refused 2 invalid "an index whose round is 1.0 is not the index"
 }
 
 t_seal_after_index_stale_then_renormalize() {
@@ -592,10 +596,17 @@ print(r.returncode, r.stdout)
 
 TESTS="charters_bytes_unchanged prompt_metadata_contract format_file_example_normalizes structured_index_count clean_requires_complete_index empty_previous_bundle legacy_missing_not_zero legacy_return_refused_exit3 canonical_filename_kind_round canonical_verdict_names_shared noncanonical_location_refused every_declared_prior_bound private_previous_original_root index_symlink_or_escape_refused intake_exit_json original_verdict_immutable idempotent_output_no_overwrite forged_empty_index_refused seal_after_index_stale_then_renormalize rebuild_archives_old_index current_hash_conflict_refused rebuild_race_refused concurrent_rebuild_no_lost_update"
 ONLY="${1:-}"
+if [ -n "$ONLY" ] && ! case " $TESTS " in *" $ONLY "*) true ;; *) false ;; esac; then
+  echo "FATAL: unknown test name: $ONLY"; exit 2
+fi
 for t in $TESTS; do
   [ -z "$ONLY" ] || [ "$ONLY" = "$t" ] || continue
   printf '== %s\n' "$t"
   OUT=""; "t_$t"
 done
+if [ -z "$ONLY" ]; then
+  bash "$0" no_such_test >/dev/null 2>&1; unknown_rc=$?
+  check "an unknown test name is refused with exit 2" test "$unknown_rc" = 2
+fi
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

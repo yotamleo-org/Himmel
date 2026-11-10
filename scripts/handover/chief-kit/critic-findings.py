@@ -370,7 +370,7 @@ def compute_bundle(spec, previous_path):
         if not isinstance(v, dict) or v.get("sha256") != vsha:
             refuse(3, "stale")
         derived, _ = build_index(spec, kind, rnd, path, data)
-        if recorded != derived:
+        if dump(recorded) != dump(derived):
             refuse(2, "invalid")
         ids = [f["finding_id"] for f in derived["findings"]]
         rows.append({"path": path, "sha256": vsha, "index_path": index_path, "index_sha256": sha256_bytes(index_bytes), "finding_ids": ids})
@@ -400,7 +400,7 @@ def cmd_validate(a):
     if not canonical_abs(a.bundle):
         refuse(2, "invalid")
     expected = compute_bundle(spec, a.previous_verdicts)
-    if load_json(read_regular(a.bundle)) != expected:
+    if dump(load_json(read_regular(a.bundle))) != dump(expected):
         refuse(2, "invalid")
     return dump(expected)
 
