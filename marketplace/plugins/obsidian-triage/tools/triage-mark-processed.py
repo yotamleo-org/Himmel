@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """triage-mark-processed.py — the ONE path /triage-clips uses to mark a clip
-processed (Phase 7) and move it to Clippings/_evidence/ (Phase 8). HIMMEL-4685.
+processed (Phase 7) and move it to Clippings/_evidence/ (Phase 8).
 
 Why a tool and not prose: the 2026-10-07 cadence run fanned triage out to
 parallel subagents that marked and moved clips with their own helper scripts,
@@ -16,7 +16,7 @@ Usage:
 The SHA path runs Phase 7 (stale-read guard, then processed/triaged_at/
 evidence_pending in ONE frontmatter edit) and then Phase 8. --drain resumes
 Phase 8 only, for a clip whose frontmatter already carries processed: true AND
-evidence_pending: true (the recorded debt, HIMMEL-1713).
+evidence_pending: true (the recorded debt).
 
 Phase 8, in order: ig_media_pending hold; evidence_kind + quoted, round-tripped
 evidence_origin (one edit); the <OLD> identifier set; ambiguity guard; link
@@ -177,7 +177,7 @@ def drop_keys(text, keys):
 
 def yaml_ok(text):
     """Parse-before-write. main() has already refused to run without PyYAML
-    (HIMMEL-4690): a structural check alone passes malformed frontmatter."""
+    (it is a hard requirement): a structural check alone passes malformed frontmatter."""
     fm = split_fm(text)
     if fm is None:
         return False

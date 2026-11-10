@@ -8,7 +8,7 @@ Implements the mechanical subset of /harvest-clips that needs no LLM:
 - Skip unparseable frontmatter (operator must inspect).
 - Apply URL canonicalization rules per Phase 3.
 - Injection-screen the clip's untrusted content — body PLUS the full raw
-  frontmatter region (HIMMEL-256, flag-only).
+  frontmatter region (flag-only).
 - Insert the four harvest_* markers (plus optional `harvest_flag` +
   `harvest_flag_detail` on injection hits) via Phase 5 frontmatter write.
 - Skip/fail outcomes with injection hits still persist `harvest_flag` +
@@ -21,7 +21,7 @@ Idempotent. Re-running skips already-harvested clips.
 Usage:
     python harvest-clip-body-batch.py <vault-path> [--dry-run] [--limit N]
     python harvest-clip-body-batch.py <vault-path> --firecrawl-thin [--firecrawl-budget N] [--dry-run]
-        Opt-in escalation (LUNA-27 / HIMMEL-320): for thin-body
+        Opt-in escalation (the firecrawl rung): for thin-body
         article/web clips, fetch clean markdown via firecrawl's
         /v2/scrape API and write it as a `## Harvested content` section
         instead of leaving the clip thin. Needs FIRECRAWL_API_KEY (and
@@ -34,13 +34,13 @@ Usage:
         line. Exit 0 = clean, 1 = hits, 2 = error. The mechanical executor
         for harvest-clips.md Phase 4.5.
     python harvest-clip-body-batch.py <vault-path> --rescan-flags [--dry-run]
-        One-time backfill: scan already-harvested clips (pre-HIMMEL-256
+        One-time backfill: scan already-harvested clips (from before the injection screen
         harvests bypassed the screen); on hits add ONLY the harvest_flag +
         harvest_flag_detail keys.
 
 Cross-platform paths via pathlib. Windows / Git Bash / macOS / Linux all work.
 
-LUNA-26 batch tooling. Triage stage stays LLM-driven via /triage-clips.
+Batch tooling. Triage stage stays LLM-driven via /triage-clips.
 """
 import argparse
 import os
@@ -174,7 +174,7 @@ def scan_clip(fm_raw: str, body: str) -> list:
     raw frontmatter region. parse_frontmatter is lossy (it captures only
     the first physical line per key), so a multiline `title:` value or an
     unmapped key (`description:` etc.) would evade a fm.get()-based scan
-    (HIMMEL-256 final CR). Tool-written harvest_flag/_detail lines are
+    Tool-written harvest_flag/_detail lines are
     excluded via _TOOL_FLAG_LINE_RE so a re-scan of an already-flagged
     clip stays stable. One combined scan_injection call keeps hit classes
     deduped (a class counts once whether it hits fm, body, or both)."""
@@ -419,7 +419,7 @@ def _norm_path(path: str, is_pattern: bool = False) -> tuple[str, str]:
     dot-segments keeping a trailing `/` after `.`/`..`/empty, empty -> `/`.
     The query is split off first: its slashes and dots are not path segments."""
     path, qsep, query = path.partition("?")
-    # ponytail: 4 decode passes, raise if a backend is seen decoding deeper (HIMMEL-4355)
+    # 4 decode passes, raise if a backend is seen decoding deeper
     for _ in range(4):
         if is_pattern:  # an encoded `*` at any layer stays literal, never a wildcard
             path = re.sub(r"%2[aA]", "\x00", path)
@@ -703,7 +703,7 @@ def write_youtube_harvest(path: Path, text: str, fm_raw: str, body: str, canonic
 
 
 def ledger_path():
-    """Per-call Firecrawl ledger (HIMMEL-4335). Same ~/.himmel/state/ root the
+    """Per-call Firecrawl ledger. Same ~/.himmel/state/ root the
     other luna tools keep state under; HIMMEL_FIRECRAWL_LEDGER overrides it
     (tests always point it at a scratch file)."""
     import os
@@ -936,7 +936,7 @@ def _block_private_requests(page, state):
     and page-level websockets. The decision is on the request URL alone, before
     the browser resolves or connects.
 
-    NOT covered (HIMMEL-4496): cross-site iframes (separate CDP targets, so their
+    NOT covered: cross-site iframes (separate CDP targets, so their
     redirect hops are never paused), dedicated/shared-worker traffic including
     worker websockets, and DNS rebinding (the check is hostname-only).
 
@@ -999,7 +999,7 @@ def _block_private_requests(page, state):
 
 
 class LocalHeadlessClient:
-    """Local headless fetch via Scrapling's stealth fetcher (HIMMEL-4344).
+    """Local headless fetch via Scrapling's stealth fetcher.
     Optional dependency, pinned in tools/requirements-scrapling.txt: when
     scrapling is not importable the slot raises BackendNotImplemented and the
     chain falls through to jina. Per-site cookies come from the jar only
@@ -1270,9 +1270,9 @@ class BackendRoutes:
         """(mode, names) of the FIRST matching line, else None. The URL and its
         canonical spelling are routed separately: the batch routes youtube.com,
         yt-scrapling-meta.py www.youtube.com, and one rule must reach both
-        (HIMMEL-4803). When the spellings' lines differ, the result is
+        (one rule per site). When the spellings' lines differ, the result is
         `only=` the backends BOTH permit, so a backend either spelling refuses
-        stays refused whatever the line order (HIMMEL-4851)."""
+        stays refused whatever the line order."""
         hits = [self._first(u) for u in dict.fromkeys((url, canonicalize(url) or url))]
         if all(h == hits[0] for h in hits):
             return hits[0]
@@ -1608,7 +1608,7 @@ def write_pending_report(vault: Path, clips: list) -> tuple[int, int]:
         line = f"- [[{rel}]] — {pending_reason(fm)}, deferred {fm.get('harvest_defer_count') or 0}/{DEFER_ATTENTION_AFTER}"
         (attention if fm.get("harvest_needs_attention") == "true" else deferred).append(line)
     out = [f"# Harvest pending — {TODAY}", "",
-           "Deferred partials do not block .harvest.done; they are retried each run (HIMMEL-4675).", "",
+           "Deferred partials do not block .harvest.done; they are retried each run.", "",
            "## Deferred", ""] + (deferred or ["(none)"]) + [
            "", "## Needs attention", "",
            f"Deferred {DEFER_ATTENTION_AFTER}+ times; no longer retried. Fix the source or the clip, then remove harvest_needs_attention.", ""
@@ -1681,7 +1681,7 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
         gate), so a flagged clip that exits via a skip/fail path must
         carry the flag or it reaches triage with full-body trust —
         the runbook's "never reaches /triage-clips unscreened" clause
-        (HIMMEL-256 final CR). Frontmatter-only write; respects --dry-run;
+        Frontmatter-only write; respects --dry-run;
         idempotent (clips already carrying harvest_flag are not rewritten)."""
         suffix = flag_suffix
         if injection_hits and "harvest_flag" not in fm:
@@ -1711,7 +1711,7 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
 
     # Firecrawl thin-body escalation (opt-in --firecrawl-thin). Only fires
     # for genuine article/web URLs whose clipper-captured body is thin —
-    # the LUNA-27 gap. X/github/youtube are excluded (owned elsewhere) and
+    # the firecrawl gap. X/github/youtube are excluded (owned elsewhere) and
     # fall straight through to the normal clip-body path, so the flag's
     # blast radius is exactly "thin eligible article clips". Budget-
     # exhausted / fetch-failed clips return a retryable partial WITHOUT
@@ -1889,7 +1889,7 @@ def run_scan_only(path: Path) -> int:
 
 def run_rescan_flags(clips: list, vault: Path, dry_run: bool) -> int:
     """--rescan-flags: one-time backfill — clips harvested BEFORE the
-    HIMMEL-256 screen shipped were never scanned. Scan body + frontmatter
+    injection screen shipped were never scanned. Scan body + frontmatter
     of already-harvested clips; on hits add ONLY the harvest_flag +
     harvest_flag_detail keys (no other mutation; body byte-identical or
     revert). Respects --dry-run. Clips already carrying harvest_flag are
@@ -1932,7 +1932,7 @@ def run_rescan_flags(clips: list, vault: Path, dry_run: bool) -> int:
 
 
 def write_done_marker(vault: Path, clips: list, failed: int) -> None:
-    """harvest-clips.md G-8 (HIMMEL-4684, HIMMEL-4707): the batch tool writes only
+    """harvest-clips.md G-8: the batch tool writes only
     a PROVISIONAL marker (.harvest.done.provisional, timestamp + batch hash,
     atomically); the run promotes it at G-8 (a rename). A run that is
     killed or aborts before G-8 therefore leaves no .harvest.done and downstream
@@ -2159,7 +2159,7 @@ def main():
     newly_parked = []
     ok = partial = failed = skipped = 0
     processed_count = 0
-    flagged = []  # injection-suspect clips (HIMMEL-256) for the run report
+    flagged = []  # injection-suspect clips for the run report
     for clip in clips:
         if args.limit > 0 and processed_count >= args.limit:
             break

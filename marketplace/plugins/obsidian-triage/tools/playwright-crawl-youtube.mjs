@@ -11,12 +11,12 @@
  * a "## Crawled content" section into the clip body BEFORE "## Source" (or
  * "## Comments" if no Source).
  *
- * Primary path (HIMMEL-4677): tools/yt-scrapling-meta.py, NO cookie: metadata +
+ * Primary path: tools/yt-scrapling-meta.py, NO cookie: metadata +
  * description from the watch page via Scrapling, the transcript from yt-dlp
  * subtitles (json3). It runs under the scrapling venv python
  * (~/.himmel/scrapling-venv, tools/requirements-scrapling.txt; override
- * YT_SCRAPLING_PYTHON) and honours the HIMMEL-4361 `local-headless` route. The
- * Scrapling path is the only path (HIMMEL-4709 removed the logged-in Playwright
+ * YT_SCRAPLING_PYTHON) and honours the `local-headless` route. The
+ * Scrapling path is the only path (the cookie rung was removed: the logged-in Playwright
  * cookie fallback).
  *
  * Scope (MVP): TRANSCRIPT ONLY. No video download, no STT, no keyframes.
@@ -32,8 +32,6 @@
  *   0 — run completed (may include partial/failed clips; see summary)
  *   1 — bad usage
  *   2 — the scrapling venv is not present
- *
- * LUNA-27.
  */
 import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -154,7 +152,7 @@ function scraplingPython() {
 }
 
 /**
- * Primary path (HIMMEL-4677): yt-scrapling-meta.py, cookieless. Returns the
+ * Primary path: yt-scrapling-meta.py, cookieless. Returns the
  * scrape result shape (ok, partial, title, channel, duration, infoLine, transcript, comments) plus `via`, or { ok: false, error } with `final` (a
  * removed video: no fallback may run) or `skipped` (the route denied the slot).
  */

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * synthesize-stubs.mjs — SYNTHESIZE stub mode (LUNA-87): the generative path
+ * synthesize-stubs.mjs — SYNTHESIZE stub mode: the generative path
  * that compounds the evidence pool into early subject stubs.
  *
  * SEPARATE from the existing `_synthesis/` proposal path (synthesize-clips.md)
@@ -46,8 +46,8 @@ function parseArgs(argv) {
     else if (t === "--apply") a.mode = "apply";
     else if (t === "--revert") { a.mode = "revert"; a.revertPath = argv[++i]; }
     else if (t === "--ledger") a.ledger = argv[++i];
-    // LUNA-91: suppress the telegram promotion digest (e.g. the first big
-    // synthesize run after the LUNA-86 migration backfill — design §12.F).
+    // Suppress the telegram promotion digest (e.g. the first big
+    // synthesize run after the lifecycle migration backfill — design §12.F).
     else if (t === "--no-telegram-digest") a.telegramDigest = false;
     else rest.push(t);
   }
@@ -98,7 +98,7 @@ function scanEvidence(vault) {
   return clips;
 }
 
-// Bounded fuzzy matcher (LUNA-88): scan existing subjects in
+// Bounded fuzzy matcher: scan existing subjects in
 // 30-Resources/{Concepts,Tech} + 60-Maps/*-MOC and match by NORMALISED name
 // (case/punct-insensitive, `-MOC` suffix stripped) OR a declared `aliases:`
 // entry. Bounded — exact normalised equality + operator aliases, never an
@@ -153,7 +153,7 @@ function renderStub(subjectName, target, contributors) {
     `derived_from: "[[Clippings/${firstId}]]"`,
     "generated_by: /synthesize-stubs",
     "promoted_from_evidence: true",
-    // Tech subjects from github clips queue a one-hop reference crawl (LUNA-89).
+    // Tech subjects from github clips queue a one-hop reference crawl.
     ...(isTech ? ["deepen_pending: true"] : []),
     "---",
   ];
@@ -171,7 +171,7 @@ function renderStub(subjectName, target, contributors) {
     "",
     ...contributors.map((c) => `- [[Clippings/${c.id}]] — <why this clip evidences the concept>`),
     "",
-    // Reference scaffold for the LUNA-89 deepen pass (filled by /deepen-subject).
+    // Reference scaffold for the deepen pass (filled by /deepen-subject).
     ...(isTech ? [
       "## References",
       "",
@@ -186,7 +186,7 @@ function renderStub(subjectName, target, contributors) {
   return fm.join("\n") + "\n" + body.join("\n");
 }
 
-// ── densify (LUNA-88) ────────────────────────────────────────────────────────
+// ── densify ────────────────────────────────────────────────────────
 // Append the FRESH contributors (those not already wikilinked) to an existing
 // subject's `## Evidence` section — inside the section (before the next `## `
 // heading), or a new `## Evidence` section at EOF if none exists. Returns
@@ -223,7 +223,7 @@ function runApply(vault, ledgerPath, dryRun) {
   const decisions = planStubs(clips, fuzzyMatcher(vault));
 
   let created = 0, densified = 0, skipped = 0;
-  // LUNA-91: { subject, clipAbs } per contributor NEWLY stamped this run — fed to
+  // { subject, clipAbs } per contributor NEWLY stamped this run — fed to
   // the telegram promotion digest (filtered to telegram-origin clips in main()).
   const promotions = [];
 
@@ -272,7 +272,7 @@ function runApply(vault, ledgerPath, dryRun) {
         stamped,
       }) + "\n");
       out(`≈ ${subjectRel} — densified +${plan.fresh.length} evidence, concept '${d.conceptKey}'`);
-      // LUNA-89: a github clip newly densified onto a Tech subject is also a
+      // A github clip newly densified onto a Tech subject is also a
       // promotion → claim its tail-skipped row (same event as the create path).
       if (d.target.kind === "tools") {
         const claimed = claimDeferredRows(vault, plan.fresh, `[[${subjectRel.replace(/\.md$/, "")}]]`, ledgerPath);
@@ -325,7 +325,7 @@ function runApply(vault, ledgerPath, dryRun) {
     out(`✓ ${subjectRel} — ${contributors.length} contributors, concept '${d.conceptKey}'`);
     created++;
 
-    // LUNA-89: a github clip promoted to a Tech subject claims its tail-skipped
+    // A github clip promoted to a Tech subject claims its tail-skipped
     // _deferred.md backlog row (the one-hop crawl itself is /deepen-subject).
     if (d.target.kind === "tools") {
       const claimed = claimDeferredRows(vault, contributors, `[[${d.target.folder}/${d.subjectName}]]`, ledgerPath);
@@ -337,7 +337,7 @@ function runApply(vault, ledgerPath, dryRun) {
   return promotions;
 }
 
-// ── telegram promotion digest (LUNA-91) ──────────────────────────────────────
+// ── telegram promotion digest ──────────────────────────────────────
 // Build the batched digest from THIS run's promotions and persist it to
 // <vault>/.synthesize-stubs.telegram-digest.json for the synthesize-stubs
 // runbook to send through the telegram bridge `reply` tool (ONE reply per
@@ -372,7 +372,7 @@ function emitTelegramDigest(vault, promotions, suppress) {
   }
 }
 
-// LUNA-89: claim the open _deferred.md tail-skipped rows for each github
+// Claim the open _deferred.md tail-skipped rows for each github
 // contributor, ledger each edit (reversible: oldLine/newLine recorded).
 function claimDeferredRows(vault, contributors, subjectLink, ledgerPath) {
   const deferredAbs = path.join(vault, "Clippings", "_deferred.md");
@@ -482,7 +482,7 @@ if (a.mode === "revert") {
   }
   const dryRun = a.mode === "dry-run";
   const promotions = runApply(a.vault, ledgerPathFor(a.vault, a.ledger), dryRun);
-  // LUNA-91: only a live --apply produces promotion feedback (a --dry-run stamps
+  // Only a live --apply produces promotion feedback (a --dry-run stamps
   // nothing). Suppress with --no-telegram-digest during migration backfill.
   if (!dryRun) emitTelegramDigest(a.vault, promotions, !a.telegramDigest);
 }

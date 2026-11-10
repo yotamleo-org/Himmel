@@ -15,7 +15,7 @@
  *
  * Login-walled / removed posts return the embed page without a Caption
  * div — treated as enrichment_status: failed (not an exception).
- * These clips remain for the LUNA-27 authenticated rung.
+ * These clips remain for the authenticated rung.
  *
  * G-3 invariant: existing body sections are byte-identical post-write.
  * Only "## Crawled content" may be added. Frontmatter mutation is
@@ -36,9 +36,9 @@
  *   0 — run completed (may include partial/failed clips; see summary)
  *   1 — bad usage
  *
- * HIMMEL-280. Sister authenticated rung: LUNA-27 (playwright-crawl-ig.mjs,
+ * Sister authenticated rung (playwright-crawl-ig.mjs,
  * not yet implemented). No-login limitation: login-walled / removed posts
- * return enrichment_status: failed; run LUNA-27 for those clips.
+ * return enrichment_status: failed; run the authenticated rung for those clips.
  */
 import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -420,7 +420,7 @@ async function processClip(clipPath, vault, dryRun) {
 
   const parsed2 = parseEmbedHtml(fetched.html);
   if (!parsed2) {
-    // Login-walled or removed — leave for LUNA-27 authenticated rung.
+    // Login-walled or removed — leave for the authenticated rung.
     return writeFailure({ clipPath, rel, text, baselineSha, fmRaw, body, error: "embed_no_caption" });
   }
 
@@ -454,7 +454,7 @@ async function writeFailure({ clipPath, rel, text, baselineSha, fmRaw, body, err
   return writeEnrichment({
     clipPath, rel, text, baselineSha, fmRaw, body, markers, section: null,
     statusGlyph: "~",
-    statusMsg: `failed (${error}) — kept for LUNA-27`,
+    statusMsg: `failed (${error}) — kept for the authenticated rung`,
   });
 }
 

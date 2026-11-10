@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-ig-media-fetch.py - deterministic Instagram media enrichment rung (HIMMEL-770).
+ig-media-fetch.py - deterministic Instagram media enrichment rung.
 
 Escalation rung AFTER ig-embed-enrich.mjs. For IG clips whose caption rung
 failed OR whose body is still thin (no ### Transcript / ### Slides) and which
 carry no media_enriched_at: marker:
 
-  - Download reel/carousel media with Scrapling, NO cookie (HIMMEL-4675). The
-    gallery-dl cookie fallback was removed (HIMMEL-4709).
+  - Download reel/carousel media with Scrapling, NO cookie. The
+    gallery-dl cookie fallback was removed.
   - Reels (video): ffmpeg -> mono 16kHz WAV -> local faster-whisper transcript.
   - Carousels (images): ffmpeg recompress <=1600px JPEG, copy into the vault at
     Clippings/_media/<clip-slug>/slide-NN.jpg, embed under ### Slides.
@@ -65,7 +65,7 @@ SILENCE_DB_THRESHOLD = -60.0
 DOWNLOAD_TIMEOUT = 180
 MEDIA_MAX_BYTES = 500 * 1024 * 1024
 SCRAPLING_HINT = (
-    "\n  or install the cookieless Scrapling backend (HIMMEL-4675): "
+    "\n  or install the cookieless Scrapling backend: "
     "python3 -m venv ~/.himmel/scrapling-venv ; ~/.himmel/scrapling-venv/bin/pip "
     "install --require-hashes -r <plugin>/tools/requirements-scrapling.txt ; "
     "~/.himmel/scrapling-venv/bin/python -m patchright install chromium")
@@ -283,7 +283,7 @@ def scrapling_python():
 
 
 def _batch_module():
-    """harvest-clip-body-batch.py: the HIMMEL-4361 backend routing lives there."""
+    """harvest-clip-body-batch.py: the backend routing lives there."""
     import importlib.util
     path = Path(__file__).with_name("harvest-clip-body-batch.py")
     spec = importlib.util.spec_from_file_location("harvest_clip_body_batch", path)
@@ -293,7 +293,7 @@ def _batch_module():
 
 
 def scrapling_permitted(vault: Path, url: str) -> bool:
-    """HIMMEL-4361 routing for the Scrapling slot, under its harvest name
+    """Routing for the Scrapling slot, under its harvest name
     `local-headless`: the HARVEST_SCRAPE_DENY kill switch, then the vault's
     .harvest-backends (an unreadable file fails closed)."""
     killed = {n.strip() for n in (os.environ.get("HARVEST_SCRAPE_DENY") or "").split(",")}
@@ -334,7 +334,7 @@ def _natural_key(p: Path):
 
 
 def download_media_scrapling(ig: dict, py: str):
-    """Primary backend (HIMMEL-4675): ig-scrapling-media.py reads the post page
+    """Primary backend: ig-scrapling-media.py reads the post page
     with NO cookie and returns CDN media URLs; curl fetches them in carousel
     order as NN.ext. Returns (files, None, caption) or (None, error, None)."""
     dest = cache_root() / ig["shortcode"]
@@ -429,7 +429,7 @@ def write_markers(path: Path, text: str, fm_raw: str, body: str, has_crlf: bool,
     if permanent:
         markers["media_enriched_at"] = TODAY
     if status == "deferred" and backend:
-        markers["ig_media_backend"] = backend   # HIMMEL-4708: name the backend
+        markers["ig_media_backend"] = backend   # name the backend
     new_fm_raw = upsert_media_markers(fm_raw, markers)
     if permanent:
         # A permanent failure (removed/404) will never enrich; release the clip
@@ -474,7 +474,7 @@ def whisper_transcribe(wav: Path, model: str):
     """Run the sibling transcribe.py under `uv run --python 3.12` with
     faster-whisper. Returns (text, status): status is "ok" (non-empty
     transcript), "no_speech" (rc=0 but empty/whitespace-only stdout - the
-    audio decoded fine but whisper heard no speech; HIMMEL-3043: a PERMANENT
+    audio decoded fine but whisper heard no speech; a PERMANENT
     outcome, distinct from a retryable failure), or "error" (uv missing,
     timeout, or the helper itself failed - always retryable). Resolve uv via
     shutil.which (same PATHEXT reason as extract_wav)."""
@@ -501,19 +501,19 @@ def whisper_transcribe(wav: Path, model: str):
 
 def _probe_audio(video: Path):
     """One ffmpeg probe answering two questions: does the video carry an
-    audio stream, and if so how loud is it (volumedetect mean_volume,
-    HIMMEL-3043)? A single subprocess call so a fixture built for the old
+    audio stream, and if so how loud is it (volumedetect mean_volume)?
+    A single subprocess call so a fixture built for the old
     presence-only probe (0:a:0 -> "matches no streams") never reaches the
     mean_volume question. Returns (has_stream, mean_db): has_stream is False
     ONLY on conclusive proof - ffmpeg reporting the 0:a:0 map "matches no
     streams". Every other failure (no ffmpeg, timeout, decode error, corrupt
     media) reports has_stream=True so the caller keeps the conservative
     failed/partial path instead of silently replacing a lost transcript with
-    a screenshot (codex-adv HIMMEL-786). mean_db is None whenever it can't be
+    a screenshot (a codex adversarial finding). mean_db is None whenever it can't be
     determined (no ffmpeg, no stream, inconclusive probe, timeout, or no
     volumedetect line in stderr) - the caller never treats None as silence.
     The probe subprocess is pinned to LC_ALL=C/LANG=C so the substring match
-    is locale-independent (HIMMEL-791) - the env override is load-bearing;
+    is locale-independent - the env override is load-bearing;
     a localized ffmpeg build would otherwise silently disable the fallback."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
@@ -539,8 +539,8 @@ def _probe_audio(video: Path):
 
 
 def soundless_video_frame(video: Path):
-    """Screenshot fallback for a soundless video (HIMMEL-786; widened by
-    HIMMEL-3043 to an audio stream that's present but near-digital-silent):
+    """Screenshot fallback for a soundless video (widened to
+    an audio stream that's present but near-digital-silent):
     extract the first frame NEXT TO the video in the download cache (never
     the vault; render_slides copies it in) and return the frame Path.
     Returns None when the video carries audible audio - mean_volume above
@@ -574,7 +574,7 @@ def transcribe_videos(videos, model):
     (results, no_speech, failed): results is [{"index": slide_index, "text": t}]
     for each video that transcodes + transcribes; no_speech is the slide_index
     values whose audio decoded fine but whisper heard no speech (PERMANENT,
-    HIMMEL-3043 - never retried); failed is the slide_index values whose
+    never retried); failed is the slide_index values whose
     transcode/transcribe genuinely errored (RETRYABLE). slide_index is the
     item's 1-based position in the FULL carousel, so a mixed-carousel video
     block is labeled by its slide (never by a video-only counter); a lone reel
@@ -778,7 +778,7 @@ def write_crawled(path: Path, text: str, fm_raw: str, body: str, section: str,
     if enriched:
         markers["media_enriched_at"] = TODAY
     if backend:
-        markers["ig_media_backend"] = backend   # HIMMEL-4684: which backend fetched it
+        markers["ig_media_backend"] = backend   # which backend fetched it
     new_fm_raw = upsert_media_markers(fm_raw, markers)
     if enriched:
         new_fm_raw = drop_ig_media_pending(new_fm_raw)
