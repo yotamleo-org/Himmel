@@ -37,7 +37,8 @@ release is declared (`jira release state <R>` prints a status other than
   reported (a `## Results` bullet) passes. A project with no versions file passes. Both
   passes print a `bypass=` line on the launch. A failed Jira read refuses by name
   (rebuild the jira CLI, refresh the mirror, retry), because this gate fails shut.
-  No switch passes it. Only the test seams remain (`BRIEF_LINT_JIRA_CLI`,
+  No launcher switch passes it (`--skip-bucket` is the generator's flag, and the
+  launcher never passes it). Only the test seams remain (`BRIEF_LINT_JIRA_CLI`,
   `BRIEF_LINT_MIRROR` and `HOME`, which picks the default mirror; spec row 12 accepts
   them), and `BRIEF_LINT_VERDICT_TIMEOUT` can only shorten the wait. A judge, consult or
   relay launch is not asked.
