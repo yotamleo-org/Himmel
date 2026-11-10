@@ -195,7 +195,7 @@ eq "render: bottom line first, then the current setup, then history" \
 has "render: bottom line gives the planted-bug catch" "$(cat "$R")" "**75.0%**: \`beta\` caught 9 of 12 planted bugs"
 has "render: planted-bug sample" "$(cat "$R")" "as of 2026-10-24, n = 12 planted bugs in 24 test changes"
 has "render: the planted-bug row says the set holds real escapes" "$(grep -F '| **Planted-bug catch** |' "$R")" "The set also holds real review escapes, each with a clean twin."
-has "render: bottom line gives the required reviewer's precision" "$(cat "$R")" "| **90.0%** of \`beta\` findings ruled right |"
+has "render: bottom line gives the required reviewer's precision" "$(cat "$R")" "| **90.0%** of \`beta\` findings ruled right (recorded dispositions) |"
 has "render: bottom line says the pooled figure is not the headline" "$(cat "$R")" "not the all-reviewers pooled figure"
 has "render: current setup row with its role" "$(cat "$R")" "| \`beta\` | required: must pass before every merge | **90.0%** | 78.6 to 95.7 |"
 has "render: a panel reviewer with no findings yet" "$(cat "$R")" "| \`delta:m9\` | must pass where it runs; skipped on a machine without it | no ruled findings yet |"
@@ -358,6 +358,38 @@ eq "data: a read ratio above 100 is refused" "$rc" "2"
 printf 'cache-probe first-turn\nread-ratio: 97.4%% over 1200000 tokens\n' > "$TMP/noverdict.txt"
 python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --cache-probe "$TMP/noverdict.txt" --as-of 2026-10-25 --out "$TMP/x.json" > /dev/null 2>&1; rc=$?
 eq "data: a probe without its verdict line is refused" "$rc" "2"
+
+# ── Verdict sources: a precision figure never pools them ─────────────────────
+# beta: 3 agreed + 1 disproved by recorded disposition, and 4 findings the thread recorder marked fixed.
+# Pooled that would be 7 of 8 = 87.5%; the figure is the recorded dispositions only, 3 of 4 = 75.0%.
+L3="$TMP/ledger-sources.jsonl"
+: > "$L3"
+for i in 0 1 2 3; do
+  printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"s%s","head":"h1","model":"beta","finding_id":"rec-%s","severity":"imp","verdict":"","artifact":"diff","perspective":"off","text":"claim rec-%s"}\n' "$i" "$i" "$i" >> "$L3"
+  if [ "$i" -lt 3 ]; then v=agreed; else v=disproved; fi
+  printf '{"kind":"amend","ts":"2026-10-02T10:00:00Z","branch":"s%s","target_head":"h1","finding_id":"rec-%s","artifact":"diff","perspective":"off","set":{"verdict":"%s"},"reason":"r"}\n' "$i" "$i" "$v" >> "$L3"
+  printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"t%s","head":"h1","model":"beta","finding_id":"thr-%s","severity":"imp","verdict":"fixed","source":"cr-thread-recorder","artifact":"diff","perspective":"off","text":"claim thr-%s"}\n' "$i" "$i" "$i" >> "$L3"
+done
+OUT3="$TMP/data-sources.json"
+python3 -I "$GEN" data --ledger "$L3" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$OUT3" > /dev/null 2>&1; rc=$?
+eq "sources: data exits 0" "$rc" "0"
+eq "sources: the figure counts recorded dispositions only" "$(jget "$OUT3" review/critics/beta/precision_pct)" "75.0"
+eq "sources: the figure names its verdict source" "$(jget "$OUT3" review/critics/beta/source)" "recorded-disposition"
+eq "sources: ruled findings of another source are counted out, by source" "$(jget "$OUT3" review/pooled/left_out)" '{"thread-state-inferred": 4, "unknown": 0}'
+python3 -I "$GEN" render --data "$OUT3" --out "$TMP/page-sources.md" > /dev/null 2>&1
+has "sources: the precision column names its source" "$(cat "$TMP/page-sources.md")" "| Precision (recorded dispositions) |"
+has "sources: the page says what it left out" "$(cat "$TMP/page-sources.md")" "4 ruled findings whose verdict the thread recorder inferred from thread state"
+python3 -I - "$OUT3" "$TMP/data-v3.json" <<'PY' || { echo "test-evals-page-gen: writing the v3 data file failed" >&2; exit 1; }
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["v"] = 3
+for g in [d["review"]["pooled"]] + list(d["review"]["critics"].values()):
+    g.pop("source", None), g.pop("left_out", None)
+json.dump(d, open(sys.argv[2], "w"))
+PY
+python3 -I "$GEN" render --data "$TMP/data-v3.json" --out "$TMP/page-v3.md" > /dev/null 2>&1
+has "sources: a data file without the split labels its figures pooled" "$(cat "$TMP/page-v3.md")" "| Precision (all verdict sources pooled) |"
+lacks "sources: a pooled figure is never called recorded dispositions" "$(cat "$TMP/page-v3.md")" "(recorded dispositions)"
 
 # ── The committed page ───────────────────────────────────────────────────────
 eq "page: committed README is the render of the committed data file" \

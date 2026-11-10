@@ -780,10 +780,12 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readCost(env)));
       }
-      // the review page (critics and judges on planted bugs and merged PRs), read from the file the weekly judge-accuracy cadence wrote.
+      // the code-reviewer report (planted-bug benchmark, review findings on merged work, reviewer changes), computed on this
+      // GET from the ledgers; the CR ledger defaults to the checkout's git common dir. An explicit REVIEW_PAGE_FILE is served as a stored snapshot.
       if (path === "/api/reviewers") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        return json(redactOut(readReviewers(env)));
+        const common = env.CR_LEDGER ? "" : gitCommonDir(root);
+        return json(redactOut(await readReviewers(env, { crLedger: common ? join(common, "cr-critic-scores.jsonl") : "", now })));
       }
       // the tracker sources the rail gates the Board on.
       if (path === "/api/sources") {

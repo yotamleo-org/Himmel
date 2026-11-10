@@ -7,7 +7,7 @@
 | Question | Answer | Likely range | Sample |
 |---|---|---|---|
 | Does the review panel catch bugs? | **75.0%**: `codex` caught 9 of 12 planted bugs | 46.8 to 91.1 | as of 2026-10-24, n = 12 planted bugs in 24 test changes |
-| When the required reviewer flags something, is it right? | **79.5%** of `codex:gpt-6.1-sol` findings ruled right | Wilson 78.4 to 80.5; by PR 77.8 to 81.1 | as of 2026-10-27, n = 5,388 ruled findings over 1,621 PRs |
+| When the required reviewer flags something, is it right? | **79.5%** of `codex:gpt-6.1-sol` findings ruled right (all verdict sources pooled) | Wilson 78.4 to 80.5; by PR 77.8 to 81.1 | as of 2026-10-27, n = 5,388 ruled findings over 1,621 PRs |
 | Is work proven before it is built? | **10.8%** of merged PRs were proof-first (self-reported) | 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |
 | How far can the lane-quality judge be trusted? (arms `claude-haiku-5-5`, `claude-sonnet-5-5`) | **kappa 0.35**: graders agreed on 11 of 17 runs, model-graded (no human label) by OpenAI and Google, tie-breaker DeepSeek sided with grader 1 in 1 and grader 2 in 5 of 6 disagreements; the stored judge flipped its verdict on 2 of 17 runs judged twice | no interval | as of 2026-10-27, n = 17 runs |
 | How far can the lane-quality judge be trusted? (arms `gpt-6.1-sol`) | **kappa 0.00**: graders agreed on 5 of 7 runs, model-graded (no human label) by Anthropic and Google, tie-breaker DeepSeek sided with grader 1 in 0 and grader 2 in 2 of 2 disagreements; the stored judge flipped its verdict on 3 of 7 runs judged twice | no interval | as of 2026-10-27, n = 7 runs |
@@ -15,11 +15,13 @@
 
 The precision headline is the required reviewer's own, not the all-reviewers pooled figure under History: the pool mixes in models the panel no longer runs. Likely range is the 95 percent interval; every term is defined under How to read these numbers.
 
+These precision figures pool every verdict source: the PR author's recorded dispositions, verdicts the thread recorder (cr-thread-recorder) inferred from thread state, and verdicts of unknown source. The data file predates the split; a data step from this generator counts recorded dispositions only.
+
 ## Current setup
 
 The reviewers `scripts/cr/critics.json` runs on every PR today. To change the set (a cheaper tier, a required non-Claude reviewer, a reviewer added or dropped on one machine), see [Review by a second model](../configuration.md#review-by-a-second-model).
 
-| Reviewer | What it must do | Precision | Wilson range | Range by PR | Sample |
+| Reviewer | What it must do | Precision (all verdict sources pooled) | Wilson range | Range by PR | Sample |
 |---|---|---|---|---|---|
 | `codex:gpt-6.1-sol` | required: must pass before every merge | **79.5%** | 78.4 to 80.5 | 77.8 to 81.1 | as of 2026-10-27, n = 5,388 ruled findings over 1,621 PRs |
 | `claude:claude-opus-5-5` | must pass where it runs; skipped on a machine without it | **48.2%** | 41.2 to 55.2 | 36.5 to 59.2 | as of 2026-10-27, n = 193 ruled findings over 36 PRs |
@@ -32,7 +34,7 @@ Precision is the share of a reviewer's ruled findings that were right; when the 
 
 Every reviewer the ledger holds that the panel no longer runs, oldest first. A reviewer is the panel slug plus the model that answered, so a model re-pin is a new reviewer.
 
-| Reviewer | Ran | Precision | Wilson range | Range by PR | Sample |
+| Reviewer | Ran | Precision (all verdict sources pooled) | Wilson range | Range by PR | Sample |
 |---|---|---|---|---|---|
 | `codex:gpt-5.6-sol` | 2026-09-04 to 2026-09-05 | **84.1%** | 76.2 to 89.7 | 74.2 to 91.7 | as of 2026-10-27, n = 113 ruled findings over 27 PRs |
 | `codex:gpt-6-astra` | 2026-09-05 to 2026-09-23 | **89.3%** | 87.4 to 90.9 | 86.1 to 92.0 | as of 2026-10-27, n = 1,231 ruled findings over 362 PRs |
@@ -71,7 +73,7 @@ Each number's display name beside its unchanged ledger key: [What each number me
 
 | Term | Meaning |
 |---|---|
-| **Precision** | Agreed ÷ (agreed + disproved): of the findings someone ruled true or false, the share ruled true. The PR author rules (in practice the Claude session that wrote the PR), and a finding marked `fixed` counts as agreed. A precision proxy, not precision: the one who rules is also the one who has to fix. [review panel](review-panel.md) |
+| **Precision** | Agreed ÷ (agreed + disproved): of the findings someone ruled true or false, the share ruled true. The PR author rules (in practice the Claude session that wrote the PR), and a finding marked `fixed` counts as agreed. A precision proxy, not precision: the one who rules is also the one who has to fix. Each precision column names the verdict source it counts: recorded dispositions (the author's ruling) only, or all verdict sources pooled, which adds verdicts the thread recorder inferred from thread state and verdicts of unknown source. [review panel](review-panel.md) |
 | **Planted-bug catch** | Bugs planted in test changes with a hidden answer key, and the share the reviewer found. It measures what real PRs cannot: the bugs nobody flagged. The set also holds real review escapes, each with a clean twin. [planted-bug eval](../../scripts/eval/review-panel/README.md) |
 | **Wilson range** | The 95 percent range the true share most likely sits in, given how many findings were ruled. It treats every finding as independent of the others. |
 | **Range by PR** | A bootstrap that resamples whole PRs, not single findings. Findings on one PR share an author, a diff and a review loop, so they are not independent; counting that makes the range wider, most of all for a reviewer whose findings sit on few PRs. |

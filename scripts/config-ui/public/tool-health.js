@@ -702,11 +702,44 @@ function hooksTab(data, inv, ui) {
   return box("hooks", "Hook wiring", `Which hook is wired where, and which runs twice? Runs are measured where the hook chain logged them, otherwise derived from matchers × matching calls.${hookRows(data, inv).some((r) => r.runsMeasured) ? ` ${RUNS_SCOPE}` : ""}`, sortable("hooks", ["Hook", "Source", "Wired on", "Wirings", "Runs twice", "Runs", "Refused"], rows, ui, [0, 2]), "First build");
 }
 
-// ---- reviewers (moved from Health): the weekly review page as written, never re-graded here.
+// ---- reviewers (moved from Health): the typed code-reviewer report as GET /api/reviewers computed it, or a stored
+// snapshot page as written; never re-graded here. A missing ratio is —, never 0, and no trend joins two configurations.
+const isoDay = (ts) => (typeof ts === "string" && /^\d{4}-\d{2}-\d{2}/.test(ts) ? ts.slice(0, 10) : "—");
+const kOfN = (m) => (isNum(m.value) && isNum(m.k) ? `${m.k} of ${m.n} ${m.sample_unit}: ${pct(m.value)}` : `${num(m.n)} ${m.sample_unit}: —`);
+const range = (m) => (m.interval && isNum(m.interval.lo) && isNum(m.interval.hi) ? `${pct(m.interval.lo)} to ${pct(m.interval.hi)}` : "—");
+function codeReviewersView(r) {
+  const c = r.codeReviewers;
+  const out = [];
+  const bad = (c.sources || []).filter((s) => s.state === "error");
+  if (c.state === "partial") out.push(`<p><span class="pill warn">Partial: ${esc(bad.map((s) => `${s.id} could not be read (${s.reason})`).join("; "))}</span></p>`);
+  out.push(sub(`Report of ${stamp(Date.parse(c.generated_at))}. Sources: ${(c.sources || []).map((s) => `${s.id} ${s.state === "ok" ? `read, ${s.records} records through ${isoDay(s.observed_through)}` : s.state === "absent" ? "absent" : `could not be read (${s.reason})`}`).join(" · ")}.`));
+  const bench = c.metrics.filter((m) => m.family === "benchmark"), prod = c.metrics.filter((m) => m.family === "production");
+  out.push("<h4>Planted-bug benchmark</h4>");
+  const u = c.latest_usable, a = c.latest_attempt, f = (c.benchmark || {}).freshness;
+  if (!u) out.push('<p class="nodata">No usable benchmark run</p>');
+  else out.push(`<p>Observed ${esc(isoDay(u.at))} (${esc(u.run_id)}, ${esc(u.status)})${f && f.state === "old" ? ` <span class="pill warn">Old: observed ${esc(String(f.age_days))} days before this report</span>` : ""}</p>`);
+  if (a && !a.usable) out.push(`<p><span class="pill warn">Latest attempt ${esc(isoDay(a.at))} (${esc(a.run_id)}): ${esc(a.status)}, not usable</span></p>`);
+  const el = c.comparison_eligibility || { eligible: false, reasons: [] };
+  if (u) out.push(sub(el.eligible ? "Earlier figures are from the previous comparable run." : `No trend: ${(el.reasons || []).join("; ")}`));
+  if (bench.length) out.push(table(["Reviewer", "Measure", "Kind", "k of n", "Range", "Earlier"], bench.map((m) => `<tr>${td(esc(m.reviewer))}${tdWrap(esc(m.label))}${td(esc(m.kind))}${td(esc(kOfN(m)))}${td(esc(range(m)))}${td(m.trend && isNum(m.trend.previous_value) ? esc(`${pct(m.trend.previous_value)} at ${m.trend.previous_run_id}`) : "—")}</tr>`)));
+  const p = c.production || {};
+  out.push(`<h4>Review findings on merged work, ${esc(isoDay((p.window || {}).since))} to ${esc(isoDay((p.window || {}).until))}</h4>`);
+  if (!p.last_record_at) out.push('<p class="nodata">No records; capture coverage unknown</p>');
+  else if (!p.records_in_window) out.push(`<p>No new records since ${esc(isoDay(p.last_record_at))}; capture coverage unknown.</p>`);
+  else out.push(`<p>Last record ${esc(isoDay(p.last_record_at))}. Capture coverage unknown: ${esc(p.capture_reason || "no capture receipts")}.</p>`);
+  if (p.roster && p.roster !== "ok") out.push(sub("The reviewer roster could not be read, so no slug counts as a reviewer."));
+  if (p.not_reviewers && isNum(p.not_reviewers.findings) && p.not_reviewers.findings > 0) out.push(sub(`Counted out: ${p.not_reviewers.findings} findings from ${num(p.not_reviewers.slugs)} slugs that are not code reviewers.`));
+  if (prod.length) out.push(table(["Reviewer", "Model", "Scope", "Verdict source", "Measure", "k of n", "Range"], prod.map((m) => `<tr>${td(esc(m.reviewer))}${td(esc(m.model || "—"))}${td(esc(m.cohort || "—"))}${td(esc(String(m.verdict_source || "").replace(/-/g, " ")))}${tdWrap(esc(m.label))}${td(esc(kOfN(m)))}${td(esc(range(m)))}</tr>`)));
+  out.push("<h4>Reviewer changes</h4>");
+  out.push(c.proposals && c.proposals.length ? `<ul>${c.proposals.map((x) => `<li>${esc(x.label)}</li>`).join("")}</ul>` : '<p class="nodata">No change yet</p>');
+  return `${r.stale ? `<p><span class="pill warn">Refresh failed (${esc(r.stale)}); showing the report read earlier</span></p>` : ""}<div class="card" id="reviewers-report">${out.join("")}</div>`;
+}
 function reviewersTab(r) {
-  const purpose = "Do our code reviewers catch planted bugs? This is the “How good are our reviewers?” panel moved from Health. Tool health filters do not apply.";
+  const purpose = "Do our code reviewers catch planted bugs, and how do their findings on merged work fare? Read from the ledgers on each visit. Tool health filters do not apply.";
   let body;
   if (r === undefined || r === null) body = '<p class="nodata">Loading the review page…</p>';
+  else if (r.codeReviewers && r.state === "absent") body = `<p class="nodata">No reviewer evidence yet</p>${sub("No benchmark run, reviewer change or review finding is recorded in the ledgers this station reads.")}`;
+  else if (r.codeReviewers && r.state !== "error") body = codeReviewersView(r);
   else if (r.state === "absent") body = '<p class="nodata">No review page yet</p>';
   else if (r.state !== "ok") body = `<p class="nodata">Review page could not load${r.reason ? ` (${esc(r.reason)})` : ""}. <button class="btn" data-act="th-reviewers">Retry</button></p>`;
   else if (!String(r.text || "").trim()) body = `<p class="nodata">Review page is empty</p>${updated(r)}`;
@@ -722,7 +755,7 @@ function reviewersTab(r) {
       else if (line.trim()) out.push(`<p>${esc(line)}</p>`);
     }
     if (list) out.push("</ul>");
-    body = `${r.stale ? `<p><span class="pill warn">Refresh failed (${esc(r.stale)}); showing the page read earlier</span></p>` : ""}<div class="card" id="reviewers-page">${out.join("")}</div>${updated(r)}<p class="sub">As written by the weekly review job.</p>`;
+    body = `${r.stale ? `<p><span class="pill warn">Refresh failed (${esc(r.stale)}); showing the page read earlier</span></p>` : ""}<p><span class="tag">Stored snapshot</span></p><div class="card" id="reviewers-page">${out.join("")}</div>${updated(r)}<p class="sub">As written by the weekly review job.</p>`;
   }
   return box("reviewers", "Reviewers", purpose, body);
 }

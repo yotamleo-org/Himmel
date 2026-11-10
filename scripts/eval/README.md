@@ -17,7 +17,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `compaction-handoff/compaction-defects.py` | the defects in the N turns after each compaction vs a control window, cost-eq per turn on both sides, and a ceiling replay | JSON or a table on stdout (no ledger row) |
 | `compaction-handoff/ab.py` + `ab_tasks.py` | a bounded, billed A/B of the 200k compaction loop, a 450k ceiling with compaction and a 450k ceiling with a hand-off on three generated tasks: hidden check, blind judge, defects, cost-eq and wall time per run; `sweep` is resumable under a cost ceiling and a bank preflight before every cell (`HIMMEL_BILLED_OK=1`) | `summary.json` and `judge.json` per run, a table and a recommended arm per profile from `score` (no ledger row) |
 | `weekly-rollup.py` | velocity, cost and health per ISO week and per stable version, with the change against the previous row; `review` prints the three version-review lines ([`docs/release/version-review.md`](../../docs/release/version-review.md)) | `~/.himmel/state/rollup/weekly.jsonl` (`WEEKLY_ROLLUP_FILE`; ledger row `weekly-rollup`) |
-| `review-page.py` | the reviewers in plain words: how often the critics' findings key-match labelled target defects and how often they block labelled-clean changes (automated proxies, not verified accuracy; a trend only between rows of one known `scorer_sha256`), how often a bug gets past a judge's GO, the trend since the last run, and each feedback change with its re-measured result | one Markdown page on stdout or `--out` (no ledger row) |
+| `review-page.py` | the reviewers in plain words: how often the critics' findings key-match labelled target defects and how often they block labelled-clean changes (automated proxies, not verified accuracy; a trend only between rows of one known `scorer_sha256`), how often a bug gets past a judge's GO, the trend since the last run, and each feedback change with its re-measured result; `--reviewers-json` and `--reviewers-only` give the [code-reviewer report](#the-code-reviewer-report) | one Markdown page on stdout or `--out`; report v1 JSON or its prose on stdout (no ledger row) |
 | `deferred-outcome.py` | what became of each deferred CR-ledger finding: its follow-up ticket in the Jira mirror is done (fixed later), open, or closed Won't Do (disproved), overall and per critic | ledger row `deferred-outcome` |
 | `escapes.py` | bugs found after merge (a revert, a caused-by bug, a later fix naming the PR) per merged PR, then per critic that reviewed it and per judge that passed it; reads a `gh pr list` snapshot; `--class C` counts only the signals whose fix has class C in the bug-origin ledger (an unknown class is refused; with no Jira mirror the ledger rows give the bugs; a filtered row is its own series) | ledger row `escapes` |
 | `conflicts/conflicts.py` | the conflict recorder: `detect` lists the files a PR branch's own merge commits conflicted on, with the other PRs and how the worker resolved each (`merged`, `ours`, `theirs`, `deleted`); `record` writes one exclusive ledger file per merged PR (`<bucket>/conflicts/<pr>.jsonl`, one row per conflicted or reported file) and prints one machine line (`wrote:N ...`, `none`, `kept`, `unknown`); `backfill --since` rebuilds rows from merged PRs; `parse_body` reads the PR body's `## Conflicts resolved` section | `detect` and `record` on stdout; ledger file from `record` |
@@ -54,7 +54,7 @@ column are relative to `scripts/eval/` unless they start with `scripts/`.
 | bug-origin class count | `class.<class>` (`review_miss` is the review-miss subtotal; `credit.<layer>` counts review-miss rows with that layer on record) | The number of bug-fix rows per class of how the bug got in, plus how many review misses each review layer saw. | Read the mix: many of one class names the layer to improve. A high credit count means that layer keeps seeing bugs and letting them through. | count | The fixer's own reading, one row per fix; the 20 seed rows have no second reader. `credit` may sum above the row count, since a row seen by three layers counts in all three. | `bug-origin/bug-origin-report.py` |
 | proof-first share (self-reported) | `pdd.pct` (halves `ticket_first.pct` and `red_green.pct`; `.k` and `.n` beside each) | The share of merged PRs whose ticket has a DoD and a Proof and was created before the first commit, and whose body names RED then GREEN. | High: work is proven before it is built. | share, 0 to 1, with a Wilson interval | The ticket's created time stands in for when the sections were written (the mirror keeps no description history), so a section added later reads as early. Self-reported: RED and GREEN are words the author wrote, not a checked test run. The row is `partial` below `--min-n` readable PRs. | `worker-digest/pdd_share.py` |
 | Wilson interval | `ci` with `ci_method` `wilson` (`ci_level` 0.95) | A 95 % range for a share of k in n that stays between 0 and 1 and holds at small n. | Narrow: the share is well measured. Wide: too few cases to rank. | `lo` and `hi`, in the share's unit | Covers sampling noise only, not a biased sample. | `worker-digest/pdd_share.py`, `review-panel/score.py`, `escapes.py`, `judge-accuracy/` |
-| review precision | `precision_pct` in `docs/evals/evals-data.json` (no eval-runs row) | Of the real review findings the author ruled true or false, the share ruled true. | High: a finding is usually right. | percent, with a Wilson and a by-PR bootstrap interval | The author who rules is the one who fixes. Deferred and unruled findings are on neither side. | `scripts/cr/evals-page-gen.py` |
+| review precision | `precision_pct` in `docs/evals/evals-data.json` (no eval-runs row) | Of the real review findings the author ruled true or false, the share ruled true. | High: a finding is usually right. | percent, with a Wilson and a by-PR bootstrap interval | The author who rules is the one who fixes. Deferred and unruled findings are on neither side. From data file v4 only recorded dispositions count; a verdict the thread recorder inferred from thread state, or of unknown source, is counted out by source (`left_out`). A v3 data file pooled every source, and the page labels its figures so. | `scripts/cr/evals-page-gen.py` |
 | cache read share | `read_ratio_pct` in `docs/evals/evals-data.json` (`hit_pct` in `cache-health.py`, `cache_hit_pct` in `weekly-rollup.py`) | The share of input tokens read from the prompt cache rather than sent uncached or written to the cache. | High: sessions cost less. | percent | No interval. The evals page reads one `cache-probe.sh` run over recent sessions; `cache-health.py` reads a recent window against a baseline window; `weekly-rollup.py` takes the mean of the cache-health history over the week. | `cache-probe.sh` via `scripts/cr/evals-page-gen.py`, `cache-health.py`, `weekly-rollup.py` |
 
 ## The eval-runs ledger
@@ -308,6 +308,61 @@ Exit codes:
 | 1 | regression |
 | 2 | usage error |
 | 3 | nothing to compare (no candidate, no baseline, a candidate whose status is not `ok`, no gated metric with a value on both sides, or a malformed ledger line after the candidate, which may be this eval's newest run); never a pass |
+
+## The code-reviewer report
+
+```
+python3 scripts/eval/review-page.py --reviewers-json --ledger FILE --changes FILE --cr-ledger FILE [--now ISO]
+python3 scripts/eval/review-page.py --reviewers-only --ledger FILE --changes FILE --cr-ledger FILE [--now ISO]
+```
+
+`--reviewers-json` prints report v1 over the code reviewers (the critics and
+CodeRabbit, never the judges); `--reviewers-only` prints the same report in
+plain words. Both are a pure read of the eval-runs ledger, the eval-changes
+ledger and the CR ledger at `--now` (default: the current time): no model call,
+no network, no write. The Reviewers tab of `himmelctl ui` (GET
+`/api/reviewers`) runs `--reviewers-json` on every visit, with a 10 s timeout
+and a 2 MiB output ceiling, over `$HIMMEL_EVAL_RUNS_LEDGER`,
+`$HIMMEL_EVAL_CHANGES_LEDGER` and `$CR_LEDGER`, else `~/.himmel/` and the
+checkout's git common dir. A new ledger record shows at the next visit. An
+explicit `REVIEW_PAGE_FILE` keeps the old mode: that stored page, shown as a
+snapshot.
+
+What the report says, and what it does not:
+
+- **Sources.** Each ledger by file name only: `ok` with its record count and
+  newest timestamp, `absent` when the file is missing, `error` with the errno
+  name (`EACCES`, `EISDIR`) when it cannot be read. The report is `partial`
+  when one source fails beside a readable one, `absent` when none exists.
+- **Benchmark.** The newest usable review-panel run (`latest_usable`) and,
+  beside it, the newest attempt (`latest_attempt`), so an inconclusive run after
+  a good one shows. A run observed more than 7 days before `--now` is `old`:
+  a display default, not a reason to spend on a new run. A trend appears only
+  when `review_incompat` finds the previous run comparable (same roster and
+  corpus, same known scorer, same participation); otherwise
+  `comparison_eligibility` gives the reason.
+- **Metrics.** Each is a typed `k` of `n` with a `kind` (`proxy` for the
+  key-match family and author agreement, `adjudicated` for the verified family
+  of the validated corpus), its sample unit, interval, run, scorer and limitations.
+  When `n` is 0 the value is null and the UI shows —, never 0.
+- **Findings on merged work.** The CR ledger's reviewer scorecard
+  (`cr_ledger_eval.reviewer_summary`) over the trailing 14 days, one row per
+  reviewer, answering model, scope and verdict source: recorded dispositions
+  give author agreement; the thread recorder's verdicts give a separate
+  thread-state rate; an unknown source gives counts only. A quiet ledger reads
+  "no new records since" its last record. Capture coverage is always unknown:
+  no per-PR capture receipt exists yet, so an empty window is not a failed
+  capture.
+- **Reviewer changes.** Each open review-panel change with its lifecycle
+  (`proposed`, `applied-awaiting-measurement`, `measured-keep`,
+  `measured-revert`, `inconclusive`, `historical-unverified`), as in
+  [Eval feedback](#eval-feedback-a-result-drives-one-change-the-next-run-re-measures-it).
+
+No review text, full path or exception message is printed. A missing report
+names no eval to run: the benchmark is billed and runs only when someone
+decides to. Weekly operator check (manual, read-only): open the Reviewers tab,
+or run `--reviewers-only` with the three ledgers, and note the run date, any
+`old` or `partial` marker and the verdict-source split.
 
 ## Eval feedback: a result drives one change, the next run re-measures it
 

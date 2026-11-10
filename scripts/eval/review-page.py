@@ -26,16 +26,29 @@ its earliest raise that has one; a finding with no recorded text is never merged
 than --min-findings distinct findings (default 10) shares one "other" row. With --out it replaces
 the block between the two `review-page.py --panel` marker comments of FILE, and refuses (exit 2) a FILE
 that has no such block.
-ponytail: the page is rendered by the weekly judge-accuracy cadence into the file scripts/config-ui's
-/api/reviewers serves; it is not live-updating, upgrade path a push from the ledger append.
+
+  review-page.py --reviewers-json --ledger FILE --changes FILE --cr-ledger FILE [--now ISO]
+  review-page.py --reviewers-only --ledger FILE --changes FILE --cr-ledger FILE [--now ISO]
+
+--reviewers-json prints report v1 over the code reviewers only (no judge eval), read at --now (default: the
+current time); scripts/config-ui's GET /api/reviewers runs it on every request. Pure read: each source is
+named by basename with its state (ok, absent when the file is missing, error with the errno name when it cannot be
+read), and the report is ok, partial (a source error beside a readable one), absent or error. The benchmark is the
+newest usable review-panel run with the newest attempt beside it, old once observed more than 7 days before --now,
+with a trend only against a comparable previous run (review_incompat). Production findings are the CR ledger's
+reviewer_summary over the trailing 14 days, by verdict source; capture coverage is unknown, since no per-PR
+capture receipt exists. Every metric is a typed k of n whose value is null when n is 0. No review text, full path
+or exception message is printed. --reviewers-only prints the same report in plain words.
 """
 import argparse
 import collections
+import errno
+import json
 import os
 import re
 import statistics
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
@@ -261,33 +274,74 @@ def proof_lines(cur, prev):
     return out
 
 
-def review_line(c, what, why, applied, mz):
-    did = "a change to %s after the run of %s, because %s" % (what, day(c.get("ts")), why)
-    move = ""
-    if mz is not None and eval_runs._num(mz.get("before")) and eval_runs._num(mz.get("after")):
-        d = pct(mz["after"]) - pct(mz["before"])
-        move = "from %d %% to %d %%, %s" % (pct(mz["before"]), pct(mz["after"]),
-                                          "no change" if d == 0 else "%s %d points" % ("up" if d > 0 else "down", abs(d)))
+def review_move(mz):
+    if mz is None or not (eval_runs._num(mz.get("before")) and eval_runs._num(mz.get("after"))):
+        return ""
+    d = pct(mz["after"]) - pct(mz["before"])
+    return "from %d %% to %d %%, %s" % (pct(mz["before"]), pct(mz["after"]),
+                                      "no change" if d == 0 else "%s %d points" % ("up" if d > 0 else "down", abs(d)))
+
+
+def review_state(applied, mz):
+    """A reviewer change's lifecycle: historical-unverified, proposed, applied-awaiting-measurement, measured-keep,
+    measured-revert or inconclusive."""
     bound = applied is not None and isinstance(applied.get("commit"), str)
     if mz is not None and not (bound and mz.get("applied_commit") == applied["commit"]):
+        return "historical-unverified"
+    if not bound:
+        return "proposed"
+    if mz is None:
+        return "applied-awaiting-measurement"
+    if mz.get("verdict") in ("keep", "revert") and review_move(mz):
+        return "measured-" + mz["verdict"]
+    return "inconclusive"
+
+
+def review_line(c, what, why, applied, mz):
+    did = "a change to %s after the run of %s, because %s" % (what, day(c.get("ts")), why)
+    move = review_move(mz)
+    state = review_state(applied, mz)
+    if state == "historical-unverified":
         return "- Historical delta; application unverified: %s. A later run moved %s, but no application receipt " \
                "binds that run to the change." % (did, move or "by an unrecorded amount")
-    if not bound:
+    if state == "proposed":
         return "- Proposed, not applied: %s. No application receipt yet, so no later run is credited to it." % did
     did += ", applied in commit %s on %s" % (applied["commit"][:12], day(applied.get("applied_at")))
-    if mz is None:
+    if state == "applied-awaiting-measurement":
         return "- Applied, awaiting measurement: %s. A later run at the applied version measures it." % did
-    if mz.get("verdict") == "keep" and move:
+    if state == "measured-keep":
         return "- Measured, keep: %s. The measured run at the applied version: %s. Keep is a recommendation: " \
                "nothing was merged, deployed or reverted by it." % (did, move)
     reason = mz.get("reason") if isinstance(mz.get("reason"), str) and mz.get("reason") else "no reason recorded"
-    if mz.get("verdict") == "revert" and move:
+    if state == "measured-revert":
         return "- Measured, revert: %s. The measured run at the applied version: %s (%s). Revert is a " \
                "recommendation: nothing was reverted by it." % (did, move, reason)
     return "- Inconclusive: %s. The measured run at the applied version settles nothing: %s." % (did, reason)
 
 
-def change_lines(changes):
+def change_reason(c):
+    """(what the change edits, why it was raised, whether its metric is a rate) in plain words."""
+    owner = OWNER.get(c.get("critic"), "the %s eval's" % plain(c.get("eval", "")))
+    tmpl = CHANGES.get(c.get("change"), "%s setup")
+    what = tmpl % owner if "%s" in tmpl else tmpl
+    metric = c.get("metric", "")
+    parts = metric.split(".")
+    is_rate = metric.endswith(("recall", "rate", "precision"))
+    if len(parts) == 4 and parts[1] == "class" and parts[3] == "recall":
+        why = "it caught too few %s" % BUG_CLASSES.get(parts[2], plain(parts[2]))
+    elif metric.startswith("cause.ci-selection."):
+        why = "too many bugs got past because CI did not run the right test"
+    elif len(parts) == 3 and parts[0] == "class" and parts[2] == "escape_excess":
+        why = "too many bugs got past on %s changes" % plain(parts[1])
+    else:
+        why = "one of its numbers was past its limit"
+    if is_rate and eval_runs._num(c.get("value")) and eval_runs._num(c.get("threshold")):
+        why += ": %d %%, the bar is %d %%" % (pct(c["value"]), pct(c["threshold"]))
+    return what, why, is_rate
+
+
+def change_index(changes):
+    """(open reviewer and judge changes, measured record by id, first applied receipt by id)."""
     changes = [c for c in changes if isinstance(c, dict)]
     opened = [c for c in changes if c.get("status") == "open" and c.get("eval") in ("review-panel", "judge-accuracy")
               and isinstance(c.get("metric"), str)]
@@ -296,24 +350,14 @@ def change_lines(changes):
     for c in changes:
         if c.get("status") == "applied" and isinstance(c.get("id"), str):
             applied.setdefault(c["id"], c)
+    return opened, done, applied
+
+
+def change_lines(changes):
+    opened, done, applied = change_index(changes)
     out = []
     for c in opened:
-        owner = OWNER.get(c.get("critic"), "the %s eval's" % plain(c.get("eval", "")))
-        tmpl = CHANGES.get(c.get("change"), "%s setup")
-        what = tmpl % owner if "%s" in tmpl else tmpl
-        metric = c.get("metric", "")
-        parts = metric.split(".")
-        is_rate = metric.endswith(("recall", "rate", "precision"))
-        if len(parts) == 4 and parts[1] == "class" and parts[3] == "recall":
-            why = "it caught too few %s" % BUG_CLASSES.get(parts[2], plain(parts[2]))
-        elif metric.startswith("cause.ci-selection."):
-            why = "too many bugs got past because CI did not run the right test"
-        elif len(parts) == 3 and parts[0] == "class" and parts[2] == "escape_excess":
-            why = "too many bugs got past on %s changes" % plain(parts[1])
-        else:
-            why = "one of its numbers was past its limit"
-        if is_rate and eval_runs._num(c.get("value")) and eval_runs._num(c.get("threshold")):
-            why += ": %d %%, the bar is %d %%" %(pct(c["value"]), pct(c["threshold"]))
+        what, why, is_rate = change_reason(c)
         if c.get("eval") == "review-panel":
             out.append(review_line(c, what, why, applied.get(c.get("id")), done.get(c.get("id"))))
             continue
@@ -510,6 +554,323 @@ def write_panel(path, text):
     return 0
 
 
+REPORT_V = 1
+OLD_DAYS = 7
+CAPTURE_REASON = "no per-PR capture receipts and no expected-PR snapshot"
+BENCH = (("key_match_recall", "recall", "key-matched labelled target defects", "labelled target defects", False),
+         ("key_match_precision", "precision", "findings that key-matched a labelled defect", "findings", False),
+         ("labelled_clean_block_rate", "fp_rate", "labelled-clean changes blocked", "labelled-clean changes", True))
+VERIFIED = (("adjudicated_precision", "findings adjudicated correct", "decided findings", False),
+            ("verified_false_block_rate", "labelled-clean changes falsely blocked (verified)", "labelled-clean changes", True))
+PROD = {cr_ledger_eval.RECORDED: "agreed by the PR author, of the decided findings (recorded disposition)",
+        cr_ledger_eval.INFERRED: "resolved after a change (thread state, inferred)",
+        cr_ledger_eval.UNKNOWN_SOURCE: "verdict source unknown: counted, no ratio"}
+
+
+def iso(t):
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def newest_ts(rows):
+    ts = [(cr_ledger_eval.parse_ts(r.get("ts")), r.get("ts")) for r in rows if isinstance(r, dict)]
+    ts = [x for x in ts if x[0] is not None]
+    return max(ts)[1] if ts else None
+
+
+def read_jsonl(path):
+    """(dict rows, malformed line count) of a JSONL file; OSError propagates."""
+    rows, bad = [], 0
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+            except ValueError:
+                bad += 1
+                continue
+            if isinstance(r, dict):
+                rows.append(r)
+            else:
+                bad += 1
+    return rows, bad
+
+
+def read_source(sid, path):
+    """(source record, rows or None). Missing is absent; any other read failure is error, by errno name only."""
+    src = {"id": sid, "name": os.path.basename(path or ""), "state": "absent", "reason": None, "records": 0,
+           "malformed": 0, "observed_through": None}
+    if not path:
+        src["reason"] = "no-path"
+        return src, None
+    try:
+        if sid == "eval-runs":
+            with open(path, encoding="utf-8"):
+                pass
+            rows, _, bad = eval_runs.scan_rows(path)
+            bad = len(bad)
+        else:
+            rows, bad = read_jsonl(path)
+    except FileNotFoundError:
+        src["reason"] = "ENOENT"
+        return src, None
+    except OSError as e:
+        src.update(state="error", reason=errno.errorcode.get(e.errno, "EIO"))
+        return src, None
+    except ValueError:
+        src.update(state="error", reason="undecodable")
+        return src, None
+    src.update(state="ok", records=len(rows), malformed=bad, observed_through=newest_ts(rows))
+    return src, rows
+
+
+def report_state(sources):
+    states = {s["state"] for s in sources}
+    if "error" in states:
+        return "partial" if "ok" in states else "error"
+    return "ok" if "ok" in states else "absent"
+
+
+def ratio_of(k, n):
+    return round(k / n, 4) if n and k is not None else None
+
+
+def metric(mid, family, reviewer, label, kind, k, n, unit, **kw):
+    m = {"id": mid, "family": family, "reviewer": reviewer, "label": label, "kind": kind, "k": k, "n": n,
+         "value": ratio_of(k, n), "interval": None, "sample_unit": unit, "window": None, "cohort": None, "model": None,
+         "execution_id": None, "run_id": None, "scorer_sha256": None, "verdict_source": None, "coverage": None,
+         "freshness": None, "limitations": [], "trend": None, "lower_better": False}
+    m.update(kw)
+    return m
+
+
+def bench_metrics(cur, prev, fresh):
+    m, ci, meta = cur["metrics"], cur.get("ci") or {}, cur.get("meta") or {}
+    unscored = meta.get("unscored")
+    common = {"window": {"observed_at": cur["ts"]}, "cohort": cur.get("confighash"),
+              "model": cur.get("model") or (cur.get("config") or {}).get("critic_model"),
+              "execution_id": eval_feedback.row_field(cur, "execution_id"), "run_id": cur.get("run_id"),
+              "scorer_sha256": known_scorer(cur), "freshness": fresh,
+              "coverage": {"cases": cur.get("n"), "unscored": len(unscored) if isinstance(unscored, list) else unscored}}
+    lim = ["automated key-match proxy, not verified accuracy"] + ([] if known_scorer(cur) else ["scorer not recorded"])
+    out = []
+    for w in list((cur.get("config") or {}).get("critics") or []) + ["panel"]:
+        for name, old, label, unit, lower in BENCH:
+            key = proxy_key(m, w, name, old)
+            if name == "key_match_recall":
+                n = sum(count(m, k[:-len("recall")] + "n") for k in m if k.startswith(w + ".class.")
+                        and k.endswith(".recall") and eval_runs._num(m[k]))
+            else:
+                n = count(m, w + (".findings" if name == "key_match_precision" else ".clean_scored"))
+            if key not in m and not n:
+                continue
+            v = m.get(key)
+            k = int(round(v * n)) if eval_runs._num(v) and n else None
+            pv = prev["metrics"].get(proxy_key(prev["metrics"], w, name, old)) if prev else None
+            trend = {"previous_value": pv, "previous_run_id": prev.get("run_id")} if eval_runs._num(pv) else None
+            out.append(metric("benchmark.%s.%s" % (w, name), "benchmark", w, label, "proxy", k, n, unit,
+                              interval=ci.get(key) or None, trend=trend, lower_better=lower, limitations=list(lim),
+                              **common))
+        ver = meta.get("verified") if isinstance(meta.get("verified"), dict) else {}
+        counts = ver.get("counts") or {}
+        for name, label, unit, lower in VERIFIED:
+            c = counts.get("%s.%s" % (w, name))
+            if not isinstance(c, dict):
+                continue
+            k, n = c.get("k"), c.get("n")
+            k, n = (int(k), int(n)) if eval_runs._num(k) and eval_runs._num(n) else (None, 0)
+            out.append(metric("benchmark.%s.%s" % (w, name), "benchmark", w, label, "adjudicated", k if n else None,
+                              n, unit, lower_better=lower,
+                              limitations=["not a decision until the cohort is validated"] +
+                              [str(x) for x in ver.get("reasons") or []], **common))
+    return out
+
+
+def prod_metrics(cr_rows, since, until, roster, fresh):
+    """(metrics, excluded): one metric per roster reviewer, answering model, scope and verdict source; the findings of
+    any other slug (bookkeeping such as a judge, a chief or a worker, or an unmapped identity) are only counted."""
+    out, excluded = [], {"findings": 0, "slugs": 0}
+    slugs = set()
+    for r in cr_ledger_eval.reviewer_summary(cr_rows, since, until, False, roster):
+        if not r["reviewer"]:
+            excluded["findings"] += r["total"]
+            slugs.add(r["slug"])
+            continue
+        src = r["verdict_source"]
+        if src == cr_ledger_eval.RECORDED:
+            k, n, ci = r["agreed"], r["decided"], r["author_agreement_ci"]
+        elif src == cr_ledger_eval.INFERRED:
+            k, n, ci = r["thread_state"]["resolved_after_change"], r["total"], None
+        else:
+            k, n, ci = None, r["total"], None
+        cov = {x: r[x] for x in ("total", "agreed", "disproved", "deferred", "unresolved", "prs")}
+        cov.update(adjudication_coverage=r["adjudication_coverage"], capture="unknown")
+        out.append(metric("production.%s.%s.%s.%s" % (r["slug"], r["responding_model"], r["scope"], src), "production",
+                          r["slug"], PROD[src], "proxy", k if n else None, n,
+                          "decided findings" if src == cr_ledger_eval.RECORDED else "findings",
+                          interval=ci, model=r["responding_model"], verdict_source=src, coverage=cov,
+                          window={"since": since, "until": until}, cohort=r["scope"], freshness=fresh,
+                          limitations=["the PR author rules, so agreement is a proxy, not verified correctness"]
+                          if src == cr_ledger_eval.RECORDED else ["inferred from thread state, never author agreement"]
+                          if src == cr_ledger_eval.INFERRED else ["no ratio without a known verdict source"],
+                          value=None if src == cr_ledger_eval.UNKNOWN_SOURCE else ratio_of(k, n)))
+    excluded["slugs"] = len(slugs)
+    return out, excluded
+
+
+def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roster=None):
+    """Report v1 over the code reviewers. Each input is its rows, or None when its source is unusable; sources
+    (default: derived from which inputs are None) names each source's state. No judge eval is read."""
+    t = cr_ledger_eval.parse_ts(now) if isinstance(now, str) else now
+    now_iso = iso(t)
+    if sources is None:
+        sources = [{"id": i, "name": i, "state": "absent" if x is None else "ok", "reason": None,
+                    "records": len(x or []), "malformed": 0, "observed_through": newest_ts(x or [])}
+                   for i, x in (("eval-runs", eval_rows), ("eval-changes", changes), ("cr-ledger", cr_rows))]
+    rp = [r for r in eval_rows or [] if r.get("eval") == "review-panel"
+          and (cr_ledger_eval.parse_ts(r.get("ts")) or t) <= t]
+    usable = [r for r in eval_feedback.select_review_runs(rp)[0] if r["status"] in ("ok", "partial")]
+    cur = usable[-1] if usable else None
+    prior = usable[-2] if len(usable) > 1 else None
+    tries = sorted((x for x in ((cr_ledger_eval.parse_ts(r.get("ts")), i, r) for i, r in enumerate(rp)) if x[0]),
+                   key=lambda x: (x[0], x[1]))
+    attempt = tries[-1][2] if tries else None
+    fresh = None
+    if cur is not None:
+        seen = cr_ledger_eval.parse_ts(cur["ts"])
+        age = t - seen if seen else None
+        fresh = {"observed_at": cur["ts"], "age_days": age.days if age else None, "old_after_days": OLD_DAYS,
+                 "state": "unknown" if age is None else "old" if age.total_seconds() > OLD_DAYS * 86400 else "current"}
+    if cur is None:
+        elig = {"eligible": False, "reasons": ["no usable benchmark run"]}
+    elif prior is None:
+        elig = {"eligible": False, "reasons": ["no earlier usable run"]}
+    else:
+        why = eval_feedback.review_incompat(cur, prior)
+        elig = {"eligible": why is None, "reasons": [why] if why else []}
+    metrics = bench_metrics(cur, prior if elig["eligible"] else None, fresh) if cur is not None else []
+    since = cr_ledger_eval.default_window_start(now_iso)
+    in_cut = [r for r in cr_rows or [] if (cr_ledger_eval.parse_ts(r.get("ts")) or t) <= t]
+    last = newest_ts(in_cut)
+    window_findings = cr_ledger_eval.in_window(cr_ledger_eval.fold(in_cut), since, False)
+    prod = {"window": {"since": since, "until": now_iso, "days": cr_ledger_eval.DEFAULT_DAYS},
+            "last_record_at": last, "records_in_window": len(window_findings),
+            "capture_coverage": "unknown", "capture_reason": CAPTURE_REASON,
+            "roster": "unreadable" if roster is None else "ok", "not_reviewers": None}
+    if cr_rows is not None:
+        pm, prod["not_reviewers"] = prod_metrics(in_cut, since, now_iso, roster or set(),
+                                                 {"last_record_at": last, "capture_coverage": "unknown"})
+        metrics += pm
+    reviewers = {}
+    for m in metrics:
+        x = reviewers.setdefault(m["reviewer"], {"id": m["reviewer"], "models": set(), "families": set(),
+                                                 "in_roster": None if roster is None else m["reviewer"] in roster})
+        x["families"].add(m["family"])
+        if m["model"]:
+            x["models"].add(m["model"])
+    opened, done, applied = change_index(changes or [])
+    proposals = []
+    for c in opened:
+        if c.get("eval") != "review-panel":
+            continue
+        what, why, _ = change_reason(c)
+        a, mz = applied.get(c.get("id")), done.get(c.get("id"))
+        proposals.append({"id": c.get("id"), "reviewer": c.get("critic"), "change": c.get("change"),
+                          "metric": c.get("metric"), "opened_at": c.get("ts"), "lifecycle": review_state(a, mz),
+                          "applied_commit": a["commit"][:12] if a and isinstance(a.get("commit"), str) else None,
+                          "label": review_line(c, what, why, a, mz)[2:]})
+    return {
+        "v": REPORT_V, "report": "code-reviewers", "generated_at": now_iso, "state": report_state(sources),
+        "sources": sources,
+        "latest_attempt": None if attempt is None else {
+            "run_id": attempt.get("run_id"), "at": attempt.get("ts"), "status": attempt.get("status"),
+            "usable": cur is not None and attempt is cur},
+        "latest_usable": None if cur is None else {
+            "run_id": cur.get("run_id"), "at": cur.get("ts"), "status": cur.get("status"),
+            "execution_id": eval_feedback.row_field(cur, "execution_id"), "scorer_sha256": known_scorer(cur),
+            "cohort": cur.get("confighash")},
+        "comparison_eligibility": elig,
+        "benchmark": {"freshness": fresh},
+        "production": prod,
+        "reviewers": [dict(x, models=sorted(x["models"]), families=sorted(x["families"]))
+                      for _, x in sorted(reviewers.items())],
+        "metrics": metrics,
+        "proposals": proposals,
+    }
+
+
+def cell(m):
+    if m["value"] is None:
+        return "%s %s: —" % (num(m["n"]), m["sample_unit"]) if not m["k"] else "%d of %d %s: —" % (
+            m["k"], m["n"], m["sample_unit"])
+    return "%d of %d %s: %d %%" % (m["k"], m["n"], m["sample_unit"], pct(m["value"]))
+
+
+def reviewers_prose(rep):
+    """The code-reviewer report in plain words: the same figures as --reviewers-json, nothing recomputed."""
+    out = ["# Code reviewers", "", "Report of %s (%s)." % (day(rep["generated_at"]), rep["state"]), ""]
+    for s in rep["sources"]:
+        out.append("- %s (%s): %s" % (s["id"], s["name"] or "no file", "read, %d records through %s" % (
+            s["records"], day(s["observed_through"])) if s["state"] == "ok" else
+            "absent" if s["state"] == "absent" else "could not be read (%s)" % s["reason"]))
+    out += ["", "## Planted-bug benchmark", ""]
+    cur, att, f = rep["latest_usable"], rep["latest_attempt"], rep["benchmark"]["freshness"]
+    if cur is None:
+        out.append("No usable run.")
+    else:
+        out.append("Run of %s (%s, %s)." % (day(cur["at"]), cur["run_id"], cur["status"]))
+        if f and f["state"] == "old":
+            out.append("Old: observed %d days before this report." % f["age_days"])
+    if att and not att["usable"]:
+        out.append("Latest attempt %s (%s): %s, not usable." % (day(att["at"]), att["run_id"], att["status"]))
+    el = rep["comparison_eligibility"]
+    out.append("Trend: %s." % ("against the previous run" if el["eligible"] else "none, " + "; ".join(el["reasons"])))
+    bench = [m for m in rep["metrics"] if m["family"] == "benchmark"]
+    out += [""] if bench else []
+    for m in bench:
+        name = CRITICS.get(m["reviewer"], "The %s critic" % plain(m["reviewer"]))
+        if m["id"].endswith(".key_match_recall"):
+            line = "%s key-matched %s" % (name, cell(m))
+        else:
+            line = "%s, %s (%s): %s" % (name, m["label"], m["kind"], cell(m))
+        out.append("- " + line + ".")
+    p = rep["production"]
+    out += ["", "## Review findings on merged work, %s to %s" % (day(p["window"]["since"]), day(p["window"]["until"])), ""]
+    if p["last_record_at"] is None:
+        out.append("No records; capture coverage unknown.")
+    elif not p["records_in_window"]:
+        out.append("No new records since %s; capture coverage unknown." % day(p["last_record_at"]))
+    else:
+        out.append("Last record %s; capture coverage unknown (%s)." % (day(p["last_record_at"]), p["capture_reason"]))
+    nr = p.get("not_reviewers") or {}
+    if p.get("roster") != "ok":
+        out.append("The reviewer roster (scripts/cr/critics.json) could not be read, so no slug counts as a reviewer.")
+    if nr.get("findings"):
+        out.append("Counted out: %s findings from %d slugs that are not code reviewers." % (num(nr["findings"]), nr["slugs"]))
+    for m in rep["metrics"]:
+        if m["family"] == "production":
+            out.append("- %s (%s, %s): %s, %s." % (m["reviewer"], m["model"], m["cohort"], m["label"], cell(m)))
+    out += ["", "## Reviewer changes", ""]
+    out += ["- " + x["label"] for x in rep["proposals"]] or ["No change yet."]
+    return "\n".join(out) + "\n"
+
+
+def reviewers_cli(a):
+    now = cr_ledger_eval.parse_ts(a.now) if a.now else datetime.now(timezone.utc)
+    if now is None:
+        print("review-page: refused: --now is not an ISO-8601 timestamp", file=sys.stderr)
+        return 2
+    srcs, data = [], []
+    for sid, path in (("eval-runs", a.ledger), ("eval-changes", a.changes), ("cr-ledger", a.cr_ledger)):
+        s, rows = read_source(sid, path)
+        srcs.append(s)
+        data.append(rows)
+    rep = build_reviewers_report(data[0], data[1], data[2], now, sources=srcs,
+                                 roster=cr_ledger_eval.roster_slugs(os.path.join(HERE, "..", "cr", "critics.json")))
+    sys.stdout.write(json.dumps(rep, sort_keys=True) + "\n" if a.reviewers_json else reviewers_prose(rep))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ledger")
@@ -519,7 +880,15 @@ def main(argv=None):
     ap.add_argument("--cr-ledger")
     ap.add_argument("--until")
     ap.add_argument("--min-findings", type=int, default=SMALL)
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--reviewers-json", action="store_true")
+    mode.add_argument("--reviewers-only", action="store_true")
+    ap.add_argument("--now")
     a = ap.parse_args(argv)
+    if a.reviewers_json or a.reviewers_only:
+        if a.ledger is None or a.changes is None or a.cr_ledger is None:
+            ap.error("--reviewers-json and --reviewers-only need --ledger, --changes and --cr-ledger")
+        return reviewers_cli(a)
     if a.panel:
         rows, _ = cr_ledger_eval.load(a.cr_ledger or cr_ledger_eval.default_ledger(), a.until)
         text = panel(rows, a.until, a.min_findings)
