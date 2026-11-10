@@ -12,7 +12,7 @@ estimates, make wins visible. Vendored verbatim from
 | source | `https://github.com/ayghri/i-have-adhd` |
 | commit | `1ecea1993b7fce257ffbd686c070948b5e07eda6` |
 | license | MIT, Copyright (c) 2026 Ayoub Ghriss (`LICENSE`, copied verbatim) |
-| vendored | 2026-10-11 (HIMMEL-5239) |
+| vendored | 2026-10-11, at the operator's request, for clearer replies |
 | upstream version | `0.4.1`; local manifest `0.4.3` (version-bump gate, always-on.ps1 dropped with Windows); no release tag, so the pin is a commit, watched by the `commit_head` row in `scripts/upstreams.json` |
 | taken, byte for byte | `hooks/hooks.json`, `hooks/always-on.mjs`, `hooks/always-on.sh`, `skills/i-have-adhd/SKILL.md`, `LICENSE` |
 | left out | `skills/i-have-adhd/agents/` (Codex/Gemini interface metadata), `.codex-plugin`, `.agents`, `.cursor`, `.opencode`, `extensions/`, `gemini`/`qwen`/`kimi` manifests, `evals/`, `scripts/`, `tests/`, `.github/` (translations and CI), `package.json`, `AGENTS.md`, `GEMINI.md` |
@@ -34,7 +34,7 @@ update the pin above), never a hand edit.
   SessionStart, which then sits in the cached prefix.
 - **Per turn**: nothing. There is no per-prompt hook.
 - **Always-on is created by himmel's installer and updater, never by this
-  plugin** (HIMMEL-5239). `scripts/machine-setup/install-plugins.sh` and
+  plugin**. `scripts/machine-setup/install-plugins.sh` and
   `scripts/himmel-update.sh` both call
   `scripts/machine-setup/enable-i-have-adhd-always.sh`, which creates
   `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.i-have-adhd-always` when
@@ -45,7 +45,7 @@ update the pin above), never a hand edit.
   runs the installer or updater. The flag is then never created, so deleting it
   sticks. Without the opt-out an updater run recreates a deleted flag. The
   installer does not remove the flag on uninstall.
-- Hook review (HIMMEL-5239): all three hook implementations were read in full.
+- Hook review at vendoring: all three hook implementations were read in full.
   No network, no installs, no writes, no settings changes; any failure exits 0.
 
 ## Overlap

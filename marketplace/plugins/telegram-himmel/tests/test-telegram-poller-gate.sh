@@ -90,6 +90,6 @@ reaped="$(reap_case)"
 fail=0
 [ "$owner" = "PID_WRITTEN/REMOVED" ] || { echo "FAIL: owner (OWN_POLLER=1) must write bot.pid and remove it on shutdown (got $owner)"; fail=1; }
 [ "$nonowner" = "NO_PID/REMOVED" ]   || { echo "FAIL: non-owner (OWN_POLLER unset) wrote bot.pid (got $nonowner) — would steal the slot"; fail=1; }
-[ "$reaped" = "REAPED" ]     || { echo "FAIL: a second owner did NOT reap the stale poller (got $reaped) — two live getUpdates consumers (HIMMEL-1858)"; fail=1; }
+[ "$reaped" = "REAPED" ]     || { echo "FAIL: a second owner did NOT reap the stale poller (got $reaped) — two live getUpdates consumers"; fail=1; }
 [ "$fail" -eq 0 ] && echo "PASS: poller gate writes bot.pid only for the owner, and a second owner reaps the first"
 exit "$fail"
