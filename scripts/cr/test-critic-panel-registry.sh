@@ -185,6 +185,19 @@ check "check: set, lane on"             "$(printf '%s\n' "$CHK_ON" | grep '^effe
 check "check: set, app not armed"       "$(printf '%s\n' "$CHK_UN" | grep '^effective reviewers:')" "effective reviewers: codex"
 check "check: github-app row never probed" "$(printf '%s\n' "$CHK_ON" | grep -c '^row coderabbit')" "0"
 
+# The SHIPPED registry with the lane off. The claude row is absent(api lane is OFF) and the
+# reviewer set equals the base set (the shipped rows with the claude row dropped). A lane that is on selects
+# claude, so the equality is not vacuous.
+printf '%s' '{"panel":[{"slug":"claude","drop":true}]}' > "$tmp/ship-drop-claude.json"
+ship() { env -u CR_PROFILE -u CRITICS_BASE_JSON -u CRITICS_JSON "$@" bash "$PANEL" --check 2>/dev/null; }
+SHIP_OFF=$(ship -u HIMMEL_API_LANE CRITICS_LOCAL_JSON="$tmp/none.json" CR_APP=0)
+SHIP_BASE=$(ship -u HIMMEL_API_LANE CRITICS_LOCAL_JSON="$tmp/ship-drop-claude.json" CR_APP=0)
+SHIP_ON=$(ship HIMMEL_API_LANE=on CRITICS_LOCAL_JSON="$tmp/none.json" CR_APP=0)
+check "shipped: claude absent, lane off" "$(printf '%s\n' "$SHIP_OFF" | grep -c '^reviewer claude: .* state=absent(api lane is OFF)$')" "1"
+check "shipped: reviewer set, lane off, equals the base set" "$(printf '%s\n' "$SHIP_OFF" | grep '^effective reviewers:')" "$(printf '%s\n' "$SHIP_BASE" | grep '^effective reviewers:')"
+check "shipped: the base set is not empty" "$(printf '%s\n' "$SHIP_BASE" | grep -c '^effective reviewers: .')" "1"
+check "shipped: lane on selects claude (control)" "$(printf '%s\n' "$SHIP_ON" | grep '^effective reviewers:' | grep -c 'claude')" "1"
+
 # A drop overlay leaves a codex-only set.
 printf '%s' '{"panel":[{"slug":"claude","drop":true}]}' > "$tmp/chk-drop.json"
 CHK_DROP=$(env -u CR_PROFILE CRITICS_BASE_JSON="$tmp/chk.json" CRITICS_LOCAL_JSON="$tmp/chk-drop.json" \
