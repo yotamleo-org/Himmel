@@ -7,7 +7,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, copyFileSync, re
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import * as mp from '../model-price.mjs';
 import { loadPrices, priceFor, priceCall, priceTranscripts } from '../model-price.mjs';
@@ -584,6 +584,55 @@ test('calls: budget before read', () => tmp((d) => {
   assert.equal(cli.status, 2);
 }));
 
+test('calls: a complete non-JSON line never yields complete', () => tmp((d) => {
+  const good = (i) => JSON.stringify(rec(i, OPUS, UU));
+  const fragment = '{"type":"assistant","timestamp":"2026-11-05T10:00:00.000Z","message":{"id":"frag","model":"x","usage":{"input_tok';
+  const text = `${good(1)}\n${fragment}${good(2)}\n${good(3)}\n`;
+  const r = runCalls(build(d, [{ rel: 'proj/s.jsonl', text }]).path);
+  assert.notEqual(r.status, 0, r.stdout);
+  assert.notEqual(r.footer.state, 'complete');
+  assert.ok(errCodes(r.footer).includes('malformed-line'), JSON.stringify(r.footer.errors));
+  assert.equal(r.calls.length, 0, 'the file with a dropped call withholds all of its rows');
+}));
+
+test('calls: every usage record needs a real timestamp, a correction included, and a calendar date', () => tmp((d) => {
+  const bad = (ts) => [rec('m1', OPUS, UU), rec('m1', OPUS, { input_tokens: 1, output_tokens: 200 }, ts)];
+  for (const ts of ['garbage', null, '2026-11-06T10:00:00']) {
+    invalidRun(runCalls(build(d, [{ rel: 'proj/s.jsonl', records: bad(ts) }]).path), 'timestamp-invalid');
+  }
+  for (const ts of ['2026-02-30T10:00:00Z', '2026-13-01T10:00:00Z', '2026-11-05T24:00:00Z', '2026-11-05T10:60:00Z']) {
+    invalidRun(runCalls(build(d, [{ rel: 'proj/s.jsonl', records: [rec('m1', OPUS, UU, ts)] }]).path), 'timestamp-invalid');
+  }
+  invalidRun(runCalls(build(d, [{ rel: 'proj/s.jsonl', records: [rec(1, OPUS, UU)] }], { since: '2026-02-30T00:00:00Z' }).path), 'manifest-window');
+}));
+
+test('calls: one real file declared under two names is a duplicate source', () => tmp((d) => {
+  const b = build(d, [{ rel: 'proj/a.jsonl', records: [rec(1, OPUS, UU)] }]);
+  symlinkSync(join(b.root, 'proj', 'a.jsonl'), join(b.root, 'proj', 'b.jsonl'));
+  b.manifest.files.push({ ...b.manifest.files[0], relative_path: 'proj/b.jsonl', session: 'b' });
+  writeFileSync(b.path, JSON.stringify(b.manifest));
+  invalidRun(runCalls(b.path), 'duplicate-source');
+}));
+
+test('calls: a stdout that is cut short never exits 0', async () => {
+  const d = mkdtempSync(join(tmpdir(), 'model-price-calls-'));
+  try {
+    const many = Array.from({ length: 600 }, (_, i) => rec(i, OPUS, UU));
+    const { path } = build(d, [{ rel: 'proj/big.jsonl', records: many }]);
+    const full = runCalls(path);
+    assert.equal(full.status, 0);
+    assert.ok(full.stdout.length > 2 * 65536, 'the export is larger than a pipe buffer');
+    const status = await new Promise((resolve) => {
+      const child = spawn('node', [CLI, 'calls', '--manifest', path], { stdio: ['ignore', 'pipe', 'ignore'] });
+      child.stdout.once('data', () => child.stdout.destroy());
+      child.on('close', (code, signal) => resolve(code ?? signal));
+    });
+    assert.notEqual(status, 0, 'a reader that hangs up after the first chunk must not see success');
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
 test('calls: mixed session namespaces', () => tmp((d) => {
   const records = [rec(1, OPUS, UU)];
   const b = build(d, [{ rel: 'proj/x.jsonl', records }, { rel: 'proj/p/subagents/x.jsonl', records, parent: 'p' }]);
@@ -703,6 +752,19 @@ test('validate: footer removed, nonterminal, duplicated, count-mutated and hash-
   reset();
   rewrite(set, 0, (o) => o.map((x) => (x.kind === 'usage-call' ? { ...x, nano: '7' } : x)));
   refused(runValidate(set), 'invalid', 2, 'row-shape');
+  reset();
+  rewrite(set, 0, (o) => [o[1], o[0], ...o.slice(2)]);
+  refused(runValidate(set), 'invalid', 2, 'row-shape');
+  reset();
+  rewrite(set, 0, (o) => o.map((x, i) => (i === 0 ? { ...x, first_timestamp: '2026-10-01T00:00:00.000Z' } : x)));
+  refused(runValidate(set), 'invalid', 2, 'row-shape');
+  reset();
+  const declared = JSON.parse(readFileSync(join(dirname(set), 'projection-0.json'), 'utf8')).files;
+  rewrite(set, 0, (o) => o.map((x, i) => (i === 0 ? { ...x, source: { ...x.source, last_offset: declared.find((f) => f.relative_path === x.source.relative_path).bytes } } : x)));
+  refused(runValidate(set), 'invalid', 2, 'source-mismatch');
+  reset();
+  rewrite(set, 0, (o) => o.map((x, i) => (i === 0 ? { ...x, price_sha256: '3'.repeat(64) } : x)));
+  refused(runValidate(set), 'invalid', 2, 'price-mismatch');
   reset();
   assert.equal(runValidate(set).status, 0, 'the unmutated export is complete again');
 }));

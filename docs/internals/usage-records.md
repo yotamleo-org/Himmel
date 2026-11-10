@@ -215,13 +215,14 @@ node scripts/lanes/model-price.mjs calls --manifest PROJECTION.json      # JSONL
 node scripts/lanes/model-price.mjs validate-calls --manifest EXPORT_SET.json   # one JSON receipt
 ```
 
-`calls` takes no other flag (no `--price-as`). It reads exactly the files the projection manifest declares
-(`{schema:1, root, timezone:"Europe/Berlin", since, until, files:[{relative_path, bytes, sha256, provider:"claude",
-session, parent}]}`; `since` inclusive, `until` exclusive, RFC3339 with `Z` or an offset). A relative `root` resolves
+`calls` takes no other flag (no `--price-as`, no window flag): the window is the manifest's own `since` (inclusive) and
+`until` (exclusive), and it filters on each call's `first_timestamp`. It reads exactly the files the projection manifest
+declares (`{schema:1, root, timezone:"Europe/Berlin", since, until, files:[{relative_path, bytes, sha256,
+provider:"claude", session, parent}]}`; RFC3339 with `Z` or an offset, naming a date that exists). A relative `root` resolves
 against the manifest's directory. The caller builds the manifest; nothing is discovered. Refused before any source
 is opened: more than 128 files or 512 MiB declared (`manifest-budget`), a malformed manifest, a path that is
 absolute, a URI or climbs out (`path-escape`), a duplicate path or `(provider, parent, session)`
-(`duplicate-source`), a session name that is not the filename, a child whose directory is not `<parent>/subagents`,
+(`duplicate-source`, which includes one real file declared under two names), a session name that is not the filename, a child whose directory is not `<parent>/subagents`,
 a session id used under two parents (`session-namespace`), a provider other than `claude`.
 
 **Call row** (`kind:"usage-call"`, `schema:1`): `call_id`, `provider`, `session`, `parent`, `first_timestamp`,
@@ -238,7 +239,10 @@ a session id used under two parents (`session-namespace`), a provider other than
   `nano` and `price_row` all `null`; it is never priced at another model's rate. Totals agree with
   `transcripts` to one nanodollar.
 - A `<synthetic>`-style pseudo-model with all-zero usage is excluded (`synthetic-zero`); with nonzero usage the export
-  is invalid. A line that is complete but not JSON is skipped, as `transcripts` skips it.
+  is invalid. A newline-terminated, non-blank line that is not JSON is `malformed-line`: the export is invalid and
+  prints no rows, because a dropped call must never read as complete (`transcripts` still skips such a line). A last
+  line with no newline that is not JSON is the torn line, state `partial`. Every usage record, a later correction
+  included, needs an RFC3339 timestamp (`timestamp-invalid` otherwise).
 - Rows are sorted by `(first_timestamp, call_id)`.
 
 **Footer** (the last line, exactly one): `state`, `manifest_sha256` (of the manifest's exact bytes), `price_sha256` (of
@@ -283,7 +287,8 @@ denominator, and nulls `price_sha256`, `usage_rule`, `timezone` and `call_ids_sh
 
 Two exports with different manifest hashes pass together only when their price hash, usage rule and clock agree and
 no call id or source overlaps. A mixed price revision is `price-mismatch`, never a partial sum. A declared source that
-was read and holds zero calls is in `complete_sessions`.
+was read and holds zero calls is in `complete_sessions`. An EXPORT_SET with `exports: []` has no footer to check, so it is
+`inconclusive` with `footer-missing`, never `complete`.
 
 ## Consumers
 

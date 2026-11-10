@@ -223,12 +223,20 @@ const SOURCE_SCOPE = 'claude-transcripts';
 const EXCLUDED_SOURCES = ['native-codex', 'other-provider-stores'];
 const MAX_FILES = 128;
 const MAX_BYTES = 512 * 1024 * 1024;
-const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 const URI = /^[a-z][a-z0-9+.-]*:\/\//i;
 const REAL_IO = { readFileSync, lstatSync, statSync, realpathSync, openSync, fstatSync, closeSync };
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');
-const rfc3339Ms = (s) => (typeof s === 'string' && RFC3339.test(s) ? Date.parse(s) : NaN);
+// RFC3339 with an offset, and a date that exists: Date.parse alone rolls 2026-02-30 over into March.
+function rfc3339Ms(s) {
+  const m = typeof s === 'string' ? RFC3339.exec(s) : null;
+  if (!m) return NaN;
+  const [y, mo, d, h, mi, se] = m.slice(1).map(Number);
+  const day = new Date(Date.UTC(y, mo - 1, d));
+  if (day.getUTCFullYear() !== y || day.getUTCMonth() !== mo - 1 || day.getUTCDate() !== d || h > 23 || mi > 59 || se > 59) return NaN;
+  return Date.parse(s);
+}
 const isCount = (n) => Number.isSafeInteger(n) && n >= 0;
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const sessionKey = (s) => JSON.stringify([s.provider, s.parent, s.session]);
@@ -300,7 +308,7 @@ function readSource(f, realRoot, io, fail) {
     buf = io.readFileSync(real);
   } catch { return fail('source-unreadable', rel); }
   if (buf.length !== f.bytes || sha256(buf) !== f.sha256) return fail('source-changed', rel);
-  return buf;
+  return { buf, real };
 }
 
 function foldFile(buf, rel, fail) {
@@ -310,16 +318,15 @@ function foldFile(buf, rel, fail) {
   for (const [line, offset, terminated] of bufferLines(buf)) {
     if (!line.trim()) continue;
     let r;
-    try { r = JSON.parse(line); } catch { if (!terminated) torn = true; continue; }
+    try { r = JSON.parse(line); } catch { if (terminated) fail('malformed-line', rel); else torn = true; continue; }
     const m = r?.message;
     if (r?.type !== 'assistant' || !m || typeof m !== 'object' || !m.usage) continue;
+    const ms = rfc3339Ms(r.timestamp);
+    if (Number.isNaN(ms)) fail('timestamp-invalid', rel);
     let folded;
     try { folded = foldUsageCall(state, r, offset); } catch (e) { if (!(e instanceof UsageError)) throw e; fail(e.code, rel); continue; }
-    if (folded.first) {
-      const ms = rfc3339Ms(r.timestamp);
-      if (Number.isNaN(ms)) fail('timestamp-invalid', rel);
-      meta.set(folded.key, { ms, firstModel: folded.next.model, firstOffset: offset, lastOffset: offset });
-    } else meta.get(folded.key).lastOffset = offset;
+    if (folded.first) meta.set(folded.key, { ms, firstModel: folded.next.model, firstOffset: offset, lastOffset: offset });
+    else meta.get(folded.key).lastOffset = offset;
     state.set(folded.key, folded.next);
   }
   return { state, meta, torn };
@@ -379,10 +386,13 @@ export function projectCalls(manifest, prices, { manifestSha256 = null, baseDir 
   let readFiles = 0;
   let sourceBytes = 0;
   let torn = 0;
+  const seenReal = new Set();
   for (const f of files) {
-    const buf = readSource(f, realRoot, io, fail);
-    if (buf === null) continue;
-    const folded = foldFile(buf, f.relative_path, fail);
+    const source = readSource(f, realRoot, io, fail);
+    if (source === null) continue;
+    if (seenReal.has(source.real)) { fail('duplicate-source', f.relative_path); continue; }
+    seenReal.add(source.real);
+    const folded = foldFile(source.buf, f.relative_path, fail);
     if (folded.torn) { torn += 1; fail('torn-line', f.relative_path); continue; }
     readFiles += 1;
     sourceBytes += f.bytes;
