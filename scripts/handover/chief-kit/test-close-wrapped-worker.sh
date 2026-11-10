@@ -209,15 +209,11 @@ LSA_STUB="$W/bin/live-subagents-stub.sh"
 printf '#!/usr/bin/env bash\necho "live-subagents $*" >> "${CALLS_LOG:-/dev/null}.lsa"\necho live-subagents=0\n' > "$LSA_STUB"
 chmod +x "$LSA_STUB"
 
-# Stub close-sweep.sh: logs its argv to its own file, so every case's CALLS count is
-# unchanged and no case starts the real sweep against the real state dir; --status
-# is answered by the real sweep over the case's scratch state dir.
 SWEEP_STUB="$W/bin/close-sweep-stub.sh"
 # shellcheck disable=SC2016  # the stub body expands when the stub runs
 printf '#!/usr/bin/env bash\nif [ "$1" = --status ]; then exec bash %q --status; fi\necho "close-sweep $*" >> "$CALLS_LOG.sweep"\n' "$HERE/close-sweep.sh" > "$SWEEP_STUB"
 chmod +x "$SWEEP_STUB"
 SWEEP_STATE="$W/sweep-state"
-# wait_for <file> <fixed-string>: up to 5 s for a detached child to log a line
 wait_for() {
     local i=0
     while [ "$i" -lt 50 ]; do grep -q -F -e "$2" "$1" 2>/dev/null && return 0; i=$((i + 1)); sleep 0.1; done
@@ -228,14 +224,10 @@ wait_file() {
     while [ "$i" -lt 300 ]; do [ -e "$1" ] && return 0; i=$((i + 1)); sleep 0.1; done
     return 1
 }
-# rec_json [<label>]: the close record queued for that label (any label: the first), in
-# pending/, done/ or failed/; rec_field <field> [<label>]: one of its fields
 rec_json() { find "$SWEEP_STATE" -path '*/.tmp' -prune -o -type f -name "*-${1:-*}-[0-9]*.json" -print 2>/dev/null | head -n 1; }
 rec_field() { jq -r --arg f "$1" '.[$f] // "" | if type == "array" then join("\n") else tostring end' "$(rec_json "${2:-}")" 2>/dev/null; }
-# count_glob <dir> <pattern>: how many entries of <dir> match <pattern>
 count_glob() { local f n=0; for f in "$1"/$2; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
 rec_where() { local f; f=$(rec_json "${1:-}"); if [ -n "$f" ]; then basename "$(dirname "$f")"; else echo none; fi; }
-# The sweep's pr-cache verb: an empty, complete list, logged to its own file.
 WTSH_STUB="$W/bin/worktree-stub.sh"
 # shellcheck disable=SC2016  # the stub body expands when the stub runs
 printf '#!/usr/bin/env bash\necho "worktree.sh $*" >> "$CALLS_LOG.wt"\nprintf "# nwo=owner/repo\\n# scope=all\\n# complete rows=0\\n"\n' > "$WTSH_STUB"
@@ -296,7 +288,6 @@ sweep_now() {
         CWL_CLEAN_MODE="${CWL_CLEAN_MODE:-ok}" \
         bash "$HERE/close-sweep.sh" --drain > "$W/sweep.out" 2>&1
 }
-# prune_calls <wt>: the sweep's clean.sh --only calls for that worktree
 prune_calls() { grep -c -F -e "clean.sh --only $1 --only-allow-unmerged --pr-cache " "$CALLS"; }
 unset CWL_PR_STATE CWL_CLEAN_MODE CWL_PR_VIEW_FAIL CWL_KILL_FAIL CWL_SUBTREE_MODE
 
@@ -576,8 +567,6 @@ rc=0; out=$(CWL_KILL_FAIL=1 run --fleet "$fleet_manifest" "$DOC" 2>&1) || rc=$?
 check 'fleet: failed signal preserves status' 1 "$rc"
 check 'fleet: failed signal keeps manifest unchanged' "$fleet_before" "$(cat "$fleet_manifest")"
 
-# A close with a worktree retires its doc whatever its prune will do: the prune is the
-# sweep's, and a prune that goes wrong lands in the sweep's failed/, never in the close's rc.
 bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" --lane native "$DOC"
 mkdoc '- 10:00 WRAPPED - done' "worktree: \`$WT/.claude/worktrees/demo\`"
 reset_calls
@@ -641,11 +630,6 @@ GIT_DIR="$W/not-a-git-dir" sweep_now; mkcmdline 210 claude -n "$SESSION_NAME" wo
 check "nested-adopter: clean.sh runs in the adopter, not the outer repo" "$(tail -n 1 "$CLEAN_CWD_LOG")" "$NESTED"
 check "nested-adopter: an inherited GIT_DIR does not reach clean.sh" "$(tail -n 1 "$CLEAN_GITDIR_LOG")" "unset"
 
-# --- 9 to 12: the sweep reads the prune's summary for the close's record -----------
-# A benign skip ("not a prune candidate", "in use" after the bounded retries) is kept in
-# done/; a PARTIAL or FAILED (possibly GUTTED) removal, or an unregistered directory still
-# on disk, goes to failed/ (whose count the batch caller prints); an already-gone worktree
-# is done. Every case's close returns 0.
 for pm in not-candidate:done:kept partial:failed:failed gutted:failed:failed unregistered:failed:failed fail:failed:failed ok:done:pruned; do
     mode="${pm%%:*}"; want_dir="${pm#*:}"; want_dir="${want_dir%%:*}"; want_prune="${pm##*:}"
     mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`"
@@ -712,10 +696,6 @@ not_contains "kill-fail: clean.sh not called" "$(cat "$CALLS")" "clean.sh"
 not_contains "kill-fail: never claims it sent TERM" "$out" "sent TERM"
 check "kill-fail: no close record queued" "$(rec_json)" ""
 
-# --- DoD 1: the close returns after the TERM; the housekeeping waits for the sweep ----
-# A wrapped worker with a merged PR; the prune, reap, digest and sweep helpers each
-# sleep 10 s before writing a marker. The close returns rc 0 in under 3 s and no
-# marker exists yet.
 for slow in clean reap digest sweep; do
     printf '#!/usr/bin/env bash\nsleep 10\n[ -d %q ] && : > %q\necho digest=ok\n' "$W" "$W/marker.$slow" > "$W/bin/slow-$slow.sh"
     chmod +x "$W/bin/slow-$slow.sh"
@@ -731,7 +711,6 @@ if [ "$ms" -lt 3000 ]; then echo "ok - DoD 1: the close returned in ${ms} ms (un
 check "DoD 1: no helper marker exists when the close returns" "$(count_glob "$W" 'marker.*')" "0"
 mkcmdline 210 claude -n "$SESSION_NAME" work
 
-# --- no GitHub call: a full close with gh stubbed to fail logs no gh call -------
 mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`" "- 09:50 READY 41 $(printf 'a%.0s' $(seq 1 40)) GREEN"
 reset_calls
 rc=0; out=$(CWL_PR_VIEW_FAIL=1 run "$DOC" 2>&1) || rc=$?
@@ -739,7 +718,6 @@ check "no GitHub call: the close returns 0" "$rc" "0"
 contains "no GitHub call: the close queued its record" "$out" "sweep=queued $SWEEP_STATE/pending/"
 check "no GitHub call: neither GH_BIN nor a gh on PATH was called" "$(grep -c '^gh ' "$CALLS")" "0"
 
-# --- record written: one record in pending/ with every field the sweep reads -----
 SID_REC=4670c3a0-0000-4000-8000-0000000000c1
 mkdir -p "$W/sessions"; printf '{"pid":210,"sessionId":"%s"}\n' "$SID_REC" > "$W/sessions/210.json"
 printf '210 (claude) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 98765 0 0\n' > "$W/proc/210/stat"
@@ -770,7 +748,6 @@ check "record written: a failed record write still exits 0" "$rc" "0"
 contains "record written: a failed record write prints the WARN" "$out" "close-wrapped-worker: WARN cannot queue the close sweep record"
 exact_count "record written: the TERM was still sent" "$(cat "$CALLS")" "kill -TERM 210" "1"
 
-# --- record write is atomic: with mv failing, pending/ holds no .json file ----------
 mkdir -p "$W/mvfail"; printf '#!/usr/bin/env bash\nexit 1\n' > "$W/mvfail/mv"; chmod +x "$W/mvfail/mv"
 reset_calls
 rc=0; out=$(PATH="$W/mvfail:$PATH" run "$DOC" 2>&1) || rc=$?
@@ -780,7 +757,6 @@ check "record write is atomic: no .json file in pending/" "$(find "$SWEEP_STATE/
 check "record write is atomic: no partial file left in pending/.tmp" "$(find "$SWEEP_STATE/pending/.tmp" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
 not_contains "record write is atomic: no sweep=queued line" "$out" "sweep=queued"
 
-# --- record repo: the repo that registers the worktree, never the close's cwd -------
 RR="$W/adopter-git"; mkdir -p "$RR"
 git -C "$RR" init -q -b main
 git -C "$RR" -c user.email=t@t -c user.name=t -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m base
@@ -795,7 +771,6 @@ reset_calls
 rc=0; out=$(cd "$HERE" && run "$DOC" 2>&1) || rc=$?
 check "record repo: a worktree whose repo is gone gives an empty repo, never the cwd" "$(rec_field repo)" ""
 
-# --- missing sessions file still closes: the session id comes from the one transcript --
 MS_SID=4670c3a0-0000-4000-8000-0000000000c2
 MS_PROJ="$W/ms-projects"; mkdir -p "$MS_PROJ/-p"
 printf '%s\n' "{\"customTitle\":\"$SESSION_NAME\",\"cwd\":\"$W\"}" > "$MS_PROJ/-p/$MS_SID.jsonl"
@@ -809,7 +784,6 @@ exact_count "missing sessions file still closes: the TERM is sent" "$(cat "$CALL
 check "missing sessions file still closes: the record's sid is that id" "$(rec_field sid)" "$MS_SID"
 check "missing sessions file still closes: the record carries that transcript" "$(rec_field transcript)" "$MS_PROJ/-p/$MS_SID.jsonl"
 
-# --- sweep started detached, then the manifest retired --------------------------
 # shellcheck disable=SC2016  # the stub body expands when the stub runs
 printf '#!/usr/bin/env bash\necho "close-sweep $*" >> "$CALLS_LOG.sweep"\nsleep 5\n' > "$W/bin/sweep-sleeps.sh"; chmod +x "$W/bin/sweep-sleeps.sh"
 bash "$HERE/fleet-manifest.sh" add "$W/detach-fleet.json" --lane native "$DOC"
@@ -848,7 +822,6 @@ rm -f "$PAUSE"
 wait_file "$SWEEP_STATE/last"
 mkcmdline 210 claude -n "$SESSION_NAME" work
 
-# --- real sweep, no stub: the record reaches done/ and is digested once ------------
 mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`"
 reset_calls; : > "$CALLS.digest"
 rc=0; out=$(CWL_SWEEP_BIN="" CLOSE_SWEEP_PID_WAIT=0 WORKTREE_SH_BIN="$WTSH_STUB" \
@@ -1218,7 +1191,6 @@ check "ledger-fail: close still rc 0 when worker-burn fails" "$rc" "0"
 check "ledger-fail: the record says cost=failed:burn" "$(rec_field cost)" "failed:burn"
 exact_count "ledger-fail: TERM still sent" "$(cat "$CALLS")" "kill -TERM 210" "1"
 check "ledger-fail: no row written" "$([ -e "$LC_LEDGER" ] && { wc -l < "$LC_LEDGER" | tr -d ' '; } || echo 0)" "0"
-# an unwritable ledger location is only a recorded result too
 reset_calls
 rc=0; out=$(CWL_PROJECTS_DIR="$LC_PROJ" run "$DOC" 2>&1) || rc=$?
 WORKER_SESSION_COST_LEDGER="/proc/no-such-dir/x.jsonl" sweep_now
@@ -1337,8 +1309,7 @@ dg_ledgers() { # dg_ledgers <tag> - point the step at a fresh set of scratch led
     mkdir -p "$W/dg-$1"
 }
 dg_rows() { if [ -f "$1" ]; then grep -c . "$1"; else echo 0; fi; }
-dg_close() { # dg_close <sessions-file sid> - one close of pid 210, its proc entry gone at TERM, then
-    # one sweep: prints the close's output (its record path masked) and the record's digest= result
+dg_close() {
     local o r
     rm -rf "$W/proc"; mkdir -p "$W/proc"; mkcmdline 210 claude -n "$SESSION_NAME" work; pgrep_x_stub 210
     printf '{"pid":210,"sessionId":"%s"}\n' "$1" > "$W/sessions/210.json"
@@ -2374,7 +2345,6 @@ exact_count "workers: the current manifest's WRAPPED worker is closed" "$(cat "$
 check "workers: exactly two sessions signaled" "$(grep -c '^kill -TERM ' "$CALLS")" "2"
 not_contains "workers: the held WRAPPED worker is never signaled" "$(cat "$CALLS")" "kill -TERM 282"
 [ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$MS_HELD" "$token" >/dev/null 2>&1
-# the batch starts one detached drain after its loop and ends with the sweep's status line
 STATUS_RE='^close-sweep: pending=[0-9]+ failed=[0-9]+ last=[0-9]+$'
 reset_calls
 rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-workers.sh" run "$MS_PRED_M" 2>&1) || rc=$?

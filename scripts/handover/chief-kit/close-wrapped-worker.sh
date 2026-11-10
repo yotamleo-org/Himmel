@@ -758,7 +758,6 @@ if [ "$match_count" -ne 1 ]; then
 fi
 
 TRANSCRIPT=""
-# the worker's session names, for the transcript fallback below and the close record
 candidates=$(printf '%s\n%s\n%s\n' "${ident#*$'\t'}" "$doc_stem" "$matched_name" | tr ',' '\n' | sed '/^$/d')
 # a claudex worker runs with CLAUDE_CONFIG_DIR=~/.claude-codex, so its
 # sessions/<pid>.json and projects/ are NOT under the chief's config dir. Read
@@ -884,8 +883,6 @@ rec_name="$closed_at-$(printf '%s' "${rec_label:-$doc_stem}" | tr -c 'A-Za-z0-9_
 rec_doc="$(cd "$(dirname "$DOC")" && pwd)/$(basename "$DOC")"
 rec_file="$CLOSE_SWEEP_STATE/pending/$rec_name.json"
 
-# queue_record: write the record under pending/.tmp/ and move it into pending/, so
-# pending/ never holds a partial .json file.
 queue_record() {
     local tmp="$CLOSE_SWEEP_STATE/pending/.tmp/$rec_name"
     mkdir -p "$CLOSE_SWEEP_STATE/pending/.tmp" 2>/dev/null || return 1
