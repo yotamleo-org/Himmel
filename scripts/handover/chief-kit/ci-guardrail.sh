@@ -7,8 +7,8 @@
 #   ALERT <metric>=<value>><line> (<where>)      one per NEW crossing, after the first line
 #   INFO <metric>=<value> (<where>)              one per information row, after the ALERT lines
 # Only two metrics can read OVER, both read from scripts/eval/ci-metrics.sh: concurrent-jobs
-# (running + queued jobs, line 500) and gh-refusal (a run that ended startup_failure in the
-# last 2 h, line 0). The old run-count rows (runs-h 150, runs-day 1500, cancels-10m 30,
+# (running + queued jobs now, line 500) and gh-refusal (a run that ended startup_failure in
+# the last 2 h, line 0). The old run-count rows (runs-h 150, runs-day 1500, cancels-10m 30,
 # reruns-h 10, branch-day 10) are our own reference points, not a GitHub limit: they print as
 # INFO and never read OVER, never print an ALERT, never hold a dispatch or a rerun.
 # An ALERT prints once per crossing; the metric re-arms on the first read at or below its
@@ -176,7 +176,7 @@ add_row() { # <metric> <report> <label> <gate|info>
   rows="$rows$1"$'\t'"$r"$'\n'
 }
 # decision 850: the two rows that can read OVER
-add_row concurrent-jobs "$report2" "concurrent jobs, peak (running + queued)" gate
+add_row concurrent-jobs "$report2" "concurrent jobs, now (running + queued)" gate
 add_row gh-refusal "$report2" "GitHub refusals (startup_failure runs)" gate
 # our own old run-count reference points: information only
 add_row runs-h "$report2" "runs per hour, max" info

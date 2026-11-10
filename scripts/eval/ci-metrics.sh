@@ -64,9 +64,10 @@
 #
 # Guardrail rates (plan section 1.3) come from the runs list: runs per hour and per
 # rolling 24 h, cancels per rolling 10 min (by updated_at), reruns per hour (attempt
-# above 1, by run_started_at), runs per branch per day. Only the peak concurrent jobs
-# (running + queued, against 500) and the count of startup_failure runs (a GitHub refusal,
-# against 0) read OVER (operator decision 850); the run-count rows print "info".
+# above 1, by run_started_at), runs per branch per day. Only the concurrent jobs now
+# (running + queued in the window's last minute, against 500) and the count of
+# startup_failure runs that ended in the window (a GitHub refusal, against 0) read OVER
+# (operator decision 850); the run-count rows print "info".
 #
 # Cancel cause is INFERRED, not read: the API does not say who cancelled a run.
 # "superseded" = a newer run of the same workflow + branch + trigger was created
@@ -465,16 +466,17 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
 | ([range(0; $nm) | $RUN[.] + $QUE[.]] | max // 0) as $maxdem
 
 # ---- guardrail rates (decision 850): the only real limits are 500 concurrent jobs and a GitHub refusal ----
-| ($R | map(select(.conclusion == "startup_failure" and (.created_at | t) > $start and (.created_at | t) <= $now)) | length) as $REF
+| ($R | map(select(.conclusion == "startup_failure" and ((.updated_at // .created_at) | t) > $start and ((.updated_at // .created_at) | t) <= $now)) | length) as $REF
+| (if $nm > 0 then $RUN[$nm - 1] + $QUE[$nm - 1] else 0 end) as $curdem
 | def flag($v; $line): if $v > $line then "OVER" else "OK" end;
   def hrat($x): if $x.n == 0 then "0" else "\($x.n) (\($x.h * 3600 | todate))" end;
   ([ "## Guardrail rates",
      "",
-     "Only the concurrent-jobs line (500) and a GitHub refusal read OVER (operator decision 850: 500 concurrent jobs is the only real limit). Every other row is information: its line is our own old run-count reference, not a GitHub limit. Concurrent jobs are running + queued per minute, queued a lower bound (see the cap check); a refusal is a run that ended startup_failure inside the window. Reruns count only runs whose latest attempt is above 1 (earlier attempts are not visible).",
+     "Only the concurrent-jobs line (500) and a GitHub refusal read OVER (operator decision 850: 500 concurrent jobs is the only real limit). Every other row is information: its line is our own old run-count reference, not a GitHub limit. Concurrent jobs are the jobs running + queued in the last minute of the window (the per-minute count of the cap check, queued a lower bound), so a burst that has drained is not a hold; a refusal is a run that ended startup_failure inside the window. Reruns count only runs whose latest attempt is above 1 (earlier attempts are not visible).",
      "",
      "| metric | value | line | status |",
      "|---|---|---|---|",
-     "\(gr("concurrent jobs, peak (running + queued)"; $maxdem; 500)) \(flag($maxdem; 500)) |",
+     "\(gr("concurrent jobs, now (running + queued)"; $curdem; 500)) \(flag($curdem; 500)) |",
      "\(gr("GitHub refusals (startup_failure runs)"; $REF; 0)) \(flag($REF; 0)) |",
      "\(gr("runs per hour, max"; hrat($RHM); 150)) info |",
      "\(gr("runs per hour, p90"; $RHP90 | sec; "-")) - |",

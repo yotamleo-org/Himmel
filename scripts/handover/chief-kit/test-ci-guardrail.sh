@@ -139,8 +139,8 @@ fresh; out="$(run "$W/r1019.json" "$W/state" 2026-10-19T20:05:00Z)"
 contains 'the 10-19 19Z replay (262 runs in an hour) reads ok: our old run-count line is not a GitHub limit' "$out" 'ciguard=ok'
 contains 'the 10-19 19Z replay still prints its 262 runs as info' "$out" 'INFO runs-h=262 (2026-10-19T19:00:00Z)'
 not_contains 'the 10-19 19Z replay raises no alert' "$out" 'ALERT'
-fresh; out="$(run "$W/r1019.json" "$W/state" 2026-10-19T16:00:00Z)"
-contains 'the 10-19 data holds one real startup_failure run (15:14Z): a read at 16:00Z reads OVER' "$out" 'ciguard=OVER:gh-refusal'
+fresh; out="$(run "$W/r1019.json" "$W/state" 2026-10-19T18:00:00Z)"
+contains 'the 10-19 data holds one real startup_failure run (created 15:14Z, ended 17:11Z): a read at 18:00Z reads OVER' "$out" 'ciguard=OVER:gh-refusal'
 fresh; out="$(run "$W/r1015.json" "$W/state" 2026-10-16T00:00:00Z)"
 contains 'the 10-15 replay stays quiet' "$out" 'ciguard=ok'
 not_contains 'the 10-15 replay raises no alert' "$out" 'ALERT'
@@ -260,6 +260,16 @@ contains '500 concurrent jobs reads ok (the line is 500)' "$out" 'ciguard=ok'
 fresh; out="$(runj "$W/q501.json")"
 contains '501 queued concurrent jobs reads OVER' "$out" 'ciguard=OVER:concurrent-jobs'
 contains '501 queued concurrent jobs fires once' "$out" 'ALERT concurrent-jobs=501>500'
+# a burst that has already drained is not a hold: 501 jobs ran 10:00-10:20, none is running at 11:30
+JOBDONE='{run_id: 1, name: "job\(.)", status: "completed", conclusion: "success", created_at: "2026-10-20T10:00:00Z", started_at: "2026-10-20T10:00:00Z", completed_at: "2026-10-20T10:20:00Z"}'
+gen "$JOBDONE" 501 > "$W/d501.json"
+fresh; out="$(runj "$W/d501.json")"
+contains 'a burst of 501 jobs that finished an hour ago reads ok' "$out" 'ciguard=ok'
+not_contains 'a drained burst raises no alert' "$out" 'ALERT'
+# a refusal is dated by when the run ended: created before the window, ended inside it
+jq 'map(.conclusion = "startup_failure" | .created_at = "2026-10-20T08:00:00Z" | .updated_at = "2026-10-20T11:00:00Z")' "$W/one-run.json" > "$W/refused-late.json"
+fresh; out="$(run "$W/refused-late.json")"
+contains 'a startup_failure run that ended inside the window reads OVER whenever it was created' "$out" 'ciguard=OVER:gh-refusal'
 # negative control: a GitHub refusal in the run data reads OVER
 jq 'map(.conclusion = "startup_failure")' "$W/one-run.json" > "$W/refused.json"
 fresh; out="$(run "$W/refused.json")"

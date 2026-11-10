@@ -191,7 +191,7 @@ operator-directed bundle from that label and that bullet.
 the only real limit, so only two metrics can read OVER. It prints `ciguard=ok`,
 `ciguard=OVER:<metric>[,<metric>]` or `ciguard=unknown`, then one
 `ALERT <metric>=<count>><line> (<where>)` line per new crossing: `concurrent-jobs`
-(running + queued jobs, line 500) and `gh-refusal` (a run that ended `startup_failure`
+(running + queued jobs now, line 500) and `gh-refusal` (a run that ended `startup_failure`
 in the last 2 h, line 0). Then one `INFO <metric>=<count> (<where>)` line per
 information row: `runs-h` (our old 150 per hour reference), `runs-day` (1500),
 `cancels-10m` (30), `reruns-h` (10), and `branch-day` (10 CI runs on one non-main
