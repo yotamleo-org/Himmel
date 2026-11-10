@@ -623,8 +623,6 @@ else
   fail "case t: matchCadenceGroups and extraArmedTasks commented-line handling" "$commentedCronOut"
 fi
 
-# ── case t2: the two retired Windows tasks are not known extra tasks, so an
-# active crontab line naming them is never reported in extraArmedTasks ──────
 retiredTasksOut=$("$node_bin" --input-type=module -e "
 import { pathToFileURL } from 'node:url';
 const { filterCommentedLines, EXTRA_KNOWN_TASKS } = await import(pathToFileURL(process.env.CAPTURE_SCRIPT_PATH).href);
