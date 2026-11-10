@@ -18,12 +18,17 @@ most 100. Hours before the first published-channel row have no baseline, and
 hours after a publish whose build commit the repo cannot read are unknown; both
 are counted apart, never as zero and never as an older graph's lag.
 
-Exit codes: 0 report printed; 2 bad input (no ledger, no repo, no limit).
+The target reads HOLDS or BREACHED only when every hour of the window has a
+figure. Otherwise it reads INCOMPLETE covered=<hours with a figure>/<hours>,
+whatever the figures say, so a short ledger never reads as a passed window.
+
+Exit codes: 0 report printed; 2 bad input (no ledger, no repo, no limit);
+3 no hour of the window has a figure (an empty window, no published-channel row,
+or only unreadable ones).
 """
 import argparse
 import bisect
 import json
-import math
 import os
 import re
 import subprocess
@@ -34,6 +39,7 @@ from datetime import datetime, timezone
 HOUR = 3600
 TARGET_P90 = 40
 TARGET_MAX = 100
+STALE_TIP_HOURS = 6
 DEFAULT_UPDATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "himmel-update.sh")
 
 
@@ -110,7 +116,7 @@ def commit_times_ahead(repo, ref, graph_head):
 
 
 def percentile(sorted_vals, pct):
-    return sorted_vals[max(1, math.ceil(pct / 100.0 * len(sorted_vals))) - 1]
+    return sorted_vals[max(1, -(-pct * len(sorted_vals) // 100)) - 1]
 
 
 def main():
@@ -156,13 +162,21 @@ def main():
 
     print("graph-lag-report: days=%d hours=%d no-baseline-hours=%d unknown-hours=%d published-rows=%d ref=%s"
           % (args.days, args.days * 24, no_baseline, unknown, len(published), ref))
+    tip = git(args.repo, "log", "-1", "--format=%ct", ref).stdout.strip()
+    if tip.isdigit():
+        late = end - int(tip)
+        print("ref-tip: %s" % datetime.fromtimestamp(int(tip), timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+        if late > STALE_TIP_HOURS * HOUR:
+            print("WARN: %s is %d hours older than the end of the window; fetch the repo or the lag reads too low"
+                  % (ref, late // HOUR))
+    total = args.days * 24
     if not lags:
         if unknown:
             print("lag-commits: none (every published build commit in the window is unreadable in this repo)")
         else:
             print("lag-commits: none (no published-channel row at or before any hour of the window)")
-        print("target: UNKNOWN")
-        return
+        print("target: INCOMPLETE covered=0/%d" % total)
+        sys.exit(3)
     lags.sort()
     p90, mx = percentile(lags, 90), lags[-1]
     print("lag-commits: p50=%d p90=%d max=%d" % (percentile(lags, 50), p90, mx))
@@ -170,8 +184,12 @@ def main():
           % (sum(1 for v in lags if v > limit), limit, os.path.basename(args.update_script)))
     print("breaches: over-%d=%d over-%d=%d" % (TARGET_P90, sum(1 for v in lags if v > TARGET_P90),
                                               TARGET_MAX, sum(1 for v in lags if v > TARGET_MAX)))
-    print("target: %s (p90 at most %d and max at most %d)"
-          % ("HOLDS" if p90 <= TARGET_P90 and mx <= TARGET_MAX else "BREACHED", TARGET_P90, TARGET_MAX))
+    if len(lags) < total:
+        print("target: INCOMPLETE covered=%d/%d (p90 at most %d and max at most %d is judged only over a full window)"
+              % (len(lags), total, TARGET_P90, TARGET_MAX))
+    else:
+        print("target: %s (p90 at most %d and max at most %d)"
+              % ("HOLDS" if p90 <= TARGET_P90 and mx <= TARGET_MAX else "BREACHED", TARGET_P90, TARGET_MAX))
 
 
 if __name__ == "__main__":

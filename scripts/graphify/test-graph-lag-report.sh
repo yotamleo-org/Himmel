@@ -14,6 +14,7 @@ PASS=0; FAIL=0
 pass() { PASS=$((PASS + 1)); echo "  PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; [ -z "${2:-}" ] || echo "        $2"; }
 assert_contains() { case "$3" in *"$2"*) pass "$1" ;; *) fail "$1" "wanted '$2' in: $3" ;; esac; }
+assert_not_contains() { case "$3" in *"$2"*) fail "$1" "did not want '$2' in: $3" ;; *) pass "$1" ;; esac; }
 assert_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "wanted '$2', got '$3'"; fi; }
 
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-graph-lag-report.XXXXXX")" || exit 2
@@ -82,6 +83,29 @@ row 0 published-channel 0123456789abcdef0123456789abcdef01234567 > "$L2E"
 out=$(python3 -I "$REPORT" --ledger "$L2E" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
 assert_contains "all hours unknown: the report says the build commit is unreadable" "unreadable" "$out"
 
+echo "TEST: target_needs_full_coverage -- the target is never HOLDS or BREACHED over a window with hours that have no figure"
+L4="$TMP_ROOT/l4.jsonl"
+row 21 published-channel "$C0" > "$L4"
+out=$(python3 -I "$REPORT" --ledger "$L4" --repo "$R1" --days 14 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
+assert_contains "3 lags in a 14-day window read INCOMPLETE" "target: INCOMPLETE covered=3/336" "$out"
+assert_not_contains "3 lags in a 14-day window never read HOLDS" "target: HOLDS" "$out"
+out=$(python3 -I "$REPORT" --ledger "$L2C" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
+assert_contains "unknown hours keep the target from HOLDS" "target: INCOMPLETE covered=12/24" "$out"
+L5="$TMP_ROOT/l5.jsonl"; : > "$L5"
+rc=0
+out=$(python3 -I "$REPORT" --ledger "$L5" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || rc=$?
+assert_eq "an empty ledger exits 3" "3" "$rc"
+assert_contains "an empty ledger reads INCOMPLETE with no hour covered" "target: INCOMPLETE covered=0/24" "$out"
+L6="$TMP_ROOT/l6.jsonl"
+row 20 published-channel "$(commit_of "$R1" 20)" > "$L6"
+out=$(python3 -I "$REPORT" --ledger "$L6" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
+assert_contains "nearest rank over lags 0..3: p50 is the 2nd value and p90 the 4th, not an interpolation" "lag-commits: p50=1 p90=3 max=3" "$out"
+
+out=$(python3 -I "$REPORT" --ledger "$L1" --repo "$R1" --days 1 --now "$(iso $((T0 + 40 * 3600)))" --update-script "$UPD10" 2>&1) || true
+assert_contains "a ref tip 17 hours before the window end warns that the lag reads too low" "WARN: main is 17 hours older than the end of the window" "$out"
+out=$(python3 -I "$REPORT" --ledger "$L1" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
+assert_not_contains "a ref tip at the window end does not warn" "WARN" "$out"
+
 echo "TEST: over_limit_counted -- hours over the limit and the breaches of 40 and 100"
 R3="$TMP_ROOT/r3"; plant_repo "$R3" 130
 L3="$TMP_ROOT/l3.jsonl"
@@ -90,7 +114,11 @@ out=$(python3 -I "$REPORT" --ledger "$L3" --repo "$R3" --days 6 --now "$(iso $((
 assert_contains "130 baselined hours; the 14 hours before the first publish have none" "no-baseline-hours=14" "$out"
 assert_contains "hours over 30 (lags 31..129)" "hours-over-limit: 99 (limit 30" "$out"
 assert_contains "over 40 is lags 41..129, over 100 is 101..129" "breaches: over-40=89 over-100=29" "$out"
-assert_contains "p90 above 40 and max above 100 breach the target" "target: BREACHED" "$out"
+assert_contains "130 of 144 hours covered reads INCOMPLETE" "target: INCOMPLETE covered=130/144" "$out"
+L3B="$TMP_ROOT/l3b.jsonl"
+row -14 published-channel "$(commit_of "$R3" 0)" > "$L3B"
+out=$(python3 -I "$REPORT" --ledger "$L3B" --repo "$R3" --days 6 --now "$(iso $((T0 + 129 * 3600)))" --update-script "$UPD30" 2>&1) || true
+assert_contains "a fully covered window with p90 above 40 and max above 100 breaches the target" "target: BREACHED" "$out"
 out=$(python3 -I "$REPORT" --ledger "$L1" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
 assert_contains "p90 21 and max 23 hold the target" "target: HOLDS" "$out"
 

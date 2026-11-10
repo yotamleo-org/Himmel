@@ -389,13 +389,22 @@ made by then that the build commit does not contain. It prints:
 - `p50`, `p90` and `max` over the window's hours;
 - the hours over the limit adopters refuse the graph at, read from
   `GRAPH_MAX_BEHIND` in `scripts/himmel-update.sh`;
-- the hours over 40 and over 100, and whether the target holds: `p90` at most
-  40 and `max` at most 100.
+- the hours over 40 and over 100, and the target: `p90` at most 40 and `max`
+  at most 100.
 
 Hours before the first `published-channel` row have no baseline
 (`no-baseline-hours`), and hours after a publish whose build commit the
-checkout cannot read, or that names none, are `unknown-hours`: the report leaves both out of the
-figures and never reads them as an older graph's lag.
+checkout cannot read, or that names none, are `unknown-hours`: the report leaves
+both out of the figures and never reads them as an older graph's lag.
+
+The target reads `HOLDS` or `BREACHED` only when every hour of the window has a
+figure. Otherwise it reads `INCOMPLETE covered=<n>/<total>` whatever the
+figures say, so 14 days of `--days` over a ledger that is 2 hours old is never a
+passed window. When no hour has a figure (an empty ledger, no
+`published-channel` row, or only unreadable ones) the report exits 3; exit 2 is
+bad input. It also prints the commit time of the ref it measured against, and a
+`WARN` when that is more than 6 hours older than the window's end, since a stale
+checkout makes the lag read too low.
 `--now` ends the window at a fixed time instead of the present.
 
 ## Luna graph freshness
