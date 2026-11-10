@@ -82,6 +82,8 @@ if (a[0] === 'release' && a[1] === 'core-check') {
     console.log(r ? 'SPEC ok ' + k + ' ' + r : 'NO-SPEC ' + k);
   }
   process.exit(missing);
+} else if (a[0] === 'release' && a[1] === 'bucket-check') {
+  for (const k of a.slice(a.indexOf('--mirror') + 2)) console.log('IN ' + k + ' current=v1.1.3 via=mirror');
 } else if (a[0] === 'mirror') {
   if (process.env.MIRROR_LOG) fs.appendFileSync(process.env.MIRROR_LOG, 'mirror ' + a.join(' ') + ' project=' + process.env.JIRA_PROJECT_KEY + '\n');
   const src = process.env.MIRROR_FRESH;

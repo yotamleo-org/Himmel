@@ -113,6 +113,7 @@ mkdir -p "$T/notcore-jira"
 cat >"$T/notcore-jira/index.js" <<'NCEOF'
 const a = process.argv.slice(2);
 if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else if (a[0] === 'release' && a[1] === 'bucket-check') for (const k of a.slice(a.indexOf('--mirror') + 2)) console.log('IN ' + k + ' current=v1.1.3 via=mirror');
 else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
 NCEOF
 export BRIEF_LINT_JIRA_CLI="$T/notcore-jira/index.js"
