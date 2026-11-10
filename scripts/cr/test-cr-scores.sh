@@ -486,6 +486,10 @@ LQ2="$tmp/q-onepr.jsonl"; gen "$LQ2" codex gpt-r 40 disproved 1 2 amend q2
 q2_out="$(CR_LEDGER="$LQ2" bash "$CS" 2>&1)"
 not_contains "repeated_same_pr_low_evidence: no drop advice" "$q2_out" "consider dropping"
 contains "repeated_same_pr_low_evidence: insufficient evidence" "$(advice_for "$q2_out" codex:gpt-r)" "insufficient evidence"
+# PRs that hold only deferred findings do not lift the PR floor for decided ones.
+LQ2b="$tmp/q-onepr-deferred.jsonl"; gen "$LQ2b" codex gpt-s 40 disproved 1 2 amend q2b; gen "$LQ2b" codex gpt-s 9 deferred 9 2 amend q2c
+q2b_out="$(CR_LEDGER="$LQ2b" bash "$CS" 2>&1)"
+contains "repeated_same_pr_low_evidence: deferred-only PRs do not count" "$(advice_for "$q2b_out" codex:gpt-s)" "insufficient evidence (40 decided over 1 PR(s)"
 
 # bookkeeping_no_drop: a bookkeeping slug gets no reviewer advice at any rate.
 LQ3="$tmp/q-bookkeeping.jsonl"; gen "$LQ3" coverage-deferral - 40 disproved 12 2 amend q3

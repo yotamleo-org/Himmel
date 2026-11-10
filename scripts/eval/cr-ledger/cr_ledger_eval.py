@@ -318,6 +318,7 @@ def reviewer_summary(rows, since, until, gating_only=False, roster=None):
             "total": n, "agreed": a, "disproved": d, "deferred": c["deferred"],
             "unresolved": c["unadjudicated"], "decided": a + d if recorded else None,
             "prs": len({pr_unit(f) for f in fs}),
+            "decided_prs": len({pr_unit(f) for f in fs if f["bucket"] in ("agreed", "disproved")}) if recorded else None,
             "author_agreement": ratio(a, a + d) if recorded else None,
             "author_agreement_ci": ratio_ci(fs, {"agreed"}, {"agreed", "disproved"}) if recorded else None,
             "acceptance_yield": ratio(a, n) if recorded else None,
@@ -361,14 +362,14 @@ def advise(r, agreement_below):
         return "not-a-reviewer", "not a reviewer (bookkeeping or unmapped slug); no reviewer advice"
     if r["responding_model"] == "unknown":
         return "unknown-model", "responding model not recorded; no advice"
-    if r["decided"] < MIN_DECIDED or r["prs"] < MIN_PRS:
-        return "insufficient-evidence", ("insufficient evidence (%d decided over %d PR(s); needs >= %d decided and >= %d PRs)"
-                                         % (r["decided"], r["prs"], MIN_DECIDED, MIN_PRS))
+    if r["decided"] < MIN_DECIDED or r["decided_prs"] < MIN_PRS:
+        return "insufficient-evidence", ("insufficient evidence (%d decided over %d PR(s); needs >= %d decided over >= %d PRs)"
+                                         % (r["decided"], r["decided_prs"], MIN_DECIDED, MIN_PRS))
     pct_v = 100 * r["author_agreement"]
     if pct_v < agreement_below:
         return "low-author-agreement", ("low author agreement; investigate (%.1f%% over %d decided, %d PRs; below %g%%)"
-                                        % (pct_v, r["decided"], r["prs"], agreement_below))
-    return "ok", "ok (author agreement %.1f%% over %d decided, %d PRs)" % (pct_v, r["decided"], r["prs"])
+                                        % (pct_v, r["decided"], r["decided_prs"], agreement_below))
+    return "ok", "ok (author agreement %.1f%% over %d decided, %d PRs)" % (pct_v, r["decided"], r["decided_prs"])
 
 
 def summary_report(rows, since, until, roster, agreement_below, window_default):
