@@ -1090,7 +1090,11 @@ has "a config-ui worker's brief says the chief starts himmelctl ui from the work
 has "a config-ui worker's brief tells the worker to ask for the URL and never start the UI itself" "$ui_brief" "ask for it, never start it yourself"
 lacks "a config-ui worker's brief hands out no standing agent-session bypass" "$ui_brief" "allow-agent-session"
 has "a config-ui worker's brief says to open the URL with the browser MCP headless" "$ui_brief" "browser MCP headless"
-has "a config-ui worker's brief says to save screenshots to the scratch dir" "$ui_brief" "save screenshots to your scratch dir"
+lacks "a config-ui worker's brief never sends a browser screenshot to the scratch dir (outside the server's output root)" "$ui_brief" "save screenshots to your scratch dir"
+has "a config-ui worker's brief names a relative browser output filename" "$ui_brief" "a relative filename"
+has "a config-ui worker's brief names the .playwright-mcp output root" "$ui_brief" ".playwright-mcp"
+has "a config-ui worker's brief cites the server-returned artifact path" "$ui_brief" "the path the server returns"
+has "a config-ui worker's brief navigates over HTTP, never file://" "$ui_brief" "never a file:// URL"
 ui_launch_profile="$(printf '%s' "$ui_launch" | grep -o -e '--profile [a-z0-9-]*')"
 has "the dry-run launch of a config-ui worker lists playwright among its MCP servers" "$(ui_mcp "${ui_launch_profile#--profile }")" "playwright"
 ui_gen "Writes scripts/config-ui/page.ts." worker-bus
