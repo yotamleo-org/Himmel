@@ -228,14 +228,19 @@ _rcd_child() {
     wait "$rcd_pid"
 }
 # shellcheck disable=SC2329  # reached only through _rcd_term, which the TERM trap invokes
-_rcd_kill_tree() {
+_rcd_descendants() {
     local c
-    for c in $(pgrep -P "$1" 2>/dev/null); do _rcd_kill_tree "$c"; done  # swallow-ok: no pgrep or no children leaves just the pid itself to signal
-    kill -TERM "$1" 2>/dev/null
+    for c in $(pgrep -P "$1" 2>/dev/null); do printf '%s\n' "$c"; _rcd_descendants "$c"; done  # swallow-ok: no pgrep or no children lists nothing, and only the child itself is signalled
 }
 # shellcheck disable=SC2329  # invoked by the TERM trap below, which shellcheck does not follow
 _rcd_term() {
-    [ -z "${rcd_pid:-}" ] || { _rcd_kill_tree "$rcd_pid"; wait "$rcd_pid" 2>/dev/null; }
+    local p kids
+    if [ -n "${rcd_pid:-}" ]; then
+        kids=$(_rcd_descendants "$rcd_pid")
+        kill -TERM "$rcd_pid" 2>/dev/null
+        wait "$rcd_pid" 2>/dev/null
+        for p in $kids; do kill -TERM "$p" 2>/dev/null; done
+    fi
     exit 143
 }
 
