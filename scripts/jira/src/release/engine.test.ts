@@ -6,7 +6,7 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
-  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing,
+  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, rmRunSummary, pinnedSha, signSpec, specCheck, specReview, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -2083,6 +2083,10 @@ describe('signed minerva specs', () => {
     expect(out.lines).toEqual([`SPEC-STALE K-1 ${p} ${id}`, `SPEC ok K-3 ${good} ${goodId}`]);
     expect(out.answer.get('K-1')).toEqual({ missing: `${pinned} is unreadable (${id})` });
     expect(out.answer.get('K-3')).toEqual({ ok: true });
+  });
+
+  it.skipIf(process.platform !== 'linux')('a pinned file that yields more bytes than fstat reported is unreadable', () => {
+    expect(pinnedSha('/proc/self/status')).toEqual({ unreadable: true });
   });
 
   it('a missing or changed pinned file names its path in the answer', () => {
