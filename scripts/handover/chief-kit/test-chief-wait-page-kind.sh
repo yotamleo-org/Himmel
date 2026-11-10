@@ -116,6 +116,7 @@ EOF
         MERGE_BLOCK_ALERT_CMD="$STUB/route-sender.sh" MERGE_BLOCK_ALERT_TIMEOUT_SECS=30 CHIEF_WAIT_WORKER_SILENT_MIN=30 CHIEF_WAIT_PAGE_TIMEOUT=40 \
         start "$I" "$WORK/k4.out" --doc "$WD" --workers-from "$WM"
     n=0; while [ "$n" -lt 400 ]; do kill -0 "$WPID" 2>/dev/null || break; sleep 0.1; n=$((n + 1)); done
+    kill -0 "$WPID" 2>/dev/null && kill "$WPID" 2>/dev/null
     wait "$WPID" 2>/dev/null
     check "(k3) the wake line is printed" "1" "$(grep -c '^WAKE worker-silent N1 signal=capped-waker' "$WORK/k4.out" || true)"  # pipefail-ok: none set
     check "(k3) the console bullet is written" "1" "$(grep -c '^- [0-9:]* WORKER-SILENT N1 signal=capped-waker' "$WD" || true)"  # pipefail-ok: none set
