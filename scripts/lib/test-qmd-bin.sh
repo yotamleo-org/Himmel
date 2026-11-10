@@ -1421,16 +1421,17 @@ assert "the tree holds a dot-path outside the excluded names" grep -qE '(^|/)\.(
 assert "the output holds no dot-path" bash -c '! grep -qE "(^|/)\." <<<"$1"' _ "$golden_got"
 
 shape_dir="$tmpdir/shapes"
-shape_cfg() { # $1 = name, $2 = index.yml text (printf %b escapes); prints the config dir
-  mkdir -p "$shape_dir/$1"
-  printf '%b' "$2" >"$shape_dir/$1/index.yml"
-  printf '%s\n' "$shape_dir/$1"
+shape_cfg() {
+  local name="$1" yml_escaped="$2"
+  mkdir -p "$shape_dir/$name"
+  printf '%b' "$yml_escaped" >"$shape_dir/$name/index.yml"
+  printf '%s\n' "$shape_dir/$name"
 }
-shape_run() { # $1 = config dir, then the collection and paths; sets shape_rc and shape_out
-  local dir="$1"; shift
+shape_run() {
+  local config_dir="$1"; shift
   shape_rc=0
   # shellcheck disable=SC2016  # $1 and $@ expand inside the spawned bash -c subshell
-  shape_out="$(env -u XDG_CONFIG_HOME QMD_CONFIG_DIR="$dir" bash -c '. "$1"; shift; qmd_collection_indexes "$@"' _ "$SCRIPT_DIR/qmd-bin.sh" "$@" 2>/dev/null)" || shape_rc=$?
+  shape_out="$(env -u XDG_CONFIG_HOME QMD_CONFIG_DIR="$config_dir" bash -c '. "$1"; shift; qmd_collection_indexes "$@"' _ "$SCRIPT_DIR/qmd-bin.sh" "$@" 2>/dev/null)" || shape_rc=$?
 }
 refused() { [ "$shape_rc" -eq 2 ] && [ -z "$shape_out" ]; }
 shape_base='collections:\n  c:\n    path: /x\n    pattern: "**/*.md"\n'
