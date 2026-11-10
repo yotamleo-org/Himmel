@@ -1226,7 +1226,7 @@ jobs:
           rev="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' .pre-commit-config.yaml)"
           ver="${rev%.*}"
           url="https://github.com/koalaman/shellcheck/releases/download/v${ver}/shellcheck-v${ver}.linux.x86_64.tar.xz"
-          curl -sSfI --max-time 20 -o /dev/null "$url" || echo "infra: ${url} is unreachable and the pre-commit cache missed; this red is the GitHub release host, not the code, so rerun when it recovers" >&2
+          curl -sSfIL --max-time 20 -o /dev/null "$url" || echo "infra: ${url} is unreachable and the pre-commit cache missed; this red is the GitHub release host, not the code, so rerun when it recovers" >&2
       # HIMMEL-4254 P2: a bypass flag a hook reads but the config UI's display
       # registry lacks is a flag the UI silently cannot show.
       - run: node scripts/install/flag-registry-lint.mjs

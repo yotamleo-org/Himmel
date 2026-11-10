@@ -170,6 +170,7 @@ if [ -n "$lint_cache_line" ] && [ -n "$lint_sc_line" ] && [ "$lint_cache_line" -
 LINT_INFRA="$(step_block lint 'Name a shellcheck release-host outage')"
 case "$LINT_INFRA" in *"failure()"*"cache-hit"*) pass "outage line runs only on a failure with no cache hit" ;; *) fail "outage step missing or ungated: $LINT_INFRA" ;; esac
 case "$(step_run lint 'Name a shellcheck release-host outage')" in *'github.com/koalaman/shellcheck/releases/download/'*'infra:'*) pass "outage line names the word infra and the release URL" ;; *) fail "outage line lacks infra or the URL" ;; esac
+case "$(step_run lint 'Name a shellcheck release-host outage')" in *'curl -sSfIL '*) pass "outage probe follows the release redirect" ;; *) fail "outage probe does not follow redirects (-L)" ;; esac
 n_pins="$(grep -o 'actions/cache@[0-9a-f]\{40\}' "$CI_YML" | sort -u | wc -l | tr -d ' ')"
 if [ "$n_pins" -eq 1 ]; then pass "every actions/cache use is one sha pin"; else fail "actions/cache pins differ: $n_pins"; fi
 
