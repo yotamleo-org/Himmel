@@ -1,6 +1,6 @@
 /**
  * daily-report.mjs — pure rendering + carry-over logic for the day note's
- * `## Daily report` section (HIMMEL-4182).
+ * `## Daily report` section.
  *
  * The report turns a day's intake into decisions: that day's triaged sources
  * grouped by evidence_kind, a short ranked list of DETERMINISTIC suggested
@@ -66,7 +66,7 @@ export function formatDuration(totalSeconds) {
 
 /**
  * Build a source record from a clip's content. `link` is the vault-relative
- * path without `.md`. Video fields come from HIMMEL-4107's media keys and are
+ * path without `.md`. Video fields come from the x-media-enrich media keys and are
  * present only when `media_video_duration_s` is.
  */
 export function sourceFromClip(link, content) {
@@ -87,7 +87,6 @@ export function sourceFromClip(link, content) {
     harvestStatus: get("harvest_status"),
     likes: statsLikes ? Number(statsLikes[1]) : 0,
     why: whyOf(content),
-    // ponytail: no digest link yet, add it when HIMMEL-4108 item 4 writes the digest key.
     video: dur
       ? {
           duration: Number(dur),

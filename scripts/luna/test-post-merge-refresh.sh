@@ -37,7 +37,7 @@ TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/pmr-test.XXXXXX") || exit 1
 export HOME="$TMP_ROOT/home"
 mkdir -p "$HOME"
 export XDG_CACHE_HOME="$HOME/.cache" XDG_CONFIG_HOME="$HOME/.config"
-unset GRAPHIFY_OUT INDEX_PATH QMD_INDEX_PATH QMD_CONFIG_DIR HIMMEL_FLOW_RUNS_LEDGER 2>/dev/null || true
+unset GRAPHIFY_OUT INDEX_PATH QMD_INDEX_PATH QMD_CONFIG_DIR HIMMEL_FLOW_RUNS_LEDGER HIMMEL_KEYWORD_LAG_LEDGER 2>/dev/null || true
 
 BASE=1800000000
 NOW=$BASE
@@ -145,6 +145,9 @@ nalerts() { local n; n=$(grep -c -- "$1" "$C/alerts.log" 2>/dev/null) || n=0; [ 
 nrows() { local n; n=$(grep -c -- "$1" "$C/flow.jsonl" 2>/dev/null) || n=0; [ -n "$n" ] || n=0; echo "$n"; }
 sha_of() { cat "$C/state/$1.sha" 2>/dev/null || echo none; }
 mtime_of() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo "?"; }
+sum256() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
 
 mk_tick_tree() {
     local d="$1" f
@@ -517,6 +520,37 @@ row_sampler_after_keyword_before_graph() {
     assert_eq "sampler_after_keyword_before_graph: keyword, then the sampler, then graph" "qmd lag ast" "$(cut -d' ' -f1 "$C/calls.log" | tr '\n' ' ' | sed 's/ $//')"
 }
 
+row_missing_lag_script_is_error() {
+    mkcase nolag; seed_both; cm $((BASE+100)) docs/a.md
+    NOW=$((BASE+1000)); tick both PMR_LAG="$C/bin/absent.py"
+    assert_eq "missing_lag_script_is_error: the tick exits 3" 3 "$TICK_RC"
+    assert_eq "missing_lag_script_is_error: one error line" 1 "$(grep -c 'ERR keyword-lag.py absent' <<<"$TICK_OUT")"
+    assert_eq "missing_lag_script_is_error: the graph step still ran" 1 "$(ncalls ast)"
+    assert_eq "missing_lag_script_is_error: the graph watermark moved" "$(head_sha)" "$(sha_of graph)"
+    assert_eq "missing_lag_script_is_error: the tick alert is not cleared, so the runner's non-zero exit raises it" 0 "$(nalerts 'clear post-merge-tick')"
+}
+
+row_sampler_real_call_line() {
+    mkcase realcall; seed_both
+    NOW=$((BASE+100)); tick both PMR_LAG="$SCRIPT_DIR/keyword-lag.py"
+    assert_eq "sampler_real_call_line: the first real call seeds its cursor and exits 0" 0 "$TICK_RC"
+    cm $((BASE+200)) docs/a.md; local m="$LAST"
+    python3 -I - "$C/cache/index.sqlite" "$(sum256 "$C/primary/docs/a.md")" <<'PY'
+import sqlite3, sys
+con = sqlite3.connect(sys.argv[1])
+con.execute("CREATE TABLE documents (id INTEGER PRIMARY KEY AUTOINCREMENT, collection TEXT NOT NULL, path TEXT NOT NULL, "
+            "title TEXT NOT NULL, hash TEXT NOT NULL, created_at TEXT NOT NULL, modified_at TEXT NOT NULL, "
+            "active INTEGER NOT NULL DEFAULT 1, UNIQUE(collection, path))")
+con.execute("INSERT INTO documents (collection, path, title, hash, created_at, modified_at, active) "
+            "VALUES ('himmel', 'docs/a.md', 't', ?, 't', 't', 1)", (sys.argv[2],))
+con.commit()
+PY
+    NOW=$((BASE+300)); tick both PMR_LAG="$SCRIPT_DIR/keyword-lag.py"
+    assert_eq "sampler_real_call_line: exit 0" 0 "$TICK_RC"
+    assert_contains "sampler_real_call_line: the real script's own line is in the tick's output" "keyword-lag: tick cursor=" "$TICK_OUT"
+    assert_eq "sampler_real_call_line: the real script wrote the merge's row" 1 "$(grep -c "\"merge\":\"$m\"" "$C/state/keyword-lag.jsonl" 2>/dev/null)"
+}
+
 row_only_real_run_writes_row() {
     mkcase rows; seed_both; cm $((BASE+100)) docs/a.md; local m="$LAST"
     NOW=$((BASE+300)); tick both
@@ -701,7 +735,7 @@ for row in quiet_window_holds max_wait_fires burst_fires_once ignored_merges_cou
     no_paid_call_real_ast stamp_untouched no_merge_path_caller third_failure_alerts success_clears \
     hold_neither_alerts_nor_clears twelve_skips_alert alert_once_per_streak unwritable_state_dies clean_exit_clears_tick_alert \
     graph_only_arm_never_runs_qmd sampler_runs_with_keyword_off no_index_no_sample \
-    sampler_after_keyword_before_graph only_real_run_writes_row db_busy_is_skip \
+    sampler_after_keyword_before_graph missing_lag_script_is_error sampler_real_call_line only_real_run_writes_row db_busy_is_skip \
     promote_lock_is_skip deadline_without_signature_is_fail busy_timeout_and_deadline_passed \
     backoff_after_failure backoff_caps_at_an_hour watermark_moved_before_lock_skips slow_graph_floors_hourly load_defers_then_runs primary_off_main_skips \
     runs_at_low_priority code_only_skips_keyword dot_dir_md_skips_keyword usage decide; do

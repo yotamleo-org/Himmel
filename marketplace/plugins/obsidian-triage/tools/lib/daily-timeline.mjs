@@ -1,6 +1,6 @@
 /**
  * daily-timeline.mjs — pure rendering + idempotent section upsert for the
- * daily-note `## Clip pipeline` timeline (LUNA-90).
+ * daily-note `## Clip pipeline` timeline.
  *
  * The section is a STATE RECOUNT (see tools/daily-timeline.mjs): the caller
  * recomputes all four metrics from vault state for a given date and hands them

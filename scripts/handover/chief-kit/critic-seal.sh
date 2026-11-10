@@ -14,7 +14,8 @@
 #   - the verdict file already seals that same file. A critic that read several files (the spec and its
 #     rendered page) gets one seal per distinct file, so run the helper once per file read;
 #   - the return would go past three rounds of its kind for that spec with no operator record for that
-#     round (`chief-route.ts critic-round-check`). A new critic name or a scope edit does not restart the count.
+#     round (`chief-route.ts critic-round-check`), which also records a ledger row for the return once its
+#     specs root is seeded, and refuses when it cannot. A new critic name or a scope edit does not restart the count.
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) || exit 1

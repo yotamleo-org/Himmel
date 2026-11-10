@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared Instagram request throttle (HIMMEL-4306).
+"""Shared Instagram request throttle.
 
 Every Instagram request runs on the operator's logged-in account, so request
 volume and cadence put that account at risk. Every caller (Python and node)
