@@ -1722,7 +1722,7 @@ assert "natsort outcome line: 2 slides + 1 transcript" ok "$a"
 # audio probe (-map 0:a:0) confirms no audio, so the tool extracts a frame
 # (-frames:v 1) and routes it through render_slides as a screenshot slide in
 # carousel order. The clip is ENRICHED (not partial) with 3 slides.
-echo "Test 36: soundless video -> screenshot slide (HIMMEL-786)"
+echo "Test 36: soundless video -> screenshot slide"
 # Unique per-file content (Test-35 pattern) so slide PROVENANCE + ORDER are
 # pinned: a rebuild off-by-one that swaps the screenshot's carousel slot
 # would fail these greps, not pass vacuously.
@@ -1822,7 +1822,7 @@ IG_PROBE_WITNESS="$(cygpath -m "$tmp/ig-probe-locale" 2>/dev/null || printf '%s'
 export IG_PROBE_WITNESS
 LC_ALL=POSIX run_tool "$VSL" >"$tmp/soundless.out" 2>"$tmp/soundless.err"
 assert "soundless run exit 0" 0 "$?"
-assert "soundless: audio probe ran under LC_ALL=C (HIMMEL-791)" "C" "$(cat "$IG_PROBE_WITNESS" 2>/dev/null)"
+assert "soundless: audio probe ran under LC_ALL=C" "C" "$(cat "$IG_PROBE_WITNESS" 2>/dev/null)"
 # Don't leak the witness var into later tests' stub environments.
 unset IG_PROBE_WITNESS
 n="$(grep -cF '![[Clippings/_media/clip/slide-' "$VSL/Clippings/clip.md")"
@@ -1852,7 +1852,7 @@ assert "soundless: no video/wav under the vault" ok "$a"
 # --- Test 37: audio-bearing WAV failure keeps partial semantics -
 # The video HAS an audio stream (probe exits 0) but WAV extraction failed ->
 # a genuine transcription failure: NO screenshot fallback, clip stays partial.
-echo "Test 37: audio-bearing wav failure stays partial (HIMMEL-786)"
+echo "Test 37: audio-bearing wav failure stays partial"
 emit_gallery_dl 1.jpg 2.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
@@ -1906,7 +1906,7 @@ assert "audio-partial: only 1 slide embed (no screenshot)" 1 "$n"
 #     NON-no-audio reason (corrupt media, decode error). Only a conclusive
 #     "matches no streams" proves soundless; anything else must NOT screenshot-
 #     fallback (a real transcript could be silently lost) -> stays partial.
-echo "Test 38: inconclusive audio probe stays partial (HIMMEL-786)"
+echo "Test 38: inconclusive audio probe stays partial"
 emit_gallery_dl 1.jpg 2.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
@@ -1961,7 +1961,7 @@ assert "inconclusive: probe failure traced on stderr (ffmpeg(probe))" ok "$a"
 # --- Test 39: soundless-only single-video reel -> 1 screenshot slide ---------
 # The primary real-world shape: a bare GIF-like reel, NO accompanying images
 # (images starts [] and is entirely rebuilt by the fallback).
-echo "Test 39: soundless-only reel -> 1 screenshot slide (HIMMEL-786)"
+echo "Test 39: soundless-only reel -> 1 screenshot slide"
 emit_gallery_dl video.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
@@ -2012,7 +2012,7 @@ assert "soundless-only reel: outcome line marks 1 video-frame" ok "$a"
 # --- Test 40: frame extraction fails AFTER a conclusive no-audio probe -------
 # The other half of soundless_video_frame's branches: probe proves soundless
 # but -frames:v fails -> NO screenshot, clip stays partial (traced, not silent).
-echo "Test 40: frame-extract failure after conclusive probe -> partial (HIMMEL-786)"
+echo "Test 40: frame-extract failure after conclusive probe -> partial"
 emit_gallery_dl 1.jpg 2.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
@@ -2066,7 +2066,7 @@ assert "frame-fail: extraction failure traced (ffmpeg(frame))" ok "$a"
 # --- Test 41: two failed videos, mixed probe outcomes, one carousel ----------
 # 2.mp4 soundless (-> screenshot slide), 3.mp4 audio-bearing (-> stays failed
 # transcript): per-item bookkeeping must not cross-contaminate.
-echo "Test 41: mixed soundless + audio-bearing videos in one carousel (HIMMEL-786)"
+echo "Test 41: mixed soundless + audio-bearing videos in one carousel"
 emit_gallery_dl 1.jpg 2.mp4 3.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
@@ -2130,7 +2130,7 @@ assert "mixed-probe: outcome line marks surviving video-frame" ok "$a"
 #     frame-extract timeout (split it from the global FFMPEG_TIMEOUT
 #     that also guards the probe/wav/recompress); the stub hangs only on the
 #     -frames:v call (exec sleep - the Git-Bash grandchild-reaping trap).
-echo "Test 42: frame-extract timeout traced, stays partial (HIMMEL-786)"
+echo "Test 42: frame-extract timeout traced, stays partial"
 emit_gallery_dl 1.jpg 2.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
@@ -2201,7 +2201,7 @@ assert "frame-timeout: timeout traced (ffmpeg(frame))" ok "$a"
 # and is intentionally NOT executed by the suite - only the GREEN (split-seam)
 # worker runs here; on pre-fix code it still fails (the env var is ignored, no
 # frame timeout fires), which is the regression pin.
-echo "Test 42b: frame-timeout wrong-site race (slow probe) (HIMMEL-805)"
+echo "Test 42b: frame-timeout wrong-site race (slow probe)"
 emit_gallery_dl 1.jpg 2.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
@@ -2251,7 +2251,7 @@ assert "frame-timeout-race run exit 0" 0 "$?"
 grep -q '^media_enrichment_status: partial$' "$VFTR/Clippings/clip.md" && a=ok || a=no
 assert "frame-timeout-race: stays partial" ok "$a"
 grep -q 'ffmpeg(frame): timed out' "$tmp/framettrace.err" && a=ok || a=no
-assert "frame-timeout-race: frame timeout traced at the right site (HIMMEL-805)" ok "$a"
+assert "frame-timeout-race: frame timeout traced at the right site" ok "$a"
 
 # --- Test 42c: FRAME_TIMEOUT seam-inheritance contract ----------
 # Unit-level (no ffmpeg run): FRAME_TIMEOUT must inherit IG_MEDIA_FFMPEG_TIMEOUT
@@ -2259,7 +2259,7 @@ assert "frame-timeout-race: frame timeout traced at the right site (HIMMEL-805)"
 # still bounds the frame extract), and an explicit frame seam must win when both
 # are set. Import-by-path is safe: the tool is __main__-guarded, top level is
 # constants/defs only. The uv stub strips through the `python` token as usual.
-echo "Test 42c: FRAME_TIMEOUT inherits the global seam / explicit wins (HIMMEL-805)"
+echo "Test 42c: FRAME_TIMEOUT inherits the global seam / explicit wins"
 seam_py='import sys, importlib.util
 spec = importlib.util.spec_from_file_location("igmf", sys.argv[1])
 mod = importlib.util.module_from_spec(spec)
@@ -2273,7 +2273,7 @@ seam_out=$(IG_MEDIA_FFMPEG_TIMEOUT=1 IG_MEDIA_FRAME_TIMEOUT=9 PYTHONUTF8=1 uv ru
 assert "seam-inherit: explicit IG_MEDIA_FRAME_TIMEOUT wins over the global" "9 1" "$seam_out"
 
 # --- Test 43: screenshot past SLIDE_CAP is trimmed, not partial --------------
-echo "Test 43: screenshot past SLIDE_CAP is capped out without partial (HIMMEL-791)"
+echo "Test 43: screenshot past SLIDE_CAP is capped out without partial"
 # 20 authored images fill SLIDE_CAP; the soundless video frame lands at source
 # position 21 and is trimmed by the slide cap. Cap trimming alone is not a
 # failure, and capped-out frames must not be counted in the outcome marker.
@@ -2334,7 +2334,7 @@ assert "slidecap-frame: capped-out screenshot not counted as video-frame" absent
 # extraction (it IS in images at a position <= SLIDE_CAP) but its own
 # recompress drops out, so it lands in slides_failed, produces no embed, and
 # must NOT be counted as a video-frame. The clip stays honestly partial.
-echo "Test 44: recompress-failed screenshot excluded from video-frame marker (HIMMEL-791)"
+echo "Test 44: recompress-failed screenshot excluded from video-frame marker"
 emit_gallery_dl 1.jpg 2.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
@@ -2393,7 +2393,7 @@ assert "frame-recompress-fail: failed screenshot not counted as video-frame" abs
 # Sole video, no slides, audible (non-silent) audio: extract_wav succeeds,
 # whisper decodes fine but hears nothing. This must NOT be treated as a
 # retryable failure - whisper will never hear speech that isn't there.
-echo "Test 45: empty transcript -> no_speech permanent, flag released (HIMMEL-3043)"
+echo "Test 45: empty transcript -> no_speech permanent, flag released"
 emit_gallery_dl vid.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
@@ -2490,7 +2490,7 @@ assert "no-speech: ig_media_pending released (same path as removed)" absent "$a"
 
 # --- Test 46: whisper helper itself fails (rc!=0) -> stays RETRYABLE, flag kept
 #      --------
-echo "Test 46: whisper rc!=0 -> still retryable, flag kept (HIMMEL-3043)"
+echo "Test 46: whisper rc!=0 -> still retryable, flag kept"
 emit_gallery_dl vid.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
@@ -2587,7 +2587,7 @@ assert "whisper-error: ig_media_pending KEPT (retryable, unlike Test 45)" ok "$a
 
 # --- Test 47: silent audio (stream present, mean_volume <= -60dB) ->
 #     screenshot fallback taken instead of a doomed transcription -
-echo "Test 47: silent audio -> frame fallback (HIMMEL-3043)"
+echo "Test 47: silent audio -> frame fallback"
 emit_gallery_dl vid.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
@@ -2671,7 +2671,7 @@ assert "silent-audio: outcome line marks 1 video-frame" ok "$a"
 
 # --- Test 48: carousel with slides + one no-speech video -> ok (no-speech video
 #     excluded from expected_videos; other media surviving is enough)
-echo "Test 48: slides + one no-speech video -> ok (HIMMEL-3043)"
+echo "Test 48: slides + one no-speech video -> ok"
 emit_gallery_dl 1.jpg 2.mp4 3.jpg
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash

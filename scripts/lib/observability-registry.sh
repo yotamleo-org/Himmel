@@ -48,7 +48,7 @@ _observability_registry_unlock() {
 # with ONE unlock right after it, instead of a trap or per-branch
 # annotations, sidesteps that trap-lifetime foot-gun entirely.
 _observability_registry_update_body() {
-    local action="$1" flow="$2" cadence="$3" task="$4" registry="$5" registry_dir="$6"
+    local action="$1" flow="$2" cadence="$3" task="$4" registry="$5" registry_dir="$6" stall="${7:-}"
     local input tmp
 
     input="$registry"
@@ -73,11 +73,15 @@ _observability_registry_update_body() {
     fi
 
     if [ "$action" = "register" ]; then
-        if ! jq --arg flow "$flow" --argjson cadence "$cadence" --arg task "$task" '
-            .flows = ((.flows // []) as $flows
+        if ! jq --arg flow "$flow" --argjson cadence "$cadence" --arg task "$task" --arg stall "$stall" '
+            ($stall | if . == "" then {} else {stall_deadline_seconds: tonumber} end) as $new
+            | .flows = ((.flows // []) as $flows
                 | if any($flows[]?; .name == $flow)
-                  then $flows | map(if .name == $flow then .cadence_seconds = $cadence else . end)
-                  else $flows + [{name: $flow, cadence_seconds: $cadence}]
+                  then $flows | map(if .name == $flow
+                                    then (.cadence_seconds = $cadence)
+                                         | if has("stall_deadline_seconds") then . else . + $new end
+                                    else . end)
+                  else $flows + [{name: $flow, cadence_seconds: $cadence} + $new]
                   end)
             | .expected_tasks = ((.expected_tasks // []) + [$task] | unique)
         ' "$input" > "$tmp"; then
@@ -112,7 +116,7 @@ _observability_registry_update_body() {
 }
 
 _observability_registry_update() {
-    local action="$1" flow="$2" cadence="$3" task="$4"
+    local action="$1" flow="$2" cadence="$3" task="$4" stall="${5:-}"
     local registry registry_dir locked=0 rc
 
     command -v jq >/dev/null 2>&1 || {
@@ -134,13 +138,14 @@ _observability_registry_update() {
     fi
 
     rc=0
-    _observability_registry_update_body "$action" "$flow" "$cadence" "$task" "$registry" "$registry_dir" || rc=$?
+    _observability_registry_update_body "$action" "$flow" "$cadence" "$task" "$registry" "$registry_dir" "$stall" || rc=$?
     [ "$locked" -eq 1 ] && _observability_registry_unlock "$registry"
     return "$rc"
 }
 
+# observability_register_cadence <flow> <cadence_seconds> <task> [stall_deadline_seconds]
 observability_register_cadence() {
-    _observability_registry_update register "$1" "$2" "$3"
+    _observability_registry_update register "$1" "$2" "$3" "${4:-}"
 }
 
 observability_unregister_cadence() {

@@ -1185,6 +1185,12 @@ jobs:
       - if: ${{ !job.container.id }}
         run: |
           python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r .github/ci-image/requirements-ci.txt
+      - id: precommit-cache
+        name: Cache pre-commit environments
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ job.container.id && 'image' || 'host' }}-${{ hashFiles('.pre-commit-config.yaml') }}
       # HIMMEL-4319: the hook is require_serial, so `--all-files` is one
       # ~9 min CPU-bound shellcheck over ~1460 files. It cannot be sharded:
       # shellcheck resolves `source` across the files of ONE invocation, so
@@ -1209,6 +1215,13 @@ jobs:
       - name: shellcheck (all files)
         if: github.event_name != 'pull_request'
         run: pre-commit run shellcheck --all-files --show-diff-on-failure
+      - name: Name a shellcheck release-host outage
+        if: ${{ failure() && steps.precommit-cache.outputs.cache-hit != 'true' }}
+        run: |
+          rev="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' .pre-commit-config.yaml)"
+          ver="${rev%.*}"
+          url="https://github.com/koalaman/shellcheck/releases/download/v${ver}/shellcheck-v${ver}.linux.x86_64.tar.xz"
+          curl -sSfIL --max-time 20 -o /dev/null "$url" || echo "infra: ${url} is unreachable and the pre-commit cache missed; this red is the GitHub release host, not the code, so rerun when it recovers" >&2
       # HIMMEL-4254 P2: a bypass flag a hook reads but the config UI's display
       # registry lacks is a flag the UI silently cannot show.
       - run: node scripts/install/flag-registry-lint.mjs
@@ -2132,16 +2145,34 @@ jobs:
       # (.github/ci-image/Dockerfile) on PATH for every ubuntu shard, and set
       # HIMMEL_REQUIRE_SHFMT=1 so a missing binary fails the suite, not skips it.
       # Keep ver/sha in lockstep with the Dockerfile.
+      - name: Record pinned shfmt version (cache key)
+        if: runner.os == 'Linux'
+        run: |
+          echo "SHFMT_VER=3.14.1" >> "$GITHUB_ENV"
+      - id: shfmt-cache
+        name: Cache pinned shfmt
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/himmel-shfmt
+          key: shfmt-${{ runner.os }}-${{ env.SHFMT_VER }}
       - name: Put pinned shfmt on PATH (Linux — bash-ast model rows)
         if: runner.os == 'Linux'
         run: |
-          ver=3.14.1
+          ver="$SHFMT_VER"
           sha=76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
-          mkdir -p "$RUNNER_TEMP/shfmt-bin"
-          curl -sSfL "https://github.com/mvdan/sh/releases/download/v${ver}/shfmt_v${ver}_linux_amd64" -o "$RUNNER_TEMP/shfmt-bin/shfmt"
-          echo "${sha}  $RUNNER_TEMP/shfmt-bin/shfmt" | sha256sum -c -
-          chmod 755 "$RUNNER_TEMP/shfmt-bin/shfmt"
-          echo "$RUNNER_TEMP/shfmt-bin" >> "$GITHUB_PATH"
+          bin="$HOME/.cache/himmel-shfmt/shfmt"
+          url="https://github.com/mvdan/sh/releases/download/v${ver}/shfmt_v${ver}_linux_amd64"
+          mkdir -p "$HOME/.cache/himmel-shfmt"
+          if [ -x "$bin" ] && echo "${sha}  ${bin}" | sha256sum -c - >/dev/null 2>&1; then
+            echo "shfmt ${ver}: using the cached binary"
+          else
+            rm -f "$bin"
+            curl -sSfL "$url" -o "$bin" || { echo "infra: ${url} is unreachable and the shfmt cache missed; this red is the GitHub release host, not the code, so rerun when it recovers" >&2; exit 1; }
+            echo "${sha}  ${bin}" | sha256sum -c -
+            chmod 755 "$bin"
+          fi
+          echo "$HOME/.cache/himmel-shfmt" >> "$GITHUB_PATH"
           echo "HIMMEL_REQUIRE_SHFMT=1" >> "$GITHUB_ENV"
       # HIMMEL-7553: test-requirements-resolve.sh SKIPs without uv, and a
       # Dependabot PR (no CI image) has none, so the lock bumps it guards passed

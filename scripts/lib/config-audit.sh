@@ -24,8 +24,14 @@
 #   config-audit.sh check                            the same comparison, read-only (the doctor): LOSS rows
 #                                                    (exit 3), RENAME <file> <old> <new> <path> rows (exit 0), then
 #                                                    BACKUP <id> <age> and NOBACKUP <file> <path> for a present
-#                                                    file no backup holds (exit 0)
-#   config-audit.sh accept                           take the live set as healthy (a deliberate hand edit)
+#                                                    file no backup holds (exit 0); UNKNOWN .env <why> <path>
+#                                                    when the .env read is not the recorded path (exit 0); a .env
+#                                                    gone from the recorded path, or a recorded himmelctl cache
+#                                                    .env gone, is a deleted LOSS
+#   config-audit.sh accept [--live]                  take the live set as healthy (a deliberate hand edit);
+#                                                    refuses (exit 1, watch.json unchanged) when no .env path resolves
+#                                                    or the .env read is not the recorded one; --live records the
+#                                                    .env read here in place of a recorded one that still exists
 #   config-audit.sh denied <file> <action> [--script NAME] [--pid N]
 #                                                    log a refused write (block-himmel-config-writes.sh)
 #
@@ -105,7 +111,9 @@ _ca_usage() {
 
 _ca_env_file() {
     if [ -n "${HIMMEL_CONFIG_AUDIT_ENV_FILE:-}" ]; then printf '%s' "$HIMMEL_CONFIG_AUDIT_ENV_FILE"; return; fi
-    _load_dotenv_envfile ""
+    local root="${HIMMEL_REPO:-}"
+    [ -n "$root" ] && [ -d "$root" ] || root="$_CA_DIR/../.."
+    ( cd "$root" 2>/dev/null && _load_dotenv_envfile "" )
 }
 
 # The engine. Every verb runs here; bash resolves the paths and the key classes.
@@ -168,6 +176,10 @@ const real = (p) => {
   try { return fs.realpathSync(r); } catch {}
   try { return path.join(fs.realpathSync(path.dirname(r)), path.basename(r)); } catch { return r; }
 };
+const sameEnv = (a, b) => Boolean(a && b && a.path && b.path && real(a.path) === real(b.path));
+const isCache = (p) => Boolean(p && E.CA_ENV_CACHE && real(p) === real(E.CA_ENV_CACHE));
+const wasCache = (s) => Boolean(s && (s.cache || isCache(s.path)));
+const cacheGone = (s) => Boolean(s && s.present && wasCache(s) && !fs.existsSync(s.path));
 const nameOf = (file) => {
   const r = real(file);
   for (const [n, p] of Object.entries(SET)) if (p && real(p) === r) return n;
@@ -312,6 +324,7 @@ function snapshot() {
     const k = keys(n, b);
     snap[n] = { path: p, present: b !== null, size: b === null ? 0 : b.length, keys: k === null ? null : [...k.keys()].sort(),
       digests: k === null ? null : Object.fromEntries([...k.entries()].sort((x, y) => (x[0] < y[0] ? -1 : 1))) };
+    if (n === ".env" && isCache(p)) snap[n].cache = true;
   }
   return snap;
 }
@@ -348,6 +361,11 @@ function problems(snap, live) {
   const out = [];
   for (const [n, was] of Object.entries(snap)) {
     const is = live[n];
+    if (n === ".env" && cacheGone(was) && !sameEnv(is, was)) { out.push({ file: n, path: was.path, kind: "deleted", lost: was.keys || [] }); continue; }
+    if (n === ".env" && was.present && !sameEnv(is, was)) {
+      out.push({ file: n, path: is ? is.path : "-", kind: "unknown", why: is && is.present ? "not the recorded file" : "no file found", lost: [] });
+      continue;
+    }
     if (!is || !was.present) continue;
     if (!is.present) { out.push({ file: n, path: was.path, kind: "deleted", lost: was.keys || [] }); continue; }
     if ((is.size === 0 && was.size > 0) || (was.keys !== null && is.keys === null)) { out.push({ file: n, path: was.path, kind: "truncated", lost: was.keys || [] }); continue; }
@@ -364,7 +382,11 @@ function problems(snap, live) {
   }
   return out;
 }
-const isLoss = (p) => p.kind !== "renamed";
+const isLoss = (p) => p.kind !== "renamed" && p.kind !== "unknown";
+const keepEnv = (live, snap) => {
+  const S = snap[".env"];
+  return !S || !S.present || sameEnv(live[".env"], S) ? live : Object.assign({}, live, { ".env": S });
+};
 const renamed = (p) => p.renames.map((r) => r[0] + " to " + r[1]).join(", ");
 // The newest backup whose copy of the file is present and holds every lost key.
 function goodBackup(p) {
@@ -497,8 +519,9 @@ function watch(readOnly) {
   const all = problems(snap, live), ps = all.filter(isLoss);
   if (readOnly) return all;
   if (!ps.length) {
-    saveWatch(live); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {}
-    if (all.length) console.log("INFO\tℹ️ himmel station config: " + all.map((p) => `${p.path} renamed: ${renamed(p)}`).join("; ") + " (same values, nothing lost)");
+    saveWatch(keepEnv(live, snap)); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {}
+    const rn = all.filter((p) => p.kind === "renamed");
+    if (rn.length) console.log("INFO\tℹ️ himmel station config: " + rn.map((p) => `${p.path} renamed: ${renamed(p)}`).join("; ") + " (same values, nothing lost)");
     return [];
   }
   for (const p of ps) p.backup = goodBackup(p);
@@ -523,11 +546,29 @@ try {
   else if (verb === "denied") appendRow(path.join(STATE, "audit.jsonl"), {
     ts: now(), pid: Number(opt("--pid", "")) || null, session: E.CLAUDE_SESSION_ID || E.CLAUDE_CODE_SESSION_ID || "",
     script: opt("--script", ""), file: real(argv[0]), action: argv[1], denied: true });
-  else if (verb === "accept") { saveWatch(snapshot()); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {} console.log("result=accepted"); }
+  else if (verb === "accept") {
+    const live = snapshot(), w = loadWatch(), S = w && w[".env"];
+    if (!SET[".env"]) { console.log("result=refused: no .env path resolved; run it from the himmel checkout or set HIMMEL_REPO to it; watch.json is unchanged"); process.exit(1); }
+    if (S && S.present && !sameEnv(live[".env"], S) && !cacheGone(S)) {
+      const L = SET[".env"];
+      if (!fs.existsSync(S.path)) {
+        console.log(`result=refused: the .env read here (${L}) is not the recorded one (${S.path}); set HIMMEL_REPO to the checkout that holds the recorded one, or, when that checkout moved, run it once with HIMMEL_CONFIG_AUDIT_ENV_FILE=${S.path} to record that file gone; watch.json is unchanged`);
+        process.exit(1);
+      }
+      if (!argv.includes("--live")) {
+        const hint = wasCache(S) ? `set HIMMELCTL_CACHE_DIR=${path.dirname(S.path)} to read the recorded one`
+          : isCache(L) ? "the himmelctl cache .env is read first while it exists"
+          : "set HIMMEL_REPO to the checkout that holds the recorded one";
+        console.log(`result=refused: the .env read here (${L}) is not the recorded one (${S.path}), which still exists; ${hint}, or run config-audit.sh accept --live to record ${L} in its place; watch.json is unchanged`);
+        process.exit(1);
+      }
+    }
+    saveWatch(live); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {} console.log("result=accepted"); }
   else if (verb === "check") {
     const found = watch(true);
     for (const p of found.filter(isLoss)) { p.backup = goodBackup(p); console.log(`LOSS\t${p.file}\t${p.kind}\t${p.lost.join(",") || "-"}\t${p.backup || "-"}\t${p.path}`); }
     for (const p of found) for (const [from, to] of p.renames || []) console.log(`RENAME\t${p.file}\t${from}\t${to}\t${p.path}`);
+    for (const p of found.filter((x) => x.kind === "unknown")) console.log(`UNKNOWN\t${p.file}\t${p.why}\t${p.path}`);
     for (const r of backupRows()) console.log(r);
   }
   else process.exit(2);
@@ -542,6 +583,7 @@ _ca_node() {
     dir="$(_himmel_config_dir)"
     envf="$(_ca_env_file)"
     CA_STATE="${HIMMEL_CONFIG_AUDIT_DIR:-$dir/state/config-audit}" CA_ENV="$envf" \
+        CA_ENV_CACHE="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/.env" \
         CA_CONF="$dir/himmel.conf" CA_LOCAL="$dir/himmel.conf.local" CA_JSON="$dir/config.json" \
         node -e "$_CA_JS" "$@"
 }
@@ -688,7 +730,7 @@ config_audit_main() {
         scrub) _ca_node scrub "$@" ;;
         restore) [ "$#" -eq 1 ] || _ca_usage; _ca_restore "$1" "${script:-config-audit restore}" ;;
         watch) _ca_watch ;;
-        accept) _ca_node accept ;;
+        accept) [ "$#" -eq 0 ] || [ "$*" = --live ] || _ca_usage; _ca_node accept "$@" ;;
         denied) [ "$#" -eq 2 ] || _ca_usage; _ca_node denied "$1" "$2" --script "$script" --pid "$pid" ;;
         check) local out; out="$(_ca_node check)" || return 1; [ -z "$out" ] && return 0; printf '%s\n' "$out"
             case "$out" in LOSS*|*"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hermetic, git-oracle tests for the one-time clip-lifecycle migration engine
-# (LUNA-86): tools/migrate-clip-lifecycle.mjs.
+# (tools/migrate-clip-lifecycle.mjs).
 #
 # Backfills top-level `processed: true` clips into Clippings/_evidence/, with a
 # SIX-form (3 plain + 3 `.md`) literal boundary-safe inbound-link rewrite, an
@@ -233,7 +233,7 @@ assert "daily plain backref → _evidence/" "yes" \
     "$(grep -qF "[[Clippings/_evidence/$ID3]]" "$VAULT/50-Journal/Daily/2026-06-10.md" && echo yes || echo no)"
 assert "external alias (subfolder) → _evidence/ basename" "yes" \
     "$(grep -qF "[[Clippings/_evidence/$ID4BASE|Sub alias]]" "$VAULT/30-Resources/Tech/notes.md" && echo yes || echo no)"
-assert "self-ref remapped at new path (LUNA-60)" "yes" \
+assert "self-ref remapped at new path" "yes" \
     "$(grep -qF "[[Clippings/_evidence/$ID2]]" "$VAULT/Clippings/_evidence/$ID2.md" && echo yes || echo no)"
 # cross-dependency: a migrated clip's body link to ANOTHER migrated clip rewritten
 assert "cross-dep link (ID5 body → ID7) rewritten to _evidence/" "yes" \

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hermetic tests for the shared Instagram throttle (HIMMEL-4306).
+"""Hermetic tests for the shared Instagram throttle.
 
 No network, no Instagram. A fake clock/sleep drives the Python module; the node
 twin is exercised through its CLI against the SAME state file, which is what

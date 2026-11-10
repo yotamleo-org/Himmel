@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for LUNA-58 telegram-clip.mjs + lib/telegram-clip.mjs.
+# Tests for telegram-clip.mjs + lib/telegram-clip.mjs.
 #
 # Scope (no live telegram — end-to-end is LUNA calibration):
 #   1. scripts parse (node --check)
@@ -80,7 +80,7 @@ assert "no-url source null" null     "$(T='just a thought' libcall "console.log(
 echo "Test 3b: helpers"
 assert "firstUrl strips trailing punct" "https://x.com/a" "$(T='look at https://x.com/a, nice' libcall "console.log(lib.firstUrl(process.env.T))")"
 assert "firstUrl none → null" null "$(T='no link here' libcall "console.log(JSON.stringify(lib.firstUrl(process.env.T)))")"
-# LUNA-65: balanced parens inside a URL survive; only an unbalanced trailing ) is stripped
+# balanced parens inside a URL survive; only an unbalanced trailing ) is stripped
 assert "firstUrl keeps balanced wiki paren" "https://en.wikipedia.org/wiki/Foo_(bar)" "$(T='see https://en.wikipedia.org/wiki/Foo_(bar) ok' libcall "console.log(lib.firstUrl(process.env.T))")"
 assert "firstUrl strips unbalanced wrapping paren" "https://x.com/a" "$(T='(https://x.com/a)' libcall "console.log(lib.firstUrl(process.env.T))")"
 assert "firstUrl strips paren + trailing dot, keeps inner paren" "https://en.wikipedia.org/wiki/Foo_(bar)" "$(T='(https://en.wikipedia.org/wiki/Foo_(bar)).' libcall "console.log(lib.firstUrl(process.env.T))")"

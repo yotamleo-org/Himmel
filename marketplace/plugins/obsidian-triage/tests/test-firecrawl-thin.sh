@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wrapper for the --firecrawl-thin escalation unit tests (LUNA-27 /
+# Wrapper for the --firecrawl-thin escalation unit tests.
 # Delegates to the hermetic python test (no network, no
 # FIRECRAWL_API_KEY, no credits). Matches the repo's <name>.sh + <name>.py
 # test-pair convention.

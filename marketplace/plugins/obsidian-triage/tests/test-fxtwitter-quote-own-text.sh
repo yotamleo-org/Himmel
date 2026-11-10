@@ -551,10 +551,10 @@ check "note+quote clip title repaired (body-fill path ran)" "$r"
 
 # the injection re-screen ran, and saw the NEW body.
 [ -s "$screener_log" ] && r=yes || r=no
-check "HIMMEL-256 re-screen invoked on the quote path" "$r"
+check "injection re-screen invoked on the quote path" "$r"
 
 grep -q 'Routing to capability level is a legitimate architecture pattern' "$screener_log" 2>/dev/null && r=yes || r=no
-check "HIMMEL-256 re-screen was handed the just-written body-fill text" "$r"
+check "injection re-screen was handed the just-written body-fill text" "$r"
 
 # -- Run 2: article-shaped quote ----------------------------------------
 FXT_FIXTURE="$tmpdir/fixture-article-quote.json" \

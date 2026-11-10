@@ -20,7 +20,11 @@
 # A sweep that fails is reported and the loop goes on to the next manifest.
 # Prints each sweep's own lines, except a refusal for a worker with no live session
 # (its window is already gone), which is only counted; then
-# `sweeps: manifests=<n> failed=<n> gone=<n>`.
+# `sweeps: manifests=<n> failed=<n> gone=<n>`. Without --check it then starts one
+# detached `close-sweep.sh --drain` (CLOSE_SWEEP_BIN overrides it) for the closes'
+# queued housekeeping. In both modes it ends with the sweep's status line,
+# `close-sweep: pending=<n> failed=<n> last=<epoch>`; failed= above 0 means a
+# prune went wrong (see sweep.log in the sweep's state dir).
 #
 # Exit: 0 every sweep ran; 1 a sweep failed; 2 usage, no bucket resolved, or
 # the bucket's manifests could not be listed.
@@ -29,6 +33,8 @@
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+CLOSE_SWEEP="${CLOSE_SWEEP_BIN:-$HERE/close-sweep.sh}"
+CLOSE_SWEEP_STATE="${CLOSE_SWEEP_STATE_DIR:-$HOME/.himmel/state/close-sweep}"
 
 check=""
 manifests=()
@@ -88,4 +94,12 @@ for m in "$@"; do
     fi
 done
 echo "sweeps: manifests=$n failed=$failed gone=$gone"
+if [ -z "$check" ]; then
+    mkdir -p "$CLOSE_SWEEP_STATE" 2>/dev/null
+    # shellcheck disable=SC2016  # the child shell expands $$ and $0 itself
+    setsid -f bash -c 'cd / || exit 1; for fd in /proc/$$/fd/*; do fd=${fd##*/}; case $fd in ""|*[!0-9]*) continue ;; esac; [ "$fd" -le 2 ] || eval "exec $fd>&-"; done; exec bash "$0" --drain' \
+        "$CLOSE_SWEEP" < /dev/null >> "$CLOSE_SWEEP_STATE/sweep.log" 2>&1 \
+        || echo "close-wrapped-workers: WARN cannot start the close sweep - its records wait in $CLOSE_SWEEP_STATE/pending/"
+fi
+bash "$CLOSE_SWEEP" --status || echo "close-wrapped-workers: WARN cannot read the close sweep status ($CLOSE_SWEEP --status failed)"
 [ "$failed" -eq 0 ]

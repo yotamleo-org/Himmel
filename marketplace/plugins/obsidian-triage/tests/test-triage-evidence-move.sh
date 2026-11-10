@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Functional tests for /triage-clips Phase 8 — move processed clip to
-# Clippings/_evidence/ with boundary-safe inbound-link rewrite (LUNA-84).
+# Clippings/_evidence/ with boundary-safe inbound-link rewrite.
 #
 # Mirrors test-archive-clips.sh Tests 10+13 in style: simulates the
 # move+rewrite algorithm directly in shell on a hermetic temp vault,
@@ -43,7 +43,7 @@ mkdir -p "$tmp/50-Journal/Daily"
 mkdir -p "$tmp/30-Resources/Tech"
 
 # Clip: processed:true with Phase-6 Promotion-candidate self-ref
-# (backticked [[Clippings/<id>]] — the LUNA-60 self-ref that must be remapped)
+# (backticked [[Clippings/<id>]] — the clip's own self-ref that must be remapped)
 {
     printf -- '---\ntype: research\nharvested_at: 2026-05-25\nprocessed: true\n'
     printf -- 'triaged_at: 2026-05-25\nevidence_kind:\n  - concepts\n  - tools\n---\n'
@@ -152,7 +152,6 @@ assert "clip gone from top-level Clippings/" "yes" "$gone"
 # mis-parses inline quoted patterns/replacements and leaks the quote characters into the
 # result; a quoted pattern held in a variable with an UNQUOTED replacement variable is
 # the one spelling that behaves identically on 3.2 and 5.x.
-# ponytail: works around bash 3.2 quoting (no product bug), drop once macOS CI runs bash >= 4, HIMMEL-3719.
 lit_sub() {
   local _v="$1" _p="$2" _r="$3" _cur
   eval "_cur=\$$_v"
@@ -215,7 +214,7 @@ echo "Test 7e: .md#heading synthesis citation rewritten (suffix + heading tail p
 if grep -qF "[[Clippings/$NEW.md#Key Ideas]]" "$synth"; then f=yes; else f=no; fi
 assert ".md#heading citation → [[Clippings/$NEW.md#Key Ideas]]" "yes" "$f"
 
-echo "Test 8: moved clip self-ref remapped at new path (LUNA-60)"
+echo "Test 8: moved clip self-ref remapped at new path"
 dest="$tmp/Clippings/$NEW.md"
 if grep -qF "[[Clippings/$NEW]]" "$dest"; then f=remapped; else f=stale; fi
 assert "moved clip self-ref remapped to _evidence path" "remapped" "$f"

@@ -211,8 +211,8 @@ else
     echo "  WARN  block-style fixture missing — skipping Test 5"
 fi
 
-echo "Test 6: bare-tags fixture (YAML null) — Branch 3 vs Branch 4 disambiguation (LUNA-8)"
-# Real-world shape from LUNA-2 Web Clipper templates: bare `tags:` with
+echo "Test 6: bare-tags fixture (YAML null) — Branch 3 vs Branch 4 disambiguation"
+# Real-world shape from Web Clipper templates: bare `tags:` with
 # no value — YAML null. Phase 3 must handle this as Branch 4 (null) and
 # distinguish it from Branch 3 (block-list, where `tags:` is followed by
 # `  - item` lines). Both share the same first-line regex
@@ -271,7 +271,7 @@ if [ -r "$bare_target" ]; then
         assert "flow-empty fixture does NOT match bare-tags first-line regex (no misroute)" "no" "$flow_misroute"
     fi
 else
-    echo "  FAIL  bare-tags fixture missing — LUNA-8 fix not exercised"
+    echo "  FAIL  bare-tags fixture missing — bare-tags fix not exercised"
     fail=$((fail+1))
 fi
 
@@ -309,7 +309,7 @@ else
 fi
 assert "dedup correctly distinguishes different-clip backrefs → append" "append" "$dedup_decision_other"
 
-echo "Test 8: Phase-8 debt drain predicate (HIMMEL-1713)"
+echo "Test 8: Phase-8 debt drain predicate"
 # Debt is RECORDED, never inferred: Phase 7 writes evidence_pending: true in
 # the same edit as processed: true; Phase 8 deletes it only after the six-form
 # verify returns zero. The drain greps the marker across the inbox top level
@@ -460,7 +460,7 @@ assert "marked but NOT processed is NOT drained (a clip that never ran Phases 1-
 if drainable "$TMP/drain/Clippings/unterminated-frontmatter.md"; then r9=drained; else r9=skipped; fi
 assert "unterminated frontmatter is NOT drained (no closing --- means no frontmatter)" "skipped" "$r9"
 
-echo "Test 9: Phase-8 flat-pool collision guard (HIMMEL-1713)"
+echo "Test 9: Phase-8 flat-pool collision guard"
 # The evidence pool is FLAT while the inbox is not, so 2026-05/foo.md and a
 # top-level foo.md both target _evidence/foo.md. A bare mv destroys whichever
 # landed first. The guard must move only into a free destination, and must
@@ -544,7 +544,7 @@ res=$(guarded_move "$found_clip" "$TMP/coll/Clippings/_evidence/resumed.md")
 assert "resumed move (pre-move path gone, clip already at dest) is a no-op, NOT a collision" "same-file" "$res"
 assert "resumed clip content is untouched by the no-op" "resumed" "$(cat "$TMP/coll/Clippings/_evidence/resumed.md")"
 
-echo "Test 8b: the UNPROCESSED scan is frontmatter-scoped too (HIMMEL-1713)"
+echo "Test 8b: the UNPROCESSED scan is frontmatter-scoped too"
 # A whole-file grep for ^processed:true lets untrusted body text permanently
 # suppress a clip's triage: it is excluded from the scan on EVERY run (the body
 # never changes), and since Phase 7 never runs it never gets evidence_pending
@@ -571,7 +571,7 @@ assert "BODY-forged processed marker does NOT suppress triage (still scanned)" "
 assert "an ordinary fresh clip is still scanned" "yes" \
   "$(grep -qF 'fresh.md' <<<"$unprocessed" && echo yes || echo no)"
 
-echo "Test 8c: CRLF clips are read correctly (HIMMEL-1713)"
+echo "Test 8c: CRLF clips are read correctly"
 # A vault synced from Windows has CRLF clips. Where awk leaves the \r on the
 # line, matching the delimiter by string equality ($0 == "---") sees "---\r",
 # decides the clip has no frontmatter, and reports EVERY CRLF clip unprocessed
@@ -596,7 +596,7 @@ assert "CRLF clip's evidence_pending marker IS read" "yes" \
 assert "CRLF clip without the marker still reads unprocessed" "no" \
   "$(fm_true "$TMP/crlf/Clippings/crlf-fresh.md" processed && echo yes || echo no)"
 
-echo "Test 8d: the .md ambiguity guard is SYMMETRIC (HIMMEL-1713)"
+echo "Test 8d: the .md ambiguity guard is SYMMETRIC"
 # [[Clippings/foo.md]] is at once the plain link of a clip named foo.md (file
 # foo.md.md) and the .md form of a clip named foo. Testing only "does <OLD> end
 # in .md" catches one direction and leaves the other fully reachable: clip foo
@@ -618,12 +618,12 @@ assert "clip whose id ends in .md IS refused when the colliding foo sibling exis
   "$(ambiguous "foo.md" "$TMP/ambig/Clippings" && echo yes || echo no)"
 assert "clip 'foo' is ALSO refused when sibling foo.md exists (other direction)" "yes" \
   "$(ambiguous "foo" "$TMP/ambig/Clippings" && echo yes || echo no)"
-assert "a clip ending in .md with NO colliding sibling is NOT refused (HIMMEL-1713 codex-2)" "no" \
+assert "a clip ending in .md with NO colliding sibling is NOT refused" "no" \
   "$(ambiguous "lone.md" "$TMP/ambig/Clippings" && echo yes || echo no)"
 assert "an ordinary clip with no colliding sibling is NOT refused" "no" \
   "$(ambiguous "ordinary" "$TMP/ambig/Clippings" && echo yes || echo no)"
 
-echo "Test 9b: empty-vault drain does not fall back to stdin (HIMMEL-1713)"
+echo "Test 9b: empty-vault drain does not fall back to stdin"
 # With no marked clips both finds print nothing and GNU xargs still runs grep
 # once with zero file operands — grep then reads STDIN. Without a permanent
 # operand that either hangs or emits a bogus "(standard input)" candidate the
@@ -636,7 +636,7 @@ empty_out=$({ find "$TMP/emptyvault/Clippings" -maxdepth 2 -type f -name '*.md' 
 } | xargs -0 grep -l "^evidence_pending:[[:space:]]*true[[:space:]]*$" /dev/null < /dev/null 2>&1)
 assert "empty vault yields no candidates and no (standard input) line" "" "$empty_out"
 
-echo "Test 9c: a RENAMED collided clip is swept under BOTH identifiers (HIMMEL-1713)"
+echo "Test 9c: a RENAMED collided clip is swept under BOTH identifiers"
 # The collision remedy tells the operator to rename the source clip. If the
 # drain then took the clip's CURRENT path as <OLD>, inbound links still using
 # the recorded evidence_origin would never be enumerated, the verify would
@@ -658,7 +658,7 @@ assert "a current-path-only sweep would strand the origin link" "1" "$only_curre
 both=$(grep -oF -e "[[Clippings/$ORIG]]" -e "[[Clippings/$RENAMED]]" "$TMP/rename/notes/inbound.md" | wc -l | tr -d ' ')
 assert "sweeping BOTH identifiers enumerates both inbound links" "2" "$both"
 
-echo "Test 9d: an interrupted-after-move resume CONVERGES (HIMMEL-1713)"
+echo "Test 9d: an interrupted-after-move resume CONVERGES"
 # The primary case the whole resume mechanism exists for. After the mv the
 # clip's own path relative to Clippings/ IS <NEW> (_evidence/foo), so if the
 # identifier set admitted "current path when it differs from origin", the
@@ -716,7 +716,7 @@ assert "verify over the OLD set returns ZERO -> debt can clear (resume converges
 would_hang=$(grep -rlF -e "[[Clippings/$R_NEW]]" "$TMP/resume" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
 assert "admitting <NEW> would have found live links forever (non-convergence)" "2" "$would_hang"
 
-echo "Test 9e: the destination claim is atomic no-clobber (HIMMEL-1713)"
+echo "Test 9e: the destination claim is atomic no-clobber"
 # A test-then-mv is check-then-act: two overlapping runs can both see a free
 # destination and both move, the second destroying the first clip's evidence.
 # link() is atomic and REFUSES an existing destination, so the check and the
@@ -736,7 +736,7 @@ rm -f "$TMP/atomic/challenger.md"
 assert "content is reachable at the destination after dropping the source name" "challenger" \
   "$(cat "$TMP/atomic/_evidence/y.md")"
 
-echo "Test 9f: an interrupted ln leaves TWO names — the alias must be unlinked (HIMMEL-1713)"
+echo "Test 9f: an interrupted ln leaves TWO names — the alias must be unlinked"
 # ln+rm is atomic per-claim but NOT atomic as a pair. Killed in between, the
 # clip exists in the inbox AND in _evidence/ as one inode. -ef is then true, so
 # a plain no-op branch would skip the stale alias, rewrite links, and clear
@@ -761,7 +761,7 @@ assert "already-at-destination single name is still a plain no-op" "same-file" "
 assert "the no-op did not delete the clip" "payload" \
   "$(cat "$TMP/interrupted/Clippings/_evidence/half.md")"
 
-echo "Test 9h: a SYMLINKED destination must not be unlinked as a stale alias (HIMMEL-1713)"
+echo "Test 9h: a SYMLINKED destination must not be unlinked as a stale alias"
 # -ef compares stat(), which follows symlinks, so it is true when the
 # destination is a symlink to the inbox file — not only when an interrupted ln
 # made two hard links. Unlinking the source there deletes the sole REAL
@@ -785,7 +785,7 @@ else
     echo "  SKIP  host produced a copy, not a symlink (MSYS without winsymlinks) — symlink-alias case not exercised here; it is covered on Linux/macOS CI"
 fi
 
-echo "Test 9i: nlink>=2 alone does NOT prove dest is one of the hard links (HIMMEL-1713 codex-2 round 3)"
+echo "Test 9i: nlink>=2 alone does NOT prove dest is one of the hard links"
 # nlink counts every directory entry on the clip's inode SYSTEM-WIDE, not
 # specifically dest. If dest is a symlink to clip (not a real second hard
 # link) while clip separately carries an UNRELATED hard link elsewhere, the
@@ -814,7 +814,7 @@ else
     echo "  SKIP  host could not construct the symlink+hardlink precondition (MSYS without winsymlinks, or no hard-link support) — covered on Linux/macOS CI"
 fi
 
-echo "Test 9g: a filesystem without hard links degrades, it does NOT false-collide (HIMMEL-1713)"
+echo "Test 9g: a filesystem without hard links degrades, it does NOT false-collide"
 # exFAT, FAT32, many network shares and several cloud-sync mounts reject
 # link(). Reading every ln failure as "destination taken" would turn every clip
 # on such a vault into a permanent false collision. The destination must be
@@ -879,11 +879,11 @@ assert "mv -n leaves the racing incumbent's content intact" "raced-incumbent" \
 assert "mv -n leaves the challenger source untouched after refusing" "raced-challenger" \
   "$(cat "$TMP/nolink/Clippings/c.md")"
 
-echo "Test 10: evidence_origin is a QUOTED, round-tripped YAML scalar (HIMMEL-1713)"
+echo "Test 10: evidence_origin is a QUOTED, round-tripped YAML scalar"
 # Clip ids are filenames: they open with @ (YAML-reserved) and contain ' #'
 # (comment start). A bare scalar either fails parse-before-write and blocks
 # Phase 8 forever, or parses WRONG and truncates the path the drain relies on.
-CMD="$TMP/triage-clips.all.md"  # HIMMEL-5513: body plus its on-demand references
+CMD="$TMP/triage-clips.all.md"  # body plus its on-demand references
 cat "$(cd "$(dirname "$0")/.." && pwd)/commands/triage-clips.md" "$(cd "$(dirname "$0")/.." && pwd)"/references/triage-clips/*.md > "$CMD"
 unlinked=""
 for ref in "$(cd "$(dirname "$0")/.." && pwd)"/references/triage-clips/*.md; do
@@ -915,7 +915,7 @@ else
     echo "  SKIP  js-yaml not installed under tools/ — behavioural YAML asserts skipped"
 fi
 
-echo "Test 11: Phase 7 stale-read guard compares against this run's own post-write hash, not the Phase 1 pre-mutation baseline (HIMMEL-1140)"
+echo "Test 11: Phase 7 stale-read guard compares against this run's own post-write hash, not the Phase 1 pre-mutation baseline"
 # Phases 2-6 legitimately mutate the clip before Phase 7 runs, so a guard that
 # compares Phase 7's re-read against the Phase 1 (pre-mutation) baseline would
 # abort EVERY clip as "stale" — it must compare against the hash recorded
@@ -936,7 +936,7 @@ case "$guard_block" in
 esac
 assert "Phase 7 guard no longer cites the pre-mutation Phase 1 baseline as its comparison point" "ok" "$r"
 
-echo "Test 12: every mark/move route goes through triage-mark-processed.py (HIMMEL-4685)"
+echo "Test 12: every mark/move route goes through triage-mark-processed.py"
 # The 2026-10-07 cadence run fanned triage out to parallel subagents that
 # marked and moved clips with their own helpers, skipping the stale-read SHA
 # check and the ln move. The invariant now lives in ONE tool; the runbook must

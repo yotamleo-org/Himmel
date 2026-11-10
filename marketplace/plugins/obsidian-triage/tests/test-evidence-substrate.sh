@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Invariant + functional tests for the _evidence/ scan guard (LUNA-83).
+# Invariant + functional tests for the _evidence/ scan guard.
 #
 # Structural: verify -not -path '*/_evidence/*' IS present in
 # harvest/triage/archive runbooks and ABSENT from synthesize-clips.md.

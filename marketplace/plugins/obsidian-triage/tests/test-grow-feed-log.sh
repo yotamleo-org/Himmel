@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for LUNA-130 grow-feed-log.mjs.
+# Tests for grow-feed-log.mjs.
 #
 # Scope:
 #   1. script parses (node --check)
@@ -877,7 +877,7 @@ assert "next product still lands before ## Notes (section not truncated)" ok "$a
 # neutralizeComments), so tool-inserted content can never form a section
 # terminator. Reverting the one-line wiring change makes every assertion
 # below go red; that falsification was run for real against this suite.
-echo "Test 32: product body '##' line cannot truncate ## Products (HIMMEL-1798 ratchet)"
+echo "Test 32: product body '##' line cannot truncate ## Products (regression guard)"
 BODYVAULT="$tmpdir/bodyvault"
 make_vault "$BODYVAULT"
 BODYTARGET="$BODYVAULT/20-Areas/Grow/Grow-Feeding-Log.md"

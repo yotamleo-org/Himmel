@@ -116,7 +116,7 @@ else
 fi
 assert "single-source-domain concept cluster of 3 → confidence floor skips" "skip" "$floor_decision"
 
-echo "Test 2b: confidence-floor — Pattern 2 (author convergence) exempt from domain floor (HIMMEL-242)"
+echo "Test 2b: confidence-floor — Pattern 2 (author convergence) exempt from domain floor"
 # Same single-source evidence read as an AUTHOR cluster: Alice has 2+
 # clips, all medium.com. Pattern 2 is exempt from the shared-domain test
 # (the author IS the source; authors are inherently single-platform), so
