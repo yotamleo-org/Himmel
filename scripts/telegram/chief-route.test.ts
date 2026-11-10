@@ -1,5 +1,5 @@
 import { expect, test, spyOn } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync, statSync, cpSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync, statSync, cpSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import { classify } from "./router";
@@ -1953,7 +1953,7 @@ const threeRounds = (r: string) => {
   writeFileSync(`${b.spec}.critic-spec-r3.md`, `**F1.** finding-one <the tag> stays open\n**F2.** finding-two stays open\nCONTENT-SHA256 ${sha(D_TEXT)} HIMMEL-1-design.md\nSPEC FINDINGS 2\n`);
   return b;
 };
-const unsealedReturn = (file: string, text: string, verdict = "SPEC FINDINGS 1") => writeFileSync(file, `return, read ${sha(text)}\n${verdict}\n`);
+const unsealedReturn = (file: string, text: string, verdict = "SPEC FINDINGS 1", ...lines: string[]) => writeFileSync(file, `return, read ${sha(text)}\n${lines.map((l) => `${l}\n`).join("")}${verdict}\n`);
 const grant = (r: string, spec: string, round: number, decision = 900, withVerbatim = true) => {
   writeFileSync(`${spec}.operator-round-r${round}.md`, `Operator allows this round.\ndecision ${decision}\n`);
   if (!withVerbatim) return;
@@ -1974,7 +1974,7 @@ const specsOf = (r: string) => join(r, "specs");
 
 test("DoD 1: round 3 left findings open, so round 4 seals once by the ledger count; round 5 needs a record (T5), and an operator-round file opens nothing", async () => {
   const r = root(); const b = threeRounds(r); await seedIfNeeded(specsOf(r));
-  const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
+  const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT, "SPEC FINDINGS 1", markerFor(specsOf(r), "HIMMEL-1", "spec", 4));
   expect((await seal(r4, b.spec, sha(D_TEXT))).err).toBe("");
   const r5 = `${b.spec}.critic-spec-r5.md`; unsealedReturn(r5, D_TEXT, "SPEC CLEAN");
   grant(r, b.spec, 5);
@@ -1994,7 +1994,7 @@ test("readCriticBudget reads the kind's rounds from the ledger and whether the n
   const plan = await readCriticBudget(b.spec, "plan");
   expect(plan).toMatchObject({ count: 1, requestedRound: 2, allowed: true });
   expect(plan.rounds.map(f => [f.round, basename(f.path)])).toEqual([[1, "HIMMEL-1-design.md.critic-plan-r1.md"]]);
-  const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
+  const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT, "SPEC FINDINGS 1", markerFor(specsOf(r), "HIMMEL-1", "spec", 4));
   expect((await seal(r4, b.spec, sha(D_TEXT))).err).toBe("");
   expect(await readCriticBudget(b.spec, "spec")).toMatchObject({ count: 4, requestedRound: 5, allowed: false, why: "HIMMEL-1 writer round 5 needs a round-override or round-critical record" });
 });
@@ -2210,7 +2210,7 @@ test("planted: a spec named like a judge file is counted as critic rounds, not s
   const spec = join(b.dir, "HIMMEL-2-judge-design.md"); writeFileSync(spec, D_TEXT);
   for (const n of [1, 2, 3]) critic(spec, "spec", n, "SPEC FINDINGS 1", { text: D_TEXT, file: "HIMMEL-2-judge-design.md" });
   await seedIfNeeded(specsOf(r));
-  const r4 = `${spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT);
+  const r4 = `${spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT, "SPEC FINDINGS 1", markerFor(specsOf(r), "HIMMEL-2", "spec", 4));
   expect((await seal(r4, spec, sha(D_TEXT))).err).toBe("");
   expect(ledgerRows(specsOf(r), "HIMMEL-2").at(-1)).toMatchObject({ row: "round", critic: "spec", round: 4, verdict_path: r4 });
 });
@@ -2673,17 +2673,22 @@ const sealOn = async (v: string, reads: string[], verdict: string, ...lines: str
   for (const p of reads) { last = await seal(v, p, sha(readFileSync(p, "utf8"))); if (last.code !== 0) break; }
   return last;
 };
-const roundTree = async (spec3: string[], plan3: string[]) => {
+const roundTree = async (spec3: string[], plan3: string[], withHtml = false, spec2: string[] = [], aBody = "# A\n") => {
   const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
-  const a = join(t.dir, `${CAP_KEY}-a.md`); const plan = join(t.plans, `${CAP_KEY}-a.md`);
-  writeFileSync(a, front(CAP_KEY, "# A\n")); writeFileSync(plan, "# A plan\n");
+  const a = join(t.dir, `${CAP_KEY}-a.md`); const plan = join(t.plans, `${CAP_KEY}-a.md`); const html = join(t.dir, `${CAP_KEY}-a.html`);
+  writeFileSync(a, front(CAP_KEY, aBody)); writeFileSync(plan, "# A plan\n"); if (withHtml) writeFileSync(html, "<h1>A</h1>\n");
   for (const n of [1, 2, 3]) {
-    const s = n === 3 ? spec3 : []; const p = n === 3 ? plan3 : [];
-    expect((await sealOn(`${a}.critic-spec-r${n}.md`, [a], verdictFor("SPEC", s), ...s)).err).toBe("");
+    const s = n === 3 ? spec3 : n === 2 ? spec2 : []; const p = n === 3 ? plan3 : [];
+    expect((await sealOn(`${a}.critic-spec-r${n}.md`, withHtml ? [a, html] : [a], verdictFor("SPEC", s), ...s)).err).toBe("");
     expect((await sealOn(`${a}.critic-plan-r${n}.md`, [plan], verdictFor("PLAN", p), ...p)).err).toBe("");
   }
-  return { ...t, a, plan, r: dirname(t.specs) };
+  return { ...t, a, plan, html, r: dirname(t.specs) };
 };
+function markerFor(specs: string, key: string, kind: "spec" | "plan", r: number) {
+  const rows = ledgerRows(specs, key);
+  const row = rows.filter((x) => x.row === "round" && x.critic === kind && x.round === r - 1).at(-1) ?? rows.find((x) => x.row === "seed").latest[kind][0];
+  return `CLOSURE-CHECK ${key} ${kind} r${r - 1} ${row.return_sha.slice(0, 12)}`;
+}
 const preSeal = (v: string, reads: string[], verdict: string, lines: string[], quoted = reads) =>
   writeFileSync(v, `critic return ${basename(v)}, read ${quoted.map((p) => sha(readFileSync(p, "utf8"))).join(" and ")}\n${lines.map((l) => `${l}\n`).join("")}${reads.map((p) => `CONTENT-SHA256 ${sha(readFileSync(p, "utf8"))} ${relative(dirname(v), p)}\n`).join("")}${verdict}\n`);
 const seededTree = async (plan3: string[]) => {
@@ -2710,7 +2715,7 @@ test("R1: a return named for another spec file of the ticket is refused at round
   expect(ledgerRows(t.specs, CAP_KEY).filter((r) => r.row === "round").length).toBe(6);
   const m = await roundTree(["- **M1** (major) still open"], []);
   const r4 = `${m.a}.critic-spec-r4.md`;
-  const four = await sealOn(r4, [m.a], "SPEC FINDINGS 1", "- **M2** (major) still open");
+  const four = await sealOn(r4, [m.a], "SPEC FINDINGS 1", markerFor(m.specs, CAP_KEY, "spec", 4), "- **M2** (major; reopens M1) still open");
   expect(four.err).toBe("");
   expect(ledgerRows(m.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", critic: "spec", round: 4, verdict_path: r4 });
   const five = await sealOn(`${m.a}.critic-spec-r5.md`, [m.a], "SPEC CLEAN");
@@ -2720,7 +2725,7 @@ test("R1: a return named for another spec file of the ticket is refused at round
 test("R3d: a plan round-3 major opens spec round 4 too, beside R1's fixture where both round 3s are clean (T1)", async () => {
   const t = await roundTree([], ["- **P1** (major) the plan misses a step"]);
   const r4 = `${t.a}.critic-spec-r4.md`;
-  const res = await sealOn(r4, [t.a], "SPEC CLEAN");
+  const res = await sealOn(r4, [t.a], "SPEC CLEAN", markerFor(t.specs, CAP_KEY, "spec", 4));
   expect(res.err).toBe("");
   expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", critic: "spec", round: 4, verdict_path: r4 });
   const c = await roundTree([], []);
@@ -2733,7 +2738,7 @@ test("R10: deleting every critic file does not lower the count: the next seal re
     const t = await roundTree(["- **M1** (major) still open"], []);
     if (del) for (const n of readdirSync(t.dir)) if (n.includes(".critic-")) unlinkSync(join(t.dir, n));
     const v = `${t.a}.critic-spec-r${del ? 1 : 4}.md`;
-    const res = await sealOn(v, [t.a], "SPEC FINDINGS 1", "- **n1** (minor) a new return, not round 1's bytes again");
+    const res = await sealOn(v, [t.a], "SPEC FINDINGS 1", markerFor(t.specs, CAP_KEY, "spec", 4), "- **n1** (minor) a new return, not round 1's bytes again");
     expect(res.err, del ? "files deleted" : "files kept").toBe("");
     expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", critic: "spec", round: 4, verdict_path: v });
   }
@@ -2860,7 +2865,7 @@ test("R15 (control): returns sealed before the seed send and verify as mode seed
   expect((await routeCli("ledger-verify", s3, "--spec", t.a)).out.trim()).toBe(`${CAP_KEY} spec round 3 seed`);
   expect((await sendFile(t.r, "1", t.a)).lines.length).toBe(2);
   const p4 = `${t.a}.critic-plan-r4.md`;
-  expect((await sealOn(p4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  expect((await sealOn(p4, [t.plan], "PLAN CLEAN", markerFor(t.specs, CAP_KEY, "plan", 4))).err).toBe("");
   const stale = await routeCli("ledger-verify", p3, "--spec", t.a);
   expect(stale.err).toContain(`${p3} is not ${CAP_KEY}'s latest plan round (round 4 is ${p4})`);
   expect(stale.code).not.toBe(0);
@@ -2878,6 +2883,9 @@ test("R15b (control): with both seeded round 3s holding only minors, a round-4 s
     const v = await routeCli("ledger-verify", `${t.a}.critic-${kind}-r3.md`, "--spec", t.a);
     expect(v.err).toBe("");
     expect(v.out.trim()).toBe(`${CAP_KEY} ${kind} round 3 seed`);
+    const signed = await routeCli("ledger-verify", `${t.a}.critic-${kind}-r3.md`, "--spec", t.a, "--sign");
+    expect(signed.err).toBe(""); expect(signed.code).toBe(0);
+    expect(signed.out.trim()).toBe(`${CAP_KEY} ${kind} round 3 seed`);
   }
 }, S1B);
 
@@ -2897,4 +2905,227 @@ test("R16: a clean latest critic file with a hand-appended CONTENT-SHA256 line n
   expect(res.err).toContain(`${s1}: the CONTENT-SHA256 line for ${html} is not in ${CAP_KEY}'s ledger`);
   expect(res.code).not.toBe(0);
   expect(res.lines.length).toBe(1);
+}, S1B);
+
+const verb = async (console: boolean, ...args: string[]) => {
+  const env: Record<string, string | undefined> = { ...process.env };
+  if (console) env.HIMMEL_CONSOLE = "1"; else delete env.HIMMEL_CONSOLE;
+  const p = Bun.spawn(["bun", ROUTE_TS, ...args], { env, stdout: "pipe", stderr: "pipe" });
+  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  return { code: await p.exited, out, err };
+};
+const T2 = (kind: string, r: number) => `${CAP_KEY} ${kind} round ${r} is a closure check of round ${r - 1}; build its input with closure-pack`;
+const T3 = (kind: string, r: number, paths: string) => `${CAP_KEY} ${kind} round ${r} is a closure check of the files round ${r - 1} read: ${paths}`;
+const T5 = (r: number) => `${CAP_KEY} writer round ${r} needs a round-override or round-critical record`;
+const T7 = (cls: string) => `round-critical: '${cls}' is not an operator-critical class (spend-grant, account-or-terms, public-policy, reverses-ruling)`;
+const closeOn = (t: { a: string; specs: string }, kind: "spec" | "plan", r: number, reads: string[], verdict: string, ...lines: string[]) =>
+  sealOn(`${t.a}.critic-${kind}-r${r}.md`, reads, verdict, markerFor(t.specs, CAP_KEY, kind, r), ...lines);
+const decide = (specs: string, d: number, text: string) => {
+  mkdirSync(join(specs, "decisions"), { recursive: true });
+  const f = join(specs, "decisions", `verbatim-decision-${d}-operator.txt`); writeFileSync(f, text);
+  const later = new Date(Date.now() + 5000); utimesSync(f, later, later);
+  return f;
+};
+const critical = (console: boolean, specs: string, id: string, d: number, quote: string, ...more: string[]) =>
+  verb(console, "round-critical", CAP_KEY, "--finding", id, "--decision", String(d), "--quote", quote, "--specs", specs, ...more);
+const rowsOf = (specs: string, kind: string) => ledgerRows(specs, CAP_KEY).filter((x) => x.row === kind);
+const status = async (specs: string) => JSON.parse((await routeCli("round-status", CAP_KEY, "--specs", specs, "--json")).out);
+const MAJOR = ["- **M1** (major) still open"];
+const SPEND = "approve the spend after another look";
+
+test("R2, R3, R3b, R3c: round 4 is a closure check: no marker gives T2, a new file gives T3, an edited snapshot gives T4 from closure-pack and the seal, and the marked return on the sealed file seals as closure", async () => {
+  const t = await roundTree(MAJOR, []);
+  const r4 = `${t.a}.critic-spec-r4.md`; const lines = ["- **M2** (major; reopens M1) still open", "- **n1** (major) a new class in unchanged text"];
+  const plain = await sealOn(r4, [t.a], "SPEC FINDINGS 2", ...lines);
+  expect(plain.err).toContain(T2("spec", 4)); expect(plain.code).not.toBe(0);
+  expect(readFileSync(r4, "utf8")).not.toContain("CONTENT-SHA256");
+  const v2 = join(t.dir, `${CAP_KEY}-a-v2.md`); writeFileSync(v2, front(CAP_KEY, "# A v2\n"));
+  const moved = await closeOn(t, "spec", 4, [v2], "SPEC FINDINGS 2", ...lines);
+  expect(moved.err).toContain(T3("spec", 4, t.a)); expect(moved.code).not.toBe(0);
+  const snap = join(roundsDir(t.specs), CAP_KEY, sha(front(CAP_KEY, "# A\n"))); const good = readFileSync(snap, "utf8");
+  writeFileSync(snap, "tampered\n");
+  const T4 = `snapshot ${sha(good)} was edited`;
+  const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+  expect(pack.err).toContain(T4); expect(pack.code).not.toBe(0);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", ...lines)).err).toContain(T4);
+  writeFileSync(snap, good);
+  const ok = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", ...lines);
+  expect(ok.err).toBe("");
+  const row = ledgerRows(t.specs, CAP_KEY).at(-1);
+  expect(row).toMatchObject({ row: "round", critic: "spec", round: 4, mode: "closure", verdict_path: r4 });
+  expect(row.findings).toMatchObject([{ id: "M2", class: "reopens" }, { id: "n1", class: "out-of-closure" }]);
+}, S1B);
+
+test("R4, R5, R8, R9: round 5 needs a record (T5); the override names only an open blocking id of the latest round (T9), once (T8), and only from the console", async () => {
+  const t = await roundTree(MAJOR, []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", "- **M2** (major; reopens M1) still open", "- **n1** (minor) a note")).err).toBe("");
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toContain(T5(5));
+  const over = (console: boolean, ids: string) => verb(console, "round-override", CAP_KEY, "--findings", ids, "--why", "the build cannot carry it", "--chief", "chief-x", "--specs", t.specs);
+  const T9 = (id: string) => `round-override: ${id} is not an open blocking finding of ${CAP_KEY}'s latest round`;
+  for (const id of ["n1", "M1", "nope"]) { const r = await over(true, id); expect(r.err).toContain(T9(id)); expect(r.code).not.toBe(0); }
+  const bare = await over(false, "M2"); expect(bare.code).not.toBe(0); expect(rowsOf(t.specs, "override")).toEqual([]);
+  expect((await over(true, "M2")).code).toBe(0);
+  expect(rowsOf(t.specs, "override")).toMatchObject([{ key: CAP_KEY, round_opened: 5, why: "the build cannot carry it", chief: "chief-x", findings: [{ id: "M2", severity: "major", critic: "spec" }] }]);
+  const five = await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN");
+  expect(five.err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", round: 5, mode: "closure" });
+  const again = await over(true, "M2");
+  expect(again.err).toContain(`round-override: ${CAP_KEY} already used its one override`); expect(again.code).not.toBe(0);
+  expect(rowsOf(t.specs, "override").length).toBe(1);
+}, S1B);
+
+test("R5b: a round whose findings carry no format line holds synthetic ids the override can name", async () => {
+  const t = await roundTree(MAJOR, []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "prose, no finding line")).err).toBe("");
+  const r = await verb(true, "round-override", CAP_KEY, "--findings", "spec-r4-U1", "--why", "no label", "--chief", "chief-x", "--specs", t.specs);
+  expect(r.err).toBe(""); expect(r.code).toBe(0);
+  expect(rowsOf(t.specs, "override")[0].findings).toMatchObject([{ id: "spec-r4-U1", severity: "unrated", critic: "spec" }]);
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toBe("");
+}, S1B);
+
+test("R6, R6c, R6d: round-critical needs the console, a decision naming the ticket and holding the quote, used once; a hand-appended row counts for nothing; a valid one opens round 5", async () => {
+  const t = await roundTree(["- **C1** (major; operator-critical: spend-grant) the spec grants a spend"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **C2** (major; reopens C1) still grants it")).err).toBe("");
+  decide(t.specs, 901, `${CAP_KEY} operator: ${SPEND}\n`); decide(t.specs, 902, `no ticket named here: ${SPEND}\n`); const d903 = decide(t.specs, 903, `${CAP_KEY} operator: something else\n`);
+  const bare = await critical(false, t.specs, "C1", 901, SPEND); expect(bare.code).not.toBe(0); expect(rowsOf(t.specs, "critical")).toEqual([]);
+  const other = await critical(true, t.specs, "C1", 902, SPEND);
+  expect(other.err).toContain(`round-critical: decision 902 does not name ${CAP_KEY}`); expect(other.code).not.toBe(0);
+  appendFileSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "critical", opens: 5, id: "C1", class: "spend-grant", decision: "903", quote: "a quote the file never holds", decision_path: d903, decision_sha: sha(readFileSync(d903, "utf8")), return_sha: "f".repeat(64) })}\n`);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).toContain("invalid: critical 903");
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toContain(T5(5));
+  expect((await status(t.specs)).critical_open).toMatchObject([{ id: "C1", class: "spend-grant" }]);
+  const good = await critical(true, t.specs, "C1", 901, SPEND);
+  expect(good.err).toBe(""); expect(good.code).toBe(0);
+  expect(rowsOf(t.specs, "critical").at(-1)).toMatchObject({ key: CAP_KEY, opens: 5, id: "C1", class: "spend-grant", decision: "901", quote: SPEND, return_sha: rowsOf(t.specs, "round").find((x) => x.critic === "spec" && x.round === 3).return_sha });
+  expect((await status(t.specs)).critical_open).toEqual([]);
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toBe("");
+  const reused = await critical(true, t.specs, "C1", 901, SPEND);
+  expect(reused.err).toContain(`round-critical: decision 901 was already used for ${CAP_KEY}`); expect(reused.code).not.toBe(0);
+}, S1B);
+
+test("R7 (control), R6b: a tag outside the four classes opens nothing (T7); a minor spend-grant finding opens round 4 by itself, where the same fixture without the record gives T1", async () => {
+  const t = await roundTree(["- **S1** (minor; operator-critical: security) a note"], []);
+  decide(t.specs, 901, `${CAP_KEY} operator: ${SPEND}\n`);
+  const r = await critical(true, t.specs, "S1", 901, SPEND);
+  expect(r.err).toContain(T7("security")); expect(r.code).not.toBe(0);
+  expect(rowsOf(t.specs, "critical")).toEqual([]);
+  expect((await status(t.specs)).critical_open).toEqual([]);
+  const u = await roundTree(["- **O1** (minor; operator-critical: spend-grant) a spend"], []);
+  decide(u.specs, 904, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await closeOn(u, "spec", 4, [u.a], "SPEC CLEAN")).err).toContain(T1("spec"));
+  expect((await critical(true, u.specs, "O1", 904, SPEND)).err).toBe("");
+  expect((await closeOn(u, "spec", 4, [u.a], "SPEC CLEAN")).err).toBe("");
+  expect(ledgerRows(u.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", round: 4, mode: "closure" });
+}, S1B);
+
+test("R-pack-sha: closure-pack prints the marker, the open blocking findings, the sha of the md and the html round 3 sealed, and the diff of each against its snapshot; a clean round 3 gives T1", async () => {
+  const t = await roundTree(MAJOR, [], true);
+  const mdText = front(CAP_KEY, "# A\n"); const htmlText = "<h1>A</h1>\n";
+  writeFileSync(t.a, `${mdText}a changed line here\n`);
+  const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+  expect(pack.err).toBe("");
+  expect(pack.out.split("\n")[0]).toBe(markerFor(t.specs, CAP_KEY, "spec", 4));
+  for (const s of [mdText, htmlText]) expect(pack.out).toContain(sha(s));
+  expect(pack.out).toContain("- **M1** (major) still open");
+  expect(pack.out).toContain("+a changed line here");
+  const c = await roundTree([], []);
+  const clean = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", c.specs);
+  expect(clean.err).toContain(T1("spec")); expect(clean.code).not.toBe(0);
+}, S1B);
+
+test("R13-fold, R13b-fold: fold-list keeps round 3's minors after a closure round, drops the blocking id that round closed, and reads only its own ticket", async () => {
+  const t = await roundTree(["- **m-a** (minor) one", "- **m-b** (medium) two", "- **M-c** (major) three"], []);
+  const r3 = `${t.a}.critic-spec-r3.md`; const r4 = `${t.a}.critic-spec-r4.md`;
+  const fold = async (spec: string) => (await verb(false, "fold-list", "--spec", spec, "--specs", t.specs));
+  const before = await fold(t.a);
+  expect(before.err).toBe("");
+  expect(before.out.trim().split("\n")).toEqual([`- m-a (minor) spec r3 ${r3}`, `- m-b (medium) spec r3 ${r3}`, `- M-c (major) spec r3 ${r3}`]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **c1** (minor) a note on unchanged text")).err).toBe("");
+  const key2 = "HIMMEL-9712"; const y = join(t.dir, `${key2}-y.md`); writeFileSync(y, front(key2, "# Y\n"));
+  expect((await sealOn(`${y}.critic-spec-r1.md`, [y], "SPEC FINDINGS 1", "- **m-z** (minor) elsewhere")).err).toBe("");
+  expect((await fold(t.a)).out.trim().split("\n")).toEqual([`- m-a (minor) spec r3 ${r3}`, `- m-b (medium) spec r3 ${r3}`, `- c1 (minor; out-of-closure) spec r4 ${r4}`]);
+  expect((await fold(y)).out.trim().split("\n")).toEqual([`- m-z (minor) spec r1 ${y}.critic-spec-r1.md`]);
+}, S1B);
+
+test("R19-status, R20: an open operator-critical finding is listed by round-status, refuses --sign (T18) and is named in the send-file lead; round-critical --no-round closes it and opens no round", async () => {
+  const t = await roundTree(["- **o1** (minor; operator-critical: spend-grant) a spend"], []);
+  const s3 = `${t.a}.critic-spec-r3.md`;
+  expect((await status(t.specs)).critical_open).toEqual([{ id: "o1", class: "spend-grant", kind: "spec", round: 3, verdict_path: s3 }]);
+  const sign = await routeCli("ledger-verify", s3, "--spec", t.a, "--sign");
+  expect(sign.err).toContain(`${CAP_KEY} has open operator-critical findings: o1 (spend-grant); the operator rules on them first (round-critical)`); expect(sign.code).not.toBe(0);
+  expect((await routeCli("ledger-verify", s3, "--spec", t.a)).code).toBe(0);
+  const page = await sendFile(t.r, "1", t.a);
+  expect(page.err).toBe("");
+  expect(readFileSync(page.lines.at(-1)!.document_path as string, "utf8")).toContain("o1 (spend-grant)");
+  decide(t.specs, 905, `${CAP_KEY} operator: ${SPEND}\n`);
+  const done = await critical(true, t.specs, "o1", 905, SPEND, "--no-round");
+  expect(done.err).toBe(""); expect(done.code).toBe(0);
+  expect(rowsOf(t.specs, "critical").at(-1)).toMatchObject({ opens: 0, id: "o1" });
+  expect(await status(t.specs)).toMatchObject({ critical_open: [], spec: 3, plan: 3 });
+  const signed = await routeCli("ledger-verify", s3, "--spec", t.a, "--sign");
+  expect(signed.err).toBe(""); expect(signed.code).toBe(0);
+}, S1B);
+
+test("a hand-appended critical row whose opens, or an override whose round_opened, is not what the verb would write is listed invalid and counts for nothing", async () => {
+  const t = await roundTree(["- **C1** (major; operator-critical: spend-grant) the spec grants a spend"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **C2** (major; reopens C1) still grants it")).err).toBe("");
+  const d = decide(t.specs, 901, `${CAP_KEY} operator: ${SPEND}\n`);
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`);
+  const add = (row: object) => appendFileSync(ledger, `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, ...row })}\n`);
+  add({ row: "critical", epoch: 0, opens: 9, id: "C1", class: "spend-grant", decision: "901", quote: SPEND, decision_path: d, decision_sha: sha(readFileSync(d, "utf8")), return_sha: "f".repeat(64) });
+  add({ row: "override", epoch: 0, round_opened: 9, findings: [{ id: "C2", severity: "major", critic: "spec", return_sha: "f".repeat(64) }], why: "x", chief: "chief-x" });
+  const s = await status(t.specs);
+  expect(s.invalid).toEqual(["critical 901", "override"]);
+  expect(s.critical_open).toMatchObject([{ id: "C1" }]);
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toContain(T5(5));
+}, S1B);
+
+test("closure-pack refuses when diff itself fails, rather than reporting the file unchanged", async () => {
+  if (process.getuid?.() === 0) return;
+  const t = await roundTree(MAJOR, []);
+  chmodSync(t.a, 0o000);
+  try {
+    const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+    expect(pack.code).not.toBe(0); expect(pack.err).toContain("diff of");
+  } finally { chmodSync(t.a, 0o644); }
+}, S1B);
+
+test("a finding id raised again in a later round is a second open finding: ruling on the first leaves the second open and the signature refused", async () => {
+  const again = "- **o1** (minor; operator-critical: spend-grant) the same id in a later round";
+  const t = await roundTree([again], [], false, [again]);
+  const s3 = `${t.a}.critic-spec-r3.md`;
+  const open = async () => (await status(t.specs)).critical_open;
+  expect((await open()).map((o: { round: number }) => o.round)).toEqual([2, 3]);
+  decide(t.specs, 905, `${CAP_KEY} operator: ${SPEND}\n`); decide(t.specs, 906, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await critical(true, t.specs, "o1", 905, SPEND, "--no-round")).err).toBe("");
+  expect((await open()).map((o: { round: number }) => o.round)).toEqual([3]);
+  const sign = await routeCli("ledger-verify", s3, "--spec", t.a, "--sign");
+  expect(sign.err).toContain("has open operator-critical findings: o1 (spend-grant)"); expect(sign.code).not.toBe(0);
+  expect((await critical(true, t.specs, "o1", 906, SPEND, "--no-round")).err).toBe("");
+  expect(await open()).toEqual([]);
+  expect((await routeCli("ledger-verify", s3, "--spec", t.a, "--sign")).code).toBe(0);
+}, S1B);
+
+test("a changed line that starts with dashes still counts as changed: a regression quoting a dropped markdown rule line is blocking", async () => {
+  const rule = "--- a markdown rule line";
+  const t = await roundTree(MAJOR, [], false, [], `# A\n\n${rule}\n`);
+  writeFileSync(t.a, front(CAP_KEY, "# A\n\nthe rule line was dropped here\n"));
+  const res = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", `- **R1** (major; regression) the rule is gone: \`${rule}\``);
+  expect(res.err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "R1", class: "regression" }]);
+}, S1B);
+
+test("round-reset: one reset per ticket, from the console, on a decision naming it; the next round of the new epoch is round 1", async () => {
+  const t = await roundTree(MAJOR, []);
+  decide(t.specs, 906, `${CAP_KEY} operator: start this ticket over from scratch\n`);
+  const reset = (console: boolean) => verb(console, "round-reset", CAP_KEY, "--decision", "906", "--quote", "start this ticket over from scratch", "--specs", t.specs);
+  expect((await reset(false)).code).not.toBe(0); expect(rowsOf(t.specs, "reset")).toEqual([]);
+  expect((await reset(true)).err).toBe("");
+  expect(await status(t.specs)).toMatchObject({ spec: 0, plan: 0, next: "full" });
+  const again = `${t.a}.critic-spec-r9.md`;
+  writeFileSync(again, readFileSync(`${t.a}.critic-spec-r1.md`, "utf8").split("\n").filter((l) => !l.startsWith("CONTENT-SHA256 ")).join("\n"));
+  expect((await seal(again, t.a, sha(front(CAP_KEY, "# A\n")))).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", round: 1, epoch: 1, mode: "full" });
+  const second = await reset(true);
+  expect(second.err).toContain(`round-reset: ${CAP_KEY} already used its one reset`); expect(second.code).not.toBe(0);
 }, S1B);

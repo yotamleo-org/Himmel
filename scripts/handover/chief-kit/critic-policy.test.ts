@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, chmodSync, symlinkSync, rmSync, readdirSync, lstatSync, readlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import * as route from "../../telegram/chief-route";
@@ -47,7 +47,7 @@ function fixture(opts: { spec?: number; plan?: number; blocking?: boolean } = {}
   git(root, "init", "-q"); git(root, "add", "-A"); git(root, "commit", "-q", "-m", "base");
   const fx = { root, spec, plan, head: git(root, "rev-parse", "HEAD") };
   const verdict = (kind: string) => (opts.blocking ? `${kind} FINDINGS 1` : `${kind} CLEAN`);
-  for (let n = 1; n <= (opts.spec ?? 0); n++) put(`${spec}.critic-spec-r${n}.md`, `Read it, round ${n}.\n${verdict("SPEC")}\n`);
+  for (let n = 1; n <= (opts.spec ?? 0); n++) put(`${spec}.critic-spec-r${n}.md`, `Read it, round ${n}.\n${opts.blocking ? `CONTENT-SHA256 ${sha(spec)} ${basename(spec)}\n` : ""}${verdict("SPEC")}\n`);
   for (let n = 1; n <= (opts.plan ?? 0); n++) put(`${spec}.critic-plan-r${n}.md`, `Read it, round ${n}.\n${verdict("PLAN")}\n`);
   const seeded = spawnSync(BUN, [ROUTE, "round-seed", "--all", join(root, "specs")], { encoding: "utf8" });
   if (seeded.status !== 0) throw new Error(`round-seed: ${seeded.stderr}`);
@@ -89,7 +89,7 @@ test("round_owner_parity", async () => {
 
   const c = fixture({ spec: 3, blocking: true });
   expect(await route.readCriticBudget(c.spec, "spec", 4)).toMatchObject({ count: 3, requestedRound: 4, allowed: true, why: null });
-  put(`${c.spec}.critic-spec-r4.md`, "Round four.\nSPEC CLEAN\n");
+  put(`${c.spec}.critic-spec-r4.md`, `CLOSURE-CHECK ${KEY} spec r3 ${route.returnSha(readFileSync(`${c.spec}.critic-spec-r3.md`, "utf8")).slice(0, 12)}\nRound four.\nSPEC CLEAN\n`);
   await route.refuseRoundPastCap(`${c.spec}.critic-spec-r4.md`, c.spec);
 }, T);
 
