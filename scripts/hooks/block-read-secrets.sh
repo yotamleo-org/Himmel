@@ -1246,7 +1246,7 @@ g4_scan() {
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
     local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gcode=${g4shadow:-0} gsub=0 gskip=0 rdr=0
-    local gsc="" kflag=0 fv=0 bx=0 sd1=0 sdenv=0 scprop=0 scpv=0 scenv=0 scv="" gfv=0 gfa=0
+    local gsc="" kflag=0 fv=0 bx=0 sd1=0 sdenv=0 scprop=0 scpv=0 scenv=0 scv="" gfv=0 gfa=0 gfx="" gfo="" gfp=""
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -1293,16 +1293,37 @@ g4_scan() {
             gh:-f|gh:-F|gh:--raw-field|gh:--field) if [ "$gsc" = api ] && [ "$gcode" = 0 ]; then fv=1; fi ;;
             gh:-f?*|gh:-F?*|gh:--raw-field=*|gh:--field=*) if [ "$gsc" = api ] && [ "$gcode" = 0 ]; then bx=1; fi ;;
         esac
-        # `gh api -F k=@path` uploads the file at path.
+        # `gh api -F k=@path` uploads the file at path: gh splits the field at
+        # its first `=`. A short-option group (`-iF`) reaches F past boolean
+        # letters; gh's f, H, X, p, q and t take a value, so F after one is data.
         gfa=$gfv; gfv=0
         if [ "$cmd" = gh ] && [ "$gsc" = api ]; then
-            case "$d" in
-                -F|--field) gfv=1 ;;
-                -F?*|--field=*) gfa=1 ;;
-            esac
+            gfx=""
+            if [ "$gfa" = 1 ]; then gfx="$d"
+            else
+                case "$d" in
+                    --field) gfv=1 ;;
+                    --field=*) gfx="${d#--field=}"; gfa=1 ;;
+                    --*) ;;
+                    -?*)
+                        gfo="${d#-}"
+                        while [ -n "$gfo" ]; do
+                            case "$gfo" in
+                                F*) gfo="${gfo#F}"
+                                    if [ -n "$gfo" ]; then gfx="$gfo"; gfa=1; else gfv=1; fi
+                                    break ;;
+                                [fHXpqt]*) break ;;
+                            esac
+                            gfo="${gfo#?}"
+                        done ;;
+                esac
+            fi
             if [ "$gfa" = 1 ]; then
-                case "$d" in *=@*)
-                    if g4_secret_tok "$d" || g4_glob_secret "$w" "${g4g[i]:-}"; then hit=1; note="gh api -F of a secret file"; fi ;;
+                case "$gfx" in *=*)
+                    case "${gfx#*=}" in @?*)
+                        gfp="${gfx#*=}"; gfp="${gfp#@}"
+                        if is_secret_path "$gfp" || g4_glob_secret "$gfp" "${g4g[i]:-}"; then hit=1; note="gh api -F of a secret file"; fi ;;
+                    esac ;;
                 esac
             fi
         fi
