@@ -465,7 +465,6 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
 | ($RUN | max // 0) as $maxrun
 | ([range(0; $nm) | $RUN[.] + $QUE[.]] | max // 0) as $maxdem
 
-# ---- guardrail rates (decision 850): the only real limits are 500 concurrent jobs and a GitHub refusal ----
 | ($R | map(select(.conclusion == "startup_failure" and ((.updated_at // .created_at) | t) > $start and ((.updated_at // .created_at) | t) <= $now)) | length) as $REF
 | (if $nm > 0 then $RUN[$nm - 1] + $QUE[$nm - 1] else 0 end) as $curdem
 | def flag($v; $line): if $v > $line then "OVER" else "OK" end;

@@ -27,12 +27,9 @@
 #   CIGUARD_SLICE_TIMEOUT (seconds per 6 h slice read, default 25).
 #
 # The fetch reads the last 24 h as four 6 h slices through `ci-metrics.sh --slice`, after
-# api-budget.sh says the shared REST bucket can afford it, then the jobs of the runs still
-# open (queued, waiting or in progress) through `ci-metrics.sh --gql jobs`: one call per 100
-# open runs. ci-metrics.sh then reports the guardrail table twice from that one list: over
-# the last 2 h (concurrent jobs, refusals, runs/h, cancels, reruns) and over 24 h (runs/day).
-# concurrent-jobs counts the jobs of the runs open now plus any queued job the report can see,
-# so it is a lower bound of the real demand: a completed run's jobs are not fetched.
+# api-budget.sh says the shared REST bucket can afford it. ci-metrics.sh then reports the
+# guardrail table twice from that one list: over the last 2 h (concurrent jobs, refusals,
+# runs/h, cancels, reruns) and over 24 h (runs/day).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -108,7 +105,6 @@ fetch_runs() {
   jq -s 'add | unique_by(.id)
          | map({id, node_id, name, event, status, conclusion, created_at, run_started_at, updated_at, head_sha, head_branch, run_attempt})
          | sort_by(.created_at)' "$WORK"/slices/slice.*.json > "$out" 2>/dev/null || return 1
-  # the jobs of the runs still open: the running + queued side of the concurrent-jobs line
   mkdir -p "$WORK/jobs"
   jq -r '.[] | select(.status != "completed") | .node_id // empty' "$out" > "$WORK/jobs/open.txt" 2>/dev/null || return 1
   if [ -s "$WORK/jobs/open.txt" ]; then
@@ -141,7 +137,6 @@ if [ -n "$JOBS" ]; then
   jq -e 'type == "array"' "$JOBS" >/dev/null 2>&1 || unknown
 fi
 
-# ci-metrics.sh wants a jobs file next to the runs: the concurrent-jobs row reads it.
 mkdir -p "$WORK/data"
 cp "$RUNS" "$WORK/data/runs.json"
 if [ -n "$JOBS" ]; then cp "$JOBS" "$WORK/data/jobs.json"; else echo '[]' > "$WORK/data/jobs.json"; fi
@@ -169,16 +164,13 @@ add_row() { # <metric> <report> <label> <gate|info>
     # a row that parses but is not "<count> <where> OK|OVER <line>" must not read as below the line
     printf '%s\n' "$r" | awk -F'\t' '$1 ~ /^[0-9]+$/ && ($3 == "OK" || $3 == "OVER") && $4 ~ /^[0-9]+$/ { ok = 1 } END { exit !ok }' || unknown
   else
-    # an information row is never OVER, whatever the report says: only its count must parse
     printf '%s\n' "$r" | awk -F'\t' '$1 ~ /^[0-9]+$/ { ok = 1 } END { exit !ok }' || unknown
     r="$(printf '%s\n' "$r" | awk -F'\t' 'BEGIN { OFS = "\t" } { $3 = "info"; print }')"
   fi
   rows="$rows$1"$'\t'"$r"$'\n'
 }
-# decision 850: the two rows that can read OVER
 add_row concurrent-jobs "$report2" "concurrent jobs, now (running + queued)" gate
 add_row gh-refusal "$report2" "GitHub refusals (startup_failure runs)" gate
-# our own old run-count reference points: information only
 add_row runs-h "$report2" "runs per hour, max" info
 add_row runs-day "$report24" "runs per rolling 24 h, max" info
 add_row cancels-10m "$report2" "cancels per rolling 10 min, max" info

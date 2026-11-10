@@ -40,8 +40,6 @@ run() {
 }
 fresh() { rm -rf "$W/state"; }
 
-# Operator decision 850: the only real limits are 500 concurrent jobs and a GitHub refusal.
-# jobs fixtures: <n> queued jobs of run 1, all waiting since 11:25 (the clock is 11:30).
 JOBQ='{run_id: 1, name: "job\(.)", status: "queued", conclusion: null, created_at: "2026-10-20T11:25:00Z", started_at: null, completed_at: null}'
 RUN_1='{id: 1, name: "CI", event: "pull_request", status: "in_progress", conclusion: null, head_branch: "b", head_sha: "s", run_attempt: 1,
         created_at: "2026-10-20T11:20:00Z", run_started_at: "2026-10-20T11:20:00Z", updated_at: "2026-10-20T11:25:00Z"}'
@@ -212,7 +210,6 @@ n="$(wc -l < "$W/slice-calls" | tr -d '[:space:]')"
 contains 'the cached read still prints the info row' "$out" 'INFO runs-h=151'
 [ ! -s "$W/gql-calls" ] && pass 'completed runs only: the live fetch spends no jobs call' || fail 'a read with no open run still fetched jobs'
 
-# --- fetch path with an open run: its jobs come from one --gql jobs call and feed the concurrent-jobs line
 gen "$RUN_1 | .node_id = \"WFR_1\"" 1 > "$W/open-run.json"
 jq -nc '[range(0; 501)] | .[] | {run_id: 1, name: "job\(.)", status: "queued", conclusion: null, created_at: "2026-10-20T11:25:00Z", started_at: null, completed_at: null}' > "$W/jobs501.ndjson"
 cat > "$W/metrics-gql-stub.sh" <<STUB
@@ -248,29 +245,24 @@ fresh
 out="$(CIGUARD_METRICS="$W/metrics-gql-fail.sh" CIGUARD_BUDGET="$W/budget-ok.sh" CIGUARD_REPO=o/r bash "$SUT" --now "$NOW" --state-dir "$W/state" 2>&1)"
 contains 'a failed jobs call reads unknown, never ok' "$out" 'ciguard=unknown'
 
-# --- decision 850: 200 runs in one hour is our own old run-count line, never a hold.
 gen "$RUN_H" 200 > "$W/h200.json"
 fresh; out="$(run "$W/h200.json")"
 contains '200 runs in one hour reads ok under decision 850' "$out" 'ciguard=ok'
 not_contains '200 runs in one hour raises no ALERT' "$out" 'ALERT'
 contains '200 runs in one hour still prints its count as info' "$out" 'INFO runs-h=200'
-# negative control: 500 concurrent jobs is the line, 501 is over
 fresh; out="$(runj "$W/q500.json")"
 contains '500 concurrent jobs reads ok (the line is 500)' "$out" 'ciguard=ok'
 fresh; out="$(runj "$W/q501.json")"
 contains '501 queued concurrent jobs reads OVER' "$out" 'ciguard=OVER:concurrent-jobs'
 contains '501 queued concurrent jobs fires once' "$out" 'ALERT concurrent-jobs=501>500'
-# a burst that has already drained is not a hold: 501 jobs ran 10:00-10:20, none is running at 11:30
 JOBDONE='{run_id: 1, name: "job\(.)", status: "completed", conclusion: "success", created_at: "2026-10-20T10:00:00Z", started_at: "2026-10-20T10:00:00Z", completed_at: "2026-10-20T10:20:00Z"}'
 gen "$JOBDONE" 501 > "$W/d501.json"
 fresh; out="$(runj "$W/d501.json")"
 contains 'a burst of 501 jobs that finished an hour ago reads ok' "$out" 'ciguard=ok'
 not_contains 'a drained burst raises no alert' "$out" 'ALERT'
-# a refusal is dated by when the run ended: created before the window, ended inside it
 jq 'map(.conclusion = "startup_failure" | .created_at = "2026-10-20T08:00:00Z" | .updated_at = "2026-10-20T11:00:00Z")' "$W/one-run.json" > "$W/refused-late.json"
 fresh; out="$(run "$W/refused-late.json")"
 contains 'a startup_failure run that ended inside the window reads OVER whenever it was created' "$out" 'ciguard=OVER:gh-refusal'
-# negative control: a GitHub refusal in the run data reads OVER
 jq 'map(.conclusion = "startup_failure")' "$W/one-run.json" > "$W/refused.json"
 fresh; out="$(run "$W/refused.json")"
 contains 'a startup_failure run (GitHub refusing to start it) reads OVER' "$out" 'ciguard=OVER:gh-refusal'
