@@ -11,6 +11,8 @@
 #   6. a NO-GO verdict with no `finding:` line -> finding, never none
 #   7. always exit 0 and print exactly one word
 #  10. a new head that does not descend from the judged head -> trust
+#  12. a merge in the delta with a non-empty remerge-diff (a resolved conflict) -> finding,
+#      still after every fail-closed read; a clean merge-forward -> none
 #
 # Hermetic: temp git repo and files only.
 # Platform guard: POSIX bash 3.2+.
@@ -288,6 +290,9 @@ printf '1\n2\nresolved3\n4\n5\n' > lib/x.sh; N=$(step resolved-line3)
 check "12a: the hand-resolved conflict is a two-parent merge" "$(git rev-list --parents -n 1 "$N" | wc -w | tr -d ' ')" 3
 J=$Jp; mkv GO
 check "12a: a hand-resolved conflict in a non-trust file no finding names -> finding" "$(cls "$N")" finding
+check "12c: the same conflict with a missing ledger still fails closed -> trust" "$(bash "$SCRIPT" --verdict-file "$vf" --ledger "$tmp/none.jsonl" --trust-file "$trustf" "$J" "$N")" trust
+sed "s/$J/0000000000000000000000000000000000000000/" "$vf" > "$tmp/other12.md"
+check "12d: the same conflict with a verdict file for another head still fails closed -> trust" "$(bash "$SCRIPT" --verdict-file "$tmp/other12.md" --ledger "$ledger" --trust-file "$trustf" "$J" "$N")" trust
 git update-ref -d refs/remotes/origin/main
 git checkout -q -b main12b "$B12"; edit '$0==3{print "main3"; next} {print}' lib/y.sh; M=$(step main-other-file)
 git checkout -q -b pr12b "$B12"; edit '$0==3{print "pr3"; next} {print}' lib/x.sh; Jp=$(step pr-line3-b)

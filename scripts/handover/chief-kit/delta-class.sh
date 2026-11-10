@@ -195,8 +195,6 @@ while IFS= read -r pat; do
     case $? in 0) trust "a changed path matches trust pattern $pat" ;; 2) trust "trust pattern $pat is not a valid regex" ;; esac
 done < "$work/patterns.txt"
 
-[ "$remerge_nonempty" -eq 0 ] || fin finding
-
 # Findings, as <path><TAB><first line><TAB><last line>; the lines are empty for a whole file.
 : > "$work/findings.tsv"
 nogo_prose=0
@@ -276,5 +274,7 @@ awk -F'\t' '
     NR == FNR { if ($2 != "") { n++; fp[n] = $1; lo[n] = $2 + 0; hi[n] = $3 + 0 } ; next }
     { for (i = 1; i <= n; i++) if ($1 == fp[i] && $2 + 0 <= hi[i] && $3 + 0 >= lo[i]) { hit = 1; exit } }
     END { exit !hit }' "$work/findings.tsv" "$work/hunks.tsv" && fin finding
+
+[ "$remerge_nonempty" -eq 0 ] || fin finding
 
 fin none
