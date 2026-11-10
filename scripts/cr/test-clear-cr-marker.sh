@@ -80,6 +80,9 @@ build_repo_template() {
         git commit -qm "base"
         git checkout -qb feat/x
         echo more >> f.txt
+        # f.txt alone classifies as docs; g.sh keeps the tip a full-lane diff like its lane=full marker.
+        echo ':' > g.sh
+        git add g.sh
         git commit -qam "work"
         git init -q --bare .git/test-origin.git
         git remote add origin .git/test-origin.git
@@ -1128,6 +1131,39 @@ write_ledger "$tmp" "$(_pf_score 2026-11-01T03:39:00Z "$_pf_base")" "$(_pf_row 2
     "$(_pf_score 2026-11-01T07:19:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "4e-e a design panel score at the base commit before the preflight does not count → exit 0"
+rm -rf "$tmp"
+
+# 4e-f. A docs-audit round (docs-only head, no preflight owed) and then a
+# full-lane push (code head) whose preflight precedes its own round. The docs-audit
+# score row must not count as the branch's first score row. _pf_docs_then_code rebuilds
+# feat/x as base -> docs-only commit -> code commit and sets _pf_docs and sha.
+_pf_docs_then_code() {
+    { git -C "$tmp" reset -q --soft main && mkdir -p "$tmp/docs" && echo d > "$tmp/docs/a.md" \
+        && git -C "$tmp" add docs/a.md && git -C "$tmp" commit -qm docs -- docs/a.md && _pf_docs=$(git -C "$tmp" rev-parse --verify HEAD) \
+        && git -C "$tmp" commit -qam code && sha=$(git -C "$tmp" rev-parse --verify HEAD) \
+        && git -C "$tmp" push -q -f origin feat/x; } >/dev/null 2>&1
+}
+make_repo || exit 1
+if _pf_docs_then_code; then
+    write_marker "$tmp" "$sha"
+    write_ledger "$tmp" "$(_pf_score 2026-11-10T03:38:35Z "${_pf_docs:0:8}")" "$(_pf_row 2026-11-10T03:48:01Z "$sha")" \
+        "$(_pf_score 2026-11-10T03:48:13Z "$sha")" "$(avail_ok "${sha:0:8}")"
+    stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+    run_clear "$tmp" 0 "4e-f a docs-audit round then a full-lane round with its own preflight → exit 0"
+else fail "4e-f fixture: docs then code history"; fi
+rm -rf "$tmp"
+
+# 4e-g. Control: the same history with no preflight at all still refuses; a docs-audit
+# row never excuses a full-lane round that skipped step 2.8.
+make_repo || exit 1
+if _pf_docs_then_code; then
+    write_marker "$tmp" "$sha"
+    write_ledger "$tmp" "$(_pf_score 2026-11-10T03:38:35Z "${_pf_docs:0:8}")" "$(_pf_score 2026-11-10T03:48:13Z "$sha")" "$(avail_ok "${sha:0:8}")"
+    stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+    run_clear "$tmp" 14 "4e-g a docs-audit round then a full-lane round with no preflight → exit 14"
+    if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-preflight'; then pass; else
+        fail "4e-g must refuse with reason=missing-preflight: $LAST_CLEAR_OUT"; fi
+else fail "4e-g fixture: docs then code history"; fi
 rm -rf "$tmp"
 
 # 4e-c. Fail closed: a merge-base that cannot be read never reports ok.
