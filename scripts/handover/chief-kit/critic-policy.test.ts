@@ -289,6 +289,12 @@ test("routing_diff_fixtures", async () => {
   git(fam.repo, "add", "-A"); git(fam.repo, "commit", "-q", "-m", "c");
   expect([...new Set((await routingDiffViolations(fam.repo, fam.base)).map(x => x.rule))]).toEqual(["model-name"]);
 
+  const del = routingRepo(SKILL_BASE.replace("Last line.", "Tier 3 here."));
+  put(join(del.repo, SKILL), SKILL_BASE.replace("Last line.\n", ""));
+  git(del.repo, "add", "-A"); git(del.repo, "commit", "-q", "-m", "c");
+  const removed = (await routingDiffViolations(del.repo, del.base)).filter(x => x.rule === "Tier");
+  expect(removed.map(x => x.line)).toEqual([4]);
+
   for (const layer of ["committed", "index", "worktree"] as const) {
     const { repo, base } = routingRepo();
     inLayer(repo, layer, () => put(join(repo, SKILL), SKILL_BASE.replace("Intake wording.", "Tier 2 applies.")));

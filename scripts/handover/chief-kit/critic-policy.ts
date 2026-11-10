@@ -144,13 +144,13 @@ function skillLexical(top: string, range: string[], layer: RoutingViolation["lay
   const r = git(top, ["diff", ...DIFF_FLAGS, "-U0", ...range, "--", SKILL]);
   if (r.status !== 0) throw new RoutingDiffError("git-failure", "git diff failed");
   const out: RoutingViolation[] = [];
-  let oldLine = 0, newLine = 0, inHunk = false;
+  let newLine = 0, inHunk = false;
   for (const text of r.out.split("\n")) {
     if (!inHunk && (text.startsWith("Binary files ") || text === "GIT binary patch")) return [{ path: SKILL, layer, rule: "unsupported-diff", line: null }];
-    const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
-    if (h) { inHunk = true; oldLine = Number(h[1]); newLine = Number(h[2]); continue; }
+    const h = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
+    if (h) { inHunk = true; newLine = Number(h[1]); continue; }
     if (!inHunk || (text[0] !== "+" && text[0] !== "-")) continue;
-    const line = text[0] === "+" ? newLine++ : oldLine++;
+    const line = text[0] === "+" ? newLine++ : newLine;
     for (const [rule, re] of LEXICAL) if (re.test(text.slice(1))) out.push({ path: SKILL, layer, rule, line });
   }
   return out;
