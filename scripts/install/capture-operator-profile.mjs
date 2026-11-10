@@ -246,7 +246,7 @@ const CADENCE_TASK_GROUPS = {
 // Known scheduled tasks that exist but are not covered by any of the
 // cadence ids above — surfaced in delta only (the
 // wizard's binary luna-cadence question cannot select/report these).
-const EXTRA_KNOWN_TASKS = ['HIMMEL-ForkResync', 'HIMMEL-BootPreflight', 'HimmelTelegramBridge'];
+const EXTRA_KNOWN_TASKS = ['HIMMEL-ForkResync'];
 
 // ── cadence-registry schema boundary ────────────────────────────────────
 // Schema ruling (locked, chief-approved): the v2

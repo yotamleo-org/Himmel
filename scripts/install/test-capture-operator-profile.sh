@@ -603,22 +603,40 @@ fi
 commentedCronOut=$("$node_bin" --input-type=module -e "
 import { pathToFileURL } from 'node:url';
 const { matchCadenceGroups, filterCommentedLines, EXTRA_KNOWN_TASKS } = await import(pathToFileURL(process.env.CAPTURE_SCRIPT_PATH).href);
-const text = '# 0 3 * * * HIMMEL-DriftFix --disabled-comment\n  # 0 4 * * * HIMMEL-Qmd-Reindex --indented-comment\n# HIMMEL-BootPreflight --commented-out-extra-task\n0 5 * * * HIMMEL-GraphMap-Refresh\n0 6 * * * HIMMEL-ForkResync --active-extra-task\n';
+const text = '# 0 3 * * * HIMMEL-DriftFix --disabled-comment\n  # 0 4 * * * HIMMEL-Qmd-Reindex --indented-comment\n0 5 * * * HIMMEL-GraphMap-Refresh\n0 6 * * * HIMMEL-ForkResync --active-extra-task\n';
 const { cadences } = matchCadenceGroups(text);
 const activeLines = filterCommentedLines(text);
 const extraArmedTasks = EXTRA_KNOWN_TASKS.filter((n) => activeLines.some((line) => line.includes(n))).sort();
+const commentedText = '# 0 6 * * * HIMMEL-ForkResync --commented-out-extra-task\n';
+const commentedExtra = EXTRA_KNOWN_TASKS.filter((n) => filterCommentedLines(commentedText).some((line) => line.includes(n))).sort();
 const problems = [];
 if (cadences['drift-fix'] !== 'off') problems.push('drift-fix should be off (commented-out line), got ' + cadences['drift-fix']);
 if (cadences['qmd'] !== 'off') problems.push('qmd should be off (indented commented-out line), got ' + cadences['qmd']);
 if (cadences['graphmap'] !== 'armed') problems.push('graphmap should be armed (a real active line), got ' + cadences['graphmap']);
-if (extraArmedTasks.includes('HIMMEL-BootPreflight')) problems.push('HIMMEL-BootPreflight should not be in extraArmedTasks (commented-out line), got ' + JSON.stringify(extraArmedTasks));
+if (commentedExtra.includes('HIMMEL-ForkResync')) problems.push('HIMMEL-ForkResync should not be in extraArmedTasks (commented-out line), got ' + JSON.stringify(commentedExtra));
 if (!extraArmedTasks.includes('HIMMEL-ForkResync')) problems.push('HIMMEL-ForkResync should be in extraArmedTasks (active line), got ' + JSON.stringify(extraArmedTasks));
 console.log(problems.join('|'));
 " 2>&1) || true
 if [ -z "$commentedCronOut" ]; then
-  pass "case t: matchCadenceGroups skips commented-out crontab lines; extraArmedTasks filters comments too (commented HIMMEL-BootPreflight excluded, active HIMMEL-ForkResync included)"
+  pass "case t: matchCadenceGroups skips commented-out crontab lines; extraArmedTasks filters comments too (commented HIMMEL-ForkResync excluded, active HIMMEL-ForkResync included)"
 else
   fail "case t: matchCadenceGroups and extraArmedTasks commented-line handling" "$commentedCronOut"
+fi
+
+# ── case t2: the two retired Windows tasks are not known extra tasks, so an
+# active crontab line naming them is never reported in extraArmedTasks ──────
+retiredTasksOut=$("$node_bin" --input-type=module -e "
+import { pathToFileURL } from 'node:url';
+const { filterCommentedLines, EXTRA_KNOWN_TASKS } = await import(pathToFileURL(process.env.CAPTURE_SCRIPT_PATH).href);
+const text = '0 6 * * * HIMMEL-BootPreflight --retired\n0 7 * * * HimmelTelegramBridge --retired\n';
+const activeLines = filterCommentedLines(text);
+const extraArmedTasks = EXTRA_KNOWN_TASKS.filter((n) => activeLines.some((line) => line.includes(n))).sort();
+console.log(extraArmedTasks.length === 0 ? '' : 'retired tasks reported: ' + JSON.stringify(extraArmedTasks));
+" 2>&1) || true
+if [ -z "$retiredTasksOut" ]; then
+  pass "case t2: active crontab lines naming HIMMEL-BootPreflight / HimmelTelegramBridge are not reported in extraArmedTasks"
+else
+  fail "case t2: retired Windows tasks must not be known extra tasks" "$retiredTasksOut"
 fi
 
 # ── case u: a malformed observability.json is a read FAILURE, not
