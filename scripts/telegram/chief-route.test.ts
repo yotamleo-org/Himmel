@@ -3129,3 +3129,80 @@ test("round-reset: one reset per ticket, from the console, on a decision naming 
   const second = await reset(true);
   expect(second.err).toContain(`round-reset: ${CAP_KEY} already used its one reset`); expect(second.code).not.toBe(0);
 }, S1B);
+
+const HX = "HIMMEL-nextleg-2026-11-10YN-roadmap-chief";
+const HY = "HIMMEL-nextleg-2026-11-10YO-roadmap-chief";
+const HZ = "HIMMEL-nextleg-2026-11-10YP-roadmap-chief";
+const handOver = (r: string, from: string, to: string) => writeFileSync(join(r, "consoles", `${from}.md.handover`), `${to}\n`);
+const inboxText = (r: string, name: string) => readFileSync(join(r, "consoles", `${name}.md`), "utf8");
+
+test("a line addressed by full name to a chief that handed over lands in its successor's inbox", async () => {
+  const r = root(); heartbeat(r, HX); heartbeat(r, HY); handOver(r, HX, HY);
+  const reply = await routeText(r, `/chief ${HX} the v1.1.3-only directive`);
+  expect(inboxText(r, HY)).toContain("[telegram from=1 chat=1] the v1.1.3-only directive\n");
+  expect(inboxText(r, HX)).toBe("");
+  expect(reply).toContain(HY);
+});
+
+test("the alias and the single-live-chief path follow the hand-over marker too", async () => {
+  for (const [text, line] of [["/chief chief:himmel by alias", "by alias"], ["/chief by the only live chief", "by the only live chief"]]) {
+    const r = root(); heartbeat(r, HX); armInbox(r, HY); handOver(r, HX, HY);
+    const reply = await routeText(r, text);
+    expect(inboxText(r, HY)).toContain(`] ${line}\n`);
+    expect(inboxText(r, HX)).toBe("");
+    expect(reply).toContain(HY);
+  }
+});
+
+test("a hand-over chain is followed to its end, and a loop stops and still delivers once", async () => {
+  const r = root(); heartbeat(r, HX); armInbox(r, HY); armInbox(r, HZ); handOver(r, HX, HY); handOver(r, HY, HZ);
+  await routeText(r, `/chief ${HX} chained`);
+  expect(inboxText(r, HZ)).toContain("] chained\n");
+  expect(inboxText(r, HX) + inboxText(r, HY)).toBe("");
+  const l = root(); heartbeat(l, HX); armInbox(l, HY); handOver(l, HX, HY); handOver(l, HY, HX);
+  await routeText(l, `/chief ${HX} looped`);
+  expect(inboxText(l, HY)).toContain("] looped\n");
+  expect(inboxText(l, HX)).toBe("");
+});
+
+test("a marker naming no existing inbox, an empty or an unsafe name keeps the line in the old inbox", async () => {
+  for (const marker of [`${HY}\n`, "", "\n", "../evil\n", "a/b\n"]) {
+    const r = root(); heartbeat(r, HX); writeFileSync(join(r, "consoles", `${HX}.md.handover`), marker);
+    await routeText(r, `/chief ${HX} never lost`);
+    expect(inboxText(r, HX)).toContain("] never lost\n");
+  }
+});
+
+test("a chief without a hand-over marker still receives its own line", async () => {
+  const r = root(); heartbeat(r, HX); armInbox(r, HY);
+  await routeText(r, `/chief ${HX} still mine`);
+  expect(inboxText(r, HX)).toContain("] still mine\n");
+  expect(inboxText(r, HY)).toBe("");
+});
+
+test("an unread line that reached the old inbox after the hand-over moves to the successor once", async () => {
+  const r = root(); const x = heartbeat(r, HX); heartbeat(r, HY);
+  const read = "- 23:46 [telegram from=1 chat=1] already read\n";
+  const unread = "- 00:02 [telegram from=1 chat=1] listen very carefully\n- 00:03 [telegram from=1 chat=1] Posted\n";
+  writeFileSync(x, read + unread + "- 00:04 [telegram from=1 chat=1] partial");
+  writeFileSync(x + ".cursor", `${Buffer.byteLength(read)}\n`);
+  handOver(r, HX, HY);
+  const t = Date.now() / 1000;
+  utimesSync(x + ".handover", t - 60, t - 60);
+  utimesSync(x, t, t);
+  await routeText(r, `/chief ${HY} next line`);
+  const moved = inboxText(r, HY);
+  expect(moved.startsWith(unread)).toBe(true);
+  expect(moved.slice(unread.length)).toMatch(/^- \d\d:\d\d \[telegram from=1 chat=1\] next line\n$/);
+  expect(readFileSync(x + ".cursor", "utf8").trim()).toBe(String(Buffer.byteLength(read + unread)));
+  await routeText(r, `/chief ${HY} second pass`);
+  expect(inboxText(r, HY).match(/listen very carefully/g)).toHaveLength(1);
+  expect(inboxText(r, HY)).not.toContain("already read");
+  expect(inboxText(r, HY)).not.toContain("partial");
+
+  const early = root(); const b = heartbeat(early, HX); heartbeat(early, HY);
+  writeFileSync(b, unread); handOver(early, HX, HY);
+  utimesSync(b, t - 60, t - 60); utimesSync(b + ".handover", t, t);
+  await routeText(early, `/chief ${HY} after`);
+  expect(inboxText(early, HY)).not.toContain("listen very carefully");
+});

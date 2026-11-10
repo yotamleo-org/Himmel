@@ -118,6 +118,64 @@ export function consoleInboxPath(root: string, name: string): string | null {
   return join(root, "consoles", `${name}.md`);
 }
 
+// First line of <inbox>.handover (chief.sh next), or null when unreadable.
+async function handoverMarker(inbox: string): Promise<string | null> {
+  try { return (await readFile(inbox + ".handover", "utf8")).split("\n", 1)[0].trim(); } catch { return null; }
+}
+
+// A chief that handed over leaves <inbox>.handover naming its successor. Follow
+// that chain to the last inbox that exists, so a line addressed to an old chief
+// reaches the one reading now. An unreadable, empty or unsafe marker, a
+// successor with no inbox yet, a loop or the hop cap stops the walk where it
+// is: the line then lands in the inbox reached so far, never nowhere.
+const HANDOVER_MAX_HOPS = 1000;
+export async function handoverSuccessor(root: string, name: string): Promise<string> {
+  const seen = new Set([name]);
+  for (let hop = 0; hop < HANDOVER_MAX_HOPS; hop++) {
+    const inbox = consoleInboxPath(root, name);
+    const next = inbox ? await handoverMarker(inbox) : null;
+    const nextInbox = next ? consoleInboxPath(root, next) : null;
+    if (!next || !nextInbox || seen.has(next) || !(await isFile(nextInbox))) break;
+    seen.add(next);
+    name = next;
+  }
+  return name;
+}
+
+// A line can still reach an inbox after its marker: a route that raced
+// `chief.sh next`, or one sent while the successor had no inbox yet. Its unread
+// tail (past inbox-follow.sh's byte cursor, complete lines only) moves to the
+// successor the marker names: appended there, then the old cursor skips it, so
+// it moves once and the old chief's waiter does not also wake on it. Only an
+// inbox written after its marker counts.
+export async function forwardAfterHandover(root: string, to: string): Promise<void> {
+  const target = consoleInboxPath(root, to);
+  if (!target) return;
+  let files: string[];
+  try { files = await readdir(join(root, "consoles")); } catch { return; }
+  for (const f of files) {
+    if (!f.endsWith(".md.handover")) continue;
+    const from = f.slice(0, -".md.handover".length);
+    const inbox = consoleInboxPath(root, from);
+    if (!inbox || from === to || await handoverMarker(inbox) !== to) continue;
+    try {
+      const [marker, box] = await Promise.all([stat(inbox + ".handover"), stat(inbox)]);
+      if (!box.isFile() || box.mtimeMs < marker.mtimeMs) continue;
+      const buf = await readFile(inbox);
+      let cursor = 0;
+      try {
+        const raw = (await readFile(inbox + ".cursor", "utf8")).trim();
+        if (/^(0|[1-9][0-9]{0,14})$/.test(raw)) cursor = Number(raw);
+      } catch {}
+      if (cursor > buf.length) cursor = 0;
+      const end = buf.lastIndexOf(0x0a) + 1;
+      if (end <= cursor) continue;
+      if (!(await appendIfExists(target, buf.subarray(cursor, end - 1).toString("utf8")))) return;
+      await atomicWrite(inbox + ".cursor", `${end}\n`);
+    } catch (e) { console.error(`[chief-route] could not forward ${from}'s unread lines to ${to}: ${e}`); }
+  }
+}
+
 // One message = one line, so a `tail -F` Monitor emits one event per message.
 export const foldLine = (text: string): string => text.trim().replace(/\r?\n/g, " ⏎ ");
 
@@ -290,13 +348,17 @@ export async function routeToConsole(
     file = consoleInboxPath(root, name);
   }
   if (!file) return;
+  const addressed = name;
+  name = await handoverSuccessor(root, name);
+  file = consoleInboxPath(root, name)!;
+  await forwardAfterHandover(root, name);
   // Append only to an inbox a chief already armed; never create one, so a typo
   // cannot open a mailbox nobody reads. The append itself is the existence
   // check, no separate existsSync() step left to race.
   const delivered = await appendIfExists(file, `- ${hhmm()} [telegram from=${msg.from} chat=${msg.chat_id}] ${foldLine(text)}`);
   if (!delivered) { await say(`⚠️ no chief "${name}" is listening (it has not armed its inbox) — nothing was sent.`); return; }
   const busy = (await armedConsoles(root)).some(c => c.name === name && c.busy);
-  await say(`→ chief ${name}${busy ? ` — queued, ${BUSY_NOTE}` : ""}`, name);
+  await say(`→ chief ${name}${name !== addressed ? ` (${addressed} handed over)` : ""}${busy ? ` — queued, ${BUSY_NOTE}` : ""}`, name);
 }
 
 function replyPath(root: string, chat: number, message: number): string | null {
