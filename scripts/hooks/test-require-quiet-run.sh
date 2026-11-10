@@ -555,10 +555,6 @@ assert_rc "7370 deny: redirect + echo rc appended" 2 "$RC"
 assert_contains "7370 names the no-append rule" "Append nothing to it" "$ERR"
 assert_contains "7370 names the log-path Read" "Read the log path" "$ERR"
 
-# recovery_suite_label_contract: the tail guard's recovery advice names
-# `suite` for a test-*.sh and `shell-unit` for the runner; this guard refuses each
-# bare form and names exactly that label, and the real quiet-run refuses the wrong
-# one (suite + run-shell-tests.sh) at its basename check before running the child.
 run_case "$(j_bash 'bash scripts/cr/test-orphan-check.sh')"
 assert_rc "recovery_suite_label_contract: bare test suite" 2 "$RC"
 assert_contains "recovery_suite_label_contract: bare suite names the suite label" \

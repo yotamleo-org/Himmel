@@ -3298,11 +3298,6 @@ run "9020 control: bash -c hiding a relative run -> deny" 2 \
     "$(payload 'bash -c "bash scripts/cr/write-verdicts.sh"' "$OTHER")" "$HR"
 }
 
-# ---- the tail guard's recovery advice is accepted by all three guards
-# The three recovery recipes the tail guard now prints, fed as JSON data to each
-# real hook (never executed): every guard must pass each one. The recovery text is
-# advice; the redirect shape the tail guard itself still allows is judged here by
-# the literal guard, which refuses it on a guarded writer.
 HOOKS_DIR="$(cd "$(dirname "$HOOK")" && pwd)"
 REC_SUITE='bash scripts/quiet-run.sh suite -- bash scripts/cr/test-orphan-check.sh'
 REC_RUNNER='bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh'
@@ -3319,7 +3314,6 @@ for rec_cmd in "$REC_SUITE" "$REC_RUNNER" "$REC_GATE"; do
         fi
     done
 done
-# the old advice shape stays denied by the guard that owns each part of it
 run "recovery_denied_shapes: writer redirect + RC echo + tail -> literal guard denies" 2 \
     "$(payload 'bash scripts/cr/clear-review-marker.sh feature/r1-fixture > out.txt 2>&1; echo "RC=$?"; tail -80 out.txt' "$WT")" "$HR"
 # shellcheck disable=SC2016  # the heredoc fixture is data, never executed

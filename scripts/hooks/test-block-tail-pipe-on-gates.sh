@@ -1395,8 +1395,6 @@ if [ "$rc" = 2 ] && [[ $err == *"timed out"* ]]; then pass "a timed-out command 
 else fail "a timed-out command model denies a gate and tail the model would read — rc=$rc $err"; fi
 rm -rf "$slow"
 
-# --- the recovery advice is the static sanctioned-form block ---
-# Test-only predicate over a captured stderr message; not a production parser.
 RECOVERY_LINES=(
     "Choose the existing sanctioned form for the command you intended:"
     "    Repo test suite (scripts/**/test-*.sh): bash scripts/quiet-run.sh suite -- bash <suite>"
@@ -1419,7 +1417,6 @@ recovery_message_valid() {
     for line in "${RECOVERY_LINES[@]}"; do
         [[ $msg == *"$line"* ]] || return 1
     done
-    # the old universal redirect/capture/tail advice is gone
     for line in '> <file> 2>&1' 'echo "RC=$?"' 'tail -80 <file>' 'Use the redirect shape instead' 'capture its status' 'or run the gate on its own, redirecting'; do
         [[ $msg == *"$line"* ]] && return 1
     done
@@ -1456,21 +1453,18 @@ for rb in pipeline trailing heredoc; do
     fi
 done
 
-# the heredoc primary advice precedes the common block
 if [[ ${REC_MSG_heredoc:-} == *"Quote the delimiter so the body is data:"*"cat <<'EOF'"*"Choose the existing sanctioned form"* ]]; then
     pass "recovery_heredoc_primary: quote-delimiter advice precedes the sanctioned-form block"
 else
     fail "recovery_heredoc_primary: order wrong — $REC_MSG_heredoc"
 fi
 
-# the pipeline's PIPESTATUS rationale and every branch's same-line marker notice stay
 if [[ ${REC_MSG_pipeline:-} == *'PIPESTATUS[0]'* ]]; then
     pass "recovery: pipeline keeps its PIPESTATUS rationale"
 else
     fail "recovery: pipeline lost its PIPESTATUS rationale"
 fi
 
-# mutations of a captured good message must be rejected by the predicate
 old_recipe='<cmd> > <file> 2>&1; echo "RC=$?"; tail -80 <file>'
 mut=${REC_MSG_pipeline//"${RECOVERY_LINES[1]}"/$old_recipe}
 if recovery_message_valid pipeline "${REC_MSG_pipeline:-}" && ! recovery_message_valid pipeline "$mut"; then
