@@ -39,6 +39,109 @@ mkdir -p "$REPO"
 git -C "$REPO" init --quiet
 PROJ=$(cd "$REPO" && pwd -P)
 
+# The import verb is unreachable on Darwin (no keyring), so the L rows run
+# _hs_import_lock itself, cut out of the script, under a PATH with no flock.
+NOFLOCK="$TMP/noflock-bin"
+mkdir -p "$NOFLOCK"
+for _l_t in mkdir rmdir rm mv cat cksum cut kill sleep printf dirname date ln readlink; do
+    _l_p=$(command -v "$_l_t") && ln -sf "$_l_p" "$NOFLOCK/$_l_t"
+done
+BASH_BIN=$(command -v bash)
+cat >"$TMP/lockdrv.sh" <<'DRV'
+_hs_die() { printf 'himmel-secrets: %s\n' "$*" >&2; exit 2; }
+_himmel_config_dir() { printf '%s\n' "$HIMMEL_CONFIG_DIR"; }
+HS_SCOPE_PROJECT=""
+DRV
+sed -n '/^_hs_import_lock() {$/,/^}$/p' "$HS" >>"$TMP/lockdrv.sh"
+cat >>"$TMP/lockdrv.sh" <<'DRV'
+_hs_import_lock
+echo locked
+sleep "${HOLD:-0}"
+DRV
+REAL_RL=$(command -v readlink)
+RLSTUB="$TMP/rl-stub"
+mkdir -p "$RLSTUB"
+cat >"$RLSTUB/readlink" <<'STUB'
+#!/bin/sh
+case "$1" in *.reap) exec "$REAL_RL" "$1" ;; esac
+n=$(cat "$RL_COUNT" 2>/dev/null); n=$((${n:-0} + 1)); printf '%s\n' "$n" >"$RL_COUNT"
+set -- $RL_SEQ
+[ "$n" -le "$#" ] || n=$#
+eval "printf '%s\n' \"\${$n}\""
+STUB
+chmod +x "$RLSTUB/readlink"
+lockrun() { env -i PATH="${LPATH:-$NOFLOCK}" HIMMEL_CONFIG_DIR="${LCONF:-$HIMMEL_CONFIG_DIR}" HOLD="${1:-0}" REAL_RL="$REAL_RL" RL_COUNT="${RL_COUNT:-}" RL_SEQ="${RL_SEQ:-}" "$BASH_BIN" "$TMP/lockdrv.sh" 2>&1; echo "rc=$?"; }
+lockwait() { local _w=0; while [ "$_w" -lt 100 ] && ! grep -qx locked "$1" 2>/dev/null; do sleep 0.1; _w=$((_w + 1)); done; }
+LOCKLINK="$HIMMEL_CONFIG_DIR/import-env.user.owner"
+assert_eq "L0 flock is hidden from the lock's PATH" "" "$(PATH="$NOFLOCK" command -v flock)"
+lockrun 30 >"$TMP/l1.a" &
+l1_pid=$!
+lockwait "$TMP/l1.a"
+assert_eq "L1 the first import took the lock" "locked" "$(head -n1 "$TMP/l1.a")"
+got=$(lockrun 0)
+assert_eq "L1 a second import is refused while the first runs, with no flock" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
+l1_owner=$(readlink "$LOCKLINK" 2>/dev/null)
+[ -z "$l1_owner" ] || kill -9 "$l1_owner" 2>/dev/null
+wait "$l1_pid" 2>/dev/null
+got=$(lockrun 0)
+assert_eq "L2 a killed import leaves no stale lock" "locked|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
+assert_eq "L3 a finished import leaves nothing under the lock path" "0" "$(find "$HIMMEL_CONFIG_DIR" -name 'import-env.*' 2>/dev/null | grep -c .)"
+mkdir -p "$HIMMEL_CONFIG_DIR"
+sleep 0.01 & l4_dead=$!; wait "$l4_dead"
+ln -s "$l4_dead" "$LOCKLINK"
+assert_eq "L4 setup: the stale lock names a dead process" "$l4_dead|dead" "$(readlink "$LOCKLINK")|$(kill -0 "$l4_dead" 2>/dev/null && echo live || echo dead)"
+for l4_i in 1 2 3 4 5 6 7 8 9 10 11 12; do lockrun 5 >"$TMP/l4.$l4_i" & done
+wait
+assert_eq "L4 twelve imports over one stale lock: exactly one wins" "1" "$(cat "$TMP"/l4.* | grep -c '^locked$')"
+assert_eq "L4 the other eleven are refused" "11" "$(cat "$TMP"/l4.* | grep -c '^rc=2$')"
+assert_eq "L4 the lock is gone once the winner ends" "0" "$(find "$HIMMEL_CONFIG_DIR" -name 'import-env.*' 2>/dev/null | grep -c .)"
+L5CONF="$TMP/it's conf"
+got=$(LCONF="$L5CONF" lockrun 0)
+assert_eq "L5 a quote in the config path: the import runs" "locked|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
+assert_eq "L5 a quote in the config path: the lock is removed at exit" "0" "$(find "$L5CONF" -name 'import-env.*' 2>/dev/null | grep -c .)"
+ln -s "$l4_dead" "$LOCKLINK"
+ln -s "$l4_dead" "$LOCKLINK.reap"
+got=$(lockrun 0)
+assert_eq "L6 a dead takeover guard is named in the refusal" "1|rc=2" "$(printf '%s' "$got" | grep -c 'import-env.user.owner.reap behind')|$(printf '%s' "$got" | grep rc=)"
+rm -f "$LOCKLINK" "$LOCKLINK.reap"
+got=$(lockrun 0)
+assert_eq "L6 removing both links lets the next import run" "locked|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
+mkdir "$LOCKLINK"
+got=$(lockrun 0)
+assert_eq "L7 a directory at the lock path is refused, never locked" "1|rc=2" "$(printf '%s' "$got" | grep -c 'is not a lock link')|$(printf '%s' "$got" | grep rc=)"
+assert_eq "L7 the refusal leaves nothing inside the lock-path directory" "0" "$(find "$LOCKLINK" -mindepth 1 2>/dev/null | grep -c .)"
+rm -rf "$LOCKLINK"
+ln -s "$l4_dead" "$LOCKLINK"
+mkdir "$LOCKLINK.reap"
+got=$(lockrun 0)
+assert_eq "L7 a directory at the takeover guard is refused, never taken over" "1|rc=2" "$(printf '%s' "$got" | grep -c 'is not a lock link')|$(printf '%s' "$got" | grep rc=)"
+assert_eq "L7 the refusal leaves nothing inside the guard directory" "0" "$(find "$LOCKLINK.reap" -mindepth 1 2>/dev/null | grep -c .)"
+rm -rf "$LOCKLINK.reap"
+rm -f "$LOCKLINK"
+ln -s "$l4_dead" "$LOCKLINK"
+ln -s "$$" "$LOCKLINK.reap"
+got=$(lockrun 0)
+assert_eq "L8 a takeover guard held by a live import blocks the takeover" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
+assert_eq "L8 the stale lock and the live guard are left as they were" "$l4_dead|$$" "$(readlink "$LOCKLINK")|$(readlink "$LOCKLINK.reap")"
+rm -f "$LOCKLINK" "$LOCKLINK.reap"
+ln -s "$l4_dead" "$LOCKLINK"
+got=$(LPATH="$RLSTUB:$NOFLOCK" RL_COUNT="$TMP/rl.count" RL_SEQ="$l4_dead $$" lockrun 0)
+assert_eq "L9 an owner seen live on the re-read under the guard is not removed" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
+assert_eq "L9 the lock link is left and the guard released" "$l4_dead|absent" "$(readlink "$LOCKLINK")|$([ -L "$LOCKLINK.reap" ] && echo held || echo absent)"
+rm -f "$TMP/rl.count"
+got=$(LPATH="$RLSTUB:$NOFLOCK" RL_COUNT="$TMP/rl.count" RL_SEQ="$l4_dead $l4_dead $$" lockrun 0)
+assert_eq "L10 a lock retaken between the liveness check and the removal is not removed" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
+assert_eq "L10 the lock link is left and the guard released" "$l4_dead|absent" "$(readlink "$LOCKLINK")|$([ -L "$LOCKLINK.reap" ] && echo held || echo absent)"
+rm -f "$LOCKLINK" "$TMP/l11.a"
+lockrun 3 >"$TMP/l11.a" &
+l11_pid=$!
+lockwait "$TMP/l11.a"
+rm -f "$LOCKLINK"
+ln -s "$$" "$LOCKLINK"
+wait "$l11_pid"
+assert_eq "L11 an import whose lock was retaken leaves the new owner's lock at exit" "$$" "$(readlink "$LOCKLINK")"
+rm -f "$LOCKLINK"
+
 if [ "$(uname -s)" = Darwin ]; then
     echo "SKIP S1-S9: the resolver skips the keyring on Darwin (macOS Keychain backend is a follow-up)"
 else
