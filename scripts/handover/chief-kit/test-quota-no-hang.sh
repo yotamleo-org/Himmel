@@ -223,6 +223,9 @@ T7a chief-wait.sh secondary no-false-wake
 T7a chief-wait.sh secondary ready-unspent
 T7a chief-wait.sh secondary no-false-phrase
 T7a chief-wait.sh hung bound
+T7a chief-wait.sh hung no-false-wake
+T7a chief-wait.sh hung ready-unspent
+T7a chief-wait.sh hung no-false-phrase
 T7a chief-wait.sh hung telegram-latency
 T7a chief-wait.sh hung-after-probe bound
 T7a chief-wait.sh hung-after-probe no-false-wake
