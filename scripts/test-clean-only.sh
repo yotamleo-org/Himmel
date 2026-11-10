@@ -200,7 +200,6 @@ echo "CASE 4: live cwd holder"
 # PLATFORM GUARD: worktree-inuse detects a live cwd holder by scanning /proc; hosts
 # without it (macOS) fall back to a rename probe that cannot see a holder
 # so the refusal cannot be provoked there and is skipped.
-# Holder refusal is unexercised off Linux; add an lsof-based scan to worktree-inuse if macOS in-use detection is wanted.
 if [ -d /proc/self ]; then
 ( cd "$WT_HELD" && exec sleep 60 ) &
 HOLDER_PID=$!

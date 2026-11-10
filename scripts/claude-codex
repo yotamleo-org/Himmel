@@ -869,7 +869,6 @@ export CLAUDE_CONFIG_DIR="$CONFIG_DIR"
 # guessing from the model string, and prices a claudex worker from the codex weekly used% delta between this launch
 # reading and the current probe cache (codex-usage-probe.ts). WORKER_SESSION_LANE is deliberately NOT exported: headed-arm-worker.sh
 # reads it as the default lane for workers a claudex session arms, and usage-preflight.sh reads it too.
-# No launch-time codex-bank reading yet, so fleet prices a claudex worker only when HIMMEL_CODEX_BANK_START is in its launch env; a launch-time reading would remove that condition.
 export HIMMEL_SESSION_LANE=claudex
 HIMMEL_SESSION_MODEL="$(codex_stanza_model)"
 export HIMMEL_SESSION_MODEL

@@ -96,8 +96,7 @@ env:
   CONTEXT_FILL_MAX_AGE_SECONDS   freshness window in seconds, default 900
   CONTEXT_FILL_MAX_LAG_SECONDS   max seconds a snapshot's saved_at may lag the
                                   session transcript's mtime before it is
-                                  refused as a frozen HUD snapshot
-                                  (the HUD column once diverged from this script), default 60
+                                  refused as a frozen HUD snapshot, default 60
   CONTEXT_FILL_TRANSCRIPT        override the resolved transcript path
   CLAUDE_CONFIG_DIR              honoured the same way the HUD honours it
   CONTEXT_FILL_WARN_AT           handover-nudge threshold, default 50;
