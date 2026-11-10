@@ -1,0 +1,271 @@
+#!/usr/bin/env bash
+# billed-opt-in: HIMMEL_BILLED_OK
+# staleness-fixture.sh -- the scratch index and graph the staleness eval reads, and the daemon that serves them.
+#
+#   staleness-fixture.sh build --first <sha> --second <sha> --state s|l|c --out <scratch> [--embed-ok <max-chunks>]
+#       A himmel-only qmd index from `git archive`, and <scratch>/pair.json (both commits, the helper's document
+#       count, the served URL once served). s = the first commit's tree, l = that index updated to the second
+#       commit's tree (keyword only), c = l plus an embed. With no --embed-ok it never calls `qmd embed`.
+#       --embed-ok is a paid path: it refuses (exit 2) unless HIMMEL_BILLED_OK=1, and so does state c.
+#       <max-chunks> refuses a base tree holding more documents than that (a document is at least one chunk).
+#   staleness-fixture.sh serve --index <path> [--with-key]
+#       `qmd mcp --http` on a free local port with INDEX_PATH and QMD_CONFIG_DIR on the scratch path. It starts
+#       with no provider key; --with-key loads the key through qmd_daemon_key_load and refuses (exit 2) unless
+#       HIMMEL_BILLED_OK=1. Prints the URL.
+#   staleness-fixture.sh stop --index <path>
+#   staleness-fixture.sh graph --commit <sha> --out <scratch> [--seed-cache <dir>]
+#       Archives the commit into <scratch>/graph-<sha12>, copies the AST cache to <archive>/graphify-out/cache,
+#       and runs ast-update.sh on the archive with GRAPHIFY_OUT unset, so the out dir is the archive's own
+#       graphify-out (an overridden out dir holding only cache/ is refused by ast-update.sh with exit 3).
+#
+# Writes only under <scratch>: never the live qmd index, its config dir or a graphify-out of a checkout. A
+# <scratch> that exists must be empty or carry the marker this script leaves. Refusals exit 2, usage 64.
+# Seams (tests): SF_QMD, SF_REPO, SF_AST, SF_LIVE_INDEX, SF_PRIMARY_GRAPH_OUT.
+# shellcheck disable=SC2015  # `A && B || die` is the refusal idiom here: die exits, so C never runs after a true A
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+LIB="$HERE/../../lib"
+QMD="${SF_QMD:-qmd}"
+REPO="${SF_REPO:-$(git -C "$HERE" rev-parse --show-toplevel)}"
+AST="${SF_AST:-$HERE/../../graphify/ast-update.sh}"
+LIVE_INDEX="${SF_LIVE_INDEX:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}"
+LIVE_CONFIG="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}"
+MARKER=".staleness-fixture"
+
+die() { printf 'staleness-fixture: %s\n' "$1" >&2; exit "${2:-2}"; }
+usage() {
+    printf 'usage: staleness-fixture.sh build --first <sha> --second <sha> --state s|l|c --out <scratch> [--embed-ok <max-chunks>]\n' >&2
+    printf '       staleness-fixture.sh serve --index <path> [--with-key]\n' >&2
+    printf '       staleness-fixture.sh stop --index <path>\n' >&2
+    printf '       staleness-fixture.sh graph --commit <sha> --out <scratch> [--seed-cache <dir>]\n' >&2
+    exit 64
+}
+rp() { python3 -I -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
+inside() { case "$1/" in "$2"/*) return 0 ;; esac; return 1; }  # <path> is <dir> or under it
+
+# Refuse a scratch path that is, or sits under, the live index's directory, the live config dir or a checkout's
+# graphify-out; refuse an index that links to the live one; refuse a directory this script did not make.
+guard_scratch() {
+    local out="$1" real live d g
+    real="$(rp "$out")"
+    live="$(rp "$LIVE_INDEX")"
+    for d in "$(dirname "$live")" "$(rp "$LIVE_CONFIG")"; do
+        if inside "$real" "$d"; then die "refusing $out: it is the live qmd index or config directory, or inside it"; fi
+    done
+    for g in "${SF_PRIMARY_GRAPH_OUT:-$(dirname "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)")/graphify-out}" "$REPO/graphify-out"; do
+        if inside "$real" "$(rp "$g")"; then die "refusing $out: it is, or is inside, a checkout's graphify-out"; fi
+    done
+    if [ -e "$real/index.sqlite" ] || [ -L "$real/index.sqlite" ]; then
+        if [ "$(rp "$real/index.sqlite")" = "$live" ]; then die "refusing $out: its index.sqlite is the live index"; fi
+    fi
+    if [ -e "$real" ]; then
+        [ -d "$real" ] || die "refusing $out: not a directory"
+        if [ ! -f "$real/$MARKER" ] && [ -n "$(ls -A "$real")" ]; then
+            die "refusing $out: a non-empty directory this script did not make"
+        fi
+    fi
+    OUTR="$real"
+}
+make_scratch() { mkdir -p "$OUTR" && : > "$OUTR/$MARKER" || die "cannot create $OUTR" 1; }
+
+PJ_PY='import json, os, sys
+f = os.path.join(sys.argv[1], "pair.json")
+d = json.load(open(f)) if os.path.exists(f) else {}
+if sys.argv[2] == "set":
+    d[sys.argv[3]] = json.loads(sys.argv[4])
+else:
+    d.setdefault(sys.argv[3], {})[sys.argv[4]] = sys.argv[5]
+t = f + ".tmp"
+with open(t, "w") as fh:
+    json.dump(d, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+os.replace(t, f)'
+pj_set() { python3 -I -c "$PJ_PY" "$1" set "$2" "$3"; }
+pj_map() { python3 -I -c "$PJ_PY" "$1" map "$2" "$3" "$4"; }
+
+need_commit() { git -C "$REPO" rev-parse --verify --quiet "$1^{commit}" || die "not a commit in $REPO: $1" 64; }
+need_value() { [ -n "${2:-}" ] || usage; }
+
+# The live himmel collection's rules (index.yml), in the fixed shape qmd-collection-files.py reads.
+write_config() { # <out> <tree>
+    mkdir -p "$1/config"
+    {
+        printf 'collections:\n  himmel:\n    path: %s\n    pattern: "**/*.md"\n    ignore:\n' "$2"
+        printf '      - "graphify-out/**"\n      - "**/fixtures/**"\n      - "marketplace/plugins/*/README*.md"\n'
+    } > "$1/config/index.yml"
+}
+doc_count() { # <sha> <config>: the files the collection would index from that tree
+    git -C "$REPO" ls-tree -r --name-only -z "$1" | xargs -0 -n 500 python3 -I "$LIB/qmd-collection-files.py" --config "$2" himmel | wc -l | tr -d ' '
+}
+unpack() { # <sha> <dir>: the commit's markdown, replacing what the dir held
+    rm -rf "$2" && mkdir -p "$2" && git -C "$REPO" archive --format=tar "$1" -- '*.md' | tar -x -C "$2" || die "git archive of $1 failed" 1
+}
+qrun() { # <verb> [args]: qmd on the scratch index and config, with no provider key
+    env -u QMD_OPENAI_API_KEY -u OPENAI_API_KEY -u OPENROUTER_API_KEY \
+        INDEX_PATH="$OUTR/index.sqlite" QMD_CONFIG_DIR="$OUTR/config" "$QMD" "$@" > "$OUTR/qmd-$1.log" 2>&1 \
+        || die "qmd $1 failed (see $OUTR/qmd-$1.log)" 1
+}
+embed() {
+    # shellcheck source=../../lib/qmd-daemon-env.sh
+    . "$LIB/qmd-daemon-env.sh"
+    qmd_daemon_key_load "$OUTR/config/index.yml" || die "the provider key could not be loaded for the embed" 2
+    INDEX_PATH="$OUTR/index.sqlite" QMD_CONFIG_DIR="$OUTR/config" "$QMD" embed -c himmel > "$OUTR/qmd-embed.log" 2>&1 \
+        || die "qmd embed failed (see $OUTR/qmd-embed.log)" 1
+}
+
+cmd_build() {
+    local first="" second="" state="" out="" cap="" n1 n2
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        --first) need_value "$@"; first="$2"; shift 2 ;;
+        --second) need_value "$@"; second="$2"; shift 2 ;;
+        --state) need_value "$@"; state="$2"; shift 2 ;;
+        --out) need_value "$@"; out="$2"; shift 2 ;;
+        --embed-ok) need_value "$@"; cap="$2"; shift 2 ;;
+        *) usage ;;
+        esac
+    done
+    [ -n "$first" ] && [ -n "$second" ] && [ -n "$out" ] || usage
+    case "$state" in s | l | c) ;; *) usage ;; esac
+    if [ -n "$cap" ]; then
+        case "$cap" in '' | *[!0-9]* | 0) usage ;; esac
+    fi
+    if [ "$state" = c ] && [ -z "$cap" ]; then die "state c is the paid arm: it needs --embed-ok <max-chunks>"; fi
+    if [ -n "$cap" ] && [ "${HIMMEL_BILLED_OK:-}" != 1 ]; then
+        die "--embed-ok is a paid path (qmd embed): it refuses unless HIMMEL_BILLED_OK=1"
+    fi
+    first="$(need_commit "$first")" || exit $?
+    second="$(need_commit "$second")" || exit $?
+    guard_scratch "$out"
+    make_scratch
+    write_config "$OUTR" "$OUTR/tree"
+    n1="$(doc_count "$first" "$OUTR/config/index.yml")" || die "the collection helper refused the first tree" 1
+    n2="$(doc_count "$second" "$OUTR/config/index.yml")" || die "the collection helper refused the second tree" 1
+    if [ -n "$cap" ] && [ "$n1" -gt "$cap" ]; then
+        die "the first tree holds $n1 documents, more than --embed-ok $cap chunks: a document is at least one chunk"
+    fi
+    unpack "$first" "$OUTR/tree"
+    qrun update -c himmel
+    [ -z "$cap" ] || embed
+    if [ "$state" != s ]; then
+        unpack "$second" "$OUTR/tree"
+        qrun update -c himmel
+        if [ "$state" = c ]; then embed; fi
+    fi
+    pj_set "$OUTR" first "\"$first\""
+    pj_set "$OUTR" second "\"$second\""
+    pj_set "$OUTR" state "\"$state\""
+    pj_set "$OUTR" doc_counts "{\"first\": $n1, \"second\": $n2}"
+    if [ "$state" = s ]; then pj_set "$OUTR" doc_count "$n1"; else pj_set "$OUTR" doc_count "$n2"; fi
+    pj_set "$OUTR" index "\"$OUTR/index.sqlite\""
+    pj_set "$OUTR" embed_cap "${cap:-null}"
+    pj_set "$OUTR" served_url null
+}
+
+# <index> -> the scratch dir that holds it, after the refusals every verb shares
+scratch_of_index() {
+    local idx="$1" real
+    real="$(rp "$idx")"
+    if [ "$real" = "$(rp "$LIVE_INDEX")" ] || inside "$real" "$(dirname "$(rp "$LIVE_INDEX")")"; then
+        die "refusing $idx: it is the live qmd index"
+    fi
+    OUTR="$(dirname "$real")"
+    [ -f "$OUTR/$MARKER" ] || die "refusing $idx: not in a scratch directory this script made"
+}
+
+cmd_serve() {
+    local index="" withkey=0 port pid i
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        --index) need_value "$@"; index="$2"; shift 2 ;;
+        --with-key) withkey=1; shift ;;
+        *) usage ;;
+        esac
+    done
+    [ -n "$index" ] || usage
+    if [ "$withkey" -eq 1 ] && [ "${HIMMEL_BILLED_OK:-}" != 1 ]; then
+        die "--with-key loads the provider key and can bill: it refuses unless HIMMEL_BILLED_OK=1"
+    fi
+    scratch_of_index "$index"
+    [ -f "$OUTR/index.sqlite" ] && [ -d "$OUTR/config" ] || die "no index and config in $OUTR: run build first"
+    if [ -f "$OUTR/serve.pid" ] && kill -0 "$(cat "$OUTR/serve.pid")" 2>/dev/null; then die "already serving from $OUTR"; fi
+    port="$(python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+    if [ "$withkey" -eq 1 ]; then
+        # shellcheck source=../../lib/qmd-daemon-env.sh
+        . "$LIB/qmd-daemon-env.sh"
+        qmd_daemon_key_load "$OUTR/config/index.yml" || die "the provider key could not be loaded" 2
+        INDEX_PATH="$OUTR/index.sqlite" QMD_CONFIG_DIR="$OUTR/config" nohup "$QMD" mcp --http --port "$port" > "$OUTR/serve.log" 2>&1 < /dev/null &
+    else
+        env -u QMD_OPENAI_API_KEY -u OPENAI_API_KEY -u OPENROUTER_API_KEY \
+            INDEX_PATH="$OUTR/index.sqlite" QMD_CONFIG_DIR="$OUTR/config" nohup "$QMD" mcp --http --port "$port" > "$OUTR/serve.log" 2>&1 < /dev/null &
+    fi
+    pid=$!
+    printf '%s\n' "$pid" > "$OUTR/serve.pid"
+    i=0
+    while ! (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; do
+        kill -0 "$pid" 2> /dev/null || { rm -f "$OUTR/serve.pid"; die "the daemon exited (see $OUTR/serve.log)" 1; }
+        i=$((i + 1))
+        [ "$i" -lt 120 ] || { kill "$pid" 2> /dev/null; rm -f "$OUTR/serve.pid"; die "the daemon did not listen in 60 s" 1; }
+        sleep 0.5
+    done
+    pj_set "$OUTR" served_url "\"http://127.0.0.1:$port/mcp\""
+    printf 'http://127.0.0.1:%s/mcp\n' "$port"
+}
+
+cmd_stop() {
+    local index="" pid i
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        --index) need_value "$@"; index="$2"; shift 2 ;;
+        *) usage ;;
+        esac
+    done
+    [ -n "$index" ] || usage
+    scratch_of_index "$index"
+    if [ -f "$OUTR/serve.pid" ]; then
+        pid="$(cat "$OUTR/serve.pid")"
+        kill "$pid" 2> /dev/null
+        i=0
+        while kill -0 "$pid" 2> /dev/null && [ "$i" -lt 20 ]; do sleep 0.25; i=$((i + 1)); done
+        rm -f "$OUTR/serve.pid"
+    fi
+    if [ -f "$OUTR/pair.json" ]; then pj_set "$OUTR" served_url null; fi
+}
+
+cmd_graph() {
+    local commit="" out="" seed="" arc
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        --commit) need_value "$@"; commit="$2"; shift 2 ;;
+        --out) need_value "$@"; out="$2"; shift 2 ;;
+        --seed-cache) need_value "$@"; seed="$2"; shift 2 ;;
+        *) usage ;;
+        esac
+    done
+    [ -n "$commit" ] && [ -n "$out" ] || usage
+    commit="$(need_commit "$commit")" || exit $?
+    if [ -n "$seed" ] && [ ! -d "$seed" ]; then die "--seed-cache is not a directory: $seed"; fi
+    guard_scratch "$out"
+    arc="$OUTR/graph-$(printf '%s' "$commit" | cut -c1-12)"
+    if [ -L "$arc" ]; then die "refusing $arc: it is a symlink"; fi
+    if [ -e "$arc" ]; then die "refusing $arc: already built"; fi
+    make_scratch
+    mkdir -p "$arc" && git -C "$REPO" archive --format=tar "$commit" | tar -x -C "$arc" || die "git archive of $commit failed" 1
+    if [ -n "$seed" ]; then
+        rm -rf "$arc/graphify-out/cache"
+        mkdir -p "$arc/graphify-out/cache" && cp -R "$seed/." "$arc/graphify-out/cache/" || die "the cache seed failed" 1
+    fi
+    env -u GRAPHIFY_OUT bash "$AST" "$arc" || die "ast-update.sh failed on $arc" 1
+    pj_map "$OUTR" graph_built_at "$commit" "$arc"
+}
+
+verb="${1:-}"
+[ $# -eq 0 ] || shift
+case "$verb" in
+build) cmd_build "$@" ;;
+serve) cmd_serve "$@" ;;
+stop) cmd_stop "$@" ;;
+graph) cmd_graph "$@" ;;
+*) usage ;;
+esac
