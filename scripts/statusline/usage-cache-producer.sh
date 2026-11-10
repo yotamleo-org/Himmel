@@ -267,12 +267,6 @@ if [ -n "$stdin_five" ] || [ -n "$stdin_seven" ]; then
       derived_at: $ts,
       produced_by: $pby
     }
-    # same provenance rule as Branch B — stamp only when every window the
-    # source sent is a valid number and seven_day is one of them; a payload with
-    # no valid seven_day (or a malformed window) carries the prior stamp so the
-    # carried-forward window keeps aging honestly. An empty or absent five_hour
-    # (no active window) is not a carried-forward window: it is dropped above,
-    # so nothing stale can ride a fresh stamp.
     + (if $stamp then {primaries_refreshed_at: $ts}
        elif ($carry.primaries_refreshed_at != null) then {primaries_refreshed_at: $carry.primaries_refreshed_at}
        else {} end)
@@ -406,12 +400,6 @@ new_cache=$(jq -n --argjson prev "$prev" --argjson f "$fetched" --argjson ts "$n
     derived_at: $ts,
     produced_by: $pby
   }
-  # Provenance: refresh the aggregate stamp ONLY when every window the fetch
-  # returned is a valid number and seven_day is among them. A fetch with no
-  # valid seven_day, or a malformed window, preserves the prior stamp so a
-  # carried-forward window continues to age honestly; oauth_checked_at cannot
-  # prove this. An empty or absent five_hour (no active window) is dropped
-  # above rather than carried, so no stale window rides the fresh stamp.
   + (if $stamp then {primaries_refreshed_at: $ts}
      elif ($carry.primaries_refreshed_at != null) then {primaries_refreshed_at: $carry.primaries_refreshed_at}
      else {} end)
