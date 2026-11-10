@@ -35,6 +35,8 @@ def read_rules(config, collection):
             lines = fh.read().split("\n")
     except OSError as err:
         raise Refused(f"cannot read {config}: {err.strerror}")
+    except ValueError:
+        raise Refused(f"{config}: not UTF-8 text")
     in_collections = False
     current = None
     seen = set()
@@ -139,8 +141,8 @@ def glob_regex(glob):
         if any(ch in alt for ch in "?[]()!\\"):
             raise Refused(f"glob {glob!r}: syntax beyond * ** {{a,b}}")
         segments = alt.split("/")
-        if "" in segments:
-            raise Refused(f"glob {glob!r}: an empty segment")
+        if any(seg in ("", ".", "..") for seg in segments):
+            raise Refused(f"glob {glob!r}: an empty, . or .. segment")
         parts = []
         for i, seg in enumerate(segments):
             last = i == len(segments) - 1
@@ -160,6 +162,8 @@ def glob_regex(glob):
 
 
 def check_path(path):
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in path):
+        raise Refused(f"path {path!r}: a control character")
     segments = path.split("/")
     if any(seg in ("", ".", "..") for seg in segments):
         raise Refused(f"path {path!r}: not a normalised relative path")

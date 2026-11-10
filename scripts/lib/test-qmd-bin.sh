@@ -1420,6 +1420,58 @@ assert "the tree holds a dot-path outside the excluded names" grep -qE '(^|/)\.(
 # shellcheck disable=SC2016  # $1 expands inside the spawned bash -c subshell
 assert "the output holds no dot-path" bash -c '! grep -qE "(^|/)\." <<<"$1"' _ "$golden_got"
 
+shape_dir="$tmpdir/shapes"
+shape_cfg() { # $1 = name, $2 = index.yml text (printf %b escapes); prints the config dir
+  mkdir -p "$shape_dir/$1"
+  printf '%b' "$2" >"$shape_dir/$1/index.yml"
+  printf '%s\n' "$shape_dir/$1"
+}
+shape_run() { # $1 = config dir, then the collection and paths; sets shape_rc and shape_out
+  local dir="$1"; shift
+  shape_rc=0
+  # shellcheck disable=SC2016  # $1 and $@ expand inside the spawned bash -c subshell
+  shape_out="$(env -u XDG_CONFIG_HOME QMD_CONFIG_DIR="$dir" bash -c '. "$1"; shift; qmd_collection_indexes "$@"' _ "$SCRIPT_DIR/qmd-bin.sh" "$@" 2>/dev/null)" || shape_rc=$?
+}
+refused() { [ "$shape_rc" -eq 2 ] && [ -z "$shape_out" ]; }
+shape_base='collections:\n  c:\n    path: /x\n    pattern: "**/*.md"\n'
+
+echo "[test-qmd-bin] reader_refuses_other_shapes: a config, glob or path shape the reader does not know exits 2 with no output"
+shape_run "$(shape_cfg update-key "${shape_base}    update: \"git pull\"\n")" c a.md
+assert "an update: key in the collection is refused" refused
+shape_run "$(shape_cfg flow-ignore "${shape_base}    ignore: []\n")" c a.md
+assert "a flow-style ignore: [] is refused" refused
+shape_run "$(shape_cfg single-quoted "collections:\n  c:\n    path: /x\n    pattern: '**/*.md'\n")" c a.md
+assert "a single-quoted pattern is refused" refused
+shape_run "$(shape_cfg absent-coll "$shape_base")" nope a.md
+assert "a collection the config does not define is refused" refused
+shape_run "$shape_dir/no-config" c a.md
+assert "a missing config file is refused" refused
+shape_run "$(shape_cfg parent-path "$shape_base")" c ../x.md
+assert "a path that climbs out of the root is refused" refused
+shape_run "$(shape_cfg ctrl-path "$shape_base")" c "$(printf 'a\nb.md')"
+assert "a path holding a control character is refused" refused
+shape_run "$(shape_cfg dot-glob 'collections:\n  c:\n    path: /x\n    pattern: "./**/*.md"\n')" c a.md
+assert "a glob with a . segment is refused" refused
+shape_run "$(shape_cfg not-utf8 'collections:\n  c:\n    path: /x\0377\n    pattern: "**/*.md"\n')" c a.md
+assert "a config that is not UTF-8 is refused" refused
+
+echo "[test-qmd-bin] reader_expands_braces: {a,b} expands into one glob per alternative"
+shape_run "$(shape_cfg brace 'collections:\n  c:\n    path: /x\n    pattern: "{docs,notes}/**/*.md"\n')" c docs/a.md notes/x/y.md other/a.md
+assert "a brace pattern exits 0" test "$shape_rc" -eq 0
+assert "a brace pattern keeps docs/a.md and notes/x/y.md and drops other/a.md" \
+  test "$shape_out" = "$(printf 'docs/a.md\nnotes/x/y.md')"
+
+echo "[test-qmd-bin] config_dir_fallbacks: with no QMD_CONFIG_DIR the helper reads XDG_CONFIG_HOME/qmd, then ~/.config/qmd"
+mkdir -p "$tmpdir/xdg/qmd" "$tmpdir/fallback-home/.config/qmd"
+printf '%b' 'collections:\n  xdgonly:\n    path: /x\n    pattern: "*.md"\n' >"$tmpdir/xdg/qmd/index.yml"
+printf '%b' 'collections:\n  homeonly:\n    path: /x\n    pattern: "*.md"\n' >"$tmpdir/fallback-home/.config/qmd/index.yml"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c subshell
+xdg_out="$(env -u QMD_CONFIG_DIR XDG_CONFIG_HOME="$tmpdir/xdg" HOME="$tmpdir/fallback-home" bash -c '. "$1"; qmd_collection_indexes xdgonly a.md' _ "$SCRIPT_DIR/qmd-bin.sh" 2>/dev/null)"
+assert "XDG_CONFIG_HOME/qmd/index.yml is read when QMD_CONFIG_DIR is unset" test "$xdg_out" = "a.md"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c subshell
+home_out="$(env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME HOME="$tmpdir/fallback-home" bash -c '. "$1"; qmd_collection_indexes homeonly a.md' _ "$SCRIPT_DIR/qmd-bin.sh" 2>/dev/null)"
+assert "HOME/.config/qmd/index.yml is read when QMD_CONFIG_DIR and XDG_CONFIG_HOME are unset" test "$home_out" = "a.md"
+
 echo "[test-qmd-bin] helper_matches_real_update: the helper equals a live qmd update on the same tree"
 real_qmd=()
 while IFS= read -r w; do real_qmd+=("$w"); done < <(qmd_pinned_invocation 2>/dev/null)
