@@ -253,7 +253,7 @@ test("a drop on a column its event moves (In review, CI, Done) writes nothing an
   for (const [col, name] of [["rev", "In Review"], ["done", "Done"]]) { // Review and CI are one column now: a drop on it is a drop on rev
     await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator(`[data-rm-drop="${col}"]`));
     await expect(page.locator("#main .alert", { hasText: `${name} is moved by its event` })).toBeVisible(); // the note names this drop's column, so the last drop's note cannot satisfy it
-    expect(await page.locator("#main .alert", { hasText: `${name} is moved by its event` }).evaluate((el) => el === el.closest("section.cp")?.firstElementChild), "the note is the first thing inside the panel").toBe(true);
+    expect(await page.locator("#main .alert", { hasText: `${name} is moved by its event` }).evaluate((el) => el.previousElementSibling?.matches(".cph") === true && el.parentElement === el.closest("section.cp")), "the note sits right under the panel head").toBe(true);
   }
   expect(sent).toEqual([]); // no POST to /api/roadmap/write went out
   await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('[data-rm-drop="prog"]')); // a column the operator owns still writes
@@ -351,7 +351,8 @@ test("the find box narrows the lanes by title or id on Enter, the columns say ho
   await open(page);
   await go(page, "#/board");
   const todo = page.locator('#rm-lanes [data-rm-col="todo"]');
-  await expect(todo.locator(".rm-jira")).toHaveText("Jira 4 matches");
+  await expect(todo.locator(".rm-n")).toHaveText("4");
+  await expect(todo.locator(".rm-jira")).toHaveCount(0);
   await expect(page.locator("#rm-lanes details.rm-done")).not.toHaveAttribute("open", "");
   await page.locator("input[data-rm-find]").fill("second chain");
   await page.locator("input[data-rm-find]").press("Enter");
@@ -433,7 +434,8 @@ test("the Board at 1280 px is dense: a one-line bar, the first card near the top
   const bar = await page.locator(".rm-bar").first().boundingBox();
   expect(bar && bar.height <= 40).toBe(true);
   const card = await page.locator(".rm-card").first().boundingBox();
-  expect(card && card.y <= 480).toBe(true); // the sector legend and the drain line add up to about 80 px above the lanes; 350 before them in Noto Sans; DejaVu Sans (CI) is wider, the tab row's aside wraps under the tabs and the card sits near 373
+  const FIRST_CARD_MAX_Y = 480;
+  expect(card && card.y <= FIRST_CARD_MAX_Y).toBe(true);
   const tracks = await page.locator(".rm-board").first().evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
   expect(tracks).toBe(5); // four columns and the narrow Won't lane
   await expect(page.locator('[data-rm-drop="wont"]')).toBeVisible();
@@ -855,9 +857,10 @@ test("1280 px, dark: the shared rules draw: a plain panel body, a boxed selected
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ colorScheme: "dark" });
   await open(page);
-  await go(page, "#/board?tab=roadmap");
+  await go(page, "#/board?tab=tidy");
   const body = await page.locator(".cp.plain > section.box").first().evaluate((el) => { const s = getComputedStyle(el); return { border: s.borderTopWidth, bg: s.backgroundColor, pad: s.paddingTop }; });
   expect(body, "the panel's body adds no box of its own").toEqual({ border: "0px", bg: "rgba(0, 0, 0, 0)", pad: "0px" });
+  await go(page, "#/board?tab=roadmap");
   const tab = await page.locator('.tr .tab[aria-selected="true"]').evaluate((el) => { const s = getComputedStyle(el); return { border: s.borderTopWidth, radius: s.borderTopLeftRadius, line: s.textDecorationLine, bg: s.backgroundColor }; });
   expect(tab, "the selected plain tab is a box with a rounded top, not an underline").toEqual({ border: "1px", radius: "8px", line: "none", bg: await page.locator(".cp.plain").evaluate((el) => getComputedStyle(el).backgroundColor) });
   const pill = await page.locator(".tab .drf").evaluate((el) => { const warn = document.createElement("span"); warn.className = "pill warn"; document.body.append(warn); const bg = getComputedStyle(warn).backgroundColor; warn.remove(); return { display: getComputedStyle(el).display, bg: getComputedStyle(el).backgroundColor, warn: bg }; });
