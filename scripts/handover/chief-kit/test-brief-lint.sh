@@ -239,6 +239,7 @@ cg_ticket HIMMEL-9411 Task Medium   # core Writes, no spec
 cg_ticket HIMMEL-9412 Task Medium   # core Writes, no spec (second key of a pair)
 cg_ticket HIMMEL-9413 Task Medium   # core Writes, signed
 cg_ticket HIMMEL-9414 Bug Medium    # a Bug: core-check answers BYPASS
+cg_ticket HIMMEL-9640 Task Medium
 printf -- '---\nkey: "HIMMEL-9415"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: ["core"]\n---\n# HIMMEL-9415: t\n' > "$tmp/cg-mirror/HIMMEL-9415.md"   # core by its label
 printf -- '---\nkey: "HIMMEL-9416"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# HIMMEL-9416: t\n\nEdit scripts/handover/chief-kit/go.sh to change the GO path.\n' > "$tmp/cg-mirror/HIMMEL-9416.md"   # core by the path its own body names
 cg_ticket HIMMEL-9417 Task Medium   # names no path
@@ -264,6 +265,7 @@ if (a[0] === 'release' && a[1] === 'core-check') {
   for (const k of a.slice(a.indexOf('--key') + 1)) {
     const t = ticket(k);
     if (!t) console.log('UNKNOWN ' + k);
+    else if (fs.existsSync((process.env.BRIEF_LINT_TEST_NEEDS || '/nonexistent') + '/' + k)) process.stdout.write(fs.readFileSync(process.env.BRIEF_LINT_TEST_GOLDEN, 'utf8'));
     else if (t.type === 'Bug') console.log('BYPASS ' + k + ' bug a Bug is not gated');
     else if (hit) console.log('CORE ' + k + ' ' + hit);
     else if (t.labels.includes('core')) console.log(design ? 'BYPASS ' + k + ' design core by label only, docs-only leg' : 'CORE ' + k + ' label core');
@@ -463,6 +465,21 @@ printf '// valid JavaScript that exits 0 and prints no verdict line\n' > "$tmp/j
 BRIEF_LINT_JIRA_CLI="$tmp/junk.js" expect_rc "8k a core-check that prints no verdict line is CORE-CHECK-FAILED" 3 "$tmp/core_none.md"
 printf "const a = process.argv.slice(2);\nif (a[1] === 'core-check') console.log('CORE ' + a[a.indexOf('--key') + 1] + ' x'); else console.log('junk');\n" > "$tmp/junk-spec.js"
 BRIEF_LINT_JIRA_CLI="$tmp/junk-spec.js" expect_rc "8k2 a spec-check that prints no verdict line is CORE-CHECK-FAILED" 3 "$tmp/core_none.md"
+mk bnsp '# HIMMEL-9640 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+NEEDS="$tmp/cg-needs"; mkdir -p "$NEEDS"; touch "$NEEDS/HIMMEL-9640"
+export BRIEF_LINT_TEST_NEEDS="$NEEDS" BRIEF_LINT_TEST_GOLDEN="$HERE/../../jira/src/release/fixtures/bypass-needs-spec.line"
+rc=0; err="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" "$tmp/bnsp.md" 2>&1 >/dev/null)" || rc=$?
+{ [ "$rc" -eq 3 ] && grep -Fq 'no spec-review record' <<< "$err"; } && ok "8s1 a BYPASS-NEEDS-SPEC key refuses with the missing record" || bad "8s1 BYPASS-NEEDS-SPEC (rc=$rc want 3): $err"
+grep -Fq 'waives the signature, never the spec' <<< "$err" && ok "8s1b the refusal says the bypass waives the signature, never the spec" || bad "8s1b refusal text: $err"
+rc=0; err2="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" --core-only "$tmp/bnsp.md" 2>&1 >/dev/null)" || rc=$?
+{ [ "$rc" -eq 3 ] && grep -Fq 'no spec-review record' <<< "$err2"; } && ok "8s2 --core-only refuses a BYPASS-NEEDS-SPEC key the same way" || bad "8s2 --core-only BYPASS-NEEDS-SPEC (rc=$rc want 3): $err2"
+export BRIEF_LINT_TEST_SPECS="$tmp/specs-9640"; mkdir -p "$BRIEF_LINT_TEST_SPECS"
+for f in HIMMEL-9640-spec.md HIMMEL-9640-plan.md HIMMEL-9640-critic-spec-r1.md; do printf '# fixture\n' > "$BRIEF_LINT_TEST_SPECS/$f"; done
+rc_with=0; err_with="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" "$tmp/bnsp.md" 2>&1 >/dev/null)" || rc_with=$?
+rm -f "$BRIEF_LINT_TEST_SPECS/"*
+rc_without=0; err_without="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" "$tmp/bnsp.md" 2>&1 >/dev/null)" || rc_without=$?
+{ [ "$rc_with" -eq "$rc_without" ] && [ "$err_with" = "$err_without" ] && [ "$rc_with" -eq 3 ]; } && ok "8s3 brief-lint answers the same with the fixture specs removed" || bad "8s3 specs changed the answer: rc $rc_with vs $rc_without: [$err_with] vs [$err_without]"
+rm -f "$NEEDS/HIMMEL-9640"; unset BRIEF_LINT_TEST_NEEDS BRIEF_LINT_TEST_GOLDEN BRIEF_LINT_TEST_SPECS
 BRIEF_LINT_JIRA_CLI="$tmp/no-dist/index.js" expect_rc "8l a brief with no ticket key in its title never asks the CLI" 0 "$tmp/tmpl_ok.md"
 
 BK="$tmp/bk"; BKLOG="$tmp/bk-argv.log"; mkdir -p "$BK"

@@ -1,0 +1,253 @@
+{
+ "v": 1,
+ "cases": {
+  "case-04": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "the run-once lock is taken with an atomic mkdir instead of the seeded twin's check-then-create",
+   "trigger": "two concurrent invocations of the same name",
+   "expected_behavior": "exactly one invocation runs the command; the other exits",
+   "contract": "one run at a time per name via an atomic lock; nothing more is claimed",
+   "target_ids": [],
+   "residuals": [
+    {"id": "case-04-r1", "description": "a SIGKILL or host crash skips the EXIT trap and leaves a stale lock that later runs treat as held"},
+    {"id": "case-04-r2", "description": "any mkdir failure (missing runtime dir, permission, full disk) is read as contention and exits 0"}
+   ],
+   "repair_evidence": "synthetic twin of case-21; hardening the twin would be a new execution corpus needing new outputs",
+   "evidence_refs": ["fixtures/case-04.patch", "retained:2026-11-05-pr4690-base-r1/case-04.md", "retained:2026-11-05-pr4690-head-r1/case-04.md", "research:decision-507 K1"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 32 of 32 retained sweeps. Both recurring claims are true on reading the twin, and both lie outside the seeded check-then-create mechanism. Proposal: keep clean with the two explicit residuals, so a blocker on them is labelled scope out. Needs independent review."
+  },
+  "case-10": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "an unreadable or malformed host policy denies instead of the seeded twin's swallowed jq error",
+   "trigger": "a policy file jq cannot read",
+   "expected_behavior": "deny (exit 2) when the policy cannot be read",
+   "contract": "a policy read failure denies; a denied host denies",
+   "target_ids": [],
+   "residuals": [
+    {"id": "case-10-r1", "description": "a payload jq cannot parse, or a missing jq, gives an empty host and takes the no-URL allow path"},
+    {"id": "case-10-r2", "description": "a trailing-dot host (blocked.example.) is not normalised, so it misses a deny entry for blocked.example"}
+   ],
+   "repair_evidence": "synthetic twin of case-01",
+   "evidence_refs": ["fixtures/case-10.patch", "retained:2026-11-05-pr4690-base-r1/case-10.md", "retained:2026-11-05-pr4690-head-r1/case-10.md", "research:decision-507 K1"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 31 of 31 sweeps. Both claims are true on reading: host=$(...) has no -e, so a failed pipeline leaves host empty and exits 0. r1 is in the fail-open class of this pair but not in its seeded mechanism. The reviewer decides between a residual and excluding the pair. Proposal: clean with explicit residuals."
+  },
+  "case-16": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "the retention arithmetic keeps exactly the asked count (tail -n +keep+1), where the seeded twin deletes one too many",
+   "trigger": "more snapshot archives than the keep count",
+   "expected_behavior": "the newest keep archives survive",
+   "contract": "prune keeps exactly the asked number of newest archives",
+   "target_ids": [],
+   "residuals": [
+    {"id": "case-16-r1", "description": "newline-delimited ls output splits a file name holding a newline into separate rm targets"},
+    {"id": "case-16-r2", "description": "a digit-only keep past the 64-bit range wraps in bash arithmetic (2^64 gives 0) and deletes every archive"}
+   ],
+   "repair_evidence": "synthetic twin of case-15",
+   "evidence_refs": ["fixtures/case-16.patch", "retained:2026-11-05-pr4690-base-r1/case-16.md", "retained:2026-11-05-pr4690-head-r1/case-16.md", "research:decision-507 K1"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 31 of 31 sweeps. Both claims are true on reading and outside the off-by-one mechanism. r2 is a logic-class gap, so the reviewer should weigh excluding the pair. Proposal: clean with explicit residuals."
+  },
+  "case-24": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "every log path is quoted in the gzip loop, where the seeded twin word-splits it",
+   "trigger": "a log file name with a space",
+   "expected_behavior": "each .log is compressed as one file",
+   "contract": "log names with spaces are compressed intact",
+   "target_ids": [],
+   "residuals": [
+    {"id": "case-24-r1", "description": "the header says 'finished' logs but nothing checks a writer still holds one; gzip unlinks an active log and later writes are lost"}
+   ],
+   "repair_evidence": "synthetic twin of case-06",
+   "evidence_refs": ["fixtures/case-24.patch", "retained:2026-11-05-pr4690-base-r1/case-24.md", "retained:2026-11-05-pr4690-head-r1/case-24.md", "research:decision-507 K1"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 31 of 31 sweeps. The claim is true: the twin's own header promises 'finished' logs and the code compresses every .log. Outside the quoting mechanism. Proposal: clean with the explicit residual."
+  },
+  "real-004-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "the dispatch preflight drops an entry whose enabled is not exactly true and skips lines inside multi-line strings",
+   "trigger": "a config.toml hook entry with enabled = false, or a forged header inside a string",
+   "expected_behavior": "the dispatch refuses as strictly as codex reads the config",
+   "contract": "the intent file: enabled not exactly true drops the entry; multi-line string lines are not read as tables",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-004-clean.intent.md", "retained:2026-11-03-h8430-head1/real-004-clean.md", "retained:2026-11-03-h8430-head1b/real-004-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 6 of 28 sweeps, never in the four 2026-11-05 codex-only sweeps. Claims: a per-OS command override is not checked, and a quoted \"enabled\" key escapes the check. The quoted-key claim is inside the stated contract if TOML reads it as the same key; not verified. The per-OS claim concerns a platform the station no longer supports. Unverified, no proposal."
+  },
+  "real-008-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "action-zero checks the document lock before it renders legs",
+   "trigger": "a second console opening a live console's doc",
+   "expected_behavior": "a held lock prints unavailable, exits 1 and leaves legs unchanged",
+   "contract": "the intent file: lock check before render; held lock leaves the doc unchanged",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-008-clean.intent.md", "retained:2026-11-03-h8430-head3/real-008-clean.md", "retained:2026-11-05-pr4690-head-r2/real-008-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 11 of 27 sweeps. The recurring claim is a check-then-render race (K2): a lock taken after the status read. The intent fixes an ordering bug, not mutual exclusion, so the race is plausibly outside the contract. A claude claim that the new test leaks a held lock is unverified. Proposal: clean pending review."
+  },
+  "real-009-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "a reply to a non-afk-sudo bot message with six digits is no longer consumed by the afk-sudo gate",
+   "trigger": "an operator reply such as 'do 8276 8277 next'",
+   "expected_behavior": "the reply reaches the chief; a bare code on an expired prompt is still held",
+   "contract": "the intent file, including: an afk-sudo code must never reach a session inbox",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-009-clean.intent.md", "retained:2026-11-05-pr4690-base-r1/real-009-clean.md", "retained:2026-11-05-pr4690-head-r1/real-009-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 26 of 27 sweeps, including all four codex-only sweeps on 2026-11-05. Claim: after a restart clears the prompt map, a spaced OTP inside prose falls through to the session inbox. That breaks the intent's own must-never clause, so if true it is in contract and the clean control is disputed. Not verified against afk-sudo-route.ts. Highest-priority real case for independent review."
+  },
+  "real-010-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "a mirror row whose statusCategory is Done counts as done through one done_key() helper",
+   "trigger": "a blocker in a Done-category status outside the name list",
+   "expected_behavior": "the blocker counts as done",
+   "contract": "the intent file: Done category counts as done; a done-category blocker is still live-read",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-010-clean.intent.md", "retained:2026-11-03-h8430-head2/real-010-clean.md", "retained:2026-11-05-pr4690-head-r1/real-010-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 11 of 27 sweeps (K3). Claim: a successful live read overrides the mirror's Done category using only the LIVE_DONE name list, so a custom Done status still blocks. If true it contradicts the intent's headline. Not verified at line 622. Likely in contract."
+  },
+  "real-012-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "ready-check stops judging an older run's row once a newer run of the same workflow finished green",
+   "trigger": "a CANCELLED job row left by an older run of a workflow",
+   "expected_behavior": "the stale row no longer blocks READY",
+   "contract": "the intent file: run id from detailsUrl; a row with no readable run id or workflow is still judged",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-012-clean.intent.md", "retained:2026-11-05-pr4690-base-r1/real-012-clean.md", "retained:2026-11-05-pr4690-head-r1/real-012-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 23 of 23 sweeps. Claims: (a) ordering by run id ignores a later rerun attempt of an older run id that ends CANCELLED; (b) 'wholly green' is inferred from visible rows without the run's completed conclusion. (a) is plausible because a GitHub rerun keeps its run id. Both concern what 'newer run' means, which is in the intent's contract. Unverified; likely a disputed control."
+  },
+  "real-016-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "the REST row builder keeps only the newest run per check name, kept apart by event and app",
+   "trigger": "a stale failed run of a check name from an older suite",
+   "expected_behavior": "the newer passing run wins; runs on other events or apps stay apart",
+   "contract": "the intent file: newest per check name; different events or apps kept apart",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-016-clean.intent.md", "retained:2026-11-05-pr4690-base-r1/real-016-clean.md", "retained:2026-11-05-pr4690-head-r1/real-016-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 22 of 23 sweeps. Claim: unmapped suites of a non-Actions app share an empty workflow key, so a newer success hides a failure from a different suite of the same app. The intent keeps apps apart, not suites within one app, so this may lie outside the contract. Unverified."
+  },
+  "real-017-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "the xtrace brace-expansion clause skips the value of a gh api -f/-F/--field/--raw-field flag",
+   "trigger": "a quoted GraphQL mutation{...} value whose letters hold x..t..r..a..c..e in order",
+   "expected_behavior": "a plain gh api graphql reply is allowed; real x{,}trace spellings stay denied",
+   "contract": "the intent file: only an unquoted unescaped brace can expand; a gh api field value is data",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-017-clean.patch", "retained:2026-11-04-pr4690-head-r2/real-017-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Guard-bypass claim (one of four). Flagged once only (claude, head-r2): a command substitution inside a double-quoted -f value still runs, so the bx exemption could hide an xtrace spelling in $(...). Not settled: the read-only probe was itself refused by block-read-secrets because its payload text named the spelling, and that guard was not worked around. The refusal says main reads nested shell bodies; whether the twin's g4_scan scans $(...) bodies separately is unverified. Needs a probe in a sanctioned sandbox."
+  },
+  "real-018-clean": {
+   "state": "pending", "effective_kind": "seeded",
+   "mechanism": "a sure flag skips the payload-cwd re-check after a plain first-of-line cd into a scratch folder",
+   "trigger": "cd <scratch> > out.txt from a primary cwd: the cd clause's own redirect opens in the primary before cd runs",
+   "expected_behavior": "the write is re-checked against the payload cwd and denied",
+   "target_ids": ["real-018-clean-v1"],
+   "added_targets": [
+    {"id": "real-018-clean-v1", "file": "scripts/hooks/block-write-into-main-checkout.sh", "line": 2928, "description": "the sure branch of _bwimc_cd_guard also exempts the cd clause's own redirect, which the shell opens in the payload cwd"}
+   ],
+   "repair_evidence": "main's current hook denies the shape (probe below); the twin is the merged fix's state",
+   "evidence_refs": ["fixtures/real-018-clean.patch", "retained:2026-11-03-h8430-head3/real-018-clean.md", "retained:2026-11-05-pr4690-head-r1/real-018-clean.md", "probe:lib-test-write-fence check_both on base 3192e615 plus the clean patch, sourced/codex path"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Guard-bypass claim (one of four). Blocked in 22 of 23 sweeps. A read-only verdict probe ran the twin's hook on payloads only, nothing executed. On the sourced/codex path it ALLOWS cd scratch > out.txt (claim A), cd scratch </nonexistent; echo x > out.txt (claim B) and a mode-000 cd; the plain control allows too. On the direct-exec path the scratch copy blocked everything, including the control (environment), so that path is not evidence. B and the mode-000 shape are the twin's documented exposure ('after ; a cd that fails at runtime'); A is not documented. Main's current hook denies all three on both paths: not a bug on main, nothing to file. Proposal: relabel seeded with target v1; independent review owed."
+  },
+  "real-019-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "shellcheck PR-range lints only the PR's own diff against its merge base, through the sharded sweep",
+   "trigger": "a pull_request run on a merge ref, or a rerun with a stale base sha",
+   "expected_behavior": "only the PR's change and its neighbour closure are linted",
+   "contract": "the intent file: PR diff only, one-pass neighbour closure, existing parallel sweep",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-019-clean.intent.md", "retained:2026-11-03-h8430-head1/real-019-clean.md", "retained:2026-11-05-pr4690-head-r1/real-019-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 8 of 23 sweeps. Claim: consumers() no longer returns 1 for no match, yet callers still accept rc <= 1, so an awk failure returning 1 silently drops consumers instead of falling back to the full sweep. If true it is a fail-open selection inside the contract. Unverified."
+  },
+  "real-021-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "the forking operand check of block-edit-live-settings skips a word it already judged (memo)",
+   "trigger": "a long heredoc repeating a settings-named word",
+   "expected_behavior": "the guard finishes inside its budget with the same verdicts",
+   "contract": "the intent file: the memo reads only the word, the cwd and the nested-worktree primary; verdicts unchanged",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-021-clean.patch", "retained:2026-11-03-h8430-head1/real-021-clean.md", "retained:2026-11-03-h8430-head1b/real-021-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Guard-bypass claim (one of four). Blocked in 5 of 23 sweeps, never in the 2026-11-05 codex-only sweeps. Both critics independently claim that a memo hit returns without replaying the earlier deny, while _check_variant zeroes symlink_dest before the call, so variant_dest misses a live-settings hit. If true it changes a verdict and is in contract (a disputed control, and a possible bug on main). Not verified, because probing a live-settings guard on its own trigger words needs a sanctioned sandbox. Needs independent review with a probe."
+  },
+  "real-022-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "ready-check item 7 also reads a finding's verdict at the reviewed head named by a trivial-descendant avail row",
+   "trigger": "a PR head cleared as a trivial descendant of a reviewed head",
+   "expected_behavior": "a real ledgered deferral is counted; only same-branch ledger rows are followed",
+   "contract": "the intent file: follow only a same-branch row the ledger wrote",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-022-clean.intent.md", "retained:2026-11-03-h8430-head1/real-022-clean.md", "retained:2026-11-05-pr4690-head-r1/real-022-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 13 of 23 sweeps. Claims: finding identities omit the branch (codex), and the new amend branch filter also changes the non-descendant path (claude). The second, if true, changes behaviour outside the stated fix, which would make it in-contract scope creep. Unverified."
+  },
+  "real-023-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "reembed resumes a copy an interrupted reembed left, marked by a .partial sidecar",
+   "trigger": "a reembed killed mid-run, then re-run",
+   "expected_behavior": "the copy is resumed without --force; a finished or other-model copy is refused",
+   "contract": "the intent file: resume only an interrupted copy via the .partial marker",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-023-clean.intent.md", "retained:2026-11-03-h8430-head1/real-023-clean.md", "retained:2026-11-03-h8430-head1b/real-023-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 14 of 23 sweeps, none on 2026-11-05 (K2). Claim: .partial cannot tell an interrupted run from a live one, so a second reembed during a two-hour embed resumes the same copy concurrently. True on the intent's own design (no lock is described). Whether concurrent reembeds are in the contract is the reviewer's call. Proposal: clean with a residual, or disputed."
+  },
+  "real-024-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "a live but blocked admission-lock holder is reclaimed past FLEET_ADMIT_MAX_HOLD_SECS, and the refusal names the holder",
+   "trigger": "a bank preflight blocked while holding .admit",
+   "expected_behavior": "past the ceiling the holder is reclaimed and logged; below it the refusal is unchanged",
+   "contract": "the intent file: reclaim a live holder past the hard ceiling",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-024-clean.intent.md", "retained:2026-11-05-pr4690-base-r1/real-024-clean.md", "retained:2026-11-05-pr4690-head-r1/real-024-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 23 of 23 sweeps (K2, but the claim names its second writer). A reclaimed holder that was only paused can resume after the ownership check and reserve on a stale census once the successor has admitted, exceeding FLEET_CAP. Reclaiming a LIVE holder is exactly what the intent adds, so the race is plausibly in contract. Unverified at line 1059."
+  },
+  "real-025-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "a quoted judge-evidence heredoc body is dropped from the scanned text when its opener and consumer have the narrow shape",
+   "trigger": "cat > /tmp/claude-<uid>/x.md <<'TAG' ... TAG, then write-verdict.sh --evidence-file",
+   "expected_behavior": "the evidence write passes; anything outside the shape keeps the full scan",
+   "contract": "the intent file: the strip applies only to the whole-line opener, a closed quoted tag, and a file named nowhere else except after --evidence-file",
+   "target_ids": [],
+   "residuals": [
+    {"id": "real-025-clean-r1", "description": "the consumer regex trusts any path ending in console-kit/write-verdict.sh, so a lookalike script staged elsewhere qualifies (still so on main, where chief-kit is accepted too)"}
+   ],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-025-clean.patch", "retained:2026-11-04-pr4690-head-r2/real-025-clean.md", "main:scripts/hooks/block-chokepoint-env-prefix.sh wv_re"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Guard-bypass claim (one of four). Flagged in head-r2 by both critics. Claim 1 (lookalike consumer path): the suffix-only match is confirmed by reading and is still on main; exploitability (a staged lookalike that runs the evidence body past raw_mention) is unverified. It is described here for later authorized ticket filing, not fixed. Claim 2: the comment says only raw_obfuscated reads the stripped text, but cmd=$REPLY also feeds scan_text. True by reading, yet the intent says the body is dropped from 'the scanned text', so the code matches the intent and only the comment is narrow: a correct, non-blocking concern (severity_valid false). Proposal: clean with r1."
+  },
+  "real-028-clean": {
+   "state": "pending", "effective_kind": "clean",
+   "mechanism": "a ticketed handover whose resume_cwd is the primary relaunches in a default worktree",
+   "trigger": "arm-resume of a HIMMEL-<n> handover resuming in the primary checkout",
+   "expected_behavior": "isolation by default; vault arms and other repos untouched",
+   "contract": "the intent file: isolate only when resume_cwd is the primary; vault arms and other repos are untouched",
+   "target_ids": [], "residuals": [],
+   "repair_evidence": "real fix (intent file)",
+   "evidence_refs": ["fixtures/real-028-clean.intent.md", "retained:2026-11-03-h8430-head1/real-028-clean.md"],
+   "curator": "N5717", "reviewer": null, "reviewed_at": null,
+   "curation": "Blocked in 8 of 23 sweeps, none on 2026-11-05 (K3, both critics). Claim: with no resume_cwd, any ticketed doc is treated as primary, so a vault or other-repo doc named HIMMEL-<n> moves to a himmel worktree. That contradicts 'vault arms and other repos are untouched'. If true it is in contract and the clean control is disputed. Unverified at line 2772. Likely a true positive."
+  }
+ }
+}
