@@ -312,8 +312,8 @@ Exit codes:
 ## The code-reviewer report
 
 ```bash
-python3 scripts/eval/review-page.py --reviewers-json --ledger FILE --changes FILE --cr-ledger FILE [--now ISO]
-python3 scripts/eval/review-page.py --reviewers-only --ledger FILE --changes FILE --cr-ledger FILE [--now ISO]
+python3 scripts/eval/review-page.py --reviewers-json --ledger FILE --changes FILE --cr-ledger FILE [--now ISO] [--expected-prs FILE]
+python3 scripts/eval/review-page.py --reviewers-only --ledger FILE --changes FILE --cr-ledger FILE [--now ISO] [--expected-prs FILE]
 ```
 
 `--reviewers-json` prints report v1 over the code reviewers (the critics and
@@ -324,7 +324,8 @@ no network, no write. The Reviewers tab of `himmelctl ui` (GET
 `/api/reviewers`) runs `--reviewers-json` on every visit, with a 10 s timeout
 and a 2 MiB output ceiling, over `$HIMMEL_EVAL_RUNS_LEDGER`,
 `$HIMMEL_EVAL_CHANGES_LEDGER` and `$CR_LEDGER`, else `~/.himmel/` and the
-checkout's git common dir. A new ledger record shows at the next visit. An
+checkout's git common dir, plus `$HIMMEL_EXPECTED_PRS` as `--expected-prs`
+only when that variable is set. A new ledger record shows at the next visit. An
 explicit `REVIEW_PAGE_FILE` keeps the old mode: that stored page, shown as a
 snapshot.
 
@@ -354,9 +355,27 @@ What the report says, and what it does not:
   reviewer, answering model, scope and verdict source: recorded dispositions
   give author agreement; the thread recorder's verdicts give a separate
   thread-state rate; an unknown source gives counts only. A quiet ledger reads
-  "no new records since" its last record. Capture coverage is always unknown:
-  no per-PR capture receipt exists yet, so an empty window is not a failed
-  capture.
+  "no new records since" its last record. A new answering model is its own
+  row, never pooled with the old one.
+- **Capture coverage.** Unknown unless `--expected-prs` names a dated
+  merged-PR snapshot: JSONL with one `{pr, branch, head, merged_at}` per
+  merged PR and its as-of time as `taken_at`, on a header row
+  `{"taken_at": ISO}` or on the rows (the newest one up to `--now` counts).
+  With one, `production.capture` counts the snapshot's PRs merged in the
+  window as captured (`k` of `n`: the newest CR-ledger `capture` receipt for
+  that PR number up to `--now`, from before the window too, says `result`
+  `ok`; a receipt's `head` is not read), and names by PR number the captured
+  ones with zero threads (`thread_count` and `outside_count` 0), the failed
+  ones (newest receipt not `ok`) and the uncaptured ones (no receipt), with
+  `snapshot_as_of` beside them and `snapshot_dropped` counting rows with no
+  PR number or merge time. Coverage is `measured` when the snapshot is as of
+  `--now`'s day, and `partial` (shown with its date) when it is older, since
+  PRs merged after it are not in it. A snapshot with no `taken_at` leaves
+  coverage unknown, with no ratio. Receipts without a snapshot give counts but
+  no coverage ratio, and a CR ledger that is missing or unreadable leaves
+  coverage unknown even with a snapshot. Today nothing writes receipts or a
+  snapshot (the passive recorder receipt is separate work), so on a station
+  coverage reads unknown and an empty window is not a failed capture.
 - **Reviewer changes.** Each open review-panel change with its lifecycle
   (`proposed`, `applied-awaiting-measurement`, `measured-keep`,
   `measured-revert`, `inconclusive`, `historical-unverified`), as in
@@ -364,9 +383,33 @@ What the report says, and what it does not:
 
 No review text, full path or exception message is printed. A missing report
 names no eval to run: the benchmark is billed and runs only when someone
-decides to. Weekly operator check (manual, read-only): open the Reviewers tab,
-or run `--reviewers-only` with the three ledgers, and note the run date, any
-`old` or `partial` marker and the verdict-source split.
+decides to.
+
+### Ongoing measurement: the weekly read
+
+Future PRs are measured through the capture that already runs: CodeRabbit
+threads and dispositions land in the CR ledger, and the next read of the
+report counts them. Nothing here schedules a read, triggers a review or runs
+a sweep; an automatic capture or report schedule needs its own deployment
+approval.
+
+Once a week, or on demand, the operator reads the report (the Reviewers tab,
+or `--reviewers-only` with the three ledgers; read-only, free) and records,
+per reviewer and answering model:
+
+- the window (`since` to `until`) and the report date;
+- the counts as `k` of `n` per verdict source, never a bare percentage;
+- capture coverage as the report states it (`unknown`, or `k` of `n` with the
+  snapshot's as-of date, `partial` when it is from before the report's day, and the
+  failed and uncaptured PR numbers);
+- the benchmark's run date, its `old` or `partial` marker, and whether a trend
+  was allowed;
+- the useful catches: findings the author agreed with that changed the code;
+- the limitations the report lists (proxy, inferred, cohort pending).
+
+A week whose numbers moved is an observation, not a cause: the report never
+credits a reviewer change without an application receipt and a comparable
+later run (see [Eval feedback](#eval-feedback-a-result-drives-one-change-the-next-run-re-measures-it)).
 
 ## Eval feedback: a result drives one change, the next run re-measures it
 

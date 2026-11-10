@@ -723,9 +723,19 @@ function codeReviewersView(r) {
   if (bench.length) out.push(table(["Reviewer", "Measure", "Kind", "k of n", "Range", "Earlier"], bench.map((m) => `<tr>${td(esc(m.reviewer))}${tdWrap(measure(m))}${td(esc(m.kind))}${td(esc(kOfN(m)))}${td(esc(range(m)))}${td(m.trend && isNum(m.trend.previous_value) ? esc(`${pct(m.trend.previous_value)} at ${m.trend.previous_run_id}`) : "—")}</tr>`)));
   const p = c.production || {};
   out.push(`<h4>Review findings on merged work, ${esc(isoDay((p.window || {}).since))} to ${esc(isoDay((p.window || {}).until))}</h4>`);
-  if (!p.last_record_at) out.push('<p class="nodata">No records; capture coverage unknown</p>');
-  else if (!p.records_in_window) out.push(`<p>No new records since ${esc(isoDay(p.last_record_at))}; capture coverage unknown.</p>`);
+  const measured = p.capture_coverage === "measured" || p.capture_coverage === "partial", cap = p.capture;
+  if (!p.last_record_at) out.push(`<p class="nodata">No records${measured ? "" : "; capture coverage unknown"}</p>`);
+  else if (!p.records_in_window) out.push(`<p>No new records since ${esc(isoDay(p.last_record_at))}${measured ? "" : "; capture coverage unknown"}.</p>`);
+  else if (measured) out.push(`<p>Last record ${esc(isoDay(p.last_record_at))}.</p>`);
   else out.push(`<p>Last record ${esc(isoDay(p.last_record_at))}. Capture coverage unknown: ${esc(p.capture_reason || "no capture receipts")}.</p>`);
+  if (cap) {
+    const zero = (cap.captured_zero || []).length;
+    const gaps = [["failed", cap.failed], ["not captured", cap.uncaptured]].filter(([, xs]) => xs && xs.length).map(([w, xs]) => `${w}: ${xs.map((x) => `#${x}`).join(", ")}`);
+    const asOf = `, snapshot as of ${isoDay(cap.snapshot_as_of)}${p.capture_coverage === "partial" ? ", partial: PRs merged after it are not in it" : ""}`;
+    const head = measured ? `${cap.n ? `Capture: ${cap.k} of ${cap.n} expected PRs captured (${zero} with zero threads)` : "Capture: no expected PR merged in the window"}${asOf}` : `Capture receipts: ${cap.receipts} PRs, ${zero} with zero threads; ${p.capture_reason || "no expected-PR snapshot"}, so no coverage`;
+    const dropped = cap.snapshot_dropped ? [`${cap.snapshot_dropped} snapshot rows dropped (no PR number or merge time)`] : [];
+    out.push(`<p>${esc([head, ...gaps, ...dropped].join("; "))}.</p>`);
+  }
   if (p.roster && p.roster !== "ok") out.push(sub("The reviewer roster could not be read, so no slug counts as a reviewer."));
   if (p.not_reviewers && isNum(p.not_reviewers.findings) && p.not_reviewers.findings > 0) out.push(sub(`Counted out: ${p.not_reviewers.findings} findings from ${num(p.not_reviewers.slugs)} slugs that are not code reviewers.`));
   if (prod.length) out.push(table(["Reviewer", "Model", "Scope", "Verdict source", "Measure", "k of n", "Range"], prod.map((m) => `<tr>${td(esc(m.reviewer))}${td(esc(m.model || "—"))}${td(esc(m.cohort || "—"))}${td(esc(String(m.verdict_source || "").replace(/-/g, " ")))}${tdWrap(measure(m))}${td(esc(kOfN(m)))}${td(esc(range(m)))}</tr>`)));

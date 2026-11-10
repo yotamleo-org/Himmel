@@ -32,7 +32,8 @@ export function readReviewers(env: Env, opts: { crLedger?: string; now?: () => n
     "--ledger", env.HIMMEL_EVAL_RUNS_LEDGER || join(home, ".himmel", "eval-runs.jsonl"),
     "--changes", env.HIMMEL_EVAL_CHANGES_LEDGER || join(home, ".himmel", "eval-changes.jsonl"),
     "--cr-ledger", env.CR_LEDGER || opts.crLedger || "",
-    "--now", new Date((opts.now ?? Date.now)()).toISOString()]);
+    "--now", new Date((opts.now ?? Date.now)()).toISOString(),
+    ...(env.HIMMEL_EXPECTED_PRS ? ["--expected-prs", env.HIMMEL_EXPECTED_PRS] : [])]);
 }
 
 export function runReport(env: Env, script: string, timeoutMs: number, args: string[]): Promise<Reviewers> {

@@ -575,6 +575,71 @@ has "reviewers-only: the newer failed attempt is named" "$P" "Latest attempt 9 N
 has "reviewers-only: quiet history names the last record" "$P" "No new records since 1 Oct 2026; capture coverage unknown"
 case "$P" in *judge*|*"Bugs past a GO"*) fail "reviewers-only: code reviewers only";; *) pass "reviewers-only: code reviewers only";; esac
 
+M8="$TMP/m8"; mkdir -p "$M8/bin"
+PY3="$(command -v python3)"
+cp "$M7/cr.jsonl" "$M8/cr.jsonl"
+rjp() { env -i PATH="$M8/bin" HOME="$M8" "$PY3" -I "$PAGE" --reviewers-json --ledger "$M7/runs.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M8/cr.jsonl" --now "$NOW" "$@" 2>/dev/null; }
+cr_rd() { q '[(m["model"], m["k"], m["n"]) for m in r["metrics"] if m["family"] == "production" and m["reviewer"] == "coderabbit" and m["verdict_source"] == "recorded-disposition"]'; }
+eq "future_PR_appended_updates_report: before the new PR, author agreement is 1 of 2" "$(rjp | cr_rd)" "[('unknown', 1, 2)]"
+printf '%s\n' '{"kind":"finding","ts":"2026-11-08T00:00:00Z","branch":"b5","head":"h5","model":"coderabbit","finding_id":"cr-5","severity":"imp","file":"a.sh","line":1,"verdict":"","artifact":"diff","perspective":"off","text":"SECRET-BODY-TEXT new"}' \
+  '{"kind":"amend","ts":"2026-11-08T01:00:00Z","branch":"b5","target_head":"h5","finding_id":"cr-5","artifact":"diff","perspective":"off","set":{"verdict":"agreed"},"reason":"r"}' >> "$M8/cr.jsonl"
+A1="$(rjp)"; A2="$(rjp)"
+eq "future_PR_appended_updates_report: the next read counts the appended PR, 2 of 3" "$(printf '%s' "$A1" | cr_rd)" "[('unknown', 2, 3)]"
+eq "future_PR_appended_updates_report: a second read counts it once, not twice" "$(printf '%s' "$A2" | cr_rd)" "[('unknown', 2, 3)]"
+eq "future_PR_appended_updates_report: the CR source shows the new records and date" "$(printf '%s' "$A1" | q '(src["cr-ledger"]["records"], src["cr-ledger"]["observed_through"], r["production"]["last_record_at"])')" "(8, '2026-11-08T01:00:00Z', '2026-11-08T01:00:00Z')"
+eq "future_PR_appended_updates_report: read with no command on PATH, so no reviewer, model or network tool ran" "$(printf '%s' "$A1" | q 'r["state"]')" "ok"
+printf '%s\n' '{"kind":"attempt","ts":"2026-11-09T00:00:00Z","branch":"b6","head":"h6","model":"coderabbit","artifact":"diff","responding_model":"cr-model-2"}' \
+  '{"kind":"finding","ts":"2026-11-09T00:00:00Z","branch":"b6","head":"h6","model":"coderabbit","finding_id":"cr-6","severity":"imp","file":"a.sh","line":1,"verdict":"","artifact":"diff","perspective":"off","text":"SECRET-BODY-TEXT m2"}' \
+  '{"kind":"amend","ts":"2026-11-09T01:00:00Z","branch":"b6","target_head":"h6","finding_id":"cr-6","artifact":"diff","perspective":"off","set":{"verdict":"disproved"},"reason":"r"}' >> "$M8/cr.jsonl"
+B="$(rjp)"
+eq "future_model_change_new_cohort: a new responding model is its own row, never pooled" "$(printf '%s' "$B" | cr_rd)" "[('cr-model-2', 0, 1), ('unknown', 2, 3)]"
+eq "future_model_change_new_cohort: the reviewer lists both models" "$(printf '%s' "$B" | q '[x["models"] for x in r["reviewers"] if x["id"] == "coderabbit"]')" "[['cr-model-2', 'unknown']]"
+eq "collection_gap_visible: no receipt and no expected-PR snapshot is unknown, never a zero" "$(printf '%s' "$B" | q '(r["production"]["capture_coverage"], "capture" in r["production"])')" "('unknown', False)"
+eq "no_receipt_no_snapshot_unchanged: the report keeps the M7 production keys and three sources" "$(printf '%s' "$B" | q '(sorted(r["production"]), [s["id"] for s in r["sources"]])')" "(['capture_coverage', 'capture_reason', 'last_record_at', 'not_reviewers', 'records_in_window', 'roster', 'window'], ['eval-runs', 'eval-changes', 'cr-ledger'])"
+has "no_receipt_no_snapshot_unchanged: the prose keeps the M7 capture sentence" "$(env -i PATH="$M8/bin" HOME="$M8" "$PY3" -I "$PAGE" --reviewers-only --ledger "$M7/runs.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M8/cr.jsonl" --now "$NOW" 2>&1)" "Last record 9 Nov 2026; capture coverage unknown (no per-PR capture receipts and no expected-PR snapshot)."
+cap() { printf '{"kind":"capture","ts":"%s","pr":%s,"branch":"%s","head":"%s","thread_count":%s,"outside_count":0,"result":"%s","reason":%s}\n' "$1" "$2" "$3" "$4" "$5" "$6" "$7"; }
+exp_pr() { printf '{"pr":%s,"branch":"%s","head":"%s","merged_at":"%s"}\n' "$1" "$2" "$3" "$4"; }
+{ cap 2026-11-05T02:00:00Z 101 b1 h1 2 ok null; cap 2026-11-05T02:00:00Z 102 b2 h2 1 error '"gh api exit 1"'; } >> "$M8/cr.jsonl"
+{ printf '{"taken_at":"2026-11-10T00:00:00Z"}\n'; exp_pr 101 b1 h1 2026-11-05T01:00:00Z; exp_pr 102 b2 h2 2026-11-05T01:00:00Z; exp_pr 103 b3 h3 2026-11-05T01:00:00Z; exp_pr 90 b0 h0 2026-10-01T00:00:00Z; } > "$M8/expected.jsonl"
+G="$(rjp --expected-prs "$M8/expected.jsonl")"
+eq "collection_gap_visible: with the snapshot, captured k of the expected PRs in the window" "$(printf '%s' "$G" | q '(r["production"]["capture_coverage"], r["production"]["capture"]["k"], r["production"]["capture"]["n"])')" "('measured', 1, 3)"
+eq "collection_gap_visible: an error receipt is a failed capture and a missing one is uncaptured, each named" "$(printf '%s' "$G" | q '(r["production"]["capture"]["failed"], r["production"]["capture"]["uncaptured"])')" "([102], [103])"
+eq "collection_gap_visible: the snapshot is a named source" "$(printf '%s' "$G" | q '(src["expected-prs"]["name"], src["expected-prs"]["state"], src["expected-prs"]["records"])')" "('expected.jsonl', 'ok', 5)"
+eq "collection_gap_visible: a missing snapshot file is absent and coverage stays unknown" "$(rjp --expected-prs "$M8/none.jsonl" | q '(src["expected-prs"]["state"], r["production"]["capture_coverage"])')" "('absent', 'unknown')"
+GP="$(env -i PATH="$M8/bin" HOME="$M8" "$PY3" -I "$PAGE" --reviewers-only --ledger "$M7/runs.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M8/cr.jsonl" --now "$NOW" --expected-prs "$M8/expected.jsonl" 2>&1)"
+has "collection_gap_visible: the prose names the gap" "$GP" "Capture: 1 of 3 expected PRs captured (0 with zero threads), snapshot as of 10 Nov 2026; failed: #102; not captured: #103."
+{ cap 2026-11-06T02:00:00Z 107 b7 h7 0 ok null; } >> "$M8/cr.jsonl"
+{ exp_pr 107 b7 h7 2026-11-06T01:00:00Z; exp_pr 108 b8 h8 2026-11-06T01:00:00Z; } >> "$M8/expected.jsonl"
+Z="$(rjp --expected-prs "$M8/expected.jsonl")"
+eq "zero_thread_pr_vs_uncaptured: an ok receipt with 0 threads is captured-zero, a PR with no receipt is uncaptured" "$(printf '%s' "$Z" | q '(r["production"]["capture"]["k"], r["production"]["capture"]["n"], r["production"]["capture"]["captured_zero"], r["production"]["capture"]["uncaptured"])')" "(2, 5, [107], [103, 108])"
+eq "zero_thread_pr_vs_uncaptured: receipts without a snapshot still name captured-zero, coverage unknown" "$(rjp | q '(r["production"]["capture_coverage"], r["production"]["capture"]["captured_zero"], r["production"]["capture"]["n"])')" "('unknown', [107], None)"
+eq "zero_thread_pr_vs_uncaptured: a receipt is no finding, so the counts stay 2 of 3" "$(printf '%s' "$Z" | cr_rd)" "[('cr-model-2', 0, 1), ('unknown', 2, 3)]"
+{ cap 2026-10-27T23:00:00Z 109 b9 h9 1 ok null; } >> "$M8/cr.jsonl"
+exp_pr 109 b9 h9 2026-10-28T01:00:00Z >> "$M8/expected.jsonl"
+eq "collection_gap_visible: a receipt from before the window still captures a PR merged inside it" "$(rjp --expected-prs "$M8/expected.jsonl" | q '(r["production"]["capture"]["k"], r["production"]["capture"]["n"], 109 in r["production"]["capture"]["uncaptured"])')" "(3, 6, False)"
+eq "collection_gap_visible: with the CR ledger missing, a snapshot leaves coverage unknown, never all uncaptured" "$(env -i PATH="$M8/bin" HOME="$M8" "$PY3" -I "$PAGE" --reviewers-json --ledger "$M7/runs.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M8/none.jsonl" --now "$NOW" --expected-prs "$M8/expected.jsonl" 2>/dev/null | q '(r["production"]["capture_coverage"], "capture" in r["production"])')" "('unknown', False)"
+{ cap 2026-11-07T00:00:00Z 111 b11 h11 1 ok null; cap 2026-11-07T05:00:00Z 111 b11 h11 1 error '"r"'
+  cap 2026-11-07T00:00:00Z 112 b12 h12 1 error '"r"'; cap 2026-11-07T05:00:00Z 112 b12 h12 1 ok null
+  printf '{"kind":"capture","ts":"2026-11-07T00:00:00Z","pr":113,"branch":"b13","head":"h13","thread_count":0,"outside_count":2,"result":"ok","reason":null}\n'; } >> "$M8/cr.jsonl"
+{ exp_pr 111 b11 h11 2026-11-07T00:00:00Z; exp_pr 112 b12 h12 2026-11-07T00:00:00Z; exp_pr 113 b13 h13 2026-11-07T00:00:00Z
+  printf '{"pr":"x","merged_at":"2026-11-07T00:00:00Z"}\n{"pr":114,"merged_at":"not-a-date"}\n'; } >> "$M8/expected.jsonl"
+W="$(rjp --expected-prs "$M8/expected.jsonl")"
+eq "two_receipts_one_pr: the newest receipt wins, ok then error is failed and error then ok is captured" "$(printf '%s' "$W" | q '(r["production"]["capture"]["k"], r["production"]["capture"]["n"], r["production"]["capture"]["failed"])')" "(5, 9, [102, 111])"
+eq "zero_thread_pr_vs_uncaptured: no threads but an outside-diff finding is captured, not captured-zero" "$(printf '%s' "$W" | q '(r["production"]["capture"]["captured_zero"], 113 in r["production"]["capture"]["uncaptured"])')" "([107], False)"
+eq "collection_gap_visible: snapshot rows with no PR number or merge time are counted as dropped" "$(printf '%s' "$W" | q 'r["production"]["capture"]["snapshot_dropped"]')" "2"
+eq "collection_gap_visible: without a snapshot, a receipt from before the window is not counted" "$(rjp | q '(r["production"]["capture"]["receipts"], 109 in r["production"]["capture"]["captured_zero"] + r["production"]["capture"]["failed"])')" "(6, False)"
+eq "collection_gap_visible: the snapshot's as-of time is in the report" "$(printf '%s' "$W" | q '(r["production"]["capture_coverage"], r["production"]["capture"]["snapshot_as_of"])')" "('measured', '2026-11-10T00:00:00Z')"
+sed -e 's/"taken_at":"2026-11-10T00:00:00Z"/"taken_at":"2026-11-06T12:00:00Z"/' "$M8/expected.jsonl" > "$M8/stale.jsonl"
+cap 2026-11-08T02:00:00Z 115 b15 h15 1 ok null >> "$M8/cr.jsonl"
+S="$(rjp --expected-prs "$M8/stale.jsonl")"
+eq "stale_snapshot_not_full_coverage: a snapshot older than the report day, with a later merge, is partial with its date" "$(printf '%s' "$S" | q '(r["production"]["capture_coverage"], r["production"]["capture"]["snapshot_as_of"])')" "('partial', '2026-11-06T12:00:00Z')"
+has "stale_snapshot_not_full_coverage: the prose dates the snapshot and says it is partial" "$(env -i PATH="$M8/bin" HOME="$M8" "$PY3" -I "$PAGE" --reviewers-only --ledger "$M7/runs.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M8/cr.jsonl" --now "$NOW" --expected-prs "$M8/stale.jsonl" 2>&1)" "snapshot as of 6 Nov 2026, partial: PRs merged after it are not in it"
+grep -v taken_at "$M8/expected.jsonl" > "$M8/undated.jsonl"
+eq "stale_snapshot_not_full_coverage: a snapshot with no as-of time leaves coverage unknown, with no ratio" "$(rjp --expected-prs "$M8/undated.jsonl" | q '(r["production"]["capture_coverage"], r["production"]["capture"]["k"], r["production"]["capture"]["n"], r["production"]["capture"]["snapshot_as_of"])')" "('unknown', None, None, None)"
+printf '{"taken_at":"2026-11-10T00:00:00Z"}\n' > "$M8/empty-snap.jsonl"
+has "collection_gap_visible: a snapshot with no PR merged in the window says so, never 0 of 0" "$(env -i PATH="$M8/bin" HOME="$M8" "$PY3" -I "$PAGE" --reviewers-only --ledger "$M7/runs.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M8/cr.jsonl" --now "$NOW" --expected-prs "$M8/empty-snap.jsonl" 2>&1)" "Capture: no expected PR merged in the window, snapshot as of 10 Nov 2026"
+case "$Z$G" in *SECRET-BODY-TEXT*|*"gh api"*) fail "zero_thread_pr_vs_uncaptured: no review text or receipt reason text reaches the report";; *) pass "zero_thread_pr_vs_uncaptured: no review text or receipt reason text reaches the report";; esac
+
 # The evals page must not tell a reader to run a script that is not in the tree.
 ROOT="$(cd "$HERE/../.." && pwd)"
 python3 -I "$ROOT/scripts/cr/evals-page-gen.py" render --out "$TMP/evals-page.md" >/dev/null 2>&1

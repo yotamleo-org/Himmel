@@ -54,6 +54,27 @@ stored outputs at any time. `eval-compare review-panel` compares two sweeps
 case by case (`hit` and `fp`, paired, with the detection floor the 24 cases
 allow); the run-level metrics carry no bands yet, so they print as info.
 
+## Between sweeps: ongoing measurement
+
+This benchmark is not re-run on a cadence. Each sweep is a billed, separately
+decided run, so its newest usable run simply ages: the code-reviewer report
+marks it `old` after 7 days, which is not a reason to spend. What keeps moving
+is the review of real PRs: CodeRabbit and critic findings with their
+dispositions in the CR ledger, which the code-reviewer report reads on each
+visit, with no model call. Their capture coverage stays unknown until a dated
+merged-PR snapshot is supplied, and a snapshot from before the report's day
+is reported as partial with its as-of date, never as full coverage. The weekly
+read and the fields to record are in
+[scripts/eval/README.md](../README.md#ongoing-measurement-the-weekly-read).
+
+When a week's read is written down, it names the benchmark run beside it by
+`run_id`, `execution_id`, `scorer_sha256` and `confighash`, and states whether
+the report allowed a trend; a run under another scorer or roster starts a new
+series and is never read as a change. A fresh sweep, a prompt A/B, a
+context-pack reassessment, a controlled CodeRabbit benchmark or a refreshed
+holdout is a separate experiment with its own call cap, margin and approval;
+nothing in this directory starts one.
+
 ## What the critic sees, and what keeps the key from it
 
 - The diff alone, on stdin, from an empty scratch dir outside any git checkout
