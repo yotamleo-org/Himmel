@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, constants, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -412,8 +412,11 @@ export function pinnedSha(path: string): Pinned {
   try {
     const st = fstatSync(fd);
     if (!st.isFile() || st.size > PINNED_MAX) return { unreadable: true };
-    const bytes = readFileSync(fd);
-    if (bytes.length > PINNED_MAX) return { unreadable: true };
+    const buf = Buffer.alloc(st.size + 1);
+    let n = 0;
+    for (let r = 1; r > 0 && n < buf.length; n += r) r = readSync(fd, buf, n, buf.length - n, null);
+    if (n > st.size) return { unreadable: true };
+    const bytes = buf.subarray(0, n);
     return { bytes, sha256: createHash('sha256').update(bytes).digest('hex') };
   } catch {
     return { unreadable: true };
