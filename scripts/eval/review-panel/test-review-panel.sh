@@ -625,7 +625,7 @@ eq "run --delta: no panel call on either refusal" "$(find "$DL" -type f | wc -l 
 # the same sweep whose panel edits a CBS file mid-run is caught by run.sh's re-stamp after the loop.
 RR="$TMP/run-repo"
 mkdir -p "$RR/scripts/eval/review-panel/key" "$RR/scripts/eval/lib" "$RR/scripts/cr"
-cp "$RUN" "$SCORE" "$HERE/cbs.txt" "$RR/scripts/eval/review-panel/"
+cp "$RUN" "$SCORE" "$HERE/adjudication.py" "$HERE/cbs.txt" "$RR/scripts/eval/review-panel/"
 cp -r "$FIX" "$RR/scripts/eval/review-panel/fixtures"; cp "$KEY" "$RR/scripts/eval/review-panel/key/seeds.json"
 cp "$HERE/../lib/"*.py "$RR/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$RR/scripts/eval/"
 cp "$HERE/../../cr/critics.json" "$RR/scripts/cr/critics.json"
@@ -670,7 +670,7 @@ STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$R
 eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 
 SC="$TMP/scorer"; mkdir -p "$SC/scripts/eval/review-panel" "$SC/scripts/eval/lib"
-cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$HERE/replay.py" "$SC/scripts/eval/review-panel/replay.py"; cp "$HERE/../lib/"*.py "$SC/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$SC/scripts/eval/"
+cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$HERE/adjudication.py" "$SC/scripts/eval/review-panel/"; cp "$HERE/replay.py" "$SC/scripts/eval/review-panel/replay.py"; cp "$HERE/../lib/"*.py "$SC/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$SC/scripts/eval/"
 printf '__pycache__/\n' > "$SC/.gitignore"
 sc() { git -C "$SC" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
 git init -q "$SC" && sc add -A && sc commit -q -m scorer
@@ -746,7 +746,7 @@ rget() { python3 -c 'import json,sys; v=json.loads(sys.argv[1])
 for k in sys.argv[2].split("/"): v=v.get(k) if isinstance(v,dict) else None
 print(round(v,4) if isinstance(v,float) else v)' "$row" "$1"; }
 eq "export-row: writes every field" "$(python3 -c 'import json,sys; print(" ".join(sorted(json.loads(sys.argv[1]))))' "$row")" \
-  "bundle_sha256_v2 cbs_hash class_recall code_under_test_sha confighash decision_eligible execution_id ineligibility_reasons metrics outputs_sha256 provenance_status responded run_id scored_at scorer_gitsha scorer_reason scorer_sha256 status tree"
+  "bundle_sha256_v2 cbs_hash class_recall code_under_test_sha confighash decision_eligible execution_id gold_revision ineligibility_reasons metrics outputs_sha256 provenance_status responded run_id scored_at scorer_gitsha scorer_reason scorer_sha256 status tree"
 eq "export-row: the run_id is the outputs dir" "$(rget run_id)" "out1"
 eq "export-row: cbs_hash is HEAD's" "$(rget cbs_hash)" "$(python3 "$SCORE" cbs-hash HEAD --repo "$G")"
 eq "round trip: the confighash gate computes equals the row's" "$(python3 "$SCORE" confighash HEAD --repo "$G")" "$(rget confighash)"
@@ -799,13 +799,13 @@ eq "verify-row: a row claiming another scorer exits 1" "$rc" "1"
 out=$(python3 "$GSCORE" verify-row "$(doctor 'del r["scorer_sha256"]; del r["scorer_gitsha"]; del r["scorer_reason"]; [r["metrics"].pop(k) for k in list(r["metrics"]) if "key_match" in k or "location_match" in k or "labelled_clean" in k]')" "$O" --repo "$G" 2>&1); rc=$?
 eq "verify-row: a legacy row without scorer_sha256 compares the fields it claimed" "$rc" "0"
 has "verify-row: and says its scorer identity is unverified" "$out" "scorer identity unverified"
-mkdir -p "$G/scripts/eval/lib"; printf '# decoy scorer\n' > "$G/scripts/eval/review-panel/score.py"; printf '# decoy\n' > "$G/scripts/eval/lib/wilson.py"
+mkdir -p "$G/scripts/eval/lib"; printf '# decoy scorer\n' > "$G/scripts/eval/review-panel/score.py"; printf '# decoy\n' > "$G/scripts/eval/lib/wilson.py"; printf '# decoy\n' > "$G/scripts/eval/review-panel/adjudication.py"
 gg add -A; gg commit -qm decoy-scorer; DECOY=$(gg rev-parse HEAD)
 eq "verify_row_old_tree_records_running_scorer: the row scored at --tree OLD names the running scorer" \
   "$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; r = score.gate_row(sys.argv[2], sys.argv[3], sys.argv[4]); print(r["scorer_sha256"] == sys.argv[5] != score.scorer_digest(sys.argv[2], sys.argv[3]))' "$SC/scripts/eval/review-panel" "$G" "$DECOY" "$O" "$SID" 2>/dev/null)" "True"
 python3 "$GSCORE" verify-row "$row" "$O" --repo "$G" --tree "$DECOY" >/dev/null 2>&1; rc=$?
 eq "verify_row_old_tree_records_running_scorer: verify-row --tree OLD matches the running scorer's row" "$rc" "0"
-gg rm -q -r scripts/eval/lib scripts/eval/review-panel/score.py; gg commit -qm drop-decoy
+gg rm -q -r scripts/eval/lib scripts/eval/review-panel/score.py scripts/eval/review-panel/adjudication.py; gg commit -qm drop-decoy
 SCW="$TMP/scorer-dirty-wilson"; cp -r "$SC" "$SCW"; printf '# dirty\n' >> "$SCW/scripts/eval/lib/wilson.py"
 SCX="$TMP/scorer-dirty-score"; cp -r "$SC" "$SCX"; printf '# dirty\n' >> "$SCX/scripts/eval/review-panel/score.py"
 eq "dirty_scorer_export_diagnostic: an edited running score.py has a null identity" "$(sid "$SCX/scripts/eval/review-panel/score.py"):$(sid "$SCX/scripts/eval/review-panel/score.py" scorer_clean)" "null:False"
@@ -1307,6 +1307,252 @@ eq "scorer_only_rescore_not_new_execution: a repeated execution_id with the same
 P5="$(cmpp base cand-rescore)"; rc=$?
 eq "conflicting_duplicate_execution: one execution_id with two different score sets makes the result ineligible" \
   "$rc:$(cj "$P5" eligible):$(cj "$P5" reasons)" '1:false:["conflicting-duplicate-executions:1"]'
+
+VAL="$HERE/testdata/validation.json"
+eq "m4 fixture: the testdata cohort names the twins it means" \
+  "$LA $LAc $QA $QAc $TA $(case_of toctou-a clean) $(case_of failopen-a seeded) $(case_of failopen-a clean) $(case_of scope-b seeded) $(case_of scope-b clean)" \
+  "case-15 case-16 case-19 case-05 case-21 case-04 case-01 case-10 case-03 case-09"
+out=$(python3 "$SCORE" lint --fixtures "$FIX" --key "$KEY" --validation "$VAL" 2>&1); rc=$?
+eq "validation lint: the synthetic sidecar is clean" "$rc:$out" "0:review-panel lint: 12 seeded, 12 clean, 0 problem(s)"
+VO="$TMP/m4-out1"; mkdir -p "$VO"
+review "$VO/case-15.md" codex "imp:$la_file:$la_line:the loop stops a step early, so the oldest archive survives"
+review "$VO/case-21.md" codex "imp:$ta_file:$ta_line:race between the existence check and the write"
+review "$VO/case-19.md" codex "sug:$qa_file:1:the script lacks set -e so a failed cd carries on" "imp:$qa_file:$qa_line:this line needs a second look"
+review "$VO/case-01.md" codex
+review "$VO/case-16.md" codex "imp:$la_file:3:a concurrent prune can race this one"
+review "$VO/case-05.md" codex "imp:$qa_file:2:the log message has a typo"
+review "$VO/case-04.md" codex
+review "$VO/case-10.md" codex
+review "$VO/case-03.md" codex "imp:$(seed_file case-03):$(seed_line case-03):the probe default changes without a note"
+review "$VO/case-09.md" codex
+M4IDS="case-15,case-21,case-19,case-01,case-16,case-05,case-04,case-10,case-03,case-09"
+mkmanifest() { python3 -B -c 'import json,sys; sys.path.insert(0, sys.argv[1]); import score
+ids = sys.argv[5].split(",")
+inp = score.case_inputs(sys.argv[4], score.load_key(sys.argv[2])["cases"], ids)
+json.dump({"v": 1, "protocol": {}, "provenance": {}, "cases": {}, "critics": [], "inputs": inp}, open(sys.argv[3] + "/run-manifest.json", "w"))' \
+  "$HERE" "$KEY" "$1" "$2" "${3:-$M4IDS}"; }
+mkmanifest "$VO" "$FIX"
+mklabel() { python3 -B - "$HERE" "$KEY" "${MKVAL:-$VAL}" "$@" <<'PY'
+import json, sys
+here, key, val, labels, fixtures, outputs, cid, n, corr, targets, scope, sv = sys.argv[1:13]
+adj = sys.argv[13] if len(sys.argv) > 13 else "fixture-adjudicator"
+rev = sys.argv[14] if len(sys.argv) > 14 else "fixture-reviewer"
+sys.path.insert(0, here)
+import adjudication, score
+inp = score.case_inputs(fixtures, score.load_key(key)["cases"], [cid])[cid]
+f = score.parse_review(open("%s/%s.md" % (outputs, cid)).read())[0][int(n) - 1]
+rec = {"v": 1, "case_id": cid, "case_input_sha256": adjudication.case_input_sha256(inp),
+       "gold_revision": adjudication.gold_revision(val), "finding_sha256": adjudication.finding_sha256(f),
+       "observed_execution_ids": ["exec-1"], "correctness": corr, "target_ids": [t for t in targets.split(",") if t],
+       "scope": scope, "severity_valid": {"true": True, "false": False}.get(sv), "rationale": "fixture",
+       "evidence_refs": ["testdata:synthetic"], "adjudicator": adj, "reviewed_by": rev, "adjudicated_at": "2026-11-10"}
+open(labels, "a").write(json.dumps(rec, sort_keys=True) + "\n")
+PY
+}
+m4labels() { local L="$1" O="$2" F="${3:-$FIX}"; : > "$L"
+  mklabel "$L" "$F" "$O" case-15 1 correct logic-a-1 in true
+  mklabel "$L" "$F" "$O" case-21 1 incorrect "" in null
+  mklabel "$L" "$F" "$O" case-19 2 correct "" in true
+  mklabel "$L" "$F" "$O" case-16 1 correct "" out true
+  mklabel "$L" "$F" "$O" case-05 1 correct "" in false
+  mklabel "$L" "$F" "$O" case-03 1 correct scope-b-1 in true; }
+vscore() { python3 "$SCORE" score --outputs "$1" --fixtures "${4:-$FIX}" --key "$KEY" --critics codex --only "$M4IDS" \
+  --no-ledger --validation "${5:-$VAL}" --adjudications "$2" --json "$3" 2>&1; }
+L1="$TMP/m4-labels1.jsonl"; m4labels "$L1" "$VO"
+J1="$TMP/m4-1.json"; out=$(vscore "$VO" "$L1" "$J1"); rc=$?
+eq "adjudicated score: exit 0" "$rc" "0"
+eq "accurate_paraphrase_verified_hit: a correct finding without the class words is a verified hit, a proxy miss" \
+  "$(jget "$J1" verified/targets/case-15/logic-a-1):$(jget "$J1" cases/case-15/hit)" "found:0"
+eq "keyword_wrong_claim_not_verified_hit: a wrong claim with the class words is a proxy hit, never a verified hit" \
+  "$(jget "$J1" verified/targets/case-21/toctou-a-1):$(jget "$J1" cases/case-21/hit)" "missed:1"
+eq "correct_additional_finding_not_false: a correct finding naming no target counts correct, so 4 of 5 decided" \
+  "$(jget "$J1" verified/counts/panel.adjudicated_precision):$(jget "$J1" verified/metrics/panel.adjudicated_precision)" '{"k": 4, "n": 5}:0.8'
+eq "correct_minor_misrated_blocker: a correct concern rated Important beyond its weight blocks unjustly" \
+  "$(jget "$J1" verified/blocks/case-05)" "unjustified"
+eq "out_of_contract_blocker_not_wrong_finding: an out-of-contract blocker blocks unjustly yet is not an incorrect finding" \
+  "$(jget "$J1" verified/blocks/case-16):$(jget "$J1" verified/coverage/panel/out_of_scope):$(jget "$J1" verified/coverage/panel/incorrect)" "unjustified:1:1"
+eq "verified_false_block_rate: 2 of the 4 validated clean twins block unjustly, every blocker settled" \
+  "$(jget "$J1" verified/counts/panel.verified_false_block_rate):$(jget "$J1" verified/metrics/panel.verified_false_block_rate)" '{"k": 2, "n": 4}:0.5'
+eq "recall_bounds_partial_labels: 1 found, 2 missed, 1 possibly covered by an unlabelled finding: bounds 0.25 to 0.5, no point" \
+  "$(jget "$J1" verified/metrics/panel.verified_defect_recall_lo):$(jget "$J1" verified/metrics/panel.verified_defect_recall_hi):$(jget "$J1" verified/metrics/panel.verified_defect_recall):$(jget "$J1" verified/targets/case-19/quoting-a-1)" \
+  "0.25:0.5:null:unresolved"
+eq "recall_bounds_partial_labels: a completed review with no finding misses its target" "$(jget "$J1" verified/targets/case-01/failopen-a-1)" "missed"
+eq "verified_gating_recall: the Important hit with a valid severity counts, the unlabelled Important widens hi" \
+  "$(jget "$J1" verified/metrics/panel.verified_gating_recall_lo):$(jget "$J1" verified/metrics/panel.verified_gating_recall_hi):$(jget "$J1" verified/metrics/panel.verified_gating_recall)" "0.25:0.5:null"
+LG="$TMP/m4-labels-gate.jsonl"; cp "$L1" "$LG"; mklabel "$LG" "$FIX" "$VO" case-19 1 correct quoting-a-1 in null
+JG="$TMP/m4-15.json"; vscore "$VO" "$LG" "$JG" >/dev/null
+eq "verified_gating_recall: a correct Important hit with unknown severity is a recall point but only gating uncertainty" \
+  "$(jget "$JG" verified/metrics/panel.verified_defect_recall):$(jget "$JG" verified/metrics/panel.verified_gating_recall_lo):$(jget "$JG" verified/metrics/panel.verified_gating_recall_hi):$(jget "$JG" verified/metrics/panel.verified_gating_recall)" \
+  "0.5:0.25:0.5:null"
+LG2="$TMP/m4-labels-gate2.jsonl"; cp "$L1" "$LG2"; mklabel "$LG2" "$FIX" "$VO" case-19 1 correct quoting-a-1 in true
+JG2="$TMP/m4-16.json"; vscore "$VO" "$LG2" "$JG2" >/dev/null
+eq "verified_gating_recall: the same hit with a valid severity settles gating recall to a point" \
+  "$(jget "$JG2" verified/metrics/panel.verified_gating_recall)" "0.5"
+LM="$TMP/m4-labels-missing.jsonl"; cp "$L1" "$LM"
+python3 -c 'import json,sys
+ls=[json.loads(l) for l in open(sys.argv[1])]
+a=dict(ls[0], evidence_refs=[]); b=dict(ls[2], reviewed_by="")
+open(sys.argv[2], "w").write("".join(json.dumps(l) + "\n" for l in [a, b] + ls[1:2] + ls[3:]))' "$L1" "$LM"
+JM="$TMP/m4-17.json"; vscore "$VO" "$LM" "$JM" >/dev/null
+eq "missing_reviewer_or_evidence_rejected: a label with no evidence or no reviewer is not used" \
+  "$(jget "$JM" verified/coverage/panel/unlabelled):$(jget "$JM" verified/diagnostics | grep -o 'missing-field:evidence_refs' | head -1):$(jget "$JM" verified/diagnostics | grep -o 'missing-field:reviewed_by' | head -1)" \
+  "3:missing-field:evidence_refs:missing-field:reviewed_by"
+VALD="$TMP/m4-val-dirty.json"
+python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); v["cases"]["case-15"]["target_ids"]=[]; json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$VALD"
+out=$(vscore "$VO" "$L1" "$TMP/m4-18.json" "$FIX" "$VALD"); rc=$?
+eq "dirty_sidecar_refused: --adjudications over a sidecar that fails lint exits 2 and says so" "$rc:$(printf '%s' "$out" | grep -c 'fails lint')" "2:1"
+out=$(python3 "$SCORE" score --outputs "$VO" --fixtures "$FIX" --key "$KEY" --critics codex --only "$M4IDS" --no-ledger --adjudications "$L1" 2>&1); rc=$?
+eq "no_sidecar_refused: --adjudications with no validation sidecar beside the key exits 2" "$rc:$(printf '%s' "$out" | grep -c 'needs a validation sidecar')" "2:1"
+vlint() { python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); exec(sys.argv[3]); json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$TMP/m4-val-rule.json" "$1"
+  python3 "$SCORE" lint --fixtures "$FIX" --key "$KEY" --validation "$TMP/m4-val-rule.json" 2>&1; }
+for rule in 'v["cases"]["case-15"]["target_ids"]=[]|a seeded case names its target ids' \
+    'v["cases"]["case-16"]["target_ids"]=["logic-a-1"]|a clean case names no target' \
+    'del v["cases"]["case-16"]["contract"]|a clean case states its intended contract' \
+    'v["cases"]["case-16"]["notes"]="x"|unknown field' \
+    'v["cases"]["case-15"]["effective_kind"]="excluded"|an excluded state and an excluded kind go together' \
+    'v["cases"]["case-15"]["target_ids"]=["nope-1"]|neither a key defect'; do
+  out=$(vlint "${rule%%|*}"); rc=$?
+  eq "validation lint rule: ${rule#*|}" "$rc:$(printf '%s' "$out" | grep -c "${rule#*|}")" "1:1"
+done
+out=$(python3 "$SCORE" lint --fixtures "$FIX" --key "$KEY" --validation "$TMP/no-such-validation.json" 2>&1); rc=$?
+eq "validation lint: a missing sidecar is a named problem, not a traceback" "$rc:$(printf '%s' "$out" | grep -c Traceback):$(printf '%s' "$out" | grep -c 'unreadable')" "1:0:1"
+KD="$TMP/m4-keydir"; mkdir -p "$KD"; cp "$KEY" "$KD/seeds.json"; cp "$VALD" "$KD/validation.json"
+out=$(python3 "$SCORE" score --outputs "$VO" --fixtures "$FIX" --key "$KD/seeds.json" --critics codex --only "$M4IDS" --no-ledger --json "$TMP/m4-19.json" 2>&1); rc=$?
+eq "malformed_default_sidecar_not_bound: a default sidecar that fails lint binds no gold_revision and says so" \
+  "$rc:$(jget "$TMP/m4-19.json" gold_revision):$(printf '%s' "$out" | grep -c 'fails lint')" "0:null:1"
+VOL="$TMP/m4-out-leak"; cp -r "$VO" "$VOL"; printf 'see review-panel/key for the answer\n' >> "$VOL/case-21.err"
+JL="$TMP/m4-20.json"; vscore "$VOL" "$L1" "$JL" >/dev/null
+eq "leaked_case_not_verified: a case whose transcript carries a key marker leaves the verified family, named" \
+  "$(jget "$JL" verified/targets/case-21):$(jget "$JL" verified/diagnostics | grep -c '"leaked"'):$(jget "$JL" verified/reasons | grep -c leaked)" "null:1:1"
+eq "unlabelled_finding_coverage_gap: the unlabelled finding is counted and the coverage shows it" \
+  "$(jget "$J1" verified/coverage/panel/findings):$(jget "$J1" verified/coverage/panel/unlabelled):$(jget "$J1" verified/coverage/panel/decided)" "6:1:5"
+eq "sealed_pair_kept_together: a sealed twin whose pair is not wholly validated leaves the cohort with its pair" \
+  "$(jget "$J1" verified/cohort/incomplete_pairs):$(jget "$J1" verified/targets/case-03):$(jget "$J1" verified/counts/sealed.panel.verified_defect_recall_lo)" \
+  '["scope-b"]:null:{"k": 1, "n": 1}'
+has "proxy and verified side by side: the report prints both families" "$(vscore "$VO" "$L1" "$TMP/m4-1b.json")" "verified (adjudicated"
+L1s="$TMP/m4-labels1s.jsonl"; cp "$L1" "$L1s"; mklabel "$L1s" "$FIX" "$VO" case-19 1 incorrect "" in null same-person same-person
+J1s="$TMP/m4-1s.json"; vscore "$VO" "$L1s" "$J1s" >/dev/null
+eq "self_adjudicated_label_rejected: a label its own adjudicator reviewed is not used" \
+  "$(jget "$J1s" verified/coverage/panel/unlabelled):$(jget "$J1s" verified/diagnostics | grep -c self-reviewed)" "1:1"
+VO2="$TMP/m4-out2"; cp -r "$VO" "$VO2"
+python3 -c 'import sys; p=sys.argv[1]; t=open(p).read().split("\n"); open(p, "w").write("\n".join(t[:1] + ["", ""] + t[1:]))' "$VO2/case-15.md"
+eq "label_reused_across_repeat: the repeat prints the labelled finding on another stdout line" \
+  "$(grep -n 'stops a step early' "$VO2/case-15.md" | cut -d: -f1) $(grep -n 'stops a step early' "$VO/case-15.md" | cut -d: -f1)" \
+  "$(( $(grep -n 'stops a step early' "$VO/case-15.md" | cut -d: -f1) + 2 )) $(grep -n 'stops a step early' "$VO/case-15.md" | cut -d: -f1)"
+J2="$TMP/m4-2.json"; vscore "$VO2" "$L1" "$J2" >/dev/null
+eq "finding_sha256: the canonical identity of [sev, file, line, text] is pinned" \
+  "$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import adjudication; print(adjudication.finding_sha256({"sev": "imp", "file": "scripts/a.sh", "line": 3, "text": "a lock is never released", "critic": "codex", "at": 9}))' "$HERE")" \
+  "665b20c8f091c98eebdc7d6b9e3b32da27574775f1a8976771a0a08bb6f4cd6a"
+eq "label_reused_across_repeat: a repeat execution with identical findings reuses every label" \
+  "$(jget "$J2" verified/metrics | sha256sum):$(jget "$J2" verified/coverage/panel/unlabelled)" "$(jget "$J1" verified/metrics | sha256sum):1"
+FIXC="$TMP/m4-fix-ctx"; cp -r "$FIX" "$FIXC"; printf 'keep the newest five archives\n' > "$FIXC/case-15.intent.md"
+VOC="$TMP/m4-out-ctx"; cp -r "$VO" "$VOC"; mkmanifest "$VOC" "$FIXC"
+J3="$TMP/m4-3.json"; vscore "$VOC" "$L1" "$J3" "$FIXC" >/dev/null
+eq "changed_context_invalidates_reuse: a changed case input voids its label, the hit becomes unresolved" \
+  "$(jget "$J3" verified/targets/case-15/logic-a-1):$(jget "$J3" verified/diagnostics | grep -c case-input-changed)" "unresolved:1"
+VO3="$TMP/m4-out3"; cp -r "$VO" "$VO3"
+python3 -c 'import sys; p=sys.argv[1]; t=open(p).read(); open(p, "w").write(t.replace("stops a step early", "stops one step early"))' "$VO3/case-15.md"
+J4="$TMP/m4-4.json"; vscore "$VO3" "$L1" "$J4" >/dev/null
+eq "altered_transcript_invalidates_label: an edited finding text matches no label" \
+  "$(jget "$J4" verified/targets/case-15/logic-a-1):$(jget "$J4" verified/diagnostics | grep -c finding-not-observed)" "unresolved:1"
+L2="$TMP/m4-labels2.jsonl"; cp "$L1" "$L2"; mklabel "$L2" "$FIX" "$VO" case-15 1 incorrect "" in null
+out=$(vscore "$VO" "$L2" "$TMP/m4-5.json"); rc=$?
+eq "conflicting_labels_refuse: two labels of one finding that disagree refuse the verified metrics" "$rc" "2"
+has "conflicting_labels_refuse: names the conflict" "$out" "conflicting"
+VO5="$TMP/m4-out5"; cp -r "$VO" "$VO5"; review "$VO5/case-04.md" codex "imp:$ta_file:5:the lock is left behind when the run is killed"
+L5="$TMP/m4-labels5.jsonl"; m4labels "$L5" "$VO5"; mklabel "$L5" "$FIX" "$VO5" case-04 1 correct "" in true
+J5="$TMP/m4-6.json"; vscore "$VO5" "$L5" "$J5" >/dev/null
+eq "clean_with_valid_blocker_disputed: a correct in-contract blocker disputes the clean control and withholds the rate" \
+  "$(jget "$J5" verified/metrics/panel.verified_false_block_rate):$(jget "$J5" verified/cohort/disputed):$(jget "$J5" verified/reasons | grep -c 'disputed-clean-control:case-04')" \
+  'null:["case-04"]:1'
+VALP="$TMP/m4-val-pattern.json"
+python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); v["cases"]["case-16"]["residuals"][0]["pattern"]="concurren|race|lock"; json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$VALP"
+out=$(python3 "$SCORE" lint --fixtures "$FIX" --key "$KEY" --validation "$VALP" 2>&1); rc=$?
+eq "broad_residual_pattern_not_gold: a residual carrying a pattern is refused" "$rc" "1"
+has "broad_residual_pattern_not_gold: lint names the pattern" "$out" "pattern"
+VALS="$TMP/m4-val-self.json"
+python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); v["cases"]["case-01"]["reviewer"]="fixture-curator"; json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$VALS"
+out=$(python3 "$SCORE" lint --fixtures "$FIX" --key "$KEY" --validation "$VALS" 2>&1); rc=$?
+eq "validation lint: a case its own curator validated is refused" "$rc" "1"
+has "validation lint: names the missing independent review" "$out" "independent"
+VALE="$TMP/m4-val-edit.json"
+python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); v["cases"]["case-04"]["contract"]="one run at a time, even after a crash"; json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$VALE"
+J6="$TMP/m4-7.json"; vscore "$VO" "$L1" "$J6" "$FIX" "$VALE" >/dev/null
+eq "gold_revision: the row binds the exact sidecar bytes" "$(jget "$J1" gold_revision)" "$(sha256sum "$VAL" | cut -d' ' -f1)"
+eq "gold_edit_changes_gold_revision_not_stamp: a gold edit moves gold_revision and voids the labels bound to the old one" \
+  "$([ "$(jget "$J6" gold_revision)" != "$(jget "$J1" gold_revision)" ] && echo moved):$(jget "$J6" verified/diagnostics | grep -c gold-revision-changed)" "moved:1"
+c0="$(python3 "$SCORE" confighash HEAD --repo "$G"):$(python3 "$SCORE" cbs-hash HEAD --repo "$G")"
+cp "$VAL" "$G/scripts/eval/review-panel/key/validation.json"; gg add -A; gg commit -qm gold
+eq "gold_edit_changes_gold_revision_not_stamp: a committed sidecar leaves the stamp's confighash and cbs-hash unchanged" \
+  "$(python3 "$SCORE" confighash HEAD --repo "$G"):$(python3 "$SCORE" cbs-hash HEAD --repo "$G")" "$c0"
+VALR="$TMP/m4-val-relabel.json"
+python3 -c 'import json,sys
+v=json.load(open(sys.argv[1])); c=v["cases"]["case-10"]
+c.update(effective_kind="seeded", target_ids=["case-10-v1"], added_targets=[{"id": "case-10-v1", "file": "scripts/hooks/deny-listed-hosts.sh", "line": 5, "description": "fixture"}])
+del c["contract"], c["residuals"]
+json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$VALR"
+LR="$TMP/m4-labelsr.jsonl"; MKVAL="$VALR" m4labels "$LR" "$VO"
+JR="$TMP/m4-8.json"; vscore "$VO" "$LR" "$JR" "$FIX" "$VALR" >/dev/null
+eq "verified_cohort_relabel_visible: a relabelled twin is named, joins the verified targets, and the proxy keeps the key" \
+  "$(jget "$JR" verified/cohort/relabelled):$(jget "$JR" verified/counts/panel.verified_defect_recall_lo):$(jget "$JR" metrics/panel.labelled_clean_block_rate)" \
+  "[{\"case\": \"case-10\", \"from\": \"clean\", \"to\": \"seeded\"}]:{\"k\": 1, \"n\": 5}:$(jget "$J1" metrics/panel.labelled_clean_block_rate)"
+python3 "$GSCORE" verify-row "$(doctor "r[\"gold_revision\"]=\"$(sha256sum "$VAL" | cut -d' ' -f1)\"")" "$O" --repo "$G" --validation "$VAL" >/dev/null 2>&1; rc=$?
+python3 "$GSCORE" verify-row "$(doctor "r[\"gold_revision\"]=\"$(sha256sum "$VAL" | cut -d' ' -f1)\"")" "$O" --repo "$G" --validation "$VALE" >/dev/null 2>&1; rc2=$?
+eq "verify_row_reads_explicit_validation: the claimed gold_revision is checked against the --validation sidecar read" "$rc:$rc2" "0:1"
+J7="$TMP/m4-9.json"; vscore "$VO" "$L1" "$J7" "$FIXC" >/dev/null
+eq "execution_input_differs: outputs recorded on other case inputs than the fixtures hold leave the verified cohort" \
+  "$(jget "$J7" verified/targets/case-15):$(jget "$J7" verified/diagnostics | grep -c execution-input-differs)" "null:1"
+VON="$TMP/m4-out-nomanifest"; cp -r "$VO" "$VON"; rm -f "$VON/run-manifest.json"
+J8="$TMP/m4-10.json"; vscore "$VON" "$L1" "$J8" >/dev/null
+eq "unrecorded_inputs_not_verified: outputs with no recorded case inputs earn no verified credit" \
+  "$(jget "$J8" verified/targets):$(jget "$J8" verified/reasons | grep -c execution-input-unrecorded)" "{}:1"
+VOP="$TMP/m4-out-partial"; cp -r "$VO" "$VOP"; mkmanifest "$VOP" "$FIX" "case-21,case-19,case-01,case-16,case-05,case-04,case-10,case-03,case-09"
+J9="$TMP/m4-11.json"; vscore "$VOP" "$L1" "$J9" >/dev/null
+eq "unrecorded_inputs_not_verified: a case the manifest does not record is left out, the rest stay" \
+  "$(jget "$J9" verified/targets/case-15):$(jget "$J9" verified/targets/case-21/toctou-a-1)" "null:missed"
+eq "sealed_pair_kept_together: a twin left out for its provenance takes its pair out of the cohort" \
+  "$(jget "$J9" verified/blocks/case-16):$(jget "$J9" verified/cohort/incomplete_pairs)" 'null:["logic-a", "scope-b"]'
+LX="$TMP/m4-labels-exec.jsonl"; cp "$L1" "$LX"
+python3 -c 'import json,sys; l=json.loads(open(sys.argv[1]).readline()); l["observed_execution_ids"]=[{"x": 1}]; open(sys.argv[1], "a").write((json.dumps(l) + "\n") * 2)' "$LX"
+JX="$TMP/m4-14.json"; out=$(vscore "$VO" "$LX" "$JX"); rc=$?
+eq "observed_execution_ids_are_strings: a label whose execution ids are not strings is a diagnostic, not a crash" \
+  "$rc:$(jget "$JX" verified/diagnostics | grep -c bad-value)" "0:1"
+LT="$TMP/m4-labels-target.jsonl"; cp "$L1" "$LT"
+python3 -B -c 'import json,sys; sys.path.insert(0, sys.argv[1]); import adjudication, score
+cases = score.load_key(sys.argv[2])["cases"]
+fs = score.parse_review(open(sys.argv[4] + "/case-19.md").read())[0]
+rec = {"v": 1, "kind": "target", "case_id": "case-19",
+       "case_input_sha256": adjudication.case_input_sha256(score.case_inputs(sys.argv[5], cases, ["case-19"])["case-19"]),
+       "gold_revision": adjudication.gold_revision(sys.argv[3]), "target_id": "quoting-a-1", "ruling": "missed",
+       "reviewed_findings": [adjudication.finding_sha256(f) for f in fs], "rationale": "fixture",
+       "evidence_refs": ["testdata:synthetic"], "adjudicator": "fixture-adjudicator", "reviewed_by": "fixture-reviewer",
+       "adjudicated_at": "2026-11-10"}
+open(sys.argv[6], "a").write((json.dumps(rec) + "\n") * 2)' "$HERE" "$KEY" "$VAL" "$VO" "$FIX" "$LT"
+JT="$TMP/m4-12.json"; out=$(vscore "$VO" "$LT" "$JT"); rc=$?
+eq "target_ruling_settles_a_miss: a repeated missed ruling covering every finding settles the target, recall becomes a point" \
+  "$rc:$(jget "$JT" verified/targets/case-19/quoting-a-1):$(jget "$JT" verified/metrics/panel.verified_defect_recall)" "0:missed:0.25"
+LB="$TMP/m4-labels-bool.jsonl"; cp "$L1" "$LB"
+python3 -c 'import json,sys; ls=[json.loads(l) for l in open(sys.argv[1])]; ls[4]["severity_valid"]=0; open(sys.argv[1], "w").write("".join(json.dumps(l) + "\n" for l in ls))' "$LB"
+JB="$TMP/m4-13.json"; vscore "$VO" "$LB" "$JB" >/dev/null
+eq "severity_valid_is_a_bool: a label giving severity_valid as 0 is rejected, so its blocker is unsettled" \
+  "$(jget "$JB" verified/blocks/case-05):$(jget "$JB" verified/diagnostics | grep -c bad-value)" "unsettled:1"
+eq "unsettled_blocker_withholds: an unsettled blocker withholds the false-block rate and is named" \
+  "$(jget "$JB" verified/metrics/panel.verified_false_block_rate):$(jget "$JB" verified/reasons | grep -c 'unsettled-blocker:panel:case-05')" "null:1"
+LR2="$TMP/m4-labels-ruling2.jsonl"; cp "$L1" "$LR2"
+python3 -B -c 'import json,sys; sys.path.insert(0, sys.argv[1]); import adjudication, score
+cases = score.load_key(sys.argv[2])["cases"]
+fs = score.parse_review(open(sys.argv[4] + "/case-19.md").read())[0]
+base = {"v": 1, "kind": "target", "case_id": "case-19",
+        "case_input_sha256": adjudication.case_input_sha256(score.case_inputs(sys.argv[5], cases, ["case-19"])["case-19"]),
+        "gold_revision": adjudication.gold_revision(sys.argv[3]), "target_id": "quoting-a-1", "ruling": "missed",
+        "rationale": "fixture", "evidence_refs": ["testdata:synthetic"], "adjudicator": "fixture-adjudicator",
+        "reviewed_by": "fixture-reviewer", "adjudicated_at": "2026-11-10"}
+out = open(sys.argv[6], "a")
+for f in fs:
+    out.write(json.dumps(dict(base, reviewed_findings=[adjudication.finding_sha256(f)])) + "\n")' "$HERE" "$KEY" "$VAL" "$VO" "$FIX" "$LR2"
+JR2="$TMP/m4-21.json"; out=$(vscore "$VO" "$LR2" "$JR2"); rc=$?
+eq "missed_rulings_merge: two missed rulings of one target over different findings merge instead of conflicting" \
+  "$rc:$(jget "$JR2" verified/targets/case-19/quoting-a-1)" "0:missed"
 
 echo
 echo "test-review-panel: PASS=$PASS FAIL=$FAIL"

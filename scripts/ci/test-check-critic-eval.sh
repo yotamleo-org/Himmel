@@ -23,6 +23,7 @@ command -v python3 >/dev/null 2>&1 || { echo "SKIP test-check-critic-eval: pytho
 
 SC="$WORK/scorer-copy"; mkdir -p "$SC/scripts/eval/review-panel" "$SC/scripts/eval/lib" "$SC/scripts/ci"
 cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$ROOT/scripts/eval/lib/"*.py "$SC/scripts/eval/lib/"
+cp "$ROOT/scripts/eval/review-panel/adjudication.py" "$SC/scripts/eval/review-panel/"
 cp "$ROOT/scripts/eval/feedback-rules.json" "$SC/scripts/eval/"; cp "$HERE/check-critic-eval.sh" "$SC/scripts/ci/"
 printf '__pycache__/\n' > "$SC/.gitignore"
 git init -q "$SC" && git -C "$SC" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null \
