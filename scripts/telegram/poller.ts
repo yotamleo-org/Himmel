@@ -2122,7 +2122,7 @@ export async function sweepAttachments(dir: string, maxAgeMs: number = ATTACHMEN
 // process.env: the auto-action child inherits the poller env wholesale (see
 // runScript below), and widening that surface from a config file is not something
 // this ticket needs.
-export const BRIDGE_ENV_KEYS = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_AUTO_ACTIONS"] as const;
+export const BRIDGE_ENV_KEYS = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_AUTO_ACTIONS", "TELEGRAM_MONITOR_BOT_TOKEN", "TELEGRAM_MONITOR_CHAT_ID"] as const;
 export type BridgeEnvKey = (typeof BRIDGE_ENV_KEYS)[number];
 
 // Strips ONE layer of matching surrounding quotes. dotenv-style files quote
@@ -2231,6 +2231,124 @@ async function sessionsList(root: string): Promise<string[]> {
 
 export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object): Promise<void> {
   await appendOutboxLine(root, chat_id, { text, ...(consoleName ? { console: consoleName } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) });
+}
+
+export type MonitorSendFn = (text: string) => Promise<boolean>;
+export type MonitorCfg = { send: MonitorSendFn | null; reason: string; operatorChat: number | null };
+type MonitorDeps = { f?: typeof fetch; sleep?: (ms: number) => Promise<void>; mkSignal?: (ms: number) => AbortSignal };
+
+const MONITOR_FETCH_MS = 10_000;
+const MONITOR_SLEEP_CAP_MS = 1000;
+const MONITOR_SEND_GAP_MS = 3000;         // a group takes about 20 messages a minute
+const MONITOR_DOWN_AFTER_MAX_MS = 3_600_000;
+const MONITOR_AGE_CAP_MS = 24 * 3_600_000;
+const MONITOR_NOTICE_GAP_MS = 24 * 3_600_000;
+const monitorLastSendAt = new Map<string, number>();
+const monitorLastNoticeAt = new Map<string, number>();
+
+const monitorFetch = (f: typeof fetch = fetch, mkSignal: (ms: number) => AbortSignal = (ms) => AbortSignal.timeout(ms)): typeof fetch =>
+  ((input: any, init?: any) => f(input, { ...init, signal: mkSignal(MONITOR_FETCH_MS) })) as unknown as typeof fetch;
+
+export function makeMonitorSend(token: string, chat: number, deps: MonitorDeps = {}): MonitorSendFn {
+  const f = monitorFetch(deps.f, deps.mkSignal);
+  const real = deps.sleep ?? ((ms: number) => Bun.sleep(ms));
+  return (text) => sendMessage(token, chat, text, f, (ms) => real(Math.min(ms, MONITOR_SLEEP_CAP_MS)));
+}
+
+export function monitorDownAfterMs(env: Record<string, string | undefined> = process.env): number {
+  if (env.HIMMEL_TEST_FIXTURE !== "1") return MONITOR_DOWN_AFTER_MAX_MS;
+  const n = Number(env.TELEGRAM_MONITOR_DOWN_AFTER_MS);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, MONITOR_DOWN_AFTER_MAX_MS) : MONITOR_DOWN_AFTER_MAX_MS;
+}
+
+async function monitorGet(token: string, method: string, chat: string, f: typeof fetch): Promise<any | null> {
+  try {
+    const res = await f(`https://api.telegram.org/bot${token}/${method}?chat_id=${encodeURIComponent(chat)}`);
+    const j: any = await res.json().catch(() => ({}));
+    if (j?.ok === true) return j.result ?? null;
+    console.error(`[poller] monitoring ${method} not ok: ${res.status}`);
+  } catch (e) { console.error(`[poller] monitoring ${method} failed: ${(e as any)?.name ?? "error"}`); }
+  return null;
+}
+
+export async function checkMonitoring(env: { TELEGRAM_BOT_TOKEN?: string; TELEGRAM_MONITOR_BOT_TOKEN?: string; TELEGRAM_MONITOR_CHAT_ID?: string }, deps: Pick<MonitorDeps, "f" | "mkSignal"> = {}): Promise<{ send: MonitorSendFn | null; reason: string; line: string; retry: boolean }> {
+  const token = env.TELEGRAM_MONITOR_BOT_TOKEN, chat = env.TELEGRAM_MONITOR_CHAT_ID;
+  if (!token || !chat) return { send: null, reason: "unset", line: "monitoring: unset", retry: false };
+  const refuse = (reason: string, retry = false) => ({ send: null, reason, line: `monitoring: refused ${reason.replace(/^refused: /, "")}`, retry });
+  if (token === env.TELEGRAM_BOT_TOKEN) return refuse("same bot as the bridge");
+  const id = Number(chat);
+  if (!Number.isSafeInteger(id) || id === 0) return refuse("refused: the chat id is not a number");
+  const f = monitorFetch(deps.f, deps.mkSignal);
+  const info = await monitorGet(token, "getChat", chat, f);
+  if (!info) return refuse("refused: cannot read the chat", true);
+  if (info.type !== "group" && info.type !== "supergroup") return refuse("not a group");   // a channel's id is negative like a group's
+  const members = await monitorGet(token, "getChatMemberCount", chat, f);
+  const title = String(info.title ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+  return { send: makeMonitorSend(token, id, deps), reason: "ok", line: `monitoring: ok ${title} members=${typeof members === "number" ? members : "?"}`, retry: false };
+}
+
+const monitorChatDownText = (reason: string, n: number): string =>
+  `The monitoring group is getting no messages (${reason}); ${n} are kept on the station. Blocks: routine monitoring only. Do: check the two monitoring lines in the bridge env file and that the monitoring bot is in its group, then restart the bridge`;
+
+async function noteMonitorDown(root: string, dir: string, nowMs: number, chat: number, reason: string, pending: number): Promise<void> {
+  const marker = join(dir, "chat-down");
+  let last = monitorLastNoticeAt.get(root) ?? 0; try { last = Math.max(last, Number((await readFile(marker, "utf8")).trim()) * 1000 || 0); } catch {}
+  if (last && nowMs - last < MONITOR_NOTICE_GAP_MS) return;
+  monitorLastNoticeAt.set(root, nowMs);
+  await atomicWrite(marker, `${Math.floor(nowMs / 1000)}\n`).catch(() => {});
+  try { await replyViaOutbox(root, chat, monitorChatDownText(reason, pending)); }
+  catch (e) { monitorLastNoticeAt.delete(root); await unlink(marker).catch(() => {}); throw e; }
+}
+
+export async function flushMonitor(root: string, send: MonitorSendFn | null, nowMs: number, opts: { operatorChat?: number | null; reason?: string } = {}): Promise<void> {
+  const dir = join(root, "monitor");
+  const file = join(dir, "outbox.jsonl"), curFile = file + ".cursor", stateFile = join(dir, "state");
+  const peeked = await peekNewLines<{ text?: unknown; at?: unknown }>(file, curFile);
+  const lines = peeked.records.map((r, i) => ({ text: typeof r.text === "string" ? r.text : "", at: Number.isFinite(Date.parse(String(r.at))) ? Date.parse(String(r.at)) : 0, end: peeked.ends[i] })).filter((l) => l.text);
+  await mkdir(dir, { recursive: true });
+  if (lines.length === 0) { await atomicWrite(stateFile, "ok\n"); return; }
+  let oldest = lines[0].at;
+  for (const l of lines) if (l.at < oldest) oldest = l.at;
+  const why = send === null ? (opts.reason ?? "unset") : "refused: the send failed";
+  const down = `down ${Math.floor(oldest / 1000)} ${why}\n`;
+  if (nowMs - oldest >= monitorDownAfterMs() && opts.operatorChat != null) {
+    try { await noteMonitorDown(root, dir, nowMs, opts.operatorChat, why, lines.length); }
+    catch (e) { logRedacted(`[poller] monitor-chat-down notice failed: ${e}`); }
+  }
+  if (send === null) { await atomicWrite(stateFile, down); return; }
+  const lastSend = monitorLastSendAt.get(root);
+  if (lastSend !== undefined && nowMs >= lastSend && nowMs - lastSend < MONITOR_SEND_GAP_MS) return;
+  let nOld = 0;
+  while (nOld < lines.length && nowMs - lines[nOld].at > MONITOR_AGE_CAP_MS) nOld++;
+  const next = nOld > 0 ? { text: `${nOld} older monitoring lines were kept on the station: ${file}`, end: lines[nOld - 1].end } : lines[0];
+  monitorLastSendAt.set(root, nowMs);
+  let ok = false;
+  try { ok = (await send(next.text)) === true; } catch (e) { console.error(`[poller] monitoring send threw: ${(e as any)?.name ?? "error"}`); }
+  if (!ok) { await atomicWrite(stateFile, down); return; }
+  await commitCursorPos(curFile, next.end);
+  await atomicWrite(stateFile, "ok\n");
+}
+
+export const monitoringRetryMs = (attempt: number): number => Math.min(3_600_000, 60_000 * 2 ** attempt);
+
+export function startMonitoringCheck(d: { check: () => ReturnType<typeof checkMonitoring>; apply: (m: Awaited<ReturnType<typeof checkMonitoring>>) => void; schedule?: (fn: () => void, ms: number) => void }): void {
+  const schedule = d.schedule ?? ((fn, ms) => { const t = setTimeout(fn, ms); if (typeof t.unref === "function") t.unref(); }); // t13b-ok: unref'd one-shot retry of the startup check, same shape as the getMe retry
+  let lastLine = "", attempt = 0;
+  const run = (): void => {
+    void d.check().then((m) => {
+      if (m.line !== lastLine) { console.error(`[poller] ${m.line}`); lastLine = m.line; }
+      d.apply(m);
+      if (m.retry) schedule(run, monitoringRetryMs(attempt++));
+    }).catch((e) => console.error(`[poller] monitoring startup check failed: ${(e as any)?.name ?? "error"}`));
+  };
+  run();
+}
+
+export function startFlushTimers(d: { root: string; send: SendFn; sendDoc?: SendDocFn; flushMs: number; monitorMs: number; monitor: () => MonitorCfg | null; now?: () => number }): () => void {
+  const flushTimer = setInterval(guarded(() => flushOutboxes(d.root, d.send, d.sendDoc)), d.flushMs); // t13b-ok: the existing outbox flush timer, moved here so its wiring is testable
+  const monitorTimer = setInterval(guarded(async () => { const m = d.monitor(); if (m) await flushMonitor(d.root, m.send, (d.now ?? Date.now)(), m); }), d.monitorMs); // t13b-ok: the monitoring flush's own timer in the existing poller process, no new service
+  for (const t of [flushTimer, monitorTimer]) if (typeof t.unref === "function") t.unref();
+  return () => { clearInterval(flushTimer); clearInterval(monitorTimer); };
 }
 
 // Queue a local file for the chat; flushOutboxes sends it via sendDocument. The line is tagged with
@@ -2528,8 +2646,10 @@ export async function main(): Promise<void> {
   // its keep. The flush path touches only outbox files; the run path touches only
   // inbox/meta/pending, disjoint, so the timer adds no shared-file race.
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
-  const flushTimer = setInterval(guarded(() => flushOutboxes(root, send, makeSendDoc(token, root, operatorChat))), FLUSH_MS); // t13b-ok: the existing outbox flush timer, only its arguments changed
-  if (typeof flushTimer.unref === "function") flushTimer.unref();
+  const MONITOR_FLUSH_MS = 3000;
+  let monitorCfg: MonitorCfg | null = null;
+  startFlushTimers({ root, send, sendDoc: makeSendDoc(token, root, operatorChat), flushMs: FLUSH_MS, monitorMs: MONITOR_FLUSH_MS, monitor: () => monitorCfg });
+  startMonitoringCheck({ check: () => checkMonitoring(bridgeEnv), apply: (m) => { monitorCfg = { send: m.send, reason: m.reason, operatorChat }; } });
   // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past
   // HEARTBEAT_STALE_MS while the chief's own session is still alive means
