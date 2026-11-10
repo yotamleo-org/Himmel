@@ -157,8 +157,6 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
 //   3. the newest *HANDOFF.md of the bucket, its `## Open operator items` lines.
 // A source that cannot be read is named in `unread`; when none can be read the whole read is absent with the reasons, never an empty list.
 // ponytail: the newest chief doc by mtime stands for "the live chief" and its folder for the bucket, upgrade path: the live chiefs' docs by queue lock as Shift reads them.
-//   and, in the same chief doc: an `OWED <key> <what>` bullet with no `DELIVERED <key> msg=<id> chat=<id>` receipt (the one chief-wait.sh wakes on), and a worker
-//   the tick holds unclosed (tick-unclosed-<doc stem>, no newer DISPOSITION bullet); each row leaves when that receipt or disposition bullet lands.
 export type OwedItem = { source: "unsigned spec" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker"; key: string | null; title: string; ctx: string; act: string };
 export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?: string[] } | Absent;
 const OWED_SOURCES = 3; // unsigned specs, handoff items, chief doc lines
@@ -234,7 +232,6 @@ function chiefDocItems(doc: string, open: Map<string, string>): OwedItem[] | und
   }
   return items;
 }
-// The same bullet shapes chief-wait.sh owed_wake reads: a key is [A-Za-z0-9_.-]+, a receipt names a message id and a chat id.
 function undeliveredItems(doc: string, open: Map<string, string>): OwedItem[] {
   const lines = readText(doc).split("\n");
   const items: OwedItem[] = [], seen = new Set<string>();
@@ -249,18 +246,20 @@ function undeliveredItems(doc: string, open: Map<string, string>): OwedItem[] {
   }
   return items;
 }
-// tick.sh keeps `<label> <first-seen epoch> <dispositions at first sight>` per finished worker whose window is open, in <state dir>/tick-unclosed-<doc stem>.
-// It rewrites the file every tick and keeps first sight, so a record whose file is newer than its first sight has been held over a tick (the first tick only records).
-const UNCLOSED_GRACE_S = 30;
+const HELD_OVER_A_TICK_S = 30;
+const heldOverATick = (recordWrittenAt: number, firstSeen: number) => recordWrittenAt - firstSeen >= HELD_OVER_A_TICK_S;
 function unclosedItems(doc: string, env: Env): OwedItem[] {
   const file = join(env.TICK_STATE_DIR ?? join(env.HOME ?? "", ".himmel", "state"), `tick-unclosed-${basename(doc, ".md")}`);
   let rec: string, wrote: number;
-  try { rec = readText(file); wrote = statSync(file).mtimeMs / 1000; } catch { return []; } // no record: tick.sh holds no worker unclosed
+  try { rec = readText(file); wrote = statSync(file).mtimeMs / 1000; } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw e;
+  }
   const text = readText(doc);
   const items: OwedItem[] = [];
   for (const l of rec.split("\n")) {
     const [label, first, base] = l.trim().split(/\s+/);
-    if (!label || !/^\d+$/.test(first ?? "") || wrote - Number(first) < UNCLOSED_GRACE_S) continue;
+    if (!label || !/^\d+$/.test(first ?? "") || !heldOverATick(wrote, Number(first))) continue;
     const disp = new RegExp(`^- (?:\\d{1,2}:\\d{2} )?(?:\\*\\*)?DISPOSITION ${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} (?:closed(?:[^A-Za-z]|$)|parked [^ ]|given-up [^ ])`, "gm");
     if ((text.match(disp)?.length ?? 0) > (/^\d+$/.test(base ?? "") ? Number(base) : 0)) continue;
     items.push({ source: "unclosed worker", key: null, title: `${label} is finished and its window is still open`,

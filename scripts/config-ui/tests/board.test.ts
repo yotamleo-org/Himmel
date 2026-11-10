@@ -615,7 +615,6 @@ test("the Blocked on you list shows an owed item with no DELIVERED receipt and a
   const env = { PATH: process.env.PATH, HOME: s.home, HIMMEL_CHIEF_DOC: doc, HIMMEL_BUCKET_DIR: s.d, TICK_STATE_DIR: stateDir };
   const noRoadmap = (() => { throw new Error("no roadmap in this test"); }) as unknown as typeof import("../roadmap").readRoadmap;
   const write = (bullets: string) => writeFileSync(doc, `# chief\n\n## Live state\n\nworkers: x\n\n## Results\n${bullets}`);
-  // the tick wrote the record at epoch 1000 and rewrote the file ten minutes later: N5805 and N5806 were held over a second tick; N5807 was only recorded
   const held = () => { writeFileSync(stateFile, "N5805 1000 0\nN5806 1000 0\nN5807 1600 0\n"); utimesSync(stateFile, 1600, 1600); };
   const rows = (source: string) => { const o = readOwed(env, noRoadmap); if (o.state !== "ok") throw new Error(o.reason); return o.items.filter((i) => i.source === source); };
 
@@ -626,18 +625,16 @@ test("the Blocked on you list shows an owed item with no DELIVERED receipt and a
   expect(owed[0].ctx).toContain("no DELIVERED receipt");
   expect(owed[0].act).toContain("chief-route.ts reply --owed sig-9608");
   const un = rows("unclosed worker");
-  expect(un.map((i) => i.title)).toEqual(["N5805 is finished and its window is still open", "N5806 is finished and its window is still open"]); // N5807 is inside its one tick of grace
+  expect(un.map((i) => i.title)).toEqual(["N5805 is finished and its window is still open", "N5806 is finished and its window is still open"]);
   expect(un[0].ctx).toContain("no DISPOSITION bullet");
   expect(un[0].act).toContain("DISPOSITION N5805 closed");
 
-  // a receipt clears the owed row; a closed disposition clears one worker; a bare `parked` does not clear the other
   write("- 09:00 OWED sig-9608 sign the spec on Telegram\n- 09:03 DELIVERED sig-9608 msg=43 chat=-100\n- 10:00 DISPOSITION N5806 closed\n- 10:01 DISPOSITION N5805 parked\n");
   expect(rows("owed undelivered")).toEqual([]);
   expect(rows("unclosed worker").map((i) => i.title)).toEqual(["N5805 is finished and its window is still open"]);
   write("- 10:00 DISPOSITION N5806 closed\n- 10:01 DISPOSITION N5805 parked wake=pr-4999-merge\n");
   expect(rows("unclosed worker")).toEqual([]);
 
-  // no tick state file reads as no unclosed worker, not as an unread source
   rmSync(stateFile);
   write("- 09:00 OWED sig-9608 sign the spec on Telegram\n");
   expect(rows("unclosed worker")).toEqual([]);
