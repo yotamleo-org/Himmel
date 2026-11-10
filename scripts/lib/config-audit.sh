@@ -177,7 +177,6 @@ const real = (p) => {
   try { return path.join(fs.realpathSync(path.dirname(r)), path.basename(r)); } catch { return r; }
 };
 const sameEnv = (a, b) => Boolean(a && b && a.path && b.path && real(a.path) === real(b.path));
-// The himmelctl cache .env is read first while it exists, so its absence moves the read elsewhere.
 const isCache = (p) => Boolean(p && E.CA_ENV_CACHE && real(p) === real(E.CA_ENV_CACHE));
 const wasCache = (s) => Boolean(s && (s.cache || isCache(s.path)));
 const cacheGone = (s) => Boolean(s && s.present && wasCache(s) && !fs.existsSync(s.path));
