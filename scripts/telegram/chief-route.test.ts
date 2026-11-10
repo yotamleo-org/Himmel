@@ -2756,6 +2756,25 @@ test("R10b: a seeded key whose ledger was deleted refuses the seal (T10), and so
   expect((await sealOn(`${o}.critic-spec-r2.md`, [o], "SPEC CLEAN")).err).toContain(`${other} is in the round manifest but has no ledger; restore it from the state repo history`);
 }, S1B);
 
+test("R10c: an emptied ledger is a deleted one: a seeded key and a key with a snapshot folder both refuse (T10), beside the seals before it was emptied", async () => {
+  const t = specsTree(); const a = join(t.dir, `${CAP_KEY}-a.md`); writeFileSync(a, front(CAP_KEY, "# A\n"));
+  preSeal(`${a}.critic-spec-r1.md`, [a], "SPEC CLEAN", []);
+  expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  expect((await sealOn(`${a}.critic-spec-r2.md`, [a], "SPEC CLEAN")).err).toBe("");
+  writeFileSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`), "");
+  const v3 = `${a}.critic-spec-r3.md`;
+  const emptied = await sealOn(v3, [a], "SPEC CLEAN");
+  expect(emptied.err).toContain(`${CAP_KEY} is in the round manifest but has no ledger; restore it from the state repo history`);
+  expect(emptied.code).not.toBe(0);
+  expect(readFileSync(v3, "utf8")).not.toContain("CONTENT-SHA256");
+  const other = "HIMMEL-9712"; const o = join(t.dir, `${other}-o.md`); writeFileSync(o, front(other, "# O\n"));
+  expect((await sealOn(`${o}.critic-spec-r1.md`, [o], "SPEC CLEAN")).err).toBe("");
+  writeFileSync(join(roundsDir(t.specs), `${other}.jsonl`), "\n\n");
+  const status = await routeCli("round-status", other, "--specs", t.specs);
+  expect(status.err).toContain(`${other} is in the round manifest but has no ledger; restore it from the state repo history`);
+  expect(status.code).not.toBe(0);
+}, S1B);
+
 test("R11: one unparseable ledger line refuses the seal, round-status, ledger-verify and the findings page (T11), and the same ledger without it seals", async () => {
   const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
   const a = join(t.dir, `${CAP_KEY}-a.md`); const plan = join(t.plans, `${CAP_KEY}-a.md`);

@@ -622,14 +622,14 @@ async function readManifest(specs: string): Promise<{ keys: Record<string, unkno
 
 async function loadLedger(specs: string, key: string): Promise<LedgerRow[]> {
   const manifest = await readManifest(specs);
-  const rows = await readLedger(specs, key);
-  if (rows !== null) return rows;
+  const rows = await readLedger(specs, key) ?? [];
   const snapshots = await stat(join(ledgerDir(specs), key)).then(() => true, (e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return false;
     throw new Error(`${key}: cannot read its snapshot folder (${e.message}); restore it from the state repo history`);
   });
-  if (Object.hasOwn(manifest.keys, key) || snapshots) throw new Error(`${key} is in the round manifest but has no ledger; restore it from the state repo history`);
-  return [];
+  const seeded = rows.some(r => r.row === "seed");
+  if ((Object.hasOwn(manifest.keys, key) && !seeded) || (snapshots && !seeded && !rows.some(r => r.row === "round"))) throw new Error(`${key} is in the round manifest but has no ledger; restore it from the state repo history`);
+  return rows;
 }
 
 // One writer at a time per ticket: flock(2) on a persistent lock file beside the ledger, released when the file closes.
