@@ -202,9 +202,9 @@ to the report. A case counts only when its run manifest recorded exactly the
 case inputs the fixtures hold. Other inputs (`execution-input-differs`), or no
 record at all (`execution-input-unrecorded`, the case for every bundle from
 before the manifest), leave it out: missing provenance is never assumed. The
-cohort holds whole twin pairs whose entries are all
-validated: a sealed or open pair with a pending twin leaves together, and its
-name is listed. A relabelled twin is named too. Per critic and for the panel,
+cohort holds whole twin pairs whose twins are all
+validated and counted: a sealed or open pair with a pending, unscored or
+provenance-dropped twin leaves together, and its name is listed. A relabelled twin is named too. Per critic and for the panel,
 the block reports:
 
 | metric | definition |

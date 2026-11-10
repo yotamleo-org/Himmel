@@ -201,6 +201,7 @@ def load_adjudications(path, case_inputs, gold_revision, findings):
                   and rec["correctness"] in CORRECTNESS and rec["scope"] in SCOPES and (sv is None or isinstance(sv, bool))
                   and isinstance(rec["target_ids"], list) and all(isinstance(t, str) for t in rec["target_ids"])
                   and isinstance(rec["observed_execution_ids"], list)
+                  and all(isinstance(x, str) for x in rec["observed_execution_ids"])
                   and not (rec["target_ids"] and rec["correctness"] != "correct"))
             why = None if ok else "bad-value:label"
             if ok and rec["finding_sha256"] not in findings.get(cid, ()):
@@ -233,15 +234,19 @@ def _ratio(k, n):
     return (k / n) if n else None
 
 
-def cohort(cases):
-    """The verified cohort over cases {case id: {key_kind, pair, split, entry}}: validated entries of whole twin
-    pairs only (a pair with a pending or excluded twin leaves together), plus the relabelled and pending ids."""
+def cohort(cases, scored):
+    """The verified cohort over cases {case id: {key_kind, pair, split, entry}}: whole twin pairs whose every
+    twin is validated and among the scored ids (a pending, excluded, unscored or provenance-dropped twin takes its
+    pair out with it), plus the relabelled and pending ids."""
     pairs = {}
     for cid, c in cases.items():
         pairs.setdefault(c["pair"], []).append(cid)
+
+    def ok(i):
+        return (cases[i]["entry"] or {}).get("state") == "validated" and i in scored
     incomplete = sorted(p for p, ids in pairs.items()
                         if any((cases[i]["entry"] or {}).get("state") == "validated" for i in ids)
-                        and not all((cases[i]["entry"] or {}).get("state") == "validated" for i in ids))
+                        and not all(ok(i) for i in ids))
     members = sorted(cid for cid, c in cases.items() if (c["entry"] or {}).get("state") == "validated"
                      and c["pair"] not in incomplete)
     by_state = {s: sorted(cid for cid, c in cases.items() if ((c["entry"] or {}).get("state") or "pending") == s)
@@ -270,7 +275,7 @@ def verified_metrics(cases, findings, labels, participation):
     labelled incorrect, out of contract or severity_valid false; a correct in-contract rightly rated blocker
     disputes the clean control; any other blocker is unsettled. The false-block rate is a value only when no
     control is disputed and every blocker of the member is settled."""
-    co = cohort(cases)
+    co = cohort(cases, set(findings))
     members = sorted({s for p in participation.values() for s in p}) + ["panel"]
     flabels, truling = labels["findings"], labels["targets"]
     metrics, counts, coverage, reasons, targets, blocks, disputed = {}, {}, {}, [], {}, {}, set()

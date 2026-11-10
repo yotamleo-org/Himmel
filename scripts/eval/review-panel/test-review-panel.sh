@@ -1459,6 +1459,13 @@ VOP="$TMP/m4-out-partial"; cp -r "$VO" "$VOP"; mkmanifest "$VOP" "$FIX" "case-21
 J9="$TMP/m4-11.json"; vscore "$VOP" "$L1" "$J9" >/dev/null
 eq "unrecorded_inputs_not_verified: a case the manifest does not record is left out, the rest stay" \
   "$(jget "$J9" verified/targets/case-15):$(jget "$J9" verified/targets/case-21/toctou-a-1)" "null:missed"
+eq "sealed_pair_kept_together: a twin left out for its provenance takes its pair out of the cohort" \
+  "$(jget "$J9" verified/blocks/case-16):$(jget "$J9" verified/cohort/incomplete_pairs)" 'null:["logic-a", "scope-b"]'
+LX="$TMP/m4-labels-exec.jsonl"; cp "$L1" "$LX"
+python3 -c 'import json,sys; l=json.loads(open(sys.argv[1]).readline()); l["observed_execution_ids"]=[{"x": 1}]; open(sys.argv[1], "a").write((json.dumps(l) + "\n") * 2)' "$LX"
+JX="$TMP/m4-14.json"; out=$(vscore "$VO" "$LX" "$JX"); rc=$?
+eq "observed_execution_ids_are_strings: a label whose execution ids are not strings is a diagnostic, not a crash" \
+  "$rc:$(jget "$JX" verified/diagnostics | grep -c bad-value)" "0:1"
 LT="$TMP/m4-labels-target.jsonl"; cp "$L1" "$LT"
 python3 -B -c 'import json,sys; sys.path.insert(0, sys.argv[1]); import adjudication, score
 cases = score.load_key(sys.argv[2])["cases"]
