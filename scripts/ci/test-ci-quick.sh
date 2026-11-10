@@ -29,11 +29,6 @@
 #   Q7  two recorded jobs of one merge sha (S1 passed on ubuntu-24.04, failed on
 #       ubuntu-26.04 once ubuntu-latest moved): every runs-on in ci.yml names the
 #       green job's image, none floats
-#   Q8  the claude-startup rows: ci-quick records the five mock-Claude suites and
-#       the claude-startup sentinel verifies and publishes them where ready-check
-#       item 19 reads (a: the recorder steps, b: the artifact names and paths,
-#       d: the order and the exact sentinel shape). Q8m and Q1m mutate a copy of
-#       ci.yml, or of a reader, one change per row, and each must fail its tag.
 #
 # Usage: bash scripts/ci/test-ci-quick.sh
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed.
@@ -56,7 +51,6 @@ job_block() { job_block_f "$CI_YML" "$1"; }
 # A sentinel also skips on a label event that is not the go run.
 CHEAP_ON="!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')"
 
-# q1_check <ci.yml>: one line per folded group, "ok - ..." or "FAIL - ...".
 q1_check() {
   local f="$1" g b want_if want_step co_sha n co_ok
   co_sha="$(job_block_f "$f" ci-quick | sed -n 's|^      - uses: actions/checkout@\([0-9a-f]\{40\}\)\( #.*\)\{0,1\}$|\1|p' | head -n 1)"
@@ -70,7 +64,6 @@ q1_check() {
       *) want_if="    if: \${{ !cancelled() && ($CHEAP_ON) && needs.ci-quick.outputs.$g != 'pass' }}"
          want_step="      - run: exit 1" ;;
     esac
-    # Only the claude-startup sentinel may check out, once, at ci-quick's pin, without persisting the token.
     n="$(printf '%s\n' "$b" | grep -c 'actions/checkout')"
     co_ok=0
     if [ "$n" -eq 0 ]; then co_ok=1
@@ -264,7 +257,6 @@ RST_F="$ROOT/scripts/ci/run-shell-tests.sh"
 RECORDER_FORM='^        run: bash scripts/ci/claude-startup-row.sh (scripts/testing/test-[A-Za-z0-9._-]+\.sh)$'
 VERIFY_FORM='^bash scripts/ci/claude-startup-row\.sh --verify ([^ ]+) ([^ ]+)$'
 
-# step_of <id>: the step with that id, read from a job block on stdin.
 step_of() {
   awk -v id="$1" '
     function flush() { if (hit) printf "%s", buf; buf = ""; hit = 0 }
@@ -274,12 +266,11 @@ step_of() {
     s && ($0 == "      - id: " id || $0 == "        id: " id) { hit = 1 }
     END { flush() }'
 }
-skv() { sed -nE "s/^( {6}- | {8})$1: ?//p" | head -n 1; }  # a step-level key of the step on stdin
-wkv() { sed -nE "s/^ {10}$1: ?//p" | head -n 1; }          # a `with:` child of the step on stdin
+skv() { sed -nE "s/^( {6}- | {8})$1: ?//p" | head -n 1; }
+wkv() { sed -nE "s/^ {10}$1: ?//p" | head -n 1; }
 dir_of() { case "$1" in */*) printf '%s' "${1%/*}" ;; *) printf '%s' "" ;; esac; }
 idx_of() { printf '%s\n' "$2" | grep -nxF -- "$1" | head -n 1 | cut -d: -f1; }
 
-# q8_check <ci.yml> [<ready-check> <ci-fail-record> <run-shell-tests>]: prints only FAIL lines.
 q8_check() {
   local f="$1" rc_f="${2:-$RC_F}" fr_f="${3:-$FR_F}" rst_f="${4:-$RST_F}"
   local qb sb d l rec="" dups exp erc kind a c na nc u glob pglob="" nglob="" vs vrun raw_p="" out_p="" msrc
@@ -288,7 +279,6 @@ q8_check() {
   sb="$(job_block_f "$f" claude-startup)"
   d="$(mktemp -d "${TMPDIR:-/tmp}/q8.XXXXXX")" || { echo "FAIL - Q8a: no temp dir"; return 0; }
 
-  # a: every executable scripts/testing line of ci-quick is a recorder line, and the recorder set is the expected set
   while IFS= read -r l; do
     [ -n "$l" ] || continue
     if [[ "$l" =~ $RECORDER_FORM ]]; then rec="$rec${BASH_REMATCH[1]}
@@ -303,7 +293,6 @@ q8_check() {
   [ -n "$rec" ] || echo "FAIL - Q8a: ci-quick has no recorder step"
   [ "$(printf '%s' "$rec" | LC_ALL=C sort)" = "$(printf '%s\n' "$exp" | LC_ALL=C sort)" ] || echo "FAIL - Q8a: the recorder steps ($(printf '%s' "$rec" | tr '\n' ' ')) are not the expected set ($(printf '%s' "$exp" | tr '\n' ' '))"
 
-  # b: the published name sits inside the readers' globs, the raw name outside, and each directory copy matches its owner
   for kind in p name; do
     a="$(grep -oE -- "-$kind '[^']*'" "$rc_f")"; c="$(grep -oE -- "-$kind '[^']*'" "$fr_f")"
     na="$(printf '%s\n' "$a" | grep -c .)"; nc="$(printf '%s\n' "$c" | grep -c .)"
@@ -326,7 +315,7 @@ q8_check() {
   case "$(printf '%s\n' "$ms" | skv uses)" in actions/upload-artifact@*) ;; *) echo "FAIL - Q8b: the published step does not use actions/upload-artifact" ;; esac
   name="$(printf '%s\n' "$ms" | wkv name)"
   case "$name" in ''|*"\${{"*) echo "FAIL - Q8b: the published artifact name is not a literal: '$name'" ;; esac
-  # shellcheck disable=SC2254 # the glob read from the reader is the pattern on purpose
+  # shellcheck disable=SC2254
   case "$name" in $pglob) ;; *) echo "FAIL - Q8b: the published artifact name '$name' does not match the readers' -p glob '$pglob'" ;; esac
   [ "$(printf '%s\n' "$ms" | wkv path)" = "$(dir_of "$out_p")/" ] || echo "FAIL - Q8b: the published upload path is not the directory of <out> ($out_p)"
   # shellcheck disable=SC2254
@@ -343,7 +332,6 @@ q8_check() {
   [ "$(printf '%s\n' "$cs" | skv run)" = "rm -rf $(dir_of "$msrc")" ] || echo "FAIL - Q8b: the raw clean step is not rm -rf of the directory of CLAUDE_STARTUP_MANIFEST"
   [ "$(printf '%s\n' "$rr" | skv run)" = "rm -rf $(dir_of "$raw_p")" ] || echo "FAIL - Q8b: the raw reset step is not rm -rf of the directory of the raw file"
 
-  # d: the order inside the group and the exact sentinel shape
   ids="$(printf '%s\n' "$qb" | awk '/^    steps:/ { s = 1; next } s && /^      - id: / { print $3; next } s && /^        id: / { print $2 }')"
   last=0; ord_bad=""
   for r in claude-startup claude-startup__mock-turn claude-startup__consult claude-startup__hook-smoke claude-startup__live-turn claude-startup__raw claude-startup__raw-clean; do
@@ -370,22 +358,19 @@ q8_check() {
   rm -rf "$d"
 }
 
-# Q8
 q8_out="$(q8_check "$CI_YML")"
 if [ -z "$q8_out" ]; then ok "Q8 the claude-startup recorder, artifacts and sentinel hold (a, b, d)"
 else
   while IFS= read -r l; do bad "${l#FAIL - }"; done <<< "$q8_out"
 fi
 
-# Mutants: each row edits a copy of ci.yml (or of a reader) and must fail its own clause.
 MT="$(mktemp -d "${TMPDIR:-/tmp}/q8m.XXXXXX")" || exit 1
 trap 'rm -rf "$MT"' EXIT
 m="$MT/m.yml"
 newm() { cp "$CI_YML" "$m"; }
 
-# mut <file> <job> <old> <new>: replace the first <old> inside <job> with <new>, in place.
 mut() {
-  # shellcheck disable=SC2015 # the failure branch reports a setup error and removes the scratch file
+  # shellcheck disable=SC2015
   OLD="$3" NEW="$4" awk -v job="$2" '
     BEGIN { old = ENVIRON["OLD"]; new = ENVIRON["NEW"] }
     $0 == "  " job ":" { inj = 1 }
@@ -395,7 +380,6 @@ mut() {
     END { exit !done }
   ' "$1" > "$1.n" && mv "$1.n" "$1" || { rm -f "$1.n"; bad "Q8m setup: '$3' not found in $2"; return 1; }
 }
-# mut_ins <file> <job> <anchor-line> <text>: insert <text> before the first line equal to <anchor-line> inside <job>.
 mut_ins() {
   # shellcheck disable=SC2015
   ANCHOR="$3" TEXT="$4" awk -v job="$2" '
@@ -407,7 +391,6 @@ mut_ins() {
     END { exit !done }
   ' "$1" > "$1.n" && mv "$1.n" "$1" || { rm -f "$1.n"; bad "Q8m setup: no line '$3' in $2"; return 1; }
 }
-# step_lines <file> <job> <id>: "<first> <last>" line numbers of that step.
 step_lines() {
   awk -v job="$2" -v id="$3" '
     function emit(e) { if (hit) { print st, e; done = 1; exit } }
@@ -418,12 +401,12 @@ step_lines() {
     END { if (!done) emit(NR) }
   ' "$1"
 }
-mut_del_step() { # mut_del_step <file> <job> <id>
+mut_del_step() {
   local r; r="$(step_lines "$1" "$2" "$3")"
   [ -n "$r" ] || { bad "Q8m setup: no step $3 in $2"; return 1; }
   sed "${r% *},${r#* }d" "$1" > "$1.n" && mv "$1.n" "$1"
 }
-mut_mv_step() { # mut_mv_step <file> <job> <id> <before-id>: move step <id> above step <before-id>
+mut_mv_step() {
   local r s e b
   r="$(step_lines "$1" "$2" "$3")"; [ -n "$r" ] || { bad "Q8m setup: no step $3 in $2"; return 1; }
   s="${r% *}"; e="${r#* }"
@@ -432,12 +415,12 @@ mut_mv_step() { # mut_mv_step <file> <job> <id> <before-id>: move step <id> abov
   b="${r% *}"
   { head -n $((b - 1)) "$1.rest"; cat "$1.chunk"; tail -n +"$b" "$1.rest"; } > "$1"
 }
-q8m() { # q8m <id> <tag> <ci.yml> [reader args]: q8_check must print a FAIL line carrying <tag>
+q8m() {
   local id="$1" tag="$2" f="$3" out; shift 3
   out="$(q8_check "$f" "$@")"
   if printf '%s\n' "$out" | grep -q "^FAIL - $tag"; then ok "Q8m $id -> $tag"; else bad "Q8m $id: no $tag line; got: ${out:-<none>}"; fi
 }
-q1m() { # q1m <id> <ci.yml>
+q1m() {
   local out; out="$(q1_check "$2")"
   if printf '%s\n' "$out" | grep -q '^FAIL - Q1'; then ok "Q1m $1 -> Q1 FAIL"; else bad "Q1m $1: no Q1 FAIL line"; fi
 }
@@ -448,7 +431,6 @@ VERIFY_RUN="$RPFX --verify claude-startup-raw/rows.txt claude-startup-manifest/m
 SENT_EXIT="      - if: \${{ needs.ci-quick.outputs.claude-startup != 'pass' }}"
 CO_SHA="$(job_block_f "$CI_YML" ci-quick | sed -n 's|^      - uses: actions/checkout@\([0-9a-f]\{40\}\)\( #.*\)\{0,1\}$|\1|p' | head -n 1)"
 
-# a: the recorder steps and the expected set
 newm; mut "$m" ci-quick "$RPFX scripts/testing/test-mock-hook-smoke.sh" "run: bash scripts/testing/test-mock-hook-smoke.sh" && q8m a1 Q8a "$m"
 newm; mut_ins "$m" ci-quick "      - id: doc-invariants__dev" $'      - run: |\n          bash scripts/testing/test-x.sh' && q8m a2 Q8a "$m"
 newm; mut "$m" ci-quick "$RPFX scripts/testing/test-claude-mock-turn.sh" "$RPFX scripts/testing/test-claude-mock-turn.sh"$'\n'"        $RPFX scripts/testing/test-claude-mock-turn.sh" && q8m "a3 (a duplicated line)" Q8a "$m"
@@ -459,7 +441,6 @@ sed -E 's|^( +)run: bash scripts/ci/claude-startup-row.sh scripts/testing/.*$|\1
 awk '$0 !~ /^scripts\/testing\//' "$RST_F" > "$MT/rst-none.sh"
 q8m a5 Q8a "$m" "$RC_F" "$FR_F" "$MT/rst-none.sh"
 
-# b: names, paths and the readers' globs
 newm; mut "$m" claude-startup "name: $PUB" "name: \${{ github.head_ref }}" && q8m b1 Q8b "$m"
 newm; mut "$m" claude-startup "name: $PUB" "name: claude-startup-manifest" && q8m b2 Q8b "$m"
 newm; mut "$m" ci-quick "name: claude-startup-raw" "name: shell-unit-manifest-ubuntu-latest-shard-raw" && q8m b3 Q8b "$m"
@@ -480,7 +461,6 @@ q8m b14 Q8b "$CI_YML" "$RC_F" "$MT/fr-p.sh"
 q8m b15 Q8b "$CI_YML" "$MT/rc-n.sh"
 newm; mut "$m" claude-startup "run: rm -rf claude-startup-raw" "run: rm -rf other" && q8m b16 Q8b "$m"
 
-# d: the order and the exact sentinel shape
 newm; mut_mv_step "$m" ci-quick claude-startup__raw claude-startup__live-turn && q8m d1 Q8d "$m"
 newm; mut_mv_step "$m" claude-startup claude-startup__manifest claude-startup__verify && q8m d2 Q8d "$m"
 newm; mut_del_step "$m" claude-startup claude-startup__verify && q8m d3 Q8d "$m"
@@ -501,7 +481,6 @@ if mut_ins "$m" ci-quick "      - id: claude-startup__live-turn" "      # script
   if [ -z "$out" ]; then ok "Q8m control: a whole-line comment naming scripts/testing raises no Q8 line"; else bad "Q8m control: a comment line raised: $out"; fi
 fi
 
-# Q1m: the claude-startup checkout stays narrow
 newm; mut_ins "$m" commit-lint "      - if: \${{ needs.ci-quick.outputs.commit-lint != 'pass' }}" "      - uses: actions/checkout@$CO_SHA # v7.0.1" && q1m 1 "$m"
 newm; mut_ins "$m" claude-startup "$SENT_EXIT" "      - uses: actions/checkout@$CO_SHA # v7.0.1" && q1m 2 "$m"
 newm; mut "$m" claude-startup "persist-credentials: false" "" && q1m 3 "$m"

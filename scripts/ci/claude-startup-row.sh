@@ -36,7 +36,6 @@ expected_set() {
   ' "$here/run-shell-tests.sh"
 }
 
-# The third whitespace-delimited field of a row, read without globbing.
 field3() {
   set -f
   # shellcheck disable=SC2086
@@ -67,7 +66,6 @@ verify() {
     return 2
   }
 
-  # An absent or unreadable raw file reads as zero lines.
   if [ -r "$raw" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       printf '%s\n' "$line" | grep -qE '^ran (0|[1-9][0-9]{0,2}) (scripts/testing/test-[A-Za-z0-9._-]+\.sh)$' || bad="$bad$line

@@ -798,10 +798,6 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 10
         run: bash scripts/ci/claude-startup-row.sh scripts/testing/test-mock-hook-live-turn.sh
-      # The recorder wrote one row per suite into claude-startup-raw/. The artifact
-      # name sits outside the manifest glob item 19 reads, so nothing reads these
-      # rows until the claude-startup sentinel job has verified them and published
-      # them under a matching name.
       - id: claude-startup__raw
         name: Upload the raw claude-startup rows
         if: ${{ !cancelled() }}
@@ -1541,17 +1537,11 @@ jobs:
   # three), run
   # `bash scripts/testing/test-fakekey-claude-startup.sh` against that version
   # locally, and fix any assertion the new debug-log wording breaks in the same PR.
-  # The suite is SKIP_LISTed in run-shell-tests.sh because the shell-unit shards
-  # have no claude CLI; ci-quick's claude-startup step group runs it.
   claude-startup:
     name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'claude-startup' || 'claude-startup (deferred)' }}
     # Runs as the claude-startup step group of ci-quick; this job carries the
     # required context: it runs so the literal name is written, green when the
     # group passed, red otherwise (a skipped job reports its raw name expression).
-    # It also verifies the rows ci-quick recorded for the five mock-Claude suites,
-    # on a fresh checkout, and publishes them under a name ready-check item 19
-    # reads. No PR suite runs here, each step is gated on the one before it, and a
-    # failed verify publishes nothing.
     needs: ci-quick
     if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) }}
     runs-on: ubuntu-24.04
@@ -1562,8 +1552,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The fresh checkout holds any raw directory the PR committed; the download
-      # only adds files, so it is removed first.
       - id: claude-startup__raw-reset
         name: Remove any committed raw claude-startup rows
         if: ${{ !cancelled() && steps.claude-startup__checkout.outcome == 'success' }}

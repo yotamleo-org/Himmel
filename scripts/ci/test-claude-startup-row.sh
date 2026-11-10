@@ -1,17 +1,4 @@
 #!/usr/bin/env bash
-# scripts/ci/test-claude-startup-row.sh -- scripts/ci/claude-startup-row.sh, the
-# recorder ci-quick wraps each mock-Claude suite in and the verifier the
-# claude-startup sentinel runs. Every row builds a temp repo T, copies the real
-# script to T/scripts/ci/ and runs that copy with cwd T, so a mutant copy of the
-# script (and of this test beside it) is what runs.
-#
-#   R1-R10  record: one row per run, rc passed through, nothing run and nothing
-#           written on a refusal, the suite never sees the manifest path
-#   X1-X5   --expected: the SKIP_LIST scripts/testing entries, comments dropped,
-#           failing closed
-#   V1-V10  --verify: exactly one well-formed row per expected path and nothing
-#           else, no <out> left behind on a refusal (V10 is skipped as root)
-#
 # Usage: bash scripts/ci/test-claude-startup-row.sh
 # Exit codes: 0 -- all rows passed; 1 -- at least one failed.
 set -uo pipefail
@@ -26,7 +13,7 @@ ROOT_TMP="$(mktemp -d "${TMPDIR:-/tmp}/csr-test.XXXXXX")" || exit 1
 trap 'rm -rf "$ROOT_TMP"' EXIT
 seq_n=0
 
-assert() { # assert <id> <description> <command...>
+assert() {
   local id="$1" desc="$2"
   shift 2
   if "$@"; then
@@ -38,7 +25,7 @@ assert() { # assert <id> <description> <command...>
   fi
 }
 
-new_t() { # a fresh temp repo T holding the script copy and the fixture suites
+new_t() {
   seq_n=$((seq_n + 1))
   T="$ROOT_TMP/t$seq_n"
   mkdir -p "$T/scripts/ci" "$T/scripts/testing" || exit 1
@@ -46,15 +33,12 @@ new_t() { # a fresh temp repo T holding the script copy and the fixture suites
   printf '#!/usr/bin/env bash\ntouch ran-ok.marker\nexit 0\n' >"$T/scripts/testing/test-ok.sh"
   printf '#!/usr/bin/env bash\ntouch ran-red.marker\nexit 3\n' >"$T/scripts/testing/test-red.sh"
   printf '#!/usr/bin/env bash\ntouch ran-skip.marker\necho "SKIP: no claude"\nexit 77\n' >"$T/scripts/testing/test-skip.sh"
-  # The fixture bodies are written verbatim: their variables expand when the suite runs.
   # shellcheck disable=SC2016
   printf '#!/usr/bin/env bash\ntouch ran-env.marker\nprintf "[%%s]\\n" "${CLAUDE_STARTUP_MANIFEST-unset}"\nexit 0\n' >"$T/scripts/testing/test-env.sh"
   # shellcheck disable=SC2016
   printf '#!/usr/bin/env bash\ntouch ran-swap.marker\nrm -f "$CSR_FIXTURE_M" && mkdir "$CSR_FIXTURE_M"\nexit 0\n' >"$T/scripts/testing/test-swap.sh"
 }
 
-# csr <args>: run the copy in T. The manifest comes from $M when M is set (it
-# may be empty), and is unset in the child otherwise. Sets OUT and RC.
 csr() {
   if [ "${M+set}" = set ]; then
     OUT="$(cd "$T" && CLAUDE_STARTUP_MANIFEST="$M" bash scripts/ci/claude-startup-row.sh "$@" 2>&1)"
@@ -65,7 +49,7 @@ csr() {
   fi
 }
 
-rst_with() { # rst_with <entry-line>...: a fixture run-shell-tests.sh beside the copy
+rst_with() {
   {
     echo 'before=1'
     echo 'SKIP_LIST="'
@@ -84,7 +68,6 @@ no_ran0() { ! grep -rq '^ran 0 ' "$T" 2>/dev/null; }
 A="scripts/testing/test-a.sh"
 B="scripts/testing/test-b.sh"
 
-# ---------------------------------------------------------------- record rows
 new_t
 unset M
 M=new-dir/rows.txt
@@ -173,7 +156,6 @@ csr scripts/testing/test-ok.sh
 assert R10 "manifest parent is a regular file: rc 2" rc_is 2
 assert R10 "manifest parent is a regular file: the suite never ran" no_markers
 
-# ------------------------------------------------------------ --expected rows
 new_t
 unset M
 rst_with "$A  # a reason that names scripts/testing/test-z.sh" "scripts/foo/test-b.sh  # another scripts/testing/test-z.sh" "scripts/testing/test-c.sh  # reason scripts/testing/test-z.sh"
@@ -210,8 +192,7 @@ assert X5 "real run-shell-tests.sh: every line is a bare scripts/testing suite p
 assert X5 "real run-shell-tests.sh: no duplicate" [ -z "$(printf '%s\n' "$OUT" | sort | uniq -d)" ]
 assert X5 "real run-shell-tests.sh: lists the hook smoke suite" [ "$(printf '%s\n' "$OUT" | grep -cx 'scripts/testing/test-mock-hook-smoke.sh')" = 1 ]
 
-# --------------------------------------------------------------- --verify rows
-vnew() { # a temp repo whose SKIP_LIST holds A and B (and one other entry)
+vnew() {
   new_t
   unset M
   rst_with "$A  # r" "$B  # r" "scripts/foo/test-c.sh  # r"
