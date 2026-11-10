@@ -22,6 +22,13 @@ swapped to conflicts; --ledger-dir L puts the file at L/conflicts/<pr>.jsonl (fo
 
 backfill reads the PRs merged since --since from `gh pr list` and records each one with source: backfill.
 
+  week [--days N] [--repo-dir R] [--base-ref REF] [--ledger-dir L]
+
+week prints two lines from the ledger, git and one `gh run list` read, never typed by hand: the count line
+("conflicts 7d: <files> files in <prs> PRs (...); later: reverted <n>, red main <n> | unknown, bug-origin <n>; top files: ...")
+and "harm: #<pr> <why>, conflict files <f>; ..." (or "harm: none"). Reverted reads one bounded git log of REF; red main is the
+first completed ci.yml main run containing the merge commit; bug-origin is a <ledger>/bug-origin row whose origin is #<pr>.
+
 parse_body(text) is the one reader of the PR body's `## Conflicts resolved` section, shared with ready-check (S5) and
 merge-on-green (S4): [(path, [pr numbers], note)].
 
@@ -33,7 +40,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "judge-accuracy"))
@@ -293,6 +300,125 @@ def cmd_backfill(a):
     return 0
 
 
+def read_ledger_rows(root, cutoff):
+    """Every ledger row merged (else recorded) at or after cutoff, from <root>/*.jsonl; an unreadable line is skipped."""
+    rows = []
+    if not root or not os.path.isdir(root):
+        return rows
+    for f in sorted(os.listdir(root)):
+        if not f.endswith(".jsonl"):
+            continue
+        try:
+            with open(os.path.join(root, f), encoding="utf-8") as fh:
+                lines = fh.read().split("\n")
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            when = judge_accuracy.when(r.get("merged_at") or r.get("recorded_at") or "") if isinstance(r, dict) else None
+            if when is not None and when >= cutoff and type(r.get("pr")) is int:
+                rows.append(r)
+    return rows
+
+
+def reverted_prs(repo, base, since, rows):
+    """{pr: short sha of the reverting commit}: one bounded git log of base since `since`, matched on `This reverts commit <merge_commit>`
+    or a subject `Revert "...(#<pr>)"`. None when git fails."""
+    try:
+        out = text(repo, "log", "--max-count=2000", "--since=%s" % since, "--format=%h%x00%s%x00%b%x01", base)
+    except Unknown:
+        return None
+    merges = {r["pr"]: r["merge_commit"] for r in rows if r.get("merge_commit")}
+    found = {}
+    for entry in out.split("\x01"):
+        parts = entry.strip().split("\x00")
+        if len(parts) < 3:
+            continue
+        sha, subject, body = parts[0], parts[1], parts[2]
+        for pr, mc in merges.items():
+            if pr in found:
+                continue
+            m = re.match(r'Revert ".*\(#([0-9]+)\)"\s*$', subject)
+            if mc in body or (m and int(m.group(1)) == pr):
+                found[pr] = sha
+    return found
+
+
+def red_main_prs(repo, rows):
+    """{pr: run id}: the first completed ci.yml main run whose head contains the PR's merge commit ended in failure.
+    One `gh run list` read. None when gh fails."""
+    runs = gh_json(repo, "run", "list", "--workflow", "ci.yml", "--branch", "main", "--limit", "200",
+                   "--json", "databaseId,headSha,status,conclusion,createdAt")
+    if not isinstance(runs, list):
+        return None
+    runs = sorted((r for r in runs if isinstance(r, dict) and r.get("status") == "completed"), key=lambda r: r.get("createdAt") or "")
+    found = {}
+    for r in rows:
+        mc = r.get("merge_commit")
+        if not mc or r["pr"] in found:
+            continue
+        for run in runs:
+            try:
+                git(repo, "merge-base", "--is-ancestor", mc, run.get("headSha") or "")
+            except Unknown:
+                continue
+            if run.get("conclusion") == "failure":
+                found[r["pr"]] = run.get("databaseId")
+            break
+    return found
+
+
+def cmd_week(a):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=a.days)
+    if a.ledger_dir:
+        root, bug_dir = os.path.join(a.ledger_dir, SUBDIR), os.path.join(a.ledger_dir, "bug-origin")
+    else:
+        root = ledger_root(a.repo_dir, None)
+        if root is None:
+            sys.stderr.write("conflicts: no handover root configured; pass --ledger-dir\n")
+            return 2
+        bug_dir = os.path.join(os.path.dirname(root), "bug-origin")
+    rows = read_ledger_rows(root, cutoff)
+    prs = sorted({r["pr"] for r in rows})
+    files = {}
+    for r in rows:
+        files[r.get("file", "")] = files.get(r.get("file", ""), 0) + 1
+    kinds = (("unreported", sum(1 for r in rows if r.get("reported") is False)),
+             ("ours", sum(1 for r in rows if r.get("resolution") == "ours")),
+             ("trust", sum(1 for r in rows if r.get("trust_path"))),
+             ("outside", sum(1 for r in rows if r.get("outside"))))
+    reverted = reverted_prs(a.repo_dir, a.base_ref, cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"), rows) if rows else {}
+    red = red_main_prs(a.repo_dir, rows) if rows else {}
+    origins = {int(m.group(1)) for r in judge_accuracy.load_ledger(bug_dir).values()
+               for m in [re.fullmatch(r"#([0-9]+)", r["origin"])] if m}
+    blamed = [n for n in prs if n in origins]
+    top = sorted(files.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+    line = "conflicts 7d: %d files in %d PRs (%s); later: reverted %s, red main %s, bug-origin %d; top files: %s" % (
+        len(rows), len(prs), ", ".join("%s %d" % k for k in kinds),
+        "unknown" if reverted is None else len(reverted),
+        "unknown" if red is None else "%d%s" % (len(red), " (%s)" % ", ".join("#%d" % n for n in sorted(red)) if red else ""),
+        len(blamed), ", ".join("%s (%d)" % kv for kv in top) or "none")
+    line = line.replace("conflicts 7d:", "conflicts %dd:" % a.days, 1)
+    harm = []
+    for n in prs:
+        why = []
+        if reverted and n in reverted:
+            why.append("reverted by %s" % reverted[n])
+        if red and n in red:
+            why.append("red main run %s (ci.yml)" % red[n])
+        if n in blamed:
+            why.append("bug-origin")
+        if why:
+            fl = sorted({r.get("file", "") for r in rows if r["pr"] == n})
+            harm.append("#%d %s, conflict files %s" % (n, ", ".join(why), " ".join(fl)))
+    print(line)
+    print("harm: " + ("; ".join(harm) if harm else "none"))
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="conflict recorder")
     sub = p.add_subparsers(dest="verb", required=True)
@@ -312,8 +438,13 @@ def main(argv=None):
     b.add_argument("--repo-dir", required=True)
     b.add_argument("--base-ref", required=True)
     b.add_argument("--ledger-dir")
+    w = sub.add_parser("week")
+    w.add_argument("--days", type=int, default=7)
+    w.add_argument("--repo-dir", default=".")
+    w.add_argument("--base-ref", default="origin/main")
+    w.add_argument("--ledger-dir")
     a = p.parse_args(argv)
-    return {"detect": cmd_detect, "record": cmd_record, "backfill": cmd_backfill}[a.verb](a)
+    return {"detect": cmd_detect, "record": cmd_record, "backfill": cmd_backfill, "week": cmd_week}[a.verb](a)
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ case "$1 $2" in
       *) echo '{"isCrossRepository":false}' ;;
     esac ;;
   "pr list") cat "$TMP_GH_LIST" ;;
+  "run list") [ -f "$TMP_GH_RUNS" ] && cat "$TMP_GH_RUNS" || exit 1 ;;
   *) exit 1 ;;
 esac
 SH
@@ -47,7 +48,7 @@ printf '%s\n' "$*" >> "$GITSHIM_LOG"
 exec "$REAL_GIT" "$@"
 SH
 chmod +x "$TMP/gitshim/git"
-export TMP_GH_LOG="$TMP/gh.log" TMP_GH_LIST="$TMP/gh-list.json"
+export TMP_GH_LOG="$TMP/gh.log" TMP_GH_LIST="$TMP/gh-list.json" TMP_GH_RUNS="$TMP/gh-runs.json"
 export PATH="$TMP/shim:$PATH"
 
 g() { "$REAL_GIT" -C "$1" "${@:2}"; }
@@ -227,6 +228,51 @@ rc=$?
 eq "backfill at the gh limit exits 2" "$rc" "2"
 has "backfill at the gh limit says narrow --since" "$out" "narrow --since"
 if [ ! -e "$TMP/BL2" ]; then pass "backfill at the gh limit writes nothing"; else fail "backfill at the gh limit writes nothing"; fi
+
+W="$TMP/week"
+"$REAL_GIT" init -q -b main "$W"
+g "$W" config user.email t@example.com; g "$W" config user.name t; g "$W" config commit.gpgsign false
+printf 'x\n' > "$W/f.sh"; g "$W" add f.sh; g "$W" commit -q -m "init"
+printf 'a\n' >> "$W/f.sh"; g "$W" commit -q -am "a (#51)"; SHA_A="$(g "$W" rev-parse HEAD)"
+printf 'b\n' >> "$W/f.sh"; g "$W" commit -q -am "b (#52)"; SHA_B="$(g "$W" rev-parse HEAD)"
+g "$W" commit -q --allow-empty -m "Revert \"a (#51)\"" -m "This reverts commit $SHA_A."
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+WL="$TMP/WL"
+mkdir -p "$WL/conflicts" "$WL/bug-origin"
+python3 -I - "$WL/conflicts" "$SHA_A" "$SHA_B" "$NOW" <<'PY'
+import json, sys
+d, a, b, now = sys.argv[1:5]
+def row(pr, sha, f, res, trust=False, outside=False, reported=True):
+    return json.dumps({"v": 1, "pr": pr, "merge_commit": sha, "merged_at": now, "file": f, "other_prs": [9], "resolution": res,
+                       "reported": reported, "trust_path": trust, "outside": outside, "recorded_at": now})
+open(d + "/51.jsonl", "w").write(row(51, a, "f.sh", "merged") + "\n" + row(51, a, "g.sh", "ours", trust=True, reported=False) + "\n")
+open(d + "/52.jsonl", "w").write(row(52, b, "f.sh", "merged", outside=True) + "\n")
+old = json.loads(row(53, "deadbeef", "old.sh", "merged"))
+old["merged_at"] = "2020-01-01T00:00:00Z"
+open(d + "/53.jsonl", "w").write(json.dumps(old) + "\n")
+PY
+printf -- '---\npr: 60\norigin: "#52"\nclass: "test-gap"\nreason: "x"\n---\nbody\n' > "$WL/bug-origin/60.md"
+python3 -I -c 'import json,sys; print(json.dumps([{"databaseId":1,"headSha":sys.argv[1],"status":"completed","conclusion":"success","createdAt":"2026-11-08T10:00:00Z"},{"databaseId":2,"headSha":sys.argv[2],"status":"completed","conclusion":"failure","createdAt":"2026-11-08T11:00:00Z"},{"databaseId":3,"headSha":sys.argv[2],"status":"completed","conclusion":"success","createdAt":"2026-11-08T12:00:00Z"}]))' "$SHA_A" "$SHA_B" > "$TMP_GH_RUNS"
+wk() { python3 -I "$CONF" week --days 7 --repo-dir "$W" --base-ref main --ledger-dir "$WL" 2>&1; }
+: > "$TMP_GH_LOG"
+out="$(wk)"
+has "week: files and PRs" "$out" "conflicts 7d: 3 files in 2 PRs"
+has "week: counts by kind" "$out" "unreported 1, ours 1, trust 1, outside 1"
+has "week: reverted" "$out" "reverted 1"
+has "week: red main on the first run" "$out" "red main 1 (#52)"
+has "week: bug-origin" "$out" "bug-origin 1"
+has "week: top files" "$out" "top files: f.sh (2)"
+has "week: harm names the reverted PR" "$out" "harm: #51 reverted"
+has "week: harm names the red-main PR" "$out" "#52 red main run 2"
+hasnt "week: a row outside the window is not counted" "$out" "old.sh"
+eq "week: one gh run list read" "$(grep -c '^run list' "$TMP_GH_LOG")" "1"
+rm -f "$TMP_GH_RUNS"
+out="$(wk)"
+has "week: failing gh says red main unknown" "$out" "red main unknown"
+has "week: failing gh keeps the other counts" "$out" "reverted 1"
+out="$(python3 -I "$CONF" week --days 7 --repo-dir "$W" --base-ref main --ledger-dir "$TMP/empty-ledger" 2>&1)"
+has "week: empty ledger prints zero" "$out" "conflicts 7d: 0 files in 0 PRs"
+has "week: empty ledger has no harm" "$out" "harm: none"
 
 echo "RESULT pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]
