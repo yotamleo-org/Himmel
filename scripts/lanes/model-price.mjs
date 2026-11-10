@@ -425,6 +425,10 @@ function parseManifestBytes(e, v) {
   let manifest;
   try { manifest = JSON.parse(e.manifestBytes); } catch { v.bad('manifest-mismatch'); return null; }
   if (!(isObject(manifest) && manifest.schema === 1 && Array.isArray(manifest.files) && manifest.files.every(validDeclared))) { v.bad('manifest-mismatch'); return null; }
+  // The producer's own structural rules: a manifest it would refuse never backs a complete receipt.
+  let structural = 0;
+  checkManifest(manifest, manifest.files, () => { structural += 1; return null; });
+  if (structural) { v.bad('manifest-mismatch'); return null; }
   const sources = new Map();
   for (const f of manifest.files) {
     const t = sessionKey(f);

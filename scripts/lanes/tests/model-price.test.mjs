@@ -767,6 +767,36 @@ test('validate: mixed price revision across shards', () => tmp((d) => {
   assert.equal(runValidate(set).v.reasons[0], 'export-set-load', 'the carrier pins final-v2 before the validator runs');
 }));
 
+test('validate: a manifest the producer would refuse never earns a complete receipt', () => tmp((d) => {
+  const z = mkRec({ id: 'z', model: '<synthetic>', usage: { input_tokens: 0, output_tokens: 0 } });
+  const set = carrier(d, [produce(build(d, [{ rel: 'proj/z.jsonl', records: [z] }]).path)]);
+  const pristine = mp.loadExportSet(set);
+  assert.equal(mp.validateCallExport(pristine.exports, pristine.expectedSessions, pristine.expectations).state, 'complete');
+  const forged = (mutate, expectedSessions = pristine.expectedSessions) => {
+    const e = pristine.exports[0];
+    const manifest = mutate(JSON.parse(e.manifestBytes));
+    const manifestBytes = JSON.stringify(manifest);
+    const hash = sha(manifestBytes);
+    const lines = e.lines.map((l) => JSON.stringify({ ...JSON.parse(l), manifest_sha256: hash }));
+    return mp.validateCallExport([{ ...e, manifestBytes, expectedManifestSha256: hash, lines }], expectedSessions, pristine.expectations);
+  };
+  const cases = {
+    'session is not the filename': (m) => { m.files[0].session = 'q'; return m; },
+    'path climbs out of the root': (m) => { m.files[0].relative_path = '../z.jsonl'; return m; },
+    'child outside a subagents directory': (m) => { m.files[0].parent = 'p'; return m; },
+    'unsupported timezone': (m) => { m.timezone = 'UTC'; return m; },
+    'inverted window': (m) => { [m.since, m.until] = [m.until, m.since]; return m; },
+    'more than 128 files': (m) => { m.files = Array.from({ length: 129 }, (_, i) => ({ ...m.files[0], relative_path: `proj/z${i}.jsonl`, session: `z${i}` })); return m; },
+  };
+  for (const [name, mutate] of Object.entries(cases)) {
+    const m = mutate(JSON.parse(pristine.exports[0].manifestBytes));
+    const sessions = m.files.slice(0, 1).map((f) => ({ provider: 'claude', parent: f.parent, session: f.session }));
+    const v = forged(mutate, sessions);
+    assert.notEqual(v.state, 'complete', name);
+    assert.ok(v.reasons.includes('manifest-mismatch'), `${name}: ${v.reasons}`);
+  }
+}));
+
 const spyIo = () => {
   const opened = [];
   const io = { readFileSync, statSync, realpathSync, lstatSync, closeSync, fstatSync, openSync: (p, ...a) => { opened.push(p); return openSync(p, ...a); } };

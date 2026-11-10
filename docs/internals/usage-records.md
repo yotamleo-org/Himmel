@@ -279,7 +279,7 @@ denominator, and nulls `price_sha256`, `usage_rule`, `timezone` and `call_ids_sh
 | state | reasons |
 |---|---|
 | inconclusive | `footer-missing`, `parse-incomplete` (a torn suffix), `producer-exit` (nonzero, or not matching the footer state), `source-incomplete` (a `partial` or `invalid` footer), `missing-session`, `unpriced` |
-| invalid | `footer-shape` (more than one footer, or not last), `duplicate-call`, `duplicate-source`, `manifest-mismatch`, `source-mismatch`, `price-mismatch`, `usage-rule-mismatch`, `clock-mismatch`, `count-mismatch`, `row-shape`, `export-set-load` |
+| invalid | `footer-shape` (more than one footer, or not last), `duplicate-call`, `duplicate-source`, `manifest-mismatch` (a wrong hash, or a manifest the producer would itself refuse), `source-mismatch`, `price-mismatch`, `usage-rule-mismatch`, `clock-mismatch`, `count-mismatch`, `row-shape`, `export-set-load` |
 
 Two exports with different manifest hashes pass together only when their price hash, usage rule and clock agree and
 no call id or source overlaps. A mixed price revision is `price-mismatch`, never a partial sum. A declared source that
