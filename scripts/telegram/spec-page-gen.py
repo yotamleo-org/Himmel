@@ -19,6 +19,7 @@ import html
 import os
 import re
 import sys
+import xml.etree.ElementTree as ET
 
 # dark is the default; the light set below is for print only (a printed dark page drops its background)
 DARK = "--ink:#e6e9ed;--mute:#a9b3be;--blue:#7aa2ff;--grey:#3a434e;--red:#ff8079;--bg:#0f1318;--card:#151d29;--code:#1d252f;--th:#1a222c"
@@ -27,6 +28,54 @@ LIGHT = "--ink:#1c2430;--mute:#4a5563;--blue:#2457a6;--grey:#c3c9d1;--red:#a33a2
 
 TABLE_SEP = re.compile(r"^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
 DRAFT_LINE = re.compile(r"^\s*status\s*:|not for signature", re.I)
+FENCE_SVG, FENCE_END = "```svg", "```"
+SVG_TAGS = {"svg", "g", "defs", "marker", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan", "title", "desc"}
+
+
+def svg_problem(src):
+    if re.search(r"<[!?]", src):
+        return "holds a <! or <? construct"
+    try:
+        root = ET.fromstring(src)
+    except ET.ParseError as e:
+        return f"is not well-formed ({e})"
+    if root.tag.split("}")[-1] != "svg":
+        return "does not start with <svg>"
+    for el in root.iter():
+        tag = el.tag.split("}")[-1]
+        if tag not in SVG_TAGS:
+            return f"holds a <{tag}> element"
+        for k, v in el.attrib.items():
+            name = k.split("}")[-1].lower()
+            if name.startswith("on") or name == "style":
+                return f"holds a {name} attribute"
+            if name == "href" and not v.startswith("#"):
+                return "holds an href that leaves the figure"
+            if "\\" in v:
+                return f"holds a backslash in {name}"
+            if re.search(r"url\s*\(", v, re.I) and not re.fullmatch(r"url\(#[\w.-]+\)", v, re.I):
+                return f"holds a url() in {name} that is not url(#id)"
+    return None
+
+
+def diagram_check(body, first):
+    lines, i, section, found = body.split("\n"), 0, "", 0
+    while i < len(lines):
+        if lines[i].startswith("## "):
+            section = lines[i][3:].strip()
+        if lines[i] == FENCE_SVG:
+            start = i
+            i += 1
+            while i < len(lines) and lines[i] != FENCE_END:
+                i += 1
+            if i == len(lines):
+                return first + start, "the svg fence is never closed"
+            why = svg_problem("\n".join(lines[start + 1:i]))
+            if why:
+                return first + start, f"the svg fence {why}"
+            found += section == "Diagrams"
+        i += 1
+    return None if found else (None, "has no svg fence under ## Diagrams; a page carries a diagram")
 
 
 def attr(value):
@@ -81,6 +130,14 @@ def render(text):
             level = len(ln) - len(ln.lstrip("#"))
             out.append(f"<h{level}>{inline(ln[level + 1:].strip())}</h{level}>")
             i += 1
+        elif ln == FENCE_SVG:
+            i += 1
+            fig = []
+            while i < len(lines) and lines[i] != FENCE_END:
+                fig.append(lines[i])
+                i += 1
+            i += 1
+            out.append("<figure>" + "\n".join(fig) + "</figure>")
         elif ln.startswith("|") and i + 1 < len(lines) and TABLE_SEP.match(lines[i + 1]):
             head = split_row(ln)
             i += 2
@@ -104,7 +161,7 @@ def render(text):
         else:
             para = [ln]
             i += 1
-            while i < len(lines) and lines[i].strip() and not re.match(r"(#|\||- |\d+\. )", lines[i]):
+            while i < len(lines) and lines[i].strip() and lines[i] != FENCE_SVG and not re.match(r"(#|\||- |\d+\. )", lines[i]):
                 para.append(lines[i])
                 i += 1
             if re.match(r"I\d ", para[0]):
@@ -147,12 +204,16 @@ def main():
         for n, line in enumerate(md[:fm.end()].split("\n"), 1):
             if re.match(r"\s*status\s*:", line, re.I) and re.search(r"\bdraft\b|not for signature", line.split(":", 1)[1], re.I):
                 sys.exit(f"spec-page-gen: {spec}:{n} is a front matter status holding draft text ({line.strip()[:80]!r}); the draft state lives in the missing critic seal, not in the md. Remove the words from the status, generate the page again, then run the critic on the md and the new page. Nothing written")
+    refusal = diagram_check(body, first + 1)
+    if refusal:
+        n, why = refusal
+        sys.exit(f"spec-page-gen: {spec}{f':{n}' if n else ''} {why}. Draw it in the md, generate the page again, then run the critic on the md and the new page. Nothing written")
     title = re.search(r"^# (.+)$", body, re.M)
     bar =" | ".join(html.escape(meta[k][:9] if k == "base" else meta[k]) for k in ("tickets", "date", "base", "author") if k in meta)
     if DRAFT_LINE.search(bar):
         sys.exit(f"spec-page-gen: the front matter metadata of {spec} carries draft text; nothing written")
     page = f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="spec-source" content="{attr(spec)}"><title>{html.escape(title.group(1) if title else os.path.basename(spec))}</title><style>{CSS}</style></head>
+<html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="spec-source" content="{attr(spec)}"><title>{html.escape(title.group(1) if title else os.path.basename(spec))}</title><style>{CSS}</style></head>
 <body>
 {f'<p class="meta">{bar}</p>' if bar else ""}
 {render(body)}

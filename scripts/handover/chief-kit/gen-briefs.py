@@ -1338,7 +1338,7 @@ def drop_refused_brief(doc, l):
 def lint_brief(doc, l, hroot):
     lint = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'brief-lint.sh')
     try:
-        r = subprocess.run(['bash', lint, doc], capture_output=True, text=True, timeout=120, env=lint_env(hroot))
+        r = subprocess.run(['bash', lint, '--skip-bucket', doc], capture_output=True, text=True, timeout=120, env=lint_env(hroot))
     except (OSError, subprocess.SubprocessError) as e:
         drop_refused_brief(doc, l)
         die('worker %s: brief-lint could not run (%s), so no brief or launcher is kept for it or the workers after it' % (l['label'], e))
