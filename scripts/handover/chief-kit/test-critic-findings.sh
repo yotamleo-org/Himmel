@@ -41,8 +41,8 @@ T="$(mktemp -d "${TMPDIR:-/tmp}/critic-findings.XXXXXX")" || exit 1
 T="$(cd "$T" && pwd -P)" || exit 1
 trap 'rm -rf "$T"' EXIT
 
-sha256s() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi | cut -d' ' -f1; }
-sha() { sha256s < "$1"; }
+sha256s() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi | cut -d' ' -f1; }
+sha() { sha256s "$1"; }
 cf() { OUT=$(python3 -I "$FINDINGS" "$@" 2>"$T/err"); RC=$?; }
 
 newroot() {
