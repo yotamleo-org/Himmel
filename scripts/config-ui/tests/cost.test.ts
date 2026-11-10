@@ -179,6 +179,53 @@ test("cost: usage-read --phase-cost keeps one day with --day, every version with
   expect(read("--phase-cost", "--ticket", "HIMMEL-1")).toMatchObject({ status: 1, stderr: expect.stringContaining("does not combine") });
 });
 
+const BASIS = "Claude transcript usage at list prices; not invoices. Native Codex and other provider stores are not included.";
+const UNKNOWN = "Collection freshness and completeness unknown";
+
+test("cost: basis is explicit in every state", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cost-basis-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const ok = buildCostModel(ROWS, DAY);
+  const nodata = buildCostModel(ROWS, "2026-10-01");
+  const empty = buildCostModel([], undefined);
+  const nostore = readCost({ HIMMEL_USAGE_STORE: join(dir, "absent"), PATH: process.env.PATH });
+  const other = { ...nodata, state: "error" } as unknown as typeof nodata;
+  for (const m of [ok, nodata, empty, nostore, other]) {
+    expect(m.basis).toBe(BASIS);
+    expect(m.coverageNote).toBe(UNKNOWN);
+    const html = renderCost(m, { open: [] });
+    expect(html).toContain(BASIS);
+    expect(html).toContain(UNKNOWN);
+    expect(html).not.toMatch(/all[- ]provider|every provider|invoice(?:d| total)/i);
+  }
+});
+
+test("cost: agent parts partition class and conserve total", () => {
+  const sample = [
+    row({ session: "w1", phase: "agent", class: "subagent", usd: 4, calls: 2 }), row({ session: "w1", phase: "agent", class: "worker", usd: 1, calls: 3 }),
+    row({ session: "w2", phase: "agent", class: "other", usd: 2, calls: 5 }), row({ session: "w1", phase: "compaction", usd: 3, calls: 7 }),
+  ];
+  const m = buildCostModel(sample, DAY);
+  const build = m.phases.find((p) => p.id === "build")!;
+  expect(m).toMatchObject({ usd: 10, calls: 17 });
+  expect(build).toMatchObject({ usd: 10 });
+  expect(build.parts.map((p) => [p.id, p.usd]).sort()).toEqual([["build-agent", 4], ["build-agent-followup", 3], ["build-compaction", 3]]);
+  expect(build.parts.reduce((a, p) => a + (p.usd ?? 0), 0)).toBe(build.usd);
+});
+
+test("cost: after-compaction label describes follow-up, and the build captions name child sessions apart from parent follow-ups", () => {
+  const sample = [
+    row({ phase: "agent", class: "subagent", usd: 4 }), row({ phase: "agent", class: "worker", usd: 1 }), row({ phase: "compaction", usd: 3 }),
+  ];
+  const html = renderCost(buildCostModel(sample, DAY), { open: ["build"] });
+  expect(html).toContain("Build and other work");
+  expect(html).toContain("Child sessions");
+  expect(html).toContain("Parent follow-ups after delegation");
+  expect(html).toContain("After compaction");
+  expect(html).not.toContain("PR build");
+  expect(html).not.toContain("worker subagents");
+});
+
 test("cost: before the first read lands the page says loading, and after a failed read it adds no 'no data yet' beside the failure note", () => {
   expect(renderCost(null, { open: [] })).toContain("loading");
   expect(renderCost(null, { open: [] })).not.toContain("no data yet");
