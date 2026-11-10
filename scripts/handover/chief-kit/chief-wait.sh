@@ -1213,13 +1213,13 @@ rmlease_wake() {
     [ "$rc" -eq 0 ] || [ "$rc" -eq "$rc_not_ok" ] || return 1
     # shellcheck disable=SC2016  # the python program is single-quoted on purpose
     IFS=$'\t' read -r epoch released doc acq pid host < <(printf '%s' "$out" | python3 -I -c '
-import calendar, json, sys, time
+import datetime, json, sys
 try:
     ls = json.load(sys.stdin)["lease"]
     if ls is None:
         print("0\t1\t-\t0\t-\t-")
     else:
-        acq = calendar.timegm(time.strptime(ls["acquired"], "%Y-%m-%dT%H:%M:%SZ")) if ls.get("acquired") else 0
+        acq = int(datetime.datetime.fromisoformat(ls["acquired"].replace("Z", "+00:00")).timestamp()) if ls.get("acquired") else 0
         print("\t".join([str(int(ls["epoch"])), "1" if ls.get("released") else "0", ls.get("owner_doc") or "-", str(acq), str(ls.get("owner_pid") or "-"), ls.get("owner_host") or "-"]))
 except Exception:
     pass

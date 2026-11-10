@@ -33,7 +33,7 @@ chief="$WORK/chief.md"
 rmdoc="$WORK/rm-run-doc.md"
 HOST="$(uname -n)"
 reset() { rm -f "$inbox".wait* "$rmdoc"; printf '%s\n' '# chief' 'release: v1.1.3' > "$chief"; echo 0 > "$STUB/state.rc"; }
-iso_ago() { date -u -d "$1 minutes ago" +%Y-%m-%dT%H:%M:%SZ; }  # gnu-ok: Linux-only kit
+iso_ago() { date -u -d "$1 minutes ago" +%Y-%m-%dT%H:%M:%S.%3NZ; }  # gnu-ok: Linux-only kit
 state_json() {
     local epoch="$1" released="$2" doc="$3" minutes_ago="$4" pid=''
     [ -z "${5:-}" ] || pid=",\"owner_pid\":$5,\"owner_host\":\"$HOST\""
@@ -95,12 +95,16 @@ if [ -e "$inbox.wait.rmlease" ]; then fail 'a taken-over lease left the marker';
 
 reset
 state_json 419 false "$rmdoc" 600
-run_waiter "$WORK/l10a.out" 60 > /dev/null
 echo 1 > "$STUB/state.rc"
 if run_waiter "$WORK/l10b.out" 30; then fail "a failed state read woke: $(cat "$WORK/l10b.out")"; else pass 'a failed state read does not wake'; fi
-echo 0 > "$STUB/state.rc"
+reset
 printf 'not json\n' > "$STUB/state.json"
 if run_waiter "$WORK/l10c.out" 30; then fail "an unparseable state woke: $(cat "$WORK/l10c.out")"; else pass 'an unparseable state does not wake'; fi
+reset
+state_json 419 false "$rmdoc" 600
+run_waiter "$WORK/l10a.out" 60 > /dev/null
+echo 1 > "$STUB/state.rc"
+run_waiter "$WORK/l10d.out" 30 > /dev/null
 if grep -q 419 "$inbox.wait.rmlease" 2>/dev/null; then pass 'an unreadable answer keeps the marker (not an all-clear)'; else fail 'an unreadable answer cleared the marker'; fi
 
 reset
