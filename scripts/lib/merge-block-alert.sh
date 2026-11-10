@@ -52,7 +52,7 @@ _mba_operator_chat() {
 }
 
 _mba_send() {
-    local chat="$1" text="$2"
+    local chat="$1" text="$2" kind="${3:-}"
     _MBA_REFUSED=0
     # One 30 s bound for the seam and the bun send alike; no GNU
     # timeout (stock macOS) runs both unbounded.
@@ -60,7 +60,7 @@ _mba_send() {
     command -v timeout >/dev/null 2>&1 && tmo="timeout -k 5 ${MERGE_BLOCK_ALERT_TIMEOUT_SECS:-30}"
     if [ -n "${MERGE_BLOCK_ALERT_CMD:-}" ]; then
         # shellcheck disable=SC2086  # $tmo is deliberately word-split ("" or "timeout N")
-        $tmo "$MERGE_BLOCK_ALERT_CMD" "$chat" "$text"
+        $tmo "$MERGE_BLOCK_ALERT_CMD" "$chat" "$text" ${kind:+"$kind"}
         return
     fi
     if [ "${HIMMEL_TEST_FIXTURE:-}" = "1" ] && [ -z "${BRIDGE_ROOT:-}" ]; then
@@ -74,7 +74,7 @@ _mba_send() {
     bash "$_MBA_LIB_DIR/test-run-guard" check --quiet --tool bun merge-block-alert || guard_rc=$?
     [ "$guard_rc" != 77 ] || { _MBA_REFUSED=1; return 0; }
     # shellcheck disable=SC2086  # $tmo is deliberately word-split ("" or "timeout N")
-    $tmo bun "$_MBA_LIB_DIR/../telegram/chief-route.ts" reply "$chat" "$text" >/dev/null 2>&1
+    $tmo bun "$_MBA_LIB_DIR/../telegram/chief-route.ts" reply ${kind:+--kind "$kind"} "$chat" "$text" >/dev/null 2>&1
 }
 
 merge_block_alert() {
