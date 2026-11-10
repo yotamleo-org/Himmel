@@ -531,7 +531,8 @@ const readCritic = (file: string) => readFile(file, "utf8").catch((e) => { throw
 // so one file named for the third round cannot open a page early, though three planted files still can.
 // ponytail: the count is read from the files on disk, so deleting or overwriting critic files lowers it, and a new
 // spec file name starts a new count; upgrade path: an append-only ledger written at seal time, keyed on the ticket.
-type Rounds = { count: number; numbered: number; renamed: string[] };
+// `numberedFiles` keeps every counted numbered path, duplicate ordinal locations included, from the same pass.
+type Rounds = { count: number; numbered: number; renamed: string[]; numberedFiles: { round: number; path: string }[] };
 // Reads the last name segment only: the spec's own name comes first and may hold the word.
 const isJudgeReturn = (name: string) => /(^|[.-])judge[^.]*\.md$/.test(name);
 async function criticRounds(spec: string, also?: string): Promise<Record<Kind, Rounds>> {
@@ -547,15 +548,30 @@ async function criticRounds(spec: string, also?: string): Promise<Record<Kind, R
   for (const [file, text] of files) if (isOwn(file)) for (const t of await sealedBy(file, text)) if (t) targets.add(t);
   const numbers = { spec: new Set<number>(), plan: new Set<number>() };
   const renamed: Record<Kind, string[]> = { spec: [], plan: [] };
+  const numberedFiles: Record<Kind, { round: number; path: string }[]> = { spec: [], plan: [] };
   for (const [file, text] of files) {
     const name = basename(file);
     const m = name.startsWith(`${base}.`) ? /^\.critic-(spec|plan)-r(\d+)\.md$/.exec(name.slice(base.length)) : null;
-    if (m && (dirname(file) === dirname(spec) || (m[1] === "plan" && planDirs(spec).includes(dirname(file))))) { numbers[m[1] as Kind].add(Number(m[2])); continue; }
+    if (m && (dirname(file) === dirname(spec) || (m[1] === "plan" && planDirs(spec).includes(dirname(file))))) { numbers[m[1] as Kind].add(Number(m[2])); numberedFiles[m[1] as Kind].push({ round: Number(m[2]), path: file }); continue; }
     const kind = verdictKind(lastLine(text));
     if (kind && (isOwn(file) || (await sealedBy(file, text)).some(t => targets.has(t)))) renamed[kind].push(file);
   }
-  const rounds = (k: Kind): Rounds => ({ count: Math.max(0, ...numbers[k]) + renamed[k].length, numbered: numbers[k].size, renamed: renamed[k] });
+  const byRoundThenPath = (a: { round: number; path: string }, b: { round: number; path: string }) => a.round - b.round || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  const rounds = (k: Kind): Rounds => ({
+    count: Math.max(0, ...numbers[k]) + renamed[k].length, numbered: numbers[k].size, renamed: renamed[k],
+    numberedFiles: numberedFiles[k].sort(byRoundThenPath),
+  });
   return { spec: rounds("spec"), plan: rounds("plan") };
+}
+
+// The read-only snapshot of one kind's round budget for `spec`, from the same pass the seal-time cap reads.
+// `requestedRound` omitted means the next round (count + 1); the operator exception is looked up for that
+// exact round only. An unreadable critic file or folder throws: unknown history is never an empty history.
+export type CriticBudget = { count: number; numbered: number; requestedRound: number; operatorAllowed: boolean; cap: number; numberedFiles: { round: number; path: string }[]; renamed: string[] };
+export async function readCriticBudget(specPath: string, kind: Kind, requestedRound?: number): Promise<CriticBudget> {
+  const r = (await criticRounds(specPath))[kind];
+  const requested = requestedRound ?? r.count + 1;
+  return { count: r.count, numbered: r.numbered, requestedRound: requested, operatorAllowed: await operatorAllowsRound(specPath, requested), cap: CRITIC_ROUND_CAP, numberedFiles: r.numberedFiles, renamed: [...r.renamed].sort() };
 }
 
 // One operator record allows one round past the cap: `<spec>.operator-round-r<round>.md` with a line
