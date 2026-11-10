@@ -592,6 +592,132 @@ out=$(st check); rc=$?
 eq "11e control: an older watch.json without digests reads a rename as a loss" 3 "$rc"
 rm -rf "$S10"
 
+# --- 12. the set's .env comes from the himmel checkout, never the caller's directory ---
+S12="$TMP/s12"; PRIM="$S12/github/himmel"; WT="$PRIM/.claude/worktrees/fix+w"
+BUCKET="$S12/luna/handovers/yotamleo/himmel"
+S12_STATE="$S12/.himmel/state/config-audit"
+mkdir -p "$S12/.himmel" "$BUCKET"
+git -C "$PRIM" init -q 2>/dev/null || git init -q "$PRIM"
+git -C "$PRIM" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m init
+git -C "$PRIM" worktree add -q "$WT" 2>/dev/null
+git -C "$S12/luna" init -q 2>/dev/null || git init -q "$S12/luna"
+mkdir -p "$WT/scripts/lib" "$WT/scripts/himmelctl/lib"
+cp "$HERE/load-dotenv.sh" "$HERE/prim.sh" "$HERE/canon-path.sh" "$HERE/chokepoint-seam-guard.sh" "$HERE/himmel-secrets" "$CA" "$WT/scripts/lib/"
+cp "$REPO/scripts/himmelctl/lib/config-keys.json" "$REPO/scripts/himmelctl/lib/secrets-manifest.json" "$WT/scripts/himmelctl/lib/"
+OTHER="$S12/other"
+git init -q "$OTHER"
+mkdir -p "$OTHER/scripts"
+cp -R "$WT/scripts/lib" "$WT/scripts/himmelctl" "$OTHER/scripts/"
+printf '{"version":1,"policy":{"HIMMEL_FLEET_CAP":"40"}}\n' > "$S12/.himmel/config.json"
+printf 'JIRA_PROJECT_KEY=HIMMEL\nJIRA_API_TOKEN=%s\nALIBABA_QUOTA_AK=%s\n' "$CANARY" "$CANARY" > "$PRIM/.env"
+s12() { ( cd "$BUCKET" && env -u HIMMEL_CONFIG_AUDIT_ENV_FILE -u HIMMEL_REPO HIMMEL_CONFIG_DIR="$S12/.himmel" bash "$WT/scripts/lib/config-audit.sh" "$@" ); }
+s12o() { ( cd "$BUCKET" && env -u HIMMEL_CONFIG_AUDIT_ENV_FILE -u HIMMEL_REPO HIMMEL_CONFIG_DIR="$S12/.himmel" bash "$OTHER/scripts/lib/config-audit.sh" "$@" ); }
+s12r() { ( cd "$BUCKET" && env -u HIMMEL_CONFIG_AUDIT_ENV_FILE HIMMEL_REPO="$WT" HIMMEL_CONFIG_DIR="$S12/.himmel" bash "$OTHER/scripts/lib/config-audit.sh" "$@" ); }
+s12x() { ( cd "$BUCKET" && env -u HIMMEL_REPO HIMMEL_CONFIG_AUDIT_ENV_FILE="$S12/luna/.env" HIMMEL_CONFIG_DIR="$S12/.himmel" bash "$WT/scripts/lib/config-audit.sh" "$@" ); }
+s12 watch 2>/dev/null
+has "12 control: the baseline holds the checkout's .env keys" "ALIBABA_QUOTA_AK" "$(cat "$S12_STATE/watch.json" 2>/dev/null)"
+: > "$ALERTS"
+
+out=$(s12 check); rc=$?
+eq "12a check from another repo's directory exits 0" 0 "$rc"
+lacks "12a and reports no deleted .env" "deleted" "$out"
+s12 watch 2>/dev/null
+eq "12a watch from another repo's directory sends no alert" 0 "$(wc -l < "$ALERTS" | tr -d ' ')"
+has "12a and keeps the .env keys in the baseline" "ALIBABA_QUOTA_AK" "$(cat "$S12_STATE/watch.json" 2>/dev/null)"
+
+out=$(s12x check); rc=$?
+eq "12b another repo's absent .env exits 0" 0 "$rc"
+has "12b and reads unknown" "UNKNOWN	.env	no file found	$S12/luna/.env" "$out"
+lacks "12b and never deleted" "deleted" "$out"
+s12x watch 2>/dev/null
+eq "12b watch on another repo's .env sends no alert" 0 "$(wc -l < "$ALERTS" | tr -d ' ')"
+has "12b and keeps the recorded .env keys" "ALIBABA_QUOTA_AK" "$(cat "$S12_STATE/watch.json" 2>/dev/null)"
+cp "$S12_STATE/watch.json" "$S12/watch.before"
+out=$(s12x accept 2>&1); rc=$?
+eq "12b accept on another repo's .env exits 1" 1 "$rc"
+if cmp -s "$S12/watch.before" "$S12_STATE/watch.json"; then pass "12b and leaves watch.json unchanged"; else fail "12b accept rewrote watch.json"; fi
+has "12b the refusal names the HIMMEL_REPO route" "set HIMMEL_REPO" "$out"
+
+mv "$PRIM/.env" "$S12/env.away"
+out=$(s12 check); rc=$?
+eq "12c a .env gone from the recorded path exits 3" 3 "$rc"
+has "12c and is a deleted LOSS" "LOSS	.env	deleted" "$out"
+s12 watch 2>/dev/null
+eq "12c watch alerts the deletion once" 1 "$(wc -l < "$ALERTS" | tr -d ' ')"
+has "12c the alert names the deleted .env" "$PRIM/.env deleted" "$(cat "$ALERTS")"
+out=$(s12 accept 2>&1); rc=$?
+eq "12c accept at the recorded path takes the removal" 0 "$rc"
+
+mv "$S12/env.away" "$PRIM/.env"
+s12 accept >/dev/null
+grep -v '^ALIBABA_QUOTA_AK=' "$PRIM/.env" > "$S12/env.cut"
+mv "$S12/env.cut" "$PRIM/.env"
+out=$(s12 check); rc=$?
+eq "12d control: a lost key exits 3" 3 "$rc"
+has "12d control: and names it" "LOSS	.env	lost keys	ALIBABA_QUOTA_AK" "$out"
+lacks "12d no value reaches the output" "$CANARY" "$out"
+out=$(s12r check); rc=$?
+eq "12d HIMMEL_REPO steers a copy in another checkout to the fixture .env" 3 "$rc"
+has "12d and the loss only that .env holds is named" "LOSS	.env	lost keys	ALIBABA_QUOTA_AK" "$out"
+out=$(s12o check); rc=$?
+eq "12d control: without HIMMEL_REPO that copy reads its own checkout" 0 "$rc"
+has "12d control: and reads unknown" "UNKNOWN	.env	no file found	$OTHER/.env" "$out"
+
+# --- 13. the himmelctl cache .env is a resolver candidate whether or not it exists ---
+CACHE13="$S12/cache13"
+mkdir -p "$CACHE13"
+s13() { ( cd "$BUCKET" && env -u HIMMEL_CONFIG_AUDIT_ENV_FILE -u HIMMEL_REPO HIMMEL_CONFIG_DIR="$S12/.himmel" HIMMELCTL_CACHE_DIR="$CACHE13" bash "$WT/scripts/lib/config-audit.sh" "$@" ); }
+s12 accept >/dev/null
+printf 'JIRA_PROJECT_KEY=HIMMEL\nHIMMEL_CACHE_ONLY_KEY=%s\n' "$CANARY" > "$CACHE13/.env"
+cp "$S12_STATE/watch.json" "$S12/watch.before"
+out=$(s13 accept 2>&1); rc=$?
+eq "13 accept with a new cache .env over a recorded checkout .env exits 1" 1 "$rc"
+if cmp -s "$S12/watch.before" "$S12_STATE/watch.json"; then pass "13 and leaves watch.json unchanged"; else fail "13 accept rewrote watch.json"; fi
+has "13 the refusal names the live route" "accept --live" "$out"
+lacks "13 and never advises HIMMEL_REPO while the cache .env is read first" "set HIMMEL_REPO" "$out"
+out=$(s13 accept --live 2>&1); rc=$?
+eq "13 accept --live onto the live cache .env exits 0" 0 "$rc"
+has "13 and records the cache .env" "HIMMEL_CACHE_ONLY_KEY" "$(cat "$S12_STATE/watch.json" 2>/dev/null)"
+rm -f "$S12_STATE/watch.json"
+s13 watch 2>/dev/null
+has "13 control: a first watch records the cache .env" "HIMMEL_CACHE_ONLY_KEY" "$(cat "$S12_STATE/watch.json" 2>/dev/null)"
+out=$(s12 accept 2>&1); rc=$?
+eq "13 accept from a caller without that cache dir exits 1" 1 "$rc"
+has "13 the refusal names the cache dir route" "HIMMELCTL_CACHE_DIR=$CACHE13" "$out"
+lacks "13 and never advises HIMMEL_REPO for a recorded cache .env" "set HIMMEL_REPO" "$out"
+: > "$ALERTS"
+
+mv "$CACHE13/.env" "$S12/cache.away"
+out=$(s13 check); rc=$?
+eq "13a a recorded cache .env deleted with the checkout .env present exits 3" 3 "$rc"
+has "13a and is a deleted LOSS" "LOSS	.env	deleted	" "$out"
+has "13a at the cache path" "$CACHE13/.env" "$out"
+out=$(s12 check); rc=$?
+eq "13a a caller with another cache dir reads the same LOSS" 3 "$rc"
+s13 watch 2>/dev/null
+eq "13a watch alerts the deletion once" 1 "$(wc -l < "$ALERTS" | tr -d ' ')"
+has "13a the alert names the deleted cache .env" "$CACHE13/.env deleted" "$(cat "$ALERTS")"
+has "13a and the baseline keeps the cache .env" "HIMMEL_CACHE_ONLY_KEY" "$(cat "$S12_STATE/watch.json" 2>/dev/null)"
+
+mv "$PRIM/.env" "$S12/env.away"
+out=$(s13 check); rc=$?
+eq "13b the same with the checkout .env absent exits 3" 3 "$rc"
+has "13b and is a deleted LOSS" "LOSS	.env	deleted	" "$out"
+mv "$S12/env.away" "$PRIM/.env"
+
+out=$(s13 accept 2>&1); rc=$?
+eq "13b accept takes the cache .env removal" 0 "$rc"
+lacks "13b and records the checkout .env" "HIMMEL_CACHE_ONLY_KEY" "$(cat "$S12_STATE/watch.json" 2>/dev/null)"
+: > "$ALERTS"
+mv "$S12/cache.away" "$CACHE13/.env"
+out=$(s13 check); rc=$?
+eq "13c a cache .env appearing after a checkout .env was recorded exits 0" 0 "$rc"
+has "13c and reads unknown" "UNKNOWN	.env	not the recorded file	$CACHE13/.env" "$out"
+s13 watch 2>/dev/null
+eq "13c watch sends no alert" 0 "$(wc -l < "$ALERTS" | tr -d ' ')"
+git -C "$PRIM" worktree remove --force "$WT" 2>/dev/null
+rm -rf "$S12"
+
 real_after=$(real_marks)
 eq "8 a fixture-HOME run never touches the real backups" "$real_before" "$real_after"
 
