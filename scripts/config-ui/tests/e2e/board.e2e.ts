@@ -122,7 +122,6 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await page.locator(".rm-card", { hasText: "Second chain step" }).locator(".rm-chain").click();
   await expect.poll(() => page.evaluate(() => location.hash)).toBe("#/board?tab=chains&at=HIMMEL-2");
   await expect(page.locator("#cn-HIMMEL-2")).toHaveClass(/rm-at/);
-  // Tidy up: the status-drift rows in words, the fix only behind its copy button, then the lists the Roadmap page held
   await page.getByRole("tab", { name: /^Tidy up/ }).click();
   await expect(page.locator("#rm-status-drift")).toContainText("Worked, but only in a later version");
   await expect(page.locator("#rm-status-drift")).toContainText("VERSION-DRIFT");
@@ -141,7 +140,7 @@ test("Tidy up: refresh re-runs the check and the next read shows it; a failed ru
   await go(page, "#/board?tab=tidy");
   const drift = page.locator("#rm-status-drift"), head = page.locator(".cp .cph");
   await expect(head).toContainText("saved run");
-  await expect(head.locator('[title="sdrift=2:abc"]')).toBeVisible(); // the run's signature only in the bubble on "saved run"
+  await expect(head.locator('[title="sdrift=2:abc"]')).toBeVisible();
   await expect(drift).toContainText("moved in Jira by Ana Reyes");
   await expect(drift).toContainText("himmel's Jira account");
   await expect(head.locator('a[href="#/config?tile=tracker"]')).toBeVisible();
@@ -370,7 +369,7 @@ test("the Roadmap tab carries the one filter bar, every tab its refresh, and Tid
   await open(page);
   for (const tab of ["roadmap", "chains", "tidy"]) {
     await go(page, `#/board?tab=${tab}`);
-    await expect(page.locator(".rm-bar")).toHaveCount(tab === "roadmap" ? 1 : 0); // Tidy up has no filter: a Sector picked on Roadmap does not narrow it
+    await expect(page.locator(".rm-bar")).toHaveCount(tab === "roadmap" ? 1 : 0);
     await expect(page.locator('[data-act="refresh-roadmap"]')).toHaveCount(1);
     await expect(page.locator('.aside [data-act="refresh-roadmap"]')).toHaveCount(1);
   }
@@ -630,7 +629,7 @@ test("with no drift file and no chain registry the Board says so in words and sh
   await go(page, "#/board");
   await expect(page.locator("#main")).toContainText("drift not read");
   await page.getByRole("tab", { name: /^Tidy up/ }).click();
-  await page.locator('.cp .cph [data-act="drift-refresh"]').click(); // nowhere to save the run: refused in words, no count
+  await page.locator('.cp .cph [data-act="drift-refresh"]').click();
   await expect(page.locator('#rm-status-drift [role="alert"]')).toContainText("HIMMEL_FOCUS_DRIFT");
   await page.getByRole("tab", { name: /^Roadmap/ }).click();
   await expect(page.locator(".aside").first()).toContainText("waits for you: not read");
@@ -767,7 +766,6 @@ test("the outside-ticket name is a hover bubble at 1280 px and plain text on a p
 
 // A Won't ticket and long sector names, added to the roadmap read in flight. The Chains tab must hold at both widths. The Roadmap and
 // Tidy up tabs overflow with this fixture on the commit before this change too (their version-window row), so they are not asserted here.
-// Long names on every tab: one ticket's long title, every chain's long name and a long Sector on every ticket.
 test("with a Won't ticket and long names every Board tab fits the window at 1280 and 390 px, and no key breaks mid-word", async ({ page }) => {
   const LONG_SECTOR = "A sector name that is far too long to sit on one line in a card header";
   const LONG_TITLE = "A ticket title that runs far past two lines of a lane card, so the card must clamp it and keep the whole title in its bubble and its name";

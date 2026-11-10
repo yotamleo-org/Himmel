@@ -342,7 +342,6 @@ test("Board: one filter bar and refresh above every tab, a version tile keeps th
   const r = read(station());
   for (const tab of ["roadmap", "chains", "tidy"]) {
     const html = renderBoard(r, { version: null, theme: null, tab }, { drift: driftOk(), chains: chainsOk() });
-    // 9488: the Chains tab has its own aside (refresh, no lane filters); 9559 slice 3: Tidy up has no filter either; Roadmap keeps the one bar
     expect(html.match(/class="rm-bar fields"/g)?.length).toBe(tab === "roadmap" ? 1 : undefined);
     expect(html).toContain('data-act="refresh-roadmap"');
     expect(html.includes("data-rm-hide-done")).toBe(tab === "roadmap");
@@ -1954,7 +1953,6 @@ test("9559 slice 2 Checked across tabs: every tab at v=v1.1.2 shows one number w
   expect(words(s2Board(w, { tab: "chains" }, wch))).toContain("4 tickets in them");
 });
 
-// ---- 9559 slice 3: the Tidy up body shares the Chains tab's panel (design r6, "Tidy up in words" and the states table)
 function headOf(html: string) {
   const at = html.indexOf('<div class="cph">');
   if (at < 0) return "";
@@ -2001,7 +1999,7 @@ test("9559 slice 3 Tidy up: group heads, cards and folded lines in the panel, Pl
   expect(html).toMatch(/<div class="gh">Status drift ·/);
   expect(html).toMatch(/<div class="gh">Librarian ·/);
   expect(html).toMatch(/<div class="cc">[\s\S]*?Released but open · 1 ticket/);
-  const narrow = tidy({ v: "v1.1.3" }, driftOk()); // one version: the lists with nothing in it fold to one line
+  const narrow = tidy({ v: "v1.1.3" }, driftOk());
   expect(narrow).toMatch(/<div class="gh">Nothing to do, or not read<\/div><details[^>]*class="fin"[\s\S]*?Librarian: stale in progress, no sector, released but open[\s\S]*?nothing to propose/);
   expect(words(html)).toContain("Plan drift");
   expect(html).not.toContain(">Drift<");
@@ -2015,7 +2013,7 @@ test("9559 slice 3 Tidy up: a Sector picked on Roadmap does not narrow it, and i
   const lists = (h: string) => h.slice(h.indexOf('id="rm-status-drift"'));
   const pick = renderBoard(r, { version: null, theme, tab: "tidy" }, { drift: driftOk() });
   expect(lists(pick)).toBe(lists(renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: driftOk() })));
-  expect(lists(pick)).toContain("Orphaned work"); // a ticket with no Sector
+  expect(lists(pick)).toContain("Orphaned work");
   expect(pick).not.toContain("rm-bar");
   expect(pick).not.toContain('data-rm-filter="theme"');
 });

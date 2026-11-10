@@ -784,7 +784,6 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .cp #rm-waiting ul{margin:0;padding-left:var(--s4)}
 #rm-lanes>.sub,#rm-nv>.sub{margin:0 0 var(--s1)}
 @media (max-width:760px){.cp .rm-card .tk{white-space:normal}.cp .seclegend .sec .nm .rm-clip{white-space:normal;overflow-wrap:anywhere}}
-/* The Tidy up body (9559 slice 3): a group's head over its cards, the code of a drift class as a small grey tag beside its words, the re-run button in the panel head */
 .cp .rm-grp{display:grid;gap:var(--s1);min-width:0}
 .cph .flt{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;justify-content:flex-end}
 .cp .rm-cls{font:600 11px var(--font-mono);color:var(--muted);border:1px solid var(--rule);border-radius:4px;padding:0 var(--s1);white-space:nowrap;background:none}

@@ -746,16 +746,13 @@ function originText(h) {
   if (!e) return "no status move in Jira";
   return e.himmel ? "himmel's Jira account: a script, or a hand move if the login is shared" : `moved in Jira by ${e.who}`;
 }
-// Tidy up in words (decision 756): what each class of status-drift.sh means; its code stays beside the words as a small grey tag.
 const DRIFT_WORDS = { "DERIVE-MISMATCH": "Jira's status differs from the worker events", "MERGE-MISMATCH": "Merged, but not Done", "DONE-WITH-OPEN-PR": "Done, with a PR still open",
   "MERGED-NO-ROW": "Merged with no merge record", MISSED: "A status write was missed", "WORKER-STALE": "The worker record says live, but it ended",
   "WORKER-COMMENT": "Worker comment out of date", "TWO-OWNERS": "Two workers claim it", UNOWNED: "Started, nobody on it", AWAITING: "Waiting on its owner, inside its clock",
   "HELD-IN-WORK": "Held, but in work", "VERSION-DRIFT": "Worked, but only in a later version", HEALTH: "The check could not read an input" };
-// A command is never shown as text: only its copy button, the command in the button's bubble.
 const copyBtn = (cmd, label) => `<button class="btn" data-act="copy" data-cmd="${esc(cmd)}" title="${esc(cmd)}">${label}</button>`;
 const driftRows = (n) => `${n} drift ${n === 1 ? "row" : "rows"}`;
 const driftState = (dr) => (!dr || dr.state === "absent" || !dr.counts || !dr.file ? "drift not read" : !dr.file.exists ? "no drift run yet" : "drift result unknown");
-// The Chains tab's pieces for a list: a folded line (✓ nothing to do, ? not read) and a group head over its cards.
 const finLine = (id, ok, name, note, inner = "") => `<details${id ? ` id="${id}"` : ""} class="fin"><summary><span class="gl${ok ? "" : " q"}" aria-hidden="true">${ok ? "✓" : "?"}</span><span class="nm">${esc(name)}</span><span class="chk">${esc(note)}</span></summary>${inner ? `<div class="inner">${inner}</div>` : ""}</details>`;
 const groupOf = (id, label, head, body) => `<section id="${id}" class="rm-grp" aria-label="${esc(label)}"><div class="gh">${esc(head)}</div>${body}</section>`;
 function driftRow(r, origins) {
@@ -788,8 +785,6 @@ function sinceHtml(s) {
   const row = (tag, text) => `<tr><td>${tag}</td><td>${esc(text)}</td></tr>`;
   return `<div class="scroll"><table class="data"><thead><tr><th>since ${esc(s.from || "the last run")}</th><th>row</th></tr></thead><tbody>${s.added.map((l) => row((s.counted || []).includes(l) ? "new · counted" : "new", l)).join("")}${s.healed.map((l) => row("healed", l)).join("")}${row("same", `${s.same} row${s.same === 1 ? "" : "s"}`)}</tbody></table></div>`;
 }
-// A re-run of the check (mockup v4 frame 6), above the saved rows. Opening the tab reads the saved file and starts nothing; a run keeps the saved rows
-// on screen until it ends. Its button is in the panel head.
 function runHtml(dr, run) {
   const hm = dr && dr.file && dr.file.exists ? dr.file.writtenHm || "unknown" : null;
   if (run && run.state === "running") return `<div class="rm-driftbar" role="status"><span><span class="rm-spin" aria-hidden="true"></span> re-running the check · started <b>${esc(run.started)}</b> · usually about 2 min, at most 3 min 20 s${hm ? ` · the rows below are from ${esc(hm)}` : ""}</span></div>`;
@@ -804,8 +799,6 @@ function modeHtml(dr) {
   return `<div><b>${team ? "team" : "single-user"}</b> mode: ${team ? "a drift is ordinary tidy-up, and the health check only reports it" : "a real drift means a himmel bug, and the health check warns"} · <a href="#/config?tile=tracker">change in Configure → Tracker ▸</a></div>`;
 }
 
-// Tidy up covers every version unless the route names one: a default of the running version would hide the other versions' sync ops and released-but-open
-// tickets. It has no Sector control, so a Sector picked on Roadmap (ui.theme survives a tab change) does not narrow it.
 const tidyUi = (ui, sel) => ({ ...ui, version: ui.v && ui.v !== "all" && sel >= 0 ? sel : null, theme: null });
 const tidyScope = (d, u) => (u.version != null ? d.versions[u.version].n : "every version");
 
@@ -829,7 +822,7 @@ function tidyLibrarian(d, u) {
   const l = d.librarian, keep = shownKs(d, u);
   const ids = new Map(d.tickets.map((t) => [t.k, idOf(t)]));
   const id = (k) => ids.get(k) || "HIMMEL-" + k;
-  const pids = (p) => p.ids || (p.keys ? p.keys.map(id) : [p.id || id(p.k)]); // the ids a proposal names: a project's number alone is ambiguous
+  const pids = (p) => p.ids || (p.keys ? p.keys.map(id) : [p.id || id(p.k)]);
   const lists = LIB_LISTS.map(([k, title]) => ({ title, dup: k === "duplicates", items: (l[k] || []).filter((p) => pids(p).some((x) => keep.has(x))) }));
   const full = lists.filter((x) => x.items.length), empty = lists.filter((x) => !x.items.length), n = full.reduce((a, x) => a + x.items.length, 0);
   const row = (p) => { const cmd = /^(.*?): (jira .+)$/.exec(p.proposal);
@@ -839,7 +832,6 @@ function tidyLibrarian(d, u) {
     fold: empty.length ? finLine(full.length ? "" : "rm-librarian", true, `Librarian: ${empty.map((x) => x.title.toLowerCase()).join(", ")}`, "nothing to propose") : "" };
 }
 
-// The Tidy up panel head: the drift count once, what is listed but not counted, the mode, and the one re-run button.
 function tidyHead(d, ui, sel, dr) {
   const u = tidyUi(ui, sel), scope = esc(tidyScope(d, u));
   if (d.source === "github") return `<div class="cph"><div class="big">Nothing to tidy<small>${scope}</small></div></div>`;
@@ -856,7 +848,7 @@ function tidyTab(d, ui, sel, dr) {
   const u = tidyUi(ui, sel);
   if (d.source === "github") return finLine("rm-tidy", true, "Tidy up", "GitHub issues are read-only here, so there is nothing to tidy: change them on GitHub");
   const lib = tidyLibrarian(d, u);
-  if (d.source === "local") return lib.card + lib.fold; // the local store has no Jira status, no plan and no worker sync
+  if (d.source === "local") return lib.card + lib.fold;
   const plan = planDrift(d), sync = tidySync(d, u), folds = [sync.fold, lib.fold, plan.fold].filter(Boolean);
   return statusDriftHtml(dr, ui.driftOrigins, ui.driftRun) + (plan.card || "") + (sync.card || "") + lib.card
     + (folds.length ? `<div class="gh">Nothing to do, or not read</div>${folds.join("")}` : "");
