@@ -317,10 +317,6 @@ esac
 # on EVERY exit path but --help: a piped caller's pipeline exit code is the LAST
 # command's, not this script's, so the numeric verdict must survive in the
 # output text. --help clears the trap below — asking for help is not a gate result.
-# A GitHub quota stop: gh_read appends "<token> <bucket> rate-limit|stall"
-# to $CHECK_CI_REFUSED when a read finally fails that way (GH_READ_REFUSED_FILE, set once
-# the arguments are read). An exit 2 with such a row prints the QUOTA-PAUSE line and leaves the
-# marker the waiter wakes on, keyed <pr>.<head> or, with no PR read yet, branch-<name>.unknown.
 CHECK_CI_REFUSED=""
 CHECK_CI_REFUSED_OUTER="${GH_READ_REFUSED_FILE:-}"
 _refused_note() { [ -z "${CHECK_CI_REFUSED:-}" ] || printf '%s %s rate-limit\n' main "${1:-graphql}" >> "$CHECK_CI_REFUSED" 2>/dev/null; return 0; }
@@ -345,8 +341,6 @@ _quota_report() {
         ghq_mark_blocked "$key" "$ref" check-ci.sh "$bucket" "$why"
     ) || true
 }
-# _check_ci_exit <rc> — at every exit: report a quota stop on rc 2, then hand our rows to the
-# caller that owns an outer GH_READ_REFUSED_FILE (ready-check's child) and drop the file.
 # shellcheck disable=SC2329  # called by _verdict_line, which the EXIT trap runs
 _check_ci_exit() {
     [ "${1:-0}" -ne 2 ] || _quota_report
@@ -431,8 +425,6 @@ if [ "$MAX_WAIT" -gt 0 ] && [ "$MAX_WAIT" -lt "$SETTLE" ]; then
     exit 64
 fi
 
-# From here every read and every child (the cache lib, the watch helper) appends its
-# refusals to our own file, whatever file the caller exported: _check_ci_exit hands the rows on.
 CHECK_CI_REFUSED=$(mktemp "${TMPDIR:-/tmp}/check-ci-refused.XXXXXX" 2>/dev/null) || CHECK_CI_REFUSED=""  # swallow-ok: no scratch file means no quota marker, never a different verdict
 [ -z "$CHECK_CI_REFUSED" ] || export GH_READ_REFUSED_FILE="$CHECK_CI_REFUSED"
 
@@ -535,7 +527,7 @@ _rl_recover() {
     ghb_wait_for_budget "$bound" "$CHECK_CI_SLEEP_CMD" || return 1
     [ "$GHB_WAITED" -eq 1 ] || return 1
     RL_RECOVERIES=$((RL_RECOVERIES + 1))
-    _refused_clear   # the wait recovered the budget: the refusal that led here is not a stop
+    _refused_clear
     return 0
 }
 if ! rl_bound=$(_rl_bound) || ! ghb_wait_for_budget "$rl_bound" "$CHECK_CI_SLEEP_CMD"; then
@@ -543,7 +535,7 @@ if ! rl_bound=$(_rl_bound) || ! ghb_wait_for_budget "$rl_bound" "$CHECK_CI_SLEEP
     _refused_note graphql
     exit 2
 fi
-_refused_clear   # a preflight that waited and recovered leaves no refusal behind
+_refused_clear
 # jq is needed to read CodeRabbit's status + review-body findings, so require
 # it only when the CodeRabbit signal gate is ARMED. --threads-only is not a pure GraphQL+gh path;
 # it also runs cr_signal_gate + cr_body_gate (a body-only finding
@@ -1391,7 +1383,6 @@ watch_round() {
 # the immutable commit endpoints are being watched.
 initial_pr=$(GH_READ_QUIET=1 pr_view --json url,reviewDecision,headRefOid,baseRefName --jq '[.url, (if (.reviewDecision // "") == "" then "null" else .reviewDecision end), .headRefOid, .baseRefName] | @tsv' 2>&1) || {
     if [ -n "$CHECK_CI_REFUSED" ] && [ -s "$CHECK_CI_REFUSED" ]; then
-        # GitHub refused the read (a rate limit or a stall): the PR may be fine, so no "cannot resolve"
         echo "check-ci: the PR was not read, GitHub refused it — cannot evaluate: $initial_pr" >&2
     else
         echo "check-ci: cannot resolve the PR — cannot evaluate: $initial_pr" >&2

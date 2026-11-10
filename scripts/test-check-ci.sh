@@ -139,11 +139,6 @@ cmd="${1:-}"
 # when GH_STUB_RL_PROBE names a counter file. Call 1 (the startup preflight) spends
 # 4 real seconds and reports a healthy budget; every later call (_rl_recover)
 # reports it exhausted with the reset 6 s away.
-# GH_STUB_QUOTA drives the quota-out shapes: pr-view / pr-view-stall make the
-# startup `pr view` fail as a rate limit / a timeout; low-far and out-far make the budget probe
-# read 150 / 0 with the reset 3000 s away; after1-past, after1-absent and after1-absurd let the
-# first probe read healthy and every later one read 0 with the reset past, absent or absurd, and
-# make every `pr checks` a rate limit.
 if [ -n "${GH_STUB_QUOTA:-}" ]; then
     if [ "$cmd" = "api" ] && [ "${2:-}" = "-i" ]; then
         _qn=$(grep -c '^api -i' "$GH_STUB_ARGS" 2>/dev/null)
@@ -3158,8 +3153,6 @@ run body-actionable
 assert_rc 0 "9712-d threads resolved, the actionable review does not block on its own"
 assert_err_has "posted 3 actionable comment(s)" "9712-d a CodeRabbit pass that posted actionable comments is reported as findings"
 
-# A GitHub quota stop is named, never "cannot resolve the PR", and leaves a
-# marker the waiter reads. Every row is on stubs: the quota dir is $STUBDIR/quota, no live state.
 blocked_names() { local f; for f in "$STUBDIR/quota/blocked"/*; do [ -e "$f" ] && printf '%s ' "${f##*/}"; done; return 0; }
 SLASH_REPO=$(mktemp -d "$STUBDIR/slash-branch.XXXXXX") || { echo "FATAL: mktemp -d failed"; exit 1; }
 git -C "$SLASH_REPO" init --quiet -b docs/x
@@ -3168,8 +3161,6 @@ git -C "$SLASH_REPO" -c user.email=t@t -c user.name=t commit --allow-empty -m se
 printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "${1:-0}" >> "${REC_SLEEP_LOG:?}"' > "$STUBDIR/rec-sleep"
 chmod +x "$STUBDIR/rec-sleep"
 
-# T4-a — F1: the startup `pr view` is refused as a rate limit. The line is QUOTA-PAUSE, the false
-# phrase is gone, and a marker keyed by the branch (the PR is unread) is left for the waiter.
 rm -rf "$STUBDIR/quota"
 QUOTA_OVERRIDE=pr-view run cr-completed
 assert_rc 2 "T4-a a refused startup pr view is exit 2"
@@ -3178,8 +3169,6 @@ assert_err_has "report BLOCKED" "T4-a the line tells the worker to report BLOCKE
 assert_err_lacks "T4-a no false cannot-resolve phrase on a quota stop" "said cannot resolve the PR" -F -- "cannot resolve the PR"
 case "$(blocked_names)" in branch-*.unknown\ ) pass "T4-a the PR is unread: marker is branch-<name>.unknown" ;; *) fail "T4-a marker name" "got [$(blocked_names)]" ;; esac
 
-# T4-b — the preflight stop: the marker is branch-docs%2Fx.unknown on a slashed branch, and the
-# run returns inside 45 s at --max-wait 30 with exit 2 (the reset is past what is left to wait).
 rm -rf "$STUBDIR/quota"
 BUDGET_PREFLIGHT_OVERRIDE=1; QUOTA_OVERRIDE=out-far; T4_T0=$SECONDS
 run_in_repo "$SLASH_REPO" cr-completed --max-wait 30
@@ -3188,15 +3177,12 @@ check_eq "T4-b --max-wait 30 returns within 45 s" "yes" "$([ $((SECONDS - T4_T0)
 assert_err_has "QUOTA-PAUSE github graphql" "T4-b the preflight stop prints the QUOTA-PAUSE line"
 check_eq "T4-b a slashed branch is escaped in the marker name" "branch-docs%2Fx.unknown " "$(blocked_names)"
 
-# T4-c — a preflight reading of 150 (under the 200 floor) with the reset past --max-wait marks the same way
 rm -rf "$STUBDIR/quota"
 BUDGET_PREFLIGHT_OVERRIDE=1; QUOTA_OVERRIDE=low-far
 run_in_repo "$SLASH_REPO" cr-completed --max-wait 30
 assert_rc 2 "T4-c a preflight reading of 150 with the reset past --max-wait is exit 2"
 check_eq "T4-c the marker is branch-docs%2Fx.unknown" "branch-docs%2Fx.unknown " "$(blocked_names)"
 
-# T4-d — a refusal after the PR is read is keyed <pr>.<head>; the recoveries stop at 3, proved
-# from the stub's call log: one preflight probe plus at most three recoveries.
 for t4mode in past absent; do
     rm -rf "$STUBDIR/quota"
     BUDGET_PREFLIGHT_OVERRIDE=1; QUOTA_OVERRIDE="after1-$t4mode"
@@ -3207,22 +3193,18 @@ for t4mode in past absent; do
     case "$(blocked_names)" in 42.*\ ) pass "T4-d reset-$t4mode: a later refusal marks <pr>.<head>" ;; *) fail "T4-d reset-$t4mode: marker name" "got [$(blocked_names)]" ;; esac
 done
 
-# T4-e — reset-absurd with --max-wait 0: the absurd reset is read as absent, so no sleep is longer
-# than 60 s (the suite pins jitter to 0); the sleep seam records every wait.
 rm -rf "$STUBDIR/quota"; : > "$STUBDIR/sleep.log"
 BUDGET_PREFLIGHT_OVERRIDE=1; QUOTA_OVERRIDE=after1-absurd; SLEEP_CMD_OVERRIDE="$STUBDIR/rec-sleep"
 REC_SLEEP_LOG="$STUBDIR/sleep.log" run cr-completed --max-wait 0
 assert_rc 2 "T4-e reset-absurd with --max-wait 0 still ends in exit 2"
 check_eq "T4-e no recorded sleep is past 60 s" "yes" "$(sort -n "$STUBDIR/sleep.log" | tail -n 1 | awk '{ print ($1 <= 60) ? "yes" : "no" }')"
 
-# T4-f — a read that stalls is named as a stall, with its own marker reason
 rm -rf "$STUBDIR/quota"
 QUOTA_OVERRIDE=pr-view-stall GH_READ_TIMEOUT=2 run cr-completed
 assert_rc 2 "T4-f a stalled startup read is exit 2"
 assert_err_has "GH-STALL" "T4-f the stall is named"
 check_eq "T4-f the stall leaves a marker with reason=stall" "yes" "$(grep -qx 'reason=stall' "$STUBDIR/quota/blocked/"branch-* 2>/dev/null && echo yes || echo no)"
 
-# T4-g — RED control: an exit 2 that is not a quota stop (no PR for the branch) marks nothing
 rm -rf "$STUBDIR/quota"
 run no-pr
 assert_rc 2 "T4-g a non-quota exit 2 stays exit 2"
@@ -3230,8 +3212,6 @@ check_eq "T4-g a non-quota exit 2 leaves no marker" "" "$(blocked_names)"
 assert_err_lacks "T4-g a non-quota exit 2 does not claim a quota stop" "said QUOTA-PAUSE" -F -- "QUOTA-PAUSE"
 rm -rf "$STUBDIR/quota"
 
-# T4-h — I1: a gate never pauses on a number. quota.tsv reads 0 for every token and bucket, the
-# stub gh is healthy, and check-ci still goes green (exit 0), with no QUOTA-PAUSE line.
 rm -rf "$STUBDIR/quota"; mkdir -p "$STUBDIR/quota"
 T4_NOW=$(date +%s)
 for t4tok in main read; do for t4bucket in graphql core; do
@@ -3242,9 +3222,6 @@ assert_rc 0 "T4-h quota.tsv reading 0 and a healthy stub: check-ci exits 0, it n
 assert_err_lacks "T4-h no QUOTA-PAUSE from a number alone" "said QUOTA-PAUSE" -F -- "QUOTA-PAUSE"
 rm -rf "$STUBDIR/quota"
 
-# T4-i — a refusal that a wait recovered is not a stop: the first `pr checks` is a rate limit, the
-# wait recovers it, and the next failure is a bad credential. That exit 2 is not a quota stop, so
-# it prints no QUOTA-PAUSE and marks nothing.
 rm -rf "$STUBDIR/quota"
 BUDGET_PREFLIGHT_OVERRIDE=1
 RL_PROBE_OVERRIDE="$STUBDIR/rl-probe"; rm -f "$RL_PROBE_OVERRIDE"

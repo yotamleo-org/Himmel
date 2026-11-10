@@ -498,9 +498,6 @@ drive_check_ci() {
     setup_caller_dir check-ci
     gate_fixture || { emit "FAIL check-ci.sh setup gate_fixture"; return 0; }
     cd "$GATE_REPO" || return 0
-    # The ready-pass gh has no `pr view` answer for check-ci's startup read, so a mode that leaves GraphQL
-    # healthy (rest-out) would stop at "cannot resolve the PR" before any REST read. This layer, local to
-    # this caller's scratch dir, answers that one read and hands every other call to the ready-pass gh.
     mkdir -p "$cdir/checkci-bin"
     cat > "$cdir/checkci-bin/gh" <<'STUB'
 #!/usr/bin/env bash
