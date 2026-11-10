@@ -333,8 +333,7 @@ _quota_report() {
         key="branch-$(git symbolic-ref --short -q HEAD 2>/dev/null || echo detached)"; ref=unknown  # swallow-ok: no branch name still marks, as branch-detached
     fi
     (
-        # shellcheck source=scripts/lib/gh-quota.sh
-        # shellcheck disable=SC1091
+        # shellcheck source=/dev/null
         . "$(cd "$(dirname "$0")" && pwd)/lib/gh-quota.sh" 2>/dev/null || exit 0
         ghq_line "$tok" "$bucket" check-ci.sh "$why" >&2
         echo "check-ci: BLOCKED — GitHub refused the read, so nothing was judged: report BLOCKED and stop; the chief resumes you at quota return" >&2
