@@ -211,7 +211,7 @@ def load_adjudications(path, case_inputs, gold_revision, findings):
             continue
         if is_target:
             ident, table = (cid, rec["target_id"]), labels["targets"]
-            decision = (rec["ruling"], tuple(sorted(rec["reviewed_findings"])))
+            decision = (rec["ruling"],)
         else:
             ident, table = (cid, rec["finding_sha256"]), labels["findings"]
             decision = (rec["correctness"], tuple(sorted(rec["target_ids"])), rec["scope"], rec["severity_valid"])
@@ -224,7 +224,9 @@ def load_adjudications(path, case_inputs, gold_revision, findings):
             conflicts.add(ident)
             del table[ident]
             diags.append({"reason": "conflict", "case": cid, "identity": ident[1][:16], "line": n})
-        elif not is_target:
+        elif is_target:
+            prev["reviewed_findings"] = sorted(set(prev["reviewed_findings"]) | set(rec["reviewed_findings"]))
+        else:
             prev["observed_execution_ids"] = sorted(set(prev["observed_execution_ids"])
                                                     | set(rec["observed_execution_ids"]))
     return labels, diags

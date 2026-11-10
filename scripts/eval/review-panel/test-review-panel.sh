@@ -1353,7 +1353,7 @@ PY
 m4labels() { local L="$1" O="$2" F="${3:-$FIX}"; : > "$L"
   mklabel "$L" "$F" "$O" case-15 1 correct logic-a-1 in true
   mklabel "$L" "$F" "$O" case-21 1 incorrect "" in null
-  mklabel "$L" "$F" "$O" case-19 1 correct "" in true
+  mklabel "$L" "$F" "$O" case-19 2 correct "" in true
   mklabel "$L" "$F" "$O" case-16 1 correct "" out true
   mklabel "$L" "$F" "$O" case-05 1 correct "" in false
   mklabel "$L" "$F" "$O" case-03 1 correct scope-b-1 in true; }
@@ -1379,17 +1379,72 @@ eq "recall_bounds_partial_labels: 1 found, 2 missed, 1 possibly covered by an un
   "$(jget "$J1" verified/metrics/panel.verified_defect_recall_lo):$(jget "$J1" verified/metrics/panel.verified_defect_recall_hi):$(jget "$J1" verified/metrics/panel.verified_defect_recall):$(jget "$J1" verified/targets/case-19/quoting-a-1)" \
   "0.25:0.5:null:unresolved"
 eq "recall_bounds_partial_labels: a completed review with no finding misses its target" "$(jget "$J1" verified/targets/case-01/failopen-a-1)" "missed"
+eq "verified_gating_recall: the Important hit with a valid severity counts, the unlabelled Important widens hi" \
+  "$(jget "$J1" verified/metrics/panel.verified_gating_recall_lo):$(jget "$J1" verified/metrics/panel.verified_gating_recall_hi):$(jget "$J1" verified/metrics/panel.verified_gating_recall)" "0.25:0.5:null"
+LG="$TMP/m4-labels-gate.jsonl"; cp "$L1" "$LG"; mklabel "$LG" "$FIX" "$VO" case-19 1 correct quoting-a-1 in null
+JG="$TMP/m4-15.json"; vscore "$VO" "$LG" "$JG" >/dev/null
+eq "verified_gating_recall: a correct Important hit with unknown severity is a recall point but only gating uncertainty" \
+  "$(jget "$JG" verified/metrics/panel.verified_defect_recall):$(jget "$JG" verified/metrics/panel.verified_gating_recall_lo):$(jget "$JG" verified/metrics/panel.verified_gating_recall_hi):$(jget "$JG" verified/metrics/panel.verified_gating_recall)" \
+  "0.5:0.25:0.5:null"
+LG2="$TMP/m4-labels-gate2.jsonl"; cp "$L1" "$LG2"; mklabel "$LG2" "$FIX" "$VO" case-19 1 correct quoting-a-1 in true
+JG2="$TMP/m4-16.json"; vscore "$VO" "$LG2" "$JG2" >/dev/null
+eq "verified_gating_recall: the same hit with a valid severity settles gating recall to a point" \
+  "$(jget "$JG2" verified/metrics/panel.verified_gating_recall)" "0.5"
+LM="$TMP/m4-labels-missing.jsonl"; cp "$L1" "$LM"
+python3 -c 'import json,sys
+ls=[json.loads(l) for l in open(sys.argv[1])]
+a=dict(ls[0], evidence_refs=[]); b=dict(ls[2], reviewed_by="")
+open(sys.argv[2], "w").write("".join(json.dumps(l) + "\n" for l in [a, b] + ls[1:2] + ls[3:]))' "$L1" "$LM"
+JM="$TMP/m4-17.json"; vscore "$VO" "$LM" "$JM" >/dev/null
+eq "missing_reviewer_or_evidence_rejected: a label with no evidence or no reviewer is not used" \
+  "$(jget "$JM" verified/coverage/panel/unlabelled):$(jget "$JM" verified/diagnostics | grep -o 'missing-field:evidence_refs' | head -1):$(jget "$JM" verified/diagnostics | grep -o 'missing-field:reviewed_by' | head -1)" \
+  "3:missing-field:evidence_refs:missing-field:reviewed_by"
+VALD="$TMP/m4-val-dirty.json"
+python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); v["cases"]["case-15"]["target_ids"]=[]; json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$VALD"
+out=$(vscore "$VO" "$L1" "$TMP/m4-18.json" "$FIX" "$VALD"); rc=$?
+eq "dirty_sidecar_refused: --adjudications over a sidecar that fails lint exits 2 and says so" "$rc:$(printf '%s' "$out" | grep -c 'fails lint')" "2:1"
+out=$(python3 "$SCORE" score --outputs "$VO" --fixtures "$FIX" --key "$KEY" --critics codex --only "$M4IDS" --no-ledger --adjudications "$L1" 2>&1); rc=$?
+eq "no_sidecar_refused: --adjudications with no validation sidecar beside the key exits 2" "$rc:$(printf '%s' "$out" | grep -c 'needs a validation sidecar')" "2:1"
+vlint() { python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); exec(sys.argv[3]); json.dump(v, open(sys.argv[2], "w"))' "$VAL" "$TMP/m4-val-rule.json" "$1"
+  python3 "$SCORE" lint --fixtures "$FIX" --key "$KEY" --validation "$TMP/m4-val-rule.json" 2>&1; }
+for rule in 'v["cases"]["case-15"]["target_ids"]=[]|a seeded case names its target ids' \
+    'v["cases"]["case-16"]["target_ids"]=["logic-a-1"]|a clean case names no target' \
+    'del v["cases"]["case-16"]["contract"]|a clean case states its intended contract' \
+    'v["cases"]["case-16"]["notes"]="x"|unknown field' \
+    'v["cases"]["case-15"]["effective_kind"]="excluded"|an excluded state and an excluded kind go together' \
+    'v["cases"]["case-15"]["target_ids"]=["nope-1"]|neither a key defect'; do
+  out=$(vlint "${rule%%|*}"); rc=$?
+  eq "validation lint rule: ${rule#*|}" "$rc:$(printf '%s' "$out" | grep -c "${rule#*|}")" "1:1"
+done
+out=$(python3 "$SCORE" lint --fixtures "$FIX" --key "$KEY" --validation "$TMP/no-such-validation.json" 2>&1); rc=$?
+eq "validation lint: a missing sidecar is a named problem, not a traceback" "$rc:$(printf '%s' "$out" | grep -c Traceback):$(printf '%s' "$out" | grep -c 'unreadable')" "1:0:1"
+KD="$TMP/m4-keydir"; mkdir -p "$KD"; cp "$KEY" "$KD/seeds.json"; cp "$VALD" "$KD/validation.json"
+out=$(python3 "$SCORE" score --outputs "$VO" --fixtures "$FIX" --key "$KD/seeds.json" --critics codex --only "$M4IDS" --no-ledger --json "$TMP/m4-19.json" 2>&1); rc=$?
+eq "malformed_default_sidecar_not_bound: a default sidecar that fails lint binds no gold_revision and says so" \
+  "$rc:$(jget "$TMP/m4-19.json" gold_revision):$(printf '%s' "$out" | grep -c 'fails lint')" "0:null:1"
+VOL="$TMP/m4-out-leak"; cp -r "$VO" "$VOL"; printf 'see review-panel/key for the answer\n' >> "$VOL/case-21.err"
+JL="$TMP/m4-20.json"; vscore "$VOL" "$L1" "$JL" >/dev/null
+eq "leaked_case_not_verified: a case whose transcript carries a key marker leaves the verified family, named" \
+  "$(jget "$JL" verified/targets/case-21):$(jget "$JL" verified/diagnostics | grep -c '"leaked"'):$(jget "$JL" verified/reasons | grep -c leaked)" "null:1:1"
 eq "unlabelled_finding_coverage_gap: the unlabelled finding is counted and the coverage shows it" \
   "$(jget "$J1" verified/coverage/panel/findings):$(jget "$J1" verified/coverage/panel/unlabelled):$(jget "$J1" verified/coverage/panel/decided)" "6:1:5"
 eq "sealed_pair_kept_together: a sealed twin whose pair is not wholly validated leaves the cohort with its pair" \
   "$(jget "$J1" verified/cohort/incomplete_pairs):$(jget "$J1" verified/targets/case-03):$(jget "$J1" verified/counts/sealed.panel.verified_defect_recall_lo)" \
   '["scope-b"]:null:{"k": 1, "n": 1}'
-has "proxy and verified side by side: the report prints both families" "$out" "verified (adjudicated"
-L1s="$TMP/m4-labels1s.jsonl"; cp "$L1" "$L1s"; mklabel "$L1s" "$FIX" "$VO" case-19 2 incorrect "" in null same-person same-person
+has "proxy and verified side by side: the report prints both families" "$(vscore "$VO" "$L1" "$TMP/m4-1b.json")" "verified (adjudicated"
+L1s="$TMP/m4-labels1s.jsonl"; cp "$L1" "$L1s"; mklabel "$L1s" "$FIX" "$VO" case-19 1 incorrect "" in null same-person same-person
 J1s="$TMP/m4-1s.json"; vscore "$VO" "$L1s" "$J1s" >/dev/null
 eq "self_adjudicated_label_rejected: a label its own adjudicator reviewed is not used" \
   "$(jget "$J1s" verified/coverage/panel/unlabelled):$(jget "$J1s" verified/diagnostics | grep -c self-reviewed)" "1:1"
-VO2="$TMP/m4-out2"; cp -r "$VO" "$VO2"; J2="$TMP/m4-2.json"; vscore "$VO2" "$L1" "$J2" >/dev/null
+VO2="$TMP/m4-out2"; cp -r "$VO" "$VO2"
+python3 -c 'import sys; p=sys.argv[1]; t=open(p).read().split("\n"); open(p, "w").write("\n".join(t[:1] + ["", ""] + t[1:]))' "$VO2/case-15.md"
+eq "label_reused_across_repeat: the repeat prints the labelled finding on another stdout line" \
+  "$(grep -n 'stops a step early' "$VO2/case-15.md" | cut -d: -f1) $(grep -n 'stops a step early' "$VO/case-15.md" | cut -d: -f1)" \
+  "$(( $(grep -n 'stops a step early' "$VO/case-15.md" | cut -d: -f1) + 2 )) $(grep -n 'stops a step early' "$VO/case-15.md" | cut -d: -f1)"
+J2="$TMP/m4-2.json"; vscore "$VO2" "$L1" "$J2" >/dev/null
+eq "finding_sha256: the canonical identity of [sev, file, line, text] is pinned" \
+  "$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import adjudication; print(adjudication.finding_sha256({"sev": "imp", "file": "scripts/a.sh", "line": 3, "text": "a lock is never released", "critic": "codex", "at": 9}))' "$HERE")" \
+  "665b20c8f091c98eebdc7d6b9e3b32da27574775f1a8976771a0a08bb6f4cd6a"
 eq "label_reused_across_repeat: a repeat execution with identical findings reuses every label" \
   "$(jget "$J2" verified/metrics | sha256sum):$(jget "$J2" verified/coverage/panel/unlabelled)" "$(jget "$J1" verified/metrics | sha256sum):1"
 FIXC="$TMP/m4-fix-ctx"; cp -r "$FIX" "$FIXC"; printf 'keep the newest five archives\n' > "$FIXC/case-15.intent.md"
@@ -1483,6 +1538,23 @@ python3 -c 'import json,sys; ls=[json.loads(l) for l in open(sys.argv[1])]; ls[4
 JB="$TMP/m4-13.json"; vscore "$VO" "$LB" "$JB" >/dev/null
 eq "severity_valid_is_a_bool: a label giving severity_valid as 0 is rejected, so its blocker is unsettled" \
   "$(jget "$JB" verified/blocks/case-05):$(jget "$JB" verified/diagnostics | grep -c bad-value)" "unsettled:1"
+eq "unsettled_blocker_withholds: an unsettled blocker withholds the false-block rate and is named" \
+  "$(jget "$JB" verified/metrics/panel.verified_false_block_rate):$(jget "$JB" verified/reasons | grep -c 'unsettled-blocker:panel:case-05')" "null:1"
+LR2="$TMP/m4-labels-ruling2.jsonl"; cp "$L1" "$LR2"
+python3 -B -c 'import json,sys; sys.path.insert(0, sys.argv[1]); import adjudication, score
+cases = score.load_key(sys.argv[2])["cases"]
+fs = score.parse_review(open(sys.argv[4] + "/case-19.md").read())[0]
+base = {"v": 1, "kind": "target", "case_id": "case-19",
+        "case_input_sha256": adjudication.case_input_sha256(score.case_inputs(sys.argv[5], cases, ["case-19"])["case-19"]),
+        "gold_revision": adjudication.gold_revision(sys.argv[3]), "target_id": "quoting-a-1", "ruling": "missed",
+        "rationale": "fixture", "evidence_refs": ["testdata:synthetic"], "adjudicator": "fixture-adjudicator",
+        "reviewed_by": "fixture-reviewer", "adjudicated_at": "2026-11-10"}
+out = open(sys.argv[6], "a")
+for f in fs:
+    out.write(json.dumps(dict(base, reviewed_findings=[adjudication.finding_sha256(f)])) + "\n")' "$HERE" "$KEY" "$VAL" "$VO" "$FIX" "$LR2"
+JR2="$TMP/m4-21.json"; out=$(vscore "$VO" "$LR2" "$JR2"); rc=$?
+eq "missed_rulings_merge: two missed rulings of one target over different findings merge instead of conflicting" \
+  "$rc:$(jget "$JR2" verified/targets/case-19/quoting-a-1)" "0:missed"
 
 echo
 echo "test-review-panel: PASS=$PASS FAIL=$FAIL"

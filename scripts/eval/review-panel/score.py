@@ -370,7 +370,10 @@ def lint(fixtures, key_path, min_real=0, src=None, validation=None):
         if not {"open", "sealed"} <= got:
             problems.append("class %s: needs a pair in each half of the split, got %s" % (cls, sorted(map(str, got))))
     if validation:
-        problems += adjudication.load_validation(validation, cases)[1]
+        try:
+            problems += adjudication.load_validation(validation, cases)[1]
+        except OSError as e:
+            problems.append("validation sidecar %s is unreadable: %s" % (validation, e))
     n_seeded = sum(1 for c in cases.values() if c.get("kind") == "seeded")
     return problems, n_seeded, len(cases) - n_seeded
 
@@ -615,18 +618,23 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
            "case_evidence": case_evidence, "coverage": coverage, "decision_eligible": not reasons,
            "ineligibility_reasons": reasons, "gold_revision": None}
     if validation:
-        entries, problems, res["gold_revision"] = adjudication.load_validation(validation, cases)
+        entries, problems, gold = adjudication.load_validation(validation, cases)
+        if problems and adjudications:
+            raise ValueError("the validation sidecar %s fails lint: %s" % (validation, "; ".join(problems[:3])))
+        if problems:
+            print("score.py: the validation sidecar %s fails lint (%s): no gold_revision is recorded"
+                  % (validation, problems[0]), file=sys.stderr)
+        else:
+            res["gold_revision"] = gold
         if adjudications:
-            if problems:
-                raise ValueError("the validation sidecar %s fails lint: %s" % (validation, "; ".join(problems[:3])))
-            res["verified"] = verified_block(outputs, fixtures, cases, ids, per_case, entries, res["gold_revision"],
-                                             adjudications)
+            res["verified"] = verified_block(outputs, fixtures, cases, ids, per_case, entries, gold, adjudications,
+                                             leaks)
     elif adjudications:
         raise ValueError("--adjudications needs a validation sidecar (--validation, or validation.json beside the key)")
     return res
 
 
-def verified_block(outputs, fixtures, cases, ids, per_case, entries, gold, adjudications):
+def verified_block(outputs, fixtures, cases, ids, per_case, entries, gold, adjudications, leaks=()):
     """The verified family of one scored sweep: labels bound to the fixtures' case inputs, the gold revision and
     each finding's canonical hash. Only a case whose run manifest recorded exactly the inputs the fixtures hold
     counts: other recorded inputs mean its outputs reviewed another case, and no record (no readable manifest, or
@@ -638,6 +646,9 @@ def verified_block(outputs, fixtures, cases, ids, per_case, entries, gold, adjud
         recorded = {}
     diags, usable, findings, part = [], {}, {}, {}
     for cid in ids:
+        if cid in leaks:
+            diags.append({"reason": "leaked", "case": cid})
+            continue
         if cid not in recorded or recorded[cid] != inputs[cid]:
             diags.append({"reason": "execution-input-unrecorded" if cid not in recorded else "execution-input-differs",
                           "case": cid})
@@ -654,7 +665,7 @@ def verified_block(outputs, fixtures, cases, ids, per_case, entries, gold, adjud
     vc = {cid: {"key_kind": c.get("kind"), "pair": c.get("pair") or cid, "split": c.get("split"),
                 "entry": entries.get(cid)} for cid, c in cases.items()}
     metrics, coverage, reasons, detail = adjudication.verified_metrics(vc, findings, labels, part)
-    for why in ("execution-input-differs", "execution-input-unrecorded"):
+    for why in ("leaked", "execution-input-differs", "execution-input-unrecorded"):
         n = sum(1 for d in diags if d["reason"] == why)
         if n:
             reasons.append("%s:%d" % (why, n))
@@ -1207,10 +1218,19 @@ def score_row(repo, rev, outputs, roster_rev=None, only=None):
 
 
 def running_gold_revision():
-    """The gold revision of the running scorer checkout's key/validation.json, None when it has none; never the
-    gate tree's sidecar."""
+    """The gold revision of the running scorer checkout's key/validation.json, None when it has none or it fails
+    lint against that checkout's key; never the gate tree's sidecar."""
     path = os.path.join(HERE, VALIDATION_REL)
-    return adjudication.gold_revision(path) if os.path.isfile(path) else None
+    if not os.path.isfile(path):
+        return None
+    try:
+        _, problems, gold = adjudication.load_validation(path, load_key(os.path.join(HERE, "key", "seeds.json"))["cases"])
+    except (OSError, ValueError) as e:
+        problems = [str(e)]
+    if problems:
+        print("score.py: %s fails lint (%s): no gold_revision is recorded" % (path, problems[0]), file=sys.stderr)
+        return None
+    return gold
 
 
 def execution_fields(outputs):

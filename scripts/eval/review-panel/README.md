@@ -173,7 +173,9 @@ but is never a verified hit.
   only). A residual carrying a pattern or match rule fails lint. A validated or
   excluded entry needs a `reviewer` who is not its `curator`, a `reviewed_at`
   date and evidence. `score.py lint` checks the sidecar beside `--key` (or
-  `--validation FILE`). seeds.json and the fixtures stay the execution corpus,
+  `--validation FILE`), so run.sh's preflight lint refuses a sweep over a
+  sidecar that fails it. A sidecar that fails lint binds no gold_revision.
+  seeds.json and the fixtures stay the execution corpus,
   so relabelling needs no new run; a changed diff or context does.
 - **gold_revision** is the sha256 of the exact sidecar bytes. Score rows carry
   it outside the stamp's `confighash`, so a gold edit changes the gold revision,
@@ -203,8 +205,9 @@ case inputs the fixtures hold. Other inputs (`execution-input-differs`), or no
 record at all (`execution-input-unrecorded`, the case for every bundle from
 before the manifest), leave it out: missing provenance is never assumed. The
 cohort holds whole twin pairs whose twins are all
-validated and counted: a sealed or open pair with a pending, unscored or
-provenance-dropped twin leaves together, and its name is listed. A relabelled twin is named too. Per critic and for the panel,
+validated and counted: a sealed or open pair with a pending, excluded,
+unscored, leaked or provenance-dropped twin leaves together, and its name is
+listed. A relabelled twin is named too. Per critic and for the panel,
 the block reports:
 
 | metric | definition |
