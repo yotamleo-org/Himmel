@@ -614,6 +614,10 @@ Z="$(rjp --expected-prs "$M8/expected.jsonl")"
 eq "zero_thread_pr_vs_uncaptured: an ok receipt with 0 threads is captured-zero, a PR with no receipt is uncaptured" "$(printf '%s' "$Z" | q '(r["production"]["capture"]["k"], r["production"]["capture"]["n"], r["production"]["capture"]["captured_zero"], r["production"]["capture"]["uncaptured"])')" "(2, 5, [107], [103, 108])"
 eq "zero_thread_pr_vs_uncaptured: receipts without a snapshot still name captured-zero, coverage unknown" "$(rjp | q '(r["production"]["capture_coverage"], r["production"]["capture"]["captured_zero"], r["production"]["capture"]["n"])')" "('unknown', [107], None)"
 eq "zero_thread_pr_vs_uncaptured: a receipt is no finding, so the counts stay 2 of 3" "$(printf '%s' "$Z" | cr_rd)" "[('cr-model-2', 0, 1), ('unknown', 2, 3)]"
+{ cap 2026-10-27T23:00:00Z 109 b9 h9 1 ok null; } >> "$M8/cr.jsonl"
+exp_pr 109 b9 h9 2026-10-28T01:00:00Z >> "$M8/expected.jsonl"
+eq "collection_gap_visible: a receipt from before the window still captures a PR merged inside it" "$(rjp --expected-prs "$M8/expected.jsonl" | q '(r["production"]["capture"]["k"], r["production"]["capture"]["n"], 109 in r["production"]["capture"]["uncaptured"])')" "(3, 6, False)"
+eq "collection_gap_visible: with the CR ledger missing, a snapshot leaves coverage unknown, never all uncaptured" "$(env -i PATH="$M8/bin" HOME="$M8" "$PY3" -I "$PAGE" --reviewers-json --ledger "$M7/runs.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M8/none.jsonl" --now "$NOW" --expected-prs "$M8/expected.jsonl" 2>/dev/null | q '(r["production"]["capture_coverage"], "capture" in r["production"])')" "('unknown', False)"
 case "$Z$G" in *SECRET-BODY-TEXT*|*"gh api"*) fail "zero_thread_pr_vs_uncaptured: no review text or receipt reason text reaches the report";; *) pass "zero_thread_pr_vs_uncaptured: no review text or receipt reason text reaches the report";; esac
 
 # The evals page must not tell a reader to run a script that is not in the tree.

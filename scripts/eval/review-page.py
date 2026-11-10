@@ -743,9 +743,11 @@ def capture_summary(receipts, expected, since, t):
         x = cr_ledger_eval.parse_ts(ts)
         return x is not None and lo <= x <= t
     latest = {}
-    for _, _, r in sorted(((cr_ledger_eval.parse_ts(r.get("ts")), i, r) for i, r in enumerate(receipts)
-                           if pr_num(r.get("pr")) is not None and within(r.get("ts"))), key=lambda x: (x[0], x[1])):
-        latest[r["pr"]] = r
+    for ts, _, r in sorted(((cr_ledger_eval.parse_ts(r.get("ts")), i, r) for i, r in enumerate(receipts)
+                            if pr_num(r.get("pr")) is not None and cr_ledger_eval.parse_ts(r.get("ts"))),
+                           key=lambda x: (x[0], x[1])):
+        if ts <= t and (expected is not None or ts >= lo):
+            latest[r["pr"]] = r
     ok = {p for p, r in latest.items() if r.get("result") == "ok"}
     zero = {p for p in ok if latest[p].get("thread_count") == 0 and latest[p].get("outside_count") == 0}
     if expected is None:
@@ -800,7 +802,7 @@ def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roste
             "capture_coverage": "unknown", "capture_reason": CAPTURE_REASON,
             "roster": "unreadable" if roster is None else "ok", "not_reviewers": None}
     receipts = [r for r in in_cut if r.get("kind") == "capture"]
-    if receipts or expected is not None:
+    if cr_rows is not None and (receipts or expected is not None):
         prod["capture"] = capture_summary(receipts, expected, since, t)
         if expected is not None:
             prod.update(capture_coverage="measured", capture_reason=None)

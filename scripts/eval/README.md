@@ -360,11 +360,12 @@ What the report says, and what it does not:
 - **Capture coverage.** Unknown unless `--expected-prs` names a merged-PR
   snapshot (JSONL, one `{pr, branch, head, merged_at}` per merged PR). With
   one, `production.capture` counts the snapshot's PRs merged in the window as
-  captured (`k` of `n`: the newest CR-ledger `capture` receipt for that PR
-  says `result` `ok`), and names by PR number the captured ones with zero
+  captured (`k` of `n`: the newest CR-ledger `capture` receipt for that PR up
+  to `--now`, from before the window too, says `result` `ok`), and names by PR number the captured ones with zero
   threads (`thread_count` and `outside_count` 0), the failed ones (newest
   receipt not `ok`) and the uncaptured ones (no receipt). Receipts without a
-  snapshot give counts but no coverage ratio. Today nothing writes receipts or
+  snapshot give counts but no coverage ratio, and a CR ledger that is missing
+  or unreadable leaves coverage unknown even with a snapshot. Today nothing writes receipts or
   a snapshot (the passive recorder receipt is separate work), so on a station
   coverage reads unknown and an empty window is not a failed capture.
 - **Reviewer changes.** Each open review-panel change with its lifecycle
