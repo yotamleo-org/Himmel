@@ -17,9 +17,10 @@ FORMAT="$MINERVA/critic-return-format.md"
 PANEL="$MINERVA/panel-charter.md"
 PLANCH="$MINERVA/plan-charter.md"
 
-for tool in bun jq python3 sha256sum; do
+for tool in bun jq python3; do
   command -v "$tool" >/dev/null 2>&1 || { echo "FATAL: $tool is needed"; exit 2; }
 done
+command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || { echo "FATAL: sha256sum or shasum is needed"; exit 2; }
 [ -f "$TSV" ] && [ -f "$SKILL" ] && [ -f "$PANEL" ] && [ -f "$PLANCH" ] || { echo "FATAL: fixture sources are missing"; exit 2; }
 
 PASS=0 FAIL=0
@@ -33,14 +34,16 @@ refused() {
 neg() { ! "$@"; }
 sedi() { sed "$1" "$2" > "$2.sedi" && mv "$2.sedi" "$2"; }
 fstat() { python3 -I -c 'import os, sys; s = os.stat(sys.argv[1]); print(s.st_mtime_ns, s.st_ino)' "$1"; }
-nfiles() { find "$1" -maxdepth 1 -name "$2" | wc -l | tr -d ' '; }
+# shellcheck disable=SC2231 # $2 is a glob on purpose
+nfiles() { local n=0 f; for f in "$1"/$2; do [ -e "$f" ] && n=$((n+1)); done; printf '%s' "$n"; }
 okrun() { if [ "$RC" = 0 ] && jq -e . <<<"$OUT" >/dev/null 2>&1; then pass "$1"; else fail "$1 (rc=$RC)"; fi; }
 
 T="$(mktemp -d "${TMPDIR:-/tmp}/critic-findings.XXXXXX")" || exit 1
 T="$(cd "$T" && pwd -P)" || exit 1
 trap 'rm -rf "$T"' EXIT
 
-sha() { sha256sum "$1" | cut -d' ' -f1; }
+sha256s() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi | cut -d' ' -f1; }
+sha() { sha256s < "$1"; }
 cf() { OUT=$(python3 -I "$FINDINGS" "$@" 2>"$T/err"); RC=$?; }
 
 newroot() {
@@ -269,7 +272,7 @@ t_empty_previous_bundle() {
 t_legacy_missing_not_zero() {
   newroot lm; mklegacy spec 1 "SPEC FINDINGS 2"; norm spec 1
   refused 3 legacy-provenance-missing "legacy FINDINGS refuses with 3"
-  check "no index and no lock were created" bash -c "! ls '$R/specs/design' | grep -q -E 'finding-index|lock'"
+  check "no index and no lock were created" test "$(nfiles "$R/specs/design" '*finding-index*')$(nfiles "$R/specs/design" '*lock*')" = 00
   cf normalize --spec "$SPEC" --kind spec --round 1 --verdict "$(vpath spec 1)" --out "$(idx spec 1)" --legacy-review "$R/review.json"
   refused 2 invalid "the retired --legacy-review option is refused"
   newroot lm-missing; norm spec 1; refused 3 missing "a missing verdict is not an empty finding set"
@@ -360,7 +363,7 @@ t_every_declared_prior_bound() {
   norm spec 2
   printf '{"schema":1,"verdicts":[{"path":"%s","sha256":"%s"},{"path":"%s","sha256":"%s"}]}\n' "$(vpath spec 1)" "$(sha "$(vpath spec 1)")" "$(vpath spec 1)" "$(sha "$(vpath spec 1)")" > "$T/priv-bound/dup.json"
   bund "$T/priv-bound/dup.json" "$b"; refused 2 duplicate "a duplicate prior"
-  printf '{"schema":1,"verdicts":[{"path":"%s","sha256":"%s"}]}\n' "$(vpath spec 1)" "$(printf 'x' | sha256sum | cut -d' ' -f1)" > "$T/priv-bound/stale.json"
+  printf '{"schema":1,"verdicts":[{"path":"%s","sha256":"%s"}]}\n' "$(vpath spec 1)" "$(printf 'x' | sha256s)" > "$T/priv-bound/stale.json"
   bund "$T/priv-bound/stale.json" "$b"; refused 3 stale "a declared hash that is not the file's hash"
   printf '{"schema":1,"verdicts":[{"path":"%s","sha256":"%s"}]}\n' "$(vpath spec 5)" "$(sha "$SPEC")" > "$T/priv-bound/missing.json"
   bund "$T/priv-bound/missing.json" "$b"; refused 3 missing "a declared prior file that does not exist"
@@ -506,7 +509,7 @@ t_rebuild_archives_old_index() {
   norm spec 1 --rebuild-stale; okrun "an index that is current is idempotent under the flag"
   check "no archive for a current index" test "$(nfiles "$R/specs/design" '*.previous.*')" = 0
   local oldbytes; oldbytes=$(cat "$i")
-  printf 'CONTENT-SHA256 %s x\n' "$(printf 'z' | sha256sum | cut -d' ' -f1)" > "$R/line"
+  printf 'CONTENT-SHA256 %s x\n' "$(printf 'z' | sha256s)" > "$R/line"
   python3 -I -c 'import sys; p=sys.argv[1]; t=open(p).read(); c=t.rstrip("\n").rfind("\n")+1; open(p,"w").write(t[:c]+open(sys.argv[2]).read()+t[c:])' "$v" "$R/line"
   mkdir -p "$R/pre"; cp "$i" "$R/pre/old.json"
   printf 'different\n' > "$i.previous.$old.json"
