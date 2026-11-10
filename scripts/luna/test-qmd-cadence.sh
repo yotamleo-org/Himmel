@@ -1022,6 +1022,7 @@ out=$(run_fda darwin23 arm)
 assert_contains "Darwin arm names the FDA requirement"        "Full Disk Access required" "$out"
 assert_contains "Darwin arm names cron itself as the grantee" "/usr/sbin/cron"             "$out"
 assert_contains "Darwin arm heading carries no issue number"  "Full Disk Access required:"  "$out"
+assert_rc "Darwin arm FDA heading line is exactly the plain heading" "  ⚠ Full Disk Access required:" "$(grep -F -m1 'Full Disk Access required' <<<"$out")"
 run_fda darwin23 disarm >/dev/null 2>&1
 
 echo "TEST: non-Darwin arm never warns (the control)"
