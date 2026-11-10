@@ -3860,7 +3860,6 @@ test("a page line with only one of the two send-file fields is refused", async (
   expect(texts.length).toBe(2);
 });
 
-// --- the monitoring flush that cannot cost an escalation ---
 
 const MT0 = Date.UTC(2026, 10, 9, 12, 0, 0);
 const MIN = 60_000, HOUR = 3_600_000;
@@ -3898,7 +3897,6 @@ for (const [mode, mk] of MONITOR_MODES) {
     const monSend = inner ? (t: string) => { attempts++; return inner(t); } : null;
     const stop = startFlushTimers({ root: r, send: op.send, flushMs: 10, monitorMs: 10, monitor: () => ({ send: monSend, reason: "unset", operatorChat: OPCHAT }) });
     try {
-      // the monitoring flush really ran, so the hazard is exercised: a send was attempted, or the unset run wrote its state
       expect(await waitFor(() => (inner ? attempts >= 1 : monState(r) !== null))).toBe(true);
       expect(await waitFor(() => op.sent.length >= controls.length)).toBe(true);
       await Bun.sleep(80);
@@ -3906,7 +3904,7 @@ for (const [mode, mk] of MONITOR_MODES) {
     } finally { stop(); }
     const again = opSink();
     await flushOutboxes(r, again.send);
-    expect(again.sent).toEqual([]);   // the cursor was committed
+    expect(again.sent).toEqual([]);
   });
 }
 
@@ -3963,7 +3961,7 @@ test("R2.3 the monitoring token never reaches a file under the bridge root, the 
     await flushMonitor(r, null, MT0 + 2 * HOUR, { operatorChat: OPCHAT, reason: "unset" });
     await flushMonitor(r, makeMonitorSend(TOKEN, -100123, { f: throwing, sleep: noSleep }), MT0 + 2 * HOUR + 10 * MIN, { operatorChat: OPCHAT, reason: "unset" });
   } finally { [console.error, console.log, console.warn] = saved as any; }
-  expect(urls.some((u) => u.includes(TOKEN))).toBe(true);   // positive control: the stub saw the token in the request URL
+  expect(urls.some((u) => u.includes(TOKEN))).toBe(true);
   expect(results).toEqual([true, false, false]);
   const files = (readdirSync(r, { recursive: true }) as string[]).map((p) => join(r, p)).filter((p) => statSync(p).isFile());
   expect(files.length).toBeGreaterThan(0);
@@ -3982,9 +3980,9 @@ test("R2.4 send-then-commit: a crash between send and commit resends at most tha
   await run(MT0 + 1000);
   const afterA = monCursor(r);
   expect(sent).toEqual(["a"]);
-  expect(seen[0]).toBe(0);   // the cursor moves after the send, not before
+  expect(seen[0]).toBe(0);
   expect(afterA).toBeGreaterThan(0);
-  await run(MT0 + 2000);     // 1 s later: too soon
+  await run(MT0 + 2000);
   expect(sent).toEqual(["a"]);
   await run(MT0 + 4000);
   expect(sent).toEqual(["a", "b"]);
@@ -3992,7 +3990,7 @@ test("R2.4 send-then-commit: a crash between send and commit resends at most tha
   const afterB = monCursor(r);
   await run(MT0 + 7000);
   expect(sent).toEqual(["a", "b", "c"]);
-  writeFileSync(join(monDir(r), "outbox.jsonl.cursor"), String(afterB));   // a crash before c's commit
+  writeFileSync(join(monDir(r), "outbox.jsonl.cursor"), String(afterB));
   await run(MT0 + 10_000);
   expect(sent).toEqual(["a", "b", "c", "c"]);
   await run(MT0 + 13_000);
@@ -4023,11 +4021,11 @@ test("R2.6 the monitoring keys come from the bridge env file only; a non-group o
     await writeFile(cfg, "TELEGRAM_BOT_TOKEN=1:bridge\nTELEGRAM_MONITOR_BOT_TOKEN=2:mon\nTELEGRAM_MONITOR_CHAT_ID=-100222\n");
     process.env.TELEGRAM_MONITOR_CHAT_ID = "-100333"; process.env.TELEGRAM_MONITOR_BOT_TOKEN = "3:shell";
     const both = await loadBridgeEnv();
-    expect(both.TELEGRAM_MONITOR_CHAT_ID).toBe("-100222");   // the file value is read, and the process env does not override it
+    expect(both.TELEGRAM_MONITOR_CHAT_ID).toBe("-100222");
     expect(both.TELEGRAM_MONITOR_BOT_TOKEN).toBe("2:mon");
     await writeFile(cfg, "TELEGRAM_BOT_TOKEN=1:bridge\n");
     const none = await loadBridgeEnv();
-    expect(none.TELEGRAM_MONITOR_CHAT_ID).toBeUndefined();   // a process-env monitoring key alone is ignored
+    expect(none.TELEGRAM_MONITOR_CHAT_ID).toBeUndefined();
     expect(none.TELEGRAM_MONITOR_BOT_TOKEN).toBeUndefined();
   } finally {
     if (saved.env === undefined) delete process.env.TELEGRAM_ENV; else process.env.TELEGRAM_ENV = saved.env;
@@ -4041,7 +4039,7 @@ test("R2.6 the monitoring keys come from the bridge env file only; a non-group o
     expect([m.send === null, m.reason, m.retry]).toEqual([true, "not a group", false]);
   }
   const offline = await checkMonitoring(env, { f: asFetch(async () => { throw new Error("offline"); }) });
-  expect([offline.send === null, offline.retry]).toEqual([true, true]);   // no answer from getChat is asked again, a non-group is not
+  expect([offline.send === null, offline.retry]).toEqual([true, true]);
   expect((await checkMonitoring(env, { f: kindFetch("group") })).send).not.toBeNull();
   let called = 0;
   const same = await checkMonitoring({ ...env, TELEGRAM_MONITOR_BOT_TOKEN: "1:bridge" }, { f: asFetch(async () => { called++; return jsonRes({ ok: true }); }) });
@@ -4056,7 +4054,7 @@ test("R2.6 the monitoring keys come from the bridge env file only; a non-group o
   try {
     const r = root(); spoolLines(r, [{ text: "routine", at: MT0 }]);
     await flushMonitor(r, null, MT0 + 2 * MIN, { operatorChat: OPCHAT, reason: "unset" });
-    expect(opOutbox(r).length).toBe(1);   // flushMonitor itself honours the knob
+    expect(opOutbox(r).length).toBe(1);
   } finally {
     if (prev[0] === undefined) delete process.env.HIMMEL_TEST_FIXTURE; else process.env.HIMMEL_TEST_FIXTURE = prev[0];
     if (prev[1] === undefined) delete process.env.TELEGRAM_MONITOR_DOWN_AFTER_MS; else process.env.TELEGRAM_MONITOR_DOWN_AFTER_MS = prev[1];
@@ -4074,7 +4072,7 @@ test("R2.7 a fetch that never resolves is aborted at 10 s; a 429 with retry_afte
   expect(await pending).toBe(false);
   const probe = await checkMonitoring({ TELEGRAM_BOT_TOKEN: "1:b", TELEGRAM_MONITOR_BOT_TOKEN: "2:m", TELEGRAM_MONITOR_CHAT_ID: "-100" }, { f: asFetch(async () => { asked.push(-1); return jsonRes({ ok: true, result: { type: "group", title: "T" } }); }), mkSignal });
   expect(probe.send).not.toBeNull();
-  expect(asked.slice(1)).toEqual([10_000, -1, 10_000, -1]);   // getChat and getChatMemberCount each get the same 10 s bound
+  expect(asked.slice(1)).toEqual([10_000, -1, 10_000, -1]);
   const sleeps: number[] = []; let calls = 0;
   const f429 = asFetch(async () => { calls++; return jsonRes({ ok: false, parameters: { retry_after: 600 } }, 429); });
   expect(await makeMonitorSend("999:TESTTOKEN", -100123, { f: f429, sleep: async (ms) => { sleeps.push(ms); }, mkSignal })("x")).toBe(false);
