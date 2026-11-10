@@ -27,8 +27,11 @@
 # chief doc through append-results.sh and only on a clean result.
 #
 # Exit: 0 printed (a GO line, or a trust-reviewed route); 1 the --ledger bullet
-# could not be appended; 2 usage; 4 ready-check did not PASS; 5 the trust check
-# refused or could not run.
+# could not be appended; 2 usage; 4 ready-check did not PASS (exit 1: a worker fix is
+# owed) or could not evaluate (exit 2: a refused or stalled read, a missing tool, a deadline
+# cut: nothing was judged, so "READY-GO: not evaluated" and no fix is owed); 5 the trust
+# check refused or could not run (a repo read GitHub refused prints the QUOTA-PAUSE line
+# and "READY-GO: not evaluated" in place of the TRUST text).
 # Seams (tests): GH_CMD and JIRA_CMD, as in ready-check.sh; READY_GO_ANCHOR
 # replaces the harness anchor that trust_path_check and the Jira CLI are read from.
 #
@@ -77,7 +80,11 @@ RC_ARGS="--require-contract"; CONTRACT_ARG=""
 READY_OUT=$(bash "$HERE/ready-check.sh" $RC_ARGS "$PR" "$SHA" 2>&1) || rc=$?
 printf '%s\n' "$READY_OUT"
 if [ "$rc" -ne 0 ]; then
-    echo "READY-GO FAIL (ready-check exit $rc) - no GO line; the worker fixes what is named above"
+    if [ "$rc" -eq 2 ]; then
+        echo "READY-GO: not evaluated (ready-check exit 2, the cause is above) - nothing was judged, no GO line; re-run when GitHub answers"
+    else
+        echo "READY-GO FAIL (ready-check exit $rc) - no GO line; the worker fixes what is named above"
+    fi
     exit 4
 fi
 echo "READY-GO PASS"
@@ -85,10 +92,18 @@ printf 'COVERAGE: %s\n' "$(printf '%s\n' "$READY_OUT" | grep -E '^\[[A-Z]+\] 7\.
 
 # 2. trust path: the same question merge-on-green asks, on the default branch's list
 TRUST_RC=0
-NWO=$("$GH_BIN" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""
-DEFAULT_BRANCH=$("$GH_BIN" repo view --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>/dev/null) || DEFAULT_BRANCH=""
+RG_ERR=$(mktemp "${TMPDIR:-/tmp}/ready-go-err.XXXXXX" 2>/dev/null) || RG_ERR=/dev/null  # swallow-ok: no capture only loses the rate-limit wording
+NWO=$("$GH_BIN" repo view --json nameWithOwner --jq .nameWithOwner 2>"$RG_ERR") || NWO=""
+DEFAULT_BRANCH=$("$GH_BIN" repo view --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>>"$RG_ERR") || DEFAULT_BRANCH=""
+RG_ERR_TXT=$(cat "$RG_ERR" 2>/dev/null) || RG_ERR_TXT=""  # read-sink-ok: our own mktemp buffer; swallow-ok: an unreadable buffer only loses the rate-limit wording
+[ "$RG_ERR" = /dev/null ] || rm -f "$RG_ERR"
 TRUST_OUT=""
 if [ -z "$NWO" ] || [ -z "$DEFAULT_BRANCH" ]; then
+    if ( . "$HERE/../../lib/gh-quota.sh" 2>/dev/null && ghq_is_rate_limited "$RG_ERR_TXT" ); then  # swallow-ok: an unreadable lib reads as not a rate limit, which keeps the plain TRUST refusal below
+        ( . "$HERE/../../lib/gh-quota.sh" 2>/dev/null && ghq_line main graphql ready-go.sh rate-limit ) || true
+        echo "READY-GO: not evaluated - the repo read (gh repo view) was refused, so the trust check could not run; nothing was judged, no GO line"
+        exit 5
+    fi
     TRUST_RC=2; TRUST_OUT="repo cannot resolve the repo name or default branch (gh repo view failed)"
 else
     unset -f trust_path_check 2>/dev/null || true

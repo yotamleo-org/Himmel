@@ -85,7 +85,7 @@
 #   3  refused: run from a chief-spawned worker (a judge included:
 #      "the judge is a worker") - a worker never writes its own GO
 #   3  refused: run from a chief relay - only the chief writes a GO
-#   4  refused: ready-check.sh did not PASS for <pr> at <head>
+#   4  refused: ready-check.sh did not PASS for <pr> at <head> (it exited 1)
 #   5  refused: --trust-reviewed <qid> has no GO verdict for <head>
 #   6  refused: --repo names no himmel adapter and no adopted repo with merge_allowed true
 #   7  refused: --repo PR is not OPEN at <head>, MERGEABLE and on the himmel_branch
@@ -95,7 +95,7 @@
 #      the default branch's scripts/ci/ci-trust-paths.txt) and this is a plain GO;
 #      only --trust-reviewed <judge qid> may write it. The worker's READY text is never read.
 #   9  refused: cr-disposition.sh check found a deferred Critical or Important
-#      finding on the PR's branch with no valid disposition at <head>
+#      finding on the PR's branch with no valid disposition at <head> (it exited 1)
 #  10  refused: --trust-reviewed <qid> has a real GO for <head> but a judge's NO-GO
 #      (any qid of the PR) sits at or after <head>; or its only GO for <head> is a
 #      `delta: no-op` verdict (write-verdict.sh --delta-noop) that go-gate.sh's
@@ -105,6 +105,15 @@
 #      read error on that path, or an unresolvable verdict scope: a real judge must rule;
 #      also, with --repo, a --checkout <dir> that is not a readable git checkout (the
 #      NO-GO order of a fork PR cannot be read there)
+#  11  could not evaluate, nothing was judged, no GO: ready-check.sh or cr-disposition.sh
+#      check exited with anything but 0 or 1 (2, 3, 96, 124, 127, 137 ...: GitHub refused
+#      or stalled, a tool is missing, a callee was cut), or a read this script made (the
+#      repo name, a --repo PR) was refused or stalled, or GO_DEADLINE cut the run before
+#      the GO was written. A rate limit or stall leaves a quota marker for the waiter.
+#      A cut AFTER the GO file is in place is exit 0: the GO stands and its path is printed.
+#
+# GO_DEADLINE (whole seconds, default 270, 0 = none) bounds the whole run; the script re-runs
+# itself under timeout, as ready-check.sh does.
 #
 # A relative entry (`bash scripts/handover/chief-kit/go.sh`, the worker
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
@@ -146,6 +155,7 @@ usage() {
     echo "       go.sh --repo <owner/repo> [--checkout <dir>] --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>" >&2
 }
 
+_GO_ARGV=("$@")
 TRUST=""
 TRUST_SET=0
 FIXRUN=""
@@ -304,6 +314,103 @@ case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | t
         exit 3 ;;
 esac
 
+_go_quota_report() {
+    local tok="" bucket="" why=""
+    [ -n "${1:-}" ] && [ -s "$1" ] || return 1
+    read -r tok bucket why < "$1" 2>/dev/null || true  # read-sink-ok: our own mktemp refused file, never caller text; swallow-ok: a row without a newline still fills the fields; an empty file leaves why empty and returns 1 below
+    [ -n "$why" ] || return 1
+    # shellcheck disable=SC2031  # tok, bucket and why are read above in this function, not in a subshell
+    (
+        # shellcheck source=scripts/lib/gh-quota.sh
+        # shellcheck disable=SC1091
+        . "$HERE/../../lib/gh-quota.sh" 2>/dev/null || exit 0
+        ghq_line "$tok" "$bucket" go.sh "$why" >&2
+        ghq_mark_blocked "$PR" "$SHA" go.sh "$bucket" "$why"
+    ) || true
+    return 0
+}
+
+_go_descendants() {
+    local c
+    for c in $(pgrep -P "$1" 2>/dev/null); do printf '%s\n' "$c"; _go_descendants "$c"; done  # swallow-ok: no pgrep or no children lists nothing, and only the child itself is signalled
+}
+_go_stands() {
+    local at
+    gd_path=$(sed -n 1p "$gd_sent" 2>/dev/null) || gd_path=""  # swallow-ok: an unreadable sentinel reads as no GO written, which is exit 11 or 143
+    at=$(sed -n 2p "$gd_sent" 2>/dev/null) || at=""  # swallow-ok: an unreadable sentinel reads as no GO written, which is exit 11 or 143
+    [ -n "$gd_path" ] && [ -n "$at" ] && [ -f "$gd_path" ] && grep -qx "at=$at" "$gd_path" 2>/dev/null
+}
+# shellcheck disable=SC2329  # invoked by the TERM trap below, which shellcheck does not follow
+_go_term() {
+    local p kids pid="${gd_pid:-$!}"
+    if [ -n "$pid" ]; then
+        kids=$(_go_descendants "$pid")
+        kill -TERM "$pid" 2>/dev/null
+        wait "$pid" 2>/dev/null
+        for p in $kids; do kill -TERM "$p" 2>/dev/null; done
+    fi
+    if _go_stands; then
+        grep -qx printed "$gd_sent" 2>/dev/null || printf '%s\n' "$gd_path"
+        echo "go: GO written before the cancel" >&2
+        exit 0
+    fi
+    exit 143
+}
+
+if [ -z "${_GO_ARMED:-}" ]; then
+    gd_s="${GO_DEADLINE:-270}"
+    case "$gd_s" in ''|*[!0-9]*) gd_s=270 ;; esac
+    if [ "$gd_s" -gt 0 ]; then
+        _TIMEOUT_BIN=""
+        # shellcheck source=scripts/lib/timeout-bin.sh
+        # shellcheck disable=SC1091
+        . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN runs without the deadline, as ready-check.sh does
+        gd_sent=""
+        [ -z "$_TIMEOUT_BIN" ] || gd_sent=$(mktemp "${TMPDIR:-/tmp}/go-sentinel.XXXXXX" 2>/dev/null) || gd_sent=""  # swallow-ok: no sentinel runs go.sh unwrapped, as without a deadline
+        if [ -n "$gd_sent" ]; then
+            gd_rc=0
+            gd_pid=""
+            trap 'rm -f "$gd_sent"' EXIT
+            trap '_go_term' TERM INT HUP
+            _GO_ARMED=1 _GO_SENTINEL="$gd_sent" _GO_PARENT=$$ "$_TIMEOUT_BIN" -k 5 "$gd_s" bash "$0" "${_GO_ARGV[@]}" <&0 &
+            gd_pid=$!
+            wait "$gd_pid" || gd_rc=$?
+            case "$gd_rc" in
+                124|137)
+                    if _go_stands; then
+                        grep -qx printed "$gd_sent" 2>/dev/null || printf '%s\n' "$gd_path"
+                        rm -f "$gd_sent"
+                        exit 0
+                    fi
+                    rm -f "$gd_sent"
+                    echo "go: no verdict within the ${gd_s} s deadline (GO_DEADLINE) - nothing was judged. No GO written." >&2
+                    (
+                        # shellcheck source=scripts/lib/gh-quota.sh
+                        # shellcheck disable=SC1091
+                        . "$HERE/../../lib/gh-quota.sh" 2>/dev/null || exit 0
+                        ghq_line main graphql go.sh stall "$gd_s" >&2
+                        ghq_mark_blocked "$PR" "$SHA" go.sh graphql stall
+                    ) || true
+                    exit 11 ;;
+            esac
+            rm -f "$gd_sent"
+            exit "$gd_rc"
+        fi
+    fi
+fi
+if [ -z "${_GO_ARMED:-}" ]; then
+    unset _GO_SENTINEL _GO_PARENT
+else
+    case "${_GO_PARENT:-}" in ''|*[!0-9]*) unset _GO_PARENT ;; esac
+    case "${_GO_SENTINEL:-}" in
+        "${TMPDIR:-/tmp}"/go-sentinel.*)
+            [ -f "$_GO_SENTINEL" ] && [ ! -L "$_GO_SENTINEL" ] && [ -O "$_GO_SENTINEL" ] || unset _GO_SENTINEL ;;
+        *) unset _GO_SENTINEL ;;
+    esac
+fi
+GO_REFUSED=$(mktemp "${TMPDIR:-/tmp}/go-refused.XXXXXX" 2>/dev/null) || GO_REFUSED=""  # swallow-ok: no file means no refused-read rows, and a failed read keeps its plain exit
+[ -z "$GO_REFUSED" ] || trap 'rm -f "$GO_REFUSED"' EXIT
+
 # shellcheck source=scripts/lib/handover-path.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lib/handover-path.sh"; then
@@ -338,13 +445,21 @@ if [ "$FORK_SET" -eq 1 ]; then
         fi
         HBRANCH=$ABRANCH VREPO=$FORK
     fi
-    FVIEW=$("$GH_READ" pr view "$PR" --repo "$FORK" --json state,headRefOid,mergeable,baseRefName 2>/dev/null) || FVIEW=""
+    FVIEW=$(GH_READ_REFUSED_FILE="$GO_REFUSED" "$GH_READ" pr view "$PR" --repo "$FORK" --json state,headRefOid,mergeable,baseRefName 2>/dev/null) || FVIEW=""
     FSTATE=$(printf '%s' "$FVIEW" | jq -r '"\(.state)|\(.headRefOid)|\(.mergeable)|\(.baseRefName)"' 2>/dev/null) || FSTATE=""
     if [ "$FSTATE" != "OPEN|$SHA|MERGEABLE|$HBRANCH" ]; then
+        if [ -z "$FVIEW" ] && _go_quota_report "$GO_REFUSED"; then
+            echo "go: could not evaluate the fork GO for $FORK PR #$PR - the PR read was refused or stalled, so nothing was judged. No GO written." >&2
+            exit 11
+        fi
         echo "go: refusing the fork GO for $FORK PR #$PR - it must be OPEN at $SHA, MERGEABLE and based on $HBRANCH (state|head|mergeable|base read: '$FSTATE'). No GO written." >&2
         exit 7
     fi
-    if ! REASON=$(GH="${GH:-$GH_READ}" go_fork_ready "$FORK" "$PR"); then
+    if ! REASON=$(GH_READ_REFUSED_FILE="$GO_REFUSED" GH="${GH:-$GH_READ}" go_fork_ready "$FORK" "$PR"); then
+        if _go_quota_report "$GO_REFUSED"; then
+            echo "go: could not evaluate the fork GO for $FORK PR #$PR - a read was refused or stalled, so nothing was judged. No GO written." >&2
+            exit 11
+        fi
         echo "go: refusing the fork GO for $FORK PR #$PR - $REASON No GO written." >&2
         exit 7
     fi
@@ -454,14 +569,23 @@ fi
 # without a fresh review. Run from $HERE: the anchor's copy, never a worktree's.
 # The merge contract is named by the caller (--contract): a merge GO that does not name it is refused
 # by ready-check item 17 by default, because merge-on-green.sh's remainder refusal depends on it.
-RC_ARGS="--observe"
-[ "$FIX_SET" -eq 1 ] || RC_ARGS="--require-contract"
-[ "$CONTRACT_SET" -eq 0 ] || RC_ARGS="$RC_ARGS --contract $CONTRACT"
-# shellcheck disable=SC2086  # RC_ARGS is fixed words built just above, never caller text
-if [ "$FORK_SET" -eq 0 ] && ! READY_OUT=$(bash "$HERE/ready-check.sh" $RC_ARGS "$PR" "$SHA" 2>&1); then
-    printf '%s\n' "$READY_OUT" >&2
-    echo "go: refusing - ready-check.sh did not PASS for PR #$PR at $SHA (above); fix what it names, re-run /pr-check for a new head, then re-run go.sh. No GO written." >&2
-    exit 4
+RC_ARGS=(--observe)
+[ "$FIX_SET" -eq 1 ] || RC_ARGS=(--require-contract)
+[ "$CONTRACT_SET" -eq 0 ] || RC_ARGS+=(--contract "$CONTRACT")
+READY_OUT="" READY_RC=0
+if [ "$FORK_SET" -eq 0 ]; then
+    READY_OUT=$(bash "$HERE/ready-check.sh" "${RC_ARGS[@]}" "$PR" "$SHA" 2>&1) || READY_RC=$?
+    case "$READY_RC" in
+        0) ;;
+        1)
+            printf '%s\n' "$READY_OUT" >&2
+            echo "go: refusing - ready-check.sh did not PASS for PR #$PR at $SHA (above); fix what it names, re-run /pr-check for a new head, then re-run go.sh. No GO written." >&2
+            exit 4 ;;
+        *)
+            printf '%s\n' "$READY_OUT" >&2
+            echo "go: could not evaluate PR #$PR at $SHA - ready-check.sh exited $READY_RC (above), so nothing was judged. Re-run go.sh when GitHub answers; a quota refusal wakes the waiter. No GO written." >&2
+            exit 11 ;;
+    esac
 fi
 
 # ready-check COMPUTES the trust path from the PR diff and the default branch's
@@ -479,11 +603,19 @@ fi
 if [ "$FORK_SET" -eq 0 ] && [ "$FIX_SET" -eq 0 ]; then
     DTRUST=no
     printf '%s\n' "$READY_OUT" | grep -qx 'TRUST-PATH: yes' && DTRUST=yes
-    if ! DISP_OUT=$(bash "$HERE/cr-disposition.sh" check "$PR" "$SHA" --trust-path "$DTRUST" 2>&1); then
-        printf '%s\n' "$DISP_OUT" >&2
-        echo "go: refusing the GO for PR #$PR at $SHA - a Critical or Important finding has no valid disposition (above). A judge (or the chief, for an Important off a trust path) records one with cr-disposition.sh record, or the PR fixes it. No GO written." >&2
-        exit 9
-    fi
+    DISP_RC=0
+    DISP_OUT=$(bash "$HERE/cr-disposition.sh" check "$PR" "$SHA" --trust-path "$DTRUST" 2>&1) || DISP_RC=$?
+    case "$DISP_RC" in
+        0) ;;
+        1)
+            printf '%s\n' "$DISP_OUT" >&2
+            echo "go: refusing the GO for PR #$PR at $SHA - a Critical or Important finding has no valid disposition (above). A judge (or the chief, for an Important off a trust path) records one with cr-disposition.sh record, or the PR fixes it. No GO written." >&2
+            exit 9 ;;
+        *)
+            printf '%s\n' "$DISP_OUT" >&2
+            echo "go: could not evaluate PR #$PR at $SHA - cr-disposition.sh check exited $DISP_RC (above), so no finding was judged. Re-run go.sh when GitHub answers; a quota refusal wakes the waiter. No GO written." >&2
+            exit 11 ;;
+    esac
 fi
 
 # the mac binds the repo (himmel-go-v2|<nwo>|<pr>|<sha>) - a GO
@@ -491,12 +623,16 @@ fi
 # at the same sha. Resolve nwo from the HARNESS ANCHOR (not the PR's own
 # repo), the same way merge-on-green.sh's own cwd_nwo does, so a worktree
 # copy cannot forge it.
-NWO=$(cd "$ANCHOR" && "$GH_READ" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""
+NWO=$(cd "$ANCHOR" && GH_READ_REFUSED_FILE="$GO_REFUSED" "$GH_READ" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""
 # A --repo GO signs that repo's nwo (an adapter or adopted repo, allowlisted
 # above): it validates for that repo's PR only, never for a himmel PR of the
 # same number and sha.
 [ "$FORK_SET" -eq 0 ] || [ -z "$NWO" ] || NWO="$FORK"
 if [ -z "$NWO" ]; then
+    if _go_quota_report "$GO_REFUSED"; then
+        echo "go: could not evaluate PR #$PR at $SHA - the repo name read (gh repo view) was refused or stalled, so nothing was judged. No GO written." >&2
+        exit 11
+    fi
     echo "go: cannot resolve this repo's owner/name (gh repo view failed) - no GO written; the mac binds the repo" >&2
     exit 1
 fi
@@ -555,9 +691,19 @@ BY="${CHIEF_SESSION_NAME:-${USER:-$(id -un 2>/dev/null || echo unknown)}@$(hostn
 BY=$(printf '%s' "$BY" | tr -d '\r\n')
 AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+_go_announce_dest() { [ -z "${_GO_SENTINEL:-}" ] || printf '%s\n%s\n' "$DEST" "$AT" > "$_GO_SENTINEL" 2>/dev/null || true; }  # swallow-ok: a missing sentinel only turns a late cut into exit 11
+_go_announce_dest
 if ! mkdir -p "$DIR" || ! TMP=$(mktemp "$DIR/.go.XXXXXX"); then
     echo "go: cannot create a temp file under $DIR" >&2
     exit 1
+fi
+if [ -n "${_GO_PARENT:-}" ]; then
+    gd_up=$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d '[:space:]')  # swallow-ok: an unreadable parent fails the comparison below, which refuses
+    if [ "$gd_up" != "$_GO_PARENT" ]; then
+        rm -f "$TMP"
+        echo "go: the deadline wrapper is gone, so this run was cancelled. No GO written." >&2
+        exit 11
+    fi
 fi
 if ! { printf 'pr=%s\nhead=%s\nby=%s\nat=%s\n' "$PR" "$SHA" "$BY" "$AT" \
         && { [ -z "$TRUST" ] || printf 'trust-reviewed=%s\n' "$TRUST"; } \
@@ -593,3 +739,4 @@ if [ "$FIX_SET" -eq 0 ]; then
     [ -z "${GO_EVD:-}" ] || rm -rf "$GO_EVD"
 fi
 printf '%s\n' "$DEST"
+[ -z "${_GO_SENTINEL:-}" ] || printf 'printed\n' >> "$_GO_SENTINEL" 2>/dev/null || true  # swallow-ok: the path is already printed; at worst a cut here prints it twice

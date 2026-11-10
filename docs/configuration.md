@@ -452,6 +452,8 @@ in `.env` or the launching shell):
 | `GHQ_SCAN_FLOOR` | `500` | a scan (not a gate) pauses when the bucket it would spend has fewer points left, and prints one `QUOTA-PAUSE` line |
 | `GHQ_PROBE_TIMEOUT` | `10` | seconds one quota probe may take; a timed-out probe pauses scans with a `GH-STALL` line |
 | `GHQ_GH_CMD` | `gh` | the gh the quota probes run (a test seam) |
+| `GO_DEADLINE` | `270` | seconds `scripts/handover/chief-kit/go.sh` may run in all before it is cut; `0` = no bound. A cut before the GO file is written exits 11 (no GO, a quota marker); a cut after it exits 0 and the GO stands |
+| `CR_DISPOSITION_GH_TIMEOUT` | `60` | seconds `cr-disposition.sh` waits for its head-branch read; a timeout exits 2 with a `GH-STALL` line and (on `check`) a quota marker; `0` = no bound |
 
 The cache is a head-bound file per PR: a snapshot is used only for the head SHA
 the run bound at start, so a push never reads a stale-head green. `scripts/ci/api-budget.sh`

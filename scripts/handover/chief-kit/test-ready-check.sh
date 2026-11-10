@@ -50,6 +50,10 @@ cat > "$tmp/bin/gh" <<'STUB'
 echo "$*" >> "$GH_LOG"
 [ -z "${STUB_GH_STALL:-}" ] || sleep "$STUB_GH_STALL"
 args="$*"
+case "${STUB_GH_RL:-}" in
+    1) echo "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)" >&2; exit 1 ;;
+    late) case "$args" in "repo view"*) ;; *) echo "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)" >&2; exit 1 ;; esac ;;
+esac
 case "$args" in
     "repo view --json owner,name"*)
         [ -z "${STUB_DEFAULT_BRANCH_FAIL:-}" ] || { printf '%s\n' "${STUB_NWO:-acme/repo}"; exit 0; }
@@ -299,6 +303,7 @@ run() {
         STUB_SNAPSHOT_FAIL="${STUB_SNAPSHOT_FAIL:-}" \
         STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_TRUST_LIST_FAIL="${STUB_TRUST_LIST_FAIL:-}" \
         STUB_DEFAULT_BRANCH_FAIL="${STUB_DEFAULT_BRANCH_FAIL:-}" \
+        STUB_GH_RL="${STUB_GH_RL:-}" HIMMEL_QUOTA_DIR="${RUN_QUOTA_DIR:-$tmp/quota}" \
         STUB_MANIFEST_DIR="${STUB_MANIFEST_DIR:-}" STUB_DL_FAIL="${STUB_DL_FAIL:-}" STUB_DL_SLEEP="${STUB_DL_SLEEP:-}" \
         STUB_RUN_SLEEP="${STUB_RUN_SLEEP:-}" STUB_RUN_HEAD_SHA="${STUB_RUN_HEAD_SHA:-}" \
         READY_CHECK_ITEM19_BOUND="${READY_CHECK_ITEM19_BOUND:-}" \
@@ -4069,6 +4074,30 @@ RUN_SCRIPT="$tmp/s17-term-wrap.sh" TMPDIR="$S17_TMP" s17_at "$S17_H1"
 unset RUN_SCRIPT
 check "19 T8c: killed mid-read, no ready-check-19 temp dir is left" "0" "$(find "$S17_TMP" -maxdepth 1 -name 'ready-check-19.*' | wc -l | tr -d ' ')"
 
+S_KW="$tmp/kill-wrap"; mkdir -p "$S_KW"
+printf '#!/usr/bin/env bash\necho started > "%s/started"\nsleep 40 &\necho $! > "%s/sleep.pid"\nwait\n' "$S_KW" "$S_KW" > "$S_KW/slow-gh"; chmod +x "$S_KW/slow-gh"
+kw_sleep_alive() { local p; p=$(cat "$S_KW/sleep.pid" 2>/dev/null); if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then kill "$p" 2>/dev/null; echo yes; else echo no; fi; }
+kw_t0=$SECONDS
+kw_rc=0
+(cd "$REPO" && TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
+kw_took=$((SECONDS - kw_t0))
+sleep 1
+check "T8d: the outer timeout is what ended the run (exit 124)" "$kw_rc" "124"
+check "T8d: the stalled read was started, so the cancel had something to cancel" "$([ -f "$S_KW/started" ] && echo yes || echo no)" "yes"
+check "T8d: a ready-check killed by an outer timeout returns within the bound (took ${kw_took}s)" "$([ "$kw_took" -le 12 ] && echo yes || echo no)" "yes"
+check "T8d: the killed wrapper leaves none of its scratch files" "$(find "$S_KW" -maxdepth 1 -name 'ready-check-*' | wc -l | tr -d ' ')" "0"
+check "T8d: the killed wrapper leaves no stalled child" "$(pgrep -f "$S_KW/slow-gh" | wc -l | tr -d ' ')" "0"
+check "T8d: the stalled read's own sleep is gone too" "$(kw_sleep_alive)" "no"
+rm -f "$S_KW/started" "$S_KW/sleep.pid"
+kw_rc=0
+(cd "$REPO" && READY_CHECK_DEADLINE=0 TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
+sleep 1
+check "T8d: unarmed, the outer timeout ended the run (exit 124)" "$kw_rc" "124"
+check "T8d: unarmed, the stalled read was started" "$([ -f "$S_KW/started" ] && echo yes || echo no)" "yes"
+check "T8d: unarmed, the killed wrapper leaves no stalled child" "$(pgrep -f "$S_KW/slow-gh" | wc -l | tr -d ' ')" "0"
+check "T8d: unarmed, the stalled read's own sleep is gone too" "$(kw_sleep_alive)" "no"
+check "T8d: unarmed, the killed wrapper leaves none of its scratch files" "$(find "$S_KW" -maxdepth 1 -name 'ready-check-*' | wc -l | tr -d ' ')" "0"
+
 # T9: a suite CI cannot run (no manifest row) needs a local PASS
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"
 s17_at "$S17_H1"
@@ -4223,6 +4252,49 @@ READY_CHECK_FAIL_LEDGER="$tmp/s17-fl-other.jsonl" s17_at "$S17_H1"
 check "19 T25c a fail row of another repo's PR 77: no round" "$(jq -c 'select(.kind == "round")' "$tmp/s17-fl-other.jsonl" | wc -l | tr -d ' ')" "0"
 s17_clear
 
+reset_stubs
+rm -rf "$tmp/quota"
+rc=0; out="$(STUB_GH_RL=1 run 2>&1)" || rc=$?
+check    "9479 T3: every read refused -> exit 2 (it was 'cannot resolve owner/repo')" "$rc" "2"
+contains "9479 T3: the line names the quota" "$out" "QUOTA-PAUSE"
+check    "9479 I8: no false phrase when every read is refused" "$(grep -c 'cannot resolve owner/repo\|\[FAIL\]\|READY-CHECK FAIL' <<< "$out" | tr -d ' ')" "0"
+check    "9479 I4: a refusal leaves one marker keyed <pr>.<head>" "$(find "$tmp/quota/blocked" -type f -name "$PR.$SHA" 2>/dev/null | wc -l | tr -d ' ')" "1"
+contains "9479 I4: the marker names the reason" "$(cat "$tmp/quota/blocked/$PR.$SHA" 2>/dev/null)" "reason=rate-limit"
+contains "9479 I4: the marker names the caller" "$(cat "$tmp/quota/blocked/$PR.$SHA" 2>/dev/null)" "caller=ready-check.sh"
+first_epoch=$(sed -n 's/^first_epoch=//p' "$tmp/quota/blocked/$PR.$SHA" 2>/dev/null)
+sleep 1
+rc=0; out="$(STUB_GH_RL=1 run 2>&1)" || rc=$?
+check    "9479 I4: a second refusal keeps first_epoch" "$(sed -n 's/^first_epoch=//p' "$tmp/quota/blocked/$PR.$SHA" 2>/dev/null)" "$first_epoch"
+check    "9479 I4: a second refusal leaves still one marker" "$(find "$tmp/quota/blocked" -type f ! -name '.lock*' 2>/dev/null | wc -l | tr -d ' ')" "1"
+rm -rf "$tmp/quota"
+rc=0; out="$(STUB_GH_RL=late run 2>&1)" || rc=$?
+check    "9479 T3: a refusal after repo view -> exit 2, not exit 1" "$rc" "2"
+contains "9479 T3: the late refusal names the quota" "$out" "QUOTA-PAUSE"
+check    "9479 T3: the late refusal drops the FAIL rows" "$(grep -c '\[FAIL\]' <<< "$out" | tr -d ' ')" "0"
+check    "9479 I4: the late refusal leaves a marker" "$(find "$tmp/quota/blocked" -type f -name "$PR.$SHA" 2>/dev/null | wc -l | tr -d ' ')" "1"
+rm -rf "$tmp/quota"
+rc=0; out="$(READY_CHECK_DEADLINE=0 STUB_GH_RL=late run 2>&1)" || rc=$?
+check    "9479 T3: unarmed, a refusal is still exit 2" "$rc" "2"
+contains "9479 T3: unarmed, the rows print first" "$out" "[FAIL]"
+contains "9479 T3: unarmed, the quota line follows them" "$out" "QUOTA-PAUSE"
+rm -rf "$tmp/quota"
+rc=0; out="$(STUB_MSS=BEHIND run 2>&1)" || rc=$?
+check    "9479 T3: a real FAIL with no refused read is still exit 1" "$rc" "1"
+contains "9479 T3: a real FAIL still prints its row" "$out" "[FAIL] 1."
+contains "9479 T3: a real FAIL still ends READY-CHECK FAIL" "$out" "READY-CHECK FAIL"
+check    "9479 I4: a real FAIL leaves no marker" "$(find "$tmp/quota/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+rm -rf "$tmp/quota"
+rc=0; out="$(RUN_MODE=none run 2>&1)" || rc=$?
+check    "9479 I4: a usage error is exit 2" "$rc" "2"
+check    "9479 I4: a usage error leaves no marker" "$(find "$tmp/quota/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+mkdir -p "$tmp/nojq"
+for f_nj in /usr/bin/*; do [ "${f_nj##*/}" = jq ] || ln -sf "$f_nj" "$tmp/nojq/${f_nj##*/}"; done
+rc=0; out="$(PATH="$tmp/bin:$tmp/nojq" run 2>&1)" || rc=$?
+check    "9479 I4: a missing jq is exit 2" "$rc" "2"
+contains "9479 I4: a missing jq names jq" "$out" "jq not found"
+check    "9479 I4: a missing jq leaves no marker" "$(find "$tmp/quota/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+reset_stubs
+
 # --- the self-armed deadline, so no caller needs a `timeout` prefix ---
 # READY_CHECK_DEADLINE (whole seconds, default 150, 0 = none): argv unchanged; a stalled gh
 # read ends in a named FAIL, never a hang, and the override reaches the wrapper.
@@ -4284,8 +4356,10 @@ rc=0; out="$(READY_CHECK_DEADLINE=0 PATH="$tmp/dl-bin:$PATH" run)" || rc=$?
 check "deadline: 0 means no wrapper" "$(grep -c -E '^-k 5 [0-9]+ bash [^ ]*ready-check\.sh ' "$tmp/timeout.log" | tr -d ' ')" "0"
 check "deadline: 0 still passes" "$rc" "0"
 rc=0; out="$(READY_CHECK_DEADLINE=2 STUB_GH_STALL=30 run 2>&1)" || rc=$?
-check "deadline: a stalled gh read exits 1" "$rc" "1"
-contains "deadline: the FAIL line names the deadline and its variable" "$out" "READY-CHECK FAIL: no verdict within the 2 s deadline (READY_CHECK_DEADLINE)"
+check "deadline: a stalled gh read exits 2 (nothing was judged)" "$rc" "2"
+contains "deadline: the line names the deadline and its variable" "$out" "no verdict within the 2 s deadline (READY_CHECK_DEADLINE)"
+check "deadline: a cut with no refused read leaves no marker (it may be local)" "$(find "$tmp/quota/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+check "deadline: a cut prints no FAIL row" "$(grep -c '\[FAIL\]\|READY-CHECK FAIL' <<< "$out" | tr -d ' ')" "0"
 r2_shared="$tmp/lock-cache-r2"; mkdir -p "$r2_shared"
 env GH_PR_SNAPSHOT_CACHE_DIR="$r2_shared" GH_LOG="$tmp/holder2.log" STUB_HEAD="$SHA" \
     STUB_NWO="$NWO" STUB_ROLLUP="$GREEN_ROLLUP" STUB_COMMITS="$GREEN_COMMITS" \
