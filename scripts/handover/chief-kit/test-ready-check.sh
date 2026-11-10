@@ -3575,6 +3575,7 @@ GOLD_MEMBER="[PASS] 1. head=$SHA matches, mergeStateStatus=CLEAN
 [WARN] 17. partial-merge remainder not checked: no --contract given for HIMMEL-100 (a GO writer names it)
 [PASS] 18. no blocking or undecided finding at the head the merge gates on (read as the merge reads it, with and without the GO)
 [PASS] 19. suite evidence: 0 impacted, nothing to prove
+[PASS] 20. conflicts resolved: no hand-resolved merge conflict in origin/main..${SHA:0:7}
 ---
 The three-dot diff read (git diff origin/main...HEAD) stays the chief's own judgement — this script does not read it.
 TRUST-PATH: no
