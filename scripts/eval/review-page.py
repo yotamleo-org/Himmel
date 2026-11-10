@@ -638,10 +638,29 @@ def metric(mid, family, reviewer, label, kind, k, n, unit, **kw):
     return m
 
 
-def bench_metrics(cur, prev, fresh):
+def execution_start(rows, diag):
+    first, members = {}, {}
+    for r in rows:
+        rid, ts = r.get("run_id"), r.get("ts")
+        if isinstance(rid, str) and isinstance(ts, str):
+            first[rid] = min(ts, first.get(rid, ts))
+    for d in diag:
+        if isinstance(d.get("run_id"), str) and d.get("by"):
+            members.setdefault(d["by"], set()).add(d["run_id"])
+
+    def start(r):
+        rid = r.get("run_id")
+        if eval_feedback.row_field(r, "supersedes_run_id") and not members.get(rid):
+            return None
+        known = [first[i] for i in members.get(rid, set()) | {rid} if i in first]
+        return min(known) if known else None
+    return start
+
+
+def bench_metrics(cur, prev, fresh, observed):
     m, ci, meta = cur["metrics"], cur.get("ci") or {}, cur.get("meta") or {}
     unscored = meta.get("unscored")
-    common = {"window": {"observed_at": cur["ts"]}, "cohort": cur.get("confighash"),
+    common = {"window": {"observed_at": observed}, "cohort": cur.get("confighash"),
               "model": cur.get("model") or (cur.get("config") or {}).get("critic_model"),
               "execution_id": eval_feedback.row_field(cur, "execution_id"), "run_id": cur.get("run_id"),
               "scorer_sha256": known_scorer(cur), "freshness": fresh,
@@ -721,17 +740,19 @@ def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roste
                    for i, x in (("eval-runs", eval_rows), ("eval-changes", changes), ("cr-ledger", cr_rows))]
     rp = [r for r in eval_rows or [] if r.get("eval") == "review-panel"
           and (cr_ledger_eval.parse_ts(r.get("ts")) or t) <= t]
-    usable = [r for r in eval_feedback.select_review_runs(rp)[0] if r["status"] in ("ok", "partial")]
+    sel, diag = eval_feedback.select_review_runs(rp)
+    usable = [r for r in sel if r["status"] in ("ok", "partial")]
     cur = usable[-1] if usable else None
+    observed = execution_start(rp, diag)(cur) if cur is not None else None
     prior = usable[-2] if len(usable) > 1 else None
     tries = sorted((x for x in ((cr_ledger_eval.parse_ts(r.get("ts")), i, r) for i, r in enumerate(rp)) if x[0]),
                    key=lambda x: (x[0], x[1]))
     attempt = tries[-1][2] if tries else None
     fresh = None
     if cur is not None:
-        seen = cr_ledger_eval.parse_ts(cur["ts"])
+        seen = cr_ledger_eval.parse_ts(observed) if observed else None
         age = t - seen if seen else None
-        fresh = {"observed_at": cur["ts"], "age_days": None if age is None else age.days, "old_after_days": OLD_DAYS,
+        fresh = {"observed_at": observed, "age_days": None if age is None else age.days, "old_after_days": OLD_DAYS,
                  "state": "unknown" if age is None else "old" if age.total_seconds() > OLD_DAYS * 86400 else "current"}
     if cur is None:
         elig = {"eligible": False, "reasons": ["no usable benchmark run"]}
@@ -740,7 +761,7 @@ def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roste
     else:
         why = eval_feedback.review_incompat(cur, prior)
         elig = {"eligible": why is None, "reasons": [why] if why else []}
-    metrics = bench_metrics(cur, prior if elig["eligible"] else None, fresh) if cur is not None else []
+    metrics = bench_metrics(cur, prior if elig["eligible"] else None, fresh, observed) if cur is not None else []
     since = cr_ledger_eval.default_window_start(now_iso)
     in_cut = [r for r in cr_rows or [] if (cr_ledger_eval.parse_ts(r.get("ts")) or t) <= t]
     last = newest_ts(in_cut)
@@ -777,9 +798,9 @@ def build_reviewers_report(eval_rows, changes, cr_rows, now, sources=None, roste
         "sources": sources,
         "latest_attempt": None if attempt is None else {
             "run_id": attempt.get("run_id"), "at": attempt.get("ts"), "status": attempt.get("status"),
-            "usable": cur is not None and attempt is cur},
+            "usable": any(attempt is u for u in usable)},
         "latest_usable": None if cur is None else {
-            "run_id": cur.get("run_id"), "at": cur.get("ts"), "status": cur.get("status"),
+            "run_id": cur.get("run_id"), "at": observed, "status": cur.get("status"),
             "execution_id": eval_feedback.row_field(cur, "execution_id"), "scorer_sha256": known_scorer(cur),
             "cohort": cur.get("confighash")},
         "comparison_eligibility": elig,

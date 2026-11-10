@@ -457,7 +457,7 @@ def put(name, rows):
     open(os.path.join(D, name), "w").write("".join(json.dumps(r) + "\n" for r in rows))
 cov = {"scored": 4, "critics": {"codex": {"answered": 4}}}
 EVIL = "<img src=x onerror=alert(1)>"
-def rp(run_id, ts, critics, recall, status="ok", findings=0, scorer="a" * 64, ex=None, verified=None):
+def rp(run_id, ts, critics, recall, status="ok", findings=0, scorer="a" * 64, ex=None, verified=None, sup=None):
     m = {"codex.key_match_recall": recall, "codex.class.logic.recall": recall, "codex.class.logic.n": 5,
          "codex.key_match_precision": None, "codex.findings": findings, "codex.labelled_clean_block_rate": 0.25,
          "codex.clean_scored": 4, "panel.key_match_recall": recall, "panel.class.logic.recall": recall,
@@ -467,6 +467,8 @@ def rp(run_id, ts, critics, recall, status="ok", findings=0, scorer="a" * 64, ex
     meta = {"scorer_sha256": scorer, "execution_id": ex or run_id, "coverage": cov}
     if verified:
         meta["verified"] = verified
+    if sup:
+        meta["supersedes_run_id"] = sup
     r = eval_runs.make_row("review-panel", "scripts/eval/review-panel/score.py", {"fixture_set": "f1", "critics": critics},
                            m, n=4, run_id=run_id, status=status, gitsha="0" * 40, meta=meta,
                            ci={"codex.key_match_recall": {"lo": 0.3, "hi": 0.9}})
@@ -482,6 +484,11 @@ put("runs.jsonl", [rp("rp-a", "2026-10-20T00:00:00Z", ["codex", "claude"], 0.4),
                    rp("rp-b", "2026-11-02T00:00:00Z", ["codex", EVIL], 0.6, verified=ver), judge,
                    rp("rp-c", "2026-11-09T00:00:00Z", ["codex"], None, status="inconclusive")])
 put("runs-compat.jsonl", [rp("rp-1", "2026-11-05T00:00:00Z", ["codex"], 0.4), rp("rp-2", "2026-11-08T00:00:00Z", ["codex"], 0.6)])
+put("runs-rescore.jsonl", [rp("e1", "2026-10-31T00:00:00Z", ["codex"], 0.4),
+                           rp("e1-r", "2026-11-09T00:00:00Z", ["codex"], 0.5, ex="e1", sup="e1")])
+put("runs-promoted.jsonl", [rp("e1", "2026-11-05T00:00:00Z", ["codex"], 0.4), rp("e2", "2026-11-07T00:00:00Z", ["codex"], 0.6),
+                            rp("e1-r", "2026-11-08T00:00:00Z", ["codex"], 0.5, ex="e1", sup="e1")])
+put("runs-orphan.jsonl", [rp("e9-r", "2026-11-09T00:00:00Z", ["codex"], 0.5, ex="e9", sup="e9")])
 base = {"v": 1, "host": "h", "source": "scripts/eval/lib/eval_feedback.py", "kind": "eval-change"}
 put("changes.jsonl", [dict(base, id="rp-b:codex.key_match_recall", eval="review-panel", metric="codex.key_match_recall",
                            ts="2026-11-02T01:00:00Z", status="open", value=0.6, threshold=0.7, better="higher", absent=None,
@@ -535,6 +542,13 @@ eq "reviewers-json: adjudicated precision from the verified family, apart from t
 eq "stale_observation_new_render: a benchmark eight days old is old in a report made now" "$(printf '%s' "$J" | q '(r["benchmark"]["freshness"]["state"], r["benchmark"]["freshness"]["age_days"])')" "('old', 8)"
 eq "stale_observation_new_render: the same run read two days after it is current" "$(rj "" "" "" "2026-11-04T00:00:00Z" | q 'r["benchmark"]["freshness"]["state"]')" "current"
 eq "stale_observation_new_render: a run observed at --now is 0 days old, not unknown" "$(rj "" "" "" "2026-11-02T00:00:00Z" | q '(r["benchmark"]["freshness"]["age_days"], r["benchmark"]["freshness"]["state"])')" "(0, 'current')"
+R="$(rj "$M7/runs-rescore.jsonl")"
+eq "rescore_dated_by_execution: an execution 10 days old rescored yesterday is old, 10 days" "$(printf '%s' "$R" | q '(r["latest_usable"]["run_id"], r["benchmark"]["freshness"]["state"], r["benchmark"]["freshness"]["age_days"])')" "('e1-r', 'old', 10)"
+eq "rescore_dated_by_execution: observed at the execution's first row, everywhere" "$(printf '%s' "$R" | q '(r["latest_usable"]["at"], r["benchmark"]["freshness"]["observed_at"], {m["window"]["observed_at"] for m in r["metrics"] if m["family"] == "benchmark"})')" "('2026-10-31T00:00:00Z', '2026-10-31T00:00:00Z', {'2026-10-31T00:00:00Z'})"
+eq "rescore_dated_by_execution: a rescore whose source row is absent has no known age" "$(rj "$M7/runs-orphan.jsonl" | q '(r["latest_usable"]["at"], r["benchmark"]["freshness"]["age_days"], r["benchmark"]["freshness"]["state"])')" "(None, None, 'unknown')"
+eq "promoted_rescore_usable: a rescore of e1 promoted after e2 is no unusable attempt" "$(rj "$M7/runs-promoted.jsonl" | q '(r["latest_usable"]["run_id"], r["latest_attempt"]["run_id"], r["latest_attempt"]["usable"])')" "('e2', 'e1-r', True)"
+case "$(python3 -I "$PAGE" --reviewers-only --ledger "$M7/runs-promoted.jsonl" --changes "$M7/changes.jsonl" --cr-ledger "$M7/cr.jsonl" --now "$NOW" 2>&1)" in
+  *"not usable"*) fail "promoted_rescore_usable: the prose names no unusable attempt";; *) pass "promoted_rescore_usable: the prose names no unusable attempt";; esac
 eq "reviewers-json: a change recorded after --now is not in the report" "$(rj "" "" "" "2026-11-02T00:30:00Z" | q 'r["proposals"]')" "[]"
 Q="$(rj "" "" "$M7/cr-quiet.jsonl")"
 eq "quiet_history_not_failed_capture: a quiet CR ledger names its last record" "$(printf '%s' "$Q" | q '(r["production"]["last_record_at"], r["production"]["records_in_window"])')" "('2026-10-01T00:00:00Z', 0)"

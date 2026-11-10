@@ -336,8 +336,11 @@ What the report says, and what it does not:
   when one source fails beside a readable one, `absent` when none exists.
 - **Benchmark.** The newest usable review-panel run (`latest_usable`) and,
   beside it, the newest attempt (`latest_attempt`), so an inconclusive run after
-  a good one shows. A run observed more than 7 days before `--now` is `old`:
-  a display default, not a reason to spend on a new run. A trend appears only
+  a good one shows. A run is dated by its execution (the earliest row of that
+  execution), so a rescore keeps the date of the run it re-scores, and a
+  rescore whose source row is missing has no known age. A run observed more
+  than 7 days before `--now` is `old`: a display default, not a reason to spend
+  on a new run. A trend appears only
   when `review_incompat` finds the previous run comparable (same roster and
   corpus, same known scorer, same participation); otherwise
   `comparison_eligibility` gives the reason.
