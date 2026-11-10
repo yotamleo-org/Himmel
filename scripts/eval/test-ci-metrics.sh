@@ -128,12 +128,28 @@ jq -n '
        created_at: $c, run_started_at: $c, updated_at: $c, head_sha: "t\($i)", head_branch: "b2", run_attempt: 1, pull_requests: []}]' > "$TMP/guard/runs.json"
 echo '[]' > "$TMP/guard/jobs.json"
 O=$(bash "$SCRIPT" --data-dir "$TMP/guard" "${M20[@]}" 2>&1)
-has "guardrail: runs per hour" "$O" "| runs per hour, max | 12 (2026-10-20T10:00:00Z) | 150 | OK |"
-has "guardrail: runs per rolling 24 h" "$O" "| runs per rolling 24 h, max | 15 | 1500 | OK |"
-has "guardrail: cancels per rolling 10 min" "$O" "| cancels per rolling 10 min, max | 4 | 30 | OK |"
-has "guardrail: reruns per hour" "$O" "| reruns per hour, max | 2 (2026-10-20T10:00:00Z) | 10 | OK |"
-has "guardrail: runs per branch per day" "$O" "| runs per branch per day, max | 12 (b1 2026-10-20) | 6 | OVER |"
+has "guardrail: runs per hour is information (decision 850)" "$O" "| runs per hour, max | 12 (2026-10-20T10:00:00Z) | 150 | info |"
+has "guardrail: runs per rolling 24 h is information" "$O" "| runs per rolling 24 h, max | 15 | 1500 | info |"
+has "guardrail: cancels per rolling 10 min is information" "$O" "| cancels per rolling 10 min, max | 4 | 30 | info |"
+has "guardrail: reruns per hour is information" "$O" "| reruns per hour, max | 2 (2026-10-20T10:00:00Z) | 10 | info |"
+has "guardrail: runs per branch per day is information, not OVER" "$O" "| runs per branch per day, max | 12 (b1 2026-10-20) | 6 | info |"
 has "guardrail: branch-days over the line" "$O" "| branch-days over 6 runs | 1 | - | - |"
+has "guardrail: no concurrent jobs reads OK against 500" "$O" "| concurrent jobs, peak (running + queued) | 0 | 500 | OK |"
+has "guardrail: no GitHub refusal reads OK" "$O" "| GitHub refusals (startup_failure runs) | 0 | 0 | OK |"
+
+# Decision 850: 500 concurrent jobs is the line (501 reads OVER), and a startup_failure run inside the window is a refusal.
+mk "$TMP/conc" "[$(for i in $(seq 1 500); do printf '{"run_id":1,"name":"j%s","status":"queued","conclusion":null,"created_at":"2026-10-20T11:00:00Z","started_at":null,"completed_at":null},' "$i"; done)$(printf '{"run_id":1,"name":"j501","status":"queued","conclusion":null,"created_at":"2026-10-20T11:00:00Z","started_at":null,"completed_at":null}')]"
+O=$(bash "$SCRIPT" --data-dir "$TMP/conc" "${M20[@]}" 2>&1)
+has "concurrent jobs: 501 queued reads OVER" "$O" "| concurrent jobs, peak (running + queued) | 501 | 500 | OVER |"
+jq 'map(select(.name != "j501"))' "$TMP/conc/jobs.json" > "$TMP/conc/j500.json"; mv "$TMP/conc/j500.json" "$TMP/conc/jobs.json"
+O=$(bash "$SCRIPT" --data-dir "$TMP/conc" "${M20[@]}" 2>&1)
+has "concurrent jobs: 500 queued reads OK" "$O" "| concurrent jobs, peak (running + queued) | 500 | 500 | OK |"
+mk "$TMP/refuse" '[]'
+jq 'map(.conclusion = "startup_failure")' "$TMP/refuse/runs.json" > "$TMP/refuse/r.json"; mv "$TMP/refuse/r.json" "$TMP/refuse/runs.json"
+O=$(bash "$SCRIPT" --data-dir "$TMP/refuse" "${M20[@]}" 2>&1)
+has "GitHub refusal: a startup_failure run in the window reads OVER" "$O" "| GitHub refusals (startup_failure runs) | 1 | 0 | OVER |"
+O=$(bash "$SCRIPT" --data-dir "$TMP/refuse" --now 2026-10-20T13:00:00Z --hours 2 2>&1)
+has "GitHub refusal: a startup_failure run before the window is not counted" "$O" "| GitHub refusals (startup_failure runs) | 0 | 0 | OK |"
 
 # --cap-check: per-minute running / queued and a verdict on the 60-runner ceiling.
 # capjobs <running> <queued>: <running> jobs run 10:00-10:30 (created 09:59:50), <queued> wait from 10:00 to 10:30 (REST created_at).
