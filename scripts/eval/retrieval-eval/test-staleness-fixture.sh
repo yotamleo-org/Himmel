@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# selector: tree-scan
 # shellcheck disable=SC2015  # `A && pass || fail` is the assert idiom: pass always returns 0
 set -uo pipefail
 
