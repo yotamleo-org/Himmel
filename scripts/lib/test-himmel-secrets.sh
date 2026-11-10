@@ -89,9 +89,11 @@ assert_eq "L3 a finished import leaves nothing under the lock path" "0" "$(find 
 mkdir -p "$HIMMEL_CONFIG_DIR"
 sleep 0.01 & l4_dead=$!; wait "$l4_dead"
 ln -s "$l4_dead" "$LOCKLINK"
-for l4_i in 1 2 3 4 5 6 7 8 9 10 11 12; do lockrun 2 >"$TMP/l4.$l4_i" & done
+assert_eq "L4 setup: the stale lock names a dead process" "$l4_dead|dead" "$(readlink "$LOCKLINK")|$(kill -0 "$l4_dead" 2>/dev/null && echo live || echo dead)"
+for l4_i in 1 2 3 4 5 6 7 8 9 10 11 12; do lockrun 5 >"$TMP/l4.$l4_i" & done
 wait
 assert_eq "L4 twelve imports over one stale lock: exactly one wins" "1" "$(cat "$TMP"/l4.* | grep -c '^locked$')"
+assert_eq "L4 the other eleven are refused" "11" "$(cat "$TMP"/l4.* | grep -c '^rc=2$')"
 assert_eq "L4 the lock is gone once the winner ends" "0" "$(find "$HIMMEL_CONFIG_DIR" -name 'import-env.*' 2>/dev/null | grep -c .)"
 L5CONF="$TMP/it's conf"
 got=$(LCONF="$L5CONF" lockrun 0)
