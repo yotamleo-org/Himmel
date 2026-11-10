@@ -6,7 +6,7 @@
       "paths": ["delta.cadences.taskDetail"]
     },
     "2": {
-      "label": "Scheduled tasks that exist but aren't in any of the 5 cadence ids (HIMMEL-BootPreflight, HIMMEL-ForkResync when armed)",
+      "label": "Scheduled tasks that exist but aren't in any of the 5 cadence ids (HIMMEL-ForkResync when armed)",
       "state": "planned",
       "paths": ["delta.cadences.extraArmedTasks"]
     },
@@ -16,7 +16,7 @@
       "paths": ["delta.observability"]
     },
     "4": {
-      "label": "Bridge persistence artifact detail (the actual HimmelTelegramBridge scheduled task / telegram-bridge.service unit, beyond the yes/no installPersistence answer)",
+      "label": "Bridge persistence artifact detail (the actual telegram-bridge.service systemd user unit, beyond the yes/no installPersistence answer)",
       "state": "planned",
       "paths": ["profile.bridge.installPersistence", "delta.cadences.extraArmedTasks"]
     },
