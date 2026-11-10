@@ -20,15 +20,15 @@
 # refused and its reason printed. It prints `sweep: closed=<n> refused=<n>
 # skipped=<n>` and exits 0; the tick's closable=<n> field says when to run it.
 # --check runs every pre-close check below and stops before any close action:
-# no session-note capture, no TERM, no cost row, reap, digest or prune. The
+# no TERM and no close record. The
 # scratchpad-clone check still runs a bounded git fetch --prune in each named
 # clone, so it updates that clone's remote-tracking refs and needs the network. It prints SAFE-TO-CLOSE (rc 0) or the refusal a real close would
 # print, with the same exit code, so an operator closing a window by hand can
 # ask first. Exit 0 means safe to close.
 # --chief closes a wrapped PREDECESSOR chief's window: the
-# same lock/WRAPPED/one-session checks and subtree check, then TERM - no cost
-# row, /tmp reap, digest or worktree prune. Run it right after your own LIVE.
-# --fleet removes the doc after a successful close, including benign prune skips.
+# same lock/WRAPPED/one-session checks and subtree check, then TERM - no close
+# record and no sweep. Run it right after your own LIVE.
+# --fleet removes the doc after a successful close.
 # A manifest update failure returns 1 after the session has already closed.
 #
 # Refuses (nothing signaled) unless:
@@ -67,34 +67,20 @@
 # TERM goes to that one pid only - it never signals a non-matching pid, and
 # 0 or >1 matches is a refusal, not a best guess.
 #
-# After the signal, the worker's own /tmp scratch (its judge dirs, and its session
-# scratch dir) is archived then reaped via tmp-reap.sh, scoped to this worker only
-# a reap failure warns and never fails the close. A predecessor whose named successor
-# still holds its lock reaps nothing and prunes nothing: the successor works that PR. The
-# same holds, whatever the Results say, when a later-lettered RESUME doc of this worker
-# beside the doc holds a queue lock or names this doc's worktree as its resume_cwd.
-#
-# Then the failure-loop digest: the session id is read from
-# ~/.claude/sessions/<pid>.json BEFORE the TERM, and after it
-# worker-digest-step.sh digests that session into the worker-failures and eval-runs
-# ledgers under a hard timeout (CLOSE_WRAPPED_WORKER_DIGEST_TIMEOUT, default 120).
-# It prints exactly one stdout line, `digest=ok|partial ...`,
-# `digest=failed:<reason>` or `digest=skipped:<reason>`, and never changes the
-# exit code or any other output line.
-#
-# Then, if the doc names exactly one worktree path (a
-# `.claude/worktrees/...` path appearing once), runs
-# `scripts/clean.sh --only <worktree> --only-allow-unmerged` and reports (not
-# fails) a "not pruned" skip. That flag makes clean-garden.sh
-# itself resolve the worktree's branch's PR by branch (via gh, independent of
-# whatever the doc's own Results bullets say) and prune when: the PR is
-# MERGED with a head match (the original, unwidened case -- also covers a doc
-# with no MERGED/READY bullet at all, since the branch lookup does not depend
-# on one), OR the PR is CLOSED unmerged or there is no PR, the working tree is
-# clean, and the branch's head is either pushed to origin or carries no
-# commits beyond main. An OPEN PR (a parked worker) or an unresolvable PR state
-# (gh/cache failure) are never pruned. Never guesses a worktree: 0 or >1
-# candidates in the doc skips the prune with a report.
+# After the signal the close does no housekeeping of its own and makes no GitHub
+# call. It writes one close record (doc, label, pid, proc_start, session id,
+# transcript, names, config and projects dirs, worktrees, repo, predecessor,
+# named_successor, closed_at, sweeps_seen) to
+# ${CLOSE_SWEEP_STATE_DIR:-~/.himmel/state/close-sweep}/pending/ through pending/.tmp/,
+# starts close-sweep.sh --drain detached (stdio to sweep.log, every inherited
+# descriptor from 3 up closed; CLOSE_SWEEP_BIN overrides it), prints
+# `sweep=queued <record>` and returns. The sweep does the session note, cost row,
+# failure digest, /tmp reap and worktree prune for every queued record, and keeps
+# a live successor's scratch and worktree. A record that cannot be written prints
+# a WARN and changes no exit code: the window is closed and the worktree stays.
+# The session id is read from the worker's sessions/<pid>.json BEFORE the TERM;
+# when that gives no id, it is taken from the one transcript matching the
+# worker's names (none or several: no id, never a guess).
 #
 # Before signalling, reuses scripts/handover/wrap-subtree-check.sh
 # on the matched pid: a non-harness descendant still alive (a worker mid an
@@ -104,12 +90,13 @@
 # same as any other "retry shortly" refusal here.
 #
 # Exit codes:
-#   0  signaled (prune ran, skipped, or reported "in use" - all non-fatal); or
+#   0  signaled (the close record queued, or a WARN that it could not be); or
 #      CLOSED-ALREADY: lock free, tail WRAPPED, and no live session
 #      under any of the worker's names (a RESUME doc's label suffix is dropped to
 #      find the original session) - nothing to signal; the manifest entry is retired.
 #      Not for --chief: a predecessor chief with 0 sessions still exits 5.
-#   1  gh/git/queue-lock plumbing failure, or the TERM signal itself failed
+#   1  a plumbing failure (census, library load, doc listing, fleet manifest), or the
+#      TERM signal itself failed; never the housekeeping, which the sweep reports
 #   2  usage (missing/unreadable doc)
 #   3  refused - the queue lock is not free: on the doc, or on a sibling other
 #      than its explicitly named hand-off successor. A legacy resumed-window
@@ -153,10 +140,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../../lib/legacy-names.sh"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 KILL="${KILL_BIN:-kill}"
-CLEAN_SH="${CLEAN_SH_BIN:-$HERE/../../clean.sh}"
 WRAP_SUBTREE_CHECK="${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}"
-TMP_REAP="${TMP_REAP_BIN:-$HERE/../../tmp-reap.sh}"
 LIVE_SUBAGENTS="${LIVE_SUBAGENTS_BIN:-$HERE/live-subagents.sh}"
+CLOSE_SWEEP="${CLOSE_SWEEP_BIN:-$HERE/close-sweep.sh}"
+CLOSE_SWEEP_STATE="${CLOSE_SWEEP_STATE_DIR:-$HOME/.himmel/state/close-sweep}"
 
 usage() {
     echo "usage: close-wrapped-worker.sh [--check] [--chief | --fleet <manifest>] <doc> | [--check] --sweep --fleet <manifest>" >&2
@@ -584,6 +571,12 @@ if ! . "$HERE/worker-transcripts.sh"; then
     echo "close-wrapped-worker: cannot load scripts/handover/chief-kit/worker-transcripts.sh" >&2
     exit 1
 fi
+# shellcheck source=scripts/handover/chief-kit/close-facts.sh
+# shellcheck disable=SC1091
+if ! . "$HERE/close-facts.sh"; then
+    echo "close-wrapped-worker: cannot load scripts/handover/chief-kit/close-facts.sh" >&2
+    exit 1
+fi
 
 ident=$(worker_identity "$DOC")
 # worker_identity's names strip -RESUME, but a
@@ -764,21 +757,8 @@ if [ "$match_count" -ne 1 ]; then
     exit 5
 fi
 
-# ---------- Pre-signal session-note capture --------------------
-# A wrapped worker's SessionEnd hook never runs: Claude Code cancels it the
-# instant our TERM below lands, so no luna session note is written. Reproduce
-# the hook's input here, from what we already resolved above (the worker's
-# session names) - never a guess: resolve those names to EXACTLY ONE
-# transcript file (same customTitle-grep precedent as worker-burn.sh's
-# session-name lookup, but refusing instead of picking "newest" on
-# ambiguity), pull cwd straight from that transcript (every row carries a
-# "cwd" field), derive session_id from the transcript's own filename, and
-# feed end-session-wiki.sh the same SessionEnd JSON shape Claude Code would
-# have. 0 or >1 matching transcripts: say so on stderr and still close -
-# never guess which one. The hook itself dedups by session_id,
-# so it is harmless if the worker's own SessionEnd ALSO manages to fire.
 TRANSCRIPT=""
-END_SESSION_WIKI="${END_SESSION_WIKI_BIN:-$HERE/../../hooks/end-session-wiki.sh}"
+candidates=$(printf '%s\n%s\n%s\n' "${ident#*$'\t'}" "$doc_stem" "$matched_name" | tr ',' '\n' | sed '/^$/d')
 # a claudex worker runs with CLAUDE_CONFIG_DIR=~/.claude-codex, so its
 # sessions/<pid>.json and projects/ are NOT under the chief's config dir. Read
 # the matched pid's own CLAUDE_CONFIG_DIR from /proc/<pid>/environ; failing that,
@@ -795,32 +775,6 @@ if [ -z "$worker_cfg" ] && [ -n "$FLEET_MANIFEST" ] && [ -r "$FLEET_MANIFEST" ] 
 fi
 WORKER_SESSION_CONFIG_DIR="${worker_cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
 PROJECTS_DIR="${CLOSE_WRAPPED_WORKER_PROJECTS_DIR:-$WORKER_SESSION_CONFIG_DIR/projects}"
-if [ "$CHECK_MODE" -eq 0 ] && [ -r "$END_SESSION_WIKI" ] && [ -d "$PROJECTS_DIR" ]; then
-    # The two-pass customTitle search lives in worker-transcripts.sh,
-    # shared with worker-digest-step.sh --doc: same "exactly one" semantics.
-    candidates=$(printf '%s\n%s\n%s\n' "${ident#*$'\t'}" "$doc_stem" "$matched_name" | tr ',' '\n' | sed '/^$/d')
-    transcript_matches=$(resolve_worker_transcripts "$PROJECTS_DIR" "$candidates" \
-        "${CLOSE_WRAPPED_WORKER_MTIME_DAYS:-1}" "${CLOSE_WRAPPED_WORKER_CUSTOMTITLE_HEAD:-40}")
-    tcount=$(printf '%s\n' "$transcript_matches" | grep -c . || true)
-    if [ "$tcount" -eq 1 ]; then
-        TRANSCRIPT="$transcript_matches"
-        cap_cwd=$(jq -r 'select(.cwd != null) | .cwd' "$TRANSCRIPT" 2>/dev/null | head -1)
-        cap_sid=$(transcript_sid "$TRANSCRIPT")
-        if [ -n "$cap_cwd" ]; then
-            cap_payload=$(jq -n --arg t "$TRANSCRIPT" --arg s "$cap_sid" --arg c "$cap_cwd" --arg r "worker-close" \
-                '{transcript_path:$t, session_id:$s, cwd:$c, reason:$r}')
-            if printf '%s' "$cap_payload" | bash "$END_SESSION_WIKI" >/dev/null 2>&1; then
-                echo "close-wrapped-worker: captured session note for $cap_sid before signalling"
-            else
-                echo "close-wrapped-worker: end-session-wiki failed for $cap_sid - closing anyway, never blocking on it" >&2
-            fi
-        else
-            echo "close-wrapped-worker: resolved transcript $TRANSCRIPT has no 'cwd' field - skipping the pre-signal capture, never guessing" >&2
-        fi
-    else
-        echo "close-wrapped-worker: $tcount transcript(s) matched worker names [${ident#*$'\t'}] - cannot resolve unambiguously, skipping the pre-signal capture, never guessing" >&2
-    fi
-fi
 
 subtree_out=$(bash "$WRAP_SUBTREE_CHECK" "$matched" 2>&1)
 subtree_rc=$?
@@ -833,14 +787,27 @@ fi
 # ---------- Session id ---------------------------
 # Captured BEFORE the TERM, while the session's own record still exists: the
 # live pid's ~/.claude/sessions/<pid>.json names its sessionId. Unreadable or
-# not a UUID: the transcript resolved above supplies it. The subagent gate
-# below and the worker's digest step both use it.
+# not a UUID (and not --check): the one transcript matching the worker's names
+# supplies it, through worker-transcripts.sh's two-pass customTitle search; 0 or
+# more than 1 match gives no id, never a guess. The subagent gate below and the
+# close record both use it.
 digest_sid=""
 sessions_json="${CLOSE_WRAPPED_WORKER_SESSIONS_DIR:-$WORKER_SESSION_CONFIG_DIR/sessions}/$matched.json"
 digest_sid=$(jq -r '.sessionId // empty' "$sessions_json" 2>/dev/null)
 case "$digest_sid" in
     ????????-????-????-????-????????????) ;;
-    *) digest_sid="$(transcript_sid "${TRANSCRIPT:-none}")" ;;
+    *)
+        if [ "$CHECK_MODE" -eq 0 ] && [ -d "$PROJECTS_DIR" ]; then
+            transcript_matches=$(resolve_worker_transcripts "$PROJECTS_DIR" "$candidates" \
+                "${CLOSE_WRAPPED_WORKER_MTIME_DAYS:-1}" "${CLOSE_WRAPPED_WORKER_CUSTOMTITLE_HEAD:-40}")
+            tcount=$(printf '%s\n' "$transcript_matches" | grep -c . || true)
+            if [ "$tcount" -eq 1 ]; then
+                TRANSCRIPT="$transcript_matches"
+            else
+                echo "close-wrapped-worker: no session id in $sessions_json and $tcount transcript(s) matched worker names [${ident#*$'\t'}] - cannot resolve unambiguously, never guessing" >&2
+            fi
+        fi
+        digest_sid="$(transcript_sid "${TRANSCRIPT:-none}")" ;;
 esac
 
 # ---------- Live in-process subagents ----------------------------
@@ -869,8 +836,8 @@ fi
 
 # ---------- --chief: a wrapped predecessor chief -------------
 # Every check above ran unchanged. A chief has no worktree, cost row, scratch
-# or failure digest of its own, so the worker-only steps below are skipped: TERM
-# the one proven pid and stop.
+# or failure digest of its own, so it queues no close record: TERM the one
+# proven pid and stop.
 if [ "$CHIEF_MODE" -eq 1 ]; then
     if ! "$KILL" -TERM "$matched"; then
         echo "close-wrapped-worker: failed to send TERM to pid $matched" >&2
@@ -880,24 +847,12 @@ if [ "$CHIEF_MODE" -eq 1 ]; then
     exit 0
 fi
 
-# ---------- Worker cost ledger ----------------------------------------
-# One JSONL row per wrapped worker, from the transcript resolved above. Never
-# fatal: a meter or ledger failure WARNs and the close proceeds. A retry of the
-# same transcript (a refused or failed close re-run) never writes a second row.
-if [ -n "$TRANSCRIPT" ]; then
-    if ! . "$HERE/../../lanes/lib/worker-cost-row.sh"; then
-        echo "close-wrapped-worker: WARN cannot load worker-cost-row.sh - no cost ledger row" >&2
-    elif ! ledger=$(worker_cost_ledger_path "$DOC"); then
-        echo "close-wrapped-worker: WARN cannot resolve the cost ledger path - no cost ledger row" >&2
-    elif [ -f "$ledger" ] && grep -qF "\"session\":\"$(transcript_sid "$TRANSCRIPT")\"" "$ledger"; then
-        echo "close-wrapped-worker: cost ledger already has a row for this transcript"
-    elif ! row=$(worker_cost_row "$TRANSCRIPT" "$DOC"); then
-        echo "close-wrapped-worker: WARN worker-burn failed - no cost ledger row" >&2
-    elif mkdir -p "$(dirname "$ledger")" 2>/dev/null && printf '%s\n' "$row" >> "$ledger" 2>/dev/null; then
-        echo "close-wrapped-worker: cost ledger row appended to $ledger"
-    else
-        echo "close-wrapped-worker: WARN cannot write $ledger - no cost ledger row" >&2
-    fi
+# ---------- The TERM, then one queued close record -------------------
+# The start time is read before the TERM, so the sweep tells this worker's pid from
+# a later process that reuses the number.
+proc_start=""
+if [ -r "${CLAUDE_SESSIONS_PROC:-/proc}/$matched/stat" ]; then
+    proc_start=$(proc_start_time "${CLAUDE_SESSIONS_PROC:-/proc}/$matched/stat")
 fi
 
 if ! "$KILL" -TERM "$matched"; then
@@ -906,152 +861,62 @@ if ! "$KILL" -TERM "$matched"; then
 fi
 echo "close-wrapped-worker: sent TERM to pid $matched (worker $(worker_label "$DOC"))"
 
-# ---------- Wrapped worker's own /tmp scratch ----------------------
-# Archive-then-reap THIS worker's judge dirs (j<N>, j<N>[a-z]) and its session
-# scratch dir, scoped through tmp-reap.sh --judge <pr>/--session: never a fleet-wide
-# sweep (other workers are live). Dry-run first; apply only after a clean dry-run.
-# Never fatal: any failure WARNs and the close carries on.
-reap_worker_scratch() {
-    local pr sid args=() i PROC_ROOT="${CLAUDE_SESSIONS_PROC:-/proc}"
-    # judge dirs are named for the PR they judged, never the worker label: take the
-    # PR from the doc's newest READY/MERGED bullet; no PR means no judge scope
-    pr="$(grep -E '^- [0-9:]+ (READY|MERGED)' "$DOC" | grep -oE '(READY|MERGED)[ #-]+(PR[ #]+)?[0-9]+' | tail -n 1 | grep -oE '[0-9]+$')"
-    if [ -n "$pr" ]; then args+=(--judge "$pr")
-    else echo "close-wrapped-worker: no PR in the worker doc - reaping no judge dir, never guessing"; fi
-    if [ -n "$TRANSCRIPT" ]; then
-        sid="$(transcript_sid "$TRANSCRIPT")"
-        case "$sid" in
-            ????????-????-????-????-????????????) args+=(--session "$sid") ;;
-        esac
-    fi
-    if [ "${#args[@]}" -eq 0 ]; then
-        echo "close-wrapped-worker: no judge number or session id for this worker - skipping the /tmp reap, never guessing"
-        return 0
-    fi
-    # the TERM is asynchronous: give the session a moment to exit so its scratch is not "live"
-    for ((i = 0; i < ${CLOSE_WRAPPED_WORKER_REAP_WAIT:-5}; i++)); do  # read-sink-ok: the < is an arithmetic comparison, not a redirect
-        [ -d "$PROC_ROOT/$matched" ] || break
-        sleep 1
-    done
-    # a session that outlives the TERM still owns its scratch: reap nothing now
-    if [ -d "$PROC_ROOT/$matched" ]; then
-        echo "close-wrapped-worker: pid $matched still running after TERM - leaving its /tmp scratch for a later reap"
-        return 0
-    fi
-    if ! bash "$TMP_REAP" "${args[@]}"; then
-        echo "close-wrapped-worker: WARN tmp-reap dry-run failed for ${args[*]} - not applying; close continues" >&2
-        return 0
-    fi
-    bash "$TMP_REAP" --apply "${args[@]}" || echo "close-wrapped-worker: WARN tmp-reap --apply failed for ${args[*]} - close continues" >&2
-    return 0
-}
-# later_successor_live: success when a later-lettered RESUME doc of this worker beside $DOC holds a
-# queue lock, or names a worktree this doc names as its resume_cwd. It reads no Results section, so
-# a hand-off the successor reader misses still keeps the successor's scratch and worktree.
+# The record's repo is the repo that registers the doc's worktree (an adopter's
+# worktree is not registered in the himmel checkout), else the path above its
+# .claude/worktrees/ when that still exists, else empty: never the close's own cwd.
 DOC_WORKTREES=$(grep -oE "/[^\` ]*/\.claude/worktrees/[^\`) ]+" "$DOC" | sort -u)
-later_successor_live() {
-    local cand lbase cl cwd
-    [[ $sib_label =~ ^(N[0-9]+)[a-z]*$ ]] || return 1
-    lbase="${BASH_REMATCH[1]}"
-    for cand in "$sib_dir"/*-RESUME.md; do
-        [ -f "$cand" ] && [ ! -L "$cand" ] && [ "$cand" != "$DOC" ] || continue
-        cl="$(worker_label "$cand")"
-        [[ $cl =~ ^${lbase}[a-z]*$ ]] && [[ $cl > $sib_label ]] || continue
-        bash "$HERE/../queue-lock.sh" status "$cand" >/dev/null 2>&1 || return 0
-        cwd="$(sed -n '1,20s/^resume_cwd:[[:space:]]*//p' "$cand" | head -n 1)"
-        [ -n "$cwd" ] && [ -n "$DOC_WORKTREES" ] && grep -qxF -- "$cwd" <<< "$DOC_WORKTREES" && return 0
-    done
+rec_wt=$(printf '%s\n' "$DOC_WORKTREES" | sed -n 1p)
+rec_repo=""
+if [ -n "$rec_wt" ]; then
+    rec_common=$(cf_git "$rec_wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || rec_common=""
+    case "$rec_common" in
+        */.git) rec_repo="${rec_common%/.git}" ;;
+        *) rec_repo="${rec_wt%/.claude/worktrees/*}"; [ -d "$rec_repo" ] || rec_repo="" ;;
+    esac
+fi
+rec_label=$(worker_label "$DOC")
+rec_sid=""
+case "$digest_sid" in ????????-????-????-????-????????????) rec_sid="$digest_sid" ;; esac
+closed_at=$(date +%s)
+# the pid keeps two closes of one label in the same second (two chiefs) apart
+rec_name="$closed_at-$(printf '%s' "${rec_label:-$doc_stem}" | tr -c 'A-Za-z0-9_.-' '_')-$matched"
+rec_doc="$(cd "$(dirname "$DOC")" && pwd)/$(basename "$DOC")"
+rec_succ=""
+[ -z "$NAMED_SUCCESSOR" ] || rec_succ="$(cd "$(dirname "$NAMED_SUCCESSOR")" && pwd)/$(basename "$NAMED_SUCCESSOR")"
+rec_file="$CLOSE_SWEEP_STATE/pending/$rec_name.json"
+
+queue_record() {
+    local tmp="$CLOSE_SWEEP_STATE/pending/.tmp/$rec_name"
+    mkdir -p "$CLOSE_SWEEP_STATE/pending/.tmp" 2>/dev/null || return 1
+    if ! jq -n --arg doc "$rec_doc" --arg label "$rec_label" --argjson pid "$matched" --arg ps "$proc_start" \
+        --arg sid "$rec_sid" --arg tr "$TRANSCRIPT" --arg names "$candidates" \
+        --arg cfg "$WORKER_SESSION_CONFIG_DIR" --arg pd "$PROJECTS_DIR" --arg wts "$DOC_WORKTREES" \
+        --arg repo "$rec_repo" --argjson pred "$PREDECESSOR" --arg succ "$rec_succ" --argjson closed "$closed_at" \
+        '{doc: $doc, label: $label, pid: $pid, proc_start: $ps, sid: $sid, transcript: $tr,
+          names: ($names | split("\n") | map(select(. != ""))), config_dir: $cfg, projects_dir: $pd,
+          worktrees: ($wts | split("\n") | map(select(. != ""))), repo: $repo, predecessor: $pred,
+          named_successor: $succ, closed_at: $closed, sweeps_seen: 0}' > "$tmp" 2>/dev/null; then
+        rm -f "$tmp"
+        return 1
+    fi
+    mv "$tmp" "$rec_file" 2>/dev/null && return 0 # prim-ok: tmp is pending/.tmp/ on the same filesystem, outside the sweep's pending/*.json glob, so the mv is the atomic publish
+    rm -f "$tmp"
     return 1
 }
-# successor_live: the named successor holds its lock, or a later RESUME doc keeps it live. Read
-# again before the prune, since a successor can take its lock while the digest runs.
-successor_live() {
-    { [ "$PREDECESSOR" -eq 1 ] && ! bash "$HERE/../queue-lock.sh" status "$NAMED_SUCCESSOR" >/dev/null 2>&1; } || later_successor_live
+
+# start_sweep: close-sweep.sh --drain in its own session, its stdio on sweep.log and
+# every other descriptor it would inherit closed first, so a caller's lock fd (the
+# waiter holds one on fd 9) is free the moment this close returns.
+start_sweep() {
+    # shellcheck disable=SC2016  # the child shell expands $$ and $0 itself
+    setsid -f bash -c 'cd / || exit 1; for fd in /proc/$$/fd/*; do fd=${fd##*/}; case $fd in ""|*[!0-9]*) continue ;; esac; [ "$fd" -le 2 ] || eval "exec $fd>&-"; done; exec bash "$0" --drain' \
+        "$CLOSE_SWEEP" < /dev/null >> "$CLOSE_SWEEP_STATE/sweep.log" 2>&1
 }
-# A predecessor closed while its successor still runs reaps nothing: the successor works
-# the same PR, so its judge dirs are live.
-if successor_live; then
-    echo "close-wrapped-worker: its successor still runs - skipping the /tmp reap"
+
+if queue_record; then
+    start_sweep || echo "close-wrapped-worker: WARN cannot start the close sweep - the record waits in $CLOSE_SWEEP_STATE/pending/ for the next drain" >&2
+    echo "sweep=queued $rec_file"
 else
-    reap_worker_scratch || echo "close-wrapped-worker: WARN /tmp reap errored - close continues" >&2
-fi
-
-# ---------- Failure-loop digest --------------------
-# One `digest=` line and nothing else: worker-digest-step.sh's stderr is dropped,
-# its rc is ignored, and a hard outer timeout bounds it, so a digest crash,
-# hang or missing journal changes no other output and never the close's rc.
-# It never writes the worker's doc, so its tail stays WRAPPED.
-digest_line=$(timeout -k 5 "${CLOSE_WRAPPED_WORKER_DIGEST_TIMEOUT:-120}" bash "${WORKER_SESSION_DIGEST_STEP_BIN:-$HERE/worker-digest-step.sh}" \
-    --session "$digest_sid" --transcript "$TRANSCRIPT" --doc "$DOC" --pid "$matched" --projects "$PROJECTS_DIR" 2>/dev/null \
-    | grep -m 1 '^digest=')
-echo "${digest_line:-digest=failed:step}"
-
-# A predecessor closed while its successor still runs leaves the worktree alone: the
-# successor works in it, and a prune could take it before the successor's cwd lands.
-if successor_live; then
-    echo "close-wrapped-worker: its successor still runs - skipping the prune, the worktree stays" >&2
-    close_success
-fi
-worktrees="$DOC_WORKTREES"
-wt_count=$(printf '%s\n' "$worktrees" | grep -c . || true)
-if [ "$wt_count" -ne 1 ]; then
-    echo "close-wrapped-worker: doc names $wt_count worktree path(s) - skipping the prune, never guessing" >&2
-    close_success
-fi
-WT="$worktrees"
-# worktree.sh prune reads the git repo of its cwd, so run the prune from the repo that registers this worktree
-# (an adopter's worktree is not registered in the himmel checkout). Falls back to the cwd when the repo is gone.
-wt_repo="${WT%/.claude/worktrees/*}"
-[ -d "$wt_repo" ] || wt_repo="$PWD"
-
-# the TERM'd session may still be inside the worktree when the
-# first prune runs ("in use"). Retry quietly a bounded number of times (a few
-# seconds in all) so a worker that exits promptly is pruned now, not left for a
-# manual --only later. Only the "in use" skip retries; every other outcome is
-# final on the first pass.
-prune_tries=${CLOSE_WRAPPED_WORKER_PRUNE_RETRIES:-3}
-prune_try=0
-while :; do
-    out=$(unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; cd "$wt_repo" && bash "$CLEAN_SH" --only "$WT" --only-allow-unmerged 2>&1)
-    rc=$?
-    case "$out" in *'in use'*) ;; *) break ;; esac
-    [ "$rc" -ne 0 ] || break
-    [ "$prune_try" -lt "$prune_tries" ] || break
-    prune_try=$((prune_try + 1))
-    sleep "${CLOSE_WRAPPED_WORKER_PRUNE_WAIT:-1}"
-done
-echo "$out"
-if [ "$rc" -ne 0 ]; then
-    # clean-garden.sh's own --only failure text always contains "not a prune
-    # candidate" (its wording is shared across a benign skip AND a PARTIAL or
-    # FAILED removal), so a substring match
-    # on that text alone can't tell a benign skip apart from a dangerous
-    # partial/gutted-tree removal. Read its "prune summary" counts instead:
-    # only a summary with 0 partial and 0 failed is a benign skip.
-    summary_line=$(printf '%s\n' "$out" | grep -F 'clean-garden: prune summary' | tail -n 1)
-    partial_n=$(printf '%s' "$summary_line" | sed -nE 's/.*, ([0-9]+) partial,.*/\1/p')
-    failed_n=$(printf '%s' "$summary_line" | sed -nE 's/.* ([0-9]+) failed$/\1/p')
-    benign=0
-    if [ "$partial_n" = "0" ] && [ "$failed_n" = "0" ]; then
-        case "$out" in
-            *'in use'*|*'not a prune candidate'*)
-                benign=1 ;;
-        esac
-    fi
-    # A worktree that is unregistered AND absent on disk was already pruned
-    # (by the worker, a sweep, or an earlier close): nothing is left to remove.
-    case "$out" in
-        *'is not a registered worktree'*)
-            if [ ! -e "$WT" ]; then
-                echo "close-wrapped-worker: worktree $WT already gone - nothing to prune"
-                close_success
-            fi ;;
-    esac
-    if [ "$benign" -eq 1 ]; then
-        echo "close-wrapped-worker: worktree $WT not pruned (see message above) - not a failure, retry --only shortly"
-        close_success
-    fi
-    echo "close-wrapped-worker: clean.sh --only $WT --only-allow-unmerged failed (rc=$rc)" >&2
-    exit 1
+    echo "close-wrapped-worker: WARN cannot queue the close sweep record" >&2
 fi
 close_success
