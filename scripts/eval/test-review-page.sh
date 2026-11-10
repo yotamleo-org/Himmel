@@ -367,8 +367,12 @@ has "legacy_measurement_unverified: a measurement naming a commit with no matchi
 has "other_eval_unchanged: a judge change reads as before" "$m6" "- Changed the judges' prompt after the run of 1 Nov 2026"
 STUB="$TMP/git-stub"; mkdir -p "$STUB"
 printf '#!/bin/sh\necho "$@" >>"%s/calls"\nexit 1\n' "$STUB" >"$STUB/git"; chmod +x "$STUB/git"
-PATH="$STUB:$PATH" python3 -I "$PAGE" --ledger "$TMP/absent.jsonl" --changes "$TMP/m6-changes.jsonl" >/dev/null 2>&1
+stubbed="$(PATH="$STUB:$PATH" python3 -I "$PAGE" --ledger "$TMP/absent.jsonl" --changes "$TMP/m6-changes.jsonl" 2>&1)"; rc=$?
+eq "keep_revert_render: the page renders with git stubbed out: exit 0" "$rc" "0"
+has "keep_revert_render: the stubbed render shows keep" "$stubbed" "- Measured, keep:"
+has "keep_revert_render: the stubbed render shows revert" "$stubbed" "- Measured, revert:"
 eq "keep_revert_render: rendering keep and revert runs no git operation" "$(cat "$STUB/calls" 2>/dev/null)" ""
+eq "keep_revert_render: the page spawns no process by any path" "$(grep -cE 'subprocess|os\.system|os\.popen|os\.exec' "$PAGE")" "0"
 
 python3 -I "$PAGE" --ledger "$TMP/runs.jsonl" --changes "$TMP/changes.jsonl" --out "$TMP/page.md" >/dev/null 2>&1
 eq "--out writes the page" "$(head -1 "$TMP/page.md" 2>/dev/null)" "# How good are our reviewers?"
