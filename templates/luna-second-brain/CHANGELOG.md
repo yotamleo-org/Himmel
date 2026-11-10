@@ -8,15 +8,23 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.104] — 2026-11-06
+## [0.4.105] — 2026-11-10
 
 ### Fixed
-- `_CLAUDE.md` Retrieval Routing points the CLI and the MCP tools at the live
-  graph outside the vault. It sent sessions to `<vault-root>/graphify-out/`,
-  which no longer updates, so a vault that kept that folder read a stale graph
-  with no warning. To move an old folder out of the vault, run himmel's
+- `_CLAUDE.md` Retrieval Routing says the vault's graph is off by default
+  (decision 449), so sessions use qmd only unless the graph's cadence is armed
+  and the graph reads fresh. When it is on, the manual points the CLI and the
+  MCP tools at the graph outside the vault. It sent sessions to
+  `<vault-root>/graphify-out/`, which no longer updates, so a vault that kept
+  that folder read a stale graph with no warning.
+- To move an old folder out of the vault, use himmel's
   `scripts/luna/luna-index-hygiene.sh --vault <vault-root> --qmd-config
-  ~/.config/qmd/index.yml --offload-root <dir> --apply`.
+  ~/.config/qmd/index.yml --offload-root <dir>`. Run it without `--apply`
+  first: that is a dry run that prints what it would change. With `--apply` it
+  edits `~/.config/qmd/index.yml` (adds the generated-output and archive
+  ignore entries and a `luna-archive` collection), writes
+  `<vault-root>/.graphifyignore`, and moves `graphify-out/` under
+  `<dir>/graphify-snapshots/`.
 
 ## [0.4.103] — 2026-11-03
 
