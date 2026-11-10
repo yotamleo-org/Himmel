@@ -140,9 +140,23 @@ def patched(index_path, old_bytes):
         log['second'] = {'rc': r.returncode, 'out': r.stdout}
     return result
 mod.archive_old_index = patched
+argv = ['normalize', '--spec', spec, '--kind', kind, '--round', rnd, '--verdict', verdict, '--out', out, '--rebuild-stale']
+if scenario == 'bundle-swap':
+    real_check = mod.check_verdict
+    swapped = []
+    def check_then_swap(spec_, kind_, rnd_, path):
+        data = real_check(spec_, kind_, rnd_, path)
+        if not swapped:
+            swapped.append(1)
+            text = open(verdict).read()
+            cut = text.rstrip('\n').rfind('\n') + 1
+            open(verdict, 'w').write(text[:cut] + 'CONTENT-SHA256 ' + 'd' * 64 + ' x\n' + text[cut:])
+        return data
+    mod.check_verdict = check_then_swap
+    argv = ['bundle', '--spec', spec, '--previous-verdicts', sys.argv[8], '--out', out]
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
-    rc = mod.main(['normalize', '--spec', spec, '--kind', kind, '--round', rnd, '--verdict', verdict, '--out', out, '--rebuild-stale'])
+    rc = mod.main(argv)
 print(json.dumps({'rc': rc, 'out': buf.getvalue(), 'second': log.get('second')}))
 PY
 
@@ -370,7 +384,12 @@ t_every_declared_prior_bound() {
   bund "$p" "$b"; okrun "the full set bundles again"
   jq '.verdicts[0].finding_ids=["spec-r1-1"]' "$b" > "$R/tampered.json"; mv "$R/tampered.json" "$b"
   valid "$p" "$b"; refused 2 invalid "a tampered bundle fails validate-bundle"
-  rm -f "$b"; bund "$p" "$b"
+  rm -f "$b"
+  local swapr; swapr=$(python3 -I "$T/race.py" "$FINDINGS" bundle-swap "$SPEC" spec 1 "$(vpath spec 1)" "$b" "$p" 2>/dev/null); OUT=$swapr
+  check "a prior changed between the hash and the derivation is stale (3), not invalid" jq -e '.rc==3 and (.out|fromjson|.reasons|index("stale")!=null)' <<<"$swapr"
+  check "and no bundle was written" test ! -e "$b"
+  mkret spec 1 2; norm spec 1 --rebuild-stale; prev "$p" "$(vpath spec 1)" "$(vpath spec 2)"
+  bund "$p" "$b"
   printf 'SPEC CLEAN again\n' >> "$(vpath spec 2)"
   valid "$p" "$b"; refused 3 stale "a prior changed after bundling fails validate-bundle"
 }

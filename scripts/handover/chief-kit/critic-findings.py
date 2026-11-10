@@ -185,9 +185,11 @@ def parse_return(kind, rnd, data):
     return reviewer, findings
 
 
-def build_index(spec, kind, rnd, verdict):
-    """(INDEX object, verdict sha256) derived from the original structured return; the same parser validates and indexes."""
-    data = check_verdict(spec, kind, rnd, verdict)
+def build_index(spec, kind, rnd, verdict, data=None):
+    """(INDEX object, verdict sha256) derived from the original structured return; the same parser validates and indexes.
+    A caller that already read the verdict passes its bytes so the hash and the findings come from one read."""
+    if data is None:
+        data = check_verdict(spec, kind, rnd, verdict)
     reviewer, findings = parse_return(kind, rnd, data)
     vsha = sha256_bytes(data)
     obj = {"schema": 1, "kind": "critic-finding-index", "spec_path": spec, "critic_kind": kind, "round": rnd,
@@ -234,13 +236,13 @@ def write_temp(path, data):
     tmp = f"{path}.tmp.{os.getpid()}.{os.urandom(4).hex()}"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o644)
     try:
-        os.write(fd, data)
-        os.fsync(fd)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
     except BaseException:
-        os.close(fd)
         os.unlink(tmp)
         raise
-    os.close(fd)
     return tmp
 
 
@@ -379,7 +381,7 @@ def compute_bundle(spec, previous_path):
         v = recorded.get("verdict")
         if not isinstance(v, dict) or v.get("sha256") != vsha:
             refuse(3, "stale")
-        derived, _ = build_index(spec, kind, rnd, path)
+        derived, _ = build_index(spec, kind, rnd, path, data)
         if recorded != derived:
             refuse(2, "invalid")
         ids = [f["finding_id"] for f in derived["findings"]]
