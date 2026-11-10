@@ -16,7 +16,7 @@ feature's own switch.
 | `scripts/api-lane/judge-call.sh` | API lane | always (a chief's verdict question) |
 | `scripts/api-lane/bulk-call.sh` | API lane | always |
 | `jira release rm-run` (release manager) | the subscription | only in the himmel repo with `judge` mapped in `roles.json` (see [The role map](#the-role-map)); there the launcher's fallback is off, and a failed lane call, a policy refusal included, makes `rm-run` rule the batch once on the subscription itself; a timed-out call ends the run |
-| `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the review runs on the subscription |
+| `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the review runs on the subscription; a policy refusal (exit 2 with the launcher's `claude-api: policy refusal:` line) makes the critic print `claude critic BROKE` and exit 1, never a clean skip |
 | `scripts/graphify/graph-cadence.sh --semantic` | `claude-cli` when run bare; the armed `graph-publish-himmel` runner passes `claude-api` on auto | `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` |
 | `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|C` |
 
