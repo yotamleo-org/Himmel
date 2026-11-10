@@ -24,6 +24,7 @@ chain (decision 100), and names its ground.
   `chain:<name>`, `receipt`, `defer:<why>`, `resequence:<why>` (a move within
   the release), `resolved:<resolution>` (a DISCHARGE). A ground explains the
   ruling; it never authorizes a placement by itself.
+- **Follow-ups**: a follow-up enters current only if it blocks a bucket ticket (its why names it, or `--remainder`) or is critical, a regression or a broken flow; otherwise BACKLOG.
 - **Class** is derived by the engine from the target version: `current` (the
   active version), `next` (a later version of the release), `backlog`.
 - **Sector** (`--sector`) is required. A ticket with no sector: ask the chief
