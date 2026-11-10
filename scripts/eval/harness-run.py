@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """harness-run.py -- run a judge / differential harness under a hard deadline
-and leave NO descendant behind (HIMMEL-4183).
+and leave NO descendant behind.
 
     python3 scripts/eval/harness-run.py --deadline SEC [--kill-after SEC] -- CMD [ARG...]
 
