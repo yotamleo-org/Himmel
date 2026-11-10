@@ -62,8 +62,8 @@ marks it `old` after 7 days, which is not a reason to spend. What keeps moving
 is the review of real PRs: CodeRabbit and critic findings with their
 dispositions in the CR ledger, which the code-reviewer report reads on each
 visit, with no model call. Their capture coverage stays unknown until a dated
-merged-PR snapshot is supplied, and a snapshot older than the read is
-reported as partial with its as-of date, never as full coverage. The weekly
+merged-PR snapshot is supplied, and a snapshot from before the report's day
+is reported as partial with its as-of date, never as full coverage. The weekly
 read and the fields to record are in
 [scripts/eval/README.md](../README.md#ongoing-measurement-the-weekly-read).
 

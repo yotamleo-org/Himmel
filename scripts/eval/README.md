@@ -400,7 +400,7 @@ per reviewer and answering model:
 - the window (`since` to `until`) and the report date;
 - the counts as `k` of `n` per verdict source, never a bare percentage;
 - capture coverage as the report states it (`unknown`, or `k` of `n` with the
-  snapshot's as-of date, `partial` when it is older than the read, and the
+  snapshot's as-of date, `partial` when it is from before the report's day, and the
   failed and uncaptured PR numbers);
 - the benchmark's run date, its `old` or `partial` marker, and whether a trend
   was allowed;
