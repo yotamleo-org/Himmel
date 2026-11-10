@@ -906,8 +906,7 @@ queue_record() {
 
 # start_sweep: close-sweep.sh --drain in its own session, its stdio on sweep.log and
 # every other descriptor it would inherit closed first, so a caller's lock fd (the
-# waiter holds one on fd 9) is free the moment this close returns; its cwd is /, so
-# it never holds the close's cwd (a worktree the sweep may prune).
+# waiter holds one on fd 9) is free the moment this close returns.
 start_sweep() {
     # shellcheck disable=SC2016  # the child shell expands $$ and $0 itself
     setsid -f bash -c 'cd / || exit 1; for fd in /proc/$$/fd/*; do fd=${fd##*/}; case $fd in ""|*[!0-9]*) continue ;; esac; [ "$fd" -le 2 ] || eval "exec $fd>&-"; done; exec bash "$0" --drain' \
