@@ -1360,6 +1360,10 @@ assert_rc "6347 gh pr x{,}trace not a -f value"  2 "$(run_case "$(j_bash "gh pr 
 # x..t..r..a..c..e appear in order is data, not an xtrace option.
 assert_rc "6347 graphql reply, semicolon body"  0 "$(run_case "$(j_bash "gh api graphql -f 'query=mutation{addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:\"PRRT_kwDOS8WKNM6tonve\",body:\"Deferred to HIMMEL-6344: a malformed amend row is skipped and can leave a finding standing (fail-open, one extra round at most); fix there.\"}){comment{id}}}'")")"
 assert_rc "6347 graphql reply, prose body"      0 "$(run_case "$(j_bash "gh api graphql -f 'query=mutation{addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:\"PRRT_kwDOS8WKNM6tonve\",body:\"Deferred to HIMMEL-6344. A malformed amend row is skipped and can leave a finding standing, which fails open with one extra round at most. The fix is tracked there.\"}){comment{id}}}'")")"
+assert_rc "7716 a function shadows gh api -f"   2 "$(run_case "$(j_bash "gh(){ eval \"\$3\"; }; gh api -f 'set -o x{,}trace'")")"
+assert_rc "7716 gh api -F x=@.env"              2 "$(run_case "$(j_bash 'gh api -F x=@.env')")"
+assert_rc "7716 ctl plain gh api -f key=value"  0 "$(run_case "$(j_bash 'gh api -f key=value')")"
+assert_rc "7716 ctl commit message on tracing"  0 "$(run_case "$(j_bash "git commit -m 'docs: the hook turns xtrace off'")")"
 assert_rc "5484 setopt -x"                      2 "$(run_case "$(j_bash 'setopt -x')")"
 assert_rc "5484 unsetopt +x"                    2 "$(run_case "$(j_bash 'unsetopt +x')")"
 assert_rc "5484 setopt extendedglob -x"         2 "$(run_case "$(j_bash 'setopt extendedglob -x')")"
