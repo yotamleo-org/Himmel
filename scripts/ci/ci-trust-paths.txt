@@ -98,3 +98,4 @@
 ^\.codex/hooks\.json$
 ^marketplace/plugins/[^/]+/hooks/hooks\.json$
 ^scripts/handover/chief-kit/(test-)?close-facts\.sh$
+^scripts/handover/chief-kit/(test-)?close-sweep\.sh$
