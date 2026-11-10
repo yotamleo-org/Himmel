@@ -9,13 +9,21 @@
 #   merged_proof <repo> <doc> <branch> <tip>   one cache row when M1 to M4 all hold
 #   no_work_proof <repo> <doc> <branch> <tip>  a 0-row branch cache when the branch holds nothing to lose
 #   write_branch_cache <repo> <branch> [<row>] a branch-scoped `worktree.sh --pr-cache` file
+#   successor_live <doc> <predecessor 0|1> <named successor>  the named successor holds its lock, or a later RESUME doc keeps it live
+#   later_successor_live <doc>                 a later-lettered RESUME doc beside <doc> holds a lock or names a worktree <doc> names
 #
 # A proof only feeds `worktree.sh prune --only --pr-cache` a cache row; it never
 # decides a prune. Every failure prints nothing, so a missing proof keeps work.
+# successor_live and later_successor_live are copies of close-wrapped-worker.sh's
+# own (same behaviour, the doc passed in); the close keeps its copy until the
+# close path is wired to the sweep.
 # bash 3.2-safe.
 
+_CF_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../../lib/git-clean.sh" || return 1
+. "$_CF_HERE/../../lib/git-clean.sh" || return 1
+# shellcheck source=../../lib/worker-identity.sh
+. "$_CF_HERE/../../lib/worker-identity.sh" || return 1
 
 cf_git() {
     local repo="$1"; shift
@@ -112,4 +120,34 @@ no_work_proof() {
     ahead=$(cf_git "$repo" rev-list --count "refs/remotes/origin/main..$tip") || return 0
     [ "$ahead" = "0" ] || return 0
     write_branch_cache "$repo" "$branch" || return 0
+}
+
+# later_successor_live <doc>: success when a later-lettered RESUME doc of this worker beside
+# <doc> holds a queue lock, or names a worktree <doc> names as its resume_cwd. It reads no
+# Results section, so a hand-off the successor reader misses still keeps the successor's
+# scratch and worktree.
+later_successor_live() {
+    local doc="$1" sib_dir sib_label doc_worktrees cand lbase cl cwd
+    sib_dir="$(dirname "$doc")"
+    sib_label="$(worker_label "$doc")"
+    [[ $sib_label =~ ^(N[0-9]+)[a-z]*$ ]] || return 1
+    lbase="${BASH_REMATCH[1]}"
+    doc_worktrees=$(grep -oE "/[^\` ]*/\.claude/worktrees/[^\`) ]+" "$doc" | sort -u)
+    for cand in "$sib_dir"/*-RESUME.md; do
+        [ -f "$cand" ] && [ ! -L "$cand" ] && [ "$cand" != "$doc" ] || continue
+        cl="$(worker_label "$cand")"
+        [[ $cl =~ ^${lbase}[a-z]*$ ]] && [[ $cl > $sib_label ]] || continue
+        bash "$_CF_HERE/../queue-lock.sh" status "$cand" >/dev/null 2>&1 || return 0
+        cwd="$(sed -n '1,20s/^resume_cwd:[[:space:]]*//p' "$cand" | head -n 1)"
+        [ -n "$cwd" ] && [ -n "$doc_worktrees" ] && grep -qxF -- "$cwd" <<< "$doc_worktrees" && return 0
+    done
+    return 1
+}
+
+# successor_live <doc> <predecessor 0|1> <named successor>: the named successor holds its
+# lock, or a later RESUME doc keeps it live. Read again before a prune, since a successor
+# can take its lock while the digest runs.
+successor_live() {
+    local doc="$1" predecessor="$2" named="$3"
+    { [ "$predecessor" = "1" ] && ! bash "$_CF_HERE/../queue-lock.sh" status "$named" >/dev/null 2>&1; } || later_successor_live "$doc"
 }
