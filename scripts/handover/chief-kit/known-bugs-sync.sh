@@ -20,7 +20,7 @@
 #
 # ponytail: a row deleted from the file by hand comes back as class `unset` on the next sync,
 # upgrade path = a tombstone row with an edit time.
-# Platform guard: bash 3.2+ with GNU date and jq; the chief kit is Linux-only.
+# Platform guard: bash 3.2+ with jq and GNU or BSD date (the Jira times are read with GNU date -d, else BSD date -j -f).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
@@ -57,12 +57,19 @@ export JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}"
 
 log() { # <message>
     local line
-    line="$(date -u +%Y-%m-%dT%H:%M:%SZ) known-bugs-sync $CHECKER: $1" # gnu-ok: chief kit is Linux-only
+    line="$(date -u +%Y-%m-%dT%H:%M:%SZ) known-bugs-sync $CHECKER: $1" # date -u with a + format is the same on GNU and BSD
     printf '%s\n' "$line"
     [ -z "$LOG" ] || printf '%s\n' "$line" >> "$LOG"
 }
-epoch() { [ -n "$1" ] && date -d "$1" +%s 2>/dev/null; } # gnu-ok: chief kit is Linux-only; an empty time is no time
-iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; } # gnu-ok: chief kit is Linux-only
+epoch() { # <time>; an empty time is no time. GNU date -d first, then BSD date -j -f (fraction dropped, Z read as +0000)
+    [ -n "$1" ] || return 1
+    date -d "$1" +%s 2>/dev/null && return 0 # gnu-ok: tried first, BSD falls through
+    local t="${1%Z}"
+    case "$1" in *Z) t="$t+0000" ;; esac
+    t=$(printf '%s' "$t" | sed -E 's/(:[0-9]{2})\.[0-9]+/\1/')
+    date -j -f %Y-%m-%dT%H:%M:%S%z "$t" +%s 2>/dev/null
+}
+iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; } # gnu-ok: GNU date -d first, BSD date -r after
 
 links=$("${JIRA[@]}" links "$CHECKER" 2>/dev/null) || { echo "known-bugs-sync: jira links $CHECKER failed" >&2; exit 1; } # swallow-ok: a failed read exits 1 by name, nothing is written
 hist=$("${JIRA[@]}" history "$CHECKER" --json 2>/dev/null) || { echo "known-bugs-sync: jira history $CHECKER failed" >&2; exit 1; } # swallow-ok: a failed read exits 1 by name, nothing is written
