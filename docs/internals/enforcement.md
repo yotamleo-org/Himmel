@@ -2436,6 +2436,42 @@ listening, deadline, bearer-token refusal, unreadable reply). The output is
 fixed text and never carries the key or the Authorization header. Spec:
 `scripts/lib/test-qmd-key-probe.sh`.
 
+### `block-subagent-release-operator.sh`
+
+A member of the PreToolUse `Bash` chain. It denies an in-process subagent (a
+payload whose `agent_id` is present and not `null`) any Bash command that names
+both the word `release` and the word `operator`, so a subagent never writes an
+operator-chain row with `jira release operator …`; `spec-review` is one of those
+verbs, so a critic subagent cannot record its own verdict. `operatorFence` in the
+jira CLI reads only the environment, which a subagent inherits from the chief.
+The main session (no `agent_id`, or `null`) is allowed without reading the
+command.
+
+The match: the command is normalised (backslash-newline pairs deleted, `$'` and
+`$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted), split into
+words at every space, TAB, carriage return, newline and shell metacharacter (`;&|()<>{}` and the
+backtick), and matches when both words appear anywhere, in either order. There
+is no allow-list of read-only commands, no split into simple commands and no
+order check, so `git grep "release operator"` is denied too: a subagent searches
+for the phrase with the Grep tool. An `agent_id` of `false`, `""`, a number or an
+object counts as a subagent.
+
+It is a security fence and fails CLOSED: no `jq` on `PATH` denies every Bash call
+(`cannot read the hook input without jq`), and stdin that is not one JSON object
+(empty, `[]`, a string, not JSON) is denied (`cannot parse the hook input`). It
+reads stdin once with the `read` builtin, so a closed fd 0 ends at once. It is in
+`MUST_RUN_CHAIN_MEMBERS` (`run-hook-with-bash.js` and its plugin copy), so a
+chain whose budget an earlier member spent still runs it in its own window. In
+`test-escape-class-corpus.sh` it runs in the `deny-subagent` mode against every
+corpus shape.
+
+What it cannot see is the fence residual, tracked as one follow-up ticket of the core-bypass spec work: text built at run time (a
+variable, an alias, a function, an expansion, an `eval`, a script written then
+run, an encoded string), a nested `claude` session started from a subagent, a
+chief session in another repo, and the Monitor tool. Bypass:
+`SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1` (launching shell). Spec:
+`scripts/hooks/test-block-subagent-release-operator.sh`.
+
 ### `block-bank-lift-writes.sh` — operator-only weekly budget override
 
 Fires on Bash and on `Edit|Write|MultiEdit|NotebookEdit` (Codex: Bash and the

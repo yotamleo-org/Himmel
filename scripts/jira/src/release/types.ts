@@ -61,7 +61,7 @@ export interface RulingRow {
   mac?: string;
 }
 
-export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'spec' | 'core-bypass' | 'core-snapshot' | 'out-of-version';
+export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'spec' | 'spec-review' | 'core-bypass' | 'core-snapshot' | 'out-of-version';
 
 export interface OperatorRow {
   id: string;
@@ -77,11 +77,13 @@ export interface OperatorRow {
   sha?: string;
   epoch?: number;
   doc?: string;
-  // kind 'spec': the signed minerva spec, its critics' verdict files, and the record it replaces.
+  // kind 'spec' and 'spec-review': the minerva spec, its critics' verdict files, and the record it replaces.
   spec_path?: string;
   spec_sha256?: string;
   plan_path?: string | null;
   plan_sha256?: string | null;
+  // kind 'spec-review' over a FINDINGS verdict: the spec bytes the critic reviewed, before the fold.
+  reviewed_sha256?: string;
   verdicts?: Array<{ path: string; sha256: string }>;
   supersedes?: string | null;
   residuals?: number;
