@@ -82,8 +82,9 @@ export async function checkCriticSnapshot(input: unknown): Promise<{ exit: numbe
   if (reasons.size === 0) {
     try {
       const b = await readCriticBudget(req.spec_path, req.kind, req.requested_round);
-      round = { observed_count: b.count, requested: req.requested_round, next: b.count + 1, cap: b.cap, operator_record: b.operatorAllowed, numberedFiles: b.numberedFiles, renamed: b.renamed };
-      if (req.requested_round !== b.count + 1) reasons.add("round-mismatch");
+      const exactNext = req.requested_round === b.count + 1;
+      round = { observed_count: b.count, requested: req.requested_round, next: b.count + 1, cap: b.cap, operator_record: exactNext ? b.operatorAllowed : null, numberedFiles: b.numberedFiles, renamed: b.renamed };
+      if (!exactNext) reasons.add("round-mismatch");
       else operatorRequired = req.requested_round > b.cap && !b.operatorAllowed;
     } catch { reasons.add("round-unavailable"); }
   }
@@ -194,7 +195,7 @@ type RoutingDiffOutput = {
   head: string | null; violations: RoutingViolation[]; reasons: string[];
 };
 
-async function routingDiffCli(args: string[], cwd: string): Promise<{ exit: number; output: RoutingDiffOutput }> {
+export async function routingDiffCli(args: string[], cwd: string, violationsFor: typeof routingDiffViolations = routingDiffViolations): Promise<{ exit: number; output: RoutingDiffOutput }> {
   const exact = args.length === 3 && args[1] === "--base";
   const base = exact && HEX40.test(args[2]) ? args[2] : null;
   const invalid = (reason: string, repo: string | null = null, head: string | null = null) => ({
@@ -204,11 +205,10 @@ async function routingDiffCli(args: string[], cwd: string): Promise<{ exit: numb
   let top: string, head: string;
   try { ({ top, head } = resolveRepo(cwd)); } catch { return invalid("invalid-repo"); }
   try {
-    const violations = await routingDiffViolations(top, base);
+    const violations = await violationsFor(top, base);
     return { exit: violations.length ? 1 : 0, output: { schema: 1, kind: "critic-routing-diff", state: violations.length ? "violations" : "clear", repo: top, base, head, violations, reasons: violations.length ? ["routing-diff"] : [] } };
   } catch (e) {
-    if (e instanceof RoutingDiffError) return invalid(e.reason, top, head);
-    throw e;
+    return invalid(e instanceof RoutingDiffError ? e.reason : "git-failure", top, head);
   }
 }
 

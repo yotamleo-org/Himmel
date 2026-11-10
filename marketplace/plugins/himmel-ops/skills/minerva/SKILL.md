@@ -233,6 +233,25 @@ reply, stops that dispatch: keep the refusal as printed and do not retry or call
 around it. Exit 3 means the existing operator record for that round is missing. Exit 0 describes the
 named bytes and the observed count only; the caller's routing, overrides, round cap and its operator
 exception, seals and approvals all still apply.
+
+Typed findings (same opt-in, from round 1 of the selected kind; a kind whose earlier returns are plain
+prose cannot join it, and nothing is retrofitted). For that opted-in Claude critic only, paste the
+charter this stage already uses verbatim, add one newline, append `critic-return-format.md` from this
+skill's folder verbatim, add one newline, then exactly these three lines. K is `spec` for Stage 2 or
+`plan` for Stage 4 and R is the same requested round as the REQUEST; take both from the controller, never
+from the artifact's prose. The label is informational, not an identity.
+
+<!-- critic-context -->
+```text
+critic_kind: ${K}
+requested_round: ${R}
+reviewer_id: minerva-${K}-r${R}
+```
+
+The advisory panel and any dispatch that did not opt in receive neither the format nor these lines. Save
+the return under its usual name, seal it where the existing workflow already seals, then run
+`python3 <HIMMEL_REPO>/scripts/handover/chief-kit/critic-findings.py normalize --spec <spec> --kind K --round n --verdict <return file> --out <return file>.finding-index.json`.
+A refusal is final for that attempt: do not edit the return, write the index by hand or retry.
 <!-- critic-readiness-recipe-end -->
 
 ## Stage 2 — spec critic (adversarial)

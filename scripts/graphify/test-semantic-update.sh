@@ -13,7 +13,7 @@ FAILS=0
 pass() { echo "  ok: $1"; }
 fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
 
-WS="$(mktemp -d "${TMPDIR:-/tmp}/test-semantic-update.XXXXXX")" || exit 1; trap 'rm -rf "$WS"' EXIT
+WS="$(mktemp -d "${TMPDIR:-/tmp}/test-semantic-update.XXXXXX")" || exit 1; trap '[ ! -d "$WS/o16-base" ] || git -C "$REAL_REPO" worktree remove --force "$WS/o16-base" >/dev/null 2>&1; rm -rf "$WS"' EXIT
 REPO="$WS/repo"
 mkdir -p "$REPO/scripts/graphify" "$REPO/scripts/lib" "$REPO/scripts/api-lane" "$WS/bin" "$WS/tmp" "$WS/glm"
 # the copied repo is a git repo of its own: a corpus inside it is "the himmel graph", one beside it is another repo
@@ -987,6 +987,7 @@ if (cmd === 'submit') {
   writeFileSync(sp, JSON.stringify({ batch_id: 'msgbatch_stub', account: o.account, request_count: ids.length, custom_ids: ids, bodies, status: 'in_progress' }));
   console.log(JSON.stringify({ batch_id: 'msgbatch_stub', request_count: ids.length, status: 'in_progress' }));
 } else if (cmd === 'poll') {
+  if (process.env.BATCH_STUB_POLLFAIL) { console.error('semantic-batch: HTTP 503 on poll'); process.exit(3); }
   const st = state();
   st.status = existsSync(join(ws, 'batch-status')) ? readFileSync(join(ws, 'batch-status'), 'utf8').trim() : 'in_progress';
   log(`poll ${st.status}`);
@@ -1011,12 +1012,24 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 const ws = process.env.BATCH_STUB_WS;
 const f = join(ws, 'exhausted.log');
+const listed = (name) => (process.env[name] || '').split(',').filter(Boolean);
 if (process.argv[2] === 'pick') {
   // as the real pick: the first account of --only (else A, B, C) not marked exhausted; every one marked, the first serves
   const marked = existsSync(f) ? readFileSync(f, 'utf8').split('\n').filter(Boolean) : [];
   const i = process.argv.indexOf('--only');
   const list = i > 0 ? process.argv[i + 1].split(',') : ['A', 'B', 'C'];
-  console.log(JSON.stringify({ verdict: 'PROCEED', account: list.find((l) => !marked.includes(l)) || list[0], snapshot_stale: false }));
+  appendFileSync(join(ws, 'picks.log'), `pick ${list.join(',')}\n`);
+  if (list.some((l) => listed('BATCH_STUB_PICKCRASH').includes(l))) process.exit(1);
+  if (list.some((l) => listed('BATCH_STUB_EMPTYROWS').includes(l))) { console.log(JSON.stringify({ verdict: 'SKIPPED-BANK', reason: 'no-role-account-configured', rows: [] })); process.exit(0); }
+  const bad = list.filter((l) => listed('BATCH_STUB_NOROOM').includes(l) || listed('BATCH_STUB_UNKNOWN').includes(l));
+  if (bad.length === list.length) {
+    const rows = list.map((l) => (listed('BATCH_STUB_UNKNOWN').includes(l)
+      ? { account: l, verdict: 'BANK-UNKNOWN', reason: 'unreadable-state' } : { account: l, verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' }));
+    console.log(JSON.stringify({ verdict: 'SKIPPED-BANK', reason: 'no-account-with-headroom', ...(process.argv.includes('--rows') ? { rows } : {}) }));
+  } else console.log(JSON.stringify({ verdict: 'PROCEED', account: list.filter((l) => !bad.includes(l)).find((l) => !marked.includes(l)) || list.find((l) => !bad.includes(l)), snapshot_stale: false }));
+} else if (process.argv[2] === 'accounts') {
+  const roster = listed('BATCH_STUB_ROSTER');
+  if (roster.length > 0) console.log(JSON.stringify(['A', 'B', 'C'].map((l) => (roster.includes(l) ? { account: l, configured: true, cap_usd: '50.000000', tag: 'room' } : { account: l, configured: false, cap_usd: null, tag: 'not configured' }))));
 } else if (process.argv[2] === 'exhausted') {
   if (process.env.BATCH_STUB_MARKFAIL) process.exit(1);
   appendFileSync(f, `${process.env.HIMMEL_API_ACCOUNT}\n`);
@@ -1318,6 +1331,263 @@ sed 's/EXHAUSTED_TTL = 3600/EXHAUSTED_TTL = 7200/' "$REAL_REPO/scripts/lib/api-c
 cmp -s "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REPO/scripts/lib/api-credit-state.mjs" && fail "T93b the control copy still has the 3600 s TTL"
 [ "$(pick_acct "$REPO/scripts/lib/api-credit-state.mjs")" = "B" ] && pass "T93b RED control: with a 7200 s TTL the 4000 s mark still skips A, so T93 reads the TTL" || fail "T93b control picked '$(pick_acct "$REPO/scripts/lib/api-credit-state.mjs")'"
 roles_real_off
+
+RF="$WS/result"
+word() { sed -n 1p "$RF" 2>/dev/null; }
+line2() { sed -n 2p "$RF" 2>/dev/null; }
+o_reset() { batch_reset; rm -f "$RF" "$WS/picks.log"; }
+run_order() { env -u HIMMEL_API_ACCOUNT HIMMEL_API_LANE=on PATH="$WS/bin:$PATH" bash "$SCRIPT" --backend claude-api --corpus-class himmel-code --result-file "$RF" "$@" 2>&1; }
+run_cli() { run --corpus-class himmel-code --result-file "$RF" "$@"; }
+batch_of() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["account"])' "$1/graphify-out/semantic-batch/batch.json" 2>/dev/null; }
+no_spend_calls() { ! grep -q '^bank\|^lane ' "$WS/calls.log"; }
+
+echo "O1: --account-order C,A with both live submits on C, though grant-expiry rank would pick A"
+CO="$WS/o1"; new_corpus "$CO"; o_reset
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o1 --corpus-root "$CO" --account-order C,A); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C " ] && [ "$(batch_of "$CO")" = C ] && [ "$(word)" = submitted ] && [ -z "$(line2)" ] \
+  && pass "O1 one submit, on C, word submitted" || fail "O1 (rc=$rc) accounts '$(batch_accounts)' word '$(word)': $out"
+
+echo "O2: A,B,C with A and B exhausted submits on C; markers, batch.json and the BATCH line agree; every line names the accounts and why"
+CO="$WS/o2"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_EXHAUSTED=A,B GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o2 --corpus-root "$CO" --account-order A,B,C); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A B C " ] && [ "$(tr '\n' ' ' < "$WS/exhausted.log")" = "A B " ] && [ "$(batch_of "$CO")" = C ] \
+  && [[ "$out" == *"BATCH id=msgbatch_stub state=submitted"* ]] && [ "$(word)" = submitted ] \
+  && pass "O2 A and B marked, the one batch on C, word submitted" || fail "O2 (rc=$rc) accounts '$(batch_accounts)' word '$(word)': $out"
+[[ "$out" == *"account A credit exhausted (tried: A)"* ]] && [[ "$out" == *"retrying the batch on account B (tried: A)"* ]] \
+  && [[ "$out" == *"account B credit exhausted (tried: A B)"* ]] && [[ "$out" == *"retrying the batch on account C (tried: A B)"* ]] \
+  && pass "O2 each retry line names the account and why" || fail "O2 retry lines: $out"
+
+echo "O3: every letter of the order exhausted: word no-route, no subscription or lane call, nothing pending"
+CO="$WS/o3"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_EXHAUSTED=A,B GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o3 --corpus-root "$CO" --account-order A,B); rc=$?
+[ "$rc" -ne 0 ] && [ "$(batch_accounts)" = "A B " ] && [ "$(word)" = no-route ] && [ -z "$(line2)" ] && no_spend_calls && [ ! -e "$CO/graphify-out/semantic-batch" ] \
+  && [[ "$out" == *"(A credit exhausted, B credit exhausted); nothing submitted"* ]] \
+  && pass "O3 word no-route, the final line names A and B, nothing pending" || fail "O3 (rc=$rc) word '$(word)': $out / $(cat "$WS/calls.log")"
+
+echo "O4: an estimate still over the cap after sizing: word over-cap, no submit, the line names the first file and both ways out"
+CO="$WS/o4"; new_corpus "$CO"; o_reset
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o4 --corpus-root "$CO" --account-order A --max-run-usd 0.01); rc=$?
+first="$(sed -n 's/.*over-cap: the estimate for \([^ ]*\) alone.*/\1/p' <<<"$out")"
+[ "$rc" -ne 0 ] && [ ! -s "$WS/batch.log" ] && [ "$(word)" = over-cap ] && [ -n "$first" ] && [ -f "$CO/$first" ] \
+  && [[ "$out" == *".graphify-corpus-ignore"* ]] && [[ "$out" == *"--max-run-usd"* ]] && ! grep -q '^graphify extract' "$WS/calls.log" \
+  && pass "O4 over-cap names $first and both ways out, nothing extracted or submitted" || fail "O4 (rc=$rc) word '$(word)': $out"
+echo "O4b: the same estimate without --account-order is sized and submitted as on main (the cap stays a planning input)"
+CO="$WS/o4b"; new_corpus "$CO"; o_reset
+out=$(ACCT=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o4b --corpus-root "$CO" --corpus-class himmel-code --backend claude-api --max-run-usd 0.01); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A " ] && [[ "$out" != *"over-cap"* ]] \
+  && pass "O4b one file submitted on A, no over-cap" || fail "O4b (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "O5: --account-order refuses GRAPHIFY_API_BATCH=0, another backend and a value that is not one capital letter per entry"
+CO="$WS/o5"; new_corpus "$CO"
+for o5 in 'GRAPHIFY_API_BATCH=0|A' 'BACKEND|A' 'X|a' 'X|AB' 'X|A,,B' 'X|A,' 'X|' 'X|A;B' 'X|A, B'; do
+  o_reset; o5env="${o5%%|*}"; o5val="${o5#*|}"
+  case "$o5env" in
+    BACKEND) out=$(run_order --name o5 --corpus-root "$CO" --account-order "$o5val" --backend claude-cli); rc=$? ;;
+    X) out=$(run_order --name o5 --corpus-root "$CO" --account-order "$o5val"); rc=$? ;;
+    *) out=$(env "$o5env" HIMMEL_API_LANE=on PATH="$WS/bin:$PATH" bash "$SCRIPT" --backend claude-api --corpus-class himmel-code --result-file "$RF" --name o5 --corpus-root "$CO" --account-order "$o5val" 2>&1); rc=$? ;;
+  esac
+  [ "$rc" -eq 1 ] && [ "$(word)" = stopped ] && [ ! -s "$WS/calls.log" ] && [ ! -s "$WS/batch.log" ] \
+    && pass "O5 ($o5) refused, exit 1, word stopped, nothing called" || fail "O5 ($o5) (rc=$rc) word '$(word)': $out"
+done
+
+echo "O6: a non-credit, non-key error (the client's exit 3) stops: word stopped, no next letter, no marker"
+CO="$WS/o6"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_FAIL=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o6 --corpus-root "$CO" --account-order A,B); rc=$?
+[ "$rc" -ne 0 ] && [ "$(batch_accounts)" = "A " ] && [ ! -s "$WS/exhausted.log" ] && [ "$(word)" = stopped ] \
+  && [[ "$out" == *"only a credit-exhausted or rejected-key answer tries the next account"* ]] \
+  && pass "O6 one submit on A, word stopped" || fail "O6 (rc=$rc) accounts '$(batch_accounts)' word '$(word)': $out"
+
+echo "O7: a letter with no room is logged and skipped with no client call; the next letter submits"
+CO="$WS/o7"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_NOROOM=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o7 --corpus-root "$CO" --account-order A,B); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "B " ] && [ "$(word)" = submitted ] && [[ "$out" == *"account A has no room"* ]] \
+  && pass "O7 A skipped with a line, the batch on B" || fail "O7 (rc=$rc) accounts '$(batch_accounts)' word '$(word)': $out"
+
+echo "O8: a corrupt ledger (the real credit state) stops the walk: word stopped, not no-route, nothing submitted"
+roles_fixture; roles_real_on; printf '{' > "$RC/ledger.json"
+CO="$WS/o8"; new_corpus "$CO"; o_reset
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o8 --corpus-root "$CO" --account-order A,B); rc=$?
+[ "$rc" -ne 0 ] && [ ! -s "$WS/batch.log" ] && [ "$(word)" = stopped ] && no_spend_calls && [[ "$out" == *"BANK-UNKNOWN"* ]] \
+  && pass "O8 word stopped on BANK-UNKNOWN, no submit" || fail "O8 (rc=$rc) word '$(word)': $out"
+roles_real_off
+echo "O8b: a pick that answers nothing is not a lack of room: word stopped, the next letter is never tried"
+CO="$WS/o8b"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_PICKCRASH=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o8b --corpus-root "$CO" --account-order A,B); rc=$?
+[ "$rc" -ne 0 ] && [ ! -s "$WS/batch.log" ] && [ "$(word)" = stopped ] && [ "$(cat "$WS/picks.log")" = "pick A" ] \
+  && pass "O8b word stopped, B never picked" || fail "O8b (rc=$rc) word '$(word)' picks '$(cat "$WS/picks.log" 2>&1)': $out"
+CO="$WS/o8c"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_EMPTYROWS=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o8c --corpus-root "$CO" --account-order A,B); rc=$?
+[ "$rc" -ne 0 ] && [ ! -s "$WS/batch.log" ] && [ "$(word)" = stopped ] && [ "$(cat "$WS/picks.log")" = "pick A" ] \
+  && pass "O8b a refusal with an empty rows list stops too, B never picked" || fail "O8b empty rows (rc=$rc) word '$(word)' picks '$(cat "$WS/picks.log" 2>&1)': $out"
+
+echo "O9: claude-cli with a batch waiting: word batch-pending, no bank call, no extract"
+CO="$WS/o9"; new_corpus "$CO"; o_reset
+mkdir -p "$CO/graphify-out/semantic-batch"; printf '{"batch_id":"msgbatch_wait"}' > "$CO/graphify-out/semantic-batch/batch.json"
+out=$(run_cli --name o9 --corpus-root "$CO"); rc=$?
+[ "$rc" -ne 0 ] && [ "$(word)" = batch-pending ] && [ ! -s "$WS/calls.log" ] && [ -f "$CO/graphify-out/semantic-batch/batch.json" ] \
+  && pass "O9 word batch-pending, nothing called, the batch left in place" || fail "O9 (rc=$rc) word '$(word)': $out / $(cat "$WS/calls.log")"
+
+echo "O10: claude-cli on BANK-UNKNOWN, BANK-STALE and an empty verdict: word bank-refused, nothing extracted"
+for o10 in BANK-UNKNOWN BANK-STALE ''; do
+  CO="$WS/o10"; rm -rf "$CO"; new_corpus "$CO"; o_reset; printf '%s' "$o10" > "$WS/bank"
+  out=$(run_cli --name o10 --corpus-root "$CO"); rc=$?
+  [ "$rc" -eq 3 ] && [ "$(word)" = bank-refused ] && ! grep -q '^graphify extract' "$WS/calls.log" \
+    && pass "O10 ('$o10') word bank-refused, exit 3, nothing extracted" || fail "O10 ('$o10') (rc=$rc) word '$(word)': $out"
+done
+rm -f "$WS/bank"
+
+echo "O11: each exit-0 outcome writes its word: extracted, no-op, pending, merged, a deletions-only plan and an all-cached run"
+CO="$WS/o11"; new_corpus "$CO"; o_reset
+out=$(run_cli --name o11 --corpus-root "$CO"); rc=$?
+[ "$rc" -eq 0 ] && [ "$(word)" = extracted ] && pass "O11 a clean subscription run: extracted" || fail "O11 extracted (rc=$rc) word '$(word)': $out"
+rm -f "$RF"; out=$(run_cli --name o11 --corpus-root "$CO"); rc=$?
+[ "$rc" -eq 0 ] && [ "$(word)" = no-op ] && pass "O11 unchanged corpus: no-op" || fail "O11 no-op (rc=$rc) word '$(word)': $out"
+rm "$CO/b.md"; rm -f "$RF"; out=$(run_cli --name o11 --corpus-root "$CO"); rc=$?
+[ "$rc" -eq 0 ] && [ "$(word)" = merged ] && pass "O11 a deletions-only plan: merged" || fail "O11 deletions-only (rc=$rc) word '$(word)': $out"
+CO="$WS/o11b"; new_corpus "$CO"; o_reset
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o11b --corpus-root "$CO" --account-order A); rc=$?
+[ "$rc" -eq 0 ] && [ "$(word)" = submitted ] || fail "O11 setup submit (rc=$rc) word '$(word)': $out"
+rm -f "$RF"; out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o11b --corpus-root "$CO" --account-order A); rc=$?
+[ "$rc" -eq 0 ] && [ "$(word)" = pending ] && pass "O11 a batch in progress: pending" || fail "O11 pending (rc=$rc) word '$(word)': $out"
+echo ended > "$WS/batch-status"; rm -f "$RF"
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o11b --corpus-root "$CO" --account-order A); rc=$?
+[ "$rc" -eq 0 ] && [ "$(word)" = merged ] && pass "O11 an ended batch: merged" || fail "O11 merged (rc=$rc) word '$(word)': $out"
+CO="$WS/o11c"; new_corpus "$CO"; o_reset
+out=$(run_order --name o11c --corpus-root "$CO" --account-order A); rc=$?
+[ "$rc" -eq 0 ] && [ ! -s "$WS/batch.log" ] && [ "$(word)" = merged ] && pass "O11 every chunk answered from the cache: merged, no submit" || fail "O11 all-cached (rc=$rc) word '$(word)': $out"
+
+echo "O12: a fence denial writes fence-denied"
+CO="$WS/o12"; new_corpus "$CO"; touch "$CO/.salus"; o_reset
+out=$(run_cli --name o12 --corpus-root "$CO"); rc=$?
+[ "$rc" -eq 2 ] && [ "$(word)" = fence-denied ] && pass "O12 word fence-denied" || fail "O12 (rc=$rc) word '$(word)': $out"
+
+echo "O13: the promote lock held writes locked"
+CO="$WS/o13"; new_corpus "$CO"; mkdir -p "$CO/graphify-out/.promote.lock"; o_reset
+out=$(run_cli --name o13 --corpus-root "$CO"); rc=$?
+[ "$rc" -eq 4 ] && [ "$(word)" = locked ] && pass "O13 word locked" || fail "O13 (rc=$rc) word '$(word)': $out"
+
+echo "O14: a poll failure, a failed extract, a failed merge, no graph.json and a symlinked out dir write corpus-failed"
+CO="$WS/o14a"; new_corpus "$CO"; o_reset
+GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o14a --corpus-root "$CO" --account-order A >/dev/null; rm -f "$RF"
+out=$(BATCH_STUB_POLLFAIL=1 run_order --name o14a --corpus-root "$CO" --account-order A); rc=$?
+[ "$rc" -eq 2 ] && [ "$(word)" = corpus-failed ] && pass "O14 poll failure: corpus-failed" || fail "O14 poll (rc=$rc) word '$(word)': $out"
+CO="$WS/o14b"; new_corpus "$CO"; o_reset
+out=$(GRAPHIFY_STUB_RC=1 run_cli --name o14b --corpus-root "$CO"); rc=$?
+[ "$rc" -eq 2 ] && [ "$(word)" = corpus-failed ] && pass "O14 failed extract: corpus-failed" || fail "O14 extract (rc=$rc) word '$(word)': $out"
+CO="$WS/o14c"; new_corpus "$CO"; o_reset
+cp "$REPO/scripts/graphify/semantic-merge.py" "$WS/semantic-merge.keep"
+printf 'import sys\nif sys.argv[1] == "merge": sys.exit(1)\nexec(open(%s).read())\n' "'$WS/semantic-merge.keep'" > "$REPO/scripts/graphify/semantic-merge.py"
+out=$(run_cli --name o14c --corpus-root "$CO"); rc=$?
+cp "$WS/semantic-merge.keep" "$REPO/scripts/graphify/semantic-merge.py"
+[ "$rc" -eq 2 ] && [ "$(word)" = corpus-failed ] && [[ "$out" == *"merge failed"* ]] && pass "O14 failed merge: corpus-failed" || fail "O14 merge (rc=$rc) word '$(word)': $out"
+CO="$WS/o14d"; new_corpus "$CO"; rm "$CO/graphify-out/graph.json"; o_reset
+out=$(run_cli --name o14d --corpus-root "$CO"); rc=$?
+[ "$rc" -eq 1 ] && [ "$(word)" = corpus-failed ] && pass "O14 no graph.json: corpus-failed" || fail "O14 no graph (rc=$rc) word '$(word)': $out"
+CO="$WS/o14e"; new_corpus "$CO"; mkdir -p "$WS/o14e-real"; ln -s "$WS/o14e-real" "$WS/o14e-link"; o_reset
+out=$(GRAPHIFY_OUT="$WS/o14e-link" run_cli --name o14e --corpus-root "$CO"); rc=$?
+[ "$rc" -eq 3 ] && [ "$(word)" = corpus-failed ] && pass "O14 symlinked out dir: corpus-failed" || fail "O14 symlink (rc=$rc) word '$(word)': $out"
+
+echo "O15: chunk failures on a subscription run and on a replayed batch write partial"
+CO="$WS/o15a"; new_corpus "$CO"; o_reset
+out=$(GRAPHIFY_STUB_CHUNKFAIL=1 run_cli --name o15a --corpus-root "$CO"); rc=$?
+[ "$rc" -eq 5 ] && [ "$(word)" = partial ] && pass "O15 subscription run with failed chunks: partial" || fail "O15 sub (rc=$rc) word '$(word)': $out"
+CO="$WS/o15b"; new_corpus "$CO"; o_reset
+GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o15b --corpus-root "$CO" --account-order A >/dev/null; echo ended > "$WS/batch-status"; rm -f "$RF"
+out=$(GRAPHIFY_STUB_CHUNKFAIL=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o15b --corpus-root "$CO" --account-order A); rc=$?
+[ "$rc" -eq 5 ] && [ "$(word)" = partial ] && pass "O15 replayed batch with failed chunks: partial" || fail "O15 replay (rc=$rc) word '$(word)': $out"
+
+echo "O17: a bad flag and a fence denial, both before the temp dir exists, still write their word and leave no temp dir"
+CO="$WS/o17"; new_corpus "$CO"
+for o17 in 'unknown-first' 'unknown-last'; do
+  o_reset
+  if [ "$o17" = unknown-first ]; then out=$(PATH="$WS/bin:$PATH" bash "$SCRIPT" --bogus --result-file "$RF" --name o17 --corpus-root "$CO" --corpus-class himmel-code 2>&1); rc=$?
+  else out=$(PATH="$WS/bin:$PATH" bash "$SCRIPT" --result-file "$RF" --name o17 --corpus-root "$CO" --corpus-class himmel-code --bogus 2>&1); rc=$?; fi
+  [ "$rc" -eq 1 ] && [ "$(word)" = stopped ] && [ -z "$(scratch)" ] && pass "O17 ($o17) usage error: word stopped, no temp dir" || fail "O17 ($o17) (rc=$rc) word '$(word)': $out"
+done
+touch "$CO/.salus"; o_reset
+out=$(run_cli --name o17 --corpus-root "$CO"); rc=$?
+[ "$rc" -eq 2 ] && [ "$(word)" = fence-denied ] && [ -z "$(scratch)" ] && pass "O17 fence denial: word fence-denied, no temp dir" || fail "O17 fence (rc=$rc) word '$(word)': $out"
+
+echo "O18: a roster with only A, --account-order A, A credit-exhausted: one submit, word no-route, the line names A alone"
+CO="$WS/o18"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_ROSTER=A BATCH_STUB_EXHAUSTED=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o18 --corpus-root "$CO" --account-order A); rc=$?
+[ "$rc" -ne 0 ] && [ "$(batch_accounts)" = "A " ] && [ "$(word)" = no-route ] && [[ "$out" == *"(A credit exhausted); nothing submitted"* ]] \
+  && [[ "$out" != *"retrying"* ]] && no_spend_calls \
+  && pass "O18 one submit, no-route, A named alone, no retry, no subscription" || fail "O18 (rc=$rc) accounts '$(batch_accounts)' word '$(word)': $out"
+
+echo "O19: --account-order C,A with A and C configured and B absent walks C then A; D and B are skipped before any pick"
+CO="$WS/o19"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_ROSTER=A,C BATCH_STUB_EXHAUSTED=C GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o19 --corpus-root "$CO" --account-order C,A); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C A " ] && [ "$(batch_of "$CO")" = A ] && [ "$(word)" = submitted ] \
+  && pass "O19 C tried then A, the batch on A" || fail "O19 (rc=$rc) accounts '$(batch_accounts)' word '$(word)': $out"
+CO="$WS/o19b"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_ROSTER=A,C GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o19b --corpus-root "$CO" --account-order D,B,C); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C " ] && [ "$(cat "$WS/picks.log" 2>/dev/null)" = "pick C" ] \
+  && [[ "$out" == *"account D in the order has no configured roster row; skipped"* ]] && [[ "$out" == *"account B in the order has no configured roster row; skipped"* ]] \
+  && pass "O19 D and B logged and never picked, C submits" || fail "O19 stub skip (rc=$rc) picks '$(cat "$WS/picks.log" 2>&1)': $out"
+echo "O19b: the same on the real api-credit-state.mjs: --account-order D,C,B with A and C configured submits on C"
+roles_fixture; roles_real_on
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); del d["accounts"]["B"]; json.dump(d, open(p,"w"))' "$RC/config.json"
+CO="$WS/o19c"; new_corpus "$CO"; o_reset
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o19c --corpus-root "$CO" --account-order D,C,B); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C " ] && [ "$(word)" = submitted ] \
+  && [[ "$out" == *"account D in the order has no configured roster row; skipped"* ]] && [[ "$out" == *"account B in the order has no configured roster row; skipped"* ]] \
+  && pass "O19b D and B skipped on the real roster, C submits" || fail "O19b (rc=$rc) accounts '$(batch_accounts)' word '$(word)': $out"
+echo "O19c: an unreadable roster skips no letter: the real pick answers BANK-UNKNOWN and the walk stops with stopped"
+printf '{not json' > "$RC/config.json"
+CO="$WS/o19d"; new_corpus "$CO"; o_reset
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o19d --corpus-root "$CO" --account-order C,A); rc=$?
+[ "$rc" -ne 0 ] && [ ! -s "$WS/batch.log" ] && [ "$(word)" = stopped ] && [[ "$out" != *"no configured roster row"* ]] \
+  && pass "O19c word stopped, no letter skipped, nothing submitted" || fail "O19c (rc=$rc) word '$(word)': $out"
+roles_real_off
+
+echo "O20: --account-order A,C with a rejected key on A (exit 6): A marked, C submits, line 2 names A; with C exhausted too, key-rejected"
+CO="$WS/o20"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_REJECTED=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o20 --corpus-root "$CO" --account-order A,C); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A C " ] && [ "$(cat "$WS/exhausted.log")" = A ] && [ "$(word)" = submitted ] && [ "$(line2)" = "rejected A" ] \
+  && pass "O20 A marked, C submits, rejected A" || fail "O20 (rc=$rc) accounts '$(batch_accounts)' file '$(cat "$RF" 2>&1)': $out"
+CO="$WS/o20b"; new_corpus "$CO"; o_reset
+out=$(BATCH_STUB_REJECTED=A BATCH_STUB_EXHAUSTED=C GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o20b --corpus-root "$CO" --account-order A,C); rc=$?
+[ "$rc" -ne 0 ] && [ "$(batch_accounts)" = "A C " ] && [ "$(word)" = key-rejected ] && [ "$(line2)" = "rejected A" ] && no_spend_calls \
+  && pass "O20 every letter spent with A rejected: key-rejected, rejected A" || fail "O20b (rc=$rc) accounts '$(batch_accounts)' file '$(cat "$RF" 2>&1)': $out"
+
+echo "O16: with neither new flag, rc and output match the merge base's own semantic-update.sh on the same stubs and fixtures"
+o16_base="$(git -C "$REAL_REPO" merge-base HEAD origin/main 2>/dev/null)"
+o16_wt="$WS/o16-base"
+if [ -z "$o16_base" ] || ! git -C "$REAL_REPO" worktree add -q --detach "$o16_wt" "$o16_base" >/dev/null 2>&1; then
+  echo "  SKIP: O16 needs origin/main and the merge-base object (a shallow clone has neither); READY pastes a local run"
+else
+  echo "  O16 base: $o16_base"
+  O16_FILES="semantic-update.sh semantic-merge.py harden-graph.py harden-allowlist.json semantic-batch-shim.mjs"
+  o16_side() {
+    local f p o16rc
+    for f in $O16_FILES; do cp "$1/scripts/graphify/$f" "$REPO/scripts/graphify/$f" 2>/dev/null || true; done
+    chmod +x "$REPO/scripts/graphify/semantic-batch-shim.mjs"
+    for p in noop submit exhausted rejected; do
+      CO="$REPO/o16"; rm -rf "$CO"; new_corpus "$CO"; batch_reset; rm -f "$RF"
+      case "$p" in
+        noop) run --name o16 --corpus-root "$CO" --corpus-class himmel-code --seed-manifest >/dev/null
+              out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o16 --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); o16rc=$? ;;
+        submit) out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o16 --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); o16rc=$? ;;
+        exhausted) out=$(ACCT=auto BATCH_STUB_EXHAUSTED=A,B,C GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o16 --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); o16rc=$? ;;
+        rejected) out=$(ACCT=auto BATCH_STUB_EXHAUSTED=A BATCH_STUB_REJECTED=B GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o16 --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); o16rc=$? ;;
+      esac
+      printf '== %s rc=%s\n%s\n-- files\n' "$p" "$o16rc" "$out"
+      find "$CO" -type f | sed "s#^$CO/##" | sort
+      scratch
+    done
+  }
+  o16_b="$(o16_side "$o16_wt")"
+  o16_h="$(o16_side "$HERE/../..")"
+  for f in $O16_FILES; do cp "$HERE/$f" "$REPO/scripts/graphify/$f" 2>/dev/null || true; done
+  chmod +x "$REPO/scripts/graphify/semantic-batch-shim.mjs"
+  git -C "$REAL_REPO" worktree remove --force "$o16_wt" >/dev/null 2>&1 || rm -rf "$o16_wt"
+  [ -n "$o16_b" ] && [ "$o16_b" = "$o16_h" ] && [ ! -e "$RF" ] \
+    && pass "O16 no-op, submit, all-exhausted and rejected-key (T89d) match the merge base: rc, output and files, no result file" \
+    || fail "O16 differs from the merge base: $(diff <(printf '%s\n' "$o16_b") <(printf '%s\n' "$o16_h") | head -20)"
+  o16_c="$(printf '%s' "$o16_h" | sed '1,/^semantic-update/ s/^semantic-update/#emantic-update/')"
+  [ "$o16_c" != "$o16_h" ] && [ "$o16_b" != "$o16_c" ] && pass "O16 RED control: one changed byte on the HEAD side fails the compare" || fail "O16 RED control did not fail"
+fi
 
 echo "T78: a .graphifyignore naming a planned file strands nothing: the planner is the only selector"
 C78="$WS/c78"; new_corpus "$C78"; printf 'b.md\n' > "$C78/.graphifyignore"
