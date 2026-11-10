@@ -478,8 +478,6 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     pr_hung="$(STUB_PR_SLEEP=5 TICK_DEADLINE_SEC=1 TICK_STALL_PROBE="$W/pr-hung-stall" TICK_STALL_CACHE="$W/pr-hung-stall.cache" bash "$SUT" 2>/dev/null)"
     contains 'a hung gh list reads prs=?, not an all-clear (HIMMEL-8735)' "$pr_hung" ' prs=? '
     contains 'a hung gh list still yields the worker state (HIMMEL-8735)' "$pr_hung" ' workers=N61:FRESH'
-    # Past TICK_DEADLINE_SEC the router is off: the stall probe reads plain gh, so it is
-    # skipped and stall= reads its cached value, else ? (never an all-clear).
     contains 'past the deadline the stall probe is skipped and stall= reads ? with no cache' "$pr_hung" ' stall=?'
     [ ! -e "$W/pr-hung-stall.ran" ] && pass 'past the deadline the stall probe never ran' || fail 'the stall probe ran past the deadline'
 else
@@ -1094,12 +1092,6 @@ dated_burn_out="$(PATH="$W/bin-dated:$PATH" bash "$SUT" --burn --workers 'HIMMEL
 contains 'a date-suffixed worker doc still resolves its --burn transcript (HIMMEL-3167)' "$dated_burn_out" 'burn=N41:60.0k/90.0k'
 
 # --- gql=<remaining>/<reset HH:MM> ----------------------------------
-# The GitHub GraphQL budget is shared fleet-wide; a chief needs to see exhaustion
-# coming. Rendered from quota.tsv, which ghq_refresh keeps with one real `gh api -i graphql`
-# probe and one core probe (never `gh api rate_limit`, which reports the REST core bucket),
-# at most once per 170 s for the whole box, and appended after capacity=, so every existing
-# field keeps its position. Each row below owns a scratch quota dir and no read token, so a
-# cached reading of one row never answers another.
 qd() { rm -rf "$W/q-$1"; mkdir -p "$W/q-$1"; printf '%s' "$W/q-$1"; }
 mkdir -p "$W/noenv"
 : > "$W/gh-api.log"
@@ -1144,17 +1136,14 @@ case "$gql_burn" in
 esac
 
 # --- rest-main= / rest-read= ---------------------
-# One REST budget per token, the core rows of quota.tsv, LOW under 10 %.
-# The fixture .env supplies the read token; the rows are seeded fresh, so the tick makes no call.
 mkdir -p "$W/readroot"
 printf 'himmel_github_token_vm2=ghp_TICKTEST0123456789\n' > "$W/readroot/.env"  # gitleaks:allow fixture token
-# seed_rest <quota dir> <main core remaining> <read core remaining>
 seed_rest() {
-    local d="$1" now
+    local d="$1" main_rem="$2" read_rem="$3" now
     now="$(date +%s)"
     mkdir -p "$d"
     printf 'main\tgraphql\t4321\t5000\t1790000000\t%s\tok\nmain\tcore\t%s\t5000\t1790000000\t%s\tok\nread\tgraphql\t4321\t5000\t1790000000\t%s\tok\nread\tcore\t%s\t5000\t1790000000\t%s\tok\n' \
-        "$now" "$2" "$now" "$now" "$3" "$now" > "$d/quota.tsv"
+        "$now" "$main_rem" "$now" "$now" "$read_rem" "$now" > "$d/quota.tsv"
 }
 seed_rest "$W/q-rest" 4200 450
 rest_out="$(HIMMEL_QUOTA_DIR="$W/q-rest" GH_READ_ENV_ROOT="$W/readroot" bash "$SUT")"

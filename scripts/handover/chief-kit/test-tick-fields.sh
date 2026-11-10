@@ -766,10 +766,6 @@ same 'alert-fail= names the cadence and its age (HIMMEL-7419)' "$(alertfail_of)"
 contains 'verbose labels the failed alert (HIMMEL-7419)' "$(bash "$SUT" --workers 'HIMMEL-333-legN70' --verbose 2>/dev/null)" 'alert-fail: focus-refresh:3h'
 rm -f "$CADENCE_ALERT_SEND_FAILED_MARK"
 
-# --- quota=<token>.<bucket>:<remaining>@<reset HH:MM>[,...] | <token>.<bucket>:stall.
-# The tick names the GitHub budget that is out, and after a probe that timed out no router read follows.
-# A gh in front of the fixture's: QSTUB_MODE=pr-limit makes `pr list` die on a rate limit (the rest
-# reaches the fixture's gh), hung sleeps on every call. Every call is logged to QSTUB_LOG.
 mkdir -p "$W/qbin" "$W/noenv"
 cat > "$W/qbin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -787,7 +783,7 @@ STUB
 chmod +x "$W/qbin/gh"
 q_reset=$(( $(date +%s) + 1800 ))
 q_hm="$(date -d "@$q_reset" +%H:%M)"  # gnu-ok: chief kit is Linux-only
-q_tick() { # <quota dir> <extra env...> -- run one compact tick on the front gh, no read token, a scratch quota dir
+q_tick() {
     local d="$1"; shift
     env W_GH="$W/bin/gh" PATH="$W/qbin:$PATH" GH_READ_ENV_ROOT="$W/noenv" HIMMEL_QUOTA_DIR="$d" QSTUB_LOG="$W/qstub.log" "$@" \
         timeout 100 bash "$SUT" --workers 'HIMMEL-333-legN70' 2>/dev/null  # gnu-ok: chief kit is Linux-only (PLATFORM GUARD)
