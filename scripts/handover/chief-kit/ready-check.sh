@@ -175,8 +175,9 @@
 #      title with a [KEY] (ticket_key_from_title, the merge's reader) and `--contract no`,
 #      the PR body read through scripts/lib/pr_remainder.py (the merge's reader, run from
 #      the anchor) must record a remainder, a `Remaining:` line or a `deferred -> KEY` line
-#      under `## Ticket coverage`; `none`, a missing reader or no answer FAILs. `--contract
-#      yes` and a title with no key pass. No `--contract` on a keyed title FAILs by
+#      under `## Ticket coverage`; `none`, a missing reader or no answer FAILs, and so does a
+#      body whose every remaining ask is deferred to other tickets (the merge then completes
+#      the ticket and refuses it too). `--contract yes` and a title with no key pass. No `--contract` on a keyed title FAILs by
 #      default and warns with --observe. Not part of `--only 7`.
 #
 # 18. Open findings, the merge's gates 4 and 4b read at GO time: the head the
