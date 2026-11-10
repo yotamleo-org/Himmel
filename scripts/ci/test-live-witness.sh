@@ -112,6 +112,19 @@ for _g in '*[!/]' '*[^/]' '*[!x]' '*/test-[a-z].sh'; do
   if [ "$rc" -eq 2 ]; then pass "W9: the bracket glob $_g exits 2"; else fail "W9: expected 2 for $_g, got $rc; out: $out"; fi
 done
 
+echo "== W10: an exempt glob's last part is plain file-name characters only =="
+for _g in '*/!(x)' '*/te+st.sh'; do
+  printf '%s HIMMEL-1 reason\n' "$_g" > "$sb/exempt-last"
+  out=$(env SUITE_LIVE_EXEMPT="$sb/exempt-last" bash "$LW" run --label x -- true 2>&1)
+  rc=$?
+  if [ "$rc" -eq 2 ]; then pass "W10: the glob $_g exits 2"; else fail "W10: expected 2 for $_g, got $rc; out: $out"; fi
+  if grepq "$out" -F "names a family, not one suite file: $_g HIMMEL-1"; then pass "W10: the message names the $_g line"; else fail "W10: no message naming the $_g line; out: $out"; fi
+done
+printf '*/scripts/foo/test-x.sh HIMMEL-1 reason\n' > "$sb/exempt-last"
+out=$(env SUITE_LIVE_EXEMPT="$sb/exempt-last" bash "$LW" run --label x -- true 2>&1)
+rc=$?
+if [ "$rc" -eq 0 ]; then pass "W10: a one-suite glob still loads"; else fail "W10: expected 0 for */scripts/foo/test-x.sh, got $rc; out: $out"; fi
+
 echo
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"
