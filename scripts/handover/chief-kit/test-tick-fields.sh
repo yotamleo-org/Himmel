@@ -777,6 +777,8 @@ case "${QSTUB_MODE:-}" in
             echo 'GraphQL: API rate limit already exceeded for user ID 1. (HTTP 403)' >&2
             exit 1
         fi ;;
+    pr-hang)
+        if [ "${1:-}" = pr ] && [ "${2:-}" = list ]; then exec sleep 600; fi ;;
 esac
 exec "$W_GH" "$@"
 STUB
@@ -819,6 +821,12 @@ case "$(wc -l < "$W/qstub.log" | tr -d '[:space:]')" in  # read-sink-ok: this su
     1) pass 'the stub log holds the one probe and no router read after it' ;;
     *) fail "a router read followed the timed-out probe (log: $(tr '\n' '|' < "$W/qstub.log"))" ;;
 esac
+: > "$W/qstub.log"
+q_hang="$(q_tick "$W/q-prhang" QSTUB_MODE=pr-hang GH_READ_TIMEOUT=2)"
+contains 'a PR list that timed out reads quota=main.graphql:stall' "$q_hang" ' quota=main.graphql:stall'
+contains 'a PR list that timed out leaves prs=?' "$q_hang" ' prs=? '
+not_contains 'no dispatch read follows a PR list that timed out' "$(cat "$W/qstub.log")" 'actions/runs'
+not_contains 'no ci-red read follows a PR list that timed out' "$(cat "$W/qstub.log")" 'issue list'
 q_key_line="$(grep -n -E '^[[:space:]]+for f in workers livestate prs ' "$HERE/chief-wait.sh")"
 [ -n "$q_key_line" ] && pass "chief-wait's key field list is found" || fail "chief-wait's key field list moved"
 not_contains "chief-wait's key field list gains no quota" "$q_key_line" 'quota'

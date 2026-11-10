@@ -2024,7 +2024,7 @@ pr_out="$(cd "$pr_repo" 2>/dev/null && GH_READ_REFUSED_FILE="$pr_refused" GH_REA
 if [ -n "$pr_refused" ]; then
     while read -r pr_ref_tok pr_ref_bucket pr_ref_why; do
         case "$pr_ref_why" in
-            stall) quota_stall "$pr_ref_tok.$pr_ref_bucket" ;;
+            stall) quota_stall "$pr_ref_tok.$pr_ref_bucket"; tick_reads_off ;;
             rate-limit)
                 pr_ref_rem="?"; pr_ref_at="?"
                 if [ "$quota_ready" -eq 1 ] && ghq_read "$pr_ref_tok" "$pr_ref_bucket"; then
