@@ -722,12 +722,16 @@ export async function recordSealedReturn(verdict: string, readPath: string): Pro
     const seed = rows.find(r => r.row === "seed");
     const seen = rows.some(r => r.row === "round" && r.return_sha === sum) || (["spec", "plan"] as const).some(k => (seed?.latest?.[k] as SeededReturn[] | undefined)?.some(x => x.return_sha === sum));
     const file = join(ledgerDir(specs), `${key}.jsonl`);
-    await snapshotBytes(specs, key, bytes, readSha);
-    if (seen) { await appendFile(file, `${JSON.stringify({ v: 1, ts: Date.now(), key, row: "seal", return_sha: sum, read_path: page, read_sha: readSha })}\n`); return; }
+    if (seen) {
+      await snapshotBytes(specs, key, bytes, readSha);
+      await appendFile(file, `${JSON.stringify({ v: 1, ts: Date.now(), key, row: "seal", return_sha: sum, read_path: page, read_sha: readSha })}\n`);
+      return;
+    }
     if (!seed && !rows.some(r => r.row === "round") && !namesTicket(await readFile(governing, "utf8"), key)) throw new Error(`${governing}: front matter has no tickets: line naming ${key}`);
     const epoch = rows.filter(r => r.row === "reset").length;
     const round = 1 + Math.max(epoch === 0 ? Number(seed?.[kind] ?? 0) : 0, ...rows.filter(r => r.row === "round" && r.critic === kind && r.epoch === epoch).map(r => Number(r.round)));
     const row = { v: 1, ts: Date.now(), key, row: "round", critic: kind, round, epoch, return_sha: sum, verdict_path: v, read_path: page, read_sha: readSha, verdict: lastLine(text), mode: "full", ...parseFindings(text, kind, round) };
+    await snapshotBytes(specs, key, bytes, readSha);
     await appendFile(file, `${JSON.stringify(row)}\n`);
   });
 }

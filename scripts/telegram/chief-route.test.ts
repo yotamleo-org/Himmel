@@ -2385,6 +2385,7 @@ const routeCli = async (...args: string[]) => {
 const ROUND_KEY = "HIMMEL-9701";
 const roundsDir = (specs: string) => join(specs, "ledgers", "spec-rounds");
 const ledgerRows = (specs: string, key: string) => readFileSync(join(roundsDir(specs), `${key}.jsonl`), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+const ledgerFolder = (specs: string) => readdirSync(roundsDir(specs)).filter((n) => n !== "round-seed.jsonl.lock").sort();
 const specsTree = () => {
   const specs = join(realpathSync(root()), "specs"); mkdirSync(join(specs, "designs"), { recursive: true }); mkdirSync(join(specs, "plans"), { recursive: true });
   return { specs, dir: join(specs, "designs"), plans: join(specs, "plans") };
@@ -2408,6 +2409,7 @@ test("R18: the first round of a key with no seed row needs a front matter ticket
     writeFileSync(spec, prefix); writeFileSync(v, ret("SPEC CLEAN", `read ${sha(prefix)}`));
     expect((await seal(v, spec, sha(prefix))).err).toContain(`front matter has no tickets: line naming ${ROUND_KEY}`);
   }
+  expect(ledgerFolder(t.specs)).toEqual([`${ROUND_KEY}.jsonl.lock`, "manifest.json"]);
   const named = front(ROUND_KEY, text);
   writeFileSync(spec, named); writeFileSync(v, ret("SPEC CLEAN", `read ${sha(named)}`));
   expect((await seal(v, spec, sha(named))).code).toBe(0);
@@ -2418,6 +2420,36 @@ test("R18: the first round of a key with no seed row needs a front matter ticket
   const r2 = `${old}.critic-spec-r2.md`; writeFileSync(r2, ret("SPEC CLEAN", `read ${sha(text)}`));
   expect((await seal(r2, old, sha(text))).code).toBe(0);
   expect(ledgerRows(s.specs, ROUND_KEY).map((r) => [r.row, r.critic === undefined ? r.spec : r.round])).toEqual([["seed", 1], ["round", 2]]);
+});
+
+test("a seal whose verdict is named for one ticket and whose read file belongs to another is refused, beside its sibling that seals", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${ROUND_KEY}-x.md`); const b = join(t.dir, "HIMMEL-9702-y.md");
+  const aText = front(ROUND_KEY, "# A\n"); const bText = front("HIMMEL-9702", "# B\n");
+  writeFileSync(a, aText); writeFileSync(b, bText);
+  const v = `${a}.critic-spec-r1.md`; writeFileSync(v, ret("SPEC CLEAN", `read ${sha(aText)} and ${sha(bText)}`));
+  const refused = await seal(v, b, sha(bText));
+  expect(refused.code).not.toBe(0);
+  expect(refused.err).toContain(`${basename(v)} is named for ${ROUND_KEY} but the file it read belongs to HIMMEL-9702; the seal is refused`);
+  expect(readFileSync(v, "utf8")).not.toContain("CONTENT-SHA256");
+  expect(ledgerFolder(t.specs)).toEqual(["manifest.json"]);
+  expect((await seal(v, a, sha(aText))).code).toBe(0);
+  expect(ledgerRows(t.specs, ROUND_KEY).map((r) => r.row)).toEqual(["round"]);
+});
+
+test("a seal for a spec with no ticket key in its path is refused, beside a spec in a ticket folder that seals", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const keyless = join(t.dir, "plain.md"); const text = front(ROUND_KEY, "# P\n");
+  writeFileSync(keyless, text);
+  const v = `${keyless}.critic-spec-r1.md`; writeFileSync(v, ret("SPEC CLEAN", `read ${sha(text)}`));
+  const refused = await seal(v, keyless, sha(text));
+  expect(refused.code).not.toBe(0);
+  expect(refused.err).toContain(`${keyless}: has no ticket key; name the spec <KEY>-<slug>.md or put it in specs/<KEY>/`);
+  expect(ledgerFolder(t.specs)).toEqual(["manifest.json"]);
+  mkdirSync(join(t.specs, ROUND_KEY)); const folder = join(t.specs, ROUND_KEY, "design.md");
+  writeFileSync(folder, text); writeFileSync(`${folder}.critic-spec-r1.md`, ret("SPEC CLEAN", `read ${sha(text)}`));
+  expect((await seal(`${folder}.critic-spec-r1.md`, folder, sha(text))).code).toBe(0);
+  expect(ledgerRows(t.specs, ROUND_KEY).map((r) => r.row)).toEqual(["round"]);
 });
 
 test("R-sha: returnSha drops CONTENT-SHA256 lines, trailing whitespace and trailing blank lines; a second seal of one return writes a seal row, not a round", async () => {
