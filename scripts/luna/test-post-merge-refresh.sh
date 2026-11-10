@@ -73,6 +73,7 @@ case "$(cat "$c/qmd.mode" 2>/dev/null)" in
   busy) cat "$PMR_BUSY_FIXTURE"; exit 1 ;;
   fail) echo "qmd: boom"; exit 1 ;;
   timeout) exit 124 ;;
+  breakstate) mv "$c/state" "$c/state.gone" && : > "$c/state" ;;
   move)
     mkdir -p "$c/primary/docs"; echo "$$" > "$c/primary/docs/moved.md"
     git -C "$c/primary" add docs/moved.md
@@ -443,6 +444,45 @@ row_twelve_skips_alert() {
     assert_contains "twelve_skips_alert: the alert names the reason" "promote-lock" "$(cat "$C/alerts.log")"
 }
 
+tick_real_alert() {
+    tick "$1" PMR_ALERT="$REPO_ROOT/scripts/luna/cadence-alert.sh" CADENCE_ALERT_SEND_CMD="$C/bin/send" \
+        CADENCE_ALERT_FILE="$C/alert-file" CADENCE_ALERT_DEDUPE_DIR="$C/dedupe"
+}
+
+mk_send_stub() {
+    cat > "$C/bin/send" <<'STUB'
+#!/bin/sh
+echo "$1" >> "$PMR_CASE/sends.log"
+STUB
+    chmod +x "$C/bin/send"
+    : > "$C/sends.log"
+}
+
+row_alert_once_per_streak() {
+    local i sends
+    mkcase onesend; seed_both; cm $((BASE+100)) src/a.sh
+    mk_send_stub
+    printf 'skip' > "$C/ast.mode"
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13; do NOW=$((BASE+1000+300*i)); tick_real_alert graph; done
+    sends=$(grep -c . "$C/sends.log" || true)
+    assert_eq "alert_once_per_streak: 13 skips in a row send one message" 1 "$sends"
+    mkcase onesend2; seed_both; cm $((BASE+100)) src/a.sh
+    mk_send_stub
+    printf 'fail' > "$C/ast.mode"
+    for i in 1000 1300 1900 3100; do NOW=$((BASE+i)); tick_real_alert graph; done
+    sends=$(grep -c . "$C/sends.log" || true)
+    assert_eq "alert_once_per_streak: 4 failures in a row send one message" 1 "$sends"
+}
+
+row_unwritable_state_dies() {
+    mkcase nostate; seed_both; cm $((BASE+100)) docs/a.md
+    printf 'breakstate' > "$C/qmd.mode"
+    NOW=$((BASE+1000)); tick both
+    assert_eq "unwritable_state_dies: a state write that fails stops the tick" 1 "$TICK_RC"
+    assert_contains "unwritable_state_dies: and says what it could not write" "ERR cannot write" "$TICK_OUT"
+    assert_not_contains "unwritable_state_dies: no ok is logged for the run" "keyword ok" "$TICK_OUT"
+}
+
 row_clean_exit_clears_tick_alert() {
     mkcase tickalert; seed_both
     NOW=$((BASE+1000)); tick both
@@ -659,7 +699,7 @@ for row in quiet_window_holds max_wait_fires burst_fires_once ignored_merges_cou
     non_ancestor_runs_once dead_lock_refuses_loud live_lock_skips lock_past_30_min_alerts_once \
     reindex_lock_live_skips_keyword reindex_lock_dead_does_not_skip no_paid_call \
     no_paid_call_real_ast stamp_untouched no_merge_path_caller third_failure_alerts success_clears \
-    hold_neither_alerts_nor_clears twelve_skips_alert clean_exit_clears_tick_alert \
+    hold_neither_alerts_nor_clears twelve_skips_alert alert_once_per_streak unwritable_state_dies clean_exit_clears_tick_alert \
     graph_only_arm_never_runs_qmd sampler_runs_with_keyword_off no_index_no_sample \
     sampler_after_keyword_before_graph only_real_run_writes_row db_busy_is_skip \
     promote_lock_is_skip deadline_without_signature_is_fail busy_timeout_and_deadline_passed \

@@ -82,7 +82,10 @@ pmr_now() {
 }
 
 st_get() { cat "$PMR_STATE/$1" 2>/dev/null || true; }
-st_put() { printf '%s\n' "$2" > "$PMR_STATE/$1.tmp.$$" && mv -f "$PMR_STATE/$1.tmp.$$" "$PMR_STATE/$1"; }
+st_put() {
+    { printf '%s\n' "$2" > "$PMR_STATE/$1.tmp.$$" && mv -f "$PMR_STATE/$1.tmp.$$" "$PMR_STATE/$1"; } 2>/dev/null \
+        || die "cannot write $PMR_STATE/$1"
+}
 st_rm() { rm -f "$PMR_STATE/$1"; }
 
 alert_fail() {
@@ -100,7 +103,7 @@ pmr_skip() {
     if [ "$prev_reason" = "$reason" ] && [ -n "$prev_count" ]; then count=$((prev_count + 1)); else count=1; fi
     st_put "$half.skips" "$reason $count"
     if [ "$count" -ge "$SKIP_ALERT_COUNT" ]; then
-        alert_fail "$half" "$count skips in a row: $reason" "the $half refresh has skipped for $reason $count ticks running" "read $PMR_LOG and clear the cause"
+        alert_fail "$half" "skipping for $reason" "the $half refresh has skipped for $reason $count ticks running" "read $PMR_LOG and clear the cause"
     fi
 }
 
@@ -183,16 +186,16 @@ collect_times() {
 }
 
 run_keyword() {
+    local js qmd_argv=()
+    js="$(_qmd_bun_js)"
     if [ -n "${PMR_QMD:-}" ]; then
-        qmd_bounded "$KEYWORD_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 "${LOWPRIO[@]}" "$PMR_QMD" update -c himmel
-        return $?
-    fi
-    local js; js="$(_qmd_bun_js)"
-    if [ -f "$js" ] && command -v bun >/dev/null 2>&1; then
-        qmd_bounded "$KEYWORD_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 "${LOWPRIO[@]}" bun "$js" update -c himmel
+        qmd_argv=("$PMR_QMD")
+    elif [ -f "$js" ] && command -v bun >/dev/null 2>&1; then
+        qmd_argv=(bun "$js")
     else
-        qmd_bounded "$KEYWORD_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 "${LOWPRIO[@]}" qmd update -c himmel
+        qmd_argv=(qmd)
     fi
+    qmd_bounded "$KEYWORD_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 "${LOWPRIO[@]}" "${qmd_argv[@]}" update -c himmel
 }
 
 run_graph() {
@@ -325,7 +328,7 @@ pmr_half_step() {
     flow_rows "$flow" "$start" "$end" "$rc" "$w" "$main"
     log "$half fail rc=$rc from=$w to=$main failures=$fails retry_in=${delay}s"
     if [ "$fails" -ge 3 ]; then
-        alert_fail "$half" "$fails failed refreshes in a row" "the $half refresh exited $rc for $w..$main" "read $PMR_LOG"
+        alert_fail "$half" "repeated failed refreshes" "$fails failed refreshes in a row, the latest exited $rc for $w..$main" "read $PMR_LOG"
     fi
     return 0
 }

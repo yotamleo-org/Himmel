@@ -126,8 +126,6 @@ built the graph). Both steps would otherwise contend for
 a skipped-and-retried refresh next fire, not a failure — the wider offset
 just makes that the exception rather than the rule).
 
-`scripts/luna/post-merge-refresh.sh` is a separate five-minute tick that refreshes the code graph and the himmel keyword index after merges settle, with no paid call; `graphmap-cadence.sh` will call it once its arming verb lands, and until then nothing runs it.
-
 Two fires of this step itself are serialized by `graph-cadence.sh`'s own
 pipeline lock (`<worktree>.lock`), because each run `reset --hard` +
 `clean -fdx`es the same worktree. `mkdir` is the whole protocol (following `scripts/luna/qmd-cadence.sh`, where three rounds of automatic
@@ -145,6 +143,8 @@ failed row. A run re-checks its owner token right before its first
 destructive git command. A refreshed graph lands only through a `chore/graph-publish-<slug>`
 PR merged on green — never a direct push to `main` (asserted in
 `test-graph-cadence.sh`).
+
+`scripts/luna/post-merge-refresh.sh` is a separate five-minute tick that refreshes the code graph and the himmel keyword index after merges settle, with no paid call; `graphmap-cadence.sh` will arm it with its post-merge verb (task 2.3), and until then nothing runs it.
 
 ## The ledger
 
