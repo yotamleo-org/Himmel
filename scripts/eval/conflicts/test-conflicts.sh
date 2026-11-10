@@ -238,6 +238,12 @@ printf 'b\n' >> "$W/f.sh"; g "$W" commit -q -am "b (#52)"; SHA_B="$(g "$W" rev-p
 g "$W" commit -q --allow-empty -m "Revert \"a (#51)\"" -m "This reverts commit $SHA_A."
 g "$W" commit -q --allow-empty -m "note on b" -m "see $SHA_B for the history of this change"
 g "$W" commit -q --allow-empty -m "c (#54)"; SHA_C="$(g "$W" rev-parse HEAD)"
+g "$W" commit -q --allow-empty -m "p71 (#71)"; SHA_P71="$(g "$W" rev-parse HEAD)"
+g "$W" commit -q --allow-empty -m "p72 (#72)"; SHA_P72="$(g "$W" rev-parse HEAD)"
+g "$W" commit -q --allow-empty -m "p73 (#73)"; SHA_P73="$(g "$W" rev-parse HEAD)"
+g "$W" commit -q --allow-empty -m "Revert \"p71 (#71)\" (#81)" -m "Body text from the pull request."
+g "$W" commit -q --allow-empty -m "fix(x): undo p72 (#82)" -m "Reverts owner/repo#72"
+g "$W" commit -q --allow-empty -m "revert(x): undo p73 (#83)" -m "Prose naming ${SHA_P73:0:9} as the cause."
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 WL="$TMP/WL"
 mkdir -p "$WL/conflicts" "$WL/bug-origin"
@@ -278,6 +284,27 @@ printf '%s\n' '[{"databaseId":1,"headSha":"'"$SHA_A"'","status":"completed","con
 out="$(python3 -I "$CONF" week --days 7 --repo-dir "$W" --base-ref main --ledger-dir "$TMP/WL2" 2>&1)"
 has "week: a merge no CI run covers is unchecked, not clean" "$out" "red main 0, unchecked 1"
 rm -f "$TMP_GH_RUNS"
+one() {
+  mkdir -p "$TMP/$1/conflicts"
+  python3 -I -c 'import json,sys; print(json.dumps({"pr": int(sys.argv[1]), "merge_commit": sys.argv[2], "merged_at": sys.argv[3], "file": "c.sh", "other_prs": [9], "resolution": "merged", "reported": True}))' "$2" "$3" "$NOW" > "$TMP/$1/conflicts/$2.jsonl"
+}
+oneweek() { python3 -I "$CONF" week --days 7 --repo-dir "$W" --base-ref main --ledger-dir "$TMP/$1" 2>&1; }
+one R71 71 "$SHA_P71"; one R72 72 "$SHA_P72"; one R73 73 "$SHA_P73"
+has "week: a squash-suffixed Revert subject counts" "$(oneweek R71)" "reverted 1"
+has "week: a Reverts owner/repo#n body counts" "$(oneweek R72)" "reverted 1"
+has "week: a revert-typed subject naming a sha prefix counts" "$(oneweek R73)" "reverted 1"
+one R70 54 "$SHA_C"
+has "week: a commit that only mentions a merge sha is no revert" "$(oneweek R70)" "reverted 0"
+runs() { python3 -I -c 'import json,sys; print(json.dumps([{"databaseId":i+1,"headSha":sys.argv[1],"status":"completed","conclusion":c,"createdAt":"2026-11-08T1%d:00:00Z" % i} for i, c in enumerate(sys.argv[2:])]))' "$SHA_C" "$@" > "$TMP_GH_RUNS"; }
+runs cancelled
+has "week: a cancelled run is no signal, the PR is unchecked" "$(oneweek R70)" "red main 0, unchecked 1"
+runs timed_out failure
+has "week: a run after a non-signal run still counts" "$(oneweek R70)" "red main 1 (#54)"
+rm -f "$TMP_GH_RUNS"
+mkdir -p "$TMP/RB/bug-origin"
+printf -- '---\npr: 61\norigin: "%s"\nclass: "test-gap"\nreason: "x"\n---\nbody\n' "${SHA_P71:0:9}" > "$TMP/RB/bug-origin/61.md"
+one RB 71 "$SHA_P71"
+has "week: a sha-form bug-origin blames the PR with that merge commit" "$(oneweek RB)" "bug-origin 1"
 out="$(python3 -I "$CONF" week --days 7 --repo-dir "$W" --base-ref main --ledger-dir "$TMP/empty-ledger" 2>&1)"
 has "week: empty ledger prints zero" "$out" "conflicts 7d: 0 files in 0 PRs"
 has "week: empty ledger has no harm" "$out" "harm: none"

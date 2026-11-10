@@ -324,8 +324,9 @@ def read_ledger_rows(root, cutoff):
 
 
 def reverted_prs(repo, base, since, rows):
-    """{pr: short sha of the reverting commit}: one bounded git log of base since `since`, matched on `This reverts commit <merge_commit>`
-    or a subject `Revert "...(#<pr>)"`. None when git fails."""
+    """{pr: short sha of the reverting commit}: one bounded git log of base since `since`. A commit reverts PR n when its subject is
+    `Revert "...(#n)"` (with or without the squash suffix `(#m)`), its body has GitHub's `Reverts <owner>/<repo>#n`, or its subject
+    starts with `revert` and its body names `#n` or a 7+ hex prefix of n's merge commit. None when git fails."""
     try:
         out = text(repo, "log", "--max-count=2000", "--since=%s" % since, "--format=%h%x00%s%x00%b%x01", base)
     except Unknown:
@@ -340,8 +341,12 @@ def reverted_prs(repo, base, since, rows):
         for pr, mc in merges.items():
             if pr in found:
                 continue
-            m = re.match(r'Revert ".*\(#([0-9]+)\)"\s*$', subject)
-            if ("This reverts commit %s" % mc) in body or (m and int(m.group(1)) == pr):
+            quoted = re.match(r'Revert ".*\(#([0-9]+)\)"(?: \(#[0-9]+\))?\s*$', subject)
+            hexes = re.findall(r"\b[0-9a-f]{7,40}\b", body)
+            if ((quoted and int(quoted.group(1)) == pr)
+                    or any(int(n) == pr for n in re.findall(r"^Reverts[ \t]+[\w.-]+/[\w.-]+#([0-9]+)\b", body, re.M))
+                    or (re.match(r"revert\b", subject, re.I)
+                        and (re.search(r"#%d\b" % pr, body) or any(mc.startswith(h) for h in hexes)))):
                 found[pr] = sha
     return found
 
@@ -367,7 +372,9 @@ def red_main_prs(repo, rows):
                 continue
             if run.get("conclusion") == "failure":
                 found[r["pr"]] = run.get("databaseId")
-            break
+                break
+            if run.get("conclusion") == "success":
+                break
         else:
             uncovered.append(r["pr"])
     return found, uncovered
@@ -394,9 +401,11 @@ def cmd_week(a):
              ("outside", sum(1 for r in rows if r.get("outside"))))
     reverted = reverted_prs(a.repo_dir, a.base_ref, cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"), rows) if rows else {}
     red, unchecked = red_main_prs(a.repo_dir, rows) if rows else ({}, [])
-    origins = {int(m.group(1)) for r in judge_accuracy.load_ledger(bug_dir).values()
-               for m in [re.fullmatch(r"#([0-9]+)", r["origin"])] if m}
-    blamed = [n for n in prs if n in origins]
+    origin_list = [r["origin"] for r in judge_accuracy.load_ledger(bug_dir).values()]
+    origins = {int(o[1:]) for o in origin_list if re.fullmatch(r"#[0-9]+", o)}
+    shas = [o for o in origin_list if re.fullmatch(r"[0-9a-f]{7,40}", o)]
+    blamed = [n for n in prs if n in origins
+              or any((r.get("merge_commit") or "").startswith(s) for r in rows if r["pr"] == n for s in shas)]
     top = sorted(files.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
     line = "conflicts 7d: %d files in %d PRs (%s); later: reverted %s, red main %s, bug-origin %d; top files: %s" % (
         len(rows), len(prs), ", ".join("%s %d" % k for k in kinds),
