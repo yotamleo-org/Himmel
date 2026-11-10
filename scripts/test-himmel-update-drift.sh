@@ -96,7 +96,7 @@ run_update() { # run_update <only-item>; sets OUT / RC
 }
 reset_fix() { rm -rf "$XDG_CACHE_HOME/qmd/embed-swap.lock"; rm -f "$FIX/qmd-drift" "$FIX/qmd.log" "$FIX/hooks/pre-commit" "$FIX/ensure.log" "$FIX/no-cred" "$FIX/bad-recheck" "$FIX/empty-recheck"; }
 
-echo "drift pass: allow-listed item converges, credential red is reported (HIMMEL-4246)"
+echo "drift pass: allow-listed item converges, credential red is reported"
 reset_fix
 run_update drift
 [ "$RC" -eq 0 ] && assert_pass "drift apply exits 0" || assert_fail "drift apply rc=$RC: $OUT"
@@ -179,7 +179,7 @@ grep -q 'not verified' <<< "$OUT" && assert_pass "unverified codex state is repo
 if grep -q 'no unconverged drift' <<< "$OUT"; then assert_fail "unverified codex state concluded no drift: $OUT"; else assert_pass "unverified codex state stays in the DRIFT block"; fi
 rm -f "$FIX/codex-install-breaks" "$FIX/codex-broken"
 
-echo "codex: an indeterminate initial health result is listed, a degraded-but-registered one is not (HIMMEL-4248)"
+echo "codex: an indeterminate initial health result is listed, a degraded-but-registered one is not"
 for mode in codex-nologs codex-unchecked; do
     for item in drift drift-check; do
         reset_fix; : > "$FIX/hooks/pre-commit"; : > "$FIX/no-cred"; rm -f "$FIX/codex-install.log"; : > "$FIX/$mode"
@@ -212,7 +212,7 @@ if grep -q 'converged pre-commit-hooks' <<< "$OUT"; then assert_fail "claimed co
 grep -q 'luna-sources' <<< "$OUT" && assert_pass "drift rows survive a {} re-check" || assert_fail "drift rows lost on {}: $OUT"
 rm -f "$FIX/empty-recheck"
 
-echo "qmd-index drift (skills collection missing) converges via ensure, never embeds (HIMMEL-4313)"
+echo "qmd-index drift (skills collection missing) converges via ensure, never embeds"
 mkdir -p "$TMP/qmdbin" || exit 1
 cat > "$TMP/qmdbin/qmd" <<'STUB'
 #!/usr/bin/env bash
@@ -238,7 +238,7 @@ run_update_qmd drift-check
 [ ! -s "$FIX/ensure.log" ] && assert_pass "check: ensure not called" || assert_fail "check called ensure"
 grep -q 'would converge qmd-index' <<< "$OUT" && assert_pass "check: would converge qmd-index" || assert_fail "check: no would-converge line: $OUT"
 
-echo "an embed-model swap in progress keeps qmd-index in the DRIFT block (HIMMEL-4314)"
+echo "an embed-model swap in progress keeps qmd-index in the DRIFT block"
 for item in drift drift-check; do
     qmd_clean
     mkdir -p "$XDG_CACHE_HOME/qmd/embed-swap.lock"
@@ -257,7 +257,7 @@ run_update_qmd drift
 grep -q 'converged qmd-index' <<< "$OUT" && assert_pass "stale lock: qmd-index converged" || assert_fail "stale lock blocked convergence: $OUT"
 reset_fix
 
-echo "morning-report cadence (HIMMEL-7977): armed once, never twice, never over an operator disarm"
+echo "morning-report cadence: armed once, never twice, never over an operator disarm"
 mkdir -p "$CLONE/scripts/handover" "$TMP/mr-ho" "$TMP/mr-runner" || exit 1
 cp "$src_scripts/handover/morning-report-cadence.sh" "$CLONE/scripts/handover/morning-report-cadence.sh"
 cp "$src_scripts/lib/test-run-guard" "$src_scripts/lib/git-clean.sh" "$src_scripts/lib/crontab-locked-rmw.sh" "$src_scripts/lib/prim.sh" "$src_scripts/lib/canon-path.sh" "$CLONE/scripts/lib/"

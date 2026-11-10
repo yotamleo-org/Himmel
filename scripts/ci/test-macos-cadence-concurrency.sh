@@ -30,7 +30,7 @@ def render(suites, ref="refs/heads/b"):
     def expr(m):
         cond, yes, no = m.group(1), m.group(2), m.group(3)
         return yes if (cond == "!=") == (suites != "") else no
-    return re.sub(r"\$\{\{ inputs\.suites (!=|==) '' && '([^']*)' \|\| '([^']*)' \}\}", expr, out)
+    return re.sub(r"\$\{\{ inputs\.suites (!=|==) '' && '([^']*)' \|\| (?:\(github\.event\.action == 'labeled' && github\.event\.label\.name != 'ci:macos' && format\('label-\{0\}', github\.run_id\)\) \|\| )?'([^']*)' \}\}", expr, out)
 
 full, suites = render(""), render("a.sh b.sh")
 if "${{" in full or "${{" in suites:

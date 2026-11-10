@@ -8,6 +8,31 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.106] — 2026-11-10
+
+### Changed
+- The marketplace description says in plain words why the Obsidian skill pack
+  installs from its own upstream marketplace: its author publishes no release
+  tags, and a plugin pinned to a bare commit cannot be installed.
+
+## [0.4.105] — 2026-11-10
+
+### Fixed
+- `_CLAUDE.md` Retrieval Routing says the vault's graph is off by default
+  (decision 449), so sessions use qmd only unless the graph's cadence is armed
+  and the graph reads fresh. When it is on, the manual points the CLI and the
+  MCP tools at the graph outside the vault. It sent sessions to
+  `<vault-root>/graphify-out/`, which no longer updates, so a vault that kept
+  that folder read a stale graph with no warning.
+- To move an old folder out of the vault, use himmel's
+  `scripts/luna/luna-index-hygiene.sh --vault <vault-root> --qmd-config
+  ~/.config/qmd/index.yml --offload-root <dir>`. Run it without `--apply`
+  first: that is a dry run that prints what it would change. With `--apply` it
+  edits `~/.config/qmd/index.yml` (adds the generated-output and archive
+  ignore entries and a `luna-archive` collection), writes
+  `<vault-root>/.graphifyignore`, and moves `graphify-out/` under
+  `<dir>/graphify-snapshots/`.
+
 ## [0.4.103] — 2026-11-03
 
 ### Changed

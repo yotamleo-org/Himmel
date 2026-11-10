@@ -43,7 +43,10 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   read from those files (your own caption follows), and a rendered page opens with them too. A critic
   return is sealed, once per file the critic read, with
   `bash scripts/handover/chief-kit/critic-seal.sh <verdict file> <file it read> <sha the critic quoted>`
-  (the return itself must quote that sha); a verdict with no such line is refused until it is. Reports, logs and audits under no such path send
+  (the return itself must quote that sha); a verdict with no such line is refused until it is. Minerva seals its own
+  returns: after each critic round it runs that command once per file under review, so a spec it wrote a page for
+  goes with no hand seal, and a spec it wrote no page for (a build `core-check` answers `NOT-CORE`) goes as its `.md`.
+  The hand command stays for any other page and for a return in flight when this landed. Reports, logs and audits under no such path send
   as before. Plain `send-file` has no read-only form: a signature-class file goes through the check or does not send.
 - **The operator asked to see a page that has not passed: the by-request form.** Run
   `bun scripts/telegram/chief-route.ts send-file --by-request "<the operator's request, in words>" <chat_id> <path> ["<caption>"]`.
@@ -61,11 +64,16 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   name, and refuses it when the critic's seals do not include the page's own bytes. The generator leaves
   the front matter status out and refuses, naming the line and writing nothing, an md body line that
   starts with `Status:` or says "not for signature": the draft state lives in the missing critic seal.
+  The page draws the spec's `svg` fence under `## Diagrams` as a figure and carries send-file's own CSP meta; a
+  spec with no such fence, or with one the generator will not draw (a script, an event, a `style` attribute or a
+  link out of the figure), is refused, naming the line, and nothing is written. A spec already in a round when this
+  landed gets its diagram in that round's fix when its page is regenerated; a spec at its cap keeps its sealed
+  page untouched.
   Edit the spec after that and the md, the page and the critic all start over. A hand-built page with no
   marker, outside the folders above, still reads as a report.
 - The check covers `send-file` only. A file the bridge chat copies into `outgoing/` and queues itself is
-  not checked (ponytail: a hand-built `.html` there carries no link to its spec; upgrade path:
-  a follow-up that starts with a ruling on how to tell a report from a spec page; the PR names its ticket).
+  not checked. Limit: a hand-built `.html` there carries no link to its spec; lifting it takes
+  a follow-up that starts with a ruling on how to tell a report from a spec page; the PR names its ticket.
 - A queued line that carries both `text` and `document_path` sends the text, then the file.
 - The bridge never receives your path on its own: you run `send-file`; the operator's receipt
   is the proof (quote it in the ticket).

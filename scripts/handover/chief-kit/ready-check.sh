@@ -13,8 +13,8 @@
 # Usage: ready-check.sh [--contract yes|no] [--observe] [--require-contract] <pr-number> <full-40-hex-head-sha>
 #        ready-check.sh --only 7 <pr-number>
 #   --only 7 runs check 7 — a worker's own pre-READY lint of its PR body, the
-#   same code the chief runs — plus the warn-only check 14. Prints
-#   COVERAGE-LINT PASS|FAIL.
+#   same code the chief runs — plus the warn-only check 14 and check 20 on
+#   check 7's head. Prints COVERAGE-LINT PASS|FAIL.
 #   --contract yes|no names the merge contract for check 17: yes when the merge
 #   completes the ticket (merge-on-green.sh --jira-transition), no for a partial
 #   merge. A keyed title with no --contract FAILs by default. --observe opts
@@ -24,7 +24,9 @@
 # Checks:
 #   1. Shared snapshot: headRefOid == <head-sha> (full 40 chars); mergeStateStatus
 #      == CLEAN (retries briefly on UNKNOWN — a transient GitHub computation
-#      state, not a verdict).
+#      state, not a verdict; a re-read waits 5 s for a peer's snapshot lock and
+#      a failed one keeps the last good read). A failed snapshot read prints the
+#      lib's reason under item 1.
 #   2. statusCheckRollup: every check IDENTITY's LATEST run is COMPLETED with
 #      conclusion SUCCESS/SKIPPED/NEUTRAL (CheckRun), or state SUCCESS
 #      (StatusContext) — a superseded run (e.g. an earlier CANCELLED run
@@ -173,8 +175,9 @@
 #      title with a [KEY] (ticket_key_from_title, the merge's reader) and `--contract no`,
 #      the PR body read through scripts/lib/pr_remainder.py (the merge's reader, run from
 #      the anchor) must record a remainder, a `Remaining:` line or a `deferred -> KEY` line
-#      under `## Ticket coverage`; `none`, a missing reader or no answer FAILs. `--contract
-#      yes` and a title with no key pass. No `--contract` on a keyed title FAILs by
+#      under `## Ticket coverage`; `none`, a missing reader or no answer FAILs, and so does a
+#      body whose every remaining ask is deferred to other tickets (the merge then completes
+#      the ticket and refuses it too). `--contract yes` and a title with no key pass. No `--contract` on a keyed title FAILs by
 #      default and warns with --observe. Not part of `--only 7`.
 #
 # 18. Open findings, the merge's gates 4 and 4b read at GO time: the head the
@@ -184,6 +187,14 @@
 #      written) at the PR head as the merge reads it now and as it reads it once the GO
 #      exists (--assume-go); a blocking finding, an undecided one, a malformed ledger, an
 #      unreadable branch or any other exit FAILs. Not part of `--only 7`.
+#
+# 20. Conflicts resolved: the anchor's scripts/eval/conflicts/conflicts.py detect lists each
+#      file a merge commit in origin/main..head resolved by hand. A file with no
+#      `- <path> vs #<n>: <note>` line under the body's `## Conflicts resolved` (read
+#      with that module's parse_body) FAILs, and the line to add is printed; an `ours`
+#      resolution WARNs and names the other PR. A detection that cannot run (no head,
+#      no detector, a failed fetch or git read, `unknown`) WARNs, never FAILs. Part of
+#      `--only 7`, on check 7's head (headRefOid).
 #
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes no CR ledger rows,
@@ -196,10 +207,51 @@
 # Exit codes:
 #   0 — READY-CHECK PASS
 #   1 — READY-CHECK FAIL (one or more checks failed)
-#   2 — usage, or cannot evaluate (gh/jq missing, repo/PR unreadable)
+#   2 — usage, or cannot evaluate: gh/jq missing, repo/PR unreadable, a read GitHub refused or
+#       stalled (the one QUOTA-PAUSE / GH-STALL line, no rows, a marker for the waiter), or the
+#       READY_CHECK_DEADLINE cut (nothing was judged). A FAIL row from a refused read is never exit 1.
 #
 # Platform guard: POSIX bash 3.2+, same as go.sh. No mapfile.
 set -u
+
+_rcd_report() {
+    local tok="" bucket="" why="" first=1 lib
+    [ -s "${1:-}" ] || return 1
+    lib="$(cd "$(dirname "$0")/../../lib" && pwd)"
+    while read -r tok bucket why; do
+        [ -n "$why" ] || continue
+        (
+            # shellcheck source=../../lib/gh-quota.sh
+            . "$lib/gh-quota.sh" 2>/dev/null || exit 0
+            [ "$first" -eq 0 ] || ghq_line "$tok" "$bucket" ready-check.sh "$why"
+            [ -z "$2" ] || [ -z "$3" ] || ghq_mark_blocked "$2" "$3" ready-check.sh "$bucket" "$why"
+        ) || true
+        first=0
+    done < "$1"  # read-sink-ok: our own mktemp refused file, never caller text
+    [ "$first" -eq 0 ]
+}
+
+_rcd_child() {
+    "$@" <&0 &
+    rcd_pid=$!
+    wait "$rcd_pid"
+}
+# shellcheck disable=SC2329  # reached only through _rcd_term, which the TERM trap invokes
+_rcd_descendants() {
+    local c
+    for c in $(pgrep -P "$1" 2>/dev/null); do printf '%s\n' "$c"; _rcd_descendants "$c"; done  # swallow-ok: no pgrep or no children lists nothing, and only the child itself is signalled
+}
+# shellcheck disable=SC2329  # invoked by the TERM trap below, which shellcheck does not follow
+_rcd_term() {
+    local p kids
+    if [ -n "${rcd_pid:-}" ]; then
+        kids=$(_rcd_descendants "$rcd_pid")
+        kill -TERM "$rcd_pid" 2>/dev/null
+        wait "$rcd_pid" 2>/dev/null
+        for p in $kids; do kill -TERM "$p" 2>/dev/null; done
+    fi
+    exit 143
+}
 
 # A self-armed deadline: the chief types this script bare, because a `timeout`
 # prefix does not match the project allow rule. READY_CHECK_DEADLINE (whole seconds, default
@@ -208,19 +260,63 @@ set -u
 if [ -z "${_READY_CHECK_ARMED:-}" ]; then
     rcd_s="${READY_CHECK_DEADLINE:-150}"
     case "$rcd_s" in ''|*[!0-9]*) rcd_s=150 ;; esac
+    _TIMEOUT_BIN=""
     if [ "$rcd_s" -gt 0 ]; then
-        _TIMEOUT_BIN=""
         # shellcheck source=../../lib/timeout-bin.sh
         . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN runs without the deadline, as the per-read bounds below do
+    fi
+    rcd_ref=$(mktemp "${TMPDIR:-/tmp}/ready-check-refused.XXXXXX" 2>/dev/null) || rcd_ref=""  # swallow-ok: no scratch file runs this process unwrapped, as before
+    if [ -n "$rcd_ref" ]; then
+        rcd_buf=""; rcd_err=""; rcd_pid=""
+        trap 'rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"' EXIT
+        trap '_rcd_term' TERM INT HUP
+        rcd_pr=""; rcd_sha=""
+        if [ "$#" -ge 2 ]; then
+            rcd_sha="${*: -1}"; rcd_pr="${*: -2:1}"
+            case "$rcd_pr" in ''|*[!0-9]*) rcd_pr="" ;; esac
+            case "$rcd_sha" in *[!0-9a-f]*) rcd_sha="" ;; esac
+            [ "${#rcd_sha}" -eq 40 ] || rcd_sha=""
+            [ -n "$rcd_pr" ] && [ -n "$rcd_sha" ] || { rcd_pr=""; rcd_sha=""; }
+        fi
+        rcd_rc=0
+        rcd_buf=""; rcd_err=""
         if [ -n "$_TIMEOUT_BIN" ]; then
-            rcd_rc=0
-            _READY_CHECK_ARMED=1 "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" || rcd_rc=$?
-            if [ "$rcd_rc" -eq 124 ] || [ "$rcd_rc" -eq 137 ]; then
-                echo "READY-CHECK FAIL: no verdict within the ${rcd_s} s deadline (READY_CHECK_DEADLINE); a gate read stalled" >&2
-                exit 1
+            rcd_buf=$(mktemp "${TMPDIR:-/tmp}/ready-check-out.XXXXXX" 2>/dev/null) || rcd_buf=""  # swallow-ok: no buffer runs the child unbuffered below
+            rcd_err=$(mktemp "${TMPDIR:-/tmp}/ready-check-err.XXXXXX" 2>/dev/null) || rcd_err=""  # swallow-ok: no buffer runs the child unbuffered below
+        fi
+        if [ -n "$_TIMEOUT_BIN" ] && [ -n "$rcd_buf" ] && [ -n "$rcd_err" ]; then
+            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
+                _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" >"$rcd_buf" 2>"$rcd_err" || rcd_rc=$?
+            if [ "$rcd_rc" -ne 0 ] && _rcd_report "$rcd_ref" "$rcd_pr" "$rcd_sha"; then
+                rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
+                exit 2
             fi
+            if [ "$rcd_rc" -eq 124 ] || [ "$rcd_rc" -eq 137 ]; then
+                rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
+                echo "ready-check: no verdict within the ${rcd_s} s deadline (READY_CHECK_DEADLINE); a gate read stalled, nothing was judged" >&2
+                exit 2
+            fi
+            cat "$rcd_buf"; cat "$rcd_err" >&2  # read-sink-ok: our own mktemp buffers
+            rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
             exit "$rcd_rc"
         fi
+        rm -f "$rcd_buf" "$rcd_err"
+        if [ -n "$_TIMEOUT_BIN" ]; then
+            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
+                _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" || rcd_rc=$?
+        else
+            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" _rcd_child bash "$0" "$@" || rcd_rc=$?
+        fi
+        if [ "$rcd_rc" -ne 0 ] && _rcd_report "$rcd_ref" "$rcd_pr" "$rcd_sha"; then
+            rm -f "$rcd_ref"
+            exit 2
+        fi
+        rm -f "$rcd_ref"
+        if [ "$rcd_rc" -eq 124 ] || [ "$rcd_rc" -eq 137 ]; then
+            echo "ready-check: no verdict within the ${rcd_s} s deadline (READY_CHECK_DEADLINE); a gate read stalled, nothing was judged" >&2
+            exit 2
+        fi
+        exit "$rcd_rc"
     fi
 fi
 
@@ -229,7 +325,7 @@ usage() {
     rc_primary=$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || rc_primary=""
     case "$rc_primary" in */.git) rc_primary="${rc_primary%/.git}" ;; *) rc_primary="<primary-checkout>" ;; esac
     echo "usage: ready-check.sh [--contract yes|no] [--observe] [--require-contract] <pr-number> <full-40-hex-head-sha>" >&2
-    echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint, for a worker before READY)" >&2
+    echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint plus the conflicts-resolved check 20, for a worker before READY)" >&2
     echo "       ready-check.sh --outside <pr-number>  (prints outside-pr: yes|no, the item 16 predicate)" >&2
     echo "run it from the primary checkout, not a worktree (check 12 needs an up-to-date anchor): cd '$rc_primary' && bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
@@ -340,9 +436,22 @@ crf_hold_note() {
     ) || true
 }
 SNAPSHOT_SCRIPT="$(cd "$(dirname "$0")/../../lib" && pwd)/gh-pr-snapshot.sh"
+SNAPSHOT_REREAD_LOCK_WAIT=5
 snapshot=""
+snapshot_fail_reason=""
+refresh_snapshot_or_keep_last() {
+    local lock_wait="${1:-${GH_PR_SNAPSHOT_LOCK_WAIT:-}}" err_file out
+    err_file=$(mktemp "${TMPDIR:-/tmp}/ready-check-snap.XXXXXX" 2>/dev/null) || err_file=""  # prim-ok: ready-check sources no prim.sh; no file only loses the reason line
+    snapshot_fail_reason=""
+    if out=$(env GH_CMD="$GH" GH_PR_SNAPSHOT_LOCK_WAIT="$lock_wait" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>"${err_file:-/dev/null}"); then
+        snapshot=$out
+    elif [ -n "$err_file" ]; then
+        snapshot_fail_reason=$(tail -n 1 "$err_file" | tr -cd '[:print:]')
+    fi
+    [ -z "$err_file" ] || rm -f "$err_file"
+}
 if [ "$ONLY7" -eq 0 ]; then
-    snapshot=$(GH_CMD="$GH" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>/dev/null) || snapshot=""
+    refresh_snapshot_or_keep_last
 fi
 
 # author_class and outside_pr_of live in the lib, so scripts/cr/pr-check-outside.sh asks the same question.
@@ -419,7 +528,7 @@ while [ "$attempt" -lt 5 ]; do
     attempt=$((attempt + 1))
     sleep 1
     if [ "$attempt" -lt 5 ]; then
-        snapshot=$(GH_CMD="$GH" bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$PR" 2>/dev/null) || snapshot=""
+        refresh_snapshot_or_keep_last "$SNAPSHOT_REREAD_LOCK_WAIT"
     fi
 done
 # The rollup is judged before row 1: UNSTABLE is accepted there only when
@@ -487,6 +596,7 @@ else
     fi
     mark_fail
 fi
+[ -z "$snapshot_fail_reason" ] || echo "       PR snapshot read failed: $snapshot_fail_reason"
 
 # ── 2. statusCheckRollup ─────────────────────────────────────────────────────
 if [ -z "$rollup" ] || [ "$rollup" = "null" ]; then
@@ -1924,6 +2034,9 @@ check_partial_remainder() {
     elif [ "${ans%%$'\t'*}" = none ]; then
         echo "[FAIL] 17. $key is a partial merge (--contract no) but the PR body has no \`Remaining:\` line and no \`<ask>: deferred -> <KEY>\` line under \`## Ticket coverage\` — the merge refuses it (exit 26); add one (gh pr edit $PR --body-file <file>)"
         mark_fail
+    elif [ "${ans%%$'\t'*}" = handed-off ]; then
+        echo "[FAIL] 17. $key is a partial merge (--contract no) but every remaining ask is on $(printf '%s' "$ans" | cut -f2), so this merge completes $key and the merge refuses it (exit 26). If the brief says Completes ticket: no, the chief changes it to yes and re-issues the GO with --contract yes; else re-issue the GO with --contract yes (the merge then runs with --jira-transition); or record what stays on $key with a Remaining: line (gh pr edit $PR --body-file <file>)"
+        mark_fail
     else
         echo "[PASS] 17. partial merge $key records what remains (${ans%%$'\t'*})"
     fi
@@ -2180,6 +2293,74 @@ s17_body() {
     echo "[PASS] 19. suite evidence: $n_imp impacted, $n_ci from CI run ${run_id:--}, $n_local local${ruled_names:+, $n_ruled ruled SKIP: ${ruled_names#, }}"
 }
 check_suite_evidence
+
+# shellcheck disable=SC2016  # python program text
+C20_READER='import os, sys
+sys.path.insert(0, os.path.dirname(sys.argv[1]))
+import conflicts
+for path, _prs, _note in conflicts.parse_body(sys.stdin.read()):
+    print(path)'
+check_conflicts_resolved() {
+    local head det out listed rc h7 f prs res mc nums n_conf=0 n_miss=0 adds="" warns=""
+    head="$SHA"
+    [ "$ONLY7" -eq 0 ] || head="${cov_head:-}"
+    if [ -z "$head" ]; then
+        echo "[WARN] 20. conflicts unknown (no head)"
+        return 0
+    fi
+    h7="${head:0:7}"
+    det="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}/scripts/eval/conflicts/conflicts.py"
+    _TIMEOUT_BIN=""
+    # shellcheck source=../../lib/timeout-bin.sh
+    . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN WARNs just below
+    if [ ! -f "$det" ] || [ -z "$_TIMEOUT_BIN" ] || ! command -v python3 >/dev/null 2>&1; then
+        echo "[WARN] 20. conflicts unknown (no detector, python3 or timeout binary: $det)"
+        return 0
+    fi
+    if [ "$ONLY7" -eq 0 ] && ! pr_fetch; then
+        echo "[WARN] 20. conflicts unknown ($pr_mb_err)"
+        return 0
+    fi
+    rc=0
+    out=$("$_TIMEOUT_BIN" -k 5 20 python3 -I "$det" detect --repo-dir "$PWD" --head "$head" --base-ref refs/remotes/origin/main --pr "$PR" 2>/dev/null </dev/null) || rc=$?  # swallow-ok: a non-zero rc WARNs just below
+    if [ "$rc" -ne 0 ]; then
+        echo "[WARN] 20. conflicts unknown (detector exit $rc)"
+        return 0
+    fi
+    case "$out" in
+        unknown*) echo "[WARN] 20. conflicts ${out%%$'\n'*}"; return 0 ;;
+        '') echo "[PASS] 20. conflicts resolved: no hand-resolved merge conflict in origin/main..$h7"; return 0 ;;
+    esac
+    rc=0
+    listed=$(printf '%s' "${cov_body:-}" | "$_TIMEOUT_BIN" -k 5 10 python3 -I -c "$C20_READER" "$det" 2>/dev/null) || rc=$?  # swallow-ok: a non-zero rc WARNs just below
+    if [ "$rc" -ne 0 ]; then
+        echo "[WARN] 20. conflicts unknown (body reader exit $rc)"
+        return 0
+    fi
+    while IFS=$'\t' read -r f prs res mc; do
+        [ -n "$f" ] || continue
+        n_conf=$((n_conf + 1))
+        nums=$(printf '%s\n' "$prs" | grep -oE '[0-9]+' | sed 's/^/#/' | paste -sd, - | sed 's/,/, /g')
+        if ! grep -Fxq -- "$f" <<<"$listed"; then
+            n_miss=$((n_miss + 1))
+            adds="$adds
+       - $f vs ${nums:-#<other pr>}: <what you kept and why>"
+        fi
+        [ "$res" != ours ] || warns="$warns
+[WARN] 20. $f was resolved as ours in merge ${mc:0:7}: the change from ${nums:-main} was dropped; check it does not undo ${nums:-that change}"
+    done <<EOF
+$out
+EOF
+    if [ "$n_miss" -gt 0 ]; then
+        echo "[FAIL] 20. conflicts resolved: $n_miss of $n_conf conflicted file(s) in origin/main..$h7 have no line under ## Conflicts resolved; add to the PR body:"
+        echo "       ## Conflicts resolved$adds"
+        mark_fail
+    else
+        echo "[PASS] 20. conflicts resolved: each of $n_conf conflicted file(s) in origin/main..$h7 has its line"
+    fi
+    [ -z "$warns" ] || printf '%s\n' "${warns#?}"
+}
+check_conflicts_resolved
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi

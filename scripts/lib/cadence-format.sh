@@ -141,7 +141,7 @@ CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"
 # Basename registry for generated cadence runners. Keep explicit: a stray
 # foreign *.sh in a runner dir must not poison the staleness probe.
 # shellcheck disable=SC2034  # consumed by cadence_runner_stamp callers/tests
-CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health graphmap-luna graphmap-himmel qmd-reindex drift-fix fork-resync graphify-update-ggs upstream-watch graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel graphmap-semantic-luna doctor-cadence"
+CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health graphmap-luna graphmap-himmel qmd-reindex drift-fix fork-resync graphify-update-ggs upstream-watch graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel graphmap-semantic-luna doctor-cadence rollup-cadence"
 
 # cadence_posix_worker_start <q_flow_lib> <flow> <task>
 # cadence_posix_worker_end <q_flow_lib> <q_alert_lib> <flow> [ok_rcs] [skip_rcs]

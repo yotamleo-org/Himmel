@@ -4,7 +4,7 @@ Moved verbatim out of `SKILL.md`.
 
 For each ref `<o>/<r>` in the cleaned ref list:
 
-1. Fetch lightweight metadata: `gh api "repos/${ref}" --jq '{description, language, stargazers_count, pushed_at, topics, license: .license.spdx_id}'`. On failure, distinguish the failure class (LUNA-6):
+1. Fetch lightweight metadata: `gh api "repos/${ref}" --jq '{description, language, stargazers_count, pushed_at, topics, license: .license.spdx_id}'`. On failure, distinguish the failure class:
    - **404 / "Not Found"** → verdict `skip`, `verdict_reason: ref_not_found`. Continue scanning the rest.
    - **403 / 429 / "rate limit" / "API rate limit exceeded"** → verdict `api_failure`, `verdict_reason: rate_limited`. Continue scanning; the run will exit rc=4 at the end so the operator knows to retry, but partial progress is preserved.
    - Other network/auth errors → verdict `api_failure`, `verdict_reason: <stderr-short>`. Continue; exit rc=4 at end.

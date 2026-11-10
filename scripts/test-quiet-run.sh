@@ -569,6 +569,22 @@ OUT="$KEYRING_OUT"
 assert_rc "non-suite label run of the keyring fixture succeeds" 0 "$KEYRING_RC"
 assert_eq "negative control: a non-suite label leaves it unset" "keyring=unset" "$OUT"
 
+# shellcheck disable=SC2016  # the fixture expands the variable, not this printf
+printf '#!/usr/bin/env bash\necho "keyring=quota=${HIMMEL_QUOTA_DIR-unset} dir=$([ -d "${HIMMEL_QUOTA_DIR:-/nonexistent}" ] && echo yes)"\n' > "$KEYRING_ABS"
+rm -f "$SCRATCH"/quiet-run-suite-*.log
+(cd "$REPO_ROOT" && env -u HIMMEL_QUOTA_DIR TMPDIR="$SCRATCH" bash "$QUIET_RUN" suite -- bash "$KEYRING_REL" >/dev/null 2>&1)
+OUT=$(grep -h '^keyring=' "$SCRATCH"/quiet-run-suite-*.log)
+QDIR=$(printf '%s' "$OUT" | sed -n 's/^keyring=quota=\([^ ]*\) .*/\1/p')
+case "$QDIR" in
+    "$SCRATCH"/quiet-run-quota.*) assert_eq "suite label exports a scratch HIMMEL_QUOTA_DIR that exists" "dir=yes" "${OUT##* }" ;;
+    *) assert_eq "suite label exports a scratch HIMMEL_QUOTA_DIR under TMPDIR" "$SCRATCH/quiet-run-quota.*" "$QDIR" ;;
+esac
+assert_eq "the scratch quota dir is removed after the run" "gone" "$([ -n "$QDIR" ] && [ ! -e "$QDIR" ] && echo gone)"
+rm -f "$SCRATCH"/quiet-run-suite-*.log
+(cd "$REPO_ROOT" && HIMMEL_QUOTA_DIR="$SCRATCH/mine" TMPDIR="$SCRATCH" bash "$QUIET_RUN" suite -- bash "$KEYRING_REL" >/dev/null 2>&1)
+OUT=$(grep -h '^keyring=' "$SCRATCH"/quiet-run-suite-*.log)
+assert_eq "a caller's own HIMMEL_QUOTA_DIR is kept" "keyring=quota=$SCRATCH/mine dir=" "$OUT"
+
 # 19. Label "suite" runs this worktree's suites only: an argv
 # path outside the worktree is refused before anything runs, and the refusal
 # names the direct form. The argv is N4192's real one from the station's

@@ -3,7 +3,7 @@
 One skill vendored from [`mattpocock/skills`](https://github.com/mattpocock/skills)
 at `49dd158d1076134a641b33efb035946536778336` (MIT, (c) 2026 Matt Pocock).
 Inventory and deviations: [`VENDORED.md`](VENDORED.md). Eval:
-`docs/tool-adoption/registry.md` (HIMMEL-5498).
+`docs/tool-adoption/registry.md` (the glossary skill row).
 
 | Skill | Use |
 |---|---|

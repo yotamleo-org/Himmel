@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ig-scrapling-media.py - cookieless Instagram post media lookup (HIMMEL-4675).
+"""ig-scrapling-media.py - cookieless Instagram post media lookup.
 
 Fetches a public post/reel page with Scrapling's stealth fetcher (NO cookies)
 and pulls the post's media URLs and caption out of the page's embedded

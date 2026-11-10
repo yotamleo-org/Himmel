@@ -87,7 +87,7 @@ spend budget).
                  1-100 = context-fill percent; >100 = input tokens this turn
 
 exit 0 = fresh   exit 3 = STALE   exit 4 = UNKNOWN
-exit 5 = ESTIMATE (HIMMEL-4955): the snapshot is STALE but the session
+exit 5 = ESTIMATE: the snapshot is STALE but the session
          transcript carries usage; stdout is "~NN% (est)" (--percent) or a
          readout labelled ESTIMATED. Never a measured value.
 stdout is empty on 3 and 4 by design.
@@ -96,8 +96,7 @@ env:
   CONTEXT_FILL_MAX_AGE_SECONDS   freshness window in seconds, default 900
   CONTEXT_FILL_MAX_LAG_SECONDS   max seconds a snapshot's saved_at may lag the
                                   session transcript's mtime before it is
-                                  refused as a frozen HUD snapshot
-                                  (HIMMEL-2342), default 60
+                                  refused as a frozen HUD snapshot, default 60
   CONTEXT_FILL_TRANSCRIPT        override the resolved transcript path
   CLAUDE_CONFIG_DIR              honoured the same way the HUD honours it
   CONTEXT_FILL_WARN_AT           handover-nudge threshold, default 50;
@@ -234,7 +233,7 @@ resolve_cache_path() {
     # see launched_as_child_session() for why our own env cannot be trusted.
     if launched_as_child_session; then
       hint='
-context-fill: hint: this session inherited CLAUDE_CODE_CHILD_SESSION - transcripts are off; relaunch through env -u CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 (HIMMEL-2545)'
+context-fill: hint: this session inherited CLAUDE_CODE_CHILD_SESSION, so claude writes no transcript and context fill cannot be read; relaunch claude with env -u CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 in front of the command'
     fi
     die_unknown "cannot resolve this session (CLAUDE_CODE_SESSION_ID unset, or no transcript under <claude-config>/projects)$hint"
   fi

@@ -1478,7 +1478,8 @@ echo "TEST: Darwin arm warns about Full Disk Access when the vault sits under ~/
 out=$(run_fda darwin23 arm --vault "$FDA_VAULT" --force)
 assert_contains "Darwin arm names the FDA requirement"        "Full Disk Access required" "$out"
 assert_contains "Darwin arm names cron itself as the grantee" "/usr/sbin/cron"             "$out"
-assert_contains "Darwin arm names himmel#771"                 "himmel#771"                 "$out"
+assert_contains "Darwin arm heading carries no issue number"  "Full Disk Access required:"  "$out"
+assert_rc "Darwin arm FDA heading line is exactly the plain heading" "  ⚠ Full Disk Access required:" "$(grep -F -m1 'Full Disk Access required' <<<"$out")"
 assert_contains "Darwin arm names the protected vault path"   "$FDA_VAULT"                 "$out"
 run_fda darwin23 disarm >/dev/null 2>&1
 
@@ -2175,5 +2176,193 @@ assert_not_contains "a symlinked ~/.himmel is no opt-in" "HIMMEL_API_LANE" "$out
 out=$(HOME="$OPTIN_HOME" run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --dry-run 2>&1) || true
 assert_contains "the control: the JSON literal true opts in" "HIMMEL_API_LANE=on" "$out"
 rm -rf "$OPT_BAD"
+
+PMSTATE="$TMP_ROOT/cron-state-pm"; mkdir -p "$PMSTATE"
+PMCRON="$TMP_ROOT/crontab-fake-pm.sh"
+sed "s#^CSTATE=.*#CSTATE=\"$PMSTATE\"#" "$FAKE_CRONTAB2" > "$PMCRON"; chmod +x "$PMCRON"
+PMDIR="$TMP_ROOT/cron-runners-pm"
+PMBIN="$TMP_ROOT/pm-bin"; mkdir -p "$PMBIN"
+for _t in bun qmd; do printf '#!/bin/sh\nexit 0\n' > "$PMBIN/$_t"; chmod +x "$PMBIN/$_t"; done
+SAVED_OBS_PM="$HIMMEL_OBSERVABILITY_CONFIG"
+export HIMMEL_OBSERVABILITY_CONFIG="$TMP_ROOT/observability-pm.json"
+PM_TASK="HIMMEL-PostMergeRefresh"
+PM_RUNNER="$PMDIR/post-merge-refresh.sh"
+run_pm() {
+    env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$PMCRON" GRAPHMAP_BAT_DIR="$PMDIR" \
+        PATH="$GRAPHIFY_BIN_DIR_PATH:$PMBIN:$PATH" "$REAL_BASH" "$SCRIPT" "$@"
+}
+pm_tab() { cat "$PMSTATE/crontab" 2>/dev/null || echo MISSING; }
+pm_runner() { cat "$PM_RUNNER" 2>/dev/null || echo MISSING; }
+
+echo "TEST: HIMMEL-9517 2.3 a bare arm never adds the tick"
+rm -f "$PMSTATE/crontab"
+run_pm arm --vault "$VAULT" --ast-only >/dev/null 2>&1 || true
+assert_not_contains "bare_arm_has_no_tick: no tick row after a bare arm" "$PM_TASK" "$(pm_tab)"
+if [ ! -e "$PM_RUNNER" ]; then pass "bare_arm_has_no_tick: no tick runner after a bare arm"; else fail "bare_arm_has_no_tick: tick runner written by a bare arm"; fi
+run_pm disarm >/dev/null 2>&1 || true
+
+echo "TEST: HIMMEL-9517 2.3 post-merge graph arms the tick row and touches no other row"
+printf '5 4 * * * /usr/bin/true # operator-own\n15 * * * * /old/ast.sh # HIMMEL-GraphMapAst-Himmel\n' > "$PMSTATE/crontab"
+cp "$PMSTATE/crontab" "$PMSTATE/crontab.before"
+rc=0; out=$(run_pm post-merge graph 2>&1) || rc=$?
+assert_rc "post_merge_arms_tick: post-merge graph exits 0" 0 "$rc"
+pm_line=$(grep -F "# $PM_TASK" <<< "$(pm_tab)" || echo MISSING)
+assert_contains "post_merge_arms_tick: the row fires every five minutes" "*/5 * * * * " "$pm_line"
+assert_contains "post_merge_arms_tick: the row fires the tick runner" "post-merge-refresh.sh" "$pm_line"
+if [ -x "$PM_RUNNER" ]; then pass "post_merge_arms_tick: the runner is present and executable"; else fail "post_merge_arms_tick: runner missing" "$(ls "$PMDIR" 2>/dev/null)"; fi
+rest=$(grep -vF "# $PM_TASK" "$PMSTATE/crontab" || true)
+if [ "$rest" = "$(cat "$PMSTATE/crontab.before")" ]; then pass "post_merge_touches_no_other_row: every other row is byte-identical"; else fail "post_merge_touches_no_other_row: other rows changed" "$(pm_tab)"; fi
+assert_not_contains "post_merge_touches_no_other_row: no semantic row appears" "HIMMEL-GraphMap-" "$(pm_tab)"
+assert_contains "post_merge_arms_tick: the runner carries its mode on one comment line" "# himmel-post-merge-mode: graph" "$(pm_runner)"
+assert_contains "post_merge_arms_tick: the runner runs the graph half only" "--halves graph" "$(pm_runner)"
+assert_registry "post_merge_arms_tick: the task is registered" "any(.expected_tasks[]; . == \"$PM_TASK\")"
+assert_registry "flow_cadence_values: post-merge-graph is 604800 s with a 3600 s stall deadline" 'any(.flows[]; .name == "post-merge-graph" and .cadence_seconds == 604800 and .stall_deadline_seconds == 3600)'
+assert_registry "keyword_flow_only_in_both: graph mode registers no keyword flow" 'all(.flows[]; .name != "post-merge-keyword")'
+
+echo "TEST: HIMMEL-9517 2.3 status lists the tick with its mode"
+out=$(run_pm status 2>&1)
+assert_contains "status_lists_tick: ARMED line with its schedule" "ARMED      $PM_TASK (cron: */5 * * * *)" "$out"
+assert_contains "status_lists_tick: the mode" "mode: graph" "$out"
+
+echo "TEST: HIMMEL-9517 2.3 arm and arm --force leave the tick alone"
+cp "$PM_RUNNER" "$PMSTATE/runner.before"; grep -F "# $PM_TASK" "$PMSTATE/crontab" > "$PMSTATE/row.before"
+rc=0; out=$(run_pm arm --vault "$VAULT" --ast-only 2>&1) || rc=$?
+rc=0; out=$(run_pm arm --vault "$VAULT" --ast-only --force 2>&1) || rc=$?
+assert_rc "arm_force_leaves_tick: arm --force exits 0" 0 "$rc"
+if [ "$(grep -F "# $PM_TASK" "$PMSTATE/crontab" || true)" = "$(cat "$PMSTATE/row.before")" ]; then pass "arm_force_leaves_tick: the tick row is untouched"; else fail "arm_force_leaves_tick: tick row changed" "$(pm_tab)"; fi
+if cmp -s "$PM_RUNNER" "$PMSTATE/runner.before"; then pass "arm_force_leaves_tick: the tick runner is untouched"; else fail "arm_force_leaves_tick: tick runner changed"; fi
+
+echo "TEST: HIMMEL-9517 2.3 the keyword flow exists only in both mode"
+run_pm post-merge both >/dev/null 2>&1 || true
+assert_registry "keyword_flow_only_in_both: both registers the keyword flow" 'any(.flows[]; .name == "post-merge-keyword" and .cadence_seconds == 604800 and .stall_deadline_seconds == 3600)'
+assert_registry "flow_cadence_values: both keeps the graph flow too" 'any(.flows[]; .name == "post-merge-graph" and .cadence_seconds == 604800 and .stall_deadline_seconds == 3600)'
+assert_contains "post_merge_arms_tick: both writes its mode" "# himmel-post-merge-mode: both" "$(pm_runner)"
+assert_contains "post_merge_arms_tick: both runs both halves" "--halves both" "$(pm_runner)"
+if [ "$(grep -cF "# $PM_TASK" "$PMSTATE/crontab")" -eq 1 ]; then pass "post_merge_arms_tick: switching mode keeps exactly one tick row"; else fail "post_merge_arms_tick: tick row count after a mode switch" "$(pm_tab)"; fi
+run_pm post-merge graph >/dev/null 2>&1 || true
+assert_registry "keyword_flow_only_in_both: back to graph drops the keyword flow" 'all(.flows[]; .name != "post-merge-keyword")'
+assert_registry "keyword_flow_only_in_both: back to graph keeps the task" "any(.expected_tasks[]; . == \"$PM_TASK\")"
+
+echo "TEST: HIMMEL-9517 2.3 the bare runner"
+PM_SCRIPT_Q=$(printf '%q' "$HIMMEL_ROOT_EXP/scripts/luna/post-merge-refresh.sh")
+PM_ALERTS="$PMDIR/alerts.log"; PM_FLOWS="$PMDIR/flows.jsonl"
+pm_exec() {
+    local stub="$PMDIR/stub-tick.sh" content
+    printf '#!/bin/sh\n%s\n' "$1" > "$stub"
+    content=$(cat "$PM_RUNNER"); content=${content//"$PM_SCRIPT_Q"/"$stub"}
+    if ! grep -qF -- "$stub" <<< "$content"; then fail "bare runner fixture: the tick path was not found in the runner"; return 1; fi
+    printf '%s\n' "$content" > "$PMDIR/runner-under-test.sh"
+    (cd "$TMP_ROOT" && env -i HOME="$HOME" PATH=/usr/bin:/bin PM_OUT="$PMDIR/stub.out" \
+        CADENCE_ALERT_SEND_CMD=/bin/true CADENCE_ALERT_FILE="$PM_ALERTS" CADENCE_ALERT_DEDUPE_DIR="$PMDIR/alert-sent" \
+        CADENCE_ALERT_SEND_FAILED_MARK="$PMDIR/send-failed" HIMMEL_FLOW_RUNS_LEDGER="$PM_FLOWS" \
+        /bin/sh "$PMDIR/runner-under-test.sh") >/dev/null 2>&1 || true
+}
+rm -f "$PM_ALERTS" "$PM_FLOWS" "$PMDIR/post-merge-refresh.log" "$PMDIR/post-merge-refresh.log.prev"
+pm_exec 'exit 7'
+assert_contains "runner_alerts_when_script_dies: a tick that exits 7 raises post-merge-tick" "post-merge-tick" "$(cat "$PM_ALERTS" 2>/dev/null || echo MISSING)"
+assert_contains "runner_alerts_when_script_dies: the log records the exit" "[exit rc=7]" "$(cat "$PMDIR/post-merge-refresh.log" 2>/dev/null || echo MISSING)"
+if [ ! -e "$PM_FLOWS" ]; then pass "runner_writes_no_flow_rows: a failed fire writes no flow row"; else fail "runner_writes_no_flow_rows: flow rows written"; fi
+assert_not_contains "runner_writes_no_flow_rows: the runner has no flow-run call" "flow-run-ledger" "$(pm_runner)"
+assert_not_contains "runner_alerts_when_script_dies: the runner never calls clear" " clear " "$(pm_runner)"
+rm -f "$PM_ALERTS"
+pm_exec 'exit 0'
+if [ ! -s "$PM_ALERTS" ]; then pass "runner_alerts_when_script_dies: a tick that exits 0 raises nothing"; else fail "runner_alerts_when_script_dies: alert on a clean tick" "$(cat "$PM_ALERTS")"; fi
+if [ ! -e "$PM_FLOWS" ]; then pass "runner_writes_no_flow_rows: a clean fire writes no flow row"; else fail "runner_writes_no_flow_rows: flow rows written on a clean fire"; fi
+head -c 1500000 /dev/zero | tr '\0' x > "$PMDIR/post-merge-refresh.log"
+pm_exec 'exit 0'
+if [ "$(wc -c < "$PMDIR/post-merge-refresh.log" | tr -d ' ')" -lt 1048576 ]; then pass "runner_log_capped: the log is back under 1 MB"; else fail "runner_log_capped: log still over 1 MB"; fi
+if [ -f "$PMDIR/post-merge-refresh.log.prev" ] && [ "$(wc -c < "$PMDIR/post-merge-refresh.log.prev" | tr -d ' ')" -ge 1500000 ]; then pass "runner_log_capped: the old log is kept as .prev"; else fail "runner_log_capped: no .prev holding the old log"; fi
+printf 'small\n' > "$PMDIR/post-merge-refresh.log"; rm -f "$PMDIR/post-merge-refresh.log.prev"
+pm_exec 'exit 0'
+if [ ! -e "$PMDIR/post-merge-refresh.log.prev" ]; then pass "runner_log_capped: a log under the cap is not rotated"; else fail "runner_log_capped: a small log was rotated"; fi
+assert_contains "runner_log_capped: the small log keeps its earlier line" "small" "$(cat "$PMDIR/post-merge-refresh.log")"
+
+echo "TEST: HIMMEL-9517 2.3 carried items: the runner pins PATH and a fixed working directory"
+# shellcheck disable=SC2016  # the stub body is sh source: $t and $PM_OUT expand in the stub, not here
+pm_exec 'for t in graphify bun qmd; do command -v "$t" || echo "no-$t"; done > "$PM_OUT"; pwd -P >> "$PM_OUT"'
+pm_out=$(cat "$PMDIR/stub.out" 2>/dev/null || echo MISSING)
+assert_contains "runner_pins_path: graphify resolves under cron's PATH" "$GRAPHIFY_BIN_DIR_PATH/graphify" "$pm_out"
+assert_contains "runner_pins_path: bun resolves under cron's PATH" "$PMBIN/bun" "$pm_out"
+assert_contains "runner_pins_path: qmd resolves under cron's PATH" "$PMBIN/qmd" "$pm_out"
+pm_cwd=$(tail -n 1 "$PMDIR/stub.out" 2>/dev/null || echo MISSING)
+if [ "$pm_cwd" = "$(cd "$PMDIR" && pwd -P)" ]; then pass "runner_fixed_cwd: the tick runs from the runner dir, not the caller's"; else fail "runner_fixed_cwd: the tick ran from $pm_cwd"; fi
+
+echo "TEST: HIMMEL-9517 2.3 --rewrite-armed keeps the mode, refuses any other form, and never adds the tick"
+run_pm post-merge both >/dev/null 2>&1 || true
+cp "$PMSTATE/crontab" "$PMSTATE/crontab.rw"
+printf '#!/bin/sh\n# himmel-post-merge-mode: both\necho stale\n' > "$PM_RUNNER"; chmod +x "$PM_RUNNER"
+rc=0; out=$(run_pm arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "rewrite_armed_keeps_mode: exits 0" 0 "$rc"
+assert_contains "rewrite_armed_keeps_mode: the mode survives" "# himmel-post-merge-mode: both" "$(pm_runner)"
+assert_contains "rewrite_armed_keeps_mode: both halves still run" "--halves both" "$(pm_runner)"
+assert_not_contains "rewrite_armed_keeps_mode: the stale body is replaced" "echo stale" "$(pm_runner)"
+if cmp -s "$PMSTATE/crontab" "$PMSTATE/crontab.rw"; then pass "rewrite_armed_keeps_mode: the crontab is untouched"; else fail "rewrite_armed_keeps_mode: crontab changed"; fi
+printf '#!/bin/sh\n# himmel-cadence-runner-format: 1\necho stale-ast\n' > "$PMDIR/graphmap-ast-himmel.sh"; chmod +x "$PMDIR/graphmap-ast-himmel.sh"
+pm_bad_n=0
+for _body in '# himmel-post-merge-mode: bogus' '# himmel-post-merge-mode:both' '# himmel-post-merge-mode: graph\n# himmel-post-merge-mode: both' 'echo no-mode-line'; do
+    pm_bad_n=$((pm_bad_n + 1))
+    printf '#!/bin/sh\n%b\necho keep\n' "$_body" > "$PM_RUNNER"; chmod +x "$PM_RUNNER"
+    cp "$PM_RUNNER" "$PMSTATE/runner.bad"
+    rc=0; out=$(run_pm arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+    assert_rc "rewrite_armed_refuses_unknown_mode: form $pm_bad_n exits 2" 2 "$rc"
+    assert_contains "rewrite_armed_refuses_unknown_mode: form $pm_bad_n names the mode line" "himmel-post-merge-mode" "$out"
+    if cmp -s "$PM_RUNNER" "$PMSTATE/runner.bad"; then pass "rewrite_armed_refuses_unknown_mode: form $pm_bad_n leaves the runner as it was"; else fail "rewrite_armed_refuses_unknown_mode: form $pm_bad_n rewrote the runner"; fi
+    assert_contains "rewrite_armed_refuses_unknown_mode: form $pm_bad_n rewrites no sibling runner either" "echo stale-ast" "$(cat "$PMDIR/graphmap-ast-himmel.sh")"
+done
+rm -f "$PMDIR/graphmap-ast-himmel.sh" "$PM_RUNNER"
+cp "$PMSTATE/crontab" "$PMSTATE/crontab.rw"
+rc=0; out=$(run_pm arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "rewrite_armed_never_adds_tick: exits 0 with no tick runner" 0 "$rc"
+if [ ! -e "$PM_RUNNER" ]; then pass "rewrite_armed_never_adds_tick: no runner created"; else fail "rewrite_armed_never_adds_tick: runner created"; fi
+if cmp -s "$PMSTATE/crontab" "$PMSTATE/crontab.rw"; then pass "rewrite_armed_never_adds_tick: the crontab is untouched"; else fail "rewrite_armed_never_adds_tick: crontab changed"; fi
+
+echo "TEST: HIMMEL-9517 2.3 disarm: --luna-only keeps the tick, a full disarm removes it"
+run_pm post-merge both >/dev/null 2>&1 || true
+run_pm disarm --luna-only >/dev/null 2>&1 || true
+assert_contains "disarm_luna_only_keeps_tick: the row stays" "# $PM_TASK" "$(pm_tab)"
+if [ -x "$PM_RUNNER" ]; then pass "disarm_luna_only_keeps_tick: the runner stays"; else fail "disarm_luna_only_keeps_tick: runner removed"; fi
+assert_registry "disarm_luna_only_keeps_tick: the registrations stay" "any(.expected_tasks[]; . == \"$PM_TASK\") and any(.flows[]; .name == \"post-merge-keyword\")"
+rc=0; out=$(run_pm disarm 2>&1) || rc=$?
+assert_rc "disarm_removes_tick: disarm exits 0" 0 "$rc"
+assert_not_contains "disarm_removes_tick: the row is gone" "# $PM_TASK" "$(pm_tab)"
+assert_contains "disarm_removes_tick: the operator's own row survives" "# operator-own" "$(pm_tab)"
+if [ ! -e "$PM_RUNNER" ]; then pass "disarm_removes_tick: the runner is gone"; else fail "disarm_removes_tick: runner left behind"; fi
+assert_registry "disarm_removes_tick: the task is unregistered" "all(.expected_tasks[]; . != \"$PM_TASK\")"
+assert_registry "disarm_removes_tick: both flows are unregistered" 'all(.flows[]; .name != "post-merge-graph" and .name != "post-merge-keyword")'
+
+echo "TEST: HIMMEL-9517 2.3 post-merge off removes only the tick"
+printf '5 4 * * * /usr/bin/true # operator-own\n15 * * * * /old/ast.sh # HIMMEL-GraphMapAst-Himmel\n' > "$PMSTATE/crontab"
+cp "$PMSTATE/crontab" "$PMSTATE/crontab.before"
+run_pm post-merge both >/dev/null 2>&1 || true
+rc=0; out=$(run_pm post-merge off 2>&1) || rc=$?
+assert_rc "off_unregisters: post-merge off exits 0" 0 "$rc"
+if [ "$(pm_tab)" = "$(cat "$PMSTATE/crontab.before")" ]; then pass "off_unregisters: the crontab is back to its other rows"; else fail "off_unregisters: crontab differs" "$(pm_tab)"; fi
+if [ ! -e "$PM_RUNNER" ]; then pass "off_unregisters: the runner is gone"; else fail "off_unregisters: runner left behind"; fi
+assert_registry "off_unregisters: the task and both flows are unregistered" "all(.expected_tasks[]; . != \"$PM_TASK\") and all(.flows[]; .name != \"post-merge-graph\" and .name != \"post-merge-keyword\")"
+rc=0; out=$(run_pm post-merge off 2>&1) || rc=$?
+assert_rc "off_unregisters: off with nothing armed is idempotent" 0 "$rc"
+
+echo "TEST: HIMMEL-9517 2.3 post-merge refuses a bad mode, a stray flag and a missing graphify; --dry-run writes nothing"
+cp "$PMSTATE/crontab" "$PMSTATE/crontab.before"
+rc=0; run_pm post-merge bogus >/dev/null 2>&1 || rc=$?
+assert_rc "post-merge with an unknown mode exits 1" 1 "$rc"
+rc=0; run_pm post-merge >/dev/null 2>&1 || rc=$?
+assert_rc "post-merge with no mode exits 1" 1 "$rc"
+rc=0; run_pm post-merge graph --luna-only >/dev/null 2>&1 || rc=$?
+assert_rc "post-merge refuses an arm flag" 1 "$rc"
+for _pm_flag in "--vault $VAULT" "--luna-time 03:00" "--himmel-time=03:00" "--ast-only" "--force"; do
+    read -r -a _pm_args <<< "$_pm_flag"
+    rc=0; out=$(run_pm post-merge graph "${_pm_args[@]}" 2>&1) || rc=$?
+    assert_rc "post-merge refuses ${_pm_flag%% *} instead of ignoring it" 1 "$rc"
+done
+assert_contains "the refusal names the stray argument" "post-merge takes only --dry-run" "$out"
+rc=0; out=$(env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$PMCRON" GRAPHMAP_BAT_DIR="$PMDIR" PATH="$PATH_NOGRAPHIFY" "$REAL_BASH" "$SCRIPT" post-merge graph 2>&1) || rc=$?
+assert_rc "post-merge graph without graphify on PATH exits 2" 2 "$rc"
+assert_contains "the missing-graphify refusal names graphify" "graphify" "$out"
+rc=0; out=$(run_pm post-merge both --dry-run 2>&1) || rc=$?
+assert_rc "post-merge --dry-run exits 0" 0 "$rc"
+assert_contains "post-merge --dry-run names the row it would add" "# $PM_TASK" "$out"
+if [ "$(pm_tab)" = "$(cat "$PMSTATE/crontab.before")" ] && [ ! -e "$PM_RUNNER" ]; then pass "post-merge --dry-run touches no crontab row and writes no runner"; else fail "post-merge --dry-run changed state" "$(pm_tab)"; fi
+export HIMMEL_OBSERVABILITY_CONFIG="$SAVED_OBS_PM"
 
 summary

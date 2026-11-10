@@ -1,0 +1,8 @@
+collections:
+  golden:
+    path: /tmp/collection-golden-tree
+    pattern: "**/*.md"
+    ignore:
+      - "graphify-out/**"
+      - "**/fixtures/**"
+      - "marketplace/plugins/*/README*.md"

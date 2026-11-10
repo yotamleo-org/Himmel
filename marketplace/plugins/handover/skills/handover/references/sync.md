@@ -20,7 +20,7 @@ The skill is the agent. Each sync pass:
    - file `mtime ≈ Jira.updated`  → file wins by convention (skill is authoritative for the active session)
 4. **Append to sync.log** — every write, even mirrors:
    ```
-   2026-05-19T22:55:00Z  HIMMEL-69  priority  H→M  trigger=update-status
+   2026-05-19T22:55:00Z  PROJ-69  priority  H→M  trigger=update-status
    ```
 
 ## Skipped during offline

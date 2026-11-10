@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RAG_EVAL_URL, ragEvalModel, type Measure, type RagEval, type Route, type Split } from "./rag-eval-model";
+import { RAG_EVAL_URL, ragEvalModel, type Measure, type Pilot, type RagEval, type Route, type Split } from "./rag-eval-model";
 
 type State = { model: RagEval | null; error: string | null };
 function useRagEval(token: string): State {
@@ -47,6 +47,56 @@ function Row({ r }: { r: Route }) {
   );
 }
 
+function PilotSection({ p }: { p: Pilot }) {
+  return (
+    <section aria-label="Three-answer pilot">
+      <h2>Supported answers: plain Claude Code, station search and local search</h2>
+      <p className="rag-bottom">{p.headline}</p>
+      <p className="rag-dim">{p.stopNote}, run {day(p.ts)}. {p.counts}</p>
+      {p.noComparison && <p className="rag-sample" role="note">{p.noComparison}</p>}
+      {p.clauses && p.clauses.map((c) => (
+        <div key={c.arm}>
+          <p className={c.answerClass}>{c.answer}</p>
+          <p className={c.costClass}>{c.cost}</p>
+        </div>
+      ))}
+      {p.exploratory && (
+        <p className="rag-dim">Exploratory, not a confirmatory test: station against local search {p.exploratory.gainPp.toFixed(1)} points,
+          raw p {p.exploratory.pRaw.toFixed(3)}, {p.exploratory.intervalLabel} {p.exploratory.interval[0].toFixed(1)} to {p.exploratory.interval[1].toFixed(1)} points.</p>
+      )}
+      <div className="rag-scroll">
+        <table className="rag-table">
+          <thead><tr><th scope="col">Setup</th><th scope="col">Supported</th><th scope="col">Cost</th><th scope="col">Search cash</th>
+            <th scope="col">Search route use</th><th scope="col">Skips</th><th scope="col">Errors</th><th scope="col">Unjudged</th><th scope="col">Unlisted paraphrases</th></tr></thead>
+          <tbody>{p.arms.map((a) => (
+            <tr key={a.arm} className={a.arm === "V" ? "rag-yardstick" : undefined}>
+              <th scope="row">{a.name}</th><td>{a.supported ?? "—"} of {p.n}</td><td>{a.costUsd === null ? "—" : `$${a.costUsd.toFixed(2)}`}</td>
+              <td>{a.cashUsd === null ? "—" : `$${a.cashUsd.toFixed(2)}`}</td>
+              <td>{a.route ? <>{a.route}<span className="rag-split">{a.use}</span></> : <span className="rag-gap">no search tool</span>}</td>
+              <td>{a.skips ?? "—"}</td><td>{a.errors ?? "—"}</td><td>{a.unjudged ?? "—"}</td><td>{a.paraphrases ?? "—"}</td>
+            </tr>))}
+          </tbody>
+        </table>
+      </div>
+      {p.cells.filter((c) => c.rows.length).map((c) => (
+        <div className="rag-scroll" key={c.title}>
+          <table className="rag-table">
+            <thead><tr><th scope="col">{c.title}</th><th scope="col">Plain Claude Code</th><th scope="col">Station search</th><th scope="col">Local search</th></tr></thead>
+            <tbody>{c.rows.map((r) => <tr key={r.name}><th scope="row">{r.name}</th><td>{r.V}</td><td>{r.S}</td><td>{r.Q}</td></tr>)}</tbody>
+          </table>
+        </div>
+      ))}
+      <ul className="rag-notes">
+        <li>{p.judge}</li>
+        <li>{p.spend}</li>
+        {p.disclosures.map((d) => <li key={d}>{d}</li>)}
+      </ul>
+      <h2>Retrieval lists (a separate measurement)</h2>
+      <ul className="rag-notes">{p.lists.map((l) => <li key={l}>{l}</li>)}</ul>
+    </section>
+  );
+}
+
 export function RagEvalPage({ token }: { token: string }) {
   const { model, error } = useRagEval(token);
   return (
@@ -54,8 +104,10 @@ export function RagEvalPage({ token }: { token: string }) {
       <h1>RAG eval</h1>
       {error && <p className="run-error" role="alert">The eval results could not be read: {error}.</p>}
       {!model && !error && <p className="quiet">Reading the eval results…</p>}
+      {model && model.pilot && <PilotSection p={model.pilot} />}
       {model && (
         <>
+          {model.pilot && <h2>Older runs: file found, not answers checked (a separate protocol group)</h2>}
           <p className="rag-bottom">{model.bottomLine}</p>
           <p className="rag-dim">From the eval runs already recorded{model.newest ? `, newest ${day(model.newest)}` : ""}. Opening this page runs no eval.</p>
           <p className="rag-sample">These scores are weak, and a rework of the eval is under way.</p>

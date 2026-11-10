@@ -42,6 +42,8 @@ chmod +x "$WORK/wt.sh"
 export WT_LOG="$WORK/wt.log" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh"
 export GEN_BRIEFS_MIRROR="$WORK/mirror"; mkdir -p "$GEN_BRIEFS_MIRROR"  # the proof check reads this fixture mirror, never the real one
 export TICKET_STATUS_STATE_DIR="$WORK/state-empty"  # the partial-merge block reads status-events.jsonl here, never the real one
+printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/gh-down.sh"; chmod +x "$WORK/gh-down.sh"
+export GEN_BRIEFS_GH_CMD="$WORK/gh-down.sh"
 export GEN_BRIEFS_NO_WT_CHECK=1 # the older rows use a fixture --repo with no real worktrees; the bucket and worktree-guard rows unset it
 # The core gate asks the jira CLI (release core-check, spec-check) per key. This suite points GEN_BRIEFS_JIRA_CLI at a
 # fixture stand-in over the fixture mirror, so it needs no built scripts/jira/dist (untracked, absent in CI).
@@ -66,6 +68,7 @@ if (a[0] === 'release' && a[1] === 'core-check') {
     const t = ticket(k);
     if (!t) console.log((fs.existsSync(process.env.CG_STUB_UNKNOWN + '/' + k) ? 'UNKNOWN ' : 'NOT-CORE ') + k);  // only a key the suite marks is a mirror miss
     else if (t.labels.includes('core') && !hit && a.includes('--docs-only') && paths.length > 0 && paths.every((p) => p.startsWith('docs/') || p.endsWith('.md'))) console.log('BYPASS ' + k + ' design label-only core ticket, docs-only Writes');
+    else if (fs.existsSync(process.env.CG_STUB_NEEDS + '/' + k)) process.stdout.write(fs.readFileSync(process.env.CG_STUB_GOLDEN, 'utf8'));
     else if (t.type === 'Bug' && /^(Highest|Blocker)$/.test(t.prio)) console.log('BYPASS ' + k + ' emergency Bug at ' + t.prio);
     else if (t.type === 'Bug') console.log('BYPASS ' + k + ' bug a Bug is not gated');
     else if (hit) console.log('CORE ' + k + ' ' + hit);
@@ -80,6 +83,8 @@ if (a[0] === 'release' && a[1] === 'core-check') {
     console.log(r ? 'SPEC ok ' + k + ' ' + r : 'NO-SPEC ' + k);
   }
   process.exit(missing);
+} else if (a[0] === 'release' && a[1] === 'bucket-check') {
+  for (const k of a.slice(a.indexOf('--mirror') + 2)) console.log('IN ' + k + ' current=v1.1.3 via=mirror');
 } else if (a[0] === 'mirror') {
   if (process.env.MIRROR_LOG) fs.appendFileSync(process.env.MIRROR_LOG, 'mirror ' + a.join(' ') + ' project=' + process.env.JIRA_PROJECT_KEY + '\n');
   const src = process.env.MIRROR_FRESH;
@@ -90,6 +95,7 @@ if (a[0] === 'release' && a[1] === 'core-check') {
 }
 EOF
 export GEN_BRIEFS_JIRA_CLI="$WORK/stub-jira/index.js" CG_STUB_SIGNED="$WORK/cg-signed" CG_STUB_UNKNOWN="$WORK/cg-unknown"; mkdir -p "$CG_STUB_UNKNOWN"
+export CG_STUB_NEEDS="$WORK/cg-needs" CG_STUB_GOLDEN="$HERE/../../jira/src/release/fixtures/bypass-needs-spec.line"; mkdir -p "$CG_STUB_NEEDS"
 # brief-lint.sh (run on every generated brief, and by the launcher) asks the same stand-in over the same fixture mirror
 export BRIEF_LINT_JIRA_CLI="$GEN_BRIEFS_JIRA_CLI" BRIEF_LINT_MIRROR="$GEN_BRIEFS_MIRROR"
 
@@ -479,11 +485,73 @@ has "Writes note retains stay-off paths" "$wr_note" "Stay off scripts/lib/"
 has "Writes note retains prior art paths" "$wr_note" "docs/prior.md"
 has "the original prior art field stays" "$wr_brief" "> **Prior art:** HIMMEL-9000: docs/prior.md"
 has "the original scope field stays" "$wr_brief" "> **Scope / do not:** your Writes: scripts/wr-context/read.sh. Stay off scripts/lib/. completes-ticket: no"
-has "the scope line says a write onto another holder's file is denied" "$wr_brief" "A write onto a file another holder has is denied, and the deny says how to ask your chief"
+lacks "the scope line no longer says a write onto another holder's file is denied" "$wr_brief" "A write onto a file another holder has is denied"
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
 has "the scope line says a free file outside Writes is claimed and recorded" "$wr_brief" 'a write onto a free file outside your Writes is claimed, recorded and named on your PR'"'"'s `outside-writes:` line for review'
 lacks "the scope line no longer says writes are confined" "$wr_brief" "writes confined to"
 lacks "the scope line no longer says stay off the other workers' files" "$wr_brief" "Stay off those"
+
+cat > "$WORK/ov-gh.sh" <<'EOF'
+#!/usr/bin/env bash
+[ "$1 $2" = "pr list" ] && [ -n "${OV_FIXTURE:-}" ] && { cat "$OV_FIXTURE"; exit 0; }
+exit 1
+EOF
+chmod +x "$WORK/ov-gh.sh"
+cat > "$WORK/ov-prs.json" <<'EOF'
+[{"number":4242,"title":"outside fix","headRefName":"contrib/x","isCrossRepository":true,"files":[{"path":"scripts/wr/a.sh"},{"path":"docs/other.md"}]},
+ {"number":4243,"title":"our fix","headRefName":"fix/himmel-1-y","isCrossRepository":false,"files":[{"path":"scripts/unrelated/z.sh"}]},
+ {"number":4244,"title":"the worker's own PR","headRefName":"fix/himmel-9001-plain-fix","isCrossRepository":false,"files":[{"path":"scripts/wr/a.sh"}]}]
+EOF
+cat > "$WORK/ov-none.json" <<'EOF'
+[{"number":4243,"title":"our fix","headRefName":"fix/himmel-1-y","isCrossRepository":false,"files":[{"path":"scripts/unrelated/z.sh"}]}]
+EOF
+ovgen() {
+    OV_FIXTURE="$2" GEN_BRIEFS_GH_CMD="$1" python3 "$SUT" "$3" --base 4ccb59d --chief BZ --bucket "$4" --repo "$REPO" --handover-root /h --no-worktree >"$WORK/ov.out" 2>&1; OV_RC=$?
+}
+ovgen "$WORK/ov-gh.sh" "$WORK/ov-prs.json" "$WORK/wr.json" "$WORK/ov1"
+[ "$OV_RC" = 0 ] && pass "a wave whose Writes overlap an open PR generates (rc 0)" || fail "overlap generation rc=$OV_RC: $(cat "$WORK/ov.out")"
+OV1="$(cat "$WORK"/ov1/*-N901-plain-fix-*.md 2>/dev/null)"
+has "the brief names the open PR that changes a Writes file" "$OV1" '> **Overlaps:** PR #4242'
+has "an outside PR is marked as an outside contributor's" "$OV1" 'PR #4242 (outside contributor) also changes scripts/wr/a.sh'
+has "the brief says to merge forward if they land first" "$OV1" 'Merge forward if they land first'
+lacks "the Overlaps line names no PR that shares no Writes file" "$OV1" '#4243'
+lacks "the Overlaps line names none of the worker's own PR" "$OV1" '#4244'
+lacks "the brief no longer says a write onto a held file is denied" "$OV1" 'A write onto a file another holder has is denied'
+has "the outside-writes sentence stays" "$OV1" "named on your PR's \`outside-writes:\` line for review"
+bash "$HERE/brief-lint.sh" "$WORK"/ov1/*-N901-plain-fix-*.md 2>"$WORK/ovlint.err"; rc=$?
+[ "$rc" = 0 ] && pass "a brief with an Overlaps line passes brief-lint.sh" || fail "overlaps brief-lint rc=$rc: $(cat "$WORK/ovlint.err")"
+[ "$(printf '%s\n' "$OV1" | grep -c '^> \*\*Writes:\*\* ')" = 1 ] && pass "the Overlaps line adds no second Writes line" || fail "Writes line count changed"
+ovgen "$WORK/ov-gh.sh" "" "$WORK/wr.json" "$WORK/ov2"
+[ "$OV_RC" = 0 ] && pass "a failing gh does not stop generation (rc 0)" || fail "failing-gh generation rc=$OV_RC: $(cat "$WORK/ov.out")"
+has "a failing gh gives unknown (gh failed)" "$(cat "$WORK"/ov2/*-N901-plain-fix-*.md 2>/dev/null)" 'Overlaps:** unknown (gh failed)'
+ovgen "$WORK/ov-gh.sh" "$WORK/ov-none.json" "$WORK/wr.json" "$WORK/ov3"
+[ "$OV_RC" = 0 ] && pass "a wave with no overlap generates (rc 0)" || fail "no-overlap generation rc=$OV_RC: $(cat "$WORK/ov.out")"
+has "no overlap says none seen at launch" "$(cat "$WORK"/ov3/*-N901-plain-fix-*.md 2>/dev/null)" 'Overlaps:** none seen at launch'
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["writes"]="scripts/x/"; l[1]["writes"]="scripts/x/y.sh scripts/hooks/h.sh"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ov-wave.json"
+cat > "$WORK/ov-dir.json" <<'EOF'
+[{"number":4250,"title":"t","headRefName":"fix/a","isCrossRepository":false,"files":[{"path":"scripts/x/deep/q.sh"}]}]
+EOF
+ovgen "$WORK/ov-gh.sh" "$WORK/ov-dir.json" "$WORK/ov-wave.json" "$WORK/ov4"
+[ "$OV_RC" = 0 ] && pass "a two-worker wave with a directory overlap generates (rc 0)" || fail "wave generation rc=$OV_RC: $(cat "$WORK/ov.out")"
+OV4A="$(cat "$WORK"/ov4/*-N901-plain-fix-*.md 2>/dev/null)"
+OV4B="$(cat "$WORK"/ov4/*-N902-hook-fix-*.md 2>/dev/null)"
+has "a Writes directory matches a PR file under it" "$OV4A" 'PR #4250 also changes scripts/x/deep/q.sh'
+has "a worker names the sibling that also writes under its directory" "$OV4A" 'worker N902 also writes scripts/x/y.sh'
+has "the sibling names the first worker back" "$OV4B" 'worker N901 also writes scripts/x/y.sh'
+lacks "the sibling with no PR overlap names no PR" "$OV4B" 'PR #4250'
+ovgen "$WORK/ov-gh.sh" "" "$WORK/ov-wave.json" "$WORK/ov5"
+[ "$OV_RC" = 0 ] && pass "a wave with a failing gh generates (rc 0)" || fail "wave failing-gh generation rc=$OV_RC: $(cat "$WORK/ov.out")"
+OV5A="$(cat "$WORK"/ov5/*-N901-plain-fix-*.md 2>/dev/null)"
+has "a failing gh still says unknown for the PRs" "$OV5A" 'Overlaps:** unknown (gh failed)'
+has "a failing gh still names the wave sibling" "$OV5A" 'worker N902 also writes scripts/x/y.sh'
+cat > "$WORK/ov-fork.json" <<'EOF'
+[{"number":4260,"title":"fork","headRefName":"fix/himmel-9001-plain-fix","isCrossRepository":true,"files":[{"path":"scripts/wr/a.sh"}]}]
+EOF
+ovgen "$WORK/ov-gh.sh" "$WORK/ov-fork.json" "$WORK/wr.json" "$WORK/ov6"
+has "a fork PR on the same branch name still counts as an overlap" "$(cat "$WORK"/ov6/*-N901-plain-fix-*.md 2>/dev/null)" 'PR #4260 (outside contributor) also changes scripts/wr/a.sh'
+has "the brief carries the Conflicts resolved duty" "$OV1" '## Conflicts resolved'
+has "the duty says to merge forward and never rebase" "$OV1" 'git merge origin/main'
+lacks "the duty asks for no hand-written Results bullet" "$OV1" 'Append the same lines as one Results bullet'
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0].pop("writes",None); json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/wr-empty.json"
 python3 "$SUT" "$WORK/wr-empty.json" --base 4ccb59d --chief BZ --bucket "$WORK/wr-empty" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/wr-empty.err"; wr_rc=$?
 [ "$wr_rc" = 1 ] && grep -q "Writes" "$WORK/wr-empty.err" && ! find "$WORK/wr-empty" -name '*.md' 2>/dev/null | grep -q . && pass "missing writes is refused by the brief-lint run, never inferred holds, and no brief is kept" || fail "missing writes rc=$wr_rc: $(cat "$WORK/wr-empty.err")"
@@ -823,6 +891,9 @@ EOF
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-ab.json"
 rc=0; python3 "$SUT" "$WORK/rm-ab.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmb-ab" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-ab.err" || rc=$?
 [ "$rc" = 1 ] && grep -q 'ab_arm' "$WORK/rm-ab.err" && [ ! -e "$WORK/rmb-ab/launch-N910.sh" ] && pass "an rm worker with an ab_arm is refused before anything is written (HIMMEL-7811)" || fail "rm ab_arm rc=$rc"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["release"]="r"*120; l[0]["state_dir"]=sys.argv[3]+"/"+"r"*120; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-long.json" "$WORK/hr/tester/himmel/release"
+rc=0; python3 "$SUT" "$WORK/rm-long.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmb-long" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-long.err" || rc=$?
+[ "$rc" = 1 ] && grep -q '128' "$WORK/rm-long.err" && [ ! -e "$WORK/rmb-long/launch-N910.sh" ] && pass "9537 e: an rm worker whose name is over the bus limit is refused naming 128, nothing written" || fail "9537 e: rm over-limit rc=$rc: $(cat "$WORK/rm-long.err")"
 rmout="$(python3 "$SUT" "$WORK/rm.json" --base 4ccb59d --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/rmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/rmf.json" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "an rm worker generates (rc 0)" || fail "rm rc=$rc: $rmout"
 RMD="$WORK/rmb/HIMMEL-9010-N910-rm-R1-2026-10-08.md"
@@ -906,7 +977,8 @@ has "G1 names its text and backticked path" "$GR" '> - G1 add the RED row to the
 has "G2 lists every path it names" "$GR" '> - G2 mirror the change in the twin: `scripts/a.sh`, `scripts/b.sh`'
 has "an off-grant ruling gets a needs-rebrief FINDING" "$GR" "FINDING needs-rebrief <Gn>"
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
-has "the chief runs holds.py grant with the ruling and the worker acts on the ruling" "$GR" 'Your chief runs `holds.py grant` with the ruling, and you act on the ruling once you have it.'
+lacks "the grants block no longer says the chief runs holds.py grant" "$GR" 'Your chief runs `holds.py grant`'
+has "the chief records the ruling and the worker acts on it" "$GR" 'Your chief records the ruling, and you act on it once you have it.'
 bash "$HERE/brief-lint.sh" "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/grlint.err"; rc=$?
 [ "$rc" = 0 ] && pass "the grants brief passes brief-lint.sh" || fail "grants brief brief-lint rc=$rc: $(cat "$WORK/grlint.err")"
 lacks "a worker without grants carries no grants block" "$ct_no" "Pre-granted follow-ups"
@@ -1576,6 +1648,31 @@ cgo="$(cgrun design)"; rc=$?
 has "the design leg's brief carries a Core gate bypass=design line" "$(cat "$(cg_brief design)" 2>/dev/null)" "> **Core gate:** HIMMEL-9413 bypass=design"
 [ "$(cg_rows design HIMMEL-9413)" = 1 ] && [ "$(cg_field design HIMMEL-9413 outcome)" = bypass ] && [ "$(cg_field design HIMMEL-9413 bypass)" = design ] && pass "the design leg appends one bypass row of kind design" || fail "design row: $(cat "$(cg_log design)" 2>/dev/null)"
 
+NK=HIMMEL-9640
+cg_mirror HIMMEL-9640 Task Medium '[]'
+touch "$CG_STUB_NEEDS/HIMMEL-9640"
+cg_workers needs HIMMEL-9640 "$CORE_WRITES" ''
+cgo="$(cgrun needs)"; rc=$?
+[ "$rc" = 1 ] && has "a BYPASS-NEEDS-SPEC key is refused naming the missing record" "$cgo" "no spec-review record for HIMMEL-9640" || fail "a BYPASS-NEEDS-SPEC key is refused naming the missing record (rc=$rc): $cgo"
+has "the BYPASS-NEEDS-SPEC refusal says the bypass waives the signature, never the spec" "$cgo" "waives the signature, never the spec"
+lacks "the BYPASS-NEEDS-SPEC refusal is not a CORE-CHECK-FAILED" "$cgo" "CORE-CHECK-FAILED"
+[ -z "$(cg_brief needs)" ] && [ ! -e "$CG/b-needs/launch-N941.sh" ] && pass "a BYPASS-NEEDS-SPEC worker gets no brief and no launcher" || fail "a BYPASS-NEEDS-SPEC worker was written"
+[ "$(cg_rows needs $NK)" = 1 ] && [ "$(cg_field needs $NK outcome)" = refused ] && [ "$(cg_field needs $NK bypass)" = operator ] && pass "the refusal appends one refused row with bypass set" || fail "needs row: $(cat "$(cg_log needs)" 2>/dev/null)"
+[ "$(python3 -I -c 'import json, sys; print(*[len(json.loads(l)) for l in open(sys.argv[1])])' "$(cg_log needs)" 2>/dev/null)" = 9 ] && pass "the refused row has exactly the nine keys" || fail "needs row keys: $(cat "$(cg_log needs)" 2>/dev/null)"
+cgo="$(cgrun needs)"; rc=$?
+[ "$rc" = 1 ] && [ "$(cg_rows needs $NK)" = 1 ] && pass "a re-run of the BYPASS-NEEDS-SPEC refusal appends no second row" || fail "needs re-run rows=$(cg_rows needs $NK) rc=$rc"
+cg_mirror HIMMEL-9640 Task Medium '["core"]'
+cg_workers needsdesign HIMMEL-9640 "docs/internals/core-gate-fixture.md" ''
+cgo="$(cgrun needsdesign)"; rc=$?
+[ "$rc" = 0 ] && [ "$(cg_field needsdesign $NK bypass)" = design ] && pass "a docs-only design leg for a key with no spec is still allowed" || fail "needs design rc=$rc: $cgo $(cat "$(cg_log needsdesign)" 2>/dev/null)"
+export CG_SPECS_DIR="$CG/specs/needs"; mkdir -p "$CG_SPECS_DIR"
+for f in HIMMEL-9640-spec.md HIMMEL-9640-plan.md HIMMEL-9640-critic-spec-r1.md; do printf '# fixture\n' > "$CG_SPECS_DIR/$f"; done
+cgo_with="$(cgrun needs)"; rc_with=$?
+rm -f "$CG_SPECS_DIR/"*
+cgo_without="$(cgrun needs)"; rc_without=$?
+[ "$rc_with" = "$rc_without" ] && [ "$cgo_with" = "$cgo_without" ] && [ "$rc_with" = 1 ] && pass "gen-briefs decides nothing from spec files: the same answer with the fixture specs removed" || fail "specs changed the answer: rc $rc_with vs $rc_without: [$cgo_with] vs [$cgo_without]"
+rm -f "$CG_STUB_NEEDS/HIMMEL-9640"
+
 # an absolute Writes path under the handover root is a relative non-core stand-in, never a --paths argument (the CLI refuses absolute ones)
 cg_mirror HIMMEL-9440 Task Medium '["core"]'
 cg_workers absdesign HIMMEL-9440 "$WORK/handovers/specs/core-gate-fixture.md" ''
@@ -1718,13 +1815,29 @@ mk98 'w["keys"]=["HIMMEL-9801"]' "$WORK/b98ok.json"
 MIRROR_LOG="$WORK/mirror98.log" gen98 "$WORK/b98ok.json" "$WORK/bb98ok"; rc=$?
 { [ "$rc" = 0 ] && [ ! -s "$WORK/mirror98.log" ]; } && pass "9598 b: a ticket whose mirror row is complete runs no refresh" || fail "9598 b: rc=$rc, refresh log [$(cat "$WORK/mirror98.log")]"
 
-mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*int(sys.argv[4])' "$WORK/c101.json" 101
-gen98 "$WORK/c101.json" "$WORK/bc101"; rc=$?
-[ "$rc" = 1 ] && has "9598 c: a 129-character session name is refused naming the 128 limit" "$(cat "$WORK/g98.err")" "128" || fail "9598 c: over-limit rc=$rc"
-! ls "$WORK/bc101"/* >/dev/null 2>&1 && pass "9598 c: nothing is written for it" || fail "9598 c: wrote files for an over-limit name"
-mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*int(sys.argv[4])' "$WORK/c100.json" 100
-gen98 "$WORK/c100.json" "$WORK/bc100"; rc=$?
-[ "$rc" = 0 ] && pass "9598 c: a 128-character session name generates" || fail "9598 c: at-limit rc=$rc: $(cat "$WORK/g98.err")"
+mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="-".join(["wordy"]*30)' "$WORK/c101.json"
+gen98 "$WORK/c101.json" "$WORK/bc101" --manifest "$WORK/c101-fleet.json"; rc=$?
+[ "$rc" = 0 ] && pass "9537 a: a slug too long for the bus is trimmed, not refused" || fail "9537 a: rc=$rc: $(cat "$WORK/g98.err")"
+C101="$(find "$WORK/bc101" -name '*-N901-*.md' -print -quit 2>/dev/null)"; C101="$(basename "$C101" .md)"
+[ -n "$C101" ] && [ "${#C101}" -le 120 ] && pass "9537 a: the trimmed name and its -RESUME form fit the bus limit (${#C101} + 8 of 128)" || fail "9537 a: name [$C101] is ${#C101} characters"
+case "$C101" in HIMMEL-9801-N901-wordy-*wordy-2026-10-08) pass "9537 a: the key, label and date are intact and the slug ends on a whole word";; *) fail "9537 a: name [$C101] lost its key, label, date or cut a word";; esac
+has "9537 a: the trim is printed" "$(cat "$WORK/g98.out")" "trimmed"
+has "9537 a: the printed manifest add line names the trimmed doc" "$(cat "$WORK/g98.out")" "$C101.md"
+has "9537 a: the launcher names the trimmed doc" "$(cat "$WORK/bc101/launch-N901.sh" 2>/dev/null)" "$C101.md"
+has "9537 a: the branch is the one given" "$(cat "$WORK/bc101/$C101.md" 2>/dev/null)" "fix/himmel-9001-plain-fix"
+mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="s"*200' "$WORK/c102.json"
+gen98 "$WORK/c102.json" "$WORK/bc102"; rc=$?
+C102="$(basename "$(find "$WORK/bc102" -name '*-N901-*.md' -print -quit 2>/dev/null)" .md)"
+[ "$rc" = 0 ] && [ "${#C102}" -eq 120 ] && pass "9537 b: a slug with no word boundary is cut to exactly the room left (120 characters)" || fail "9537 b: rc=$rc name [$C102]"
+BUSMAX_GB="$(sed -n 's/^BUS_NAME_MAX = \([0-9]*\)$/\1/p' "$SUT")"
+BUSMAX_STORE="$(sed -n 's/^export const SESSION_NAME = .*{0,\([0-9]*\)}\$\/;$/\1/p' "$HERE/../../../marketplace/plugins/himmel-bus/lib/store.mjs" | awk '{print $1+1}')"
+[ -n "$BUSMAX_GB" ] && [ "$BUSMAX_GB" = "$BUSMAX_STORE" ] && pass "9537 d: BUS_NAME_MAX is the bus validator's limit ($BUSMAX_STORE)" || fail "9537 d: BUS_NAME_MAX [$BUSMAX_GB] != store.mjs [$BUSMAX_STORE]"
+gen98 "$WORK/a98.json" "$WORK/bc104" --manifest "$WORK/c104-fleet.json"; rc=$?
+C104="$WORK/bc104/HIMMEL-9801-N901-plain-fix-2026-10-08.md"
+{ [ "$rc" = 0 ] && [ -f "$C104" ]; } && pass "9537 c: a short slug keeps its name byte for byte" || fail "9537 c: rc=$rc"
+lacks "9537 c: a short slug prints no trim" "$(cat "$WORK/g98.out")" "trimmed"
+has "9537 c: the printed manifest add line matches the doc name" "$(cat "$WORK/g98.out")" "$C104"
+has "9537 c: the launcher names the same doc" "$(cat "$WORK/bc104/launch-N901.sh" 2>/dev/null)" "$C104"
 
 OPUS98='w["keys"]=["HIMMEL-9801"]; w["model"]="claude-opus-5-5"; w["tier"]={"category":"design","reason":"multi-step design: x"}'
 mk98 "$OPUS98; w[\"context_1m\"]=\"decision 844: the operator wants the 1M window on this ticket\"" "$WORK/d98.json"

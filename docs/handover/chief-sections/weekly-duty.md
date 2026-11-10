@@ -11,14 +11,21 @@ does not replace this.
   or updated more than 8 days ago). A stale `cadence` is a skipped duty; a stale
   `restructure seen` beside a fresh `cadence` only means the last detector run had
   nothing to file. A chief on a quiet board still runs the duty once a week.
-- **Run the detector first, then the cadence**, from the primary checkout, each
-  as one bare command:
+- **Run the detector first, then the cadence, then the conflicts line**, from the
+  primary checkout, each as one bare command:
   `bash scripts/cr/class-recurrence.sh --days 14` then
-  `bash scripts/cr/standards-cadence.sh --since 7d`.
+  `bash scripts/cr/standards-cadence.sh --since 7d` then
+  `python3 -I scripts/eval/conflicts/conflicts.py week --days 7`.
   `class-recurrence.sh` files or folds `restructure-class-*` tickets;
-  `standards-cadence.sh` writes `<handover-root>/cr-tune/proposals-YYYY-MM-DD.md`.
-- **Record the result** as one `LIVE` bullet: the classes filed or folded and the
-  proposals file path. A proposal is a request, never a change: a CodeRabbit or
+  `standards-cadence.sh` writes `<handover-root>/cr-tune/proposals-YYYY-MM-DD.md`;
+  `conflicts.py week` prints two lines (the count line and `harm:`), computed from
+  the conflicts ledger, git and gh, never typed by hand.
+- **Record the result** as one `LIVE` bullet: the classes filed or folded, the
+  proposals file path, and the two conflicts lines verbatim. At the second weekly
+  conflicts line after S4 (the merge-on-green writer) merged, run the design's
+  14-day review (the no-file-holds design's Revisit rule, in the state repo bucket
+  under `specs/designs/`).
+  A proposal is a request, never a change: a CodeRabbit or
   critic rule goes to the operator, every other target to a chief GO with an
   opus judge.
 - **Re-read the board** afterwards: `cadence` must read fresh, since the cadence

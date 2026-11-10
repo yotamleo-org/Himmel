@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { request } from '../client.js';
+import { browseLine } from '../browse-line.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import type { JiraTransition } from '../types.js';
 import { readAdmissions } from './admissions-ledger.js';
@@ -124,6 +125,8 @@ export function registerTransition(program: Command): void {
         process.exit(1);
       }
       console.log(`${key} → ${result.name}`);
+      const browse = browseLine(key);
+      if (browse) console.log(browse);
       if (result.unstamped) {
         console.error(`FAIL ${key} closed with no fixVersion: ${result.unstamped}; place it with version-defer --to or edit --fix-version`);
         process.exitCode = 3;

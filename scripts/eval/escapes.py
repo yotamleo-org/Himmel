@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/escapes.py - bugs found after merge, per critic and per judge (HIMMEL-7517).
+"""scripts/eval/escapes.py - bugs found after merge, per critic and per judge.
 
 A merged PR has escaped review when a later signal says it shipped a bug:
 

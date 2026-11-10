@@ -165,7 +165,7 @@ export CLAUDE_CODE_SUBAGENT_MODEL=deepseek-flash
 export CLAUDE_CODE_AUTO_COMPACT_WINDOW="$CONTEXT_WINDOW"
 export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$CONTEXT_WINDOW"
 export CLAUDE_CODE_EFFORT_LEVEL=max
-# ponytail: gateway lacks safeguard results, remove after HIMMEL-4086 verifies support.
+# The gateway lacks safeguard results; remove this once it passes them through.
 export CLAUDE_CODE_AUTO_MODE_SERVER=0
 export CLAUDE_CONFIG_DIR="$CONFIG_DIR"
 # Launching session's identity: a deepseek session started from another Claude

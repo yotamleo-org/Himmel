@@ -1,0 +1,3 @@
+ARMED      HIMMEL-WeeklyRollup (00 06 * * 1)
+  run log    ~/.claude/rollup-cadence/rollup-cadence.log (last write: 2026-11-09 06:00)
+             last line: [exit rc=0]

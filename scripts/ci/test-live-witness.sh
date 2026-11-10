@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016  # wrapped command bodies are single-quoted on purpose: their $vars must stay literal
+# scripts/ci/test-live-witness.sh — scripts/ci/live-witness.sh keeps a wrapped
+# command off the station's live state and says which path it wrote.
+#
+# Platform guard: bash-only, like every suite in this family; Linux/macOS.
+#
+# Usage: bash scripts/ci/test-live-witness.sh
+#
+# Exit codes: 0 — all cases passed; 1 — at least one failed.
+set -uo pipefail
+
+LW="$(cd "$(dirname "$0")" && pwd)/live-witness.sh"
+failures=0
+pass() { printf '  PASS  %s\n' "$1"; }
+fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
+grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
+
+sb=$(mktemp -d "${TMPDIR:-/tmp}/lw-test.XXXXXX") || { echo "FAIL: mktemp"; exit 1; }
+trap 'rm -rf "$sb"' EXIT
+export HOME="$sb/outer-home"
+mkdir -p "$HOME"
+: > "$sb/exempt-none"
+export SUITE_LIVE_EXEMPT="$sb/exempt-none"
+unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME LIVE_WITNESS_ACCOUNT_HOME
+
+echo "== W1: a write under the decoy HOME exits 86 and names the label and the path =="
+out=$(bash "$LW" run --label x -- bash -c 'mkdir -p "$HOME/.claude/p"' 2>&1)
+rc=$?
+if [ "$rc" -eq 86 ]; then pass "W1: exit 86"; else fail "W1: expected 86, got $rc; out: $out"; fi
+if grepq "$out" -E '\[LIVE-STATE\] x — .*\.claude/p'; then pass "W1: the line names x and .claude/p"; else fail "W1: no [LIVE-STATE] line naming x and .claude/p; out: $out"; fi
+if grepq "$out" -x 'live-witness: on, x, 1 hits, cmd rc=0'; then pass "W1: the summary line"; else fail "W1: no summary line; out: $out"; fi
+if [ ! -e "$HOME/.claude" ]; then pass "W1: the outer HOME is untouched"; else fail "W1: the command wrote the outer HOME"; fi
+
+echo "== W2: a write under the command's own temp dir passes =="
+out=$(bash "$LW" run --label x -- bash -c 'd=$(mktemp -d "${TMPDIR:-/tmp}/lw-own.XXXXXX") && mkdir -p "$d/.claude/p" && rm -rf "$d"' 2>&1)
+rc=$?
+if [ "$rc" -eq 0 ]; then pass "W2: exit 0"; else fail "W2: expected 0, got $rc; out: $out"; fi
+if grepq "$out" -x 'live-witness: on, x, 0 hits, cmd rc=0'; then pass "W2: the summary line"; else fail "W2: no summary line; out: $out"; fi
+if grepq "$out" -F '[LIVE-STATE]'; then fail "W2: a clean command got a [LIVE-STATE] line; out: $out"; else pass "W2: no [LIVE-STATE] line"; fi
+
+echo "== W3: the command's rc passes through =="
+out=$(bash "$LW" run --label x -- bash -c 'exit 3' 2>&1)
+rc=$?
+if [ "$rc" -eq 3 ]; then pass "W3: exit 3"; else fail "W3: expected 3, got $rc; out: $out"; fi
+if grepq "$out" -x 'live-witness: on, x, 0 hits, cmd rc=3'; then pass "W3: the summary keeps rc=3"; else fail "W3: no summary line; out: $out"; fi
+
+echo "== W4: a hit wins over the command's rc =="
+out=$(bash "$LW" run --label x -- bash -c 'mkdir -p "$HOME/.claude/p"; exit 3' 2>&1)
+rc=$?
+if [ "$rc" -eq 86 ]; then pass "W4: exit 86"; else fail "W4: expected 86, got $rc; out: $out"; fi
+if grepq "$out" -x 'live-witness: on, x, 1 hits, cmd rc=3'; then pass "W4: the summary keeps rc=3"; else fail "W4: no summary line with rc=3; out: $out"; fi
+
+echo "== W5: live_witness_reset refuses a home outside its lane root =="
+mkdir -p "$sb/lane" "$sb/elsewhere/home" "$sb/elsewhere/hroot"
+: > "$sb/elsewhere/home/keep"
+(
+  # shellcheck source=live-witness.sh
+  . "$LW"
+  live_witness_reset "$sb/lane" "$sb/elsewhere/home" "$sb/elsewhere/hroot"
+)
+rc=$?
+if [ "$rc" -eq 2 ]; then pass "W5: returns 2"; else fail "W5: expected 2, got $rc"; fi
+if [ -e "$sb/elsewhere/home/keep" ]; then pass "W5: removes nothing"; else fail "W5: removed a file outside the lane root"; fi
+
+mkdir -p "$sb/lane/inner"
+(
+  # shellcheck source=live-witness.sh
+  . "$LW"
+  live_witness_reset "$sb/lane" "$sb/lane/../elsewhere/home" "$sb/lane/inner/hroot"
+)
+rc=$?
+if [ "$rc" -eq 2 ]; then pass "W5: a home that climbs out of the lane through .. returns 2"; else fail "W5: expected 2 for a .. path, got $rc"; fi
+if [ -e "$sb/elsewhere/home/keep" ]; then pass "W5: the .. path removed nothing"; else fail "W5: the .. path removed a file outside the lane root"; fi
+
+echo "== W6: an account-home write exits 86 and no exempt line makes it a WARN =="
+mkdir -p "$sb/acct"
+printf 'x HIMMEL-1 measured\n' > "$sb/exempt-x"
+out=$(env HIMMEL_TEST_FIXTURE=1 LIVE_WITNESS_ACCOUNT_HOME="$sb/acct" SUITE_LIVE_EXEMPT="$sb/exempt-x" \
+  bash "$LW" run --label x -- bash -c 'mkdir -p "'"$sb"'/acct/.himmel/state/api-credit" && : > "'"$sb"'/acct/.himmel/state/api-credit/x"' 2>&1)
+rc=$?
+if [ "$rc" -eq 86 ]; then pass "W6: exit 86"; else fail "W6: expected 86, got $rc; out: $out"; fi
+if grepq "$out" -E '\[LIVE-STATE\] x — .*api-credit/x.*account home'; then pass "W6: the line names the account-home path"; else fail "W6: no account-home line; out: $out"; fi
+if grepq "$out" -F 'WARN'; then fail "W6: the account-home hit was a WARN; out: $out"; else pass "W6: never a WARN"; fi
+if grepq "$out" -x 'live-witness: on, x, 1 hits, cmd rc=0'; then pass "W6: the summary says 1 hits"; else fail "W6: no 1-hit summary; out: $out"; fi
+
+echo "== W7: the XDG route lands in the decoy, never the host's directory =="
+mkdir -p "$sb/xdg"
+out=$(env XDG_STATE_HOME="$sb/xdg" bash "$LW" run --label x -- bash -c 'd="${XDG_STATE_HOME:-$HOME/.local/state}/himmel"; mkdir -p "$d" && : > "$d/x"' 2>&1)
+rc=$?
+if [ "$rc" -eq 86 ]; then pass "W7: exit 86"; else fail "W7: expected 86, got $rc; out: $out"; fi
+if grepq "$out" -E '\[LIVE-STATE\] x — .*\.local/state/himmel/x'; then pass "W7: the line names .local/state/himmel/x"; else fail "W7: no line naming .local/state/himmel/x; out: $out"; fi
+if [ -z "$(ls -A "$sb/xdg")" ]; then pass "W7: the host XDG_STATE_HOME stays empty"; else fail "W7: the command wrote the host XDG_STATE_HOME: $(ls -A "$sb/xdg")"; fi
+
+echo "== W8: an existing .claude.json does not make an absent .claude look removed =="
+mkdir -p "$sb/acct8"
+printf '{}\n' > "$sb/acct8/.claude.json"
+out=$(env HIMMEL_TEST_FIXTURE=1 LIVE_WITNESS_ACCOUNT_HOME="$sb/acct8" bash "$LW" run --label x -- true 2>&1)
+rc=$?
+if [ "$rc" -eq 0 ]; then pass "W8: a clean command exits 0"; else fail "W8: expected 0, got $rc; out: $out"; fi
+if grepq "$out" -F '[LIVE-STATE]'; then fail "W8: a clean command got a [LIVE-STATE] line; out: $out"; else pass "W8: no [LIVE-STATE] line"; fi
+
+echo "== W9: the exempt loader has no all-suites form =="
+printf '* HIMMEL-1 measurement\n' > "$sb/exempt-star"
+out=$(env SUITE_LIVE_EXEMPT="$sb/exempt-star" bash "$LW" run --label x -- true 2>&1)
+rc=$?
+if [ "$rc" -eq 2 ]; then pass "W9: a '*' glob line exits 2"; else fail "W9: expected 2, got $rc; out: $out"; fi
+for _g in '*[!/]' '*[^/]' '*[!x]' '*/test-[a-z].sh'; do
+  printf '%s HIMMEL-1 every suite\n' "$_g" > "$sb/exempt-bracket"
+  out=$(env SUITE_LIVE_EXEMPT="$sb/exempt-bracket" bash "$LW" run --label x -- true 2>&1)
+  rc=$?
+  if [ "$rc" -eq 2 ]; then pass "W9: the bracket glob $_g exits 2"; else fail "W9: expected 2 for $_g, got $rc; out: $out"; fi
+done
+
+echo "== W10: an exempt glob's last part is plain file-name characters only =="
+w10_glob() {
+  printf '%s HIMMEL-1 reason\n' "$2" > "$sb/exempt-last"
+  out=$(env LC_ALL="$1" SUITE_LIVE_EXEMPT="$sb/exempt-last" bash "$LW" run --label x -- true 2>&1)
+  rc=$?
+  if [ "$rc" -eq 2 ]; then pass "W10: the glob $2 exits 2 ($1)"; else fail "W10: expected 2 for $2 ($1), got $rc; out: $out"; fi
+  if grepq "$out" -F "names a family, not one suite file: $2 HIMMEL-1"; then pass "W10: the message names the $2 line"; else fail "W10: no message naming the $2 line; out: $out"; fi
+}
+w10_key() {
+  printf '*/scripts/foo/test-x.sh HIMMEL-1² reason\n' > "$sb/exempt-last"
+  out=$(env LC_ALL="$1" SUITE_LIVE_EXEMPT="$sb/exempt-last" bash "$LW" run --label x -- true 2>&1)
+  rc=$?
+  if [ "$rc" -eq 2 ]; then pass "W10: a key with a non-ASCII digit exits 2 ($1)"; else fail "W10: expected 2 for HIMMEL-1² ($1), got $rc; out: $out"; fi
+}
+w10_glob C '*/!(x)'
+w10_glob C '*/te+st.sh'
+w10_glob C '*/té.sh'
+w10_key C
+if LC_ALL=en_US.UTF-8 bash -c 're="^[0-9]$"; [[ "²" =~ $re ]]' 2>/dev/null; then
+  w10_glob en_US.UTF-8 '*/té.sh'
+  w10_key en_US.UTF-8
+else
+  echo "  NOTE  W10: en_US.UTF-8 does not widen [0-9] on this host, so the locale rows are not run"
+fi
+printf '*/scripts/foo/test-x.sh HIMMEL-1 reason\n' > "$sb/exempt-last"
+out=$(env SUITE_LIVE_EXEMPT="$sb/exempt-last" bash "$LW" run --label x -- true 2>&1)
+rc=$?
+if [ "$rc" -eq 0 ]; then pass "W10: a one-suite glob still loads"; else fail "W10: expected 0 for */scripts/foo/test-x.sh, got $rc; out: $out"; fi
+
+echo
+if [ "$failures" -eq 0 ]; then
+  echo "OK: all cases passed"
+  exit 0
+fi
+echo "FAIL: $failures case(s) failed"
+exit 1

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Unit tests for the thin-body scrape backend chain + Firecrawl ledger
-(HIMMEL-4335). Hermetic: urllib.request.urlopen is stubbed, the ledger path
+"""Unit tests for the thin-body scrape backend chain + Firecrawl ledger.
+Hermetic: urllib.request.urlopen is stubbed, the ledger path
 is always a scratch file (HIMMEL_FIRECRAWL_LEDGER) — no network, no key, no
 credits, never the real ledger.
 
@@ -325,7 +325,7 @@ finally:
     if saved_switch is not None:
         os.environ["HIMMEL_MEDIA_COOKIES"] = saved_switch
 
-check("reddit is eligible for the cookieless backend chain (HIMMEL-4709)",
+check("reddit is eligible for the cookieless backend chain",
       mod.firecrawl_eligible("https://www.reddit.com/r/a/comments/1/t") and mod.firecrawl_eligible("https://redd.it/abc"))
 check("x / instagram / youtube stay with their own enrichers",
       not any(mod.firecrawl_eligible(u) for u in ("https://x.com/a/status/1", "https://www.instagram.com/p/x/", "https://www.youtube.com/watch?v=x")))

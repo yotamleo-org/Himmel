@@ -66,7 +66,7 @@ test('T1.3 second bind and re-register are refused', async t => {
   assert.deepEqual(await identity.resolveIdentity(root, { proc, pid: 300 }), { name: 'worker' });
 });
 
-test('T1.3b re-arm of a registered-but-unbound name is adopted, a changed or bound one is refused (HIMMEL-5207)', async t => {
+test('T1.3b re-arm of a registered-but-unbound name is adopted, a changed or bound one is refused', async t => {
   const { root } = await fixture(t);
   const proc = await fakeProc(t, chain);
   await identity.register(root, 'con', { role: 'chief' });
@@ -79,7 +79,7 @@ test('T1.3b re-arm of a registered-but-unbound name is adopted, a changed or bou
   await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con', proc }), /already registered/);
 });
 
-test('re-arm of a bound name whose holder is gone takes it back unbound; a live, changed or chief one is refused (HIMMEL-9071)', async t => {
+test('re-arm of a bound name whose holder is gone takes it back unbound; a live, changed or chief one is refused', async t => {
   const { root } = await fixture(t);
   const proc = await fakeProc(t, chain);
   await bound(root, proc);

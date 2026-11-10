@@ -22,6 +22,7 @@
     { "name": "JIRA_EMAIL", "class": "config", "explanation": "Atlassian account email paired with your Jira token.", "effect": "Jira requests authenticate as this account; the token stays in the secret store." },
     { "name": "JIRA_PROJECTS", "class": "config", "explanation": "Jira projects this installation works with.", "effect": "Scopes multi-project Jira operations." },
     { "name": "JIRA_PROJECT_KEY", "class": "config", "explanation": "Default Jira project prefix, such as ABC.", "effect": "Selects the default project for Jira commands." },
+    { "name": "JIRA_TEST_PROJECT", "class": "config", "explanation": "The one Jira project the live tests may write to, such as HTEST.", "effect": "Live Jira tests create and delete issues only in this project; a work project is refused." },
     { "name": "JIRA_CLOUD_ID", "class": "config", "explanation": "Atlassian cloud site identifier.", "effect": "Selects the Jira Cloud site for scoped-token API requests." },
     { "name": "GCP_CI_PROJECT_ID", "class": "config", "explanation": "Google Cloud project used for CI.", "effect": "Identifies the project for CI cloud resources." },
     { "name": "SNYK_ORG_ID", "class": "config", "explanation": "Snyk organization identifier.", "effect": "Selects the organization for security scans." },

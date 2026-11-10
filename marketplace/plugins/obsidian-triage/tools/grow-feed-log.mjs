@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * grow-feed-log.mjs — LUNA-130 grow-tent feed/watering log append tool.
+ * grow-feed-log.mjs — grow-tent feed/watering log append tool.
  *
  * Deterministic APPEND half of the grow-feed-log skill (the extract half is
  * the LLM runbook in skills/grow-feed-log/SKILL.md). Appends ONE feed row to
  * the `## Log` table, or ONE product subsection to `## Products`, in
  * `<vault>/20-Areas/Grow/Grow-Feeding-Log.md`. Pure Node, no network, no LLM
- * (HIMMEL-128) — invoke with the Bash tool only, never a headless claude run.
+ * — invoke with the Bash tool only, never a headless claude run.
  *
  * Idempotent per `--msg-id`, SCOPED PER MODE: the dedup match is anchored
  * to the tool's own `<!-- tg:<id> <mode> ...` provenance comment, so a
@@ -20,7 +20,7 @@
  * independently, even under a fresh msg-id. Product body text additionally
  * has heading-shaped line starts entity-escaped (`## x` → `&#35;# x`), so
  * no body line can terminate the `## Products` block it is inserted into
- * (HIMMEL-1798).
+ * (the heading-escape rule).
  *
  * Usage:
  *   node grow-feed-log.mjs --mode feed --msg-id <id> --sender <name> \
@@ -50,8 +50,6 @@
  *
  * Writes are atomic (temp file + rename beside the target) — a crash or I/O
  * failure mid-write never leaves the operator's hand-kept log truncated.
- *
- * LUNA-130.
  */
 import { appendFileSync, existsSync, readFileSync, writeFileSync, statSync, renameSync, unlinkSync, realpathSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
@@ -213,7 +211,7 @@ function neutralizeComments(s) {
  * single chokepoint: findProductsBlock/productHeadingExists below decide
  * section membership and product identity from `^## …` / `^### …` line
  * shapes, so a body line reading as a heading could otherwise PREMATURELY
- * TERMINATE the `## Products` block it is inserted into (HIMMEL-1798) —
+ * TERMINATE the `## Products` block it is inserted into —
  * content inside the section ending the section, the third door into the
  * same room as the `relative()` containment and `\b` dedup-boundary bugs,
  * both of which were replaced with proven relations for exactly this

@@ -56,8 +56,8 @@ assert "default QMD_FORK_REF is a full 40-hex SHA" \
 default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_fork_repo')"
 assert "default QMD_FORK_REPO is the carried fork yotamleo-org/qmd (decision 517)" \
   test "$default_repo" = "https://github.com/yotamleo-org/qmd.git"
-assert "default QMD_FORK_REF is the fork main merge of fork PR #54" \
-  test "$default_ref" = "c474a8e4cd1084629c17664fb59e1f7ee64d8ea8"
+assert "default QMD_FORK_REF is the fork main merge of fork PR #55" \
+  test "$default_ref" = "35de6ec3cc86cb5141d9d58c76c702130517ccfa"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "the pin comment names fork PRs #42 and #43 and HIMMEL-5952" \
@@ -1382,6 +1382,117 @@ keyout="$(cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDE
     bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x >/dev/null 2>&1; printf "[%s]" "$_QMDBIN_GATE_KEY"' 2>/dev/null)"
 assert "the cached gate key is set after a pass" test "$keyout" != "[]"
 assert "the cached gate key does not hold the API key in the clear" test "${keyout#*sekrit-key-value}" = "$keyout"
+
+echo "[test-qmd-bin] busy_signature_on_real_output: the fork's real held-lock update output reads as busy"
+busy_out="$(cat "$SCRIPT_DIR/fixtures/qmd-update-busy-output.txt")"
+assert "qmd_output_is_busy matches the real held-lock output" qmd_output_is_busy "$busy_out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c subshell
+assert "qmd_output_is_busy refuses an ordinary failure" \
+  bash -c '. "$1"; ! qmd_output_is_busy "Collection not found: nope"' _ "$SCRIPT_DIR/qmd-bin.sh"
+
+golden_dir="$SCRIPT_DIR/fixtures/qmd-collection-golden"
+golden_tree="$tmpdir/collection-golden-tree"
+while IFS= read -r p; do
+  mkdir -p "$golden_tree/$(dirname "$p")"
+  printf '# %s\n' "$p" >"$golden_tree/$p"
+done <"$golden_dir/manifest.txt"
+golden_paths="$(cd "$golden_tree" && find . -type f | sed 's#^\./##' | LC_ALL=C sort)"
+golden_want="$(sed -n '/^# second pass/q;/^1 /s/^1 //p' "$golden_dir/documents.txt" | LC_ALL=C sort)"
+golden_args=()
+while IFS= read -r p; do golden_args+=("$p"); done <<<"$golden_paths"
+# shellcheck disable=SC2016  # $1 and $@ expand inside the spawned bash -c subshell
+golden_got="$(env -u XDG_CONFIG_HOME QMD_CONFIG_DIR="$golden_dir" bash -c '. "$1"; shift; qmd_collection_indexes golden "$@"' _ "$SCRIPT_DIR/qmd-bin.sh" "${golden_args[@]}" | LC_ALL=C sort)"
+
+echo "[test-qmd-bin] helper_matches_golden: the helper indexes what a real qmd update indexed on the golden tree"
+assert "the materialised tree holds every manifest path" \
+  test "$golden_paths" = "$(LC_ALL=C sort "$golden_dir/manifest.txt")"
+assert "the golden first pass lists active paths" test -n "$golden_want"
+assert "qmd_collection_indexes equals documents.txt's first-pass active paths" test "$golden_got" = "$golden_want"
+
+echo "[test-qmd-bin] golden_tree_holds_each_excluded_name: each built-in exclude is in the tree and not in the output"
+assert "the output it checks is not empty" grep -qx 'README.md' <<<"$golden_got"
+for name in node_modules .git .cache vendor dist build; do
+  assert "the tree holds a path under $name/" grep -qE "(^|/)$name/" <<<"$golden_paths"
+  # shellcheck disable=SC2016  # $1 and $2 expand inside the spawned bash -c subshell
+  assert "the output holds no path under $name/" bash -c '! grep -qE "(^|/)$1/" <<<"$2"' _ "$name" "$golden_got"
+done
+assert "the tree holds a dot-path outside the excluded names" grep -qE '(^|/)\.(hidden|draft)' <<<"$golden_paths"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c subshell
+assert "the output holds no dot-path" bash -c '! grep -qE "(^|/)\." <<<"$1"' _ "$golden_got"
+
+shape_dir="$tmpdir/shapes"
+shape_cfg() {
+  local name="$1" yml_escaped="$2"
+  mkdir -p "$shape_dir/$name"
+  printf '%b' "$yml_escaped" >"$shape_dir/$name/index.yml"
+  printf '%s\n' "$shape_dir/$name"
+}
+shape_run() {
+  local config_dir="$1"; shift
+  shape_rc=0
+  # shellcheck disable=SC2016  # $1 and $@ expand inside the spawned bash -c subshell
+  shape_out="$(env -u XDG_CONFIG_HOME QMD_CONFIG_DIR="$config_dir" bash -c '. "$1"; shift; qmd_collection_indexes "$@"' _ "$SCRIPT_DIR/qmd-bin.sh" "$@" 2>/dev/null)" || shape_rc=$?
+}
+refused() { [ "$shape_rc" -eq 2 ] && [ -z "$shape_out" ]; }
+shape_base='collections:\n  c:\n    path: /x\n    pattern: "**/*.md"\n'
+
+echo "[test-qmd-bin] reader_refuses_other_shapes: a config, glob or path shape the reader does not know exits 2 with no output"
+shape_run "$(shape_cfg update-key "${shape_base}    update: \"git pull\"\n")" c a.md
+assert "an update: key in the collection is refused" refused
+shape_run "$(shape_cfg flow-ignore "${shape_base}    ignore: []\n")" c a.md
+assert "a flow-style ignore: [] is refused" refused
+shape_run "$(shape_cfg single-quoted "collections:\n  c:\n    path: /x\n    pattern: '**/*.md'\n")" c a.md
+assert "a single-quoted pattern is refused" refused
+shape_run "$(shape_cfg absent-coll "$shape_base")" nope a.md
+assert "a collection the config does not define is refused" refused
+shape_run "$shape_dir/no-config" c a.md
+assert "a missing config file is refused" refused
+shape_run "$(shape_cfg parent-path "$shape_base")" c ../x.md
+assert "a path that climbs out of the root is refused" refused
+shape_run "$(shape_cfg ctrl-path "$shape_base")" c "$(printf 'a\nb.md')"
+assert "a path holding a control character is refused" refused
+shape_run "$(shape_cfg dot-glob 'collections:\n  c:\n    path: /x\n    pattern: "./**/*.md"\n')" c a.md
+assert "a glob with a . segment is refused" refused
+shape_run "$(shape_cfg not-utf8 'collections:\n  c:\n    path: /x\0377\n    pattern: "**/*.md"\n')" c a.md
+assert "a config that is not UTF-8 is refused" refused
+
+echo "[test-qmd-bin] reader_expands_braces: {a,b} expands into one glob per alternative"
+shape_run "$(shape_cfg brace 'collections:\n  c:\n    path: /x\n    pattern: "{docs,notes}/**/*.md"\n')" c docs/a.md notes/x/y.md other/a.md
+assert "a brace pattern exits 0" test "$shape_rc" -eq 0
+assert "a brace pattern keeps docs/a.md and notes/x/y.md and drops other/a.md" \
+  test "$shape_out" = "$(printf 'docs/a.md\nnotes/x/y.md')"
+
+echo "[test-qmd-bin] config_dir_fallbacks: with no QMD_CONFIG_DIR the helper reads XDG_CONFIG_HOME/qmd, then ~/.config/qmd"
+mkdir -p "$tmpdir/xdg/qmd" "$tmpdir/fallback-home/.config/qmd"
+printf '%b' 'collections:\n  xdgonly:\n    path: /x\n    pattern: "*.md"\n' >"$tmpdir/xdg/qmd/index.yml"
+printf '%b' 'collections:\n  homeonly:\n    path: /x\n    pattern: "*.md"\n' >"$tmpdir/fallback-home/.config/qmd/index.yml"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c subshell
+xdg_out="$(env -u QMD_CONFIG_DIR XDG_CONFIG_HOME="$tmpdir/xdg" HOME="$tmpdir/fallback-home" bash -c '. "$1"; qmd_collection_indexes xdgonly a.md' _ "$SCRIPT_DIR/qmd-bin.sh" 2>/dev/null)"
+assert "XDG_CONFIG_HOME/qmd/index.yml is read when QMD_CONFIG_DIR is unset" test "$xdg_out" = "a.md"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c subshell
+home_out="$(env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME HOME="$tmpdir/fallback-home" bash -c '. "$1"; qmd_collection_indexes homeonly a.md' _ "$SCRIPT_DIR/qmd-bin.sh" 2>/dev/null)"
+assert "HOME/.config/qmd/index.yml is read when QMD_CONFIG_DIR and XDG_CONFIG_HOME are unset" test "$home_out" = "a.md"
+
+echo "[test-qmd-bin] helper_matches_real_update: the helper equals a live qmd update on the same tree"
+real_qmd=()
+while IFS= read -r w; do real_qmd+=("$w"); done < <(qmd_pinned_invocation 2>/dev/null)
+if [ "${#real_qmd[@]}" -eq 0 ]; then
+  echo "  skip: helper_matches_real_update -- no qmd on this host (CI installs none); helper_matches_golden carries the comparison"
+else
+  live_home="$tmpdir/live-home"
+  mkdir -p "$live_home/cfg" "$live_home/cache"
+  sed "s#^    path: .*#    path: $golden_tree#" "$golden_dir/index.yml" >"$live_home/cfg/index.yml"
+  # shellcheck source=scripts/lib/timeout-bin.sh
+  . "$SCRIPT_DIR/timeout-bin.sh"
+  ( cd "$live_home" && env -u XDG_CONFIG_HOME HOME="$live_home" XDG_CACHE_HOME="$live_home/cache" \
+      QMD_CONFIG_DIR="$live_home/cfg" INDEX_PATH="$live_home/index.sqlite" \
+      ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 120} "${real_qmd[@]}" update >"$live_home/update.log" 2>&1 )
+  live_rc=$?
+  assert "the live update exits 0" test "$live_rc" -eq 0
+  live_want="$(python3 -I -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print("\n".join(r[0] for r in c.execute("select path from documents where collection=? and active=1", ("golden",))))' "$live_home/index.sqlite" 2>/dev/null | LC_ALL=C sort)"
+  assert "the live update indexed the golden tree" test -n "$live_want"
+  assert "qmd_collection_indexes equals the live update's active paths" test "$golden_got" = "$live_want"
+fi
 
 echo "[test-qmd-bin] has_qmd matches binary presence in this env"
 if has_qmd; then

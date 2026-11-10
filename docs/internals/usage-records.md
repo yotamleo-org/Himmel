@@ -102,6 +102,16 @@ still a row; the Cost page (`scripts/config-ui/cost.ts`) drops it. With no
 `records.jsonl` at all, the page says the usage store has not been built yet and names
 `scripts/usage/usage-compute.sh`, rather than "no data yet".
 
+**What the Cost page's dollars are.** The collector reads Claude transcripts only (by
+default `$HOME/.claude/projects`), and prices each call at list price, so every figure on
+the page is a list-price equivalent: not an invoice, not cash, and not all-provider spend.
+Native Codex and other provider stores are not collected. In every state (data, no data,
+no store) the page says so, with `basis` and `coverageNote` in the model, and says
+"Collection freshness and completeness unknown": it infers no health from a file's age.
+Under the build group, `phase=agent` rows split by class: `build-agent` ("Child sessions")
+holds `class=subagent` rows, `build-agent-followup` ("Parent follow-ups after delegation")
+holds the others; the group's total and call count are unchanged by the split.
+
 ## The build: windows, checkpoint, budget and resume
 
 The first build on a station reads every transcript (43 GB on the first station), so it
@@ -193,6 +203,92 @@ ticket's latest stored line; older versions stay (`usage-read.sh --all`). A
 `--print` rerun is byte-identical. Token counts follow `usage-attribution.sh`
 exactly (per-requestId dedup), and a skipped or unreadable transcript makes the
 run fail rather than store incomplete totals.
+
+## Per-call export and validator (`scripts/lanes/model-price.mjs`)
+
+One producer, one validator and one loader, so Chief, Review and Build scorers do not each carry their own footer,
+price and dedup checks. All of it is read-only: no network, no model call, no store write, no persisted call
+warehouse, no title read. Amounts are Claude-transcript list-price equivalents, not invoices.
+
+```bash
+node scripts/lanes/model-price.mjs calls --manifest PROJECTION.json      # JSONL: call rows, then ONE footer
+node scripts/lanes/model-price.mjs validate-calls --manifest EXPORT_SET.json   # one JSON receipt
+```
+
+`calls` takes no other flag (no `--price-as`, no window flag): the window is the manifest's own `since` (inclusive) and
+`until` (exclusive), and it filters on each call's `first_timestamp`. It reads exactly the files the projection manifest
+declares (`{schema:1, root, timezone:"Europe/Berlin", since, until, files:[{relative_path, bytes, sha256,
+provider:"claude", session, parent}]}`; RFC3339 with `Z` or an offset, naming a date that exists). A relative `root` resolves
+against the manifest's directory. The caller builds the manifest; nothing is discovered. Refused before any source
+is opened: more than 128 files or 512 MiB declared (`manifest-budget`), a malformed manifest, a path that is
+absolute, a URI or climbs out (`path-escape`), a duplicate path or `(provider, parent, session)`
+(`duplicate-source`, which includes one file declared under two names by a symlink or a hard link), a session name that is not the filename, a child whose directory is not `<parent>/subagents`,
+a session id used under two parents (`session-namespace`), a provider other than `claude`.
+
+**Call row** (`kind:"usage-call"`, `schema:1`): `call_id`, `provider`, `session`, `parent`, `first_timestamp`,
+`first_model`, `model`, `input`, `output`, `cacheRead`, `cacheWrite5m`, `cacheWrite1h`, `priced`, `usd`, `nano`,
+`price_row`, `price_sha256`, `source{manifest_sha256, relative_path, sha256, first_offset, last_offset}`,
+`usage_rule:"final-v2"`, `basis:"list-price-equivalent"`.
+
+- Final complete usage wins; `first_timestamp` and `first_model` are the first occurrence's, so a correction that
+  arrives after midnight stays on its first day. `--since`/`--until` filter on `first_timestamp`.
+- `call_id` is the SHA256 of `["claude", parent, session, key]` where `key` is `m:<message id>`, else `r:<request id>`,
+  else `o:<byte offset>`. The file hash is provenance, not identity: appending a later usage row keeps the id. An
+  anonymous (`o:`) id holds only while the earlier bytes are unchanged; a changed hash needs a fresh projection.
+- `nano` is an integer decimal string, `usd` is `nano / 1e9`. An unknown real model is `priced:false` with `usd`,
+  `nano` and `price_row` all `null`; it is never priced at another model's rate. Totals agree with
+  `transcripts` to one nanodollar.
+- A `<synthetic>`-style pseudo-model with all-zero usage is excluded (`synthetic-zero`); with nonzero usage the export
+  is invalid. A newline-terminated, non-blank line that is not JSON is `malformed-line`: the export is invalid and
+  prints no rows, because a dropped call must never read as complete (`transcripts` still skips such a line). A last
+  line with no newline that is not JSON is the torn line, state `partial`. Every usage record, a later correction
+  included, needs an RFC3339 timestamp (`timestamp-invalid` otherwise).
+- Rows are sorted by `(first_timestamp, call_id)`.
+
+**Footer** (the last line, exactly one): `state`, `manifest_sha256` (of the manifest's exact bytes), `price_sha256` (of
+the price table's rows), `source_scope:"claude-transcripts"`, `excluded_sources`, `timezone`, `since`, `until`,
+`selected_files`, `read_files`, `source_bytes`, `selected_calls`, `priced_calls`, `unpriced_calls`, `excluded_calls`,
+`usage_rule:"final-v2"` (present even for an empty window), `exclusion_reasons:{"synthetic-zero":N,"outside-window":N}`
+(unique keys, so a repeated synthetic row counts once), `errors:[{code, relative_path}]`.
+
+| exit | footer `state` | meaning |
+|---|---|---|
+| 0 | `complete` | every frozen byte and complete line of every declared file was parsed; unpriced calls may remain |
+| 3 | `partial` | a file ends in a torn line (`torn-line`); rows from fully read files are printed |
+| 2 | `invalid` | manifest, hash, identity, usage or timestamp refused; no call rows are printed |
+
+The exit code is set only after stdout is fully written, so a cut-short stdout never exits 0.
+
+**Scope-complete is not all-provider coverage.** `complete` says the declared Claude transcripts were read in full. It
+says nothing about native Codex or other provider stores (`excluded_sources`), about sessions the caller left out of
+the manifest, or about invoices. A consumer states which scope it priced and keeps its own lineage join; a missing
+expected child is a manifest-join error, not a silent exclusion. A zero denominator stays INCONCLUSIVE in the scorer.
+
+**Validator.** `validateCallExport(exports, expectedSessions, expectations)` is pure (no I/O, no transcript reread, no
+repricing). `validate-calls` reads `EXPORT_SET.json`
+(`{schema:1, price_sha256, usage_rule:"final-v2", timezone, exports:[{path, producer_exit_code,
+projection_manifest:{path, sha256}}], expected_sessions:[{provider:"claude", parent, session}]}`) through
+`loadExportSet(path)`, which alone owns the carrier rules: every declared path must be a regular file whose canonical
+path stays inside the EXPORT_SET.json directory (no URI, no escaping symlink, no duplicate canonical path, no
+duplicate expected session). A handled failure throws `CallExportLoadError` (`exitCode 2`, `.detail` one of
+`missing|unreadable|malformed|escape|duplicate-path|invalid-declaration`, `.validation` the refused receipt with
+reason `export-set-load`). Scorers call `loadExportSet` then `validateCallExport`, or run the CLI; none carries its own
+footer, price or dedup validator.
+
+Receipt: `{schema:1, kind:"usage-call-validation", ok, state, reasons, price_sha256, usage_rule, timezone,
+manifest_sha256[], selected_calls, priced_calls, unpriced_calls, complete_sessions[], call_ids_sha256}`. Exit 0
+`complete`, 3 `inconclusive`, 2 `invalid`. A refusal reports counts of what was parsed as diagnostics only, never as a
+denominator, and nulls `price_sha256`, `usage_rule`, `timezone` and `call_ids_sha256`.
+
+| state | reasons |
+|---|---|
+| inconclusive | `footer-missing`, `parse-incomplete` (a torn suffix), `producer-exit` (nonzero, or not matching the footer state), `source-incomplete` (a `partial` or `invalid` footer), `missing-session`, `unpriced` |
+| invalid | `footer-shape` (more than one footer, or not last), `duplicate-call`, `duplicate-source`, `manifest-mismatch` (a wrong hash, or a manifest the producer would itself refuse), `source-mismatch`, `price-mismatch`, `usage-rule-mismatch`, `clock-mismatch`, `count-mismatch`, `row-shape`, `export-set-load` |
+
+Two exports with different manifest hashes pass together only when their price hash, usage rule and clock agree and
+no call id or source overlaps. A mixed price revision is `price-mismatch`, never a partial sum. A declared source that
+was read and holds zero calls is in `complete_sessions`. An EXPORT_SET with `exports: []` has no footer to check, so it is
+`inconclusive` with `footer-missing`, never `complete`.
 
 ## Consumers
 

@@ -6,7 +6,9 @@
 #   suite-coverage.sh [--runner <run-shell-tests.sh>] [--root <repo-root>] <suite-path>...
 #
 # Verdicts (one line per suite):
-#   not run in CI (SKIP_LIST) — uncovered      a SKIP_LIST entry; NEVER write "CI verifies"
+#   runs in PR CI (ci-quick claude-startup group)   a SKIP_LIST entry under scripts/testing/: the
+#                                              ci-quick claude-startup steps run it on every PR
+#   not run in CI (SKIP_LIST) — uncovered      any other SKIP_LIST entry; NEVER write "CI verifies"
 #   superseded by <wrappers>                   SKIP_LIST entry whose reason names its --only wrappers,
 #                                              each existing under --root and not in SKIP_LIST; else
 #                                              the monolith is reported uncovered
@@ -142,7 +144,10 @@ for s in "${suites[@]}"; do
   s="${s#./}"
   if line="$(entry_for "$skip_list" "$s")"; then
     reason="${line#*#}"
-    if grep -q 'superseded by' <<< "$reason"; then
+    entry_path="$(printf '%s' "${line%%#*}" | awk '{print $1}')"
+    if [[ "$entry_path" == scripts/testing/* ]]; then
+      echo "$s: runs in PR CI (ci-quick claude-startup group)"
+    elif grep -q 'superseded by' <<< "$reason"; then
       wrappers="$(grep -o 'test-[A-Za-z0-9._-]*\.sh' <<< "$reason" | grep -vxF "$(basename "$s")" | awk '!seen[$0]++' | paste -sd, - | sed 's/,/, /g')"
       # a wrapper carries the coverage only if it exists next to the monolith and is not itself skipped
       lost=""

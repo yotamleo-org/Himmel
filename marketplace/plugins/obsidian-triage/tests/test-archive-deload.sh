@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Confirming test for LUNA-85: archive de-loaded as the drainer.
+# Confirming test that archive is de-loaded as the drainer.
 #
 # Proves de-loaded default behavior after Phase 1:
 # - structural: runbook prose states the reframed role
@@ -57,7 +57,7 @@ if grep -qF "promoted_to:" "$CMD"; then f=yes; else f=no; fi
 assert "archive-clips.md notes deferred Phase-2 opt-in via promoted_to:" "yes" "$f"
 
 # ── Functional: post-Phase-1 temp vault ────────────────────────────────────────
-# Vault state: processed clips are in _evidence/ (LUNA-84 moved them there);
+# Vault state: processed clips are in _evidence/ (the triage Phase 8 move put them there);
 # only unprocessed stragglers remain at the top-level inbox.
 
 tmp="$(mktemp -d)"
@@ -71,7 +71,7 @@ mkdir -p "$tmp/Clippings/_synthesis"
 printf -- '---\ntype: tweet\nharvested_at: 2026-06-01\n---\nnot yet processed\n' \
   > "$tmp/Clippings/new1.md"
 
-# Processed, synthesis-cited clip that LUNA-84 already moved to _evidence/
+# Processed, synthesis-cited clip that triage Phase 8 already moved to _evidence/
 printf -- '---\ntype: tweet\nharvested_at: 2026-05-25\nprocessed: true\nharvest_url_canonical: https://x.com/a/status/1\n---\nevidence body\n' \
   > "$tmp/Clippings/_evidence/ev1.md"
 

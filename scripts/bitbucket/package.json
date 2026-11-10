@@ -16,11 +16,11 @@
   },
   "dependencies": {
     "@coderabbitai/bitbucket": "^1.1.4",
-    "commander": "^15.0.0"
+    "commander": "^15.1.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }

@@ -8,7 +8,7 @@ operator's date×place stays local and meets the factor cache only inside the of
 proximity index. Outputs are **candidate signals only — never a diagnosis, never
 causation**.
 
-## Opt-in MCP launch (HIMMEL-591)
+## Opt-in MCP launch
 
 Claude Code eagerly spawns every enabled plugin's MCP server at session start
 (no native lazy spawn), so this bun server used to load in **every** session —
@@ -86,7 +86,7 @@ until a daily `<name>.csv` is available.
 
 Kp/factor caches write to `cache/` next to this plugin by default. Set
 `LUNA_CORRELATE_CACHE_DIR` to point them elsewhere (e.g. the test suite points it
-at a per-run temp dir, HIMMEL-370, so tests can never write through to the real
+at a per-run temp dir so tests can never write through to the real
 operator cache).
 
 ## Kp data source

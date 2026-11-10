@@ -41,7 +41,7 @@ test('marketplace entry is a local MIT plugin whose VENDORED.md names the pinned
   const vendored = readFileSync(join(PLUGIN, 'VENDORED.md'), 'utf8');
   assert.ok(vendored.includes(PIN), 'VENDORED.md must carry the pinned sha');
   assert.ok(vendored.includes('mattpocock/skills'), 'VENDORED.md must name the upstream repo');
-  assert.equal(JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version, '0.1.0');
+  assert.equal(JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version, '0.1.1');
 });
 
 test('the skill moved out of .claude/skills and keeps its vendored header', () => {

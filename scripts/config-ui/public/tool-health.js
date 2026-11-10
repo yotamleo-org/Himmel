@@ -367,15 +367,29 @@ function candidatesPanel(data) {
   return table(["Profile", "Tool", "Calls in window", "Listing cost"], rows, "Nothing loaded and unused, or the listing cost is not measured");
 }
 
+function launchesPanel(data) {
+  const l = data.launches_refused;
+  const note = (t) => `<p class="nodata">${esc(t)}</p>`;
+  if (!l || l.state === "not-read") return note("Launch refusals were not read for this response.");
+  const skipped = l.skipped > 0 ? note(`${num(l.skipped)} unreadable row${l.skipped === 1 ? "" : "s"}`) : "";
+  if (l.state === "absent") return note("No launch refusal recorded yet.") + skipped;
+  if (!l.total) return note("No launch refused in this window.") + skipped;
+  const codes = (rc) => Object.entries(rc || {}).sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0])).map(([c, n]) => `${esc(c)} ×${num(n)}`).join(", ");
+  const byCause = table(["Cause", "Refused", "Exit codes"], l.by_cause.map((c) => `<tr data-launch-cause="${esc(c.cause)}">${td(esc(c.cause))}${td(num(c.count))}${td(codes(c.rc))}</tr>`));
+  const recent = table(["Time", "Worker", "Cause", "Exit", "Reason"], l.recent.map((r) => `<tr data-launch-row="${esc(r.ts)}">${td(esc(utc(r.ts)))}${td(r.name ? esc(r.name) : "—")}${td(esc(r.cause))}${td(num(r.rc))}${tdWrap(r.line ? esc(r.line) : "see the launch log")}</tr>`));
+  return `${byCause}<details data-launch-recent><summary>Most recent refusals (${num(l.recent.length)} of ${num(l.total)})</summary>${recent}</details>${skipped}`;
+}
 function overview(data, st, ui) {
   const toolsBox = (text) => box("tools", "Tools", "Which tool, skill, hook or plugin fails most? Each name opens its drill-in.", `<p class="nodata">${esc(text)}</p>`, "First build");
+  const launchesBox = () => box("launches", "Launches refused", "Worker launches not confirmed as started, by cause. Whole fleet: the filters above do not apply. Exit 7 and 9 may still have come up late.", launchesPanel(data));
   if (!data) return `${kpis(null)}${st.loading || st.error ? "" : toolsBox(st.data && st.data.state === "error" ? "Tool health could not load. Retry." : "No recorded tool observations in this window")}`;
-  if (data.state !== "ok") return `${kpis(null)}${toolsBox("No recorded tool observations in this window. Try the 30-day window.")}`;
+  if (data.state !== "ok") return `${kpis(null)}${toolsBox("No recorded tool observations in this window. Try the 30-day window.")}${launchesBox()}`;
   const bad = badCounts(data);
   const banner = bad.size ? `<p class="nodata"><span class="tag fail">Count check failed</span> ${esc([...bad].join(", "))}: counts that cannot be true (more denials or errors than failures, or more failures than calls). Their rates are hidden, not clamped.</p>` : "";
-  if (!(data.tools || []).length) return `${kpis(data)}<p class="nodata">No observations match these filters. <a class="btn" href="${esc(toolHealthHref({ filters: {} }))}">Reset filters</a></p>`;
+  if (!(data.tools || []).length) return `${kpis(data)}<p class="nodata">No observations match these filters. <a class="btn" href="${esc(toolHealthHref({ filters: {} }))}">Reset filters</a></p>${launchesBox()}`;
   return `${banner}${kpis(data)}${dailyPanel(data, st)}
 ${box("tools", "Tools", "Which tool, skill, hook or plugin fails most? Each name opens its drill-in.", toolList(data, st.inventory, ui), "First build")}
+${launchesBox()}
 <div class="th-cols">${box("guards", "Guards that refuse most", "Which guard blocks the most calls? The rate is over the calls to the tools each guard is wired to check; the Bash-only rate is the older denominator, kept for comparison. A refusal can be correct.", guardsPanel(data, ui), "÷ eligible call attempts")}${box("classifier", "Classifier denials", "Which calls did the auto-mode classifier deny? A count per category; the reason stays unverified.", classifierPanel(data), "reason unverified")}</div>
 ${box("lanes", "Bash on each lane", "Does Bash fail more on one lane?", lanePanel(data))}
 ${box("roles", "Role, lane and profile", "Which role ran on which lane under which profile, and how much of the fleet the launch records leave unnamed?", crossTabPanel(data))}
@@ -688,11 +702,53 @@ function hooksTab(data, inv, ui) {
   return box("hooks", "Hook wiring", `Which hook is wired where, and which runs twice? Runs are measured where the hook chain logged them, otherwise derived from matchers × matching calls.${hookRows(data, inv).some((r) => r.runsMeasured) ? ` ${RUNS_SCOPE}` : ""}`, sortable("hooks", ["Hook", "Source", "Wired on", "Wirings", "Runs twice", "Runs", "Refused"], rows, ui, [0, 2]), "First build");
 }
 
-// ---- reviewers (moved from Health): the weekly review page as written, never re-graded here.
+const isoDay = (ts) => (typeof ts === "string" && /^\d{4}-\d{2}-\d{2}/.test(ts) ? ts.slice(0, 10) : "—");
+const kOfN = (m) => (isNum(m.value) && isNum(m.k) ? `${m.k} of ${m.n} ${m.sample_unit}: ${pct(m.value)}` : `${num(m.n)} ${m.sample_unit}: —`);
+const measure = (m) => `${esc(m.label)}${(m.limitations || []).length ? `<br><span class="dim">${esc(m.limitations.join("; "))}</span>` : ""}`;
+const range = (m) => (m.interval && isNum(m.interval.lo) && isNum(m.interval.hi) ? `${pct(m.interval.lo)} to ${pct(m.interval.hi)}` : "—");
+function codeReviewersView(r) {
+  const c = r.codeReviewers;
+  const out = [];
+  const bad = (c.sources || []).filter((s) => s.state === "error");
+  if (c.state === "partial") out.push(`<p><span class="pill warn">Partial: ${esc(bad.map((s) => `${s.id} could not be read (${s.reason})`).join("; "))}</span></p>`);
+  out.push(sub(`Report of ${stamp(Date.parse(c.generated_at))}. Sources: ${(c.sources || []).map((s) => `${s.id} ${s.state === "ok" ? `read, ${s.records} records through ${isoDay(s.observed_through)}` : s.state === "absent" ? "absent" : `could not be read (${s.reason})`}`).join(" · ")}.`));
+  const bench = c.metrics.filter((m) => m.family === "benchmark"), prod = c.metrics.filter((m) => m.family === "production");
+  out.push("<h4>Planted-bug benchmark</h4>");
+  const u = c.latest_usable, a = c.latest_attempt, f = (c.benchmark || {}).freshness;
+  if (!u) out.push('<p class="nodata">No usable benchmark run</p>');
+  else out.push(`<p>Observed ${esc(isoDay(u.at))} (${esc(u.run_id)}, ${esc(u.status)})${f && f.state === "old" ? ` <span class="pill warn">Old: observed ${esc(String(f.age_days))} days before this report</span>` : ""}</p>`);
+  if (a && !a.usable) out.push(`<p><span class="pill warn">Latest attempt ${esc(isoDay(a.at))} (${esc(a.run_id)}): ${esc(a.status)}, not usable</span></p>`);
+  const el = c.comparison_eligibility || { eligible: false, reasons: [] };
+  if (u) out.push(sub(el.eligible ? "Earlier figures are from the previous comparable run." : `No trend: ${(el.reasons || []).join("; ")}`));
+  if (bench.length) out.push(table(["Reviewer", "Measure", "Kind", "k of n", "Range", "Earlier"], bench.map((m) => `<tr>${td(esc(m.reviewer))}${tdWrap(measure(m))}${td(esc(m.kind))}${td(esc(kOfN(m)))}${td(esc(range(m)))}${td(m.trend && isNum(m.trend.previous_value) ? esc(`${pct(m.trend.previous_value)} at ${m.trend.previous_run_id}`) : "—")}</tr>`)));
+  const p = c.production || {};
+  out.push(`<h4>Review findings on merged work, ${esc(isoDay((p.window || {}).since))} to ${esc(isoDay((p.window || {}).until))}</h4>`);
+  const measured = p.capture_coverage === "measured" || p.capture_coverage === "partial", cap = p.capture;
+  if (!p.last_record_at) out.push(`<p class="nodata">No records${measured ? "" : "; capture coverage unknown"}</p>`);
+  else if (!p.records_in_window) out.push(`<p>No new records since ${esc(isoDay(p.last_record_at))}${measured ? "" : "; capture coverage unknown"}.</p>`);
+  else if (measured) out.push(`<p>Last record ${esc(isoDay(p.last_record_at))}.</p>`);
+  else out.push(`<p>Last record ${esc(isoDay(p.last_record_at))}. Capture coverage unknown: ${esc(p.capture_reason || "no capture receipts")}.</p>`);
+  if (cap) {
+    const zero = (cap.captured_zero || []).length;
+    const gaps = [["failed", cap.failed], ["not captured", cap.uncaptured]].filter(([, xs]) => xs && xs.length).map(([w, xs]) => `${w}: ${xs.map((x) => `#${x}`).join(", ")}`);
+    const asOf = `, snapshot as of ${isoDay(cap.snapshot_as_of)}${p.capture_coverage === "partial" ? ", partial: PRs merged after it are not in it" : ""}`;
+    const head = measured ? `${cap.n ? `Capture: ${cap.k} of ${cap.n} expected PRs captured (${zero} with zero threads)` : "Capture: no expected PR merged in the window"}${asOf}` : `Capture receipts: ${cap.receipts} PRs, ${zero} with zero threads; ${p.capture_reason || "no expected-PR snapshot"}, so no coverage`;
+    const dropped = cap.snapshot_dropped ? [`${cap.snapshot_dropped} snapshot rows dropped (no PR number or merge time)`] : [];
+    out.push(`<p>${esc([head, ...gaps, ...dropped].join("; "))}.</p>`);
+  }
+  if (p.roster && p.roster !== "ok") out.push(sub("The reviewer roster could not be read, so no slug counts as a reviewer."));
+  if (p.not_reviewers && isNum(p.not_reviewers.findings) && p.not_reviewers.findings > 0) out.push(sub(`Counted out: ${p.not_reviewers.findings} findings from ${num(p.not_reviewers.slugs)} slugs that are not code reviewers.`));
+  if (prod.length) out.push(table(["Reviewer", "Model", "Scope", "Verdict source", "Measure", "k of n", "Range"], prod.map((m) => `<tr>${td(esc(m.reviewer))}${td(esc(m.model || "—"))}${td(esc(m.cohort || "—"))}${td(esc(String(m.verdict_source || "").replace(/-/g, " ")))}${tdWrap(measure(m))}${td(esc(kOfN(m)))}${td(esc(range(m)))}</tr>`)));
+  out.push("<h4>Reviewer changes</h4>");
+  out.push(c.proposals && c.proposals.length ? `<ul>${c.proposals.map((x) => `<li>${esc(x.label)}</li>`).join("")}</ul>` : '<p class="nodata">No change yet</p>');
+  return `${r.stale ? `<p><span class="pill warn">Refresh failed (${esc(r.stale)}); showing the report read earlier</span></p>` : ""}<div class="card" id="reviewers-report">${out.join("")}</div>`;
+}
 function reviewersTab(r) {
-  const purpose = "Do our code reviewers catch planted bugs? This is the “How good are our reviewers?” panel moved from Health. Tool health filters do not apply.";
+  const purpose = "Do our code reviewers catch planted bugs, and how do their findings on merged work fare? Read from the ledgers on each visit. Tool health filters do not apply.";
   let body;
   if (r === undefined || r === null) body = '<p class="nodata">Loading the review page…</p>';
+  else if (r.codeReviewers && r.state === "absent") body = `<p class="nodata">No reviewer evidence yet</p>${sub("No benchmark run, reviewer change or review finding is recorded in the ledgers this station reads.")}`;
+  else if (r.codeReviewers && r.state !== "error") body = codeReviewersView(r);
   else if (r.state === "absent") body = '<p class="nodata">No review page yet</p>';
   else if (r.state !== "ok") body = `<p class="nodata">Review page could not load${r.reason ? ` (${esc(r.reason)})` : ""}. <button class="btn" data-act="th-reviewers">Retry</button></p>`;
   else if (!String(r.text || "").trim()) body = `<p class="nodata">Review page is empty</p>${updated(r)}`;
@@ -708,7 +764,7 @@ function reviewersTab(r) {
       else if (line.trim()) out.push(`<p>${esc(line)}</p>`);
     }
     if (list) out.push("</ul>");
-    body = `${r.stale ? `<p><span class="pill warn">Refresh failed (${esc(r.stale)}); showing the page read earlier</span></p>` : ""}<div class="card" id="reviewers-page">${out.join("")}</div>${updated(r)}<p class="sub">As written by the weekly review job.</p>`;
+    body = `${r.stale ? `<p><span class="pill warn">Refresh failed (${esc(r.stale)}); showing the page read earlier</span></p>` : ""}<p><span class="tag">Stored snapshot</span></p><div class="card" id="reviewers-page">${out.join("")}</div>${updated(r)}<p class="sub">As written by the weekly review job.</p>`;
   }
   return box("reviewers", "Reviewers", purpose, body);
 }

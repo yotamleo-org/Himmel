@@ -187,7 +187,7 @@ resolve_qmd() {
 # (--recycle) so the SIGTERM + ~15s unwind + restart never spends the hook's
 # budget. Fleets start many sessions at once, so a mkdir lock admits one
 # recycler and a stamp holds off another for QMD_RECYCLE_COOLDOWN_MIN.
-# ponytail: ceiling is POSIX-ps only (Git Bash's ps has no -o, so the check is a silent no-op there) and the ps1 twin is not ported, port in HIMMEL-3751.
+# ponytail: ceiling is POSIX-ps only (Git Bash's ps has no -o, so the check is a silent no-op there) and no ps1 twin carries it; port it if a native Windows launcher returns.
 qmd_state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/qmd"
 pidfile="$qmd_state_dir/mcp.pid"
 recycle_lock="$qmd_state_dir/recycle.lock"

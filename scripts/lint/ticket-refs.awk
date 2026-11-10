@@ -2,10 +2,12 @@
 # (scripts/lint/check-history-comments.sh, modes diff and count) and the hand-run
 # whole-tree check (scripts/one-shot/check-ticket-refs.sh, mode tree).
 #
-#   awk -f ticket-refs.awk -v allow=<rule list> -v mode=diff|count|tree [-v binlist=<file>] <input>
+#   awk -f ticket-refs.awk -v allow=<rule list> -v mode=diff|count|tree|exempt [-v binlist=<file>] <input>
 #
 # diff / count  input is a unified diff (-U0); only added lines are judged.
 # tree          input is `git grep -n` output, path:line:text.
+# exempt        input is one path per line; prints those under a whole-file row
+#               (scripts/one-shot/no-markers.sh and harvest-ceilings.py verify).
 # allow         scripts/lint/ticket-ref-allow.tsv: kind, path-regex, line-regex, reason.
 #               The `key` row owns the ticket-key pattern; every other row exempts the
 #               lines it matches. Nothing in this file names a project key.
@@ -23,6 +25,8 @@
 #                  and a colon, G4 a trailing comment outside every quote.
 #   code file      review-round, CR-fix and judge-qid wording is refused on a whole-line
 #                  comment (a doc or YAML file is not judged for it).
+#   any file       a ponytail marker (the word and a colon, any case) is refused in diff
+#                  mode outside a whole-file row: the ceiling goes to the ledger.
 # The two ceilings of these rules are the ponytail lines in check-history-comments.sh.
 
 function fatal(msg) {
@@ -135,6 +139,7 @@ function why(t,   l) {
 
 function judge(p, t,   s, r) {
     if (key_refused(p, t)) return "ticket id"
+    if (mode == "diff" && !whole_file_row(p) && t ~ /[Pp][Oo][Nn][Yy][Tt][Aa][Ii][Ll]:/) return "ponytail marker"
     if (mode == "tree" || !is_code(p) || whole_file_row(p)) return ""
     s = ltrim(t)
     if (whole_line_comment(s)) return why(s)
@@ -189,7 +194,12 @@ BEGIN {
         while ((getline bp < binlist) > 0) bin[bp] = 1
         close(binlist)
     }
-    if (mode != "diff" && mode != "count" && mode != "tree") fatal("mode must be diff, count or tree")
+    if (mode != "diff" && mode != "count" && mode != "tree" && mode != "exempt") fatal("mode must be diff, count, tree or exempt")
+}
+
+mode == "exempt" {
+    if ($0 != "" && whole_file_row($0)) print
+    next
 }
 
 mode == "tree" {

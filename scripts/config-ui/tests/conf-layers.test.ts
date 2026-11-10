@@ -54,6 +54,12 @@ test("readConfLayers returns every config key of the shared key list, and no env
   expect(readConfLayers({ HOME: s.home })).toEqual({ JIRA_EMAIL: "ops@example.invalid", SNYK_ORG_ID: "org-1" });
 });
 
+test("readConfLayers returns JIRA_TEST_PROJECT, so the Configure page lists the test project", () => {
+  const s = scratch();
+  writeFileSync(s.conf, "JIRA_TEST_PROJECT=HTEST\n");
+  expect(readConfLayers({ HOME: s.home })).toEqual({ JIRA_TEST_PROJECT: "HTEST" });
+});
+
 test("trackerSources lists github when TRACKER=github is set only in himmel.conf", async () => {
   const s = scratch();
   const gh = join(s.dir, "gh");

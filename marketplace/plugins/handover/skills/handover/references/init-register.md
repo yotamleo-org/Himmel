@@ -33,7 +33,7 @@ leaves no partial disk state.
 
 Bootstraps a **new** repo (no existing handover state on disk).
 
-**Where state lives is chosen by `/handover-setup`, not here (HIMMEL-335).**
+**Where state lives is chosen by `/handover-setup`, not here.**
 `/handover-setup` is the first-time entry point: it prompts inline (Mode A,
 `<repo-root>/handovers/`) vs external (Mode B, a separate state repo), and on a
 Mode-B choice writes `HANDOVER_DIR=` into `<repo-root>/.env` (via
@@ -49,12 +49,12 @@ state repo (e.g. `<state-repo>`); it is always the operator-chosen location. The
 |---|---|---|
 | `name` | repo-root basename, slugged | non-empty, kebab-case, ≤30 chars, unique in registry |
 | `path` | canonical `parent(git -C $cwd rev-parse --git-common-dir)` | abs path, exists, is a git repo |
-| `user` | resolved via `scripts/lib/user-slug.sh`'s `user_slug` (HIMMEL-145 — `$USER_SLUG` env, then forge username, then slugged `git config user.name`); ask via `AskUserQuestion` if it cannot be resolved (HIMMEL-839 — do NOT fall back to the raw `$USER` OS account name, which on a fresh/shared machine is a generic login like `osboxes`, not the operator's identity) | non-empty, kebab-case |
+| `user` | resolved via `scripts/lib/user-slug.sh`'s `user_slug` (`$USER_SLUG` env, then forge username, then slugged `git config user.name`); ask via `AskUserQuestion` if it cannot be resolved (do NOT fall back to the raw `$USER` OS account name, which on a fresh/shared machine is a generic login like `osboxes`, not the operator's identity) | non-empty, kebab-case |
 | `aliases` | `[name]` | optional, kebab-case list |
 | `keywords` | `[]` | optional, free-text list |
 | `branch_prefix` | `handover/` | optional, must end with `/`; used by worktree gate for `<branch_prefix><slug>`. Scopes **handover-mutation** branches (`new-epic`, `new-task`, `new-standalone`, `end-session`, `update-status`) — distinct from general feature-branch prefixes used by `/worktree.sh` (CLAUDE.md `type/slug` convention) |
 | `jira_project` | none | optional, e.g. `HIMMEL` — enables Jira mirror on `new-epic` and `end-session` |
-| `bucket_name` | slugified `basename(path)` | optional (HIMMEL-147); used by HIMMEL-129 bucket-layout resolver to decide which `<state-root>/<bucket>/` directory this repo's handover state lands in. **Collision check:** `/handover register` + `/handover repos add` refuse when two repos resolve to the same `bucket_name`; pass `--bucket-name=<unique>` to disambiguate. Existing entries auto-backfill from `basename(path)` on first read. |
+| `bucket_name` | slugified `basename(path)` | optional; used by the bucket-layout resolver to decide which `<state-root>/<bucket>/` directory this repo's handover state lands in. **Collision check:** `/handover register` + `/handover repos add` refuse when two repos resolve to the same `bucket_name`; pass `--bucket-name=<unique>` to disambiguate. Existing entries auto-backfill from `basename(path)` on first read. |
 
 ### Pre-checks (refuse on failure)
 
@@ -253,7 +253,7 @@ Porting the existing `himmel/handovers/<USER_SLUG>/` state into the registry:
 #   user = <USER_SLUG>
 #   aliases = himmel, internal
 #   keywords = (empty)
-#   branch_prefix = handover/    # default as of HIMMEL-139 (was feat/ pre-HIMMEL-139)
+#   branch_prefix = handover/
 #   jira_project = HIMMEL    # preserves current auto-mirror behaviour
 ```
 
@@ -291,7 +291,7 @@ v2 adds four optional fields to each repo entry. All have safe defaults; absence
         "zombie": 90
       },
 
-      // HIMMEL-307 — host-repo-only addition (set on the state-root host, e.g. <state-repo>):
+      // host-repo-only addition (set on the state-root host, e.g. <state-repo>):
       "source_buckets_extra": ["salus"] // optional; extra source-bucket names beyond the 4 built-ins. Absent/empty ⇒ 4-set.
     }
   }
@@ -309,7 +309,7 @@ v2 adds four optional fields to each repo entry. All have safe defaults; absence
 | `slug_style` | string | `prompt-on-ambiguous` \| `strict-hyphen-only` | how to handle ambiguous slug derivation |
 | `worktree.reuse_on_match` | string | `ask` \| `reuse` \| `new` | when target branch exists and merge state unclear |
 
-### `source_buckets_extra` (HIMMEL-307)
+### `source_buckets_extra`
 
 Optional **host-repo-only** field — set it on the registry entry whose
 `<state-root>` actually hosts the per-source-repo bucket directories (e.g.
@@ -320,7 +320,7 @@ SKILL.md "Bucket Resolution") beyond the four built-ins
 | Property | Value |
 |---|---|
 | Type | array of strings (kebab-case, ≤30 chars each) |
-| Default | absent ⇒ `[]` ⇒ recognized set = the four built-ins (byte-identical to pre-HIMMEL-307) |
+| Default | absent ⇒ `[]` ⇒ recognized set = the four built-ins (byte-identical to a registry with no extra buckets) |
 | Where | the state-root **host** repo entry only (not every repo) |
 | Routing | **explicit-only** — extra buckets get no Jira-prefix auto-route; items land there via the `new-epic`/`new-standalone` source-bucket prompt or `/handover bucket <id> <extra>` |
 
@@ -349,10 +349,10 @@ refuse-on-collision) as the `bucket_name` collision check above.
 `/handover register`:
 1. If the registry entry exists pre-v2 (no `bucket_vocab` field), inject defaults with `bucket_vocab: "time-horizon"`, `defaults: {}`, `stale_thresholds_days: {30, 60, 90}`. Never overwrite an existing v2 value.
 
-`source_buckets_extra` (HIMMEL-307) is **not** prompted by `init`/`register` —
+`source_buckets_extra` is **not** prompted by `init`/`register` —
 there is no dedicated subcommand to set it yet (a follow-up may add one). It is
 set explicitly on the state-root host repo via a one-time registry edit.
 Whenever it is written, the write path MUST run the disjointness validation
 above before persisting; a collision refuses the write (rc=2) and leaves the
 registry untouched, mirroring the `bucket_name` collision check. Absent the
-field, every flow is byte-identical to pre-HIMMEL-307.
+field, every flow is byte-identical to a registry with no extra buckets.

@@ -289,6 +289,11 @@ lg() { python3 -I -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()
 eq "the row is the answer-ab eval" "answer-ab" "$(lg 'r["eval"]')"
 eq "row n is the question count" "3" "$(lg 'r["n"]')"
 eq "row carries per-arm file_hit" "1" "$(lg 'r["metrics"]["vanilla.file_hit"]')"
+eq "the row forwards a complete identity hash into its hashed config" "True" "$(lg 'bool(r["config"].get("identity_hash")) and all((r["meta"].get("identity") or {}).get(k) for k in ("bank_sha256", "evaluator_sha256", "shaper_sha256", "harness_commit", "dirty_digest"))')"
+eq "the run's artifacts are retained before the row is written" "True" "$(python3 -I -c 'import json,os,sys
+r = json.loads(open(sys.argv[1]).readline())
+m = json.load(open(os.path.join(sys.argv[2], "runs", r["run_id"] + ".json")))
+print(m["manifest_sha256"] == r["meta"]["retained_manifest_sha256"] and "table" in m["artifacts"])' "$W/ledger.jsonl" "$W/eval-retained")"
 eq "row carries cost_usd, cost_per_file_hit, cached_share, ms_median, turns_mean per arm" "yes" "$(lg '"yes" if all(("%s.%s" % (a, m)) in r["metrics"] for a in ("vanilla","fused-cached","bm25-rerank","vec-rerank") for m in ("cost_usd","cost_per_file_hit","tokens_per_file_hit","cached_share","ms_median","turns_mean","input","output","cache_read","cache_creation")) else "no"')"
 eq "row cost_usd is the priced figure" "$want_v" "$(lg '"%.4f" % r["metrics"]["vanilla.cost_usd"]')"
 eq "row carries the insample and heldout split" "2 1 1" "$(lg 'r["metrics"]["vanilla.insample.n"]') $(lg 'r["metrics"]["vanilla.heldout.n"]') $(lg 'r["metrics"]["vanilla.heldout.file_hit"]')"

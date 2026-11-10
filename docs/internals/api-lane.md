@@ -16,12 +16,12 @@ feature's own switch.
 | `scripts/api-lane/judge-call.sh` | API lane | always (a chief's verdict question) |
 | `scripts/api-lane/bulk-call.sh` | API lane | always |
 | `jira release rm-run` (release manager) | the subscription | only in the himmel repo with `judge` mapped in `roles.json` (see [The role map](#the-role-map)); there the launcher's fallback is off, and a failed lane call, a policy refusal included, makes `rm-run` rule the batch once on the subscription itself; a timed-out call ends the run |
-| `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the review runs on the subscription |
-| `scripts/graphify/graph-cadence.sh --semantic` | `claude-cli` | `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` |
+| `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the review runs on the subscription; a policy refusal (exit 2 with the launcher's `claude-api: policy refusal:` line) makes the critic print `claude critic BROKE` and exit 1, never a clean skip |
+| `scripts/graphify/graph-cadence.sh --semantic` | `claude-cli` when run bare; the armed `graph-publish-himmel` runner passes `claude-api` on auto | `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` |
 | `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|C` |
 
-The two cadences default to the subscription (`claude-cli`) because both API
-accounts can run dry; the API lane is an explicit opt-in there.
+Both cadences default to the subscription (`claude-cli`) because every API
+account (A, B and C) can run dry; the API lane is an explicit opt-in there.
 
 ## The failure path
 
@@ -193,6 +193,18 @@ secret, only role names and account letters:
   network or server error, a rate limit or a refusal stops the pass at once (`only a credit-exhausted or rejected-key
   answer tries the next account`), because the next account would fail the same way or bill for nothing. Walking the accounts never submits a second batch: one batch
   per pass, as before. The synchronous path's breaker stops dispatch after one rejection per account in play.
+- **`--account-order` walks the letters it is given.** `semantic-update.sh --account-order C,A` (the claude-api
+  batch only: `GRAPHIFY_API_BATCH=0` or another backend is refused) walks those letters in that order, and reads
+  neither the role map nor a caller's account. It reads `api-credit-state.mjs accounts` once and skips, with a line, a
+  letter with no configured roster row (an unconfigured letter, or one the roster does not know, such as D); an
+  unreadable roster skips none. Each remaining letter goes through `pick --usd N --only <letter> --rows`, so the
+  stated order wins over grant-expiry rank. A letter with no room is skipped with a line; a row reading
+  `BANK-UNKNOWN` (a corrupt ledger, an unreadable roster), or an answer with no rows, stops the walk; a credit-exhausted or rejected-key answer
+  marks the letter and moves on, as above; anything else stops. `--rows` adds each candidate's own verdict to a
+  refusal, and only this walk passes it, so the refusal lines of the auto pass and the lane are unchanged. Under the
+  flag an estimate still over `--max-run-usd` after sizing refuses the submit (`over-cap`) instead of sending the
+  one-file floor. `--result-file F` writes one word on every exit, and a second line `rejected <letters>` when a key
+  was rejected; the script header lists the words. With neither flag the pass runs as before.
 - **An exhausted marker clears on its own.** `api-credit-state.mjs exhausted` writes `exhausted_at` for the account.
   Auto skips a marked account for `EXHAUSTED_TTL` (3600 seconds), or sooner when the operator snapshot holds a reading
   newer than the marker (refresh the snapshot after funding the account and the next pick uses it). An account marked

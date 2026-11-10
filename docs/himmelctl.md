@@ -170,14 +170,15 @@ report` and check for non-zero rows and a PROVEN collection line.
 ## `approve` and `deny`
 
 ```text
-himmelctl approve <id>          # asks for "Nonce Code:" (masked on a terminal, or one line on stdin)
+himmelctl approve <id>          # asks for "Nonce:", then "Code:" (masked on a terminal, or one line each on stdin)
 himmelctl approve status <id>   # prints the request's state
 himmelctl deny <id>             # asks for "Nonce [Code]:" (the code only once the helper asks for it)
 ```
 
 `approve <id>` answers an AFK request (a `run`, `op`, `grant` or `sudo` request a blocked session filed)
-from an SSH shell, the way a Telegram reply does. Type the 4-character nonce from the notice-bot message,
-then the 6-digit authenticator code, on one line (`K7QF 482913`; spaces are free). Both go to the root
+from an SSH shell, the way a Telegram reply does. At `Nonce:` type the 4-character nonce from the
+notice-bot message; a malformed one ends the verb there. At `Code:` type the 6-digit authenticator code
+(spaces are free). Both go to the root
 helper on its stdin through `sudo -n`, never on a command line, and neither is written to a log or the
 ledger. `deny <id>` denies a pending request. It takes the same 4-character nonce, since every session
 runs as your user and could otherwise deny your requests. After three wrong nonces on a request it also

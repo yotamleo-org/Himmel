@@ -319,7 +319,7 @@ class TestDotDirSkip(unittest.TestCase):
 
 
 class TestReportPathContainment(unittest.TestCase):
-    """HIMMEL-1762: a config-supplied report_path must not be able to write
+    """A config-supplied report_path must not be able to write
     outside the vault — by absolute path, traversal, or symlink/junction.
     Containment is proven positively (both sides resolved to real paths, then
     ancestor-or-equal), never inferred from the string shape of the value."""
@@ -369,7 +369,7 @@ class TestReportPathContainment(unittest.TestCase):
             except (ImportError, OSError) as e:
                 raise unittest.SkipTest(
                     "cannot create a symlink or junction in this envelope "
-                    f"({e}); symlink-escape case NOT verified (HIMMEL-1788)")
+                    f"({e}); symlink-escape case NOT verified")
         r = self._run_engine(vault, "linked/pwned.md")
         self._assert_refused(r, outside / "pwned.md")
 
@@ -394,7 +394,7 @@ class TestReportPathContainment(unittest.TestCase):
 
 
 class TestConfigPathSurface(unittest.TestCase):
-    """HIMMEL-1762 enumeration guard: report_path is the only config key the
+    """Enumeration guard: report_path is the only config key the
     engine consumes as a filesystem write path; every other consumed key is
     matched against vault-relative strings or is a scalar (log_path is declared
     in DEFAULTS but never read). If a new key shows up here, extend the
@@ -411,7 +411,7 @@ class TestConfigPathSurface(unittest.TestCase):
             {"link_scan_exclude", "bulk_dirs", "orphan_exempt", "frontmatter_exempt",
              "duplicate_exempt", "known_unbuilt_links", "report_path"},
             "config-key consumption surface changed — audit the new key for "
-            "path containment (HIMMEL-1762)",
+            "path containment",
         )
 
 

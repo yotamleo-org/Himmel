@@ -183,6 +183,11 @@
 # which is not a gate result, stays clean. A caller that pipes the run
 # (`check-ci.sh | tail`) gets the PIPE's exit code, not this script's — the
 # verdict line keeps the real status readable in any captured output.
+#
+# A red (1), refused (5) or deadline (2, or 7) exit also prints "review threads at
+# exit N: <count> unresolved" and names each open thread, read at that moment: a
+# review can post while the watch runs, and those exits never reach the thread
+# gate. Report only, it never changes the exit code.
 set -uo pipefail
 
 
@@ -312,7 +317,44 @@ esac
 # on EVERY exit path but --help: a piped caller's pipeline exit code is the LAST
 # command's, not this script's, so the numeric verdict must survive in the
 # output text. --help clears the trap below — asking for help is not a gate result.
-trap 'echo "check-ci: verdict exit=$?"' EXIT
+CHECK_CI_REFUSED=""
+CHECK_CI_REFUSED_OUTER="${GH_READ_REFUSED_FILE:-}"
+_refused_note() { [ -z "${CHECK_CI_REFUSED:-}" ] || printf '%s %s rate-limit\n' main "${1:-graphql}" >> "$CHECK_CI_REFUSED" 2>/dev/null; return 0; }
+_refused_clear() { [ -z "${CHECK_CI_REFUSED:-}" ] || : > "$CHECK_CI_REFUSED" 2>/dev/null; return 0; }
+# shellcheck disable=SC2329  # called by _check_ci_exit, which the EXIT trap runs
+_quota_report() {
+    local tok="" bucket="" why="" key ref
+    [ -n "${CHECK_CI_REFUSED:-}" ] && [ -s "$CHECK_CI_REFUSED" ] || return 0
+    read -r tok bucket why < "$CHECK_CI_REFUSED" 2>/dev/null || true  # read-sink-ok: our own mktemp refused file, never caller text; swallow-ok: a row without a newline still fills the fields, an empty file leaves why empty and returns below
+    [ -n "$why" ] || return 0
+    if [ -n "${initial_url:-}" ]; then
+        key="${initial_url##*/}"; ref="${initial_head:-unknown}"
+    else
+        key="branch-$(git symbolic-ref --short -q HEAD 2>/dev/null || echo detached)"; ref=unknown  # swallow-ok: no branch name still marks, as branch-detached
+    fi
+    (
+        # shellcheck source=/dev/null
+        . "$(cd "$(dirname "$0")" && pwd)/lib/gh-quota.sh" 2>/dev/null || exit 0
+        ghq_line "$tok" "$bucket" check-ci.sh "$why" >&2
+        echo "check-ci: BLOCKED — GitHub refused the read, so nothing was judged: report BLOCKED and stop; the chief resumes you at quota return" >&2
+        ghq_mark_blocked "$key" "$ref" check-ci.sh "$bucket" "$why"
+    ) || true
+}
+# shellcheck disable=SC2329  # called by _verdict_line, which the EXIT trap runs
+_check_ci_exit() {
+    [ "${1:-0}" -ne 2 ] || _quota_report
+    [ -n "${CHECK_CI_REFUSED:-}" ] || return 0
+    if [ -n "$CHECK_CI_REFUSED_OUTER" ] && [ -s "$CHECK_CI_REFUSED" ]; then cat "$CHECK_CI_REFUSED" >> "$CHECK_CI_REFUSED_OUTER" 2>/dev/null; fi  # read-sink-ok: our own mktemp refused file; swallow-ok: an unwritable outer file loses only the caller's extra row
+    rm -f "$CHECK_CI_REFUSED"
+    return 0
+}
+# shellcheck disable=SC2329  # invoked by the EXIT trap
+_verdict_line() {
+    local rc=$?
+    _check_ci_exit "$rc"
+    echo "check-ci: verdict exit=$rc"
+}
+trap _verdict_line EXIT
 
 selector=""
 RUN_ID=""
@@ -382,6 +424,9 @@ if [ "$MAX_WAIT" -gt 0 ] && [ "$MAX_WAIT" -lt "$SETTLE" ]; then
     exit 64
 fi
 
+CHECK_CI_REFUSED=$(mktemp "${TMPDIR:-/tmp}/check-ci-refused.XXXXXX" 2>/dev/null) || CHECK_CI_REFUSED=""  # swallow-ok: no scratch file means no quota marker, never a different verdict
+[ -z "$CHECK_CI_REFUSED" ] || export GH_READ_REFUSED_FILE="$CHECK_CI_REFUSED"
+
 # --max-wait bounds the WHOLE run, not each watch round. RUN_START
 # anchors one deadline; _budget_left is what remains of it (0 once spent).
 RUN_START=$SECONDS
@@ -397,8 +442,39 @@ _budget_left() {
 # without also re-running on a gh error or a moved head. Only the two
 # DEADLINE-PENDING sites call this; a red is exit 1 either way.
 _deadline_exit() {
-    if [ "${CHECK_CI_DISTINCT_DEADLINE:-0}" = 1 ]; then exit 7; fi
+    if [ "${CHECK_CI_DISTINCT_DEADLINE:-0}" = 1 ]; then _threads_at_exit 7; exit 7; fi
+    _threads_at_exit 2
     exit 2
+}
+
+_threads_at_exit() {
+    [ -n "${num:-}" ] || return 0
+    local th n act
+    if th=$(open_review_threads "$owner" "$repo" "$num" gh_read); then n=${th%%$'\n'*}; else n=unreadable; th=""; fi
+    if act=$(_cr_actionable) && [ "$act" -gt 0 ]; then act=" (CodeRabbit's review at head $head0 posted $act actionable comment(s))"; else act=""; fi
+    if [ "$n" = 0 ]; then
+        echo "check-ci: review threads at exit $1: 0 unresolved on PR #$num$act" >&2
+    elif [ "$n" = unreadable ]; then
+        echo "check-ci: review threads at exit $1: could not read the threads of PR #$num$act — check them by hand (check-ci.sh --threads-only) before the next push" >&2
+    else
+        echo "check-ci: review threads at exit $1: $n unresolved on PR #$num$act — read and answer them before the next push; judge-go and a delta-noop GO refuse while one is open" >&2
+        printf '%s' "${th#*$'\n'}" >&2
+    fi
+}
+
+# _cr_actionable — the actionable comments CodeRabbit's reviews at head0 say they
+# posted ("Actionable comments posted: N", summed). Its check row reads pass even
+# then, so a pass is not a clean review. rc 1 = not armed, or the reviews are unread.
+_cr_actionable() {
+    [ "$CR_ARMED" -eq 1 ] && [ -n "${head0:-}" ] || return 1
+    local uid json n
+    uid=$(cr_signal_bot_id)
+    case "$uid" in '' | *[!0-9]*) return 1 ;; esac
+    json=$(_cbf_reviews_json "$owner" "$repo" "$num") || return 1
+    n=$(printf '%s' "$json" | jq -r --argjson uid "$uid" --arg h "$head0" \
+        '[.[] | select(.user.id == $uid and .commit_id == $h) | (.body // "") | capture("Actionable comments posted: (?<n>[0-9]+)").n | tonumber] | add // 0' 2>/dev/null) || return 1
+    case "$n" in '' | *[!0-9]*) return 1 ;; esac
+    printf '%s\n' "$n"
 }
 
 # A GraphQL-budget wait is bounded by what is LEFT of --max-wait,
@@ -434,6 +510,9 @@ fi
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/gh-read.sh"
 gh_read_init
+# shellcheck source=scripts/lib/open-review-threads.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+. "$(cd "$(dirname "$0")" && pwd)/lib/open-review-threads.sh"
 RL_RECOVERIES=0
 # _rl_recover — after a gh failure that reads as a rate limit: wait for the
 # reset and tell the caller to retry (rc 0), at most 3 times per run. rc 1 =
@@ -447,12 +526,15 @@ _rl_recover() {
     ghb_wait_for_budget "$bound" "$CHECK_CI_SLEEP_CMD" || return 1
     [ "$GHB_WAITED" -eq 1 ] || return 1
     RL_RECOVERIES=$((RL_RECOVERIES + 1))
+    _refused_clear
     return 0
 }
 if ! rl_bound=$(_rl_bound) || ! ghb_wait_for_budget "$rl_bound" "$CHECK_CI_SLEEP_CMD"; then
     echo "check-ci: GitHub GraphQL budget exhausted and the reset is beyond --max-wait (${MAX_WAIT}s) — cannot evaluate the gate; re-run after the reset" >&2
+    _refused_note graphql
     exit 2
 fi
+_refused_clear
 # jq is needed to read CodeRabbit's status + review-body findings, so require
 # it only when the CodeRabbit signal gate is ARMED. --threads-only is not a pure GraphQL+gh path;
 # it also runs cr_signal_gate + cr_body_gate (a body-only finding
@@ -771,6 +853,7 @@ required_gate() {
     if [ "$rs_rc" -ne 0 ]; then
         echo "check-ci: BLOCKED — required-set unreadable: could not list the checks GitHub requires on this PR's base branch (rules/branches or branch-protection read failed). Refusing rather than treating it as an empty set; re-run once gh/API access recovers (exit 5)" >&2
         _alert "required-set unreadable — the required-check list for the base branch could not be read; nothing was assumed"
+        _threads_at_exit 5
         exit 5
     fi
     [ -n "$reqs" ] || return 0
@@ -785,6 +868,7 @@ required_gate() {
         if _has_producer_ids "$reqs" && ! prows=$(_producer_rows); then
             echo "check-ci: BLOCKED — required-check producers unreadable: could not read which app reported each check on this PR's head, so a required check pinned to an app cannot be verified. Refusing rather than matching by name alone; re-run once gh/API access recovers (exit 5)" >&2
             _alert "required-check producers unreadable — a required check pinned to an app could not be verified; nothing was assumed"
+            _threads_at_exit 5
             exit 5
         fi
         st=$(_required_status "$reqs" "$rows" "$prows")
@@ -793,6 +877,7 @@ required_gate() {
             echo "check-ci: checks FAILED — required check(s) failed: $failed" >&2
             _job_log_hint
             _alert "required check(s) FAILED: $failed — GitHub will refuse this merge until they pass"
+            _threads_at_exit 1
             exit 1
         fi
         missing=$(_join_by_status missing "$st")
@@ -840,6 +925,7 @@ required_gate() {
                 missing="$missing (status-only, producer unverifiable: $status_only)"
             fi
             _alert "required check(s) never reported within ${GRACE}s: $missing — GitHub will refuse this merge"
+            _threads_at_exit 5
             exit 5
         fi
         "$CHECK_CI_SLEEP_CMD" "$POLL"
@@ -867,6 +953,7 @@ red_exit() {
     fi
     _job_log_hint
     _red_alert
+    _threads_at_exit 1
     exit 1
 }
 
@@ -1137,9 +1224,12 @@ watch_round() {
             if [ -n "$err" ]; then
                 # A rate limit is not a verdict — wait for the
                 # reset and re-run the round instead of exit 2.
-                if ghb_is_rate_limited "$err" && _rl_recover; then
-                    watch_round "$extend_ok"
-                    return $?
+                if ghb_is_rate_limited "$err"; then
+                    if _rl_recover; then
+                        watch_round "$extend_ok"
+                        return $?
+                    fi
+                    _refused_note graphql
                 fi
                 echo "check-ci: gh pr checks --watch failed — cannot evaluate the gate: $err" >&2
                 exit 2
@@ -1291,7 +1381,12 @@ watch_round() {
 # Post-watch review and head reads remain fresh: these facts can change while
 # the immutable commit endpoints are being watched.
 initial_pr=$(GH_READ_QUIET=1 pr_view --json url,reviewDecision,headRefOid,baseRefName --jq '[.url, (if (.reviewDecision // "") == "" then "null" else .reviewDecision end), .headRefOid, .baseRefName] | @tsv' 2>&1) || {
-    echo "check-ci: cannot resolve the PR — cannot evaluate: $initial_pr" >&2; exit 2
+    if [ -n "$CHECK_CI_REFUSED" ] && [ -s "$CHECK_CI_REFUSED" ]; then
+        echo "check-ci: the PR was not read, GitHub refused it — cannot evaluate: $initial_pr" >&2
+    else
+        echo "check-ci: cannot resolve the PR — cannot evaluate: $initial_pr" >&2
+    fi
+    exit 2
 }
 IFS=$'\t' read -r initial_url initial_decision initial_head initial_base <<EOF
 $initial_pr
@@ -1328,6 +1423,7 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
             # shellcheck disable=SC2329  # invoked by the EXIT trap
             _verdict_then_event() {
                 local rc=$?
+                _check_ci_exit "$rc"
                 echo "check-ci: verdict exit=$rc"
                 _ticket_event ci-exit
                 exit "$rc"
@@ -1377,7 +1473,10 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
         fi
         if ! printf '%s' "$err" | grep -i 'no checks reported' >/dev/null; then
             # Budget exhaustion is a wait, not a verdict.
-            if ghb_is_rate_limited "$err" && _rl_recover; then continue; fi
+            if ghb_is_rate_limited "$err"; then
+                _rl_recover && continue
+                _refused_note graphql
+            fi
             echo "check-ci: gh pr checks failed — cannot evaluate the gate: $err" >&2
             exit 2
         fi
@@ -1570,6 +1669,10 @@ cr_signal_gate() {
         *)
             echo "check-ci: NOTE — CodeRabbit $state on head $head0 of PR #$num: best effort, not gating; thread + body-findings gates still apply." >&2 ;;
     esac
+    local act
+    if act=$(_cr_actionable) && [ "$act" -gt 0 ]; then
+        echo "check-ci: CodeRabbit $state on head $head0 of PR #$num posted $act actionable comment(s): $act finding(s), not a clean pass; the thread gate below decides" >&2
+    fi
     # A CodeRabbit verdict was just read: one CI-release event, switch read first.
     _cr_first_event || true
 }

@@ -104,7 +104,7 @@ type: note
 This page references a tweet it does not own.
 EOF
 
-# --- fixture: a quoted source: value (the real LUNA-2 Web Clipper shape) ---
+# --- fixture: a quoted source: value (the real Web Clipper shape) ---
 cat > "$tmp/Clippings/existing-quoted.md" <<'EOF'
 ---
 title: "quoted source tweet"
@@ -177,7 +177,7 @@ out="$(run --sender t --msg-id 5009 --text 'https://x.com/i/status/555')"
 ckgrep "URL only in _synthesis/ does NOT dedup (excluded from scan)" '✓'
 ckcount "_synthesis-only URL wrote one clip" 'telegram-5009-*.md' 1
 
-# --- Case 10: a quoted source: value (real LUNA-2 clip shape) still matches ---
+# --- Case 10: a quoted source: value (real Web Clipper shape) still matches ---
 out="$(run --sender t --msg-id 5010 --text 'https://x.com/i/status/666')"
 ckgrep "X dup matches a quoted source: value" 'dup-url'
 ckcount "no duplicate written for quoted-source X dup" 'telegram-5010-*.md' 0

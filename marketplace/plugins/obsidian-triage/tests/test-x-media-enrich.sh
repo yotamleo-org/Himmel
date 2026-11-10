@@ -717,7 +717,7 @@ assert "_done same.md -> _media/same-7002/ (distinct, no collision)" ok "$a"
 # Before the fix, the existing-section branch started at the
 # first ### heading and dropped the <!-- media-enriched ... via x-media -->
 # comment, so --apply-digest's provenance guard refused every such clip.
-echo "Test 15: _splice_crawled preserves provenance into an EXISTING crawled section (HIMMEL-1235)"
+echo "Test 15: _splice_crawled preserves provenance into an EXISTING crawled section"
 emit_gallery_dl 1.jpg
 SP="$tmp/vault-splice"; mkdir -p "$SP/Clippings"
 cat > "$SP/Clippings/clip.md" <<EOF
@@ -758,7 +758,7 @@ assert "apply-digest succeeds after splice provenance fix" 0 "$?"
 # provenance. When the referenced slide file is present on disk, repair
 # inserts the provenance comment before the Slides block and --apply-digest
 # then succeeds.
-echo "Test 16: --repair-provenance (mechanical one-time repair, HIMMEL-1235)"
+echo "Test 16: --repair-provenance (mechanical one-time repair)"
 RP="$tmp/vault-repair"; mkdir -p "$RP/Clippings/_media/clip-3001"
 cat > "$RP/Clippings/clip.md" <<'EOF'
 ---

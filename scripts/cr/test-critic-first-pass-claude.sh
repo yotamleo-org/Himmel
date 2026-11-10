@@ -253,6 +253,23 @@ run_cfp claude-api
 check "10f a refusal line with exit 1 (not the launcher's own exit 2) is a failure" 1 "$RC"
 unset FAKE_REFUSE FAKE_REFUSE_RC
 
+fresh_rec 10k
+ALERT_DIR_10K="$W/alerts.10k"; mkdir -p "$ALERT_DIR_10K"
+printf '#!/bin/sh\ntouch "%s"\n' "$W/alert-ran.10k" > "$W/alert-stub.10k"; chmod +x "$W/alert-stub.10k"
+RC=0; printf '%s\n' "$DIFF" | env -u ANTHROPIC_API_KEY CFP_CLAUDE_API_LAUNCHER="$REPO/scripts/api-lane/claude-api.sh" \
+    HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto HIMMEL_API_ALERT_CMD="$W/alert-stub.10k" HIMMEL_API_ALERT_DIR="$ALERT_DIR_10K" \
+    bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
+check "10k the real launcher's policy refusal is broke: exits 1" 1 "$RC"
+has "10k stderr names BROKE" "claude critic BROKE" "$W/err"
+hasnt "10k stderr never says SKIPPED" "SKIPPED" "$W/err"
+check "10k a broke critic prints no review" "" "$(cat "$W/out")"
+check "10k the launcher recorded the policy refusal (one record per attempt)" yes "$([ "$(grep -c '"kind":"critic"' "$ALERT_DIR_10K/policy-refusals.jsonl" 2>/dev/null)" -ge 1 ] && echo yes || echo no)"
+check "10k the policy refusal sent no alert" no "$([ -e "$W/alert-ran.10k" ] && echo yes || echo no)"
+fresh_rec 10l; export FAKE_REFUSE="auto routing is for the himmel graph pass only (kind critic, repo none); name HIMMEL_API_ACCOUNT=A, B or C"
+run_cfp claude-api
+check "10l the policy wording without the launcher's marker line is a decision: exits 5" 5 "$RC"
+unset FAKE_REFUSE
+
 # a tree whose cfp is the real one but whose usage-preflight and hermes invoke are stubs
 mk_tree() { # mk_tree <name>
     local T="$W/tree.$1" f

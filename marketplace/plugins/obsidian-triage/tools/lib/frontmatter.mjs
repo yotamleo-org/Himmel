@@ -1,12 +1,12 @@
 /**
  * frontmatter.mjs — byte-preserving YAML-frontmatter helpers for the Phase-2
- * generative tools (LUNA-87/88/89).
+ * generative tools (stub synthesis, densify, deferred reconcile).
  *
  * Line-based and lossless: split('\n')/join('\n') round-trips any content (LF
  * or CRLF — CRLF lines keep a trailing '\r'). We never normalise; insertion and
  * removal are exact so a stamp+unstamp pair restores the original bytes.
  *
- * Mirrors the local helpers in migrate-clip-lifecycle.mjs (LUNA-86) but is a
+ * Mirrors the local helpers in migrate-clip-lifecycle.mjs but is a
  * shared, exported module — the migration engine is intentionally left
  * untouched (it ships under review on the Phase-1 branch).
  *

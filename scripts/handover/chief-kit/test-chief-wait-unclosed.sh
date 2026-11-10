@@ -129,6 +129,44 @@ busy() { PATH="$W/bin-busy:$PATH" tk "$1"; }
 contains 'a worker holding its lock reads FRESH (control)' "$(busy "$w4")" 'workers=N301:FRESH'
 check 'a worker that is still working is never unclosed' '' "$(field unclosed "$(busy "$w4")")"
 
+w6="$(mkworker 06 childless '- 12:00 LIVE — working' '- 12:30 WRAPPED — released')"
+konsole 5706 "HIMMEL-9706-N9706-childless" > "$W/ps-win6.txt"
+reset
+export PS_FIXTURE="$W/ps-win6.txt"
+gone "$w6" > /dev/null
+o="$(gone "$w6")"
+contains '(a) a WRAPPED worker with a childless konsole reads WRAPPED (control)' "$o" 'workers=N9706:WRAPPED'
+check '(a) its childless konsole is closed by deadwin=' 'N9706:closed' "$(field deadwin "$o")"
+check '(a) a WRAPPED worker whose konsole has no child is never unclosed' '' "$(field unclosed "$o")"
+export PS_FIXTURE="$W/ps-none.txt"
+
+reset
+alive "$w1" > /dev/null; alive "$w1" > /dev/null
+printf '%s\n' 'DISPOSITION N9701 closed' >> "$chief"
+check '(b) a DISPOSITION line that is not a bullet does not clear it' 'N9701' "$(field unclosed "$(alive "$w1")")"
+printf '%s\n' '- DISPOSITION N9701 closed' >> "$chief"
+check '(b) a disposition bullet without HH:MM clears the field' '' "$(field unclosed "$(alive "$w1")")"
+reset
+alive "$w1" > /dev/null; alive "$w1" > /dev/null
+printf '%s\n' '- 12:47 **DISPOSITION N9701 closed**' >> "$chief"
+check '(b) a bold disposition bullet with HH:MM clears the field' '' "$(field unclosed "$(alive "$w1")")"
+
+wa="$W/handover/HIMMEL-9707-N9707-a.md"; wb="$W/handover/HIMMEL-9707-N9707b-b.md"
+for f in "$wa" "$wb"; do printf '%s\n' '# worker' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$f"; done
+mkcmdline 9707 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9707-N9707-a work
+mkcmdline 9708 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9707-N9707b-b work
+mk_pgrep_x "$W/bin-pair" 9707 9708
+pair() { PATH="$W/bin-pair:$PATH" tk "$wa,$wb"; }
+reset
+pair > /dev/null
+check '(c) both prefix-labelled workers are unclosed on the second tick' 'N9707,N9707b' "$(field unclosed "$(pair)")"
+printf '%s\n' '- 12:50 DISPOSITION N9707 closed' >> "$chief"
+check '(c) a disposition for N9707 leaves N9707b unclosed' 'N9707b' "$(field unclosed "$(pair)")"
+reset
+pair > /dev/null; pair > /dev/null
+printf '%s\n' '- 12:51 DISPOSITION N9707b closed' >> "$chief"
+check '(c) a disposition for N9707b leaves N9707 unclosed' 'N9707' "$(field unclosed "$(pair)")"
+
 touch -d '20 minutes ago' "$w1"
 reset
 check 'closable=<n> still counts an aged CLOSABLE worker' '1' "$(field closable "$(alive "$w1")")"
@@ -155,6 +193,12 @@ tick_line ' unclosed=N2315'
 if run_waiter "$W/w1.out" 80; then pass 'the waiter wakes on a new unclosed worker'; else fail 'the waiter did not wake on unclosed=N2315'; fi
 case "$(cat "$W/w1.out")" in *'WAKE unclosed N2315'*) pass 'the wake names the worker: WAKE unclosed N2315' ;; *) fail "waiter out: $(cat "$W/w1.out")" ;; esac
 if run_waiter "$W/w2.out" 40; then fail "the waiter woke again for the same unclosed worker: $(cat "$W/w2.out")"; else pass 'the same unclosed worker does not wake the waiter again'; fi
+touch -d '30 minutes ago' "$inbox.wait.unclosed"
+if run_waiter "$W/w2b.out" 40; then fail "(d) a 30-minute-old marker woke inside the 60-minute window: $(cat "$W/w2b.out")"; else pass '(d) the same unclosed worker stays quiet inside the re-wake window'; fi
+touch -d '61 minutes ago' "$inbox.wait.unclosed"
+if run_waiter "$W/w2c.out" 80; then pass '(d) the same unclosed worker wakes again after 60 minutes'; else fail '(d) the waiter did not re-wake after the 60-minute window'; fi
+case "$(cat "$W/w2c.out")" in *'WAKE unclosed N2315'*) pass '(d) the re-wake names the worker: WAKE unclosed N2315' ;; *) fail "(d) waiter out: $(cat "$W/w2c.out")" ;; esac
+if run_waiter "$W/w2d.out" 40; then fail "(d) the re-wake repeated at once: $(cat "$W/w2d.out")"; else pass '(d) the re-wake restarts the clock'; fi
 tick_line ' unclosed=N2315,N2316'
 if run_waiter "$W/w3.out" 80; then pass 'a second unclosed worker wakes the waiter'; else fail 'the waiter did not wake on the second unclosed worker'; fi
 case "$(cat "$W/w3.out")" in *'WAKE unclosed N2316'*) pass 'only the new worker is named: WAKE unclosed N2316' ;; *) fail "waiter out: $(cat "$W/w3.out")" ;; esac

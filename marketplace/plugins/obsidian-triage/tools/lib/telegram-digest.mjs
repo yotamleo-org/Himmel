@@ -1,5 +1,5 @@
 /**
- * telegram-digest.mjs — LUNA-91 batched promotion-feedback digest (pure).
+ * telegram-digest.mjs — batched promotion-feedback digest (pure).
  *
  * When synthesize-stubs promotes evidence clips to subjects, clips that were
  * CAPTURED VIA TELEGRAM should let the operator see the vault compounding from

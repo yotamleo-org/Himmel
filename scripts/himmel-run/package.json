@@ -15,7 +15,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "commander": "^15.0.0",
+    "commander": "^15.1.0",
     "env-paths": "^4.0.0",
     "proper-lockfile": "^4.1.2"
   },
@@ -23,6 +23,6 @@
     "@types/node": "^26.6.4",
     "@types/proper-lockfile": "^4.1.4",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }

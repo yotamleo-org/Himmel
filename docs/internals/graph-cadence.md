@@ -124,7 +124,10 @@ either it skips at once and rebuilds nothing — the hourly AST pair already
 built the graph). Both steps would otherwise contend for
 `ast-update.sh`'s promote lock (skip-not-wait, so a collision is
 a skipped-and-retried refresh next fire, not a failure — the wider offset
-just makes that the exception rather than the rule).
+just makes that the exception rather than the rule). The post-merge tick below
+fires every five minutes, so it lands on `:15` and `:35` too: its graph half
+takes the same lock, treats a busy one (rc 4) as a skip and retries on its next
+tick, so no offset is kept clear for it.
 
 Two fires of this step itself are serialized by `graph-cadence.sh`'s own
 pipeline lock (`<worktree>.lock`), because each run `reset --hard` +
@@ -144,6 +147,23 @@ destructive git command. A refreshed graph lands only through a `chore/graph-pub
 PR merged on green — never a direct push to `main` (asserted in
 `test-graph-cadence.sh`).
 
+## The post-merge tick
+
+`scripts/luna/post-merge-refresh.sh` is a separate five-minute tick that refreshes the code graph (and, in `both` mode, the himmel keyword index) after merges settle, with no paid call. Nothing arms it on its own; an operator arms it:
+
+```bash
+bash scripts/luna/graphmap-cadence.sh post-merge graph   # code graph only
+bash scripts/luna/graphmap-cadence.sh post-merge both    # code graph and keyword index
+bash scripts/luna/graphmap-cadence.sh post-merge off     # row, runner and registrations removed
+```
+
+- **One row, nothing else.** The verb writes only `HIMMEL-PostMergeRefresh` at `*/5 * * * *` and every other crontab row back unchanged. The row sits outside the arm family: `arm` and `arm --force` leave it alone, a full `disarm` removes it with its runner and registrations, `disarm --luna-only` leaves it, and `status` lists it with its mode.
+- **A bare runner.** `~/.claude/graphmap-cadence/post-merge-refresh.sh` appends to `post-merge-refresh.log` beside it (checked before each fire and moved to `.prev` once it passes 1 MB, so the live log can pass 1 MB by one fire's output), writes no flow rows and never clears an alert (the tick clears `post-merge-tick` itself on a clean pass). When the tick exits non-zero it raises `post-merge-tick` through `cadence-alert.sh`.
+- **What cron does not carry.** The runner pins at arm time the `PATH` directories of `graphify`, `bun`, `qmd` and `node`, so the tick finds them, and runs from its own directory: qmd walks up from the working directory for a project-local `.qmd/index.yml`, and the tick sets none. Arming refuses when `graphify` is not an absolute executable on `PATH`.
+- **The mode** is one generated line in the runner, `# himmel-post-merge-mode: graph` (or `both`). `arm --rewrite-armed` reads it, rewrites the runner only when one exists, and refuses with exit 2, rewriting nothing, when the line is absent, repeated or in any other form. It never adds the tick.
+- **Registration.** The task `HIMMEL-PostMergeRefresh` and the flows `post-merge-graph` (and `post-merge-keyword` in `both`) are registered with `cadence_seconds` 604800 and `stall_deadline_seconds` 3600. A stall deadline an operator already set on a flow is kept.
+- **Lock alerts name the holder.** The 30-minute lock alert gives the pid of the live holder, since lock liveness is by pid alone.
+
 ## The ledger
 
 Two ledgers, both written every run:
@@ -153,8 +173,14 @@ Two ledgers, both written every run:
    literal path). One JSON line per run:
 
    ```json
-   {"ts":"2026-09-06T14:34:57Z","head":"<origin/main sha>","graph_head":"<built_at_commit>","merges_behind":21,"action":"merged","pr":"https://github.com/.../pull/42","duration_s":36,"error":null}
+   {"ts":"2026-09-06T14:34:57Z","head":"<origin/main sha>","graph_head":"<built_at_commit>","merges_behind":21,"lag_s":5400,"action":"merged","pr":"https://github.com/.../pull/42","duration_s":36,"error":null}
    ```
+
+   `graph_head` is the build commit of the graph, `merges_behind` how many
+   commits `origin/main` is ahead of it, and `lag_s` how many seconds apart the
+   two commits are (null when either commit cannot be read). A
+   `published-channel` row sets all three from the commit the publish carried;
+   see [How far behind the published graph is](#how-far-behind-the-published-graph-is).
 
    `action` is one of `skipped | failed | refreshed | published | published-channel | merged` —
    `published-channel` means the run pushed its graph to the `graph-data`
@@ -341,6 +367,45 @@ with, the station stays AST-only and `graphify-out/` is not touched.
 `--check` reports what it would fetch and writes nothing. A station with
 `graphify.semantic_api_ok` set to true in `~/.himmel/config.json` is the
 publisher, so it never fetches.
+
+### How far behind the published graph is
+
+Every `published-channel` row records the lag at the moment of the publish
+(`graph_head`, `merges_behind`, `lag_s`). A publish that lands carries a graph
+that is already a few commits old, and the next publish is hours away, so the
+lag adopters see at their own update is higher than any one row. To measure
+that, replay it:
+
+```sh
+python3 scripts/graphify/graph-lag-report.py --ledger <handover-root>/.graph-cadence/ledger.jsonl --repo <himmel checkout> --days 14
+```
+
+The report needs no network and writes nothing. For each hour of the window the
+published graph is the latest `published-channel` row at or before it; failed
+and skipped fires leave it where it was, so a run of them shows as a growing
+gap. The lag at an hour is the number of commits on `origin/main` (else `main`)
+made by then that the build commit does not contain. It prints:
+
+- `p50`, `p90` and `max` over the window's hours;
+- the hours over the limit adopters refuse the graph at, read from
+  `GRAPH_MAX_BEHIND` in `scripts/himmel-update.sh`;
+- the hours over 40 and over 100, and the target: `p90` at most 40 and `max`
+  at most 100.
+
+Hours before the first `published-channel` row have no baseline
+(`no-baseline-hours`), and hours after a publish whose build commit the
+checkout cannot read, or that names none, are `unknown-hours`: the report leaves
+both out of the figures and never reads them as an older graph's lag.
+
+The target reads `HOLDS` or `BREACHED` only when every hour of the window has a
+figure. Otherwise it reads `INCOMPLETE covered=<n>/<total>` whatever the
+figures say, so 14 days of `--days` over a ledger that is 2 hours old is never a
+passed window. When no hour has a figure (an empty ledger, no
+`published-channel` row, or only unreadable ones) the report exits 3; exit 2 is
+bad input. It also prints the commit time of the ref it measured against, and a
+`WARN` when that is more than 6 hours older than the window's end, since a stale
+checkout makes the lag read too low.
+`--now` ends the window at a fixed time instead of the present.
 
 ## Luna graph freshness
 

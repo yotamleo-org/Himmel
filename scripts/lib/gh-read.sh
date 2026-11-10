@@ -20,11 +20,22 @@
 #
 # Env (optional): GH_READ_ENV_ROOT — directory whose .env holds the token (default:
 # the primary checkout's .env, found from this file).
+#   GH_READ_TIMEOUT           seconds one read may take (default 120, 0 = none), as
+#                             `timeout --foreground` so a caller's outer kill reaches it.
+#                             A timed-out read exits 124 and is not retried
+#   GH_READ_REFUSED_FILE      a read that finally fails on a rate limit or a timeout
+#                             appends "<main|read> <graphql|core> rate-limit|stall"
+#   GH_READ_NO_MAIN_FALLBACK  1 = a rate-limited read is not retried on main (scans);
+#                             a bad, missing or 404 token still falls back
+#   GH_READ_OFF               1 = every read fails at once (124) with a stall row;
+#                             writes are untouched
 #
 # ponytail: one read token, no pool or rotation; the fallback is reactive (a
 # refused read retries once on the main token), not a pre-flight budget check.
 
 _GHR_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/timeout-bin.sh
+. "$_GHR_HERE/timeout-bin.sh" 2>/dev/null
 _GHR_TOK=""
 _GHR_LOADED=0
 _GHR_WARNED=0
@@ -96,32 +107,82 @@ _ghr_is_read() {
     [ "$field" -eq 0 ] || [ "$graphql" -eq 1 ]
 }
 
+# ponytail: no timeout binary (a Mac without coreutils) means no bound; upgrade = a bash watchdog
+_ghr_run() {
+    local t="${GH_READ_TIMEOUT:-120}"
+    case "$t" in ''|*[!0-9]*) t=120 ;; esac
+    if [ "$t" -gt 0 ] && [ -n "${_TIMEOUT_BIN:-}" ]; then
+        "$_TIMEOUT_BIN" --foreground "$t" gh "$@"
+    else
+        gh "$@"
+    fi
+}
+
+_ghr_rl() {
+    ( . "$_GHR_HERE/gh-quota.sh" 2>/dev/null && ghq_is_rate_limited "$(cat "$1" 2>/dev/null)" )  # read-sink-ok: our own mktemp buffer
+}
+
+_ghr_note() {
+    local tok="$1" rc="$2" errf="$3" why="" bucket
+    shift 3
+    [ -n "${GH_READ_REFUSED_FILE:-}" ] || return 0
+    case "$rc" in
+        0) return 0 ;;
+        124|137) why=stall ;;
+        *) _ghr_rl "$errf" && why=rate-limit ;;
+    esac
+    [ -n "$why" ] || return 0
+    bucket=$( . "$_GHR_HERE/gh-quota.sh" 2>/dev/null && ghq_bucket_of "$@") || bucket=""
+    printf '%s %s %s\n' "$tok" "${bucket:-graphql}" "$why" >> "$GH_READ_REFUSED_FILE" 2>/dev/null
+    return 0
+}
+
 gh_read() {
     if ! _ghr_is_read "$@"; then
         gh "$@"
         return $?
     fi
     _ghr_load
+    local errf outf rc tok=main
+    [ -z "$_GHR_TOK" ] || tok="read"
+    if [ "${GH_READ_OFF:-}" = 1 ]; then
+        echo "gh-read: reads are off (GH_READ_OFF=1); nothing was read" >&2
+        [ -z "${GH_READ_REFUSED_FILE:-}" ] || printf '%s %s stall\n' "$tok" \
+            "$( . "$_GHR_HERE/gh-quota.sh" 2>/dev/null && ghq_bucket_of "$@")" >> "$GH_READ_REFUSED_FILE" 2>/dev/null
+        return 124
+    fi
     if [ -z "$_GHR_TOK" ]; then
         _ghr_warn "$_GHR_WHY"
-        gh "$@"
-        return $?
+        errf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { _ghr_run "$@"; return $?; }
+        _ghr_run "$@" 2>"$errf"
+        rc=$?
+        cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
+        _ghr_note main "$rc" "$errf" "$@"
+        rm -f "$errf"
+        return "$rc"
     fi
-    local errf outf rc
-    errf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { gh "$@"; return $?; }
+    errf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { _ghr_run "$@"; return $?; }
     # a refused call can already have printed pages or an error body: hold stdout so
     # a refused attempt is discarded instead of doubled by the retry
-    outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { rm -f "$errf"; gh "$@"; return $?; }
-    GH_TOKEN="$_GHR_TOK" gh "$@" >"$outf" 2>"$errf"
+    outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { rm -f "$errf"; _ghr_run "$@"; return $?; }
+    GH_TOKEN="$_GHR_TOK" _ghr_run "$@" >"$outf" 2>"$errf"
     rc=$?
-    if [ "$rc" -ne 0 ] && grep -qiE 'rate limit|bad credentials|requires authentication|not accessible by (personal access )?token|HTTP (401|403|404)|Could not resolve to a (Repository|PullRequest)' "$errf"; then
-        rm -f "$errf" "$outf"
+    # a timeout (124, 137 after -k) is not retried: a hung GitHub would cost twice
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] \
+        && { _ghr_rl "$errf" || grep -qiE 'bad credentials|requires authentication|not accessible by (personal access )?token|HTTP (401|403|404)|Could not resolve to a (Repository|PullRequest)' "$errf"; } \
+        && ! { [ "${GH_READ_NO_MAIN_FALLBACK:-}" = 1 ] && _ghr_rl "$errf"; }; then
+        rm -f "$outf"
         _ghr_warn "read token refused"
-        gh "$@"
-        return $?
+        _ghr_run "$@" 2>"$errf"
+        rc=$?
+        cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
+        _ghr_note main "$rc" "$errf" "$@"
+        rm -f "$errf"
+        return "$rc"
     fi
     cat "$outf"; rm -f "$outf"  # read-sink-ok: our own mktemp buffer
     cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
+    _ghr_note read "$rc" "$errf" "$@"
     rm -f "$errf"
     return "$rc"
 }

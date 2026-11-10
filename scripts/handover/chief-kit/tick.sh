@@ -216,13 +216,24 @@ chief-wait's action key, so it wakes nothing. Env seams:
 HIMMEL_WORKER_SESSION_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_FAILURE_ROUTES_LOG,
 WORKER_SESSION_DIGEST_STATE_DIR.
 
-gql=<remaining>/<reset HH:MM> (HIMMEL-3197): the GitHub GraphQL budget, read from
-the X-Ratelimit-* headers of ONE `gh api -i graphql` call
-(gh-graphql-budget.sh ghb_read); gql=? when the headers cannot be read.
+gql=<remaining>/<reset HH:MM>: the GitHub GraphQL budget of the main token,
+rendered from quota.tsv (gh-quota.sh), whose reading is the X-Ratelimit-* headers of one
+`gh api -i graphql` probe that ghq_refresh makes at most once per 170 s for the whole box;
+the tick makes no budget call of its own. gql=? when quota.tsv has no reading.
+
+quota=<token>.<bucket>:<remaining>@<reset HH:MM>[,...]: a GitHub budget the
+tick found out. Token is main or read, bucket graphql or core. Listed when the bucket is
+under GHQ_SCAN_FLOOR (default 500) or a read was refused (remaining ? when unknown), and
+<token>.<bucket>:stall when a probe or a read timed out. ABSENT when every budget is healthy.
+ghq_refresh runs first in the tick; after a timed-out probe or read, and past TICK_DEADLINE_SEC,
+the tick exports GH_READ_OFF=1, so every later router read fails fast into its own ? field and
+the pr-stall probe is skipped (stall= then reads its cached value, else ?). The open-PR list
+read never retries a rate limit on main, so prs=? beside a quota= names which budget refused
+it. Advisory: not in chief-wait's action key, so it wakes nothing.
 
 rest-main=<remaining>/<limit>@<reset HH:MM> and rest-read=... (HIMMEL-6837), right
 after gql: the REST core budget of the main token and of the read-only token
-(himmel_github_token_vm2) from `gh api rate_limit` (gh-read.sh gh_read_rates).
+(himmel_github_token_vm2), rendered from the core rows of quota.tsv, no call of the tick's own.
 Under 10 % remaining a field ends !LOW. Absent when a budget cannot be read or no
 read token is configured; the verbose view prints them as "rest main:" and
 "rest read:" lines. Advisory: not in chief-wait's action key.
@@ -428,7 +439,9 @@ TICK_CIGUARD_TIMEOUT (default 300), so a tick never waits on it past TICK_SECTIO
 tick; the script remembers what it alerted ($TICK_STATE_DIR/tick-ciguard-state), so later ticks
 of the same crossing print ciguard=OVER:… and no ACTION. unknown = the script is missing, or the
 cache is missing, corrupt or past TICK_CIGUARD_TTL (default 1800). A refresh is about 67 REST
-calls, so about 400 an hour at most. Not part of chief-wait's wake key.
+calls plus one GraphQL call per 100 open runs, so about 400 REST calls an hour at most. Only
+concurrent-jobs (500 or more running + queued) can read OVER; every other row is INFO. Not part
+of chief-wait's wake key.
 
 orphans-wip-age=<n>s (HIMMEL-8735) is the age of the resume scan orphans-wip= read: a detached
 refresh fills that cache at most once per TICK_ORPHANS_MIN_SECS (default 300). A missing or
@@ -561,7 +574,25 @@ for idx, line in enumerate(text.splitlines(), 1):
         print("# pool-keys %d STACKABLE %s" % (idx, s[1]))
     elif m:
         print("# pool-keys %d # %s" % (idx, m[1]))
-decisions, invalid = {}, {}
+dispatchable = set()
+for line in text.splitlines():
+    f = line.split("\t")
+    if f[0] == "SERIES" and len(f) > 2 and re.fullmatch(r"[A-Z]+-\d+(?:,[A-Z]+-\d+)*", f[2]):
+        dispatchable.update(f[2].split(","))
+    elif f[0] in ("LOCAL", "LOCAL?", "CLOUD", "RESUME", "DESIGN") and len(f) > 1 and re.fullmatch(r"[A-Z]+-\d+", f[1]):
+        dispatchable.add(f[1])
+for key in sorted(dispatchable):
+    print("# pool-dispatchable " + key)
+
+projects = {k.split("-")[0] for k in rows}
+
+def has_owner(target, key):
+    m = re.match(r"(?:(?:operator|waits on|blocked by|after)\s+)?(?:([A-Z]+-\d+)\b|PRs?\s*#?\d+\b|[Dd]ecisions?\s*#?\d+\b)", target)
+    if not m:
+        return False
+    return m[1] is None or (m[1] != key and m[1].split("-")[0] in projects)
+
+decisions, invalid, unowned = {}, {}, {}
 if sys.argv[1]:
     try:
         doc = open(sys.argv[1]).read().splitlines()
@@ -577,8 +608,10 @@ if sys.argv[1]:
         value = line.split(":", 1)[1].strip()
         m = re.fullmatch(r"([A-Z]+-\d+) (slice|close|question) (\S.*)", value)
         key = value.split()[0] if value else "?"
-        if not m or key not in rows or key in decisions or key in invalid:
+        if not m or key not in rows or key in decisions or key in invalid or key in unowned:
             invalid[key] = "malformed, duplicate or unknown pool-disposition: " + value
+        elif not has_owner(m[3], key):
+            unowned[key] = value
         else:
             decisions[key] = value
 if not rows and not re.search(r"^# dropped from .+: 0 of 0 To Do", text, re.M):
@@ -595,6 +628,8 @@ for key, reason in rows.items():
         unresolved.append(("invalid", key, invalid[key]))
     elif owned or holder or blocker or key in decisions:
         disposed += 1
+    elif key in unowned:
+        unresolved.append(("unowned", key, "pool-disposition names no owner or observable end: " + unowned[key]))
     else:
         unresolved.append((reason.split()[0], key, reason))
 print("# pool-counts %d/%d/%d/%d" % (len(rows), inflight, disposed, len(unresolved)))
@@ -603,6 +638,9 @@ for cls, key, reason in sorted(unresolved):
 for key, reason in sorted(invalid.items()):
     if key not in rows:
         print("# pool-unresolved invalid %s %s" % (key, reason))
+for key, reason in sorted(rows.items()):
+    if key not in dispatchable:
+        print("# pool-left-out %s %s" % (key, reason))
 PY
 }
 
@@ -842,6 +880,46 @@ if [ "$stale_mode" -eq 1 ]; then
     [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
     pool_stale "$DOC" "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" "${TICK_GH_CMD:-$GH_READ_BIN}" "$REPO"
     exit $?
+fi
+
+quota_items=""
+quota_floor="${GHQ_SCAN_FLOOR:-500}"
+case "$quota_floor" in '' | *[!0-9]*) quota_floor=500 ;; esac
+tick_reads_off() { export GH_READ_OFF=1; }
+tick_deadline_off() { [ "$SECONDS" -lt "$tick_deadline" ] || tick_reads_off; }
+tick_epoch_hm() {
+    local hm=""
+    [ -z "${1:-}" ] || hm="$(date -d "@$1" +%H:%M 2>/dev/null || date -r "$1" +%H:%M 2>/dev/null)" || hm=""
+    printf '%s' "${hm:-?}"
+}
+quota_add() {
+    case ",$quota_items," in *",$1:"*) return 0 ;; esac
+    quota_items="${quota_items:+$quota_items,}$1:$2"
+}
+quota_stall() {
+    case ",$quota_items," in
+        *",$1:stall,"*) return 0 ;;
+        *",$1:"*) quota_items="$(printf '%s' "$quota_items" | tr ',' '\n' | grep -v -F "$1:" | paste -sd, -)" ;;  # swallow-ok: an empty remainder is the empty list
+    esac
+    quota_items="${quota_items:+$quota_items,}$1:stall"
+}
+quota_ready=0
+if [ -f "$HERE/../../lib/gh-quota.sh" ]; then
+    # shellcheck source=../../lib/gh-quota.sh
+    . "$HERE/../../lib/gh-quota.sh" && quota_ready=1
+fi
+if [ "$quota_ready" -eq 1 ]; then
+    ghq_refresh 2>/dev/null
+    for q_tok in main read; do
+        for q_bucket in graphql core; do
+            ghq_read "$q_tok" "$q_bucket" || continue
+            case "$GHQ_STATE" in
+                timed-out) quota_stall "$q_tok.$q_bucket"; tick_reads_off ;;
+                refused) quota_add "$q_tok.$q_bucket" "${GHQ_REMAINING:-0}@$(tick_epoch_hm "$GHQ_RESET")" ;;
+                ok) if [ -n "$GHQ_REMAINING" ] && [ "$GHQ_REMAINING" -lt "$quota_floor" ]; then quota_add "$q_tok.$q_bucket" "$GHQ_REMAINING@$(tick_epoch_hm "$GHQ_RESET")"; fi ;;
+            esac
+        done
+    done
 fi
 
 # the fleet manifest is re-read on every run. An unreadable one is
@@ -1940,7 +2018,35 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$console_doc" | head -n 1)"
     case "$doc_project" in /*) pr_repo="$doc_project" ;; esac
 fi
-pr_out="$(cd "$pr_repo" 2>/dev/null && timeout -k 2 "$(tick_bound 30)" "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
+tick_deadline_off
+pr_refused="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-refused.XXXXXX" 2>/dev/null)" || pr_refused=""  # swallow-ok: no file means no named reason, prs=? still prints
+pr_out="$(cd "$pr_repo" 2>/dev/null && GH_READ_REFUSED_FILE="$pr_refused" GH_READ_NO_MAIN_FALLBACK=1 timeout -k 2 "$(tick_bound 30)" "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)"
+pr_list_rc=$?
+[ "$pr_list_rc" -eq 0 ] || { pr_out=""; pr_read_failed=1; }
+pr_stall_named=""
+if [ -n "$pr_refused" ]; then
+    while read -r pr_ref_tok pr_ref_bucket pr_ref_why; do
+        case "$pr_ref_why" in
+            stall) quota_stall "$pr_ref_tok.$pr_ref_bucket"; tick_reads_off; pr_stall_named=1 ;;
+            rate-limit)
+                pr_ref_rem="?"; pr_ref_at="?"
+                if [ "$quota_ready" -eq 1 ] && ghq_read "$pr_ref_tok" "$pr_ref_bucket"; then
+                    [ -z "$GHQ_REMAINING" ] || pr_ref_rem="$GHQ_REMAINING"
+                    pr_ref_at="$(tick_epoch_hm "$GHQ_RESET")"
+                fi
+                quota_add "$pr_ref_tok.$pr_ref_bucket" "$pr_ref_rem@$pr_ref_at" ;;
+        esac
+    done < "$pr_refused"
+    rm -f "$pr_refused"
+fi
+if [ "$pr_list_rc" -eq 124 ] || [ "$pr_list_rc" -eq 137 ]; then
+    if [ -z "$pr_stall_named" ]; then
+        pr_stall_tok=main
+        if [ "$quota_ready" -eq 1 ] && [ -n "$(_ghb_read_token)" ]; then pr_stall_tok="read"; fi
+        quota_stall "$pr_stall_tok.graphql"
+    fi
+    tick_reads_off
+fi
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
 # no worker this tick reads holds (a held or lockless lock), and no recent cloud session
@@ -2026,6 +2132,7 @@ dispatch_summary=none
 dispatch_alerts=""
 # shellcheck source=../../lib/timeout-bin.sh
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
+tick_deadline_off
 dispatch_runs="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} "$GH_READ_BIN" api 'repos/{owner}/{repo}/actions/runs?event=workflow_dispatch&status=in_progress&per_page=100' --jq '.workflow_runs[] | [.id, .path, .head_branch, .head_sha, .run_started_at] | @tsv' 2>/dev/null)" || dispatch_summary='?'  # swallow-ok: an unreadable runs list renders as dispatch=?
 if [ "$dispatch_summary" = none ] && [ -n "$dispatch_runs" ]; then
     # oldest first: under the cap the longest-running (likeliest hung) runs are read, not the newest
@@ -2639,14 +2746,25 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pd_m="$(stat -c %Y "$pd_base.rows" 2>/dev/null)" || pd_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no snapshot reads old
     case "$pd_m" in '' | *[!0-9]*) ;; *) pd_age=$(( $(date +%s) - pd_m )) ;; esac
     pd_gap="${TICK_POOL_MIN_SECS:-600}"; case "$pd_gap" in '' | *[!0-9]*) pd_gap=600 ;; esac
+    pd_skip_max="${TICK_POOL_MAX_SKIP_SECS:-1800}"; case "$pd_skip_max" in '' | *[!0-9]*) pd_skip_max=1800 ;; esac
+    pd_state="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+    pd_ledger="${HIMMEL_ADMISSIONS_LEDGER:-$(handover_root 2>/dev/null)/admissions-ledger.jsonl}"  # swallow-ok: no handover root reads an absent ledger
+    pd_stat="$(stat -c '%n %Y %s' "$console_doc" ${WORKERS_FROM:+"$WORKERS_FROM"} "${nd_mirror%/}.versions.tsv" "$pd_state/status-events.jsonl" "$pd_ledger" "$pd_state"/workers/* 2>/dev/null | cksum | cut -d' ' -f1)"  # gnu-ok: chief kit is Linux-only; swallow-ok: an absent input is simply missing from the sum
+    pd_fp="$(sed -n 's/.*"lastSync" *: *"\([^"]*\)".*/\1/p' "$nd_mirror/.cursor.json" 2>/dev/null | head -n 1)|$pd_stat|$(printf '%s' "$owner_keys" | cksum | cut -d' ' -f1)"  # swallow-ok: an unreadable cursor reads empty and changes the fingerprint
+    pd_fp_m="$(stat -c %Y "$pd_base.fp" 2>/dev/null)" || pd_fp_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no fingerprint reads as none
+    case "$pd_fp_m" in '' | *[!0-9]*) pd_fp_m=0 ;; esac
+    if [ "$pd_age" -ge "$pd_gap" ] && [ -f "$pd_base.rows" ] && [ -f "$pd_base.fp" ] && [ $(( $(date +%s) - pd_fp_m )) -lt "$pd_skip_max" ] \
+        && read -r pd_fp_old < "$pd_base.fp" && [ "$pd_fp_old" = "$pd_fp" ] && touch "$pd_base.rows" 2>/dev/null; then
+        pd_age=0
+    fi
     if [ "$pd_age" -ge "$pd_gap" ] && mkdir -p "$pd_dir" 2>/dev/null; then
         pd_args=(--dispositions --top 1000 --doc "$console_doc" --owners "$owner_keys")
         [ -z "$WORKERS_FROM" ] || pd_args+=(--workers-from "$WORKERS_FROM")
         # setsid: the waiter's timeout kills the tick's process group, never the snapshot.
         # A running snapshot holds the lock, so this launch exits at once.
         # shellcheck disable=SC2016  # the inner script expands its own positional arguments
-        pd_script='timeout -k 2 300 bash "$1" "${@:3}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2"; rm -f "$2.$$"'
-        pd_pid="$(tick_detach setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
+        pd_script='timeout -k 2 300 bash "$1" "${@:4}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2" && printf "%s\n" "$3" >"${2%.rows}.fp"; rm -f "$2.$$"'
+        pd_pid="$(tick_detach nice -n 10 setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "$pd_fp" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
         pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
         pd_wait="$(tick_bound "$pd_wait")"
         tick_now_s  # the poll forks only its sleep
@@ -3104,7 +3222,8 @@ if [ "$prs" != none ] && { [ -n "${TICK_STALL_PROBE:-}" ] || [ "$pr_repo" = "$RE
     stall_fresh=""
     # swallow-ok: an unreadable cache reads as stale and the probe runs
     [ "$stall_ttl" -gt 0 ] && [ -f "$stall_cache" ] && [ -n "$(find "$stall_cache" -mmin "-$stall_ttl" 2>/dev/null)" ] && stall_fresh=1
-    if [ -z "$stall_fresh" ]; then
+    tick_deadline_off
+    if [ -z "$stall_fresh" ] && [ "${GH_READ_OFF:-}" != 1 ]; then
         if stall_rows="$(timeout -k 2 "$(tick_bound 60)" bash "$stall_probe" ${WORKERS_FROM:+--manifest "$WORKERS_FROM"} 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only; swallow-ok: a failed probe keeps the last cached value
             stall_val="$(printf '%s\n' "$stall_rows" | awk '$1 == "STALL" && $2 ~ /^[0-9]+$/ && $3 ~ /^[a-z-]+$/ { printf "%s%s:%s", sep, $2, $3; sep = "," }')"
         fi
@@ -3458,34 +3577,24 @@ orphans="${orphans_line#orphans=}"
 
 # gql=<remaining>/<reset HH:MM>: the GitHub GraphQL budget, shared by
 # every worker on the box, so a chief sees exhaustion coming instead of hitting it.
-# ghb_read is ONE real `gh api -i graphql` call -- `gh api rate_limit` reports the
-# REST core bucket and misreports this one -- so a tick pays exactly
-# one extra request. gql=? when the headers are unreadable; never fails the tick.
 gql='?'
-if [ -f "$HERE/../../lib/gh-graphql-budget.sh" ]; then
-    # shellcheck source=../../lib/gh-graphql-budget.sh
-    . "$HERE/../../lib/gh-graphql-budget.sh"
-    if ghb_read; then
-        gql_reset='?'
-        if [ -n "$GHB_RESET" ]; then
-            gql_reset="$(date -d "@$GHB_RESET" +%H:%M 2>/dev/null || date -r "$GHB_RESET" +%H:%M 2>/dev/null)" || gql_reset=""
-            [ -n "$gql_reset" ] || gql_reset='?'
-        fi
-        gql="$GHB_REMAINING/$gql_reset"
-    fi
-fi
-
-# rest main / rest read: the REST core budget of each token, one line per token
-# (`gh api rate_limit` costs no budget); LOW under 10 %. A read token that is
-# absent or unreadable shows in --verbose only, so the compact line stays quiet.
 rest_main_line=''
 rest_read_line=''
-if [ -f "$HERE/../../lib/gh-read.sh" ]; then
-    # shellcheck source=../../lib/gh-read.sh
-    . "$HERE/../../lib/gh-read.sh"
-    rest_lines="$(gh_read_rates 2>/dev/null)" || rest_lines=""  # swallow-ok: an unreadable budget renders as no rest field, advisory only
-    rest_main_line="$(printf '%s\n' "$rest_lines" | sed -n 's/^main: //p')"
-    rest_read_line="$(printf '%s\n' "$rest_lines" | sed -n 's/^read: //p')"
+if [ "$quota_ready" -eq 1 ]; then
+    if ghq_read main graphql && [ -n "$GHQ_REMAINING" ]; then
+        case "$GHQ_STATE" in ok | refused) gql="$GHQ_REMAINING/$(tick_epoch_hm "$GHQ_RESET")" ;; esac
+    fi
+    for q_tok in main read; do
+        q_line=''
+        if ghq_read "$q_tok" core && [ -n "$GHQ_REMAINING" ] && [ -n "$GHQ_LIMIT" ]; then
+            case "$GHQ_STATE" in
+                ok | refused)
+                    q_line="$GHQ_REMAINING/$GHQ_LIMIT reset $(tick_epoch_hm "$GHQ_RESET")"
+                    if [ "$GHQ_LIMIT" -gt 0 ] && [ $((10#$GHQ_REMAINING * 100)) -lt $((10#$GHQ_LIMIT * 10)) ]; then q_line="$q_line LOW"; fi ;;
+            esac
+        fi
+        if [ "$q_tok" = main ]; then rest_main_line="$q_line"; else rest_read_line="$q_line"; fi
+    done
 fi
 rest_compact() { # <line> -> 4200/5000@14:05[!LOW]; nothing when the line is not a reading
     case "$1" in [0-9]*) printf '%s' "$1" | sed -e 's/ reset /@/' -e 's/ LOW$/!LOW/' ;; esac
@@ -3657,6 +3766,7 @@ cired_summary=unknown
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
 cired_bound="${TICK_CIRED_TIMEOUT:-15}"
 case "$cired_bound" in [1-9]|1[0-5]) ;; *) cired_bound=15 ;; esac
+tick_deadline_off
 cired_out="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound "$cired_bound")"} "$GH_READ_BIN" issue list --label ci-red --state open --limit 1000 --json number -q 'length' 2>/dev/null)" || cired_out=""  # swallow-ok: a failed read leaves cired=unknown
 case "$cired_out" in ''|*[!0-9]*) ;; 1000) cired_summary='1000+' ;; *) cired_summary="$cired_out" ;; esac
 
@@ -3785,6 +3895,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'fleet: %s\n' "$fleet"
     printf 'capacity: %s\n' "$capacity"
     printf 'gql: %s\n' "$gql"
+    [ -z "$quota_items" ] || printf 'quota: %s\n' "$quota_items"
     case "$rest_main_line" in ''|'?'*) ;; *) printf 'rest main: %s\n' "$rest_main_line" ;; esac
     case "$rest_read_line" in ''|'?'*) ;; *) printf 'rest read: %s\n' "$rest_read_line" ;; esac
     printf 'orphans: %s\n' "$orphans"
@@ -3889,6 +4000,7 @@ else
     compact_field gql "$gql"
     compact_field rest-main "$(rest_compact "$rest_main_line")"
     compact_field rest-read "$(rest_compact "$rest_read_line")"
+    compact_field quota "$quota_items"
     compact_field orphans "$orphans"
     compact_field nonces "$nonces_summary"
     compact_field workerset "$legset_summary"
@@ -3944,7 +4056,7 @@ else
     done <<< "$dispatch_alerts"
     while IFS= read -r ciguard_line; do
         [ -n "$ciguard_line" ] || continue
-        printf 'ACTION ci-guardrail %s: hold new dispatches and find the run, cancel or rerun burst before GitHub throttles the org (chief-sections/monitors.md)\n' "${ciguard_line#ALERT }"
+        printf 'ACTION ci-guardrail %s: 500 or more jobs are running or queued: hold new dispatches until they drop below 500 and find the burst (chief-sections/monitors.md)\n' "${ciguard_line#ALERT }"
     done <<< "$ciguard_alerts"
     case "$vdone_summary" in
         ''|0|skip|unknown) ;;

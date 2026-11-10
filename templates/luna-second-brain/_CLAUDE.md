@@ -44,23 +44,36 @@ knowledge.
 
 ## Retrieval Routing — which organ answers what
 
-When the vault has a knowledge graph (a `graphify-out/` dir at the vault
-root), route retrieval by question shape, not habit — text-search-only is
-the failure mode:
+The vault's knowledge graph is **off by default** (decision 449: graphify stays
+off the vault until it proves better than qmd for its cost). Use it only when
+its cadence is armed (himmel's `scripts/luna/graphmap-cadence.sh arm
+--luna-only`, which registers the `HIMMEL-GraphMap-Luna` and
+`HIMMEL-GraphMapAst-Luna` rows) and himmel's
+`scripts/graphify/check-graph-freshness.sh --out
+~/.local/share/himmel/graphify/luna/graphify-out` reads it fresh (rc 0);
+otherwise use qmd only. When the graph is on, it lives **outside the vault**, at
+`~/.local/share/himmel/graphify/luna/graphify-out/` (`GRAPHIFY_LUNA_OUT_ROOT`
+overrides the root), because Obsidian hung on its churn inside the vault. Then
+route retrieval by question shape, not habit — text-search-only is the failure
+mode:
 
 - **Content lookup** ("find my notes on X", "what did I save about Y") →
   text/semantic search (qmd or your search tool) first.
 - **Structure & neighborhoods** ("how does X relate to Y", "what clusters
   around Z", "map this theme") → the **graphify graph**:
-  `graphify query "<question>" --graph "<vault-root>/graphify-out/graph.json"`
+  `graphify query "<question>" --graph ~/.local/share/himmel/graphify/luna/graphify-out/graph.json`
   (the graph path must be the `--graph` flag — a positional directory is
   silently ignored and the query runs against the current directory's
-  graph), or the graphify MCP tools when connected. The curated entry
+  graph), or the graphify MCP tools when connected, always passing
+  `project_path` set to `~/.local/share/himmel/graphify/luna` with the `~`
+  expanded to your home directory (the tools do not expand it; without
+  `project_path` the server uses its configured default graph, and a
+  `GRAPHIFY_OUT` override changes the out dir name). The curated entry
   point is the graphify map note in `60-Maps/` (written by the graph
   refresh).
 - A **search miss is not evidence of absence** — structural connections
-  often live only in the graph; try graphify before concluding a relation
-  doesn't exist.
+  often live only in the graph; when the graph is on and fresh, try graphify
+  before concluding a relation doesn't exist.
 - Never `graphify path` — node IDs are file-scoped, so cross-file
   traversal is structurally broken; join `graphify query` results
   in-head instead.

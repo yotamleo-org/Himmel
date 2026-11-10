@@ -232,22 +232,19 @@ const driftRows = (over: Record<string, unknown> = {}) => ({ ...driftOk([{ class
 const tidy = (ui: Record<string, unknown>, dr: unknown = driftRows()) => renderBoard(read(station()), { version: null, theme: null, tab: "tidy", ...ui }, { drift: dr });
 const cellText = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
 
-const bannerOf = (dr: unknown) => /<div class="(alert[^"]*)"[^>]*>/.exec(tidy({}, dr));
+const labelOf = (dr: unknown, tab = "roadmap") => /<a class="tab"[^>]*>Tidy up[\s\S]*?<\/a>/.exec(renderBoard(read(station()), { version: null, theme: null, tab }, { drift: dr }))?.[0] ?? "";
 
-test("the drift banner is an amber warning bar, and not an alert role, when there are real drift rows", () => {
-  const banner = bannerOf(driftRows());
-  expect(banner?.[1].split(" ")).toContain("warnbar");
-  expect(banner?.[0]).not.toContain("role=");
-});
-
-test("the drift banner keeps the plain look when there are no real drift rows", () => {
-  expect(bannerOf(driftOk([], 2, 1))?.[1]).toBe("alert");
+test("the Tidy up label is amber (and not an alert) when there are real drift rows, and plain with none", () => {
+  expect(labelOf(driftRows())).toContain('<span class="drf">! 1 drift row</span>');
+  expect(labelOf(driftOk([], 2, 1))).not.toContain("drf");
+  expect(labelOf(driftOk([], 2, 1))).toContain("0 drift rows");
+  for (const tab of ["roadmap", "chains", "tidy", "nv"]) expect(renderBoard(read(withNoVersion(station())), { version: null, theme: null, tab }, { drift: driftRows() })).not.toContain("warnbar");
 });
 
 test("Tidy up: Refresh starts nothing on open, marks the kept rows while running, and says why a run failed", () => {
   const saved = tidy({});
   expect(saved).toContain('data-act="drift-refresh"');
-  expect(cellText(saved)).toContain("drift: saved run · written 03:08 · sdrift=3:abc");
+  expect(cellText(saved)).toContain("every version · saved run 03:08");
   const running = tidy({ driftRun: { state: "running", started: "05:44:39" } });
   expect(cellText(running)).toContain("re-running the check · started 05:44:39 · usually about 2 min, at most 3 min 20 s");
   expect(cellText(running)).toContain("from 03:08");
@@ -268,7 +265,7 @@ test("Tidy up: Refresh starts nothing on open, marks the kept rows while running
 
 test("Tidy up: the origin column says who moved the ticket, and a read that failed never reads as nobody", () => {
   const row = (h: unknown) => cellText(tidy({ driftOrigins: { [K(6691)]: h } }));
-  expect(tidy({})).toContain("<th>origin</th>");
+  expect(tidy({})).toContain("<th>moved by</th>");
   expect(tidy({})).toContain('colspan="6"');
   const ev = (who: string, himmel?: boolean) => ({ at: "2026-10-01T10:00", who, from: "To Do", to: "Done", ...(himmel ? { himmel } : {}) });
   expect(row({ events: [ev("Hima", true), ev("Ana")] })).toContain("moved in Jira by Ana");
@@ -291,10 +288,10 @@ test("driftSince: what a re-run added, healed and kept, by the row's text", () =
 test("Tidy up: the mode shows read-only and links to the Team mode switch on Configure", () => {
   const off = tidy({});
   expect(off).toContain('href="#/config?tile=tracker"');
-  expect(cellText(off)).toContain("team mode is off");
-  expect(cellText(off)).toContain("a real drift = a himmel bug");
+  expect(cellText(off)).toContain("single-user mode");
+  expect(cellText(off)).toContain("a real drift means a himmel bug");
   const on = cellText(tidy({}, driftRows({ mode: "team" })));
-  expect(on).toContain("team mode is on");
+  expect(on).toContain("team mode");
   expect(on).toContain("ordinary tidy-up");
 });
 
@@ -345,10 +342,9 @@ test("Board: one filter bar and refresh above every tab, a version tile keeps th
   const r = read(station());
   for (const tab of ["roadmap", "chains", "tidy"]) {
     const html = renderBoard(r, { version: null, theme: null, tab }, { drift: driftOk(), chains: chainsOk() });
-    // 9488: the Chains tab has its own aside (refresh, no lane filters); the other tabs keep the one bar
-    expect(html.match(/class="rm-bar fields"/g)?.length).toBe(tab === "chains" ? undefined : 1);
+    expect(html.match(/class="rm-bar fields"/g)?.length).toBe(tab === "roadmap" ? 1 : undefined);
     expect(html).toContain('data-act="refresh-roadmap"');
-    expect(html.includes("data-rm-hide-done")).toBe(tab !== "chains");
+    expect(html.includes("data-rm-hide-done")).toBe(tab === "roadmap");
   }
   const tidy = renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: driftOk(), chains: null });
   expect(tidy).toContain('href="#/board?tab=tidy&amp;v=v1.1.1"'); // the tile keeps Tidy up; the Roadmap tab's tiles carry no tab
@@ -358,7 +354,7 @@ test("Board: one filter bar and refresh above every tab, a version tile keeps th
   expect(evil).not.toContain("<img src=x");
   expect(evil).toContain("&lt;img src=x");
   // a released version with open tickets is drawn in the failing look, not as muted text
-  expect(renderBoard(r, { version: null, theme: null }, null)).toMatch(/class="ro pill fail">\d+ still open: HIMMEL-4/);
+  expect(renderBoard(r, { version: null, theme: null }, null)).toMatch(/class="op" title="\d+ still open: HIMMEL-4[^"]*">⚠ \d+ open</);
 });
 
 test("Board: a chain badge keeps the selected version in its link, and has none when no version is selected", () => {
@@ -379,9 +375,10 @@ test("Board: Tidy up covers every version by default and narrows only when the r
   expect(sections(named)).not.toBe(sections(all));
 });
 
-test("Board: the Tidy up tab carries the Drift, Worker to Jira sync and Librarian sections unchanged", () => {
-  const html = renderBoard(read(station()), { version: null, theme: null, tab: "tidy", v: "all" }, { drift: driftOk(), chains: null });
+test("Board: the Tidy up tab carries the Plan drift, Worker to Jira sync and Librarian lists", () => {
+  const html = renderBoard(read(station()), { version: null, theme: null, tab: "tidy", v: "all" }, { drift: driftRows(), chains: null });
   for (const id of ["rm-drift", "rm-sync", "rm-librarian"]) expect(html).toContain(`id="${id}"`);
+  expect(html).toContain("Plan drift");
   expect(html).toContain("Worker to Jira sync");
   expect(html).toContain("Librarian");
   expect(html).toMatch(/<table class="[^"]*\bdata\b/);
@@ -391,11 +388,10 @@ test("Board: the Tidy up tab carries the Drift, Worker to Jira sync and Libraria
 test("Board: the drift banner and the Tidy up table come from the saved drift run; absent says so, with no made-up count", () => {
   const r = read(station());
   const real = [{ class: "VERSION-DRIFT", key: "HIMMEL-6691", line: "VERSION-DRIFT HIMMEL-6691 Done in v1.1.4, current v1.1.3 | writer=release-manager | fix=jira release request v1.1.3" }];
-  const banner = renderBoard(r, { version: null, theme: null }, { drift: driftOk(real, 4, 1), chains: null });
-  expect(banner).toContain("1 drift row");
-  expect(banner).toContain("4 known checker bug");
-  expect(banner).toContain("1 transient");
-  expect(banner).toContain("single-user");
+  expect(labelOf(driftOk(real, 4, 1))).toContain("1 drift row");
+  const counted = cellText(renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: driftOk(real, 4, 1), chains: null }));
+  expect(counted).toContain("not counted: 4 known checker bug, 1 transient");
+  expect(counted).toContain("single-user");
   const tidy = renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: driftOk(real), chains: null });
   expect(tidy).toContain("VERSION-DRIFT");
   expect(tidy).toContain("HIMMEL-6691");
@@ -403,10 +399,10 @@ test("Board: the drift banner and the Tidy up table come from the saved drift ru
   expect(tidy).toContain("jira release request v1.1.3");
   for (const extras of [null, { drift: { state: "absent", reason: "no saved drift run configured" }, chains: null }]) {
     const none = renderBoard(r, { version: null, theme: null }, extras);
-    expect(none).toContain("drift: not read");
+    expect(cellText(none)).toContain("Tidy up · drift not read");
     expect(none).not.toContain("drift row");
   }
-  const stale = renderBoard(r, { version: null, theme: null }, { drift: { ...driftOk(), stale: true }, chains: null });
+  const stale = renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: { ...driftOk(), stale: true }, chains: null });
   expect(stale).toContain("older than");
   for (const bad of [{ ...driftOk(), unknown: true }, { ...driftOk(), file: { exists: false } }]) {
     expect(renderBoard(r, { version: null, theme: null }, { drift: bad, chains: null })).not.toMatch(/\d+ drift</);
@@ -419,7 +415,7 @@ test("Board: chain badges, the waits-for-you card and the Chains tab come from t
   expect(html).toContain("memory step 1 of 2");
   expect(html).toContain("in flight");
   expect(html).toContain('href="#/board?tab=chains&amp;at=HIMMEL-1"');
-  expect(html).toContain("1 waits for you");
+  expect(asideOf(html)).toContain("1 ticket waits for you, any version");
   const chains = renderBoard(r, { version: null, theme: null, tab: "chains" }, { drift: null, chains: chainsOk() });
   expect(chains).toContain("Memory guard rework");
   expect(chains).toContain("1 of 2 tickets done");
@@ -427,7 +423,7 @@ test("Board: chain badges, the waits-for-you card and the Chains tab come from t
   for (const extras of [null, { drift: null, chains: { state: "absent", reason: "no chain registry (HIMMEL_CHAIN_REGISTRY is not set)" } }]) {
     const none = renderBoard(r, { version: null, theme: null }, extras);
     expect(none).not.toContain("rm-chain");
-    expect(none).not.toMatch(/\d+ waits? for you/);
+    expect(none).not.toMatch(/\d+ tickets? waits? for you/);
     expect(none).toContain("waits for you: not read");
     expect(renderBoard(r, { version: null, theme: null, tab: "chains" }, extras)).toContain("no chain registry");
   }
@@ -449,11 +445,10 @@ test("Board: a Waiting on you section above the lanes lists each ticket that wai
   expect(sec).toContain("memory 2/2"); // the chain and step it waits at
   expect(sec).not.toContain("HIMMEL-1"); // an in-flight ticket is not listed
   expect(html.indexOf('id="rm-waiting"')).toBeLessThan(html.indexOf('id="rm-lanes"')); // above the lanes
-  // nothing waits, no chain read, or another tab: no section (the "0 wait for you" link beside the tabs carries the count)
   ch.tickets[K(5)].state = "in flight";
   const none = renderBoard(r, { version: null, theme: null }, { drift: null, chains: ch });
   expect(none).not.toContain("rm-waiting");
-  expect(none).toContain("0 wait for you");
+  expect(asideOf(none)).toContain("0 tickets wait for you, any version");
   for (const extras of [null, { drift: null, chains: { state: "absent", reason: "no chain registry" } }]) expect(renderBoard(r, { version: null, theme: null }, extras)).not.toContain("rm-waiting");
   expect(renderBoard(r, { version: null, theme: null, tab: "chains" }, { drift: null, chains: chainsOk() })).not.toContain("rm-waiting");
 });
@@ -476,7 +471,7 @@ test("Board: Waiting on you also lists open tickets carrying an operator label, 
   expect(sec).toContain("across every version");
   expect(sec).not.toContain("at=HIMMEL-4"); // the Chains tab does not hold it: plain key, no link to "not in a chain"
   expect(sec).toContain("at=HIMMEL-5");
-  expect(html).toContain("2 wait for you");
+  expect(asideOf(html)).toContain("2 tickets wait for you, any version");
   // a ticket that is both labelled and on hold is one row
   label(5, "operator-decision");
   expect(renderBoard(r, ui, { drift: null, chains: chainsOk() }).match(/<li>/g)).toHaveLength(2);
@@ -484,7 +479,7 @@ test("Board: Waiting on you also lists open tickets carrying an operator label, 
   const noChain = renderBoard(r, ui, { drift: null, chains: { state: "absent", reason: "no chain registry" } });
   expect(noChain).toContain("chain holds not read");
   expect(noChain).toContain("HIMMEL-4");
-  expect(noChain).not.toMatch(/\b0 wait for you/);
+  expect(asideOf(noChain)).not.toMatch(/\b0 tickets wait for you/);
   // a chain read that carries no chains at all is not usable either
   expect(renderBoard(r, ui, { drift: null, chains: { chains: [], tickets: undefined } })).toContain("chain holds not read");
 });
@@ -496,10 +491,10 @@ test("Board: Waiting on you lists the open operator-labelled tickets with no ver
   writeFileSync(join(s.mirror, "HIMMEL-10.md"), issue(10, "To Do", "To Do", [], "Loose, nobody owed", ["product"]));
   const r = read(s), nv = nvRead(s), ui = { version: null, theme: null };
   const quiet = { drift: null, chains: { chains: [], tickets: {}, version: "v1.1.2" } };
-  const link = (html: string) => html.match(/<div class="rm-link">[\s\S]*?<\/div>/)![0];
+  const link = asideOf;
   // before the No version read arrives: nothing listed, the count says it is not counting them
   expect(renderBoard(r, ui, quiet)).not.toContain("rm-waiting");
-  expect(link(renderBoard(r, ui, quiet))).toContain("3 not counted");
+  expect(link(renderBoard(r, ui, quiet))).toContain("3 tickets with no version not read yet");
   // with it: the one open labelled ticket is a row, linked to the No version tab, tagged "no version", and the count includes it
   const html = renderBoard(r, { ...ui, nv }, quiet);
   const sec = html.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)![0];
@@ -510,33 +505,31 @@ test("Board: Waiting on you lists the open operator-labelled tickets with no ver
   expect(sec).toContain('href="#/board?tab=nv"');
   expect(sec).not.toContain("HIMMEL-9"); // Done: nothing is owed
   expect(sec).not.toContain("HIMMEL-10"); // no operator label
-  expect(link(html)).toContain("1 waits for you");
-  expect(link(html)).not.toContain("not counted");
+  expect(link(html)).toContain("1 ticket waits for you, any version");
+  expect(link(html)).not.toContain("not read yet");
   // a failed No version read leaves the old words in place, never a plain 0
-  expect(link(renderBoard(r, { ...ui, nv: { state: "error", reason: "roadmap failed (500)" } }, quiet))).toContain("3 not counted");
+  expect(link(renderBoard(r, { ...ui, nv: { state: "error", reason: "roadmap failed (500)" } }, quiet))).toContain("3 tickets with no version not read yet");
 });
 
 test("Board: the waits-for-you count names its scope and points at the No version tab while tickets there are unread", () => {
   const r = read(station());
   const ui = { version: null, theme: null };
   const quiet = { drift: null, chains: { chains: [], tickets: {}, version: "v1.1.2" } }; // a chain read that holds nobody
-  const link = (html: string) => html.match(/<div class="rm-link">[\s\S]*?<\/div>/)![0];
+  const link = (html: string) => /<div class="aside"[\s\S]*?<\/div>/.exec(html)![0];
   // nobody waits among the versioned tickets, three tickets have no version: the default read does not carry them, so the count must not read as a plain 0
   r.noVersionCount = 3;
   const none = link(renderBoard(r, ui, quiet));
-  expect(none).toContain("0 wait for you");
-  expect(none).toContain("3 not counted");
-  expect(none).toContain('<a href="#/board?tab=nv">no version</a>');
+  expect(none).toContain("0 tickets wait for you, any version");
+  expect(none).toContain('<a href="#/board?tab=nv">3 tickets with no version not read yet →</a>');
   // with rows it keeps the pointer too: the rows are a count of the versioned tickets only
   r.noVersionCount = 1;
   const some = link(renderBoard(r, ui, { drift: null, chains: chainsOk() }));
-  expect(some).toContain("1 not counted");
-  expect(some).toContain('<a href="#/board?tab=nv">no version</a>');
+  expect(some).toContain('<a href="#/board?tab=nv">1 ticket with no version not read yet →</a>');
   // nothing without a version: a plain 0 is true, and no pointer is drawn
   r.noVersionCount = 0;
   const clean = link(renderBoard(r, ui, quiet));
-  expect(clean).toContain("0 wait for you");
-  expect(clean).not.toContain("not counted");
+  expect(clean).toContain("0 tickets wait for you, any version");
+  expect(clean).not.toContain("not read yet");
   expect(clean).not.toContain("tab=nv");
 });
 
@@ -690,7 +683,7 @@ const withNoVersion = (s: ReturnType<typeof station>) => { writeFileSync(join(s.
 // the columns of a Board tab: [bucket, the number in the heading, the cards drawn, the Jira line]
 const cols = (html: string) => {
   const parts = html.split('data-rm-col="').slice(1);
-  return parts.map((p) => [p.slice(0, p.indexOf('"')), Number(/class="ro rm-n">(\d+)</.exec(p)?.[1]), (p.match(/class="rm-card"/g) || []).length, /class="ro rm-jira">([^<]*)</.exec(p)?.[1]] as const);
+  return parts.map((p) => [p.slice(0, p.indexOf('"')), Number(/class="ro rm-n">(\d+)</.exec(p)?.[1]), (p.match(/class="rm-card[ "]/g) || []).length, /class="ro rm-jira">([^<]*)</.exec(p)?.[1]] as const);
 };
 const optIdx = (html: string, name: string, label: string) => {
   const sel = html.match(new RegExp(`data-rm-filter="${name}">([\\s\\S]*?)</select>`))![1];
@@ -762,11 +755,11 @@ test("Board: the No version tab draws the fetched tickets in columns with a Jira
   expect(html).toContain("Loose ticket");
   expect(html).not.toContain("Roadmap in the ui");
   const c = cols(html);
-  expect(c.map((x) => [x[0], x[1], x[2], x[3]])).toEqual([["todo", 1, 1, "Jira 1 matches"], ["prog", 1, 1, "Jira 1 matches"], ["rev", 0, 0, "Jira 0 matches"], ["done", 0, 0, "Jira 0 matches"]]);
+  expect(c.map((x) => [x[0], x[1], x[2], x[3]])).toEqual([["todo", 1, 1, undefined], ["prog", 1, 1, undefined], ["rev", 0, 0, undefined], ["done", 0, 0, undefined]]);
   expect(html).toContain("data-rm-find");
   const found = board(r, { tab: "nv", nv, find: "himmel-9" });
   expect(cols(found).reduce((a, x) => a + x[2], 0)).toBe(1);
-  expect(cols(found).map((x) => x[3])).toEqual(["Jira 1 · 0 shown", "Jira 1 matches", "Jira 0 matches", "Jira 0 matches"]);
+  expect(cols(found).map((x) => x[3])).toEqual(["Jira 1 · 0 shown", undefined, undefined, undefined]);
   expect(board(r, { tab: "nv", nv, find: "no such ticket" })).toContain("No tickets match");
   expect(board(r, { tab: "nv", nv: { state: "error", reason: "roadmap failed (500)" } })).toContain("roadmap failed (500)");
 });
@@ -792,7 +785,7 @@ test("Board: Done is a folded column, open while a find is set, and each column'
   expect(c.map((x) => x[0])).toEqual(["todo", "prog", "rev", "done"]);
   for (const [, n, cards] of c) expect(n).toBe(cards);
   expect(c.map((x) => x[1])).toEqual([3, 2, 1, 1]);
-  expect(c.map((x) => x[3])).toEqual(["Jira 3 matches", "Jira 2 matches", "Jira 1 matches", "Jira 1 matches"]);
+  expect(c.map((x) => x[3])).toEqual([undefined, undefined, undefined, undefined]);
   // a filter narrows the cards and the number, and the Jira line keeps Jira's full count
   const f = cols(board(r, { theme: r.themes.indexOf("tracker") }));
   for (const [, n, cards] of f) expect(n).toBe(cards);
@@ -1139,8 +1132,8 @@ test("Chains tab: the ticket drawer is unchanged, and a Why panel never draws of
   expect(html).not.toContain("rm-why\"");
 });
 
-const tile = (html: string, name: string) => html.split(`<a class="rm-vt`).find((x) => x.includes(`<b>${name}</b>`)) ?? "";
-const selected = (html: string) => html.split(`<a class="rm-vt`).filter((x) => x.startsWith(` sel"`)).map((x) => /<b>([^<]*)<\/b>/.exec(x)?.[1]);
+const tile = (html: string, name: string) => html.split(`<a class="vc`).find((x) => x.includes(`<b>${name}</b>`)) ?? "";
+const selected = (html: string) => chipsSelected(html);
 
 test("Chains tab, a version with no chains: it names the version and never says the registry is empty", () => {
   const empty = { ...chainsLinked(), chains: [], tickets: {}, burn: { total: 0, undated: 0, points: [] } };
@@ -1162,7 +1155,7 @@ test("Two chain reads: tiles, badges, lane filters, the Chain select and waits-f
   const r = read(station());
   const html = renderBoard(r, { version: null, theme: null, v: "v1.1.2" }, twoReads());
   expect(tile(html, "v1.1.2")).not.toContain("in chains"); // 9488: no tile counts tickets in chains, in any read
-  expect(html).toContain("1 waits for you");
+  expect(asideOf(html)).toContain("1 ticket waits for you, any version");
   expect(html).toContain('href="#/board?tab=chains&amp;v=v1.1.2&amp;at=HIMMEL-1"');
   expect(html).toContain(`<option value="memory"`);
   expect(html).toContain("waits on you 1</option>");
@@ -1322,7 +1315,7 @@ test("9488 the No version tab keeps the whole chain read: its tickets are in no 
   const html = renderBoard(read(s), { version: null, theme: null, tab: "nv", nv: nvRead(s) }, { drift: null, chains: wh, versionChains: { ...narrow3(), version: "v1.1.2" } }); // v1.1.2 is the selected tile, so the narrowed read would be the one drawn from
   expect(html).toContain("Loose ticket");
   expect(html).toMatch(/class="rm-chain" href="#\/board\?tab=chains&amp;at=HIMMEL-8"/); // its badge
-  expect(html).toContain("in a chain 1"); // and the Only filter counts it
+  expect(html).toContain("in a chain: 1 ticket"); // and the Only filter counts it
 });
 
 test("9488 the header spark says no second ticket total, and a finished chain opens when the ticket asked for is in it", () => {
@@ -1340,7 +1333,7 @@ test("9488 the Tidy up and No version tabs name their unit", () => {
   const r = read(withNoVersion(station()));
   const real = [{ class: "VERSION-DRIFT", key: "HIMMEL-6691", line: "VERSION-DRIFT HIMMEL-6691 Done in v1.1.4, current v1.1.3 | writer=release-manager | fix=jira release request v1.1.3" }];
   const html = renderBoard(r, { version: null, theme: null, tab: "roadmap" }, { drift: driftOk(real, 4, 1), chains: null });
-  expect(html).toContain('Tidy up <span class="ro">1 drift row</span>');
+  expect(html).toContain('<span class="drf">! 1 drift row</span>');
   expect(html).toContain('No version <span class="ro">1 ticket</span>');
 });
 
@@ -1367,7 +1360,7 @@ test("9488 critic minors: no wording that says a later-version blocker is unplan
 test("9488 the Chains tab has no Chain select, Hide Done, Sector or 'all versions'; the Roadmap tab keeps them", () => {
   const html = two();
   for (const x of ["data-rm-chain", "data-rm-hide-done", 'data-rm-filter="theme"', "all versions"]) expect(html).not.toContain(x);
-  expect(html).not.toContain("drift"); // no drift banner on this tab
+  expect(html).not.toContain("warnbar");
   const road = renderBoard(read(station()), { version: null, theme: null, tab: "roadmap" }, { drift: null, chains: whole6(), versionChains: narrow3() });
   for (const x of ["data-rm-chain", "data-rm-hide-done", 'data-rm-filter="theme"', "all versions"]) expect(road).toContain(x);
 });
@@ -1436,7 +1429,7 @@ test("9100 Board: a 200-character title and a 60-character chain name keep their
   const html = renderBoard({ ...r, tickets }, { version: null, theme: null }, { chains: ch });
   expect(html).toContain(`<div class="rm-tip rm-title" data-tip="${LONG}">`);
   expect(html).toContain(`data-tip="● ${CHAIN} step 1 of 1 · in flight"`); // the badge's visible text, glyph included
-  const card = [...html.matchAll(/<div class="rm-card"[^>]*>/g)].map((m) => m[0]).find((c) => c.includes(LONG))!;
+  const card = [...html.matchAll(/<div class="rm-card(?: cc(?: red)?)?"[^>]*>/g)].map((m) => m[0]).find((c) => c.includes(LONG))!;
   expect(card).toContain('role="button"');
   expect(card).toContain(`aria-label="${K(1)}: ${LONG}"`);
   expect(html).not.toMatch(/<[^>]*\bdata-tip="[^>]*\btitle="|<[^>]*\btitle="[^>]*\bdata-tip="/);
@@ -1452,7 +1445,7 @@ const many = () => {
   const versions = Array.from({ length: 12 }, (_, i) => ({ n: `v2.${i}`, rel: i < 5, date: i < 5 ? "2026-09-01" : "", counts: { ...zero }, open: [] as string[] }));
   return { ...r, versions, cur: 5, next: 6, tickets: [], noVersionCount: 0 } as typeof r;
 };
-const tiles = (html: string) => [...html.matchAll(/class="rm-vt(?: sel)?" href="[^"]*v=(v2\.\d+)/g)].map((m) => m[1]);
+const tiles = (html: string) => [...html.matchAll(/class="vc(?: sel)?" href="[^"]*v=(v2\.\d+)/g)].map((m) => m[1]);
 
 test("Board versions: no pins show the running version and 2 on each side, and the page says what it shows", () => {
   const html = renderBoard(many(), { version: null, theme: null }, null);
@@ -1522,7 +1515,7 @@ test("Board: the worker line on a card shows how long ago its worker last moved,
   const absent = { state: "absent", reason: "none" };
   const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
   const prs = (seen: Record<string, string>) => ({ state: "ok", repo: "acme/widgets", prs: {}, seen });
-  const card = (html: string, k: string) => html.match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  const card = (html: string, k: string) => html.match(new RegExp(`<div class="rm-card(?: cc(?: red)?)?"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
   const r = read(s);
   const withAge = board(r, {}, { drift: absent, chains: absent, prs: prs({ [K(1)]: ago(180) }) });
   expect(card(withAge, K(1))).toMatch(/<div class="rm-worker">[\s\S]*classifier permission hold[\s\S]*3 h ago/); // ticket 1 has the worker
@@ -1552,7 +1545,7 @@ test("Board: it refreshes itself only when it is on screen, nothing is being edi
   for (const off of [{ page: "health" }, { visible: false }, { modal: true }, { editing: true }, { dragging: true }, { busy: true }, { readAt: 0 }]) expect(boardRefreshDue({ ...base, ...off })).toBe(false);
 });
 
-test("Board: an open ticket's card names the tickets it waits on, with their state: a shut one as 'after', an open one as 'blocked by open'", () => {
+test("Board: an open ticket's card names the tickets it waits on, with their state: a shut one as 'after', an open one as 'waits on open', and 'blocked by open' only where the chain read calls the ticket blocked", () => {
   const s = station();
   const put = (n: number, status: string, cat: string, by: string[]) => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`),
     issue(n, status, cat, ["v1.1.2"], `Step ${n}`).replace("blocked_by: []", `blocked_by: ${JSON.stringify(by)}`));
@@ -1566,11 +1559,16 @@ test("Board: an open ticket's card names the tickets it waits on, with their sta
   expect(t(21).after).toBeUndefined();
   expect(t(23).after).toBeUndefined(); // a ticket that is done waits on nothing
   const absent = { state: "absent", reason: "none" };
-  const card = (k: string) => board(r, {}, { drift: absent, chains: absent }).match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
-  expect(card(K(20))).toContain(`blocked by open ${K(21)}`);
+  const card = (k: string) => board(r, {}, { drift: absent, chains: absent }).match(new RegExp(`<div class="rm-card(?: cc(?: red)?)?"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  expect(card(K(20))).toContain(`waits on open ${K(21)}`);
+  expect(card(K(20))).not.toContain("blocked by open");
   expect(card(K(20))).toContain(`after ${K(22)} (done)`);
   expect(card(K(20))).toContain(`${K(99)} (state unknown)`);
   expect(card(K(21))).not.toContain("after ");
+  const blocked = { schema: "himmel.chains/1", version: "v1.1.2", chains: [{ id: "memory", name: "Memory", total: 1, done: 0, steps: 2, next: null }],
+    tickets: { [K(20)]: { key: K(20), state: "blocked", chains: [{ id: "memory", step: 2, steps: 2, state: "blocked" }], badges: ["memory"], more: 0 } } };
+  const red = board(r, { v: "v1.1.2" }, { drift: absent, chains: blocked, versionChains: blocked }).match(new RegExp(`<div class="rm-card cc red"[^>]*aria-label="${K(20)}:[\\s\\S]*?</div></div>`))![0];
+  expect(red).toContain(`<span class="warn">blocked by open ${K(21)}</span>`);
 });
 
 test("Board: the lanes carry a sector legend: each sector of the version's open tickets with its count, the largest first, done tickets not counted", () => {
@@ -1583,21 +1581,21 @@ test("Board: the lanes carry a sector legend: each sector of the version's open 
   const html = board(read(s), { v: "v1.1.3" }, null);
   const legend = html.match(/<div class="seclegend"[^>]*>([\s\S]*?)<\/div>/);
   expect(legend).not.toBeNull();
-  const items = [...legend![1].matchAll(/<span class="sec">([^<]*)<\/span>/g)].map((m) => m[1].replace(/\s+/g, " ").trim());
+  const items = [...legend![1].matchAll(/<span class="sec">([^]*?<\/span><\/span>)\s*<span class="n">(\d+)<\/span><\/span>/g)].map((m) => `${m[1].replace(/<[^>]+>/g, "").trim()} ${m[2]}`);
   expect(items.slice(0, 2)).toEqual(["alpha 2", "beta 1"]);
   expect(items.join("|")).not.toContain("beta 2"); // the done ticket is not counted
 });
 
-test("Board: a card in a chain says FAST-TRACK with the chain's name and its step, and the lanes carry a drain line counting the open tickets in and out of a chain", () => {
+test("Board: a card in a chain says FAST-TRACK with the chain's name and its step, and the panel head counts the tickets in and out of a chain", () => {
   const r = read(station());
   const html = board(r, { v: "v1.1.2" }, { drift: null, chains: chainsOk() });
-  const card = (k: string) => html.match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
-  expect(card(K(1))).toContain(`<div class="rm-ft">FAST-TRACK · Memory guard rework · step 1</div>`);
+  const card = (k: string) => html.match(new RegExp(`<div class="rm-card(?: cc(?: red)?)?"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  expect(card(K(1))).toContain(`<div class="rm-ft"><span class="rm-tip" data-tip="FAST-TRACK Memory guard rework · step 1"><span class="rm-clip"><span class="ftg">FAST-TRACK</span> Memory guard rework · step 1</span></span></div>`);
   expect(card(K(2))).not.toContain("FAST-TRACK"); // in no chain
   expect(board(r, { v: "v1.1.2" }, null)).not.toContain("FAST-TRACK"); // no chain read: nothing is guessed
-  // v1.1.2 holds tickets 1, 2, 5, 7 open; 1 and 5 are in the memory chain
-  expect(html).toContain(`<div class="rm-drain">v1.1.2 drain: open 4 · in-chain 2 · in no chain 2</div>`);
-  expect(board(r, { v: "v1.1.2" }, null)).not.toContain("rm-drain"); // without the chain read it cannot split
+  expect(html).not.toContain("in a chain</b>");
+  expect(html).not.toContain("rm-drain");
+  expect(words(board(r, { v: "v1.1.2" }, { drift: null, chains: { ...chainsOk(), version: "v1.1.2" } }))).toContain("2 tickets in a chain: 2 open 2 open tickets in no chain");
 });
 
 // ---- Waiting on you lists what is owed to the operator: unsigned specs, chief doc lines, the HANDOFF's open items and operator holds on a ticket with a PR ----
@@ -1714,4 +1712,354 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   // no handover root and no chief doc: nothing is readable, so the answer is absent with the reasons
   const none = readOwed({ ...env, HANDOVER_DIR: join(s.d, "no-ho") });
   expect(none.state).toBe("absent");
+});
+
+const sx = () => withNoVersion(station());
+const shell = (tab: string, ui: Record<string, unknown> = {}, extras: Record<string, unknown> = {}) => {
+  const s = sx();
+  return renderBoard({ ...read(s), noVersionCount: 1 }, { version: null, theme: null, tab, nv: tab === "nv" ? nvRead(s) : undefined, ...ui }, { drift: driftRows(), chains: whole6(), versionChains: narrow3(), ...extras });
+};
+const tabsOnly = (html: string) => cellText(/<nav class="tabs"[\s\S]*?<\/nav>/.exec(html)?.[0] ?? "");
+const asideOf = (html: string) => cellText(/<div class="aside"[\s\S]*?<\/div>/.exec(html)?.[0] ?? "").trim();
+
+test("9559 slice 1: every tab draws one slim head, one tab row with its aside and one panel; no tiles, no drift banner, no link boxes", () => {
+  for (const tab of ["roadmap", "chains", "tidy", "nv"]) {
+    const html = shell(tab, { v: "v1.1.3" });
+    expect(html.match(/class="rm-head bh"/g)?.length).toBe(1);
+    expect(html.match(/<div class="tr">/g)?.length).toBe(1);
+    expect(html).toContain('class="aside"');
+    expect(html).not.toContain("rm-vstrip");
+    expect(html).not.toContain("rm-tabrow");
+    expect(html).not.toContain("warnbar");
+    expect(html).not.toContain("Shipped since yesterday");
+    expect(html.match(/<section[^>]*class="cp[ "]/g)?.length).toBe(1);
+    expect(html.includes('class="cp plain"')).toBe(tab !== "chains");
+  }
+});
+
+test("9559 slice 1: the Chains tab label names its version when the picked chip is not the version the chain read holds", () => {
+  const blocked = { ...narrow3(), tickets: { ...narrow3().tickets, [K(7)]: tkt(K(7), "blocked", "beta", 1, 1) } };
+  const label = (tab: string, ui: Record<string, unknown>) => tabsOnly(shell(tab, ui, { versionChains: blocked }));
+  expect(label("roadmap", { v: "all" })).toContain("Chains 2 in v1.1.3 ⛔ 1 ticket blocked");
+  expect(label("tidy", {})).toContain("Chains 2 in v1.1.3 ⛔ 1 ticket blocked");
+  expect(label("nv", {})).toContain("Chains 2 in v1.1.3 ⛔ 1 ticket blocked");
+  expect(label("roadmap", { v: "v1.1.3" })).toContain("Chains 2 ⛔ 1 ticket blocked");
+  expect(label("roadmap", { v: "v1.1.3" })).not.toContain("in v1.1.3");
+});
+
+test("9559 slice 1: the Tidy up label carries the drift count in the amber look, and says so when the run was not read", () => {
+  const counted = shell("chains", { v: "v1.1.3" });
+  expect(tabsOnly(counted)).toContain("Tidy up ! 1 drift row");
+  expect(counted).toMatch(/class="drf"/);
+  expect(tabsOnly(shell("chains", { v: "v1.1.3" }, { drift: driftOk() }))).toContain("Tidy up 0 drift rows");
+  expect(tabsOnly(shell("roadmap", { v: "v1.1.3" }, { drift: null }))).toContain("Tidy up · drift not read");
+  expect(tabsOnly(shell("roadmap", { v: "v1.1.3" }, { drift: { file: { exists: false }, counts: { real: 0, known: 0, transient: 0 } } }))).toContain("Tidy up · no drift run yet");
+});
+
+test("9559 slice 1: a saved run older than 3 h says so on the Tidy up label, counted or not; the No version line names where its tickets are counted", () => {
+  const old = (extra: Record<string, unknown>) => tabsOnly(shell("roadmap", { v: "v1.1.3" }, { drift: { ...driftRows(), stale: true, ...extra } }));
+  expect(old({})).toContain("Tidy up ! 1 drift row · over 3 h old");
+  expect(tabsOnly(shell("roadmap", { v: "v1.1.3" }, { drift: { ...driftOk(), stale: true } }))).toContain("Tidy up 0 drift rows · over 3 h old");
+  expect(tabsOnly(shell("roadmap", { v: "v1.1.3" }))).not.toContain("over 3 h old");
+  expect(cellText(/<p class="pv">[\s\S]*?<\/p>/.exec(shell("nv", {}))?.[0] ?? "")).toContain("no version · 1 ticket · in no version's count; a chip opens that version's Roadmap");
+});
+
+test("9559 slice 1: the aside says the same thing on every tab, and links the tickets the No version read has not counted", () => {
+  for (const tab of ["roadmap", "chains", "tidy", "nv"]) {
+    const a = asideOf(shell(tab, { v: "v1.1.3" }));
+    expect(a).toMatch(/waits? for you, any version/);
+    expect(a).toContain("Morning report");
+    expect(a).toContain("refresh");
+  }
+  expect(asideOf(shell("roadmap", { v: "v1.1.3" }))).toMatch(/^\d+ tickets? waits? for you, any version/);
+  expect(asideOf(shell("chains", { v: "v1.1.3" }))).toContain("1 ticket with no version not read yet");
+  expect(shell("chains", { v: "v1.1.3" })).toContain('href="#/board?tab=nv"');
+  const s = sx();
+  const read1 = renderBoard({ ...read(s), noVersionCount: 1 }, { version: null, theme: null, tab: "chains", v: "v1.1.3", nv: nvRead(s) }, { drift: null, chains: whole6(), versionChains: narrow3() });
+  expect(asideOf(read1)).not.toContain("not read yet");
+});
+
+test("9559 slice 1: an owed-sources read that failed is said in the aside on every tab, the Chains tab included", () => {
+  for (const tab of ["roadmap", "chains"]) expect(asideOf(shell(tab, { v: "v1.1.3" }, { owed: { state: "absent", reason: "none" } }))).toContain("the operator-owed sources not read");
+});
+
+test("9559 slice 1: with no version picked, Roadmap and Tidy up say 'every version' with the summed numbers; No version says its own line", () => {
+  for (const tab of ["roadmap", "tidy"]) expect(cellText(shell(tab, { v: "all" }))).toMatch(/every version · \d+ tickets · \d+ done · \d+ in flight · \d+ to do/);
+  const nv = cellText(shell("nv", {}));
+  expect(nv).toContain("no version · 1 ticket");
+  expect(nv).not.toContain("every version ·");
+  const picked = (tab: string) => /<p class="pv">[\s\S]*?<\/p>/.exec(shell(tab, { v: "v1.1.3" }))?.[0];
+  expect(picked("roadmap")).toBe(picked("chains"));
+  expect(picked("tidy")).toBe(picked("chains"));
+});
+
+test("9559 slice 1: a chip on No version keeps no tab (it opens that version's Roadmap), a chip on Tidy up keeps Tidy up, and Roadmap and Tidy up carry an all-versions chip", () => {
+  const chipsHtml = /<div class="vchips"[\s\S]*?<\/div>/.exec(shell("nv", {}))?.[0] ?? "";
+  expect(chipsHtml).toContain('href="#/board?v=v1.1.2"');
+  expect(chipsHtml).not.toContain("tab=");
+  expect(shell("tidy", { v: "v1.1.3" })).toContain('href="#/board?tab=tidy&amp;v=v1.1.2"');
+  expect(shell("roadmap", { v: "v1.1.3" })).toContain('href="#/board?v=all"');
+  expect(shell("tidy", { v: "v1.1.3" })).toContain('href="#/board?tab=tidy&amp;v=all"');
+  expect(shell("chains", { v: "v1.1.3" })).not.toContain("v=all");
+});
+
+test("9559 slice 1: a version chip carries the pin button; the version menu is outside the chip row, inside the head", () => {
+  const html = shell("roadmap", { v: "v1.1.3" });
+  expect(html).toContain('data-rm-pin="v1.1.2"');
+  expect(html).toMatch(/<div class="xrow"><div class="vchips"/);
+  expect(/<div class="vchips"[^>]*>[\s\S]*?<\/div>/.exec(html)?.[0]).not.toContain("vmenu");
+  expect(html).toContain('<span class="edge l" aria-hidden="true" hidden>');
+  expect(html).toMatch(/<details class="vmenu"/);
+});
+
+test("9559 slice 1: the drag note sits at the top of the panel on every tab: under the panel head where there is one, above the filters and the body", () => {
+  for (const tab of ["roadmap", "chains", "tidy", "nv"]) {
+    const html = shell(tab, { v: "v1.1.3", writeError: "refused: nope" });
+    const panel = html.slice(html.search(/<section[^>]*class="cp[ "]/));
+    const at = panel.indexOf("refused: nope"), head = panel.indexOf('class="cph"');
+    expect(at).toBeGreaterThan(-1);
+    if (tab === "roadmap" || tab === "nv") {
+      expect(head).toBeGreaterThan(-1);
+      expect(at).toBeGreaterThan(head);
+      expect(at).toBeLessThan(panel.indexOf('class="rm-bar'));
+    } else if (tab === "tidy") {
+      expect(head).toBeGreaterThan(-1);
+      expect(at).toBeGreaterThan(head);
+      expect(at).toBeLessThan(panel.indexOf('id="rm-status-drift"'));
+    } else expect(at).toBeLessThan(400);
+  }
+});
+
+test("9559 slice 1: a panel's alert pill and a card's drift pill are not restyled as Chains step boxes (the step box is the rail's only)", () => {
+  const css = readFileSync(join(import.meta.dir, "..", "public", "app.css"), "utf8");
+  expect(css).not.toMatch(/(^|\n)\.cp \.st\{/);
+  expect(css).toContain(".cp .rl>.st{");
+  expect(css).toContain(".cp.plain{border-top-color:var(--rule-strong)}");
+});
+
+test("9559 slice 2: a card in a panel lane sizes its grid track to the column, so a long chain chip clips inside the card", () => {
+  const css = readFileSync(join(import.meta.dir, "..", "public", "app.css"), "utf8");
+  expect(css).toContain(".cp .rm-card{margin-bottom:0;grid-template-columns:minmax(0,1fr)}");
+});
+
+const words = (html: string) => html.replace(/<\/?(?:b|span|a|em)\b[^>]*>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+const v112Station = (...more: [number, string, string, string | null][]) => {
+  const s = station();
+  const put = (n: number, st: string, cat: string, res: string | null) => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), issue(n, st, cat, ["v1.1.2"], `Slice two ${n}`, [], "", res));
+  put(10, "Done", "Done", "Fixed");
+  for (const m of more) put(...m);
+  return s;
+};
+const v112ChainRead = (extra: string[] = []) => {
+  const ct = (k: number, state: string) => ({ key: K(k), state, chains: [{ id: "memory", step: 1, steps: 2, state }], badges: ["memory"], more: 0 });
+  const ks = [1, 5, 10, ...extra.map(Number)];
+  return { schema: "himmel.chains/1", version: "v1.1.2", chains: [{ id: "memory", name: "Memory guard rework", total: ks.length, done: 1, steps: 2, next: null }],
+    tickets: Object.fromEntries(ks.map((k) => [K(k), ct(k, k === 1 ? "in flight" : k === 10 ? "done" : "waits on you")])) };
+};
+const s2Board = (r: ReturnType<typeof read>, ui: Record<string, unknown> = {}, ch: unknown = v112ChainRead()) =>
+  renderBoard(r, { version: null, theme: null, v: "v1.1.2", ...ui }, { drift: null, chains: ch, versionChains: ch } as never);
+
+test("9559 slice 2 Roadmap: the panel head says how many tickets the version holds and splits the ones in a chain in the Chains tab's words", () => {
+  const html = s2Board(read(v112Station()));
+  const head = words(html.slice(html.indexOf('<div class="cph">')));
+  expect(head).toContain("5 tickets in v1.1.2");
+  expect(head).toContain("3 tickets in a chain: 2 open, 1 done");
+  expect(head).toContain("2 open tickets in no chain");
+  expect(html).not.toContain("rm-drain");
+  expect(words(s2Board(read(v112Station()), { tab: "chains" }))).toContain("3 tickets in them");
+  expect(words(s2Board(read(v112Station()), { v: "all" }))).not.toContain("tickets in a chain");
+  const one = words(renderBoard(read(station()), { version: null, theme: null, v: "v1.1.3" }, null));
+  expect(one).toContain("1 ticket in v1.1.3");
+});
+
+test("9559 slice 2 Roadmap: a Won't ticket in a chain is counted in the split, so it still sums to the Chains head's total", () => {
+  const r = read(v112Station([11, "Done", "Done", "Wont Do"]));
+  const ch = v112ChainRead(["11"]);
+  const rm = words(s2Board(r, {}, ch)), chains = words(s2Board(r, { tab: "chains" }, ch));
+  expect(rm).toContain("4 tickets in a chain: 2 open, 1 done, 1 won't");
+  expect(chains).toContain("4 tickets in them");
+  const gone = v112ChainRead(["99"]);
+  expect(words(s2Board(read(v112Station()), {}, gone))).toContain("4 tickets in a chain: 2 open, 1 done, 1 in another version");
+});
+
+test("9559 slice 2 Roadmap: the Only filter counts the tickets in a chain with their unit", () => {
+  const html = s2Board(read(v112Station()));
+  expect(html).toContain("in a chain: 3 tickets");
+  expect(html).not.toContain("in a chain 3");
+});
+
+test("9559 slice 2 Roadmap: a lane head says its count with the unit and says Jira's count only when a filter hides some", () => {
+  const r = read(v112Station());
+  const html = s2Board(r);
+  expect(html).toMatch(/<h4>[^]*?To do[^]*?<span class="ro rm-n">1<\/span> ticket<\/h4>/);
+  expect(html).not.toContain("Jira 1 matches");
+  expect(html).not.toContain("rm-jira");
+  const hidden = s2Board(r, { hideDone: true });
+  expect(hidden).toContain("Jira 1 · 0 shown");
+});
+
+test("9559 slice 2 Roadmap: a card is a chain card, and an open ticket's wait reads 'waits on open X', muted, where the chain read does not call it blocked", () => {
+  const s = v112Station();
+  writeFileSync(join(s.mirror, "HIMMEL-20.md"), issue(20, "To Do", "To Do", ["v1.1.2"], "Waits").replace("blocked_by: []", `blocked_by: ${JSON.stringify([K(2)])}`));
+  const r = read(s);
+  const html = s2Board(r);
+  const card = html.match(new RegExp(`<div class="rm-card cc[ "][^>]*aria-label="${K(20)}:[\\s\\S]*?</div></div>`))![0];
+  expect(card).toContain(`waits on open ${K(2)}`);
+  expect(card).not.toContain("blocked by open");
+  expect(card).toMatch(/<span class="ro tk[ "]/);
+  const ft = html.match(new RegExp(`<div class="rm-card cc[ "][^>]*aria-label="${K(1)}:[\\s\\S]*?</div></div>`))![0];
+  expect(ft).toContain(`<div class="rm-ft">`);
+  expect(ft).toContain("FAST-TRACK");
+  const kan = renderKanban(r, { version: null, theme: null });
+  expect(kan).toContain(`<div class="rm-card"`);
+  expect(kan).not.toContain("rm-card cc");
+});
+
+test("9559 slice 2 No version: the panel head says how many tickets have no version, in the Chains head's look, and its cards and lane heads match the Roadmap's", () => {
+  const s = withNv(withNoVersion(station()));
+  const html = renderBoard(read(s), { version: null, theme: null, tab: "nv", nv: nvRead(s) }, { drift: null, chains: null });
+  expect(words(html.slice(html.indexOf('<div class="cph">')))).toContain("2 tickets with no version");
+  expect(html).toMatch(/<div class="rm-card cc[ "]/);
+  expect(html).not.toMatch(/Jira \d matches/);
+  const one = withNoVersion(station());
+  expect(words(renderBoard(read(one), { version: null, theme: null, tab: "nv", nv: nvRead(one) }, { drift: null, chains: null }))).toContain("1 ticket with no version");
+  expect(html).not.toMatch(/<section[^>]*class="box"/);
+});
+
+test("9559 slice 2 Checked across tabs: every tab at v=v1.1.2 shows one number where two tabs say the same thing", () => {
+  const r = read(v112Station());
+  const tabs = Object.fromEntries(["roadmap", "chains", "tidy", "nv"].map((tab) => [tab, s2Board(r, { tab })]));
+  const rm = words(tabs.roadmap), chains = words(tabs.chains);
+  const inChain = rm.match(/(\d+) tickets in a chain/)![1];
+  expect(chains).toContain(`${inChain} tickets in them`);
+  expect(tabs.roadmap).toContain(`in a chain: ${inChain} tickets`);
+  const label = (h: string) => h.match(/<a class="tab ch"[^>]*>[^]*?<\/a>/)![0].replace(/aria-selected="(?:true|false)"/, "");
+  expect(label(tabs.roadmap)).toBe(label(tabs.chains));
+  const named = (h: string) => label(h).match(/aria-label="[^"]*"/)![0];
+  expect(named(tabs.nv)).toBe(named(tabs.chains));
+  const pv = (h: string) => h.match(/<div class="pv"[^>]*>[^]*?<\/div>/)?.[0] ?? "";
+  expect(pv(tabs.roadmap)).toBe(pv(tabs.chains));
+  const aside = (h: string) => h.match(/<div class="aside"[^>]*>[^]*?<\/div>/)?.[0] ?? "";
+  expect(aside(tabs.roadmap)).toBe(aside(tabs.chains));
+  expect(label(tabs.tidy)).toBe(label(tabs.chains));
+  expect(pv(tabs.tidy)).toBe(pv(tabs.roadmap));
+  expect(aside(tabs.tidy)).toBe(aside(tabs.roadmap));
+  expect(headOf(tabs.tidy)).toContain("drift not read");
+  const counted = renderBoard(r, { version: null, theme: null, v: "v1.1.2", tab: "tidy" }, { drift: driftRows(), chains: v112ChainRead(), versionChains: v112ChainRead() } as never);
+  const tidyLabel = /<a class="tab"[^>]*>Tidy up[\s\S]*?<\/a>/.exec(counted)![0];
+  expect(headOf(counted)).toContain(/\d+ drift rows?/.exec(tidyLabel)![0]);
+  const w = read(v112Station([11, "Done", "Done", "Wont Do"])), wch = v112ChainRead(["11"]);
+  expect(words(s2Board(w, {}, wch))).toContain("4 tickets in a chain: 2 open, 1 done, 1 won't");
+  expect(words(s2Board(w, { tab: "chains" }, wch))).toContain("4 tickets in them");
+});
+
+function headOf(html: string) {
+  const at = html.indexOf('<div class="cph">');
+  if (at < 0) return "";
+  const rest = html.slice(at), end = rest.search(/<section |<div class="gh"|<details /);
+  return words(end < 0 ? rest : rest.slice(0, end));
+}
+const AWAIT_ROW = { class: "AWAITING", key: K(77), line: "AWAITING HIMMEL-77 parked by the chief | writer=chief | fix=none" };
+
+test("9559 slice 3 Tidy up: the panel head says the drift count once, and its not-counted line names the rows waiting on their owner", () => {
+  const html = tidy({}, { ...driftRows(), counts: { real: 1, known: 0, transient: 1, waiting: 1 } });
+  const head = headOf(html);
+  expect(head).toContain("1 drift row");
+  expect(head).toContain("not counted: 0 known checker bug, 1 transient, 1 waiting on their owner");
+  expect(head).not.toContain("sdrift=");
+  expect(html).toContain('<span title="sdrift=3:abc">saved run 03:08</span>');
+  expect(headOf(tidy({}, driftRows({ stale: true })))).toContain("older than 3 h");
+});
+
+test("9559 slice 3 Tidy up: an AWAITING row with no wait mark is real and reads in words; every class has its words and the column heads are words", () => {
+  const html = tidy({}, driftOk([AWAIT_ROW]));
+  expect(words(html)).toContain("Waiting on its owner, inside its clock AWAITING");
+  expect(headOf(html)).toContain("1 drift row");
+  expect(html).toContain("<th>what is off</th><th>ticket</th><th>detail</th><th>moved by</th><th>fixed by</th>");
+  expect(html).not.toContain("<th>class</th>");
+  const WORDS: Record<string, string> = { "DERIVE-MISMATCH": "Jira's status differs from the worker events", "MERGE-MISMATCH": "Merged, but not Done",
+    "DONE-WITH-OPEN-PR": "Done, with a PR still open", "MERGED-NO-ROW": "Merged with no merge record", MISSED: "A status write was missed",
+    "WORKER-STALE": "The worker record says live, but it ended", "WORKER-COMMENT": "Worker comment out of date", "TWO-OWNERS": "Two workers claim it",
+    UNOWNED: "Started, nobody on it", AWAITING: "Waiting on its owner, inside its clock", "HELD-IN-WORK": "Held, but in work",
+    "VERSION-DRIFT": "Worked, but only in a later version", HEALTH: "The check could not read an input" };
+  const all = tidy({}, driftOk(Object.keys(WORDS).map((c, i) => ({ class: c, key: K(100 + i), line: `${c} HIMMEL-${100 + i} x | writer=w | fix=none` }))));
+  for (const [c, w] of Object.entries(WORDS)) expect(cellText(all).replace(/&#39;/g, "'")).toContain(`${w} ${c}`);
+});
+
+test("9559 slice 3 Tidy up: a command shows only behind its copy button, in its bubble, in the drift table and the librarian list", () => {
+  const html = tidy({ v: "all" }, driftOk([{ class: "VERSION-DRIFT", key: K(6691), line: "VERSION-DRIFT HIMMEL-6691 Done in v1.1.4 | writer=release-manager | fix=jira release request v1.1.3" }]));
+  expect(html).toContain('<button class="btn" data-act="copy" data-cmd="jira release request v1.1.3" title="jira release request v1.1.3">copy the fix</button>');
+  expect(html).toContain(">copy the command</button>");
+  expect(cellText(html)).not.toMatch(/\bjira (?:release|edit|comment|transition)\b/);
+});
+
+test("9559 slice 3 Tidy up: group heads, cards and folded lines in the panel, Plan drift by its name, the health check in words, no boxed section", () => {
+  const html = tidy({ v: "all" }, driftOk());
+  expect(html).not.toContain('class="box"');
+  expect(html).toMatch(/<div class="gh">Status drift ·/);
+  expect(html).toMatch(/<div class="gh">Librarian ·/);
+  expect(html).toMatch(/<div class="cc">[\s\S]*?Released but open · 1 ticket/);
+  const narrow = tidy({ v: "v1.1.3" }, driftOk());
+  expect(narrow).toMatch(/<div class="gh">Nothing to do, or not read<\/div><details[^>]*class="fin"[\s\S]*?Librarian: stale in progress, no sector, released but open[\s\S]*?nothing to propose/);
+  expect(words(html)).toContain("Plan drift");
+  expect(html).not.toContain(">Drift<");
+  expect(cellText(html)).toContain("the health check warns");
+  expect(html).not.toContain("doctor WARNs");
+  for (const id of ["rm-status-drift", "rm-drift", "rm-sync", "rm-librarian"]) expect(html).toContain(`id="${id}"`);
+});
+
+test("9559 slice 3 Tidy up: a Sector picked on Roadmap does not narrow it, and it draws no filter bar", () => {
+  const r = read(station()), theme = r.themes.indexOf("tracker");
+  const lists = (h: string) => h.slice(h.indexOf('id="rm-status-drift"'));
+  const pick = renderBoard(r, { version: null, theme, tab: "tidy" }, { drift: driftOk() });
+  expect(lists(pick)).toBe(lists(renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: driftOk() })));
+  expect(lists(pick)).toContain("Orphaned work");
+  expect(pick).not.toContain("rm-bar");
+  expect(pick).not.toContain('data-rm-filter="theme"');
+});
+
+test("9559 slice 3 Tidy up states: not read, GitHub issues and the local tracker each say so in the panel head", () => {
+  const r = read(station());
+  const none = renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: { state: "absent", reason: "none found" } });
+  expect(headOf(none)).toContain("drift not read");
+  expect(none).toMatch(/<section id="rm-status-drift"[\s\S]*?<details[^>]*class="fin"[\s\S]*?status drift not read/);
+  expect(headOf(renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: { file: { exists: false }, counts: { real: 0, known: 0, transient: 0 } } }))).toContain("no drift run yet");
+  const gh = renderBoard({ ...r, source: "github" }, { version: null, theme: null, tab: "tidy" }, {});
+  expect(headOf(gh)).toContain("Nothing to tidy");
+  expect(gh).toMatch(/<details[^>]*class="fin"[\s\S]*?GitHub issues are read-only here/);
+  const local = renderBoard({ ...r, source: "local" }, { version: null, theme: null, tab: "tidy" }, {});
+  expect(headOf(local)).toMatch(/\d+ proposals?/);
+  expect(local).toContain('id="rm-librarian"');
+  expect(local).not.toContain('id="rm-status-drift"');
+});
+
+test("9559 slice 3: the interim boxed-section rule is gone and the phone keeps a drift row's key on one line, with only what is off, the ticket and the copy button", () => {
+  const css = readFileSync(join(import.meta.dir, "..", "public", "app.css"), "utf8");
+  expect(css).not.toContain(".cp.plain>section.box");
+  expect(css).toContain(".cp .rm-top>.ro{min-width:0;max-width:100%}");
+  expect(css).toContain(".cp .rm-top>b{white-space:nowrap}");
+  expect(css).toContain(".cp .rm-bar select{max-width:12rem}");
+  expect(css).toMatch(/@media \(max-width:760px\)\{\.cp \.rm-board,\.cp \.rm-board:has\(\.rm-lane\)\{grid-template-columns:minmax\(0,1fr\)\}/);
+  expect(css).toMatch(/@media \(max-width:760px\)\{[^@]*\.cp \.rm-sdrift td:nth-child\(2\)\{white-space:nowrap\}/);
+  expect(css).toMatch(/@media \(max-width:760px\)\{[^@]*\.cp \.rm-sdrift :is\(th,td\):is\(:nth-child\(3\),:nth-child\(4\),:nth-child\(5\)\)\{display:none\}/);
+});
+
+test("Board: an unclosed worker is listed apart from Waiting on you and leaves the operator count at 0, while an owed item without a receipt counts", () => {
+  const r = read(station());
+  const ch = chainsOk();
+  ch.tickets[K(5)].state = "in flight";
+  const worker = { source: "unclosed worker", key: null, label: "N5805", since: Math.floor(Date.now() / 1000) - 7200, title: "N5805 is finished and its window is still open", ctx: "held", act: "the chief closes it" };
+  const owedItem = { source: "owed undelivered", key: null, title: "sig-9608: sign the spec", ctx: "OWED sig-9608 has no DELIVERED receipt", act: "the chief sends it" };
+  const only = renderBoard(r, { version: null, theme: null }, { drift: null, chains: ch, owed: { state: "ok", items: [worker], unread: [] } });
+  expect(only).not.toContain('id="rm-waiting"');
+  expect(asideOf(only)).toContain("0 tickets wait for you, any version");
+  const chiefSec = /<section id="rm-chief-wait"[\s\S]*?<\/section>/.exec(only)?.[0] ?? "";
+  expect(chiefSec).toContain("Waiting on the chief");
+  expect(chiefSec).toContain("N5805 is finished and its window is still open");
+  expect(chiefSec).toContain("held 2 h");
+  expect(chiefSec).toContain("Action: the chief closes it");
+  const both = renderBoard(r, { version: null, theme: null }, { drift: null, chains: ch, owed: { state: "ok", items: [worker, owedItem], unread: [] } });
+  expect(waitingSec(both)).toContain("sig-9608: sign the spec");
+  expect(waitingSec(both)).not.toContain("N5805");
+  expect(asideOf(both)).toContain("1 ticket waits for you, any version");
 });

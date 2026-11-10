@@ -1,0 +1,76 @@
+# real data of scratch PR 3841 (a live proof of the gate, gate on): a push after a go run, then the release pair
+# commit rows: gh pr view 3841 --json commits (sha9, committedDate)
+# event rows: the pull_request events that started ci.yml runs, in order (opened/synchronize from the run's createdAt,
+#   labeled from gh api repos/<repo>/issues/3841/events; the unlabeled event at 01:50:00 starts no run and is listed as such)
+# run rows: gh run list --workflow ci.yml --branch chore/himmel-7241-ci-go-gate-poc (id, createdAt, updatedAt, conclusion, head sha9)
+# check rows: gh api repos/<repo>/commits/2ba654e06/check-runs, kind by check_suite: synchronize = run 40151223989 (suite 108827201034),
+#   go = run 40152150450 (suite 108829570835), macos-synchronize = suite 108827201021, macos-label = suite 108829570995;
+#   names that are an unexpanded template expression are left out
+commit	b86c3bb04	2026-10-25T01:14:43Z
+commit	2ba654e06	2026-10-25T01:34:25Z
+commit	40fd81f9d	2026-10-25T02:03:48Z
+event	2026-10-25T01:16:58Z	opened		b86c3bb04
+event	2026-10-25T01:31:55Z	labeled	ci:go	b86c3bb04
+event	2026-10-25T01:35:23Z	synchronize		2ba654e06
+event	2026-10-25T01:50:00Z	unlabeled	ci:go	2ba654e06
+event	2026-10-25T01:50:01Z	labeled	ci:go	2ba654e06
+event	2026-10-25T02:04:52Z	synchronize		40fd81f9d
+run	40150018929	2026-10-25T01:16:58Z	2026-10-25T01:31:31Z	success	b86c3bb04
+run	40150996939	2026-10-25T01:31:57Z	2026-10-25T01:35:44Z	cancelled	b86c3bb04
+run	40151223989	2026-10-25T01:35:23Z	2026-10-25T01:49:47Z	success	2ba654e06
+run	40152150450	2026-10-25T01:50:03Z	2026-10-25T02:06:15Z	cancelled	2ba654e06
+run	40153081834	2026-10-25T02:04:53Z	2026-10-25T02:34:48Z	success	40fd81f9d
+check	go	shell-unit (ubuntu-latest)	failure
+check	go	unchecked-mktemp-range	success
+check	go	commit-lint	success
+check	go	doc-invariants	success
+check	go	claude-startup	success
+check	go	guardrail-matrices	success
+check	go	secret-scan	success
+check	go	shell-unit-shard (ubuntu-latest, 6)	cancelled
+check	go	shell-unit-shard (ubuntu-latest, 12)	cancelled
+check	go	shell-unit-shard (ubuntu-latest, 4)	cancelled
+check	go	shell-unit-shard (ubuntu-latest, 11)	cancelled
+check	go	shell-unit-shard (ubuntu-latest, 2)	cancelled
+check	go	node-suites (himmel-gh, plugins/himmel-gh)	success
+check	go	shell-unit-shard (ubuntu-latest, 9)	cancelled
+check	go	shell-unit-shard (ubuntu-latest, 10)	cancelled
+check	go	shell-unit-shard (ubuntu-latest, 3)	cancelled
+check	go	shell-unit-shard (ubuntu-latest, 5)	success
+check	go	shell-unit-shard (ubuntu-latest, 1)	cancelled
+check	go	shell-unit-shard (ubuntu-latest, 7)	cancelled
+check	go	shell-unit-shard (ubuntu-latest, 8)	cancelled
+check	go	node-suites (himmel-bus, marketplace/plugins/himmel-bus, 24.22.1)	success
+check	go	node-suites (jira)	success
+check	go	node-suites (ci-orchestrator)	success
+check	go	node-suites (himmel-run)	success
+check	go	ci-quick	success
+check	go	security-scan	success
+check	go	node-suites (himmel-jira, plugins/himmel-jira)	success
+check	go	node-suites (bitbucket)	success
+check	go	plugin-version-bump	success
+check	go	git-env-scrub	success
+check	macos-label	macos-cadence / summary	skipped
+check	macos-label	macos-cadence / shell (${{ matrix.os }}, ${{ matrix.shard }})	skipped
+check	go	guard-corpus-full	skipped
+check	go	bun-suites (ubuntu-latest)	success
+check	go	plan	success
+check	go	lanes-and-trust-suites	success
+check	go	leak-classes	success
+check	go	lint	success
+check	synchronize	unchecked-mktemp-range	success
+check	synchronize	doc-invariants	success
+check	synchronize	guardrail-matrices	success
+check	synchronize	secret-scan	success
+check	synchronize	claude-startup	success
+check	synchronize	commit-lint	success
+check	synchronize	node-suites	skipped
+check	synchronize	shell-unit-shard	skipped
+check	synchronize	plugin-version-bump	success
+check	synchronize	ci-quick	success
+check	synchronize	bun-suites	skipped
+check	synchronize	guard-corpus-full	skipped
+check	synchronize	plan	success
+check	synchronize	lint	success
+check	macos-synchronize	macos-cadence / summary	skipped
+check	macos-synchronize	macos-cadence / shell (${{ matrix.os }}, ${{ matrix.shard }})	skipped

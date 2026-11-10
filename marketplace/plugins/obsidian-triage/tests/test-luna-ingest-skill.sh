@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Invariant tests for the obsidian-triage:luna-ingest skill (LUNA-9).
+# Invariant tests for the obsidian-triage:luna-ingest skill.
 #
 # Scope: validates the structural invariants the skill file must hold
 # AFTER the slash-cmd → skill conversion. Does NOT exercise the runbook
 # end-to-end (that requires gh api + a real github URL — covered later
-# in LUNA-10 calibration). What this test gives us:
+# in harvest-clips calibration). What this test gives us:
 #
-#   1. SKILL.md exists at the canonical path the LUNA-3 plan expects.
+#   1. SKILL.md exists at the canonical path the skill plan expects.
 #   2. SKILL.md frontmatter parses as YAML and contains `name` +
 #      `description` (the only two REQUIRED fields per writing-skills).
 #   3. `name` matches the skill directory name (skill loader convention).
@@ -22,7 +22,6 @@ set -u -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-# Plugin moved under marketplace/plugins/ in the LUNA-26 cleanup.
 # Plugin path: marketplace/plugins/obsidian-triage/
 # To reach himmel repo root: PLUGIN_DIR/../../..
 REPO_DIR="$(cd "$PLUGIN_DIR/../../.." && pwd)"
@@ -135,7 +134,7 @@ if [ "$wrap_exists" = "yes" ]; then
 fi
 
 echo "Test 7: skill preserves the documented Phase structure"
-# /harvest-clips dispatch contract (LUNA-10) relies on the Phase-numbered
+# /harvest-clips dispatch contract relies on the Phase-numbered
 # structure surviving the conversion.
 for phase in "## Phase 1" "## Phase 2" "## Phase 3" "## Phase 4" "## Dry-run mode" "## Exit codes"; do
     if grep -qF "$phase" "$SKILL"; then
@@ -146,7 +145,7 @@ for phase in "## Phase 1" "## Phase 2" "## Phase 3" "## Phase 4" "## Dry-run mod
     assert "skill body has section: $phase" "yes" "$present"
 done
 
-echo "Test 8: bitbucket.org routing branch is documented (HIMMEL-329)"
+echo "Test 8: bitbucket.org routing branch is documented"
 # The Bitbucket branch is the forge-routed parallel to the github phases. These
 # invariants block silent rot of the bitbucket contract that /harvest-clips and
 # operators depend on.
@@ -175,7 +174,7 @@ else
 fi
 assert "description advertises bitbucket.org" "yes" "$desc_bb"
 
-echo "Test: reference-file wording (HIMMEL-5787)"
+echo "Test: reference-file wording"
 REFS="$PLUGIN_DIR/references/luna-ingest"
 QMD_GATE="$PLUGIN_DIR/../himmel-ops/skills/memory-compound/references/qmd-gate.md"
 

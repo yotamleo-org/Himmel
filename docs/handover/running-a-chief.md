@@ -872,13 +872,15 @@ round**, even a one-line fix after a judge's NO-GO. A ruling of "no new
 script refuses when no critic answered at that head. Word the ruling as "one
 `/pr-check` round at the new head; only Critical or Important findings block".
 
-A PR on HIMMEL-2973/2976/2928/2974/2975 is READY only if its body cites
-`HIMMEL-2977 "GATE <previous lever> PASS <date>"` (for 2973:
-`P0 EXIT <date>`; this line carries no separate status word, and its mere
-presence, verbatim, is the pass signal for 2973). Open HIMMEL-2977's comments
-and find that citation's line verbatim: a missing citation or a line not
+A PR on one of the five cost-reduction levers (the console-arm autocompact
+default and the four others) is READY only if its body cites the cost-reduction
+program ticket's line `"GATE <previous lever> PASS <date>"` (for the autocompact
+lever: `P0 EXIT <date>`; this line carries no separate status word, and its mere
+presence, verbatim, is the pass signal for that lever). Open the program
+ticket's comments (the one holding the measured baseline and the per-lever
+acceptance rules) and find that citation's line verbatim: a missing citation or a line not
 found is not READY; for the general `GATE ... <status> <date>` shape (every
-ticket except 2973), a found line whose status is not PASS is also not READY.
+lever except the autocompact lever), a found line whose status is not PASS is also not READY.
 The chief pulls the primary and the worker wraps (closing its ticket only if the
 brief's `completes-ticket: yes` says the PR completes it).
 The chief sends the GO file (merge approval) by first running `bash scripts/handover/chief-kit/go.sh

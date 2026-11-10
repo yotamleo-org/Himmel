@@ -15,7 +15,9 @@ const cases: [string, string, string | undefined, string[]][] = [
   ["cadence.arm", "graphmap", undefined, ["bash", "/C/scripts/luna/graphmap-cadence.sh", "arm"]],
   ["cadence.arm", "qmd", undefined, ["bash", "/C/scripts/luna/qmd-cadence.sh", "arm"]],
   ["cadence.arm", "doctor", undefined, ["bash", "/C/scripts/doctor-cadence.sh", "arm"]],
+  ["cadence.arm", "rollup", undefined, ["bash", "/C/scripts/eval/rollup-cadence.sh", "arm"]],
   ["cadence.disarm", "graphmap", undefined, ["bash", "/C/scripts/luna/graphmap-cadence.sh", "disarm"]],
+  ["cadence.disarm", "rollup", undefined, ["bash", "/C/scripts/eval/rollup-cadence.sh", "disarm"]],
   ["plugin.enable", "a@m", undefined, [...H, "profile", "enable", "a@m"]],
   ["plugin.disable", "b@m", undefined, [...H, "profile", "disable", "b@m"]],
   ["profile.set", "lean", undefined, [...H, "profile", "lean"]],
@@ -49,6 +51,13 @@ test("consent, timeouts and cwd come from the table", () => {
   expect(resolveAction(table, "config.lanes", "l1", "on").timeoutMs).toBe(60_000);
   expect(resolveAction(table, "plugin.enable", "a@m").cwd).toBe("/R");
   expect(resolveAction(table, "cadence.arm", "graphmap").rowIds).toEqual(["graphmap-cadence"]);
+});
+
+test("the weekly roll-up cadence is a Configure target that says it costs nothing", () => {
+  const a = resolveAction(table, "cadence.arm", "rollup");
+  expect(a.bank).toBe("none");
+  expect(a.rowIds).toEqual(["rollup-cadence"]);
+  expect(a.consent).toEqual({ kind: "typed", expect: "rollup" });
 });
 
 const refused: [string, string, string | undefined][] = [

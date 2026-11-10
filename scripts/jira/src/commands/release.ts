@@ -1,7 +1,7 @@
 // billed-exempt: the release manager rm-run judge; run by the chief on purpose, bank-preflight gated
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,14 +20,14 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersionApproval, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
-  type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
+  apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, outOfVersionApproval, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
+  type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
 import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
-import type { Authority, Op, Verb } from '../release/types.js';
+import type { Authority, Op, OperatorKind, Verb } from '../release/types.js';
 
 // `jira release <sub>`: the CLI face of the release engine.
 // Callers in other languages read `jira release state <R> --json`.
@@ -96,7 +96,6 @@ export function ctxFor(release: string, mirrorRoot?: string): Ctx {
   };
 }
 
-const PLACEHOLDER = /^(tbd|todo|test|testing|placeholder|wip|n\/?a|x+|w+|-+|\.+)$/i;
 const isPr = (pr: unknown): boolean => Number.isInteger(pr) && (pr as number) > 0;
 
 /**
@@ -163,6 +162,19 @@ export function renderState(s: StateOut, budgets: Record<string, number> = {}): 
 }
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+
+export function sendApprovalAlert(a: ApprovalAlert): number {
+  const dir = mkdtempSync(join(tmpdir(), 'version-approval-'));
+  try {
+    const words = join(dir, 'words.txt');
+    writeFileSync(words, a.words);
+    const r = spawnSync('bash', [join(repoRoot, 'scripts', 'handover', 'chief-kit', 'version-approval-alert.sh'), a.key, a.version, a.decision, String(a.open), words],
+      { stdio: ['ignore', 'inherit', 'inherit'], timeout: 60_000 });
+    return r.status ?? 1;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 export function judgePrompt(input: JudgeInput, skill: string): string {
   return [
@@ -598,9 +610,13 @@ export function registerRelease(program: Command): void {
   rel.command('spec-check <keys...>')
     .description('Per key: SPEC ok, SPEC-STALE or NO-SPEC from the signed spec records of every declared release; exit 1 unless all are SPEC ok')
     .option('--mirror <dir>', 'Jira mirror directory, for a sub-task\'s parent (default: the JIRA_PROJECT_KEY mirror)')
-    .action((keys: string[], o: { mirror?: string }) => {
+    .option('--kinds <list>', 'Comma-separated record kinds that count: spec, spec-review', 'spec')
+    .action((keys: string[], o: { mirror?: string; kinds: string }) => {
+      const kinds = list(o.kinds);
+      const bad = kinds.filter((k) => k !== 'spec' && k !== 'spec-review');
+      if (!kinds.length || bad.length) throw new Error(`release spec-check: --kinds takes spec and spec-review, not '${o.kinds}'`);
       const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
-      const r = specCheck(process.env, keys, mirror);
+      const r = specCheck(process.env, keys, mirror, { kinds: kinds as OperatorKind[] });
       for (const l of r.lines) console.log(l);
       for (const warning of r.warnings) console.error(`WARN ${warning}`);
       if (!r.ok) process.exitCode = 1;
@@ -663,7 +679,7 @@ export function registerRelease(program: Command): void {
     .requiredOption('--why <text>', 'One line: why the request exists')
     .option('--evidence <json>', 'Evidence object as JSON', '{}')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
-    .action((release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; mirrorRoot?: string }) => {
+    .action(async (release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; mirrorRoot?: string }) => {
       if (!['INTAKE', 'REVERSION', 'DISCHARGE'].includes(o.verb)) throw new Error('release request: --verb is INTAKE, REVERSION or DISCHARGE');
       const evidence: unknown = JSON.parse(o.evidence);
       if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: --evidence is a JSON object');
@@ -671,6 +687,11 @@ export function registerRelease(program: Command): void {
       const approval = o.verb === 'INTAKE' ? outOfVersionApproval(process.env, o.key, new Date()) : null;
       if (approval) {
         console.log(`REQ approved:${approval.id}`);
+        try {
+          await clearProposedLabels(ctx.jira, o.key);
+        } catch (e) {
+          console.error(`release request: WARN ${(e as Error).message}`);
+        }
         return;
       }
       const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
@@ -894,6 +915,17 @@ export function registerRelease(program: Command): void {
       });
       console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}`);
     });
+  operator.command('spec-review <release>')
+    .description('Record a spec, its plan and one passing or folded critic round for its keys; no operator signature')
+    .requiredOption('--keys <list>', 'Comma-separated keys; each critic\'s Key: line names exactly these')
+    .requiredOption('--spec <path>', 'The spec file; its header names each key')
+    .requiredOption('--plan <path>', 'The plan file, never the spec')
+    .requiredOption('--verdict <path>', 'The spec critic\'s verdict file, and optionally the plan critic\'s', (v: string, all: string[]) => [...all, v], [] as string[])
+    .option('--supersedes <O-id>', 'The spec-review record this one replaces')
+    .action((release: string, o: { keys: string; spec: string; plan: string; verdict: string[]; supersedes?: string }) => {
+      const r = specReview(ctxFor(release), { keys: list(o.keys), spec: o.spec, plan: o.plan, verdicts: o.verdict, supersedes: o.supersedes });
+      console.log(`${r.id} spec-review ${r.spec_path} for ${(r.keys ?? []).join(', ')}`);
+    });
   operator.command('core-bypass <release>')
     .description('Let core keys build without a signed spec; core-check reads it from every declared release')
     .requiredOption('--keys <list>', 'Comma-separated keys the bypass covers')
@@ -902,6 +934,17 @@ export function registerRelease(program: Command): void {
     .action((release: string, o: { keys: string; decision: string; verbatimFile: string }) => {
       const r = coreBypass(ctxFor(release), { keys: list(o.keys), decision: o.decision, verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim() });
       console.log(`${r.id} core-bypass for ${(r.keys ?? []).join(', ')}`);
+    });
+  operator.command('out-of-version <release>')
+    .description('Approve one key as out of version for 14 days on the operator\'s numbered verbatim file; the operator\'s phone gets the words before the record is signed')
+    .requiredOption('--key <key>', 'The one key the operator approved')
+    .requiredOption('--decision <n>', 'Operator decision number; the verbatim file carries the same number')
+    .requiredOption('--verbatim-file <path>', 'specs/decisions/verbatim-decision-<n>-* beside the release root, with a Verbatim: block')
+    .requiredOption('--reason <text>', 'Why this ticket now: 8 characters or more, not a placeholder')
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .action((release: string, o: { key: string; decision: string; verbatimFile: string; reason: string; mirrorRoot?: string }) => {
+      const r = outOfVersion(ctxFor(release, o.mirrorRoot), { key: o.key, decision: o.decision, verbatimFile: o.verbatimFile, reason: o.reason, alert: sendApprovalAlert });
+      console.log(`${r.id} out-of-version for ${o.key} (decision ${r.decision}), valid until ${new Date(Date.parse(r.ts) + OUT_OF_VERSION_MS).toISOString()}`);
     });
   operator.command('core-snapshot <release>')
     .description('Record, once, the tickets in flight when the core gate turns on; core-check reads them as grandfathered')

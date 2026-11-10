@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Invariant tests for /harvest-clips (LUNA-10 MVP).
+# Invariant tests for /harvest-clips (MVP).
 #
 # Scope: validates the structural invariants of the runbook + dispatch
 # table without invoking the agent itself. End-to-end calibration happens
-# in LUNA-16 (overnight cycle 1) against real clips + real skills.
+# in the first overnight cycle against real clips + real skills.
 #
 # What this tests:
 #   1. Command file exists at the canonical plugin path.
@@ -67,7 +67,7 @@ if [ "$exists" = "no" ]; then
     echo "Results: $pass passed, $fail failed"; exit 1
 fi
 
-echo "Test 1b: every references/harvest-clips file is linked from the command body (HIMMEL-5513)"
+echo "Test 1b: every references/harvest-clips file is linked from the command body"
 unlinked=""
 for ref in "$PLUGIN_DIR"/references/harvest-clips/*.md; do
     grep -qF "references/harvest-clips/$(basename "$ref")" "$PLUGIN_DIR/commands/harvest-clips.md" || unlinked="$unlinked $(basename "$ref")"
@@ -98,7 +98,7 @@ for type_word in "tweet" "youtube" "github URL" "non-github" "reddit" "newslette
     assert "dispatch table references type: '$type_word'" "yes" "$found"
 done
 
-echo "Test 4: HIMMEL-128 — NO headless claude references"
+echo "Test 4: NO headless claude references (headless claude -p is billed separately)"
 # `claude -p`, `--print`, `--bg`, or `Bash: claude` in dispatch context.
 # The runbook can MENTION the ban (which it does) — but must not contain
 # an invocation pattern that would be parsed as a Bash command to claude.
@@ -118,7 +118,7 @@ while IFS= read -r pat; do
 done <<'EOPATTERNS'
 ^[^#>]*Bash:[[:space:]]*claude[[:space:]]+(-p|--print|--bg)
 EOPATTERNS
-assert "no Bash: claude --print invocation patterns (HIMMEL-128)" "0" "$violations"
+assert "no Bash: claude --print invocation patterns" "0" "$violations"
 
 # All dispatch in the runbook uses Skill { ... } syntax.
 if grep -qE 'Skill[[:space:]]*\{[[:space:]]*skill:[[:space:]]*"[a-z0-9-]+:' "$CMD"; then
@@ -131,7 +131,7 @@ assert "dispatch uses Skill { skill: \"<plugin>:<name>\" } pattern" "yes" "$skil
 echo "Test 5: G-1..G-6 gates documented"
 # G-1 privacy, G-2 lockfile/sync, G-3 single-section invariant,
 # G-5 resume state, G-6 env preflight + headless refusal.
-# (G-4 daily-note cap and G-7 logging-lib are NOT in LUNA-10 scope.)
+# (G-4 daily-note cap and G-7 logging-lib are NOT in MVP scope.)
 for gate in "G-1" "G-2" "G-3" "G-5" "G-6"; do
     if grep -qF "$gate" "$CMD"; then
         present=yes
@@ -186,7 +186,6 @@ assert ".harvest-run-state-<DATE>.jsonl documented" "yes" "$resume"
 echo "Test 9: fixture coverage — at least one per dispatch type + G-1 fixture"
 # Map fixture → expected type marker.
 # bash 3.2 has no `declare -A`; a case lookup keeps the same kind -> pattern map.
-# ponytail: case lookup stands in for an associative array (bash 3.2), drop once macOS CI runs bash >= 4, HIMMEL-3719.
 wanted_pat() {
     case "$1" in
         tweet) echo "^type:[[:space:]]*tweet$" ;;
@@ -226,8 +225,8 @@ for domain_kw in "x.com" "youtube" "github" "utm_" "medium"; do
     assert "canonicalization rule mentions: $domain_kw" "yes" "$found"
 done
 
-echo "Test 11: LUNA-26 pivot — clip-body dispatch path + no API keys"
-# Post-LUNA-26: every non-github type uses the clip-body path; no external
+echo "Test 11: clip-body dispatch path + no API keys (external fetch removed)"
+# Every non-github type uses the clip-body path; no external
 # LLM fetch via Grok / Perplexity. Github stays on luna-ingest.
 
 # 11a — clip-body path documented as a named path
@@ -249,7 +248,7 @@ assert "github-ingest path documented" "yes" "$found"
 # 11c — only luna-ingest is dispatched via Skill; the old skills are gone.
 # x-read / youtube / research-deep / defuddle MUST NOT appear in dispatch
 # invocations (`Skill { skill: "..." }`). Mentioning them in narrative
-# context (e.g. LUNA-27 followup) is allowed.
+# context (e.g. the firecrawl-thin followup) is allowed.
 for dead_skill in "claude-obsidian:x-read" "claude-obsidian:youtube" "claude-obsidian:research-deep" "claude-obsidian:research" "obsidian:defuddle"; do
     # Match the Skill { skill: "<name>" } pattern with this exact slug.
     if grep -qE "Skill[[:space:]]*\{[[:space:]]*skill:[[:space:]]*\"$dead_skill\"" "$CMD"; then
@@ -257,7 +256,7 @@ for dead_skill in "claude-obsidian:x-read" "claude-obsidian:youtube" "claude-obs
     else
         found=no_violation
     fi
-    assert "no Skill dispatch to $dead_skill (LUNA-26 removed external fetch)" "no_violation" "$found"
+    assert "no Skill dispatch to $dead_skill (external fetch was removed)" "no_violation" "$found"
 done
 
 # 11d — luna-ingest IS still dispatched
@@ -281,25 +280,25 @@ for dead_envvar in "XAI_API_KEY" "PERPLEXITY_API_KEY"; do
     assert "env-var preflight no longer requires $dead_envvar" "no_violation" "$found"
 done
 
-# 11f — thinness heuristic mentioned (LUNA-27 hand-off)
+# 11f — thinness heuristic mentioned (firecrawl-thin hand-off)
 if grep -qiE "thin[- ]body|< 10 non-blank" "$CMD"; then
     found=yes
 else
     found=no
 fi
-assert "thin-body heuristic flagged for LUNA-27 followup" "yes" "$found"
+assert "thin-body heuristic flagged for the firecrawl-thin followup" "yes" "$found"
 
-# 11g — LUNA-26 + LUNA-27 referenced
-for ticket in "LUNA-26" "LUNA-27"; do
-    if grep -qF "$ticket" "$CMD"; then
+# 11g — the clip-body pivot and the playwright-based crawl hand-off are named
+for phrase in "clip-body pivot" "playwright-based crawl"; do
+    if grep -qiF "$phrase" "$CMD"; then
         found=yes
     else
         found=no
     fi
-    assert "cross-ref to $ticket present" "yes" "$found"
+    assert "cross-ref to $phrase present" "yes" "$found"
 done
 
-echo "Test 12: LUNA-53 — scan excludes Clippings/_synthesis/ (synthesize output, not source clips)"
+echo "Test 12: scan excludes Clippings/_synthesis/ (synthesize output, not source clips)"
 # 12a — runbook scan documents the -not -path '*/_synthesis/*' exclusion.
 if grep -qE "\-not -path '\*/_synthesis/\*'" "$CMD"; then
     found=yes
@@ -337,7 +336,7 @@ else
 fi
 assert "scan excludes _synthesis/ output page" "no_leak" "$found"
 
-echo "Test 13: HIMMEL-256 — injection screen (flag-only) documented + functional"
+echo "Test 13: injection screen (flag-only) documented + functional"
 # 13a — runbook documents the Phase 4.5 injection screen.
 if grep -qF "injection-suspect" "$CMD" && grep -qF "Phase 4.5" "$CMD"; then
     found=yes
@@ -452,7 +451,7 @@ fi
 if [ -z "$PY" ]; then
     echo "  SKIP  Tests 14-18 (no python interpreter on PATH)"
 else
-    echo "Test 14: HIMMEL-256 — one seeded positive per pattern class via --scan-only"
+    echo "Test 14: one seeded positive per pattern class via --scan-only"
     t14_dir="$tmp_vault/t14"
     mkdir -p "$t14_dir"
     class_payload() {  # bash 3.2 has no `declare -A`
@@ -479,7 +478,7 @@ else
     done
     unset ASSERT_LOG
 
-    echo "Test 15: HIMMEL-256 — negative matrix (benign tech prose) + accepted-FP probe"
+    echo "Test 15: negative matrix (benign tech prose) + accepted-FP probe"
     t15_dir="$tmp_vault/t15"
     mkdir -p "$t15_dir"
     benign_sentences=(
@@ -513,7 +512,7 @@ else
     assert "accepted-FP probe flags reader-agent-tool-invocation (documented MVP behavior)" "yes" "$found"
     unset ASSERT_LOG
 
-    echo "Test 16: HIMMEL-256 — --scan-only exit codes (0 clean / 1 hits / 2 error)"
+    echo "Test 16: --scan-only exit codes (0 clean / 1 hits / 2 error)"
     ASSERT_LOG="$PY_LOG"
     printf -- 'A perfectly ordinary note about gardening.\n' > "$tmp_vault/t16-clean.txt"
     "$PY" "$BATCH_TOOL" --scan-only "$tmp_vault/t16-clean.txt" >"$PY_LOG" 2>&1
@@ -525,7 +524,7 @@ else
     assert "scan-only exit 2 on unreadable file" "2" "$?"
     unset ASSERT_LOG
 
-    echo "Test 17: HIMMEL-256 — injection in title: only flags; --rescan-flags backfill"
+    echo "Test 17: injection in title: only flags; --rescan-flags backfill"
     t17_vault="$tmp_vault/t17vault"
     mkdir -p "$t17_vault/Clippings"
     # 17a — payload in title: frontmatter ONLY, benign body (CR critical fix).
@@ -580,7 +579,7 @@ else
     assert "rescan-flags leaves the body byte-content intact (flag-only)" "yes" "$found"
     unset ASSERT_LOG
 
-    echo "Test 18: HIMMEL-256 final CR — full-fm_raw scan + flag persists on skip paths"
+    echo "Test 18: final review — full-fm_raw scan + flag persists on skip paths"
     t18_vault="$tmp_vault/t18vault"
     mkdir -p "$t18_vault/Clippings"
     ASSERT_LOG="$PY_LOG"
@@ -666,7 +665,7 @@ else
     unset ASSERT_LOG
 fi
 
-echo "Test 14: G-2 dead-PID lock recovery documented (HIMMEL-1138)"
+echo "Test 14: G-2 dead-PID lock recovery documented"
 g2_section=$(awk '/^### G-2/{p=1;next} /^### /{if(p) exit} p' "$PLUGIN_DIR/references/harvest-clips/g-2-lockfile.md")
 
 out=$(printf '%s' "$g2_section" | grep -E "kill -0")
@@ -699,7 +698,7 @@ else
 fi
 assert "G-2 live-PID abort message + exit 2 unchanged" "yes" "$live_abort"
 
-echo "Test 15: G-2 invalidates the completion marker at run start (HIMMEL-1137)"
+echo "Test 15: G-2 invalidates the completion marker at run start"
 out=$(printf '%s' "$g2_section" | grep -F ".harvest.done")
 out2=$(printf '%s' "$g2_section" | grep -iE "invalidat")
 if [ -n "$out" ] && [ -n "$out2" ]; then
@@ -709,7 +708,7 @@ else
 fi
 assert "G-2 removes/invalidates .harvest.done at start" "yes" "$marker_invalidate"
 
-echo "Test 16: G-8 completion marker written LAST, only on a clean run (HIMMEL-1137)"
+echo "Test 16: G-8 completion marker written LAST, only on a clean run"
 g8_section=$(awk '/^### G-8/{p=1;next} /^### /{if(p) exit} p' "$PLUGIN_DIR/references/harvest-clips/g-8-completion-marker.md")
 
 out=$(printf '%s' "$g8_section" | grep -F ".harvest.done")
@@ -730,7 +729,7 @@ else
 fi
 assert "G-8 marker written only on a clean (exit 0) run" "yes" "$marker_clean_only"
 
-echo "Test 17: G-8 promotes a provisional marker; G-2 clears both (HIMMEL-4707)"
+echo "Test 17: G-8 promotes a provisional marker; G-2 clears both"
 out=$(printf '%s' "$g8_section" | grep -F 'mv "<vault>/.harvest.done.provisional" "<vault>/.harvest.done"')
 if [ -n "$out" ]; then
     marker_promote=yes
@@ -746,7 +745,7 @@ else
 fi
 assert "G-2 also invalidates the provisional marker" "yes" "$marker_g2_prov"
 
-echo "Test 18: github /blob/ file clips take the clip-body path, repo-root and /tree/ stay on luna-ingest (HIMMEL-1735)"
+echo "Test 18: github /blob/ file clips take the clip-body path, repo-root and /tree/ stay on luna-ingest"
 blob_tmp="$(mktemp -d "${TMPDIR:-/tmp}/harvest-blob.XXXXXX")" || exit 1
 cat > "$blob_tmp/t.py" <<'PY'
 import importlib.util, sys

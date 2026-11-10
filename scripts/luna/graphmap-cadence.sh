@@ -105,6 +105,8 @@
 #       [--vault PATH] [--force] [--dry-run]            (the opt-in Luna rows)
 #   bash scripts/luna/graphmap-cadence.sh status
 #   bash scripts/luna/graphmap-cadence.sh disarm [--luna-only]
+#   bash scripts/luna/graphmap-cadence.sh post-merge graph|both|off [--dry-run]
+#                                                   (the post-merge tick's own row only)
 #
 # --luna-time/--himmel-time apply ONLY to the semantic rows; the
 # structural pair's fire offsets are not
@@ -116,11 +118,14 @@
 #
 # Exit codes (mirrors pipeline-cadence.sh):
 #   0  done (armed / status printed / disarmed / dry-run)
-#   1  usage / input error
+#   1  usage / input error (post-merge: a mode other than graph|both|off, or any flag but --dry-run)
 #   2  env unusable (no crontab; unsupported platform; runner missing;
-#      query tool errored)
+#      query tool errored; post-merge: graphify not an absolute executable on
+#      PATH, the tick script missing; --rewrite-armed: a post-merge runner whose
+#      mode line is absent, repeated or not graph|both)
 #   3  dedup block — HIMMEL-GraphMap-* task(s) already armed; use --force
-#   4  scheduler invocation failed (crontab rewrite)
+#      (never from post-merge, which re-arms its own row in place)
+#   4  scheduler invocation failed (crontab rewrite), post-merge included
 set -euo pipefail
 
 TASK_PREFIX="HIMMEL-GraphMap-"
@@ -156,6 +161,10 @@ TASK_MATCH_RE="(${TASK_LUNA}|${TASK_HIMMEL}|${TASK_AST_LUNA}|${TASK_AST_HIMMEL}|
 # --luna-only scope: the three Luna-corpus names, so disarm/arm can switch the Luna rows alone
 # while every himmel row stays (decision 449 keeps graphify off Luna).
 TASK_LUNA_MATCH_RE="(${TASK_LUNA}|${TASK_AST_LUNA}|${TASK_SEMANTIC_LUNA})"
+TASK_POST_MERGE="HIMMEL-PostMergeRefresh"
+POST_MERGE_CADENCE_SECS=604800
+POST_MERGE_STALL_SECS=3600
+POST_MERGE_LOG_MAX_BYTES=1048576
 CRONTAB_BIN="${GRAPHMAP_CRONTAB:-crontab}"
 
 # User-home resolution (mirrors pipeline-cadence's resolve_user_home). /tmp is
@@ -374,6 +383,7 @@ CLAUDE_DIR=""
 usage() {
     cat <<'EOF'
 Usage: graphmap-cadence.sh <arm|status|disarm> [flags]
+       graphmap-cadence.sh post-merge <graph|both|off> [--dry-run]
 
 Arm the OS scheduler with the recurring graphify graph cadence for the himmel
 corpus (the Luna corpus only via `arm --luna-only`): a free structural (AST)
@@ -395,6 +405,18 @@ Subcommands:
            With --luna-only: remove only the Luna rows and runners and unregister
            only the Luna names from the observability registry (so doctor C24 stops
            expecting them); every himmel row stays armed and registered.
+           A full disarm also removes the post-merge tick; --luna-only leaves it.
+  post-merge graph|both|off
+           Arm or remove ONLY the post-merge refresh tick (HIMMEL-PostMergeRefresh,
+           every 5 minutes) and its bare runner: it refreshes the code graph after a
+           merge (graph) and the himmel keyword index too (both). It adds no
+           other row, and arm and arm --force leave it alone. The runner pins the
+           arm-time PATH, runs from its own directory, moves its log aside once it
+           passes 1 MB (checked before each fire) and
+           raises post-merge-tick when the tick exits non-zero; it writes no flow
+           rows. The mode sits in one `# himmel-post-merge-mode:` line in the runner,
+           which arm --rewrite-armed keeps (and refuses any other form of).
+           off removes the row, the runner and the registrations.
 
 Flags (arm only, except --dry-run and --luna-only):
   --luna-time <HH:MM>    Weekly luna-map time, 24h local   (default 13:00,
@@ -484,8 +506,14 @@ if [ -z "$SUBCMD" ]; then
     exit 1
 fi
 shift
+PM_MODE=""
 case "$SUBCMD" in
     arm|status|disarm) ;;
+    post-merge)
+        PM_MODE="${1:-}"; [ $# -eq 0 ] || shift
+        for _pm_arg in "$@"; do
+            [ "$_pm_arg" = --dry-run ] || { echo "ERR graphmap-cadence: post-merge takes only --dry-run (got '$_pm_arg')" >&2; exit 1; }
+        done ;;
     -h|--help) usage; exit 0 ;;
     *)
         echo "ERR graphmap-cadence: unknown subcommand: $SUBCMD" >&2
@@ -573,6 +601,12 @@ if [ "$WITH_LUNA_SEMANTIC" -eq 1 ] && ! llm_backend_api_account_ok "$API_ACCOUNT
 fi
 if [ -n "$API_ACCOUNT" ] && [ "$WITH_LUNA_SEMANTIC" -eq 0 ]; then
     echo "ERR graphmap-cadence: --api-account only applies to --with-luna-semantic" >&2; exit 1
+fi
+if [ "$SUBCMD" = post-merge ]; then
+    case "$PM_MODE" in
+        graph|both|off) ;;
+        *) echo "ERR graphmap-cadence: post-merge needs a mode: graph, both or off (got '$PM_MODE')" >&2; usage >&2; exit 1 ;;
+    esac
 fi
 
 # The semantic pair's backend label must come from the INSTALLED runner's
@@ -970,6 +1004,8 @@ CRON_RUNNER_AST_LUNA="$BAT_DIR/graphmap-ast-luna.sh"
 CRON_RUNNER_AST_HIMMEL="$BAT_DIR/graphmap-ast-himmel.sh"
 CRON_RUNNER_PUBLISH_HIMMEL="$BAT_DIR/graphmap-publish-himmel.sh"
 CRON_RUNNER_SEMANTIC_LUNA="$BAT_DIR/graphmap-semantic-luna.sh"
+CRON_RUNNER_POST_MERGE="$BAT_DIR/post-merge-refresh.sh"
+POST_MERGE_SCRIPT="$HIMMEL_ROOT/scripts/luna/post-merge-refresh.sh"
 
 # Shell-quote a value for a cron command line (mirrors pipeline-cadence
 # cron_escape): printf %q survives the /bin/sh re-parse; the extra % -> \% pass
@@ -1215,12 +1251,141 @@ cmd_status() {
             *) status_log "$log" ;;
         esac
     done
+    entry=$(printf '%s\n' "$CRON_TAB" | grep -E "# ${TASK_POST_MERGE}\$" | head -1 || true)
+    if [ -n "$entry" ]; then
+        sched=$(printf '%s' "$entry" | awk '{print $1, $2, $3, $4, $5}')
+        echo "ARMED      $TASK_POST_MERGE (cron: $sched) -> post-merge-refresh tick (mode: $(post_merge_armed_mode "$CRON_RUNNER_POST_MERGE" 2>/dev/null || echo unknown))"
+    else
+        echo "not armed  $TASK_POST_MERGE -> post-merge-refresh tick"
+    fi
+    status_log "$BAT_DIR/post-merge-refresh.log"
 }
 
-# Remove the runner files in scope: the Luna three always, the himmel three unless --luna-only.
+post_merge_armed_mode() {
+    local lines
+    lines=$(grep -E '^# himmel-post-merge-mode:' "$1" 2>/dev/null || true)
+    case "$lines" in
+        "# himmel-post-merge-mode: graph") printf 'graph' ;;
+        "# himmel-post-merge-mode: both")  printf 'both' ;;
+        *) return 1 ;;
+    esac
+}
+
+post_merge_path_dirs() {
+    local tool bin dir dirs=""
+    for tool in graphify bun qmd node; do
+        bin=$(command -v "$tool" 2>/dev/null) || continue
+        case "$bin" in /*) : ;; *) continue ;; esac
+        [ -f "$bin" ] && [ -x "$bin" ] || continue
+        dir=$(dirname "$bin")
+        case ":$dirs:" in *":$dir:"*) : ;; *) dirs="${dirs:+$dirs:}$dir" ;; esac
+    done
+    printf '%s' "$dirs"
+}
+
+# shellcheck disable=SC2016  # single-quoted $log/$_rc/$(date) are emitted literally for the runner's own /bin/sh
+emit_post_merge_runner() {
+    local mode="$1" dirs="$2" bash_bin="$3" q_log
+    q_log=$(printf '%q' "$BAT_DIR/post-merge-refresh.log")
+    printf '#!/bin/sh\n'
+    printf '# %s runner — generated by graphmap-cadence.sh post-merge\n' "$TASK_POST_MERGE"
+    printf '# himmel-post-merge-mode: %s\n' "$mode"
+    printf 'export PATH=%s:$PATH\n' "$(printf '%q' "$dirs")"
+    printf 'export PMR_LOG=%s\n' "$q_log"
+    printf 'log=%s\n' "$q_log"
+    printf 'if [ -f "$log" ] && [ "$(wc -c < "$log" | tr -d " ")" -gt %s ]; then\n' "$POST_MERGE_LOG_MAX_BYTES"
+    printf '    mv -f "$log" "$log.prev"\n'
+    printf 'fi\n'
+    printf '{\n'
+    printf '    echo "[fired $(date "+%%Y-%%m-%%d %%H:%%M:%%S")]"\n'
+    printf '    cd %s || exit 1\n' "$(printf '%q' "$BAT_DIR")"
+    printf '    _rc=0; %s %s --halves %s || _rc=$?\n' "$(printf '%q' "$bash_bin")" "$(printf '%q' "$POST_MERGE_SCRIPT")" "$mode"
+    printf '    echo "[exit rc=$_rc]"\n'
+    printf '    if [ "$_rc" -ne 0 ]; then\n'
+    printf '        %s fail post-merge-tick "rc-$_rc" "$log" "the post-merge refresh tick exited $_rc" "read $log" || true\n' "$(printf '%q' "$HIMMEL_ROOT/scripts/luna/cadence-alert.sh")"
+    printf '    fi\n'
+    printf '} >> "$log" 2>&1\n'
+}
+
+post_merge_unregister() {
+    observability_unregister_cadence post-merge-graph "$TASK_POST_MERGE"
+    observability_unregister_cadence post-merge-keyword ""
+}
+
+cmd_post_merge() {
+    cron_read
+    local newtab entry q_runner bash_bin dirs tmp graphify_bin
+    if [ "$PM_MODE" = off ]; then
+        if [ "$DRY_RUN" -eq 1 ]; then
+            echo "DRY graphmap-cadence: would remove the $TASK_POST_MERGE row, runner and registrations"
+            echo "DRY graphmap-cadence: no changes made"
+            return 0
+        fi
+        if grep -qE "# ${TASK_POST_MERGE}\$" <<< "$CRON_TAB"; then
+            newtab=$(mktemp -t graphmap-cadence.cron.XXXXXX) || exit 1
+            printf '%s\n' "$CRON_TAB" | grep -vE "# ${TASK_POST_MERGE}\$" > "$newtab" || true
+            cron_install "$newtab" || exit 4
+        fi
+        rm -f "$CRON_RUNNER_POST_MERGE"
+        post_merge_unregister
+        echo "graphmap-cadence: post-merge tick off"
+        return 0
+    fi
+
+    if ! graphify_bin=$(command -v graphify 2>/dev/null) || [ "${graphify_bin#/}" = "$graphify_bin" ] \
+            || [ ! -f "$graphify_bin" ] || [ ! -x "$graphify_bin" ]; then
+        echo "ERR graphmap-cadence: 'graphify' is not an absolute executable on PATH at arm time, but the post-merge tick runs it at fire time under the scheduler's minimal PATH. Install it on PATH and re-arm." >&2
+        exit 2
+    fi
+    if [ ! -f "$POST_MERGE_SCRIPT" ]; then
+        echo "ERR graphmap-cadence: post-merge-refresh.sh not found at $POST_MERGE_SCRIPT" >&2
+        exit 2
+    fi
+    if ! bash_bin=$(command -v bash 2>/dev/null); then
+        echo "ERR graphmap-cadence: 'bash' not on PATH at arm time" >&2
+        exit 2
+    fi
+    dirs=$(post_merge_path_dirs)
+    q_runner=$(cron_escape "$CRON_RUNNER_POST_MERGE")
+    entry="*/5 * * * * $q_runner # $TASK_POST_MERGE"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "DRY graphmap-cadence: would write $CRON_RUNNER_POST_MERGE:"
+        emit_post_merge_runner "$PM_MODE" "$dirs" "$bash_bin" | sed 's/^/    /'
+        echo "DRY graphmap-cadence: would set the crontab entry (every other row untouched):"
+        echo "    $entry"
+        echo "graphmap-cadence: dry-run complete (no changes made)"
+        return 0
+    fi
+    mkdir -p "$BAT_DIR"
+    tmp="$CRON_RUNNER_POST_MERGE.tmp.$$"
+    emit_post_merge_runner "$PM_MODE" "$dirs" "$bash_bin" > "$tmp"
+    chmod +x "$tmp"
+    newtab=$(mktemp -t graphmap-cadence.cron.XXXXXX) || exit 1
+    {
+        if [ -n "$CRON_TAB" ]; then
+            printf '%s\n' "$CRON_TAB" | grep -vE "# ${TASK_POST_MERGE}\$" || true
+        fi
+        printf '%s\n' "$entry"
+    } > "$newtab"
+    if ! cron_install "$newtab"; then
+        rm -f "$tmp"
+        echo "    existing runner file left untouched" >&2
+        exit 4
+    fi
+    mv -f "$tmp" "$CRON_RUNNER_POST_MERGE"  # prim-ok: publish the pre-chmod-ed runner after cron succeeds, as the sibling runners do
+    observability_register_cadence post-merge-graph "$POST_MERGE_CADENCE_SECS" "$TASK_POST_MERGE" "$POST_MERGE_STALL_SECS"
+    if [ "$PM_MODE" = both ]; then
+        observability_register_cadence post-merge-keyword "$POST_MERGE_CADENCE_SECS" "$TASK_POST_MERGE" "$POST_MERGE_STALL_SECS"
+    else
+        observability_unregister_cadence post-merge-keyword ""
+    fi
+    cadence_prov_record "$TASK_POST_MERGE"
+    echo "graphmap-cadence: post-merge tick armed ($PM_MODE): every 5 minutes -> $CRON_RUNNER_POST_MERGE"
+}
+
 disarm_remove_runners() {
     rm -f "$CRON_RUNNER_LUNA" "$CRON_RUNNER_AST_LUNA" "$CRON_RUNNER_SEMANTIC_LUNA"
-    [ "$LUNA_ONLY" -eq 1 ] || rm -f "$CRON_RUNNER_HIMMEL" "$CRON_RUNNER_AST_HIMMEL" "$CRON_RUNNER_PUBLISH_HIMMEL"
+    [ "$LUNA_ONLY" -eq 1 ] || rm -f "$CRON_RUNNER_HIMMEL" "$CRON_RUNNER_AST_HIMMEL" "$CRON_RUNNER_PUBLISH_HIMMEL" "$CRON_RUNNER_POST_MERGE"
 }
 
 # Unregister the observability names in scope (the himmel ones only without --luna-only).
@@ -1232,11 +1397,12 @@ disarm_unregister() {
     observability_unregister_cadence graphmap-himmel "$TASK_HIMMEL"
     observability_unregister_cadence graphmap-ast-himmel "$TASK_AST_HIMMEL"
     observability_unregister_cadence "$PUBLISH_FLOW_NAME" "$TASK_PUBLISH_HIMMEL"
+    post_merge_unregister
 }
 
 cmd_disarm() {
     cron_read
-    local existing scope_re="$TASK_MATCH_RE"
+    local existing scope_re="(${TASK_MATCH_RE}|${TASK_POST_MERGE})"
     [ "$LUNA_ONLY" -eq 0 ] || scope_re="$TASK_LUNA_MATCH_RE"
     existing=$(printf '%s\n' "$CRON_TAB" | grep -E "# ${scope_re}\$" || true)
     if [ -z "$existing" ]; then
@@ -1420,8 +1586,15 @@ cmd_arm() {
     # --rewrite-armed: regenerate only the runner files that already exist, so an armed station
     # picks up a new runner format without any crontab row being added, removed or rescheduled.
     if [ "$REWRITE_ARMED" -eq 1 ]; then
-        local rw_name rw_runner rw_tmp rw_n=0 rw_noted=0
-        for rw_name in luna himmel ast-luna ast-himmel publish-himmel semantic-luna; do
+        local rw_name rw_runner rw_tmp rw_n=0 rw_noted=0 pm_mode="" pm_dirs=""
+        if [ -f "$CRON_RUNNER_POST_MERGE" ]; then
+            if ! pm_mode=$(post_merge_armed_mode "$CRON_RUNNER_POST_MERGE"); then
+                echo "ERR graphmap-cadence: $CRON_RUNNER_POST_MERGE has no single '# himmel-post-merge-mode: graph' or '# himmel-post-merge-mode: both' line: re-arm it with bash scripts/luna/graphmap-cadence.sh post-merge graph (or both); nothing was rewritten" >&2
+                exit 2
+            fi
+            pm_dirs=$(post_merge_path_dirs)
+        fi
+        for rw_name in luna himmel ast-luna ast-himmel publish-himmel semantic-luna post-merge; do
             case "$rw_name" in
                 luna)           rw_runner="$CRON_RUNNER_LUNA" ;;
                 himmel)         rw_runner="$CRON_RUNNER_HIMMEL" ;;
@@ -1429,6 +1602,7 @@ cmd_arm() {
                 ast-himmel)     rw_runner="$CRON_RUNNER_AST_HIMMEL" ;;
                 publish-himmel) rw_runner="$CRON_RUNNER_PUBLISH_HIMMEL" ;;
                 semantic-luna)  rw_runner="$CRON_RUNNER_SEMANTIC_LUNA" ;;
+                post-merge)     rw_runner="$CRON_RUNNER_POST_MERGE" ;;
             esac
             if [ ! -f "$rw_runner" ]; then
                 echo "graphmap-cadence: $rw_runner not armed; left absent"
@@ -1459,6 +1633,7 @@ cmd_arm() {
                 ast-himmel)     emit_runner "$TASK_AST_HIMMEL" "$payload_ast_himmel" "$q_log_ast_himmel" "$q_himmel" "" "$q_graphify_dir" 0 "" graphmap-ast-himmel 4 > "$rw_tmp" ;;
                 publish-himmel) emit_runner "$TASK_PUBLISH_HIMMEL" "$payload_publish_himmel" "$q_log_publish_himmel" "$q_himmel" "" "$q_graphify_dir" > "$rw_tmp" ;;
                 semantic-luna)  emit_runner "$TASK_SEMANTIC_LUNA" "$payload_semantic_luna" "$q_log_semantic_luna" "$q_himmel" "" "$q_graphify_dir" 0 "" graphmap-semantic-luna "3 4" > "$rw_tmp" ;;
+                post-merge)     emit_post_merge_runner "$pm_mode" "$pm_dirs" "$bash_bin" > "$rw_tmp" ;;
             esac
             } || ! chmod +x "$rw_tmp" || ! mv -f "$rw_tmp" "$rw_runner"; then  # prim-ok: same temp-then-mv promote as the normal arm path above
                 rm -f "$rw_tmp"
@@ -1796,7 +1971,8 @@ if [ "$SUBCMD" = "arm" ]; then
 fi
 
 case "$SUBCMD" in
-    arm)    cmd_arm ;;
-    status) cmd_status ;;
-    disarm) cmd_disarm ;;
+    arm)        cmd_arm ;;
+    status)     cmd_status ;;
+    disarm)     cmd_disarm ;;
+    post-merge) cmd_post_merge ;;
 esac

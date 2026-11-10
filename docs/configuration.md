@@ -444,6 +444,16 @@ in `.env` or the launching shell):
 | `CHECK_CI_LOCK_WAIT` | `30` | seconds a caller waits for the fetching peer before fetching itself |
 | `GH_PR_SNAPSHOT_LOCK_WAIT` | `30` | seconds the PR snapshot waits for a held repository lock before failing closed (never fetches without the lock, never steals it); `0` tries once; a non-integer or 4+ digits reads as `30` |
 | `GH_BUDGET_JITTER_MAX` | (existing) | random seconds added to a budget wait so callers do not wake in lock-step |
+| `GH_READ_TIMEOUT` | `120` | seconds one read through `scripts/lib/gh-read.sh` may take before it exits 124; `0` = no bound. A timed-out read is not retried on the main token |
+| `GH_READ_REFUSED_FILE` | (unset) | a read that finally fails on a rate limit or a timeout appends `<main\|read> <graphql\|core> rate-limit\|stall` here, so a caller can tell a refusal from a real answer |
+| `GH_READ_NO_MAIN_FALLBACK` | (unset) | `1` = a rate-limited read is not retried on the main token (scans); a bad, missing or 404 read token still falls back |
+| `GH_READ_OFF` | (unset) | `1` = every read fails at once with exit 124 and a stall row; writes are untouched |
+| `HIMMEL_QUOTA_DIR` | `$HOME/.himmel/state/quota` | where `scripts/lib/gh-quota.sh` keeps `quota.tsv` (one row per token and bucket) and `blocked/` markers. `quiet-run.sh suite` points it at a scratch dir unless you set it |
+| `GHQ_SCAN_FLOOR` | `500` | a scan (not a gate) pauses when the bucket it would spend has fewer points left, and prints one `QUOTA-PAUSE` line |
+| `GHQ_PROBE_TIMEOUT` | `10` | seconds one quota probe may take; a timed-out probe pauses scans with a `GH-STALL` line |
+| `GHQ_GH_CMD` | `gh` | the gh the quota probes run (a test seam) |
+| `GO_DEADLINE` | `270` | seconds `scripts/handover/chief-kit/go.sh` may run in all before it is cut; `0` = no bound. A cut before the GO file is written exits 11 (no GO, a quota marker); a cut after it exits 0 and the GO stands |
+| `CR_DISPOSITION_GH_TIMEOUT` | `60` | seconds `cr-disposition.sh` waits for its head-branch read; a timeout exits 2 with a `GH-STALL` line and (on `check`) a quota marker; `0` = no bound |
 
 The cache is a head-bound file per PR: a snapshot is used only for the head SHA
 the run bound at start, so a push never reads a stale-head green. `scripts/ci/api-budget.sh`

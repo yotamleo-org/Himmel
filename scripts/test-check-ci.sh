@@ -139,6 +139,42 @@ cmd="${1:-}"
 # when GH_STUB_RL_PROBE names a counter file. Call 1 (the startup preflight) spends
 # 4 real seconds and reports a healthy budget; every later call (_rl_recover)
 # reports it exhausted with the reset 6 s away.
+if [ -n "${GH_STUB_QUOTA:-}" ]; then
+    if [ "$cmd" = "api" ] && [ "${2:-}" = "-i" ]; then
+        _qn=$(grep -c '^api -i' "$GH_STUB_ARGS" 2>/dev/null)
+        _qr=0; _qs=$(($(date +%s) + 3000))
+        case "$GH_STUB_QUOTA" in
+            low-far) _qr=150 ;;
+            out-far) ;;
+            after1-*)
+                if [ "${_qn:-0}" -le 1 ]; then _qr=4000; _qs=$(($(date +%s) + 3600))
+                else
+                    case "$GH_STUB_QUOTA" in
+                        after1-past) _qs=$(($(date +%s) - 3600)) ;;
+                        after1-absent) _qs="" ;;
+                        after1-absurd) _qs=4102444800 ;;
+                    esac
+                fi ;;
+            *) _qr=4000 ;;
+        esac
+        printf 'X-Ratelimit-Remaining: %s\n' "$_qr"
+        [ -z "$_qs" ] || printf 'X-Ratelimit-Reset: %s\n' "$_qs"
+        [ "$_qr" -ge 200 ] && exit 0
+        exit 1
+    fi
+    case "$GH_STUB_QUOTA" in
+        pr-view)
+            if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then
+                echo "GraphQL: API rate limit already exceeded for user ID 88616986." >&2; exit 1
+            fi ;;
+        pr-view-stall)
+            if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then exec sleep 30; fi ;;
+        after1-*)
+            if [ "$cmd" = "pr" ] && [ "${2:-}" = "checks" ]; then
+                echo "GraphQL: API rate limit exceeded for user ID 1." >&2; exit 1
+            fi ;;
+    esac
+fi
 if [ "$cmd" = "api" ] && [ -n "${GH_STUB_RL_PROBE:-}" ] && [ "${2:-}" = "-i" ]; then
     rp=$(cat "$GH_STUB_RL_PROBE" 2>/dev/null); rp=${rp:-0}
     echo $((rp+1)) > "$GH_STUB_RL_PROBE"
@@ -385,6 +421,7 @@ if [ "$cmd" = "api" ]; then
                 body-b2-timeout) echo '[]' ;;
                 body-b2-head-review) echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"sha1","body":""}]' ;;
                 body-empty) echo '[]' ;;
+                body-actionable) echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"sha1","submitted_at":"2026-11-09T05:07:51Z","id":1,"body":"**Actionable comments posted: 3**"}]' ;;
                 *)          echo '[]' ;;
             esac
             exit 0 ;;
@@ -756,7 +793,7 @@ case "$GH_STUB_MODE" in
         # verdict must turn entirely on CodeRabbit's status.
         if [ "$is_watch" -eq 1 ]; then echo "All checks were successful"; exit 0; fi
         exit 0 ;;
-    body-outside|body-file|body-a2-file|body-a3-file|body-nitpick|body-drift|body-error|body-a2|body-empty|body-a2-escalate|body-a2-marker|body-a2-timeout|body-a2-escalate-outside|body-b2-escalate|body-b2-escalate-outside|body-b2-timeout|body-b2-head-review|body-a2-escalate-empty|body-a2-empty-persisted|body-a2-postfail)
+    body-outside|body-file|body-a2-file|body-a3-file|body-nitpick|body-drift|body-error|body-a2|body-empty|body-a2-escalate|body-a2-marker|body-a2-timeout|body-a2-escalate-outside|body-b2-escalate|body-b2-escalate-outside|body-b2-timeout|body-b2-head-review|body-a2-escalate-empty|body-a2-empty-persisted|body-a2-postfail|body-actionable)
         # Checks GREEN, threads clean, CodeRabbit CONCLUDED (default statuses
         # fixture) in every one of these — the verdict must turn entirely on
         # the review-BODY findings gate.
@@ -905,7 +942,7 @@ ACCESS_OVERRIDE="$STUBDIR/access.json"
 # GitHub's mergeStateStatus sequence + the head it reports. Default
 # CLEAN at the watched head, so every pre-3473 case keeps its verdict.
 MERGE_STATE_OVERRIDE=CLEAN; MERGE_HEAD_OVERRIDE=sha1
-BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""
+BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""; QUOTA_OVERRIDE=""
 
 # --- no real sleeping, and no unbounded case -------------------
 #
@@ -1023,6 +1060,8 @@ run() {
         GH_BUDGET_JITTER_MAX=0 \
         GH_STUB_RL_PROBE="$RL_PROBE_OVERRIDE" \
         GH_STUB_RL_ONCE="$RL_ONCE_OVERRIDE" \
+        GH_STUB_QUOTA="$QUOTA_OVERRIDE" \
+        HIMMEL_QUOTA_DIR="$STUBDIR/quota" \
         "$CASE_RUNNER" $CASE_RUNNER_ARGS bash "$SCRIPT" "$@" >"$of" 2>"$ef"
     RC=$?
     if [ "$RC" -eq 124 ] && [ "$CASE_RUNNER" != env ]; then
@@ -1037,7 +1076,7 @@ run() {
     RULES_OVERRIDE=none; CLASSIC_OVERRIDE=none; PRODUCERS_OVERRIDE=none; STATUSCTX_OVERRIDE=none; CHECKS_OVERRIDE="pass:unit-tests"
     KEEP_ALERT_STATE=0; ALERT_FAIL_OVERRIDE=""; ACCESS_OVERRIDE="$STUBDIR/access.json"
     MERGE_STATE_OVERRIDE=CLEAN; MERGE_HEAD_OVERRIDE=sha1
-    BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""
+    BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""; QUOTA_OVERRIDE=""
 }
 
 run_in_repo() {
@@ -1096,33 +1135,33 @@ echo "test-check-ci.sh"
 run no-pr
 assert_rc 2 "1 no PR rc 2"
 assert_err_has "no pull requests found" "1 no PR gh error surfaced"
-assert_verdict 2 "1 un-maskable verdict line (HIMMEL-974)"
+assert_verdict 2 "1 un-maskable verdict line"
 
 # 2 — registers after two probes, watch green, threads resolved
 run register-then-green
 assert_rc 0 "2 register-then-green rc 0"
 assert_out_has "all checks green + all review threads resolved" "2 green verdict on stdout"
-assert_verdict 0 "2 un-maskable verdict line (HIMMEL-974)"
+assert_verdict 0 "2 un-maskable verdict line"
 
 # 3 — red (fast) → rc 1 + billing-block hint
 run red
 assert_rc 1 "3 red rc 1"
 assert_err_has "checks FAILED" "3 FAILED on stderr"
 assert_err_has "billing" "3 fast-red hint present"
-assert_verdict 1 "3 un-maskable verdict line (HIMMEL-974)"
+assert_verdict 1 "3 un-maskable verdict line"
 
 # 4 — never registers, grace 0
 run never-register --grace 0
 assert_rc 2 "4 never-register rc 2"
 assert_err_has "no checks registered within 0s" "4 grace-timeout message"
-assert_verdict 2 "4 a genuine cannot-evaluate still exits 2 WITH its verdict (HIMMEL-3317 false-positive control)"
+assert_verdict 2 "4 a genuine cannot-evaluate still exits 2 WITH its verdict (false-positive control)"
 
 # 5 — unknown option: a usage error is rc 64 (EX_USAGE), NOT 2, and it carries the
 # un-maskable verdict line too — no gate ran, so a caller must be able to tell
 run red --bogus
 assert_rc 64 "5 unknown option rc 64"
 assert_err_has "usage" "5 usage on stderr"
-assert_verdict 64 "5 verdict line on usage errors (HIMMEL-3317)"
+assert_verdict 64 "5 verdict line on usage errors"
 
 # 5c — `--pr <n>`: the plausible-but-wrong spelling (the PR number is POSITIONAL) that
 # recorded a gate result for a gate that never ran. Distinct code AND a marker line.
@@ -1188,7 +1227,7 @@ THREADS_OVERRIDE=2
 run register-then-green
 assert_rc 3 "11 unresolved threads rc 3"
 assert_err_has "2 unresolved review thread(s)" "11 unresolved-thread message"
-assert_verdict 3 "11 un-maskable verdict line (HIMMEL-974)"
+assert_verdict 3 "11 un-maskable verdict line"
 
 # 12 — thread query failure → rc 2 (gate cannot be evaluated, fail-closed)
 THREADS_OVERRIDE=fail
@@ -1309,24 +1348,24 @@ assert_err_has "no check is in the fail bucket" "26 structured-confirm message"
 # block. An earlier change reversed that: checks green, threads clean, CodeRabbit
 # never posted on this head — advisory NOTE, still green.
 run cr-absent
-assert_rc 0 "27 absent CodeRabbit status is advisory only, not a block (HIMMEL-3360)"
+assert_rc 0 "27 absent CodeRabbit status is advisory only, not a block"
 assert_err_has "check-ci: NOTE — CodeRabbit absent on head" "27 absent prints the advisory NOTE"
 
 # 28 — CodeRabbit still reviewing the head: advisory NOTE, never a block.
 run cr-pending
-assert_rc 0 "28 pending CodeRabbit status is advisory only, not a block (HIMMEL-3360)"
+assert_rc 0 "28 pending CodeRabbit status is advisory only, not a block"
 assert_err_has "check-ci: NOTE — CodeRabbit pending on head" "28 pending prints the advisory NOTE"
 
 # 29 — CodeRabbit's own status failed/errored: advisory NOTE, never a block.
 run cr-failure
-assert_rc 0 "29 failed CodeRabbit status is advisory only, not a block (HIMMEL-3360)"
+assert_rc 0 "29 failed CodeRabbit status is advisory only, not a block"
 assert_err_has "check-ci: NOTE — CodeRabbit failure on head" "29 failure prints the advisory NOTE"
 
 # 30 — identity, not display name: a success status carrying the
 # CodeRabbit context but a foreign creator.id does not satisfy the identity
 # check, so cr_signal_state reads it as absent — advisory NOTE, not a block.
 run cr-spoofed
-assert_rc 0 "30 spoofed creator.id reads as absent, which is advisory only (HIMMEL-3360)"
+assert_rc 0 "30 spoofed creator.id reads as absent, which is advisory only"
 
 # 31 — a repo with no CodeRabbit opts out explicitly rather than being blocked
 # forever: CR_PROFILE=none skips the required-signal gate.
@@ -1357,7 +1396,7 @@ assert_err_has "NOTE — CodeRabbit paged" "34 paged NOTE"
 # ordinary review still passes too, so the fix cannot be satisfied by breaking
 # `success`.
 run cr-skipped
-assert_rc 0 "34b skipped CodeRabbit review is advisory only, not a block (HIMMEL-3360)"
+assert_rc 0 "34b skipped CodeRabbit review is advisory only, not a block"
 assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34b skip prints the advisory NOTE"
 
 run cr-completed
@@ -1427,8 +1466,8 @@ git -C "$CR_YAML_UNARMED_REPO" -c user.email=t@t -c user.name=t commit --quiet -
 # no ledger/panel evidence at all — the exact fixture the old panel-carry
 # mechanism needed evidence to certify. It is advisory on its own now.
 run_in_repo "$EMPTY_LEDGER_REPO" cr-ratelimited
-assert_rc 0 "34e rate-limited CodeRabbit status is advisory only, no panel evidence needed (HIMMEL-3360)"
-assert_err_has "check-ci: NOTE — CodeRabbit rate-limited on head" "34e rate-limited status is named rate-limited (HIMMEL-8880)"
+assert_rc 0 "34e rate-limited CodeRabbit status is advisory only, no panel evidence needed"
+assert_err_has "check-ci: NOTE — CodeRabbit rate-limited on head" "34e rate-limited status is named rate-limited"
 assert_err_has "NO review at this head" "34e the rate-limited NOTE says no review was posted"
 # shellcheck disable=SC2016  # the backticks are literal text in the NOTE
 assert_err_has 'Re-request once when capacity returns: comment `@coderabbitai review`' "34e the rate-limited NOTE tells the user to re-request after capacity returns"
@@ -1450,7 +1489,7 @@ assert_err_lacks "34e3 only a skipped success is named rate-limited" "rate-limit
 # allow-list this failed closed; an earlier change made the status advisory
 # regardless of wording, enumerated or not.
 run cr-unknownword
-assert_rc 0 "34f an UNENUMERATED success wording is advisory only, not a block (HIMMEL-3360)"
+assert_rc 0 "34f an UNENUMERATED success wording is advisory only, not a block"
 
 # 34j/k/l: a state=success with a MISSING / null / EMPTY
 # description is not an affirmative review. coderabbit-signal.sh used to keep the
@@ -1459,21 +1498,21 @@ assert_rc 0 "34f an UNENUMERATED success wording is advisory only, not a block (
 # same advisory NOTE as 34b/34e/34f. Positive control (34m): the SAME state
 # with the observed wording stays green — no NOTE.
 run cr-nodesc
-assert_rc 0 "34j missing-description success is advisory only (HIMMEL-1356)"
+assert_rc 0 "34j missing-description success is advisory only"
 assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34j missing description reads as skipped"
 run cr-nulldesc
-assert_rc 0 "34k null-description success is advisory only (HIMMEL-1356)"
+assert_rc 0 "34k null-description success is advisory only"
 assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34k null description reads as skipped"
 run cr-emptydesc
-assert_rc 0 "34l empty-description success is advisory only (HIMMEL-1356)"
+assert_rc 0 "34l empty-description success is advisory only"
 assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34l empty description reads as skipped"
 run cr-completed
-assert_rc 0 "34m 'Review completed' success is green (HIMMEL-1356 control)"
+assert_rc 0 "34m 'Review completed' success is green (control)"
 assert_err_lacks "34m affirmative wording prints no skipped NOTE" "skipped NOTE present" -F -- "CodeRabbit skipped on head"
 # 34n — the outage release valve: CR_OK_DESC_RE widened to admit the empty
 # description (a CodeRabbit payload change that drops the field) reads green.
 CR_OK_DESC_RE='^(|review completed|no review changes requested)$' run cr-emptydesc
-assert_rc 0 "34n the outage override releases an empty description (HIMMEL-1356)"
+assert_rc 0 "34n the outage override releases an empty description"
 assert_err_lacks "34n released empty description prints no skipped NOTE" "skipped NOTE present" -F -- "CodeRabbit skipped on head"
 
 # 3152-a/b/c/d (--escalate against a skip-classified/rate-limited status) and
@@ -1486,7 +1525,7 @@ assert_err_lacks "34n released empty description prints no skipped NOTE" "skippe
 # required case (e): the removed --escalate flag is now an
 # unrecognized flag, sysexits EX_USAGE.
 run cr-completed --escalate
-assert_rc 64 "3360e --escalate is a removed flag, exit 64 usage (HIMMEL-3360)"
+assert_rc 64 "3360e --escalate is a removed flag, exit 64 usage"
 
 # required case (d): CI green + ONE unresolved coderabbitai
 # thread + CR status absent — the thread gate still blocks even though the
@@ -1690,7 +1729,7 @@ assert_rc 3 "R16 amend --set head= does not carry a disposition to the new head"
 # finding still blocks until dispositioned — the gate now reads the governing
 # prior review (shaOLD) instead of the silent current head.
 BODY_FILE_OVERRIDE="$OD_BQ_BODY"; run_in_repo "$EMPTY_LEDGER_REPO" body-a2-file
-assert_rc 3 "39 a posted prior-head outside-diff finding still blocks (HIMMEL-3360 operator ruling)"
+assert_rc 3 "39 a posted prior-head outside-diff finding still blocks (operator ruling)"
 assert_err_has "not dispositioned" "39 message reports the finding as not dispositioned"
 assert_err_has "latest review at prior head shaOLD" "39 message names the governing prior head"
 assert_err_has "--head shaOLD" "39 recipe binds the finding to the governing prior head"
@@ -1878,7 +1917,7 @@ assert_grep_lacks "57 disarmed gate is silent about CodeRabbit" "output mentione
 export ARMAUTOMERGE=1 CR_MERGE_GATE_OK=1
 THREADS_OVERRIDE=fail
 run register-then-green
-assert_rc 2 "58 armed bypass env does not open a block-case (HIMMEL-1495)"
+assert_rc 2 "58 armed bypass env does not open a block-case"
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
 
 # ── bounded watch — early exit + --max-wait cap ─────────────────
@@ -2158,7 +2197,7 @@ else
     fail "2907-b extends exactly once, not infinitely" "WAITING appeared $waiting_count times, want 1"
 fi
 assert_err_has "still pending (unit-tests)" "2907-b the exit-2 line names the pending job"
-assert_err_has "DEADLINE-PENDING" "2907-b the exit-2 line names a deadline-with-pending, not an error (HIMMEL-4131)"
+assert_err_has "DEADLINE-PENDING" "2907-b the exit-2 line names a deadline-with-pending, not an error"
 
 # --- --max-wait bounds the WHOLE run ---------------------------
 # Real sleeps: elapsed wall time is the signal. Each stub watch runs 3s+ (8s for
@@ -2323,13 +2362,13 @@ fi
 MPR_OVERRIDE=dependabot
 run cr-absent
 assert_rc 0 "2278-a dependabot PR passes with no CodeRabbit review"
-assert_err_has "NOTE — CodeRabbit absent" "2278-a absent status is the plain NOTE (classifier deleted, HIMMEL-3360)"
+assert_err_has "NOTE — CodeRabbit absent" "2278-a absent status is the plain NOTE (classifier deleted)"
 
 # 2278-b — a graph-publish artifact PR + no App review → rc 0 (the #2035 shape).
 MPR_OVERRIDE=graph
 run cr-absent
 assert_rc 0 "2278-b graphify-artifact PR passes with no CodeRabbit review"
-assert_err_has "NOTE — CodeRabbit absent" "2278-b absent status is the plain NOTE (classifier deleted, HIMMEL-3360)"
+assert_err_has "NOTE — CodeRabbit absent" "2278-b absent status is the plain NOTE (classifier deleted)"
 
 # 2278-c — the former spoof control (artifact paths PLUS a code path). No
 # longer distinguishable from the positives at the cr_signal_gate exit code
@@ -2337,49 +2376,49 @@ assert_err_has "NOTE — CodeRabbit absent" "2278-b absent status is the plain N
 # misclassification-prone probe reply still doesn't crash or mis-exit.
 MPR_OVERRIDE=graph-plus-code
 run cr-absent
-assert_rc 0 "2278-c artifact paths PLUS a code path — advisory now regardless of shape (HIMMEL-3360)"
+assert_rc 0 "2278-c artifact paths PLUS a code path — advisory now regardless of shape"
 
 # 2278-d — an ordinary human code PR with no App review: advisory now too.
 MPR_OVERRIDE=none
 run cr-absent
-assert_rc 0 "2278-d ordinary code PR is advisory-only on an absent review (HIMMEL-3360)"
+assert_rc 0 "2278-d ordinary code PR is advisory-only on an absent review"
 
 # 2278-e — a human account whose login merely LOOKS like the bot's. is_bot is
 # GitHub's; the impostor stays outside the class, but that no longer changes
 # the exit code either way.
 MPR_OVERRIDE=dep-impostor
 run cr-absent
-assert_rc 0 "2278-e dependabot login without is_bot — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-e dependabot login without is_bot — advisory regardless"
 
 # 2278-f — the classifier's own probe erroring is not evidence of anything;
 # no longer observable via cr_signal_gate's exit code.
 MPR_OVERRIDE=probe-fail
 run cr-absent
-assert_rc 0 "2278-f an erroring author/files probe — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-f an erroring author/files probe — advisory regardless"
 
 # 2278-g — a response missing the MPR_OK sentinel must not parse as a bot
 # author with zero files; no longer observable via the exit code.
 MPR_OVERRIDE=garbage
 run cr-absent
-assert_rc 0 "2278-g a sentinel-less probe response — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-g a sentinel-less probe response — advisory regardless"
 
 # 2278-h — a single file literally named `*`. Comparing in the wrong direction
 # would glob-match it into the class; no longer observable via the exit code.
 MPR_OVERRIDE=globname
 run cr-absent
-assert_rc 0 "2278-h a glob-named path — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-h a glob-named path — advisory regardless"
 
 # 2278-l — an empty changed-file list is not "all paths are artifacts"; no
 # longer observable via the exit code.
 MPR_OVERRIDE=empty
 run cr-absent
-assert_rc 0 "2278-l an empty file list — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-l an empty file list — advisory regardless"
 
 # 2278-m — a truncated-but-rc-0 probe: it advertises 3 files but emits only
 # the two artifact paths; no longer observable via the exit code.
 MPR_OVERRIDE=truncated
 run cr-absent
-assert_rc 0 "2278-m a truncated file list — advisory regardless (HIMMEL-3360)"
+assert_rc 0 "2278-m a truncated file list — advisory regardless"
 
 # --- the class tolerates SILENCE, and only silence ---
 #
@@ -2395,18 +2434,18 @@ assert_rc 0 "2278-m a truncated file list — advisory regardless (HIMMEL-3360)"
 # class.
 MPR_OVERRIDE=dependabot
 run cr-ratelimited
-assert_rc 0 "2278-n a rate-limited App is advisory, for every PR (HIMMEL-3360)"
+assert_rc 0 "2278-n a rate-limited App is advisory, for every PR"
 
 # 2278-o — a FAILED App status: an earlier change made failure/error advisory-only
 # for every PR (not just this class) — rc 0, an advisory NOTE, never a block.
 MPR_OVERRIDE=dependabot
 run cr-failure
-assert_rc 0 "2278-o a failed App status is advisory-only now, for every PR (HIMMEL-3360)"
+assert_rc 0 "2278-o a failed App status is advisory-only now, for every PR"
 
 # 2278-p — nor is a PENDING one: also advisory now, for every PR.
 MPR_OVERRIDE=dependabot
 run cr-pending
-assert_rc 0 "2278-p a pending App review is advisory-only now, for every PR (HIMMEL-3360)"
+assert_rc 0 "2278-p a pending App review is advisory-only now, for every PR"
 
 # 2278-q — THE codex-1 control. The App reviewed this machine PR after all and
 # posted an outside-diff-range body finding, which carries no thread to resolve.
@@ -3098,7 +3137,103 @@ assert_err_has "required-set unreadable" "8644 both tokens refused the protectio
 check_eq "8644 both tokens refused the protection read: a refusal that is not a rate limit never defers to the watch" "no" "$(if grep -q '^read pr checks .*--watch' "$STUBDIR/toklog"; then echo yes; else echo no; fi)"
 CLASSIC_OVERRIDE=none
 
+THREADS_OVERRIDE=latethread
+run red
+assert_rc 1 "9712-a a red run still exits 1"
+assert_err_has "review threads at exit 1: 1 unresolved on PR #42" "9712-a a red exit names the thread posted mid-watch"
+THREADS_OVERRIDE=latethread
+run blocking-cap-pending --max-wait 4
+assert_rc 2 "9712-b a deadline run still exits 2"
+assert_err_has "review threads at exit 2: 1 unresolved on PR #42" "9712-b a deadline exit names the thread posted mid-watch"
+RULES_OVERRIDE="req:codeowner-review-gate"; CHECKS_OVERRIDE="pass:unit-tests"; THREADS_OVERRIDE=1
+run cr-completed --grace 0
+assert_rc 5 "9712-c a never-reported required check still exits 5"
+assert_err_has "review threads at exit 5: 1 unresolved on PR #42" "9712-c an exit-5 refusal, which comes before the pre-watch thread gate, names the open thread"
+run body-actionable
+assert_rc 0 "9712-d threads resolved, the actionable review does not block on its own"
+assert_err_has "posted 3 actionable comment(s)" "9712-d a CodeRabbit pass that posted actionable comments is reported as findings"
+
+blocked_names() { local f; for f in "$STUBDIR/quota/blocked"/*; do [ -e "$f" ] && printf '%s ' "${f##*/}"; done; return 0; }
+SLASH_REPO=$(mktemp -d "$STUBDIR/slash-branch.XXXXXX") || { echo "FATAL: mktemp -d failed"; exit 1; }
+git -C "$SLASH_REPO" init --quiet -b docs/x
+git -C "$SLASH_REPO" -c user.email=t@t -c user.name=t commit --allow-empty -m seed --quiet --no-verify
+# shellcheck disable=SC2016  # the stub's own expansions, written literally to the file
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "${1:-0}" >> "${REC_SLEEP_LOG:?}"' > "$STUBDIR/rec-sleep"
+chmod +x "$STUBDIR/rec-sleep"
+
+rm -rf "$STUBDIR/quota"
+QUOTA_OVERRIDE=pr-view run cr-completed
+assert_rc 2 "T4-a a refused startup pr view is exit 2"
+assert_err_has "QUOTA-PAUSE github graphql" "T4-a the refusal prints the QUOTA-PAUSE line"
+assert_err_has "report BLOCKED" "T4-a the line tells the worker to report BLOCKED"
+assert_err_lacks "T4-a no false cannot-resolve phrase on a quota stop" "said cannot resolve the PR" -F -- "cannot resolve the PR"
+case "$(blocked_names)" in branch-*.unknown\ ) pass "T4-a the PR is unread: marker is branch-<name>.unknown" ;; *) fail "T4-a marker name" "got [$(blocked_names)]" ;; esac
+
+rm -rf "$STUBDIR/quota"
+BUDGET_PREFLIGHT_OVERRIDE=1; QUOTA_OVERRIDE=out-far; T4_T0=$SECONDS
+run_in_repo "$SLASH_REPO" cr-completed --max-wait 30
+assert_rc 2 "T4-b a preflight refusal with the reset past --max-wait is exit 2"
+check_eq "T4-b --max-wait 30 returns within 45 s" "yes" "$([ $((SECONDS - T4_T0)) -le 45 ] && echo yes || echo no)"
+assert_err_has "QUOTA-PAUSE github graphql" "T4-b the preflight stop prints the QUOTA-PAUSE line"
+check_eq "T4-b a slashed branch is escaped in the marker name" "branch-docs%2Fx.unknown " "$(blocked_names)"
+
+rm -rf "$STUBDIR/quota"
+BUDGET_PREFLIGHT_OVERRIDE=1; QUOTA_OVERRIDE=low-far
+run_in_repo "$SLASH_REPO" cr-completed --max-wait 30
+assert_rc 2 "T4-c a preflight reading of 150 with the reset past --max-wait is exit 2"
+check_eq "T4-c the marker is branch-docs%2Fx.unknown" "branch-docs%2Fx.unknown " "$(blocked_names)"
+
+for t4mode in past absent; do
+    rm -rf "$STUBDIR/quota"
+    BUDGET_PREFLIGHT_OVERRIDE=1; QUOTA_OVERRIDE="after1-$t4mode"
+    run cr-completed
+    assert_rc 2 "T4-d reset-$t4mode: the run ends in exit 2 after its recoveries"
+    check_eq "T4-d reset-$t4mode: at most 3 recoveries (4 budget probes in the stub log)" "4" "$(grep -c '^api -i' "$STUBDIR/args.log" | tr -d ' ')"
+    assert_err_has "QUOTA-PAUSE github graphql" "T4-d reset-$t4mode: names the limit"
+    case "$(blocked_names)" in 42.*\ ) pass "T4-d reset-$t4mode: a later refusal marks <pr>.<head>" ;; *) fail "T4-d reset-$t4mode: marker name" "got [$(blocked_names)]" ;; esac
+done
+
+rm -rf "$STUBDIR/quota"; : > "$STUBDIR/sleep.log"
+BUDGET_PREFLIGHT_OVERRIDE=1; QUOTA_OVERRIDE=after1-absurd; SLEEP_CMD_OVERRIDE="$STUBDIR/rec-sleep"
+REC_SLEEP_LOG="$STUBDIR/sleep.log" run cr-completed --max-wait 0
+assert_rc 2 "T4-e reset-absurd with --max-wait 0 still ends in exit 2"
+check_eq "T4-e no recorded sleep is past 60 s" "yes" "$(sort -n "$STUBDIR/sleep.log" | tail -n 1 | awk '{ print ($1 <= 60) ? "yes" : "no" }')"
+
+rm -rf "$STUBDIR/quota"
+QUOTA_OVERRIDE=pr-view-stall GH_READ_TIMEOUT=2 run cr-completed
+assert_rc 2 "T4-f a stalled startup read is exit 2"
+assert_err_has "GH-STALL" "T4-f the stall is named"
+check_eq "T4-f the stall leaves a marker with reason=stall" "yes" "$(grep -qx 'reason=stall' "$STUBDIR/quota/blocked/"branch-* 2>/dev/null && echo yes || echo no)"
+
+rm -rf "$STUBDIR/quota"
+run no-pr
+assert_rc 2 "T4-g a non-quota exit 2 stays exit 2"
+check_eq "T4-g a non-quota exit 2 leaves no marker" "" "$(blocked_names)"
+assert_err_lacks "T4-g a non-quota exit 2 does not claim a quota stop" "said QUOTA-PAUSE" -F -- "QUOTA-PAUSE"
+rm -rf "$STUBDIR/quota"
+
+rm -rf "$STUBDIR/quota"; mkdir -p "$STUBDIR/quota"
+T4_NOW=$(date +%s)
+for t4tok in main read; do for t4bucket in graphql core; do
+    printf '%s\t%s\t0\t5000\t%s\t%s\tok\n' "$t4tok" "$t4bucket" "$((T4_NOW + 1800))" "$T4_NOW"
+done; done > "$STUBDIR/quota/quota.tsv"
+run cr-completed
+assert_rc 0 "T4-h quota.tsv reading 0 and a healthy stub: check-ci exits 0, it never pauses on a number"
+assert_err_lacks "T4-h no QUOTA-PAUSE from a number alone" "said QUOTA-PAUSE" -F -- "QUOTA-PAUSE"
+rm -rf "$STUBDIR/quota"
+
+rm -rf "$STUBDIR/quota"
+BUDGET_PREFLIGHT_OVERRIDE=1
+RL_PROBE_OVERRIDE="$STUBDIR/rl-probe"; rm -f "$RL_PROBE_OVERRIDE"
+RL_ONCE_OVERRIDE="$STUBDIR/rl-once"; rm -f "$RL_ONCE_OVERRIDE"
+run probe-error
+assert_rc 2 "T4-i a recovered refusal then a bad credential is exit 2"
+assert_err_has "cannot evaluate the gate" "T4-i the bad credential is worded as itself"
+assert_err_lacks "T4-i a recovered refusal is not named as a quota stop" "said QUOTA-PAUSE" -F -- "QUOTA-PAUSE"
+check_eq "T4-i a recovered refusal leaves no marker" "" "$(blocked_names)"
+rm -rf "$STUBDIR/quota"
+
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 221 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 221"; exit 1; fi
+if [ "$COUNT" -ne 235 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 235"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

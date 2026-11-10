@@ -1,0 +1,13 @@
+global_context: Pinned pilot copies of the himmel repository and the luna notes.
+collections:
+  himmel:
+    path: @HIMMEL@
+    pattern: "**/*.md"
+  luna:
+    path: @LUNA@
+    pattern: "**/*.md"
+models:
+  embed: openai:stub-embed
+  generate: openai:stub-gen
+  rerank: openai:stub-rerank
+  openai_base_url: http://127.0.0.1:18080/v1

@@ -172,7 +172,7 @@ assert "helper called with the shortcode" ok "$a"
 grep -q -- '^curl .*--max-redirs 0' "$tmp/calls" && a=ok || a=no
 assert "curl follows no redirect off the CDN host" ok "$a"
 grep -q '^ig_media_backend: scrapling$' "$tmp/v6/Clippings/clip.md" && a=ok || a=no
-assert "clip records ig_media_backend: scrapling (HIMMEL-4684)" ok "$a"
+assert "clip records ig_media_backend: scrapling" ok "$a"
 
 # --- Test 7: Scrapling login wall -> deferred, never gallery-dl ------------
 # gallery-dl and the cookie file are both present (and the old switch is on);

@@ -50,6 +50,10 @@ cat > "$tmp/bin/gh" <<'STUB'
 echo "$*" >> "$GH_LOG"
 [ -z "${STUB_GH_STALL:-}" ] || sleep "$STUB_GH_STALL"
 args="$*"
+case "${STUB_GH_RL:-}" in
+    1) echo "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)" >&2; exit 1 ;;
+    late) case "$args" in "repo view"*) ;; *) echo "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)" >&2; exit 1 ;; esac ;;
+esac
 case "$args" in
     "repo view --json owner,name"*)
         [ -z "${STUB_DEFAULT_BRANCH_FAIL:-}" ] || { printf '%s\n' "${STUB_NWO:-acme/repo}"; exit 0; }
@@ -93,6 +97,10 @@ case "$args" in
     'api repos/'*'/pulls/'*) printf '%s\n' "${STUB_HEAD:-}" ;;
     *'p77:pullRequest'*)
         [ -z "${STUB_SNAPSHOT_FAIL:-}" ] || exit 1
+        if [ -n "${STUB_HOLD_MARK:-}" ] && [ ! -e "$STUB_HOLD_MARK" ]; then
+            ( STUB_HOLD_MARK='' STUB_GH_STALL=600 "$STUB_HOLD_TIMEOUT" -k 2 40 bash "$STUB_HOLD_LIB" "${STUB_NWO:-acme/repo}" 0 77 < /dev/null > /dev/null 2>&1 &
+              echo "$!" > "$STUB_HOLD_MARK" )
+        fi
         jq -n --arg h "$STUB_HEAD" --arg m "${STUB_MSS:-CLEAN}" \
             --argjson rollup "${STUB_ROLLUP:-[]}" --argjson commits "${STUB_COMMITS:-[]}" \
             --arg merges "${STUB_MERGE_OIDS:-}" --argjson u "${STUB_UNRESOLVED:-0}" \
@@ -223,6 +231,10 @@ mkdir -p "$TP_ANCHOR/scripts/lib"
 cp "$HERE/../../lib/go-gate.sh" "$TP_ANCHOR/scripts/lib/go-gate.sh"
 # item 17 runs the merge's remainder reader from the anchor, never from the checkout under review
 cp "$HERE/../../lib/pr_remainder.py" "$TP_ANCHOR/scripts/lib/pr_remainder.py"
+mkdir -p "$TP_ANCHOR/scripts/eval/conflicts" "$TP_ANCHOR/scripts/eval/judge-accuracy" "$TP_ANCHOR/scripts/eval/lib"
+cp "$HERE/../../eval/conflicts/conflicts.py" "$TP_ANCHOR/scripts/eval/conflicts/"
+cp "$HERE/../../eval/judge-accuracy/judge_accuracy.py" "$TP_ANCHOR/scripts/eval/judge-accuracy/"
+cp "$HERE/../../eval/lib/eval_runs.py" "$HERE/../../eval/lib/wilson.py" "$TP_ANCHOR/scripts/eval/lib/"
 # check 19 runs the anchor's impacted-suites.sh: here a stub printing STUB_IMPACTED
 # (default none); the check-19 rows bring an anchor with the real one
 mkdir -p "$TP_ANCHOR/scripts/cr"
@@ -295,6 +307,7 @@ run() {
         STUB_SNAPSHOT_FAIL="${STUB_SNAPSHOT_FAIL:-}" \
         STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_TRUST_LIST_FAIL="${STUB_TRUST_LIST_FAIL:-}" \
         STUB_DEFAULT_BRANCH_FAIL="${STUB_DEFAULT_BRANCH_FAIL:-}" \
+        STUB_GH_RL="${STUB_GH_RL:-}" HIMMEL_QUOTA_DIR="${RUN_QUOTA_DIR:-$tmp/quota}" \
         STUB_MANIFEST_DIR="${STUB_MANIFEST_DIR:-}" STUB_DL_FAIL="${STUB_DL_FAIL:-}" STUB_DL_SLEEP="${STUB_DL_SLEEP:-}" \
         STUB_RUN_SLEEP="${STUB_RUN_SLEEP:-}" STUB_RUN_HEAD_SHA="${STUB_RUN_HEAD_SHA:-}" \
         READY_CHECK_ITEM19_BOUND="${READY_CHECK_ITEM19_BOUND:-}" \
@@ -3561,6 +3574,7 @@ GOLD_MEMBER="[PASS] 1. head=$SHA matches, mergeStateStatus=CLEAN
 [WARN] 17. partial-merge remainder not checked: no --contract given for HIMMEL-100 (a GO writer names it)
 [PASS] 18. no blocking or undecided finding at the head the merge gates on (read as the merge reads it, with and without the GO)
 [PASS] 19. suite evidence: 0 impacted, nothing to prove
+[PASS] 20. conflicts resolved: no hand-resolved merge conflict in origin/main..${SHA:0:7}
 ---
 The three-dot diff read (git diff origin/main...HEAD) stays the chief's own judgement — this script does not read it.
 TRUST-PATH: no
@@ -3851,6 +3865,22 @@ contains "17d: item 17 passes as not applicable" "$R17_OUT" "[PASS] 17."
 # the merge's key reader, not a grep of the title: a bare KEY-n without brackets is no key
 R17_RC=0; R17_OUT="$(STUB_PR_TITLE='feat(x): HIMMEL-100 thing without brackets' run)" || R17_RC=$?
 check "17e an unbracketed key is no key to the merge, so no remainder is read: exit 0" "$R17_RC" "0"
+R17_HANDED='## Ticket coverage\n- ask one: done\n- ask two: deferred \xe2\x86\x92 HIMMEL-2\n'
+R17_RC=0; R17_OUT="$(STUB_BODY="$R17_HANDED" run)" || R17_RC=$?
+check "17j contract no with a wholly handed-off remainder: exit 1" "$R17_RC" "1"
+contains "17j: item 17 fails" "$R17_OUT" "[FAIL] 17."
+R17_LINE="$(printf '%s\n' "$R17_OUT" | grep '\] 17\.' || true)"
+contains "17j: item 17's own line names the other key" "$R17_LINE" "HIMMEL-2"
+contains "17j: item 17's own line names the brief line" "$R17_LINE" "Completes ticket: no"
+contains "17j: item 17's own line names the contract to re-issue the GO with" "$R17_LINE" "--contract yes"
+contains "17j: item 17's own line names the Remaining: line" "$R17_LINE" "Remaining:"
+notcontains "17j: item 17 does not pass" "$R17_OUT" "[PASS] 17."
+R17_OUT="$(STUB_BODY="$R17_HANDED"'\nRemaining: x\n' run || true)"
+contains "17k a Remaining: line beside a deferred line passes item 17" "$R17_OUT" "[PASS] 17."
+RUN_FLAGS="--contract yes --require-contract"
+R17_OUT="$(STUB_BODY="$R17_HANDED" run || true)"
+contains "17l contract yes passes a handed-off body" "$R17_OUT" "[PASS] 17."
+RUN_FLAGS="--contract no --require-contract"
 RUN_FLAGS="--require-contract"
 R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
 check "17f a keyed title with no contract named, from a GO writer: exit 1" "$R17_RC" "1"
@@ -4065,6 +4095,30 @@ RUN_SCRIPT="$tmp/s17-term-wrap.sh" TMPDIR="$S17_TMP" s17_at "$S17_H1"
 unset RUN_SCRIPT
 check "19 T8c: killed mid-read, no ready-check-19 temp dir is left" "0" "$(find "$S17_TMP" -maxdepth 1 -name 'ready-check-19.*' | wc -l | tr -d ' ')"
 
+S_KW="$tmp/kill-wrap"; mkdir -p "$S_KW"
+printf '#!/usr/bin/env bash\necho started > "%s/started"\nsleep 40 &\necho $! > "%s/sleep.pid"\nwait\n' "$S_KW" "$S_KW" > "$S_KW/slow-gh"; chmod +x "$S_KW/slow-gh"
+kw_sleep_alive() { local p; p=$(cat "$S_KW/sleep.pid" 2>/dev/null); if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then kill "$p" 2>/dev/null; echo yes; else echo no; fi; }
+kw_t0=$SECONDS
+kw_rc=0
+(cd "$REPO" && TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
+kw_took=$((SECONDS - kw_t0))
+sleep 1
+check "T8d: the outer timeout is what ended the run (exit 124)" "$kw_rc" "124"
+check "T8d: the stalled read was started, so the cancel had something to cancel" "$([ -f "$S_KW/started" ] && echo yes || echo no)" "yes"
+check "T8d: a ready-check killed by an outer timeout returns within the bound (took ${kw_took}s)" "$([ "$kw_took" -le 12 ] && echo yes || echo no)" "yes"
+check "T8d: the killed wrapper leaves none of its scratch files" "$(find "$S_KW" -maxdepth 1 -name 'ready-check-*' | wc -l | tr -d ' ')" "0"
+check "T8d: the killed wrapper leaves no stalled child" "$(pgrep -f "$S_KW/slow-gh" | wc -l | tr -d ' ')" "0"
+check "T8d: the stalled read's own sleep is gone too" "$(kw_sleep_alive)" "no"
+rm -f "$S_KW/started" "$S_KW/sleep.pid"
+kw_rc=0
+(cd "$REPO" && READY_CHECK_DEADLINE=0 TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
+sleep 1
+check "T8d: unarmed, the outer timeout ended the run (exit 124)" "$kw_rc" "124"
+check "T8d: unarmed, the stalled read was started" "$([ -f "$S_KW/started" ] && echo yes || echo no)" "yes"
+check "T8d: unarmed, the killed wrapper leaves no stalled child" "$(pgrep -f "$S_KW/slow-gh" | wc -l | tr -d ' ')" "0"
+check "T8d: unarmed, the stalled read's own sleep is gone too" "$(kw_sleep_alive)" "no"
+check "T8d: unarmed, the killed wrapper leaves none of its scratch files" "$(find "$S_KW" -maxdepth 1 -name 'ready-check-*' | wc -l | tr -d ' ')" "0"
+
 # T9: a suite CI cannot run (no manifest row) needs a local PASS
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"
 s17_at "$S17_H1"
@@ -4219,6 +4273,49 @@ READY_CHECK_FAIL_LEDGER="$tmp/s17-fl-other.jsonl" s17_at "$S17_H1"
 check "19 T25c a fail row of another repo's PR 77: no round" "$(jq -c 'select(.kind == "round")' "$tmp/s17-fl-other.jsonl" | wc -l | tr -d ' ')" "0"
 s17_clear
 
+reset_stubs
+rm -rf "$tmp/quota"
+rc=0; out="$(STUB_GH_RL=1 run 2>&1)" || rc=$?
+check    "9479 T3: every read refused -> exit 2 (it was 'cannot resolve owner/repo')" "$rc" "2"
+contains "9479 T3: the line names the quota" "$out" "QUOTA-PAUSE"
+check    "9479 I8: no false phrase when every read is refused" "$(grep -c 'cannot resolve owner/repo\|\[FAIL\]\|READY-CHECK FAIL' <<< "$out" | tr -d ' ')" "0"
+check    "9479 I4: a refusal leaves one marker keyed <pr>.<head>" "$(find "$tmp/quota/blocked" -type f -name "$PR.$SHA" 2>/dev/null | wc -l | tr -d ' ')" "1"
+contains "9479 I4: the marker names the reason" "$(cat "$tmp/quota/blocked/$PR.$SHA" 2>/dev/null)" "reason=rate-limit"
+contains "9479 I4: the marker names the caller" "$(cat "$tmp/quota/blocked/$PR.$SHA" 2>/dev/null)" "caller=ready-check.sh"
+first_epoch=$(sed -n 's/^first_epoch=//p' "$tmp/quota/blocked/$PR.$SHA" 2>/dev/null)
+sleep 1
+rc=0; out="$(STUB_GH_RL=1 run 2>&1)" || rc=$?
+check    "9479 I4: a second refusal keeps first_epoch" "$(sed -n 's/^first_epoch=//p' "$tmp/quota/blocked/$PR.$SHA" 2>/dev/null)" "$first_epoch"
+check    "9479 I4: a second refusal leaves still one marker" "$(find "$tmp/quota/blocked" -type f ! -name '.lock*' 2>/dev/null | wc -l | tr -d ' ')" "1"
+rm -rf "$tmp/quota"
+rc=0; out="$(STUB_GH_RL=late run 2>&1)" || rc=$?
+check    "9479 T3: a refusal after repo view -> exit 2, not exit 1" "$rc" "2"
+contains "9479 T3: the late refusal names the quota" "$out" "QUOTA-PAUSE"
+check    "9479 T3: the late refusal drops the FAIL rows" "$(grep -c '\[FAIL\]' <<< "$out" | tr -d ' ')" "0"
+check    "9479 I4: the late refusal leaves a marker" "$(find "$tmp/quota/blocked" -type f -name "$PR.$SHA" 2>/dev/null | wc -l | tr -d ' ')" "1"
+rm -rf "$tmp/quota"
+rc=0; out="$(READY_CHECK_DEADLINE=0 STUB_GH_RL=late run 2>&1)" || rc=$?
+check    "9479 T3: unarmed, a refusal is still exit 2" "$rc" "2"
+contains "9479 T3: unarmed, the rows print first" "$out" "[FAIL]"
+contains "9479 T3: unarmed, the quota line follows them" "$out" "QUOTA-PAUSE"
+rm -rf "$tmp/quota"
+rc=0; out="$(STUB_MSS=BEHIND run 2>&1)" || rc=$?
+check    "9479 T3: a real FAIL with no refused read is still exit 1" "$rc" "1"
+contains "9479 T3: a real FAIL still prints its row" "$out" "[FAIL] 1."
+contains "9479 T3: a real FAIL still ends READY-CHECK FAIL" "$out" "READY-CHECK FAIL"
+check    "9479 I4: a real FAIL leaves no marker" "$(find "$tmp/quota/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+rm -rf "$tmp/quota"
+rc=0; out="$(RUN_MODE=none run 2>&1)" || rc=$?
+check    "9479 I4: a usage error is exit 2" "$rc" "2"
+check    "9479 I4: a usage error leaves no marker" "$(find "$tmp/quota/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+mkdir -p "$tmp/nojq"
+for f_nj in /usr/bin/*; do [ "${f_nj##*/}" = jq ] || ln -sf "$f_nj" "$tmp/nojq/${f_nj##*/}"; done
+rc=0; out="$(PATH="$tmp/bin:$tmp/nojq" run 2>&1)" || rc=$?
+check    "9479 I4: a missing jq is exit 2" "$rc" "2"
+contains "9479 I4: a missing jq names jq" "$out" "jq not found"
+check    "9479 I4: a missing jq leaves no marker" "$(find "$tmp/quota/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+reset_stubs
+
 # --- the self-armed deadline, so no caller needs a `timeout` prefix ---
 # READY_CHECK_DEADLINE (whole seconds, default 150, 0 = none): argv unchanged; a stalled gh
 # read ends in a named FAIL, never a hang, and the override reaches the wrapper.
@@ -4280,8 +4377,10 @@ rc=0; out="$(READY_CHECK_DEADLINE=0 PATH="$tmp/dl-bin:$PATH" run)" || rc=$?
 check "deadline: 0 means no wrapper" "$(grep -c -E '^-k 5 [0-9]+ bash [^ ]*ready-check\.sh ' "$tmp/timeout.log" | tr -d ' ')" "0"
 check "deadline: 0 still passes" "$rc" "0"
 rc=0; out="$(READY_CHECK_DEADLINE=2 STUB_GH_STALL=30 run 2>&1)" || rc=$?
-check "deadline: a stalled gh read exits 1" "$rc" "1"
-contains "deadline: the FAIL line names the deadline and its variable" "$out" "READY-CHECK FAIL: no verdict within the 2 s deadline (READY_CHECK_DEADLINE)"
+check "deadline: a stalled gh read exits 2 (nothing was judged)" "$rc" "2"
+contains "deadline: the line names the deadline and its variable" "$out" "no verdict within the 2 s deadline (READY_CHECK_DEADLINE)"
+check "deadline: a cut with no refused read leaves no marker (it may be local)" "$(find "$tmp/quota/blocked" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+check "deadline: a cut prints no FAIL row" "$(grep -c '\[FAIL\]\|READY-CHECK FAIL' <<< "$out" | tr -d ' ')" "0"
 r2_shared="$tmp/lock-cache-r2"; mkdir -p "$r2_shared"
 env GH_PR_SNAPSHOT_CACHE_DIR="$r2_shared" GH_LOG="$tmp/holder2.log" STUB_HEAD="$SHA" \
     STUB_NWO="$NWO" STUB_ROLLUP="$GREEN_ROLLUP" STUB_COMMITS="$GREEN_COMMITS" \
@@ -4303,10 +4402,90 @@ for r2_item in 1 2 3 5 6; do
     check "R2: item $r2_item fails closed" "$(grep -c "^\[FAIL\] $r2_item\." <<< "$out" | tr -d ' ')" "1"
 done
 check "R2: the run ended on the lock wait, inside the holder's life (took $r2_elapsed s)" "$([ "$r2_elapsed" -lt 12 ] && echo yes || echo no)" "yes"
+contains "R2: item 1 names why the snapshot was unreadable" "$out" "still held by pid"
 wait "$r2_holder" 2>/dev/null || true
 r2_left=no; compgen -G "$r2_shared/*.lock" > /dev/null && r2_left=yes
 check "R2: the killed holder's trap freed its lock" "$r2_left" "no"
+reset_stubs
+r4_shared="$tmp/lock-cache-r4"; mkdir -p "$r4_shared"
+r4_mark="$tmp/r4-holder.pid"; rm -f "$r4_mark"
+r4_t0=$SECONDS
+rc=0; out="$(STUB_MSS=UNKNOWN STUB_HOLD_MARK="$r4_mark" STUB_HOLD_TIMEOUT="$REAL_TIMEOUT" STUB_HOLD_LIB="$HERE/../../lib/gh-pr-snapshot.sh" RUN_CACHE="$r4_shared" run)" || rc=$?
+r4_elapsed=$((SECONDS - r4_t0))
+check "R4: the peer read was started" "$([ -s "$r4_mark" ] && echo yes || echo no)" "yes"
+check "R4: a mergeStateStatus that stays UNKNOWN fails the run" "$rc" "1"
+check "R4: item 1 fails on UNKNOWN, not on an unreadable PR" "$(grep -c '^\[FAIL\] 1\. .*mergeStateStatus=UNKNOWN' <<< "$out" | tr -d ' ')" "1"
+for r4_item in 2 3 5 6; do
+    check "R4: item $r4_item still judges the last good read" "$(grep -c "^\[PASS\] $r4_item\." <<< "$out" | tr -d ' ')" "1"
+done
+notcontains "R4: no cannot read" "$out" "cannot read"
+contains "R4: item 1 names the re-read's 5 s lock wait" "$out" "after 5 s"
+check "R4: the re-reads ended inside the peer's life (took $r4_elapsed s)" "$([ "$r4_elapsed" -lt 40 ] && echo yes || echo no)" "yes"
+r4_hpid=$(cat "$r4_mark" 2>/dev/null) || r4_hpid=""
+[ -z "$r4_hpid" ] || kill "$r4_hpid" 2>/dev/null || true
+for _ in $(seq 1 100); do compgen -G "$r4_shared/*.lock" > /dev/null || break; sleep 0.1; done
+r4_left=no; compgen -G "$r4_shared/*.lock" > /dev/null && r4_left=yes
+check "R4: the killed peer's trap freed its lock" "$r4_left" "no"
 fi
+reset_stubs
+
+C20="$tmp/c20"
+git init -q --bare "$tmp/c20-origin.git"
+git init -q -b main "$C20"
+git -C "$C20" config user.email t@example.com; git -C "$C20" config user.name t; git -C "$C20" config commit.gpgsign false
+printf 'a\nkeep\n' > "$C20/f.sh"
+git -C "$C20" add f.sh; git -C "$C20" commit -q -m "chore: init"
+git -C "$C20" remote add origin "$tmp/c20-origin.git"
+git -C "$C20" push -q origin main
+git -C "$C20" checkout -q -b feat/b
+printf 'branch\nkeep\n' > "$C20/f.sh"; git -C "$C20" commit -q -am "feat(x): [HIMMEL-1] branch edit"
+C20_BRANCH_TIP=$(git -C "$C20" rev-parse HEAD)
+git -C "$C20" checkout -q main
+printf 'main\nkeep\n' > "$C20/f.sh"; git -C "$C20" commit -q -am "fix(y): [HIMMEL-2] other edit (#12)"
+git -C "$C20" push -q origin main
+git -C "$C20" checkout -q feat/b
+git -C "$C20" merge -q main >/dev/null 2>&1
+printf 'branch and main\nkeep\n' > "$C20/f.sh"; git -C "$C20" add f.sh; git -C "$C20" commit -q --no-edit
+C20_MERGED=$(git -C "$C20" rev-parse HEAD)
+git -C "$C20" checkout -q -b feat/ours "$C20_BRANCH_TIP"
+git -C "$C20" merge -q main >/dev/null 2>&1
+git -C "$C20" checkout -q --ours f.sh; git -C "$C20" add f.sh; git -C "$C20" commit -q --no-edit
+C20_OURS=$(git -C "$C20" rev-parse HEAD)
+C20_LINE='\n## Conflicts resolved\n- f.sh vs #12: kept both edits, the branch line and main line\n'
+
+reset_stubs
+rc=0; out="$(REPO="$C20" SHA="$C20_MERGED" run)" || rc=$?
+contains "item 20: a conflicted f.sh with no body line FAILs" "$out" "[FAIL] 20."
+contains "item 20: no body line: prints the line to add" "$out" "- f.sh vs #12: <what you kept and why>"
+
+reset_stubs
+rc=0; out="$(STUB_BODY="$GREEN_BODY$C20_LINE" REPO="$C20" SHA="$C20_MERGED" run)" || rc=$?
+contains "item 20: the body line for f.sh PASSes" "$out" "[PASS] 20."
+notcontains "item 20: with the line: no FAIL" "$out" "[FAIL] 20."
+
+reset_stubs
+rc=0; out="$(STUB_BODY="$GREEN_BODY$C20_LINE" REPO="$C20" SHA="$C20_OURS" run)" || rc=$?
+c20_warn=$(grep '^\[WARN\] 20\.' <<< "$out" || true)
+contains "item 20: an ours resolution WARNs" "$c20_warn" "ours"
+contains "item 20: the ours WARN names #12" "$c20_warn" "#12"
+notcontains "item 20: an ours resolution with its line is no FAIL" "$out" "[FAIL] 20."
+
+C20_STUB_ANCHOR="$tmp/c20-stub-anchor"
+cp -R "$TP_ANCHOR" "$C20_STUB_ANCHOR"
+printf 'import sys\nsys.exit(2)\n' > "$C20_STUB_ANCHOR/scripts/eval/conflicts/conflicts.py"
+reset_stubs
+rc=0; out="$(READY_CHECK_ANCHOR="$C20_STUB_ANCHOR" REPO="$C20" SHA="$C20_MERGED" run)" || rc=$?
+contains "item 20: a detector exiting 2 WARNs conflicts unknown" "$out" "[WARN] 20. conflicts unknown"
+notcontains "item 20: a detector exiting 2 is never a FAIL" "$out" "[FAIL] 20."
+
+reset_stubs
+rc=0; out="$(STUB_HEAD="$C20_MERGED" REPO="$C20" run7)" || rc=$?
+c20_fail=$(grep '^\[FAIL\] 20\.' <<< "$out" || true)
+contains "item 20 under --only 7: runs on the item-7 head and FAILs" "$out" "[FAIL] 20."
+contains "item 20 under --only 7: names f.sh" "$out" "- f.sh vs #12: <what you kept and why>"
+contains "item 20 under --only 7: the FAIL line names the head" "$c20_fail" "${C20_MERGED:0:7}"
+check "item 20 under --only 7: the lint fails" "$rc" "1"
+contains "item 20 under --only 7: says COVERAGE-LINT FAIL" "$out" "COVERAGE-LINT FAIL"
 reset_stubs
 
 echo "---"

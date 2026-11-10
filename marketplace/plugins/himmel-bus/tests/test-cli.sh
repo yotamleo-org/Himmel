@@ -228,7 +228,7 @@ out=$(as con2 send legA "$tmp/body" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "after adopt the successor can send to the worker"; else fail "post-adopt send (rc=$rc): $out"; fi
 "$BUS" register con3 --role chief --predecessor con2 >/dev/null 2>&1
 out=$(as legA succeed con3 2>&1); rc=$?
-if [ "$rc" -ne 0 ] && grep -q 'legA is not a chief' <<< "$out"; then pass "succeed from a worker is refused (HIMMEL-7262)"; else fail "worker succeed (rc=$rc): $out"; fi
+if [ "$rc" -ne 0 ] && grep -q 'legA is not a chief' <<< "$out"; then pass "succeed from a worker is refused"; else fail "worker succeed (rc=$rc): $out"; fi
 out=$(as con succeed con3 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && grep -q 'con3 does not succeed con' <<< "$out"; then pass "succeed names only the caller's own successor"; else fail "wrong-predecessor succeed (rc=$rc): $out"; fi
 out=$(as con2 succeed con3 2>&1); rc=$?

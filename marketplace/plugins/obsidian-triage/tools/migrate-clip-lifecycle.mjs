@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * migrate-clip-lifecycle.mjs — one-time, deterministic, reversible, resumable
- * migration engine (LUNA-86).
+ * migration engine.
  *
  * Backfills the historical top-level `processed: true` clips out of the
  * Clippings/ inbox into the flat evidence pool Clippings/_evidence/, stamping

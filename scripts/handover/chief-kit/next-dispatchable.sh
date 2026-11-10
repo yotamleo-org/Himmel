@@ -71,7 +71,7 @@
 # DESIGN rows (always on):
 # the built jira CLI (`release core-check`, then `release spec-check` for the core keys; NEXT_DISPATCH_JIRA_CLI replaces
 # its path) says which To Do candidates are core. A core one with no signed minerva spec prints
-# `DESIGN<TAB><KEY><TAB>NO-SPEC|SPEC-STALE<TAB>prio<TAB>version<TAB>title<TAB>files=...` instead of a dispatch row: it takes a
+# `DESIGN<TAB><KEY><TAB>NO-SPEC|SPEC-STALE|BYPASS-NEEDS-SPEC<TAB>prio<TAB>version<TAB>title<TAB>files=...` instead of a dispatch row: it takes a
 # --top slot, holds no files, and is the design leg to dispatch first. A key the mirror lacks is withheld
 # (`# drop <KEY> core-unknown`); a check that cannot run lists no To Do row and prints `# WARN CORE-CHECK-FAILED <reason>`.
 #
@@ -805,11 +805,11 @@ if pool_only:
 
 # The core gate (permanent): the built jira CLI says
 # which To Do candidates are core and whether each has a signed minerva spec. A core ticket with no `SPEC ok` lists as a
-# `DESIGN <KEY> NO-SPEC|SPEC-STALE` row, not a build row. Fail closed: a check that cannot run lists no To Do row, and a key
-# the mirror lacks (UNKNOWN) is withheld.
-design = {}  # KEY -> NO-SPEC | SPEC-STALE
-CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')
-CORE_FIELDS = {'CORE': 3, 'BYPASS': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>
+# `DESIGN <KEY> NO-SPEC|SPEC-STALE|BYPASS-NEEDS-SPEC` row, not a build row; a gated bypass with no reviewed spec lists as a DESIGN row too.
+# Fail closed: a check that cannot run lists no To Do row, and a key the mirror lacks (UNKNOWN) is withheld.
+design = {}  # KEY -> NO-SPEC | SPEC-STALE | BYPASS-NEEDS-SPEC
+CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'BYPASS-NEEDS-SPEC', 'UNKNOWN')
+CORE_FIELDS = {'CORE': 3, 'BYPASS': 4, 'BYPASS-NEEDS-SPEC': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>, BYPASS-NEEDS-SPEC <K> <kind> <missing...>
 
 def core_run(args, ok_rc, project):
     # (stdout, '') for a run whose exit code is in ok_rc, else (None, why). A missing CLI, node or a timeout is never an answer.
@@ -872,6 +872,8 @@ def core_spec_pass(cs):
             drop(i, 'core-unknown (not in the mirror: neither core nor a bypass can be proven)')
             continue
         keep.append(i)
+        if verb == 'BYPASS-NEEDS-SPEC':
+            design[i['key']] = verb
         if verb == 'CORE':
             core.append(i['key'])
     if core:

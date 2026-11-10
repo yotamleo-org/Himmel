@@ -2,7 +2,7 @@
 // One Board entry in the rail; the old Roadmap and Kanban routes land on it; the version strip, the drift banner, the chain badge,
 // the three tabs and the lanes draw from the seeded sources; no console error at 1280 and 390 px, light and dark.
 // E2E_SHOTS=<dir> saves the build-side screenshot of each frame, named board-<width>-<scheme>-<tab>.png, to pair with the mockup.
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, chromium, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { boot, type Harness } from "./fixtures";
@@ -48,7 +48,7 @@ test("the Waiting on you section lists a waiting ticket and its key opens that t
   await expect(sec.locator("li")).toContainText("HIMMEL-2");
   await expect(sec.locator("li")).toContainText("Second chain step");
   await expect(sec.locator("li")).toContainText("memory 2/2");
-  await expect(page.locator(".rm-link").first()).toContainText("1 waits for you");
+  await expect(page.locator(".aside").first()).toContainText("1 ticket waits for you, any version");
   await shot(page, "board-waiting-on-you");
   await sec.locator("li a").click();
   await expect.poll(() => page.evaluate(() => location.hash)).toBe("#/board?tab=chains&at=HIMMEL-2");
@@ -76,15 +76,16 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   const errs = consoleErrors(page);
   await open(page);
   await go(page, "#/board");
-  // the version strip: one tile per version, the running one selected
-  const tiles = page.locator(".rm-vstrip .rm-vt");
+  const tiles = page.locator(".bh .vchips .vc:not(.all)");
   await expect(tiles).toHaveCount(3);
   await expect(tiles.nth(1)).toHaveAttribute("aria-current", "true");
-  await expect(tiles.nth(0)).toContainText("released 2026-10-19");
-  await expect(tiles.nth(0)).toContainText("1 still open: HIMMEL-12");
-  // the drift banner counts the real row; the transient row is named, not counted
-  await expect(page.locator("#main .alert").first()).toContainText("1 drift row");
-  await expect(page.locator("#main .alert").first()).toContainText("1 transient");
+  await expect(tiles.nth(0)).toHaveAttribute("title", /released 2026-10-19/);
+  await expect(tiles.nth(0).locator(".op")).toHaveAttribute("title", /1 still open: HIMMEL-12/);
+  await expect(page.locator("#main .alert")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^Tidy up/ })).toContainText("! 1 drift row");
+  await page.getByRole("tab", { name: /^Tidy up/ }).click();
+  await expect(page.locator("#main")).toContainText("transient");
+  await go(page, "#/board");
   // the lanes of the running version, with the chain badge on a chain ticket and none on the others
   await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeHidden(); // a Done ticket: the Done column is folded
   await page.locator("#rm-lanes details.rm-done summary").click();
@@ -109,8 +110,8 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await expect(page.locator(".rm-card", { hasText: "Not in any chain" }).locator(".rm-chain")).toHaveCount(0);
   await expect(page.locator(".rm-card[draggable]").first()).toBeVisible(); // drag and the Sector select are still there
   // no registry-less made-up number: the wait link counts the chain read's own rows
-  await expect(page.locator(".rm-link").first()).toContainText("0 wait for you");
-  await expect(page.locator(".rm-link").first()).not.toContainText("not counted"); // the seeded mirror has a ticket with no version, and the page reads it beside the default read, so nothing is left out
+  await expect(page.locator(".aside").first()).toContainText("0 tickets wait for you, any version");
+  await expect(page.locator(".aside").first()).not.toContainText("not counted");
   await expect(page.locator("#rm-waiting")).toHaveCount(0); // nobody waits: no section, the count link above says 0
   // Chains tab
   await page.getByRole("tab", { name: /^Chains/ }).click();
@@ -121,10 +122,11 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await page.locator(".rm-card", { hasText: "Second chain step" }).locator(".rm-chain").click();
   await expect.poll(() => page.evaluate(() => location.hash)).toBe("#/board?tab=chains&at=HIMMEL-2");
   await expect(page.locator("#cn-HIMMEL-2")).toHaveClass(/rm-at/);
-  // Tidy up: the status-drift rows, then the sections the Roadmap page held
   await page.getByRole("tab", { name: /^Tidy up/ }).click();
+  await expect(page.locator("#rm-status-drift")).toContainText("Worked, but only in a later version");
   await expect(page.locator("#rm-status-drift")).toContainText("VERSION-DRIFT");
-  await expect(page.locator("#rm-status-drift")).toContainText("jira release request v1.1.3");
+  await expect(page.locator("#rm-status-drift")).not.toContainText("jira release request");
+  await expect(page.locator('#rm-status-drift [data-act="copy"]')).toHaveAttribute("data-cmd", "jira release request v1.1.3 --verb INTAKE --key HIMMEL-12");
   for (const id of ["rm-drift", "rm-sync", "rm-librarian"]) await expect(page.locator(`#${id}`)).toBeVisible();
   expect(errs).toEqual([]);
 });
@@ -136,28 +138,29 @@ test("Tidy up: refresh re-runs the check and the next read shows it; a failed ru
   await page.route("**/api/roadmap/history*", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ key: "HIMMEL-12", events: route.request().url().includes("HIMMEL-12")
     ? [{ at: "2026-10-30T10:00:00", who: "Ana Reyes", from: "To Do", to: "Done" }] : [{ at: "2026-10-30T10:00:00", who: "Himmel Bot", from: "To Do", to: "In Progress", himmel: true }] }) }));
   await go(page, "#/board?tab=tidy");
-  const drift = page.locator("#rm-status-drift");
-  await expect(drift).toContainText("drift: saved run");
+  const drift = page.locator("#rm-status-drift"), head = page.locator(".cp .cph");
+  await expect(head).toContainText("saved run");
+  await expect(head.locator('[title="sdrift=2:abc"]')).toBeVisible();
   await expect(drift).toContainText("moved in Jira by Ana Reyes");
   await expect(drift).toContainText("himmel's Jira account");
-  await expect(drift.locator('a[href="#/config?tile=tracker"]')).toBeVisible();
-  await expect(drift).toContainText("team mode is off");
+  await expect(head.locator('a[href="#/config?tile=tracker"]')).toBeVisible();
+  await expect(head).toContainText("single-user mode");
   await shot(page, "tidy-saved");
   // the failed state, answered by the page's route: the saved rows stay
   await page.route("**/api/board/drift-refresh", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ state: "failed", reason: "the check could not read the open PRs or the Jira search in full" }) }));
-  await drift.locator('[data-act="drift-refresh"]').click();
+  await head.locator('[data-act="drift-refresh"]').click();
   await expect(drift.locator('[role="alert"]')).toContainText("could not read the open PRs");
   await expect(drift).toContainText("VERSION-DRIFT");
   await shot(page, "tidy-refresh-failed");
   await page.unroute("**/api/board/drift-refresh");
   // the real route, over the fixture's stub: running, then the new run
-  await drift.locator('[data-act="drift-refresh"]').click();
+  await head.locator('[data-act="drift-refresh"]').click();
   await expect(drift).toContainText("re-running the check");
-  await expect(drift.locator('[data-act="drift-refresh"]')).toBeDisabled();
+  await expect(head.locator('[data-act="drift-refresh"]')).toBeDisabled();
   await expect(drift).toContainText("WORKER-COMMENT"); // the saved rows stay until the run ends
   await shot(page, "tidy-refresh-running");
   await expect(drift).toContainText("drift: re-run");
-  await expect(drift).toContainText("sdrift=2:newrun");
+  await expect(head.locator('[title="sdrift=2:newrun"]')).toBeVisible();
   await expect(drift.locator("table").first()).toContainText("healed");
   await shot(page, "tidy-refresh-done");
   await page.emulateMedia({ colorScheme: "dark" });
@@ -252,6 +255,7 @@ test("a drop on a column its event moves (In review, CI, Done) writes nothing an
   for (const [col, name] of [["rev", "In Review"], ["done", "Done"]]) { // Review and CI are one column now: a drop on it is a drop on rev
     await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator(`[data-rm-drop="${col}"]`));
     await expect(page.locator("#main .alert", { hasText: `${name} is moved by its event` })).toBeVisible(); // the note names this drop's column, so the last drop's note cannot satisfy it
+    expect(await page.locator("#main .alert", { hasText: `${name} is moved by its event` }).evaluate((el) => el.previousElementSibling?.matches(".cph") === true && el.parentElement === el.closest("section.cp")), "the note sits right under the panel head").toBe(true);
   }
   expect(sent).toEqual([]); // no POST to /api/roadmap/write went out
   await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('[data-rm-drop="prog"]')); // a column the operator owns still writes
@@ -349,7 +353,8 @@ test("the find box narrows the lanes by title or id on Enter, the columns say ho
   await open(page);
   await go(page, "#/board");
   const todo = page.locator('#rm-lanes [data-rm-col="todo"]');
-  await expect(todo.locator(".rm-jira")).toHaveText("Jira 4 matches");
+  await expect(todo.locator(".rm-n")).toHaveText("4");
+  await expect(todo.locator(".rm-jira")).toHaveCount(0);
   await expect(page.locator("#rm-lanes details.rm-done")).not.toHaveAttribute("open", "");
   await page.locator("input[data-rm-find]").fill("second chain");
   await page.locator("input[data-rm-find]").press("Enter");
@@ -360,15 +365,14 @@ test("the find box narrows the lanes by title or id on Enter, the columns say ho
   await shot(page, "board-find");
 });
 
-test("every tab carries the one filter bar and refresh, and Tidy up lists every version by default", async ({ page }) => {
+test("the Roadmap tab carries the one filter bar, every tab its refresh, and Tidy up lists every version by default", async ({ page }) => {
   await open(page);
-  for (const tab of ["roadmap", "tidy"]) {
+  for (const tab of ["roadmap", "chains", "tidy"]) {
     await go(page, `#/board?tab=${tab}`);
-    await expect(page.locator('.rm-bar [data-act="refresh-roadmap"]')).toHaveCount(1);
+    await expect(page.locator(".rm-bar")).toHaveCount(tab === "roadmap" ? 1 : 0);
+    await expect(page.locator('[data-act="refresh-roadmap"]')).toHaveCount(1);
+    await expect(page.locator('.aside [data-act="refresh-roadmap"]')).toHaveCount(1);
   }
-  await go(page, "#/board?tab=chains"); // the Chains tab has no filter bar; its refresh is the real control beside the tabs
-  await expect(page.locator(".rm-bar")).toHaveCount(0);
-  await expect(page.locator('.aside [data-act="refresh-roadmap"]')).toHaveCount(1);
   await go(page, "#/board?tab=tidy");
   await expect(page.locator("#rm-librarian")).toContainText("HIMMEL-12"); // released-but-open on v1.1.2, not the running version
 });
@@ -380,9 +384,10 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
       await page.setViewportSize({ width, height });
       await page.emulateMedia({ colorScheme: scheme });
       await open(page);
-      for (const tab of ["roadmap", "chains", "tidy"]) {
+      for (const tab of ["roadmap", "chains", "tidy", "nv"]) {
         await go(page, `#/board?tab=${tab}`);
         await expect(page.locator(`.tabs a[aria-selected="true"]`)).toHaveAttribute("href", new RegExp(`tab=${tab}`));
+        if (tab === "nv") await expect(page.locator("#rm-nv .rm-card").first()).toBeVisible();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
         await shot(page, `board-${width}-${scheme}-${tab}`);
       }
@@ -429,7 +434,8 @@ test("the Board at 1280 px is dense: a one-line bar, the first card near the top
   const bar = await page.locator(".rm-bar").first().boundingBox();
   expect(bar && bar.height <= 40).toBe(true);
   const card = await page.locator(".rm-card").first().boundingBox();
-  expect(card && card.y <= 480).toBe(true); // the sector legend and the drain line add up to about 80 px above the lanes; 350 before them in Noto Sans; DejaVu Sans (CI) is wider, the tab row's aside wraps under the tabs and the card sits near 373
+  const FIRST_CARD_MAX_Y = 480;
+  expect(card && card.y <= FIRST_CARD_MAX_Y).toBe(true);
   const tracks = await page.locator(".rm-board").first().evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
   expect(tracks).toBe(5); // four columns and the narrow Won't lane
   await expect(page.locator('[data-rm-drop="wont"]')).toBeVisible();
@@ -621,12 +627,12 @@ test("with no drift file and no chain registry the Board says so in words and sh
   await page.goto(h.url);
   await page.locator("nav.pages").waitFor();
   await go(page, "#/board");
-  await expect(page.locator("#main")).toContainText("drift: not read");
+  await expect(page.locator("#main")).toContainText("drift not read");
   await page.getByRole("tab", { name: /^Tidy up/ }).click();
-  await page.locator('#rm-status-drift [data-act="drift-refresh"]').click(); // nowhere to save the run: refused in words, no count
+  await page.locator('.cp .cph [data-act="drift-refresh"]').click();
   await expect(page.locator('#rm-status-drift [role="alert"]')).toContainText("HIMMEL_FOCUS_DRIFT");
   await page.getByRole("tab", { name: /^Roadmap/ }).click();
-  await expect(page.locator(".rm-link").first()).toContainText("waits for you: not read");
+  await expect(page.locator(".aside").first()).toContainText("waits for you: not read");
   await expect(page.locator(".rm-chain")).toHaveCount(0);
   await page.getByRole("tab", { name: /^Chains/ }).click();
   await expect(page.locator("#rm-chains .nodata")).toContainText("no chain registry");
@@ -645,8 +651,8 @@ test("two projects: both projects' cards show with their keys, the Project filte
   // both projects' cards, each with its own key; the same number does not merge them
   await expect(page.locator(".rm-card", { hasText: "Salus intake form" }).locator("b")).toHaveText("SALUS-2");
   await expect(page.locator(".rm-card", { hasText: "Second chain step" }).locator("b")).toHaveText("HIMMEL-2");
-  await expect(page.locator(".rm-vstrip .rm-vt", { hasText: "v1.1.3 (SALUS)" })).toHaveCount(1);
-  await expect(page.locator(".rm-vstrip .rm-vt", { hasText: "v1.1.3 (HIMMEL)" })).toHaveCount(1);
+  await expect(page.locator(".bh .vchips .vc", { hasText: "v1.1.3 (SALUS)" })).toHaveCount(1);
+  await expect(page.locator(".bh .vchips .vc", { hasText: "v1.1.3 (HIMMEL)" })).toHaveCount(1);
   await shot(page, "board-1280-two-projects");
   // the Project filter narrows to one
   await page.locator(".rm-more summary").click(); // Project sits under More ▾
@@ -760,26 +766,62 @@ test("the outside-ticket name is a hover bubble at 1280 px and plain text on a p
 
 // A Won't ticket and long sector names, added to the roadmap read in flight. The Chains tab must hold at both widths. The Roadmap and
 // Tidy up tabs overflow with this fixture on the commit before this change too (their version-window row), so they are not asserted here.
-test("with a Won't ticket and long sector names the Chains tab does not scroll sideways at 1280 or 390 px", async ({ page }) => {
+test("with a Won't ticket and long names every Board tab fits the window at 1280 and 390 px, and no key breaks mid-word", async ({ page }) => {
   const LONG_SECTOR = "A sector name that is far too long to sit on one line in a card header";
-  await page.route("**/api/roadmap", async (route) => {
+  const LONG_TITLE = "A ticket title that runs far past two lines of a lane card, so the card must clamp it and keep the whole title in its bubble and its name";
+  await page.route((url) => url.pathname === "/api/roadmap", async (route) => {
     const res = await route.fetch();
     const j = await res.json();
     j.themes = j.themes.map((_: string, i: number) => `${LONG_SECTOR} ${i + 1}`);
     const t = j.tickets.find((x: { t: string }) => x.t === "Not in any chain");
-    t.b = "wont"; t.s = "Won't Do";
+    if (t) { t.b = "wont"; t.s = "Won't Do"; }
+    const two = j.tickets.find((x: { k: number }) => x.k === 2);
+    if (two) two.t = LONG_TITLE;
+    await route.fulfill({ response: res, json: j });
+  });
+  await page.route((url) => url.pathname === "/api/board", async (route) => {
+    const res = await route.fetch();
+    const j = await res.json();
+    for (const r of [j.chains, j.versionChains]) for (const c of (r && r.chains) || []) c.name = `A chain name far too long for one chip: ${c.name}`;
     await route.fulfill({ response: res, json: j });
   });
   await open(page);
   for (const [width, height] of [[1280, 900], [390, 844]]) {
     await page.setViewportSize({ width, height });
-    await go(page, "#/board?tab=chains");
-    await expect(page.locator(".cp .cc").first()).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    for (const tab of ["roadmap", "chains", "tidy", "nv"]) {
+      await go(page, `#/board?tab=${tab}`);
+      await expect(page.locator(".cp").first()).toBeVisible();
+      if (tab === "nv") await expect(page.locator("#rm-nv .rm-card").first()).toBeVisible();
+      const bad = await page.evaluate(() => {
+        const out: string[] = [];
+        if (document.documentElement.scrollWidth > window.innerWidth + 1) {
+          const w = (el: Element) => el.getBoundingClientRect().width;
+          const all = [...document.querySelectorAll<HTMLElement>("#main *")];
+          const spill = all.filter((el) => el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflowX === "visible" && el.clientWidth > 0);
+          const wide = [...all.filter((el) => el.tagName === "SELECT" && w(el) > window.innerWidth / 3), ...spill.slice(-3)].sort((a, b) => w(b) - w(a));
+          const name = (el: Element) => `${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""}${[...el.classList].map((c) => "." + c).join("")}`;
+          const path = (el: Element) => { const p: string[] = []; for (let x: Element | null = el; x && x.id !== "main" && p.length < 5; x = x.parentElement) p.unshift(name(x)); return p.join(" > "); };
+          out.push(`sideways page scroll ${document.documentElement.scrollWidth} > ${window.innerWidth}: ${wide.slice(0, 6).map((el) => `${path(el)} width ${Math.round(w(el))} scroll ${el.scrollWidth}`).join(", ")}`);
+        }
+        for (const el of document.querySelectorAll<HTMLElement>(".cp .rm-card .rm-top > b, .cp .rm-key")) {
+          const r = document.createRange();
+          r.selectNodeContents(el);
+          const lines = new Set([...r.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top)));
+          if (lines.size > 1) out.push(`key broken: ${el.textContent}`);
+        }
+        for (const sel of document.querySelectorAll<HTMLElement>(".cp .rm-card .rm-theme")) {
+          const card = sel.closest(".rm-card")!.getBoundingClientRect(), r = sel.getBoundingClientRect();
+          if (r.right > card.right + 1 || r.left < card.left - 1) out.push(`Sector select wider than its card: ${sel.getAttribute("aria-label")}`);
+        }
+        return out;
+      });
+      expect(bad, `${tab} at ${width} px`).toEqual([]);
+      await shot(page, `long-names-${width}-${tab}`);
+    }
   }
 });
 
-const MOCKUP_FIRST_CHAIN_Y = 177, MOCKUP_TAB_H = 590, OPEN_CHAIN_ALLOWANCE = 90, LINK_STRIP_ALLOWANCE = 55;
+const BUILD_FIRST_CHAIN_Y = 233, MOCKUP_TAB_H = 590, OPEN_CHAIN_ALLOWANCE = 90, LINK_STRIP_ALLOWANCE = 55;
 const FIXTURE_TAB_H_MAX = MOCKUP_TAB_H + 3 * OPEN_CHAIN_ALLOWANCE + LINK_STRIP_ALLOWANCE;
 function fiveChains() {
   const lnk = (on: string, status: string, onVersions: string[]) => ({ on, kind: "jira-link", source: "jira", added: null, reason: null, owner: null, until: null, clears: `${on} completes`, status, at: null, onVersions });
@@ -810,24 +852,222 @@ function fiveChains() {
     },
     burn: { total: 11, undated: 0, points: [{ day: "2026-11-01", open: 10, merged: 1 }, { day: "2026-11-02", open: 9, merged: 1 }] } };
 }
-for (const width of [880, 960, 1280]) {
-  test(`${width} px: the tab row keeps the refresh button and both links whole`, async ({ page }) => {
+for (const width of [800, 880, 960, 1280]) {
+  test(`${width} px: the tab row keeps the refresh button and both links whole, on every tab`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: "dark" });
     await open(page);
-    await go(page, "#/board?tab=chains");
-    const aside = page.locator(".tr .aside");
-    await expect(aside).toBeVisible();
-    const a = await aside.boundingBox();
-    const b = await aside.locator(".btn").boundingBox();
-    expect(b!.x).toBeGreaterThanOrEqual(a!.x - 0.5);
-    expect(b!.x + b!.width).toBeLessThanOrEqual(a!.x + a!.width + 0.5);
-    for (const link of await aside.locator("a").all()) {
-      expect(await link.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    for (const tab of ["chains", "roadmap", "tidy", "nv"]) {
+      await go(page, `#/board?tab=${tab}`);
+      const measure = () => page.evaluate(() => {
+        const aside = document.querySelector<HTMLElement>(".tr .aside"), btn = aside?.querySelector<HTMLElement>(".btn"), sel = document.querySelector('.tr .tabs [aria-selected="true"]'), panel = document.querySelector("section.cp");
+        if (!aside || !btn || !sel || !panel) return null;
+        const a = aside.getBoundingClientRect(), r = btn.getBoundingClientRect(), tabs = Array.from(document.querySelectorAll<HTMLElement>(".tr .tabs .tab"));
+        return {
+          buttonInside: r.left >= a.left - 0.5 && r.right <= a.right + 0.5,
+          linksWhole: Array.from(aside.querySelectorAll("a")).every((el) => el.scrollWidth <= el.clientWidth + 1),
+          noSideways: document.documentElement.scrollWidth <= window.innerWidth + 1,
+          tabLines: new Set(tabs.map((t) => Math.round(t.getBoundingClientRect().top))).size,
+          selectedMeetsPanel: Math.abs(sel.getBoundingClientRect().bottom - panel.getBoundingClientRect().top) <= 1,
+        };
+      });
+      await expect.poll(measure, { message: tab }).toEqual({ buttonInside: true, linksWhole: true, noSideways: true, tabLines: 1, selectedMeetsPanel: true });
     }
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   });
 }
+for (const width of [390, 800, 1280]) {
+  test(`${width} px, classic scrollbars: none is drawn between a tab and its panel, on every tab`, async () => {
+    const browser = await chromium.launch({ ignoreDefaultArgs: ["--hide-scrollbars"] }); // headless hides scrollbars by default, which would hide the thing under test
+    try {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await open(page);
+      for (const tab of ["chains", "roadmap", "tidy", "nv"]) {
+        await go(page, `#/board?tab=${tab}`);
+        const m = await page.locator(".tr .tabs").evaluate((el) => ({ scroll: el.scrollHeight - el.clientHeight, bar: (el as HTMLElement).offsetHeight - el.clientHeight }));
+        expect(m, `${tab}: the tab list has no scrollbar`).toEqual({ scroll: 0, bar: 0 });
+      }
+    } finally { await browser.close(); }
+  });
+}
+test("1280 px, dark: the shared rules draw: a plain panel body, a boxed selected tab, a drift pill, the phone's slim chips", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  await go(page, "#/board?tab=tidy");
+  await expect(page.locator(".cp.plain section.box")).toHaveCount(0);
+  const body = await page.locator("#rm-status-drift").evaluate((el) => { const s = getComputedStyle(el); return { border: s.borderTopWidth, bg: s.backgroundColor, pad: s.paddingTop }; });
+  expect(body, "a Tidy up group adds no box of its own: its cards are the Chains tab's").toEqual({ border: "0px", bg: "rgba(0, 0, 0, 0)", pad: "0px" });
+  await expect(page.locator("#rm-status-drift .cc")).toHaveCount(1);
+  await go(page, "#/board?tab=roadmap");
+  const tab = await page.locator('.tr .tab[aria-selected="true"]').evaluate((el) => { const s = getComputedStyle(el); return { border: s.borderTopWidth, radius: s.borderTopLeftRadius, line: s.textDecorationLine, bg: s.backgroundColor }; });
+  expect(tab, "the selected plain tab is a box with a rounded top, not an underline").toEqual({ border: "1px", radius: "8px", line: "none", bg: await page.locator(".cp.plain").evaluate((el) => getComputedStyle(el).backgroundColor) });
+  const pill = await page.locator(".tab .drf").evaluate((el) => { const warn = document.createElement("span"); warn.className = "pill warn"; document.body.append(warn); const bg = getComputedStyle(warn).backgroundColor; warn.remove(); return { display: getComputedStyle(el).display, bg: getComputedStyle(el).backgroundColor, warn: bg }; });
+  expect(pill.display, "the drift count sits inline in the tab's text").toBe("inline");
+  expect(pill.bg, "the drift count wears the amber of a warn pill").toBe(pill.warn);
+  expect(await page.locator(".bh .vc progress").first().evaluate((el) => getComputedStyle(el).display), "a chip carries its progress bar on a wide screen").not.toBe("none");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.locator(".bh .vc progress").first().evaluate((el) => getComputedStyle(el).display), "and drops it on a phone").toBe("none");
+  expect(await page.locator(".bh .vc small").first().evaluate((el) => getComputedStyle(el).display)).toBe("none");
+});
+const auditRows = (page: Page): Promise<string[]> => page.evaluate(() => {
+  const TOL = 2, bad: string[] = [];
+  const rows = Array.from(document.querySelectorAll<HTMLElement>(".xrow"));
+  if (rows.length !== 2) bad.push(`expected the chip row and the tab row, found ${rows.length}`);
+  for (const x of rows) {
+    const row = x.querySelector<HTMLElement>(".vchips,.tabs")!, L = x.querySelector<HTMLElement>(".edge.l")!, R = x.querySelector<HTMLElement>(".edge.r")!;
+    const name = row.classList.contains("tabs") ? "tabs" : "chips";
+    const items: Element[][] = [];
+    for (const c of Array.from(row.children)) { if (c.matches(".pin") && items.length) items[items.length - 1].push(c); else items.push([c]); }
+    const box = (it: Element[]) => ({ l: Math.min(...it.map((e) => e.getBoundingClientRect().left)), r: Math.max(...it.map((e) => e.getBoundingClientRect().right)) });
+    const a = row.getBoundingClientRect(), lb = L.hidden ? null : L.getBoundingClientRect(), rb = R.hidden ? null : R.getBoundingClientRect();
+    const clearL = lb ? lb.right : a.left, clearR = rb ? rb.left : a.right, mid = (a.left + a.right) / 2;
+    const sel = row.querySelector('[aria-selected="true"],[aria-current="true"]');
+    if (sel) { const b = sel.getBoundingClientRect(); if (b.left < clearL - TOL || b.right > clearR + TOL) bad.push(`${name}: the selected item is not clear of the labels`); }
+    let nl = 0, nr = 0;
+    for (const it of items) {
+      const b = box(it);
+      if (b.l >= clearL - TOL && b.r <= clearR + TOL) continue;
+      const left = (b.l + b.r) / 2 < mid;
+      if (left) nl++; else nr++;
+      const under = left ? !!lb && b.r <= lb.right + TOL : !!rb && b.l >= rb.left - TOL;
+      const away = b.r <= a.left + TOL || b.l >= a.right - TOL;
+      if (!under && !away) bad.push(`${name}: an item is only partly under a label`);
+    }
+    for (const [el, n, side] of [[L, nl, "left"], [R, nr, "right"]] as const) {
+      if (el.hidden === (n > 0)) bad.push(`${name}: the ${side} label is ${el.hidden ? "hidden" : "shown"} with ${n} items past it`);
+      if (!el.hidden && Number(el.dataset.n) !== n) bad.push(`${name}: the ${side} label says ${el.dataset.n}, ${n} items are under it`);
+      if (!el.hidden && !/\d/.test(el.textContent || "")) bad.push(`${name}: the ${side} label is a bare arrow`);
+    }
+  }
+  const menu = document.querySelector<HTMLElement>(".bh .vmenu"), chips = document.querySelector<HTMLElement>(".bh .vchips"), head = document.querySelector<HTMLElement>(".rm-head.bh");
+  if (!menu || !chips || !head) bad.push("the head has no version menu or chip row");
+  else {
+    const m = menu.getBoundingClientRect(), c = chips.getBoundingClientRect(), h = head.getBoundingClientRect();
+    if (chips.closest(".xrow")!.contains(menu)) bad.push("the version menu sits inside the chip row");
+    if (!(m.bottom <= c.top + TOL || m.top >= c.bottom - TOL || m.right <= c.left + TOL || m.left >= c.right - TOL)) bad.push("the version menu overlaps the chip row");
+    if (m.left < h.left - TOL || m.right > h.right + TOL || m.top < h.top - TOL || m.bottom > h.bottom + TOL) bad.push("the version menu is outside the head");
+  }
+  return bad;
+});
+const probeHidden = (page: Page, row: string, side: "l" | "r") => page.evaluate(([q, sd]) => {
+  document.querySelectorAll("[data-probe]").forEach((e) => e.removeAttribute("data-probe"));
+  const x = document.querySelector<HTMLElement>(q)!, rowEl = x.querySelector<HTMLElement>(".vchips,.tabs")!;
+  const L = x.querySelector<HTMLElement>(".edge.l")!, R = x.querySelector<HTMLElement>(".edge.r")!;
+  const a = rowEl.getBoundingClientRect(), clearL = L.hidden ? a.left : L.getBoundingClientRect().right, clearR = R.hidden ? a.right : R.getBoundingClientRect().left;
+  const kids = Array.from(rowEl.children).filter((c) => !c.matches(".pin"));
+  const hid = kids.filter((c) => { const b = c.getBoundingClientRect(); return sd === "l" ? b.left < clearL - 2 : b.right > clearR + 2; });
+  const pick = sd === "l" ? hid[hid.length - 1] : hid[0];
+  if (!pick) return false;
+  pick.setAttribute("data-probe", "1");
+  return true;
+}, [row, side] as const);
+const probeClear = (page: Page, row: string) => page.evaluate((q) => {
+  const x = document.querySelector<HTMLElement>(q)!, rowEl = x.querySelector<HTMLElement>(".vchips,.tabs")!, p = rowEl.querySelector("[data-probe]");
+  const L = x.querySelector<HTMLElement>(".edge.l")!, R = x.querySelector<HTMLElement>(".edge.r")!;
+  const a = rowEl.getBoundingClientRect(), clearL = L.hidden ? a.left : L.getBoundingClientRect().right, clearR = R.hidden ? a.right : R.getBoundingClientRect().left;
+  const b = p!.getBoundingClientRect();
+  return b.left >= clearL - 2 && b.right <= clearR + 2;
+}, row);
+const focusedClear = (page: Page) => page.evaluate(() => {
+  const f = document.activeElement, x = f && f.closest(".xrow");
+  if (!f || !x) return null;
+  const rowEl = x.querySelector<HTMLElement>(".vchips,.tabs")!, L = x.querySelector<HTMLElement>(".edge.l")!, R = x.querySelector<HTMLElement>(".edge.r")!;
+  const a = rowEl.getBoundingClientRect(), clearL = L.hidden ? a.left : L.getBoundingClientRect().right, clearR = R.hidden ? a.right : R.getBoundingClientRect().left;
+  const b = f.getBoundingClientRect();
+  return b.left >= clearL - 2 && b.right <= clearR + 2;
+});
+const PHONE_TABS = ["chains", "roadmap", "tidy", "nv"];
+test("390 px: on every tab both sideways rows keep the selected item clear, every item whole or wholly under one label, each label's number true, after the first paint, a refresh, and a resize to 600 px and back", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  for (const tab of PHONE_TABS) {
+    await go(page, `#/board?tab=${tab}`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), tab).toBe(true);
+    expect(await page.evaluate(() => { const t = document.querySelector(".tr .tabs")!; return t.scrollWidth > t.clientWidth; }), `${tab}: the tab list is wider than the phone`).toBe(true);
+    expect(await auditRows(page), `${tab}: first paint`).toEqual([]);
+    await Promise.all([page.waitForResponse((r) => r.url().includes("/api/")), page.locator('.aside [data-act="refresh-roadmap"]').click()]);
+    await page.waitForLoadState("networkidle");
+    await expect.poll(() => auditRows(page), { message: `${tab}: after a refresh` }).toEqual([]);
+    for (const w of [600, 390]) {
+      await page.setViewportSize({ width: w, height: 844 });
+      await expect.poll(() => auditRows(page), { message: `${tab}: at ${w} px` }).toEqual([]);
+    }
+  }
+  await shot(page, "board-tabs-sideways-dark-390");
+});
+test("390 px: a tap on an edge label leaves the route as it was and brings the next hidden item wholly clear", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  const hash = await page.evaluate(() => location.hash);
+  let taps = 0;
+  for (const [row, label] of [[".tr .xrow", "r"], [".tr .xrow", "l"], [".rm-head.bh .xrow", "r"], [".rm-head.bh .xrow", "l"]] as const) {
+    const edge = page.locator(`${row} .edge.${label}`);
+    if (!(await edge.isVisible())) continue;
+    expect(await edge.evaluate((el) => getComputedStyle(el).position), `${row} ${label}: the label sits over the row`).toBe("absolute");
+    expect(await probeHidden(page, row, label), `${row} ${label}: an item is hidden behind the label`).toBe(true);
+    await edge.click();
+    taps++;
+    expect(await page.evaluate(() => location.hash), `${row} ${label}: the route`).toBe(hash);
+    await expect.poll(() => probeClear(page, row), { message: `${row} ${label}: the next item is clear` }).toBe(true);
+    expect((await auditRows(page)).filter((m) => !m.includes("selected item")), `${row} ${label}`).toEqual([]);
+  }
+  expect(taps, "a label was visible to tap").toBeGreaterThan(0);
+});
+test("390 px: focus on a hidden tab or chip moves it wholly clear of both labels, tabbing through each row", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  const last = page.locator(".tr .tabs .tab").last();
+  expect(await last.evaluate((el) => el.getBoundingClientRect().right > el.parentElement!.getBoundingClientRect().right), "the last tab starts off-screen").toBe(true);
+  await last.focus();
+  expect(await focusedClear(page), "the last tab, focused").toBe(true);
+  await page.locator(".bh .vchips .vc").first().focus();
+  const seen: (boolean | null)[] = [];
+  for (let k = 0; k < 16; k++) { await page.keyboard.press("Tab"); seen.push(await focusedClear(page)); }
+  expect(seen.filter((v) => v === true).length, "the key reached the rows' items").toBeGreaterThan(3);
+  expect(seen.filter((v) => v === false), "a focused item sat under a label").toEqual([]);
+});
+test("390 px: a row the person scrolled keeps its place across a refresh, and a tab change starts the row placed afresh", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  const tabs = page.locator(".tr .tabs");
+  const settle = () => page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
+  const start = await tabs.evaluate((el) => el.scrollLeft);
+  let kept = -1;
+  const tried: string[] = [];
+  const reach = await tabs.evaluate((el) => el.scrollWidth - el.clientWidth);
+  for (const to of [start + 12, start - 12, start + 24, start - 24, start + 40, start - 40, start + 60, start - 60, start + 90, start - 90, 0, reach]) {
+    await tabs.evaluate((el, at) => { el.scrollLeft = at; }, to);
+    await settle();
+    const now = await tabs.evaluate((el) => el.scrollLeft);
+    const bad = await auditRows(page);
+    tried.push(`${to}→${now}:${bad.join("|") || "clear"}`);
+    if (Math.abs(now - start) > 4 && bad.length === 0) { kept = now; break; }
+  }
+  expect(kept, `a hand-scrolled place where the selected tab stays clear (start ${start}, reach ${reach}; ${tried.join(" ; ")})`).toBeGreaterThanOrEqual(0);
+  // A repaint replaces the row, so a locator handle taken before it points at the detached old row (scrollLeft 0): tag the row, wait until the
+  // page holds a row without the tag (the repaint has landed), and read the live row's place in one page-side call.
+  const liveLeft = () => page.evaluate(() => document.querySelector(".tr .tabs")!.scrollLeft);
+  await page.evaluate(() => { (document.querySelector(".tr .tabs") as HTMLElement & { oldRow?: boolean }).oldRow = true; });
+  await Promise.all([page.waitForResponse((r) => r.url().includes("/api/")), page.locator('.aside [data-act="refresh-roadmap"]').click()]);
+  await page.waitForFunction(() => { const row = document.querySelector(".tr .tabs") as (HTMLElement & { oldRow?: boolean }) | null; return !!row && !row.oldRow; });
+  await page.waitForLoadState("networkidle");
+  await settle();
+  const after = await liveLeft();
+  expect(Math.abs(after - kept), `the scroll after a refresh (start ${start}, kept ${kept}, after ${after}, reach ${reach}; tried ${tried.join(" ; ")}; audit after: ${(await auditRows(page)).join("|") || "clear"})`).toBeLessThanOrEqual(2);
+  await page.locator(".tr .tabs .tab").first().click();
+  await expect(page.locator('.tr .tabs .tab[aria-selected="true"]')).toHaveText(/Roadmap/);
+  await page.waitForLoadState("networkidle");
+  await settle();
+  expect(await liveLeft(), "Roadmap is the first tab: nothing to scroll past").toBeLessThanOrEqual(2);
+  expect(await auditRows(page)).toEqual([]);
+});
 for (const [width, height] of [[1280, 900], [390, 844]]) {
   test(`${width} px: five open chains stay compact, each open chain one rail, and the Ops chain's steps and Why links stay on one line`, async ({ page }) => {
     await page.route("**/api/board", async (route) => {
@@ -855,7 +1095,7 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
     await shot(page, `board-chains-five-fixture-dark-${width}`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     if (width === 1280) {
-      expect(Math.abs(top - MOCKUP_FIRST_CHAIN_Y), `first chain at ${top}px`).toBeLessThanOrEqual(40);
+      expect(Math.abs(top - BUILD_FIRST_CHAIN_Y), `first chain at ${top}px`).toBeLessThanOrEqual(40);
       expect(bottom).toBeLessThanOrEqual(FIXTURE_TAB_H_MAX);
       expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(8);
     }

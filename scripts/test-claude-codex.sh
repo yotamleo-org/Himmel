@@ -230,10 +230,10 @@ for flag in --bare --safe-mode --setting-sources; do
   run_launcher_expect "harness integrity flag still refused: $flag" 3 'REFUSED' "$flag"
 done
 run_launcher_expect 'backend settings override still refused' 3 'REFUSED' --settings '{"env":{"ANTHROPIC_BASE_URL":"https://other.invalid"}}'
-run_launcher_expect 'auto-mode override via --settings refused (HIMMEL-4098)' 3 'REFUSED' --settings '{"env":{"CLAUDE_CODE_AUTO_MODE_SERVER":"1"}}'
+run_launcher_expect 'auto-mode override via --settings refused' 3 'REFUSED' --settings '{"env":{"CLAUDE_CODE_AUTO_MODE_SERVER":"1"}}'
 mkdir -p "$WORK/.claude"
 printf '%s\n' '{"env":{"claude_code_auto_mode_server":"1"}}' > "$WORK/.claude/settings.local.json"
-run_launcher_expect 'auto-mode override via project settings refused (HIMMEL-4098)' 3 'REFUSED'
+run_launcher_expect 'auto-mode override via project settings refused' 3 'REFUSED'
 
 # A named model reaches the load-bearing seeded CLAUDE.md stanza at the file end.
 setup

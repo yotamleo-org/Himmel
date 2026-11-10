@@ -142,7 +142,7 @@ export function isThinClipBody(body, type, source) {
 }
 
 /**
- * Reddit source-host test (HIMMEL-769). reddit.com / *.reddit.com / redd.it.
+ * Reddit source-host test. reddit.com / *.reddit.com / redd.it.
  */
 export function isRedditHost(sourceUrl) {
   if (!sourceUrl) return false;
@@ -154,16 +154,16 @@ export function isRedditHost(sourceUrl) {
 }
 
 /**
- * Reddit thinness (HIMMEL-769). A reddit clip is thin when its body (below the
+ * Reddit thinness. A reddit clip is thin when its body (below the
  * H1, above the `## Source` footer) has NO meaningful content line — a bare
  * Telegram URL stub. A browser-Web-Clipper thread OR an enriched
  * `## Crawled content` section (real post text / comments) is rich → skipped.
  * Meaningful = a line that is not blank, a heading, an HTML comment, an image,
  * a template italic, a bare URL, a bare markdown-link line, or a placeholder.
  */
-// HARVEST-GENERATED summary sections (LUNA-2 reddit clip template + triage
+// HARVEST-GENERATED summary sections (the reddit clip template + triage
 // writer). Content under these is DERIVED commentary - never the captured
-// thread - so it must not mask thinness (HIMMEL-789: triaged _evidence clips
+// thread - so it must not mask thinness (triaged _evidence clips
 // carried a "What This Thread Is About" summary while the actual post +
 // comments were never captured). USER-authored template sections (My
 // Takeaway, Highlighted Comments, Action Items, Related Notes) are NOT here
@@ -206,7 +206,7 @@ export function isThinRedditBody(body) {
 }
 
 /**
- * Instagram source-host test (HIMMEL-770). instagram.com / *.instagram.com
+ * Instagram source-host test. instagram.com / *.instagram.com
  * (www./m. aliases). Mirrors isRedditHost.
  */
 export function isInstagramHost(sourceUrl) {

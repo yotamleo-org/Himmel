@@ -2542,7 +2542,7 @@ else
 fi
 printf '1792000000\n' > "$t/home/.himmel/state/bridge-restart.ts"
 out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
-if grepq "$out" -F 'automatic after station-sync' && grepq "$out" -F "last restart: $(date -d @1792000000 '+%F %H:%M')"; then  # gnu-ok: test host is Linux (the check is Linux-only)
+if grepq "$out" -F 'automatic after station-sync' && grepq "$out" -F "last restart: $(date -d @1792000000 '+%F %H:%M' 2>/dev/null || date -r 1792000000 '+%F %H:%M')"; then  # gnu-ok: BSD date -r follows on this same line
     pass "C77 fix line names when station-sync last restarted the bridge (HIMMEL-7936)"
 else
     fail "C77 fix line (stamp) -> $(printf '%s' "$out" | grep -A1 C77)"
@@ -2554,6 +2554,13 @@ if grepq "$out" 'OK   C77-bridge-stale' && ! grepq "$out" 'WARN C77-bridge-stale
     pass "C77 -> OK (poller started after the newest bridge commit)"
 else
     fail "C77 fresh poller -> $(printf '%s' "$out" | grep -A1 C77)"
+fi
+fake_systemctl "$t/probe" enabled 424242 0 'garbage'
+out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
+if grepq "$out" 'INFO C77-bridge-stale' && grepq "$out" -F 'unreadable' && ! grepq "$out" 'OK   C77-bridge-stale'; then
+    pass "C77 -> INFO unreadable when the start time cannot be parsed"
+else
+    fail "C77 unreadable start time -> $(printf '%s' "$out" | grep -A1 C77)"
 fi
 fake_systemctl "$t/probe" notfound
 out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
@@ -3617,7 +3624,7 @@ mkdir -p "$t/claude"; write_settings "$t/claude" "$WRAPPER"
 write_codex_config "$t/codex" wired
 out="$(CODEX_HOME="$t/codex" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C31-tokensave-dropped' \
-   && grepq "$out" -F 'HIMMEL-2581' \
+   && grepq "$out" -F 'tokensave was tried and dropped' \
    && grepq "$out" -F "remove the [mcp_servers.tokensave] table" \
    && grepq "$out" -F "$t/codex/config.toml"; then
     pass "C31 -> WARN naming the removal remedy verbatim"
@@ -6018,7 +6025,7 @@ cat > "$t/claude/settings.json" <<'EOF'
 { "mcpServers": {}, "hooks": { "PreToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "rtk hook claude" } ] } ] } }
 EOF
 out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'WARN C43-rtk-hook' && grepq "$out" -F 'HIMMEL-241' && ! grepq "$out" 'OK   C43-rtk-hook'; then
+if grepq "$out" 'WARN C43-rtk-hook' && grepq "$out" -F 'bypasses rtk-hook-guard.sh' && ! grepq "$out" 'OK   C43-rtk-hook'; then
     pass "C43 bare rtk hook entry -> WARN"
 else
     fail "C43 bare rtk hook entry -> $(printf '%s' "$out" | grep -A1 C43)"
@@ -6652,6 +6659,11 @@ printf '{"name":"R1"}\n' > "$c84_p/handovers/u/himmel/release/R1/release.json"
 printf '# chief\n## Live state\nrelease: R1\n' > "$c84_p/handovers/u/himmel/X-chief.md"
 out="$(cd "$c84_t/elsewhere" && env -u HANDOVER_DIR -u HIMMEL_RELEASE_STATE_DIR HIMMEL_DOCTOR_RM_STATE_PROBE="$c84_t/probe" CLAUDE_DIR="$c84_t/claude" HOME="$c84_t/home" bash "$DOC" --root "$c84_p" --only C84 --no-color 2>&1)"
 if grepq "$out" 'OK   C84-release-queue'; then pass "C84 finds the --root checkout's declaration from a non-git working directory"; else fail "C84 --root default -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C84-release-queue: run from another repo's directory it reads the same as from the checkout =="
+mkdir -p "$c84_t/away"; git init -q "$c84_t/away"
+c84_from() { local o; o="$(cd "$1" && env -u HANDOVER_DIR -u HIMMEL_RELEASE_STATE_DIR -u HIMMEL_REPO HIMMEL_DOCTOR_RM_STATE_PROBE="$c84_t/probe" CLAUDE_DIR="$c84_t/claude" HOME="$c84_t/home" bash "$DOC" --root "$c84_p" --only C84 --no-color 2>&1)"; sed -n '/C84-release-queue/p' <<< "$o"; }
+c84_home="$(c84_from "$c84_p")"; c84_away="$(c84_from "$c84_t/away")"
+if grepq "$c84_home" 'OK   C84-release-queue' && [ "$c84_away" = "$c84_home" ]; then pass "C84 from another repo's directory reads the same OK row as from the checkout"; else fail "C84 away vs checkout -> away: $c84_away / checkout: $c84_home"; fi
 echo "== C84-release-queue: disabled controls (release: none; nothing declared) -> INFO, never WARN =="
 c84_doc "release: none"
 out="$(c84_run)"
@@ -7374,7 +7386,7 @@ out="$(c66_run)"
 if grepq "$out" -F 'FAIL C66-hermes-cron-hooks'; then pass "C66 unfenced -> FAIL"; else fail "C66 unfenced -> $(printf '%s' "$out" | grep -A1 C66)"; fi
 
 echo "== C66: a comment naming register_from_config is not a registration -> FAIL =="
-sed '/^def _run_external_worker_payload/a\    # register_from_config(load_config(), accept_hooks=False)' \
+awk '{ print } /^def _run_external_worker_payload/ { print "    # register_from_config(load_config(), accept_hooks=False)" }' \
     "$REPO_ROOT/scripts/hermes/fixtures/cron-worker-unfenced.py" > "$c66_t/hermes/cron/scheduler.py"
 out="$(c66_run)"
 if grepq "$out" -F 'FAIL C66-hermes-cron-hooks'; then pass "C66 comment-only -> FAIL"; else fail "C66 comment-only -> $(printf '%s' "$out" | grep -A1 C66)"; fi
@@ -7548,6 +7560,7 @@ if [ -n "$c69_body" ] && ! grep -qE '\$\([^)]*$' <<< "$c69_body"; then pass "C69
 
 echo "== C70: graphify semantic freshness =="
 c70_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c70.XXXXXX")" || { fail "C70 mktemp -d failed"; exit 1; }
+c70_t="$(cd "$c70_t" && pwd)" || { fail "C70 cd into the temp dir failed"; exit 1; }  # the doctor prints --root through cd+pwd; a TMPDIR with a trailing slash (macOS) would leave "T//" here
 c70_out="$c70_t/home/.claude/graph-cadence/himmel/graphify-out"; c70_corpus="$c70_t/corpus"
 mkdir -p "$c70_out" "$c70_corpus"
 printf '{"real.md": {"mtime": 0}}\n' > "$c70_out/manifest.json"
@@ -7631,7 +7644,7 @@ c70_rows "" "" ""
 printf '{"ts": "2026-10-17T00:00:00Z", "name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_files": [], "refused_files": [], "backed_off_files": []}\n' > "$c70_t/root/graphify-out/semantic-runs.jsonl"
 c70_div() { env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR_ROOT="$c70_t/root" HIMMEL_DOCTOR_GRAPH_OUT= HIMMEL_DOCTOR_GRAPH_CHECK= HIMMEL_DOCTOR_CADENCE_OUT="$c70_out" "$@" bash "$DOC" --no-color --only C70 2>&1; }
 out="$(c70_div)"
-if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'cadence graph' && grepq "$out" -F "last=${c70_day}T02:00:00Z" && grepq "$out" -F 'HIMMEL-7357'; then pass "C70 station semantic layer older than the cadence graph -> WARN naming both"; else fail "C70 divergence -> $(printf '%s' "$out" | head -4)"; fi
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'cadence graph' && grepq "$out" -F "last=${c70_day}T02:00:00Z" && grepq "$out" -F 'until the cadence promotes its graph'; then pass "C70 station semantic layer older than the cadence graph -> WARN naming both"; else fail "C70 divergence -> $(printf '%s' "$out" | head -4)"; fi
 cp "$c70_out/semantic-runs.jsonl" "$c70_t/root/graphify-out/semantic-runs.jsonl"
 out="$(c70_div)"
 if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 station and cadence graph at the same semantic run -> no divergence row"; else fail "C70 equal -> $(printf '%s' "$out" | head -4)"; fi
@@ -7845,6 +7858,24 @@ HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_CONFIG_AUDIT_ENV_FILE="$c74_t/env
 rm -f "$c74_conf.local"
 out="$(c74_run)"
 if grepq "$out" -E '^WARN C74-config-keys: (.*; )?himmel\.conf\.local: deleted; newest good backup: -$' && ! grepq "$out" -F "backup: $c74_conf.local"; then pass "C74-config-keys deleted empty file -> WARN with its fields in place"; else fail "C74-config-keys empty loss -> $(printf '%s' "$out" | head -8)"; fi
+echo "== C74 run from another repo's directory reads the checkout's .env, never the caller's =="
+c74_reset; rm -rf "$c74_t/home/.himmel/state"
+c74_p="$c74_t/proj"; c74_away="$c74_t/away"; mkdir -p "$c74_p" "$c74_away"
+git init -q "$c74_p"; git init -q "$c74_away"
+ln -s "$REPO_ROOT/scripts" "$c74_p/scripts"
+printf 'JIRA_EMAIL=planted-dummy-value-74\nOPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_p/.env"
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}' > "$c74_pol"
+HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_CONFIG_AUDIT_ENV_FILE="$c74_p/.env" bash "$REPO_ROOT/scripts/lib/config-audit.sh" accept >/dev/null 2>&1
+c74_away_run() { (cd "$c74_away" && env -u HIMMEL_DOCTOR_ENV_FILE -u HIMMEL_REPO -u HIMMEL_CONFIG_AUDIT_ENV_FILE PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c74_t/claude" HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_CONFIG_AUDIT_DIR="" "$@" bash "$DOC" --root "$c74_p" --no-color --only C74 2>&1); }
+out="$(c74_away_run)"
+if grepq "$out" -F 'WARN C74-env-keys' && grepq "$out" -F 'JIRA_EMAIL' && grepq "$out" -F 'OK   C74-config-keys' && ! grepq "$out" -F 'deleted' && ! grepq "$out" -F 'planted-'; then pass "C74 from another repo's directory reads the checkout .env: env-keys names JIRA_EMAIL, config-keys OK"; else fail "C74 from another repo's directory -> $(printf '%s' "$out" | head -6)"; fi
+echo "== C74-config-keys: a .env that is not the recorded one -> INFO, never OK and never deleted =="
+out="$(c74_away_run HIMMEL_REPO="$c74_away")"
+if grepq "$out" -F 'INFO C74-config-keys' && ! grepq "$out" -F 'OK   C74-config-keys' && ! grepq "$out" -F 'deleted'; then pass "C74-config-keys with the .env read elsewhere than recorded -> INFO"; else fail "C74-config-keys unrecorded .env -> $(printf '%s' "$out" | head -6)"; fi
+echo "== config-audit accept from another repo's directory, with no recorded .env there -> exit 1, watch.json unchanged =="
+c74_w="$c74_t/home/.himmel/state/config-audit/watch.json"; cp "$c74_w" "$c74_t/watch.before"
+c74_rc=0; (cd "$c74_away" && env -u HIMMEL_CONFIG_AUDIT_ENV_FILE HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_CONFIG_AUDIT_DIR="" HIMMEL_REPO="$c74_away" bash "$c74_p/scripts/lib/config-audit.sh" accept >/dev/null 2>&1) || c74_rc=$?
+if [ "$c74_rc" -eq 1 ] && cmp -s "$c74_w" "$c74_t/watch.before"; then pass "accept from another repo's directory -> exit 1, watch.json bytes unchanged"; else fail "accept from another repo's directory -> rc=$c74_rc, watch.json changed: $(cmp "$c74_w" "$c74_t/watch.before" 2>&1)"; fi
 rm -rf "$c74_t"
 
 # --- C75-keyring: keyring state and the layer serving each manifest secret ---
@@ -8034,6 +8065,7 @@ rm -rf "$c88_t"
 
 # --- C87-stub-handover-state: files under <repo>/handovers newer than the operator's baseline marker ---
 c87_t="$(mktemp -d "${TMPDIR:-/tmp}/c87.XXXXXX")" || { echo "FATAL: C87 setup mktemp failed" >&2; exit 1; }
+c87_t="$(cd "$c87_t" && pwd)" || { echo "FATAL: C87 setup cd failed" >&2; exit 1; }  # a TMPDIR with a trailing slash (macOS) would leave "T//" where the doctor prints "T/"
 c87_x="$c87_t/repo"
 mkdir -p "$c87_x/scripts/lib" "$c87_t/home" "$c87_t/claude" "$c87_t/root"
 cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$c87_x/scripts/"
@@ -8325,5 +8357,38 @@ else
     echo "  SKIP: C95 sleeping holds.py — no timeout binary"
 fi
 rm -rf "$c95_t"
+
+printed_keys() {
+    awk '/^[[:space:]]*#/ { next }
+    {
+        s = ""; q = ""; n = length($0)
+        for (i = 1; i <= n; i++) {
+            c = substr($0, i, 1)
+            if (q == "") {
+                if (c == "#" && (i == 1 || substr($0, i - 1, 1) ~ /[[:space:]]/)) break
+                if (c == "\"" || c == "\047") q = c
+            } else if (c == q) { q = "" }
+            else { if (c == "\\" && q == "\"") { i++; c = c substr($0, i, 1) } s = s c }
+        }
+        if (s ~ /HIMMEL-[0-9]/) print FNR ": " $0
+    }' "$1"
+}
+echo "== printed text: the planted control is caught, comments are not =="
+pk_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-pk.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+pk_k="HIMMEL"
+{
+    printf '# a comment may name %s-1\n' "$pk_k"
+    # shellcheck disable=SC2016  # literal fixture text, no expansion intended
+    printf 'x=$((10#$y))  # so may a trailing one: %s-2\n' "$pk_k"
+    printf '%s\n' 'emit OK C99-clean "clean text with # inside quotes"'
+    printf 'emit WARN C99-planted "a planted row (%s-1234)" "do the thing"\n' "$pk_k"
+    printf "    \"fix: see '%s-77'\"\n" "$pk_k"
+} > "$pk_t/doctor.sh"
+out="$(printed_keys "$pk_t/doctor.sh")"
+if [ "$out" = "$(printf '4: emit WARN C99-planted "a planted row (%s-1234)" "do the thing"\n5:     "fix: see '\''%s-77'\''"' "$pk_k" "$pk_k")" ]; then pass "printed-key scan flags the two planted printed lines only"; else fail "printed-key scan on the planted fixture -> $out"; fi
+echo "== printed text: no line the doctor prints carries a ticket key =="
+out="$(printed_keys "$DOC")"
+if [ -z "$out" ]; then pass "the doctor prints no ticket key"; else fail "the doctor prints ticket keys: $out"; fi
+rm -rf "$pk_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

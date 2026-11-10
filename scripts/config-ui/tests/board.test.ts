@@ -7,7 +7,7 @@ import childProcess from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
-import { DRIFT_BUDGET_S, DRIFT_REFRESH_MS, readBoardExtras, refreshDrift, runReader, TIMEOUT_MS } from "../board";
+import { DRIFT_BUDGET_S, DRIFT_REFRESH_MS, readBoardExtras, readOwed, refreshDrift, runReader, TIMEOUT_MS } from "../board";
 import { renderBoard } from "../public/roadmap.js";
 
 const TOKEN = "a".repeat(64);
@@ -235,7 +235,7 @@ test("Board page: a live operator hold and an operator label in the mirror both 
   expect(sec).toContain("HIMMEL-9"); // the label, from the mirror, in no chain
   expect(sec).toContain("operator-decision");
   expect(sec).not.toContain("at=HIMMEL-9"); // the Chains tab does not hold it, so the key is not a link
-  expect(html).toContain("2 wait for you");
+  expect(html).toContain("2 tickets wait for you");
   rmSync(join(st, "chain-log.jsonl"));
   mkdirSync(join(st, "chain-log.jsonl")); // there, but not a file: unreadable
   const bad = await page(serve(env, s));
@@ -243,8 +243,8 @@ test("Board page: a live operator hold and an operator label in the mirror both 
   const badSec = bad.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)![0];
   expect(badSec).toContain("HIMMEL-9"); // the label still lists
   expect(badSec).not.toContain("HIMMEL-2"); // the hold is not guessed at: nothing of it is listed or linked
-  expect(bad).toContain("1 waits for you"); // the label still counts
-  expect(bad).not.toContain("2 wait for you");
+  expect(bad).toContain("1 ticket waits for you");
+  expect(bad).not.toContain("2 tickets wait for you");
 });
 
 test("GET /api/board: the saved drift file and the chain registry named in the environment are read through the chief-kit scripts", async () => {
@@ -588,7 +588,7 @@ test("Board: a card shows its open PR and CI as a link from the worker records, 
     ["HIMMEL-" + 3]: [{ pr: 4703, head: "a".repeat(40), ci: "running" }],
     ["HIMMEL-" + 5]: [{ pr: 4704, head: "b".repeat(40), ci: "red" }] }, seen: {}, unread: [] }); // pending reads running, a red latch reads red, a closed PR is not listed
   const html = await page(base);
-  const card = (k: string) => html.match(new RegExp(`<div class="rm-card"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
+  const card = (k: string) => html.match(new RegExp(`<div class="rm-card(?: cc(?: red)?)?"[^>]*aria-label="${k}:[\\s\\S]*?</div></div>`))![0];
   expect(card("HIMMEL-3")).toContain('<a class="pr ci-running" href="https://github.com/acme/widgets/pull/4703"');
   expect(card("HIMMEL-3")).toContain("#4703 · CI running");
   expect(card("HIMMEL-3")).not.toContain("no open PR");
@@ -600,8 +600,80 @@ test("Board: a card shows its open PR and CI as a link from the worker records, 
   writeFileSync(join(st, "workers", "HIMMEL-4.json"), "{ not json");
   writeFileSync(join(st, "workers", "HIMMEL-" + 2 + ".json"), "null"); // parses, but holds no record
   expect((await get(serve(env, s))).prs.unread.sort()).toEqual(["HIMMEL-" + 2, "HIMMEL-" + 4]);
-  expect((await page(serve(env, s))).match(new RegExp(`<div class="rm-card"[^>]*aria-label="HIMMEL-${4}:[\\s\\S]*?</div></div>`))![0]).not.toContain("no open PR"); // the record could not be read, so no claim is made
+  expect((await page(serve(env, s))).match(new RegExp(`<div class="rm-card(?: cc(?: red)?)?"[^>]*aria-label="HIMMEL-${4}:[\\s\\S]*?</div></div>`))![0]).not.toContain("no open PR"); // the record could not be read, so no claim is made
   const none = await page(serve({ ...env, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s));
   expect(none).not.toContain("no open PR"); // the records could not be read: no card is flagged on a guess
   expect(none).not.toContain("CI running");
+});
+
+test("the Blocked on you list shows an owed item with no DELIVERED receipt and a worker the tick holds unclosed, and each row leaves when its record lands", () => {
+  const s = scratch();
+  const doc = join(s.d, "HIMMEL-nextleg-2026-11-10XZ-roadmap-chief.md");
+  const stateDir = join(s.d, "tick-state");
+  mkdirSync(stateDir, { recursive: true });
+  const stateFile = join(stateDir, "tick-unclosed-HIMMEL-nextleg-2026-11-10XZ-roadmap-chief");
+  const env = { PATH: process.env.PATH, HOME: s.home, HIMMEL_CHIEF_DOC: doc, HIMMEL_BUCKET_DIR: s.d, TICK_STATE_DIR: stateDir };
+  const noRoadmap = (() => { throw new Error("no roadmap in this test"); }) as unknown as typeof import("../roadmap").readRoadmap;
+  const write = (bullets: string) => writeFileSync(doc, `# chief\n\n## Live state\n\nworkers: x\n\n## Results\n${bullets}`);
+  const held = () => { writeFileSync(stateFile, "N5805 1000 0\nN5806 1000 0\nN5807 1600 0\n"); utimesSync(stateFile, 1600, 1600); };
+  const rows = (source: string) => { const o = readOwed(env, noRoadmap); if (o.state !== "ok") throw new Error(o.reason); return o.items.filter((i) => i.source === source); };
+
+  write("- 09:00 OWED sig-9608 sign the spec on Telegram\n- 09:01 OWED sig-9609 pick the version\n- 09:02 DELIVERED sig-9609 msg=42 chat=-100\n");
+  held();
+  const owed = rows("owed undelivered");
+  expect(owed.map((i) => i.title)).toEqual(["sig-9608: sign the spec on Telegram"]);
+  expect(owed[0].ctx).toContain("no DELIVERED receipt");
+  expect(owed[0].act).toContain("chief-route.ts reply --owed sig-9608");
+  const un = rows("unclosed worker");
+  expect(un.map((i) => i.title)).toEqual(["N5805 is finished and its window is still open", "N5806 is finished and its window is still open"]);
+  expect(un[0].ctx).toContain("no DISPOSITION bullet");
+  expect(un[0].act).toContain("DISPOSITION N5805 closed");
+
+  write("- 09:00 OWED sig-9608 sign the spec on Telegram\n- 09:03 DELIVERED sig-9608 msg=43 chat=-100\n- 10:00 DISPOSITION N5806 closed\n- 10:01 DISPOSITION N5805 parked\n");
+  expect(rows("owed undelivered")).toEqual([]);
+  expect(rows("unclosed worker").map((i) => i.title)).toEqual(["N5805 is finished and its window is still open"]);
+  write("- 10:00 DISPOSITION N5806 closed\n- 10:01 DISPOSITION N5805 parked wake=pr-4999-merge\n");
+  expect(rows("unclosed worker")).toEqual([]);
+
+  rmSync(stateFile);
+  write("- 09:00 OWED sig-9608 sign the spec on Telegram\n");
+  expect(rows("unclosed worker")).toEqual([]);
+  expect(rows("owed undelivered").length).toBe(1);
+});
+
+test("an unclosed worker recorded with a disposition already present stays until a newer one lands, and a parked with nothing after it does not clear it", () => {
+  const s = scratch();
+  const doc = join(s.d, "HIMMEL-nextleg-2026-11-10XZ-roadmap-chief.md");
+  const stateDir = join(s.d, "tick-state");
+  mkdirSync(stateDir, { recursive: true });
+  const stateFile = join(stateDir, "tick-unclosed-HIMMEL-nextleg-2026-11-10XZ-roadmap-chief");
+  const env = { PATH: process.env.PATH, HOME: s.home, HIMMEL_CHIEF_DOC: doc, HIMMEL_BUCKET_DIR: s.d, TICK_STATE_DIR: stateDir };
+  const noRoadmap = (() => { throw new Error("no roadmap in this test"); }) as unknown as typeof import("../roadmap").readRoadmap;
+  const write = (bullets: string) => writeFileSync(doc, `# chief\n\n## Live state\n\nworkers: x\n\n## Results\n${bullets}`);
+  const labels = () => { const o = readOwed(env, noRoadmap); if (o.state !== "ok") throw new Error(o.reason); return o.items.filter((i) => i.source === "unclosed worker").map((i) => { expect(i.since).toBe(1000); return i.label; }); };
+  writeFileSync(stateFile, "N5808 1000 1\nN5809 1000 0\n");
+  utimesSync(stateFile, 1600, 1600);
+
+  write("- 08:00 DISPOSITION N5808 closed\n- 08:01 DISPOSITION N5809 parked \n- 08:02 note\n");
+  expect(labels()).toEqual(["N5808", "N5809"]);
+  write("- 08:00 DISPOSITION N5808 closed\n- 09:00 DISPOSITION N5808 closed\n- 08:01 DISPOSITION N5809 parked \n- 08:02 note\n");
+  expect(labels()).toEqual(["N5809"]);
+});
+
+test("a chief doc with no Live state section is named unread even when it holds an unclosed worker, and the worker still shows", () => {
+  const s = scratch();
+  const doc = join(s.d, "HIMMEL-nextleg-2026-11-10XZ-roadmap-chief.md");
+  const stateDir = join(s.d, "tick-state");
+  mkdirSync(stateDir, { recursive: true });
+  const stateFile = join(stateDir, "tick-unclosed-HIMMEL-nextleg-2026-11-10XZ-roadmap-chief");
+  const env = { PATH: process.env.PATH, HOME: s.home, HIMMEL_CHIEF_DOC: doc, HIMMEL_BUCKET_DIR: s.d, TICK_STATE_DIR: stateDir };
+  const noRoadmap = (() => { throw new Error("no roadmap in this test"); }) as unknown as typeof import("../roadmap").readRoadmap;
+  writeFileSync(join(s.d, "x-HANDOFF.md"), "# handoff\n\n## Open operator items\n- none\n");
+  writeFileSync(doc, "# chief\n\n## Results\n- 08:00 note\n");
+  writeFileSync(stateFile, "N5810 1000 0\n");
+  utimesSync(stateFile, 1600, 1600);
+  const o = readOwed(env, noRoadmap);
+  if (o.state !== "ok") throw new Error(o.reason);
+  expect(o.unread).toContain("chief doc lines");
+  expect(o.items.filter((i) => i.source === "unclosed worker").map((i) => i.label)).toEqual(["N5810"]);
 });

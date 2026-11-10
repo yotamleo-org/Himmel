@@ -185,6 +185,10 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # at exactly <head> (scripts/cr/dependabot-go.sh writes it).
 #   pass           an avail ok row, and no open crit/imp finding of its own
 #   findings-open  open finding(s), whatever the avail rows say; detail = their ids
+#   findings-fixed an avail ok row, and every open crit/imp finding sits at the carried
+#                  head with verdict fixed and that head is a strict ancestor of <head>;
+#                  detail = their ids. _crg_eval reads it as pass only with a signed
+#                  judge GO at <head> naming the PR's branch, else as findings-open.
 #   absent         a critic-skipped row whose detail matches _CCFG_ABSENT_RE
 #                  (cannot run on this machine); detail = the matched phrase
 #   not-selected   tier-excluded / keep-one-skipped: not picked for this PR
@@ -252,6 +256,12 @@ if (malformed > 0) {
     process.stdout.write("degraded\t" + malformed + " malformed critic ledger line(s)\n");
     process.exit(0);
 }
+const descends = (anc, tip) => {
+    const a = resolve(anc), t = resolve(tip);
+    if (!a || !t || a === t) return false;
+    try { cp.execFileSync("git", ["merge-base", "--is-ancestor", a, t], { stdio: "ignore" }); return true; }
+    catch (_) { return false; }
+};
 const ABSENT = new RegExp(e.RG_ABSENT_RE);
 const CARRY = /trivial-descendant of reviewed head ([0-9a-f]{7,40})/;
 const model = (o) => (typeof o.model === "string" ? o.model : "").trim();
@@ -266,12 +276,19 @@ for (const slug of e.RG_SLUGS.split(" ").filter(Boolean)) {
     let rows = own(avail(slug, head));
     if (rows.length === 0 && carry) { head = resolve(carry[1]) || carry[1]; rows = own(avail(slug, head)); }
     let state, detail = "";
-    const open = recs.filter((o) => o.kind === "finding" && model(o) === slug
+    const unsettled = recs.filter((o) => o.kind === "finding" && model(o) === slug
         && (atHead(o, head) || atHead(o, e.RG_HEAD))
         && (o.severity === "crit" || o.severity === "imp") && o.verdict !== "disproved"
         && !(o.verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(str(o.deferred_to)) && str(o.reason)));
+    const fixedBelow = (o) => o.verdict === "fixed" && head !== e.RG_HEAD && !atHead(o, e.RG_HEAD)
+        && HEX.test(String(o.head || "")) && descends(o.head, e.RG_HEAD);
+    const open = unsettled.filter((o) => !fixedBelow(o));
+    const fixedOnly = unsettled.filter(fixedBelow);
+    const ids = (a) => a.map((o) => o.finding_id || "?").join(",");
     if (open.length) {
-        state = "findings-open"; detail = open.map((o) => o.finding_id || "?").join(",");
+        state = "findings-open"; detail = ids(open);
+    } else if (fixedOnly.length) {
+        state = rows.some((o) => o.status === "ok") ? "findings-fixed" : "findings-open"; detail = ids(fixedOnly);
     } else if (rows.length === 0) {
         state = "not-yet-run";
     } else if (rows.some((o) => o.status === "ok")) {
@@ -469,6 +486,15 @@ _crg_eval() {
             [ -n "$state" ] || { state=degraded; detail="no ledger state"; }
         fi
         [ "$state" = absent ] && [ "$req" = true ] && state=unavailable
+        if [ "$state" = findings-fixed ] && [ "$prov" != github-app ]; then
+            [ -n "$jg_checked" ] || { jg_src=$(_crg_judge_source "$owner" "$name" "$num" "$states"); jg_checked=1; }
+            if [ -n "$jg_src" ]; then
+                note="${note}NOTE: $slug finding(s) $detail are fixed in a descendant of the reviewed head; signed judge GO ($jg_src) at head $head of PR #$num closes them."$'\n'
+                state=pass; detail=""
+            else
+                state=findings-open
+            fi
+        fi
         # --release only: a signed judge GO at the head stands in for a hard
         # reviewer that has not passed. A reviewer's own open finding still holds.
         if [ "${_CRG_RELEASE:-0}" = 1 ] && [ "$mode" = hard ] && [ "$prov" != github-app ]; then

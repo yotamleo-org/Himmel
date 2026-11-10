@@ -170,98 +170,6 @@ emit() { printf '%s\n' "$*" >> "$RES/$CUR.txt"; }   # emit <status> <caller> <mo
 
 known_task() {
     awk -v c="$1" -v m="$2" -v a="$3" '$2 == c && $3 == m && $4 == a { print $1; exit }' <<'KNOWN'
-T3 go.sh gql-out exit
-T3 go.sh gql-out names-limit
-T3 go.sh gql-out no-false-phrase
-T3 go.sh rest-out exit
-T3 go.sh rest-out names-limit
-T3 go.sh rest-out no-false-phrase
-T3 go.sh both-out exit
-T3 go.sh both-out names-limit
-T3 go.sh both-out no-false-phrase
-T3 go.sh gql-200 exit
-T3 go.sh gql-200 names-limit
-T3 go.sh gql-200 no-false-phrase
-T3 go.sh gql-late exit
-T3 go.sh gql-late names-limit
-T3 go.sh gql-late no-false-phrase
-T3 go.sh main-only exit
-T3 go.sh main-only no-false-phrase
-T3 go.sh reset-past exit
-T3 go.sh reset-past names-limit
-T3 go.sh reset-past no-false-phrase
-T3 go.sh reset-absent exit
-T3 go.sh reset-absent names-limit
-T3 go.sh reset-absent no-false-phrase
-T3 go.sh reset-absurd exit
-T3 go.sh reset-absurd names-limit
-T3 go.sh reset-absurd no-false-phrase
-T3 go.sh secondary exit
-T3 go.sh secondary names-limit
-T3 go.sh secondary no-false-phrase
-T3 go.sh hung exit
-T3 go.sh hung-after-probe exit
-T3 go.sh main-hung bound
-T3 go.sh main-hung exit
-T3 go.sh main-hung names-limit
-T3 ready-check.sh gql-out names-limit
-T3 ready-check.sh gql-out no-false-phrase
-T3 ready-check.sh rest-out exit
-T3 ready-check.sh rest-out names-limit
-T3 ready-check.sh rest-out no-false-phrase
-T3 ready-check.sh both-out names-limit
-T3 ready-check.sh both-out no-false-phrase
-T3 ready-check.sh gql-200 exit
-T3 ready-check.sh gql-200 names-limit
-T3 ready-check.sh gql-200 no-false-phrase
-T3 ready-check.sh gql-late exit
-T3 ready-check.sh gql-late names-limit
-T3 ready-check.sh gql-late no-false-phrase
-T3 ready-check.sh reset-past names-limit
-T3 ready-check.sh reset-past no-false-phrase
-T3 ready-check.sh reset-absent names-limit
-T3 ready-check.sh reset-absent no-false-phrase
-T3 ready-check.sh reset-absurd names-limit
-T3 ready-check.sh reset-absurd no-false-phrase
-T3 ready-check.sh secondary names-limit
-T3 ready-check.sh secondary no-false-phrase
-T3 ready-check.sh hung exit
-T3 ready-check.sh hung-after-probe exit
-T3 cr-disposition.sh secondary names-limit
-T3 cr-disposition.sh secondary no-false-phrase
-T3 cr-disposition.sh hung bound
-T3 cr-disposition.sh hung exit
-T3 cr-disposition.sh hung names-limit
-T3 cr-disposition.sh hung-after-probe bound
-T3 cr-disposition.sh hung-after-probe exit
-T3 cr-disposition.sh hung-after-probe names-limit
-T4 check-ci.sh gql-out names-limit
-T4 check-ci.sh both-out names-limit
-T4 check-ci.sh gql-200 names-limit
-T4 check-ci.sh rest-out names-limit
-T4 check-ci.sh rest-out no-false-phrase
-T4 check-ci.sh reset-past no-false-phrase
-T4 check-ci.sh reset-absent names-limit
-T4 check-ci.sh reset-absurd names-limit
-T4 check-ci.sh secondary names-limit
-T4 check-ci.sh hung bound
-T4 check-ci.sh hung exit
-T4 check-ci.sh hung names-limit
-T4 check-ci.sh hung-after-probe bound
-T4 check-ci.sh hung-after-probe exit
-T4 check-ci.sh hung-after-probe names-limit
-T5 tick.sh gql-out names-limit
-T5 tick.sh rest-out names-limit
-T5 tick.sh both-out names-limit
-T5 tick.sh gql-200 names-limit
-T5 tick.sh reset-past names-limit
-T5 tick.sh reset-absent names-limit
-T5 tick.sh reset-absurd names-limit
-T5 tick.sh secondary names-limit
-T5 tick.sh hung bound
-T5 tick.sh hung exit
-T5 tick.sh hung names-limit
-T5 tick.sh hung-after-probe names-limit
 T6 next-dispatchable.sh gql-out no-false-phrase
 T6 next-dispatchable.sh both-out no-false-phrase
 T6 next-dispatchable.sh gql-200 no-false-phrase
@@ -279,45 +187,17 @@ T6 next-dispatchable.sh hung-after-probe bound
 T6 next-dispatchable.sh hung-after-probe exit
 T6 next-dispatchable.sh hung-after-probe names-limit
 T7a chief-wait.sh gql-out telegram-latency
-T7a chief-wait.sh gql-out no-false-wake
-T7a chief-wait.sh gql-out ready-unspent
-T7a chief-wait.sh gql-out no-false-phrase
 T7a chief-wait.sh both-out telegram-latency
-T7a chief-wait.sh both-out no-false-wake
-T7a chief-wait.sh both-out ready-unspent
-T7a chief-wait.sh both-out no-false-phrase
 T7a chief-wait.sh gql-200 telegram-latency
-T7a chief-wait.sh gql-200 no-false-wake
-T7a chief-wait.sh gql-200 ready-unspent
-T7a chief-wait.sh gql-200 no-false-phrase
 T7a chief-wait.sh main-only telegram-latency
-T7a chief-wait.sh main-only no-false-wake
-T7a chief-wait.sh main-only ready-unspent
-T7a chief-wait.sh main-only no-false-phrase
 T7a chief-wait.sh rest-out telegram-latency
-T7a chief-wait.sh rest-out no-false-wake
-T7a chief-wait.sh rest-out ready-unspent
-T7a chief-wait.sh rest-out no-false-phrase
 T7a chief-wait.sh reset-past telegram-latency
-T7a chief-wait.sh reset-past no-false-wake
-T7a chief-wait.sh reset-past ready-unspent
-T7a chief-wait.sh reset-past no-false-phrase
 T7a chief-wait.sh reset-absent telegram-latency
-T7a chief-wait.sh reset-absent no-false-wake
-T7a chief-wait.sh reset-absent ready-unspent
-T7a chief-wait.sh reset-absent no-false-phrase
 T7a chief-wait.sh reset-absurd telegram-latency
-T7a chief-wait.sh reset-absurd no-false-wake
-T7a chief-wait.sh reset-absurd ready-unspent
-T7a chief-wait.sh reset-absurd no-false-phrase
 T7a chief-wait.sh secondary telegram-latency
-T7a chief-wait.sh secondary no-false-wake
-T7a chief-wait.sh secondary ready-unspent
-T7a chief-wait.sh secondary no-false-phrase
 T7a chief-wait.sh hung bound
 T7a chief-wait.sh hung telegram-latency
 T7a chief-wait.sh hung-after-probe bound
-T7a chief-wait.sh hung-after-probe exit
 T7a chief-wait.sh hung-after-probe telegram-latency
 KNOWN
 }
@@ -576,10 +456,24 @@ drive_check_ci() {
     setup_caller_dir check-ci
     gate_fixture || { emit "FAIL check-ci.sh setup gate_fixture"; return 0; }
     cd "$GATE_REPO" || return 0
+    mkdir -p "$cdir/checkci-bin"
+    cat > "$cdir/checkci-bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    "pr view 77 --json url,reviewDecision,headRefOid,baseRefName"*)
+        printf 'https://github.com/o/r/pull/77\tnull\t%s\tmain\n' "$READY_STUB_HEAD"
+        exit 0 ;;
+esac
+exec "$CHECKCI_NEXT_GH" "$@"
+STUB
+    chmod +x "$cdir/checkci-bin/gh"
+    EXTRA_ENV="CHECKCI_NEXT_GH=$READY_BIN/gh"
+    READY_BIN="$cdir/checkci-bin"
     AFFECT_FN=affect_check_ci RATE_BOUND=20
     for m in $(modes_for); do
         run_mode check-ci.sh "$m" 12 2 bash "$script" 77 --max-wait 5 --settle 0 --grace 1
     done
+    EXTRA_ENV=""
 }
 
 affect_cw() { case "$1" in read-only) echo no ;; *) echo yes ;; esac; }

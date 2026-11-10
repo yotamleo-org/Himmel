@@ -48,6 +48,7 @@ ROOT=$(mktemp -d "${TMPDIR:-/tmp}/check-ci-cache.XXXXXX") || { echo "FATAL: mkte
 # shellcheck disable=SC2329,SC2317
 cleanup() { if [ -n "$ROOT" ] && [ -d "$ROOT" ]; then rm -rf "$ROOT" 2>/dev/null; fi; return 0; }
 trap cleanup EXIT
+export HIMMEL_QUOTA_DIR="$ROOT/quota"
 
 BIN="$ROOT/bin"
 mkdir -p "$BIN"
@@ -487,6 +488,9 @@ new_case
 got=$(GH_READ_ENV_ROOT="$ROOT/ghr-root" bash -c '. "$1"; cic_init "" && cic_get 60; echo "rc=$? rows=$(printf "%s" "$CIC_ROWS" | tr "\n\t" ",_")"' _ "$LIB" 2>/dev/null)
 if [ "$got" = "rc=0 rows=pending_unit-tests,pass_lint" ]; then pass "14 main token spent: the snapshot reads through the read token"; else fail "14 spent main" "got [$got] err=[$CIC_ERR]"; fi
 if [ "$(grep -c '^main$' "$CASE_DIR/toks.log")" -eq 0 ] && [ "$(grep -c '^read$' "$CASE_DIR/toks.log")" -ge 1 ]; then pass "14b no cache read ran on the main token"; else fail "14b tokens" "$(tr '\n' ' ' < "$CASE_DIR/toks.log")"; fi
+
+got=$(bash -c '. "$1"; _cic_is_rl "API rate limit already exceeded" && echo y1; _cic_is_rl "You have exceeded a secondary rate limit" && echo y2; _cic_is_rl "HTTP 502: Bad Gateway" || echo n3' _ "$LIB" 2>/dev/null | tr '\n' ' ')
+if [ "$got" = "y1 y2 n3 " ] && grep -q '^_cic_is_rl() { ghb_is_rate_limited ' "$LIB"; then pass "15 _cic_is_rl delegates to the shared rule"; else fail "15 _cic_is_rl" "got [$got]"; fi
 
 echo
 echo "check-ci-cache: $PASS passed, $FAIL failed"

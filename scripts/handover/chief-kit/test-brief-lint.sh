@@ -239,6 +239,7 @@ cg_ticket HIMMEL-9411 Task Medium   # core Writes, no spec
 cg_ticket HIMMEL-9412 Task Medium   # core Writes, no spec (second key of a pair)
 cg_ticket HIMMEL-9413 Task Medium   # core Writes, signed
 cg_ticket HIMMEL-9414 Bug Medium    # a Bug: core-check answers BYPASS
+cg_ticket HIMMEL-9640 Task Medium
 printf -- '---\nkey: "HIMMEL-9415"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: ["core"]\n---\n# HIMMEL-9415: t\n' > "$tmp/cg-mirror/HIMMEL-9415.md"   # core by its label
 printf -- '---\nkey: "HIMMEL-9416"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# HIMMEL-9416: t\n\nEdit scripts/handover/chief-kit/go.sh to change the GO path.\n' > "$tmp/cg-mirror/HIMMEL-9416.md"   # core by the path its own body names
 cg_ticket HIMMEL-9417 Task Medium   # names no path
@@ -264,6 +265,7 @@ if (a[0] === 'release' && a[1] === 'core-check') {
   for (const k of a.slice(a.indexOf('--key') + 1)) {
     const t = ticket(k);
     if (!t) console.log('UNKNOWN ' + k);
+    else if (fs.existsSync((process.env.BRIEF_LINT_TEST_NEEDS || '/nonexistent') + '/' + k)) process.stdout.write(fs.readFileSync(process.env.BRIEF_LINT_TEST_GOLDEN, 'utf8'));
     else if (t.type === 'Bug') console.log('BYPASS ' + k + ' bug a Bug is not gated');
     else if (hit) console.log('CORE ' + k + ' ' + hit);
     else if (t.labels.includes('core')) console.log(design ? 'BYPASS ' + k + ' design core by label only, docs-only leg' : 'CORE ' + k + ' label core');
@@ -277,6 +279,16 @@ if (a[0] === 'release' && a[1] === 'core-check') {
     console.log(r ? 'SPEC ok ' + k + ' ' + r : 'NO-SPEC ' + k);
   }
   process.exit(missing);
+} else if (a[0] === 'release' && a[1] === 'bucket-check') {
+  if (process.env.BRIEF_LINT_TEST_LOG) fs.appendFileSync(process.env.BRIEF_LINT_TEST_LOG, a.join(' ') + '\n');
+  for (const k of a.slice(a.indexOf('--mirror') + 2)) {
+    let v = '';
+    try { v = fs.readFileSync((process.env.BRIEF_LINT_TEST_BUCKET || '') + '/' + k, 'utf8').trim(); } catch (e) { v = ''; }
+    if (v === 'EXIT1') { console.error('stub jira: bucket-check failed'); process.exit(1); }
+    if (v === 'NOLINE') continue;
+    if (v === 'SLEEP') { setTimeout(() => console.log('IN ' + k), 8000); continue; }
+    console.log(v || 'IN ' + k + ' current=v1.1.3 via=mirror');
+  }
 } else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
 STUBEOF
 export BRIEF_LINT_MIRROR="$tmp/cg-mirror" BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" BRIEF_LINT_TEST_SIGNED="$tmp/cg-signed"
@@ -453,8 +465,120 @@ printf '// valid JavaScript that exits 0 and prints no verdict line\n' > "$tmp/j
 BRIEF_LINT_JIRA_CLI="$tmp/junk.js" expect_rc "8k a core-check that prints no verdict line is CORE-CHECK-FAILED" 3 "$tmp/core_none.md"
 printf "const a = process.argv.slice(2);\nif (a[1] === 'core-check') console.log('CORE ' + a[a.indexOf('--key') + 1] + ' x'); else console.log('junk');\n" > "$tmp/junk-spec.js"
 BRIEF_LINT_JIRA_CLI="$tmp/junk-spec.js" expect_rc "8k2 a spec-check that prints no verdict line is CORE-CHECK-FAILED" 3 "$tmp/core_none.md"
+mk bnsp '# HIMMEL-9640 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+NEEDS="$tmp/cg-needs"; mkdir -p "$NEEDS"; touch "$NEEDS/HIMMEL-9640"
+export BRIEF_LINT_TEST_NEEDS="$NEEDS" BRIEF_LINT_TEST_GOLDEN="$HERE/../../jira/src/release/fixtures/bypass-needs-spec.line"
+rc=0; err="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" "$tmp/bnsp.md" 2>&1 >/dev/null)" || rc=$?
+{ [ "$rc" -eq 3 ] && grep -Fq 'no spec-review record' <<< "$err"; } && ok "8s1 a BYPASS-NEEDS-SPEC key refuses with the missing record" || bad "8s1 BYPASS-NEEDS-SPEC (rc=$rc want 3): $err"
+grep -Fq 'waives the signature, never the spec' <<< "$err" && ok "8s1b the refusal says the bypass waives the signature, never the spec" || bad "8s1b refusal text: $err"
+rc=0; err2="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" --core-only "$tmp/bnsp.md" 2>&1 >/dev/null)" || rc=$?
+{ [ "$rc" -eq 3 ] && grep -Fq 'no spec-review record' <<< "$err2"; } && ok "8s2 --core-only refuses a BYPASS-NEEDS-SPEC key the same way" || bad "8s2 --core-only BYPASS-NEEDS-SPEC (rc=$rc want 3): $err2"
+export BRIEF_LINT_TEST_SPECS="$tmp/specs-9640"; mkdir -p "$BRIEF_LINT_TEST_SPECS"
+for f in HIMMEL-9640-spec.md HIMMEL-9640-plan.md HIMMEL-9640-critic-spec-r1.md; do printf '# fixture\n' > "$BRIEF_LINT_TEST_SPECS/$f"; done
+rc_with=0; err_with="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" "$tmp/bnsp.md" 2>&1 >/dev/null)" || rc_with=$?
+rm -f "$BRIEF_LINT_TEST_SPECS/"*
+rc_without=0; err_without="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" "$tmp/bnsp.md" 2>&1 >/dev/null)" || rc_without=$?
+{ [ "$rc_with" -eq "$rc_without" ] && [ "$err_with" = "$err_without" ] && [ "$rc_with" -eq 3 ]; } && ok "8s3 brief-lint answers the same with the fixture specs removed" || bad "8s3 specs changed the answer: rc $rc_with vs $rc_without: [$err_with] vs [$err_without]"
+rm -f "$NEEDS/HIMMEL-9640"; unset BRIEF_LINT_TEST_NEEDS BRIEF_LINT_TEST_GOLDEN BRIEF_LINT_TEST_SPECS
 BRIEF_LINT_JIRA_CLI="$tmp/no-dist/index.js" expect_rc "8l a brief with no ticket key in its title never asks the CLI" 0 "$tmp/tmpl_ok.md"
-unset BRIEF_LINT_MIRROR BRIEF_LINT_JIRA_CLI BRIEF_LINT_TEST_SIGNED
+
+BK="$tmp/bk"; BKLOG="$tmp/bk-argv.log"; mkdir -p "$BK"
+export BRIEF_LINT_MIRROR="$tmp/cg-mirror" BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" BRIEF_LINT_TEST_BUCKET="$BK" BRIEF_LINT_TEST_LOG="$BKLOG"
+bk_set() { printf '%s\n' "$2" > "$BK/$1"; }
+bk_lint() { rc=0; : > "$BKLOG"; err="$(env "$@" 2>&1 >/dev/null)" || rc=$?; }
+bk_calls() { grep -c 'bucket-check' "$BKLOG" || true; }  # swallow-ok: grep -c exits 1 on a count of 0
+in_order() { local s="$1" p; shift; for p in "$@"; do case "$s" in *"$p"*) s="${s#*"$p"}" ;; *) return 1 ;; esac; done; }
+RES0='## Results (newest at the bottom)'
+for k in 9421 9422 9423 9424 9425 9426 9427 9428 9429 9430 9431 9432 9433 9434 9435 9436 9437 9438 9439; do cg_ticket "HIMMEL-$k" Task Medium; done
+cg_ticket ZZZ-1 Task Medium
+mk bk_out '# HIMMEL-9421 — a later-version build' "$PA" '> **Contract:** y' "$RES0"
+bk_set HIMMEL-9421 'OUTSIDE HIMMEL-9421 v1.1.4 current=v1.1.3 open=57'
+bk_lint bash "$LINT" "$tmp/bk_out.md"
+[ "$rc" -eq 3 ] && ok "8r1 a v1.1.4 ticket with v1.1.3 open is refused (exit 3)" || bad "8r1 outside key rc=$rc want 3: $err"
+{ grep -Fq 'HIMMEL-9421' <<< "$err" && grep -Fq 'v1.1.4' <<< "$err" && grep -Fq 'v1.1.3' <<< "$err" && grep -Fq '57 open' <<< "$err"; } \
+    && ok "8r2 the refusal names the key, its version, current and the open count" || bad "8r2 OUTSIDE fields: $err"
+in_order "$err" 'out-of-version' 'release request' 'parallel work' 'At 0 open' 'releases it in Jira' \
+    && ok "8r3 the refusal text holds its clauses in order, the 0-open clause beside the Jira release" || bad "8r3 refusal text order: $err"
+! grep -Fq 'VERSION_GATE_OK' <<< "$err" && ok "8r3b the refusal names no off switch (decision 855)" || bad "8r3b refusal names VERSION_GATE_OK: $err"
+rc=0; err="$(VERSION_GATE_OK=1 bash "$LINT" "$tmp/bk_out.md" 2>&1 >/dev/null)" || rc=$?
+{ [ "$rc" -eq 3 ] && [ ! -e "$tmp/version-gate.jsonl" ]; } && ok "8r4 VERSION_GATE_OK=1 passes nothing and logs no row (decision 855)" || bad "8r4 VERSION_GATE_OK rc=$rc want 3, row written=$([ -e "$tmp/version-gate.jsonl" ] && echo yes || echo no): $err"
+bk_set HIMMEL-9421 'OUTSIDE HIMMEL-9421 none current=v1.1.3 open=57'
+bk_lint bash "$LINT" "$tmp/bk_out.md"
+[ "$rc" -eq 3 ] && ok "8r5 a versionless ticket is refused" || bad "8r5 versionless rc=$rc want 3: $err"
+bk_set HIMMEL-9421 'IN HIMMEL-9421 current=v1.1.3 via=mirror'
+bk_lint bash "$LINT" "$tmp/bk_out.md"
+[ "$rc" -eq 0 ] && ok "8r6 a ticket in the current version passes" || bad "8r6 IN rc=$rc want 0: $err"
+bk_set HIMMEL-9421 'OUTSIDE HIMMEL-9421 v1.1.4 current=v1.1.3 open=0'
+bk_lint bash "$LINT" --core-only "$tmp/bk_out.md"
+[ "$rc" -eq 3 ] && ok "8r7 --core-only cannot skip the bucket rule on an outside key" || bad "8r7 --core-only outside rc=$rc want 3: $err"
+bk_lint bash "$LINT" --judge "$tmp/bk_out.md"
+{ [ "$rc" -eq 0 ] && [ "$(bk_calls)" -eq 0 ]; } && ok "8r8 --judge skips the bucket rule and asks nothing" || bad "8r8 judge rc=$rc calls=$(bk_calls): $err"
+mk bk_judge '# HIMMEL-9421 — a later-version review' "$PA" '> **Completion condition:** z' "$RES0"
+bk_lint bash "$LINT" --judge "$tmp/bk_judge.md"
+{ [ "$rc" -eq 0 ] && [ "$(bk_calls)" -eq 0 ]; } && ok "8r8b a judge brief on an outside key passes with no bucket-check call" || bad "8r8b judge brief rc=$rc calls=$(bk_calls): $err"
+bk_lint bash "$LINT" --skip-bucket "$tmp/bk_out.md"
+{ [ "$rc" -eq 0 ] && [ "$(bk_calls)" -eq 0 ]; } && ok "8r8c --skip-bucket (the generator's flag) skips the rule and asks nothing" || bad "8r8c --skip-bucket rc=$rc calls=$(bk_calls): $err"
+mk bk_none '# HIMMEL-9422 — an adopter build' "$PA" '> **Contract:** y' "$RES0"
+bk_set HIMMEL-9422 'NONE HIMMEL-9422 /m/ADOPT'
+bk_lint bash "$LINT" "$tmp/bk_none.md"
+{ [ "$rc" -eq 0 ] && grep -Fq 'HIMMEL-9422 bypass=' <<< "$err"; } && ok "8r9 NONE passes and prints a bypass= line with the key" || bad "8r9 NONE rc=$rc: $err"
+mk bk_appr '# HIMMEL-9423 — an approved build' "$PA" '> **Contract:** y' "$RES0"
+bk_set HIMMEL-9423 'APPROVED HIMMEL-9423 decision=901 record=O-R1-ov-901'
+bk_lint bash "$LINT" "$tmp/bk_appr.md"
+{ [ "$rc" -eq 0 ] && grep -Fq 'HIMMEL-9423 bypass=' <<< "$err" && grep -Fq 'decision=901' <<< "$err"; } && ok "8r10 APPROVED passes and prints a bypass= line with the decision" || bad "8r10 APPROVED rc=$rc: $err"
+mk bk_done '# HIMMEL-9424 — a closed ticket' "$PA" '> **Contract:** y' "$RES0"
+mk bk_done_ran '# HIMMEL-9424 — a closed ticket' "$PA" '> **Contract:** y' "$RES0" '- 10:00 LIVE — started'
+bk_set HIMMEL-9424 'DONE HIMMEL-9424'
+bk_lint bash "$LINT" "$tmp/bk_done.md"
+{ [ "$rc" -eq 3 ] && grep -Fq 'new ticket' <<< "$err" && grep -Fq 'reopen' <<< "$err"; } && ok "8r11 a Done ticket on a new doc is refused, naming a new ticket or a reopen" || bad "8r11 DONE new doc rc=$rc: $err"
+bk_lint bash "$LINT" "$tmp/bk_done_ran.md"
+{ [ "$rc" -eq 0 ] && grep -Fq 'HIMMEL-9424 bypass=' <<< "$err"; } && ok "8r12 a Done ticket on a doc that has run passes with a bypass= line" || bad "8r12 DONE run doc rc=$rc: $err"
+bk_lint bash "$LINT" --core-only "$tmp/bk_done_ran.md"
+{ [ "$rc" -eq 0 ] && grep -Fq 'HIMMEL-9424 bypass=' <<< "$err"; } && ok "8r13 --core-only: the run doc passes too, on a shell that loaded no worker-identity.sh" || bad "8r13 DONE run doc --core-only rc=$rc: $err"
+mk bk_fail '# HIMMEL-9425 — a build' "$PA" '> **Contract:** y' "$RES0"
+bk_set HIMMEL-9425 'FAILED HIMMEL-9425 no readable mirror at /m/HIMMEL'
+bk_lint bash "$LINT" "$tmp/bk_fail.md"
+{ [ "$rc" -eq 3 ] && grep -Fq 'FAILED' <<< "$err" && grep -Fq 'HIMMEL-9425' <<< "$err" && grep -Fq 'no readable mirror' <<< "$err"; } && ok "8r14 FAILED refuses by name, with the verdict's reason" || bad "8r14 FAILED rc=$rc: $err"
+mk bk_exit1 '# HIMMEL-9426 — a build' "$PA" '> **Contract:** y' "$RES0"
+bk_set HIMMEL-9426 EXIT1
+bk_lint bash "$LINT" "$tmp/bk_exit1.md"
+{ [ "$rc" -eq 3 ] && grep -Fq 'bucket-check' <<< "$err" && grep -Fq 'exited 1' <<< "$err"; } && ok "8r15 a CLI exiting 1 refuses by name" || bad "8r15 CLI exit 1 rc=$rc: $err"
+mk bk_sleep '# HIMMEL-9427 — a build' "$PA" '> **Contract:** y' "$RES0"
+bk_set HIMMEL-9427 SLEEP
+bk_lint BRIEF_LINT_VERDICT_TIMEOUT=1 bash "$LINT" "$tmp/bk_sleep.md"
+{ [ "$rc" -eq 3 ] && grep -Fq 'bucket-check' <<< "$err" && grep -Fq 'timed out' <<< "$err"; } && ok "8r16 a CLI sleeping past BRIEF_LINT_VERDICT_TIMEOUT refuses by name" || bad "8r16 sleeping CLI rc=$rc: $err"
+mk bk_noline '# HIMMEL-9428 — a build' "$PA" '> **Contract:** y' "$RES0"
+bk_set HIMMEL-9428 NOLINE
+bk_lint bash "$LINT" "$tmp/bk_noline.md"
+{ [ "$rc" -eq 3 ] && grep -Fq 'no parseable' <<< "$err" && grep -Fq 'HIMMEL-9428' <<< "$err"; } && ok "8r17 a CLI printing no verdict line refuses, naming the key" || bad "8r17 no verdict line rc=$rc: $err"
+bk_set HIMMEL-9428 'MAYBE HIMMEL-9428 current=v1.1.3'
+bk_lint bash "$LINT" "$tmp/bk_noline.md"
+[ "$rc" -eq 3 ] && ok "8r17b a verdict word the lint does not know is no answer" || bad "8r17b unknown verdict rc=$rc: $err"
+bk_lint BRIEF_LINT_JIRA_CLI="$tmp/no-dist/index.js" bash "$LINT" "$tmp/bk_noline.md"
+[ "$rc" -eq 3 ] && ok "8r18 no built CLI refuses (the core rule says so first)" || bad "8r18 no CLI rc=$rc: $err"
+bk_set HIMMEL-9428 'IN HIMMEL-9428 current=v1.1.3 via=mirror'
+bk_lint BRIEF_LINT_VERDICT_TIMEOUT=abc bash "$LINT" "$tmp/bk_noline.md"
+{ [ "$rc" -eq 3 ] && grep -Fq 'BRIEF_LINT_VERDICT_TIMEOUT' <<< "$err"; } && ok "8r19 a non-numeric BRIEF_LINT_VERDICT_TIMEOUT refuses by name" || bad "8r19 bad timeout rc=$rc: $err"
+bk_lint BRIEF_LINT_VERDICT_TIMEOUT=9999 bash "$LINT" "$tmp/bk_noline.md"
+[ "$rc" -eq 0 ] && ok "8r20 a BRIEF_LINT_VERDICT_TIMEOUT above 120 is clamped, not refused" || bad "8r20 clamp rc=$rc: $err"
+mkdir -p "$tmp/bkd"
+printf -- '---\ndescription: Check the lint on a test brief\nresume_cwd: %s\n---\n# a title with no key\n%s\n> **Contract:** y\n%s\n' "$CW_HIM" "$PA" "$RES0" > "$tmp/bkd/HIMMEL-9429-x.md"
+bk_set HIMMEL-9429 'OUTSIDE HIMMEL-9429 v1.1.4 current=v1.1.3 open=3'
+bk_lint bash "$LINT" "$tmp/bkd/HIMMEL-9429-x.md"
+{ [ "$rc" -eq 3 ] && grep -Fq 'HIMMEL-9429' <<< "$err"; } && ok "8r21 a keyless title on a keyed doc name is asked, and refused for an outside key" || bad "8r21 doc-name key rc=$rc: $err"
+bk_lint bash "$LINT" --core-only "$tmp/bkd/HIMMEL-9429-x.md"
+[ "$rc" -eq 3 ] && ok "8r21b --core-only reads the doc name's key too" || bad "8r21b --core-only doc name rc=$rc: $err"
+mk bk_pair '# HIMMEL-9430 + HIMMEL-9431 — a pair' "$PA" '> **Contract:** y' "$RES0"
+bk_set HIMMEL-9431 'OUTSIDE HIMMEL-9431 v1.1.4 current=v1.1.3 open=2'
+bk_lint bash "$LINT" "$tmp/bk_pair.md"
+{ [ "$rc" -eq 3 ] && grep -Fq 'HIMMEL-9431' <<< "$err" && ! grep -Fq 'HIMMEL-9430 is' <<< "$err"; } && ok "8r22 a two-key title: the second, outside key is refused by name and the first is not" || bad "8r22 pair rc=$rc: $err"
+bk_lint bash "$LINT" "$tmp/tmpl_ok.md"
+{ [ "$rc" -eq 0 ] && [ "$(bk_calls)" -eq 0 ]; } && ok "8r23 a brief with no key in its title or doc name makes no bucket-check call" || bad "8r23 keyless rc=$rc calls=$(bk_calls): $err"
+mkdir -p "$tmp/bkhome/.himmel/state/jira-mirror"; ln -s "$tmp/cg-mirror" "$tmp/bkhome/.himmel/state/jira-mirror/ZZZ"
+mk bk_zzz '# ZZZ-1 — another project' "$PA" '> **Contract:** y' "$RES0"
+bk_lint -u BRIEF_LINT_MIRROR HOME="$tmp/bkhome" bash "$LINT" --core-only "$tmp/bk_zzz.md"
+{ [ "$rc" -eq 0 ] && grep -Fq -- "--mirror $tmp/bkhome/.himmel/state/jira-mirror/ZZZ" "$BKLOG"; } && ok "8r24 the --mirror argument is the key's own project" || bad "8r24 mirror argument rc=$rc: $(cat "$BKLOG") $err"  # read-sink-ok: BKLOG is this suite's own scratch log under its mktemp dir
+unset BRIEF_LINT_MIRROR BRIEF_LINT_JIRA_CLI BRIEF_LINT_TEST_SIGNED BRIEF_LINT_TEST_BUCKET BRIEF_LINT_TEST_LOG
 
 # 9. A worker brief (a Contract line) carries the search directive, the notes query over BOTH collections and the graph
 # symbol named, whatever its Prior art line cites. A ticket key or #PR does not replace it.

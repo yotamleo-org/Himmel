@@ -57,6 +57,18 @@ test("renderHealth with no feed and no health still renders the strip, the tiles
   expect(html).toContain("No data");
 });
 
+test("the Trends section says whether the weekly roll-up job is off, on or unreadable, with a Configure link only when it is off", () => {
+  const view = (job: string) => renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, rollup: { state: "absent", reason: "ignored text", job } });
+  const off = view("off"), on = view("on"), unknown = view("unknown");
+  expect(off).toContain("The weekly roll-up job is off");
+  expect(off).toContain('href="#/config"');
+  expect(on).toContain("The weekly roll-up job is on and has not run yet");
+  expect(on).not.toContain('href="#/config"');
+  expect(unknown).toContain("How to fill it");
+  for (const h of [on, unknown]) expect(h).not.toContain("job is off");
+  expect(unknown).not.toContain("job is on");
+});
+
 // a responding exporter makes monitoring.state "ok", which must not hide a failing Prometheus.
 test("each monitoring source's failure is rendered on its own, even when the other is ok", () => {
   const gone = { state: "absent" };

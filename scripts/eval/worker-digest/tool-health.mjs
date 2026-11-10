@@ -19,6 +19,35 @@ function readRows(path) {
   try { return readFileSync(path, 'utf8').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r && typeof r === 'object' ? [r] : []; } catch { return []; } }); }
   catch { return []; }
 }
+const strOrNull = (v) => v === null || typeof v === 'string';
+const validLaunch = (r) => r && typeof r === 'object' && !Array.isArray(r) && r.v === 1 && typeof r.ts === 'string' && Number.isFinite(Date.parse(r.ts))
+  && Number.isSafeInteger(r.rc) && typeof r.cause === 'string' && strOrNull(r.name) && strOrNull(r.line);
+export function readLaunchRows(path) {
+  let text;
+  try { text = readFileSync(path, 'utf8'); } catch (e) { return e && e.code === 'ENOENT' ? { exists: false, rows: [], skipped: 0 } : null; }
+  const rows = []; let skipped = 0;
+  for (const l of text.split('\n')) {
+    if (!l.trim()) continue;
+    let r; try { r = JSON.parse(l); } catch { skipped++; continue; }
+    if (validLaunch(r)) rows.push(r); else skipped++;
+  }
+  return { exists: true, rows, skipped };
+}
+const CAUSE_RE = /^[a-z][a-z0-9-]{0,40}$/;
+function rollupLaunches(launches, firstDay, lastDay) {
+  if (!launches) return { state: 'not-read' };
+  if (!launches.exists) return { state: 'absent', total: 0, by_cause: [], recent: [], skipped: 0 };
+  const inWindow = launches.rows.filter((r) => { const d = dayOf(Date.parse(r.ts)); return d !== null && d >= firstDay && d <= lastDay; });
+  const causes = new Map();
+  for (const r of inWindow) {
+    const cause = CAUSE_RE.test(r.cause) ? r.cause : 'other';
+    const c = causes.get(cause) ?? { cause, count: 0, rc: {} };
+    c.count++; c.rc[String(r.rc)] = (c.rc[String(r.rc)] ?? 0) + 1; causes.set(cause, c);
+  }
+  const recent = inWindow.map((r, i) => ({ r, i })).sort((a, b) => Date.parse(b.r.ts) - Date.parse(a.r.ts) || b.i - a.i).slice(0, 20)
+    .map(({ r }) => ({ ts: r.ts, name: r.name, cause: CAUSE_RE.test(r.cause) ? r.cause : 'other', rc: r.rc, line: r.line }));
+  return { state: 'ok', total: inWindow.length, by_cause: [...causes.values()].sort((a, b) => b.count - a.count || a.cause.localeCompare(b.cause)), recent, skipped: launches.skipped };
+}
 // Test override for the listing cost, {profile: {tool: tokens}}; absent or unreadable = none.
 function readListing(path) {
   try { const j = JSON.parse(readFileSync(path, 'utf8')); return j && typeof j === 'object' && !Array.isArray(j) ? j : {}; }
@@ -34,7 +63,7 @@ export function readToolHealth(env = process.env, query = new URLSearchParams(),
   const listing = env.HIMMEL_PROFILE_LISTING ? readListing(env.HIMMEL_PROFILE_LISTING)
     : estimateListing ? estimateProfileListing({ configDir: env.CLAUDE_CONFIG_DIR || join(home, '.claude') }) : {};
   return rollupToolHealth(readRows(env.HIMMEL_EVAL_RUNS_LEDGER || join(home, '.himmel', 'eval-runs.jsonl')),
-    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing, { rtk, eligible, chain });
+    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing, { rtk, eligible, chain, launches: readLaunchRows(join(home, '.himmel', 'launch-refusals.jsonl')) });
 }
 
 // Option B (spec 0.3 B1): a guard's denominator is the calls to the tools it is wired to check, not Bash alone.
@@ -90,7 +119,7 @@ const profileOf = (...candidates) => {
 };
 
 // listing: {profile: {tool: listing tokens}} from profile-listing.mjs; absent = no drop candidates.
-export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}, { rtk, eligible, chain } = {}) {
+export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}, { rtk, eligible, chain, launches } = {}) {
   const days = query.get('days') === '30' ? 30 : 7;
   const since = query.get('since');
   const lastDay = dayOf(now), firstDay = since ? dayOf(Date.parse(since)) : dayOf(Date.parse(lastDay) - (days - 1) * 86400000);
@@ -313,7 +342,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const chainOut = rollupChain(chain, { firstDay, lastDay, refused });
   result.hooks = result.hooks.map(({ refusals, ...h }) => ({ ...h, reason_gap: chainOut.gaps?.[memberOfGuardClass(h.class)] ?? null }));
   const { gaps, ...chainShown } = chainOut ?? {};
-  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, cross_tab, attribution, bash: bashRollup(filtered, usable, rtk), coverage: coverageOf(everySlot.filter((s) => matches(s)), new Set(sessions.keys()), rtk, firstDay, lastDay), chain: chainOut.state === 'not-read' ? chainOut : chainShown, filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => everySlot.some((s) => s.team === t)) }, selected };
+  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, cross_tab, attribution, bash: bashRollup(filtered, usable, rtk), coverage: coverageOf(everySlot.filter((s) => matches(s)), new Set(sessions.keys()), rtk, firstDay, lastDay), chain: chainOut.state === 'not-read' ? chainOut : chainShown, launches_refused: rollupLaunches(launches, firstDay, lastDay), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => everySlot.some((s) => s.team === t)) }, selected };
 }
 
 // What the roll-up does not see: digested sessions that carry no tool_health (left out of the rates), and the sessions and

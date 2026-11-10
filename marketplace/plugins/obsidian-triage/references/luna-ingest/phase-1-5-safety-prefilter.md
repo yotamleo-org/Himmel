@@ -1,4 +1,4 @@
-# luna-ingest — Phase 1.5 — Safety pre-filter (LUNA-43)
+# luna-ingest — Phase 1.5 — Safety pre-filter
 
 Moved verbatim out of `SKILL.md`.
 
@@ -31,6 +31,6 @@ Match rule: if ANY of the rules above (or operator-curated additions, see below)
 - Without `--allow-unsafe`: exit rc=6 with message `ERR luna-ingest: safety pre-filter matched <term> in <field>. Pass --allow-unsafe to ingest with safety_flag annotation, or skip this repo.` — no synthesis written.
 - With `--allow-unsafe`: continue to Phase 2 but propagate `safety_flag` into the synthesis frontmatter so downstream readers (and `/synthesize-clips`) know to treat the page as `unknown-risk` regardless of license / star count.
 
-**Operator customisation:** the keyword list above is the LUNA-43 default. Operators can extend it by setting `LUNA_INGEST_SAFETY_KEYWORDS=<comma-separated terms>` in their shell — additions ONLY (no removal of defaults). Removed defaults require an explicit SKILL.md edit + PR review, by design.
+**Operator customisation:** the keyword list above is the default. Operators can extend it by setting `LUNA_INGEST_SAFETY_KEYWORDS=<comma-separated terms>` in their shell — additions ONLY (no removal of defaults). Removed defaults require an explicit SKILL.md edit + PR review, by design.
 
 Log line: `[safety] matched=<term> field=<name|description|topics|readme> action=<refused|annotated>` to stderr regardless of action.

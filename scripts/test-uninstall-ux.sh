@@ -223,7 +223,7 @@ w1_writer bridge-unit scripts/himmelctl/lib/bridge-persistence.js
 w1_writer telegram-channel "PENDING(no writer found; gap predates S6, unfiled)"
 w1_writer telegram-bridge "PENDING(no writer found; gap predates S6, unfiled)"
 w1_writer scheduled-jobs "PENDING(no writer found; gap predates S6, unfiled)"
-w1_writer cadence-jobs "PENDING(HIMMEL-3332 S8)"
+w1_writer cadence-jobs "PENDING(slice S8, the cadence-jobs writer is not built)"
 w1_writer plugins scripts/machine-setup/install-plugins.sh
 w1_writer git-hooks "PENDING(no writer found; gap predates S6, unfiled)"
 w1_writer git-hook-backups "PENDING(no writer found; gap predates S6, unfiled)"
@@ -241,7 +241,7 @@ w1_writer provenance-ledger scripts/lib/provenance.sh
 w1_writer workspace-trust scripts/himmelctl/bin.js
 w1_writer adopter-scripts scripts/adopt.sh
 w1_writer himmel-clone scripts/himmelctl/bin.js
-w1_writer standalone-uninstaller "PENDING(HIMMEL-3312 S13 — bundle writer not built yet)"
+w1_writer standalone-uninstaller "PENDING(slice S13 — bundle writer not built yet)"
 # Coverage: a manifest row added later with record != none and no w1_writer
 # call above must fail here, not pass silently by never being checked.
 w1_missing=""

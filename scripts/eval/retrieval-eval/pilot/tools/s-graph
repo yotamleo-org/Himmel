@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""s-graph -- the RAG pilot's frozen code/doc graph lookup, identical for the S and Q arms.
+
+    s-graph <name words...>
+
+Lists up to 10 graph nodes whose label matches the words, each with its file in /work/himmel
+and up to 5 neighbours. The graph is the frozen H0 graph named by the read-only binding
+($PILOT_BINDING, default /run/pilot/binding.json); a graph outside the bound graph root, or
+built at another commit than H0, refuses. A node whose source file is not in the himmel export
+manifest, and every edge touching one, is never printed.
+"""
+import json, os, re, sys
+
+DEFAULT_BINDING = "/run/pilot/binding.json"
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print("usage: s-graph <name words...>")
+        return 0 if argv else 2
+    try:
+        with open(os.environ.get("PILOT_BINDING", DEFAULT_BINDING)) as f:
+            b = json.load(f)
+        graph, root = os.path.realpath(b["graph"]), os.path.realpath(b["graph_root"])
+    except (OSError, ValueError, KeyError):
+        print("s-graph: graph unavailable", file=sys.stderr)
+        return 3
+    if os.path.commonpath([graph, root]) != root:
+        print("s-graph: graph unavailable (outside the pinned copy)", file=sys.stderr)
+        return 3
+    with open(graph) as f:
+        g = json.load(f)
+    if g.get("built_at_commit") != b["h0"]:
+        print("s-graph: graph unavailable (not the pinned build)", file=sys.stderr)
+        return 3
+    with open(b["manifests"]["himmel"]) as f:
+        files = set(json.load(f)["files"])
+    base = b["collections"]["himmel"]
+    nodes = {n["id"]: n for n in g.get("nodes", [])}
+    allowed = {i for i, n in nodes.items() if n.get("source_file") in files}
+    adj = {}
+    for e in g.get("links", g.get("edges", [])):
+        s, t = e.get("source"), e.get("target")
+        if s in allowed and t in allowed:
+            adj.setdefault(s, []).append((e.get("relation", "related"), t))
+            adj.setdefault(t, []).append((e.get("relation", "related"), s))
+    words = [w.lower() for w in re.findall(r"[\w.-]+", " ".join(argv))]
+    match = [i for i in allowed if all(w in (nodes[i].get("label", "") + " " + nodes[i].get("norm_label", "")).lower() for w in words)]
+    match.sort(key=lambda i: (len(nodes[i].get("label", "")), i))
+    if not match:
+        print("s-graph: no matching symbol")
+        return 0
+    out = []
+    for i in match[:10]:
+        n = nodes[i]
+        loc = str(n.get("source_location", "")).lstrip("L") or "1"
+        out.append("%s  %s/%s:%s" % (n.get("label"), base, n["source_file"], loc))
+        for rel, j in adj.get(i, [])[:5]:
+            m = nodes[j]
+            out.append("   %s %s  %s/%s" % (rel, m.get("label"), base, m["source_file"]))
+    print("\n".join(out))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

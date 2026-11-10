@@ -474,7 +474,7 @@ out=$(
 check "no HERMES_HOME/LOCALAPPDATA: default root is \$HOME/.hermes" \
   "skip: hermes not installed as a git checkout \\($tmp/linux-default/\\.hermes/hermes-agent\\)" "$out"
 if grepq "$out" "AppData"; then
-  echo "FAIL: default root resolution fell back to \$HOME/AppData/Local (HIMMEL-2437 regression)"; fail=1
+  echo "FAIL: default root resolution fell back to \$HOME/AppData/Local (regression)"; fail=1
 else
   echo "ok: default root resolution never falls back to \$HOME/AppData/Local on Linux/macOS"
 fi

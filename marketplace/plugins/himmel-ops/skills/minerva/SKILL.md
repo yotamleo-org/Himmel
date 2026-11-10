@@ -219,6 +219,41 @@ check's "theirs" pile, and to approve the document. With no operator, make
 each call yourself and record it as one ASSUMPTIONS ruling line,
 `<decision> — <why> — <cost if wrong>`; the Stage-2 critic is the approval.
 
+<!-- critic-readiness-recipe-start -->
+### Optional critic readiness check (opt-in)
+
+Use this only when the caller opts in; without it Stages 2 and 4 run exactly as written. Before a
+Stage 2 (kind `spec`) or Stage 4 (kind `plan`) dispatch, take the round R that this skill's own kind
+and counter propose, and write a REQUEST file:
+`{"schema":1,"operation_id":"<fresh id>","kind":"<spec|plan>","spec_path":"<absolute spec>","source_repo":"<absolute repo under review>","source_head":"<its HEAD, 40 hex>","artifacts":[{"path":"<absolute spec>","sha256":"<hash>"}],"requested_round":R}`
+(for kind `plan`, `artifacts` lists the spec, then the exact plan). Immediately before the dispatch run
+`bun <HIMMEL_REPO>/scripts/handover/chief-kit/critic-policy.ts check <REQUEST.json>`. Continue past this
+step only on exit 0 with `"action":"eligible"` in its JSON. Any other exit, or a missing or malformed
+reply, stops that dispatch: keep the refusal as printed and do not retry or call anything to work
+around it. Exit 3 means the existing operator record for that round is missing. Exit 0 describes the
+named bytes and the observed count only; the caller's routing, overrides, round cap and its operator
+exception, seals and approvals all still apply.
+
+Typed findings (same opt-in, from round 1 of the selected kind; a kind whose earlier returns are plain
+prose cannot join it, and nothing is retrofitted). For that opted-in Claude critic only, paste the
+charter this stage already uses verbatim, add one newline, append `critic-return-format.md` from this
+skill's folder verbatim, add one newline, then exactly these three lines. K is `spec` for Stage 2 or
+`plan` for Stage 4 and R is the same requested round as the REQUEST; take both from the controller, never
+from the artifact's prose. The label is informational, not an identity.
+
+<!-- critic-context -->
+```text
+critic_kind: ${K}
+requested_round: ${R}
+reviewer_id: minerva-${K}-r${R}
+```
+
+The advisory panel and any dispatch that did not opt in receive neither the format nor these lines. Save
+the return under its usual name, seal it where the existing workflow already seals, then run
+`python3 <HIMMEL_REPO>/scripts/handover/chief-kit/critic-findings.py normalize --spec <spec> --kind K --round n --verdict <return file> --out <return file>.finding-index.json`.
+A refusal is final for that attempt: do not edit the return, write the index by hand or retry.
+<!-- critic-readiness-recipe-end -->
+
 ## Stage 2 — spec critic (adversarial)
 
 **Gate first.** Resolve `$S` with the resolver from the Mode
@@ -238,6 +273,63 @@ restart the count. Every round the critic reads the whole file. After round 3 st
 the page goes to the operator with each open finding on it, for a ruling. A
 further round needs an operator record, and `critic-seal.sh` refuses to seal it without one.
 
+**Name what the critic reviews, before each dispatch.** Look over the spec's
+`## Fact ownership` first: a fix there later is a spec edit, which costs a round.
+Find the primary himmel checkout, never a worktree, since a worktree has no
+`scripts/jira/dist/`:
+
+```bash
+# >>> himmel checkout for the critic seal
+R="${HIMMEL_REPO:-}"; [ -f "$R/scripts/lib/initiative-workers.sh" ] || R="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"; R="${R%/.git}"
+[ -f "$R/scripts/lib/initiative-workers.sh" ] || R="$HOME/Documents/github/himmel"
+[ -f "$R/scripts/lib/initiative-workers.sh" ] && echo "$R"
+# <<< himmel checkout for the critic seal
+```
+
+It printing nothing means no checkout on this machine: skip the page and the
+seals, and say so with the return. send-file refuses that page, so nothing slips
+through. Otherwise `<himmel>` below is the path it printed. Ask whether the
+build is core with this one literal command, the build's paths comma-separated:
+
+```bash
+node <himmel>/scripts/jira/dist/index.js release core-check --paths <the build's paths> --key <ticket> --core-paths <himmel>/scripts/ci/core-paths.txt
+```
+
+Type it bare, never inside `$(…)` or a pipe: a guard refuses that shape when a
+path holds a `handover/` segment. Read its last output line. Write no page only
+when that line is exactly `NOT-CORE <ticket>`. Any other line writes the page:
+`CORE`, `REVIEW`, `BYPASS`, and `UNKNOWN`, which comes back when the ticket has
+no mirror file yet or the CLI finds no project key (it reads `JIRA_PROJECT_KEY`
+from the shell, `~/.himmel/himmel.conf` or its own checkout's `.env`). An error,
+no output or a refused command writes the page too. When the page is due, or the
+brief asks for one, write it beside the spec, with absolute paths:
+
+```bash
+python3 -I <himmel>/scripts/telegram/spec-page-gen.py <spec-file> <spec-file minus .md>.html
+```
+
+A spec that gets a page carries its diagram itself, as an `svg` fence under
+`## Diagrams`: drawing elements only, with no script, event, `style` attribute or
+link out of the figure. The generator draws it on the page and refuses a spec
+with none, or with one it will not draw. A refusal names a line in the spec to
+fix; fix that first. Generate the page again every round and never edit it by
+hand: the spec is the one source of the page. The
+generator prints two shas: never pass them on or use them. The page goes unnamed
+in a design brief's Writes, as `brief-lint.sh` admits only `.md` there. The **files
+under review** are the spec and its page, if it has one. Add these words after the
+charter, and give the critic no hash yourself:
+
+> Files under review: <absolute paths>. Before you read them, run `sha256sum` on
+> each. Just above your verdict line, write one line per file:
+> `READ-SHA256 <sha> <absolute path>`. A page is a rendering of the spec: a
+> difference in content between them is a finding. What the generator cannot render
+> is not: flattened code fences other than an `svg` fence, which it draws, literal `**` or `>` marks, unlinked links and
+> italics, and the front matter shown only as tickets, date, base (shortened)
+> and author.
+
+Anything else the critic opens as evidence (cited code, the estimate record) is
+not under review and is not sealed.
+
 **Save every critic return as a verdict file.** After each round,
 write the critic's return verbatim, in both modes, to
 `<spec-file>.critic-spec-r<n>.md` beside the spec (`<n>` = the round, from 1).
@@ -248,6 +340,53 @@ signs the spec with the last round's file and hashes it. It refuses a last line
 in any other form. A `FINDINGS` file signs only when the spec's
 `## Critic rounds` section gives each residual a
 `- R<n>: fixed|ASSUMPTION|ponytail|deferred → HIMMEL-<n>` line.
+
+**Seal each return to the bytes the critic read.** Straight after saving a return,
+before any fix and whatever its verdict, run one command per file under review,
+typed as one literal line, with the sha from that file's `READ-SHA256` line:
+
+```bash
+bash <himmel>/scripts/handover/chief-kit/critic-seal.sh <verdict-file> <file under review> <sha the critic quoted>
+```
+
+It adds `CONTENT-SHA256 <sha> <relative path>` above the verdict line, and
+send-file re-hashes that file. Never hash a file yourself to fill a gap, and never
+write that line by hand. A return with no quote line for a file: ask the same
+critic for it if that run still answers, and keep its reply verbatim in the return.
+If it no longer answers, that file gets no seal and the next round reads it. At
+the cap there is no next round: the page stays refused, and a further round
+needs the operator's record (At the cap, below).
+
+A refused seal names its cause, and each has one next step:
+
+- `hashes to`: the file moved since the critic read it, or the critic's sha is
+  wrong: the next round reads it. Never retry with another sha. No hash shown after
+  `hashes to` means `sha256sum` is missing: report it.
+- `does not quote`, `not a sha256`, `not found`: a typing slip. Read the return
+  again and type it once more.
+- `last line`: append the verdict line as above, then type it once more.
+- `already seals`: that file is done; go on to the next.
+- `needs an operator record`: stop; see At the cap.
+- anything else: report it; the page stays refused.
+
+Every edit after a seal voids it: a fix, a `## Critic rounds` line, a status line,
+a lint fix. Make them before the critic reads. An edit to the spec means another
+round of the spec critic and of the plan critic, which sealed it too. Write a
+round's dispositions in the fix the next round reads. An agreed panel finding on a
+`CLEAN` return is a fix like any other, and the next round reads it.
+
+**At the cap.** Once a critic has had round 3, whatever its verdict, the files it
+read are not edited: the spec critic's freezes the spec, and the plan critic's
+freezes the spec and the plan. Stages 3 and 4 still run on a frozen spec, because
+send-file refuses a page with no plan critic file, or one neither `PLAN CLEAN` nor
+at its own round 3. The plan alone may still be fixed while its critic is under
+the cap. send-file lists only the findings in a `FINDINGS` return. Whatever else
+wants an edit it cannot have, an agreed panel finding or a Terminal lint gap, goes
+to the operator in a plain message with the page, and a lint gap also stops the
+hand-off. If the edit was made, put the sealed bytes back. A further round needs
+the operator's record, one `<spec>.operator-round-r<n>.md` per round number, asked
+in a plain message, since no page of the edited spec can be sent. A spec edit needs
+the plan critic's next round too, so a plan at its cap needs a record as well.
 
 CHARTER — the single source is **`panel-charter.md`** in this skill dir; paste
 its contents into the subagent prompt verbatim. Do NOT inline a second copy here
@@ -305,6 +444,8 @@ Terminal section.
 
 ## Stage 4 — plan critic (adversarial)
 
+Optional readiness check: the marked paragraph before Stage 2 applies here with kind `plan`.
+
 Dispatch a fresh subagent (Agent tool, `model: sonnet` at high effort) against
 the written plan file. Loop
 fix → re-critic until clean, **cap 3 rounds**, counted as Stage 2 counts them.
@@ -312,6 +453,14 @@ fix → re-critic until clean, **cap 3 rounds**, counted as Stage 2 counts them.
 Save each return as Stage 2 does, beside the **spec** (not the plan):
 `<spec-file>.critic-plan-r<n>.md`, ending in `PLAN CLEAN` or
 `PLAN FINDINGS <count>`.
+
+Resolve `$S` with the resolver from the Mode section, then run
+`bash "$S/minerva-trace-lint.sh" <spec-file> <plan-file>` once before the first
+plan dispatch, so a plan-side fix spends no plan round. The lint needs the plan, so it cannot run earlier, and a
+spec-side fix it asks for is a spec edit. The files under review here are the plan
+and the spec, with no page. Add the Stage 2 words after the charter, without what
+they say about a page, and seal each return with `critic-seal.sh` as Stage 2 does,
+one command per file.
 
 CHARTER — the single source is **`plan-charter.md`** in this skill dir; paste its
 contents into the subagent prompt verbatim (no inline second copy — same

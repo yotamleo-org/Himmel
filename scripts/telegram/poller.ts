@@ -2233,7 +2233,6 @@ export async function replyViaOutbox(root: string, chat_id: number, text: string
   await appendOutboxLine(root, chat_id, { text, ...(consoleName ? { console: consoleName } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) });
 }
 
-// ponytail: the spool is never truncated, ceiling = one line per monitor message on disk; upgrade path = truncateFullyConsumed as flushOutboxes does.
 export type MonitorSendFn = (text: string) => Promise<boolean>;
 export type MonitorCfg = { send: MonitorSendFn | null; reason: string; operatorChat: number | null };
 type MonitorDeps = { f?: typeof fetch; sleep?: (ms: number) => Promise<void>; mkSignal?: (ms: number) => AbortSignal };

@@ -385,8 +385,11 @@ export function creditState(command, options = {}, env = process.env) {
 const markedExhausted = (r, now) => Number.isInteger(r.exhausted_at) && now - r.exhausted_at < EXHAUSTED_TTL
   && !(Number.isInteger(r.observed_at) && r.observed_at > r.exhausted_at);
 
-// `only` narrows the candidates to a role's accounts; ranking inside the list is unchanged.
-export function pickAccount(budget, env = process.env, only) {
+// `only` narrows the candidates to a role's accounts; ranking inside the list is unchanged. `withRows` (the ordered
+// walk only) adds each candidate's own verdict to a refusal, so a ledger fault reads apart from a lack of room.
+export function pickAccount(budget, env = process.env, only, withRows = false) {
+  let rowsOf = () => [];
+  const refusal = (r) => (withRows ? { ...r, rows: rowsOf() } : r);
   try {
     const need = money(budget);
     const config = read(configPathFor(env));
@@ -394,9 +397,11 @@ export function pickAccount(budget, env = process.env, only) {
     const pickEnv = { ...env, HIMMEL_API_SNAPSHOT_OPTIONAL: '1' };
     const now = Math.floor(Date.now() / 1000);
     const letters = Object.keys(config.accounts).sort().filter((account) => !only?.length || only.includes(account));
-    if (letters.length === 0) return { verdict: 'SKIPPED-BANK', reason: 'no-role-account-configured' };
+    if (letters.length === 0) return refusal({ verdict: 'SKIPPED-BANK', reason: 'no-role-account-configured' });
     const all = letters
       .map((account) => creditState('status', { usd: budget }, { ...pickEnv, HIMMEL_API_ACCOUNT: account }));
+    rowsOf = () => all.map((r, i) => ({ account: letters[i], verdict: r.verdict === 'PROCEED' ? 'SKIPPED-BANK' : r.verdict,
+      reason: r.reason ?? 'insufficient-headroom' }));
     const roomy = all.filter((r) => r.verdict === 'PROCEED' && money(r.available_est_usd) >= need);
     const marked = (r) => markedExhausted(r, now);
     const byExpiry = (x, y) => x.expires_at - y.expires_at;
@@ -410,7 +415,7 @@ export function pickAccount(budget, env = process.env, only) {
       : open.length > 0 ? open.sort(byExpiry)
         : [...over.filter((r) => !marked(r)).sort(byRoom), ...roomy.sort((x, y) => x.exhausted_at - y.exhausted_at),
           ...over.filter(marked).sort(byRoom)];
-    if (rows.length === 0) return { verdict: 'SKIPPED-BANK', reason: 'no-account-with-headroom' };
+    if (rows.length === 0) return refusal({ verdict: 'SKIPPED-BANK', reason: 'no-account-with-headroom' });
     const r = rows[0];
     return { verdict: 'PROCEED', account: r.account, expires_at: r.expires_at,
       ...(over.includes(r) ? { over_estimate: true } : {}),
@@ -418,7 +423,9 @@ export function pickAccount(budget, env = process.env, only) {
       ...(r.snapshot_stale ? { snapshot_stale: true, age_seconds: r.age_seconds } : {}),
       ...(marked(r) ? { exhausted_at: r.exhausted_at } : {}) };
   } catch (e) {
-    return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
+    const r = { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
+    rowsOf = () => (only ?? []).map((account) => ({ account, ...r }));
+    return refusal(r);
   }
 }
 
@@ -632,9 +639,10 @@ export async function pullSnapshot(env, account, { fetchImpl = globalThis.fetch 
 function main() {
   const [command, ...args] = process.argv.slice(2);
   if (command === 'pick') {
-    const only = args[2] === '--only' && args.length === 4 ? args[3].split(',') : undefined;
+    const withRows = args.length === 5 && args[4] === '--rows';
+    const only = args[2] === '--only' && (args.length === 4 || withRows) ? args[3].split(',') : undefined;
     const ok = args[0] === '--usd' && (args.length === 2 || (only && only.every((l) => ACCOUNTS.includes(l))));
-    console.log(JSON.stringify(ok ? pickAccount(args[1], process.env, only) : { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' }));
+    console.log(JSON.stringify(ok ? pickAccount(args[1], process.env, only, withRows) : { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' }));
     return;
   }
   if (command === 'accounts') { console.log(JSON.stringify(accountTags(process.env))); return; }

@@ -172,7 +172,7 @@ assert "re-run without --refetch reports a skip for the fresh handle" yes "$r"
 # -- Test 6: an injection-suspect dossier SKIPS the                        --
 # -- LLM-backed web rung. A web fixture that WOULD verify a role claim is    --
 # -- honored on a clean scan, but ignored once the injection screen fires.   --
-echo "Test 6: injection-suspect skips the web rung (HIMMEL-703 Gap B)"
+echo "Test 6: injection-suspect skips the web rung (security-audit gap B)"
 
 vault2="$tmpdir/vault2"
 mkdir -p "$vault2/.obsidian" "$vault2/Clippings" "$vault2/30-Resources"

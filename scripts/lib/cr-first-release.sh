@@ -111,7 +111,7 @@ _crf_reviewers_json() {
 _crf_alert() {
     local slug="$1" reason="$2" text
     [ "${CR_FIRST_READONLY:-0}" = 1 ] && return 0
-    text="CR-FIRST ALERT hard reviewer $slug is unavailable ($reason): ci:go is held fleet-wide until it can review. Levers in order: restore the $slug lane; with operator ruling a critics.local.json overlay {\"slug\":\"$slug\",\"mode\":\"best-effort\"} or {\"slug\":\"$slug\",\"drop\":true}; a manual ci:go only if the head will be reviewed before merge."
+    text="CR-FIRST ALERT hard reviewer $slug is unavailable ($reason): ci:go is held fleet-wide until it can review. Levers in order: restore the $slug lane; if the operator approves, a critics.local.json overlay {\"slug\":\"$slug\",\"mode\":\"best-effort\"} or {\"slug\":\"$slug\",\"drop\":true}; a manual ci:go only if the head will be reviewed before merge."
     bash "$_CRF_LEDGER_CLI" alert-once "$slug|$reason" "$text" || return 0
     if [ -n "${HIMMEL_CONSOLE_DOC:-}" ] && [ -f "$HIMMEL_CONSOLE_DOC" ]; then
         bash "$_CRF_APPEND" "$HIMMEL_CONSOLE_DOC" "$text" >/dev/null 2>&1 || true

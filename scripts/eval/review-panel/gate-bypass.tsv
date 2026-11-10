@@ -6,3 +6,4 @@
 # A row is honoured only for its PR number at its head; a malformed row fails the gate closed.
 # A row lands by a chief-ruled change of its own, citing the operator decision in column 3.
 # pr	head	decision	reason
+5173	2921fa3d2dbf49a221bd168bddb839e1ac08178a	decision-781	the T6a critic fix, Q6 option (a)

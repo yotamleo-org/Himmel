@@ -135,8 +135,7 @@ sweep first.
 
 ## Monitors
 
-Five, and no more — every event wakes a full-context turn. The tick and Telegram
-rows run inside the step-10 waiter.
+Five, and no more — every event wakes a full-context turn.
 
 | Monitor | Cadence | What it is |
 |---|---|---|
@@ -144,11 +143,13 @@ rows run inside the step-10 waiter.
 | usage | 300 s | poll `usage-preflight.sh`, emit on a state-word change |
 | CI | 600 s | poll `gh run list -R <owner/repo> --limit 20 --json databaseId,status`, emit newly-completed runs |
 | notes repo | 300 s | the vault is the tick's `vault=`; only a second state repo needs a loop |
-| telegram | 1 s, event-driven | **Runs inside the step-10 waiter.** The waiter drains `{{INBOX}}` with `inbox-follow.sh --once` (cursor: no gap, no replay) and wakes you with `WAKE telegram` (step 11) |
+| telegram | 1 s, event-driven | **Runs inside the step-10 waiter.** The waiter drains `{{INBOX}}` with `inbox-follow.sh --once` and wakes you with `WAKE telegram` (step 11) |
 
 `scripts/context-fill.sh --percent` **fails inside a Monitor**: run it in a Bash
 call. A ticket filed on operator request gets label `operator-directed` and the
 bullet `OPERATOR: <ask>. Filed HIMMEL-n`.
+
+Decision 850: only `ciguard=OVER:concurrent-jobs` holds a dispatch (`monitors.md`).
 
 ## Dispatching a worker
 
@@ -213,7 +214,7 @@ bare `clean.sh` sweep for a worker. long-running.txt: `run_in_background` (a sho
 
 - **Operator messages are additive**; pivot only on a halt or redirect. [prose]
 - **Before idling**, disposition every listed/dropped key: dispatch, slice, close or
-  question. In `## Live state`: `pool-disposition: <KEY> slice|close|question <named target>`. [prose]
+  question. In `## Live state`: `pool-disposition: <KEY> slice|close|question <named target>` (target: key, PR n, decision n). [prose]
 - **A worker's BLOCKED, permission prompt, or question comes to the chief first** —
   say so in every brief. **One session = one worktree.** [prose]
 - **Impacted suites, not directory sweeps:** a brief names every suite

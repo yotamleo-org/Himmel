@@ -199,6 +199,31 @@ fi
 out=$(bash "$IMPRUN" --scan-repo-of-script --only-list 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then pass "24l: --only-list with no value -> rc 2"; else fail "24l: rc=$rc output: $out"; fi
 
+# L20b/L20c: a witnessed run (HOME is the home-canary sandbox) says so on the exits
+# that leave before any suite: the docs-only range and an --only-list that names
+# no impacted suite. Both are clean rc 0 with the zero-count line.
+mkdir -p "$SB/h"
+: > "$IMP_LOG"
+out=$(HOME="$SB/h" HIMMEL_CANARY_HOME="$SB/h" SUITE_TIER_MODE=all \
+  bash "$IMPRUN" --scan-repo-of-script --impacted "$DOCS_RANGE" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 0 ] && [ -z "$ran" ] && grepq "$out" '0 impacted shell suites' \
+   && grepq "$out" -x 'live-witness: on, 0 suites watched, 0 hard, 0 warn'; then
+  pass "L20b: the docs-only exit prints the zero-count witness line"
+else
+  fail "L20b: rc=$rc ran='$ran' output: $out"
+fi
+: > "$IMP_LOG"
+out=$(HOME="$SB/h" HIMMEL_CANARY_HOME="$SB/h" SUITE_TIER_MODE=all \
+  bash "$IMPRUN" --scan-repo-of-script --only-list "$SB/only-unrelated.txt" --impacted "$CODE_RANGE" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 0 ] && [ -z "$ran" ] && grepq "$out" '0 impacted suites in --only-list' \
+   && grepq "$out" -x 'live-witness: on, 0 suites watched, 0 hard, 0 warn'; then
+  pass "L20c: the --only-list exit prints the zero-count witness line"
+else
+  fail "L20c: rc=$rc ran='$ran' output: $out"
+fi
+
 # 24m: a grep that ERRORS (rc 2) in the --only-list intersection is a refusal, never "0 impacted suites".
 REAL_GREP=$(command -v grep)
 mkdir -p "$SB/fakebin"

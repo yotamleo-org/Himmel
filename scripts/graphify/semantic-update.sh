@@ -81,9 +81,19 @@
 # The batch cost is not gated (decision 229); it lands in the run row. Every run prints one
 # `semantic-update: BATCH id=… state=submitted|pending|merged requests=N cost_usd=…` line for the cadence ledger.
 #
+# --account-order C,A (claude-api batch only) walks those letters in that order instead of HIMMEL_API_ACCOUNT: a
+# letter with no configured roster row is skipped before any pick, a letter with no room is skipped, a credit-exhausted
+# or rejected-key answer marks it and moves on, a credit state that cannot be read (BANK-UNKNOWN) or any other answer
+# stops. Under it an estimate still over --max-run-usd after sizing refuses the submit (over-cap).
+# --result-file F writes one word on every exit as its first line (no-op pending merged submitted extracted partial
+# no-route key-rejected bank-refused batch-pending fence-denied over-cap locked corpus-failed stopped), and a second
+# line `rejected <letters>` when a letter rejected its key. With it a claude-cli run refuses while a batch waits and
+# goes on only on an exact PROCEED from the usage preflight.
+#
 # Usage:
 #   semantic-update.sh --name N --corpus-root R --corpus-class C
 #       [--backend claude-api|claude-cli|ollama] [--max-files 150] [--max-run-usd 15.00] [--seed-manifest] [--dry-run]
+#       [--account-order C,A] [--result-file F]
 #
 # --backend ollama runs the local model (OLLAMA_MODEL, default qwen3.6:27b) at
 # --max-concurrency 1 and skips bank-preflight (no subscription draw). It
@@ -94,7 +104,8 @@
 # first run treats every file as changed.
 #
 # Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure;
-# 3 bank at/over threshold (nothing touched); 4 promote lock held; 5 some chunks failed (the good ones merged, the failed
+# 3 bank at/over threshold, or a refusal only the new flags make (a waiting batch, a verdict other than PROCEED,
+# over-cap), nothing touched; 4 promote lock held; 5 some chunks failed (the good ones merged, the failed
 # files stay unstamped): either a plain chunk failure or the lane's exit 6, a credit or key rejection that the
 # subscription fallback did not replay (fallback off, or its usage preflight skipped it), which also stops
 # dispatching the remaining chunks (one rejection on a pinned account, one per account in play on auto routing). A rejection the fallback
@@ -107,9 +118,21 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 
 NAME="" CORPUS_ROOT="" CORPUS_CLASS="" BACKEND="claude-api" MAX_FILES=150 SEED=0 DRY=0 RUN_CAP="${GRAPHIFY_API_RUN_BUDGET_USD:-15.00}"
+ACCOUNT_ORDER="" ORDER_GIVEN=0 RESULT_FILE="" RESULT_WORD=stopped REJECTED="" WORK=""
+_prev=""
+for _a in "$@"; do [ "$_prev" != --result-file ] || RESULT_FILE="$_a"; _prev="$_a"; done
+on_exit() {
+  if [ -n "$WORK" ]; then cleanup; fi
+  if [ -n "$RESULT_FILE" ]; then
+    { printf '%s\n' "$RESULT_WORD"; if [ -n "$REJECTED" ]; then printf 'rejected %s\n' "$REJECTED"; fi; } > "$RESULT_FILE" || true
+  fi
+}
+trap on_exit EXIT
 usage() { sed -n '/^# Usage:/,/^# Exit:/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in
+    --account-order) ACCOUNT_ORDER="${2:-}"; ORDER_GIVEN=1; shift 2 ;;
+    --result-file) RESULT_FILE="${2:-}"; shift 2 ;;
     --name) NAME="${2:-}"; shift 2 ;;
     --corpus-root) CORPUS_ROOT="${2:-}"; shift 2 ;;
     --corpus-class) CORPUS_CLASS="${2:-}"; shift 2 ;;
@@ -123,6 +146,17 @@ while [ $# -gt 0 ]; do
   esac
 done
 if [ -z "$NAME" ] || [ -z "$CORPUS_ROOT" ] || [ -z "$CORPUS_CLASS" ]; then usage; fi
+if [ "$ORDER_GIVEN" -eq 1 ]; then
+  _upper=ABCDEFGHIJKLMNOPQRSTUVWXYZ
+  case "$ACCOUNT_ORDER" in
+    ''|,*|*,|*,,*|*[!$_upper,]*|*[$_upper][$_upper]*)
+      echo "semantic-update: --account-order takes one capital letter per entry, comma-separated (got '$ACCOUNT_ORDER')" >&2; exit 1 ;;
+  esac
+  [ "$BACKEND" = claude-api ] || { echo "semantic-update: --account-order needs --backend claude-api (got '$BACKEND')" >&2; exit 1; }
+  [ "${GRAPHIFY_API_BATCH:-1}" != 0 ] \
+    || { echo "semantic-update: refusing --account-order with GRAPHIFY_API_BATCH=0: the order runs on the batch path only, so the lane's subscription fallback never runs" >&2; exit 1; }
+  export HIMMEL_API_ACCOUNT="${ACCOUNT_ORDER%%,*}"
+fi
 case "$NAME" in *[!A-Za-z0-9._-]*) echo "semantic-update: --name must match [A-Za-z0-9._-]+" >&2; exit 1 ;; esac
 case "$MAX_FILES" in ''|*[!0-9]*) MAX_FILES=0 ;; *) MAX_FILES=$((10#$MAX_FILES)) ;; esac
 [ "$MAX_FILES" -gt 0 ] || { echo "semantic-update: --max-files must be a positive integer" >&2; exit 1; }
@@ -144,7 +178,7 @@ esac
 # link itself. ast-update.sh refuses the same value with the same exit.
 if [ "$OUT_DIR" != "$CORPUS_ROOT/graphify-out" ] && [ -L "$OUT_DIR" ]; then
   echo "semantic-update: GRAPHIFY_OUT is overridden to '$_out_name' and $OUT_DIR is a SYMLINK, which would place the graph write outside the directory named. Point it at a real directory" >&2
-  exit 3
+  RESULT_WORD=corpus-failed; exit 3
 fi
 API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}"
 API_EFFORT="${GRAPHIFY_API_EFFORT:-high}"
@@ -238,10 +272,14 @@ unset CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY
 unset CLAUDE_CODE_USE_GATEWAY CLAUDE_CODE_USE_MANTLE CLAUDE_CODE_USE_ANTHROPIC_AWS
 if [ "$SEED" -eq 0 ]; then
   bash "$REPO_ROOT/scripts/guardrails/graphify-fence.sh" --eval "$CORPUS_CLASS" "$BACKEND" "$CORPUS_ROOT" semantic-update \
-    || { echo "semantic-update: egress fence refused corpus '$NAME' -- nothing copied" >&2; exit 2; }
+    || { echo "semantic-update: egress fence refused corpus '$NAME' -- nothing copied" >&2; RESULT_WORD=fence-denied; exit 2; }
 fi
 
-[ -f "$OUT_DIR/graph.json" ] || { echo "semantic-update: no $OUT_DIR/graph.json -- run the AST pass (ast-update.sh) first" >&2; exit 1; }
+[ -f "$OUT_DIR/graph.json" ] || { echo "semantic-update: no $OUT_DIR/graph.json -- run the AST pass (ast-update.sh) first" >&2; RESULT_WORD=corpus-failed; exit 1; }
+if [ -n "$RESULT_FILE" ] && { [ "$BACKEND" = claude-cli ] || [ "$BACKEND" = claude ]; } && [ -f "$PENDING/batch.json" ]; then
+  echo "semantic-update: refusing claude-cli: a batch is pending in $PENDING; a claude-api run polls it, or remove that directory -- nothing touched" >&2
+  RESULT_WORD=batch-pending; exit 3
+fi
 
 # prim-ok: the corpus-named workdir identifies the isolated Claude shim and cleanup evidence; tmpdir cannot retain this prefix.
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/graphify-semantic-$NAME-XXXXXX")"
@@ -252,7 +290,6 @@ cleanup() {
   fi
   rm -rf "$WORK"
 }
-trap cleanup EXIT
 
 # Promote lock, same protocol as ast-update.sh (mkdir arbiter, owner token,
 # acquired stamp). Bounded wait, then skip: the next run retries.
@@ -262,7 +299,7 @@ acquire_promote_lock() {
   until mkdir "$PROMOTE_LOCK" 2>/dev/null; do
     if [ "$waited" -ge "${GRAPHIFY_SEMANTIC_LOCK_WAIT:-120}" ]; then
       echo "semantic-update: SKIPPED -- promote lock $PROMOTE_LOCK held by another graph refresh" >&2
-      exit 4
+      RESULT_WORD=locked; exit 4
     fi
     sleep 5; waited=$((waited + 5))
   done
@@ -272,10 +309,10 @@ acquire_promote_lock() {
 }
 
 if [ "$SEED" -eq 1 ]; then
-  [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, not stamping the manifest"; exit 0; }
+  [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, not stamping the manifest"; RESULT_WORD=no-op; exit 0; }
   acquire_promote_lock
   "${MERGE[@]}" seed --root "$CORPUS_ROOT" --out "$OUT_DIR"
-  exit 0
+  RESULT_WORD=no-op; exit 0
 fi
 
 PLAN="$WORK/plan.json"
@@ -286,7 +323,7 @@ plan_or_noop() {
   read -r N_BATCH N_DELETED < <(python3 -c 'import json,sys;p=json.load(open(sys.argv[1]));print(len(p["batch"]),len(p["deleted"]))' "$PLAN")
   if [ "$N_BATCH" -eq 0 ] && [ "$N_DELETED" -eq 0 ]; then
     echo "semantic-update: corpus '$NAME' unchanged since the last semantic pass -- no-op"
-    exit 0
+    RESULT_WORD=no-op; exit 0
   fi
 }
 plan_or_noop
@@ -295,7 +332,7 @@ if [ "$BACKEND" = "claude-api" ] && [ "$RESUME" -eq 0 ]; then
   # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered.
   # each cut re-plans, so the estimate is recomputed on the files that remain (a prefix of large files can still be over)
   while :; do
-  FIT_FILES="$(python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" "$CHUNK_TOKENS" "$RUN_CAP" <<'PY'
+  FIT_OUT="$(python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" "$CHUNK_TOKENS" "$RUN_CAP" <<'PY'
 import json, os, sys
 plan, root, model, budget, chunk, cap = sys.argv[1:7]
 files = json.load(open(plan))["batch"]
@@ -313,17 +350,23 @@ log("semantic-update: chunk: call-cap=%s chunk-tokens=%d chunk-cost-est=~%.2f ch
     % (budget, ct, chunk_usd, chunks, cap))
 # the run cap sizes the batch: keep the share of files whose chunks fit it; the rest stay unstamped for the next run
 fit_chunks = int(float(cap) / chunk_usd)
-print(len(files) if chunks <= fit_chunks else max(1, len(files) * fit_chunks // chunks))
+print(len(files) if chunks <= fit_chunks else max(1, len(files) * fit_chunks // chunks), int(chunks > fit_chunks))
 PY
 )"
+  FIT_FILES="${FIT_OUT%% *}" OVER_CAP="${FIT_OUT##* }"
   [ "$FIT_FILES" -lt "$N_BATCH" ] || break
   # the floor is one file, so a cap that cannot fund one chunk still runs that file; the shim WARNs on the overshoot
   echo "semantic-update: sized: batch of $N_BATCH files cut to $FIT_FILES to fit the run cap of $RUN_CAP USD; the rest stay unstamped for the next run" >&2
   MAX_FILES="$FIT_FILES"
   plan_or_noop
   done
+  if [ "$ORDER_GIVEN" -eq 1 ] && [ "$OVER_CAP" = 1 ]; then
+    _first="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["batch"][0])' "$PLAN")"
+    echo "semantic-update: over-cap: the estimate for $_first alone is over the run cap of $RUN_CAP USD; list it in .graphify-corpus-ignore or raise --max-run-usd -- nothing submitted" >&2
+    RESULT_WORD=over-cap; exit 3
+  fi
 fi
-[ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; exit 0; }
+[ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; RESULT_WORD=no-op; exit 0; }
 if [ "$BACKEND" = "claude-api" ]; then
   { [ "${HIMMEL_API_LANE:-}" = "on" ] && [ -n "${HIMMEL_API_ACCOUNT:-}" ]; } \
     || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C|auto are required) -- nothing copied, no claude-cli fallback; no API semantic call is made; the claude-cli backend (the subscription) is the other choice" >&2; exit 2; }
@@ -385,12 +428,50 @@ shim_account_count() {
 # ends when none is left; one batch is submitted, so decision 664's single-batch limit is not widened. ONLY those two
 # answers move on to the next account: a network or server error, a rate limit or a refusal returns at once, because
 # the next account would fail the same way or bill for nothing. A pinned account is not rotated.
+order_accounts() {
+  local roster a out=""
+  roster="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null)" || roster=""
+  for a in $(printf '%s' "$ACCOUNT_ORDER" | tr ',' ' '); do
+    case "$roster" in
+      '['*) case "$roster" in
+              *"\"account\":\"$a\",\"configured\":true"*) ;;
+              *) echo "semantic-update: account $a in the order has no configured roster row; skipped" >&2; continue ;;
+            esac ;;
+    esac
+    out="${out:+$out,}$a"
+  done
+  printf '%s' "$out"
+}
+pick_has_no_room() {
+  case "$1" in *'"rows":[{'*) ;; *) return 1 ;; esac
+  case "${1//\"verdict\":\"SKIPPED-BANK\"/}" in *'"verdict":'*) return 1 ;; esac
+}
 batch_submit() {
-  local acct pick rc tried="" why="" remaining a base="" what
+  local acct pick rc tried="" why="" remaining a base="" what skipped=""
   [ "$HIMMEL_API_ACCOUNT" != auto ] || base="$(auto_accounts)"
+  [ "$ORDER_GIVEN" -eq 0 ] || base="$(order_accounts)"
   while :; do
     acct="$HIMMEL_API_ACCOUNT"
-    if [ "$acct" = auto ]; then
+    if [ "$ORDER_GIVEN" -eq 1 ]; then
+      acct=""
+      for a in $(printf '%s' "$base" | tr ',' ' '); do
+        case " $tried $skipped " in *" $a "*) ;; *) acct="$a"; break ;; esac
+      done
+      if [ -z "$acct" ]; then
+        RESULT_WORD=no-route; [ -z "$REJECTED" ] || RESULT_WORD=key-rejected
+        echo "semantic-update: every account in the order is out of credit, has no room or rejected its key (${why:-no configured account in the order}); nothing submitted" >&2; return 5
+      fi
+      pick="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" pick --usd "$API_CALL_BUDGET" --only "$acct" --rows)"
+      case "$pick" in
+        '{"verdict":"PROCEED",'*) ;;
+        *) if pick_has_no_room "$pick"; then
+             echo "semantic-update: account $acct has no room ($pick); skipped" >&2
+             skipped="${skipped:+$skipped }$acct"; why="${why:+$why, }$acct no room"; continue
+           fi
+           echo "semantic-update: refusing the batch: the credit state of account $acct cannot be read (${pick:-no answer}); the walk stops" >&2; return 2 ;;
+      esac
+      [ -z "$tried" ] || echo "semantic-update: retrying the batch on account $acct (tried: $tried)" >&2
+    elif [ "$acct" = auto ]; then
       remaining=""
       for a in $(printf '%s' "$base" | tr ',' ' '); do
         case " $tried " in *" $a "*) ;; *) remaining="${remaining:+$remaining,}$a" ;; esac
@@ -416,7 +497,7 @@ batch_submit() {
     case "$rc" in
       5) what="credit exhausted" ;;
       6) what="API key rejected" ;;
-      *) [ "$rc" -eq 0 ] || [ "$HIMMEL_API_ACCOUNT" != auto ] \
+      *) [ "$rc" -eq 0 ] || { [ "$HIMMEL_API_ACCOUNT" != auto ] && [ "$ORDER_GIVEN" -eq 0 ]; } \
            || echo "semantic-update: account $acct failed (rc $rc), not on credit or its key; only a credit-exhausted or rejected-key answer tries the next account, so no other account is tried" >&2
          return "$rc" ;;
     esac
@@ -424,8 +505,9 @@ batch_submit() {
       || echo "semantic-update: account $acct $what, but the marker was not saved" >&2
     tried="${tried:+$tried }$acct"
     why="${why:+$why, }$acct $what"
+    [ "$rc" -ne 6 ] || REJECTED="${REJECTED:+$REJECTED }$acct"
     echo "semantic-update: account $acct $what (tried: $tried)" >&2
-    if [ "$HIMMEL_API_ACCOUNT" = auto ]; then continue; fi
+    if [ "$HIMMEL_API_ACCOUNT" = auto ] || [ "$ORDER_GIVEN" -eq 1 ]; then continue; fi
     echo "semantic-update: every account tried is out of credit or rejected its key ($why); nothing submitted" >&2
     return 5
   done
@@ -433,14 +515,14 @@ batch_submit() {
 if [ "$RESUME" -eq 1 ]; then
   rc=0; node "$BATCH_CLIENT" poll --dir "$PENDING" >&2 || rc=$?
   if [ "$rc" -ne 0 ]; then
-    echo "semantic-update: polling batch $(batch_field batch_id) failed (rc $rc) -- graph untouched; if the batch is gone for good, remove $PENDING to resubmit" >&2; exit 2
+    echo "semantic-update: polling batch $(batch_field batch_id) failed (rc $rc) -- graph untouched; if the batch is gone for good, remove $PENDING to resubmit" >&2; RESULT_WORD=corpus-failed; exit 2
   fi
   if [ "$(batch_field status)" != ended ]; then
     echo "semantic-update: batch $(batch_field batch_id) is still in progress -- graph untouched, the next run resumes it" >&2
-    batch_line pending; exit 0
+    batch_line pending; RESULT_WORD=pending; exit 0
   fi
   node "$BATCH_CLIENT" results --dir "$PENDING" --out "$PENDING/results" >&2 \
-    || { echo "semantic-update: reading the results of batch $(batch_field batch_id) failed -- graph untouched, the next run retries" >&2; exit 2; }
+    || { echo "semantic-update: reading the results of batch $(batch_field batch_id) failed -- graph untouched, the next run retries" >&2; RESULT_WORD=corpus-failed; exit 2; }
   # a retried resume reuses this directory: only this attempt's match lines may count
   rm -f "$PENDING/results/replay-matches.log"
   export GRAPHIFY_BATCH_MODE=replay GRAPHIFY_BATCH_DIR="$PENDING/results"
@@ -453,12 +535,16 @@ if [ "$N_BATCH" -gt 0 ]; then
       _bound=()
       if command -v timeout >/dev/null 2>&1; then _bound=(timeout -k 10 120); fi
       verdict="$(CADENCE_USAGE_WORKER="graphmap-semantic-$NAME" ${_bound[@]+"${_bound[@]}"} bash "$REPO_ROOT/scripts/lib/usage-preflight.sh" || true)"
+      if [ -n "$RESULT_FILE" ] && [ "$verdict" != PROCEED ]; then
+        echo "semantic-update: bank-preflight answered '${verdict:-nothing}', not PROCEED -- extraction SKIPPED for '$NAME', nothing touched" >&2
+        RESULT_WORD=bank-refused; exit 3
+      fi
       if [ -z "$verdict" ]; then
         echo "semantic-update: WARN bank-preflight gave no verdict (timed out or failed) -- proceeding UNGUARDED" >&2
       fi
       if [ "$verdict" = "SKIPPED-BANK" ]; then
         echo "semantic-update: bank at/over threshold -- extraction SKIPPED for '$NAME', nothing touched" >&2
-        exit 3
+        RESULT_WORD=bank-refused; exit 3
       fi ;;
   esac
   if [ "$BACKEND" = "claude-cli" ] || [ "$BACKEND" = "claude-api" ]; then
@@ -638,7 +724,7 @@ PY
   if [ "$rc" -ne 0 ]; then
     # Calls made before the failure were billed: leave a row so the spend is not lost.
     "${MERGE[@]}" failrow --name "$NAME" --out "$OUT_DIR" --backend "$BACKEND" --cost-usd "$(spent_usd)" --rc "$rc" || true
-    echo "semantic-update: graphify extract exited $rc${REFUSED:+ (refused: ${REFUSED:0:80})} -- graph and manifest untouched" >&2; exit 2
+    echo "semantic-update: graphify extract exited $rc${REFUSED:+ (refused: ${REFUSED:0:80})} -- graph and manifest untouched" >&2; RESULT_WORD=corpus-failed; exit 2
   fi
   if [ "$BATCH_MODE" -eq 1 ] && [ "$RESUME" -eq 0 ] && compgen -G "$WORK/prompts/*.txt" >/dev/null; then
     # The record run's graph is placeholders: discard it, submit what it recorded, leave the live graph as it was.
@@ -649,7 +735,7 @@ PY
       echo "semantic-update: submitting the batch failed (rc $rc) -- nothing submitted, graph and manifest untouched" >&2; exit 2
     fi
     echo "semantic-update: batch $(batch_field batch_id) submitted ($(batch_field request_count) requests) -- graph untouched, the next run polls it" >&2
-    batch_line submitted; exit 0
+    batch_line submitted; RESULT_WORD=submitted; exit 0
   fi
   read -r TOKENS_IN TOKENS_OUT < <(sed -n 's/.*tokens: \([0-9,]*\) in \/ \([0-9,]*\) out.*/\1 \2/p' "$WORK/extract.log" | tr -d , | tail -1; echo)
   : "${TOKENS_IN:=0}" "${TOKENS_OUT:=0}"
@@ -669,7 +755,7 @@ fi
   || {
     # The merge writes its row last, so a failed merge billed calls without leaving one.
     "${MERGE[@]}" failrow --name "$NAME" --out "$OUT_DIR" --backend "$BACKEND" --cost-usd "$(spent_usd)" --rc 2 || true
-    echo "semantic-update: merge failed -- the batch stays unstamped and re-extracts next run" >&2; exit 2
+    echo "semantic-update: merge failed -- the batch stays unstamped and re-extracts next run" >&2; RESULT_WORD=corpus-failed; exit 2
   }
 if [ -d "$SCRATCH/graphify-out/cache/semantic" ]; then
   mkdir -p "$OUT_DIR/cache/$CACHE_SUB"
@@ -679,9 +765,11 @@ python3 "$HERE/harden-graph.py" --out "$OUT_DIR" --root "$CORPUS_ROOT" >&2 \
   || echo "semantic-update: WARN harden-graph.py failed; the merged graph stands, the next refresh re-hardens it" >&2
 if [ "$RESUME" -eq 1 ]; then batch_line merged "$(batch_field cost_usd)"; fi
 [ "$BATCH_MODE" -eq 0 ] || rm -rf "$PENDING"
+RESULT_WORD=extracted
+if [ "$RESUME" -eq 1 ] || [ "$N_BATCH" -eq 0 ] || [ "$BATCH_MODE" -eq 1 ]; then RESULT_WORD=merged; fi
 # The chunks that did land are merged and stamped; the failed ones stay unstamped and retry next run. Exit 5 so a
 # loop on the exit code stops instead of re-billing the same failure.
 if [ -n "$FAILED_CHUNKS" ]; then
   echo "semantic-update: FAILED: $FAILED_CHUNKS semantic chunks failed${REFUSED:+ (refused: ${REFUSED:0:80})} -- the good chunks merged, the failed files stay unstamped; do not rerun until the cause is fixed" >&2
-  exit 5
+  RESULT_WORD=partial; exit 5
 fi

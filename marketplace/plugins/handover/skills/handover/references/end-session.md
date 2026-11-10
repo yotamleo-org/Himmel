@@ -15,7 +15,7 @@ Creates a numbered session file. Append-only — never overwrites.
      `references/resolution.md`) — **always set, never omitted** — so
      `arm-resume.sh` resolves the correct work repo without falling back to
      auto-detection (see `references/v2-schema.md` § `next-session-*.md`
-     frontmatter, HIMMEL-2147).
+     frontmatter).
    - Bullet summary of session work
    - Current active task, blockers
    - "First Action Next Session" — one sentence
@@ -40,11 +40,11 @@ Load latest session: <state-root>/{<bucket>/}<type-path>/#N-<slug>/next-session-
 [Critical context that won't be obvious from files]
 ```
 
-`{<bucket>/}` segment is present only when the bucket layer is active (HIMMEL-129); omit it entirely for flat layouts.
+`{<bucket>/}` segment is present only when the bucket layer is active; omit it entirely for flat layouts.
 
 **Rules:**
 - Always run `end-session` at session end — even if short.
-- **ONE numbered file per worker (HIMMEL-1830).** One session writes exactly one
+- **ONE numbered file per worker.** One session writes exactly one
   `next-session-N.md`: state/recovery first, then the ordered task list. Never
   split state and orders across `next-session-N.md` + `next-session-N+1.md` —
   the relaunch loads ONE file, so the other half is orphaned, and the numbering

@@ -43,6 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "eval", "cr-ledger"))
 sys.path.insert(0, os.path.join(HERE, "..", "eval", "lib"))
 import cr_ledger_eval  # noqa: E402
+import eval_feedback  # noqa: E402
 import eval_runs  # noqa: E402
 from wilson import wilson  # noqa: E402
 
@@ -62,6 +63,7 @@ PLANTED_METHOD = "[planted-bug eval](../../scripts/eval/review-panel/README.md)"
 REVIEW_METHOD = "[review panel](review-panel.md)"
 OPTIONS = "[Review by a second model](../configuration.md#review-by-a-second-model)"
 TAG_NOTE = {"outside": "findings on lines outside the diff"}
+OTHER_SOURCES = (cr_ledger_eval.INFERRED, cr_ledger_eval.UNKNOWN_SOURCE)
 LQ_METHOD = "[lane-quality eval](../../scripts/eval/lane-quality/run.sh)"
 VENDOR_NAME = {"anthropic": "Anthropic", "openai": "OpenAI", "google": "Google", "deepseek": "DeepSeek",
                "alibaba": "Alibaba", "zhipu": "Zhipu", "moonshot": "Moonshot", "meta": "Meta",
@@ -86,18 +88,38 @@ def wilson_pct(k, n):
 def group(findings):
     """One critic's (or the pool's) figures from its folded findings."""
     s = cr_ledger_eval.split(findings)
-    ruled = s["agreed"] + s["disproved"]
-    ci = s["precision_ci"]
+    rec = cr_ledger_eval.split([f for f in findings if f["verdict_source"] == cr_ledger_eval.RECORDED])
+    ruled = rec["agreed"] + rec["disproved"]
+    ci = rec["precision_ci"]
+    out = {src: 0 for src in OTHER_SOURCES}
+    for f in findings:
+        if f["verdict_source"] in out and f["bucket"] in ("agreed", "disproved"):
+            out[f["verdict_source"]] += 1
     return {
         "findings": s["n"], "prs": s["prs"],
         "agreed": s["agreed"], "disproved": s["disproved"],
         "deferred": s["deferred"], "unadjudicated": s["unadjudicated"],
         "n": ruled,
-        "precision_pct": pct1(s["agreed"] / ruled) if ruled else None,
-        "wilson": wilson_pct(s["agreed"], ruled),
+        "precision_pct": pct1(rec["agreed"] / ruled) if ruled else None,
+        "wilson": wilson_pct(rec["agreed"], ruled),
         "bootstrap": None if ci is None else {"lo": pct1(ci["lo"]), "hi": pct1(ci["hi"])},
+        "source": cr_ledger_eval.RECORDED, "left_out": out,
         "first": s["first"][:10], "last": s["last"][:10],
     }
+
+
+def source_label(g):
+    return "recorded dispositions" if g.get("source") == cr_ledger_eval.RECORDED else "all verdict sources pooled"
+
+
+def source_note(g):
+    if g.get("source") != cr_ledger_eval.RECORDED:
+        return ("These figures count every ruling, including ones inferred from review threads; the next data refresh "
+                "counts only the PR author's own rulings.")
+    left = g.get("left_out") or {}
+    return ("Each precision figure counts recorded dispositions only, the PR author's ruling. Left out of every figure: "
+            "%s ruled findings whose verdict the thread recorder inferred from thread state, and %s whose verdict "
+            "source is unknown." % (num(left.get(cr_ledger_eval.INFERRED, 0)), num(left.get(cr_ledger_eval.UNKNOWN_SOURCE, 0))))
 
 
 def read_cache(path):
@@ -155,7 +177,8 @@ def proof_first(rows):
 
 def planted(rows):
     """The newest review-panel row: the share of planted bugs the panel caught, against a hidden key."""
-    ok = [r for r in rows if r.get("eval") == "review-panel" and r.get("status") == "ok"]
+    chosen = eval_feedback.select_review_runs([r for r in rows if r.get("eval") == "review-panel"])[0]
+    ok = [r for r in chosen if r.get("status") == "ok"]
     if not ok:
         return None
     r = ok[-1]
@@ -268,7 +291,7 @@ def build(args):
     cache["scope"] = args.cache_scope
     cache["as_of"] = as_of
     return {
-        "v": 3, "generator": "scripts/cr/evals-page-gen.py",
+        "v": 4, "generator": "scripts/cr/evals-page-gen.py",
         "review": {
             "as_of": as_of, "until": args.until or None, "command": review_cmd(args, as_of),
             "panel": panel, "pooled": group(findings), "critics": ordered,
@@ -337,6 +360,7 @@ def render(d):
     r, c = d["review"], d["cache"]
     pl, pf, tf = d.get("planted"), d.get("proof_first"), d["test_first"]
     p, crit, panel = r["pooled"], r["critics"], r["panel"]
+    src = source_label(p)
 
     def ruled(g):
         return stamp(r["as_of"], g["n"], "ruled findings over " + prs(g["prs"]))
@@ -362,9 +386,9 @@ def render(d):
     heads = [(q["name"], crit[q["name"]]) for q in panel
              if q["required"] and q["name"] in crit and crit[q["name"]]["n"] >= MIN_RULED]
     for name, g in heads:
-        out.append("| When the required reviewer flags something, is it right? | **%s%%** of %s findings ruled right "
+        out.append("| When the required reviewer flags something, is it right? | **%s%%** of %s findings ruled right (%s) "
                    "| Wilson %s; by PR %s | %s |" % (
-                       g["precision_pct"], reviewer(name, crit), rng(g["wilson"]), rng(g["bootstrap"]), ruled(g)))
+                       g["precision_pct"], reviewer(name, crit), src, rng(g["wilson"]), rng(g["bootstrap"]), ruled(g)))
     if not heads:
         out.append("| When the required reviewer flags something, is it right? | not measured yet: fewer than %d "
                    "ruled findings | | as of %s |" % (MIN_RULED, r["as_of"]))
@@ -385,11 +409,11 @@ def render(d):
             c["read_ratio_pct"], stamp(c["as_of"], c["tokens"], "tokens" + sess + scope)), "",
         "The precision headline is the required reviewer's own, not the all-reviewers pooled figure under History: "
         "the pool mixes in models the panel no longer runs. Likely range is the 95 percent interval; every term is "
-        "defined under How to read these numbers.", "",
+        "defined under How to read these numbers.", "", source_note(p), "",
         "## Current setup", "",
         "The reviewers `scripts/cr/critics.json` runs on every PR today. To change the set (a cheaper tier, a "
         "required non-Claude reviewer, a reviewer added or dropped on one machine), see %s." % OPTIONS, "",
-        "| Reviewer | What it must do | Precision | Wilson range | Range by PR | Sample |",
+        "| Reviewer | What it must do | Precision (%s) | Wilson range | Range by PR | Sample |" % src,
         "|---|---|---|---|---|---|",
     ]
     for q in panel:
@@ -410,7 +434,7 @@ def render(d):
         "## History and what we learned", "",
         "Every reviewer the ledger holds that the panel no longer runs, oldest first. A reviewer is the panel slug plus the model "
         "that answered, so a model re-pin is a new reviewer.", "",
-        "| Reviewer | Ran | Precision | Wilson range | Range by PR | Sample |",
+        "| Reviewer | Ran | Precision (%s) | Wilson range | Range by PR | Sample |" % src,
         "|---|---|---|---|---|---|",
     ]
     old = sorted(((n, g) for n, g in crit.items() if not g.get("panel")), key=lambda kv: (kv[1]["first"], kv[0]))
@@ -470,8 +494,10 @@ def render(d):
         "|---|---|",
         "| **Precision** | Agreed ÷ (agreed + disproved): of the findings someone ruled true or false, the share ruled "
         "true. The PR author rules (in practice the Claude session that wrote the PR), and a finding marked `fixed` "
-        "counts as agreed. A precision proxy, not precision: the one who rules is also the one who has to fix. "
-        "%s |" % REVIEW_METHOD,
+        "counts as agreed. A precision proxy, not precision: the one who rules is also the one who has to fix. Each "
+        "precision column names the verdict source it counts: recorded dispositions (the author's ruling) only, or all "
+        "verdict sources pooled, which adds verdicts the thread recorder inferred from thread state and verdicts of "
+        "unknown source. %s |" % REVIEW_METHOD,
         "| **Planted-bug catch** | Bugs planted in test changes with a hidden answer key, and the share the reviewer "
         "found. It measures what real PRs cannot: the bugs nobody flagged. The set also holds real review escapes, "
         "each with a clean twin. %s |" % PLANTED_METHOD,

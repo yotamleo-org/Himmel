@@ -67,7 +67,7 @@ export PATH="$W/bin:$PATH"
 printf '%s\n' '{"five_hour":{"utilization":30},"seven_day":{"utilization":28}}' > "$W/bank.json"
 export TICK_BANK_CACHE_FILE="$W/bank.json" CADENCE_USAGE_CACHE="$W/bank.json" CADENCE_USAGE_SKIP_REFRESH=1
 export CADENCE_USAGE_LEDGER=/dev/null
-export TICK_STATE_DIR="$W/state" TICK_LAUNCH_DIR="$W/launch" TICK_TMPDIR="$W"
+export TICK_STATE_DIR="$W/state" TICK_LAUNCH_DIR="$W/launch" TICK_TMPDIR="$W" HIMMEL_QUOTA_DIR="$W/quota"
 # no wt-orphans probe: the real worktree.sh would read this checkout's fleet
 export TICK_WORKTREE_ORPHANS_PROBE="$W/no-wt-orphans-probe"
 # no doctor probe: the real himmel-doctor.sh is never run from a suite
@@ -78,7 +78,8 @@ export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_EVAL
 unset HIMMEL_BUS_NAME
 export WORKER_SESSION_DIGEST_STATE_DIR="$W/digest" WORKER_SESSION_DIGEST_SETTLE_MAX=0 WORKER_SESSION_DIGEST_SETTLE_QUIET=0
 export CLOSE_WRAPPED_WORKER_PROJECTS_DIR="$W/projects" CLOSE_WRAPPED_WORKER_SESSIONS_DIR="$W/sessions"
-export CLOSE_WRAPPED_WORKER_REAP_WAIT=0 CLOSE_WRAPPED_WORKER_DIGEST_TIMEOUT=30
+printf '#!/usr/bin/env bash\nexit 0\n' > "$W/bin/close-sweep-noop"; chmod +x "$W/bin/close-sweep-noop"
+export CLOSE_SWEEP_STATE_DIR="$W/close-sweep" CLOSE_SWEEP_BIN="$W/bin/close-sweep-noop"
 # append-results.sh moves Jira on a LIVE bullet; never from a test
 export WORKER_SESSION_JIRA_STATUS=0
 # a forked non-harness child counts at once (the default skips a child forked within 10s of its session)
@@ -191,6 +192,7 @@ contains "workers: a wrapped, subtree-clean worker reads CLOSABLE" "$(tick_field
 out="$(bash "$CK/close-wrapped-worker.sh" "$L1" 2>&1)"; rc=$?
 check "close: a wrapped worker closes (rc 0)" "$rc" 0
 contains "close: TERM went to the matched pid" "$out" "sent TERM to pid $P1"
+check "close: its housekeeping record is queued in the suite's sweep state, never the real one" "$(n=0; for f in "$W"/close-sweep/pending/*.json; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n")" 1
 if gone "$P1"; then pass "close: the wrapped worker's session is gone"; else fail "close: pid $P1 still running"; fi
 if alive "$P2" && alive "$P3"; then pass "close: other workers' sessions untouched"; else fail "close: a sibling session died"; fi
 

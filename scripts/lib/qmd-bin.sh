@@ -115,14 +115,11 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # default 250 ms, for the database, then are skipped, so a search never waits
 # out another process's write). The pin was 4c2487d1, fork PR #52 (brotli 1.2.1
 # and filelock 4.2.9 in finetune/uv.lock). The pin was 150c4d31, the squash
-# merge of fork PR #53 into fork main (setuptools 84.2.1 in finetune). The pin is now c474a8e4, the
-# squash merge of fork PR #54 into fork main (the query-expansion cache write and the delete of a
-# dud expansion row use the same bounded wait as the rerank write, so a plain search never waits
-# out another process's write lock either). The fork lives at yotamleo-org/qmd;
+# merge of fork PR #53 into fork main (setuptools 84.2.1 in finetune). The fork lives at yotamleo-org/qmd;
 # yotamleo/qmd is a GitHub redirect to it.
 # ponytail: pinned by SHA, fork tags are labels only (HIMMEL-5952), re-pin on the next /fork-resync.
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo-org/qmd.git}"; } # env-literal-ok: the carried qmd fork identity
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-c474a8e4cd1084629c17664fb59e1f7ee64d8ea8}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-35de6ec3cc86cb5141d9d58c76c702130517ccfa}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo-org/qmd (or its old name yotamleo/qmd) -- in the forms seen in the wild (with or
@@ -1025,6 +1022,24 @@ has_index() {
   local out
   out=$(qmd_cmd collection list 2>/dev/null) || return 1
   [ -n "$(printf '%s' "$out" | tr -d '[:space:]')" ]
+}
+
+# qmd_output_is_busy <text>: rc 0 iff a qmd output carries SQLite's held-lock
+# signature, so a caller can tell a held database from a failed run.
+qmd_output_is_busy() {
+  case "$1" in
+    *SQLITE_BUSY* | *"database is locked"*) return 0 ;;
+  esac
+  return 1
+}
+
+# qmd_collection_indexes <collection> <path>...: print each path (relative to
+# the collection's root) that `qmd update` would index under that collection's
+# rules in the global index.yml qmd reads. rc 2 on a config, glob or path shape
+# qmd-collection-files.py does not know.
+qmd_collection_indexes() {
+  python3 -I "$_QMDBIN_LIB_DIR/qmd-collection-files.py" \
+    --config "${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml" "$@"
 }
 
 # CLI entry -- only when EXECUTED (not sourced). Lets a caller run this ONE

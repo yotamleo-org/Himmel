@@ -234,6 +234,34 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
 fi
 chokepoint_seam_guard scripts/handover/chief-kit/headed-arm-worker.sh || exit 96
 
+_LAUNCH_REFUSAL_SKIP=0 _LAUNCH_REFUSAL_FWD=0 _LAUNCH_REFUSAL_CAUSE='' _LAUNCH_REFUSAL_LINE=''
+for _lr_a in "$@"; do [ "$_lr_a" != --dry-run ] || _LAUNCH_REFUSAL_SKIP=1; done
+unset _lr_a
+_launch_refusal_note() { _LAUNCH_REFUSAL_CAUSE="$1"; _LAUNCH_REFUSAL_LINE="${2:-}"; return 0; }
+# shellcheck disable=SC2329  # called from _launch_refusal_exit, which only the EXIT trap invokes
+_lr_json() {
+    local s="${2%%$'\n'*}"
+    [ -n "$s" ] || { printf null; return 0; }
+    s="$(printf '%s' "$s" | LC_ALL=C tr -c '[:print:]' '?')" || return 1
+    s="$(printf '%s' "${s:0:$1}" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')" || return 1
+    printf '"%s"' "$s"
+}
+# shellcheck disable=SC2329  # invoked by the EXIT trap
+_launch_refusal_exit() {
+    local rc=$?
+    [ "$rc" -ne 0 ] && [ "${DRY_RUN:-0}" != 1 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] && [ -n "${HOME:-}" ] || return 0
+    local ts host name line row
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" || return 0
+    [ -n "$ts" ] || return 0
+    host="$(_lr_json 64 "${HOSTNAME:-}")" || return 0
+    name="$(_lr_json 128 "${NAME:-}")" || return 0
+    line="$(_lr_json 200 "$_LAUNCH_REFUSAL_LINE")" || return 0
+    row="{\"v\":1,\"ts\":\"$ts\",\"host\":$host,\"source\":\"headed-arm-worker\",\"kind\":\"launch-refused\",\"name\":$name,\"cause\":\"${_LAUNCH_REFUSAL_CAUSE:-other}\",\"rc\":$rc,\"line\":$line}"
+    { mkdir -p "$HOME/.himmel" && printf '%s\n' "$row" >> "$HOME/.himmel/launch-refusals.jsonl"; } 2>/dev/null
+    return 0
+}
+trap '_launch_refusal_exit 2>/dev/null' EXIT
+
 # HEADED_ARM_UNAME - same seam name and default-
 # expansion idiom headed-arm.sh itself defines; resolved again HERE because
 # this wrapper is a separate process that must settle worker_propagate_env's
@@ -866,6 +894,7 @@ if [ "$RELAY" -eq 0 ] && [ "$CONSULT" -eq 0 ] && [ -f "$DOC" ]; then
     [ "$JUDGE" -eq 1 ] && lint_judge="--judge"
     lint_rc=0
     prior_art_err="$(bash "$(dirname "$0")/brief-lint.sh" ${lint_core_only:+"$lint_core_only"} ${lint_judge:+"$lint_judge"} "$DOC" 2>&1)" || lint_rc=$?
+    [ "$lint_rc" -eq 0 ] || _launch_refusal_note brief-lint "$prior_art_err"
     if [ "$lint_rc" -eq 3 ] || { [ "$lint_rc" -ne 0 ] && [ "$NO_PRIOR_ART_CHECK" -eq 1 ]; }; then
         echo "headed-arm-worker: refusing launch: $prior_art_err" >&2
         exit 2
@@ -967,6 +996,7 @@ if [ "$IGNORE_DENIALS" -eq 0 ] && [ -r "$HERE/denial-ack-lib.sh" ]; then
         [ -n "$_den_label" ] || continue
         _den_key="$(denial_key "$_den_label")" || continue
         if _den_hit="$(denial_unacked "$_den_key")"; then
+            _launch_refusal_note denial-unacked "an un-acked ${_den_hit%% *} classifier denial (x${_den_hit##* }) is on record for $_den_key"
             echo "headed-arm-worker: refusing to launch $NAME: an un-acked ${_den_hit%% *} classifier denial (x${_den_hit##* }) is on record for $_den_key. Review why the worker was parked, then run: bash $HERE/ack-denial.sh $_den_key   (or pass --ignore-denials to launch anyway)" >&2
             exit 14
         fi
@@ -1071,6 +1101,7 @@ if [ -n "$_worker_rcwd" ] && [ -n "$_worker_vroot" ]; then
     if [ -n "$_worker_rcwd_phys" ] && [ -n "$_worker_vroot_phys" ]; then
         case "$_worker_rcwd_phys" in
         "$_worker_vroot_phys"|"$_worker_vroot_phys"/*)
+            _launch_refusal_note handover-root "the doc's resume_cwd ($_worker_rcwd -> $_worker_rcwd_phys) is inside the handover root ($_worker_vroot_phys)"
             echo "headed-arm-worker: refusing to launch $NAME: the doc's resume_cwd ($_worker_rcwd -> $_worker_rcwd_phys) is inside the handover root ($_worker_vroot_phys), which an Obsidian vault indexes file by file. Judge scratch belongs under ~/.cache/himmel/verdicts/<qid>/; a worker belongs in a worktree under its repo's .claude/worktrees." >&2
             exit 15
             ;;
@@ -1157,6 +1188,7 @@ if [ "$_lg_rc" -ne 0 ]; then
         echo "WARN unguarded launch of $NAME in ${_lg_phys:-$_lg_dir} ($_lg_reason; UNGUARDED_LAUNCH_OK=1)" >&2
         [ -z "$_lg_phys" ] || export HIMMEL_LAUNCH_GUARD_WARNED="$_lg_phys"
     else
+        _launch_refusal_note unguarded-checkout "${_lg_phys:-$_lg_dir} does not load the himmel guard hooks ($_lg_reason)"
         echo "headed-arm-worker: refusing to launch $NAME: ${_lg_phys:-$_lg_dir} does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
         exit 18
     fi
@@ -2745,10 +2777,12 @@ if [ -f "$BANK_PREFLIGHT" ]; then
         # reservation for this same name — deleting it here would release a
         # slot out from under that other, still-live arm attempt.
         if [ "$_pf_dup" -eq 1 ]; then
+            _launch_refusal_note fleet-duplicate
             # not the fleet cap - a slot is already held under this worker's name (a launch still arming, or an
             # older refused one that left it); the preflight line above says who holds it and when it lapses.
             echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - a fleet reservation for this worker already exists (the fleet has room; the preflight line above names the holder and when it lapses)" >> "$LOG"
         else
+            _launch_refusal_note fleet-cap
             echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - fleet-size cap reached (bypass: FLEET_CAP_OK=1 in the LAUNCHING shell)" >> "$LOG"
         fi
         exit 10
@@ -2759,6 +2793,7 @@ if [ -f "$BANK_PREFLIGHT" ]; then
         # before any bank check) — release it now since this attempt is not
         # going to launch after all, rather than leaving it to expire by TTL.
         _release_fleet_reservation
+        _launch_refusal_note bank-exhausted
         echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - $LANE lane bank exhausted (park and retry later; see usage-preflight.sh for the parked lane's own bank status)" >> "$LOG"
         exit 11
     fi
@@ -2884,11 +2919,23 @@ fi
 # names no chief, which has nobody to register with.
 # A profile with no mcpServers field (null) loads every user MCP server,
 # himmel-bus among them, so it opts in too.
+BUS_NAME_MAX=128
+refuse_name_over_bus_limit() {
+    [ "${#NAME}" -gt "$BUS_NAME_MAX" ] || return 0
+    BUS_OUT="session name is ${#NAME} characters, over the bus limit of $BUS_NAME_MAX: shorten the slug of $NAME"
+    _launch_refusal_note bus-name-too-long "$BUS_OUT"
+    echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - $BUS_OUT" >> "$LOG"
+    echo "headed-arm-worker: refusing to launch $NAME - $BUS_OUT (bus=FAIL:name too long)"
+    echo "headed-arm-worker: refusing to launch $NAME - $BUS_OUT" >&2
+    bash "$HERE/append-results.sh" "$DOC" "bus=FAIL:name too long, ${#NAME} over $BUS_NAME_MAX" >/dev/null 2>&1 || true
+    exit 2
+}
 case "${MCP_NAMES_JSON:-}" in
     *'"himmel-bus"'*|null)
         if [ "$HEADLESS" -ne 1 ] && [ -z "$BUS_CHIEF" ]; then
             echo "$(date +%F_%T) headed-arm-worker: $NAME names no chief - not registered on the bus" >> "$LOG"
         elif [ "$HEADLESS" -ne 1 ]; then
+            refuse_name_over_bus_limit
             BUS_CLI="${HEADED_ARM_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
             BUS_ROLE=worker
             [ "$JUDGE" -eq 1 ] && BUS_ROLE=judge
@@ -2955,6 +3002,7 @@ case "${MCP_NAMES_JSON:-}" in
                 fi
                 echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - bus register failed: $BUS_OUT" >> "$LOG"
                 BUS_REASON="$(printf '%s' "$BUS_OUT" | tr '\n>' ' -' | sed 's/WRAPPED//g' | cut -c1-160)"
+                _launch_refusal_note bus-register "$BUS_REASON"
                 echo "headed-arm-worker: refusing to launch $NAME - bus register failed (bus=FAIL:$BUS_REASON)"
                 echo "headed-arm-worker: refusing to launch $NAME - bus register failed: $BUS_OUT" >&2
                 bash "$HERE/append-results.sh" "$DOC" "bus=FAIL:$BUS_REASON" >/dev/null 2>&1 || true
@@ -2963,7 +3011,7 @@ case "${MCP_NAMES_JSON:-}" in
         fi
         ;;
 esac
-unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR BUS_SECS BUS_TMP BUS_PID BUS_TICKS BUS_RC HIMMEL_LAUNCH_UNBOUND_OK
+unset -v BUS_NAME_MAX BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR BUS_SECS BUS_TMP BUS_PID BUS_TICKS BUS_RC HIMMEL_LAUNCH_UNBOUND_OK
 
 # Every headed worker gets one bus-idle-waker, started by headed-arm.sh once the
 # konsole pid exists (only it knows the pid). A headless worker has no konsole and
@@ -3017,7 +3065,7 @@ fi
 # The child's stdin stays this launcher's (`<&0`); HEADED_ARM_CONTEXT_PID is the child's own pid, as under --fleet.
 _ha_child=""
 # shellcheck disable=SC2329  # invoked by the trap below
-_ha_forward() { [ -z "$_ha_child" ] || kill -TERM "$_ha_child" 2>/dev/null; }
+_ha_forward() { [ -z "$_ha_child" ] || { _LAUNCH_REFUSAL_FWD=1; kill -TERM "$_ha_child" 2>/dev/null; }; }
 trap _ha_forward TERM HUP INT
 # Keep headed-arm.sh's profile/context handoff paired to its own exec PID.
 "${HA_SH[@]}" -c 'export HEADED_ARM_CONTEXT_PID="$$"; exec "$@"' bash \
@@ -3029,6 +3077,7 @@ while :; do
     kill -0 "$_ha_child" 2>/dev/null || break   # a trapped signal ends `wait` early; the child is still running
 done
 trap - TERM HUP INT
+if [ "$launch_rc" -eq 0 ] || [ "$_LAUNCH_REFUSAL_FWD" -eq 1 ]; then _LAUNCH_REFUSAL_SKIP=1; else _launch_refusal_note headed-arm; fi
 case "$launch_rc" in 0|7|9) ;; *) _release_fleet_reservation ;; esac
 if [ -n "$FLEET_MANIFEST" ]; then
     [ "$launch_rc" -eq 0 ] || exit "$launch_rc"

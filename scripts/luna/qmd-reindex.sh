@@ -155,6 +155,9 @@ set -euo pipefail
 QMD_BIN=""
 QMD_JS=""
 DRY_RUN=0
+USAGE_TRACK=0
+USAGE_BEFORE=unknown
+CHUNKS_TOTAL=0
 NO_CLEANUP=0
 # A named qmd index (`qmd --index NAME`), e.g. salus. Empty = the default index.
 INDEX_NAME=""
@@ -333,7 +336,7 @@ run_update() {
             return 0
         fi
         relabel_hash_count <<<"$out" >&2
-        if ! grep -qE -- 'SQLITE_BUSY|database is locked' <<<"$out"; then
+        if ! qmd_output_is_busy "$out"; then
             return "$rc"
         fi
         waited=$((SECONDS - t0))
@@ -622,6 +625,51 @@ if [ "$remote_model" -eq 1 ]; then
     fi
 fi
 
+usage_read() {
+    local out v provider
+    provider=$(node "$GATE_JS" --provider "$QMD_CFG_FILE" 2>/dev/null) || provider=""
+    out=$(
+        set +x
+        if [ -n "${QMD_REINDEX_KEY_USAGE_CMD:-}" ]; then
+            "$QMD_REINDEX_KEY_USAGE_CMD" 2>/dev/null
+        elif [ "$provider" = openrouter ] && command -v curl >/dev/null 2>&1; then
+            # -q first: a user's curlrc must not redirect the request or echo the key.
+            printf 'header = "Authorization: Bearer %s"\n' "${QMD_OPENAI_API_KEY:-}" \
+                | curl -q -sS --max-time 15 -K - https://openrouter.ai/api/v1/key 2>/dev/null \
+                | sed -nE 's/.*"usage"[[:space:]]*:[[:space:]]*([0-9][0-9.eE+-]*).*/\1/p'
+        fi
+    ) || out=""
+    v=${out%%$'\n'*}
+    [[ "$v" =~ ^(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$ ]] || v=unknown
+    printf '%s' "$v"
+}
+
+usage_json() { if [ "$1" = unknown ]; then printf '"unknown"'; else printf '%s' "$1"; fi; }
+
+write_usage_row() {
+    local after path host
+    [ "$USAGE_TRACK" -eq 1 ] || return 0
+    after=$(usage_read)
+    path="${HIMMEL_QMD_EMBED_USAGE:-$HOME/.himmel/state/qmd-embed-usage.jsonl}"
+    if ! mkdir -p "$(dirname "$path")" 2>/dev/null; then
+        echo "WARN qmd-reindex: could not create the directory for the usage row $path." >&2
+        return 0
+    fi
+    host=$(hostname 2>/dev/null || echo unknown)
+    host=${host//[^A-Za-z0-9._-]/_}
+    printf '{"v":1,"ts":"%s","host":"%s","source":"qmd-reindex","kind":"embed-usage","usage_before":%s,"usage_after":%s,"chunks":%s,"bound":"upper, shared key"}\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$host" "$(usage_json "$USAGE_BEFORE")" "$(usage_json "$after")" "$CHUNKS_TOTAL" \
+        >>"$path" 2>/dev/null \
+        || echo "WARN qmd-reindex: could not append the usage row to $path." >&2
+    return 0
+}
+
+if [ "$remote_model" -eq 1 ]; then
+    USAGE_BEFORE=$(usage_read)
+    USAGE_TRACK=1
+    trap 'rc=$?; trap - EXIT; write_usage_row || true; exit "$rc"' EXIT
+fi
+
 # --- 1. re-index changed files across every configured collection -----------
 echo "qmd-reindex: [1/3] qmd update"
 if ! run_update; then
@@ -750,6 +798,7 @@ while :; do
     elif grep -qE -- "$QMD_SENTINEL_DID_WORK" <<<"$SESSION_OUT"; then
         CHUNKS=$(sed -nE 's/.*Embedded ([0-9]+) chunks?.*/\1/p' <<<"$SESSION_OUT")
         CHUNKS=${CHUNKS%%$'\n'*}
+        CHUNKS_TOTAL=$((CHUNKS_TOTAL + ${CHUNKS:-0}))
         if [ "${CHUNKS:-0}" -gt 0 ]; then STALLS=0; else STALLS=$((STALLS + 1)); fi
     else
         break    # neither sentinel: the unreadable-verifier report below

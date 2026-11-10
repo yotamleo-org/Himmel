@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke tests for LUNA-33 fxtwitter enricher.
+# Smoke tests for the fxtwitter enricher.
 #
 # Scope:
 #   - script parses (node --check)
@@ -1354,7 +1354,7 @@ if [ "$(id -u)" != "0" ]; then
 fi
 node "$PLAN" --vault "$t26_vault" --kept-file >/dev/null 2>&1; t26_nov=$?
 assert "Test26: --kept-file with no value is refused" "1" "$t26_nov"
-assert "Test26: the printed command says it is paid and held by HIMMEL-8686" "yes" "$(grep '^synthesis-batch:' "$tmpdir/t26-dry.out" | grep -q 'paid' && grep '^synthesis-batch:' "$tmpdir/t26-dry.out" | grep -q 'HIMMEL-8686' && echo yes || echo no)"
+assert "Test26: the printed command says it is paid and held for the operator" "yes" "$(grep '^synthesis-batch:' "$tmpdir/t26-dry.out" | grep -q 'paid' && grep '^synthesis-batch:' "$tmpdir/t26-dry.out" | grep -q 'held for the operator' && echo yes || echo no)"
 assert "Test26: a look-alike host is not an X clip" "summary: seen=0 kept=0 skipped=0 fresh=0 triage-skipped=0 to-synthesise=0" \
     "$(node "$PLAN" --vault "$tmpdir/vault-t26b" | grep '^summary:')"
 t26d="$tmpdir/vault-t26d/Clippings"

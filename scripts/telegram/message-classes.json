@@ -195,6 +195,11 @@
       "sender": "scripts/luna/qmd-cadence.sh"
     },
     {
+      "kind": "cadence:rollup",
+      "class": "monitor",
+      "sender": "scripts/eval/rollup-cadence.sh"
+    },
+    {
       "kind": "cadence:graphmap-himmel",
       "class": "monitor",
       "sender": "scripts/luna/graphmap-cadence.sh"

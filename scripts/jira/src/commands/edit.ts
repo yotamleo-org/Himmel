@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { request, severityField } from '../client.js';
+import { browseLine } from '../browse-line.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
 import { appendAdmission } from './admissions-ledger.js';
@@ -496,5 +497,7 @@ export function registerEdit(program: Command): void {
       if (dropFixVersions.length > 0) queueBacklogIntake(key, 'a residual of depth 2 or more dropped its version to the backlog');
       writeJiraBreadcrumb(key);
       console.log(`${key} edited`);
+      const browse = browseLine(key);
+      if (browse) console.log(browse);
     });
 }

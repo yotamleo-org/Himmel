@@ -1,5 +1,5 @@
 /**
- * Shared Instagram request throttle, node twin of ig_throttle.py (HIMMEL-4306).
+ * Shared Instagram request throttle, node twin of ig_throttle.py.
  *
  * Reads and writes the SAME state file in the SAME shape as the Python module,
  * so every Instagram caller spends one budget: minimum spacing + jitter, a daily

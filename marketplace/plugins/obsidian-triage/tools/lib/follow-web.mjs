@@ -200,7 +200,7 @@ export function chainWebFns(fns) {
 // ---------------------------------------------------------------------------
 
 /**
- * Per-call Firecrawl ledger (HIMMEL-4335) — same JSONL file and shape as
+ * Per-call Firecrawl ledger — same JSONL file and shape as
  * harvest-clip-body-batch.py's ledger_append. One line: ts, call_site,
  * endpoint (path only), credits, ok. Never the key, the query or any result.
  * HIMMEL_FIRECRAWL_LEDGER overrides the ~/.himmel/state/ default; a write

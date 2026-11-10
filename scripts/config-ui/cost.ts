@@ -21,8 +21,12 @@ export type CostPart = { id: string; name: string; note: string; usd: number | n
 export type CostPhase = { id: string; name: string; usd: number | null; share: number | null; mark: Mark; made: string; parts: CostPart[] };
 export type CostModel = {
   state: "ok" | "nodata" | "nostore"; day: string | null; days: string[]; usd: number | null; mark: Mark; calls: number;
-  models: { model: string; usd: number | null }[]; phases: CostPhase[];
+  models: { model: string; usd: number | null }[]; phases: CostPhase[]; basis: string; coverageNote: string;
 };
+
+export const BASIS = "Claude transcript usage at list prices; not invoices. Native Codex and other provider stores are not included.";
+export const COVERAGE_NOTE = "Collection freshness and completeness unknown";
+const EMPTY = { usd: null, mark: "nocount" as Mark, calls: 0, models: [], phases: [], basis: BASIS, coverageNote: COVERAGE_NOTE };
 
 const READ = join(import.meta.dir, "..", "usage", "usage-read.sh");
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -56,10 +60,11 @@ type GroupDef = { id: string; name: string; phases: string[]; says: string; part
 const phaseIs = (p: string) => (r: PhaseCostRow) => r.phase === p;
 // A part with `of` is counted from the rows; one without says "not countable yet" (`whole`: it holds the phase's one figure).
 const GROUPS: GroupDef[] = [
-  { id: "build", name: "PR build", phases: ["build", "agent", "compaction", "retrieval", "boot"], says: "reading, editing and everything between", parts: [
+  { id: "build", name: "Build and other work", phases: ["build", "agent", "compaction", "retrieval", "boot"], says: "reading, editing and everything between", parts: [
     { id: "build-edit", name: "reading and editing", note: "Read, Edit, Write and every other command", of: phaseIs("build") },
-    { id: "build-agent", name: "worker subagents", note: "subagents a worker spawns, with their own calls", of: phaseIs("agent") },
-    { id: "build-compaction", name: "compaction", note: "calls after a compaction, up to the next tool", of: phaseIs("compaction") },
+    { id: "build-agent", name: "Child sessions", note: "subagents a worker spawns, with their own calls", of: (r) => r.phase === "agent" && r.class === "subagent" },
+    { id: "build-agent-followup", name: "Parent follow-ups after delegation", note: "the parent's own calls after it hands work to a subagent", of: (r) => r.phase === "agent" && r.class !== "subagent" },
+    { id: "build-compaction", name: "After compaction", note: "follow-up calls after a compaction, up to the next tool", of: phaseIs("compaction") },
     { id: "build-retrieval", name: "retrieval", note: "notes search and the code graph", of: phaseIs("retrieval") },
     { id: "build-boot", name: "boot", note: "calls before the first tool", of: phaseIs("boot") }] },
   { id: "chief", name: "Chief turns", phases: ["chief-turns"], says: "chief sessions and the helpers they spawn", parts: [
@@ -106,9 +111,9 @@ const money = (n: number) => n.toFixed(1);
 export function buildCostModel(all: PhaseCostRow[], day?: string): CostModel {
   const days = [...new Set(all.filter((r) => DAY_RE.test(r.day)).map((r) => r.day))].sort().reverse();
   // a day asked for that has no rows is that day with no data, never another day's costs
-  if (day && !days.includes(day)) return { state: "nodata", day, days, usd: null, mark: "nocount", calls: 0, models: [], phases: [] };
+  if (day && !days.includes(day)) return { state: "nodata", day, days, ...EMPTY };
   const picked = day ?? days[0];
-  if (!picked) return { state: "nodata", day: null, days: [], usd: null, mark: "nocount", calls: 0, models: [], phases: [] };
+  if (!picked) return { state: "nodata", day: null, days: [], ...EMPTY };
   const rows = all.filter((r) => r.day === picked && r.calls > 0);
 
   const known = new Set(GROUPS.flatMap((g) => g.phases));
@@ -136,7 +141,7 @@ export function buildCostModel(all: PhaseCostRow[], day?: string): CostModel {
   for (const r of rows) { const k = modelLabel(r.model); byModel.set(k, [...(byModel.get(k) ?? []), r]); }
   const models = [...byModel].map(([model, rs]) => ({ model, usd: sum(rs) })).sort((a, b) => (b.usd ?? -1) - (a.usd ?? -1));
   // the total is counted from the calls' own usage, so it is counted unless some call has no price (then it covers only the priced ones)
-  return { state: "ok", day: picked, days, usd: total, mark: rows.some((r) => r.mark === "unpriced") ? "unpriced" : "counted", calls: rows.reduce((a, r) => a + r.calls, 0), models, phases };
+  return { state: "ok", day: picked, days, usd: total, mark: rows.some((r) => r.mark === "unpriced") ? "unpriced" : "counted", calls: rows.reduce((a, r) => a + r.calls, 0), models, phases, basis: BASIS, coverageNote: COVERAGE_NOTE };
 }
 
 const storeFile = (env: Env) => join(env.HIMMEL_USAGE_STORE || join(env.HOME ?? "", ".himmel", "state", "usage"), "records.jsonl");
@@ -144,4 +149,4 @@ const storeFile = (env: Env) => join(env.HIMMEL_USAGE_STORE || join(env.HOME ?? 
 export const readCost = (env: Env, day?: string): CostModel =>
   existsSync(storeFile(env))
     ? buildCostModel(readPhaseCostRows(env), day)
-    : { state: "nostore", day: day ?? null, days: [], usd: null, mark: "nocount", calls: 0, models: [], phases: [] };
+    : { state: "nostore", day: day ?? null, days: [], ...EMPTY };

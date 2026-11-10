@@ -517,6 +517,15 @@ describe('edit read-back of every field it sends', () => {
     },
   ];
 
+  it('prints a browse: line with the site URL after the edit', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://station.atlassian.net');
+    readBack({ priority: { name: 'High' } });
+    await runEdit(['--priority', 'High']);
+    expect(console.log).toHaveBeenCalledWith('HIMMEL-1 edited');
+    expect(console.log).toHaveBeenCalledWith('browse: https://station.atlassian.net/browse/HIMMEL-1');
+    vi.unstubAllEnvs();
+  });
+
   for (const c of cases) {
     it(`${c.name}: reads ${c.field} back after the PUT and succeeds when it matches`, async () => {
       readBack(c.pass);

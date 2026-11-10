@@ -33,7 +33,7 @@ TELEGRAM_OWN_POLLER=1 claude "<prompt>" --channels plugin:telegram-himmel@himmel
 Disable upstream `telegram@claude-plugins-official` while this fork is
 enabled, or upstream's ungated poller re-introduces the steal.
 
-A second behavioural delta, added at the 0.0.7 re-sync (HIMMEL-1858): upstream
+A second behavioural delta, added at the 0.0.7 re-sync: upstream
 gates the stale-poller `SIGTERM` on `execFileSync('ps', …, '-o', 'args=')` inside
 one broad try/catch. Git Bash's MSYS `ps` does not support `-o args=` and cannot
 see native PIDs, so on Windows it *throws*, the catch swallows it, the kill is
@@ -47,14 +47,14 @@ One packaging delta: `package.json`'s `start` skips `bun install` when
 `1>&2` redirect is kept — `bun install` on stdout would corrupt the MCP stream.
 
 The fork also carried a photo-handling delta until the 0.0.7 re-sync: photos
-recorded `file_id` for lazy download (HIMMEL-266, filed because an eager
+recorded `file_id` for lazy download (added because an eager
 download inside the grammy handler stalled the poll loop for N×60s on a batch
 of N photos). Upstream 0.0.7 downloads eagerly but only *after* the gate
 approves, and surfaces `meta.image_path`; that behaviour was adopted by
-operator decision (HIMMEL-1858) and the himmel delta dropped. A photo batch
+operator decision at that re-sync and the himmel delta dropped. A photo batch
 from an allowlisted sender can still serialize downloads in the poll loop.
 
-## Opt-in MCP launch (HIMMEL-591)
+## Opt-in MCP launch
 
 Claude Code eagerly spawns every enabled plugin's MCP server at session start
 (no native lazy spawn), so this bun server used to load in **every** session —

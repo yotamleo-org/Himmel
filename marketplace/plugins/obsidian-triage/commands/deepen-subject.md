@@ -44,6 +44,6 @@ The deferred-row claim is recorded in the synthesize-stubs generation-ledger
 command's edits (filling `## References`, flipping `deepen_pending`) are ordinary
 content edits to a subject the operator owns — not auto-reverted.
 
-### Headless refusal (HIMMEL-128)
+### Headless refusal (the no-headless-claude rule)
 
 Drive luna-ingest interactively; never wrap it in a headless `claude -p` call.

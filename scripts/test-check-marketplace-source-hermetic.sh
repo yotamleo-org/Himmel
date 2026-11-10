@@ -37,7 +37,7 @@ JSON
 if run_guard "$tmp/tmpl.json" >/dev/null 2>&1; then
   echo "FAIL: guard passed despite a github-shorthand marketplace source"; exit 1
 fi
-echo "ok: github-shorthand source detected (RED, HIMMEL-2733 regression shape)"
+echo "ok: github-shorthand source detected (RED, regression shape)"
 
 # Case 2: the same plugin re-homed under
 # a marketplace whose source is a local "directory" (himmel's own
@@ -801,7 +801,7 @@ JSON
 if ! run_guard "$tmp/tmpl.json" >/dev/null 2>&1; then
   echo "FAIL: guard failed on a disabled, not-on-demand entry with a non-hermetic marketplace source"; exit 1
 fi
-echo "ok: disabled, not-on-demand non-hermetic entry passes (HIMMEL-2863)"
+echo "ok: disabled, not-on-demand non-hermetic entry passes"
 
 # Case 7b: an enabledPlugins
 # entry that is `false` but IS listed in onDemandPlugins is still INSTALLED by

@@ -31,13 +31,15 @@ fallback, not the default: a measured chief spent 7 to 9 full-context turns
 per MERGED/WRAPPED on it.
 
 For a batch close, run `bash scripts/handover/chief-kit/close-wrapped-worker.sh --sweep --fleet <manifest>`: it closes only lock-free workers whose tail is WRAPPED or a BLOCKED hand-off naming its launched successor (the tick counts the same two as `closable=`), skips held or live workers, and continues after an already-pruned worktree.
+A close returns right after the TERM: the session note, cost row, digest, `/tmp` reap and worktree prune run later in the background sweep, so read `bash scripts/handover/chief-kit/close-sweep.sh --status` (`failed=` above 0 means a prune went wrong).
 To close every finished window across chiefs, run
 `bash scripts/handover/chief-kit/close-wrapped-workers.sh [--check] [<manifest>...]`.
 It runs that sweep once per manifest and goes on after a failed one. With no
 manifest it sweeps every `*.fleet.json` in the bucket changed in the last 24 h
 (`CLOSE_WRAPPED_WORKERS_MAX_AGE_MIN`), predecessor chiefs' manifests included.
-It ends with `sweeps: manifests=<n> failed=<n> gone=<n>`, where `gone` counts
-WRAPPED workers with no live session left to close.
+It prints `sweeps: manifests=<n> failed=<n> gone=<n>`, where `gone` counts
+WRAPPED workers with no live session left to close, then starts the background
+sweep (not under `--check`) and ends with its status line.
 
 ### One-line forms for operator commands
 
@@ -59,8 +61,8 @@ On `WRAPPED`: confirm the lock is free at the ROOT sweep, then close the
 worker's window with `bash scripts/handover/chief-kit/close-wrapped-worker.sh
 <worker-doc>` — it verifies the lock is free and the doc's last
 Results marker is `WRAPPED`, signals the exactly-one live session that
-matches the worker (never a guess), and prunes ITS worktree once the PR is
-merged, all with no operator `!` step. Never run the
+matches the worker (never a guess), and queues ITS worktree for the background
+sweep, which prunes it once the PR is merged, all with no operator `!` step. Never run the
 bare `clean.sh` sweep for one worker — it is fleet-wide and removes every merged
 worktree, including another worker's that has merged but not yet wrapped (a live
 `claude` process's cwd is the primary checkout, so nothing marks that
@@ -68,11 +70,10 @@ worktree as in use). `--only` exits non-zero when the target is not a prune
 candidate. A worktree reported "in use" immediately after a wrap is the worker's
 own end-of-session hook still writing — re-run `--only` on it shortly.
 
-After the signal the close also digests the worker's session into the
+The background sweep also digests the worker's session into the
 failure-loop ledgers (`chief-kit/worker-digest-step.sh`) and
-prints exactly one line about it. The line is informational: it never changes
-the close's exit code or any other output line, and it never delays the close
-past its hard timeout (`CLOSE_WRAPPED_WORKER_DIGEST_TIMEOUT`, default 120 s).
+records one `digest=` result in the close record and in its `sweep.log`. The
+result is informational: it never changes the close's exit code.
 
 | `digest=` line | Meaning |
 |---|---|

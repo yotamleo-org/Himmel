@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixture-gated acceptance test for SYNTHESIZE stub mode (LUNA-87) — core +
+# Fixture-gated acceptance test for SYNTHESIZE stub mode — core +
 # dedup gate + generation-ledger + divergence guard.
 #
 # Contract (handover HARD GUARDRAIL #2): fire a stub only when >=2 _evidence/

@@ -3,7 +3,8 @@
 Ten opt-in skills vendored from [`cursor/plugins`](https://github.com/cursor/plugins)
 `pstack/` at `4dd1d05818d19792e7cd6e818f1667f95f7e1dbe` (0.15.36, MIT,
 (c) 2026 Lauren Tan). Inventory and deviations: [`VENDORED.md`](VENDORED.md).
-HIMMEL-6690 vendors the formal skills after HIMMEL-8218's accepted statechart pilot.
+The formal skills are vendored after a VM pilot found `/statechart` catches a
+planted lock bug at about the cost of our hand-written state search.
 
 | Skill | Use |
 |---|---|
@@ -97,4 +98,4 @@ profile. Nothing else depends on it.
 The subset stays in himmel; it does not track the `michael-denyer/pstack-claude`
 fork or install all of `cursor-plugins`. `poteto-mode`, `setup-pstack`, `shipping`,
 `autopilot-*`, `orchestrate`, `autonomous-run`, the other `principle-*` skills,
-and all upstream hooks and agents remain excluded (HIMMEL-5802; audit U8 REJECT).
+and all upstream hooks and agents remain excluded by the pstack integration plan (audit U8 REJECT).

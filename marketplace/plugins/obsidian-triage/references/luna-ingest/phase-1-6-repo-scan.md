@@ -1,4 +1,4 @@
-# luna-ingest — Phase 1.6 — Advisory repo security scan (HIMMEL-5816)
+# luna-ingest — Phase 1.6 — Advisory repo security scan
 
 Runs on every github repo run, after Phase 1.5 and before Phase 2. **Advisory and read-only**: it fetches text through `gh api`, never clones, never runs an install script, and never refuses or skips the ingest. A flagged repo is still ingested; the findings are shown in the note.
 

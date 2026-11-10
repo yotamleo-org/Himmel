@@ -8,8 +8,7 @@ Read-only, deterministic, no model call. Only tool names and tool inputs are rea
 
 A turn is one assistant message id (its records are merged; <synthetic> is skipped). A turn is LONE when its
 tool calls are exactly one comm tool and nothing else: an append-results.sh Bash bullet, a SendMessage with a
-message, an himmel-bus send (the MCP tool or `bus send`). Each lone turn takes the audit's marker class
-(HIMMEL-8890 Appendix A `marker()`); the SAFETY classes (GO, NO-GO, token-quoting rulings, SUCCESSION
+message, an himmel-bus send (the MCP tool or `bus send`). Each lone turn takes its `marker()` class; the SAFETY classes (GO, NO-GO, token-quoting rulings, SUCCESSION
 quote-backs, RETASK/REDIRECT/EXPANSION/HALT) are counted apart and are never batchable.
 With --dir, only turns whose timestamp is inside the window count, and only files modified inside it are read;
 file arguments count every record.

@@ -116,7 +116,7 @@ else
 fi
 assert "single-source-domain concept cluster of 3 → confidence floor skips" "skip" "$floor_decision"
 
-echo "Test 2b: confidence-floor — Pattern 2 (author convergence) exempt from domain floor (HIMMEL-242)"
+echo "Test 2b: confidence-floor — Pattern 2 (author convergence) exempt from domain floor"
 # Same single-source evidence read as an AUTHOR cluster: Alice has 2+
 # clips, all medium.com. Pattern 2 is exempt from the shared-domain test
 # (the author IS the source; authors are inherently single-platform), so
@@ -137,12 +137,12 @@ assert "single-domain author cluster of 2+ → Pattern 2 fires (domain-floor exe
 # Couple the test to the spec: if the exemption is reverted in
 # synthesize-clips.md without touching this suite, this assert fails.
 SPEC="$(dirname "$0")/../commands/synthesize-clips.md"
-if grep -q "NOT Pattern 2 (HIMMEL-242)" "$SPEC" 2>/dev/null; then
+if grep -q "NOT Pattern 2 (the author is the source)" "$SPEC" 2>/dev/null; then
     spec_exemption=present
 else
     spec_exemption=absent
 fi
-assert "spec carries the Pattern 2 domain-floor exemption (HIMMEL-242)" "present" "$spec_exemption"
+assert "spec carries the Pattern 2 domain-floor exemption" "present" "$spec_exemption"
 
 # Negative count-floor case: the exemption removes only the DOMAIN
 # guard — the <2-clip count floor still applies to Pattern 2. Bob has

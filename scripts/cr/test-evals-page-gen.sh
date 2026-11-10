@@ -195,7 +195,7 @@ eq "render: bottom line first, then the current setup, then history" \
 has "render: bottom line gives the planted-bug catch" "$(cat "$R")" "**75.0%**: \`beta\` caught 9 of 12 planted bugs"
 has "render: planted-bug sample" "$(cat "$R")" "as of 2026-10-24, n = 12 planted bugs in 24 test changes"
 has "render: the planted-bug row says the set holds real escapes" "$(grep -F '| **Planted-bug catch** |' "$R")" "The set also holds real review escapes, each with a clean twin."
-has "render: bottom line gives the required reviewer's precision" "$(cat "$R")" "| **90.0%** of \`beta\` findings ruled right |"
+has "render: bottom line gives the required reviewer's precision" "$(cat "$R")" "| **90.0%** of \`beta\` findings ruled right (recorded dispositions) |"
 has "render: bottom line says the pooled figure is not the headline" "$(cat "$R")" "not the all-reviewers pooled figure"
 has "render: current setup row with its role" "$(cat "$R")" "| \`beta\` | required: must pass before every merge | **90.0%** | 78.6 to 95.7 |"
 has "render: a panel reviewer with no findings yet" "$(cat "$R")" "| \`delta:m9\` | must pass where it runs; skipped on a machine without it | no ruled findings yet |"
@@ -359,6 +359,37 @@ printf 'cache-probe first-turn\nread-ratio: 97.4%% over 1200000 tokens\n' > "$TM
 python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --cache-probe "$TMP/noverdict.txt" --as-of 2026-10-25 --out "$TMP/x.json" > /dev/null 2>&1; rc=$?
 eq "data: a probe without its verdict line is refused" "$rc" "2"
 
+L3="$TMP/ledger-sources.jsonl"
+: > "$L3"
+for i in 0 1 2 3; do
+  printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"s%s","head":"h1","model":"beta","finding_id":"rec-%s","severity":"imp","verdict":"","artifact":"diff","perspective":"off","text":"claim rec-%s"}\n' "$i" "$i" "$i" >> "$L3"
+  if [ "$i" -lt 3 ]; then v=agreed; else v=disproved; fi
+  printf '{"kind":"amend","ts":"2026-10-02T10:00:00Z","branch":"s%s","target_head":"h1","finding_id":"rec-%s","artifact":"diff","perspective":"off","set":{"verdict":"%s"},"reason":"r"}\n' "$i" "$i" "$v" >> "$L3"
+  printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"t%s","head":"h1","model":"beta","finding_id":"thr-%s","severity":"imp","verdict":"fixed","source":"cr-thread-recorder","artifact":"diff","perspective":"off","text":"claim thr-%s"}\n' "$i" "$i" "$i" >> "$L3"
+done
+OUT3="$TMP/data-sources.json"
+python3 -I "$GEN" data --ledger "$L3" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$OUT3" > /dev/null 2>&1; rc=$?
+eq "sources: data exits 0" "$rc" "0"
+eq "sources: the figure counts recorded dispositions only" "$(jget "$OUT3" review/critics/beta/precision_pct)" "75.0"
+eq "sources: the figure names its verdict source" "$(jget "$OUT3" review/critics/beta/source)" "recorded-disposition"
+eq "sources: ruled findings of another source are counted out, by source" "$(jget "$OUT3" review/pooled/left_out)" '{"thread-state-inferred": 4, "unknown": 0}'
+python3 -I "$GEN" render --data "$OUT3" --out "$TMP/page-sources.md" > /dev/null 2>&1
+has "sources: the precision column names its source" "$(cat "$TMP/page-sources.md")" "| Precision (recorded dispositions) |"
+has "sources: the page says what it left out" "$(cat "$TMP/page-sources.md")" "4 ruled findings whose verdict the thread recorder inferred from thread state"
+python3 -I - "$OUT3" "$TMP/data-v3.json" <<'PY' || { echo "test-evals-page-gen: writing the v3 data file failed" >&2; exit 1; }
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["v"] = 3
+for g in [d["review"]["pooled"]] + list(d["review"]["critics"].values()):
+    g.pop("source", None), g.pop("left_out", None)
+json.dump(d, open(sys.argv[2], "w"))
+PY
+python3 -I "$GEN" render --data "$TMP/data-v3.json" --out "$TMP/page-v3.md" > /dev/null 2>&1
+has "sources: a data file without the split labels its figures pooled" "$(cat "$TMP/page-v3.md")" "| Precision (all verdict sources pooled) |"
+lacks "sources: a pooled figure is never called recorded dispositions" "$(cat "$TMP/page-v3.md")" "(recorded dispositions)"
+has "sources: the pooled note says what is counted, in reader terms" "$(cat "$TMP/page-v3.md")" "These figures count every ruling, including ones inferred from review threads; the next data refresh counts only the PR author's own rulings."
+lacks "sources: the pooled page names no internal script" "$(cat "$TMP/page-v3.md")" "cr-thread-recorder"
+
 # ── The committed page ───────────────────────────────────────────────────────
 eq "page: committed README is the render of the committed data file" \
   "$(python3 -I "$GEN" render --data "$DATA" --out "$TMP/committed.md" > /dev/null 2>&1; cmp -s "$TMP/committed.md" "$PAGE" && echo same || echo differ)" "same"
@@ -368,6 +399,29 @@ eq "page: this suite runs in PR CI, so a hand edit of the page fails the PR" \
 lacks "page: no draft marker" "$(head -5 "$PAGE")" "draft:"
 eq "page: on the site allowlist" "$(grep -cx 'evals/README.md' "$ROOT/site/allowlist.txt")" "1"
 eq "page: in the site nav" "$(grep -cF "slug: 'evals' }" "$ROOT/site/astro.config.mjs")" "1"
+E2="$TMP/eval-runs-rev.jsonl"
+python3 -I - "$ROOT/scripts/eval/lib" "$E" "$E2" <<'PY' || { echo "test-evals-page-gen: writing the revision ledger failed" >&2; exit 1; }
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import eval_runs
+rows = [json.loads(l) for l in open(sys.argv[2]) if l.strip()]
+src = [r for r in rows if r["eval"] == "review-panel"][0]
+newer = eval_runs.make_row("review-panel", "fixture", {"critics": ["beta"]},
+                           {"panel.recall": 0.5, "defects": 12, "cases": 24}, run_id="newer-exec", gitsha="0" * 40,
+                           meta={"execution_id": "x-newer"})
+newer["ts"] = "2026-10-25T01:00:00Z"
+rescore = eval_runs.make_row("review-panel", "fixture", {"critics": ["beta"]},
+                             {"panel.recall": 0.9, "defects": 12, "cases": 24}, run_id=src["run_id"] + "~rescore",
+                             gitsha="0" * 40, meta={"supersedes_run_id": src["run_id"]})
+rescore["ts"] = "2026-10-25T02:00:00Z"
+open(sys.argv[3], "w").write("".join(json.dumps(r) + "\n" for r in rows + [newer, rescore]))
+PY
+OUT2="$TMP/data-rev.json"
+python3 -I "$GEN" data --ledger "$L" --eval-runs "$E2" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$OUT2" > "$TMP/data2.out" 2> "$TMP/data2.err"; rc=$?
+eq "revision_not_prev_run: data exits 0" "$rc" "0"
+eq "revision_not_prev_run: the newest planted row is the newer execution, not the late rescore" "$(jget "$OUT2" planted/pct)" "50.0"
+eq "revision_not_prev_run: dated by the newer execution" "$(jget "$OUT2" planted/as_of)" "2026-10-25"
+
 # The page's headline figures live in the data file only, never in the generator.
 figs="$(grep -oE '\*\*[0-9][0-9.]*%\*\*' "$PAGE" | tr -d '*%' | sort -u)"
 has "no typed figure: the page has headline figures to check" "$figs" "."

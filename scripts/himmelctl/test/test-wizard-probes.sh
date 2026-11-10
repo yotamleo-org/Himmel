@@ -5113,7 +5113,8 @@ STUB
 chmod +x "$bh_stub/bun"
 
 run_bh_other() {
-  PATH="$bh_stub:$PATH" "$node_bin" -e "
+  # No luna config file: a config.json under the runner's decoy HOME would send the probe to a config-sourced env path.
+  PATH="$bh_stub:$PATH" HIMMEL_LUNA_CONFIG_PATH="$bh_dir/no-luna-config.json" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
 const item = manifest.items.find((i) => i.id === 'bridge-health');

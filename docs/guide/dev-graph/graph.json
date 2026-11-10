@@ -2760,7 +2760,7 @@
       "id": "m.s.minerva.again",
       "source": {
         "file": "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md",
-        "line": 235,
+        "line": 270,
         "text": "fix → re-critic until it returns clean, **cap 3 rounds per spec**"
       },
       "from": "s.minerva",
@@ -2858,7 +2858,7 @@
       "id": "m.p.plan.again",
       "source": {
         "file": "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md",
-        "line": 310,
+        "line": 451,
         "text": "fix → re-critic until clean, **cap 3 rounds**"
       },
       "from": "p.plan",
@@ -3567,7 +3567,8 @@
         "16": "e.verify.fail",
         "17": "e.verify.fail",
         "18": "e.verify.fail",
-        "19": "e.verify.fail"
+        "19": "e.verify.fail",
+        "20": "e.verify.fail"
       },
       "unmapped": {
         "14": "warn only: a Bug-ticket PR with no bug-origin line, never a FAIL, so no workflow decision",
@@ -3607,6 +3608,8 @@
         "worker-silent": "a worker gone quiet: the chief relaunches it or takes over its one blocked step, operational triage",
         "silent-go": "a GO'd PR whose worker went silent: the waiter merged it through merge-on-green.sh --go, or held it and paged, operational triage",
         "unclosed": "a worker window left open on two ticks with no disposition bullet: the chief closes it, parks it with a named wake or gives it up with a reason, operational triage",
+        "owed-undelivered": "an operator-owed item with no Telegram delivery receipt after 5 minutes: the chief sends it with the receipt command or tells the operator another way, operational triage",
+        "rm-lease-stale": "the release-manager lease holder is gone (no live pid, run doc missing or untouched for 30 minutes): the chief runs the printed takeover command, operational triage",
         "size": "a SIZE-ESCALATE row for a refused or bulk brief: the chief splits it, signs a size override or escalates to the operator, operational triage",
         "pr-watch": "a watched outside PR whose head, comments, reviews or state moved: the chief reads it and relaunches the closed worker or acts, operational triage"
       }

@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { underTmp } from '../commands/admissions-ledger.js';
 import { releaseRoot } from './paths.js';
+import { isTestProject } from '../live-test-guard.js';
 
 // The journal of machine Fix Version writes. The client hook records a row only
 // for a write whose own PUT produced the exact newer changelog entry; anything else stays
@@ -86,6 +87,8 @@ export function versionWriteScope(apiBase: string, method: string, path: string,
   if (!m || (method === 'POST') !== (m[1] === undefined)) return null;
   const b = body as { fields?: { fixVersions?: unknown }; update?: { fixVersions?: unknown } } | null | undefined;
   if (b?.fields?.fixVersions === undefined && b?.update?.fixVersions === undefined) return null;
+  const project = m[1] !== undefined ? m[1].slice(0, m[1].lastIndexOf('-')) : (body as { fields?: { project?: { key?: string } } }).fields?.project?.key;
+  if (project !== undefined && isTestProject(project)) return null;
   return { key: m[1] ?? null };
 }
 
