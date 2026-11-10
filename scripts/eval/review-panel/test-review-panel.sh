@@ -1329,6 +1329,13 @@ review "$VO/case-10.md" codex
 review "$VO/case-03.md" codex "imp:$(seed_file case-03):$(seed_line case-03):the probe default changes without a note"
 review "$VO/case-09.md" codex
 M4IDS="case-15,case-21,case-19,case-01,case-16,case-05,case-04,case-10,case-03,case-09"
+# mkmanifest <outputs> <fixtures> - the run manifest's recorded case inputs: verified labels bind only to them.
+mkmanifest() { python3 -B -c 'import json,sys; sys.path.insert(0, sys.argv[1]); import score
+ids = sys.argv[5].split(",")
+inp = score.case_inputs(sys.argv[4], score.load_key(sys.argv[2])["cases"], ids)
+json.dump({"v": 1, "protocol": {}, "provenance": {}, "cases": {}, "critics": [], "inputs": inp}, open(sys.argv[3] + "/run-manifest.json", "w"))' \
+  "$HERE" "$KEY" "$1" "$2" "${3:-$M4IDS}"; }
+mkmanifest "$VO" "$FIX"
 # mklabel <labels> <fixtures> <outputs> <case> <n> <correctness> <targets> <scope> <severity_valid> [adjudicator] [reviewer]
 mklabel() { python3 -B - "$HERE" "$KEY" "${MKVAL:-$VAL}" "$@" <<'PY'
 import json, sys
@@ -1390,7 +1397,8 @@ VO2="$TMP/m4-out2"; cp -r "$VO" "$VO2"; J2="$TMP/m4-2.json"; vscore "$VO2" "$L1"
 eq "label_reused_across_repeat: a repeat execution with identical findings reuses every label" \
   "$(jget "$J2" verified/metrics | sha256sum):$(jget "$J2" verified/coverage/panel/unlabelled)" "$(jget "$J1" verified/metrics | sha256sum):1"
 FIXC="$TMP/m4-fix-ctx"; cp -r "$FIX" "$FIXC"; printf 'keep the newest five archives\n' > "$FIXC/case-15.intent.md"
-J3="$TMP/m4-3.json"; vscore "$VO" "$L1" "$J3" "$FIXC" >/dev/null
+VOC="$TMP/m4-out-ctx"; cp -r "$VO" "$VOC"; mkmanifest "$VOC" "$FIXC"
+J3="$TMP/m4-3.json"; vscore "$VOC" "$L1" "$J3" "$FIXC" >/dev/null
 eq "changed_context_invalidates_reuse: a changed case input voids its label, the hit becomes unresolved" \
   "$(jget "$J3" verified/targets/case-15/logic-a-1):$(jget "$J3" verified/diagnostics | grep -c case-input-changed)" "unresolved:1"
 VO3="$TMP/m4-out3"; cp -r "$VO" "$VO3"
@@ -1442,6 +1450,36 @@ eq "verified_cohort_relabel_visible: a relabelled twin is named, joins the verif
 python3 "$GSCORE" verify-row "$(doctor "r[\"gold_revision\"]=\"$(sha256sum "$VAL" | cut -d' ' -f1)\"")" "$O" --repo "$G" --validation "$VAL" >/dev/null 2>&1; rc=$?
 python3 "$GSCORE" verify-row "$(doctor "r[\"gold_revision\"]=\"$(sha256sum "$VAL" | cut -d' ' -f1)\"")" "$O" --repo "$G" --validation "$VALE" >/dev/null 2>&1; rc2=$?
 eq "verify_row_reads_explicit_validation: the claimed gold_revision is checked against the --validation sidecar read" "$rc:$rc2" "0:1"
+J7="$TMP/m4-9.json"; vscore "$VO" "$L1" "$J7" "$FIXC" >/dev/null
+eq "execution_input_differs: outputs recorded on other case inputs than the fixtures hold leave the verified cohort" \
+  "$(jget "$J7" verified/targets/case-15):$(jget "$J7" verified/diagnostics | grep -c execution-input-differs)" "null:1"
+VON="$TMP/m4-out-nomanifest"; cp -r "$VO" "$VON"; rm -f "$VON/run-manifest.json"
+J8="$TMP/m4-10.json"; vscore "$VON" "$L1" "$J8" >/dev/null
+eq "unrecorded_inputs_not_verified: outputs with no recorded case inputs earn no verified credit" \
+  "$(jget "$J8" verified/targets):$(jget "$J8" verified/reasons | grep -c execution-input-unrecorded)" "{}:1"
+VOP="$TMP/m4-out-partial"; cp -r "$VO" "$VOP"; mkmanifest "$VOP" "$FIX" "case-21,case-19,case-01,case-16,case-05,case-04,case-10,case-03,case-09"
+J9="$TMP/m4-11.json"; vscore "$VOP" "$L1" "$J9" >/dev/null
+eq "unrecorded_inputs_not_verified: a case the manifest does not record is left out, the rest stay" \
+  "$(jget "$J9" verified/targets/case-15):$(jget "$J9" verified/targets/case-21/toctou-a-1)" "null:missed"
+LT="$TMP/m4-labels-target.jsonl"; cp "$L1" "$LT"
+python3 -B -c 'import json,sys; sys.path.insert(0, sys.argv[1]); import adjudication, score
+cases = score.load_key(sys.argv[2])["cases"]
+fs = score.parse_review(open(sys.argv[4] + "/case-19.md").read())[0]
+rec = {"v": 1, "kind": "target", "case_id": "case-19",
+       "case_input_sha256": adjudication.case_input_sha256(score.case_inputs(sys.argv[5], cases, ["case-19"])["case-19"]),
+       "gold_revision": adjudication.gold_revision(sys.argv[3]), "target_id": "quoting-a-1", "ruling": "missed",
+       "reviewed_findings": [adjudication.finding_sha256(f) for f in fs], "rationale": "fixture",
+       "evidence_refs": ["testdata:synthetic"], "adjudicator": "fixture-adjudicator", "reviewed_by": "fixture-reviewer",
+       "adjudicated_at": "2026-11-10"}
+open(sys.argv[6], "a").write((json.dumps(rec) + "\n") * 2)' "$HERE" "$KEY" "$VAL" "$VO" "$FIX" "$LT"
+JT="$TMP/m4-12.json"; out=$(vscore "$VO" "$LT" "$JT"); rc=$?
+eq "target_ruling_settles_a_miss: a repeated missed ruling covering every finding settles the target, recall becomes a point" \
+  "$rc:$(jget "$JT" verified/targets/case-19/quoting-a-1):$(jget "$JT" verified/metrics/panel.verified_defect_recall)" "0:missed:0.25"
+LB="$TMP/m4-labels-bool.jsonl"; cp "$L1" "$LB"
+python3 -c 'import json,sys; ls=[json.loads(l) for l in open(sys.argv[1])]; ls[4]["severity_valid"]=0; open(sys.argv[1], "w").write("".join(json.dumps(l) + "\n" for l in ls))' "$LB"
+JB="$TMP/m4-13.json"; vscore "$VO" "$LB" "$JB" >/dev/null
+eq "severity_valid_is_a_bool: a label giving severity_valid as 0 is rejected, so its blocker is unsettled" \
+  "$(jget "$JB" verified/blocks/case-05):$(jget "$JB" verified/diagnostics | grep -c bad-value)" "unsettled:1"
 
 echo
 echo "test-review-panel: PASS=$PASS FAIL=$FAIL"

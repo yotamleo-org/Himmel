@@ -198,7 +198,11 @@ but is never a verified hit.
   of one identity that disagree refuse the run (exit 2).
 
 `score --adjudications FILE` adds `verified` to the JSON and a verified block
-to the report. The cohort holds whole twin pairs whose entries are all
+to the report. A case counts only when its run manifest recorded exactly the
+case inputs the fixtures hold. Other inputs (`execution-input-differs`), or no
+record at all (`execution-input-unrecorded`, the case for every bundle from
+before the manifest), leave it out: missing provenance is never assumed. The
+cohort holds whole twin pairs whose entries are all
 validated: a sealed or open pair with a pending twin leaves together, and its
 name is listed. A relabelled twin is named too. Per critic and for the panel,
 the block reports:

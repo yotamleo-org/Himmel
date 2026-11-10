@@ -628,8 +628,9 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
 
 def verified_block(outputs, fixtures, cases, ids, per_case, entries, gold, adjudications):
     """The verified family of one scored sweep: labels bound to the fixtures' case inputs, the gold revision and
-    each finding's canonical hash. A case whose run manifest recorded other inputs than the fixtures hold is left
-    out (its outputs reviewed another case). Conflicting labels refuse (ValueError)."""
+    each finding's canonical hash. Only a case whose run manifest recorded exactly the inputs the fixtures hold
+    counts: other recorded inputs mean its outputs reviewed another case, and no record (no readable manifest, or
+    no entry for the case) is missing provenance, never assumed to match. Conflicting labels refuse (ValueError)."""
     inputs = case_inputs(fixtures, cases, ids)
     try:
         recorded = (read_manifest(outputs) or {}).get("inputs") or {}
@@ -637,8 +638,9 @@ def verified_block(outputs, fixtures, cases, ids, per_case, entries, gold, adjud
         recorded = {}
     diags, usable, findings, part = [], {}, {}, {}
     for cid in ids:
-        if cid in recorded and recorded[cid] != inputs[cid]:
-            diags.append({"reason": "execution-input-differs", "case": cid})
+        if cid not in recorded or recorded[cid] != inputs[cid]:
+            diags.append({"reason": "execution-input-unrecorded" if cid not in recorded else "execution-input-differs",
+                          "case": cid})
             continue
         usable[cid] = adjudication.case_input_sha256(inputs[cid])
         if cid in per_case:
@@ -652,8 +654,10 @@ def verified_block(outputs, fixtures, cases, ids, per_case, entries, gold, adjud
     vc = {cid: {"key_kind": c.get("kind"), "pair": c.get("pair") or cid, "split": c.get("split"),
                 "entry": entries.get(cid)} for cid, c in cases.items()}
     metrics, coverage, reasons, detail = adjudication.verified_metrics(vc, findings, labels, part)
-    if any(d["reason"] == "execution-input-differs" for d in diags):
-        reasons.append("execution-input-differs")
+    for why in ("execution-input-differs", "execution-input-unrecorded"):
+        n = sum(1 for d in diags if d["reason"] == why)
+        if n:
+            reasons.append("%s:%d" % (why, n))
     return dict(detail, gold_revision=gold, metrics=metrics, coverage=coverage, reasons=reasons,
                 diagnostics=diags + more)
 

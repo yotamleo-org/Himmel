@@ -55,6 +55,10 @@ def _text(v):
     return isinstance(v, str) and v.strip() != ""
 
 
+def _is_one(v):
+    return type(v) is int and v == 1
+
+
 def load_validation(path, key_cases):
     """(entries, problems, gold_revision) of a validation sidecar. Every entry names an existing key case; a
     validated or excluded entry needs an independent reviewer (not its curator), a review date and evidence; a
@@ -65,7 +69,7 @@ def load_validation(path, key_cases):
             doc = json.load(fh)
         except ValueError as e:
             return {}, ["%s: not JSON (%s)" % (path, e)], gold
-    if not isinstance(doc, dict) or doc.get("v") != 1 or not isinstance(doc.get("cases"), dict) \
+    if not isinstance(doc, dict) or not _is_one(doc.get("v")) or not isinstance(doc.get("cases"), dict) \
             or set(doc) != {"v", "cases"}:
         return {}, ["%s: a validation sidecar is {\"v\": 1, \"cases\": {...}}" % path], gold
     problems, out = [], {}
@@ -99,7 +103,7 @@ def load_validation(path, key_cases):
         added = e.get("added_targets", [])
         if not isinstance(added, list) or not all(
                 isinstance(t, dict) and set(t) == {"id", "file", "line", "description"} and _text(t["id"])
-                and _text(t["file"]) and isinstance(t["line"], int) and _text(t["description"]) for t in added):
+                and _text(t["file"]) and type(t["line"]) is int and _text(t["description"]) for t in added):
             say("added_targets must be a list of {id, file, line, description}")
             added = []
         known = {d.get("id") for d in key.get("defects", [])} | {t["id"] for t in added}
@@ -142,7 +146,7 @@ def _record_problem(rec, keys):
     missing = [k for k in keys if k not in rec]
     if missing:
         return "missing-field:" + ",".join(missing)
-    if rec["v"] != 1 or not isinstance(rec["case_id"], str):
+    if not _is_one(rec["v"]) or not isinstance(rec["case_id"], str):
         return "bad-value:v-or-case_id"
     for k in ("case_input_sha256", "gold_revision"):
         if not isinstance(rec[k], str) or not HEX64.match(rec[k]):
@@ -195,7 +199,7 @@ def load_adjudications(path, case_inputs, gold_revision, findings):
         elif why is None:
             sv = rec["severity_valid"]
             ok = (isinstance(rec["finding_sha256"], str) and HEX64.match(rec["finding_sha256"])
-                  and rec["correctness"] in CORRECTNESS and rec["scope"] in SCOPES and sv in (True, False, None)
+                  and rec["correctness"] in CORRECTNESS and rec["scope"] in SCOPES and (sv is None or isinstance(sv, bool))
                   and isinstance(rec["target_ids"], list) and all(isinstance(t, str) for t in rec["target_ids"])
                   and isinstance(rec["observed_execution_ids"], list)
                   and not (rec["target_ids"] and rec["correctness"] != "correct"))
@@ -220,7 +224,7 @@ def load_adjudications(path, case_inputs, gold_revision, findings):
             conflicts.add(ident)
             del table[ident]
             diags.append({"reason": "conflict", "case": cid, "identity": ident[1][:16], "line": n})
-        else:
+        elif not is_target:
             prev["observed_execution_ids"] = sorted(set(prev["observed_execution_ids"])
                                                     | set(rec["observed_execution_ids"]))
     return labels, diags
