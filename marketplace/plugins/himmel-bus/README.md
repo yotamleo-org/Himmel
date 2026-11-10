@@ -2,7 +2,7 @@
 
 Private, chained local message storage (plan T2). The store currently imports
 `../../../../scripts/telegram/bus.ts` and requires Linux `flock` and Node 24+;
-standalone marketplace-cache packaging is owned by HIMMEL-4830.
+standalone marketplace-cache packaging is a separate step (the packaging ticket).
 
 ## Delivery and recovery
 

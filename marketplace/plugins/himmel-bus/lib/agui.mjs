@@ -29,7 +29,7 @@ export function summarize(rec) {
 async function logNames(root) {
   const names = new Set();
   for (const file of await readdir(join(root, 'log'))) {
-    // ponytail: a session name that itself ends `.<digits>` is read as a rotated segment, upgrade path is a peer-file lookup (HIMMEL-4834).
+    // A session name that itself ends `.<digits>` is read as a rotated segment; a peer-file lookup would tell them apart.
     const live = file.match(/^(.+)\.jsonl$/);
     const closed = file.match(/^(.+)\.\d+\.jsonl(\.zst|\.gz)?$/);
     const name = closed?.[1] ?? live?.[1];

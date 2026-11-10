@@ -1097,7 +1097,7 @@ case "$(uname -s)" in
                 if [ -f "$WT_H3/wt-h3-held.txt" ] && grep -qF "feat/h3-held" "$WT_H3/wt-h3-held.txt"; then
                     pass "H3: held worktree's tracked content survives"
                 else
-                    fail "H3: held worktree's tracked content is gone (the pre-fix HIMMEL-2227 wreck)" "$h3_out"
+                    fail "H3: held worktree's tracked content is gone (the pre-fix wreck of a held worktree)" "$h3_out"
                 fi
                 if h_branch_gone feat/h3-held; then
                     fail "H3: branch deleted despite an in-use worktree" "$h3_out"
@@ -1117,7 +1117,7 @@ case "$(uname -s)" in
         fi
         ;;
     *)
-        echo "  SKIP: H3 — not Windows; a held cwd blocks neither rename nor rmdir on POSIX (HIMMEL-2227)"
+        echo "  SKIP: H3 — not Windows; a held cwd blocks neither rename nor rmdir on POSIX"
         ;;
 esac
 clear_checkpoints
@@ -1183,7 +1183,7 @@ case "$(uname -s)" in
             if [ -f "$WT_H4/wt-h4-held-linux.txt" ] && grep -qF "feat/h4-held-linux" "$WT_H4/wt-h4-held-linux.txt"; then
                 pass "H4: held worktree's tracked content survives"
             else
-                fail "H4: held worktree's tracked content is gone (the pre-fix HIMMEL-2602 wreck)" "$h4_out"
+                fail "H4: held worktree's tracked content is gone (the pre-fix wreck of a held worktree)" "$h4_out"
             fi
             if h_branch_gone feat/h4-held-linux; then
                 fail "H4: branch deleted despite an in-use worktree" "$h4_out"
@@ -1209,7 +1209,7 @@ case "$(uname -s)" in
         wait "$H4_HOLDER" 2>/dev/null
         ;;
     *)
-        echo "  SKIP: H4 — the /proc live-holder detector is Linux-only (HIMMEL-2602)"
+        echo "  SKIP: H4 — the /proc live-holder detector is Linux-only"
         ;;
 esac
 clear_checkpoints
