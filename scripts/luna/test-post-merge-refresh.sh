@@ -41,8 +41,8 @@ unset GRAPHIFY_OUT INDEX_PATH QMD_INDEX_PATH QMD_CONFIG_DIR HIMMEL_FLOW_RUNS_LED
 
 BASE=1800000000
 NOW=$BASE
-OUT=""
-RC=0
+TICK_OUT=""
+TICK_RC=0
 C=""
 W0=""
 LAST=""
@@ -53,7 +53,7 @@ g() { git -c user.name=t -c user.email=t@t -c commit.gpgsign=false -c core.hooks
 livepid() { sleep 600 >/dev/null 2>&1 & echo $! >> "$TMP_ROOT/bg.pids"; echo $!; }
 deadpid() { local p; sh -c 'exit 0' & p=$!; wait "$p" 2>/dev/null; echo "$p"; }
 
-mkcase() { # <name>
+mkcase() {
     C="$TMP_ROOT/$1"
     mkdir -p "$C/primary" "$C/state" "$C/bin" "$C/cfg" "$C/cache"
     g init -q "$C/primary" 2>/dev/null
@@ -111,7 +111,7 @@ STUB
     : > "$C/alerts.log"
 }
 
-cm() { # <epoch> <path>...
+cm() {
     local ep="$1" p; shift
     for p in "$@"; do
         mkdir -p "$C/primary/$(dirname "$p")"
@@ -129,14 +129,14 @@ seed_both() {
     printf '%s\n' "$W0" > "$C/state/graph.sha"
 }
 
-tick() { # <halves> [K=V...]; sets OUT and RC
+tick() {
     local halves="$1"; shift
-    OUT=$(env HOME="$HOME" PMR_CASE="$C" PMR_BUSY_FIXTURE="$BUSY_FIXTURE" \
+    TICK_OUT=$(env HOME="$HOME" PMR_CASE="$C" PMR_BUSY_FIXTURE="$BUSY_FIXTURE" \
         PMR_QMD="$C/bin/qmd" PMR_AST="$C/bin/ast" PMR_PRIMARY="$C/primary" PMR_STATE="$C/state" \
         PMR_NOW="$NOW" PMR_LOAD=0 PMR_ALERT="$C/bin/alert" PMR_REINDEX_LOCK="$C/reindex.lock" \
         PMR_LAG="$C/bin/lag.py" QMD_CONFIG_DIR="$C/cfg" INDEX_PATH="$C/cache/index.sqlite" \
         HIMMEL_FLOW_RUNS_LEDGER="$C/flow.jsonl" "$@" bash "$TICK_BIN" --halves "$halves" 2>&1)
-    RC=$?
+    TICK_RC=$?
 }
 
 ncalls() { local n; n=$(grep -c -- "^$1" "$C/calls.log" 2>/dev/null) || n=0; [ -n "$n" ] || n=0; echo "$n"; }
@@ -170,10 +170,10 @@ row_quiet_window_holds() {
     NOW=$((BASE+1300)); tick both
     assert_eq "quiet_window_holds: keyword not run inside the window" 0 "$(ncalls 'qmd update')"
     assert_eq "quiet_window_holds: graph not run inside the window" 0 "$(ncalls ast)"
-    assert_contains "quiet_window_holds: keyword hold logged" "keyword hold=" "$OUT"
-    assert_contains "quiet_window_holds: graph hold logged" "graph hold=" "$OUT"
+    assert_contains "quiet_window_holds: keyword hold logged" "keyword hold=" "$TICK_OUT"
+    assert_contains "quiet_window_holds: graph hold logged" "graph hold=" "$TICK_OUT"
     assert_eq "quiet_window_holds: keyword watermark stays" "$W0" "$(sha_of qmd)"
-    assert_eq "quiet_window_holds: exit 0" 0 "$RC"
+    assert_eq "quiet_window_holds: exit 0" 0 "$TICK_RC"
     NOW=$((BASE+1600)); tick both
     assert_eq "quiet_window_holds: keyword fires once the newest is 600 s old" 1 "$(ncalls 'qmd update')"
     assert_eq "quiet_window_holds: graph fires once the newest is 600 s old" 1 "$(ncalls ast)"
@@ -221,11 +221,11 @@ row_failed_refresh_keeps_watermark() {
     mkcase failwm; seed_both; cm $((BASE+100)) docs/a.md
     printf 'fail' > "$C/qmd.mode"; printf 'fail' > "$C/ast.mode"
     NOW=$((BASE+1000)); tick both
-    assert_contains "failed_refresh_keeps_watermark: keyword fail logged" "keyword fail rc=1" "$OUT"
-    assert_contains "failed_refresh_keeps_watermark: graph fail logged" "graph fail rc=5" "$OUT"
+    assert_contains "failed_refresh_keeps_watermark: keyword fail logged" "keyword fail rc=1" "$TICK_OUT"
+    assert_contains "failed_refresh_keeps_watermark: graph fail logged" "graph fail rc=5" "$TICK_OUT"
     assert_eq "failed_refresh_keeps_watermark: keyword watermark stays" "$W0" "$(sha_of qmd)"
     assert_eq "failed_refresh_keeps_watermark: graph watermark stays" "$W0" "$(sha_of graph)"
-    assert_eq "failed_refresh_keeps_watermark: a failed run still exits 0" 0 "$RC"
+    assert_eq "failed_refresh_keeps_watermark: a failed run still exits 0" 0 "$TICK_RC"
 }
 
 row_tree_moved_during_run() {
@@ -262,8 +262,8 @@ row_range_with_nothing_moves_watermark() {
     NOW=$((BASE+1000)); tick both
     assert_eq "range_with_nothing_moves_watermark: keyword watermark moves to main" "$(head_sha)" "$(sha_of qmd)"
     assert_eq "range_with_nothing_moves_watermark: no keyword run" 0 "$(ncalls 'qmd update')"
-    assert_contains "range_with_nothing_moves_watermark: the move is logged" "keyword nothing" "$OUT"
-    assert_not_contains "range_with_nothing_moves_watermark: not a hold" "keyword hold=" "$OUT"
+    assert_contains "range_with_nothing_moves_watermark: the move is logged" "keyword nothing" "$TICK_OUT"
+    assert_not_contains "range_with_nothing_moves_watermark: not a hold" "keyword hold=" "$TICK_OUT"
 }
 
 row_seeds_without_running() {
@@ -273,7 +273,7 @@ row_seeds_without_running() {
     assert_eq "seeds_without_running: graph watermark seeded at main" "$(head_sha)" "$(sha_of graph)"
     assert_eq "seeds_without_running: no keyword run" 0 "$(ncalls 'qmd update')"
     assert_eq "seeds_without_running: no graph run" 0 "$(ncalls ast)"
-    assert_contains "seeds_without_running: seeded logged" "keyword seeded" "$OUT"
+    assert_contains "seeds_without_running: seeded logged" "keyword seeded" "$TICK_OUT"
 }
 
 row_non_ancestor_runs_once() {
@@ -290,11 +290,12 @@ row_non_ancestor_runs_once() {
     assert_eq "non_ancestor_runs_once: and only once" 1 "$(ncalls 'qmd update')"
 }
 
-mk_lock() { # <half-file-prefix> <pid> <acquired-epoch>
-    mkdir -p "$C/state/$1.lock"
-    printf '%s\n' "$2" > "$C/state/$1.lock/pid"
-    printf 'other-run\n' > "$C/state/$1.lock/owner"
-    printf '%s\n' "$3" > "$C/state/$1.lock/acquired"
+mk_lock() {
+    local prefix="$1" pid="$2" acquired="$3"
+    mkdir -p "$C/state/$prefix.lock"
+    printf '%s\n' "$pid" > "$C/state/$prefix.lock/pid"
+    printf 'other-run\n' > "$C/state/$prefix.lock/owner"
+    printf '%s\n' "$acquired" > "$C/state/$prefix.lock/acquired"
 }
 
 row_dead_lock_refuses_loud() {
@@ -305,7 +306,7 @@ row_dead_lock_refuses_loud() {
     assert_eq "dead_lock_refuses_loud: no keyword run" 0 "$(ncalls 'qmd update')"
     assert_eq "dead_lock_refuses_loud: no graph run" 0 "$(ncalls ast)"
     if [ -d "$C/state/qmd.lock" ] && [ -d "$C/state/graph.lock" ]; then pass "dead_lock_refuses_loud: a dead holder's lock is never taken over"; else fail "dead_lock_refuses_loud: the lock directory was removed"; fi
-    assert_contains "dead_lock_refuses_loud: the refusal names the lock" "ERR" "$OUT"
+    assert_contains "dead_lock_refuses_loud: the refusal names the lock" "ERR" "$TICK_OUT"
     assert_contains "dead_lock_refuses_loud: keyword alert raised" "post-merge-keyword" "$(cat "$C/alerts.log")"
     assert_contains "dead_lock_refuses_loud: graph alert raised" "post-merge-graph" "$(cat "$C/alerts.log")"
 }
@@ -317,7 +318,7 @@ row_live_lock_skips() {
     NOW=$((BASE+1000)); tick both
     assert_eq "live_lock_skips: no keyword run" 0 "$(ncalls 'qmd update')"
     assert_eq "live_lock_skips: no graph run" 0 "$(ncalls ast)"
-    assert_contains "live_lock_skips: skip logged" "keyword skip=live-lock" "$OUT"
+    assert_contains "live_lock_skips: skip logged" "keyword skip=live-lock" "$TICK_OUT"
     assert_eq "live_lock_skips: a fresh holder raises no alert" 0 "$(nalerts 'fail')"
     if [ -d "$C/state/graph.lock" ]; then pass "live_lock_skips: the lock stays"; else fail "live_lock_skips: the lock was removed"; fi
 }
@@ -338,7 +339,7 @@ row_reindex_lock_live_skips_keyword() {
     mkdir -p "$C/reindex.lock"; printf '%s\n' "$lp" > "$C/reindex.lock/pid"
     NOW=$((BASE+1000)); tick both
     assert_eq "reindex_lock_live_skips_keyword: no keyword run" 0 "$(ncalls 'qmd update')"
-    assert_contains "reindex_lock_live_skips_keyword: skip logged" "keyword skip=reindex-lock" "$OUT"
+    assert_contains "reindex_lock_live_skips_keyword: skip logged" "keyword skip=reindex-lock" "$TICK_OUT"
     assert_eq "reindex_lock_live_skips_keyword: the graph half is unaffected" 1 "$(ncalls ast)"
 }
 
@@ -424,7 +425,7 @@ row_hold_neither_alerts_nor_clears() {
     NOW=$((BASE+1000)); tick both
     NOW=$((BASE+1300)); tick both
     NOW=$((BASE+1400)); tick both
-    assert_contains "hold_neither_alerts_nor_clears: a backoff tick is a hold" "keyword hold=backoff" "$OUT"
+    assert_contains "hold_neither_alerts_nor_clears: a backoff tick is a hold" "keyword hold=backoff" "$TICK_OUT"
     assert_eq "hold_neither_alerts_nor_clears: no alert from a hold" 0 "$(nalerts 'fail post-merge-keyword')"
     assert_eq "hold_neither_alerts_nor_clears: no clear from a hold" 0 "$(nalerts 'clear post-merge-keyword')"
     NOW=$((BASE+1900)); tick both
@@ -445,7 +446,7 @@ row_twelve_skips_alert() {
 row_clean_exit_clears_tick_alert() {
     mkcase tickalert; seed_both
     NOW=$((BASE+1000)); tick both
-    assert_eq "clean_exit_clears_tick_alert: exit 0" 0 "$RC"
+    assert_eq "clean_exit_clears_tick_alert: exit 0" 0 "$TICK_RC"
     assert_contains "clean_exit_clears_tick_alert: the tick alert is cleared" "clear post-merge-tick" "$(cat "$C/alerts.log")"
 }
 
@@ -467,7 +468,7 @@ row_no_index_no_sample() {
     mkcase noindex; seed_both; rm -f "$C/cache/index.sqlite"
     NOW=$((BASE+1000)); tick both
     assert_eq "no_index_no_sample: no sampler call" 0 "$(ncalls lag)"
-    assert_eq "no_index_no_sample: one log line" 1 "$(grep -c 'no index' <<<"$OUT")"
+    assert_eq "no_index_no_sample: one log line" 1 "$(grep -c 'no index' <<<"$TICK_OUT")"
 }
 
 row_sampler_after_keyword_before_graph() {
@@ -494,8 +495,8 @@ row_db_busy_is_skip() {
     mkcase busy; seed_both; cm $((BASE+100)) docs/a.md
     printf 'busy' > "$C/qmd.mode"
     NOW=$((BASE+1000)); tick both
-    assert_contains "db_busy_is_skip: the real busy output reads as a skip" "keyword skip=db-busy" "$OUT"
-    assert_not_contains "db_busy_is_skip: not a failure" "keyword fail" "$OUT"
+    assert_contains "db_busy_is_skip: the real busy output reads as a skip" "keyword skip=db-busy" "$TICK_OUT"
+    assert_not_contains "db_busy_is_skip: not a failure" "keyword fail" "$TICK_OUT"
     assert_eq "db_busy_is_skip: the watermark holds" "$W0" "$(sha_of qmd)"
     NOW=$((BASE+1300)); tick both
     assert_eq "db_busy_is_skip: no backoff, the next tick tries again" 2 "$(ncalls 'qmd update')"
@@ -505,7 +506,7 @@ row_promote_lock_is_skip() {
     mkcase promote; seed_both; cm $((BASE+100)) src/a.sh
     printf 'skip' > "$C/ast.mode"
     NOW=$((BASE+1000)); tick graph
-    assert_contains "promote_lock_is_skip: exit 4 reads as a skip" "graph skip=promote-lock" "$OUT"
+    assert_contains "promote_lock_is_skip: exit 4 reads as a skip" "graph skip=promote-lock" "$TICK_OUT"
     assert_eq "promote_lock_is_skip: the watermark holds" "$W0" "$(sha_of graph)"
     NOW=$((BASE+1300)); tick graph
     assert_eq "promote_lock_is_skip: no backoff, the next tick tries again" 2 "$(ncalls ast)"
@@ -515,7 +516,7 @@ row_deadline_without_signature_is_fail() {
     mkcase deadline; seed_both; cm $((BASE+100)) docs/a.md
     printf 'timeout' > "$C/qmd.mode"
     NOW=$((BASE+1000)); tick both
-    assert_contains "deadline_without_signature_is_fail: rc 124 with no busy signature fails" "keyword fail rc=124" "$OUT"
+    assert_contains "deadline_without_signature_is_fail: rc 124 with no busy signature fails" "keyword fail rc=124" "$TICK_OUT"
     assert_eq "deadline_without_signature_is_fail: the watermark holds" "$W0" "$(sha_of qmd)"
 }
 
@@ -536,7 +537,7 @@ row_backoff_after_failure() {
     NOW=$((BASE+1000)); tick both
     NOW=$((BASE+1060)); tick both
     assert_eq "backoff_after_failure: no retry inside the 5 minute backoff" 1 "$(ncalls 'qmd update')"
-    assert_contains "backoff_after_failure: the hold names the backoff" "keyword hold=backoff" "$OUT"
+    assert_contains "backoff_after_failure: the hold names the backoff" "keyword hold=backoff" "$TICK_OUT"
     NOW=$((BASE+1300)); tick both
     assert_eq "backoff_after_failure: retry once it passes" 2 "$(ncalls 'qmd update')"
     NOW=$((BASE+1300+599)); tick both
@@ -557,14 +558,14 @@ row_watermark_moved_before_lock_skips() {
     chmod +x "$C/fakebin/nproc"
     NOW=$((BASE+1000)); tick graph PATH="$C/fakebin:$PATH"
     assert_eq "watermark_moved_before_lock_skips: a watermark another tick moved is not run on stale state" 0 "$(ncalls ast)"
-    assert_contains "watermark_moved_before_lock_skips: the race is logged" "graph hold=raced" "$OUT"
+    assert_contains "watermark_moved_before_lock_skips: the race is logged" "graph hold=raced" "$TICK_OUT"
     mkcase raced2; seed_both; cm $((BASE+100)) src/a.sh
     mkdir -p "$C/fakebin"
     printf '#!/bin/sh\nprintf "%%s\\n" "%s" > "%s/state/graph.retry"\necho 4\n' "$((BASE+9000))" "$C" > "$C/fakebin/nproc"
     chmod +x "$C/fakebin/nproc"
     NOW=$((BASE+1000)); tick graph PATH="$C/fakebin:$PATH"
     assert_eq "watermark_moved_before_lock_skips: a backoff another tick set meanwhile holds the run" 0 "$(ncalls ast)"
-    assert_contains "watermark_moved_before_lock_skips: and is logged as a backoff" "graph hold=backoff" "$OUT"
+    assert_contains "watermark_moved_before_lock_skips: and is logged as a backoff" "graph hold=backoff" "$TICK_OUT"
 }
 
 row_slow_graph_floors_hourly() {
@@ -576,7 +577,7 @@ row_slow_graph_floors_hourly() {
     printf 'ok' > "$C/ast.mode"; echo $((BASE+2200)) > "$C/now"
     tick graph
     assert_eq "slow_graph_floors_hourly: inside the hour the graph does not run" 1 "$(ncalls ast)"
-    assert_contains "slow_graph_floors_hourly: the floor is logged" "graph hold=slow-floor" "$OUT"
+    assert_contains "slow_graph_floors_hourly: the floor is logged" "graph hold=slow-floor" "$TICK_OUT"
     echo $((BASE+1000+3600)) > "$C/now"; tick graph
     assert_eq "slow_graph_floors_hourly: it runs again an hour on" 2 "$(ncalls ast)"
     cm $((BASE+4700)) src/c.sh
@@ -588,7 +589,7 @@ row_load_defers_then_runs() {
     mkcase load; seed_both; cm $((BASE+100)) docs/a.md src/a.sh
     NOW=$((BASE+1000)); tick both PMR_LOAD=999
     assert_eq "load_defers_then_runs: load at or above the cores defers keyword" 0 "$(ncalls 'qmd update')"
-    assert_contains "load_defers_then_runs: the defer is a skip" "keyword skip=load" "$OUT"
+    assert_contains "load_defers_then_runs: the defer is a skip" "keyword skip=load" "$TICK_OUT"
     NOW=$((BASE+1000+1799)); tick both PMR_LOAD=999
     assert_eq "load_defers_then_runs: still deferred before 1800 s" 0 "$(ncalls 'qmd update')"
     NOW=$((BASE+1000+1800)); tick both PMR_LOAD=999
@@ -600,8 +601,8 @@ row_primary_off_main_skips() {
     mkcase offmain; seed_both; cm $((BASE+100)) docs/a.md
     g -C "$C/primary" checkout -q -b topic
     NOW=$((BASE+1000)); tick both
-    assert_contains "primary_off_main_skips: keyword skip" "keyword skip=primary-off-main" "$OUT"
-    assert_contains "primary_off_main_skips: graph skip" "graph skip=primary-off-main" "$OUT"
+    assert_contains "primary_off_main_skips: keyword skip" "keyword skip=primary-off-main" "$TICK_OUT"
+    assert_contains "primary_off_main_skips: graph skip" "graph skip=primary-off-main" "$TICK_OUT"
     assert_eq "primary_off_main_skips: nothing ran" 0 "$(( $(ncalls 'qmd update') + $(ncalls ast) ))"
     assert_eq "primary_off_main_skips: watermarks hold" "$W0 $W0" "$(sha_of qmd) $(sha_of graph)"
 }
@@ -631,10 +632,10 @@ row_dot_dir_md_skips_keyword() {
 
 row_usage() {
     mkcase usage
-    OUT=$(bash "$TICK" 2>&1); RC=$?
-    assert_eq "usage: no arguments exits 2" 2 "$RC"
-    OUT=$(bash "$TICK" --halves keyword 2>&1); RC=$?
-    assert_eq "usage: an unknown arm exits 2" 2 "$RC"
+    TICK_OUT=$(bash "$TICK" 2>&1); TICK_RC=$?
+    assert_eq "usage: no arguments exits 2" 2 "$TICK_RC"
+    TICK_OUT=$(bash "$TICK" --halves keyword 2>&1); TICK_RC=$?
+    assert_eq "usage: an unknown arm exits 2" 2 "$TICK_RC"
 }
 
 row_decide() {
@@ -648,8 +649,8 @@ row_decide() {
     assert_eq "decide: an oldest merge 1800 s old fires" fire "$o"
     o=$(printf '' | bash "$TICK" --decide "$BASE" 600 1800 2>&1)
     assert_eq "decide: no merges holds" hold "$o"
-    bash "$TICK" --decide notanumber 600 1800 </dev/null >/dev/null 2>&1; RC=$?
-    assert_eq "decide: a bad number exits 2" 2 "$RC"
+    bash "$TICK" --decide notanumber 600 1800 </dev/null >/dev/null 2>&1; TICK_RC=$?
+    assert_eq "decide: a bad number exits 2" 2 "$TICK_RC"
 }
 
 for row in quiet_window_holds max_wait_fires burst_fires_once ignored_merges_count_for_neither \

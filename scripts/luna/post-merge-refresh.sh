@@ -85,8 +85,9 @@ st_get() { cat "$PMR_STATE/$1" 2>/dev/null || true; }
 st_put() { printf '%s\n' "$2" > "$PMR_STATE/$1.tmp.$$" && mv -f "$PMR_STATE/$1.tmp.$$" "$PMR_STATE/$1"; }
 st_rm() { rm -f "$PMR_STATE/$1"; }
 
-alert_fail() { # <half> <reason> <cause> <do>
-    "$PMR_ALERT" fail "post-merge-$1" "$2" "$PMR_LOG" "$3" "$4" >/dev/null 2>&1 || true
+alert_fail() {
+    local half="$1" reason="$2" cause="$3" action="$4"
+    "$PMR_ALERT" fail "post-merge-$half" "$reason" "$PMR_LOG" "$cause" "$action" >/dev/null 2>&1 || true
 }
 alert_clear() { "$PMR_ALERT" clear "$1" >/dev/null 2>&1 || true; }
 
@@ -198,7 +199,7 @@ run_graph() {
     "${LOWPRIO[@]}" bash "$PMR_AST" "$PMR_PRIMARY"
 }
 
-flow_rows() { # <flow> <started> <ended> <rc> <from> <to>
+flow_rows() {
     local flow="$1" started="$2" ended="$3" rc="$4" from="$5" to="$6" fired_at ended_at run_id outcome
     fired_at=$(date -u -d "@$started" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$started" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || _fr_now_utc)
     ended_at=$(date -u -d "@$ended" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$ended" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || _fr_now_utc)
@@ -225,7 +226,7 @@ pmr_half() {
     return 0
 }
 
-pmr_half_step() { # keyword|graph
+pmr_half_step() {
     local half="$1" pfx now branch main w force=0 times newest oldest t first retry floor
     local lock rc out start end flow
     if [ "$half" = keyword ]; then pfx="qmd"; flow="post-merge-keyword"; else pfx="graph"; flow="post-merge-graph"; fi
