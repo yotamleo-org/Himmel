@@ -311,8 +311,9 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
   if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
   else tryRead("chief doc lines", () => {
     const live = chiefDocItems(doc, open), more = [...undeliveredItems(doc, open), ...unclosedItems(doc, env)];
-    return live === undefined && !more.length ? undefined : [...(live ?? []), ...more];
-  }, "the chief doc has no Live state section");
+    if (live === undefined) miss("chief doc lines", "the chief doc has no Live state section");
+    return [...(live ?? []), ...more];
+  }, "");
   return unread.length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread, skipped };
 }
 
