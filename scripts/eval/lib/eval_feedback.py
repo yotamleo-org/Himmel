@@ -11,9 +11,12 @@ eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" r
      execution must run the receipt's after cbs_hash (computed from Git at its code_under_test_sha) and its
      execution must post-date applied_at (the ts of its earliest row, so a later rescore keeps its execution's
      time; a revision whose source row is absent has no known time). That execution is then compared with the
-     proposal's baseline execution: it must run the receipt's before cbs_hash and pass review_incompat, and both
-     must be split rows; otherwise the verdict is inconclusive, with the reason. Without a receipt the change stays
-     proposed. A rescore of an execution from before the application is never a treatment result.
+     proposal's baseline execution. The verdict is inconclusive, with the reason, when Git does not reproduce the
+     receipt, its target_paths are not exactly the proposal's target, either run is not decision-eligible, the
+     baseline is not at the receipt's before cbs_hash, review_incompat fails, either run is not split, or the keep
+     rule lacks data (an unmeasured test half or noise); otherwise the keep rule gives keep or revert. Without a
+     receipt the change stays proposed. A rescore of an execution from before the application is never a
+     treatment result.
   2. CHANGE: per critic (rules without one share the eval's slot), when that row is not yet the baseline
      of a change of that critic, the first rule (file order) with a metric worse than its threshold and no
      open change of the same confighash raises ONE "open" change record for the worst such metric.
@@ -54,7 +57,7 @@ APPLY-REVIEW: apply_review() writes one review-panel change's applied receipt fo
   the caller. Refused: no open change of that id, a change of another eval, one already applied or measured, a
   commit that is not in the repo, a root or merge commit, a target outside the measured behaviour set (a CodeRabbit
   config treatment needs a later protocol), identical before and after cbs_hash, a commit that does not change the
-  proposal's target. It runs no git operation that writes, and neither do keep and revert: they are
+  proposal's target or that changes another behaviour path beside it. It runs no git operation that writes, and neither do keep and revert: they are
   recommendations.
 
 MERGE GATE (HIMMEL-8426): gate_verdict() grades a critic change from the tracked review-panel results rows;
@@ -411,7 +414,10 @@ def apply_review(cid, commit, changes, repo=None):
         if target not in diff:
             raise ValueError("refused: commit %s does not change the proposal's target %s" % (sha[:12], target))
         paths = sorted(p for p in diff if p in behaviour)
-        canon = "".join("%s\t%s\n" % (diff[p], p) for p in paths).encode("utf-8", "surrogateescape")
+        if paths != [target]:
+            raise ValueError("refused: commit %s changes behaviour paths beyond the proposal's target: %s"
+                             % (sha[:12], ", ".join(p for p in paths if p != target)))
+        canon ="".join("%s\t%s\n" % (diff[p], p) for p in paths).encode("utf-8", "surrogateescape")
         rec = envelope(id=cid, eval=REVIEW, metric=prop.get("metric"), status="applied")
         rec.update(applied_at=rec["ts"], before_cbs_hash=before, after_cbs_hash=after, commit=sha, target_paths=paths,
                    diff_sha256=hashlib.sha256(canon).hexdigest())
@@ -419,19 +425,49 @@ def apply_review(cid, commit, changes, repo=None):
     return rec
 
 
-def measure_review(c, receipt, series, base, new, when, cbs_of):
+def receipt_mismatch(repo, rec):
+    """Why Git does not reproduce applied receipt rec in repo, or None: its commit must be one commit with one parent
+    whose cbs_hash is before_cbs_hash, its own cbs_hash after_cbs_hash, and the two must differ."""
+    score = _score()
+    sha = commit_of(repo, rec.get("commit"))
+    if sha is None or sha != rec.get("commit"):
+        return "the receipt does not match Git: its commit is not a full commit sha in the repo"
+    parents = score._git(repo, "rev-list", "--parents", "-n", "1", sha).decode().split()[1:]
+    if len(parents) != 1 or rec.get("before_cbs_hash") == rec.get("after_cbs_hash") \
+            or score.cbs_hash(repo, parents[0]) != rec.get("before_cbs_hash") \
+            or score.cbs_hash(repo, sha) != rec.get("after_cbs_hash"):
+        return "the receipt does not match Git: its commit does not reproduce its before and after versions"
+    return None
+
+
+INSUFFICIENT = ("test half unmeasured", "noise unmeasured")
+
+
+def measure_review(c, receipt, series, base, new, when, cbs_of, check_receipt):
     """The measured record of review-panel change c on its newest execution new, or None while c stays proposed (no
     receipt) or awaits a measurement (new does not run the applied version, or did not run after applied_at).
-    when: new's execution time; cbs_of(row): the cbs_hash of the row's code_under_test_sha, None when unknown."""
+    when: new's execution time; cbs_of(row): the cbs_hash of the row's code_under_test_sha, None when unknown;
+    check_receipt(receipt): receipt_mismatch against the repo. Every reason is plain words: the page prints it."""
     after_hash, at = (receipt or {}).get("after_cbs_hash"), (receipt or {}).get("applied_at")
     if not isinstance(after_hash, str) or not isinstance(at, str) or cbs_of(new) != after_hash \
             or when is None or when <= at:
         return None
     bound = {"applied_commit": receipt.get("commit"), "after_cbs_hash": after_hash}
-    if cbs_of(base) != receipt.get("before_cbs_hash"):
-        why = "the baseline execution is not at the receipt's parent cbs_hash"
-    else:
+    inelig = [r for r in (base, new) if row_field(r, "decision_eligible") is False]
+    why = check_receipt(receipt)
+    if why is None and receipt.get("target_paths") != [c.get("target")]:
+        why = "the receipt's target paths are not exactly the proposal's target"
+    if why is None and inelig:
+        why = "not decision-eligible: %s" % ", ".join(
+            "%s (%s)" % ("the baseline run" if r is base else "the applied run",
+                         ", ".join(str(x) for x in row_field(r, "ineligibility_reasons") or []) or "no reason recorded")
+            for r in inelig)
+    if why is None and cbs_of(base) != receipt.get("before_cbs_hash"):
+        why = "the baseline run is not at the receipt's parent version"
+    if why is None:
         why = review_incompat(base, new)
+        if why and why.startswith(("confighash ", "scorer_sha256 ")):
+            why = why.split(": ", 1)[-1]
     if why is None and not (is_split(base) and is_split(new)):
         why = "no train/test split on both runs: the keep rule cannot run"
     before = after = None
@@ -444,6 +480,8 @@ def measure_review(c, receipt, series, base, new, when, cbs_of):
         return envelope(id=c["id"], eval=REVIEW, metric=c["metric"], status="measured", before=before, after=after,
                         delta=None, verdict="inconclusive", after_run_id=new["run_id"], reason=why, **bound)
     verdict, extra = keep_rule(dict(c, value=before), series, base, new, after)
+    if extra["reason"].startswith(INSUFFICIENT):
+        verdict = "inconclusive"
     delta = after - before
     return envelope(id=c["id"], eval=REVIEW, metric=c["metric"], status="measured", before=before, after=after,
                     delta=round(delta, 6) if math.isfinite(delta) else None, verdict=verdict,
@@ -613,7 +651,8 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None, repo=None
                     continue
                 if ev == REVIEW:
                     m = measure_review(c, applied.get(c["id"]), series, by_id[c["baseline_run_id"]], new,
-                                       started(new), cbs_of)
+                                       started(new), cbs_of,
+                                       lambda rec: receipt_mismatch(repo or _score().toplevel(), rec))
                     if m is not None:
                         append(path, m)
                         measured.add(c["id"])

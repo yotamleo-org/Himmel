@@ -280,11 +280,11 @@ def review_line(c, what, why, applied, mz):
     if mz.get("verdict") == "keep" and move:
         return "- Measured, keep: %s. The measured run at the applied version: %s. Keep is a recommendation: " \
                "nothing was merged, deployed or reverted by it." % (did, move)
+    reason = mz.get("reason") if isinstance(mz.get("reason"), str) and mz.get("reason") else "no reason recorded"
     if mz.get("verdict") == "revert" and move:
-        return "- Measured, revert: %s. The measured run at the applied version: %s. Revert is a recommendation: " \
-               "nothing was reverted by it." % (did, move)
-    return "- Inconclusive: %s. The measured run at the applied version could not be compared with the proposal's " \
-           "baseline run, so it says nothing either way." % did
+        return "- Measured, revert: %s. The measured run at the applied version: %s (%s). Revert is a " \
+               "recommendation: nothing was reverted by it." % (did, move, reason)
+    return "- Inconclusive: %s. The measured run at the applied version settles nothing: %s." % (did, reason)
 
 
 def change_lines(changes):

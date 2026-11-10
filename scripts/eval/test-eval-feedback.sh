@@ -320,12 +320,14 @@ chmod +x "$R6/scripts/cr/critic-first-pass.sh"
 MODE6="$(commit6 'the target mode only: same bytes')"
 printf 'p2\n' >"$R6/scripts/cr/critic-panel.sh"
 OTHER6="$(commit6 'another behaviour path, not the target')"
+printf 'v4\n' >"$R6/scripts/cr/critic-first-pass.sh"; printf 'p3\n' >"$R6/scripts/cr/critic-panel.sh"
+BOTH6="$(commit6 'the target and another behaviour path')"
 MAIN6="$(gitc6 symbolic-ref --short HEAD)"
 gitc6 checkout -q -b side; printf 's\n' >"$R6/SIDE"; commit6 side >/dev/null
 gitc6 checkout -q "$MAIN6"; printf 'v3\n' >"$R6/scripts/cr/critic-first-pass.sh"; commit6 main >/dev/null
 gitc6 merge -q --no-ff -m merge side >/dev/null 2>&1
 MERGE6="$(gitc6 rev-parse HEAD)"
-eq "M6 fixture repo: six distinct commits" "$(printf '%s\n' "$ROOT6" "$APPLY6" "$DOCS6" "$MODE6" "$OTHER6" "$MERGE6" | sort -u | grep -c .)" "6"
+eq "M6 fixture repo: seven distinct commits" "$(printf '%s\n' "$ROOT6" "$APPLY6" "$DOCS6" "$MODE6" "$OTHER6" "$BOTH6" "$MERGE6" | sort -u | grep -c .)" "7"
 
 SELPY="$TMP/sel.py"
 cat >"$SELPY" <<'EOF'
@@ -528,7 +530,7 @@ sys.path.insert(0, sys.argv[1])
 import eval_feedback as fb
 import eval_runs
 
-repo, ROOT, APPLY, DOCS, MODE, OTHER, MERGE = sys.argv[2:9]
+repo, ROOT, APPLY, DOCS, MODE, OTHER, MERGE, BOTH = sys.argv[2:10]
 S1, S2 = "a" * 64, "b" * 64
 COV = {"scored": 4, "critics": {"codex": {"answer": 4}}}
 TARGET = "scripts/cr/critic-first-pass.sh"
@@ -550,21 +552,24 @@ def recs(p):
 def status(p, s):
     return [c for c in recs(p) if c.get("status") == s]
 
-def add(ledger, rid, val, code, ts, ex=None, sup=None, sc=S1, cov=COV, split=True):
+INELIGIBLE = {"decision_eligible": False, "ineligibility_reasons": ["provenance-reconstructed"]}
+
+def add(ledger, rid, val, code, ts, ex=None, sup=None, sc=S1, cov=COV, split=True, extra=None):
     m = {"codex.class.quoting.recall": val}
     if split:
         m.update({"open.codex.class.quoting.recall": val, "sealed.codex.class.quoting.recall": val})
-    meta = {"execution_id": ex or rid, "scorer_sha256": sc, "coverage": cov, "code_under_test_sha": code}
+    meta = dict({"execution_id": ex or rid, "scorer_sha256": sc, "coverage": cov, "code_under_test_sha": code},
+                **(extra or {}))
     if sup:
         meta["supersedes_run_id"] = sup
     r = eval_runs.make_row("review-panel", "s", {"review_panel_v": 2}, m, run_id=rid, meta=meta, gitsha="g")
     r["ts"] = ts
     eval_runs.append_row(r, ledger)
 
-def proposal(name, base_code=ROOT):
+def proposal(name, base_code=ROOT, bases=2, base_extra=None):
     ledger, changes = os.path.join(d, name + ".jsonl"), os.path.join(d, name + "-c.jsonl")
-    add(ledger, name + "-b1", 0, base_code, "2026-01-01T00:00:00Z")
-    add(ledger, name + "-b2", 0, base_code, "2026-01-02T00:00:00Z")
+    for i in range(1, bases + 1):
+        add(ledger, "%s-b%d" % (name, i), 0, base_code, "2026-01-0%dT00:00:00Z" % i, extra=base_extra)
     fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
     opened = status(changes, "open")
     return ledger, changes, opened[0]["id"] if opened else None
@@ -694,6 +699,67 @@ fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
 m = status(changes, "measured")
 check("valid_applied_after_run_measured: no gain is revert", len(m) == 1 and m[0].get("verdict") == "revert", m)
 
+def one_inconclusive(name, want):
+    m = status(changes, "measured")
+    check(name, len(m) == 1 and m[0].get("verdict") == "inconclusive" and want in (m[0].get("reason") or ""), m)
+
+ledger, changes, cid = proposal("onebase", bases=1)
+fb.apply_review(cid, APPLY, changes, repo=repo)
+add(ledger, "onebase-c", 1, APPLY, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+one_inconclusive("insufficient data is inconclusive, not revert: one baseline run leaves the noise unmeasured",
+                 "noise unmeasured")
+ledger, changes, cid = proposal("nosealed")
+fb.apply_review(cid, APPLY, changes, repo=repo)
+r = eval_runs.make_row("review-panel", "s", {"review_panel_v": 2},
+                       {"codex.class.quoting.recall": 1, "open.codex.class.quoting.recall": 1,
+                        "sealed.codex.clean_scored": 0},
+                       run_id="nosealed-c", gitsha="g",
+                       meta={"execution_id": "nosealed-c", "scorer_sha256": S1, "coverage": COV,
+                             "code_under_test_sha": APPLY})
+r["ts"] = LATER
+eval_runs.append_row(r, ledger)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+one_inconclusive("insufficient data is inconclusive, not revert: an unmeasured test half", "test half unmeasured")
+
+ledger, changes, cid = proposal("inelig-new")
+fb.apply_review(cid, APPLY, changes, repo=repo)
+add(ledger, "inelig-new-c", 1, APPLY, LATER, extra=INELIGIBLE)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+one_inconclusive("an applied run that is not decision-eligible, with a better metric, is inconclusive with its reasons",
+                 "provenance-reconstructed")
+ledger, changes, cid = proposal("inelig-base", base_extra=INELIGIBLE)
+fb.apply_review(cid, APPLY, changes, repo=repo)
+add(ledger, "inelig-base-c", 1, APPLY, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+one_inconclusive("a baseline run that is not decision-eligible makes the measurement inconclusive",
+                 "provenance-reconstructed")
+
+ledger, changes, cid = proposal("forged")
+fb.append(changes, fb.envelope(id=cid, eval="review-panel", metric="codex.class.quoting.recall", status="applied",
+                               applied_at="2026-06-01T00:00:00Z", before_cbs_hash=fb._score().cbs_hash(repo, ROOT),
+                               after_cbs_hash=fb._score().cbs_hash(repo, APPLY), commit=OTHER,
+                               target_paths=[TARGET], diff_sha256="0" * 64))
+add(ledger, "forged-c", 1, APPLY, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+one_inconclusive("a receipt whose hashes Git does not reproduce at its commit is inconclusive, never keep",
+                 "does not match Git")
+ledger, changes, cid = proposal("wide")
+fb.apply_review(cid, APPLY, changes, repo=repo)
+with open(changes) as fh:
+    lines = fh.read().splitlines()
+with open(changes, "w") as fh:
+    for ln in lines:
+        row = json.loads(ln)
+        if row.get("status") == "applied":
+            row["target_paths"] = [TARGET, "scripts/cr/critic-panel.sh"]
+        fh.write(json.dumps(row) + "\n")
+add(ledger, "wide-c", 1, APPLY, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+one_inconclusive("a receipt whose target_paths are not exactly the proposal's target is inconclusive", "target")
+ledger, changes, cid = proposal("both")
+refused("a commit that also changes another behaviour path is refused", cid, BOTH, changes, "beyond the proposal's target")
+
 jl, jc = os.path.join(d, "judge.jsonl"), os.path.join(d, "judge-c.jsonl")
 for i, v in enumerate((0.04, 0.01)):
     eval_runs.append_row(eval_runs.make_row("judge-accuracy", "s", {"judge_accuracy_v": 1, "days": 28},
@@ -703,7 +769,7 @@ m = status(jc, "measured")
 check("other_eval_unchanged: a judge change is measured as before, with no receipt",
       len(m) == 1 and m[0].get("verdict") == "improved" and "applied_commit" not in m[0], m)
 EOF
-M6OUT="$(python3 -I "$M6PY" "$HERE/lib" "$R6" "$ROOT6" "$APPLY6" "$DOCS6" "$MODE6" "$OTHER6" "$MERGE6" 2>&1)"
+M6OUT="$(python3 -I "$M6PY" "$HERE/lib" "$R6" "$ROOT6" "$APPLY6" "$DOCS6" "$MODE6" "$OTHER6" "$MERGE6" "$BOTH6" 2>&1)"
 while IFS= read -r line; do
   case "$line" in PASS*) PASS=$((PASS + 1)); echo "$line";; *) FAIL=$((FAIL + 1)); echo "$line";; esac
 done <<<"$M6OUT"
