@@ -85,7 +85,7 @@
 #   3  refused: run from a chief-spawned worker (a judge included:
 #      "the judge is a worker") - a worker never writes its own GO
 #   3  refused: run from a chief relay - only the chief writes a GO
-#   4  refused: ready-check.sh exited 1, it did not PASS for <pr> at <head>
+#   4  refused: ready-check.sh did not PASS for <pr> at <head> (it exited 1)
 #   5  refused: --trust-reviewed <qid> has no GO verdict for <head>
 #   6  refused: --repo names no himmel adapter and no adopted repo with merge_allowed true
 #   7  refused: --repo PR is not OPEN at <head>, MERGEABLE and on the himmel_branch
@@ -94,8 +94,8 @@
 #   8  refused: ready-check computed `TRUST-PATH: yes` (the PR diff touches a path in
 #      the default branch's scripts/ci/ci-trust-paths.txt) and this is a plain GO;
 #      only --trust-reviewed <judge qid> may write it. The worker's READY text is never read.
-#   9  refused: cr-disposition.sh check exited 1, it found a deferred Critical or Important
-#      finding on the PR's branch with no valid disposition at <head>
+#   9  refused: cr-disposition.sh check found a deferred Critical or Important
+#      finding on the PR's branch with no valid disposition at <head> (it exited 1)
 #  10  refused: --trust-reviewed <qid> has a real GO for <head> but a judge's NO-GO
 #      (any qid of the PR) sits at or after <head>; or its only GO for <head> is a
 #      `delta: no-op` verdict (write-verdict.sh --delta-noop) that go-gate.sh's
