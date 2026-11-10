@@ -880,7 +880,7 @@ presence, verbatim, is the pass signal for that lever). Open the program
 ticket's comments (the one holding the measured baseline and the per-lever
 acceptance rules) and find that citation's line verbatim: a missing citation or a line not
 found is not READY; for the general `GATE ... <status> <date>` shape (every
-ticket except 2973), a found line whose status is not PASS is also not READY.
+lever except the autocompact lever), a found line whose status is not PASS is also not READY.
 The chief pulls the primary and the worker wraps (closing its ticket only if the
 brief's `completes-ticket: yes` says the PR completes it).
 The chief sends the GO file (merge approval) by first running `bash scripts/handover/chief-kit/go.sh
