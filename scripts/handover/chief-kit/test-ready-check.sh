@@ -3865,6 +3865,22 @@ contains "17d: item 17 passes as not applicable" "$R17_OUT" "[PASS] 17."
 # the merge's key reader, not a grep of the title: a bare KEY-n without brackets is no key
 R17_RC=0; R17_OUT="$(STUB_PR_TITLE='feat(x): HIMMEL-100 thing without brackets' run)" || R17_RC=$?
 check "17e an unbracketed key is no key to the merge, so no remainder is read: exit 0" "$R17_RC" "0"
+R17_HANDED='## Ticket coverage\n- ask one: done\n- ask two: deferred \xe2\x86\x92 HIMMEL-2\n'
+R17_RC=0; R17_OUT="$(STUB_BODY="$R17_HANDED" run)" || R17_RC=$?
+check "17j contract no with a wholly handed-off remainder: exit 1" "$R17_RC" "1"
+contains "17j: item 17 fails" "$R17_OUT" "[FAIL] 17."
+R17_LINE="$(printf '%s\n' "$R17_OUT" | grep '\] 17\.' || true)"
+contains "17j: item 17's own line names the other key" "$R17_LINE" "HIMMEL-2"
+contains "17j: item 17's own line names the brief line" "$R17_LINE" "Completes ticket: no"
+contains "17j: item 17's own line names the contract to re-issue the GO with" "$R17_LINE" "--contract yes"
+contains "17j: item 17's own line names the Remaining: line" "$R17_LINE" "Remaining:"
+notcontains "17j: item 17 does not pass" "$R17_OUT" "[PASS] 17."
+R17_OUT="$(STUB_BODY="$R17_HANDED"'\nRemaining: x\n' run || true)"
+contains "17k a Remaining: line beside a deferred line passes item 17" "$R17_OUT" "[PASS] 17."
+RUN_FLAGS="--contract yes --require-contract"
+R17_OUT="$(STUB_BODY="$R17_HANDED" run || true)"
+contains "17l contract yes passes a handed-off body" "$R17_OUT" "[PASS] 17."
+RUN_FLAGS="--contract no --require-contract"
 RUN_FLAGS="--require-contract"
 R17_RC=0; R17_OUT="$(run)" || R17_RC=$?
 check "17f a keyed title with no contract named, from a GO writer: exit 1" "$R17_RC" "1"
