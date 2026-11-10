@@ -685,7 +685,7 @@ const seededReturns = (rows: LedgerRow[], kind: Kind): SeededReturn[] => epochNo
 const roundRows = (rows: LedgerRow[], kind: Kind) => rows.filter(r => r.row === "round" && r.critic === kind && (Number(r.epoch) || 0) === epochNow(rows));
 const kindRound = (rows: LedgerRow[], kind: Kind) => Math.max(epochNow(rows) > 0 ? 0 : Number(seedOf(rows)?.[kind]) || 0, ...roundRows(rows, kind).map(r => Number(r.round) || 0));
 const latestRow = (rows: LedgerRow[], kind: Kind) => roundRows(rows, kind).reduce<LedgerRow | null>((top, r) => (!top || Number(r.round) >= Number(top.round) ? r : top), null);
-type Returned = { findings?: Finding[]; unrated_ids?: string[]; mode?: string };
+type Returned = { findings?: Finding[]; unrated_ids?: string[]; mode?: string; return_sha?: string };
 const isBlocking = (f: Finding, mode?: string) => mode === "closure" ? f.class === "reopens" || f.class === "regression" : f.severity === "major" || !!f.reopens || !!f.regression;
 const blockingOf = (r: Returned) => [...(r.findings ?? []).filter(f => isBlocking(f, r.mode)).map(f => ({ id: f.id, severity: String(f.severity) })), ...(r.unrated_ids ?? []).map(id => ({ id, severity: "unrated" }))];
 const leftBlocking = (r: Returned) => blockingOf(r).length > 0;
@@ -704,21 +704,25 @@ const openBlocking = (rows: LedgerRow[]) => KINDS.flatMap(kind => latestReturns(
 const writerRound = (rows: LedgerRow[]) => Math.max(kindRound(rows, "spec"), kindRound(rows, "plan"));
 const latestRoundTs = (rows: LedgerRow[]) => Number(rows.filter(r => r.row === "round").at(-1)?.ts) || 0;
 
+const findingKey = (id: unknown, returnSha: unknown) => `${id}|${returnSha}`;
 function criticalOpenOf(rows: Rows): RoundState["critical_open"] {
-  const closed = new Set(rows.checked.criticals.map(r => String(r.id)));
+  const closed = new Set(rows.checked.criticals.map(r => findingKey(r.id, r.return_sha)));
   const out: RoundState["critical_open"] = [];
+  const listed = new Set<string>();
   for (const kind of KINDS) {
-    const seen = [...seededReturns(rows, kind).map(s => ({ round: Number(seedOf(rows)?.[kind]) || 0, verdict_path: s.verdict_path, findings: s.findings })), ...roundRows(rows, kind).map(r => ({ round: Number(r.round), verdict_path: String(r.verdict_path), findings: r.findings as Finding[] }))];
-    for (const s of seen) for (const f of s.findings ?? []) if (f.critical && !closed.has(f.id) && !out.some(o => o.id === f.id)) out.push({ id: f.id, class: f.critical, kind, round: s.round, verdict_path: s.verdict_path });
+    const seen = [...seededReturns(rows, kind).map(s => ({ round: Number(seedOf(rows)?.[kind]) || 0, verdict_path: s.verdict_path, return_sha: s.return_sha, findings: s.findings })), ...roundRows(rows, kind).map(r => ({ round: Number(r.round), verdict_path: String(r.verdict_path), return_sha: String(r.return_sha), findings: r.findings as Finding[] }))];
+    for (const s of seen) for (const f of s.findings ?? []) {
+      const k = findingKey(f.id, s.return_sha);
+      if (f.critical && !closed.has(k) && !listed.has(k)) { listed.add(k); out.push({ id: f.id, class: f.critical, kind, round: s.round, verdict_path: s.verdict_path }); }
+    }
   }
   return out;
 }
-function findingOf(rows: LedgerRow[], id: string): { f: Finding; return_sha: string; verdict_path: string } | null {
-  for (const kind of KINDS) {
-    const returns = [...seededReturns(rows, kind), ...roundRows(rows, kind)];
-    for (const r of returns) { const f = (r.findings as Finding[] | undefined)?.find(x => x.id === id); if (f) return { f, return_sha: String(r.return_sha), verdict_path: String(r.verdict_path) }; }
-  }
-  return null;
+function findingOf(rows: Rows, id: string): { f: Finding; return_sha: string; verdict_path: string } | null {
+  const ruled = new Set(rows.checked.criticals.map(r => findingKey(r.id, r.return_sha)));
+  const all = KINDS.flatMap(kind => [...seededReturns(rows, kind), ...roundRows(rows, kind)]
+    .flatMap(r => ((r.findings as Finding[] | undefined) ?? []).filter(x => x.id === id).map(f => ({ f, return_sha: String(r.return_sha), verdict_path: String(r.verdict_path) }))));
+  return all.find(h => h.f.critical && !ruled.has(findingKey(id, h.return_sha))) ?? all[0] ?? null;
 }
 
 const normText = (s: string) => s.replace(/\s+/g, " ").trim();
@@ -737,9 +741,9 @@ async function quoteRule(specs: string, key: string, d: string, quote: string, u
 async function checkRecords(specs: string, key: string, rows: LedgerRow[]): Promise<Checked> {
   let epoch = 0; let roundTs = 0; let sawReset = false; let sawOverride = false;
   const blocking: Record<Kind, string[]> = { spec: [], plan: [] }; const maxRound: Record<Kind, number> = { spec: 0, plan: 0 }; const classOf = new Map<string, string>();
-  const usedCritical = new Set<string>(); const usedReset = new Set<string>();
+  const usedCritical = new Set<string>(); const usedReset = new Set<string>(); const ruled = new Set<string>();
   const criticals: { row: LedgerRow; epoch: number }[] = []; let override: { row: LedgerRow; epoch: number } | null = null; const invalid: string[] = [];
-  const take = (kind: Kind, round: number, r: Returned[]) => { maxRound[kind] = round; blocking[kind] = r.flatMap(x => blockingOf(x).map(b => b.id)); for (const x of r) for (const f of x.findings ?? []) if (f.critical) classOf.set(f.id, f.critical); };
+  const take = (kind: Kind, round: number, r: Returned[]) => { maxRound[kind] = round; blocking[kind] = r.flatMap(x => blockingOf(x).map(b => b.id)); for (const x of r) for (const f of x.findings ?? []) if (f.critical) classOf.set(findingKey(f.id, x.return_sha), f.critical); };
   const label = (r: LedgerRow) => r.decision === undefined ? r.row : `${r.row} ${r.decision}`;
   for (const r of rows) {
     if (r.row === "seed") for (const k of KINDS) take(k, Number(r[k]) || 0, (r.latest?.[k] as Returned[] | undefined) ?? []);
@@ -747,11 +751,11 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[]): Prom
     else if (r.row === "reset") {
       const d = String(r.decision); const q = sawReset ? null : await quoteRule(specs, key, d, String(r.quote), usedReset.has(d), roundTs);
       sawReset = true; usedReset.add(d);
-      if (q && !("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha) { epoch++; blocking.spec = []; blocking.plan = []; maxRound.spec = 0; maxRound.plan = 0; classOf.clear(); }
+      if (q && !("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha) { epoch++; blocking.spec = []; blocking.plan = []; maxRound.spec = 0; maxRound.plan = 0; classOf.clear(); ruled.clear(); }
       else invalid.push(label(r));
     } else if (r.row === "critical") {
       const d = String(r.decision); const q = await quoteRule(specs, key, d, String(r.quote), usedCritical.has(d), roundTs); usedCritical.add(d);
-      if (!("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha && classOf.get(String(r.id)) === r.class && (r.epoch === undefined || Number(r.epoch) === epoch) && [0, Math.max(maxRound.spec, maxRound.plan) + 1].includes(Number(r.opens))) criticals.push({ row: r, epoch });
+      if (!("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha && classOf.get(findingKey(r.id, r.return_sha)) === r.class && !ruled.has(findingKey(r.id, r.return_sha)) && (r.epoch === undefined || Number(r.epoch) === epoch) && [0, Math.max(maxRound.spec, maxRound.plan) + 1].includes(Number(r.opens))) { criticals.push({ row: r, epoch }); ruled.add(findingKey(r.id, r.return_sha)); }
       else invalid.push(label(r));
     } else if (r.row === "override") {
       const ids = Array.isArray(r.findings) ? r.findings.map((f: { id?: unknown }) => String(f?.id)) : [];
@@ -857,7 +861,11 @@ async function diffOf(snapshot: string, now: string, label: string): Promise<str
   if (code > 1) throw new Error(`diff of ${label} failed (exit ${code}): ${err.trim()}`);
   return out;
 }
-const changedLines = (diff: string) => diff.split("\n").filter(l => (l.startsWith("+") || l.startsWith("-")) && !l.startsWith("+++") && !l.startsWith("---")).map(l => l.slice(1));
+const changedLines = (diff: string) => {
+  const lines = diff.split("\n");
+  const body = lines[0]?.startsWith("--- ") && lines[1]?.startsWith("+++ ") ? lines.slice(2) : lines;
+  return body.filter(l => l.startsWith("+") || l.startsWith("-")).map(l => l.slice(1));
+};
 
 async function closureCheck(specs: string, key: string, kind: Kind, r: number, rows: LedgerRow[], text: string | null, page: string): Promise<string[]> {
   const prev = roundBefore(rows, kind, r);
@@ -995,7 +1003,7 @@ export async function roundCritical(specs: string, key: string, o: { finding: st
     if (!hit.f.critical) throw new Error(hit.f.critical_refused !== undefined ? `round-critical: '${hit.f.critical_refused}' is not an operator-critical class (${OPERATOR_CRITICAL_CLASSES.join(", ")})` : `round-critical: ${o.finding} carries no operator-critical class`);
     const q = await quoteRule(specs, key, o.decision, o.quote, rows.some(r => r.row === "critical" && String(r.decision) === o.decision), latestRoundTs(rows));
     if ("error" in q) throw new Error(`round-critical: ${q.error}`);
-    if (rows.checked.criticals.some(r => r.id === o.finding)) throw new Error(`round-critical: ${o.finding} was already ruled on`);
+    if (rows.checked.criticals.some(r => r.id === o.finding && r.return_sha === hit.return_sha)) throw new Error(`round-critical: ${o.finding} was already ruled on`);
     await appendRow(specs, key, { row: "critical", epoch: rows.checked.epoch, opens: o.noRound ? 0 : writerRound(rows) + 1, id: o.finding, class: hit.f.critical, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha, return_sha: hit.return_sha });
   });
 }

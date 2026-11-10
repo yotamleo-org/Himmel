@@ -2673,12 +2673,12 @@ const sealOn = async (v: string, reads: string[], verdict: string, ...lines: str
   for (const p of reads) { last = await seal(v, p, sha(readFileSync(p, "utf8"))); if (last.code !== 0) break; }
   return last;
 };
-const roundTree = async (spec3: string[], plan3: string[], withHtml = false) => {
+const roundTree = async (spec3: string[], plan3: string[], withHtml = false, spec2: string[] = [], aBody = "# A\n") => {
   const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
   const a = join(t.dir, `${CAP_KEY}-a.md`); const plan = join(t.plans, `${CAP_KEY}-a.md`); const html = join(t.dir, `${CAP_KEY}-a.html`);
-  writeFileSync(a, front(CAP_KEY, "# A\n")); writeFileSync(plan, "# A plan\n"); if (withHtml) writeFileSync(html, "<h1>A</h1>\n");
+  writeFileSync(a, front(CAP_KEY, aBody)); writeFileSync(plan, "# A plan\n"); if (withHtml) writeFileSync(html, "<h1>A</h1>\n");
   for (const n of [1, 2, 3]) {
-    const s = n === 3 ? spec3 : []; const p = n === 3 ? plan3 : [];
+    const s = n === 3 ? spec3 : n === 2 ? spec2 : []; const p = n === 3 ? plan3 : [];
     expect((await sealOn(`${a}.critic-spec-r${n}.md`, withHtml ? [a, html] : [a], verdictFor("SPEC", s), ...s)).err).toBe("");
     expect((await sealOn(`${a}.critic-plan-r${n}.md`, [plan], verdictFor("PLAN", p), ...p)).err).toBe("");
   }
@@ -3088,6 +3088,31 @@ test("closure-pack refuses when diff itself fails, rather than reporting the fil
     const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
     expect(pack.code).not.toBe(0); expect(pack.err).toContain("diff of");
   } finally { chmodSync(t.a, 0o644); }
+}, S1B);
+
+test("a finding id raised again in a later round is a second open finding: ruling on the first leaves the second open and the signature refused", async () => {
+  const again = "- **o1** (minor; operator-critical: spend-grant) the same id in a later round";
+  const t = await roundTree([again], [], false, [again]);
+  const s3 = `${t.a}.critic-spec-r3.md`;
+  const open = async () => (await status(t.specs)).critical_open;
+  expect((await open()).map((o: { round: number }) => o.round)).toEqual([2, 3]);
+  decide(t.specs, 905, `${CAP_KEY} operator: ${SPEND}\n`); decide(t.specs, 906, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await critical(true, t.specs, "o1", 905, SPEND, "--no-round")).err).toBe("");
+  expect((await open()).map((o: { round: number }) => o.round)).toEqual([3]);
+  const sign = await routeCli("ledger-verify", s3, "--spec", t.a, "--sign");
+  expect(sign.err).toContain("has open operator-critical findings: o1 (spend-grant)"); expect(sign.code).not.toBe(0);
+  expect((await critical(true, t.specs, "o1", 906, SPEND, "--no-round")).err).toBe("");
+  expect(await open()).toEqual([]);
+  expect((await routeCli("ledger-verify", s3, "--spec", t.a, "--sign")).code).toBe(0);
+}, S1B);
+
+test("a changed line that starts with dashes still counts as changed: a regression quoting a dropped markdown rule line is blocking", async () => {
+  const rule = "--- a markdown rule line";
+  const t = await roundTree(MAJOR, [], false, [], `# A\n\n${rule}\n`);
+  writeFileSync(t.a, front(CAP_KEY, "# A\n\nthe rule line was dropped here\n"));
+  const res = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", `- **R1** (major; regression) the rule is gone: \`${rule}\``);
+  expect(res.err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "R1", class: "regression" }]);
 }, S1B);
 
 test("round-reset: one reset per ticket, from the console, on a decision naming it; the next round of the new epoch is round 1", async () => {
