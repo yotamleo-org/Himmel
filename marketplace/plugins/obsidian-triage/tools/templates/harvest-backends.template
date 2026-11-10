@@ -1,4 +1,4 @@
-# <vault>/.harvest-backends: per-site scrape-backend routing (HIMMEL-4361).
+# <vault>/.harvest-backends: per-site scrape-backend routing.
 # Copy this file to <vault>/.harvest-backends and uncomment what you need.
 #
 # One rule per line:   <url-glob> skip=<backend,...>   or   <url-glob> only=<backend,...>

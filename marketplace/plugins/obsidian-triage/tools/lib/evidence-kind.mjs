@@ -1,7 +1,7 @@
 /**
  * evidence-kind.mjs — infer the evidence_kind field for a clip.
  *
- * Introduced by LUNA-83 (evidence-pool substrate). Used to populate
+ * Introduced with the evidence-pool substrate. Used to populate
  * `evidence_kind: [..]` when a clip is promoted to Clippings/_evidence/.
  *
  * No npm deps, no I/O. Pure function over a plain object — runnable with

@@ -22,6 +22,19 @@ on:
   # `unlabeled` is deliberately NOT in `types`: the release's label-remove step must
   # not start a run.
   #
+  # Create-time label: gh pr create --label ci:go adds the label after the PR exists, so
+  # the opened run starts first and the labeled go run, the newer run in the group
+  # ci-pr-<N>, cancels it; the go run runs every cheap job too, so nothing is lost. If
+  # the two events were ever delivered the other way round, the opened run would cancel
+  # the go run and the heavy contexts would stay missing (fail closed, liveness only).
+  # The release does not repair that: the cancelled cheap check-runs of the go run read
+  # as cheap-red, or the head reads as already released, so it holds. The PR then
+  # stalls until a manual step: gh run rerun of the cancelled go run, a manual ci:go
+  # remove and re-add, or the next push. The go run stays in ci-pr-<N> because a go run of a superseded head
+  # must be cancelled by the push. A push after a go run starts the cheap jobs only; the
+  # release's labeled event is that head's one go run. test-ci-go-gate.sh G14 and G15 hold
+  # both; the reverse order is not proven live.
+  #
   # Rename rule: a skipped job reports `skipped` under its real name, which SATISFIES
   # a required check and, because a check name's latest run wins, replaces an earlier
   # failure under that name (a label run does this to a red PR). So every non-matrix
