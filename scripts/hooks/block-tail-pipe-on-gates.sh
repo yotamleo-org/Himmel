@@ -1226,7 +1226,13 @@ case $normalised in
           "block-tail-pipe-on-gates: DENIED — an unquoted heredoc body with a live \$ beside a command that names a himmel gate. \${x@P}, \${_@P} or an arithmetic subscript in the body can re-expand a quoted gate, so the body is code, and a gate piped to tail/head there loses its exit code." \
           "Quote the delimiter so the body is data:" \
           "    cat <<'EOF'" \
-          "or run the gate on its own, redirecting: <gate> > <file> 2>&1; echo \"RC=\$?\"; tail -80 <file>" \
+          "Choose the existing sanctioned form for the command you intended:" \
+          "    Repo test suite (scripts/**/test-*.sh): bash scripts/quiet-run.sh suite -- bash <suite>" \
+          "    Shell suite runner: bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh" \
+          "    Other gate: run its existing sanctioned literal Bash invocation by itself." \
+          "Append nothing: no pipe, redirect, timeout/env prefix, or trailing command." \
+          "Use the Bash tool's exit status; read any log path printed by the sanctioned command separately." \
+          "Use trusted command operands; do not reconstruct a command from this diagnostic." \
           "If the exit code genuinely does not matter here, add a same-line marker: \`# tail-pipe-ok: <reason>\`." >&2
         exit 2 ;;
 esac
@@ -1301,8 +1307,13 @@ if [ "$kind" = trailing ]; then
       "block-tail-pipe-on-gates: DENIED — a gate must be the final segment so the task exit status is the gate's. A later \`;\`/\`&&\`/\`||\` segment replaces \$?, so a failing gate (e.g. check-ci.sh exit 3) is reported as the later command's exit 0." \
       "Offending segment:" \
       "    $(printf '%s' "$offender" | sed 's/^[[:space:]]*//')" \
-      "Make the gate the LAST segment, or capture its status in the same command:" \
-      "    <gate> > <file> 2>&1; echo \"RC=\$?\"; tail -80 <file>" \
+      "Choose the existing sanctioned form for the command you intended:" \
+      "    Repo test suite (scripts/**/test-*.sh): bash scripts/quiet-run.sh suite -- bash <suite>" \
+      "    Shell suite runner: bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh" \
+      "    Other gate: run its existing sanctioned literal Bash invocation by itself." \
+      "Append nothing: no pipe, redirect, timeout/env prefix, or trailing command." \
+      "Use the Bash tool's exit status; read any log path printed by the sanctioned command separately." \
+      "Use trusted command operands; do not reconstruct a command from this diagnostic." \
       "If the exit code genuinely does not matter here, add a same-line marker: \`# tail-pipe-ok: <reason>\`." >&2
     exit 2
 fi
@@ -1313,8 +1324,13 @@ printf '%s\n' \
   "block-tail-pipe-on-gates: DENIED — this pipes an exit-code-critical himmel gate command into tail/head. Unless the invoking shell has \`pipefail\` set (a Bash tool call cannot assume it does), \$? becomes tail's status (0) and the gate's real exit code is LOST. That misread is what made a session record CLEAR_RC=0 when clear-review-marker.sh had exited 16. Even under pipefail the \`| tail\` throws away the head of the output several incidents needed to diagnose." \
   "Offending pipeline:" \
   "    $(printf '%s' "$offender" | sed 's/^[[:space:]]*//')" \
-  "Use the redirect shape instead — it keeps the exit code AND the full output you would otherwise throw away:" \
-  "    <cmd> > <file> 2>&1; echo \"RC=\$?\"; tail -80 <file>" \
+  "Choose the existing sanctioned form for the command you intended:" \
+  "    Repo test suite (scripts/**/test-*.sh): bash scripts/quiet-run.sh suite -- bash <suite>" \
+  "    Shell suite runner: bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh" \
+  "    Other gate: run its existing sanctioned literal Bash invocation by itself." \
+  "Append nothing: no pipe, redirect, timeout/env prefix, or trailing command." \
+  "Use the Bash tool's exit status; read any log path printed by the sanctioned command separately." \
+  "Use trusted command operands; do not reconstruct a command from this diagnostic." \
   "(\${PIPESTATUS[0]} recovers the exit code too, but discards the head of the output that several incidents needed to diagnose.)" \
   "If the exit code genuinely does not matter here, add a same-line marker: \`# tail-pipe-ok: <reason>\`." >&2
 exit 2
