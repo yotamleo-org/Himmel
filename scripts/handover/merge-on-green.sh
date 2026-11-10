@@ -2012,7 +2012,6 @@ if [ -n "$partial_key" ]; then
             audit "REFUSED reason=partial-remainder-missing repo=$nwo pr=#$pr_num key=$partial_key"
             exit 26
         elif [ "${partial_ans%%$'\t'*}" = handed-off ]; then
-            # every remaining ask sits on other tickets, so nothing stays on $partial_key and this merge completes it
             partial_handed=$(printf '%s' "$partial_ans" | cut -f2)
             if [ "$MERGE_ROW_BRIEF" = no ]; then
                 echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key (contract=no) but every remaining ask is deferred to $partial_handed, so this merge completes $partial_key — refusing. The brief ($WORKER_SESSION_DOC) says \`Completes ticket: no\`: the chief changes it to yes and re-issues the GO, or record what stays on $partial_key with a \`Remaining:\` line (gh pr edit $pr_num --body-file <file>)." >&2
