@@ -105,9 +105,6 @@ _ca_usage() {
     exit 2
 }
 
-# The .env of the set is resolved from the himmel checkout (HIMMEL_REPO, else the
-# checkout holding this script), never from the caller's directory: from inside
-# another repo that repo's absent .env would read as every key deleted.
 _ca_env_file() {
     if [ -n "${HIMMEL_CONFIG_AUDIT_ENV_FILE:-}" ]; then printf '%s' "$HIMMEL_CONFIG_AUDIT_ENV_FILE"; return; fi
     local root="${HIMMEL_REPO:-}"
@@ -355,7 +352,6 @@ function problems(snap, live) {
   const out = [];
   for (const [n, was] of Object.entries(snap)) {
     const is = live[n];
-    // No .env found is unknown, never deleted: a wrong root reads the same as a deletion.
     if (n === ".env" && (!is || !is.present)) { out.push({ file: n, path: is ? is.path : "-", kind: "unknown", lost: [] }); continue; }
     if (!is || !was.present) continue;
     if (!is.present) { out.push({ file: n, path: was.path, kind: "deleted", lost: was.keys || [] }); continue; }
@@ -375,7 +371,6 @@ function problems(snap, live) {
 }
 const isLoss = (p) => p.kind !== "renamed" && p.kind !== "unknown";
 const envFound = (snap) => Boolean(snap[".env"] && snap[".env"].present);
-// An unknown .env keeps its last known keys in the baseline.
 const keepEnv = (live, snap) => envFound(live) || !snap[".env"] ? live : Object.assign({}, live, { ".env": snap[".env"] });
 const renamed = (p) => p.renames.map((r) => r[0] + " to " + r[1]).join(", ");
 // The newest backup whose copy of the file is present and holds every lost key.

@@ -595,10 +595,6 @@ eq "11e control: an older watch.json without digests reads a rename as a loss" 3
 rm -rf "$S10"
 
 # --- 12. the set's .env comes from the himmel checkout, never the caller's directory ---
-# The layout the ticket saw: the script runs from a linked worktree under
-# <primary>/.claude/worktrees/, the .env lives only in the primary checkout, and
-# the chief's shell sits in the luna handover bucket, inside a git repo of its own
-# with no .env.
 S12="$TMP/s12"; PRIM="$S12/github/himmel"; WT="$PRIM/.claude/worktrees/fix+w"
 BUCKET="$S12/luna/handovers/yotamleo/himmel"
 S12_STATE="$S12/.himmel/state/config-audit"
@@ -612,15 +608,12 @@ cp "$HERE/load-dotenv.sh" "$HERE/prim.sh" "$HERE/canon-path.sh" "$HERE/chokepoin
 cp "$REPO/scripts/himmelctl/lib/config-keys.json" "$REPO/scripts/himmelctl/lib/secrets-manifest.json" "$WT/scripts/himmelctl/lib/"
 printf '{"version":1,"policy":{"HIMMEL_FLEET_CAP":"40"}}\n' > "$S12/.himmel/config.json"
 printf 'JIRA_PROJECT_KEY=HIMMEL\nJIRA_API_TOKEN=%s\nALIBABA_QUOTA_AK=%s\n' "$CANARY" "$CANARY" > "$PRIM/.env"
-# The script copy in the fixture worktree, run from the bucket with no seam: its own checkout decides.
 s12() { ( cd "$BUCKET" && env -u HIMMEL_CONFIG_AUDIT_ENV_FILE -u HIMMEL_REPO HIMMEL_CONFIG_DIR="$S12/.himmel" bash "$WT/scripts/lib/config-audit.sh" "$@" ); }
-# The station's own script, pointed at the fixture checkout by HIMMEL_REPO.
 s12r() { ( cd "$BUCKET" && env -u HIMMEL_CONFIG_AUDIT_ENV_FILE HIMMEL_REPO="$WT" HIMMEL_CONFIG_DIR="$S12/.himmel" bash "$CA" "$@" ); }
 HIMMEL_CONFIG_DIR="$S12/.himmel" HIMMEL_CONFIG_AUDIT_ENV_FILE="$PRIM/.env" bash "$CA" watch 2>/dev/null
 has "12 control: the baseline holds the checkout's .env keys" "ALIBABA_QUOTA_AK" "$(cat "$S12_STATE/watch.json" 2>/dev/null)"
 : > "$ALERTS"
 
-# 12a. check and watch from the bucket read the checkout's .env.
 out=$(s12 check); rc=$?
 eq "12a check from another repo's directory exits 0" 0 "$rc"
 lacks "12a and reports no deleted .env" "deleted" "$out"
@@ -630,7 +623,6 @@ s12 watch 2>/dev/null
 eq "12a watch from another repo's directory sends no alert" 0 "$(wc -l < "$ALERTS" | tr -d ' ')"
 has "12a and keeps the .env keys in the baseline" "ALIBABA_QUOTA_AK" "$(cat "$S12_STATE/watch.json" 2>/dev/null)"
 
-# 12b. with no .env found, accept refuses and leaves watch.json byte for byte.
 mv "$PRIM/.env" "$S12/env.away"
 cp "$S12_STATE/watch.json" "$S12/watch.before"
 out=$(s12 accept 2>&1); rc=$?
@@ -638,7 +630,6 @@ eq "12b accept with no .env found exits 1" 1 "$rc"
 if cmp -s "$S12/watch.before" "$S12_STATE/watch.json"; then pass "12b and leaves watch.json unchanged"; else fail "12b accept rewrote watch.json"; fi
 has "12b the refusal says no .env was found" "no .env" "$out"
 
-# 12c. with no .env found, check reports unknown, never deleted; watch alerts nothing and keeps the keys.
 out=$(s12 check); rc=$?
 eq "12c check with no .env found exits 0" 0 "$rc"
 has "12c and reports the .env unknown" "UNKNOWN	.env	no file found" "$out"
@@ -647,7 +638,6 @@ s12 watch 2>/dev/null
 eq "12c watch with no .env found sends no alert" 0 "$(wc -l < "$ALERTS" | tr -d ' ')"
 has "12c and keeps the .env keys in the baseline" "ALIBABA_QUOTA_AK" "$(cat "$S12_STATE/watch.json" 2>/dev/null)"
 
-# 12d. control: a key really deleted from the checkout's .env is still a loss, from the bucket.
 grep -v '^ALIBABA_QUOTA_AK=' "$S12/env.away" > "$PRIM/.env"
 out=$(s12 check); rc=$?
 eq "12d control: a lost key exits 3" 3 "$rc"
