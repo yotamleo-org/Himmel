@@ -282,7 +282,7 @@ def _quiet_run(toks):
     if i is None or i >= len(toks) or os.path.basename(toks[i]) != "quiet-run.sh":
         return None
     rest = toks[i + 1:]
-    inner = _strip_prefix(rest[rest.index("--") + 1:]) if "--" in rest else []  # env VAR= and wrappers inside the inner command are dropped too
+    inner = _strip_prefix(rest[rest.index("--") + 1:]) if "--" in rest else []
     return (rest[0] if rest else ""), inner
 
 
@@ -311,7 +311,7 @@ def _toks_target(toks):
             return None
         named = {os.path.basename(a.split("::")[0]) for a in toks[1:] if not a.startswith("-")}
         return frozenset(n for n in named if TEST_FILE_RE.search(n)) or frozenset(["*"])
-    if first == "node" and "--test" in toks[1:]:  # a node test run is a test run
+    if first == "node" and "--test" in toks[1:]:
         if any(a in NO_RUN_FLAGS for a in toks[1:]):
             return None
         named = {os.path.basename(a) for a in toks[1:] if not a.startswith("-")}
