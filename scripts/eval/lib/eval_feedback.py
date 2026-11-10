@@ -465,15 +465,17 @@ def measure_review(c, receipt, series, base, new, when, cbs_of, check_receipt):
             or when is None or when <= at:
         return None
     bound = {"applied_commit": receipt.get("commit"), "after_cbs_hash": after_hash}
-    inelig = [r for r in (base, new) if row_field(r, "decision_eligible") is False]
+    inelig = [r for r in (base, new) if row_field(r, "decision_eligible") is not True]
     why = check_receipt(receipt)
     if why is None and receipt.get("target_paths") != [c.get("target")]:
         why = "the receipt's target paths are not exactly the proposal's target"
     if why is None and inelig:
         why = "not decision-eligible: %s" % ", ".join(
             "%s (%s)" % ("the baseline run" if r is base else "the applied run",
-                         ", ".join(str(x) for x in row_field(r, "ineligibility_reasons") or []) or "no reason recorded")
+                         (", ".join(str(x) for x in row_field(r, "ineligibility_reasons") or []) or "no reason recorded")
+                         if row_field(r, "decision_eligible") is False else "eligibility unrecorded")
             for r in inelig)
+    series = [r for r in series if row_field(r, "decision_eligible") is True]
     if why is None and cbs_of(base) != receipt.get("before_cbs_hash"):
         why = "the baseline run is not at the receipt's parent version"
     if why is None:

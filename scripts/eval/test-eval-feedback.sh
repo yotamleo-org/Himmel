@@ -444,7 +444,8 @@ repo, root_sha, apply_sha = sys.argv[2:5]
 COV = {"scored": 4, "critics": {"codex": {"answer": 4}}}
 def add(rid, open_v, sealed_v, ex, sup=None, sc=S1, code=root_sha, ts=None):
     cfg = {"review_panel_v": 2}
-    meta = {"execution_id": ex, "scorer_sha256": sc, "coverage": COV, "code_under_test_sha": code}
+    meta = {"execution_id": ex, "scorer_sha256": sc, "coverage": COV, "code_under_test_sha": code,
+            "decision_eligible": True}
     if sup:
         meta["supersedes_run_id"] = sup
     r = eval_runs.make_row("review-panel", "s", cfg, {"codex.class.quoting.recall": open_v,
@@ -553,13 +554,14 @@ def status(p, s):
     return [c for c in recs(p) if c.get("status") == s]
 
 INELIGIBLE = {"decision_eligible": False, "ineligibility_reasons": ["provenance-reconstructed"]}
+ELIGIBLE = {"decision_eligible": True, "ineligibility_reasons": []}
 
 def add(ledger, rid, val, code, ts, ex=None, sup=None, sc=S1, cov=COV, split=True, extra=None):
     m = {"codex.class.quoting.recall": val}
     if split:
         m.update({"open.codex.class.quoting.recall": val, "sealed.codex.class.quoting.recall": val})
     meta = dict({"execution_id": ex or rid, "scorer_sha256": sc, "coverage": cov, "code_under_test_sha": code},
-                **(extra or {}))
+                **(ELIGIBLE if extra is None else extra))
     if sup:
         meta["supersedes_run_id"] = sup
     r = eval_runs.make_row("review-panel", "s", {"review_panel_v": 2}, m, run_id=rid, meta=meta, gitsha="g")
@@ -715,8 +717,8 @@ r = eval_runs.make_row("review-panel", "s", {"review_panel_v": 2},
                        {"codex.class.quoting.recall": 1, "open.codex.class.quoting.recall": 1,
                         "sealed.codex.clean_scored": 0},
                        run_id="nosealed-c", gitsha="g",
-                       meta={"execution_id": "nosealed-c", "scorer_sha256": S1, "coverage": COV,
-                             "code_under_test_sha": APPLY})
+                       meta=dict(ELIGIBLE, execution_id="nosealed-c", scorer_sha256=S1, coverage=COV,
+                                 code_under_test_sha=APPLY))
 r["ts"] = LATER
 eval_runs.append_row(r, ledger)
 fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
@@ -734,6 +736,41 @@ add(ledger, "inelig-base-c", 1, APPLY, LATER)
 fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
 one_inconclusive("a baseline run that is not decision-eligible makes the measurement inconclusive",
                  "provenance-reconstructed")
+
+ledger, changes = os.path.join(d, "noise-inelig.jsonl"), os.path.join(d, "noise-inelig-c.jsonl")
+add(ledger, "noise-inelig-b1", 0, ROOT, "2026-01-01T00:00:00Z", extra=INELIGIBLE)
+add(ledger, "noise-inelig-b2", 0, ROOT, "2026-01-02T00:00:00Z")
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+fb.apply_review(status(changes, "open")[0]["id"], APPLY, changes, repo=repo)
+add(ledger, "noise-inelig-c", 1, APPLY, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+one_inconclusive("an ineligible earlier run is no noise sample: with it left out the noise is unmeasured",
+                 "noise unmeasured")
+ledger, changes, cid = proposal("unrecorded")
+fb.apply_review(cid, APPLY, changes, repo=repo)
+add(ledger, "unrecorded-c", 1, APPLY, LATER, extra={})
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+one_inconclusive("an applied run with no recorded eligibility is inconclusive", "eligibility unrecorded")
+
+def receipt(cid, commit, parent, before_at, after_at, paths=None):
+    true_paths, digest = fb.behaviour_diff(repo, parent, commit)
+    return fb.envelope(id=cid, eval="review-panel", metric="codex.class.quoting.recall", status="applied",
+                       applied_at="2026-06-01T00:00:00Z", before_cbs_hash=fb._score().cbs_hash(repo, before_at),
+                       after_cbs_hash=fb._score().cbs_hash(repo, after_at), commit=commit,
+                       target_paths=paths or true_paths, diff_sha256=digest)
+
+ledger, changes, cid = proposal("rehash", base_code=OTHER)
+fb.append(changes, receipt(cid, APPLY, ROOT, OTHER, BOTH))
+add(ledger, "rehash-c", 1, BOTH, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+one_inconclusive("a receipt with its commit's true paths and digest but another commit's versions is inconclusive",
+                 "before and after versions")
+ledger, changes, cid = proposal("twopath", base_code=OTHER)
+fb.append(changes, receipt(cid, BOTH, OTHER, OTHER, BOTH))
+add(ledger, "twopath-c", 1, BOTH, LATER)
+fb.run(ledger=ledger, changes=changes, rules=rules, repo=repo)
+one_inconclusive("a true two-path receipt Git reproduces is still not exactly the proposal's target: inconclusive",
+                 "not exactly the proposal's target")
 
 ledger, changes, cid = proposal("forged")
 fb.append(changes, fb.envelope(id=cid, eval="review-panel", metric="codex.class.quoting.recall", status="applied",
