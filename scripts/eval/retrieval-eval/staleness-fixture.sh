@@ -25,7 +25,7 @@
 # paid state without --embed-ok, more documents than --embed-ok allows, a key that could not load); 64 usage
 # or a commit that does not resolve.
 # Seams (tests): SF_QMD, SF_REPO, SF_AST, SF_LIVE_INDEX, SF_PRIMARY_GRAPH_OUT.
-# shellcheck disable=SC2015  # `A && B || die` is the refusal idiom here: die exits, so C never runs after a true A
+# shellcheck disable=SC2015
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -46,17 +46,17 @@ usage() {
     exit 64
 }
 rp() { python3 -I -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
-inside() { case "$1/" in "$2"/*) return 0 ;; esac; return 1; }  # <path> is <dir> or under it
+path_within() { case "$1/" in "$2"/*) return 0 ;; esac; return 1; }
 
 guard_scratch() {
     local out="$1" real live d g
     real="$(rp "$out")"
     live="$(rp "$LIVE_INDEX")"
     for d in "$(dirname "$live")" "$(rp "$LIVE_CONFIG")"; do
-        if inside "$real" "$d"; then die "refusing $out: it is the live qmd index or config directory, or inside it"; fi
+        if path_within "$real" "$d"; then die "refusing $out: it is the live qmd index or config directory, or inside it"; fi
     done
     for g in "${SF_PRIMARY_GRAPH_OUT:-$(dirname "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)")/graphify-out}" "$REPO/graphify-out"; do
-        if inside "$real" "$(rp "$g")"; then die "refusing $out: it is, or is inside, a checkout's graphify-out"; fi
+        if path_within "$real" "$(rp "$g")"; then die "refusing $out: it is, or is inside, a checkout's graphify-out"; fi
     done
     if [ -e "$real" ]; then
         [ -d "$real" ] || die "refusing $out: not a directory"
@@ -186,7 +186,7 @@ scratch_of_index() {
     local idx="$1" real
     if [ -L "$idx" ]; then die "refusing $idx: it is a symlink"; fi
     real="$(rp "$idx")"
-    if [ "$real" = "$(rp "$LIVE_INDEX")" ] || inside "$real" "$(dirname "$(rp "$LIVE_INDEX")")"; then
+    if [ "$real" = "$(rp "$LIVE_INDEX")" ] || path_within "$real" "$(dirname "$(rp "$LIVE_INDEX")")"; then
         die "refusing $idx: it is the live qmd index"
     fi
     OUTR="$(dirname "$real")"

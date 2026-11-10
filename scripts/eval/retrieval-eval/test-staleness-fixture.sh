@@ -223,11 +223,11 @@ fx build --first "$C1" --second "$C2" --state s --out "$W/o-cfg" > /dev/null 2>&
 eq "::refuses_linked_config (exit 2, nothing written through the link)" "2|0" "$rc|$(find "$W/outside-cfg" -mindepth 1 | wc -l | tr -d ' ')"
 
 eq "::pair_records_commits (first, second, state)" "$C1 $C2 l" "$(pj "$OUT" first) $(pj "$OUT" second) $(pj "$OUT" state)"
-helper_n() { # <sha> <config>
+helper_doc_count() {
     git -C "$R" ls-tree -r --name-only "$1" | tr '\n' '\0' | xargs -0 python3 -I "$HELPER" --config "$2" himmel | wc -l | tr -d ' '
 }
-eq "::doc_count_matches_helper (state l: the second tree, 4 files)" "4|4" "$(pj "$OUT" doc_count)|$(helper_n "$C2" "$OUT/config/index.yml")"
-eq "::doc_count_matches_helper (state s: the first tree, 3 files)" "3|3" "$(pj "$W/free-s" doc_count)|$(helper_n "$C1" "$W/free-s/config/index.yml")"
+eq "::doc_count_matches_helper (state l: the second tree, 4 files)" "4|4" "$(pj "$OUT" doc_count)|$(helper_doc_count "$C2" "$OUT/config/index.yml")"
+eq "::doc_count_matches_helper (state s: the first tree, 3 files)" "3|3" "$(pj "$W/free-s" doc_count)|$(helper_doc_count "$C1" "$W/free-s/config/index.yml")"
 
 
 S12="$(printf '%s' "$C2" | cut -c1-12)"
