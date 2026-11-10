@@ -962,3 +962,24 @@ test('HIMMEL-9076: the accounts CLI reports an unreadable account config with th
   f.save();
   assert.deepEqual(accountsOut(f), { accounts: 'unreadable', reason: 'invalid-account-config' });
 });
+
+const pickRows = (f, usd, only) => JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', usd, '--only', only, '--rows'], { env: f.env, encoding: 'utf8' }).stdout);
+
+test('pick --only A --rows on a corrupt ledger carries the row with BANK-UNKNOWN; without --rows the refusal is unchanged', () => {
+  const f = fixture(); writeFileSync(f.paths.state, '{');
+  const r = pickRows(f, '0.01', 'A');
+  assert.notEqual(r.verdict, 'PROCEED', JSON.stringify(r));
+  assert.deepEqual(r.rows, [{ account: 'A', verdict: 'BANK-UNKNOWN', reason: 'unreadable-state' }], JSON.stringify(r));
+  assert.deepEqual(pickOnly(f, '0.01', 'A'), { verdict: 'SKIPPED-BANK', reason: 'no-account-with-headroom' });
+});
+
+test('a no-room refusal under --rows carries the row its own verdict', () => {
+  const f = fixture();
+  Object.assign(f.snapshot.accounts.A, { observed_at: f.now, remaining_usd: '0.00' });
+  Object.assign(f.snapshot.accounts.B, { observed_at: f.now, remaining_usd: '0.20' });
+  f.save();
+  assert.deepEqual(pickRows(f, '0.50', 'A').rows, [{ account: 'A', verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' }]);
+  const b = pickRows(f, '0.50', 'B,A');
+  assert.equal(b.verdict, 'SKIPPED-BANK', JSON.stringify(b));
+  assert.deepEqual(b.rows, [{ account: 'A', verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' }, { account: 'B', verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' }]);
+});
