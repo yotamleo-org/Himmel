@@ -2,7 +2,7 @@
 
 ## Why this plugin exists
 
-HIMMEL-3064 — measured over 1628 local Claude transcripts, three always-on
+Measured over 1628 local Claude transcripts, three always-on
 plugins carried ~2.2k tokens of skill/agent listing into EVERY session for
 skills himmel barely invokes: `superpowers` (14 skills + a SessionStart
 injection, 4 invocations ever), `plannotator-effective-html` (6 skills, 1
@@ -101,7 +101,7 @@ above, the cited files are not locally edited to fix this, and an upstream
 rename is not an option (obra/superpowers correctly names itself
 `superpowers:`).
 
-**Mitigation (HIMMEL-3100, himmel-owned, outside the vendored tree):**
+**Mitigation (himmel-owned, outside the vendored tree):**
 `hooks/note-superpowers-prefix.sh`, a `PostToolUse(Skill)` hook wired by
 `hooks/hooks.json`. When a lean-skills skill whose files cite `superpowers:`
 loads, it adds one line of context — `superpowers:<x>` means
@@ -132,7 +132,7 @@ skill root. Neither exists here — this plugin ships
 `.claude-plugin/plugin.json` instead — so the function always returns
 `'unknown'`, and a telemetry-enabled session shows "Superpowers vunknown".
 Cosmetic only (no functional impact). Per the VERBATIM rule above, the
-vendored script is not locally edited to fix this — tracked in HIMMEL-3106.
+vendored script is not locally edited to fix this; the fix waits for upstream and a re-vendor.
 
 ## Re-vendor procedure
 
