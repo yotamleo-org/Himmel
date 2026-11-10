@@ -398,7 +398,6 @@ test('the transcripts CLI keeps its lines and prints an excluded line only when 
   });
 });
 
-// ---- P1: manifest-bounded call export, validator and loader -------------------------------------------------------
 const FIX = fileURLToPath(new URL('./fixtures/usage-calls/', import.meta.url));
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 const jl = (rs) => rs.map((r) => JSON.stringify(r)).join('\n') + '\n';
@@ -413,7 +412,6 @@ function runCalls(manifestPath, extra = []) {
   const parsed = r.stdout.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
   return { status: r.status, stderr: r.stderr, stdout: r.stdout, calls: parsed.filter((x) => x.kind === 'usage-call'), footer: parsed.at(-1) };
 }
-// files: [{rel, records|text, session?, parent?, entry?}] written under <dir>/root with a manifest at <dir>/manifest.json
 function build(dir, files, over = {}) {
   const root = join(dir, 'root');
   const entries = files.map((f) => {
@@ -627,7 +625,6 @@ const produce = (manifestPath) => {
   const r = spawnSync('node', [CLI, 'calls', '--manifest', manifestPath], { encoding: 'utf8' });
   return { manifestPath, stdout: r.stdout, status: r.status };
 };
-// stage a carrier directory: one export + projection manifest per run, and an EXPORT_SET.json
 function carrier(dir, runs, { expected, price = mp.priceTableSha256(rows), set = {} } = {}) {
   const c = join(dir, 'carrier');
   mkdirSync(c, { recursive: true });

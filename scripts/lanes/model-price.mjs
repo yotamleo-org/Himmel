@@ -150,7 +150,6 @@ function priceNano(u, row) {
 }
 const nanoToUsd = (n) => Number(n) / NANO_PER_USD;
 
-// [line text, byte offset, newline-terminated] for each line of a buffer.
 function* bufferLines(buf) {
   let pos = 0;
   while (pos < buf.length) {
@@ -219,8 +218,6 @@ export function priceTranscripts(dir, rows, { since, priceAs } = {}) {
   return { perModel, unpriced, malformed, syntheticZero, total: nanoToUsd(totalNano), totalNano, opusCalls };
 }
 
-// ---- manifest-bounded call export (producer), validator and loader ------------------------------------------------
-
 const USAGE_RULE = 'final-v2';
 const SOURCE_SCOPE = 'claude-transcripts';
 const EXCLUDED_SOURCES = ['native-codex', 'other-provider-stores'];
@@ -236,7 +233,6 @@ const isCount = (n) => Number.isSafeInteger(n) && n >= 0;
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const sessionKey = (s) => JSON.stringify([s.provider, s.parent, s.session]);
 
-// The price table's identity: its rows, not its whitespace.
 export function priceTableSha256(rows) {
   return sha256(JSON.stringify(rows.map((r) => [r.prefix, r.input, r.output, r.cacheRead, r.cacheWrite5m, r.cacheWrite1h])));
 }
@@ -255,7 +251,6 @@ function footerOf(f) {
 
 const EXIT_OF_STATE = { complete: 0, partial: 3, invalid: 2 };
 
-// One manifest file entry, checked without I/O. fail() records a named refusal and returns null.
 function checkEntry(f, seen, fail) {
   const rel = typeof f?.relative_path === 'string' ? f.relative_path : null;
   if (!isObject(f) || rel === null || !isCount(f.bytes) || !HEX64.test(f.sha256) || typeof f.session !== 'string' || f.session === ''
@@ -277,7 +272,6 @@ function checkEntry(f, seen, fail) {
   return null;
 }
 
-// Everything that can be refused before a source is opened, the budget included.
 function checkManifest(manifest, files, fail) {
   if (!isObject(manifest) || manifest.schema !== 1) fail('manifest-shape');
   else {
@@ -293,7 +287,6 @@ function checkManifest(manifest, files, fail) {
   for (const f of files) checkEntry(f, seen, fail);
 }
 
-// A declared source's frozen bytes, or null after one named refusal. Nothing outside realRoot is read.
 function readSource(f, realRoot, io, fail) {
   const rel = f.relative_path;
   let real;
@@ -310,7 +303,6 @@ function readSource(f, realRoot, io, fail) {
   return buf;
 }
 
-// One file's bytes folded into final calls. torn: the file ends in a line that is not complete JSON.
 function foldFile(buf, rel, fail) {
   const state = new Map();
   const meta = new Map();
@@ -333,7 +325,6 @@ function foldFile(buf, rel, fail) {
   return { state, meta, torn };
 }
 
-// The rows of one file inside the window; out-of-window and synthetic-zero keys are counted in ctx.reasons instead.
 function callRows(f, { state, meta }, ctx) {
   const rows = [];
   for (const [key, c] of state) {
@@ -380,7 +371,6 @@ export function projectCalls(manifest, prices, { manifestSha256 = null, baseDir 
   if (errors.length === 0 && root === null) fail('manifest-shape');
   if (errors.length) return refuse();
 
-  // Only now is any source touched.
   let realRoot;
   try { realRoot = io.realpathSync(root); } catch { fail('root-unreadable'); return refuse(); }
   const ctx = { prices, priceSha, manifestSha: head.manifestSha256, sinceMs: rfc3339Ms(m.since), untilMs: rfc3339Ms(m.until),
@@ -417,7 +407,6 @@ function emptyValidation(reason) {
 const validDeclared = (f) => isObject(f) && typeof f.relative_path === 'string' && isCount(f.bytes) && typeof f.sha256 === 'string'
   && f.provider === 'claude' && typeof f.session === 'string' && (f.parent === null || typeof f.parent === 'string');
 
-// The export's own projection manifest: exact bytes against the declared hash, then its declared sources.
 function parseManifestBytes(e, v) {
   const mSha = sha256(e.manifestBytes);
   v.manifestShas.push(mSha);
@@ -425,7 +414,6 @@ function parseManifestBytes(e, v) {
   let manifest;
   try { manifest = JSON.parse(e.manifestBytes); } catch { v.bad('manifest-mismatch'); return null; }
   if (!(isObject(manifest) && manifest.schema === 1 && Array.isArray(manifest.files) && manifest.files.every(validDeclared))) { v.bad('manifest-mismatch'); return null; }
-  // The producer's own structural rules: a manifest it would refuse never backs a complete receipt.
   let structural = 0;
   checkManifest(manifest, manifest.files, () => { structural += 1; return null; });
   if (structural) { v.bad('manifest-mismatch'); return null; }
@@ -439,7 +427,6 @@ function parseManifestBytes(e, v) {
   return { manifest, sources };
 }
 
-// Rows and the one terminal footer. A footer that is missing, repeated or not last is named here.
 function splitExportLines(lines, v) {
   const nonblank = lines.map((l, i) => [l, i]).filter(([l]) => l.trim());
   const lastIdx = nonblank.length ? nonblank.at(-1)[1] : -1;
@@ -471,7 +458,6 @@ function rowShapeOk(r) {
     && COUNT_KEYS.every((k) => isCount(r[k])) && r.usage_rule === USAGE_RULE && r.basis === 'list-price-equivalent' && pricedFieldsOk(r) && isObject(r.source);
 }
 
-// A row's source against its own manifest: hash, session, offsets inside the file, first_timestamp inside the window.
 function checkRowSource(r, e, parsed, v) {
   const s = r.source;
   if (s.manifest_sha256 !== e.expectedManifestSha256) { v.bad('manifest-mismatch'); return; }
@@ -500,7 +486,6 @@ const FOOTER_COUNTS = ['selected_files', 'read_files', 'source_bytes', 'selected
 const footerShapeOk = (f) => FOOTER_COUNTS.every((k) => isCount(f[k])) && isObject(f.exclusion_reasons) && isCount(f.exclusion_reasons['synthetic-zero'])
   && isCount(f.exclusion_reasons['outside-window']) && Array.isArray(f.errors) && f.state in EXIT_OF_STATE && f.source_scope === SOURCE_SCOPE;
 
-// The footer against the expectations, its manifest and the rows actually present.
 function checkFooter(footer, rows, e, parsed, v) {
   if (!footerShapeOk(footer)) { v.bad('row-shape'); return; }
   if (footer.manifest_sha256 !== e.expectedManifestSha256) v.bad('manifest-mismatch');
@@ -570,7 +555,6 @@ export class CallExportLoadError extends Error {
 const loadFail = (detail) => new CallExportLoadError(detail);
 const ioDetail = (e) => (e?.code === 'ENOENT' || e?.code === 'ENOTDIR' ? 'missing' : 'unreadable');
 
-// Opens by canonical path and reads the descriptor, so the bytes read are the regular file that was checked.
 function readCanonical(real, io) {
   let fd;
   try {
@@ -583,7 +567,7 @@ function readCanonical(real, io) {
   } catch (e) {
     throw e instanceof CallExportLoadError ? e : loadFail(ioDetail(e));
   } finally {
-    if (fd !== undefined) { try { io.closeSync(fd); } catch { /* the read result already decided */ } }
+    if (fd !== undefined) { try { io.closeSync(fd); } catch { fd = undefined; } }
   }
 }
 
@@ -702,7 +686,6 @@ if (isMain(import.meta.url)) {
     const out = main(process.argv.slice(2));
     if (typeof out === 'number') process.exitCode = out;
     else {
-      // The exit status is set only once every byte is written: a stdout that fails or is cut short exits nonzero, never 0.
       process.exitCode = 1;
       process.stdout.on('error', () => { process.exitCode = 1; });
       process.stdout.write(out.stdout, (err) => { if (!err) process.exitCode = out.code; });
