@@ -556,12 +556,17 @@ echo "ROW: a record that cannot be saved stays in pending/"
 reset_logs
 build_world s 1 0
 chmod 555 "$S/pending"
-rc=0; run_sweep "$S" || rc=$?
-chmod 755 "$S/pending"
-check "unsaved record: the drain returns 0" "$rc" "0"
-check "unsaved record: it stays in pending/" "$(rec_where "$S" N1)" "pending"
-contains "unsaved record: the failure is logged" "$(sweep_out)" "left in pending/"
-lacks "unsaved record: it is never logged as moved" "$(sweep_out)" "-> done"
+if ( : > "$S/pending/.probe" ) 2>/dev/null; then
+    rm -f "$S/pending/.probe"; chmod 755 "$S/pending"
+    echo "  SKIP: unsaved record: this user can write a mode-555 directory (root), so the row cannot be built here"
+else
+    rc=0; run_sweep "$S" || rc=$?
+    chmod 755 "$S/pending"
+    check "unsaved record: the drain returns 0" "$rc" "0"
+    check "unsaved record: it stays in pending/" "$(rec_where "$S" N1)" "pending"
+    contains "unsaved record: the failure is logged" "$(sweep_out)" "left in pending/"
+    lacks "unsaved record: it is never logged as moved" "$(sweep_out)" "-> done"
+fi
 
 echo "ROW: pid stays alive"
 reset_logs
