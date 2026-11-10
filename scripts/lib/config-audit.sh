@@ -26,10 +26,12 @@
 #                                                    BACKUP <id> <age> and NOBACKUP <file> <path> for a present
 #                                                    file no backup holds (exit 0); UNKNOWN .env <why> <path>
 #                                                    when the .env read is not the recorded path (exit 0); a .env
-#                                                    gone from the recorded path is a deleted LOSS
-#   config-audit.sh accept                           take the live set as healthy (a deliberate hand edit);
+#                                                    gone from the recorded path, or a recorded himmelctl cache
+#                                                    .env gone, is a deleted LOSS
+#   config-audit.sh accept [--live]                  take the live set as healthy (a deliberate hand edit);
 #                                                    refuses (exit 1, watch.json unchanged) when no .env path resolves
-#                                                    or the .env read is not the recorded one
+#                                                    or the .env read is not the recorded one; --live records the
+#                                                    .env read here in place of a recorded one that still exists
 #   config-audit.sh denied <file> <action> [--script NAME] [--pid N]
 #                                                    log a refused write (block-himmel-config-writes.sh)
 #
@@ -175,6 +177,10 @@ const real = (p) => {
   try { return path.join(fs.realpathSync(path.dirname(r)), path.basename(r)); } catch { return r; }
 };
 const sameEnv = (a, b) => Boolean(a && b && a.path && b.path && real(a.path) === real(b.path));
+// The himmelctl cache .env is read first while it exists, so its absence moves the read elsewhere.
+const isCache = (p) => Boolean(p && E.CA_ENV_CACHE && real(p) === real(E.CA_ENV_CACHE));
+const wasCache = (s) => Boolean(s && (s.cache || isCache(s.path)));
+const cacheGone = (s) => Boolean(s && s.present && wasCache(s) && !fs.existsSync(s.path));
 const nameOf = (file) => {
   const r = real(file);
   for (const [n, p] of Object.entries(SET)) if (p && real(p) === r) return n;
@@ -319,6 +325,7 @@ function snapshot() {
     const k = keys(n, b);
     snap[n] = { path: p, present: b !== null, size: b === null ? 0 : b.length, keys: k === null ? null : [...k.keys()].sort(),
       digests: k === null ? null : Object.fromEntries([...k.entries()].sort((x, y) => (x[0] < y[0] ? -1 : 1))) };
+    if (n === ".env" && isCache(p)) snap[n].cache = true;
   }
   return snap;
 }
@@ -355,6 +362,7 @@ function problems(snap, live) {
   const out = [];
   for (const [n, was] of Object.entries(snap)) {
     const is = live[n];
+    if (n === ".env" && cacheGone(was) && !sameEnv(is, was)) { out.push({ file: n, path: was.path, kind: "deleted", lost: was.keys || [] }); continue; }
     if (n === ".env" && was.present && !sameEnv(is, was)) {
       out.push({ file: n, path: is ? is.path : "-", kind: "unknown", why: is && is.present ? "not the recorded file" : "no file found", lost: [] });
       continue;
@@ -542,9 +550,19 @@ try {
   else if (verb === "accept") {
     const live = snapshot(), w = loadWatch(), S = w && w[".env"];
     if (!SET[".env"]) { console.log("result=refused: no .env path resolved; run it from the himmel checkout or set HIMMEL_REPO to it; watch.json is unchanged"); process.exit(1); }
-    if (S && S.present && !sameEnv(live[".env"], S)) {
-      console.log(`result=refused: the .env read here (${SET[".env"]}) is not the recorded one (${S.path}); set HIMMEL_REPO to the checkout that holds the recorded one, or, when that checkout moved, run it once with HIMMEL_CONFIG_AUDIT_ENV_FILE=${S.path} to record that file gone; watch.json is unchanged`);
-      process.exit(1);
+    if (S && S.present && !sameEnv(live[".env"], S) && !cacheGone(S)) {
+      const L = SET[".env"];
+      if (!fs.existsSync(S.path)) {
+        console.log(`result=refused: the .env read here (${L}) is not the recorded one (${S.path}); set HIMMEL_REPO to the checkout that holds the recorded one, or, when that checkout moved, run it once with HIMMEL_CONFIG_AUDIT_ENV_FILE=${S.path} to record that file gone; watch.json is unchanged`);
+        process.exit(1);
+      }
+      if (!argv.includes("--live")) {
+        const hint = wasCache(S) ? `set HIMMELCTL_CACHE_DIR=${path.dirname(S.path)} to read the recorded one`
+          : isCache(L) ? "the himmelctl cache .env is read first while it exists"
+          : "set HIMMEL_REPO to the checkout that holds the recorded one";
+        console.log(`result=refused: the .env read here (${L}) is not the recorded one (${S.path}), which still exists; ${hint}, or run config-audit.sh accept --live to record ${L} in its place; watch.json is unchanged`);
+        process.exit(1);
+      }
     }
     saveWatch(live); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {} console.log("result=accepted"); }
   else if (verb === "check") {
@@ -566,6 +584,7 @@ _ca_node() {
     dir="$(_himmel_config_dir)"
     envf="$(_ca_env_file)"
     CA_STATE="${HIMMEL_CONFIG_AUDIT_DIR:-$dir/state/config-audit}" CA_ENV="$envf" \
+        CA_ENV_CACHE="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/.env" \
         CA_CONF="$dir/himmel.conf" CA_LOCAL="$dir/himmel.conf.local" CA_JSON="$dir/config.json" \
         node -e "$_CA_JS" "$@"
 }
@@ -712,7 +731,7 @@ config_audit_main() {
         scrub) _ca_node scrub "$@" ;;
         restore) [ "$#" -eq 1 ] || _ca_usage; _ca_restore "$1" "${script:-config-audit restore}" ;;
         watch) _ca_watch ;;
-        accept) _ca_node accept ;;
+        accept) [ "$#" -eq 0 ] || [ "$*" = --live ] || _ca_usage; _ca_node accept "$@" ;;
         denied) [ "$#" -eq 2 ] || _ca_usage; _ca_node denied "$1" "$2" --script "$script" --pid "$pid" ;;
         check) local out; out="$(_ca_node check)" || return 1; [ -z "$out" ] && return 0; printf '%s\n' "$out"
             case "$out" in LOSS*|*"
