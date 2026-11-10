@@ -3608,6 +3608,7 @@
         "silent-go": "a GO'd PR whose worker went silent: the waiter merged it through merge-on-green.sh --go, or held it and paged, operational triage",
         "unclosed": "a worker window left open on two ticks with no disposition bullet: the chief closes it, parks it with a named wake or gives it up with a reason, operational triage",
         "owed-undelivered": "an operator-owed item with no Telegram delivery receipt after 5 minutes: the chief sends it with the receipt command or tells the operator another way, operational triage",
+        "rm-lease-stale": "the release-manager lease holder is gone (no live pid, run doc missing or untouched for 30 minutes): the chief runs the printed takeover command, operational triage",
         "size": "a SIZE-ESCALATE row for a refused or bulk brief: the chief splits it, signs a size override or escalates to the operator, operational triage",
         "pr-watch": "a watched outside PR whose head, comments, reviews or state moved: the chief reads it and relaunches the closed worker or acts, operational triage"
       }
