@@ -2162,6 +2162,8 @@ describe('signed minerva specs', () => {
     expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN', { reviewed: [`Reviewed: design ${s}`] })])).toThrow(/one 'Reviewed: spec <sha256>' line/);
     expect(() => review(sctx(), f, [critic(f.spec, 'SPEC CLEAN', { reviewed: [`Reviewed: spec ${other}`] })]))
       .toThrow(new RegExp(`SPEC CLEAN reviewed ${other}, not the spec's bytes ${s}`));
+    expect(() => review(sctx(), f, [critic(f.spec, 'SPEC FINDINGS 0', { reviewed: [`Reviewed: spec ${other}`] })]))
+      .toThrow(new RegExp(`SPEC FINDINGS 0 reviewed ${other}, not the spec's bytes ${s}`));
     expect(readOperatorRecords('spec-review', specEnv())).toEqual([]);
   });
 

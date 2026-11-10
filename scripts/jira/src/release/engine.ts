@@ -616,8 +616,8 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
     }
   }
   const clean = specVerdict.last === 'SPEC CLEAN';
-  if (clean && reviewedSha !== specPin.sha256) {
-    throw new Error(`${verb}: SPEC CLEAN reviewed ${reviewedSha}, not the spec's bytes ${specPin.sha256}; run the spec critic on the final spec`);
+  if ((clean || specVerdict.residuals === 0) && reviewedSha !== specPin.sha256) {
+    throw new Error(`${verb}: ${specVerdict.last} reviewed ${reviewedSha}, not the spec's bytes ${specPin.sha256}; run the spec critic on the final spec`);
   }
   checkRoundResiduals(specText, files.map((x) => basename(x.path)), residuals, verb);
   lintSpec(spec, plan, verb);
