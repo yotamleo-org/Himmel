@@ -82,7 +82,7 @@ def resolve_ref(repo, ref):
 
 
 def read_published(ledger):
-    """Sorted [(epoch, graph_head)] of the published-channel rows."""
+    """Sorted [(epoch, graph_head)] of the published-channel rows; graph_head is "" when the row names none."""
     rows = []
     try:
         with open(ledger, encoding="utf-8") as fh:
@@ -94,8 +94,8 @@ def read_published(ledger):
                 if not isinstance(row, dict) or row.get("action") != "published-channel":
                     continue
                 ts, gh = parse_ts(row.get("ts")), row.get("graph_head")
-                if ts is not None and isinstance(gh, str) and gh:
-                    rows.append((ts, gh))
+                if ts is not None:
+                    rows.append((ts, gh if isinstance(gh, str) else ""))
     except OSError as exc:
         die("cannot read the ledger %s: %s" % (ledger, exc))
     rows.sort(key=lambda r: r[0])
@@ -104,6 +104,8 @@ def read_published(ledger):
 
 def commit_times_ahead(repo, ref, graph_head):
     """Sorted commit times of the commits on ref that graph_head does not contain; None if unreadable."""
+    if not re.fullmatch(r"[0-9a-fA-F]{7,40}", graph_head):
+        return None
     res = git(repo, "log", "--format=%ct", "%s..%s" % (graph_head, ref))
     if res.returncode != 0:
         return None

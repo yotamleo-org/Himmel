@@ -82,6 +82,10 @@ L2C="$TMP_ROOT/l2c.jsonl"
 out=$(python3 -I "$REPORT" --ledger "$L2C" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
 assert_contains "the 12 hours after the unresolvable publish are unknown" "unknown-hours=12" "$out"
 assert_contains "only the 12 resolvable hours enter the figures (lags 0..11)" "max=11" "$out"
+L2D="$TMP_ROOT/l2d.jsonl"
+{ row 0 published-channel "$C0"; row 12 published-channel; } > "$L2D"
+out=$(python3 -I "$REPORT" --ledger "$L2D" --repo "$R1" --days 1 --now "$(iso $((T0 + 23 * 3600)))" --update-script "$UPD10" 2>&1) || true
+assert_contains "a publish row that names no build commit is unknown hours too" "unknown-hours=12" "$out"
 
 echo "TEST: over_limit_counted -- hours over the limit and the breaches of 40 and 100"
 R3="$TMP_ROOT/r3"; plant_repo "$R3" 130

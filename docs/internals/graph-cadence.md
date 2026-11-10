@@ -394,7 +394,7 @@ made by then that the build commit does not contain. It prints:
 
 Hours before the first `published-channel` row have no baseline
 (`no-baseline-hours`), and hours after a publish whose build commit the
-checkout cannot read are `unknown-hours`: the report leaves both out of the
+checkout cannot read, or that names none, are `unknown-hours`: the report leaves both out of the
 figures and never reads them as an older graph's lag.
 `--now` ends the window at a fixed time instead of the present.
 
