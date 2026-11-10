@@ -1427,9 +1427,11 @@ else
   live_home="$tmpdir/live-home"
   mkdir -p "$live_home/cfg" "$live_home/cache"
   sed "s#^    path: .*#    path: $golden_tree#" "$golden_dir/index.yml" >"$live_home/cfg/index.yml"
+  # shellcheck source=scripts/lib/timeout-bin.sh
+  . "$SCRIPT_DIR/timeout-bin.sh"
   ( cd "$live_home" && env -u XDG_CONFIG_HOME HOME="$live_home" XDG_CACHE_HOME="$live_home/cache" \
       QMD_CONFIG_DIR="$live_home/cfg" INDEX_PATH="$live_home/index.sqlite" \
-      timeout 120 "${real_qmd[@]}" update >"$live_home/update.log" 2>&1 )
+      ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 120} "${real_qmd[@]}" update >"$live_home/update.log" 2>&1 )
   live_want="$(python3 -I -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print("\n".join(r[0] for r in c.execute("select path from documents where collection=? and active=1", ("golden",))))' "$live_home/index.sqlite" 2>/dev/null | LC_ALL=C sort)"
   assert "the live update indexed the golden tree" test -n "$live_want"
   assert "qmd_collection_indexes equals the live update's active paths" test "$golden_got" = "$live_want"
