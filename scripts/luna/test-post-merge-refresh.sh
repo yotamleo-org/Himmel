@@ -74,6 +74,7 @@ case "$(cat "$c/qmd.mode" 2>/dev/null)" in
   fail) echo "qmd: boom"; exit 1 ;;
   timeout) exit 124 ;;
   breakstate) mv "$c/state" "$c/state.gone" && : > "$c/state" ;;
+  shadir) rm -f "$c/state/qmd.sha"; mkdir "$c/state/qmd.sha"; chmod 555 "$c/state/qmd.sha" ;;
   move)
     mkdir -p "$c/primary/docs"; echo "$$" > "$c/primary/docs/moved.md"
     git -C "$c/primary" add docs/moved.md
@@ -337,6 +338,26 @@ row_lock_past_30_min_alerts_once() {
     assert_eq "lock_past_30_min_alerts_once: still no run" 0 "$(ncalls ast)"
 }
 
+row_lock_alert_names_pid() {
+    mkcase lockpid; seed_both; cm $((BASE+100)) src/a.sh
+    local lp; lp=$(livepid)
+    mk_lock graph "$lp" $((BASE+100))
+    NOW=$((BASE+2200)); tick graph
+    assert_contains "lock_alert_names_pid: the 30-minute alert names the holder's pid" "live pid $lp" "$(grep 'fail post-merge-graph' "$C/alerts.log")"
+}
+
+row_lock_released_when_state_write_dies() {
+    # root ignores the unwritable directory this row leans on, so the write would not fail
+    if [ "$(id -u)" = 0 ]; then echo "  SKIP: lock_released_when_state_write_dies needs a non-root user"; return 0; fi
+    mkcase lockdie; seed_both; cm $((BASE+100)) docs/a.md
+    printf 'shadir' > "$C/qmd.mode"
+    NOW=$((BASE+1000)); tick both
+    assert_eq "lock_released_when_state_write_dies: the failed write stops the tick" 1 "$TICK_RC"
+    assert_contains "lock_released_when_state_write_dies: and names what it could not write" "ERR cannot write" "$TICK_OUT"
+    assert_eq "lock_released_when_state_write_dies: the keyword lock is gone" "absent" "$([ -e "$C/state/qmd.lock" ] && echo present || echo absent)"
+    chmod 755 "$C/state/qmd.sha" 2>/dev/null || true
+}
+
 row_reindex_lock_live_skips_keyword() {
     mkcase reidxlive; seed_both; cm $((BASE+100)) docs/a.md
     local lp; lp=$(livepid)
@@ -505,6 +526,13 @@ row_sampler_runs_with_keyword_off() {
     mkcase samplegraph; seed_both
     NOW=$((BASE+1000)); tick graph
     assert_eq "sampler_runs_with_keyword_off: the sampler ran armed graph" "lag tick --index $C/cache/index.sqlite --state $C/state" "$(grep '^lag ' "$C/calls.log")"
+}
+
+row_sampler_index_order_matches_reindex() {
+    mkcase sampleorder; seed_both
+    : > "$C/cache/other.sqlite"
+    NOW=$((BASE+1000)); tick graph QMD_INDEX_PATH="$C/cache/other.sqlite"
+    assert_eq "sampler_index_order_matches_reindex: QMD_INDEX_PATH wins over INDEX_PATH, as in qmd-reindex.sh" "lag tick --index $C/cache/other.sqlite --state $C/state" "$(grep '^lag ' "$C/calls.log")"
 }
 
 row_no_index_no_sample() {
@@ -731,6 +759,7 @@ for row in quiet_window_holds max_wait_fires burst_fires_once ignored_merges_cou
     delayed_pull_fires_once failed_refresh_keeps_watermark tree_moved_during_run \
     unchanged_graph_still_settles range_with_nothing_moves_watermark seeds_without_running \
     non_ancestor_runs_once dead_lock_refuses_loud live_lock_skips lock_past_30_min_alerts_once \
+    lock_alert_names_pid lock_released_when_state_write_dies sampler_index_order_matches_reindex \
     reindex_lock_live_skips_keyword reindex_lock_dead_does_not_skip no_paid_call \
     no_paid_call_real_ast stamp_untouched no_merge_path_caller third_failure_alerts success_clears \
     hold_neither_alerts_nor_clears twelve_skips_alert alert_once_per_streak unwritable_state_dies clean_exit_clears_tick_alert \

@@ -78,6 +78,18 @@ assert_jq "deliberate removal unregisters the flow" 'all(.flows[]; .name != "gra
 assert_jq "deliberate removal unregisters the task" 'all(.expected_tasks[]; . != "HIMMEL-GraphMap-Luna")' "$HIMMEL_OBSERVABILITY_CONFIG"
 assert_jq "removal preserves unrelated entries" 'any(.flows[]; .name == "keep-flow") and any(.expected_tasks[]; . == "keep-task") and .vault_path == "C:/vault"' "$HIMMEL_OBSERVABILITY_CONFIG"
 
+observability_register_cadence stall-new 604800 HIMMEL-Stall-Task 3600
+assert_jq "register_with_stall_sets_it" '.flows[] | select(.name == "stall-new") | .cadence_seconds == 604800 and .stall_deadline_seconds == 3600' "$HIMMEL_OBSERVABILITY_CONFIG"
+
+observability_register_cadence stall-keep 86400 HIMMEL-Stall-Keep 3600
+jq '.flows |= map(if .name == "stall-keep" then .stall_deadline_seconds = 9999 else . end)' "$HIMMEL_OBSERVABILITY_CONFIG" > "$TMP_ROOT/operator.json"
+cp "$TMP_ROOT/operator.json" "$HIMMEL_OBSERVABILITY_CONFIG"
+observability_register_cadence stall-keep 86400 HIMMEL-Stall-Keep 3600
+assert_jq "register_keeps_operator_stall" '.flows[] | select(.name == "stall-keep") | .stall_deadline_seconds == 9999' "$HIMMEL_OBSERVABILITY_CONFIG"
+
+observability_register_cadence stall-none 86400 HIMMEL-Stall-None
+assert_jq "register_without_stall_adds_no_key" '.flows[] | select(.name == "stall-none") | has("stall_deadline_seconds") | not' "$HIMMEL_OBSERVABILITY_CONFIG"
+
 if [ ! -d "$HIMMEL_OBSERVABILITY_CONFIG.lock" ]; then
     pass "lock dir is released after every call"
 else

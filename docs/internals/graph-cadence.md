@@ -124,7 +124,10 @@ either it skips at once and rebuilds nothing — the hourly AST pair already
 built the graph). Both steps would otherwise contend for
 `ast-update.sh`'s promote lock (skip-not-wait, so a collision is
 a skipped-and-retried refresh next fire, not a failure — the wider offset
-just makes that the exception rather than the rule).
+just makes that the exception rather than the rule). The post-merge tick below
+fires every five minutes, so it lands on `:15` and `:35` too: its graph half
+takes the same lock, treats a busy one (rc 4) as a skip and retries on its next
+tick, so no offset is kept clear for it.
 
 Two fires of this step itself are serialized by `graph-cadence.sh`'s own
 pipeline lock (`<worktree>.lock`), because each run `reset --hard` +
@@ -144,7 +147,22 @@ destructive git command. A refreshed graph lands only through a `chore/graph-pub
 PR merged on green — never a direct push to `main` (asserted in
 `test-graph-cadence.sh`).
 
-`scripts/luna/post-merge-refresh.sh` is a separate five-minute tick that refreshes the code graph and the himmel keyword index after merges settle, with no paid call; `graphmap-cadence.sh` will arm it with its post-merge verb (task 2.3), and until then nothing runs it.
+## The post-merge tick
+
+`scripts/luna/post-merge-refresh.sh` is a separate five-minute tick that refreshes the code graph (and, in `both` mode, the himmel keyword index) after merges settle, with no paid call. Nothing arms it on its own; an operator arms it:
+
+```bash
+bash scripts/luna/graphmap-cadence.sh post-merge graph   # code graph only
+bash scripts/luna/graphmap-cadence.sh post-merge both    # code graph and keyword index
+bash scripts/luna/graphmap-cadence.sh post-merge off     # row, runner and registrations removed
+```
+
+- **One row, nothing else.** The verb writes only `HIMMEL-PostMergeRefresh` at `*/5 * * * *` and every other crontab row back unchanged. The row sits outside the arm family: `arm` and `arm --force` leave it alone, a full `disarm` removes it with its runner and registrations, `disarm --luna-only` leaves it, and `status` lists it with its mode.
+- **A bare runner.** `~/.claude/graphmap-cadence/post-merge-refresh.sh` appends to `post-merge-refresh.log` beside it (moved to `.prev` once it passes 1 MB), writes no flow rows and never clears an alert (the tick clears `post-merge-tick` itself on a clean pass). When the tick exits non-zero it raises `post-merge-tick` through `cadence-alert.sh`.
+- **What cron does not carry.** The runner pins at arm time the `PATH` directories of `graphify`, `bun`, `qmd` and `node`, so the tick finds them, and runs from its own directory: qmd walks up from the working directory for a project-local `.qmd/index.yml`, and the tick sets none. Arming refuses when `graphify` is not an absolute executable on `PATH`.
+- **The mode** is one generated line in the runner, `# himmel-post-merge-mode: graph` (or `both`). `arm --rewrite-armed` reads it, rewrites the runner only when one exists, and refuses with exit 2, rewriting nothing, when the line is absent, repeated or in any other form. It never adds the tick.
+- **Registration.** The task `HIMMEL-PostMergeRefresh` and the flows `post-merge-graph` (and `post-merge-keyword` in `both`) are registered with `cadence_seconds` 604800 and `stall_deadline_seconds` 3600. A stall deadline an operator already set on a flow is kept.
+- **Lock alerts name the holder.** The 30-minute lock alert gives the pid of the live holder, since lock liveness is by pid alone.
 
 ## The ledger
 

@@ -281,11 +281,12 @@ pmr_half_step() {
     lock_acquire "$lock" "$now"
     rc=$?
     if [ "$rc" = "$LOCK_LIVE" ]; then
-        local acquired; acquired=$(cat "$lock/acquired" 2>/dev/null || echo "$now")
+        local acquired holder; acquired=$(cat "$lock/acquired" 2>/dev/null || echo "$now")
+        holder=$(cat "$lock/pid" 2>/dev/null || true)
         case "$acquired" in '' | *[!0-9]*) acquired="$now" ;; esac
         if [ $((now - acquired)) -ge "$LOCK_ALERT_SECS" ] && [ "$(st_get "$half.lockalert")" != "$acquired" ]; then
             st_put "$half.lockalert" "$acquired"
-            alert_fail "$half" "lock held over 30 minutes" "the $half refresh lock $lock has been held since $acquired by a live process" "wait, or stop that process"
+            alert_fail "$half" "lock held over 30 minutes" "the $half refresh lock $lock has been held since $acquired by live pid $holder" "wait, or stop pid $holder"
         fi
         pmr_skip "$half" live-lock
         return 0
@@ -335,7 +336,7 @@ pmr_half_step() {
 }
 
 pmr_sample() {
-    local idx="${INDEX_PATH:-${QMD_INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}" rc
+    local idx="${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}" rc
     if [ ! -f "$PMR_LAG" ]; then printf 'post-merge-refresh: ERR keyword-lag.py absent at %s\n' "$PMR_LAG" >&2; return 3; fi
     if [ ! -f "$idx" ]; then log "no index at $idx, sampler not run"; return 0; fi
     PMR_PRIMARY="$PMR_PRIMARY" PMR_NOW="$(pmr_now)" python3 -I "$PMR_LAG" tick --index "$idx" --state "$PMR_STATE"
