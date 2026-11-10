@@ -231,7 +231,6 @@ mkdir -p "$TP_ANCHOR/scripts/lib"
 cp "$HERE/../../lib/go-gate.sh" "$TP_ANCHOR/scripts/lib/go-gate.sh"
 # item 17 runs the merge's remainder reader from the anchor, never from the checkout under review
 cp "$HERE/../../lib/pr_remainder.py" "$TP_ANCHOR/scripts/lib/pr_remainder.py"
-# item 20 runs the anchor's conflict detector and its body reader, with the modules it imports
 mkdir -p "$TP_ANCHOR/scripts/eval/conflicts" "$TP_ANCHOR/scripts/eval/judge-accuracy" "$TP_ANCHOR/scripts/eval/lib"
 cp "$HERE/../../eval/conflicts/conflicts.py" "$TP_ANCHOR/scripts/eval/conflicts/"
 cp "$HERE/../../eval/judge-accuracy/judge_accuracy.py" "$TP_ANCHOR/scripts/eval/judge-accuracy/"
@@ -4414,9 +4413,6 @@ check "R4: the killed peer's trap freed its lock" "$r4_left" "no"
 fi
 reset_stubs
 
-# --- 20. a hand-resolved merge conflict on the head needs its line under ## Conflicts resolved.
-# Fixture: main and the branch both edit line 1 of f.sh; main's edit lands as the squash commit `(#12)`;
-# the branch merges main forward and resolves by hand (C20_MERGED keeps both, C20_OURS keeps the branch's side).
 C20="$tmp/c20"
 git init -q --bare "$tmp/c20-origin.git"
 git init -q -b main "$C20"

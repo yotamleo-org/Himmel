@@ -2290,12 +2290,6 @@ s17_body() {
 }
 check_suite_evidence
 
-# --- 20. a hand-resolved merge conflict on the head has its line under `## Conflicts resolved`.
-# The anchor's scripts/eval/conflicts/conflicts.py detect (never the copy under review) lists the conflicted files of each
-# merge commit in origin/main..head; the body is item 7's, read with that module's parse_body (merge-on-green's reader too).
-# A conflicted file with no line FAILs and prints the line to add; an `ours` resolution (main's change to the file was
-# dropped) WARNs and names the other PR. A detection that cannot run (no head, no detector, python3 or timeout binary, a
-# failed fetch, a non-zero exit, `unknown`) WARNs and never FAILs: a merge must not depend on a git read that failed.
 # shellcheck disable=SC2016  # python program text
 C20_READER='import os, sys
 sys.path.insert(0, os.path.dirname(sys.argv[1]))
