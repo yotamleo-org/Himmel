@@ -88,7 +88,7 @@ Usage: invoke.sh [--model <name>] [--profile <name>] [--toolsets <list>]
                      model id is newer than hermes' internal catalog — without
                      it hermes silently routes unknown ids to its DEFAULT
                      provider (observed: an OpenRouter :free id landing on
-                     codex, HIMMEL-727). Omit to keep hermes' own routing.
+                     codex). Omit to keep hermes' own routing.
   --profile <name>   Run under this hermes profile (hermes -p), i.e. its SOUL +
                      config (e.g. himmel_agent = senior main-tier reviewer). Fail-
                      open: if the profile does not exist, warn and use the default
@@ -153,7 +153,7 @@ done
 
 # Resolve the prompt source: --prompt-file wins, else positional, else stdin.
 tmp_prompt=""
-snapdir=""    # private gate-made directory holding the gated prompt copy (HIMMEL-3221)
+snapdir=""    # private gate-made directory holding the gated prompt copy (immutable, so the file cannot change after the gate)
 snapshot=""   # <snapdir>/prompt — the ONLY file hermes reads
 # Watchdog/deny-escalation state, declared up front (set -u
 # safe) so the trap never trips on an early exit before they are assigned.

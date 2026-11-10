@@ -112,7 +112,7 @@ fi
 
 # Live-worktree ceiling: refuse rather than degrade. Counts registered worktrees
 # under .claude/worktrees (the primary checkout is not counted).
-# ponytail: static default, not yet derived from measured git latency vs count; HIMMEL-1860 slice 3.
+# Static default, not yet derived from measured git latency vs worktree count.
 WT_CEILING="${HIMMEL_WORKTREE_CEILING:-100}"
 case "$WT_CEILING" in ''|*[!0-9]*) WT_CEILING=100 ;; esac
 # Fails closed: an unreadable worktree list is a refusal, never a count of 0.
@@ -199,7 +199,7 @@ if [ "$HAS_ORIGIN" -eq 1 ] && ! run git -C "$PRIMARY_WORKTREE" fetch origin "$DE
 fi
 # Count-then-create must be atomic: serialize concurrent creators on a lock in
 # the git common dir so two of them cannot both pass at ceiling-1.
-# ponytail: no flock (e.g. stock macOS) creates unlocked and the race stays open, install util-linux flock; HIMMEL-1860.
+# Without flock (e.g. stock macOS) the worktree is created unlocked and the race stays open; install util-linux flock.
 if command -v flock >/dev/null 2>&1; then
     exec 9>"$COMMON_DIR_ABS/himmel-worktree-create.lock"
     # prim-ok: the wait is bounded (HIMMEL_WORKTREE_LOCK_TIMEOUT, default 120 s) and the lock spans the rest of the script; with_lock waits unbounded and scopes to one command

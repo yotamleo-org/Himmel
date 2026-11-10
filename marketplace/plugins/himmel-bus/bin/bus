@@ -107,7 +107,7 @@ async function send(root, to, file, { re, summary, doc }) {
 // Blocks until the caller's inbox has a pending message, prints it and consumes
 // it (commit after the print, the delivery hook's at-least-once rule). Exit 3 is
 // a timeout, distinct from every error.
-// ponytail: polls store.pending every 500 ms; an fs.watch wake is HIMMEL-4831 ask 2's upgrade path.
+// Polls store.pending every 500 ms; an fs.watch wake would replace the poll.
 async function wait(root, timeoutArg) {
   const arg = timeoutArg ?? String(WAIT_DEFAULT_S);
   if (!/^[1-9]\d*$/.test(arg)) throw new Error('--timeout must be a positive number of seconds');
@@ -159,7 +159,7 @@ async function gc(root) {
         if (reason) { console.log(`kept ${label} (${reason})`); kept++; continue; }
         const infos = await Promise.all(mine.map(file => lstat(file)));
         if (infos.some(i => !i.isFile()) || Math.max(...infos.map(i => i.mtimeMs)) > cutoff) continue;
-        // ponytail: report-only, store.scan chain-verifies from n=0 so a removed segment empties it (--re, read); upgrade path HIMMEL-5072.
+        // Report-only: store.scan chain-verifies from n=0, so a removed segment empties it (--re, read); deletion waits until scan survives gc of old segments.
         console.log(`would remove ${label}`); removable++;
       }
     });

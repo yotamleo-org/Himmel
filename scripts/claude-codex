@@ -833,7 +833,7 @@ export ANTHROPIC_MODEL="$CODEX_MODEL"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="$CODEX_HAIKU"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="${CLASSIFIER_MODEL:-$CODEX_MODEL}"
 export ANTHROPIC_DEFAULT_OPUS_MODEL="$CODEX_MODEL"
-# ponytail: client-side auto classifier through the gateway (HIMMEL-4086),
+# Client-side auto classifier through the gateway: the billing notice holds the first action of an unattended leg,
 # remove this temporary switch when safeguards/safeguard_results pass through.
 # https://code.claude.com/docs/en/llm-gateway-protocol#feature-pass-through
 # The client-side classifier uses claude-sonnet-5 when the proxy serves it.
@@ -869,7 +869,7 @@ export CLAUDE_CONFIG_DIR="$CONFIG_DIR"
 # guessing from the model string, and prices a claudex worker from the codex weekly used% delta between this launch
 # reading and the current probe cache (codex-usage-probe.ts). WORKER_SESSION_LANE is deliberately NOT exported: headed-arm-worker.sh
 # reads it as the default lane for workers a claudex session arms, and usage-preflight.sh reads it too.
-# ponytail: no launch-time codex-bank reading yet, so fleet prices a claudex worker only when HIMMEL_CODEX_BANK_START is in its launch env; upgrade path: the HIMMEL-4817 follow-up adds the launch-time reading.
+# No launch-time codex-bank reading yet, so fleet prices a claudex worker only when HIMMEL_CODEX_BANK_START is in its launch env; a launch-time reading would remove that condition.
 export HIMMEL_SESSION_LANE=claudex
 HIMMEL_SESSION_MODEL="$(codex_stanza_model)"
 export HIMMEL_SESSION_MODEL
