@@ -321,7 +321,10 @@ STUB
     cp "${GO_GATE_SRC:-$SCRIPT_DIR/../lib/go-gate.sh}" "$tmp/scripts/lib/go-gate.sh"
     # The GitHub-blocked alert lib (sourced next to coderabbit-available.sh).
     # Its sender is a stub that only logs, so the suite can never DM the operator.
-    cp "$SCRIPT_DIR/../lib/merge-block-alert.sh" "$tmp/scripts/lib/merge-block-alert.sh"
+    # MBA_LIB_SRC is a TEST-HARNESS-ONLY twin of TS_LIB_SRC: a scratch copy of the lib with a function unset.
+    cp "${MBA_LIB_SRC:-$SCRIPT_DIR/../lib/merge-block-alert.sh}" "$tmp/scripts/lib/merge-block-alert.sh"
+    # The chief-inbox route appends through the node it finds with this sibling.
+    cp "$SCRIPT_DIR/../lib/resolve-node.sh" "$tmp/scripts/lib/resolve-node.sh"
     # Every chokepoint fails closed without its seam-guard lib.
     cp "$SCRIPT_DIR/../lib/chokepoint-seam-guard.sh" "$tmp/scripts/lib/chokepoint-seam-guard.sh"
     # ...and its registry: a MOG_ANCHOR_GIT fixture IS the anchor, so a marked
@@ -853,6 +856,13 @@ case "\$1" in
         if [ "\${STUB_JIRA_TRANSITION_RC3:-0}" = "1" ] && [ "\$2" = "transition" ]; then
             echo "FAIL HIMMEL-374 closed with no fixVersion: deferred out of frozen v1.1.3" >&2
             exit 3
+        fi
+        # release bucket-check answers STUB_BUCKET_VERDICT (a whole verdict line) and prints nothing by default;
+        # STUB_BUCKET_RC is its exit and STUB_BUCKET_SLEEP a hang (exec, so the timeout kills the sleeper itself).
+        if [ "\$2" = "release" ] && [ "\$3" = "bucket-check" ]; then
+            [ -z "\${STUB_BUCKET_SLEEP:-}" ] || exec sleep "\$STUB_BUCKET_SLEEP"
+            [ -z "\${STUB_BUCKET_VERDICT:-}" ] || printf '%s\n' "\$STUB_BUCKET_VERDICT"
+            exit "\${STUB_BUCKET_RC:-0}"
         fi
         if [ "\$2" = "release" ] && [ "\$3" = "request" ]; then
             [ "\${STUB_JIRA_REQUEST_FAIL:-0}" = "1" ] && { echo "release request: refused" >&2; exit 1; }
@@ -5979,6 +5989,164 @@ CR_TRIGGER_LEDGER_PATH="$CR9697_LEDGER" CR_TRIGGER_REPOS="owner/repo" CR_TRIGGER
     run_mog 0 "9697-e: a dry run" -- --dry-run
 assert_gh_lacks "9697-e: a dry run posts no trigger" "pr comment"
 rm -f "$CR9697_LEDGER"
+
+# --- The merge line (rows 9001-*). After MERGED, one bucket-check on the ticket: a bucket= field on the audit line,
+# and on OUTSIDE or DONE a stderr line, one bucket-leak row and one line to the owning chief's inbox. It refuses nothing.
+bk_title="feat(jira): [HIMMEL-374] reconciler"
+bk_out_line="OUTSIDE HIMMEL-374 v1.1.4 current=v1.1.3 open=5"
+bk_root="$(mktemp -d "${TMPDIR:-/tmp}/mog-bk.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
+bk_arm() { mkdir -p "$bk_root/consoles"; : > "$bk_root/consoles/chief.md"; }
+bk_inbox_lines() { grep -c . "$bk_root/consoles/chief.md" 2>/dev/null || true; }
+# assert_bk_rows <name> <count> — the run wrote that many bucket-leak rows.
+assert_bk_rows() {
+    local n; n=$(grep -c '"event":"bucket-leak"' "$LAST_TMP/ts/status-events.jsonl" 2>/dev/null || true)
+    if [ "${n:-0}" = "$2" ]; then pass; else fail "$1 (bucket-leak rows: ${n:-0}, want $2; rows: $(cat "$LAST_TMP/ts/status-events.jsonl" 2>/dev/null))"; fi
+}
+# assert_bk_inbox <name> <count> — the armed chief inbox holds that many lines.
+assert_bk_inbox() {
+    local n; n=$(bk_inbox_lines)
+    if [ "${n:-0}" = "$2" ]; then pass; else fail "$1 (inbox lines: ${n:-0}, want $2: $(cat "$bk_root/consoles/chief.md" 2>/dev/null))"; fi
+}
+
+bk_arm
+MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_out_line" STUB_PR_TITLE="$bk_title" \
+    run_mog 0 "9001-a: an OUTSIDE merge is not stopped"
+assert_audit_has "9001-a: the audit line carries bucket=OUTSIDE" " bucket=OUTSIDE"
+assert_err_has "9001-a: the stderr line names version, current and open count" "merge-on-green: LEAK HIMMEL-374 merged outside the bucket: in v1.1.4, current v1.1.3, 5 open (PR #77). Not stopped."
+assert_bk_rows "9001-a: one bucket-leak row" 1
+assert_status_row "9001-a: the row names key, pr, head and verdict" '.event == "bucket-leak" and .key == "HIMMEL-374" and .pr == "77" and .head == "abc123def456" and .verdict == "OUTSIDE"'
+assert_bk_inbox "9001-a: one line in the chief inbox" 1
+if grep -qF 'Bucket leak, not stopped: PR #77 merged. feat(jira): [HIMMEL-374] reconciler. It sits in v1.1.4; current is v1.1.3, 5 open.' "$bk_root/consoles/chief.md"; then pass
+else fail "9001-a: the inbox line holds the title, version, current and open count ($(cat "$bk_root/consoles/chief.md"))"; fi
+if [ "$(alert_lines)" = "0" ]; then pass; else fail "9001-a: the operator alert sink saw an alert ($(cat "$LAST_ALERT_LOG"))"; fi
+
+# A version-less OUTSIDE ticket reads "no version" in the inbox line.
+bk_arm
+MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="OUTSIDE HIMMEL-374 none current=v1.1.3 open=2" STUB_PR_TITLE="$bk_title" \
+    run_mog 0 "9001-a2: an OUTSIDE merge of a ticket with no version"
+assert_err_has "9001-a2: the stderr line says none" "merged outside the bucket: in none, current v1.1.3, 2 open (PR #77). Not stopped."
+if grep -qF 'It sits in no version; current is v1.1.3, 2 open.' "$bk_root/consoles/chief.md"; then pass
+else fail "9001-a2: the inbox line says no version ($(cat "$bk_root/consoles/chief.md"))"; fi
+
+# No armed inbox (the chief's file is absent), and no chief name: the merge, the field and the row all stand.
+rm -f "$bk_root/consoles/chief.md"
+MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_out_line" STUB_PR_TITLE="$bk_title" \
+    run_mog 0 "9001-b: OUTSIDE with no armed inbox"
+assert_audit_has "9001-b: the field is still written" " bucket=OUTSIDE"
+assert_bk_rows "9001-b: the row is still written" 1
+if [ -e "$bk_root/consoles/chief.md" ]; then fail "9001-b: the route created the inbox it found absent"; else pass; fi
+bk_arm
+MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_out_line" STUB_PR_TITLE="$bk_title" \
+    run_mog 0 "9001-b2: OUTSIDE with HIMMEL_CONSOLE_NAME unset"
+assert_audit_has "9001-b2: the field is still written" " bucket=OUTSIDE"
+assert_bk_rows "9001-b2: the row is still written" 1
+assert_bk_inbox "9001-b2: no chief name, no inbox line" 0
+
+bk_arm
+MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="DONE HIMMEL-374" STUB_PR_TITLE="$bk_title" \
+    run_mog 0 "9001-c: a merge on a ticket already Done is not stopped"
+assert_audit_has "9001-c: the audit line carries bucket=DONE" " bucket=DONE"
+assert_err_has "9001-c: the stderr line says Done" "merge-on-green: LEAK HIMMEL-374 merged on a ticket already Done (PR #77). Not stopped."
+assert_bk_rows "9001-c: one row" 1
+assert_status_row "9001-c: the row's verdict is DONE" '.event == "bucket-leak" and .verdict == "DONE"'
+assert_bk_inbox "9001-c: one inbox line" 1
+if grep -qF 'Bucket leak, not stopped: PR #77 merged on a ticket already Done. feat(jira): [HIMMEL-374] reconciler.' "$bk_root/consoles/chief.md"; then pass
+else fail "9001-c: the inbox line says Done ($(cat "$bk_root/consoles/chief.md"))"; fi
+
+# IN, NONE and APPROVED: the field and nothing else.
+for bk_v in "IN HIMMEL-374 current=v1.1.3 via=mirror" "NONE HIMMEL-374 /mirror" "APPROVED HIMMEL-374 decision=1 record=O-v1.1.3-0001"; do
+    bk_f=${bk_v%% *}
+    bk_arm
+    MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_v" STUB_PR_TITLE="$bk_title" \
+        run_mog 0 "9001-d: $bk_f"
+    assert_audit_has "9001-d: $bk_f is on the audit line" " bucket=$bk_f"
+    assert_err_lacks "9001-d: $bk_f prints no LEAK" "LEAK"
+    assert_bk_rows "9001-d: $bk_f writes no row" 0
+    assert_bk_inbox "9001-d: $bk_f sends no inbox line" 0
+done
+
+# FAILED, a failing CLI and a CLI with nothing to say: unread, one row, no inbox line.
+bk_n=0
+for bk_case in "FAILED|FAILED HIMMEL-374 no readable mirror at /m|" "rc1||1" "silent||"; do
+    bk_n=$((bk_n + 1))
+    bk_v=${bk_case#*|}; bk_rc=${bk_v#*|}; bk_v=${bk_v%%|*}
+    bk_arm
+    MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_v" STUB_BUCKET_RC="$bk_rc" STUB_PR_TITLE="$bk_title" \
+        run_mog 0 "9001-e$bk_n: ${bk_case%%|*} reads unread"
+    assert_audit_has "9001-e$bk_n: the field is unread" " bucket=unread"
+    assert_err_has "9001-e$bk_n: stderr names the merge as not checked" "not checked against the bucket"
+    assert_bk_rows "9001-e$bk_n: one row" 1
+    assert_status_row "9001-e$bk_n: the row's verdict is unread" '.event == "bucket-leak" and .verdict == "unread"'
+    assert_bk_inbox "9001-e$bk_n: no inbox line" 0
+done
+
+# A hung bucket-check is cut at MERGE_BUCKET_TIMEOUT_SECS and the close still runs after it.
+bk_arm
+MERGE_BUCKET_TIMEOUT_SECS=1 STUB_BUCKET_SLEEP=20 MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_PR_TITLE="$bk_title" \
+    run_mog 0 "9001-f: a hung bucket-check" -- --jira-transition
+assert_audit_has "9001-f: the field is unread" " bucket=unread"
+assert_bk_rows "9001-f: one unread row" 1
+assert_jira_log_has "9001-f: the close still ran after the timeout" "transition HIMMEL-374 Done"
+assert_bk_inbox "9001-f: no inbox line" 0
+
+# Neither status_event nor _mba_route_chief loaded: the field is still written, the other half still works.
+bk_probe="$(mktemp -d "${TMPDIR:-/tmp}/mog-bk-probe.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
+cp "$SCRIPT_DIR/../lib/ticket-status.sh" "$bk_probe/ticket-status.sh"
+printf '\nunset -f status_event\n' >> "$bk_probe/ticket-status.sh"
+cp "$SCRIPT_DIR/../lib/merge-block-alert.sh" "$bk_probe/merge-block-alert.sh"
+printf '\nunset -f _mba_route_chief\n' >> "$bk_probe/merge-block-alert.sh"
+bk_arm
+TS_LIB_SRC="$bk_probe/ticket-status.sh" MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_out_line" STUB_PR_TITLE="$bk_title" \
+    run_mog 0 "9001-g1: no status_event loaded"
+assert_audit_has "9001-g1: the field is still written" " bucket=OUTSIDE"
+assert_bk_inbox "9001-g1: the inbox line still goes" 1
+bk_arm
+MBA_LIB_SRC="$bk_probe/merge-block-alert.sh" MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_out_line" STUB_PR_TITLE="$bk_title" \
+    run_mog 0 "9001-g2: no _mba_route_chief loaded"
+assert_audit_has "9001-g2: the field is still written" " bucket=OUTSIDE"
+assert_bk_rows "9001-g2: the row is still written" 1
+assert_bk_inbox "9001-g2: no inbox line" 0
+rm -rf "$bk_probe"
+
+# A title with no bracketed key and a tree with no built CLI ask nothing.
+STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_out_line" STUB_PR_TITLE="chore: tidy things up HIMMEL-99" \
+    run_mog 0 "9001-h: a title with no bracketed key"
+assert_audit_has "9001-h: the field is not-asked" " bucket=not-asked"
+assert_jira_log_lacks "9001-h: no bucket-check call" "bucket-check"
+mkdir -p "$bk_root/nocli" && git init -q "$bk_root/nocli"
+MOG_CWD="$bk_root/nocli" STUB_BUCKET_VERDICT="$bk_out_line" STUB_PR_TITLE="$bk_title" run_mog 0 "9001-i: no built Jira CLI"
+assert_audit_has "9001-i: the field is not-asked" " bucket=not-asked"
+assert_audit_has "9001-i: the Jira step skipped for the missing build" "skip=no-jira-cli-build"
+
+# The check runs before the close, and a versionless ticket the close stamps with current still reads OUTSIDE.
+STUB_JIRA_BUILD=1 STUB_JIRA_TRANSITION_STAMPS=v1.1.3 STUB_BUCKET_VERDICT="OUTSIDE HIMMEL-374 none current=v1.1.3 open=1" STUB_PR_TITLE="$bk_title" \
+    run_mog 0 "9001-j: bucket-check comes before the close" -- --jira-transition
+assert_audit_has "9001-j: a versionless ticket reads OUTSIDE" " bucket=OUTSIDE"
+bk_check_ln=$(grep -n 'release bucket-check' "$LAST_JIRA_LOG" | head -1 | cut -d: -f1)
+bk_close_ln=$(grep -n 'dist/index.js transition ' "$LAST_JIRA_LOG" | head -1 | cut -d: -f1)
+if [ -n "$bk_check_ln" ] && [ -n "$bk_close_ln" ] && [ "$bk_check_ln" -lt "$bk_close_ln" ]; then pass
+else fail "9001-j: bucket-check (line '${bk_check_ln:-none}') comes before the transition (line '${bk_close_ln:-none}')"; fi
+
+# A merge GitHub refuses (18) and a title-gate refusal (20) never reach the line.
+STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_out_line" STUB_MERGE_POLICY_REFUSED=1 STUB_PR_TITLE="$bk_title" run_mog 18 "9001-k1: GitHub refused the merge"
+assert_jira_log_lacks "9001-k1: no bucket-check on a refused merge" "bucket-check"
+assert_audit_lacks "9001-k1: no bucket field on a refused merge" " bucket="
+STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_out_line" STUB_PR_TITLE="[HIMMEL-1] fix the thing" run_mog 20 "9001-k2: the title gate refused"
+assert_jira_log_lacks "9001-k2: no bucket-check on a title refusal" "bucket-check"
+assert_audit_lacks "9001-k2: no bucket field on a title refusal" " bucket="
+
+# Both merged paths carry the field: gh failing and then MERGED, and the normal path.
+STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="$bk_out_line" STUB_MERGE_FAIL=1 STUB_POST_STATE=MERGED STUB_PR_TITLE="$bk_title" run_mog 0 "9001-l1: gh failed, then MERGED"
+assert_audit_has "9001-l1: that path carries the field" " bucket=OUTSIDE"
+assert_audit_has "9001-l1: it is the gh-exit path" "gh-exit="
+STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="IN HIMMEL-374 current=v1.1.3 via=mirror" STUB_PR_TITLE="$bk_title" run_mog 0 "9001-l2: the normal path"
+assert_audit_has "9001-l2: the normal path carries the field" " bucket=IN"
+assert_audit_lacks "9001-l2: it is not the gh-exit path" "gh-exit="
+
+# The mirror is the key's own project: it is derived from the key, and the title gate needs JIRA_PROJECT_KEY set, so no unset row.
+STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="IN HIMMEL-374 current=v1.1.3 via=mirror" STUB_PR_TITLE="$bk_title" run_mog 0 "9001-m: the mirror is read from the key's project"
+assert_jira_log_has "9001-m: the mirror is the key's project" "release bucket-check --mirror $HOME/.himmel/state/jira-mirror/HIMMEL HIMMEL-374"
+rm -rf "$bk_root"
 
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"

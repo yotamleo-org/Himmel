@@ -2712,6 +2712,53 @@ _jira_intake_to_current() {
     fi
 }
 
+# THE MERGE LINE — a report, never a gate. Once the PR is MERGED and before the close can
+# stamp a version, ask `release bucket-check` whether the ticket was in the current version's bucket. The answer is the
+# ` bucket=` field on the MERGED audit line: IN, NONE, APPROVED, OUTSIDE, DONE, unread (could not read it) or not-asked
+# (no key, or no built CLI). OUTSIDE and DONE also print a LEAK line, write one `bucket-leak` status row and tell the
+# owning chief's inbox (a silent waiter's merge prints to /dev/null). Nothing here changes an exit code.
+BUCKET_RESULT="not-asked"
+# _bucket_line <repo_root> <key> <title> <pr> <sha> — sets BUCKET_RESULT; always returns 0.
+_bucket_line() {
+    local repo_root="$1" key="$2" title="$3" pr="$4" sha="$5"
+    local bk_to="" bk_out="" bk_line="" bk_rc=0 bk_verdict="" bk_version="?" bk_cur="?" bk_open="?" bk_text="" bk_re
+    BUCKET_RESULT="unread"
+    if command -v timeout >/dev/null 2>&1; then bk_to="timeout -k 10 $(_mog_shorten_secs "${MERGE_BUCKET_TIMEOUT_SECS:-}" 30)"
+    elif command -v gtimeout >/dev/null 2>&1; then bk_to="gtimeout -k 10 $(_mog_shorten_secs "${MERGE_BUCKET_TIMEOUT_SECS:-}" 30)"; fi
+    bk_out=$(cd "$repo_root" && ${bk_to:+$bk_to} node scripts/jira/dist/index.js release bucket-check \
+        --mirror "$HOME/.himmel/state/jira-mirror/${key%%-*}" "$key" 2>/dev/null) || bk_rc=$?
+    # A call the timeout killed is unread even if it printed before the kill.
+    case "$bk_rc" in 124|137) bk_out="" ;; esac
+    bk_line=$(printf '%s\n' "$bk_out" | grep -m 1 -E "^(IN|NONE|APPROVED|OUTSIDE|DONE|FAILED) $key( |\$)") || bk_line=""
+    bk_verdict=${bk_line%% *}
+    case "$bk_verdict" in
+        IN|NONE|APPROVED|OUTSIDE|DONE) BUCKET_RESULT="$bk_verdict" ;;
+    esac
+    if [ "$BUCKET_RESULT" = unread ]; then
+        echo "merge-on-green: WARN $key was not checked against the bucket (bucket-check gave no usable answer). Not stopped." >&2
+        declare -F status_event >/dev/null && status_event event=bucket-leak key="$key" pr="$pr" head="$sha" verdict=unread
+        return 0
+    fi
+    case "$BUCKET_RESULT" in
+        OUTSIDE)
+            bk_re="^OUTSIDE $key ([^ ]+) current=([^ ]+) open=([^ ]+)"
+            if [[ "$bk_line" =~ $bk_re ]]; then bk_version=${BASH_REMATCH[1]} bk_cur=${BASH_REMATCH[2]} bk_open=${BASH_REMATCH[3]}; fi
+            echo "merge-on-green: LEAK $key merged outside the bucket: in $bk_version, current $bk_cur, $bk_open open (PR #$pr). Not stopped." >&2
+            [ "$bk_version" != none ] || bk_version="no version"
+            bk_text="Bucket leak, not stopped: PR #$pr merged. $title. It sits in $bk_version; current is $bk_cur, $bk_open open."
+            ;;
+        DONE)
+            echo "merge-on-green: LEAK $key merged on a ticket already Done (PR #$pr). Not stopped." >&2
+            bk_text="Bucket leak, not stopped: PR #$pr merged on a ticket already Done. $title."
+            ;;
+        *) return 0 ;;
+    esac
+    declare -F status_event >/dev/null && status_event event=bucket-leak key="$key" pr="$pr" head="$sha" verdict="$BUCKET_RESULT"
+    # The route's result is ignored: with no armed inbox or no chief name it returns 1 and the row and field remain.
+    if declare -F _mba_route_chief >/dev/null; then _mba_route_chief "${nwo:-}" "$pr" "${HIMMEL_CONSOLE_NAME:-}" "$bk_text" || true; fi
+    return 0
+}
+
 _jira_close_on_merge() {
     local nwo="$1" pr_num="$2" pr_sha="$3"
     JIRA_AUTO_TRANSITION_RESULT="not-attempted"
@@ -2734,6 +2781,8 @@ _jira_close_on_merge() {
         || { JIRA_AUTO_TRANSITION_RESULT="skip=no-repo-root key=$key"; return 0; }
     [ -f "$repo_root/scripts/jira/dist/index.js" ] \
         || { JIRA_AUTO_TRANSITION_RESULT="skip=no-jira-cli-build key=$key"; return 0; }
+
+    _bucket_line "$repo_root" "$key" "$title" "$pr_num" "$pr_sha"
 
     local project="${key%-*}"
     local config_path="$repo_root/scripts/jira/reconcile-config.json"
@@ -2937,6 +2986,7 @@ jira_auto_transition_on_merge() {
     local result stage="" first
     _merge_pre_row "$@"
     _MERGE_KEY=""
+    BUCKET_RESULT="not-asked"
     if _truthy "${JIRA_TRANSITION_OPT_IN:-}"; then _MERGE_CONTRACT=yes; else _MERGE_CONTRACT=no; fi
     _jira_close_on_merge "$@"
     case "$JIRA_AUTO_TRANSITION_RESULT" in
@@ -3069,7 +3119,7 @@ if [ "$merge_rc" -ne 0 ]; then
         record_cr_threads "$pr_num"
         record_bug_origin "$pr_num"
         record_conflicts "$pr_num"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT$SOLO_TAG"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT bucket=$BUCKET_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash); MERGED at the certified sha/base although gh exited $merge_rc: ${merge_out:-<no output>}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2
@@ -3149,7 +3199,7 @@ if [ "$merge_rc" -eq 0 ]; then
         record_cr_threads "$pr_num"
         record_bug_origin "$pr_num"
         record_conflicts "$pr_num"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT$SOLO_TAG"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT conflicts=$CONFLICTS_RESULT bucket=$BUCKET_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash). ${merge_out:-}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2
