@@ -125,8 +125,7 @@ if [ -z "$RUNS" ]; then
     RUNS="$cache"; JOBS="$jcache"
   else
     fetch_runs "$WORK/runs.json" "$WORK/jobs.json" && [ -s "$WORK/runs.json" ] && [ -s "$WORK/jobs.json" ] || unknown
-    cp "$WORK/runs.json" "$cache" 2>/dev/null || true
-    cp "$WORK/jobs.json" "$jcache" 2>/dev/null || true
+    { cp "$WORK/jobs.json" "$jcache" && cp "$WORK/runs.json" "$cache"; } 2>/dev/null || rm -f "$cache" "$jcache" 2>/dev/null || true  # swallow-ok: a failed cache write drops both files, so the next read refetches instead of pairing fresh runs with stale jobs
     RUNS="$WORK/runs.json"; JOBS="$WORK/jobs.json"
   fi
 fi

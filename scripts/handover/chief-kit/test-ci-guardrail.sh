@@ -245,6 +245,27 @@ fresh
 out="$(CIGUARD_METRICS="$W/metrics-gql-fail.sh" CIGUARD_BUDGET="$W/budget-ok.sh" CIGUARD_REPO=o/r bash "$SUT" --now "$NOW" --state-dir "$W/state" 2>&1)"
 contains 'a failed jobs call reads unknown, never ok' "$out" 'ciguard=unknown'
 
+cat > "$W/metrics-gql-zero.sh" <<STUB
+#!/usr/bin/env bash
+case "\${1:-}" in
+    --slice) cp "$W/open-run.json" "\$3/slice.\$4.json"; exit 0 ;;
+    --gql) : > "\$4.ndjson"; exit 0 ;;
+esac
+exec bash "$METRICS" "\$@"
+STUB
+livez() {
+    CIGUARD_METRICS="$W/metrics-gql-zero.sh" CIGUARD_BUDGET="$W/budget-ok.sh" CIGUARD_REPO=o/r bash "$SUT" --now "$NOW" --state-dir "$W/state" 2>&1
+}
+if [ "$(id -u)" != 0 ]; then
+    fresh; livej >/dev/null
+    touch -d '2026-10-20 00:00' "$W/state/tick-ciguard-runs.json"
+    chmod 444 "$W/state/tick-ciguard-jobs.json"
+    out="$(livez)"
+    contains 'a refetch with 0 jobs reads ok' "$out" 'ciguard=ok'
+    out="$(livez)"
+    contains 'a failed jobs-cache write never leaves fresh runs beside stale jobs' "$out" 'ciguard=ok'
+fi
+
 gen "$RUN_H" 200 > "$W/h200.json"
 fresh; out="$(run "$W/h200.json")"
 contains '200 runs in one hour reads ok under decision 850' "$out" 'ciguard=ok'
