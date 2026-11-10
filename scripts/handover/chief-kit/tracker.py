@@ -1386,7 +1386,6 @@ def live_worker_records(workers):
 
 
 OWED_RE = re.compile(r'operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed', re.I)
-CRITIC_ROUND_CAP = 3
 
 
 def md_section(path, heading):
@@ -1410,13 +1409,23 @@ def spec_id(path):
     return p[:-3] if p.endswith('.md') else p
 
 
-CRITICAL_RE = re.compile(r'^OPERATOR-CRITICAL:[ \t]*\S', re.M)
+def round_status_all(handover_dir):
+    """Every key's round state under <handover_dir>/specs, from one `chief-route.ts round-status --all`; None when it cannot be read."""
+    route = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'telegram', 'chief-route.ts')
+    try:
+        r = subprocess.run(['bun', route, 'round-status', '--all', '--specs', os.path.join(handover_dir, 'specs'), '--json'],
+                           capture_output=True, text=True, timeout=60)
+        s = json.loads(r.stdout) if r.returncode == 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    ok = isinstance(s, dict) and isinstance(s.get('keys'), dict) and isinstance(s.get('cap'), int) and isinstance(s.get('classes'), list) and s['classes']
+    return s if ok else None
 
 
-def operator_critical(spec, critic):
+def operator_critical(spec, critic, critical_re):
     for p in (spec if spec.endswith('.md') else spec + '.md', critic):
         try:
-            if CRITICAL_RE.search(open(p, encoding='utf-8').read()):
+            if critical_re.search(open(p, encoding='utf-8').read()):
                 return True
         except (OSError, ValueError):
             continue
@@ -1444,24 +1453,38 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
         except OSError:
             signed = None
         if signed is not None:
+            status = round_status_all(handover_dir)
+            if status:
+                critical_re = re.compile(r'^OPERATOR-CRITICAL:[ \t]*(%s)\b' % '|'.join(re.escape(str(c)) for c in status['classes']), re.M)
             latest = {}
             for f in glob.glob(os.path.join(handover_dir, 'specs', 'designs', '*.critic-spec-r*.md')):
                 m = re.fullmatch(r'(.*)\.critic-spec-r(\d+)\.md', f)
                 if m and (m.group(1) not in latest or int(m.group(2)) > latest[m.group(1)][0]):
                     latest[m.group(1)] = (int(m.group(2)), f)
-            for spec, (rnd, f) in sorted(latest.items()):
+            for spec, (_, f) in sorted(latest.items()):
                 k = re.search(r'HIMMEL-(\d+)', os.path.basename(spec))
+                st = status['keys'].get('HIMMEL-%s' % k.group(1), {}) if status and k else {}
+                if status is None or not isinstance(st, dict) or 'error' in st:
+                    unread.append(os.path.basename(f))
+                    continue
+                rnd = st.get('spec') if isinstance(st.get('spec'), int) else 0
                 try:
                     last = [x for x in open(f, encoding='utf-8').read().splitlines() if x.strip()][-1].strip()
                 except (OSError, ValueError, IndexError):
                     unread.append(os.path.basename(f))
                     continue
-                if k and int(k.group(1)) in opn and int(k.group(1)) not in signed_ticket_numbers and spec_id(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= CRITIC_ROUND_CAP):
+                if k and int(k.group(1)) in opn and int(k.group(1)) not in signed_ticket_numbers and spec_id(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= status['cap']):
                     n = int(k.group(1))
-                    (items if operator_critical(spec, f) else chief_owes).append(('unsigned spec', n, clip(opn[n]['title'], 100),
+                    (items if operator_critical(spec, f, critical_re) else chief_owes).append(('unsigned spec', n, clip(opn[n]['title'], 100),
                                   '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
                                       os.path.basename(spec), rnd, last if re.fullmatch(r'SPEC (?:CLEAN|FINDINGS \d+)', last) else 'no verdict line'),
                                   'sign the spec, or rule on its findings'))
+            for n, crit in sorted((int(key[7:]), st.get('critical_open')) for key, st in (status or {'keys': {}})['keys'].items()
+                                  if re.fullmatch(r'HIMMEL-\d+', key) and isinstance(st, dict)):
+                if n in opn and isinstance(crit, list) and crit:
+                    items.append(('operator-critical finding', n, clip(opn[n]['title'], 100), '; '.join(
+                        '%s (%s) in %s round %s, %s' % (c.get('id'), c.get('class'), c.get('kind'), c.get('round'), os.path.basename(str(c.get('verdict_path'))))
+                        for c in crit if isinstance(c, dict)), 'rule on each finding; the chief records the ruling with chief-route.ts round-critical'))
         hand = sorted(glob.glob(os.path.join(handover_dir, '*HANDOFF.md')), key=os.path.getmtime)
         sec = md_section(hand[-1], 'Open operator items') if hand else None
         if sec is not None:
