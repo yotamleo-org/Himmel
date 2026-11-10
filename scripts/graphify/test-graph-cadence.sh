@@ -375,7 +375,7 @@ if [ "${FAKE_CH_RC:-0}" -ne 0 ]; then
     echo "publish-graph-channel: BLOCKED file=graph.json rule=host-path" >&2
     exit "$FAKE_CH_RC"
 fi
-echo "publish-graph-channel: published graph-data deadbeef (built at abc1234)"
+echo "publish-graph-channel: published graph-data deadbeef (built at ${FAKE_CH_BAC:-abc1234})"
 FAKECH
 chmod +x "$FAKE_CH"
 : > "$AST_REC_LOG"; : > "$FAKE_CH_LOG"; rc=0
@@ -1674,6 +1674,47 @@ for bad in "has space" "a/b" "$(printf 'a\nb')" ""; do
         run_gc --threshold 10 --flow-name "$bad" 2>&1) || rc=$?
     assert_eq "--flow-name '$(printf '%s' "$bad" | tr '\n' '~')' refused rc=2" "2" "$rc"
 done
+
+echo "TEST: channel_row_has_lag -- published-channel row carries graph_head, merges_behind and lag_s"
+REPO10="$TMP_ROOT/t10-primary"; BARE10="$TMP_ROOT/t10-origin.git"
+HOME10="$TMP_ROOT/t10-home"; LEDGER10="$TMP_ROOT/t10-ledger"
+mkdir -p "$HOME10" "$LEDGER10"
+git init -q --bare "$BARE10" >/dev/null 2>&1
+git init -q --initial-branch=main "$REPO10" 2>/dev/null || git init -q "$REPO10"
+git -C "$REPO10" config user.email t@test.com
+git -C "$REPO10" config user.name test
+echo "seed" > "$REPO10/README.md"
+git -C "$REPO10" add -A
+GIT_AUTHOR_DATE="2026-11-01T00:00:00Z" GIT_COMMITTER_DATE="2026-11-01T00:00:00Z" git -C "$REPO10" commit -q -m "chore: built here"
+BUILT10=$(git -C "$REPO10" rev-parse HEAD)
+echo "two" >> "$REPO10/README.md"
+git -C "$REPO10" add -A
+GIT_AUTHOR_DATE="2026-11-02T01:00:00Z" GIT_COMMITTER_DATE="2026-11-02T01:00:00Z" git -C "$REPO10" commit -q -m "chore: one after"
+git -C "$REPO10" remote add origin "$BARE10"
+git -C "$REPO10" push -q origin main
+FAKE_SEM10="$TMP_ROOT/t10-semantic-fake.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$FAKE_SEM10"; chmod +x "$FAKE_SEM10"
+: > "$AST_REC_LOG"; : > "$FAKE_CH_LOG"; rc=0
+out=$(HOME="$HOME10" GRAPH_CADENCE_HIMMEL_ROOT="$REPO10" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER10" \
+      GRAPH_CADENCE_AST_UPDATE="$AST_REC" AST_REC_LOG="$AST_REC_LOG" GRAPH_CADENCE_SEMANTIC_UPDATE="$FAKE_SEM10" \
+      GRAPH_CADENCE_CHANNEL_PUBLISH="$FAKE_CH" FAKE_CH_LOG="$FAKE_CH_LOG" FAKE_CH_BAC="$BUILT10" \
+      run_gc --threshold 10 --semantic 2>&1) || rc=$?
+assert_eq "channel lag run rc=0" "0" "$rc"
+LEDGER_LINE10=$(tail -n1 "$LEDGER10/.graph-cadence/ledger.jsonl" 2>/dev/null || echo MISSING)
+assert_contains "channel lag row is published-channel" '"action":"published-channel"' "$LEDGER_LINE10"
+assert_contains "channel lag row names the published build commit" "\"graph_head\":\"$BUILT10\"" "$LEDGER_LINE10"
+assert_contains "channel lag row counts the commits behind origin/main" '"merges_behind":1,' "$LEDGER_LINE10"
+assert_contains "channel lag row carries the seconds behind (25h = 90000)" '"lag_s":90000,' "$LEDGER_LINE10"
+: > "$FAKE_CH_LOG"; rc=0
+out=$(HOME="$HOME10" GRAPH_CADENCE_HIMMEL_ROOT="$REPO10" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER10" \
+      GRAPH_CADENCE_AST_UPDATE="$AST_REC" AST_REC_LOG="$AST_REC_LOG" GRAPH_CADENCE_SEMANTIC_UPDATE="$FAKE_SEM10" \
+      GRAPH_CADENCE_CHANNEL_PUBLISH="$FAKE_CH" FAKE_CH_LOG="$FAKE_CH_LOG" FAKE_CH_BAC=0123456789abcdef0123456789abcdef01234567 \
+      run_gc --threshold 10 --semantic 2>&1) || rc=$?
+assert_eq "unresolvable build commit keeps rc=0" "0" "$rc"
+LEDGER_LINE10B=$(tail -n1 "$LEDGER10/.graph-cadence/ledger.jsonl" 2>/dev/null || echo MISSING)
+assert_contains "unresolvable build commit still records published-channel" '"action":"published-channel"' "$LEDGER_LINE10B"
+assert_contains "unresolvable build commit records null merges_behind" '"merges_behind":null,' "$LEDGER_LINE10B"
+assert_contains "unresolvable build commit records null lag_s" '"lag_s":null,' "$LEDGER_LINE10B"
 
 echo
 echo "===================================="

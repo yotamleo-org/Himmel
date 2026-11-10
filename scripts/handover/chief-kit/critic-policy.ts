@@ -10,10 +10,10 @@ import { gitCleanEnv } from "../../lanes/git-clean.mjs";
 
 type Kind = "spec" | "plan";
 type Artifact = { path: string; sha256: string };
-type NumberedFile = { round: number; path: string };
+type LedgerRound = { round: number; path: string };
 type Round = {
   observed_count: number | null; requested: number | null; next: number | null; cap: number | null;
-  operator_record: boolean | null; numberedFiles: NumberedFile[] | null; renamed: string[] | null;
+  allowed: boolean | null; rounds: LedgerRound[] | null;
 };
 export type Preflight = {
   schema: 1; kind: "critic-preflight"; operation_id: string | null;
@@ -27,7 +27,7 @@ const REQUEST_KEYS = ["artifacts", "kind", "operation_id", "requested_round", "s
 const HEX40 = /^[0-9a-f]{40}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 const canonicalAbsolute = (p: unknown): p is string => typeof p === "string" && isAbsolute(p) && resolve(p) === p;
-const nullRound = (requested: number | null = null): Round => ({ observed_count: null, requested, next: null, cap: null, operator_record: null, numberedFiles: null, renamed: null });
+const nullRound = (requested: number | null = null): Round => ({ observed_count: null, requested, next: null, cap: null, allowed: null, rounds: null });
 const malformed = (): { exit: number; output: Preflight } => ({
   exit: EXIT.malformed,
   output: { schema: 1, kind: "critic-preflight", operation_id: null, action: "malformed", source_head: null, artifacts: [], round: nullRound(), reasons: ["invalid"] },
@@ -83,9 +83,9 @@ export async function checkCriticSnapshot(input: unknown): Promise<{ exit: numbe
     try {
       const b = await readCriticBudget(req.spec_path, req.kind, req.requested_round);
       const exactNext = req.requested_round === b.count + 1;
-      round = { observed_count: b.count, requested: req.requested_round, next: b.count + 1, cap: b.cap, operator_record: exactNext ? b.operatorAllowed : null, numberedFiles: b.numberedFiles, renamed: b.renamed };
+      round = { observed_count: b.count, requested: req.requested_round, next: b.count + 1, cap: b.cap, allowed: exactNext ? b.allowed : null, rounds: b.rounds };
       if (!exactNext) reasons.add("round-mismatch");
-      else operatorRequired = req.requested_round > b.cap && !b.operatorAllowed;
+      else operatorRequired = !b.allowed;
     } catch { reasons.add("round-unavailable"); }
   }
   const action = reasons.size > 0 ? "refused" : operatorRequired ? "operator-required" : "eligible";
