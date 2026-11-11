@@ -1,23 +1,23 @@
 name: os-verify
 
-# HIMMEL-3839 (HIMMEL-3815 slice A): on-demand verification of the IMPACTED
+# On-demand verification of the IMPACTED
 # shell suites on ONE chosen OS. It replaces ci.yml's `force_all_os` dispatch,
 # which ran the whole corpus on ubuntu + windows + macOS (42 jobs) and took
 # 55 % of every runner-minute measured on 2026-09-29 while its windows/macOS
 # legs were advisory and mostly red. GitHub Free caps the account at 20
 # concurrent jobs, 5 of them macOS, so the default here is one OS, two shards.
-# Windows is dropped (HIMMEL-5729): macOS is the only choice.
+# Windows is dropped: macOS is the only choice.
 #
-# HIMMEL-5007: macOS runs ONLY the curated POC list scripts/ci/macos-poc-suites.txt
+# macOS runs ONLY the curated POC list scripts/ci/macos-poc-suites.txt
 # (`all` = the whole list, `impacted` = impacted AND listed; an empty
 # intersection is a green no-op that says so). The full corpus is red on macOS,
-# so a suite joins the list only with a green macOS log line (ratchet: HIMMEL-3183).
+# so a suite joins the list only with a green macOS log line (a ratchet).
 #
 # DISPATCH ONLY, by design: a pull_request/push/schedule trigger would put the
 # paid macOS legs back on every PR. Nothing here is a required check.
 # Every job name is prefixed `os-verify / ` so a dispatch on a PR head can never
 # post a check-run that satisfies, or shadows, one of the required contexts by
-# name (HIMMEL-3788 did the same for ci.yml's `shell-unit`).
+# name (ci.yml's `shell-unit` does the same for a dispatch).
 #
 # Dispatch (after this file is on main -- workflow_dispatch needs it there):
 #   gh workflow run os-verify.yml --ref <branch> -f os=macos -f suites=impacted
@@ -41,7 +41,7 @@ on:
 permissions:
   contents: read
 
-# HIMMEL-3853: one os-verify per ref and OS choice. cancel-in-progress is false
+# One os-verify per ref and OS choice. cancel-in-progress is false
 # so a fresh dispatch never kills a running proof; it only stops dispatches from
 # stacking on the paid macOS slots (a repeat waits, and a newer pending
 # one replaces an older pending one).

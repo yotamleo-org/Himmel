@@ -1,9 +1,9 @@
-# Dependabot dependency updates for himmel (HIMMEL-500).
+# Dependabot dependency updates for himmel.
 # One npm entry per package manifest (npm ecosystem also covers bun.lock).
-# github-actions is included for when CI workflows land (HIMMEL-494) — it is a
+# github-actions is included for when CI workflows land — it is a
 # no-op until .github/workflows/ exists.
 #
-# Who bumps what (HIMMEL-4258) — one owner per pin, never two:
+# Who bumps what — one owner per pin, never two:
 #   Dependabot     npm manifests (above) and every workflow `uses:` (github-actions).
 #                  The CI image's base digest (docker, .github/ci-image/Dockerfile).
 #   drift loop     scripts/upstreams.json `version_pin` entries (the nightly
@@ -12,7 +12,7 @@
 #                  pre-commit ecosystem would ignore pin-holds.json), the gitleaks
 #                  ver= + sha, OXLINT_VERSION=.
 #   Dependabot     also the hashed pip requirements in .github/ci-image (pip entry).
-# Every ecosystem carries cooldown.default-days: 3 (HIMMEL-7092): a release is not
+# Every ecosystem carries cooldown.default-days: 3 — a release is not
 # proposed until it has been public for 3 days, so a hijacked release that is pulled
 # within hours never reaches a PR. Dependabot security updates ignore the cooldown.
 # Not watched here on purpose: bun (.bun-version is a version file Dependabot's
@@ -20,9 +20,9 @@
 # claude CLI (native binary pinned in scripts/machine-setup/installer-pins.sh, bumped
 # together with CLAUDE_CLI_VERSION), the vendored marketplace/plugins/claude-hud (its VENDORED.md) and the benchmark
 # fixtures under scripts/lanes/bench/fixtures. scripts/ci/check-manifest-coverage.sh
-# fails on any other tracked manifest without an entry (HIMMEL-7173).
+# fails on any other tracked manifest without an entry.
 #
-# Release-age buffer (HIMMEL-7173): beside the 3-day cooldown, installs and
+# Release-age buffer: beside the 3-day cooldown, installs and
 # lockfile refreshes refuse a release younger than 3 days: bunfig.toml
 # minimumReleaseAge (bun), .npmrc min-release-age (npm), uv.toml exclude-newer
 # (uv pip compile). CAVEAT: npm reads min-release-age from 11.10 on; CI runs node
@@ -30,7 +30,7 @@
 # guard is the per-PR check .github/workflows/lockfile-release-age.yml, which runs
 # scripts/ci/check-lockfile-release-age.mjs on every lockfile entry a PR adds; a
 # security fix younger than 3 days goes in scripts/ci/release-age-allow.txt.
-# Labels (HIMMEL-7663): every entry sets labels: [] so a Dependabot PR opens unlabeled;
+# Labels: every entry sets labels: [] so a Dependabot PR opens unlabeled;
 # its default labels would fire labeled-event CI runs that shadow the green run and
 # leave the PR BLOCKED. check-manifest-coverage.sh fails an entry without it.
 version: 2

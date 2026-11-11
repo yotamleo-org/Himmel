@@ -1,6 +1,6 @@
 name: Workflow Red
 
-# HIMMEL-5595. After each COMPLETED non-pull_request run of a tracked workflow
+# After each COMPLETED non-pull_request run of a tracked workflow
 # (the names in scripts/ci/workflow-red-list.txt), open or refresh ONE `ci-red`
 # + `wf:<workflow>` issue per workflow and branch when the run is red, and close
 # it when a later run of the same workflow on the same branch is green
