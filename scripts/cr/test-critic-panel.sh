@@ -956,7 +956,7 @@ check "HIMMEL-8992 LAW: the responders are recorded unavailable (record-failed)"
 check "HIMMEL-8992 LAW: the failing member keeps its own unavailable reason" "$(ledger_rows "$LAW_LEDGER" avail unavailable)" "3"
 LAW2_LEDGER="$tmp/law2-ledger.jsonl"; : > "$LAW2_LEDGER"
 law2_rc=0
-CR_LEDGER="$LAW2_LEDGER" CRITIC_LEDGER_APPEND="$LAW_APPEND" \
+LAW_FAIL='' CR_LEDGER="$LAW2_LEDGER" CRITIC_LEDGER_APPEND="$LAW_APPEND" \
     CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/law2-out" 2> "$tmp/law2-err" || law2_rc=$?
 check "HIMMEL-8992 LAW control: a recorded run is certified" "$law2_rc" "0"
