@@ -1928,11 +1928,11 @@ EOF
     return 1
 }
 quota_stamp_back() {
-    [ -f "$1" ] && [ "$(cat "$1")" = "$2" ] || return 1
+    [ -f "$1" ] && [ "$(cat "$1")" = "$2" ] || return 1  # read-sink-ok: $1 is a marker quota_step globbed under quota_blocked
     { printf '%s\n' "$2"; printf 'back_epoch=%s\n' "$3"; } | atomic_write "$1"
 }
 quota_claim() {
-    [ -f "$1" ] && [ "$(cat "$1")" = "$2" ] || return 1
+    [ -f "$1" ] && [ "$(cat "$1")" = "$2" ] || return 1  # read-sink-ok: $1 is a marker quota_step globbed under quota_blocked
     mv "$1" "$3"
 }
 quota_rearm() {

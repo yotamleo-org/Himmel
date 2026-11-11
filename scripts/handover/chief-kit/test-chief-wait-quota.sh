@@ -26,7 +26,7 @@ unset himmel_github_token_vm2 GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE
 STUBBIN="$WORK/stubbin"; mkdir -p "$STUBBIN"
 cat > "$STUBBIN/gh" <<'STUB'
 #!/usr/bin/env bash
-mode="$(cat "$STUB_MODE_FILE" 2>/dev/null)"; mode="${mode:-healthy}"
+mode="$(cat "$STUB_MODE_FILE" 2>/dev/null)"; mode="${mode:-healthy}"  # read-sink-ok: the suite's own mode file under its mktemp tree
 tok=main
 [ "${GH_TOKEN:-}" = "$STUB_READ_TOKEN" ] && tok=read
 probe=0
