@@ -6,6 +6,8 @@ export type Block = { kind: 'heading' | 'list' | 'prose' | 'code'; text: string;
 
 export declare const SECTIONS: readonly ['Impact', 'What', 'Why', 'Plan', 'DoD', 'Proof', 'Agent detail'];
 export declare const METRIC_LABEL: RegExp;
+export declare const PHASES: readonly ['design', 'ready', 'build', 'sliced', 'last-step'];
+export declare function isPhaseLabel(l: unknown): boolean;
 export declare function renderTicketSkeleton(): string;
 export declare function isWarnOnlyType(type: string | undefined): boolean;
 export declare function needsMetric(labels: readonly string[] | undefined): boolean;

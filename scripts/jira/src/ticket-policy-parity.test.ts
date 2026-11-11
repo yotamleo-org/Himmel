@@ -283,6 +283,22 @@ describe('CLI edit (F4)', () => {
     expect(writes()).toEqual([]);
   });
 
+  it('edit --add-labels phase:sliced on a phase:design ticket is refused with no PUT', async () => {
+    issue('HIMMEL-5', VALID, { labels: ['standalone', 'phase:design'] });
+    const r = await cli(['edit', 'HIMMEL-5', '--add-labels', 'phase:sliced']);
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toMatch(/two phase labels/);
+    expect(writes()).toEqual([]);
+  });
+
+  it('edit --labels phase:design,phase:build is refused with no PUT', async () => {
+    issue('HIMMEL-5', VALID);
+    const r = await cli(['edit', 'HIMMEL-5', '--labels', 'standalone,phase:design,phase:build']);
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toMatch(/two phase labels/);
+    expect(writes()).toEqual([]);
+  });
+
   it('control: a priority-only edit of a legacy ticket is not asked to repair it', async () => {
     issue('HIMMEL-5', bodyOf({ omit: ['Proof'] }), { priority: { name: 'Medium' } });
     const r = await cli(['edit', 'HIMMEL-5', '--priority', 'High']);
