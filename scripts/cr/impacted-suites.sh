@@ -961,6 +961,115 @@ done < "$work/changed"
 # (`"$dir/$name"`) and a backslash-continued `source \` are not followed —
 # upgrade path is a real dataflow pass if a T6 selector-miss row shows one.
 
+# comment_lexer — the awk program that prints "<file>\001<line number>" for each
+# whole-line comment of a suite: a line whose first non-blank character is `#` in a
+# *.sh suite, or whose first non-blank characters are `//` in a *.js/*.mjs/*.ts one.
+# A name on such a line is prose, never a use, so the final suite search reads it
+# apart. Never a comment: a line inside a quoted string, a
+# here-document body or a JS template literal (the lexer carries that state across
+# lines), a trailing comment after code, a `# shellcheck source=` directive (a real
+# source edge), or a `# selector: names <basename>...` line, which is how a suite
+# widens its own text to the files it really drives. A shape the lexer misreads
+# (a `<<` in arithmetic opens a here-document) keeps lines, never drops one.
+comment_lexer() {
+    cat <<'EOF'
+FNR == 1 {
+    key = (key0 != "") ? key0 : FILENAME
+    sub(/^\.\//, "", key)
+    kind = (key ~ /\.sh$/) ? "sh" : ((key ~ /\.(js|mjs|ts)$/) ? "js" : "")
+    sq = 0; dq = 0; ansi = 0; inhd = 0; nq = 0; qh = 0; tpl = 0; blk = 0
+}
+kind == "sh" { sh_line($0); next }
+kind == "js" { js_line($0); next }
+function keep_directive(l) {
+    return l ~ /^[ \t]*(#|\/\/)[ \t]*selector:[ \t]+names[ \t]/ || l ~ /^[ \t]*#[ \t]*shellcheck[ \t]+source=/
+}
+function sh_line(l,    t, p, n, c, w, raw, d) {
+    if (inhd) {
+        t = l; sub(/\r$/, "", t)
+        if (hdash[qh]) sub(/^\t+/, "", t)
+        if (t == hdel[qh]) { qh++; if (qh > nq) { inhd = 0; nq = 0; qh = 0 } }
+        return
+    }
+    if (!sq && !dq && l ~ /^[ \t]*#/) {
+        if (!keep_directive(l)) print key "\001" FNR
+        return
+    }
+    n = length(l); p = 1
+    while (p <= n) {
+        c = substr(l, p, 1)
+        if (sq) {
+            if (ansi && c == "\\") { p += 2; continue }
+            if (c == "\047") sq = 0
+            p++; continue
+        }
+        if (dq) {
+            if (c == "\\") { p += 2; continue }
+            if (c == "\"") dq = 0
+            p++; continue
+        }
+        if (c == "\\") { p += 2; continue }
+        if (c == "\047") { sq = 1; ansi = (p > 1 && substr(l, p - 1, 1) == "$"); p++; continue }
+        if (c == "\"") { dq = 1; p++; continue }
+        if (c == "#" && (p == 1 || substr(l, p - 1, 1) ~ /[ \t;&|()<>]/)) break
+        if (c == "<" && substr(l, p, 2) == "<<") {
+            if (substr(l, p + 2, 1) == "<") { p += 3; continue }
+            t = p + 2; d = 0
+            if (substr(l, t, 1) == "-") { d = 1; t++ }
+            while (substr(l, t, 1) ~ /[ \t]/) t++
+            if (match(substr(l, t), /^[^ \t;&|<>()]+/) && substr(l, t, 1) ~ /[A-Za-z_\047"\\]/) {
+                raw = substr(l, t, RLENGTH); w = raw
+                gsub(/[\047"\\]/, "", w)
+                if (w != "") { nq++; hdel[nq] = w; hdash[nq] = d }
+                p = t + RLENGTH; continue
+            }
+            p += 2; continue
+        }
+        p++
+    }
+    if (!sq && !dq && nq > 0 && !inhd) { inhd = 1; qh = 1 }
+}
+function js_line(l,    p, n, c, q, pc) {
+    if (!tpl && !blk && l ~ /^[ \t]*\/\//) {
+        if (!keep_directive(l)) print key "\001" FNR
+        return
+    }
+    n = length(l); p = 1; pc = ""
+    while (p <= n) {
+        c = substr(l, p, 1)
+        if (blk) { if (substr(l, p, 2) == "*/") { blk = 0; p += 2 } else p++; continue }
+        if (tpl) {
+            if (c == "\\") { p += 2; continue }
+            if (c == "`") tpl = 0
+            p++; continue
+        }
+        if (c == "\047" || c == "\"") {
+            q = c; p++
+            while (p <= n) { c = substr(l, p, 1); if (c == "\\") { p += 2; continue }; p++; if (c == q) break }
+            pc = q; continue
+        }
+        if (c == "`") { tpl = 1; p++; continue }
+        if (substr(l, p, 2) == "//") break
+        if (substr(l, p, 2) == "/*") { blk = 1; p += 2; continue }
+        if (c == "/" && (pc == "" || pc ~ /[(,=:[!&|?{};]/)) {
+            p++
+            while (p <= n) {
+                c = substr(l, p, 1)
+                if (c == "\\") { p += 2; continue }
+                if (c == "[") { p++; while (p <= n && substr(l, p, 1) != "]") { if (substr(l, p, 1) == "\\") p++; p++ }; p++; continue }
+                p++; if (c == "/") break
+            }
+            pc = "/"; continue
+        }
+        if (c !~ /[ \t]/) pc = c
+        p++
+    }
+}
+EOF
+}
+comment_lexer > "$work/comment-lexer.awk" || io_fail "writing the comment lexer"
+narrow_strip=0   # 1 only for the final suite search: whole-line comments are read apart
+
 # grep_narrowed <patfile> <litfile> <outfile> <what> <pathspec>... — write to
 # <outfile>, one path per line, the files at head under <pathspec>... holding a
 # line that matches any ERE in <patfile>. The answer of
@@ -973,11 +1082,14 @@ done < "$work/changed"
 # ponytail: a path holding a newline splits in two, as with the -z lists above;
 # upgrade path is NUL-reading consumers if one ever appears.
 grep_narrowed() {
-    local pf="$1" lf="$2" out="$3" what="$4" p narrow="$work/narrow.d" src="$work/narrow.src"
+    local pf="$1" lf="$2" out="$3" what="$4" p narrow="$work/narrow.d" src="$work/narrow.src" gflags
     shift 4
     case "$pf" in /* | [A-Za-z]:[\\/]*) ;; *) pf="$PWD/$pf" ;; esac   # the ERE pass runs from $narrow
     case "$lf" in /* | [A-Za-z]:[\\/]*) ;; *) lf="$PWD/$lf" ;; esac   # the fixed-string pass runs from $src
     : > "$out" || io_fail "creating the ${what} hit list"   # a failed open is rc 1 below
+    if [ "$narrow_strip" -eq 1 ]; then
+        : > "$out.comment" || io_fail "creating the ${what} comment hit list"
+    fi
     : > "$work/narrow.cand" || io_fail "creating the ${what} candidate list"
     grep_rc=0
     git grep -z -l -F -f "$lf" "$head_sha" -- "$@" > "$work/narrow.cand" || grep_rc=$?
@@ -1031,15 +1143,74 @@ grep_narrowed() {
     # "<path>" NUL "<line>" for each matching line. -H: a lone file still names itself.
     # LC_ALL=C -a: byte-exact, and a line that is not valid UTF-8 is still text.
     : > "$work/narrow.lines" || io_fail "creating the ${what} candidate list"
+    # Strip mode: -n numbers each line, and the lexer lists the "<path>\001<n>" of
+    # every whole-line comment of the candidates, so those lines are read apart.
+    gflags=-HaF
+    [ "$narrow_strip" -eq 0 ] || gflags=-HnaF
+    : > "$work/narrow.cmt" || io_fail "creating the ${what} comment-line list"
     if [ -s "$work/narrow.reg" ]; then
         # xargs reports 123 for any batch that exited 1-125, and grep's 1 is "no match":
         # the wrapper turns rc 1 into success so that only a real error (rc 2) reaches it.
-        # shellcheck disable=SC2016  # the child shell expands its own $0 $@
-        ( cd "$src" && LC_ALL=C xargs -0 sh -c 'grep -HaF --null -f "$0" -- "$@" || [ $? -eq 1 ]' "$lf" ) < "$work/narrow.reg" > "$work/narrow.lines" || io_fail "narrowing the candidates for ${what}"
+        # shellcheck disable=SC2016  # the child shell expands its own $0 $1 $@
+        ( cd "$src" && LC_ALL=C xargs -0 sh -c 'f=$1; shift; grep "$f" --null -f "$0" -- "$@" || [ $? -eq 1 ]' "$lf" "$gflags" ) < "$work/narrow.reg" > "$work/narrow.lines" || io_fail "narrowing the candidates for ${what}"
+        if [ "$narrow_strip" -eq 1 ]; then
+            # Each name goes to awk as ./<name>: a bare `a=b.sh` would read as an assignment.
+            # shellcheck disable=SC2016  # the child shell expands its own $0 $@
+            ( cd "$src" && LC_ALL=C xargs -0 sh -c 'for f do shift; set -- "$@" "./$f"; done; awk -f "$0" "$@"' "$work/comment-lexer.awk" ) < "$work/narrow.reg" > "$work/narrow.cmt" || io_fail "finding the comment lines for ${what}"
+        fi
     fi
     # The NUL after the path becomes \001 (a byte awk can hold). LC_ALL=C: byte-exact
     # index/substr on a line that is not valid UTF-8.
     tr '\0' '\001' < "$work/narrow.lines" > "$work/narrow.tagged" || io_fail "reading the ${what} candidates"
+    if [ "$narrow_strip" -eq 1 ]; then
+        # A candidate the unpack does not hold as a regular file joins the stream here,
+        # read from git itself, numbered and lexed the same way.
+        while IFS= read -r -d '' p; do
+            git show "${head_sha}:${p}" > "$work/narrow.blob" || io_fail "reading ${p} at ${head_sha} for ${what}"
+            LEX_KEY="$p" LC_ALL=C awk -f "$work/comment-lexer.awk" "$work/narrow.blob" >> "$work/narrow.cmt" || io_fail "finding the comment lines of ${p} for ${what}"
+            : > "$work/narrow.blines" || io_fail "creating the ${what} scratch copy of ${p}"
+            grep_rc=0
+            LC_ALL=C grep -naF -f "$lf" "$work/narrow.blob" > "$work/narrow.blines" || grep_rc=$?
+            [ "$grep_rc" -le 1 ] || io_fail "narrowing ${p} for ${what}"
+            P="$p" LC_ALL=C awk '{ print ENVIRON["P"] "\001" $0 }' "$work/narrow.blines" >> "$work/narrow.tagged" || io_fail "reading ${p} for ${what}"
+        done < "$work/narrow.irr"
+        : > "$work/narrow.irr" || io_fail "resetting the ${what} candidate list"
+        # "<path>\001<n>:<line>": a listed comment line goes to the comment copy, every
+        # other line to the code copy, both as "<path>\001<line>".
+        mv "$work/narrow.tagged" "$work/narrow.numbered" || io_fail "reading the ${what} candidates"
+        : > "$work/narrow.tagged" || io_fail "creating the ${what} candidate copy"
+        : > "$work/narrow.ctagged" || io_fail "creating the ${what} comment-line copy"
+        # FILENAME, not NR == FNR: an empty comment list would read the lines as the list.
+        LC_ALL=C awk -v code="$work/narrow.tagged" -v cmt="$work/narrow.ctagged" '
+            FILENAME == ARGV[1] { c[$0] = 1; next }
+            {
+                i = index($0, "\001"); path = substr($0, 1, i - 1); rest = substr($0, i + 1)
+                j = index(rest, ":"); line = path "\001" substr(rest, j + 1)
+                if ((path "\001" substr(rest, 1, j - 1)) in c) print line > cmt
+                else print line > code
+            }
+        ' "$work/narrow.cmt" "$work/narrow.numbered" || io_fail "reading the comment lines apart for ${what}"
+        rm -rf "$narrow.c"
+        mkdir "$narrow.c" || io_fail "creating the ${what} comment scratch tree"
+        narrow_write "$work/narrow.ctagged" "$narrow.c" "$what"
+    fi
+    narrow_write "$work/narrow.tagged" "$narrow" "$what"
+    # A candidate the unpack does not hold as a regular file is read from git itself.
+    while IFS= read -r -d '' p; do
+        case "$p" in */*) mkdir -p -- "$narrow/${p%/*}" || io_fail "creating the ${what} scratch tree" ;; esac
+        git show "${head_sha}:${p}" > "$work/narrow.blob" || io_fail "reading ${p} at ${head_sha} for ${what}"
+        : > "$narrow/$p" || io_fail "creating the ${what} scratch copy of ${p}"
+        grep_rc=0
+        LC_ALL=C grep -aF -f "$lf" "$work/narrow.blob" > "$narrow/$p" || grep_rc=$?
+        [ "$grep_rc" -le 1 ] || io_fail "narrowing ${p} for ${what}"
+    done < "$work/narrow.irr"
+    narrow_ere "$pf" "$narrow" "$out" "$what"
+    if [ "$narrow_strip" -eq 1 ]; then narrow_ere "$pf" "$narrow.c" "$out.comment" "$what"; fi
+}
+# narrow_write <tagged> <dir> <what> — write each "<path>\001<line>" of <tagged>
+# to <dir>/<path>, the scratch copy the ERE pass reads.
+narrow_write() {
+    local tagged="$1" narrow="$2" what="$3"
     # Each candidate's directory, once, created by one mkdir -p batch. Every name
     # starts with $narrow/, so none reads as an option.
     NARROW_DIR="$narrow" LC_ALL=C awk '
@@ -1048,7 +1219,7 @@ grep_narrowed() {
             path = substr($0, 1, i - 1)
             if (sub(/[^\/]*$/, "", path) && path != "" && !(path in seen)) { seen[path] = 1; print ENVIRON["NARROW_DIR"] "/" path }
         }
-    ' "$work/narrow.tagged" > "$work/narrow.dirs.txt" || io_fail "listing the ${what} scratch directories"
+    ' "$tagged" > "$work/narrow.dirs.txt" || io_fail "listing the ${what} scratch directories"
     tr '\n' '\0' < "$work/narrow.dirs.txt" > "$work/narrow.dirs" || io_fail "converting the ${what} scratch directory list"
     if [ -s "$work/narrow.dirs" ]; then
         xargs -0 mkdir -p < "$work/narrow.dirs" || io_fail "creating the ${what} scratch tree"
@@ -1065,16 +1236,12 @@ grep_narrowed() {
             print substr($0, i + 1) > file
         }
         END { if (cur != "") close(file) }
-    ' "$work/narrow.tagged" || io_fail "creating the ${what} scratch copy of a candidate"
-    # A candidate the unpack does not hold as a regular file is read from git itself.
-    while IFS= read -r -d '' p; do
-        case "$p" in */*) mkdir -p -- "$narrow/${p%/*}" || io_fail "creating the ${what} scratch tree" ;; esac
-        git show "${head_sha}:${p}" > "$work/narrow.blob" || io_fail "reading ${p} at ${head_sha} for ${what}"
-        : > "$narrow/$p" || io_fail "creating the ${what} scratch copy of ${p}"
-        grep_rc=0
-        LC_ALL=C grep -aF -f "$lf" "$work/narrow.blob" > "$narrow/$p" || grep_rc=$?
-        [ "$grep_rc" -le 1 ] || io_fail "narrowing ${p} for ${what}"
-    done < "$work/narrow.irr"
+    ' "$tagged" || io_fail "creating the ${what} scratch copy of a candidate"
+}
+# narrow_ere <patfile> <dir> <outfile> <what> — the paths under <dir> holding a line
+# that matches any ERE in <patfile>, one per line.
+narrow_ere() {
+    local pf="$1" narrow="$2" out="$3" what="$4"
     : > "$work/narrow.hits" || io_fail "creating the ${what} result file"
     grep_rc=0
     ( cd "$narrow" || exit 3
@@ -1301,9 +1468,15 @@ if [ -s "$pats" ]; then
     # grep_narrowed searches with -z like the diff and ls-tree above:
     # a suite path holding a non-ASCII byte, double quote, backslash or tab must
     # come back as itself, not as a quoted "\303\251" the runner cannot open.
+    # A name on a suite's whole-line comment is prose, not a use (comment_lexer):
+    # those lines are searched apart, into grep.out.comment, only to be counted.
+    narrow_strip=1
     grep_narrowed "$pats" "$lits" "$work/grep.out" "searching the suites for the changed files" \
         ':(glob)**/test-*.sh' ':(glob)**/*.test.mjs' ':(glob)**/*.test.js' ':(glob)**/*.test.ts'
+    narrow_strip=0
     cat "$work/grep.out" >> "$found" || io_fail "reading the search result"
+else
+    : > "$work/grep.out.comment" || io_fail "creating the comment hit list"
 fi
 
 # A tree-scan suite asserts a property of the WHOLE tree (every
@@ -1345,6 +1518,18 @@ if [ "$shell_only" -eq 1 ]; then
 else
     sort -u "$found" > "$impacted" || io_fail "sorting the impacted list"
 fi
+# The suites only a whole-line comment named: a comment hit no other rule listed.
+: > "$work/dropped" || io_fail "creating the dropped-suite list"
+grep_rc=0
+grep -Fvx -f "$impacted" "$work/grep.out.comment" > "$work/dropped" || grep_rc=$?
+[ "$grep_rc" -le 1 ] || io_fail "counting the comment-only suites"
+if [ "$shell_only" -eq 1 ]; then
+    grep_rc=0
+    grep -E '(^|/)test-[^/]*\.sh$' "$work/dropped" > "$work/dropped.sh" || grep_rc=$?
+    [ "$grep_rc" -le 1 ] || io_fail "counting the comment-only shell suites"
+    mv "$work/dropped.sh" "$work/dropped" || io_fail "counting the comment-only shell suites"
+fi
+dropped_comment_only=$(sort -u "$work/dropped" | wc -l | tr -d ' ') || io_fail "counting the comment-only suites"
 
 }
 
@@ -1376,6 +1561,7 @@ printf '%s' "$tree_shape" > "$work/diff.shape" || io_fail "writing the tree-shap
 # Keep the diff input separate: select_changed resets work/changed.
 printf '%s\n' "$changed" > "$work/diff.changed" || io_fail "writing the diff list"
 select_changed "$work/diff.changed" "$work/diff.shape"
+[ "$dropped_comment_only" -eq 0 ] || echo "impacted-suites: dropped-comment-only=${dropped_comment_only}" >&2
 
 if [ "$selector_miss" -eq 1 ]; then
     miss=0

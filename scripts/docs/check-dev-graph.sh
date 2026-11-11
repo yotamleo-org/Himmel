@@ -13,8 +13,9 @@
 # Usage: check-dev-graph.sh [--graph <file>] [--root <dir>] [--suite <file>] [--table]
 #   --graph  default <root>/docs/guide/dev-graph/graph.json
 #   --root   default the repo root; every source file is resolved under it
-#   --suite  default scripts/docs/test-dev-graph.sh; its text must name every
-#            source basename (impacted-suites.sh selects a suite by basename)
+#   --suite  default scripts/docs/test-dev-graph.sh; a `# selector: names` line of
+#            it must name every source basename (impacted-suites.sh selects a
+#            suite by basename and reads no other comment line)
 #   --table  also print the resolved `id  file:line  anchor` table for reviewers
 # Exit: 0 clean, 1 drift (every failure printed as `FAIL <id> <file>: why`),
 #       2 usage or unreadable graph.
@@ -177,9 +178,11 @@ if [ ! -f "$SUITE" ]; then
   fail "suite $SUITE: not found (impacted-suites.sh could not select it)"
 else
   sort -u "$TMP/files" > "$TMP/uniq-files"
+  # impacted-suites.sh reads no comment line of a suite but a `# selector: names` one.
+  grep -E '^[[:space:]]*#[[:space:]]*selector:[[:space:]]+names[[:space:]]' "$SUITE" > "$TMP/suite-names" || : > "$TMP/suite-names"
   while IFS= read -r f; do
     b=${f##*/}
-    grep -qF -- "$b" "$SUITE" || fail "$f: basename '$b' is not named in the suite $SUITE (a PR editing it would not select the suite)"
+    grep -qF -- "$b" "$TMP/suite-names" || fail "$f: basename '$b' is not on a '# selector: names' line of the suite $SUITE (a PR editing it would not select the suite)"
   done < "$TMP/uniq-files"
 fi
 

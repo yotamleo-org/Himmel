@@ -21,9 +21,10 @@
 # COMPLETENESS: every hook wired for the Bash matcher in .claude/settings.json
 # must appear in GUARDS, so a new guard (which edits wire-hook-bash.mjs and
 # settings.json, both of which select this suite in PR CI) cannot ship
-# unexercised. The shared splitter libs (scripts/hooks/lib/shell-tokenize.sh,
-# scripts/hooks/lib/guard-unwrap.sh, scripts/hooks/lib/headless-spawn-join.sh)
-# are named here so an edit to one selects this suite as well.
+# unexercised. The shared splitter libs are named on the selector line below so
+# an edit to one selects this suite as well (impacted-suites.sh reads no other
+# comment line):
+# selector: names scripts/hooks/lib/shell-tokenize.sh scripts/hooks/lib/guard-unwrap.sh scripts/hooks/lib/headless-spawn-join.sh
 #
 # Nothing is executed: each command is only piped to a hook as JSON. Every run
 # uses a scratch HOME and a scratch git repo on main.

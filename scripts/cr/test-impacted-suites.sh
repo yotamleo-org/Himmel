@@ -51,7 +51,7 @@ mkf scripts/test-uninstall.sh 'bash "$d/machine-setup/uninstall-plugins.sh"; bas
 mkf scripts/test-other.sh 'bash "$d/uninstall.sh"'
 mkf scripts/test-wrapper.sh 'bash "$d/test-other.sh"'
 mkf scripts/test-installer.sh 'bash "$d/machine-setup/install.sh"'
-mkf scripts/lanes/tests/plugins.test.mjs "// drives uninstall-plugins.sh"
+mkf scripts/lanes/tests/plugins.test.mjs "run('uninstall-plugins.sh');"
 mkf .claude/commands/pr-check.md
 mkf scripts/test-cmd.sh 'grep -q "/pr-check" x'
 mkf scripts/test-clean-cmd.sh 'grep -q "/pr-check_extra" x'
@@ -839,6 +839,71 @@ if grepq "$out" '^scripts/test-cm-chain\.sh$'; then pass "a chained '; . x' sour
 if grepq "$out" '^scripts/test-cm-var\.sh$'; then pass "an indented variable-sourcing file is still followed"; else fail "indented var-source missed: $out"; fi
 if grepq "$out" '^scripts/test-cm-sub\.sh$'; then pass "a subshell '(source x)' is still followed"; else fail "subshell source missed: $out"; fi
 
+# --- 30b. A suite that names the changed file only on a whole-line comment
+# ('#' in a shell suite, '//' in a JS/TS suite) is not listed. A '#'
+# line inside a string or a here-document body, a trailing comment after code,
+# a `# shellcheck source=` directive and a `# selector: names` line still list. ---
+mkf scripts/lib/cmo-lib.sh
+mkf scripts/test-cmo-hash.sh $'#!/usr/bin/env bash\n# drives cmo-lib.sh end to end\necho x'
+mkf scripts/test-cmo-indent.sh $'if true; then\n    # see scripts/lib/cmo-lib.sh\n    :\nfi'
+mkf scripts/test-cmo-stemcmt.sh $'# guard_rc cmo-lib "x"\necho x'
+mkf scripts/test-cmo-after-hd.sh $'cat <<EOF > f\nx\nEOF\n# cmo-lib.sh\necho "it\'s"'
+mkf scripts/test-cmo-after-str.sh $'s=\'\nline\n\'\n# cmo-lib.sh'
+mkf scripts/lib/cmo.test.mjs $'// drives cmo-lib.sh\nconsole.log(1);'
+mkf scripts/lib/cmo-indent.test.ts $'function f() {\n    // cmo-lib.sh\n}'
+mkf scripts/test-cmo-exec.sh 'bash "$d/lib/cmo-lib.sh"'
+mkf scripts/test-cmo-source.sh '. "$d/lib/cmo-lib.sh"'
+mkf scripts/test-cmo-arg.sh 'run_gate --lib "$d/lib/cmo-lib.sh"'
+mkf scripts/test-cmo-cmdpos.sh 'cmo-lib.sh --help'
+mkf scripts/test-cmo-stem.sh 'guard_rc cmo-lib "x"'
+mkf scripts/test-cmo-string.sh 'msg="see cmo-lib.sh"'
+mkf scripts/test-cmo-sqmulti.sh $'s=\'\n# cmo-lib.sh\n\''
+mkf scripts/test-cmo-dqmulti.sh $'s="a\n  # cmo-lib.sh\n"'
+mkf scripts/test-cmo-heredoc.sh $'cat <<\'EOF\' > f\n# cmo-lib.sh\nEOF'
+mkf scripts/test-cmo-heredoc-dash.sh $'\tcat <<-END > f\n\t# cmo-lib.sh\n\tEND'
+mkf scripts/test-cmo-trail.sh 'true # cmo-lib.sh'
+mkf scripts/test-cmo-expand.sh $'p=${q#*/} # x\n${#a} cmo-lib.sh'
+mkf scripts/test-cmo-directive.sh $'# shellcheck source=scripts/lib/cmo-lib.sh\n. "$d/lib/$n"'
+mkf scripts/test-cmo-names.sh $'# selector: names cmo-lib.sh other.sh\necho x'
+mkf scripts/lib/cmo-exec.test.mjs "execFileSync('bash', ['cmo-lib.sh']);"
+mkf scripts/lib/cmo-tpl.test.mjs $'const s = `\n// cmo-lib.sh\n`;'
+mkf scripts/lib/cmo-trail.test.js 'run(); // cmo-lib.sh'
+mkf scripts/lib/cmo-names.test.mjs $'// selector: names cmo-lib.sh\ntest();'
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: comment-only mention fixtures"
+change scripts/lib/cmo-lib.sh
+out="$(run_is "$range")"
+for s in test-cmo-hash.sh test-cmo-indent.sh test-cmo-stemcmt.sh test-cmo-after-hd.sh test-cmo-after-str.sh lib/cmo.test.mjs lib/cmo-indent.test.ts; do
+    if ! grepq "$out" -Fx "scripts/$s"; then pass "30b a whole-line comment mention does not list scripts/$s"; else fail "30b comment-only mention listed scripts/$s: $out"; fi
+done
+for s in test-cmo-exec.sh test-cmo-source.sh test-cmo-arg.sh test-cmo-cmdpos.sh test-cmo-stem.sh test-cmo-string.sh test-cmo-sqmulti.sh test-cmo-dqmulti.sh test-cmo-heredoc.sh test-cmo-heredoc-dash.sh test-cmo-trail.sh test-cmo-expand.sh test-cmo-directive.sh test-cmo-names.sh lib/cmo-exec.test.mjs lib/cmo-tpl.test.mjs lib/cmo-trail.test.js lib/cmo-names.test.mjs; do
+    if grepq "$out" -Fx "scripts/$s"; then pass "30b CONTROL scripts/$s is still listed"; else fail "30b CONTROL scripts/$s dropped: $out"; fi
+done
+err="$( cd "$FX" && bash "$IS" "$range" 2>&1 >/dev/null )"
+if grepq "$err" -Fx 'impacted-suites: dropped-comment-only=7'; then pass "30b the narrowing is printed: dropped-comment-only=7"; else fail "30b dropped-comment-only line missing or wrong: $err"; fi
+out="$(run_is "$range" --shell)"
+err="$( cd "$FX" && bash "$IS" "$range" --shell 2>&1 >/dev/null )"
+if grepq "$err" -Fx 'impacted-suites: dropped-comment-only=5' && ! grepq "$out" -F 'test-cmo-hash.sh'; then pass "30b --shell counts only the shell suites it dropped (5)"; else fail "30b --shell dropped count: $err"; fi
+
+# --- 30c. The suites that widen their own text name each basename on a
+# `# selector: names` line, so an edit to one still selects them once comments
+# are stripped (the real suite text, copied). -------------------------------
+mkdir -p "$FX/scripts/docs" "$FX/scripts/hooks/lib" "$FX/scripts/handover"
+cp "$REPO_ROOT/scripts/docs/test-dev-graph.sh" "$FX/scripts/docs/test-dev-graph.sh"
+cp "$REPO_ROOT/scripts/hooks/test-escape-class-corpus.sh" "$FX/scripts/hooks/test-escape-class-corpus.sh"
+mkf scripts/handover/next-dispatchable.sh
+mkf scripts/hooks/lib/headless-spawn-join.sh
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: real widening suites"
+change scripts/handover/next-dispatchable.sh
+out="$(run_is "$range")"
+if grepq "$out" -Fx 'scripts/docs/test-dev-graph.sh'; then pass "30c an edit to next-dispatchable.sh still selects test-dev-graph.sh"; else fail "30c test-dev-graph.sh not selected by next-dispatchable.sh: $out"; fi
+change scripts/hooks/lib/headless-spawn-join.sh
+out="$(run_is "$range")"
+if grepq "$out" -Fx 'scripts/hooks/test-escape-class-corpus.sh'; then pass "30c an edit to headless-spawn-join.sh still selects test-escape-class-corpus.sh"; else fail "30c test-escape-class-corpus.sh not selected by headless-spawn-join.sh: $out"; fi
+git -C "$FX" rm -q scripts/docs/test-dev-graph.sh scripts/hooks/test-escape-class-corpus.sh
+git -C "$FX" commit -q -m "chore: drop the real widening suites"
+
 # --- 31. The PR-1734 shape. A NEW file under a tree that a suite
 # walks (lint-fail-open scans scripts/lanes/) lists that suite, though no suite
 # names the file; a new file outside every declared tree does not. -----------
@@ -1437,7 +1502,7 @@ awk '{print} $0 == "SKIP_LIST=\"" {print "scripts/test-cx-vm.sh  # fixture: driv
 cp "$REPO_ROOT/scripts/handover/suite-coverage.sh" "$CX/scripts/handover/suite-coverage.sh"
 printf '# lib\n' > "$CX/scripts/lib/cx-lib.sh"
 for s in test-cx-a test-cx-b test-cx-c test-cx-vm; do printf 'bash "$d/lib/cx-lib.sh"\n' > "$CX/scripts/$s.sh"; done
-printf '// cx-lib.sh\n' > "$CX/scripts/lib/cx.test.mjs"
+printf "run('cx-lib.sh');\n" > "$CX/scripts/lib/cx.test.mjs"
 git -C "$CX" add -A
 git -C "$CX" commit -q -m "chore: base"
 printf '# changed\n' >> "$CX/scripts/lib/cx-lib.sh"
