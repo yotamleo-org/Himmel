@@ -451,8 +451,10 @@ check '26. two after lines write a link each' 'link HIMMEL-1 --blocks HIMMEL-2|l
 af_doc 'pool-disposition: HIMMEL-2 question after HIMMEL-1'
 JIRA_STUB_SLEEP=1 bash "$SCRIPT" "$af" >/dev/null 2>&1 &
 race26=$!
-JIRA_STUB_SLEEP=1 bash "$SCRIPT" "$af" >/dev/null 2>&1
-wait "$race26"
+JIRA_STUB_SLEEP=1 bash "$SCRIPT" "$af" >/dev/null 2>&1; rc_fg=$?
+wait "$race26"; rc_bg=$?
+check '26. both renders at once succeed' '0 0' "$rc_fg $rc_bg"
+check '26. the later render waited and found the pair recorded (one links read)' 1 "$(grep -c '^links ' "$jdb/calls")"
 check '26. two renders at once write the link once' 1 "$(link_calls)"
 unset LIVE_STATE_JIRA_CMD JIRA_STUB_DB TMPDIR
 
