@@ -3244,6 +3244,12 @@ for _s9_m in 'threads|s/page=\$(gh_read api graphql/page=$(gh api graphql/' \
     run cr-completed --grace 30
     _s9_off
     SCRIPT="$_real_script"; rm -f "$_s9_mutant"
+    case "${_s9_m%%|*}" in
+        threads) _s9_bare='^main api graphql' ;;
+        mstate) _s9_bare='^main pr view .*mergeStateStatus' ;;
+        *) _s9_bare='^main pr view --json headRefOid --jq .headRefOid' ;;
+    esac
+    check_eq "S9-1d control ${_s9_m%%|*}: the bare-gh read ran on the main token" "yes" "$([ "$(tok_count "$_s9_bare")" -ge 1 ] && echo yes || echo no)"
     check_eq "S9-1d control ${_s9_m%%|*}: that read on bare gh fails its row" "no" "$("_s9_${_s9_m%%|*}_ok")"
 done
 
