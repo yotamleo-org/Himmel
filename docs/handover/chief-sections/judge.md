@@ -33,8 +33,9 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   successor's pre-computed ACTION ZERO block. A `judge-ro` call with any other
   description is listed as `JUDGE-OWED unknown (<agent-id>: <description>)`; no
   owed judge reads `JUDGE-OWED: none`. The successor checks `verdicts/<qid>/`
-  again, then re-dispatches each one still owed from the prompt in the
-  transcript, through the generator with a fresh nonce.
+  again for a file newer than the `.meta.json` beside the named transcript, then
+  re-dispatches each one still owed from the prompt in that transcript, through
+  the generator with a fresh nonce.
   Prefer `bash scripts/handover/chief-kit/verdict-go.sh <qid> <GO|NO-GO> <head>
   --model <id> --effort <level>
   --pr <n> --evidence-file <path> --doc <chief doc> --contract <yes|no>`: it runs

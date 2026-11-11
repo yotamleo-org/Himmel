@@ -605,12 +605,7 @@ judge_calls_now() {
     esac
 }
 
-# The successor's owed judges: every judge-ro child this session dispatched (the
-# subagent registry live-subagents.sh reads) whose qid has no verdict file, written no
-# earlier than the dispatch, under the verdicts/ directory write-verdict.sh writes
-# (go-gate.sh's root and scope), since a reused qid keeps its older verdicts. The qid
-# is read from the generator's description `Judge <qid> on <KEY>`; a judge-ro child
-# with another description is listed unknown. Fails open to a note.
+# A verdict counts only when no older than its dispatch: a reused qid keeps its older verdicts.
 judges_owed_now() {
     local sid="${CLAUDE_CODE_SESSION_ID:-}" projects="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
     local vdir meta fields atype desc aid qid f written n=0 parent=""
@@ -2378,8 +2373,9 @@ $out
 #### Judges owed: judge-ro calls of the predecessor with no verdict file at \`next\`
 
 For each \`JUDGE-OWED <qid>\` line, look in \`verdicts/<qid>/\` again (a judge still
-running at \`next\` may have written it since); if it is still empty, re-dispatch the
-judge from its brief (the first prompt in the transcript the line names) through
+running at \`next\` may have written it since); if it still holds no file newer than
+the \`.meta.json\` beside the brief the line names (a reused qid keeps older verdicts),
+re-dispatch the judge from its brief (the first prompt in the transcript the line names) through
 \`gen-judge-brief.py --dispatch-json\`, which mints a fresh nonce. An \`unknown\` line
 is a judge-ro call whose description names no qid: read its brief and re-ask it by hand.
 

@@ -3876,10 +3876,7 @@ next95 p96
 check "96c the HANDOFF the writer renders names no missing script path" "$(missing_script_paths "$(handoff95 p96)")" ""
 check "96c the chief docs name no missing script path" "$(missing_script_paths "$REPO_REAL/docs/handover/chief-handoff-template.md" "$REPO_REAL/docs/handover/chief-template.md" "$REPO_REAL/docs/handover/running-a-chief.md" "$REPO_REAL/docs/handover/worker-preface.md" "$REPO_REAL/docs/handover/worker-brief-template.md" "$REPO_REAL"/docs/handover/chief-sections/*.md "$HERE/chief.sh")" ""
 
-# --- 97: next lists, in the successor's ACTION ZERO, every judge-ro child of the
-# outgoing session whose qid has no verdict file as JUDGE-OWED <qid>; a qid with a
-# verdict file (control) and a non-judge child are not listed, and a judge-ro child
-# whose description names no qid is listed as unknown, never dropped.
+# --- 97: next lists JUDGE-OWED in the successor's ACTION ZERO
 cfg97="$tmp/cfg97"; sid97="0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 reg97="$cfg97/projects/-fixture/$sid97/subagents"
 mkdir -p "$reg97"
