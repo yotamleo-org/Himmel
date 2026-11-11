@@ -2757,6 +2757,10 @@ for q6k in $q6_kids; do kill -0 "$q6k" 2> /dev/null && q6_alive="$q6_alive $q6k"
 [ -z "$q6_alive" ] && ! pgrep -f "q6-sleep-$Q6T" > /dev/null && pass "T6 TERM: a killed run leaves no gh read and no python behind" || fail "T6 TERM: a killed run leaves no gh read and no python behind (still alive:$q6_alive)"
 for q6k in $q6_alive; do kill "$q6k" 2> /dev/null; done
 pkill -f "q6-sleep-$Q6T" 2> /dev/null
+Q6H="$WORK/q6home"; mkdir -p "$Q6H"
+env -u HIMMEL_QUOTA_DIR -u himmel_github_token_vm2 HOME="$Q6H" GH_READ_ENV_ROOT="$Q6/envroot" Q_LOG="$Q6/log" NEXT_DISPATCH_MIRROR="$Q6M" \
+    NEXT_DISPATCH_GH_CMD="$WORK/gh-q" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-q" bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" > /dev/null 2>&1
+[ ! -e "$Q6H/.himmel/state/quota" ] && pass "T6 a run on a substitute gh writes no quota state under HOME" || fail "T6 a run on a substitute gh writes no quota state under HOME ($(find "$Q6H/.himmel/state/quota" 2>&1 | head -3))"
 q6run healthy NEXT_DISPATCH_GH_TIMEOUT=abc -- --priority-pool-only
 has "T6 a non-integer NEXT_DISPATCH_GH_TIMEOUT keeps each read's own bound" "$Q6_OUT" "LOCAL	HIMMEL-9801"
 q6run healthy -- --priority-pool-only

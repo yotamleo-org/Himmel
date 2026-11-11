@@ -149,7 +149,8 @@
 # default 400, under the waiter's 420; 0 = none) bounds the whole run, preflight included, and a cut prints `# gh-stall`.
 # NEXT_DISPATCH_GH_TIMEOUT (seconds) replaces every gh read's own bound (60 or 120) and the classifier's 300.
 #
-# Env (tests): NEXT_DISPATCH_MIRROR, NEXT_DISPATCH_GH_CMD (replaces `gh`, the quota probes' too),
+# Env (tests): NEXT_DISPATCH_MIRROR, NEXT_DISPATCH_GH_CMD (replaces `gh`, the quota probes' too; with no HIMMEL_QUOTA_DIR
+# its readings go to a temp quota dir removed at exit, never the station's quota.tsv),
 # NEXT_DISPATCH_CLASSIFY_CMD (replaces cloud-route.mjs; called with the keys),
 # NEXT_DISPATCH_JIRA_CMD (replaces the jira CLI for the live blocker read; called `get KEY`),
 # NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default),
@@ -205,6 +206,12 @@ export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD
 . "$REPO/scripts/lib/gh-quota.sh"
 # shellcheck disable=SC2034  # read by the probes in gh-graphql-budget.sh
 GHQ_GH_CMD="${NEXT_DISPATCH_GH_CMD:-gh}"
+nd_qtmp=""
+if [ -n "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -z "${HIMMEL_QUOTA_DIR:-}" ]; then
+    nd_qtmp=$(tmpdir) || exit 1
+    export HIMMEL_QUOTA_DIR="$nd_qtmp"
+    trap 'rm -rf "$nd_qtmp"' EXIT
+fi
 export GH_READ_NO_MAIN_FALLBACK=1
 nd_pause() {
     case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
@@ -218,7 +225,7 @@ case "$nd_deadline" in ''|*[!0-9]*) nd_deadline=400 ;; esac
 nd_out=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-out.XXXXXX") || exit 1
 nd_flags=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-flags.XXXXXX") || { rm -f "$nd_out"; exit 1; }
 nd_pid=""
-trap 'rm -f "$nd_out" "$nd_flags"' EXIT
+trap 'rm -f "$nd_out" "$nd_flags"; [ -z "$nd_qtmp" ] || rm -rf "$nd_qtmp"' EXIT
 # an outer kill reaches the run's own process group through timeout, which relays the signal
 trap '[ -z "$nd_pid" ] || kill -TERM "$nd_pid" 2>/dev/null; exit 143' TERM INT HUP
 _TIMEOUT_BIN=""
