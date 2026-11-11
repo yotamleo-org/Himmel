@@ -1,2 +1,2 @@
-# HIMMEL-7173: refuse a release younger than 3 days when (re)compiling the hashed requirements.
+# Refuse a release younger than 3 days when (re)compiling the hashed requirements, so a newly published release is not pinned before it has had time to be checked.
 exclude-newer = "3 days"

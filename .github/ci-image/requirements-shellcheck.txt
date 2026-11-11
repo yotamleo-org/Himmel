@@ -1,4 +1,4 @@
-# Hashed shellcheck wheel (HIMMEL-7092, HIMMEL-6348). The version must equal the shellcheck-py
+# Hashed shellcheck wheel. The version must equal the shellcheck-py
 # rev in .pre-commit-config.yaml (scripts/ci/check-ci-install-locks.sh fails when they drift).
 # Refresh like requirements-ci.txt, from: shellcheck-py==<rev without the v>
 shellcheck-py==0.11.0.1 \
