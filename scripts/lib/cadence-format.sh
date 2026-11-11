@@ -132,8 +132,14 @@
 # guard is skipped and the v24 runner flat-promotes the docs over the live graph.
 # Re-arm with `graphmap-cadence.sh arm --rewrite-armed`, which rewrites the runner
 # files already on disk and touches no crontab row.
+# v26: the pipeline-harvest runner's baked prompt gives /x-media-enrich the
+# exact fetch command, the 600000 ms tool timeout and a named done or unfinished
+# line, and the runner alerts under pipeline-harvest-x-media when a completed
+# harvest printed no done line. An armed v25 harvest keeps firing the old prompt
+# (a batch that outruns the tool timeout and reports nothing); re-arm with
+# `pipeline-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
-CADENCE_RUNNER_FORMAT_VERSION=25
+CADENCE_RUNNER_FORMAT_VERSION=26
 
 # Marker line stamped into each generated runner: `# <marker> N`.
 CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"

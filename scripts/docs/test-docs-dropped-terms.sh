@@ -533,6 +533,10 @@ update_hits=$(cd "$ROOT" && grep -n -i -H 'ponytail' .claude/commands/himmel-upd
   marketplace/plugins/himmel-ops/commands/himmel-update.md marketplace/plugins/himmel-ops/commands/himmel-update-all.md 2>&1)
 if [ -n "$update_hits" ]; then printf '%s\n' "$update_hits"; bad "the himmel-update command pages name the retired ponytail marker or a page is missing (listed above)"
 else ok "the himmel-update command pages name the ceilings ledger, not the retired marker"; fi
+minerva_hits=$(cd "$ROOT" && grep -n -i -H 'ponytail' marketplace/plugins/himmel-ops/skills/minerva/SKILL.md \
+  marketplace/plugins/himmel-ops/skills/minerva/panel-charter.md marketplace/plugins/himmel-ops/skills/minerva/plan-charter.md 2>&1)
+if [ -n "$minerva_hits" ]; then printf '%s\n' "$minerva_hits"; bad "the minerva skill or a charter names the retired ponytail marker or a file is missing (listed above)"
+else ok "the minerva skill and its charters name the ceilings ledger, not the retired marker"; fi
 
 echo "# pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

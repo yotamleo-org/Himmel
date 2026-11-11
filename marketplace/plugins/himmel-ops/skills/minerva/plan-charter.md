@@ -10,7 +10,8 @@ dimensions and return findings as a list (or "PLAN CLEAN" if none):
    impossible. Refuse the plan if any I<n> lacks one.
 7. Rabbit hole: a step that parses shell text to enforce a guard must state its
    convergence argument (why the shapes are finite and covered, or why the check
-   does not rest on the text), or land with a `ponytail:` ceiling and a filed
+   does not rest on the text), or land with the ceiling recorded as a
+   ceilings-ledger row (`scripts/ledger/ceiling-add.sh`) and a filed
    structural fix. Refuse the plan if it has neither.
 8. Hollow plan header: the writing-plans header sections are missing or empty
    (a Spec link, Global Constraints, Review Focus with a named test per line,

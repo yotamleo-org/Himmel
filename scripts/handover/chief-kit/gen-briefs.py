@@ -89,6 +89,13 @@ brief's `## Folded critic findings` section. A worker with an absolute Writes pa
 or specs/<KEY>/ is a writer leg: each such path must carry one of the worker's keys (T14), and `round-status <KEY>` refuses
 the brief at next=none (T13) and adds a `> **Round:**` line at next=closure. Either verb failing refuses the brief (I8).
 GEN_BRIEFS_ROUTE_CMD replaces `bun scripts/telegram/chief-route.ts` (tests).
+live_test: "jira", or {"none": "<one-line reason>"}; any other value is refused. For "jira" the built CLI's
+`live-test --json` names the configured test project, and the brief gets `> **Live test:** jira <TEST> own=<keys> — ...` after
+the Tier line (headed-arm-worker.sh turns it into the HIMMEL_JIRA_LIVE_TEST marker); no valid test project, or a keys list
+the marker grammar (own_keys_ok, held to parseOwnKeys by scripts/jira/src/fixtures/own-keys.tsv) refuses, is refused.
+{"none": ...} prints `> **Live test:** none — <reason>`. A worker with no live_test key whose text fields (the ones
+check_lane_reads scans) name a live Jira test phrase, or the configured test project key, is refused (the tripwire).
+The verb failing refuses the brief as CORE-CHECK-FAILED, for the tripwire's key scan too.
 The brief follows the v3 shape of docs/handover/worker-brief-template.md; invariant rules live in the
 worker preface and are not repeated.
 
@@ -453,6 +460,12 @@ def validate(worker, i, repo):
             die('worker %s: context_1m and ab_arm cannot both be set (headed-arm-worker.sh refuses an A/B arm alongside 1m context)' % worker['label'])
     if worker.get('effort') not in (None,) + EFFORTS:
         die('worker %s: effort %r must be one of %s' % (worker['label'], worker.get('effort'), '|'.join(EFFORTS)))
+    if 'live_test' in worker:
+        lt = worker['live_test']
+        none_ok = (isinstance(lt, dict) and set(lt) == {'none'} and isinstance(lt['none'], str) and lt['none'].strip()
+                   and not GRANT_FIELD_BAD_CHAR_RE.search(lt['none']))
+        if lt != 'jira' and not none_ok:
+            die('worker %s: live_test %r must be "jira" or {"none": "<non-blank one-line reason>"}' % (worker['label'], lt))
     tier = worker.get('tier')
     gate = tier_gate(worker.get('model') or DEFAULT_MODEL)
     if tier is None:
@@ -564,6 +577,62 @@ def check_lane_reads(l, hroot):
     for k, v in texts:
         if re.search(re.escape(root) + r'(?![\w.-])', str(v)):
             die('worker %s: %s points at a path under the handover root (%s), which lane %s cannot read; quote the requirements inline' % (l['label'], k, root, l['lane']))
+
+
+PARSE_OWN_KEYS_RE = re.compile(r'none|[A-Z][A-Z0-9]+-[0-9]+(?:,[A-Z][A-Z0-9]+-[0-9]+)*')
+LIVE_TEST_PHRASES_RE = re.compile(r'test tickets?|throwaway tickets?|live jira|jira (?:create|transition|comment|edit|move)', re.I)
+_LIVE_TEST_INFO = []
+
+
+def own_keys_ok(value):
+    return PARSE_OWN_KEYS_RE.fullmatch(value) is not None
+
+
+def live_test_info(label):
+    if not _LIVE_TEST_INFO:
+        cli = jira_cli()
+        r, why = run_jira(cli, ['live-test', '--json'])
+        info = None
+        if r is not None and r.returncode == 0:
+            try:
+                info = json.loads(r.stdout)
+            except ValueError:
+                why = 'its output is not JSON: %s' % r.stdout.strip()[:200]
+            if info is not None and not (isinstance(info, dict) and 'test_project' in info and isinstance(info['test_project'], (str, type(None)))):
+                info, why = None, 'its output has no test_project field: %s' % r.stdout.strip()[:200]
+        elif r is not None:
+            why = 'it exited %d: %s' % (r.returncode, (r.stderr or r.stdout).strip()[:300])
+        if info is None:
+            die('worker %s: CORE-CHECK-FAILED jira live-test --json (%s); a gate that cannot run never passes (build the jira CLI: npm --prefix scripts/jira run build)' % (label, why))
+        _LIVE_TEST_INFO.append(info)
+    return _LIVE_TEST_INFO[0]
+
+
+def live_test_gate(l):
+    label, lt = l['label'], l.get('live_test')
+    if isinstance(lt, dict):
+        l['live_line'] = '> **Live test:** none — %s' % lt['none'].strip()
+        return
+    info = live_test_info(label)
+    test = info.get('test_project')
+    if lt == 'jira':
+        if not test:
+            die('worker %s: live_test "jira" needs a valid Jira test project: %s; set one with himmelctl config set jira.testProject <KEY>' % (label, info.get('problem') or 'none is configured'))
+        own = ','.join(l['keys'])
+        if not own_keys_ok(own):
+            die('worker %s: live_test "jira" own=%s is not a comma list of KEY-n ticket keys (the marker grammar headed-arm-worker.sh checks); fix keys' % (label, own))
+        l['live_line'] = ("> **Live test:** jira %s own=%s — every Jira write this session makes goes to %s; the jira CLI refuses any "
+                          "other project except this brief's own tickets. Create with --project %s." % (test, own, test, test))
+        return
+    tier = l.get('tier')
+    texts = [(k, l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'writes', 'extra')]
+    texts.append(('tier.reason', tier.get('reason', '') if isinstance(tier, dict) else ''))
+    key_re = re.compile(r'(?<![A-Z0-9])%s(?:-\d+)?(?![A-Z0-9])' % re.escape(test)) if test else None
+    for k, v in texts:
+        m = LIVE_TEST_PHRASES_RE.search(str(v)) or (key_re and key_re.search(str(v)))
+        if m:
+            die('worker %s: %s names %r, which reads like a live Jira test; set live_test: "jira" (the brief then carries the test project '
+                'and the launcher marks the worker) or live_test: {"none": "<reason>"} to say it is not one' % (label, k, m.group(0)))
 
 
 
@@ -1380,7 +1449,7 @@ template_version: 3
 {hookline} `cd` into the worktree, never EnterWorktree.
 > - **Reporting:** BLOCKED / permission prompt / question → the chief first (SendMessage). Never stop on AskUserQuestion. Doc bullets record plain facts; token quote-backs go in your SendMessage reply (HIMMEL-4931).
 > - **Shape denials:** rewrite as one literal command, retry once. Edit files with the Edit tool; a script that must name a seam variable, `unset` or `-u` goes in a file run as `python3 -I <file>`, never a heredoc or `perl -pi` on the command line.
-{abline}{ctx1mline}{tierline}{ctline}{seriesline}{coreline}
+{abline}{ctx1mline}{tierline}{liveline}{ctline}{seriesline}{coreline}
 > **Why (read the ticket(s) first, including comments: {gets}):** {why}
 
 > **Prior art:** {prior}
@@ -1412,6 +1481,7 @@ template_version: 3
            scope=l['scope'], scope_line=write_paths(l.get('writes', ''), ctx['hroot']), overlaps=overlaps_line(l, ctx), others=others, also=also,
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
                      if l.get('tier') and tier_gate(l['model']) else ''),
+           liveline=('\n%s\n' % l['live_line']) if l.get('live_line') else '',
            shipct=ship_completes(l['scope'], l.get('lane', 'native'))[0], shipmerge=ship_completes(l['scope'], l.get('lane', 'native'))[1],
            ctline=completes_line(l['scope']), seriesline=series_lines(l), coreline=l.get('core_lines', ''), grants=grants_block(l), partialblock=partial_merge_block(keys, ctx['repo']),
            inhblock=(INHERITED_BLOCK.format(pr=l['inherited']['pr'], authors=', '.join(l['inherited']['authors']), mode=l['inherited']['mode']) + '\n') if l.get('inherited') else '',
@@ -1627,6 +1697,7 @@ def main():
         if not rm:
             core_worker_gate(l, ctx)
             writer_round_gate(l, ctx)
+            live_test_gate(l)
         if os.path.exists(os.path.join(a.bucket, l['stem'] + '.md')):
             die('%s already exists in the bucket; refusing to overwrite a live worker doc' % (l['stem'] + '.md'))
         if os.path.exists(os.path.join(a.bucket, 'launch-%s.sh' % l['label'])):

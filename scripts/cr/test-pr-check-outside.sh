@@ -178,6 +178,26 @@ has "$err" "outside-approve-request 7 $H1" "T2.6 the refusal names the request l
 has "$err" "Nothing was fetched or reviewed" "T2.6 the refusal says nothing was fetched"
 if git -C "$P" rev-parse --verify --quiet refs/himmel/outside/7 >/dev/null; then fail "T2.6 the ref was fetched anyway"; else pass "T2.6 nothing was fetched"; fi
 
+# --fetch-only: the stage-2 audit reads the diff before any approval exists, so it fetches without asking
+# review-round.sh and starts no review round
+reset
+out="$(cd "$P" && HIMMEL_REPO="$A" HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H1" STUB_LOGIN=Stranger STUB_ID=U_stranger \
+    bash "$ROUTE" --pr 7 --head "$H1" --fetch-only 2>"$tmp/err")"; rc=$?
+err="$(cat "$tmp/err")"
+eq "$rc" "0" "T3.5 --fetch-only fetches for an unlisted author with no approval"
+eq "$(git -C "$P" rev-parse refs/himmel/outside/7 2>/dev/null)" "$H1" "T3.5 refs/himmel/outside/7 holds the head"
+has "$out" "outside-pr: yes 7 $H1 feat/outside-thing base=main authorized=fetch-only" "T3.5 the line says fetch-only, not an authorizer"
+if [ -e "$GCD/cr-review-rounds" ] || [ -e "$GCD/cr-critic-scores.jsonl" ] || [ -e "$APPR" ]; then fail "T3.5 --fetch-only wrote review-round, ledger or approval state"; else pass "T3.5 --fetch-only wrote no review-round state"; fi
+canary_absent "T3.5"
+reset
+route "$H1" Stranger U_stranger
+eq "$rc" "5" "T3.5 without the flag the T2.6 refusal is unchanged"
+reset; listed
+bad_rc=0; (cd "$P" && HIMMEL_REPO="$A" HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H1" STUB_STATE=CLOSED bash "$ROUTE" --pr 7 --head "$H1" --fetch-only >/dev/null 2>&1) || bad_rc=$?
+eq "$bad_rc" "2" "T3.5 --fetch-only still refuses a PR that is not OPEN"
+bad_rc=0; (cd "$P" && HIMMEL_REPO="$A" bash "$ROUTE" --pr 7 --fetch-only --head "$H1" >/dev/null 2>&1) || bad_rc=$?
+eq "$bad_rc" "2" "T3.5 --fetch-only before --head still refuses"
+
 reset; printf '[{"login":"Goomal"}]\n' > "$LIST"
 route "$H1"
 eq "$rc" "5" "T2.7 a login-only list entry exits 5"

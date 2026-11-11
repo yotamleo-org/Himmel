@@ -1,6 +1,6 @@
 name: Release
 
-# HIMMEL-3059 slice 1: on a version tag, build the pre-built himmel tarball and
+# On a version tag, build the pre-built himmel tarball and
 # publish it with its SHA256 as release assets. Tag-only -- never runs on a PR,
 # so it adds nothing to PR CI time. The build + hash live in
 # scripts/release/build-tarball.sh (tested by scripts/release/test-build-tarball.sh,
@@ -40,7 +40,7 @@ jobs:
 
       - name: Ensure the release exists
         run: |
-          # HIMMEL-3920: a bare --generate-notes on the first non-prerelease tag spans the
+          # A bare --generate-notes on the first non-prerelease tag spans the
           # whole history and 422s (body > 125000 chars). Notes come from the curated
           # docs/release/<TAG>-notes.md at the tag when it exists, else generated notes
           # bounded to the previous tag in version order.

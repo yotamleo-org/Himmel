@@ -35,9 +35,15 @@ case "$1" in
 update) mkdir -p "$(dirname "$INDEX_PATH")"; date +%s%N >> "$INDEX_PATH" ;;
 mcp)
     port=""; while [ $# -gt 0 ]; do [ "$1" = "--port" ] && port="$2"; shift; done
-    exec python3 -I -c 'import socket, sys, time
-s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(5); time.sleep(300)' "$port" mcp --http --port "$port" ;;
+    exec python3 -I -c 'import os, socket, sys, time
+port = int(sys.argv[1])
+try:
+    s = socket.socket(socket.AF_INET6); s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("::1", port)); fam = "v6"
+except OSError:
+    s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1", port)); fam = "v4"
+open(os.environ["LOGDIR"] + "/bind-family", "w").write(fam)
+s.listen(5); time.sleep(300)' "$port" mcp --http --port "$port" ;;
 esac
 exit 0
 STUB
@@ -61,6 +67,7 @@ printf '# B doc\nkept line\n' > "$R/docs/b.md"
 printf '# X\n' > "$R/fixtures/x.md"
 printf '# M\n' > "$R/node_modules/m.md"
 printf 'print(1)\n' > "$R/tools/a.py"
+ln -s a.md "$R/docs/alias.md" || exit 1
 git -C "$R" add -A && gc one
 C1="$(git -C "$R" rev-parse HEAD)"
 printf '# A doc\nold line\nfresh added line\n' > "$R/docs/a.md"
@@ -163,6 +170,19 @@ eq "::embed_cap_covers_second_tree (6 documents to embed against a cap of 5: exi
 reset_logs
 fx build --first "$C1" --second "$C2" --state c --out "$W/paid-c6" --embed-ok 6 > /dev/null 2>&1; rc=$?
 eq "::embed_cap_covers_second_tree (control: a cap of 6 runs both embeds)" "0|2" "$rc|$(qlog | grep -c '^embed')"
+R3="$W/repo3"; git init -q -b main "$R3" || exit 1
+gc3() { git -C "$R3" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q --no-verify -m "$1"; }
+printf '# X\n' > "$R3/x.md"; ln -s x.md "$R3/alias.md" || exit 1
+git -C "$R3" add -A && gc3 one; D1="$(git -C "$R3" rev-parse HEAD)"
+rm "$R3/alias.md" && printf '# Alias is a real file now\n' > "$R3/alias.md"
+git -C "$R3" add -A && gc3 two; D2="$(git -C "$R3" rev-parse HEAD)"
+FX_EXTRA=(HIMMEL_BILLED_OK=1 "SF_REPO=$R3")
+reset_logs
+fx build --first "$D1" --second "$D2" --state c --out "$W/paid-t1" --embed-ok 1 > /dev/null 2>&1; rc=$?
+eq "::embed_cap_covers_type_change (a symlink replaced by a regular file counts: 2 documents against a cap of 1, exit 2, no embed)" "2|0" "$rc|$(qlog | grep -c '^embed')"
+fx build --first "$D1" --second "$D2" --state c --out "$W/paid-t2" --embed-ok 2 > /dev/null 2>&1; rc=$?
+eq "::embed_cap_covers_type_change (control: a cap of 2 runs)" "0" "$rc"
+FX_EXTRA=(HIMMEL_BILLED_OK=1)
 FX_EXTRA=()
 
 reset_logs
@@ -185,7 +205,10 @@ eq "::free_serve_has_no_key (exit 0)" "0" "$rc"
 eq "::free_serve_has_no_key (the daemon saw no key and the scratch index and config)" "1" \
     "$(qlog | grep -c "^mcp --http --port [0-9]* | INDEX_PATH=$W/free-l2/index.sqlite QMD_CONFIG_DIR=$W/free-l2/config KEY=unset")"
 eq "::free_serve_has_no_key (pair.json holds the served URL)" "$url" "$(pj "$W/free-l2" served_url)"
-case "$url" in http://127.0.0.1:*/mcp) pass "::free_serve_has_no_key (the URL is a free local port)" ;; *) fail "::free_serve_has_no_key (the URL is a free local port): '$url'" ;; esac
+case "$url" in http://localhost:*/mcp) pass "::free_serve_has_no_key (the URL is a free local port)" ;; *) fail "::free_serve_has_no_key (the URL is a free local port): '$url'" ;; esac
+fam="$(cat "$LOGDIR/bind-family" 2> /dev/null)"
+if [ "$fam" = v6 ]; then pass "::serve_reaches_an_ipv6_only_server (the stub listens on ::1 only, as the real qmd does, and serve came up)"
+else pass "SKIP ::serve_reaches_an_ipv6_only_server (this host has no IPv6 loopback, so the stub fell back to 127.0.0.1)"; fi
 spid="$(cat "$W/free-l2/serve.pid")"
 fx stop --index "$W/free-l2/index.sqlite" > /dev/null 2>&1
 eq "::free_serve_has_no_key (stop clears the URL and the pid file)" "|gone" "$(pj "$W/free-l2" served_url)|$([ -e "$W/free-l2/serve.pid" ] && echo left || echo gone)"
@@ -225,7 +248,7 @@ eq "::refuses_linked_config (exit 2, nothing written through the link)" "2|0" "$
 
 eq "::pair_records_commits (first, second, state)" "$C1 $C2 l" "$(pj "$OUT" first) $(pj "$OUT" second) $(pj "$OUT" state)"
 helper_doc_count() {
-    git -C "$R" ls-tree -r --name-only "$1" | tr '\n' '\0' | xargs -0 python3 -I "$HELPER" --config "$2" himmel | wc -l | tr -d ' '
+    git -C "$R" ls-tree -r "$1" | awk -F'\t' '$1 !~ /^120000/ {print $2}' | tr '\n' '\0' | xargs -0 python3 -I "$HELPER" --config "$2" himmel | wc -l | tr -d ' '
 }
 eq "::doc_count_matches_helper (state l: the second tree, 4 files)" "4|4" "$(pj "$OUT" doc_count)|$(helper_doc_count "$C2" "$OUT/config/index.yml")"
 eq "::doc_count_matches_helper (state s: the first tree, 3 files)" "3|3" "$(pj "$W/free-s" doc_count)|$(helper_doc_count "$C1" "$W/free-s/config/index.yml")"

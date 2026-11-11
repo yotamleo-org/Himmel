@@ -716,5 +716,165 @@ print(a["identity"]["harness_commit"] == b["identity"]["harness_commit"] and a["
 PY
 )"
 
+SU="http://127.0.0.1:47999/mcp"
+PD="$W/pair"; mkdir -p "$PD/graph-s/graphify-out" "$PD/graph-l/graphify-out"
+printf '{"nodes": []}\n' > "$PD/graph-s/graphify-out/graph.json" || exit 1
+printf '{"nodes": []}\n' > "$PD/graph-l/graphify-out/graph.json" || exit 1
+printf '{"first": "aaaa", "second": "bbbb", "state": "l", "doc_count": 5, "index": "%s/index.sqlite", "served_url": "%s", "graph_built_at": {"aaaa": "%s/graph-s", "bbbb": "%s/graph-l"}}\n' "$PD" "$SU" "$PD" "$PD" > "$PD/pair.json"
+printf '{"id":"s1","kind":"what","q":"why does a halt need no token","gold":["docs/lock.md"],"reason":[],"stale_stratum":"added"}\n{"id":"s2","kind":"where","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[],"stale_stratum":"kept"}\n' > "$W/qs.jsonl"
+# shellcheck disable=SC2016  # the stubs' own $-expansions must stay literal
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${WORKER_GRAPH_OUT:-unset}" >> "%s/graph-env.log"\nprintf "NODE x [src=docs/lock.md loc=L1 community=x]\\n"\n' "$W" > "$W/graph-env"
+# shellcheck disable=SC2016  # the stub's own $-expansion must stay literal
+printf '#!/usr/bin/env bash\nprintf "{\\"totalDocuments\\": %%s}\\n" "${STUB_DOCS:-5}"\n' > "$W/status"
+chmod +x "$W/graph-env" "$W/status"
+pr() {
+    local tag="$1"; shift
+    local e=(); while [ "$1" != -- ]; do e+=("$1"); shift; done; shift
+    env "${e[@]}" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-$tag.jsonl" RETRIEVAL_EVAL_QMD_STATUS_CMD="$W/status" \
+        python3 -I "$EV" run --repo "$R" --questions "$W/qs.jsonl" --out "$W/out-$tag" --pair "$PD/pair.json" "$@" > "$W/pr-$tag.txt" 2>&1
+}
+for u in unset "http://127.0.0.1:8181/mcp" "http://[::1]:8181/mcp" "http://127.0.0.1:47998/mcp"; do
+    if [ "$u" = unset ]; then pr "alias" -u QMD_URL -- --index-state l --arms qmd-lex; rc=$?
+    else pr "alias" "QMD_URL=$u" -- --index-state l --arms qmd-lex; rc=$?; fi
+    eq "refuses_live_url_alias: $u is refused with exit 2 and writes no row" "2 absent" "$rc $([ -s "$W/ledger-alias.jsonl" ] && echo present || echo absent)"
+done
+pr "good" "QMD_URL=$SU" -- --index-state l --arms qmd-lex
+eq "the pair's own URL runs" "0" "$?"
+pr "count" "QMD_URL=$SU" STUB_DOCS=7 -- --index-state l --arms qmd-lex
+eq "refuses_count_mismatch: a served count that is not pair.json's is refused with exit 2" "2 absent" "$? $([ -s "$W/ledger-count.jsonl" ] && echo present || echo absent)"
+eq "the served count is read from a real MCP status reply, with a proxy set that does not list the loopback server" "5" "$(http_proxy=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 no_proxy='' py - "$EV" <<'PY'
+import http.server, importlib.util, json, os, sys, threading
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        out = {"jsonrpc": "2.0", "id": body.get("id")}
+        if body.get("method") == "tools/call":
+            assert body["params"]["name"] == "status"
+            out["result"] = {"structuredContent": {"totalDocuments": 5}}
+        data = json.dumps(out).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("mcp-session-id", "s1")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+    def log_message(self, *a):
+        pass
+srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+threading.Thread(target=srv.serve_forever).start()
+os.environ["QMD_URL"] = "http://127.0.0.1:%d/mcp" % srv.server_address[1]
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+try:
+    print(m.served_count(5))
+except BaseException as e:
+    print("error: %s" % e)
+finally:
+    srv.shutdown()
+PY
+)"
+pr "label" "QMD_URL=$SU" -- --index-state s --arms qmd-lex
+eq "a state label that is not the served index's state is refused with exit 2" "2 absent" "$? $([ -s "$W/ledger-label.jsonl" ] && echo present || echo absent)"
+eq "row_records_served_index: config names state, both commits, the served path and its count" "l aaaa bbbb $PD/index.sqlite 5" "$(py -c 'import json,sys
+c = json.loads(open(sys.argv[1]).readline())["config"]
+print(c["index_state"], c["first"], c["second"], c["index"], c["doc_count"])' "$W/ledger-good.jsonl")"
+eq "every result row carries its index state and stale stratum" "l added" "$(py -c 'import json,sys
+r = json.loads(open(sys.argv[1]).readline()); print(r["index_state"], r["stale_stratum"])' "$W/out-good/results.jsonl")"
+rm -f "$W/graph-env.log"
+pr "g1" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" "WORKER_GRAPH_OUT=$R/graphify-out" -- --index-state s --arms graphify
+eq "a stale-state graph run reads the graph built at the first commit, not the caller's WORKER_GRAPH_OUT" "0 $PD/graph-s/graphify-out aaaa" "$? $(sort -u "$W/graph-env.log") $(py -c 'import json,sys
+print(json.loads(open(sys.argv[1]).readline())["meta"]["graph_built_at"])' "$W/ledger-g1.jsonl")"
+rm -f "$W/graph-env.log"
+pr "g1l" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state l --arms graphify
+eq "a pair graph with no built_at_commit stamp takes its stamp from pair.json, so the run exits 0" "0 bbbb" "$? $(py -c 'import json,sys
+m = json.loads(open(sys.argv[1]).readline())["meta"]
+print(m["graph_built_at"] if "graph_built_error" not in m else "error")' "$W/ledger-g1l.jsonl")"
+eq "state l reads the graph built at the second commit" "$PD/graph-l/graphify-out" "$(sort -u "$W/graph-env.log")"
+if [ "$(id -u)" != 0 ]; then
+    chmod 000 "$PD/graph-l/graphify-out/graph.json"
+    pr "g1u" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state l --arms graphify; rc=$?
+    chmod 644 "$PD/graph-l/graphify-out/graph.json"
+    eq "an unreadable pair graph is a graph read error, never an ok row" "1 yes" "$rc $(py -c 'import json,sys
+print("yes" if "graph_built_error" in json.loads(open(sys.argv[1]).readline())["meta"] else "no")' "$W/ledger-g1u.jsonl")"
+else pass "SKIP an unreadable pair graph is a read error (running as root, chmod 000 does not hide the file)"; fi
+rm -rf "$PD/graph-s/graphify-out"; ln -s "$R/graphify-out" "$PD/graph-s/graphify-out"
+pr "g2" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state s --arms graphify
+eq "refuses_primary_graph_by_symlink: a pair graph that links to the checkout's graphify-out is refused" "2 absent" "$? $([ -s "$W/ledger-g2.jsonl" ] && echo present || echo absent)"
+
+cat > "$W/plant.py" <<'PY'
+import json, os, sys
+d, arm, stratum, s_only, l_only = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5])
+states = sys.argv[6] if len(sys.argv) > 6 else "sl"
+for st in states:
+    os.makedirs(os.path.join(d, st), exist_ok=True)
+    with open(os.path.join(d, st, "results.jsonl"), "a") as fh:
+        for i in range(20):
+            hit = i < 10 or (10 <= i < 10 + s_only and st == "s") or (20 - l_only <= i and st in "lc")
+            fh.write(json.dumps(dict(id="%s-%s-%d" % (arm, stratum, i), arm=arm, index_state=st, stale_stratum=stratum, hit=hit)) + "\n")
+PY
+plant() { py "$W/plant.py" "$@"; }
+SR="$W/sr"; rm -rf "$SR"
+plant "$SR" qmd-lex added 0 6
+plant "$SR" qmd-lex kept 8 2
+LAGNONE="$W/lag-none"; printf '#!/usr/bin/env bash\necho "headline: 0/0 = n/a within 39 min (no exclusions); wilson95 n/a"\n' > "$LAGNONE"; chmod +x "$LAGNONE"
+RETRIEVAL_EVAL_LAG_CMD="$LAGNONE" py "$EV" stale-report "$SR" > "$W/sr.txt" 2>&1; eq "stale-report exits 0" "0" "$?"
+eq "stale_report_interval: Kept, L minus S: n, points, exact McNemar p and the seeded bootstrap interval in points" "20 -30.0 0.1094 $(py -c 'import sys
+sys.path.insert(0, sys.argv[1])
+import eval_runs
+ci = eval_runs.bootstrap_ci(sorted([-1] * 8 + [1] * 2 + [0] * 10), b=10000, seed=9517)
+print("%.1f %.1f" % (ci["lo"] * 100, ci["hi"] * 100))' "$HERE/../lib")" "$(awk -F'\t' '$1=="qmd-lex" && $2=="L-S" && $3=="kept"{print $4, $7, $8, $9, $10}' "$W/sr.txt")"
+eq "the Added stratum is the headline: it is the arm's first row" "added" "$(awk -F'\t' '$1=="qmd-lex"{print $3; exit}' "$W/sr.txt")"
+eq "no c-state rows: the matching row is C1 not run" "C1 not run" "$(sed -n 's/^decides: \(.*\) | .*/\1/p' "$W/sr.txt")"
+decide() {
+    local d="$W/dec-$1"; rm -rf "$d"
+    plant "$d" qmd-hybrid kept "$2" "$3" "${5:-slc}"
+    printf '#!/usr/bin/env bash\necho "headline: x within 39 min (no exclusions); wilson95 %s"\n' "$4" > "$W/lag-$1"; chmod +x "$W/lag-$1"
+    RETRIEVAL_EVAL_LAG_CMD="$W/lag-$1" py "$EV" stale-report "$d" 2>&1
+}
+row() { sed -n 's/^decides: \(.*\) | .*/\1/p'; }
+eq "decides_row_matches: C1 not run when no c-state hybrid rows exist" "C1 not run" "$(decide nc 0 0 '0.7000 to 0.9000' sl | row)"
+eq "decides_row_matches: Kept L below S with p under .05 is Harm shown" "Harm shown" "$(decide harm 8 0 '0.7000 to 0.9000' | row)"
+eq "decides_row_matches: no harm and the baseline's low end at 0.5 or above is L is already normal" "L is already normal" "$(decide norm 0 0 '0.5100 to 0.8000' | row)"
+eq "decides_row_matches: no harm and the baseline's high end under 0.5 is The hole would be new" "The hole would be new" "$(decide hole 0 0 '0.2000 to 0.4900' | row)"
+eq "decides_row_matches: no harm and an interval spanning 0.5 is Not shown" "Not shown" "$(decide span 0 0 '0.3000 to 0.7000' | row)"
+eq "baseline_absent_prints_pending: baseline pending, and no decides line" "1 0" "$(decide none 0 0 'n/a' | awk '/^baseline pending/{p++} /^decides:/{d++} END{print p+0, d+0}')"
+DUP="$W/dup"; rm -rf "$DUP"
+plant "$DUP/a" qmd-lex kept 8 2; plant "$DUP/b" qmd-lex kept 8 2
+RETRIEVAL_EVAL_LAG_CMD="$LAGNONE" py "$EV" stale-report "$DUP" > "$W/dup.txt" 2>&1
+eq "stale_report_refuses_duplicate_rows: the same arm, question and state twice exits 64" "64" "$?"
+INC="$W/inc"; rm -rf "$INC"
+plant "$INC" qmd-hybrid kept 0 0 c
+printf '#!/usr/bin/env bash\necho "headline: x within 39 min (no exclusions); wilson95 0.7000 to 0.9000"\n' > "$W/lag-inc"; chmod +x "$W/lag-inc"
+RETRIEVAL_EVAL_LAG_CMD="$W/lag-inc" py "$EV" stale-report "$INC" > "$W/inc.txt" 2>&1
+eq "stale_report_refuses_incomplete_comparison: c rows without a Kept L-S comparison exit 64 and print no decides line" "64 0" "$? $(grep -c '^decides:' "$W/inc.txt")"
+
+G2="$W/xrepo"; mkdir -p "$G2"; git -C "$G2" init -q -b main
+NOW="$(date +%s)"
+gc() {
+    printf '%s\n' "$2" >> "$G2/$1"; git -C "$G2" add -A
+    local t; t="$(date -u -d "@$((NOW - $2))" +%Y-%m-%dT%H:%M:%S)"
+    GIT_AUTHOR_DATE="$t +0000" GIT_COMMITTER_DATE="$t +0000" git -C "$G2" -c user.email=t@t -c user.name=t commit -q -m "$1"
+}
+gc c.sh 259200; gc b.sh 18000; gc a.sh 1800
+mkdir -p "$W/proj/p1"
+py - "$W/proj/p1/s.jsonl" "$G2" "$NOW" <<'PY'
+import datetime, json, sys
+out, repo, now = sys.argv[1], sys.argv[2], int(sys.argv[3])
+ts = datetime.datetime.fromtimestamp(now - 120, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+with open(out, "w") as fh:
+    for i, f in enumerate([repo + "/a.sh", repo + "/b.sh", repo + "/c.sh", "/elsewhere/other.sh",
+                                 repo + "/.claude/worktrees/w1/a.sh"]):
+        fh.write(json.dumps({"type": "assistant", "timestamp": ts, "message": {"content": [
+            {"type": "tool_use", "id": "t%d" % i, "name": "Read", "input": {"file_path": f}}]}}) + "\n")
+PY
+py "$EV" exposure --days 14 --repo "$G2" --projects "$W/proj" > "$W/exp.txt" 2>&1
+wl() { py -c 'import sys
+sys.path.insert(0, sys.argv[1])
+import wilson
+w = wilson.wilson(int(sys.argv[2]), 4)
+print("%.4f to %.4f" % (w["lo"], w["hi"]))' "$HERE/../lib" "$1"; }
+eq "exposure_counts_planted_journal: 4 reads in the repo (one through a sibling worktree), 3 with a merge in the prior 24 h, 2 in the prior 1 h, each with its Wilson interval" \
+    "prior 24 h: 3/4 = 0.7500; wilson95 $(wl 3)|prior 1 h: 2/4 = 0.5000; wilson95 $(wl 2)" \
+    "$(grep '^prior ' "$W/exp.txt" | paste -sd'|' -)"
+
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit "$fails"

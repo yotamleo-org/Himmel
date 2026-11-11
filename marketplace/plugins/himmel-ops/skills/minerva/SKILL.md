@@ -377,7 +377,7 @@ in the return). Never edit the critic's text. `jira release operator spec`
 signs the spec with the last round's file and hashes it. It refuses a last line
 in any other form. A `FINDINGS` file signs only when the spec's
 `## Critic rounds` section gives each residual a
-`- R<n>: fixed|ASSUMPTION|ponytail|deferred → HIMMEL-<n>` line.
+`- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>` line.
 
 **Seal each return to the bytes the critic read.** Straight after saving a return,
 before any fix and whatever its verdict, run one command per file under review,

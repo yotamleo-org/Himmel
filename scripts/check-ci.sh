@@ -194,7 +194,14 @@ set -uo pipefail
 usage() {
     cat >&2 <<'EOF'
 usage: check-ci.sh [<pr-number|branch|url>] [--grace <sec>] [--settle <sec>] [--max-wait <sec>] [--threads-only]
+                   [--except-context codeowner-review-gate]
        check-ci.sh --run <run-id> [--job <name>] [--max-wait <sec>]
+--except-context codeowner-review-gate: that literal only (any other value is exit 64). The context is dropped
+          from the required set and from every verdict, the watch is not fail-fast (the gate is red from the PR's open),
+          and the exit is decided once every other check has settled. A BLOCKED mergeStateStatus passes only while
+          that context is not green (BLOCKED with it green, and every other refusing state, is still exit 6). GitHub reports
+          one BLOCKED for every cause, so a non-check cause that sits behind the non-green gate (a required review,
+          deployment or signature rule) cannot be told apart here; GitHub still enforces it at merge.
 run mode: foreground workflow/job wait, no PR merge/review gates or settle.
           0 = success (whole run also skipped/neutral), 1 = failed/cancelled.
           2 = cannot evaluate (including a skipped/neutral --job target).
@@ -251,6 +258,7 @@ EOF
 }
 
 THREADS_ONLY=0
+EXCEPT_CTX=""
 GRACE=180
 SETTLE="${CHECK_CI_SETTLE:-30}"
 # Default 900s: the measured slowest shell-unit shard runs
@@ -387,6 +395,10 @@ while [ $# -gt 0 ]; do
             MAX_WAIT="$2"; shift 2 ;;
         --threads-only)
             THREADS_ONLY=1; shift ;;
+        --except-context)
+            if [ $# -lt 2 ]; then echo "check-ci: --except-context needs a value" >&2; usage; exit 64; fi
+            if [ "$2" != codeowner-review-gate ]; then echo "check-ci: --except-context accepts only codeowner-review-gate, got '$2' (it cannot hide a CI job)" >&2; usage; exit 64; fi
+            EXCEPT_CTX="$2"; shift 2 ;;
         -h|--help) trap - EXIT; usage; exit 0 ;;
         -*) echo "check-ci: unknown option: $1" >&2; usage; exit 64 ;;
         *)
@@ -406,8 +418,8 @@ case "$MAX_WAIT" in
 esac
 MAX_WAIT=$((10#$MAX_WAIT))   # a leading zero (08) must not read as octal below
 if [ -n "$RUN_ID" ]; then
-    if [ -n "$selector" ] || [ "$THREADS_ONLY" = 1 ]; then
-        echo "check-ci: --run cannot be combined with a PR selector or --threads-only" >&2
+    if [ -n "$selector" ] || [ "$THREADS_ONLY" = 1 ] || [ -n "$EXCEPT_CTX" ]; then
+        echo "check-ci: --run cannot be combined with a PR selector, --threads-only or --except-context" >&2
         exit 64
     fi
     # Run mode has no settle/review gates: reuse the cache-backed watch in the
@@ -683,13 +695,20 @@ if [ "$CACHE_ON" -eq 1 ]; then _prune_cache_dir "${CHECK_CI_CACHE_DIR:-${HOME:-/
 # pr_rows <ttl> — "<bucket>\t<name>" per check. Cached mode reads (or fetches once
 # for the whole fleet) a head-bound snapshot no older than <ttl> seconds; legacy
 # mode is the one direct gh call it always was. rc 1 = unreadable.
-pr_rows() {
+_pr_rows_all() {
     if [ "$CACHE_ON" -eq 1 ]; then
         _cic_get_bounded "$1" || return 1
         [ -z "$CIC_ROWS" ] || printf '%s\n' "$CIC_ROWS" | ngc_drop_rows
         return 0
     fi
     pr_checks --json bucket,name --jq '.[] | "\(.bucket)\t\(.name)"' 2>/dev/null
+}
+
+pr_rows() {
+    local rows
+    if [ -z "$EXCEPT_CTX" ]; then _pr_rows_all "$@"; return; fi
+    rows=$(_pr_rows_all "$@") || return 1
+    [ -z "$rows" ] || printf '%s\n' "$rows" | awk -F'\t' -v x="$EXCEPT_CTX" '$2 != x'
 }
 
 # ponytail: the legacy gh --watch path cannot skip a listed context, so a red
@@ -699,7 +718,7 @@ pr_rows() {
 # nothing when unreadable (callers fail closed on a non-numeric answer).
 _fail_count() {
     local rows
-    if [ "$CACHE_ON" -eq 0 ]; then
+    if [ "$CACHE_ON" -eq 0 ] && [ -z "$EXCEPT_CTX" ]; then
         pr_checks --json bucket --jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null
         return
     fi
@@ -742,7 +761,7 @@ required_set() {
         --jq '((.contexts // [])[] | "\(.)\t"), ((.checks // [])[]? | "\(.context)\t\(.app_id // "")")' 2>&1); then
         case "$classic" in *"(HTTP 404)"*) classic="" ;; *) ghb_is_rate_limited "$classic" && return 3; return 1 ;; esac
     fi
-    printf '%s\n%s\n' "$rules" "$classic" | sed '/^$/d' | sort -u | _required_normalize
+    printf '%s\n%s\n' "$rules" "$classic" | sed '/^$/d' | sort -u | _required_normalize | awk -F'\t' -v x="$EXCEPT_CTX" 'x == "" || $1 != x'
 }
 
 # _required_rows — "<bucket>\t<name>" for every check on the PR.
@@ -980,7 +999,7 @@ watch_decidable() {
 
 _watch_decidable_at() {
     local rows first n low
-    if [ "$CACHE_ON" -eq 1 ]; then
+    if [ "$CACHE_ON" -eq 1 ] || [ -n "$EXCEPT_CTX" ]; then
         # From the shared snapshot ($1 = its max age) instead of a gh
         # call per probe. An empty snapshot is not "decidable" (fail-safe: keep
         # watching).
@@ -1021,7 +1040,7 @@ _watch_decidable_at() {
 # watch_decidable: an unreadable/unparsable probe reports zero names rather
 # than fabricating any; callers fall back to generic wording.
 _pending_checks_report() {
-    if [ "$CACHE_ON" -eq 1 ]; then
+    if [ "$CACHE_ON" -eq 1 ] || [ -n "$EXCEPT_CTX" ]; then
         local rows
         rows=$(pr_rows "$CACHE_TTL") || return 0
         printf '%s\n' "$rows" | awk -F'\t' '
@@ -1033,6 +1052,16 @@ _pending_checks_report() {
     pr_checks --json bucket,name --jq \
         '[.[] | select(.bucket == "pending")] as $p | "\($p | length)", ($p | map(.name) | join(", "))' \
         2>/dev/null
+}
+
+_except_ctx_not_green() {
+    local rows
+    rows=$(_pr_rows_all "$DECIDE_TTL") || return 1
+    printf '%s\n' "$rows" | awk -F'\t' -v x="$EXCEPT_CTX" '$2 == x && $1 != "pass" && $1 != "skipping" { f = 1 } END { exit !f }'
+}
+
+_except_ctx_stands_alone() {
+    watch_decidable && _except_ctx_not_green
 }
 
 watch_round() {
@@ -1063,6 +1092,8 @@ watch_round() {
     # keeps a real window inside the same total; the last round takes it all.
     # --max-wait 0 (unbounded) is untouched.
     local WATCH_CAP=0 LIB_CAP left_now
+    local watch_ff=--fail-fast
+    [ -z "$EXCEPT_CTX" ] || watch_ff=""
     if [ "$MAX_WAIT" -gt 0 ]; then
         left_now=$(_budget_left)
         if [ "$extend_ok" -eq 1 ]; then WATCH_CAP=$(((left_now + 1) / 2)); else WATCH_CAP=$left_now; fi
@@ -1123,7 +1154,7 @@ watch_round() {
                 # The cache-backed loop stands in for gh's own --watch
                 # (which polls per watcher and cannot be cached); same exit contract.
                 exec env CHECK_CI_WATCH_INTERVAL="$WATCH_INTERVAL" CHECK_CI_WATCH_INTERVAL_MAX="$WATCH_INTERVAL_MAX" \
-                    CHECK_CI_CACHE_HEAD="$cache_head" CHECK_CI_MAX_WAIT="$LIB_CAP" CIC_NOTICE_FD=1 \
+                    CHECK_CI_CACHE_HEAD="$cache_head" CHECK_CI_MAX_WAIT="$LIB_CAP" CIC_NOTICE_FD=1 CHECK_CI_EXCEPT_CONTEXT="$EXCEPT_CTX" \
                     bash "$(cd "$(dirname "$0")" && pwd)/lib/check-ci-watch.sh" ${selector:+"$selector"}
             elif [ -n "$selector" ]; then
                 # the watch is a read; it rides the read-only token when one
@@ -1132,10 +1163,10 @@ watch_round() {
                 # $! must stay gh's real pid), so a refused read token is not retried on
                 # the main one here; the cache-backed loop above is the default path.
                 [ -z "${_GHR_TOK:-}" ] || export GH_TOKEN="$_GHR_TOK"
-                exec gh pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
+                exec gh pr checks "$selector" --watch ${watch_ff:+"$watch_ff"} --interval "$WATCH_INTERVAL"
             else
                 [ -z "${_GHR_TOK:-}" ] || export GH_TOKEN="$_GHR_TOK"
-                exec gh pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
+                exec gh pr checks --watch ${watch_ff:+"$watch_ff"} --interval "$WATCH_INTERVAL"
             fi
         ) 2>"$err_file" &
         gh_pid=$!
@@ -1252,6 +1283,7 @@ watch_round() {
                     exit 2 ;;
             esac
             if [ "$failed" -eq 0 ]; then
+                if [ -n "$EXCEPT_CTX" ] && _except_ctx_stands_alone; then return 0; fi
                 echo "check-ci: watch exited rc=1 but no check is in the fail bucket — cannot evaluate the gate; re-run" >&2
                 exit 2
             fi
@@ -1911,6 +1943,8 @@ merge_state_gate() {
             exit 2
         fi
         case "$state" in CLEAN|HAS_HOOKS|UNSTABLE) return 0 ;; esac
+        # GitHub's BLOCKED names no cause, so another non-check cause behind the non-green gate is not seen here.
+        if [ "$state" = BLOCKED ] && [ -n "$EXCEPT_CTX" ] && _except_ctx_not_green; then return 0; fi
         tries=$((tries + 1))
         if [ $((SECONDS - start)) -ge "$GRACE" ] || [ "$tries" -ge "$max_tries" ]; then break; fi
         "$CHECK_CI_SLEEP_CMD" "$POLL"

@@ -32,7 +32,8 @@ Arms (all read-only):
   qmd-hybrid  qmd lex + vec with rerank true, sent explicitly (the server default is off)
   qmd-hybrid-norerank  the same lex + vec searches with rerank off; opt-in via
               --arms, not in the default seven and not fused into combined
-  graphify    scripts/graphify/worker-graph.sh query (the primary checkout's graph)
+  graphify    scripts/graphify/worker-graph.sh query (the primary checkout's graph, or with
+              --pair the pair's scratch graph through WORKER_GRAPH_OUT)
   combined    reciprocal-rank fusion of grep, qmd-hybrid and graphify (not the
               path and ident-grep baselines); its tokens and time are the sum
               of the three
@@ -90,11 +91,13 @@ import statistics
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
+import wilson  # noqa: E402
 import importlib.util  # noqa: E402
 
 _vx_spec = importlib.util.spec_from_file_location("vocab_expand", os.path.join(HERE, "..", "..", "qmd", "vocab-expand.py"))
@@ -118,6 +121,10 @@ should would could any every each one only same""".split())
 
 
 class Usage(Exception):
+    pass
+
+
+class Refuse(Exception):
     pass
 
 
@@ -330,7 +337,9 @@ def _mcp_post(url, body, headers, timeout):
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                  headers=dict(headers, **{"Content-Type": "application/json",
                                                           "Accept": "application/json, text/event-stream"}))
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    loopback = (urllib.parse.urlsplit(url).hostname or "").lower() in LOOPBACK
+    open_url = urllib.request.build_opener(urllib.request.ProxyHandler({})).open if loopback else urllib.request.urlopen
+    with open_url(req, timeout=timeout) as r:
         raw = r.read().decode(errors="replace")
         sid = r.headers.get("mcp-session-id")
     if raw.lstrip().startswith("{"):
@@ -345,8 +354,7 @@ def _mcp_post(url, body, headers, timeout):
     return msg, sid
 
 
-def qmd_server(args, timeout):
-    """One MCP query against the qmd server -> list of {file, snippet}. The whole exchange shares one deadline."""
+def mcp_tool_call(name, args, timeout):
     end = time.time() + timeout
     left = lambda: max(0.1, end - time.time())  # noqa: E731
     url = os.environ.get("QMD_URL", "http://localhost:8181/mcp")
@@ -365,8 +373,12 @@ def qmd_server(args, timeout):
     except Exception:
         pass
     msg, _ = _mcp_post(url, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-                             "params": {"name": "query", "arguments": args}}, h, left())
-    return mcp_rows(msg)
+                             "params": {"name": name, "arguments": args}}, h, left())
+    return msg
+
+
+def qmd_server(args, timeout):
+    return mcp_rows(mcp_tool_call("query", args, timeout))
 
 
 def mcp_rows(msg):
@@ -602,6 +614,119 @@ def run_arm(arm, q, repo, a, k):
     return arm_qmd(q, arm != "qmd-lex", a.timeout, k, a.collection, arm != "qmd-hybrid-norerank")
 
 
+LIVE_QMD_PORT = 8181
+LOOPBACK = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+
+
+def url_key(url):
+    u = urllib.parse.urlsplit(url)
+    return (u.scheme, (u.hostname or "").lower(), u.port, u.path.rstrip("/"))
+
+
+def load_pair(path):
+    try:
+        with open(path) as fh:
+            pair = json.load(fh)
+    except (OSError, ValueError) as e:
+        raise Usage("cannot read pair.json '%s': %s" % (path, e)) from e
+    if not isinstance(pair, dict):
+        raise Usage("pair.json '%s' is not an object" % path)
+    return pair
+
+
+def check_served_url(pair):
+    url = os.environ.get("QMD_URL")
+    if not url:
+        raise Refuse("QMD_URL is not set, so the default live server would answer: set it to the pair's served URL")
+    served = pair.get("served_url")
+    if not served:
+        raise Refuse("pair.json names no served URL: serve the pair first (staleness-fixture.sh serve)")
+    for u in (url, served):
+        k = url_key(u)
+        if k[1] in LOOPBACK and k[2] == LIVE_QMD_PORT:
+            raise Refuse("%s is the live qmd server's port, not a scratch pair" % u)
+    if url_key(url) != url_key(served):
+        raise Refuse("QMD_URL %s is not the pair's served URL %s" % (url, served))
+
+
+def served_count(timeout):
+    cmd = os.environ.get("RETRIEVAL_EVAL_QMD_STATUS_CMD")
+    if cmd:
+        out, to, rc = run_cmd(shlex.split(cmd), timeout)
+        text = out if rc == 0 and not to else ""
+    else:
+        try:
+            msg = mcp_tool_call("status", {}, timeout)
+        except Exception as e:
+            raise Refuse("the served server's status call failed: %s" % str(e)[:100]) from e
+        res = (msg or {}).get("result") or {}
+        sc = res.get("structuredContent")
+        text = json.dumps(sc) if isinstance(sc, dict) else " ".join(
+            c.get("text", "") for c in res.get("content", []) if isinstance(c, dict))
+    m = re.search(r'"?totalDocuments"?\s*[:=]\s*(\d+)', text)
+    if not m:
+        raise Refuse("the served server's status reports no totalDocuments")
+    return int(m.group(1))
+
+
+def pair_commits(pair, qs):
+    if pair.get("first") and pair.get("second"):
+        return pair["first"], pair["second"]
+    named = {(q["pair"]["first"], q["pair"]["second"]) for q in qs if isinstance(q.get("pair"), dict)}
+    if len(named) != 1:
+        raise Usage("pair.json names no commits and the questions do not agree on one pair")
+    return named.pop()
+
+
+def pair_graph_out(pair, qs, state, repo):
+    if state not in ("s", "l"):
+        raise Usage("a graph arm reads state s (built at the first commit) or l (the second), not %s" % state)
+    commit = pair_commits(pair, qs)[0 if state == "s" else 1]
+    arc = (pair.get("graph_built_at") or {}).get(commit)
+    if not arc:
+        raise Usage("pair.json has no graph built at %s: run staleness-fixture.sh graph" % commit[:12])
+    out = os.path.join(arc, "graphify-out")
+    common = subprocess.run(["git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            capture_output=True, text=True, timeout=10).stdout.strip()
+    live = [os.path.join(repo, "graphify-out")]
+    if common:
+        live.append(os.path.join(os.path.dirname(common), "graphify-out"))
+    real = os.path.realpath(out)
+    for g in live:
+        g = os.path.realpath(g)
+        if real == g or real.startswith(g + os.sep):
+            raise Refuse("%s is a checkout's graphify-out, not a scratch graph" % out)
+    if not os.path.isfile(os.path.join(out, "graph.json")):
+        raise Usage("no graph.json in %s" % out)
+    return out, commit
+
+
+def pair_setup(a, arms, qs, repo):
+    if bool(a.pair) != bool(a.index_state):
+        raise Usage("--pair and --index-state go together")
+    if not a.pair:
+        return {}
+    graph_commit = None
+    if a.index_state not in ("s", "l", "c"):
+        raise Usage("--index-state is s, l or c")
+    pair = load_pair(a.pair)
+    if any(x.startswith("qmd") or x == "combined" for x in arms):
+        check_served_url(pair)
+        if pair.get("state") != a.index_state:
+            raise Refuse("--index-state %s, but the served index was built as state %s" % (a.index_state, pair.get("state")))
+        n = served_count(a.timeout)
+        if n != pair.get("doc_count"):
+            raise Refuse("the served server holds %d documents; pair.json says %s" % (n, pair.get("doc_count")))
+    if "graphify" in arms or "combined" in arms:
+        os.environ["WORKER_GRAPH_OUT"], graph_commit = pair_graph_out(pair, qs, a.index_state, repo)
+    first, second = pair_commits(pair, qs)
+    cfg = dict(index_state=a.index_state, first=first, second=second, index=pair.get("index"),
+               doc_count=pair.get("doc_count"))
+    if graph_commit:
+        cfg["graph_commit"] = graph_commit
+    return cfg
+
+
 def cmd_run(a):
     arms = [x for x in a.arms.split(",") if x]
     for x in arms:
@@ -618,6 +743,7 @@ def cmd_run(a):
         if q.get("split", "insample") not in SPLITS:
             raise Usage("question %s has split '%s' (known: %s)" % (q.get("id"), q.get("split"), ",".join(SPLITS)))
     repo = os.path.abspath(a.repo)
+    pair_cfg = pair_setup(a, arms, qs, repo)
     os.makedirs(a.out, exist_ok=True)
     need = list(arms)
     if "combined" in arms:
@@ -652,7 +778,7 @@ def cmd_run(a):
         for arm in arms:
             g = got[arm]
             row = dict(id=q["id"], kind=q.get("kind"), src=q.get("src"), split=q.get("split", "insample"),
-                       stratum=stratum(q), arm=arm, files=g["files"], hit=is_hit(g["files"], q["gold"]),
+                       index_state=a.index_state or None, stale_stratum=q.get("stale_stratum"), stratum=stratum(q), arm=arm, files=g["files"], hit=is_hit(g["files"], q["gold"]),
                        hit_any=is_hit_any(g["files"], q), ndcg=ndcg(g["files"], q, a.k),
                        precision=precision(g["files"], q, a.k), rr=reciprocal_rank(g["files"], q, a.k),
                        gold_n=gold_found(g["files"], q, a.k)[0], ret_n=gold_found(g["files"], q, a.k)[1],
@@ -724,6 +850,7 @@ def cmd_run(a):
     ident = forward_identity(a.questions, os.path.abspath(__file__))
     config = dict(arms=arms, k=a.k, evidence_depth=evidence_depth, timeout=a.timeout, collection=a.collection,
                   questions=qhash, identity_hash=ident["config_hash"])
+    config.update(pair_cfg)
     if skipped:
         config["skipped"] = skipped
     held = sorted((q for q in qs if q.get("split") == "heldout"), key=lambda q: str(q["id"]))
@@ -732,8 +859,13 @@ def cmd_run(a):
                 heldout_sha256=hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16])
     if "graphify" in arms or "combined" in arms:
         try:
-            meta["graph_built_at"] = graph_built(repo)
-        except RuntimeError as e:
+            if pair_cfg.get("graph_commit"):
+                with open(os.path.join(os.environ["WORKER_GRAPH_OUT"], "graph.json"), "rb") as fh:
+                    fh.read(1)
+                meta["graph_built_at"] = pair_cfg["graph_commit"]
+            else:
+                meta["graph_built_at"] = graph_built(repo)
+        except (RuntimeError, OSError) as e:
             meta["graph_built_error"] = str(e)
             print("retrieval-eval: ERROR graph stamp: %s" % e, file=sys.stderr)
     row = eval_runs.make_row("retrieval-eval", "scripts/eval/retrieval-eval/retrieval-eval.py", config, metrics,
@@ -777,6 +909,9 @@ def retain_and_append(row, files, who):
 
 
 def graph_built(repo):
+    seam = os.environ.get("WORKER_GRAPH_OUT")
+    if seam:
+        return stamp_of(os.path.join(seam, "graph.json"))
     try:
         r = subprocess.run(["git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"],
                            capture_output=True, text=True, timeout=10)
@@ -785,7 +920,10 @@ def graph_built(repo):
     common = r.stdout.strip()
     if r.returncode != 0 or not common:
         raise RuntimeError("cannot resolve git common dir for %s: %s" % (repo, r.stderr.strip()))
-    path = os.path.join(os.path.dirname(common), "graphify-out", "graph.json")
+    return stamp_of(os.path.join(os.path.dirname(common), "graphify-out", "graph.json"))
+
+
+def stamp_of(path):
     stamp = re.compile(rb'"built_at_commit"\s*:\s*"([0-9a-fA-F]+)"')
     try:
         with open(path, "rb") as fh:
@@ -1024,6 +1162,157 @@ def cmd_census(a):
     return 0
 
 
+STALE_ORDER = ("added", "kept", "new", "control", "changed")
+CONTRASTS = (("L-S", "s", "l"), ("C-L", "l", "c"))
+DECIDES = {
+    "C1 not run": "the keyword half stays off; the graph half is not affected; the free arm's number still meets the ticket's DoD",
+    "Harm shown": "the keyword half stays off, or is disarmed, until D1 is re-ruled on slice 3 and log 2; daytime bare updates do the same harm",
+    "L is already normal": "the keyword half arms: it adds a bound and little new harm",
+    "The hole would be new": "the keyword half stays off until D1 is re-ruled on slice 3 and log 2",
+    "Not shown": "the keyword half stays off; the baseline interval is printed above",
+}
+
+
+def mcnemar_p(b, c):
+    return _pilot_tool("score").mcnemar(b, c)
+
+
+def paired(rows, arm, stratum_name, base, other):
+    by = {}
+    for r in rows:
+        if r["arm"] == arm and r.get("stale_stratum") == stratum_name:
+            st = by.setdefault(r["id"], {})
+            if r.get("index_state") in st:
+                raise Usage("question %s has two %s rows for arm %s under '%s': a rerun's rows must not share a report directory"
+                            % (r["id"], r.get("index_state"), arm, stratum_name))
+            st[r.get("index_state")] = bool(r["hit"])
+    diffs, bh, oh = [], 0, 0
+    for st in by.values():
+        if base in st and other in st:
+            diffs.append(int(st[other]) - int(st[base]))
+            bh += int(st[base])
+            oh += int(st[other])
+    return sorted(diffs), bh, oh
+
+
+def baseline_interval():
+    cmd = os.environ.get("RETRIEVAL_EVAL_LAG_CMD")
+    argv = shlex.split(cmd) if cmd else ["python3", "-I", os.path.join(HERE, "..", "..", "luna", "keyword-lag.py"),
+                                         "--report", "--days", "7"]
+    out, to, rc = run_cmd(argv, 60)
+    m = re.search(r"^headline: .*wilson95 ([0-9.]+) to ([0-9.]+)\s*$", out or "", re.M)
+    if to or rc != 0 or not m:
+        return None
+    return float(m.group(1)), float(m.group(2)), "%s to %s" % (m.group(1), m.group(2))
+
+
+def cmd_stale_report(a):
+    files = sorted(glob.glob(os.path.join(a.dir, "**", "results.jsonl"), recursive=True))
+    rows = []
+    for f in files:
+        with open(f) as fh:
+            rows += [json.loads(line) for line in fh if line.strip()]
+    rows = [r for r in rows if r.get("index_state")]
+    if not rows:
+        raise Usage("no results rows with an index_state under '%s'" % a.dir)
+    arms = list(dict.fromkeys(r["arm"] for r in rows))
+    names = {r.get("stale_stratum") for r in rows} - {None}
+    strata = [x for x in STALE_ORDER if x in names] + sorted(names - set(STALE_ORDER))
+    print("\t".join(["arm", "contrast", "stratum", "n", "base_hits", "other_hits", "diff_pts", "mcnemar_p",
+                     "ci_lo_pts", "ci_hi_pts"]))
+    cell = {}
+    for arm in arms:
+        for name, base, other in CONTRASTS:
+            for sname in strata:
+                diffs, bh, oh = paired(rows, arm, sname, base, other)
+                if not diffs:
+                    continue
+                n, b, c = len(diffs), diffs.count(1), diffs.count(-1)
+                p = mcnemar_p(b, c)
+                ci = eval_runs.bootstrap_ci(diffs, b=10000, seed=9517)
+                cell[(arm, name, sname)] = (n, (b - c) * 100.0 / n, p)
+                print("\t".join([arm, name, sname, str(n), str(bh), str(oh), "%.1f" % ((b - c) * 100.0 / n), "%.4f" % p,
+                                 "%.1f" % (ci["lo"] * 100) if ci else "n/a", "%.1f" % (ci["hi"] * 100) if ci else "n/a"]))
+    c_run = any(r["arm"] == "qmd-hybrid" and r["index_state"] == "c" for r in rows)
+    verdict = None
+    if not c_run:
+        verdict = "C1 not run"
+    else:
+        if ("qmd-hybrid", "L-S", "kept") not in cell:
+            raise Usage("qmd-hybrid has no Kept comparison of states s and l: the decision needs both")
+        _, diff, p = cell[("qmd-hybrid", "L-S", "kept")]
+        if diff < 0 and p < 0.05:
+            verdict = "Harm shown"
+        else:
+            base = baseline_interval()
+            if base is None:
+                print("baseline pending")
+            else:
+                print("baseline: headline share, wilson95 %s" % base[2])
+                verdict = "L is already normal" if base[0] >= 0.5 else "The hole would be new" if base[1] < 0.5 else "Not shown"
+    if verdict:
+        print("decides: %s | %s" % (verdict, DECIDES[verdict]))
+    print("scope: this bank only" + ("; the graph arm measures the AST layer" if "graphify" in arms else ""))
+    return 0
+
+
+def repo_path(root, p):
+    p = os.path.realpath(p)
+    wt = os.path.join(root, ".claude", "worktrees") + os.sep
+    if p.startswith(wt):
+        return p[len(wt):].split(os.sep, 1)[1] if os.sep in p[len(wt):] else None
+    if p.startswith(root + os.sep):
+        return p[len(root) + 1:]
+    return None
+
+
+def cmd_exposure(a):
+    root = os.path.realpath(subprocess.run(["git", "-C", a.repo, "rev-parse", "--show-toplevel"],
+                                           capture_output=True, text=True, timeout=10).stdout.strip() or a.repo)
+    common = subprocess.run(["git", "-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            capture_output=True, text=True, timeout=10).stdout.strip()
+    primary = os.path.realpath(os.path.dirname(common)) if common else root
+    now = time.time()
+    cut = now - a.days * 86400
+    log = subprocess.run(["git", "-C", root, "log", "--first-parent", "-m", "--name-only", "--format=%x01%ct",
+                          "--since=%d" % (cut - 86400), a.ref], capture_output=True, text=True, timeout=120)
+    if log.returncode != 0:
+        raise Usage("git log %s failed in %s: %s" % (a.ref, root, log.stderr.strip()))
+    merged, when = {}, None
+    for line in log.stdout.splitlines():
+        if line.startswith("\x01"):
+            when = int(line[1:])
+        elif line.strip() and when is not None:
+            merged.setdefault(line.strip(), []).append(when)
+    files = glob.glob(os.path.join(a.projects, "*", "*.jsonl")) + \
+        glob.glob(os.path.join(a.projects, "*", "*", "subagents", "*.jsonl"))
+    n = day = hour = 0
+    for f in files:
+        try:
+            if os.path.getmtime(f) < cut:
+                continue
+        except OSError:
+            continue
+        for cl in session_calls(f)[2]:
+            t = call_time(cl)
+            fp = cl["input"].get("file_path") if cl["name"] == "Read" else None
+            if t is None or t < cut or not fp:
+                continue
+            rel = repo_path(root, fp) or (repo_path(primary, fp) if primary != root else None)
+            if rel is None:
+                continue
+            n += 1
+            times = merged.get(rel, [])
+            day += any(t - 86400 <= x <= t for x in times)
+            hour += any(t - 3600 <= x <= t for x in times)
+    print("reads: %d in the repo (%d d window, ref %s); reads outside it are not counted" % (n, a.days, a.ref))
+    for label, k in (("24 h", day), ("1 h", hour)):
+        w = wilson.wilson(k, n)
+        print("prior %s: %d/%d = %s; wilson95 %s" % (label, k, n, "%.4f" % (k / n) if n else "n/a",
+                                                    "%.4f to %.4f" % (w["lo"], w["hi"]) if w else "n/a"))
+    return 0
+
+
 def main(argv=None):
     p = Parser(prog="retrieval-eval.py")
     sub = p.add_subparsers(dest="cmd")
@@ -1036,6 +1325,15 @@ def main(argv=None):
     r.add_argument("--timeout", type=float, default=60)
     r.add_argument("--collection", default="himmel")
     r.add_argument("--label", default="")
+    r.add_argument("--index-state", default="")
+    r.add_argument("--pair", default="")
+    sr = sub.add_parser("stale-report")
+    sr.add_argument("dir")
+    ex = sub.add_parser("exposure")
+    ex.add_argument("--days", type=int, default=14)
+    ex.add_argument("--repo", default=".")
+    ex.add_argument("--projects", default=os.path.join(os.path.expanduser("~"), ".claude", "projects"))
+    ex.add_argument("--ref", default="main")
     c = sub.add_parser("check")
     c.add_argument("--questions", required=True)
     c.add_argument("--repo", default=".")
@@ -1050,12 +1348,16 @@ def main(argv=None):
     rp.add_argument("--rrf-k", type=int, default=60)
     rp.add_argument("--k", type=int, default=5)
     rp.add_argument("--add", default="")
-    for sp in (r, c, s, rp):
+    for sp in (r, sr, ex, c, s, rp):
         sp.error = p.error
     try:
         a = p.parse_args(argv)
         if a.cmd == "run":
             return cmd_run(a)
+        if a.cmd == "stale-report":
+            return cmd_stale_report(a)
+        if a.cmd == "exposure":
+            return cmd_exposure(a)
         if a.cmd == "check":
             return cmd_check(a)
         if a.cmd == "census":
@@ -1063,6 +1365,9 @@ def main(argv=None):
         if a.cmd == "replay":
             return cmd_replay(a)
         raise Usage("name a subcommand: run, check, census or replay")
+    except Refuse as e:
+        print("retrieval-eval: refused: %s" % e, file=sys.stderr)
+        return 2
     except Usage as e:
         print("retrieval-eval: %s" % e, file=sys.stderr)
         return 64

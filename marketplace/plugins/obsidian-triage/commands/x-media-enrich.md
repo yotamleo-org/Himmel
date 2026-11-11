@@ -23,7 +23,8 @@ cadence, like the `playwright-crawl-*` / `ig-media-enrich` rungs. It is
 deliberately NOT auto-fired from `/harvest-clips` (the download + local-whisper
 path is expensive). Default: process the first
 10 selected clips (`--limit 10`). Pass `--limit 0` to process every selected
-clip (e.g. the one-time backfill). When the `--limit` cap leaves clips
+clip (e.g. the one-time backfill; the run budget below still ends each run inside
+one tool call). When the `--limit` cap leaves clips
 unprocessed, the tool prints an `N matched, K processed, R remaining` line so the
 withheld clips are visible. With `--dry-run`: report the fetch plan, write
 nothing. `--include-evidence` and `--include-done` are **orthogonal pool switches** (each
@@ -237,14 +238,26 @@ x-media-enrich: N ok, M partial, K failed, S skipped. (See OK / PART / FAIL / SK
 If any clips were flagged injection-suspect, append a second summary line listing
 them for operator review.
 
-### Timeouts
+### Timeouts and queue order
 
-The fetch tool caps each subprocess PER CLIP: download 3 min, each `ffmpeg`
-transcode/recompress 5 min, whisper transcription 30 min per video. A single long
-video can therefore take tens of minutes, and a large batch (e.g. the backfill)
-can run for hours - this is expected, not a hang. A subprocess that exceeds its
-cap is treated as a retryable failure for that clip (the clip keeps
-`x_media_pending` and is retried on a later run); the batch continues.
+One run has a wall-clock budget, `X_MEDIA_BUDGET_S` (default 420 s), so a run
+ends inside one 600 s Bash tool call: no clip starts once the budget is spent,
+and each subprocess timeout (download 3 min, each `ffmpeg` transcode/recompress
+5 min, whisper 30 min per video) is capped at the time left. The run then prints
+`x-media-fetch: N not started (budget ...)`; those clips are untouched and stay
+in the queue for the next run. A subprocess that exceeds its cap is a retryable failure for that
+clip (it keeps `x_media_pending` and records `media_last_error`); the batch
+continues. `X_MEDIA_BUDGET_S=0` runs without a budget.
+
+Clips are taken in this order: clips with known media that never failed, then
+clips that still need their one fxtwitter probe, then clips that already failed
+(`media_last_error` set), newest `date_clipped` first within each group. A clip
+its probe finds is enriched before the next probe runs. So a clip that fails
+every night (a multi-hour video that never downloads in time) cannot hold the
+queue, and a new clip is reached the night it arrives. A backfill is a series of
+budgeted runs: repeat the Step 2 command, each run one foreground Bash call with
+the tool timeout at 600000, until it prints no `remaining` and no `not started`
+line.
 
 ### Notes for the agent
 

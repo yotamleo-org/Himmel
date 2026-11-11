@@ -5,6 +5,8 @@ Hermetic tests mock `vbox` and the SSH client, so they run on any box. The
 `TestLiveUbuntu` class is guarded by a reachability probe and is skipped (not
 failed) when ubuntu_new is not up on 127.0.0.1:2222.
 """
+import contextlib
+import io
 import json
 import os
 import re
@@ -69,6 +71,17 @@ os.environ.pop("HIMMEL_SECRETS_KEYRING", None)
 for _n in ("secret-tool", "busctl"):
     if not (shutil.which(_n) or "").startswith(_KSTUB_DIR):
         sys.exit(f"test-vmsdk: {_n} does not resolve to the stub keyring; aborting")
+
+
+_LT_FIXTURES = Path(__file__).resolve().parent.parent / "jira" / "src" / "fixtures"
+_LTV_STUB = Path(_KSTUB_DIR) / "live-test-stub.js"
+_LTV_STUB.write_text(
+    "const fs = require('fs');\n"
+    "if (process.env.LTV_LOG) fs.appendFileSync(process.env.LTV_LOG, process.argv.slice(2).join(' ') + '\\n');\n"
+    "if (process.env.LTV_RC) process.exit(Number(process.env.LTV_RC));\n"
+    f"process.stdout.write(fs.readFileSync(process.env.LTV_FILE || {json.dumps(str(_LT_FIXTURES / 'live-test-ok.json'))}, 'utf8'));\n")
+os.environ["HIMMEL_VMSDK_JIRA_CLI"] = str(_LTV_STUB)
+os.environ.pop("HIMMEL_JIRA_LIVE_TEST", None)
 
 
 def _kreset():
@@ -2875,6 +2888,103 @@ class TestGuestExec(unittest.TestCase):
              mock.patch.object(vmsdk.VM, "guest_exec", side_effect=vmsdk.VMError("not a test VM")):
             rc = vmsdk.main(["win2", "exec", "--", "ls"])
         self.assertEqual(rc, 1)
+
+
+class TestLiveTestMarker(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
+        self.log = Path(self.tmp) / "guest-exec.log"
+        self.verb_log = Path(self.tmp) / "verb.log"
+        env = mock.patch.dict(os.environ, {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p",
+                                           "windows_vm_user": "w", "windows_vm_pass": "p",
+                                           "HIMMEL_GUEST_EXEC_LOG": str(self.log), "LTV_LOG": str(self.verb_log)}, clear=False)
+        env.start()
+        self.addCleanup(env.stop)
+        for k in ("LTV_RC", "LTV_FILE", "HIMMEL_JIRA_LIVE_TEST"):
+            os.environ.pop(k, None)
+        vmsdk._live_test_value.cache_clear()
+        self.addCleanup(vmsdk._live_test_value.cache_clear)
+
+    def _vm(self, name="ubuntu_new"):
+        with mock.patch.object(vmsdk, "_load_dotenv_into_env"):
+            return vmsdk.VM(name)
+
+    def _sent(self, vm, cmd="ls", sudo=False, **env):
+        rec = {}
+
+        class _FakeC:
+            def exec_command(self, c, get_pty=False, timeout=None):
+                rec["cmd"] = c
+                return (None, _FakeStream("", 0), _FakeStream(""))
+
+        err = io.StringIO()
+        with mock.patch.dict(os.environ, env, clear=False), mock.patch.object(vm, "ssh", return_value=_FakeC()), \
+             contextlib.redirect_stderr(err):
+            vm.run(cmd, sudo=sudo)
+        return rec["cmd"], err.getvalue()
+
+    def test_a_marked_host_exports_the_marker_before_the_guest_command(self):
+        sent, _ = self._sent(self._vm(), LTV_FILE=str(_LT_FIXTURES / "live-test-marked.json"))
+        self.assertEqual(sent, "export HIMMEL_JIRA_LIVE_TEST=HIMMEL-9577; ls")
+
+    def test_no_own_keys_export_none(self):
+        sent, _ = self._sent(self._vm(), LTV_FILE=str(_LT_FIXTURES / "live-test-marked-none.json"))
+        self.assertEqual(sent, "export HIMMEL_JIRA_LIVE_TEST=none; ls")
+
+    def test_an_unmarked_host_sends_the_command_unchanged(self):
+        sent, err = self._sent(self._vm(), LTV_FILE=str(_LT_FIXTURES / "live-test-ok.json"))
+        self.assertEqual(sent, "ls")
+        self.assertEqual(err, "")
+
+    def test_a_sudo_command_carries_the_marker_inside_the_sudo_shell(self):
+        sent, _ = self._sent(self._vm(), "apt-get update", sudo=True, LTV_FILE=str(_LT_FIXTURES / "live-test-marked.json"))
+        self.assertIn("sudo -S bash -c", sent)
+        self.assertIn("export HIMMEL_JIRA_LIVE_TEST=HIMMEL-9577; apt-get update", sent)
+
+    def test_the_verb_failing_forwards_the_own_env_marker_and_notes_it_on_stderr(self):
+        sent, err = self._sent(self._vm(), LTV_RC="1", HIMMEL_JIRA_LIVE_TEST="HIMMEL-1")
+        self.assertEqual(sent, "export HIMMEL_JIRA_LIVE_TEST=HIMMEL-1; ls")
+        self.assertIn("live-test", err)
+
+    def test_the_verb_failing_with_no_own_env_marker_sends_unchanged_and_notes_it(self):
+        sent, err = self._sent(self._vm(), LTV_RC="1")
+        self.assertEqual(sent, "ls")
+        self.assertIn("live-test", err)
+
+    def test_a_malformed_own_env_marker_is_forwarded_as_none(self):
+        sent, _ = self._sent(self._vm(), LTV_RC="1", HIMMEL_JIRA_LIVE_TEST="x; touch /tmp/p")
+        self.assertEqual(sent, "export HIMMEL_JIRA_LIVE_TEST=none; ls")
+
+    def test_the_verb_is_asked_once_per_process(self):
+        vm = self._vm()
+        self._sent(vm, LTV_FILE=str(_LT_FIXTURES / "live-test-marked.json"))
+        sent, _ = self._sent(vm, "pwd", LTV_FILE=str(_LT_FIXTURES / "live-test-marked.json"))
+        self.assertEqual(sent, "export HIMMEL_JIRA_LIVE_TEST=HIMMEL-9577; pwd")
+        self.assertEqual(self.verb_log.read_text().splitlines(), ["live-test --json"])
+
+    def test_a_windows_guest_command_is_sent_unchanged(self):
+        sent, _ = self._sent(self._vm("win11_base_himmel"), "whoami", LTV_FILE=str(_LT_FIXTURES / "live-test-marked.json"))
+        self.assertEqual(sent, "whoami")
+
+    def test_guest_exec_sends_the_marked_command_and_logs_it_as_sent(self):
+        vm = self._vm()
+        vm.port = 2235
+        rec = {}
+
+        class _FakeC:
+            def exec_command(self, c, get_pty=False, timeout=None):
+                rec["cmd"] = c
+                return (None, _FakeStream("", 0), _FakeStream(""))
+
+        with mock.patch.dict(os.environ, {"LTV_FILE": str(_LT_FIXTURES / "live-test-marked.json")}, clear=False), \
+             mock.patch.object(vmsdk, "_running_vms", return_value=["ubuntu_new"]), \
+             mock.patch.object(vmsdk.vbox, "_info", return_value='name="ubuntu_new"\n' + _GE_FIXTURE.read_text().splitlines()[1] + "\n"), \
+             mock.patch.object(vm, "ssh", return_value=_FakeC()):
+            vm.guest_exec("ls")
+        self.assertEqual(rec["cmd"], "export HIMMEL_JIRA_LIVE_TEST=HIMMEL-9577; ls")
+        self.assertEqual(json.loads(self.log.read_text().splitlines()[0])["cmd"], "export HIMMEL_JIRA_LIVE_TEST=HIMMEL-9577; ls")
 
 
 class TestGuestUsage(unittest.TestCase):

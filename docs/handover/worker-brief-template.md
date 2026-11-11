@@ -75,6 +75,18 @@ template_version: 3
 > refuses to launch an Opus or Fable
 > model without it.>
 
+> <Live test line, only for a worker that writes to a real Jira (workers.json
+> `live_test: "jira"`): gen-briefs.py writes here the line
+> `> **Live test:** jira TEST own=KEY-1,KEY-2 — every Jira write this session makes goes to TEST; …`,
+> with TEST from `jira live-test --json` (the station's `JIRA_TEST_PROJECT`)
+> and `own=` from the worker's keys, and `headed-arm-worker.sh` turns that line
+> into the `HIMMEL_JIRA_LIVE_TEST` marker (it refuses `--headless` for such a
+> doc). A chief that rules a brief is not a live test although its text reads
+> like one sets `live_test: {"none": "REASON"}`, which writes
+> `> **Live test:** none — REASON` and sets nothing. Otherwise there is no
+> line; gen-briefs refuses an unmarked brief that names a live Jira test phrase
+> or the test project key.>
+
 > **Why (read the ticket first: `<the exact command that fetches it>`):**
 > <two or three sentences: what the operator actually asked for, and what is
 > deliberately NOT in scope. A worker that has to infer the why will widen the
