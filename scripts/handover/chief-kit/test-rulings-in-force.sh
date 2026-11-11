@@ -31,7 +31,9 @@ printf '%s\n\n' '# Current direction, full text (part 1 of 1), byte for byte, wr
     'OPERATOR 11-11 ZB (BINDING): replaces decision 901 with the golf rule, the full text.' \
     'OPERATOR 11-01 AA (BINDING, decisions 1 to 100): a range too wide to expand, the full text.' \
     'OPERATOR 11-01 AA (BINDING, decisions 100 to 1): a reversed range, the full text.' \
-    'OPERATOR 11-12 ZD, decision 903 (BINDING; verbatim specs/decisions/verbatim-decision-903-x.txt): hotel, its number before the parenthesis.' > "$D/chief-direction-2026-11-11-p1.md"
+    'OPERATOR 11-12 ZD, decision 903 (BINDING; verbatim specs/decisions/verbatim-decision-903-x.txt): hotel, its number before the parenthesis.' \
+    'OPERATOR 11-12 ZE (BINDING, decision 907): india same opening words, numbered.' \
+    'OPERATOR 11-12 ZE (BINDING): india same opening words, unnumbered, citing decision 907.' > "$D/chief-direction-2026-11-11-p1.md"
 rec() { bash "$SUT" record --bucket "$B" "$@" >/dev/null 2>&1; echo $?; }
 v() { printf 'specs/decisions/verbatim-decision-%s-2026-11-11.txt' "$1"; }
 
@@ -115,9 +117,13 @@ cite="$ptr
 OPERATOR 11-11 ZA, decision 901: alpha reading of 901 …
 OPERATOR 11-11 ZB, decision 901: replaces decision 901 with the golf rule …
 OPERATOR 11-12 ZC, decision 902: an index line with no full text in the companions …
-OPERATOR 11-12 ZD, decision 903: hotel, its number before the parenthesis."
+OPERATOR 11-12 ZD, decision 903: hotel, its number before the parenthesis.
+OPERATOR 11-12 ZE, decision 907: india same opening words, numbered …
+OPERATOR 11-12 ZE, decision 907: india same opening words, unnumbered …"
 rec --id 903 --status "done" --date 2026-11-12 --line 'hotel' --path "$(v 903)" >/dev/null
+rec --id 907 --status "done" --date 2026-11-12 --line 'india' --path "$(v 905)" >/dev/null
 out="$(render "$cite")"
+same "render: two full texts an index line matches, one unnumbered, keep both lines" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-12 ZE, decision 907: india same opening words')" "2"
 same "render: a ruling whose own number precedes its parenthesis leaves once ledgered" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-12 ZD, decision 903:')" "0"
 same "render: the ruling numbered 901 leaves once 901 is ledgered" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-11 ZA, decision 901:')" "0"
 same "render: an unnumbered ruling that only cites ledgered 901 stays" "$(printf '%s\n' "$out" | grep -cxF 'OPERATOR 11-11 ZB, decision 901: replaces decision 901 with the golf rule …')" "1"

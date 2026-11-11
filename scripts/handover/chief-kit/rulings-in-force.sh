@@ -166,7 +166,7 @@ def own_numbers(l, h):
     probe = (probe[:-2] if probe.endswith(" …") else probe)[:24].rstrip()
     cited = set(numbers(h.group(0)) or [])
     own = {tuple(n) for who, n, text in units
-           if n and l.startswith(who) and l[len(who):len(who) + 1] in (",", ":", " ") and set(n) <= cited and probe and probe in text}
+           if l.startswith(who) and l[len(who):len(who) + 1] in (",", ":", " ") and set(n) <= cited and probe and probe in text}
     return list(own.pop()) if len(own) == 1 else []
 kept, i = [], 0
 while i < len(src):
