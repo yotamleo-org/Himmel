@@ -73,7 +73,6 @@ export interface OperatorRow {
   from_v?: string | null;
   to_v?: string | null;
   verbatim?: string;
-  // A decision row whose verbatim was checked against its decision file: the bucket-relative file, its hash, words: 1.
   decision_file?: string;
   decision_sha256?: string;
   words?: 1;

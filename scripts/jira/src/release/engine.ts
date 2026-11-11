@@ -1029,7 +1029,6 @@ export function recordRequestDecision(ctx: Ctx, o: { decision: string; words: st
 
 const citedOperator = (r: RequestRow): unknown => (r.evidence as { operator?: unknown } | null)?.operator;
 
-// A pending duplicate that already cites an O- record is returned as it is, by request()'s dedupe.
 export function requestWithWords(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 'state'>, o: { decision: string; words: string }): {
   operator: OperatorRow; withdrawn: RequestRow | null; request: RequestRow;
 } {
