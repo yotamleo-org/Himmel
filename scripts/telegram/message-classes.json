@@ -230,6 +230,11 @@
       "sender": "scripts/luna/pipeline-cadence.sh"
     },
     {
+      "kind": "cadence:pipeline-harvest-x-media",
+      "class": "monitor",
+      "sender": "scripts/luna/pipeline-cadence.sh"
+    },
+    {
       "kind": "cadence:pipeline-synthesize",
       "class": "monitor",
       "sender": "scripts/luna/pipeline-cadence.sh"
