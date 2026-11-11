@@ -1469,12 +1469,19 @@ if [ -s "$pats" ]; then
     # a suite path holding a non-ASCII byte, double quote, backslash or tab must
     # come back as itself, not as a quoted "\303\251" the runner cannot open.
     # A name on a suite's whole-line comment is prose, not a use (comment_lexer):
-    # those lines are searched apart, into grep.out.comment, only to be counted.
+    # those lines are searched apart, into grep.out.comment. Only the proof lists
+    # (--plan, --check) drop a suite named there alone. Every other listing, the
+    # --shell one CI selects its suites from among them, adds those hits back and
+    # stays as wide as a search of every line: a comment sometimes records an edge
+    # the selector cannot follow (a suite that runs a script that runs the file).
     narrow_strip=1
     grep_narrowed "$pats" "$lits" "$work/grep.out" "searching the suites for the changed files" \
         ':(glob)**/test-*.sh' ':(glob)**/*.test.mjs' ':(glob)**/*.test.js' ':(glob)**/*.test.ts'
     narrow_strip=0
     cat "$work/grep.out" >> "$found" || io_fail "reading the search result"
+    if [ "$plan" -eq 0 ] && [ "$check" -eq 0 ]; then
+        cat "$work/grep.out.comment" >> "$found" || io_fail "reading the comment search result"
+    fi
 else
     : > "$work/grep.out.comment" || io_fail "creating the comment hit list"
 fi
@@ -1561,7 +1568,9 @@ printf '%s' "$tree_shape" > "$work/diff.shape" || io_fail "writing the tree-shap
 # Keep the diff input separate: select_changed resets work/changed.
 printf '%s\n' "$changed" > "$work/diff.changed" || io_fail "writing the diff list"
 select_changed "$work/diff.changed" "$work/diff.shape"
-[ "$dropped_comment_only" -eq 0 ] || echo "impacted-suites: dropped-comment-only=${dropped_comment_only}" >&2
+if [ "$plan" -eq 1 ] || [ "$check" -eq 1 ]; then
+    echo "impacted-suites: dropped-comment-only=${dropped_comment_only}" >&2
+fi
 
 if [ "$selector_miss" -eq 1 ]; then
     miss=0

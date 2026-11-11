@@ -840,9 +840,11 @@ if grepq "$out" '^scripts/test-cm-var\.sh$'; then pass "an indented variable-sou
 if grepq "$out" '^scripts/test-cm-sub\.sh$'; then pass "a subshell '(source x)' is still followed"; else fail "subshell source missed: $out"; fi
 
 # --- 30b. A suite that names the changed file only on a whole-line comment
-# ('#' in a shell suite, '//' in a JS/TS suite) is not listed. A '#'
-# line inside a string or a here-document body, a trailing comment after code,
-# a `# shellcheck source=` directive and a `# selector: names` line still list. ---
+# ('#' in a shell suite, '//' in a JS/TS suite) drops off the proof lists
+# (--plan, --check). A '#' line inside a string or a here-document body, a
+# trailing comment after code, a `# shellcheck source=` directive and a
+# `# selector: names` line still list. The plain and --shell listings, the one
+# CI selects from, stay as wide as before. ---
 mkf scripts/lib/cmo-lib.sh
 mkf scripts/test-cmo-hash.sh $'#!/usr/bin/env bash\n# drives cmo-lib.sh end to end\necho x'
 mkf scripts/test-cmo-indent.sh $'if true; then\n    # see scripts/lib/cmo-lib.sh\n    :\nfi'
@@ -872,36 +874,49 @@ mkf scripts/lib/cmo-names.test.mjs $'// selector: names cmo-lib.sh\ntest();'
 git -C "$FX" add -A
 git -C "$FX" commit -q -m "chore: comment-only mention fixtures"
 change scripts/lib/cmo-lib.sh
-out="$(run_is "$range")"
-for s in test-cmo-hash.sh test-cmo-indent.sh test-cmo-stemcmt.sh test-cmo-after-hd.sh test-cmo-after-str.sh lib/cmo.test.mjs lib/cmo-indent.test.ts; do
-    if ! grepq "$out" -Fx "scripts/$s"; then pass "30b a whole-line comment mention does not list scripts/$s"; else fail "30b comment-only mention listed scripts/$s: $out"; fi
+plan_out="$( cd "$FX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$range" 2>&1 )"
+out="$(awk '$1 == "LOCAL" { print $2 }' <<< "$plan_out")"
+cmo_cmt="test-cmo-hash.sh test-cmo-indent.sh test-cmo-stemcmt.sh test-cmo-after-hd.sh test-cmo-after-str.sh lib/cmo.test.mjs lib/cmo-indent.test.ts"
+for s in $cmo_cmt; do
+    if ! grepq "$out" -Fx "scripts/$s"; then pass "30b --plan: a whole-line comment mention does not list scripts/$s"; else fail "30b --plan listed comment-only scripts/$s: $out"; fi
 done
 for s in test-cmo-exec.sh test-cmo-source.sh test-cmo-arg.sh test-cmo-cmdpos.sh test-cmo-stem.sh test-cmo-string.sh test-cmo-sqmulti.sh test-cmo-dqmulti.sh test-cmo-heredoc.sh test-cmo-heredoc-dash.sh test-cmo-trail.sh test-cmo-expand.sh test-cmo-directive.sh test-cmo-names.sh lib/cmo-exec.test.mjs lib/cmo-tpl.test.mjs lib/cmo-trail.test.js lib/cmo-names.test.mjs; do
-    if grepq "$out" -Fx "scripts/$s"; then pass "30b CONTROL scripts/$s is still listed"; else fail "30b CONTROL scripts/$s dropped: $out"; fi
+    if grepq "$out" -Fx "scripts/$s"; then pass "30b --plan CONTROL scripts/$s is still listed"; else fail "30b --plan CONTROL scripts/$s dropped: $out"; fi
 done
+if grepq "$plan_out" -Fx 'impacted-suites: dropped-comment-only=7'; then pass "30b --plan prints the narrowing: dropped-comment-only=7"; else fail "30b --plan dropped-comment-only line missing or wrong: $plan_out"; fi
+err="$( cd "$FX" && printf '' | bash "$IS" --check "$range" 2>&1 >/dev/null )"
+if grepq "$err" -F 'scripts/test-cmo-exec.sh' && ! grepq "$err" -F 'scripts/test-cmo-hash.sh' && grepq "$err" -Fx 'impacted-suites: dropped-comment-only=7'; then pass "30b --check owes no verdict for a comment-only suite and owes one for a control"; else fail "30b --check verdict set: $err"; fi
+out="$(run_is "$range")"
 err="$( cd "$FX" && bash "$IS" "$range" 2>&1 >/dev/null )"
-if grepq "$err" -Fx 'impacted-suites: dropped-comment-only=7'; then pass "30b the narrowing is printed: dropped-comment-only=7"; else fail "30b dropped-comment-only line missing or wrong: $err"; fi
+all_listed=1
+for s in $cmo_cmt; do grepq "$out" -Fx "scripts/$s" || all_listed=0; done
+if [ "$all_listed" -eq 1 ] && [ -z "$err" ]; then pass "30b the plain listing still names every comment-only suite and prints nothing to stderr"; else fail "30b plain listing narrowed: err=$err out=$out"; fi
 out="$(run_is "$range" --shell)"
-err="$( cd "$FX" && bash "$IS" "$range" --shell 2>&1 >/dev/null )"
-if grepq "$err" -Fx 'impacted-suites: dropped-comment-only=5' && ! grepq "$out" -F 'test-cmo-hash.sh'; then pass "30b --shell counts only the shell suites it dropped (5)"; else fail "30b --shell dropped count: $err"; fi
+if grepq "$out" -Fx 'scripts/test-cmo-hash.sh' && grepq "$out" -Fx 'scripts/test-cmo-after-hd.sh' && ! grepq "$out" -F '.test.'; then pass "30b --shell (what CI selects from) still lists a comment-only suite --check drops"; else fail "30b --shell narrowed: $out"; fi
 
 # --- 30c. The suites that widen their own text name each basename on a
-# `# selector: names` line, so an edit to one still selects them once comments
-# are stripped (the real suite text, copied). -------------------------------
-mkdir -p "$FX/scripts/docs" "$FX/scripts/hooks/lib" "$FX/scripts/handover"
-cp "$REPO_ROOT/scripts/docs/test-dev-graph.sh" "$FX/scripts/docs/test-dev-graph.sh"
-cp "$REPO_ROOT/scripts/hooks/test-escape-class-corpus.sh" "$FX/scripts/hooks/test-escape-class-corpus.sh"
-mkf scripts/handover/next-dispatchable.sh
+# `# selector: names` line, so an edit to one still puts them on the --plan
+# proof list, which reads no other comment line (the real suite text, copied). ---
+mkdir -p "$FX/scripts/docs" "$FX/scripts/hooks/lib" "$FX/scripts/handover/chief-kit"
+for s in scripts/docs/test-dev-graph.sh scripts/hooks/test-escape-class-corpus.sh scripts/docs/test-workflow-page-drift.sh scripts/docs/test-how-a-change-ships.sh; do
+    cp "$REPO_ROOT/$s" "$FX/$s"
+done
+mkf scripts/handover/chief-kit/grant-round.sh
 mkf scripts/hooks/lib/headless-spawn-join.sh
+mkf docs/plan-charter.md
+mkf scripts/handover/chief-kit/relay-batch.sh
 git -C "$FX" add -A
 git -C "$FX" commit -q -m "chore: real widening suites"
-change scripts/handover/next-dispatchable.sh
-out="$(run_is "$range")"
-if grepq "$out" -Fx 'scripts/docs/test-dev-graph.sh'; then pass "30c an edit to next-dispatchable.sh still selects test-dev-graph.sh"; else fail "30c test-dev-graph.sh not selected by next-dispatchable.sh: $out"; fi
-change scripts/hooks/lib/headless-spawn-join.sh
-out="$(run_is "$range")"
-if grepq "$out" -Fx 'scripts/hooks/test-escape-class-corpus.sh'; then pass "30c an edit to headless-spawn-join.sh still selects test-escape-class-corpus.sh"; else fail "30c test-escape-class-corpus.sh not selected by headless-spawn-join.sh: $out"; fi
-git -C "$FX" rm -q scripts/docs/test-dev-graph.sh scripts/hooks/test-escape-class-corpus.sh
+for pair in scripts/handover/chief-kit/grant-round.sh:scripts/docs/test-dev-graph.sh \
+            scripts/hooks/lib/headless-spawn-join.sh:scripts/hooks/test-escape-class-corpus.sh \
+            docs/plan-charter.md:scripts/docs/test-workflow-page-drift.sh \
+            scripts/handover/chief-kit/relay-batch.sh:scripts/docs/test-how-a-change-ships.sh; do
+    named="${pair%%:*}"; suite="${pair#*:}"
+    change "$named"
+    out="$( cd "$FX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$range" 2>/dev/null | awk '$1 == "LOCAL" { print $2 }' )"
+    if grepq "$out" -Fx "$suite"; then pass "30c an edit to ${named##*/} still puts $suite on the --plan list"; else fail "30c $suite not on the --plan list for ${named##*/}: $out"; fi
+done
+git -C "$FX" rm -q scripts/docs/test-dev-graph.sh scripts/hooks/test-escape-class-corpus.sh scripts/docs/test-workflow-page-drift.sh scripts/docs/test-how-a-change-ships.sh
 git -C "$FX" commit -q -m "chore: drop the real widening suites"
 
 # --- 31. The PR-1734 shape. A NEW file under a tree that a suite

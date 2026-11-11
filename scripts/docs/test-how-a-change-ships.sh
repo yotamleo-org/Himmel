@@ -17,22 +17,23 @@
 #   4. PAGE    — with JS off (no scripts, nothing hidden), every node is a
 #                <details> holding its label, reach, loop and every chain text,
 #                and every edge and node is drawn in the graph.
-#   5. SELECT  — every cited file's basename is named below, so
-#                scripts/cr/impacted-suites.sh runs this suite when it changes.
+#   5. SELECT  — every cited file's basename is named on a `# selector: names`
+#                line below, so scripts/cr/impacted-suites.sh runs this suite when
+#                it changes (it reads no other comment line).
 #   6. CONTROL — on a temp copy: a renamed source file and a reworded refusal
 #                string fail case 2, a source moved into PORTABLE_FILES fails
 #                case 3, and a page missing one chain row fails case 4, so no
 #                case passes vacuously.
 #
 # Cited files (basenames, for impacted-suites.sh):
-#   adopt.sh usage-preflight.sh headed-arm-worker.sh _new-worktree.sh
-#   check-worktree-isolation.sh check-commit-msg.sh block-edit-on-main.sh
-#   block-read-secrets.sh block-destructive-commands.sh auto-approve-safe-bash.sh
-#   check-push-target.sh check-no-force-push.sh check-cr-before-push.sh
-#   check-platforms-tested.sh check-security-reviewed.sh
-#   check-ci.sh pr-check.md review-round.sh clear-review-marker.sh
-#   check-cr-marker-on-pr-create.sh review-merge-gate.sh ci-green-gate.sh
-#   go-gate.sh ready-check.sh go.sh merge-on-green.sh chief.sh relay-batch.sh
+# selector: names adopt.sh usage-preflight.sh headed-arm-worker.sh _new-worktree.sh
+# selector: names check-worktree-isolation.sh check-commit-msg.sh block-edit-on-main.sh
+# selector: names block-read-secrets.sh block-destructive-commands.sh auto-approve-safe-bash.sh
+# selector: names check-push-target.sh check-no-force-push.sh check-cr-before-push.sh
+# selector: names check-platforms-tested.sh check-security-reviewed.sh
+# selector: names check-ci.sh pr-check.md review-round.sh clear-review-marker.sh
+# selector: names check-cr-marker-on-pr-create.sh review-merge-gate.sh ci-green-gate.sh
+# selector: names go-gate.sh ready-check.sh go.sh merge-on-green.sh chief.sh relay-batch.sh
 #
 # Platform guard (posix-bash): POSIX bash 3.2+, python3.
 # Usage: bash scripts/docs/test-how-a-change-ships.sh [repo-root]
@@ -173,7 +174,8 @@ if case == "select":
     for line in open(self_path, encoding="utf-8"):
         if not line.startswith("#"):
             break
-        named += line
+        if re.match(r"#\s*selector:\s+names\s", line):
+            named += line
     for b in sorted({os.path.basename(s["file"]) for _, _, s in sources()} | {"adopt.sh"}):
         if not re.search(r"(^|[\s/])%s(\s|$)" % re.escape(b), named, flags=re.M):
             out.append("cited file not named in the suite header: %s" % b)

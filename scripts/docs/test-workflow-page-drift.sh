@@ -28,19 +28,21 @@
 #              ({file, line, text}: that line of that file still holds the text)
 #              or `noSource` (why no code stands behind it). The line is strict:
 #              a shifted citation fails and names the line to write. Each cited
-#              basename is named below, so a change to the file selects this suite.
+#              basename is named on a `# selector: names` line below, so a change
+#              to the file selects this suite (impacted-suites.sh reads no other
+#              comment line).
 #   7. CONTROL — on a temp copy, a reworded cited line and a shifted cited line
 #              fail case 6 for a step and for a move, and a step with neither
 #              field fails it.
 #
 # Cited files (basenames, for impacted-suites.sh):
-#   _new-worktree.sh check-commit-msg.sh check-worktree-isolation.sh
-#   wire-pretooluse-hooks.sh review-merge-gate.sh headed-arm-worker.sh
-#   usage-preflight.sh check-ci.sh review-round.sh chief.sh merge-on-green.sh
-#   check-no-force-push.sh check-push-target.sh
-#   SKILL.md plan-charter.md ticket-standard-check.sh worker-pr-open.sh
-#   plugin-profiles.json next-dispatchable.sh effort-route.mjs chief-wait.sh
-#   block-unresolved-cr-merge.sh residual-lines.sh wrap-merged.sh
+# selector: names _new-worktree.sh check-commit-msg.sh check-worktree-isolation.sh
+# selector: names wire-pretooluse-hooks.sh review-merge-gate.sh headed-arm-worker.sh
+# selector: names usage-preflight.sh check-ci.sh review-round.sh chief.sh merge-on-green.sh
+# selector: names check-no-force-push.sh check-push-target.sh
+# selector: names SKILL.md plan-charter.md ticket-standard-check.sh worker-pr-open.sh
+# selector: names plugin-profiles.json next-dispatchable.sh effort-route.mjs chief-wait.sh
+# selector: names block-unresolved-cr-merge.sh residual-lines.sh wrap-merged.sh
 #
 # Platform guard (posix-bash): POSIX bash 3.2+, python3, git.
 # Usage: bash scripts/docs/test-workflow-page-drift.sh [repo-root]
@@ -220,7 +222,8 @@ if case == "sources":
     for head_line in open(os.path.join(real_root, "scripts/docs/test-workflow-page-drift.sh"), encoding="utf-8"):
         if not head_line.startswith("#"):
             break
-        named += head_line
+        if re.match(r"#\s*selector:\s+names\s", head_line):
+            named += head_line
     for kind, item in targets:
         where = "%s %s" % (kind, item["id"])
         src, why = item.get("source"), item.get("noSource")
