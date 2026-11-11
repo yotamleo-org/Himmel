@@ -24,7 +24,7 @@ release is declared (`jira release state <R>` prints a status other than
   REVERSION into a version, for an open ticket labelled `operator-directed` or of
   priority High or Highest, is refused before it is filed unless it names the
   decision and the operator's exact words in it:
-  ```
+  ```text
   release request: <KEY> is operator-directed and High; a request that places it needs a record of the operator's words.
     jira release request <R> --verb INTAKE --key <KEY> --from backlog --to <v> --why "<why>" --decision <n> --words "<the operator's exact words>"
     (<n>: specs/decisions/verbatim-decision-<n>-*.txt)
