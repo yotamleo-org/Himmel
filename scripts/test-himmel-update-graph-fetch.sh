@@ -203,10 +203,10 @@ make_adopter() {
     rm -rf "$d"
     # --no-local: a local clone hardlinks every object, graph-data's included.
     git clone --quiet --no-local --single-branch --branch main "$b" "$d" || return 1
-    mkdir -p "$d/scripts/guardrails" "$d/scripts/lib" "$d/scripts/graphify"
+    mkdir -p "$d/scripts/guardrails" "$d/scripts/lib" "$d/scripts/graphify" "$d/scripts/himmelctl/lib"
     for f in himmel-update.sh guardrails/lib.sh lib/cadence-format.sh lib/resolve-hermes-py.sh lib/load-dotenv.sh \
              lib/resolve-bun.sh lib/claude-version.sh graphify/check-graph-freshness.sh \
-             graphify/semantic-update.sh graphify/semantic-merge.py; do
+             graphify/semantic-update.sh graphify/semantic-merge.py himmelctl/lib/graph-choices.js; do
         cp "$HERE/$f" "$d/scripts/$f" || return 1
     done
     mkdir -p "$d/graphify-out"
@@ -220,6 +220,10 @@ run_update() {  # <adopter> <args...>
 untouched() {  # <label> <adopter>
     check_eq "$1: graphify-out/graph.json untouched" "sentinel-graph" "$(cat "$2/graphify-out/graph.json" 2>/dev/null)"
     if [ -e "$2/graphify-out/.graphify_published" ]; then bad "$1: install marker written"; else ok "$1: no install marker"; fi
+}
+installed() {
+    if [ -e "$2/graphify-out/.graphify_published" ] && [ "$(cat "$2/graphify-out/graph.json" 2>/dev/null)" != sentinel-graph ]; then
+        ok "$1"; else bad "$1 — not installed: $UP_OUT"; fi
 }
 plan_batch() {  # <adopter> — files a semantic pass would extract now
     python3 "$1/scripts/graphify/semantic-merge.py" plan --root "$1" --out "$1/graphify-out" \
@@ -383,6 +387,44 @@ run_update "$ADO" --only graph
 check_eq "publisher rc 0" 0 "$UP_RC"
 untouched "publisher station" "$ADO"
 rm -f "$HOME/.himmel/config.json"
+
+echo "fetch: U1 a graph choice with no semantic_api_ok is an adopter and pulls"
+make_adopter "$ADO" "$BARE" || exit 1
+printf '{"graphify":{"choices":{"version":1,"corpora":[],"primary":"subscription"}}}\n' > "$HOME/.himmel/config.json"
+run_update "$ADO" --only graph
+check_eq "U1 rc 0" 0 "$UP_RC"
+installed "U1 the published graph is installed" "$ADO"
+rm -f "$HOME/.himmel/config.json"
+
+echo "fetch: U2 a config that cannot be read (not JSON) does not pull"
+make_adopter "$ADO" "$BARE" || exit 1
+printf 'this is not json {\n' > "$HOME/.himmel/config.json"
+run_update "$ADO" --only graph
+check_eq "U2 rc 0" 0 "$UP_RC"
+untouched "U2 unreadable config" "$ADO"
+check_has "U2 says why it did not pull" "cannot be read (cause=not-json)" "$UP_OUT"
+rm -f "$HOME/.himmel/config.json"
+
+echo "fetch: U4 a symlinked ~/.himmel or config.json with no semantic_api_ok pulls, as main does"
+make_adopter "$ADO" "$BARE" || exit 1
+rm -rf "$HOME/.himmel" "$TMP/linked-himmel"; mkdir -p "$TMP/linked-himmel"
+printf '{}\n' > "$TMP/linked-himmel/config.json"; ln -s "$TMP/linked-himmel" "$HOME/.himmel"
+run_update "$ADO" --only graph
+installed "U4 symlinked ~/.himmel: the published graph is installed" "$ADO"
+rm -f "$HOME/.himmel"; mkdir -p "$HOME/.himmel"
+make_adopter "$ADO" "$BARE" || exit 1
+printf '{}\n' > "$TMP/linked-config.json"; ln -s "$TMP/linked-config.json" "$HOME/.himmel/config.json"
+run_update "$ADO" --only graph
+installed "U4 symlinked config.json: the published graph is installed" "$ADO"
+rm -f "$HOME/.himmel/config.json"
+echo "fetch: U4 sub-row a symlinked ~/.himmel whose file holds semantic_api_ok true does not pull, as main does"
+make_adopter "$ADO" "$BARE" || exit 1
+rm -rf "$HOME/.himmel"; printf '{"graphify":{"semantic_api_ok":true}}\n' > "$TMP/linked-himmel/config.json"
+ln -s "$TMP/linked-himmel" "$HOME/.himmel"
+run_update "$ADO" --only graph
+check_eq "U4 sub-row rc 0" 0 "$UP_RC"
+untouched "U4 sub-row linked publisher" "$ADO"
+rm -f "$HOME/.himmel"; mkdir -p "$HOME/.himmel"
 
 echo "fetch: --check reports what it would fetch and writes nothing"
 make_adopter "$ADO" "$BARE" || exit 1

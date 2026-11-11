@@ -492,16 +492,23 @@ explicit chief decisions. Malformed, duplicate or unknown decisions stay unresol
 --pool-dispositions reads a dispatcher snapshot on stdin and prints these counts
 and unresolved keys by class; it does not take a tick or perform network reads.
 pool-stale=<n>:<KEY>,... (HIMMEL-6604) re-checks each pool-disposition: line whose target
-names a ticket key or `PR <n>`: when every named blocker is Done (Jira mirror) or its PR merged
-or closed (one batched gh read) the line is stale, `?` marks an unreadable target (never stale), and
-the waiter wakes once per newly stale key. A line may end `@<sha>`, the head the chief
+names a ticket key of the mirror's project or `PR <n>`: when every named blocker is Done (Jira mirror)
+or its PR merged or closed the line is stale, `?` marks an unreadable target (never stale), and
+the waiter wakes once per newly stale key. The PR states come from one GraphQL query per 100 numbers
+that names exactly the PRs the lines cite (issueOrPullRequest aliases through gh-read.sh, owner and
+repo from gh's {owner}/{repo} placeholders, GH_READ_NO_MAIN_FALLBACK=1); an issue number or a number
+GitHub cannot resolve reads `?`. Another KEY-shaped token (a wave label such as ZA-1) is text. Before
+the field, --pool-stale prints one `STALE-DISPOSITION <KEY> line=<12 hex> <target>=<state>...` line per
+stale key: line= is the sha256 prefix of the line's text after `pool-disposition:`, and every
+target is listed, keys then PRs by number, then `@<sha>=<n>-behind`. A `gh-read:` warning of that read is
+copied to stderr. A line may end `@<sha>`, the head the chief
 ruled at: more than TICK_POOL_MAX_MERGES (30) commits behind origin/main (else HEAD) it is stale
 whatever its blockers say, and an unknown sha prints `?`. The line is never rewritten. residual-unversioned=
 <n>:<KEY>,... lists open residual tickets of an open focus-version ticket with no fixVersion
 other than a To Do ticket below High whose latest release-ruling comment is a BACKLOG ruling (or a MOVE to the backlog) of that same ticket.
 residual-unversioned hides when 0 or skip. pool-stale hides only on skip (no --doc, or a failed
 read): an explicit pool-stale=0 is the all-clear the waiter needs to clear its marker, so it stays
-on the compact line. --pool-stale --doc <doc> prints just these two fields. With GitHub out
+on the compact line. --pool-stale --doc <doc> prints its STALE-DISPOSITION lines, then these two fields. With GitHub out
 (scripts/lib/gh-quota.sh ghq_scan_gate, main GraphQL) nothing is read: pool-stale=? and residual-unversioned=skip.
 It judges only a quota.tsv reading under 170 s old (the tick's own refresh) and never probes itself.
 
@@ -680,7 +687,7 @@ PY
 # rewrites the doc.
 pool_stale() { # <doc> <mirror> <gh command> <repo dir>
     python3 -I - "$@" <<'PY'
-import os, re, subprocess, sys
+import hashlib, json, os, re, subprocess, sys
 doc, mirror, gh, repo = sys.argv[1:5]
 
 def front(key):
@@ -701,19 +708,21 @@ if not (doc and os.path.isfile(doc) and os.path.isdir(mirror)):
     print("residual-unversioned=skip")
     sys.exit(0)
 
+key_re = re.compile(r"\b%s-\d+\b" % re.escape(os.path.basename(mirror.rstrip("/"))))
 latest = {}
 live = False
 for line in open(doc).read().splitlines():
     if line.startswith("## "):
         live = line == "## Live state"
     if live and line.startswith("pool-disposition:"):
-        m = re.fullmatch(r"([A-Z]+-\d+) (?:slice|close|question) (\S.*)", line.split(":", 1)[1].strip())
+        value = line.split(":", 1)[1].strip()
+        m = re.fullmatch(r"([A-Z]+-\d+) (?:slice|close|question) (\S.*)", value)
         if m:
-            refs = {k for k in re.findall(r"\b[A-Z]+-\d+\b", m[2]) if k != m[1]}
+            refs = {k for k in key_re.findall(m[2]) if k != m[1]}
             prs = {n for g in re.findall(r"\bPRs?\s*#?(\d+(?:\s*(?:,|and|&)\s*#?\d+)*)", m[2]) for n in re.findall(r"\d+", g)}
             sha = re.search(r"(?<![\w-])@([0-9a-f]{7,40})\b", m[2])
-            latest[m[1]] = (refs, prs, sha[1] if sha else "")
-lines = [(k, refs, prs, sha) for k, (refs, prs, sha) in latest.items() if refs or prs or sha]
+            latest[m[1]] = (refs, prs, sha[1] if sha else "", hashlib.sha256(value.encode()).hexdigest()[:12])
+lines = [(k, refs, prs, sha, h) for k, (refs, prs, sha, h) in latest.items() if refs or prs or sha]
 
 # `@<sha>` is the head the chief ruled at; a ruling more than TICK_POOL_MAX_MERGES (30) commits behind
 # main is stale whatever its blocker says, so a disposition copied forward from a predecessor expires
@@ -726,17 +735,30 @@ def age(sha):
     return None
 
 prstate = None
-if any(prs for _, _, prs, _ in lines):
+nums = sorted({int(p) for _, _, prs, _, _ in lines for p in prs})
+if nums:
     try:
-        r = subprocess.run([gh, "pr", "list", "--state", "all", "--limit", "300", "--json", "number,state",
-                            "--jq", ".[] | [.number, .state] | @tsv"],
-                           cwd=repo if os.path.isdir(repo) else None, capture_output=True, text=True, timeout=30)
-        if r.returncode == 0:
-            prstate = {}
-            for row in r.stdout.splitlines():
-                n, _, s = row.partition("\t")
-                prstate[n.strip()] = s.strip()
-    except (OSError, subprocess.SubprocessError):
+        got = {}
+        for i in range(0, len(nums), 100):
+            chunk = nums[i:i + 100]
+            q = "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){%s}}" % " ".join(
+                "p%d:issueOrPullRequest(number:%d){__typename ... on PullRequest{state}}" % (n, n) for n in chunk)
+            r = subprocess.run([gh, "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query=" + q],
+                               cwd=repo if os.path.isdir(repo) else None, capture_output=True, text=True, timeout=30,
+                               env=dict(os.environ, GH_READ_NO_MAIN_FALLBACK="1"))
+            for err in r.stderr.splitlines():
+                if err.startswith("gh-read:"):
+                    print(err, file=sys.stderr)
+            # a NOT_FOUND alias makes gh exit 1 with the other aliases' data on stdout: read it whatever the rc
+            found = json.loads(r.stdout).get("data", {}).get("repository")
+            if not isinstance(found, dict):
+                raise ValueError("no repository in the answer")
+            for n in chunk:
+                node = found.get("p%d" % n)
+                if isinstance(node, dict) and node.get("__typename") == "PullRequest" and node.get("state"):
+                    got[str(n)] = node["state"]
+        prstate = got
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, AttributeError):
         prstate = None
 
 def state(kind, ref):
@@ -748,14 +770,27 @@ def state(kind, ref):
     s = (prstate or {}).get(ref)
     return "?" if s is None else ("done" if s in ("MERGED", "CLOSED") else "open")
 
-stale, unreadable = [], False
-for key, refs, prs, sha in lines:
-    states = [state("key", k) for k in sorted(refs)] + [state("pr", p) for p in sorted(prs)]
+def shown(kind, ref):
+    if kind == "key":
+        return {"done": "Done", "open": "open"}.get(state("key", ref), "?")
+    return (prstate or {}).get(ref) or "?"
+
+def detail(key, refs, prs, sha, h, n):
+    parts = ["%s=%s" % (k, shown("key", k)) for k in sorted(refs, key=lambda k: int(k.split("-")[1]))]
+    parts += ["PR#%s=%s" % (p, shown("pr", p)) for p in sorted(prs, key=int)]
     if sha:
-        n = age(sha)
+        parts.append("@%s=%s" % (sha, "?" if n is None else "%d-behind" % n))
+    return "STALE-DISPOSITION %s line=%s %s" % (key, h, " ".join(parts))
+
+stale, unreadable, details = [], False, []
+for key, refs, prs, sha, h in lines:
+    states = [state("key", k) for k in sorted(refs)] + [state("pr", p) for p in sorted(prs)]
+    n = age(sha) if sha else None
+    if sha:
         if n is not None and n > maxmerges:
             if key not in stale:
                 stale.append(key)
+                details.append(detail(key, refs, prs, sha, h, n))
             continue
         if n is None:
             unreadable = True
@@ -768,6 +803,9 @@ for key, refs, prs, sha in lines:
         unreadable = True
     elif key not in stale:
         stale.append(key)
+        details.append(detail(key, refs, prs, sha, h, n))
+for line in details:
+    print(line)
 tail = stale + (["?"] if unreadable else [])
 print("pool-stale=" + (("%d:%s" % (len(stale), ",".join(tail))) if stale else ("?" if unreadable else "0")))
 

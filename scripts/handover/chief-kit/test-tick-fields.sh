@@ -886,7 +886,7 @@ printf '# chief\n\n## Live state\n\npool-disposition: HIMMEL-952 slice blocked o
 cat > "$W/ps-gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$PS_GH_LOG"
-case "$*" in "pr list --state all --limit 300 --json number,state "*) printf '77\tMERGED\n' ;; esac
+case "$*" in *"api graphql"*"p77:issueOrPullRequest(number:77)"*) printf '{"data":{"repository":{"p77":{"__typename":"PullRequest","state":"MERGED"}}}}\n' ;; esac
 STUB
 chmod +x "$W/ps-gh"
 ps_run() {

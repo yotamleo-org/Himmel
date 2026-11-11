@@ -30,6 +30,8 @@ unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DEFAULT="$(cd "$HERE/../../.." && pwd)"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # shellcheck source=../../lib/worker-tail-status.sh
 . "$HERE/../../lib/worker-tail-status.sh"
 # the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
@@ -108,7 +110,7 @@ EOF_ROWS
         if [ -n "${HANDOFF_FACTS_PRS:-}" ]; then
             out="$(bash "$HANDOFF_FACTS_PRS" 2>/dev/null)" || out=""
         else
-            out="$(cd "$repo" && timeout -k 2 30 gh pr list --state open --limit "$prs_limit" --json number,title,headRefName --jq '.[] | "#\(.number) \(.title) (\(.headRefName))"' 2>/dev/null)" || out=""  # gnu-ok: Linux-only kit
+            out="$(cd "$repo" && timeout -k 2 30 "$GH_READ_BIN" pr list --state open --limit "$prs_limit" --json number,title,headRefName --jq '.[] | "#\(.number) \(.title) (\(.headRefName))"' 2>/dev/null)" || out=""  # gnu-ok: Linux-only kit
         fi
         if [ -n "$out" ]; then
             printf '%s\n' "$out"

@@ -35,6 +35,17 @@ HERMETIC_HOME="$WS/hermetic-home"; mkdir -p "$HERMETIC_HOME/.claude"
 printf 'test-subscription-auth\n' > "$HERMETIC_HOME/.claude/.credentials.json"
 printf '{}\n' > "$HERMETIC_HOME/.claude/settings.json"
 export HOME="$HERMETIC_HOME"
+pub_home() { mkdir -p "$1/.himmel"; printf '{"graphify":{"semantic_api_ok":true}}\n' > "$1/.himmel/config.json"; }
+pub_home "$HERMETIC_HOME"
+unset HIMMEL_CONFIG_DIR HIMMEL_CONFIG_AUDIT_DIR HIMMEL_LUNA_CONFIG_PATH
+unset "${!ANTHROPIC_@}" "${!anthropic_@}" "${!CLAUDE_CODE_USE_@}" "${!claude_code_use_@}" "${!LQ_API_@}"
+ALERT_SENT="$WS/alert-sent.log"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "%s"\n' "$ALERT_SENT" > "$WS/alert-send"; chmod +x "$WS/alert-send"
+export CADENCE_ALERT_SEND_CMD="$WS/alert-send" CADENCE_ALERT_FILE="$WS/cadence-alerts.log" \
+  CADENCE_ALERT_DEDUPE_DIR="$WS/alert-dedupe" CADENCE_ALERT_SEND_FAILED_MARK="$WS/alert-send-failed"
+alert_reset() { rm -rf "$CADENCE_ALERT_DEDUPE_DIR" "$CADENCE_ALERT_FILE" "$ALERT_SENT"; }
+alert_lines() { if [ -f "$CADENCE_ALERT_FILE" ]; then grep -c 'graph-subscription-' "$CADENCE_ALERT_FILE"; else echo 0; fi; }
+alert_sends() { if [ -f "$ALERT_SENT" ]; then grep -c 'graph-subscription-' "$ALERT_SENT"; else echo 0; fi; }
 # Preamble pin: keep every run-path case hermetic w.r.t. the LIVE
 # bank. refresh-graph-map.sh runs usage-preflight.sh for claude/claude-cli, which
 # otherwise refreshes and reads the operator's ambient usage cache — at the 85 %
@@ -3280,7 +3291,7 @@ fi
 SALCORPUS="$WS/salcorpus"; SALMAPS="$WS/salmaps"; mkdir -p "$SALCORPUS" "$SALMAPS"
 printf 'phi note\n' > "$SALCORPUS/note.md"
 : > "$SALCORPUS/.salus"
-SALHOME="$WS/salhome"; mkdir -p "$SALHOME"
+SALHOME="$WS/salhome"; mkdir -p "$SALHOME"; pub_home "$SALHOME"
 SALBIN="$WS/salbin"; mkdir -p "$SALBIN"; SALLOG="$WS/sal-calls.log"; : > "$SALLOG"
 cat > "$SALBIN/graphify" <<STUB
 #!/usr/bin/env bash
@@ -3305,7 +3316,7 @@ fi
 # after the backslash->slash normalization runs (exercising :269, not just :263).
 PHICORPUS="$WS/phicorpus"; PHIMAPS="$WS/phimaps"; mkdir -p "$PHICORPUS" "$PHIMAPS"
 printf 'phi note\n' > "$PHICORPUS/note.md"
-PHIHOME="$WS/phihome"; mkdir -p "$PHIHOME/.config/claude-glm"
+PHIHOME="$WS/phihome"; mkdir -p "$PHIHOME/.config/claude-glm"; pub_home "$PHIHOME"
 phi_canon="$(cd "$PHICORPUS" && pwd -P)"
 # swap the final path separator for a backslash -> the entry matches only AFTER
 # the backslash->slash normalization in _corpus_is_salus_root (:269).
@@ -3357,7 +3368,7 @@ out=$( HOME="$SALHOME" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" \
 # T43e: fence parity also requires an existing phi-roots/egress-denylist path
 # that is not a readable regular file to deny, rather than silently acting like
 # no PHI signal. A directory is the portable unreadable-policy fixture.
-UNREADABLEHOME="$WS/unreadable-phi-home"; mkdir -p "$UNREADABLEHOME/.config/claude-glm/phi-roots"
+UNREADABLEHOME="$WS/unreadable-phi-home"; mkdir -p "$UNREADABLEHOME/.config/claude-glm/phi-roots"; pub_home "$UNREADABLEHOME"
 UNREADABLECALLS="$WS/unreadable-phi-calls.log"; : > "$UNREADABLECALLS"
 out=$( HOME="$UNREADABLEHOME" GRAPHIFY_CALL_LOG="$UNREADABLECALLS" \
   GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" \
@@ -3378,7 +3389,7 @@ fi
 # egresses). The guard must trim \r + surrounding whitespace (then the existing
 # backslash/trailing-slash normalization) and skip entries left empty — an
 # empty entry would prefix-match EVERY path.
-CRLFHOME="$WS/crlf-phi-home"; mkdir -p "$CRLFHOME/.config/claude-glm"
+CRLFHOME="$WS/crlf-phi-home"; mkdir -p "$CRLFHOME/.config/claude-glm"; pub_home "$CRLFHOME"
 CRLFPARENT="$WS/crlf-phi"; CRLFCORPUS="$CRLFPARENT/corpus"; CRLFMAPS="$WS/crlf-phi-maps"
 mkdir -p "$CRLFCORPUS" "$CRLFMAPS"; printf 'phi note\n' > "$CRLFCORPUS/note.md"
 crlf_canon="$(cd "$CRLFPARENT" && pwd -P)"
@@ -3399,7 +3410,7 @@ else
   fail "T43f CRLF phi-roots guard failed (rc=$rc): $out calls=$(cat "$CRLFLOG")"
 fi
 
-SPCHOME="$WS/space-phi-home"; mkdir -p "$SPCHOME/.config/claude-glm"
+SPCHOME="$WS/space-phi-home"; mkdir -p "$SPCHOME/.config/claude-glm"; pub_home "$SPCHOME"
 SPCPARENT="$WS/space-phi"; SPCCORPUS="$SPCPARENT/corpus"; SPCMAPS="$WS/space-phi-maps"
 mkdir -p "$SPCCORPUS" "$SPCMAPS"; printf 'phi note\n' > "$SPCCORPUS/note.md"
 spc_canon="$(cd "$SPCPARENT" && pwd -P)"
@@ -3423,7 +3434,7 @@ fi
 # T43h: trimming must not over-match — a phi-roots file holding ONLY blank/CRLF
 # lines carries no entry at all, so an unrelated non-SALUS corpus still proceeds
 # (an entry emptied by the trim is skipped, never compared as a "" prefix).
-BLANKHOME="$WS/blank-phi-home"; mkdir -p "$BLANKHOME/.config/claude-glm"
+BLANKHOME="$WS/blank-phi-home"; mkdir -p "$BLANKHOME/.config/claude-glm"; pub_home "$BLANKHOME"
 printf '\r\n   \r\n\t\n' > "$BLANKHOME/.config/claude-glm/phi-roots"
 BLANKCORPUS="$WS/blank-phi-corpus"; BLANKMAPS="$WS/blank-phi-maps"
 mkdir -p "$BLANKCORPUS" "$BLANKMAPS"; printf 'ordinary note\n' > "$BLANKCORPUS/note.md"
@@ -3469,7 +3480,7 @@ out=$( HOME="$SALHOME" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" \
 # the persisted ollama-cloud opt-in. T44a above keeps unknown backends closed.
 OLCORPUS="$WS/ollama-corpus"; mkdir -p "$OLCORPUS"; printf 'ordinary note\n' > "$OLCORPUS/note.md"
 OLHOME="$WS/ollama-home"; mkdir -p "$OLHOME/.himmel"
-printf '{"graphify":{"salus_ollama_cloud_ok":true}}\n' > "$OLHOME/.himmel/config.json"
+printf '{"graphify":{"salus_ollama_cloud_ok":true,"semantic_api_ok":true}}\n' > "$OLHOME/.himmel/config.json"
 _ol_run() { # <tag> [VAR=val...] -> sets out rc; calls log $WS/ol-<tag>.calls, ledger $WS/ol-<tag>.ledger
   local tag="$1"; shift
   mkdir -p "$WS/ol-$tag-maps"; : > "$WS/ol-$tag.calls"; : > "$WS/ol-$tag.ledger"
@@ -3545,7 +3556,7 @@ fi
 # bare floor, and contain ZERO SessionEnd lines. No real extraction/API call. ---
 ARTHOME="$WS/artifact-home"; ARTCORPUS="$WS/artifact-corpus"; ARTMAPS="$WS/artifact-maps"
 ARTBIN="$WS/artifact-bin"; ARTLOG="$WS/graphify-chunk.log"
-mkdir -p "$ARTHOME/.claude" "$ARTCORPUS" "$ARTMAPS" "$ARTBIN"
+mkdir -p "$ARTHOME/.claude" "$ARTCORPUS" "$ARTMAPS" "$ARTBIN"; pub_home "$ARTHOME"
 printf 'artifact-subscription-auth\n' > "$ARTHOME/.claude/.credentials.json"
 cat > "$ARTHOME/.claude/settings.json" <<'JSON'
 {
@@ -4265,7 +4276,7 @@ out=$( GRAPHIFY_MAP_BIN="$GOBIN/graphify" bash "$SCRIPT" \
   || fail "T53c --out-root=/ should be refused rc=2 (rc=$rc): $out"
 
 # T53d: --out-root=$HOME is refused -- point it at a dedicated subdirectory.
-T53HOME="$WS/t53-home"; mkdir -p "$T53HOME"
+T53HOME="$WS/t53-home"; mkdir -p "$T53HOME"; pub_home "$T53HOME"
 out=$( HOME="$T53HOME" GRAPHIFY_MAP_BIN="$GOBIN/graphify" bash "$SCRIPT" \
   --name t53d --corpus-root "$T53CORPUS" --backend claude-cli \
   --maps-dir "$T53MAPS" --title T53d --slug t53d-map --out-root "$T53HOME" 2>&1 ); rc=$?
@@ -4778,7 +4789,7 @@ out=$(recent_run 2); rc=$?
 [ "$(recent_calls)" = "notes/x.md notes/y.md " ] && [ "$rc" -eq 4 ] \
   && pass "T-recent cap 2 with three changed notes stops inside the pre-pass (exit 4)" || fail "T-recent cap 2 with x y z expected x y and exit 4, got: $(recent_calls) rc=$rc"
 
-echo "T-adopter-skip: an installed fresh published graph stops the paid semantic row"
+echo "T-adopter-skip: the install marker no longer decides; the graph role does"
 # The marker graphify-out/.graphify_published holds the build commit himmel-update.sh
 # sync_graph installed. graphify is stubbed and logs every call: no model call here.
 ADCORPUS="$WS/adopter-corpus"; ADMAPS="$WS/adopter-maps"; mkdir -p "$ADMAPS"
@@ -4792,94 +4803,42 @@ done
 mkdir -p "$ADCORPUS/graphify-out"
 ad_run() { # <marker sha> — one refresh of the adopter corpus; the call log tells whether graphify ran
   printf '%s\n' "$1" > "$ADCORPUS/graphify-out/.graphify_published"
-  # manifest.json is the install's completion marker; AD_NOMANIFEST=1 models a half-installed graph.
-  if [ -n "${AD_NOMANIFEST:-}" ]; then rm -f "$ADCORPUS/graphify-out/manifest.json"; else printf '{}\n' > "$ADCORPUS/graphify-out/manifest.json"; fi
+  printf '{}\n' > "$ADCORPUS/graphify-out/manifest.json"
   : > "$WS/adopter-calls.log"
   GRAPHIFY_CALL_LOG="$WS/adopter-calls.log" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" --name adopter \
     --corpus-root "$ADCORPUS" --backend claude-cli --maps-dir "$ADMAPS" --title "Adopter" --slug adopter-map 2>&1
 }
-out=$( ad_run "$AD_BUILD" ); rc=$?
-if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ] && grep -q "installed published graph" <<< "$out" \
-   && [ "$(grep -c "installed published graph" <<< "$out")" -eq 1 ]; then
-  pass "T-adopter-skip (a) fresh installed graph on a non-publisher: rc=3, one-line reason, graphify never called"
-else
-  fail "T-adopter-skip (a) expected rc=3, one reason line, no graphify call (rc=$rc, calls=$(wc -l < "$WS/adopter-calls.log")): $out"
-fi
-mkdir -p "$HERMETIC_HOME/.himmel"
-printf '{"graphify":{"semantic_api_ok":true}}\n' > "$HERMETIC_HOME/.himmel/config.json"
-out=$( ad_run "$AD_BUILD" ); rc=$?
+AD_CFG="$HERMETIC_HOME/.himmel/config.json"
+AD_UNKNOWN="refresh-graph-map: no graph choice, and the subscription usage check answered BANK-UNKNOWN; semantic pass skipped (graphify-out left untouched)"
+ad_refused() {
+  if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ] && grep -qF "$AD_UNKNOWN" <<< "$out" \
+     && [ "$(alert_lines)" -eq 1 ] && [ "$(alert_sends)" -eq 1 ]; then
+    pass "T-adopter-skip $1"
+  else
+    fail "T-adopter-skip $1 expected rc=3, no call, the BANK-UNKNOWN line, one alert (rc=$rc, alerts=$(alert_lines)/$(alert_sends)): $out"
+  fi
+}
+ad_cause() {
+  if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ] && grep -qF "graph config unreadable (cause=$2)" <<< "$out" \
+     && ! grep -q 'usage check' <<< "$out" && [ "$(alert_lines)" -eq 0 ]; then
+    pass "T-adopter-skip $1"
+  else
+    fail "T-adopter-skip $1 expected rc=3, no call and only the cause=$2 line (rc=$rc): $out"
+  fi
+}
+ad_cfg_run() { alert_reset; out=$( PATH="${1:-$PATH}" ad_run "$AD_BUILD" ); rc=$?; }
+rm -f "$AD_CFG"; ad_cfg_run
+ad_refused "(a) a fresh installed graph on an adopter with no graph choice: the usage check refuses, rc=3, no call, one alert"
+pub_home "$HERMETIC_HOME"; ad_cfg_run
 if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ] && ! grep -q "installed published graph" <<< "$out"; then
-  pass "T-adopter-skip (b) the publisher (graphify.semantic_api_ok true) keeps its semantic row"
+  pass "T-adopter-skip (b) the publisher (graphify.semantic_api_ok true) keeps its semantic row with a fresh marker"
 else
   fail "T-adopter-skip (b) expected rc=0 and a graphify call (rc=$rc): $out"
 fi
-rm -f "$HERMETIC_HOME/.himmel/config.json"
-out=$( HIMMEL_UPDATE_GRAPH_MAX_BEHIND=2 ad_run "$AD_BUILD" ); rc=$?
-if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
-  pass "T-adopter-skip (c1) a marker 3 commits behind with a limit of 2 runs the row"
-else
-  fail "T-adopter-skip (c1) expected rc=0 and a graphify call (rc=$rc): $out"
-fi
-out=$( HIMMEL_UPDATE_GRAPH_MAX_BEHIND=3 ad_run "$AD_BUILD" ); rc=$?
-if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ]; then
-  pass "T-adopter-skip (c2) the limit is inclusive: 3 behind with a limit of 3 skips"
-else
-  fail "T-adopter-skip (c2) expected rc=3 and no graphify call (rc=$rc): $out"
-fi
-out=$( ad_run "0123456789abcdef0123456789abcdef01234567" ); rc=$?
-if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
-  pass "T-adopter-skip (c3) a marker that is not an ancestor of HEAD runs the row"
-else
-  fail "T-adopter-skip (c3) expected rc=0 and a graphify call (rc=$rc): $out"
-fi
-out=$( ad_run "not-a-sha" ); rc=$?
-if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
-  pass "T-adopter-skip (c4) a malformed marker runs the row"
-else
-  fail "T-adopter-skip (c4) expected rc=0 and a graphify call (rc=$rc): $out"
-fi
-rm -f "$ADCORPUS/graphify-out/.graphify_published"
-: > "$WS/adopter-calls.log"
-out=$( GRAPHIFY_CALL_LOG="$WS/adopter-calls.log" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" --name adopter \
-  --corpus-root "$ADCORPUS" --backend claude-cli --maps-dir "$ADMAPS" --title "Adopter" --slug adopter-map 2>&1 ); rc=$?
-if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
-  pass "T-adopter-skip (c5) no marker (no installed graph) runs the row"
-else
-  fail "T-adopter-skip (c5) expected rc=0 and a graphify call (rc=$rc): $out"
-fi
-# A config that cannot prove "not the publisher" runs the row (a publisher whose config is
-# dotfile-managed, unparsable, unreadable or read with no jq must never lose its pass).
-AD_CFG="$HERMETIC_HOME/.himmel/config.json"
-ad_cfg_run() { # <expected> <label> [PATH override] — fresh marker at the build commit, one run
-  local want="$1" label="$2" run_path="${3:-$PATH}"
-  out=$( PATH="$run_path" ad_run "$AD_BUILD" ); rc=$?
-  if [ "$want" = skip ]; then
-    if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ]; then pass "T-adopter-skip $label skips"; else fail "T-adopter-skip $label expected rc=3 and no graphify call (rc=$rc): $out"; fi
-  else
-    if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then pass "T-adopter-skip $label runs the row"; else fail "T-adopter-skip $label expected rc=0 and a graphify call (rc=$rc): $out"; fi
-  fi
-}
-mkdir -p "$HERMETIC_HOME/.himmel"
-# Every config row needs jq on the test host: without it a config reads as the publisher
-# and (d5) could not skip, while (d2) and (d3) would pass for the wrong reason.
-if ! command -v jq >/dev/null 2>&1; then
-  skip "T-adopter-skip (d1-d5, d8-d11) the config rows need jq on the test host"
-else
-printf '{"graphify":{"semantic_api_ok":false}}\n' > "$AD_CFG"
-ad_cfg_run skip "(d5) a valid config that is not the publisher"
-rm -f "$AD_CFG"; printf '{"graphify":{"semantic_api_ok":false}}\n' > "$WS/adopter-real-config.json"
-ln -s "$WS/adopter-real-config.json" "$AD_CFG"
-ad_cfg_run run "(d1) a symlinked config"
-rm -f "$AD_CFG"; printf 'this is not json\n' > "$AD_CFG"
-ad_cfg_run run "(d2) a non-JSON config"
-: > "$AD_CFG"
-ad_cfg_run run "(d8) an empty config"
-printf '[]\n' > "$AD_CFG"
-ad_cfg_run run "(d9) a config that is JSON but not an object"
-printf '{"graphify":"x"}\n' > "$AD_CFG"
-ad_cfg_run run "(d10) a config whose graphify key is not an object"
-printf '{}\n' > "$AD_CFG"
-ad_cfg_run skip "(d11) an empty JSON object"
+printf '{"graphify":{"semantic_api_ok":false}}\n' > "$AD_CFG"; ad_cfg_run
+ad_refused "(d5) a valid config that is not the publisher"
+printf '{}\n' > "$AD_CFG"; ad_cfg_run
+ad_refused "(d11) an empty JSON object"
 printf '{"graphify":{"semantic_api_ok":false}}\n' > "$AD_CFG"
 NOJQ_BIN="$WS/nojq-bin"; mkdir -p "$NOJQ_BIN"
 for ad_dir in $(printf '%s' "$PATH" | tr ':' ' '); do
@@ -4887,39 +4846,260 @@ for ad_dir in $(printf '%s' "$PATH" | tr ':' ' '); do
     [ -x "$ad_tool" ] && [ "${ad_tool##*/}" != jq ] && ln -sf "$ad_tool" "$NOJQ_BIN/${ad_tool##*/}" 2>/dev/null
   done
 done
-ad_cfg_run run "(d3) a config on a host with no jq" "$NOJQ_BIN"
-chmod 000 "$AD_CFG"
+ad_cfg_run "$NOJQ_BIN"
+ad_refused "(d3) a non-publisher config on a host with no jq reads adopter (the role runs on node)"
+rm -f "$AD_CFG"; printf '{"graphify":{"semantic_api_ok":true}}\n' > "$WS/adopter-real-config.json"
+ln -s "$WS/adopter-real-config.json" "$AD_CFG"; ad_cfg_run
+ad_cause "(d1) a symlinked config is unreadable" symlink
+rm -f "$AD_CFG"; printf 'this is not json\n' > "$AD_CFG"; ad_cfg_run
+ad_cause "(d2) a non-JSON config is unreadable" not-json
+: > "$AD_CFG"; ad_cfg_run
+ad_cause "(d8) an empty config is unreadable" empty
+printf '[]\n' > "$AD_CFG"; ad_cfg_run
+ad_cause "(d9) a config that is JSON but not an object is unreadable" not-json
+printf '{"graphify":"x"}\n' > "$AD_CFG"; ad_cfg_run
+ad_cause "(d10) a config whose graphify key is not an object is unreadable" graphify-shape
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$AD_CFG"; chmod 000 "$AD_CFG"
 if [ -r "$AD_CFG" ]; then
   skip "T-adopter-skip (d4) an unreadable config (this user reads a mode-000 file)"
 else
-  ad_cfg_run run "(d4) an unreadable config"
+  ad_cfg_run; ad_cause "(d4) an unreadable config" mode
 fi
-fi
-chmod 600 "$AD_CFG" 2>/dev/null; rm -f "$AD_CFG"
-# A symlinked marker is never trusted, and a non-numeric limit falls back to the 150 default.
-printf '%s\n' "$AD_BUILD" > "$WS/adopter-real-marker"
-rm -f "$ADCORPUS/graphify-out/.graphify_published"; ln -s "$WS/adopter-real-marker" "$ADCORPUS/graphify-out/.graphify_published"
-: > "$WS/adopter-calls.log"
-out=$( GRAPHIFY_CALL_LOG="$WS/adopter-calls.log" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" --name adopter \
-  --corpus-root "$ADCORPUS" --backend claude-cli --maps-dir "$ADMAPS" --title "Adopter" --slug adopter-map 2>&1 ); rc=$?
-if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
-  pass "T-adopter-skip (d6) a symlinked marker runs the row"
+chmod 600 "$AD_CFG" 2>/dev/null; rm -f "$AD_CFG"; pub_home "$HERMETIC_HOME"
+
+echo "T-nochoice: no graph choice runs the semantic pass only on the subscription (F1-F17)"
+NC="$WS/nc"; mkdir -p "$NC/bin" "$NC/maps" "$NC/corpus/notes"
+NC_CORPUS="$NC/corpus"; printf '# n\ncontent\n' > "$NC_CORPUS/notes/a.md"
+NC_REPO="$(cd "$HERE/../.." && pwd)"
+nc_acct_cfg="$NC/claude.json"
+printf '{"oauthAccount":{"accountUuid":"uuid-graphmap-nochoice"}}\n' > "$nc_acct_cfg"
+nc_acct=$( . "$HERE/../lib/usage-cache-identity.sh"; current_account_hash "$nc_acct_cfg" )
+cat > "$NC/bin/claude" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$NC/claude-calls.log"
+if [ -n "\${NC_CLAUDE_ANSWER_FILE:-}" ]; then cat "\$NC_CLAUDE_ANSWER_FILE"; else printf '{"is_error":false,"result":"ok"}\n'; fi
+STUB
+chmod +x "$NC/bin/claude"
+cat > "$NC/claudex-funded" <<'STUB'
+#!/usr/bin/env bash
+echo "claudex funded 5h10/wk10"
+STUB
+chmod +x "$NC/claudex-funded"
+NC_REAL_TIMEOUT="$(command -v timeout || true)"
+NC_REAL_NODE="$(command -v node)"
+FALLBACK_LINE="refresh-graph-map: no graph choice: semantic pass on this machine's Claude subscription (usage checked: PROCEED)"
+nc_preflight_line() { printf 'refresh-graph-map: no graph choice, and the subscription usage check answered %s; semantic pass skipped (graphify-out left untouched)' "$1"; }
+CREDENTIAL_LINE="refresh-graph-map: no graph choice, and an Anthropic API credential or provider switch is set (ANTHROPIC_*, CLAUDE_CODE_USE_* or LQ_API_*); the subscription fallback refuses (graphify-out left untouched)"
+HELPER_LINE="refresh-graph-map: no graph choice, and the Claude settings the run copies set apiKeyHelper; the subscription fallback refuses (graphify-out left untouched)"
+HIMMEL_PULL_LINE="refresh-graph-map: the himmel graph on this station comes from us with each update; no semantic pass runs on it here (graphify-out left untouched)"
+BACKEND_LINE="refresh-graph-map: no API account is chosen on this station; with no graph choice the semantic pass runs only on the subscription (--backend claude-cli)"
+STATE_UNREAD_LINE="refresh-graph-map: the graph choice state could not be read; no semantic call (graphify-out left untouched)"
+NONE_SENTENCE="With the graph choice none, graphify builds only the code structure from a local parse, with no model calls and no cost."
+SET_SENTENCE="This station's graph choice runs through its daily graph job on the repos it lists; this run makes no semantic call."
+INVALID_SENTENCE="The graph choice in ~/.himmel/config.json is not valid, so no semantic call runs; the doctor (C88) names the problem."
+NC_NONE='{"graphify":{"choices":{"version":1,"corpora":[],"primary":"none"}}}'
+nc_cache() {
+  printf '{"five_hour":{"utilization":10},"seven_day":{"utilization":%s},"primaries_refreshed_at":%s,"account":"%s"}\n' \
+    "$1" "$(( $(date +%s) - ${2:-0} ))" "$nc_acct" > "$NC/cache.json"
+  NC_CACHE="$NC/cache.json"
+}
+nc_home() {
+  NC_HOME="$NC/home-$1"; rm -rf "$NC_HOME"; mkdir -p "$NC_HOME/.claude"
+  printf 'nc-subscription-auth\n' > "$NC_HOME/.claude/.credentials.json"
+  printf '{}\n' > "$NC_HOME/.claude/settings.json"
+  if [ -n "${2:-}" ]; then mkdir -p "$NC_HOME/.himmel"; printf '%s\n' "$2" > "$NC_HOME/.himmel/config.json"; fi
+  alert_reset; rm -rf "$NC/scratch"; mkdir -p "$NC/scratch"; : > "$NC/ledger.jsonl"
+}
+NC_ENV=()
+nc_run() {
+  : > "$NC/graphify-calls.log"; : > "$NC/claude-calls.log"
+  out=$( ${NC_BOUND:+"$NC_REAL_TIMEOUT" -k 5 "$NC_BOUND"} env ${NC_ENV[@]+"${NC_ENV[@]}"} HOME="$NC_HOME" PATH="${NC_PATH_PREFIX:+$NC_PATH_PREFIX:}$NC/bin:$PATH" \
+    CLAUDE_ACCOUNT_CONFIG="$nc_acct_cfg" CADENCE_USAGE_CACHE="${NC_CACHE:-$NC/no-cache.json}" CADENCE_USAGE_SKIP_REFRESH=1 \
+    CADENCE_USAGE_MAX_PCT=85 CADENCE_USAGE_MAX_AGE=600 CADENCE_USAGE_LEDGER="$NC/ledger.jsonl" \
+    GRAPHIFY_CALL_LOG="$NC/graphify-calls.log" GRAPHIFY_MAP_BIN="${NC_GRAPHIFY:-$BIN/graphify}" \
+    bash "$SCRIPT" --name "${NC_NAME:-nc}" --corpus-root "${NC_ROOT:-$NC_CORPUS}" --backend "${NC_BACKEND:-claude-cli}" \
+    --maps-dir "$NC/maps" --title "No choice" --slug nc-map --scratch "$NC/scratch" 2>&1 ); rc=$?
+}
+nc_calls() { grep -cE -- '--update|cluster-only' "$NC/graphify-calls.log" 2>/dev/null || true; }
+nc_claude_calls() { if [ -s "$NC/claude-calls.log" ]; then wc -l < "$NC/claude-calls.log" | tr -d ' '; else echo 0; fi; }
+nc_refused() {
+  if [ "$rc" -eq 3 ] && [ "$(nc_calls)" -eq 0 ] && [ "$(nc_claude_calls)" -eq 0 ] && grep -qF -- "$2" <<< "$out"; then
+    pass "$1"
+  else
+    fail "$1 (rc=$rc graphify=$(nc_calls) claude=$(nc_claude_calls)): $out"
+  fi
+}
+nc_one_alert() {
+  if [ "$(alert_lines)" -eq 1 ] && [ "$(alert_sends)" -eq 1 ]; then pass "$1"; else fail "$1 (log lines=$(alert_lines) sends=$(alert_sends))"; fi
+}
+
+if [ -z "$nc_acct" ]; then
+  skip "T-nochoice F1-F17 no account hash derivable (jq/sha tool missing)"
 else
-  fail "T-adopter-skip (d6) expected rc=0 and a graphify call (rc=$rc): $out"
-fi
-rm -f "$ADCORPUS/graphify-out/.graphify_published"
-out=$( HIMMEL_UPDATE_GRAPH_MAX_BEHIND=abc ad_run "$AD_BUILD" ); rc=$?
-if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ]; then
-  pass "T-adopter-skip (d7) a non-numeric limit falls back to 150 and skips"
-else
-  fail "T-adopter-skip (d7) expected rc=3 and no graphify call (rc=$rc): $out"
-fi
-# A marker without manifest.json is a half-installed graph: it never skips the row.
-out=$( AD_NOMANIFEST=1 ad_run "$AD_BUILD" ); rc=$?
-if [ "$rc" -eq 0 ] && [ -s "$WS/adopter-calls.log" ]; then
-  pass "T-adopter-skip (d12) a marker with no manifest.json runs the row"
-else
-  fail "T-adopter-skip (d12) expected rc=0 and a graphify call (rc=$rc): $out"
+  nc_home f1 '{}'; nc_cache 10; nc_run
+  if [ "$rc" -eq 0 ] && [ "$(nc_calls)" -ge 1 ] && grep -qF "$FALLBACK_LINE" <<< "$out"; then
+    pass "F1 no graph choice on claude-cli with PROCEED runs on the subscription and says so"
+  else
+    fail "F1 expected rc=0, a graphify call and the fallback line (rc=$rc calls=$(nc_calls)): $out"
+  fi
+
+  nc_home f2 '{}'; NC_CACHE=""; nc_run
+  nc_refused "F2 no usage cache (BANK-UNKNOWN) refuses before any call" "$(nc_preflight_line BANK-UNKNOWN)"
+  nc_one_alert "F2 one alert log line and one send"
+
+  nc_home f2b '{}'; NC_CACHE=""; mkdir -p "$CADENCE_ALERT_DEDUPE_DIR"
+  : > "$CADENCE_ALERT_DEDUPE_DIR/graph-subscription-nc.0000000000000000"
+  nc_run; nc_run
+  if [ "$rc" -eq 3 ] && [ "$(alert_lines)" -eq 2 ] && [ "$(alert_sends)" -eq 1 ] \
+     && [ -e "$CADENCE_ALERT_DEDUPE_DIR/graph-subscription-nc.0000000000000000" ]; then
+    pass "F2b two refused fires: two log lines, one send, the other reason's sentinel kept (no clear)"
+  else
+    fail "F2b expected two log lines, one send and the planted sentinel (rc=$rc lines=$(alert_lines) sends=$(alert_sends)): $out"
+  fi
+
+  if [ -z "$NC_REAL_TIMEOUT" ]; then
+    skip "F2c no timeout(1) on this host"
+  else
+    mkdir -p "$NC/tbin"
+    printf '#!/usr/bin/env bash\ncase "$*" in *usage-preflight.sh*) exit 124 ;; esac\nexec %q "$@"\n' "$NC_REAL_TIMEOUT" > "$NC/tbin/timeout"
+    chmod +x "$NC/tbin/timeout"
+    nc_home f2c '{}'; nc_cache 10; NC_PATH_PREFIX="$NC/tbin" nc_run
+    nc_refused "F2c a preflight that prints nothing (timed out) refuses as none" "$(nc_preflight_line none)"
+    nc_one_alert "F2c the empty verdict raises the alert"
+  fi
+
+  nc_home f3 '{}'; nc_cache 10 100000; nc_run
+  nc_refused "F3 a stale cache (BANK-STALE) refuses" "$(nc_preflight_line BANK-STALE)"
+  nc_one_alert "F3 one alert"
+
+  nc_home f4 '{}'; nc_cache 85; nc_run
+  nc_refused "F4 an 85 % cache keeps main's bank line" "bank at/over threshold"
+  [ "$(alert_lines)" -eq 0 ] && pass "F4 SKIPPED-BANK raises no alert" || fail "F4 SKIPPED-BANK alerted ($(alert_lines))"
+
+  for f5 in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN anthropic_api_key ANTHROPIC_BASE_URL CLAUDE_CODE_USE_BEDROCK LQ_API_KEY; do
+    nc_home "f5-$f5" '{}'; nc_cache 10
+    case "$f5" in
+      ANTHROPIC_BASE_URL) NC_ENV=("$f5=https://sk-ant-planted-f5.example/v1") ;;
+      CLAUDE_CODE_USE_BEDROCK) NC_ENV=("$f5=sk-ant-planted-f5") ;;
+      *) NC_ENV=("$f5=sk-ant-planted-f5") ;;
+    esac
+    nc_run; NC_ENV=()
+    nc_refused "F5 $f5 set refuses the fallback" "$CREDENTIAL_LINE"
+    nc_one_alert "F5 $f5 raises one alert"
+    if grep -q 'sk-ant-planted-f5' <<< "$out$(cat "$CADENCE_ALERT_FILE" "$ALERT_SENT" 2>/dev/null)"; then
+      fail "F5 $f5 the planted value leaked into the output or the alert"
+    else
+      pass "F5 $f5 the planted value is in no output, log line or alert"
+    fi
+  done
+  nc_home f5-oauth '{}'; nc_cache 10; NC_ENV=("CLAUDE_CODE_OAUTH_TOKEN=nc-oauth-token"); nc_run; NC_ENV=()
+  if [ "$rc" -eq 0 ] && [ "$(nc_calls)" -ge 1 ]; then pass "F5 the subscription's own CLAUDE_CODE_OAUTH_TOKEN passes"; else fail "F5 CLAUDE_CODE_OAUTH_TOKEN alone should run (rc=$rc): $out"; fi
+
+  nc_home f6 "$NC_NONE"; nc_cache 10; nc_run
+  nc_refused "F6 the choice none keeps the structure only" "$NONE_SENTENCE"
+
+  nc_home f7 '{}'; nc_cache 10; NC_NAME=himmel nc_run
+  nc_refused "F7 --name himmel on an adopter takes no fallback (decision 913)" "$HIMMEL_PULL_LINE"
+  ls "$NC/scratch"/graphify-refresh-* >/dev/null 2>&1 && fail "F7 a scratch copy was made" || pass "F7 the gate exits before the scratch copy"
+  if git -C "$NC_REPO/docs" rev-parse --git-common-dir >/dev/null 2>&1; then
+    nc_home f7b '{}'; nc_cache 10; NC_NAME=other NC_ROOT="$NC_REPO/docs" nc_run
+    nc_refused "F7 a corpus sharing the himmel checkout's git common dir takes no fallback" "$HIMMEL_PULL_LINE"
+  else
+    skip "F7 sub-row: this checkout has no git dir"
+  fi
+
+  nc_home f8 '{}'; nc_cache 10; NC_ENV=(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A); NC_BACKEND=claude-api nc_run; NC_ENV=()
+  nc_refused "F8 --backend claude-api with no graph choice refuses with the backend line" "$BACKEND_LINE"
+
+  nc_home f9 '{}'; nc_cache 10; mkdir -p "$CADENCE_ALERT_DEDUPE_DIR"; : > "$CADENCE_ALERT_DEDUPE_DIR/graph-subscription-nc.x"
+  nc_run
+  if [ "$rc" -eq 0 ] && [ ! -e "$CADENCE_ALERT_DEDUPE_DIR/graph-subscription-nc.x" ]; then
+    pass "F9 a clean fallback run clears the graph-subscription alert"
+  else
+    fail "F9 expected rc=0 and the sentinel gone (rc=$rc): $out"
+  fi
+
+  nc_home f10 '{"graphify":{"semantic_api_ok":true}}'; NC_CACHE=""; nc_run
+  if [ "$rc" -eq 0 ] && [ "$(nc_calls)" -ge 1 ] && ! grep -q 'no graph choice' <<< "$out" && [ "$(alert_lines)" -eq 0 ]; then
+    pass "F10 the publisher with no cache runs as on main, no new line, no alert"
+  else
+    fail "F10 the publisher should run as main (rc=$rc alerts=$(alert_lines)): $out"
+  fi
+  nc_home f10b '{"graphify":{"semantic_api_ok":true}}'; NC_CACHE=""
+  NC_ENV=(CADENCE_USAGE_LANE=claudex "CADENCE_USAGE_STATUS_CMD=$NC/claudex-funded"); nc_run; NC_ENV=()
+  if [ "$rc" -eq 0 ] && [ "$(nc_calls)" -ge 1 ] && grep -q 'claudex lane funded' <<< "$out"; then
+    pass "F10 the publisher's preflight reads the caller's lane, as on main"
+  else
+    fail "F10 the publisher's preflight should read the claudex lane (rc=$rc): $out"
+  fi
+
+  nc_home f11 '{"graphify":{"choices":{"version":1,"corpora":[],"primary":"subscription"}}}'; nc_cache 10; nc_run
+  nc_refused "F11 a stored route spends only through its daily job" "$SET_SENTENCE"
+
+  nc_home f12 '{}'; NC_CACHE=""
+  f12_verdict=$( env HOME="$NC_HOME" CADENCE_USAGE_LANE=claudex WORKER_SESSION_LANE=claudex CADENCE_USAGE_STATUS_CMD="$NC/claudex-funded" \
+    CADENCE_USAGE_CACHE="$NC/no-cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$NC/f12-ledger.jsonl" \
+    bash "$HERE/../lib/usage-preflight.sh" 2>/dev/null | tail -n 1 )
+  if [ "$f12_verdict" != PROCEED ]; then
+    fail "F12 control: the unpinned preflight on the claudex fixture should answer PROCEED (got '$f12_verdict')"
+  else
+    pass "F12 control: the unpinned preflight on the claudex fixture answers PROCEED"
+    NC_ENV=(CADENCE_USAGE_LANE=claudex WORKER_SESSION_LANE=claudex "CADENCE_USAGE_STATUS_CMD=$NC/claudex-funded"); nc_run; NC_ENV=()
+    nc_refused "F12 the fallback's preflight is pinned to the native bank" "$(nc_preflight_line BANK-UNKNOWN)"
+  fi
+
+  nc_home f13 '{"graphify":{"choices":{"version":1,"corpora":[],"primary":"auto"}}}'; nc_cache 10; nc_run
+  nc_refused "F13 an invalid store (primary auto) makes no semantic call" "$INVALID_SENTENCE"
+
+  mkdir -p "$NC/nbin-fail" "$NC/nbin-default"
+  printf '#!/usr/bin/env bash\ncase "$*" in *graph-choices.js\\ route\\ --state*) exit 1 ;; esac\nexec %q "$@"\n' "$NC_REAL_NODE" > "$NC/nbin-fail/node"
+  printf '#!/usr/bin/env bash\ncase "$*" in *graph-choices.js\\ route\\ --state*) echo default; exit 0 ;; esac\nexec %q "$@"\n' "$NC_REAL_NODE" > "$NC/nbin-default/node"
+  chmod +x "$NC/nbin-fail/node" "$NC/nbin-default/node"
+  nc_home f14 '{}'; nc_cache 10; NC_PATH_PREFIX="$NC/nbin-fail" nc_run
+  nc_refused "F14 a route --state that fails reads as no state, no call" "$STATE_UNREAD_LINE"
+  nc_home f14b "$NC_NONE"; nc_cache 10; NC_PATH_PREFIX="$NC/nbin-default" nc_run
+  if [ "$rc" -eq 0 ] && grep -qF "$FALLBACK_LINE" <<< "$out"; then
+    pass "F14 the script follows route --state's word and reads no primary itself (I15)"
+  else
+    fail "F14 a stubbed default word over a none store should take the fallback (rc=$rc): $out"
+  fi
+
+  for f15 in exit bracket none; do
+    case "$f15" in
+      exit) nc_home f15-exit '{}'; NC_ENV=("BASH_FUNC_exit%%=() { return 0; }") ;;
+      bracket) nc_home f15-bracket '{}'; NC_ENV=("BASH_FUNC_[%%=() { return 0; }") ;;
+      none) nc_home f15-none "$NC_NONE"; NC_ENV=("BASH_FUNC_exit%%=() { return 0; }") ;;
+    esac
+    nc_cache 10; NC_ENV+=("ANTHROPIC_API_KEY=sk-ant-planted-f15")
+    if [ "$f15" = bracket ] && [ -n "$NC_REAL_TIMEOUT" ]; then NC_BOUND=30 nc_run; else nc_run; fi
+    NC_ENV=()
+    if [ "$(nc_calls)" -eq 0 ] && [ "$(nc_claude_calls)" -eq 0 ] \
+       && { grep -qE 'refuses|refused|no semantic|structure only|from us' <<< "$out" || { [ "$f15" = bracket ] && [ "$rc" -eq 124 ]; }; }; then
+      pass "F15 ($f15) a shadowed builtin reaches no graphify and no claude launch (rc=$rc)"
+    else
+      fail "F15 ($f15) expected zero launches and a refusal line (rc=$rc graphify=$(nc_calls) claude=$(nc_claude_calls)): $out"
+    fi
+  done
+
+  nc_home f16 '{}'; nc_cache 10; mkdir -p "$NC/f16-src"
+  printf 'nc-subscription-auth\n' > "$NC/f16-src/.credentials.json"
+  printf '{"apiKeyHelper":"/bin/echo sk-ant-planted-f16"}\n' > "$NC/f16-src/settings.json"
+  NC_ENV=("GRAPHIFY_CLAUDE_SOURCE_CONFIG_DIR=$NC/f16-src"); nc_run; NC_ENV=()
+  nc_refused "F16 an apiKeyHelper in the copied Claude settings refuses" "$HELPER_LINE"
+  nc_one_alert "F16 one alert"
+  grep -q 'sk-ant-planted-f16' <<< "$out" && fail "F16 the helper's text leaked into the output" || pass "F16 the planted string is in no output"
+
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> %q\nexit 1\n' "$NC/graphify-calls.log" > "$NC/bin/graphify-fails"; chmod +x "$NC/bin/graphify-fails"
+  printf '{"is_error":true,"result":"OAuth token expired"}\n' > "$NC/oauth-expired.json"
+  nc_home f17 '{}'; nc_cache 10
+  NC_ENV=(CADENCE_USAGE_LANE=claudex "CADENCE_USAGE_STATUS_CMD=$NC/claudex-funded" "NC_CLAUDE_ANSWER_FILE=$NC/oauth-expired.json")
+  NC_GRAPHIFY="$NC/bin/graphify-fails" nc_run; NC_ENV=()
+  f17_rows=$(grep -c . "$NC/ledger.jsonl" 2>/dev/null || true)
+  if [ "$rc" -eq 2 ] && [ "$(nc_claude_calls)" -eq 0 ] && [ "${f17_rows:-0}" -eq 1 ] && ! grep -q 'reseeding' <<< "$out"; then
+    pass "F17 an auth-shaped failure on the fallback: no probe, one pinned preflight row, no reseed, main's failure exit"
+  else
+    fail "F17 expected rc=2, no claude call, one ledger row and no reseed (rc=$rc claude=$(nc_claude_calls) rows=$f17_rows): $out"
+  fi
 fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi

@@ -368,6 +368,37 @@ with, the station stays AST-only and `graphify-out/` is not touched.
 `graphify.semantic_api_ok` set to true in `~/.himmel/config.json` is the
 publisher, so it never fetches.
 
+### The graph role and the graph choice
+
+`scripts/himmelctl/lib/graph-choices.js` owns both facts; every reader asks it.
+
+- `role` prints `publisher` (the JSON literal `true` at
+  `graphify.semantic_api_ok`), `unreadable` (a symlinked `~/.himmel` or
+  `config.json`, a non-file, a mode this user cannot read, not JSON, empty, or
+  a `graphify` key that is not an object) or `adopter` (everything else, no file
+  included). Only the publisher renders the API lane, skips the fetch above and
+  runs its own semantic pass on himmel.
+- `route --state` prints the graph choice state: `default` (no
+  `graphify.choices.primary`), `none`, `set`, `invalid` or `unreadable`.
+
+Without a graph choice, graphify builds the code structure from a local parse for free, and a semantic pass that runs on a repo other than himmel describes its markdown on this machine's Claude subscription, only after a usage check and never on an API key; choose none to keep the structure only.
+
+With the graph choice none, graphify builds only the code structure from a local parse, with no model calls and no cost.
+
+On a station that is not the publisher, `refresh-graph-map.sh` runs a semantic
+pass only in state `default`, only on `--backend claude-cli`, never on the
+himmel checkout (its graph comes from us), only after a usage preflight pinned
+to the subscription's bank answers exactly `PROCEED`, and never while an
+`ANTHROPIC_*`, `CLAUDE_CODE_USE_*` or `LQ_API_*` variable is set or the Claude
+settings it copies hold `apiKeyHelper`. Every other answer exits 3 with one
+line saying why; a refusal at the usage check, a credential or a helper also
+raises the `graph-subscription-<name>` alert, which the next clean run clears.
+To keep a station to the structure graph, set `graphify.choices` to
+`{"version":1,"corpora":[],"primary":"none"}` in `~/.himmel/config.json` and
+run `bash scripts/lib/config-audit.sh accept`. Leaving the publisher role takes
+three steps: remove the key, run `bash scripts/lib/config-audit.sh accept`, then
+`bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed`.
+
 ### How far behind the published graph is
 
 Every `published-channel` row records the lag at the moment of the publish

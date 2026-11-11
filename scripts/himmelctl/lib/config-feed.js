@@ -44,10 +44,11 @@ const INITIATIVE_GUARD = new Set(['merge', 'public']);
 // The five cadences P2 reports (spec §5.2 target list). evidence = what proves
 // the component itself ran (A9): doctor-cadence's last.tsv; the runner's own
 // .log (fired time + exit code) for the pipeline, qmd and graphmap cadences.
+const GRAPHMAP_COST = 'free hourly structure refresh; on the publishing station only, a daily himmel extraction on the API lane or the subscription, as its runner was rendered; where the Luna map row is armed, a weekly Luna extraction on the subscription, after a usage check';
 const CADENCES = [
   { name: 'pipeline', script: 'scripts/luna/pipeline-cadence.sh', evidence: 'log', cost: 'runs Claude-backed harvest/synthesize and draws the subscription bank' },
   { name: 'qmd', script: 'scripts/luna/qmd-cadence.sh', evidence: 'log', cost: 'none (local qmd reindex)' },
-  { name: 'graphmap', script: 'scripts/luna/graphmap-cadence.sh', evidence: 'log', cost: 'weekly claude-cli extraction; draws the subscription bank' },
+  { name: 'graphmap', script: 'scripts/luna/graphmap-cadence.sh', evidence: 'log', cost: GRAPHMAP_COST },
   { name: 'doctor', script: 'scripts/doctor-cadence.sh', evidence: 'doctor-last', cost: 'none' },
   { name: 'rollup', script: 'scripts/eval/rollup-cadence.sh', evidence: 'log', cost: 'none' },
 ];
@@ -655,4 +656,4 @@ function composeFeed({ manifest, scope, targetPath, answers, items, served, deep
   return out;
 }
 
-module.exports = { buildFeed, classifyRow, SCHEMA, REPROBE_BUDGET_MS, CADENCES, INITIATIVE_WORKERS, DOCTOR_OWNER, PRESENCE_SOURCES, envFileHasKey, remedyFromDetail };
+module.exports = { buildFeed, classifyRow, SCHEMA, REPROBE_BUDGET_MS, CADENCES, GRAPHMAP_COST, INITIATIVE_WORKERS, DOCTOR_OWNER, PRESENCE_SOURCES, envFileHasKey, remedyFromDetail };

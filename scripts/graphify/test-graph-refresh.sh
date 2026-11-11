@@ -128,6 +128,7 @@ done
 # corpus (skip-only must NOT read as OK).
 if [ -n "${SKIP_REFRESH:-}" ] && [ "$name" = "$SKIP_REFRESH" ]; then
     echo "fake-runner: skipping on $name (SKIP_REFRESH, bank at/over threshold)" >&2
+    if [ -n "${SKIP_LINE:-}" ]; then echo "$SKIP_LINE" >&2; fi
     exit 3
 fi
 if [ -n "${FAIL_REFRESH:-}" ] && [ "$name" = "$FAIL_REFRESH" ]; then
@@ -452,6 +453,15 @@ assert_eq "both workers still ran (serial continues)" "2" "$(wc -l < "$RUNNER_LO
 summary_line=$(printf '%s\n' "$out" | grep 'corpus(corpora)' | tail -1)
 assert_not_contains "summary line has no OK token" "OK" "$summary_line"
 assert_contains "summary line names the skip" "1 skipped" "$summary_line"
+
+echo "TEST: an rc 3 worker reports the runner's own reason, never the bank line it did not give"
+reset_runner_log
+nc_line="refresh-graph-map: no graph choice, and the subscription usage check answered BANK-UNKNOWN; semantic pass skipped (graphify-out left untouched)"
+rc=0; out=$(SKIP_REFRESH=himmel SKIP_LINE="$nc_line" run_refresh both --vault "$VAULT" 2>&1) || rc=$?
+skipped_line=$(printf '%s\n' "$out" | grep '\[himmel\] SKIPPED' | tail -1)
+assert_rc "a reasoned skip is still rc 4" 4 "$rc"
+assert_contains "the SKIPPED line carries the runner's reason" "$nc_line" "$skipped_line"
+assert_not_contains "the SKIPPED line names no bank threshold" "bank at/over threshold" "$skipped_line"
 
 # ============================================================================
 # Test 10: vault preflight — refuse a salus/PHI-marked vault (codex-adv-1)

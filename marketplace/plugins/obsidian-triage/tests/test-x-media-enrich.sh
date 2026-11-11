@@ -1272,6 +1272,91 @@ X_MEDIA_FXT_CMD="$tmp/bin/fxt-slow" X_MEDIA_BUDGET_S=3 X_TEST_GDL_SLEEP=0 run_to
 grep -q '^media_enriched_at:' "$VP/Clippings/p1.md" && a=ok || a=no
 assert "a clip its probe finds is enriched before later probes spend the budget" ok "$a"
 
+LW="$tmp/long-www"; mkdir -p "$LW/long"
+cat > "$LW/long/M.m3u8" <<'EOF'
+#EXTM3U
+#EXT-X-MEDIA:NAME="Audio",TYPE=AUDIO,GROUP-ID="aud",AUTOSELECT=YES,URI="A.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=640x360,AUDIO="aud"
+V.m3u8
+EOF
+for k in A V; do
+  { printf '#EXTM3U\n#EXT-X-TARGETDURATION:10\n'
+    for i in $(seq 1 128); do printf '#EXTINF:10.0,\n%s/s%d.m4s\n' "$k" "$i"; done
+    printf '#EXT-X-ENDLIST\n'; } > "$LW/long/$k.m3u8"
+done
+LB="$tmp/bin-long"; mkdir -p "$LB"
+cat > "$LB/curl" <<'STUB'
+#!/usr/bin/env bash
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) shift; out="$1" ;;
+    https://video.twimg.com/v/*)
+      path="${1#https://video.twimg.com/v/}"; path="${path%%\?*}"
+      echo "$path" >> "$X_TEST_CURL_LOG"
+      case "$path" in
+        *.m3u8) [ -f "$LONG_WWW/$path" ] || exit 22; cat "$LONG_WWW/$path" > "$out" ;;
+        *) sleep "$X_TEST_SEG_SLEEP"; echo seg > "$out" ;;
+      esac ;;
+  esac
+  shift
+done
+exit 0
+STUB
+cat > "$LB/ffmpeg" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in *"0:a:0"*) exit 0 ;; esac
+for last in "$@"; do :; done
+echo media > "$last"
+STUB
+cat > "$LB/x-adapter" <<'STUB'
+#!/usr/bin/env bash
+echo '{"status": "ok", "items": [{"kind": "video", "url": "https://video.twimg.com/v/long/M.m3u8", "hls": true}]}'
+STUB
+chmod +x "$LB/curl" "$LB/ffmpeg" "$LB/x-adapter"
+long_run() {
+  PATH="$LB:$PATH" X_SCRAPLING_PYTHON="$LB/x-adapter" LONG_WWW="$LW" X_TEST_SEG_SLEEP=0.05 \
+    X_TEST_CURL_LOG="$tmp/long-curl.log" X_MEDIA_BUDGET_S="$1" run_tool "${@:2}"
+}
+
+echo "Test 25: a long video whose download outlasts one run is downloaded across runs and transcribed"
+VL="$tmp/vault-long"; make_x_vault "$VL" 9881 "$VIDEO_MEDIA"
+: > "$tmp/long-curl.log"
+runs=0
+while [ "$runs" -lt 8 ] && ! grep -q '^media_enriched_at:' "$VL/Clippings/clip.md"; do
+  long_run 4 "$VL" >"$tmp/long.out" 2>"$tmp/long.err"; runs=$((runs+1))
+done
+grep -qF "THIS IS THE FIXED TRANSCRIPT" "$VL/Clippings/clip.md" && grep -q '^media_enriched_at:' "$VL/Clippings/clip.md" \
+  && a=ok || a="not transcribed after $runs runs: $(grep '^media_last_error' "$VL/Clippings/clip.md")"
+assert "the long clip is downloaded and transcribed" ok "$a"
+[ "$runs" -ge 2 ] && a=ok || a="took $runs run"
+assert "its download did not fit one run's window" ok "$a"
+fetched="$(grep -vc '\.m3u8$' "$tmp/long-curl.log")"
+[ "$fetched" -le $((128 + 16 * (runs - 1))) ] && a=ok || a="$fetched segment fetches in $runs runs"
+assert "each run resumes where the last one stopped (only a cut batch is fetched again)" ok "$a"
+grep -q '^long/V/' "$tmp/long-curl.log" && a=video || a=audio-only
+assert "a long video fetches its audio rendition only" audio-only "$a"
+n="$(find "$HOME/.luna/x-media/9881" -name '*.hls' 2>/dev/null | wc -l | tr -d ' ')"
+assert "the kept segments are removed once the clip is written" 0 "$n"
+
+echo "Test 26: the nightly invocation with a long clip pending ends inside its budget"
+VN="$tmp/vault-long-nightly"; make_x_vault "$VN" 9882 "$VIDEO_MEDIA"
+t0=$SECONDS
+long_run 3 "$VN" --limit 10 --include-evidence >"$tmp/longn.out" 2>"$tmp/longn.err"
+rc=$?; took=$((SECONDS - t0))
+assert "the nightly-form run exits 0" 0 "$rc"
+[ "$took" -lt 10 ] && a=ok || a="took ${took}s"
+assert "the run ends inside its budget" ok "$a"
+grep -qF 'x-media-fetch: 1 selected, 0 enriched, 0 partial, 1 failed' "$tmp/longn.out" && a=ok || a=no
+assert "the run prints its summary line" ok "$a"
+grep -q '^media_last_error: scrapling:download_resumable$' "$VN/Clippings/clip.md" \
+  && grep -q '^x_media_pending: true$' "$VN/Clippings/clip.md" \
+  && a=ok || a="$(grep '^media_last_error' "$VN/Clippings/clip.md")"
+assert "the long clip stays pending with a resumable download, not a timeout" ok "$a"
+n="$(find "$HOME/.luna/x-media/9882" -name '*.m4s' 2>/dev/null | wc -l | tr -d ' ')"
+[ "$n" -gt 0 ] && a=ok || a=none
+assert "its fetched segments are kept for the next run" ok "$a"
+
 echo ""
 echo "x-media-enrich tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

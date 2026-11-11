@@ -1731,9 +1731,9 @@ check_exit() {
     if [ "$record" -eq 1 ]; then
         n_skip=$(sort -u "$skip_raw" | comm -12 "$impacted" - | wc -l | tr -d ' ') || io_fail "counting SKIP verdicts"
         rec_ledger="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl" || exit 4
-        # the PASS and ruled-SKIP paths, only those on the impacted list, one per line
-        sort -u "$pass_raw" | comm -12 "$impacted" - > "$work/local_pass" || io_fail "listing the PASS verdicts"
-        sort -u "$ruled_raw" | comm -12 "$impacted" - > "$work/ruled_skip" || io_fail "listing the ruled SKIP verdicts"
+        sort -u "$impacted" "$work/dropped" > "$work/row_scope" || io_fail "listing the suites the row may hold"
+        sort -u "$pass_raw" | comm -12 "$work/row_scope" - > "$work/local_pass" || io_fail "listing the PASS verdicts"
+        sort -u "$ruled_raw" | comm -12 "$work/row_scope" - > "$work/ruled_skip" || io_fail "listing the ruled SKIP verdicts"
         if ! CR_LEDGER="$rec_ledger" bash "$is_dir/ledger-append.sh" impacted --branch "$rec_branch" --head "$rec_head" \
             --impacted "$n_impacted" --unverdicted "$n_missing" --skip "$n_skip" --rc "$1" \
             --local-pass-file "$work/local_pass" --ruled-skip-file "$work/ruled_skip" >/dev/null; then

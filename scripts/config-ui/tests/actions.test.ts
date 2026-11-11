@@ -77,6 +77,12 @@ test("preview cadence.arm graphmap runs exactly `arm --dry-run` and returns a pr
   expect(recorded()).toEqual(["graphmap-cadence.sh arm --dry-run"]);
 });
 
+test("the graphmap consent text is config-feed.js's cost string, true on every station", async () => {
+  const port = boot();
+  const b = await (await preview(port)).json();
+  expect(b.bank).toBe("free hourly structure refresh; on the publishing station only, a daily himmel extraction on the API lane or the subscription, as its runner was rendered; where the Luna map row is armed, a weekly Luna extraction on the subscription, after a usage check");
+});
+
 test("run with the preview id and typed consent runs exactly `arm`, then re-probes that row", async () => {
   const port = boot();
   const id = await previewId(port);
