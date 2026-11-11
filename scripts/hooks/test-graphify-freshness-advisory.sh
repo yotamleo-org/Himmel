@@ -56,7 +56,6 @@ mk_graph "$tmp/fresh/graphify-out" 0
 out=$(GRAPHIFY_ADVISORY_OUT="$tmp/fresh/graphify-out" bash "$HOOK"); rc=$?
 [ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T1 fresh is silent rc0" || fail "T1 fresh: rc=$rc out='$out'"
 
-# T2 stale on the graph publisher -> one banner naming age-days, cadence tasks, refresh command; rc 0
 mk_graph "$tmp/stale/graphify-out" 5
 mkdir -p "$tmp/pubhome/.himmel" "$tmp/adopterhome"
 printf '{"graphify":{"semantic_api_ok":true}}\n' > "$tmp/pubhome/.himmel/config.json"
