@@ -25,6 +25,7 @@
     { "id": "closing-hash-needs-a-space", "type": "Task", "omit": ["Proof"], "append": "## Proof#\nRun the checker on a real draft.", "expect": ["Proof"] },
     { "id": "bare-heading-line-as-the-mirror-renders", "type": "Task", "plain": ["Impact", "DoD", "Proof", "Agent detail"], "expect": [] },
     { "id": "epic-warns-only", "type": "Epic", "omit": ["Plan", "DoD", "Proof"], "expect": ["Plan", "DoD", "Proof"] },
-    { "id": "phase-and-held-labels-compatible", "type": "Task", "labels": ["phase:build", "held"], "expect": [] }
+    { "id": "phase-and-held-labels-compatible", "type": "Task", "labels": ["phase:build", "held"], "expect": [] },
+    { "id": "two-phase-labels", "type": "Task", "labels": ["phase:design", "phase:sliced"], "expect": ["Labels"] }
   ]
 }

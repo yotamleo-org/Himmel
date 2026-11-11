@@ -27,6 +27,14 @@ export function needsMetric(labels) {
   return (labels ?? []).some((l) => METRIC_LABEL.test(String(l).trim()));
 }
 
+/** The phase vocabulary, in order. A started ticket carries at most one `phase:<name>` label. */
+export const PHASES = ['design', 'ready', 'build', 'sliced', 'last-step'];
+
+/** Any `phase:*` label, a retired or unknown name included, counts toward the one-phase rule. */
+export function isPhaseLabel(l) {
+  return /^phase:/.test(String(l));
+}
+
 const TICKET_KEY = /\b[A-Z][A-Z0-9]+-[0-9]+\b/g;
 const LIST_LINE = /^\s*(?:[-*+]|\d+[.)])\s+(\S.*?)\s*$/;
 const HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
@@ -234,6 +242,9 @@ export function validateTicketBody(input, context = {}) {
     if (value === undefined || isPlaceholder(value))
       out.push(diag('metric.required', 'body.Metric', severity, 'a ci, guard, guardrail, stability or flake ticket names the scorecard metric it moves: add a "Metric: <metric>" line'));
   }
+  const phases = (context.labels ?? []).filter(isPhaseLabel);
+  if (phases.length >= 2)
+    out.push(diag('labels.phase.multi', 'labels', severity, `Labels holds two phase labels (${phases.join(', ')}): keep one, or use jira edit --phase`));
   const plan = found.get('Plan') ?? [];
   const keys = new Set(plan.flatMap((b) => String(b.text).match(TICKET_KEY) ?? []));
   if (keys.size >= 2) {
@@ -251,6 +262,7 @@ export function shortName(d) {
   if (d.rule === 'metric.required') return 'Metric (name the stability-scorecard metric this ticket moves)';
   if (d.rule === 'edges.required') return `Edges: (${d.message})`;
   if (d.rule === 'labels.mismatch') return `Labels (${d.message})`;
+  if (d.rule === 'labels.phase.multi') return 'Labels (two phase labels)';
   if (d.rule === 'body.list.required') return `${s} (needs a bullet or numbered line)`;
   return s;
 }

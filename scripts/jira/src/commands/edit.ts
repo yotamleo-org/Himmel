@@ -11,6 +11,7 @@ import { parseLabels } from './labels.js';
 import { requireSectorField, resolveSector, sectorField, sectorOf, sectorOptions } from './sector.js';
 import { bodyDiagnostics, homeVerdict, type BodyInput, type Diagnostic } from '../plain-block.js';
 import { assertVersionExists, buildFixVersionBody, projectFromKey, resolveAffectsVersion } from './versions.js';
+import { PHASES, isPhaseLabel, phaseSwap, type Phase } from '../phase.js';
 
 export interface EditOptions {
   priority?: string;
@@ -25,6 +26,22 @@ export interface EditOptions {
   addFixVersion?: string;
   affectsVersion?: string;
   sector?: string;
+  phase?: string;
+}
+
+// The usage refusal of --phase (exit 2, before any request), or undefined when the flags are usable.
+export function phaseUsage(o: EditOptions): string | undefined {
+  if (o.phase === undefined) return undefined;
+  const names = `${PHASES.join(', ')} or none`;
+  if (o.phase === 'waiting') return `Edit --phase: phase:waiting is retired: a wait is a ticket-hold.sh hold; --phase takes ${names}.`;
+  if (o.phase !== 'none' && !(PHASES as readonly string[]).includes(o.phase)) return `Edit --phase takes ${names} (got '${o.phase}').`;
+  if (o.labels !== undefined || o.removeLabels !== undefined) {
+    return 'Edit --phase is mutually exclusive with --labels and --remove-labels: --phase swaps the phase label itself — pick one.';
+  }
+  if (o.addLabels !== undefined && parseLabels(o.addLabels).some(isPhaseLabel)) {
+    return 'Edit --phase cannot be combined with an --add-labels phase: label: --phase swaps the phase label itself.';
+  }
+  return undefined;
 }
 
 export function buildEditFields(opts: EditOptions, sectors: readonly string[] = []): Record<string, unknown> {
@@ -88,11 +105,12 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
     Object.keys(fields).length === 0 &&
     opts.addLabels === undefined &&
     opts.removeLabels === undefined &&
-    opts.addFixVersion === undefined
+    opts.addFixVersion === undefined &&
+    opts.phase === undefined
   ) {
     throw new Error(
       'Edit requires at least one of --priority, --severity, --title, --desc, --parent, ' +
-        '--labels, --add-labels, --remove-labels, --fix-version, --add-fix-version, --affects-version, or --sector',
+        '--labels, --add-labels, --remove-labels, --phase, --fix-version, --add-fix-version, --affects-version, or --sector',
     );
   }
   return fields;
@@ -122,7 +140,7 @@ function readBackFieldNames(o: EditOptions): string[] {
   if (o.description !== undefined) names.push('description');
   if (o.parent) names.push('parent');
   if (o.sector !== undefined) names.push(requireSectorField());
-  if (o.labels !== undefined || o.addLabels !== undefined || o.removeLabels !== undefined) {
+  if (o.labels !== undefined || o.addLabels !== undefined || o.removeLabels !== undefined || o.phase !== undefined) {
     names.push('labels');
   }
   if (o.fixVersion !== undefined || o.addFixVersion !== undefined) names.push('fixVersions');
@@ -205,6 +223,13 @@ function verifyReadBack(
     if (!Array.isArray(got['labels'])) bad('remove-labels', `without ${want.join(', ')}`, 'labels not returned');
     else if (want.some((l) => labels.includes(l))) bad('remove-labels', `without ${want.join(', ')}`, labels.join(', '));
   }
+  if (o.phase !== undefined) {
+    const want = o.phase === 'none' ? [] : [`phase:${o.phase}`];
+    const phases = labels.filter(isPhaseLabel);
+    if (!Array.isArray(got['labels']) || phases.length !== want.length || !want.every((l) => phases.includes(l))) {
+      bad('phase', want[0] ?? 'no phase label', Array.isArray(got['labels']) ? phases.join(', ') : 'labels not returned');
+    }
+  }
   if (o.fixVersion !== undefined) {
     if (versions.length !== 1 || versions[0] !== o.fixVersion) {
       bad('fix-version', o.fixVersion, versions.join(', '));
@@ -286,6 +311,7 @@ function labelsAfter(current: string[], o: EditOptions): string[] {
     const drop = new Set(parseLabels(o.removeLabels));
     out = out.filter((l) => !drop.has(l));
   }
+  if (o.phase !== undefined) out = [...out.filter((l) => !isPhaseLabel(l)), ...(o.phase === 'none' ? [] : [`phase:${o.phase}`])];
   return out;
 }
 
@@ -296,7 +322,8 @@ function contractDiagnostics(t: Snapshot, body: BodyInput, sectors: readonly str
   return out;
 }
 
-async function checkEditContract(key: string, o: EditOptions): Promise<void> {
+// Returns the ticket's labels as read before the edit.
+async function checkEditContract(key: string, o: EditOptions): Promise<string[]> {
   const sectorId = sectorField();
   let got: { fields?: Record<string, unknown> };
   try {
@@ -328,11 +355,12 @@ async function checkEditContract(key: string, o: EditOptions): Promise<void> {
   if (kept.length > 0) {
     console.error(`jira: warning: ${key} still lacks: ${kept.map((d) => d.message).join('; ')} (a gap the ticket already had; this edit adds none)`);
   }
+  return before.labels;
 }
 
 const touchesContract = (o: EditOptions): boolean =>
   o.description !== undefined || o.labels !== undefined || o.addLabels !== undefined || o.removeLabels !== undefined ||
-  o.parent !== undefined || o.sector !== undefined;
+  o.parent !== undefined || o.sector !== undefined || o.phase !== undefined;
 
 export function registerEdit(program: Command): void {
   program
@@ -371,6 +399,11 @@ export function registerEdit(program: Command): void {
         '(mutually exclusive with --labels and --add-labels)',
     )
     .option(
+      '--phase <p>',
+      `Swap the ticket's phase label for phase:<p> in one update (${PHASES.join('|')}|none; ` +
+        'mutually exclusive with --labels, --remove-labels and an --add-labels phase: label)',
+    )
+    .option(
       '--fix-version <name>',
       'REPLACE the issue fixVersions with this single version (validated against the ' +
         "project's versions; full-replace)",
@@ -400,6 +433,11 @@ export function registerEdit(program: Command): void {
       'Chief session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
     )
     .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; chiefOverride?: string; residualOf?: string }) => {
+      const phaseRefusal = phaseUsage(options);
+      if (phaseRefusal !== undefined) {
+        console.error(phaseRefusal);
+        process.exit(2);
+      }
       // `--desc` and `--description` are aliases; whichever the operator
       // passed wins (and if both, --description wins because it's parsed
       // last by commander's option-order). `--desc-file` overrides both. It
@@ -450,9 +488,13 @@ export function registerEdit(program: Command): void {
       if (dropFixVersions.length > 0) {
         update['fixVersions'] = dropFixVersions.map((name) => ({ remove: { name } }));
       }
+      const current = touchesContract(options) ? await checkEditContract(key, options) : [];
+      if (options.phase !== undefined) {
+        const labelOps = [...((update['labels'] as unknown[] | undefined) ?? []), ...phaseSwap(current, options.phase as Phase | 'none').labels];
+        if (labelOps.length > 0) update['labels'] = labelOps;
+      }
       if (Object.keys(update).length > 0) body.update = update;
-      if (touchesContract(options)) await checkEditContract(key, options);
-      await request('PUT', `/issue/${key}`, body);
+      if (body.fields !== undefined || body.update !== undefined) await request('PUT', `/issue/${key}`, body);
       // A 2xx PUT does not prove the field changed (Jira can drop a
       // field its edit screen or scheme does not take), so read the priority
       // back and fail loud instead of reporting a silent no-op as "edited".
