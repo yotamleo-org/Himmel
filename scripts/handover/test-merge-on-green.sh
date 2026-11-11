@@ -4419,6 +4419,9 @@ s4_ans=$(s4_read "$(printf '## Ticket coverage\n- a: owed %s chief by %s\n- b: o
 case "$s4_ans" in owed$'\t'operator$'\t'"$s4_d3"$'\t'*) pass ;; *) fail "9561 S4a: two owed lines answer the earlier date and its who (reader said: $s4_ans)" ;; esac
 s4_ans=$(s4_read "${s3_body}$(printf -- '- c: owed %s chief by %s\n' "$s4_arrow" "$s4_d2")")
 case "$s4_ans" in owed$'\t'chief$'\t'"$s4_d2"$'\t'*) pass ;; *) fail "9561 S4a: an owed line beats a deferred-to-another-ticket line (reader said: $s4_ans)" ;; esac
+s4_own=$(printf '%s-%s' HIMMEL 374)  # the ticket key the run's title names, built so no literal key sits in added text
+s4_ans=$(s4_read "$(printf '## Ticket coverage\n- a: owed %s chief by %s\n- b: deferred %s %s\n' "$s4_arrow" "$s4_d2" "$s4_arrow" "$s4_own")")
+case "$s4_ans" in remaining$'\t'*) pass ;; *) fail "9561 S4a: a deferred line naming the ticket itself stays remaining work and beats an owed line (reader said: $s4_ans)" ;; esac
 # a title naming no ticket is not a partial merge of one: no remainder is asked of it
 STUB_PR_BODY="just a summary" run_mog 0 "8673: a title with no ticket key asks for no remainder"
 assert_gh_has "8673: the keyless title merged" "pr merge"

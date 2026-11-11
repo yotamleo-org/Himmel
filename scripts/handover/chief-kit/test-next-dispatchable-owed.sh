@@ -78,8 +78,11 @@ printf 'handed-off\tHIMMEL-9\trest: deferred to HIMMEL-9\n' > "$PR_BODY_DIR/6006
 printf 'owed\toperator\t%s\tlive proof\n' "$DUE" > "$PR_BODY_DIR/6007"
 printf 'owed\toperator\t%s\tlive proof\n' "$DUE" > "$PR_BODY_DIR/6008"
 printf 'none\n' > "$PR_BODY_DIR/6009"
+printf 'owed\tchief\t%s\tthe chief reruns the check\n' "$DUE" > "$PR_BODY_DIR/6010"
+printf 'handed-off\tHIMMEL-9\trest: deferred to HIMMEL-9\n' > "$PR_BODY_DIR/6011"
+mk HIMMEL-306 "In Progress" "older owed, newer handed-off" "Edit scripts/lib/o6.sh."
 {
-    for pair in 301:6001 302:6002 302:6003 303:6004 303:6005 304:6006 304:6007 305:6008 305:6009; do
+    for pair in 301:6001 302:6002 302:6003 303:6004 303:6005 304:6006 304:6007 305:6008 305:6009 306:6010 306:6011; do
         printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","contract":"no","result":"noop"}\n' "${pair%%:*}" "${pair##*:}"
     done
 } > "$STATE/status-events.jsonl"
@@ -114,5 +117,10 @@ lacks "(d) no HANDED-OFF row" "$out" "HANDED-OFF HIMMEL-304"
 # (e) a newer PR that records none still asks
 has "(e) a newer PR recording none after an owed one: NEEDS-CHIEF-NOTE" "$out" "NEEDS-CHIEF-NOTE HIMMEL-305: merged PR #6009"
 lacks "(e) and no OWED row for it" "$out" "OWED HIMMEL-305"
+
+# (f) older owed, newer handed-off: the owed step is still pending, so OWED, and neither a RESUME row nor a HANDED-OFF row
+has "(f) an older owed PR and a newer handed-off one: OWED" "$out" "OWED HIMMEL-306: merged PR #6010 owes chief by $DUE"
+lacks "(f) no HANDED-OFF row while a step is owed" "$out" "HANDED-OFF HIMMEL-306"
+lacks "(f) no RESUME row for it" "$out" "RESUME	HIMMEL-306"
 
 if [ "$fails" -eq 0 ]; then echo "next-dispatchable-owed: all rows passed"; else echo "next-dispatchable-owed: $fails row(s) failed"; exit 1; fi

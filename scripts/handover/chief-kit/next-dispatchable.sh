@@ -1411,8 +1411,9 @@ for i in issues.values():
     if any(ans[0] == 'none' for _, ans in parts):  # a merged slice whose PR body names no remaining work: not dispatched blind
         needs_note.append((i['key'], [pr for pr, ans in parts if ans[0] == 'none']))
         continue
-    if parts and parts[-1][1][0] == 'owed':  # a dated step is owed to the chief or operator: nothing to dispatch
-        owed_rows.append((i['key'], parts[-1][0], parts[-1][1][1][0], parts[-1][1][1][1]))
+    owed_parts = [(pr, ans) for pr, ans in parts if ans[0] == 'owed']
+    if owed_parts and not any(ans[0] == 'remaining' for _, ans in parts):  # a dated step is owed to the chief or operator and nothing else stays on the ticket: nothing to dispatch (the newest owed PR is named)
+        owed_rows.append((i['key'], owed_parts[-1][0], owed_parts[-1][1][1][0], owed_parts[-1][1][1][1]))
         continue
     if parts and all(ans[0] == 'handed-off' for _, ans in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella
         handed_off.append((i['key'], [k for _, ans in parts for k in ans[1]]))
