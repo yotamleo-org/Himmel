@@ -839,7 +839,9 @@ EMPTY_BAT_DIR="$TMP_ROOT/backend-none"
 mkdir -p "$EMPTY_BAT_DIR"
 out=$(run_cron_backend "$EMPTY_BAT_DIR")
 luna_line=$(grep 'HIMMEL-GraphMap-Luna' <<< "$out")
-assert_contains "no runner installed falls back to the configured BACKEND constant" "configured: claude-api" "$luna_line"
+assert_contains "no luna runner installed falls back to the luna map backend" "configured: claude-cli" "$luna_line"
+himmel_line=$(grep 'HIMMEL-GraphMap-Himmel' <<< "$out")
+assert_contains "no himmel runner installed falls back to the configured BACKEND constant" "configured: claude-api" "$himmel_line"
 
 echo "TEST: status names a runner that carries no --backend flag explicitly, not as the fallback"
 NOFLAG_BAT_DIR="$TMP_ROOT/backend-noflag"

@@ -609,7 +609,7 @@ fi
 # --backend flag gets its own explicit label rather than silently falling
 # back to "configured".
 installed_semantic_backend() {
-    local name="$1" runner match
+    local name="$1" fallback="${2:-$BACKEND}" runner match
     runner="$BAT_DIR/$name.sh"
     if [ -f "$runner" ]; then
         match=$(grep -o -- '--backend [^[:space:]]*' "$runner" | head -1 || true)
@@ -619,13 +619,13 @@ installed_semantic_backend() {
             printf 'installed: no --backend flag in runner'
         fi
     else
-        printf 'configured: %s' "$BACKEND"
+        printf 'configured: %s' "$fallback"
     fi
 }
 
 task_summary() {
     case "$1" in
-        "$TASK_LUNA")       printf ' -> refresh-graph-map luna (weekly, semantic, %s)' "$(installed_semantic_backend graphmap-luna)" ;;
+        "$TASK_LUNA")       printf ' -> refresh-graph-map luna (weekly, semantic, %s)' "$(installed_semantic_backend graphmap-luna "$LUNA_MAP_BACKEND")" ;;
         "$TASK_HIMMEL")     printf ' -> refresh-graph-map himmel (daily, semantic, %s)' "$(installed_semantic_backend graphmap-himmel)"
                             if [ "$(installed_semantic_backend graphmap-himmel)" = "installed: claude-cli" ]; then
                                 printf ' -- armed on the old subscription backend: run bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed'
