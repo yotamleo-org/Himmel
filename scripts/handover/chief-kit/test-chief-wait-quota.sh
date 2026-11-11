@@ -142,7 +142,7 @@ marker() {
         "${3:-go.sh}" "${4:-graphql}" "${5:-rate-limit}" "$2" "${6:+back_epoch=$6
 }" > "$Q/blocked/$1"
 }
-markers() { find "$Q/blocked" -maxdepth 1 -type f ! -name '.*' 2>/dev/null | sed 's#.*/##' | LC_ALL=C sort | paste -sd' ' -; }
+markers() { local f; for f in "$Q/blocked"/*; do [ -f "$f" ] && printf '%s\n' "${f##*/}"; done | LC_ALL=C sort | paste -sd' ' -; }
 logmark() { wc -l < "$STUB_LOG" | tr -d ' '; }
 # spent_since <mark>: the gh calls since the mark that were not quota probes
 spent_since() { tail -n "+$(( $1 + 1 ))" "$STUB_LOG" | grep -c '^0 ' || true; }
