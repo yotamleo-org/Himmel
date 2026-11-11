@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { recordLiveConfigDir } from './live/project-guard.js';
 
 // The live suite reads the station's test project from the config dir the redirects below hide: record it first.
-// The passwd home, not $HOME, so a redirected HOME cannot move it.
 const liveConfigDir = recordLiveConfigDir(process.env, userInfo().homedir);
 if (liveConfigDir) process.env.JIRA_LIVE_CONFIG_DIR = liveConfigDir;
 
