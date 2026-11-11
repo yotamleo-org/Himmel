@@ -2531,7 +2531,7 @@ rl9="$(NEXT_DISPATCH_MIRROR="$M9" NEXT_DISPATCH_GH_CMD="$WORK/gh-rl" NEXT_DISPAT
 rl_secs=$(( $(date +%s) - rl_t0 ))
 [ "$rl_rc" != 124 ] && [ "$rl_rc" != 137 ] && pass "9438: a rate-limited gh does not hang the dispatcher (rc $rl_rc)" || fail "9438: a rate-limited gh does not hang the dispatcher (rc $rl_rc after ${rl_secs}s, bound ${RL_BOUND}s)"
 [ "$rl_secs" -lt "$RL_BOUND" ] && pass "9438: a rate-limited gh returns within ${RL_BOUND}s (took ${rl_secs}s)" || fail "9438: a rate-limited gh returns within ${RL_BOUND}s (took ${rl_secs}s)"
-has "9438: the output names the rate limit" "$rl9" "rate limit"
+has "9438: the output names the rate limit" "$rl9" "# quota-pause QUOTA-PAUSE"
 lacks "9438: a rate-limited read lists no IN CI row" "$rl9" "RESUME	HIMMEL-960"
 
 S1D="$WORK/s1d"; mkdir -p "$S1D"; export DD_DIR="$S1D"
@@ -2631,6 +2631,108 @@ has "Q8: control: an outside PR idle 3 days still owns the key" "$q8_3" "# drop 
 lacks "Q8: control: and the key is not listed" "$q8_3" "LOCAL	HIMMEL-9710"
 q8_in="$(q8run false 30)"
 has "Q8: control: an inside PR idle 30 days still owns the key" "$q8_in" "# drop HIMMEL-9710 owned by open PR 5201"
+
+# --- (9479 T6) GitHub out: the run prints one pause line, never a smaller pool ---
+# gh-q answers the quota probes (rateLimit, api -i user) by Q_MODE and every other call from the fixture; Q_LOG holds every call
+Q6="$WORK/q6"; mkdir -p "$Q6/realbin" "$Q6/envroot"
+printf '{"schema":1,"workers":[]}\n' > "$Q6/fleet.json"
+printf '#!/usr/bin/env bash\necho reached >> "%s"\nexit 1\n' "$Q6/real-gh-reached" > "$Q6/realbin/gh"
+cat > "$WORK/gh-q" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$Q_LOG"
+mode="${Q_MODE:-healthy}"
+probe=0; case "$*" in *rateLimit* | "api -i user"*) probe=1 ;; esac
+bucket=graphql; [ "$1" = api ] && case "$*" in *graphql*) ;; *) bucket=core ;; esac
+if [ "$probe" = 1 ]; then
+    [ "$mode" = hung ] && exec sleep 60
+    rem=4000
+    case "$mode:$bucket" in gql-out:graphql | rest-out:core | secondary:*) rem=0 ;; esac
+    printf 'HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: %s\r\nX-Ratelimit-Reset: %s\r\n' "$rem" "$(($(date +%s) + 1800))"
+    [ "$mode" != secondary ] || printf 'Retry-After: 60\r\n'
+    printf '\r\n{}\n'
+    [ "$rem" != 0 ] || exit 1
+    exit 0
+fi
+calls=$(grep -cv -e rateLimit -e 'api -i user' "$Q_LOG")
+case "$mode" in
+    gql-out | secondary) [ "$bucket" = graphql ] && { echo 'GraphQL: API rate limit already exceeded for user ID 1.' >&2; exit 1; } ;;
+    rest-out) [ "$bucket" = core ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; } ;;
+    hung-after-probe) exec sleep 60 ;;
+    from-third) [ "$calls" -ge 3 ] && { echo 'GraphQL: API rate limit already exceeded for user ID 1.' >&2; exit 1; } ;;
+esac
+case "$1 $2" in
+    "pr list") case "$*" in *merged*) ;; *headRefName*) printf '4601\tfix(x): an open change\tfix/q6-open\n' ;; *) echo 4601 ;; esac ;;
+    "api "*) echo scripts/q6/pr-file.sh ;;
+esac
+exit 0
+EOF
+cat > "$WORK/classify-q" <<'EOF'
+#!/usr/bin/env bash
+if [ "${Q_CLASSIFY:-ok}" = refuse ]; then echo 'GraphQL: API rate limit already exceeded for user ID 1.' >&2; exit 0; fi
+for k in "$@"; do printf '%s\tLOCAL-NATIVE\tstub\n' "$k"; done
+EOF
+chmod +x "$WORK/gh-q" "$WORK/classify-q"
+Q6M="$WORK/q6m/HIMMEL"; mkdir -p "$Q6M"
+M_SAVE="$M"; M="$Q6M"
+mk HIMMEL-9801 "To Do" High '[]' '["v1.0.1"]' '[]' "a free pool ticket" "Edit scripts/q6/free-a.sh only."
+mk HIMMEL-9802 "In Progress" High '[]' '["v1.0.1"]' '[]' "in work, nobody holds it" "Edit scripts/q6/resume-b.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/q6m/HIMMEL.versions.tsv"
+q6run() { # <mode> [extra env...] -- [dispatcher args...]: sets Q6_OUT, Q6_RC, Q6_SECS; a fresh quota dir per run
+    local mode="$1" t0 envs=()
+    shift
+    while [ "$#" -gt 0 ] && [ "$1" != -- ]; do envs+=("$1"); shift; done
+    [ "${1:-}" != -- ] || shift
+    Q6Q="$(mktemp -d "$Q6/quota.XXXXXX")" || { fail "T6: mktemp -d failed"; return 1; }; : > "$Q6/log"; rm -f "$Q6/real-gh-reached"
+    t0=$(date +%s)
+    Q6_OUT="$(env -u himmel_github_token_vm2 PATH="$Q6/realbin:$PATH" HIMMEL_QUOTA_DIR="$Q6Q" GH_READ_ENV_ROOT="$Q6/envroot" GHQ_PROBE_TIMEOUT=2 \
+        Q_MODE="$mode" Q_LOG="$Q6/log" NEXT_DISPATCH_MIRROR="$Q6M" NEXT_DISPATCH_GH_CMD="$WORK/gh-q" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-q" \
+        ${envs[@]+"${envs[@]}"} timeout -k 2 40 bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" "$@" 2>/dev/null)"; Q6_RC=$?
+    Q6_SECS=$(( $(date +%s) - t0 ))
+}
+q6_paused() { # <row name> <want prefix: quota-pause or gh-stall>: the single pause line, rc 0, nothing else
+    local nl
+    nl="$(printf '%s\n' "$Q6_OUT" | grep -c .)"
+    [ "$Q6_RC" = 0 ] && pass "T6 $1: rc 0" || fail "T6 $1: rc 0 (got $Q6_RC after ${Q6_SECS}s)"
+    [ "$nl" = 1 ] && pass "T6 $1: stdout is one line" || fail "T6 $1: stdout is one line (got $nl: $Q6_OUT)"
+    has "T6 $1: the line is # $2" "$Q6_OUT" "# $2 "
+    lacks "T6 $1: no POOL-EMPTY" "$Q6_OUT" "POOL-EMPTY"
+    lacks "T6 $1: no row" "$Q6_OUT" "HIMMEL-98"
+    [ ! -e "$Q6/real-gh-reached" ] && pass "T6 $1: no real gh on PATH was reached" || fail "T6 $1: a gh on PATH was reached"
+}
+q6run rest-out -- --priority-pool-only
+q6_paused "rest-out (core probe at 0)" quota-pause
+has "T6 rest-out: the line names the core bucket" "$Q6_OUT" "QUOTA-PAUSE github core token=main"
+lacks "T6 I2 rest-out: a paused run makes no call but the probes" "$(grep -v -e rateLimit -e 'api -i user' "$Q6/log")" "pr "
+q6run gql-out -- --priority-pool-only
+q6_paused "gql-out (graphql probe at 0)" quota-pause
+has "T6 gql-out: the line names the graphql bucket" "$Q6_OUT" "QUOTA-PAUSE github graphql token=main"
+[ "$(grep -cv -e rateLimit -e 'api -i user' "$Q6/log")" = 0 ] && pass "T6 I2 gql-out: a paused run makes no call but the probes" || fail "T6 I2 gql-out: a paused run makes no call but the probes ($(grep -v -e rateLimit -e 'api -i user' "$Q6/log" | head -3))"
+q6run secondary -- --priority-pool-only
+q6_paused "secondary (Retry-After at the probe)" quota-pause
+q6run hung -- --priority-pool-only
+q6_paused "hung (a probe times out)" gh-stall
+[ "$Q6_SECS" -le 15 ] && pass "T6 hung: a timed-out probe pauses at once (${Q6_SECS}s)" || fail "T6 hung: a timed-out probe pauses at once (${Q6_SECS}s)"
+q6run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 -- --priority-pool-only
+q6_paused "hung-after-probe (a list read times out)" gh-stall
+[ "$Q6_SECS" -le 15 ] && pass "T6 hung-after-probe: the stalled run ends inside its bound (${Q6_SECS}s)" || fail "T6 hung-after-probe: the stalled run ends inside its bound (${Q6_SECS}s)"
+q6run hung-after-probe NEXT_DISPATCH_DEADLINE=4 -- --priority-pool-only
+q6_paused "hung-after-probe cut by NEXT_DISPATCH_DEADLINE" gh-stall
+[ "$Q6_SECS" -le 15 ] && pass "T6 deadline: a scaled NEXT_DISPATCH_DEADLINE cuts the run (${Q6_SECS}s)" || fail "T6 deadline: a scaled NEXT_DISPATCH_DEADLINE cuts the run (${Q6_SECS}s)"
+q6run from-third -- --priority-pool-only
+q6_paused "a gh that refuses from its third call" quota-pause
+q6run healthy Q_CLASSIFY=refuse -- --priority-pool-only
+q6_paused "a refusal only during classification" quota-pause
+q6run gql-out -- --resume-only
+q6_paused "gql-out --resume-only" quota-pause
+q6run healthy -- --priority-pool-only
+lacks "T6 RED control: a healthy stub prints no quota-pause line" "$Q6_OUT" "# quota-pause"
+lacks "T6 RED control: a healthy stub prints no gh-stall line" "$Q6_OUT" "# gh-stall"
+has "T6 RED control: a healthy stub lists the pool row" "$Q6_OUT" "LOCAL	HIMMEL-9801"
+has "T6 RED control: a healthy stub lists the RESUME row" "$Q6_OUT" "RESUME	HIMMEL-9802"
+q6_healthy="$Q6_OUT"
+q6run healthy -- --priority-pool-only
+[ "$Q6_OUT" = "$q6_healthy" ] && pass "T6 RED control: two healthy runs print the same bytes" || fail "T6 RED control: two healthy runs print the same bytes"
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.

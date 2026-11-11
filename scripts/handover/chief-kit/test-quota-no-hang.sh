@@ -170,26 +170,6 @@ emit() { printf '%s\n' "$*" >> "$RES/$CUR.txt"; }   # emit <status> <caller> <mo
 
 known_task() {
     awk -v c="$1" -v m="$2" -v a="$3" '$2 == c && $3 == m && $4 == a { print $1; exit }' <<'KNOWN'
-T6 next-dispatchable.sh gql-out no-false-phrase
-T6 next-dispatchable.sh both-out no-false-phrase
-T6 next-dispatchable.sh gql-200 no-false-phrase
-T6 next-dispatchable.sh gql-late no-false-phrase
-T6 next-dispatchable.sh main-only no-false-phrase
-T6 next-dispatchable.sh reset-past no-false-phrase
-T6 next-dispatchable.sh reset-absent no-false-phrase
-T6 next-dispatchable.sh reset-absurd no-false-phrase
-T6 next-dispatchable.sh secondary no-false-phrase
-T6 next-dispatchable.sh rest-out names-limit
-T6 next-dispatchable.sh hung bound
-T6 next-dispatchable.sh hung exit
-T6 next-dispatchable.sh hung names-limit
-T6 next-dispatchable.sh hung-after-probe bound
-T6 next-dispatchable.sh hung-after-probe exit
-T6 next-dispatchable.sh hung-after-probe names-limit
-T7b chief-wait.sh hung bound
-T7b chief-wait.sh hung telegram-latency
-T7b chief-wait.sh hung-after-probe bound
-T7b chief-wait.sh hung-after-probe telegram-latency
 KNOWN
 }
 
@@ -418,6 +398,7 @@ drive_next_dispatchable() {
     AFFECT_FN=affect_nd RATE_BOUND=25 XM="gql-late"
     EXTRA_ENV="$ND_ENV"
     for m in $(modes_for); do
+        rm -f "$cdir/quota/quota.tsv"  # each mode is its own GitHub: the last mode's fresh reading must not answer for it
         run_mode next-dispatchable.sh "$m" 12 0 bash "$script" --top 5
     done
     EXTRA_ENV=""

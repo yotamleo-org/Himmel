@@ -32,7 +32,9 @@
 #             the file into the stage, and the publish step moves it into place with the page. The file ends
 #             with the drain row the tracker prints under the page title. A failure is not a FAILED stage: the
 #             run goes on with the last good focus-chains.json, byte for byte, and ends
-#             `focus=WARN:chains <registry|graph|render>` (exit 0; the reason's detail is on stderr).
+#             `focus=WARN:chains <registry|graph|render>` (exit 0; the reason's detail is on stderr). A dispositions
+#             read the dispatcher paused on GitHub quota (`# quota-pause` / `# gh-stall`) keeps the last good file too,
+#             with that line on stderr and no WARN.
 #   render    tracker.py --version, staged
 #   drift    status-drift.sh over the sweep's snapshot, staged (report only). A failure is not a FAILED stage:
 #             the page is still published and the run ends `focus=WARN:drift <why>` (exit 0), why being timeout,
@@ -327,7 +329,11 @@ print(",".join(dict.fromkeys(k for c in json.load(open(sys.argv[1]))["chains"] f
         bounded 60 "${DISPO[@]}" --mirror "$MIR" --doc "$DOC" --dispositions > "$stage/dispositions.txt" 2>/dev/null || rm -f "$stage/dispositions.txt"
         set -- --graph "$stage/chain-graph.json" --registry "$chains_reg" --mirror "$MIR" --version "$VER" --drain --out "$stage/focus-chains.json"
         [ ! -s "$stage/dispositions.txt" ] || set -- "$@" --dispositions "$stage/dispositions.txt"
-        if bounded 60 python3 -I "$HERE/chain-render.py" "$@" > /dev/null 2> "$stage/chains.err" && [ -f "$stage/focus-chains.json" ]; then
+        # GitHub out: the dispatcher printed one pause line, so the dispositions are unknown, not empty, and the last good file stays
+        dispo_pause=$(grep -m 1 -E '^# (quota-pause|gh-stall) ' "$stage/dispositions.txt" 2>/dev/null)  # swallow-ok: no file is no pause
+        if [ -n "$dispo_pause" ]; then
+            echo "focus-refresh: ${dispo_pause#\# }; focus-chains.json is as it was" >&2
+        elif bounded 60 python3 -I "$HERE/chain-render.py" "$@" > /dev/null 2> "$stage/chains.err" && [ -f "$stage/focus-chains.json" ]; then
             CHAINS_NEW="$stage/focus-chains.json"
             # swallow-ok: an unreadable drain row leaves the unchained count empty
             DRAIN_UNCHAINED=$(python3 -I -c 'import json, re, sys

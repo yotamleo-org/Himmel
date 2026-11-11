@@ -2310,7 +2310,8 @@ fi
 # orphans-wip=<n[:KEY,...]|?|skip>: In Progress / In Review / IN CI tickets with no
 # worker, cloud session or open PR holding them (an IN CI one a merged PR cites counts too). next-dispatchable.sh --resume-only owns the
 # derivation from the Jira mirror (one `gh pr list`, no per-PR diff). Keys are named for
-# n <= 5. A failed PR read is `?` (not an all-clear); no mirror or helper reads skip.
+# n <= 5. A failed PR read, or a scan the dispatcher paused on GitHub quota (`# quota-pause` or
+# `# gh-stall`), is `?` (not an all-clear); no mirror or helper reads skip.
 # The scan takes 35 s on a busy fleet, so a detached refresh fills a cache every
 # TICK_ORPHANS_MIN_SECS (default 300) and the tick reads it with orphans-wip-age=<n>s. A missing
 # or corrupt cache, or one past TICK_ORPHANS_TTL (default 1800), is `?`. A ticket a worker took
@@ -2332,7 +2333,7 @@ if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
         if [ -n "$ow_age" ] && [ "$ow_age" -lt "$ow_ttl" ]; then
             nd_out="$(sed 1d "$ow_base.rows")"
             case "$nd_out" in
-                *'open PRs unknown'*|*'live workers unknown'*|*'merged PRs unknown'*) orphans_wip='?' ;;
+                *'open PRs unknown'*|*'live workers unknown'*|*'merged PRs unknown'*|*'# quota-pause '*|*'# gh-stall '*) orphans_wip='?' ;;
                 *)
                     nd_rows="$(printf '%s\n' "$nd_out" | awk -F'\t' -v owners="$owner_keys" '($1 == "RESUME" || $1 == "MERGED-NOT-CLOSED") && index(owners, " " $2 " ") == 0')"
                     nd_keys="$(printf '%s\n' "$nd_rows" | awk -F'\t' 'NF { print $2 }' | paste -sd, -)"
