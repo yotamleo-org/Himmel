@@ -187,7 +187,10 @@ async function selfMatches(pid: number, env: Record<string, string | undefined>)
     });
   } catch { return false; }
 }
-// the inventory's raw listing: started as soon as the census answers, so it runs beside the session reads
+function startEarly<T>(p: Promise<T>): Promise<T> {
+  p.catch(() => undefined);
+  return p;
+}
 function orphanListOf(opts: { script: string; env: Record<string, string | undefined> }): Promise<string | null> {
   const script = opts.env.CONFIG_UI_ORPHAN_LOOPS || join(dirname(opts.script), "../handover/chief-kit/orphan-loops.sh");
   return new Promise<string | null>((ok) => {
@@ -497,18 +500,13 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       }
     } catch { /* malformed or unreadable manifest: no edge */ }
   }
-  // Steps that do not depend on the session rows start now and are awaited where their answer is used, so a poll waits for the
-  // longest of them, not their sum: the bus replay (waits at most its own limit), the orphan listing, the cloud rows.
-  const busP = busOf(busRootOf(opts.env, opts.home), opts.env), orphanListP = orphanListOf(opts), cloudP = cloudRows(census.cloudRoutes ?? [], opts.env, opts.now);
-  for (const p of [busP, orphanListP, cloudP]) p.catch(() => undefined); // awaited below; a rejection while another step is awaited is not unhandled
-  // The archived chief docs are read beside the session rows. A doc whose name a live row holds is dropped when both are done.
+  const busP = startEarly(busOf(busRootOf(opts.env, opts.home), opts.env)), orphanListP = startEarly(orphanListOf(opts)), cloudP = startEarly(cloudRows(census.cloudRoutes ?? [], opts.env, opts.now));
   const archived: [string, string][] = [];
   for (const file of census.consoleDocs ?? []) {
     const name = plain(basename(file, ".md"));
     if (name) archived.push([file, name]);
   }
-  // The station keeps hundreds of archived chief docs, each read and lock-checked (a bash process): a bounded pool, never one at a time.
-  const builtP = mapLimit(archived, CONSOLE_DOC_CONCURRENCY, async ([file, name]): Promise<FleetRow | null> => {
+  const builtP = startEarly(mapLimit(archived, CONSOLE_DOC_CONCURRENCY, async ([file, name]): Promise<FleetRow | null> => {
     try {
       const s = await stat(file);
       if (opts.now - s.mtimeMs > 72 * RECENT_MS) return null;
@@ -523,9 +521,8 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
         lock, cadence: null, lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
         marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS, description: "",
       };
-    } catch { return null; /* archived console moved or unreadable */ }
-  });
-  builtP.catch(() => undefined);
+    } catch { return null; }
+  }));
   const seen = new Set<string>();
   const rows = await Promise.all(census.sessions.map(async (c): Promise<FleetRow | null> => {
     let launch: Record<string, string> = {};

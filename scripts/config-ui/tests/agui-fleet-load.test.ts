@@ -104,9 +104,6 @@ test("a message sent after the cached read shows on a later poll", async () => {
   expect(seen).toBe(BUS_LOGS + 1);
 }, 60_000);
 
-// The steady budget the fleet-load ticket states for GET /api/agui/fleet. The first poll of a fake tree must meet it too: the steps that do
-// not depend on one another (the census, the archived-doc lock checks, the orphan listing, the bus replay wait, the redaction
-// literals' synchronous secrets resolver) overlap, so the wait is the longest of them, not their sum.
 const FLEET_BUDGET_MS = 3000;
 test("a first poll of a tree with slow independent steps is under the stated budget: the steps overlap", async () => {
   const t = tree(32, "0.8");
@@ -118,7 +115,8 @@ test("a first poll of a tree with slow independent steps is under the stated bud
   writeFileSync(orphans, "#!/bin/sh\nsleep 1\n");
   chmodSync(orphans, 0o755);
   const k = stubKeyring(t.dir);
-  writeFileSync(join(t.dir, "kbin", "secret-tool"), "#!/bin/sh\nsleep 0.01\nexit 1\n"); // every secret's keyring lookup is slow: the resolver takes about half a second
+  const slowSecretTool = "#!/bin/sh\nsleep 0.01\nexit 1\n";
+  writeFileSync(join(t.dir, "kbin", "secret-tool"), slowSecretTool);
   const blank = Object.fromEntries([...secretsManifest.secrets, ...secretsManifest.stationSecrets].map((s: { name: string }) => [s.name, ""]));
   const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, fleetScript: t.script, env: { ...blank, ...k.env, HIMMEL_SECRETS_KEYRING: "", HOME: t.dir, XDG_STATE_HOME: state, CONFIG_UI_ORPHAN_LOOPS: orphans, CONFIG_UI_IDLE_MS: "60000" } });
   cleanups.push(() => s.stop());

@@ -651,15 +651,14 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     async (locks: Lock[], spans: Span[]): Promise<Live> => ({ ...(await liveBoards(handover, locks, spans, fileReader)), from: "file" });
   let fleetRun: ReturnType<typeof readFleet> | null = null;
   // The page polls every 5 s and every navigation asks too: requests that arrive during a read share it (never a cached body).
+  const warmSecretLiterals = (): void => { secretLiterals(); };
   function fleetOnce(): ReturnType<typeof readFleet> {
     if (fleetRun) return fleetRun;
     fleetRun = readFleet({
       script: opts.fleetScript ?? join(CHECKOUT, "scripts/config-ui/fleet.sh"), env, home: env.HOME || homedir(), now: now(),
       redact: (v) => String(redactOut(v)),
     }).finally(() => { fleetRun = null; });
-    // The read has started its census child; the redaction literals' secrets resolver is a synchronous child that takes about
-    // half a second whenever the 5 s memo has expired (nearly every poll). Run it now, beside the census, not in the middle of the rows.
-    secretLiterals();
+    warmSecretLiterals();
     return fleetRun;
   }
   async function route(req: Request): Promise<Response> {
