@@ -60,6 +60,7 @@ r=""; for v in CR_TARGET_PR CR_TARGET_HEAD CR_TARGET_BRANCH CRITIC_KNOWN_FINDING
     if [ -n "${!v+x}" ]; then r="$r $v=${!v}"; else r="$r $v=unset"; fi; done
 printf '%s\n' "${r# }" > "$LOG/critic.env"
 cat > "$LOG/critic.stdin"
+sleep "${STUB_CRIT_SLEEP:-0}"
 rc="${STUB_CRIT_RC:-0}"
 case "$rc" in 0|4) ;; *) exit "$rc" ;; esac
 [ -z "${STUB_CRIT_OUT:-}" ] || printf '%s\n' "$STUB_CRIT_OUT"
@@ -155,13 +156,20 @@ expect_none "T3.2 no CodeRabbit status" 6
 has "$err" "CodeRabbit" "T3.2 the refusal names CodeRabbit"
 eq "$(called)" no "T3.2 no critic call"
 # T1.59's four fixtures, each with its own one-variable mutation check (drop that -u; the row must turn).
-MUT="$tmp/mut.sh"
-cr_case() { # label env-assignment statuses vars-to-drop
+# The mutant sits beside the audit in the anchor, so it loads the same libraries and stubs.
+MUT="$A/scripts/cr/outside-security-audit-mut.sh"
+# mutate <label> <sed program> <VAR=value ...>: the mutant must differ and must write a row.
+mutate() {
+    local label="$1" prog="$2" keep="$AUDIT"; shift 2
+    sed "$prog" "$AUDIT" > "$MUT"
+    if cmp -s "$AUDIT" "$MUT"; then fail "T3.2 $label: the mutation changed nothing"; rm -f "$MUT"; return; fi
+    reset; AUDIT="$MUT"; audit "$@"; AUDIT="$keep"; rm -f "$MUT"
+    eq "$rc/$(audits)" "0/1" "T3.2 $label: the mutant passes stage 1 and writes a row, so the row is not hollow"
+}
+cr_case() { # label env-assignment statuses var-to-drop
     reset; audit "$2" STUB_CR_STATUSES="$3"
     expect_none "T3.2 $1" 6
-    sed "s/ -u $4 / /; s/ -u ${5:-NONE} / /" "$AUDIT" > "$MUT"
-    reset; local keep="$AUDIT"; AUDIT="$MUT"; audit "$2" STUB_CR_STATUSES="$3"; AUDIT="$keep"
-    if [ "$rc" = 6 ]; then fail "T3.2 $1: mutation (drop -u $4${5:+ and $5}) stays exit 6, so the row is hollow"; else pass "T3.2 $1: mutation (drop -u $4${5:+ and $5}) turns the row"; fi
+    mutate "$1: mutation (drop -u $4)" "s/ -u $4 / /" "$2" STUB_CR_STATUSES="$3"
 }
 cp "$AUDIT" "$tmp/pristine.sh"
 cr_case "an exported CR_OK_DESC_RE does not widen a Review in progress" CR_OK_DESC_RE=. "[$(cr_row 136622811 CodeRabbit success 'Review in progress')]" CR_OK_DESC_RE
@@ -169,9 +177,9 @@ cr_case "an exported CR_BOT_USER_ID does not pick a decoy status" CR_BOT_USER_ID
 cr_case "an exported CR_STATUS_CONTEXT does not pick a decoy context" CR_STATUS_CONTEXT=Decoy "[$(cr_row 136622811 CodeRabbit pending 'Review in progress'),$(cr_row 136622811 Decoy success 'Review completed')]" CR_STATUS_CONTEXT
 reset; audit CR_OK_DESC_RE=. CR_SKIP_DESC_RE=nomatch STUB_CR_STATUSES="[$(cr_row 136622811 CodeRabbit success 'Review skipped: automatic reviews are disabled')]"
 expect_none "T3.2 exported CR_OK_DESC_RE and CR_SKIP_DESC_RE do not pass a skip" 6
-sed "s/ -u CR_OK_DESC_RE / /; s/ -u CR_SKIP_DESC_RE / /" "$AUDIT" > "$MUT"
-reset; keep="$AUDIT"; AUDIT="$MUT"; audit CR_OK_DESC_RE=. CR_SKIP_DESC_RE=nomatch STUB_CR_STATUSES="[$(cr_row 136622811 CodeRabbit success 'Review skipped: automatic reviews are disabled')]"; AUDIT="$keep"
-if [ "$rc" = 6 ]; then fail "T3.2 skip pair: mutation (drop both -u) stays exit 6"; else pass "T3.2 skip pair: mutation (drop both -u) turns the row (a lone -u CR_SKIP_DESC_RE is not independently falsifiable)"; fi
+mutate "skip pair: mutation (drop both -u; a lone -u CR_SKIP_DESC_RE is not independently falsifiable)" \
+    "s/ -u CR_OK_DESC_RE / /; s/ -u CR_SKIP_DESC_RE / /" \
+    CR_OK_DESC_RE=. CR_SKIP_DESC_RE=nomatch STUB_CR_STATUSES="[$(cr_row 136622811 CodeRabbit success 'Review skipped: automatic reviews are disabled')]"
 eq "$(sha "$AUDIT")" "$(sha "$tmp/pristine.sh")" "T3.2 the mutation copies left the audit untouched"
 
 # --- T3.3 stage 1: CI and the lint surface; T3.22 the check-ci call --------------------------------------
@@ -221,6 +229,8 @@ h2 'echo "{}" > .mcp.json' "T3.15 H2 adds .mcp.json"
 h2 'mkdir -p .claude && echo "{}" > .claude/settings.json' "T3.15 H2 adds .claude/settings.json"
 h2 'mkdir -p sub && echo "x: 1" > sub/.coderabbit.yaml' "T3.15 H2 adds a .coderabbit.yaml (nested; the root one is lint surface, 16d)"
 h2 'mkdir -p sub && echo "x: 1" > sub/.coderabbit.yml' "T3.15 H2 adds a .coderabbit.yml (nested)"
+# shellcheck disable=SC2016  # the snippet expands inside newpr's eval
+h2 'd=$(printf "x\nq"); mkdir -p "$d" && echo "y=1" > "$d/.npmrc"' "T3.15 H2 an .npmrc under a directory whose name holds a newline"
 reset; newpr 'echo .coderabbit.yaml >> docs/a.md'
 audit; expect_row "T3.7 a file whose text names .coderabbit.yaml is no hit" pass ""
 
@@ -250,6 +260,7 @@ h4 "lock '\"resolved\":\"../b\",\"link\":true' > package-lock.json" "T3.9 H4 a p
 h4 "lock '\"resolved\":\"https://evil.example/b-1.0.0.tgz\"' > package-lock.json" "T3.9 H4 a package-lock http source on another host"
 h4 "printf '{\"lockfileVersion\":' > package-lock.json" "T3.15 H4 an unparsable package-lock.json"
 h4 "printf '{\n  \"packages\": {\n    \"b\": [\"b@github:evil/b#abc\", \"\", {}, \"\"],\n  }\n}\n' > bun.lock" "T3.9 H4 a bun.lock git source"
+h4 "d=\$(printf 'd\303\274'); mkdir -p \"\$d\" && printf '\"b\": [\"b@github:evil/b#abc\", \"\", {}, \"\"],\n' > \"\$d/bun.lock\"" "T3.9 H4 a bun.lock git source under a path git quotes"
 h4 "printf '[[package]]\nname = \"b\"\nsource = { git = \"https://evil.example/b.git\" }\n' > uv.lock" "T3.9 H4 a uv.lock git source"
 reset; newpr "lock '\"resolved\":\"https://registry.npmjs.org/b/-/b-1.0.0.tgz\"' > package-lock.json"
 audit; expect_row "T3.9 a package-lock entry on the default registry is no hit" pass ""
@@ -316,6 +327,15 @@ done
 printf '# a changed perspective\n' > "$PERSP"; rm -f "$LOG"/*; audit
 eq "$rc/$(audits)/$(called)" "0/2/yes" "T3.17 under a changed perspective sha the audit runs"
 printf '# fixture outside-security perspective\n' > "$PERSP"
+
+# --- one audit per head at a time ---------------------------------------------------------------------------------
+reset; newpr 'echo locked >> f.txt'
+race() { (cd "$P" && env HOME="$tmp/home" PATH="$tmp/bin:$PATH" LOG="$LOG" STUB_OID="$H" STUB_CR_STATUSES="$CR_OK" STUB_CRIT_SLEEP=2 STUB_CRIT_I="$1" \
+    bash "$AUDIT" --pr 7 --head "$H" >/dev/null 2>&1; echo "$?" > "$tmp/race.$1"); }
+race 0 & r0=$!; race 1 & r1=$!; wait "$r0" "$r1"
+eq "$(sort "$tmp/race.0" "$tmp/race.1" | tr '\n' ' ')" "0 8 " "two concurrent runs at one head: one writes, the other finds its row (exit 8)"
+eq "$(audits)" 1 "two concurrent runs at one head: one row"
+eq "$(jq -c 'select(.kind == "score")' "$LEDGER" | wc -l | tr -d ' ')" 1 "two concurrent runs at one head: one critic call"
 
 # --- T3.21 an exit-7 run leaves the earlier report alone ------------------------------------------------------------
 reset; newpr 'echo twentyone >> f.txt'
