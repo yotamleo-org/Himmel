@@ -1647,6 +1647,8 @@ rc=0; out=$(run_cron3 --help 2>&1) || rc=$?
 assert_rc "--help exits 0" 0 "$rc"
 assert_contains "--help describes --api-account" "--api-account" "$out"
 assert_not_contains "--help prints no ruling number" "decision 525" "$out"
+if grepq "$out" -i -E -- 'decision|HIMMEL-[0-9]'; then fail "--help text carries no decision word and no ticket key" "$(grep -n -i -E 'decision|HIMMEL-[0-9]' <<< "$out")"; else pass "--help text carries no decision word and no ticket key"; fi
+assert_contains "--help says the Luna graph tasks are off unless armed with --luna-only" "arm --luna-only" "$out"
 
 echo "TEST: arm --with-luna-semantic needs --api-account A|B|C and bakes it into the luna payload"
 rc=0; out=$(run_cron3 arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic 2>&1) || rc=$?
@@ -1963,6 +1965,10 @@ if rows_absent $LUNA_ROWS; then pass "bare arm registers no Luna row"; else fail
 if [ ! -e "$LDIR/graphmap-luna.sh" ] && [ ! -e "$LDIR/graphmap-ast-luna.sh" ] && [ ! -e "$LDIR/graphmap-semantic-luna.sh" ]; then pass "bare arm writes no Luna runner"; else fail "bare arm wrote a Luna runner" "$(ls "$LDIR")"; fi
 assert_not_contains "bare arm banner does not list a Luna task" "HIMMEL-GraphMap-Luna" "$out"
 assert_contains "bare arm banner says how to opt Luna in" "arm --luna-only" "$out"
+assert_contains "bare arm banner names the exact opt-in command" "bash scripts/luna/graphmap-cadence.sh arm --luna-only" "$out"
+hint=$(grep -A1 'Luna graph tasks' <<< "$out")
+assert_contains "bare arm banner has the Luna opt-in hint" "Luna graph tasks" "$hint"
+if grepq "$hint" -i -E -- 'decision|HIMMEL-[0-9]'; then fail "bare arm opt-in hint carries no decision word and no ticket key" "$hint"; else pass "bare arm opt-in hint carries no decision word and no ticket key"; fi
 assert_registry "bare arm registers no Luna name" 'all(.expected_tasks[]; (. | test("Luna")) | not)'
 assert_registry "bare arm registers no Luna flow" 'all(.flows[]; (.name | test("luna")) | not)'
 assert_registry "bare arm registers the himmel flows" '[.flows[] | select(.name == "graphmap-himmel" or .name == "graphmap-ast-himmel")] | length == 2'

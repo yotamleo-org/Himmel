@@ -388,9 +388,9 @@ usage-preflight.sh inside refresh-graph-map.sh). The structural pair never
 opens a claude session; the semantic pair's claude-cli fire does (headless).
 
 Subcommands:
-  arm      Register the HIMMEL cadence tasks. The Luna graph tasks are OFF by default
-           (decision 449): they are registered only by `arm --luna-only`, and a bare
-           arm neither adds nor replaces them. Dedup-guarded: refuses (rc=3) if a
+  arm      Register the HIMMEL cadence tasks. The Luna graph tasks are off unless you
+           run `arm --luna-only`; a bare arm neither adds nor replaces them.
+           Dedup-guarded: refuses (rc=3) if a
            task in the scope being armed already exists; --force replaces.
   status   Show which cadence tasks are armed (+ next run time).
   disarm   Remove every cadence task (idempotent; rc=0 if nothing was armed).
@@ -1917,7 +1917,7 @@ cmd_arm() {
     ast_lines="$ast_himmel_line"
     if [ "$LUNA_ONLY" -eq 0 ]; then
         # Luna is off by default (decision 449): a bare arm never registers it; say how to opt in.
-        luna_hint="  The Luna graph tasks are OFF by default (decision 449); opt in with:
+        luna_hint="  The Luna graph tasks are off unless you arm them with --luna-only:
       bash scripts/luna/graphmap-cadence.sh arm --luna-only"
     else
         if [ "$AST_ONLY" -eq 1 ]; then
