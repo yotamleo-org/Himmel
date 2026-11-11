@@ -42,12 +42,33 @@ mk 116 "To Do" "To Do" '[]' '[]' '["relates to HIMMEL-110"]'
 
 cat > "$WORK/gh" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$PS_GH_LOG"
+printf '%s NMF=%s\n' "$*" "${GH_READ_NO_MAIN_FALLBACK:-}" >> "$PS_GH_LOG"
 [ ! -f "$PS_GH_FAIL" ] || exit 1
-printf '5001\tMERGED\n5002\tOPEN\n5004\tCLOSED\n'
+case "$*" in
+    *"api graphql"*)
+        [ ! -f "$PS_GH_REPO_NULL" ] || { printf '{"data":{"repository":null}}\n'; exit 0; }
+        out=""; nf=""
+        for n in $(printf '%s\n' "$*" | grep -oE 'issueOrPullRequest\(number:[0-9]+\)' | grep -oE '[0-9]+'); do
+            case "$n" in
+                5001|999002|99999) v='{"__typename":"PullRequest","state":"MERGED"}' ;;
+                5002) v='{"__typename":"PullRequest","state":"OPEN"}' ;;
+                5004|999001) v='{"__typename":"PullRequest","state":"CLOSED"}' ;;
+                999005) v='{"__typename":"Issue","state":"OPEN"}' ;;
+                *) v=null; nf="$n" ;;
+            esac
+            out="${out:+$out,}\"p$n\":$v"
+        done
+        if [ -n "$nf" ]; then
+            printf '{"data":{"repository":{%s}},"errors":[{"type":"NOT_FOUND"}]}\n' "$out"
+            printf 'gh: Could not resolve to an issue or pull request with the number of %s.\n' "$nf" >&2
+            exit 1
+        fi
+        printf '{"data":{"repository":{%s}}}\n' "$out" ;;
+    *) printf '5001\tMERGED\n5002\tOPEN\n5004\tCLOSED\n' ;;
+esac
 EOF
 chmod +x "$WORK/gh"
-export PS_GH_LOG="$WORK/gh.log" PS_GH_FAIL="$WORK/gh.fail" NEXT_DISPATCH_MIRROR="$M" TICK_GH_CMD="$WORK/gh" HIMMEL_QUOTA_DIR="$WORK/quota"
+export PS_GH_LOG="$WORK/gh.log" PS_GH_FAIL="$WORK/gh.fail" PS_GH_REPO_NULL="$WORK/gh.reponull" NEXT_DISPATCH_MIRROR="$M" TICK_GH_CMD="$WORK/gh" HIMMEL_QUOTA_DIR="$WORK/quota"
 
 doc() { # <name> <disposition line>...: a chief doc whose Live state holds those lines
     local f="$WORK/$1.md"; shift
@@ -99,6 +120,74 @@ check 'stale keys are named and an unreadable target adds ?' '2:HIMMEL-101,HIMME
 before="$(cat "$d")"
 field pool-stale "$d" > /dev/null
 check 'the chief doc is never rewritten' "$before" "$(cat "$d")"
+
+out() { TOKEN='' bash "$SUT" --pool-stale --doc "$1" 2>/dev/null; }
+l="$pd HIMMEL-131 question after PR #999001 the doctor edit, ZZ 11-09"; d="$(doc r1 "$l")"
+check 'R1 a PR the old list does not return is judged' '1:HIMMEL-131' "$(field pool-stale "$d")"
+p='^STALE-DISPOSITION HIMMEL-131 line=[0-9a-f]\{12\} PR#999001=CLOSED$'
+check 'R1 its detail line names the PR and its state' 1 "$(out "$d" | grep -c "$p")"
+l="$pd HIMMEL-132 question after HIMMEL-901 drafted in ZA-1, ZZ 11-11"; d="$(doc r2 "$l")"
+check 'R2 a wave label is text, not a ticket' '1:HIMMEL-132' "$(field pool-stale "$d")"
+p='^STALE-DISPOSITION HIMMEL-132 line=[0-9a-f]\{12\} HIMMEL-901=Done$'
+check 'R2 its detail line names only the project key' 1 "$(out "$d" | grep -c "$p")"
+l="$pd HIMMEL-133 question waits on PR 999777"; l2="$pd HIMMEL-134 question waits on PR 999001"; d="$(doc r3 "$l" "$l2")"
+check 'R3 a gh exit 1 with partial data still judges the other PRs' '1:HIMMEL-134,?' "$(field pool-stale "$d")"
+l="$pd HIMMEL-135 question waits on PR 999005"; d="$(doc r3b "$l")"
+check 'R3b an issue number reads ?, never stale' '?' "$(field pool-stale "$d")"
+: > "$PS_GH_REPO_NULL"
+l="$pd HIMMEL-131 question after PR #999001"; d="$(doc r3c "$l")"
+r3c="$(TOKEN='' bash "$SUT" --pool-stale --doc "$d" 2>/dev/null)"; r3c_rc=$?
+check 'R3c a null repository reads every PR ?' '?' "$(printf '%s\n' "$r3c" | sed -n 's/^pool-stale=//p')"
+check 'R3c the run still prints residual-unversioned= and exits 0' '1 0' "$(printf '%s\n' "$r3c" | grep -c '^residual-unversioned=') $r3c_rc"
+rm -f "$PS_GH_REPO_NULL"
+: > "$PS_GH_LOG"
+l="$pd HIMMEL-137 question waits on PR #999001"; l2="$pd HIMMEL-138 question waits on PR #999001 and #999002"; d="$(doc r4 "$l" "$l2")"
+field pool-stale "$d" > /dev/null
+check 'R4 one query names every PR once' '1' "$(wc -l < "$PS_GH_LOG" | tr -d ' ')"
+check 'R4 the query names each PR alias once' '1 1' "$(grep -o 'p999001:' "$PS_GH_LOG" | wc -l | tr -d ' ') $(grep -o 'p999002:' "$PS_GH_LOG" | wc -l | tr -d ' ')"
+# shellcheck disable=SC2016  # $owner and $name are literal GraphQL variable names, not shell expansions
+p='-F owner={owner} -F name={repo} .*query(\$owner:String!,\$name:String!)'
+check 'R4 owner and repo travel as gh placeholders and query variables' 1 "$(grep -c -- "$p" "$PS_GH_LOG")"
+check 'R4 the read never falls back to the main token on a rate limit' 1 "$(grep -c 'NMF=1$' "$PS_GH_LOG")"
+v5='HIMMEL-136 question waits on PR #999002 and #99999, after HIMMEL-901'
+h5="$(printf '%s' "$v5" | sha256sum | cut -c1-12)"
+d="$(doc r5 "$pd $v5")"
+check 'R5 the detail line names every target, numerically sorted, with the line hash' "STALE-DISPOSITION HIMMEL-136 line=$h5 HIMMEL-901=Done PR#99999=MERGED PR#999002=MERGED" "$(out "$d" | grep '^STALE-DISPOSITION')"
+
+RB="$WORK/routerbin"; mkdir -p "$RB" "$WORK/envroot" "$WORK/rhome" "$WORK/rcfg"
+printf 'himmel_github_token_vm2=dummyreadtoken\n' > "$WORK/envroot/.env"
+cat > "$RB/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s TOKEN=%s\n' "$*" "${GH_TOKEN:-}" >> "$PS_ROUTER_LOG"
+printf '{"data":{"repository":{"p999777":null}},"errors":[{"type":"NOT_FOUND"}]}\n'
+if [ -n "${PS_ROUTER_PRSHAPE:-}" ]; then
+    printf 'gh: Could not resolve to a PullRequest with the number of 999777.\n' >&2
+else
+    printf 'gh: Could not resolve to an issue or pull request with the number of 999777.\n' >&2
+fi
+exit 1
+EOF
+chmod +x "$RB/gh"
+export PS_ROUTER_LOG="$WORK/router.log"
+rt() {
+    (
+        unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY GH_READ_QUIET GH_READ_OFF
+        PATH="$RB:$PATH" GH_READ_ENV_ROOT="$WORK/envroot" HOME="$WORK/rhome" GH_CONFIG_DIR="$WORK/rcfg" \
+            HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$WORK/rcfg" TICK_GH_CMD='' TOKEN='' "$@"
+    )
+}
+l="$pd HIMMEL-139 question waits on PR 999777"; d="$(doc r6 "$l")"
+: > "$PS_ROUTER_LOG"
+r6="$(rt bash "$SUT" --pool-stale --doc "$d" 2>/dev/null | sed -n 's/^pool-stale=//p')"
+check 'R6 a NOT_FOUND number through the router makes one call' '1' "$(wc -l < "$PS_ROUTER_LOG" | tr -d ' ')"
+check 'R6 that call rides the read token' 1 "$(grep -c 'TOKEN=dummyreadtoken$' "$PS_ROUTER_LOG")"
+check 'R6 the call is an api graphql query for the issueOrPullRequest alias' 1 "$(grep -c '^api graphql .*p999777:issueOrPullRequest(number:999777)' "$PS_ROUTER_LOG")"
+check 'R6 the unread PR reads ?' '?' "$r6"
+: > "$PS_ROUTER_LOG"
+rt env PS_ROUTER_PRSHAPE=1 bash "$HERE/../../lib/gh-read.sh" api graphql -f 'query=query{repository(owner:"o",name:"r"){p999777:pullRequest(number:999777){state}}}' > /dev/null 2>&1
+check 'R6c the router retries a pullRequest NOT_FOUND on the main token (why D1 asks for issueOrPullRequest)' '2 TOKEN=' "$(wc -l < "$PS_ROUTER_LOG" | tr -d ' ') $(sed -n '2s/.* \(TOKEN=.*\)$/\1/p' "$PS_ROUTER_LOG")"
+r6d="$(rt env PS_ROUTER_PRSHAPE=1 bash "$SUT" --pool-stale --doc "$d" 2>&1 >/dev/null)"
+check 'R6d a router warning reaches the tick stderr' 1 "$(printf '%s\n' "$r6d" | grep -c '^gh-read: read token refused')"
 
 d="$(doc none 'priority: 110')"
 check 'a doc with no pool-disposition line reports 0' '0' "$(field pool-stale "$d")"

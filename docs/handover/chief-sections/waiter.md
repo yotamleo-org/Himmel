@@ -83,9 +83,13 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
 
     **`WAKE pool-stale <KEYS>`**: the tick re-checks every Live-state
     `pool-disposition: KEY slice|close|question <target>` line whose target names a
-    ticket key or `PR <n>` and reports `pool-stale=<n>:<KEY>,...` when every named
-    blocker is Done (Jira mirror) or its PR merged or closed (one batched `gh pr list`); `?` in the
-    list marks a target it could not read, never a stale one. End a ruling with
+    ticket key of the mirror's project or `PR <n>` and reports `pool-stale=<n>:<KEY>,...` when every named
+    blocker is Done (Jira mirror) or its PR merged or closed. The PR states come from one GraphQL
+    query that names exactly the cited PR numbers, however old, on the read token; a wave label such as
+    `ZA-1` is text, not a ticket. `?` in the list marks a target it could not read (an issue number, a
+    number GitHub cannot resolve, a failed read), never a stale one. `tick.sh --pool-stale --doc <doc>`
+    also prints one `STALE-DISPOSITION <KEY> line=<hash> <target>=<state> ...` line per stale key,
+    naming every target of the line, so you can see what is gone. End a ruling with
     `@<sha>`, the head you ruled at: once origin/main is more than
     `TICK_POOL_MAX_MERGES` (30) commits past it, the line is stale whatever its blockers say,
     so a ruling copied forward from a predecessor expires; an unknown sha prints `?`. The waiter wakes once
