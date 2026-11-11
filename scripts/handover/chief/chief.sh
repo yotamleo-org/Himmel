@@ -605,6 +605,51 @@ judge_calls_now() {
     esac
 }
 
+# The successor's owed judges: every judge-ro child this session dispatched (the
+# subagent registry live-subagents.sh reads) whose qid has no verdict file under the
+# verdicts/ directory write-verdict.sh writes (go-gate.sh's root and scope). The qid
+# is read from the generator's description `Judge <qid> on <KEY>`; a judge-ro child
+# with another description is listed unknown. Fails open to a note.
+judges_owed_now() {
+    local sid="${CLAUDE_CODE_SESSION_ID:-}" projects="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
+    local vdir meta fields atype desc aid qid f written n=0 parent=""
+    case "$sid" in
+        [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+        *) echo "JUDGE-OWED: unavailable (no session id: list this session's judge-ro calls with no verdicts/<qid>/ file by hand)"; return 0 ;;
+    esac
+    for meta in "$projects"/*/"$sid".jsonl; do
+        [ -f "$meta" ] || continue
+        [ -z "$parent" ] || { echo "JUDGE-OWED: unavailable (more than one transcript for session $sid)"; return 0; }
+        parent="$meta"
+    done
+    [ -n "$parent" ] || { echo "JUDGE-OWED: unavailable (no transcript for session $sid under $projects)"; return 0; }
+    vdir="$(. "$HERE/../../lib/go-gate.sh" && r="$(go_resolve_root "$repo")" && s="$(go_verdict_scope "$repo")" && printf '%s/%s/verdicts' "$r" "$s")" \
+        || { echo "JUDGE-OWED: unavailable (cannot resolve the verdicts directory for $repo)"; return 0; }
+    for meta in "${parent%.jsonl}"/subagents/agent-*.meta.json; do
+        [ -f "$meta" ] || continue
+        # swallow-ok: a failed read prints the unavailable line below, never a value
+        fields="$(jq -r '[.agentType // "", .description // ""] | @tsv' "$meta" 2>/dev/null)" \
+            || { echo "JUDGE-OWED: unavailable (unreadable registry entry $meta)"; return 0; }
+        IFS="$(printf '\t')" read -r atype desc <<EOF_META
+$fields
+EOF_META
+        [ "$atype" = judge-ro ] || continue
+        aid="$(basename "$meta" .meta.json)"; aid="${aid#agent-}"
+        qid="$(printf '%s\n' "$desc" | sed -n 's/^Judge \([A-Za-z0-9][A-Za-z0-9._-]*\) on [A-Z][A-Z0-9]*-[0-9][0-9]*$/\1/p')"
+        if [ -z "$qid" ]; then
+            printf 'JUDGE-OWED unknown (%s: %s) — brief: %s\n' "$aid" "$desc" "${meta%.meta.json}.jsonl"
+            n=$((n + 1))
+            continue
+        fi
+        written=""
+        for f in "$vdir/$qid"/*.md; do [ -f "$f" ] && { written=1; break; }; done
+        [ -z "$written" ] || continue
+        printf 'JUDGE-OWED %s — %s — brief: %s\n' "$qid" "$desc" "${meta%.meta.json}.jsonl"
+        n=$((n + 1))
+    done
+    [ "$n" -gt 0 ] || echo "JUDGE-OWED: none"
+}
+
 # The HANDOFF's "Wrapped with open PR" section: every fleet-manifest worker
 # whose last marker is WRAPPED and whose doc still names a PR that is open, so
 # the successor cannot drop it when the carry-forward is hand-written prose.
@@ -2327,7 +2372,17 @@ same batch as step 8, which is one call each:
 
 \`\`\`text
 $out
-\`\`\`" awk '{ print } !d && /^## ACTION ZERO/ { print ""; print ENVIRON["AZ_BLOCK"]; d = 1 }
+\`\`\`
+
+#### Judges owed: judge-ro calls of the predecessor with no verdict file at \`next\`
+
+For each \`JUDGE-OWED <qid>\` line, look in \`verdicts/<qid>/\` again (a judge still
+running at \`next\` may have written it since); if it is still empty, re-dispatch the
+judge from its brief (the first prompt in the transcript the line names) through
+\`gen-judge-brief.py --dispatch-json\`, which mints a fresh nonce. An \`unknown\` line
+is a judge-ro call whose description names no qid: read its brief and re-ask it by hand.
+
+$(judges_owed_now)" awk '{ print } !d && /^## ACTION ZERO/ { print ""; print ENVIRON["AZ_BLOCK"]; d = 1 }
         END { if (!d) { print ""; print ENVIRON["AZ_BLOCK"] } }' "$doc" > "$doc.az" \
         || { rm -f "$doc.az"; err "could not write the pre-computed ACTION ZERO into $doc"; return 0; }
     mv "$doc.az" "$doc"

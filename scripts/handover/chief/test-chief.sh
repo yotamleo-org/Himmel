@@ -3876,4 +3876,35 @@ next95 p96
 check "96c the HANDOFF the writer renders names no missing script path" "$(missing_script_paths "$(handoff95 p96)")" ""
 check "96c the chief docs name no missing script path" "$(missing_script_paths "$REPO_REAL/docs/handover/chief-handoff-template.md" "$REPO_REAL/docs/handover/chief-template.md" "$REPO_REAL/docs/handover/running-a-chief.md" "$REPO_REAL/docs/handover/worker-preface.md" "$REPO_REAL/docs/handover/worker-brief-template.md" "$REPO_REAL"/docs/handover/chief-sections/*.md "$HERE/chief.sh")" ""
 
+# --- 97: next lists, in the successor's ACTION ZERO, every judge-ro child of the
+# outgoing session whose qid has no verdict file as JUDGE-OWED <qid>; a qid with a
+# verdict file (control) and a non-judge child are not listed, and a judge-ro child
+# whose description names no qid is listed as unknown, never dropped.
+cfg97="$tmp/cfg97"; sid97="0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+reg97="$cfg97/projects/-fixture/$sid97/subagents"
+mkdir -p "$reg97"
+: > "$cfg97/projects/-fixture/$sid97.jsonl"
+printf '{"agentType":"judge-ro","description":"Judge j9844a on DEMO-9844","toolUseId":"toolu_a"}\n' > "$reg97/agent-a97a.meta.json"
+printf '{"agentType":"judge-ro","description":"Judge j9844b on DEMO-9844","toolUseId":"toolu_b"}\n' > "$reg97/agent-a97b.meta.json"
+printf '{"agentType":"judge-ro","description":"Delta judge PR 3579","toolUseId":"toolu_c"}\n' > "$reg97/agent-a97c.meta.json"
+printf '{"agentType":"Explore","description":"Judge j9844d on DEMO-9844","toolUseId":"toolu_d"}\n' > "$reg97/agent-a97d.meta.json"
+mkdir -p "$root/tester/repo/verdicts/j9844b"
+printf '# VERDICT j9844b - judge\n' > "$root/tester/repo/verdicts/j9844b/judge.md"
+out97="$(chief new --bucket p97)"
+CLAUDE_CONFIG_DIR="$cfg97" CLAUDE_CODE_SESSION_ID="$sid97" chief next --bucket p97 >/dev/null 2>&1
+doc97B="$root/tester/p97/DEMO-nextleg-${today}B-chief.md"
+check "97 a judge qid dispatched with no verdict file is listed JUDGE-OWED" "$(grep -c '^JUDGE-OWED j9844a — Judge j9844a on DEMO-9844 — brief: ' "$doc97B")" "1"
+check "97 control: a judge qid with a verdict file is not listed" "$(grep -c 'JUDGE-OWED j9844b' "$doc97B")" "0"
+check "97 a judge-ro child with no qid is listed unknown" "$(grep -c '^JUDGE-OWED unknown (a97c: Delta judge PR 3579)' "$doc97B")" "1"
+check "97 a child that is not judge-ro is not listed" "$(grep -c 'j9844d' "$doc97B")" "0"
+check "97 the owed list sits inside the pre-computed ACTION ZERO block" \
+    "$(awk '/^### Pre-computed by chief.sh next/ {b = NR} /^JUDGE-OWED j9844a / {o = NR} $0 == "## Live state" {c = NR} END {print (b && b < o && o < c) ? "yes" : "no"}' "$doc97B")" "yes"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/p97/DEMO-nextleg-${today}A-chief.md" "$(token_of "$out97")" >/dev/null 2>&1
+out97n="$(chief new --bucket p97none)"
+mkdir -p "$cfg97/projects/-fixture/0a1b2c3d-4e5f-4a6b-8c7d-000000000000"
+: > "$cfg97/projects/-fixture/0a1b2c3d-4e5f-4a6b-8c7d-000000000000.jsonl"
+CLAUDE_CONFIG_DIR="$cfg97" CLAUDE_CODE_SESSION_ID="0a1b2c3d-4e5f-4a6b-8c7d-000000000000" chief next --bucket p97none >/dev/null 2>&1
+check "97 a session with no judge child says none owed" "$(grep -c '^JUDGE-OWED: none$' "$root/tester/p97none/DEMO-nextleg-${today}B-chief.md")" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/p97none/DEMO-nextleg-${today}A-chief.md" "$(token_of "$out97n")" >/dev/null 2>&1
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
