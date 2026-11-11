@@ -622,6 +622,8 @@ def _resolve_hls(url: str, work: Path, deadline: float):
         for _u, p in pairs:
             p.unlink(missing_ok=True)
         ledger.write_text(listing, encoding="utf-8")
+    for _u, p in pairs:
+        p.with_name(p.name + ".part").unlink(missing_ok=True)   # a cut run's leftovers
     if long:
         (work / KEEP_MARK).touch()
     # Each curl run caps every file at its share of what is left of the budget,
