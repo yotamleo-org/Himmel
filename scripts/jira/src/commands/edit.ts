@@ -29,7 +29,6 @@ export interface EditOptions {
   phase?: string;
 }
 
-// The usage refusal of --phase (exit 2, before any request), or undefined when the flags are usable.
 export function phaseUsage(o: EditOptions): string | undefined {
   if (o.phase === undefined) return undefined;
   const names = `${PHASES.join(', ')} or none`;
@@ -322,7 +321,6 @@ function contractDiagnostics(t: Snapshot, body: BodyInput, sectors: readonly str
   return out;
 }
 
-// Returns the ticket's labels as read before the edit.
 async function checkEditContract(key: string, o: EditOptions): Promise<string[]> {
   const sectorId = sectorField();
   let got: { fields?: Record<string, unknown> };

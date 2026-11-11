@@ -1704,18 +1704,18 @@ cgo="$(cgrun absdesign)"; rc=$?
 [ "$rc" = 0 ] && pass "a label-only leg writing an absolute handover-root .md is a design leg (rc 0)" || fail "absolute design rc=$rc: $cgo"
 [ "$(cg_field absdesign HIMMEL-9440 bypass)" = design ] && pass "the absolute-path design leg appends one bypass row of kind design" || fail "absolute design row: $(cat "$(cg_log absdesign)" 2>/dev/null)"
 
-# ---- the brief's Leg kind line, the exact lines of fixtures/leg-kind-lines.txt ----
 LK_FIX="$HERE/fixtures/leg-kind-lines.txt"
 LK_DESIGN="$(sed -n 1p "$LK_FIX" 2>/dev/null)"; LK_BUILD="$(sed -n 2p "$LK_FIX" 2>/dev/null)"
 lk_lines() { grep -E '^> \*\*Leg kind:\*\*' "$1" 2>/dev/null; }
-lk_case() { # <name> <key> <writes> <expected line, empty for none> <what>
-    cg_mirror "$2" Task Medium '[]'
-    cg_workers "$1" "$2" "$3" ''
-    cgo="$(cgrun "$1")"; rc=$?
-    got="$(lk_lines "$(cg_brief "$1")")"
-    if [ "$rc" != 0 ]; then fail "$5 (rc=$rc): $cgo"
-    elif [ "$got" = "$4" ]; then pass "$5"
-    else fail "$5 (got '$got', want '$4')"; fi
+lk_case() {
+    local name="$1" key="$2" writes="$3" want="$4" what="$5"
+    cg_mirror "$key" Task Medium '[]'
+    cg_workers "$name" "$key" "$writes" ''
+    cgo="$(cgrun "$name")"; rc=$?
+    got="$(lk_lines "$(cg_brief "$name")")"
+    if [ "$rc" != 0 ]; then fail "$what (rc=$rc): $cgo"
+    elif [ "$got" = "$want" ]; then pass "$what"
+    else fail "$what (got '$got', want '$want')"; fi
 }
 lk_case lkdesign HIMMEL-9441 "$WORK/handovers/specs/lk-spec.md $WORK/handovers/specs/lk-plan.md" "$LK_DESIGN" "a leg writing two bucket .md files renders the fixture's design line"
 lk_case lkbuild HIMMEL-9442 "scripts/x.sh" "$LK_BUILD" "a leg writing scripts/x.sh renders the fixture's build line"

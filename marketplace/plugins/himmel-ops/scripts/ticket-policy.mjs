@@ -27,7 +27,6 @@ export function needsMetric(labels) {
   return (labels ?? []).some((l) => METRIC_LABEL.test(String(l).trim()));
 }
 
-/** The phase vocabulary, in order. A started ticket carries at most one `phase:<name>` label. */
 export const PHASES = ['design', 'ready', 'build', 'sliced', 'last-step'];
 
 /** Any `phase:*` label, a retired or unknown name included, counts toward the one-phase rule. */

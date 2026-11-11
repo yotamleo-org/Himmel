@@ -118,7 +118,6 @@ export async function transitionIssue(
   return { name: match.name, unstamped, phaseLeft };
 }
 
-// A Done-category ticket carries no phase label. A failed clear is a WARN only: the close stands and its exit code is unchanged.
 async function clearPhase(key: string, labels: string[], req: typeof request): Promise<string | undefined> {
   const had = labels.filter(isPhaseLabel);
   if (had.length === 0) return undefined;

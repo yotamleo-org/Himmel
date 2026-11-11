@@ -988,7 +988,6 @@ def core_worker_gate(l, ctx):
         else:
             stray_absolute = True
     design = docs_only(l.get('writes', '')) and not stray_absolute
-    # A leg that writes nothing says nothing about how far the ticket got, so it gets no Leg kind line.
     l['leg_kind'] = None if not paths else 'design' if design and all(p.startswith('state/') for p in paths) else 'build'
     verdict = {}
     for mdir, ks in groups.items():
