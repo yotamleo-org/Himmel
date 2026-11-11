@@ -1,0 +1,2 @@
+# The root .gitignore ignores every graph.json; the P13-S suite needs this one fixture.
+!fixtures/s-tools/graph.json
