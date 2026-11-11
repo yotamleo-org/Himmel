@@ -398,9 +398,6 @@ hand_rc=0
     bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" >/dev/null 2>&1) || hand_rc=$?
 assert_eq "$hand_rc" 4 "9498 a hand-written polish amend with another reason still blocks in a delta round"
 if [ -e "$recovery_git/cr-pending/recovery" ]; then pass "9498 the hand-written polish amend leaves the marker pending"; else fail "9498 the hand-written polish amend leaves the marker pending"; fi
-# 9892: the delta round does not widen. A fixed Critical or escape-class Important still blocks it;
-# a fixed hardening Important does not. The same findings with verdict disproved close (the amend key applies).
-# delta_row <label> <severity> <fu_class> <verdict>: one finding at the delta head, its verdict amended in, then defer.
 delta_row() {
     printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"%s","fu_class":"%s","fu_why":"no-check","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
         "$recovery_head" "$2" "$3" > "$recovery_git/cr-critic-scores.jsonl"
@@ -649,9 +646,6 @@ assert_has "$rl1_out" 'remain blocking at round 1' "8425 the round-1 Critical re
 assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8425 an open Critical at round 1 writes no deferred row"
 assert_eq "$(rl1_marker)" kept "8425 an open Critical at round 1 keeps the marker"
 
-# 9892: in a full round a Critical or Important with verdict fixed is settled, so it no longer
-# blocks deferring the round's Suggestions. Any other verdict, or none, still blocks.
-# rl1_v_imp <verdict>: critic-6, an Important, plus an amend giving it that verdict (none: no amend).
 rl1_v_imp() {
     printf '{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-6","severity":"imp","class":"reader-allowlist"}\n'
     [ -z "${1:-}" ] || printf '{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"critic-6","artifact":"diff","perspective":"off","set":{"verdict":"%s"}}\n' "$1"
@@ -661,7 +655,6 @@ rl1_fixed_crit="$(rl1_v_imp fixed | sed 's/critic-6/critic-7/g; s/"imp"/"crit"/'
 rl1_reached() { if [ -f "$CLEAR_CALLS" ]; then grep -c '^feat/rl1$' "$CLEAR_CALLS" || true; else echo 0; fi; }
 rl1_amends_for() { { printf '%s\n' "$rl1_ledger" | grep '"kind":"amend"' | grep -c "\"finding_id\":\"$1\"" || true; } | tr -d ' '; }
 rl1_deferred_rows() { printf '%s\n' "$rl1_ledger" | grep '"verdict":"deferred"' || true; }
-# rl1_assert_settled_defer <label>: the two Suggestions are deferred as polish, the stub marker was reached once.
 rl1_assert_settled_defer() {
     assert_eq "$rl1_rc" 0 "$1 exits 0 ($rl1_out)"
     rl1_def="$(rl1_deferred_rows)"
@@ -684,7 +677,6 @@ rl1_run feat/rl1 1 "$rl1_sug$rl1_fixed_crit"
 rl1_assert_settled_defer "9892 R2 a fixed Critical plus declined Suggestions at round 1"
 assert_eq "$(rl1_amends_for critic-7)" 1 "9892 R2 the only amend for critic-7 is the seeded fixed"
 
-# R4: a fixed Important alone has nothing to defer: exit 0, no new amend, the marker is not touched.
 rl1_reached_before="$(rl1_reached)"
 rl1_run feat/rl1 3 "$rl1_fixed_imp"
 assert_eq "$rl1_rc" 0 "9892 R4 a fixed Important alone exits 0 ($rl1_out)"
@@ -692,7 +684,6 @@ assert_eq "$(printf '%s\n' "$rl1_ledger" | grep -c '"kind":"amend"' || true)" 1 
 assert_eq "$(rl1_marker)" kept "9892 R4 a fixed Important alone keeps the marker"
 assert_eq "$(rl1_reached)" "$rl1_reached_before" "9892 R4 a fixed Important alone calls no marker"
 
-# C1, C2: an Important with no verdict, or any verdict but fixed and disproved, still blocks.
 rl1_run feat/rl1 3 "$rl1_sug$(rl1_v_imp)"
 assert_eq "$rl1_rc" 4 "9892 C1 a full-round Important with no verdict still blocks defer ($rl1_out)"
 assert_has "$rl1_out" 'remain blocking at round 3: critic-6' "9892 C1 names the blocking Important"
@@ -714,7 +705,6 @@ rl1_pre_reason='Important finding deferred: the cited code is older than this PR
 rl1_pre_imp='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-8","severity":"imp","class":"reader-allowlist","text":"- [critic-8]: old helper ignores errors [docs/guide/x.md:1]"}
 '
 rl1_pre_amend() { printf '{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"%s","artifact":"diff","perspective":"off","set":{"pre_existing":true}}\n' "$1"; }
-# 9892 R1p: a fixed Important that the tagger also marked pre-existing settles the same way.
 rl1_reached_before="$(rl1_reached)"
 rl1_run feat/rl1 3 "$rl1_sug$rl1_fixed_imp"$'\n'"$(rl1_pre_amend critic-6)"$'\n'
 rl1_assert_settled_defer "9892 R1p a fixed pre-existing-tagged Important plus declined Suggestions at round 3"
@@ -1453,8 +1443,6 @@ assert_has "$notereal_amends" '"fu_class":"polish"' "9498 the polish-only round 
 assert_has "$notereal_amends" 'Polish finding noted in the PR body: no ticket filed' "9498 the polish-only round records the noted reason"
 assert_lacks "$notereal_amends" 'deferred_to' "9498 the polish-only round records no ticket, so the coverage lint finds no deferral key to match"
 
-# 9892 R3, the round-4 analogue of the live case: a fixed round-3 Important plus a declined Suggestion clears
-# through the real marker gates after the delta round. The round-3 local-trust early close is not run here.
 three_rounds r3fix important
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch r3fix --head "$cap_r3_head" --model stub --id stub-9 --severity sug --file f.txt --line 4 \
@@ -1481,8 +1469,6 @@ assert_has "$r3fix_amends" '"fu_class":"polish"' "9892 R3 the deferral records t
 assert_has "$r3fix_amends" 'Polish finding noted in the PR body: no ticket filed' "9892 R3 the deferral records the noted reason"
 assert_lacks "$r3fix_amends" 'deferred_to' "9892 R3 the deferral names no ticket"
 
-# 9892 C5: at the reviewed tip with no judge GO the same shape stops at the marker gate: exit 15, marker kept,
-# only the Suggestion's noted row is added, and a rerun adds none.
 three_rounds c5fix important
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch c5fix --head "$cap_r3_head" --model stub --id stub-9 --severity sug --file f.txt --line 4 \
