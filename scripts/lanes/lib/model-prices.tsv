@@ -16,8 +16,11 @@
 #   Sonnet 5.5, 0.025x on Fable 5.1, 0.1x on Haiku 5.5). Opus 5.5 equals the $4/$20/$0.20/$5/$8 the
 #   the cost plan used. Haiku 5.5 is tiered by prompt size ($0.10/$0.50 up to 100K); this table keeps
 #   the over-100K row (ponytail: flat over-100K rate, upgrade path = a per-call tier).
+# claude-fable-5-2: the same pricing page, read 2026-11-11: input $8, 5m write $10, 1h write $16, cache read
+#   $0.20 (0.025x), output $40; no long-context surcharge.
 claude-opus-5-5	4	20	0.20	5	8
 claude-sonnet-5-5	2	10	0.10	2.50	4
+claude-fable-5-2	8	40	0.20	10	16
 claude-fable-5-1	10	50	0.25	12.50	20
 claude-haiku-5-5	0.50	2.50	0.05	0.625	1
 gpt-6.1-sol	2	10	0.10	2.50	5

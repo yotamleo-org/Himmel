@@ -572,11 +572,14 @@ Source of truth: [`docs/setup/global-claude-md.md`](global-claude-md.md) and [`d
 ### The `model` key carries no `[1m]` suffix
 
 `~/.claude/settings.json`'s `model` key sets the station-wide default **model**.
-Write it bare: `"model": "claude-fable-5-1"`, never `"claude-fable-5-1[1m]"`.
+Write it bare: `"model": "claude-fable-5-2"`, never `"claude-fable-5-2[1m]"`.
+Fable 5.2 needs Claude Code v2.1.321 or later. On a Pro, Max or Ultra plan, the
+first run of that version moves a saved `"claude-fable-5-1"` to the `fable` alias.
 Say why precisely, because the measurements below do not support the stronger
 claim: a suffix there is a station-wide default nobody chose per worker, and it is
 not even a reliable one. Fable, the very family in the example, silently
-strips `[1m]`, so that exact string set nothing at all; and dropping the suffix
+stripped `[1m]` when this was measured on Fable 5.1 (Fable 5.2 is unmeasured),
+so that string set nothing at all; and dropping the suffix
 did **not** move plain launches off a 1M window. So write it bare as
 configuration hygiene (the key should make no station-wide claim about context
 mode) and set the mode where it is actually observable, at arming.
