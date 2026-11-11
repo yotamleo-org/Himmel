@@ -21,6 +21,8 @@ set -uo pipefail
 
 # `next` leaves the relay-on-live marker by default; unsetting the bus name keeps 6e the one bus-identity row
 unset HIMMEL_BUS_NAME
+# a session launched on a set context window exports it; the context rows set their own
+unset CHIEF_CONTEXT
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_REAL="$(cd "$HERE/../../.." && pwd)"
 QL="$REPO_REAL/scripts/handover/queue-lock.sh"
