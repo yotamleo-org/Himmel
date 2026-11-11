@@ -81,7 +81,6 @@ esac
 STUB
 chmod +x "$tmp/bin/node"
 export PATH="$tmp/bin:$PATH"
-# the read token's root is pinned for every row, so no row loads the station's token
 TTREAD=ghp_READTOKEN0123456789
 mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
 printf 'himmel_github_token_vm2=%s\n' "$TTREAD" > "$tmp/ttroot/.env"
@@ -288,13 +287,9 @@ contains "9272 evidence: the one-line verified statement" "$out" "trust-reviewed
 jlog() { cat "$STUB_JIRA_LOG"; }  # read-sink-ok: the node shim's own log, a fixed path under this test's mktemp dir
 check "merge without --jira-transition leaves the ticket untouched" "$(jlog)" ""
 
-# --- 2a. the reads ride the read token, the caller-dependent read and the merge stay on main ----------
-# The real script through the two-token stub (it logs the token class of each call, never the token). The adapter
-# entry's two reads and the three PR views are plain reads: tok=read. go_fork_ready (mergeStateStatus, checks, threads:
-# the answer depends on the caller) and `pr merge` (a write) stay on main: tok=main.
 TTLOG="$tmp/tt.log"
 ttn() { grep -c -E -- "$1" "$TTLOG"; }
-ttmerge() {  # ttmerge <read-token root> [env...]: one merge through the two-token stub; sets rc, out
+ttmerge() {
     local root="$1"; shift
     prview; : > "$STUB_LOG"; : > "$TTLOG"
     rc=0; out="$(env "$@" GH_READ_ENV_ROOT="$root" PATH="$tmp/tt:$PATH" GH_STUB_DELEGATE="$tmp/bin/gh" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" HANDOVER_DIR="$ROOT" bash "$MERGE_SH" "$FORK" 18 "$SHA" 2>&1)" || rc=$?
@@ -320,7 +315,6 @@ ttmerge "$tmp/emptyroot"
 check "2a control, no read token: the merge exits 0" "$rc" 0
 check "2a control: no call logs tok=read" "$(ttn '^tok=read ')" 0
 check "2a control: the pre-merge PR view logs tok=main" "$(ttn "^tok=main argv=pr view 18 --repo $FORK --json state,headRefOid,baseRefName\$")" 1
-# I11: a gate knob inherited from the caller's environment never loads code or switches the reads off
 printf 'touch "%s"\n' "$tmp/marker-dotenv" > "$tmp/evil-load-dotenv.sh"
 rm -f "$tmp/marker-dotenv"
 ttmerge "$tmp/ttroot" _GHR_LOAD_DOTENV="$tmp/evil-load-dotenv.sh"
@@ -362,7 +356,6 @@ contains "merge --jira-transition comments on the ticket first" "$(jlog)" "JIRA 
 contains "merge --jira-transition moves the ticket to Done" "$(jlog)" "JIRA transition HIMMEL-5899 Done"
 check "merge --jira-transition comments before it transitions" "$(jlog | grep -v 'JIRA get' | cut -d' ' -f2 | tr '\n' ' ')" "comment transition "
 contains "merge --jira-transition reports the outcome" "$out" "jira-transition=ok key=HIMMEL-5899 status=Done"
-# the title read after the merge rides the read token
 prview; : > "$STUB_LOG"; : > "$STUB_JIRA_LOG"; : > "$TTLOG"
 env GH_READ_ENV_ROOT="$tmp/ttroot" PATH="$tmp/tt:$PATH" GH_STUB_DELEGATE="$tmp/bin/gh" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" HANDOVER_DIR="$ROOT" bash "$JT/scripts/handover/merge-fork-pr.sh" --jira-transition "$FORK" 18 "$SHA" >/dev/null 2>&1
 check "2b --jira-transition: the title read logs tok=read" "$(ttn "^tok=read argv=pr view 18 --repo $FORK --json title\$")" 1

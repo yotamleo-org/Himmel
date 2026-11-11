@@ -48,7 +48,6 @@ mkdir -p "$root" "$tmp/home/.config/himmel" || exit 1
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$tmp/home/.config/himmel/go-hmac.key"
 export HOME="$tmp/home" USER_SLUG=tuser
 export HIMMEL_VERDICT_MODEL=test-model HIMMEL_VERDICT_EFFORT=high
-# the read token's root is pinned for every row, so no row loads the station's token
 TTREAD=ghp_READTOKEN0123456789
 mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
 printf 'himmel_github_token_vm2=%s\n' "$TTREAD" > "$tmp/ttroot/.env"
@@ -264,15 +263,12 @@ check "consumed qid leaves the counter alone" "$(cat "$state/$BRANCH.round")" 3
 check "consumed qid adds no consumption line" "$(wc -l < "$state/$BRANCH.verdicts" | tr -d ' ')" 1
 : "$after"
 
-# --- 6b. main's token is spent, the read token answers -------------------
-# The real caller (the GRANT_ROUND_GH seam empty, so the default applies) reads the PR twice through the read-token
-# helper: before the record checks (exit 13 if refused) and again under the lock. The control: no read token, main healthy.
 wv qtt1 NO-GO "$SHA_A" --pr 501 --branch "$BRANCH" --evidence-file "$evd/ev.md" >/dev/null 2>&1 || { echo "FAIL: cannot write qtt1"; fails=$((fails+1)); }
 wv qtt2 NO-GO "$SHA_A" --pr 501 --branch "$BRANCH" --evidence-file "$evd/ev.md" >/dev/null 2>&1 || { echo "FAIL: cannot write qtt2"; fails=$((fails+1)); }
 ttlog="$tmp/tt.log"
 ttn() { grep -c -E -- "$1" "$ttlog"; }
 checko() { check "$@"; [ "$2" = "$3" ] || printf '    output: %s\n' "$out"; }
-ttrun() {  # ttrun <qid> <read-token root> [env...]: sets rc and out
+ttrun() {
     local q="$1" rtk="$2"; shift 2
     reset_state 3; : > "$ttlog"
     GR_ARGS=(501 "$SHA_A" "$q")

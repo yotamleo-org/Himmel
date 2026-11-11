@@ -507,7 +507,6 @@ run "a PR job with no failing case recorded still REFUSEs under the renamed jobs
 CORE="${CHAIN_PLAN_CORE:-$HERE/chief-kit/chain-plan-core.sh}"
 CGRAPH="${CHAIN_GRAPH:-$HERE/chief-kit/chain-graph.py}"
 mkdir -p "$tmp/csbin" "$tmp/csfix"
-# the read token's root is pinned for every row, so no row loads the station's token
 TTREAD=ghp_READTOKEN0123456789
 mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
 printf 'himmel_github_token_vm2=%s\n' "$TTREAD" > "$tmp/ttroot/.env"
@@ -585,11 +584,8 @@ cs "chain-s2: the predecessor merged, its merge on origin/main and not in HEAD, 
 a0="$(csflag 0 --chain-s2 11 --predecessor 10 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
 a1="$(csflag 1 --chain-s2 11 --predecessor 10 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
 if [ "$a0" = "$a1" ] && [ "${a0%% *}" = "rc=0" ]; then ok "chain-s2: the verdict is the same at flag 0 and 1 (ALLOW)"; else bad "chain-s2: ALLOW flag parity" "$a0 | $a1"; fi
-# main's token is spent, the read token answers. The two PR reads (HEAD's PR, the predecessor) go through
-# the read-token helper and log tok=read; the control (no read token, main healthy) logs tok=main and ALLOWs.
-# chain-graph.py's own reads are a later slice, so these rows assert the two reads, not the whole verdict.
 ttlog="$tmp/tt.log"
-cstt() {  # cstt <read-token root> [env...]: the checker through the two-token stub; sets ttout, ttrc
+cstt() {
   local root="$1"; shift
   : > "$ttlog"
   ttout=$(cd "$tmp/cs" && env "$@" GH_READ_ENV_ROOT="$root" PATH="$tmp/tt:$tmp/csbin:$PATH" GH_STUB_DELEGATE="$tmp/csbin/gh" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$ttlog" CS_FIX="$tmp/csfix" CHAIN_GRAPH_JIRA="$tmp/csbin/jira" \

@@ -80,7 +80,6 @@ chmod +x "$W"/bin/*
 export WM_GH="$W/bin/gh" WM_CLOSE="$W/bin/close" WM_GIT="$W/bin/git" WM_BOARD="$W/bin/board" WM_JIRA="$W/bin/jira"
 export WM_PRIMARY="$W/primary" WM_CALLS="$W/calls" WM_HEAD_OID="$HEAD_OID" WM_MERGE_OID="$MERGE_OID"
 mkdir -p "$W/primary"
-# the read token's root is pinned for every row, so no row loads the station's token
 TTREAD=ghp_READTOKEN0123456789
 mkdir -p "$W/ttroot" "$W/emptyroot" "$W/tt" "$W/himmelcfg"
 printf 'himmel_github_token_vm2=%s\n' "$TTREAD" > "$W/ttroot/.env"
@@ -463,13 +462,9 @@ contains "26c: none beside a release: line still prints focus=skip" "$out" "focu
 lacks "26c: and runs nothing" "$calls" "focus --doc"
 unset WM_FOCUS
 
-# --- 27. the merge-state read rides the read token ------------------------
-# The real caller (WM_GH unset, so the default applies) through the two-token stub. Main spent: the read still answers.
-# A refused read token with main healthy: the read falls back to main and the captured view carries no gh-read: line
-# (the stderr is merged into the data, so the helper runs quiet). The control: no read token, main healthy.
 TTLOG="$W/tt.log"
 ttn() { grep -c -E -- "$1" "$TTLOG"; }
-ttwm() {  # ttwm <read-token root> [env...]: the real default read through the two-token stub; sets rc, out
+ttwm() {
     local root="$1"; shift
     fixture; : > "$TTLOG"
     rc=0; out="$(env -u WM_GH "$@" GH_READ_ENV_ROOT="$root" PATH="$W/tt:$PATH" GH_STUB_DELEGATE="$W/bin/gh" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" bash "$SCRIPT" --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER" 2>&1)" || rc=$?

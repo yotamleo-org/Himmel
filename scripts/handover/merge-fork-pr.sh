@@ -45,7 +45,6 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     exit 96
 fi
 chokepoint_seam_guard scripts/handover/merge-fork-pr.sh || exit 96
-# a gate: no gh-read knob of the caller's environment reaches the reads below (a load-dotenv override would source a file)
 unset _GHR_LOAD_DOTENV GH_READ_REFUSED_FILE GH_READ_OFF GH_READ_TIMEOUT GH_READ_NO_MAIN_FALLBACK GH_READ_QUIET
 
 usage() { echo "usage: merge-fork-pr.sh [--jira-transition] <owner/repo> <pr-number> <full-40-hex-head-sha>" >&2; }
@@ -120,7 +119,7 @@ if [ "$LIVE" != "OPEN|$SHA|$HBRANCH" ]; then
     echo "merge-fork-pr: refusing $NWO PR #$PR - it must be OPEN at $SHA on $HBRANCH (state|head|base read: '$LIVE'); a push after the GO needs a fresh GO. Nothing merged." >&2
     exit 7
 fi
-if ! REASON=$(go_fork_ready "$NWO" "$PR"); then  # gh-main-ok: permission-dependent answer (mergeStateStatus), plain gh
+if ! REASON=$(go_fork_ready "$NWO" "$PR"); then  # gh-main-ok: permission-dependent answer
     echo "merge-fork-pr: refusing $NWO PR #$PR - $REASON Nothing merged." >&2
     exit 7
 fi

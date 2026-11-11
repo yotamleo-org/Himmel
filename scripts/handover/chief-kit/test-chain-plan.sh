@@ -187,7 +187,6 @@ gcreset() {
     printf 'HEADS 11=%s 12=%s\nCHECKED 12 clean\nPEERS checked=1 skipped=0 conflicting=0\n' "$H11" "$H12" > "$W/gc/push-out"
     echo 0 > "$W/gc/push-rc"; : > "$W/gc/push-calls"; rm -f "$W/gc/rc-get-HIMMEL-5"
 }
-# the read token's root is pinned for every row, so no row loads the station's token
 TTREAD=ghp_READTOKEN0123456789
 mkdir -p "$W/ttroot" "$W/emptyroot" "$W/tt" "$W/himmelcfg"
 printf 'himmel_github_token_vm2=%s\n' "$TTREAD" > "$W/ttroot/.env"
@@ -270,11 +269,9 @@ same "--go-check a PR the graph does not list: REFUSE" "$rc:${out%% *}" '1:REFUS
 out="$(gc 11)"; rc=$?
 same "--go-check without --graph: usage (exit 2)" "$rc" 2
 
-# 15. main's token is spent, the read token answers. The head read (#11) and the S1 peer's state read (#12)
-# go through the read-token helper; the control (no read token, main healthy) logs tok=main. A scan-free gate: it keeps the fallback.
 TTLOG="$W/tt.log"
 ttn() { grep -c -E -- "$1" "$TTLOG"; }
-gctt() {  # gctt <read-token root> [env...]: --go-check through the two-token stub; sets out, rc
+gctt() {
     local root="$1"; shift
     : > "$TTLOG"
     out="$(env "$@" GH_READ_ENV_ROOT="$root" PATH="$W/tt:$W/bin:$PATH" GH_STUB_DELEGATE="$W/bin/gh" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" GC_FIX="$W/gc" CHAIN_PLAN_JIRA_CMD="$W/bin/jira" CHAIN_PLAN_PUSH_CHECK="$W/bin/push" bash "$SUT" --go-check 11 --graph "$W/gc/graph.json" 2>&1)"; rc=$?
