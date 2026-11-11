@@ -167,6 +167,13 @@ assert_rc "env chief + worktree + gh pr create refuses" 2 "$RC1"
 assert_contains "deny names the exact arm-resume.sh replacement" "bash scripts/handover/arm-resume.sh --time smart --handover <path-to-mission-doc>" "$(combined_output env-chief-worktree-propen)"
 assert_contains "deny states in-process subagents die with the parent" "die with the parent" "$(combined_output env-chief-worktree-propen)"
 assert_contains "deny names CHIEF_DISPATCH_OK override" "CHIEF_DISPATCH_OK=1" "$(combined_output env-chief-worktree-propen)"
+if grepq "$(combined_output env-chief-worktree-propen)" -iE 'ruling|HIMMEL-[0-9]'; then
+    echo "FAIL deny cites an internal ruling or ticket number"
+    fail=$((fail + 1))
+else
+    echo "ok   deny cites no internal ruling or ticket number"
+    pass=$((pass + 1))
+fi
 
 RC2=$(run_hook transcript-chief-propen-crgate "$(payload general-purpose 'ship it' 'gh pr create --title x; then run /pr-check' "$CHIEF_TRANSCRIPT")")
 assert_rc "transcript-detected chief + pr-open + cr-gate refuses" 2 "$RC2"
