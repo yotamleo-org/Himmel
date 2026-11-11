@@ -159,10 +159,6 @@ if [ -n "$PR" ]; then
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/outside-contributors.sh" || { echo "panel-first-pass: cannot load scripts/lib/outside-contributors.sh" >&2; exit 2; }
     # A panel that cannot pin to the ref would verify the live checkout instead and certify the wrong tree.
-    # Ask the panel itself rather than read its text, which a comment can satisfy: refs/himmel/outside/0..0
-    # passes the panel's ref alphabet but is no valid ref name ("..") so git can neither hold nor resolve it:
-    # a panel that honours --pin-ref refuses it with exit 7 and says so, while one that does not exits 2 on
-    # the unknown option. No member runs and nothing is stamped.
     pin_probe_err="$(printf 'pin-probe\n' | bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --branch pin-probe --pin-ref refs/himmel/outside/0..0 2>&1 >/dev/null)"
     pin_probe_rc=$?
     case "$pin_probe_err" in *"REFUSING --pin-ref"*) ;; *) pin_probe_rc=1 ;; esac
@@ -222,8 +218,6 @@ if [ -n "$PR" ]; then
         echo "panel-first-pass ABORT - --branch is not PR #$PR's headRefName as the forge names it. Nothing was reviewed and nothing was recorded." >&2
         exit 7
     fi
-    # The base name is the forge's text: it is printed below, carried into later steps as a literal and handed to
-    # the panel, so it gets the same alphabet check --branch got before any of that.
     if [ -n "$db" ] && { [[ "$db" =~ [^A-Za-z0-9._/+-] ]] || ! git check-ref-format --branch "$db" >/dev/null 2>&1; }; then
         echo "panel-first-pass ABORT - PR #$PR's base branch name as the forge names it is outside the safe alphabet [A-Za-z0-9._/+-] or is not a branch name. Nothing was reviewed and nothing was recorded." >&2
         exit 7
@@ -500,7 +494,6 @@ else
     # ledger record. No CRITIC_PANEL_TIERS here: the panel
     # resolves tiers from the exported CR_PROFILE.
     # --pr: the seam critic-first-pass.sh already honours carries the PR's branch, head and number.
-    # An outside PR is always a full review: the triviality gate never skips its paid tier.
     [ -z "$PR" ] || export CR_TARGET_BRANCH="$BRANCH" CR_TARGET_HEAD="$HEAD_SHA" CR_TARGET_PR="$PR" CR_TRIVIALITY_OVERRIDE=full
     panel_findings=$(printf '%s' "$diff_out" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" ${PR:+--pin-ref "refs/himmel/outside/$PR"} --base "$db" --base-sha "$db_sha" --context-file "$CONTEXT_FILE" 2>"$panel_tmp")
     panel_rc=$?

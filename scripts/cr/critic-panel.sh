@@ -474,11 +474,6 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         --pin-ref)
-            # The review's head is the commit this ref names, read once, not the
-            # checkout's HEAD: an outside PR is reviewed from its fetched ref
-            # while the station's checkout sits on another branch. The value is
-            # only ever an argument to rev-parse; the alphabet refuses a revision
-            # expression and a leading dash refuses an option.
             if [ $# -lt 2 ] || [ -z "$2" ]; then
                 echo "critic-panel.sh: --pin-ref requires a ref name" >&2
                 usage
@@ -536,8 +531,6 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -n "$PIN_REF" ] && [ -z "$BRANCH_PIN" ]; then
-    # Without --branch the stamped branch would be the checkout's live branch,
-    # which is not the branch of the commit the ref names.
     echo "critic-panel.sh: --pin-ref requires --branch, the branch the pinned commit is stamped under" >&2
     usage
     exit 2
@@ -653,8 +646,6 @@ fi
 # full head.
 _verify_head_pin() {
     # $1 = resolved repository root ("" when there is none), $2 = resolved head
-    # (under --pin-ref, the commit the ref names: the live branch is not the
-    # pinned commit's branch, so --branch only names the stamp there)
     if [ -n "$BRANCH_PIN" ] && [ -z "$PIN_REF" ]; then
         if [ -z "$1" ]; then
             echo "critic-panel.sh: REFUSING --branch $BRANCH_PIN — no git worktree here to verify the pin against" >&2
@@ -686,20 +677,12 @@ _verify_head_pin() {
     fi
 }
 
-# --pin-ref: set _head to the commit the ref names, captured once (the same
-# capture-once rule as the live HEAD snapshot it replaces). $1 = resolved
-# repository root ("" when there is none). Refuses, exit 7, with no worktree or
-# a ref that is not a commit.
 _resolve_pin_ref_head() {
     if [ -z "$1" ]; then
         echo "critic-panel.sh: REFUSING --pin-ref $PIN_REF — no git worktree here to resolve the ref in" >&2
         exit 7
     fi
-    _head="$(git -C "$1" rev-parse --verify --quiet "$PIN_REF^{commit}" 2>/dev/null)" || _head=""  # swallow-ok: an empty head is refused on the next line (exit 7)
-    if [ -z "$_head" ]; then
-        echo "critic-panel.sh: REFUSING --pin-ref $PIN_REF — not a commit in $1" >&2
-        exit 7
-    fi
+    _head="$(git -C "$1" rev-parse --verify --quiet "$PIN_REF^{commit}")" || { echo "critic-panel.sh: REFUSING --pin-ref $PIN_REF — not a commit in $1" >&2; exit 7; }
 }
 
 # Resolve the operator-visible base name, then hand ref precedence to the one

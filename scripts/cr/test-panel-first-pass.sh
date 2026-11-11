@@ -113,7 +113,6 @@ ARGS_LOG="$tmp/panel-args.log"
 export ARGS_LOG
 cat > "$fx/scripts/cr/critic-panel.sh" <<'STUBEOF'
 #!/usr/bin/env bash
-# The --pr pin probe (a ref name git cannot hold): refuse it the way the real panel does, as a probe and not a run.
 case " $* " in *" --pin-ref refs/himmel/outside/0..0 "*) echo "critic-panel.sh: REFUSING --pin-ref refs/himmel/outside/0..0 — not a commit (stub of the real refusal)" >&2; exit 7 ;; esac
 printf 'called\n' >> "$CALL_LOG"
 printf '%s\n' "$*" >> "$ARGS_LOG"
@@ -1167,12 +1166,10 @@ pr_run() { # args...: sets pr_out, pr_err, pr_rc
     pr_err="$(cat "$tmp/err")"
 }
 pr_rounds() { local f n=0; for f in "$prrepo"/.git/cr-review-rounds/*; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
-# the pin probe: the route asks the panel to refuse a --pin-ref ref that cannot exist, and a panel that does not is refused.
-# Every refusal below leaves no round, no round-scope row and no panel run.
 cp "$fx/scripts/cr/critic-panel.sh" "$tmp/critic-panel.stub"
 # shellcheck disable=SC2016  # the fake panel's own text, expanded when it runs
 printf '#!/usr/bin/env bash\necho "critic-panel.sh: unknown option $1" >&2\nexit 2\n' > "$fx/scripts/cr/critic-panel.sh"
-pr_probe_refused() { # label: a refused probe spent nothing
+pr_probe_refused() {
     if [ "$pr_rc" -eq 7 ]; then ok "$1 is refused (exit 7)"; else bad "$1 exit (got $pr_rc)"; fi
     assert_has "$pr_err" "--pin-ref" "$1: the refusal names --pin-ref"
     if [ -f "$CALL_LOG" ]; then bad "$1: the unpinned panel ran"; else ok "$1: the unpinned panel never ran"; fi
@@ -1180,11 +1177,9 @@ pr_probe_refused() { # label: a refused probe spent nothing
 }
 pr_run --pr 7 --head "$pr_oid" --branch feat/outside-thing
 pr_probe_refused "T2.17 control: a panel without --pin-ref"
-# a comment that spells the flag does not make the panel honour it (the old text probe passed this)
 printf '# accepts: --pin-ref) pins the review to a ref instead of the live checkout\n' >> "$fx/scripts/cr/critic-panel.sh"
 pr_run --pr 7 --head "$pr_oid" --branch feat/outside-thing
 pr_probe_refused "T2.17 a comment that names --pin-ref alone"
-# a panel that takes the flag but does not refuse a ref that cannot exist is no pin either
 printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 0\n' > "$fx/scripts/cr/critic-panel.sh"
 pr_run --pr 7 --head "$pr_oid" --branch feat/outside-thing
 pr_probe_refused "T2.17 a panel that accepts any --pin-ref"
@@ -1207,7 +1202,6 @@ pr_after="$(git -C "$prrepo" status --porcelain; git -C "$prrepo" rev-parse HEAD
 if [ "$pr_before" = "$pr_after" ]; then ok "T2.3 status, HEAD and config of the primary fixture are unchanged"; else bad "T2.3 the primary fixture changed"; fi
 if [ ! -e "$pr_canary" ]; then ok "T2.3 the PR's canary never ran"; else bad "T2.3 a PR file ran"; fi
 if [ "$(git -C "$prrepo" worktree list | wc -l | tr -d ' ')" = 1 ]; then ok "T2.3 no new worktree"; else bad "T2.3 a worktree was added"; fi
-# pr_run_x VAR=val ... -- args: pr_run with extra stub environment
 pr_run_x() {
     local envs=()
     while [ "$1" != "--" ]; do envs+=("$1"); shift; done
@@ -1217,8 +1211,6 @@ pr_run_x() {
         PATH="$tmp/prbin:$PATH" "${envs[@]}" bash "$SCRIPT" "$@") 2>"$tmp/err" )"; pr_rc=$?
     pr_err="$(cat "$tmp/err")"
 }
-# T2.17 against the REAL critic-panel.sh: only its members are stubs, so no paid call is made. The checkout sits on
-# another branch at another commit than the PR ref, so every row below shows the ref, never the checkout, was reviewed.
 git -C "$prrepo" update-ref refs/himmel/outside/11 "$pr_oid"
 cp "$HERE/critic-panel.sh" "$HERE/failure-classify.sh" "$HERE/finding-reraise.js" "$HERE/triviality-gate.sh" "$fx/scripts/cr/"
 cp "$HERE/../lib/prim.sh" "$HERE/../lib/canon-path.sh" "$fx/scripts/lib/"
@@ -1249,7 +1241,6 @@ assert_has "$pr_row" '"branch":"feat/outside-thing"' "T2.17 the round-scope row 
 assert_has "$pr_row" "\"head\":\"$pr_oid\"" "T2.17 the round-scope row carries the PR head (real panel)"
 assert_has "$pr_row" '"pr":11' "T2.17 the round-scope row names the PR (real panel)"
 cp "$tmp/critic-panel.stub" "$fx/scripts/cr/critic-panel.sh"
-# R2: the byte cap panel-first-pass.sh measures against and the one the critics apply are one number
 cap_lit() { grep -o 'CRITIC_FIRST_PASS_CAP_BYTES:-[0-9]*' "$1" | sed -n '1s/.*-//p'; }
 cap_pfp="$(cap_lit "$HERE/panel-first-pass.sh")"; cap_cfp="$(cap_lit "$HERE/critic-first-pass.sh")"
 if [ -n "$cap_pfp" ] && [ "$cap_pfp" = "$cap_cfp" ]; then ok "R2 the cap defaults in panel-first-pass.sh and critic-first-pass.sh are equal ($cap_pfp)"; else bad "R2 cap defaults differ (panel-first-pass.sh '$cap_pfp', critic-first-pass.sh '$cap_cfp')"; fi
@@ -1282,7 +1273,6 @@ pr_run_x X=1 -- --pr 7 --head "$pr_oid" --branch 'feat/x;touch-evil'
 if [ "$pr_rc" -eq 2 ]; then ok "--pr with a branch outside the safe alphabet exits 2"; else bad "--pr hostile branch exit (got $pr_rc)"; fi
 assert_lacks "$pr_err" "touch-evil" "--pr hostile branch: the raw name is never echoed"
 if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ]; then ok "--pr hostile branch: no panel, no round"; else bad "--pr hostile branch: the panel ran or state was written"; fi
-# R1: the forge's base name is checked against the safe alphabet before it is printed or carried into later steps
 for pr_base_try in 'main;touch-evil' '-main' 'ma in'; do
     n_before="$(pr_rounds)"
     pr_run_x PR_BASE="$pr_base_try" -- --pr 7 --head "$pr_oid" --branch feat/outside-thing
