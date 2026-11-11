@@ -35,9 +35,15 @@ case "$1" in
 update) mkdir -p "$(dirname "$INDEX_PATH")"; date +%s%N >> "$INDEX_PATH" ;;
 mcp)
     port=""; while [ $# -gt 0 ]; do [ "$1" = "--port" ] && port="$2"; shift; done
-    exec python3 -I -c 'import socket, sys, time
-s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(5); time.sleep(300)' "$port" mcp --http --port "$port" ;;
+    exec python3 -I -c 'import os, socket, sys, time
+port = int(sys.argv[1])
+try:
+    s = socket.socket(socket.AF_INET6); s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("::1", port)); fam = "v6"
+except OSError:
+    s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1", port)); fam = "v4"
+open(os.environ["LOGDIR"] + "/bind-family", "w").write(fam)
+s.listen(5); time.sleep(300)' "$port" mcp --http --port "$port" ;;
 esac
 exit 0
 STUB
@@ -187,6 +193,9 @@ eq "::free_serve_has_no_key (the daemon saw no key and the scratch index and con
     "$(qlog | grep -c "^mcp --http --port [0-9]* | INDEX_PATH=$W/free-l2/index.sqlite QMD_CONFIG_DIR=$W/free-l2/config KEY=unset")"
 eq "::free_serve_has_no_key (pair.json holds the served URL)" "$url" "$(pj "$W/free-l2" served_url)"
 case "$url" in http://localhost:*/mcp) pass "::free_serve_has_no_key (the URL is a free local port)" ;; *) fail "::free_serve_has_no_key (the URL is a free local port): '$url'" ;; esac
+fam="$(cat "$LOGDIR/bind-family" 2> /dev/null)"
+if [ "$fam" = v6 ]; then pass "::serve_reaches_an_ipv6_only_server (the stub listens on ::1 only, as the real qmd does, and serve came up)"
+else pass "SKIP ::serve_reaches_an_ipv6_only_server (this host has no IPv6 loopback, so the stub fell back to 127.0.0.1)"; fi
 spid="$(cat "$W/free-l2/serve.pid")"
 fx stop --index "$W/free-l2/index.sqlite" > /dev/null 2>&1
 eq "::free_serve_has_no_key (stop clears the URL and the pid file)" "|gone" "$(pj "$W/free-l2" served_url)|$([ -e "$W/free-l2/serve.pid" ] && echo left || echo gone)"
