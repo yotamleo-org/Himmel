@@ -1,9 +1,9 @@
 name: "CI (os:macos cadence)"
 
-# HIMMEL-3902: macOS shell-unit lives HERE, not in ci.yml. Operator ruling
+# macOS shell-unit lives HERE, not in ci.yml. Operator ruling
 # 2026-09-30: fleet velocity beats macOS coverage breadth. While macOS legs sat
 # in the nightly `CI` run, a macOS-only red turned that run -- and so main --
-# red (the shell-unit aggregator's health step, HIMMEL-3699), and the red-main
+# red (the shell-unit aggregator's health step), and the red-main
 # policy then pulled legs into macOS triage. Now a macOS red is a red of THIS
 # workflow (`os:macos`), never of `CI`, and each run records which suites
 # newly broke since the previous one (scripts/ci/macos-breakage.sh) so the
@@ -14,8 +14,8 @@ name: "CI (os:macos cadence)"
 # 10x-billed macOS runner cost (and off the nightly's 07:17 slot).
 #
 # The macOS legs run never on an unlabelled PR and never on push: that would put
-# them back on every PR (HIMMEL-3853). A PR opts in with the `ci:macos` label
-# (HIMMEL-7276): the run starts when the label is added and on each later push,
+# them back on every PR. A PR opts in with the `ci:macos` label:
+# the run starts when the label is added and on each later push,
 # and both jobs are skipped for any PR without it. A PR run never records
 # breakages (the record belongs to main). Dispatch (needs this file on main):
 #   gh workflow run macos-cadence.yml --ref main
@@ -123,7 +123,7 @@ jobs:
           "$RUNNER_TEMP/py3/bin/python" -I -c 'import yaml'
       # The write-fence hooks parse commands with shfmt and refuse without it, so
       # on a runner that lacks it every allow-row of those suites goes red. The
-      # SAME release ci.yml puts on Linux (HIMMEL-6548), darwin_arm64 build,
+      # SAME release ci.yml puts on Linux, darwin_arm64 build,
       # sha256 from the release's own asset digest. Keep ver in lockstep with
       # ci.yml and .github/ci-image/Dockerfile. It goes to /usr/local/bin because
       # scripts/lib/sandbox-run.sh runs the hooks under `env -i` with a fixed PATH
@@ -166,7 +166,7 @@ jobs:
       # `summary` sees a missing report (infra_suspect), not an empty one.
       # A shard killed mid-run has no .run-complete sentinel in failed-suite-logs:
       # suites-from-logs then exits 3, no failed.txt is uploaded, and `summary`
-      # flags the missing report as infra_suspect (HIMMEL-3906).
+      # flags the missing report as infra_suspect, never as a complete report.
       - name: List failed suites (breakage metric input)
         if: always() && steps.tests.outcome != 'skipped'
         run: |
@@ -315,7 +315,7 @@ jobs:
           path: record.json
           if-no-files-found: error
           retention-days: 90
-      # HIMMEL-3699: the guard that a macOS job actually PASSED on this run
+      # The guard that a macOS job actually PASSED on this run
       # (missing entirely / all skipped is not health), reading the Jobs API.
       - name: macOS jobs must have passed
         if: always()
