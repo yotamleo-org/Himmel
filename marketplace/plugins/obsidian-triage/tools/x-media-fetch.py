@@ -417,6 +417,13 @@ MEDIA_HOSTS = ("video.twimg.com", "pbs.twimg.com")
 HLS_SEG_EXTS = {".m4s", ".mp4", ".m4a", ".m4v", ".ts", ".aac"}
 HLS_PLAYLIST_MAX_BYTES = 4 * 1024 * 1024
 URI_ATTR_RE = re.compile(r'URI="([^"]*)"')
+# An HLS video longer than this takes the long-video path: its audio rendition
+# alone (the best video variant of a long clip outgrows MEDIA_MAX_BYTES), fetched
+# SEG_BATCH segments per parallel curl run, its segments kept between runs so a
+# download that outlasts one run's window resumes on the next run.
+LONG_VIDEO_S = 600
+SEG_BATCH = 16
+KEEP_MARK = "keep"   # in an HLS work dir: keep the segments until the clip is written
 
 
 def _media_url_ok(url: str) -> bool:
@@ -426,7 +433,8 @@ def _media_url_ok(url: str) -> bool:
     return p.scheme == "https" and p.netloc.lower() in MEDIA_HOSTS
 
 
-def _curl(pairs, deadline: float, max_bytes: int = MEDIA_MAX_BYTES):
+def _curl(pairs, deadline: float, max_bytes: int = MEDIA_MAX_BYTES,
+          parallel: bool = False):
     """Fetch [(url, path)] in ONE curl run: every URL must pass _media_url_ok
     first, curl follows no redirect, speaks only https, and refuses a file over
     max_bytes. Returns None or an error token."""
@@ -434,6 +442,8 @@ def _curl(pairs, deadline: float, max_bytes: int = MEDIA_MAX_BYTES):
         return "download_error"
     cmd = ["curl", "-fsSL", "--fail-early", "--max-redirs", "0", "--proto", "=https",
            "--max-time", "120", "--max-filesize", str(max_bytes)]
+    if parallel:
+        cmd += ["--parallel", "--parallel-max", "8"]
     for url, path in pairs:
         cmd += ["-o", str(path), url]
     left = deadline - time.monotonic()
@@ -519,6 +529,11 @@ def _hls_media(text: str, base: str, work: Path, tag: str):
     return "\n".join(out) + "\n", pairs
 
 
+def _hls_seconds(text: str) -> float:
+    """The summed #EXTINF durations of a media playlist."""
+    return sum(float(s) for s in re.findall(r"(?m)^#EXTINF:(\d+(?:\.\d+)?)", text))
+
+
 def _hls_variant(text: str):
     """(stream-inf line, uri, audio media line or None) for the highest-
     BANDWIDTH video variant (one with a RESOLUTION; an audio-only variant only
@@ -559,6 +574,7 @@ def _resolve_hls(url: str, work: Path, deadline: float):
         if variant is None:
             body, pairs = _hls_media(text, url, work, "s")
             master = body
+            long = _hls_seconds(text) > LONG_VIDEO_S
         else:
             inf, v_uri, audio = variant
             if _uri_count(inf):
@@ -574,30 +590,57 @@ def _resolve_hls(url: str, work: Path, deadline: float):
             err = _curl(got, deadline, HLS_PLAYLIST_MAX_BYTES)
             if err:
                 return err
+            tagged = [(purl, ppath.read_text(encoding="utf-8", errors="replace"), tag)
+                      for (purl, ppath), tag in zip(got, ("v", "a"))]
+            long = _hls_seconds(tagged[-1][1]) > LONG_VIDEO_S
+            audio_only = long and audio is not None
+            if audio_only:
+                tagged = tagged[1:]
             pairs = []
-            for (purl, ppath), tag in zip(got, ("v", "a")):
-                body, more = _hls_media(ppath.read_text(encoding="utf-8", errors="replace"),
-                                        purl, work, tag)
+            for purl, ptext, tag in tagged:
+                body, more = _hls_media(ptext, purl, work, tag)
                 (work / f"{tag}.m3u8").write_text(body, encoding="utf-8")
                 pairs += more
-            master = "#EXTM3U\n"
-            if audio:
-                m = _one_uri(audio)
-                master += audio[:m.start(1)] + "a.m3u8" + audio[m.end(1):] + "\n"
-            master += f"{inf}\nv.m3u8\n"
+            if audio_only:
+                master = body
+            else:
+                master = "#EXTM3U\n"
+                if audio:
+                    m = _one_uri(audio)
+                    master += audio[:m.start(1)] + "a.m3u8" + audio[m.end(1):] + "\n"
+                master += f"{inf}\nv.m3u8\n"
     except ValueError as e:
         print(f"  ffmpeg-hls: refused: {e}", file=sys.stderr)
         return "download_error"
     if not pairs:
         return "download_error"
-    # One file per curl run, each capped at what is left of the budget, so the
-    # segments together never take more than MEDIA_MAX_BYTES of disk.
-    total = 0
-    for pair in pairs:
-        err = _curl([pair], deadline, MEDIA_MAX_BYTES - total)
+    # A segment already on disk from an earlier run is kept only while the
+    # ledger lists the same segments under the same names.
+    ledger = work / "urls.txt"
+    listing = "".join(f"{p.name}\t{u}\n" for u, p in pairs)
+    if not ledger.is_file() or ledger.read_text(encoding="utf-8") != listing:
+        for _u, p in pairs:
+            p.unlink(missing_ok=True)
+        ledger.write_text(listing, encoding="utf-8")
+    if long:
+        (work / KEEP_MARK).touch()
+    # Each curl run caps every file at its share of what is left of the budget,
+    # so the segments together never take more than MEDIA_MAX_BYTES of disk. A
+    # segment gets its name only once its run completed, so a run cut by the
+    # deadline leaves whole segments only.
+    total = sum(p.stat().st_size for _, p in pairs if p.is_file())
+    todo = [pair for pair in pairs if not pair[1].is_file()]
+    step = SEG_BATCH if long else 1
+    for i in range(0, len(todo), step):
+        chunk = todo[i:i + step]
+        parts = [(u, p.with_name(p.name + ".part")) for u, p in chunk]
+        err = _curl(parts, deadline, max(1, (MEDIA_MAX_BYTES - total) // len(parts)),
+                    parallel=len(parts) > 1)
         if err:
             return err
-        total += pair[1].stat().st_size
+        for (_u, p), (_u, part) in zip(chunk, parts):
+            part.replace(p)
+            total += p.stat().st_size
         if total >= MEDIA_MAX_BYTES:
             print(f"  ffmpeg-hls: segments reach the {MEDIA_MAX_BYTES}-byte cap, refused", file=sys.stderr)
             return "download_error"
@@ -615,17 +658,41 @@ def _fetch_item(item: dict, target: Path):
     if not item.get("hls"):
         return _curl([(url, target)], time.monotonic() + _cap(DOWNLOAD_TIMEOUT))
     work = target.with_name(target.name + ".hls")
-    shutil.rmtree(work, ignore_errors=True)
-    work.mkdir(parents=True)
+    work.mkdir(parents=True, exist_ok=True)
     try:
-        return _ffmpeg_hls(url, work, target)
-    finally:
+        err = _ffmpeg_hls(url, work, target)
+    except BaseException:
         shutil.rmtree(work, ignore_errors=True)
+        raise
+    if err != "download_resumable" and not (err is None and (work / KEEP_MARK).exists()):
+        shutil.rmtree(work, ignore_errors=True)
+    return err
+
+
+def _kept_segments(work: Path):
+    """(segments on disk, segments listed) for an HLS work dir's ledger."""
+    ledger = work / "urls.txt"
+    if not ledger.is_file():
+        return 0, 0
+    names = [ln.split("\t", 1)[0] for ln in ledger.read_text(encoding="utf-8").splitlines()]
+    return sum(1 for n in names if (work / n).is_file()), len(names)
+
+
+def _resumable(work: Path):
+    """download_resumable when the deadline stopped a download that keeps
+    segments for the next run, else download_timeout."""
+    kept, listed = _kept_segments(work)
+    if not kept:
+        return "download_timeout"
+    print(f"  ffmpeg-hls: {kept}/{listed} segments kept for the next run", file=sys.stderr)
+    return "download_resumable"
 
 
 def _ffmpeg_hls(url: str, work: Path, target: Path):
     deadline = time.monotonic() + _cap(DOWNLOAD_TIMEOUT)
     err = _resolve_hls(url, work, deadline)
+    if err == "download_timeout":
+        return _resumable(work)
     if err:
         return err
     label = "ffmpeg-hls"
@@ -636,7 +703,7 @@ def _ffmpeg_hls(url: str, work: Path, target: Path):
         got = subprocess.run(cmd, capture_output=True, text=True,
                              timeout=max(0.1, deadline - time.monotonic()))
     except subprocess.TimeoutExpired:
-        return "download_timeout"
+        return _resumable(work)
     except OSError:
         return "ffmpeg_missing"
     if got.returncode != 0 or not target.is_file() or target.stat().st_size == 0:
@@ -656,8 +723,14 @@ def download_media_scrapling(x: dict, py: str):
     NN.ext. Returns (files, None) or (None, error)."""
     dest = cache_root() / x["shortcode"]
     if dest.exists():
-        shutil.rmtree(dest)
-    dest.mkdir(parents=True)
+        for child in dest.iterdir():
+            if child.is_dir() and child.suffix == ".hls":
+                continue      # an HLS download's kept segments
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+    dest.mkdir(parents=True, exist_ok=True)
     helper = str(Path(__file__).with_name("x-scrapling-media.py"))
     try:
         proc = subprocess.run([py, helper, "--url", x["url"], "--status-id", x["shortcode"]],
@@ -688,6 +761,12 @@ def download_media_scrapling(x: dict, py: str):
     if not files:
         return None, "no_media"
     return files, None
+
+
+def drop_kept_segments(x: dict):
+    """Remove a status' kept HLS segments once its clip no longer needs them."""
+    for work in (cache_root() / x["shortcode"]).glob("*.hls"):
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def fetch_media(x: dict, scrapling):
@@ -1467,6 +1546,8 @@ def enrich_batch(args, selected, matched_total, remaining, run):
                 status = "deferred" if error.startswith("scrapling:") else "failed"
                 if write_markers(p, text, fm_raw, body, has_crlf,
                                  status=status, error=error, permanent=permanent):
+                    if permanent:
+                        drop_kept_segments(x)
                     print(f"x {relpath}: {status} ({error})")
                 else:
                     print(f"marker write REVERTED - failure NOT recorded for "
@@ -1602,6 +1683,7 @@ def enrich_batch(args, selected, matched_total, remaining, run):
                     failed += 1
             elif write_crawled(p, text, fm_raw, body, section, has_crlf,
                                extra=extra):
+                drop_kept_segments(x)
                 print(f"v {relpath}: {len(slide_embeds)} slides{qual_suffix} + "
                       f"{len(transcripts)} transcript{src_note}"
                       f"{'' if backend == 'subs' else f' [{backend}]'}")

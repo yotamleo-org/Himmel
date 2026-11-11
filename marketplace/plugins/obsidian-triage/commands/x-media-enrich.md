@@ -259,6 +259,27 @@ budgeted runs: repeat the Step 2 command, each run one foreground Bash call with
 the tool timeout at 600000, until it prints no `remaining` and no `not started`
 line.
 
+### Long videos
+
+A streamed (HLS) video longer than 10 minutes takes the long-video path, so it
+is transcribed instead of failing on the download window every night:
+
+- Only its audio rendition is fetched (the best video variant of a long clip
+  is larger than the 500 MiB media cap, and the transcript needs the audio
+  alone), 16 segments per curl run with 8 parallel transfers.
+- Its segments stay in `~/.luna/x-media/<status-id>/` between runs. When the
+  download window or the run budget ends first, the clip records
+  `media_last_error: scrapling:download_resumable`, keeps `x_media_pending`,
+  and the next run fetches only the segments still missing. Those segments
+  are removed once the clip's transcript is written.
+
+So a long download spans several runs, never one tool call, and the nightly
+step still ends inside its budget. The nightly call makes progress on it
+whenever its budget reaches the clip (failed clips run last). To finish long
+clips sooner, repeat the Step 2 command by hand, each run one foreground Bash
+call, until no clip reports `download_resumable`. Outside a tool call (a
+terminal), `X_MEDIA_BUDGET_S=0` finishes them in one run.
+
 ### Notes for the agent
 
 - **This command is autonomous by design.** Do NOT ask the user for confirmation
