@@ -6,7 +6,8 @@ Moved verbatim out of `SKILL.md`.
 and the luna vault never reach another himmel user; anything true for other
 users must land in the repo or it is lost to them. Defaulting everything to
 luna is the documented failure mode — the 2026-07-11 pass did exactly that and
-needed a follow-up PR (HIMMEL-900). Classify each durable item:
+needed a follow-up PR to move its adopter-generic gotchas out of luna and into
+himmel docs. Classify each durable item:
 
 - **Operator-specific / vault-shaped** (this operator's machines, lane
   inventory, personal vaults, quota habits, personal workflow) → the luna
@@ -35,14 +36,17 @@ needed a follow-up PR (HIMMEL-900). Classify each durable item:
   own vault — land them in the repo (`docs/` or the owning plugin's README).
 - **Rule / restriction candidates.** An adopter-generic item that is
   frame-shaping or safety-critical deserves more than a doc: run it through
-  the HIMMEL-177 layer test (default-hook / default-rule / lean-invoke /
+  the layer-selection test in `docs/internals/context-architecture.md`
+  (default-hook / default-rule / lean-invoke /
   defer) and FILE A TICKET for the promotion (CLAUDE.md line, PreToolUse
-  hook, pre-commit gate) — doc it now, ticket the escalation. (HIMMEL-195:
-  prose that already drifted escalates to structural, not to more prose.)
+  hook, pre-commit gate) — doc it now, ticket the escalation. (Structural >
+  instructional: prose that already drifted escalates to structural, not to
+  more prose.)
 
 Match each note's existing voice and structure. One writer, many readers.
 
-**Triage by SHAPE before landing (D9, HIMMEL-570).** Orthogonal to the
+**Triage by SHAPE before landing (the memory strategy design's three-way
+triage).** Orthogonal to the
 propagation class above — decide *where recall happens*:
 
 - **Fact-shaped** — looked up on a symptom ("rtk masks gitleaks blocks"). →
@@ -50,8 +54,8 @@ propagation class above — decide *where recall happens*:
   (step 5).
 - **Directive-shaped** — must fire *unprompted*; the model never queries for a
   rule it does not know it is breaking ("NEVER merge with open CR comments"). →
-  **keep it resident** as a ≤200-char `MEMORY.md` line, **or** file a HIMMEL-195
-  escalation for a structural hook. A directive behind a qmd query is dead.
+  **keep it resident** as a ≤200-char `MEMORY.md` line, **or** file a ticket
+  escalating it to a structural hook. A directive behind a qmd query is dead.
 - **Invocation-shaped** — fires only inside a named flow (a `/pr-check` gotcha, a
   codex-dispatch trap, a jira-CLI quirk). → land it in the **existing skill /
   command / script that owns that flow** (adopter-generic → the repo-tracked
