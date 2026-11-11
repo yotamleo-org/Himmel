@@ -86,6 +86,12 @@ if [ "${1:-} ${2:-}" = "api graphql" ]; then
     printf '%s' "${STUB_THREADS:-$none}" | jq -r "$q"
     exit $?
 fi
+if [ "${1:-} ${2:-}" = "pr view" ]; then
+    [ "${3:-}" = "${STUB_PR_NUM:-9845}" ] || { echo "pr view: unexpected PR ${3:-}" >&2; exit 1; }
+    [ -n "${STUB_PR_HEAD:-}" ] || { echo "pr view boom" >&2; exit 1; }
+    printf '%s\n' "$STUB_PR_HEAD"
+    exit 0
+fi
 echo "unexpected gh: $*" >&2
 exit 1
 STUB
@@ -1061,6 +1067,84 @@ contains "29: ...naming the unread threads" "$out" "could not read the review th
 printf 'open-threads-ok: typed\n' > "$evd/typed29.md"
 rc=0; (cd "$fx" && wv q26t GO "$N29c" --evidence-file "$evd/typed29.md" >/dev/null 2>&1) || rc=$?
 check "29: evidence typing an open-threads-ok: line is refused" "$rc" 2
+
+# --- 30. --bind attaches a branch GO to its PR at the same head ---
+bindf() { printf '%s/q30/bind-pr9845-%s.md' "$scope_dir" "$SHA_A"; }
+rc=0; WV_NOPR="--branch fix/himmel-9845-x" wv q30 GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
+check "30: setup, the branch GO is written" "$rc" 0
+VPR=9845; rc=0; verdict_rc q30 "$SHA_A" || rc=$?
+check "30: control, the branch GO alone is no merge trust" "$([ "$rc" -ne 0 ] && echo refused || echo accepted)" refused
+rc=0; out=$(STUB_PR_HEAD="$SHA_B" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" 2>&1) || rc=$?
+check "30: a PR head that differs from the verdict head is refused rc 6" "$rc" 6
+check "30: ...and nothing is written" "$([ -e "$(bindf)" ] && echo yes || echo no)" no
+rc=0; out=$(unset STUB_PR_HEAD; WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" 2>&1) || rc=$?
+check "30: a PR head that cannot be read is refused rc 7" "$rc" 7
+check "30: ...and nothing is written (unread head)" "$([ -e "$(bindf)" ] && echo yes || echo no)" no
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_B" 2>&1) || rc=$?
+check "30: a head with no branch GO is refused rc 2" "$rc" 2
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 NO-GO "$SHA_A" 2>&1) || rc=$?
+check "30: --bind on a NO-GO is refused rc 2" "$rc" 2
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845 --evidence-file $ev" wv q30 GO "$SHA_A" 2>&1) || rc=$?
+check "30: --bind with --evidence-file is refused rc 2" "$rc" 2
+rc=0; wv q30n NO-GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30n GO "$SHA_A" 2>&1) || rc=$?
+check "30: a qid holding only a NO-GO is refused rc 2" "$rc" 2
+check "30: ...and nothing is written (NO-GO qid)" "$([ -e "$scope_dir/q30n/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+rc=0; wv q30p GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30p GO "$SHA_A" 2>&1) || rc=$?
+check "30: a GO that already names a PR is not a branch verdict, refused rc 2" "$rc" 2
+check "30: ...and nothing is written (PR GO qid)" "$([ -e "$scope_dir/q30p/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" 2>&1) || rc=$?
+check "30: the bind at the PR's head is written rc 0" "$rc" 0
+check "30: ...to bind-pr<n>-<head>.md" "$([ -f "$(bindf)" ] && echo yes || echo no)" yes
+check "30: the pr line sits two lines after the verdict line" "$(awk '/^## Verdict/ {p=1; next} p && NF && !n {n=NR+2; next} n && NR==n {print; exit}' "$(bindf)")" "pr: 9845"
+contains "30: the record names its source" "$(cat "$(bindf)")" "bound-from: judge.md"
+contains "30: the evidence body is carried verbatim" "$(cat "$(bindf)")" "- the hook never runs unset"
+VPR=9845; rc=0; verdict_rc q30 "$SHA_A" || rc=$?
+check "30: go_trust_verdict accepts the bound PR" "$rc" 0
+VPR=9846; rc=0; verdict_rc q30 "$SHA_A" || rc=$?
+check "30: go_trust_verdict refuses another PR at the same head" "$rc" 2
+VPR=
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" 2>&1) || rc=$?
+check "30: re-running the same bind rewrites the same file rc 0" "$rc" 0
+check "30: ...leaving one bound record" "$(find "$scope_dir/q30" -name 'bind-pr*' | wc -l | tr -d ' ')" 1
+
+src30() {
+    mkdir -p "$scope_dir/$1"
+    {
+        printf '# VERDICT %s - judge\n\nwriter-session: s\nwritten-at: 2026-10-08T00:00:00Z\n\n## Verdict\n\n' "$1"
+        # shellcheck disable=SC2016
+        printf '**GO** for head `%s`.\n\nbranch: fix/x\n' "$SHA_A"
+        [ -z "${3:-}" ] || printf '%s\n' "$3"
+        printf 'model: claude-opus-5-5\neffort: high\n\nbody\n'
+    } > "$tmp/src30.body"
+    cp "$tmp/src30.body" "$scope_dir/$1/judge.md"
+    [ "$2" -eq 1 ] || return 0
+    src30_mac=$(. "$REPO/scripts/lib/go-gate.sh" && go_verdict_mac "$scope" "$1" judge < "$tmp/src30.body")
+    printf 'mac: %s\n' "$src30_mac" >> "$scope_dir/$1/judge.md"
+}
+bind30() {
+    local r=0
+    STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv "$1" GO "$SHA_A" >/dev/null 2>&1 || r=$?
+    printf '%s' "$r"
+}
+src30 q30s 1
+check "30: control, a hand-built signed branch GO binds rc 0" "$(bind30 q30s)" 0
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9846" wv q30s GO "$SHA_A" 2>&1) || rc=$?
+check "30: a bind naming a PR the stub does not know is refused rc 7" "$rc" 7
+check "30: ...and nothing is written (wrong PR)" "$([ -e "$scope_dir/q30s/bind-pr9846-$SHA_A.md" ] && echo yes || echo no)" no
+src30 q30a 0
+check "30: an unsigned source branch GO is refused rc 2" "$(bind30 q30a)" 2
+check "30: ...and nothing is written (unsigned source)" "$([ -e "$scope_dir/q30a/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+src30 q30r 1 "repo: other/name"
+check "30: a signed source of another repo is refused rc 2" "$(bind30 q30r)" 2
+check "30: ...and nothing is written (other repo)" "$([ -e "$scope_dir/q30r/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+src30 q30d 1 "delta-scope: aaaa..bbbb"
+check "30: a signed source carrying a delta-scope line is refused rc 2" "$(bind30 q30d)" 2
+check "30: ...and nothing is written (delta-scope source)" "$([ -e "$scope_dir/q30d/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+src30 q30h 1 "reviewed-head: $SHA_B"
+check "30: a signed source carrying a reviewed-head line is refused rc 2" "$(bind30 q30h)" 2
+check "30: ...and nothing is written (reviewed-head source)" "$([ -e "$scope_dir/q30h/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
 
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"
