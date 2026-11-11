@@ -81,8 +81,6 @@ git_env_scrub   # not a git hook - safe to scrub GIT_INDEX_FILE too (HIMMEL-3570
 
 GH="${GH_BIN:-gh}"
 
-# The four pre-tag reads ride the read-only token when one is configured and fall back to the main token as
-# gh-read.sh decides. GH_BIN, when set, still wins for every call; the tag-ref write keeps "$GH" on the main token.
 GH_READ_BIN="$(cd "$HERE/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-ok: a missing lib dir leaves no file, and the -f test below falls back to plain gh
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 if [ -z "${GH_BIN:-}" ] && [ "$GH_READ_BIN" != gh ]; then

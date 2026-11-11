@@ -113,8 +113,6 @@ ledger="$vdir/_ledger.jsonl"
 
 # The repo the PR numbers and heads must belong to. Resolved once, in this
 # shell, so the lookups below can run in command substitutions.
-# The default lookups (repo, PR state, head) are reads: they ride the read-only token when one is configured and the
-# helper falls back to the main token. Both seams set means no gh call, so nothing is initialised.
 GH_READ_BIN="$(cd "$HERE/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-ok: a missing lib dir leaves no file, and the -f test below falls back to plain gh
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 if [ "$GH_READ_BIN" != gh ] && { [ -z "${HIMMEL_VERDICT_PR_STATE_CMD:-}" ] || [ -z "${HIMMEL_VERDICT_HEAD_CHECK_CMD:-}" ]; }; then

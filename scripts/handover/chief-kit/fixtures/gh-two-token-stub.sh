@@ -7,8 +7,8 @@
 # env   GHLOG               required: the log file, one line per call
 #       GH_STUB_DELEGATE    the suite's own stub (absolute path); unset = exit 0, no output
 #       GH_STUB_MAINFAIL    rate|auth: main-token reads are refused
-#       GH_STUB_MAINFAIL_BUCKET  core|graphql: only that bucket of main is spent (the 11-10
-#                           incident was core 0/5000); unset = every read bucket is spent.
+#       GH_STUB_MAINFAIL_BUCKET  core|graphql: only that bucket of main is spent;
+#                           unset = every read bucket is spent.
 #                           A write on main is refused ONLY when this names its own bucket
 #                           (pr merge is graphql); unset, a write is never refused
 #       GH_STUB_READFAIL    rate|auth|notfound: a read-token call is refused
@@ -20,12 +20,6 @@
 # refuse  main + MAINFAIL + a read shape in a spent bucket: the F1 text on stderr, exit 1.
 #       read token + READFAIL: a partial page on stdout, the matching text on stderr, exit 1.
 # answer  everything else: exec GH_STUB_DELEGATE "$@".
-#
-# The read-shape test mirrors scripts/lib/gh-read.sh _ghr_is_read and the bucket rule
-# mirrors scripts/lib/gh-quota.sh ghq_bucket_of, kept here on purpose so a broken
-# router cannot also break the stub that tests it.
-#
-# PLATFORM GUARD: the chief kit is Linux-only.
 set -u
 
 : "${GHLOG:?gh-two-token-stub: GHLOG is required}"
