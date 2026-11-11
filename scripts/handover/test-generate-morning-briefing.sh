@@ -65,6 +65,8 @@ TMP_ROOT=$(mktemp -d)
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
 # Hermetic: the operator's real failure-review digests must not leak in.
 export HIMMEL_FAILURE_REVIEW_DIR="$TMP_ROOT/failure-review"
+mkdir -p "$TMP_ROOT/emptyroot"; : > "$TMP_ROOT/emptyroot/.env"
+export GH_READ_ENV_ROOT="$TMP_ROOT/emptyroot" HIMMEL_SECRETS_KEYRING=off
 
 # Fake gh + jira + claude CLIs -----------------------------------------
 
@@ -1196,6 +1198,32 @@ assert_contains "no JSON: the worker lines are the raw digest's own" "workers N7
 OUT_FR6="$TMP_ROOT/fr-nodigest.md"
 rm -f "$FRD/out/failure-review-2026-11-03.md"; run_fr "$OUT_FR6"
 assert_contains "no digest at all: today's no-digest line" "No failure review digest for 2026-11-03" "$(cat "$OUT_FR6")"
+
+echo "TEST: the five PR list reads ride the read token while main is rate limited"
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$TMP_ROOT/ttroot" "$TMP_ROOT/emptyroot" "$TMP_ROOT/tt" "$TMP_ROOT/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$TMP_ROOT/ttroot/.env"
+: > "$TMP_ROOT/emptyroot/.env"
+ln -s "$SCRIPT_DIR/chief-kit/fixtures/gh-two-token-stub.sh" "$TMP_ROOT/tt/gh"
+TTLOG="$TMP_ROOT/tt.log"
+tt_brief() {
+    : > "$TTLOG"
+    ( cd "$REPO"; env -u GH_CMD GH_READ_ENV_ROOT="$1" PATH="$TMP_ROOT/tt:$PATH" GH_STUB_DELEGATE="$FAKE_GH" GH_STUB_READ_TOKEN="$READTOK" \
+        GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$TMP_ROOT/himmelcfg" JIRA_CMD="$FAKE_JIRA" \
+        FAKE_GH_SEARCH_FROM=2026-10-27 FAKE_GH_PR_JSON="$PRS" FAKE_GH_PR_OPEN='[]' SHIFTS_FILE="$SH_FILE2" MORNING_TODAY=2026-10-29 \
+        bash "$SCRIPT" --since "$MARKER" --out "$2" --since-date 2026-10-28 >/dev/null )
+}
+tt_logn() { grep -c -E -- "$1" "$TTLOG"; }
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+GH_STUB_MAINFAIL=rate tt_brief "$TMP_ROOT/ttroot" "$TMP_ROOT/tt-spent.md"
+tt_spent=$(cat "$TMP_ROOT/tt-spent.md")
+tt_day=$(cell "2026-10-28T08:00:00+01:00" 4 "$tt_spent"); tt_night=$(cell "2026-10-28T20:00:00+01:00" 4 "$tt_spent")
+if [ "$tt_day" = "1" ] && [ "$tt_night" = "2" ]; then pass "tt: main spent: the shift merged-PR read fills the PRs cells"; else fail "tt: main spent: the shift merged-PR read fills the PRs cells" "day '$tt_day' night '$tt_night'"; fi
+assert_contains "tt: main spent: the merged-PR read fills the Completed section" "HIMMEL-901" "$tt_spent"
+if [ "$(tt_logn '^tok=read argv=pr list ')" = "5" ]; then pass "tt: main spent: the five PR list reads log tok=read"; else fail "tt: main spent: the five PR list reads log tok=read" "got $(tt_logn '^tok=read argv=pr list ')"; fi
+if [ "$(tt_logn '^tok=main ')" = "0" ]; then pass "tt: main spent: no read logs tok=main"; else fail "tt: main spent: no read logs tok=main" "got $(tt_logn '^tok=main ')"; fi
+tt_brief "$TMP_ROOT/emptyroot" "$TMP_ROOT/tt-control.md"
+if [ "$(tt_logn '^tok=main argv=pr list ')" = "5" ] && [ "$(tt_logn '^tok=read ')" = "0" ]; then pass "tt: control, no read token: the five reads log tok=main"; else fail "tt: control, no read token: the five reads log tok=main" "main $(tt_logn '^tok=main argv=pr list ') read $(tt_logn '^tok=read ')"; fi
 
 # Summary --------------------------------------------------------------
 

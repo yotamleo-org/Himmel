@@ -57,7 +57,9 @@ cmd_hint() {
     if [ -f "$SCRIPT_DIR/../../.claude/commands/$1.md" ]; then printf ' (/%s)' "$1"; fi
 }
 
-GH_CMD="${GH_CMD:-gh}"
+GH_READ_BIN="$SCRIPT_DIR/../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+GH_CMD="${GH_CMD:-$GH_READ_BIN}"
 GIT_CMD="${GIT_CMD:-git}"
 JIRA_CMD="${JIRA_CMD:-}"
 CLAUDE_CMD="${CLAUDE_CMD:-claude}"

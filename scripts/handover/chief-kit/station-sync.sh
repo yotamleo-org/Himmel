@@ -45,6 +45,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # shellcheck source=scripts/lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
@@ -81,7 +83,7 @@ exec 9>"$STATE.lock" && flock 9
 echo "BEHIND:pending" > "$STATE" 2>/dev/null
 
 if [ -n "$PR" ]; then
-    GH="${SS_GH:-gh}"
+    GH="${SS_GH:-$GH_READ_BIN}"
     paths="$(cd "$PRIMARY" && "$GH" pr view "$PR" --json files -q '.files[].path' 2>/dev/null)" \
         || { mkdir -p "$(dirname "$STATE")" 2>/dev/null && echo "BEHIND:unverified" > "$STATE" 2>/dev/null
              echo "STATION=failed:gh-pr-view"; exit 0; }

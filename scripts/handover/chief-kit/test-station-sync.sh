@@ -83,6 +83,13 @@ exec "$@"
 EOF2
 chmod +x "$W/usage-compute" "$W/timeout"
 export SS_USAGE_COMPUTE="$W/usage-compute" SS_TIMEOUT="$W/timeout"
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$W/ttroot" "$W/emptyroot" "$W/tt" "$W/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$W/ttroot/.env"
+: > "$W/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$W/tt/gh"
+export GH_READ_ENV_ROOT="$W/emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$W/himmelcfg"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 run() {  # run <versions file> <path>...
     : > "$SS_CALLS"; rm -f "$SS_STATE"
     export SS_T_VERSIONS="$1"; shift
@@ -373,5 +380,27 @@ contains "33 state is already final when the build runs" "$(cat "$SS_UCALLS")" "
 : > "$SS_UCALLS"
 run "$W/ver-current" docs/x.md
 contains "34 the sync lock is free while the build runs" "$(cat "$SS_UCALLS")" "lock-probe rc=0"
+
+printf '#!/usr/bin/env bash\necho marketplace/plugins/foo/skill.md\n' > "$W/gh-files"
+chmod +x "$W/gh-files"
+TTLOG="$W/tt.log"
+logn() { grep -c -E -- "$1" "$TTLOG"; }
+tt_pr() {
+    : > "$SS_CALLS"; : > "$TTLOG"; rm -f "$SS_STATE"
+    export SS_T_VERSIONS="$W/ver-current"
+    out="$(env -u SS_GH GH_READ_ENV_ROOT="$1" PATH="$W/tt:$PATH" GH_STUB_DELEGATE="$W/gh-files" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" bash "$SCRIPT" --pr 7 2>&1)"; rc=$?
+    calls="$(cat "$SS_CALLS" 2>/dev/null)"
+}
+GH_STUB_MAINFAIL=rate tt_pr "$W/ttroot"
+check "35 main spent: the PR sync exits 0" "$rc" 0
+contains "35 main spent: the PR files read returns the paths, so the marketplace step runs" "$calls" "update --only marketplace"
+contains "35 main spent: the station is ok" "$out" "STATION=OK"
+lacks "35 main spent: no gh-pr-view failure" "$out" "STATION=failed:gh-pr-view"
+check "35 main spent: the PR read logs tok=read" "$(logn '^tok=read argv=pr view 7 --json files ')" 1
+check "35 main spent: no read logs tok=main" "$(logn '^tok=main ')" 0
+tt_pr "$W/emptyroot"
+contains "36 control, no read token: the marketplace step runs" "$calls" "update --only marketplace"
+check "36 control: the PR read logs tok=main" "$(logn '^tok=main argv=pr view 7 --json files ')" 1
+check "36 control: no call logs tok=read" "$(logn '^tok=read ')" 0
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
