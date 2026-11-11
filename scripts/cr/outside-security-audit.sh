@@ -50,7 +50,6 @@ gh_cmd=gh
 work=$(tmpdir) || die 2 "cannot make a temp dir"
 trap 'rm -rf "$work"' EXIT
 
-# 1. read: outside, OPEN at exactly <head>, and not already audited.
 # swallow-ok: any answer but yes is refused on the same line (exit 2)
 rc_out=$(bash "$anchor/scripts/handover/chief-kit/ready-check.sh" --outside "$PR" 2>/dev/null </dev/null) || rc_out="${rc_out:-nothing}"
 [ "$rc_out" = "outside-pr: yes" ] || die 2 "PR #$PR is not confirmed outside (ready-check.sh --outside said '$rc_out')"
@@ -86,8 +85,8 @@ audit_locked() {
         [ -z "$prior" ] || die 8 "PR #$PR at ${H:0:7} is already audited: $prior; a fail stays at this head and no verdict is re-rolled, so the way on is a new head"
     fi
 
-    # 2. stage 1 at <head> (spec section 6.2). The CodeRabbit lib binds its pattern overrides when it
-    # is sourced, so it is sourced in a fresh child with all four unset.
+    # The CodeRabbit lib binds its pattern overrides when it is sourced, so it runs in a fresh child
+    # with all four unset.
     # shellcheck disable=SC2016  # the body expands in the child shell
     crs=$(env -u CR_OK_DESC_RE -u CR_SKIP_DESC_RE -u CR_BOT_USER_ID -u CR_STATUS_CONTEXT GH_CMD="$gh_cmd" \
         "$_TIMEOUT_BIN" -k 5 20 bash -c '. "$1" 2>/dev/null || exit 3; cr_signal_state "$2" "$3" "$4"' \
@@ -98,14 +97,12 @@ audit_locked() {
         bash "$anchor/scripts/check-ci.sh" "$PR" --max-wait 120 --except-context codeowner-review-gate >&2 </dev/null || ci_rc=$?
     [ "$ci_rc" -eq 0 ] || die 6 "stage 1 is incomplete: check-ci.sh $PR --max-wait 120 --except-context codeowner-review-gate exited $ci_rc (every required context but the code-owner gate must be green at ${H:0:7})"
 
-    # 3. fetch: objects plus refs/himmel/outside/<n>, with no approval and no review round spent.
     pco=$(HIMMEL_REPO="$anchor" bash "$anchor/scripts/cr/pr-check-outside.sh" --pr "$PR" --head "$H" --fetch-only </dev/null) \
         || die 2 "pr-check-outside.sh --pr $PR --head $H --fetch-only refused (see above)"
     case "$pco" in "outside-pr: yes $PR $H "*) ;; *) die 2 "pr-check-outside.sh --fetch-only printed '$pco'" ;; esac
     ref="refs/himmel/outside/$PR"
     [ "$(git rev-parse --verify --quiet "$ref^{commit}" 2>/dev/null)" = "$H" ] || die 2 "$ref is not at $H" # swallow-ok: an unresolved ref differs from H and refuses here (exit 2)
 
-    # 4. the diff as text, always the full diff from the merge base.
     M=$(outside_pr_merge_base "$PR" "$base") || die 7 "cannot compute the merge base of $ref with origin/$base"
     gdiff() { git --no-pager -c core.quotePath=true diff --no-renames --no-ext-diff --no-textconv --no-color "$@"; }
     gdiff --raw -z --no-abbrev "$M" "$ref" > "$work/raw" 2>/dev/null || die 7 "cannot list the files of $M..$ref"
@@ -123,8 +120,6 @@ audit_locked() {
     [ "$size" -gt 0 ] || die 7 "the diff $M..$ref is empty"
     [ "$size" -le "$CAP" ] || die 7 "the diff is $size bytes, over the fixed $CAP-byte (192 KiB) cap; the way on is a smaller head (split the PR)"
 
-    # 5. hard checks: the script's own matching on the diff text and on blobs, never executed.
-    # Added lines, as "<+++ path>\t<line>", from hunks only (a header is never an added line).
     awk '/^diff --git /{h=0; f=""; next} !h && /^\+\+\+ /{f=substr($0,5); next} /^@@ /{h=1; next} h && /^\+/{print f "\t" $0}' "$work/diff" > "$work/added"
     hard=""; : > "$work/hits"
     hit() { case ",$hard," in *",$1,"*) ;; *) hard="${hard:+$hard,}$1" ;; esac; printf -- '- %s: %s\n' "$1" "$2" >> "$work/hits"; }
@@ -132,14 +127,14 @@ audit_locked() {
     while IFS= read -r l; do hit H1 "a bidi or invisible character on an added line: $(printf '%s' "$l" | cat -v)"; done \
         < <(LC_ALL=C grep -E -- "$bidi" "$work/added")
     h2_re='(^|/)(\.gitattributes|\.gitmodules|\.npmrc|bunfig\.toml|\.mcp\.json|\.coderabbit\.ya?ml)$|(^|/)(\.githooks|\.husky)/|(^|/)hooks/hooks\.json$|(^|/)\.claude/settings\.json$'
-    lifecycle() { # <blob sha>: the sorted lifecycle-key object of a package.json, or rc 1 when unparsable
+    lifecycle() {
         [ "$1" != "$zero" ] || { echo '{}'; return 0; }
         git cat-file blob "$1" 2>/dev/null | jq -cSse --argjson l "$LIFECYCLE" '
             if length == 1 and (.[0] | type) == "object" and ((.[0].scripts // {}) | type) == "object"
             then (.[0].scripts // {}) | with_entries(.key as $k | select(any($l[]; . == $k)))
             else error("not a package.json") end' 2>/dev/null
     }
-    resolved() { # <blob sha>: every package-lock "resolved" off the default registry, or rc 1 when unparsable
+    resolved() {
         [ "$1" != "$zero" ] || return 0
         git cat-file blob "$1" 2>/dev/null | jq -rs '
             if length == 1 and (.[0] | type) == "object" then .[0] else error("not a lockfile") end
@@ -186,7 +181,6 @@ audit_locked() {
         esac
     done < "$work/added"
 
-    # 6. flags for the report and the request, never a verdict on their own.
     unset -f trust_path_check 2>/dev/null || true
     # shellcheck source=../lib/go-gate.sh
     # shellcheck disable=SC1091
@@ -198,7 +192,6 @@ audit_locked() {
     [ "$tp_rc" -eq 0 ] || die 7 "trust_path_check refused (rc $tp_rc): ${tp:-no reason}"
     binaries=$(sed -n 's/^Binary files \(.*\) differ$/\1/p' "$work/diff")
 
-    # 7. one codex critic call, routed by the anchor's tracked registry.
     provider=$(jq -r '[.panel[]? | select(type == "object" and .model == "gpt-6.1-sol" and .drop != true and (.provider | type) == "string")]
         | first | .provider // empty' "$anchor/scripts/cr/critics.json" 2>/dev/null)
     [ -n "$provider" ] || die 7 "the anchor's scripts/cr/critics.json has no row whose model is gpt-6.1-sol"
@@ -211,7 +204,7 @@ audit_locked() {
         --slug outside-security --perspective-file "$persp" < "$work/diff" > "$work/critic.out" || crit_rc=$?
     case "$crit_rc" in 0|4) ;; *) die 7 "the critic gave no verdict (critic-first-pass.sh exit $crit_rc); stage 2 stays unpassed and may be re-run" ;; esac
 
-    # 8. the counts, from the score row this call wrote (past the line count taken before it).
+    # The counts come from the score row this call wrote, past the line count taken before it.
     counts=$(tail -n +"$((n0 + 1))" "$ledger" 2>/dev/null | jq -nRr --arg h "$H" '
         [inputs | fromjson? | select(type == "object" and .kind == "score" and .head == $h and .model == "outside-security")] | last
         | select(. != null) | [(.critical // 0), (.important // 0), (.dropped // 0)] | map(tostring) | join(" ")' 2>/dev/null)
@@ -220,7 +213,6 @@ audit_locked() {
         [[ "$v" =~ ^[0-9]+$ ]] || die 7 "the critic wrote no outside-security score row at ${H:0:7} (exit $crit_rc)"
     done
 
-    # 9. verdict and record (spec section 6.4).
     if [ -n "$hard" ] || [ "$crit_n" -gt 0 ]; then verdict=fail
     elif [ "$imp_n" -gt 0 ] || [ "$drop_n" -gt 0 ] || [ "$crit_rc" -eq 4 ]; then verdict=flagged
     else verdict=pass; fi

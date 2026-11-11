@@ -19,7 +19,6 @@ eq() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got '$1', want '$2')";
 has() { case "$1" in *"$2"*) pass "$3" ;; *) fail "$3 (missing '$2'; got: $1)" ;; esac; }
 sha() { sha256sum < "$1" | cut -d' ' -f1; } # read-sink-ok: hashes the suite's own fixture files
 
-# --- the anchor tree ------------------------------------------------------------------------------
 A="$tmp/anchor"; LOG="$tmp/log"
 mkdir -p "$A/scripts/cr/perspectives" "$A/scripts/lib" "$A/scripts/ci" "$A/scripts/handover/chief-kit" "$LOG" "$tmp/bin"
 [ -f "$HERE/outside-security-audit.sh" ] && cp "$HERE/outside-security-audit.sh" "$A/scripts/cr/"
@@ -86,7 +85,6 @@ esac
 STUB
 chmod +x "$tmp/bin/gh"
 
-# --- origin, the PR work repo and the primary ---------------------------------------------------
 O="$tmp/origin.git"; W="$tmp/work"; P="$tmp/primary"; CANARY="$tmp/canary"
 git init -q --bare -b main "$O"
 (
@@ -120,16 +118,13 @@ audit() {
 audits() { [ -f "$LEDGER" ] && jq -c 'select(.kind == "security-audit")' "$LEDGER" | wc -l | tr -d ' ' || echo 0; }
 last() { jq -sr --arg f "$1" '[.[] | select(.kind == "security-audit")] | last | .[$f] | if type == "array" then join(",") else tostring end' "$LEDGER" 2>/dev/null; }
 called() { [ -e "$LOG/critic.called" ] && echo yes || echo no; }
-# expect_row <label> <verdict> <hard csv>: a row was written with that verdict and hard list.
 expect_row() {
     eq "$rc" 0 "$1: exit 0"; eq "$(audits)" 1 "$1: one audit row"
     eq "$(last verdict)" "$2" "$1: verdict $2"; eq "$(last hard)" "$3" "$1: hard [$3]"
 }
-# expect_none <label> <exit>: refused with that exit, no audit row.
 expect_none() { eq "$rc" "$2" "$1: exit $2"; eq "$(audits)" 0 "$1: no audit row"; }
 mkdir -p "$tmp/home"
 
-# --- T3.1 RED, and the negative control ---------------------------------------------------------------
 reset; newpr 'printf "hello \342\200\256evil\n" >> f.txt'
 audit
 expect_row "T3.1 a diff adding a U+202E line" fail H1
@@ -149,7 +144,6 @@ eq "$(cd "$P" && HOME="$tmp/home" bash -c '. "$1"; outside_audit_passed 7 "$2" f
     "T3.1 control: and refuses it with no row"
 [ -f "$AUDIT" ] || { printf 'FAIL - outside-security-audit.sh is absent; %s row(s) failed\n' "$fails"; exit 1; }
 
-# --- T3.2 stage 1: CodeRabbit ----------------------------------------------------------------------------
 reset; newpr 'echo two >> f.txt'
 audit STUB_CR_STATUSES='[]'
 expect_none "T3.2 no CodeRabbit status" 6
@@ -158,7 +152,6 @@ eq "$(called)" no "T3.2 no critic call"
 # T1.59's four fixtures, each with its own one-variable mutation check (drop that -u; the row must turn).
 # The mutant sits beside the audit in the anchor, so it loads the same libraries and stubs.
 MUT="$A/scripts/cr/outside-security-audit-mut.sh"
-# mutate <label> <sed program> <VAR=value ...>: the mutant must differ and must write a row.
 mutate() {
     local label="$1" prog="$2" keep="$AUDIT"; shift 2
     sed "$prog" "$AUDIT" > "$MUT"
@@ -166,10 +159,11 @@ mutate() {
     reset; AUDIT="$MUT"; audit "$@"; AUDIT="$keep"; rm -f "$MUT"
     eq "$rc/$(audits)" "0/1" "T3.2 $label: the mutant passes stage 1 and writes a row, so the row is not hollow"
 }
-cr_case() { # label env-assignment statuses var-to-drop
-    reset; audit "$2" STUB_CR_STATUSES="$3"
-    expect_none "T3.2 $1" 6
-    mutate "$1: mutation (drop -u $4)" "s/ -u $4 / /" "$2" STUB_CR_STATUSES="$3"
+cr_case() {
+    local label="$1" leak="$2" statuses="$3" var="$4"
+    reset; audit "$leak" STUB_CR_STATUSES="$statuses"
+    expect_none "T3.2 $label" 6
+    mutate "$label: mutation (drop -u $var)" "s/ -u $var / /" "$leak" STUB_CR_STATUSES="$statuses"
 }
 cp "$AUDIT" "$tmp/pristine.sh"
 cr_case "an exported CR_OK_DESC_RE does not widen a Review in progress" CR_OK_DESC_RE=. "[$(cr_row 136622811 CodeRabbit success 'Review in progress')]" CR_OK_DESC_RE
@@ -182,7 +176,6 @@ mutate "skip pair: mutation (drop both -u; a lone -u CR_SKIP_DESC_RE is not inde
     CR_OK_DESC_RE=. CR_SKIP_DESC_RE=nomatch STUB_CR_STATUSES="[$(cr_row 136622811 CodeRabbit success 'Review skipped: automatic reviews are disabled')]"
 eq "$(sha "$AUDIT")" "$(sha "$tmp/pristine.sh")" "T3.2 the mutation copies left the audit untouched"
 
-# --- T3.3 stage 1: CI and the lint surface; T3.22 the check-ci call --------------------------------------
 reset; audit STUB_CHECKCI_RC=1; expect_none "T3.3 check-ci exit 1" 6; eq "$(called)" no "T3.3 no critic call"
 reset; audit STUB_CHECKCI_RC=2; expect_none "T3.3 check-ci exit 2 (DEADLINE-PENDING)" 6
 has "$err" "check-ci" "T3.3 the refusal names check-ci"
@@ -195,7 +188,6 @@ has "$err" "16d" "T3.3 the lint-surface refusal names 16d"
 reset; newpr 'git mv scripts/ci/lintme.sh docs/lintme.sh'
 audit; expect_none "T3.3 a rename out of the lint surface (the old path counts)" 6
 
-# --- T3.4 the read: head, state, outside -------------------------------------------------------------------
 reset; newpr 'echo four >> f.txt'
 audit STUB_OID=0123456789012345678901234567890123456789; expect_none "T3.4 headRefOid moved" 2
 reset; audit STUB_STATE=CLOSED; expect_none "T3.4 a closed PR" 2
@@ -203,7 +195,6 @@ reset; audit RC_ANSWER=no; expect_none "T3.4 a PR that is not outside" 2
 eq "$(called)" no "T3.4 no critic call"
 reset; out=$(cd "$P" && bash "$AUDIT" --pr 7 --head abc 2>&1); rc=$?; eq "$rc" 2 "T3.4 a short head is a usage error"
 
-# --- T3.6 H1: each code point on an added line; a removed line is no hit -----------------------------------
 for cp in 342200252 342200253 342200254 342200255 342200256 342201246 342201247 342201250 342201251 \
           342200213 342200214 342200215 342200216 342200217 357273277; do
     b="\\${cp:0:3}\\${cp:3:3}\\${cp:6:3}"
@@ -213,7 +204,6 @@ done
 reset; newpr 'printf "keep\n" > bidi.txt'
 audit; expect_row "T3.6 a removed U+202E line is no hit" pass ""
 
-# --- T3.7 / T3.15 H2: git, install and tool-run files ---------------------------------------------------------
 h2() { reset; newpr "$1"; audit; eq "$rc/$(last verdict)/$(last hard)" "0/fail/H2" "$2"; }
 h2 'echo "* text" > .gitattributes' "T3.7 H2 adds .gitattributes"
 h2 'printf "[submodule \"x\"]\n" > .gitmodules' "T3.7 H2 adds .gitmodules"
@@ -234,7 +224,6 @@ h2 'd=$(printf "x\nq"); mkdir -p "$d" && echo "y=1" > "$d/.npmrc"' "T3.15 H2 an 
 reset; newpr 'echo .coderabbit.yaml >> docs/a.md'
 audit; expect_row "T3.7 a file whose text names .coderabbit.yaml is no hit" pass ""
 
-# --- T3.8 / T3.15 H3: lifecycle scripts -----------------------------------------------------------------------
 for k in preinstall install prepare prepack postpack; do
     reset; newpr "printf '{\"name\":\"x\",\"scripts\":{\"test\":\"echo t\",\"postinstall\":\"echo a\",\"$k\":\"echo b\"}}\n' > package.json"
     audit; eq "$rc/$(last verdict)/$(last hard)" "0/fail/H3" "T3.8 H3 a package.json gains $k"
@@ -250,7 +239,6 @@ audit; expect_row "T3.8 a changed non-lifecycle script is no hit" pass ""
 reset; newpr "printf '{\"name\":' > package.json"
 audit; eq "$rc/$(last verdict)/$(last hard)" "0/fail/H3" "T3.15 H3 an unparsable package.json"
 
-# --- T3.9 / T3.15 H4: lockfile sources ------------------------------------------------------------------------
 # shellcheck disable=SC2329  # called from the fixture snippets newpr evals
 lock() { printf '{"lockfileVersion":3,"packages":{"":{"name":"x"},"node_modules/a":{"version":"1.0.0","resolved":"https://registry.npmjs.org/a/-/a-1.0.0.tgz"},"node_modules/b":{"version":"1.0.0",%s}}}\n' "$1"; }
 h4() { reset; newpr "$1"; audit; eq "$rc/$(last verdict)/$(last hard)" "0/fail/H4" "$2"; }
@@ -265,13 +253,11 @@ h4 "printf '[[package]]\nname = \"b\"\nsource = { git = \"https://evil.example/b
 reset; newpr "lock '\"resolved\":\"https://registry.npmjs.org/b/-/b-1.0.0.tgz\"' > package-lock.json"
 audit; expect_row "T3.9 a package-lock entry on the default registry is no hit" pass ""
 
-# --- T3.15 H5: symlinks and gitlinks --------------------------------------------------------------------------
 h5() { reset; newpr "$1"; audit; eq "$rc/$(last verdict)/$(last hard)" "0/fail/H5" "$2"; }
 h5 'ln -s /etc/passwd link' "T3.15 H5 a mode 120000 entry"
 h5 'git init -q vendored && git -C vendored -c user.email=t@t.test -c user.name=t commit -q --allow-empty -m v' "T3.15 H5 a mode 160000 entry"
 rm -rf "$W/vendored"
 
-# --- T3.10 / T3.11 / T3.16 the critic's score row decides the counts --------------------------------------------
 reset; newpr 'echo ten >> f.txt'
 audit STUB_CRIT_C=1; expect_row "T3.10 a score row with critical 1" fail ""
 eq "$(last critical_n)" 1 "T3.10 critical_n comes from the score row"
@@ -293,13 +279,11 @@ reset; audit STUB_CRIT_NOROW=1; expect_none "T3.11 no score row" 7
 reset; audit STUB_CRIT_D=1; expect_row "T3.16 dropped_n 1 and no other finding" flagged ""
 eq "$(last dropped_n)" 1 "T3.16 dropped_n comes from the score row"
 
-# --- T3.24 a stale score row at the head does not count ----------------------------------------------------------
 reset
 (cd "$P" && bash "$A/scripts/cr/ledger-append.sh" score --branch feat/outside-thing --head "$H" --model outside-security --responding-model gpt-6.1-sol \
     --critical 0 --important 0 --suggestions 0 --dropped 0 --raw-path /x >/dev/null 2>&1)
 audit STUB_CRIT_NOROW=1; expect_none "T3.24 a pre-existing zero-count score row and a critic that wrote none" 7
 
-# --- T3.12 nothing from the PR runs, and the primary is untouched ------------------------------------------------
 reset
 newpr "mkdir -p .githooks scripts/cr && printf 'touch \"%s\"\n' '$CANARY' | tee test-evil.sh .githooks/pre-commit scripts/cr/pr-check-context.sh >/dev/null && printf '* diff=evil filter=evil\n' > .gitattributes && printf '{\"scripts\":{\"postinstall\":\"touch $CANARY\"}}\n' > package.json && chmod +x test-evil.sh"
 fp() { (cd "$GCD" && cat HEAD index config; ls -lA hooks; cat hooks/* 2>/dev/null) | sha256sum | cut -d' ' -f1; }
@@ -310,7 +294,6 @@ if [ -e "$CANARY" ]; then fail "T3.12 a file from the PR ran"; else pass "T3.12 
 eq "$(fp)" "$before" "T3.12 the primary's HEAD, index, config and hooks are byte-identical"
 has "$(cat "$LOG/critic.stdin" 2>/dev/null)" "diff --git" "T3.12 the critic got the diff as text on stdin"
 
-# --- T3.13 / T3.17 an audited head refuses -------------------------------------------------------------------------
 reset; newpr 'echo thirteen >> f.txt'
 audit STUB_CRIT_C=1; frpt="$(last report)"
 rm -f "$LOG"/*; audit
@@ -328,7 +311,6 @@ printf '# a changed perspective\n' > "$PERSP"; rm -f "$LOG"/*; audit
 eq "$rc/$(audits)/$(called)" "0/2/yes" "T3.17 under a changed perspective sha the audit runs"
 printf '# fixture outside-security perspective\n' > "$PERSP"
 
-# --- one audit per head at a time ---------------------------------------------------------------------------------
 reset; newpr 'echo locked >> f.txt'
 race() { (cd "$P" && env HOME="$tmp/home" PATH="$tmp/bin:$PATH" LOG="$LOG" STUB_OID="$H" STUB_CR_STATUSES="$CR_OK" STUB_CRIT_SLEEP=2 STUB_CRIT_I="$1" \
     bash "$AUDIT" --pr 7 --head "$H" >/dev/null 2>&1; echo "$?" > "$tmp/race.$1"); }
@@ -337,7 +319,6 @@ eq "$(sort "$tmp/race.0" "$tmp/race.1" | tr '\n' ' ')" "0 8 " "two concurrent ru
 eq "$(audits)" 1 "two concurrent runs at one head: one row"
 eq "$(jq -c 'select(.kind == "score")' "$LEDGER" | wc -l | tr -d ' ')" 1 "two concurrent runs at one head: one critic call"
 
-# --- T3.21 an exit-7 run leaves the earlier report alone ------------------------------------------------------------
 reset; newpr 'echo twentyone >> f.txt'
 audit STUB_CRIT_I=1; r1="$(last report)"; s1="$(sha "$r1")"
 printf '# perspective, edited again\n' > "$PERSP"
@@ -346,7 +327,6 @@ eq "$rc/$(audits)" "7/1" "T3.21 a run under a changed perspective that exits 7 w
 eq "$(sha "$r1")/$(last report_sha256)" "$s1/$s1" "T3.21 the earlier report's bytes and its row's report_sha256 are intact"
 printf '# fixture outside-security perspective\n' > "$PERSP"
 
-# --- T3.14 the size cap ------------------------------------------------------------------------------------------------
 reset; newpr 'head -c 200000 /dev/zero | tr "\0" "a" | fold -w 100 > big.txt'
 audit; expect_none "T3.14 a diff over 192 KiB" 7
 has "$err" "bytes" "T3.14 the refusal names the size"
@@ -358,7 +338,6 @@ audit CRITIC_FIRST_PASS_CAP_BYTES=1000
 cap=$(sed -n 's/.*CRITIC_FIRST_PASS_CAP_BYTES=\([0-9]*\).*/\1/p' "$LOG/critic.env" 2>/dev/null)
 eq "$( [ "${cap:-0}" -gt 196608 ] && echo above || echo "not above ($cap)")" above "T3.14 the critic runs with CRITIC_FIRST_PASS_CAP_BYTES above 192 KiB"
 
-# --- T3.20 the critic call --------------------------------------------------------------------------------------------
 reset; audit CRITICS_BASE_JSON="$tmp/elsewhere.json" CR_LEDGER="$tmp/elsewhere.jsonl" CRITIC_KNOWN_FINDINGS=1 CRITIC_PERSPECTIVES=0
 eq "$(cat "$LOG/critic.argv" 2>/dev/null)" "--model gpt-6.1-sol --provider openai-codex --slug outside-security --perspective-file $PERSP" "T3.20 the critic argv"
 eq "$(cat "$LOG/critic.env" 2>/dev/null | sed 's/ CRITIC_FIRST_PASS_CAP_BYTES=[0-9]*//')" \
@@ -372,7 +351,6 @@ reset; audit; expect_none "T3.20 a registry with no gpt-6.1-sol row" 7
 eq "$(called)" no "T3.20 no critic call without a registry row"
 cp "$tmp/critics.keep" "$A/scripts/cr/critics.json"
 
-# --- T3.19 trust paths: a flag, never a verdict ---------------------------------------------------------------------
 reset; audit STUB_TP_RC=2; expect_none "T3.19 trust_path_check rc 2" 7
 reset; audit STUB_TP_OUT='hit scripts/lib/x.sh'
 expect_row "T3.19 a trust-path hit stays pass" pass ""
@@ -384,7 +362,6 @@ reset; newpr 'printf "\000\001bin" > blob.bin'
 audit; expect_row "T3.19 a binary file stays pass" pass ""
 has "$(cat "$(last report)" 2>/dev/null)" "blob.bin" "T3.19 the binary file is flagged in the report"
 
-# --- T3.25 the real perspective and the trust rows ----------------------------------------------------------------
 REAL="$HERE/perspectives/outside-security.md"
 if [ -f "$REAL" ]; then
     cp "$REAL" "$PERSP"; reset; newpr 'echo twentyfive >> f.txt'; audit
