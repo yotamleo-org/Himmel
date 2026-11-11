@@ -871,21 +871,26 @@ mkf scripts/lib/cmo-exec.test.mjs "execFileSync('bash', ['cmo-lib.sh']);"
 mkf scripts/lib/cmo-tpl.test.mjs $'const s = `\n// cmo-lib.sh\n`;'
 mkf scripts/lib/cmo-trail.test.js 'run(); // cmo-lib.sh'
 mkf scripts/lib/cmo-names.test.mjs $'// selector: names cmo-lib.sh\ntest();'
+mkf scripts/lib/cmo-cont.test.mjs $'const s = \'a\\\n// cmo-lib.sh\';'
+mkf scripts/lib/cmo-after-cont.test.mjs $'const s = \'a\\\nb\';\n// cmo-lib.sh'
+mkf scripts/lib/cmo-nested.test.mjs $'const s = `${c ? `a` : `b`}\n// cmo-lib.sh\n`;'
+mkf scripts/lib/cmo-return.test.mjs $'function f(x) { return /`/.test(x); }\n// cmo-lib.sh'
+mkf scripts/test-cmo-shcont.sh $'x=a\\\n#cmo-lib.sh'
 git -C "$FX" add -A
 git -C "$FX" commit -q -m "chore: comment-only mention fixtures"
 change scripts/lib/cmo-lib.sh
 plan_out="$( cd "$FX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$range" 2>&1 )"
 out="$(awk '$1 == "LOCAL" { print $2 }' <<< "$plan_out")"
-cmo_cmt="test-cmo-hash.sh test-cmo-indent.sh test-cmo-stemcmt.sh test-cmo-after-hd.sh test-cmo-after-str.sh lib/cmo.test.mjs lib/cmo-indent.test.ts"
+cmo_cmt="test-cmo-hash.sh test-cmo-indent.sh test-cmo-stemcmt.sh test-cmo-after-hd.sh test-cmo-after-str.sh lib/cmo.test.mjs lib/cmo-indent.test.ts lib/cmo-after-cont.test.mjs lib/cmo-return.test.mjs"
 for s in $cmo_cmt; do
     if ! grepq "$out" -Fx "scripts/$s"; then pass "30b --plan: a whole-line comment mention does not list scripts/$s"; else fail "30b --plan listed comment-only scripts/$s: $out"; fi
 done
-for s in test-cmo-exec.sh test-cmo-source.sh test-cmo-arg.sh test-cmo-cmdpos.sh test-cmo-stem.sh test-cmo-string.sh test-cmo-sqmulti.sh test-cmo-dqmulti.sh test-cmo-heredoc.sh test-cmo-heredoc-dash.sh test-cmo-trail.sh test-cmo-expand.sh test-cmo-directive.sh test-cmo-names.sh lib/cmo-exec.test.mjs lib/cmo-tpl.test.mjs lib/cmo-trail.test.js lib/cmo-names.test.mjs; do
+for s in test-cmo-exec.sh test-cmo-source.sh test-cmo-arg.sh test-cmo-cmdpos.sh test-cmo-stem.sh test-cmo-string.sh test-cmo-sqmulti.sh test-cmo-dqmulti.sh test-cmo-heredoc.sh test-cmo-heredoc-dash.sh test-cmo-trail.sh test-cmo-expand.sh test-cmo-directive.sh test-cmo-names.sh lib/cmo-exec.test.mjs lib/cmo-tpl.test.mjs lib/cmo-trail.test.js lib/cmo-names.test.mjs lib/cmo-cont.test.mjs lib/cmo-nested.test.mjs test-cmo-shcont.sh; do
     if grepq "$out" -Fx "scripts/$s"; then pass "30b --plan CONTROL scripts/$s is still listed"; else fail "30b --plan CONTROL scripts/$s dropped: $out"; fi
 done
-if grepq "$plan_out" -Fx 'impacted-suites: dropped-comment-only=7'; then pass "30b --plan prints the narrowing: dropped-comment-only=7"; else fail "30b --plan dropped-comment-only line missing or wrong: $plan_out"; fi
+if grepq "$plan_out" -Fx 'impacted-suites: dropped-comment-only=9'; then pass "30b --plan prints the narrowing: dropped-comment-only=9"; else fail "30b --plan dropped-comment-only line missing or wrong: $plan_out"; fi
 err="$( cd "$FX" && printf '' | bash "$IS" --check "$range" 2>&1 >/dev/null )"
-if grepq "$err" -F 'scripts/test-cmo-exec.sh' && ! grepq "$err" -F 'scripts/test-cmo-hash.sh' && grepq "$err" -Fx 'impacted-suites: dropped-comment-only=7'; then pass "30b --check owes no verdict for a comment-only suite and owes one for a control"; else fail "30b --check verdict set: $err"; fi
+if grepq "$err" -F 'scripts/test-cmo-exec.sh' && ! grepq "$err" -F 'scripts/test-cmo-hash.sh' && grepq "$err" -Fx 'impacted-suites: dropped-comment-only=9'; then pass "30b --check owes no verdict for a comment-only suite and owes one for a control"; else fail "30b --check verdict set: $err"; fi
 out="$(run_is "$range")"
 err="$( cd "$FX" && bash "$IS" "$range" 2>&1 >/dev/null )"
 all_listed=1

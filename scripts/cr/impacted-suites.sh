@@ -977,25 +977,28 @@ FNR == 1 {
     key = (ENVIRON["LEX_KEY"] != "") ? ENVIRON["LEX_KEY"] : FILENAME
     sub(/^\.\//, "", key)
     kind = (key ~ /\.sh$/) ? "sh" : ((key ~ /\.(js|mjs|ts)$/) ? "js" : "")
-    sq = 0; dq = 0; ansi = 0; inhd = 0; nq = 0; qh = 0; tpl = 0; blk = 0
+    sq = 0; dq = 0; ansi = 0; inhd = 0; nq = 0; qh = 0; shc = 0; sd = 0; blk = 0; jq = ""
 }
 kind == "sh" { sh_line($0); next }
 kind == "js" { js_line($0); next }
 function keep_directive(l) {
     return l ~ /^[ \t]*(#|\/\/)[ \t]*selector:[ \t]+names[ \t]/ || l ~ /^[ \t]*#[ \t]*shellcheck[ \t]+source=/
 }
-function sh_line(l,    t, p, n, c, w, raw, d) {
+# sh state across lines: sq/dq (an open quote), the here-document queue, and shc (the
+# line before ended in a backslash, so this one continues its last word: `a\` then
+# `#b` is the word a#b, not a comment).
+function sh_line(l,    t, p, n, c, w, raw, d, cont) {
     if (inhd) {
         t = l; sub(/\r$/, "", t)
         if (hdash[qh]) sub(/^\t+/, "", t)
         if (t == hdel[qh]) { qh++; if (qh > nq) { inhd = 0; nq = 0; qh = 0 } }
         return
     }
-    if (!sq && !dq && l ~ /^[ \t]*#/) {
+    if (!sq && !dq && !shc && l ~ /^[ \t]*#/) {
         if (!keep_directive(l)) print key "\001" FNR
         return
     }
-    n = length(l); p = 1
+    n = length(l); p = 1; cont = 0
     while (p <= n) {
         c = substr(l, p, 1)
         if (sq) {
@@ -1008,7 +1011,7 @@ function sh_line(l,    t, p, n, c, w, raw, d) {
             if (c == "\"") dq = 0
             p++; continue
         }
-        if (c == "\\") { p += 2; continue }
+        if (c == "\\") { if (p == n) cont = 1; p += 2; continue }
         if (c == "\047") { sq = 1; ansi = (p > 1 && substr(l, p - 1, 1) == "$"); p++; continue }
         if (c == "\"") { dq = 1; p++; continue }
         if (c == "#" && (p == 1 || substr(l, p - 1, 1) ~ /[ \t;&|()<>]/)) break
@@ -1027,31 +1030,40 @@ function sh_line(l,    t, p, n, c, w, raw, d) {
         }
         p++
     }
-    if (!sq && !dq && nq > 0 && !inhd) { inhd = 1; qh = 1 }
+    shc = (cont && !sq && !dq)
+    if (!sq && !dq && !shc && nq > 0 && !inhd) { inhd = 1; qh = 1 }
 }
-function js_line(l,    p, n, c, q, pc) {
-    if (!tpl && !blk && l ~ /^[ \t]*\/\//) {
+# JS state across lines: blk (inside /* */), jq (the quote of a string a backslash
+# continued), and a stack st[1..sd] of "T" (template text) and "E" (a ${ } expression,
+# code again, bd[] its open braces), so a template nested in ${ } closes the right one.
+function js_line(l,    p, n, c, pc, cont, lw) {
+    if (sd == 0 && !blk && jq == "" && l ~ /^[ \t]*\/\//) {
         if (!keep_directive(l)) print key "\001" FNR
         return
     }
-    n = length(l); p = 1; pc = ""
+    n = length(l); p = 1; pc = ""; cont = 0; lw = ""
     while (p <= n) {
         c = substr(l, p, 1)
         if (blk) { if (substr(l, p, 2) == "*/") { blk = 0; p += 2 } else p++; continue }
-        if (tpl) {
-            if (c == "\\") { p += 2; continue }
-            if (c == "`") tpl = 0
+        if (jq != "") {
+            if (c == "\\") { if (p == n) cont = 1; p += 2; continue }
+            if (c == jq) { jq = ""; pc = c }
             p++; continue
         }
-        if (c == "\047" || c == "\"") {
-            q = c; p++
-            while (p <= n) { c = substr(l, p, 1); if (c == "\\") { p += 2; continue }; p++; if (c == q) break }
-            pc = q; continue
+        if (sd > 0 && st[sd] == "T") {
+            if (c == "\\") { p += 2; continue }
+            if (c == "`") { sd--; pc = c; p++; continue }
+            if (substr(l, p, 2) == "${") { sd++; st[sd] = "E"; bd[sd] = 1; pc = "{"; p += 2; continue }
+            p++; continue
         }
-        if (c == "`") { tpl = 1; p++; continue }
+        if (c == "\047" || c == "\"") { jq = c; p++; continue }
+        if (c == "`") { sd++; st[sd] = "T"; p++; continue }
+        if (sd > 0 && c == "{") bd[sd]++
+        if (sd > 0 && c == "}" && --bd[sd] == 0) { sd--; pc = c; p++; continue }
         if (substr(l, p, 2) == "//") break
         if (substr(l, p, 2) == "/*") { blk = 1; p += 2; continue }
-        if (c == "/" && (pc == "" || pc ~ /[(,=:[!&|?{};]/)) {
+        if (match(substr(l, p), /^[A-Za-z0-9_$]+/)) { lw = substr(l, p, RLENGTH); p += RLENGTH; pc = "w"; continue }
+        if (c == "/" && (pc == "" || pc ~ /[(,=:[!&|?{};]/ || (pc == "w" && lw ~ /^(return|typeof|case|do|else|in|of|void|yield|await|throw|delete|new|instanceof)$/))) {
             p++
             while (p <= n) {
                 c = substr(l, p, 1)
@@ -1064,6 +1076,7 @@ function js_line(l,    p, n, c, q, pc) {
         if (c !~ /[ \t]/) pc = c
         p++
     }
+    if (!cont) jq = ""
 }
 EOF
 }
