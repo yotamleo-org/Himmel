@@ -36,10 +36,15 @@
 # deleted or quarantined; success prints "promoted; safe to remove <dir>".
 #
 # Exit: 0 ok; 1 usage/IO; 2 fence/graphify failure; 3 extraction skipped, not a
-# failure, graphify-out was left untouched (either the bank is at/over threshold,
-# or an installed published graph within the himmel-update limit covers an
-# adopter: graphify-out/.graphify_published, the stderr line says which);
-# 4 chunk cap reached; 5 hollow chunk failure (give-up or no-progress fallback).
+# failure, graphify-out was left untouched (the bank is at/over threshold, or the
+# station's graph role or choice sends no semantic pass here; the stderr line says
+# which); 4 chunk cap reached; 5 hollow chunk failure (give-up or no-progress fallback).
+#
+# Graph role (graph-choices.js role): on the publisher the run is unchanged. On any
+# other station only a graph choice state of `default` (no choice) reaches a semantic
+# pass, and only on --backend claude-cli, on a corpus other than the himmel checkout,
+# after a usage preflight pinned to the native bank answers exactly PROCEED, and with
+# no Anthropic credential, provider switch or apiKeyHelper in reach.
 # Exits 4/5 keep finished chunks cached without promoting a partial graph.
 #
 # Freshness guard: this script REBUILDS the graph. To CHECK whether an existing
@@ -47,6 +52,9 @@
 # it, run check-graph-freshness.sh --out <graphify-out> [--max-age-days N]
 # (companion script, same dir).
 set -euo pipefail
+# The no-choice fallback's flags, reset so an inherited value changes nothing:
+# _nc_fallback=1 means every launch in this run must pass the fallback test.
+_nc_fallback=0 _nc_pass=0 _nc_ok=0 _nc_verdict="" _nc_helper=""
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
@@ -80,7 +88,8 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # environment* — a set ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN takes precedence
 # in the `claude` CLI and switches the run back to pay-as-you-go. We deliberately
 # do NOT strip those vars here (the operator may intend the API path); this is a
-# default, not a billing guarantee.
+# default, not a billing guarantee. On a station with no graph choice the run
+# refuses instead while any of them is set (the early graph-role gate below).
 NAME="" CORPUS_ROOT="" BACKEND="claude-api" MAPS_DIR="" TITLE="" SLUG="" CORPUS_TAG=""
 SCRATCH="" DO_UPDATE=1 CORPUS_CLASS="luna-personal"
 # --merge-into-live: a corpus whose live graph is AST-heavy (himmel). The markdown-only
@@ -243,6 +252,66 @@ _endpoint_host_allowed() {
   return 1
 }
 
+# _corpus_is_himmel: the corpus shares the himmel checkout's git common dir (a worktree
+# or a second clone matches). Sets _auto_repo to the corpus's common dir.
+_corpus_is_himmel() {
+  local own
+  _auto_repo="$(git -C "$CORPUS_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _auto_repo=""
+  own="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || own=""
+  [ -n "$own" ] && [ "$_auto_repo" = "$own" ]
+}
+_GRAPH_CHOICES="$REPO_ROOT/scripts/himmelctl/lib/graph-choices.js"
+# _nc_alert <fix word> <reason> <cause>: the fallback's refusal alert. The do text is
+# graph-choices.js's; a refusal never clears.
+_nc_alert() {
+  local todo
+  todo="$(node "$_GRAPH_CHOICES" sentence --fix "$1" 2>/dev/null)" || todo=""
+  [ -n "$todo" ] || todo="run bash scripts/himmel-doctor.sh"
+  bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" fail "graph-subscription-$NAME" "$2" \
+    "stderr of refresh-graph-map.sh --name $NAME" "$3" "$todo" || true
+}
+_NC_CREDENTIAL_LINE="refresh-graph-map: no graph choice, and an Anthropic API credential or provider switch is set (ANTHROPIC_*, CLAUDE_CODE_USE_* or LQ_API_*); the subscription fallback refuses (graphify-out left untouched)"
+_NC_STATE_UNREAD_LINE="refresh-graph-map: the graph choice state could not be read; no semantic call (graphify-out left untouched)"
+# The early gate, before any other refusal: on anything but the publisher only an exact
+# `default` state on claude-cli, on a corpus that is not the himmel checkout, with no
+# credential in the environment, sets _nc_pass. Every other answer exits 3 with its line.
+if [[ $DO_EXTRACT == 1 ]]; then
+  _nc_role="$(node "$_GRAPH_CHOICES" role 2>/dev/null)" || _nc_role=""
+  [[ $_nc_role == publisher ]] || _nc_fallback=1
+  if [[ $_nc_fallback == 1 ]]; then
+    if [[ $_nc_role == unreadable ]]; then
+      _nc_line="$(node "$_GRAPH_CHOICES" check 2>/dev/null | grep -m 1 '^graph config unreadable')" || _nc_line=""
+      echo "refresh-graph-map: ${_nc_line:-graph config unreadable}; no semantic call (graphify-out left untouched)" >&2
+      exit 3
+    fi
+    if [[ $_nc_role != adopter ]]; then echo "$_NC_STATE_UNREAD_LINE" >&2; exit 3; fi
+    _nc_state="$(node "$_GRAPH_CHOICES" route --state 2>/dev/null)" || _nc_state=""
+    case "$_nc_state" in
+      default) ;;
+      none|set|invalid)
+        _nc_line="$(node "$_GRAPH_CHOICES" sentence --state "$_nc_state" 2>/dev/null)" || _nc_line=""
+        echo "refresh-graph-map: ${_nc_line:-graph choice $_nc_state: no semantic call (graphify-out left untouched)}" >&2
+        exit 3 ;;
+      *) echo "$_NC_STATE_UNREAD_LINE" >&2; exit 3 ;;
+    esac
+    if _corpus_is_himmel || [[ $NAME == himmel ]]; then
+      echo "refresh-graph-map: the himmel graph on this station comes from us with each update; no semantic pass runs on it here (graphify-out left untouched)" >&2
+      exit 3
+    fi
+    if [[ $BACKEND != claude-cli ]]; then
+      echo "refresh-graph-map: no API account is chosen on this station; with no graph choice the semantic pass runs only on the subscription (--backend claude-cli)" >&2
+      exit 3
+    fi
+    if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}" ]]; then
+      _nc_pass=1
+    else
+      echo "$_NC_CREDENTIAL_LINE" >&2
+      _nc_alert credential "an API credential or provider switch is set in this job's environment" "the subscription fallback would bill it"
+      exit 3
+    fi
+  fi
+fi
+
 GRAPHIFY_BACKEND="$BACKEND"
 if [ "$BACKEND" = "claude-api" ] && [ "$DO_EXTRACT" -eq 1 ]; then
   # shellcheck source=../lib/llm-backend.sh
@@ -258,9 +327,7 @@ if [ "$BACKEND" = "claude-api" ] && [ "$DO_EXTRACT" -eq 1 ]; then
   GRAPHIFY_MAP_LANE_BIN="${GRAPHIFY_MAP_LANE_BIN:-$REPO_ROOT/scripts/api-lane/claude-api.sh}"
   [ -f "$GRAPHIFY_MAP_LANE_BIN" ] || { echo "ERR refresh-graph-map: --backend claude-api needs $GRAPHIFY_MAP_LANE_BIN -- refusing" >&2; exit 2; }
   if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
-    _auto_repo="$(git -C "$CORPUS_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _auto_repo=""
-    _own_repo="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _own_repo=""
-    if [ -z "$_own_repo" ] || [ "$_auto_repo" != "$_own_repo" ]; then
+    if ! _corpus_is_himmel; then
       echo "ERR refresh-graph-map: --backend claude-api: auto routing is for the himmel graph only (corpus repo ${_auto_repo:-none}); name HIMMEL_API_ACCOUNT=A, B or C" >&2
       exit 2
     fi
@@ -1494,49 +1561,6 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # below). Preflight it next to the graphify check so a python3-less box fails
   # BEFORE the scratch copy / paid extraction — never after promoting a new graph.
   command -v python3 >/dev/null 2>&1 || { echo "refresh-graph-map: python3 not found (needed to write manifest.json for freshness verification)" >&2; exit 2; }
-  # An adopter that installed the published himmel graph (himmel-update.sh sync_graph
-  # writes the build commit to $OUT_DIR/.graphify_published) does not pay for its own
-  # semantic pass: skip, exit 3 (extraction skipped, not a failure), BEFORE the lock,
-  # the pull, the scratch copy and the bank preflight. Same rule as sync_graph: the
-  # build commit is an ancestor of HEAD at most HIMMEL_UPDATE_GRAPH_MAX_BEHIND (default
-  # 150, keep in step with GRAPH_MAX_BEHIND in himmel-update.sh) commits behind it, and
-  # the station is not the publisher (graphify.semantic_api_ok is true in config.json).
-  # No marker, an odd marker, a non-ancestor, an old build or a publisher runs the row.
-  # The publisher test is stricter than sync_graph's: this script spends the budget, so a
-  # config it cannot read as "not the publisher" counts as the publisher. No config file
-  # at all is an adopter.
-  _pub_marker="$OUT_DIR/.graphify_published"
-  # manifest.json is the install's completion marker: without it the graph is not whole.
-  if [ -f "$OUT_DIR/manifest.json" ] && [ -f "$_pub_marker" ] && [ ! -L "$_pub_marker" ]; then
-    _pub_sha="$(head -n 1 "$_pub_marker" 2>/dev/null | tr -d '[:space:]')" || _pub_sha=""
-    _pub_max="${HIMMEL_UPDATE_GRAPH_MAX_BEHIND:-150}"
-    case "$_pub_max" in ''|*[!0-9]*) _pub_max=150 ;; esac
-    _pub_cfg="$HOME/.himmel/config.json"
-    _pub_publisher=0
-    # A config that cannot prove this is not the publisher (a symlink, unreadable, no jq,
-    # not JSON) runs the row: a publisher must never lose its pass to an unreadable answer.
-    if [ -L "$_pub_cfg" ]; then
-      _pub_publisher=1
-    elif [ -e "$_pub_cfg" ]; then
-      # Only a JSON object whose flag is not true proves an adopter; jq -e fails on a
-      # missing jq, an unreadable, empty or non-JSON file and a wrongly shaped one alike.
-      jq -e 'type == "object" and (.graphify.semantic_api_ok != true)' "$_pub_cfg" >/dev/null 2>&1 \
-        || _pub_publisher=1
-    fi
-    if [ "$_pub_publisher" -eq 0 ] && [[ "$_pub_sha" =~ ^[0-9a-fA-F]{7,40}$ ]] \
-        && git -C "$CORPUS_ROOT" merge-base --is-ancestor "$_pub_sha" HEAD 2>/dev/null; then
-      _pub_behind="$(git -C "$CORPUS_ROOT" rev-list --count "$_pub_sha..HEAD" 2>/dev/null)" || _pub_behind=""
-      case "$_pub_behind" in
-        ''|*[!0-9]*) ;;
-        *)
-          if [ "$_pub_behind" -le "$_pub_max" ]; then
-            echo "refresh-graph-map: the installed published graph (built at ${_pub_sha:0:12}, $_pub_behind commits behind HEAD, limit $_pub_max) covers corpus '$NAME' -- semantic extraction SKIPPED (graphify-out left untouched)" >&2
-            exit 3
-          fi
-          ;;
-      esac
-    fi
-  fi
   # Fence-safe incremental refresh on a scratchpad COPY (never the live corpus).
   # Always work inside a uniquely-named, launcher-OWNED subdir (mktemp-suffixed) so
   # we never rm -rf an operator-supplied --scratch that may point at an existing
@@ -2324,10 +2348,31 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # usage-cache-producer.sh, which does a network fetch -- left unbounded,
   # that fetch could hang the cadence indefinitely, inside the very guard
   # whose entire purpose is "nothing on this path runs unbounded".
+  # With no graph choice (_nc_fallback=1) the one call is pinned to the native bank, as
+  # claude-api.sh's sub_preflight is, and read strictly: only PROCEED goes on.
   case "$BACKEND" in
     claude|claude-cli)
       _bank_preflight="$REPO_ROOT/scripts/lib/usage-preflight.sh"
-      if [ -f "$_bank_preflight" ]; then
+      if [[ $_nc_fallback == 1 ]]; then
+        if [[ -f $_bank_preflight && -n $_deadline_bin ]]; then
+          _nc_verdict="$(env -u WORKER_SESSION_LANE -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID CADENCE_USAGE_LANE=native \
+            CADENCE_USAGE_WORKER="graphmap-$NAME" "$_deadline_bin" -k 10 120 bash "$_bank_preflight" || true)"
+        elif [[ -f $_bank_preflight ]]; then
+          _nc_verdict="$(env -u WORKER_SESSION_LANE -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID CADENCE_USAGE_LANE=native \
+            CADENCE_USAGE_WORKER="graphmap-$NAME" bash "$_bank_preflight" || true)"
+        fi
+        if [[ $_nc_verdict == PROCEED ]]; then
+          echo "refresh-graph-map: no graph choice: semantic pass on this machine's Claude subscription (usage checked: PROCEED)" >&2
+        elif [[ $_nc_verdict == SKIPPED-BANK ]]; then
+          echo "refresh-graph-map: bank at/over threshold — extraction SKIPPED for corpus '$NAME' (graphify-out left untouched, no graph was refreshed)" >&2
+          exit 3
+        else
+          case "$_nc_verdict" in SKIPPED-FLEET|BANK-STALE|BANK-UNKNOWN) _nc_token="$_nc_verdict" ;; *) _nc_token=none ;; esac
+          echo "refresh-graph-map: no graph choice, and the subscription usage check answered $_nc_token; semantic pass skipped (graphify-out left untouched)" >&2
+          _nc_alert preflight "subscription usage could not be checked ($_nc_token)" "the usage preflight did not answer PROCEED"
+          exit 3
+        fi
+      elif [ -f "$_bank_preflight" ]; then
         if [ -n "$_deadline_bin" ]; then
           _bank_verdict="$(CADENCE_USAGE_WORKER="graphmap-$NAME" "$_deadline_bin" -k 10 120 bash "$_bank_preflight" || true)"
         else
@@ -2368,6 +2413,17 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     else
       echo "refresh-graph-map: failed to seed the hook-free Claude config dir; refusing claude-cli extraction" >&2
       exit 2
+    fi
+    # Check 2 of the fallback: the seeded user settings must hold no apiKeyHelper.
+    if [[ $_nc_fallback == 1 ]]; then
+      _nc_helper="$(node -e 'try { const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); process.stdout.write(s !== null && typeof s === "object" && Object.prototype.hasOwnProperty.call(s, "apiKeyHelper") ? "set" : "none"); } catch (e) { process.stdout.write(e && e.code === "ENOENT" ? "none" : "unreadable"); }' \
+        "$GRAPHIFY_CLAUDE_CONFIG_DIR/settings.json" 2>/dev/null)" || _nc_helper=""
+      if [[ $_nc_helper == set ]]; then
+        echo "refresh-graph-map: no graph choice, and the Claude settings the run copies set apiKeyHelper; the subscription fallback refuses (graphify-out left untouched)" >&2
+        _nc_alert helper "an apiKeyHelper is set in the Claude settings the graph run copies" "the subscription fallback would bill it"
+        exit 3
+      fi
+      [[ $_nc_pass == 1 && $_nc_verdict == PROCEED && $_nc_helper == none ]] && _nc_ok=1
     fi
   fi
 
@@ -2435,17 +2491,26 @@ SHIM
   # Run "$@" under whatever remains of the shared budget. The budget spans BOTH
   # graphify dispatches — giving each the full deadline would let the pair run
   # 2x the ceiling, which is the bug, not the fix.
+  # Both graphify launch wrappers carry the fallback test with the launch inside the
+  # branch, written with [[ ]] only, so a shadowed exit or [ that let a refusal fall
+  # through still reaches no launch.
+  _NC_LAUNCH_REFUSED="refresh-graph-map: no graph choice: the subscription fallback refused this launch (no PROCEED, or a credential or apiKeyHelper in reach)"
   _run_bounded() {
-    _rem="$(_deadline_left)"
-    if [ "$_rem" = unbounded ]; then
-      "$@"
-      return $?
+    if [[ $_nc_fallback != 1 ]] || [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}" && $_nc_ok == 1 ]]; then
+      _rem="$(_deadline_left)"
+      if [ "$_rem" = unbounded ]; then
+        "$@"
+        return $?
+      fi
+      if [ "$_rem" -eq 0 ]; then
+        echo "refresh-graph-map: run deadline ${GRAPHIFY_RUN_DEADLINE_SECONDS}s exhausted before this stage" >&2
+        return 124
+      fi
+      "$_deadline_bin" -k 30 "$_rem" "$@"
+    else
+      echo "$_NC_LAUNCH_REFUSED" >&2
+      return 2
     fi
-    if [ "$_rem" -eq 0 ]; then
-      echo "refresh-graph-map: run deadline ${GRAPHIFY_RUN_DEADLINE_SECONDS}s exhausted before this stage" >&2
-      return 124
-    fi
-    "$_deadline_bin" -k 30 "$_rem" "$@"
   }
 
   # Resumable first pass. An unseeded corpus is hundreds of
@@ -2581,10 +2646,14 @@ SHIM
       return 124
     fi
     mkfifo "$fifo" || return 1
-    if [ "$rem" = unbounded ]; then
-      "$@" > "$fifo" 2>&1 &
+    if [[ $_nc_fallback != 1 ]] || [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}" && $_nc_ok == 1 ]]; then
+      if [ "$rem" = unbounded ]; then
+        "$@" > "$fifo" 2>&1 &
+      else
+        "$_deadline_bin" -k 30 "$rem" "$@" > "$fifo" 2>&1 &
+      fi
     else
-      "$_deadline_bin" -k 30 "$rem" "$@" > "$fifo" 2>&1 &
+      ( echo "$_NC_LAUNCH_REFUSED"; false ) > "$fifo" 2>&1 &
     fi
     gpid=$!
     _extract_monitor "$gpid" < "$fifo" &
@@ -2712,29 +2781,33 @@ SHIM
     _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$GRAPHIFY_BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
   fi
   _AUTH_CAUSE=""
+  # On the no-choice fallback the probe never runs: no second, unpinned preflight, no
+  # claude -p and so no reseed (the reseed below needs an auth _AUTH_CAUSE).
   _probe_claude_auth() {
     local verdict out left t
     _AUTH_CAUSE=""
-    [ -n "$_deadline_bin" ] || return 0
-    left="$(_deadline_left)"
-    t=60
-    if [ "$left" != unbounded ]; then
-      [ "$left" -gt 31 ] || return 0
-      [ $((left - 30)) -ge 60 ] || t=$((left - 30))
-    fi
-    if [ -f "${_bank_preflight:-}" ]; then
-      verdict="$(CADENCE_USAGE_WORKER="graphmap-$NAME" "$_deadline_bin" -k 5 20 bash "$_bank_preflight" || true)"
-      [ "$verdict" != "SKIPPED-BANK" ] || return 0
-    fi
-    # launch-profile-ok: a one-word auth probe under the dedicated config dir that runs no tools
-    out="$(printf 'ok\n' | "$_deadline_bin" -k 5 "$t" claude -p --output-format json --permission-mode default 2>/dev/null || true)"
-    _AUTH_CAUSE="$(printf '%s' "$out" | python3 -I -c 'import json,sys
+    if [[ $_nc_fallback != 1 ]]; then
+      [ -n "$_deadline_bin" ] || return 0
+      left="$(_deadline_left)"
+      t=60
+      if [ "$left" != unbounded ]; then
+        [ "$left" -gt 31 ] || return 0
+        [ $((left - 30)) -ge 60 ] || t=$((left - 30))
+      fi
+      if [ -f "${_bank_preflight:-}" ]; then
+        verdict="$(CADENCE_USAGE_WORKER="graphmap-$NAME" "$_deadline_bin" -k 5 20 bash "$_bank_preflight" || true)"
+        [ "$verdict" != "SKIPPED-BANK" ] || return 0
+      fi
+      # launch-profile-ok: a one-word auth probe under the dedicated config dir that runs no tools
+      out="$(printf 'ok\n' | "$_deadline_bin" -k 5 "$t" claude -p --output-format json --permission-mode default 2>/dev/null || true)"
+      _AUTH_CAUSE="$(printf '%s' "$out" | python3 -I -c 'import json,sys
 try:
     d=json.loads(sys.stdin.read())
 except Exception:
     sys.exit(0)
 if isinstance(d,dict) and d.get("is_error"):
     print(str(d.get("result",""))[:300].replace("\n"," "))' || true)"
+    fi
   }
   _cred_sum() { { cksum < "$GRAPHIFY_CLAUDE_CONFIG_DIR/.credentials.json"; } 2>/dev/null || true; }
   if [ "$_SKIP_MAIN" -eq 0 ] && [ "$_rc" -ne 0 ] && [ "$GRAPHIFY_BACKEND" = "claude-cli" ] \
@@ -3679,3 +3752,7 @@ fi
 
 _promote_lock_release   # eager release after the report is fully consumed; EXIT trap = backstop
 echo "refresh-graph-map: published $OUT_NOTE" >&2
+# Only a no-choice fallback run that got this far clears its refusal alert.
+if [[ $_nc_fallback == 1 && $_nc_ok == 1 ]]; then
+  bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" clear "graph-subscription-$NAME" || true
+fi
