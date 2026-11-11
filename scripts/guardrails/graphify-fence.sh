@@ -1009,6 +1009,7 @@ _classify_tree() {
         esac
     done
     if [ -n "$LUNA_ROOT" ] && _under_root "$LUNA_ROOT" "$ap"; then best="$(_strongest "$best" luna-personal)"; fi
+    if [ -n "$HIMMEL_ROOT" ] && _under_root "$HIMMEL_ROOT" "$ap"; then best="$(_strongest "$best" himmel-code)"; fi
     CLASSIFY_TREE_CLASS="$best"
 }
 

@@ -2982,6 +2982,16 @@ ar_classify "$E7C" "CLAUDE_GLM_CONFIG_DIR=$E7C_CFG"; ar_row "S3 E7 a phi-roots e
 ar_classify "$E7D" "LUNA_VAULT_PATH=$E7D/vault"; ar_row "S3 E7 the configured vault below the root classifies it as a vault" luna-personal 0
 ar_classify "$E7F";  ar_row "S3 E7 a .obsidian at the root classifies it as a vault" luna-personal 0
 ar_classify "$E7E" "HANDOVER_DIR=$E7E/handovers"; ar_row "S3 E7 an inline handovers folder below the root is not a class (A8)" "" 0
+E7G="$AR/e7g"; mkdir -p "$E7G/.git" "$E7G/checkout"
+ar_classify "$E7G" "GRAPHIFY_HIMMEL_ROOT=$E7G/checkout"; ar_row "S3 E7 the himmel checkout below the root classifies it himmel-code" himmel-code 0
+AR_CACHE_LOCKED="$AR/cache-locked"; mkdir -p "$AR_CACHE_LOCKED"; printf 'LUNA_VAULT_PATH=%s\n' "$LUNA" > "$AR_CACHE_LOCKED/.env"; chmod 000 "$AR_CACHE_LOCKED/.env"
+if [ -r "$AR_CACHE_LOCKED/.env" ]; then
+    echo "  SKIP  S3 E6 the wrapper refuses an unreadable .env (this user reads mode 000)"
+else
+    ar_wrap "$AREPO_UNLISTED" "HIMMELCTL_CACHE_DIR=$AR_CACHE_LOCKED"
+    if [ "$CL_RC" -ne 0 ] && [ -z "$CL_OUT" ]; then pass "S3 E6 the wrapper refuses an unreadable .env"; else fail "S3 E6 unreadable .env: rc=$CL_RC out='$CL_OUT'"; fi
+fi
+chmod 600 "$AR_CACHE_LOCKED/.env"
 
 if [ "$failures" -eq 0 ]; then
     echo "OK: all cases passed"

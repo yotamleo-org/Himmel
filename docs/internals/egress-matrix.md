@@ -279,7 +279,8 @@ graphify-classify.sh <abs-target>           -> the same, read against the config
   staging marker) plus an `.obsidian` marker, which marks an Obsidian vault and
   names `luna-personal`.
 - **Below the root:** a `.salus` or `.obsidian` anywhere under it, an entry of
-  `phi-roots` or `egress-denylist` under it, or the configured vault under it. A
+  `phi-roots` or `egress-denylist` under it, the configured vault under it, or the
+  himmel checkout under it. A
   subtree holding PHI would otherwise pass, because the semantic pass has no PHI
   skip. An inline `handovers/` folder below the root is **not** a class (A8).
 - **Fail-closed:** an unreadable PHI list, a bad marker or a subtree that cannot
@@ -288,6 +289,8 @@ graphify-classify.sh <abs-target>           -> the same, read against the config
   `HANDOVER_DIR` and loads the configured values through `scripts/lib/load-dotenv.sh`
   (`himmel.conf`, then `.env`), because the fence reads `LUNA_VAULT` before
   `LUNA_VAULT_PATH` and a live value elsewhere would mask the configured vault.
+  An `.env` that exists but cannot be read exits 2: `load_dotenv` returns 0 on
+  every path, so the wrapper checks readability itself.
 - **Consumer:** the choice store's `root-check` refuses a root when the wrapper
   names a class or exits non-zero.
 
