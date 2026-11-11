@@ -940,6 +940,8 @@ py "$EV" mine-luna --repo "$W/wt" --projects "$W/mproj" --vault "$V" --out "$R/c
 eq "mine_refuses_repo_path: run from a worktree, the primary checkout is refused too" "2 absent" "$? $([ -e "$R/cand3.jsonl" ] && echo present || echo absent)"
 py "$EV" mine-luna --repo "$R" --projects "$W/mproj" --vault "$V" --out "$W/wt/cand4.jsonl" > /dev/null 2>&1
 eq "mine_refuses_repo_path: a sibling worktree outside the primary checkout's directory is refused too" "2 absent" "$? $([ -e "$W/wt/cand4.jsonl" ] && echo present || echo absent)"
+py "$EV" mine-luna --repo "$W/state" --projects "$W/mproj" --vault "$V" --out "$W/cand5.jsonl" > "$W/mine-nogit.txt" 2>&1
+eq "mine_refuses_repo_path: when git cannot list the checkouts (a --repo that is no checkout) the guard refuses and writes nothing" "2 absent 1" "$? $([ -e "$W/cand5.jsonl" ] && echo present || echo absent) $(grep -c 'cannot list the checkouts' "$W/mine-nogit.txt")"
 
 # ---- slice 4.2: the luna arms and vault-report (I9, I10) ------------------------
 cat > "$W/lbank.jsonl" <<'EOF'

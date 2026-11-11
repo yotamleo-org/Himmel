@@ -659,21 +659,20 @@ def refuse_live(u):
 
 
 def checkout_roots(repo):
-    roots = {os.path.realpath(repo)}
-    for flag in (["--show-toplevel"], ["--path-format=absolute", "--git-common-dir"]):
+    """Every checkout git knows for repo. A git failure refuses: a guard that cannot list the checkouts must not pass."""
+    def git(*args):
         try:
-            out = subprocess.run(["git", "-C", repo, "rev-parse"] + flag, capture_output=True, text=True,
-                                 timeout=10).stdout.strip()
-        except (OSError, subprocess.TimeoutExpired):
-            continue
-        if out:
-            roots.add(os.path.realpath(os.path.dirname(out) if "--git-common-dir" in flag else out))
-    try:
-        listing = subprocess.run(["git", "-C", repo, "worktree", "list", "--porcelain"], capture_output=True, text=True,
-                                 timeout=10).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        listing = ""
-    roots.update(os.path.realpath(x[len("worktree "):]) for x in listing.splitlines() if x.startswith("worktree "))
+            r = subprocess.run(["git", "-C", repo] + list(args), capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            raise Refuse("cannot list the checkouts of %s: %s" % (repo, e)) from e
+        if r.returncode != 0:
+            raise Refuse("cannot list the checkouts of %s: git %s failed: %s" % (repo, args[0], r.stderr.strip()[:100]))
+        return r.stdout.strip()
+    common = git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    roots = {os.path.realpath(repo), os.path.realpath(git("rev-parse", "--show-toplevel")),
+             os.path.realpath(os.path.dirname(common))}
+    roots.update(os.path.realpath(x[len("worktree "):]) for x in git("worktree", "list", "--porcelain").splitlines()
+                 if x.startswith("worktree "))
     return roots
 
 
