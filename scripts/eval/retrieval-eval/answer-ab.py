@@ -10,6 +10,7 @@ counted. The realistic arms (below) ask the same of a real worker session.
        [--k 5] [--model claude-haiku-5-5] [--max-usd 3] [--timeout 180]
        [--retrieval-timeout 60] [--collection himmel] [--no-ledger]
        [--prime] [--warm-session K]   (realistic arms only)
+       [--pair PAIR.json --index-state s|l|c] [--rev COMMIT]   (realistic arms only)
   route-server --kind K --repo R [--trace FILE]   (internal: the one-tool MCP server a realistic arm's session calls)
 
 Steps:
@@ -40,6 +41,7 @@ Steps:
                               session's later turns
                 bm25-rerank   the same session, route = qmd keyword (BM25) search, reranked
                 vec-rerank    the same session, route = qmd vector search, reranked
+                hybrid-rerank the same session, route = qmd keyword + vector search together, reranked
               They take the question sample (--pool, --n; --pool 75 --n 75 for the whole file)
               with no closed-book screen, and are priced from the session usage.
               A route call returns the top 5 files with at most 400 characters of excerpt each.
@@ -55,7 +57,10 @@ Steps:
               Each row keeps result (the reply, at most 4000 characters), route_calls
               and tool_trace (query, files, failure for each route call, in order).
               Built-in Read/Grep/Glob calls are not visible in --output-format json;
-              the trace records only the route tool's calls.
+              the trace records only the route tool's calls. Each row also keeps qmd_calls,
+              graph_calls and route_failed, counted by the route server through route_rows.py;
+              an arm whose sessions called the route in under 80% of its rows is marked
+              not_tested in the ledger row and named on stdout.
 
 Tokens are the answerer session's usage: input + cache creation + cache read + output.
 tokens_per_file_hit is the arm's total over its file hits: an arm that reads a lot
@@ -77,13 +82,18 @@ json, an explicit --permission-mode, no tools (realistic arms: Read, Grep, Glob 
 tool), a per-run cap and a --max-usd cap. The one-turn answerer runs in an empty scratch
 directory so no project file steers it; a realistic session runs in a bank-free export of --repo, as a worker does.
 
+--pair and --index-state point the realistic arms at a scratch served pair (staleness-fixture.sh
+serve), with the refusals retrieval-eval makes: QMD_URL must be the pair's own URL, never the live
+server's, the served document count must be the pair's, and a graph arm reads the pair's graph, never
+a checkout's. --rev exports that commit as the session's tree (default HEAD).
+
 Output in DIR: results.jsonl (a row per question x arm, plus the screen rows),
 screened.txt, table.tsv (also printed), STOPPED when a cap or a refusal cut the run.
 One eval-runs row (eval = answer-ab) with per-arm metrics (<arm>.file_hit, .cost_usd,
 .cost_per_file_hit, .tokens_per_file_hit, the token mix, .cached_share, .ms_median, .turns_mean,
 and the <arm>.insample.* / <arm>.heldout.* split) and per-question cases goes to
 $HIMMEL_EVAL_RUNS_LEDGER (default ~/.himmel/eval-runs.jsonl); --no-ledger writes none.
-Exit: 0 complete, 1 stopped or a call errored, 64 usage error.
+Exit: 0 complete, 1 stopped or a call errored, 2 refused, 64 usage error.
 Seams: CLAUDE_BIN, BANK_PREFLIGHT, HIMMEL_EVAL_RUNS_LEDGER, and retrieval-eval's
 RETRIEVAL_EVAL_QMD_CMD and RETRIEVAL_EVAL_GRAPH_CMD.
 Stdlib only (node for the price table).
@@ -105,19 +115,23 @@ import sys
 import tarfile
 import tempfile
 import time
+import types
 import uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib"))
 from burn_weights import cache_read_weight, result_model  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import route_rows  # noqa: E402
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 OLD_ARMS = ["none", "grep", "grep-rtk", "pathident", "graphify", "fused"]
-REAL_ARMS = ["vanilla", "fused-cached", "bm25-rerank", "vec-rerank"]
+REAL_ARMS = ["vanilla", "fused-cached", "bm25-rerank", "vec-rerank", "hybrid-rerank"]
 ARMS = OLD_ARMS + REAL_ARMS
 SPLITS = ("insample", "heldout")
 PER_RUN_USD = 1.0
 MAX_NAMED = 3
+ROUTE_USE_MIN = 0.8
 ROUTE_FILES = 5      # a route call lists this many files
 ROUTE_EXCERPT = 400   # and at most this many characters of excerpt each
 PRIME_Q = "which file describes how a handover queue lock is held"
@@ -134,8 +148,14 @@ ROUTE_DESC = {
                    "Returns ranked file paths and excerpts.",
     "vec-rerank": "Search the repository's indexed docs with qmd semantic (vector) search, reranked. "
                   "Returns ranked file paths and excerpts.",
+    "hybrid-rerank": "Search the repository's indexed docs with qmd keyword and semantic search together, reranked. "
+                     "Returns ranked file paths and excerpts.",
 }
-ROUTE_ENV = ("PATH", "HOME", "QMD_URL", "RETRIEVAL_EVAL_QMD_CMD", "RETRIEVAL_EVAL_GRAPH_CMD")
+QMD_KINDS = {"bm25-rerank": (("lex",), "qmd keyword (BM25) + rerank"),
+             "vec-rerank": (("vec",), "qmd vector + rerank"),
+             "hybrid-rerank": (("lex", "vec"), "qmd keyword + vector + rerank")}
+ROUTE_ENV = ("PATH", "HOME", "QMD_URL", "WORKER_GRAPH_OUT", "RETRIEVAL_EVAL_QMD_CMD", "RETRIEVAL_EVAL_GRAPH_CMD")
+ROUTE_SINK_ENV = "ANSWER_AB_ROUTE_SINK"
 PRICE_MJS = os.path.join(REPO, "scripts", "lanes", "model-price.mjs")
 PRICE_JS = ("import {loadPrices, priceCall} from %s;"
             "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{"
@@ -171,12 +191,12 @@ def file_digest(path):
     return h.hexdigest()
 
 
-def export_without_bank(repo, questions, dest):
-    """A scratch export of the repo's HEAD (git archive, so no ignored or untracked file comes along) with
+def export_without_bank(repo, questions, dest, rev="HEAD"):
+    """A scratch export of the repo's `rev` (git archive, so no ignored or untracked file comes along) with
     the question bank removed: by path, and by content wherever else a copy of it is tracked. Glob in a
     session lists gitignored files too, so denying the bank's paths is not enough; a tree that holds no
     bank bytes is. Raises Usage when the archive cannot be taken."""
-    p = subprocess.Popen(["git", "-C", repo, "archive", "--format=tar", "HEAD"], stdout=subprocess.PIPE,
+    p = subprocess.Popen(["git", "-C", repo, "archive", "--format=tar", rev], stdout=subprocess.PIPE,
                          stderr=subprocess.DEVNULL)
     try:
         with tarfile.open(fileobj=p.stdout, mode="r|") as tf:
@@ -188,7 +208,7 @@ def export_without_bank(repo, questions, dest):
         p.kill()
         raise Usage("cannot export %s for a session: %s" % (repo, e))
     if p.wait() != 0:
-        raise Usage("cannot export %s for a session: git archive HEAD failed" % repo)
+        raise Usage("cannot export %s for a session: git archive %s failed" % (repo, rev))
     rels = bank_rels(repo, questions)
     sums, sizes = set(), set()
     for f in [os.path.join(root, r) for root in (repo, dest) for r in rels] + [os.path.realpath(questions)]:
@@ -207,6 +227,10 @@ def export_without_bank(repo, questions, dest):
 
 
 class Usage(Exception):
+    pass
+
+
+class Refuse(Exception):
     pass
 
 
@@ -328,6 +352,7 @@ class Sweep:
         self.export = None
         self.mcp = {}
         self.traces = {}
+        self.sinks = {}
         self.sink = None
 
     def session_cwd(self):
@@ -335,7 +360,7 @@ class Sweep:
             self.export = os.path.join(self.scratch, "export")
             os.mkdir(self.export)
             atexit.register(shutil.rmtree, self.export, True)
-            export_without_bank(self.repo, self.a.questions, self.export)
+            export_without_bank(self.repo, self.a.questions, self.export, self.a.rev)
         return self.export
 
     def bank_ok(self):
@@ -349,6 +374,8 @@ class Sweep:
             if arm != "vanilla":
                 env = {k: os.environ[k] for k in ROUTE_ENV if k in os.environ}
                 self.traces[arm] = os.path.join(self.scratch, "trace-%s.jsonl" % arm)
+                self.sinks[arm] = os.path.join(self.scratch, "sink-%s.jsonl" % arm)
+                env[ROUTE_SINK_ENV] = self.sinks[arm]
                 servers["route"] = {"command": sys.executable, "env": env,
                                     "args": [os.path.abspath(__file__), "route-server", "--kind", arm, "--repo", self.repo,
                                              "--k", str(self.a.k), "--collection", self.a.collection,
@@ -390,13 +417,15 @@ class Sweep:
                     "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
                     "--system-prompt", SYSTEM]
             prompt, cwd = build_prompt(q["q"], arm, text), self.scratch
-        trace = self.traces.get(arm)
-        if trace:
-            open(trace, "w").close()
+        trace, sink = self.traces.get(arm), self.sinks.get(arm)
+        for f in (trace, sink):
+            if f:
+                open(f, "w").close()
         row = dict(id=q["id"], arm=tag or arm, split=q.get("split", "insample"), stratum=self.ev.stratum(q), file_hit=False, named=[], tokens=0, weighted=0,
                    cost_usd=0.0, priced_usd=0.0, priced=True, input=0, output=0, cache_read=0, cache_creation=0,
                    turns=0, retr_tokens=self.ev.tok(text), error=None, pos=sess["n"] + 1 if sess is not None else 1, prime=prime,
-                   result="", route_calls=0, tool_trace=[])
+                   result="", route_calls=0, tool_trace=[], qmd_calls=0, graph_calls=0, route_failed=0,
+                   index_state=self.a.index_state or None)
         t0 = time.time()
         try:
             # eval answerer: bank-preflighted above, explicit permission mode (never bypassPermissions)
@@ -429,6 +458,7 @@ class Sweep:
             calls = read_complete_calls(trace)
             row["tool_trace"] = calls
             row["route_calls"] = len(calls)
+            row.update(route_rows.summarise(sink))
         row["ms"] = int((time.time() - t0) * 1000)
         self.spent += row["cost_usd"]
         self.rows.append(row)
@@ -487,9 +517,11 @@ def retrieve(ev, a, q, repo, need):
         qm = ev.arm_qmd(q["q"], True, to, k, a.collection)
         out["fused"] = "\n".join([out["grep"], qm[1], out["graphify"]])
         out["fused-files"] = ev.fuse([g[0], qm[0], gr[0]], k)
+        graph_failure = "graphify timed out" if gr[2] else "graphify failed" if gr[3] else None
+        out["fused-outcomes"] = [("qmd", qm[4]), ("graph", graph_failure)]
         out["fused-failure"] = next((failure for failure in (
             "grep timed out" if g[2] else "grep failed" if g[3] else None,
-            qm[4], "graphify timed out" if gr[2] else "graphify failed" if gr[3] else None) if failure), None)
+            qm[4], graph_failure) if failure), None)
     return out
 
 
@@ -509,12 +541,12 @@ def route_text(ev, a, kind, repo, query):
         got = retrieve(ev, a, {"q": query}, repo, {"fused"})
         files = got["fused-files"][:ROUTE_FILES]
         return (trim_route("grep + qmd hybrid rerank + graphify, rank-fused", files, got["fused"]),
-                files, got["fused-failure"])
-    types, label = (("lex",), "qmd keyword (BM25) + rerank") if kind == "bm25-rerank" else (("vec",), "qmd vector + rerank")
+                files, got["fused-failure"], got["fused-outcomes"])
+    types, label = QMD_KINDS[kind]
     files, text, fail = qmd_search(ev, query, types, True, a.retrieval_timeout, a.k, a.collection)
     if fail:
-        return "%s: %s" % (label, fail), files[:ROUTE_FILES], fail
-    return trim_route(label, files, text), files[:ROUTE_FILES], None
+        return "%s: %s" % (label, fail), files[:ROUTE_FILES], fail, [("qmd", fail)]
+    return trim_route(label, files, text), files[:ROUTE_FILES], None, [("qmd", None)]
 
 
 def cmd_route_server(a):
@@ -522,6 +554,7 @@ def cmd_route_server(a):
     ev = load_eval()
     repo = os.path.abspath(a.repo)
     kind = a.kind
+    sink = os.environ.get(ROUTE_SINK_ENV)
 
     def reply(mid, result=None, error=None):
         msg = {"jsonrpc": "2.0", "id": mid}
@@ -550,10 +583,13 @@ def cmd_route_server(a):
             query = str((params.get("arguments") or {}).get("query") or "")
             is_error = False
             try:
-                text, files, failure = route_text(ev, a, kind, repo, query)
+                text, files, failure, outcomes = route_text(ev, a, kind, repo, query)
             except Exception as e:  # a route failure is the tool's error result, the session carries on
                 failure, files, is_error = str(e)[:200], [], True
-                text = "route failed: %s" % failure
+                text, outcomes = "route failed: %s" % failure, [("route", failure)]
+            if sink:
+                for route, why in outcomes:
+                    route_rows.append(sink, route, route_rows.FAILED if why else route_rows.OK)
             if a.trace:
                 with open(a.trace, "a") as fh:
                     fh.write(json.dumps(dict(query=query, files=files, failure=failure)) + "\n")
@@ -653,7 +689,33 @@ def table(rows, arms):
     return lines
 
 
-def ledger_row(ev, a, sw, arms, repo):
+def route_use(rs):
+    good = [r for r in rs if not r["error"]]
+    return sum(1 for r in good if r["route_calls"] > 0), len(good)
+
+
+def routed(arm):
+    return arm in REAL_ARMS and arm != "vanilla"
+
+
+def pair_setup(a, ev, arms, qs, repo):
+    if bool(a.pair) != bool(a.index_state):
+        raise Usage("--pair and --index-state go together")
+    if not a.pair:
+        return {}
+    if any(x not in REAL_ARMS for x in arms):
+        raise Usage("--pair is for the realistic arms (%s)" % ",".join(REAL_ARMS))
+    need = (["qmd-hybrid"] if any(routed(x) for x in arms) else []) + (["graphify"] if "fused-cached" in arms else [])
+    ns = types.SimpleNamespace(pair=a.pair, index_state=a.index_state, timeout=a.retrieval_timeout)
+    try:
+        return ev.pair_setup(ns, need, qs, repo)
+    except ev.Refuse as e:
+        raise Refuse(str(e)) from e
+    except ev.Usage as e:
+        raise Usage(str(e)) from e
+
+
+def ledger_row(ev, a, sw, arms, repo, pair_cfg):
     """The eval-runs row: per-arm metrics, the insample / heldout split, per-question cases."""
     metrics, cases = {}, {}
     rows = [r for r in sw.rows if r["arm"] in arms and not r["prime"]]
@@ -666,6 +728,11 @@ def ledger_row(ev, a, sw, arms, repo):
                         ("n", "file_hit", "errors", "cost_usd", "cost_per_file_hit", "tokens_per_file_hit", "input", "output",
                          "cache_read", "cache_creation", "cached_share", "ms_median", "turns_mean")})
         metrics[arm + ".unpriced"] = sum(1 for r in rs if not r["priced"])
+        metrics.update({"%s.%s" % (arm, k): sum(r[k] for r in rs) for k in ("qmd_calls", "graph_calls", "route_failed")})
+        if routed(arm):
+            used, n = route_use(rs)
+            metrics[arm + ".route_use"] = used / n if n else None
+            metrics[arm + ".not_tested"] = int(used / n < ROUTE_USE_MIN) if n else None
         if a.prime:  # the cold priming call, reported apart: the headline cost_usd leaves it out
             pm = with_prime(rs, [r for r in sw.rows if r["arm"] == arm and r["prime"]])
             metrics.update(zip(("%s.prime_cost_usd" % arm, "%s.cost_usd_with_prime" % arm,
@@ -701,6 +768,10 @@ def ledger_row(ev, a, sw, arms, repo):
                   prime=a.prime, warm_session=a.warm_session, route_files=ROUTE_FILES, route_excerpt=ROUTE_EXCERPT,
                   scorer="file-hit")
     ident = ev.forward_identity(a.questions, os.path.abspath(__file__))
+    if pair_cfg:
+        config["pair"] = pair_cfg
+    if a.rev != "HEAD":
+        config["rev"] = a.rev
     config["identity_hash"] = ident["config_hash"]
     meta = dict(questions_path=os.path.abspath(a.questions), spent_usd=round(sw.spent, 4), stopped=sw.stopped or None,
                 n_heldout=len({r["id"] for r in rows if r["split"] == "heldout"}), identity=ident["identity"])
@@ -768,6 +839,10 @@ def cmd_run(a):
     if not qs:
         raise Usage("no question with a gold file in %s" % a.questions)
     repo = os.path.abspath(a.repo)
+    pair_cfg = pair_setup(a, ev, arms, qs, repo)
+    if subprocess.run(["git", "-C", repo, "rev-parse", "--verify", "--quiet", a.rev + "^{commit}"],
+                      capture_output=True).returncode != 0:
+        raise Usage("--rev %s is not a commit of %s" % (a.rev, repo))
     os.makedirs(a.out, exist_ok=True)
     if os.path.exists(os.path.join(a.out, "STOPPED")):
         os.remove(os.path.join(a.out, "STOPPED"))
@@ -820,6 +895,10 @@ def cmd_run(a):
     with open(os.path.join(a.out, "table.tsv"), "w") as fh:
         fh.write("\n".join(lines) + "\n")
     print("\n".join(lines))
+    for arm in arms:
+        used, n = route_use([r for r in sw.rows if r["arm"] == arm and not r["prime"]])
+        if routed(arm) and n and used / n < ROUTE_USE_MIN:
+            print("NOT TESTED: %s called the route in %d of %d sessions (under %d%%)" % (arm, used, n, ROUTE_USE_MIN * 100))
     if a.warm_session and real:
         wl = warm_table(sw.rows, real)
         with open(os.path.join(a.out, "warm.tsv"), "w") as fh:
@@ -835,7 +914,7 @@ def cmd_run(a):
             fh.write("STOPPED: %s\n" % sw.stopped)
         print("STOPPED: %s" % sw.stopped, file=sys.stderr)
     if not a.no_ledger:
-        row = ledger_row(ev, a, sw, arms, repo)
+        row = ledger_row(ev, a, sw, arms, repo, pair_cfg)
         if row:
             ev.retain_and_append(row, {"results": os.path.join(a.out, "results.jsonl"), "table": os.path.join(a.out, "table.tsv"),
                                        "screened": os.path.join(a.out, "screened.txt"), "warm": os.path.join(a.out, "warm.tsv"),
@@ -864,6 +943,9 @@ def main(argv=None):
     r.add_argument("--no-ledger", action="store_true")
     r.add_argument("--prime", action="store_true")
     r.add_argument("--warm-session", type=int, default=0)
+    r.add_argument("--pair", default="")
+    r.add_argument("--index-state", default="")
+    r.add_argument("--rev", default="HEAD")
     r.error = p.error
     s = sub.add_parser("route-server")
     s.add_argument("--kind", required=True, choices=sorted(ROUTE_DESC))
@@ -882,6 +964,9 @@ def main(argv=None):
         if a.cmd == "route-server":
             return cmd_route_server(a)
         raise Usage("name a subcommand: run")
+    except Refuse as e:
+        print("answer-ab: refused: %s" % e, file=sys.stderr)
+        return 2
     except Usage as e:
         print("answer-ab: %s" % e, file=sys.stderr)
         return 64
