@@ -39,12 +39,6 @@
 # failure, graphify-out was left untouched (the bank is at/over threshold, or the
 # station's graph role or choice sends no semantic pass here; the stderr line says
 # which); 4 chunk cap reached; 5 hollow chunk failure (give-up or no-progress fallback).
-#
-# Graph role (graph-choices.js role): on the publisher the run is unchanged. On any
-# other station only a graph choice state of `default` (no choice) reaches a semantic
-# pass, and only on --backend claude-cli, on a corpus other than the himmel checkout,
-# after a usage preflight pinned to the native bank answers exactly PROCEED, and with
-# no Anthropic credential, provider switch or apiKeyHelper in reach.
 # Exits 4/5 keep finished chunks cached without promoting a partial graph.
 #
 # Freshness guard: this script REBUILDS the graph. To CHECK whether an existing

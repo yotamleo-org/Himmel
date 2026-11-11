@@ -179,8 +179,7 @@ resolve_user_home() {
 # explicit use, and a re-render must never turn it into a daily draw (decision 525). The file is
 # operator-owned (block-himmel-config-writes.sh keeps agents off it, the same home as
 # graphify.salus_ollama_cloud_ok) and no env var overrides it. Absent, unreadable, malformed, a
-# symlink, or any value but true means no opt-in (graph-choices.js role reads it; only
-# `publisher` is an opt-in). The himmel station opts in once, by hand:
+# symlink, or any value but true means no opt-in. The himmel station opts in once, by hand:
 #   {"graphify": {"semantic_api_ok": true}}
 # ponytail: read at render time, so a runner already armed keeps its lane until the next
 # arm --rewrite-armed; upgrade path: a fire-time read inside the runner.

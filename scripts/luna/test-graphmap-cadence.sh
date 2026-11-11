@@ -2392,8 +2392,6 @@ else
     echo "  G1 merge base: $g1_base"
     g1_tree="$TMP_ROOT/g1-tree"
     git -C "$g1_repo" -c core.hooksPath=/dev/null worktree add --detach --quiet "$g1_tree" "$g1_base" >/dev/null 2>&1 || g1_tree=""
-    # g1_render <script> <tag>: one publisher arm into its own runner dir; prints every runner
-    # and the crontab, with the tree's root and the runner dir replaced by fixed words.
     g1_render() {
         local s="$1" d="$TMP_ROOT/g1run-$2" st="$TMP_ROOT/g1run-$2-state" fake f
         rm -rf "$d" "$st"; mkdir -p "$d" "$st"

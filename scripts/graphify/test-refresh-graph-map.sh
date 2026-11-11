@@ -4791,9 +4791,7 @@ out=$(recent_run 2); rc=$?
 
 echo "T-adopter-skip: the install marker no longer decides; the graph role does"
 # The marker graphify-out/.graphify_published holds the build commit himmel-update.sh
-# sync_graph installed. graphify is stubbed and logs every call: no model call here. A HOME with
-# no graph choice runs its semantic pass only after a usage check answering PROCEED, and this
-# suite's usage cache is missing (BANK-UNKNOWN), so every non-publisher row below refuses.
+# sync_graph installed. graphify is stubbed and logs every call: no model call here.
 ADCORPUS="$WS/adopter-corpus"; ADMAPS="$WS/adopter-maps"; mkdir -p "$ADMAPS"
 git_corpus "$ADCORPUS"
 AD_BUILD=$(git -C "$ADCORPUS" rev-parse HEAD)
@@ -4812,7 +4810,7 @@ ad_run() { # <marker sha> — one refresh of the adopter corpus; the call log te
 }
 AD_CFG="$HERMETIC_HOME/.himmel/config.json"
 AD_UNKNOWN="refresh-graph-map: no graph choice, and the subscription usage check answered BANK-UNKNOWN; semantic pass skipped (graphify-out left untouched)"
-ad_refused() { # <label>: rc 3, no graphify call, the BANK-UNKNOWN line, one alert line and one send
+ad_refused() {
   if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ] && grep -qF "$AD_UNKNOWN" <<< "$out" \
      && [ "$(alert_lines)" -eq 1 ] && [ "$(alert_sends)" -eq 1 ]; then
     pass "T-adopter-skip $1"
@@ -4820,7 +4818,7 @@ ad_refused() { # <label>: rc 3, no graphify call, the BANK-UNKNOWN line, one ale
     fail "T-adopter-skip $1 expected rc=3, no call, the BANK-UNKNOWN line, one alert (rc=$rc, alerts=$(alert_lines)/$(alert_sends)): $out"
   fi
 }
-ad_cause() { # <label> <cause word>: rc 3, no graphify call, the cause line only, no alert
+ad_cause() {
   if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ] && grep -qF "graph config unreadable (cause=$2)" <<< "$out" \
      && ! grep -q 'usage check' <<< "$out" && [ "$(alert_lines)" -eq 0 ]; then
     pass "T-adopter-skip $1"
@@ -4870,8 +4868,6 @@ fi
 chmod 600 "$AD_CFG" 2>/dev/null; rm -f "$AD_CFG"; pub_home "$HERMETIC_HOME"
 
 echo "T-nochoice: no graph choice runs the semantic pass only on the subscription (F1-F17)"
-# The real usage preflight reads fixture caches (no bank is drawn), graphify and claude are recording
-# stubs, and the alert sender is the suite's recording stub. Each row has its own throwaway HOME.
 NC="$WS/nc"; mkdir -p "$NC/bin" "$NC/maps" "$NC/corpus/notes"
 NC_CORPUS="$NC/corpus"; printf '# n\ncontent\n' > "$NC_CORPUS/notes/a.md"
 NC_REPO="$(cd "$HERE/../.." && pwd)"
@@ -4902,12 +4898,12 @@ NONE_SENTENCE="With the graph choice none, graphify builds only the code structu
 SET_SENTENCE="This station's graph choice runs through its daily graph job on the repos it lists; this run makes no semantic call."
 INVALID_SENTENCE="The graph choice in ~/.himmel/config.json is not valid, so no semantic call runs; the doctor (C88) names the problem."
 NC_NONE='{"graphify":{"choices":{"version":1,"corpora":[],"primary":"none"}}}'
-nc_cache() { # <seven_day pct> [stamp age seconds]: a fresh account-stamped cache, or a stale one
+nc_cache() {
   printf '{"five_hour":{"utilization":10},"seven_day":{"utilization":%s},"primaries_refreshed_at":%s,"account":"%s"}\n' \
     "$1" "$(( $(date +%s) - ${2:-0} ))" "$nc_acct" > "$NC/cache.json"
   NC_CACHE="$NC/cache.json"
 }
-nc_home() { # <name> [config json]: a fresh HOME with a Claude login copy, and the config when given
+nc_home() {
   NC_HOME="$NC/home-$1"; rm -rf "$NC_HOME"; mkdir -p "$NC_HOME/.claude"
   printf 'nc-subscription-auth\n' > "$NC_HOME/.claude/.credentials.json"
   printf '{}\n' > "$NC_HOME/.claude/settings.json"
@@ -4915,7 +4911,7 @@ nc_home() { # <name> [config json]: a fresh HOME with a Claude login copy, and t
   alert_reset; rm -rf "$NC/scratch"; mkdir -p "$NC/scratch"; : > "$NC/ledger.jsonl"
 }
 NC_ENV=()
-nc_run() { # one refresh of the fixture corpus; sets out and rc
+nc_run() {
   : > "$NC/graphify-calls.log"; : > "$NC/claude-calls.log"
   out=$( ${NC_BOUND:+"$NC_REAL_TIMEOUT" -k 5 "$NC_BOUND"} env ${NC_ENV[@]+"${NC_ENV[@]}"} HOME="$NC_HOME" PATH="${NC_PATH_PREFIX:+$NC_PATH_PREFIX:}$NC/bin:$PATH" \
     CLAUDE_ACCOUNT_CONFIG="$nc_acct_cfg" CADENCE_USAGE_CACHE="${NC_CACHE:-$NC/no-cache.json}" CADENCE_USAGE_SKIP_REFRESH=1 \
@@ -4926,14 +4922,14 @@ nc_run() { # one refresh of the fixture corpus; sets out and rc
 }
 nc_calls() { grep -cE -- '--update|cluster-only' "$NC/graphify-calls.log" 2>/dev/null || true; }
 nc_claude_calls() { if [ -s "$NC/claude-calls.log" ]; then wc -l < "$NC/claude-calls.log" | tr -d ' '; else echo 0; fi; }
-nc_refused() { # <label> <line>: rc 3, zero graphify and claude calls, the line
+nc_refused() {
   if [ "$rc" -eq 3 ] && [ "$(nc_calls)" -eq 0 ] && [ "$(nc_claude_calls)" -eq 0 ] && grep -qF -- "$2" <<< "$out"; then
     pass "$1"
   else
     fail "$1 (rc=$rc graphify=$(nc_calls) claude=$(nc_claude_calls)): $out"
   fi
 }
-nc_one_alert() { # <label>
+nc_one_alert() {
   if [ "$(alert_lines)" -eq 1 ] && [ "$(alert_sends)" -eq 1 ]; then pass "$1"; else fail "$1 (log lines=$(alert_lines) sends=$(alert_sends))"; fi
 }
 
@@ -5075,8 +5071,6 @@ else
       none) nc_home f15-none "$NC_NONE"; NC_ENV=("BASH_FUNC_exit%%=() { return 0; }") ;;
     esac
     nc_cache 10; NC_ENV+=("ANTHROPIC_API_KEY=sk-ant-planted-f15")
-    # A [ that is always true never leaves the --maps-dir trim loop at argument parsing (on main
-    # too), so that sub-row is bounded: it must still reach no launch.
     if [ "$f15" = bracket ] && [ -n "$NC_REAL_TIMEOUT" ]; then NC_BOUND=30 nc_run; else nc_run; fi
     NC_ENV=()
     if [ "$(nc_calls)" -eq 0 ] && [ "$(nc_claude_calls)" -eq 0 ] \

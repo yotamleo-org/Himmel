@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-// graph-choices.js — the one reader and validator of graphify.choices in ~/.himmel/config.json,
-// and the owner of "is this station the publisher" (role) and of what a station with no choice pays
-// with (route). Read-only: no verb writes a file. No output holds a byte read from the config file
-// other than the names and roots of the listed corpora, and no parser message ever leaves this module.
-//
 //   role                      publisher | adopter | unreadable
 //   route [--state]           the validated choices as JSON, or the state word alone
 //   listed <abs>              exit 0 when the real path is a listed root, 1 when not

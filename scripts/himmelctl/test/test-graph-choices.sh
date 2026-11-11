@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# test-graph-choices.sh: scripts/himmelctl/lib/graph-choices.js, the owner of the station's graph
-# role (publisher, adopter, unreadable), its route state (default, none, set, invalid, unreadable)
-# and the per-state texts. Rows C1 to C26.
-#
-# Hermetic: every row runs in a throwaway HOME with HIMMEL_CONFIG_DIR at $HOME/.himmel and the
-# config-audit dir under it (P6-8); HIMMEL_LUNA_CONFIG_PATH is unset; the API roster is read only
-# through HIMMEL_API_CREDIT_CONFIG at a fixture path (api-credit-state.mjs otherwise reads the
-# account's real home). No row writes the real ~/.himmel.
 # shellcheck disable=SC2015  # A && pass || fail is the test-assert idiom (pass and fail always return 0)
 set -u
 repo_root=$(git rev-parse --show-toplevel)
@@ -22,7 +14,6 @@ fail() { echo "  FAIL: $1"; FAILS=$((FAILS + 1)); }
 WS="$(mktemp -d -t graph-choices-test.XXXXXX)" || exit 1; trap 'chmod -R u+rwx "$WS" 2>/dev/null; rm -rf "$WS"' EXIT
 unset HIMMEL_LUNA_CONFIG_PATH XDG_DATA_HOME
 
-# fresh_home <name>: a new throwaway HOME, exported with the station seams.
 fresh_home() {
     H="$WS/$1"; mkdir -p "$H/.himmel"
     export HOME="$H" USERPROFILE="$H" HIMMEL_CONFIG_DIR="$H/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$H/.himmel/state/config-audit"
@@ -216,7 +207,7 @@ out="$(node -e 'const g=require(process.argv[1]);console.log(JSON.stringify(g.ro
 expect_eq "C21 (stub-only) a stubbed roster with D configured passes" "$out" "[]"
 
 echo "C23: check prints each roster line by reason word"
-roster_row() { # <label> <roster json or MISSING> <expected text>
+roster_row() {
     fresh_home "c23-$1"
     if [ "$2" = MISSING ]; then export HIMMEL_API_CREDIT_CONFIG="$WS/c23-none.json"
     else printf '%s\n' "$2" > "$WS/c23-$1.json"; export HIMMEL_API_CREDIT_CONFIG="$WS/c23-$1.json"; fi

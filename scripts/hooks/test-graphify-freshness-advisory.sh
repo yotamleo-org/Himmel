@@ -66,8 +66,6 @@ case "$out" in *"graphify graph is STALE"*) pass "T2 stale banner present";; *) 
 case "$out" in *"5d old"*|*"5 days"*) pass "T2 names age";; *) fail "T2 age missing";; esac
 case "$out" in *"HIMMEL-GraphMap-Himmel"*) pass "T2 names cadence";; *) fail "T2 cadence missing";; esac
 case "$out" in *"refresh-graph-map.sh"*) pass "T2 names refresh";; *) fail "T2 refresh missing";; esac
-# T2b stale on a station that is not the publisher -> the banner's own lines name remedy's text and no
-# refresh command (the quoted checker block is the checker's; test-check-graph-freshness.sh T13 covers it)
 out=$(HOME="$tmp/adopterhome" HIMMEL_CONFIG_DIR='' GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
 [ "$rc" -eq 0 ] || fail "T2b adopter stale rc=$rc"
 own=$(printf '%s\n' "$out" | awk '/^---$/ { q = !q; next } !q')

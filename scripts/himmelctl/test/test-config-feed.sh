@@ -228,7 +228,6 @@ rm -rf "$homeDir/.claude/graphmap-cadence"
 run_report --items graphmap-cadence > "$work/nolog.json" 2> "$work/nolog.err" || { cat "$work/nolog.err" >&2; fail "report --items graphmap-cadence exited non-zero"; }
 jq -e '.rows[]|select(.id=="graphmap-cadence")|.fires.state=="no-run"' "$work/nolog.json" >/dev/null || fail "c graphmap (no log dir) fires: $(fires_of graphmap-cadence "$work/nolog.json")"
 pass "c fires: doctor yes from last.tsv, pipeline and qmd yes from their run logs, graphmap no-run"
-# the graph-map cost, true on every station and in every render of the himmel row
 want_cost='free hourly structure refresh; on the publishing station only, a daily himmel extraction on the API lane or the subscription, as its runner was rendered; where the Luna map row is armed, a weekly Luna extraction on the subscription, after a usage check'
 got_cost=$(jq -r '.rows[]|select(.id=="graphmap-cadence")|.control.cost' "$out")
 [ "$got_cost" = "$want_cost" ] || fail "c graphmap cost text: $got_cost"

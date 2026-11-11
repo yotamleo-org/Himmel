@@ -28,9 +28,6 @@
 #   fetch:   a held promote lock falls back and the lock stays
 #   fetch:   the install holds the promote lock with an acquired stamp
 #   fetch:   the publisher station (graphify.semantic_api_ok) never installs
-#   fetch:   U1 a graph choice with no semantic_api_ok is an adopter and installs
-#   fetch:   U2 a config that cannot be read does not install
-#   fetch:   U4 a symlinked ~/.himmel or config.json installs unless the linked file says publisher
 #   fetch:   --check reports what it would fetch and writes nothing
 
 set -uo pipefail
@@ -224,7 +221,7 @@ untouched() {  # <label> <adopter>
     check_eq "$1: graphify-out/graph.json untouched" "sentinel-graph" "$(cat "$2/graphify-out/graph.json" 2>/dev/null)"
     if [ -e "$2/graphify-out/.graphify_published" ]; then bad "$1: install marker written"; else ok "$1: no install marker"; fi
 }
-installed() {  # <label> <adopter> — the published graph replaced the sentinel and the marker was written
+installed() {
     if [ -e "$2/graphify-out/.graphify_published" ] && [ "$(cat "$2/graphify-out/graph.json" 2>/dev/null)" != sentinel-graph ]; then
         ok "$1"; else bad "$1 — not installed: $UP_OUT"; fi
 }

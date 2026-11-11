@@ -5533,9 +5533,8 @@ check_c86_morning_report() {
 
 # --- C88-graph-api-optin: the graph cadence's billed API lane needs a station opt-in ---
 # graphmap-cadence.sh renders the semantic runners on the API lane (HIMMEL_API_LANE=on, claude-api) only
-# on the graph publisher (graph-choices.js role: graphify.semantic_api_ok is the JSON literal true in
-# ~/.himmel/config.json). This row reports that state and, on any other station, graph-choices.js check's
-# state lines (the graph choice, the last pass, the roster); a config it cannot read is a WARN. WARN when
+# when graphify.semantic_api_ok is the JSON literal true in ~/.himmel/config.json (semantic_api_opted_in
+# there; a symlink, a malformed file or any other value is off). This row reports that state. WARN when
 # the opt-in is off, a lane-key name has a value in the himmel .env, and an armed runner still bakes
 # HIMMEL_API_LANE=on: that cadence draws the key without an opt-in until it is re-rendered. A baked lane
 # with no key in .env draws nothing (INFO). Key NAMES only: no .env value is printed.

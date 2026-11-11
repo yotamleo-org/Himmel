@@ -38,8 +38,6 @@ printf '{}' > "$TMP/go/semantic-manifest.json"
 touch_at "$TMP/go/semantic-manifest.json" "$((NOW - 2 * DAY))"
 
 LEDGER="$TMP/no-ledger.tsv"
-# The semantic rows judge the station's own himmel graph, so the rows run as the publisher
-# unless they name another HOME.
 mkdir -p "$TMP/pub-home/.himmel" "$TMP/adopter-home" "$TMP/set-home/.himmel"
 printf '{"graphify":{"semantic_api_ok":true}}\n' > "$TMP/pub-home/.himmel/config.json"
 printf '{"graphify":{"choices":{"version":1,"corpora":[],"primary":"subscription"}}}\n' > "$TMP/set-home/.himmel/config.json"
@@ -89,7 +87,6 @@ has "old semantic manifest flagged" "$out" "40d"
 mkdir -p "$TMP/nogo"
 out="$(run GAP_AUDIT_GRAPH_OUT="$TMP/nogo")"
 lacks "no graph at all: graphify check skipped" "$out" "semantic manifest"
-# a station that is not the publisher pulls the himmel graph: no semantic gap, whatever its route
 rm -f "$TMP/go/semantic-manifest.json"
 out="$(run HOME="$TMP/adopter-home")"
 lacks "an AST-only adopter with no manifest reports no graphify gap" "$out" "semantic manifest"

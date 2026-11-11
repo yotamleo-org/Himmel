@@ -7563,7 +7563,6 @@ c70_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c70.XXXXXX")" || { fail "C70 m
 c70_t="$(cd "$c70_t" && pwd)" || { fail "C70 cd into the temp dir failed"; exit 1; }  # the doctor prints --root through cd+pwd; a TMPDIR with a trailing slash (macOS) would leave "T//" here
 c70_out="$c70_t/home/.claude/graph-cadence/himmel/graphify-out"; c70_corpus="$c70_t/corpus"
 mkdir -p "$c70_out" "$c70_corpus" "$c70_t/home/.himmel"
-# every row below but the last judges the publisher's own graph
 printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c70_t/home/.himmel/config.json"
 printf '{"real.md": {"mtime": 0}}\n' > "$c70_out/manifest.json"
 printf '{"nodes":[],"edges":[]}\n' > "$c70_out/graph.json"
@@ -7656,7 +7655,6 @@ printf '{"name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_file
 printf '{"ts": "2026-10-17T00:00:00Z", "name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_files": [], "refused_files": [], "backed_off_files": []}\n' > "$c70_t/root/graphify-out/semantic-runs.jsonl"
 out="$(c70_div LC_ALL=C)"
 if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 cadence last batch without a ts -> no divergence row"; else fail "C70 no ts -> $(printf '%s' "$out" | head -4)"; fi
-# a station that is not the graph publisher reads the pulled graph: C70 is OK with remedy's text
 c70_rows "x.md" "x.md" "x.md"
 mkdir -p "$c70_t/adopter-home"
 out="$(env HOME="$c70_t/adopter-home" HIMMEL_CONFIG_DIR= CLAUDE_DIR="$c70_t/adopter-home/claude" HIMMEL_DOCTOR_GRAPH_OUT="$c70_out" HIMMEL_DOCTOR_GRAPH_CHECK= bash "$DOC" --no-color --only C70 2>&1)"
