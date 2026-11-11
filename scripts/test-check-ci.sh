@@ -133,6 +133,15 @@ if [ "${GH_STUB_MAIN_SPENT:-}" = 1 ] && [ "$_tok" = main ]; then
     echo "gh: HTTP 403: API rate limit exceeded for user" >&2
     exit 1
 fi
+if [ "${GH_STUB_MAIN_SPENT:-}" = until-watch ] && [ "$_tok" = main ] && [ ! -f "$(dirname "$0")/watch-ran" ]; then
+    echo "gh: HTTP 403: API rate limit exceeded for user" >&2
+    exit 1
+fi
+if [ "${GH_STUB_READFAIL:-}" = auth ] && [ "$_tok" = read ]; then
+    echo "gh: HTTP 401: Bad credentials" >&2
+    exit 1
+fi
+if [ "${1:-}" = api ] && [ "${2:-}" = rate_limit ]; then echo "${GH_STUB_RL_REMAINING:-5000}"; exit 0; fi
 # the value of the --jq flag among the args ("" if none).
 _jq_arg() { while [ $# -gt 0 ]; do if [ "$1" = "--jq" ]; then printf '%s' "${2:-}"; return; fi; shift; done; }
 # the check rows now: GH_STUB_CHECKS, or GH_STUB_CHECKS_AFTER once the except-ctx watch has run for a second
@@ -663,7 +672,7 @@ if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then
 fi
 # remaining: gh pr checks ...
 is_watch=0
-case " $* " in *" --watch "*) is_watch=1 ;; esac
+case " $* " in *" --watch "*) is_watch=1; : > "$(dirname "$0")/watch-ran" ;; esac
 # structured red confirm (--json bucket): the script's --jq yields a bare count
 case " $* " in
     *" --json "*)
@@ -777,6 +786,9 @@ case "$GH_STUB_MODE" in
         exit 8 ;;
     probe-error)
         echo "HTTP 401: Bad credentials (https://api.github.com/graphql)" >&2; exit 1 ;;
+    red-probe)
+        if [ "$is_watch" -eq 1 ]; then echo "X ci fail"; exit 1; fi
+        exit 1 ;;
     green-then-red)
         if [ "$is_watch" -eq 1 ]; then
             w=$(cat "$GH_STUB_WATCH" 2>/dev/null)
@@ -1031,7 +1043,7 @@ run() {
     : > "$STUBDIR/claims"
     : > "$STUBDIR/reqrows-count"
     : > "$STUBDIR/msc"
-    rm -f "$STUBDIR/watch-started"
+    rm -f "$STUBDIR/watch-started" "$STUBDIR/watch-ran"
     # alert state resets per run unless a case sets KEEP_ALERT_STATE=1
     # (the dedupe case runs the SAME head twice and must see ONE alert).
     if [ "$KEEP_ALERT_STATE" -ne 1 ]; then : > "$STUBDIR/alerts.log"; rm -rf "$STUBDIR/alert-sentinels"; fi
@@ -3165,6 +3177,83 @@ assert_err_has "required-set unreadable" "8644 both tokens refused the protectio
 check_eq "8644 both tokens refused the protection read: a refusal that is not a rate limit never defers to the watch" "no" "$(if grep -q '^read pr checks .*--watch' "$STUBDIR/toklog"; then echo yes; else echo no; fi)"
 CLASSIC_OVERRIDE=none
 
+_s9_on() { : > "$STUBDIR/toklog"; export GH_STUB_TOKLOG="$STUBDIR/toklog" GH_READ_ENV_ROOT="$STUBDIR/ghr-root"; }
+_s9_off() { unset GH_STUB_RL_REMAINING GH_STUB_TOKLOG GH_STUB_READFAIL GH_STUB_MAIN_SPENT GH_STUB_CLASSIC_ADMIN_ONLY; export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT"; }
+tok_count() { grep -c -- "$1" "$STUBDIR/toklog" | tr -d ' '; }
+tok_before() { local a b; a=$(grep -n -- "$1" "$STUBDIR/toklog" | head -1 | cut -d: -f1); b=$(grep -n -- "$2" "$STUBDIR/toklog" | head -1 | cut -d: -f1); if [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; then echo yes; else echo no; fi; }
+_s9_on; export GH_STUB_READFAIL=auth
+run red-probe --grace 30
+_s9_off
+assert_rc 1 "S9-1a legacy path, refused read token, red check: exit 1"
+assert_err_has "checks FAILED" "S9-1a legacy path, refused read token, red check: the red-check message"
+assert_err_lacks "S9-1a legacy path, refused read token, red check: never the cannot-evaluate refusal" "stderr: $ERR" -iF -- "gh pr checks failed"
+_s9_on; export GH_STUB_READFAIL=auth
+run cr-completed --grace 30
+_s9_off
+assert_rc 0 "S9-1b refused read token: the run ends green"
+check_eq "S9-1b refused read token: the --watch logs tok=main" "yes" "$([ "$(tok_count '^main pr checks .*--watch')" -ge 1 ] && echo yes || echo no)"
+check_eq "S9-1b refused read token: the --watch never logs tok=read" "0" "$(tok_count '^read pr checks .*--watch')"
+check_eq "S9-1b refused read token: the rate_limit probe is logged before the --watch" "yes" "$(tok_before '^read api rate_limit' '^main pr checks .*--watch')"
+_s9_on
+run cr-completed --grace 30
+_s9_off
+assert_rc 0 "S9-1b working read token: the run ends green"
+check_eq "S9-1b working read token: the --watch logs tok=read" "yes" "$([ "$(tok_count '^read pr checks .*--watch')" -ge 1 ] && echo yes || echo no)"
+_s9_main_watch_ok() { if [ "$(tok_count '^main pr checks .*--watch')" -ge 1 ] && [ "$(tok_count '^read pr checks .*--watch')" -eq 0 ]; then echo yes; else echo no; fi; }
+for _s9_rl in 0 not-a-number; do
+    _s9_on; export GH_STUB_RL_REMAINING="$_s9_rl"
+    run cr-completed --grace 30
+    _s9_off
+    assert_rc 0 "S9-1b read token with remaining=$_s9_rl: the run reaches its real verdict (exit 0)"
+    check_eq "S9-1b read token with remaining=$_s9_rl: the --watch logs tok=main, never tok=read" "yes" "$(_s9_main_watch_ok)"
+done
+_s9_mutant="$SCRIPT_DIR/check-ci.mutant.$$.sh"
+sed 's/\*\[!0-9\]\*|0) return 0/*[!0-9]*) return 0/' "$SCRIPT" > "$_s9_mutant"
+if cmp -s "$SCRIPT" "$_s9_mutant"; then fail "S9-1b control: the mutation changed nothing"; fi
+_real_script="$SCRIPT"; SCRIPT="$_s9_mutant"
+_s9_on; export GH_STUB_RL_REMAINING=0
+run cr-completed --grace 30
+_s9_off
+SCRIPT="$_real_script"; rm -f "$_s9_mutant"
+check_eq "S9-1b control: with the zero case removed, the --watch rides the spent read token" "yes" "$([ "$(tok_count '^read pr checks .*--watch')" -ge 1 ] && echo yes || echo no)"
+check_eq "S9-1b control: with the zero case removed, the main-token watch row fails" "no" "$(_s9_main_watch_ok)"
+_s9_on; export GH_STUB_MAIN_SPENT=until-watch GH_STUB_CLASSIC_ADMIN_ONLY=1
+CLASSIC_OVERRIDE="ctx:unit-tests"
+run cr-completed --grace 30
+_s9_off
+assert_rc 0 "S9-1c main spent at the start, reset mid-watch: the run ends green (exit 0)"
+_s9_threads_ok() { if [ "$(tok_count '^read api graphql')" -ge 2 ] && [ "$(tok_count '^main api graphql')" -eq 0 ]; then echo yes; else echo no; fi; }
+_s9_mstate_ok() { if [ "$(tok_count '^read pr view .*mergeStateStatus')" -ge 1 ] && [ "$(tok_count '^main pr view .*mergeStateStatus')" -eq 0 ]; then echo yes; else echo no; fi; }
+_s9_head_ok() { if [ "$(tok_count '^read pr view --json headRefOid --jq .headRefOid')" -ge 1 ] && [ "$(tok_count '^main pr view --json headRefOid --jq .headRefOid')" -eq 0 ]; then echo yes; else echo no; fi; }
+_s9_on; export GH_STUB_MAIN_SPENT=1
+CLASSIC_OVERRIDE="ctx:unit-tests"; CR_APP_OVERRIDE=0
+run cr-completed --grace 30
+_s9_off
+check_eq "S9-1d spent main: the review-thread reads log tok=read, never tok=main" "yes" "$(_s9_threads_ok)"
+check_eq "S9-1d spent main: the merge-state gate read logs tok=read, never tok=main" "yes" "$(_s9_mstate_ok)"
+check_eq "S9-1d spent main: the head re-read logs tok=read, never tok=main" "yes" "$(_s9_head_ok)"
+_s9_mutant="$SCRIPT_DIR/check-ci.mutant.$$.sh"
+# shellcheck disable=SC2016  # the sed expressions carry literal $( on purpose
+for _s9_m in 'threads|s/page=\$(gh_read api graphql/page=$(gh api graphql/' \
+             'mstate|s/row=\$(pr_view --json headRefOid,mergeStateStatus/row=$(gh pr view --json headRefOid,mergeStateStatus/' \
+             'head|s/^head1=\$(pr_view --json headRefOid/head1=$(gh pr view --json headRefOid/'; do
+    sed "${_s9_m#*|}" "$SCRIPT" > "$_s9_mutant"
+    if cmp -s "$SCRIPT" "$_s9_mutant"; then fail "S9-1d control ${_s9_m%%|*}: the mutation changed nothing"; fi
+    _real_script="$SCRIPT"; SCRIPT="$_s9_mutant"
+    _s9_on; export GH_STUB_MAIN_SPENT=1
+    CLASSIC_OVERRIDE="ctx:unit-tests"; CR_APP_OVERRIDE=0
+    run cr-completed --grace 30
+    _s9_off
+    SCRIPT="$_real_script"; rm -f "$_s9_mutant"
+    case "${_s9_m%%|*}" in
+        threads) _s9_bare='^main api graphql' ;;
+        mstate) _s9_bare='^main pr view .*mergeStateStatus' ;;
+        *) _s9_bare='^main pr view --json headRefOid --jq .headRefOid' ;;
+    esac
+    check_eq "S9-1d control ${_s9_m%%|*}: the bare-gh read ran on the main token" "yes" "$([ "$(tok_count "$_s9_bare")" -ge 1 ] && echo yes || echo no)"
+    check_eq "S9-1d control ${_s9_m%%|*}: that read on bare gh fails its row" "no" "$("_s9_${_s9_m%%|*}_ok")"
+done
+
 THREADS_OVERRIDE=latethread
 run red
 assert_rc 1 "9712-a a red run still exits 1"
@@ -3339,5 +3428,5 @@ if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending con
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 248 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 248"; exit 1; fi
+if [ "$COUNT" -ne 259 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 259"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

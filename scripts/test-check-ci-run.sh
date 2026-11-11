@@ -11,11 +11,15 @@ trap 'rm -rf "$ROOT"' EXIT
 PASS=0; FAIL=0
 ok() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 bad() { echo "  FAIL: $1"; printf '%s\n' "${OUT:-}"; FAIL=$((FAIL + 1)); }
-mkdir -p "$ROOT/bin"
+mkdir -p "$ROOT/bin" "$ROOT/noread"
+: > "$ROOT/noread/.env"
+export GH_READ_ENV_ROOT="$ROOT/noread" HIMMEL_SECRETS_KEYRING=off
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 cat > "$ROOT/bin/gh" <<'SH'
 #!/usr/bin/env bash
 set -u
 printf '%s\n' "$*" >> "$CASE/calls"
+[ -z "${GH_TOKEN:-}" ] || echo tok=other >> "$CASE/toklog"
 if [ "$1" = api ] && [ "${4:-}" = rate_limit ]; then
     now=$(cat "$CASE/clock")
     [ "${BUDGET_SLOW:-0}" = 0 ] || sleep "$BUDGET_SLOW"
@@ -209,6 +213,18 @@ started=$SECONDS
 run --run 123 --max-wait 1
 expect_rc 2 'TERM-resistant read cannot evaluate'
 if [ "$((SECONDS - started))" -le 2 ]; then ok 'hard read deadline has no two-second kill overrun'; else bad 'TERM-resistant child exceeded hard deadline'; fi
+
+new_case
+TREE="$ROOT/tree"
+mkdir -p "$TREE/scripts"
+cp "$HERE/check-ci.sh" "$TREE/scripts/check-ci.sh"
+cp -R "$HERE/lib" "$TREE/scripts/lib"
+printf 'himmel_github_token_vm2=%s\n' ghp_PLANTED0123456789 > "$TREE/.env"
+fixture completed success completed success > "$CASE/response"
+: > "$CASE/toklog"
+OUT=$(bash "$TREE/scripts/check-ci.sh" --run 123 --max-wait 10 2>&1); RC=$?
+expect_rc 0 'planted token tree: the run ends green'
+if [ "$(grep -c '^tok=other$' "$CASE/toklog" 2>/dev/null)" -eq 0 ]; then ok 'planted token at the default .env root never reaches the stub'; else bad 'planted token reached the stub'; fi
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
