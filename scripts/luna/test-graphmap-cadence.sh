@@ -410,25 +410,31 @@ else
     fail "failed arm left state behind" "$(ls -a "$CRON_DIR" 2>/dev/null; cat "$CSTATE/crontab" 2>/dev/null)"
 fi
 
-# Test C13b: arm fails fast when `claude` is not on PATH ---------------------------------------
+# Test C13b: the luna map runner (claude-cli) needs `claude` at arm time; the himmel rows do not
+# ---------------------------------------
 #
-# BACKEND is claude-cli again (kimi is retired — operator ruling, there is no
-# kimi backend), which needs no credential (validate_backend_credential
-# classifies claude|claude-cli as credential-free) but DOES shell the local
-# `claude` CLI internally at fire time, via graphify. Mirrors the graphify
-# fail-fast test directly above: PATH carries graphify but not claude.
+# The semantic default is claude-api: a bare arm renders the himmel rows only and
+# shells no local `claude`. The Luna map runner stays on claude-cli (a Luna run never walks auto,
+# decision 525), so `arm --luna-only` still fails fast when `claude` is absent. Mirrors the
+# graphify fail-fast test above: PATH carries graphify but not claude.
 
-echo "TEST: cron arm fails fast when claude is not on PATH"
+echo "TEST: cron arm --luna-only fails fast when claude is not on PATH"
 rc=0; out=$(env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$FAKE_CRONTAB" \
     GRAPHMAP_BAT_DIR="$CRON_DIR" PATH="$PATH_NOCLAUDE" \
-    "$REAL_BASH" "$SCRIPT" arm --vault "$VAULT" 2>&1) || rc=$?
-assert_rc "cron arm without claude -> rc 2" 2 "$rc"
+    "$REAL_BASH" "$SCRIPT" arm --vault "$VAULT" --luna-only 2>&1) || rc=$?
+assert_rc "cron arm --luna-only without claude -> rc 2" 2 "$rc"
 assert_contains "missing-claude error names the CLI" "'claude' not on PATH at arm time" "$out"
 if [ ! -f "$CSTATE/crontab" ] && [ ! -d "$CRON_DIR" ]; then
     pass "claude-missing arm installed nothing"
 else
     fail "claude-missing arm left state behind" "$(ls -a "$CRON_DIR" 2>/dev/null; cat "$CSTATE/crontab" 2>/dev/null)"
 fi
+echo "TEST: a bare (himmel) cron arm needs no claude binary"
+rc=0; out=$(env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$FAKE_CRONTAB" \
+    GRAPHMAP_BAT_DIR="$CRON_DIR" PATH="$PATH_NOCLAUDE" \
+    "$REAL_BASH" "$SCRIPT" arm --vault "$VAULT" --dry-run 2>&1) || rc=$?
+assert_rc "cron bare arm --dry-run without claude -> rc 0" 0 "$rc"
+assert_not_contains "no missing-claude refusal on a bare arm" "'claude' not on PATH" "$out"
 
 # Test C13c: a full (non --ast-only) arm needs no backend credential at all
 # ---------------------------------------------------------------
@@ -555,7 +561,7 @@ assert_contains "himmel runner stamps the format version" "# himmel-cadence-runn
 # file when unset; the AST runners never launch claude (asserted further down).
 if [ "$FMT" -ge 24 ]; then pass "runner format is at least v24 (token-file load)"; else fail "runner format is $FMT, want >= 24"; fi
 assert_contains "luna runner has the token-file load"   "CLAUDE_CODE_OAUTH_TOKEN" "$luna_sh"
-assert_contains "himmel runner has the token-file load" "CLAUDE_CODE_OAUTH_TOKEN" "$himmel_sh"
+assert_not_contains "himmel runner (claude-api) has no token-file load: it never draws the subscription" "CLAUDE_CODE_OAUTH_TOKEN" "$himmel_sh"
 assert_contains "luna runner names the default token path" "/.himmel/secrets/claude-oauth-token" "$luna_sh_plain"
 assert_contains "luna runner honours HIMMEL_CLAUDE_TOKEN_FILE" "HIMMEL_CLAUDE_TOKEN_FILE" "$luna_sh"
 tok_snippet="$TMP_ROOT/token-snippet.sh"
@@ -606,8 +612,13 @@ for what in luna himmel; do
     # backend shells the local `claude` CLI internally, so the semantic
     # runner must ALSO pin its dir onto PATH the same way.
     # shellcheck disable=SC2016  # literal $PATH — the runner expands it at fire time
-    assert_contains "$what runner prepends the claude dir to PATH" \
-        "export PATH=$CLAUDE_BIN_DIR_PATH:\$PATH" "${body//\\/}"
+    # Only the luna map runner (claude-cli) shells claude; the himmel claude-api runner pins none.
+    if [ "$what" = luna ]; then
+        assert_contains "$what runner prepends the claude dir to PATH" \
+            "export PATH=$CLAUDE_BIN_DIR_PATH:\$PATH" "${body//\\/}"
+    else
+        assert_not_contains "$what runner pins no claude dir" "export PATH=$CLAUDE_BIN_DIR_PATH:" "${body//\\/}"
+    fi
 done
 
 # Test C4b: structural (AST) runner .sh fires the promote-lock wrapper
@@ -828,7 +839,7 @@ EMPTY_BAT_DIR="$TMP_ROOT/backend-none"
 mkdir -p "$EMPTY_BAT_DIR"
 out=$(run_cron_backend "$EMPTY_BAT_DIR")
 luna_line=$(grep 'HIMMEL-GraphMap-Luna' <<< "$out")
-assert_contains "no runner installed falls back to the configured BACKEND constant" "configured: claude-cli" "$luna_line"
+assert_contains "no runner installed falls back to the configured BACKEND constant" "configured: claude-api" "$luna_line"
 
 echo "TEST: status names a runner that carries no --backend flag explicitly, not as the fallback"
 NOFLAG_BAT_DIR="$TMP_ROOT/backend-noflag"
@@ -845,6 +856,74 @@ out=$(run_cron_backend "$NOFLAG_BAT_DIR")
 luna_line=$(grep 'HIMMEL-GraphMap-Luna' <<< "$out")
 assert_contains "runner with no --backend flag gets its own explicit label" "installed: no --backend flag in runner" "$luna_line"
 assert_not_contains "runner with no --backend flag is never silently read as the configured fallback" "configured:" "$luna_line"
+
+# Test C5d: the claude-api default -------------------------------------------
+# A bare arm on an opted-in station with no `claude` on PATH: himmel semantic runner on the API
+# lane, no claude-cli, no Luna rows. A claude-cli himmel runner already armed is flagged by
+# status and turned into claude-api by arm --rewrite-armed; an un-opted-in station renders the
+# skip line and no lane.
+echo "TEST: bare arm bakes the claude-api lane, needs no claude, adds no luna rows"
+API_DIR="$TMP_ROOT/api-default-runners"; API_STATE="$TMP_ROOT/api-default-state"; mkdir -p "$API_STATE"
+API_CRON="$TMP_ROOT/crontab-fake-api.sh"
+cat >"$API_CRON" <<FAKE
+#!/bin/sh
+CSTATE="$API_STATE"
+FAKE
+cat >>"$API_CRON" <<'FAKE'
+case "${1:-}" in
+    -l) if [ -f "$CSTATE/crontab" ]; then cat "$CSTATE/crontab"; else echo "no crontab" >&2; exit 1; fi ;;
+    -)  cat > "$CSTATE/crontab" ;;
+    *)  exit 64 ;;
+esac
+FAKE
+chmod +x "$API_CRON"
+run_api() {
+    env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$API_CRON" GRAPHMAP_BAT_DIR="$API_DIR" \
+        PATH="$TMP_ROOT/bin:$PATH_NOCLAUDE" "$REAL_BASH" "$SCRIPT" "$@"
+}
+rc=0; out=$(run_api arm --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "bare arm without claude on PATH exits 0" 0 "$rc"
+api_himmel=$(cat "$API_DIR/graphmap-himmel.sh" 2>/dev/null || echo MISSING)
+assert_contains "bare arm himmel runner bakes the lane env" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto " "$api_himmel"
+assert_contains "bare arm himmel runner uses claude-api" "--backend claude-api" "$api_himmel"
+assert_not_contains "bare arm himmel runner never uses claude-cli" "--backend claude-cli" "$api_himmel"
+if [ ! -e "$API_DIR/graphmap-luna.sh" ] && ! grep -q 'HIMMEL-GraphMap-Luna' "$API_STATE/crontab"; then
+    pass "bare arm adds no luna map runner or row"
+else
+    fail "bare arm added luna state" "$(ls "$API_DIR"; cat "$API_STATE/crontab")"
+fi
+out=$(run_api status)
+assert_not_contains "status does not flag an api runner" "--rewrite-armed" "$out"
+
+echo "TEST: status flags a himmel runner armed on claude-cli and names --rewrite-armed"
+cat > "$API_DIR/graphmap-himmel.sh" <<'EOF'
+#!/bin/sh
+# himmel-cadence-runner-format: 24
+{
+    _rc=0; /bin/bash /fake/refresh-graph-map.sh --name himmel --corpus-root /fake --maps-dir /fake --title X --slug himmel --backend claude-cli --corpus-tag himmel || _rc=$?
+} >> /tmp/fake-7644.log 2>&1
+EOF
+out=$(run_api status)
+himmel_line=$(grep 'HIMMEL-GraphMap-Himmel' <<< "$out")
+assert_contains "status flags the claude-cli himmel runner" "installed: claude-cli" "$himmel_line"
+assert_contains "status names the re-arm command" "arm --rewrite-armed" "$himmel_line"
+cp "$API_STATE/crontab" "$API_STATE/crontab.before"
+rc=0; out=$(run_api arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "rewrite-armed over the claude-cli runner exits 0" 0 "$rc"
+api_himmel=$(cat "$API_DIR/graphmap-himmel.sh")
+assert_contains "rewrite-armed turns it into claude-api" "--backend claude-api" "$api_himmel"
+assert_contains "rewrite-armed bakes the lane env" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto " "$api_himmel"
+assert_not_contains "rewrite-armed leaves no claude-cli" "--backend claude-cli" "$api_himmel"
+if cmp -s "$API_STATE/crontab" "$API_STATE/crontab.before" && [ ! -e "$API_DIR/graphmap-luna.sh" ]; then pass "rewrite-armed leaves the crontab and the luna rows alone"; else fail "rewrite-armed changed the crontab or added a luna runner"; fi
+
+echo "TEST: an un-opted-in station renders the skip line and no lane (decision 525)"
+NOOPT_HOME="$TMP_ROOT/home-no-optin"; mkdir -p "$NOOPT_HOME"
+out=$(env HOME="$NOOPT_HOME" OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$API_CRON" GRAPHMAP_BAT_DIR="$API_DIR" \
+    PATH="$TMP_ROOT/bin:$PATH_NOCLAUDE" "$REAL_BASH" "$SCRIPT" arm --vault "$VAULT" --rewrite-armed 2>&1) || true
+noopt_himmel=$(cat "$API_DIR/graphmap-himmel.sh")
+assert_contains "un-opted-in runner logs the skip line" "semantic skipped: API lane not opted in" "$noopt_himmel"
+assert_not_contains "un-opted-in runner carries no lane" "HIMMEL_API_LANE" "$noopt_himmel"
+assert_not_contains "un-opted-in runner carries no claude-api backend" "--backend claude-api" "$noopt_himmel"
 
 # Test C6: re-arm without --force -> dedup block -------------------------------
 
@@ -1503,7 +1582,7 @@ run_fda linux-gnu disarm >/dev/null 2>&1
 echo "TEST: cron_payload / ast_cron_payload out-root wiring"
 CP_SRC="$(sed -n '/^cron_payload()/,/^}/p' "$SCRIPT")"
 ACP_SRC="$(sed -n '/^ast_cron_payload()/,/^}/p' "$SCRIPT")"
-run_cp() { bash -c "BACKEND=claude-cli SEMANTIC_API_SKIP_TEXT=skip-text; semantic_api_opted_in() { [ \"\${CP_OPTIN:-1}\" = 1 ]; }"$'\n'"$CP_SRC"$'\n''cron_payload "$@"' _ "$@"; }
+run_cp() { bash -c "BACKEND=claude-api LUNA_MAP_BACKEND=claude-cli SEMANTIC_API_SKIP_TEXT=skip-text; semantic_api_opted_in() { [ \"\${CP_OPTIN:-1}\" = 1 ]; }"$'\n'"$CP_SRC"$'\n''cron_payload "$@"' _ "$@"; }
 run_acp() { bash -c "$ACP_SRC"$'\n''ast_cron_payload "$@"' _ "$@"; }
 
 cp_no_root=$(run_cp bash script.sh luna corpus maps title slug tag)
@@ -1518,7 +1597,7 @@ assert_contains "cron_payload merges the himmel refresh into the live graph" "--
 assert_not_contains "cron_payload keeps the plain promote for luna" "--merge-into-live" "$cp_no_root"
 assert_not_contains "cron_payload keeps the plain promote for luna with an out-root" "--merge-into-live" "$cp_with_root"
 assert_contains "cron_payload puts the himmel map on the API lane on auto" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto bash script.sh --name himmel" "$cp_himmel"
-assert_contains "cron_payload keeps BACKEND for luna" "--backend claude-cli" "$cp_no_root"
+assert_contains "cron_payload keeps LUNA_MAP_BACKEND for luna" "--backend claude-cli" "$cp_no_root"
 assert_not_contains "cron_payload never gives luna auto" "HIMMEL_API_ACCOUNT" "$cp_no_root"
 cp_himmel_off=$(CP_OPTIN=0 run_cp bash script.sh himmel corpus maps title slug tag)
 assert_rc "cron_payload without the opt-in renders only the himmel skip line" 'echo "[skip-text]"' "$cp_himmel_off"
@@ -2416,7 +2495,8 @@ else
         fail "G1 could not add a detached worktree of the merge base $g1_base"
     else
         g1_head="$(g1_render "$SCRIPT" head | sed -e "s#$g1_repo#ROOT#g" -e "s#$TMP_ROOT/g1run-head#DIR#g" -e "s#graph-publish-[A-Za-z0-9._-]*#graph-publish-SLUG#g")"
-        g1_base_out="$(g1_render "$g1_tree/scripts/luna/graphmap-cadence.sh" base | sed -e "s#$g1_tree#ROOT#g" -e "s#$TMP_ROOT/g1run-base#DIR#g" -e "s#graph-publish-[A-Za-z0-9._-]*#graph-publish-SLUG#g")"
+        # shellcheck disable=SC2016  # the sed scripts are literal; the $ is a regex anchor
+        g1_base_out="$(g1_render "$g1_tree/scripts/luna/graphmap-cadence.sh" base | sed -e "s#$g1_tree#ROOT#g" -e "s#$TMP_ROOT/g1run-base#DIR#g" -e "s#graph-publish-[A-Za-z0-9._-]*#graph-publish-SLUG#g" -e '/claude-bin:\$PATH$/d' -e '/^# cron cannot read the macOS/,/^fi$/d')"
         if [ -n "$g1_head" ] && grepq "$g1_head" -F 'graphmap-publish-himmel.sh' && [ "$g1_head" = "$g1_base_out" ]; then
             pass "G1 the publisher render of HEAD equals the merge base's render"
         else

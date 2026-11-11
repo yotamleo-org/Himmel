@@ -1428,11 +1428,14 @@ view into the vault — the bridge between the derived graph and the KB.
   job's own arm/inspect/remove, ledger shape, and failure-surfacing detail —
   this entry covers the original four). The semantic pair
   (`HIMMEL-GraphMap-Luna` / `-Himmel`, default Sunday 13:00/13:20 local,
-  staggered) is now **weekly**, on the **`claude-cli`** backend (kimi/moonshot is retired; claude-cli is the
-  original default) — drawing the SAME interactive 5h/weekly Anthropic
-  subscription usage budget as a live session, gated by `usage-preflight.sh` inside
+  staggered): the himmel row runs on the **`claude-api`** backend with
+  `HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto` baked in, only on a station that opted in
+  (`graphify.semantic_api_ok`; otherwise it logs a skip line); the opt-in Luna map row
+  (`arm --luna-only`) stays on **`claude-cli`** (kimi/moonshot is retired), drawing the
+  subscription usage budget, gated by `usage-preflight.sh` inside
   `refresh-graph-map.sh` (SKIPPED-BANK stops the run) — each firing
-  `refresh-graph-map.sh` for its corpus. The
+  `refresh-graph-map.sh` for its corpus. A runner armed before the claude-api default keeps its
+  baked backend until `arm --rewrite-armed` (`status` flags it). The
   structural/AST pair (`HIMMEL-GraphMapAst-Luna` / `-Himmel`) is **asymmetric**
   since a later change: **himmel hourly** (:15 past), **luna daily** (00:05). Both
   jobs are free; the asymmetry is about the artifact, not cost — luna is a live
@@ -1450,12 +1453,12 @@ view into the vault — the bridge between the derived graph and the KB.
   absolute one, which its scratch-then-promote model cannot express): no LLM,
   no subscription usage budget, no `bank-preflight`, never shells
   `claude` — and is **free**. crontab (POSIX); dedup-guarded; hermetic test `test-graphmap-cadence.sh`. Arming is
-  an operator flip (weekly `claude-cli` subscription usage budget draw on the semantic pair only —
-  the AST pair costs nothing), not auto-armed. `arm` also FAILS FAST when
-  `claude` is not resolvable on PATH at arm time (restoring the
-  original resolution) — the scheduler's minimal PATH carries neither
-  `graphify` nor `claude` by default, and graphify's claude-cli backend shells
-  the local `claude` CLI internally at fire time. claude-cli itself needs no
+  an operator flip (the himmel semantic row spends the station's API key on the lane, the Luna row
+  draws the subscription usage budget — the AST pair costs nothing), not auto-armed. `arm
+  --luna-only` also FAILS FAST when `claude` is not resolvable on PATH at arm time — the
+  scheduler's minimal PATH carries neither `graphify` nor `claude` by default, and graphify's
+  claude-cli backend shells the local `claude` CLI internally at fire time; a himmel-only arm needs no
+  `claude` binary. claude-cli itself needs no
   credential (it authenticates via the operator's own Claude Code
   subscription) — the original credential gate (kimi ->
   `MOONSHOT_API_KEY`) no longer applies now that kimi is retired, though the
