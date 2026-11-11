@@ -3178,7 +3178,7 @@ check_eq "8644 both tokens refused the protection read: a refusal that is not a 
 CLASSIC_OVERRIDE=none
 
 _s9_on() { : > "$STUBDIR/toklog"; export GH_STUB_TOKLOG="$STUBDIR/toklog" GH_READ_ENV_ROOT="$STUBDIR/ghr-root"; }
-_s9_off() { unset GH_STUB_TOKLOG GH_STUB_READFAIL GH_STUB_MAIN_SPENT GH_STUB_CLASSIC_ADMIN_ONLY; export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT"; }
+_s9_off() { unset GH_STUB_RL_REMAINING GH_STUB_TOKLOG GH_STUB_READFAIL GH_STUB_MAIN_SPENT GH_STUB_CLASSIC_ADMIN_ONLY; export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT"; }
 tok_count() { grep -c -- "$1" "$STUBDIR/toklog" | tr -d ' '; }
 tok_before() { local a b; a=$(grep -n -- "$1" "$STUBDIR/toklog" | head -1 | cut -d: -f1); b=$(grep -n -- "$2" "$STUBDIR/toklog" | head -1 | cut -d: -f1); if [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; then echo yes; else echo no; fi; }
 _s9_on; export GH_STUB_READFAIL=auth
@@ -3198,6 +3198,23 @@ _s9_on
 run cr-completed --grace 30
 _s9_off
 check_eq "S9-1b working read token: the --watch logs tok=read" "yes" "$([ "$(tok_count '^read pr checks .*--watch')" -ge 1 ] && echo yes || echo no)"
+_s9_main_watch_ok() { if [ "$(tok_count '^main pr checks .*--watch')" -ge 1 ] && [ "$(tok_count '^read pr checks .*--watch')" -eq 0 ]; then echo yes; else echo no; fi; }
+for _s9_rl in 0 not-a-number; do
+    _s9_on; export GH_STUB_RL_REMAINING="$_s9_rl"
+    run cr-completed --grace 30
+    _s9_off
+    assert_rc 0 "S9-1b read token with remaining=$_s9_rl: the run reaches its real verdict (exit 0)"
+    check_eq "S9-1b read token with remaining=$_s9_rl: the --watch logs tok=main, never tok=read" "yes" "$(_s9_main_watch_ok)"
+done
+_s9_mutant="$SCRIPT_DIR/check-ci.mutant.$$.sh"
+sed 's/\*\[!0-9\]\*|0) return 0/*[!0-9]*) return 0/' "$SCRIPT" > "$_s9_mutant"
+if cmp -s "$SCRIPT" "$_s9_mutant"; then fail "S9-1b control: the mutation changed nothing"; fi
+_real_script="$SCRIPT"; SCRIPT="$_s9_mutant"
+_s9_on; export GH_STUB_RL_REMAINING=0
+run cr-completed --grace 30
+_s9_off
+SCRIPT="$_real_script"; rm -f "$_s9_mutant"
+check_eq "S9-1b control: with the zero case removed, a spent read token still carries the --watch (fails its row)" "no" "$(_s9_main_watch_ok)"
 _s9_on; export GH_STUB_MAIN_SPENT=until-watch GH_STUB_CLASSIC_ADMIN_ONLY=1
 CLASSIC_OVERRIDE="ctx:unit-tests"
 run cr-completed --grace 30
@@ -3403,5 +3420,5 @@ if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending con
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 256 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 256"; exit 1; fi
+if [ "$COUNT" -ne 259 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 259"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1
