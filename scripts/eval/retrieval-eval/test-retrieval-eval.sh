@@ -718,8 +718,8 @@ PY
 
 SU="http://127.0.0.1:47999/mcp"
 PD="$W/pair"; mkdir -p "$PD/graph-s/graphify-out" "$PD/graph-l/graphify-out"
-printf '{"built_at_commit": "5555555"}\n' > "$PD/graph-s/graphify-out/graph.json"
-printf '{"built_at_commit": "6666666"}\n' > "$PD/graph-l/graphify-out/graph.json"
+printf '{"nodes": []}\n' > "$PD/graph-s/graphify-out/graph.json" || exit 1
+printf '{"nodes": []}\n' > "$PD/graph-l/graphify-out/graph.json" || exit 1
 printf '{"first": "aaaa", "second": "bbbb", "state": "l", "doc_count": 5, "index": "%s/index.sqlite", "served_url": "%s", "graph_built_at": {"aaaa": "%s/graph-s", "bbbb": "%s/graph-l"}}\n' "$PD" "$SU" "$PD" "$PD" > "$PD/pair.json"
 printf '{"id":"s1","kind":"what","q":"why does a halt need no token","gold":["docs/lock.md"],"reason":[],"stale_stratum":"added"}\n{"id":"s2","kind":"where","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[],"stale_stratum":"kept"}\n' > "$W/qs.jsonl"
 # shellcheck disable=SC2016  # the stubs' own $-expansions must stay literal
@@ -742,7 +742,7 @@ pr "good" "QMD_URL=$SU" -- --index-state l --arms qmd-lex
 eq "the pair's own URL runs" "0" "$?"
 pr "count" "QMD_URL=$SU" STUB_DOCS=7 -- --index-state l --arms qmd-lex
 eq "refuses_count_mismatch: a served count that is not pair.json's is refused with exit 2" "2 absent" "$? $([ -s "$W/ledger-count.jsonl" ] && echo present || echo absent)"
-eq "the served count is read from a real MCP status reply" "5" "$(py - "$EV" <<'PY'
+eq "the served count is read from a real MCP status reply, with a proxy set that does not list the loopback server" "5" "$(http_proxy=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 no_proxy='' py - "$EV" <<'PY'
 import http.server, importlib.util, json, os, sys, threading
 class H(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
@@ -764,8 +764,12 @@ srv = http.server.HTTPServer(("127.0.0.1", 0), H)
 threading.Thread(target=srv.serve_forever).start()
 os.environ["QMD_URL"] = "http://127.0.0.1:%d/mcp" % srv.server_address[1]
 s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
-print(m.served_count(5))
-srv.shutdown()
+try:
+    print(m.served_count(5))
+except BaseException as e:
+    print("error: %s" % e)
+finally:
+    srv.shutdown()
 PY
 )"
 pr "label" "QMD_URL=$SU" -- --index-state s --arms qmd-lex
@@ -777,8 +781,21 @@ eq "every result row carries its index state and stale stratum" "l added" "$(py 
 r = json.loads(open(sys.argv[1]).readline()); print(r["index_state"], r["stale_stratum"])' "$W/out-good/results.jsonl")"
 rm -f "$W/graph-env.log"
 pr "g1" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" "WORKER_GRAPH_OUT=$R/graphify-out" -- --index-state s --arms graphify
-eq "a stale-state graph run reads the graph built at the first commit, not the caller's WORKER_GRAPH_OUT" "0 $PD/graph-s/graphify-out 5555555" "$? $(sort -u "$W/graph-env.log") $(py -c 'import json,sys
+eq "a stale-state graph run reads the graph built at the first commit, not the caller's WORKER_GRAPH_OUT" "0 $PD/graph-s/graphify-out aaaa" "$? $(sort -u "$W/graph-env.log") $(py -c 'import json,sys
 print(json.loads(open(sys.argv[1]).readline())["meta"]["graph_built_at"])' "$W/ledger-g1.jsonl")"
+rm -f "$W/graph-env.log"
+pr "g1l" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state l --arms graphify
+eq "a pair graph with no built_at_commit stamp takes its stamp from pair.json, so the run exits 0" "0 bbbb" "$? $(py -c 'import json,sys
+m = json.loads(open(sys.argv[1]).readline())["meta"]
+print(m["graph_built_at"] if "graph_built_error" not in m else "error")' "$W/ledger-g1l.jsonl")"
+eq "state l reads the graph built at the second commit" "$PD/graph-l/graphify-out" "$(sort -u "$W/graph-env.log")"
+if [ "$(id -u)" != 0 ]; then
+    chmod 000 "$PD/graph-l/graphify-out/graph.json"
+    pr "g1u" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state l --arms graphify; rc=$?
+    chmod 644 "$PD/graph-l/graphify-out/graph.json"
+    eq "an unreadable pair graph is a graph read error, never an ok row" "1 yes" "$rc $(py -c 'import json,sys
+print("yes" if "graph_built_error" in json.loads(open(sys.argv[1]).readline())["meta"] else "no")' "$W/ledger-g1u.jsonl")"
+else pass "SKIP an unreadable pair graph is a read error (running as root, chmod 000 does not hide the file)"; fi
 rm -rf "$PD/graph-s/graphify-out"; ln -s "$R/graphify-out" "$PD/graph-s/graphify-out"
 pr "g2" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state s --arms graphify
 eq "refuses_primary_graph_by_symlink: a pair graph that links to the checkout's graphify-out is refused" "2 absent" "$? $([ -s "$W/ledger-g2.jsonl" ] && echo present || echo absent)"

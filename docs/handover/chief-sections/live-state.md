@@ -146,3 +146,11 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 >    too.
 > 3. Run `chief.sh next` as usual: the check above finds every predecessor
 >    entry in the file and passes the shorter line with no `DECISIONS-DROP`.
+>
+> **Rulings in force.** When you record a numbered ruling, and when one is superseded
+> or done, also run `bash <kit>/rulings-in-force.sh record --bucket <bucket> --id <N>
+> --status <in-force|superseded-by <M>|done>` (the first row of a ruling also takes
+> `--date`, a one-line `--line` and `--path` to its verbatim file). `next` renders the
+> in-force rows as one index at the top of the successor's `## Current direction` and
+> drops the superseded and done ones; a ruling with no row stays as it was. The index
+> line is not the ruling: read its verbatim file before you act on it.

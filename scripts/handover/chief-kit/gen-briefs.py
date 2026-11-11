@@ -51,6 +51,9 @@ the brief line `> **Completes ticket:** yes|no` (the LAST value in the scope; no
 states neither), which the merge script reads through --worker-doc to bind the merge (HIMMEL-5843).
 The Ship step follows that value; any other value after `completes-ticket:` (partial, a typo)
 is refused, since it would otherwise fall through to the closing merge (HIMMEL-6091).
+Every worker the core gate sees also gets `> **Leg kind:** design|build` after the Tier line: design
+when its Writes are docs-only and every path is under the handover root, build otherwise; a `none named` leg and an
+rm worker get no line. The exact lines are fixtures/leg-kind-lines.txt; the status funnel reads them.
 grants (HIMMEL-7091 ask 3): a list of {text, paths}, rendered in order as the brief's
 `> **Pre-granted follow-ups**` block, G1 first; a ruling may later select one by ID. text is
 non-blank single-line; paths is a non-empty list of literal repo-relative file paths (no glob,
@@ -985,6 +988,7 @@ def core_worker_gate(l, ctx):
         else:
             stray_absolute = True
     design = docs_only(l.get('writes', '')) and not stray_absolute
+    l['leg_kind'] = None if not paths else 'design' if design and all(p.startswith('state/') for p in paths) else 'build'
     verdict = {}
     for mdir, ks in groups.items():
         r, why = run_jira(cli, ['release', 'core-check', '--paths', ','.join(paths)] + (['--docs-only'] if design else []) + ['--mirror', mdir, '--key'] + ks)
@@ -1449,7 +1453,7 @@ template_version: 3
 {hookline} `cd` into the worktree, never EnterWorktree.
 > - **Reporting:** BLOCKED / permission prompt / question → the chief first (SendMessage). Never stop on AskUserQuestion. Doc bullets record plain facts; token quote-backs go in your SendMessage reply (HIMMEL-4931).
 > - **Shape denials:** rewrite as one literal command, retry once. Edit files with the Edit tool; a script that must name a seam variable, `unset` or `-u` goes in a file run as `python3 -I <file>`, never a heredoc or `perl -pi` on the command line.
-{abline}{ctx1mline}{tierline}{liveline}{ctline}{seriesline}{coreline}
+{abline}{ctx1mline}{tierline}{legline}{liveline}{ctline}{seriesline}{coreline}
 > **Why (read the ticket(s) first, including comments: {gets}):** {why}
 
 > **Prior art:** {prior}
@@ -1481,6 +1485,7 @@ template_version: 3
            scope=l['scope'], scope_line=write_paths(l.get('writes', ''), ctx['hroot']), overlaps=overlaps_line(l, ctx), others=others, also=also,
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
                      if l.get('tier') and tier_gate(l['model']) else ''),
+           legline=('\n> **Leg kind:** %s\n' % l['leg_kind']) if l.get('leg_kind') else '',
            liveline=('\n%s\n' % l['live_line']) if l.get('live_line') else '',
            shipct=ship_completes(l['scope'], l.get('lane', 'native'))[0], shipmerge=ship_completes(l['scope'], l.get('lane', 'native'))[1],
            ctline=completes_line(l['scope']), seriesline=series_lines(l), coreline=l.get('core_lines', ''), grants=grants_block(l), partialblock=partial_merge_block(keys, ctx['repo']),

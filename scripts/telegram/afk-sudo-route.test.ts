@@ -554,7 +554,7 @@ test("button: a reply to a bot message with no known prompt holding a standalone
     expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
     await settle();
     expect(b.calls).toEqual([]);
-    expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again; if it already ran or ended, nothing more is needed."]);
+    expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again or send: approve <request id> <nonce> <code>; if it already ran or ended, nothing more is needed."]);
   }
 });
 
@@ -651,7 +651,7 @@ test("button: a six-digit reply to a bot message with no known prompt is consume
   expect(b.gate(reply("123456", 99, { reply_to_bot: true }))).toBe(true);
   await settle();
   expect(b.calls).toEqual([]);
-  expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again; if it already ran or ended, nothing more is needed."]);
+  expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again or send: approve <request id> <nonce> <code>; if it already ran or ended, nothing more is needed."]);
   expect(b.logs.join("\n")).not.toContain("123456");
   // other shapes of a reply to the bot stay ordinary text
   for (const msg of [reply("hello", 99, { reply_to_bot: true }), reply("123456", 99, { reply_to_bot: true, from: 999, chat_id: 999 })]) {
@@ -842,6 +842,49 @@ test("the operator's /op reaches the helper as op-request with the name and key=
   await settle();
   expect(calls).toEqual([{ args: ["op-request", "--session", "telegram-op", "--ticket", "operator", "--", "cron-entry", "action=set", "tag=ping", "schedule=0 5 * * *", "command=/usr/local/libexec/himmel/bin/open-session"], stdin: "" }]);
   expect(replies).toEqual(["✅ afk-sudo op cron-entry: result=pending id=abcdefgh expires=1 operator=4242"]);
+});
+
+const runRequestKeyboard = (): string => {
+  const line = readFileSync(join(import.meta.dir, "../lib/afk-sudo-request"), "utf8").split("\n").find((l) => l.includes("inline_keyboard"))!;
+  return line.slice(line.indexOf('{\\"inline_keyboard'), line.lastIndexOf("}]]}") + 4).replaceAll('\\"', '"').replaceAll("${id}", "abcdefgh");
+};
+
+test("a Telegram-started op request is answered with the run request's Approve and Deny buttons, byte for byte", async () => {
+  const { deps } = fake();
+  const sent: { text: string; markup?: object }[] = [];
+  deps.reply = async (_chat, text, markup) => { sent.push({ text, markup }); };
+  deps.runHelper = async () => ({ code: 0, stdout: "result=pending id=abcdefgh expires=1 operator=4242\n" });
+  expect(makeAfkSudoGate(deps)(dm("/op size-approval key=HIMMEL-1 files=300"))).toBe(true);
+  await settle();
+  expect(sent.length).toBe(1);
+  expect(JSON.stringify(sent[0].markup)).toBe(runRequestKeyboard());
+  expect(JSON.stringify(sent[0].markup)).toContain("afk:approve:abcdefgh");
+  expect(JSON.stringify(sent[0].markup)).toContain("afk:deny:abcdefgh");
+});
+
+test("the poller's afk-sudo reply passes the markup on to replyViaOutbox", () => {
+  const wiring = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("\n").find((l) => l.includes("const afkSudoDeps = "))!;
+  expect(wiring).toContain("reply: (chat: number, text: string, markup?: object) => replyViaOutbox(root, chat, text, undefined, undefined, markup)");
+});
+
+test("an op the helper refused, or whose id is not the helper's 8 base32 characters, carries no buttons", async () => {
+  for (const [code, stdout] of [[1, "result=refused reason=disabled\n"], [0, "result=pending id=NOT-AN-ID expires=1 operator=4242\n"], [0, "result=ran id=abcdefgh exit=0\n"]] as const) {
+    const { deps } = fake();
+    const sent: (object | undefined)[] = [];
+    deps.reply = async (_chat, _text, markup) => { sent.push(markup); };
+    deps.runHelper = async () => ({ code, stdout });
+    makeAfkSudoGate(deps)(dm("/op size-approval key=HIMMEL-1 files=300"));
+    await settle();
+    expect(sent).toEqual([undefined]);
+  }
+});
+
+test("a tap on the op request's Approve button still only prompts and never reaches the helper", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  expect(b.calls).toEqual([]);
+  expect(b.sent.length).toBe(1);
 });
 
 test("the size-approval line gen-briefs prints reaches the helper as exactly its words; from anyone else, a group or a forward it reaches nothing", async () => {

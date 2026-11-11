@@ -1,9 +1,9 @@
 name: ledger-drift
 
-# HIMMEL-6455: does scripts/ci/suite-durations.tsv still balance the shell-unit
+# Does scripts/ci/suite-durations.tsv still balance the shell-unit
 # shards? Packs the suite seconds measured in the last 3 green main ci.yml runs
 # with the committed ledger (scripts/ci/ledger-drift.sh) and goes red when the
-# slowest shard passes 1.3x the floor, which is how HIMMEL-4075 went unnoticed.
+# slowest shard passes 1.3x the floor.
 # Scheduled and dispatch only: it reads other runs' logs, never a PR's, and a
 # red here is a reminder to refresh the ledger, not a merge gate.
 on:

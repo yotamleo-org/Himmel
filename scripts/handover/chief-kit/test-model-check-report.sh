@@ -154,6 +154,14 @@ base_env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
                 JAVA='/usr/bin/true', TLA2TOOLS=str(work / 'tla2tools.jar'),
                 STATECHART=str(tree / 'statechart'), USER_SLUG='fixture', EXPECTED_REPO=str(repo), EXPECTED_HEAD=head,
                 PR_METADATA=json.dumps({'headRefOid': head, 'files': [{'path': 'scripts/handover/queue-lock.sh'}]}))
+readtok = 'ghp_READTOKEN0123456789'
+(work / 'emptyroot').mkdir()
+(work / 'emptyroot/.env').write_text('')
+(work / 'root').mkdir()
+(work / 'root/.env').write_text(f'himmel_github_token_vm2={readtok}\n')
+for name in ('GH_TOKEN', 'GITHUB_TOKEN', 'himmel_github_token_vm2', 'CREDENTIALS_DIRECTORY'):
+    base_env.pop(name, None)
+base_env.update(GH_READ_ENV_ROOT=str(work / 'emptyroot'), HIMMEL_SECRETS_KEYRING='off')
 count = 0
 def run(scenario='clean', script=wrapper, **extra):
     global count
@@ -245,6 +253,28 @@ for name, args, predicate, (old, new) in checks:
         fails += 1
     else:
         print(f'PASS: {name}; guard removal RED')
+tt_bin = work / 'tt'
+tt_bin.mkdir()
+(tt_bin / 'gh').symlink_to(sut.parent / 'fixtures/gh-two-token-stub.sh')
+tt_log = work / 'tt.log'
+def tt_run(root, **knobs):
+    tt_log.write_text('')
+    return run(PATH=str(tt_bin) + os.pathsep + base_env['PATH'], GH_READ_ENV_ROOT=str(work / root),
+               GH_STUB_DELEGATE=str(bin_dir / 'gh'), GH_STUB_READ_TOKEN=readtok, GHLOG=str(tt_log), **knobs)
+def tt_toks():
+    return [line.split(' ', 1)[0] for line in tt_log.read_text().splitlines()]
+res = tt_run('root', GH_STUB_MAINFAIL='rate')
+if clean_ok(res) and tt_toks() == ['tok=read', 'tok=read'] and readtok not in tt_log.read_text():
+    print('PASS: main spent: the head read and the recheck log tok=read and the report is current')
+else:
+    print(f'FAIL: main spent: the head read and the recheck log tok=read and the report is current: exit={res[0].returncode} toks={tt_toks()} stderr={res[0].stderr.strip()}')
+    fails += 1
+res = tt_run('emptyroot')
+if clean_ok(res) and tt_toks() == ['tok=main', 'tok=main']:
+    print('PASS: control, no read token: both reads log tok=main and the report is current')
+else:
+    print(f'FAIL: control, no read token: both reads log tok=main and the report is current: exit={res[0].returncode} toks={tt_toks()} stderr={res[0].stderr.strip()}')
+    fails += 1
 r, _, report = run(STATECHART=str(vendored / 'statechart'))
 if r.returncode == 0 and report and f'Statechart tree SHA-256: {vendor_sha}' in report.read_text():
     control = work / 'vendor-pin-control.sh'

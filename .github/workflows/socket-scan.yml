@@ -1,6 +1,6 @@
 name: socket-scan
 
-# HIMMEL-9270: a socket.dev dependency scan (typosquats, malicious installs) that starts only
+# A socket.dev dependency scan (typosquats, malicious installs) that starts only
 # when a pull request changes a dependency manifest or lock file. Never on every PR: the free
 # plan is a small quota. The paths filter below keeps the workflow from starting at all for any
 # other change, and scripts/security/socket-scan.sh re-checks the change set, so a PR that only

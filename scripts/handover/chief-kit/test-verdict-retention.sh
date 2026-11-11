@@ -53,6 +53,13 @@ root="$tmp/root"
 mkdir -p "$root" "$tmp/home/.config/himmel" || exit 1
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$tmp/home/.config/himmel/go-hmac.key"
 export HOME="$tmp/home" USER_SLUG=tuser HIMMEL_VERDICT_MODEL=test-model HIMMEL_VERDICT_EFFORT=high
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$tmp/ttroot/.env"
+: > "$tmp/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$tmp/tt/gh"
+export GH_READ_ENV_ROOT="$tmp/emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$tmp/himmelcfg"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 
 fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
@@ -111,8 +118,36 @@ ret() {
     env HANDOVER_DIR="$root" HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDICT_HEAD_CHECK_CMD="$hstub" HIMMEL_VERDICT_NOW="$NOW" bash "$SCRIPT" "$@"
 }
 
+ghdel="$tmp/gh-delegate.sh"
+cat > "$ghdel" <<EOF
+#!/usr/bin/env bash
+case "\$1 \$2" in
+    "repo view") echo "o/r" ;;
+    "pr view")
+        case "\$3" in
+            501) echo "OPEN" ;;
+            502) echo "CLOSED 2026-10-01T00:00:00Z" ;;
+            503) echo "MERGED 2026-10-16T00:00:00Z" ;;
+            *) exit 1 ;;
+        esac ;;
+    "api repos/o/r/commits/$SHA_F") exit 1 ;;
+    "api repos/o/r/commits/"*) echo "\${2##*/}" ;;
+    *) echo "gh-delegate: unhandled: \$*" >&2; exit 1 ;;
+esac
+EOF
+chmod +x "$ghdel"
+TTLOG="$tmp/tt.log"
+ret_tt() {
+    local r="$1"; shift
+    : > "$TTLOG"
+    env -u HIMMEL_VERDICT_PR_STATE_CMD -u HIMMEL_VERDICT_HEAD_CHECK_CMD HANDOVER_DIR="$root" HIMMEL_VERDICT_NOW="$NOW" \
+        PATH="$tmp/tt:$PATH" GH_STUB_DELEGATE="$ghdel" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" GH_READ_ENV_ROOT="$r" bash "$SCRIPT" "$@"
+}
+logn() { grep -c -E -- "$1" "$TTLOG"; }
+
 # --- 1. dry run by default -------------------------------------------------
 rc=0; out=$(ret archive 2>&1) || rc=$?
+dry_out="$out"
 check "1: dry run rc 0" "$rc" 0
 contains "1: lists the closed dir" "$out" "MOVE qclosed"
 lacks "1: does not list the open-PR dir" "$out" "MOVE qopen"
@@ -121,6 +156,21 @@ contains "1: a head outside the target repo is kept, repo not proven" "$out" "KE
 lacks "1: the foreign-head dir is not listed for a move" "$out" "MOVE qforeign"
 check "1: nothing moved" "$([ -d "$vdir/qclosed" ] && echo yes)" yes
 check "1: no ledger written" "$([ -e "$vdir/_ledger.jsonl" ] && echo yes || echo no)" no
+
+rc=0; out=$(GH_STUB_MAINFAIL=rate ret_tt "$tmp/ttroot" archive 2>&1) || rc=$?
+check "1b: main spent: dry run rc 0" "$rc" 0
+check "1b: main spent: the retention decision matches the seam run" "$(printf '%s' "$out" | sed 's# not found in o/r,# not found in the target repo,#')" "$dry_out"
+check "1b: the repo read logs tok=read" "$(logn '^tok=read argv=repo view ')" 1
+check "1b: the PR state reads log tok=read" "$([ "$(logn '^tok=read argv=pr view ')" -ge 1 ] && echo yes)" yes
+check "1b: the head reads log tok=read" "$([ "$(logn '^tok=read argv=api repos/o/r/commits/')" -ge 1 ] && echo yes)" yes
+check "1b: no lookup logs tok=main" "$(logn '^tok=main ')" 0
+check "1b: the read token is never in the stub log" "$(grep -c -F -- "$READTOK" "$TTLOG")" 0
+rc=0; out=$(ret_tt "$tmp/emptyroot" archive 2>&1) || rc=$?
+check "1b: control, no read token: rc 0" "$rc" 0
+check "1b: control: the missing read token warns once per run" "$(printf '%s\n' "$out" | grep -c '^gh-read: read token missing')" 1
+check "1b: control: the retention decision matches the seam run" "$(printf '%s\n' "$out" | grep -v '^gh-read: ' | sed 's# not found in o/r,# not found in the target repo,#')" "$dry_out"
+check "1b: control: the lookups log tok=main" "$([ "$(logn '^tok=main ')" -ge 3 ] && echo yes)" yes
+check "1b: control: no call logs tok=read" "$(logn '^tok=read ')" 0
 
 # --- 2. apply --------------------------------------------------------------
 want_sha=$(sha256sum "$vdir/qclosed/judge.md" | awk '{print $1}')

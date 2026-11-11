@@ -12,17 +12,15 @@
 #   selection (a source basename the suite does not name fails);
 # then the real graph passes against the real tree.
 #
-# Source basenames the real graph binds. impacted-suites.sh selects a suite by
-# basename, so each is named here literally (check-dev-graph.sh enforces it):
-#   chief.sh chief-wait.sh tick.sh next-dispatchable.sh gen-briefs.py
-#   headed-arm-worker.sh running-a-chief.md worker-preface.md check-commit-msg.sh
-#   .pre-commit-config.yaml check-cr-before-push.sh pr-check.md
-#   panel-first-pass.sh review-round.sh glossary.md grant-round.sh
-#   check-cr-marker-on-pr-create.sh check-ci.sh ready-check.sh judge-ladder.sh
-#   write-verdict.sh verdict-go.sh go.sh merge-on-green.sh
-#   block-unresolved-cr-merge.sh wrap-subtree-check.sh worker-event.sh
-#   residual-lines.sh wrap-merged.sh close-wrapped-worker.sh succession-tracker.sh
-#   worker-jira-status.sh coderabbit-signal.sh review-merge-gate.sh cr-first-release.sh
+# selector: names chief.sh chief-wait.sh tick.sh next-dispatchable.sh gen-briefs.py
+# selector: names headed-arm-worker.sh running-a-chief.md worker-preface.md check-commit-msg.sh
+# selector: names .pre-commit-config.yaml check-cr-before-push.sh pr-check.md
+# selector: names panel-first-pass.sh review-round.sh glossary.md grant-round.sh
+# selector: names check-cr-marker-on-pr-create.sh check-ci.sh ready-check.sh judge-ladder.sh
+# selector: names write-verdict.sh verdict-go.sh go.sh merge-on-green.sh
+# selector: names block-unresolved-cr-merge.sh wrap-subtree-check.sh worker-event.sh
+# selector: names residual-lines.sh wrap-merged.sh close-wrapped-worker.sh succession-tracker.sh
+# selector: names worker-jira-status.sh coderabbit-signal.sh review-merge-gate.sh cr-first-release.sh
 #
 # Platform guard: bash 3.2+, jq, awk, grep.
 # Usage: bash scripts/docs/test-dev-graph.sh
@@ -84,7 +82,7 @@ echo "CR-FIRST HOLD $reason $age"
 echo "CR-FIRST RELEASE $reason"
 EOF
   cat > "$d/suite.txt" <<'EOF'
-tool.sh wake.sh gate.sh release.sh preface.md
+# selector: names tool.sh wake.sh gate.sh release.sh preface.md
 EOF
   cat > "$d/graph.json" <<'EOF'
 {
@@ -285,9 +283,13 @@ done
 
 # --- selection -------------------------------------------------------------
 D=$TMP/s1; fx "$D"
-printf 'tool.sh gate.sh preface.md\n' > "$D/suite.txt"
+printf '# selector: names tool.sh gate.sh release.sh preface.md\n' > "$D/suite.txt"
 run "$D"
 expect_fail "selection: a source basename the suite never names fails" "wake.sh" "suite"
+D=$TMP/s2; fx "$D"
+printf '# selector: names tool.sh gate.sh release.sh preface.md\n# wake.sh\nwake.sh\n' > "$D/suite.txt"
+run "$D"
+expect_fail "selection: a basename named off the '# selector: names' lines fails (the selector reads no other comment)" "wake.sh" "selector: names"
 
 # --- drawing data: token copy and path endpoints ---------------------------
 # The docs page loads its own byte copy of the canonical tokens.css.

@@ -85,7 +85,7 @@ for dp, _, fs in os.walk(os.getcwd()):
             hits += b"BANKSECRET" in open(os.path.join(dp, fn), "rb").read()
         except OSError:
             pass
-open(os.path.join(d, "sess-cwd.log"), "a").write("%s %d %d\n" % (os.getcwd(), hits, os.path.exists("docs/lock.md")))
+open(os.path.join(d, "sess-cwd.log"), "a").write("%s %d %d %d\n" % (os.getcwd(), hits, os.path.exists("docs/lock.md"), os.path.exists("renamed-copy.dat")))
 sid = argv[argv.index("--session-id") + 1] if "--session-id" in argv else (argv[argv.index("--resume") + 1] if "--resume" in argv else None)
 if sid and os.environ.get("CLAUDE_CONFIG_DIR"):  # a persisted session leaves a transcript the run must remove
     os.makedirs(os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "projects", "p"), exist_ok=True)
@@ -122,6 +122,9 @@ if servers:
             {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "route", "arguments": {"query": q}}}]
     if os.environ.get("STUB_ROUTE_TWICE"):
         msgs.append({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "route", "arguments": {"query": "broken backend"}}})
+    if os.environ.get("STUB_NOROUTE_Q") and os.environ["STUB_NOROUTE_Q"] in prompt:
+        msgs = [m for m in msgs if m.get("method") != "tools/call"]
+    open(os.path.join(d, "sess-env.log"), "a").write(json.dumps(srv.get("env") or {}) + "\n")
     out, _ = p.communicate("".join(json.dumps(m) + "\n" for m in msgs), timeout=60)
     by = {}
     for line in out.splitlines():
@@ -129,7 +132,7 @@ if servers:
             m = json.loads(line)
             by[m.get("id")] = m
     open(os.path.join(d, "sess-tools.log"), "a").write(json.dumps([t["name"] for t in by[2]["result"]["tools"]]) + "\n")
-    text = "".join(c["text"] for c in by[3]["result"]["content"])
+    text = "".join(c["text"] for c in by.get(3, {"result": {"content": []}})["result"]["content"])
     open(os.path.join(d, "route.log"), "a").write(text + "\n=====\n")
 m = re.search(r"[A-Za-z0-9_./-]+\.(md|sh|py)", text)
 f = m.group(0) if m else "docs/zeta.md"
@@ -487,6 +490,146 @@ git -C "$R" add renamed-copy.dat && git -C "$R" -c user.email=t@t -c user.name=t
 python3 -I "$AB" run --repo "$R" --questions "$W/ext-bank.jsonl" --out "$W/out-ext" --arms vanilla --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/ext.txt" 2>&1
 eq "an external-bank run completes" "0" "$?"
 eq "a tracked copy of an external --questions file is not in the session's cwd tree" "0" "$(awk '{s += $2} END {print s + 0}' "$W/sess-cwd.log")"
+
+rm -f "$W/ledger-route.jsonl"
+STUB_ROUTE_TWICE=1 RETRIEVAL_EVAL_QMD_CMD="$W/qmd-trace" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-route.jsonl" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-route" --arms vanilla,bm25-rerank,hybrid-rerank,fused-cached --model claude-sonnet-5-5 --pool 3 --n 3 > "$W/route-run.txt" 2>&1
+eq "a run with the hybrid-rerank arm completes" "0" "$?"
+rrow() { python3 -I -c 'import json,sys
+rows = [r for r in map(json.loads, open(sys.argv[1])) if r["arm"] == sys.argv[2]]
+print(" ".join(sorted({"%d/%d/%d/%d" % (r["route_calls"], r["qmd_calls"], r["graph_calls"], r["route_failed"]) for r in rows})), len(rows))' "$W/out-route/results.jsonl" "$1"; }
+eq "route_calls_counted: two route calls give route_calls 2 and qmd_calls 2 on a qmd-only arm" "2/2/0/1 3" "$(rrow hybrid-rerank)"
+eq "route_calls_counted: the bm25 arm counts the same" "2/2/0/1 3" "$(rrow bm25-rerank)"
+eq "route_calls_counted: the fused route counts its graph call beside the qmd call" "2/2/2/1 3" "$(rrow fused-cached)"
+eq "no_route_shows_zero: a session with no route tool shows 0 calls, 0 qmd, 0 graph, 0 failed" "0/0/0/0 3" "$(rrow vanilla)"
+eq "no_route_shows_zero: one-turn rows show zero too" "True" "$(python3 -I -c 'import json,sys
+print(all(r["qmd_calls"] == 0 and r["graph_calls"] == 0 and r["route_failed"] == 0 for r in map(json.loads, open(sys.argv[1]))))' "$W/out/results.jsonl")"
+eq "failed_route_counted: the failed qmd call is one failure on each routed row, and the ok call is not" "1 1 1" "$(rrow bm25-rerank | cut -d/ -f4 | cut -d' ' -f1) $(rrow hybrid-rerank | cut -d/ -f4 | cut -d' ' -f1) $(rrow fused-cached | cut -d/ -f4 | cut -d' ' -f1)"
+eq "the route record counts the arm in the ledger row" "6 6 3 6" "$(python3 -I -c 'import json,sys
+m = json.loads(open(sys.argv[1]).readline())["metrics"]
+print(m["hybrid-rerank.qmd_calls"], m["fused-cached.qmd_calls"], m["hybrid-rerank.route_failed"], m["fused-cached.graph_calls"])' "$W/ledger-route.jsonl")"
+eq "an arm whose every session called the route is tested" "1.0 0 None" "$(python3 -I -c 'import json,sys
+m = json.loads(open(sys.argv[1]).readline())["metrics"]
+print(m["hybrid-rerank.route_use"], m["hybrid-rerank.not_tested"], m.get("vanilla.route_use"))' "$W/ledger-route.jsonl")"
+rm -f "$W/ledger-low.jsonl"
+STUB_NOROUTE_Q="zeta" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-low.jsonl" python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-low" --arms hybrid-rerank --model claude-sonnet-5-5 --pool 3 --n 3 > "$W/low.txt" 2>&1
+eq "below_80_marked_not_tested: 2 of 3 sessions using the route is not tested" "0.67 1" "$(python3 -I -c 'import json,sys
+m = json.loads(open(sys.argv[1]).readline())["metrics"]
+print("%.2f" % m["hybrid-rerank.route_use"], m["hybrid-rerank.not_tested"])' "$W/ledger-low.jsonl")"
+eq "below_80_marked_not_tested: the run says so on stdout" "1" "$(grep -c '^NOT TESTED: hybrid-rerank' "$W/low.txt")"
+
+rm -f "$W/qmd.log"
+python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-hy" --arms hybrid-rerank --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/hy.txt" 2>&1
+eq "hybrid_rerank_sends_both_types: one request carries lex and vec with rerank true" "1" "$(grep '"type": "lex"' "$W/qmd.log" | grep '"type": "vec"' | grep -c '"rerank": true')"
+
+SU="http://127.0.0.1:47999/mcp"
+PD="$W/pair"; mkdir -p "$PD/graph-s/graphify-out" "$PD/graph-l/graphify-out"
+printf '{"nodes": []}\n' > "$PD/graph-s/graphify-out/graph.json"
+printf '{"nodes": []}\n' > "$PD/graph-l/graphify-out/graph.json"
+SECOND="$(git -C "$R" rev-parse HEAD~1)"; FIRST="$(git -C "$R" rev-parse HEAD~2)"
+printf '{"first": "%s", "second": "%s", "state": "l", "doc_count": 5, "index": "%s/index.sqlite", "served_url": "%s", "graph_built_at": {"%s": "%s/graph-s", "%s": "%s/graph-l"}}\n' "$FIRST" "$SECOND" "$PD" "$SU" "$FIRST" "$PD" "$SECOND" "$PD" > "$PD/pair.json"
+# shellcheck disable=SC2016  # the stub's own $-expansion must stay literal
+printf '#!/usr/bin/env bash\nprintf "{\\"totalDocuments\\": %%s}\\n" "${STUB_DOCS:-5}"\n' > "$W/status"
+chmod +x "$W/status"
+pa() {
+    local tag="$1"; shift
+    local e=(); while [ "$1" != -- ]; do e+=("$1"); shift; done; shift
+    env "${e[@]}" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-$tag.jsonl" RETRIEVAL_EVAL_QMD_STATUS_CMD="$W/status" \
+        python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-$tag" --pair "$PD/pair.json" --model claude-sonnet-5-5 --pool 3 --n 3 "$@" > "$W/pa-$tag.txt" 2>&1
+}
+rm -f "$W"/sess-*.log
+for u in unset "http://127.0.0.1:8181/mcp" "http://[::1]:8181/mcp" "http://127.0.0.1:47998/mcp"; do
+    if [ "$u" = unset ]; then pa alias -u QMD_URL -- --index-state l --arms hybrid-rerank; rc=$?
+    else pa alias "QMD_URL=$u" -- --index-state l --arms hybrid-rerank; rc=$?; fi
+    eq "refuses_live_url_alias: $u is refused with exit 2, no row, no session" "2 absent absent" "$rc $([ -s "$W/ledger-alias.jsonl" ] && echo present || echo absent) $([ -e "$W/sess-all.log" ] && echo present || echo absent)"
+done
+pa count "QMD_URL=$SU" STUB_DOCS=7 -- --index-state l --arms hybrid-rerank
+eq "refuses_count_mismatch: a served count that is not pair.json's is refused with exit 2, no row, no session" "2 absent absent" "$? $([ -s "$W/ledger-count.jsonl" ] && echo present || echo absent) $([ -e "$W/sess-all.log" ] && echo present || echo absent)"
+pa label "QMD_URL=$SU" -- --index-state s --arms hybrid-rerank
+eq "a state label that is not the served index's state is refused with exit 2" "2 absent" "$? $([ -s "$W/ledger-label.jsonl" ] && echo present || echo absent)"
+pa half "QMD_URL=$SU" -- --arms hybrid-rerank
+eq "--pair without --index-state is a usage error" "64" "$?"
+pa old "QMD_URL=$SU" -- --index-state l --arms grep
+eq "a one-turn arm under a pair is a usage error" "64" "$?"
+rm -f "$W"/sess-*.log
+pa good "QMD_URL=$SU" -- --index-state l --arms hybrid-rerank
+eq "the pair's own URL runs" "0" "$?"
+eq "row_records_served_index: config names state, both commits, the served path and its count" "l $FIRST $SECOND $PD/index.sqlite 5" "$(python3 -I -c 'import json,sys
+c = json.loads(open(sys.argv[1]).readline())["config"]
+p = c["pair"]
+print(p["index_state"], p["first"], p["second"], p["index"], p["doc_count"])' "$W/ledger-good.jsonl")"
+eq "every session row carries the index state" "l" "$(python3 -I -c 'import json,sys
+print(sorted({r["index_state"] for r in map(json.loads, open(sys.argv[1]))})[0])' "$W/out-good/results.jsonl")"
+rm -f "$W"/sess-*.log
+pa env "QMD_URL=$SU" "WORKER_GRAPH_OUT=$R/graphify-out" -- --index-state l --arms fused-cached
+eq "a fused-cached pair run completes" "0" "$?"
+eq "route_env_carries_graph_out: the route server gets the pair graph, never the caller's WORKER_GRAPH_OUT, and the sink path" "$PD/graph-l/graphify-out yes" "$(python3 -I -c 'import json,sys
+envs = [json.loads(l) for l in open(sys.argv[1])]
+print(sorted({e.get("WORKER_GRAPH_OUT") for e in envs})[0], "yes" if all(e.get("ANSWER_AB_ROUTE_SINK") for e in envs) else "no")' "$W/sess-env.log")"
+rm -rf "$PD/graph-l/graphify-out"; ln -s "$R/graphify-out" "$PD/graph-l/graphify-out"
+rm -f "$W/ledger-sym.jsonl" "$W"/sess-*.log
+pa sym "QMD_URL=$SU" -- --index-state l --arms fused-cached
+eq "refuses_primary_graph_by_symlink: a pair graph that links to the checkout's graphify-out is refused, no row, no session" "2 absent absent" "$? $([ -s "$W/ledger-sym.jsonl" ] && echo present || echo absent) $([ -e "$W/sess-all.log" ] && echo present || echo absent)"
+
+rm -f "$W"/sess-*.log
+python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-rev" --arms vanilla --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger --rev "$SECOND" > "$W/rev.txt" 2>&1
+python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-norev" --arms vanilla --model claude-sonnet-5-5 --pool 1 --n 1 --no-ledger > "$W/norev.txt" 2>&1
+eq "rev_exports_that_commit: --rev gives the tree of that commit, no --rev gives HEAD's" "0 1" "$(awk '{print $4}' "$W/sess-cwd.log" | tr '\n' ' ' | sed 's/ $//')"
+python3 -I "$AB" run --repo "$R" --questions "$Q2" --out "$W/out-badrev" --arms vanilla --pool 1 --n 1 --no-ledger --rev no-such-rev > "$W/badrev.txt" 2>&1
+eq "an unknown --rev is a usage error" "64" "$?"
+
+SS="$HERE/stale-sessions.py"
+cat > "$W/ab-stub.py" <<'EOF'
+import json, os, sys
+a = sys.argv[1:]
+d = os.environ["STUB_DIR"]
+open(os.path.join(d, "driver.log"), "a").write(json.dumps({"argv": a, "qmd_url": os.environ.get("QMD_URL")}) + "\n")
+out = a[a.index("--out") + 1]
+os.makedirs(out, exist_ok=True)
+open(os.path.join(out, "results.jsonl"), "w").write(json.dumps({"cost_usd": float(os.environ.get("STUB_SPEND", "0"))}) + "\n" + ("not json\n" if os.environ.get("STUB_BAD_ROW") else ""))
+EOF
+python3 -I -c 'import json,sys
+rows = [{"id": "d%d" % i, "q": "where is the queue lock described %d" % i, "gold": ["docs/lock.md"], "reason": []} for i in range(16)]
+rows.append({"id": "nogold", "q": "no gold here", "gold": [], "reason": []})
+open(sys.argv[1], "w").write("".join(json.dumps(r) + "\n" for r in rows))
+plan = {"pairs": [{"pair": sys.argv[2], "questions": sys.argv[1], "repo": sys.argv[3], "out": "%s/drv/o%d" % (sys.argv[4], i)} for i in range(4)]}
+open(sys.argv[5], "w").write(json.dumps(plan))' "$W/q16.jsonl" "$PD/pair.json" "$R" "$W" "$W/plan4.json"
+rm -rf "$W/drv"; rm -f "$W/driver.log"
+STALE_SESSIONS_AB="$W/ab-stub.py" STUB_SPEND=6 python3 -I "$SS" --plan "$W/plan4.json" --max-usd 18 > "$W/drv.txt" 2>&1
+rc=$?
+dm() { python3 -I -c 'import json,sys
+print(" ".join(a["argv"][a["argv"].index(sys.argv[2]) + 1] for a in map(json.loads, open(sys.argv[1]))))' "$W/driver.log" "$1"; }
+eq "driver_shares_budget: each process gets what is still unspent, and the run stops at zero" "18.0000 12.0000 6.0000" "$(dm --max-usd)"
+if [ "$rc" -ne 0 ] && grep -q 'STOPPED' "$W/drv.txt"; then pass "driver_shares_budget: stopping at zero is a nonzero STOPPED exit (rc $rc)"; else fail "driver_shares_budget: stopping at zero is a nonzero STOPPED exit (rc $rc)"; fi
+eq "driver_sets_pool_and_n: --pool and --n are the pair's gold question count, not the defaults" "16 16 16" "$(dm --pool)"
+eq "driver_sets_pool_and_n: --n too" "16 16 16" "$(dm --n)"
+eq "driver_sets_repo_to_second_commit: each process is given the pair's second commit" "$SECOND" "$(dm --rev | cut -d' ' -f1)"
+eq "the driver names the pair, its state and its served URL to each process" "l $PD/pair.json $SU" "$(python3 -I -c 'import json,sys
+a = json.loads(open(sys.argv[1]).readline())
+g = lambda f: a["argv"][a["argv"].index(f) + 1]
+print(g("--index-state"), g("--pair"), a["qmd_url"])' "$W/driver.log")"
+STALE_SESSIONS_AB="$W/ab-stub.py" STUB_SPEND=0 python3 -I "$SS" --plan "$W/plan4.json" --max-usd 18 > "$W/drvre.txt" 2>&1
+rc=$?
+eq "driver_refuses_existing_rows: an out dir that already holds results is refused before any process runs" "1 1" "$([ "$rc" -ne 0 ] && echo 1 || echo 0) $(grep -c 'already holds results.jsonl' "$W/drvre.txt")"
+rm -rf "$W/drv"; rm -f "$W/driver.log"
+STALE_SESSIONS_AB="$W/ab-stub.py" STUB_SPEND=0 python3 -I "$SS" --plan "$W/plan4.json" --max-usd 18 > "$W/drv0.txt" 2>&1
+eq "a plan that never spends runs every pair" "0 4" "$? $(wc -l < "$W/driver.log" | tr -d ' ')"
+rm -rf "$W/drv"; rm -f "$W/driver.log"
+STALE_SESSIONS_AB="$W/ab-stub.py" STUB_SPEND=1 STUB_BAD_ROW=1 python3 -I "$SS" --plan "$W/plan4.json" --max-usd 18 > "$W/drvbad.txt" 2>&1
+eq "driver_fails_closed_on_unreadable_row: a spend row that cannot be read stops the plan, naming the file and line" "1 1" "$(wc -l < "$W/driver.log" | tr -d ' ') $(grep -c 'cannot read the spend of .*results.jsonl line 2' "$W/drvbad.txt")"
+rm -rf "$W/drv"; rm -f "$W/driver.log"
+python3 -I -c 'import json,sys
+e = lambda out: {"pair": sys.argv[1], "questions": sys.argv[2], "repo": sys.argv[3], "out": out}
+open(sys.argv[5], "w").write(json.dumps({"pairs": [e(sys.argv[4] + "/drv/dup"), e(sys.argv[4] + "/drv/../drv/dup")]}))' "$PD/pair.json" "$Q2" "$R" "$W" "$W/plandup.json"
+STALE_SESSIONS_AB="$W/ab-stub.py" STUB_SPEND=1 python3 -I "$SS" --plan "$W/plandup.json" --max-usd 18 > "$W/drvdup.txt" 2>&1
+rc=$?
+eq "driver_refuses_duplicate_out: two pairs on one out dir, however spelled, are refused before any process runs" "1 0 1" "$([ "$rc" -ne 0 ] && echo 1 || echo 0) $([ -e "$W/driver.log" ] && echo 1 || echo 0) $(grep -c 'share one out dir' "$W/drvdup.txt")"
+rm -rf "$W/drv"
+python3 -I -c 'import json,sys
+plan = {"pairs": [{"pair": sys.argv[1], "questions": sys.argv[2], "repo": sys.argv[3], "out": sys.argv[4] + "/drv/real"}]}
+open(sys.argv[5], "w").write(json.dumps(plan))' "$PD/pair.json" "$Q2" "$R" "$W" "$W/plan1.json"
+rm -f "$W"/sess-*.log; rm -rf "$PD/graph-l/graphify-out"; mkdir -p "$PD/graph-l/graphify-out"; printf '{"nodes": []}\n' > "$PD/graph-l/graphify-out/graph.json"
+RETRIEVAL_EVAL_QMD_STATUS_CMD="$W/status" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-drv.jsonl" python3 -I "$SS" --plan "$W/plan1.json" --max-usd 18 --arms hybrid-rerank --model claude-sonnet-5-5 > "$W/drvreal.txt" 2>&1
+eq "the driver runs the real answer-ab on the pair's second-commit tree: 3 sessions, none holding the later file" "0 3 0" "$? $(wc -l < "$W/drv/real/results.jsonl" | tr -d ' ') $(awk '{s += $4} END {print s + 0}' "$W/sess-cwd.log")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

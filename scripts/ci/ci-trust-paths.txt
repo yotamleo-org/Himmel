@@ -81,6 +81,9 @@
 ^scripts/eval/lib/
 # The writer of the Dependabot review row the merge gate reads.
 ^scripts/cr/dependabot-go\.sh$
+# The stage-2 security audit of an unlisted outside author's PR and the perspective its critic reads.
+^scripts/cr/outside-security-audit\.sh$
+^scripts/cr/perspectives/outside-security\.md$
 # The CodeRabbit thread recorder merge-on-green.sh runs after a merge.
 ^scripts/cr/cr-thread-recorder\.sh$
 # The Telegram routing files that carry an approval: the chief route, gate, router and poller.

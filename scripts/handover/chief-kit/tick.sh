@@ -501,7 +501,9 @@ whatever its blockers say, and an unknown sha prints `?`. The line is never rewr
 other than a To Do ticket below High whose latest release-ruling comment is a BACKLOG ruling (or a MOVE to the backlog) of that same ticket.
 residual-unversioned hides when 0 or skip. pool-stale hides only on skip (no --doc, or a failed
 read): an explicit pool-stale=0 is the all-clear the waiter needs to clear its marker, so it stays
-on the compact line. --pool-stale --doc <doc> prints just these two fields.
+on the compact line. --pool-stale --doc <doc> prints just these two fields. With GitHub out
+(scripts/lib/gh-quota.sh ghq_scan_gate, main GraphQL) nothing is read: pool-stale=? and residual-unversioned=skip.
+It judges only a quota.tsv reading under 170 s old (the tick's own refresh) and never probes itself.
 
 INTAKE=<n> (HIMMEL-8336) is the count of next-dispatchable.sh's `# intake` line in that same snapshot:
 open versionless tickets the pool cannot list (operator-directed, a High+ Bug, scope- or proposed- the current
@@ -878,6 +880,16 @@ fi
 
 if [ "$stale_mode" -eq 1 ]; then
     [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
+    if [ -f "$HERE/../../lib/gh-quota.sh" ]; then
+        # shellcheck source=../../lib/gh-quota.sh
+        . "$HERE/../../lib/gh-quota.sh"
+        if ghq_read main graphql && [ $(($(date +%s) - GHQ_OBSERVED)) -lt 170 ] \
+            && ! ps_line=$(GHQ_GH_CMD="${TICK_GH_CMD:-${GHQ_GH_CMD:-gh}}" ghq_scan_gate main graphql tick); then
+            printf '%s\n' "$ps_line" >&2
+            printf 'pool-stale=?\nresidual-unversioned=skip\n'
+            exit 0
+        fi
+    fi
     pool_stale "$DOC" "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" "${TICK_GH_CMD:-$GH_READ_BIN}" "$REPO"
     exit $?
 fi

@@ -32,6 +32,7 @@ mkdir -p "$WORK/bin"
 cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 # stub gh: serves the pr-stall fixtures; STUB_GH_FAIL=1 makes every call fail.
+[ -z "${STUB_GH_LOG:-}" ] || printf '%s\n' "$*" >> "$STUB_GH_LOG"
 [ "${STUB_GH_FAIL:-}" = 1 ] && { echo "gh: simulated failure" >&2; exit 1; }
 case "$1 $2" in
     "pr list") jq -s '.' "$STUB_FIX"/pr-[0-9]*.json ;;
@@ -63,6 +64,7 @@ export PR_STALL_NOW="2026-10-17T01:10:00Z"
 export PR_STALL_INBOX_SEND="$WORK/inbox-send"
 export XDG_RUNTIME_DIR="$WORK/run"
 mkdir -p "$XDG_RUNTIME_DIR"
+export HIMMEL_QUOTA_DIR="$WORK/quota"
 
 run() { bash "$PS" --repo o/r --manifest "$MAN" "$@" 2>&1; }
 
@@ -137,6 +139,32 @@ printf '# worker\n- PR: feat/himmel-5969-succession-wake-once-b\n' > "$DOC"
 out="$(XDG_RUNTIME_DIR=/proc/no-such-dir run --notify)"; rc=$?
 check "unwritable notify state lists without sending, exit 0" "0:0" "$rc:$(wc -l < "$WORK/sent.log" | tr -d ' ')"
 has "unwritable notify state says so" 'cannot take the notify lock' "$out"
+
+qplant() {
+    local now; now=$(date +%s)
+    mkdir -p "$1"
+    printf 'main\tgraphql\t%s\t5000\t%s\t%s\t%s\nmain\tcore\t4000\t5000\t%s\t%s\tok\n' "$2" "$((now + 1800))" "$now" "$3" "$((now + 1800))" "$now" > "$1/quota.tsv"
+}
+qrun() {
+    : > "$WORK/gh.log"
+    out="$(HIMMEL_QUOTA_DIR="$1" STUB_GH_LOG="$WORK/gh.log" bash "$PS" --repo o/r --manifest "$MAN" 2> "$WORK/err")"; rc=$?
+    err="$(cat "$WORK/err")"
+}
+qplant "$WORK/q-out" 0 refused
+qrun "$WORK/q-out"
+check "a paused GitHub exits 3" "3" "$rc"
+check "a paused GitHub prints only STALL-UNKNOWN" "STALL-UNKNOWN gh failed" "$out"
+has "a paused GitHub names the pause on stderr" '^QUOTA-PAUSE github graphql token=main remaining=0 .*caller=pr-stall nothing-was-judged$' "$err"
+check "a paused GitHub makes no gh call" "0" "$(wc -l < "$WORK/gh.log" | tr -d ' ')"
+qplant "$WORK/q-hung" 4000 timed-out
+qrun "$WORK/q-hung"
+check "a timed-out probe exits 3 with STALL-UNKNOWN" "3:STALL-UNKNOWN gh failed" "$rc:$out"
+has "a timed-out probe names GH-STALL on stderr" '^GH-STALL github read timed out .*caller=pr-stall' "$err"
+qplant "$WORK/q-ok" 4000 ok
+qrun "$WORK/q-ok"
+check "RED control: a healthy budget exits 0" "0" "$rc"
+hasnt "RED control: a healthy budget prints no pause line" 'QUOTA-PAUSE|GH-STALL' "$err"
+has "RED control: the healthy run reads the PR list" '^pr list ' "$(cat "$WORK/gh.log")"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; }
 echo "$fails FAILED"; exit 1

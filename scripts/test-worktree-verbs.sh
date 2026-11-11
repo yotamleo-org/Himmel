@@ -36,7 +36,7 @@ git clone -q "$ORIGIN" "$REPO" 2>/dev/null
 git -C "$REPO" config user.email "test@test.local"
 git -C "$REPO" config user.name "Test"
 git -C "$REPO" checkout -q -b main
-# worktree.sh runs _new-worktree.sh from the primary checkout, so it needs scripts/.
+# selector: names _new-worktree.sh
 cp -R "$SCRIPT_DIR" "$REPO/scripts"
 git -C "$REPO" add scripts
 git -C "$REPO" commit -q -m "init"

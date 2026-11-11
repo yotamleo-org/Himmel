@@ -1,14 +1,14 @@
 name: CI
 
 on:
-  # PR gating (HIMMEL-594): the cheap ubuntu-only jobs run on every PR so a
+  # PR gating: the cheap ubuntu-only jobs run on every PR so a
   # non-conventional commit, a secret, a shellcheck warning, or a failing shell
   # suite blocks merge. Every job here is ubuntu only: Windows support is
-  # dropped (HIMMEL-5729) and there is no dispatch input that widens a matrix
-  # (HIMMEL-3853), so neither a PR nor a manual dispatch can occupy a 10x-billed runner. macOS is not in
-  # this file at all (HIMMEL-3902): it runs on its own twice-weekly workflow,
+  # dropped and there is no dispatch input that widens a matrix
+  # so neither a PR nor a manual dispatch can occupy a 10x-billed runner. macOS is not in
+  # this file at all: it runs on its own twice-weekly workflow,
   # macos-cadence.yml, so a macOS red can never turn this run -- or main -- red.
-  # `shell-unit` itself (HIMMEL-2872) is the aggregating gate over that
+  # `shell-unit` itself is the aggregating gate over the sharded shell-suite
   # matrix — see its own comment block below.
   #
   # The ci:go label gate. With vars.CI_GO_GATE == 'on' a pull request's opened,
@@ -63,10 +63,10 @@ on:
   #      makes the actor distinguishable.
   pull_request:
     types: [opened, synchronize, reopened, labeled]
-  # HIMMEL-5113: there is NO `push` trigger. Main used to run this workflow on
+  # There is NO `push` trigger. Main used to run this workflow on
   # every merge (~52 runs/day, about half cancelled as superseded, ~2,300 runner
   # hours on the green ones alone) and those runs competed with PR runs for the
-  # account's 20 runner slots. Post-merge verification (HIMMEL-511) is now the
+  # account's 20 runner slots. Post-merge verification is now the
   # main-sweep cron below. Trade-off: a break that reached main surfaces up to
   # a nominal 7 h later and spans every merge since the previous run; the cron run prints
   # that range (step `Merge range since the previous main run`) and
@@ -74,16 +74,16 @@ on:
   # A run at an exact sha (a tag cut, a bisect) is a manual dispatch:
   #   gh workflow run ci.yml --ref main
   # then check-ci.sh / cut-tag.sh read that run. A dispatch takes no inputs on
-  # purpose (HIMMEL-3853): a per-PR all-OS dispatch held 14 of the account's 20
+  # purpose: a per-PR all-OS dispatch held 14 of the account's 20
   # concurrent job slots on 2026-09-29. It runs the ubuntu-only matrix.
   workflow_dispatch:
   schedule:
     # Nightly, UTC: the only run with guard-corpus-full. Every nightly-only gate
     # below keys on THIS string via github.event.schedule, because the
     # main-sweep cron is also a `schedule` event and must stay ubuntu-only.
-    # SUITE_TIER_MODE=all runs on every non-pull_request run (HIMMEL-6598).
+    # SUITE_TIER_MODE=all runs on every non-pull_request run (a PR runs the pr tier).
     - cron: '17 7 * * *'
-    # Main sweep (HIMMEL-5113), UTC, ubuntu-only, SUITE_TIER_MODE=all (HIMMEL-6598), the shape the
+    # Main sweep, UTC, ubuntu-only, SUITE_TIER_MODE=all, the shape the
     # per-merge push run had. Nominal cadence: 01:43, 08:43, 15:43 and 22:43,
     # i.e. gaps of 7 h, 7 h, 7 h and 3 h -- cron cannot express an exact 7 h
     # period because 24 is not a multiple of 7 (`*/7` fires at 00, 07, 14, 21 and
@@ -96,16 +96,15 @@ on:
 permissions:
   contents: read
 
-# HIMMEL-3217 / HIMMEL-3226: a newer run cancels the run it supersedes -- on
+# A newer run cancels the run it supersedes -- on
 # 2026-09-19 stale runs kept the Actions queue at 5+ and worker PR runs waited
 # 25-40 min. Two DISJOINT groups (a workflow has one top-level block):
 #   pull_request -> ci-pr-<PR number>: a PR's newer push cancels that PR's
 #                   older run, and never another PR's;
 #   everything else (both crons, workflow_dispatch) -> ci-<run_id>: unique to
 #                   the run, so a sweep / the nightly / a dispatch is never
-#                   cancelled nor queued behind anything. The shared
-#                   push-to-main group (HIMMEL-3841 slice E, HIMMEL-5036) went
-#                   with the push trigger: sweeps are hours apart and a
+#                   cancelled nor queued behind anything. No group is
+#                   shared between them: sweeps are hours apart and a
 #                   ~1h45m sweep cannot normally meet the next one. A delayed
 #                   schedule or a manual dispatch can overlap one, and then the
 #                   runs complete out of order (main-sweep-red-issue.sh keeps
@@ -119,7 +118,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # HIMMEL-5524: which jobs can this PR's diff affect? A pull_request spends
+  # Which jobs can this PR's diff affect? A pull_request spends
   # about 30 jobs and queues behind the account's runner cap, so a docs-only or
   # single-script PR waited 45-60 min for jobs whose inputs it never touched.
   # This job (pull_request only) runs the BASE commit's scripts/ci/pr-plan.sh
@@ -183,7 +182,7 @@ jobs:
           fi
           cat "$tools/plan.out"
           grep -E '^(mode|run_[a-z_]+)=[a-z]+$' "$tools/plan.out" >> "$GITHUB_OUTPUT" || true
-      # HIMMEL-5649 / HIMMEL-5556: how many shell-unit shards (at most
+      # How many shell-unit shards (at most
       # vars.CI_MAX_SHARDS, 20 unset) the selection needs, sized off the duration
       # ledger. Asked once, here, under
       # the SAME selection env the shards' run step gets, so a small selection
@@ -206,7 +205,7 @@ jobs:
           cat "$RUNNER_TEMP/shards.out"
           cat "$RUNNER_TEMP/shards.out" >> "$GITHUB_OUTPUT"
 
-  # HIMMEL-6121 / HIMMEL-6494: matrix fail-fast only stops sibling shards of one
+  # Matrix fail-fast only stops sibling shards of one
   # matrix; the other jobs keep their runners after the run is already red. Each
   # job has a fail-fast-<job> twin that needs only that job, starts only when it
   # failed on a pull_request, and cancels the whole run. A green run starts no
@@ -544,7 +543,7 @@ jobs:
         run: |
           gh run cancel "$RUN_ID" || true
 
-  # HIMMEL-5675: the short checks run as step groups of this ONE job, so they
+  # The short checks run as step groups of this ONE job, so they
   # take one runner and one setup instead of eight (19 of 42 PR jobs finished
   # under 60 s, each paying 5-30 s of setup and a queue slot). A group is the
   # steps whose id is <group> or <group>__<x>; every step runs under
@@ -641,7 +640,7 @@ jobs:
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         timeout-minutes: 10
         run: bash scripts/hooks/check-unchecked-mktemp.sh --range --merge-ref "${{ github.event.pull_request.base.sha }}"
-      # HIMMEL-6037 / HIMMEL-6621: newly added shell that reads an argv/env-named
+      # Newly added shell that reads an argv/env-named
       # file with no allowlist (the PR 2878 class). The runtime half of the leak
       # check, the honeytoken HOME, runs inside every shell-unit shard.
       - id: unchecked-mktemp-range__read-sinks
@@ -663,7 +662,7 @@ jobs:
           else
             bash scripts/ci/check-commit-range.sh
           fi
-      # HIMMEL-5423: the attestation trailers are checked only at pre-push and in
+      # The attestation trailers are checked only at pre-push and in
       # ready-check, both skipped by a --no-verify commit. These re-run the SAME
       # pre-push gates over the PR range; the wrapper builds a branch-shaped
       # scratch clone (the hooks no-op on a detached merge ref) and keeps only
@@ -686,7 +685,7 @@ jobs:
           JIRA_PROJECT_KEY: HIMMEL
           TICKET_ID_TRUSTED_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: bash scripts/ci/check-hooks-on-pr-range.sh --first-commit -- scripts/hooks/check-security-reviewed.sh
-      # HIMMEL-3616: the PR-title lint (the squash merge makes the title
+      # The PR-title lint (the squash merge makes the title
       # main's commit subject) lives in its own workflow,
       # .github/workflows/pr-title-lint.yml — not here. commit-lint's
       # `pull_request:` trigger has no `edited` type, so a step here would
@@ -709,7 +708,7 @@ jobs:
         run: bash scripts/hooks/check-guardrail-matrices.sh
       # claude-startup is ungated (trust judge j2543g): the hook chain it starts
       # executes scripts outside any gate group, so it runs on every PR like main.
-      # HIMMEL-4412: the project's SessionStart/Subagent hooks run `bun`; a runner
+      # The project's SessionStart/Subagent hooks run `bun`; a runner
       # without it makes them exit 127 and the hook smoke correctly reports a failing hook.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         id: claude-startup__bun
@@ -726,7 +725,7 @@ jobs:
         name: Install the pinned claude CLI
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        # HIMMEL-7394: the native binary at the version and sha256 pinned in
+        # Installs the native binary at the version and sha256 pinned in
         # scripts/machine-setup/installer-pins.sh (the checksum from the release's
         # manifest.json); pin_fetch deletes a mismatched download and fails the step.
         # /usr/local is root-owned in the image and the runner alike.
@@ -745,14 +744,14 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 10
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label ci-quick/claude-startup -- bash scripts/ci/claude-startup-row.sh scripts/testing/test-fakekey-claude-startup.sh
-      # HIMMEL-4411: a full scripted turn (text, Bash tool_use, tool_result) against
+      # A full scripted turn (text, Bash tool_use, tool_result) against
       # scripts/testing/mock-anthropic. The suite also asserts the installed CLI
       # equals CLAUDE_CLI_VERSION, so a version drift fails loudly here.
       - id: claude-startup__mock-turn
         if: ${{ !cancelled() }}
         timeout-minutes: 10
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label ci-quick/claude-startup__mock-turn -- bash scripts/ci/claude-startup-row.sh scripts/testing/test-claude-mock-turn.sh
-      # HIMMEL-4412: two "a hook that fails open" smokes on the same mock. MOCK-BACKED:
+      # Two "a hook that fails open" smokes on the same mock. MOCK-BACKED:
       # they prove Claude Code enforces the consult sandbox and that the project hook
       # chain fires clean in a real session; neither is evidence of real-model behaviour.
       # The consult sandbox needs bubblewrap and socat on the runner.
@@ -818,7 +817,7 @@ jobs:
         name: Enable the himmel-dev gates in this checkout
         if: ${{ !cancelled() }}
         run: touch .himmel-dev
-      # HIMMEL-5423 — doc-guard (a command/skill ADDED without its catalog
+      # doc-guard (a command/skill ADDED without its catalog
       # entry) ran only in pre-commit and pre-push, so a --no-verify commit
       # skipped it. Runs the same `check-doc-guard.sh --pre-push` over the PR
       # range. MUST stay ABOVE the destructive orphan checkout below: the
@@ -841,7 +840,7 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 10
         run: bash scripts/hooks/test-ci-doc-invariants.sh
-      # HIMMEL-2037 — the pre-commit `skill-description-cap` hook only sees
+      # The pre-commit `skill-description-cap` hook only sees
       # STAGED files, so it cannot catch an over-cap description that arrived
       # via a bypassed hook. This step re-runs the same lint over the whole
       # tracked set. It takes paths directly, so it needs no staging step and
@@ -853,16 +852,16 @@ jobs:
         name: Skill/command descriptions stay within the 120-char cap
         if: ${{ !cancelled() }}
         run: git ls-files -z '.claude/commands/*.md' '.claude/skills/*/SKILL.md' '.agents/skills/*/SKILL.md' 'marketplace/plugins/*/commands/*.md' 'marketplace/plugins/*/skills/*/SKILL.md' | xargs -0 node scripts/lanes/skill-cost.mjs --max-desc 120
-      # HIMMEL-2051 — same rationale as the description-cap step above: the
+      # Same rationale as the description-cap step above: the
       # pre-commit `command-positional-args` hook only sees staged files, so
       # this re-runs the same lint over the whole tracked set.
-      # claude-hud is excluded: it is pinned byte-for-byte (HIMMEL-718) and
+      # claude-hud is excluded: it is a vendored fork pinned byte-for-byte and
       # gated by its own drift guard below, not this lint.
       - id: doc-invariants__positional
         name: Commands have no bare $<digit> in their fenced code
         if: ${{ !cancelled() }}
         run: git ls-files -z '.claude/commands/*.md' 'marketplace/plugins/*/commands/*.md' -- ':!marketplace/plugins/claude-hud' | xargs -0 node scripts/lanes/skill-cost.mjs --check-positional-args
-      # HIMMEL-2064 — docs/commands-catalog.md's Description column is
+      # docs/commands-catalog.md's Description column is
       # generated from `.claude/commands/*.md` frontmatter; this refuses a
       # divergent hand-edit. Reads the tracked files directly, so it needs no
       # staging step and must stay ABOVE the destructive orphan checkout below.
@@ -870,7 +869,7 @@ jobs:
         name: commands-catalog.md Description column matches command frontmatter
         if: ${{ !cancelled() }}
         run: node scripts/lib/gen-commands-catalog.mjs check
-      # HIMMEL-2176 Task 5 — .env.example's generated secrets block is
+      # .env.example's generated secrets block is
       # rendered from scripts/himmelctl/lib/secrets-manifest.json; this
       # refuses a divergent hand-edit of either file. Reads the tracked files
       # directly (non-staged check), so it needs no staging step and must
@@ -880,7 +879,7 @@ jobs:
         name: .env.example's generated secrets block matches secrets-manifest.json
         if: ${{ !cancelled() }}
         run: node scripts/lib/gen-secrets-doc.mjs check
-      # HIMMEL-2832/2848 — the v1 adopter docs' executable invariants
+      # The v1 adopter docs' executable invariants
       # (budget/forbidden-classes/link-resolution, qualified "profile" +
       # live path/env references) were run by hand only; this wires them into
       # CI. Both checkers read the tracked files directly (no git-diff/staged
@@ -897,7 +896,7 @@ jobs:
         name: v1 adopter docs pass the qualified-"profile" + live-reference invariants
         if: ${{ !cancelled() }}
         run: bash scripts/docs/check-doc-terms.sh llms.txt docs/setup/install.md docs/setup/migrating.md
-      # HIMMEL-2978 — mirrors the pre-commit marketplace-source-hermetic hook
+      # Mirrors the pre-commit marketplace-source-hermetic hook
       # so a PR editing the template is gated even when pre-commit was
       # skipped. Reads the tracked template directly (no git-diff/staged
       # dependence), so it needs no staging step and must stay ABOVE the
@@ -906,7 +905,7 @@ jobs:
         name: settings-template marketplace sources stay hermetic
         if: ${{ !cancelled() }}
         run: bash scripts/check-marketplace-source-hermetic.sh
-      # LOAD-BEARING — do not remove (HIMMEL-1305). These gates are pre-commit
+      # LOAD-BEARING — do not remove. These gates are pre-commit
       # hooks: each triggers off `git diff --cached` and exits 0 when its inputs
       # are not staged. A CI checkout's index is identical to HEAD, so without
       # this step every gate below no-ops and the job goes green having checked
@@ -956,8 +955,8 @@ jobs:
       - if: ${{ needs.ci-quick.outputs.secret-scan != 'pass' }}
         run: exit 1
 
-  # HIMMEL-3653: HIMMEL-3624 fixed a bracket-expression bug in
-  # scripts/lib/unchecked-mktemp.sh that only failed under a real BWK
+  # A bracket-expression regex in
+  # scripts/lib/unchecked-mktemp.sh can fail only under a real BWK
   # (one-true-awk) — `gawk --posix`/`--lint=fatal` both accept the broken
   # regex (J1288O), so a lint substitute would not catch this class of
   # regression, and Ubuntu PR CI runs everything else under gawk. The only
@@ -976,7 +975,7 @@ jobs:
     steps:
       - run: exit 1
 
-  # HIMMEL-4301: the unchecked-mktemp gate (scripts/hooks/check-unchecked-mktemp.sh)
+  # The unchecked-mktemp gate (scripts/hooks/check-unchecked-mktemp.sh)
   # was pre-commit only (stages: [pre-commit]), so a commit made with the hook
   # skipped or bypassed (UNCHECKED_MKTEMP_OK=1, --no-verify) reached main
   # (#1747, #1771). This re-runs its added-lines scan over the PR's net diff,
@@ -996,11 +995,11 @@ jobs:
       - if: ${{ needs.ci-quick.outputs.unchecked-mktemp-range != 'pass' }}
         run: exit 1
 
-  # Commit-time / pre-commit backstop for the 5 leak classes (HIMMEL-2561 /
-  # HIMMEL-2705 step 2): catches anything that slipped past the pre-commit
+  # Commit-time / pre-commit backstop for the 5 leak classes that must
+  # never reach the public repo: catches anything that slipped past the pre-commit
   # hook (a --no-verify commit, a merge, a stale clone). Main and the crons
   # re-scan the whole tracked tree; a PR scans the files it changed
-  # (HIMMEL-3898). Public CI has no station-local denylist file, so the
+  # only, to keep PR runs short. Public CI has no station-local denylist file, so the
   # hostname class self-skips here (see leak-classes.sh header) — the other
   # 4 classes still run.
   leak-classes:
@@ -1051,10 +1050,9 @@ jobs:
 
   # Trust-path git subprocess calls must scrub GIT_DIR/GIT_WORK_TREE/
   # GIT_COMMON_DIR/GIT_INDEX_FILE before invoking git — an attacker-set value
-  # otherwise steers which repo/worktree/index the call answers about
-  # (HIMMEL-3570; already caught twice as real bugs, PR 1212 and PR 1217).
+  # otherwise steers which repo/worktree/index the call answers about.
   # Main and the crons scan every trust-path file; a PR scans the files it
-  # changed (HIMMEL-3898).
+  # changed, to keep PR runs short.
   git-env-scrub:
     name: ${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) && 'git-env-scrub' || 'git-env-scrub (deferred)' }}
     needs: plan
@@ -1102,7 +1100,7 @@ jobs:
         if: github.event_name != 'pull_request'
         run: bash scripts/guardrails/check-git-env-scrub.sh --tree
 
-  # Commit-message governance (HIMMEL-594/1483): every non-exempt commit in the
+  # Commit-message governance: every non-exempt commit in the
   # PR range must be conventional and ticket-traceable. Reuses the local
   # commit-msg gate (scripts/hooks/check-commit-msg.sh) over the range so CI and
   # the author-time hook agree. fetch-depth: 0 → full history for the range walk.
@@ -1119,12 +1117,13 @@ jobs:
       - if: ${{ needs.ci-quick.outputs.commit-lint != 'pass' }}
         run: exit 1
 
-  # Plugin-version-bump governance (HIMMEL-3551): mirrors the local
+  # Plugin-version-bump governance (so adopters get every plugin change): mirrors the local
   # plugin-version-bump-required pre-commit hook (--bump-required), which only
   # sees STAGED files at commit time, over the whole PR range — so a commit
   # that changes a marketplace/plugins/<p>/ file without bumping that plugin's
   # plugin.json version is caught even when pre-commit was skipped/bypassed.
-  # HIMMEL-5177: fetch the current base tip, not the stored event base SHA.
+  # Fetch the current base tip, not the stored event base SHA: against the
+  # stored one, two PRs from the same base that bump the same version both pass.
   # Check the PR head, not a merge ref that may include a sibling's bump.
   # Only pull_request runs have a PR's changes to gate.
   plugin-version-bump:
@@ -1143,7 +1142,7 @@ jobs:
           BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
         run: |
           git fetch --no-tags origin "+refs/heads/$BASE_BRANCH:refs/remotes/origin/plugin-bump-base"
-          # HIMMEL-5195: run the base tip's checker, not the PR checkout's. The
+          # Run the base tip's checker, not the PR checkout's. The
           # workflow file comes from the merge ref but the checkout is the PR
           # head, so a PR branched before #2341 still carried the old two-dot
           # checker and went red on a plugin bump that landed after it branched.
@@ -1187,12 +1186,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # HIMMEL-4332: flag-registry-lint ran on the runner's unpinned default node.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: ${{ !job.container.id }}
         with:
           node-version: '22.23.4'
-      # HIMMEL-4265: run the SAME pre-commit shellcheck hook the local gate runs
+      # Run the SAME pre-commit shellcheck hook the local gate runs
       # (pinned shellcheck-py version, default severity, .shellcheckrc, and the
       # hook's own vendored/fixture excludes), so nothing the hook refuses can
       # reach main. The old `shellcheck --severity=warning` over a hand-kept
@@ -1206,7 +1204,7 @@ jobs:
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ runner.os }}-${{ job.container.id && 'image' || 'host' }}-${{ hashFiles('.pre-commit-config.yaml') }}
-      # HIMMEL-4319: the hook is require_serial, so `--all-files` is one
+      # The hook is require_serial, so `--all-files` is one
       # ~9 min CPU-bound shellcheck over ~1460 files. It cannot be sharded:
       # shellcheck resolves `source` across the files of ONE invocation, so
       # SC2034 verdicts depend on the input set (a 100-file shard went red on
@@ -1237,7 +1235,7 @@ jobs:
           ver="${rev%.*}"
           url="https://github.com/koalaman/shellcheck/releases/download/v${ver}/shellcheck-v${ver}.linux.x86_64.tar.xz"
           curl -sSfIL --max-time 20 -o /dev/null "$url" || echo "infra: ${url} is unreachable and the pre-commit cache missed; this red is the GitHub release host, not the code, so rerun when it recovers" >&2
-      # HIMMEL-4254 P2: a bypass flag a hook reads but the config UI's display
+      # A bypass flag a hook reads but the config UI's display
       # registry lacks is a flag the UI silently cannot show.
       - run: node scripts/install/flag-registry-lint.mjs
       # The history-comment gate also runs as a pre-commit hook, which a session
@@ -1291,7 +1289,7 @@ jobs:
           bash "$gate/check-hardcoded-env-values.sh" "$BASE_SHA"
       - name: hardcoded-env-values lint (whole tree)
         run: bash scripts/ci/check-hardcoded-env-values.sh --tree
-      # HIMMEL-8302, REPORT MODE: --warn prints a retired name on an added line,
+      # REPORT MODE: --warn prints a retired name on an added line,
       # or a documented flag the CLI refuses, and exits 0 so no PR fails yet.
       # Drop --warn from both steps (and run the base copy of the scripts, as the
       # gates above do) once the v1.1.3 rename batches have merged.
@@ -1375,7 +1373,7 @@ jobs:
           node "$gates/scripts/install/bundle-registry-lint.mjs" --root "$PWD" || rc=1
           git ls-files -z -- 'requirements*.txt' '*/requirements*.txt' | xargs -0 -r bash "$gates/scripts/hooks/check-pip-hashes.sh" || rc=1
           exit "$rc"
-      # HIMMEL-5526: the skill/command size cap (skill-lint) and the oxlint
+      # The skill/command size cap (skill-lint) and the oxlint
       # complexity ratchet + bug-class hardening gates ran only on a committer's
       # machine, so a commit with hooks skipped landed unchecked. A PR runs them
       # on its CHANGED files only; each script exits 0 with "nothing to lint" when
@@ -1420,14 +1418,14 @@ jobs:
             bash scripts/hooks/check-oxlint-hardening.sh || rc=1
           fi
           exit "$rc"
-      # HIMMEL-6043: shell-lint (mktemp template, GNU flags, errexit leak, POSIX ERE,
+      # shell-lint (mktemp template, GNU flags, errexit leak, POSIX ERE,
       # bash 3.2) ran only on a committer's machine. A PR lints the shell files it
       # CHANGED against the baseline; a diff that cannot be computed fails closed
       # (shell-lint exits 2). The checkout is the PR merge ref, so HEAD^1 is the
       # current base tip; event base.sha can lag it and would lint main's own files.
-      # HIMMEL-6315: shell-lint's [shellcheck] check ran the runner's preinstalled 0.9.0 while
-      # the pre-commit hook above runs the pinned shellcheck-py, so a PR could pass every local
-      # gate and fail here. Install that same rev, read from the pre-commit config, first on PATH.
+      # The runner's preinstalled shellcheck is not the pinned shellcheck-py the pre-commit hook
+      # above runs, so a PR could pass every local gate and fail here. Install that same rev,
+      # read from the pre-commit config, first on PATH.
       - name: pinned shellcheck for shell-lint
         if: github.event_name == 'pull_request' && !job.container.id
         run: |
@@ -1450,11 +1448,11 @@ jobs:
           echo "$sc_ver"
           printf '%s\n' "$sc_ver" | grep -qxF "version: ${SHELLCHECK_PIN%.*}" || { echo "shellcheck on PATH is not the pinned ${SHELLCHECK_PIN}" >&2; exit 1; }
           bash scripts/lint/shell-lint.sh --changed "HEAD^1..HEAD" --baseline scripts/lint/shell-lint-baseline.tsv
-      # HIMMEL-6019: a doc naming a --flag the script it cites lacks; same merge-ref range as above.
+      # Flag parity: a doc naming a --flag the script it cites lacks; same merge-ref range as above.
       - name: flag-parity changed files
         if: github.event_name == 'pull_request'
         run: bash scripts/lint/flag-parity.sh --changed "HEAD^1..HEAD" --baseline scripts/lint/flag-parity-baseline.tsv
-      # HIMMEL-7657: advisory, never gating. Names the docs pages the change touches
+      # Advisory, never gating. Names the docs pages the change touches
       # and the remark rows the judge's docs-reviewer run applies to them, and checks
       # the rules table's shape. The review itself is the judge's skill run (no model
       # here). A PR diffs its merge ref against HEAD^1; a dispatch against the default branch.
@@ -1477,7 +1475,7 @@ jobs:
     strategy:
       matrix:
         pkg: [jira, bitbucket, himmel-run, ci-orchestrator]
-        # HIMMEL-3813: the two plugin packages live under plugins/, not scripts/.
+        # The two plugin packages live under plugins/, not scripts/.
         # `include` keeps the scripts/* context names (`node-suites (jira)`) that
         # branch protection may require, and adds one per plugin.
         include:
@@ -1502,7 +1500,7 @@ jobs:
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/${{ matrix.pkg }} -- npm test
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
-      # HIMMEL-8974: the root vitest.config.ts and sector.test.ts keep a vitest run from the
+      # The root vitest.config.ts and sector.test.ts keep a vitest run from the
       # repo root off the real HOME. The guard needs the scripts/jira install above, which
       # the shell-unit shards lack (there its runtime cases SKIP), so it runs here with
       # the require flag: a missing install is a FAIL, never a vacuous SKIP.
@@ -1511,7 +1509,7 @@ jobs:
         env:
           HIMMEL_REQUIRE_JIRA_VITEST: "1"
 
-  # HIMMEL-3813: nothing built or ran the jira dist CLI end to end; the unit suite
+  # Nothing built or ran the jira dist CLI end to end; the unit suite
   # mocks `request`, so a broken tsc build or a dist that crashes at startup merged
   # green. Offline and secret-free (dummy JIRA_* values, a local mock server).
   jira-cli-smoke:
@@ -1525,7 +1523,7 @@ jobs:
     steps:
       - run: exit 1
 
-  # HIMMEL-4410 (epic HIMMEL-4409): the credential-free Claude startup suite. A
+  # The credential-free Claude startup suite. A
   # REAL `claude` CLI starts under a fake key inside a loopback-only network
   # namespace and no model turn runs, so it needs no login, no secret and no
   # network (see scripts/testing/fakekey-claude.sh). The CLI is PINNED to an
@@ -1585,7 +1583,7 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on') }}
     # Ungated (trust judge j2543e): its suites glob-read files no gate group can
     # enumerate, so it runs on every PR like main.
-    # HIMMEL-689: scripts/lanes is a zero-dependency ESM test package — no
+    # scripts/lanes is a zero-dependency ESM test package — no
     # package.json (a committed one under scripts/ trips the npm-audit gates for a
     # package with nothing to install). Run its node:test suites directly.
     runs-on: ubuntu-24.04
@@ -1614,7 +1612,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # HIMMEL-1560: the trust suite's skew regression reads the REAL
+          # The trust suite's skew regression reads the REAL
           # historical recorder out of git (`git show c49716d5:…`) rather than a
           # synthetic stub, because the thing under test is that an OLD
           # recorder answers `capabilities` with exit 0 and empty stdout. The
@@ -1628,7 +1626,7 @@ jobs:
         if: ${{ !job.container.id }}
         with:
           node-version: '22.23.4'
-      # HIMMEL-2587: the bench-run-batch dispatch-luna tests shell out to
+      # The bench-run-batch dispatch-luna tests shell out to
       # scripts/lanes/bench/bank-snapshot.sh, which runs bun. Without bun the
       # snapshot answers UNKNOWN for both banks and run-batch.sh correctly
       # refuses to start a paid attempt — so those tests abort fail-closed
@@ -1640,7 +1638,7 @@ jobs:
         with:
           bun-version-file: .bun-version
       - run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/lanes -- node --test "scripts/lanes/tests/**/*.test.mjs"
-      # HIMMEL-1529: same shape — a zero-dependency node:test suite outside any
+      # Same shape — a zero-dependency node:test suite outside any
       # package.json. Listed explicitly because nothing globs for it; an
       # unlisted suite is a suite nobody runs.
       #
@@ -1648,22 +1646,16 @@ jobs:
       # glob matches nothing: a renamed or deleted suite would go green with
       # nothing executed. `ls` on an unexpanded pattern fails, so the step does.
       - run: ls scripts/trust/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/trust -- node --test "scripts/trust/tests/*.test.mjs"
-      # HIMMEL-3827: zero-dependency node:test suites no runner executed. `ls`
+      # Zero-dependency node:test suites no runner executed. `ls`
       # first for the same vacuous-glob reason as the trust step above.
       - run: ls scripts/where-are-we/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/where-are-we -- node --test "scripts/where-are-we/tests/*.test.mjs"
       - run: ls scripts/lessons/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/lessons -- node --test "scripts/lessons/tests/*.test.mjs"
-      # HIMMEL-4501: a glob, not a file list, so a NEW observability .test.mjs
+      # A glob, not a file list, so a NEW observability .test.mjs
       # runs without a ci.yml edit; `ls` fails on an unexpanded pattern.
       - run: ls scripts/op-env-parity.test.mjs scripts/observability/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/observability -- node --test scripts/op-env-parity.test.mjs "scripts/observability/*.test.mjs"
-      # HIMMEL-3028: the scripts/hooks + scripts/lib node:test suites
-      # (HIMMEL-1578) ran ONLY in the local pre-commit hook until now — that
-      # hook deliberately skipped ci.yml because Actions was off on the
-      # private repo and the public mirror lacked .claude/settings.json (the
-      # wire-hook-bash fixture source). Both premises died 2026-09-09: origin
-      # is the public repo with Actions on every PR, and .claude/settings.json
-      # is tracked there. Pre-commit stays the fast local gate; this is the
-      # authoritative check a bypassed or skipped local hook can no longer
-      # dodge (HIMMEL-3025 is exactly the kind of leak this surfaces).
+      # The scripts/hooks + scripts/lib node:test suites (the security gates'
+      # own suites). Pre-commit runs them as the fast local gate; this is the
+      # authoritative check a bypassed or skipped local hook cannot dodge.
       - run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/hook-lib-suites -- bash scripts/hooks/check-hook-lib-suites.sh
 
   guardrail-matrices:
@@ -1679,11 +1671,11 @@ jobs:
       - if: ${{ needs.ci-quick.outputs.guardrail-matrices != 'pass' }}
         run: exit 1
 
-  # Single-entry os matrix, not a bare job (HIMMEL-1109): the matrix is what
+  # Single-entry os matrix, not a bare job: the matrix is what
   # names the required check-run context `bun-suites (ubuntu-latest)`. This
   # suite spawns the luna-vitals CLI and connectors/pull-cadence.sh as
   # subprocesses, so its result depends on the host. Windows is dropped
-  # (HIMMEL-5729) and macOS is left out: GitHub bills those runners 10x.
+  # and macOS is left out: GitHub bills those runners 10x.
   #
   # `shell: bash` because the run lines below chain with `&&`.
   bun-suites:
@@ -1699,11 +1691,11 @@ jobs:
       group: bun-suites-${{ matrix.os }}-${{ github.ref }}
       cancel-in-progress: false
     strategy:
-      # HIMMEL-5036: a PR stops at its first red matrix entry.
+      # A PR stops at its first red matrix entry.
       fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
         os: [ubuntu-latest]
-    # HIMMEL-9127: matrix.os is only the check-run context label; the host is pinned.
+    # matrix.os is only the check-run context label; the host is pinned.
     # Every runs-on in this file names ubuntu-24.04, never the floating ubuntu-latest:
     # it moved to ubuntu-26.04 on 2026-11-04 and the consult sandbox smoke (ci-quick S1) broke.
     runs-on: ubuntu-24.04
@@ -1726,7 +1718,7 @@ jobs:
       run:
         shell: bash
     steps:
-      # HIMMEL-4350: this job holds issues:write; the issue steps use gh with
+      # This job holds issues:write; the issue steps use gh with
       # GH_TOKEN env and never git, so the persisted checkout token is not needed.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1746,13 +1738,11 @@ jobs:
       # directory fails every wired case (docs/internals/environment-gotchas.md,
       # "The bun test cwd is per-suite"). No `bun install` needed: scripts/telegram
       # has no package.json of its own and the suites run against the repo tree.
-      # This is the largest bun test surface in the repo (971 tests) and had no
-      # CI step at all until HIMMEL-2620. It runs on every matrix entry because
-      # three of its cases are platform-sensitive by construction.
+      # It runs on every matrix entry because three of its cases are
+      # platform-sensitive by construction.
       - run: bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots
-      # HIMMEL-3215: the luna source-identity suites (source-identity +
-      # backfill, 40 tests) had no CI step, so a regression in
-      # scripts/vault/** could merge green. Runs from the repo root like the
+      # The luna source-identity suites (source-identity + backfill) gate
+      # scripts/vault/**. Runs from the repo root like the
       # telegram suite (fixtures are repo-relative). Hermetic: a stub `gh` and a
       # preloaded fetch stub, no network, no live vault.
       # A step in this job (not a new job) rides the already-required
@@ -1760,7 +1750,7 @@ jobs:
       - name: Vault tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: bash scripts/ci/run-bun-tests.sh scripts/vault/tests scripts/vault/tests --dots
-      # HIMMEL-4254 P3: the read-only config UI (auth/Host/redaction, idle exit,
+      # The read-only config UI (auth/Host/redaction, idle exit,
       # render, the real `himmelctl ui` verb). Repo-root cwd like the suites
       # above; hermetic (stub feed via CONFIG_UI_HIMMELCTL, loopback only).
       # Ubuntu only: it spawns node/bun children with POSIX signal semantics.
@@ -1769,10 +1759,9 @@ jobs:
         run: bash scripts/ci/run-bun-tests.sh scripts/config-ui scripts/config-ui --dots
       # --frozen-lockfile fails if bun.lock has drifted from package.json. Catches
       # the class of bug where a dep range is bumped in package.json but the
-      # lockfile is never regenerated (HIMMEL-553). HIMMEL-2620 wired the test
-      # run for the suite that was always there under tests/.
+      # lockfile is never regenerated.
       - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/luna-correlate
-      # HIMMEL-3813: telegram-himmel's own suite (tests/poller-gate-shape.test.ts)
+      # telegram-himmel's own suite (tests/poller-gate-shape.test.ts)
       # had no CI step. Ubuntu only, like the vault step: its fixtures are
       # POSIX-shaped, so a Windows run would be red and file a spurious issue.
       - name: telegram-himmel plugin tests (ubuntu only)
@@ -1792,7 +1781,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  # CLAUDE.md-derived content invariants (HIMMEL-1305). The local pre-commit
+  # CLAUDE.md-derived content invariants. The local pre-commit
   # copies of these gates judge the STAGED source, but they execute the repo's
   # own tooling — scripts/agents-md/generate.mjs, scripts/guardrails/lib.sh, and
   # the gate scripts themselves — from the WORKING TREE. An unstaged edit to
@@ -1827,7 +1816,7 @@ jobs:
       - if: ${{ needs.ci-quick.outputs.doc-invariants != 'pass' }}
         run: exit 1
 
-  # Security / dependency scanning lane (HIMMEL-510): mirrors the local
+  # Security / dependency scanning lane: mirrors the local
   # pre-commit/pre-push security gates (.pre-commit-config.yaml) by invoking the
   # SAME scripts/hooks/* gate scripts, so CI and the author-time hooks stay in
   # lockstep — a vuln/license/lockfile/secret problem that blocks a local push
@@ -1929,7 +1918,7 @@ jobs:
         if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-npm-licenses.sh
 
-      # HIMMEL-2573: this gate has a hard floor (npm >= 11) that the pinned
+      # This gate has a hard floor (npm >= 11) that the pinned
       # node-version above does not meet — node 22 bundles npm 10.9.8. That
       # floor and this job's runtime can drift apart silently: the only
       # symptom was an error that read like a package problem, and it went
@@ -1956,11 +1945,11 @@ jobs:
         if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-npm-audit-signatures.sh
 
-  # Ubuntu only (HIMMEL-5729 dropped the nightly Windows job). macOS (10x) is
-  # NOT here (HIMMEL-3902): it is the os:macos cadence, macos-cadence.yml. A red
+  # Ubuntu only (Windows support, and its nightly job, is dropped). macOS (10x) is
+  # NOT here: it is the os:macos cadence, macos-cadence.yml. A red
   # nightly job becomes its own split slice — docs/internals/testing.md.
   #
-  # This is the working matrix — sharded per OS (HIMMEL-2872) so the ubuntu
+  # This is the working matrix — sharded per OS so the ubuntu
   # shards finish in parallel instead of serially. The shard COUNT is spelled in
   # exactly two places, both below and both of which must agree: the `shard:`
   # matrix list and the `--shard …/<n>` run argument. Deliberately not repeated
@@ -1968,7 +1957,7 @@ jobs:
   # the aggregating gate that rolls this matrix up into the one required
   # check-run context branch protection names.
   shell-unit-shard:
-    # HIMMEL-5649: the plan job (pull_request only) lists the shards that have a
+    # The plan job (pull_request only) lists the shards that have a
     # suite; an empty list skips the whole job, so a docs-only PR starts no shard.
     # Fail-open like every gated job: a plan that failed, was skipped (cron,
     # dispatch) or printed no list starts all 8.
@@ -1981,10 +1970,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        # shard: [1..N] fans run-shell-tests.sh across N runners (HIMMEL-2872).
+        # shard: [1..N] fans run-shell-tests.sh across N runners.
         # On a pull_request the plan sizes N (at most vars.CI_MAX_SHARDS, 20 unset,
-        # HIMMEL-6585; 20 is where a full pr-mode selection's longest shard is its
-        # longest suite, HIMMEL-6598);
+        # 20 being where a full pr-mode selection's longest shard is its
+        # longest suite);
         # without a plan (push, schedule, dispatch) N stays 8: those runs gate no
         # PR, and a list sized from the variable cannot be written as an expression.
         # The `8` fallbacks here, in the run
@@ -2001,11 +1990,11 @@ jobs:
         # more shards isn't monotonically better — a duration-aware split is
         # the real fix (follow-up).
         shard: ${{ fromJSON(needs.plan.outputs.shards || '[1,2,3,4,5,6,7,8]') }}
-    # HIMMEL-5641: a same-repo pull_request opened by an operator account runs on
+    # A same-repo pull_request opened by an operator account runs on
     # the himmel-vm self-hosted runner while the kill switch (repo variable
     # HIMMEL_VM_RUNNER, set by vm-runner.sh on/off) is 'on'; everything else — a
     # fork PR, any other author, push, schedule, dispatch, the switch off or
-    # unset — runs on ubuntu-24.04 (HIMMEL-9127: matrix.os is only the context label).
+    # unset — runs on ubuntu-24.04 (matrix.os is only the context label).
     # Never pull_request_target. The accounts mirror
     # scripts/vm/ci-runner/job-started-hook.sh, which refuses the rest anyway, so
     # a job this expression would misroute fails there instead of running code.
@@ -2026,23 +2015,19 @@ jobs:
     permissions:
       contents: read
       packages: read
-    # HIMMEL-6272: otherwise, while repo variable CI_GCP is 'on' (setting it to
+    # Otherwise, while repo variable CI_GCP is 'on' (setting it to
     # 'off' is the instant kill switch), a dispatch or a same-repo
     # pull_request by the same operator accounts runs on an ephemeral GCP spot
     # runner (label gcp, one job per VM, scripts/ci/gcp-runners.sh up). A fork PR,
     # any other author and a schedule never reach it (ci.yml has no push trigger;
     # the 45 min VM cap is under the nightly shards).
     # The VM image carries the tools the github-hosted-gated steps below install.
-    # HIMMEL-3919: bound the job (default is 6 h; main-push runs share one
-    # non-cancelling concurrency group, so one hung shard queued every later
-    # main run). The nightly SUITE_TIER_MODE=all runs are far slower than the
+    # Bound the job (default is 6 h, so one hung shard would hold its runner
+    # for hours). The nightly SUITE_TIER_MODE=all runs are far slower than the
     # fast-tier push/PR runs: ubuntu shard 8 took 35-38 min.
     # suite-durations.tsv is the fast tier only (~18 min slowest
     # shard). 60 is ~1.7x the slowest nightly shard. There are no macos rows in
     # this matrix (macos-cadence.yml / os-verify.yml carry their own 120).
-    # HIMMEL-5036: cap NOT lowered. PR shards run only impacted suites (p95 1676s,
-    # 28m, over 10 green PR runs); the main sweep runs the full set per shard and
-    # the p95 measured here does not cover it, so 60 stays until sweep data does.
     timeout-minutes: 60
     # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
     env:
@@ -2060,12 +2045,11 @@ jobs:
         with:
           fetch-depth: 0
       # arm-resume's non-dry-run cases exercise the real `at` scheduler backend,
-      # which the supported runtime provides (HIMMEL-594 `ubuntu.sh` installs +
+      # which the supported runtime provides (`ubuntu.sh` installs +
       # enables at/atd). GitHub's ubuntu image ships without `at`, so CI fell back
       # to the crontab path and ~2 arm-resume cases diverged from a real install.
-      # Install + enable it on Linux so CI mirrors the supported runtime
-      # (HIMMEL-619). Scoped to Linux.
-      # HIMMEL-2871: the runner image preinstalls third-party apt sources
+      # Install + enable it on Linux so CI mirrors the supported runtime.
+      # The runner image preinstalls third-party apt sources
       # (Google Chrome, Microsoft, Azure CLI) we never use; when one of those
       # goes inconsistent upstream, `apt-get update` exits 100 and this step
       # kills the whole job before any suite runs. Drop those lists first so
@@ -2073,10 +2057,10 @@ jobs:
       # No `.list`/`.sources` suffix on the glob: ubuntu-24.04 runner images
       # ship these as deb822 `.sources` files, not legacy one-line `.list`
       # files, and a suffix-anchored glob silently matched nothing.
-      # HIMMEL-4912: install bubblewrap (and socat, which the live pilot-4869
+      # Install bubblewrap (and socat, which the live pilot-4869
       # jail checks drive) here too so Linux corpus/replay suites exercise the
       # real containment boundary rather than capability-skip.
-      # HIMMEL-5641: the apt, sudo and pip steps below run on a GitHub-hosted
+      # The apt, sudo and pip steps below run on a GitHub-hosted
       # runner only. The himmel-vm guest's `runner` user has no sudo and carries
       # at/atd, bubblewrap, socat, ffmpeg and pre-commit from guest-provision.sh.
       - name: Record runner image (apt cache key)
@@ -2090,10 +2074,9 @@ jobs:
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-at-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - name: Install + enable at/atd (Linux — arm-resume scheduler backend)
         if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
-        # HIMMEL-3919: a hung dpkg/apt lock held this step ~1.5 h. HIMMEL-2872:
         # apt-install.sh bounds every apt call with a `timeout` and a dpkg-lock
         # wait, and tries cached debs, then the runner's mirror, then an
-        # alternate mirror (HIMMEL-4073: the plain install comes before any index
+        # alternate mirror (the plain install comes before any index
         # refresh). Worst case 60 + 120 + 180 + 180 s = 9 min; the step cap is 13.
         timeout-minutes: 13
         run: |
@@ -2110,13 +2093,13 @@ jobs:
         run: |
           sudo atd
           pgrep -x atd > /dev/null || { echo "::error::atd is not running in the CI image; the arm-resume scheduler backend would fail later with an unrelated symptom" >&2; exit 1; }
-      # HIMMEL-4912: ubuntu-24.04 refuses unprivileged user namespaces by default
+      # ubuntu-24.04 refuses unprivileged user namespaces by default
       # (AppArmor), so bwrap fails with `RTM_NEWADDR: Operation not permitted` and
       # the sandboxed suites fail or hit their caps. Same step as claude-startup.
       - name: Allow unprivileged user namespaces (Linux — bwrap sandbox)
         if: runner.os == 'Linux' && runner.environment == 'github-hosted'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-      # HIMMEL-2742: same shape as HIMMEL-2587 (lanes-and-trust-suites) — a
+      # Same shape as the bun step in lanes-and-trust-suites — a
       # suite in this corpus (test-wizard-luna-sections.sh) shells out to bun
       # and fails closed ("required test tool not found before PATH scrub:
       # bun") without it. Installing bun keeps that hermetic PATH-scrub case
@@ -2128,7 +2111,7 @@ jobs:
         with:
           bun-version-file: .bun-version
           no-cache: ${{ runner.environment != 'github-hosted' }}
-      # HIMMEL-3193: the run step below now covers marketplace/ (root `.`), where
+      # The run step below covers marketplace/ (root `.`), where
       # the obsidian-triage suites need js-yaml + playwright from
       # tools/node_modules. ensure-deps.sh installs them and exits non-zero on
       # ANY npm/network failure (no `|| true`, no continue-on-error), so a flaky
@@ -2136,7 +2119,7 @@ jobs:
       # unrelated suite reds. Pinned by test-run-shell-tests.sh Case 23f.
       - name: Install obsidian-triage tool deps (marketplace suites)
         run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh
-      # HIMMEL-4802: test-x-media-hls-ffmpeg.sh runs a REAL ffmpeg over the
+      # test-x-media-hls-ffmpeg.sh runs a REAL ffmpeg over the
       # playlists x-media-fetch.py rewrites (every other suite stubs it). It
       # SKIPs without ffmpeg, so this step pins the noble 6.1 build and then
       # sets HIMMEL_REQUIRE_FFMPEG=1, turning that SKIP into a FAIL here. A
@@ -2164,13 +2147,13 @@ jobs:
         run: |
           ffmpeg -version | head -n 1
           echo "HIMMEL_REQUIRE_FFMPEG=1" >> "$GITHUB_ENV"
-      # HIMMEL-5120(b): scripts/guardrails/test-gitleaks-retired-org.sh SKIPs
+      # scripts/guardrails/test-gitleaks-retired-org.sh SKIPs
       # without gitleaks on PATH, and the pinned binary was only downloaded to
       # /tmp inside secret-scan. Put the SAME pinned, sha-verified release on
       # PATH for every ubuntu shard: the bin-pack (duration ledger) decides
       # which shard holds the suite, so any single-shard pin could go stale.
       # ponytail: ~8 MB download x8 shards, upgrade by pinning to the shard
-      # the ledger assigns once run-shell-tests.sh can print it (HIMMEL-5120).
+      # the ledger assigns once run-shell-tests.sh can print it.
       # Keep ver/sha in lockstep with secret-scan.
       - name: Put pinned gitleaks on PATH (Linux — retired-org suite)
         if: runner.os == 'Linux' && !job.container.id
@@ -2182,7 +2165,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/gitleaks-bin"
           tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP/gitleaks-bin" gitleaks
           echo "$RUNNER_TEMP/gitleaks-bin" >> "$GITHUB_PATH"
-      # HIMMEL-6548: scripts/lib/test-bash-ast.sh SKIPs its model rows without
+      # scripts/lib/test-bash-ast.sh SKIPs its model rows without
       # shfmt, and the guards migrated onto bash-ast.sh deny without it. Put the
       # SAME pinned, sha-verified release the CI image carries
       # (.github/ci-image/Dockerfile) on PATH for every ubuntu shard, and set
@@ -2217,7 +2200,7 @@ jobs:
           fi
           echo "$HOME/.cache/himmel-shfmt" >> "$GITHUB_PATH"
           echo "HIMMEL_REQUIRE_SHFMT=1" >> "$GITHUB_ENV"
-      # HIMMEL-7553: test-requirements-resolve.sh SKIPs without uv, and a
+      # test-requirements-resolve.sh SKIPs without uv, and a
       # Dependabot PR (no CI image) has none, so the lock bumps it guards passed
       # vacuously. Put the SAME pinned, sha-verified uv the CI image carries
       # (.github/ci-image/Dockerfile) on PATH; HIMMEL_REQUIRE_UV=1 on the run
@@ -2233,9 +2216,9 @@ jobs:
           mkdir -p "$RUNNER_TEMP/uv-bin"
           tar -xzf "$RUNNER_TEMP/uv.tgz" -C "$RUNNER_TEMP/uv-bin" --strip-components=1 uv-x86_64-unknown-linux-gnu/uv
           echo "$RUNNER_TEMP/uv-bin" >> "$GITHUB_PATH"
-      # HIMMEL-2223 codex-3: scripts/test-template-nostash-hooks.sh hard-SKIPs
+      # scripts/test-template-nostash-hooks.sh hard-SKIPs
       # (exit 0) without pre-commit on PATH — the exact vacuous-SKIP shape
-      # called out for the Windows vault suites above (LUNA-131) — so without
+      # called out for the Windows vault suites above — so without
       # this install the suite is a permanent no-op here, never exercising the
       # real fixer hooks. `shell: bash` matches the Windows install pattern
       # above: python -m pip works identically on every OS in this matrix.
@@ -2261,8 +2244,8 @@ jobs:
           printf '%s\n' "$sc_ver" | grep -qxF "version: ${SHELLCHECK_PIN%.*}" || { echo "shellcheck on PATH is not the pinned ${SHELLCHECK_PIN}" >&2; exit 1; }
       # FAIL_LOG_DIR: full failed-suite logs land there and upload as an
       # artifact below — the inline tail is bounded, so without this the
-      # failing assertion can be unrecoverable from Actions logs (HIMMEL-963).
-      # SUITE_TIER_MODE (HIMMEL-2166 / HIMMEL-6598): pr on a pull_request (the
+      # failing assertion can be unrecoverable from Actions logs.
+      # SUITE_TIER_MODE: pr on a pull_request (the
       # suite-tiers.tsv floor plus the impacted suites), all on every other run
       # (the nightly, the main-sweep cron, a workflow_dispatch). Rollback is this
       # 'pr' back to 'fast' here, in the aggregator and in the plan step.
@@ -2270,9 +2253,9 @@ jobs:
       # SUITE_CHANGED_SINCE: only on pull_request, where a base SHA exists —
       # a docs-only PR then skips the whole corpus (run-shell-tests.sh's own
       # docs-only fast lane); push/schedule/dispatch have no PR base to diff.
-      # Scan root `.` (HIMMEL-3193) = scripts/ + templates/ + marketplace/; the
+      # Scan root `.` = scripts/ + templates/ + marketplace/; the
       # duration ledger keys all three, so the bin-pack balances across them.
-      # SUITE_IMPACTED_FROM_BASE (HIMMEL-3897): on a pull_request to the default
+      # SUITE_IMPACTED_FROM_BASE: on a pull_request to the default
       # branch, the shards run only the suites the BASE commit's
       # scripts/ci/impacted-selection.sh selects for the PR diff — or the full
       # sweep, which it decides for any trust-path change (this file,
@@ -2282,7 +2265,7 @@ jobs:
       # contexts either way; a docs-only PR's shards exit 0 with nothing to run.
       # SUITE_MANIFEST: the selection this shard acted on and every suite's fate,
       # uploaded below and verified by the shell-unit aggregator.
-      # HIMMEL-6037 / HIMMEL-6621: the shard runs through home-canary.sh, so HOME
+      # The shard runs through home-canary.sh, so HOME
       # and USERPROFILE point at a sandbox holding a honeytoken .env and the shard
       # fails when the token reaches the output or the file is read (the PR 2883
       # shape). The shard has the tools, so a suite failure is a shard failure
@@ -2295,7 +2278,7 @@ jobs:
           FAIL_LOG_DIR: failed-suite-logs
           SUITE_TIER_MODE: ${{ github.event_name == 'pull_request' && 'pr' || 'all' }}
           SUITE_STOP_ON_FAIL: ${{ github.event_name == 'pull_request' && '1' || '' }}
-          # HIMMEL-4912: the shards (60 min) always run the fast guard-corpus
+          # The shards (60 min) always run the fast guard-corpus
           # subset; the full replay runs in the schedule-only guard-corpus-full job.
           GUARD_CORPUS_TIER: fast
           SUITE_CHANGED_SINCE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
@@ -2329,7 +2312,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # Aggregating gate (HIMMEL-2872). Four things worth knowing before touching
+  # Aggregating gate over the shell-unit-shard matrix. Four things worth knowing before touching
   # this job:
   #
   # 1. The single-value `os` matrix below is deliberate and load-bearing: it
@@ -2346,7 +2329,7 @@ jobs:
   #    job. A bare `needs:` without `always()` would SKIP this job whenever a
   #    shard failed — and a required check that never reports leaves the PR
   #    hanging rather than red.
-  # 4. No setup: this job is a verdict, not work. It DOES check out (HIMMEL-3166)
+  # 4. No setup: this job is a verdict, not work. It DOES check out
   #    — the report steps below run a repo script, and without a checkout
   #    `bash scripts/ci/shell-extended-nightly-issue.sh` died with rc=127 on
   #    the 2026-09-18 nightly, so the alert never fired. A plain checkout
@@ -2357,7 +2340,7 @@ jobs:
   # 5. issues:write (beyond the workflow-level contents:read) is needed only
   #    by the shell-extended-nightly-issue.sh steps below — scoped to this
   #    job alone.
-  #    HIMMEL-3132: SUITE_TIER_DEFAULT `extended` suites only run under
+  #    SUITE_TIER_DEFAULT `extended` suites only run under
   #    SUITE_TIER_MODE=all (every non-PR run, set above at
   #    shell-unit-shard), so a red extended suite can redden THIS job on any
   #    non-PR run. The steps below report only the nightly, the one scheduled
@@ -2365,12 +2348,12 @@ jobs:
   shell-unit:
     needs: [shell-unit-shard, plan]
     if: ${{ always() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) }}
-    # HIMMEL-3788: a manual dispatch on an arbitrary branch/PR head must not
+    # A manual dispatch on an arbitrary branch/PR head must not
     # post a check-run literally named "shell-unit (ubuntu-latest)" --
     # identical to (and newer than) the PR's own required check -- or GitHub's
     # required-check evaluation and check-ci.sh both read the dispatch run's
-    # result and shadow the PR's. HIMMEL-3853 removed the all-OS dispatch input,
-    # so a dispatch is now ubuntu-only; the distinct name is kept as the
+    # result and shadow the PR's. A dispatch runs ubuntu only, and
+    # the distinct name is kept as the
     # name-collision guard.
     # schedule/pull_request keep the unchanged name.
     name: shell-unit${{ github.event_name == 'workflow_dispatch' && ' (dispatch verify)' || '' }} (${{ matrix.os }})
@@ -2381,7 +2364,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-    runs-on: ubuntu-24.04 # HIMMEL-9127: matrix.os is only the context label, the host is pinned
+    runs-on: ubuntu-24.04 # matrix.os is only the context label, the host is pinned
     timeout-minutes: 10 # p95 179s; 2x = 6m, floor 10
     steps:
       # Full history: impacted-selection.sh diffs base...HEAD and checks the
@@ -2396,7 +2379,7 @@ jobs:
           PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
         run: |
           echo "shell-unit-shard matrix rollup: $SHARDS_RESULT"
-          # HIMMEL-5649: no shard has a suite -> the shard job was skipped by its
+          # No shard has a suite -> the shard job was skipped by its
           # `if`. That is a pass ONLY when the plan itself succeeded and said so;
           # the accounting step below still proves nothing was selected.
           if [ "$SHARDS_RESULT" = "skipped" ] && [ "$PLAN_RESULT" = "success" ] && [ "$PLAN_SHARDS" = "[]" ]; then
@@ -2409,7 +2392,7 @@ jobs:
           echo "OK: every gating shell-unit shard passed."
       - name: Download shard manifests
         if: ${{ !cancelled() }}
-        # HIMMEL-5649: a PR whose shards all had no work uploads no manifest. A
+        # A PR whose shards all had no work uploads no manifest. A
         # failed download is not forgiven: every shard not named in --absent-ok
         # below must still have its manifest, so the verify step goes red.
         continue-on-error: true
@@ -2418,7 +2401,7 @@ jobs:
           pattern: shell-unit-manifest-ubuntu-latest-shard*
           path: shard-manifest/
           merge-multiple: true
-      # HIMMEL-3897: green shards are not enough once a PR's shards run only
+      # Green shards are not enough once a PR's shards run only
       # the impacted suites. Recompute the selection here (same base-sourced
       # script, same base, same merge commit) and require every ubuntu shard's
       # manifest to carry it verbatim, and the shards together to have run each
@@ -2434,22 +2417,22 @@ jobs:
           IMPACTED_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == github.event.repository.default_branch && github.event.pull_request.base.sha || '' }}
           SUITE_TIER_MODE: ${{ github.event_name == 'pull_request' && 'pr' || 'all' }}
           SUITE_CHANGED_SINCE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
-          # HIMMEL-5649: shards the plan left out because they had no suite. Empty
+          # Shards the plan left out because they had no suite. Empty
           # off a pull_request (every shard runs), where the plan job is skipped.
           ABSENT_SHARDS: ${{ needs.plan.result == 'success' && needs.plan.outputs.absent_shards || '' }}
-          # HIMMEL-5556: the N the shards ran as, the same expression as their run step.
+          # The N the shards ran as, the same expression as their run step.
           SHARD_TOTAL: ${{ needs.plan.outputs.shard_total || 8 }}
         run: |
           bash scripts/ci/impacted-selection.sh "$IMPACTED_BASE" HEAD > shard-selection.txt
           head -n 2 shard-selection.txt
           bash scripts/ci/run-shell-tests.sh --list . > shard-discovered.txt
           bash scripts/ci/shard-manifest-verify.sh --dir shard-manifest --shards "$SHARD_TOTAL" --selection shard-selection.txt --discovered shard-discovered.txt --absent-ok "$ABSENT_SHARDS"
-      # HIMMEL-3897 / HIMMEL-3896: the post-merge full sweep is where a
+      # The post-merge full sweep is where a
       # selector miss shows up — a suite red on main that the merged PR's
       # impacted selection did not list. Recorded, never blocking: the red
       # shards already fail this job; this names which reds a PR run would
       # have missed, for the selector's miss ledger.
-      # HIMMEL-5113: main has no per-merge run, so a cron / dispatch run names
+      # Main has no per-merge run, so a cron / dispatch run names
       # the merges it covers: the sha of the previous completed non-PR run on
       # main (any conclusion) up to this sha. Best effort -- an API failure or
       # no earlier run leaves `range` empty and never fails the job.
@@ -2503,14 +2486,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci/shell-extended-nightly-issue.sh 1 "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-  # HIMMEL-4912: the full guard-corpus replay (every row in a fresh bwrap
+  # The full guard-corpus replay (every row in a fresh bwrap
   # sandbox) takes ~143 min on a CI runner (1407s local x ~6; unmeasured here
   # until the first nightly), far past the 60-min shell-unit-shard cap, so it
   # runs in its own schedule-only job instead of a shard. PR CI and the
   # nightly shards run the fast subset (GUARD_CORPUS_TIER=fast). The 240-min
   # cap is the estimate x1.7; a red here is the nightly's own signal and
   # gates no PR.
-  # ponytail: one job, serial; upgrade path: shard the replay (HIMMEL-5055).
   guard-corpus-full:
     if: github.event.schedule == '17 7 * * *'
     runs-on: ubuntu-24.04

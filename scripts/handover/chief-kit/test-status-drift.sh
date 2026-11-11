@@ -1738,5 +1738,50 @@ if command -v flock >/dev/null 2>&1; then
     check "3c: the next refresh clears the dirty mark" "$(fst dirty)" ""
 fi
 
+qplant() {
+    local now; now=$(date +%s)
+    mkdir -p "$1"
+    printf 'main\tgraphql\t%s\t5000\t%s\t%s\t%s\nmain\tcore\t4000\t5000\t%s\t%s\tok\n' "$2" "$((now + 1800))" "$now" "$3" "$((now + 1800))" "$now" > "$1/quota.tsv"
+}
+ngh() { grep -c '^gh ' "$STUB_LOG" || true; }
+uiclose() {
+    reset "In Review"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"7":{"head":"aaa111","ci":"pending","red_latch":false,"open":true}}}'
+    jl "$K" "In Review"
+    printf '{"title":"[%s] feat","state":"CLOSED"}\n' "$K" > "$FX/view-7.json"
+}
+qplant "$tmp/q-out" 0 refused
+qplant "$tmp/q-ok" 4000 ok
+uiclose
+HIMMEL_QUOTA_DIR="$tmp/q-out" sweep
+contains "T8: a paused sweep reads as unknown (snapshot gh)" "$(cat "$tmp/sout")" "status-sweep: unknown (snapshot gh) keys=0"
+contains "T8: a paused sweep names the pause" "$(cat "$tmp/sout")" "QUOTA-PAUSE github graphql token=main remaining=0"
+check "T8: a paused sweep makes no gh call" "$(ngh)" 0
+check "T8: a paused sweep moves nothing" "$(ntrans)" 0
+HIMMEL_QUOTA_DIR="$tmp/q-ok" sweep
+check "T8: the next healthy sweep repairs the missed close" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
+
+uiclose
+HIMMEL_QUOTA_DIR="$tmp/q-out" fn "$K" --event live; rc=$?
+check "T8: a paused funnel exits 0" "$rc" 0
+check "T8: a paused funnel makes no Jira transition" "$(ntrans)" 0
+check "T8: a paused funnel makes no gh call" "$(ngh)" 0
+contains "T8: a paused funnel warns that the key is not synced" "$(cat "$tmp/out")" "WARN worker-jira-status: $K not synced (stage gh)"
+contains "T8: a paused funnel names the pause" "$(cat "$tmp/out")" "caller=ticket-status nothing-was-judged"
+uiclose
+HIMMEL_QUOTA_DIR="$tmp/q-ok" fn "$K" --event live
+check "T8 RED control: a healthy funnel moves the key" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
+check "T8 RED control: a healthy funnel prints no pause line" "$(grep -c 'QUOTA-PAUSE' "$tmp/out")" 0
+
+wipe_docs
+reset "To Do"
+HIMMEL_QUOTA_DIR="$tmp/q-out" drift
+check "T8: a paused drift pass ends sdrift=unknown" "$(dlast)" "sdrift=unknown"
+contains "T8: a paused drift pass keeps the unreadable-list row" "$(cat "$tmp/dout")" "HEALTH - gh: the open-PR list is unreadable"
+contains "T8: a paused drift pass names the pause" "$(cat "$tmp/dout")" "caller=status-drift nothing-was-judged"
+check "T8: a paused drift pass makes no gh call" "$(ngh)" 0
+HIMMEL_QUOTA_DIR="$tmp/q-ok" drift
+contains "T8 RED control: a healthy drift pass reports drift" "$(dlast)" "sdrift=0:"
+check "T8 RED control: a healthy drift pass prints no pause line" "$(grep -c 'QUOTA-PAUSE' "$tmp/dout")" 0
+
 echo "---"
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; } || { echo "$fails failed"; exit 1; }

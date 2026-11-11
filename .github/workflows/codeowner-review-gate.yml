@@ -1,6 +1,6 @@
 name: codeowner-review-gate
 
-# HIMMEL-3372. Produces the status check `codeowner-review-gate`: code-owner
+# Produces the status check `codeowner-review-gate`: code-owner
 # review is mandatory for OUTSIDE pull requests only; the owner's own PRs (every
 # console worker PR) pass on author permission and keep merging through
 # merge-on-green.sh. A ruleset cannot scope a review rule by author (a direct
@@ -34,18 +34,18 @@ permissions:
   contents: read
   pull-requests: read
 
-# HIMMEL-3588: no cancel-in-progress. A cancelled run still leaves its
+# No cancel-in-progress. A cancelled run still leaves its
 # CANCELLED context in the PR's statusCheckRollup, which blocks the ruleset's
 # merge evaluation even when the latest run is green. The job is cheap, so
-# grouped runs never cancel a RUNNING one. HIMMEL-3835: `queue: max` is gone
-# (a burst of body edits and bot reviews queued dozens of runs during an
+# grouped runs never cancel a RUNNING one. No `queue: max` either
+# (a burst of body edits and bot reviews would queue dozens of runs during an
 # Actions stall). With cancel-in-progress: false GitHub keeps one running and
 # one pending run per group; a newer pending run replaces an older PENDING one
 # before it creates any job. The one job-level `if:` skips the owner's own PRs:
 # rule (a) passes the admin owner before any review is read, so the SKIPPED
 # (success) context is the result the job would produce, and body edits and
 # bot reviews start no runner. Any wider skip reports success under the
-# required context and would mask a red run. HIMMEL-6562: the group is keyed
+# required context and would mask a red run. The group is keyed
 # on the event too. Only a pull_request run satisfies the required check, and a
 # review event sharing its group replaced the pending pull_request run (PR 3194),
 # leaving the check Expected.
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # HIMMEL-3380: the check is required, so there is no bootstrap exemption.
+      # The check is required, so there is no bootstrap exemption.
       # Any failure to fetch the script (a 404 included) fails this step, and the
       # evaluate step below then never runs, so the job fails closed on every base.
       - name: Fetch the gate script from the base commit

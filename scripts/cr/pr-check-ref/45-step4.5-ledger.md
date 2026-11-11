@@ -179,7 +179,7 @@
    to the branch's batch residual (a hardening one only; a polish Important is never filed and needs `--defer-to <ticket>`), and the finding keeps
    severity `imp` (I4). No class is forced: an `escape` one is fixed in this PR and keeps blocking, and a
    tagged Important with no class is refused (exit 4) until it has one. `agreed` or no verdict is
-   deferred; `disproved` resolves it as usual; any other verdict keeps it blocking. `defer` still exits 4
+   deferred; `disproved` resolves it as usual, and so does a `fixed` verdict (it is not deferred; gate 4 still refuses a `fixed` Critical or Important at the reviewed head, and gate 4d needs its sweep record); any other verdict keeps it blocking. `defer` still exits 4
    while a Critical or an untagged Important is open, and it refuses on a change that touches a CI trust
    path, as for a Suggestions-only close (I5). The `pre_existing` amend counts only when signed, like
    every lowering amend (`ledger-amend-auth.js`).

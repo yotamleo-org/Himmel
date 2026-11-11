@@ -31,8 +31,8 @@ CLAUDE_VERSION="2.1.319"
 CLAUDE_LINUX_X64_SHA256="dabafec82ca1319fa43d8be36a10fc61b1d11821cb98ad5df04ad95e199b8eed"
 
 # RTK — the versioned .deb, never the mutable rtk_amd64.deb alias.
-RTK_VERSION="1.1.0"
-RTK_DEB_SHA256="21c4a2e30879ce49ebd939fa338c99208871ba591da9feeb483f2ed266fe7163"
+RTK_VERSION="1.2.0"
+RTK_DEB_SHA256="d847c771b86a98c5dfbc5a3bad0bf6a51293d91ad52123583664b48d091853ff"
 
 # TLC — tla2tools.jar from the tlaplus release, consumed by setup-statechart.sh
 # (the optional statechart check). The same bytes the pstack statechart runtime
