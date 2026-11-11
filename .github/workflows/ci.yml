@@ -103,9 +103,8 @@ permissions:
 #                   older run, and never another PR's;
 #   everything else (both crons, workflow_dispatch) -> ci-<run_id>: unique to
 #                   the run, so a sweep / the nightly / a dispatch is never
-#                   cancelled nor queued behind anything. The shared
-#                   push-to-main group (it kept only the newest main head running) went
-#                   with the push trigger: sweeps are hours apart and a
+#                   cancelled nor queued behind anything. No group is
+#                   shared between them: sweeps are hours apart and a
 #                   ~1h45m sweep cannot normally meet the next one. A delayed
 #                   schedule or a manual dispatch can overlap one, and then the
 #                   runs complete out of order (main-sweep-red-issue.sh keeps
@@ -1656,9 +1655,7 @@ jobs:
       - run: ls scripts/op-env-parity.test.mjs scripts/observability/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/observability -- node --test scripts/op-env-parity.test.mjs "scripts/observability/*.test.mjs"
       # The scripts/hooks + scripts/lib node:test suites (the security gates'
       # own suites). Pre-commit runs them as the fast local gate; this is the
-      # authoritative check a bypassed or skipped local hook cannot dodge (a
-      # suite that inherits a bypass variable from the launching shell is
-      # exactly the kind of leak this surfaces).
+      # authoritative check a bypassed or skipped local hook cannot dodge.
       - run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/hook-lib-suites -- bash scripts/hooks/check-hook-lib-suites.sh
 
   guardrail-matrices:
@@ -1762,7 +1759,7 @@ jobs:
         run: bash scripts/ci/run-bun-tests.sh scripts/config-ui scripts/config-ui --dots
       # --frozen-lockfile fails if bun.lock has drifted from package.json. Catches
       # the class of bug where a dep range is bumped in package.json but the
-      # lockfile is never regenerated. It also runs the suite under tests/.
+      # lockfile is never regenerated.
       - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/luna-correlate
       # telegram-himmel's own suite (tests/poller-gate-shape.test.ts)
       # had no CI step. Ubuntu only, like the vault step: its fixtures are
@@ -2025,9 +2022,8 @@ jobs:
     # any other author and a schedule never reach it (ci.yml has no push trigger;
     # the 45 min VM cap is under the nightly shards).
     # The VM image carries the tools the github-hosted-gated steps below install.
-    # Bound the job (default is 6 h; main-push runs share one
-    # non-cancelling concurrency group, so one hung shard queued every later
-    # main run). The nightly SUITE_TIER_MODE=all runs are far slower than the
+    # Bound the job (default is 6 h, so one hung shard would hold its runner
+    # for hours). The nightly SUITE_TIER_MODE=all runs are far slower than the
     # fast-tier push/PR runs: ubuntu shard 8 took 35-38 min.
     # suite-durations.tsv is the fast tier only (~18 min slowest
     # shard). 60 is ~1.7x the slowest nightly shard. There are no macos rows in
@@ -2053,7 +2049,6 @@ jobs:
       # enables at/atd). GitHub's ubuntu image ships without `at`, so CI fell back
       # to the crontab path and ~2 arm-resume cases diverged from a real install.
       # Install + enable it on Linux so CI mirrors the supported runtime.
-      # Scoped to Linux.
       # The runner image preinstalls third-party apt sources
       # (Google Chrome, Microsoft, Azure CLI) we never use; when one of those
       # goes inconsistent upstream, `apt-get update` exits 100 and this step
