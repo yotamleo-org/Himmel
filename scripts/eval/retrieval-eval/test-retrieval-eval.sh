@@ -924,7 +924,8 @@ sess(proj + "/p1/s2.jsonl", [
     ("Bash", {"command": QB}, "")])
 sess(proj + "/p2/s3.jsonl", [
     ("Read", {"file_path": "/elsewhere/x.md"}, "x"),
-    ("Read", {"file_path": vault + "/notes/data.json"}, "{}")])
+    ("Read", {"file_path": vault + "/notes/data.json"}, "{}"),
+    ("Read", {"file_path": vault + "/notes/missing.md"}, "")])
 PY
 py "$EV" mine-luna --repo "$R" --projects "$W/mproj" --vault "$V" --days 30 --out "$W/state/cand.jsonl" > "$W/mine.txt" 2>&1
 eq "mine_reports_three_sources: exit 0 and a count per source, qmd 3 (a Bash and an MCP query, a failed and a non-luna one dropped), direct 2 (a note a qmd call reached first is not direct), written 0" "0 qmd: 3 direct: 2 written: 0" "$? $(sed -n 's/^\(qmd\|direct\): \([0-9]*\)$/\1: \2/p; s/^\(written: [0-9]*\) .*/\1/p' "$W/mine.txt" | paste -sd' ' -)"
@@ -937,6 +938,8 @@ for o in "$R/cand.jsonl" "$W/link-to-repo/cand2.jsonl"; do
 done
 py "$EV" mine-luna --repo "$W/wt" --projects "$W/mproj" --vault "$V" --out "$R/cand3.jsonl" > /dev/null 2>&1
 eq "mine_refuses_repo_path: run from a worktree, the primary checkout is refused too" "2 absent" "$? $([ -e "$R/cand3.jsonl" ] && echo present || echo absent)"
+py "$EV" mine-luna --repo "$R" --projects "$W/mproj" --vault "$V" --out "$W/wt/cand4.jsonl" > /dev/null 2>&1
+eq "mine_refuses_repo_path: a sibling worktree outside the primary checkout's directory is refused too" "2 absent" "$? $([ -e "$W/wt/cand4.jsonl" ] && echo present || echo absent)"
 
 # ---- slice 4.2: the luna arms and vault-report (I9, I10) ------------------------
 cat > "$W/lbank.jsonl" <<'EOF'
@@ -1060,6 +1063,9 @@ eq "ruling_row_matches: AST 7 to 0 over the 7161-token ceiling is qmd + rerank o
 eq "ruling_row_matches: both arms 7 to 0 and both over the ceiling is qmd + rerank only" "qmd + rerank only" "$(ruling tokboth 7 0 7 0 8000 8000 | rrow)"
 eq "ruling_row_matches: a worse AST (7 to 3 is p .34) is qmd + rerank only" "qmd + rerank only" "$(ruling noisy 7 3 0 0 1000 2000 | rrow)"
 eq "vault-report prints each arm per source: AST in the direct source is 12 of 20 (0.60), in the written source 0.00" "0.60 0.00" "$(ruling ast 7 0 0 0 1000 2000 | awk -F'\t' '$2=="graphify-ast" && $1=="direct"{a=$4} $2=="graphify-ast" && $1=="written"{b=$4} END{print a, b}')"
+ruling part 7 0 0 0 1000 2000 > /dev/null
+grep -v '"id": "q49", "arm": "graphify-ast"' "$W/vr-part/results.jsonl" > "$W/vr-part/r2.jsonl" && mv "$W/vr-part/r2.jsonl" "$W/vr-part/results.jsonl"
+eq "ruling_row_matches: an arm that missed a question stops the ruling, never a comparison over the overlap" "1 0" "$(py "$EV" vault-report "$W/vr-part" --repo "$R" | awk '/^ruling: not eligible \| the three arms did not answer the same questions/{a++} /^ruling: (Both|AST|qmd)/{b++} END{print a+0, b+0}')"
 ruling deg 7 0 0 0 1000 2000 degraded > "$W/vr-deg.txt"
 eq "degraded_row_not_eligible: a degraded row stops the ruling, says re-run and names the count, and no row is proposed" "1 1 0" "$(grep -c '^ruling: not eligible' "$W/vr-deg.txt") $(grep -c '1 degraded' "$W/vr-deg.txt") $(grep -c -E '^ruling: (Both|AST|qmd)' "$W/vr-deg.txt")"
 

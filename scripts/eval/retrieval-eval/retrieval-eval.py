@@ -668,6 +668,12 @@ def checkout_roots(repo):
             continue
         if out:
             roots.add(os.path.realpath(os.path.dirname(out) if "--git-common-dir" in flag else out))
+    try:
+        listing = subprocess.run(["git", "-C", repo, "worktree", "list", "--porcelain"], capture_output=True, text=True,
+                                 timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        listing = ""
+    roots.update(os.path.realpath(x[len("worktree "):]) for x in listing.splitlines() if x.startswith("worktree "))
     return roots
 
 
@@ -1462,7 +1468,7 @@ def cmd_mine_luna(a):
                     for p in luna_reached(cl):
                         reached.add(p.lower())
                         here["qmd"].add(p)
-            elif cl["name"] == "Read":
+            elif cl["name"] == "Read" and not failed(cl):
                 rel = vault_note(a.vault, cl["input"].get("file_path") or "")
                 # An open by path ends every direct route (a grep hit, a wikilink): it counts unless a qmd call surfaced it first.
                 if rel and rel.lower() not in reached:
@@ -1521,6 +1527,9 @@ def cmd_vault_report(a):
     missing = [x for x in ("qmd-hybrid", "graphify-ast", "fused-no-grep") if x not in by]
     if missing:
         print("ruling: not eligible | no rows for %s" % ", ".join(missing))
+        return 0
+    if len({frozenset(by[x]) for x in ("qmd-hybrid", "graphify-ast", "fused-no-grep")}) != 1:
+        print("ruling: not eligible | the three arms did not answer the same questions: re-run")
         return 0
     base, cands = by["qmd-hybrid"], {}
     for name in ("graphify-ast", "fused-no-grep"):
