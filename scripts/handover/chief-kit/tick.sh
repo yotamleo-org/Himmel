@@ -708,7 +708,6 @@ if not (doc and os.path.isfile(doc) and os.path.isdir(mirror)):
     print("residual-unversioned=skip")
     sys.exit(0)
 
-# a ticket target is a key of the mirror's own project: a wave label (ZA-1) or a file-name token is text
 key_re = re.compile(r"\b%s-\d+\b" % re.escape(os.path.basename(mirror.rstrip("/"))))
 latest = {}
 live = False
@@ -735,10 +734,6 @@ def age(sha):
             return int(r.stdout.strip())
     return None
 
-# The state of exactly the PR numbers the lines name: one aliased GraphQL query per 100 numbers, never a
-# window of recent PRs (a hold on an older PR read ? forever). issueOrPullRequest, not pullRequest: its
-# NOT_FOUND text is outside gh-read.sh's refused-token pattern, so a typo stays on the read token and is
-# never re-run on main. Owner and repo come from gh's own placeholders; only integers enter the query.
 prstate = None
 nums = sorted({int(p) for _, _, prs, _, _ in lines for p in prs})
 if nums:
@@ -753,7 +748,7 @@ if nums:
                                env=dict(os.environ, GH_READ_NO_MAIN_FALLBACK="1"))
             for err in r.stderr.splitlines():
                 if err.startswith("gh-read:"):
-                    print(err, file=sys.stderr)  # a main-token retry stays visible in a standalone run
+                    print(err, file=sys.stderr)
             # a NOT_FOUND alias makes gh exit 1 with the other aliases' data on stdout: read it whatever the rc
             found = json.loads(r.stdout).get("data", {}).get("repository")
             if not isinstance(found, dict):
@@ -781,7 +776,6 @@ def shown(kind, ref):
     return (prstate or {}).get(ref) or "?"
 
 def detail(key, refs, prs, sha, h, n):
-    # every target of the line, gone or not: keys, then PRs, by number, then the @sha and its age
     parts = ["%s=%s" % (k, shown("key", k)) for k in sorted(refs, key=lambda k: int(k.split("-")[1]))]
     parts += ["PR#%s=%s" % (p, shown("pr", p)) for p in sorted(prs, key=int)]
     if sha:

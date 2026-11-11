@@ -64,7 +64,7 @@ case "$*" in
             exit 1
         fi
         printf '{"data":{"repository":{%s}}}\n' "$out" ;;
-    *) printf '5001\tMERGED\n5002\tOPEN\n5004\tCLOSED\n' ;;  # the old windowed list: 999001 is not in it
+    *) printf '5001\tMERGED\n5002\tOPEN\n5004\tCLOSED\n' ;;
 esac
 EOF
 chmod +x "$WORK/gh"
@@ -121,7 +121,6 @@ before="$(cat "$d")"
 field pool-stale "$d" > /dev/null
 check 'the chief doc is never rewritten' "$before" "$(cat "$d")"
 
-# one exact read of the named PR numbers, project keys only, and a detail line per stale key
 out() { TOKEN='' bash "$SUT" --pool-stale --doc "$1" 2>/dev/null; }
 l="$pd HIMMEL-131 question after PR #999001 the doctor edit, ZZ 11-09"; d="$(doc r1 "$l")"
 check 'R1 a PR the old list does not return is judged' '1:HIMMEL-131' "$(field pool-stale "$d")"
@@ -155,8 +154,6 @@ h5="$(printf '%s' "$v5" | sha256sum | cut -c1-12)"
 d="$(doc r5 "$pd $v5")"
 check 'R5 the detail line names every target, numerically sorted, with the line hash' "STALE-DISPOSITION HIMMEL-136 line=$h5 HIMMEL-901=Done PR#99999=MERGED PR#999002=MERGED" "$(out "$d" | grep '^STALE-DISPOSITION')"
 
-# the router path: the real gh-read.sh with a stub gh on PATH and a dummy read token. A NOT_FOUND
-# alias of issueOrPullRequest stays on the read token; the pullRequest shape is retried on main.
 RB="$WORK/routerbin"; mkdir -p "$RB" "$WORK/envroot" "$WORK/rhome" "$WORK/rcfg"
 printf 'himmel_github_token_vm2=dummyreadtoken\n' > "$WORK/envroot/.env"
 cat > "$RB/gh" <<'EOF'
@@ -172,7 +169,7 @@ exit 1
 EOF
 chmod +x "$RB/gh"
 export PS_ROUTER_LOG="$WORK/router.log"
-rt() { # <cmd...>: run with only the fixture token visible (the four variables test-gh-read.sh:78 clears)
+rt() {
     (
         unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY GH_READ_QUIET GH_READ_OFF
         PATH="$RB:$PATH" GH_READ_ENV_ROOT="$WORK/envroot" HOME="$WORK/rhome" GH_CONFIG_DIR="$WORK/rcfg" \
