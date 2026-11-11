@@ -718,8 +718,8 @@ PY
 
 SU="http://127.0.0.1:47999/mcp"
 PD="$W/pair"; mkdir -p "$PD/graph-s/graphify-out" "$PD/graph-l/graphify-out"
-printf '{"built_at_commit": "5555555"}\n' > "$PD/graph-s/graphify-out/graph.json"
-printf '{"built_at_commit": "6666666"}\n' > "$PD/graph-l/graphify-out/graph.json"
+printf '{"nodes": []}\n' > "$PD/graph-s/graphify-out/graph.json"
+printf '{"nodes": []}\n' > "$PD/graph-l/graphify-out/graph.json"
 printf '{"first": "aaaa", "second": "bbbb", "state": "l", "doc_count": 5, "index": "%s/index.sqlite", "served_url": "%s", "graph_built_at": {"aaaa": "%s/graph-s", "bbbb": "%s/graph-l"}}\n' "$PD" "$SU" "$PD" "$PD" > "$PD/pair.json"
 printf '{"id":"s1","kind":"what","q":"why does a halt need no token","gold":["docs/lock.md"],"reason":[],"stale_stratum":"added"}\n{"id":"s2","kind":"where","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[],"stale_stratum":"kept"}\n' > "$W/qs.jsonl"
 # shellcheck disable=SC2016  # the stubs' own $-expansions must stay literal
@@ -777,8 +777,12 @@ eq "every result row carries its index state and stale stratum" "l added" "$(py 
 r = json.loads(open(sys.argv[1]).readline()); print(r["index_state"], r["stale_stratum"])' "$W/out-good/results.jsonl")"
 rm -f "$W/graph-env.log"
 pr "g1" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" "WORKER_GRAPH_OUT=$R/graphify-out" -- --index-state s --arms graphify
-eq "a stale-state graph run reads the graph built at the first commit, not the caller's WORKER_GRAPH_OUT" "0 $PD/graph-s/graphify-out 5555555" "$? $(sort -u "$W/graph-env.log") $(py -c 'import json,sys
+eq "a stale-state graph run reads the graph built at the first commit, not the caller's WORKER_GRAPH_OUT" "0 $PD/graph-s/graphify-out aaaa" "$? $(sort -u "$W/graph-env.log") $(py -c 'import json,sys
 print(json.loads(open(sys.argv[1]).readline())["meta"]["graph_built_at"])' "$W/ledger-g1.jsonl")"
+pr "g1l" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state l --arms graphify
+eq "a pair graph with no built_at_commit stamp takes its stamp from pair.json, so the run exits 0" "0 bbbb" "$? $(py -c 'import json,sys
+m = json.loads(open(sys.argv[1]).readline())["meta"]
+print(m["graph_built_at"] if "graph_built_error" not in m else "error")' "$W/ledger-g1l.jsonl")"
 rm -rf "$PD/graph-s/graphify-out"; ln -s "$R/graphify-out" "$PD/graph-s/graphify-out"
 pr "g2" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state s --arms graphify
 eq "refuses_primary_graph_by_symlink: a pair graph that links to the checkout's graphify-out is refused" "2 absent" "$? $([ -s "$W/ledger-g2.jsonl" ] && echo present || echo absent)"

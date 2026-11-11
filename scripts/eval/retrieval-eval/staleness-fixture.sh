@@ -104,10 +104,17 @@ count_paths() {
     xargs -0 -n 500 python3 -I "$LIB/qmd-collection-files.py" --config "$1" himmel | wc -l | tr -d ' '
 }
 doc_count() {
-    git -C "$REPO" ls-tree -r --name-only -z "$1" | count_paths "$2"
+    git -C "$REPO" ls-tree -r -z "$1" | python3 -I -c 'import sys
+for e in sys.stdin.buffer.read().split(b"\0"):
+    if e and not e.startswith((b"120000", b"160000")):
+        sys.stdout.buffer.write(e.split(b"\t", 1)[1] + b"\0")' | count_paths "$2"
 }
 delta_count() {
-    git -C "$REPO" diff --name-only -z --no-renames --diff-filter=AM "$1" "$2" | count_paths "$3"
+    git -C "$REPO" diff --raw -z --no-renames --diff-filter=AM "$1" "$2" | python3 -I -c 'import sys
+t = sys.stdin.buffer.read().split(b"\0")
+for meta, path in zip(t[0::2], t[1::2]):
+    if meta.split()[1] not in (b"120000", b"160000"):
+        sys.stdout.buffer.write(path + b"\0")' | count_paths "$3"
 }
 unpack() {
     rm -rf "$2" && mkdir -p "$2" && git -C "$REPO" archive --format=tar "$1" -- '*.md' | tar -x -C "$2" || die "git archive of $1 failed" 1
@@ -224,14 +231,14 @@ cmd_serve() {
     printf '%s\n' "$pid" > "$OUTR/serve.pid"
     printf '%s\n' "$port" > "$OUTR/serve.port"
     i=0
-    while ! (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; do
+    while ! (exec 3<> "/dev/tcp/localhost/$port") 2> /dev/null; do
         kill -0 "$pid" 2> /dev/null || { rm -f "$OUTR/serve.pid"; die "the server exited (see $OUTR/serve.log)" 1; }
         i=$((i + 1))
         [ "$i" -lt 120 ] || { kill "$pid" 2> /dev/null; rm -f "$OUTR/serve.pid"; die "the server did not listen in 60 s" 1; }
         sleep 0.5
     done
-    pj_set "$OUTR" served_url "\"http://127.0.0.1:$port/mcp\""
-    printf 'http://127.0.0.1:%s/mcp\n' "$port"
+    pj_set "$OUTR" served_url "\"http://localhost:$port/mcp\""
+    printf 'http://localhost:%s/mcp\n' "$port"
 }
 
 is_our_server() {

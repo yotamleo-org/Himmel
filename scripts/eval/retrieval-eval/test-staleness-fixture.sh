@@ -61,6 +61,7 @@ printf '# B doc\nkept line\n' > "$R/docs/b.md"
 printf '# X\n' > "$R/fixtures/x.md"
 printf '# M\n' > "$R/node_modules/m.md"
 printf 'print(1)\n' > "$R/tools/a.py"
+ln -s a.md "$R/docs/alias.md"
 git -C "$R" add -A && gc one
 C1="$(git -C "$R" rev-parse HEAD)"
 printf '# A doc\nold line\nfresh added line\n' > "$R/docs/a.md"
@@ -185,7 +186,7 @@ eq "::free_serve_has_no_key (exit 0)" "0" "$rc"
 eq "::free_serve_has_no_key (the daemon saw no key and the scratch index and config)" "1" \
     "$(qlog | grep -c "^mcp --http --port [0-9]* | INDEX_PATH=$W/free-l2/index.sqlite QMD_CONFIG_DIR=$W/free-l2/config KEY=unset")"
 eq "::free_serve_has_no_key (pair.json holds the served URL)" "$url" "$(pj "$W/free-l2" served_url)"
-case "$url" in http://127.0.0.1:*/mcp) pass "::free_serve_has_no_key (the URL is a free local port)" ;; *) fail "::free_serve_has_no_key (the URL is a free local port): '$url'" ;; esac
+case "$url" in http://localhost:*/mcp) pass "::free_serve_has_no_key (the URL is a free local port)" ;; *) fail "::free_serve_has_no_key (the URL is a free local port): '$url'" ;; esac
 spid="$(cat "$W/free-l2/serve.pid")"
 fx stop --index "$W/free-l2/index.sqlite" > /dev/null 2>&1
 eq "::free_serve_has_no_key (stop clears the URL and the pid file)" "|gone" "$(pj "$W/free-l2" served_url)|$([ -e "$W/free-l2/serve.pid" ] && echo left || echo gone)"
@@ -225,7 +226,7 @@ eq "::refuses_linked_config (exit 2, nothing written through the link)" "2|0" "$
 
 eq "::pair_records_commits (first, second, state)" "$C1 $C2 l" "$(pj "$OUT" first) $(pj "$OUT" second) $(pj "$OUT" state)"
 helper_doc_count() {
-    git -C "$R" ls-tree -r --name-only "$1" | tr '\n' '\0' | xargs -0 python3 -I "$HELPER" --config "$2" himmel | wc -l | tr -d ' '
+    git -C "$R" ls-tree -r "$1" | awk -F'\t' '$1 !~ /^120000/ {print $2}' | tr '\n' '\0' | xargs -0 python3 -I "$HELPER" --config "$2" himmel | wc -l | tr -d ' '
 }
 eq "::doc_count_matches_helper (state l: the second tree, 4 files)" "4|4" "$(pj "$OUT" doc_count)|$(helper_doc_count "$C2" "$OUT/config/index.yml")"
 eq "::doc_count_matches_helper (state s: the first tree, 3 files)" "3|3" "$(pj "$W/free-s" doc_count)|$(helper_doc_count "$C1" "$W/free-s/config/index.yml")"
