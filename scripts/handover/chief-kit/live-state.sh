@@ -254,7 +254,7 @@ after_pairs="$(awk '
         if (on != w[2]) print on, w[2]
     }' "$doc")"
 link_after_pairs() {
-    local seen_dir seen lrc on key pair links open k st err
+    local seen_dir seen on key pair links open k st err
     seen_dir="${TMPDIR:-/tmp}/himmel-chain-links-$UID"
     # shellcheck disable=SC2174 # only the final, per-user directory is ours
     if ! mkdir -m 700 -p "$seen_dir" 2>/dev/null || [ -L "$seen_dir" ] || [ ! -O "$seen_dir" ]; then
@@ -264,8 +264,7 @@ link_after_pairs() {
     # prim-ok: the record key follows the doc file's own symlink, as doc_lock's does
     seen="$seen_dir/$(realpath -- "$doc" | sha256sum | cut -d' ' -f1)"
     : >> "$seen" || { echo "live-state: cannot write $seen: no Jira link written" >&2; return; }
-    lrc=0; doc_lock "$seen" live-state || lrc=$?
-    [ "$lrc" -ne 1 ] || { echo "live-state: no lock on $seen: no Jira link written" >&2; return; }
+    doc_lock "$seen" live-state || { echo "live-state: no lock on $seen: no Jira link written" >&2; return; }
     while read -r on key; do
         pair="$on blocks $key"
         grep -qxF "$pair" "$seen" && continue
