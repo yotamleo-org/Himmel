@@ -538,10 +538,22 @@ class _OkIndex:
 
     def __init__(self, eval_ledger):
         self.path = eval_runs.ledger_path(eval_ledger)
-        # Sized before the scan: a row that lands during it is read twice, which changes nothing.
-        self.size = os.path.getsize(self.path) if os.path.exists(self.path) else 0
+        # Sized before the scan: a row that lands during it is read twice, which changes nothing. Cut back to the end
+        # of the last whole row, so a row another writer is still appending is read whole by catch_up().
+        self.size = self._row_end(os.path.getsize(self.path)) if os.path.exists(self.path) else 0
         self.rows = {}
         self._take(eval_runs.scan_rows(self.path)[0])
+
+    def _row_end(self, end):
+        with open(self.path, "rb") as fh:
+            while end > 0:
+                start = max(0, end - 65536)
+                fh.seek(start)
+                cut = fh.read(end - start).rfind(b"\n")
+                if cut >= 0:
+                    return start + cut + 1
+                end = start
+        return 0
 
     def _take(self, rows):
         for r in rows:
