@@ -45,7 +45,7 @@ export STUB
 export CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
 export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 # the re-probe cadence is seconds here; the default is 30 minutes
-export CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1
+export CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1 CHIEF_WAIT_PAUSED_REPROBE_SEC=0
 # a re-probe is cut after a second here; the default is two minutes
 export CHIEF_WAIT_REPOOL_TIMEOUT=1
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/off.sh"
@@ -469,13 +469,13 @@ for t7b_line in '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0
     t7b_kind="${t7b_line#\# }"; t7b_kind="${t7b_kind%% *}"
     printf '%s\n' "$t7b_line" > "$STUB/pool.paused"
     I="$(new_inbox "t7b-$t7b_kind")"
-    CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 arm "$I" "$WORK/t7b-$t7b_kind-1.out" 4
+    CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=0 arm "$I" "$WORK/t7b-$t7b_kind-1.out" 4
     check "(T7b) a $t7b_kind pool does not wake (rc 124)" "124" "$rc"
     check "(T7b) a $t7b_kind pool writes no underfill marker" "no" "$([ -e "$I.wait.underfill" ] && echo yes || echo no)"
     check "(T7b) a $t7b_kind pool writes pool=paused to the pool-paused file" "pool=paused" "$(cat "$I.wait.poolpaused" 2>/dev/null)"
     check "(T7b) a $t7b_kind pool leaves the heartbeat line in the readers' format" "1" "$(grep -cE '^hb=[0-9]+ pid=[0-9]+ key=[^ ]+ tick=(ok|fail|-) state=(waiting|sampling|exited)( exit=[^ ]+)?$' "$I.wait")"
     rm -f "$STUB/pool.paused"
-    CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 arm "$I" "$WORK/t7b-$t7b_kind-2.out" 6
+    CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=0 arm "$I" "$WORK/t7b-$t7b_kind-2.out" 6
     check "(T7b) after a $t7b_kind pool the next good reading wakes (rc 0)" "0" "$rc"
     check "(T7b) after a $t7b_kind pool it is one underfill wake" "1" "$(wakes "$WORK/t7b-$t7b_kind-2.out")"
     check "(T7b) after a $t7b_kind pool the good reading removes the pool-paused file" "no" "$([ -e "$I.wait.poolpaused" ] && echo yes || echo no)"
@@ -485,6 +485,8 @@ I="$(new_inbox t7b-killed)"
 CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_DISPATCH_TIMEOUT=1 arm "$I" "$WORK/t7b-killed.out" 6
 check "(T7b) a probe its outer timeout killed does not wake (rc 124)" "124" "$rc"
 check "(T7b) a probe its outer timeout killed writes no underfill marker" "no" "$([ -e "$I.wait.underfill" ] && echo yes || echo no)"
+check "(T7b) a probe its outer timeout killed is read as paused" "pool=paused" "$(cat "$I.wait.poolpaused" 2>/dev/null)"
+rm -f "$STUB/pool.slow" "$STUB/pool.rows"
 printf '%s\n' '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 floor=500 reset=unknown caller=next-dispatchable nothing-was-judged' > "$STUB/pool.paused"
 t7b_old=$(( $(date +%s) - 2000 ))
 I="$(new_inbox t7b-repool)"
@@ -493,6 +495,13 @@ CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 arm
 check "(T7b) a paused repool probe does not wake (rc 124)" "124" "$rc"
 check "(T7b) a paused repool probe leaves the underfill marker's age" "$t7b_old" "$(stat -c %Y "$I.wait.underfill" 2>/dev/null)"  # gnu-ok: Linux-only kit
 check "(T7b) a paused repool probe leaves the underfill marker's key set" "HIMMEL-9001" "$(sed -n 1p "$I.wait.underfill" 2>/dev/null)"
+I="$(new_inbox t7b-backoff)"
+CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=0 arm "$I" "$WORK/t7b-backoff1.out" 3
+t7b_c0="$(calls)"
+CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=300 arm "$I" "$WORK/t7b-backoff2.out" 4
+check "(T7b) a fresh pause is not probed again before CHIEF_WAIT_PAUSED_REPROBE_SEC" "$t7b_c0" "$(calls)"
+check "(T7b) and it does not wake (rc 124)" "124" "$rc"
+check "(T7b) and the held pause writes no underfill marker" "no" "$([ -e "$I.wait.underfill" ] && echo yes || echo no)"
 sed 's/capacity=UNDERFILLED:7/capacity=ok/' "$STUB/tick.line" > "$STUB/tick.line.ok"
 cp "$STUB/tick.line" "$STUB/tick.line.saved"; cp "$STUB/tick.line.ok" "$STUB/tick.line"
 I="$(new_inbox t7b-watch)"
@@ -502,7 +511,6 @@ check "(T7b) a paused pool watch probe on a full fleet does not wake (rc 124)" "
 check "(T7b) a paused pool watch probe leaves its marker's age" "$t7b_old" "$(stat -c %Y "$I.wait.pool" 2>/dev/null)"  # gnu-ok: Linux-only kit
 cp "$STUB/tick.line.saved" "$STUB/tick.line"
 rm -f "$STUB/pool.paused" "$STUB/tick.line.ok" "$STUB/tick.line.saved"
-rm -f "$STUB/pool.slow" "$STUB/pool.rows"
 I="$(new_inbox t7b-empty)"
 CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 arm "$I" "$WORK/t7b-empty.out" 6
 check "(T7b) RED control: a real empty pool still wakes (rc 0)" "0" "$rc"
@@ -515,6 +523,7 @@ CHIEF_WAIT_DISPATCH="$HERE/next-dispatchable.sh" NEXT_DISPATCH_GH_CMD="$WORK/gh-
     timeout 10 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/t7b-real.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(T7b) the real dispatcher paused on quota gives no underfill wake (rc 124)" "124" "$rc"
 check "(T7b) and no underfill marker" "no" "$([ -e "$I.wait.underfill" ] && echo yes || echo no)"
+check "(T7b) the real dispatcher's pause is read as paused" "pool=paused" "$(cat "$I.wait.poolpaused" 2>/dev/null)"
 
 # --- (lp) the plain current-version rows are pool rows: 2 labelled heads and 5 plain tickets fill 7 of 7 ----
 M="$WORK/mirror-lp/HIMMEL"; mkdir -p "$M"

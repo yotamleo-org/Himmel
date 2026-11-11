@@ -455,6 +455,7 @@ in `.env` or the launching shell):
 | `GO_DEADLINE` | `270` | seconds `scripts/handover/chief-kit/go.sh` may run in all before it is cut; `0` = no bound. A cut before the GO file is written exits 11 (no GO, a quota marker); a cut after it exits 0 and the GO stands |
 | `CR_DISPOSITION_GH_TIMEOUT` | `60` | seconds `cr-disposition.sh` waits for its head-branch read; a timeout exits 2 with a `GH-STALL` line and (on `check`) a quota marker; `0` = no bound |
 | `CHIEF_WAIT_READY_CI_TIMEOUT` | `30` | seconds the chief waiter's one CI read for a READY may take (`gh pr checks`); a timeout reads `ci=PENDING` |
+| `CHIEF_WAIT_PAUSED_REPROBE_SEC` | `300` | seconds the chief waiter waits before it probes a paused pool again (one the dispatcher answered with `# quota-pause` / `# gh-stall`, or one its outer timeout killed), so a stalled dispatcher cannot block every sample |
 | `CHIEF_WAIT_DISPOSITION_TIMEOUT` | `90` | seconds the chief waiter's `cr-disposition.sh check` for a READY may take; a cut is a stall, and the second stalled sample wakes `disposition=STALLED` |
 | `NEXT_DISPATCH_DEADLINE` | `400` | seconds `scripts/handover/chief-kit/next-dispatchable.sh` may run in all; a cut prints the one `# gh-stall` line and no rows; `0` = no bound |
 | `NEXT_DISPATCH_GH_TIMEOUT` | (unset) | seconds that replace every gh read bound in the dispatcher (60 or 120) and its classifier's 300 (a test seam) |
