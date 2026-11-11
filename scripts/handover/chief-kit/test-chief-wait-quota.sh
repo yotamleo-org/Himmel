@@ -4,11 +4,6 @@
 # out leaves a marker, and the waiter wakes the chief once when quota is back; a READY whose
 # checks cannot read stays unspent, and a stalled check still surfaces.
 #
-# Real go.sh, ready-check.sh, cr-disposition.sh and chief-wait.sh; only gh is a stub (first on
-# PATH, its mode read from a file so a row can flip it between samples). The tick is a stub
-# that runs the real ghq_refresh, as tick.sh does, then prints a fixed TICK line. Every row
-# runs one waiter per sample (CHIEF_WAIT_INTERVAL far away), so a sample is one start.
-#
 # Run: bash scripts/handover/chief-kit/test-chief-wait-quota.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"

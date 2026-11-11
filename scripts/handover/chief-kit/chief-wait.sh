@@ -2061,7 +2061,7 @@ ready_ci() {
     fi
     b="$(timeout -k 5 "$3" gh pr checks "$1" --json bucket -q '.[].bucket' </dev/null 2>"$err" 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
     # a refusal exits 1 like a failed check, so its stderr decides (stdout is check names)
-    if [ -z "$b" ] && [ "$rc" -ne 0 ] && ghq_is_rate_limited "$(cat "$err" 2>/dev/null)"; then  # swallow-ok: no stderr file is no refusal
+    if [ -z "$b" ] && [ "$rc" -ne 0 ] && ghq_is_rate_limited "$(cat "$err")"; then
         rm -f "$err"; printf 'PAUSED\n'; return
     fi
     rm -f "$err"
