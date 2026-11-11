@@ -53,13 +53,16 @@ The chief writes the request and sends `REQ <id>`. Then:
    for the key and version, `--supersedes` must name it; the error names it.
    An operator ruling cites the chief's `O-` record, which must cover the
    exact key, op and versions; a bare decision number authorizes nothing.
-   A request for an operator-directed or High ticket cites a `decision` record
+   The chief's INTAKE or REVERSION into a version for an open ticket labelled
+   operator-directed, or of priority High or Highest, cites a `decision` record
    with `words: 1` in its evidence (`operator`) and its why (`operator words:
    <O-id>`). That record's `verbatim` is the operator's own words, checked
    against the decision's verbatim file: admit on it when the words say this
    placement, under `--authority operator --ref <O-id>`; when they do not, rule
-   as you would without it. A record with no `words: 1` (the legacy form) is read
-   as before.
+   as you would without it. A request filed by a worker, by the close-time Done
+   fold or by the version repair is not gated and may cite no such record: rule
+   it as before, never hold it for the missing record. A record with no
+   `words: 1` (the legacy form) is read as before.
    A REVERSION restoring a key to a version rules `MOVE` with `--op move
    --from backlog --to <v>`. Only for a key whose current ruling carries
    operator authority: when the key's newest operator decision is the

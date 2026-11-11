@@ -38,7 +38,11 @@ release is declared (`jira release state <R>` prints a status other than
   ruling is never the operator's words. The same call writes one `O-` record with
   `words: 1` (or reuses the one an earlier call wrote), withdraws an open duplicate
   that cites no `O-` record, and files the request citing it; it prints
-  `OPERATOR <O-id>`, `WITHDRAWN <req>` when there was one, and `REQ <id>`. The
+  `OPERATOR <O-id>`, `WITHDRAWN <req>` when there was one, and `REQ <id>`. An open
+  duplicate that already cites an `O-` record is returned as it is, so its `REQ`
+  may cite an older record than the `OPERATOR` line names; to file the request on
+  the new words, `jira release withdraw <R> --req <id> --reason "<why>"` it first,
+  then run the request again. The
   gate reads the ticket from the mirror, else from one live read; a ticket neither
   can read is refused with both fixes (`jira mirror`, or `--decision`). `jira
   create`, `jira move` and the MCP `create` tool take the same `--decision` and
