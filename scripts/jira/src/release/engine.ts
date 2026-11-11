@@ -13,6 +13,7 @@ import { SECTOR_OPT_OUT, sectorField } from '../commands/sector.js';
 import { appendAdmission, assertAdmissionsWritable, readAdmissions, readAdmissionsTolerant, type Admission } from '../commands/admissions-ledger.js';
 import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
+import { checkWords, decisionsDirFor, resolveDecision } from './verbatim.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorKind, OperatorRow, OutOfVersionRow, PlacementClass, RequestRow, RulingRow, Verb,
 } from './types.js';
@@ -298,14 +299,31 @@ export function freeze(ctx: Ctx, o: { version: string; keys: string[]; decision:
   });
 }
 
-export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]; op: string; from_v: string | null; to_v: string | null; verbatim: string }): OperatorRow {
+type DecisionWords = { decision_file: string; decision_sha256: string; words: 1 };
+
+// The operator's words for decision <n>, checked against its one verbatim file in the bucket.
+export function decisionWords(ctx: Ctx, decision: string, words: string): DecisionWords {
+  const d = resolveDecision(decisionsDirFor(ctx.dir), decision);
+  const c = checkWords(d.text, words);
+  if (!c.ok) throw new Error(`release: --words for decision ${decision} (${d.rel}): ${c.why}`);
+  return { decision_file: d.rel, decision_sha256: d.sha256, words: 1 };
+}
+
+const sameKeys = (a: string[] = [], b: string[]) => a.length === b.length && [...a].sort().every((k, i) => k === [...b].sort()[i]);
+
+export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]; op: string; from_v: string | null; to_v: string | null; verbatim: string } & Partial<DecisionWords>): OperatorRow {
   operatorFence(ctx);
   if (!o.keys.length) throw new Error('release operator decision: --keys names the exact keys it covers');
   return locked(ctx, (l) => {
+    // A words record for the same decision file, keys, op and versions is the same record: a retry reuses it.
+    const again = o.decision_sha256 === undefined ? undefined : l.operator.verified.find((x) => x.kind === 'decision' && x.decision === o.decision
+      && sameKeys(x.keys, o.keys) && x.op === o.op && (x.from_v ?? null) === o.from_v && (x.to_v ?? null) === o.to_v && x.decision_sha256 === o.decision_sha256);
+    if (again) return again;
     const placement = placementOf(o);
     const latest = placement === undefined ? new Map<string, RequestRow>() : latestRequests(l.requests);
+    const words = o.decision_sha256 === undefined ? {} : { decision_file: o.decision_file, decision_sha256: o.decision_sha256, words: 1 as const };
     const row = appendOperator(ctx, l.k, {
-      kind: 'decision', decision: o.decision, keys: o.keys, op: o.op, from_v: o.from_v, to_v: o.to_v, verbatim: o.verbatim,
+      kind: 'decision', decision: o.decision, keys: o.keys, op: o.op, from_v: o.from_v, to_v: o.to_v, verbatim: o.verbatim, ...words,
     });
     const named = [o.from_v, o.to_v].filter((v) => v !== null);
     for (const r of latest.values()) {
@@ -999,6 +1017,35 @@ export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): 
     const req = seq(`Q-${ctx.release}`, latest.keys());
     return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...o, req, ts: ts(ctx), state: 'open' });
   });
+}
+
+/** The O- record of the operator's words a request into a version names: INTAKE from the backlog adds, any other placement moves. */
+export function recordRequestDecision(ctx: Ctx, o: { decision: string; words: string; key: string; verb: Verb; from_v: string | null; to_v: string | null }): OperatorRow {
+  operatorFence(ctx);
+  if (o.to_v === null) throw new Error('release request: --decision records the operator\'s words for a request into a version');
+  const op = o.verb === 'INTAKE' && o.from_v === null ? 'add' : 'move';
+  return operatorDecision(ctx, {
+    decision: o.decision, keys: [o.key], op, from_v: o.from_v, to_v: o.to_v, verbatim: o.words, ...decisionWords(ctx, o.decision, o.words),
+  });
+}
+
+const citedOperator = (r: RequestRow): unknown => (r.evidence as { operator?: unknown } | null)?.operator;
+
+/**
+ * A request that names the operator's words: the O- record, then a pending duplicate that cites no O- record is
+ * withdrawn by it, then the request is filed citing it. A duplicate that already cites one is returned as it is.
+ */
+export function requestWithWords(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 'state'>, o: { decision: string; words: string }): {
+  operator: OperatorRow; withdrawn: RequestRow | null; request: RequestRow;
+} {
+  const operator = recordRequestDecision(ctx, { decision: o.decision, words: o.words, key: row.key, verb: row.verb, from_v: row.from_v, to_v: row.to_v });
+  const dup = locked(ctx, (l) => [...latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).values()]
+    .find((r) => pending(r) && r.key === row.key && r.verb === row.verb && r.from_v === row.from_v && r.to_v === row.to_v));
+  const withdrawn = dup && citedOperator(dup) === undefined
+    ? withdraw(ctx, { req: dup.req, reason: `refiled citing the operator's words (${operator.id})`, by: operator.id })
+    : null;
+  const evidence = { ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
+  return { operator, withdrawn, request: request(ctx, { ...row, why: `${row.why} (operator words: ${operator.id})`, evidence }) };
 }
 
 // --- the blocker pull ------------------------------------------------------------

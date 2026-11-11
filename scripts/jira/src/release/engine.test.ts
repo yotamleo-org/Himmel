@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
+  apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, recordRequestDecision, request, requestWithWords, rule, state, takeover, withdraw,
   JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, rmRunSummary, pinnedSha, signSpec, specCheck, specReview, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
@@ -2724,5 +2724,104 @@ describe('operatorWords', () => {
   it('two Verbatim: lines (545): the first block only', () => {
     const f = 'Decision 545 — operator, 2026-11-04, QX console\n\nVerbatim: "HIMMEL-8967 A"\n\nChief then listed 25 keys.\n\nVerbatim: "ok but 2 and 3 needs to be in 1.1.3"\n';
     expect(operatorWords(f)).toBe('HIMMEL-8967 A');
+  });
+});
+
+describe('a request names the operator\'s words', () => {
+  const FILE = 'Operator, verbatim:\n\n"Approved one more round"\n\nAnswering the ask on HIMMEL-1: stop and park.\n';
+  const WORDS = 'Approved one more round';
+  const decisionFile = () => {
+    const dir = join(root, 'specs', 'decisions');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'verbatim-decision-9-op.txt'), FILE);
+    return join(dir, 'verbatim-decision-9-op.txt');
+  };
+  const decisionRows = () => readFileSync(join(root, 'release', 'R1', 'operator.jsonl'), 'utf8').trim().split('\n')
+    .map((l) => JSON.parse(l) as OperatorRow).filter((o) => o.kind === 'decision');
+  const latestOf = () => {
+    const m = new Map<string, RequestRow>();
+    for (const l of readFileSync(join(root, 'release', 'R1', 'requests.jsonl'), 'utf8').trim().split('\n')) {
+      const r = JSON.parse(l) as RequestRow;
+      m.set(r.req, r);
+    }
+    return [...m.values()];
+  };
+  const ask = { verb: 'INTAKE' as const, key: 'HIMMEL-1', from_v: null, to_v: 'v1', why: 'the operator asked for one more round', evidence: {}, from: 'console' };
+
+  it('recordRequestDecision writes a words-only O- row', async () => {
+    await setup();
+    const path = decisionFile();
+    const o = recordRequestDecision(ctx(), { decision: '9', words: WORDS, key: 'HIMMEL-1', verb: 'INTAKE', from_v: null, to_v: 'v1' });
+    expect(o).toMatchObject({
+      kind: 'decision', decision: '9', keys: ['HIMMEL-1'], op: 'add', from_v: null, to_v: 'v1', verbatim: WORDS, words: 1,
+      decision_file: 'specs/decisions/verbatim-decision-9-op.txt', decision_sha256: createHash('sha256').update(readFileSync(path)).digest('hex'),
+    });
+    expect(decisionRows()).toHaveLength(1);
+  });
+
+  it('words from a gloss are refused and write no row', async () => {
+    await setup();
+    decisionFile();
+    expect(() => recordRequestDecision(ctx(), { decision: '9', words: 'stop and park', key: 'HIMMEL-1', verb: 'INTAKE', from_v: null, to_v: 'v1' }))
+      .toThrow(/not the operator's/);
+    expect(decisionRows()).toHaveLength(0);
+  });
+
+  it('the request cites it', async () => {
+    await setup();
+    decisionFile();
+    const got = requestWithWords(ctx(), ask, { decision: '9', words: WORDS });
+    expect(got.withdrawn).toBeNull();
+    expect(got.request.evidence).toMatchObject({ operator: got.operator.id });
+    expect(got.request.why).toBe(`the operator asked for one more round (operator words: ${got.operator.id})`);
+  });
+
+  it('a retry reuses the O- row', async () => {
+    await setup();
+    decisionFile();
+    const first = requestWithWords(ctx(), ask, { decision: '9', words: WORDS });
+    const again = requestWithWords(ctx(), ask, { decision: '9', words: WORDS });
+    expect(again.operator.id).toBe(first.operator.id);
+    expect(again.request.req).toBe(first.request.req);
+    expect(decisionRows()).toHaveLength(1);
+    expect(latestOf().filter((r) => r.state === 'open')).toHaveLength(1);
+  });
+
+  it('a pending duplicate without evidence.operator is withdrawn and refiled', async () => {
+    await setup();
+    decisionFile();
+    const plain = request(ctx(), ask);
+    const got = requestWithWords(ctx(), ask, { decision: '9', words: WORDS });
+    expect(got.withdrawn?.req).toBe(plain.req);
+    expect(got.request.req).not.toBe(plain.req);
+    const rows = latestOf();
+    expect(rows.find((r) => r.req === plain.req)?.state).toBe(`withdrawn:${got.operator.id}`);
+    expect(rows.find((r) => r.req === got.request.req)?.state).toBe('open');
+  });
+
+  it('the op mapping', async () => {
+    await setup();
+    decisionFile();
+    const rec = (verb: 'INTAKE' | 'REVERSION', from_v: string | null, to_v: string) =>
+      recordRequestDecision(ctx(), { decision: '9', words: WORDS, key: 'HIMMEL-1', verb, from_v, to_v });
+    expect(rec('REVERSION', 'v1', 'v2')).toMatchObject({ op: 'move', from_v: 'v1', to_v: 'v2' });
+    expect(rec('REVERSION', null, 'v1')).toMatchObject({ op: 'move', from_v: null, to_v: 'v1' });
+    expect(rec('INTAKE', 'v2', 'v1')).toMatchObject({ op: 'move', from_v: 'v2', to_v: 'v1' });
+    expect(rec('INTAKE', null, 'v2')).toMatchObject({ op: 'add', from_v: null, to_v: 'v2' });
+  });
+
+  it('the writer refuses inside a chief-spawned worker', async () => {
+    await setup();
+    decisionFile();
+    expect(() => recordRequestDecision(ctx({ HIMMEL_CONSOLE_LEG: '1' }), { decision: '9', words: WORDS, key: 'HIMMEL-1', verb: 'INTAKE', from_v: null, to_v: 'v1' }))
+      .toThrow(/chief-spawned worker/);
+  });
+
+  it('load() does not verify decision_file', async () => {
+    await setup();
+    const path = decisionFile();
+    recordRequestDecision(ctx(), { decision: '9', words: WORDS, key: 'HIMMEL-1', verb: 'INTAKE', from_v: null, to_v: 'v1' });
+    rmSync(path);
+    expect(state(ctx()).status).toBe('OK');
   });
 });

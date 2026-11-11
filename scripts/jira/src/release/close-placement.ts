@@ -39,7 +39,7 @@ export function fileCloseIntake(key: string, version: string, pr: MergedPr): str
   const release = intakeRelease();
   const ctx = ctxFor(release);
   const why = whyOf(key, version, pr);
-  refuseRequest(ctx, { verb: 'INTAKE', key, from_v: null, why, evidence: { pr: pr.number } });
+  refuseRequest(ctx, { verb: 'INTAKE', key, from_v: null, to_v: version, why, evidence: { pr: pr.number }, origin: 'close-fold' });
   const r = releaseRequest(ctx, {
     verb: 'INTAKE', key, from_v: null, to_v: version, why, evidence: { merged_pr: pr.url, pr_number: pr.number, closed_by: 'transition' }, from: 'console',
   });

@@ -1,12 +1,25 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Command } from 'commander';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: () => 'HIMMEL' }));
+vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
+
 import {
   findTransitionByName,
   prependSupersedesNote,
+  registerMove,
   safeContent,
   wrapMovedComment,
   type AdfDoc,
   type JiraComment,
 } from './move.js';
+import { registerRelease } from './release.js';
+import { request } from '../client.js';
+import { markdownToAdf } from '../adf.js';
+import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import type { JiraTransition } from '../types.js';
 
 const fixedNow = new Date('2026-05-27T08:00:00.000Z');
@@ -212,5 +225,66 @@ describe('findTransitionByName', () => {
 
   it('returns undefined for empty array', () => {
     expect(findTransitionByName([], 'Done')).toBeUndefined();
+  });
+});
+
+describe('jira move into a version, for operator work', () => {
+  let root: string;
+  const mockRequest = vi.mocked(request);
+  const posted = () => mockRequest.mock.calls.some((c) => c[0] === 'POST' && c[1] === '/issue');
+  const cli = async (register: (p: Command) => void, argv: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    register(p);
+    await p.parseAsync(['node', 'jira', ...argv]);
+  };
+  const move = (...a: string[]) => cli(registerMove, ['move', 'HIMMEL-2', '--to-project', 'HIMMEL', '--labels', 'operator-directed',
+    '--sector', 'Ship loop', '--parent', 'HIMMEL-9', '--proposed-version', 'v1.1.3', ...a]);
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'move-gate-'));
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'state'));
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
+    vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation(((code: number) => { throw new Error(`exit ${code}`); }) as never);
+    writeFileSync(join(root, 'verbatim.txt'), 'R1 = v1.1.3\n');
+    await cli(registerRelease, ['release', 'operator', 'declare', 'R1', '--versions', 'v1.1.3', '--decision', '214', '--verbatim-file', join(root, 'verbatim.txt')]);
+    mockRequest.mockReset();
+    mockRequest.mockImplementation((async (method: string, path: string) => {
+      if (method === 'GET' && path.startsWith('/project/') && path.endsWith('/versions')) return [{ name: 'v1.1.3', released: false }];
+      if (method === 'GET' && path.startsWith('/project/')) return {};
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-2?fields=summary')) {
+        return { fields: { summary: 'the console loses a worker', issuetype: { name: 'Task' }, description: markdownToAdf(PLAIN_BLOCK_TEMPLATE.replace(/<[^>\n]*>/g, 'filled')) } };
+      }
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-2/comment')) return { comments: [] };
+      if (method === 'GET' && path.includes('/transitions')) return { transitions: [{ id: '31', name: 'Done' }] };
+      if (method === 'GET' && path.includes('fields=status')) return { fields: { status: { name: 'Done' } } };
+      if (method === 'POST' && path === '/issue') return { key: 'HIMMEL-78' };
+      return {};
+    }) as never);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('a gated move --proposed-version is refused without --decision and filed with it', async () => {
+    await expect(move()).rejects.toThrow(/exit/);
+    expect(vi.mocked(process.exit).mock.calls[0]).toEqual([1]);
+    expect(vi.mocked(console.error).mock.calls.map((c) => String(c[0])).join('\n'))
+      .toMatch(/the target create was refused, nothing was written: release request: NEW is operator-directed; a request that places it needs a record of the operator's words/);
+    expect(posted()).toBe(false);
+    mkdirSync(join(root, 'specs', 'decisions'), { recursive: true });
+    writeFileSync(join(root, 'specs', 'decisions', 'verbatim-decision-9-op.txt'), 'Operator:\n\n"Approved one more round"\n');
+    await move('--decision', '9', '--words', 'Approved one more round');
+    expect(posted()).toBe(true);
+    const last = JSON.parse(readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8').trim().split('\n').at(-1) ?? '{}');
+    expect(last).toMatchObject({ key: 'HIMMEL-78', to_v: 'v1.1.3', evidence: { operator: expect.stringMatching(/^O-R1-\d{4}$/) } });
   });
 });

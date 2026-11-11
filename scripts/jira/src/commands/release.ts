@@ -20,13 +20,14 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, outOfVersionApproval, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
+  apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, decisionWords, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, outOfVersionApproval, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, requestWithWords, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
 import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
+import { asksOperator, operatorWorkOf, type TicketFacts } from '../release/operator-work.js';
 import type { Authority, Op, OperatorKind, Verb } from '../release/types.js';
 
 // `jira release <sub>`: the CLI face of the release engine.
@@ -98,18 +99,69 @@ export function ctxFor(release: string, mirrorRoot?: string): Ctx {
 
 const isPr = (pr: unknown): boolean => Number.isInteger(pr) && (pr as number) > 0;
 
+export { asksOperator, type TicketFacts } from '../release/operator-work.js';
+
+/** Who files a request: the chief's CLI or `jira create` (gated), the close-time Done fold, or the version repair (not gated). */
+export type Origin = 'cli' | 'create' | 'close-fold' | 'repair';
+
+/**
+ * A request that places operator work into a version needs a record of the operator's words: an INTAKE or
+ * REVERSION into a version, filed by the chief (not a chief-spawned worker) from the CLI or `jira create`,
+ * for an open ticket that is operator-directed or High. An unreadable ticket (null) is treated as one.
+ */
+export function isGated(o: { verb: Verb; to_v: string | null; origin: Origin; ticket: TicketFacts | null; env: NodeJS.ProcessEnv | Record<string, string | undefined> }): boolean {
+  if (o.verb !== 'INTAKE' && o.verb !== 'REVERSION') return false;
+  if (o.to_v === null || (o.origin !== 'cli' && o.origin !== 'create')) return false;
+  if (o.env.HIMMEL_CONSOLE_LEG === '1' || o.env.HIMMEL_RELEASE_MANAGER === '1') return false;
+  return o.ticket === null || (o.ticket.open && asksOperator(o.ticket));
+}
+
+function gateRefusal(ctx: Ctx, o: { verb: Verb; key: string; from_v: string | null; to_v: string | null; origin: Origin; ticket: TicketFacts | null }): string {
+  const words = '--decision <n> --words "<the operator\'s exact words>"';
+  const fix = o.origin === 'create'
+    ? `  add ${words} to this command`
+    : `  jira release request ${ctx.release} --verb ${o.verb} --key ${o.key} --from ${o.from_v ?? 'backlog'} --to ${o.to_v} --why "<why>" ${words}`;
+  const where = '  (<n>: specs/decisions/verbatim-decision-<n>-*.txt)';
+  if (o.ticket === null) {
+    return `release request: ${o.key} could not be read (not in the mirror, and the live read failed), so it may be operator work; run \`jira mirror\` and ask again, or name the operator's words:\n${fix}\n${where}`;
+  }
+  return `release request: ${o.key} is ${operatorWorkOf(o.ticket)}; a request that places it needs a record of the operator's words.\n${fix}\n${where}`;
+}
+
+/** The gate's view of a ticket: the mirror's, else one live read; null when neither answers. */
+export async function ticketFacts(ctx: Ctx, key: string): Promise<TicketFacts | null> {
+  const snap = readMirror(ctx.mirrorRoot).issues?.get(key);
+  if (snap) return { labels: snap.labels ?? [], priority: snap.priority, open: terminalOf(snap) === null };
+  try {
+    const got = await request<{ fields?: { labels?: string[]; priority?: { name?: string } | null; status?: { statusCategory?: { name?: string } } } }>(
+      'GET', `/issue/${key}?fields=labels,priority,status`,
+    );
+    const f = got?.fields;
+    if (!f) return null;
+    return { labels: f.labels ?? [], priority: f.priority?.name ?? '', open: f.status?.statusCategory?.name !== 'Done' };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Refuses a request the release manager could only reject: a placeholder why,
- * an INTAKE for a ticket the mirror reads as closed outside the release, or a
- * REVERSION / DISCHARGE from a version the mirror does not hold the key in.
- * No mirror, or an undeclared release, skips the key checks.
+ * a gated request (isGated) that names no decision, an INTAKE for a ticket the
+ * mirror reads as closed outside the release, or a REVERSION / DISCHARGE from a
+ * version the mirror does not hold the key in. No mirror, or an undeclared
+ * release, skips the key checks.
  */
-export function refuseRequest(ctx: Ctx, o: { verb: Verb; key: string; from_v: string | null; why: string; evidence?: Record<string, unknown> }): void {
+export function refuseRequest(ctx: Ctx, o: {
+  verb: Verb; key: string; from_v: string | null; to_v: string | null; why: string; evidence?: Record<string, unknown>;
+  origin: Origin; ticket?: TicketFacts | null; decision?: string;
+}): void {
   const why = o.why.trim();
   const tail = why.slice(why.lastIndexOf(':') + 1).trim();
   if (why.length < 8 || tail.length < 3 || PLACEHOLDER.test(tail)) {
     throw new RequestRefused(`release request: "${o.why}" is a placeholder why; say in one line why ${o.key} needs the release manager`);
   }
+  const ticket = o.ticket ?? null;
+  if (o.decision === undefined && isGated({ ...o, ticket, env: ctx.env })) throw new RequestRefused(gateRefusal(ctx, { ...o, ticket }));
   const { issues, sync } = readMirror(ctx.mirrorRoot);
   const snap = issues?.get(o.key);
   const versions = snap ? state(ctx).versions : [];
@@ -678,8 +730,10 @@ export function registerRelease(program: Command): void {
     .option('--to <version>', 'Target version, or backlog', 'backlog')
     .requiredOption('--why <text>', 'One line: why the request exists')
     .option('--evidence <json>', 'Evidence object as JSON', '{}')
+    .option('--decision <n>', 'The operator decision whose words place an operator-directed or High ticket (its specs/decisions verbatim file)')
+    .option('--words <text>', 'The operator\'s exact words in that file; with --decision, recorded as an O- record the request cites')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
-    .action(async (release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; mirrorRoot?: string }) => {
+    .action(async (release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; decision?: string; words?: string; mirrorRoot?: string }) => {
       if (!['INTAKE', 'REVERSION', 'DISCHARGE'].includes(o.verb)) throw new Error('release request: --verb is INTAKE, REVERSION or DISCHARGE');
       const evidence: unknown = JSON.parse(o.evidence);
       if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: --evidence is a JSON object');
@@ -695,7 +749,18 @@ export function registerRelease(program: Command): void {
         return;
       }
       const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
-      refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown> });
+      if (o.decision !== undefined && o.words === undefined) throw new RequestRefused('release request: --decision needs --words "<the operator\'s exact words>"');
+      if (o.words !== undefined && o.decision === undefined) throw new RequestRefused('release request: --words needs --decision <n>, the decision whose file holds them');
+      const scoped = isGated({ ...row, origin: 'cli', ticket: null, env: ctx.env });
+      const ticket = scoped && o.decision === undefined ? await ticketFacts(ctx, o.key) : null;
+      refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, origin: 'cli', ticket, decision: o.decision });
+      if (o.decision !== undefined && o.words !== undefined) {
+        const got = requestWithWords(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' }, { decision: o.decision, words: o.words });
+        console.log(`OPERATOR ${got.operator.id} (decision ${o.decision}, the operator's words)`);
+        if (got.withdrawn) console.log(`WITHDRAWN ${got.withdrawn.req} (${got.withdrawn.state})`);
+        console.log(`REQ ${got.request.req}`);
+        return;
+      }
       const r = releaseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' });
       console.log(`REQ ${r.req}`);
     });
@@ -878,14 +943,21 @@ export function registerRelease(program: Command): void {
   operator.command('decision <release>')
     .requiredOption('--decision <n>', 'Operator decision number')
     .requiredOption('--keys <list>', 'Comma-separated keys the decision covers')
-    .requiredOption('--op <kind>', 'add | remove | move | keep | discharge')
+    .requiredOption('--op <kind>', 'add | remove | move | keep | discharge | none (a record that places nothing)')
     .option('--from <version>', 'Source version, or backlog', 'backlog')
     .option('--to <version>', 'Target version, or backlog', 'backlog')
-    .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')
-    .action((release: string, o: { decision: string; keys: string; op: string; from: string; to: string; verbatimFile: string }) => {
-      const r = operatorDecision(ctxFor(release), {
-        decision: o.decision, keys: list(o.keys), op: o.op, from_v: ver(o.from), to_v: ver(o.to),
-        verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(),
+    .option('--words <text>', 'The operator\'s exact words, checked against the --decision verbatim file; the row is a words record')
+    .option('--verbatim-file <path>', 'Legacy form: the operator\'s words, verbatim, unchecked (never a words record)')
+    .action((release: string, o: { decision: string; keys: string; op: string; from: string; to: string; words?: string; verbatimFile?: string }) => {
+      if ((o.words === undefined) === (o.verbatimFile === undefined)) {
+        throw new Error('release operator decision: give --words or --verbatim-file, exactly one');
+      }
+      const ctx = ctxFor(release);
+      const r = operatorDecision(ctx, {
+        decision: o.decision, keys: list(o.keys), op: op(o.op, o.from, o.to).kind, from_v: ver(o.from), to_v: ver(o.to),
+        ...(o.words !== undefined
+          ? { verbatim: o.words, ...decisionWords(ctx, o.decision, o.words) }
+          : { verbatim: readBodyFile(o.verbatimFile as string, '--verbatim-file').trim() }),
       });
       console.log(`${r.id} recorded; cite it as --authority operator --ref ${r.id}`);
     });
