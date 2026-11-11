@@ -109,7 +109,7 @@ cmd_start() {
     if command -v setsid >/dev/null 2>&1; then
         launcher=setsid
         echo "[graph-pass-detached launcher=setsid $(date '+%Y-%m-%d %H:%M:%S')]" > "$log"
-        setsid nohup "$PASS" >> "$log" 2>&1 < /dev/null &
+        setsid nohup "$PASS" >> "$log" 2>&1 < /dev/null &  # t13b-ok: one bounded graph pass started on request, not a service; it exits when the pass ends
         pid=$!
     elif command -v systemd-run >/dev/null 2>&1; then
         launcher=systemd-run
