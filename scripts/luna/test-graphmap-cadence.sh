@@ -1809,12 +1809,13 @@ fi
 # a station with only AST + publish runners needs no claude CLI, and a publish runner armed with
 # --publish-semantic keeps its semantic branch through the rewrite
 RWDIR2="$TMP_ROOT/cron-runners-rewrite-ast"; mkdir -p "$RWDIR2"
+RW2_NODE_DIR=$(dirname "$(command -v node)")
 run_rw2() {
     env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$RWCRON" \
-        GRAPHMAP_BAT_DIR="$RWDIR2" PATH="$TMP_ROOT/bin:$GRAPHIFY_BIN_DIR_PATH:/usr/bin:/bin" \
+        GRAPHMAP_BAT_DIR="$RWDIR2" PATH="$TMP_ROOT/bin:$GRAPHIFY_BIN_DIR_PATH:$RW2_NODE_DIR:/usr/bin:/bin" \
         "$REAL_BASH" "$SCRIPT" "$@"
 }
-if ! PATH="/usr/bin:/bin" command -v claude >/dev/null 2>&1; then
+if ! PATH="$RW2_NODE_DIR:/usr/bin:/bin" command -v claude >/dev/null 2>&1; then
     printf '#!/bin/sh\n# himmel-cadence-runner-format: 24\necho old\n' > "$RWDIR2/graphmap-ast-himmel.sh"
     printf '#!/bin/sh\n# himmel-cadence-runner-format: 24\nGRAPH_CADENCE_SEMANTIC_BACKEND=claude-api graph-cadence.sh --semantic\n' > "$RWDIR2/graphmap-publish-himmel.sh"
     chmod +x "$RWDIR2/graphmap-ast-himmel.sh" "$RWDIR2/graphmap-publish-himmel.sh"
