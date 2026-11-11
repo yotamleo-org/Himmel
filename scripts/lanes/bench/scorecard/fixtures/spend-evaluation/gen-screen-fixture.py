@@ -5,10 +5,6 @@ Writes transcripts, then runs the REAL P1 producer (model-price.mjs calls) and v
 (model-price.mjs validate-calls) over them, and writes the SCREEN, inventory and refs that
 fleet-scorecard.sh --exposure-screen reads. Nothing is random and no model is called.
 
-Every call costs `tokens * 20000` nano (claude-opus-5-5 output rate, output tokens only), so a
-share is an exact integer ratio: a standard worker parent holds 10000 tokens in all, of which
-the five calls after its boundary hold S (299 -> .0299, 300 -> .03).
-
 Scenarios: noop qualified lowpeak-markers boundary-instant overlap few-parents unpriced
 bad-event-time source-changed dup-path missing-path population-incomplete short-window
 early-window utc-window role-unknown role-typo b2-lever caller-report.
@@ -39,7 +35,6 @@ def seq(start, step, tokens):
 
 
 def standard(i, S=300, kind="steady"):
-    """kind: None (no boundary), steady, idle (a >= 3000 s gap before it) or manual."""
     gap = 3_100_000 if kind == "idle" else 0
     rec = [60] * 5 if S == 300 else [60] * 4 + [59]
     calls = seq(0, 60_000, [500] * 4) + seq(210_000 + gap, 1_000, rec) + seq(300_000 + gap, 60_000, [1000, 1000])

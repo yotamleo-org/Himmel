@@ -550,14 +550,11 @@ def table(head, rows):
 SCREEN_KEYS = {"schema", "lever", "window", "inventory", "export_set", "validation"}
 INVENTORY_KEYS = {"window", "scope_root", "complete", "population_review", "top_level_files", "exclusions"}
 ENTRY_KEYS = {"relative_path", "session", "role", "role_evidence"}
-# scorecard-lib.sh's role_of vocabulary, plus unknown (a role nobody resolved: INCONCLUSIVE, not a guess)
 ROLES = {"worker", "chief", "relay", "other", "unknown"}
 WHOLE_FILE = ("1970-01-01T00:00:00Z", "9999-12-31T23:59:59Z")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 RFC3339 = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$")
 MIN_PARENTS = 12
-# model-price.mjs's own loader and validator, run on the export set: the screen reads P1 rows through
-# them and prices nothing itself.
 NODE_LOAD = """
 import { pathToFileURL } from 'node:url';
 const m = await import(pathToFileURL(process.argv[2]).href);
@@ -578,7 +575,6 @@ try {
 
 
 def parse_us(s):
-    """RFC3339 with an offset as integer UTC microseconds, or None."""
     m = RFC3339.match(s) if isinstance(s, str) else None
     if not m:
         return None
@@ -593,7 +589,6 @@ def parse_us(s):
 
 
 def berlin_midnight(us):
-    """The Berlin calendar date when us is exactly local midnight, else None."""
     from zoneinfo import ZoneInfo
     if us % 1_000_000:
         return None
@@ -609,7 +604,6 @@ def json_of(raw, what):
 
 
 def ref_of(obj, what, base):
-    """A {path, sha256} ref: (real path, bytes, whether the sha256 matches)."""
     if (not isinstance(obj, dict) or set(obj) != {"path", "sha256"} or not isinstance(obj["path"], str)
             or not obj["path"] or not isinstance(obj["sha256"], str) or not HEX64.match(obj["sha256"])):
         refuse("malformed ref: " + what)

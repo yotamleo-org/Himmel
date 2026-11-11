@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/scorecard/test-spend-evaluation.sh - RED/GREEN suite for
-# fleet-scorecard.sh --exposure-screen (the free B1a context-recovery exposure screen). Fixtures are built at run time by fixtures/spend-evaluation/
-# gen-screen-fixture.py over the REAL P1 producer and validator (model-price.mjs),
-# so every row reads what P1 writes. No model, Jira or network call runs here.
-#
 # Platform guard: POSIX bash 3.2+, python3 and node.
 set -u
 
@@ -25,14 +20,12 @@ check() {
     fi
 }
 
-# jf <file> <key>: one top-level field of a JSON file (python repr for a list).
 jf() {
     python3 -I -c 'import json,sys
 v = json.load(open(sys.argv[1]))[sys.argv[2]]
 print(json.dumps(v) if isinstance(v, (list, dict)) or v is None else v)' "$1" "$2"
 }
 
-# fx <scenario>: generate $TMP/<scenario>/ and run the screen on it; RC and $TMP/<scenario>/R.json.
 fx() {
     python3 -I "$GEN" "$TMP/$1" "$1" || { echo "FAIL - generator $1"; fails=$((fails + 1)); }
     "$FLEET" --exposure-screen "$TMP/$1/SCREEN.json" --out "$TMP/$1/R.json" >"$TMP/$1/stdout" 2>"$TMP/$1/stderr"
@@ -40,7 +33,6 @@ fx() {
     R="$TMP/$1/R.json"
 }
 
-# --- screen-low-peak-compaction-counted
 python3 -I "$GEN" "$TMP/lowpeak-markers" lowpeak-markers
 READER="$REPO/scripts/eval/compaction-trigger-report.py"
 SHAPES=$(python3 -I "$READER" --json --min-peak 0 "$TMP/lowpeak-markers/snapshot/proj/wk01.jsonl" \
@@ -74,7 +66,6 @@ fx bad-event-time
 check "(time) an invalid compaction event time is INCONCLUSIVE (exit 3)" "$RC" "3"
 check "(time) event-time reason" "$(jf "$R" reasons)" '["event-time-invalid"]'
 
-# --- current-recovery-share
 fx noop
 check "(share) .0299 exits 0" "$RC" "0"
 check "(share) .0299 is NO-OP" "$(jf "$R" disposition)" "NO-OP"
@@ -135,7 +126,6 @@ fx source-changed
 check "(coverage) a transcript changed after the export is INCONCLUSIVE (exit 3)" "$RC" "3"
 check "(coverage) source reason" "$(jf "$R" reasons)" '["source-changed"]'
 
-# --- malformed input and the unsupported lever
 fx b2-lever
 check "(malformed) a B2 lever is refused (exit 2)" "$RC" "2"
 check "(malformed) the B2 refusal names the lever" "$(grep -c 'unsupported lever' "$TMP/b2-lever/stderr")" "1"
@@ -151,7 +141,6 @@ check "(malformed) --exposure-screen with a report-mode option is refused (exit 
 ERR=$("$FLEET" --exposure-screen "$TMP/qualified/SCREEN.json" 2>&1 >/dev/null); RC=$?
 check "(malformed) --exposure-screen without --out is refused (exit 2)" "$RC $(printf '%s' "$ERR" | grep -c 'needs --out')" "2 1"
 
-# --- no model, Jira or issue-writing command can run
 mkdir "$TMP/stubs"
 for s in claude codex gh curl wget; do
     { echo '#!/bin/sh'; echo "echo \"\$0\" >> \"$TMP/ran\""; echo 'exit 99'; } > "$TMP/stubs/$s"
