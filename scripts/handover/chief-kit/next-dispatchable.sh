@@ -1252,7 +1252,7 @@ for i in issues.values() if not pr_unknown else ():
     if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
         parts = [(pr, remainder_of(pr, i['key'])) for pr in partials[i['key']]]
         clear = max((n for n, (_, ans) in enumerate(parts) if ans[0] != 'none'), default=-1)
-        handed = clear >= 0 and parts[clear][1][0] in ('handed-off', 'owed')
+        handed = clear >= 0 and parts[clear][1][0] in ('handed-off', 'owed')  # a newer hand-off or owed step also supersedes an older remainder
         i['parts'] = [p for n, p in enumerate(parts) if n >= clear or (p[1][0] != 'none' and not (handed and p[1][0] == 'remaining'))]
         latest = [(pr, ans[2]) for pr, ans in i['parts'] if ans[0] == 'remaining'][-1:]
         if latest:
@@ -1389,7 +1389,7 @@ if inci_keys and not (pr_unknown or owners_unknown):
 needs_note = []  # (key, partial PR numbers that record no remainder) of in-work tickets that need a chief note first
 scope_questions = []  # keys of tickets nothing says the write scope of: a chief question, never silently free
 handed_off = []  # (key, tickets) of in-work tickets whose every partial PR hands its remainder to other tickets
-owed_rows = []
+owed_rows = []  # (key, pr, who, date) of in-work tickets whose newest clear partial PR records a step owed to the chief or operator by a date
 resume = []
 for i in issues.values():
     if not resume_eligible(i):
@@ -1412,8 +1412,8 @@ for i in issues.values():
         needs_note.append((i['key'], [pr for pr, ans in parts if ans[0] == 'none']))
         continue
     owed_parts = [(pr, ans) for pr, ans in parts if ans[0] == 'owed']
-    if owed_parts and not any(ans[0] == 'remaining' for _, ans in parts):
-        first_due = min(owed_parts, key=lambda p: p[1][1][1])
+    if owed_parts and not any(ans[0] == 'remaining' for _, ans in parts):  # a dated step is owed to the chief or operator and nothing else stays on the ticket: nothing to dispatch (the owed PR with the earliest due date is named)
+        first_due = min(owed_parts, key=lambda p: p[1][1][1])  # the earliest due date; min keeps the older PR on a tie
         owed_rows.append((i['key'], first_due[0], first_due[1][1][0], first_due[1][1][1]))
         continue
     if parts and all(ans[0] == 'handed-off' for _, ans in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella

@@ -939,6 +939,7 @@ else
     # PR's ticket; the title is author text and not read); upgrade: compare Jira's created to the first commit date once
     # `jira get` fetches created.
     cov_own=""
+    # an owed line is decided by the anchor's reader alone (the one grammar owner, as item 17 reads it): item 7 checks only its window
     cov_reader="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}/scripts/lib/pr_remainder.py"
     cov_owed_re='(^|[^[:alnum:]])owed[[:space:]]*(→|->)'
     if printf '%s\n' "$cov_lines" | grep -qiE "deferred|$cov_owed_re"; then
@@ -991,6 +992,7 @@ else
                 cov_bad="$cov_bad; owed line is not accepted (who chief or operator, then by YYYY-MM-DD, a real date): $cov_oline"
                 cov_shape=1
             else
+                # the window: today to today + 14 days, UTC, a fixed 14 (no TICKET_STATUS_AWAIT_* variable); now is the TICKET_STATUS_NOW seam when digits
                 cov_odate=$(printf '%s' "$cov_oans" | cut -f3)
                 cov_now="${TICKET_STATUS_NOW:-}"
                 case "$cov_now" in ''|*[!0-9]*) cov_now=$(date -u +%s) ;; esac
