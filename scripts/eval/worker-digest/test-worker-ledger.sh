@@ -633,8 +633,6 @@ arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over
 check "the eval row's leg beats the old failure rows' leg on both refreshed rows" 'grep -q "refreshed=1" "$D/out" && jq -s -e ".[-1].meta.leg == \"N8888\"" "$D/e.jsonl" >/dev/null && jq -s -e --arg s "$A1" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N8888\")" "$D/f.jsonl" >/dev/null'
 
 echo "18. backfill --refresh keeps a failure row's stored refusal line when the re-digest cannot read one"
-# The chain-refusal journal is recorded WITH its chain log (the lines are stored), then refreshed WITHOUT it (the suite default,
-# as the real reader sees an old session: its log tail no longer reaches the call), so the re-digest carries null lines.
 K1=9877c1a5-0000-4000-8000-000000000001
 CKLOG=(RUN_HOOK_CHAIN_SKIP_LOG="$TMP/rl/no-skips.jsonl" RUN_HOOK_CHAIN_RUN_LOG="$TMP/rl/hook-runs.jsonl")
 ck_setup() {

@@ -663,9 +663,6 @@ def _line_ok(line):
 
 
 def _carry_lines(digest, lines):
-    """The digest with each denied failure that read no refusal line given the line its stored row (same agent id
-    and class) holds; the input is not changed. The line is part of the digest, so the measurement id stays the
-    one the stored line was recorded under."""
     out = []
     for f in digest.get("failures") or []:
         key = ((f.get("agent") or {}).get("id"), f.get("class")) if isinstance(f, dict) and isinstance(f.get("agent"), dict) else None
