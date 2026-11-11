@@ -259,8 +259,6 @@ if [ "$THREADS_OK_SET" -eq 1 ]; then
         '' | *[[:cntrl:]]*) echo "write-verdict: --open-threads-ok needs a one-line reason (no control character)" >&2; exit 2 ;;
     esac
 fi
-# --bind attaches an existing branch GO: no judgement of its own, so no evidence file,
-# no judge name and no model or effort (the record copies the source's).
 if [ "$PRBIND" -eq 1 ]; then
     if [ "$ANSWER" != GO ] || [ -n "$EVIDENCE" ] || [ -n "$BRANCH" ] || [ -n "$BIND" ] || [ -n "$DNOOP" ] || [ -n "$PRIOR" ] \
             || [ -n "$RESIDUAL_OF" ] || [ -n "$MODEL" ] || [ -n "$EFFORT" ] || [ "$NAME_SET" -eq 1 ] || [ "$THREADS_OK_SET" -eq 1 ]; then
@@ -304,8 +302,7 @@ case "$BRANCH" in
     *[!A-Za-z0-9._/-]*|*..*|/*|*/) echo "write-verdict: --branch '$BRANCH' is not a plain branch name ([A-Za-z0-9._/-], no '..')" >&2; exit 2 ;;
 esac
 # The evidence must live in this uid's Claude scratch root, reached without a
-# symlink at any step from that root down. (--bind has no evidence file: its body is the
-# source record's, read once the scope is known.)
+# symlink at any step from that root down.
 SCRATCH="/tmp/claude-$(id -u)"
 if [ "$PRBIND" -eq 0 ]; then
 case "$EVIDENCE" in
@@ -479,12 +476,11 @@ fi
 SCOPE=$(go_verdict_scope "$ANCHOR" "$VREPO") || { echo "write-verdict: cannot resolve this repo's <user>/<bucket> verdict scope" >&2; exit 3; }
 [ -d "$ROOT" ] || { echo "write-verdict: handover root '$ROOT' is not a directory" >&2; exit 3; }
 
-# --bind: the one signed branch GO of this qid for <head> (a header with branch: and no pr:)
-# becomes PR <n>'s GO. A verdict is about the bytes at a head, so the only live fact checked
-# is that the PR's head is that head. The record copies the source's model, effort, branch
-# and body; the writer below signs it like any other.
-bind_field() {  # <snapshot> <field> - the first `<field>: ` line of the header block under the verdict line
+bind_field() {
     printf '%s' "$1" | tr -d '\r' | awk -v f="$2: " '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR >= n { if (!NF) exit; if (index($0, f) == 1) { print substr($0, length(f) + 1); exit } }'
+}
+bound_body_after_header() {
+    printf '%s' "$1" | tr -d '\r' | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR >= n && !d { if (!NF) d = 1; next } d { buf[++k] = $0 } END { for (i = 1; i <= k; i++) if (!(i == k && buf[i] ~ /^mac: /)) print buf[i] }'
 }
 if [ "$PRBIND" -eq 1 ]; then
     if ! declare -F go_verdict_snapshot >/dev/null 2>&1 || ! declare -F go_verdict_mac_ok_text >/dev/null 2>&1; then
@@ -528,8 +524,7 @@ if [ "$PRBIND" -eq 1 ]; then
     fi
     bindbody=$(mktemp "${TMPDIR:-/tmp}/write-verdict-bind.XXXXXX") || { echo "write-verdict: cannot create a temp file" >&2; exit 5; }
     trap 'rm -f "$bindbody"' EXIT
-    # the source's body: everything after its header block, less its trailing mac line
-    printf '%s' "$bsnap" | tr -d '\r' | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR >= n && !d { if (!NF) d = 1; next } d { buf[++k] = $0 } END { for (i = 1; i <= k; i++) if (!(i == k && buf[i] ~ /^mac: /)) print buf[i] }' > "$bindbody"
+    bound_body_after_header "$bsnap" > "$bindbody"
     EVIDENCE=$bindbody
 fi
 

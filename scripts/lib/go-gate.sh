@@ -306,8 +306,6 @@ go_trust_verdict() {
         vpr=$(printf '%s' "$snap" | tr -d '\r' | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR == n { print; exit }' \
             | sed -nE 's/^pr: ([1-9][0-9]*)$/\1/p')
         if [ -z "$vpr" ]; then
-            # a signed branch GO (branch: and no pr:) is the source of a write-verdict.sh --bind: it
-            # is no trust itself (it names no PR) and a bound record beside it carries the PR.
             if [ -n "$(printf '%s' "$snap" | tr -d '\r' | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR >= n { if (!NF) exit; if (index($0, "branch: ") == 1) { print; exit } }')" ]; then
                 continue
             fi
@@ -401,8 +399,6 @@ go_noop_chain() {
     printf '%s%s -\n' "$out" "$h"
 }
 
-# go_written_at <file> — the `written-at: <UTC time>` header line above the
-# `## Verdict` heading, when it is a full UTC stamp; nothing otherwise.
 go_written_at() {
     local t
     t=$(awk '{ sub(/\r$/, "") } /^## Verdict[[:space:]]*$/ { exit } /^written-at: / { print substr($0, 13); exit }' "$1" 2>/dev/null) || return 2
@@ -410,11 +406,6 @@ go_written_at() {
     return 0
 }
 
-# go_real_go_time <qid-dir> <head> <scope> — the newest written-at of a judged GO for <head>
-# in <qid-dir>: a record whose mac verifies under <scope> and the qid, with no `delta: no-op`
-# line and no `bound-from:` line (a bind is no new judgement, so its own time never outranks a
-# NO-GO). An unsigned record never supplies a time. Nothing when there is none or none carries
-# a stamp. rc 2, the reason on stdout, on a read failure.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_real_go_time() {
     local LC_ALL=C rf rl snap name t newest="" qid=${1##*/}
@@ -445,9 +436,6 @@ go_real_go_time() {
 # read failure, a git answer other than yes/no (an unknown commit included), or
 # a `pr: <pr>` record whose verdict line is neither a GO nor a NO-GO for a
 # 40-hex head (a drifted NO-GO must not be skipped).
-# A <cutoff> (a UTC stamp, go_noop_carry's newest real GO at the head) lets a NO-GO
-# at exactly <head> pass when its written-at is strictly older: the newest verdict at
-# the head is the GO. A NO-GO with no stamp, a tie, or a descendant's NO-GO still vetoes.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_nogo_after() {
     local LC_ALL=C qids q files frc nf l nh nt grc cr=$'\r' gore='^\*\*GO\*\* for head `[0-9a-f]{40}`\.?$'
@@ -491,6 +479,13 @@ go_nogo_after() {
     done <<< "$qids"
 }
 
+go_chain_root_cutoff() {
+    local cscope
+    [ "${1#* }" = - ] || return 0
+    cscope=$(go_verdict_scope "$4" "$5") || return 0
+    go_real_go_time "$2" "$3" "$cscope"
+}
+
 # go_noop_carry <verdicts-dir> <qid> <pr> <anchor> <head> <go-root> <scope-anchor> [<owner/name>]
 #   rc 0 when <qid>'s GO at <head> may carry: go_noop_chain walks cleanly,
 #   go_nogo_after (git asked in <anchor>) is clear at every head of the chain,
@@ -503,19 +498,12 @@ go_nogo_after() {
 #   run from an adopted repo's checkout).
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_noop_carry() {
-    local chain line why rc root="" rf rl drc real=0 cr=$'\r' cut cscope
+    local chain line why rc root="" rf rl drc real=0 cr=$'\r' cut
     chain=$(go_noop_chain "$1" "$2" "$5") || { printf '%s\n' "$chain"; return 2; }
     while IFS= read -r line; do
         [ -n "$line" ] || continue
         root=${line%% *}
-        # at the chain's root (the judged head) the newest verdict wins: a NO-GO there older than
-        # <qid>'s newest real GO no longer stands. Every other head of the chain keeps every NO-GO.
-        cut=""
-        if [ "${line#* }" = - ]; then
-            if cscope=$(go_verdict_scope "$7" "${8:-}"); then
-                cut=$(go_real_go_time "$1/$2" "$root" "$cscope") || { printf '%s\n' "$cut"; return 2; }
-            fi
-        fi
+        cut=$(go_chain_root_cutoff "$line" "$1/$2" "$root" "$7" "${8:-}") || { printf '%s\n' "$cut"; return 2; }
         rc=0; why=$(go_nogo_after "$1" "$3" "$4" "$root" "$cut") || rc=$?
         [ "$rc" -eq 0 ] || { printf '%s\n' "$why"; return "$rc"; }
     done <<< "$chain"
