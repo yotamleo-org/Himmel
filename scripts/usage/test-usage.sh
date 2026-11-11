@@ -507,7 +507,7 @@ check "phase-cost: one row per (day, session, phase), 4 for the worker" "4" \
   "$(printf '%s\n' "$PC1" | jq -rs --arg s "$PCW" '[.[] | select(.session==$s)] | length')"
 check "phase-cost: the rows exist for the worker, codex, mystery and judge sessions (7)" "7" "$(printf '%s\n' "$PC1" | jq -s 'length')"
 check "phase-cost: the review row, every field" \
-  '{"kind":"phase-cost","day":"2026-11-04","session":"'$PCW'","parent":null,"lane":"claude","class":"worker","model":"claude-opus-5-5","phase":"review","phase_rule":"v1","calls":1,"in":2000,"out":200,"cache_read":20000,"cc_5m":0,"cc_1h":0,"usd":0.016,"mark":"derived"}' \
+  '{"kind":"phase-cost","day":"2026-11-04","session":"'$PCW'","parent":null,"lane":"claude","class":"worker","model":"claude-opus-5-5","phase":"review","phase_rule":"v1","role_rule":"legacy-v1","usage_rule":"final-v2","calls":1,"in":2000,"out":200,"cache_read":20000,"cc_5m":0,"cc_1h":0,"usd":0.016,"mark":"derived"}' \
   "$(printf '%s\n' "$PC1" | jq -c --arg s "$PCW" 'select(.session==$s and .phase=="review")')"
 check "phase-cost: the day changes the row (ship on 11-05)" "2026-11-05" \
   "$(printf '%s\n' "$PC1" | jq -r --arg s "$PCW" 'select(.session==$s and .phase=="ship") | .day')"
@@ -664,6 +664,12 @@ case "${GATE_KIND:-}" in
   window) case "$1:$d" in */ck-new.json:*/ck-in.json) ;; *) exit 0 ;; esac ;;
   file) [ "${0##*/}" = mv ] || exit 0
         case "${d%/*}" in */phase-cost-state) ;; *) exit 0 ;; esac ;;
+  rows) [ "${0##*/}" = cp ] || exit 0
+        case "${d%/*}" in */phase-cost-state) ;; *) exit 0 ;; esac ;;
+  emitted) [ "${0##*/}" = mv ] || exit 0
+        case "${d%/*}" in */phase-cost-state/emitted) ;; *) exit 0 ;; esac ;;
+  checkpoint) [ "${0##*/}" = mv ] || exit 0
+        case "$d" in */build-checkpoint.json) ;; *) exit 0 ;; esac ;;
   *) exit 0 ;;
 esac
 n="$(cat "$GATE_DIR/n" 2>/dev/null || echo 0)"; n=$((n + 1)); echo "$n" > "$GATE_DIR/n"
@@ -738,13 +744,13 @@ check "windows (d): a rerun with nothing new exits 0 and appends nothing" "0/$wc
 check "windows (d): it says no window is left to build" "yes" "$(grep -q '0 window(s) to build' "$ROOT/win/err" && echo yes || echo no)"
 
 WE="$ROOT/win/store-e"
-check "windows (e): the run reached the pause after the first transcript" "reached" "$(wkill "$WE" file:1)"
-check "windows (e): the first transcript's offset is saved before its window is committed" "1/0" \
-  "$(n=0; for p in "$WE/phase-cost-state"/*.json; do [ ! -f "$p" ] || n=$((n + 1)); done; echo "$n")/$(if [ -f "$WE/records.jsonl" ]; then wc -l < "$WE/records.jsonl" | tr -d ' '; else echo 0; fi)"
+check "windows (e): the run reached the pause after the first state copy of window 1" "reached" "$(wkill "$WE" file:1)"
+check "windows (e): no state is saved before its window is committed; the commit carries both states (staged/2)" "staged/2" \
+  "$([ -d "$WE/.commit" ] && echo staged || echo none)/$(n=0; for p in "$WE/.commit/states"/*.json; do [ ! -f "$p" ] || n=$((n + 1)); done; echo "$n")"
 rm -f "$WE/.lock/pid"; rmdir "$WE/.lock"
 rc=0; wrun "$WE" --budget-seconds 0 >/dev/null || rc=$?
-check "windows (e): the rerun reads only the transcript left in window 1" "yes" \
-  "$(grep -q '^usage-compute: window 2026-11-04 done: 1 sessions, 1 transcripts read' "$ROOT/win/err" && echo yes || echo no)"
+check "windows (e): the rerun applies the staged window and does not read it again" "yes" \
+  "$(grep -q 'applied the commit a stopped run left' "$ROOT/win/err" && ! grep -q '^usage-compute: window 2026-11-04 done' "$ROOT/win/err" && echo yes || echo no)"
 check "windows (e): the rerun ends byte-identical to one uninterrupted run" "same" \
   "$(cmp -s "$WE/records.jsonl" "$WU/records.jsonl" && echo same || echo differ)"
 
@@ -796,5 +802,249 @@ check "lock: a lock with no pid (a reader's) says the owner is unknown" "yes" "$
 rmdir "$WK/.lock"
 check "usage-compute.sh carries no test seam (env-driven lock tries or pause hook)" "0" \
   "$(grep -c -E 'USAGE_COMPUTE_TEST_|test_pause' "$COMPUTE" || true)"
+
+M1="$ROOT/m1"; mkdir -p "$M1"
+M1H="$ROOT/m1-home"; mkdir -p "$M1H"
+m1run() {
+  local st="$1" pj="$2"; shift 2
+  HOME="$M1H" TZ="${M1TZ:-UTC}" bash "$COMPUTE" --projects "$pj" --ledger "$WL" --store "$st" --budget-seconds 0 "$@" >/dev/null 2>"$M1/err"
+}
+m1rows() { bash "$READ" --store "$1" --phase-cost | jq -c 'select(.calls != 0)'; }
+m1key() { m1rows "$1" | jq -r --arg k "$2" 'select("\(.day)|\(.session)|\(.phase)" == $k) | "\(.calls)/\(.out)"'; }
+m1usd() { m1rows "$1" | jq -r --arg k "$2" 'select("\(.day)|\(.session)|\(.phase)" == $k) | .usd'; }
+m1totals() { m1rows "$1" | jq -rs '"\([.[].calls] | add)/\(([.[].usd // 0] | add) * 100 | round)"'; }
+m1state_schemas() { for p in "$1/phase-cost-state"/*.json; do [ ! -f "$p" ] || jq -r '.schema // "legacy"' "$p"; done | sort -u | tr '\n' ' '; }
+m1touch() { find "$1" -name '*.jsonl' -exec touch -t 202611041200 {} +; }
+brow() {
+  jq -nc --arg s "$1" --arg ts "$2" --arg id "$3" --arg t "$4" '{type:"assistant",sessionId:$s,timestamp:$ts,requestId:("req_"+$id),message:{id:$id,model:"claude-opus-5-5",content:[{type:"text",text:$t}],usage:{input_tokens:10,output_tokens:1,cache_read_input_tokens:100,cache_creation_input_tokens:0,cache_creation:{ephemeral_5m_input_tokens:0,ephemeral_1h_input_tokens:0}}}}'
+}
+m1kill() {
+  local st="$1" i=0 pid pf
+  pf="$M1/pause-$(basename "$1")"
+  : > "$pf"
+  HOME="$M1H" TZ=UTC exec_gated_in_background "$st" "$3" "$pf" \
+    bash "$COMPUTE" --projects "$2" --ledger "$WL" --store "$st" --budget-seconds 0 >/dev/null 2>&1 & pid=$!
+  while [ ! -e "$pf.reached" ] && [ "$i" -lt 200 ]; do sleep 0.1; i=$((i + 1)); done
+  kill -9 "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
+  rm -f "$pf"
+  [ -e "$pf.reached" ] && echo reached || echo "never reached"
+}
+
+MAP="$M1/a/projects"; mkdir -p "$MAP/slug"; MAST="$M1/a/store"
+SA=aaaaaaaa-4444-4444-8444-0000000000a1
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9910-N1-fix"}'
+  arow $SA 2026-11-04T10:00:00.000Z q1 $OP 1000000 100000 5000000 200000 100000; } > "$MAP/slug/$SA.jsonl"
+m1run "$MAST" "$MAP"
+check "phase-cost: changed usage across runs replaces once: the first run counts the call (1/100000)" "1/100000" "$(m1key "$MAST" "2026-11-04|$SA|boot")"
+arow $SA 2026-11-04T10:00:01.000Z q1 $OP 1000000 1000000 5000000 200000 100000 >> "$MAP/slug/$SA.jsonl"
+m1run "$MAST" "$MAP"
+check "phase-cost: changed usage across runs replaces once: the corrected usage replaces it (1 call, out 1000000)" "1/1000000" "$(m1key "$MAST" "2026-11-04|$SA|boot")"
+FA="$M1/a2/projects"; mkdir -p "$FA/slug"
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9910-N1-fix"}'
+  arow $SA 2026-11-04T10:00:00.000Z q1 $OP 1000000 1000000 5000000 200000 100000; } > "$FA/slug/$SA.jsonl"
+m1run "$M1/a2/store" "$FA"
+check "phase-cost: changed usage across runs replaces once: the dollars equal a collector that only saw the final usage" "$(m1usd "$M1/a2/store" "2026-11-04|$SA|boot")" "$(m1usd "$MAST" "2026-11-04|$SA|boot")"
+arow $SA 2026-11-04T10:00:02.000Z q1 $OP 1000000 400000 5000000 200000 100000 >> "$MAP/slug/$SA.jsonl"
+m1run "$MAST" "$MAP"
+check "phase-cost: changed usage across runs replaces once: a legitimate decrease wins too" "1/400000" "$(m1key "$MAST" "2026-11-04|$SA|boot")"
+
+MBP="$M1/b/projects"; mkdir -p "$MBP/slug"; SB=aaaaaaaa-4444-4444-8444-0000000000b1
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9911-N2-syn"}'
+  arow $SB 2026-11-04T10:00:00.000Z z1 '<synthetic>' 0 0 0 0 0
+  arow $SB 2026-11-04T10:00:00.500Z z1 '<synthetic>' 0 0 0 0 0
+  arow $SB 2026-11-04T10:00:01.000Z z2 '<synthetic>' 0 7 0 0 0
+  arow $SB 2026-11-04T10:00:02.000Z u1 mystery-model-9 0 0 0 0 0
+  arow $SB 2026-11-04T10:00:03.000Z m1 $OP 1000000 100000 5000000 200000 100000
+  arow $SB 2026-11-04T10:00:04.000Z m1 $OP 1000000 3000000 5000000 200000 100000
+  arow $SB 2026-11-04T10:00:05.000Z g1 gpt-6.1-sol 3000000 30000 0 0 0; } > "$MBP/slug/$SB.jsonl"
+m1run "$M1/b/store" "$MBP"
+MPB="$(node "$HERE/../lanes/model-price.mjs" transcripts "$MBP")"
+MPB_CALLS="$(printf '%s\n' "$MPB" | jq -Rs '[split("\n")[] | select(test("^(malformed|excluded|opus-priced)") | not) | capture("calls=(?<n>[0-9]+)")? | .n | tonumber] | add')"
+MPB_CENTS="$(printf '%s\n' "$MPB" | sed -n 's/^total usd=\([0-9]*\)\.\([0-9][0-9]\).*/\1\2/p')"
+check "phase-cost: synthetic parity: the collector's calls and cents equal model-price.mjs (a zero synthetic and a refused nonzero one are not calls)" \
+  "$MPB_CALLS/$((10#$MPB_CENTS))" "$(m1totals "$M1/b/store")"
+
+MCP="$M1/c/projects"; mkdir -p "$MCP/slug"; SC=aaaaaaaa-4444-4444-8444-0000000000c1
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9912-N3-mid"}'
+  arow $SC 2026-11-04T22:59:59.000Z c1 $OP 1000000 100000 5000000 200000 100000
+  arow $SC 2026-11-04T23:00:05.000Z c1 $OP 1000000 900000 5000000 200000 100000; } > "$MCP/slug/$SC.jsonl"
+M1TZ=Europe/Berlin m1run "$M1/c/store" "$MCP"
+check "phase-cost: first attribution midnight: one call on the first usage's Berlin day, final usage" "2026-11-04/1/900000" \
+  "$(m1rows "$M1/c/store" | jq -rs 'map("\(.day)/\(.calls)/\(.out)") | join(",")')"
+
+MHP="$M1/h/projects"; mkdir -p "$MHP/slug"; SH=aaaaaaaa-4444-4444-8444-0000000000d1
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9913-N4-late"}'
+  arow $SH 2026-11-04T10:00:00.000Z l1 $OP 1000000 100000 5000000 0 0 Bash '{"command":"bash scripts/cr/pr-check-context.sh"}'
+  arow $SH 2026-11-04T10:00:05.000Z l2 $OP 1000000 20000 5000000 0 0; } > "$MHP/slug/$SH.jsonl"
+m1run "$M1/h/store" "$MHP"
+check "first-attribution-late-correction: before the correction l2 is one review call (1/20000)" "1/20000" "$(m1key "$M1/h/store" "2026-11-04|$SH|review")"
+{ arow $SH 2026-11-05T09:00:00.000Z l3 $OP 1000000 30000 5000000 0 0 Bash '{"command":"git commit -m x"}'
+  arow $SH 2026-11-05T09:00:05.000Z l2 $OP 1000000 2000000 5000000 0 0; } >> "$MHP/slug/$SH.jsonl"
+m1run "$M1/h/store" "$MHP"
+check "first-attribution-late-correction: the later-day final usage stays on the first day and phase, still one call" "1/2000000" "$(m1key "$M1/h/store" "2026-11-04|$SH|review")"
+check "first-attribution-late-correction: the correction adds no call and no ship row on the later day (3 calls, days 11-04 and 11-05, no ship)" "3/yes" \
+  "$(m1rows "$M1/h/store" | jq -rs '"\(map(.calls) | add)/\(if any(.[]; .phase == "ship") then "no" else "yes" end)"')"
+
+FPP="$M1/f/projects"; mkdir -p "$FPP/slug"; FSA=aaaaaaaa-4444-4444-8444-0000000000f1; FSB=aaaaaaaa-4444-4444-8444-0000000000f2
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9914-N5-fa"}'
+  arow $FSA 2026-11-04T10:00:00.000Z f1 $OP 1000000 100000 5000000 200000 100000 Read '{"file_path":"/x"}'
+  arow $FSA 2026-11-04T10:00:05.000Z f2 $OP 1000000 100000 5000000 0 0
+  arow $FSA 2026-11-04T10:00:06.000Z f2 $OP 1000000 700000 5000000 0 0; } > "$FPP/slug/$FSA.jsonl"
+mkdir -p "$FPP/slug/$FSA/subagents"
+arow $FSA 2026-11-04T10:00:07.000Z fs1 $OP 500000 50000 1000000 0 0 > "$FPP/slug/$FSA/subagents/agent-f1.jsonl"
+echo '{"agentType":"general-purpose"}' > "$FPP/slug/$FSA/subagents/agent-f1.meta.json"
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-nextleg-chief"}'; arow $FSB 2026-11-04T10:00:08.000Z fc1 $OP 100000 10000 100000 0 0; } > "$FPP/slug/$FSB.jsonl"
+m1touch "$FPP"
+FPU="$M1/f/store-uninterrupted"
+m1run "$FPU" "$FPP"
+check "phase-cost: commit-states-boundary: the uninterrupted run keeps one schema 2 state per transcript (3)" "2/3" \
+  "$(m1state_schemas "$FPU" | tr -d ' ')/$(n=0; for p in "$FPU/phase-cost-state"/*.json; do [ ! -f "$p" ] || n=$((n + 1)); done; echo "$n")"
+check "phase-cost: commit-states-boundary: the uninterrupted run counts f2 once at its final usage" "1/700000" "$(m1key "$FPU" "2026-11-04|$FSA|build")"
+for b in rows:1 file:1 file:2 file:3 emitted:1 emitted:2 checkpoint:1; do
+  FPK="$M1/f/store-kill-${b/:/-}"
+  r="$(m1kill "$FPK" "$FPP" "$b")"
+  staged="$([ -d "$FPK/.commit" ] && echo staged || echo none)"
+  rm -f "$FPK/.lock/pid"; rmdir "$FPK/.lock" 2>/dev/null || true
+  m1run "$FPK" "$FPP"
+  check "phase-cost: commit-states-boundary: a kill after piece $b (rows = the row append, file = a state copy) leaves a staged commit and the rerun equals the uninterrupted run" "reached/staged/same" \
+    "$r/$staged/$(diff -r -q "$FPU" "$FPK" >/dev/null 2>&1 && echo same || echo differ)"
+done
+
+LAT=aaaaaaaa-5555-4555-8555-00000000000a; LBT=aaaaaaaa-5555-4555-8555-00000000000b
+LCT=aaaaaaaa-5555-4555-8555-00000000000c; LDT=aaaaaaaa-5555-4555-8555-00000000000d
+m1lg_write() {
+  local p="$1/projects/slug" l
+  mkdir -p "$p"
+  for l in $2; do
+    case "$l" in
+      a) { echo '{"type":"custom-title","customTitle":"HIMMEL-9921-N1-la"}'
+           arow $LAT 2026-11-04T10:00:00.000Z a1 $OP 1000000 100000 5000000 200000 100000 Read '{"file_path":"/x"}'
+           arow $LAT 2026-11-04T10:00:05.000Z a2 $OP 1000000 100000 5000000 0 0; } > "$p/$LAT.jsonl"
+         mkdir -p "$p/$LAT/subagents"; arow $LAT 2026-11-04T10:00:07.000Z as1 $OP 500000 50000 1000000 0 0 > "$p/$LAT/subagents/agent-la.jsonl"
+         echo '{"agentType":"general-purpose"}' > "$p/$LAT/subagents/agent-la.meta.json" ;;
+      b) { echo '{"type":"custom-title","customTitle":"HIMMEL-9922-N2-lb"}'
+           arow $LBT 2026-11-04T10:00:00.000Z b1 $OP 1000000 100000 5000000 0 0
+           arow $LBT 2026-11-04T10:00:05.000Z b2 $OP 1000000 100000 5000000 0 0; } > "$p/$LBT.jsonl" ;;
+      c) { echo '{"type":"custom-title","customTitle":"HIMMEL-9923-N3-lc"}'
+           arow $LCT 2026-11-04T10:00:00.000Z c1 $OP 1000000 100000 5000000 0 0; } > "$p/$LCT.jsonl"
+         mkdir -p "$p/$LCT/subagents"; arow $LCT 2026-11-04T10:00:07.000Z cs1 $OP 500000 50000 1000000 0 0 > "$p/$LCT/subagents/agent-lc.jsonl"
+         echo '{"agentType":"general-purpose"}' > "$p/$LCT/subagents/agent-lc.meta.json" ;;
+      d) { echo '{"type":"custom-title","customTitle":"HIMMEL-9924-N4-ld"}'
+           arow $LDT 2026-11-04T10:00:00.000Z d1 $OP 1000000 100000 5000000 0 0; } > "$p/$LDT.jsonl" ;;
+    esac
+  done
+  m1touch "$1/projects"
+}
+m1lg_grow() {
+  local p="$1/projects/slug" l
+  for l in $2; do
+    case "$l" in
+      a) arow $LAT 2026-11-04T11:00:00.000Z a1 $OP 1000000 900000 5000000 200000 100000 >> "$p/$LAT.jsonl"
+         arow $LAT 2026-11-04T11:00:01.000Z a3 $OP 100000 10000 100000 0 0 >> "$p/$LAT.jsonl" ;;
+      b) arow $LBT 2026-11-04T11:00:00.000Z b3 $OP 1000000 50000 5000000 0 0 >> "$p/$LBT.jsonl" ;;
+      c) rm -f "$p/$LCT/subagents/agent-lc.jsonl" "$p/$LCT/subagents/agent-lc.meta.json" ;;
+    esac
+  done
+}
+m1_to_legacy() {
+  local f
+  for f in "$1/phase-cost-state"/*.json; do
+    [ -f "$f" ] || continue
+    jq -c 'del(.schema, .role, .refused) | .tc = (.tc // .tc_class // null) | .ac = (.ac // .ac_class // null) | del(.tc_class, .ac_class) | .seen = (.seen | with_entries(.value = 1))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  done
+}
+m1sess_rows() {
+  local st="$1"; shift
+  m1rows "$st" | jq -cS --argjson s "$(printf '%s\n' "$@" | jq -Rn '[inputs]')" 'select(.session as $x | $s | index($x))' | sort
+}
+m1state_of() {
+  local f
+  for f in "$1/phase-cost-state"/*.json; do
+    [ ! -f "$f" ] || [ "$(jq -r '.meta.session' "$f")" != "$2" ] || { echo "${f##*/}"; return 0; }
+  done
+}
+m1schema_of() {
+  local st="$1" s; shift
+  for s in "$@"; do jq -r '.schema // "legacy"' "$st/phase-cost-state/$(m1state_of "$st" "$s")"; done | sort -u | tr -d '\n'
+}
+m1state_same() {
+  local a="$1" b="$2" s f n=0; shift 2
+  for s in "$@"; do
+    f="$(m1state_of "$a" "$s")"
+    [ -z "$f" ] || [ ! -f "$b/phase-cost-state/$f" ] || [ "$(jq -S . "$a/phase-cost-state/$f")" != "$(jq -S . "$b/phase-cost-state/$f")" ] || n=$((n + 1))
+  done
+  echo "$n"
+}
+
+LG="$M1/lg"; mkdir -p "$LG"
+m1lg_write "$LG" "a b c d"
+LGB="$LG/store"
+m1run "$LGB" "$LG/projects"
+m1_to_legacy "$LGB"
+LG_C_BEFORE="$(m1sess_rows "$LGB" $LCT agent-lc)"
+m1lg_grow "$LG" "a b c"
+rc=0; m1run "$LGB" "$LG/projects" || rc=$?
+LGF="$LG/fresh"; m1run "$LGF" "$LG/projects"
+check "phase-cost: legacy-state-growing-unit: the run with a present growing legacy unit and a missing source exits 0" "0" "$rc"
+check "phase-cost: legacy-state-growing-unit: the rebuilt present units' rows equal a fresh v2 collector's (a, its subagent and b)" "$(m1sess_rows "$LGF" $LAT agent-la $LBT)" "$(m1sess_rows "$LGB" $LAT agent-la $LBT)"
+check "phase-cost: legacy-state-growing-unit: the rebuilt present units' states equal fresh v2 states (3 of 3, schema 2)" "3/2" \
+  "$(m1state_same "$LGF" "$LGB" $LAT agent-la $LBT)/$(m1schema_of "$LGB" $LAT agent-la $LBT)"
+check "phase-cost: legacy-state-growing-unit: the corrected earlier call counts once in the rebuilt unit (a1 at 900000, a2 100000, a3 10000)" "1010000" \
+  "$(m1rows "$LGB" | jq -rs --arg s $LAT '[.[] | select(.session == $s) | .out] | add')"
+check "phase-cost: legacy-state-growing-unit: exactly one unit stays pending, and the checkpoint says so" "1" "$(jq -r '.pending_legacy_files' "$LGB/build-checkpoint.json")"
+check "phase-cost: legacy-state-growing-unit: the pending unit keeps its last rows and its legacy states" "yes/legacy" \
+  "$([ "$(m1sess_rows "$LGB" $LCT agent-lc)" = "$LG_C_BEFORE" ] && echo yes || echo no)/$(m1schema_of "$LGB" $LCT agent-lc)"
+check "phase-cost: legacy-state-growing-unit: an unchanged legacy unit (d) is left as it was" "legacy" "$(m1schema_of "$LGB" $LDT)"
+check "phase-cost: legacy-state-growing-unit: the run keeps no lock" "no" "$([ -d "$LGB/.lock" ] && echo yes || echo no)"
+
+MS="$M1/ms"; mkdir -p "$MS"
+m1lg_write "$MS" "b c"
+MSB="$MS/store"
+m1run "$MSB" "$MS/projects"
+m1_to_legacy "$MSB"
+m1lg_grow "$MS" "b c"
+rc=0; m1run "$MSB" "$MS/projects" || rc=$?
+MSF="$MS/fresh"; m1run "$MSF" "$MS/projects"
+check "missing-source-skips-one-unit: the run continues (rc 0), exactly one unit is pending" "0/1" "$rc/$(jq -r '.pending_legacy_files // 0' "$MSB/build-checkpoint.json")"
+check "missing-source-skips-one-unit: the present growing unit equals a fresh v2 collector's rows and state" "$(m1sess_rows "$MSF" $LBT)/1" "$(m1sess_rows "$MSB" $LBT)/$(m1state_same "$MSF" "$MSB" $LBT)"
+check "missing-source-skips-one-unit: the unit with the missing source keeps its calls (no zero row closes them)" "1/1" \
+  "$(m1rows "$MSB" | jq -rs --arg t $LCT '"\([.[] | select(.session == "agent-lc" and .calls == 1)] | length)/\([.[] | select(.session == $t and .calls == 1)] | length)"')"
+
+MTP="$M1/t/projects"; mkdir -p "$MTP/slug"; ST1=aaaaaaaa-4444-4444-8444-0000000000e1
+{ echo '{"type":"custom-title","customTitle":"HIMMEL-9915-N6-TITLESENTINEL"}'
+  echo '{"type":"ai-title","aiTitle":"AITITLESENTINEL"}'
+  jq -nc '{type:"user",message:{content:"prompt BODYSENTINEL"}}'
+  brow $ST1 2026-11-04T10:00:00.000Z t1 "reply BODYSENTINEL"; } > "$MTP/slug/$ST1.jsonl"
+mkdir -p "$MTP/slug/$ST1/subagents"
+{ jq -nc '{type:"user",message:{content:"subagent prompt BODYSENTINEL"}}'; brow $ST1 2026-11-04T10:00:05.000Z t2 "sub BODYSENTINEL"; } > "$MTP/slug/$ST1/subagents/agent-t1.jsonl"
+echo '{"agentType":"general-purpose"}' > "$MTP/slug/$ST1/subagents/agent-t1.meta.json"
+m1touch "$MTP"
+MTS="$M1/t/store"
+check "phase-cost: state-has-no-text: the run paused after the row append reached" "reached" "$(m1kill "$MTS" "$MTP" rows:1)"
+check "phase-cost: state-has-no-text: the staged journal carries states and emitted maps (2 states, 1 emitted map)" "2/1" \
+  "$(n=0; for p in "$MTS/.commit/states"/*.json; do [ ! -f "$p" ] || n=$((n + 1)); done; echo "$n")/$(n=0; for p in "$MTS/.commit/emitted"/*.json; do [ ! -f "$p" ] || n=$((n + 1)); done; echo "$n")"
+check "phase-cost: state-has-no-text: no title in the staged v2 states, emitted maps or phase-cost rows" "0" \
+  "$({ cat "$MTS/.commit/states"/*.json "$MTS/.commit/emitted"/*.json 2>/dev/null; jq -c 'select(.kind == "phase-cost")' "$MTS/.commit/append.jsonl"; } | grep -c 'TITLESENTINEL' || true)"
+check "phase-cost: state-has-no-text: no message text anywhere in the staged journal" "0" "$(grep -rc 'BODYSENTINEL' "$MTS/.commit" | grep -vc ':0$' || true)"
+rm -f "$MTS/.lock/pid"; rmdir "$MTS/.lock" 2>/dev/null || true
+m1run "$MTS" "$MTP"
+check "phase-cost: state-has-no-text: no message text anywhere in the store" "0" "$(grep -rl 'BODYSENTINEL' "$MTS" | wc -l | tr -d ' ')"
+check "phase-cost: state-has-no-text: no title in the new v2 states, emitted maps or phase-cost rows" "0" \
+  "$({ cat "$MTS/phase-cost-state"/*.json "$MTS/phase-cost-state/emitted"/*.json; jq -c 'select(.kind == "phase-cost")' "$MTS/records.jsonl"; } | grep -c 'TITLESENTINEL' || true)"
+check "phase-cost: state-has-no-text: the legacy checkpoint name column and the per-ticket record keep the title" "yes/yes" \
+  "$(grep -q 'TITLESENTINEL' "$MTS/build-checkpoint.json" && echo yes || echo no)/$([ "$(jq -c 'select(.ticket != null) | .legs[].name' "$MTS/records.jsonl" | grep -c 'TITLESENTINEL' || true)" -gt 0 ] && echo yes || echo no)"
+
+NR="$M1/nr"; mkdir -p "$NR/bin" "$NR/fixnode"
+for t in jq bash cat cp mv mkdir rm rmdir tail head wc tr cut sed grep sort uniq cksum stat xargs basename dirname ls sleep ps ln date mktemp renice ionice sha256sum shasum env uname chmod printf; do
+  p="$(command -v "$t" 2>/dev/null || true)"; case "$p" in /*) ln -s "$p" "$NR/bin/$t" ;; esac
+done
+printf '#!/bin/sh\necho ran >> "%s/node.log"\nexec "%s" "$@"\n' "$NR" "$(command -v node)" > "$NR/fixnode/node"; chmod +x "$NR/fixnode/node"
+NRP="$M1/a/projects"
+rc=0; HOME="$M1H" TZ=UTC PATH="$NR/bin" RESOLVE_NODE_PROBE_DIRS="$NR/fixnode" "$NR/bin/bash" "$COMPUTE" --projects "$NRP" --ledger "$WL" --store "$NR/store-ok" --budget-seconds 0 >/dev/null 2>"$NR/ok.err" || rc=$?
+check "node-resolver-without-path: a PATH without node still builds the rows through the resolver's absolute node" "0/yes/1" \
+  "$rc/$([ -s "$NR/node.log" ] && echo yes || echo no)/$(HOME="$M1H" bash "$READ" --store "$NR/store-ok" --phase-cost 2>/dev/null | jq -s '[.[] | select(.calls != 0)] | length')"
+rc=0; HOME="$M1H" TZ=UTC PATH="$NR/bin" RESOLVE_NODE_PROBE_DIRS="" "$NR/bin/bash" "$COMPUTE" --projects "$NRP" --ledger "$WL" --store "$NR/store-none" --budget-seconds 0 >/dev/null 2>"$NR/none.err" || rc=$?
+check "node-resolver-without-path: no node at all fails closed (rc 1) before the store, its lock or any write" "1/no" "$rc/$([ -e "$NR/store-none" ] && echo yes || echo no)"
+check "node-resolver-without-path: the refusal names node" "yes" "$(grep -qi 'node' "$NR/none.err" && echo yes || echo no)"
 
 if [ "$FAIL" -eq 0 ]; then echo "PASS"; else echo "FAILED" >&2; exit 1; fi
