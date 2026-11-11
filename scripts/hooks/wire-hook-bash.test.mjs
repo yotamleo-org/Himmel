@@ -396,6 +396,59 @@ test('installs the bus delivery hooks into PostToolUse and SessionStart, dark an
   });
 });
 
+// The Read lifecycle hooks install in their OWN "Read" matcher groups: the
+// recorder under PostToolUse after check-hook-file-parse's group, the failure
+// hook under PostToolUseFailure, which the wirer owns, after detect-token's group.
+test('installs the Read lifecycle hooks into their own Read groups, wired and idempotent', () => {
+  withFixture((fixture) => {
+    const strip = JSON.parse(readFileSync(fixture, 'utf8'));
+    for (const event of ['PostToolUse', 'PostToolUseFailure']) {
+      strip.hooks[event] = strip.hooks[event]
+        .map((group) => ({ ...group, hooks: group.hooks.filter((h) => !/(record-read-clamp|read-clamp-failure)\.sh/.test(h.command ?? '')) }))
+        .filter((group) => group.hooks.length > 0);
+    }
+    writeFileSync(fixture, `${JSON.stringify(strip, null, 2)}\n`);
+
+    const result = invoke(fixture);
+    assert.equal(result.status, 0, result.stderr);
+    const after = JSON.parse(readFileSync(fixture, 'utf8'));
+    const groupOf = (event, name) => after.hooks[event].findIndex((g) => g.hooks.some((h) => (h.command ?? '').includes(name)));
+    const post = groupOf('PostToolUse', 'record-read-clamp.sh');
+    assert.notEqual(post, -1, 'record-read-clamp.sh installed under PostToolUse');
+    assert.equal(after.hooks.PostToolUse[post].matcher, 'Read', 'the recorder fires on Read only');
+    assert.equal(after.hooks.PostToolUse[post].hooks.length, 1, 'the recorder has a group of its own');
+    assert.equal(post - 1, groupOf('PostToolUse', 'check-hook-file-parse.sh'), 'right after the check-hook-file-parse group');
+    const failure = groupOf('PostToolUseFailure', 'read-clamp-failure.sh');
+    assert.notEqual(failure, -1, 'read-clamp-failure.sh installed under PostToolUseFailure');
+    assert.equal(after.hooks.PostToolUseFailure[failure].matcher, 'Read');
+    assert.equal(failure - 1, groupOf('PostToolUseFailure', 'detect-token-in-output.sh'), 'right after the detect-token group');
+    for (const [event, idx] of [['PostToolUse', post], ['PostToolUseFailure', failure]]) {
+      assert.ok(after.hooks[event][idx].hooks[0].command.startsWith(`${WIRED_LAUNCHER} `), `${event} entry is routed through the launcher`);
+    }
+    const everywhere = commands(after).filter((c) => /(record-read-clamp|read-clamp-failure)\.sh/.test(c ?? ''));
+    assert.equal(everywhere.length, 2, 'each lifecycle hook is installed exactly once');
+    const ledger = (s) => JSON.stringify(s.hooks.PostToolUseFailure.filter((g) => g.hooks.some((h) => /shadow-ledger/.test(h.command ?? ''))));
+    assert.equal(ledger(after), ledger(strip), 'the foreign shadow-ledger PostToolUseFailure entry is untouched');
+
+    const again = invoke(fixture);
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(again.stdout, /already wired; no change made/);
+  });
+});
+
+test('owns PostToolUseFailure: an impostor scripts/hooks/*.sh script there is refused', () => {
+  withFixture((fixture) => {
+    const settings = JSON.parse(readFileSync(fixture, 'utf8'));
+    settings.hooks.PostToolUseFailure.push({ matcher: 'Read', hooks: [{ type: 'command', command: 'bash $CLAUDE_PROJECT_DIR/scripts/hooks/totally-rogue.sh' }] });
+    writeFileSync(fixture, `${JSON.stringify(settings, null, 2)}\n`);
+    const before = readFileSync(fixture, 'utf8');
+    const result = invoke(fixture);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /PostToolUseFailure.*unrecognised hook script: totally-rogue\.sh/);
+    assert.equal(readFileSync(fixture, 'utf8'), before, 'nothing written');
+  });
+});
+
 // The PermissionRequest scripts are owned and install under
 // PermissionRequest (INSTALL_EVENT), after gate-shapes, never under SessionStart.
 test('installs the AFK prompt hook under PermissionRequest after gate-shapes, wired', () => {

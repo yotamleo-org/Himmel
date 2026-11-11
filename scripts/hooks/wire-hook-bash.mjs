@@ -42,7 +42,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // tools. The invariant is unchanged in strength: the flattened owned scripts,
 // in document order, must equal this list EXACTLY — same count, same order, no
 // extras, no unexpected repeats.
-const OWNED_EVENTS = Object.freeze(new Set(['PreToolUse', 'PostToolUse', 'SessionStart', 'PermissionRequest']));
+const OWNED_EVENTS = Object.freeze(new Set(['PreToolUse', 'PostToolUse', 'SessionStart', 'PostToolUseFailure', 'PermissionRequest']));
 export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // PreToolUse `Bash` chain.
   // FIRST, so the stuck-playbook pointer is what the agent reads on a third identical
@@ -203,6 +203,9 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // parse guard, appended after the trust ledger's own (foreign) entry in that
   // block, so the flattened OWNED order below still matches document order.
   'check-hook-file-parse.sh',
+  // PostToolUse `Read`, a group of its own: the success half of read-clamp.sh's
+  // Read lifecycle; consumes a range only after a complete, unchanged Read.
+  'record-read-clamp.sh',
   // PostToolUse `*`: pages the operator when a GitHub token
   // shows up in any tool call or result. Detection twin of
   // block-read-secrets.sh; bash-regex fast path, fails open.
@@ -239,6 +242,13 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // Its own group, not the --chain above, because it fires only on
   // "compact", not on every SessionStart source.
   'chief-compact-reinject.sh',
+  // PostToolUseFailure `*`: the failure-side twin of the PostToolUse token
+  // detector (it sat there hand-wired before this event was owned). The
+  // trust ledger's own postfail entry ahead of it stays foreign.
+  'detect-token-in-output.sh',
+  // PostToolUseFailure `Read`, a group of its own: drops read-clamp.sh's pending
+  // record for a failed Read and names a smaller native Read on an oversize error.
+  'read-clamp-failure.sh',
   // PermissionRequest, one group after the trust ledger's own (its permreq entry is foreign).
   // gate-shapes allows an exact gate shape in a worker worktree; the AFK hook denies a
   // Bash prompt with the afk-run line only while the root helper reports the run kind on, and leaves
@@ -480,8 +490,18 @@ function bareCommand(script) {
 // named here installs under SessionStart.
 const INSTALL_EVENT = Object.freeze({
   'bus-deliver-hook.sh': 'PostToolUse',
+  'record-read-clamp.sh': 'PostToolUse',
+  'read-clamp-failure.sh': 'PostToolUseFailure',
   'permission-allow-gate-shapes.sh': 'PermissionRequest',
   'afk-prompt-to-request.sh': 'PermissionRequest',
+});
+
+// Scripts installed in a NEW group of their own, with this matcher, right after
+// the anchor's group, rather than spliced into the anchor's group (whose
+// matcher may be `*`). Any other script joins its anchor's group.
+const INSTALL_MATCHER = Object.freeze({
+  'record-read-clamp.sh': 'Read',
+  'read-clamp-failure.sh': 'Read',
 });
 
 function missingOwnedScripts(entries) {
@@ -601,7 +621,14 @@ function installMissingEntries(text, missing, event = 'SessionStart') {
     // an explicit, bounded timeout (10/15/30 here). An installed entry WITHOUT
     // one defaults to the harness's 600s, so a hung advisory could block session
     // startup for ten minutes. Bound it like its siblings.
-    anchor.group.hooks.splice(anchor.hookIndex + 1, 0, { type: 'command', command: bareCommand(script), timeout: 30 });
+    const entry = { type: 'command', command: bareCommand(script), timeout: 30 };
+    if (INSTALL_MATCHER[script]) {
+      const group = { matcher: INSTALL_MATCHER[script], hooks: [entry] };
+      groups.splice(groups.indexOf(anchor.group) + 1, 0, group);
+      scoped.push({ group, hookIndex: 0, script });
+      continue;
+    }
+    anchor.group.hooks.splice(anchor.hookIndex + 1, 0, entry);
     // Later entries in the SAME group shift by one; register the new entry
     // itself so a SECOND missing script (processed next) can anchor on it.
     scoped.forEach((e) => { if (e.group === anchor.group && e.hookIndex > anchor.hookIndex) e.hookIndex += 1; });
@@ -648,15 +675,19 @@ function pruneInsertedEntries(settings, insertedScripts) {
   const toPrune = new Set(insertedScripts);
   for (const event of Object.keys(copy.hooks || {})) {
     if (!OWNED_EVENTS.has(event)) continue;
-    for (const group of copy.hooks[event]) {
-      if (!Array.isArray(group.hooks)) continue;
+    copy.hooks[event] = copy.hooks[event].filter((group) => {
+      if (!Array.isArray(group.hooks)) return true;
+      const had = group.hooks.length;
       group.hooks = group.hooks.filter((hook) => {
         const c = classifyCommand(hook && hook.command);
         // Installed entries are always single-script (installMissingEntries
         // writes the bare form), so a chain can never be pruned by this gate.
         return !(c.kind === 'owned' && c.scripts.length === 1 && toPrune.has(c.scripts[0]));
       });
-    }
+      // A group that held only installed entries is an INSTALL_MATCHER group
+      // this run created: drop it whole. A group that was already empty stays.
+      return !(had > 0 && group.hooks.length === 0);
+    });
   }
   return copy;
 }
@@ -694,7 +725,7 @@ export function rewriteSettingsText(text) {
   // "installed N" message needed. text/before/entries are re-derived from the
   // post-install text for everything that follows.
   let workingText = text;
-  for (const event of ['PostToolUse', 'SessionStart', 'PermissionRequest']) {
+  for (const event of ['PostToolUse', 'SessionStart', 'PostToolUseFailure', 'PermissionRequest']) {
     const forEvent = missing.filter((s) => (INSTALL_EVENT[s] || 'SessionStart') === event);
     if (forEvent.length > 0) workingText = installMissingEntries(workingText, forEvent, event);
   }

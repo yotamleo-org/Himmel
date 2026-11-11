@@ -21,6 +21,14 @@ export type AgentInfo = {
   parentToolCallId?: string; // the Agent call that spawned a subagent
 };
 export type Failure = "denied" | "suite" | "blocked" | "error";
+// One per issued call, a closed partition. ok: ran and reported success; ok_blocked: succeeded while reporting
+// BLOCKED; error: the tool reported an error (a suite failure included; not proof the program ran); denied: a
+// known refusal; no_verdict: the auto-mode classifier gave no verdict, so the call never ran; interrupted: cut off,
+// may have partly run; unknown: no result, or legacy data whose meaning is not established. A call with no result
+// event has no outcome on the stream: whoever folds the stream finalizes it (interrupted on a cancelled turn, else
+// unknown), never ok.
+export type ToolOutcome = "ok" | "ok_blocked" | "error" | "denied" | "no_verdict" | "interrupted" | "unknown";
+export const TOOL_OUTCOMES: readonly ToolOutcome[] = ["ok", "ok_blocked", "error", "denied", "no_verdict", "interrupted", "unknown"];
 
 export type RunStartedEvent = Base & { type: "RUN_STARTED"; threadId: string; runId: string };
 export type RunFinishedEvent = Base & {
@@ -58,8 +66,9 @@ export type ToolCallResultEvent = Base & {
   toolCallId: string;
   content: string;
   role: "tool";
-  isError?: true; // extra field (the schema is loose): the tool reported a failure
-  failure?: Failure; // set whenever isError is, and on a call that reports BLOCKED
+  isError?: true; // extra field (the schema is loose): the raw is_error flag, a detail field only
+  failure?: Failure; // detail of an error or denied outcome, and of a call that reports BLOCKED; never on no_verdict or interrupted
+  outcome?: ToolOutcome; // the canonical result: consumers count this, never re-derive it from isError/failure
   subagent?: AgentInfo; // an Agent call's result: the subagent it ran, when only the result named it
 };
 

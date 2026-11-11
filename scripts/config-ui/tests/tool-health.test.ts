@@ -486,7 +486,7 @@ test("overview-call-total-is-the-tool-attempt-sum", async () => {
 test("overview-failure-rate-is-weighted", async () => {
   const html = await page(readP(seedP()));
   expect(kpi(html, "failed")).toBe("8");
-  expect(kpiSub(html, "failed")).toContain("3 errors · 5 denied");
+  expect(kpiSub(html, "failed")).toContain("3 tool errors · 5 denied");
   expect(kpi(html, "rate")).toBe("11.4%");
   expect(kpiSub(html, "rate")).toContain("8 of 70 calls");
 });
@@ -506,7 +506,7 @@ test("overview-recovery-keeps-unknown-class-outcomes-out", async () => {
   const html = await page(data);
   expect(recoveryNote(html)).toContain("25.0% (1 of 4 known · 4 unclassified)");
   for (const t of data.tools) { t.known = 0; t.recovered = 0; }
-  expect(recoveryNote(await page(data))).toContain("Recovery —");
+  expect(recoveryNote(await page(data))).toContain("Changed/stopped after refusal —");
 });
 
 test("overview-daily-failures-reconcile", async () => {
@@ -838,18 +838,19 @@ const runRow = (n: number, members: any[], over: any = {}) => ({ ts: `${C_DAY}T1
   callId: `toolu_C${n}`, tool: "Read", invocation: INV(n), exit: 2, elapsed: 20, members, ...over });
 const WINDOW_LINE = "must-run guard did not evaluate this call within its 15000ms window; failing closed";
 // Fixture T: three secrets-guard refusals (a rule denial, an ETIMEDOUT deny, an entry-deadline deny) and one advisory ENOBUFS skip.
-function chainT() {
+function chainT(session = "sess-chain") {
+  const ss = (over: any = {}) => ({ sessionId: session, ...over }), rs = (over: any = {}) => ({ session, ...over });
   return {
     skip: { state: "ok", rows: [
-      skipRow(2, { denyLine: WINDOW_LINE }),
-      skipRow(3, { reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0, starved: true, denyLine: "must-run guard was left no safe window before the entry deadline; failing closed" }),
-      skipRow(4, { action: "skip", member: "read-clamp.sh", reason: "ENOBUFS", elapsed: 321, budget: 8000 }),
+      skipRow(2, ss({ denyLine: WINDOW_LINE })),
+      skipRow(3, ss({ reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0, starved: true, denyLine: "must-run guard was left no safe window before the entry deadline; failing closed" })),
+      skipRow(4, ss({ action: "skip", member: "read-clamp.sh", reason: "ENOBUFS", elapsed: 321, budget: 8000 })),
     ] },
     run: { state: "ok", rows: [
-      runRow(1, [runMember({ denyLine: "blocked: a secret-shaped path" })]),
-      runRow(2, [runMember({ reason: "ETIMEDOUT", elapsed: 15072, budget: 15000, denyLine: WINDOW_LINE })]),
-      runRow(3, [runMember({ reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0, denyLine: "must-run guard was left no safe window before the entry deadline; failing closed" })]),
-      runRow(4, [runMember({ member: "read-clamp.sh", outcome: "skip", reason: "ENOBUFS", elapsed: 321, budget: 8000 })], { exit: 0 }),
+      runRow(1, [runMember({ denyLine: "blocked: a secret-shaped path" })], rs()),
+      runRow(2, [runMember({ reason: "ETIMEDOUT", elapsed: 15072, budget: 15000, denyLine: WINDOW_LINE })], rs()),
+      runRow(3, [runMember({ reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0, denyLine: "must-run guard was left no safe window before the entry deadline; failing closed" })], rs()),
+      runRow(4, [runMember({ member: "read-clamp.sh", outcome: "skip", reason: "ENOBUFS", elapsed: 321, budget: 8000 })], rs({ exit: 0 })),
     ] },
   };
 }
@@ -981,9 +982,9 @@ const evCells = (html: string) => Object.fromEntries(cells(html, "data-chain-eve
 const stat = (html: string, id: string) => (new RegExp(`data-stat="${id}">([^<]*)<`).exec(html) || [])[1];
 
 test("the guard drill-in says why it refused: a rule, a timeout and a guard that never started are separate rows", async () => {
-  const html = await chainPage(chainT(), GUARD);
+  const html = await chainPage(chainT(bSession(1)), GUARD);
   const why = Object.fromEntries(cells(html, "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
-  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "1", buffer: "0", other: "0", before_logged: "0", not_established: "0" });
+  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "1", buffer: "0", other: "0", before_logged: "0", not_joinable: "0", not_established: "0" });
   const ev = evCells(html);
   expect(Object.keys(ev).sort()).toEqual(["toolu_C1", "toolu_C2", "toolu_C3"]);
   // [When, Outcome, Reason, Guard, Tool, Time used, Refusal line, Call]
@@ -1000,7 +1001,7 @@ test("the guard drill-in says why it refused: a rule, a timeout and a guard that
 // Fixture G: six counted refusals of one guard. Two are older than the first run-log row, two have a chain row (a rule and a
 // timeout), one names a call the chain never saw, one carries no call id. The chain also holds a refusal that no counted refusal names.
 const G = "denied/block-read-secrets";
-const gapData = (chain: any = chainT()) => roll([1, 2, 3, 4].map((n, i) => bEval(n, [bTool("Read", 5, { [G]: [2, 2, 1, 1][i] })]))
+const gapData = (chain: any = chainT(bSession(2))) => roll([1, 2, 3, 4].map((n, i) => bEval(n, [bTool("Read", 5, { [G]: [2, 2, 1, 1][i] })]))
   , [bFail(1, G, 2, ["toolu_old1", "toolu_old2"], ["2026-10-28T08:00:00Z", "2026-10-28T08:05:00Z"]),
     bFail(2, G, 2, ["toolu_C1", "toolu_C2"], ["2026-10-28T10:30:00Z", "2026-10-28T10:31:00Z"]),
     bFail(3, G, 1, ["toolu_nochain"], ["2026-10-28T10:40:00Z", "2026-10-28T10:40:00Z"]),
@@ -1008,13 +1009,13 @@ const gapData = (chain: any = chainT()) => roll([1, 2, 3, 4].map((n, i) => bEval
 
 test("guard-reason-rows-plus-no-reason-counts-equal-refused", async () => {
   const gap = guardOf(gapData(), G).reason_gap;
-  expect(gap).toMatchObject({ refused: 6, with_reason: 2, before_reasons_logged: 2, not_established: 2, unmatched_chain: 1, run_log_start: "2026-10-28T10:00:01.000Z" });
+  expect(gap).toMatchObject({ refused: 6, with_reason: 2, before_reasons_logged: 2, not_joinable: 1, not_established: 1, unmatched_chain: 1, run_log_start: "2026-10-28T10:00:01.000Z" });
   expect(gap.by_reason).toEqual({ rule: 1, timeout: 1, deadline: 0, buffer: 0, other: 0 });
-  expect(Object.values(gap.by_reason).reduce((n: number, v: any) => n + v, 0) + gap.before_reasons_logged + gap.not_established).toBe(gap.refused);
+  expect(Object.values(gap.by_reason).reduce((n: number, v: any) => n + v, 0) + gap.before_reasons_logged + gap.not_joinable + gap.not_established).toBe(gap.refused);
   // The page shows the same rows and the two labelled residuals, and they add up to the Refused card.
   const html = await page(gapData(), GUARD);
   const why = Object.fromEntries(cells(html, "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
-  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "0", buffer: "0", other: "0", before_logged: "2", not_established: "2" });
+  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "0", buffer: "0", other: "0", before_logged: "2", not_joinable: "1", not_established: "1" });
   expect(Object.values(why).reduce((n: number, v: any) => n + Number(v), 0)).toBe(6);
   expect(html).toContain("Recorded before reasons were logged");
   expect(html).toContain("No reason row, cause not established");
@@ -1028,7 +1029,7 @@ test("the reason split is unknown, never zero, when the run log cannot be read",
   expect(guardOf(gapData(null), G).reason_gap).toBeNull();
   // Run log present but empty: nothing is known to have started, so no refusal is called "before reasons were logged".
   const empty = guardOf(gapData({ skip: { state: "ok", rows: [] }, run: { state: "ok", rows: [] } }), G).reason_gap;
-  expect(empty).toMatchObject({ refused: 6, with_reason: 0, before_reasons_logged: 0, not_established: 6, run_log_start: null });
+  expect(empty).toMatchObject({ refused: 6, with_reason: 0, before_reasons_logged: 0, not_joinable: 1, not_established: 5, run_log_start: null });
 });
 
 test("the recent-events table keeps a word whole in its narrow columns and lets the refusal line and call id take the wrapping", async () => {
@@ -1133,8 +1134,8 @@ test("a call drawer carries the exact call id, the session and what is not recor
   expect(drawer).toContain("toolu_C2");
   expect(drawer).toContain(INV(2));
   expect(drawer).toContain(`href="/agui/#t=t&amp;run=${sid}"`);
-  expect(drawer).toContain("Recovery");
-  expect(drawer).toMatch(/Recovery<\/dt><dd>[^<]*not recorded/);
+  expect(drawer).toContain("Changed/stopped after refusal");
+  expect(drawer).toMatch(/Changed\/stopped after refusal<\/dt><dd>[^<]*not recorded/);
   const odd = await chainPage({ skip: { state: "ok", rows: [skipRow(2, { sessionId: "sess-chain" })] }, run: { state: "ok", rows: [] } }, GUARD);
   expect(odd).toContain("<code>sess-chain</code>");
 });
@@ -1553,7 +1554,7 @@ test("a BLOCKED SendMessage is a blocked report, not a SendMessage failure", () 
 test("the Failed card names blocked reports apart from errors and denials", async () => {
   const data = readP(seedP());
   const shown = { ...data, tools: data.tools.map((t: any, i: number) => (i === 0 ? { ...t, blocked: 4 } : t)) };
-  expect(kpiSub(await page(shown), "failed")).toContain("3 errors · 5 denied · 4 blocked reports (not failures)");
+  expect(kpiSub(await page(shown), "failed")).toContain("3 tool errors · 5 denied · 4 blocked reports (not failures)");
   expect(kpiSub(await page(data), "failed")).not.toContain("blocked");
 });
 
@@ -1579,6 +1580,38 @@ test("launches refused are counted by cause", () => {
     { cause: "other", count: 1, rc: { "3": 1 } },
   ]);
   expect(l.recent[0]).toEqual({ ts: "2026-10-07T13:00:00Z", name: "HIMMEL-1-N1", cause: "bus-register", rc: 2, line: null });
+});
+
+const att = (id: string, outcome: string, over: any = {}) => ({ v: 2, ts: "2026-10-07T12:00:00Z", host: "h", source: "headed-arm-worker", kind: "launch-attempt", name: `W-${id}`,
+  attempt_id: id, phase: outcome === "attempt-started" ? "unknown" : "handoff", outcome, cause: "headed-arm", rc: outcome === "attempt-started" ? null : 0, line: null, ...over });
+test("launch-attempts-are-counted-by-attempt-id-not-by-row", () => {
+  const rows = [
+    att("a1", "attempt-started"), att("a1", "launched"),
+    att("a2", "attempt-started"), att("a2", "already-running"),
+    att("a3", "attempt-started"), att("a3", "refused", { phase: "bus-registration", cause: "bus-register", rc: 2 }),
+    att("a3", "refused", { phase: "bus-registration", cause: "bus-register", rc: 2 }), // a replayed terminal row
+    att("a4", "attempt-started"), att("a4", "indeterminate", { cause: "konsole-up-claude-unseen", rc: 7 }),
+    att("a5", "attempt-started"), // killed: no terminal row
+    att("a6", "attempt-started"), att("a6", "postlaunch-error", { phase: "manifest", cause: "manifest", rc: 1 }),
+    launchRow({ ts: "2026-10-07T11:00:00Z", cause: "fleet-cap", rc: 10 }), // a v1 refusal
+  ];
+  const l = read(seedLaunches(rows)).launches_refused;
+  expect(l.attempts).toEqual({ total: 6, by_outcome: { launched: 1, "already-running": 1, refused: 1, indeterminate: 1, "postlaunch-error": 1, unknown: 1 } });
+  expect(l.legacy_rows).toBe(1);
+  expect(l.total).toBe(2);
+  expect(l.by_cause).toEqual([{ cause: "bus-register", count: 1, rc: { "2": 1 } }, { cause: "fleet-cap", count: 1, rc: { "10": 1 } }]);
+  expect(l.skipped).toBe(0);
+});
+test("launch-attempt-rows-are-validated-too", () => {
+  const bad = [JSON.stringify(att("x", "launched", { attempt_id: 7 })), JSON.stringify(att("x", "exploded")), JSON.stringify(att("x", "refused", { phase: "nowhere" })), JSON.stringify(att("x", "refused", { rc: "2" }))];
+  expect(read(seedLaunches([], bad)).launches_refused).toMatchObject({ total: 0, skipped: bad.length });
+});
+test("launch-attempts-show-on-the-page-with-their-own-denominator", async () => {
+  const html = await page(read(seedLaunches([att("a1", "attempt-started"), att("a1", "launched"), att("a2", "attempt-started")])));
+  const note = (/<p class="sub" data-launch-attempts>([^<]*)</.exec(html) || [])[1] || "";
+  expect(note).toContain("2 launch attempts");
+  expect(note).toContain("1 launched");
+  expect(note).toContain("1 unknown");
 });
 
 test("launch rows are validated field by field", () => {
@@ -1689,4 +1722,113 @@ test("the launches box escapes every value", async () => {
   expect(html).not.toContain(evil);
   expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
   expect(html).not.toContain(`<b>"&`);
+});
+
+const OUTC = { ok: 5, ok_blocked: 1, error: 3, denied: 1, no_verdict: 1, interrupted: 2, unknown: 1 };
+const oRow = (session: string, digest_v: number, health: any[]) => ({ eval: "leg-trajectory", run_id: session, status: "ok", lane: "native", model: "m",
+  ts: "2026-11-09T12:00:00Z", config: { digest_v }, meta: { started_ts: Date.parse("2026-11-09T12:00:00Z"), tool_health: health } });
+const oHealth = (outcomes?: Record<string, number>) => ({ agent: { id: "main", model: "m" }, tool: "Bash", calls: 14, failures: 4, errors: 3, denials: 1,
+  classes: { "error/Bash": 3, "denied/read-clamp": 1 }, ...(outcomes ? { outcomes } : {}) });
+const O_NOW = Date.parse("2026-11-09T23:00:00Z"), O_Q = new URLSearchParams({ since: "2026-11-09" });
+test("outcome-partition-sums-to-calls-across-the-rollup", () => {
+  const r = rollupToolHealth([oRow("s1", 3, [oHealth(OUTC)]), oRow("s2", 3, [oHealth(OUTC)])], [], O_Q, O_NOW);
+  const bash = r.tools.find((t: any) => t.tool === "Bash");
+  expect(bash.outcomes).toEqual({ ok: 10, ok_blocked: 2, error: 6, denied: 2, no_verdict: 2, interrupted: 4, unknown: 2 });
+  expect(Object.values(bash.outcomes as Record<string, number>).reduce((a, b) => a + b, 0)).toBe(bash.calls);
+  expect(r.outcomes).toEqual(bash.outcomes);
+  expect(r.outcome_coverage).toEqual({ sessions: 2, with_partition: 2, without_partition: 0, comparable: true });
+  expect(r.definitions).toEqual({ digest_v: { "3": 2 } });
+  expect(bash).toMatchObject({ retry_known: bash.known, retry_changed_or_stopped: bash.recovered });
+});
+test("outcome-partition-legacy-rows-are-unknown-not-zero", () => {
+  const r = rollupToolHealth([oRow("s1", 3, [oHealth(OUTC)]), oRow("s2", 2, [oHealth()])], [], O_Q, O_NOW);
+  const bash = r.tools.find((t: any) => t.tool === "Bash");
+  expect(bash.outcomes).toBeNull();
+  expect(r.outcomes).toBeNull();
+  expect(r.outcome_coverage).toEqual({ sessions: 2, with_partition: 1, without_partition: 1, comparable: false });
+  expect(r.definitions).toEqual({ digest_v: { "2": 1, "3": 1 } });
+  expect(bash.failures).toBe(8);
+});
+test("outcome-partition-a-row-whose-outcomes-do-not-sum-is-not-counted", () => {
+  const r = rollupToolHealth([oRow("s1", 3, [oHealth({ ...OUTC, ok: 99 })])], [], O_Q, O_NOW);
+  expect(r.tools.find((t: any) => t.tool === "Bash").outcomes).toBeNull();
+  expect(r.outcome_coverage.comparable).toBe(false);
+});
+test("outcome-partition-the-daily-record-carries-it", () => {
+  const rec = buildRecord(rollupToolHealth([oRow("s1", 3, [oHealth(OUTC)])], [], O_Q, O_NOW), { day: "2026-11-09" }) as any;
+  expect(rec.config.count_definition_version).toBe(2);
+  expect(rec.meta.record_version).toBe(2);
+  expect(rec.cases["tool:Bash"]).toMatchObject(Object.fromEntries(Object.entries(OUTC).map(([k, v]) => [`outcome_${k}`, v])));
+  expect(rec.metrics["outcome.no_verdict"]).toBe(1);
+  expect(rec.metrics["tool.Bash.outcome.interrupted"]).toBe(2);
+  const legacy = buildRecord(rollupToolHealth([oRow("s2", 2, [oHealth()])], [], O_Q, O_NOW), { day: "2026-11-09" }) as any;
+  expect(legacy.cases["tool:Bash"].outcome_no_verdict).toBeNull();
+  expect(legacy.metrics["outcome.no_verdict"]).toBeNull();
+  expect(legacy.meta.audit.missing_sources).toContain("outcome partition");
+});
+test("outcome-partition-the-page-shows-not-run-and-changed-or-stopped", async () => {
+  const html = await page(rollupToolHealth([oRow("s1", 3, [oHealth(OUTC)])], [], O_Q, O_NOW));
+  const note = (/<p class="sub" data-note="outcomes">([^<]*)</.exec(html) || [])[1] || "";
+  expect(note).toContain("1 not run (no verdict)");
+  expect(note).toContain("2 interrupted");
+  expect(note).toContain("1 no result");
+  expect(note).toContain("3 tool errors");
+  expect(html).toContain("Changed/stopped after refusal");
+  expect(html).not.toContain(">Recovery<");
+  const legacy = await page(rollupToolHealth([oRow("s2", 2, [oHealth()])], [], O_Q, O_NOW));
+  expect((/<p class="sub" data-note="outcomes">([^<]*)</.exec(legacy) || [])[1]).toContain("not recorded for 1 of 1 sessions");
+});
+
+const pRow = (tf?: any[]) => { const r: any = bEval(9, [bTool("Bash", 10, { "error/Bash": 2 })]); if (tf) r.meta.tool_failures = tf; return r; };
+const pFail = (cls: string, count: number) => ({ agent, class: cls, failure: cls.split("/")[0], count, recovered: null, identical_retry: null, first_ts: null, last_ts: null, tool_call_ids: [] });
+test("paired-snapshot-the-eval-row-failures-win-over-the-ledger", () => {
+  const ledger = [bFail(9, "error/Bash", 2), bFail(9, "error/TaskStop", 1)];
+  const d = roll([pRow([pFail("error/Bash", 2)])], ledger);
+  expect(d.class_counts["error/TaskStop"]).toBeUndefined();
+  expect(d.class_counts["error/Bash"]).toBe(2);
+});
+test("paired-snapshot-an-empty-list-is-authoritative-absence", () => {
+  const d = roll([pRow([])], [bFail(9, "error/Bash", 2)]);
+  expect(d.class_counts["error/Bash"]).toBeUndefined();
+});
+test("paired-snapshot-a-row-without-the-field-falls-back-to-the-ledger", () => {
+  const d = roll([pRow()], [bFail(9, "error/Bash", 2)]);
+  expect(d.class_counts["error/Bash"]).toBe(2);
+});
+
+const J = "denied/block-read-secrets", JS = bSession(7);
+const jIds = Array.from({ length: 10 }, (_, i) => `toolu_J${i}`);
+const jTool = (ids: string[], omitted = 0) => ({ ...bTool("Read", 12, { [J]: ids.length + omitted }), denied_calls: ids.map((id) => [id, J, Date.parse("2026-10-28T10:30:00Z")]), denied_calls_captured: ids.length, denied_calls_omitted: omitted });
+const jChain = (ids: string[], session = JS) => ({ skip: { state: "ok", rows: [] }, run: { state: "ok", rows: ids.map((id, i) => runRow(i + 1, [runMember()], { callId: id, session, invocation: INV(i + 1) })) } });
+test("evidence-join-ten-refusals-with-ten-chain-rows-show-ten-reasons", () => {
+  const d = roll([bEval(7, [jTool(jIds)])], [bFail(7, J, 10, jIds.slice(0, 5), ["2026-10-28T10:30:00Z", "2026-10-28T10:31:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain: jChain(jIds) });
+  expect(guardOf(d, J).reason_gap).toMatchObject({ refused: 10, with_reason: 10, not_established: 0, not_joinable: 0 });
+});
+test("evidence-join-a-reused-call-id-in-another-session-does-not-match", () => {
+  const d = roll([bEval(7, [jTool(["toolu_R1"])])], [bFail(7, J, 1, ["toolu_R1"], ["2026-10-28T10:30:00Z", "2026-10-28T10:30:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain: jChain(["toolu_R1"], bSession(8)) });
+  expect(guardOf(d, J).reason_gap).toMatchObject({ refused: 1, with_reason: 0, not_established: 1, unmatched_chain: 1 });
+});
+test("evidence-join-a-capped-sample-is-not-joinable-not-a-missing-log-row", () => {
+  const d = roll([bEval(7, [bTool("Read", 12, { [J]: 4 })])], [bFail(7, J, 4, ["toolu_J0", "toolu_J1"], ["2026-10-28T10:30:00Z", "2026-10-28T10:31:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain: jChain(["toolu_J0"]) });
+  const g = guardOf(d, J).reason_gap;
+  expect(g).toMatchObject({ refused: 4, with_reason: 1, not_established: 1, not_joinable: 2 });
+  expect(g.with_reason + g.before_reasons_logged + g.not_established + g.not_joinable).toBe(g.refused);
+  const t = roll([bEval(7, [jTool(jIds.slice(0, 3), 7)])], [bFail(7, J, 10, jIds.slice(0, 3), ["2026-10-28T10:30:00Z", "2026-10-28T10:31:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain: jChain(jIds) });
+  expect(guardOf(t, J).reason_gap).toMatchObject({ refused: 10, with_reason: 3, not_joinable: 7 });
+  expect(t.coverage.evidence).toMatchObject({ denied_calls_captured: 3, denied_calls_omitted: 7 });
+});
+test("evidence-join-a-duplicate-denied-call-tuple-counts-once", () => {
+  const tool = { ...jTool(["toolu_D1"]), denied_calls: [["toolu_D1", J, 1], ["toolu_D1", J, 1]] };
+  const d = roll([bEval(7, [tool])], [bFail(7, J, 1, ["toolu_D1"], ["2026-10-28T10:30:00Z", "2026-10-28T10:30:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain: jChain(["toolu_D1"]) });
+  expect(guardOf(d, J).reason_gap).toMatchObject({ refused: 1, with_reason: 1 });
+});
+test("source-coverage-names-the-measured-population-and-what-is-not-integrated", async () => {
+  const d = roll([bEval(7, [jTool(jIds)])], [], {});
+  expect(d.coverage.population).toBe("ingested Claude Code journal attempts");
+  expect(d.coverage.not_integrated).toEqual({ codex: { calls: null, rate: null }, t3: { calls: null, rate: null } });
+  expect(d.coverage.newest_session_ts).toBe("2026-10-28T12:00:00.000Z");
+  const html = await page(d);
+  const note = (/<p class="sub" data-note="coverage">([^<]*)</.exec(html) || [])[1] || "";
+  expect(note).toContain("ingested Claude Code journal attempts");
+  expect(note).toContain("native Codex and T3 not integrated");
 });

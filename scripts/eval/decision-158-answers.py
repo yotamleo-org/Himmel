@@ -45,9 +45,24 @@ def put(m, ci, key, k, n):
     ci[key + ".pct"] = wilson(k, n)
 
 
+def current_sessions(rows):
+    """One leg-trajectory row per run_id, by Tool health's rule (the latest ok row, else the latest of any status),
+    paired with the run_id's first ok record time: a refresh or a restamp never adds a session or moves it in time."""
+    pick, first_ok = {}, {}
+    for r in rows:
+        if r["eval"] != "leg-trajectory" or r.get("status") not in ("ok", "partial", "inconclusive"):
+            continue
+        prev = pick.get(r["run_id"])
+        if prev is None or prev["status"] != "ok" or r["status"] == "ok":
+            pick[r["run_id"]] = r
+        if r["status"] == "ok":
+            first_ok.setdefault(r["run_id"], r["ts"])
+    return [(first_ok.get(k, r["ts"]), r) for k, r in pick.items()]
+
+
 def q1(rows, cut, m, ci, notes):
-    seen = [(r["ts"], r["metrics"].get("red_before_green")) for r in rows
-            if r["eval"] == "leg-trajectory" and (r.get("config") or {}).get("trajectory_v") == 2]
+    seen = [(t, r["metrics"].get("red_before_green")) for t, r in current_sessions(rows)
+            if (r.get("config") or {}).get("trajectory_v") == 2]
     seen = [(t, 1 if v in (1, True) else 0) for t, v in seen if v is not None]
     put(m, ci, "q1", sum(v for t, v in seen), len(seen))
     early = [v for t, v in seen if t <= cut]

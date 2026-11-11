@@ -460,6 +460,16 @@
         ]
       },
       {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then command -p sh \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/record-read-clamp.sh\"; else node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/record-read-clamp.sh\"; fi",
+            "timeout": 30
+          }
+        ]
+      },
+      {
         "matcher": "*",
         "hooks": [
           {
@@ -583,6 +593,16 @@
             "type": "command",
             "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then command -p sh \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/detect-token-in-output.sh\"; else node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/detect-token-in-output.sh\"; fi",
             "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then command -p sh \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/read-clamp-failure.sh\"; else node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/read-clamp-failure.sh\"; fi",
+            "timeout": 30
           }
         ]
       }

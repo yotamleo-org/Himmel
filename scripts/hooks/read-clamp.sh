@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # read-clamp.sh — PreToolUse hook (matchers "Read|Grep" and "Bash"): denies a
 # whole-file Read/cat/sed/head of a file over HIMMEL_READ_CLAMP_LINES lines,
-# and denies a repeated Read of the exact same (path, offset, limit) triple,
-# inside a chief-spawned worker-impl session.
+# and denies a repeated Read of the exact same (path, offset, limit) by the same
+# agent of an unchanged file it already read successfully, inside a
+# chief-spawned worker-impl session.
 #
 # WHY: measured over 12 merged-PR workers, repeated Reads of the same
 # file cost ~4.5% of a PR's token bill and whole-file reads ~2.2% (6.7%
@@ -21,12 +22,16 @@
 # fails OPEN on anything it cannot parse or record -- missing jq, malformed
 # stdin, an unrecognised Bash shape, or a runtime dir it cannot create.
 #
-# State: one line per allowed read, appended to
-#   ${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/himmel-read-clamp/<session_id>/reads.tsv
-# as "<path>\t<offset>\t<limit>\t<stamp>" (mirrors the
-# <XDG_RUNTIME_DIR>/himmel-queue-lock/ convention). A missing/uncreatable
-# runtime dir allows the call through with no state written -- this hook
-# never fails closed on its own infrastructure.
+# State: himmel-read-clamp/v2 (scripts/hooks/lib/read-clamp-state.sh). This
+# hook only writes a PENDING record per tool_use_id; record-read-clamp.sh
+# (PostToolUse Read) consumes the range after a complete, unchanged successful
+# Read, and read-clamp-failure.sh (PostToolUseFailure Read) drops it. So a
+# failed, denied or interrupted Read never blocks its own retry, another agent
+# keeps its own reads, and an edited file is readable again. A missing or
+# uncreatable runtime dir, an unhashable file (over 1 MiB, binary, image, PDF,
+# notebook), an extra Read argument (pages, allow_large) or a malformed
+# identity skips duplicate tracking -- this hook never fails closed on its own
+# infrastructure.
 #
 # Bypass: set HIMMEL_READ_CLAMP_OK=1 in the shell that launched the worker to
 # allow one session past the clamp (e.g. re-reading a file after an external
@@ -48,6 +53,12 @@ command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat) || exit 0
 [ -n "$input" ] || exit 0
 
+_rc_dir="${BASH_SOURCE[0]%/*}"
+[ "$_rc_dir" != "${BASH_SOURCE[0]}" ] || _rc_dir=.
+# shellcheck source=scripts/hooks/lib/read-clamp-state.sh
+# shellcheck disable=SC1091
+{ [ -r "$_rc_dir/lib/read-clamp-state.sh" ] && . "$_rc_dir/lib/read-clamp-state.sh"; } 2>/dev/null || exit 0
+
 # 2000 = the Read tool's own page size: a file that fits one ordinary Read is not clamped.
 LIMIT_LINES="${HIMMEL_READ_CLAMP_LINES:-2000}"
 
@@ -63,7 +74,11 @@ row=$(jq -r --arg sep "$SOH" '
     ((.tool_input.offset // "")|tostring|chk) + $sep +
     ((.tool_input.limit // "")|tostring|chk) + $sep +
     ((.tool_input.command // "")|tostring|chk) + $sep +
-    ((.session_id // "")|tostring|chk)
+    ((.session_id // "")|tostring|chk) + $sep +
+    ((.tool_use_id // "")|tostring|chk) + $sep +
+    (.agent_id|type) + $sep +
+    ((.agent_id // "")|tostring|chk) + $sep +
+    ((.tool_input // {}) | if type == "object" then (keys - ["file_path","offset","limit"] | length | tostring) else "x" end)
 ' <<<"$input" 2>/dev/null) || exit 0
 [ -n "$row" ] || exit 0
 
@@ -84,7 +99,11 @@ split_row() {
     head="${row%%"$SOH"*}"; fp=$head; row="${row:${#head}+1}"
     head="${row%%"$SOH"*}"; offset=$head; row="${row:${#head}+1}"
     head="${row%%"$SOH"*}"; limit=$head; row="${row:${#head}+1}"
-    head="${row%%"$SOH"*}"; cmd=$head; session_id="${row:${#head}+1}"
+    head="${row%%"$SOH"*}"; cmd=$head; row="${row:${#head}+1}"
+    head="${row%%"$SOH"*}"; session_id=$head; row="${row:${#head}+1}"
+    head="${row%%"$SOH"*}"; tool_use_id=$head; row="${row:${#head}+1}"
+    head="${row%%"$SOH"*}"; agent_type=$head; row="${row:${#head}+1}"
+    head="${row%%"$SOH"*}"; agent_id=$head; extra_args="${row:${#head}+1}"
 }
 split_row
 
@@ -124,52 +143,21 @@ strip_quotes() {
     printf '%s\n' "$t"
 }
 
-session_state_dir() {
-    [ -n "$session_id" ] || return 1
-    local root="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/himmel-read-clamp"
-    local dir="$root/$session_id"
-    mkdir -p "$dir" 2>/dev/null || return 1
-    [ -d "$dir" ] || return 1
-    printf '%s\n' "$dir"
-}
-
-# already_read STAMP_VAR PATH OFFSET LIMIT STATE_FILE -- sets STAMP_VAR and
-# returns 0 if that exact (path, offset, limit) triple is already recorded.
-# Parsed field-by-field with `cut` rather than `IFS=$'\t' read` -- read's tab
-# splitting collapses consecutive delimiters (same hazard as above), and a
-# whole-file record has empty offset/limit columns.
-already_read() {
-    local _ar_path="$2" _ar_offset="$3" _ar_limit="$4" _ar_state="$5"
-    [ -f "$_ar_state" ] || return 1  # fail-open-ok: existing-but-unreadable state file makes the redirect below open nothing, the loop runs zero times, and the caller treats "not found" as allow — the documented fail-open (this hook never denies on its own infrastructure)
-    local line p o l s
-    while IFS= read -r line; do
-        p=$(cut -f1 <<<"$line")
-        o=$(cut -f2 <<<"$line")
-        l=$(cut -f3 <<<"$line")
-        # shellcheck disable=SC2034 # written via the eval indirect-assignment below, not used directly here
-        s=$(cut -f4 <<<"$line")
-        if [ "$p" = "$_ar_path" ] && [ "$o" = "$_ar_offset" ] && [ "$l" = "$_ar_limit" ]; then
-            eval "$1=\"\$s\""
-            return 0
-        fi
-    done < "$_ar_state"
-    return 1
-}
-
-record_read() {  # $1 = path, $2 = offset, $3 = limit, $4 = state file
-    printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$(date '+%H:%M:%S')" >> "$4"
-}
-
 case "$tool" in
     Read)
         [ -n "$fp" ] || exit 0
-        [ -r "$fp" ] || exit 0  # PreToolUse runs before the Read; a nonexistent or unreadable file may be fixed before a retry -- never record a read that didn't happen (HIMMEL-2993 CR)
-        state_dir=$(session_state_dir) || exit 0
-        state_file="$state_dir/reads.tsv"
+        [ -r "$fp" ] || exit 0
+        [ -n "$session_id" ] || exit 0
+        mkdir -p "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/himmel-read-clamp" 2>/dev/null || exit 0
 
-        if already_read stamp "$fp" "$offset" "$limit" "$state_file"; then
-            # shellcheck disable=SC2154 # stamp is set via already_read's eval indirect-assignment, not directly here
-            echo "⛔ read-clamp: already read (${stamp}); read the range you need or a different range" >&2
+        track=0 key="" chash=""
+        if [ "$extra_args" = 0 ] && ! rc_extension_native "$fp" \
+            && rc_state_init "$session_id" "$agent_type" "$agent_id"; then
+            key=$(rc_key "$fp" "$offset" "$limit") && chash=$(rc_content_hash "$fp") && track=1
+        fi
+
+        if [ "$track" = 1 ] && stamp=$(rc_done_lookup "$key" "$chash"); then
+            echo "⛔ read-clamp: already read this exact range at ${stamp} and the file is unchanged since; refer to that earlier result, or read the range you need or a different range" >&2
             exit 2
         fi
 
@@ -181,7 +169,8 @@ case "$tool" in
             fi
         fi
 
-        record_read "$fp" "$offset" "$limit" "$state_file"
+        [ "$track" = 1 ] && rc_pending_add "$tool_use_id" "$key" "$chash"
+        exit 0
         ;;
 
     Bash)

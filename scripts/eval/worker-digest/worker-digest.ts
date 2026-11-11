@@ -18,12 +18,13 @@ import { basename, join, resolve } from "node:path";
 import { createJournalMapper, MAPPER_SCHEMA, SUITE } from "../../config-ui/agui/journal-mapper.ts";
 import { mergeJournalFiles, sessionFiles } from "../../config-ui/agui/journal-merge.ts";
 import { resolveJournal } from "../../config-ui/agui/sse.ts";
-import type { AgentInfo, AguiEvent } from "../../config-ui/agui/events.ts";
+import { TOOL_OUTCOMES } from "../../config-ui/agui/events.ts";
+import type { AgentInfo, AguiEvent, ToolOutcome } from "../../config-ui/agui/events.ts";
 import { denyLinesByCall, memberOfGuardClass, readChainLogs, rollupChain } from "./chain-incidents.mjs";
 import { cacheReadWeight } from "../../lib/burn-weights.mjs";
 
 const { spawnSync } = Bun;
-const DIGEST_SCHEMA = 2;
+const DIGEST_SCHEMA = 3;
 const LANES = new Set(["native", "claudex", "openrouter", "cloud", "unknown"]);
 const laneEnv = process.env.WORKER_SESSION_LANE || "";
 const lane = LANES.has(laneEnv) ? laneEnv : "unknown";
@@ -114,6 +115,22 @@ const OPENINGS: [RegExp, string][] = [
 ];
 const DENY_OPENING = /^run-hook-with-bash: DENY ([\w.-]+)\.sh\b/;
 const STOP_NOOP = /\bis not running\b|\bNo task found\b/;
+// The native Edit engine's input refusals, counted to see whether the exact-edit procedure is adopted. Instruction
+// only: the class stays error/Edit, so the router sees no new class.
+const EDIT_INPUT: [keyof EditInput, RegExp][] = [
+  ["not_found", /String to replace not found in file/], ["ambiguous", /Found \d+ matches of the string to replace/],
+  ["unchanged", /No changes to make: old_string and new_string are exactly the same/],
+  ["stale", /File has been (?:unexpectedly )?modified since (?:it was )?read/i], ["not_read", /File has not been read yet/],
+];
+type EditInput = { not_found: number; ambiguous: number; unchanged: number; stale: number; not_read: number };
+// zsh's `=` expansion on a cosmetic `echo ====` separator: "(eval):1: === not found".
+const SEPARATOR_ERROR = /(?:^|[\s:])=+ not found\b/m;
+const JUDGE_TYPE = /(^|:)(console-)?judge(-[a-z0-9-]+)?$/;
+const JUDGE_BRIEF = /^[ \t]*JUDGE-BRIEF:[ \t]*[0-9a-f]{16}[ \t]*$/m;
+// Every refused call of a tool row as [call_id, class, ts], so a reason joins per call rather than through the five-id
+// sample. Bounded per row: past either cap a tuple is counted as omitted, never dropped silently.
+const MAX_DENIED_CALLS = 5000, MAX_DENIED_BYTES = 65536;
+const zeroOutcomes = (): Record<ToolOutcome, number> => Object.fromEntries(TOOL_OUTCOMES.map((k) => [k, 0])) as Record<ToolOutcome, number>;
 const CLASSIFIER = /denied by the Claude Code auto mode classifier/;
 const BRACKET = /Reason: \[([^\]\n]{1,80})\]/;
 const TEST_NAME = /[\w./-]*?((?:test-[\w.-]+\.sh)|(?:[\w.-]+\.test\.ts))\b/g;
@@ -387,11 +404,11 @@ async function main() {
   const callDay = new Map<string, string | null>();
   // Time to result per call (RESULT time minus START time) and the API message each call came from, to tell a call run alone from a batch.
   const callStart = new Map<string, number>(), callEnd = new Map<string, number>(), callApi = new Map<string, string>();
-  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; classes: Record<string, number>; bash_calls?: ([string, string, string | null] | [string, string, string | null, number])[]; timing?: { single: number[]; batched: number[]; missing: number; capped?: true } }>();
+  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; outcomes: Record<ToolOutcome, number>; denied_calls: [string, string, number | null][]; denied_calls_captured: number; denied_calls_omitted: number; classes: Record<string, number>; bash_calls?: ([string, string, string | null] | [string, string, string | null, number])[]; timing?: { single: number[]; batched: number[]; missing: number; capped?: true } }>();
   const toolRow = (agent: Agent, tool: string, day: string | null) => {
     const key = `${agent.id}\0${day}\0${tool}`;
     let r = health.get(key);
-    if (!r) { r = { agent, lane, profile: o.profile, day, tool, calls: 0, failures: 0, errors: 0, denials: 0, classes: Object.create(null) }; health.set(key, r); }
+    if (!r) { r = { agent, lane, profile: o.profile, day, tool, calls: 0, failures: 0, errors: 0, denials: 0, outcomes: zeroOutcomes(), denied_calls: [], denied_calls_captured: 0, denied_calls_omitted: 0, classes: Object.create(null) }; health.set(key, r); }
     return r;
   };
 
@@ -419,7 +436,19 @@ async function main() {
       h.failures++;
       h.classes[cls] = (h.classes[cls] ?? 0) + 1;
       if (failure === "error" || failure === "suite") h.errors++;
-      if (failure === "denied") h.denials++;
+      if (failure === "denied") {
+        h.denials++;
+        const ids = (deniedSeen.get(h) ?? new Set<string>()); deniedSeen.set(h, ids);
+        if (!ids.has(id)) {
+          ids.add(id);
+          const tuple: [string, string, number | null] = [id, cls, ts ?? null], bytes = (deniedBytes.get(h) ?? 2) + JSON.stringify(tuple).length + 1;
+          if (h.denied_calls.length < MAX_DENIED_CALLS && bytes <= MAX_DENIED_BYTES) { h.denied_calls.push(tuple); h.denied_calls_captured++; deniedBytes.set(h, bytes); }
+          else h.denied_calls_omitted++;
+        }
+      }
+      if (failure === "error" || failure === "suite") callOutcome.set(id, "error");
+      else if (failure === "denied") callOutcome.set(id, "denied");
+      else if (failure === "blocked") callOutcome.set(id, callOutcome.get(id) === "error" ? "error" : "ok_blocked");
     }
     if (ts !== undefined) { r.first_ts ??= ts; r.last_ts = ts; }
     if (id && r.tool_call_ids.length < MAX_IDS) r.tool_call_ids.push(id);
@@ -444,6 +473,10 @@ async function main() {
     return toolKey(name);
   };
   const callCause = new Map<string, string>();
+  const deniedSeen = new WeakMap<object, Set<string>>(), deniedBytes = new WeakMap<object, number>();
+  const callOutcome = new Map<string, ToolOutcome>(), settled = new Set<string>();
+  const editInput: EditInput = { not_found: 0, ambiguous: 0, unchanged: 0, stale: 0, not_read: 0 };
+  let separatorErrors = 0;
   // The exit code a failed Bash command reported ("Exit code N" opens its result), kept per call; no output text.
   const callExit = new Map<string, number>();
   const keepExit = (id: string, text: string) => {
@@ -510,7 +543,18 @@ async function main() {
   for (const e of events) {
     switch (e.type) {
       case "RUN_STARTED": m.turns++; break;
-      case "RUN_FINISHED": if (e.outcome?.type === "cancelled") m.interrupts++; break;
+      case "RUN_FINISHED": {
+        // A turn's end settles the main agent's calls still open in it: interrupted when it was cancelled, else they
+        // stay unknown (a later turn's cancel never reaches back). A late result still overrides either.
+        const cut = e.outcome?.type === "cancelled";
+        if (cut) m.interrupts++;
+        for (const [id, a] of callAgent) {
+          if (callEnd.has(id) || settled.has(id) || a.id !== "main") continue;
+          settled.add(id);
+          if (cut && callOutcome.get(id) === "unknown") callOutcome.set(id, "interrupted");
+        }
+        break;
+      }
       case "RUN_ERROR": {
         m.run_errors++;
         add(seen(agentOf(undefined)), `run_error/${e.code && RUN_ERRORS.has(e.code) ? e.code : "other"}`, "run_error", undefined, e.timestamp);
@@ -527,6 +571,7 @@ async function main() {
         const a = seen(agentOf(e.agent));
         callAgent.set(e.toolCallId, a);
         callName.set(e.toolCallId, e.toolCallName);
+        if (!callOutcome.has(e.toolCallId)) callOutcome.set(e.toolCallId, "unknown");
         const day = typeof e.timestamp === "number" && Number.isFinite(e.timestamp) ? new Date(e.timestamp).toISOString().slice(0, 10) : null;
         callDay.set(e.toolCallId, day);
         if (typeof e.timestamp === "number" && Number.isFinite(e.timestamp)) callStart.set(e.toolCallId, e.timestamp);
@@ -543,6 +588,7 @@ async function main() {
         // an error. A hook refusal on any tool is a denial: the text says so, or the chain log names the call.
         const member = chainDeny.get(e.toolCallId);
         const failure = e.failure === "error" && (member || HOOK_ANY.test(e.content.slice(0, 2000))) ? "denied" : e.failure;
+        callOutcome.set(e.toolCallId, e.outcome ?? (e.isError ? (failure === "denied" ? "denied" : "error") : failure === "blocked" ? "ok_blocked" : "ok"));
         if (!failure) {
           if (SUITE.test(cmd)) { const s = suiteLast.get(suiteKey(a, cmd)); if (s) s.red = false; }
           break;
@@ -550,6 +596,7 @@ async function main() {
         const by = (failure === "suite" || failure === "error") && callName.get(e.toolCallId) === "Bash" && registry
           ? byDesign(registry, cmd, e.content) : null;
         if (by) {
+          callOutcome.set(e.toolCallId, "ok");
           if (by.cls === "result") m.ok_result++; else m.ok_retry++;
           const d = designed.get(`${by.script}\0${by.rc}`) ?? { script: by.script, rc: by.rc, class: by.cls, count: 0 };
           d.count++;
@@ -570,9 +617,11 @@ async function main() {
           add(a, "blocked/-", "blocked", e.toolCallId, e.timestamp);
         } else {
           const tool = callName.get(e.toolCallId) ?? "";
-          if (tool === "TaskStop" && STOP_NOOP.test(e.content.slice(0, 500))) { m.ok_noop_stop++; break; }
+          if (tool === "TaskStop" && STOP_NOOP.test(e.content.slice(0, 500))) { m.ok_noop_stop++; callOutcome.set(e.toolCallId, "ok"); break; }
           const sub = tool === "Bash" ? bashErrorSub(cmd, e.content) : "";
-          if (sub === null) { m.ok_no_match++; break; }
+          if (sub === null) { m.ok_no_match++; callOutcome.set(e.toolCallId, "ok"); break; }
+          if (tool === "Edit") { const hit = EDIT_INPUT.find(([, re]) => re.test(e.content.slice(0, 500))); if (hit) editInput[hit[0]]++; }
+          if (tool === "Bash" && SEPARATOR_ERROR.test(e.content.slice(0, 2000))) separatorErrors++;
           m.fail_error++;
           if (tool === "Bash") keepExit(e.toolCallId, e.content);
           add(a, `error/${tool.startsWith("mcp__") ? "mcp" : TOOLS.has(tool) ? tool : "other"}${sub}`, "error", e.toolCallId, e.timestamp);
@@ -583,12 +632,23 @@ async function main() {
   }
   // Calls are counted after the loop: the split key needs the call's args, which follow its start event.
   const apiCalls = new Map<string, number>();
+  const sessionOutcomes = zeroOutcomes();
+  // Declared generator provenance (gen-judge-brief.py --dispatch-json), counted for adoption: not proof the generator ran.
+  const judgeCalls = { marked: 0, unmarked: 0 };
   for (const api of callApi.values()) apiCalls.set(api, (apiCalls.get(api) ?? 0) + 1);
   for (const [id, agent] of callAgent) {
     const tool = callKey(id);
     callsByTool[tool] = (callsByTool[tool] ?? 0) + 1;
     const h = toolRow(agent, tool, callDay.get(id) ?? null);
     h.calls++;
+    const outcome = callOutcome.get(id) ?? "unknown";
+    h.outcomes[outcome]++;
+    sessionOutcomes[outcome]++;
+    const name = callName.get(id);
+    if (name === "Agent" || name === "Task") {
+      const type = argsOf(id).subagent_type, prompt = argsOf(id).prompt;
+      if (typeof type === "string" && JUDGE_TYPE.test(type)) judgeCalls[typeof prompt === "string" && JUDGE_BRIEF.test(prompt) ? "marked" : "unmarked"]++;
+    }
     // A call with no START, no RESULT, a negative interval or an unknown API message has no time; it is counted as missing, never as 0.
     const t = (h.timing ??= { single: [], batched: [], missing: 0 });
     const start = callStart.get(id), end = callEnd.get(id), api = callApi.get(id);
@@ -648,7 +708,7 @@ async function main() {
     model: mainModel, lane, profile: o.profile,
     started_ts: events.find((e) => typeof e.timestamp === "number")?.timestamp ?? null,
     tool_health: [...health.values()].map((r) => ({ ...r, agent: agents.get(r.agent.id) ?? r.agent })),
-    metrics: { ...m, tool_calls_by_tool: callsByTool, tool_failures_by_tool: failuresByTool, red_before_green: bool(traj.red_before_green), denial_recovery: traj.denial_recovery ?? null,
+    metrics: { ...m, outcomes: sessionOutcomes, edit_input: editInput, separator_errors: separatorErrors, judge_calls: judgeCalls, tool_calls_by_tool: callsByTool, tool_failures_by_tool: failuresByTool, red_before_green: bool(traj.red_before_green), denial_recovery: traj.denial_recovery ?? null,
       identical_denied_retries: traj.identical_denied_retries ?? null, verify_before_claim: bool(traj.verify_before_claim) },
     agents: [...agents.values()], failures, by_design: [...designed.values()], stats,
     exploration: exploration(merged.lines),

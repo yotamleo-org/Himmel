@@ -38,8 +38,8 @@
 # ponytail: the warned levels are hardcoded here, upgrade path a warn_effort_levels key in agent-model-policy.json.
 #
 # Allow prints NOTHING (no stdout, no stderr) unless a marker just rescued a
-# deny or a WARN above fired: zero context cost. A missing `model` is always allowed (the agent's own
-# frontmatter/default applies). The judge tier is hardcoded to opus;
+# deny or a WARN above fired: zero context cost. A missing `model` is allowed here
+# (guard-subagent-model.sh owns that refusal, so no deny text here may suggest omitting it). The judge tier is hardcoded to opus;
 # test-guard-agent-model.sh asserts the frontmatter still says so, so a tier
 # change there fails the suite here.
 #
@@ -95,8 +95,10 @@ case "$agent_name" in
            && agent_effort=$(awk 'NR == 1 { if ($0 != "---") exit; next } /^---$/ { exit } /^effort:/ { sub(/^effort:[ \t]*/, ""); v = $0 } END { print v }' "$agent_md") ;;
 esac
 
-# One line: kind <TAB> eflag <TAB> status <TAB> model <TAB> effort <TAB> reason.
-# eflag: effort = the EFFORT warn applies, - = it does not. status: none = no
+# One line: kind <TAB> eflag <TAB> jbflag <TAB> isj <TAB> status <TAB> model <TAB> effort <TAB> reason.
+# eflag: effort = the EFFORT warn applies, - = it does not. jbflag: jb = a judge
+# dispatch with no JUDGE-BRIEF line, - = not. isj: judge = a judge agent type,
+# - = any other. status: none = no
 # ESCALATION line, weak = only unusable reasons, ok = a usable reason. Fields
 # before the last are never empty (an empty model/effort is "-"; read collapses
 # empty tabs). A plain allow is the single word "allow".
@@ -119,6 +121,9 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agen
     | (if $status == "ok" then $good[0] else ($rs[0] // "") end) as $reason
     | [$ti.prompt | s | split("\n")[] | capture("^[ \\t]*TIER:[ \\t]*(?<r>.*)$")? | .r | clean
        | select(length >= $min and norm != "" and (norm as $n | $ph | any(. == $n) | not))] as $tgood
+    | ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) as $isj
+    | ($tool == "Agent" and $isj
+       and ([$ti.prompt | s | split("\n")[] | select(test("^[ \\t]*JUDGE-BRIEF:[ \\t]*[0-9a-f]{16}[ \\t]*$"))] | length) == 0) as $jbwarn
     | ([$ti.prompt | s | split("\n")[] | capture("^[ \\t]*DELTA-JUDGE:[ \\t]*(?<r>[0-9a-f]{7,40})[ \\t]*$")? | .r]) as $dj
     | ($ti.effort | s | ascii_downcase | clean) as $e
     | [$ti.prompt | s | split("\n")[] | capture("^[ \\t]*EFFORT:[ \\t]*(?<r>.*)$")? | .r | clean
@@ -132,20 +137,31 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agen
        elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) and ($m | test("^(claude-)?opus(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$") | not) then "judge"
        elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$") | not) and ($tgood | length) == 0 and ($wpats | any(. as $r | $m | test($r))) then "warn"
        else "allow" end) as $kind
-    | if $kind == "allow" and ($ewarn | not) then "allow"
-      else [$kind, (if $ewarn then "effort" else "-" end), $status,
+    | if $kind == "allow" and ($ewarn | not) and ($jbwarn | not) then "allow"
+      else [$kind, (if $ewarn then "effort" else "-" end), (if $jbwarn then "jb" else "-" end),
+            (if $isj then "judge" else "-" end), $status,
             (if $m == "" then "-" else $m end), (if $e == "" then "-" else $e end),
             (if $kind == "delta" then $dj[0] else $reason end)] | join("\t") end' 2>/dev/null) || exit 0
 
-IFS=$'\t' read -r kind eflag status model effort reason <<EOF
+IFS=$'\t' read -r kind eflag jbflag isj status model effort reason <<EOF
 $verdict
 EOF
+
+# JUDGE-BRIEF is declared generator provenance, not proof the generator ran: its
+# absence only warns (no permissionDecision) and never rescues a deny.
+jb_msg="agent-model-judge-brief-warn: a judge dispatch with no 'JUDGE-BRIEF: <nonce>' line. Generate the call with 'python3 scripts/handover/chief-kit/gen-judge-brief.py <spec.json> --dispatch-json' and pass its object unchanged as the Agent input (docs/handover/chief-sections/judge.md)."
+jb_context() {
+    [ "$jbflag" = "jb" ] || return 0
+    jq -nc --arg ctx "$jb_msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$ctx}}' 2>/dev/null
+    return 0
+}
 
 if [ "$kind" = "warn" ] || [ "$kind" = "allow" ]; then
     # Warn only: additionalContext, NO permissionDecision (that would also skip a
     # permission prompt), exit 0. Allow stays silent for every other dispatch.
     warn_msg=""
     [ "$kind" = "warn" ] && warn_msg="agent-model-warn: a helper dispatch on '${model}' with no TIER: line. Name the cheapest tier that can do the job (CLAUDE.md: raise effort before tier): sonnet for workers.json drafting, wave prep, ticket audits and per-page docs reviews; haiku at medium effort for a specified edit list ending in a machine check. Opus only for the one hard call: re-dispatch on a cheaper model, or add a prompt line 'TIER: <reason>' with a real reason (docs/handover/running-a-chief.md, helper table)."
+    [ "$jbflag" = "jb" ] && warn_msg="${warn_msg:+$warn_msg }$jb_msg"
     [ "$eflag" = "effort" ] && warn_msg="${warn_msg:+$warn_msg }agent-model-effort-warn: a dispatch at effort '${effort}' with no EFFORT: line. Each helper kind has a default effort (docs/handover/running-a-chief.md, helper table): drop the effort override, or add a prompt line 'EFFORT: <reason>' with a real reason."
     [ -n "$warn_msg" ] || exit 0
     jq -nc --arg ctx "$warn_msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$ctx}}' 2>/dev/null
@@ -154,6 +170,7 @@ fi
 
 if [ "$kind" = "delta" ]; then
     printf 'agent-model-delta-judge: judge on %s allowed by a DELTA-JUDGE declaration for head %s\n' "$model" "$reason" >&2
+    jb_context
     exit 0
 fi
 
@@ -165,6 +182,7 @@ esac
 
 if [ "$status" = "ok" ]; then
     printf 'agent-model-escalation: %s allowed by ESCALATION reason: %s\n' "$what" "$reason" >&2
+    jb_context
     exit 0
 fi
 
@@ -173,7 +191,14 @@ if [ "$status" = "weak" ]; then
 else
     lead="${what} without an escalation marker"
 fi
-deny_msg="agent-model-deny: ${lead} — Fable is retired as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding). Drop the model override, or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json."
+# The remedy names an explicit model: an omitted one is not a remedy, because
+# guard-subagent-model.sh denies a dispatch with no model.
+if [ "$isj" = "judge" ]; then
+    remedy="Re-dispatch with model: opus (the judge's frontmatter tier). Only a finding-class delta re-judge may use model: sonnet, with a prompt line 'DELTA-JUDGE: <head sha>'"
+else
+    remedy="Re-dispatch with an explicit permitted model (model: opus, model: sonnet or model: haiku)"
+fi
+deny_msg="agent-model-deny: ${lead} — Fable is retired as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding). ${remedy}; or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch. Never leave the model out: guard-subagent-model.sh denies a dispatch with no model. A judge call from 'gen-judge-brief.py <spec> --dispatch-json' passes both guards. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json."
 
 reason_json=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason_json='"agent-model-deny: model override denied without a usable ESCALATION: marker"'

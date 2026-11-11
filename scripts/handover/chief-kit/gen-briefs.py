@@ -159,7 +159,9 @@ DOCS_PROFILE = 'worker-docs'
 UI_PATH_RE = re.compile(r'(?:^|\s)scripts/config-ui(?:/|\s|$)')
 UI_LINE = ("> **UI work:** the chief starts `himmelctl ui` from YOUR worktree and sends you its URL; ask for it, never start it yourself "
            "(it is operator-only and refuses to start inside a worker session). Open the URL with the browser MCP headless "
-           "and save screenshots to your scratch dir.\n")
+           "at its http:// address, never a file:// URL. Save a screenshot with a relative filename only (for example "
+           "`ui-check.png`): the server writes it under its own output root (`.playwright-mcp` by default) and refuses a "
+           "path outside it, so cite the path the server returns, and copy the file afterwards only into your scratch dir.\n")
 TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruling')
 DEFAULT_MODEL = 'claude-sonnet-5-5'
 # Mirrors headed-arm-worker.sh's claudex default (`[ -z "$MODEL" ] && MODEL="gpt-6.1-sol"`).
