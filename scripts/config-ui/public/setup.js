@@ -53,7 +53,6 @@ const ON_OFF = [["on", "On"], ["off", "Off"]];
 const trackerRow = (c) => `<div class="srow"><span class="id">Tracker</span><span class="det">${c.tracker ? "" : "not set yet · "}takes effect on your next commit</span>
       <span>${TRACKERS.map(([v, l]) => choice(l, "config.commitRules", "tracker", v, c.tracker, TK)).join(" ")}</span></div>`;
 
-// Read-only: the key live Jira tests write to. The station value is set with himmelctl, never by this page.
 const testProjectRow = (key) => `<div class="srow"><span class="id">Jira test project <span class="tag">read-only</span></span>
       <span class="det">${key ? `<code>${esc(key)}</code> · live Jira tests write only here` : "not set · live Jira tests have no project to write to"}</span>
       ${key ? "" : `<span class="ro">set it with ${copyCommand("himmelctl config set jira.testProject <KEY>")}</span>`}</div>`;
