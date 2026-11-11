@@ -11,8 +11,7 @@
 // `npm run build` (the suite drives dist/index.js, the shipped binary).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { fileURLToPath } from 'node:url';
-import { runJira } from './jira-runner.js';
-import { LIVE_BODY, liveVersionName, resolveLiveProject } from './project-guard.js';
+import { LIVE_BODY, liveVersionName, resolveLiveProject, runJira } from './project-guard.js';
 import { createTeardown } from './teardown.js';
 
 const ENABLED = process.env.JIRA_LIVE_TEST === '1';

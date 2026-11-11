@@ -31,6 +31,14 @@ export function liveChildEnv(base: NodeJS.ProcessEnv, project: string, configDir
   return env;
 }
 
+// Runs the shipped Jira CLI as a live child: the guarded env, the station's config dir and the resolved test project.
+export function runJira(cli: string, configDir: string, project: string, ...args: string[]): string {
+  return execFileSync('node', [cli, ...args], {
+    encoding: 'utf8',
+    env: liveChildEnv(process.env, project, configDir),
+  });
+}
+
 export function resolveLiveProject(configDir: string, cli: string): string {
   const out = execFileSync('node', [cli, 'live-test', '--json'], {
     encoding: 'utf8',

@@ -4,8 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runJira } from './jira-runner.js';
-import { LIVE_BODY } from './project-guard.js';
+import { LIVE_BODY, runJira } from './project-guard.js';
 
 const CLI = fileURLToPath(new URL('../dist/index.js', import.meta.url));
 
