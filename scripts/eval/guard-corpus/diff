@@ -512,7 +512,7 @@ def run_one_hook(hook_path, tool_name, tool_input, cwd, anchor, home,
 
 
 def _record_run(args, rc, results, metrics):
-    """One eval-runs ledger row per diff (HIMMEL-4647). A regression (rc 1) is
+    """One eval-runs ledger row per diff. A regression (rc 1) is
     a valid measurement; odd/vacuous/no-control runs are inconclusive, and so
     is a regression run with odd rows (it did not fully exercise the guard). A
     ledger failure warns and never changes the diff's exit code."""

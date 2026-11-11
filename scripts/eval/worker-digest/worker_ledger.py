@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/worker-digest/worker_ledger.py - the worker ledgers writer (HIMMEL-4670 P2).
+"""scripts/eval/worker-digest/worker_ledger.py - the worker ledgers writer.
 
 Turns one P1 digest (worker-digest.ts) into two ledger writes, then a marker:
   1. one worker-failures row per digest failures row (registered in
@@ -35,7 +35,7 @@ IDEMPOTENCE (spec 5.3), all under a per-session flock at <state-dir>/<session>.l
   marker present with status ok          -> append nothing
   marker non-ok, new digest non-ok       -> append nothing
   an ok digest over a non-ok marker replaces the session's worker-failures rows (a partial
-  digest's stale classes and counts go, other sessions' rows stay; HIMMEL-4701);
+  digest's stale classes and counts go, other sessions' rows stay);
   otherwise append only the worker-failures rows missing by (session, agent.id, class)
   and the eval-runs row unless an ok one, or one of a non-ok status beside a
   non-ok digest, is already there; then rewrite the marker.
@@ -54,7 +54,7 @@ $WORKER_SESSION_DIGEST_STATE_DIR, else ~/.himmel/state/leg-digest. It reads the
 journals only, and refuses one whose cwd sits under a salus root (spec 6.1).
 It skips a journal whose last timestamp is under --live-minutes (default 30) old:
 an ok digest of a still-live session would write the final marker and freeze the
-worker before its remaining failures land (HIMMEL-4699).
+worker before its remaining failures land.
 
 PAIRED SNAPSHOT. Every eval-runs row carries meta.digest_id (a hash of the measurement: the digest's counts,
 classes, meaning versions and stamped attribution; never a write time or the recorder's checkout) and
