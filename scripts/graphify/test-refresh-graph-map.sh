@@ -35,17 +35,10 @@ HERMETIC_HOME="$WS/hermetic-home"; mkdir -p "$HERMETIC_HOME/.claude"
 printf 'test-subscription-auth\n' > "$HERMETIC_HOME/.claude/.credentials.json"
 printf '{}\n' > "$HERMETIC_HOME/.claude/settings.json"
 export HOME="$HERMETIC_HOME"
-# The graph role (graph-choices.js role): a HOME with no config.json is an adopter with no graph choice,
-# whose semantic pass runs only on the subscription after a usage check answering PROCEED. Every
-# run-path row below is the publisher's unless it writes its own config.
 pub_home() { mkdir -p "$1/.himmel"; printf '{"graphify":{"semantic_api_ok":true}}\n' > "$1/.himmel/config.json"; }
 pub_home "$HERMETIC_HOME"
 unset HIMMEL_CONFIG_DIR HIMMEL_CONFIG_AUDIT_DIR HIMMEL_LUNA_CONFIG_PATH
-# The whole credential family, by prefix: an ambient one turns every no-choice row into a refusal.
-# Rows that need one set it themselves.
-# shellcheck disable=SC2086  # each expansion is a list of variable names, split on purpose
-unset ${!ANTHROPIC_*} ${!anthropic_*} ${!CLAUDE_CODE_USE_*} ${!claude_code_use_*} ${!LQ_API_*}
-# Alerts go to a recording sender and fixture files, never to Telegram.
+unset "${!ANTHROPIC_@}" "${!anthropic_@}" "${!CLAUDE_CODE_USE_@}" "${!claude_code_use_@}" "${!LQ_API_@}"
 ALERT_SENT="$WS/alert-sent.log"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "%s"\n' "$ALERT_SENT" > "$WS/alert-send"; chmod +x "$WS/alert-send"
 export CADENCE_ALERT_SEND_CMD="$WS/alert-send" CADENCE_ALERT_FILE="$WS/cadence-alerts.log" \

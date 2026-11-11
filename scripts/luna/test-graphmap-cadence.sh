@@ -241,7 +241,6 @@ PATH_NOCLAUDE="$GRAPHIFY_BIN_DIR_PATH:$PATH_NOCLAUDE"
 # Hermeticity: point HOME/USERPROFILE at the temp dir so a stray BAT_DIR default
 # (should the seam ever be dropped) can't land under the real user profile.
 export HOME="$TMP_ROOT/home"
-# the graph role (graph-choices.js) reads $HOME/.himmel unless this seam points elsewhere
 unset HIMMEL_CONFIG_DIR
 export HIMMEL_OBSERVABILITY_CONFIG="$TMP_ROOT/observability.json"
 mkdir -p "$HOME"

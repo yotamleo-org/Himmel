@@ -417,8 +417,6 @@ printf '{"nodes":[],"built_at_commit":"--all"}\n' > "$OUT/graph.json"
 out=$( bash "$SCRIPT" --out "$OUT" --print-built-at 2>/dev/null ); rc=$?
 [ "$rc" -eq 2 ] && [ -z "$out" ] && pass "T12 a non-SHA built_at_commit prints nothing, rc 2" || fail "T12 invalid (rc=$rc): $out"
 
-# --- T13: the REMEDIATION follows the graph role: main's refresh line on the publisher, and
-# what refreshes the graph on any other station, never a command that refuses there ---
 mkdir -p "$WS/pubhome/.himmel" "$WS/adopterhome"
 printf '{"graphify":{"semantic_api_ok":true}}\n' > "$WS/pubhome/.himmel/config.json"
 err=$( HOME="$WS/pubhome" HIMMEL_CONFIG_DIR='' bash "$SCRIPT" --out "$WS/t13/no-such-out" 2>&1 >/dev/null ); rc=$?

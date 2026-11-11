@@ -121,9 +121,6 @@ esac
 # default (claude-cli) is the one we want a copy-paste of this
 # hint to use — naming a backend here is how it went stale in the first place.
 REMEDIATION="Rebuild with: bash $REFRESH --name <N> --corpus-root <path> --maps-dir <vault>/60-Maps --title \"<Title>\" --slug <slug>"
-# The himmel graph is rebuilt only on the graph publisher; any other station is told what
-# refreshes it there (graph-choices.js remedy), never a command that refuses on it. Another
-# corpus's graph keeps the rebuild line.
 _cgf_choices="$HERE/../himmelctl/lib/graph-choices.js"
 _cgf_own="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _cgf_own=""
 _cgf_of_out="$(git -C "$(dirname "${OUT:-.}")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _cgf_of_out=""

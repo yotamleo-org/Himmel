@@ -184,11 +184,8 @@ resolve_user_home() {
 #   {"graphify": {"semantic_api_ok": true}}
 # ponytail: read at render time, so a runner already armed keeps its lane until the next
 # arm --rewrite-armed; upgrade path: a fire-time read inside the runner.
-# The prefix up to the first ';' is what a re-arm matches in an old runner (main's text started so).
 SEMANTIC_API_SKIP_PREFIX="semantic skipped: API lane not opted in"
 SEMANTIC_API_SKIP_TEXT="$SEMANTIC_API_SKIP_PREFIX; on this station the himmel graph comes from us with each update"
-# The station is the graph publisher: graph-choices.js role, which treats a linked ~/.himmel or
-# config.json as unreadable (a link can be planted without writing the operator's own file).
 semantic_api_opted_in() {
     [ "$(HOME="$(resolve_user_home)" node "$HIMMEL_ROOT/scripts/himmelctl/lib/graph-choices.js" role 2>/dev/null)" = publisher ]
 }
@@ -1612,8 +1609,7 @@ cmd_arm() {
             # A publish runner armed with --publish-semantic keeps its semantic branch: the mode
             # lives only in the runner text, so read it from the file being replaced. A runner
             # rendered without the opt-in carries the skip line instead of the lane env, so that
-            # line remembers the mode until the station opts in. The prefix matches both today's
-            # skip line and the longer one older arms wrote.
+            # line remembers the mode until the station opts in.
             if [ "$rw_name" = publish-himmel ] && grep -qF -e 'GRAPH_CADENCE_SEMANTIC_BACKEND' -e "[$SEMANTIC_API_SKIP_PREFIX" "$rw_runner"; then
                 PUBLISH_SEMANTIC=1
                 payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")

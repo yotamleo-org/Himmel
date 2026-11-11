@@ -46,8 +46,6 @@ const CADENCE_PATH: Readonly<Record<string, string>> = Object.freeze({
   doctor: "scripts/doctor-cadence.sh",
   rollup: "scripts/eval/rollup-cadence.sh",
 });
-// Shown in the consent text (critic F3); mirrors config-feed.js CADENCES[].cost, and the
-// graph-map text is config-feed.js's own.
 const CADENCE_BANK: Readonly<Record<string, string>> = Object.freeze({
   pipeline: "runs Claude-backed harvest/synthesize and draws the subscription bank",
   graphmap: GRAPHMAP_COST,

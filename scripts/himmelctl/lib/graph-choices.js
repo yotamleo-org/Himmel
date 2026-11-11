@@ -38,7 +38,6 @@ const FIX = { preflight: FIX_PREFLIGHT, credential: FIX_CREDENTIAL, helper: FIX_
 
 const SENTENCES = { default: NO_CHOICE_SENTENCE, none: NONE_SENTENCE, set: SET_SENTENCE, invalid: INVALID_SENTENCE };
 
-// One fixed fix line per cause word. The words are the module's own, never file text.
 const CAUSE_LINES = {
   symlink: '~/.himmel or ~/.himmel/config.json is a symlink; put the real file in its place, then run bash scripts/lib/config-audit.sh accept',
   'not-a-file': '~/.himmel/config.json is not a regular file; restore it from a config-audit backup (bash scripts/lib/config-audit.sh restore <id>) or rewrite it by hand',
@@ -48,7 +47,6 @@ const CAUSE_LINES = {
   'graphify-shape': 'the graphify key in ~/.himmel/config.json is not an object; fix it by hand, then run bash scripts/lib/config-audit.sh accept',
 };
 
-// The plain words for an unreadable API roster, keyed by the roster's own reason word.
 const ROSTER_LINES = {
   'unreadable-state': 'no API account is set up here, or its roster cannot be read; none is offered',
   'missing-account-config': 'the API roster lists no account',
@@ -72,8 +70,6 @@ function configFile() { return path.join(stationDir(), 'config.json'); }
 const plainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
-// Whether the file read through a link says publisher: the one consent value the update's
-// pull rule needs on a symlinked config (main reads through a linked ~/.himmel).
 function linkedPublisher(file) {
   try {
     const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -81,7 +77,6 @@ function linkedPublisher(file) {
   } catch { return false; }
 }
 
-// Reads the station file once: { role, cause, doc }. The catch keeps only a cause word.
 function readStation() {
   const dir = stationDir();
   const file = configFile();
@@ -118,7 +113,6 @@ function absoluteClean(p) {
   return !p.split(/[\\/]/).some((part) => part === '.' || part === '..');
 }
 
-// The shape rules, all or nothing. Errors name the rule, never the value.
 function validateShape(choices) {
   const errors = [];
   if (!plainObject(choices)) return ['graphify.choices is not an object'];
@@ -156,7 +150,6 @@ function validateShape(choices) {
   return errors;
 }
 
-// The root rules this module owns: it exists, is stored as its real path, and holds a .git entry.
 function rootCheck(root) {
   if (!absoluteClean(root)) return ['the root is not an absolute path without . or .. parts'];
   let real;
@@ -168,7 +161,6 @@ function rootCheck(root) {
   return errors;
 }
 
-// The save-time roster check: every letter in the route needs a configured row.
 function rosterCheck(choices, accounts) {
   const route = plainObject(choices)
     ? (choices.primary && choices.primary !== 'none' ? [choices.primary] : []).concat(Array.isArray(choices.fallbacks) ? choices.fallbacks : [])
@@ -224,8 +216,6 @@ function worstCase(r) {
   return lines;
 }
 
-// The pass log S4 writes: "<ISO> <corpus> <word>" and "<ISO> <corpus> ALERT <word> <reason>".
-// The runner's own [fired] and [exit rc=] lines are skipped.
 function passLines() {
   const log = path.join(homeDir(), '.claude', 'graph-choices-cadence', 'graph-choices.log');
   let text;

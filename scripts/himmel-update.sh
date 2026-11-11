@@ -2567,9 +2567,7 @@ sync_graph() {
         echo "    $1 — staying AST-only, graphify-out/ untouched"
         STATUS_graph="skipped"; DETAIL_graph="AST-only: $1"
     }
-    # The publishing station builds its own semantic graph: never overwrite it. The role is
-    # graph-choices.js's; a config it cannot read pulls only when it is a symlink whose file,
-    # read through the link, does not say publisher (as main read a linked ~/.himmel).
+    # The publishing station builds its own semantic graph: never overwrite it.
     local role chk gc="$ROOT/scripts/himmelctl/lib/graph-choices.js"
     role="$(node "$gc" role 2>/dev/null)" || role=""
     case "$role" in

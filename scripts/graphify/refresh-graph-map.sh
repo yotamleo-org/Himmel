@@ -52,8 +52,6 @@
 # it, run check-graph-freshness.sh --out <graphify-out> [--max-age-days N]
 # (companion script, same dir).
 set -euo pipefail
-# The no-choice fallback's flags, reset so an inherited value changes nothing:
-# _nc_fallback=1 means every launch in this run must pass the fallback test.
 _nc_fallback=0 _nc_pass=0 _nc_ok=0 _nc_verdict="" _nc_helper=""
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -88,8 +86,7 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # environment* — a set ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN takes precedence
 # in the `claude` CLI and switches the run back to pay-as-you-go. We deliberately
 # do NOT strip those vars here (the operator may intend the API path); this is a
-# default, not a billing guarantee. On a station with no graph choice the run
-# refuses instead while any of them is set (the early graph-role gate below).
+# default, not a billing guarantee.
 NAME="" CORPUS_ROOT="" BACKEND="claude-api" MAPS_DIR="" TITLE="" SLUG="" CORPUS_TAG=""
 SCRATCH="" DO_UPDATE=1 CORPUS_CLASS="luna-personal"
 # --merge-into-live: a corpus whose live graph is AST-heavy (himmel). The markdown-only
@@ -252,17 +249,14 @@ _endpoint_host_allowed() {
   return 1
 }
 
-# _corpus_is_himmel: the corpus shares the himmel checkout's git common dir (a worktree
-# or a second clone matches). Sets _auto_repo to the corpus's common dir.
+_git_common_dir() { git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null; }
 _corpus_is_himmel() {
-  local own
-  _auto_repo="$(git -C "$CORPUS_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _auto_repo=""
-  own="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || own=""
-  [ -n "$own" ] && [ "$_auto_repo" = "$own" ]
+  local own corpus
+  own="$(_git_common_dir "$REPO_ROOT")" || own=""
+  corpus="$(_git_common_dir "$CORPUS_ROOT")" || corpus=""
+  [ -n "$own" ] && [ "$corpus" = "$own" ]
 }
 _GRAPH_CHOICES="$REPO_ROOT/scripts/himmelctl/lib/graph-choices.js"
-# _nc_alert <fix word> <reason> <cause>: the fallback's refusal alert. The do text is
-# graph-choices.js's; a refusal never clears.
 _nc_alert() {
   local todo
   todo="$(node "$_GRAPH_CHOICES" sentence --fix "$1" 2>/dev/null)" || todo=""
@@ -270,12 +264,13 @@ _nc_alert() {
   bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" fail "graph-subscription-$NAME" "$2" \
     "stderr of refresh-graph-map.sh --name $NAME" "$3" "$todo" || true
 }
+_seeded_api_key_helper() {
+  node -e 'try { const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); process.stdout.write(s !== null && typeof s === "object" && Object.prototype.hasOwnProperty.call(s, "apiKeyHelper") ? "set" : "none"); } catch (e) { process.stdout.write(e && e.code === "ENOENT" ? "none" : "unreadable"); }' \
+    "$1" 2>/dev/null
+}
 _NC_CREDENTIAL_LINE="refresh-graph-map: no graph choice, and an Anthropic API credential or provider switch is set (ANTHROPIC_*, CLAUDE_CODE_USE_* or LQ_API_*); the subscription fallback refuses (graphify-out left untouched)"
 _NC_STATE_UNREAD_LINE="refresh-graph-map: the graph choice state could not be read; no semantic call (graphify-out left untouched)"
-# The early gate, before any other refusal: on anything but the publisher only an exact
-# `default` state on claude-cli, on a corpus that is not the himmel checkout, with no
-# credential in the environment, sets _nc_pass. Every other answer exits 3 with its line.
-if [[ $DO_EXTRACT == 1 ]]; then
+_nc_early_gate() {
   _nc_role="$(node "$_GRAPH_CHOICES" role 2>/dev/null)" || _nc_role=""
   [[ $_nc_role == publisher ]] || _nc_fallback=1
   if [[ $_nc_fallback == 1 ]]; then
@@ -310,7 +305,8 @@ if [[ $DO_EXTRACT == 1 ]]; then
       exit 3
     fi
   fi
-fi
+}
+if [[ $DO_EXTRACT == 1 ]]; then _nc_early_gate; fi
 
 GRAPHIFY_BACKEND="$BACKEND"
 if [ "$BACKEND" = "claude-api" ] && [ "$DO_EXTRACT" -eq 1 ]; then
@@ -327,6 +323,7 @@ if [ "$BACKEND" = "claude-api" ] && [ "$DO_EXTRACT" -eq 1 ]; then
   GRAPHIFY_MAP_LANE_BIN="${GRAPHIFY_MAP_LANE_BIN:-$REPO_ROOT/scripts/api-lane/claude-api.sh}"
   [ -f "$GRAPHIFY_MAP_LANE_BIN" ] || { echo "ERR refresh-graph-map: --backend claude-api needs $GRAPHIFY_MAP_LANE_BIN -- refusing" >&2; exit 2; }
   if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
+    _auto_repo="$(_git_common_dir "$CORPUS_ROOT")" || _auto_repo=""
     if ! _corpus_is_himmel; then
       echo "ERR refresh-graph-map: --backend claude-api: auto routing is for the himmel graph only (corpus repo ${_auto_repo:-none}); name HIMMEL_API_ACCOUNT=A, B or C" >&2
       exit 2
@@ -2348,8 +2345,6 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # usage-cache-producer.sh, which does a network fetch -- left unbounded,
   # that fetch could hang the cadence indefinitely, inside the very guard
   # whose entire purpose is "nothing on this path runs unbounded".
-  # With no graph choice (_nc_fallback=1) the one call is pinned to the native bank, as
-  # claude-api.sh's sub_preflight is, and read strictly: only PROCEED goes on.
   case "$BACKEND" in
     claude|claude-cli)
       _bank_preflight="$REPO_ROOT/scripts/lib/usage-preflight.sh"
@@ -2414,10 +2409,8 @@ for p in sys.stdin.buffer.read().split(b"\0"):
       echo "refresh-graph-map: failed to seed the hook-free Claude config dir; refusing claude-cli extraction" >&2
       exit 2
     fi
-    # Check 2 of the fallback: the seeded user settings must hold no apiKeyHelper.
     if [[ $_nc_fallback == 1 ]]; then
-      _nc_helper="$(node -e 'try { const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); process.stdout.write(s !== null && typeof s === "object" && Object.prototype.hasOwnProperty.call(s, "apiKeyHelper") ? "set" : "none"); } catch (e) { process.stdout.write(e && e.code === "ENOENT" ? "none" : "unreadable"); }' \
-        "$GRAPHIFY_CLAUDE_CONFIG_DIR/settings.json" 2>/dev/null)" || _nc_helper=""
+      _nc_helper="$(_seeded_api_key_helper "$GRAPHIFY_CLAUDE_CONFIG_DIR/settings.json")" || _nc_helper=""
       if [[ $_nc_helper == set ]]; then
         echo "refresh-graph-map: no graph choice, and the Claude settings the run copies set apiKeyHelper; the subscription fallback refuses (graphify-out left untouched)" >&2
         _nc_alert helper "an apiKeyHelper is set in the Claude settings the graph run copies" "the subscription fallback would bill it"
@@ -2781,8 +2774,6 @@ SHIM
     _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$GRAPHIFY_BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
   fi
   _AUTH_CAUSE=""
-  # On the no-choice fallback the probe never runs: no second, unpinned preflight, no
-  # claude -p and so no reseed (the reseed below needs an auth _AUTH_CAUSE).
   _probe_claude_auth() {
     local verdict out left t
     _AUTH_CAUSE=""
@@ -3752,7 +3743,6 @@ fi
 
 _promote_lock_release   # eager release after the report is fully consumed; EXIT trap = backstop
 echo "refresh-graph-map: published $OUT_NOTE" >&2
-# Only a no-choice fallback run that got this far clears its refusal alert.
 if [[ $_nc_fallback == 1 && $_nc_ok == 1 ]]; then
   bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" clear "graph-subscription-$NAME" || true
 fi

@@ -85,7 +85,6 @@ _ga_check_qmd() {
 _ga_check_semantic() {
     local out="${GAP_AUDIT_GRAPH_OUT:-$1/graphify-out}" now="$2" mt age role
     [ -f "$out/graph.json" ] || return 0   # no graph on this machine: graphify is unused
-    # Only the publisher builds this graph's semantic layer; every other station pulls it.
     role="$(node "$_GA_GRAPH_CHOICES" role 2>/dev/null)" || role=""
     [ "$role" = publisher ] || return 0
     if [ ! -f "$out/semantic-manifest.json" ]; then

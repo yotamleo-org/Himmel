@@ -44,8 +44,6 @@ const INITIATIVE_GUARD = new Set(['merge', 'public']);
 // The five cadences P2 reports (spec §5.2 target list). evidence = what proves
 // the component itself ran (A9): doctor-cadence's last.tsv; the runner's own
 // .log (fired time + exit code) for the pipeline, qmd and graphmap cadences.
-// The graph-map cadence's cost, true on every station: the himmel row draws only on the
-// publisher (its render follows the runner), and the Luna row only where it was armed.
 const GRAPHMAP_COST = 'free hourly structure refresh; on the publishing station only, a daily himmel extraction on the API lane or the subscription, as its runner was rendered; where the Luna map row is armed, a weekly Luna extraction on the subscription, after a usage check';
 const CADENCES = [
   { name: 'pipeline', script: 'scripts/luna/pipeline-cadence.sh', evidence: 'log', cost: 'runs Claude-backed harvest/synthesize and draws the subscription bank' },

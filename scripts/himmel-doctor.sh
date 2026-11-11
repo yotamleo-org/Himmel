@@ -4937,7 +4937,6 @@ check_c70_graph_semantic() {
     local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
     local check="${HIMMEL_DOCTOR_GRAPH_CHECK:-$SELF_DIR/graphify/check-graph-freshness.sh}"
     local slug cadence_out station_last cadence_last role remedy gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
-    # Only the graph publisher builds this graph's semantic layer; every other station pulls it.
     role="$(node "$gc" role 2>/dev/null)" || role=""
     if [ "$role" != publisher ]; then
         remedy="$(node "$gc" remedy 2>/dev/null)" || remedy=""
@@ -5545,7 +5544,6 @@ check_c88_graph_api_optin() {
     local envfile bat keys="" lanes="" f role state gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
     envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_doctor_env_file)}"
     bat="${GRAPHMAP_BAT_DIR:-${HOME:-}/.claude/graphmap-cadence}"
-    # The station's graph role and state come from graph-choices.js (role, check), never a jq read.
     role="$(node "$gc" role 2>/dev/null)" || role=""
     state="$(node "$gc" check 2>/dev/null | awk '!/^role=/ { printf "%s%s", (n++ ? "; " : ""), $0 }')" || state=""
     if [ -f "$envfile" ] && [ -r "$envfile" ]; then

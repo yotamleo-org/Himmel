@@ -762,7 +762,6 @@ for c in "${CORPORA[@]}"; do
     else
         worker_rc=$?
         if [ "$worker_rc" -eq 3 ]; then
-            # The runner says why it skipped (the bank, or the station's graph role or choice).
             worker_reason="$(grep -E '^(ERR )?refresh-graph-map:' "$WORKER_SESSION_LOG" | tail -n 1 || true)"
             echo "graph-refresh: [$c] SKIPPED -- ${worker_reason:-refresh-graph-map.sh exited 3 and gave no reason} (refresh-graph-map.sh exited 3; graphify-out left untouched, nothing published)" >&2
             SKIPPED=$((SKIPPED + 1))
