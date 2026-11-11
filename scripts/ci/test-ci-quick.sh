@@ -254,7 +254,8 @@ fi
 RC_F="$ROOT/scripts/handover/chief-kit/ready-check.sh"
 FR_F="$ROOT/scripts/cr/ci-fail-record.sh"
 RST_F="$ROOT/scripts/ci/run-shell-tests.sh"
-RECORDER_FORM='^        run: bash scripts/ci/claude-startup-row.sh (scripts/testing/test-[A-Za-z0-9._-]+\.sh)$'
+# shellcheck disable=SC2016  # $GITHUB_WORKSPACE is ci.yml text
+RECORDER_FORM='^        run: bash "\$GITHUB_WORKSPACE/scripts/ci/live-witness\.sh" run --label ci-quick/[A-Za-z0-9_-]+ -- bash scripts/ci/claude-startup-row\.sh (scripts/testing/test-[A-Za-z0-9._-]+\.sh)$'
 VERIFY_FORM='^bash scripts/ci/claude-startup-row\.sh --verify ([^ ]+) ([^ ]+)$'
 
 step_of() {
@@ -426,18 +427,23 @@ q1m() {
 }
 
 RPFX='run: bash scripts/ci/claude-startup-row.sh'
+# shellcheck disable=SC2016  # $GITHUB_WORKSPACE is ci.yml text
+WPFX='run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label'
+REC_SMOKE="$WPFX ci-quick/claude-startup__hook-smoke -- ${RPFX#run: } scripts/testing/test-mock-hook-smoke.sh"
+REC_TURN="$WPFX ci-quick/claude-startup__mock-turn -- ${RPFX#run: } scripts/testing/test-claude-mock-turn.sh"
 PUB='shell-unit-manifest-ubuntu-latest-shard-claude-startup'
 VERIFY_RUN="$RPFX --verify claude-startup-raw/rows.txt claude-startup-manifest/manifest-shard-claude-startup.txt"
 SENT_EXIT="      - if: \${{ needs.ci-quick.outputs.claude-startup != 'pass' }}"
 CO_SHA="$(job_block_f "$CI_YML" ci-quick | sed -n 's|^      - uses: actions/checkout@\([0-9a-f]\{40\}\)\( #.*\)\{0,1\}$|\1|p' | head -n 1)"
 
-newm; mut "$m" ci-quick "$RPFX scripts/testing/test-mock-hook-smoke.sh" "run: bash scripts/testing/test-mock-hook-smoke.sh" && q8m a1 Q8a "$m"
+newm; mut "$m" ci-quick "$REC_SMOKE" "run: bash scripts/testing/test-mock-hook-smoke.sh" && q8m a1 Q8a "$m"
+newm; mut "$m" ci-quick "$REC_SMOKE" "$RPFX scripts/testing/test-mock-hook-smoke.sh" && q8m "a1 (a recorder step outside the witness)" Q8a "$m"
 newm; mut_ins "$m" ci-quick "      - id: doc-invariants__dev" $'      - run: |\n          bash scripts/testing/test-x.sh' && q8m a2 Q8a "$m"
-newm; mut "$m" ci-quick "$RPFX scripts/testing/test-claude-mock-turn.sh" "$RPFX scripts/testing/test-claude-mock-turn.sh"$'\n'"        $RPFX scripts/testing/test-claude-mock-turn.sh" && q8m "a3 (a duplicated line)" Q8a "$m"
+newm; mut "$m" ci-quick "$REC_TURN" "$REC_TURN"$'\n'"        $REC_TURN" && q8m "a3 (a duplicated line)" Q8a "$m"
 newm; mut_del_step "$m" ci-quick claude-startup__consult && q8m "a3 (a deleted step)" Q8a "$m"
 awk '{ print } /^scripts\/testing\/test-mock-hook-live-turn\.sh/ { print "scripts/testing/test-sixth.sh  # extra" }' "$RST_F" > "$MT/rst-six.sh"
 q8m a4 Q8a "$CI_YML" "$RC_F" "$FR_F" "$MT/rst-six.sh"
-sed -E 's|^( +)run: bash scripts/ci/claude-startup-row.sh scripts/testing/.*$|\1run: true|' "$CI_YML" > "$m"
+sed -E 's|^( +)run: .* -- bash scripts/ci/claude-startup-row.sh scripts/testing/.*$|\1run: true|' "$CI_YML" > "$m"
 awk '$0 !~ /^scripts\/testing\//' "$RST_F" > "$MT/rst-none.sh"
 q8m a5 Q8a "$m" "$RC_F" "$FR_F" "$MT/rst-none.sh"
 
