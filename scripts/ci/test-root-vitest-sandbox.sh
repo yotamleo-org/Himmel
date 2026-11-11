@@ -139,6 +139,7 @@ EOF
   if [ "$rc" -eq 0 ] && [ "$(canary)" = DELETED ]; then pass "RED control: bun test with no bunfig.toml DELETES the canary"; else fail "RED control: bun rc=$rc canary $(canary) (log $tmp/bun-red.log)"; fi
   if [ -f "$REPO_ROOT/bunfig.toml" ]; then cp "$REPO_ROOT/bunfig.toml" "$bproj/bunfig.toml"; fi
   cp "$setup" "$bproj/scripts/jira/vitest.setup.ts"
+  mkdir -p "$bproj/scripts/jira/live" && cp "$REPO_ROOT/scripts/jira/live/project-guard.ts" "$bproj/scripts/jira/live/project-guard.ts"
   if [ -f "$REPO_ROOT/scripts/jira/bun-test-preload.ts" ]; then cp "$REPO_ROOT/scripts/jira/bun-test-preload.ts" "$bproj/scripts/jira/bun-test-preload.ts"; fi
   for probe in homedir userinfo spawn; do
     seed
@@ -199,6 +200,7 @@ if [ "$rc" -eq 0 ] && [ "$(canary)" = DELETED ]; then pass "RED control: with no
 # ---- case 3: the real root config + real setup file
 cp "$root_cfg" "$proj/vitest.config.ts"
 cp "$setup" "$proj/scripts/jira/vitest.setup.ts"
+mkdir -p "$proj/scripts/jira/live" && cp "$REPO_ROOT/scripts/jira/live/project-guard.ts" "$proj/scripts/jira/live/project-guard.ts"
 seed
 (cd "$proj" && "$vitest" run delete.test.ts env.test.ts >"$tmp/case3.log" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && [ "$(canary)" = SURVIVED ]; then pass "root config: canary SURVIVED and the overrides are in force"; else fail "root config: rc=$rc canary $(canary) (log $tmp/case3.log)"; sed -n 1,30p "$tmp/case3.log"; fi
