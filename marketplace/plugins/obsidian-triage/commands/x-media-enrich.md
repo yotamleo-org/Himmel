@@ -244,8 +244,8 @@ One run has a wall-clock budget, `X_MEDIA_BUDGET_S` (default 420 s), so a run
 ends inside one 600 s Bash tool call: no clip starts once the budget is spent,
 and each subprocess timeout (download 3 min, each `ffmpeg` transcode/recompress
 5 min, whisper 30 min per video) is capped at the time left. The run then prints
-`x-media-fetch: N not started (budget ...)`; those clips are untouched and go
-first next run. A subprocess that exceeds its cap is a retryable failure for that
+`x-media-fetch: N not started (budget ...)`; those clips are untouched and stay
+in the queue for the next run. A subprocess that exceeds its cap is a retryable failure for that
 clip (it keeps `x_media_pending` and records `media_last_error`); the batch
 continues. `X_MEDIA_BUDGET_S=0` runs without a budget.
 

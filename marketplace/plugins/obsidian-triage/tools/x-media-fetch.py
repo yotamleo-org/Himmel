@@ -216,10 +216,12 @@ def _has_twimg_media(body: str) -> bool:
 
 
 def _cap(seconds: float) -> float:
-    """A subprocess timeout capped by the time left in the run's budget."""
+    """A subprocess timeout capped by the time left in the run's budget; once
+    the budget is spent each remaining step of the clip in flight times out at
+    once."""
     if RUN_DEADLINE is None:
         return seconds
-    return max(1, min(seconds, RUN_DEADLINE - time.monotonic()))
+    return max(0.1, min(seconds, RUN_DEADLINE - time.monotonic()))
 
 
 def _budget_spent() -> bool:
@@ -636,7 +638,7 @@ def _ffmpeg_hls(url: str, work: Path, target: Path):
            "-c", "copy", "-fs", str(MEDIA_MAX_BYTES), "-y", str(target)]
     try:
         got = subprocess.run(cmd, capture_output=True, text=True,
-                             timeout=max(1, deadline - time.monotonic()))
+                             timeout=max(0.1, deadline - time.monotonic()))
     except subprocess.TimeoutExpired:
         return "download_timeout"
     except OSError:
