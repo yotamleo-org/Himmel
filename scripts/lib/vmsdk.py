@@ -313,6 +313,48 @@ def _repo_root():
     return _env_path().parent
 
 
+# The marker grammar, restated from parseOwnKeys (scripts/jira/src/live-test-guard.ts).
+_LIVE_TEST_RE = re.compile(r"none|[A-Z][A-Z0-9]+-[0-9]+(?:,[A-Z][A-Z0-9]+-[0-9]+)*")
+_LIVE_TEST_VALUE = []   # this process's answer, asked once: [value] or [None] for an unmarked host
+
+
+def _live_test_value():
+    """The HIMMEL_JIRA_LIVE_TEST value a guest command carries, or None for an unmarked host.
+
+    Asks the host `jira live-test --json` (HIMMEL_VMSDK_JIRA_CLI, else the primary checkout's
+    built CLI), whose context walks this process's claude ancestors. When the verb cannot
+    answer, the own-env marker is forwarded if one is set, and a note goes to stderr. A value
+    outside the marker grammar is sent as none.
+    """
+    if _LIVE_TEST_VALUE:
+        return _LIVE_TEST_VALUE[0]
+    cli = os.environ.get("HIMMEL_VMSDK_JIRA_CLI") or str(_repo_root() / "scripts" / "jira" / "dist" / "index.js")
+    value, why = None, None
+    try:
+        r = subprocess.run(["node", cli, "live-test", "--json"], capture_output=True, text=True,
+                           timeout=60, cwd=os.path.dirname(os.path.abspath(cli)))
+        if r.returncode != 0:
+            why = f"exit {r.returncode}: {(r.stderr or r.stdout).strip()[:200]}"
+        else:
+            info = json.loads(r.stdout)
+            if info.get("context") is True:
+                keys = info.get("own_keys")
+                value = ",".join(keys) if isinstance(keys, list) and keys and all(isinstance(k, str) for k in keys) else "none"
+            elif info.get("context") is not False:
+                why = "its output has no boolean context field"
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError) as e:
+        why = f"{type(e).__name__}: {e}"
+    if why is not None:
+        value = os.environ.get("HIMMEL_JIRA_LIVE_TEST") or None
+        print(f"vmsdk: jira live-test --json could not answer ({why}); "
+              + ("forwarding this process's own HIMMEL_JIRA_LIVE_TEST into the guest" if value
+                 else "this process has no HIMMEL_JIRA_LIVE_TEST, so guest commands go unmarked"), file=sys.stderr)
+    if value is not None and not _LIVE_TEST_RE.fullmatch(value):
+        value = "none"
+    _LIVE_TEST_VALUE.append(value)
+    return value
+
+
 _AR_CLONE = re.compile(r"himmel-ar-([1-9][0-9]*)")
 
 
@@ -489,9 +531,15 @@ class VM:
         self._client = client
         return client
 
+    def _live_test_cmd(self, cmd):
+        """`cmd` with the host's live-test marker exported first; a Windows guest's shell is not POSIX, so it is left as is."""
+        value = None if self.os == "windows" else _live_test_value()
+        return cmd if value is None else f"export HIMMEL_JIRA_LIVE_TEST={shlex.quote(value)}; {cmd}"
+
     def run(self, cmd, sudo=False, timeout=300):
         if sudo and self.os == "windows":
             raise VMError("sudo is not meaningful on a windows VM")
+        cmd = self._live_test_cmd(cmd)
         client = self.ssh()
         if sudo:
             wrapped = f"echo '{self.password}' | sudo -S bash -c {repr(cmd)}"
@@ -564,16 +612,18 @@ class VM:
 
         Every command is appended to ~/.himmel/vm/guest-exec.log
         (HIMMEL_GUEST_EXEC_LOG overrides) as one JSON line with its outcome
-        (rc, error or refused). Returns (rc, output) like `run`.
+        (rc, error or refused); a command that ran is logged as sent, with
+        the live-test marker `run` puts in front of it. Returns (rc, output) like `run`.
         """
         log = Path(os.environ.get("HIMMEL_GUEST_EXEC_LOG")
                    or os.path.expanduser("~/.himmel/vm/guest-exec.log"))
+        logged = cmd
 
         def record(status):
             stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             row = {"v": 1, "ts": stamp, "host": socket.gethostname(), "source": "vmsdk",
                    "kind": "guest-exec", "vm": self.name, "sudo": int(sudo),
-                   "status": status, "cmd": cmd}
+                   "status": status, "cmd": logged}
             log.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             # command lines can carry credentials: owner-only, even for a pre-existing log
             with os.fdopen(os.open(log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "a") as f:
@@ -585,6 +635,7 @@ class VM:
         except VMError as e:
             record(f"refused ({e})".replace("\n", " "))
             raise
+        logged = self._live_test_cmd(cmd)
         try:
             rc, out = self.run(cmd, sudo=sudo, timeout=timeout)
         except Exception as e:
