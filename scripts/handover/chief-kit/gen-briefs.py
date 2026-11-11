@@ -1041,7 +1041,7 @@ def writer_round_gate(l, ctx):
         i = len(parts) - 1 - parts[::-1].index('specs')
         if i + 1 >= len(parts) or not (parts[i + 1] in SIGNATURE_DIRS or KEY_FOLDER_RE.match(parts[i + 1])):
             continue
-        key = spec_key(tok)
+        key = parts[i + 1] if KEY_FOLDER_RE.match(parts[i + 1]) else spec_key(tok)  # a specs/<KEY>/ tree is that key's at any depth
         if key is None:
             die("worker %s: a writer leg writes only its own keys' specs: %s has no ticket key; name the spec <KEY>-<slug>.md or put it in specs/<KEY>/" % (label, tok))
         if key not in keys:

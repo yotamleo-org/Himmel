@@ -1857,6 +1857,12 @@ cgo="$(cgrun r14bplanx)"; rc=$?
 cg_workers r14bfolder HIMMEL-9687 "$WS/HIMMEL-9687/notes.md" ''
 cgo="$(cgrun r14bfolder)"; rc=$?
 [ "$rc" = 0 ] && [ -n "$(cg_brief r14bfolder)" ] && pass "R14b: a folder-form path specs/<KEY>/ takes the folder's key" || fail "R14b folder form rc=$rc: $cgo"
+cg_workers r14bdeep HIMMEL-9687 "$WS/HIMMEL-9687/sub/notes.md" ''
+cgo="$(cgrun r14bdeep)"; rc=$?
+[ "$rc" = 0 ] && [ -n "$(cg_brief r14bdeep)" ] && pass "R14b: a deeper path in specs/<KEY>/ still takes the folder's key" || fail "R14b deep folder rc=$rc: $cgo"
+cg_workers r14bdeepx HIMMEL-9435 "$WS/HIMMEL-9687/sub/HIMMEL-9435-x.md" ''
+cgo="$(cgrun r14bdeepx)"; rc=$?
+[ "$rc" = 1 ] && has "R14b: a file named for the worker's key inside another key's folder is refused with T14" "$cgo" "a writer leg writes only its own keys' specs: $WS/HIMMEL-9687/sub/HIMMEL-9435-x.md is HIMMEL-9687" || fail "R14b deep foreign folder rc=$rc: $cgo"
 cg_workers r14bnokey HIMMEL-9687 "$WS/designs/notes.md" ''
 cgo="$(cgrun r14bnokey)"; rc=$?
 [ "$rc" = 1 ] && has "R14b: a writer-leg path with no key is refused" "$cgo" "$WS/designs/notes.md has no ticket key" || fail "R14b no-key rc=$rc: $cgo"
