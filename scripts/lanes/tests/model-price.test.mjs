@@ -55,7 +55,6 @@ test('(d) control: an Opus call still costs the Opus rate to the cent', () => {
 });
 
 test('(e) a Fable 5.2 call is priced at its own row, not unpriced and not at the Fable 5.1 rate', () => {
-  // Fable 5.2 is $8 in / $40 out, $0.20 cache read, $10 5m write, $16 1h write per MTok (pricing page, 2026-11-11).
   const fable52 = priceFor('claude-fable-5-2', rows);
   assert.ok(fable52, 'no claude-fable-5-2 row');
   assert.deepEqual([fable52.input, fable52.output, fable52.cacheRead, fable52.cacheWrite5m, fable52.cacheWrite1h], [8, 40, 0.2, 10, 16]);
