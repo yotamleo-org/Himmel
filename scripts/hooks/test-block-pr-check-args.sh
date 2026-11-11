@@ -182,6 +182,12 @@ else
     echo "FAIL (xv) refusal does not name the remedy"
     FAILED=$((FAILED + 1))
 fi
+if grep -qiE 'ruling|HIMMEL-[0-9]' <<< "$msg"; then
+    echo "FAIL (xxii) refusal cites an internal ruling or ticket number"
+    FAILED=$((FAILED + 1))
+else
+    echo "PASS (xxii) refusal cites no internal ruling or ticket number"
+fi
 
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
