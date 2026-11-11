@@ -2,7 +2,7 @@ name: fork-drift
 
 # Nightly upstream-drift watch. Runs the existing drift guard
 # (scripts/check-plugin-drift.sh + scripts/upstreams.json) — which
-# now also covers the two SHA-pinned lib forks graphify + qmd, and
+# also covers the two SHA-pinned lib forks graphify + qmd, and
 # scans every npm/bun dependency, pre-commit rev, workflow `uses:` and the
 # OXLINT_VERSION= literal via scripts/upstreams/pin-scan.py (npm registry + gh
 # releases; holds in scripts/upstreams/pin-holds.json) — and, on real

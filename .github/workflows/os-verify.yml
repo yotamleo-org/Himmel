@@ -11,7 +11,7 @@ name: os-verify
 # macOS runs ONLY the curated POC list scripts/ci/macos-poc-suites.txt
 # (`all` = the whole list, `impacted` = impacted AND listed; an empty
 # intersection is a green no-op that says so). The full corpus is red on macOS,
-# so a suite joins the list only with a green macOS log line (a ratchet).
+# so a suite joins the list only with a green macOS log line.
 #
 # DISPATCH ONLY, by design: a pull_request/push/schedule trigger would put the
 # paid macOS legs back on every PR. Nothing here is a required check.

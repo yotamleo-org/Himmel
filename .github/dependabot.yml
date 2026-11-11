@@ -1,7 +1,5 @@
 # Dependabot dependency updates for himmel.
 # One npm entry per package manifest (npm ecosystem also covers bun.lock).
-# github-actions is included for when CI workflows land — it is a
-# no-op until .github/workflows/ exists.
 #
 # Who bumps what — one owner per pin, never two:
 #   Dependabot     npm manifests (above) and every workflow `uses:` (github-actions).

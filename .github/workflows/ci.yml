@@ -5,7 +5,7 @@ on:
   # non-conventional commit, a secret, a shellcheck warning, or a failing shell
   # suite blocks merge. Every job here is ubuntu only: Windows support is
   # dropped and there is no dispatch input that widens a matrix
-  # (per-PR all-OS dispatches once filled the account's 20-job cap), so neither a PR nor a manual dispatch can occupy a 10x-billed runner. macOS is not in
+  # so neither a PR nor a manual dispatch can occupy a 10x-billed runner. macOS is not in
   # this file at all: it runs on its own twice-weekly workflow,
   # macos-cadence.yml, so a macOS red can never turn this run -- or main -- red.
   # `shell-unit` itself is the aggregating gate over the sharded shell-suite
@@ -956,8 +956,8 @@ jobs:
       - if: ${{ needs.ci-quick.outputs.secret-scan != 'pass' }}
         run: exit 1
 
-  # A bracket-expression bug in
-  # scripts/lib/unchecked-mktemp.sh (since fixed) only failed under a real BWK
+  # A bracket-expression regex in
+  # scripts/lib/unchecked-mktemp.sh can fail only under a real BWK
   # (one-true-awk) — `gawk --posix`/`--lint=fatal` both accept the broken
   # regex (J1288O), so a lint substitute would not catch this class of
   # regression, and Ubuntu PR CI runs everything else under gawk. The only
@@ -1188,7 +1188,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # Pinned node: flag-registry-lint ran on the runner's unpinned default node.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: ${{ !job.container.id }}
         with:
@@ -1748,8 +1747,8 @@ jobs:
       # directory fails every wired case (docs/internals/environment-gotchas.md,
       # "The bun test cwd is per-suite"). No `bun install` needed: scripts/telegram
       # has no package.json of its own and the suites run against the repo tree.
-      # This is the largest bun test surface in the repo (971 tests) and had no
-      # CI step at all before this one. It runs on every matrix entry because
+      # This is the largest bun test surface in the repo (971 tests). It runs on
+      # every matrix entry because
       # three of its cases are platform-sensitive by construction.
       - run: bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots
       # The luna source-identity suites (source-identity +
@@ -1771,8 +1770,7 @@ jobs:
         run: bash scripts/ci/run-bun-tests.sh scripts/config-ui scripts/config-ui --dots
       # --frozen-lockfile fails if bun.lock has drifted from package.json. Catches
       # the class of bug where a dep range is bumped in package.json but the
-      # lockfile is never regenerated. It also runs the suite that was always
-      # there under tests/.
+      # lockfile is never regenerated. It also runs the suite under tests/.
       - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/luna-correlate
       # telegram-himmel's own suite (tests/poller-gate-shape.test.ts)
       # had no CI step. Ubuntu only, like the vault step: its fixtures are
@@ -2065,8 +2063,8 @@ jobs:
       # which the supported runtime provides (`ubuntu.sh` installs +
       # enables at/atd). GitHub's ubuntu image ships without `at`, so CI fell back
       # to the crontab path and ~2 arm-resume cases diverged from a real install.
-      # Install + enable it on Linux so CI mirrors the supported runtime
-      # (the arm-resume suite was red on CI without it). Scoped to Linux.
+      # Install + enable it on Linux so CI mirrors the supported runtime.
+      # Scoped to Linux.
       # The runner image preinstalls third-party apt sources
       # (Google Chrome, Microsoft, Azure CLI) we never use; when one of those
       # goes inconsistent upstream, `apt-get update` exits 100 and this step
@@ -2092,7 +2090,6 @@ jobs:
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-at-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - name: Install + enable at/atd (Linux — arm-resume scheduler backend)
         if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
-        # A hung dpkg/apt lock once held this step ~1.5 h, so
         # apt-install.sh bounds every apt call with a `timeout` and a dpkg-lock
         # wait, and tries cached debs, then the runner's mirror, then an
         # alternate mirror (the plain install comes before any index
@@ -2371,8 +2368,8 @@ jobs:
     # post a check-run literally named "shell-unit (ubuntu-latest)" --
     # identical to (and newer than) the PR's own required check -- or GitHub's
     # required-check evaluation and check-ci.sh both read the dispatch run's
-    # result and shadow the PR's. The all-OS dispatch input is gone,
-    # so a dispatch is now ubuntu-only; the distinct name is kept as the
+    # result and shadow the PR's. A dispatch runs ubuntu only, and
+    # the distinct name is kept as the
     # name-collision guard.
     # schedule/pull_request keep the unchanged name.
     name: shell-unit${{ github.event_name == 'workflow_dispatch' && ' (dispatch verify)' || '' }} (${{ matrix.os }})
@@ -2512,7 +2509,6 @@ jobs:
   # nightly shards run the fast subset (GUARD_CORPUS_TIER=fast). The 240-min
   # cap is the estimate x1.7; a red here is the nightly's own signal and
   # gates no PR.
-  # One job, serial: sharding the replay is the way to cut its wall time.
   guard-corpus-full:
     if: github.event.schedule == '17 7 * * *'
     runs-on: ubuntu-24.04

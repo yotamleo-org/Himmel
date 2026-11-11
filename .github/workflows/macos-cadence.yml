@@ -14,8 +14,8 @@ name: "CI (os:macos cadence)"
 # 10x-billed macOS runner cost (and off the nightly's 07:17 slot).
 #
 # The macOS legs run never on an unlabelled PR and never on push: that would put
-# them back on every PR, where they once filled the account's 20-job cap. A PR opts in with the `ci:macos` label
-# (so a PR can prove macOS before merge): the run starts when the label is added and on each later push,
+# them back on every PR. A PR opts in with the `ci:macos` label:
+# the run starts when the label is added and on each later push,
 # and both jobs are skipped for any PR without it. A PR run never records
 # breakages (the record belongs to main). Dispatch (needs this file on main):
 #   gh workflow run macos-cadence.yml --ref main
