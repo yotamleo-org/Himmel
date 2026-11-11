@@ -179,8 +179,8 @@ qplant() {
     mkdir -p "$1"
     printf 'main\tgraphql\t%s\t5000\t%s\t%s\t%s\nmain\tcore\t4000\t5000\t%s\t%s\tok\n' "$2" "$((now + 1800))" "$now" "$3" "$((now + 1800))" "$now" > "$1/quota.tsv"
 }
-cat > "$tmp/qderive.sh" <<'EOF'
-. "$1"
+printf '. %q\n' "$HERE/ticket-status.sh" > "$tmp/qderive.sh"
+cat >> "$tmp/qderive.sh" <<'EOF'
 ts_derive HIMMEL-9201
 printf '%s/%s/%s/%s' "$TS_DERIVED" "$TS_RESULT" "$TS_STAGE" "$TS_RULE"
 EOF
@@ -189,7 +189,7 @@ qderive() {
     : > "$tmp/qgh.log"
     [ "$1" = - ] || q=("HIMMEL_QUOTA_DIR=$1")
     env -u HIMMEL_QUOTA_DIR ${q[@]+"${q[@]}"} PATH="$tmp/qbin:$PATH" QGH_LOG="$tmp/qgh.log" WORKER_SESSION_JIRA_CLI="$tmp/qjira" \
-        bash "$tmp/qderive.sh" "$HERE/ticket-status.sh" 2> "$tmp/qerr"
+        bash "$tmp/qderive.sh" 2> "$tmp/qerr"
 }
 qplant "$tmp/q-out" 0 refused
 check "9479 T8: a paused live derive is no-write + miss stage=gh" "$(qderive "$tmp/q-out")" "no-write/miss/gh/"
