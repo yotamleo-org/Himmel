@@ -7,7 +7,7 @@
 | Question | Answer | Likely range | Sample |
 |---|---|---|---|
 | Does the review panel catch bugs? | **38.3%**: `claude`, `codex` caught 18 of 47 planted bugs | 25.8 to 52.6 | as of 2026-11-04, n = 47 planted bugs in 94 test changes |
-| When the required reviewer flags something, is it right? | **80.1%** of `codex:gpt-6.1-sol` findings ruled right (recorded dispositions) | Wilson 79.2 to 81.1; by PR 78.7 to 81.5 | as of 2026-11-11, n = 6,968 ruled findings over 2,297 PRs |
+| When the required reviewer flags something, is it right? | **80.1%** of `codex:gpt-6.1-sol` findings ruled right (recorded dispositions) | Wilson 79.2 to 81.1; by PR 78.7 to 81.5 | as of 2026-11-11, n = 6,968 ruled findings over 2,053 PRs |
 | Is work proven before it is built? | **10.8%** of merged PRs were proof-first (self-reported) | 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |
 | How far can the lane-quality judge be trusted? (arms `claude-haiku-5-5`, `claude-sonnet-5-5`) | **kappa 0.35**: graders agreed on 11 of 17 runs, model-graded (no human label) by OpenAI and Google, tie-breaker DeepSeek sided with grader 1 in 1 and grader 2 in 5 of 6 disagreements; the stored judge flipped its verdict on 2 of 17 runs judged twice | no interval | as of 2026-10-27, n = 17 runs |
 | How far can the lane-quality judge be trusted? (arms `gpt-6.1-sol`) | **kappa 0.00**: graders agreed on 5 of 7 runs, model-graded (no human label) by Anthropic and Google, tie-breaker DeepSeek sided with grader 1 in 0 and grader 2 in 2 of 2 disagreements; the stored judge flipped its verdict on 3 of 7 runs judged twice | no interval | as of 2026-10-27, n = 7 runs |
@@ -23,10 +23,10 @@ The reviewers `scripts/cr/critics.json` runs on every PR today. To change the se
 
 | Reviewer | What it must do | Precision (recorded dispositions) | Wilson range | Range by PR | Sample |
 |---|---|---|---|---|---|
-| `codex:gpt-6.1-sol` | required: must pass before every merge | **80.1%** | 79.2 to 81.1 | 78.7 to 81.5 | as of 2026-11-11, n = 6,968 ruled findings over 2,297 PRs |
-| `claude:claude-opus-5-5` | must pass where it runs; skipped on a machine without it | **59.9%** | 53.9 to 65.7 | 47.5 to 70.2 | as of 2026-11-11, n = 262 ruled findings over 72 PRs |
-| `coderabbit` | best effort: holds a merge only on a posted finding | **87.7%** | 81.8 to 91.9 | 81.0 to 94.4 | as of 2026-11-11, n = 163 ruled findings over 1,417 PRs |
-| `coderabbit-outside` | part of `coderabbit`: findings on lines outside the diff | **63.3%** | 57.2 to 69.1 | 56.8 to 69.8 | as of 2026-11-11, n = 251 ruled findings over 300 PRs |
+| `codex:gpt-6.1-sol` | required: must pass before every merge | **80.1%** | 79.2 to 81.1 | 78.7 to 81.5 | as of 2026-11-11, n = 6,968 ruled findings over 2,053 PRs |
+| `claude:claude-opus-5-5` | must pass where it runs; skipped on a machine without it | **59.9%** | 53.9 to 65.7 | 47.5 to 70.2 | as of 2026-11-11, n = 262 ruled findings over 40 PRs |
+| `coderabbit` | best effort: holds a merge only on a posted finding | **87.7%** | 81.8 to 91.9 | 81.0 to 94.4 | as of 2026-11-11, n = 163 ruled findings over 77 PRs |
+| `coderabbit-outside` | part of `coderabbit`: findings on lines outside the diff | **63.3%** | 57.2 to 69.1 | 56.8 to 69.8 | as of 2026-11-11, n = 251 ruled findings over 153 PRs |
 
 Precision is the share of a reviewer's ruled findings that were right; when the two ranges disagree, trust the wider one. Method: [review panel](review-panel.md).
 
@@ -36,12 +36,12 @@ Every reviewer the ledger holds that the panel no longer runs, oldest first. A r
 
 | Reviewer | Ran | Precision (recorded dispositions) | Wilson range | Range by PR | Sample |
 |---|---|---|---|---|---|
-| `codex:gpt-5.6-sol` | 2026-09-04 to 2026-09-05 | **84.1%** | 76.2 to 89.7 | 74.2 to 91.7 | as of 2026-11-11, n = 113 ruled findings over 27 PRs |
-| `codex:gpt-6-astra` | 2026-09-05 to 2026-09-23 | **89.3%** | 87.4 to 90.9 | 86.1 to 92.0 | as of 2026-11-11, n = 1,231 ruled findings over 362 PRs |
-| `codex` (model not recorded) | 2026-09-08 to 2026-11-09 | **86.0%** | 82.6 to 88.9 | 79.2 to 90.6 | as of 2026-11-11, n = 458 ruled findings over 36 PRs |
-| `claude` (model not recorded) | 2026-09-17 to 2026-11-11 | **68.8%** | 61.1 to 75.6 | 40.6 to 96.2 | as of 2026-11-11, n = 154 ruled findings over 141 PRs |
-| `codex:gpt-6-sol` | 2026-09-23 to 2026-09-29 | **70.7%** | 67.0 to 74.1 | 64.8 to 76.2 | as of 2026-11-11, n = 627 ruled findings over 169 PRs |
-| All reviewers pooled | 2026-09-04 to 2026-11-11 | **79.9%** | 79.1 to 80.7 | 78.6 to 81.2 | as of 2026-11-11, n = 10,379 ruled findings over 3,332 PRs |
+| `codex:gpt-5.6-sol` | 2026-09-04 to 2026-09-05 | **84.1%** | 76.2 to 89.7 | 74.2 to 91.7 | as of 2026-11-11, n = 113 ruled findings over 23 PRs |
+| `codex:gpt-6-astra` | 2026-09-05 to 2026-09-23 | **89.3%** | 87.4 to 90.9 | 86.1 to 92.0 | as of 2026-11-11, n = 1,231 ruled findings over 285 PRs |
+| `codex` (model not recorded) | 2026-09-08 to 2026-11-09 | **86.0%** | 82.6 to 88.9 | 79.2 to 90.6 | as of 2026-11-11, n = 458 ruled findings over 23 PRs |
+| `claude` (model not recorded) | 2026-09-17 to 2026-11-11 | **68.8%** | 61.1 to 75.6 | 40.6 to 96.2 | as of 2026-11-11, n = 154 ruled findings over 26 PRs |
+| `codex:gpt-6-sol` | 2026-09-23 to 2026-09-29 | **70.7%** | 67.0 to 74.1 | 64.8 to 76.2 | as of 2026-11-11, n = 627 ruled findings over 149 PRs |
+| All reviewers pooled | 2026-09-04 to 2026-11-11 | **79.9%** | 79.1 to 80.7 | 78.6 to 81.2 | as of 2026-11-11, n = 10,379 ruled findings over 2,658 PRs |
 
 A row marked (model not recorded) holds the findings whose ledger record names no answering model for that review; they are kept apart, never folded into a named model, because which model raised them is unknown. 61 reviewers with fewer than 30 ruled findings are left out: too few to rank. What the history taught, with the analysis behind it: [review panel](review-panel.md).
 
@@ -64,7 +64,7 @@ Every reviewer, current and past. Only agreed and disproved count toward precisi
 | Proof-first share (self-reported): both halves below | **10.8%** | 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |
 | The ticket had a DoD and a Proof and was created before the first commit | **19.2%** | 13.1 to 27.1 | as of 2026-10-24, n = 120 merged PRs |
 | RED and then GREEN named in the PR body | **57.5%** | 48.6 to 66.0 | as of 2026-10-24, n = 120 merged PRs |
-| Test-first adherence: a test failed before the implementation and passed after | **30.9%** | 29.1 to 32.8 | as of 2026-11-11, n = 2,438 sessions scored under trajectory version 2 |
+| Test-first adherence: a test failed before the implementation and passed after | **30.9%** | 29.1 to 32.8 | as of 2026-11-11, n = 2,439 sessions scored under trajectory version 2 |
 
 A merged PR is proof-first only when it has both halves; each half is shown on its own. Method: [proof-first share](../../scripts/eval/README.md) and [test-first record](../../scripts/eval/README.md).
 

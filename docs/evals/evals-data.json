@@ -24,7 +24,7 @@
     ],
     "pooled": {
       "findings": 19982,
-      "prs": 3332,
+      "prs": 2658,
       "agreed": 11590,
       "disproved": 2596,
       "deferred": 5033,
@@ -50,7 +50,7 @@
     "critics": {
       "codex:gpt-6.1-sol": {
         "findings": 9717,
-        "prs": 2297,
+        "prs": 2053,
         "agreed": 5584,
         "disproved": 1384,
         "deferred": 2700,
@@ -76,7 +76,7 @@
       },
       "coderabbit": {
         "findings": 4086,
-        "prs": 1417,
+        "prs": 77,
         "agreed": 3433,
         "disproved": 529,
         "deferred": 115,
@@ -102,7 +102,7 @@
       },
       "codex:gpt-6-astra": {
         "findings": 2435,
-        "prs": 362,
+        "prs": 285,
         "agreed": 1099,
         "disproved": 132,
         "deferred": 697,
@@ -128,7 +128,7 @@
       },
       "codex:gpt-6-sol": {
         "findings": 872,
-        "prs": 169,
+        "prs": 149,
         "agreed": 443,
         "disproved": 184,
         "deferred": 234,
@@ -154,7 +154,7 @@
       },
       "coderabbit-outside": {
         "findings": 567,
-        "prs": 300,
+        "prs": 153,
         "agreed": 162,
         "disproved": 93,
         "deferred": 230,
@@ -180,7 +180,7 @@
       },
       "codex": {
         "findings": 483,
-        "prs": 36,
+        "prs": 23,
         "agreed": 394,
         "disproved": 64,
         "deferred": 18,
@@ -206,7 +206,7 @@
       },
       "claude:claude-opus-5-5": {
         "findings": 469,
-        "prs": 72,
+        "prs": 40,
         "agreed": 157,
         "disproved": 105,
         "deferred": 197,
@@ -232,7 +232,7 @@
       },
       "claude": {
         "findings": 462,
-        "prs": 141,
+        "prs": 26,
         "agreed": 106,
         "disproved": 48,
         "deferred": 306,
@@ -258,7 +258,7 @@
       },
       "codex:gpt-5.6-sol": {
         "findings": 231,
-        "prs": 27,
+        "prs": 23,
         "agreed": 95,
         "disproved": 18,
         "deferred": 35,
@@ -284,7 +284,7 @@
       },
       "coverage-deferral": {
         "findings": 223,
-        "prs": 88,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 223,
@@ -304,7 +304,7 @@
       },
       "unlabelled": {
         "findings": 86,
-        "prs": 27,
+        "prs": 1,
         "agreed": 3,
         "disproved": 2,
         "deferred": 80,
@@ -327,7 +327,7 @@
       },
       "judge": {
         "findings": 44,
-        "prs": 27,
+        "prs": 6,
         "agreed": 13,
         "disproved": 0,
         "deferred": 31,
@@ -353,7 +353,7 @@
       },
       "worker": {
         "findings": 36,
-        "prs": 17,
+        "prs": 7,
         "agreed": 13,
         "disproved": 0,
         "deferred": 23,
@@ -402,7 +402,7 @@
       },
       "worker-scope": {
         "findings": 23,
-        "prs": 9,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 23,
@@ -422,7 +422,7 @@
       },
       "claude-opus-5-5": {
         "findings": 17,
-        "prs": 7,
+        "prs": 2,
         "agreed": 4,
         "disproved": 0,
         "deferred": 13,
@@ -448,7 +448,7 @@
       },
       "citation-guard": {
         "findings": 15,
-        "prs": 15,
+        "prs": 13,
         "agreed": 7,
         "disproved": 6,
         "deferred": 1,
@@ -497,7 +497,7 @@
       },
       "disposition-carry-forward": {
         "findings": 13,
-        "prs": 2,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 13,
@@ -543,7 +543,7 @@
       },
       "claude-sonnet-5-5": {
         "findings": 12,
-        "prs": 5,
+        "prs": 1,
         "agreed": 3,
         "disproved": 0,
         "deferred": 9,
@@ -612,7 +612,7 @@
       },
       "leg-n3645": {
         "findings": 11,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 11,
@@ -655,7 +655,7 @@
       },
       "manual": {
         "findings": 9,
-        "prs": 2,
+        "prs": 1,
         "agreed": 2,
         "disproved": 0,
         "deferred": 7,
@@ -701,7 +701,7 @@
       },
       "native-n3323": {
         "findings": 7,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 7,
@@ -744,7 +744,7 @@
       },
       "gpt-6.1-sol": {
         "findings": 5,
-        "prs": 3,
+        "prs": 2,
         "agreed": 3,
         "disproved": 0,
         "deferred": 2,
@@ -770,7 +770,7 @@
       },
       "worker-coverage": {
         "findings": 5,
-        "prs": 4,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 5,
@@ -790,7 +790,7 @@
       },
       "judge-opus": {
         "findings": 4,
-        "prs": 3,
+        "prs": 2,
         "agreed": 3,
         "disproved": 0,
         "deferred": 1,
@@ -816,7 +816,7 @@
       },
       "leg": {
         "findings": 4,
-        "prs": 3,
+        "prs": 1,
         "agreed": 1,
         "disproved": 0,
         "deferred": 3,
@@ -839,7 +839,7 @@
       },
       "console": {
         "findings": 3,
-        "prs": 3,
+        "prs": 2,
         "agreed": 2,
         "disproved": 0,
         "deferred": 1,
@@ -891,7 +891,7 @@
       },
       "scope": {
         "findings": 3,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 3,
@@ -957,7 +957,7 @@
       },
       "chief": {
         "findings": 2,
-        "prs": 2,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -977,7 +977,7 @@
       },
       "chief-judge": {
         "findings": 2,
-        "prs": 2,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -997,7 +997,7 @@
       },
       "comment-sicko": {
         "findings": 2,
-        "prs": 2,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1017,7 +1017,7 @@
       },
       "coverage": {
         "findings": 2,
-        "prs": 2,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1037,7 +1037,7 @@
       },
       "coverage-lint": {
         "findings": 2,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1057,7 +1057,7 @@
       },
       "leg-n3424": {
         "findings": 2,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1077,7 +1077,7 @@
       },
       "leg-scope": {
         "findings": 2,
-        "prs": 2,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1097,7 +1097,7 @@
       },
       "leg-self": {
         "findings": 2,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1117,7 +1117,7 @@
       },
       "n3083-leg": {
         "findings": 2,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1137,7 +1137,7 @@
       },
       "n3211-self": {
         "findings": 2,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1157,7 +1157,7 @@
       },
       "native": {
         "findings": 2,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1177,7 +1177,7 @@
       },
       "opus-judge": {
         "findings": 2,
-        "prs": 2,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1197,7 +1197,7 @@
       },
       "self": {
         "findings": 2,
-        "prs": 2,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1217,7 +1217,7 @@
       },
       "spec-design": {
         "findings": 2,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1237,7 +1237,7 @@
       },
       "worker-N4496c": {
         "findings": 2,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1257,7 +1257,7 @@
       },
       "worker-ask": {
         "findings": 2,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 2,
@@ -1277,7 +1277,7 @@
       },
       "chief-ruling": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1320,7 +1320,7 @@
       },
       "console-DB": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1340,7 +1340,7 @@
       },
       "judge-OQ-j4610-1": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1360,7 +1360,7 @@
       },
       "judge-OR-j4610-1": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1380,7 +1380,7 @@
       },
       "leg-N3273": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1400,7 +1400,7 @@
       },
       "leg-n3431": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1420,7 +1420,7 @@
       },
       "leg-n3439": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1440,7 +1440,7 @@
       },
       "opus": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1460,7 +1460,7 @@
       },
       "ready-check": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1480,7 +1480,7 @@
       },
       "self-review": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1500,7 +1500,7 @@
       },
       "session": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1520,7 +1520,7 @@
       },
       "sweep": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1540,7 +1540,7 @@
       },
       "worker-N5062": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1560,7 +1560,7 @@
       },
       "worker-n3757": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1580,7 +1580,7 @@
       },
       "worker-n3767": {
         "findings": 1,
-        "prs": 1,
+        "prs": 0,
         "agreed": 0,
         "disproved": 0,
         "deferred": 1,
@@ -1648,7 +1648,7 @@
   "test_first": {
     "pct": 30.9,
     "k": 754,
-    "n": 2438,
+    "n": 2439,
     "wilson": {
       "lo": 29.1,
       "hi": 32.8

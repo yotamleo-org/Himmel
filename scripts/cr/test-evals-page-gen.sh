@@ -322,6 +322,18 @@ eq "dedup: the later critic's row holds the finding too" "$(jget "$TMP/dup.json"
 eq "dedup: the merged finding takes the earliest ruled verdict" "$(jget "$TMP/dup.json" review/pooled/agreed)" "2"
 eq "dedup: the same claim on another PR stays a separate finding" "$(jget "$TMP/dup.json" review/pooled/prs)" "2"
 
+# The sample's PR count is over the same population as its n: gamma has 3 ruled findings on PR g0 and 5 unruled
+# findings on PRs g1..g5, so "3 ruled findings over 1 PR", never over the 6 PRs it raised findings on.
+L4="$TMP/ledger-prs.jsonl"
+: > "$L4"
+for j in 0 1 2; do dupf_line="$(printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"g0","head":"h1","model":"gamma","finding_id":"gamma-r%s","severity":"imp","verdict":"agreed","artifact":"diff","perspective":"off","file":"g.py","line":"%s","text":"ruled claim %s"}' "$j" "$j" "$j")"; printf '%s\n' "$dupf_line" >> "$L4"; done
+for j in 1 2 3 4 5; do dupf_line="$(printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"g%s","head":"h1","model":"gamma","finding_id":"gamma-u%s","severity":"imp","verdict":"","artifact":"diff","perspective":"off","file":"g.py","line":"%s","text":"unruled claim %s"}' "$j" "$j" "$j" "$j")"; printf '%s\n' "$dupf_line" >> "$L4"; done
+python3 -I "$GEN" data --ledger "$L4" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$TMP/prs.json" > /dev/null 2>&1; rc=$?
+eq "ruled_prs: data exits 0" "$rc" "0"
+eq "ruled_prs: n counts the ruled findings" "$(jget "$TMP/prs.json" review/critics/gamma/n)" "3"
+eq "ruled_prs: the sample's PRs are the PRs of the ruled findings" "$(jget "$TMP/prs.json" review/critics/gamma/prs)" "1"
+eq "ruled_prs: the pool counts PRs the same way" "$(jget "$TMP/prs.json" review/pooled/prs)" "1"
+
 # write() replaces the output path, never writes through a symlink.
 printf 'keep\n' > "$TMP/target.md"
 ln -s "$TMP/target.md" "$TMP/link.md"
