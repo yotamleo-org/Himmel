@@ -1,5 +1,3 @@
-// scripts/lanes/tests/phase-call-state.test.mjs - the schema-2 call-state adapter of the usage collector
-// (scripts/usage/phase-call-state.mjs). Each case drives the CLI, the way usage-compute.sh does.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -22,7 +20,6 @@ const call = (id, ts, out, { model = OPUS, tool, req = `req_${id}` } = {}) => ({
 
 const serialize = (lines) => lines.map((l) => `${typeof l === 'string' ? l : JSON.stringify(l)}\n`).join('');
 
-// One adapter run on `lines`, from `state` (a parsed state or null) at byte offset `start`.
 function run(lines, { state = null, start = 0, meta = META, role, tz, env = {}, chunkText } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'pcs-'));
   try {

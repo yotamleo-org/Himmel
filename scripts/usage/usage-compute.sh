@@ -121,8 +121,6 @@ elif [ -n "$TICKETS" ]; then
   SEL="$(jq -nc --arg l "$TICKETS" '{list: ($l | split(","))}')"
 fi
 
-# The phase-cost pass runs in Node (scripts/usage/phase-call-state.mjs). Resolve an absolute node before the
-# lock or any write, so a scheduled run with no PATH still works and a missing runtime fails closed, never open.
 # shellcheck source=../lib/resolve-node.sh
 . "$HERE/../lib/resolve-node.sh" || exit 1
 NODE="$(resolve_node)" || die "node is required for the phase-cost pass and was not found (PATH, well-known locations, nvm, fnm)"
@@ -294,12 +292,7 @@ build_tickets() {
 
 # --- 4. phase-cost rows ------------------------------------------------------
 # One row per (day, session, phase), priced per call from scripts/lanes/lib/model-prices.tsv
-# (a model with no row is usd null / mark unpriced, never another model's rate). Incremental:
-# each transcript is read from its saved byte offset, complete lines only, by
-# scripts/usage/phase-call-state.mjs: a message that streams over several rows (one message
-# id) counts once at its final usage, on the day and phase of its first usage, even across
-# runs. Rows are cumulative: a changed (day, session, phase) appends its new total, readers
-# take the latest.
+# (a model with no row is usd null / mark unpriced, never another model's rate). Incremental.
 # phase_rule v1 is the cost-page audit: the phase is the last tool before the call [derived];
 # a judge, critic, release-mgr or chief session has one whole-session phase [counted].
 # ponytail: graph-eval and bots classes need a first-prompt pattern the audit does not give, so
@@ -443,8 +436,6 @@ build_window() {
     mv "$WORK/wunits.tmp" "$WORK/wunits.json"
   fi
 
-  # One line per transcript of the window: unit, path, state file key, saved state kind (0 none, 1 schema 1, 2 schema 2)
-  # and saved offset. The key is a checksum of the whole path plus a readable tail, so a long path cannot exceed a file-name limit.
   : > "$WORK/wfiles.tsv"
   while IFS=$'\t' read -r u rel; do
     ck="$(printf '%s' "$rel" | cksum | tr ' ' _)"; tl="${rel//[^A-Za-z0-9._-]/_}"; key="${ck}_${tl: -60}"
@@ -452,9 +443,6 @@ build_window() {
     if [ -f "$PSTATE/$key.json" ]; then st="$(jq -r '"\(.schema // 1) \(.off // 0)"' "$PSTATE/$key.json")" || die "cannot read the saved state of $rel"; fi
     printf '%s\t%s\t%s\t%s\n' "$u" "$rel" "$key" "${st// /$'\t'}" >> "$WORK/wfiles.tsv"
   done < <(jq -r '.[] | .unit as $u | .files[] | "\($u)\t\(.rel)"' "$WORK/wunits.json")
-  # A unit with a schema 1 state is rebuilt from byte 0 under schema 2, which needs every transcript that once gave it cost.
-  # When its emitted rows name a transcript that is no longer there, the unit is pending: it keeps its rows and its states
-  # as they were, the checkpoint counts it (pending_legacy_files), and the run goes on with the other units.
   : > "$WORK/pending.txt"
   while IFS= read -r u; do
     k="$(jq -r --arg u "$u" '.[] | select(.unit == $u) | .ukey' "$WORK/wunits.json")"
@@ -500,8 +488,6 @@ build_window() {
     | .pending_legacy_files = (.pending_legacy | length)
     | if $day == "none" then . else .last_window = $day end' > "$WORK/ck-new.json" || die "cannot update the checkpoint in window $day"
 
-  # Each transcript's new state is built in $WORK/wst and moves with the window's rows, emitted maps and checkpoint in one commit
-  # (a kill loses at most the window in flight). The byte offset lives inside the state, so the totals and the offset they cover move together.
   rm -rf "$WORK/wst"; mkdir "$WORK/wst"
   : > "$WORK/wkeys"
   while IFS=$'\t' read -r u rel key sch off; do
@@ -510,17 +496,10 @@ build_window() {
     [ -f "$f" ] || continue
     echo "$key" >> "$WORK/wkeys"
     size="$(wc -c < "$f" | tr -d ' ')"
-    # no state, or a schema 2 file that shrank (it was replaced): read it again from the start
     if [ "$sch" = 0 ] || { [ "$sch" = 2 ] && [ "$size" -lt "$off" ]; }; then sch=0; off=0; fi
     [ "$sch" = 1 ] || [ "$size" -gt "$off" ] || continue
     st="$PSTATE/$key.json"; [ "$sch" != 0 ] || st=""
     if [ "$sch" = 1 ]; then
-      # the adapter refuses a schema 1 state with exit 3: the transcript is rebuilt from byte 0 under schema 2, and the
-      # boolean seen map is never reused as contributions
-      : > "$WORK/chunk"; echo '{"session":"probe"}' > "$WORK/meta.json"; rc=0
-      "$NODE" "$HERE/phase-call-state.mjs" --state "$st" --chunk "$WORK/chunk" --start-offset "$off" --end-offset "$off" --meta "$WORK/meta.json" \
-        > /dev/null 2> "$WORK/adapter.err" || rc=$?
-      [ "$rc" = 3 ] || die "phase-cost pass: the adapter did not refuse the schema 1 state of $rel (exit $rc)"
       st=""; off=0
       [ "$size" -gt 0 ] || continue
     fi

@@ -1,10 +1,6 @@
 #!/usr/bin/env node
 // scripts/usage/phase-call-state.mjs - the schema 2 call-state adapter of the usage collector (usage-compute.sh).
 //   phase-call-state.mjs [--state FILE] --chunk FILE --start-offset N --end-offset N --meta FILE [--role CLASS] [--timezone Z]
-// Folds the transcript bytes [start, end) of one file, held in --chunk, into that file's call state and prints the replacement
-// state JSON. Each call counts once, at its final usage (scripts/lanes/model-price.mjs foldUsageCall), on the day and phase
-// of its first usage: a correction subtracts the old contribution from that first key and adds the new one. Dollars are
-// integer nanodollars from lib/model-prices.tsv. The state keeps ids, counters and class words: no message text, no title.
 //   exit 0 state printed; exit 2 invalid input (the stderr line starts with a code); exit 3 legacy-state-replay-required:
 //   the state is a schema 1 state (no schema field, a boolean seen map), the caller rebuilds the unit from byte 0.
 import { readFileSync, openSync, readSync, closeSync, statSync } from 'node:fs';
@@ -24,7 +20,6 @@ const RELEVANT = /"type":"(assistant|custom-title|ai-title)"|"subtype":"compact_
 const TS = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z$/;
 const NANO_PER_MTOK_TOKEN = 1000;
 
-// the phase of the tool a call follows: the cost-page audit's last-tool rule (phase_rule v1)
 const CMD_PHASES = [
   ['review', /pr-check|scripts\/cr\/|review-round|write-verdicts|ledger-append|ready-check|thread-resolve|judge-request|clear-review-marker/],
   ['ci', /check-ci|gh pr checks|gh run|suite-coverage/],
@@ -61,7 +56,6 @@ function dayFormatter(timezone) {
     return new Intl.DateTimeFormat('en-CA', { ...(timezone ? { timeZone: timezone } : {}), year: 'numeric', month: '2-digit', day: '2-digit' });
   } catch { throw invalid('timezone-invalid', timezone); }
 }
-// the day of a call's first usage in the station's zone (or --timezone); a timestamp that is not a UTC instant is "unknown"
 function dayOf(fmt, ts) {
   const m = typeof ts === 'string' ? TS.exec(ts) : null;
   if (!m) return 'unknown';
@@ -82,7 +76,6 @@ function asCount(big) {
   return n;
 }
 
-// one call's contribution to an agg entry, rebuilt from what the state keeps for it
 function contributionOf(entry) {
   const u = entry.usage;
   return { calls: 1, i: u.input, o: u.output, cr: u.cacheRead, c5: u.cacheWrite5m, c1: u.cacheWrite1h, nano: entry.nano, unp: entry.unpriced, model: entry.model ?? 'unknown' };

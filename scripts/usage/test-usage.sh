@@ -803,11 +803,9 @@ rmdir "$WK/.lock"
 check "usage-compute.sh carries no test seam (env-driven lock tries or pause hook)" "0" \
   "$(grep -c -E 'USAGE_COMPUTE_TEST_|test_pause' "$COMPUTE" || true)"
 
-# 11. the collector counts each call's final usage once, on its first day, and a killed run resumes with no lost or doubled cost.
-# Synthetic transcripts, the sandboxed HOME and an empty ledger; the fault tests kill a real run through the cp/mv shims above.
 M1="$ROOT/m1"; mkdir -p "$M1"
 M1H="$ROOT/m1-home"; mkdir -p "$M1H"
-m1run() { # store projects [collector args]: one full collector run, the day zone from M1TZ
+m1run() {
   local st="$1" pj="$2"; shift 2
   HOME="$M1H" TZ="${M1TZ:-UTC}" bash "$COMPUTE" --projects "$pj" --ledger "$WL" --store "$st" --budget-seconds 0 "$@" >/dev/null 2>"$M1/err"
 }
@@ -817,10 +815,10 @@ m1usd() { m1rows "$1" | jq -r --arg k "$2" 'select("\(.day)|\(.session)|\(.phase
 m1totals() { m1rows "$1" | jq -rs '"\([.[].calls] | add)/\(([.[].usd // 0] | add) * 100 | round)"'; }
 m1state_schemas() { for p in "$1/phase-cost-state"/*.json; do [ ! -f "$p" ] || jq -r '.schema // "legacy"' "$p"; done | sort -u | tr '\n' ' '; }
 m1touch() { find "$1" -name '*.jsonl' -exec touch -t 202611041200 {} +; }
-brow() { # sid ts msgid text: an assistant row whose body is a text
+brow() {
   jq -nc --arg s "$1" --arg ts "$2" --arg id "$3" --arg t "$4" '{type:"assistant",sessionId:$s,timestamp:$ts,requestId:("req_"+$id),message:{id:$id,model:"claude-opus-5-5",content:[{type:"text",text:$t}],usage:{input_tokens:10,output_tokens:1,cache_read_input_tokens:100,cache_creation_input_tokens:0,cache_creation:{ephemeral_5m_input_tokens:0,ephemeral_1h_input_tokens:0}}}}'
 }
-m1kill() { # store projects kind:n: a real run paused after its n-th piece of that kind, then SIGKILLed
+m1kill() {
   local st="$1" i=0 pid pf
   pf="$M1/pause-$(basename "$1")"
   : > "$pf"
@@ -832,7 +830,6 @@ m1kill() { # store projects kind:n: a real run paused after its n-th piece of th
   [ -e "$pf.reached" ] && echo reached || echo "never reached"
 }
 
-# changed usage across runs: the call is replaced, never added or ignored
 MAP="$M1/a/projects"; mkdir -p "$MAP/slug"; MAST="$M1/a/store"
 SA=aaaaaaaa-4444-4444-8444-0000000000a1
 { echo '{"type":"custom-title","customTitle":"HIMMEL-9910-N1-fix"}'
@@ -851,7 +848,6 @@ arow $SA 2026-11-04T10:00:02.000Z q1 $OP 1000000 400000 5000000 200000 100000 >>
 m1run "$MAST" "$MAP"
 check "phase-cost: changed usage across runs replaces once: a legitimate decrease wins too" "1/400000" "$(m1key "$MAST" "2026-11-04|$SA|boot")"
 
-# synthetic parity: the collector and model-price.mjs transcripts read one directory to the same calls and cents
 MBP="$M1/b/projects"; mkdir -p "$MBP/slug"; SB=aaaaaaaa-4444-4444-8444-0000000000b1
 { echo '{"type":"custom-title","customTitle":"HIMMEL-9911-N2-syn"}'
   arow $SB 2026-11-04T10:00:00.000Z z1 '<synthetic>' 0 0 0 0 0
@@ -868,7 +864,6 @@ MPB_CENTS="$(printf '%s\n' "$MPB" | sed -n 's/^total usd=\([0-9]*\)\.\([0-9][0-9
 check "phase-cost: synthetic parity: the collector's calls and cents equal model-price.mjs (a zero synthetic and a refused nonzero one are not calls)" \
   "$MPB_CALLS/$((10#$MPB_CENTS))" "$(m1totals "$M1/b/store")"
 
-# first attribution: a correction after the station's local midnight keeps the first usage's day
 MCP="$M1/c/projects"; mkdir -p "$MCP/slug"; SC=aaaaaaaa-4444-4444-8444-0000000000c1
 { echo '{"type":"custom-title","customTitle":"HIMMEL-9912-N3-mid"}'
   arow $SC 2026-11-04T22:59:59.000Z c1 $OP 1000000 100000 5000000 200000 100000
@@ -877,7 +872,6 @@ M1TZ=Europe/Berlin m1run "$M1/c/store" "$MCP"
 check "phase-cost: first attribution midnight: one call on the first usage's Berlin day, final usage" "2026-11-04/1/900000" \
   "$(m1rows "$M1/c/store" | jq -rs 'map("\(.day)/\(.calls)/\(.out)") | join(",")')"
 
-# first attribution: a correction that arrives a day later and after other tools keeps the first day, phase and the one call
 MHP="$M1/h/projects"; mkdir -p "$MHP/slug"; SH=aaaaaaaa-4444-4444-8444-0000000000d1
 { echo '{"type":"custom-title","customTitle":"HIMMEL-9913-N4-late"}'
   arow $SH 2026-11-04T10:00:00.000Z l1 $OP 1000000 100000 5000000 0 0 Bash '{"command":"bash scripts/cr/pr-check-context.sh"}'
@@ -891,8 +885,6 @@ check "first-attribution-late-correction: the later-day final usage stays on the
 check "first-attribution-late-correction: the correction adds no call and no ship row on the later day (3 calls, days 11-04 and 11-05, no ship)" "3/yes" \
   "$(m1rows "$M1/h/store" | jq -rs '"\(map(.calls) | add)/\(if any(.[]; .phase == "ship") then "no" else "yes" end)"')"
 
-# the fault test: a real run killed after the row append, each states copy, each emitted copy and the checkpoint copy,
-# then rerun, equals the uninterrupted run (rows, states, emitted maps, checkpoint)
 FPP="$M1/f/projects"; mkdir -p "$FPP/slug"; FSA=aaaaaaaa-4444-4444-8444-0000000000f1; FSB=aaaaaaaa-4444-4444-8444-0000000000f2
 { echo '{"type":"custom-title","customTitle":"HIMMEL-9914-N5-fa"}'
   arow $FSA 2026-11-04T10:00:00.000Z f1 $OP 1000000 100000 5000000 200000 100000 Read '{"file_path":"/x"}'
@@ -918,10 +910,9 @@ for b in rows:1 file:1 file:2 file:3 emitted:1 emitted:2 checkpoint:1; do
     "$r/$staged/$(diff -r -q "$FPU" "$FPK" >/dev/null 2>&1 && echo same || echo differ)"
 done
 
-# a legacy (schema 1) store: present dirty units are rebuilt from byte 0 under v2, a unit with a missing source stays pending
 LAT=aaaaaaaa-5555-4555-8555-00000000000a; LBT=aaaaaaaa-5555-4555-8555-00000000000b
 LCT=aaaaaaaa-5555-4555-8555-00000000000c; LDT=aaaaaaaa-5555-4555-8555-00000000000d
-m1lg_write() { # dir letters: the baseline transcripts of the named units (a: top + subagent, b: top, c: top + subagent, d: top)
+m1lg_write() {
   local p="$1/projects/slug" l
   mkdir -p "$p"
   for l in $2; do
@@ -944,7 +935,7 @@ m1lg_write() { # dir letters: the baseline transcripts of the named units (a: to
   done
   m1touch "$1/projects"
 }
-m1lg_grow() { # dir letters: a: a corrected earlier call and a new call, b: a new call, c: the subagent file is gone
+m1lg_grow() {
   local p="$1/projects/slug" l
   for l in $2; do
     case "$l" in
@@ -955,28 +946,28 @@ m1lg_grow() { # dir letters: a: a corrected earlier call and a new call, b: a ne
     esac
   done
 }
-m1_to_legacy() { # store: every state back to schema 1 (a boolean seen map, no schema, role or class fields)
+m1_to_legacy() {
   local f
   for f in "$1/phase-cost-state"/*.json; do
     [ -f "$f" ] || continue
     jq -c 'del(.schema, .role, .refused) | .tc = (.tc // .tc_class // null) | .ac = (.ac // .ac_class // null) | del(.tc_class, .ac_class) | .seen = (.seen | with_entries(.value = 1))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
   done
 }
-m1sess_rows() { # store session...: the latest rows of those sessions, sorted
+m1sess_rows() {
   local st="$1"; shift
   m1rows "$st" | jq -cS --argjson s "$(printf '%s\n' "$@" | jq -Rn '[inputs]')" 'select(.session as $x | $s | index($x))' | sort
 }
-m1state_of() { # store session: the state file name whose meta.session is that session
+m1state_of() {
   local f
   for f in "$1/phase-cost-state"/*.json; do
     [ ! -f "$f" ] || [ "$(jq -r '.meta.session' "$f")" != "$2" ] || { echo "${f##*/}"; return 0; }
   done
 }
-m1schema_of() { # store session...: the distinct state schemas of those sessions
+m1schema_of() {
   local st="$1" s; shift
   for s in "$@"; do jq -r '.schema // "legacy"' "$st/phase-cost-state/$(m1state_of "$st" "$s")"; done | sort -u | tr -d '\n'
 }
-m1state_same() { # storeA storeB session...: how many of those sessions have equal states in both stores
+m1state_same() {
   local a="$1" b="$2" s f n=0; shift 2
   for s in "$@"; do
     f="$(m1state_of "$a" "$s")"
@@ -1006,7 +997,6 @@ check "phase-cost: legacy-state-growing-unit: the pending unit keeps its last ro
 check "phase-cost: legacy-state-growing-unit: an unchanged legacy unit (d) is left as it was" "legacy" "$(m1schema_of "$LGB" $LDT)"
 check "phase-cost: legacy-state-growing-unit: the run keeps no lock" "no" "$([ -d "$LGB/.lock" ] && echo yes || echo no)"
 
-# one missing source, one present growing legacy unit
 MS="$M1/ms"; mkdir -p "$MS"
 m1lg_write "$MS" "b c"
 MSB="$MS/store"
@@ -1020,7 +1010,6 @@ check "missing-source-skips-one-unit: the present growing unit equals a fresh v2
 check "missing-source-skips-one-unit: the unit with the missing source keeps its calls (no zero row closes them)" "1/1" \
   "$(m1rows "$MSB" | jq -rs --arg t $LCT '"\([.[] | select(.session == "agent-lc" and .calls == 1)] | length)/\([.[] | select(.session == $t and .calls == 1)] | length)"')"
 
-# no message text and no title in the persistent derived state; the legacy name columns stay
 MTP="$M1/t/projects"; mkdir -p "$MTP/slug"; ST1=aaaaaaaa-4444-4444-8444-0000000000e1
 { echo '{"type":"custom-title","customTitle":"HIMMEL-9915-N6-TITLESENTINEL"}'
   echo '{"type":"ai-title","aiTitle":"AITITLESENTINEL"}'
@@ -1045,7 +1034,6 @@ check "phase-cost: state-has-no-text: no title in the new v2 states, emitted map
 check "phase-cost: state-has-no-text: the legacy checkpoint name column and the per-ticket record keep the title" "yes/yes" \
   "$(grep -q 'TITLESENTINEL' "$MTS/build-checkpoint.json" && echo yes || echo no)/$([ "$(jq -c 'select(.ticket != null) | .legs[].name' "$MTS/records.jsonl" | grep -c 'TITLESENTINEL' || true)" -gt 0 ] && echo yes || echo no)"
 
-# the node resolver: a PATH without node still runs (an absolute node from the resolver); no node at all fails before the lock or any write
 NR="$M1/nr"; mkdir -p "$NR/bin" "$NR/fixnode"
 for t in jq bash cat cp mv mkdir rm rmdir tail head wc tr cut sed grep sort uniq cksum stat xargs basename dirname ls sleep ps ln date mktemp renice ionice sha256sum shasum env uname chmod printf; do
   p="$(command -v "$t" 2>/dev/null || true)"; case "$p" in /*) ln -s "$p" "$NR/bin/$t" ;; esac
