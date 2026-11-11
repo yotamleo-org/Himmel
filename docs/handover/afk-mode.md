@@ -174,10 +174,10 @@ for ~2 months). It is model-neutral by design: overnight
 impl runs on Sonnet (§ Budget), the parent session may be Fable 5.2 or
 Opus 5.5, and no reliable model-identity seam exists at
 launch time. Snippets are selected, not pasted, from the official
-[Fable-5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5),
+[Fable-5.2](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-2),
 [Opus-5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5)
 and
-[Fable-5.2](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-2)
+[Fable-5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5)
 prompting guides:
 
 > When you have enough information to act, act. Do not re-derive facts
@@ -254,7 +254,7 @@ harness. The Fable 5.1 version was declined because it lacked that line (see
 [`safeguard-false-positives.md`](../internals/safeguard-false-positives.md#deliberately-not-adopted)).
 The fifth is the guide's "Make reports easy to follow" text. A handover doc,
 `status.md` or a morning report is read by someone who saw none of the tool
-calls. The Fable 5 grounded-progress-claims snippet is NOT duplicated here:
+calls. The original Fable guide's grounded-progress-claims snippet is NOT duplicated here:
 the attestation discipline (§ Auto-mode classifier) and the block-only
 criteria already cover it.
 
