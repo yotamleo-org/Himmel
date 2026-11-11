@@ -605,10 +605,17 @@ judge_calls_now() {
     esac
 }
 
-# A verdict counts only when no older than its dispatch: a reused qid keeps its older verdicts.
+verdict_written_since_dispatch() {
+    local qid_dir="$1" dispatch_meta="$2" f
+    for f in "$qid_dir"/*.md; do
+        [ -f "$f" ] && ! [ "$dispatch_meta" -nt "$f" ] && return 0
+    done
+    return 1
+}
+
 judges_owed_now() {
     local sid="${CLAUDE_CODE_SESSION_ID:-}" projects="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
-    local vdir meta fields atype desc aid qid f written n=0 parent=""
+    local vdir meta fields atype desc aid qid n=0 parent=""
     case "$sid" in
         [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
         *) echo "JUDGE-OWED: unavailable (no session id: list this session's judge-ro calls with no verdicts/<qid>/ file by hand)"; return 0 ;;
@@ -637,9 +644,7 @@ EOF_META
             n=$((n + 1))
             continue
         fi
-        written=""
-        for f in "$vdir/$qid"/*.md; do [ -f "$f" ] && ! [ "$meta" -nt "$f" ] && { written=1; break; }; done
-        [ -z "$written" ] || continue
+        verdict_written_since_dispatch "$vdir/$qid" "$meta" && continue
         printf 'JUDGE-OWED %s — %s — brief: %s\n' "$qid" "$desc" "${meta%.meta.json}.jsonl"
         n=$((n + 1))
     done
