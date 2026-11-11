@@ -4,7 +4,7 @@
 # promoted classes show before/after rates, stale proposals expire and re-fire, known-findings.json is untouched.
 set -uo pipefail
 
-grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }   # no pipeline: see test-cr-tune.sh (HIMMEL-1430)
+grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }   # no pipeline: see test-cr-tune.sh (printf|grep -q under pipefail fails on a successful early match)
 HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/standards-cadence.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/sc-test.XXXXXX")" || exit 1; trap 'rm -rf "$tmp"' EXIT
 fails=0

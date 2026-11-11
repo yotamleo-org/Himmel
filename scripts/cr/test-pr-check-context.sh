@@ -1746,7 +1746,7 @@ rc36=$?
 rows_after36="$(grep -c '"kind":"delegation"' "$ledger13" 2>/dev/null || echo 0)"
 check "$rc36" "0" "T36 rc"
 check "$(get_kv "$out36" anchor_lane)" "himmel" "T36 anchor_lane=himmel"
-check "$(get_kv "$out36" delegated)" "yes" "T36 delegated=yes (HIMMEL-3382 - an UNCOMMITTED scripts/cr/ edit now counts, not just committed history)"
+check "$(get_kv "$out36" delegated)" "yes" "T36 delegated=yes (an UNCOMMITTED scripts/cr/ edit now counts, not just committed history)"
 check "$(get_kv "$out36" cr_diff_files)" "scripts/cr/critic-panel.sh" "T36 cr_diff_files names the uncommitted file"
 check "$((rows_after36 - rows_before36))" "1" "T36 exactly one new delegation ledger row for the uncommitted edit"
 check "$(cd "$wt36" && git diff --name-only HEAD -- scripts/cr/critic-panel.sh)" "scripts/cr/critic-panel.sh" "T36 the edit is still uncommitted after the run (this script never commits on the caller's behalf)"
@@ -1776,7 +1776,7 @@ red_control_assert --label "T36" \
   --observed     "delegated=$(get_kv "$RED_CONTROL_OUT" delegated) rows_added=$((rows_after36r - rows_before36r))" \
   --expect-wrong "delegated=no rows_added=0" \
   --correct      "delegated=yes rows_added=1" \
-  --note "HIMMEL-3382 - without the worktree-diff worker, an UNCOMMITTED scripts/cr/ edit is invisible to cr_diff_state, so no delegation row is ever written (the exact pre-fix gap)" \
+  --note "without the worktree-diff worker, an UNCOMMITTED scripts/cr/ edit is invisible to cr_diff_state, so no delegation row is ever written (the exact pre-fix gap)" \
   || fail=1
 cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
 
@@ -1803,7 +1803,7 @@ out37="$(cd "$wt37" && HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-che
 rc37=$?
 rows_after37="$(grep -c '"kind":"delegation"' "$ledger13" 2>/dev/null || echo 0)"
 check "$rc37" "0" "T37 rc"
-check "$(get_kv "$out37" delegated)" "no" "T37 delegated=no (HIMMEL-3382 - main's later scripts/cr/ commit, which this branch never touched, must NOT be counted)"
+check "$(get_kv "$out37" delegated)" "no" "T37 delegated=no (main's later scripts/cr/ commit, which this branch never touched, must NOT be counted)"
 check "$(get_kv "$out37" cr_diff_files)" "" "T37 cr_diff_files empty"
 check "$((rows_after37 - rows_before37))" "0" "T37 no new delegation ledger row"
 
@@ -1832,7 +1832,7 @@ red_control_assert --label "T37" \
   --observed     "delegated=$(get_kv "$RED_CONTROL_OUT" delegated) rows_added=$((rows_after37r - rows_before37r))" \
   --expect-wrong "delegated=yes rows_added=1" \
   --correct      "delegated=no rows_added=0" \
-  --note "HIMMEL-3382 - diffing straight against the base branch's TIP instead of the merge-base wrongly counts a scripts/cr/ change main picked up AFTER this branch forked, minting a spurious delegation row" \
+  --note "diffing straight against the base branch's TIP instead of the merge-base wrongly counts a scripts/cr/ change main picked up AFTER this branch forked, minting a spurious delegation row" \
   || fail=1
 cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
 
@@ -1878,7 +1878,7 @@ rc38=$?
 rows_after38="$(grep -c '"kind":"delegation"' "$ledger13" 2>/dev/null || echo 0)"
 check "$rc38" "0" "T38 rc (an inherited GIT_DIR/GIT_WORK_TREE pointed at another repo must not break this run)"
 check "$(get_kv "$out38" repo)" "$wt38_toplevel" "T38 repo is still the real cwd, not the decoy"
-check "$(get_kv "$out38" branch)" "t38-gitdir" "T38 branch is the real repo's branch, not the decoy's (HIMMEL-3382 CodeRabbit item 2 - the git-env-unset fix)"
+check "$(get_kv "$out38" branch)" "t38-gitdir" "T38 branch is the real repo's branch, not the decoy's (the git-env-unset fix)"
 check "$(get_kv "$out38" anchor_lane)" "himmel" "T38 anchor_lane=himmel (lane comparison resolved against the real repo, not the decoy)"
 check "$(get_kv "$out38" delegated)" "yes" "T38 delegated=yes (the real repo's own scripts/cr/ diff was read, not the decoy's)"
 check "$(get_kv "$out38" head)" "$head38" "T38 head matches the real worktree HEAD, not anything from the decoy"
@@ -1914,7 +1914,7 @@ red_control_assert --label "T38" \
   --observed     "rc=$RED_CONTROL_RC branch=$(get_kv "$RED_CONTROL_OUT" branch) anchor_lane=$(get_kv "$RED_CONTROL_OUT" anchor_lane) delegated=$(get_kv "$RED_CONTROL_OUT" delegated)" \
   --expect-wrong "rc=0 branch=decoy-main anchor_lane=adopter delegated=no" \
   --correct      "rc=0 branch=t38-gitdir anchor_lane=himmel delegated=yes" \
-  --note "HIMMEL-3382 CodeRabbit item 2 - without clearing inherited GIT_DIR/GIT_WORK_TREE first, every later git call (branch, anchor_lane, the delegation decision) silently targets the decoy repo instead of the real cwd" \
+  --note "without clearing inherited GIT_DIR/GIT_WORK_TREE first, every later git call (branch, anchor_lane, the delegation decision) silently targets the decoy repo instead of the real cwd" \
   || fail=1
 cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
 
@@ -1938,7 +1938,7 @@ out39="$(cd "$wt39" && HIMMEL_REPO="$anchor13" GIT_LITERAL_PATHSPECS=1 bash "$an
 rc39=$?
 rows_after39="$(grep -c '"kind":"delegation"' "$ledger13" 2>/dev/null || echo 0)"
 check "$rc39" "0" "T39 rc (an inherited GIT_LITERAL_PATHSPECS=1 must not break this run)"
-check "$(get_kv "$out39" delegated)" "yes" "T39 delegated=yes (HIMMEL-3382 chief adversarial delta review - GIT_LITERAL_PATHSPECS=1 must not fail the :(top) diff open)"
+check "$(get_kv "$out39" delegated)" "yes" "T39 delegated=yes (GIT_LITERAL_PATHSPECS=1 must not fail the :(top) diff open)"
 check "$(get_kv "$out39" cr_diff_files)" "scripts/cr/critic-panel.sh" "T39 cr_diff_files still names the committed file with GIT_LITERAL_PATHSPECS=1 inherited"
 check "$((rows_after39 - rows_before39))" "1" "T39 exactly one new delegation ledger row"
 
@@ -1975,7 +1975,7 @@ red_control_assert --label "T39" \
   --observed     "delegated=$(get_kv "$RED_CONTROL_OUT" delegated) rows_added=$((rows_after39r - rows_before39r))" \
   --expect-wrong "delegated=no rows_added=0" \
   --correct      "delegated=yes rows_added=1" \
-  --note "HIMMEL-3382 chief adversarial delta review - without unsetting GIT_LITERAL_PATHSPECS, an inherited GIT_LITERAL_PATHSPECS=1 turns ':(top)scripts/cr/' into a literal, non-existent path, silently emptying all three diff/ls-files calls and fail-opening cr_diff_state to no on a branch that genuinely edited scripts/cr/" \
+  --note "without unsetting GIT_LITERAL_PATHSPECS, an inherited GIT_LITERAL_PATHSPECS=1 turns ':(top)scripts/cr/' into a literal, non-existent path, silently emptying all three diff/ls-files calls and fail-opening cr_diff_state to no on a branch that genuinely edited scripts/cr/" \
   || fail=1
 cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
 
@@ -2271,7 +2271,7 @@ red_control_assert --label "T51" \
 pr-check-context: fx_rc=$RED_CONTROL_RC")" \
   --expect-wrong "branch" \
   --correct      "anchor" \
-  --note "HIMMEL-3454 round-1 codex-2 - an unchecked sort -u turns a failed normalization into an empty diff set, read as cr_diff_state=no, and himmel_dir stays at the branch" \
+  --note "an unchecked sort -u turns a failed normalization into an empty diff set, read as cr_diff_state=no, and himmel_dir stays at the branch" \
   || fail=1
 
 # T44 RED: the T44 fixture against a mutant whose
@@ -2304,7 +2304,7 @@ red_control_assert --label "T44" \
 pr-check-context: fx_rc=$RED_CONTROL_RC")" \
   --expect-wrong "branch" \
   --correct      "anchor" \
-  --note "HIMMEL-3493 - without the byte comparison an assume-unchanged scripts/cr/ edit reads as cr_diff_state=no" \
+  --note "without the byte comparison an assume-unchanged scripts/cr/ edit reads as cr_diff_state=no" \
   || fail=1
 
 # --- T52-T60: the manifest covers what a "no" run executes ---
@@ -2461,7 +2461,7 @@ fi
 HANDOFF_GUARD_EOF
 old62="$(cat "$tmp/t62-old-handoff-guard.txt")"
 literal_replace "$SCRIPT" "$fx_wt/scripts/cr/pr-check-context.sh" "$old62" \
-  ': # T62 mutant (HIMMEL-3536) - the branch deleted its own hand-off guard entirely'
+  ': # T62 mutant - the branch deleted its own hand-off guard entirely'
 rc62_mut=$?
 if [ "$rc62_mut" -ne 0 ]; then
   echo "FAIL: T62 could not build the hand-off-deleted mutant - $(cat "$tmp/literal_replace.err" 2>/dev/null)"

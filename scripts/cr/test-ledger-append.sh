@@ -47,12 +47,12 @@ check "avail downgrade leaves the ok row as the last record" "$(L="$AV" node -e 
 AVR="$tmp/avail-refusal.jsonl"
 CR_LEDGER="$AVR" bash "$LA" avail --branch b --head SH9 --model glm --status ok
 CR_LEDGER="$AVR" bash "$LA" avail --branch b --head SH9 --model glm --status unavailable --reason certify-refused 2>"$tmp/refusal.err"
-check "HIMMEL-5110: ok->unavailable certify-refused exits 0" "$?" "0"
-check "HIMMEL-5110: ok->unavailable certify-refused row is APPENDED, not dropped" "$(grep -c '"reason":"certify-refused"' "$AVR")" "1"
-check "HIMMEL-5110: the certify-refused row is the effective (last) record" "$(L="$AVR" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="avail"&&r.head==="SH9");const l=rs[rs.length-1];console.log(l.status+","+l.reason)')" "unavailable,certify-refused"
-check "HIMMEL-5110: appending the refusal prints no DOWNGRADE note" "$(grep -c 'DOWNGRADE' "$tmp/refusal.err")" "0"
+check "ok->unavailable certify-refused exits 0" "$?" "0"
+check "ok->unavailable certify-refused row is APPENDED, not dropped" "$(grep -c '"reason":"certify-refused"' "$AVR")" "1"
+check "the certify-refused row is the effective (last) record" "$(L="$AVR" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="avail"&&r.head==="SH9");const l=rs[rs.length-1];console.log(l.status+","+l.reason)')" "unavailable,certify-refused"
+check "appending the refusal prints no DOWNGRADE note" "$(grep -c 'DOWNGRADE' "$tmp/refusal.err")" "0"
 CR_LEDGER="$AVR" bash "$LA" avail --branch b --head SH9 --model glm --status unavailable --reason certify-refused 2>/dev/null
-check "HIMMEL-5110: an identical certify-refused repeat is still a quiet no-op" "$(grep -c '"reason":"certify-refused"' "$AVR")" "1"
+check "an identical certify-refused repeat is still a quiet no-op" "$(grep -c '"reason":"certify-refused"' "$AVR")" "1"
 
 # An identical repeat is still a quiet no-op (idempotent /pr-check re-runs).
 CR_LEDGER="$AV" bash "$LA" avail --branch b --head SH1 --model glm --status ok
@@ -514,11 +514,11 @@ check "the no-target refusal (not detached-HEAD) confirms the caller-branch fall
 BR="$tmp/branch-inherit.jsonl"; : > "$BR"
 CR_LEDGER="$BR" bash "$LA" finding --branch origin-branch --head BH1 --model m --id find-br-1 --severity imp --file f --line 3 --verdict agreed
 CR_LEDGER="$BR" bash "$LA" amend --branch explicit-branch --head BH1 --id find-br-1 --set severity=sug --reason "a mismatched branch" 2>"$tmp/br-mismatch.err"
-check "amend with an explicit --branch mismatching the finding's branch refuses (HIMMEL-3467)" "$?" "3"
+check "amend with an explicit --branch mismatching the finding's branch refuses" "$?" "3"
 check "  ...the refusal names the finding's own branch" "$(grep -c 'origin-branch' "$tmp/br-mismatch.err")" "1"
 check "  ...and wrote nothing" "$(wc -l < "$BR" | tr -d ' ')" "1"
 CR_LEDGER="$BR" bash "$LA" amend --branch explicit-branch --head BH1 --id find-br-1 --set head=abcdef12 --reason "a mismatched branch re-key" 2>"$tmp/br-mismatch-rekey.err"
-check "a mismatched --branch that also re-keys (--set head=) refuses too (HIMMEL-3467)" "$?" "3"
+check "a mismatched --branch that also re-keys (--set head=) refuses too" "$?" "3"
 check "  ...and wrote nothing" "$(wc -l < "$BR" | tr -d ' ')" "1"
 # Control: an explicit --branch that matches is kept, never overridden by the
 # checkout default.
@@ -532,7 +532,7 @@ BRL="$tmp/branch-mismatch-legacy.jsonl"; : > "$BRL"
 # refuses on a detached HEAD (CI's checkout), so only a raw row is branch-less.
 printf '{"kind":"finding","ts":"2020-01-01T00:00:00Z","head":"BLH1","model":"m","finding_id":"find-brl-1","severity":"imp","file":"f","line":3,"verdict":"agreed","artifact":"diff","perspective":"off"}\n' > "$BRL"
 CR_LEDGER="$BRL" bash "$LA" amend --branch some-branch --head BLH1 --id find-brl-1 --set severity=sug --reason x 2>"$tmp/brl.err"
-check "an explicit --branch on a branch-less legacy finding refuses (HIMMEL-3467)" "$?" "3"
+check "an explicit --branch on a branch-less legacy finding refuses" "$?" "3"
 check "  ...and tells the caller to omit --branch" "$(grep -c 'omit --branch' "$tmp/brl.err")" "1"
 
 # Positive: the caller's cwd is
@@ -548,7 +548,7 @@ git -C "$DET" checkout -q --detach HEAD
 NB="$tmp/no-branch-target.jsonl"; : > "$NB"
 CR_LEDGER="$NB" bash "$LA" finding --branch origin-branch --head NBH1 --model m --id find-nb-1 --severity imp --file f --line 3 --verdict agreed
 (cd "$DET" && CR_LEDGER="$NB" bash "$LA" amend --head NBH1 --id find-nb-1 --set severity=sug --reason "no --branch, detached HEAD, but a unique match exists")
-check "amend on detached HEAD with a unique matching row infers that row's branch (HIMMEL-2405)" "$?" "0"
+check "amend on detached HEAD with a unique matching row infers that row's branch" "$?" "0"
 check "the inferred branch is the matched row's branch, not empty" "$(L="$NB" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="amend");console.log(o.branch)')" "origin-branch"
 
 # Negative: no matching row AND detached HEAD AND no --branch — nothing to
@@ -557,7 +557,7 @@ check "the inferred branch is the matched row's branch, not empty" "$(L="$NB" no
 NM="$tmp/no-match-detached.jsonl"; : > "$NM"
 CR_LEDGER="$NM" bash "$LA" finding --branch origin-branch --head OTHERHEAD --model m --id some-other-id --severity imp --file f --line 3 --verdict agreed
 (cd "$DET" && CR_LEDGER="$NM" bash "$LA" amend --head NBH1 --id no-such-finding --set severity=sug --reason x) 2>"$tmp/no-match-detached.err"
-check "amend refuses when detached HEAD, no --branch, and no matching row (HIMMEL-2405)" "$?" "2"
+check "amend refuses when detached HEAD, no --branch, and no matching row" "$?" "2"
 check "amend refusal on a detached HEAD with no match names it" "$(grep -c 'detached HEAD' "$tmp/no-match-detached.err")" "1"
 check "amend refusal on a detached HEAD with no match wrote nothing" "$(wc -l < "$NM" | tr -d ' ')" "1"
 
@@ -570,7 +570,7 @@ RKB="$tmp/rekeyed-branch-infer.jsonl"; : > "$RKB"
 CR_LEDGER="$RKB" bash "$LA" finding --branch origin-branch --head RKH1 --model m --id find-rk-infer-1 --severity imp --file f --line 3 --verdict agreed
 CR_LEDGER="$RKB" bash "$LA" amend --branch origin-branch --head RKH1 --id find-rk-infer-1 --set head=deadbeef --reason "re-key to deadbeef"
 (cd "$CB" && CR_LEDGER="$RKB" bash "$LA" amend --head deadbeef --id find-rk-infer-1 --set severity=sug --reason "follow-up on the re-keyed finding, no --branch, from a foreign checkout")
-check "follow-up amend on a re-keyed head with no --branch succeeds (HIMMEL-2405 codex-1)" "$?" "0"
+check "follow-up amend on a re-keyed head with no --branch succeeds" "$?" "0"
 check "the follow-up amend infers the ORIGINAL owning branch, not the caller's checkout" "$(L="$RKB" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse);console.log(rs.filter(r=>r.kind==="amend").pop().branch)')" "origin-branch"
 
 # Branch inference counted EVERY amend that ever re-keyed the id
@@ -584,7 +584,7 @@ CR_LEDGER="$RK2" bash "$LA" amend --branch branch-p --head RK2A --id find-rk2-1 
 CR_LEDGER="$RK2" bash "$LA" amend --branch branch-p --head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1 --id find-rk2-1 --set head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2 --reason "re-key 2"
 CR_LEDGER="$RK2" bash "$LA" finding --branch branch-q --head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1 --model m --id find-rk2-1 --severity imp --file f --line 3 --verdict agreed
 (cd "$CB" && CR_LEDGER="$RK2" bash "$LA" amend --head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1 --id find-rk2-1 --set severity=sug --reason "no --branch, foreign checkout") 2>"$tmp/rk2.err"
-check "amend on a stale intermediate re-key head does not refuse on the stale candidate (HIMMEL-3466)" "$?" "0"
+check "amend on a stale intermediate re-key head does not refuse on the stale candidate" "$?" "0"
 check "  ...it resolves to the finding currently at that head" "$(L="$RK2" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse);console.log(rs.filter(r=>r.kind==="amend").pop().branch)')" "branch-q"
 
 # A unique matching finding row with an
@@ -606,7 +606,7 @@ LGB="$tmp/legacy-branch-infer.jsonl"; : > "$LGB"
 printf '{"kind":"finding","ts":"2026-01-01T00:00:00Z","branch":"","head":"LGH1","model":"m","finding_id":"find-legacy-1","severity":"imp","file":"f","line":3,"verdict":"agreed"}\n' > "$LGB"
 check "the legacy finding row was written with an empty branch" "$(L="$LGB" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="finding");console.log(JSON.stringify(o.branch))')" '""'
 (cd "$CB" && CR_LEDGER="$LGB" bash "$LA" amend --head LGH1 --id find-legacy-1 --set severity=sug --reason "no --branch, caller is on a real branch, only match is branch-less")
-check "amending a branch-less legacy match with no --branch succeeds (HIMMEL-2405 codex-1/round3)" "$?" "0"
+check "amending a branch-less legacy match with no --branch succeeds" "$?" "0"
 check "the amend is stamped EMPTY, inheriting the finding's own branch scope" "$(L="$LGB" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="amend");console.log(JSON.stringify(o.branch))')" '""'
 check "clear-cr-marker sees the amend (executable repro of the round-3 regression)" "$(CB_LGB="$LGB" node -e '
 const fs=require("fs");
@@ -879,7 +879,7 @@ check "attempt requires --model" "$?" "2"
 CR_LEDGER="$AT" bash "$LA" attempt --branch b --head TH3 --model glm --status unavailable >/dev/null 2>&1
 check "attempt rejects avail's --status vocabulary (ok|timeout|error|skipped only)" "$?" "2"
 CR_LEDGER="$AT" bash "$LA" attempt --branch b --head TH3 --model glm --status skipped --detail "rc=5: critic SKIPPED" >/dev/null 2>&1
-check "attempt accepts --status skipped (HIMMEL-6530)" "$?" "0"
+check "attempt accepts --status skipped" "$?" "0"
 check "attempt: a skipped row carries status=skipped and no duration" \
     "$(L="$AT" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="attempt"&&r.head==="TH3"&&r.status==="skipped");console.log(rs.length+","+(rs[0]&&rs[0].duration_secs==null))')" "1,true"
 CR_LEDGER="$AT" bash "$LA" attempt --branch b --head TH3 --model glm --status error >/dev/null 2>&1
@@ -1070,7 +1070,7 @@ CR_LEDGER="$BFL2" bash "$LA" finding --batch-file "$BF2" 2>"$tmp/batch-conflict.
 check "batch mode exits non-zero if ANY row refused" "$?" "3"
 check "batch mode still writes the non-conflicting rows" "$(wc -l < "$BFL2" | tr -d ' ')" "2"
 check "batch mode names the conflicting row in stderr" "$(grep 'c-1' "$tmp/batch-conflict.err" | grep -vc 'appended finding')" "2"
-check "HIMMEL-5155: batch mode confirms each written row, not the refused one" "$(grep -c '^ledger-append.sh: appended finding c-[12] at ' "$tmp/batch-conflict.err")" "2"
+check "batch mode confirms each written row, not the refused one" "$(grep -c '^ledger-append.sh: appended finding c-[12] at ' "$tmp/batch-conflict.err")" "2"
 
 # batch mode requires a pre-resolved full-SHA head per row (it does not
 # per-row shell out to normalize an abbreviation - that would reintroduce the
@@ -1117,7 +1117,7 @@ BF6="$tmp/batch-empty-branch.jsonl"
 BFL6="$tmp/batch-empty-branch-ledger.jsonl"; : > "$BFL6"
 printf '{"branch":"","head":"%s","model":"codex","id":"e-3","severity":"imp","file":"f","line":3,"verdict":""}\n' "$BHEAD" > "$BF6"
 CR_LEDGER="$BFL6" bash "$LA" finding --batch-file "$BF6" 2>"$tmp/batch-empty-branch.err"
-check "batch mode refuses a row with an empty branch (HIMMEL-2405)" "$?" "3"
+check "batch mode refuses a row with an empty branch" "$?" "3"
 check "batch mode writes nothing for the empty-branch row" "$(wc -l < "$BFL6" | tr -d ' ')" "0"
 check "batch mode names the empty branch in stderr" "$(grep -c 'empty branch' "$tmp/batch-empty-branch.err")" "1"
 
@@ -1663,18 +1663,18 @@ check "control: finding with no --verdict (unadjudicated) is accepted" "$?" "0"
 # journal mapper keys on it); a dedup no-op or a refusal prints none.
 CF="$tmp/confirm.jsonl"
 CR_LEDGER="$CF" bash "$LA" finding --branch b --head CFX1 --model m --id cf-1 --severity imp --file f --line 1 --verdict agreed 2>"$tmp/cf1.err"
-check "HIMMEL-5155: a fresh finding prints its confirmation line" "$(cat "$tmp/cf1.err")" 'ledger-append.sh: appended finding cf-1 at CFX1 -> {"verdict":"agreed"}'
+check "a fresh finding prints its confirmation line" "$(cat "$tmp/cf1.err")" 'ledger-append.sh: appended finding cf-1 at CFX1 -> {"verdict":"agreed"}'
 CR_LEDGER="$CF" bash "$LA" finding --branch b --head CFX1 --model m --id cf-1 --severity imp --file f --line 1 --verdict agreed 2>"$tmp/cf2.err"
-check "HIMMEL-5155: an identical repeat prints no confirmation" "$(grep -c 'appended finding' "$tmp/cf2.err")" "0"
+check "an identical repeat prints no confirmation" "$(grep -c 'appended finding' "$tmp/cf2.err")" "0"
 CR_LEDGER="$CF" bash "$LA" finding --branch b --head CFX1 --model m --id cf-1 --severity crit --file f --line 1 --verdict agreed 2>"$tmp/cf3.err"
-check "HIMMEL-5155: a refused conflicting rewrite prints no confirmation" "$(grep -c 'appended finding' "$tmp/cf3.err")" "0"
+check "a refused conflicting rewrite prints no confirmation" "$(grep -c 'appended finding' "$tmp/cf3.err")" "0"
 CFB="$tmp/confirm-batch.jsonl"; : > "$CFB"
 CFR="$tmp/confirm-batch-rows.jsonl"
 printf '%s\n' '{"id":"cb-1","head":"0123456789abcdef0123456789abcdef01234567","branch":"b","model":"m","severity":"imp","file":"f","line":1,"verdict":""}' > "$CFR"
 CR_LEDGER="$CFB" bash "$LA" finding --batch-file "$CFR" 2>"$tmp/cb1.err"
-check "HIMMEL-5155: a fresh batch row prints its confirmation line" "$(cat "$tmp/cb1.err")" "ledger-append.sh: appended finding cb-1 at 01234567"
+check "a fresh batch row prints its confirmation line" "$(cat "$tmp/cb1.err")" "ledger-append.sh: appended finding cb-1 at 01234567"
 CR_LEDGER="$CFB" bash "$LA" finding --batch-file "$CFR" 2>"$tmp/cb2.err"
-check "HIMMEL-5155: a repeated batch row prints no confirmation" "$(grep -c 'appended finding' "$tmp/cb2.err")" "0"
+check "a repeated batch row prints no confirmation" "$(grep -c 'appended finding' "$tmp/cb2.err")" "0"
 
 # ── a fixed or deferred amend carries class=; a preflight row records the 2.8 pass ──
 KFJ="$tmp/kf-class.json"
@@ -1686,51 +1686,51 @@ CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-miss
 CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-own --severity imp --file scripts/other.sh --line 1 --text 'unrelated claim two'
 CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-ok --severity imp --file scripts/other.sh --line 1 --text 'unrelated claim three'
 KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-hit --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --set fu_why=no-check --reason 'tracked' 2>/dev/null
-check "HIMMEL-6376: a deferred amend is auto-attributed to the matching class" "$(cls_of cl-hit)" "hook-fail-direction"
+check "a deferred amend is auto-attributed to the matching class" "$(cls_of cl-hit)" "hook-fail-direction"
 KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-miss --set verdict=fixed --reason 'fixed in follow-up' 2>/dev/null
-check "HIMMEL-6376: a fixed amend with no matching class is recorded as unattributed" "$(cls_of cl-miss)" "unattributed"
+check "a fixed amend with no matching class is recorded as unattributed" "$(cls_of cl-miss)" "unattributed"
 KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-own --set verdict=fixed --set class=new:quote-split --reason 'fixed in follow-up' 2>/dev/null
-check "HIMMEL-6376: a supplied class=new:<slug> is kept" "$(cls_of cl-own)" "new:quote-split"
+check "a supplied class=new:<slug> is kept" "$(cls_of cl-own)" "new:quote-split"
 KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-ok --set verdict=fixed --set 'class=Bad Class' --reason 'fixed in follow-up' 2>/dev/null
-check "HIMMEL-6376: a malformed class= is refused" "$?" "2"
+check "a malformed class= is refused" "$?" "2"
 CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-def --severity imp --file scripts/other.sh --line 1 --text 'unrelated claim four'
 KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-def --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --set fu_why=no-check --reason 'tracked' 2>"$tmp/cld.err"
-check "HIMMEL-6922: an unattributed deferred amend with no class= is refused" "$?" "2"
-check "HIMMEL-6922: the refusal names --set class=" "$(grep -c -e '--set class=' "$tmp/cld.err")" "1"
-check "HIMMEL-6922: the refused deferral wrote no amend" "$(cls_of cl-def)" ""
+check "an unattributed deferred amend with no class= is refused" "$?" "2"
+check "the refusal names --set class=" "$(grep -c -e '--set class=' "$tmp/cld.err")" "1"
+check "the refused deferral wrote no amend" "$(cls_of cl-def)" ""
 KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-def --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --set fu_why=no-check --set class=new:late-bind --reason 'tracked' 2>/dev/null
-check "HIMMEL-6922: an unattributed deferral with --set class=new:<slug> is accepted" "$?" "0"
-check "HIMMEL-6922: ...and carries the supplied class" "$(cls_of cl-def)" "new:late-bind"
+check "an unattributed deferral with --set class=new:<slug> is accepted" "$?" "0"
+check "...and carries the supplied class" "$(cls_of cl-def)" "new:late-bind"
 CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit hook-fail-direction=fixed --hit exit-contract-drift=waived:false-positive-out-of-scope --hit docs-flag-drift=checked --duration-secs 3 2>/dev/null
-check "HIMMEL-6376: the three-hit preflight write exits 0" "$?" "0"
-check "HIMMEL-6376: a preflight row records per-hit state and counts" "$(L="$CLS" node -e 'const r=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="preflight");console.log([r.hits.map(h=>h.class+":"+h.state).join("|"),r.hit_n,r.fixed,r.waived,r.checked,r.duration_secs,r.hits[1].ref].join(","))')" "hook-fail-direction:fixed|exit-contract-drift:waived|docs-flag-drift:checked,3,1,1,1,3,false-positive-out-of-scope"
+check "the three-hit preflight write exits 0" "$?" "0"
+check "a preflight row records per-hit state and counts" "$(L="$CLS" node -e 'const r=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="preflight");console.log([r.hits.map(h=>h.class+":"+h.state).join("|"),r.hit_n,r.fixed,r.waived,r.checked,r.duration_secs,r.hits[1].ref].join(","))')" "hook-fail-direction:fixed|exit-contract-drift:waived|docs-flag-drift:checked,3,1,1,1,3,false-positive-out-of-scope"
 CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit exit-contract-drift=waived 2>/dev/null
-check "HIMMEL-6376: a waived hit with no reason is refused" "$?" "2"
+check "a waived hit with no reason is refused" "$?" "2"
 CR_LEDGER="$tmp/dup.jsonl" bash "$LA" preflight --branch b --head CL1 --hit docs-flag-drift=fixed --hit docs-flag-drift=checked 2>/dev/null
-check "HIMMEL-6376: a class given twice in one preflight is refused" "$?" "2"
-check "HIMMEL-6376: a refused duplicate-class preflight writes no row" "$(test -s "$tmp/dup.jsonl" && echo wrote || echo none)" "none"
+check "a class given twice in one preflight is refused" "$?" "2"
+check "a refused duplicate-class preflight writes no row" "$(test -s "$tmp/dup.jsonl" && echo wrote || echo none)" "none"
 CR_LEDGER="$tmp/frac.jsonl" bash "$LA" preflight --branch b --head CL2 --duration-secs 0.1 >/dev/null 2>&1
-check "HIMMEL-6376: a preflight accepts the scanner fractional seconds" "$?" "0"
+check "a preflight accepts the scanner fractional seconds" "$?" "0"
 CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit exit-contract-drift=open 2>/dev/null
-check "HIMMEL-6376: an unknown hit state is refused" "$?" "2"
+check "an unknown hit state is refused" "$?" "2"
 
 # ── a blast row records the guard/gate blast-radius pass gate 4f reads ──
 BLS="$tmp/blast.jsonl"; : > "$BLS"
 blast_rows() { L="$BLS" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).filter(Boolean).map(JSON.parse).filter(r=>r.kind==="blast");console.log(rs.map(r=>[r.branch,r.head,r.status,r.duration_secs,r.reason||""].join(",")).join("|"))'; }
 CR_LEDGER="$BLS" bash "$LA" blast --branch b --head BL1 --duration-secs 90 2>/dev/null
-check "HIMMEL-6685: a blast row write exits 0" "$?" "0"
+check "a blast row write exits 0" "$?" "0"
 CR_LEDGER="$BLS" bash "$LA" blast --branch b --head BL1 --status off --reason 'rename only, no behaviour change' 2>/dev/null
-check "HIMMEL-6685: an off row with a reason exits 0" "$?" "0"
-check "HIMMEL-6685: blast rows default to ran, keep the duration and the off reason, and are never deduped" "$(blast_rows)" "b,BL1,ran,90,|b,BL1,off,,rename only, no behaviour change"
+check "an off row with a reason exits 0" "$?" "0"
+check "blast rows default to ran, keep the duration and the off reason, and are never deduped" "$(blast_rows)" "b,BL1,ran,90,|b,BL1,off,,rename only, no behaviour change"
 CR_LEDGER="$tmp/blast-noreason.jsonl" bash "$LA" blast --branch b --head BL1 --status off 2>/dev/null
-check "HIMMEL-6685: an off row with no --reason is refused" "$?" "2"
-check "HIMMEL-6685: a refused off row writes nothing" "$(test -s "$tmp/blast-noreason.jsonl" && echo wrote || echo none)" "none"
+check "an off row with no --reason is refused" "$?" "2"
+check "a refused off row writes nothing" "$(test -s "$tmp/blast-noreason.jsonl" && echo wrote || echo none)" "none"
 CR_LEDGER="$tmp/blast-blankreason.jsonl" bash "$LA" blast --branch b --head BL1 --status off --reason ' ' 2>/dev/null
-check "HIMMEL-6685: an off row whose reason is only whitespace is refused" "$?" "2"
+check "an off row whose reason is only whitespace is refused" "$?" "2"
 CR_LEDGER="$tmp/blast-bad.jsonl" bash "$LA" blast --branch b --head BL1 --status skipped 2>/dev/null
-check "HIMMEL-6685: a status other than ran|off is refused" "$?" "2"
+check "a status other than ran|off is refused" "$?" "2"
 CR_LEDGER="$tmp/blast-nohead.jsonl" bash "$LA" blast --branch b 2>/dev/null
-check "HIMMEL-6685: a blast row with no --head is refused" "$?" "2"
+check "a blast row with no --head is refused" "$?" "2"
 
 CMS="$tmp/comments.jsonl"; : > "$CMS"
 comments_rows() { L="$CMS" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).filter(Boolean).map(JSON.parse).filter(r=>r.kind==="comments");console.log(rs.map(r=>[r.branch,r.head,r.status,r.count===undefined?"":r.count,r.reason||""].join(",")).join("|"))'; }
@@ -1781,17 +1781,17 @@ check "dependabot-go: a refused row writes nothing" "$(test -s "$tmp/dg-bad.json
 # non-empty --head) could not reach the row to correct it.
 NHL="$tmp/nohead.jsonl"
 CR_LEDGER="$NHL" bash "$LA" finding --branch b --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>"$tmp/nohead.err"
-check "HIMMEL-8870: a finding with no --head exits 2" "$?" "2"
-check "HIMMEL-8870: a finding with no --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
-check "HIMMEL-8870: the refusal names --head and says nothing was written" "$(grep -c -- '--head.*NOTHING was written' "$tmp/nohead.err")" "1"
+check "a finding with no --head exits 2" "$?" "2"
+check "a finding with no --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
+check "the refusal names --head and says nothing was written" "$(grep -c -- '--head.*NOTHING was written' "$tmp/nohead.err")" "1"
 CR_LEDGER="$NHL" bash "$LA" finding --branch b --head "" --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
-check "HIMMEL-8870: a finding with an empty --head exits 2" "$?" "2"
-check "HIMMEL-8870: a finding with an empty --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
+check "a finding with an empty --head exits 2" "$?" "2"
+check "a finding with an empty --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
 CR_LEDGER="$NHL" bash "$LA" finding --branch b --head "  " --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
 check "a finding with a whitespace-only --head exits 2" "$?" "2"
 check "a finding with a whitespace-only --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
 CR_LEDGER="$NHL" bash "$LA" finding --branch b --head H8870 --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
-check "HIMMEL-8870: the same finding with a head still writes" "$(grep -c '"head":"H8870"' "$NHL")" "1"
+check "the same finding with a head still writes" "$(grep -c '"head":"H8870"' "$NHL")" "1"
 
 # ── the amend fu_class gate must not pipe $set_pairs into grep ──
 # Under `set -o pipefail`, `printf ... | grep -q` reports the producer's status when

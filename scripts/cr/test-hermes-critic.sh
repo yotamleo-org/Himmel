@@ -518,7 +518,7 @@ echo "  ok" >&2
 #     the critics.json-pinned model (gpt-6.1-sol), with --provider openai-codex forced (family
 #     inference -> codex) — CR critics no longer ride the himmel_agent hermes
 #     profile default.
-echo "test: default hermes model pins gpt-6.1-sol (HIMMEL-2059/HIMMEL-3879)" >&2
+echo "test: default hermes model pins gpt-6.1-sol (the CR critic pins its own model, never the profile default)" >&2
 STUB_MODEL_CAPTURE="$work/model-capture" \
     run_critic '{"passed": true, "security_concerns": [], "logic_errors": [], "architectural_mismatches": [], "suggestions": [], "summary": "ok"}' >/dev/null
 rc=$?

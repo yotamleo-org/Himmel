@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""evals-page-gen.py - the generator behind docs/evals/README.md (HIMMEL-6876).
+"""evals-page-gen.py - the generator behind docs/evals/README.md (per-reviewer precision with intervals, findings in and out, cache read ratio).
 
 Two steps, so the page holds no figure of its own:
 
