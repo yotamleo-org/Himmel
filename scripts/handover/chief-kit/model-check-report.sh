@@ -95,7 +95,14 @@ load_dotenv --root "$(_load_dotenv_primary_for "$REPO")" HANDOVER_DIR USER_SLUG 
 root="$(handover_root)" || error 'cannot resolve handover root'
 slug="$(user_slug)" || error 'cannot resolve user slug'
 case "$slug" in ''|.|..|*[!A-Za-z0-9_.-]*) error 'unsafe user slug' ;; esac
-metadata="$(timeout -k 5s 30s gh pr view "$pr" --json headRefOid,files)" || error 'cannot read PR head and files'
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+if [ "$GH_READ_BIN" != gh ]; then
+    # shellcheck source=/dev/null
+    . "$GH_READ_BIN"
+    gh_read_init
+fi
+metadata="$(timeout -k 5s 30s "$GH_READ_BIN" pr view "$pr" --json headRefOid,files)" || error 'cannot read PR head and files'
 head="$(printf '%s' "$metadata" | jq -er '.headRefOid | select(test("^[0-9a-f]{40}$"))')" || error 'invalid PR head'
 printf '%s' "$metadata" | jq -e --arg p "$source_path" '.files | any(.path == $p)' >/dev/null || error "PR does not touch $source_path"
 # The chief ensures this commit is locally available; this step never fetches a ref.
@@ -166,7 +173,7 @@ if [ -s "$run/output/chart.mmd" ]; then
     cp "$run/output/chart.mmd" "$run/chart.mmd" || error 'cannot retain chart'
     chart="$run/chart.mmd"
 fi
-latest="$(timeout -k 5s 30s gh pr view "$pr" --json headRefOid --jq .headRefOid)" || error "cannot recheck PR head; report is not current: $run/report.md"
+latest="$(timeout -k 5s 30s "$GH_READ_BIN" pr view "$pr" --json headRefOid --jq .headRefOid)" || error "cannot recheck PR head; report is not current: $run/report.md"
 [ "$latest" = "$head" ] || error "PR head changed; discard this stale report: $run/report.md"
 printf 'model-check-report: report=%s chart=%s head=%s exit=%s\n' "$run/report.md" "$chart" "$head" "$rc"
 if grep -Eq '^Model checking is incomplete;|^## (Rules not checked|TLC stopped)' "$run/report.md"; then exit 2; fi

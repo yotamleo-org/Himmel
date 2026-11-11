@@ -62,8 +62,8 @@ die() { echo "vm-runner: $1" >&2; exit "${2:-1}"; }
 . "$REPO_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
 bounded() { ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 20} "$@"; }
 
-vmrun_var() { bounded gh api "repos/$REPO/actions/variables/$VAR" --jq .value 2>/dev/null; }
-vmrun_policy() { bounded gh api "repos/$REPO/actions/permissions/fork-pr-contributor-approval" --jq .approval_policy 2>/dev/null; }
+vmrun_var() { bounded gh api "repos/$REPO/actions/variables/$VAR" --jq .value 2>/dev/null; }  # gh-main-ok: admin-only endpoint
+vmrun_policy() { bounded gh api "repos/$REPO/actions/permissions/fork-pr-contributor-approval" --jq .approval_policy 2>/dev/null; }  # gh-main-ok: admin-only endpoint
 unit_active() { systemctl --user is-active --quiet "$UNIT_PREFIX@$1.service" 2>/dev/null; }
 vmrun_want() {
     local w
@@ -236,7 +236,7 @@ runner_counts() {
     if [ -r "$f" ] && read -r ts busy online < "$f" 2>/dev/null && [ -n "$ts" ] && [ $((now - ts)) -lt "$CACHE_TTL" ]; then
         case "$busy" in ''|*[!0-9]*) ;; *) case "$online" in ''|*[!0-9]*) ;; *) printf '%s %s\n' "$busy" "$online"; return ;; esac ;; esac
     fi
-    val="$(bounded gh api "repos/$REPO/actions/runners?per_page=100" --paginate --jq '"\([.runners[] | select(.busy and (.name | startswith("himmel-vm-")))] | length) \([.runners[] | select(.status == "online" and (.name | startswith("himmel-vm-")))] | length)"' 2>/dev/null)" || return 0
+    val="$(bounded gh api "repos/$REPO/actions/runners?per_page=100" --paginate --jq '"\([.runners[] | select(.busy and (.name | startswith("himmel-vm-")))] | length) \([.runners[] | select(.status == "online" and (.name | startswith("himmel-vm-")))] | length)"' 2>/dev/null)" || return 0  # gh-main-ok: admin-only endpoint
     val="$(printf '%s\n' "$val" | awk '
         NF != 2 || $1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+$/ { exit 1 }
         { busy += $1; online += $2 }

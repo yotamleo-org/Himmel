@@ -108,6 +108,14 @@ export STUB_KEEP_SHA="$KEEP" STUB_KEEP2_SHA="$KEEP2"
 export CANCEL_RUNS_FAKE_CLOCK="$WORK/clock" STUB_TIME_LOG="$WORK/times.log" CANCEL_RUNS_PACE_STATE="$WORK/pace"
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
 
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$WORK/root" "$WORK/emptyroot" "$WORK/tt" "$WORK/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$WORK/root/.env"
+: > "$WORK/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$WORK/tt/gh"
+export GH_READ_ENV_ROOT="$WORK/emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$WORK/himmelcfg"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+
 # run <args>: dry by default. T_WORKER=1 / T_RELAY=1 set the worker / relay markers; T_DIR the cwd.
 run() {
     : > "$STUB_CANCEL_LOG"
@@ -361,6 +369,80 @@ out="$(CANCEL_RUNS_PACE_STATE="$WORK/no-such-dir/pace" live --keep-sha "$KEEP")"
 check "pacing: a state file that cannot be written refuses, exit 2" "2" "$rc"
 check "pacing: an unwritable state file cancels nothing" "" "$(cancelled)"
 export STUB_RUNS="$WORK/runs.json"
+
+TTLOG="$WORK/tt.log"
+tt() {
+    local root="$1"; shift
+    : > "$TTLOG"
+    GH_READ_ENV_ROOT="$root" PATH="$WORK/tt:$PATH" GH_STUB_DELEGATE="$WORK/bin/gh" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" live "$@"
+}
+logn() { grep -c -E -- "$1" "$TTLOG"; }
+stub() { GHLOG="$TTLOG" GH_STUB_READ_TOKEN="$READTOK" "$WORK/tt/gh" "$@"; }
+
+: > "$TTLOG"
+GH_STUB_MAINFAIL=rate stub run cancel 5 -R github.com/o/r >/dev/null 2>&1; rc=$?
+check "ST1 a write on a spent main is never refused" "0" "$rc"
+err="$(GH_STUB_MAINFAIL=rate stub pr view 5 2>&1 >/dev/null)"; rc=$?
+check "ST2 a read on a spent main is refused" "1" "$rc"
+has "ST2 the refusal carries the F1 text" "API rate limit already exceeded for user ID 1\\." "$err"
+: > "$TTLOG"
+GH_TOKEN="$READTOK" GH_STUB_MAINFAIL=rate stub pr view 5 >/dev/null 2>&1; rc=$?
+check "ST3 a read-token call is answered while main is spent" "0" "$rc"
+check "ST3 it is logged tok=read" "1" "$(logn '^tok=read argv=pr view 5$')"
+check "ST3 the token value is never logged" "0" "$(grep -c -F -- "$READTOK" "$TTLOG")"
+: > "$TTLOG"
+GH_TOKEN=ghp_someoneelse stub pr view 5 >/dev/null 2>&1
+check "ST4 an unknown token is logged tok=other" "1" "$(logn '^tok=other argv=pr view 5$')"
+GH_STUB_MAINFAIL=rate GH_STUB_MAINFAIL_BUCKET=core stub run list >/dev/null 2>&1; rc=$?
+check "ST5 a spent core bucket refuses a core read" "1" "$rc"
+GH_STUB_MAINFAIL=rate GH_STUB_MAINFAIL_BUCKET=core stub pr view 5 >/dev/null 2>&1; rc=$?
+check "ST5 a spent core bucket still answers a graphql read" "0" "$rc"
+start=$SECONDS
+GH_STUB_HANG=2 stub pr view 5 >/dev/null 2>&1
+check "ST6 GH_STUB_HANG sleeps before answering" "yes" "$([ $((SECONDS - start)) -ge 2 ] && echo yes || echo no)"
+
+out="$(GH_STUB_MAINFAIL=rate tt "$WORK/root" --keep-pr 3221)"; rc=$?
+check "TT1 main spent: the keep-pr run exits 0" "0" "$rc"
+check "TT1 main spent: the three runs off the kept head are cancelled" "103 104 105 " "$(cancelled)"
+check "TT1 the PR head read logs tok=read" "1" "$(logn '^tok=read argv=pr view ')"
+check "TT1 the five run lists log tok=read" "5" "$(logn '^tok=read argv=run list ')"
+check "TT1 no read logs tok=main" "0" "$(logn '^tok=main argv=(pr view|run list) ')"
+check "TT1 the three cancels log tok=main" "3" "$(logn '^tok=main argv=run cancel ')"
+check "TT1 the read token is never in the stub log" "0" "$(grep -c -F -- "$READTOK" "$TTLOG")"
+
+out="$(tt "$WORK/emptyroot" --keep-pr 3221)"; rc=$?
+check "TT2 control, no read token: exits 0" "0" "$rc"
+check "TT2 control: the three runs are cancelled" "103 104 105 " "$(cancelled)"
+check "TT2 control: the reads log tok=main" "6" "$(logn '^tok=main argv=(pr view|run list) ')"
+check "TT2 control: no call logs tok=read" "0" "$(logn '^tok=read ')"
+
+out="$(GH_STUB_READFAIL=rate tt "$WORK/root" --keep-pr 3221)"; rc=$?
+check "TT3 read token rate-limited, main healthy: exits 0" "0" "$rc"
+check "TT3 the first read is tried on the read token, then on main" "tok=read argv=pr view|tok=main argv=pr view" "$(sed -n 1,2p "$TTLOG" | cut -d' ' -f1-3 | paste -sd'|' -)"
+check "TT3 the three cancels still happen" "103 104 105 " "$(cancelled)"
+
+out="$(GH_STUB_READFAIL=rate GH_STUB_MAINFAIL=rate tt "$WORK/root" --keep-pr 3221)"; rc=$?
+check "TT4 both tokens refused: exits 1" "1" "$rc"
+check "TT4 both tokens refused: nothing is cancelled" "" "$(cancelled)"
+has "TT4 both tokens refused: the unresolvable head is named" "cannot resolve the head of PR 3221" "$out"
+
+start=$SECONDS
+out="$(GH_STUB_HANG=6 GH_READ_TIMEOUT=2 tt "$WORK/root" --keep-pr 3221)"; rc=$?
+check "TT5 a hung read: exits 1" "1" "$rc"
+check "TT5 a hung read: exits within 5 s" "yes" "$([ $((SECONDS - start)) -le 5 ] && echo yes || echo no)"
+check "TT5 a hung read: no retry, one pr view in the log" "1" "$(logn 'argv=pr view ')"
+
+out="$(GH_STUB_READFAIL=auth tt "$WORK/root" --keep-pr 3221)"; rc=$?
+check "TT6 read token refused, main healthy: exits 0" "0" "$rc"
+check "TT6 one 'read token refused' warning per switched read (the PR head and five run lists)" "6" "$(printf '%s\n' "$out" | grep -c 'gh-read: read token refused')"
+
+for pat in 'vmrun_var()' 'vmrun_policy()' 'actions/runners?per_page=100'; do
+    line="$(grep -F -- "$pat" "$HERE/vm-runner.sh" | head -1)"
+    case "$line" in
+        *"bounded gh api"*"gh-main-ok: admin-only endpoint"*) pass "VM1 vm-runner.sh '$pat' keeps plain gh and carries the marker" ;;
+        *) fail "VM1 vm-runner.sh '$pat' keeps plain gh and carries the marker (line: $line)" ;;
+    esac
+done
 
 if [ "$fails" -eq 0 ]; then printf 'ALL PASS\n'; exit 0; fi
 printf '%d FAILED\n' "$fails"
