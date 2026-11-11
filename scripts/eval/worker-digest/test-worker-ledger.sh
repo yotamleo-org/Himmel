@@ -617,6 +617,10 @@ D="$TMP/at5"; setup_attr "$D" "$A1"
 jq -c '.meta.pr = null' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
 arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row without a pr exits 0: $(head -c 300 "$D/out")"
 check "a field the eval row lacks keeps the value its failure rows already carry" 'grep -q "refreshed=1" "$D/out" && jq -s -e --arg s "$A1" "map(select(.session == \$s)) | length > 0 and all(.pr == 4242)" "$D/f.jsonl" >/dev/null'
+D="$TMP/at6"; setup_attr "$D" "$A1"
+jq -c '.meta.leg = null | .meta.ticket = null' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row without a leg or ticket exits 0: $(head -c 300 "$D/out")"
+check "the failure rows' old leg and ticket beat the journal title when the eval row has none" 'grep -q "refreshed=1" "$D/out" && jq -s -e --arg s "$A1" --arg t "$AT_TICKET" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N7777\" and .ticket == \$t)" "$D/f.jsonl" >/dev/null'
 
 echo "test-worker-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

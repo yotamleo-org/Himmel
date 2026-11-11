@@ -724,7 +724,7 @@ def refresh(digest, who, failures_ledger, eval_ledger, index=None):
         _stop_after("eval")
         old, first, held = _old_failure_ts(failures_ledger, session)
         for r in frows:
-            r.update({k: v for k, v in held.items() if r[k] is None})
+            r.update({k: v for k, v in held.items() if (current.get("meta") or {}).get(k) is None})
             r["ts"] = old.get((r["agent"]["id"], r["class"]), first or anchor)
             r["meta"] = {"digest_id": did, "refreshed_at": now}
             problems = validate(r)
