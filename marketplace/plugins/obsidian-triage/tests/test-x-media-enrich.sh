@@ -1276,7 +1276,7 @@ echo "Test 27: HIMMEL-9889 - guard rows: an empty run exits 0 without the tool c
 NF="$tmp/bin-noffmpeg"; mkdir -p "$NF"
 ln -s "$tmp/bin/uv" "$NF/uv"; ln -s "$(command -v python)" "$NF/python"; ln -s "$(command -v bash)" "$NF/bash"
 VE="$tmp/vault-empty"; mkdir -p "$VE/Clippings"
-printf -- '---\ntitle: "done"\nsource: "https://x.com/u/status/970"\ntype: tweet\n---\n# done\nno media here\nmedia_enriched_at: 2026-11-01\n' > "$VE/Clippings/none.md"
+printf -- '---\ntitle: "done"\nsource: "https://x.com/u/status/970"\ntype: tweet\nmedia_enriched_at: 2026-11-01\n---\n# done\nno media here\n' > "$VE/Clippings/none.md"
 PATH="$NF" run_tool "$VE" --include-evidence >"$tmp/empty.out" 2>"$tmp/empty.err"
 assert "a run with nothing selected and no ffmpeg exits 0" 0 "$?"
 grep -qF 'x-media-fetch: 0 selected, 0 enriched, 0 partial, 0 failed' "$tmp/empty.out" && a=ok || a=no
