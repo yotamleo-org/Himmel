@@ -881,6 +881,37 @@ same '--pool-dispositions reads a paused snapshot as pool unknown' "$pd_pause_ou
 pd_stall_out="$(printf '# gh-stall GH-STALL github read timed out after 400s token=main caller=next-dispatchable nothing-was-judged\n' | bash "$SUT" --pool-dispositions 2>/dev/null)"
 same '--pool-dispositions reads a stalled snapshot as pool unknown' "$pd_stall_out" '# pool-counts ?'
 
+PS_DOC="$W/ps-doc/HIMMEL-nextleg-2026-11-11A-chief.md"; mkdir -p "${PS_DOC%/*}"
+printf '# chief\n\n## Live state\n\npool-disposition: HIMMEL-952 slice blocked on PR 77\n\n## Results\n' > "$PS_DOC"
+cat > "$W/ps-gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PS_GH_LOG"
+case "$*" in "pr list --state all --limit 300 --json number,state "*) printf '77\tMERGED\n' ;; esac
+STUB
+chmod +x "$W/ps-gh"
+ps_run() {
+    local d="$W/ps-$1"
+    rm -rf "$d"; seed_floor "$d" "$1"; : > "$W/ps-gh.log"
+    HIMMEL_QUOTA_DIR="$d" TICK_GH_CMD="$W/ps-gh" PS_GH_LOG="$W/ps-gh.log" NEXT_DISPATCH_MIRROR="$PW" \
+        bash "$SUT" --pool-stale --doc "$PS_DOC" --repo "$W/pw-main" 2>/dev/null
+}
+ps_out="$(ps_run 100)"; ps_rc=$?
+same 'a paused GitHub reads pool-stale=? and residual-unversioned=skip, exit 0' "$ps_rc:$ps_out" '0:pool-stale=?
+residual-unversioned=skip'
+same 'a paused GitHub makes no pool-stale gh call' "$(wc -l < "$W/ps-gh.log" | tr -d ' ')" '0'
+same 'RED control: a healthy budget judges the merged PR stale' "$(ps_run 4000 | sed -n 's/^pool-stale=//p')" '1:HIMMEL-952'
+st_tick() {
+    local d="$W/st-$1"
+    rm -rf "$d"; seed_floor "$d" "$1"
+    printf '2887:conflict' > "$W/stall-q.cache"; touch -d '3 hours ago' "$W/stall-q.cache"
+    : > "$W/qstub.log"
+    q_tick "$d" TICK_STALL_PROBE="$HERE/pr-stall.sh" TICK_STALL_CACHE="$W/stall-q.cache" TICK_STALL_TTL_MIN=60 | stall_of
+}
+same 'a paused pr-stall keeps the cached stall=' "$(st_tick 100)" '2887:conflict'
+not_contains 'a paused pr-stall makes no PR list call' "$(cat "$W/qstub.log")" 'mergeStateStatus,statusCheckRollup'
+st_tick 4000 > /dev/null
+contains 'RED control: a healthy pr-stall reads its PR list' "$(cat "$W/qstub.log")" 'mergeStateStatus,statusCheckRollup'
+
 q_key_line="$(grep -n -E '^[[:space:]]+for f in workers livestate prs ' "$HERE/chief-wait.sh")"
 [ -n "$q_key_line" ] && pass "chief-wait's key field list is found" || fail "chief-wait's key field list moved"
 not_contains "chief-wait's key field list gains no quota" "$q_key_line" 'quota'

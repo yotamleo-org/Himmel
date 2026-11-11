@@ -23,7 +23,8 @@
 #   sweep     status-sweep.sh, so Jira and the worker records are current; it keeps
 #             its PR, check and thread snapshot in the stage for the drift pass. It runs
 #             with a 60+20 s budget and fails as sweep:<why>: timeout, rc<n>, the
-#             snapshot read it could not finish (gh, jira, ...), unknown
+#             snapshot read it could not finish (gh, jira, ...), unknown. A GitHub out
+#             (ts_scan_gate before the sweep) is sweep:gh, its QUOTA-PAUSE or GH-STALL line on stderr
 #   prs       one `gh pr list` snapshot, staged
 #   chains    focus-chains.json regenerated from the chain registry: chains.json at
 #             <handover_root>/<user slug>/himmel/chains.json (no such file: the stage is skipped and a
@@ -265,6 +266,7 @@ else
     mv -f "$stage/versions.tsv" "$MIR.versions.tsv" || failed versions
 fi
 
+ts_scan_gate focus-refresh graphql core || failed sweep:gh
 # the sweep's own budget plus grace (60+20) ends inside the 90 s bound, so it reports why it stopped
 rc=0
 sweep_out=$(TICKET_STATUS_SWEEP_BUDGET=60 TICKET_STATUS_SWEEP_GRACE=20 bounded 90 "${SWEEP[@]}" --repo "$REPO" --snapshot-out "$stage/snap" 2>&1) || rc=$?

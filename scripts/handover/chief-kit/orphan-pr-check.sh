@@ -18,7 +18,8 @@
 # <repo> (default: this checkout). Seams (tests): ORPHAN_PR_CHECK_PRS = a file holding that JSON,
 # TICKET_STATUS_STATE_DIR = the state dir. An unreadable or malformed PR list is neither an orphan
 # nor an all-clear: it prints `orphan-pr-check: unavailable ...` on stderr and exits 3 (chief.sh
-# refuses only on 1; the waiter clears its marker only on 0). A record that does not parse
+# refuses only on 1; the waiter clears its marker only on 0). So is a GitHub out: ts_scan_gate
+# before the gh read prints its QUOTA-PAUSE or GH-STALL line on stderr. A record that does not parse
 # cannot show its PR unowned, so it owns it.
 #
 # Exit: 0 every PR owned; 1 at least one orphan; 2 usage; 3 unavailable.
@@ -48,6 +49,7 @@ unavailable() { echo "orphan-pr-check: unavailable ($1)" >&2; exit 3; }
 if [ -n "${ORPHAN_PR_CHECK_PRS:-}" ]; then
     prs_json="$(cat "$ORPHAN_PR_CHECK_PRS" 2>/dev/null)" || prs_json=""  # read-sink-ok: a test seam for the gh output, parsed as JSON and never used as a prompt; swallow-ok: an empty read exits as unavailable below, never as an orphan
 else
+    ts_scan_gate orphan-pr-check graphql || unavailable "the open-PR list could not be read"
     prs_json="$(cd "$repo" 2>/dev/null && timeout -k 2 30 gh pr list --state open --limit 1000 --json number,headRefName,isCrossRepository,author 2>/dev/null)" || prs_json=""  # gnu-ok: Linux-only kit; swallow-ok: an empty read exits as unavailable below, never as an orphan
 fi
 [ -n "$prs_json" ] || unavailable "the open-PR list could not be read"
