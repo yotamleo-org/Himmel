@@ -43,7 +43,9 @@
 # right after the workers: line (replaced on every render), for succession to carry.
 #
 # After a render that wrote the doc, each `pool-disposition: <KEY> question|slice after <KEY2>`
-# line with both keys open writes its Jira link `<KEY2> blocks <KEY>` when absent, once per pair;
+# line with both keys open writes its Jira link `<KEY2> blocks <KEY>` when absent, once per pair.
+# A pair linked, found linked, with a closed key, or refused by the CLI's blocker-version check is
+# recorded and costs no Jira call again; an unread status or a failed call is tried next render.
 # LIVE_STATE_JIRA_CMD replaces the jira CLI.
 #
 # Exit: 0 ok; 1 refused (no manifest, no workers: line, new worker without a nonce);
@@ -251,7 +253,7 @@ after_pairs="$(awk '
         if (on != w[2]) print on, w[2]
     }' "$doc")"
 link_after_pairs() {
-    local seen_dir seen lrc on key pair links open k st
+    local seen_dir seen lrc on key pair links open k st err
     seen_dir="${TMPDIR:-/tmp}/himmel-chain-links-$UID"
     # shellcheck disable=SC2174 # only the final, per-user directory is ours
     if ! mkdir -m 700 -p "$seen_dir" 2>/dev/null || [ -L "$seen_dir" ] || [ ! -O "$seen_dir" ]; then
@@ -267,15 +269,24 @@ link_after_pairs() {
         pair="$on blocks $key"
         grep -qxF "$pair" "$seen" && continue
         links="$(jira links "$key" 2>/dev/null)" || { echo "live-state: cannot read $key's Jira links: $pair not written" >&2; continue; }  # swallow-ok: an unread link list writes no link and says so; the pair is tried again next render
-        if ! awk -F'\t' -v p="$pair" '$2 == "Blocks" && $NF == p { f = 1 } END { exit !f }' <<< "$links"; then
+        if ! awk -F'\t' -v i="inward=$on" -v o="outward=$key" '$2 == "Blocks" && $3 == i && $4 == o { f = 1 } END { exit !f }' <<< "$links"; then
             open=yes
             for k in "$on" "$key"; do
-                st="$(jira get "$k" 2>/dev/null | awk -F'\t' 'NR == 1 { print $3 }')"  # swallow-ok: an unread status is empty, which writes no link
-                if [ -z "$st" ] || [[ "$st" =~ $DONE_RE ]]; then open="$k is ${st:-unreadable}"; break; fi
+                st="$(jira get "$k" 2>/dev/null | awk -F'\t' 'NR == 1 { print $3 }')"  # swallow-ok: an unread status is empty, which writes no link and is read again next render
+                if [ -z "$st" ]; then open=unread; break; fi
+                if [[ "$st" =~ $DONE_RE ]]; then open="$k is $st"; break; fi
             done
-            [ "$open" = yes ] || { echo "live-state: $pair not written: $open" >&2; continue; }
-            jira link "$on" --blocks "$key" >/dev/null 2>&1 || { echo "live-state: jira link $on --blocks $key failed" >&2; continue; }
-            echo "live-state: linked $pair (pool-disposition: $key after $on)" >&2
+            [ "$open" != unread ] || { echo "live-state: cannot read $k's status: $pair not written" >&2; continue; }
+            if [ "$open" != yes ]; then
+                echo "live-state: $pair not written, recorded: $open" >&2
+            elif err="$(jira link "$on" --blocks "$key" 2>&1 >/dev/null)"; then
+                echo "live-state: linked $pair (pool-disposition: $key after $on)" >&2
+            else
+                case "$err" in
+                    *'must carry fixVersion'*) echo "live-state: $pair refused, recorded: $err" >&2 ;;
+                    *) echo "live-state: jira link $on --blocks $key failed: $err" >&2; continue ;;
+                esac
+            fi
         fi
         printf '%s\n' "$pair" >> "$seen"
     done <<EOF

@@ -395,8 +395,19 @@ db="${JIRA_STUB_DB:?}"
 printf '%s\n' "$*" >> "$db/calls"
 case "$1" in
     get) st="$(cat "$db/status-$2" 2>/dev/null)" || exit 1; printf '%s\tTask\t%s\ttitle of %s\n' "$2" "$st" "$2" ;;
-    links) [ -z "${JIRA_STUB_SLEEP:-}" ] || sleep "$JIRA_STUB_SLEEP"; cat "$db/links" 2>/dev/null | grep -F "$2" || true ;;
-    link) [ "$3" = --blocks ] || exit 2; printf '9%s\tBlocks\tinward=%s\toutward=%s\t%s blocks %s\n' "$RANDOM" "$2" "$4" "$2" "$4" >> "$db/links"; echo "Linked: $2 blocks $4" ;;
+    links)
+        [ -z "${JIRA_STUB_SLEEP:-}" ] || sleep "$JIRA_STUB_SLEEP"
+        n=0
+        while read -r a b; do
+            n=$((n + 1))
+            if [ "$2" = "$a" ]; then printf '%s\tBlocks\tinward=%s\toutward=%s\t%s blocks %s\n' "$n" "$a" "$b" "$a" "$b"
+            elif [ "$2" = "$b" ]; then printf '%s\tBlocks\tinward=%s\toutward=%s\t%s is blocked by %s\n' "$n" "$a" "$b" "$b" "$a"; fi
+        done < "$db/links"
+        [ "$n" -gt 0 ] || echo "$2: no issue links" ;;
+    link)
+        [ "$3" = --blocks ] || exit 2
+        if [ -f "$db/refuse-link" ]; then echo "$2 must carry fixVersion v1 before linking; add that version first, or pass --backlog to opt out" >&2; exit 1; fi
+        printf '%s %s\n' "$2" "$4" >> "$db/links"; echo "Linked: $2 blocks $4" ;;
     *) exit 2 ;;
 esac
 STUB
@@ -419,18 +430,47 @@ check '26. the link is logged' logged "$r"
 check '26. the pool-disposition line is unchanged' 'pool-disposition: HIMMEL-2 question after HIMMEL-1' "$(grep '^pool-disposition:' "$af")"
 bash "$SCRIPT" "$af" >/dev/null 2>&1
 check '26. a second render makes no second link call' 1 "$(link_calls)"
-: > "$jdb/calls"; : > "$jdb/links"; rm -rf "$TMPDIR"/himmel-chain-links-*
+reset26() { : > "$jdb/calls"; : > "$jdb/links"; rm -f "$jdb/refuse-link"; rm -rf "$TMPDIR"/himmel-chain-links-*; }
+calls26() { wc -l < "$jdb/calls" | tr -d ' '; }
+reset26
 echo 'Done' > "$jdb/status-HIMMEL-1"
 bash "$SCRIPT" "$af" >/dev/null 2>&1
 check '26. a blocker that is not open makes no link call' 0 "$(link_calls)"
+n26=$(grep -cxF 'get HIMMEL-1' "$jdb/calls")
+check '26. that blocker was read' 1 "$n26"
+: > "$jdb/calls"; bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a pair with a closed key is recorded: the next render makes no Jira call' 0 "$(calls26)"
+reset26
 echo 'To Do' > "$jdb/status-HIMMEL-1"; echo 'Closed' > "$jdb/status-HIMMEL-2"
 bash "$SCRIPT" "$af" >/dev/null 2>&1
 check '26. a waiting key that is not open makes no link call' 0 "$(link_calls)"
+n26=$(grep -cxF 'get HIMMEL-2' "$jdb/calls")
+check '26. that waiting key was read' 1 "$n26"
+reset26
 echo 'To Do' > "$jdb/status-HIMMEL-2"
-printf '1\tBlocks\tinward=HIMMEL-1\toutward=HIMMEL-2\tHIMMEL-1 blocks HIMMEL-2\n' > "$jdb/links"
+echo 'HIMMEL-1 HIMMEL-2' > "$jdb/links"
 bash "$SCRIPT" "$af" >/dev/null 2>&1
-check '26. a link already in Jira makes no link call' 0 "$(link_calls)"
-: > "$jdb/links"; rm -rf "$TMPDIR"/himmel-chain-links-*
+check '26. a link already in Jira (read from the waiting key, is blocked by) makes no link call' 0 "$(link_calls)"
+n26=$(grep -cxF 'links HIMMEL-2' "$jdb/calls")
+check '26. the waiting key links were read' 1 "$n26"
+: > "$jdb/calls"; bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a link found in Jira is recorded: the next render makes no Jira call' 0 "$(calls26)"
+reset26
+: > "$jdb/refuse-link"
+af_err="$(bash "$SCRIPT" "$af" 2>&1 >/dev/null)"
+check '26. a version refusal is one link call' 1 "$(link_calls)"
+case "$af_err" in *'must carry fixVersion'*) r=logged ;; *) r="[$af_err]" ;; esac
+check '26. the version refusal is logged' logged "$r"
+: > "$jdb/calls"; bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a version refusal is recorded: the next render makes no Jira call' 0 "$(calls26)"
+reset26
+rm -f "$jdb/status-HIMMEL-1"
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+: > "$jdb/calls"; bash "$SCRIPT" "$af" >/dev/null 2>&1
+n26=$(grep -cxF 'links HIMMEL-2' "$jdb/calls")
+check '26. an unreadable status is not recorded: the next render reads again' 1 "$n26"
+echo 'To Do' > "$jdb/status-HIMMEL-1"
+reset26
 af_doc 'pool-disposition: HIMMEL-2 slice after HIMMEL-1 (its spec lands first)'
 bash "$SCRIPT" "$af" >/dev/null 2>&1
 check '26. a slice after line with a reason writes its link too' 'link HIMMEL-1 --blocks HIMMEL-2' "$(grep '^link ' "$jdb/calls" 2>/dev/null)"
