@@ -882,7 +882,7 @@ if [ "$stale_mode" -eq 1 ]; then
     if [ -f "$HERE/../../lib/gh-quota.sh" ]; then
         # shellcheck source=../../lib/gh-quota.sh
         . "$HERE/../../lib/gh-quota.sh"
-        if ! ps_line=$(GHQ_GH_CMD="${TICK_GH_CMD:-gh}" ghq_scan_gate main graphql tick); then
+        if ! ps_line=$(GHQ_GH_CMD="${TICK_GH_CMD:-${GHQ_GH_CMD:-gh}}" ghq_scan_gate main graphql tick); then
             printf '%s\n' "$ps_line" >&2
             printf 'pool-stale=?\nresidual-unversioned=skip\n'
             exit 0

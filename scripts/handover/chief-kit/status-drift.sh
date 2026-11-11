@@ -227,7 +227,7 @@ fi
 
 # --- the snapshot ------------------------------------------------------------------
 prs=""
-if ts_scan_gate status-drift graphql; then
+if ts_scan_gate status-drift graphql core; then
     # swallow-ok: an unreadable PR list becomes a HEALTH row below, never a plausible count
     prs=$(bounded 30 gh pr list --state open --limit 300 --json number,title 2>/dev/null) || prs=""
 fi

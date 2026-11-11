@@ -886,7 +886,7 @@ printf '# chief\n\n## Live state\n\npool-disposition: HIMMEL-952 slice blocked o
 cat > "$W/ps-gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$PS_GH_LOG"
-[ "$1 $2" != "pr list" ] || printf '77\tMERGED\n'
+case "$*" in "pr list --state all --limit 300 --json number,state "*) printf '77\tMERGED\n' ;; esac
 STUB
 chmod +x "$W/ps-gh"
 ps_run() {
@@ -895,7 +895,9 @@ ps_run() {
     HIMMEL_QUOTA_DIR="$d" TICK_GH_CMD="$W/ps-gh" PS_GH_LOG="$W/ps-gh.log" NEXT_DISPATCH_MIRROR="$PW" \
         bash "$SUT" --pool-stale --doc "$PS_DOC" --repo "$W/pw-main" 2>/dev/null
 }
-same 'a paused GitHub reads pool-stale=?' "$(ps_run 100 | sed -n 's/^pool-stale=//p')" '?'
+ps_out="$(ps_run 100)"; ps_rc=$?
+same 'a paused GitHub reads pool-stale=? and residual-unversioned=skip, exit 0' "$ps_rc:$ps_out" '0:pool-stale=?
+residual-unversioned=skip'
 same 'a paused GitHub makes no pool-stale gh call' "$(wc -l < "$W/ps-gh.log" | tr -d ' ')" '0'
 same 'RED control: a healthy budget judges the merged PR stale' "$(ps_run 4000 | sed -n 's/^pool-stale=//p')" '1:HIMMEL-952'
 st_tick() {
