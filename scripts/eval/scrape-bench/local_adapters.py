@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local, zero-credit provider adapters for the bench (HIMMEL-4362 round 2).
+"""Local, zero-credit provider adapters for the bench (round 2).
 Run through the bench's command provider:
 
   bench.py --provider cmd --name scrapling-static --cmd 'python3 local_adapters.py scrapling-static {url}'

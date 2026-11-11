@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""scripts/eval/judge-accuracy/judge_accuracy.py - the weekly judge-outcome job (HIMMEL-6943, the
-HIMMEL-6925 running eval): joins the persisted verdict records to PR state, main CI and caused-by bugs,
+"""scripts/eval/judge-accuracy/judge_accuracy.py - the weekly judge-outcome job (the running
+judge eval): joins the persisted verdict records to PR state, main CI and caused-by bugs,
 and appends one `judge-accuracy` row to the eval-runs ledger (scripts/eval/lib/eval_runs.py).
 
   judge_accuracy.py run   --verdicts DIR --prs FILE [--main-runs FILE] [--mirror DIR] [--queue FILE]

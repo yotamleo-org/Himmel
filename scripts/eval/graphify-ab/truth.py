@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""truth.py -- ground truth and exact-match scorer for the graphify A/B task set
-(HIMMEL-5317).
+"""truth.py -- ground truth and exact-match scorer for the graphify A/B task set.
 
     truth.py compute [--rev SHA]                  -> JSON {truth-rule: [items]}
     truth.py score --truth RULE --answer FILE [--rev SHA]

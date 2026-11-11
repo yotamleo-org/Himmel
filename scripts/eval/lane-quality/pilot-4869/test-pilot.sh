@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/lane-quality/pilot-4869/test-pilot.sh - hermetic suite for the
-# HIMMEL-4869 phase B pilot kit. No inference and no real balance read: a fake
+# The phase B pilot kit. No inference and no real balance read: a fake
 # DeepSeek launcher prints the balance, a fake bank preflight the bank.
 #  1. the frozen hashes match, and a drifted prompt fails `verify`;
 #  2. bench-t4's acceptor FAILS on the untouched input and PASSES on expected/;
@@ -37,7 +37,7 @@ mkdir -p "$TMP/repo/scripts/eval" "$TMP/repo/handovers"
 echo kit >"$TMP/repo/scripts/eval/kit.txt"; echo stub >"$TMP/repo/handovers/stub.md"
 cat >"$TMP/repo/scripts/claude-deepseek" <<'EOF'
 #!/usr/bin/env bash
-if [ "${1-}" = --seed-only ]; then # HIMMEL-5183: seeds the lane config the way the real launcher does, and exits
+if [ "${1-}" = --seed-only ]; then # seeds the lane config the way the real launcher does, and exits
   mkdir -p "$HOME/.claude-deepseek" || exit 4
   [ ! -f "$HOME/.claude/settings.json" ] || cp "$HOME/.claude/settings.json" "$HOME/.claude-deepseek/settings.json" || exit 4
   [ ! -d "$HOME/.claude/hooks" ] || cp -r "$HOME/.claude/hooks" "$HOME/.claude-deepseek/" || exit 4
@@ -159,7 +159,7 @@ check 'a deepseek jail copies no claudex allow hook' '[ ! -e "$TMP/root/run/p01/
 check 'the native row has no sandbox' '! bash "$HERE/sandbox.sh" argv "$TMP/root/rows/p02.env" >/dev/null 2>&1'
 sed 's/^LANE=.*/LANE=claudex/' "$TMP/root/rows/p01.env" >"$TMP/claudex.env"
 check 'a claudex row builds its jail (no API host to map)' 'bash "$HERE/sandbox.sh" argv "$TMP/claudex.env" >/dev/null 2>&1 && ! grep -q api "$TMP/root/run/p01/hosts"'
-# HIMMEL-5077: the claudex classifier runs client-side on the codex model, so the
+# The claudex classifier runs client-side on the codex model, so the
 # jail user settings carry a jail-only PreToolUse hook that allows exactly the row's
 # own lq-work test scripts (a permissions.allow glob would let `*` cross `/` and `..`),
 # and say lq-work rewrites are routine; the deny list and every other lane stay as were.
@@ -211,7 +211,7 @@ printf '%s\n' "$TMP/repo/.git" >"$gd/commondir"
 check 'a git dir given a commondir is refused' '! bash "$HERE/sandbox.sh" argv "$TMP/root/rows/p01.env" >/dev/null 2>&1'
 rm -f "$gd/commondir"
 check 'the restored worktree builds its jail again (control)' 'bash "$HERE/sandbox.sh" argv "$TMP/root/rows/p01.env" >/dev/null 2>&1'
-# HIMMEL-5183: the lane config's policy files (settings.json, hooks/) are seeded by the
+# The lane config's policy files (settings.json, hooks/) are seeded by the
 # launcher's --seed-only OUTSIDE the lane and bound read-only; the rest of ROWCONF stays
 # writable (the launcher writes its mirror and runtime state there). A row ROWCONF starts
 # empty, so the first launch must be covered too.
@@ -253,7 +253,7 @@ if bwrap --ro-bind / / true 2>/dev/null; then
   out5183="$(cd "$wt" && HOME="$H5183" DEEPSEEK_API_KEY=k PILOT_SANDBOX_TUNNEL_TARGET=127.0.0.1:1 timeout 30 bash "$HERE/sandbox.sh" launch "$TMP/row5183.env" 1 2>&1)" # gnu-ok: Linux-only kit
   check 'live: the launch goes through with a seeded read-only policy' 'printf "%s\n" "$out5183" | grep -qxF "cwd=$TMP/repo/.claude/worktrees/lq-pilot-p01"'
 fi
-# HIMMEL-5200: the worktree comes into the jail read-only as a whole, at both of its jail paths,
+# The worktree comes into the jail read-only as a whole, at both of its jail paths,
 # and only lq-work/ (where every task prompt writes) is bound writable on top. Binding the settings
 # and the hook trees one by one left the guard files the hooks source but the settings never name
 # (scripts/guardrails/lib.sh, scripts/chokepoints.json) writable: a row could neuter one, act, restore.
@@ -515,7 +515,7 @@ pk="$(jq -r .packet "$R")"
 check 'packet exists under an opaque id' '[ -f "$TMP/root/packets/$pk.md" ] && ! printf %s "$pk" | grep -q p01'
 check 'packet is redacted' '! grep -qiE "deepseek|sonnet" "$TMP/root/packets/$pk.md"'
 check 'packet omits the acceptance result' '! grep -q "accept:" "$TMP/root/packets/$pk.md"'
-# HIMMEL-5200: a row that rewrote its project settings.local.json (the jail guard) is
+# A row that rewrote its project settings.local.json (the jail guard) is
 # scored out of scope; p01 above is the control (guard untouched, scope clean). A
 # separate deepseek row, so the clean control is not spent.
 if [ "$live" = 1 ]; then

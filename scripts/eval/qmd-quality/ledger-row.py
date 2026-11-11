@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """scripts/eval/qmd-quality/ledger-row.py - write one qmd-quality eval-runs row
-with bootstrap CIs, per-query cases and the config stamp (HIMMEL-4650).
+with bootstrap CIs, per-query cases and the config stamp.
 
   ledger-row.py <out-dir> --golden G --modes M [--scope S] [--candidate-limit C]
                 [--embed-model E] [--rerank-model R] [--index I] [--run-id ID]
