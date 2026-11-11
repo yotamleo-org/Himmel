@@ -101,6 +101,8 @@ const DEFS: Def[] = [
         backlog: bool('File to the backlog (needs proposedVersion backlog and why)'),
         why: str('One line: why the ticket waits in the backlog'),
         gate: str('Why this may enter a version (critical, regression, ...)'),
+        decision: str('The operator decision that places an operator-directed or High ticket into a version; needs words'),
+        words: str('The operator\'s exact words in that decision\'s verbatim file'),
         attach: strs('File path(s) to attach'),
       },
       required: ['type', 'title'],
@@ -109,7 +111,7 @@ const DEFS: Def[] = [
     argv: (a) => ['create', ...flags(a, {
       type: '--type', title: '--title', desc: '--desc', descFile: '--desc-file', adfFile: '--adf-file', parent: '--parent',
       labels: '--labels', sector: '--sector', project: '--project', priority: '--priority', fixVersion: '--fix-version',
-      proposedVersion: '--proposed-version', backlog: '--backlog', why: '--why', gate: '--gate', attach: '--attach',
+      proposedVersion: '--proposed-version', backlog: '--backlog', why: '--why', gate: '--gate', decision: '--decision', words: '--words', attach: '--attach',
     })],
   },
   {

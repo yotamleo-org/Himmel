@@ -77,6 +77,10 @@ beforeEach(() => {
   vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
   vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
   writeFileSync(join(root, 'verbatim.txt'), 'R = v1 + v2\n');
+  vi.mocked(request).mockReset();
+  vi.mocked(request).mockImplementation((async (_m: string, path: string) => (path.endsWith('?fields=labels,priority,status')
+    ? { fields: { labels: [], priority: { name: 'Medium' }, status: { statusCategory: { name: 'To Do' } } } }
+    : undefined)) as never);
   out = [];
   repairSeen.opts = null;
   vi.spyOn(console, 'log').mockImplementation((s: string) => { out.push(s); });
@@ -1176,5 +1180,179 @@ describe('jira release operator out-of-version', () => {
     await expect(grant('--key', 'HIMMEL-99')).rejects.toThrow('HIMMEL-99 is not in the mirror; sync it first (jira mirror)');
     expect(existsSync(sent)).toBe(false);
     expect(rows()).toEqual([]);
+  });
+});
+
+describe('a request for operator work carries the operator\'s words', () => {
+  const FILE = 'Operator, verbatim:\n\n"Approved one more round"\n\nAnswering the ask on HIMMEL-1: stop and park.\n';
+  const WORDS = 'Approved one more round';
+  const declared = () => run('operator', 'declare', 'v1.1.3', '--versions', 'v1.1.3,v1.1.4', '--decision', '106', '--verbatim-file', join(root, 'verbatim.txt'));
+  const decisionFile = () => {
+    mkdirSync(join(root, 'specs', 'decisions'), { recursive: true });
+    writeFileSync(join(root, 'specs', 'decisions', 'verbatim-decision-9-op.txt'), FILE);
+  };
+  type Issue = { key: string; labels?: string[]; priority?: string; status?: string; category?: string; fixVersions?: string[] };
+  const gateMirror = (...issues: Issue[]): string => {
+    const dir = join(root, 'gate-mirror');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-10T00:00:00Z' }));
+    for (const i of issues) {
+      writeFileSync(join(dir, `${i.key}.md`), `---\nkey: ${JSON.stringify(i.key)}\nstatus: ${JSON.stringify(i.status ?? 'To Do')}\n`
+        + `statusCategory: ${JSON.stringify(i.category ?? 'To Do')}\ntype: "Task"\npriority: ${JSON.stringify(i.priority ?? 'Medium')}\n`
+        + `labels: ${JSON.stringify(i.labels ?? [])}\nfixVersions: ${JSON.stringify(i.fixVersions ?? [])}\n---\n`);
+    }
+    return dir;
+  };
+  const ask = (mir: string, ...a: string[]) => run('request', 'v1.1.3', '--mirror-root', mir, ...a);
+  const intake = (key: string, to = 'v1.1.3') => ['--verb', 'INTAKE', '--key', key, '--from', 'backlog', '--to', to, '--why', 'the operator asked for it in the chief window'];
+  const refusal = async (p: Promise<unknown>): Promise<string> => {
+    try {
+      await p;
+    } catch (e) {
+      return (e as Error).message;
+    }
+    throw new Error('expected a refusal');
+  };
+  const requestsFile = () => join(root, 'state', 'v1.1.3', 'requests.jsonl');
+  const operatorRows = () => readFileSync(join(root, 'state', 'v1.1.3', 'operator.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>);
+  const operatorDirected = { key: 'HIMMEL-1', labels: ['operator-directed', 'standalone'] };
+
+  beforeEach(() => {
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+  });
+
+  it('a gated INTAKE with no --decision is refused with the fix', async () => {
+    await declared();
+    const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
+    expect(msg).toContain('HIMMEL-1 is operator-directed; a request that places it needs a record of the operator\'s words');
+    expect(msg).toContain('jira release request v1.1.3 --verb INTAKE --key HIMMEL-1 --from backlog --to v1.1.3');
+    expect(msg).toContain('--decision <n> --words "<the operator\'s exact words>"');
+    expect(msg).not.toContain('454');
+    expect(existsSync(requestsFile())).toBe(false);
+  });
+
+  it('a High ticket is gated', async () => {
+    await declared();
+    const mir = gateMirror({ key: 'HIMMEL-2', priority: 'High' }, { key: 'HIMMEL-3', priority: 'Highest', labels: ['operator-directed'] });
+    expect(await refusal(ask(mir, ...intake('HIMMEL-2')))).toContain('HIMMEL-2 is High;');
+    expect(await refusal(ask(mir, ...intake('HIMMEL-3')))).toContain('HIMMEL-3 is operator-directed and Highest;');
+    expect(await refusal(ask(mir, '--verb', 'REVERSION', '--key', 'HIMMEL-2', '--from', 'backlog', '--to', 'v1.1.4', '--why', 'moves into the next version')))
+      .toContain('needs a record of the operator\'s words');
+  });
+
+  it('a backlog target is not gated', async () => {
+    await declared();
+    await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1', 'backlog'));
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+  });
+
+  it('a closed ticket is not gated', async () => {
+    await declared();
+    const mir = gateMirror({ ...operatorDirected, status: 'Done', category: 'Done' });
+    await ask(mir, ...intake('HIMMEL-1'), '--evidence', '{"pr":12}');
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+  });
+
+  it('a Medium unlabelled ticket is not gated, whatever its why says', async () => {
+    await declared();
+    await ask(gateMirror({ key: 'HIMMEL-4' }), '--verb', 'INTAKE', '--key', 'HIMMEL-4', '--to', 'v1.1.3', '--why', 'operator-directed: the operator asked for it, decision 900');
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+  });
+
+  it('close-fold and repair origins are not gated', async () => {
+    await declared();
+    const ctx = ctxFor('v1.1.3', gateMirror(operatorDirected));
+    const row = { verb: 'INTAKE' as const, key: 'HIMMEL-1', from_v: null, to_v: 'v1.1.3', why: 'closed into frozen v1.1.3 with no version of its own' };
+    const ticket = { labels: ['operator-directed'], priority: 'Medium', open: true };
+    expect(() => refuseRequest(ctx, { ...row, origin: 'close-fold', ticket })).not.toThrow();
+    expect(() => refuseRequest(ctx, { ...row, origin: 'repair', ticket })).not.toThrow();
+    expect(() => refuseRequest(ctx, { ...row, origin: 'cli', ticket })).toThrow(/needs a record of the operator's words/);
+  });
+
+  it('inside HIMMEL_CONSOLE_LEG=1 the gate files as today', async () => {
+    await declared();
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
+    await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+  });
+
+  it('the live GET supplies labels when the mirror lacks the key', async () => {
+    await declared();
+    vi.mocked(request).mockReset();
+    vi.mocked(request).mockImplementation((async () => ({
+      fields: { labels: ['operator-directed'], priority: { name: 'Medium' }, status: { statusCategory: { name: 'To Do' } } },
+    })) as never);
+    expect(await refusal(ask(gateMirror(), ...intake('HIMMEL-5')))).toContain('HIMMEL-5 is operator-directed;');
+    expect(vi.mocked(request).mock.calls[0].slice(0, 2)).toEqual(['GET', '/issue/HIMMEL-5?fields=labels,priority,status']);
+  });
+
+  it('an unreadable ticket on the CLI is refused, naming jira mirror and --decision', async () => {
+    await declared();
+    vi.mocked(request).mockReset();
+    vi.mocked(request).mockImplementation((async () => { throw new Error('HTTP 503'); }) as never);
+    const msg = await refusal(ask(gateMirror(), ...intake('HIMMEL-6')));
+    expect(msg).toMatch(/HIMMEL-6 could not be read/);
+    expect(msg).toContain('jira mirror');
+    expect(msg).toContain('--decision <n> --words');
+    expect(existsSync(requestsFile())).toBe(false);
+  });
+
+  it('request --decision --words records the words and files the request citing them', async () => {
+    await declared();
+    decisionFile();
+    await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--decision', '9', '--words', WORDS);
+    const id = /^OPERATOR (O-v1\.1\.3-\d{4}) /.exec(out.at(-2) ?? '')?.[1];
+    expect(id).toBeDefined();
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+    const req = JSON.parse(readFileSync(requestsFile(), 'utf8').trim().split('\n').at(-1) ?? '{}');
+    expect(req.evidence).toEqual({ operator: id });
+  });
+
+  it('request --decision with no --words is refused', async () => {
+    await declared();
+    decisionFile();
+    expect(await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--decision', '9'))).toMatch(/--decision needs --words/);
+  });
+
+  it('request --decision --words from a gloss is refused', async () => {
+    await declared();
+    decisionFile();
+    expect(await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--decision', '9', '--words', 'stop and park'))).toMatch(/not the operator's/);
+    expect(existsSync(requestsFile())).toBe(false);
+  });
+
+  const decide = (...a: string[]) => run('operator', 'decision', 'v1.1.3', '--decision', '9', '--keys', 'HIMMEL-1', ...a);
+
+  it('operator decision --words from a gloss is refused', async () => {
+    await declared();
+    decisionFile();
+    expect(await refusal(decide('--op', 'add', '--to', 'v1.1.3', '--words', 'stop and park'))).toMatch(/not the operator's/);
+    expect(operatorRows().filter((o) => o.kind === 'decision')).toEqual([]);
+  });
+
+  it('operator decision --op none writes a words row that places nothing and withdraws no request', async () => {
+    await declared();
+    decisionFile();
+    await ask(gateMirror({ key: 'HIMMEL-1' }), ...intake('HIMMEL-1'));
+    await decide('--op', 'none', '--words', WORDS);
+    expect(operatorRows().at(-1)).toMatchObject({
+      kind: 'decision', op: 'none', keys: ['HIMMEL-1'], verbatim: WORDS, words: 1, decision_file: 'specs/decisions/verbatim-decision-9-op.txt',
+    });
+    expect(JSON.parse(readFileSync(requestsFile(), 'utf8').trim().split('\n').at(-1) ?? '{}')).toMatchObject({ req: 'Q-v1.1.3-0001', state: 'open' });
+  });
+
+  it('operator decision --verbatim-file still writes a legacy row without words', async () => {
+    await declared();
+    await decide('--op', 'add', '--to', 'v1.1.3', '--verbatim-file', join(root, 'verbatim.txt'));
+    const row = operatorRows().at(-1);
+    expect(row).toMatchObject({ kind: 'decision', verbatim: 'R = v1 + v2' });
+    expect(row).not.toHaveProperty('words');
+  });
+
+  it('operator decision takes --words or --verbatim-file, exactly one', async () => {
+    await declared();
+    decisionFile();
+    expect(await refusal(decide('--op', 'add', '--to', 'v1.1.3'))).toMatch(/--words or --verbatim-file/);
+    expect(await refusal(decide('--op', 'add', '--to', 'v1.1.3', '--words', WORDS, '--verbatim-file', join(root, 'verbatim.txt')))).toMatch(/--words or --verbatim-file/);
   });
 });

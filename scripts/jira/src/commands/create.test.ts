@@ -1431,6 +1431,17 @@ describe('create — unplaced follow-up', () => {
       expect(errs.some((e) => /HIMMEL-5.*boom/.test(e))).toBe(true);
       expect(process.exitCode).toBeUndefined();
     });
+
+    it('a gated --follow-up-of create is refused without --decision and filed with it', async () => {
+      parentIs({});
+      await expect(file('--follow-up-of', 'HIMMEL-5', '--labels', 'operator-directed')).rejects.toThrow(/needs a record of the operator's words/);
+      expect(posted()).toBe(false);
+      mkdirSync(join(baseRoot, 'specs', 'decisions'), { recursive: true });
+      writeFileSync(join(baseRoot, 'specs', 'decisions', 'verbatim-decision-9-op.txt'), 'Operator:\n\n"Approved one more round"\n');
+      await file('--follow-up-of', 'HIMMEL-5', '--labels', 'operator-directed', '--decision', '9', '--words', 'Approved one more round');
+      expect(posted()).toBe(true);
+      expect(queued().at(-1)).toMatchObject({ to_v: 'v1.1.3', evidence: { follow_up_of: 'HIMMEL-5', operator: expect.stringMatching(/^O-R1-\d{4}$/) } });
+    });
   });
 });
 
@@ -2303,6 +2314,67 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     vi.stubEnv('GIT_DIR', join(root, 'repo', '.git'));
     await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow(/USER_SLUG/);
     expect(posted()).toBe(false);
+  });
+
+  describe('a create for operator work carries the operator\'s words', () => {
+    const WORDS = 'Approved one more round';
+    const decisions = () => join(root, 'specs', 'decisions');
+    const decisionFile = (name: string) => {
+      mkdirSync(decisions(), { recursive: true });
+      writeFileSync(join(decisions(), name), 'Operator, verbatim:\n\n"Approved one more round"\n\nAnswering the ask on HIMMEL-1: stop and park.\n');
+    };
+    const operatorDecisions = () => readFileSync(join(root, 'state', 'R1', 'operator.jsonl'), 'utf8').trim().split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>).filter((o) => o.kind === 'decision');
+    const requests = () => readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>);
+    const gated = ['--labels', 'operator-directed', '--proposed-version', 'v1.1.3'];
+
+    it('a gated create with no --decision is refused before the POST, naming --decision and --words', async () => {
+      await declare();
+      await expect(file('Task', ...gated)).rejects.toThrow(/needs a record of the operator's words[\s\S]*--decision <n> --words/);
+      await expect(file('Task', '--priority', 'High', '--proposed-version', 'v1.1.3')).rejects.toThrow(/is High; .*needs a record of the operator's words/);
+      expect(posted()).toBe(false);
+    });
+
+    it('bad words are refused before the POST', async () => {
+      await declare();
+      decisionFile('verbatim-decision-9-op.txt');
+      await expect(file('Task', ...gated, '--decision', '9', '--words', 'stop and park')).rejects.toThrow(/not the operator's/);
+      await expect(file('Task', ...gated, '--decision', '8', '--words', WORDS)).rejects.toThrow(/no verbatim file/);
+      decisionFile('verbatim-decision-7-a.txt');
+      decisionFile('verbatim-decision-7-b.txt');
+      await expect(file('Task', ...gated, '--decision', '7', '--words', WORDS)).rejects.toThrow(/2 files/);
+      await expect(file('Task', ...gated, '--decision', '9')).rejects.toThrow(/--decision needs --words/);
+      expect(posted()).toBe(false);
+    });
+
+    it('with --decision and --words the create writes one O- row and its INTAKE cites it', async () => {
+      await declare();
+      decisionFile('verbatim-decision-9-op.txt');
+      await file('Task', ...gated, '--decision', '9', '--words', WORDS);
+      expect(posted()).toBe(true);
+      const rows = operatorDecisions();
+      expect(rows).toEqual([expect.objectContaining({ keys: ['HIMMEL-77'], op: 'add', to_v: 'v1.1.3', verbatim: WORDS, words: 1 })]);
+      expect(requests().at(-1)).toMatchObject({ key: 'HIMMEL-77', to_v: 'v1.1.3', evidence: { operator: rows[0]!.id }, state: 'open' });
+    });
+
+    it('a gated ticket filed to the backlog is not gated', async () => {
+      await declare();
+      await file('Task', '--labels', 'operator-directed', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass');
+      expect(posted()).toBe(true);
+    });
+
+    it('the post-create call never reads the mirror', async () => {
+      await declare();
+      const mirror = join(root, 'home', '.himmel', 'state', 'jira-mirror', 'HIMMEL');
+      mkdirSync(mirror, { recursive: true });
+      writeFileSync(join(mirror, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-10T00:00:00Z' }));
+      writeFileSync(join(mirror, 'HIMMEL-77.md'), '---\nkey: "HIMMEL-77"\nstatus: "To Do"\ntype: "Task"\npriority: "High"\nlabels: ["operator-directed"]\nfixVersions: []\n---\n');
+      vi.stubEnv('HOME', join(root, 'home'));
+      vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
+      await file('Task', '--proposed-version', 'v1.1.3');
+      expect(mockRequest.mock.calls.some((x) => String(x[1]).includes('fields=labels,priority,status'))).toBe(false);
+      expect(requests().at(-1)).toMatchObject({ key: 'HIMMEL-77', to_v: 'v1.1.3', state: 'open' });
+    });
   });
 });
 
