@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2015,SC2016  # A && B || C is intentional in the row checks; $$ and $1 expand in the child, not here
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT="$HERE/graph-pass-detached.sh"
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/graph-pass-detached-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
+tmp="$(cd "$tmp" && pwd)"
+fails=0
+
+cleanup() {
+    if [ -f "$tmp/starts" ]; then
+        while IFS= read -r p; do kill "$p" 2>/dev/null || true; done < "$tmp/starts"
+    fi
+    [ -n "${decoy:-}" ] && kill "$decoy" 2>/dev/null
+    rm -rf "$tmp"
+}
+trap cleanup EXIT
+
+check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
+contains() {
+    [ -n "$3" ] || { echo "FAIL - $1: empty needle"; fails=$((fails+1)); return; }
+    case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)) ;; esac
+}
+alive()    { kill -0 "$1" 2>/dev/null; }
+state_val() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -n 1; }
+# Wait up to ~5 s for a pid to die (a killed orphan is reaped by init, not by us).
+wait_dead() { n=0; while alive "$1" && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n+1)); done; }
+
+stub="$tmp/stub-pass.sh"
+printf '#!/bin/sh\necho "$$" >> "$STUB_STARTS"\necho "stub pass started"\nwhile :; do sleep 1; done\n' > "$stub"
+chmod +x "$stub"
+export STUB_STARTS="$tmp/starts"
+export GRAPH_PASS_SCRIPT="$stub"
+export GRAPH_PASS_STATE_DIR="$tmp/state"
+export GRAPH_PASS_LOG="$tmp/pass-own.log"
+STATE="$GRAPH_PASS_STATE_DIR/graph-pass.state"
+
+t0=$(date +%s)
+out1="$(bash "$SCRIPT" start 2>&1)"; rc=$?
+t1=$(date +%s)
+check "1: start rc 0" "$rc" 0
+[ $((t1 - t0)) -le 3 ] && echo "ok - 1: start returned at once" || { echo "FAIL - 1: start took $((t1 - t0))s"; fails=$((fails+1)); }
+pid1="$(state_val "$STATE" pid)"
+log1="$(state_val "$STATE" log)"
+[ -n "$pid1" ] && alive "$pid1" && echo "ok - 1: state pid is alive" || { echo "FAIL - 1: state pid [$pid1] missing or dead"; fails=$((fails+1)); }
+[ -n "$log1" ] && [ -f "$log1" ] && echo "ok - 1: state log path exists" || { echo "FAIL - 1: state log [$log1] missing"; fails=$((fails+1)); }
+contains "1: start output names the pid" "$out1" "$pid1"
+contains "1: start output names the pass's own log" "$out1" "pass_log=$GRAPH_PASS_LOG"
+sid1="$(ps -o sid= -p "${pid1:-0}" 2>/dev/null | tr -d ' ')"
+check "1: the pass leads its own session" "$sid1" "$pid1"
+n=0; while [ ! -s "$tmp/starts" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n+1)); done
+check "1: the stub ran once" "$(wc -l < "$tmp/starts" | tr -d ' ')" 1
+contains "1: the log records the launcher choice" "$(cat "${log1:-/dev/null}" 2>/dev/null)" "launcher"
+
+if [ -n "$pid1" ]; then kill "$pid1" 2>/dev/null; wait_dead "$pid1"; fi
+rm -f "$STATE" "$tmp/starts"
+setsid bash -c 'bash "$1" start; sleep 300' _ "$SCRIPT" > "$tmp/launch.out" 2>&1 < /dev/null &
+lp=$!
+n=0; while [ ! -s "$STATE" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n+1)); done
+pid2="$(state_val "$STATE" pid)"
+pg="$(ps -o pgid= -p "$lp" 2>/dev/null | tr -d ' ')"
+[ -n "$pg" ] && kill -TERM -- "-$pg" 2>/dev/null
+wait "$lp" 2>/dev/null
+alive "$lp" && { echo "FAIL - 2: the launching shell survived its group kill"; fails=$((fails+1)); } || echo "ok - 2: the launching subtree is gone"
+[ -n "$pid2" ] && alive "$pid2" && echo "ok - 2: the pass is alive after the launching subtree is gone" || { echo "FAIL - 2: the pass [$pid2] died with its launcher"; fails=$((fails+1)); }
+
+out3="$(bash "$SCRIPT" start 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && echo "ok - 3: second start refused (rc $rc)" || { echo "FAIL - 3: second start rc 0"; fails=$((fails+1)); }
+contains "3: the refusal names the running pid" "$out3" "$pid2"
+sleep 0.5
+check "3: no second process started" "$(wc -l < "$tmp/starts" | tr -d ' ')" 1
+check "3: the state pid is unchanged" "$(state_val "$STATE" pid)" "$pid2"
+
+out6="$(bash "$SCRIPT" status 2>&1)"; rc=$?
+check "6: status running rc 0" "$rc" 0
+contains "6: status says running" "$out6" "running"
+contains "6: status names the pid" "$out6" "pid=$pid2"
+contains "6: status names the log" "$out6" "log=$(state_val "$STATE" log)"
+contains "6: status names the pass's own log" "$out6" "pass_log=$GRAPH_PASS_LOG"
+
+kill "$pid2" 2>/dev/null; wait_dead "$pid2"
+out6b="$(bash "$SCRIPT" status 2>&1)"
+contains "6: status says finished once the pass is gone" "$out6b" "finished"
+contains "6: status still names the log" "$out6b" "log="
+bash "$SCRIPT" start >/dev/null 2>&1; rc=$?
+check "4: start after a dead pid rc 0" "$rc" 0
+pid4="$(state_val "$STATE" pid)"
+[ -n "$pid4" ] && [ "$pid4" != "$pid2" ] && alive "$pid4" && echo "ok - 4: a new pass is running" || { echo "FAIL - 4: no new pass (pid [$pid4], old [$pid2])"; fails=$((fails+1)); }
+
+kill "$pid4" 2>/dev/null; wait_dead "$pid4"
+sleep 300 &
+decoy=$!
+printf 'pid=%s\nlog=%s\nstarted=x\nlauncher=setsid\n' "$decoy" "$tmp/old.log" > "$STATE"
+out5s="$(bash "$SCRIPT" status 2>&1)"
+contains "5: status says finished for a reused pid" "$out5s" "finished"
+bash "$SCRIPT" start >/dev/null 2>&1; rc=$?
+check "5: start over a reused pid rc 0" "$rc" 0
+pid5="$(state_val "$STATE" pid)"
+[ -n "$pid5" ] && [ "$pid5" != "$decoy" ] && alive "$pid5" && echo "ok - 5: a new pass is running" || { echo "FAIL - 5: no new pass (pid [$pid5], decoy [$decoy])"; fails=$((fails+1)); }
+
+kill "$pid5" 2>/dev/null; wait_dead "$pid5"
+rm -f "$STATE" "$tmp/starts"
+bash "$SCRIPT" start > "$tmp/c1.out" 2>&1 &
+c1=$!
+bash "$SCRIPT" start > "$tmp/c2.out" 2>&1 &
+c2=$!
+rc1=0; wait "$c1" || rc1=$?
+rc2=0; wait "$c2" || rc2=$?
+sleep 0.5
+check "7: exactly one of two simultaneous starts launched a pass" "$(wc -l < "$tmp/starts" | tr -d ' ')" 1
+check "7: one start succeeded and the other was refused with rc 3" "$(printf '%s\n' "$rc1" "$rc2" | sort | tr '\n' ,)" "0,3,"
+
+pid7="$(state_val "$STATE" pid)"
+[ -n "$pid7" ] && { kill "$pid7" 2>/dev/null; wait_dead "$pid7"; }
+rm -f "$STATE" "$tmp/starts"
+mkdir "$STATE.tmp"
+out8="$(bash "$SCRIPT" start 2>&1)"; rc=$?
+rmdir "$STATE.tmp"
+[ "$rc" -ne 0 ] && echo "ok - 8: start failed when the state could not be written (rc $rc)" || { echo "FAIL - 8: start rc 0 with no state recorded"; fails=$((fails+1)); }
+contains "8: the failure names the state directory" "$out8" "$GRAPH_PASS_STATE_DIR"
+pid8="$(tail -n 1 "$tmp/starts" 2>/dev/null)"
+[ -n "$pid8" ] && wait_dead "$pid8"
+[ -n "$pid8" ] && ! alive "$pid8" && echo "ok - 8: the untracked pass was stopped" || { echo "FAIL - 8: a pass [$pid8] is left running with no state"; fails=$((fails+1)); }
+
+CLAIM="$GRAPH_PASS_STATE_DIR/graph-pass.claim"
+rm -f "$STATE" "$tmp/starts"
+sleep 0 & dead9=$!
+wait "$dead9"
+printf '%s\n' "$dead9" > "$CLAIM"
+bash "$SCRIPT" start > "$tmp/d1.out" 2>&1 &
+d1=$!
+bash "$SCRIPT" start > "$tmp/d2.out" 2>&1 &
+d2=$!
+bash "$SCRIPT" start > "$tmp/d3.out" 2>&1 &
+d3=$!
+rd1=0; wait "$d1" || rd1=$?
+rd2=0; wait "$d2" || rd2=$?
+rd3=0; wait "$d3" || rd3=$?
+sleep 0.5
+check "9: three starts over a stale claim launched exactly one pass" "$(wc -l < "$tmp/starts" | tr -d ' ')" 1
+check "9: one start succeeded and the others were refused with rc 3" "$(printf '%s\n' "$rd1" "$rd2" "$rd3" | sort | tr '\n' ,)" "0,3,3,"
+[ ! -e "$CLAIM" ] && [ ! -e "$CLAIM.takeover" ] && echo "ok - 9: the claim and the takeover lock are released once the start is over" || { echo "FAIL - 9: a claim file or takeover lock is left behind"; fails=$((fails+1)); }
+pid9="$(state_val "$STATE" pid)"
+[ -n "$pid9" ] && { kill "$pid9" 2>/dev/null; wait_dead "$pid9"; }
+
+bin="$tmp/bin"; mkdir "$bin"
+for t in bash sh mkdir date sed head ps sleep ln rm cat mv; do
+    p="$(command -v "$t")" && ln -s "$p" "$bin/$t"
+done
+printf '#!/bin/sh\nexit 0\n' > "$bin/systemd-run"
+printf '#!/bin/sh\ncat "%s/mainpid"\n' "$tmp" > "$bin/systemctl"
+chmod +x "$bin/systemd-run" "$bin/systemctl"
+rm -f "$STATE"
+echo 0 > "$tmp/mainpid"
+out10="$(PATH="$bin" bash "$SCRIPT" start 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && echo "ok - 10: a unit whose MainPID reads 0 is not reported as started (rc $rc)" || { echo "FAIL - 10: start rc 0 for MainPID 0"; fails=$((fails+1)); }
+contains "10: the failure says the pass exited" "$out10" "exited"
+[ ! -f "$STATE" ] && echo "ok - 10: no state recorded for the failed start" || { echo "FAIL - 10: state written for MainPID 0"; fails=$((fails+1)); }
+sleep 300 &
+live10=$!
+echo "$live10" > "$tmp/mainpid"
+PATH="$bin" bash "$SCRIPT" start >/dev/null 2>&1; rc=$?
+check "10: start through systemd-run rc 0" "$rc" 0
+check "10: the state names the unit's MainPID" "$(state_val "$STATE" pid)" "$live10"
+check "10: the state records the launcher" "$(state_val "$STATE" launcher)" "systemd-run"
+contains "10: the log records the launcher choice" "$(cat "$(state_val "$STATE" log)" 2>/dev/null)" "launcher=systemd-run"
+kill "$live10" 2>/dev/null
+
+rm -f "$STATE" "$tmp/starts" "$CLAIM"
+shim="$tmp/shim"; mkdir "$shim"
+printf '#!/bin/sh\nn=$("$REAL_CAT" "$SHIM_N" 2>/dev/null)\nn=$((n+1))\necho "$n" > "$SHIM_N"\ncase "$n" in\n    1) rm -f "$CLAIM_FILE" ;;\n    2) echo 424242 > "$CLAIM_FILE" ;;\n    *) exec "$REAL_CAT" "$@" ;;\nesac\n' > "$shim/cat"
+chmod +x "$shim/cat"
+printf '777777\n' > "$CLAIM"
+REAL_CAT="$(command -v cat)" SHIM_N="$shim/n" CLAIM_FILE="$CLAIM" PATH="$shim:$PATH" bash "$SCRIPT" start >/dev/null 2>&1; rc=$?
+check "11: a start whose holder read comes back empty gives way to a fresh claim (rc 3)" "$rc" 3
+check "11: the fresh claim is left in place" "$(cat "$CLAIM" 2>/dev/null)" "424242"
+[ ! -s "$tmp/starts" ] && echo "ok - 11: no pass was started" || { echo "FAIL - 11: a pass was started over a fresh claim"; fails=$((fails+1)); }
+[ ! -e "$CLAIM.takeover" ] && echo "ok - 11: the takeover lock is released" || { echo "FAIL - 11: the takeover lock is left behind"; fails=$((fails+1)); }
+
+rm -f "$STATE" "$tmp/starts" "$CLAIM"
+bash "$SCRIPT" start > "$tmp/e1.out" 2>&1 &
+e1=$!
+bash "$SCRIPT" start > "$tmp/e2.out" 2>&1 &
+e2=$!
+bash "$SCRIPT" start > "$tmp/e3.out" 2>&1 &
+e3=$!
+re1=0; wait "$e1" || re1=$?
+re2=0; wait "$e2" || re2=$?
+re3=0; wait "$e3" || re3=$?
+sleep 0.5
+check "12: three overlapping starts with no claim launched exactly one pass" "$(wc -l < "$tmp/starts" | tr -d ' ')" 1
+check "12: one start succeeded and the others were refused with rc 3" "$(printf '%s\n' "$re1" "$re2" "$re3" | sort | tr '\n' ,)" "0,3,3,"
+pid12="$(state_val "$STATE" pid)"
+[ -n "$pid12" ] && { kill "$pid12" 2>/dev/null; wait_dead "$pid12"; }
+
+rm -f "$STATE"
+out6c="$(bash "$SCRIPT" status 2>&1)"; rc=$?
+check "6: status none rc 0" "$rc" 0
+check "6: status none" "$out6c" "none"
+
+echo
+[ "$fails" -eq 0 ] && { echo "PASS: all rows ok"; exit 0; } || { echo "FAIL: $fails row(s)"; exit 1; }

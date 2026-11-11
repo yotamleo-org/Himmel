@@ -91,3 +91,5 @@ digested afterwards with `bash scripts/handover/chief-kit/worker-digest-step.sh
 `<session> digest=…` line per session, or `digest=skipped:no-chain`. The
 `traj=` fields are recorded only — `rbg` and `vbc` are unreliable,
 never act on them.
+
+Start the graph pass with `bash scripts/handover/chief-kit/graph-pass-detached.sh start`, never with `run_in_background`: it survives your window, and the next chief reads `bash scripts/handover/chief-kit/graph-pass-detached.sh status` (running, finished or none) instead of re-running the pass. Read the log it prints as `pass_log=` (`~/.claude/graphmap-cadence/graphmap-himmel.log`): the pass writes its promote line there, and the launcher log named `log=` stays nearly empty.
