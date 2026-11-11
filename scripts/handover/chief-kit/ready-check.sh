@@ -2233,12 +2233,15 @@ s17_body() {
     done < "$d/imp"
 
     if [ -s "$d/need" ]; then
-        # the latest check-run of the aggregator, check 2's latest rule
+        # the latest check-run of the aggregator, check 2's latest rule, except that a
+        # CANCELLED duplicate (the concurrency group's loser) never masks a settled run
+        # at the head; when every run is CANCELLED the newest of them is still reported
         agg=$(printf '%s' "${rollup:-null}" | jq -r --arg n "$S17_AGG" '
             [ (if type == "array" then . else [] end) | to_entries[] | .key as $i | .value
               | select(type == "object" and has("conclusion") and .name == $n and (.workflowName // "") == "CI")
               | {i: $i, ts: (.startedAt // .completedAt // null), st: (.status // "?"), c: (.conclusion // "null"),
                  run: ((.detailsUrl // "") | [scan("^https://[^/]+/[^/]+/[^/]+/actions/runs/([0-9]+)/job/[0-9]+$")[0]] | first // "")} ]
+            | (map(select(.c != "CANCELLED")) as $live | if ($live | length) > 0 then $live else . end)
             | map(.sk = [(.ts == null), (.ts // .i)]) | max_by(.sk)
             | if . == null then "none" else "\(.st)/\(.c) \(.run)" end' 2>/dev/null) || agg=""  # swallow-ok: an unreadable rollup is no settled CI run
         case "$agg" in
