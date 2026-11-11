@@ -71,7 +71,6 @@ if [ "${1:-}" = "--pr" ]; then
         exit 2
     fi
     # 2. authorize: the one function, run by review-round.sh; this script never decides it.
-    # --fetch-only skips it: the stage-2 audit reads the diff before any approval exists, and a fetch starts no review round.
     pc_rc=0
     pc_auth="authorized fetch-only"
     # swallow-ok: the exit code is kept in pc_rc and decides below (5 refuses, any other non-zero is exit 2)

@@ -704,11 +704,9 @@ _pr_rows_all() {
     pr_checks --json bucket,name --jq '.[] | "\(.bucket)\t\(.name)"' 2>/dev/null
 }
 
-# Under --except-context the excepted context's row is dropped, so no verdict reads it. PR_ROWS_KEEP_EXCEPT=1
-# keeps it for the one reader that asks whether that context is the one that is not green.
 pr_rows() {
     local rows
-    if [ -z "$EXCEPT_CTX" ] || [ "${PR_ROWS_KEEP_EXCEPT:-0}" = 1 ]; then _pr_rows_all "$@"; return; fi
+    if [ -z "$EXCEPT_CTX" ]; then _pr_rows_all "$@"; return; fi
     rows=$(_pr_rows_all "$@") || return 1
     [ -z "$rows" ] || printf '%s\n' "$rows" | awk -F'\t' -v x="$EXCEPT_CTX" '$2 != x'
 }
@@ -1056,13 +1054,14 @@ _pending_checks_report() {
         2>/dev/null
 }
 
-# _except_ctx_not_green — true when the --except-context gate has a row on this head and it is not a pass
-# (a red, pending or cancelled gate: the state GitHub reports as BLOCKED). A missing row or an unreadable
-# read is false, so nothing is excused on a guess.
 _except_ctx_not_green() {
     local rows
-    rows=$(PR_ROWS_KEEP_EXCEPT=1 pr_rows "$DECIDE_TTL") || return 1
+    rows=$(_pr_rows_all "$DECIDE_TTL") || return 1
     printf '%s\n' "$rows" | awk -F'\t' -v x="$EXCEPT_CTX" '$2 == x && $1 != "pass" && $1 != "skipping" { f = 1 } END { exit !f }'
+}
+
+_except_ctx_stands_alone() {
+    watch_decidable && _except_ctx_not_green
 }
 
 watch_round() {
@@ -1093,8 +1092,6 @@ watch_round() {
     # keeps a real window inside the same total; the last round takes it all.
     # --max-wait 0 (unbounded) is untouched.
     local WATCH_CAP=0 LIB_CAP left_now
-    # --except-context: the excepted gate is red from the PR's open, so a fail-fast watch would end at once;
-    # without it the watch waits for every other check to settle.
     local watch_ff=--fail-fast
     [ -z "$EXCEPT_CTX" ] || watch_ff=""
     if [ "$MAX_WAIT" -gt 0 ]; then
@@ -1286,10 +1283,7 @@ watch_round() {
                     exit 2 ;;
             esac
             if [ "$failed" -eq 0 ]; then
-                # Not fail-fast under --except-context, so rc 1 here means every check settled; with the
-                # excepted gate the one that is red, nothing else is, and the watch has no verdict to give.
-                # A pending check still blocks: required_gate reads a pending name-only context as seen.
-                if [ -n "$EXCEPT_CTX" ] && watch_decidable && _except_ctx_not_green; then return 0; fi
+                if [ -n "$EXCEPT_CTX" ] && _except_ctx_stands_alone; then return 0; fi
                 echo "check-ci: watch exited rc=1 but no check is in the fail bucket — cannot evaluate the gate; re-run" >&2
                 exit 2
             fi
@@ -1949,9 +1943,6 @@ merge_state_gate() {
             exit 2
         fi
         case "$state" in CLEAN|HAS_HOOKS|UNSTABLE) return 0 ;; esac
-        # --except-context: GitHub reports BLOCKED while the excepted gate is not green. By here required_gate
-        # has proven every other required context green and review_state_gate has passed, so BLOCKED is excused
-        # only when that gate is the one not green; BLOCKED with the gate green, or any other state, is refused below.
         # GitHub's BLOCKED names no cause, so another non-check cause behind the non-green gate is not seen here.
         if [ "$state" = BLOCKED ] && [ -n "$EXCEPT_CTX" ] && _except_ctx_not_green; then return 0; fi
         tries=$((tries + 1))

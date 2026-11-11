@@ -30,8 +30,9 @@ DTTL=$(_num dttl "${CHECK_CI_DECIDE_TTL:-5}" 5)
 export CIC_MAX_WAIT="${CIC_MAX_WAIT:-${CHECK_CI_MAX_WAIT:-0}}"
 
 RUN_MODE=0; JOB_NAME=""; MAX_WAIT=0; HB_FILE=""; TICK="-"
-# One context dropped from a PR watch's rows (check-ci.sh --except-context); empty drops none.
 EXCEPT_CTX="${CHECK_CI_EXCEPT_CONTEXT:-}"
+FAIL_FAST=1
+[ -z "$EXCEPT_CTX" ] || FAIL_FAST=0
 SLEEP_PID=""
 _hsleep() {
     if [ -n "${CHECK_CI_WATCH_SLEEP_CMD:-}" ]; then "$CHECK_CI_WATCH_SLEEP_CMD" "$1"; return 0; fi
@@ -130,8 +131,7 @@ last_sig=""
 while :; do
     _read "$TTL"
     _classify
-    # Under CHECK_CI_EXCEPT_CONTEXT a red row does not end the watch: it waits for every other row to settle.
-    if { [ "$FAILS" -gt 0 ] && [ -z "$EXCEPT_CTX" ]; } || [ "$PENDING" -eq 0 ]; then
+    if { [ "$FAILS" -gt 0 ] && [ "$FAIL_FAST" -eq 1 ]; } || [ "$PENDING" -eq 0 ]; then
         _read "$DTTL"
         _classify
         if [ "$FAILS" -gt 0 ]; then
