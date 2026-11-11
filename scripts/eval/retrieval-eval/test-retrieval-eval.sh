@@ -718,8 +718,8 @@ PY
 
 SU="http://127.0.0.1:47999/mcp"
 PD="$W/pair"; mkdir -p "$PD/graph-s/graphify-out" "$PD/graph-l/graphify-out"
-printf '{"nodes": []}\n' > "$PD/graph-s/graphify-out/graph.json" || exit 1
-printf '{"nodes": []}\n' > "$PD/graph-l/graphify-out/graph.json" || exit 1
+printf '{"built_at_commit": "aaaa", "nodes": []}\n' > "$PD/graph-s/graphify-out/graph.json" || exit 1
+printf '{"built_at_commit": "bbbb", "nodes": []}\n' > "$PD/graph-l/graphify-out/graph.json" || exit 1
 printf '{"first": "aaaa", "second": "bbbb", "state": "l", "doc_count": 5, "index": "%s/index.sqlite", "served_url": "%s", "graph_built_at": {"aaaa": "%s/graph-s", "bbbb": "%s/graph-l"}}\n' "$PD" "$SU" "$PD" "$PD" > "$PD/pair.json"
 printf '{"id":"s1","kind":"what","q":"why does a halt need no token","gold":["docs/lock.md"],"reason":[],"stale_stratum":"added"}\n{"id":"s2","kind":"where","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[],"stale_stratum":"kept"}\n' > "$W/qs.jsonl"
 # shellcheck disable=SC2016  # the stubs' own $-expansions must stay literal
@@ -785,10 +785,20 @@ eq "a stale-state graph run reads the graph built at the first commit, not the c
 print(json.loads(open(sys.argv[1]).readline())["meta"]["graph_built_at"])' "$W/ledger-g1.jsonl")"
 rm -f "$W/graph-env.log"
 pr "g1l" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state l --arms graphify
-eq "a pair graph with no built_at_commit stamp takes its stamp from pair.json, so the run exits 0" "0 bbbb" "$? $(py -c 'import json,sys
-m = json.loads(open(sys.argv[1]).readline())["meta"]
-print(m["graph_built_at"] if "graph_built_error" not in m else "error")' "$W/ledger-g1l.jsonl")"
 eq "state l reads the graph built at the second commit" "$PD/graph-l/graphify-out" "$(sort -u "$W/graph-env.log")"
+printf '{"nodes": []}\n' > "$PD/graph-l/graphify-out/graph.json"
+pr "g1n" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state l --arms graphify
+eq "a pair graph with no built_at_commit stamp is a graph stamp error, not the pair's claim" "1 None yes" "$? $(py -c 'import json,sys
+m = json.loads(open(sys.argv[1]).readline())["meta"]
+print(m["graph_built_at"], "yes" if "graph_built_error" in m else "no")' "$W/ledger-g1n.jsonl")"
+printf '{"built_at_commit": "cccc", "nodes": []}\n' > "$PD/graph-l/graphify-out/graph.json"
+pr "g1m" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state l --arms graphify
+eq "refuses_pair_graph_stamp_mismatch: a pair graph whose built_at_commit is not the pair commit is refused with exit 2 and writes no row" "2 absent" "$? $([ -s "$W/ledger-g1m.jsonl" ] && echo present || echo absent)"
+printf '{"built_at_commit": "bbbb1234", "nodes": []}\n' > "$PD/graph-l/graphify-out/graph.json"
+pr "g1x" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state l --arms graphify
+eq "graph_built_at_is_the_graphs_stamp: the row records the graph's own stamp, not the pair's claimed commit" "0 bbbb1234" "$? $(py -c 'import json,sys
+print(json.loads(open(sys.argv[1]).readline())["meta"]["graph_built_at"])' "$W/ledger-g1x.jsonl")"
+printf '{"built_at_commit": "bbbb", "nodes": []}\n' > "$PD/graph-l/graphify-out/graph.json"
 if [ "$(id -u)" != 0 ]; then
     chmod 000 "$PD/graph-l/graphify-out/graph.json"
     pr "g1u" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state l --arms graphify; rc=$?
@@ -846,6 +856,12 @@ plant "$INC" qmd-hybrid kept 0 0 c
 printf '#!/usr/bin/env bash\necho "headline: x within 39 min (no exclusions); wilson95 0.7000 to 0.9000"\n' > "$W/lag-inc"; chmod +x "$W/lag-inc"
 RETRIEVAL_EVAL_LAG_CMD="$W/lag-inc" py "$EV" stale-report "$INC" > "$W/inc.txt" 2>&1
 eq "stale_report_refuses_incomplete_comparison: c rows without a Kept L-S comparison exit 64 and print no decides line" "64 0" "$? $(grep -c '^decides:' "$W/inc.txt")"
+NCL="$W/ncl"; rm -rf "$NCL"
+plant "$NCL" qmd-hybrid kept 0 0 sl
+plant "$NCL" qmd-hybrid added 0 0 c
+printf '#!/usr/bin/env bash\necho "headline: x within 39 min (no exclusions); wilson95 0.7000 to 0.9000"\n' > "$W/lag-ncl"; chmod +x "$W/lag-ncl"
+RETRIEVAL_EVAL_LAG_CMD="$W/lag-ncl" py "$EV" stale-report "$NCL" > "$W/ncl.txt" 2>&1
+eq "stale_report_needs_cl_cell: c-state hybrid rows with no C-L cell exit 64 and reach no arming verdict" "64 0" "$? $(grep -c '^decides:' "$W/ncl.txt")"
 
 G2="$W/xrepo"; mkdir -p "$G2"; git -C "$G2" init -q -b main
 NOW="$(date +%s)"
