@@ -88,15 +88,17 @@ def wilson_pct(k, n):
 def group(findings):
     """One critic's (or the pool's) figures from its folded findings."""
     s = cr_ledger_eval.split(findings)
-    rec = cr_ledger_eval.split([f for f in findings if f["verdict_source"] == cr_ledger_eval.RECORDED])
+    rec_f = [f for f in findings if f["verdict_source"] == cr_ledger_eval.RECORDED]
+    rec = cr_ledger_eval.split(rec_f)
     ruled = rec["agreed"] + rec["disproved"]
+    ruled_prs = len({f["branch"] for f in rec_f if f["bucket"] in ("agreed", "disproved")})
     ci = rec["precision_ci"]
     out = {src: 0 for src in OTHER_SOURCES}
     for f in findings:
         if f["verdict_source"] in out and f["bucket"] in ("agreed", "disproved"):
             out[f["verdict_source"]] += 1
     return {
-        "findings": s["n"], "prs": s["prs"],
+        "findings": s["n"], "prs": ruled_prs,
         "agreed": s["agreed"], "disproved": s["disproved"],
         "deferred": s["deferred"], "unadjudicated": s["unadjudicated"],
         "n": ruled,

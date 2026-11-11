@@ -99,6 +99,14 @@ describe('argv mapping: one fixed CLI verb per tool', () => {
     ]);
   });
 
+  it('MCP create maps decision and words into the argv', () => {
+    expect(tool('create').inputSchema.properties).toHaveProperty('decision');
+    expect(tool('create').inputSchema.properties).toHaveProperty('words');
+    expect(argvOf('create', { type: 'Task', title: 'T', proposedVersion: 'v2', decision: '9', words: 'Approved one more round' })).toEqual([
+      'create', '--type', 'Task', '--title', 'T', '--proposed-version', 'v2', '--decision', '9', '--words', 'Approved one more round',
+    ]);
+  });
+
   it('create passes a value that looks like a flag as one argv element, never splits it', () => {
     expect(argvOf('create', { type: 'Task', title: '--why; rm -rf /' })).toEqual(['create', '--type', 'Task', '--title', '--why; rm -rf /']);
   });
