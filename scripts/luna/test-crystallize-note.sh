@@ -658,5 +658,14 @@ else
     echo "SKIP: real-claude smoke (set CRYSTALLIZE_REAL_CLAUDE=1 with claude installed to run)"
 fi
 
+# --- Case C1: this repo's shipped config keeps the session-end crystallizer off -
+# Operator decisions 833 and 834: measured, no gain, so the hook must not spawn it.
+REPO_CFG="$SCRIPT_DIR/../../.claude/end-session-wiki.json"
+if jq -e 'has("crystallize") and .crystallize == false' "$REPO_CFG" >/dev/null 2>&1; then
+    pass "repo-config: .claude/end-session-wiki.json sets crystallize false"
+else
+    fail "repo-config: .claude/end-session-wiki.json does not set crystallize false"
+fi
+
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "SOME FAILED"; exit 1
