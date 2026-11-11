@@ -893,6 +893,18 @@ for s in $cmo_cmt; do grepq "$out" -Fx "scripts/$s" || all_listed=0; done
 if [ "$all_listed" -eq 1 ] && [ -z "$err" ]; then pass "30b the plain listing still names every comment-only suite and prints nothing to stderr"; else fail "30b plain listing narrowed: err=$err out=$out"; fi
 out="$(run_is "$range" --shell)"
 if grepq "$out" -Fx 'scripts/test-cmo-hash.sh' && grepq "$out" -Fx 'scripts/test-cmo-after-hd.sh' && ! grepq "$out" -F '.test.'; then pass "30b --shell (what CI selects from) still lists a comment-only suite --check drops"; else fail "30b --shell narrowed: $out"; fi
+# The same proof list when a content-rewriting .gitattributes sends every candidate
+# down the per-file path, which reads each blob from git under its own name.
+printf 'x.none filter=none\n' > "$FX/.gitattributes"
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: an attribute that rewrites content"
+printf '# changed\n' >> "$FX/scripts/lib/cmo-lib.sh"
+git -C "$FX" commit -q -am "fix: change cmo-lib.sh under the attribute"
+arange="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
+out="$( cd "$FX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$arange" 2>/dev/null | awk '$1 == "LOCAL" { print $2 }' )"
+if ! grepq "$out" -Fx 'scripts/test-cmo-hash.sh' && ! grepq "$out" -Fx 'scripts/lib/cmo.test.mjs' && grepq "$out" -Fx 'scripts/test-cmo-heredoc.sh' && grepq "$out" -Fx 'scripts/lib/cmo-tpl.test.mjs'; then pass "30b the per-file path (.gitattributes filter) drops the same comment-only suites"; else fail "30b per-file path proof list: $out"; fi
+git -C "$FX" rm -q .gitattributes
+git -C "$FX" commit -q -m "chore: drop the attribute"
 
 # --- 30c. The suites that widen their own text name each basename on a
 # `# selector: names` line, so an edit to one still puts them on the --plan

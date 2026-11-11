@@ -974,7 +974,7 @@ done < "$work/changed"
 comment_lexer() {
     cat <<'EOF'
 FNR == 1 {
-    key = (key0 != "") ? key0 : FILENAME
+    key = (ENVIRON["LEX_KEY"] != "") ? ENVIRON["LEX_KEY"] : FILENAME
     sub(/^\.\//, "", key)
     kind = (key ~ /\.sh$/) ? "sh" : ((key ~ /\.(js|mjs|ts)$/) ? "js" : "")
     sq = 0; dq = 0; ansi = 0; inhd = 0; nq = 0; qh = 0; tpl = 0; blk = 0
