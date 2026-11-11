@@ -2149,7 +2149,6 @@ fi
 # one enriched JSONL batch for persistence and active/reraise render spools. If
 # lookup fails, leave the original aggregates and raw finding spools untouched:
 # findings remain active and visible rather than being silently suppressed.
-# With the ledger skipped there is no ledger to look up, so the lookup does not run.
 _have_panel_findings=0
 for _rf_spool in "$PANEL_SPOOL_DIR"/finding.*; do
     [ -f "$_rf_spool" ] && _have_panel_findings=1

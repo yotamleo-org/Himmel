@@ -1474,12 +1474,6 @@ check_contains "NWS: warning names the skipped self-append" "$(cat "$tmp/nws-err
 check "NWS: merged review output still emitted" "$(grep -cF '# Critic Panel Review' "$tmp/nws-out")" "1"
 check "NWS: NO ledger rows written (self-append skipped)" "$(wc -l < "$NWS_LEDGER" | tr -d ' ')" "0"
 
-# Test NWS2: the same findings-bearing stdin review must not read
-# the ledger path it never resolved. The disposition lookup used to expand the
-# unset PANEL_LEDGER under set -u, print "unbound variable" and leave every
-# finding active by accident; with the ledger skipped it must not run at all.
-# A node shim records each finding-reraise.js call (the lookup) and then runs
-# the real node.
 REAL_NODE="$(command -v node)"
 NODE_SHIM_DIR="$tmp/node-shim"
 NODE_SHIM_LOG="$tmp/node-shim.log"
@@ -1556,8 +1550,6 @@ CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
 check "B2: origin/HEAD fallback resolves master and the diff runs (exit 0)" "$b2_rc" "0"
 check_contains "B2: panel output emitted (diff against master ran)" "$(cat "$tmp/b2-out")" "# Critic Panel Review"
 
-# Control for NWS2: a worktree review with the ledger on still runs
-# the disposition lookup (one finding-reraise.js call) and it succeeds.
 : > "$NODE_SHIM_LOG"
 b2c_rc=0
 PATH="$NODE_SHIM_DIR:$PATH" CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
