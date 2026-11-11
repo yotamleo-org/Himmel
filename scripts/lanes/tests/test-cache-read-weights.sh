@@ -25,6 +25,7 @@ w() { ( . "$LANES/lib/burn-weights.sh"; burn_cache_read_weight "$1" ) 2>/dev/nul
 eq "opus 5.5 reads at 0.05" "$(w claude-opus-5-5-20261001)" "0.05"
 eq "sonnet 5.5 reads at 0.05" "$(w claude-sonnet-5-5)" "0.05"
 eq "fable 5.1 reads at 0.025" "$(w claude-fable-5-1)" "0.025"
+eq "fable 5.2 reads at 0.025" "$(w claude-fable-5-2)" "0.025"
 eq "haiku 5.5 reads at 0.1" "$(w claude-haiku-5-5)" "0.1"
 eq "an unknown model reads at the 0.1 default" "$(w claude-zzz-9)" "0.1"
 eq "an empty model reads at the 0.1 default" "$(w '')" "0.1"
