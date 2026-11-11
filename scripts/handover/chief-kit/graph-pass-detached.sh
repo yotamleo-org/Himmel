@@ -10,7 +10,9 @@
 # instead of re-running the pass.
 #
 #   graph-pass-detached.sh start    launch the pass; rc 3 while one is running
-#   graph-pass-detached.sh status   running|finished|none, with pid= and log=
+#   graph-pass-detached.sh status   running|finished|none, with pid=, log= (the
+#                                   launcher's log) and pass_log= (the log the
+#                                   pass itself writes: read that one for the promote)
 #
 # Exit: 0 started (start) or any answer (status); 1 the pass exited at once, or
 #       its state could not be recorded and it was stopped;
@@ -21,9 +23,11 @@
 # Seams (the suite points both at a stub and a temp dir):
 #   GRAPH_PASS_SCRIPT     the pass; default ~/.claude/graphmap-cadence/graphmap-himmel.sh
 #   GRAPH_PASS_STATE_DIR  state file and logs; default ~/.claude/graphmap-cadence/detached
+#   GRAPH_PASS_LOG        the log the pass writes itself; default ~/.claude/graphmap-cadence/graphmap-himmel.log
 set -uo pipefail
 
 PASS="${GRAPH_PASS_SCRIPT:-$HOME/.claude/graphmap-cadence/graphmap-himmel.sh}"
+PASS_LOG="${GRAPH_PASS_LOG:-$HOME/.claude/graphmap-cadence/graphmap-himmel.log}"
 STATE_DIR="${GRAPH_PASS_STATE_DIR:-$HOME/.claude/graphmap-cadence/detached}"
 STATE="$STATE_DIR/graph-pass.state"
 
@@ -54,7 +58,10 @@ claim_takeover() {
     stale_holder="$1"
     mkdir "$CLAIM.takeover" 2>/dev/null || return 1  # swallow-ok: mkdir refusing means another starter is taking the claim over
     now="$(cat "$CLAIM" 2>/dev/null)"  # swallow-ok: a vanished claim reads empty, which only matches an empty holder
-    if [ "$now" = "$stale_holder" ]; then
+    if [ -z "$now" ]; then
+        claim_try
+        rc=$?
+    elif [ "$now" = "$stale_holder" ]; then
         rm -f "$CLAIM"
         claim_try
         rc=$?
@@ -78,7 +85,7 @@ cmd_status() {
     if [ ! -f "$STATE" ]; then echo none; return 0; fi
     pid="$(state_val pid)"; log="$(state_val log)"
     if pass_running "$pid"; then verdict=running; else verdict=finished; fi
-    echo "$verdict pid=$pid log=$log"
+    echo "$verdict pid=$pid log=$log pass_log=$PASS_LOG"
 }
 
 cmd_start() {
@@ -91,7 +98,7 @@ cmd_start() {
     if [ -f "$STATE" ]; then
         pid="$(state_val pid)"
         if pass_running "$pid"; then
-            echo "graph-pass-detached: refused, a pass is already running: pid=$pid log=$(state_val log)" >&2
+            echo "graph-pass-detached: refused, a pass is already running: pid=$pid log=$(state_val log) pass_log=$PASS_LOG" >&2
             return 3
         fi
     fi
@@ -130,7 +137,7 @@ cmd_start() {
         echo "graph-pass-detached: could not record the state in $STATE_DIR; the pass was stopped" >&2
         return 1
     fi
-    echo "graph-pass-detached: started pid=$pid log=$log launcher=$launcher"
+    echo "graph-pass-detached: started pid=$pid log=$log pass_log=$PASS_LOG launcher=$launcher"
 }
 
 case "${1:-}" in

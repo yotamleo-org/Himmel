@@ -34,6 +34,7 @@ chmod +x "$stub"
 export STUB_STARTS="$tmp/starts"
 export GRAPH_PASS_SCRIPT="$stub"
 export GRAPH_PASS_STATE_DIR="$tmp/state"
+export GRAPH_PASS_LOG="$tmp/pass-own.log"
 STATE="$GRAPH_PASS_STATE_DIR/graph-pass.state"
 
 t0=$(date +%s)
@@ -46,6 +47,7 @@ log1="$(state_val "$STATE" log)"
 [ -n "$pid1" ] && alive "$pid1" && echo "ok - 1: state pid is alive" || { echo "FAIL - 1: state pid [$pid1] missing or dead"; fails=$((fails+1)); }
 [ -n "$log1" ] && [ -f "$log1" ] && echo "ok - 1: state log path exists" || { echo "FAIL - 1: state log [$log1] missing"; fails=$((fails+1)); }
 contains "1: start output names the pid" "$out1" "$pid1"
+contains "1: start output names the pass's own log" "$out1" "pass_log=$GRAPH_PASS_LOG"
 sid1="$(ps -o sid= -p "${pid1:-0}" 2>/dev/null | tr -d ' ')"
 check "1: the pass leads its own session" "$sid1" "$pid1"
 n=0; while [ ! -s "$tmp/starts" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n+1)); done
@@ -76,6 +78,7 @@ check "6: status running rc 0" "$rc" 0
 contains "6: status says running" "$out6" "running"
 contains "6: status names the pid" "$out6" "pid=$pid2"
 contains "6: status names the log" "$out6" "log=$(state_val "$STATE" log)"
+contains "6: status names the pass's own log" "$out6" "pass_log=$GRAPH_PASS_LOG"
 
 kill "$pid2" 2>/dev/null; wait_dead "$pid2"
 out6b="$(bash "$SCRIPT" status 2>&1)"
@@ -164,6 +167,33 @@ check "10: the state names the unit's MainPID" "$(state_val "$STATE" pid)" "$liv
 check "10: the state records the launcher" "$(state_val "$STATE" launcher)" "systemd-run"
 contains "10: the log records the launcher choice" "$(cat "$(state_val "$STATE" log)" 2>/dev/null)" "launcher=systemd-run"
 kill "$live10" 2>/dev/null
+
+rm -f "$STATE" "$tmp/starts" "$CLAIM"
+shim="$tmp/shim"; mkdir "$shim"
+printf '#!/bin/sh\nn=$("$REAL_CAT" "$SHIM_N" 2>/dev/null)\nn=$((n+1))\necho "$n" > "$SHIM_N"\ncase "$n" in\n    1) rm -f "$CLAIM_FILE" ;;\n    2) echo 424242 > "$CLAIM_FILE" ;;\n    *) exec "$REAL_CAT" "$@" ;;\nesac\n' > "$shim/cat"
+chmod +x "$shim/cat"
+printf '777777\n' > "$CLAIM"
+REAL_CAT="$(command -v cat)" SHIM_N="$shim/n" CLAIM_FILE="$CLAIM" PATH="$shim:$PATH" bash "$SCRIPT" start >/dev/null 2>&1; rc=$?
+check "11: a start whose holder read comes back empty gives way to a fresh claim (rc 3)" "$rc" 3
+check "11: the fresh claim is left in place" "$(cat "$CLAIM" 2>/dev/null)" "424242"
+[ ! -s "$tmp/starts" ] && echo "ok - 11: no pass was started" || { echo "FAIL - 11: a pass was started over a fresh claim"; fails=$((fails+1)); }
+[ ! -e "$CLAIM.takeover" ] && echo "ok - 11: the takeover lock is released" || { echo "FAIL - 11: the takeover lock is left behind"; fails=$((fails+1)); }
+
+rm -f "$STATE" "$tmp/starts" "$CLAIM"
+bash "$SCRIPT" start > "$tmp/e1.out" 2>&1 &
+e1=$!
+bash "$SCRIPT" start > "$tmp/e2.out" 2>&1 &
+e2=$!
+bash "$SCRIPT" start > "$tmp/e3.out" 2>&1 &
+e3=$!
+re1=0; wait "$e1" || re1=$?
+re2=0; wait "$e2" || re2=$?
+re3=0; wait "$e3" || re3=$?
+sleep 0.5
+check "12: three overlapping starts with no claim launched exactly one pass" "$(wc -l < "$tmp/starts" | tr -d ' ')" 1
+check "12: one start succeeded and the others were refused with rc 3" "$(printf '%s\n' "$re1" "$re2" "$re3" | sort | tr '\n' ,)" "0,3,3,"
+pid12="$(state_val "$STATE" pid)"
+[ -n "$pid12" ] && { kill "$pid12" 2>/dev/null; wait_dead "$pid12"; }
 
 rm -f "$STATE"
 out6c="$(bash "$SCRIPT" status 2>&1)"; rc=$?
