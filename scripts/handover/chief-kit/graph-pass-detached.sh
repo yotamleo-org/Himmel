@@ -12,9 +12,11 @@
 #   graph-pass-detached.sh start    launch the pass; rc 3 while one is running
 #   graph-pass-detached.sh status   running|finished|none, with pid= and log=
 #
-# Exit: 0 started (start) or any answer (status); 1 the pass exited at once;
+# Exit: 0 started (start) or any answer (status); 1 the pass exited at once, or
+#       its state could not be recorded and it was stopped;
 #       2 usage, a pass script that is not executable, or no launcher;
-#       3 start refused because a pass is already running.
+#       3 start refused because a pass is already running or another start is
+#       in progress.
 #
 # Seams (the suite points both at a stub and a temp dir):
 #   GRAPH_PASS_SCRIPT     the pass; default ~/.claude/graphmap-cadence/graphmap-himmel.sh
@@ -27,15 +29,36 @@ STATE="$STATE_DIR/graph-pass.state"
 
 state_val() { sed -n "s/^$1=//p" "$STATE" 2>/dev/null | head -n 1; }
 
-# The recorded pid is the pass only while it is alive AND still runs the pass
-# script: a state file that outlives a reboot can name a reused pid.
-pass_running() {
+# A recorded pid names a process only while it is alive AND its command line
+# still carries <needle>: a file that outlives a reboot can name a reused pid.
+proc_has() {
     [ -n "$1" ] || return 1
     kill -0 "$1" 2>/dev/null || return 1
     case "$(ps -p "$1" -o args= 2>/dev/null)" in  # swallow-ok: ps failing means the pid is gone, which is the not-running answer
-        *"$PASS"*) return 0 ;;
+        *"$2"*) return 0 ;;
         *) return 1 ;;
     esac
+}
+pass_running() { proc_has "$1" "$PASS"; }
+
+# One start at a time: an exclusive claim file holding the starter's own pid,
+# so two simultaneous starts cannot both pass the running check. A claim whose
+# starter is gone (a killed start) is taken over.
+CLAIM="$STATE_DIR/graph-pass.claim"
+# ln is atomic and refuses an existing name, and the claim never shows up empty.
+claim_try() {
+    printf '%s\n' "$$" > "$CLAIM.$$" || return 1
+    ln "$CLAIM.$$" "$CLAIM" 2>/dev/null  # swallow-ok: ln refusing an existing claim is the not-claimed answer
+    rc=$?
+    rm -f "$CLAIM.$$"
+    return "$rc"
+}
+claim_start() {
+    claim_try && return 0
+    holder="$(cat "$CLAIM" 2>/dev/null)"  # swallow-ok: a vanished claim reads empty and is taken over below
+    proc_has "$holder" graph-pass-detached && return 1
+    rm -f "$CLAIM"
+    claim_try
 }
 
 cmd_status() {
@@ -46,6 +69,12 @@ cmd_status() {
 }
 
 cmd_start() {
+    mkdir -p "$STATE_DIR" || return 2
+    if ! claim_start; then
+        echo "graph-pass-detached: refused, another start is in progress" >&2
+        return 3
+    fi
+    trap 'rm -f "$CLAIM"' EXIT
     if [ -f "$STATE" ]; then
         pid="$(state_val pid)"
         if pass_running "$pid"; then
@@ -54,7 +83,6 @@ cmd_start() {
         fi
     fi
     [ -x "$PASS" ] || { echo "graph-pass-detached: the pass script is not executable: $PASS" >&2; return 2; }
-    mkdir -p "$STATE_DIR" || return 2
     stamp="$(date +%Y%m%dT%H%M%S)"
     log="$STATE_DIR/graph-pass-$stamp.log"
 
@@ -81,8 +109,12 @@ cmd_start() {
         echo "graph-pass-detached: the pass exited at once; see $log" >&2
         return 1
     fi
-    printf 'pid=%s\nlog=%s\nstarted=%s\nlauncher=%s\n' "$pid" "$log" "$stamp" "$launcher" > "$STATE.tmp" \
-        && mv -f "$STATE.tmp" "$STATE"
+    if ! { printf 'pid=%s\nlog=%s\nstarted=%s\nlauncher=%s\n' "$pid" "$log" "$stamp" "$launcher" > "$STATE.tmp" \
+        && mv -f "$STATE.tmp" "$STATE"; }; then
+        kill "$pid" 2>/dev/null  # swallow-ok: the pass may already be gone, which is what this wants
+        echo "graph-pass-detached: could not record the state in $STATE_DIR; the pass was stopped" >&2
+        return 1
+    fi
     echo "graph-pass-detached: started pid=$pid log=$log launcher=$launcher"
 }
 

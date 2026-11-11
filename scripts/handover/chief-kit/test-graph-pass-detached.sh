@@ -121,8 +121,33 @@ check "5: start over a reused pid rc 0" "$rc" 0
 pid5="$(state_val "$STATE" pid)"
 [ -n "$pid5" ] && [ "$pid5" != "$decoy" ] && alive "$pid5" && echo "ok - 5: a new pass is running" || { echo "FAIL - 5: no new pass (pid [$pid5], decoy [$decoy])"; fails=$((fails+1)); }
 
-# --- 6. status with no state file -----------------------------------------
+# --- 7. two starts at once launch one pass --------------------------------
 kill "$pid5" 2>/dev/null; wait_dead "$pid5"
+rm -f "$STATE" "$tmp/starts"
+bash "$SCRIPT" start > "$tmp/c1.out" 2>&1 &
+c1=$!
+bash "$SCRIPT" start > "$tmp/c2.out" 2>&1 &
+c2=$!
+rc1=0; wait "$c1" || rc1=$?
+rc2=0; wait "$c2" || rc2=$?
+sleep 0.5
+check "7: exactly one of two simultaneous starts launched a pass" "$(wc -l < "$tmp/starts" | tr -d ' ')" 1
+check "7: one start succeeded and the other was refused with rc 3" "$(printf '%s\n' "$rc1" "$rc2" | sort | tr '\n' ,)" "0,3,"
+
+# --- 8. a state file that cannot be written stops the pass ----------------
+pid7="$(state_val "$STATE" pid)"
+[ -n "$pid7" ] && { kill "$pid7" 2>/dev/null; wait_dead "$pid7"; }
+rm -f "$STATE" "$tmp/starts"
+mkdir "$STATE.tmp"
+out8="$(bash "$SCRIPT" start 2>&1)"; rc=$?
+rmdir "$STATE.tmp"
+[ "$rc" -ne 0 ] && echo "ok - 8: start failed when the state could not be written (rc $rc)" || { echo "FAIL - 8: start rc 0 with no state recorded"; fails=$((fails+1)); }
+contains "8: the failure names the state directory" "$out8" "$GRAPH_PASS_STATE_DIR"
+pid8="$(tail -n 1 "$tmp/starts" 2>/dev/null)"
+[ -n "$pid8" ] && wait_dead "$pid8"
+[ -n "$pid8" ] && ! alive "$pid8" && echo "ok - 8: the untracked pass was stopped" || { echo "FAIL - 8: a pass [$pid8] is left running with no state"; fails=$((fails+1)); }
+
+# --- 6. status with no state file -----------------------------------------
 rm -f "$STATE"
 out6c="$(bash "$SCRIPT" status 2>&1)"; rc=$?
 check "6: status none rc 0" "$rc" 0
