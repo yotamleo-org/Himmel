@@ -1517,10 +1517,9 @@ contains 'a bucket whose round status cannot be read names its critic files unre
 contains 'a bucket whose round status cannot be read names the round ledger unread' "$(grep -F 'data-section="waiting"' "$v9611out")" 'round ledger'
 not_contains 'a bucket whose round status cannot be read lists no unsigned spec' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$v9611out")" 'latest critic round'
 
-# --- a card shows its phase label, and a key in --stale-file shows STALE (the tracker shows what it is handed)
 s4="$W/s4"
 mkdir -p "$s4/mirror" "$s4/wk"
-s4mk() {  # s4mk <n> <labels json>
+s4mk() {
     printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "In Progress"' 'status: "In Progress"' \
         'fixVersions: ["v1.1.3"]' "labels: $2" 'type: "Task"' '---' "# HIMMEL-$1: s4 card $1" > "$s4/mirror/HIMMEL-$1.md"
 }
@@ -1571,7 +1570,6 @@ s4render --stale-file "$s4/stale-complete" >/dev/null
 contains 'S4: two phase labels show both' "$(s4card 15)" 'phase:build'
 contains 'S4: two phase labels show the multi mark' "$(s4card 15)" '<span class="phase multi">phase: 2 labels</span>'
 rm -f "$s4/mirror/HIMMEL-15.md"
-# the page fingerprint (P11): a stale key that is no card here, an added card key and a moved label
 s4vfp() { s4render "$@" >/dev/null; cat "$s4out.vfp" 2>/dev/null; }
 printf 'state\tcomplete\nHIMMEL-11\nHIMMEL-14\nHIMMEL-9999\n' > "$s4/stale-offpage"
 printf 'state\tcomplete\nHIMMEL-11\nHIMMEL-14\nHIMMEL-12\n' > "$s4/stale-more"

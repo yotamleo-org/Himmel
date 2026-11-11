@@ -1534,8 +1534,6 @@ def source_notes(chains, chains_mtime, prio_mtime, ndt):
 
 
 def read_stale(path):
-    """(state, {ticket numbers}) from a --stale-file: line 1 `state<TAB>complete|partial|unknown`, then one HIMMEL-<n> per line.
-    A missing or unreadable file, a malformed first line or a state of unknown gives ('unknown', set()): no key is trusted."""
     try:
         lines = open(path, encoding='utf-8').read().splitlines()
     except (OSError, UnicodeDecodeError, TypeError):
