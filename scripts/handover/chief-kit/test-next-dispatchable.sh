@@ -2669,6 +2669,7 @@ EOF
 cat > "$WORK/classify-q" <<'EOF'
 #!/usr/bin/env bash
 if [ "${Q_CLASSIFY:-ok}" = refuse ]; then echo 'GraphQL: API rate limit already exceeded for user ID 1.' >&2; exit 0; fi
+[ "${Q_CLASSIFY:-ok}" != hang ] || exec sleep 60
 for k in "$@"; do printf '%s\tLOCAL-NATIVE\tstub\n' "$k"; done
 EOF
 chmod +x "$WORK/gh-q" "$WORK/classify-q"
@@ -2723,6 +2724,8 @@ q6run from-third -- --priority-pool-only
 q6_paused "a gh that refuses from its third call" quota-pause
 q6run healthy Q_CLASSIFY=refuse -- --priority-pool-only
 q6_paused "a refusal only during classification" quota-pause
+q6run healthy Q_CLASSIFY=hang NEXT_DISPATCH_GH_TIMEOUT=2 -- --priority-pool-only
+q6_paused "a classification that times out" gh-stall
 q6run gql-out -- --resume-only
 q6_paused "gql-out --resume-only" quota-pause
 q6run healthy -- --priority-pool-only

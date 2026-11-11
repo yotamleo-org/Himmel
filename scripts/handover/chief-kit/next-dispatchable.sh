@@ -143,10 +143,10 @@
 #
 # GitHub out: a preflight (scripts/lib/gh-quota.sh ghq_scan_gate, main token, GraphQL and core) that finds a
 # bucket under the floor or a probe timed out, or a gh read during the run that names a rate limit or times out (the
-# classifier's stderr too), makes the WHOLE stdout one line, `# quota-pause QUOTA-PAUSE …` or `# gh-stall GH-STALL …`, exit 0:
+# classifier's stderr or a classifier timeout too), makes the WHOLE stdout one line, `# quota-pause QUOTA-PAUSE …` or `# gh-stall GH-STALL …`, exit 0:
 # no rows, no RESUME-HELD, no POOL-EMPTY, since the unread rows are unknown, not empty. After the first refused or
 # stalled read every later gh read fails at once and classification is skipped. NEXT_DISPATCH_DEADLINE (seconds,
-# default 400, under the waiter's 420; 0 = none) bounds the whole run, and a cut prints `# gh-stall`.
+# default 400, under the waiter's 420; 0 = none) bounds the whole run, preflight included, and a cut prints `# gh-stall`.
 # NEXT_DISPATCH_GH_TIMEOUT (seconds) replaces every gh read's own bound (60 or 120) and the classifier's 300.
 #
 # Env (tests): NEXT_DISPATCH_MIRROR, NEXT_DISPATCH_GH_CMD (replaces `gh`, the quota probes' too),
@@ -225,7 +225,9 @@ trap '[ -z "$nd_pid" ] || kill -TERM "$nd_pid" 2>/dev/null; exit 143' TERM INT H
 _TIMEOUT_BIN=""
 [ "$nd_deadline" -eq 0 ] || . "$REPO/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: no timeout binary runs the scan with its per-read bounds only
 export ND_FLAGS="$nd_flags"
-${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_deadline"} python3 -I - > "$nd_out" <<'PY' &
+nd_left=$((nd_deadline - SECONDS))  # the preflight's probes spent part of the deadline already
+[ "$nd_left" -gt 0 ] || nd_left=1
+${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
 import datetime, json, os, re, subprocess, sys, tempfile, time
 
 top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
@@ -1465,6 +1467,8 @@ def classify(batch):
             if len(p) >= 2 and re.match(r'^[A-Z]+-\d+$', p[0]):
                 cls[p[0]] = p[1]
                 reasons[p[0]] = p[2].strip() if len(p) > 2 else ''
+    except subprocess.TimeoutExpired:  # a stalled classification is unknown verdicts, not BLOCKED rows
+        note_flag('stall', 'graphql', gh_t(300))
     except (OSError, subprocess.SubprocessError):
         pass
     return cls
