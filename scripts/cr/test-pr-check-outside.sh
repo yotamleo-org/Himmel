@@ -45,6 +45,7 @@ STUB
 cat > "$A/scripts/cr/critic-panel.sh" <<'STUB'
 #!/usr/bin/env bash
 # accepts: --pin-ref) pins the review to a ref instead of the live checkout
+case " $* " in *" refs/himmel/outside/0..0 "*) echo "critic-panel: REFUSING --pin-ref" >&2; exit 7 ;; esac
 cat > "${STDIN_LOG:-/dev/null}"
 exit 0
 STUB
