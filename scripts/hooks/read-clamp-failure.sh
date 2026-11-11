@@ -84,7 +84,7 @@ if [ "$tried" -gt 1 ] && [ "$new" -ge 1 ]; then
 else
     bytes=50000
     [ "$m" != "-" ] && bytes=$((m * 2))
-    msg="read-clamp-failure: line $start of $fp alone exceeds the native Read limit ($why). Last resort: a byte preview through Bash, still behind block-read-secrets.sh: sed -n '${start}p' $fp | cut -b 1-$bytes. It shows bytes, not characters (a cut can split a UTF-8 character), and it is NOT a Read: it does not satisfy Edit/Write's read-before-write check on this file."
+    msg="read-clamp-failure: line $start of $fp alone exceeds the native Read limit ($why). Last resort: a byte preview through Bash, still behind block-read-secrets.sh: sed -n '${start}p' $(printf %q "$fp") | cut -b 1-$bytes. It shows bytes, not characters (a cut can split a UTF-8 character), and it is NOT a Read: it does not satisfy Edit/Write's read-before-write check on this file."
 fi
 jq -nc --arg ctx "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUseFailure",additionalContext:$ctx}}' 2>/dev/null
 exit 0

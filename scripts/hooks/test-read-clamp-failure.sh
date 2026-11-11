@@ -23,7 +23,7 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/read-clamp-failure.XXXXXX") || exit 1
 trap 'rm -rf "$WORK"' EXIT
 RT="$WORK/xdg"; mkdir -p "$RT"
 F="$WORK/long.txt"; seq 1 3000 > "$F"
-ONE="$WORK/oneline.txt"; head -c 300000 /dev/zero | tr '\0' 'a' > "$ONE"; echo >> "$ONE"
+ONE="$WORK/one line.txt"; head -c 300000 /dev/zero | tr '\0' 'a' > "$ONE"; echo >> "$ONE"
 
 pre_json() { # <session> <tid> <path> [offset limit]
     jq -cn --arg s "$1" --arg t "$2" --arg p "$3" --arg o "${4:-}" --arg l "${5:-}" '
@@ -83,7 +83,7 @@ has "no counts in the error: still halve, env read only as context" "$(ctx)" "li
 # One line that cannot fit: a secret-fenced byte preview as the labelled last resort.
 run "$FAILH" "$(fail_json s4 t1 "$ONE" 1 1 'File content (80000 tokens) exceeds maximum allowed tokens (25000).')" >/dev/null
 c="$(ctx)"
-has "a single over-limit line names a byte preview" "$c" "sed -n '1p'"
+has "a single over-limit line names a byte preview of the quoted path" "$c" "sed -n '1p' $(printf %q "$ONE") |"
 has "the preview is labelled bytes, not characters" "$c" "bytes"
 has "the preview says it is no Read for Edit/Write" "$c" "read-before-write"
 lacks "the preview is not offered as a native Read" "$c" "Read file_path=$ONE offset=1 limit="
