@@ -1394,16 +1394,16 @@ check "PINREF1: the critic saw the diff of the REF, not the live checkout" \
     "$(cat "$PINREF_DIFF_DUMP" 2>/dev/null)" "$(git -C "$PR_REPO" diff "main...$pr_oid")"
 check "PINREF1: ledger rows stamp the ref's head and the --branch name, never the live ones" \
     "$(pinref_ledger_is "$pr_oid" feat/outside-thing)" "yes"
-# read-sink-ok: reads the test's own fixture output under its mktemp dir
+pinref_stamp="$(cat "$PINREF_ENV_DUMP" 2>/dev/null)"  # read-sink-ok: reads the test's own fixture output under its mktemp dir
 check "PINREF1: the member sees the ref's head and the --branch name in CR_TARGET_HEAD and CR_TARGET_BRANCH" \
-    "$(cat "$PINREF_ENV_DUMP" 2>/dev/null)" "$pr_oid feat/outside-thing"
+    "$pinref_stamp" "$pr_oid feat/outside-thing"
 pinref_run 2 stdin --head "$pr_oid" --branch feat/outside-thing --pin-ref refs/himmel/outside/7
 check "PINREF2: a ref at --head runs from a checkout on another branch and commit (stdin)" "$pinref_rc" "0"
 check "PINREF2: ledger rows stamp the ref's head and the --branch name (stdin)" \
     "$(pinref_ledger_is "$pr_oid" feat/outside-thing)" "yes"
-# read-sink-ok: reads the test's own fixture output under its mktemp dir
+pinref_stamp="$(cat "$PINREF_ENV_DUMP" 2>/dev/null)"  # read-sink-ok: reads the test's own fixture output under its mktemp dir
 check "PINREF2: the member sees the ref's head and the --branch name (stdin)" \
-    "$(cat "$PINREF_ENV_DUMP" 2>/dev/null)" "$pr_oid feat/outside-thing"
+    "$pinref_stamp" "$pr_oid feat/outside-thing"
 
 pinref_run 3 worktree --head "$pr_oid" --branch feat/outside-thing --pin-ref refs/himmel/outside/999
 check "PINREF3: a ref that resolves to no commit refuses (exit 7)" "$pinref_rc" "7"
