@@ -585,7 +585,7 @@ d = os.environ["STUB_DIR"]
 open(os.path.join(d, "driver.log"), "a").write(json.dumps({"argv": a, "qmd_url": os.environ.get("QMD_URL")}) + "\n")
 out = a[a.index("--out") + 1]
 os.makedirs(out, exist_ok=True)
-open(os.path.join(out, "results.jsonl"), "w").write(json.dumps({"cost_usd": float(os.environ.get("STUB_SPEND", "0"))}) + "\n")
+open(os.path.join(out, "results.jsonl"), "w").write(json.dumps({"cost_usd": float(os.environ.get("STUB_SPEND", "0"))}) + "\n" + ("not json\n" if os.environ.get("STUB_BAD_ROW") else ""))
 EOF
 python3 -I -c 'import json,sys
 rows = [{"id": "d%d" % i, "q": "where is the queue lock described %d" % i, "gold": ["docs/lock.md"], "reason": []} for i in range(16)]
@@ -593,7 +593,7 @@ rows.append({"id": "nogold", "q": "no gold here", "gold": [], "reason": []})
 open(sys.argv[1], "w").write("".join(json.dumps(r) + "\n" for r in rows))
 plan = {"pairs": [{"pair": sys.argv[2], "questions": sys.argv[1], "repo": sys.argv[3], "out": "%s/drv/o%d" % (sys.argv[4], i)} for i in range(4)]}
 open(sys.argv[5], "w").write(json.dumps(plan))' "$W/q16.jsonl" "$PD/pair.json" "$R" "$W" "$W/plan4.json"
-rm -f "$W/driver.log"
+rm -rf "$W/drv"; rm -f "$W/driver.log"
 STALE_SESSIONS_AB="$W/ab-stub.py" STUB_SPEND=6 python3 -I "$SS" --plan "$W/plan4.json" --max-usd 18 > "$W/drv.txt" 2>&1
 rc=$?
 dm() { python3 -I -c 'import json,sys
@@ -607,9 +607,16 @@ eq "the driver names the pair, its state and its served URL to each process" "l 
 a = json.loads(open(sys.argv[1]).readline())
 g = lambda f: a["argv"][a["argv"].index(f) + 1]
 print(g("--index-state"), g("--pair"), a["qmd_url"])' "$W/driver.log")"
-rm -f "$W/driver.log"
+STALE_SESSIONS_AB="$W/ab-stub.py" STUB_SPEND=0 python3 -I "$SS" --plan "$W/plan4.json" --max-usd 18 > "$W/drvre.txt" 2>&1
+rc=$?
+eq "driver_refuses_existing_rows: an out dir that already holds results is refused before any process runs" "1 1" "$([ "$rc" -ne 0 ] && echo 1 || echo 0) $(grep -c 'already holds results.jsonl' "$W/drvre.txt")"
+rm -rf "$W/drv"; rm -f "$W/driver.log"
 STALE_SESSIONS_AB="$W/ab-stub.py" STUB_SPEND=0 python3 -I "$SS" --plan "$W/plan4.json" --max-usd 18 > "$W/drv0.txt" 2>&1
 eq "a plan that never spends runs every pair" "0 4" "$? $(wc -l < "$W/driver.log" | tr -d ' ')"
+rm -rf "$W/drv"; rm -f "$W/driver.log"
+STALE_SESSIONS_AB="$W/ab-stub.py" STUB_SPEND=1 STUB_BAD_ROW=1 python3 -I "$SS" --plan "$W/plan4.json" --max-usd 18 > "$W/drvbad.txt" 2>&1
+eq "driver_fails_closed_on_unreadable_row: a spend row that cannot be read stops the plan, naming the file and line" "1 1" "$(wc -l < "$W/driver.log" | tr -d ' ') $(grep -c 'cannot read the spend of .*results.jsonl line 2' "$W/drvbad.txt")"
+rm -rf "$W/drv"
 python3 -I -c 'import json,sys
 plan = {"pairs": [{"pair": sys.argv[1], "questions": sys.argv[2], "repo": sys.argv[3], "out": sys.argv[4] + "/drv/real"}]}
 open(sys.argv[5], "w").write(json.dumps(plan))' "$PD/pair.json" "$Q2" "$R" "$W" "$W/plan1.json"

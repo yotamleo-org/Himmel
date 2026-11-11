@@ -10,7 +10,8 @@ only the index is stale), QMD_URL at the served URL, and --pool and --n at the b
 with a gold file.
 
 --max-usd binds the whole plan, not one process: each process is given what is still unspent, the cost_usd
-of every row already written under the other pairs' out dirs, and the plan stops once nothing is left.
+of every row already written under the plan's out dirs, and the plan stops once nothing is left. An out dir
+that already holds results.jsonl, or a row whose cost cannot be read, stops the plan before anything is paid.
 Exit: 0 every process complete, 1 a process stopped or errored or the budget ran out, 2 or 64 a process
 refused or was misused (the plan stops there).
 Seams: STALE_SESSIONS_AB (the answer-ab.py to run). answer-ab.py makes the billed calls and refuses
@@ -51,11 +52,11 @@ def spent(out):
     if not os.path.isfile(path):
         return total
     with open(path) as fh:
-        for line in fh:
+        for n, line in enumerate(fh, 1):
             try:
                 total += float(json.loads(line).get("cost_usd") or 0.0)
             except (ValueError, TypeError, AttributeError):
-                continue
+                raise SystemExit("stale-sessions: cannot read the spend of %s line %d: %s" % (path, n, line.strip()[:80]))
     return total
 
 
@@ -69,10 +70,13 @@ def main(argv=None):
     entries = load_json(a.plan).get("pairs") or []
     if not entries:
         raise SystemExit("stale-sessions: %s names no pair" % a.plan)
+    for e in entries:
+        if os.path.exists(os.path.join(e["out"], "results.jsonl")):
+            raise SystemExit("stale-sessions: %s already holds results.jsonl; its spend would be lost when the pair reruns: use a fresh out dir" % e["out"])
     ab = os.environ.get("STALE_SESSIONS_AB", os.path.join(HERE, "answer-ab.py"))
     failed = False
     for i, e in enumerate(entries):
-        left = a.max_usd - sum(spent(o["out"]) for j, o in enumerate(entries) if j != i)
+        left = a.max_usd - sum(spent(o["out"]) for o in entries)
         if left <= 0:
             print("STOPPED: the %s budget is spent before pair %d of %d" % (a.max_usd, i + 1, len(entries)), file=sys.stderr)
             return 1
