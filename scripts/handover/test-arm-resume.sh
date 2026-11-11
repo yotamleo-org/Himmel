@@ -4761,7 +4761,8 @@ out=$(posix_env "$SCHED_STUB_T17" bash "$ARM" --time "$(future_time)" --handover
 rc=$?
 assert_rc "2192 no-flag dry-run exits 0" 0 "$rc"
 assert_contains "2192 no --model given defaults a non-chief arm to opus (ruling 30)" '--model opus' "$out"
-assert_contains "2192 no --model given names ruling 30 in the reason" "non-chief arms default to opus -- ruling 30" "$out"
+assert_contains "2192 no --model given states the opus default in the reason" "non-chief arms default to opus)" "$out"
+assert_not_contains "2192 the default reason cites no ruling number" "ruling 30" "$out"
 
 HO_2192_CHIEF="${HO_2192%.md}-chief.md"
 cp -- "$HO_2192" "$HO_2192_CHIEF"

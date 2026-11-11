@@ -243,7 +243,8 @@ HO_A=$(make_handover)
 out=$(run_arm --time "$(future_time)" --handover "$HO_A" --dry-run 2>&1)
 rc=$?
 assert_rc "a: unpinned non-chief arm exits 0" 0 "$rc"
-assert_contains "a: guard line reports opus default" "arm-resume: model=opus (no --model given; non-chief arms default to opus -- ruling 30)" "$out"
+assert_contains "a: guard line reports opus default" "arm-resume: model=opus (no --model given; non-chief arms default to opus)" "$out"
+assert_not_contains "a: guard line cites no ruling number" "ruling" "$out"
 # this suite's PATH-stubbed `at` (SCHED_STUB, above) is found on
 # this Linux station, so schedule_arm renders the model passthrough via the
 # POSIX `at`-heredoc branch (arm-resume.sh's `linux)` case, ~5140-5152), NOT
@@ -270,6 +271,8 @@ out=$(run_arm --time "$(future_time)" --handover "$HO_B1" --model claude-fable-5
 rc=$?
 assert_rc "b1: claude-fable-5 pin refused" 20 "$rc"
 assert_contains "b1: stderr names --fable-ok" '--fable-ok' "$out"
+assert_contains "b1: stderr states the rule" "a non-chief arm may not pin it without a reason" "$out"
+assert_not_contains "b1: stderr cites no ruling number" "ruling" "$out"
 assert_not_contains "b1: nothing armed (no dry-run completion line)" "dry-run complete" "$out"
 
 HO_B2=$(make_handover)
@@ -336,7 +339,7 @@ HO_D2=$(make_handover "arm-guard-CHIEF.MD")
 out=$(run_arm --time "$(future_time)" --handover "$HO_D2" --model claude-fable-5 --dry-run 2>&1)
 rc=$?
 assert_rc "d2: chief arm with fable pin, no --fable-ok, is exempt" 0 "$rc"
-assert_contains "d2: guard line names the ruling-25 exemption" "arm-resume: model=claude-fable-5 (fable pinned; chief arm -- ruling 25, exempt)" "$out"
+assert_contains "d2: guard line names the chief-arm exemption" "arm-resume: model=claude-fable-5 (fable pinned; chief arm, exempt from --fable-ok)" "$out"
 # bare/unquoted POSIX %q rendering -- see case (a) above.
 assert_model_flag "d2: relaunch command carries the fable model" claude-fable-5 "$out"
 
@@ -351,7 +354,7 @@ HO_D4=$(make_handover "arm-guard-chief.md")
 out=$(run_arm --time "$(future_time)" --handover "$HO_D4" --model claude-fable-5 --dry-run 2>&1)
 rc=$?
 assert_rc "d4: chief arm with fable pin, no --fable-ok, is exempt" 0 "$rc"
-assert_contains "d4: guard line names the ruling-25 exemption" "arm-resume: model=claude-fable-5 (fable pinned; chief arm -- ruling 25, exempt)" "$out"
+assert_contains "d4: guard line names the chief-arm exemption" "arm-resume: model=claude-fable-5 (fable pinned; chief arm, exempt from --fable-ok)" "$out"
 
 # ---------------------------------------------------------------------------
 # (e) unregressed existing behavior.
