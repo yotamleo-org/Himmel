@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016
-# test-minerva-readiness.sh — the optional `minerva-spec-gate.sh SPEC --readiness MANIFEST
-# --source-head SHA` mode. Every row runs the real gate against inputs built by the real Judge
-# delegate (scripts/handover/chief-kit/critic-findings.py normalize and bundle), and the gate
-# calls that real delegate's validate-bundle. The python3 on PATH is a recorder that logs the
-# delegate argv and execs the real interpreter; there is no stub gate or stub validator.
 set -u
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY CLAUDE_PLUGIN_ROOT HIMMEL_REPO GATE ANCHOR CWD
 
@@ -37,25 +32,25 @@ chmod +x "$td/bin/python3" "$td/bin/critic-findings.py"
 sha(){ "$real_py" -I -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"; }
 judge_run(){ JOUT="$("$real_py" -I "$judge" "$@" 2>/dev/null)"; JRC=$?; }
 
-# mktree <name> <specs subdir>: a state repo with SPEC, its estimate, a plan beside it and one in
-# specs/plans, a disposition evidence file, and a marker + delegate copy at its root (a trap: the
-# gate must never resolve its delegate from SPEC's repository).
+plant_decoy_checkout(){
+  mkdir -p "$1/scripts/lib" "$1/scripts/handover/chief-kit"
+  : >"$1/scripts/lib/initiative-workers.sh"; cp "$judge" "$1/scripts/handover/chief-kit/critic-findings.py"
+}
 mktree(){
-  T="$td/$1"; ROOT="$T/specs/$2"; SPEC="$ROOT/feature.md"; PLAN="$T/specs/plans/feature.md"
-  mkdir -p "$ROOT" "$T/specs/plans" "$T/scripts/lib" "$T/scripts/handover/chief-kit"
+  local name="$1" specs_subdir="$2"
+  T="$td/$name"; ROOT="$T/specs/$specs_subdir"; SPEC="$ROOT/feature.md"; PLAN="$T/specs/plans/feature.md"
+  mkdir -p "$ROOT" "$T/specs/plans"
   cp "$fx/spec.md" "$SPEC"; cp "$fx/estimate.json" "$ROOT/estimate.json"
   cp "$fx/plan.md" "$ROOT/feature-plan.md"; cp "$fx/plan.md" "$PLAN"
   echo "fixed in the spec" >"$ROOT/evidence.md"
-  : >"$T/scripts/lib/initiative-workers.sh"; cp "$judge" "$T/scripts/handover/chief-kit/critic-findings.py"
+  plant_decoy_checkout "$T"
 }
-# addverdict <kind> <round> <fixture>: the saved critic return plus its real normalized index.
 addverdict(){
-  local v="$SPEC.critic-$1-r$2.md"
-  cp "$fx/$3" "$v"
-  judge_run normalize --spec "$SPEC" --kind "$1" --round "$2" --verdict "$v" --out "$v.finding-index.json"
+  local kind="$1" round="$2" fixture="$3" v="$SPEC.critic-$1-r$2.md"
+  cp "$fx/$fixture" "$v"
+  judge_run normalize --spec "$SPEC" --kind "$kind" --round "$round" --verdict "$v" --out "$v.finding-index.json"
   [ "$JRC" = 0 ] || { echo "FATAL: real normalize refused $v: $JOUT"; exit 2; }
 }
-# mkbundle <out> <verdict paths...>: the real Judge bundle over exactly those priors.
 mkbundle(){
   local out="$1" prev="$td/prev.$RANDOM.json"; shift
   "$real_py" -I -c 'import hashlib,json,sys
@@ -65,7 +60,6 @@ open(sys.argv[1],"w").write(json.dumps({"schema":1,"verdicts":rows}))' "$prev" "
   [ "$JRC" = 0 ] || { echo "FATAL: real bundle refused $out: $JOUT"; exit 2; }
 }
 
-# mkman <out> <spec> <kind> <round> <artifact> <companion|-> <bundle> <verdicts csv|-> [python stmt on m]
 MK='import hashlib,json,os,sys
 out,spec,kind,rnd,art,comp,bundle,verdicts,head,stmt=sys.argv[1:11]
 def h(p):
@@ -85,9 +79,11 @@ m={"schema":1,"critic_kind":kind,"round":int(rnd),"artifact":ref(art),
 raw=None
 exec(stmt)
 open(out,"w").write(raw if raw is not None else json.dumps(m))'
-mkman(){ "$real_py" -I -c "$MK" "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$SH" "${9:-}"; }
+mkman(){
+  local out="$1" spec="$2" kind="$3" round="$4" artifact="$5" companion_or_dash="$6" bundle="$7" verdicts_csv_or_dash="$8" python_stmt_on_m="${9:-}"
+  "$real_py" -I -c "$MK" "$out" "$spec" "$kind" "$round" "$artifact" "$companion_or_dash" "$bundle" "$verdicts_csv_or_dash" "$SH" "$python_stmt_on_m"
+}
 
-# rawrun <gate> <args...>: from an unrelated cwd (CWD overrides), HIMMEL_REPO unset unless ANCHOR.
 rawrun(){
   local g="$1"; shift
   local envs=("PATH=$td/bin:$PATH" "READINESS_ARGV_LOG=$td/argv" "READINESS_CALLS_LOG=$td/calls")
@@ -112,15 +108,14 @@ if state=="ready":
 else:
     assert r["reasons"]==[reason], r["reasons"]
 if extra: assert eval(extra,{"r":r,"os":os}), extra'
-# expect <label> <rc> <ready|refused> <reason|-> [python expression on r]
 expect(){
-  if [ "$RC" = "$2" ] && "$real_py" -I -c "$CHECK" "$OUT" "$3" "$4" "${5:-}" 2>"$td/why"; then ok "$1"
-  else bad "$1 (rc=$RC want $2; $(tr '\n' ' ' <"$td/why" | head -c 200); out=$(printf '%s' "$OUT" | head -c 300); err=$(head -c 200 "$td/err"))"; fi
+  local label="$1" want_rc="$2" want_state="$3" want_reason_or_dash="$4" python_expr_on_r="${5:-}"
+  if [ "$RC" = "$want_rc" ] && "$real_py" -I -c "$CHECK" "$OUT" "$want_state" "$want_reason_or_dash" "$python_expr_on_r" 2>"$td/why"; then ok "$label"
+  else bad "$label (rc=$RC want $want_rc; $(tr '\n' ' ' <"$td/why" | head -c 200); out=$(printf '%s' "$OUT" | head -c 300); err=$(head -c 200 "$td/err"))"; fi
 }
 argv_line(){ sed -n "${1}p" "$td/argv"; }
 no_delegate_call(){ [ ! -s "$td/argv" ] && ! grep -q 'critic-findings\|PATH-CALL' "$td/calls"; }
 
-# ---- tree A: specs/design, spec priors r1 (one finding) and r2 (CLEAN), a plan prior r1 (CLEAN)
 mktree A design; A_SPEC="$SPEC"; A_ROOT="$ROOT"; A_PLAN="$PLAN"
 addverdict spec 1 verdict-spec-r1-findings.md; addverdict spec 2 verdict-spec-clean.md
 A_V="$SPEC.critic-spec-r1.md,$SPEC.critic-spec-r2.md"
@@ -131,7 +126,6 @@ mkbundle "$ROOT/intake-plan-r2.json" "$SPEC.critic-plan-r1.md"; A_BP="$ROOT/inta
 cp "$A_SPEC" "$A_ROOT/other.md"
 m="$td/m"; mkdir -p "$m"
 
-# ---- the eight R1-R4 variants
 mkman "$m/r1-good.json" "$A_SPEC" spec 3 "$A_SPEC" - "$A_B" "$A_V"
 run "$A_SPEC" "$m/r1-good.json"; expect "R1-good: spec intake with a complete CLEAN prior is ready 0" 0 ready - 'r["round"]==3 and r["companion"] is None'
 R1_OUT="$OUT"
@@ -150,12 +144,10 @@ run "$A_SPEC" "$m/r4-good.json"; expect "R4-good: resolved inputs are ready 0" 0
 mkman "$m/r4-bad.json" "$A_SPEC" spec 3 "$A_SPEC" - "$A_B" "$A_V" 'm["unresolved_rulings"]=["ruling-7"]'
 run "$A_SPEC" "$m/r4-bad.json"; expect "R4-bad: an unresolved ruling is unresolved-ruling 3" 3 refused unresolved-ruling
 
-# ---- ready-is-not-authorized: the real ready receipt carries provenance only
 OUT="$R1_OUT"; RC=0
 expect "ready-is-not-authorized: no model, round grant, spend or clearance field; round is a plain integer" 0 ready - \
   'type(r["round"]) is int and not any(w in k for k in r for w in ("model","grant","spend","budget","clear","approv","authori","go"))'
 
-# ---- judge-argv-contract: plan kind from an unrelated cwd still passes the canonical SPEC as --spec
 run "$A_SPEC" "$m/r2-good.json"
 prev="$(argv_line 7)"
 if [ "$(argv_line 1)" = "$judge" ] && [ "$(argv_line 2)" = validate-bundle ] && [ "$(argv_line 3)" = "$A_BP" ] \
@@ -165,7 +157,6 @@ if [ "$(argv_line 1)" = "$judge" ] && [ "$(argv_line 2)" = validate-bundle ] && 
   ok "judge-argv-contract: python3 ABS_DELEGATE validate-bundle ABS_BUNDLE --spec SPEC --previous-verdicts PRIVATE/PREVIOUS.json"
 else bad "judge-argv-contract: recorded argv: $(tr '\n' ' ' <"$td/argv")"; fi
 
-# ---- spec-stage-no-companion-ready and plan-kind-companion-is-spec
 run "$A_SPEC" "$m/r3-good.json"; expect "spec-stage-no-companion-ready: spec kind with a null companion is ready" 0 ready - 'r["companion"] is None and r["artifact"]["path"]=='"'$A_SPEC'"
 mkman "$m/spec-comp.json" "$A_SPEC" spec 1 "$A_SPEC" "$A_SPEC" "$A_B1" -
 run "$A_SPEC" "$m/spec-comp.json"; expect "spec-stage-no-companion-ready: spec kind with a companion is invalid 2" 2 refused invalid
@@ -180,13 +171,11 @@ run "$A_SPEC" "$m/spec-is-plan.json"; expect "spec kind naming the plan as its a
 mkman "$m/spec-sibling.json" "$A_SPEC" spec 1 "$A_ROOT/other.md" - "$A_B1" -
 run "$A_SPEC" "$m/spec-sibling.json"; expect "spec kind with a sibling-spec artifact is invalid 2" 2 refused invalid
 
-# ---- readiness-round-type-echo
 for c in 'del m["round"]|missing' 'm["round"]=0|zero' 'm["round"]=-1|negative' 'm["round"]="2"|string' 'm["round"]=True|boolean'; do
   mkman "$m/round.json" "$A_SPEC" spec 1 "$A_SPEC" - "$A_B1" - "${c%|*}"
   run "$A_SPEC" "$m/round.json"; expect "readiness-round-type-echo: a ${c#*|} round is invalid 2 with round=null" 2 refused invalid 'r["round"] is None'
 done
 
-# ---- clean-prior-complete-empty (tree C: one CLEAN prior before the second spec critic)
 mktree C design; C_SPEC="$SPEC"
 addverdict spec 1 verdict-spec-clean.md
 mkbundle "$ROOT/intake.json" "$SPEC.critic-spec-r1.md"
@@ -197,7 +186,6 @@ expect "readiness-round-type-echo: round 2 echoes 2" 0 ready - 'r["round"]==2'
 rm "$SPEC.critic-spec-r1.md.finding-index.json"
 run "$C_SPEC" "$m/clean.json"; expect "clean-prior-complete-empty: an absent CLEAN index is intake-incomplete 3, never inferred zero" 3 refused intake-incomplete
 
-# ---- legacy-intake-refused (tree L: a prose-only prior with no structured provenance)
 mktree L design; L_SPEC="$SPEC"; LV="$SPEC.critic-spec-r1.md"
 cp "$fx/verdict-legacy.md" "$LV"
 judge_run normalize --spec "$SPEC" --kind spec --round 1 --verdict "$LV" --out "$LV.finding-index.json"
@@ -223,7 +211,6 @@ expect "legacy-intake-refused: the gate maps it to intake-incomplete 3 and inven
   '"spec-r1" not in str(r)'
 [ "$(argv_line 1)" = "$judge" ] && ok "legacy-intake-refused: only the real delegate was asked, no other reviewer" || bad "legacy-intake-refused: delegate argv $(tr '\n' ' ' <"$td/argv")"
 
-# ---- judge-anchor-resolution
 cache="$td/home/.claude/plugins/cache/himmel/himmel-ops/9.9.9/scripts"
 mkdir -p "$cache"; cp "$gate" "$cache/minerva-spec-gate.sh"
 GATE="$cache/minerva-spec-gate.sh" ANCHOR="$repo" run "$A_SPEC" "$m/r1-good.json"
@@ -256,7 +243,6 @@ mkdir -p "$td/nodel/scripts/lib"; : >"$td/nodel/scripts/lib/initiative-workers.s
 GATE="$cache/minerva-spec-gate.sh" ANCHOR="$td/nodel" run "$A_SPEC" "$m/r1-good.json"
 expect "judge-anchor-resolution: a missing delegate is refused" 3 refused intake-incomplete
 
-# ---- evidence-root-escape
 mkman "$m/same-dir.json" "$A_SPEC" plan 2 "$A_ROOT/feature-plan.md" "$A_SPEC" "$A_BP" "$A_VP"
 run "$A_SPEC" "$m/same-dir.json"; expect "evidence-root-escape: a plan beside SPEC is ready" 0 ready -
 run "$A_SPEC" "$m/r2-good.json"; expect "evidence-root-escape: the specs/design + specs/plans layout is ready" 0 ready -
@@ -296,7 +282,6 @@ for v in m["previous_verdicts"]: v["path"]=os.path.relpath(v["path"],root)
 for d in m["dispositions"]: d["evidence_path"]=os.path.relpath(d["evidence_path"],root)'
 run "$A_SPEC" "$A_ROOT/rel.json"; expect "manifest-relative paths resolve against the manifest's directory" 0 ready -
 
-# ---- stale, missing and mismatched intake
 mkman "$m/stale-src.json" "$A_SPEC" spec 3 "$A_SPEC" - "$A_B" "$A_V" 'm["source_head"]="b"*40'
 run "$A_SPEC" "$m/stale-src.json"; expect "a manifest source_head other than --source-head is stale-source 3" 3 refused stale-source
 if [ "$(id -u)" != 0 ]; then
@@ -317,7 +302,6 @@ run "$A_SPEC" "$m/one-prior.json"; expect "a bundle that does not match the decl
 mkman "$m/stale-prior.json" "$A_SPEC" spec 3 "$A_SPEC" - "$A_B" "$A_V" 'm["previous_verdicts"][1]["sha256"]="e"*64'
 run "$A_SPEC" "$m/stale-prior.json"; expect "a stale prior verdict hash is intake-incomplete 3 (the delegate's exit 3)" 3 refused intake-incomplete
 
-# ---- malformed input, before anything else
 mkman "$m/badjson.json" "$A_SPEC" spec 3 "$A_SPEC" - "$A_B" "$A_V" 'raw="{not json"'
 run "$A_SPEC" "$m/badjson.json"; expect "malformed manifest JSON is invalid 2" 2 refused invalid 'r["manifest_sha256"] is not None'
 mkman "$m/dupkey.json" "$A_SPEC" spec 3 "$A_SPEC" - "$A_B" "$A_V" 'raw=json.dumps(m)[:-1]+",\"round\":3}"'
@@ -340,7 +324,6 @@ expect "a repeated --readiness is invalid 2" 2 refused invalid
 rawrun "$gate" "$A_SPEC" --source-head "$SH" --readiness "$m/r1-good.json"
 expect "the two flags in either order are accepted" 0 ready -
 
-# ---- legacy-gate-failure-exit3: the whole old gate maps to estimate-refused 3 and keeps its stderr
 run "$A_ROOT/absent.md" "$m/r1-good.json"
 expect "legacy-gate-failure-exit3: a missing SPEC is estimate-refused 3" 3 refused estimate-refused
 grep -q "spec file not found" "$td/err" && ok "legacy-gate-failure-exit3: the old missing-spec stderr survives" || bad "legacy-gate-failure-exit3: stderr $(cat "$td/err")"
@@ -362,7 +345,6 @@ for s in no-est bad-est no-alt no-dod; do
   grep -q "REFUSED" "$td/err" && ok "legacy-gate-failure-exit3: $s keeps the old REFUSED stderr" || bad "legacy-gate-failure-exit3: $s stderr $(cat "$td/err")"
 done
 
-# ---- default-off: without the flags the gate keeps its old text and exits
 rawrun "$gate" "$A_SPEC"
 [ "$RC" = 0 ] && [ "$OUT" = "minerva-spec-gate: ok" ] && ok "default-off: a passing spec prints the old ok line" || bad "default-off: rc=$RC out=$OUT"
 rawrun "$gate" "$A_ROOT/absent.md"
