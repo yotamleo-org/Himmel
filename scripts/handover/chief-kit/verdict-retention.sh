@@ -113,7 +113,7 @@ ledger="$vdir/_ledger.jsonl"
 
 # The repo the PR numbers and heads must belong to. Resolved once, in this
 # shell, so the lookups below can run in command substitutions.
-GH_READ_BIN="$(cd "$HERE/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-ok: a missing lib dir leaves no file, and the -f test below falls back to plain gh
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 if [ "$GH_READ_BIN" != gh ] && { [ -z "${HIMMEL_VERDICT_PR_STATE_CMD:-}" ] || [ -z "${HIMMEL_VERDICT_HEAD_CHECK_CMD:-}" ]; }; then
     # shellcheck source=scripts/lib/gh-read.sh

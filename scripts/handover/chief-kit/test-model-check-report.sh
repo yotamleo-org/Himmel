@@ -154,7 +154,6 @@ base_env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
                 JAVA='/usr/bin/true', TLA2TOOLS=str(work / 'tla2tools.jar'),
                 STATECHART=str(tree / 'statechart'), USER_SLUG='fixture', EXPECTED_REPO=str(repo), EXPECTED_HEAD=head,
                 PR_METADATA=json.dumps({'headRefOid': head, 'files': [{'path': 'scripts/handover/queue-lock.sh'}]}))
-# The PR reads ride the read token. Every row pins an empty fixture root and drops the ambient tokens, so no station token reaches a stub.
 readtok = 'ghp_READTOKEN0123456789'
 (work / 'emptyroot').mkdir()
 (work / 'emptyroot/.env').write_text('')
@@ -254,8 +253,6 @@ for name, args, predicate, (old, new) in checks:
         fails += 1
     else:
         print(f'PASS: {name}; guard removal RED')
-# Main's rate limit is spent: the metadata read and the recheck both resolve on the read token, so the report is current.
-# The two-token stub sits first on PATH as gh and delegates to this suite's own gh.
 tt_bin = work / 'tt'
 tt_bin.mkdir()
 (tt_bin / 'gh').symlink_to(sut.parent / 'fixtures/gh-two-token-stub.sh')

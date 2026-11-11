@@ -53,7 +53,6 @@ root="$tmp/root"
 mkdir -p "$root" "$tmp/home/.config/himmel" || exit 1
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$tmp/home/.config/himmel/go-hmac.key"
 export HOME="$tmp/home" USER_SLUG=tuser HIMMEL_VERDICT_MODEL=test-model HIMMEL_VERDICT_EFFORT=high
-# The lookups ride the read token. Every row pins the fixture root, so no station token reaches a stub (spec I6).
 READTOK=ghp_READTOKEN0123456789
 mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
 printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$tmp/ttroot/.env"
@@ -119,7 +118,6 @@ ret() {
     env HANDOVER_DIR="$root" HIMMEL_VERDICT_PR_STATE_CMD="$stub" HIMMEL_VERDICT_HEAD_CHECK_CMD="$hstub" HIMMEL_VERDICT_NOW="$NOW" bash "$SCRIPT" "$@"
 }
 
-# The gh stand-in behind the two-token stub: the same answers as the two seam stubs above, for the real lookups.
 ghdel="$tmp/gh-delegate.sh"
 cat > "$ghdel" <<EOF
 #!/usr/bin/env bash
@@ -139,7 +137,6 @@ esac
 EOF
 chmod +x "$ghdel"
 TTLOG="$tmp/tt.log"
-# ret_tt <env-root> <args>: the real lookups (both seams unset), the two-token stub first on PATH; GH_STUB_* knobs come from the caller
 ret_tt() {
     local r="$1"; shift
     : > "$TTLOG"
@@ -160,17 +157,14 @@ lacks "1: the foreign-head dir is not listed for a move" "$out" "MOVE qforeign"
 check "1: nothing moved" "$([ -d "$vdir/qclosed" ] && echo yes)" yes
 check "1: no ledger written" "$([ -e "$vdir/_ledger.jsonl" ] && echo yes || echo no)" no
 
-# --- 1b. main's rate limit is spent: the repo, PR state and head lookups ride the read token, the decision is unchanged
 rc=0; out=$(GH_STUB_MAINFAIL=rate ret_tt "$tmp/ttroot" archive 2>&1) || rc=$?
 check "1b: main spent: dry run rc 0" "$rc" 0
-# the seam run names no repo, the real lookup names o/r: only that phrase differs
 check "1b: main spent: the retention decision matches the seam run" "$(printf '%s' "$out" | sed 's# not found in o/r,# not found in the target repo,#')" "$dry_out"
 check "1b: the repo read logs tok=read" "$(logn '^tok=read argv=repo view ')" 1
 check "1b: the PR state reads log tok=read" "$([ "$(logn '^tok=read argv=pr view ')" -ge 1 ] && echo yes)" yes
 check "1b: the head reads log tok=read" "$([ "$(logn '^tok=read argv=api repos/o/r/commits/')" -ge 1 ] && echo yes)" yes
 check "1b: no lookup logs tok=main" "$(logn '^tok=main ')" 0
 check "1b: the read token is never in the stub log" "$(grep -c -F -- "$READTOK" "$TTLOG")" 0
-# control: no read token, main healthy: the lookups log tok=main and decide the same
 rc=0; out=$(ret_tt "$tmp/emptyroot" archive 2>&1) || rc=$?
 check "1b: control, no read token: rc 0" "$rc" 0
 check "1b: control: the missing read token warns once per run" "$(printf '%s\n' "$out" | grep -c '^gh-read: read token missing')" 1

@@ -39,8 +39,7 @@
 # 2 usage, a non-integer CANCEL_RUNS_FAKE_CLOCK, or a pacing state file that
 # cannot be written; 3 refused as a worker or relay.
 #
-# The cancel is the literal `gh` (no variable command name) so guard-pr-check-literal can
-# verify the bytes. Linux/macOS bash 3.2+ (gh + jq).
+# Linux/macOS bash 3.2+ (gh + jq).
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -148,7 +147,7 @@ if [ -n "$REPO_ARG" ] && [ "$REPO_ARG" != "$REPO" ]; then
     echo "cancel-runs: --repo $REPO_ARG differs from origin $REPO; the repo is pinned to origin" >&2; exit 2
 fi
 
-GH_READ_BIN="$(cd "$HERE/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-ok: a missing lib dir leaves no file, and the -f test below falls back to plain gh
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 if [ "$GH_READ_BIN" != gh ]; then
     # shellcheck source=scripts/lib/gh-read.sh
