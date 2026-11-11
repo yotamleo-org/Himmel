@@ -893,6 +893,24 @@ for s in $cmo_cmt; do grepq "$out" -Fx "scripts/$s" || all_listed=0; done
 if [ "$all_listed" -eq 1 ] && [ -z "$err" ]; then pass "30b the plain listing still names every comment-only suite and prints nothing to stderr"; else fail "30b plain listing narrowed: err=$err out=$out"; fi
 out="$(run_is "$range" --shell)"
 if grepq "$out" -Fx 'scripts/test-cmo-hash.sh' && grepq "$out" -Fx 'scripts/test-cmo-after-hd.sh' && ! grepq "$out" -F '.test.'; then pass "30b --shell (what CI selects from) still lists a comment-only suite --check drops"; else fail "30b --shell narrowed: $out"; fi
+REC_LEDGER="$(git -C "$FX" rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
+rec_head="${range##*..}"
+git -C "$FX" update-ref refs/remotes/origin/main "${range%%..*}"
+rm -rf "$REC_LEDGER"
+c_ruled='SUITE scripts/test-cmo-indent.sh = SKIP ruled HIMMEL-x-roadmap-chief no host for it'
+c_in="$(printf '%s\n' 'SUITE scripts/test-cmo-hash.sh = PASS' "$c_ruled" 'SUITE scripts/test-cmo-exec.sh = PASS' 'SUITE scripts/test-nowhere.sh = PASS' 'SUITE scripts/test-nowhere-ruled.sh = SKIP ruled HIMMEL-x-roadmap-chief not impacted')"
+c_plain="$( cd "$FX" && printf '%s\n' "$c_in" | bash "$IS" --check "$range" 2>&1 )"; c_plain_rc=$?
+c_rec="$( cd "$FX" && printf '%s\n' "$c_in" | bash "$IS" --check "$range" --record --branch feat/x --head "$rec_head" 2>&1 )"; c_rec_rc=$?
+rows="$(grep -F '"kind":"impacted"' "$REC_LEDGER" 2>/dev/null)"
+c_n="$(sed -n 's/^impacted-suites: \([0-9][0-9]*\) impacted, .*/\1/p' <<< "$c_rec")"
+if [ "$c_rec_rc" -eq "$c_plain_rc" ] && [ "$c_rec" = "$c_plain" ] && [ "$c_rec_rc" -eq 1 ]; then pass "9901 --record keeps --check's output and rc with comment-only verdicts present"; else fail "9901 --record changed the output or rc ($c_plain_rc to $c_rec_rc): $c_rec"; fi
+if grepq "$rows" -F '"local_pass":["scripts/test-cmo-exec.sh","scripts/test-cmo-hash.sh"]'; then pass "9901 the row's local_pass holds the PASS given for a comment-only dropped suite"; else fail "9901 local_pass: $rows"; fi
+if grepq "$rows" -F '"ruled_skip":["scripts/test-cmo-indent.sh"]'; then pass "9901 the row's ruled_skip holds the ruled SKIP given for a comment-only dropped suite"; else fail "9901 ruled_skip: $rows"; fi
+if grepq "$rows" -F "\"impacted_n\":$c_n" && [ -n "$c_n" ] && grepq "$rows" -F '"skip_n":0' && grepq "$rows" -F '"rc":1'; then pass "9901 impacted_n and skip_n count only the impacted list (a dropped suite adds nothing)"; else fail "9901 counts (impacted $c_n): $rows"; fi
+if ! grepq "$rows" -F 'test-nowhere'; then pass "9901 a verdict for a path in neither list does not reach the row"; else fail "9901 a stray verdict reached the row: $rows"; fi
+if grepq "$c_rec" -F 'MISSING VERDICT scripts/test-cmo-source.sh' && ! grepq "$c_rec" -F 'MISSING VERDICT scripts/test-cmo-hash.sh' && grepq "$c_rec" -Fx 'impacted-suites: dropped-comment-only=9'; then pass "9901 an executing suite with no verdict is still MISSING; dropped-comment-only prints as before"; else fail "9901 check output: $c_rec"; fi
+rm -rf "$REC_LEDGER"
+git -C "$FX" update-ref -d refs/remotes/origin/main
 printf 'x.none filter=none\n' > "$FX/.gitattributes"
 git -C "$FX" add -A
 git -C "$FX" commit -q -m "chore: an attribute that rewrites content"
