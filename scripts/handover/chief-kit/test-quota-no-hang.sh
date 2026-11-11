@@ -4,7 +4,8 @@
 #
 #   test-quota-no-hang.sh [--caller <name>] [--mode <stub mode>] [--keep] [--strict] [--full]
 #     --caller  run one caller's rows (go.sh, ready-check.sh, cr-disposition.sh, tick.sh,
-#               next-dispatchable.sh, check-ci.sh, chief-wait.sh, pr-sweep.sh)
+#               next-dispatchable.sh, check-ci.sh, chief-wait.sh, pr-sweep.sh; scans =
+#               status-sweep.sh and focus-refresh.sh)
 #     --mode    run one stub mode only (debugging a row); --keep leaves the scratch tree
 #               (each row's out and stub.log) and prints its path
 #     --strict  ignore the KNOWN-RED marks: every failing row fails the suite (T1 pastes this)
@@ -563,15 +564,65 @@ drive_chief_wait() {
     done
 }
 
+affect_scans() { case "$1" in read-only) echo no ;; *) echo yes ;; esac; }
+# a healthy focus-refresh goes on to a sweep this stub cannot answer, so read-only claims the bound only
+affect_focus() { case "$1" in read-only) echo maybe ;; *) echo yes ;; esac; }
+
+# no_list_row <caller> <mode>: a paused scan reads nothing past the probes, so the stub logs no PR list
+no_list_row() {
+    if [ "$(mode_class "$2")" = rate ] && [ "$("$AFFECT_FN" "$2")" != yes ]; then
+        emit "PASS $1 $2 no-list-call n/a"
+    elif grep -q ' pr list' "$ROW_DIR/stub.log" 2> /dev/null; then
+        emit "FAIL $1 $2 no-list-call the stub logged a PR list"
+    else
+        emit "PASS $1 $2 no-list-call"
+    fi
+}
+
+# The recurring scans (plan T8): status-sweep.sh and focus-refresh.sh pause before any read. hung-after-probe is
+# left out: past a good probe a hung read is each script's own per-call bound, not the gate's.
+drive_scans() {
+    CUR=scans
+    local m sweep="$HERE/status-sweep.sh" focus="$HERE/focus-refresh.sh" doc
+    [ -f "$sweep" ] && [ -f "$focus" ] || { emit "SKIP absent status-sweep.sh or focus-refresh.sh"; return 0; }
+    XM=""
+    setup_caller_dir scans-sweep
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$cdir/jira"; chmod +x "$cdir/jira"
+    AFFECT_FN=affect_scans RATE_BOUND=12
+    for m in $(modes_for); do
+        [ "$m" != hung-after-probe ] || continue
+        rm -rf "$cdir/quota/quota.tsv" "$cdir/ts"
+        EXTRA_ENV="$(printf '%s\n' "TICKET_STATUS_STATE_DIR=$cdir/ts" "WORKER_SESSION_JIRA_CLI=$cdir/jira")"
+        run_mode status-sweep.sh "$m" 12 0 bash "$sweep" --repo o/r
+        no_list_row status-sweep.sh "$m"
+    done
+    setup_caller_dir scans-focus
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$cdir/jira"; chmod +x "$cdir/jira"
+    mkdir -p "$cdir/doc" "$cdir/mirror"
+    doc="$cdir/doc/HIMMEL-nextleg-2026-11-11A-chief.md"
+    printf '# chief\nfocus-version: v1.0.1\n' > "$doc"
+    AFFECT_FN=affect_focus RATE_BOUND=12
+    for m in $(modes_for); do
+        [ "$m" != hung-after-probe ] || continue
+        rm -rf "$cdir/quota/quota.tsv" "$cdir/ts" "$cdir/doc/focus-state"
+        EXTRA_ENV="$(printf '%s\n' "TICKET_STATUS_STATE_DIR=$cdir/ts" "WORKER_SESSION_JIRA_CLI=$cdir/jira" "FR_JIRA=$cdir/jira" \
+            "TICK_TRACKER_MIRROR_DIR=$cdir/mirror/HIMMEL" "HANDOVER_DIR=$cdir/h")"
+        run_mode focus-refresh.sh "$m" 12 1 bash "$focus" --doc "$doc" --repo o/r
+        no_list_row focus-refresh.sh "$m"
+    done
+    EXTRA_ENV=""
+}
+
 drive_pr_sweep() {
     CUR=pr-sweep.sh
     [ -f "$HERE/pr-sweep.sh" ] || { emit "SKIP absent pr-sweep.sh"; return 0; }
     emit "SKIP absent pr-sweep.sh (rows land with T9)"
 }
 
-CALLERS="cr-disposition ready-check go tick next-dispatchable check-ci chief-wait pr-sweep"
+CALLERS="cr-disposition ready-check go tick next-dispatchable check-ci chief-wait scans pr-sweep"
 driver_of() {
     case "$1" in
+        scans) echo drive_scans ;;
         cr-disposition) echo drive_cr_disposition ;;
         ready-check) echo drive_ready_check ;;
         go) echo drive_go ;;
@@ -582,7 +633,7 @@ driver_of() {
         pr-sweep) echo drive_pr_sweep ;;
     esac
 }
-out_name_of() { case "$1" in pr-sweep) echo pr-sweep.sh ;; *) echo "$1.sh" ;; esac; }
+out_name_of() { case "$1" in pr-sweep) echo pr-sweep.sh ;; scans) echo scans ;; *) echo "$1.sh" ;; esac; }
 
 suite_rows() {
     CUR=suite

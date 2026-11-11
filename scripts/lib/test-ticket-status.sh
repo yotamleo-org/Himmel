@@ -159,6 +159,55 @@ _TS_LIB_DIR="$tmp/countlib" ts_has_merge_row HIMMEL-9190; a=$?
 _TS_LIB_DIR="$tmp/countlib" ts_has_merge_row HIMMEL-9191; b=$?
 check "9436: a log replaced by a file of the same size is read again, not served from the cache" "$a$b:$(wc -l < "$MRC_LOG" | tr -d ' ')" "10:3"
 
+# A live derive with GitHub out reads no PR: no-write + miss stage=gh, the pause line on stderr, no gh call.
+# The readings live under the state dir when HIMMEL_QUOTA_DIR is unset (CI sets none).
+unset TS_SNAPSHOT_DIR TS_EVENT
+export TICKET_STATUS_STATE_DIR="$tmp/qstate"
+mkdir -p "$TICKET_STATUS_STATE_DIR/workers" "$tmp/qbin"
+cat > "$tmp/qjira" <<'EOF'
+#!/usr/bin/env bash
+printf '{"fields":{"status":{"name":"In Progress"},"issuetype":{"name":"Task"}}}\n'
+EOF
+cat > "$tmp/qbin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$QGH_LOG"
+[ "$1 $2" != "pr list" ] || echo '[]'
+EOF
+chmod +x "$tmp/qjira" "$tmp/qbin/gh"
+printf -- '- 10:00 LIVE — started\n' > "$tmp/qowner.md"
+jq -nc --arg doc "$tmp/qowner.md" '{doc:$doc,docs:[$doc],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9201.json"
+qplant() { # <dir> <main graphql remaining> <state>
+    local now; now=$(date +%s)
+    mkdir -p "$1"
+    printf 'main\tgraphql\t%s\t5000\t%s\t%s\t%s\nmain\tcore\t4000\t5000\t%s\t%s\tok\n' "$2" "$((now + 1800))" "$now" "$3" "$((now + 1800))" "$now" > "$1/quota.tsv"
+}
+cat > "$tmp/qderive.sh" <<'EOF'
+. "$1"
+ts_derive HIMMEL-9201
+printf '%s/%s/%s/%s' "$TS_DERIVED" "$TS_RESULT" "$TS_STAGE" "$TS_RULE"
+EOF
+qderive() { # <quota dir|-> — one live derive of the fixture key (- leaves HIMMEL_QUOTA_DIR unset); stderr in $tmp/qerr
+    local q=()
+    : > "$tmp/qgh.log"
+    [ "$1" = - ] || q=("HIMMEL_QUOTA_DIR=$1")
+    env -u HIMMEL_QUOTA_DIR ${q[@]+"${q[@]}"} PATH="$tmp/qbin:$PATH" QGH_LOG="$tmp/qgh.log" WORKER_SESSION_JIRA_CLI="$tmp/qjira" \
+        bash "$tmp/qderive.sh" "$HERE/ticket-status.sh" 2> "$tmp/qerr"
+}
+qplant "$tmp/q-out" 0 refused
+check "9479 T8: a paused live derive is no-write + miss stage=gh" "$(qderive "$tmp/q-out")" "no-write/miss/gh/"
+check "9479 T8: the pause line is on stderr" "$(grep -c '^QUOTA-PAUSE github graphql token=main remaining=0 .* caller=ticket-status nothing-was-judged$' "$tmp/qerr")" 1
+check "9479 T8: a paused live derive makes no gh call" "$(wc -l < "$tmp/qgh.log" | tr -d ' ')" 0
+qplant "$TICKET_STATUS_STATE_DIR/quota" 0 refused
+check "9479 T8: with no HIMMEL_QUOTA_DIR the readings are the state dir's" "$(qderive -)" "no-write/miss/gh/"
+check "9479 T8: and still no gh call" "$(wc -l < "$tmp/qgh.log" | tr -d ' ')" 0
+qplant "$tmp/q-ok" 4000 ok
+check "9479 T8 RED control: a healthy budget derives" "$(qderive "$tmp/q-ok")" "In Progress///D5"
+check "9479 T8 RED control: no pause line" "$(grep -c 'QUOTA-PAUSE\|GH-STALL' "$tmp/qerr")" 0
+check "9479 T8 RED control: the healthy derive reads the PR list" "$(grep -c '^pr list' "$tmp/qgh.log")" 1
+qplant "$tmp/q-hung" 4000 timed-out
+check "9479 T8: a timed-out probe is a pause too" "$(qderive "$tmp/q-hung")" "no-write/miss/gh/"
+check "9479 T8: named GH-STALL on stderr" "$(grep -c '^GH-STALL github read timed out' "$tmp/qerr")" 1
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
 else

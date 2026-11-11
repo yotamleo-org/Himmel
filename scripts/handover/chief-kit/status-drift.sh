@@ -46,7 +46,8 @@
 #                     or carries a disabled row, or a status is unknown
 # The last line is `sdrift=<n>:<sig8>` (n rows that are not wait rows, sig8 over every sorted row), or
 # `sdrift=unknown` when the open-PR list or the Jira search could not be read in
-# full. Always exits 0 (2 on a usage error).
+# full. A GitHub out (ts_scan_gate before the PR list) reads as that unreadable list, with
+# its QUOTA-PAUSE or GH-STALL line on stderr. Always exits 0 (2 on a usage error).
 #
 # The active keys are the open-PR keys, the keys of records that are not
 # wrapped, and the keys the Jira search finds in a ladder status. Log-based
@@ -225,8 +226,11 @@ if [ -n "$logtail" ] && [ -n "$(jq -r 'select(.result == "disabled") | 1' <<<"$l
 fi
 
 # --- the snapshot ------------------------------------------------------------------
-# swallow-ok: an unreadable PR list becomes a HEALTH row below, never a plausible count
-prs=$(bounded 30 gh pr list --state open --limit 300 --json number,title 2>/dev/null) || prs=""
+prs=""
+if ts_scan_gate status-drift graphql; then
+    # swallow-ok: an unreadable PR list becomes a HEALTH row below, never a plausible count
+    prs=$(bounded 30 gh pr list --state open --limit 300 --json number,title 2>/dev/null) || prs=""
+fi
 # swallow-ok: a non-numeric count is the unreadable case the next line turns into a HEALTH row
 npr=$(jq 'length' <<<"$prs" 2>/dev/null)
 case "$npr" in ''|*[!0-9]*)
