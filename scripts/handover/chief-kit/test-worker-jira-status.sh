@@ -170,7 +170,7 @@ checks() { # <num> <bucket:name>... - the PR's check rows
 fn() { bash "$SUT" "$@" >"$tmp/out" 2>&1; }
 moved()  { grep '^transition' "$STUB_LOG" | tail -n 1; }
 ntrans() { grep -c '^transition' "$STUB_LOG" || true; }
-statusrows() { grep -v "\"event\":\"phase-label\"" "$LOG" 2>/dev/null; }  # the phase rows are the phase step's, not the run's outcome
+statusrows() { grep -v "\"event\":\"phase-label\"" "$LOG" 2>/dev/null; }
 row()    { statusrows | tail -n 1 | jq -r ".$1 // \"\""; }
 
 # --- D0: Done / off the ladder is never touched -------------------------------
@@ -793,15 +793,14 @@ reset "To Do"; owned; vset '[{"name":"v1.1.4"}]'
 HIMMEL_RELEASE_MANAGER=1 fn "$K" --event live
 check "7641: a release manager files no request" "$(intakes)" 0
 
-# --- the funnel's phase step: one phase label per worker event ---
 FIXT="$HERE/fixtures/leg-kind-lines.txt"
-mkbrief() { # <path> <kind|-> [marker] - a brief stub whose Leg kind line comes from the shared fixture
+mkbrief() {
     { printf '# worker\n\n'
       case "$2" in -) ;; spec) printf '> **Leg kind:** spec\n\n' ;; *) grep -F "Leg kind:** $2" "$FIXT"; printf '\n' ;; esac
       printf '## Results (newest at the bottom)\n'
       [ -z "${3:-}" ] || printf -- '- 10:00 %s — x\n' "$3"; } > "$1"
 }
-mergerow() { # <pr> <contract|-> [remainder] - a merge-on-green row for $K
+mergerow() {
     jq -nc --arg k "$K" --arg p "$1" --arg c "$2" --arg r "${3:-}" \
         '{ts:"t",event:"merge",key:$k,pr:$p,result:"noop"} + (if $c != "-" then {contract:$c} else {} end) + (if $r != "" then {remainder:$r} else {} end)' >> "$LOG"
 }
@@ -812,22 +811,19 @@ prows()  { [ -e "$LOG" ] && { jq -c 'select(.event == "phase-label")' "$LOG" | g
 plast()  { jq -r 'select(.event == "phase-label") | [.result, (.from // "-"), (.to // "-"), (.cause // "-"), (.stage // "-")] | join("|")' "$LOG" | tail -n 1; }
 nlog()   { [ -e "$LOG" ] && wc -l < "$LOG" || echo 0; }
 seq_of() { jq -r '[.event + ":" + .result + (if .stage then ":" + .stage else "" end)] | .[]' "$LOG" | paste -sd, -; }
-brief_live() { # <labels> <kind> [Jira status] - a LIVE bullet with a brief of <kind>
+brief_live() {
     reset "${3:-In Progress}"; owned; mkbrief "$DOC" "$2" LIVE; labels "$1"
     fn "$K" --event live --doc "$DOC"
 }
 
 if [ -n "$_TIMEOUT_BIN" ]; then
-    # a. a design leg sets design
     brief_live '[]' design
     check "phase a: a design LIVE on an unlabelled ticket makes one edit" "$(lastedit)" "edit $K --phase design"
     check "phase a: and logs phase-set from empty to design, cause design-leg" "$(plast)" "phase-set||design|design-leg|-"
-    # b. a design leg never moves a phase backwards
     for l in sliced build ready; do
         brief_live "[\"phase:$l\"]" design
         check "phase b: a design LIVE on phase:$l makes no edit" "$(edits)" 0
     done
-    # c. a build leg
     brief_live '[]' build
     check "phase c: a build LIVE on an unlabelled ticket sets build" "$(lastedit)" "edit $K --phase build"
     brief_live '["phase:design"]' build
@@ -836,8 +832,7 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     check "phase c: a build LIVE on phase:last-step makes no edit" "$(edits)" 0
     brief_live '["phase:waiting"]' build
     check "phase c: a build LIVE on the retired phase:waiting sets build" "$(lastedit)" "edit $K --phase build"
-    # d. a partial merge
-    d_case() { # <pr> <contract|-> <remainder> <expected edit or none> [pr of the funnel event]
+    d_case() {
         reset "In Progress"; owned; labels '[]'; mergerow "$1" "$2" "$3"
         fn "$K" --event merge --pr "${5:-7}"
         check "phase d: merge row pr=$1 contract=$2 remainder=${3:-}" "$(lastedit | grep . || echo none)" "$4"
@@ -853,30 +848,24 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     reset "In Progress"; owned WRAPPED 0; labels '[]'; mergerow 7 no owed
     fn "$K" --event merge --pr 7
     check "phase d: a contract=no row beats the D5c derive on the same event (merge-partial, last-step)" "$(plast)" "phase-set||last-step|merge-partial|-"
-    # e. the chief's form
     reset "In Progress"; owned; labels '["phase:design"]'
     fn "$K" --event phase-label --phase ready
     check "phase e: --event phase-label --phase ready edits once" "$(lastedit)" "edit $K --phase ready"
     check "phase e: and writes exactly one row, the phase row" "$(nlog)/$(prows)" 1/1
-    # f. a Done ticket loses its label
     reset "Done"; owned WRAPPED; labels '["phase:sliced"]'; echo "done" > "$FX/category"
     fn "$K" --event sweep
     check "phase f: a Done ticket's phase label is cleared" "$(lastedit)" "edit $K --phase none"
-    # g. D5c holding build
     reset "In Progress"; owned WRAPPED 0; labels '["phase:build"]'; mergerow 11 no
     fn "$K" --event wrapped --doc "$DOC"
     check "phase g: a D5c derive moves phase:build to sliced" "$(lastedit)" "edit $K --phase sliced"
-    # h. two labels
     brief_live '["phase:design","phase:sliced"]' build
     check "phase h: furthest wins and one label is left" "$(lastedit)|$(cat "$FX/labels")" "edit $K --phase sliced|[\"phase:sliced\"]"
-    # i, j. no anchor
     reset "In Progress"; owned; labels '[]'
     fn "$K" --event ci
     check "phase i: an event with no anchor makes no edit and no phase row" "$(edits)/$(prows)" 0/0
     check "phase i: and reads Jira only for the derive" "$(grep -c '^get' "$STUB_LOG")" 1
     brief_live '[]' spec
     check "phase j: a spec brief is no anchor" "$(edits)/$(prows)" 0/0
-    # self-rows (S1, P4)
     reset "In Progress"; owned; mkbrief "$DOC" design LIVE; labels '[]'
     fn "$K" --event live --doc "$DOC"
     fn "$K" --event live --doc "$DOC"
@@ -884,7 +873,6 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     fn "$K" --event sweep
     check "phase self-row: the label stays design" "$(cat "$FX/labels")" '["phase:design"]'
     check "phase self-row: one edit call in all" "$(edits)" 1
-    # I7, S2: the chief's form moves no status and writes no record
     reset "To Do"; owned WRAPPED 0; labels '[]'; mergerow 11 no
     before=$(cksum < "$REC")
     fn "$K" --event phase-label --phase sliced
@@ -892,41 +880,35 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     check "phase I7: the edit is made" "$(lastedit)" "edit $K --phase sliced"
     check "phase I7: no row but the phase row (one merge row was there)" "$(nlog)/$(prows)" 2/1
     check "phase I7: the record is unchanged byte for byte" "$(cksum < "$REC")" "$before"
-    # usage refusals: exit 2, no row
     reset "In Progress"; owned
     for argv in "--event phase-label" "--event live --phase design" "--event phase-label --after live" "--event live --after live --rule D3" "--event phase-label --phase design --after live --rule D5c" "--event phase-label --phase"; do
         rc=0
-        # shellcheck disable=SC2086  # the argv string is split on purpose
-        bash "$SUT" "$K" $argv >"$tmp/out" 2>&1 || rc=$?
+        read -ra av <<<"$argv"
+        bash "$SUT" "$K" "${av[@]}" >"$tmp/out" 2>&1 || rc=$?
         check "phase usage: '$argv' exits 2 with no row" "$rc/$(nlog)" 2/0
     done
     rc=0; touch "$FX/edit.exit2"; bash "$SUT" "$K" --event phase-label --phase bogus >"$tmp/out" 2>&1 || rc=$?
     check "phase usage: a refused --phase value is one phase-miss stage=edit row, exit 0" "$rc/$(prows)/$(plast)" "0/1/phase-miss|-|bogus|-|edit"
-    # I5 a. a failed edit never fails the funnel
     reset "To Do"; owned; mkbrief "$DOC" design LIVE; labels '[]'; touch "$FX/edit.fail"
     rc=0; bash "$SUT" "$K" --event live --doc "$DOC" >"$tmp/out" 2>&1 || rc=$?
     check "phase I5a: exit 0" "$rc" 0
     check "phase I5a: the move still happens" "$(moved)" "transition $K In Progress"
     check "phase I5a: moved row, then one phase-miss stage=edit row" "$(seq_of)" "live:moved,phase-label:phase-miss:edit"
     contains "phase I5a: and a WARN is printed" "$(cat "$tmp/out")" "WARN"
-    # I5 c. the phase step's own read fails
     brief_live '[]' design
     T=$(cat "$FX/get.n")
     reset "In Progress"; owned; mkbrief "$DOC" design LIVE; echo "$T" > "$FX/get.fail.from"
     rc=0; bash "$SUT" "$K" --event live --doc "$DOC" >"$tmp/out" 2>&1 || rc=$?
     check "phase I5c: a failed phase read is one phase-miss stage=get row, exit 0" "$rc/$(prows)/$(plast)" "0/1/phase-miss|-|-|-|get"
-    # I5 e. too little budget left
     reset "To Do"; owned; mkbrief "$DOC" design LIVE; labels '[]'
     TICKET_STATUS_PHASE_MIN=100 fn "$K" --event live --doc "$DOC"
     check "phase I5e: moved row, then one phase-miss stage=budget row" "$(seq_of)" "live:moved,phase-label:phase-miss:budget"
     check "phase I5e: and no edit" "$(edits)" 0
-    # I5 g. no wrapper: the step runs in-process after the INTAKE request
     VERS=$(printf 'v1.1.3\tfalse\t2026-10-28\tfalse\nv1.1.4\tfalse\t2026-11-04\tfalse\nv1.1.2\ttrue\t2026-10-20\tfalse\n')
     reset "To Do"; owned; mkbrief "$DOC" design LIVE; labels '[]'; vset '[{"name":"v1.1.4"}]'
     TICKET_STATUS_IN_BUDGET=1 fn "$K" --event live --doc "$DOC"
     check "phase I5g: with no wrapper the rows are moved, intake, phase-set" "$(seq_of)" "live:moved,live:intake,phase-label:phase-set"
     if command -v flock >/dev/null 2>&1; then
-        # I5 b. the phase edit is cut off after a move and an INTAKE request
         reset "To Do"; owned; mkbrief "$DOC" design LIVE; labels '[]'; vset '[{"name":"v1.1.4"}]'; echo 20 > "$FX/edit.sleep"
         rc=0; TICKET_STATUS_BUDGET=8 bash "$SUT" "$K" --event live --doc "$DOC" >"$tmp/out" 2>&1 || rc=$?
         check "phase I5b: exit 0" "$rc" 0
@@ -934,12 +916,10 @@ if [ -n "$_TIMEOUT_BIN" ]; then
         check "phase I5b: the INTAKE request came before the edit" "$(grep -nE '^(release request|edit )' "$STUB_LOG" | sed -E 's/^[0-9]+://' | cut -d' ' -f1-2 | paste -sd, -)" "release request,edit $K"
         missed=$(jq -rs --arg k "$K" '[.[] | select(.key == $k)] as $g | ([range(0; ($g|length))] | map(select($g[.].result == "miss")) | last) as $m | select($m != null) | $g[$m].event' "$LOG")
         check "phase I5b: the MISSED query names nothing for the key" "$missed" ""
-        # I5 d. the status child cut off: no phase row, no edit
         reset "To Do"; owned; mkbrief "$DOC" design LIVE; labels '[]'; echo 30 > "$FX/get.sleep"
         TICKET_STATUS_BUDGET=1 "$_TIMEOUT_BIN" -k 2 15 bash "$SUT" "$K" --event live --doc "$DOC" >"$tmp/out" 2>&1
         check "phase I5d: a cut-off status child is one live miss stage=timeout row" "$(seq_of)" "live:miss:timeout"
         check "phase I5d: and no edit" "$(edits)" 0
-        # I5 f. the phase child cannot take the lock
         reset "To Do"; owned; mkbrief "$DOC" design LIVE; labels '[]'; touch "$FX/hold.lock"
         TICKET_STATUS_LOCK_WAIT=1 fn "$K" --event live --doc "$DOC"
         check "phase I5f: a held lock is one phase-miss stage=lock row and no deferred row" "$(seq_of)" "live:moved,phase-label:phase-miss:lock"
@@ -947,7 +927,6 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     else
         echo "skip - phase I5 b, d, f: no flock binary"
     fi
-    # P6. the sweep still counts a move that also wrote a phase
     reset "To Do"; owned WRAPPED 0; labels '[]'; mergerow 11 no
     printf '%s\n' "$K" > "$FX/list.key"
     printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
@@ -959,7 +938,6 @@ else
     echo "skip - phase step rows: no timeout binary"
 fi
 
-# I3 fence: only the funnel calls the Jira CLI's edit --phase
 root=$(git -C "$HERE" rev-parse --show-toplevel)
 FENCE='(jira|index\.js)[}"]?[[:space:]]+edit[[:space:]]+[^[:space:]-][^[:space:]]*[[:space:]]+.*--phase'
 hits=$(git -C "$root" grep -nE "$FENCE" -- scripts marketplace ':!scripts/jira' ':!*test*' ':!*.md')
@@ -969,7 +947,6 @@ check "fence: on one line" "$(printf '%s\n' "$hits" | grep -c .)" 1
 printf '%s\n' 'ts_jira edit "$KEY" --phase "$next"' 'node scripts/jira/dist/index.js edit K --phase none' '$wv_jira edit "$k" --phase build' \
     'usage-read.sh --phase-cost x' 'ts_jira edit "$KEY" "$FLAG" held' 'run.sh --phase pilot' > "$tmp/fence-control"
 check "fence: the pattern matches the three Jira calls and not the three look-alikes" "$(grep -cE "$FENCE" "$tmp/fence-control")" 3
-# parity: every phase the funnel's table writes is in PHASES
 phases=$(node --input-type=module -e "import('$root/marketplace/plugins/himmel-ops/scripts/ticket-policy.mjs').then(m => console.log(m.PHASES.join(' ')))" 2>/dev/null)
 targets=$(sed -n '/^phase_next()/,/^}/p' "$SUT" | grep -oE 'PH_NEXT=[a-z][a-z-]*' | cut -d= -f2 | sort -u | grep -vx none)
 check "parity: phase_next names at least one target" "$([ -n "$targets" ] && echo yes || echo no)" yes
