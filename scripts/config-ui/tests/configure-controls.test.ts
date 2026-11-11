@@ -25,6 +25,23 @@ test("Tracker tile: Team mode is one switch under the Board heading, off when un
   expect(R.settingsCommand({ action: "config.tracker", target: "team-mode" }, "~/himmel", "on")).toBe("node ~/himmel/scripts/himmelctl/bin.js config set tracker.teamMode on");
 });
 
+test("Tracker tile names the Jira test project as a read-only row with no write control", () => {
+  const html = cfg("tracker", { ...setup, testProject: "HTEST" });
+  expect(visible(html)).toContain("Jira test project");
+  expect(visible(html)).toContain("HTEST");
+  expect(html).not.toMatch(/data-(?:action|target|path)="[^"]*(?:test-project|testProject)/);
+  expect(renderSetup({ ...setup, testProject: "HTEST" }, {}, {})).toContain("HTEST");
+});
+
+test("Tracker tile says the test project is unset and gives the command that sets it", () => {
+  for (const testProject of [null, undefined]) {
+    const html = cfg("tracker", { ...setup, testProject });
+    expect(visible(html)).toContain("Jira test project");
+    expect(visible(html)).toMatch(/not set/i);
+    expect(html).toContain('data-cmd="himmelctl config set jira.testProject &lt;KEY&gt;"');
+  }
+});
+
 // Removing the shared buttons would expose shell text again, or lose the exact command to copy.
 test("Configure commands are compact copy buttons, not raw command blocks", () => {
   const html = cfg("scope");

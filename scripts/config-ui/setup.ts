@@ -113,6 +113,7 @@ export async function setupState(o: SetupOpts & AccountOpts) {
     account: account(o),
     secrets: entries.map((e) => ({ name: e.name, feature: e.feature ?? "", required: e.required ?? "", collect: e.collect, example: EXAMPLES[e.name] ?? "", status: store.detect(e.name, ctx).status })),
     commit: commitRules(o.home),
+    testProject: readConfLayers({ HOME: o.home }).JIRA_TEST_PROJECT?.trim() || null,
     choices: choices(o),
     coderabbit: await coderabbit(o),
   };
