@@ -1499,7 +1499,7 @@ check "NWS2: stdin review outside a worktree still exits 0" "$nws2_rc" "0"
 check "NWS2: stderr carries no unbound-variable error" "$(grep -cF 'unbound variable' "$tmp/nws2-err")" "0"
 check "NWS2: no 'disposition lookup failed' notice" "$(grep -cF 'disposition lookup failed' "$tmp/nws2-err")" "0"
 check "NWS2: the disposition lookup is not run without a ledger" "$(wc -l < "$NODE_SHIM_LOG" | tr -d ' ')" "0"
-check "NWS2: findings stay active in the merged review" "$(grep -cF '[qwen3coder-1]:' "$tmp/nws2-out")" "1"
+check "NWS2: findings stay active in the merged review" "$(grep -cE '\[[a-z0-9]+-1\]:' "$tmp/nws2-out")" "1"
 
 # Tests B1-B6 share a common repo-construction prefix (git init + checkout -b
 # <branch> + config x2 + write r.txt + add + commit) that only the initial
