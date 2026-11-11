@@ -86,6 +86,11 @@ if [ "${1:-} ${2:-}" = "api graphql" ]; then
     printf '%s' "${STUB_THREADS:-$none}" | jq -r "$q"
     exit $?
 fi
+if [ "${1:-} ${2:-}" = "pr view" ]; then
+    [ -n "${STUB_PR_HEAD:-}" ] || { echo "pr view boom" >&2; exit 1; }
+    printf '%s\n' "$STUB_PR_HEAD"
+    exit 0
+fi
 echo "unexpected gh: $*" >&2
 exit 1
 STUB
@@ -1061,6 +1066,47 @@ contains "29: ...naming the unread threads" "$out" "could not read the review th
 printf 'open-threads-ok: typed\n' > "$evd/typed29.md"
 rc=0; (cd "$fx" && wv q26t GO "$N29c" --evidence-file "$evd/typed29.md" >/dev/null 2>&1) || rc=$?
 check "29: evidence typing an open-threads-ok: line is refused" "$rc" 2
+
+# --- 30. --bind attaches a branch GO to its PR at the same head ---
+bindf() { printf '%s/q30/bind-pr9845-%s.md' "$scope_dir" "$SHA_A"; }
+rc=0; WV_NOPR="--branch fix/himmel-9845-x" wv q30 GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
+check "30: setup, the branch GO is written" "$rc" 0
+VPR=9845; rc=0; verdict_rc q30 "$SHA_A" || rc=$?
+check "30: control, the branch GO alone is no merge trust" "$([ "$rc" -ne 0 ] && echo refused || echo accepted)" refused
+rc=0; out=$(STUB_PR_HEAD="$SHA_B" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" 2>&1) || rc=$?
+check "30: a PR head that differs from the verdict head is refused rc 6" "$rc" 6
+check "30: ...and nothing is written" "$([ -e "$(bindf)" ] && echo yes || echo no)" no
+rc=0; out=$(unset STUB_PR_HEAD; WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" 2>&1) || rc=$?
+check "30: a PR head that cannot be read is refused rc 7" "$rc" 7
+check "30: ...and nothing is written (unread head)" "$([ -e "$(bindf)" ] && echo yes || echo no)" no
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_B" 2>&1) || rc=$?
+check "30: a head with no branch GO is refused rc 2" "$rc" 2
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 NO-GO "$SHA_A" 2>&1) || rc=$?
+check "30: --bind on a NO-GO is refused rc 2" "$rc" 2
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845 --evidence-file $ev" wv q30 GO "$SHA_A" 2>&1) || rc=$?
+check "30: --bind with --evidence-file is refused rc 2" "$rc" 2
+rc=0; wv q30n NO-GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30n GO "$SHA_A" 2>&1) || rc=$?
+check "30: a qid holding only a NO-GO is refused rc 2" "$rc" 2
+check "30: ...and nothing is written (NO-GO qid)" "$([ -e "$scope_dir/q30n/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+rc=0; wv q30p GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30p GO "$SHA_A" 2>&1) || rc=$?
+check "30: a GO that already names a PR is not a branch verdict, refused rc 2" "$rc" 2
+check "30: ...and nothing is written (PR GO qid)" "$([ -e "$scope_dir/q30p/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" 2>&1) || rc=$?
+check "30: the bind at the PR's head is written rc 0" "$rc" 0
+check "30: ...to bind-pr<n>-<head>.md" "$([ -f "$(bindf)" ] && echo yes || echo no)" yes
+check "30: the pr line sits two lines after the verdict line" "$(awk '/^## Verdict/ {p=1; next} p && NF && !n {n=NR+2; next} n && NR==n {print; exit}' "$(bindf)")" "pr: 9845"
+contains "30: the record names its source" "$(cat "$(bindf)")" "bound-from: judge.md"
+contains "30: the evidence body is carried verbatim" "$(cat "$(bindf)")" "- the hook never runs unset"
+VPR=9845; rc=0; verdict_rc q30 "$SHA_A" || rc=$?
+check "30: go_trust_verdict accepts the bound PR" "$rc" 0
+VPR=9846; rc=0; verdict_rc q30 "$SHA_A" || rc=$?
+check "30: go_trust_verdict refuses another PR at the same head" "$rc" 2
+VPR=
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" 2>&1) || rc=$?
+check "30: re-running the same bind rewrites the same file rc 0" "$rc" 0
+check "30: ...leaving one bound record" "$(find "$scope_dir/q30" -name 'bind-pr*' | wc -l | tr -d ' ')" 1
 
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"

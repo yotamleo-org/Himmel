@@ -825,6 +825,38 @@ printf '# VERDICT K - judge\n\n**NO-GO** for head `%s`.\n\npr: 93\n' "$A12" > "$
 got=$(gg12 go_nogo_after "$D12" 93 "$NG" "$B12")
 [ "${got%%|*}" = 2 ] || fail "12 drift: a NO-GO with no Verdict heading is rc 2, never skipped: $got"
 
+# --- 12g. 9845: the newest verdict at the judged head wins (go_real_go_time, go_nogo_after's cutoff)
+rec12t() {  # <verdicts-dir> <qid> <name> <verdict line> <pr> <written-at> [<extra lines>] - a stamped unsigned record
+    mkdir -p "$1/$2"
+    printf '# VERDICT %s - judge\n\nwriter-session: s\nwritten-at: %s\n\n## Verdict\n\n%s\n\npr: %s\n%s\n## Evidence checked\n\ne\n' "$2" "$6" "$4" "$5" "${7:-}" > "$1/$2/$3.md"
+}
+T1=2026-11-01T00:00:00Z T2=2026-11-02T00:00:00Z T3=2026-11-03T00:00:00Z
+N12="$ROOT/n12g/verdicts"
+rec12t "$N12" J real1 "**GO** for head \`$A12\`." 93 "$T2"
+rec12t "$N12" J real2 "**GO** for head \`$A12\`." 93 "$T1"
+rec12t "$N12" J noop "**GO** for head \`$A12\`." 93 "$T3" "delta: no-op"$'\n'"delta-judged: $P12"
+rec12t "$N12" J other "**GO** for head \`$B12\`." 93 "$T3"
+got=$(gg12 go_real_go_time "$N12/J" "$A12")
+[ "$got" = "0|$T2" ] || fail "12g: go_real_go_time is the newest real GO at the head, a no-op GO and another head's GO never counting: $got"
+got=$(gg12 go_real_go_time "$N12/J" "$S12")
+[ "$got" = "0|" ] || fail "12g: go_real_go_time names nothing for a head with no real GO: $got"
+rec12 "$N12" K unstamped "**GO** for head \`$A12\`." 93
+got=$(gg12 go_real_go_time "$N12/K" "$A12")
+[ "$got" = "0|" ] || fail "12g: a real GO with no written-at stamp gives no cutoff: $got"
+cut12() {  # <label> <NO-GO head> <NO-GO written-at, or - for none> <cutoff> <asked head> <want rc>
+    local d="$ROOT/c12g-$1/verdicts"
+    if [ "$3" = - ]; then rec12 "$d" K judge "**NO-GO** for head \`$2\`." 93
+    else rec12t "$d" K judge "**NO-GO** for head \`$2\`." 93 "$3"; fi
+    got=$(gg12 go_nogo_after "$d" 93 "$NG" "$5" "$4")
+    [ "${got%%|*}" = "$6" ] || fail "12g NO-GO ($1): go_nogo_after with cutoff $4 wants rc $6: $got"
+}
+cut12 older "$A12" "$T1" "$T2" "$A12" 0
+cut12 tie "$A12" "$T2" "$T2" "$A12" 1
+cut12 newer "$A12" "$T3" "$T2" "$A12" 1
+cut12 unstamped "$A12" - "$T2" "$A12" 1
+cut12 descendant "$B12" "$T1" "$T2" "$A12" 1
+cut12 nocutoff "$A12" "$T1" "" "$A12" 1
+
 # --- 12f. Structure: the carry rule is never re-inlined in go.sh or auto-go.sh
 AUTO_GO_SRC="${AUTO_GO_SRC:-$HERE/../handover/chief-kit/auto-go.sh}"
 for site in "$GO_SCRIPT" "$AUTO_GO_SRC"; do

@@ -9,6 +9,14 @@
 #
 # Usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--prior <GO|NO-GO>] [--repo <owner/name>] [--model <id>] [--effort <level>] [--delta-noop <judged-head>]
 #
+# `write-verdict.sh <qid> GO <head> --bind --pr <n>` attaches this qid's signed
+# branch GO (written with --branch and no --pr) for <head> to PR <n>, with no new
+# judgement: it refuses unless `gh pr view <n>` reports <head> as the PR's head
+# (exit 6; a read that fails, exit 7). It takes no --evidence-file, --judge,
+# --branch, --model or --effort: the record copies the source's model, effort,
+# branch and body, names the source in `bound-from:` and its bytes in
+# `bound-source-sha256:`, and is written as bind-pr<n>-<head>.md beside it.
+#
 # --repo <owner/name> rules on a PR of that adopted repo instead of this
 # checkout's: the record goes under <user>/<owner>--<name> and carries a
 # `repo: <owner/name>` header line, the line go.sh --repo checks. Run with no
@@ -150,7 +158,8 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 usage() {
-    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--delta-noop <judged-head> [--open-threads-ok <reason>]] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--repo <owner/name>] [--model <id>] [--effort <level>]" >&2
+    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--delta-noop <judged-head> [--open-threads-ok <reason>]] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--repo <owner/name>] [--model <id>] [--effort <level>]
+       write-verdict.sh <qid> GO <head> --bind --pr <n> [--repo <owner/name>]" >&2
     exit 2
 }
 seg_ok() {
@@ -160,9 +169,10 @@ seg_ok() {
 [ "$#" -ge 3 ] || usage
 QID=$1 ANSWER=$2 HEAD=$3
 shift 3
-EVIDENCE="" NAME=judge NAME_SET=0 PR="" BRANCH="" BIND="" DNOOP="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT="" VREPO="" VREPO_SET=0 THREADS_OK="" THREADS_OK_SET=0 THREADS_NOTE=""
+EVIDENCE="" NAME=judge NAME_SET=0 PR="" BRANCH="" BIND="" DNOOP="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT="" VREPO="" VREPO_SET=0 THREADS_OK="" THREADS_OK_SET=0 THREADS_NOTE="" PRBIND=0 BIND_FROM="" BIND_SHA="" BIND_PRHEAD="" bindbody=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --bind) PRBIND=1; shift ;;
         --open-threads-ok) [ "$#" -ge 2 ] || usage; THREADS_OK=$2; THREADS_OK_SET=1; shift 2 ;;
         --model) [ "$#" -ge 2 ] || usage; MODEL=$2; shift 2 ;;
         --effort) [ "$#" -ge 2 ] || usage; EFFORT=$2; shift 2 ;;
@@ -247,6 +257,18 @@ if [ "$THREADS_OK_SET" -eq 1 ]; then
         '' | *[[:cntrl:]]*) echo "write-verdict: --open-threads-ok needs a one-line reason (no control character)" >&2; exit 2 ;;
     esac
 fi
+# --bind attaches an existing branch GO: no judgement of its own, so no evidence file,
+# no judge name and no model or effort (the record copies the source's).
+if [ "$PRBIND" -eq 1 ]; then
+    if [ "$ANSWER" != GO ] || [ -n "$EVIDENCE" ] || [ -n "$BRANCH" ] || [ -n "$BIND" ] || [ -n "$DNOOP" ] || [ -n "$PRIOR" ] \
+            || [ -n "$RESIDUAL_OF" ] || [ -n "$MODEL" ] || [ -n "$EFFORT" ] || [ "$NAME_SET" -eq 1 ] || [ "$THREADS_OK_SET" -eq 1 ]; then
+        echo "write-verdict: --bind records a GO from an existing branch GO only: pass <qid> GO <head> --bind --pr <n> [--repo <owner/name>], with no --evidence-file, --judge, --branch, --model, --effort, --prior, --residual-of, --bind-reviewed, --delta-noop or --open-threads-ok" >&2
+        exit 2
+    fi
+    NAME="bind-pr$PR-$HEAD"
+    [ -n "$PR" ] || { echo "write-verdict: --bind needs --pr <n>" >&2; exit 2; }
+fi
+if [ "$PRBIND" -eq 0 ]; then
 [ -n "$EVIDENCE" ] || { echo "write-verdict: --evidence-file <path> is required" >&2; exit 2; }
 # the record names the model and effort that ruled, so judge accuracy is measurable.
 # A flag wins; an in-process judge call has no model env, so it passes the flags.
@@ -259,6 +281,7 @@ for wv_f in model:"$MODEL" effort:"$EFFORT"; do
             exit 2 ;;
     esac
 done
+fi
 if [ -n "$RESIDUAL_OF" ] && ! [[ $RESIDUAL_OF =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
     echo "write-verdict: --residual-of must be a ticket key like PROJ-123 (got '$RESIDUAL_OF')" >&2
     exit 2
@@ -279,8 +302,10 @@ case "$BRANCH" in
     *[!A-Za-z0-9._/-]*|*..*|/*|*/) echo "write-verdict: --branch '$BRANCH' is not a plain branch name ([A-Za-z0-9._/-], no '..')" >&2; exit 2 ;;
 esac
 # The evidence must live in this uid's Claude scratch root, reached without a
-# symlink at any step from that root down.
+# symlink at any step from that root down. (--bind has no evidence file: its body is the
+# source record's, read once the scope is known.)
 SCRATCH="/tmp/claude-$(id -u)"
+if [ "$PRBIND" -eq 0 ]; then
 case "$EVIDENCE" in
     "$SCRATCH"/*) ;;
     *) echo "write-verdict: evidence file '$EVIDENCE' must be an absolute path under $SCRATCH/" >&2; exit 2 ;;
@@ -406,6 +431,7 @@ fi
 if awk '/^layer-decision:/ && (!/^layer-decision: (text|os|classifier|accept)[ \t]+[^ \t]/ || /\r$/) { bad = 1 } END { exit !bad }' "$EVIDENCE"; then
     echo "write-verdict: warning - a layer-decision line lacks a layer keyword; review-round.sh will not honour it. Write: layer-decision: text|os|classifier|accept <reason>" >&2
 fi
+fi
 case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
     ''|0|false|off|no) ;;
     *)
@@ -450,6 +476,60 @@ if [ "$VREPO_SET" -eq 0 ]; then
 fi
 SCOPE=$(go_verdict_scope "$ANCHOR" "$VREPO") || { echo "write-verdict: cannot resolve this repo's <user>/<bucket> verdict scope" >&2; exit 3; }
 [ -d "$ROOT" ] || { echo "write-verdict: handover root '$ROOT' is not a directory" >&2; exit 3; }
+
+# --bind: the one signed branch GO of this qid for <head> (a header with branch: and no pr:)
+# becomes PR <n>'s GO. A verdict is about the bytes at a head, so the only live fact checked
+# is that the PR's head is that head. The record copies the source's model, effort, branch
+# and body; the writer below signs it like any other.
+bind_field() {  # <snapshot> <field> - the first `<field>: ` line of the header block under the verdict line
+    printf '%s' "$1" | tr -d '\r' | awk -v f="$2: " '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR >= n { if (!NF) exit; if (index($0, f) == 1) { print substr($0, length(f) + 1); exit } }'
+}
+if [ "$PRBIND" -eq 1 ]; then
+    if ! declare -F go_verdict_snapshot >/dev/null 2>&1 || ! declare -F go_verdict_mac_ok_text >/dev/null 2>&1; then
+        echo "write-verdict: cannot load go_verdict_snapshot from scripts/lib/go-gate.sh - refusing" >&2; exit 3
+    fi
+    bsrc="" bn=0 bsnap=""
+    for bf in "$ROOT/$SCOPE/verdicts/$QID"/*.md; do
+        [ -f "$bf" ] || continue
+        go_verdict_snapshot "$bf" || { echo "write-verdict: --bind refused - cannot read '$bf' whole; nothing written" >&2; exit 2; }
+        bl=$(printf '%s' "$GO_VERDICT_SNAP" | go_verdict_line /dev/stdin)
+        case "$bl" in '**GO** for head `'"$HEAD"'`'|'**GO** for head `'"$HEAD"'`.') ;; *) continue ;; esac
+        [ -n "$(bind_field "$GO_VERDICT_SNAP" branch)" ] && [ -z "$(bind_field "$GO_VERDICT_SNAP" pr)" ] || continue
+        [ "$(bind_field "$GO_VERDICT_SNAP" repo)" = "$VREPO" ] || continue
+        bname=${bf##*/}; bname=${bname%.md}
+        go_verdict_mac_ok_text "$GO_VERDICT_SNAP" "$SCOPE" "$QID" "$bname" || continue
+        printf '%s' "$GO_VERDICT_SNAP" | grep -qE '^(delta|delta-scope|delta-from|delta-judged|bound-from|reviewed-head):' && continue
+        bn=$((bn + 1)); bsrc=$bf; bsnap=$GO_VERDICT_SNAP
+    done
+    if [ "$bn" -ne 1 ]; then
+        echo "write-verdict: --bind refused - $QID holds $bn signed branch GO(s) for head $HEAD (a branch GO is a record with branch: and no pr:, written with --branch and no --pr); want exactly one; nothing written" >&2
+        exit 2
+    fi
+    # shellcheck source=scripts/lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    bb_tb=""; . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null && bb_tb=${_TIMEOUT_BIN:-}
+    bb_rc=0; BIND_PRHEAD=$(${bb_tb:+"$bb_tb" -k 5 30} gh pr view "$PR" ${VREPO:+--repo "$VREPO"} --json headRefOid --jq .headRefOid 2>/dev/null </dev/null) || bb_rc=$? # swallow-ok: rc captured, a failed or empty read exits 7 below
+    if [ "$bb_rc" -ne 0 ] || [ -z "$BIND_PRHEAD" ]; then
+        echo "write-verdict: --bind refused - could not read PR #$PR's head from gh (rc $bb_rc); nothing written" >&2
+        exit 7
+    fi
+    if [ "$BIND_PRHEAD" != "$HEAD" ]; then
+        echo "write-verdict: --bind refused - PR #$PR is at head $BIND_PRHEAD, not $HEAD; a GO is about the bytes at its head, so it binds only to a PR at that head; nothing written" >&2
+        exit 6
+    fi
+    BIND_FROM=${bsrc##*/}
+    BIND_SHA=$(printf '%s' "$bsnap" | { sha256sum 2>/dev/null || shasum -a 256 2>/dev/null; } | cut -d' ' -f1) # swallow-ok: an empty digest is refused just below
+    BRANCH=$(bind_field "$bsnap" branch) MODEL=$(bind_field "$bsnap" model) EFFORT=$(bind_field "$bsnap" effort)
+    if [ -z "$BIND_SHA" ] || [ -z "$MODEL" ] || [ -z "$EFFORT" ]; then
+        echo "write-verdict: --bind refused - the source $BIND_FROM carries no model, effort or readable bytes; nothing written" >&2
+        exit 2
+    fi
+    bindbody=$(mktemp "${TMPDIR:-/tmp}/write-verdict-bind.XXXXXX") || { echo "write-verdict: cannot create a temp file" >&2; exit 5; }
+    trap 'rm -f "$bindbody"' EXIT
+    # the source's body: everything after its header block, less its trailing mac line
+    printf '%s' "$bsnap" | tr -d '\r' | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR >= n && !d { if (!NF) d = 1; next } d { buf[++k] = $0 } END { for (i = 1; i <= k; i++) if (!(i == k && buf[i] ~ /^mac: /)) print buf[i] }' > "$bindbody"
+    EVIDENCE=$bindbody
+fi
 
 # the judged head must be a strict descendant of the reviewed head
 # whose delta is test-path-only or comment-only - review-round.sh's own rule,
@@ -580,7 +660,7 @@ until mkdir "$lockd" 2>/dev/null; do
     fi
     sleep 0.1
 done
-trap 'rm -f "$tmpf" "$lockd/owner"; rmdir "$lockd" 2>/dev/null' EXIT
+trap 'rm -f "$tmpf" "$bindbody" "$lockd/owner"; rmdir "$lockd" 2>/dev/null' EXIT
 printf 'pid=%s at=%s\n' "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$lockd/owner" 2>/dev/null || true
 
 # a NO-GO in <name>.md for another head is never replaced - the
@@ -637,6 +717,7 @@ if ! {
     { [ -z "$BRANCH" ] || printf 'branch: %s\n' "$BRANCH"; } &&
     { [ -z "$PRIOR" ] || printf 'prior: %s\nflipped: %s\n' "$PRIOR" "$([ "$PRIOR" = "$ANSWER" ] && echo n || echo y)"; } &&
     printf 'model: %s\neffort: %s\n' "$MODEL" "$EFFORT" &&
+    { [ -z "$BIND_FROM" ] || printf 'bound-from: %s\nbound-source-sha256: %s\nbound-pr-head: %s\nbound-by: write-verdict --bind; no new judgement\n' "$BIND_FROM" "$BIND_SHA" "$BIND_PRHEAD"; } &&
     { [ -z "$DNOOP" ] || printf 'delta: no-op\ndelta-judged: %s\ndelta-class: none\n' "$DNOOP"; } &&
     { [ -z "$THREADS_NOTE" ] || printf 'open-threads-ok: %s\n' "$THREADS_NOTE"; } &&
     printf '\n' &&

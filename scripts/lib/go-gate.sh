@@ -306,6 +306,11 @@ go_trust_verdict() {
         vpr=$(printf '%s' "$snap" | tr -d '\r' | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR == n { print; exit }' \
             | sed -nE 's/^pr: ([1-9][0-9]*)$/\1/p')
         if [ -z "$vpr" ]; then
+            # a signed branch GO (branch: and no pr:) is the source of a write-verdict.sh --bind: it
+            # is no trust itself (it names no PR) and a bound record beside it carries the PR.
+            if [ -n "$(printf '%s' "$snap" | tr -d '\r' | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR >= n { if (!NF) exit; if (index($0, "branch: ") == 1) { print; exit } }')" ]; then
+                continue
+            fi
             printf 'the verdict in %s names no PR (no pr: line after the verdict line) — the judge rewrites it with write-verdict.sh --pr %s.\n' "$f" "$pr"
             return 2
         fi
@@ -396,7 +401,41 @@ go_noop_chain() {
     printf '%s%s -\n' "$out" "$h"
 }
 
-# go_nogo_after <verdicts-dir> <pr> <anchor> <head> — rc 0 when no qid of
+# go_written_at <file> — the `written-at: <UTC time>` header line above the
+# `## Verdict` heading, when it is a full UTC stamp; nothing otherwise.
+go_written_at() {
+    local t
+    t=$(awk '{ sub(/\r$/, "") } /^## Verdict[[:space:]]*$/ { exit } /^written-at: / { print substr($0, 13); exit }' "$1" 2>/dev/null) || return 2
+    [[ $t =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] && printf '%s\n' "$t"
+    return 0
+}
+
+# go_real_go_time <qid-dir> <head> — the newest written-at of a real GO (no
+# `delta: no-op` line) for <head> in <qid-dir>; nothing when there is none or none
+# carries a stamp. rc 2, the reason on stdout, on a read failure.
+# shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+go_real_go_time() {
+    local LC_ALL=C rf rl t newest="" drc cr=$'\r'
+    for rf in "$1"/*.md; do
+        [ -f "$rf" ] || continue
+        if ! rl=$(go_verdict_line "$rf"); then
+            printf 'cannot read the verdict %s\n' "$rf"
+            return 2
+        fi
+        case "$rl" in '**GO** for head `'"$2"'`'|'**GO** for head `'"$2"'`.') ;; *) continue ;; esac
+        drc=0; grep -qxE "delta: no-op${cr}?" "$rf" 2>/dev/null || drc=$?
+        case "$drc" in
+            0) continue ;;
+            1) ;;
+            *) printf 'cannot read the verdict %s\n' "$rf"; return 2 ;;
+        esac
+        t=$(go_written_at "$rf") || { printf 'cannot read the verdict %s\n' "$rf"; return 2; }
+        if [ -n "$t" ] && { [ -z "$newest" ] || [[ $t > $newest ]]; }; then newest=$t; fi
+    done
+    [ -z "$newest" ] || printf '%s\n' "$newest"
+}
+
+# go_nogo_after <verdicts-dir> <pr> <anchor> <head> [<cutoff>] — rc 0 when no qid of
 # go_pr_qids holds a record with the line `pr: <pr>` whose verdict line
 # (go_verdict_line) is `**NO-GO** for head `<nh>`` with <nh> = <head> or a
 # descendant of it in the <anchor> checkout. A NO-GO quoted anywhere else in a
@@ -404,9 +443,12 @@ go_noop_chain() {
 # read failure, a git answer other than yes/no (an unknown commit included), or
 # a `pr: <pr>` record whose verdict line is neither a GO nor a NO-GO for a
 # 40-hex head (a drifted NO-GO must not be skipped).
+# A <cutoff> (a UTC stamp, go_noop_carry's newest real GO at the head) lets a NO-GO
+# at exactly <head> pass when its written-at is strictly older: the newest verdict at
+# the head is the GO. A NO-GO with no stamp, a tie, or a descendant's NO-GO still vetoes.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_nogo_after() {
-    local qids q files frc nf l nh grc cr=$'\r' gore='^\*\*GO\*\* for head `[0-9a-f]{40}`\.?$'
+    local LC_ALL=C qids q files frc nf l nh nt grc cr=$'\r' gore='^\*\*GO\*\* for head `[0-9a-f]{40}`\.?$'
     qids=$(go_pr_qids "$1" "$2" "$4") || { printf '%s\n' "$qids"; return 2; }
     while IFS= read -r q; do
         [ -n "$q" ] || continue
@@ -426,6 +468,10 @@ go_nogo_after() {
                 [[ $l =~ $gore ]] && continue
                 printf 'the verdict %s names PR %s but its verdict line is neither a GO nor a NO-GO for a full head, so a NO-GO in it cannot be ruled out\n' "$nf" "$2"
                 return 2
+            fi
+            if [ "$nh" = "$4" ] && [ -n "${5:-}" ]; then
+                nt=$(go_written_at "$nf") || { printf 'cannot read the verdict %s, so a NO-GO in it cannot be ruled out\n' "$nf"; return 2; }
+                if [ -n "$nt" ] && [[ $nt < $5 ]]; then continue; fi
             fi
             grc=0
             if [ "$nh" != "$4" ]; then
@@ -455,12 +501,18 @@ go_nogo_after() {
 #   run from an adopted repo's checkout).
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_noop_carry() {
-    local chain line why rc root="" rf rl drc real=0 cr=$'\r'
+    local chain line why rc root="" rf rl drc real=0 cr=$'\r' cut
     chain=$(go_noop_chain "$1" "$2" "$5") || { printf '%s\n' "$chain"; return 2; }
     while IFS= read -r line; do
         [ -n "$line" ] || continue
         root=${line%% *}
-        rc=0; why=$(go_nogo_after "$1" "$3" "$4" "$root") || rc=$?
+        # at the chain's root (the judged head) the newest verdict wins: a NO-GO there older than
+        # <qid>'s newest real GO no longer stands. Every other head of the chain keeps every NO-GO.
+        cut=""
+        if [ "${line#* }" = - ]; then
+            cut=$(go_real_go_time "$1/$2" "$root") || { printf '%s\n' "$cut"; return 2; }
+        fi
+        rc=0; why=$(go_nogo_after "$1" "$3" "$4" "$root" "$cut") || rc=$?
         [ "$rc" -eq 0 ] || { printf '%s\n' "$why"; return "$rc"; }
     done <<< "$chain"
     for rf in "$1/$2"/*.md; do
