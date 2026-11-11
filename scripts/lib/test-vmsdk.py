@@ -2902,6 +2902,8 @@ class TestLiveTestMarker(unittest.TestCase):
                                            "HIMMEL_GUEST_EXEC_LOG": str(self.log), "LTV_LOG": str(self.verb_log)}, clear=False)
         env.start()
         self.addCleanup(env.stop)
+        for k in ("LTV_RC", "LTV_FILE", "HIMMEL_JIRA_LIVE_TEST"):
+            os.environ.pop(k, None)
         vmsdk._live_test_value.cache_clear()
         self.addCleanup(vmsdk._live_test_value.cache_clear)
 
