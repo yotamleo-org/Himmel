@@ -1159,8 +1159,7 @@ pool_watch_wake() {
 }
 # underfill_repool: succeeds (and saves the new key set) when the marker is due for a re-probe
 # and the pool's non-empty key set differs from the saved one. A failed probe reads no output and
-# never counts; every due probe restarts the cadence clock, except a paused one, which leaves the
-# marker as it was so the next sample probes again. The probe blocks the Telegram path
+# never counts. The probe blocks the Telegram path
 # and the heartbeat like a tick does, so it gets CHIEF_WAIT_REPOOL_TIMEOUT (default 120), well
 # inside the five-minute stale-heartbeat window.
 underfill_repool() {
