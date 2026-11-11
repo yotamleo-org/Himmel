@@ -74,29 +74,32 @@ add HIMMEL-1 HIMMEL-2 --goal "The waiter wakes once before the drain line"; rc=$
 check '3. a pair already in one chain exits 0' 0 "$rc"
 check '3. and changes nothing' "$(cat "$tmp/before")" "$(cat "$R")"
 
-# 4. refusals leave the registry byte for byte
-refused() { # <label> <args...>
-    local label="$1"; shift
+# 4. refusals leave the registry byte for byte, each for its own reason
+refused() { # <label> <reason text> <args...>
+    local label="$1" why="$2"; shift 2
     cp "$R" "$tmp/before"
     add "$@"; local rc=$?
     check "4. $label is refused (rc 1)" 1 "$rc"
+    case "$(cat "$tmp/err")" in *"$why"*) r=own ;; *) r="[$(cat "$tmp/err")]" ;; esac
+    check "4. $label is refused for its own reason ($why)" own "$r"
     check "4. $label leaves the registry unchanged" "$(cat "$tmp/before")" "$(cat "$R")"
 }
 issue HIMMEL-11 "To Do" '["v1"]' '[]'
 issue HIMMEL-12 "To Do" '["v1"]' '["is blocked by HIMMEL-11"]'
 long="$(printf 'word %.0s' $(seq 1 18))end"
-refused 'a goal over 90 characters' HIMMEL-11 HIMMEL-12 --goal "$long"
-refused 'a goal under 3 words' HIMMEL-11 HIMMEL-12 --goal "Two words"
-refused 'a new chain with no goal' HIMMEL-11 HIMMEL-12
-refused 'a key that is not open' HIMMEL-1 HIMMEL-4 --goal "A done key joins nothing"
-refused 'a key outside the version' HIMMEL-1 HIMMEL-5 --version v1 --goal "A later key joins nothing"
-refused 'two keys in no shared version' HIMMEL-1 HIMMEL-5 --goal "A later key joins nothing"
-refused 'an unlinked pair' HIMMEL-1 HIMMEL-6 --goal "Unlinked keys join nothing here"
-refused 'keys held by two chains' HIMMEL-3 HIMMEL-9 --goal "Two chains are never merged here"
-refused 'a key missing from the mirror' HIMMEL-11 HIMMEL-99 --goal "An unknown key joins nothing"
-refused 'a new chain whose id is taken' HIMMEL-11 HIMMEL-12 --id other-work --goal "A taken id opens nothing"
+refused 'a goal over 90 characters' 'at most 90 characters' HIMMEL-11 HIMMEL-12 --goal "$long"
+refused 'a goal under 3 words' 'at least 3 words' HIMMEL-11 HIMMEL-12 --goal "Two words"
+refused 'a new chain with no goal' 'a new chain needs --goal' HIMMEL-11 HIMMEL-12
+refused 'a key that is not open' 'HIMMEL-4 is not open' HIMMEL-1 HIMMEL-4 --goal "A done key joins nothing"
+refused 'a key outside the version' 'are not both in v1' HIMMEL-1 HIMMEL-5 --version v1 --goal "A later key joins nothing"
+refused 'two keys in no shared version' 'share no fixVersion' HIMMEL-1 HIMMEL-5 --goal "A later key joins nothing"
+refused 'an unlinked pair' 'no Jira Blocks link' HIMMEL-1 HIMMEL-6 --goal "Unlinked keys join nothing here"
+issue HIMMEL-9 "To Do" '["v1"]' '["is blocked by HIMMEL-3"]'
+refused 'linked keys held by two chains' 'merge them by hand' HIMMEL-3 HIMMEL-9 --goal "Two chains are never merged here"
+refused 'a key missing from the mirror' 'HIMMEL-99 is not in the Jira mirror' HIMMEL-11 HIMMEL-99 --goal "An unknown key joins nothing"
+refused 'a new chain whose id is taken' 'chain id other-work is taken' HIMMEL-11 HIMMEL-12 --id other-work --goal "A taken id opens nothing"
 printf '{"schema":"himmel.chain-registry/1","chains":[{"id":"x","goal":"short","members":["HIMMEL-9"]}]}\n' > "$R"
-refused 'an invalid registry' HIMMEL-11 HIMMEL-12 --goal "A valid goal for a new chain"
+refused 'an invalid registry' 'the registry is invalid' HIMMEL-11 HIMMEL-12 --goal "A valid goal for a new chain"
 
 # 5. usage
 bash "$SUT" HIMMEL-1 >/dev/null 2>&1; rc=$?

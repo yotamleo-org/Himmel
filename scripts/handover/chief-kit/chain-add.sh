@@ -152,7 +152,7 @@ case "$prc" in
     *) refuse "the writer failed (rc=$prc): $msg" ;;
 esac
 valid "$new" || refuse "the result fails chain-state.mjs: $(grep -m1 '^chain-state:' "$tmp/err")"
-chmod --reference="$reg" "$new" 2>/dev/null  # gnu-ok: Linux-only kit; the write keeps the registry mode
+chmod --reference="$reg" "$new" || refuse "cannot give the new registry the mode of $reg"  # gnu-ok: Linux-only kit; the write keeps the registry mode
 mv -f "$new" "$reg" || refuse "cannot replace $reg"
 new=""
 echo "chain-add: $msg"

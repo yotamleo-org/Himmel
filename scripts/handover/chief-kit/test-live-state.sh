@@ -400,7 +400,7 @@ db="${JIRA_STUB_DB:?}"
 printf '%s\n' "$*" >> "$db/calls"
 case "$1" in
     get) st="$(cat "$db/status-$2" 2>/dev/null)" || exit 1; printf '%s\tTask\t%s\ttitle of %s\n' "$2" "$st" "$2" ;;
-    links) cat "$db/links" 2>/dev/null | grep -F "$2" || true ;;
+    links) [ -z "${JIRA_STUB_SLEEP:-}" ] || sleep "$JIRA_STUB_SLEEP"; cat "$db/links" 2>/dev/null | grep -F "$2" || true ;;
     link) [ "$3" = --blocks ] || exit 2; printf '9%s\tBlocks\tinward=%s\toutward=%s\t%s blocks %s\n' "$RANDOM" "$2" "$4" "$2" "$4" >> "$db/links"; echo "Linked: $2 blocks $4" ;;
     *) exit 2 ;;
 esac
@@ -447,6 +447,13 @@ echo 'To Do' > "$jdb/status-HIMMEL-3"
 af_doc 'pool-disposition: HIMMEL-2 question after HIMMEL-1' 'pool-disposition: HIMMEL-3 slice after HIMMEL-1'
 bash "$SCRIPT" "$af" >/dev/null 2>&1
 check '26. two after lines write a link each' 'link HIMMEL-1 --blocks HIMMEL-2|link HIMMEL-1 --blocks HIMMEL-3' "$(grep '^link ' "$jdb/calls" | paste -sd'|')"
+: > "$jdb/calls"; : > "$jdb/links"; rm -rf "$TMPDIR"/himmel-chain-links-*
+af_doc 'pool-disposition: HIMMEL-2 question after HIMMEL-1'
+JIRA_STUB_SLEEP=1 bash "$SCRIPT" "$af" >/dev/null 2>&1 &
+race26=$!
+JIRA_STUB_SLEEP=1 bash "$SCRIPT" "$af" >/dev/null 2>&1
+wait "$race26"
+check '26. two renders at once write the link once' 1 "$(link_calls)"
 unset LIVE_STATE_JIRA_CMD JIRA_STUB_DB TMPDIR
 
 [ "$t1" = tok-one ] || { echo "FAIL - setup: lock token [$t1]"; fails=$((fails+1)); }

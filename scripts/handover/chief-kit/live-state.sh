@@ -256,17 +256,25 @@ after_pairs="$(awk '
         split($0, w, " "); on = w[5]; sub(/[^A-Z0-9-].*$/, "", on)
         if (on != w[2]) print on, w[2]
     }' "$doc")"
-if [ -n "$after_pairs" ]; then
-    seen=""
+# The check, link and record of every pair run under doc_lock on the doc's record file, so two
+# renders at once cannot both find a link absent and both write it. With no private record dir
+# or no lock, no link is written.
+link_after_pairs() {
+    local seen_dir seen lrc on key pair links open k st
     seen_dir="${TMPDIR:-/tmp}/himmel-chain-links-$UID"
     # shellcheck disable=SC2174 # only the final, per-user directory is ours
-    if mkdir -m 700 -p "$seen_dir" 2>/dev/null && [ ! -L "$seen_dir" ] && [ -O "$seen_dir" ]; then
-        # prim-ok: the record key follows the doc file's own symlink, as doc_lock's does
-        seen="$seen_dir/$(realpath -- "$doc" | sha256sum | cut -d' ' -f1)"
+    if ! mkdir -m 700 -p "$seen_dir" 2>/dev/null || [ -L "$seen_dir" ] || [ ! -O "$seen_dir" ]; then
+        echo "live-state: no private record dir $seen_dir: no Jira link written" >&2
+        return
     fi
+    # prim-ok: the record key follows the doc file's own symlink, as doc_lock's does
+    seen="$seen_dir/$(realpath -- "$doc" | sha256sum | cut -d' ' -f1)"
+    : >> "$seen" || { echo "live-state: cannot write $seen: no Jira link written" >&2; return; }
+    lrc=0; doc_lock "$seen" live-state || lrc=$?
+    [ "$lrc" -ne 1 ] || { echo "live-state: no lock on $seen: no Jira link written" >&2; return; }
     while read -r on key; do
         pair="$on blocks $key"
-        [ -n "$seen" ] && grep -qxF "$pair" "$seen" 2>/dev/null && continue
+        grep -qxF "$pair" "$seen" && continue
         links="$(jira links "$key" 2>/dev/null)" || { echo "live-state: cannot read $key's Jira links: $pair not written" >&2; continue; }  # swallow-ok: an unread link list writes no link and says so; the pair is tried again next render
         if ! awk -F'\t' -v p="$pair" '$2 == "Blocks" && $NF == p { f = 1 } END { exit !f }' <<< "$links"; then
             open=yes
@@ -278,8 +286,10 @@ if [ -n "$after_pairs" ]; then
             jira link "$on" --blocks "$key" >/dev/null 2>&1 || { echo "live-state: jira link $on --blocks $key failed" >&2; continue; }
             echo "live-state: linked $pair (pool-disposition: $key after $on)" >&2
         fi
-        [ -z "$seen" ] || printf '%s\n' "$pair" >> "$seen"
+        printf '%s\n' "$pair" >> "$seen"
     done <<EOF
 $after_pairs
 EOF
-fi
+    doc_unlock
+}
+[ -z "$after_pairs" ] || link_after_pairs
