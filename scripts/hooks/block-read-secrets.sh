@@ -1245,8 +1245,8 @@ g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
-    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gcfg=0 gsub=0 gskip=0 rdr=0
-    local gsc="" kflag=0 fv=0 bx=0 sd1=0 sdenv=0 scprop=0 scpv=0 scenv=0 scv=""
+    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gcode=${g4shadow:-0} gsub=0 gskip=0 rdr=0
+    local gsc="" kflag=0 fv=0 bx=0 sd1=0 sdenv=0 scprop=0 scpv=0 scenv=0 scv="" gfv=0 gfa=0 gfx="" gfo="" gfp=""
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -1274,8 +1274,8 @@ g4_scan() {
             if [ "$gskip" = 1 ]; then gskip=0
             else
                 case "$d" in
-                    -c) gcfg=1; gskip=1 ;;
-                    -c*|--config-env*) gcfg=1 ;;
+                    -c) gcode=1; gskip=1 ;;
+                    -c*|--config-env*) gcode=1 ;;
                     -C|--git-dir|--work-tree|--namespace) gskip=1 ;;
                     -*) ;;
                     *) if [ "$gsub" = 0 ]; then
@@ -1286,13 +1286,48 @@ g4_scan() {
             fi
         fi
         case "$cmd:$d" in
-            git:-m|git:-am|git:--message) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then msgv=1; fi ;;
-            gh:-b|gh:--body|gh:-t|gh:--title) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then msgv=1; fi ;;
-            git:--message=*) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then xskip=1; fi ;;
-            gh:--body=*|gh:--title=*) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then xskip=1; fi ;;
-            gh:-f|gh:-F|gh:--raw-field|gh:--field) if [ "$gsc" = api ] && [ "$gcfg" = 0 ]; then fv=1; fi ;;
-            gh:-f?*|gh:-F?*|gh:--raw-field=*|gh:--field=*) if [ "$gsc" = api ] && [ "$gcfg" = 0 ]; then bx=1; fi ;;
+            git:-m|git:-am|git:--message) if [ "$gmsg" = 1 ] && [ "$gcode" = 0 ]; then msgv=1; fi ;;
+            gh:-b|gh:--body|gh:-t|gh:--title) if [ "$gmsg" = 1 ] && [ "$gcode" = 0 ]; then msgv=1; fi ;;
+            git:--message=*) if [ "$gmsg" = 1 ] && [ "$gcode" = 0 ]; then xskip=1; fi ;;
+            gh:--body=*|gh:--title=*) if [ "$gmsg" = 1 ] && [ "$gcode" = 0 ]; then xskip=1; fi ;;
+            gh:-f|gh:-F|gh:--raw-field|gh:--field) if [ "$gsc" = api ] && [ "$gcode" = 0 ]; then fv=1; fi ;;
+            gh:-f?*|gh:-F?*|gh:--raw-field=*|gh:--field=*) if [ "$gsc" = api ] && [ "$gcode" = 0 ]; then bx=1; fi ;;
         esac
+        # `gh api -F k=@path` uploads the file at path: gh splits the field at
+        # its first `=`. A short-option group (`-iF`) reaches F past boolean
+        # letters; gh's f, H, X, p, q and t take a value, so F after one is data.
+        gfa=$gfv; gfv=0
+        if [ "$cmd" = gh ] && [ "$gsc" = api ]; then
+            gfx=""
+            if [ "$gfa" = 1 ]; then gfx="$d"
+            else
+                case "$d" in
+                    --field) gfv=1 ;;
+                    --field=*) gfx="${d#--field=}"; gfa=1 ;;
+                    --*) ;;
+                    -?*)
+                        gfo="${d#-}"
+                        while [ -n "$gfo" ]; do
+                            case "$gfo" in
+                                F*) gfo="${gfo#F}"
+                                    case "$gfo" in =?*) gfo="${gfo#=}" ;; esac
+                                    if [ -n "$gfo" ]; then gfx="$gfo"; gfa=1; else gfv=1; fi
+                                    break ;;
+                                [fHXpqt]*) break ;;
+                            esac
+                            gfo="${gfo#?}"
+                        done ;;
+                esac
+            fi
+            if [ "$gfa" = 1 ]; then
+                case "$gfx" in *=*)
+                    case "${gfx#*=}" in @?*)
+                        gfp="${gfx#*=}"; gfp="${gfp#@}"
+                        if is_secret_path "$gfp" || g4_glob_secret "$gfp" "${g4g[i]:-}"; then hit=1; note="gh api -F of a secret file"; fi ;;
+                    esac ;;
+                esac
+            fi
+        fi
         if [ "$xskip" = 0 ]; then
         case "$d" in
         *[[:space:]]*)
@@ -1327,7 +1362,7 @@ g4_scan() {
                 # an inherited trace switch (SHELLOPTS=xtrace,
                 # BASH_XTRACEFD) makes the next shell print its environment.
                 SHELLOPTS=*xtrace*|BASH_XTRACEFD=*) xt=1; continue ;;
-                GIT_CONFIG_*=*) gcfg=1; continue ;;
+                GIT_CONFIG_*=*) gcode=1; continue ;;
                 [A-Za-z_]*=*) continue ;;
                 -*)
                     if [ -n "$wrap" ] && wrapper_flag_takes_value "$wrap" "$d"; then wrap_val=1; fi
