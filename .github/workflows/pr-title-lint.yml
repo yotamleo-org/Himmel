@@ -1,6 +1,6 @@
 name: PR Title Lint
 
-# HIMMEL-3616 (judge J1284O F1/F2): split out of ci.yml's required
+# Split out of ci.yml's required
 # commit-lint job. Two problems the split fixes:
 #
 # F1 - commit-lint's PR-title step never threaded TICKET_ID_AUTHOR, so the
@@ -23,7 +23,7 @@ permissions:
 
 concurrency:
   group: pr-title-lint-${{ github.event.pull_request.number }}
-  # HIMMEL-3835: never cancel a RUNNING lint (a CANCELLED context on the
+  # Never cancel a RUNNING lint (a CANCELLED context on the
   # required check). A newer queued run replaces an older still-pending one.
   cancel-in-progress: false
 
