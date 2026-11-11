@@ -337,7 +337,9 @@ def _mcp_post(url, body, headers, timeout):
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                  headers=dict(headers, **{"Content-Type": "application/json",
                                                           "Accept": "application/json, text/event-stream"}))
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    loopback = (urllib.parse.urlsplit(url).hostname or "").lower() in LOOPBACK
+    open_url = urllib.request.build_opener(urllib.request.ProxyHandler({})).open if loopback else urllib.request.urlopen
+    with open_url(req, timeout=timeout) as r:
         raw = r.read().decode(errors="replace")
         sid = r.headers.get("mcp-session-id")
     if raw.lstrip().startswith("{"):
@@ -696,7 +698,7 @@ def pair_graph_out(pair, qs, state, repo):
             raise Refuse("%s is a checkout's graphify-out, not a scratch graph" % out)
     if not os.path.isfile(os.path.join(out, "graph.json")):
         raise Usage("no graph.json in %s" % out)
-    return out
+    return out, commit
 
 
 def pair_setup(a, arms, qs, repo):
@@ -704,6 +706,7 @@ def pair_setup(a, arms, qs, repo):
         raise Usage("--pair and --index-state go together")
     if not a.pair:
         return {}
+    graph_commit = None
     if a.index_state not in ("s", "l", "c"):
         raise Usage("--index-state is s, l or c")
     pair = load_pair(a.pair)
@@ -715,10 +718,13 @@ def pair_setup(a, arms, qs, repo):
         if n != pair.get("doc_count"):
             raise Refuse("the served server holds %d documents; pair.json says %s" % (n, pair.get("doc_count")))
     if "graphify" in arms or "combined" in arms:
-        os.environ["WORKER_GRAPH_OUT"] = pair_graph_out(pair, qs, a.index_state, repo)
+        os.environ["WORKER_GRAPH_OUT"], graph_commit = pair_graph_out(pair, qs, a.index_state, repo)
     first, second = pair_commits(pair, qs)
-    return dict(index_state=a.index_state, first=first, second=second, index=pair.get("index"),
-                doc_count=pair.get("doc_count"))
+    cfg = dict(index_state=a.index_state, first=first, second=second, index=pair.get("index"),
+               doc_count=pair.get("doc_count"))
+    if graph_commit:
+        cfg["graph_commit"] = graph_commit
+    return cfg
 
 
 def cmd_run(a):
@@ -853,8 +859,13 @@ def cmd_run(a):
                 heldout_sha256=hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16])
     if "graphify" in arms or "combined" in arms:
         try:
-            meta["graph_built_at"] = graph_built(repo)
-        except RuntimeError as e:
+            if pair_cfg.get("graph_commit"):
+                with open(os.path.join(os.environ["WORKER_GRAPH_OUT"], "graph.json"), "rb") as fh:
+                    fh.read(1)
+                meta["graph_built_at"] = pair_cfg["graph_commit"]
+            else:
+                meta["graph_built_at"] = graph_built(repo)
+        except (RuntimeError, OSError) as e:
             meta["graph_built_error"] = str(e)
             print("retrieval-eval: ERROR graph stamp: %s" % e, file=sys.stderr)
     row = eval_runs.make_row("retrieval-eval", "scripts/eval/retrieval-eval/retrieval-eval.py", config, metrics,
