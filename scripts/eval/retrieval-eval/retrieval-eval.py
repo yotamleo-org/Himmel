@@ -32,7 +32,8 @@ Arms (all read-only):
   qmd-hybrid  qmd lex + vec with rerank true, sent explicitly (the server default is off)
   qmd-hybrid-norerank  the same lex + vec searches with rerank off; opt-in via
               --arms, not in the default seven and not fused into combined
-  graphify    scripts/graphify/worker-graph.sh query (the primary checkout's graph)
+  graphify    scripts/graphify/worker-graph.sh query (the primary checkout's graph, or with
+              --pair the pair's scratch graph through WORKER_GRAPH_OUT)
   combined    reciprocal-rank fusion of grep, qmd-hybrid and graphify (not the
               path and ident-grep baselines); its tokens and time are the sum
               of the three
@@ -634,14 +635,14 @@ def load_pair(path):
 def check_served_url(pair):
     url = os.environ.get("QMD_URL")
     if not url:
-        raise Refuse("QMD_URL is not set, so the default live daemon would answer: set it to the pair's served URL")
+        raise Refuse("QMD_URL is not set, so the default live server would answer: set it to the pair's served URL")
     served = pair.get("served_url")
     if not served:
         raise Refuse("pair.json names no served URL: serve the pair first (staleness-fixture.sh serve)")
     for u in (url, served):
         k = url_key(u)
         if k[1] in LOOPBACK and k[2] == LIVE_QMD_PORT:
-            raise Refuse("%s is the live qmd daemon's port, not a scratch pair" % u)
+            raise Refuse("%s is the live qmd server's port, not a scratch pair" % u)
     if url_key(url) != url_key(served):
         raise Refuse("QMD_URL %s is not the pair's served URL %s" % (url, served))
 
@@ -655,14 +656,14 @@ def served_count(timeout):
         try:
             msg = mcp_tool_call("status", {}, timeout)
         except Exception as e:
-            raise Refuse("the served daemon's status call failed: %s" % str(e)[:100]) from e
+            raise Refuse("the served server's status call failed: %s" % str(e)[:100]) from e
         res = (msg or {}).get("result") or {}
         sc = res.get("structuredContent")
         text = json.dumps(sc) if isinstance(sc, dict) else " ".join(
             c.get("text", "") for c in res.get("content", []) if isinstance(c, dict))
     m = re.search(r'"?totalDocuments"?\s*[:=]\s*(\d+)', text)
     if not m:
-        raise Refuse("the served daemon's status reports no totalDocuments")
+        raise Refuse("the served server's status reports no totalDocuments")
     return int(m.group(1))
 
 
@@ -712,7 +713,7 @@ def pair_setup(a, arms, qs, repo):
             raise Refuse("--index-state %s, but the served index was built as state %s" % (a.index_state, pair.get("state")))
         n = served_count(a.timeout)
         if n != pair.get("doc_count"):
-            raise Refuse("the served daemon holds %d documents; pair.json says %s" % (n, pair.get("doc_count")))
+            raise Refuse("the served server holds %d documents; pair.json says %s" % (n, pair.get("doc_count")))
     if "graphify" in arms or "combined" in arms:
         os.environ["WORKER_GRAPH_OUT"] = pair_graph_out(pair, qs, a.index_state, repo)
     first, second = pair_commits(pair, qs)

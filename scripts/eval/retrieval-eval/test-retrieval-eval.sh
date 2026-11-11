@@ -761,10 +761,11 @@ class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 srv = http.server.HTTPServer(("127.0.0.1", 0), H)
-threading.Thread(target=srv.serve_forever, daemon=True).start()
+threading.Thread(target=srv.serve_forever).start()
 os.environ["QMD_URL"] = "http://127.0.0.1:%d/mcp" % srv.server_address[1]
 s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
 print(m.served_count(5))
+srv.shutdown()
 PY
 )"
 pr "label" "QMD_URL=$SU" -- --index-state s --arms qmd-lex
