@@ -81,6 +81,26 @@ stacked_series_state() { ( . "$HERE/../../lib/flags.sh" && himmel_flag stacked_s
 
 usage() { echo "usage: worker-event.sh --doc <chief doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
 escalate() { echo "ESCALATE $1"; exit 10; }
+listed_doc() {
+    local cand
+    while IFS= read -r cand; do
+        [ -n "$cand" ] || continue
+        [ "$(worker_label "$cand")" = "$1" ] && { printf '%s' "$cand"; return 0; }
+    done <<EOF
+$2
+EOF
+    return 1
+}
+successor_docs() {
+    local cand
+    while IFS= read -r cand; do
+        [ -n "$cand" ] || continue
+        [[ "$(worker_label "$cand")" =~ ^${1}[a-z]+$ ]] && printf '%s\n' "$cand"
+    done <<EOF
+$2
+EOF
+    return 0
+}
 
 DOC=""; FLEET=""; MSG=""
 while [ "$#" -gt 0 ]; do
@@ -109,8 +129,14 @@ dry_run_ready() {
     dlabels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+[a-z]*\>' | sort -u)"
     case "$dlabels" in ''|*$'\n'*) return 0 ;; esac
     (
+        dlist="$("${LIST[@]}" "$FLEET" 2>/dev/null)" || dlist=""  # swallow-ok: the dry run's answer is ignored, an unlisted manifest keeps the message's label
+        dw="$(listed_doc "$dlabels" "$dlist")" || dw=""
+        if [ -z "$dw" ]; then
+            dsucc="$(successor_docs "$dlabels" "$dlist")"
+            [ "$(printf '%s' "$dsucc" | grep -c .)" -ne 1 ] || dw="$dsucc"
+        fi
+        [ -z "$dw" ] || dlabels="$(worker_label "$dw")"
         if stacked_series_state; then
-            dw="$("${LIST[@]}" "$FLEET" | grep -F -- "-${dlabels}-" | head -n 1)"
             if [ -n "$dw" ] && dfind="$(python3 -I "$HERE/series-ledger.py" find --bucket "$(dirname "$FLEET")" --doc "$dw" --manifest "$FLEET")" \
                 && [ -n "$dfind" ] && [ "${dfind##* }" != "-" ]; then
                 dlabels="${dfind##* }"
@@ -145,18 +171,10 @@ if [ -n "$labels" ]; then
     [ "$(printf '%s\n' "$labels" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
     label="$labels"
     listing="$("${LIST[@]}" "$FLEET" 2>/dev/null)" || listing=""
-    worker="$(printf '%s\n' "$listing" | grep -F -- "-${label}-" | head -n 1)" || worker=""
-    # a resumed worker's manifest entry carries a successor letter (N4304b) the message may not;
-    # matched on each doc's worker label, never on a directory or slug that mentions it
+    worker="$(listed_doc "$label" "$listing")" || worker=""
+    # a resumed worker's manifest entry carries a successor letter (N4304b) the message may not
     if [ -z "$worker" ]; then
-        succ=""
-        while IFS= read -r cand; do
-            [ -n "$cand" ] || continue
-            [[ "$(worker_label "$cand")" =~ ^${label}[a-z]+$ ]] && succ="$succ$cand"$'\n'
-        done <<EOF
-$listing
-EOF
-        succ="${succ%$'\n'}"
+        succ="$(successor_docs "$label" "$listing")"
         [ "$(printf '%s' "$succ" | grep -c .)" -le 1 ] || escalate "ambiguous-label"
         # a label already recorded closed cannot tell the closed worker from its successor: a replay escalates
         if [ -n "$succ" ] && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null; then
@@ -187,7 +205,7 @@ EOF
     worker="${workers%$'\n'}"
     stem="${worker##*/}"; stem="${stem%.md}"
     label="$stem"
-    [[ $stem =~ -(N[0-9]+[a-z]*)- ]] && label="${BASH_REMATCH[1]}"
+    [[ $stem =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
 fi
 
 # stacked_series only: the ledger says whether this worker's doc is a series' writer or passed it on, and who the

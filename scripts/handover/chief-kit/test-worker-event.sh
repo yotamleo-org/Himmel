@@ -664,6 +664,20 @@ LE_LIST="$W/list18" LE_AUTOGO_OUT="$GOOUT" run "N5653b READY 2553 $H40 GREEN"
 check "18d a label-first READY from a suffixed worker: auto-go gets N5653b" "$calls" "autogo --doc $W/doc --fleet $W/fleet.json --worker N5653b 2553 $H40"
 HIMMEL_FLAG_AUTO_GO=0 LE_LIST="$W/list18" run "READY 2553 $H40 GREEN N5653b"; wait_for_autogo_call
 check "18e flag off: the dry run gets the suffixed label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/fleet.json --worker N5653b 2553 $H40"
+HIMMEL_FLAG_AUTO_GO=0 LE_LIST="$W/list18" run "READY 2553 $H40 GREEN N5653"; wait_for_autogo_call
+check "18f flag off: the dry run for a bare label gets the manifest's label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/fleet.json --worker N5653b 2553 $H40"
+LE_LIST="$W/list-slug" LE_AUTOGO_OUT="$GOOUT" run "READY 2553 $H40 GREEN N4304b"
+check "18g a slug that mentions N4304b is not its worker: rc" "$rc" 10
+contains "18g a slug that mentions N4304b is not its worker: reason" "$out" "ESCALATE not-in-manifest N4304b"
+check "18g auto-go not run" "$calls" ""
+LE_LIST="$W/list-slug" run "WRAPPED N4304b"
+contains "18h a WRAPPED naming N4304b: reason" "$out" "ESCALATE not-in-manifest N4304b"
+check "18h wrap-merged not run" "$calls" ""
+LE_LIST="$W/list18" LE_AUTOGO_OUT="$GOOUT" run "READY 2553 $H40 GREEN N565"
+contains "18i a shorter label never matches N5653b: reason" "$out" "ESCALATE not-in-manifest N565"
+check "18i auto-go not run" "$calls" ""
+HIMMEL_FLAG_AUTO_GO=0 LE_LIST="$W/list-slug" run "READY 2553 $H40 GREEN N4304b"; wait_for_autogo_call
+check "18j flag off: the dry run never takes a slug's doc for the worker" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/fleet.json --worker N4304b 2553 $H40"
 unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
 
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME
