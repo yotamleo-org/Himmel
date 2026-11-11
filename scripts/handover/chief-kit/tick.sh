@@ -2873,13 +2873,19 @@ pool_stale=skip
 residual_unversioned=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     ps_file="$(pool_stale_file "$console_doc" "$nd_mirror")"
-    ps_out="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-stale --doc "$console_doc" --repo "$pr_repo" --prior "$ps_file" 2>/dev/null)" || ps_out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
+    ps_out=""
+    # One run at a time per stale file: the read of the last file, the carry and the save are one step, so an older
+    # slower tick can never put its verdict back over a newer tick's result. A lock that is not won in time reads skip.
+    if mkdir -p "${ps_file%/*}" 2>/dev/null && { exec 7>>"$ps_file.lock"; } 2>/dev/null && flock -w "$(tick_bound 20)" 7; then  # prim-ok: a per-stale-file lock held for one producer run and its save; gnu-ok: chief kit is Linux-only
+        ps_out="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-stale --doc "$console_doc" --repo "$pr_repo" --prior "$ps_file" 7>&- 2>/dev/null)" || ps_out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
+        if printf '%s\n' "$ps_out" | grep -q '^pool-stale='; then
+            printf '%s\n' "$ps_out" | grep -q '^pool-stale=skip$' || { printf '%s\n' "$ps_out" > "$ps_file.$$" 2>/dev/null && mv -f "$ps_file.$$" "$ps_file" 2>/dev/null; }  # swallow-ok: a failed save keeps the last file, and the verdict stays
+            rm -f "$ps_file.$$"
+        fi
+    fi
+    exec 7>&-
     pool_stale="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-stale=//p')"; [ -n "$pool_stale" ] || pool_stale=skip
     residual_unversioned="$(printf '%s\n' "$ps_out" | sed -n 's/^residual-unversioned=//p')"; [ -n "$residual_unversioned" ] || residual_unversioned=skip
-    if [ "$pool_stale" != skip ] && mkdir -p "${ps_file%/*}" 2>/dev/null; then
-        printf '%s\n' "$ps_out" > "$ps_file.$$" 2>/dev/null && mv -f "$ps_file.$$" "$ps_file" 2>/dev/null  # swallow-ok: a failed save keeps the last file, and the verdict stays
-        rm -f "$ps_file.$$"
-    fi
 fi
 
 # The pool snapshot classifies every version ticket: 140 s on a 23-worker fleet,

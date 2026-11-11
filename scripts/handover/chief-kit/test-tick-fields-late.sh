@@ -1000,6 +1000,24 @@ s2_lines | sed 's/^\(pool-disposition: HIMMEL-141 .*\)$/\1!/' | s2_doc r8h-c > /
 PS_GH_FAIL=1 s2_tick "$W/handover/r8h-c.md"
 not_contains 'R8h control: a 141 line that differs by one character carries nothing' "$(s2_pd "$W/handover/r8h-c.md")" '# pool-unresolved stale HIMMEL-141 '
 
+# R22: two ticks of one doc overlap; the older one reads slowly and holds a verdict the newer one already saw cleared.
+# The later run's result must be the saved one: the read, the carry and the save of one stale file are serialized.
+cat > "$S2/ps-gh-race" <<'STUB'
+#!/usr/bin/env bash
+sleep "${PS_GH_SLEEP:-0}"
+case "$*" in *"api graphql"*) ;; *) exit 1 ;; esac
+printf '{"data":{"repository":{"p999001":{"__typename":"PullRequest","state":"%s"},"p999002":{"__typename":"PullRequest","state":"MERGED"}}}}\n' "${PS_GH_STATE:-CLOSED}"
+STUB
+chmod +x "$S2/ps-gh-race"
+S2ST="$S2/st-race"; rm -rf "$S2ST"; mkdir -p "$S2ST"
+s2_lines | s2_doc race > /dev/null
+s2_tick "$W/handover/race.md" TICK_GH_CMD="$S2/ps-gh-race" PS_GH_SLEEP=12 PS_GH_STATE=CLOSED &
+s2_race_pid=$!
+sleep 1
+s2_tick "$W/handover/race.md" TICK_GH_CMD="$S2/ps-gh-race" PS_GH_STATE=OPEN
+wait "$s2_race_pid"
+same 'R22 the later run clears the verdict and the slower older run does not put it back' "$(grep -c "$p141" "$(s2_file)")" 0
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-fields-late.sh'
     exit 0
