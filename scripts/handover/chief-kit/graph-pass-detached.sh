@@ -41,9 +41,6 @@ proc_has() {
 }
 pass_running() { proc_has "$1" "$PASS"; }
 
-# One start at a time: an exclusive claim file holding the starter's own pid,
-# so two simultaneous starts cannot both pass the running check. A claim whose
-# starter is gone (a killed start) is taken over.
 CLAIM="$STATE_DIR/graph-pass.claim"
 # ln is atomic and refuses an existing name, and the claim never shows up empty.
 claim_try() {
@@ -53,16 +50,11 @@ claim_try() {
     rm -f "$CLAIM.$$"
     return "$rc"
 }
-claim_start() {
-    claim_try && return 0
-    holder="$(cat "$CLAIM" 2>/dev/null)"  # swallow-ok: a vanished claim reads empty and is taken over below
-    proc_has "$holder" graph-pass-detached && return 1
-    # Taking over a stale claim is one starter at a time (mkdir is atomic and
-    # refuses an existing name): the winner re-reads the claim and replaces it
-    # only if it is still the stale one seen; every other contender gives way.
+claim_takeover() {
+    stale_holder="$1"
     mkdir "$CLAIM.takeover" 2>/dev/null || return 1  # swallow-ok: mkdir refusing means another starter is taking the claim over
     now="$(cat "$CLAIM" 2>/dev/null)"  # swallow-ok: a vanished claim reads empty, which only matches an empty holder
-    if [ "$now" = "$holder" ]; then
+    if [ "$now" = "$stale_holder" ]; then
         rm -f "$CLAIM"
         claim_try
         rc=$?
@@ -72,7 +64,12 @@ claim_start() {
     rmdir "$CLAIM.takeover"
     return "$rc"
 }
-# Only the starter that owns the claim file removes it.
+claim_start() {
+    claim_try && return 0
+    holder="$(cat "$CLAIM" 2>/dev/null)"  # swallow-ok: a vanished claim reads empty and is taken over below
+    proc_has "$holder" graph-pass-detached && return 1
+    claim_takeover "$holder"
+}
 claim_release() {
     [ "$(cat "$CLAIM" 2>/dev/null)" = "$$" ] && rm -f "$CLAIM"  # swallow-ok: no claim file means nothing to release
 }
