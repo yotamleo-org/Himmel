@@ -3945,8 +3945,6 @@ WORKER_SESSION_EFFORT=high HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e
 check "34o RED control: with the 6507 fix reverted the 34n WORKER_SESSION_EFFORT=high assertion no longer holds" "$([ "$(e2e_effort "$d34o" 40)" = high ] && echo holds || echo broken)" "broken"
 check "34o RED control: the reverted launcher refuses instead of running at medium (exit 2)" "$rc34o" "2"
 
-# 34p. a real launch of a doc carrying the Live test jira line puts the marker in the claude process's own
-# environment, where a tool call in the worker cannot unset it (I11, I4); a caller's marker never reaches an unmarked doc.
 mk_lt_stubs() {
   mk_exec_stubs "$1" "$2"
   cat > "$1/claude" <<'CLAUDE_EOF'

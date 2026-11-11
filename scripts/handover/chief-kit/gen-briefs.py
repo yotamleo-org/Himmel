@@ -579,18 +579,16 @@ def check_lane_reads(l, hroot):
             die('worker %s: %s points at a path under the handover root (%s), which lane %s cannot read; quote the requirements inline' % (l['label'], k, root, l['lane']))
 
 
-# The marker value grammar, restated from parseOwnKeys (scripts/jira/src/live-test-guard.ts); own-keys.tsv holds the two together.
-OWN_KEYS_RE = re.compile(r'none|[A-Z][A-Z0-9]+-[0-9]+(?:,[A-Z][A-Z0-9]+-[0-9]+)*')
+PARSE_OWN_KEYS_RE = re.compile(r'none|[A-Z][A-Z0-9]+-[0-9]+(?:,[A-Z][A-Z0-9]+-[0-9]+)*')
 LIVE_TEST_PHRASES_RE = re.compile(r'test tickets?|throwaway tickets?|live jira|jira (?:create|transition|comment|edit|move)', re.I)
 _LIVE_TEST_INFO = []
 
 
 def own_keys_ok(value):
-    return OWN_KEYS_RE.fullmatch(value) is not None
+    return PARSE_OWN_KEYS_RE.fullmatch(value) is not None
 
 
 def live_test_info(label):
-    # The station's test project from `jira live-test --json`, asked once per run; a verb that cannot answer refuses the brief.
     if not _LIVE_TEST_INFO:
         cli = jira_cli()
         r, why = run_jira(cli, ['live-test', '--json'])
@@ -611,7 +609,6 @@ def live_test_info(label):
 
 
 def live_test_gate(l):
-    # Sets l['live_line']; an unmarked worker is scanned for the phrases and the configured key over check_lane_reads' fields.
     label, lt = l['label'], l.get('live_test')
     if isinstance(lt, dict):
         l['live_line'] = '> **Live test:** none — %s' % lt['none'].strip()

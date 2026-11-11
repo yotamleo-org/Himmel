@@ -73,8 +73,6 @@ for _n in ("secret-tool", "busctl"):
         sys.exit(f"test-vmsdk: {_n} does not resolve to the stub keyring; aborting")
 
 
-# --- stub live-test verb: VM.run asks `jira live-test --json` (HIMMEL_VMSDK_JIRA_CLI) before a guest command, so
-# no row ever runs the real verb. It prints the canned file LTV_FILE names (default: an unmarked host); LTV_RC fails it.
 _LT_FIXTURES = Path(__file__).resolve().parent.parent / "jira" / "src" / "fixtures"
 _LTV_STUB = Path(_KSTUB_DIR) / "live-test-stub.js"
 _LTV_STUB.write_text(
@@ -2893,9 +2891,6 @@ class TestGuestExec(unittest.TestCase):
 
 
 class TestLiveTestMarker(unittest.TestCase):
-    """I17: every command VM.run sends carries the host's live-test marker (asked of the host verb), so a marked
-    worker's guest command runs marked; an unmarked host's command goes unchanged."""
-
     def setUp(self):
         import tempfile
         self.tmp = tempfile.mkdtemp()
@@ -2907,8 +2902,8 @@ class TestLiveTestMarker(unittest.TestCase):
                                            "HIMMEL_GUEST_EXEC_LOG": str(self.log), "LTV_LOG": str(self.verb_log)}, clear=False)
         env.start()
         self.addCleanup(env.stop)
-        vmsdk._LIVE_TEST_VALUE.clear()
-        self.addCleanup(vmsdk._LIVE_TEST_VALUE.clear)
+        vmsdk._live_test_value.cache_clear()
+        self.addCleanup(vmsdk._live_test_value.cache_clear)
 
     def _vm(self, name="ubuntu_new"):
         with mock.patch.object(vmsdk, "_load_dotenv_into_env"):

@@ -90,7 +90,6 @@ if (a[0] === 'release' && a[1] === 'core-check') {
   const src = process.env.MIRROR_FRESH;
   if (src && fs.existsSync(src)) for (const f of fs.readdirSync(src)) fs.copyFileSync(src + '/' + f, opt('--root') + '/' + f);
 } else if (a[0] === 'live-test' && a[1] === '--json') {
-  // prints one of the canned verb outputs (scripts/jira/src/fixtures/live-test-*.json); LT_STUB_RC makes the verb fail
   if (process.env.LT_STUB_RC) { console.error('stub jira: live-test failed'); process.exit(Number(process.env.LT_STUB_RC)); }
   process.stdout.write(fs.readFileSync(process.env.LT_STUB_FILE || (process.env.LT_FIXTURES + '/live-test-none.json'), 'utf8'));
 } else {
@@ -2045,8 +2044,6 @@ rc=0; o="$(BRIEF_LINT_JIRA_CLI="$WORK/no-such-cli.js" srrun lintref)" || rc=$?
 { [ "$rc" = 1 ] && case "$o" in *"brief-lint refuses"*) true ;; *) false ;; esac; } && pass "9598 f: a series writer brief lint refuses exits 1" || fail "9598 f: series lint refusal rc=$rc: $o"
 [ -z "$(find "$WORK/sr-b-lintref" -type f \( -name '*.md' -o -name 'launch-*' -o -path '*/series/*' \) -print -quit 2>/dev/null)" ] && pass "9598 f: and leaves no brief, launcher, series ledger or lock behind" || fail "9598 f: left $(find "$WORK/sr-b-lintref" -type f)"
 
-# I10, I16: a live_test worker gets the Live test line from the live-test verb, and an unmarked brief that reads
-# like a live Jira test is refused. The verb is the stub's live-test branch, printing a canned scripts/jira/src/fixtures file.
 ltmk() { python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; w=l[0]; exec(sys.argv[3]); json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lt-$1.json" "$2"; }
 ltrun() { python3 "$SUT" "$WORK/lt-$1.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/lt-b-$1" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/lt-w-$1" --deadline 1791475000 2>&1; }
 ltbrief() { cat "$WORK/lt-b-$1"/*-N901-*.md 2>/dev/null; }

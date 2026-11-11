@@ -32,6 +32,7 @@ CLI: python scripts/lib/vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|
 import datetime
 import hashlib
 import fnmatch
+import functools
 import io
 import json
 import os
@@ -313,21 +314,11 @@ def _repo_root():
     return _env_path().parent
 
 
-# The marker grammar, restated from parseOwnKeys (scripts/jira/src/live-test-guard.ts).
-_LIVE_TEST_RE = re.compile(r"none|[A-Z][A-Z0-9]+-[0-9]+(?:,[A-Z][A-Z0-9]+-[0-9]+)*")
-_LIVE_TEST_VALUE = []   # this process's answer, asked once: [value] or [None] for an unmarked host
+_PARSE_OWN_KEYS_RE = re.compile(r"none|[A-Z][A-Z0-9]+-[0-9]+(?:,[A-Z][A-Z0-9]+-[0-9]+)*")
 
 
+@functools.lru_cache(maxsize=None)
 def _live_test_value():
-    """The HIMMEL_JIRA_LIVE_TEST value a guest command carries, or None for an unmarked host.
-
-    Asks the host `jira live-test --json` (HIMMEL_VMSDK_JIRA_CLI, else the primary checkout's
-    built CLI), whose context walks this process's claude ancestors. When the verb cannot
-    answer, the own-env marker is forwarded if one is set, and a note goes to stderr. A value
-    outside the marker grammar is sent as none.
-    """
-    if _LIVE_TEST_VALUE:
-        return _LIVE_TEST_VALUE[0]
     cli = os.environ.get("HIMMEL_VMSDK_JIRA_CLI") or str(_repo_root() / "scripts" / "jira" / "dist" / "index.js")
     value, why = None, None
     try:
@@ -349,9 +340,8 @@ def _live_test_value():
         print(f"vmsdk: jira live-test --json could not answer ({why}); "
               + ("forwarding this process's own HIMMEL_JIRA_LIVE_TEST into the guest" if value
                  else "this process has no HIMMEL_JIRA_LIVE_TEST, so guest commands go unmarked"), file=sys.stderr)
-    if value is not None and not _LIVE_TEST_RE.fullmatch(value):
+    if value is not None and not _PARSE_OWN_KEYS_RE.fullmatch(value):
         value = "none"
-    _LIVE_TEST_VALUE.append(value)
     return value
 
 

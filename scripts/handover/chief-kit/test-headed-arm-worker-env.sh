@@ -248,8 +248,6 @@ check "W12 no jq: the launch still exits 0" "$rc" "0"
 not_contains "W12 no jq: the scan is skipped, no warning" "$out" "WARNING"
 rm -f "$HOME/.claude/settings.json"
 
-# W13. a doc carrying the Live test jira line marks the worker with HIMMEL_JIRA_LIVE_TEST=<own list>; the marker is
-# scrubbed from the caller, so only the doc's own line sets it (I11). The own= grammar is parseOwnKeys' (I16).
 lt_line() { printf '> **Live test:** jira HTEST own=%s — every Jira write this session makes goes to HTEST; the jira CLI refuses any other project except this brief'"'"'s own tickets. Create with --project HTEST.\n' "$1"; }
 LT_OWN=HIMMEL-9999 LT_CALLER=HIMMEL-9377 LT_NAME=HIMMEL-9999-N1-lt
 fx10 "$(lt_line "$LT_OWN")" >"$T/lt-doc.md"

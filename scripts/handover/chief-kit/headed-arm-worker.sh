@@ -1392,8 +1392,6 @@ unset -v _ab_in
 # looks deliberate" failure this ticket closes for CLAUDE_CODE_EFFORT_LEVEL.
 # The release-manager marker, binding and effort override are the same class:
 # a release manager arming a worker must not hand that worker its mode-2 fence.
-# The live-test marker too: a marked worker arming a judge or sibling never hands it down; only a doc's own
-# Live test line sets it again, after this scrub.
 WORKER_SESSION_ENV_SCRUB="CHIEF_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE HIMMEL_JIRA_LIVE_TEST"
 for _worker_env_scrub in $WORKER_SESSION_ENV_SCRUB; do
     unset "$_worker_env_scrub"
@@ -1605,17 +1603,13 @@ if [ -n "$TIER_GATE" ]; then
     fi
 fi
 
-# A doc carrying the Live test jira line marks this worker as a live Jira test. The marker was scrubbed from the
-# caller above, so only the doc's own line sets it; it rides the claude process's exec-time environ, which a tool
-# call in the worker cannot strip. own= must match parseOwnKeys (scripts/jira/src/live-test-guard.ts), held to it by
-# scripts/jira/src/fixtures/own-keys.tsv. The none form sets nothing.
 LIVE_TEST_OWN=""
 _live_test_line=""
 [ ! -r "$DOC" ] || _live_test_line="$(grep -m1 -E '^> \*\*Live test:\*\* jira ' "$DOC")"
 if [ -n "$_live_test_line" ]; then
     LIVE_TEST_OWN="$(printf '%s\n' "$_live_test_line" | sed -nE 's/^> \*\*Live test:\*\* jira [^ ]+ own=([^ ]*)( .*)?$/\1/p')"
-    _live_test_re='^(none|[A-Z][A-Z0-9]+-[0-9]+(,[A-Z][A-Z0-9]+-[0-9]+)*)$'
-    if ! [[ "$LIVE_TEST_OWN" =~ $_live_test_re ]]; then
+    _parse_own_keys_re='^(none|[A-Z][A-Z0-9]+-[0-9]+(,[A-Z][A-Z0-9]+-[0-9]+)*)$'
+    if ! [[ "$LIVE_TEST_OWN" =~ $_parse_own_keys_re ]]; then
         echo "headed-arm-worker: refusing worker launch: $DOC's Live test line has own=$LIVE_TEST_OWN, which is neither none nor a comma list of KEY-n ticket keys" >&2
         exit 2
     fi
@@ -1625,7 +1619,7 @@ if [ -n "$_live_test_line" ]; then
     fi
     worker_propagate_env HIMMEL_JIRA_LIVE_TEST "$LIVE_TEST_OWN"
 fi
-unset -v _live_test_line _live_test_re
+unset -v _live_test_line _parse_own_keys_re
 
 # advisory effort recommendation. Only when the brief carries
 # '> **Effort-record:** <path>' (an effort-assess record). One stderr line;
@@ -2655,7 +2649,6 @@ EOF_WORKER_DRY_LINES
     if [ -n "$TIER_GATE" ]; then
         printf 'headed-arm-worker: tier=%s tier-category=%s tier-reason=%s\n' "$TIER_GATE" "$TIER_CATEGORY" "$TIER_REASON"
     fi
-    # Printed when the doc marks a live test, or when any marker survived the scrub (it never should).
     if [ -n "$LIVE_TEST_OWN" ] || [ -n "${HIMMEL_JIRA_LIVE_TEST:-}" ]; then
         printf 'headed-arm-worker: live-test=jira HIMMEL_JIRA_LIVE_TEST=%s\n' "${HIMMEL_JIRA_LIVE_TEST:-<unset>}"
     fi
