@@ -1272,6 +1272,39 @@ X_MEDIA_FXT_CMD="$tmp/bin/fxt-slow" X_MEDIA_BUDGET_S=3 X_TEST_GDL_SLEEP=0 run_to
 grep -q '^media_enriched_at:' "$VP/Clippings/p1.md" && a=ok || a=no
 assert "a clip its probe finds is enriched before later probes spend the budget" ok "$a"
 
+echo "Test 27: HIMMEL-9889 - guard rows: an empty run exits 0 without the tool checks (holds at base); RED rows: a probe or wait that spends the budget starts no clip"
+NF="$tmp/bin-noffmpeg"; mkdir -p "$NF"
+ln -s "$tmp/bin/uv" "$NF/uv"; ln -s "$(command -v python)" "$NF/python"; ln -s "$(command -v bash)" "$NF/bash"
+VE="$tmp/vault-empty"; mkdir -p "$VE/Clippings"
+printf -- '---\ntitle: "done"\nsource: "https://x.com/u/status/970"\ntype: tweet\n---\n# done\nno media here\nmedia_enriched_at: 2026-11-01\n' > "$VE/Clippings/none.md"
+PATH="$NF" run_tool "$VE" --include-evidence >"$tmp/empty.out" 2>"$tmp/empty.err"
+assert "a run with nothing selected and no ffmpeg exits 0" 0 "$?"
+grep -qF 'x-media-fetch: 0 selected, 0 enriched, 0 partial, 0 failed' "$tmp/empty.out" && a=ok || a=no
+assert "it prints the zero-counts summary" ok "$a"
+grep -q 'missing required binaries' "$tmp/empty.err" && a=checked || a=unchecked
+assert "it runs no tool check" unchecked "$a"
+VS1="$tmp/vault-spent-probe"; mkdir -p "$VS1/Clippings"
+printf -- '---\ntitle: "s1"\nsource: "https://x.com/u/status/971"\ntype: tweet\n---\n# s1\ntext only\n' > "$VS1/Clippings/s1.md"
+X_MEDIA_FXT_CMD="$tmp/bin/fxt-slow" X_MEDIA_BUDGET_S=1 X_TEST_GDL_SLEEP=0 run_tool "$VS1" >"$tmp/spent.out" 2>"$tmp/spent.err"
+assert "a run whose probe spent the budget exits 0" 0 "$?"
+grep -qF 'x-media-fetch: 1 not started (budget 1s spent' "$tmp/spent.out" && a=ok || a=no
+assert "the clip its probe found is counted as not started" ok "$a"
+grep -q '^media_enrich' "$VS1/Clippings/s1.md" && a=enriched || a=not-enriched
+assert "that clip is left unenriched (its probe stamp stays) for the next run" not-enriched "$a"
+VS2="$tmp/vault-spent-wait"; mkdir -p "$VS2/Clippings"
+printf -- '---\ntitle: "s2"\nsource: "https://x.com/u/status/973"\ntype: tweet\n---\n# s2\ntext only\n' > "$VS2/Clippings/s2.md"
+t0=$SECONDS
+X_MEDIA_NO_SLEEP='' X_MEDIA_FXT_CMD="$tmp/bin/fxt-slow" X_MEDIA_BUDGET_S=2 X_TEST_GDL_SLEEP=0 run_tool "$VS2" >"$tmp/wait.out" 2>"$tmp/wait.err"
+took=$((SECONDS - t0))
+[ "$took" -lt 8 ] && a=ok || a="took ${took}s"
+assert "the rate-limit wait is cut at the time left" ok "$a"
+grep -qF 'x-media-fetch: 1 not started (budget 2s spent' "$tmp/wait.out" && a=ok || a=no
+assert "the clip after a spent wait is counted as not started" ok "$a"
+VOK="$tmp/vault-one-video"; make_x_vault "$VOK" 972 "$VIDEO_MEDIA"
+X_MEDIA_BUDGET_S=60 X_TEST_GDL_SLEEP=0 run_tool "$VOK" >"$tmp/one.out" 2>"$tmp/one.err"
+grep -q '^media_enriched_at:' "$VOK/Clippings/clip.md" && a=ok || a=no
+assert "a run with one video candidate still enriches it" ok "$a"
+
 LW="$tmp/long-www"; mkdir -p "$LW/long"
 cat > "$LW/long/M.m3u8" <<'EOF'
 #EXTM3U
