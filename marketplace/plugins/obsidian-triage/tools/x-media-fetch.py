@@ -106,6 +106,10 @@ FFMPEG_TIMEOUT = int(os.environ.get("X_MEDIA_FFMPEG_TIMEOUT", "300"))
 FRAME_TIMEOUT = int(os.environ.get("X_MEDIA_FRAME_TIMEOUT", str(FFMPEG_TIMEOUT)))
 WHISPER_TIMEOUT = 1800
 YTDLP_TIMEOUT = int(os.environ.get("X_MEDIA_YTDLP_TIMEOUT", "180"))
+# Wall-clock budget for one run, so a run ends inside one 600 s tool call: no clip
+# starts once it is spent, and each subprocess timeout is capped by the time left.
+BUDGET_S = int(os.environ.get("X_MEDIA_BUDGET_S", "420"))
+RUN_DEADLINE = None
 FXT_TIMEOUT = 20
 FXT_BASE = "https://api.fxtwitter.com"
 DEFAULT_MIN_SUB_COVERAGE = 90
@@ -209,6 +213,28 @@ def _single_twimg_video(body: str) -> bool:
 def _has_twimg_media(body: str) -> bool:
     """The clip body references at least one downloadable X media item."""
     return TWIMG_MEDIA_RE.search(body) is not None
+
+
+def _cap(seconds: float) -> float:
+    """A subprocess timeout capped by the time left in the run's budget."""
+    if RUN_DEADLINE is None:
+        return seconds
+    return max(1, min(seconds, RUN_DEADLINE - time.monotonic()))
+
+
+def _budget_spent() -> bool:
+    return RUN_DEADLINE is not None and time.monotonic() >= RUN_DEADLINE
+
+
+def _report_unstarted(unstarted: int):
+    if unstarted:
+        print(f"x-media-fetch: {unstarted} not started (budget {BUDGET_S}s "
+              f"spent; X_MEDIA_BUDGET_S=0 for no budget)")
+
+
+def _tried(fm: dict) -> bool:
+    """The clip already failed a fetch: it carries a media_last_error."""
+    return str(fm.get("media_last_error", "")).strip().strip('"') not in ("", "null")
 
 
 def already_media_enriched(fm_raw: str) -> bool:
@@ -589,7 +615,7 @@ def _fetch_item(item: dict, target: Path):
     if not _media_url_ok(url):
         return "download_error"
     if not item.get("hls"):
-        return _curl([(url, target)], time.monotonic() + DOWNLOAD_TIMEOUT)
+        return _curl([(url, target)], time.monotonic() + _cap(DOWNLOAD_TIMEOUT))
     work = target.with_name(target.name + ".hls")
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
@@ -600,7 +626,7 @@ def _fetch_item(item: dict, target: Path):
 
 
 def _ffmpeg_hls(url: str, work: Path, target: Path):
-    deadline = time.monotonic() + DOWNLOAD_TIMEOUT
+    deadline = time.monotonic() + _cap(DOWNLOAD_TIMEOUT)
     err = _resolve_hls(url, work, deadline)
     if err:
         return err
@@ -637,7 +663,7 @@ def download_media_scrapling(x: dict, py: str):
     helper = str(Path(__file__).with_name("x-scrapling-media.py"))
     try:
         proc = subprocess.run([py, helper, "--url", x["url"], "--status-id", x["shortcode"]],
-                              capture_output=True, text=True, timeout=DOWNLOAD_TIMEOUT)
+                              capture_output=True, text=True, timeout=_cap(DOWNLOAD_TIMEOUT))
     except subprocess.TimeoutExpired:
         return None, "download_timeout"
     except OSError:
@@ -878,7 +904,7 @@ def fetch_subs(x: dict, min_coverage: float, duration_hint):
                "--no-warnings", "-o", str(d / "%(id)s"), x["url"]]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True,
-                                  timeout=YTDLP_TIMEOUT)
+                                  timeout=_cap(YTDLP_TIMEOUT))
         except subprocess.TimeoutExpired:
             print("yt-dlp(subs): timed out", file=sys.stderr)
             return None
@@ -939,7 +965,7 @@ def extract_wav(video: Path, wav: Path) -> bool:
            "-vn", str(wav)]
     try:
         p = subprocess.run(cmd, capture_output=True, text=True,
-                           timeout=FFMPEG_TIMEOUT)
+                           timeout=_cap(FFMPEG_TIMEOUT))
     except subprocess.TimeoutExpired:
         return False
     if p.returncode != 0:
@@ -964,7 +990,7 @@ def whisper_transcribe(wav: Path, model: str, meta=None):
     model_path = wav.with_suffix(".model")
     try:
         p = subprocess.run(cmd, capture_output=True, text=True,
-                           timeout=WHISPER_TIMEOUT,
+                           timeout=_cap(WHISPER_TIMEOUT),
                            env={**os.environ,
                                 "X_TRANSCRIBE_META_FILE": str(meta_path),
                                 "X_TRANSCRIBE_MODEL_FILE": str(model_path)})
@@ -1001,7 +1027,7 @@ def _has_audio_stream(video: Path) -> bool:
            "-f", "null", "-"]
     try:
         p = subprocess.run(cmd, capture_output=True, text=True,
-                           timeout=FFMPEG_TIMEOUT,
+                           timeout=_cap(FFMPEG_TIMEOUT),
                            env={**os.environ, "LC_ALL": "C", "LANG": "C"})
     except subprocess.TimeoutExpired:
         print(f"ffmpeg(probe): timed out after {FFMPEG_TIMEOUT}s",
@@ -1031,7 +1057,7 @@ def soundless_video_frame(video: Path):
     cmd = [ffmpeg, "-y", "-i", str(video), "-frames:v", "1", str(frame)]
     try:
         p = subprocess.run(cmd, capture_output=True, text=True,
-                           timeout=FRAME_TIMEOUT)
+                           timeout=_cap(FRAME_TIMEOUT))
     except subprocess.TimeoutExpired:
         print(f"ffmpeg(frame): timed out after {FRAME_TIMEOUT}s",
               file=sys.stderr)
@@ -1084,7 +1110,7 @@ def recompress_slide(src: Path, dst: Path) -> bool:
            "-qscale:v", "5", str(dst)]
     try:
         p = subprocess.run(cmd, capture_output=True, text=True,
-                           timeout=FFMPEG_TIMEOUT)
+                           timeout=_cap(FFMPEG_TIMEOUT))
     except subprocess.TimeoutExpired:
         return False
     if p.returncode != 0:
@@ -1390,7 +1416,7 @@ def parse_args(argv):
     return ap.parse_args(argv)
 
 
-def enrich_batch(args, selected, matched_total, remaining):
+def enrich_batch(args, selected, matched_total, remaining, run):
     """Download media, transcode/transcribe any video items, recompress + copy
     images into the vault, then write ONE ## Crawled content section per clip
     under the scoped-G-3 contract. Videos (incl. mixed-tweet video items) go
@@ -1401,14 +1427,18 @@ def enrich_batch(args, selected, matched_total, remaining):
     Per-clip isolation: the whole per-clip body is wrapped so an unexpected error
     on one clip is reported loudly and counted failed, never aborting the batch. A
     clip whose media only PARTIALLY survived is written honestly as
-    media_enrichment_status: partial and KEEPS x_media_pending for retry."""
+    media_enrichment_status: partial and KEEPS x_media_pending for retry.
+    `selected` is consumed lazily; `run` carries the probe and not-started counts.
+    A run with nothing to enrich never reaches the binary preflight."""
     import time
     enriched = 0
     partial = 0
     failed = 0
+    n_selected = 0
     py = scrapling_python()
     scrapling = py if py and scrapling_permitted(args.vault, "https://x.com/") else None
     for p, x in selected:
+        n_selected += 1
         relpath = p.relative_to(args.vault).as_posix()
         try:
             if RATE_LIMIT_S > 0:
@@ -1588,12 +1618,15 @@ def enrich_batch(args, selected, matched_total, remaining):
             print(f"FAIL {relpath}: unexpected: {e}", file=sys.stderr)
             failed += 1
             continue
-    print(f"\nx-media-fetch: {len(selected)} selected, {enriched} enriched, "
+    if run["probed"]:
+        print(f"x-media-fetch: probed {run['probed']}, {n_selected} selected")
+    print(f"\nx-media-fetch: {n_selected} selected, {enriched} enriched, "
           f"{partial} partial, {failed} failed")
     if remaining > 0:
-        print(f"x-media-fetch: {matched_total} matched, {len(selected)} "
+        print(f"x-media-fetch: {matched_total} matched, {n_selected} "
               f"processed, {remaining} remaining (capped by --limit; pass "
               f"--limit 0 for all)")
+    _report_unstarted(run["unstarted"])
 
 
 def _cleanup_orphan_media(media_dir: Path, slide_embeds, pre_existed: bool,
@@ -1880,12 +1913,19 @@ def main():
         if not present:
             continue
         x = is_selected(fm, fm_raw, body)
-        if x:
-            cands.append((p, x, False))
-        else:
+        probe = False
+        if not x:
             x = is_probe_candidate(fm, fm_raw, body)
-            if x:
-                cands.append((p, x, True))
+            probe = True
+        if x:
+            cands.append((p, x, probe, _tried(fm),
+                          str(fm.get("date_clipped", "")).strip().strip('"')))
+    # A clip that already failed goes behind every clip not yet tried, so one that
+    # fails every night cannot hold the queue; known media goes before a probe,
+    # and within each group the newest clip goes first.
+    cands.sort(key=lambda c: c[4], reverse=True)
+    cands.sort(key=lambda c: (c[3], c[2]))
+    cands = [c[:3] for c in cands]
     matched_total = len(cands)
     cands = cands[: args.limit] if args.limit > 0 else cands
     remaining = matched_total - len(cands)
@@ -1907,27 +1947,27 @@ def main():
                   f"--limit 0 for all)")
         sys.exit(0)
 
-    import time
-    selected, probed = [], 0
-    for p, x, probe in cands:
-        if probe:
-            if RATE_LIMIT_S > 0:
-                time.sleep(RATE_LIMIT_S)
-            probed += 1
-            if probe_clip(p, x, p.relative_to(args.vault).as_posix()) not in PROBE_VIDEO:
-                continue
-        selected.append((p, x))
-    if probed:
-        print(f"x-media-fetch: probed {probed}, {len(selected)} selected")
+    global RUN_DEADLINE
+    if BUDGET_S > 0:
+        RUN_DEADLINE = time.monotonic() + BUDGET_S
+    run = {"probed": 0, "unstarted": 0}
 
-    if not selected:
-        # No-op run: report the standard summary and exit 0 WITHOUT preflight - a
-        # run with nothing to do must not fail on missing ffmpeg/Scrapling.
-        print(f"\nx-media-fetch: {len(selected)} selected, 0 enriched, "
-              f"0 partial, 0 failed")
-        sys.exit(0)
+    def stream():
+        """Each candidate in queue order, probed only when it needs it, so a clip
+        its probe finds is enriched before the next probe spends the budget."""
+        for i, (p, x, probe) in enumerate(cands):
+            if _budget_spent():
+                run["unstarted"] = len(cands) - i
+                return
+            if probe:
+                if RATE_LIMIT_S > 0:
+                    time.sleep(RATE_LIMIT_S)
+                run["probed"] += 1
+                if probe_clip(p, x, p.relative_to(args.vault).as_posix()) not in PROBE_VIDEO:
+                    continue
+            yield p, x
 
-    enrich_batch(args, selected, matched_total, remaining)
+    enrich_batch(args, stream(), matched_total, remaining, run)
 
 
 if __name__ == "__main__":

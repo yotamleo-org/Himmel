@@ -577,12 +577,14 @@ assert_contains "harvest runner chains /ig-media-enrich default limit" "/ig-medi
 assert_contains "harvest runner passes --include-evidence to /ig-media-enrich" "/ig-media-enrich --limit 10 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner names --include-evidence on the step sentence too" "step uses --limit 10 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner fail-opens ig-media-enrich" "must not abort" "$harvest_sh_plain"
-assert_contains "harvest runner chains /x-media-enrich with its own clip limit" "/x-media-enrich --limit 3 --include-evidence" "$harvest_sh_plain"
-assert_contains "harvest runner fail-opens x-media-enrich" "If /x-media-enrich fails" "$harvest_sh_plain"
+assert_contains "harvest runner chains /x-media-enrich with its own clip limit" "/x-media-enrich --limit 10 --include-evidence" "$harvest_sh_plain"
+assert_contains "harvest runner fail-opens x-media-enrich" "it must not abort or fail the harvest+triage worker" "$harvest_sh_plain"
 assert_contains "harvest x-media-enrich call passes the 600000 ms Bash tool timeout" "timeout parameter set to 600000" "$harvest_sh_plain"
 assert_contains "harvest x-media-enrich call takes no shell prefix" "with no timeout, env or other prefix" "$harvest_sh_plain"
-assert_contains "harvest x-media-enrich names its reason when the tool timeout fires" "x-media-enrich hit the 600 s tool timeout" "$harvest_sh_plain"
-assert_contains "harvest x-media-enrich reports the partial counts" "report how many clips the outcome lines show as processed and how many remain" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich says the fetch ends inside the tool timeout" "stops starting clips once its 420 s run budget is spent" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich prints one named done line with its counts" "X-MEDIA-ENRICH done: <E> enriched, <F> failed, <P> pending" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich pending is remaining plus not started" "P the sum of its remaining and not started counts" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich names an unfinished step" "X-MEDIA-ENRICH unfinished: <reason>" "$harvest_sh_plain"
 assert_contains "harvest x-media-enrich still runs digest and re-scan after a tool timeout" "still run the digest and re-scan steps for the clips it wrote" "$harvest_sh_plain"
 if command -v jq >/dev/null 2>&1; then
     x_hook="$SCRIPT_DIR/../hooks/cadence-approve-engines.sh"
@@ -1422,8 +1424,16 @@ STUB
 cat >"$TMP_ROOT/bin-rec/claude-ok" <<'STUB'
 #!/usr/bin/env bash
 echo "claude-stub-ran"
+echo "X-MEDIA-ENRICH done: 2 enriched, 1 failed, 7 pending"
 echo "PIPELINE-WORKER-DONE"
 STUB
+cat >"$TMP_ROOT/bin-rec/claude-ok-nox" <<'STUB'
+#!/usr/bin/env bash
+echo "claude-stub-ran"
+echo "X-MEDIA-ENRICH unfinished: hit the 600 s tool timeout"
+echo "PIPELINE-WORKER-DONE"
+STUB
+chmod +x "$TMP_ROOT/bin-rec/claude-ok-nox"
 cat >"$TMP_ROOT/bin-rec/claude-rc5" <<'STUB'
 #!/usr/bin/env bash
 echo "claude-stub-ran"
@@ -1464,6 +1474,20 @@ assert_not_contains "a completed worker logs no FAILED line" "PIPELINE-WORKER-FA
 use_claude parked
 sh "$FIRE_DIR/pipeline-harvest.sh" || true
 assert_rc "after a completed worker the next failure sends again" 2 "$(count_lines "$ALERT_SENDS")"
+# An unfinished x-media-enrich step is named under its own alert key, and the
+# completed harvest it ran in keeps its marker and its exit 0.
+reset_alerts
+use_claude ok-nox
+rc=0; sh "$FIRE_DIR/pipeline-harvest.sh" || rc=$?
+assert_rc "a completed harvest with an unfinished x-media step still exits 0" 0 "$rc"
+assert_contains "an unfinished x-media step alerts under its own key" "pipeline-harvest-x-media x-media-unfinished $FIRE_DIR/pipeline-harvest.log" "$(cat "$CADENCE_ALERT_FILE")"
+assert_not_contains "an unfinished x-media step does not fail the harvest worker" "pipeline-harvest no-completion-marker" "$(cat "$CADENCE_ALERT_FILE")"
+use_claude ok
+sh "$FIRE_DIR/pipeline-harvest.sh" || true
+assert_rc "a done x-media line raises no new alert" 1 "$(count_lines "$CADENCE_ALERT_FILE")"
+use_claude ok-nox
+sh "$FIRE_DIR/pipeline-harvest.sh" || true
+assert_rc "after a done night the next unfinished x-media step sends again" 2 "$(count_lines "$ALERT_SENDS")"
 # A non-zero rc (no transient signature, so no retry).
 reset_alerts
 use_claude rc5
