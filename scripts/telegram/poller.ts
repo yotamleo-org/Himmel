@@ -2590,7 +2590,7 @@ export async function main(): Promise<void> {
   // authorize = operator-identity (global allowFrom) AND chat-allowlisted (makeAllow):
   // the operator in a DM or an allowlisted group arms; a non-operator group member or a
   // non-allowlisted chat is refused. Self-sufficient, re-asserts the chat gate (CR S1).
-  const afkSudoDeps = { access: () => access, installed: helperInstalled, runHelper: spawnHelper, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted };
+  const afkSudoDeps = { access: () => access, installed: helperInstalled, runHelper: spawnHelper, reply: (chat: number, text: string, markup?: object) => replyViaOutbox(root, chat, text, undefined, undefined, markup), log: logRedacted };
   const afkPrompts = makeAfkSudoPrompts();
   const afkSudo = makeAfkSudoGate(afkSudoDeps, afkPrompts);
   // Approve / Deny buttons on the request DM. The Approve tap only sends a ForceReply prompt.
