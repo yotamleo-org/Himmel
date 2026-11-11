@@ -1991,6 +1991,7 @@ _pr_remainder_answer() { # <ticket key> <PR body> -> the reader's answer line on
     printf '%s' "$2" | python3 -I "$reader" "$1" 2>/dev/null
 }
 partial_key=""
+MERGE_ROW_REMAINDER=""; MERGE_ROW_OWED=""; MERGE_ROW_OWED_DUE=""  # a contract=no merge's rows say what the reader found
 if declare -F ticket_key_from_title >/dev/null; then partial_key=$(ticket_key_from_title "$fresh_title") || partial_key=""; fi
 if [ -n "$partial_key" ]; then
     _merge_contract
@@ -2014,12 +2015,17 @@ if [ -n "$partial_key" ]; then
         elif [ "${partial_ans%%$'\t'*}" = handed-off ]; then
             partial_handed=$(printf '%s' "$partial_ans" | cut -f2)
             if [ "$MERGE_ROW_BRIEF" = no ]; then
-                echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key (contract=no) but every remaining ask is deferred to $partial_handed, so this merge completes $partial_key — refusing. The brief ($WORKER_SESSION_DOC) says \`Completes ticket: no\`: the chief changes it to yes and re-issues the GO, or record what stays on $partial_key with a \`Remaining:\` line (gh pr edit $pr_num --body-file <file>)." >&2
+                echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key (contract=no) but every remaining ask is deferred to $partial_handed, so this merge completes $partial_key — refusing. The brief ($WORKER_SESSION_DOC) says \`Completes ticket: no\`: the chief changes it to yes and re-issues the GO, or record what stays on $partial_key with a \`Remaining:\` line or an owed → line (gh pr edit $pr_num --body-file <file>)." >&2
             else
-                echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key (contract=no) but every remaining ask is deferred to $partial_handed, so this merge completes $partial_key — refusing. Re-run with --jira-transition (this merge completes $partial_key), or record what stays on $partial_key with a \`Remaining:\` line (gh pr edit $pr_num --body-file <file>)." >&2
+                echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key (contract=no) but every remaining ask is deferred to $partial_handed, so this merge completes $partial_key — refusing. Re-run with --jira-transition (this merge completes $partial_key), or record what stays on $partial_key with a \`Remaining:\` line or an owed → line (gh pr edit $pr_num --body-file <file>)." >&2
             fi
             audit "REFUSED reason=partial-remainder-handed-off repo=$nwo pr=#$pr_num key=$partial_key handed=$partial_handed"
             exit 26
+        fi
+        MERGE_ROW_REMAINDER="${partial_ans%%$'\t'*}"
+        if [ "$MERGE_ROW_REMAINDER" = owed ]; then
+            MERGE_ROW_OWED=$(printf '%s' "$partial_ans" | cut -f2)
+            MERGE_ROW_OWED_DUE=$(printf '%s' "$partial_ans" | cut -f3)
         fi
     fi
 fi
@@ -2066,7 +2072,7 @@ _merge_intent_row() {
     MERGE_INTENT_KEY=$(ticket_key_from_title "$fresh_title") || { MERGE_INTENT_KEY=""; return 0; }
     [ -n "$MERGE_INTENT_KEY" ] || return 0
     _merge_contract
-    status_event event=merge key="$MERGE_INTENT_KEY" pr="$pr_num" head="$sha" repo="$nwo" contract="$MERGE_ROW_CONTRACT" result=pending stage=pre-merge || true
+    status_event event=merge key="$MERGE_INTENT_KEY" pr="$pr_num" head="$sha" repo="$nwo" contract="$MERGE_ROW_CONTRACT" result=pending stage=pre-merge ${MERGE_ROW_REMAINDER:+remainder="$MERGE_ROW_REMAINDER"} ${MERGE_ROW_OWED:+owed="$MERGE_ROW_OWED" owed_due="$MERGE_ROW_OWED_DUE"} || true
 }
 # _merge_not_merged_row <reason> — this run learned for certain that PR #pr_num did not merge at $sha. The row
 # carries no contract, so no reader takes it for a merge outcome; it only retires the pre-merge row above.
@@ -2990,7 +2996,7 @@ _merge_pre_row() {
     key=$(ticket_key_from_title "$title") || return 0
     [ -n "$key" ] || return 0
     _merge_contract
-    status_event event=merge key="$key" pr="$2" head="$3" contract="$MERGE_ROW_CONTRACT" result=pending stage=pre-jira
+    status_event event=merge key="$key" pr="$2" head="$3" contract="$MERGE_ROW_CONTRACT" result=pending stage=pre-jira ${MERGE_ROW_REMAINDER:+remainder="$MERGE_ROW_REMAINDER"} ${MERGE_ROW_OWED:+owed="$MERGE_ROW_OWED" owed_due="$MERGE_ROW_OWED_DUE"}
 }
 
 # jira_auto_transition_on_merge <nwo> <pr> <sha> — the merge's Jira step, then
@@ -3021,7 +3027,8 @@ jira_auto_transition_on_merge() {
     esac
     if declare -F status_event >/dev/null; then
         status_event event=merge key="$_MERGE_KEY" pr="$2" head="$3" contract="$_MERGE_CONTRACT" \
-            result="$result" ${stage:+stage="$stage"}
+            result="$result" ${stage:+stage="$stage"} \
+            ${MERGE_ROW_REMAINDER:+remainder="$MERGE_ROW_REMAINDER"} ${MERGE_ROW_OWED:+owed="$MERGE_ROW_OWED" owed_due="$MERGE_ROW_OWED_DUE"}
     fi
     exec 8>&-
     if [ "$_MERGE_CONTRACT" != yes ] && [ -n "$_MERGE_KEY" ]; then

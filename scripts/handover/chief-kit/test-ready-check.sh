@@ -1089,6 +1089,94 @@ contains "only 7 trailing text: prints the deferred shape" "$out" "- <ask>: defe
 contains "only 7 trailing text: says marker LAST" "$out" "marker LAST"
 contains "only 7 trailing text: says FAIL" "$out" "COVERAGE-LINT FAIL"
 
+# --- 7c. (slice S4a of the in-progress drift fixes) `- <ask>: owed → chief|operator by YYYY-MM-DD` is a third accepted shape. Item 7 holds no owed
+# grammar: it pipes each owed line alone to the anchor's scripts/lib/pr_remainder.py and checks only the window, today to today
+# plus 14 days. Every row pins TICKET_STATUS_NOW to one epoch computed here, and every date derives from it.
+O_NOW=$(python3 -I -c 'import time; print(int(time.time()))')
+o_day() { python3 -I -c 'import sys, time; print(time.strftime("%Y-%m-%d", time.gmtime(int(sys.argv[1]) + int(sys.argv[2]) * 86400)))' "${2:-$O_NOW}" "$1"; }
+O_READER="$(cd "$(dirname "$SCRIPT")/../../.." && pwd)/scripts/lib/pr_remainder.py"
+o_ar='\xe2\x86\x92'
+o_body() { printf '## Ticket coverage\\n- ask one: done\\n- %s\\n' "$1"; }
+# the BSD `date` shim (copied from test-status-drift.sh): -d is refused, -j -f '%Y-%m-%d' rolls the day over, -r <epoch> and every other form go to the real date
+o_bsdpath=$PATH
+if date -u -d 2026-01-01 +%s >/dev/null 2>&1; then # gnu-ok: the probe itself, the shim below needs a GNU date
+    mkdir -p "$tmp/bsd"
+    cat >"$tmp/bsd/date" <<'EOS'
+#!/usr/bin/env bash
+real=$BSD_SHIM_REAL_DATE
+orig=("$@")
+j=0 r="" v="" out="" fmt="" str=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -d) echo "date: illegal option -- d" >&2; exit 1 ;;
+        -j) j=1; shift ;;
+        -f) fmt=${2:-}; str=${3:-}; shift 3 ;;
+        -r) r=${2:-}; shift 2 ;;
+        -v*) v=${1#-v-}; v=${v%d}; shift ;;
+        +*) out=$1; shift ;;
+        *) shift ;;
+    esac
+done
+if [ "$j" = 1 ]; then
+    case "$fmt" in
+        %Y-%m-%d)
+            base=$("$real" -u -d "${str:0:7}-01" +%s) || exit 1
+            e=$((base + (10#${str:8:2} - 1) * 86400)) ;;
+        *) e=$("$real" -u -d "$str" +%s) || exit 1 ;;
+    esac
+    exec "$real" -u -d "@$e" "$out"
+fi
+[ -z "$r" ] || exec "$real" -u -d "@$r" "$out"
+[ -z "$v" ] || exec "$real" -u -d "$v days ago" "$out"
+exec "$real" "${orig[@]}"
+EOS
+    chmod +x "$tmp/bsd/date"
+    BSD_SHIM_REAL_DATE=$(command -v date)
+    export BSD_SHIM_REAL_DATE
+    o_bsdpath="$tmp/bsd:$PATH"
+fi
+o7() { # <name> <exit> <body-line> [PATH]: one owed line through --only 7 with the clock pinned
+    reset_stubs
+    STUB_BODY="$(o_body "$3")"
+    rc=0; out="$(TICKET_STATUS_NOW=${O_NOW_ROW:-$O_NOW} PATH="${4:-$PATH}" run7)" || rc=$?
+    check "$1: exit $2" "$rc" "$2"
+    if [ "$2" = 0 ]; then contains "$1: says PASS" "$out" "COVERAGE-LINT PASS"; else contains "$1: says FAIL" "$out" "COVERAGE-LINT FAIL"; fi
+}
+o7 "9561 S4a 7c: an owed line to the operator two days out passes" 0 "live proof: owed $o_ar operator by $(o_day 2)"
+o7 "9561 S4a 7c: an owed line passes under the BSD date shim (the control)" 0 "live proof: owed $o_ar operator by $(o_day 2)" "$o_bsdpath"
+o7 "9561 S4a 7c: a -> arrow, chief and today itself pass" 0 "x: owed -> chief by $(o_day 0)"
+o7 "9561 S4a 7c: the day 14 days out passes" 0 "x: owed $o_ar chief by $(o_day 14)"
+o7 "9561 S4a 7c: a who other than chief or operator fails" 1 "x: owed $o_ar bob by $(o_day 2)"
+o7 "9561 S4a 7c: no date fails" 1 "x: owed $o_ar chief"
+o7 "9561 S4a 7c: an impossible month fails" 1 "x: owed $o_ar chief by 2026-13-40"
+o7 "9561 S4a 7c: 2026-02-30 fails" 1 "x: owed $o_ar chief by 2026-02-30"
+o7 "9561 S4a 7c: 2026-02-30 fails under the BSD date shim" 1 "x: owed $o_ar chief by 2026-02-30" "$o_bsdpath"
+o7 "9561 S4a 7c: yesterday fails" 1 "x: owed $o_ar chief by $(o_day -1)"
+o7 "9561 S4a 7c: 15 days out fails" 1 "x: owed $o_ar chief by $(o_day 15)"
+o7 "9561 S4a 7c: 15 days out fails under the BSD date shim" 1 "x: owed $o_ar chief by $(o_day 15)" "$o_bsdpath"
+contains "9561 S4a 7c: a failing owed line prints the owed shape" "$out" "owed → chief|operator by YYYY-MM-DD"
+# item 7 never reads TICKET_STATUS_AWAIT_MAX: the window is a fixed 14 days
+TICKET_STATUS_AWAIT_MAX=7d o7 "9561 S4a 7c: AWAIT_MAX=7d does not shrink the window (10 days out passes)" 0 "x: owed $o_ar chief by $(o_day 10)"
+TICKET_STATUS_AWAIT_MAX=30d o7 "9561 S4a 7c: AWAIT_MAX=30d does not widen the window (15 days out fails)" 1 "x: owed $o_ar chief by $(o_day 15)"
+# the seam: the clock 20 days back makes real today + 2 more than 14 days out
+O_NOW_ROW=$((O_NOW - 20 * 86400)) o7 "9561 S4a 7c: item 7 reads TICKET_STATUS_NOW, not the wall clock" 1 "x: owed $o_ar chief by $(o_day 2)"
+O_NOW_ROW=$((O_NOW - 20 * 86400)) o7 "9561 S4a 7c: the seam row's control: a date inside the seam window passes" 0 "x: owed $o_ar chief by $(o_day -19)"
+# agreement (spec S5-1): item 7 decides an owed line's shape only by what the reader says of that line alone
+o_d=$(o_day 3)
+for o_pair in "owed $o_ar operator by $o_d|operator" "owed -> operator by $o_d|operator" "owed  $o_ar  operator  by  $o_d|operator" \
+    "owed $o_ar\\toperator by $o_d|operator" "OWED $o_ar Operator By $o_d|operator" "Owed->chief by $o_d|chief"; do
+    o_line=${o_pair%|*}; o_who=${o_pair##*|}
+    o7 "9561 S4a 7c agree: item 7 accepts '$o_line'" 0 "x: $o_line"
+    o_ans=$(printf '%b' "$(o_body "$o_line")" | python3 -I "$O_READER" HIMMEL-100)
+    case "$o_ans" in owed$'\t'"$o_who"$'\t'"$o_d"$'\t'*) pass ;; *) fail "9561 S4a 7c agree: the reader reads '$o_line' as owed<TAB>$o_who<TAB>$o_d (said: $o_ans)" ;; esac
+done
+for o_pair in "owed $o_ar bob by $o_d|remaining" "owed $o_ar chief by 2026-02-30|remaining" "owed chief by $o_d|none"; do
+    o_line=${o_pair%|*}; o_kind=${o_pair##*|}
+    o7 "9561 S4a 7c agree: item 7 refuses '$o_line'" 1 "x: $o_line"
+    o_ans=$(printf '%b' "$(o_body "$o_line")" | python3 -I "$O_READER" HIMMEL-100)
+    case "$o_ans" in "$o_kind"|"$o_kind"$'\t'*) pass ;; *) fail "9561 S4a 7c agree: the reader reads '$o_line' as $o_kind, never owed (said: $o_ans)" ;; esac
+done
+
 # the full run prints the same shape message on the same failure
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done pending verification\n'
@@ -3877,6 +3965,12 @@ contains "17j: item 17's own line names the brief line" "$R17_LINE" "Completes t
 contains "17j: item 17's own line names the contract to re-issue the GO with" "$R17_LINE" "--contract yes"
 contains "17j: item 17's own line names the Remaining: line" "$R17_LINE" "Remaining:"
 notcontains "17j: item 17 does not pass" "$R17_OUT" "[PASS] 17."
+contains "9561 S4a 17j: item 17's own line offers an owed line too" "$R17_LINE" "or an owed → line"
+R17_OWED='## Ticket coverage\n- ask one: done\n- live proof: owed \xe2\x86\x92 operator by '"$(o_day 2)"'\n'
+R17_OUT="$(STUB_BODY="$R17_OWED" run || true)"
+R17_LINE="$(printf '%s\n' "$R17_OUT" | grep '\] 17\.' || true)"
+contains "9561 S4a 17m: an owed remainder passes item 17 as owed" "$R17_LINE" "[PASS] 17."
+contains "9561 S4a 17m: the PASS line says owed" "$R17_LINE" "(owed)"
 R17_OUT="$(STUB_BODY="$R17_HANDED"'\nRemaining: x\n' run || true)"
 contains "17k a Remaining: line beside a deferred line passes item 17" "$R17_OUT" "[PASS] 17."
 RUN_FLAGS="--contract yes --require-contract"

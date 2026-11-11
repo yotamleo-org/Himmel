@@ -4376,6 +4376,49 @@ STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BO
 assert_audit_has "9561 S3 control: a none body is still audited as missing" "REFUSED reason=partial-remainder-missing"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s3_body" \
     run_mog 0 "9561 S3 control: --jira-transition with no brief no line merges a handed-off body" -- --jira-transition
+# 9561 S4a: an `owed → chief|operator by <date>` coverage line is a recorded remainder; the merge rows carry what it said
+s4_day() { python3 -I -c 'import datetime, sys; print(datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=int(sys.argv[1])))' "$1"; }
+s4_d2=$(s4_day 2); s4_d3=$(s4_day 3); s4_d4=$(s4_day 4)
+s4_arrow=$'\xe2\x86\x92'
+s4_body=$'## Ticket coverage\n- a: done\n- live proof: owed '"$s4_arrow"' operator by '"$s4_d2"$'\n'
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s4_body" \
+    run_mog 0 "9561 S4a: a coverage line owed to the operator by a date is a recorded remainder, the merge lands"
+assert_gh_has "9561 S4a: the owed merge called pr merge" "pr merge"
+assert_status_row "9561 S4a: the final merge row carries remainder=owed owed=operator owed_due=<date>" \
+    '.event == "merge" and .key == "HIMMEL-374" and .contract == "no" and .result == "noop" and .remainder == "owed" and .owed == "operator" and .owed_due == "'"$s4_d2"'"'
+assert_status_row "9561 S4a: the pre-merge row carries the owed fields too" \
+    '.event == "merge" and .stage == "pre-merge" and .remainder == "owed" and .owed == "operator" and .owed_due == "'"$s4_d2"'"'
+assert_status_row "9561 S4a: the pre-jira row carries the owed fields too" \
+    '.event == "merge" and .stage == "pre-jira" and .remainder == "owed" and .owed == "operator" and .owed_due == "'"$s4_d2"'"'
+# every merge row of a contract=no merge carries remainder=; a contract=yes row carries none of the three fields
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: x" run_mog 0 "9561 S4a: a Remaining: merge writes its rows"
+if jq -e -s '[.[] | select(.event == "merge" and .contract == "no")] | length >= 3 and all(.remainder == "remaining" and (has("owed") | not) and (has("owed_due") | not))' \
+    "$LAST_TMP/ts/status-events.jsonl" >/dev/null 2>&1; then pass
+else fail "9561 S4a: every contract=no row of a Remaining: merge carries remainder=remaining and no owed fields (rows: $(cat "$LAST_TMP/ts/status-events.jsonl" 2>/dev/null))"; fi
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s4_body" run_mog 0 "9561 S4a: an owed merge writes its rows"
+if jq -e -s '[.[] | select(.event == "merge" and .contract == "no")] | length >= 3 and all(.remainder == "owed" and .owed == "operator" and .owed_due == "'"$s4_d2"'")' \
+    "$LAST_TMP/ts/status-events.jsonl" >/dev/null 2>&1; then pass
+else fail "9561 S4a: every contract=no row of an owed merge carries remainder=owed owed=operator owed_due (rows: $(cat "$LAST_TMP/ts/status-events.jsonl" 2>/dev/null))"; fi
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Ticket coverage\n- slice one: done\n' \
+    run_mog 0 "9561 S4a: a completing merge writes its rows" -- --jira-transition
+if jq -e -s '[.[] | select(.event == "merge" and .contract == "yes")] | length >= 3 and all(has("remainder") == false and has("owed") == false and has("owed_due") == false)' \
+    "$LAST_TMP/ts/status-events.jsonl" >/dev/null 2>&1; then pass
+else fail "9561 S4a: a contract=yes row carries none of remainder, owed and owed_due (rows: $(cat "$LAST_TMP/ts/status-events.jsonl" 2>/dev/null))"; fi
+# the S3 refusals offer the owed line too
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s3_body" \
+    run_mog 26 "9561 S4a: the brief-no handed-off refusal offers an owed line" -- --worker-doc "$s3_doc"
+assert_err_has "9561 S4a: the brief-no refusal ends with the owed clause" "or an owed $s4_arrow line"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s3_body" \
+    run_mog 26 "9561 S4a: the no-brief handed-off refusal offers an owed line"
+assert_err_has "9561 S4a: the no-brief refusal ends with the owed clause" "or an owed $s4_arrow line"
+# the reader's precedence: remaining > owed > handed-off > none; several owed lines answer the earliest date
+s4_read() { printf '%s' "$1" | python3 -I "$SCRIPT_DIR/../lib/pr_remainder.py" HIMMEL-374 2>/dev/null; }
+s4_ans=$(s4_read "$(printf 'Remaining: x\n\n## Ticket coverage\n- a: done\n- b: owed %s operator by %s\n' "$s4_arrow" "$s4_d2")")
+case "$s4_ans" in remaining$'\t'*) pass ;; *) fail "9561 S4a: a Remaining: line beats an owed line (reader said: $s4_ans)" ;; esac
+s4_ans=$(s4_read "$(printf '## Ticket coverage\n- a: owed %s chief by %s\n- b: owed %s operator by %s\n' "$s4_arrow" "$s4_d4" "$s4_arrow" "$s4_d3")")
+case "$s4_ans" in owed$'\t'operator$'\t'"$s4_d3"$'\t'*) pass ;; *) fail "9561 S4a: two owed lines answer the earlier date and its who (reader said: $s4_ans)" ;; esac
+s4_ans=$(s4_read "${s3_body}$(printf -- '- c: owed %s chief by %s\n' "$s4_arrow" "$s4_d2")")
+case "$s4_ans" in owed$'\t'chief$'\t'"$s4_d2"$'\t'*) pass ;; *) fail "9561 S4a: an owed line beats a deferred-to-another-ticket line (reader said: $s4_ans)" ;; esac
 # a title naming no ticket is not a partial merge of one: no remainder is asked of it
 STUB_PR_BODY="just a summary" run_mog 0 "8673: a title with no ticket key asks for no remainder"
 assert_gh_has "8673: the keyless title merged" "pr merge"
