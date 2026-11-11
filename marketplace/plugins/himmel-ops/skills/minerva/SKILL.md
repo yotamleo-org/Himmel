@@ -275,7 +275,8 @@ one closure check. Rounds 1 to 3 read the whole file.
 and every surface reads the count from there, so a new leg, a renamed spec, a new
 file name or a deleted critic file does not lower it. Spec and plan rounds are
 counted apart; the writer round is the higher of the two. See where a ticket
-stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY>`.
+stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY> --specs <bucket>/specs`,
+`<bucket>` being the state repo bucket that holds the spec; every verb below takes the same `--specs`.
 
 | Round | Allowed when | What the critic reads |
 |---|---|---|
@@ -284,7 +285,7 @@ stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY>`.
 | 5 and on | the chief's one `round-override`, or a `round-critical` record, opens that writer round | the closure pack only |
 
 - **Round 4 is a closure check.** Build the critic's input with
-  `bun <himmel>/scripts/telegram/chief-route.ts closure-pack <KEY> <spec|plan>`:
+  `bun <himmel>/scripts/telegram/chief-route.ts closure-pack <KEY> <spec|plan> --specs <bucket>/specs`:
   a `CLOSURE-CHECK` marker line, the open blocking findings, the sha of each file
   round 3 sealed and the diff of each since. The critic gets the pack and the
   charter's Closure mode, never the whole file. The seal refuses a round-4 return
@@ -294,18 +295,18 @@ stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY>`.
   `## Folded critic findings`. After a minors-only round 3, sign the spec: do not
   ask for round 4.
 - **The override.** Past round 4, the chief may record one
-  `round-override <KEY> --findings <id,...> --why "<line>" --chief <session>` per
+  `round-override <KEY> --findings <id,...> --why "<line>" --chief <session> --specs <bucket>/specs` per
   ticket, ever, naming open blocking ids.
 - **Operator-critical.** A finding tagged `operator-critical: <class>`, with one
   of the four classes (`spend-grant`, `account-or-terms`, `public-policy`,
   `reverses-ruling`), goes to the operator, not to a round. It stays open until the
   chief records the operator's ruling with
-  `round-critical <KEY> --finding <id> --decision <d> --quote "<operator words>"`.
+  `round-critical <KEY> --finding <id> --decision <d> --quote "<operator words>" --specs <bucket>/specs`.
   Add `--no-round` when the ruling needs no revision (for example "sign it as it
   stands"); without it the record opens one further writer round. While any such
   finding is open the signature is refused, naming it.
 - **A rethink.** Only the operator's ruling to start over lowers the count:
-  `round-reset <KEY> --decision <d> --quote "<operator words>"`, once per ticket.
+  `round-reset <KEY> --decision <d> --quote "<operator words>" --specs <bucket>/specs`, once per ticket.
 - The three record verbs run only from the chief's console, and every record is
   checked again on each read. A hand-written `<spec>.operator-round-r<n>.md` file
   counts for nothing.
@@ -496,7 +497,7 @@ Dispatch a fresh subagent (Agent tool, `model: sonnet` at high effort) against
 the written plan file. Loop
 fix → re-critic until clean, **cap 3 rounds**, counted per ticket in the same
 round ledger and capped by the same table as Stage 2. A plan round 4 is a closure
-check too: build its input with `closure-pack <KEY> plan`.
+check too: build its input with `closure-pack <KEY> plan --specs <bucket>/specs`.
 
 Save each return as Stage 2 does, beside the **spec** (not the plan):
 `<spec-file>.critic-plan-r<n>.md`, ending in `PLAN CLEAN` or
