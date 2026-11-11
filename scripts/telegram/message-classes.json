@@ -41,7 +41,8 @@
       "kind": "monitor-chat-down",
       "class": "escalate",
       "sender": "scripts/telegram/poller.ts",
-      "sample": "The monitoring group is getting no messages (unset); 3 are kept on the station. Blocks: routine monitoring only. Do: add the two monitoring lines to the bridge env file and restart the bridge"
+      "pin": "replyViaOutbox(root, chat, monitorChatDownText(",
+      "sample": "The monitoring group is getting no messages (unset); 3 are kept on the station. Blocks: routine monitoring only. Do: check the two monitoring lines in the bridge env file and that the monitoring bot is in its group, then restart the bridge"
     },
     {
       "kind": "recover-failed",
