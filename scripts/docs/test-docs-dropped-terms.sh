@@ -529,6 +529,10 @@ if grep -q 'PARKED-BANK' "$ROOT/docs/handover/worker-preface.md"; then bad "the 
 else ok "the worker preface teaches PARKED-USAGE"; fi
 if grep '^| \*\*Status marker\*\*' "$ROOT/docs/glossary.md" | grep -q 'PARKED-BANK'; then bad "the glossary Status marker row lists PARKED-BANK"
 else ok "the glossary Status marker row lists PARKED-USAGE"; fi
+update_hits=$(cd "$ROOT" && grep -n -i -H 'ponytail' .claude/commands/himmel-update.md .claude/commands/himmel-update-all.md \
+  marketplace/plugins/himmel-ops/commands/himmel-update.md marketplace/plugins/himmel-ops/commands/himmel-update-all.md 2>&1)
+if [ -n "$update_hits" ]; then printf '%s\n' "$update_hits"; bad "the himmel-update command pages name the retired ponytail marker or a page is missing (listed above)"
+else ok "the himmel-update command pages name the ceilings ledger, not the retired marker"; fi
 
 echo "# pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
