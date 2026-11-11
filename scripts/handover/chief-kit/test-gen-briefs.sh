@@ -98,6 +98,25 @@ export GEN_BRIEFS_JIRA_CLI="$WORK/stub-jira/index.js" CG_STUB_SIGNED="$WORK/cg-s
 export CG_STUB_NEEDS="$WORK/cg-needs" CG_STUB_GOLDEN="$HERE/../../jira/src/release/fixtures/bypass-needs-spec.line"; mkdir -p "$CG_STUB_NEEDS"
 # brief-lint.sh (run on every generated brief, and by the launcher) asks the same stand-in over the same fixture mirror
 export BRIEF_LINT_JIRA_CLI="$GEN_BRIEFS_JIRA_CLI" BRIEF_LINT_MIRROR="$GEN_BRIEFS_MIRROR"
+# The round ledger verbs (chief-route.ts round-status, fold-list) are asked through GEN_BRIEFS_ROUTE_CMD: a stand-in that
+# records its argv in ROUTE_LOG and answers from ROUTE_STUB (<KEY>.json, <KEY>.fail, <spec name>.fold, <spec name>.fail).
+# With no file it answers next=full and folds nothing.
+cat > "$WORK/stub-route.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$ROUTE_LOG"
+case "$1" in
+fold-list)
+    b="$(basename "$3")"
+    if [ -f "$ROUTE_STUB/$b.fail" ]; then cat "$ROUTE_STUB/$b.fail" >&2; exit 1; fi
+    [ ! -f "$ROUTE_STUB/$b.fold" ] || cat "$ROUTE_STUB/$b.fold" ;;
+round-status)
+    if [ -f "$ROUTE_STUB/$2.fail" ]; then cat "$ROUTE_STUB/$2.fail" >&2; exit 1; fi
+    if [ -f "$ROUTE_STUB/$2.json" ]; then cat "$ROUTE_STUB/$2.json"; else printf '{"key":"%s","spec":1,"plan":0,"writer":1,"next":"full","why":"spec round 2: full; plan round 1: full"}\n' "$2"; fi ;;
+*) echo "stub route: unknown verb $*" >&2; exit 2 ;;
+esac
+EOF
+chmod +x "$WORK/stub-route.sh"
+export GEN_BRIEFS_ROUTE_CMD="$WORK/stub-route.sh" ROUTE_LOG="$WORK/route.log" ROUTE_STUB="$WORK/route-stub"; mkdir -p "$ROUTE_STUB"
 
 cat > "$WORK/workers.json" <<'EOF'
 [
@@ -1749,6 +1768,111 @@ cg_workers on9421 HIMMEL-9421 "$CORE_WRITES" ''
 cgo="$(cgrun on9421)"; rc=$?
 [ "$rc" = 0 ] && pass "the same worker with a signed spec generates (rc 0)" || fail "on9421 rc=$rc: $cgo"
 
+# ---- the round cap (spec D4, D10): folded critic findings in the brief, and the writer-round gate ----
+WS="$WORK/handovers/yotamleo/himmel/specs"; mkdir -p "$WS/designs" "$WS/ledgers/spec-rounds"
+NOLEDGER_KEY="HIMMEL-9432" EMPTY_KEY="HIMMEL-9439"
+# shellcheck disable=SC2016  # the instruction line's backticks are literal product text
+INSTR='each id is a `## Ticket coverage` line: `- <id>: done` or `- <id>: deferred → HIMMEL-<n>`'
+cg_signed_at() { # <key> <spec path>: spec-check answers SPEC ok for <key> with that spec path
+    printf '%s O-R1-%s\n' "$2" "$1" > "$CG_STUB_SIGNED/$1"
+}
+# R13: a signed key's brief carries the fold-list lines under the heading, with the Ticket coverage instruction line
+cg_mirror HIMMEL-9431 Task Medium '[]'; cg_signed_at HIMMEL-9431 "$WS/designs/HIMMEL-9431-fold.md"
+printf -- '- m-a (minor) spec r3 %s\n- c1 (minor; out-of-closure) spec r4 %s\n' "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md" "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r4.md" > "$ROUTE_STUB/HIMMEL-9431-fold.md.fold"
+cg_workers r13 HIMMEL-9431 "$CORE_WRITES" ''
+: > "$ROUTE_LOG"; cgo="$(cgrun r13)"; rc=$?
+B13="$(cat "$(cg_brief r13)" 2>/dev/null)"
+[ "$rc" = 0 ] && pass "R13: a signed key with folded findings generates (rc 0)" || fail "R13 rc=$rc: $cgo"
+has "R13: the brief carries the Folded critic findings heading" "$B13" "## Folded critic findings"
+has "R13: the brief carries the first fold-list line" "$B13" "- m-a (minor) spec r3 $WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md"
+has "R13: the brief carries the second fold-list line" "$B13" "- c1 (minor; out-of-closure) spec r4 $WS/designs/HIMMEL-9431-fold.md.critic-spec-r4.md"
+has "R13: the block ends with the Ticket coverage instruction line" "$B13" "$INSTR"
+has "R13: the stand-in saw fold-list --spec <the SPEC ok path>" "$(cat "$ROUTE_LOG")" "fold-list --spec $WS/designs/HIMMEL-9431-fold.md"
+BRIEF_LINT_MIRROR="$CG/mirror" bash "$HERE/brief-lint.sh" "$(cg_brief r13)" 2>"$CG/lint13.err"; rc=$?
+[ "$rc" = 0 ] && pass "R13: the brief with the folded block passes brief-lint.sh" || fail "R13 brief-lint rc=$rc: $(cat "$CG/lint13.err")"
+# R13 sibling: a key with no round ledger folds nothing and says so; a key whose ledger folds nothing says that instead
+cg_mirror HIMMEL-9432 Task Medium '[]'; cg_signed_at HIMMEL-9432 "$WS/designs/HIMMEL-9432-fold.md"
+cg_workers r13none HIMMEL-9432 "$CORE_WRITES" ''
+cgo="$(cgrun r13none)"; rc=$?
+B13N="$(cat "$(cg_brief r13none)" 2>/dev/null)"
+[ "$rc" = 0 ] && has "R13 sibling: a key with no ledger gets none recorded" "$B13N" "> **Folded critic findings:** none recorded ($NOLEDGER_KEY has no round ledger)" || fail "R13 sibling rc=$rc: $cgo"
+lacks "R13 sibling: no Folded critic findings heading when nothing is folded" "$B13N" "## Folded critic findings"
+printf '{"v":1}\n' > "$WS/ledgers/spec-rounds/HIMMEL-9439.jsonl"
+cg_mirror HIMMEL-9439 Task Medium '[]'; cg_signed_at HIMMEL-9439 "$WS/designs/HIMMEL-9439-fold.md"
+cg_workers r13empty HIMMEL-9439 "$CORE_WRITES" ''
+cgo="$(cgrun r13empty)"; rc=$?
+[ "$rc" = 0 ] && has "R13 sibling: a key whose ledger folds nothing says so" "$(cat "$(cg_brief r13empty)" 2>/dev/null)" "> **Folded critic findings:** none recorded (${EMPTY_KEY}'s ledger folds no finding)" || fail "R13 empty-ledger rc=$rc: $cgo"
+# R13b: a signed spec filed under another key: fold-list gets the SPEC ok path, never one built from the worker's key
+cg_mirror HIMMEL-9433 Task Medium '[]'; cg_signed_at HIMMEL-9433 "$WS/designs/HIMMEL-9687-borrowed.md"
+printf -- '- m-z (minor) spec r3 %s\n' "$WS/designs/HIMMEL-9687-borrowed.md.critic-spec-r3.md" > "$ROUTE_STUB/HIMMEL-9687-borrowed.md.fold"
+cg_workers r13b HIMMEL-9433 "$CORE_WRITES" ''
+: > "$ROUTE_LOG"; cgo="$(cgrun r13b)"; rc=$?
+[ "$rc" = 0 ] && has "R13b: the brief carries the borrowed spec's folded line" "$(cat "$(cg_brief r13b)" 2>/dev/null)" "- m-z (minor) spec r3" || fail "R13b rc=$rc: $cgo"
+has "R13b: the stand-in saw the SPEC ok path" "$(cat "$ROUTE_LOG")" "fold-list --spec $WS/designs/HIMMEL-9687-borrowed.md"
+lacks "R13b: no fold-list path built from the worker's key" "$(grep '^fold-list' "$ROUTE_LOG")" "HIMMEL-9433"
+# R13 refusal half (I8): a fold-list that fails refuses the brief
+cg_mirror HIMMEL-9438 Task Medium '[]'; cg_signed_at HIMMEL-9438 "$WS/designs/HIMMEL-9438-fold.md"
+printf 'HIMMEL-9438 ledger line 3 does not parse; restore it from the state repo history\n' > "$ROUTE_STUB/HIMMEL-9438-fold.md.fail"
+cg_workers r13fail HIMMEL-9438 "$CORE_WRITES" ''
+cgo="$(cgrun r13fail)"; rc=$?
+[ "$rc" = 1 ] && has "R13: a failing fold-list refuses the brief naming its error" "$cgo" "HIMMEL-9438 ledger line 3 does not parse" || fail "R13 fold-list failure rc=$rc: $cgo"
+[ -z "$(cg_brief r13fail)" ] && pass "R13: a failing fold-list writes no brief" || fail "R13: a brief was written though fold-list failed"
+
+# R14: a writer leg (an absolute Writes path under a specs signature folder) for a key at next=none is refused (T13)
+T13='HIMMEL-9434 has had its writer rounds; sign it under 848, send the page to the operator, or record round-override'
+cg_mirror HIMMEL-9434 Task Medium '[]'
+printf '{"key":"HIMMEL-9434","spec":3,"plan":3,"writer":3,"next":"none","why":"spec round 4: HIMMEL-9434 spec round 4 needs a blocking finding in round 3 of either kind; plan round 4: HIMMEL-9434 plan round 4 needs a blocking finding in round 3 of either kind"}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
+cg_workers r14 HIMMEL-9434 "$WS/designs/HIMMEL-9434-x.md" ''
+: > "$ROUTE_LOG"; cgo="$(cgrun r14)"; rc=$?
+[ "$rc" = 1 ] && has "R14: a writer leg at next=none is refused with T13" "$cgo" "$T13" || fail "R14 rc=$rc: $cgo"
+[ -z "$(cg_brief r14)" ] && [ ! -e "$CG/b-r14/launch-N941.sh" ] && pass "R14: the refused writer leg gets no brief and no launcher" || fail "R14: a brief was written for a key with no rounds left"
+has "R14: round-status is asked for the key over the path's specs root" "$(cat "$ROUTE_LOG")" "round-status HIMMEL-9434 --specs $WS --json"
+# R14 sibling: next=full gets its brief and no Round line; next=closure gets the Round line
+cg_mirror HIMMEL-9435 Task Medium '[]'
+cg_workers r14full HIMMEL-9435 "$WS/designs/HIMMEL-9435-x.md" ''
+cgo="$(cgrun r14full)"; rc=$?
+[ "$rc" = 0 ] && [ -n "$(cg_brief r14full)" ] && pass "R14 sibling: a writer leg at next=full gets its brief" || fail "R14 sibling rc=$rc: $cgo"
+lacks "R14 sibling: next=full adds no Round line" "$(cat "$(cg_brief r14full)" 2>/dev/null)" "> **Round:**"
+cg_mirror HIMMEL-9437 Task Medium '[]'
+printf '{"key":"HIMMEL-9437","spec":3,"plan":3,"writer":3,"next":"closure","why":"spec round 4: closure; plan round 4: HIMMEL-9437 plan round 4 needs a blocking finding in round 3 of either kind"}\n' > "$ROUTE_STUB/HIMMEL-9437.json"
+cg_workers r14closure HIMMEL-9437 "$WS/designs/HIMMEL-9437-x.md" ''
+cgo="$(cgrun r14closure)"; rc=$?
+[ "$rc" = 0 ] && has "R14: next=closure adds the Round line" "$(cat "$(cg_brief r14closure)" 2>/dev/null)" "> **Round:** HIMMEL-9437 writer round 4 is a closure check: dispatch the critic with chief-route.ts closure-pack" || fail "R14 closure rc=$rc: $cgo"
+
+# R14b: a writer leg's path key must be one of its own keys (T14), by the bounded key rule; a path with no key is refused
+cg_mirror HIMMEL-9687 Task Medium '[]'
+cg_workers r14b HIMMEL-9687 "$WS/designs/HIMMEL-96870-x.md" ''
+cgo="$(cgrun r14b)"; rc=$?
+[ "$rc" = 1 ] && has "R14b: a path whose key is HIMMEL-96870 is refused for HIMMEL-9687 with T14" "$cgo" "a writer leg writes only its own keys' specs: $WS/designs/HIMMEL-96870-x.md is HIMMEL-96870" || fail "R14b rc=$rc: $cgo"
+[ -z "$(cg_brief r14b)" ] && pass "R14b: the foreign-key writer leg gets no brief" || fail "R14b: a brief was written for a foreign key"
+cg_workers r14bok HIMMEL-9687 "$WS/designs/HIMMEL-9687-x.md" ''
+cgo="$(cgrun r14bok)"; rc=$?
+[ "$rc" = 0 ] && [ -n "$(cg_brief r14bok)" ] && pass "R14b sibling: Writes naming HIMMEL-9687-x.md get the brief" || fail "R14b sibling rc=$rc: $cgo"
+cg_workers r14bplan HIMMEL-9687 "$WS/plans/2026-11-04-HIMMEL-9687-x-plan.md" ''
+: > "$ROUTE_LOG"; cgo="$(cgrun r14bplan)"; rc=$?
+[ "$rc" = 0 ] && has "R14b: a date-prefixed plan takes its key from inside the name" "$(cat "$ROUTE_LOG")" "round-status HIMMEL-9687 --specs $WS --json" || fail "R14b date-prefixed plan rc=$rc: $cgo"
+cg_workers r14bplanx HIMMEL-9687 "$WS/plans/2026-11-04-HIMMEL-96870-x-plan.md" ''
+cgo="$(cgrun r14bplanx)"; rc=$?
+[ "$rc" = 1 ] && has "R14b: a date-prefixed plan of another key is refused with T14" "$cgo" "a writer leg writes only its own keys' specs: $WS/plans/2026-11-04-HIMMEL-96870-x-plan.md is HIMMEL-96870" || fail "R14b date-prefixed foreign plan rc=$rc: $cgo"
+cg_workers r14bfolder HIMMEL-9687 "$WS/HIMMEL-9687/notes.md" ''
+cgo="$(cgrun r14bfolder)"; rc=$?
+[ "$rc" = 0 ] && [ -n "$(cg_brief r14bfolder)" ] && pass "R14b: a folder-form path specs/<KEY>/ takes the folder's key" || fail "R14b folder form rc=$rc: $cgo"
+cg_workers r14bnokey HIMMEL-9687 "$WS/designs/notes.md" ''
+cgo="$(cgrun r14bnokey)"; rc=$?
+[ "$rc" = 1 ] && has "R14b: a writer-leg path with no key is refused" "$cgo" "$WS/designs/notes.md has no ticket key" || fail "R14b no-key rc=$rc: $cgo"
+
+# R11-brief (I8): a round-status that cannot read the ledger refuses the writer brief; the same key readable gets it
+cg_mirror HIMMEL-9436 Task Medium '[]'
+printf 'HIMMEL-9436 ledger line 2 does not parse; restore it from the state repo history\n' > "$ROUTE_STUB/HIMMEL-9436.fail"
+cg_workers r11 HIMMEL-9436 "$WS/designs/HIMMEL-9436-x.md" ''
+cgo="$(cgrun r11)"; rc=$?
+[ "$rc" = 1 ] && has "R11-brief: an unreadable ledger refuses the writer brief naming the error" "$cgo" "HIMMEL-9436 ledger line 2 does not parse" || fail "R11-brief rc=$rc: $cgo"
+[ -z "$(cg_brief r11)" ] && pass "R11-brief: the unreadable-ledger writer leg gets no brief" || fail "R11-brief: a brief was written over an unreadable ledger"
+rm -f "$ROUTE_STUB/HIMMEL-9436.fail"
+cg_workers r11ok HIMMEL-9436 "$WS/designs/HIMMEL-9436-x.md" ''
+cgo="$(cgrun r11ok)"; rc=$?
+[ "$rc" = 0 ] && [ -n "$(cg_brief r11ok)" ] && pass "R11-brief sibling: the same ledger readable gets the brief" || fail "R11-brief sibling rc=$rc: $cgo"
+
 unset HIMMEL_CONFIG_DIR
 
 # ---- single-writer barrier: the Writes line gen-briefs writes and holds.py parse (the barrier's one parser) read the same paths
@@ -1794,7 +1918,7 @@ gen98() {
     python3 "$SUT" "$1" --base 4ccb59d --chief BZ --bucket "$2" --repo "$REPO" --handover-root "$WORK/handovers" --date 2026-10-08 --no-worktree "${@:3}" >"$WORK/g98.out" 2>"$WORK/g98.err"
 }
 pm HIMMEL-9801 "Edit the thing.$PROOF_TAIL"
-ABS98="$WORK/handovers/yotamleo/himmel/specs/plan/p98.md"
+ABS98="$WORK/handovers/yotamleo/himmel/specs/plan/HIMMEL-9801-p98.md"
 mk98 'w["keys"]=["HIMMEL-9801"]; w["writes"]=sys.argv[4]' "$WORK/a98.json" "$ABS98"
 gen98 "$WORK/a98.json" "$WORK/ba98"; rc=$?
 A98="$WORK/ba98/HIMMEL-9801-N901-plain-fix-2026-10-08.md"
