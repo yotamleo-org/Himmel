@@ -40,7 +40,7 @@ export type AfkSudoDeps = {
   access: () => Access;
   installed: () => boolean;
   runHelper: HelperRun;
-  reply: (chat_id: number, text: string) => Promise<void>;
+  reply: (chat_id: number, text: string, markup?: object) => Promise<void>;
   log: (line: string) => void;
 };
 export type AfkSudoCallbackDeps = AfkSudoDeps & {
@@ -180,7 +180,11 @@ function opRequest(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
     p.code === undefined ? "" : `${p.code}\n`)
     .then((res) => {
       const first = res.stdout.split("\n")[0]?.trim() || `exit ${res.code}`;
-      return deps.reply(msg.chat_id, `${res.code === 0 ? "✅" : "⚠️"} afk-sudo op ${p.name}: ${first}`);
+      // A filed op carries the buttons the run request has: without them the operator has no Approve prompt to reply to.
+      const id = res.code === 0 && first.startsWith("result=pending ") ? /(?:^| )id=(\S+)/.exec(first)?.[1] : undefined;
+      const markup = id === undefined ? null : afkApprovalKeyboard(id);
+      const text = `${res.code === 0 ? "✅" : "⚠️"} afk-sudo op ${p.name}: ${first}`;
+      return markup ? deps.reply(msg.chat_id, text, markup) : deps.reply(msg.chat_id, text);
     })
     .catch((e) => deps.log(`[afk-sudo] op ${p.name} failed: ${e}`));
   return true;
@@ -297,7 +301,7 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
         if ((msg.reply_to_bot === true && heldAsCode(msg.text)) || waiting.length > 0) {
           void deps.reply(msg.chat_id, waiting.length > 0
             ? `⚠️ afk-sudo: a code sent as a plain message is not taken, nothing ran. Reply to the "Approve ${waiting.join('" or "Approve ')}" prompt, or send: approve ${waiting.length === 1 ? waiting[0] : "<request id>"} <nonce> <code>`
-            : "⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again; if it already ran or ended, nothing more is needed.").catch(() => {});
+            : "⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again or send: approve <request id> <nonce> <code>; if it already ran or ended, nothing more is needed.").catch(() => {});
           return true;
         }
       }
@@ -341,6 +345,14 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
 }
 
 const BUTTON = /^afk:(approve|deny):([a-z2-7]{8})$/;
+const REQUEST_ID = /^[a-z2-7]{8}$/;
+
+// The Approve / Deny keyboard of a request DM: the same two buttons scripts/lib/afk-sudo-request sends for a
+// run request (the suite pins the bytes). null for an id that is not the helper's 8 base32 characters.
+export function afkApprovalKeyboard(id: string): object | null {
+  if (!REQUEST_ID.test(id)) return null;
+  return { inline_keyboard: [[{ text: "✅ Approve", callback_data: `afk:approve:${id}` }, { text: "❌ Deny", callback_data: `afk:deny:${id}` }]] };
+}
 
 // The inline-button gate poller.ts calls for a callback_query: true = consumed.
 export function makeAfkSudoCallback(deps: AfkSudoCallbackDeps, prompts: AfkSudoPrompts): (tap: AfkSudoTap) => boolean {
