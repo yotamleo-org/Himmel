@@ -11,7 +11,8 @@ with a gold file.
 
 --max-usd binds the whole plan, not one process: each process is given what is still unspent, the cost_usd
 of every row already written under the plan's out dirs, and the plan stops once nothing is left. An out dir
-that already holds results.jsonl, or a row whose cost cannot be read, stops the plan before anything is paid.
+that already holds results.jsonl, two pairs sharing one out dir, or a row whose cost cannot be read, stops the
+plan before anything is paid.
 Exit: 0 every process complete, 1 a process stopped or errored or the budget ran out, 2 or 64 a process
 refused or was misused (the plan stops there).
 Seams: STALE_SESSIONS_AB (the answer-ab.py to run). answer-ab.py makes the billed calls and refuses
@@ -70,6 +71,9 @@ def main(argv=None):
     entries = load_json(a.plan).get("pairs") or []
     if not entries:
         raise SystemExit("stale-sessions: %s names no pair" % a.plan)
+    outs = [os.path.realpath(e["out"]) for e in entries]
+    if len(set(outs)) != len(outs):
+        raise SystemExit("stale-sessions: two pairs share one out dir; a later process would overwrite the earlier one's spend")
     for e in entries:
         if os.path.exists(os.path.join(e["out"], "results.jsonl")):
             raise SystemExit("stale-sessions: %s already holds results.jsonl; its spend would be lost when the pair reruns: use a fresh out dir" % e["out"])

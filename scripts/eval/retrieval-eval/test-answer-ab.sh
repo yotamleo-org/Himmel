@@ -616,6 +616,13 @@ eq "a plan that never spends runs every pair" "0 4" "$? $(wc -l < "$W/driver.log
 rm -rf "$W/drv"; rm -f "$W/driver.log"
 STALE_SESSIONS_AB="$W/ab-stub.py" STUB_SPEND=1 STUB_BAD_ROW=1 python3 -I "$SS" --plan "$W/plan4.json" --max-usd 18 > "$W/drvbad.txt" 2>&1
 eq "driver_fails_closed_on_unreadable_row: a spend row that cannot be read stops the plan, naming the file and line" "1 1" "$(wc -l < "$W/driver.log" | tr -d ' ') $(grep -c 'cannot read the spend of .*results.jsonl line 2' "$W/drvbad.txt")"
+rm -rf "$W/drv"; rm -f "$W/driver.log"
+python3 -I -c 'import json,sys
+e = lambda out: {"pair": sys.argv[1], "questions": sys.argv[2], "repo": sys.argv[3], "out": out}
+open(sys.argv[5], "w").write(json.dumps({"pairs": [e(sys.argv[4] + "/drv/dup"), e(sys.argv[4] + "/drv/../drv/dup")]}))' "$PD/pair.json" "$Q2" "$R" "$W" "$W/plandup.json"
+STALE_SESSIONS_AB="$W/ab-stub.py" STUB_SPEND=1 python3 -I "$SS" --plan "$W/plandup.json" --max-usd 18 > "$W/drvdup.txt" 2>&1
+rc=$?
+eq "driver_refuses_duplicate_out: two pairs on one out dir, however spelled, are refused before any process runs" "1 0 1" "$([ "$rc" -ne 0 ] && echo 1 || echo 0) $([ -e "$W/driver.log" ] && echo 1 || echo 0) $(grep -c 'share one out dir' "$W/drvdup.txt")"
 rm -rf "$W/drv"
 python3 -I -c 'import json,sys
 plan = {"pairs": [{"pair": sys.argv[1], "questions": sys.argv[2], "repo": sys.argv[3], "out": sys.argv[4] + "/drv/real"}]}
