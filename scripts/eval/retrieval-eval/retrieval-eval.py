@@ -698,6 +698,12 @@ def pair_graph_out(pair, qs, state, repo):
             raise Refuse("%s is a checkout's graphify-out, not a scratch graph" % out)
     if not os.path.isfile(os.path.join(out, "graph.json")):
         raise Usage("no graph.json in %s" % out)
+    try:
+        stamp = stamp_of(os.path.join(out, "graph.json"))
+    except RuntimeError:
+        stamp = None
+    if stamp and not (commit.startswith(stamp) or stamp.startswith(commit)):
+        raise Refuse("the graph in %s was built at %s, not at the pair commit %s" % (out, stamp[:12], commit[:12]))
     return out, commit
 
 
@@ -859,12 +865,14 @@ def cmd_run(a):
                 heldout_sha256=hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16])
     if "graphify" in arms or "combined" in arms:
         try:
-            if pair_cfg.get("graph_commit"):
-                with open(os.path.join(os.environ["WORKER_GRAPH_OUT"], "graph.json"), "rb") as fh:
-                    fh.read(1)
-                meta["graph_built_at"] = pair_cfg["graph_commit"]
-            else:
+            try:
                 meta["graph_built_at"] = graph_built(repo)
+                meta["graph_stamp_source"] = "graph"
+            except NoStamp:
+                if not pair_cfg.get("graph_commit"):
+                    raise
+                meta["graph_built_at"] = pair_cfg["graph_commit"]
+                meta["graph_stamp_source"] = "pair.json"
         except (RuntimeError, OSError) as e:
             meta["graph_built_error"] = str(e)
             print("retrieval-eval: ERROR graph stamp: %s" % e, file=sys.stderr)
@@ -923,6 +931,10 @@ def graph_built(repo):
     return stamp_of(os.path.join(os.path.dirname(common), "graphify-out", "graph.json"))
 
 
+class NoStamp(RuntimeError):
+    pass
+
+
 def stamp_of(path):
     stamp = re.compile(rb'"built_at_commit"\s*:\s*"([0-9a-fA-F]+)"')
     try:
@@ -936,7 +948,7 @@ def stamp_of(path):
                 boundary_tail = data[-256:]
     except OSError as e:
         raise RuntimeError("cannot read graph.json at %s: %s" % (path, e)) from e
-    raise RuntimeError("no built_at_commit stamp in %s" % path)
+    raise NoStamp("no built_at_commit stamp in %s" % path)
 
 
 def cmd_replay(a):
@@ -1240,6 +1252,8 @@ def cmd_stale_report(a):
     else:
         if ("qmd-hybrid", "L-S", "kept") not in cell:
             raise Usage("qmd-hybrid has no Kept comparison of states s and l: the decision needs both")
+        if not any(k[0] == "qmd-hybrid" and k[1] == "C-L" for k in cell):
+            raise Usage("qmd-hybrid has c-state rows but no C-L comparison of states l and c: the decision needs it")
         _, diff, p = cell[("qmd-hybrid", "L-S", "kept")]
         if diff < 0 and p < 0.05:
             verdict = "Harm shown"
