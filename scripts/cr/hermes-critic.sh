@@ -97,7 +97,7 @@ base=""
 goal=""
 goal_file=""
 route="${CRITIC_ROUTE:-}"
-hermes_model="${HERMES_CRITIC_MODEL:-}"   # empty falls through to the critics.json-pinned default below (the critic pins its own model, never the profile default)
+hermes_model="${HERMES_CRITIC_MODEL:-}"   # empty falls through to the critics.json-pinned default below
 model=""
 max_pack_bytes=200000
 
