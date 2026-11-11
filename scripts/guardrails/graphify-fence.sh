@@ -856,7 +856,6 @@ _graphify_backend_marker() {
 }
 
 # _under_any_list <abs-path> <listfile> [below] -> echoes hit | miss | unreadable.
-# With `below` the direction flips: hit = a listed root is at or under <abs-path>.
 _under_any_list() {
     local p="$1" listfile="$2" root
     # [ -e ] is also false on EACCES (a locked dir or parent), so a miss is only
@@ -983,12 +982,9 @@ _dir_marked() {
     return 1
 }
 
-# _classify_tree <abs-target> -> the strongest class at, above or below the root.
-# Call it from the main shell body, never in a $(...) subshell: deny would only
-# leave the subshell. The handover root below the root is deliberately no class,
-# because an inline install keeps its notes in <repo>/handovers/ (decision 780 A8).
 _classify_tree() {
     local t="$1" c apfs ap best found line name rc
+    CLASSIFY_TREE_CLASS=""
     c="$(classify "$t")"
     _deny_on_classify_sentinel "$c"
     best="${c%%@declared*}"
@@ -1013,8 +1009,7 @@ _classify_tree() {
         esac
     done
     if [ -n "$LUNA_ROOT" ] && _under_root "$LUNA_ROOT" "$ap"; then best="$(_strongest "$best" luna-personal)"; fi
-    [ -z "$best" ] || printf '%s\n' "$best"
-    return 0
+    CLASSIFY_TREE_CLASS="$best"
 }
 
 # is_path_like <stripped-token> -> 0 if the token looks like a filesystem path
@@ -2457,6 +2452,7 @@ if [ "${1:-}" = "--classify" ]; then
     [ "$#" -eq 2 ] || deny "--classify: expected exactly one operand <abs-target>, got $(($# - 1)) (fail-closed)"
     _is_abs_target "$2" || deny "--classify: target must be an absolute path (fail-closed)"
     _classify_tree "$2"
+    [ -z "$CLASSIFY_TREE_CLASS" ] || printf '%s\n' "$CLASSIFY_TREE_CLASS"
     exit 0
 fi
 

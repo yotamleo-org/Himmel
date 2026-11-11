@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# graphify-classify.sh <abs-root> - graphify-fence.sh --classify read against the
-# configured vault and handover state, not a caller's LUNA_VAULT (which the fence
-# prefers over LUNA_VAULT_PATH). Output and exit code are the fence's.
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 unset LUNA_VAULT LUNA_VAULT_PATH HANDOVER_DIR
