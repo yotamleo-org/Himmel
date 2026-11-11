@@ -876,6 +876,7 @@ mkf scripts/lib/cmo-after-cont.test.mjs $'const s = \'a\\\nb\';\n// cmo-lib.sh'
 mkf scripts/lib/cmo-nested.test.mjs $'const s = `${c ? `a` : `b`}\n// cmo-lib.sh\n`;'
 mkf scripts/lib/cmo-return.test.mjs $'function f(x) { return /`/.test(x); }\n// cmo-lib.sh'
 mkf scripts/test-cmo-shcont.sh $'x=a\\\n#cmo-lib.sh'
+mkf scripts/test-cmo-shcont-quote.sh $'x=a\\\n#foo"\n# cmo-lib.sh\n"'
 git -C "$FX" add -A
 git -C "$FX" commit -q -m "chore: comment-only mention fixtures"
 change scripts/lib/cmo-lib.sh
@@ -885,7 +886,7 @@ cmo_cmt="test-cmo-hash.sh test-cmo-indent.sh test-cmo-stemcmt.sh test-cmo-after-
 for s in $cmo_cmt; do
     if ! grepq "$out" -Fx "scripts/$s"; then pass "30b --plan: a whole-line comment mention does not list scripts/$s"; else fail "30b --plan listed comment-only scripts/$s: $out"; fi
 done
-for s in test-cmo-exec.sh test-cmo-source.sh test-cmo-arg.sh test-cmo-cmdpos.sh test-cmo-stem.sh test-cmo-string.sh test-cmo-sqmulti.sh test-cmo-dqmulti.sh test-cmo-heredoc.sh test-cmo-heredoc-dash.sh test-cmo-trail.sh test-cmo-expand.sh test-cmo-directive.sh test-cmo-names.sh lib/cmo-exec.test.mjs lib/cmo-tpl.test.mjs lib/cmo-trail.test.js lib/cmo-names.test.mjs lib/cmo-cont.test.mjs lib/cmo-nested.test.mjs test-cmo-shcont.sh; do
+for s in test-cmo-exec.sh test-cmo-source.sh test-cmo-arg.sh test-cmo-cmdpos.sh test-cmo-stem.sh test-cmo-string.sh test-cmo-sqmulti.sh test-cmo-dqmulti.sh test-cmo-heredoc.sh test-cmo-heredoc-dash.sh test-cmo-trail.sh test-cmo-expand.sh test-cmo-directive.sh test-cmo-names.sh lib/cmo-exec.test.mjs lib/cmo-tpl.test.mjs lib/cmo-trail.test.js lib/cmo-names.test.mjs lib/cmo-cont.test.mjs lib/cmo-nested.test.mjs test-cmo-shcont.sh test-cmo-shcont-quote.sh; do
     if grepq "$out" -Fx "scripts/$s"; then pass "30b --plan CONTROL scripts/$s is still listed"; else fail "30b --plan CONTROL scripts/$s dropped: $out"; fi
 done
 if grepq "$plan_out" -Fx 'impacted-suites: dropped-comment-only=9'; then pass "30b --plan prints the narrowing: dropped-comment-only=9"; else fail "30b --plan dropped-comment-only line missing or wrong: $plan_out"; fi

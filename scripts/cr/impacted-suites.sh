@@ -1014,7 +1014,7 @@ function sh_line(l,    t, p, n, c, w, raw, d, cont) {
         if (c == "\\") { if (p == n) cont = 1; p += 2; continue }
         if (c == "\047") { sq = 1; ansi = (p > 1 && substr(l, p - 1, 1) == "$"); p++; continue }
         if (c == "\"") { dq = 1; p++; continue }
-        if (c == "#" && (p == 1 || substr(l, p - 1, 1) ~ /[ \t;&|()<>]/)) break
+        if (c == "#" && ((p == 1 && !shc) || (p > 1 && substr(l, p - 1, 1) ~ /[ \t;&|()<>]/))) break
         if (c == "<" && substr(l, p, 2) == "<<") {
             if (substr(l, p + 2, 1) == "<") { p += 3; continue }
             t = p + 2; d = 0
