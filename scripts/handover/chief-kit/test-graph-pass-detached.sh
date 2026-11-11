@@ -147,6 +147,49 @@ pid8="$(tail -n 1 "$tmp/starts" 2>/dev/null)"
 [ -n "$pid8" ] && wait_dead "$pid8"
 [ -n "$pid8" ] && ! alive "$pid8" && echo "ok - 8: the untracked pass was stopped" || { echo "FAIL - 8: a pass [$pid8] is left running with no state"; fails=$((fails+1)); }
 
+# --- 9. a claim left by a killed start does not block, and racers launch one pass
+CLAIM="$GRAPH_PASS_STATE_DIR/graph-pass.claim"
+rm -f "$STATE" "$tmp/starts"
+sleep 0 & dead9=$!
+wait "$dead9"
+printf '%s\n' "$dead9" > "$CLAIM"
+bash "$SCRIPT" start > "$tmp/d1.out" 2>&1 &
+d1=$!
+bash "$SCRIPT" start > "$tmp/d2.out" 2>&1 &
+d2=$!
+rd1=0; wait "$d1" || rd1=$?
+rd2=0; wait "$d2" || rd2=$?
+sleep 0.5
+check "9: two starts over a stale claim launched exactly one pass" "$(wc -l < "$tmp/starts" | tr -d ' ')" 1
+check "9: one start succeeded and the other was refused with rc 3" "$(printf '%s\n' "$rd1" "$rd2" | sort | tr '\n' ,)" "0,3,"
+[ ! -e "$CLAIM" ] && echo "ok - 9: the claim is released once the start is over" || { echo "FAIL - 9: the claim file is left behind"; fails=$((fails+1)); }
+pid9="$(state_val "$STATE" pid)"
+[ -n "$pid9" ] && { kill "$pid9" 2>/dev/null; wait_dead "$pid9"; }
+
+# --- 10. the systemd-run fallback, with setsid out of PATH ----------------
+bin="$tmp/bin"; mkdir "$bin"
+for t in bash sh mkdir date sed head ps sleep ln rm cat mv; do
+    p="$(command -v "$t")" && ln -s "$p" "$bin/$t"
+done
+printf '#!/bin/sh\nexit 0\n' > "$bin/systemd-run"
+printf '#!/bin/sh\ncat "%s/mainpid"\n' "$tmp" > "$bin/systemctl"
+chmod +x "$bin/systemd-run" "$bin/systemctl"
+rm -f "$STATE"
+echo 0 > "$tmp/mainpid"
+out10="$(PATH="$bin" bash "$SCRIPT" start 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && echo "ok - 10: a unit whose MainPID reads 0 is not reported as started (rc $rc)" || { echo "FAIL - 10: start rc 0 for MainPID 0"; fails=$((fails+1)); }
+contains "10: the failure says the pass exited" "$out10" "exited"
+[ ! -f "$STATE" ] && echo "ok - 10: no state recorded for the failed start" || { echo "FAIL - 10: state written for MainPID 0"; fails=$((fails+1)); }
+sleep 300 &
+live10=$!
+echo "$live10" > "$tmp/mainpid"
+PATH="$bin" bash "$SCRIPT" start >/dev/null 2>&1; rc=$?
+check "10: start through systemd-run rc 0" "$rc" 0
+check "10: the state names the unit's MainPID" "$(state_val "$STATE" pid)" "$live10"
+check "10: the state records the launcher" "$(state_val "$STATE" launcher)" "systemd-run"
+contains "10: the log records the launcher choice" "$(cat "$(state_val "$STATE" log)" 2>/dev/null)" "launcher=systemd-run"
+kill "$live10" 2>/dev/null
+
 # --- 6. status with no state file -----------------------------------------
 rm -f "$STATE"
 out6c="$(bash "$SCRIPT" status 2>&1)"; rc=$?

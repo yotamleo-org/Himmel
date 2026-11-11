@@ -57,8 +57,18 @@ claim_start() {
     claim_try && return 0
     holder="$(cat "$CLAIM" 2>/dev/null)"  # swallow-ok: a vanished claim reads empty and is taken over below
     proc_has "$holder" graph-pass-detached && return 1
-    rm -f "$CLAIM"
+    # A stale claim is moved aside (atomic: one racer wins the move) and only
+    # discarded when it is the one that was seen; a fresh claim moved by
+    # mistake means another start is running, so this one gives way.
+    mv "$CLAIM" "$CLAIM.stale.$$" 2>/dev/null || return 1  # swallow-ok: losing the move means another start took the claim over
+    taken="$(cat "$CLAIM.stale.$$" 2>/dev/null)"  # swallow-ok: an unreadable moved claim fails the comparison below
+    rm -f "$CLAIM.stale.$$"
+    [ "$taken" = "$holder" ] || return 1
     claim_try
+}
+# Only the starter that owns the claim file removes it.
+claim_release() {
+    [ "$(cat "$CLAIM" 2>/dev/null)" = "$$" ] && rm -f "$CLAIM"  # swallow-ok: no claim file means nothing to release
 }
 
 cmd_status() {
@@ -74,7 +84,7 @@ cmd_start() {
         echo "graph-pass-detached: refused, another start is in progress" >&2
         return 3
     fi
-    trap 'rm -f "$CLAIM"' EXIT
+    trap claim_release EXIT
     if [ -f "$STATE" ]; then
         pid="$(state_val pid)"
         if pass_running "$pid"; then
@@ -105,7 +115,9 @@ cmd_start() {
     fi
 
     sleep 0.2
-    if ! kill -0 "$pid" 2>/dev/null; then
+    # pid 0 is the caller's own process group, which kill -0 reports alive.
+    case "$pid" in ''|*[!0-9]*|0) pid=0 ;; esac
+    if [ "$pid" -le 0 ] || ! kill -0 "$pid" 2>/dev/null; then
         echo "graph-pass-detached: the pass exited at once; see $log" >&2
         return 1
     fi
