@@ -105,6 +105,9 @@ fx utc-window
 check "(coverage) a window that is not Berlin days is INCONCLUSIVE (exit 3)" "$RC $(jf "$R" reasons)" '3 ["window-not-berlin-days"]'
 fx role-unknown
 check "(coverage) an unknown role in the inventory is INCONCLUSIVE (exit 3)" "$RC $(jf "$R" reasons)" '3 ["role-unknown"]'
+fx role-typo
+check "(malformed) a misspelt inventory role is refused, not dropped from the population (exit 2)" \
+    "$RC $(grep -c "role 'wroker' is not one of" "$TMP/role-typo/stderr")" "2 1"
 python3 -I "$GEN" "$TMP/tamper" qualified
 printf 'edited\n' >> "$TMP/tamper/population-review.md"
 "$FLEET" --exposure-screen "$TMP/tamper/SCREEN.json" --out "$TMP/tamper/R.json" >/dev/null 2>&1; RC=$?

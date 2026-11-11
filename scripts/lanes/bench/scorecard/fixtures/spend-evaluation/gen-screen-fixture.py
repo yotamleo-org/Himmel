@@ -11,7 +11,7 @@ the five calls after its boundary hold S (299 -> .0299, 300 -> .03).
 
 Scenarios: noop qualified lowpeak-markers boundary-instant overlap few-parents unpriced
 bad-event-time source-changed dup-path missing-path population-incomplete short-window
-early-window utc-window role-unknown b2-lever caller-report.
+early-window utc-window role-unknown role-typo b2-lever caller-report.
 """
 import hashlib
 import json
@@ -95,6 +95,8 @@ def scenario(name):
         sc["window"], sc["tz"] = ("2026-11-09T00:00:00Z", "2026-11-16T00:00:00Z"), "UTC"
     elif name == "role-unknown":
         ps[0]["role"] = "unknown"
+    elif name == "role-typo":
+        ps[0]["role"] = "wroker"
     elif name in ("b2-lever", "caller-report"):
         pass
     else:

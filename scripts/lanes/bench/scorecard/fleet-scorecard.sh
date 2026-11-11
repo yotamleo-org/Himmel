@@ -550,6 +550,8 @@ def table(head, rows):
 SCREEN_KEYS = {"schema", "lever", "window", "inventory", "export_set", "validation"}
 INVENTORY_KEYS = {"window", "scope_root", "complete", "population_review", "top_level_files", "exclusions"}
 ENTRY_KEYS = {"relative_path", "session", "role", "role_evidence"}
+# scorecard-lib.sh's role_of vocabulary, plus unknown (a role nobody resolved: INCONCLUSIVE, not a guess)
+ROLES = {"worker", "chief", "relay", "other", "unknown"}
 WHOLE_FILE = ("1970-01-01T00:00:00Z", "9999-12-31T23:59:59Z")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 RFC3339 = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$")
@@ -678,6 +680,8 @@ def exposure_screen(a):
         if (not isinstance(f, dict) or set(f) != ENTRY_KEYS
                 or not all(isinstance(f[k], str) and f[k] for k in ("relative_path", "session", "role"))):
             refuse("malformed inventory entry")
+        if f["role"] not in ROLES:
+            refuse("inventory role %r is not one of %s" % (f["role"], ", ".join(sorted(ROLES))))
         evidence_ok = ref_of(f["role_evidence"], "role_evidence", inv_dir)[2] and evidence_ok
 
     why = []
