@@ -766,7 +766,6 @@ PATH="$STUB/nopy:$PATH" timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" 
 check "(unread) a pool the tick cannot read says backlog=unread and never prints dispatchable=0" "WAKE underfilled capacity=UNDERFILLED:7 backlog=unread" "$(head -n1 "$WORK/unread-summary.out")"
 rm -f "$STUB/pool.rows"
 
-# --- (9839 S2) a stale pool-disposition line wakes pool-unresolved once, and a failed read does not wake it again.
 # Every sample's stale file comes from the real tick.sh --pool-stale (a stub gh answers its one GraphQL read); the waiter's own tick
 # stays the stub above. Every row names its TICK_STATE_DIR, mirror, quota dir and TICK_GH_CMD so nothing reads the real HOME or GitHub.
 S2="$WORK/s2"; S2M="$S2/mirror/HIMMEL"; mkdir -p "$S2M" "$S2/ho" "$S2/quota"
@@ -799,7 +798,7 @@ printf 'LOCAL\tHIMMEL-%s\tMedium\tv1\trow\tfiles=a.sh\n' 141 142 143 145 > "$STU
 printf '%s\n' '# disposition HIMMEL-141 listed LOCAL' '# disposition HIMMEL-142 listed LOCAL' '# disposition HIMMEL-143 listed LOCAL' \
     '# disposition HIMMEL-144 in-flight owned by worker N1' '# disposition HIMMEL-145 listed LOCAL' > "$STUB/dispositions"
 cp "$STUB/dispositions" "$S2/rows"
-s2w_doc() { # <file> [extra lines...]: the DoD-1 chief doc, plus any extra pool-disposition lines
+s2w_doc() {
     local f="$1"; shift
     {
         printf '# chief\n\n## Live state\n'
@@ -812,7 +811,7 @@ s2w_doc() { # <file> [extra lines...]: the DoD-1 chief doc, plus any extra pool-
         printf '\n## Results\n'
     } > "$f"
 }
-s2w_produce() { # <doc> <fail: empty or 1> [repo]: the real producer, its output saved where its # stale-file= line names (as the main tick does); prints that path
+s2w_produce() {
     local args out sf
     args=(--pool-stale --doc "$1" --prior "$TICK_STATE_DIR/none.out")
     [ -z "${3:-}" ] || args+=(--repo "$3")
@@ -823,7 +822,7 @@ s2w_produce() { # <doc> <fail: empty or 1> [repo]: the real producer, its output
     printf '%s\n' "$out" > "$sf"
     printf '%s' "$sf"
 }
-s2w_seq() { # <name> <doc> <key> [repo]: good, failed, good samples through the real producer and consumer, then one waiter pass each
+s2w_seq() {
     local name="$1" doc="$2" key="$3" repo="${4:-}" i fail sf inbox
     export TICK_STATE_DIR="$S2/st-$name"; rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
     inbox="$(new_inbox "s2-$name")"
@@ -856,7 +855,6 @@ check "(R9b) the unresolved line names the key and its gone target" 1 "$(printf 
 check "(R9b) the unresolved line is byte-identical for the good and the failed read" "${s2w_line[1]}" "${s2w_line[2]}"
 check "(R9b) the failed read's detail line carries the prior verdict" "${s2w_det[1]} carried" "${s2w_det[2]}"
 
-# R9c: the waiter hands tick.sh a doc relative to HANDOVER_DIR; the producer ran on the absolute path
 s2w_doc "$S2/ho/r9c-chief.md"
 export TICK_STATE_DIR="$S2/st-r9c"; rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
 s2w_produce "$S2/ho/r9c-chief.md" "" > /dev/null
@@ -864,7 +862,6 @@ I="$(new_inbox s2-r9c)"
 HANDOVER_DIR="$S2/ho" timeout 6 bash "$WAIT" "$I" --doc r9c-chief.md --workers N1.md > "$S2/r9c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(R9c) a relative --doc under HANDOVER_DIR finds the same file" 1 "$(grep -c "$p141" "$S2/r9c.out")"
 
-# R9d: an @sha line's <n>-behind grows with every merge, and the unresolved text must not
 git init -q -b main "$S2/repo" && git -C "$S2/repo" -c user.name=t -c user.email=t@e.x -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m c0
 s2_sha="$(git -C "$S2/repo" rev-parse --short=9 HEAD)"
 s2w_doc "$S2/ho/r9d.md" "pool-disposition: HIMMEL-145 question after PR #999001 @$s2_sha"

@@ -567,11 +567,22 @@ USAGE
 
 # One interpretation for both the tick and waiter; stdin is a complete
 # next-dispatchable.sh --dispositions snapshot, never a chief's claimed counts.
-# The stale file of one doc and one mirror: where the main tick saves `--pool-stale`'s output and where
-# `--pool-dispositions` reads it. Both resolve the doc and the mirror the same way, so they agree.
 pool_stale_file() { # <doc> <mirror>
     printf '%s/tick-pool-stale-%s.out\n' "${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}" \
         "$(printf '%s\n%s' "$(realpath -m "$1")" "$(realpath -m "$2")" | cksum | cut -d' ' -f1)"  # prim-ok: the doc and the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
+}
+
+pool_stale_serialized() { # <doc> <repo> <stale file>
+    local out="" file="$3"
+    if mkdir -p "${file%/*}" 2>/dev/null && { exec 7>>"$file.lock"; } 2>/dev/null && flock -w "$(tick_bound 20)" 7; then  # prim-ok: a per-stale-file lock held for one producer run and its save; gnu-ok: chief kit is Linux-only
+        out="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-stale --doc "$1" --repo "$2" --prior "$file" 7>&- 2>/dev/null)" || out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
+        if printf '%s\n' "$out" | grep -q '^pool-stale=' && ! printf '%s\n' "$out" | grep -q '^pool-stale=skip$'; then
+            { printf '%s\n' "$out" > "$file.$$" && mv -f "$file.$$" "$file"; } || printf 'tick: pool-stale file not saved: %s\n' "$file" >&2
+            rm -f "$file.$$"
+        fi
+    fi
+    exec 7>&-
+    printf '%s\n' "$out"
 }
 
 pool_dispositions() {
@@ -644,9 +655,6 @@ if not rows and not re.search(r"^# dropped from .+: 0 of 0 To Do", text, re.M):
     print("# pool-counts ?")
     sys.exit(0)
 
-# A key whose line the stale file judged gone, with the line unchanged since, is not handled. There is no
-# age bound: the line hash binds the file to its verdict. A doc whose own file does not exist yet reads the newest file of
-# the same mirror, so a successor doc whose producer has not completed a run is no all-clear either.
 stale_file, stale_mirror = sys.argv[2], sys.argv[3]
 maxmerges = int(os.environ.get("TICK_POOL_MAX_MERGES") or 30)
 def read_stale(path):
@@ -785,8 +793,6 @@ def age(sha):
             return int(r.stdout.strip())
     return None
 
-# The verdicts of the last completed run, read from the --prior file; when that file does not exist (a successor
-# doc's first run), from the newest stale file of the same mirror. A verdict is carried only while its line hash still matches.
 def read_prior(path):
     try:
         return open(path).read().splitlines()
@@ -860,7 +866,7 @@ for key, refs, prs, sha, h in lines:
     if sha and n is not None and n > maxmerges:
         verdict = "stale"
     elif sha and n is None:
-        verdict = "unknown"  # an age that cannot be read leaves the line unjudged, as an unreadable blocker does
+        verdict = "unknown"
     elif not states or "open" in states:
         continue
     else:
@@ -871,8 +877,6 @@ for key, refs, prs, sha, h in lines:
             details.append(detail(key, refs, prs, sha, h, n))
         continue
     unreadable = True
-    # unknown is not all-clear: a verdict the chief has not touched since (same hash) is kept while no target reads open
-    # and some target could not be read
     if key in carry and carry[key][0] == h and "open" not in states and key not in stale:
         stale.append(key)
         details.append(carry[key][1] + " carried")
@@ -1005,7 +1009,6 @@ if [ "$stale_mode" -eq 1 ]; then
         if ghq_read main graphql && [ $(($(date +%s) - GHQ_OBSERVED)) -lt 170 ] \
             && ! ps_line=$(GHQ_GH_CMD="${TICK_GH_CMD:-${GHQ_GH_CMD:-gh}}" ghq_scan_gate main graphql tick); then
             printf '%s\n' "$ps_line" >&2
-            # a producer run must not wipe the carried verdicts: under --prior the refused scan reads no PR, so every PR target is ? and the carry applies
             [ -n "$ps_prior" ] || { printf 'pool-stale=?\nresidual-unversioned=skip\n'; exit 0; }
             export GH_READ_OFF=1
             ps_noread=1
@@ -2867,23 +2870,10 @@ fi
 
 # pool-stale=<n>:<KEY>,... and residual-unversioned=<n>:<KEY>,...: the Jira mirror
 # plus one batched gh read, only when a disposition names a PR. skip = no doc or mirror.
-# It runs before the pool counts below: the output is saved as the doc's stale file, which the counts read, and
-# --prior hands the last saved file back so a failed read keeps a verdict instead of wiping it.
 pool_stale=skip
 residual_unversioned=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
-    ps_file="$(pool_stale_file "$console_doc" "$nd_mirror")"
-    ps_out=""
-    # One run at a time per stale file: the read of the last file, the carry and the save are one step, so an older
-    # slower tick can never put its verdict back over a newer tick's result. A lock that is not won in time reads skip.
-    if mkdir -p "${ps_file%/*}" 2>/dev/null && { exec 7>>"$ps_file.lock"; } 2>/dev/null && flock -w "$(tick_bound 20)" 7; then  # prim-ok: a per-stale-file lock held for one producer run and its save; gnu-ok: chief kit is Linux-only
-        ps_out="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-stale --doc "$console_doc" --repo "$pr_repo" --prior "$ps_file" 7>&- 2>/dev/null)" || ps_out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
-        if printf '%s\n' "$ps_out" | grep -q '^pool-stale='; then
-            printf '%s\n' "$ps_out" | grep -q '^pool-stale=skip$' || { printf '%s\n' "$ps_out" > "$ps_file.$$" 2>/dev/null && mv -f "$ps_file.$$" "$ps_file" 2>/dev/null; }  # swallow-ok: a failed save keeps the last file, and the verdict stays
-            rm -f "$ps_file.$$"
-        fi
-    fi
-    exec 7>&-
+    ps_out="$(pool_stale_serialized "$console_doc" "$pr_repo" "$(pool_stale_file "$console_doc" "$nd_mirror")")"
     pool_stale="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-stale=//p')"; [ -n "$pool_stale" ] || pool_stale=skip
     residual_unversioned="$(printf '%s\n' "$ps_out" | sed -n 's/^residual-unversioned=//p')"; [ -n "$residual_unversioned" ] || residual_unversioned=skip
 fi
