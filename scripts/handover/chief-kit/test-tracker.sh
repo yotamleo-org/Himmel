@@ -1532,6 +1532,7 @@ for n in 12 13 14; do printf '{"key":"HIMMEL-%s","leg":"N%s","state":"live","prs
 printf '[]\n' > "$s4/prs.json"
 s4out="$s4/page.html"
 s4render() {
+    rm -f "$s4out" "$s4out.vfp"
     python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$s4/mirror" --prs-file "$s4/prs.json" \
         --workers-dir "$s4/wk" --out "$s4out" "$@" 2>&1
 }

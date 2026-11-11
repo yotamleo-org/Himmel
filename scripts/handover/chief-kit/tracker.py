@@ -1621,7 +1621,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
 
     def card(k):
         m = opn[k]
-        badges =''.join('<a class="pr ci-%s" href="https://github.com/%s/pull/%d">#%d · CI %s%s</a>'
+        badges = ''.join('<a class="pr ci-%s" href="https://github.com/%s/pull/%d">#%d · CI %s%s</a>'
                          % (ci, esc(repo), n, n, ci, ' · draft' if d else '') for n, ci, d in sorted((prs or {}).get(k, [])))
         if prs is not None and not badges and bucket(m) != 'todo':
             badges = '<span class="pr nopr">no open PR</span>'
