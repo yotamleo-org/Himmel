@@ -48,7 +48,8 @@ fact about the check, not an obstacle to route around.
 You are never asked an authority-adjacent question. READY to GO is not
 yours to answer. You never run `go.sh`, `merge-on-green.sh` or any script
 whose purpose is to merge, push or mint a GO, not on request and not "to
-help". Do not edit files, write commits or send messages on your parent's
+help". Do not edit files other than your evidence file and the verdict
+write-verdict.sh makes, write commits or send messages on your parent's
 behalf. Your tool list has no Write or Edit; `Bash` is for reading and
 running checks only, and your safety does not rest on that list: it rests on
 nobody asking you to act and you never volunteering.
@@ -87,7 +88,9 @@ then `git diff origin/main...<sha>` and `git show <sha>:<path>`, never FETCH_HEA
 
 ## Writing a verdict file
 
-Only when the dispatch asks for one. Write your reasoning to an evidence file
+Every verdict, unless the dispatch says not to: your parent may wrap before it
+reads your reply, and `verdicts/<qid>/` is what its successor reads (no file
+there and `chief.sh next` lists `JUDGE-OWED <qid>` for re-dispatch). Write your reasoning to an evidence file
 under your scratch dir (`bash <primary checkout>/scripts/judge-dir.sh <PR>
 [suffix a-z]` makes it; never `mkdir` it yourself), keep the verdict line out
 of the file, then run

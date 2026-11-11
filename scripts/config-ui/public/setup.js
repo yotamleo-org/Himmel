@@ -203,7 +203,6 @@ function tileChip(id, { state, setup }) {
 export const SETUP_CHECKS = [
   { id: "C1", reason: "The user-level guardrail hooks point at a node that exists; a missing node makes every tool call error and the guardrails fail open." },
   { id: "C6", reason: "No MCP server is wired as a bare interpreter, such as uvx, bun or node, which a GUI launch's minimal PATH may lack even when this host has it; no hook leads with a bare interpreter this host lacks." },
-  { id: "C9", reason: "A scheduler backend (at with atd running, or crontab) is available, so an armed resume can fire." },
   { id: "C13", reason: "The himmel-ops plugin hooks point at hook scripts that exist in this checkout; a missing one makes the hook do nothing, silently." },
   { id: "C15", reason: "Enabled plugins stay at the lean floor; each extra one adds context cost at the start of every session." },
   { id: "C16", reason: "himmelctl status finds no install or wiring problem." },
@@ -211,7 +210,6 @@ export const SETUP_CHECKS = [
   { id: "C20", reason: "The running Node major matches the one .nvmrc pins; the hooks, the Jira tool and the test suites run on it." },
   { id: "C28", reason: "The guardrail hook is wired into your global settings, or you declined it on record; otherwise nothing enforces it." },
   { id: "C32", reason: "The hook that refuses a commit or push straight to main is installed, executable and has its target script." },
-  { id: "C38", reason: "uv is on PATH; graphify is uv-managed and neither installs nor updates without it." },
   { id: "C39", reason: "On macOS a working timeout or gtimeout is on PATH; graph refresh runs unbounded without it." },
   { id: "C43", reason: "The user settings carry no bare rtk hook, which bypasses the rtk hook guard." },
   { id: "C46", reason: "Every plugin the settings enable is installed." },
