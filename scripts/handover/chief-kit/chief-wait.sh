@@ -1893,10 +1893,13 @@ quota_repo() {
     quota_waiter_repo="${GHQ_REPO:-$(. "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git config --get remote.origin.url 2>/dev/null | sed -E 's#^.*github\.com[:/]##; s#\.git$##')}"  # swallow-ok: no origin names no repo, and any marker's repo then matches
     printf '%s' "$quota_waiter_repo"
 }
-quota_back() { # <marker> <first_epoch>
+quota_field() { # <marker text> <name>: one field of a marker snapshot
+    printf '%s\n' "$1" | sed -n "s/^$2=//p" | head -n 1
+}
+quota_back() { # <marker text> <first_epoch>
     local b t ok floor="${GH_BUDGET_FLOOR:-200}" buckets routes
     case "$floor" in ''|*[!0-9]*) floor=200 ;; esac
-    buckets="$(_ghq_field "$1" buckets | tr ',' ' ')"; routes="$(_ghq_field "$1" routes | tr ',' ' ')"
+    buckets="$(quota_field "$1" buckets | tr ',' ' ')"; routes="$(quota_field "$1" routes | tr ',' ' ')"
     [ -n "$buckets" ] && [ -n "$routes" ] || return 1
     for b in $buckets; do
         ok=""
@@ -1938,12 +1941,19 @@ $(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
     return 1
 }
-quota_stamp_back() { # <marker> <epoch>: the first waiter to see quota back stamps it, under the writers' lock
-    [ -f "$1" ] && ! grep -q '^back_epoch=' "$1" || return 0
-    { cat "$1"; printf 'back_epoch=%s\n' "$2"; } | atomic_write "$1"
+# quota_stamp_back / quota_claim run under the writers' lock (gh-quota.sh), and act only when the
+# marker still reads as the snapshot the decision was made on: a gate that refused again meanwhile
+# rewrote it, and the next sample decides on the new text.
+quota_stamp_back() { # <marker> <snapshot> <epoch>
+    [ "$(cat "$1" 2>/dev/null)" = "$2" ] || return 1  # swallow-ok: a marker gone or unreadable is not the snapshot, so nothing is stamped
+    { printf '%s\n' "$2"; printf 'back_epoch=%s\n' "$3"; } | atomic_write "$1"
+}
+quota_claim() { # <marker> <snapshot> <claimed name>
+    [ "$(cat "$1" 2>/dev/null)" = "$2" ] || return 1  # swallow-ok: a marker gone or unreadable is not the snapshot, so it is not claimed
+    mv "$1" "$3"
 }
 quota_step() {
-    local m name key ref first back now unknown claimed caller reason
+    local m name key ref first back now unknown claimed caller reason snap
     [ -d "$quota_blocked" ] || return 1
     now="$(date +%s)"
     for m in "$quota_blocked"/*; do
@@ -1952,26 +1962,29 @@ quota_step() {
         [ -n "$key" ] && [ "$key" != "$name" ] || continue
         # ready_wake is counting this head's stall: its wake clears the marker
         [ ! -e "$inbox.wait.stall-$key.$ref" ] || continue
-        first="$(_ghq_field "$m" first_epoch)"
+        snap="$(cat "$m" 2>/dev/null)" || continue  # swallow-ok: a marker that vanished was claimed or dropped by another waiter
+        first="$(quota_field "$snap" first_epoch)"
         case "$first" in ''|*[!0-9]*) continue ;; esac
         if [ $((now - first)) -ge 86400 ]; then rm -f "$m"; continue; fi
-        back="$(_ghq_field "$m" back_epoch)"; case "$back" in *[!0-9]*) back="" ;; esac
+        back="$(quota_field "$snap" back_epoch)"; case "$back" in *[!0-9]*) back="" ;; esac
         unknown=""
-        if quota_back "$m" "$first"; then
-            [ -n "$back" ] || { back="$now"; with_lock "$quota_blocked/.lock" quota_stamp_back "$m" "$now" 2>/dev/null; }
+        if quota_back "$snap" "$first"; then
+            if [ -z "$back" ]; then
+                with_lock "$quota_blocked/.lock" quota_stamp_back "$m" "$snap" "$now" 2>/dev/null || continue
+                back="$now"; snap="$snap"$'\n'"back_epoch=$now"
+            fi
         elif [ $((now - first)) -ge 7200 ]; then
             unknown=1; back=$((first + 7200))
         else
             continue
         fi
         # the owner gets the first 900 s of good quota; after that any waiter may take it
-        if ! quota_owner "$key" "$ref" "$(_ghq_field "$m" repo)"; then
+        if ! quota_owner "$key" "$ref" "$(quota_field "$snap" repo)"; then
             [ -n "$back" ] && [ $((now - back)) -ge 900 ] || continue
         fi
-        # under the writers' lock, so a stamp or a gate's merge cannot recreate a marker already claimed
         claimed="$quota_blocked/.claim.$$.$name"
-        with_lock "$quota_blocked/.lock" mv "$m" "$claimed" 2>/dev/null || continue
-        caller="$(_ghq_field "$claimed" caller)"; reason="$(_ghq_field "$claimed" reason)"
+        with_lock "$quota_blocked/.lock" quota_claim "$m" "$snap" "$claimed" 2>/dev/null || continue
+        caller="$(quota_field "$snap" caller)"; reason="$(quota_field "$snap" reason)"
         rm -f "$claimed"
         if [ -z "$unknown" ] && [ "$reason" = rate-limit ] && ! auto_go_on && quota_ready_worker "$key" "$ref"; then
             # the READY path: unspend the worker's head (a ref of unknown names none), and ready_wake

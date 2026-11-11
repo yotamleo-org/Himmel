@@ -238,6 +238,21 @@ wait "$lpid"
 n=0; while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 check "(lock) once it is free the claim goes through, once" "WAKE quota-back 66 $SHA2 caller=go.sh" "$(head -n 1 "$WORK/lock.out")"
+# a gate that refused again while the waiter waited for the lock: the claim sees the new text and leaves it
+rm -rf "$Q/blocked"; marker "66.$SHA2" "$(( $(now) - 5000 ))" go.sh graphql rate-limit "$(( $(now) - 1000 ))"
+flock "$Q/blocked/.lock" sleep 6 &  # gnu-ok: Linux-only kit (util-linux flock)
+lpid=$!
+sleep 0.5
+rm -f "$I.wait"
+( cd "$GATE_REPO" && exec env HOUSEKEEPING_DIGEST_SECS=0 bash "$WAIT" "$I" --workers-from "$M" ) > "$WORK/lockchg.out" 2>&1 &
+WPID=$!
+sleep 4
+marker "66.$SHA2" "$(( $(now) - 5000 ))" go.sh graphql rate-limit
+wait "$lpid"
+n=0; while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null && ! grep -q 'state=waiting' "$I.wait" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+check "(lock) a marker rewritten under the lock is not claimed on the old decision" "" "$(grep '^WAKE' "$WORK/lockchg.out")"
+check "(lock) and it stands, as the gate wrote it" "66.$SHA2:" "$(markers):$(grep '^back_epoch=' "$Q/blocked/66.$SHA2" 2>/dev/null)"
 
 # --- (nonown) another chief's PR: no wake until 900 s after back_epoch, and one claims -----
 rm -rf "$Q/blocked"; marker "66.$SHA2" "$(( $(now) - 5000 ))" go.sh graphql rate-limit "$(( $(now) - 800 ))"
