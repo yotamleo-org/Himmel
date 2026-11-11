@@ -74,6 +74,10 @@ sessions without moving them in time. It never runs on its own: no cadence calls
     A crash after any step leaves a complete old or complete new snapshot for Tool health, and the
     next refresh finishes the remaining steps without a duplicate. The two JSONL files are not one atomic
     commit. Live sessions are skipped as in backfill.
+  The refreshed rows keep the attribution of the session's current ok eval row (leg, ticket, pr, console, doc,
+  profile, lane) and its meta.cli_version and meta.effort, never the refreshing shell's. A field that row lacks
+  keeps the value the replaced failure rows held (the failure rows only for pr and console); the journal title fills
+  a field neither has. A run reads the eval ledger once and indexes the first and current ok row per session.
   Before a production refresh, preview the router with --dry-run against scratch copies; a refresh never
   changes the cadence mode.
 """
@@ -475,6 +479,7 @@ def build_rows(digest, who):
               "trajectory_v": digest.get("trajectory_v"), "lane": who["lane"], "model": model}
     meta = {"leg": who["leg"], "doc": who["doc"], "ticket": who["ticket"], "pr": who["pr"],
             "console": who["console"], "observational": True}
+    meta.update({k: who[k] for k in ("cli_version", "effort") if k in who})
     if who.get("backfill"):
         meta["backfill"] = True
     if who.get("digest_error"):
@@ -484,7 +489,7 @@ def build_rows(digest, who):
     lane = launch_lane(digest, who)
     config["lane"] = lane
     # The launch record is authoritative for the profile, as it is for the lane.
-    profile = launch_profile(who)
+    profile = who.get("profile") or launch_profile(who)
     if profile:
         meta["profile"] = profile
     # A session no launch record or doc names stays unknown, and says what kind of session it was.
@@ -526,6 +531,63 @@ def _original_ok_ts(eval_ledger, session):
     ok = [r for r in rows if r["eval"] == EVAL_ID and r["run_id"] == session and r["status"] == "ok"]
     ts = ok[0].get("ts") if ok else None
     return ts if isinstance(ts, str) and UTC_TS.match(ts) else None
+
+
+class _OkIndex:
+    def __init__(self, eval_ledger):
+        self.path = eval_runs.ledger_path(eval_ledger)
+        self.size = self._row_end(os.path.getsize(self.path)) if os.path.exists(self.path) else 0
+        self.rows = {}
+        self._take(eval_runs.scan_rows(self.path)[0])
+
+    def _row_end(self, end):
+        with open(self.path, "rb") as fh:
+            while end > 0:
+                start = max(0, end - 65536)
+                fh.seek(start)
+                cut = fh.read(end - start).rfind(b"\n")
+                if cut >= 0:
+                    return start + cut + 1
+                end = start
+        return 0
+
+    def _take(self, rows):
+        for r in rows:
+            if r["eval"] == EVAL_ID and r["status"] == "ok":
+                self.rows[r["run_id"]] = (self.rows.get(r["run_id"], (r,))[0], r)
+
+    def get(self, session):
+        return self.rows.get(session, (None, None))
+
+    def catch_up(self):
+        try:
+            with open(self.path, "rb") as fh:
+                fh.seek(self.size)
+                tail = fh.read()
+        except FileNotFoundError:
+            return
+        tail = tail[:tail.rfind(b"\n") + 1]
+        self.size += len(tail)
+        for line in tail.splitlines():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if not eval_runs.validate(r):
+                self._take([r])
+
+
+def _anchored_who(who, current):
+    if current is None:
+        return who
+    meta = current.get("meta") or {}
+    kept = {k: meta[k] for k in ("leg", "ticket", "pr", "console", "doc") if meta.get(k) is not None}
+    kept.update({k: meta.get(k) for k in ("cli_version", "effort")})
+    if isinstance(meta.get("profile"), str) and PROFILE.match(meta["profile"]):
+        kept["profile"] = meta["profile"]
+    if current.get("lane") not in (None, "unknown"):
+        kept["lane"] = current["lane"]
+    return dict(who, **kept)
 
 
 def _write_marker(marker, digest, erow):
@@ -595,11 +657,11 @@ def _stop_after(step):
 
 
 def _old_failure_ts(path, session):
-    by, first = {}, None
+    by, first, held = {}, None, {}
     try:
         fh = open(path, encoding="utf-8")
     except FileNotFoundError:
-        return by, first
+        return by, first, held
     with fh:
         for line in fh:
             if session not in line:
@@ -610,36 +672,45 @@ def _old_failure_ts(path, session):
                 continue
             if not (isinstance(r, dict) and r.get("session") == session and isinstance(r.get("agent"), dict)):
                 continue
+            for k in ("leg", "console", "ticket", "pr"):
+                if r.get(k) is not None:
+                    held.setdefault(k, r[k])
             ts = r.get("ts")
             if isinstance(ts, str) and UTC_TS.match(ts):
                 by.setdefault((r["agent"].get("id"), r.get("class")), ts)
                 first = ts if first is None or ts < first else first
-    return by, first
+    return by, first, held
 
 
-def refresh(digest, who, failures_ledger, eval_ledger):
+def refresh(digest, who, failures_ledger, eval_ledger, index=None):
     if digest.get("status") != "ok":
         return "inconclusive"
-    frows, erow = build_rows(digest, who)
+    if index is None:
+        index = _OkIndex(eval_ledger)
+    current = index.get(digest.get("session"))[1]
+    frows, erow = build_rows(digest, _anchored_who(who, current))
     session, did, state = erow["run_id"], erow["meta"]["digest_id"], who["state_dir"]
     marker = os.path.join(state, session + ".json")
     with open(os.path.join(state, session + ".lock"), "w") as lk:
         fcntl.flock(lk, fcntl.LOCK_EX)
+        index.catch_up()
+        first, current = index.get(session)
+        old, oldest, held = _old_failure_ts(failures_ledger, session)
+        frows, erow = build_rows(digest, _anchored_who(dict(who, **{k: held[k] for k in ("leg", "ticket") if k in held}), current))
+        did = erow["meta"]["digest_id"]
         try:
             with open(marker, encoding="utf-8") as fh:
                 if json.load(fh).get("digest_id") == did:
                     return "unchanged"
         except (OSError, ValueError, AttributeError):
             pass
-        anchor = _original_ok_ts(eval_ledger, session)
-        if anchor is None:
+        anchor = first.get("ts") if first else None
+        if not (isinstance(anchor, str) and UTC_TS.match(anchor)):
             print("refresh: %s refused: no original ok eval row to keep its time" % session, file=sys.stderr)
             return "refused"
-        rows, _, _ = eval_runs.scan_rows(eval_ledger)
         # Only the session's CURRENT row counts (the newest ok one, as Tool health selects it): a generation that came
         # back after another (A, B, A) must be appended again, or the selected row would stay B.
-        ok = [r for r in rows if r["eval"] == EVAL_ID and r["run_id"] == session and r["status"] == "ok"]
-        same = ok[-1:] if ok and (ok[-1].get("meta") or {}).get("digest_id") == did else []
+        same = [current] if (current.get("meta") or {}).get("digest_id") == did else []
         # A replay after a crash reuses the generation's own refresh time, so the rows it rewrites come out identical.
         was = (same[-1].get("meta") or {}).get("refreshed_at") if same else None
         now = was if isinstance(was, str) and UTC_TS.match(was) else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -651,9 +722,9 @@ def refresh(digest, who, failures_ledger, eval_ledger):
         if not same:
             eval_runs.append_row(erow, eval_ledger)
         _stop_after("eval")
-        old, first = _old_failure_ts(failures_ledger, session)
         for r in frows:
-            r["ts"] = old.get((r["agent"]["id"], r["class"]), first or anchor)
+            r.update({k: v for k, v in held.items() if (current.get("meta") or {}).get(k) is None})
+            r["ts"] = old.get((r["agent"]["id"], r["class"]), oldest or anchor)
             r["meta"] = {"digest_id": did, "refreshed_at": now}
             problems = validate(r)
             if problems:
@@ -765,6 +836,7 @@ def backfill(a):
     live_cut = datetime.now(timezone.utc).timestamp() - a.live_minutes * 60
     n = workers = others = salus = done = live = fa = ea = restamped = 0
     words = {"refreshed": 0, "unchanged": 0, "refused": 0, "inconclusive": 0}
+    index = _OkIndex(a.eval_ledger) if getattr(a, "refresh", False) else None
     for j in sorted(glob.glob(os.path.join(a.projects, "*", "*.jsonl"))):
         session = os.path.basename(j)[:-len(".jsonl")]
         if not UUID.match(session) or os.path.getmtime(j) < since.timestamp():
@@ -804,7 +876,7 @@ def backfill(a):
                    "doc": None, "lane": None, "state_dir": a.state_dir, "backfill": True,
                    "launch_name": title if title and LAUNCH_NAME.match(title) else None, "kind": session_kind(title)}
             try:
-                words[refresh(run_digest(j, session, a.denials_ledger), who, a.failures_ledger, a.eval_ledger)] += 1
+                words[refresh(run_digest(j, session, a.denials_ledger), who, a.failures_ledger, a.eval_ledger, index)] += 1
             except ValueError as err:
                 print("refresh: %s skipped: %s" % (session, err), file=sys.stderr)
             continue

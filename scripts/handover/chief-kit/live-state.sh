@@ -42,6 +42,13 @@
 # lost its lock: it is listed on its own `lockless: <label> (<lane>) <doc>; ...` line
 # right after the workers: line (replaced on every render), for succession to carry.
 #
+# After a render that wrote the doc, each `pool-disposition: <KEY> question|slice after <KEY2>`
+# line with both keys open writes its Jira link `<KEY2> blocks <KEY>` when absent, once per pair.
+# A pair linked, found linked, with a closed key, or refused by the CLI's blocker-version check is
+# recorded and costs no Jira call again; an unread status, a failed call or one cut at the
+# LIVE_STATE_JIRA_TIMEOUT deadline (whole seconds above 0, else 30) is tried next render.
+# LIVE_STATE_JIRA_CMD replaces the jira CLI.
+#
 # Exit: 0 ok; 1 refused (no manifest, no workers: line, new worker without a nonce);
 # 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe; needs jq.
 # shellcheck disable=SC2016  # backtick spans and awk programs are literal, not expansions
@@ -230,3 +237,67 @@ if ! NL="$new_line" awk -v k="$live_key" '
     echo "live-state: cannot write $doc" >&2
     exit 1
 fi
+doc_unlock
+
+DONE_RE='^(Done|Closed|wont do|wont fix|Resolved|In Public)$'
+jira() {
+    local t="${LIVE_STATE_JIRA_TIMEOUT:-30}" common cmd
+    case "$t" in '' | *[!0-9]* | 0*) t=30 ;; esac
+    if [ -n "${LIVE_STATE_JIRA_CMD:-}" ]; then
+        cmd=("$LIVE_STATE_JIRA_CMD")
+    else
+        common="$(. "$HERE/../../lib/git-clean.sh" && git_env_scrub && git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 2  # swallow-ok: no checkout, no jira CLI: the pair is tried again next render
+        cmd=(env "JIRA_PROJECT_KEY=${JIRA_PROJECT_KEY:-${2%%-*}}" node "$(dirname "$common")/scripts/jira/dist/index.js")
+    fi
+    timeout -k 5 "$t" "${cmd[@]}" "$@" < /dev/null
+}
+after_pairs="$(awk '
+    $0 == "## Live state" { s = 1; next }
+    s && /^## / { s = 0 }
+    s && /^pool-disposition:[[:space:]]+[A-Z][A-Z0-9]*-[0-9]+[[:space:]]+(question|slice)[[:space:]]+after[[:space:]]+[A-Z][A-Z0-9]*-[0-9]+([^A-Za-z0-9-]|$)/ {
+        split($0, w, " "); on = w[5]; sub(/[^A-Z0-9-].*$/, "", on)
+        if (on != w[2]) print on, w[2]
+    }' "$doc")"
+link_after_pairs() {
+    local seen_dir seen on key pair links open k st err
+    seen_dir="${TMPDIR:-/tmp}/himmel-chain-links-$UID"
+    # shellcheck disable=SC2174 # only the final, per-user directory is ours
+    if ! mkdir -m 700 -p "$seen_dir" 2>/dev/null || [ -L "$seen_dir" ] || [ ! -O "$seen_dir" ]; then
+        echo "live-state: no private record dir $seen_dir: no Jira link written" >&2
+        return
+    fi
+    # prim-ok: the record key follows the doc file's own symlink, as doc_lock's does
+    seen="$seen_dir/$(realpath -- "$doc" | sha256sum | cut -d' ' -f1)"
+    : >> "$seen" || { echo "live-state: cannot write $seen: no Jira link written" >&2; return; }
+    doc_lock "$seen" live-state || { echo "live-state: no lock on $seen: no Jira link written" >&2; return; }
+    while read -r on key; do
+        pair="$on blocks $key"
+        grep -qxF "$pair" "$seen" && continue
+        links="$(jira links "$key" 2>/dev/null)" || { echo "live-state: cannot read $key's Jira links: $pair not written" >&2; continue; }  # swallow-ok: an unread link list writes no link and says so; the pair is tried again next render
+        if ! awk -F'\t' -v i="inward=$on" -v o="outward=$key" '$2 == "Blocks" && $3 == i && $4 == o { f = 1 } END { exit !f }' <<< "$links"; then
+            open=yes
+            for k in "$on" "$key"; do
+                st="$(jira get "$k" 2>/dev/null | awk -F'\t' 'NR == 1 { print $3 }')"  # swallow-ok: an unread status is empty, which writes no link and is read again next render
+                if [ -z "$st" ]; then open=unread; break; fi
+                if [[ "$st" =~ $DONE_RE ]]; then open="$k is $st"; break; fi
+            done
+            [ "$open" != unread ] || { echo "live-state: cannot read $k's status: $pair not written" >&2; continue; }
+            if [ "$open" != yes ]; then
+                echo "live-state: $pair not written, recorded: $open" >&2
+            elif err="$(jira link "$on" --blocks "$key" 2>&1 >/dev/null)"; then
+                echo "live-state: linked $pair (pool-disposition: $key after $on)" >&2
+            else
+                case "$err" in
+                    *'must carry fixVersion'*) echo "live-state: $pair refused, recorded: $err" >&2 ;;
+                    *) echo "live-state: jira link $on --blocks $key failed: $err" >&2; continue ;;
+                esac
+            fi
+        fi
+        printf '%s\n' "$pair" >> "$seen"
+    done <<EOF
+$after_pairs
+EOF
+    doc_unlock
+}
+[ -z "$after_pairs" ] || link_after_pairs
+exit 0
