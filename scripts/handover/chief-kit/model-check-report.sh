@@ -98,8 +98,7 @@ case "$slug" in ''|.|..|*[!A-Za-z0-9_.-]*) error 'unsafe user slug' ;; esac
 GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 if [ "$GH_READ_BIN" != gh ]; then
-    # shellcheck source=scripts/lib/gh-read.sh
-    # shellcheck disable=SC1091
+    # shellcheck source=/dev/null
     . "$GH_READ_BIN"
     gh_read_init
 fi
