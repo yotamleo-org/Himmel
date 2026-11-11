@@ -1991,7 +1991,7 @@ _pr_remainder_answer() { # <ticket key> <PR body> -> the reader's answer line on
     printf '%s' "$2" | python3 -I "$reader" "$1" 2>/dev/null
 }
 partial_key=""
-MERGE_ROW_REMAINDER=""; MERGE_ROW_OWED=""; MERGE_ROW_OWED_DUE=""  # a contract=no merge's rows say what the reader found
+MERGE_ROW_REMAINDER=""; MERGE_ROW_OWED=""; MERGE_ROW_OWED_DUE=""
 if declare -F ticket_key_from_title >/dev/null; then partial_key=$(ticket_key_from_title "$fresh_title") || partial_key=""; fi
 if [ -n "$partial_key" ]; then
     _merge_contract
