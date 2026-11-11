@@ -522,7 +522,6 @@ class VM:
         return client
 
     def _live_test_cmd(self, cmd):
-        """`cmd` with the host's live-test marker exported first; a Windows guest's shell is not POSIX, so it is left as is."""
         value = None if self.os == "windows" else _live_test_value()
         return cmd if value is None else f"export HIMMEL_JIRA_LIVE_TEST={shlex.quote(value)}; {cmd}"
 
