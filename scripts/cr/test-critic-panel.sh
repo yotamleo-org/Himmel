@@ -1485,7 +1485,7 @@ NODE_SHIM_DIR="$tmp/node-shim"
 NODE_SHIM_LOG="$tmp/node-shim.log"
 mkdir -p "$NODE_SHIM_DIR"
 # shellcheck disable=SC2016
-printf '%s\n''#!/usr/bin/env bash' \
+printf '%s\n' '#!/usr/bin/env bash' \
     'case "${1:-}" in *finding-reraise.js) echo called >> "$NODE_SHIM_LOG" ;; esac' \
     "exec \"$REAL_NODE\" \"\$@\"" > "$NODE_SHIM_DIR/node"
 chmod +x "$NODE_SHIM_DIR/node"
