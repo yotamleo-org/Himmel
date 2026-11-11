@@ -164,16 +164,17 @@ while IFS=$'\t' read -r omode nmode osha nsha st path; do
             ;;
     esac
 done < "$work/files"
+bun_src='"(@[^"/]+/)?[^"@/]*@(git\+|git:|github:|gitlab:|bitbucket:|file:|link:|https?://)'
+bun_reg='"(@[^"/]+/)?[^"@/]*@https://registry\.npmjs\.org/'
+uv_src='source = \{[^}]*(git|url|path|directory) = |editable = "([^.]|\.[^"])'
 while IFS=$'\t' read -r f l; do
     case "${f#b/}" in
         bun.lock|*/bun.lock)
-            if printf '%s\n' "$l" | grep -qE '"(@[^"/]+/)?[^"@/]*@(git\+|git:|github:|gitlab:|bitbucket:|file:|link:|https?://)' \
-                && ! printf '%s\n' "$l" | grep -qE '"(@[^"/]+/)?[^"@/]*@https://registry\.npmjs\.org/'; then
+            if [[ "$l" =~ $bun_src ]] && ! [[ "$l" =~ $bun_reg ]]; then
                 hit H4 "${f#b/}: $(printf '%s' "$l" | cat -v)"
             fi ;;
         uv.lock|*/uv.lock)
-            if printf '%s\n' "$l" | grep -qE 'source = \{[^}]*(git|url|path|directory) = |editable = "([^.]|\.[^"])' \
-                || { printf '%s\n' "$l" | grep -qE 'registry = "' && ! printf '%s\n' "$l" | grep -qF 'registry = "https://pypi.org/simple"'; }; then
+            if [[ "$l" =~ $uv_src ]] || { [[ "$l" == *'registry = "'* ]] && [[ "$l" != *'registry = "https://pypi.org/simple"'* ]]; }; then
                 hit H4 "${f#b/}: $(printf '%s' "$l" | cat -v)"
             fi ;;
     esac
