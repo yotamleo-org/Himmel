@@ -181,7 +181,7 @@ can inherit into the child.
 | Haiku 5.5 | bulk mechanical; scoped read-only verification/extraction; mechanical edits that end in a real check (never delegates further) | low for bulk; `medium` (the model default; override the lane's `low`) once a brief has more than a couple of steps — see [Haiku 5.5](#haiku-55) |
 | Sonnet 5.5 | scoped research; default implementor for well-specified impl briefs | medium default (a native worker runs at `lanes.json`'s `sonnet` lane effort, `medium`; an explicit `CLAUDE_CODE_EFFORT_LEVEL` in the launching shell overrides it — e.g. `CLAUDE_CODE_EFFORT_LEVEL=high` for a multi-step or guard-grade worker); high for multi-file/long briefs — raise effort before reaching for Opus. Effort is recalibrated vs Sonnet 5: `low` can skip verifying a change, and at `low`/`medium` on long tasks it is likelier to stop and check in (Anthropic migration guide) |
 | Opus 5.5 | multi-step reasoning; default parent | medium default (≈ Opus 5 `high`); `low` for scoped impl; `high` for heavy parenting; `xhigh`/`max` only where a gain was measured — see [Effort calibration](#effort-calibration) |
-| Fable 5.1 | judgment, taste — hardest calls; escalation target | scale to the item (operator 2026-07-08, un-capped): medium default; high for substantial judgment work — not just the hardest; xhigh for the hardest |
+| Fable 5.2 | judgment, taste — hardest calls; escalation target; major refactors, migrations, architecture, long unattended runs | scale to the item (operator 2026-07-08, un-capped): medium default; high for substantial judgment work — not just the hardest; xhigh for the hardest. Anthropic starts Fable 5.2 at `high`; the lane stays `medium` until our own re-sweep — see [Fable 5.2](#fable-52) |
 
 Beyond the Claude tiers the fleet includes machine-specific impl/critic/bulk
 lanes (paid/optional — they exist only where the operator configured them). See
@@ -245,8 +245,8 @@ prompts work unchanged). Fold into the brief when it is more than one step:
 - Never put user text inside a tool result; thinking counts toward `max_tokens`;
   no prefill and no non-default `temperature`/`top_p`/`top_k` on the API.
 - Effort and the cache (<https://code.claude.com/docs/en/prompt-caching#changing-effort-level>):
-  on Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.1 with an API key or a Claude
-  subscription, changing effort mid-session keeps the cache (Fable 5.1 needs
+  on Fable 5.1 and later, Opus 5.5, Sonnet 5.5 and Haiku 5.5 with an API key or a
+  Claude subscription, changing effort mid-session keeps the cache (Fable 5.1 needs
   Claude Code v2.1.260+). On other models, and on Bedrock, Vertex, a Claude apps
   gateway, with `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` set or a HIPAA
   configuration, a change recomputes the whole request. The claudex lane routes
@@ -260,6 +260,79 @@ OpenRouter lane now defaults to `anthropic/claude-haiku-5.5`;
 Labels above mirror `scripts/lanes/lanes.json`, which is authoritative. When a
 tier's underlying model ships a new generation, update `lanes.json` first and
 this table follows — never the reverse.
+
+### Fable 5.2
+
+`fable` is `claude-fable-5-2` (released 2026-11-09). It needs Claude Code
+v2.1.321 or later. From that version the `fable` alias resolves to it, and on a
+Pro, Max or Ultra plan a saved `claude-fable-5-1` setting moves to the alias on
+the first run ([model config](https://code.claude.com/docs/en/model-config)).
+The window is **1M**, output is up to 128K, adaptive thinking is always on, and
+all five effort levels exist. The price per MTok is $8 in / $40 out, $0.20 for
+a cache read, $10 for a 5-minute cache write and $16 for a 1-hour write, with no
+long-context surcharge
+([pricing](https://platform.claude.com/docs/en/about-claude/pricing), read
+2026-11-11; Fable 5.1 was $10 / $50). That is twice the Opus 5.5 rate for
+uncached input and output, and the same rate for a cache read.
+`scripts/lanes/lib/model-prices.tsv` and `cache-read-weights.tsv` carry the
+row. Fable 5.1 stays available as a legacy model.
+
+**When to use it.** Anthropic's
+[model-choice guide](https://claude.dev/blog/which-claude-model-should-you-build-with)
+starts most work on Opus 5.5 at `medium`. It moves up to Fable 5.2 for the
+hardest projects: major refactors, migrations, architecture planning, long
+unattended runs, and work where Opus 5.5 at `high` still falls short. When
+output is not good enough, its order matches our "raise effort before tier":
+first give the model a check it can run (a test or a build), then raise effort
+one level, then move up a model at a lower effort. Before you raise Opus 5.5
+above `high` on a hard task, test Fable 5.2: on FrontierCode 2.0, Fable 5.2 at
+`high` scored 45.3 % against 45.5 % for Opus 5.5 at `max`, for about half the
+cost per task. A Fable worker still needs a `> **Tier:** fable — <category>:
+<reason>` line (`headed-arm-worker.sh`), and `arm-resume.sh` still refuses a
+Fable pin with no `--fable-ok` reason (ruling 30). Both checks match the whole
+Fable family, so `claude-fable-5-2` passes them with no code change. The
+OpenRouter lane does not take Fable 5.2 yet: its launcher maps only
+`claude-fable-5-1`.
+
+**Effort.**
+[Prompting Claude Fable 5.2](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-2#calibrate-effort)
+says to start at `high`, the API default, and to rerun the effort sweep rather
+than carry over a level tuned on Fable 5.1 or Opus 5.5. Most of the gain is
+already present at `high`. At `low` its scores sat close to Fable 5.1 at higher
+levels. `xhigh` is for the hardest long agentic work where a gain was measured,
+and `max` is for measuring the ceiling. Claude Code itself defaults Fable 5.2 to
+`medium`. The `fable` row in `lanes.json` stays at `medium` (operator
+2026-07-08) until that sweep runs on our own tasks. It has not run yet.
+
+The guide names three effort behaviours that change how we prompt it:
+- At `low` and `medium` it is more likely to end a turn before the work is done.
+  The armed-run preamble in
+  [`afk-mode.md`](../handover/afk-mode.md#launch-preamble) carries the guide's
+  finishing text for this.
+- At `high` and above it thinks before almost every reply. A prompt line that
+  asks it to answer without deliberating does not stop that, so lower the
+  effort instead of writing one.
+- Effort barely changes the length of a reply. The prompt sets length and tone.
+
+The same guide names habits that raise cost or hold work back:
+- At `xhigh` and `max` it may start subagents to review its own work. Our rule
+  "never spawn a subagent to verify your own work" forbids that, so keep the
+  rule in a Fable brief.
+- It applies approval rules exactly as written and follows standing cautions
+  closely. A broad rule such as "ask before contacting anyone" can hold back
+  routine work, so name the exact actions a rule covers and write the
+  exception into the rule itself.
+- When a prompt says the codebase is its own, it merges repeated code and fixes
+  nearby bugs in about half of tries, at about 1.5 times the output tokens and
+  with unrequested tests and docs. A himmel worker owns only its `Writes` list,
+  so our prompts leave that sentence out.
+- Its safety classifiers stop a reply with `stop_reason: "refusal"` and a
+  category; see
+  [`safeguard-false-positives.md`](safeguard-false-positives.md#fable-52-refusal-categories).
+
+**Unmeasured.** The Fable rows of the `[1m]` suffix table and of the
+plain-launch table below were measured on Fable 5.1. Fable 5.2's rows are
+unmeasured; re-measure with the zero-spend method before you rely on them.
 
 ### Lane-fit eval: Haiku 5.5 vs Sonnet 5.5 vs codex gpt-6.1-sol (2026-10-08)
 
@@ -526,6 +599,9 @@ re-sweep above; this line exists so the gap is visible at the
 point a reader would check it
 (`handovers/yotamleo/himmel/specs/eval/HIMMEL-fable51-prompting-audit-2026-09-05.md`). Same audit's safeguard-false-positive mitigations:
 [`safeguard-false-positives.md`](safeguard-false-positives.md).
+The Fable 5.2 guide repeats the instruction: rerun the sweep rather than carry
+over a level tuned on Fable 5.1. The `fable` lane's sweep is still open; see
+[Fable 5.2](#fable-52).
 
 ### claudex effort — the launcher defaults to `xhigh` (decision 223), `low` first for mechanical chunks
 
@@ -772,6 +848,12 @@ context window and no beta header. The Sonnet 5 rows above have **not** been
 re-run for `claude-sonnet-5-5`: its `[1m]` suffix handling, the `sonnet[1m]`
 alias target, and its plain-launch `context_window_size` are unmeasured —
 re-measure with the zero-spend method above before relying on them.
+
+**2026-11-11:** from Claude Code v2.1.321 the `fable` alias resolves to
+`claude-fable-5-2`. The Fable rows above were measured when it resolved to
+`claude-fable-5-1`. Fable 5.2's `[1m]` handling and its plain-launch
+`context_window_size` are unmeasured; re-measure with the zero-spend method
+above before relying on them.
 
 ### What a plain launch reports
 

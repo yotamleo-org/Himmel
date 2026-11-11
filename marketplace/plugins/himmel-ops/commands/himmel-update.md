@@ -58,9 +58,10 @@ daemon.
 **Gap-audit offer (HIMMEL-5836).** The run ends with a print-only offer: the
 read-only checks that came back non-green (qmd pin / embed backlog / collections
 unscanned for over 3 days, AST graph age and the semantic manifest's age,
-in-work tickets with no session or PR, `ponytail:` markers whose upgrade ticket
-is Done), each with its remedy, via `scripts/lib/gap-audit.sh`. Nothing runs
-until you say yes; the full audit is `bash scripts/himmel-doctor.sh`.
+in-work tickets with no session or PR, open ceilings-ledger rows whose ticket
+is Done, whose file is gone or whose anchor no longer matches), each with its
+remedy, via `scripts/lib/gap-audit.sh`. Nothing runs until you say yes; the
+full audit is `bash scripts/himmel-doctor.sh`.
 
 **Machine-local catch-up (HIMMEL-2134).** Three advisory steps close the gap
 where a merged pin bump reached this checkout's *repo* but never reached the
