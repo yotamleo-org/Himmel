@@ -1,9 +1,9 @@
 import { beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appendFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appendFileSync, existsSync, statSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readNewLines, readMeta, writeMeta, ensureSession, appendLine, sessionDir } from "./bus";
-import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, sendFileViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, inboundToDelivered, type FetchImageFn } from "./poller";
+import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, sendFileViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, inboundToDelivered, flushMonitor, startFlushTimers, startMonitoringCheck, monitorDownAfterMs, makeMonitorSend, checkMonitoring, type FetchImageFn } from "./poller";
 import { readFile, writeFile, mkdir, utimes } from "node:fs/promises";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, vaultForChat } from "./gate";
 import { describeEnabledOps, KNOWN_OPS } from "./auto-action";
@@ -3858,4 +3858,306 @@ test("a page line with only one of the two send-file fields is refused", async (
   const { texts, docs } = await flushDocs(r);
   expect(docs).toEqual([]);
   expect(texts.length).toBe(2);
+});
+
+
+const MT0 = Date.UTC(2026, 10, 9, 12, 0, 0);
+const MIN = 60_000, HOUR = 3_600_000;
+const OPCHAT = 555;
+const monDir = (r: string) => join(r, "monitor");
+const spoolLines = (r: string, lines: { text: string; at: number }[]) => {
+  mkdirSync(monDir(r), { recursive: true });
+  appendFileSync(join(monDir(r), "outbox.jsonl"), lines.map((l) => JSON.stringify({ text: l.text, kind: "cadence:vm-maintain-login-x", at: new Date(l.at).toISOString() }) + "\n").join(""));
+};
+const opOutbox = (r: string): { text: string }[] => {
+  try { return readFileSync(join(r, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; }
+};
+const monCursor = (r: string): number => { try { return Number(readFileSync(join(monDir(r), "outbox.jsonl.cursor"), "utf8")) || 0; } catch { return 0; } };
+const monState = (r: string): string | null => { try { return readFileSync(join(monDir(r), "state"), "utf8").trim(); } catch { return null; } };
+const waitFor = async (cond: () => boolean, ms = 1500): Promise<boolean> => { const end = Date.now() + ms; while (!cond() && Date.now() < end) await Bun.sleep(5); return cond(); };
+const opSink = () => { const sent: string[] = []; return { sent, send: async (_c: number, t: string) => { sent.push(t); } }; };
+const asFetch = (fn: (url: any, init?: any) => Promise<Response>) => fn as unknown as typeof fetch;
+const jsonRes = (o: object, status = 200) => new Response(JSON.stringify(o), { status });
+
+const MONITOR_MODES: [string, (() => (t: string) => Promise<boolean>) | null][] = [
+  ["the monitoring chat set", () => async () => true],
+  ["the monitoring chat unset", null],
+  ["a send that throws", () => () => { throw new Error("boom"); }],
+  ["a send that rejects", () => () => Promise.reject(new Error("no"))],
+  ["a send that never resolves", () => () => new Promise<boolean>(() => {})],
+];
+for (const [mode, mk] of MONITOR_MODES) {
+  test(`R2.1 a monitoring send that throws, rejects or never resolves leaves the operator outbox line sent and its cursor committed: ${mode}`, async () => {
+    const r = root(); spoolLines(r, [{ text: "routine", at: Date.now() }]);
+    const controls = ["merge-blocked: PR needs you", "token-in-output: rotate it", "hold-ask-operator: a hold on ci.yml", "unclassified message"];
+    for (const c of controls) await replyViaOutbox(r, OPCHAT, c);
+    const op = opSink();
+    const inner = mk ? mk() : null;
+    let attempts = 0;
+    const monSend = inner ? (t: string) => { attempts++; return inner(t); } : null;
+    const stop = startFlushTimers({ root: r, send: op.send, flushMs: 10, monitorMs: 10, monitor: () => ({ send: monSend, reason: "unset", operatorChat: OPCHAT }) });
+    try {
+      expect(await waitFor(() => (inner ? attempts >= 1 : monState(r) !== null))).toBe(true);
+      expect(await waitFor(() => op.sent.length >= controls.length)).toBe(true);
+      await Bun.sleep(80);
+      expect(op.sent).toEqual(controls);
+    } finally { stop(); }
+    const again = opSink();
+    await flushOutboxes(r, again.send);
+    expect(again.sent).toEqual([]);
+  });
+}
+
+test("R2.2 unset monitoring chat: the lines stay, the cursor stays, and after 60 min one monitor-chat-down goes to the operator outbox; 23 h later none, 24 h later one", async () => {
+  const r = root(); spoolLines(r, [{ text: "routine", at: MT0 }]);
+  const run = (now: number) => flushMonitor(r, null, now, { operatorChat: OPCHAT, reason: "unset" });
+  await run(MT0 + 59 * MIN);
+  expect(opOutbox(r).length).toBe(0);
+  await run(MT0 + 60 * MIN);
+  expect(opOutbox(r).length).toBe(1);
+  const t = opOutbox(r)[0].text;
+  expect(t).toContain("The monitoring group is getting no messages (unset); 1 are kept on the station.");
+  expect(t).toContain("Blocks: routine monitoring only. Do: ");
+  expect(monCursor(r)).toBe(0);
+  expect(readFileSync(join(monDir(r), "outbox.jsonl"), "utf8").trim().split("\n").length).toBe(1);
+  expect(existsSync(join(monDir(r), "chat-down"))).toBe(true);
+  await run(MT0 + 60 * MIN + 23 * HOUR);
+  expect(opOutbox(r).length).toBe(1);
+  await run(MT0 + 60 * MIN + 24 * HOUR);
+  expect(opOutbox(r).length).toBe(2);
+  expect(monState(r)).toBe(`down ${MT0 / 1000} unset`);
+});
+
+test("R2.3 the monitoring token never reaches a file under the bridge root, the route log or the poller log, through ok, refused, send, abort, 429 and monitor-chat-down", async () => {
+  const TOKEN = "999:TESTTOKEN";
+  const urls: string[] = [];
+  const logs: string[] = [];
+  const saved = [console.error, console.log, console.warn];
+  const cap = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
+  console.error = cap; console.log = cap; console.warn = cap;
+  const r = root();
+  const startup: string[] = [];
+  const results: boolean[] = [];
+  try {
+    const f = asFetch(async (url) => {
+      const u = String(url); urls.push(u);
+      if (u.includes("/getChatMemberCount")) return jsonRes({ ok: true, result: 2 });
+      if (u.includes("/getChat")) return jsonRes({ ok: true, result: { type: "supergroup", title: "Monitoring" } });
+      if (u.includes("/sendMessage")) return jsonRes({ ok: true, result: { message_id: 1 } });
+      return jsonRes({ ok: false }, 404);
+    });
+    const throwing = asFetch(async (url) => { urls.push(String(url)); throw new Error("fetch failed for " + String(url)); });
+    const rate = asFetch(async (url) => { urls.push(String(url)); return jsonRes({ ok: false, parameters: { retry_after: 1 } }, 429); });
+    const env = { TELEGRAM_BOT_TOKEN: "111:BRIDGE", TELEGRAM_MONITOR_BOT_TOKEN: TOKEN, TELEGRAM_MONITOR_CHAT_ID: "-100123" };
+    startup.push((await checkMonitoring(env, { f })).line);
+    startup.push((await checkMonitoring(env, { f: throwing })).line);
+    const channel = asFetch(async (url) => { urls.push(String(url)); return jsonRes({ ok: true, result: { type: "channel", title: "C" } }); });
+    startup.push((await checkMonitoring(env, { f: channel })).line);
+    const noSleep = async () => {};
+    results.push(await makeMonitorSend(TOKEN, -100123, { f, sleep: noSleep })("hello"));
+    results.push(await makeMonitorSend(TOKEN, -100123, { f: throwing, sleep: noSleep })("x"));
+    results.push(await makeMonitorSend(TOKEN, -100123, { f: rate, sleep: noSleep })("x"));
+    spoolLines(r, [{ text: "routine", at: MT0 }]);
+    await flushMonitor(r, null, MT0 + 2 * HOUR, { operatorChat: OPCHAT, reason: "unset" });
+    await flushMonitor(r, makeMonitorSend(TOKEN, -100123, { f: throwing, sleep: noSleep }), MT0 + 2 * HOUR + 10 * MIN, { operatorChat: OPCHAT, reason: "unset" });
+  } finally { [console.error, console.log, console.warn] = saved as any; }
+  expect(urls.some((u) => u.includes(TOKEN))).toBe(true);
+  expect(results).toEqual([true, false, false]);
+  const files = (readdirSync(r, { recursive: true }) as string[]).map((p) => join(r, p)).filter((p) => statSync(p).isFile());
+  expect(files.length).toBeGreaterThan(0);
+  for (const p of files) expect(readFileSync(p, "utf8")).not.toContain(TOKEN);
+  expect(logs.join("\n")).not.toContain(TOKEN);
+  expect(startup.join("\n")).not.toContain(TOKEN);
+  expect(startup[0]).toBe("monitoring: ok Monitoring members=2");
+});
+
+test("R2.4 send-then-commit: a crash between send and commit resends at most that one line; at most one send every 3 s", async () => {
+  const r = root();
+  spoolLines(r, [{ text: "a", at: MT0 }, { text: "b", at: MT0 }, { text: "c", at: MT0 }]);
+  const sent: string[] = []; const seen: number[] = [];
+  const send = async (t: string) => { seen.push(monCursor(r)); sent.push(t); return true; };
+  const run = (now: number) => flushMonitor(r, send, now, { operatorChat: OPCHAT });
+  await run(MT0 + 1000);
+  const afterA = monCursor(r);
+  expect(sent).toEqual(["a"]);
+  expect(seen[0]).toBe(0);
+  expect(afterA).toBeGreaterThan(0);
+  await run(MT0 + 2000);
+  expect(sent).toEqual(["a"]);
+  await run(MT0 + 4000);
+  expect(sent).toEqual(["a", "b"]);
+  expect(seen[1]).toBe(afterA);
+  const afterB = monCursor(r);
+  await run(MT0 + 7000);
+  expect(sent).toEqual(["a", "b", "c"]);
+  writeFileSync(join(monDir(r), "outbox.jsonl.cursor"), String(afterB));
+  await run(MT0 + 10_000);
+  expect(sent).toEqual(["a", "b", "c", "c"]);
+  await run(MT0 + 13_000);
+  expect(sent).toEqual(["a", "b", "c", "c"]);
+});
+
+test("R2.5 an operator line queued while a monitoring send hangs is sent within 2 operator flush ticks", async () => {
+  const r = root(); spoolLines(r, [{ text: "routine", at: Date.now() }]);
+  let called = 0;
+  const op = opSink();
+  const FLUSH = 40;
+  const stop = startFlushTimers({ root: r, send: op.send, flushMs: FLUSH, monitorMs: 10, monitor: () => ({ send: () => { called++; return new Promise<boolean>(() => {}); }, reason: "unset", operatorChat: OPCHAT }) });
+  try {
+    expect(await waitFor(() => called >= 1)).toBe(true);
+    const t0 = Date.now();
+    await replyViaOutbox(r, OPCHAT, "merge-blocked: PR needs you");
+    expect(await waitFor(() => op.sent.length === 1)).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(2 * FLUSH + 300);
+  } finally { stop(); }
+});
+
+test("R2.6 the monitoring keys come from the bridge env file only; a non-group or the bridge's own bot reads as unset; the down-after knob is clamped and fixture-only", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bridgecfg-"));
+  const cfg = join(dir, "bridge-config");
+  const saved = { env: process.env.TELEGRAM_ENV, chat: process.env.TELEGRAM_MONITOR_CHAT_ID, tok: process.env.TELEGRAM_MONITOR_BOT_TOKEN };
+  process.env.TELEGRAM_ENV = cfg;
+  try {
+    await writeFile(cfg, "TELEGRAM_BOT_TOKEN=1:bridge\nTELEGRAM_MONITOR_BOT_TOKEN=2:mon\nTELEGRAM_MONITOR_CHAT_ID=-100222\n");
+    process.env.TELEGRAM_MONITOR_CHAT_ID = "-100333"; process.env.TELEGRAM_MONITOR_BOT_TOKEN = "3:shell";
+    const both = await loadBridgeEnv();
+    expect(both.TELEGRAM_MONITOR_CHAT_ID).toBe("-100222");
+    expect(both.TELEGRAM_MONITOR_BOT_TOKEN).toBe("2:mon");
+    await writeFile(cfg, "TELEGRAM_BOT_TOKEN=1:bridge\n");
+    const none = await loadBridgeEnv();
+    expect(none.TELEGRAM_MONITOR_CHAT_ID).toBeUndefined();
+    expect(none.TELEGRAM_MONITOR_BOT_TOKEN).toBeUndefined();
+  } finally {
+    if (saved.env === undefined) delete process.env.TELEGRAM_ENV; else process.env.TELEGRAM_ENV = saved.env;
+    if (saved.chat === undefined) delete process.env.TELEGRAM_MONITOR_CHAT_ID; else process.env.TELEGRAM_MONITOR_CHAT_ID = saved.chat;
+    if (saved.tok === undefined) delete process.env.TELEGRAM_MONITOR_BOT_TOKEN; else process.env.TELEGRAM_MONITOR_BOT_TOKEN = saved.tok;
+  }
+  const kindFetch = (type: string) => asFetch(async (url) => String(url).includes("/getChatMemberCount") ? jsonRes({ ok: true, result: 2 }) : jsonRes({ ok: true, result: { type, title: "T" } }));
+  const env = { TELEGRAM_BOT_TOKEN: "1:bridge", TELEGRAM_MONITOR_BOT_TOKEN: "2:mon", TELEGRAM_MONITOR_CHAT_ID: "-100222" };
+  for (const type of ["channel", "private"]) {
+    const m = await checkMonitoring(env, { f: kindFetch(type) });
+    expect([m.send === null, m.reason, m.retry]).toEqual([true, "not a group", false]);
+  }
+  const offline = await checkMonitoring(env, { f: asFetch(async () => { throw new Error("offline"); }) });
+  expect([offline.send === null, offline.retry]).toEqual([true, true]);
+  expect((await checkMonitoring(env, { f: kindFetch("group") })).send).not.toBeNull();
+  let called = 0;
+  const same = await checkMonitoring({ ...env, TELEGRAM_MONITOR_BOT_TOKEN: "1:bridge" }, { f: asFetch(async () => { called++; return jsonRes({ ok: true }); }) });
+  expect([same.send === null, same.reason, called]).toEqual([true, "same bot as the bridge", 0]);
+  expect((await checkMonitoring({ TELEGRAM_BOT_TOKEN: "1:bridge" }, { f: kindFetch("group") })).reason).toBe("unset");
+  expect(monitorDownAfterMs({ HIMMEL_TEST_FIXTURE: "1", TELEGRAM_MONITOR_DOWN_AFTER_MS: "99999999" })).toBe(3_600_000);
+  expect(monitorDownAfterMs({ HIMMEL_TEST_FIXTURE: "1", TELEGRAM_MONITOR_DOWN_AFTER_MS: "60000" })).toBe(60_000);
+  expect(monitorDownAfterMs({ TELEGRAM_MONITOR_DOWN_AFTER_MS: "60000" })).toBe(3_600_000);
+  expect(monitorDownAfterMs({ HIMMEL_TEST_FIXTURE: "1", TELEGRAM_MONITOR_DOWN_AFTER_MS: "junk" })).toBe(3_600_000);
+  const prev = [process.env.HIMMEL_TEST_FIXTURE, process.env.TELEGRAM_MONITOR_DOWN_AFTER_MS];
+  process.env.HIMMEL_TEST_FIXTURE = "1"; process.env.TELEGRAM_MONITOR_DOWN_AFTER_MS = "60000";
+  try {
+    const r = root(); spoolLines(r, [{ text: "routine", at: MT0 }]);
+    await flushMonitor(r, null, MT0 + 2 * MIN, { operatorChat: OPCHAT, reason: "unset" });
+    expect(opOutbox(r).length).toBe(1);
+  } finally {
+    if (prev[0] === undefined) delete process.env.HIMMEL_TEST_FIXTURE; else process.env.HIMMEL_TEST_FIXTURE = prev[0];
+    if (prev[1] === undefined) delete process.env.TELEGRAM_MONITOR_DOWN_AFTER_MS; else process.env.TELEGRAM_MONITOR_DOWN_AFTER_MS = prev[1];
+  }
+});
+
+test("R2.7 a fetch that never resolves is aborted at 10 s; a 429 with retry_after 600 returns false within 54 s with no sleep over 1 s; a send hung for 61 minutes queues exactly one monitor-chat-down", async () => {
+  const asked: number[] = []; const ctrls: AbortController[] = [];
+  const mkSignal = (ms: number) => { asked.push(ms); const c = new AbortController(); ctrls.push(c); return c.signal; };
+  const hang = asFetch((_u, init) => new Promise<Response>((_res, rej) => { init.signal.addEventListener("abort", () => rej(new Error("aborted")), { once: true }); }));
+  const pending = makeMonitorSend("999:TESTTOKEN", -100123, { f: hang, sleep: async () => {}, mkSignal })("x");
+  await Bun.sleep(5);
+  expect(asked).toEqual([10_000]);
+  ctrls[0].abort();
+  expect(await pending).toBe(false);
+  const probe = await checkMonitoring({ TELEGRAM_BOT_TOKEN: "1:b", TELEGRAM_MONITOR_BOT_TOKEN: "2:m", TELEGRAM_MONITOR_CHAT_ID: "-100" }, { f: asFetch(async () => { asked.push(-1); return jsonRes({ ok: true, result: { type: "group", title: "T" } }); }), mkSignal });
+  expect(probe.send).not.toBeNull();
+  expect(asked.slice(1)).toEqual([10_000, -1, 10_000, -1]);
+  const sleeps: number[] = []; let calls = 0;
+  const f429 = asFetch(async () => { calls++; return jsonRes({ ok: false, parameters: { retry_after: 600 } }, 429); });
+  expect(await makeMonitorSend("999:TESTTOKEN", -100123, { f: f429, sleep: async (ms) => { sleeps.push(ms); }, mkSignal })("x")).toBe(false);
+  expect(calls).toBe(5);
+  expect(sleeps.length).toBe(4);
+  expect(Math.max(...sleeps)).toBeLessThanOrEqual(1000);
+  expect(5 * 10_000 + sleeps.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(54_000);
+  const r = root(); spoolLines(r, [{ text: "routine", at: MT0 }]);
+  const hung = () => new Promise<boolean>(() => {});
+  void flushMonitor(r, hung, MT0 + 61 * MIN, { operatorChat: OPCHAT, reason: "unset" });
+  await Bun.sleep(30);
+  expect(opOutbox(r).length).toBe(1);
+  void flushMonitor(r, hung, MT0 + 62 * MIN, { operatorChat: OPCHAT, reason: "unset" });
+  await Bun.sleep(30);
+  expect(opOutbox(r).length).toBe(1);
+});
+
+test("R2.8 after 30 hours unset the group comes back: older than 24 h goes out as one summary line, the newer lines one by one; the state reads down, then ok", async () => {
+  const r = root();
+  const NOW = MT0 + 30 * HOUR;
+  spoolLines(r, [{ text: "old1", at: MT0 }, { text: "old2", at: MT0 + HOUR }, { text: "old3", at: MT0 + 5 * HOUR }, { text: "new1", at: NOW - 2 * HOUR }, { text: "new2", at: NOW - HOUR }]);
+  await flushMonitor(r, null, NOW, { operatorChat: OPCHAT, reason: "unset" });
+  expect(monState(r)).toBe(`down ${MT0 / 1000} unset`);
+  const sent: string[] = [];
+  const send = async (t: string) => { sent.push(t); return true; };
+  await flushMonitor(r, send, NOW + 10_000, { operatorChat: OPCHAT });
+  expect(sent).toEqual([`3 older monitoring lines were kept on the station: ${join(r, "monitor", "outbox.jsonl")}`]);
+  expect(monState(r)).toBe("ok");
+  for (const dt of [13_000, 16_000, 19_000]) await flushMonitor(r, send, NOW + dt, { operatorChat: OPCHAT });
+  expect(sent.slice(1)).toEqual(["new1", "new2"]);
+});
+
+test("R2.9 the startup check asks again with a wait that doubles from 60 s to 1 h, logs only when its line changes, and stops on a final answer", async () => {
+  const refused = { send: null, reason: "refused: cannot read the chat", line: "monitoring: refused cannot read the chat", retry: true };
+  const ok = { send: async () => true, reason: "ok", line: "monitoring: ok T members=2", retry: false };
+  const answers = [...Array(9).fill(refused), ok];
+  const delays: number[] = []; const applied: string[] = [];
+  let pending: (() => void) | null = null;
+  const logs: string[] = [];
+  const saved = console.error;
+  console.error = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
+  try {
+    startMonitoringCheck({ check: async () => answers.shift(), apply: (m) => { applied.push(m.reason); }, schedule: (fn, ms) => { delays.push(ms); pending = fn; } });
+    while (await waitFor(() => pending !== null, 50)) { const fn = pending!; pending = null; fn(); }
+  } finally { console.error = saved; }
+  expect(delays).toEqual([60_000, 120_000, 240_000, 480_000, 960_000, 1_920_000, 3_600_000, 3_600_000, 3_600_000]);
+  expect(applied.length).toBe(10);
+  expect(applied[9]).toBe("ok");
+  expect(logs).toEqual(["[poller] monitoring: refused cannot read the chat", "[poller] monitoring: ok T members=2"]);
+});
+
+test("R2.10 a spooled line whose time cannot be read counts as old, so the down notice is not held back", async () => {
+  const r = root(); mkdirSync(monDir(r), { recursive: true });
+  appendFileSync(join(monDir(r), "outbox.jsonl"), JSON.stringify({ text: "no time" }) + "\n" + JSON.stringify({ text: "bad time", at: "garbage" }) + "\n");
+  await flushMonitor(r, null, MT0 + 2 * MIN, { operatorChat: OPCHAT, reason: "unset" });
+  expect(opOutbox(r).length).toBe(1);
+});
+
+test("R2.11 the monitor-chat-down notice is still sent, and only once, when its marker cannot be written", async () => {
+  const r = root(); spoolLines(r, [{ text: "routine", at: MT0 }]);
+  mkdirSync(join(monDir(r), "chat-down"), { recursive: true });
+  await flushMonitor(r, null, MT0 + 2 * HOUR, { operatorChat: OPCHAT, reason: "unset" });
+  expect(opOutbox(r).length).toBe(1);
+  await flushMonitor(r, null, MT0 + 2 * HOUR + 3000, { operatorChat: OPCHAT, reason: "unset" });
+  expect(opOutbox(r).length).toBe(1);
+});
+
+test("R2.12 a monitor-chat-down notice whose operator outbox write fails is asked again on the next flush, not held back for 24 h", async () => {
+  const r = root(); spoolLines(r, [{ text: "routine", at: MT0 }]);
+  const outbox = join(r, "sessions", "__chat__", "outbox.jsonl");
+  mkdirSync(outbox, { recursive: true });
+  await flushMonitor(r, null, MT0 + 2 * HOUR, { operatorChat: OPCHAT, reason: "unset" });
+  expect(existsSync(join(monDir(r), "chat-down"))).toBe(false);
+  rmSync(outbox, { recursive: true });
+  await flushMonitor(r, null, MT0 + 2 * HOUR + 3000, { operatorChat: OPCHAT, reason: "unset" });
+  expect(opOutbox(r).length).toBe(1);
+});
+
+test("R2.13 the startup check's default retry timer is unref'd so it cannot hold the poller open", async () => {
+  const orig = globalThis.setTimeout;
+  const made: { t: any; ms: number }[] = [];
+  globalThis.setTimeout = ((fn: any, ms: number, ...a: any[]) => { const t = orig(fn, ms, ...a); made.push({ t, ms }); return t; }) as any;
+  try {
+    startMonitoringCheck({ check: async () => ({ send: null, reason: "r", line: "monitoring: refused cannot read the chat", retry: true }), apply: () => {} });
+    expect(await waitFor(() => made.some((m) => m.ms === 60_000))).toBe(true);
+    expect(made.find((m) => m.ms === 60_000)!.t.hasRef()).toBe(false);
+  } finally { globalThis.setTimeout = orig; for (const m of made) clearTimeout(m.t); }
 });
