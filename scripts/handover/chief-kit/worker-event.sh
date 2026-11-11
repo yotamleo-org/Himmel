@@ -99,14 +99,14 @@ if [ "$MSG" = "-" ]; then body="$(cat)"; else body="$(cat "$MSG")" || usage; fi 
 line="$(printf '%s\n' "$body" | grep -m1 -E '[^[:space:]]')" || line=""
 line="${line#- }"
 # a message may lead with its own N<k> label and ticket key before the marker
-while [[ "$line" =~ ^(N[0-9]+|[A-Z]+-[0-9]+)[[:space:]]+ ]]; do line="${line#"${BASH_REMATCH[0]}"}"; done
+while [[ "$line" =~ ^(N[0-9]+[a-z]*|[A-Z]+-[0-9]+)[[:space:]]+ ]]; do line="${line#"${BASH_REMATCH[0]}"}"; done
 marker="${line%%[^A-Za-z-]*}"
 
 dry_run_ready() {
     local dpr dhead dlabels
     [[ $line =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})([^0-9a-f]|$) ]] || return 0
     dpr="${BASH_REMATCH[1]}"; dhead="${BASH_REMATCH[2]}"
-    dlabels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)"
+    dlabels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+[a-z]*\>' | sort -u)"
     case "$dlabels" in ''|*$'\n'*) return 0 ;; esac
     (
         if stacked_series_state; then
@@ -140,7 +140,7 @@ fi
 
 # the worker is named by its N<k> label, or failing that by its session name (the
 # worker doc's stem, which a wrap message may quote without any N<k>)
-labels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)" || labels=""
+labels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+[a-z]*\>' | sort -u)" || labels=""
 if [ -n "$labels" ]; then
     [ "$(printf '%s\n' "$labels" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
     label="$labels"
@@ -187,7 +187,7 @@ EOF
     worker="${workers%$'\n'}"
     stem="${worker##*/}"; stem="${stem%.md}"
     label="$stem"
-    [[ $stem =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
+    [[ $stem =~ -(N[0-9]+[a-z]*)- ]] && label="${BASH_REMATCH[1]}"
 fi
 
 # stacked_series only: the ledger says whether this worker's doc is a series' writer or passed it on, and who the
@@ -211,6 +211,9 @@ if [ "$marker" = READY ]; then
     if [ -n "$series_role" ]; then
         [ -n "$series_label" ] && [ "$series_label" != "-" ] || escalate "series-writer-unlisted"
         label="$series_label"
+    else
+        # the manifest row's label is worker_label of its doc: a message that named the bare label of a resumed worker still reaches auto-go under it
+        label="$(worker_label "$worker")"
     fi
     [[ $line =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})([^0-9a-f]|$) ]] || escalate "ready-unparsed"
     rpr="${BASH_REMATCH[1]}"; rhead="${BASH_REMATCH[2]}"

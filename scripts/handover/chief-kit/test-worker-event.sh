@@ -646,4 +646,69 @@ check "17.7 a failing, printing dry run changes nothing: rc" "$rc" 10
 check "17.7 a failing, printing dry run changes nothing: out" "$out" "ESCALATE marker-READY"
 unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAG_STACKED_SERIES HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
 
+# 18. a READY from a resumed worker (a manifest label with a letter suffix) reaches auto-go under
+# that label, whether the message names it, names only the worker's session name, or names the bare label.
+cat > "$W/list18" <<'EOF18'
+#!/usr/bin/env bash
+printf '%s\n' /h/HIMMEL-9564-N5765f-resumed-2026-11-10-RESUME.md /h/HIMMEL-9500-N5653b-other-2026-11-09-RESUME.md
+EOF18
+chmod +x "$W/list18"
+export HIMMEL_FLAGS_TSV="$W/flags.tsv" HIMMEL_CONFIG_DIR="$W/no-conf" LE_AUTOGO="$W/autogo" HIMMEL_FLAG_AUTO_GO=1
+GOOUT="GO-SENT 2553 $H40 to N5653b bus=#7 qid=q1"
+LE_LIST="$W/list18" LE_AUTOGO_OUT="$GOOUT" run "READY 2553 $H40 GREEN N5653b"
+check "18a a READY naming N5653b: HANDLED under that label" "$out" "HANDLED auto-go N5653b"
+check "18a a READY naming N5653b: auto-go gets the suffixed label" "$calls" "autogo --doc $W/doc --fleet $W/fleet.json --worker N5653b 2553 $H40"
+LE_LIST="$W/list18" LE_AUTOGO_OUT="$GOOUT" run "READY 2553 $H40 GREEN HIMMEL-9564-N5765f-resumed-2026-11-10-RESUME"
+check "18b a READY naming only the session name: auto-go gets the stem's label N5765f" "$calls" "autogo --doc $W/doc --fleet $W/fleet.json --worker N5765f 2553 $H40"
+LE_LIST="$W/list18" LE_AUTOGO_OUT="$GOOUT" run "READY 2553 $H40 GREEN N5653"
+check "18c a READY naming the bare label of a resumed worker: auto-go gets the manifest's N5653b" "$calls" "autogo --doc $W/doc --fleet $W/fleet.json --worker N5653b 2553 $H40"
+LE_LIST="$W/list18" LE_AUTOGO_OUT="$GOOUT" run "N5653b READY 2553 $H40 GREEN"
+check "18d a label-first READY from a suffixed worker: auto-go gets N5653b" "$calls" "autogo --doc $W/doc --fleet $W/fleet.json --worker N5653b 2553 $H40"
+HIMMEL_FLAG_AUTO_GO=0 LE_LIST="$W/list18" run "READY 2553 $H40 GREEN N5653b"; wait_for_autogo_call
+check "18e flag off: the dry run gets the suffixed label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/fleet.json --worker N5653b 2553 $H40"
+unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
+
+# 19. the real auto-go.sh behind a suffixed worker's READY: it clears checks 1-4 (the manifest finds the suffixed label)
+# and a PR whose ready-go prints `TRUST: hit` still escalates at check 5 with no GO written. Only ready-go.sh, gh and
+# Jira are stubs; auto-go.sh is a copy of the real one beside symlinks to the real libraries.
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME
+AG="$W/ag"; mkdir -p "$AG/scripts/handover/chief-kit" "$AG/scripts/guardrails"
+ln -s "$HERE/../../lib" "$AG/scripts/lib"; ln -s "$HERE/../../cr" "$AG/scripts/cr"
+cp "$HERE/auto-go.sh" "$AG/scripts/handover/chief-kit/auto-go.sh"
+printf '[]\n' > "$AG/scripts/guardrails/himmel-adapters.json"; printf '[]\n' > "$AG/scripts/guardrails/himmel-adopted.json"
+printf '#!/usr/bin/env bash\nprintf "TRUST: hit scripts/ci/x.sh\\nREADY-GO PASS\\n"\n' > "$AG/scripts/handover/chief-kit/ready-go.sh"
+git init -q "$AG"
+cat > "$W/gh19" <<'EOF19'
+#!/usr/bin/env bash
+case "$*" in
+    "repo view --json nameWithOwner"*) echo o/r ;;
+    "repo view --json defaultBranchRef"*) echo main ;;
+    "pr view "*"--json state,headRefOid,baseRefName"*) printf '{"state":"OPEN","headRefOid":"%s","baseRefName":"main"}\n' "$LE_HEAD19" ;;
+    "pr view "*"--json title"*) echo "fix(x): [HIMMEL-1] t (#1)" ;;
+    "api repos/"*"/files"*) printf 'scripts/ci/x.sh\t\n' ;;
+    *) exit 1 ;;
+esac
+EOF19
+printf '#!/usr/bin/env bash\nprintf "HIMMEL-1\\tTask\\tIn Review\\tsummary\\n"\n' > "$W/jira19"
+chmod +x "$W/gh19" "$W/jira19" "$AG/scripts/handover/chief-kit/auto-go.sh"
+D19="$W/d19"; mkdir -p "$D19" "$W/root19"
+BRIEF19="$D19/HIMMEL-9564-N5765f-resumed-2026-11-10-RESUME.md"
+printf '> **Completes ticket:** no\n' > "$BRIEF19"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N5765f","lane":"native"}]}\n' "$BRIEF19" > "$D19/fleet.json"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" %s\n' "$BRIEF19" > "$W/list19"; chmod +x "$W/list19"
+printf '# chief\n\n## Live state\nlegs: none\n\n## Results\n' > "$W/doc19"
+export HIMMEL_FLAGS_TSV="$W/flags.tsv" HIMMEL_CONFIG_DIR="$W/no-conf" HIMMEL_FLAG_AUTO_GO=1
+export HANDOVER_DIR="$W/root19" USER_SLUG=u AUTO_GO_ANCHOR="$AG" GH_CMD="$W/gh19" JIRA_CMD="$W/jira19" LE_HEAD19="$H40"
+for msg19 in "READY 2553 $H40 GREEN N5765f" "READY 2553 $H40 GREEN HIMMEL-9564-N5765f-resumed-2026-11-10-RESUME"; do
+    out="$(LE_LIST="$W/list19" LE_AUTOGO="$AG/scripts/handover/chief-kit/auto-go.sh" bash "$SCRIPT" --doc "$W/doc19" --fleet "$D19/fleet.json" <(printf '%s\n' "$msg19") 2>&1)"; rc=$?
+    check "19 [$msg19] a suffixed worker's READY on a trust-path hit: rc" "$rc" 10
+    contains "19 [$msg19] it escalates at check 5" "$out" "ESCALATE auto-go 5 "
+    contains "19 [$msg19] the refusal names the trust-path hit" "$out" "trust-path hit"
+done
+row19="$(tail -n 1 "$W/root19/u/"*/auto-go.jsonl 2>/dev/null)"
+check "19 the audit row: checks 1-4 pass, 5 fails" "$(printf '%s' "$row19" | jq -r '[.checks[] | "\(.n)=\(.result)"] | join(",")' 2>/dev/null)" "1=pass,2=pass,3=pass,4=pass,5=fail"
+check "19 the audit row: outcome escalate for the suffixed worker" "$(printf '%s' "$row19" | jq -r '"\(.worker) \(.outcome)"' 2>/dev/null)" "N5765f escalate"
+check "19 no GO file is written" "$(find "$W/root19" -iname '*go*' -not -name 'auto-go.jsonl' -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR AUTO_GO_ANCHOR GH_CMD JIRA_CMD LE_HEAD19
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
