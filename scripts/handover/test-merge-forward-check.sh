@@ -507,6 +507,14 @@ run "a PR job with no failing case recorded still REFUSEs under the renamed jobs
 CORE="${CHAIN_PLAN_CORE:-$HERE/chief-kit/chain-plan-core.sh}"
 CGRAPH="${CHAIN_GRAPH:-$HERE/chief-kit/chain-graph.py}"
 mkdir -p "$tmp/csbin" "$tmp/csfix"
+# the read token's root is pinned for every row, so no row loads the station's token
+TTREAD=ghp_READTOKEN0123456789
+mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$TTREAD" > "$tmp/ttroot/.env"
+: > "$tmp/emptyroot/.env"
+ln -s "$HERE/chief-kit/fixtures/gh-two-token-stub.sh" "$tmp/tt/gh"
+export GH_READ_ENV_ROOT="$tmp/emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$tmp/himmelcfg"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 cat > "$tmp/csbin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$1 $2" in
@@ -577,6 +585,26 @@ cs "chain-s2: the predecessor merged, its merge on origin/main and not in HEAD, 
 a0="$(csflag 0 --chain-s2 11 --predecessor 10 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
 a1="$(csflag 1 --chain-s2 11 --predecessor 10 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
 if [ "$a0" = "$a1" ] && [ "${a0%% *}" = "rc=0" ]; then ok "chain-s2: the verdict is the same at flag 0 and 1 (ALLOW)"; else bad "chain-s2: ALLOW flag parity" "$a0 | $a1"; fi
+# main's token is spent, the read token answers. The two PR reads (HEAD's PR, the predecessor) go through
+# the read-token helper and log tok=read; the control (no read token, main healthy) logs tok=main and ALLOWs.
+# chain-graph.py's own reads are a later slice, so these rows assert the two reads, not the whole verdict.
+ttlog="$tmp/tt.log"
+cstt() {  # cstt <read-token root> [env...]: the checker through the two-token stub; sets ttout, ttrc
+  local root="$1"; shift
+  : > "$ttlog"
+  ttout=$(cd "$tmp/cs" && env "$@" GH_READ_ENV_ROOT="$root" PATH="$tmp/tt:$tmp/csbin:$PATH" GH_STUB_DELEGATE="$tmp/csbin/gh" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$ttlog" CS_FIX="$tmp/csfix" CHAIN_GRAPH_JIRA="$tmp/csbin/jira" \
+          bash "$MF" --chain-s2 11 --predecessor 10 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD" 2>&1); ttrc=$?
+}
+ttn() { grep -c -E -- "$1" "$ttlog"; }
+cstt "$tmp/ttroot" GH_STUB_MAINFAIL=rate
+if ! grep -q "cannot read HEAD's PR" <<< "$ttout"; then ok "chain-s2 main spent: HEAD's PR is read (no 'cannot read HEAD's PR')"; else bad "chain-s2 main spent: HEAD's PR read refused" "$ttout"; fi
+if ! grep -Eq 'PR #10 is unknown' <<< "$ttout"; then ok "chain-s2 main spent: the predecessor is read (no 'is unknown')"; else bad "chain-s2 main spent: predecessor read refused" "$ttout"; fi
+if [ "$(ttn '^tok=read argv=pr view --json number,headRefOid$')" = 1 ]; then ok "chain-s2 main spent: HEAD's PR read logs tok=read"; else bad "chain-s2 main spent: HEAD's PR read tok=read" "$(cat "$ttlog")"; fi
+if [ "$(ttn '^tok=read argv=pr view 10 --json state,mergeCommit,headRefOid$')" = 1 ]; then ok "chain-s2 main spent: the predecessor read logs tok=read"; else bad "chain-s2 main spent: predecessor tok=read" "$(cat "$ttlog")"; fi
+if [ "$(ttn '^tok=main argv=pr view (--json number,headRefOid|10 --json state,mergeCommit,headRefOid)$')" = 0 ]; then ok "chain-s2 main spent: neither of the two reads logs tok=main"; else bad "chain-s2 main spent: one of the two reads on main" "$(cat "$ttlog")"; fi
+cstt "$tmp/emptyroot"
+if [ "$ttrc" = 0 ] && grep -Eq "ALLOW chain-s2 11.*#10.*$M10" <<< "$ttout"; then ok "chain-s2 control, no read token: ALLOW"; else bad "chain-s2 control, no read token: ALLOW" "rc=$ttrc $ttout"; fi
+if [ "$(ttn '^tok=main argv=pr view --json number,headRefOid$')" = 1 ] && [ "$(ttn '^tok=main argv=pr view 10 --json state,mergeCommit,headRefOid$')" = 1 ] && [ "$(ttn '^tok=read ')" = 0 ]; then ok "chain-s2 control: both reads log tok=main, none tok=read"; else bad "chain-s2 control: both reads tok=main" "$(cat "$ttlog")"; fi
 printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/csbin/jira"
 cs "chain-s2: Jira unreadable (a Blocks link may hide an H1 pair): REFUSE" 1 'REFUSE.*Jira links are unreadable'
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/csbin/jira"

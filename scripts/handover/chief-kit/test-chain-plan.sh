@@ -187,6 +187,14 @@ gcreset() {
     printf 'HEADS 11=%s 12=%s\nCHECKED 12 clean\nPEERS checked=1 skipped=0 conflicting=0\n' "$H11" "$H12" > "$W/gc/push-out"
     echo 0 > "$W/gc/push-rc"; : > "$W/gc/push-calls"; rm -f "$W/gc/rc-get-HIMMEL-5"
 }
+# the read token's root is pinned for every row, so no row loads the station's token
+TTREAD=ghp_READTOKEN0123456789
+mkdir -p "$W/ttroot" "$W/emptyroot" "$W/tt" "$W/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$TTREAD" > "$W/ttroot/.env"
+: > "$W/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$W/tt/gh"
+export GH_READ_ENV_ROOT="$W/emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$W/himmelcfg"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 gc() { PATH="$W/bin:$PATH" GC_FIX="$W/gc" CHAIN_PLAN_JIRA_CMD="$W/bin/jira" CHAIN_PLAN_PUSH_CHECK="$W/bin/push" bash "$SUT" --go-check "$@" 2>&1; }
 gcreset
 out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
@@ -261,5 +269,26 @@ out="$(gc 99 --graph "$W/gc/graph.json")"; rc=$?
 same "--go-check a PR the graph does not list: REFUSE" "$rc:${out%% *}" '1:REFUSE'
 out="$(gc 11)"; rc=$?
 same "--go-check without --graph: usage (exit 2)" "$rc" 2
+
+# 15. main's token is spent, the read token answers. The head read (#11) and the S1 peer's state read (#12)
+# go through the read-token helper; the control (no read token, main healthy) logs tok=main. A scan-free gate: it keeps the fallback.
+TTLOG="$W/tt.log"
+ttn() { grep -c -E -- "$1" "$TTLOG"; }
+gctt() {  # gctt <read-token root> [env...]: --go-check through the two-token stub; sets out, rc
+    local root="$1"; shift
+    : > "$TTLOG"
+    out="$(env "$@" GH_READ_ENV_ROOT="$root" PATH="$W/tt:$W/bin:$PATH" GH_STUB_DELEGATE="$W/bin/gh" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" GC_FIX="$W/gc" CHAIN_PLAN_JIRA_CMD="$W/bin/jira" CHAIN_PLAN_PUSH_CHECK="$W/bin/push" bash "$SUT" --go-check 11 --graph "$W/gc/graph.json" 2>&1)"; rc=$?
+}
+gcreset
+gctt "$W/ttroot" GH_STUB_MAINFAIL=rate
+same "--go-check main spent: exit 0" "$rc" 0
+has "--go-check main spent: the OK line, no REFUSE for an unread head" "$out" "GO-CHECK OK 11 head=$H11"
+same "--go-check main spent: the head read logs tok=read" "$(ttn '^tok=read argv=pr view 11 --json headRefOid,state$')" 1
+same "--go-check main spent: the peer state read logs tok=read" "$(ttn '^tok=read argv=pr view 12 --json state$')" 1
+same "--go-check main spent: no read logs tok=main" "$(ttn '^tok=main ')" 0
+gctt "$W/emptyroot"
+same "--go-check control, no read token: exit 0" "$rc" 0
+same "--go-check control: both reads log tok=main" "$(ttn '^tok=main argv=pr view (11 --json headRefOid,state|12 --json state)$')" 2
+same "--go-check control: no call logs tok=read" "$(ttn '^tok=read ')" 0
 
 if [ "$fails" -eq 0 ]; then printf 'PASS: chain-plan\n'; else printf 'FAIL: chain-plan (%d)\n' "$fails"; exit 1; fi

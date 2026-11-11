@@ -80,6 +80,14 @@ chmod +x "$W"/bin/*
 export WM_GH="$W/bin/gh" WM_CLOSE="$W/bin/close" WM_GIT="$W/bin/git" WM_BOARD="$W/bin/board" WM_JIRA="$W/bin/jira"
 export WM_PRIMARY="$W/primary" WM_CALLS="$W/calls" WM_HEAD_OID="$HEAD_OID" WM_MERGE_OID="$MERGE_OID"
 mkdir -p "$W/primary"
+# the read token's root is pinned for every row, so no row loads the station's token
+TTREAD=ghp_READTOKEN0123456789
+mkdir -p "$W/ttroot" "$W/emptyroot" "$W/tt" "$W/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$TTREAD" > "$W/ttroot/.env"
+: > "$W/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$W/tt/gh"
+export GH_READ_ENV_ROOT="$W/emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$W/himmelcfg"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 
 # fresh fixture: chief doc, manifest with the worker, worker doc naming PR 777
 fixture() {
@@ -454,4 +462,30 @@ run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 contains "26c: none beside a release: line still prints focus=skip" "$out" "focus=skip"
 lacks "26c: and runs nothing" "$calls" "focus --doc"
 unset WM_FOCUS
+
+# --- 27. the merge-state read rides the read token ------------------------
+# The real caller (WM_GH unset, so the default applies) through the two-token stub. Main spent: the read still answers.
+# A refused read token with main healthy: the read falls back to main and the captured view carries no gh-read: line
+# (the stderr is merged into the data, so the helper runs quiet). The control: no read token, main healthy.
+TTLOG="$W/tt.log"
+ttn() { grep -c -E -- "$1" "$TTLOG"; }
+ttwm() {  # ttwm <read-token root> [env...]: the real default read through the two-token stub; sets rc, out
+    local root="$1"; shift
+    fixture; : > "$TTLOG"
+    rc=0; out="$(env -u WM_GH "$@" GH_READ_ENV_ROOT="$root" PATH="$W/tt:$PATH" GH_STUB_DELEGATE="$W/bin/gh" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" bash "$SCRIPT" --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER" 2>&1)" || rc=$?
+}
+ttwm "$W/ttroot" GH_STUB_MAINFAIL=rate
+check "27 main spent: rc 0" "$rc" 0
+contains "27 main spent: the PR reads as merged" "$out" "wrap-merged: merged pr=777 sha=abcdef01"
+check "27 main spent: the merge-state read logs tok=read" "$(ttn '^tok=read argv=pr view 777 --json state,mergeCommit$')" 1
+check "27 main spent: no read logs tok=main" "$(ttn '^tok=main ')" 0
+ttwm "$W/ttroot" GH_STUB_READFAIL=auth
+check "27 read token refused, main healthy: rc 0" "$rc" 0
+lacks "27 read token refused: the pr-state message carries no gh-read: line" "$out" "gh-read:"
+check "27 read token refused: the read tried the read token first" "$(ttn '^tok=read argv=pr view 777 --json state,mergeCommit$')" 1
+check "27 read token refused: and fell back to main" "$(ttn '^tok=main argv=pr view 777 --json state,mergeCommit$')" 1
+ttwm "$W/emptyroot"
+check "27 control, no read token: rc 0" "$rc" 0
+check "27 control: the merge-state read logs tok=main" "$(ttn '^tok=main argv=pr view 777 --json state,mergeCommit$')" 1
+check "27 control: no call logs tok=read" "$(ttn '^tok=read ')" 0
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails FAILED"; exit 1; }

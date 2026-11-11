@@ -81,6 +81,14 @@ esac
 STUB
 chmod +x "$tmp/bin/node"
 export PATH="$tmp/bin:$PATH"
+# the read token's root is pinned for every row, so no row loads the station's token
+TTREAD=ghp_READTOKEN0123456789
+mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$TTREAD" > "$tmp/ttroot/.env"
+: > "$tmp/emptyroot/.env"
+ln -s "$HERE/chief-kit/fixtures/gh-two-token-stub.sh" "$tmp/tt/gh"
+export GH_READ_ENV_ROOT="$tmp/emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$tmp/himmelcfg"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 
 printf '%s\n' '[{"nwo":"yotamleo-org/qmd","upstream":"tobi/qmd","himmel_branch":"himmel/pin-http-auth","pin_site":"scripts/lib/qmd-bin.sh","role":"runtime-dependency","merge_allowed":true},{"nwo":"yotamleo-org/off","upstream":"x/off","himmel_branch":"himmel/x","pin_site":null,"role":"dormant","merge_allowed":false}]' > "$STUB_ALLOW"
 GOODCHK='[{"name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]'
@@ -280,6 +288,51 @@ contains "9272 evidence: the one-line verified statement" "$out" "trust-reviewed
 jlog() { cat "$STUB_JIRA_LOG"; }  # read-sink-ok: the node shim's own log, a fixed path under this test's mktemp dir
 check "merge without --jira-transition leaves the ticket untouched" "$(jlog)" ""
 
+# --- 2a. the reads ride the read token, the caller-dependent read and the merge stay on main ----------
+# The real script through the two-token stub (it logs the token class of each call, never the token). The adapter
+# entry's two reads and the three PR views are plain reads: tok=read. go_fork_ready (mergeStateStatus, checks, threads:
+# the answer depends on the caller) and `pr merge` (a write) stay on main: tok=main.
+TTLOG="$tmp/tt.log"
+ttn() { grep -c -E -- "$1" "$TTLOG"; }
+ttmerge() {  # ttmerge <read-token root> [env...]: one merge through the two-token stub; sets rc, out
+    local root="$1"; shift
+    prview; : > "$STUB_LOG"; : > "$TTLOG"
+    rc=0; out="$(env "$@" GH_READ_ENV_ROOT="$root" PATH="$tmp/tt:$PATH" GH_STUB_DELEGATE="$tmp/bin/gh" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" HANDOVER_DIR="$ROOT" bash "$MERGE_SH" "$FORK" 18 "$SHA" 2>&1)" || rc=$?
+}
+ttmerge "$tmp/ttroot"
+check "2a tok=read: the merge exits 0" "$rc" 0
+check "2a tok=read: exactly one gh pr merge ran" "$(merged)" 1
+check "2a tok=read: the adapter entry's default-branch read logs tok=read" "$(ttn '^tok=read argv=repo view .* --json defaultBranchRef')" 1
+check "2a tok=read: the adapter entry's allowlist read logs tok=read" "$(ttn '^tok=read argv=api repos/.*/contents/scripts/guardrails/himmel-adapters.json')" 1
+check "2a tok=read: the pre-merge PR view logs tok=read" "$(ttn "^tok=read argv=pr view 18 --repo $FORK --json state,headRefOid,baseRefName\$")" 1
+check "2a tok=read: the post-merge PR view logs tok=read" "$(ttn "^tok=read argv=pr view 18 --repo $FORK --json state,baseRefName\$")" 1
+check "2a tok=main: go_fork_ready's PR view logs tok=main" "$(ttn "^tok=main argv=pr view 18 --repo $FORK --json mergeStateStatus,statusCheckRollup\$")" 1
+check "2a tok=main: go_fork_ready's thread read logs tok=main" "$(ttn '^tok=main argv=api graphql ')" 1
+check "2a tok=main: pr merge logs tok=main" "$(ttn "^tok=main argv=pr merge 18 --repo $FORK --squash --match-head-commit $SHA\$")" 1
+check "2a: no mergeStateStatus read and no pr merge on the read token" "$(ttn '^tok=read argv=(.*mergeStateStatus|pr merge )')" 0
+ttmerge "$tmp/ttroot" GH_STUB_MAINFAIL=rate
+check "2a main spent: go_fork_ready on main is refused, so the merge exits 7" "$rc" 7
+check "2a main spent: nothing merged" "$(merged)" 0
+if grep -q 'it must be OPEN at' <<< "$out"; then echo "FAIL - 2a main spent: the PR view was refused, it did not ride the read token"; fails=$((fails+1)); else echo "ok - 2a main spent: the PR view answered (no 'must be OPEN at' refusal)"; fi
+check "2a main spent: the pre-merge PR view logs tok=read" "$(ttn "^tok=read argv=pr view 18 --repo $FORK --json state,headRefOid,baseRefName\$")" 1
+check "2a main spent: go_fork_ready's PR view logs tok=main" "$(ttn "^tok=main argv=pr view 18 --repo $FORK --json mergeStateStatus,statusCheckRollup\$")" 1
+ttmerge "$tmp/emptyroot"
+check "2a control, no read token: the merge exits 0" "$rc" 0
+check "2a control: no call logs tok=read" "$(ttn '^tok=read ')" 0
+check "2a control: the pre-merge PR view logs tok=main" "$(ttn "^tok=main argv=pr view 18 --repo $FORK --json state,headRefOid,baseRefName\$")" 1
+# I11: a gate knob inherited from the caller's environment never loads code or switches the reads off
+printf 'touch "%s"\n' "$tmp/marker-dotenv" > "$tmp/evil-load-dotenv.sh"
+rm -f "$tmp/marker-dotenv"
+ttmerge "$tmp/ttroot" _GHR_LOAD_DOTENV="$tmp/evil-load-dotenv.sh"
+check "2a _GHR_LOAD_DOTENV set: the merge exits 0" "$rc" 0
+check "2a _GHR_LOAD_DOTENV set: the helper ran (the pre-merge view logs tok=read)" "$(ttn "^tok=read argv=pr view 18 --repo $FORK --json state,headRefOid,baseRefName\$")" 1
+check "2a _GHR_LOAD_DOTENV set: the named file is never sourced (no marker)" "$(ls "$tmp/marker-dotenv" 2>/dev/null)" ""
+ttmerge "$tmp/ttroot" GH_READ_OFF=1 GH_READ_QUIET=1 GH_READ_NO_MAIN_FALLBACK=1 GH_READ_TIMEOUT=1 GH_READ_REFUSED_FILE="$tmp/refused-file"
+check "2a GH_READ_* knobs inherited: the merge still exits 0" "$rc" 0
+check "2a GH_READ_* knobs inherited: the reads still ride the read token" "$(ttn "^tok=read argv=pr view 18 --repo $FORK --json state,headRefOid,baseRefName\$")" 1
+check "2a GH_READ_* knobs inherited: no refused-file row written" "$(ls "$tmp/refused-file" 2>/dev/null)" ""
+prview
+
 # --- 2b. --jira-transition closes the PR's ticket (completes-ticket: yes) ----------------
 # The flag is the chief's per-merge opt-in, as merge-on-green.sh's; a merge without it
 # (completes-ticket: no) never reaches Jira, and no Jira outcome fails a landed merge.
@@ -309,6 +362,10 @@ contains "merge --jira-transition comments on the ticket first" "$(jlog)" "JIRA 
 contains "merge --jira-transition moves the ticket to Done" "$(jlog)" "JIRA transition HIMMEL-5899 Done"
 check "merge --jira-transition comments before it transitions" "$(jlog | grep -v 'JIRA get' | cut -d' ' -f2 | tr '\n' ' ')" "comment transition "
 contains "merge --jira-transition reports the outcome" "$out" "jira-transition=ok key=HIMMEL-5899 status=Done"
+# the title read after the merge rides the read token
+prview; : > "$STUB_LOG"; : > "$STUB_JIRA_LOG"; : > "$TTLOG"
+env GH_READ_ENV_ROOT="$tmp/ttroot" PATH="$tmp/tt:$PATH" GH_STUB_DELEGATE="$tmp/bin/gh" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" HANDOVER_DIR="$ROOT" bash "$JT/scripts/handover/merge-fork-pr.sh" --jira-transition "$FORK" 18 "$SHA" >/dev/null 2>&1
+check "2b --jira-transition: the title read logs tok=read" "$(ttn "^tok=read argv=pr view 18 --repo $FORK --json title\$")" 1
 rc=0; out="$(STUB_JIRA_TYPE=Epic jira_merge)" || rc=$?
 check "merge --jira-transition on an Epic -> exit 0" "$rc" 0
 check "merge --jira-transition never transitions an Epic" "$(grep -c '^JIRA transition' "$STUB_JIRA_LOG")" 0

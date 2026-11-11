@@ -34,6 +34,8 @@
 # Platform guard: bash, jq, awk; --go-check also gh, git, GNU date and sha256sum (the kit is Linux-only).
 set -uo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+GH_READ_BIN="$SCRIPT_DIR/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # shellcheck source=../../lib/git-clean.sh
 . "$SCRIPT_DIR/../../lib/git-clean.sh" || exit 2
 git_env_scrub
@@ -77,7 +79,7 @@ go_check() {
   row="$(jq -r --arg id "#$pr" '.nodes[] | select(.id == $id) | [.head // "", .key // ""] | @tsv' "$graph")"
   [ -n "$row" ] || refuse "the graph lists no node #$pr."
   IFS=$'\t' read -r head key <<< "$row"
-  out="$(gh pr view "$pr" --json headRefOid,state 2>/dev/null)" || out=""  # swallow-ok: an unread head is empty, which REFUSEs below
+  out="$("$GH_READ_BIN" pr view "$pr" --json headRefOid,state 2>/dev/null)" || out=""  # swallow-ok: an unread head is empty, which REFUSEs below
   live="$(jq -r '.headRefOid // ""' <<< "$out" 2>/dev/null)" || live=""  # swallow-ok: an unparsable head is empty, which REFUSEs on the next line
   [ -n "$live" ] || refuse "cannot read PR $pr's live head: unknown."
   [ "$(jq -r '.state // ""' <<< "$out" 2>/dev/null)" = OPEN ] || refuse "PR $pr is not open: nothing to GO."  # swallow-ok: an unparsable state is not OPEN, which REFUSEs
@@ -98,7 +100,7 @@ go_check() {
                                    | (if .from == $id then .to else .from end) | ltrimstr("#")' "$graph")" \
     || refuse "cannot read the graph's S1 edges: PR $pr's peers are unknown. Rebuild the graph."
   for m in $peers; do
-    out="$(gh pr view "$m" --json state 2>/dev/null)" || out=""  # swallow-ok: an unread state is empty, which REFUSEs on the next line
+    out="$("$GH_READ_BIN" pr view "$m" --json state 2>/dev/null)" || out=""  # swallow-ok: an unread state is empty, which REFUSEs on the next line
     [ "$(jq -r '.state // ""' <<< "$out" 2>/dev/null)" = OPEN ] || refuse "S1 peer PR $m is not open (or unreadable): rebuild the graph."  # swallow-ok: an unparsable state is not OPEN, which REFUSEs
     out="$(bash "${CHAIN_PLAN_PUSH_CHECK:-$SCRIPT_DIR/chain-push-check.sh}" --pr "$pr" --peer "$m" 2>&1)" \
       || refuse "chain-push-check.sh --pr $pr --peer $m exited $? (1 conflict, 3 unknown): ${out:0:200}"
