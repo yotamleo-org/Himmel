@@ -2893,6 +2893,107 @@ o_eval "C2 trailing tab/newline on a :cloud model -> ollama-cloud" 0 ollama-clou
 o_eval "C3 :latest tag after -cloud -> ollama-cloud" 0 ollama-cloud luna-personal "$LUNA" OLLAMA_MODEL=x-cloud:latest
 o_eval "C4 salus + trailing-space -cloud model is ollama-cloud, not the local opt-in" 2 graphify.salus_ollama_cloud_ok salus "$SALUS/notes" "OLLAMA_MODEL=x-cloud "
 
+# --- S3: the adopter-repo egress class and the classify verb -----
+# Rows keep the plan's E1-E7 names behind S3 (the E1-E9 above belong to the direct-eval work).
+# Every root is a throwaway fixture under $WS and holds no PHI.
+CLASSIFY="$REPO_ROOT/scripts/guardrails/graphify-classify.sh"
+AR="$WS/ar"; mkdir -p "$AR" "$HOME/.himmel"
+AREPO="$AR/repo"; mkdir -p "$AREPO/.git"; : > "$AREPO/notes.md"
+AREPO_UNLISTED="$AR/unlisted"; mkdir -p "$AREPO_UNLISTED/.git"
+AREPO_SALUS="$AR/salus-repo"; mkdir -p "$AREPO_SALUS/.git"; : > "$AREPO_SALUS/.salus"
+printf '{"graphify":{"choices":{"version":1,"corpora":[{"name":"repo","root":"%s"},{"name":"salus-repo","root":"%s"}],"primary":"subscription"}}}\n' \
+    "$AREPO" "$AREPO_SALUS" > "$HOME/.himmel/config.json"
+
+# ar_eval <name> <allow|deny> <backend> <target> [VAR=val ...] - --eval adopter-repo; an allow must ledger, a deny must not.
+ar_eval() {
+    local name="$1" want="$2" backend="$3" target="$4"; shift 4
+    local rc ok=1 led
+    rm -f "$LEDGER"
+    # shellcheck disable=SC2086 # CLEAN_ENV is an intentional word-split flag list
+    AR_OUT=$(env $CLEAN_ENV "$@" "$BASH_BIN" "$FENCE" --eval adopter-repo "$backend" "$target" semantic-update 2>&1); rc=$?
+    led="$(cat "$LEDGER" 2>/dev/null)"
+    if [ "$want" = allow ]; then
+        [ "$rc" -eq 0 ] || ok=0
+        grepq "$led" -F '"corpus":"adopter-repo"' || ok=0
+        grepq "$led" -F '"provider":"anthropic"' || ok=0
+        grepq "$led" -F '"tool":"semantic-update"' || ok=0
+    else
+        [ "$rc" -eq 2 ] || ok=0
+        [ -z "$led" ] || ok=0
+    fi
+    if [ "$ok" = 1 ]; then pass "$name"; else fail "$name (rc=$rc) out=$AR_OUT ledger=$led"; fi
+}
+ar_eval "S3 E1 adopter-repo x claude-cli on a listed root is allowed and ledgered" allow claude-cli "$AREPO"
+ar_eval "S3 E2 an unlisted root is denied" deny claude-cli "$AREPO_UNLISTED"
+if grepq "$AR_OUT" -F "listed"; then pass "S3 E2 the denial names the listed-root rule"; else fail "S3 E2 denial text: $AR_OUT"; fi
+ar_eval "S3 E3 a listed root carrying .salus is denied" deny claude-cli "$AREPO_SALUS"
+for b in ollama deepseek glm openai; do
+    ar_eval "S3 E4 adopter-repo x $b is denied on a listed root" deny "$b" "$AREPO"
+done
+ar_eval "S3 E4 adopter-repo x ollama-cloud is denied on a listed root" deny ollama "$AREPO" OLLAMA_MODEL=x-cloud
+ar_eval "S3 E4 adopter-repo x zai-glm through the claude backend is denied" deny claude "$AREPO" ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+
+# E5 hook mode is not widened: a .graphify-corpus marker still cannot declare adopter-repo.
+AR_MARK="$AR/marker"; mkdir -p "$AR_MARK"; printf 'adopter-repo\n' > "$AR_MARK/.graphify-corpus"
+run_fence deny no "$NOWHERE" "S3 E5 a .graphify-corpus marker declaring adopter-repo is still refused" "graphify update $AR_MARK --backend=claude-cli"
+
+# ar_classify <target> [VAR=val | -u NAME ...] sets CL_OUT and CL_RC; <CLASSIFIER> picks the fence verb or the wrapper.
+ar_classify() {
+    local target="$1"; shift
+    # shellcheck disable=SC2086 # CLEAN_ENV is an intentional word-split flag list
+    CL_OUT=$(env $CLEAN_ENV "$@" "$BASH_BIN" "$FENCE" --classify "$target" 2>"$WS/ar-cl.err"); CL_RC=$?
+}
+ar_wrap() {
+    local target="$1"; shift
+    # shellcheck disable=SC2086 # CLEAN_ENV is an intentional word-split flag list
+    CL_OUT=$(env $CLEAN_ENV "$@" "$BASH_BIN" "$CLASSIFY" "$target" 2>"$WS/ar-cl.err"); CL_RC=$?
+}
+# ar_row <name> <want-class> <want-rc> - judge the last ar_classify / ar_wrap
+ar_row() {
+    if [ "$CL_RC" -eq "$3" ] && [ "$CL_OUT" = "$2" ]; then pass "$1"; else fail "$1 (rc=$CL_RC want $3, out='$CL_OUT' want '$2' err=$(cat "$WS/ar-cl.err"))"; fi
+}
+# E6 --classify names each class and nothing for a plain folder
+ar_classify "$SALUS/notes";      ar_row "S3 E6 --classify names salus under a .salus root" salus 0
+ar_classify "$DENYROOT/x";       ar_row "S3 E6 --classify names salus under an egress-denylist root" salus 0
+ar_classify "$LUNA";             ar_row "S3 E6 --classify names luna-personal for the vault" luna-personal 0
+ar_classify "$LUNA/Clippings";   ar_row "S3 E6 --classify names luna-clippings for Clippings" luna-clippings 0
+ar_classify "$HANDDIR";          ar_row "S3 E6 --classify names handover-state" handover-state 0
+AR_HIMMEL="$AR/himmelco"; mkdir -p "$AR_HIMMEL/scripts"   # $HIMMEL carries an earlier row's nested .salus
+ar_classify "$AR_HIMMEL" "GRAPHIFY_HIMMEL_ROOT=$AR_HIMMEL"; ar_row "S3 E6 --classify names himmel-code" himmel-code 0
+ar_classify "$HIMMEL";           ar_row "S3 E6 --classify names the nested .salus an earlier row planted in the himmel fixture" salus 0
+ar_classify "$AREPO_UNLISTED";   ar_row "S3 E6 --classify prints nothing for a plain folder, vault set" "" 0
+ar_classify "$LUNA" -u LUNA_VAULT_PATH; ar_row "S3 E6 --classify with no vault configured prints nothing for the vault path" "" 0
+ar_classify "$AREPO_UNLISTED" -u LUNA_VAULT_PATH; ar_row "S3 E6 --classify prints nothing for a plain folder, vault unset" "" 0
+ar_classify "$AREPO_UNLISTED" "CLAUDE_GLM_CONFIG_DIR=$PHI_BADROOTS"
+if [ "$CL_RC" -ne 0 ] && [ -z "$CL_OUT" ]; then pass "S3 E6 --classify exits non-zero on an unreadable PHI list"; else fail "S3 E6 unreadable PHI list: rc=$CL_RC out='$CL_OUT'"; fi
+# the wrapper: a live LUNA_VAULT / LUNA_VAULT_PATH / HANDOVER_DIR pointing elsewhere must not mask the configured ones
+AR_CACHE="$AR/cache"; mkdir -p "$AR_CACHE"
+printf 'LUNA_VAULT_PATH=%s\nHANDOVER_DIR=%s\n' "$LUNA" "$HANDDIR" > "$AR_CACHE/.env"
+ar_wrap "$LUNA" "HIMMELCTL_CACHE_DIR=$AR_CACHE" "LUNA_VAULT=$NOWHERE" "LUNA_VAULT_PATH=$NOWHERE" "HANDOVER_DIR=$NOWHERE"
+ar_row "S3 E6 the wrapper reads the configured vault, not a live LUNA_VAULT elsewhere" luna-personal 0
+ar_wrap "$HANDDIR" "HIMMELCTL_CACHE_DIR=$AR_CACHE" "LUNA_VAULT=$NOWHERE" "HANDOVER_DIR=$NOWHERE"
+ar_row "S3 E6 the wrapper reads the configured HANDOVER_DIR, not a live one elsewhere" handover-state 0
+AR_CACHE0="$AR/cache0"; mkdir -p "$AR_CACHE0"; : > "$AR_CACHE0/.env"
+ar_wrap "$LUNA" "HIMMELCTL_CACHE_DIR=$AR_CACHE0" "LUNA_VAULT=$LUNA" "LUNA_VAULT_PATH=$LUNA"
+ar_row "S3 E6 the wrapper clears the caller's vault: nothing configured, nothing found" "" 0
+ar_wrap "$AREPO_UNLISTED" "HIMMELCTL_CACHE_DIR=$AR_CACHE"; ar_row "S3 E6 the wrapper prints nothing for a plain folder" "" 0
+ar_wrap "$AREPO_UNLISTED" "HIMMELCTL_CACHE_DIR=$AR_CACHE" "CLAUDE_GLM_CONFIG_DIR=$PHI_BADROOTS"
+if [ "$CL_RC" -ne 0 ]; then pass "S3 E6 the wrapper exits non-zero on an unreadable PHI list"; else fail "S3 E6 wrapper unreadable PHI list: rc=$CL_RC out='$CL_OUT'"; fi
+
+# E7 a class below the root classifies the whole corpus
+E7A="$AR/e7a"; mkdir -p "$E7A/.git" "$E7A/sub/deep"; : > "$E7A/sub/deep/.salus"
+E7B="$AR/e7b"; mkdir -p "$E7B/.git" "$E7B/notes/.obsidian"
+E7C="$AR/e7c"; mkdir -p "$E7C/.git" "$E7C/phi"; E7C_CFG="$AR/e7c-cfg"; mkdir -p "$E7C_CFG"; printf '%s\n' "$E7C/phi" > "$E7C_CFG/phi-roots"
+E7D="$AR/e7d"; mkdir -p "$E7D/.git" "$E7D/vault"
+E7E="$AR/e7e"; mkdir -p "$E7E/.git" "$E7E/handovers"; : > "$E7E/handovers/note.md"
+E7F="$AR/e7f"; mkdir -p "$E7F/.git" "$E7F/.obsidian"
+ar_classify "$E7A";  ar_row "S3 E7 a .salus below the root classifies it salus" salus 0
+ar_classify "$E7B";  ar_row "S3 E7 a .obsidian below the root classifies it as a vault" luna-personal 0
+ar_classify "$E7C" "CLAUDE_GLM_CONFIG_DIR=$E7C_CFG"; ar_row "S3 E7 a phi-roots entry below the root classifies it salus" salus 0
+ar_classify "$E7D" "LUNA_VAULT_PATH=$E7D/vault"; ar_row "S3 E7 the configured vault below the root classifies it as a vault" luna-personal 0
+ar_classify "$E7F";  ar_row "S3 E7 a .obsidian at the root classifies it as a vault" luna-personal 0
+ar_classify "$E7E" "HANDOVER_DIR=$E7E/handovers"; ar_row "S3 E7 an inline handovers folder below the root is not a class (A8)" "" 0
+
 if [ "$failures" -eq 0 ]; then
     echo "OK: all cases passed"
     exit 0

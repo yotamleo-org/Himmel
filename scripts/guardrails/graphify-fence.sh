@@ -855,7 +855,9 @@ _graphify_backend_marker() {
     printf 'declared\t%s' "$trimmed"
 }
 
-# _under_any_list <abs-path> <listfile> -> echoes hit | miss | unreadable.
+# _under_any_list <abs-path> <listfile> [below] -> echoes hit | miss | unreadable.
+# hit = <abs-path> is at or under a listed root; with a third arg `below`, hit =
+# a listed root is at or under <abs-path> (the --classify verb's tree walk).
 _under_any_list() {
     local p="$1" listfile="$2" root
     # [ -e ] is also false on EACCES (a locked dir or parent), so a miss is only
@@ -879,7 +881,9 @@ _under_any_list() {
         case "$root" in \#*) continue ;; esac
         root="${root%/}"; root="${root%\\}"
         [ -n "$root" ] || continue
-        if _under_root "$p" "$root"; then echo hit; return; fi
+        if [ "${3:-}" = below ]; then
+            if _under_root "$root" "$p"; then echo hit; return; fi
+        elif _under_root "$p" "$root"; then echo hit; return; fi
     done < "$listfile"
     echo miss
 }
@@ -960,8 +964,69 @@ _rank() {
         luna-clippings) echo 3 ;;
         handover-state) echo 2 ;;
         himmel-code)    echo 1 ;;
+        adopter-repo)   echo 1 ;;
         *)              echo 0 ;;
     esac
+}
+
+# _strongest <class-a> <class-b> -> the more restrictive of the two (a when equal;
+# either may be empty).
+_strongest() {
+    if [ "$(_rank "${2:-}")" -gt "$(_rank "${1:-}")" ]; then echo "$2"; else echo "${1:-}"; fi
+}
+
+# _dir_marked <abs-path> <marker-name> -> 0 if <marker-name> sits at the path or
+# any ancestor directory (the ancestor walk _salus_marked does for `.salus`).
+_dir_marked() {
+    local d="$1" prev=""
+    [ -d "$d" ] || d="${d%/*}"
+    while [ -n "$d" ] && [ "$d" != "$prev" ]; do
+        if [ -e "$d/$2" ]; then return 0; fi
+        prev="$d"
+        d="${d%/*}"
+    done
+    return 1
+}
+
+# _classify_tree <abs-target> -> prints the strongest class at, above or below
+# the root (nothing when none) and returns 0. A classify sentinel, or a tree
+# under the root that cannot be read through, DENIES (exit 2). Call it from the
+# main shell body, never in a $(...) subshell (deny would only leave the subshell).
+# At or above the root: classify() (.salus, PHI lists, the configured vault,
+# handover state, the himmel checkout, a staging marker) plus an `.obsidian`
+# marker. Below it: a `.salus` or `.obsidian` anywhere under the root, a PHI-list
+# entry under the root, or the configured vault under the root. An `.obsidian`
+# marks an Obsidian vault and classifies as luna-personal. The handover root
+# below the root is deliberately no class: an inline install keeps its notes in
+# <repo>/handovers/ (decision 780 A8).
+_classify_tree() {
+    local t="$1" c apfs ap best found line name rc
+    c="$(classify "$t")"
+    _deny_on_classify_sentinel "$c"
+    best="${c%%@declared*}"
+    apfs="$(_abs "$t")"
+    ap="$(_normalize "$apfs")"
+    if _dir_marked "$apfs" .obsidian; then best="$(_strongest "$best" luna-personal)"; fi
+    if [ -d "$apfs" ]; then
+        found="$(find "$apfs" \( -name .salus -o -name .obsidian \) -print 2>/dev/null)" \
+            || deny "a directory under $apfs cannot be read through, so a .salus or .obsidian below it cannot be ruled out (fail-closed)"
+        while IFS= read -r line; do
+            case "${line##*/}" in
+                .salus)    best="$(_strongest "$best" salus)" ;;
+                .obsidian) best="$(_strongest "$best" luna-personal)" ;;
+            esac
+        done <<< "$found"
+    fi
+    for name in phi-roots egress-denylist; do
+        rc="$(_under_any_list "$ap" "$PHI_CONFIG_DIR/$name" below)"
+        case "$rc" in
+            hit)        best="$(_strongest "$best" salus)" ;;
+            unreadable) deny "a PHI root list under $PHI_CONFIG_DIR is not readable or not reachable (fail-closed)" ;;
+        esac
+    done
+    if [ -n "$LUNA_ROOT" ] && _under_root "$LUNA_ROOT" "$ap"; then best="$(_strongest "$best" luna-personal)"; fi
+    [ -z "$best" ] || printf '%s\n' "$best"
+    return 0
 }
 
 # is_path_like <stripped-token> -> 0 if the token looks like a filesystem path
@@ -1057,6 +1122,13 @@ _ollama_provider() {
         *-cloud|*:cloud) echo ollama-cloud ;;
         *)               echo local-ollama ;;
     esac
+}
+
+# _adopter_repo_listed <abs-root> -> 0 only when graph-choices.js `listed` says the
+# root is a corpus root in the choice store. Any failure (node, a missing or
+# unreadable store, an unlisted root) is no listing (deny).
+_adopter_repo_listed() {
+    node "$SCRIPT_DIR/../himmelctl/lib/graph-choices.js" listed "$1" >/dev/null 2>&1
 }
 
 # _salus_ollama_cloud_optin -> 0 only when the PERSISTED user opt-in is set
@@ -1491,6 +1563,12 @@ apply_verdict() {
                     optvar="graphify.salus_ollama_cloud_ok=true in \$HOME/.himmel/config.json (persistent; absent, unreadable or malformed = deny)"
                     optval=0
                     if _salus_ollama_cloud_optin; then optval=1; fi
+                    ;;
+                # the user's own repo: open only when the root is listed in the choice store.
+                adopter-repo/anthropic)
+                    optvar="a root listed in graphify.choices.corpora of \$HOME/.himmel/config.json (absent, unreadable or malformed = deny)"
+                    optval=0
+                    if _adopter_repo_listed "$target"; then optval=1; fi
                     ;;
                 *) deny "$corpus x $provider x extraction is conditional with no known opt-in (fail-closed)" ;;
             esac
@@ -2365,8 +2443,8 @@ fi
 if [ "$#" -eq 5 ] && [ "$1" = "--eval" ]; then
     ev_corpus="$2"; ev_backend="$3"; ev_target="$4"; ev_tool="$5"
     case "$ev_corpus" in
-        salus|luna-personal|luna-clippings|handover-state|himmel-code) ;;
-        *) deny "--eval: unknown corpus class '$ev_corpus' (must be salus|luna-personal|luna-clippings|handover-state|himmel-code)" ;;
+        salus|luna-personal|luna-clippings|handover-state|himmel-code|adopter-repo) ;;
+        *) deny "--eval: unknown corpus class '$ev_corpus' (must be salus|luna-personal|luna-clippings|handover-state|himmel-code|adopter-repo)" ;;
     esac
     # Both land in the ledger JSON unescaped (ledger_append's contract), so the
     # charset is the escaping.
@@ -2382,6 +2460,19 @@ if [ "$#" -eq 5 ] && [ "$1" = "--eval" ]; then
     LEDGER_TOOL="$ev_tool"
     LEDGER_PURPOSE="extraction"
     apply_verdict "$ev_corpus" "$ev_target" "$ev_backend" 1 "" "" 1
+    exit 0
+fi
+
+# --- classify mode: the root check's contract ---------------------------------
+#   graphify-fence.sh --classify <abs-target>
+# Prints the strongest class at, above or below <abs-target>, or nothing, and
+# exits 0; writes no ledger. A sentinel (an unreadable PHI list, a bad marker, an
+# unreadable subtree) exits 2, and the caller treats that as a refusal. Like
+# --eval, the hook never reaches it: a lone "--classify" operand count is denied.
+if [ "${1:-}" = "--classify" ]; then
+    [ "$#" -eq 2 ] || deny "--classify: expected exactly one operand <abs-target>, got $(($# - 1)) (fail-closed)"
+    _is_abs_target "$2" || deny "--classify: target must be an absolute path (fail-closed)"
+    _classify_tree "$2"
     exit 0
 fi
 
