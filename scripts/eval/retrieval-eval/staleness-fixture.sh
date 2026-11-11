@@ -34,6 +34,7 @@
 # Seams (tests): SF_QMD, SF_REPO, SF_AST, SF_LIVE_INDEX, SF_PRIMARY_GRAPH_OUT.
 # shellcheck disable=SC2015
 set -uo pipefail
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LIB="$HERE/../../lib"
@@ -180,7 +181,10 @@ try:
     for line in open(sys.argv[1], encoding="utf-8"):
         if line.strip():
             n += 1
-            q += any(g in changed for g in json.loads(line)["gold"])
+            gold = json.loads(line)["gold"]
+            if not isinstance(gold, list) or not all(isinstance(g, str) for g in gold):
+                raise TypeError
+            q += any(g in changed for g in gold)
 except (OSError, ValueError, KeyError, TypeError):
     sys.exit(1)
 print(q, n)' "$3"
@@ -373,6 +377,7 @@ cmd_graph() {
     if [ -e "$arc" ]; then die "refusing $arc: already built"; fi
     make_scratch
     mkdir -p "$arc" && git -C "$SRC" archive --format=tar "$commit" | tar -x -C "$arc" || die "git archive of $commit failed" 1
+    if [ -L "$arc/graphify-out" ]; then die "refusing $arc/graphify-out: it is a symlink in $commit"; fi
     if [ -n "$seed" ]; then
         rm -rf "$arc/graphify-out/cache"
         mkdir -p "$arc/graphify-out/cache" && cp -R "$seed/." "$arc/graphify-out/cache/" || die "the cache seed failed" 1

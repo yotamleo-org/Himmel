@@ -2,6 +2,7 @@
 # selector: tree-scan
 # shellcheck disable=SC2015  # `A && pass || fail` is the assert idiom: pass always returns 0
 set -uo pipefail
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
@@ -326,8 +327,15 @@ eq "::luna_pair_stays_in_scratch (the tree is the second commit, never the vault
     "$(grep -c 'zulu added' "$LOUT/tree/notes/a.md")|$(grep -c 'WORKTREE ONLY' "$LOUT/tree/notes/a.md")|$(grep -c novel "$LOUT/tree/notes/new.md")|$([ -e "$LOUT/tree/notes/untracked.md" ] && echo present || echo absent)"
 eq "::luna_pair_stays_in_scratch (pair.json: corpus, both commits, the document counts under the luna rules)" "luna $V1 $V2 2|3" \
     "$(pj "$LOUT" corpus) $(pj "$LOUT" first) $(pj "$LOUT" second) $(pj "$LOUT" doc_counts.first)|$(pj "$LOUT" doc_counts.second)"
-eq "::luna_pair_stays_in_scratch (the config mirrors the luna collection and its ignore rules)" "1|1" \
-    "$(grep -c '^  luna:' "$LOUT/config/index.yml")|$(grep -c '60-Maps/graph' "$LOUT/config/index.yml")"
+eq "::luna_pair_stays_in_scratch (the config mirrors the luna collection and its ignore rules, and indexes the scratch tree)" "1|1|1" \
+    "$(grep -c '^  luna:' "$LOUT/config/index.yml")|$(grep -c '60-Maps/graph' "$LOUT/config/index.yml")|$(grep -c -F "path: $LOUT/tree" "$LOUT/config/index.yml")"
+
+reset_logs
+FX_EXTRA=("GIT_DIR=$R/.git" "GIT_WORK_TREE=$R")
+fx build "${LUNA[@]}" --out "$W/luna-gd" > /dev/null 2>&1; rc=$?
+FX_EXTRA=()
+eq "::luna_ignores_inherited_git_dir (a GIT_DIR and GIT_WORK_TREE naming another repo do not select it: exit 0, the vault's second tree)" "0|1" \
+    "$rc|$(grep -c 'zulu added' "$W/luna-gd/tree/notes/a.md" 2>/dev/null)"
 
 reset_logs
 mkdir -p "$R/inside"
@@ -376,10 +384,17 @@ case "$out" in *"3 of 5 questions qualify"*"below the floor of 15"*) pass "::bel
 case "$out" in *zzq-secret*|*notes/a.md*|*notes/new.md*) fail "::below_floor_prints_count (the output carries counts only, no question or gold text): $out" ;; *) pass "::below_floor_prints_count (the output carries counts only, no question or gold text)" ;; esac
 eq "::below_floor_prints_count (pair.json records the count)" "3" "$(pj "$W/luna-fl" qualifying)"
 mkbank 14 "$W/state/bank-14.jsonl"
-out="$(fx build "${LUNA[@]}" --bank "$W/state/bank-14.jsonl" --out "$W/luna-14" 2>&1)"
+out="$(fx build "${LUNA[@]}" --bank "$W/state/bank-14.jsonl" --out "$W/luna-14" 2>&1)"; rc=$?
+eq "::below_floor_prints_count (14 qualifying: exit 0)" "0" "$rc"
 case "$out" in *"14 of 14 questions qualify"*"below the floor of 15"*) pass "::below_floor_prints_count (14 qualifying is below the floor)" ;; *) fail "::below_floor_prints_count (14 qualifying is below the floor): $out" ;; esac
 mkbank 15 "$W/state/bank-15.jsonl"
-out="$(fx build "${LUNA[@]}" --bank "$W/state/bank-15.jsonl" --out "$W/luna-15" 2>&1)"
+out="$(fx build "${LUNA[@]}" --bank "$W/state/bank-15.jsonl" --out "$W/luna-15" 2>&1)"; rc=$?
+eq "::below_floor_prints_count (15 qualifying: exit 0)" "0" "$rc"
+for bad in '"notes/a.md"' '{"notes/a.md": 1}' '[1]'; do
+    printf '{"id": "x", "gold": %s}\n' "$bad" > "$W/state/bank-bad.jsonl"
+    fx build "${LUNA[@]}" --bank "$W/state/bank-bad.jsonl" --out "$W/luna-bad" > /dev/null 2>&1; rc=$?
+    eq "::luna_bank_gold_must_be_a_list (gold $bad is refused as a bad bank: exit 64, no scratch)" "64|absent" "$rc|$([ -e "$W/luna-bad" ] && echo present || echo absent)"
+done
 case "$out" in *"below the floor"*) fail "::below_floor_prints_count (control: 15 qualifying is not below the floor): $out" ;; *"15 of 15 questions qualify"*) pass "::below_floor_prints_count (control: 15 qualifying prints the count and no floor line)" ;; *) fail "::below_floor_prints_count (control: 15 qualifying prints the count): $out" ;; esac
 
 reset_logs
@@ -404,6 +419,17 @@ eq "::luna_graph_archives_the_commit_not_the_worktree (the archive holds the com
     "$(grep -c 'zulu added' "$LARC/notes/a.md")|$(grep -c 'WORKTREE ONLY' "$LARC/notes/a.md")|$([ -e "$LARC/notes/untracked.md" ] && echo present || echo absent)"
 eq "::luna_graph_archives_the_commit_not_the_worktree (the stub graphify ran update on the archive)" "update $LARC --force | GRAPHIFY_OUT=unset" "$(head -1 "$LOGDIR/graphify.log" 2>/dev/null)"
 eq "::luna_graph_archives_the_commit_not_the_worktree (pair.json records the archive)" "$LARC" "$(pj "$LG" "graph_built_at.$V2")"
+
+V3="$W/vault-link"
+git init -q -b main "$V3" || exit 1
+mkdir -p "$W/outside-g/cache"; printf 'keep\n' > "$W/outside-g/cache/keep.txt"
+ln -s "$W/outside-g" "$V3/graphify-out"; printf '# N\n' > "$V3/n.md"
+git -C "$V3" add -A && git -C "$V3" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q --no-verify -m link
+V3C="$(git -C "$V3" rev-parse HEAD)"
+reset_logs
+fx graph --corpus luna --vault "$V3" --commit "$V3C" --out "$W/scratch-sl" --seed-cache "$W/seed" > /dev/null 2>&1; rc=$?
+eq "::graph_build_refuses_archived_graphify_out_link (a commit tracking graphify-out as a link: exit 2, the link target keeps its cache, graphify never ran)" "2|keep|0" \
+    "$rc|$(cat "$W/outside-g/cache/keep.txt" 2>/dev/null | tr -d '\n')|$(cat "$LOGDIR/graphify.log" 2>/dev/null | wc -l | tr -d ' ')"
 
 
 cat > "$W/check-banks.py" <<'PY'
