@@ -1338,8 +1338,8 @@ check "PIN11: control — without --base the env-resolved base refuses" "$pin11b
 # ANOTHER commit. PINREF1/2 = a ref that resolves to --head runs from that
 # checkout (--worktree and stdin lanes) and stamps the pinned head and the
 # --branch name, never the live ones; PINREF3-6 = a bad or mismatched ref
-# refuses (exit 7) with nothing run and nothing stamped; PINREF7-9 = usage and
-# controls.
+# refuses (exit 7) with nothing run and nothing stamped; PINREF6 = usage errors;
+# PINREF7 = controls.
 PR_REPO="$tmp/pinref-repo"
 git init -q "$PR_REPO"
 git -C "$PR_REPO" checkout -q -b main

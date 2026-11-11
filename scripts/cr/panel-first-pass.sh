@@ -78,7 +78,7 @@
 #       here before any git command consumes it; (b)
 #       pin MISMATCH reported by critic-panel.sh, on the FIRST attempt or
 #       independently on the rtk retry; (c) the diff base cannot be fetched or
-#       resolved; (d) (--pr only) critic-panel.sh does not refuse a --pin-ref ref that cannot exist
+#       resolved; (d) (--pr only) critic-panel.sh does not refuse a --pin-ref ref name git cannot hold
 #       (the probe runs the panel once; no member runs), the PR's base branch name is outside the
 #       safe alphabet, refs/himmel/outside/<n>
 #       is not at --head, --branch is not the PR's headRefName, or the PR's base branch
@@ -159,10 +159,11 @@ if [ -n "$PR" ]; then
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/outside-contributors.sh" || { echo "panel-first-pass: cannot load scripts/lib/outside-contributors.sh" >&2; exit 2; }
     # A panel that cannot pin to the ref would verify the live checkout instead and certify the wrong tree.
-    # Ask the panel itself rather than read its text, which a comment can satisfy: refs/himmel/outside/0
-    # cannot exist (PR numbers start at 1), so a panel that honours --pin-ref refuses it with exit 7 and
-    # says so, while one that does not exits 2 on the unknown option. No member runs and nothing is stamped.
-    pin_probe_err="$(printf 'pin-probe\n' | bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --branch pin-probe --pin-ref refs/himmel/outside/0 2>&1 >/dev/null)"
+    # Ask the panel itself rather than read its text, which a comment can satisfy: refs/himmel/outside/0..0
+    # passes the panel's ref alphabet but is no valid ref name ("..") so git can neither hold nor resolve it:
+    # a panel that honours --pin-ref refuses it with exit 7 and says so, while one that does not exits 2 on
+    # the unknown option. No member runs and nothing is stamped.
+    pin_probe_err="$(printf 'pin-probe\n' | bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --branch pin-probe --pin-ref refs/himmel/outside/0..0 2>&1 >/dev/null)"
     pin_probe_rc=$?
     case "$pin_probe_err" in *"REFUSING --pin-ref"*) ;; *) pin_probe_rc=1 ;; esac
     if [ "$pin_probe_rc" -ne 7 ]; then

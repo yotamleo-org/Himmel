@@ -111,7 +111,7 @@ usage: critic-panel.sh [--worktree <path>] [--head <sha>] [--branch <name>] [--p
                            resolves to a commit and --head, when given, equals it.
                            The checkout's HEAD and branch are not read; requires
                            --branch, which names the stamped branch
-  --base <name>           the caller's captured base REF NAME; wins over
+  --base <name>            the caller's captured base REF NAME; wins over
                            CR_BASE_BRANCH and the auto-resolution, so --base-sha
                            is verified against the base the caller actually used
   --base-sha <sha>         pin the DIFF BASE to the caller's captured base SHA

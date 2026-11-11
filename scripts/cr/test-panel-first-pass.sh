@@ -113,8 +113,8 @@ ARGS_LOG="$tmp/panel-args.log"
 export ARGS_LOG
 cat > "$fx/scripts/cr/critic-panel.sh" <<'STUBEOF'
 #!/usr/bin/env bash
-# The --pr pin probe (a ref that cannot exist): refuse it the way the real panel does, as a probe and not a run.
-case " $* " in *" --pin-ref refs/himmel/outside/0 "*) echo "critic-panel.sh: REFUSING --pin-ref refs/himmel/outside/0 — not a commit (stub of the real refusal)" >&2; exit 7 ;; esac
+# The --pr pin probe (a ref name git cannot hold): refuse it the way the real panel does, as a probe and not a run.
+case " $* " in *" --pin-ref refs/himmel/outside/0..0 "*) echo "critic-panel.sh: REFUSING --pin-ref refs/himmel/outside/0..0 — not a commit (stub of the real refusal)" >&2; exit 7 ;; esac
 printf 'called\n' >> "$CALL_LOG"
 printf '%s\n' "$*" >> "$ARGS_LOG"
 # STDIN_LOG keeps the diff the panel was handed; CTX_COPY keeps the context
