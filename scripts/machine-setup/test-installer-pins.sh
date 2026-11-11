@@ -27,7 +27,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/installer-pins.XXXXXX") || exit 1; trap 'rm -r
 # ── Upstream fixtures (real) ────────────────────────────────────────────────
 FIXTURE_BUN_SHASUMS='bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c  bun-linux-x64.zip'
 FIXTURE_UV_SHA256='c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83  uv-x86_64-unknown-linux-gnu.tar.gz'
-FIXTURE_RTK_CHECKSUMS='21c4a2e30879ce49ebd939fa338c99208871ba591da9feeb483f2ed266fe7163  rtk_1.1.0-1_amd64.deb'
+FIXTURE_RTK_CHECKSUMS='d847c771b86a98c5dfbc5a3bad0bf6a51293d91ad52123583664b48d091853ff  rtk_1.2.0-1_amd64.deb'
 FIXTURE_NODE_TARBALL='d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997  node-v26.13.0-linux-x64.tar.xz'
 FIXTURE_NODE_BIN='0adde40d1b7dfa57c8bc83cbc319758c3ec6ebba21363bb2fa752ea6b267ad1b  node-v26.13.0-linux-x64/bin/node'
 FIXTURE_CLAUDE_MANIFEST_LINUX_X64='dabafec82ca1319fa43d8be36a10fc61b1d11821cb98ad5df04ad95e199b8eed'
