@@ -1,0 +1,12 @@
+{
+  "built_at_commit": "@H0@",
+  "nodes": [
+    {"id": "n_relay", "label": "relay_batch()", "norm_label": "relay_batch", "source_file": "bin/run.sh", "source_location": "L2"},
+    {"id": "n_lockdoc", "label": "Queue lock doc", "norm_label": "queue lock doc", "source_file": "docs/lock.md", "source_location": "L1"},
+    {"id": "n_secret", "label": "secret relay_batch helper", "norm_label": "secret relay_batch helper", "source_file": "private/not-in-export.sh", "source_location": "L1"}
+  ],
+  "links": [
+    {"source": "n_relay", "target": "n_lockdoc", "relation": "documented_by"},
+    {"source": "n_relay", "target": "n_secret", "relation": "calls"}
+  ]
+}
