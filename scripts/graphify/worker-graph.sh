@@ -18,6 +18,7 @@
 #   A query with no anchor whose best file match is weak (semantic-seeds.py scored) and no --budget
 #   of yours is answered on WEAK_BUDGET tokens under a LOW CONFIDENCE header naming that file.
 #   A why/how query lists doc and rationale nodes before code symbols (rank-why-how.py).
+#   WORKER_GRAPH_OUT=<dir> reads <dir>/graph.json instead of the primary's (the staleness eval's scratch graphs).
 #   If the graph's built_at_commit is behind this worktree's HEAD, a NOTE goes
 #   to stderr (the answer is still printed) so a stale graph is never silent.
 set -u
@@ -41,7 +42,7 @@ esac
 common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || {
   echo "worker-graph: not inside a git checkout" >&2; exit 2; }
 primary="$(dirname "$common")"
-out="$primary/graphify-out"
+out="${WORKER_GRAPH_OUT:-$primary/graphify-out}"
 if [ ! -f "$out/graph.json" ]; then
   # absolute paths: the reader may stand in a vault, where a repo-relative scripts/ path does not exist
   here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
