@@ -646,8 +646,6 @@ check "17.7 a failing, printing dry run changes nothing: rc" "$rc" 10
 check "17.7 a failing, printing dry run changes nothing: out" "$out" "ESCALATE marker-READY"
 unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAG_STACKED_SERIES HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
 
-# 18. a READY from a resumed worker (a manifest label with a letter suffix) reaches auto-go under
-# that label, whether the message names it, names only the worker's session name, or names the bare label.
 cat > "$W/list18" <<'EOF18'
 #!/usr/bin/env bash
 printf '%s\n' /h/HIMMEL-9564-N5765f-resumed-2026-11-10-RESUME.md /h/HIMMEL-9500-N5653b-other-2026-11-09-RESUME.md
@@ -668,9 +666,6 @@ HIMMEL_FLAG_AUTO_GO=0 LE_LIST="$W/list18" run "READY 2553 $H40 GREEN N5653b"; wa
 check "18e flag off: the dry run gets the suffixed label" "$calls" "autogo --dry-run --doc $W/doc --fleet $W/fleet.json --worker N5653b 2553 $H40"
 unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
 
-# 19. the real auto-go.sh behind a suffixed worker's READY: it clears checks 1-4 (the manifest finds the suffixed label)
-# and a PR whose ready-go prints `TRUST: hit` still escalates at check 5 with no GO written. Only ready-go.sh, gh and
-# Jira are stubs; auto-go.sh is a copy of the real one beside symlinks to the real libraries.
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME
 AG="$W/ag"; mkdir -p "$AG/scripts/handover/chief-kit" "$AG/scripts/guardrails"
 ln -s "$HERE/../../lib" "$AG/scripts/lib"; ln -s "$HERE/../../cr" "$AG/scripts/cr"

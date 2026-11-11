@@ -212,7 +212,6 @@ if [ "$marker" = READY ]; then
         [ -n "$series_label" ] && [ "$series_label" != "-" ] || escalate "series-writer-unlisted"
         label="$series_label"
     else
-        # the manifest row's label is worker_label of its doc: a message that named the bare label of a resumed worker still reaches auto-go under it
         label="$(worker_label "$worker")"
     fi
     [[ $line =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})([^0-9a-f]|$) ]] || escalate "ready-unparsed"
