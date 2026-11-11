@@ -13,6 +13,11 @@ export function assertLiveProject(project: string, configured: string): void {
   }
 }
 
+export function recordLiveConfigDir(env: NodeJS.ProcessEnv, passwdHome: string): string | undefined {
+  if (env.JIRA_LIVE_TEST !== '1') return undefined;
+  return env.HIMMEL_CONFIG_DIR || join(passwdHome, '.himmel');
+}
+
 export function liveChildEnv(base: NodeJS.ProcessEnv, project: string, configDir: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...base,
@@ -23,6 +28,13 @@ export function liveChildEnv(base: NodeJS.ProcessEnv, project: string, configDir
   delete env.VITEST;
   delete env.NODE_ENV;
   return env;
+}
+
+export function runJira(cli: string, configDir: string, project: string, ...args: string[]): string {
+  return execFileSync('node', [cli, ...args], {
+    encoding: 'utf8',
+    env: liveChildEnv(process.env, project, configDir),
+  });
 }
 
 export function resolveLiveProject(configDir: string, cli: string): string {

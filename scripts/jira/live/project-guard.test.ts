@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  LIVE_BODY, assertLiveProject, liveChildEnv, liveVersionName, resolveLiveProject,
+  LIVE_BODY, assertLiveProject, liveChildEnv, liveVersionName, recordLiveConfigDir, resolveLiveProject,
 } from './project-guard.js';
 import { checkVersionName } from '../src/commands/versions.js';
 import { lintPlainBlock } from '../src/plain-block.js';
@@ -44,6 +44,20 @@ describe('liveChildEnv', () => {
     expect('VITEST' in env).toBe(false);
     expect('NODE_ENV' in env).toBe(false);
     expect(base.VITEST).toBe('true');
+  });
+});
+
+describe('recordLiveConfigDir', () => {
+  it('returns HIMMEL_CONFIG_DIR when set', () => {
+    expect(recordLiveConfigDir({ JIRA_LIVE_TEST: '1', HIMMEL_CONFIG_DIR: '/station/conf' }, '/passwd/home')).toBe('/station/conf');
+  });
+
+  it.each([undefined, ''])('falls back to the passwd home plus /.himmel when HIMMEL_CONFIG_DIR is %j', (dir) => {
+    expect(recordLiveConfigDir({ JIRA_LIVE_TEST: '1', HIMMEL_CONFIG_DIR: dir, HOME: '/redirected/home' }, '/passwd/home')).toBe('/passwd/home/.himmel');
+  });
+
+  it.each([undefined, '', '0', 'true'])('returns nothing when JIRA_LIVE_TEST is %j', (marker) => {
+    expect(recordLiveConfigDir({ JIRA_LIVE_TEST: marker, HIMMEL_CONFIG_DIR: '/station/conf' }, '/passwd/home')).toBeUndefined();
   });
 });
 

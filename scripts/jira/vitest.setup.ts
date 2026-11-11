@@ -1,11 +1,11 @@
 import { mkdtempSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
+import { recordLiveConfigDir } from './live/project-guard.js';
 
 // The live suite reads the station's test project from the config dir the redirects below hide: record it first.
-if (process.env.JIRA_LIVE_TEST === '1') {
-  process.env.JIRA_LIVE_CONFIG_DIR = process.env.HIMMEL_CONFIG_DIR || join(process.env.HOME || homedir(), '.himmel');
-}
+const liveConfigDir = recordLiveConfigDir(process.env, userInfo().homedir);
+if (liveConfigDir) process.env.JIRA_LIVE_CONFIG_DIR = liveConfigDir;
 
 // Point HOME at an empty dir so the operator's real ~/.himmel/config.json
 // (jira.sectorField) never leaks into a test.
