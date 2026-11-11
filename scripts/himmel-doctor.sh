@@ -4975,10 +4975,10 @@ graph_semantic_station_verdict() {
     stale_line="$(printf '%s\n' "$res" | sed -n 's/^graph-freshness: \(SEMANTIC-STALE .*\)/\1/p' | head -1)"
     if { [ "$rc" -eq 3 ] || [ "$rc" -eq 1 ]; } && [ -n "$stuck_line" ]; then
         emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $stuck_line${stale_line:+; $stale_line}" \
-            "python3 $(printf '%q' "$SELF_DIR")/graphify/semantic-merge.py unstick --out $(printf '%q' "$out")   # then run a semantic batch; bash scripts/graphify/check-graph-freshness.sh --out $out names the stuck files"
+            "python3 $(printf '%q' "$SELF_DIR")/graphify/semantic-merge.py unstick --out $(printf '%q' "$out")   # then start the semantic pass detached: bash scripts/handover/chief-kit/graph-pass-detached.sh start (bash scripts/handover/chief-kit/graph-pass-detached.sh status reads it); bash scripts/graphify/check-graph-freshness.sh --out $out names the stuck files"
     elif { [ "$rc" -eq 3 ] || [ "$rc" -eq 1 ]; } && [ -n "$stale_line" ]; then
         emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $stale_line" \
-            "bash ~/.claude/graphmap-cadence/graphmap-himmel.sh   # the station's semantic pass (HIMMEL-GraphMap-Himmel, daily); bash scripts/graphify/check-graph-freshness.sh --out $out shows the bounds"
+            "bash scripts/handover/chief-kit/graph-pass-detached.sh start   # the station's semantic pass, detached so it outlives your window; bash scripts/handover/chief-kit/graph-pass-detached.sh status says running|finished|none; bash scripts/graphify/check-graph-freshness.sh --out $out shows the bounds"
     elif [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
         emit INFO C70-graph-semantic "graph-freshness check exited $rc, semantic freshness not judged: ${fail_line:-$(printf '%s\n' "$res" | head -1)}" \
             "bash scripts/graphify/check-graph-freshness.sh --out $out"
