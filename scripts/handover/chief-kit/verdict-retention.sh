@@ -113,8 +113,18 @@ ledger="$vdir/_ledger.jsonl"
 
 # The repo the PR numbers and heads must belong to. Resolved once, in this
 # shell, so the lookups below can run in command substitutions.
+# The default lookups (repo, PR state, head) are reads: they ride the read-only token when one is configured and the
+# helper falls back to the main token. Both seams set means no gh call, so nothing is initialised.
+GH_READ_BIN="$(cd "$HERE/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-ok: a missing lib dir leaves no file, and the -f test below falls back to plain gh
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+if [ "$GH_READ_BIN" != gh ] && { [ -z "${HIMMEL_VERDICT_PR_STATE_CMD:-}" ] || [ -z "${HIMMEL_VERDICT_HEAD_CHECK_CMD:-}" ]; }; then
+    # shellcheck source=scripts/lib/gh-read.sh
+    # shellcheck disable=SC1091
+    . "$GH_READ_BIN"
+    gh_read_init
+fi
 if [ -z "$repo" ] && { [ -z "${HIMMEL_VERDICT_PR_STATE_CMD:-}" ] || [ -z "${HIMMEL_VERDICT_HEAD_CHECK_CMD:-}" ]; }; then
-    repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner) \
+    repo=$("$GH_READ_BIN" repo view --json nameWithOwner --jq .nameWithOwner) \
         || { echo "verdict-retention: cannot resolve the repo; pass --repo OWNER/NAME" >&2; exit 3; }
 fi
 
@@ -122,7 +132,7 @@ pr_state_raw() {
     if [ -n "${HIMMEL_VERDICT_PR_STATE_CMD:-}" ]; then
         "$HIMMEL_VERDICT_PR_STATE_CMD" "$1"
     else
-        gh pr view "$1" --repo "$repo" --json state,closedAt,mergedAt --jq '[.state, (.closedAt // .mergedAt // "")] | join(" ")'
+        "$GH_READ_BIN" pr view "$1" --repo "$repo" --json state,closedAt,mergedAt --jq '[.state, (.closedAt // .mergedAt // "")] | join(" ")'
     fi
 }
 # pr_state <n>: sets PRST to `<STATE> [closedAt]`, rc 1 on a failed lookup.
@@ -151,7 +161,7 @@ head_check_raw() {
     if [ -n "${HIMMEL_VERDICT_HEAD_CHECK_CMD:-}" ]; then
         "$HIMMEL_VERDICT_HEAD_CHECK_CMD" "$repo" "$1"
     else
-        gh api "repos/$repo/commits/$1" --jq .sha >/dev/null
+        "$GH_READ_BIN" api "repos/$repo/commits/$1" --jq .sha >/dev/null
     fi
 }
 hmemo=""

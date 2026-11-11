@@ -81,6 +81,18 @@ git_env_scrub   # not a git hook - safe to scrub GIT_INDEX_FILE too (HIMMEL-3570
 
 GH="${GH_BIN:-gh}"
 
+# The four pre-tag reads ride the read-only token when one is configured and fall back to the main token as
+# gh-read.sh decides. GH_BIN, when set, still wins for every call; the tag-ref write keeps "$GH" on the main token.
+GH_READ_BIN="$(cd "$HERE/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-ok: a missing lib dir leaves no file, and the -f test below falls back to plain gh
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+if [ -z "${GH_BIN:-}" ] && [ "$GH_READ_BIN" != gh ]; then
+    # shellcheck source=scripts/lib/gh-read.sh
+    # shellcheck disable=SC1091
+    . "$GH_READ_BIN"
+    gh_read_init
+fi
+GH_RD="${GH_BIN:-$GH_READ_BIN}"
+
 usage() {
     echo "usage: cut-tag.sh <version> <sha> [--dry-run] [--version-override <reason>]" >&2
 }
@@ -222,7 +234,7 @@ if [ "$IS_PRE" -eq 1 ]; then
     N="$_vn"                          # "9"
 fi
 
-NWO=$("$GH" repo view --json owner,name --jq '"\(.owner.login)/\(.name)"' 2>/dev/null)
+NWO=$("$GH_RD" repo view --json owner,name --jq '"\(.owner.login)/\(.name)"' 2>/dev/null)  # swallow-ok: an empty result is refused on the next line
 if [ -z "$NWO" ]; then
     echo "cut-tag: cannot resolve owner/repo (gh repo view --json owner,name failed)" >&2
     exit 1
@@ -309,7 +321,7 @@ EOF
     fi
 fi
 
-if ! runs_json=$("$GH" api "repos/$NWO/commits/$SHA/check-runs?per_page=100" --paginate 2>/dev/null); then
+if ! runs_json=$("$GH_RD" api "repos/$NWO/commits/$SHA/check-runs?per_page=100" --paginate 2>/dev/null); then  # swallow-ok: the failed read is refused below (exit 4)
     echo "cut-tag: refusing - gh api check-runs failed at $SHA" >&2
     exit 4
 fi
@@ -333,7 +345,7 @@ if [ -n "$bad" ]; then
     exit 4
 fi
 
-if ! status_json=$("$GH" api "repos/$NWO/commits/$SHA/status" 2>/dev/null); then
+if ! status_json=$("$GH_RD" api "repos/$NWO/commits/$SHA/status" 2>/dev/null); then  # swallow-ok: the failed read is refused below (exit 4)
     echo "cut-tag: refusing - gh api combined status failed at $SHA" >&2
     exit 4
 fi
@@ -351,7 +363,7 @@ fi
 # not started yet - e.g. only the Pages check-runs (build/deploy/
 # report-build-status) exist and are green. The CI workflow
 # run itself, read via the Actions API, is the authoritative signal.
-if ! ci_runs_json=$("$GH" api "repos/$NWO/actions/runs?head_sha=$SHA&per_page=100" 2>/dev/null); then
+if ! ci_runs_json=$("$GH_RD" api "repos/$NWO/actions/runs?head_sha=$SHA&per_page=100" 2>/dev/null); then  # swallow-ok: the failed read is refused below (exit 4)
     echo "cut-tag: refusing - gh api actions/runs failed at $SHA" >&2
     exit 4
 fi

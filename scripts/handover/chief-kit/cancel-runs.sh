@@ -39,8 +39,8 @@
 # 2 usage, a non-integer CANCEL_RUNS_FAKE_CLOCK, or a pacing state file that
 # cannot be written; 3 refused as a worker or relay.
 #
-# Literal `gh` only (no variable command name) so guard-pr-check-literal can
-# verify the bytes. Linux/macOS bash 3.2+ (gh + jq).
+# The cancel is the literal `gh` (no variable command name) so guard-pr-check-literal can
+# verify the bytes; the reads go through $GH_READ_BIN (the read-token helper). Linux/macOS bash 3.2+ (gh + jq).
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -148,8 +148,19 @@ if [ -n "$REPO_ARG" ] && [ "$REPO_ARG" != "$REPO" ]; then
     echo "cancel-runs: --repo $REPO_ARG differs from origin $REPO; the repo is pinned to origin" >&2; exit 2
 fi
 
+# The reads (the kept PR heads, the run listings) go through the read-only token when one is configured and fall
+# back to the main token as gh-read.sh decides; the cancel below keeps the literal gh on the main token.
+GH_READ_BIN="$(cd "$HERE/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-ok: a missing lib dir leaves no file, and the -f test below falls back to plain gh
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+if [ "$GH_READ_BIN" != gh ]; then
+    # shellcheck source=scripts/lib/gh-read.sh
+    # shellcheck disable=SC1091
+    . "$GH_READ_BIN"
+    gh_read_init
+fi
+
 for n in $prs; do
-    sha="$(gh pr view "$n" -R "$GHREPO" --json headRefOid -q .headRefOid)"
+    sha="$("$GH_READ_BIN" pr view "$n" -R "$GHREPO" --json headRefOid -q .headRefOid)"
     if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$'; then
         echo "cancel-runs: cannot resolve the head of PR $n on $REPO; nothing cancelled" >&2; exit 1
     fi
@@ -167,7 +178,7 @@ printf '%s' "$LIMIT" | grep -Eq '^[0-9]{1,4}$' && [ "$LIMIT" -ge 1 ] \
 runs=""
 truncated=0
 for st in queued in_progress waiting requested pending; do
-    part="$(gh run list -R "$GHREPO" --status "$st" --limit "$LIMIT" --json databaseId,status,headSha,headBranch,event)" \
+    part="$("$GH_READ_BIN" run list -R "$GHREPO" --status "$st" --limit "$LIMIT" --json databaseId,status,headSha,headBranch,event)" \
         || { echo "cancel-runs: gh run list --status $st failed on $REPO; nothing cancelled" >&2; exit 1; }
     if [ "$(printf '%s' "$part" | jq 'length')" -ge "$LIMIT" ]; then
         echo "cancel-runs: the $st listing hit the cap of $LIMIT runs; re-run to drain the rest" >&2

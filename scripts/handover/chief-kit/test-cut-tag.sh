@@ -41,6 +41,16 @@ not_contains() { if grep -q -F -e "$3" <<< "$2"; then echo "FAIL - $1: output un
 SHA=0123456789abcdef0123456789abcdef01234567
 CALLS="$tmp/calls.log"
 
+# The pre-tag reads ride the read token. Every row pins the fixture root, so no station token reaches a stub (spec I6).
+READTOK=ghp_READTOKEN0123456789
+TTLOG="$tmp/tt.log"
+mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$tmp/ttroot/.env"
+: > "$tmp/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$tmp/tt/gh"
+export GH_READ_ENV_ROOT="$tmp/emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$tmp/himmelcfg"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+
 # ---- gh stub ----------------------------------------------------------------
 GH_STUB="$tmp/gh"
 cat > "$GH_STUB" <<'STUB'
@@ -125,7 +135,7 @@ chmod +x "$GIT_STUB_DIR/git"
 run() { # run <version> <sha> [more args...] - runs the script under test
     CT_WANT_BASE="$(printf '%s' "${1:-}" | sed -E 's/^v//; s/-pre\..*$//')" \
         CT_SHA_VERSION="${CT_SHA_VERSION:-}" CT_SHOW_FAIL="${CT_SHOW_FAIL:-0}" \
-        CALLS_LOG="$CALLS" PATH="$GIT_STUB_DIR:$PATH" GH_BIN="$GH_STUB" SHA_ENV="$SHA" \
+        CALLS_LOG="$CALLS" PATH="$GIT_STUB_DIR:$PATH" GH_BIN="${CT_GH_BIN-$GH_STUB}" SHA_ENV="$SHA" \
         CT_ANCESTOR_BAD="${CT_ANCESTOR_BAD:-0}" CT_TAG_EXISTS="${CT_TAG_EXISTS:-0}" \
         CT_SERIES_TAGS="${CT_SERIES_TAGS:-}" CT_FETCH_FAIL="${CT_FETCH_FAIL:-0}" \
         CT_RUNS_JSON="${CT_RUNS_JSON:-}" CT_STATUS_JSON="${CT_STATUS_JSON:-}" \
@@ -387,6 +397,33 @@ rc=0; out=$(CT_SERIES_TAGS="" CT_RUNS_JSON='{"total_count":1,"check_runs":[{"nam
 check "override-red-run: rc 4" "$rc" "4"
 contains "override-red-run: names the failing run" "$out" "unit=completed/failure"
 not_contains "override-red-run: never writes the tag" "$(cat "$CALLS")" "git/refs"
+
+# --- 30. the seam unset, the two-token stub first on PATH (delegating to the gh stub above) ---
+# tt_run <env-root> <args>: GH_STUB_* knobs come from the caller's environment.
+tt_run() {
+    local r="$1"; shift
+    : > "$TTLOG"
+    PATH="$tmp/tt:$PATH" CT_GH_BIN="" GH_READ_ENV_ROOT="$r" GH_STUB_DELEGATE="$GH_STUB" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" \
+        CT_SERIES_TAGS="$CT_SERIES_TAGS_DEFAULT" run "$@"
+}
+logn() { grep -c -E -- "$1" "$TTLOG"; }
+reset_calls
+rc=0; out=$(GH_STUB_MAINFAIL=rate tt_run "$tmp/ttroot" "$CLEAN_VERSION" "$SHA" 2>&1) || rc=$?
+check "main spent: the tag is cut, rc 0" "$rc" "0"
+contains "main spent: created message" "$out" "created refs/tags/$CLEAN_VERSION"
+check "main spent: the repo read logs tok=read" "$(logn '^tok=read argv=repo view ')" "1"
+check "main spent: the check-runs read logs tok=read" "$(logn "^tok=read argv=api repos/octo/demo/commits/$SHA/check-runs")" "1"
+check "main spent: the combined status read logs tok=read" "$(logn "^tok=read argv=api repos/octo/demo/commits/$SHA/status")" "1"
+check "main spent: the Actions runs read logs tok=read" "$(logn "^tok=read argv=api repos/octo/demo/actions/runs\?head_sha=$SHA")" "1"
+check "main spent: the tag ref write logs tok=main" "$(logn '^tok=main argv=api repos/octo/demo/git/refs ')" "1"
+check "main spent: the ref write is the only call on the main token" "$(logn '^tok=main ')" "1"
+check "main spent: the read token is never in the stub log" "$(grep -c -F -- "$READTOK" "$TTLOG")" "0"
+# control: no read token, main healthy: the reads log tok=main and the tag is cut
+reset_calls
+rc=0; out=$(tt_run "$tmp/emptyroot" "$CLEAN_VERSION" "$SHA" 2>&1) || rc=$?
+check "control, no read token: the tag is cut, rc 0" "$rc" "0"
+check "control: all five calls log tok=main" "$(logn '^tok=main ')" "5"
+check "control: no call logs tok=read" "$(logn '^tok=read ')" "0"
 
 echo "----"
 if [ "$fails" -eq 0 ]; then
