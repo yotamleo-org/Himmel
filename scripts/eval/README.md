@@ -12,6 +12,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `retrieval-eval/` | `retrieval-eval.py`: grep, qmd-lex, qmd-hybrid, graphify and combined (plus opt-in qmd-hybrid-norerank) on transcript-mined questions: hit@k, reason-carried, tokens and ms; `census` counts qmd and graphify use per session role | `results.jsonl`, `scores.tsv` |
 | `retrieval-eval/answer-ab.py` | tokens per file hit, end to end: a haiku answerer on the questions it fails closed-book, with no retrieval, grep, path + ident-grep, graphify or fused output pasted in; total session tokens per file hit per arm; opt-in realistic worker-session arms (vanilla, fused-cached, bm25-rerank, vec-rerank) priced per call from usage | `table.tsv`, `results.jsonl`, ledger row `answer-ab` |
 | `retrieval-eval/staleness-fixture.sh` | a scratch qmd index and AST graph at two commits, served with no provider key (`build`, `serve`, `stop`, `graph`), over the frozen `staleness-questions.jsonl` and `staleness-graph-questions.jsonl`; the embed and the keyed daemon refuse without `HIMMEL_BILLED_OK=1` | `pair.json` in the scratch path |
+| `retrieval-eval/retrieval-eval.py run --index-state s\|l\|c --pair <pair.json>`, `stale-report`, `exposure` | the staleness eval's reading side: a run labelled with the served pair (refused unless `QMD_URL` is the pair's own served URL, never the live port, and the daemon's `totalDocuments` equals `pair.json`'s; graph arms read the pair's scratch graph through `WORKER_GRAPH_OUT`, never a checkout's `graphify-out`); `stale-report` prints per stratum the L minus S and C minus L difference with exact McNemar p and a seeded bootstrap interval, and the matching decision row; `exposure` prints the share of reads of recently merged files apart from it | `results.jsonl` rows with `index_state` and `stale_stratum`, a ledger row |
 | `handover-cost.py` | the per-handover chief price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and worker-relay turns and cost, gross and net (HIMMEL-6491 method); `--workers-after` counts only newer workers | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
 | `chief-wake-classes.py` | the chief wake mix for one date from session JSONLs: wakes, requests and eq per class (operator, relay-only, escalate) and per wake kind, priced with `handover-cost.py` (HIMMEL-2975 plan method); `--exclude` drops live chiefs | `CLASS` and `KIND` rows on stdout (no ledger row) |
 | `lone-comm-count.py` | report-only count of the turns whose only tool call is one comm tool (an `append-results.sh` bullet, a `SendMessage`, an himmel-bus send) per session JSONL, by marker class; GO, NO-GO, token-quoting, SUCCESSION and RETASK rows are counted apart as safety, never batchable; files as arguments, or `--dir D --hours N` | a TSV per session, `CLASS` rows and a `TOTAL` line on stdout (no ledger row) |
@@ -126,6 +127,37 @@ The output compares saved and replayed hit counts for insample, heldout and all.
 arms and RRF constant. Rescued and regressed IDs are printed only for the insample
 (dev) slice; held-out questions are frozen and appear only as counts, so they cannot
 guide tuning.
+
+## Staleness eval: pair runs, stale-report, exposure
+
+Build a pair with `staleness-fixture.sh` (`build`, `serve`, `graph`), then read it:
+
+```bash
+QMD_URL=<the URL serve printed> python3 scripts/eval/retrieval-eval/retrieval-eval.py run \
+  --questions scripts/eval/retrieval-eval/staleness-questions.jsonl --out DIR/s \
+  --pair <scratch>/pair.json --index-state s --arms qmd-lex
+python3 scripts/eval/retrieval-eval/retrieval-eval.py stale-report DIR
+python3 scripts/eval/retrieval-eval/retrieval-eval.py exposure --days 14
+```
+
+- **Refusals (exit 2):** `QMD_URL` unset or any URL but the pair's; the live daemon's port 8181 on
+  any loopback name; a served `totalDocuments` that is not `pair.json`'s `doc_count`; an
+  `--index-state` that is not the state the served index was built as; a graph that resolves
+  into a checkout's `graphify-out`. A refusal writes no ledger row.
+- **Graph arms** read the graph built at the first commit (`--index-state s`) or the second (`l`)
+  of the pair, through `WORKER_GRAPH_OUT` (`worker-graph.sh` reads that directory instead of the
+  primary's). One process per pair for the graph bank: each run is one ledger row, and
+  `stale-report` pools the run directories it finds under `DIR`.
+- **`stale-report`** prints one row per arm, contrast (`L-S`, `C-L`) and stratum, the Added
+  stratum first: difference in points, exact McNemar p, and a bootstrap interval (seed 9517, 10,000
+  resamples). It then prints the matching row of the spec's "What it decides" table and, with no
+  baseline from `keyword-lag.py --report` yet, `baseline pending` and no arming row. Read the
+  numbers for this bank only; graph rows measure the AST layer.
+- **`exposure`** counts `Read` calls on files inside the repo (or its worktrees) whose file had a
+  first-parent commit on `--ref` (default `main`) in the prior 24 h and in the prior 1 h, with
+  each share's Wilson interval. It is a separate number: never multiply it with the bank's.
+- Seams (tests): `RETRIEVAL_EVAL_QMD_STATUS_CMD` (prints the status JSON), `RETRIEVAL_EVAL_LAG_CMD`
+  (prints `keyword-lag.py --report`'s output).
 
 ## Tokens per file hit (answer-ab)
 
