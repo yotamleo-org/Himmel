@@ -1357,16 +1357,16 @@ PINREF_STUB="$tmp/stub-pinref-env.sh"
 cat > "$PINREF_STUB" <<'EOS'
 #!/usr/bin/env bash
 cat > "$PINREF_DIFF_DUMP"
-printf '%s %s\n' "${CR_TARGET_HEAD:-}" "${CR_TARGET_BRANCH:-}" > "$PINREF_STAMP_DUMP"
+printf '%s %s\n' "${CR_TARGET_HEAD:-}" "${CR_TARGET_BRANCH:-}" > "$PINREF_ENV_DUMP"
 printf '# pinref First-Pass Review\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
 EOS
 chmod +x "$PINREF_STUB"
 pinref_run() {
     local label="$1" lane="$2"; shift 2
     PINREF_LEDGER="$tmp/pinref-$label-ledger.jsonl"; : > "$PINREF_LEDGER"
-    PINREF_DIFF_DUMP="$tmp/pinref-$label-diff.txt"; PINREF_STAMP_DUMP="$tmp/pinref-$label-env.txt"
-    rm -f "$PINREF_DIFF_DUMP" "$PINREF_STAMP_DUMP"
-    export PINREF_DIFF_DUMP PINREF_STAMP_DUMP
+    PINREF_DIFF_DUMP="$tmp/pinref-$label-diff.txt"; PINREF_ENV_DUMP="$tmp/pinref-$label-env.txt"
+    rm -f "$PINREF_DIFF_DUMP" "$PINREF_ENV_DUMP"
+    export PINREF_DIFF_DUMP PINREF_ENV_DUMP
     pinref_rc=0
     if [ "$lane" = worktree ]; then
         CR_TARGET_PR=7 CR_LEDGER="$PINREF_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
@@ -1394,14 +1394,16 @@ check "PINREF1: the critic saw the diff of the REF, not the live checkout" \
     "$(cat "$PINREF_DIFF_DUMP" 2>/dev/null)" "$(git -C "$PR_REPO" diff "main...$pr_oid")"
 check "PINREF1: ledger rows stamp the ref's head and the --branch name, never the live ones" \
     "$(pinref_ledger_is "$pr_oid" feat/outside-thing)" "yes"
+# read-sink-ok: reads the test's own fixture output under its mktemp dir
 check "PINREF1: the member sees the ref's head and the --branch name in CR_TARGET_HEAD and CR_TARGET_BRANCH" \
-    "$(cat "$PINREF_STAMP_DUMP" 2>/dev/null)" "$pr_oid feat/outside-thing"
+    "$(cat "$PINREF_ENV_DUMP" 2>/dev/null)" "$pr_oid feat/outside-thing"
 pinref_run 2 stdin --head "$pr_oid" --branch feat/outside-thing --pin-ref refs/himmel/outside/7
 check "PINREF2: a ref at --head runs from a checkout on another branch and commit (stdin)" "$pinref_rc" "0"
 check "PINREF2: ledger rows stamp the ref's head and the --branch name (stdin)" \
     "$(pinref_ledger_is "$pr_oid" feat/outside-thing)" "yes"
+# read-sink-ok: reads the test's own fixture output under its mktemp dir
 check "PINREF2: the member sees the ref's head and the --branch name (stdin)" \
-    "$(cat "$PINREF_STAMP_DUMP" 2>/dev/null)" "$pr_oid feat/outside-thing"
+    "$(cat "$PINREF_ENV_DUMP" 2>/dev/null)" "$pr_oid feat/outside-thing"
 
 pinref_run 3 worktree --head "$pr_oid" --branch feat/outside-thing --pin-ref refs/himmel/outside/999
 check "PINREF3: a ref that resolves to no commit refuses (exit 7)" "$pinref_rc" "7"
