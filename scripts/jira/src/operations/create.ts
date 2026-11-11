@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
+import { browseLine } from '../browse-line.js';
 import { markdownToAdf } from '../adf.js';
 import type { CreateIssueResponse } from '../types.js';
 import { uploadAll } from '../commands/attach-helper.js';
@@ -233,6 +234,8 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   const key = result.key;
   writeJiraBreadcrumb(key);
   console.log(`Created ${key}`);
+  const browse = browseLine(key);
+  if (browse) console.log(browse);
   printCore(coreVerdict);
   queueIntakeIfUnversioned(key, fields, title, intake, testProject);
 
