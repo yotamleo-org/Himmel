@@ -862,7 +862,6 @@ seed_floor "$W/q-low" 200
 contains 'a bucket under the floor prints quota=main.graphql:200@<reset>' "$(q_tick "$W/q-low")" " quota=main.graphql:200@$q_hm"
 seed_floor "$W/q-edge" 500
 not_contains 'RED control: a bucket at the floor prints no quota=' "$(q_tick "$W/q-edge")" ' quota='
-# --- (9479 T6) a resume scan the dispatcher paused reads orphans-wip=?, never an all-clear
 PW="$W/pw-mirror/HIMMEL"; mkdir -p "$PW"
 printf -- '---\nkey: "HIMMEL-951"\ntype: "Task"\nstatus: "In Progress"\nstatusCategory: "x"\npriority: "Medium"\nlabels: []\nfixVersions: []\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-951: an orphan\n\n## Description\n\nEdit scripts/lib/pw-orphan.sh.\n' > "$PW/HIMMEL-951.md"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$W/pw-gh"; chmod +x "$W/pw-gh"

@@ -182,7 +182,6 @@ contains "an unreadable graph prints focus=WARN:chains render" "$(out)" "focus=W
 check "and the last good focus-chains.json is byte-identical" "$(cmp -s "$CH" "$tmp/good.json" && echo same)" same
 rm -f "$FX/graph.bad"
 
-# --- (9479 T6) a dispatcher paused on GitHub quota: the dispositions are unknown, so the last good file stays
 for pause in '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 floor=500 reset=unknown caller=next-dispatchable nothing-was-judged' \
     '# gh-stall GH-STALL github read timed out after 400s token=main caller=next-dispatchable nothing-was-judged'; do
     pw="${pause#\# }"; pw="${pw%% *}"

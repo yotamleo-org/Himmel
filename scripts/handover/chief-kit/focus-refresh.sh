@@ -329,7 +329,6 @@ print(",".join(dict.fromkeys(k for c in json.load(open(sys.argv[1]))["chains"] f
         bounded 60 "${DISPO[@]}" --mirror "$MIR" --doc "$DOC" --dispositions > "$stage/dispositions.txt" 2>/dev/null || rm -f "$stage/dispositions.txt"
         set -- --graph "$stage/chain-graph.json" --registry "$chains_reg" --mirror "$MIR" --version "$VER" --drain --out "$stage/focus-chains.json"
         [ ! -s "$stage/dispositions.txt" ] || set -- "$@" --dispositions "$stage/dispositions.txt"
-        # GitHub out: the dispatcher printed one pause line, so the dispositions are unknown, not empty, and the last good file stays
         dispo_pause=$(grep -m 1 -E '^# (quota-pause|gh-stall) ' "$stage/dispositions.txt" 2>/dev/null)  # swallow-ok: no file is no pause
         if [ -n "$dispo_pause" ]; then
             echo "focus-refresh: ${dispo_pause#\# }; focus-chains.json is as it was" >&2

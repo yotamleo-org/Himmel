@@ -398,7 +398,7 @@ drive_next_dispatchable() {
     AFFECT_FN=affect_nd RATE_BOUND=25 XM="gql-late"
     EXTRA_ENV="$ND_ENV"
     for m in $(modes_for); do
-        rm -f "$cdir/quota/quota.tsv"  # each mode is its own GitHub: the last mode's fresh reading must not answer for it
+        rm -f "$cdir/quota/quota.tsv"
         run_mode next-dispatchable.sh "$m" 12 0 bash "$script" --top 5
     done
     EXTRA_ENV=""

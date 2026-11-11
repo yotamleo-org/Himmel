@@ -2632,8 +2632,6 @@ lacks "Q8: control: and the key is not listed" "$q8_3" "LOCAL	HIMMEL-9710"
 q8_in="$(q8run false 30)"
 has "Q8: control: an inside PR idle 30 days still owns the key" "$q8_in" "# drop HIMMEL-9710 owned by open PR 5201"
 
-# --- (9479 T6) GitHub out: the run prints one pause line, never a smaller pool ---
-# gh-q answers the quota probes (rateLimit, api -i user) by Q_MODE and every other call from the fixture; Q_LOG holds every call
 Q6="$WORK/q6"; mkdir -p "$Q6/realbin" "$Q6/envroot"
 printf '{"schema":1,"workers":[]}\n' > "$Q6/fleet.json"
 printf '#!/usr/bin/env bash\necho reached >> "%s"\nexit 1\n' "$Q6/real-gh-reached" > "$Q6/realbin/gh"

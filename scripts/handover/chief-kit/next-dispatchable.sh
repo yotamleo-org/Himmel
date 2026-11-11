@@ -201,13 +201,12 @@ export ND_STACKED="$stacked"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger" ND_HOLDS="${ND_HOLDS:-$HERE/holds.py}"
 
-# GitHub out: a scan spends nothing and prints one line, never a smaller pool
 # shellcheck source=scripts/lib/gh-quota.sh
 . "$REPO/scripts/lib/gh-quota.sh"
 # shellcheck disable=SC2034  # read by the probes in gh-graphql-budget.sh
 GHQ_GH_CMD="${NEXT_DISPATCH_GH_CMD:-gh}"
 export GH_READ_NO_MAIN_FALLBACK=1
-nd_pause() { # <ghq line>: the dispatcher's whole stdout on a pause
+nd_pause() {
     case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
     exit 0
 }
@@ -225,7 +224,7 @@ trap '[ -z "$nd_pid" ] || kill -TERM "$nd_pid" 2>/dev/null; exit 143' TERM INT H
 _TIMEOUT_BIN=""
 [ "$nd_deadline" -eq 0 ] || . "$REPO/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: no timeout binary runs the scan with its per-read bounds only
 export ND_FLAGS="$nd_flags"
-nd_left=$((nd_deadline - SECONDS))  # the preflight's probes spent part of the deadline already
+nd_left=$((nd_deadline - SECONDS))
 [ "$nd_left" -gt 0 ] || nd_left=1
 ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
 import datetime, json, os, re, subprocess, sys, tempfile, time
@@ -235,16 +234,12 @@ repo = os.environ['ND_REPO']
 sys.path.insert(0, os.path.join(repo, 'scripts', 'lib'))
 from env_alias import legacy_names_on
 
-# Every gh read goes through ghrun. A gh answer that names a rate limit, or a read that times out, is recorded once in
-# ND_FLAGS, and from then on ghrun refuses at once: the shell part prints the one pause line in place of the rows, since
-# the unread rows are unknown, not empty. gh itself is not wrapped or changed.
 RATE_LIMIT_RE = re.compile(r'rate limit|RATE_LIMIT|abuse detection|secondary rate', re.I)
 rate_limited = []
 timed_out = []
-GH_TIMEOUT = int(os.environ.get('NEXT_DISPATCH_GH_TIMEOUT') or 0)  # 0: each call keeps its own bound
 
 def gh_t(secs):
-    return GH_TIMEOUT or secs
+    return int(os.environ.get('NEXT_DISPATCH_GH_TIMEOUT') or secs)
 
 def gh_bucket(argv):
     if len(argv) > 1 and argv[1] == 'api':
@@ -1455,19 +1450,19 @@ def classify(batch):
     cls = {}
     cmd = os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD')
     argv = [cmd] if cmd else ['node', os.path.join(repo, 'scripts/lanes/cloud-route.mjs'), '--classify-only']
-    if rate_limited or timed_out:  # the run prints its pause line, not rows: a classification would only wait on GitHub
+    if rate_limited or timed_out:
         return cls
     try:
         r = subprocess.run(argv + [i['key'] for i in batch], capture_output=True, text=True, timeout=gh_t(300))
         hit = next((l for l in r.stderr.splitlines() if RATE_LIMIT_RE.search(l)), None)
-        if hit:  # the classifier's gh was refused: its verdicts are unknown, not BLOCKED
+        if hit:
             note_flag('rate-limit', 'graphql' if re.search(r'graphql', hit, re.I) else 'core', hit.strip()[:200])
         for line in r.stdout.splitlines():
             p = line.split('\t')
             if len(p) >= 2 and re.match(r'^[A-Z]+-\d+$', p[0]):
                 cls[p[0]] = p[1]
                 reasons[p[0]] = p[2].strip() if len(p) > 2 else ''
-    except subprocess.TimeoutExpired:  # a stalled classification is unknown verdicts, not BLOCKED rows
+    except subprocess.TimeoutExpired:
         note_flag('stall', 'graphql', gh_t(300))
     except (OSError, subprocess.SubprocessError):
         pass
@@ -1831,7 +1826,6 @@ PY
 nd_pid=$!
 wait "$nd_pid"; nd_rc=$?
 nd_pid=""
-# Rows are all or nothing: a run with a refused or stalled read is not a smaller pool
 IFS="$(printf '\t')" read -r nd_why nd_bucket nd_at < "$nd_flags" 2>/dev/null || nd_why=""
 case "$nd_why" in
     rate-limit) nd_pause "$(ghq_line main "$nd_bucket" next-dispatchable rate-limit "$nd_at")" ;;
