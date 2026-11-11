@@ -1018,7 +1018,7 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
     case "$pool_rc" in 124|137) pool_paused=1 ;; esac
     case "$pool_out" in '# quota-pause '*|'# gh-stall '*) pool_paused=1 ;; esac
     if [ -n "$pool_paused" ]; then pool_out=""; return 1; fi
-    [ "$pool_rc" -eq 0 ] || pool_out=""  # a failed dispatch drops its partial rows, the wake block still prints
+    [ "$pool_rc" -eq 0 ] || pool_out=""
     pool_summary="$(printf '%s\n' "$pool_out" | DOC='' bash "$HERE/tick.sh" --pool-dispositions --doc "$console_doc" 2>/dev/null)" || pool_summary=""  # swallow-ok: an unavailable interpreter keeps the legacy underfill wake, never an all-clear
     pool_keys="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-keys //p')"  # a stacked-series row names its tickets here, joined to its row by line number
     pool_sig="$(printf '%s\n' "$pool_out" | awk -v pk="$pool_keys" '
