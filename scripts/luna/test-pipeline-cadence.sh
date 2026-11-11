@@ -583,7 +583,7 @@ assert_contains "harvest x-media-enrich call passes the 600000 ms Bash tool time
 assert_contains "harvest x-media-enrich call takes no shell prefix" "with no timeout, env or other prefix" "$harvest_sh_plain"
 assert_contains "harvest x-media-enrich says the fetch ends inside the tool timeout" "stops starting clips once its 420 s run budget is spent" "$harvest_sh_plain"
 assert_contains "harvest x-media-enrich prints one named done line with its counts" "X-MEDIA-ENRICH done: <E> enriched, <F> failed, <P> pending" "$harvest_sh_plain"
-assert_contains "harvest x-media-enrich pending is remaining plus not started" "P the sum of its remaining and not started counts" "$harvest_sh_plain"
+assert_contains "harvest x-media-enrich pending counts failed and partial retries too" "the sum of its partial and failed counts and its remaining and not started counts" "$harvest_sh_plain"
 assert_contains "harvest x-media-enrich names an unfinished step" "X-MEDIA-ENRICH unfinished: <reason>" "$harvest_sh_plain"
 assert_contains "harvest x-media-enrich still runs digest and re-scan after a tool timeout" "still run the digest and re-scan steps for the clips it wrote" "$harvest_sh_plain"
 if command -v jq >/dev/null 2>&1; then
