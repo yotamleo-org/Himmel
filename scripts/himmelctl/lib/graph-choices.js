@@ -158,9 +158,11 @@ function rootCheck(root) {
 
 // The fence owns "is this root an allowed corpus": the classifier names a class at,
 // above or below the root, or exits non-zero on a sentinel. Either refuses the root.
+function resolveBash() { return process.env.HIMMELCTL_BASH || 'bash'; }
+
 function classifierErrors(real) {
   const wrapper = path.join(HIMMEL_ROOT, 'scripts', 'guardrails', 'graphify-classify.sh');
-  const r = require('child_process').spawnSync('bash', [wrapper, real], { encoding: 'utf8', timeout: 30000 });
+  const r = require('child_process').spawnSync(resolveBash(), [wrapper, real], { encoding: 'utf8', timeout: 30000 });
   if (r.error || r.status !== 0) return ['the root cannot be classified (the egress classifier failed or refused), so it is refused'];
   const cls = r.stdout.split('\n')[0].trim();
   if (!cls) return [];
