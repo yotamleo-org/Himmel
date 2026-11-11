@@ -118,6 +118,83 @@ export function consoleInboxPath(root: string, name: string): string | null {
   return join(root, "consoles", `${name}.md`);
 }
 
+async function handoverMarker(inbox: string): Promise<string | null> {
+  try { return (await readFile(inbox + ".handover", "utf8")).split("\n", 1)[0].trim(); } catch { return null; }
+}
+
+const HANDOVER_MAX_HOPS = 1000;
+export async function handoverPath(root: string, name: string): Promise<string[]> {
+  const path = [name];
+  for (let hop = 0; hop < HANDOVER_MAX_HOPS; hop++) {
+    const inbox = consoleInboxPath(root, path.at(-1)!);
+    const next = inbox ? await handoverMarker(inbox) : null;
+    const nextInbox = next ? consoleInboxPath(root, next) : null;
+    if (!next || !nextInbox || path.includes(next) || !(await isFile(nextInbox))) break;
+    path.push(next);
+  }
+  return path;
+}
+
+async function handoverSources(root: string, path: string[]): Promise<string[]> {
+  const to = path.at(-1)!;
+  const sources = new Set(path.slice(0, -1));
+  let files: string[] = [];
+  try { files = await readdir(join(root, "consoles")); } catch {}
+  for (const f of files) {
+    if (!f.endsWith(".md.handover")) continue;
+    const name = f.slice(0, -".md.handover".length);
+    const inbox = consoleInboxPath(root, name);
+    if (inbox && await handoverMarker(inbox) === to) sources.add(name);
+  }
+  sources.delete(to);
+  return [...sources];
+}
+
+function handoverWindowMs(): number {
+  const min = Number(process.env.CHIEF_WAIT_HANDOVER_MIN ?? 60);
+  return (Number.isFinite(min) && min > 0 ? min : 60) * 60_000;
+}
+
+async function writtenAfterRecentMarker(inbox: string, now: number): Promise<boolean> {
+  const [marker, box] = await Promise.all([stat(inbox + ".handover"), stat(inbox)]);
+  return box.isFile() && box.mtimeMs >= marker.mtimeMs && now - marker.mtimeMs < handoverWindowMs();
+}
+
+const CONFIG_AUDIT_BROADCAST = "[config-audit] ";
+
+async function inboxFollowCursor(inbox: string, size: number): Promise<number> {
+  try {
+    const raw = (await readFile(inbox + ".cursor", "utf8")).trim();
+    if (/^(0|[1-9][0-9]{0,14})$/.test(raw) && Number(raw) <= size) return Number(raw);
+  } catch {}
+  return 0;
+}
+
+async function unreadCompleteLines(inbox: string): Promise<{ text: string; end: number } | null> {
+  const buf = await readFile(inbox);
+  const start = await inboxFollowCursor(inbox, buf.length);
+  const end = buf.lastIndexOf(0x0a) + 1;
+  if (end <= start) return null;
+  const lines = buf.subarray(start, end - 1).toString("utf8").split("\n").filter(l => !l.startsWith(CONFIG_AUDIT_BROADCAST));
+  return lines.length ? { text: lines.join("\n"), end } : null;
+}
+
+export async function forwardAfterHandover(root: string, path: string[], now = Date.now()): Promise<void> {
+  const to = path.at(-1)!;
+  const target = consoleInboxPath(root, to);
+  if (!target) return;
+  for (const from of await handoverSources(root, path)) {
+    const inbox = consoleInboxPath(root, from);
+    if (!inbox) continue;
+    try {
+      const unread = await writtenAfterRecentMarker(inbox, now) ? await unreadCompleteLines(inbox) : null;
+      if (!unread) continue;
+      if (!(await appendIfExists(target, unread.text))) return;
+      await atomicWrite(inbox + ".cursor", `${unread.end}\n`);
+    } catch (e) { console.error(`[chief-route] could not forward ${from}'s unread lines to ${to}: ${e}`); }
+  }
+}
+
 // One message = one line, so a `tail -F` Monitor emits one event per message.
 export const foldLine = (text: string): string => text.trim().replace(/\r?\n/g, " ⏎ ");
 
@@ -290,13 +367,18 @@ export async function routeToConsole(
     file = consoleInboxPath(root, name);
   }
   if (!file) return;
+  const addressed = name;
+  const path = await handoverPath(root, name);
+  name = path.at(-1)!;
+  file = consoleInboxPath(root, name)!;
+  await forwardAfterHandover(root, path);
   // Append only to an inbox a chief already armed; never create one, so a typo
   // cannot open a mailbox nobody reads. The append itself is the existence
   // check, no separate existsSync() step left to race.
   const delivered = await appendIfExists(file, `- ${hhmm()} [telegram from=${msg.from} chat=${msg.chat_id}] ${foldLine(text)}`);
   if (!delivered) { await say(`⚠️ no chief "${name}" is listening (it has not armed its inbox) — nothing was sent.`); return; }
   const busy = (await armedConsoles(root)).some(c => c.name === name && c.busy);
-  await say(`→ chief ${name}${busy ? ` — queued, ${BUSY_NOTE}` : ""}`, name);
+  await say(`→ chief ${name}${name !== addressed ? ` (${addressed} handed over)` : ""}${busy ? ` — queued, ${BUSY_NOTE}` : ""}`, name);
 }
 
 function replyPath(root: string, chat: number, message: number): string | null {
