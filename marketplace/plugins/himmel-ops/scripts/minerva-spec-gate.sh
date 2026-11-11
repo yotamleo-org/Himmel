@@ -182,8 +182,11 @@ def current(ref, real, reason):
     path = real(ref["path"])
     if not os.path.isfile(path):
         stop(3, reason)
-    with open(path, "rb") as f:
-        digest = sha256(f.read())
+    try:
+        with open(path, "rb") as f:
+            digest = sha256(f.read())
+    except OSError:
+        stop(3, reason)
     if digest != ref["sha256"]:
         stop(3, reason)
     return {"path": path, "sha256": digest}

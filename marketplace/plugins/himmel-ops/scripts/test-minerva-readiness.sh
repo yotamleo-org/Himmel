@@ -6,7 +6,7 @@
 # calls that real delegate's validate-bundle. The python3 on PATH is a recorder that logs the
 # delegate argv and execs the real interpreter; there is no stub gate or stub validator.
 set -u
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY CLAUDE_PLUGIN_ROOT HIMMEL_REPO
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY CLAUDE_PLUGIN_ROOT HIMMEL_REPO GATE ANCHOR CWD
 
 here="$(cd "$(dirname "$0")" && pwd -P)"
 repo="$(cd "$here/../../../.." && pwd -P)"
@@ -299,6 +299,11 @@ run "$A_SPEC" "$A_ROOT/rel.json"; expect "manifest-relative paths resolve agains
 # ---- stale, missing and mismatched intake
 mkman "$m/stale-src.json" "$A_SPEC" spec 3 "$A_SPEC" - "$A_B" "$A_V" 'm["source_head"]="b"*40'
 run "$A_SPEC" "$m/stale-src.json"; expect "a manifest source_head other than --source-head is stale-source 3" 3 refused stale-source
+if [ "$(id -u)" != 0 ]; then
+  chmod 000 "$A_PLAN"
+  run "$A_SPEC" "$m/r2-good.json"; expect "an unreadable artifact is stale-artifact 3, not a traceback" 3 refused stale-artifact
+  chmod 644 "$A_PLAN"
+fi
 mkman "$m/no-intake.json" "$A_SPEC" spec 3 "$A_SPEC" - "$A_ROOT/absent.json" "$A_V"
 run "$A_SPEC" "$m/no-intake.json"; expect "a missing finding_intake bundle is intake-incomplete 3" 3 refused intake-incomplete
 mkman "$m/no-evidence.json" "$A_SPEC" spec 3 "$A_SPEC" - "$A_B" "$A_V" 'm["dispositions"][0]["evidence_path"]=os.path.join(root,"absent.md")'
