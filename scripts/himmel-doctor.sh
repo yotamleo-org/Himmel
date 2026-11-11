@@ -4936,7 +4936,14 @@ check_c71_verdict_scratch() {
 check_c70_graph_semantic() {
     local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
     local check="${HIMMEL_DOCTOR_GRAPH_CHECK:-$SELF_DIR/graphify/check-graph-freshness.sh}"
-    local slug cadence_out station_last cadence_last
+    local slug cadence_out station_last cadence_last role remedy gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
+    # Only the graph publisher builds this graph's semantic layer; every other station pulls it.
+    role="$(node "$gc" role 2>/dev/null)" || role=""
+    if [ "$role" != publisher ]; then
+        remedy="$(node "$gc" remedy 2>/dev/null)" || remedy=""
+        emit OK C70-graph-semantic "this station is not the graph publisher, so its himmel graph's semantic layer is not built here: ${remedy:-the himmel graph comes from us with each update}"
+        return 0
+    fi
     graph_semantic_station_verdict
     # the semantic cadence merges into its own worktree graph, not the station graph
     slug="$(printf '%s' "$(basename "$REPO_ROOT")" | tr -c 'A-Za-z0-9._-' '-')"
@@ -5527,21 +5534,20 @@ check_c86_morning_report() {
 
 # --- C88-graph-api-optin: the graph cadence's billed API lane needs a station opt-in ---
 # graphmap-cadence.sh renders the semantic runners on the API lane (HIMMEL_API_LANE=on, claude-api) only
-# when graphify.semantic_api_ok is the JSON literal true in ~/.himmel/config.json (semantic_api_opted_in
-# there; a symlink, a malformed file or any other value is off). This row reports that state. WARN when
+# on the graph publisher (graph-choices.js role: graphify.semantic_api_ok is the JSON literal true in
+# ~/.himmel/config.json). This row reports that state and, on any other station, graph-choices.js check's
+# state lines (the graph choice, the last pass, the roster); a config it cannot read is a WARN. WARN when
 # the opt-in is off, a lane-key name has a value in the himmel .env, and an armed runner still bakes
 # HIMMEL_API_LANE=on: that cadence draws the key without an opt-in until it is re-rendered. A baked lane
 # with no key in .env draws nothing (INFO). Key NAMES only: no .env value is printed.
 # Seams: HIMMEL_DOCTOR_ENV_FILE (the .env, as C74), GRAPHMAP_BAT_DIR (the runner dir).
 check_c88_graph_api_optin() {
-    command -v jq >/dev/null 2>&1 || { emit INFO C88-graph-api-optin "jq not on PATH -- API lane opt-in not checked"; return 0; }
-    local cfg="${HOME:-}/.himmel/config.json" envfile bat keys="" lanes="" f optin=0
+    local envfile bat keys="" lanes="" f role state gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
     envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_doctor_env_file)}"
     bat="${GRAPHMAP_BAT_DIR:-${HOME:-}/.claude/graphmap-cadence}"
-    if [ ! -L "${HOME:-}/.himmel" ] && [ ! -L "$cfg" ] && [ -f "$cfg" ] && [ -r "$cfg" ] \
-        && jq -e '.graphify.semantic_api_ok == true' "$cfg" >/dev/null 2>&1; then
-        optin=1
-    fi
+    # The station's graph role and state come from graph-choices.js (role, check), never a jq read.
+    role="$(node "$gc" role 2>/dev/null)" || role=""
+    state="$(node "$gc" check 2>/dev/null | grep -v '^role=' | paste -sd ';' - | sed 's/;/; /g')" || state=""
     if [ -f "$envfile" ] && [ -r "$envfile" ]; then
         keys="$(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
             i = index($0, "="); if (i == 0) next
@@ -5554,16 +5560,19 @@ check_c88_graph_api_optin() {
         [ -f "$f" ] || continue
         grep -qF 'HIMMEL_API_LANE=on' "$f" 2>/dev/null && lanes="${lanes:+$lanes, }$(basename "$f")"
     done
-    if [ "$optin" = 1 ]; then
-        emit OK C88-graph-api-optin "the graph cadence's API lane is opted in (graphify.semantic_api_ok is true in ~/.himmel/config.json)"
+    if [ "$role" = publisher ]; then
+        emit OK C88-graph-api-optin "the graph cadence's API lane is opted in: this station builds and publishes the himmel graph (graphify.semantic_api_ok is true in ~/.himmel/config.json); to leave the role: remove the key, run bash scripts/lib/config-audit.sh accept, then bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed"
     elif [ -n "$lanes" ] && [ -n "$keys" ]; then
-        emit WARN C88-graph-api-optin "the API lane is not opted in, but $keys is in $envfile and an armed runner still bakes HIMMEL_API_LANE=on ($lanes): the cadence draws that key without an opt-in until it is re-rendered" \
-            "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane); a station meant to draw it sets graphify.semantic_api_ok to true in ~/.himmel/config.json first"
-    elif [ -n "$lanes" ]; then
-        emit INFO C88-graph-api-optin "the API lane is not opted in and an armed runner bakes HIMMEL_API_LANE=on ($lanes), but .env holds no API key, so the cadence draws no key from .env (a key in the runner's own environment is not checked)" \
+        emit WARN C88-graph-api-optin "the API lane is not opted in, but $keys is in $envfile and an armed runner still bakes HIMMEL_API_LANE=on ($lanes): the cadence draws that key without an opt-in until it is re-rendered${state:+; graph state: $state}" \
             "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane)"
+    elif [ -n "$lanes" ]; then
+        emit INFO C88-graph-api-optin "the API lane is not opted in and an armed runner bakes HIMMEL_API_LANE=on ($lanes), but .env holds no API key, so the cadence draws no key from .env (a key in the runner's own environment is not checked)${state:+; graph state: $state}" \
+            "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane)"
+    elif [ "$role" != adopter ]; then
+        emit WARN C88-graph-api-optin "the graph config cannot be read, so no semantic pass runs on this station: ${state:-graph-choices.js gave no state}" \
+            "fix ~/.himmel/config.json as the line above says, then bash scripts/lib/config-audit.sh accept"
     else
-        emit OK C88-graph-api-optin "the API lane is not opted in (graphify.semantic_api_ok is not true in ~/.himmel/config.json) and no armed runner carries it${keys:+; $keys in .env is never drawn by the cadence}"
+        emit OK C88-graph-api-optin "the API lane is not opted in (this station is not the graph publisher) and no armed runner carries it${keys:+; $keys in .env is never drawn by the cadence}${state:+; graph state: $state}"
     fi
 }
 

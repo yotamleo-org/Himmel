@@ -417,5 +417,20 @@ printf '{"nodes":[],"built_at_commit":"--all"}\n' > "$OUT/graph.json"
 out=$( bash "$SCRIPT" --out "$OUT" --print-built-at 2>/dev/null ); rc=$?
 [ "$rc" -eq 2 ] && [ -z "$out" ] && pass "T12 a non-SHA built_at_commit prints nothing, rc 2" || fail "T12 invalid (rc=$rc): $out"
 
+# --- T13: the REMEDIATION follows the graph role: main's refresh line on the publisher, and
+# what refreshes the graph on any other station, never a command that refuses there ---
+mkdir -p "$WS/pubhome/.himmel" "$WS/adopterhome"
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$WS/pubhome/.himmel/config.json"
+err=$( HOME="$WS/pubhome" HIMMEL_CONFIG_DIR='' bash "$SCRIPT" --out "$WS/t13/no-such-out" 2>&1 >/dev/null ); rc=$?
+want="  Rebuild with: bash $(cd "$HERE" && pwd)/refresh-graph-map.sh --name <N> --corpus-root <path> --maps-dir <vault>/60-Maps --title \"<Title>\" --slug <slug>"
+[ "$rc" -eq 2 ] && printf '%s\n' "$err" | grep -qxF -- "$want" \
+  && pass "T13 the publisher's REMEDIATION is main's refresh line" || fail "T13 publisher REMEDIATION (rc=$rc): $err"
+err=$( HOME="$WS/adopterhome" HIMMEL_CONFIG_DIR='' bash "$SCRIPT" --out "$WS/t13/no-such-out" 2>&1 >/dev/null ); rc=$?
+case "$err" in
+  *refresh-graph-map.sh*) fail "T13 an adopter's REMEDIATION names refresh-graph-map.sh: $err" ;;
+  *"comes from us"*) pass "T13 an adopter's REMEDIATION says the himmel graph comes from us" ;;
+  *) fail "T13 adopter REMEDIATION (rc=$rc): $err" ;;
+esac
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
