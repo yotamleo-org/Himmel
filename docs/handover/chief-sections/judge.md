@@ -32,10 +32,13 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   written since that dispatch (a reused qid keeps its older verdicts), it writes `JUDGE-OWED <qid> — <description> — brief: <transcript>` into the
   successor's pre-computed ACTION ZERO block. A `judge-ro` call with any other
   description is listed as `JUDGE-OWED unknown (<agent-id>: <description>)`; no
-  owed judge reads `JUDGE-OWED: none`. The successor checks `verdicts/<qid>/`
-  again for a file newer than the `.meta.json` beside the named transcript, then
-  re-dispatches each one still owed from the prompt in that transcript, through
-  the generator with a fresh nonce.
+  owed judge reads `JUDGE-OWED: none`, and a read failure reads
+  `JUDGE-OWED: unavailable (<why>)` (then list them by hand). The successor
+  checks `verdicts/<qid>/` again for a file newer than the `.meta.json` beside
+  the named transcript (a judge still running at `next` may have written it
+  since), then re-dispatches each one still owed from the prompt in that
+  transcript, through the generator with a fresh nonce; an `unknown` line is
+  re-asked by hand.
   Prefer `bash scripts/handover/chief-kit/verdict-go.sh <qid> <GO|NO-GO> <head>
   --model <id> --effort <level>
   --pr <n> --evidence-file <path> --doc <chief doc> --contract <yes|no>`: it runs

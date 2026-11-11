@@ -618,7 +618,7 @@ judges_owed_now() {
     local vdir meta fields atype desc aid qid n=0 parent=""
     case "$sid" in
         [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
-        *) echo "JUDGE-OWED: unavailable (no session id: list this session's judge-ro calls with no verdicts/<qid>/ file by hand)"; return 0 ;;
+        *) echo "JUDGE-OWED: unavailable (no session id)"; return 0 ;;
     esac
     for meta in "$projects"/*/"$sid".jsonl; do
         [ -f "$meta" ] || continue
@@ -2375,15 +2375,7 @@ same batch as step 8, which is one call each:
 $out
 \`\`\`
 
-#### Judges owed: judge-ro calls of the predecessor with no verdict file at \`next\`
-
-For each \`JUDGE-OWED <qid>\` line, look in \`verdicts/<qid>/\` again (a judge still
-running at \`next\` may have written it since); if it still holds no file newer than
-the \`.meta.json\` beside the brief the line names (a reused qid keeps older verdicts),
-re-dispatch the judge from its brief (the first prompt in the transcript the line names) through
-\`gen-judge-brief.py --dispatch-json\`, which mints a fresh nonce. An \`unknown\` line
-is a judge-ro call whose description names no qid: read its brief and re-ask it by hand.
-
+Judges owed (chief-sections/judge.md):
 $(judges_owed_now)" awk '{ print } !d && /^## ACTION ZERO/ { print ""; print ENVIRON["AZ_BLOCK"]; d = 1 }
         END { if (!d) { print ""; print ENVIRON["AZ_BLOCK"] } }' "$doc" > "$doc.az" \
         || { rm -f "$doc.az"; err "could not write the pre-computed ACTION ZERO into $doc"; return 0; }
