@@ -512,5 +512,125 @@ printf '%s\n' "$(printf '%s' "$row1" | jq -c '.meta = "x"')" >"$TMP/rf-bad3.json
 check "the validator rejects any other meta key, a bad refreshed_at and a non-object meta" '! python3 "$LL" validate "$TMP/rf-bad1.jsonl" >/dev/null 2>&1 && ! python3 "$LL" validate "$TMP/rf-bad2.jsonl" >/dev/null 2>&1 && ! python3 "$LL" validate "$TMP/rf-bad3.jsonl" >/dev/null 2>&1'
 check "a normal record also writes the paired snapshot" 'jq -e "select(.run_id == \"$SID\") | (.meta.digest_id | test(\"^[0-9a-f]{32}$\")) and (.meta.tool_failures | type == \"array\")" "$EL" >/dev/null'
 
+echo "17. backfill --refresh keeps each session's attribution, Claude version and effort, and reads the eval ledger once"
+AT_TICKET=HIMMEL-4701
+CV="$TMP/cv"; mkdir -p "$CV/vers" "$CV/bin1" "$CV/bin2" "$CV/cache/launch-logs" "$CV/nocache"
+for v in 1.2.3 4.5.6; do printf '#!/bin/sh\n' >"$CV/vers/$v"; chmod +x "$CV/vers/$v"; done
+ln -s "$CV/vers/1.2.3" "$CV/bin1/claude"; ln -s "$CV/vers/4.5.6" "$CV/bin2/claude"
+printf 'headed-arm-worker: profile=worker-impl lane=native model=m role=worker session=attr-launch launched=2026-10-23T00:00:00Z\n' >"$CV/cache/launch-logs/attr-launch.log"
+cat >"$CV/count.py" <<'EOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+import worker_ledger
+scans = [0]
+real = worker_ledger.eval_runs.scan_rows
+def counted(*a, **k):
+    scans[0] += 1
+    return real(*a, **k)
+worker_ledger.eval_runs.scan_rows = counted
+rc = worker_ledger.main(sys.argv[2:])
+print("scans=%d" % scans[0])
+sys.exit(rc)
+EOF
+setup_attr() {
+    local d="$1" s; shift; mkdir -p "$d/p/-home-x-himmel"
+    for s in "$@"; do
+        { title HIMMEL-4670-N1365-attr "$s"; sed "s#\"sessionId\"#\"cwd\": \"$TMP/w\", \"sessionId\"#" "$FX/classes.jsonl"; } >"$d/p/-home-x-himmel/$s.jsonl"
+        bun "$DIG" --transcript "$d/p/-home-x-himmel/$s.jsonl" --denials-ledger "$FX/classifier-denials.jsonl" >"$d/$s.digest" 2>/dev/null
+        env PATH="$CV/bin1:$PATH" CLAUDE_CODE_EFFORT_LEVEL=medium HIMMELCTL_CACHE_DIR="$CV/cache" python3 "$LL" record --failures-ledger "$d/f.jsonl" --eval-ledger "$d/e.jsonl" --state-dir "$d/s" --digest "$d/$s.digest" --worker N7777 --ticket "$AT_TICKET" --chief demo-chief --pr 4242 --doc himmel/x.md --launch-name attr-launch >/dev/null 2>&1
+        jq -c 'del(.digest_id)' "$d/s/$s.json" >"$d/m2" && mv "$d/m2" "$d/s/$s.json"
+    done
+    jq -c 'del(.meta.digest_id, .meta.tool_failures)' "$d/e.jsonl" >"$d/e2" && mv "$d/e2" "$d/e.jsonl"
+}
+arf() { local d="$1"; shift; env PATH="$CV/bin2:$PATH" CLAUDE_CODE_EFFORT_LEVEL=xhigh HIMMELCTL_CACHE_DIR="$CV/nocache" "$@" backfill --refresh --since 2026-10-01 --projects "$d/p" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$d/f.jsonl" --eval-ledger "$d/e.jsonl" --state-dir "$d/s"; }
+A1=9863b000-0000-4000-8000-000000000001; A2=9863b000-0000-4000-8000-000000000002; A3=9863b000-0000-4000-8000-000000000003
+D="$TMP/at1"; setup_attr "$D" "$A1"
+check "precondition: the original row carries the attribution, the Claude version and the effort" 'jq -e "select(.run_id == \"$A1\") | .lane == \"native\" and (.meta | .leg == \"N7777\" and .ticket == \"$AT_TICKET\" and .console == \"demo-chief\" and .pr == 4242 and .doc == \"himmel/x.md\" and .profile == \"worker-impl\" and .cli_version == \"1.2.3\" and .effort == \"medium\")" "$D/e.jsonl" >/dev/null && [ "$(jq -s "map(select(.session == \"$A1\" and .pr == 4242 and .console == \"demo-chief\" and .ticket == \"$AT_TICKET\" and .leg == \"N7777\")) | length" "$D/f.jsonl")" -gt 0 ]'
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "attribution refresh exits 0: $(head -c 300 "$D/out")"
+check "the refresh ran: one refreshed session, a second eval row" 'grep -q "refreshed=1 unchanged=0" "$D/out" && [ "$(jq -s "[.[] | select(.run_id == \"$A1\")] | length" "$D/e.jsonl")" = 2 ]'
+check "the refreshed eval row keeps leg, ticket, pr, console, doc, profile and lane (the title names N1365)" 'jq -s -e ".[-1] | .lane == \"native\" and (.meta | .leg == \"N7777\" and .ticket == \"$AT_TICKET\" and .console == \"demo-chief\" and .pr == 4242 and .doc == \"himmel/x.md\" and .profile == \"worker-impl\")" "$D/e.jsonl" >/dev/null'
+check "every refreshed failure row keeps leg, console, ticket and pr" 'jq -s -e --arg s "$A1" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N7777\" and .console == \"demo-chief\" and .ticket == \"$AT_TICKET\" and .pr == 4242)" "$D/f.jsonl" >/dev/null'
+check "the refresh under another CLAUDE_CODE_EFFORT_LEVEL and claude version leaves meta.cli_version and meta.effort at the original values" 'jq -s -e ".[-1].meta | .cli_version == \"1.2.3\" and .effort == \"medium\"" "$D/e.jsonl" >/dev/null'
+D="$TMP/at2"; setup_attr "$D" "$A1" "$A2" "$A3"
+arf "$D" python3 -I "$CV/count.py" "$HERE" >"$D/out" 2>&1 || bad "counted refresh exits 0: $(head -c 300 "$D/out")"
+check "one backfill --refresh over three sessions refreshes all three and scans the eval ledger once" 'grep -q "refreshed=3 unchanged=0" "$D/out" && grep -qx "scans=1" "$D/out"'
+cat >"$CV/stale.py" <<'EOF'
+import json
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import worker_ledger
+d, session = sys.argv[2], sys.argv[3]
+evals, fails, state = d + "/e.jsonl", d + "/f.jsonl", d + "/s"
+with open(d + "/" + session + ".digest", encoding="utf-8") as fh:
+    digest = json.load(fh)
+who = {"leg": None, "ticket": None, "console": None, "pr": None, "doc": None, "lane": None, "state_dir": state,
+       "backfill": True, "launch_name": None, "kind": "worker"}
+index = worker_ledger._OkIndex(evals)
+print(worker_ledger.refresh(digest, who, fails, evals, index))
+marker = state + "/" + session + ".json"
+with open(marker, encoding="utf-8") as fh:
+    saved = json.load(fh)
+del saved["digest_id"]
+with open(marker, "w", encoding="utf-8") as fh:
+    json.dump(saved, fh)
+print(worker_ledger.refresh(digest, who, fails, evals, index))
+print("eval_rows=%d" % sum(1 for line in open(evals, encoding="utf-8") if session in line))
+EOF
+D="$TMP/at3"; setup_attr "$D" "$A1"
+env HIMMELCTL_CACHE_DIR="$CV/nocache" python3 -I "$CV/stale.py" "$HERE" "$D" "$A1" >"$D/out" 2>&1
+check "an index built before another writer's eval row does not append the generation a second time" 'grep -qx "eval_rows=2" "$D/out"'
+cat >"$CV/partial.py" <<'EOF'
+import json
+import sys
+sys.path.insert(0, sys.argv[1])
+import worker_ledger
+d, session = sys.argv[2], sys.argv[3]
+evals, fails, state = d + "/e.jsonl", d + "/f.jsonl", d + "/s"
+with open(d + "/" + session + ".digest", encoding="utf-8") as fh:
+    digest = json.load(fh)
+who = {"leg": None, "ticket": None, "console": None, "pr": None, "doc": None, "lane": None, "state_dir": state,
+       "backfill": True, "launch_name": None, "kind": "worker"}
+print(worker_ledger.refresh(digest, who, fails, evals, worker_ledger._OkIndex(evals)))
+with open(evals, "rb") as fh:
+    data = fh.read()
+start = data.rstrip(b"\n").rfind(b"\n") + 1
+cut = start + (len(data) - start) // 2
+with open(evals, "wb") as fh:
+    fh.write(data[:cut])
+index = worker_ledger._OkIndex(evals)
+with open(evals, "ab") as fh:
+    fh.write(data[cut:])
+marker = state + "/" + session + ".json"
+with open(marker, encoding="utf-8") as fh:
+    saved = json.load(fh)
+del saved["digest_id"]
+with open(marker, "w", encoding="utf-8") as fh:
+    json.dump(saved, fh)
+print(worker_ledger.refresh(digest, who, fails, evals, index))
+print("eval_rows=%d" % sum(1 for line in open(evals, encoding="utf-8") if session in line))
+EOF
+D="$TMP/at4"; setup_attr "$D" "$A1"
+env HIMMELCTL_CACHE_DIR="$CV/nocache" python3 -I "$CV/partial.py" "$HERE" "$D" "$A1" >"$D/out" 2>&1
+check "an index built while another writer's row is half appended reads that row whole and appends nothing again" 'grep -qx "eval_rows=2" "$D/out"'
+D="$TMP/at5"; setup_attr "$D" "$A1"
+jq -c '.meta.pr = null' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row without a pr exits 0: $(head -c 300 "$D/out")"
+check "a field the eval row lacks keeps the value its failure rows already carry" 'grep -q "refreshed=1" "$D/out" && jq -s -e --arg s "$A1" "map(select(.session == \$s)) | length > 0 and all(.pr == 4242)" "$D/f.jsonl" >/dev/null'
+D="$TMP/at6"; setup_attr "$D" "$A1"
+jq -c '.meta.leg = null | .meta.ticket = null' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row without a leg or ticket exits 0: $(head -c 300 "$D/out")"
+check "the failure rows' old leg and ticket beat the journal title when the eval row has none" 'grep -q "refreshed=1" "$D/out" && jq -s -e --arg s "$A1" --arg t "$AT_TICKET" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N7777\" and .ticket == \$t)" "$D/f.jsonl" >/dev/null'
+check "and the refreshed eval row takes the same leg and ticket, not the title's" 'jq -s -e --arg t "$AT_TICKET" ".[-1].meta | .leg == \"N7777\" and .ticket == \$t" "$D/e.jsonl" >/dev/null'
+D="$TMP/at7"; setup_attr "$D" "$A1"
+jq -c '.meta.leg = null | .meta.ticket = null' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" HIMMEL_LEDGER_REFRESH_STOP_AFTER=eval python3 -I "$HERE/worker_ledger.py" >"$D/out1" 2>&1
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "replayed refresh exits 0: $(head -c 300 "$D/out")"
+check "a replay after a crash following the eval write keeps the held leg and ticket on the failure rows" 'grep -q "refreshed=1" "$D/out" && jq -s -e --arg s "$A1" --arg t "$AT_TICKET" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N7777\" and .ticket == \$t)" "$D/f.jsonl" >/dev/null'
+D="$TMP/at8"; setup_attr "$D" "$A1"
+jq -c '.meta.leg = "N8888"' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row with another leg exits 0: $(head -c 300 "$D/out")"
+check "the eval row's leg beats the old failure rows' leg on both refreshed rows" 'grep -q "refreshed=1" "$D/out" && jq -s -e ".[-1].meta.leg == \"N8888\"" "$D/e.jsonl" >/dev/null && jq -s -e --arg s "$A1" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N8888\")" "$D/f.jsonl" >/dev/null'
+
 echo "test-worker-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
