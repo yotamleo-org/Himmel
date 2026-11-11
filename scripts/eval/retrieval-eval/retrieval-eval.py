@@ -21,7 +21,7 @@ file set, then counts how sessions really use qmd and graphify.
   run --corpus luna --graph-out SCRATCH ...   the luna arms qmd-hybrid, qmd-lex, graphify-ast
           and fused-no-grep (hybrid + AST, no grep) over a bank of {id, q, gold, source}.
           qmd-hybrid, alone or inside fused-no-grep, is paid and refuses without
-          HIMMEL_BILLED_OK=1; qmd-lex needs QMD_URL on a scratch daemon. A hybrid row whose
+          HIMMEL_BILLED_OK=1; qmd-lex needs QMD_URL on a scratch server. A hybrid row whose
           query failed is `degraded` and cannot enter a ruling. --out and --graph-out stay
           outside every checkout.
   vault-report DIR [--token-ceiling 7161]   per source numbers of a luna run, then the
@@ -695,7 +695,7 @@ def luna_setup(a, arms):
     if "qmd-lex" in arms:
         url = os.environ.get("QMD_URL")
         if not url:
-            raise Refuse("QMD_URL is not set, so the live server would answer: set it to a scratch daemon's URL")
+            raise Refuse("QMD_URL is not set, so the live server would answer: set it to a scratch server's URL")
         refuse_live(url)
     if "graphify-ast" in need:
         if not a.graph_out:

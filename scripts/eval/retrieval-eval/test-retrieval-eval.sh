@@ -991,12 +991,13 @@ eq "luna_arms_listed: a himmel arm under --corpus luna is a usage error that nam
 lr "arms-default" "QMD_URL=$SU" HIMMEL_BILLED_OK=1 --
 eq "luna_arms_listed: with no --arms the run takes all four, and the row records the luna corpus" "0 qmd-hybrid,qmd-lex,graphify-ast,fused-no-grep luna luna" "$? $(py -c 'import json,sys
 c = json.loads(open(sys.argv[1]).readline())["config"]; print(",".join(c["arms"]), c["corpus"], c["collection"])' "$W/ledger-arms-default.jsonl")"
+LEXROW=luna_lex_against_scratch_daemon # t13b-ok: the plan's name for this row
 for u in unset "http://127.0.0.1:8181/mcp" "http://[::1]:8181/mcp"; do
     if [ "$u" = unset ]; then lr "lexlive" -u QMD_URL -- --arms qmd-lex; else lr "lexlive" "QMD_URL=$u" -- --arms qmd-lex; fi
-    eq "luna_lex_against_scratch_daemon: $u is the live daemon, refused with exit 2 before any query" "2 absent absent" "$? $(absent "$W/lqmd-lexlive.log") $(absent "$W/ledger-lexlive.jsonl")"
+    eq "$LEXROW: $u is the live server, refused with exit 2 before any query" "2 absent absent" "$? $(absent "$W/lqmd-lexlive.log") $(absent "$W/ledger-lexlive.jsonl")"
 done
 lr "lex" "QMD_URL=$SU" -- --arms qmd-lex
-eq "luna_lex_against_scratch_daemon: a scratch URL runs the free arm, a lex search only, over the luna collection, with no billed opt-in (two questions, each asked at k and at the evidence depth)" "0 luna lex 4" "$? $(py -c 'import json,sys
+eq "$LEXROW: a scratch URL runs the free arm, a lex search only, over the luna collection, with no billed opt-in (two questions, each asked at k and at the evidence depth)" "0 luna lex 4" "$? $(py -c 'import json,sys
 rows = [json.loads(x) for x in open(sys.argv[1])]; print(rows[0][0][0], ",".join(sorted({t for r in rows for t in r[1]})), len(rows))' "$W/lqmd-lex.log")"
 eq "the luna rows carry the question's source, the corpus and a degraded flag" "qmd direct luna False" "$(py -c 'import json,sys
 r = [json.loads(x) for x in open(sys.argv[1])]; print(r[0]["source"], r[1]["source"], r[0]["corpus"], r[0]["degraded"])' "$W/lout-lex/results.jsonl")"
