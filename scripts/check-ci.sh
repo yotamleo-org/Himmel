@@ -199,7 +199,9 @@ usage: check-ci.sh [<pr-number|branch|url>] [--grace <sec>] [--settle <sec>] [--
 --except-context codeowner-review-gate: that literal only (any other value is exit 64). The context is dropped
           from the required set and from every verdict, the watch is not fail-fast (the gate is red from the PR's open),
           and the exit is decided once every other check has settled. A BLOCKED mergeStateStatus passes only while
-          that context is the one that is not green; BLOCKED for any other reason is still exit 6.
+          that context is not green (BLOCKED with it green, and every other state, is still exit 6). GitHub reports
+          one BLOCKED for every cause, so a non-check cause that sits behind the non-green gate (a required review,
+          deployment or signature rule) cannot be told apart here; GitHub still enforces it at merge.
 run mode: foreground workflow/job wait, no PR merge/review gates or settle.
           0 = success (whole run also skipped/neutral), 1 = failed/cancelled.
           2 = cannot evaluate (including a skipped/neutral --job target).
@@ -1950,6 +1952,7 @@ merge_state_gate() {
         # --except-context: GitHub reports BLOCKED while the excepted gate is not green. By here required_gate
         # has proven every other required context green and review_state_gate has passed, so BLOCKED is excused
         # only when that gate is the one not green; BLOCKED with the gate green, or any other state, is refused below.
+        # GitHub's BLOCKED names no cause, so another non-check cause behind the non-green gate is not seen here.
         if [ "$state" = BLOCKED ] && [ -n "$EXCEPT_CTX" ] && _except_ctx_not_green; then return 0; fi
         tries=$((tries + 1))
         if [ $((SECONDS - start)) -ge "$GRACE" ] || [ "$tries" -ge "$max_tries" ]; then break; fi

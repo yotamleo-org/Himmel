@@ -3290,7 +3290,7 @@ assert_rc 64 "T3.18-d any other value exits 64 (it cannot hide a CI job)"
 assert_verdict 64 "T3.18-d verdict line on the bad value"
 run except-ctx --grace 0 --except-context
 assert_rc 64 "T3.18-e --except-context with no value exits 64"
-# BLOCKED passes only while the excepted gate is the red one: BLOCKED for any other reason is exit 6
+# BLOCKED passes only while the excepted gate is the one not green: BLOCKED with it green is exit 6
 RULES_OVERRIDE="$_exc_rules"; CHECKS_OVERRIDE=$'pass:codeowner-review-gate\npass:unit-tests'; MERGE_STATE_OVERRIDE=BLOCKED
 run except-ctx --grace 0 --except-context "$_gate"
 assert_rc 6 "T3.18-f BLOCKED with the gate green is still exit 6 under the flag"
@@ -3317,6 +3317,12 @@ RULES_OVERRIDE="req:$_gate,unit-tests,shard-1"; CHECKS_OVERRIDE=$'fail:codeowner
 CHECKS_AFTER_OVERRIDE=$'fail:codeowner-review-gate\npass:unit-tests\npass:shard-1'; MERGE_STATE_OVERRIDE=BLOCKED
 run except-ctx --grace 0 --max-wait 30 --except-context "$_gate"
 assert_rc 0 "T3.23-c gate red, another context pending then green: exit 0"
+# the gate itself still pending (its workflow running): the watch is not held on it, gh would wait for it
+# but the early-stop probe reads the rows without it
+export GH_STUB_EXC_SLEEP=30
+RULES_OVERRIDE="$_exc_rules"; CHECKS_OVERRIDE=$'pending:codeowner-review-gate\npass:unit-tests'; MERGE_STATE_OVERRIDE=BLOCKED
+run except-ctx --grace 0 --max-wait 30 --except-context "$_gate"
+assert_rc 0 "T3.23-e the excepted gate pending and every other check green: exit 0, not held on the gate"
 unset GH_STUB_EXC_SLEEP
 # mutation check: a copy that keeps --fail-fast under the flag must fail the pending rows
 _mutant="$SCRIPT_DIR/check-ci.mutant.$$.sh"
@@ -3333,5 +3339,5 @@ if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending con
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 247 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 247"; exit 1; fi
+if [ "$COUNT" -ne 248 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 248"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1
