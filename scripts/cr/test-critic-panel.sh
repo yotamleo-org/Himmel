@@ -1399,6 +1399,8 @@ check "PINREF1: the member sees the ref's head and the --branch name in CR_TARGE
     "$pinref_stamp" "$pr_oid feat/outside-thing"
 pinref_run 2 stdin --head "$pr_oid" --branch feat/outside-thing --pin-ref refs/himmel/outside/7
 check "PINREF2: a ref at --head runs from a checkout on another branch and commit (stdin)" "$pinref_rc" "0"
+check "PINREF2: the critic saw the piped diff of the REF (stdin)" \
+    "$(cat "$PINREF_DIFF_DUMP" 2>/dev/null)" "$(git -C "$PR_REPO" diff "main...$pr_oid")"
 check "PINREF2: ledger rows stamp the ref's head and the --branch name (stdin)" \
     "$(pinref_ledger_is "$pr_oid" feat/outside-thing)" "yes"
 pinref_stamp="$(cat "$PINREF_ENV_DUMP" 2>/dev/null)"  # read-sink-ok: reads the test's own fixture output under its mktemp dir

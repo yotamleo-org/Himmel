@@ -46,6 +46,7 @@ cat > "$A/scripts/cr/critic-panel.sh" <<'STUB'
 #!/usr/bin/env bash
 # accepts: --pin-ref) pins the review to a ref instead of the live checkout
 case " $* " in *" refs/himmel/outside/0..0 "*) echo "critic-panel: REFUSING --pin-ref" >&2; exit 7 ;; esac
+case " $* " in *" --head $STUB_OID --branch feat/outside-thing --pin-ref refs/himmel/outside/7 "*) ;; *) echo "critic-panel stub: unexpected args: $*" >&2; exit 9 ;; esac
 cat > "${STDIN_LOG:-/dev/null}"
 exit 0
 STUB
