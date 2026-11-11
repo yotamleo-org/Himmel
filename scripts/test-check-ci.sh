@@ -3197,6 +3197,7 @@ check_eq "S9-1b refused read token: the rate_limit probe is logged before the --
 _s9_on
 run cr-completed --grace 30
 _s9_off
+assert_rc 0 "S9-1b working read token: the run ends green"
 check_eq "S9-1b working read token: the --watch logs tok=read" "yes" "$([ "$(tok_count '^read pr checks .*--watch')" -ge 1 ] && echo yes || echo no)"
 _s9_main_watch_ok() { if [ "$(tok_count '^main pr checks .*--watch')" -ge 1 ] && [ "$(tok_count '^read pr checks .*--watch')" -eq 0 ]; then echo yes; else echo no; fi; }
 for _s9_rl in 0 not-a-number; do
