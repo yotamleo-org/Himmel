@@ -335,6 +335,29 @@ else
     timeout_run bash "$HELPER" >/dev/null 2>&1; rc=$?
     slept=$(sleeps)
     if [ "$rc" -eq 0 ] && [ -n "$slept" ] && [ "$(fetches)" -ge 1 ]; then pass "8f a green is confirmed on a decide-grade read: a 30 s-old snapshot is not certified"; else fail "8f confirm" "rc=$rc fetches=$(fetches) sleeps=$slept (0 fetches + no sleep = the stale snapshot was certified)"; fi
+
+    # 8g-8k — CHECK_CI_EXCEPT_CONTEXT: one context's row is dropped and a red row no longer ends the watch.
+    gate=codeowner-review-gate
+    new_case
+    printf 'fail\t%s\npass\tunit-tests\n' "$gate" > "$CASE_DIR/rows"
+    CHECK_CI_EXCEPT_CONTEXT=$gate timeout_run bash "$HELPER" > "$CASE_DIR/out" 2>"$CASE_DIR/err"; rc=$?
+    if [ "$rc" -eq 0 ] && grep -q 'All checks were successful' "$CASE_DIR/out"; then pass "8g only the excepted gate red -> rc 0 and gh's green line"; else fail "8g gate only" "rc=$rc out=$(cat "$CASE_DIR/out") err=$(cat "$CASE_DIR/err")"; fi
+    new_case
+    printf 'fail\t%s\npass\tunit-tests\n' "$gate" > "$CASE_DIR/rows"
+    timeout_run bash "$HELPER" > "$CASE_DIR/out" 2>"$CASE_DIR/err"; rc=$?
+    if [ "$rc" -eq 1 ] && grep -q "X.*$gate" "$CASE_DIR/out"; then pass "8h control: without the env the same rows -> rc 1 on the gate"; else fail "8h control" "rc=$rc out=$(cat "$CASE_DIR/out")"; fi
+    new_case
+    printf 'fail\t%s\npending\tunit-tests\n' "$gate" > "$CASE_DIR/rows"; printf 'fail\t%s\npass\tunit-tests\n' "$gate" > "$CASE_DIR/rows.2"
+    CHECK_CI_EXCEPT_CONTEXT=$gate CHECK_CI_CACHE_TTL=1 CHECK_CI_WATCH_INTERVAL=10 timeout_run bash "$HELPER" > "$CASE_DIR/out" 2>"$CASE_DIR/err"; rc=$?
+    if [ "$rc" -eq 0 ] && [ "$(sleeps)" = "10 " ]; then pass "8i gate red, another check pending then green -> it waits one interval, then rc 0"; else fail "8i pending then green" "rc=$rc sleeps=$(sleeps) out=$(cat "$CASE_DIR/out")"; fi
+    new_case
+    printf 'fail\t%s\npending\tunit-tests\n' "$gate" > "$CASE_DIR/rows"; printf 'fail\t%s\nfail\tunit-tests\n' "$gate" > "$CASE_DIR/rows.2"
+    CHECK_CI_EXCEPT_CONTEXT=$gate CHECK_CI_CACHE_TTL=1 CHECK_CI_WATCH_INTERVAL=10 timeout_run bash "$HELPER" > "$CASE_DIR/out" 2>"$CASE_DIR/err"; rc=$?
+    if [ "$rc" -eq 1 ] && grep -q 'X.*unit-tests' "$CASE_DIR/out" && [ "$(grep -c '^X' "$CASE_DIR/out")" -eq 1 ]; then pass "8j gate red, another check pending then red -> rc 1 naming only the other check"; else fail "8j pending then red" "rc=$rc out=$(cat "$CASE_DIR/out")"; fi
+    new_case
+    printf 'fail\t%s\nfail\tshard\npending\tz\n' "$gate" > "$CASE_DIR/rows"; printf 'fail\t%s\nfail\tshard\npass\tz\n' "$gate" > "$CASE_DIR/rows.2"
+    CHECK_CI_EXCEPT_CONTEXT=$gate CHECK_CI_CACHE_TTL=1 CHECK_CI_WATCH_INTERVAL=10 timeout_run bash "$HELPER" > "$CASE_DIR/out" 2>"$CASE_DIR/err"; rc=$?
+    if [ "$rc" -eq 1 ] && [ "$(sleeps)" = "10 " ]; then pass "8k not fail-fast: another red beside a pending check waits one interval for it, then rc 1"; else fail "8k not fail-fast" "rc=$rc sleeps=$(sleeps) out=$(cat "$CASE_DIR/out")"; fi
 fi
 
 # 9 — api-budget.sh

@@ -36,9 +36,10 @@ mkdir -p "$WORK/stub-jira"
 cat > "$WORK/stub-jira/index.js" <<'STUBEOF'
 const a = process.argv.slice(2);
 if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else if (a[0] === 'live-test') process.stdout.write(require('fs').readFileSync(process.env.LT_NONE, 'utf8'));
 else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
 STUBEOF
-export GEN_BRIEFS_JIRA_CLI="$WORK/stub-jira/index.js"
+export GEN_BRIEFS_JIRA_CLI="$WORK/stub-jira/index.js" LT_NONE="$HERE/../../jira/src/fixtures/live-test-none.json"
 
 cat > "$WORK/workers.json" <<'EOF'
 [

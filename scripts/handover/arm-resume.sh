@@ -408,10 +408,10 @@ Optional:
                      opus, sonnet, haiku, or a full model id). Passed
                      through verbatim — no validation against a model
                      list. Omitted defaults to opus for an ordinary
-                     (non-chief) arm (ruling 30); a
+                     (non-chief) arm; a
                      *-chief.md handover keeps the operator's default
-                     model instead (ruling 25 — the chief lane is
-                     ALWAYS Fable). A Fable-family value (matched by
+                     model instead and may pin a Fable-family model.
+                     A Fable-family value (matched by
                      substring, e.g. fable, claude-fable-5) on a
                      non-chief arm is refused (rc=20) unless paired
                      with --fable-ok. Not part of the dedup identity:
@@ -419,15 +419,14 @@ Optional:
                      --model.
   --fable-ok <reason>
                      Justify an explicit Fable-family --model pin on a
-                     non-chief arm (ruling 30). Free
+                     non-chief arm. Free
                      prose, but must not contain a double quote. Ignored
                      (no-op) when --model is absent or not Fable-family,
                      and unnecessary on a *-chief.md handover, which
-                     is always exempt (ruling 25).
+                     is always exempt.
   --context <1m|standard>
-                     Arming-time context-window choice (an
-                     operator ruling that context mode must be armed
-                     explicitly per chief/worker, never inherited from the
+                     Arming-time context-window choice (context mode
+                     must be armed explicitly per chief/worker, never inherited from the
                      user-level model setting: a stray [1m] suffix there
                      drove ~25-35% of the weekly bank). 1m appends the
                      [1m] suffix to --model (silently a no-op on a
@@ -449,8 +448,8 @@ Optional:
                      key names a fence scripts/chief/base-status.sh
                      could not certify clean — PENDING/RED, or the
                      certification itself failed (missing script, gh
-                     query error, truncated list) — (ruling
-                     66) instead of refusing (rc=21). WARNS loudly and
+                     query error, truncated list) — instead of
+                     refusing (rc=21). WARNS loudly and
                      prints the warning text on stderr — paste it into
                      the worker's first message. No-op on a handover with
                      no `fence:` key, or when the fence checks out clean.
@@ -966,15 +965,15 @@ MODEL_REASON=""
 if [ -n "$MODEL" ] && [ "$_arm_model_is_fable" -eq 1 ] && [ "$_arm_is_chief" -eq 0 ] && [ -z "$FABLE_OK" ]; then
     # rc 0-19 are already taken by this script (see the Exit codes table
     # near the top of the file) -- 20 is the first free code.
-    echo "ERR arm-resume: --model $MODEL is Fable-family, and ruling 30 (\"we shouldn't arm fable unless theres a good reason\") refuses arming it unjustified. Pass --fable-ok \"<reason>\" to arm it anyway, or drop --model to get the opus default. *-chief.md handovers are exempt (ruling 25 -- a chief arm may pin Fable)." >&2
+    echo "ERR arm-resume: --model $MODEL is Fable-family, and a non-chief arm may not pin it without a reason. Pass --fable-ok \"<reason>\" to arm it anyway, or drop --model to get the opus default. *-chief.md handovers are exempt: a chief arm may pin Fable." >&2
     exit 20
 elif [ -n "$MODEL" ] && [ "$_arm_model_is_fable" -eq 1 ] && [ "$_arm_is_chief" -eq 1 ]; then
-    MODEL_REASON="model=$MODEL (fable pinned; chief arm -- ruling 25, exempt)"
+    MODEL_REASON="model=$MODEL (fable pinned; chief arm, exempt from --fable-ok)"
 elif [ -n "$MODEL" ] && [ "$_arm_model_is_fable" -eq 1 ]; then
     MODEL_REASON="model=$MODEL (fable pinned; reason: $FABLE_OK)"
 elif [ -z "$MODEL" ] && [ "$_arm_is_chief" -eq 0 ]; then
     MODEL="opus"
-    MODEL_REASON="model=opus (no --model given; non-chief arms default to opus -- ruling 30)"
+    MODEL_REASON="model=opus (no --model given; non-chief arms default to opus)"
 elif [ -z "$MODEL" ] && [ "$_arm_is_chief" -eq 1 ]; then
     MODEL_REASON="model=<operator default> (chief arm, unpinned -- no model flag passed, so the launched claude uses the operator's own default; arm-resume never forces Fable)"
 else
@@ -2832,11 +2831,11 @@ if [ -n "$_fm_fence" ]; then
             {
                 echo "WARN arm-resume: arming on a PROVISIONAL base (--provisional-base-ok) -- fence '$_fm_fence' could not be certified clean:"
                 printf '%s\n' "$_base_out"
-                echo "Paste this warning into the worker's first message (ruling 66): hold fence conclusions until the fix lands, or rebase past it if the after-report comes back red."
+                echo "Paste this warning into the worker's first message: hold fence conclusions until the fix lands, or rebase past it if the after-report comes back red."
             } >&2
         else
             {
-                echo "ERR arm-resume: refusing to arm -- fence '$_fm_fence' could not be certified clean (ruling 66):"
+                echo "ERR arm-resume: refusing to arm -- fence '$_fm_fence' could not be certified clean (a worker is not armed on a fence whose merged PRs have a pending or red after-report):"
                 printf '%s\n' "$_base_out"
                 echo "Pass --provisional-base-ok to arm anyway (prints the same warning for the worker's first message), or wait for the after-report to land / the query to succeed."
             } >&2
