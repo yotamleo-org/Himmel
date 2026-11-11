@@ -46,7 +46,7 @@
 # line with both keys open writes its Jira link `<KEY2> blocks <KEY>` when absent, once per pair.
 # A pair linked, found linked, with a closed key, or refused by the CLI's blocker-version check is
 # recorded and costs no Jira call again; an unread status, a failed call or one cut at the
-# LIVE_STATE_JIRA_TIMEOUT deadline (seconds, default 30) is tried next render.
+# LIVE_STATE_JIRA_TIMEOUT deadline (whole seconds above 0, else 30) is tried next render.
 # LIVE_STATE_JIRA_CMD replaces the jira CLI.
 #
 # Exit: 0 ok; 1 refused (no manifest, no workers: line, new worker without a nonce);
@@ -241,10 +241,15 @@ doc_unlock
 
 DONE_RE='^(Done|Closed|wont do|wont fix|Resolved|In Public)$'
 jira() {
-    local t="${LIVE_STATE_JIRA_TIMEOUT:-30}" common
-    if [ -n "${LIVE_STATE_JIRA_CMD:-}" ]; then timeout "$t" "$LIVE_STATE_JIRA_CMD" "$@" < /dev/null; return; fi
-    common="$(. "$HERE/../../lib/git-clean.sh" && git_env_scrub && git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 2  # swallow-ok: no checkout, no jira CLI: the pair is tried again next render
-    JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-${2%%-*}}" timeout "$t" node "$(dirname "$common")/scripts/jira/dist/index.js" "$@" < /dev/null
+    local t="${LIVE_STATE_JIRA_TIMEOUT:-30}" common cmd
+    case "$t" in '' | *[!0-9]* | 0*) t=30 ;; esac
+    if [ -n "${LIVE_STATE_JIRA_CMD:-}" ]; then
+        cmd=("$LIVE_STATE_JIRA_CMD")
+    else
+        common="$(. "$HERE/../../lib/git-clean.sh" && git_env_scrub && git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 2  # swallow-ok: no checkout, no jira CLI: the pair is tried again next render
+        cmd=(env "JIRA_PROJECT_KEY=${JIRA_PROJECT_KEY:-${2%%-*}}" node "$(dirname "$common")/scripts/jira/dist/index.js")
+    fi
+    timeout -k 5 "$t" "${cmd[@]}" "$@" < /dev/null
 }
 after_pairs="$(awk '
     $0 == "## Live state" { s = 1; next }
