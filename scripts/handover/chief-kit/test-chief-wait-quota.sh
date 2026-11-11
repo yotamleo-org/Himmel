@@ -25,8 +25,6 @@ WORK="$(cd "$WORK" && pwd)"
 trap 'kill $(jobs -p) 2>/dev/null; pkill -f "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/home" "$WORK/tmp" "$WORK/root" "$WORK/acks"
 
-# No ambient token may reach a row: the loader skips a key already set, so a real read token
-# would beat the fixture's.
 unset himmel_github_token_vm2 GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN \
     HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME READY_CHECK_DEADLINE GO_DEADLINE
 
@@ -73,7 +71,6 @@ if [ "$refused" = 1 ]; then
     exit 1
 fi
 case "$*" in "pr checks"*) printf 'pass\n'; exit 0 ;; esac
-# healthy: the ready-pass gh answers; a gh it hands on re-enters here and goes to the final gh
 if [ "${STUB_PASS:-0}" = 1 ]; then exec "$STUB_FINAL_GH" "$@"; fi
 export STUB_PASS=1
 exec "$STUB_NEXT_GH" "$@"
@@ -85,7 +82,6 @@ chmod +x "$FINALBIN/gh"
 printf 'himmel_github_token_vm2=readtok123\n' > "$WORK/env.root"
 mkdir -p "$WORK/envroot"; mv "$WORK/env.root" "$WORK/envroot/.env"
 
-# shellcheck source=scripts/handover/chief-kit/testlib-ready-pass.sh
 . "$HERE/testlib-ready-pass.sh"
 READY_BIN="$WORK/ready-bin"
 ready_pass_bin "$READY_BIN"
@@ -105,8 +101,6 @@ printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/none.sh"
 printf '#!/usr/bin/env bash\nexit 2\n' > "$WORK/budget-off.sh"
 chmod +x "$WORK/off.sh" "$WORK/none.sh"
 printf 'TICK 03:00 hb=1m workers=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip fails=none\n' > "$WORK/tick.line"
-# The tick stub: the real quota refresh (tick.sh runs ghq_refresh first), unless a row froze
-# quota.tsv; tick.fail makes the sample a failed one after the refresh.
 cat > "$WORK/tick.sh" <<EOF
 #!/usr/bin/env bash
 if [ ! -e "$WORK/tick.norefresh" ]; then
@@ -129,13 +123,11 @@ export HOME="$WORK/home" TMPDIR="$WORK/tmp" GH_TOKEN=maintok STUB_READ_TOKEN=rea
 
 mode() { printf '%s\n' "$1" > "$MODE"; }
 now() { date +%s; }
-# fleet <case> <worker label> <bullet>: a fresh inbox and a one-worker manifest; sets I, D, M
 fleet() {
     mkdir -p "$WORK/$1/consoles"; I="$WORK/$1/consoles/c.md"; : > "$I"; : > "$I.announced"
     D="$WORK/$1/worker-$2-x.md"; printf '# worker on branch `docs/x`\n\n## Results\n- 11:00 %s\n' "$3" > "$D"
     M="$WORK/$1/fleet.json"; printf '{"schema":1,"workers":[{"label":"%s","doc":"%s"}]}\n' "$2" "$D" > "$M"
 }
-# marker <name> <first_epoch> [caller] [buckets] [reason] [back_epoch]: a gate's marker, by hand
 marker() {
     mkdir -p "$Q/blocked"
     printf 'repo=o/r\ncaller=%s\nbuckets=%s\nroutes=main,read\nreason=%s\nfirst_epoch=%s\n%s' \
@@ -144,10 +136,7 @@ marker() {
 }
 markers() { local f; for f in "$Q/blocked"/*; do [ -f "$f" ] && printf '%s\n' "${f##*/}"; done | LC_ALL=C sort | paste -sd' ' -; }
 logmark() { wc -l < "$STUB_LOG" | tr -d ' '; }
-# spent_since <mark>: the gh calls since the mark that were not quota probes
 spent_since() { tail -n "+$(( $1 + 1 ))" "$STUB_LOG" | grep -c '^0 ' || true; }
-# sample <inbox> <manifest> <out> [VAR=value...]: one waiter, one sample. rc = the waiter's exit
-# code on a wake, "running" when the sample ended with no wake.
 sample() {
     local i="$1" m="$2" out="$3" n=0; shift 3
     rm -f "$i.wait"
@@ -164,9 +153,6 @@ sample() {
 }
 backdate_digest() { printf '%s\n' "$(( $(now) - 1000 ))" > "$1.wait.housekeeping.since"; }
 
-# --- (i4) the spec row: a refused go.sh wakes the chief once when quota is back -----------
-# RED control (chief-wait.sh before this change): the head stays in readywoke, so the return
-# sample wakes nothing and the marker is never read.
 fleet i4 N1 "READY 77 $SHA GREEN"
 mode healthy
 sample "$I" "$M" "$WORK/i4-1.out"
@@ -193,13 +179,11 @@ check "(i4) the marker is gone" "" "$(markers)"
 check "(i4) no claimed copy is left" "" "$(find "$Q/blocked" -name '.claim*' 2>/dev/null)"
 sample "$I" "$M" "$WORK/i4-5.out"
 check "(i4) no second wake on the next sample" "running" "$rc"
-# every reader of a WAKE ready line still parses the tailed one
 WL="$(grep -m 1 '^WAKE ready' "$WORK/i4-4.out")"
 check "(i4) waiter.md's shape holds before the tail" "yes" "$(printf '%s\n' "${WL% after-quota=*}" | grep -qE '^WAKE ready [0-9]+ [0-9a-f]{40} ready-check=(PASS|FAIL) ci=(GREEN|RED|PENDING|PAUSED) coverage=(PASS|FAIL) disposition=(ok|open:[0-9?]+) out=[^ ]+$' && echo yes)"
 check "(i4) the out= reader gets the file, not the tail" "$I.wait.ready-77" "$(printf '%s\n' "$WL" | sed -n 's/.* out=\([^ ]*\).*/\1/p')"
 check "(i4) judge.md's disposition= reader reads one value" "1" "$(printf '%s\n' "$WL" | grep -oE 'disposition=(ok|open:[0-9?]+)' | grep -c .)"
 
-# --- (own) owner first: a marker 3000 s old, quota returns ---------------------------------
 fleet own-b N2 "LIVE — working"; IB="$I"; MB="$M"
 fleet own-a N1 "READY 77 $SHA GREEN"
 printf '77 %s\n' "$SHA" > "$I.wait.readywoke"
@@ -214,7 +198,6 @@ check "(own) the owner gets the WAKE ready" "WAKE ready 77 $SHA" "$(head -n 1 "$
 check "(own) naming the gate" "after-quota=go.sh" "$(head -n 1 "$WORK/own-a.out" | grep -oE 'after-quota=[^ ]+$')"
 check "(own) the marker is gone" "" "$(markers)"
 
-# --- (unk) a marker with no head (check-ci read the PR, not its head) re-arms the worker's real head
 fleet unk N1 "READY 77 $SHA GREEN"
 printf '77 %s\n' "$SHA" > "$I.wait.readywoke"
 rm -rf "$Q/blocked"; marker "77.unknown" "$(( $(now) - 100 ))" check-ci.sh
@@ -223,10 +206,7 @@ sample "$I" "$M" "$WORK/unk.out"
 check "(unk) the woken head wakes again after quota" "WAKE ready 77 $SHA" "$(head -n 1 "$WORK/unk.out" | cut -d' ' -f1-4)"
 check "(unk) naming the gate" "after-quota=check-ci.sh" "$(head -n 1 "$WORK/unk.out" | grep -oE 'after-quota=[^ ]+$')"
 
-# --- (lock) the claim waits for the writers' lock, so a stamp or a merge cannot resurrect it
-# lock_hold: a writer holding gh-quota.sh's lock until the row kills it (-o: only flock holds it)
 lock_hold() { flock -o "$Q/blocked/.lock" sleep 120 & lpid=$!; sleep 0.3; }  # gnu-ok: Linux-only kit (util-linux flock)
-# lock_waited <pid>: the waiter read its snapshot and waits on the held lock (a `flock -x 9` under it), at most 60 s
 lock_waited() {
     local n=0
     while [ "$n" -lt 600 ]; do
@@ -247,7 +227,6 @@ kill "$lpid" 2>/dev/null; wait "$lpid" 2>/dev/null
 n=0; while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 check "(lock) once it is free the claim goes through, once" "WAKE quota-back 66 $SHA2 caller=go.sh" "$(head -n 1 "$WORK/lock.out")"
-# a gate that refused again while the waiter waited for the lock: the claim sees the new text and leaves it
 rm -rf "$Q/blocked"; marker "66.$SHA2" "$(( $(now) - 5000 ))" go.sh graphql rate-limit "$(( $(now) - 1000 ))"
 lock_hold
 rm -f "$I.wait"
@@ -261,7 +240,6 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 check "(lock) a marker rewritten under the lock is not claimed on the old decision" "" "$(grep '^WAKE' "$WORK/lockchg.out")"
 check "(lock) and it stands, as the gate wrote it" "66.$SHA2:" "$(markers):$(grep '^back_epoch=' "$Q/blocked/66.$SHA2" 2>/dev/null)"
 
-# --- (nonown) another chief's PR: no wake until 900 s after back_epoch, and one claims -----
 rm -rf "$Q/blocked"; marker "66.$SHA2" "$(( $(now) - 5000 ))" go.sh graphql rate-limit "$(( $(now) - 800 ))"
 sample "$IB" "$MB" "$WORK/nonown-1.out" HOUSEKEEPING_DIGEST_SECS=0
 check "(nonown) 800 s after back_epoch: no wake" "running" "$rc"
@@ -286,7 +264,6 @@ kill "$w1" "$w2" 2>/dev/null; wait "$w1" "$w2" 2>/dev/null
 check "(nonown) two waiters past 900 s: exactly one quota-back wake" "1" "$(cat "$WORK/nonown-2.out" "$WORK/nonown-3.out" | grep -c "^WAKE quota-back 66 $SHA2 caller=go.sh\$")"
 check "(nonown) the marker is gone" "" "$(markers)"
 
-# --- (old) a marker 24 h old is dropped with no line -----------------------------------------
 fleet old N3 "LIVE — working"
 rm -rf "$Q/blocked"; marker "55.$SHA2" "$(( $(now) - 86401 ))"
 mode gql-out
@@ -294,7 +271,6 @@ sample "$I" "$M" "$WORK/old.out" HOUSEKEEPING_DIGEST_SECS=0
 check "(old) a 24 h marker wakes nothing" "running" "$rc"
 check "(old) and is deleted" "" "$(markers)"
 
-# --- (other) a branch marker reaches the waiter whose worker names the branch -------------
 fleet other N1 "LIVE — working"
 rm -rf "$Q/blocked"; marker "branch-docs%2Fx.unknown" "$(( $(now) - 100 ))" check-ci.sh
 mode healthy
@@ -311,7 +287,6 @@ check "(other) as quota=unknown" "WAKE quota-back branch-docs/x unknown caller=c
 check "(other) and the step ends the sample on it" "1" "$(grep -c '^WAKE' "$WORK/other-2.out")"
 check "(other) the marker is gone" "" "$(markers)"
 
-# --- (bkt) a marker clears only on its own buckets, read after it was written -------------
 fleet bkt N1 "LIVE — working"
 printf '88 %s\n' "$SHA2" > "$I.wait.readywoke"
 rm -rf "$Q/blocked"; marker "88.$SHA2" "$(( $(now) - 100 ))" check-ci.sh core
@@ -331,7 +306,6 @@ rm -f "$WORK/tick.norefresh"
 sample "$I" "$M" "$WORK/bkt-3.out" HOUSEKEEPING_DIGEST_SECS=0
 check "(bkt) control: a fresh good core reading clears it" "WAKE quota-back 88 $SHA2 caller=check-ci.sh" "$(head -n 1 "$WORK/bkt-3.out")"
 
-# --- (i5) a READY while every GraphQL route is out spends nothing --------------------------
 fleet i5 N1 "READY 77 $SHA GREEN"
 rm -rf "$Q/blocked"
 mode both-out
@@ -354,7 +328,6 @@ done
 check "(i5m) the checks ran on the first sample only (stub log)" "1" "$spent"
 check "(i5m) and the READY stays unspent" "" "$(cat "$I.wait.readywoke" 2>/dev/null)"
 
-# --- (stall) a stalled check: no wake on the first sample, one STALLED wake on the second --
 fleet stall N1 "READY 77 $SHA GREEN"
 rm -rf "$Q/blocked"
 mode hung-after-probe
@@ -368,7 +341,6 @@ check "(stall) recorded" "77 $SHA" "$(cat "$I.wait.readywoke" 2>/dev/null)"
 check "(stall) the count file is gone" "no" "$([ -e "$I.wait.stall-77.$SHA" ] && echo yes || echo no)"
 check "(stall) the stall marker is gone" "" "$(markers)"
 check "(stall) no quota-back line for it" "" "$(grep -h 'quota-back' "$WORK/stall-1.out" "$WORK/stall-2.out" "$I.wait.housekeeping" 2>/dev/null)"
-# a check killed by the waiter's outer timeout (rc 124) is a stall too
 printf '#!/usr/bin/env bash\nsleep 60\n' > "$WORK/ready-check-slow.sh"
 fleet kill N1 "READY 77 $SHA GREEN"
 rm -rf "$Q/blocked"
@@ -378,7 +350,6 @@ check "(kill) a check killed with rc 124: no wake on the first sample" "running"
 sample "$I" "$M" "$WORK/kill-2.out" READY_CHECK_DEADLINE=1 CHIEF_WAIT_READY_CHECK="$WORK/ready-check-slow.sh"
 check "(kill) one STALLED wake on the second" "WAKE ready 77 $SHA ready-check=STALLED" "$(head -n 1 "$WORK/kill-2.out" | cut -d' ' -f1-5)"
 check "(kill) the count file is gone" "no" "$([ -e "$I.wait.stall-77.$SHA" ] && echo yes || echo no)"
-# at the default READY_CHECK_DEADLINE (150) the outer bound is 15 s above it
 REAL_TIMEOUT="$(command -v timeout)"; export REAL_TIMEOUT  # gnu-ok: Linux-only kit
 mkdir -p "$WORK/tbin"
 printf '#!/usr/bin/env bash\ncase " $* " in *ready-check*) printf "%%s\\n" "$3" >> "%s/timeout-bounds" ;; esac\nexec "$REAL_TIMEOUT" "$@"\n' "$WORK" > "$WORK/tbin/timeout"
@@ -388,7 +359,6 @@ fleet bound N1 "READY 77 $SHA GREEN"
 sample "$I" "$M" "$WORK/bound.out" PATH="$WORK/tbin:$PATH" CHIEF_WAIT_READY_CHECK="$WORK/ready-check-fail.sh"
 check "(bound) the outer timeout is READY_CHECK_DEADLINE + 15" "165" "$(head -n 1 "$WORK/timeout-bounds" 2>/dev/null)"
 
-# --- (i6) a READY with read at 300 (under the scan floor) and main at 0 runs its checks ----
 fleet i6 N1 "READY 77 $SHA GREEN"
 rm -rf "$Q/blocked"
 mode i6
@@ -396,7 +366,6 @@ lm=$(logmark)
 sample "$I" "$M" "$WORK/i6.out"
 check "(i6) the checks ran" "yes" "$([ "$(spent_since "$lm")" -gt 0 ] && echo yes)"
 
-# --- (one) one sample runs at most one head's checks --------------------------------------
 mkdir -p "$WORK/one/consoles"; I="$WORK/one/consoles/c.md"; : > "$I"; : > "$I.announced"
 printf '# w\n\n## Results\n- 11:00 READY 77 %s GREEN\n' "$SHA" > "$WORK/one/N1.md"
 printf '# w\n\n## Results\n- 11:00 READY 78 %s GREEN\n' "$SHA2" > "$WORK/one/N2.md"
@@ -412,7 +381,6 @@ for s in 1 2; do
 done
 check "(one) each sample checked one head, the second head on the later sample" " 77 78" "$heads"
 
-# --- (ci) only the CI read refused: ci=PAUSED, recorded ------------------------------------
 fleet ci N1 "READY 77 $SHA GREEN"
 rm -rf "$Q/blocked"
 mode checks-out
@@ -420,7 +388,6 @@ sample "$I" "$M" "$WORK/ci.out"
 check "(ci) a classified CI refusal reads PAUSED" "ci=PAUSED" "$(head -n 1 "$WORK/ci.out" | grep -oE 'ci=[A-Z]+')"
 check "(ci) recorded" "77 $SHA" "$(cat "$I.wait.readywoke" 2>/dev/null)"
 
-# --- (hint) the READY hint survives a failed sample ----------------------------------------
 fleet hint N1 "READY 77 $SHA GREEN"
 printf '77 %s\n' "$SHA" > "$I.wait.readywoke"
 rm -rf "$Q/blocked"; marker "77.$SHA" "$(( $(now) - 100 ))" ready-check.sh
@@ -434,7 +401,6 @@ sample "$I" "$M" "$WORK/hint-2.out"
 check "(hint) the next good sample wakes after-quota" "after-quota=ready-check.sh" "$(head -n 1 "$WORK/hint-2.out" | grep -oE 'after-quota=[^ ]+$')"
 check "(hint) and spends the hint" "no" "$([ -s "$I.wait.readyhint" ] && echo yes || echo no)"
 
-# --- (tg) a Telegram line wakes within the paused-sample bound -----------------------------
 fleet tg N1 "READY 77 $SHA GREEN"
 rm -rf "$Q/blocked"; marker "77.$SHA" "$(( $(now) - 100 ))"
 mode gql-out

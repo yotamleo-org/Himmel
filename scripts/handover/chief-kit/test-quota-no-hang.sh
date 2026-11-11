@@ -498,13 +498,9 @@ drive_chief_wait() {
         [ "$class" = rate ] && scaled=0 && bound=$rb
         [ "$class" = stall ] && [ "$FULL" = 1 ] && scaled=0 && bound=$(full_bound chief-wait.sh "$m")
         ROW_DIR="$cdir/rows/$m"; mkdir -p "$ROW_DIR"
-        # the inbox restarts empty, so its read cursor must too, or the next mode's line reads as already seen
-        # and so does the quota dir: a marker an earlier mode left would wake this one when its quota is healthy
         rm -f "$inbox".wait* "$cdir/h/consoles/c.md.wait"* "$inbox.cursor"; : > "$inbox"; : > "$inbox.announced"
         rm -rf "$cdir/quota/blocked" "$cdir/quota/quota.tsv"
-        # the tick fixture's unwatched worker is its own wake, which would end the run before the Telegram line
         printf 'N9\n' > "$inbox.wait.unwatched"
-        # auto_go off (HIMMEL_FLAG_AUTO_GO below), so the READY takes the waiter's own checked wake, the path these rows judge
         envs=()
         while IFS= read -r l; do envs+=("$l"); done < <(base_env "$cdir" "$m" "$scaled"; printf '%s\n' "$ND_ENV" \
             "CHIEF_WAIT_TICK=$cdir/tick-real.sh" "CHIEF_WAIT_USAGE=$cdir/bank.sh" "CHIEF_WAIT_INTERVAL=1" "CHIEF_WAIT_POLL_SEC=0.2" \
