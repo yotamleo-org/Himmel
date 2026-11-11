@@ -410,27 +410,29 @@ go_written_at() {
     return 0
 }
 
-# go_real_go_time <qid-dir> <head> — the newest written-at of a real GO (no
-# `delta: no-op` line) for <head> in <qid-dir>; nothing when there is none or none
-# carries a stamp. rc 2, the reason on stdout, on a read failure.
+# go_real_go_time <qid-dir> <head> <scope> — the newest written-at of a judged GO for <head>
+# in <qid-dir>: a record whose mac verifies under <scope> and the qid, with no `delta: no-op`
+# line and no `bound-from:` line (a bind is no new judgement, so its own time never outranks a
+# NO-GO). An unsigned record never supplies a time. Nothing when there is none or none carries
+# a stamp. rc 2, the reason on stdout, on a read failure.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_real_go_time() {
-    local LC_ALL=C rf rl t newest="" drc cr=$'\r'
+    local LC_ALL=C rf rl snap name t newest="" qid=${1##*/}
     for rf in "$1"/*.md; do
         [ -f "$rf" ] || continue
-        if ! rl=$(go_verdict_line "$rf"); then
+        if ! go_verdict_snapshot "$rf"; then
             printf 'cannot read the verdict %s\n' "$rf"
             return 2
         fi
+        snap=$GO_VERDICT_SNAP
+        rl=$(printf '%s' "$snap" | go_verdict_line /dev/stdin) || { printf 'cannot read the verdict %s\n' "$rf"; return 2; }
         case "$rl" in '**GO** for head `'"$2"'`'|'**GO** for head `'"$2"'`.') ;; *) continue ;; esac
-        drc=0; grep -qxE "delta: no-op${cr}?" "$rf" 2>/dev/null || drc=$?
-        case "$drc" in
-            0) continue ;;
-            1) ;;
-            *) printf 'cannot read the verdict %s\n' "$rf"; return 2 ;;
-        esac
-        t=$(go_written_at "$rf") || { printf 'cannot read the verdict %s\n' "$rf"; return 2; }
-        if [ -n "$t" ] && { [ -z "$newest" ] || [[ $t > $newest ]]; }; then newest=$t; fi
+        if grep -qE '^(delta: no-op|bound-from: )' <<< "${snap//$'\r'/}"; then continue; fi
+        name=${rf##*/}; name=${name%.md}
+        go_verdict_mac_ok_text "$snap" "$3" "$qid" "$name" || continue
+        t=$(printf '%s\n' "$snap" | awk '{ sub(/\r$/, "") } /^## Verdict[[:space:]]*$/ { exit } /^written-at: / { print substr($0, 13); exit }')
+        [[ $t =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || continue
+        if [ -z "$newest" ] || [[ $t > $newest ]]; then newest=$t; fi
     done
     [ -z "$newest" ] || printf '%s\n' "$newest"
 }
@@ -501,7 +503,7 @@ go_nogo_after() {
 #   run from an adopted repo's checkout).
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_noop_carry() {
-    local chain line why rc root="" rf rl drc real=0 cr=$'\r' cut
+    local chain line why rc root="" rf rl drc real=0 cr=$'\r' cut cscope
     chain=$(go_noop_chain "$1" "$2" "$5") || { printf '%s\n' "$chain"; return 2; }
     while IFS= read -r line; do
         [ -n "$line" ] || continue
@@ -510,7 +512,9 @@ go_noop_carry() {
         # <qid>'s newest real GO no longer stands. Every other head of the chain keeps every NO-GO.
         cut=""
         if [ "${line#* }" = - ]; then
-            cut=$(go_real_go_time "$1/$2" "$root") || { printf '%s\n' "$cut"; return 2; }
+            if cscope=$(go_verdict_scope "$7" "${8:-}"); then
+                cut=$(go_real_go_time "$1/$2" "$root" "$cscope") || { printf '%s\n' "$cut"; return 2; }
+            fi
         fi
         rc=0; why=$(go_nogo_after "$1" "$3" "$4" "$root" "$cut") || rc=$?
         [ "$rc" -eq 0 ] || { printf '%s\n' "$why"; return "$rc"; }

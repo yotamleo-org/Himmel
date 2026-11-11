@@ -831,18 +831,30 @@ rec12t() {  # <verdicts-dir> <qid> <name> <verdict line> <pr> <written-at> [<ext
     printf '# VERDICT %s - judge\n\nwriter-session: s\nwritten-at: %s\n\n## Verdict\n\n%s\n\npr: %s\n%s\n## Evidence checked\n\ne\n' "$2" "$6" "$4" "$5" "${7:-}" > "$1/$2/$3.md"
 }
 T1=2026-11-01T00:00:00Z T2=2026-11-02T00:00:00Z T3=2026-11-03T00:00:00Z
+sign12() {  # <verdicts-dir> <qid> <name> - append write-verdict.sh's mac line, scope s
+    printf 'mac: %s\n' "$(HOME="$PINHOME" bash -c '. "$1"; go_verdict_mac s "$2" "$3" < "$4"' _ "$GO_GATE_SRC" "$2" "$3" "$1/$2/$3.md")" >> "$1/$2/$3.md"
+}
+gt12() {  # <qid-dir> <head> - go_real_go_time under scope s with the pinned key
+    HOME="$PINHOME" gg12 go_real_go_time "$1" "$2" s
+}
 N12="$ROOT/n12g/verdicts"
-rec12t "$N12" J real1 "**GO** for head \`$A12\`." 93 "$T2"
-rec12t "$N12" J real2 "**GO** for head \`$A12\`." 93 "$T1"
-rec12t "$N12" J noop "**GO** for head \`$A12\`." 93 "$T3" "delta: no-op"$'\n'"delta-judged: $P12"
-rec12t "$N12" J other "**GO** for head \`$B12\`." 93 "$T3"
-got=$(gg12 go_real_go_time "$N12/J" "$A12")
-[ "$got" = "0|$T2" ] || fail "12g: go_real_go_time is the newest real GO at the head, a no-op GO and another head's GO never counting: $got"
-got=$(gg12 go_real_go_time "$N12/J" "$S12")
+rec12t "$N12" J real1 "**GO** for head \`$A12\`." 93 "$T2"; sign12 "$N12" J real1
+rec12t "$N12" J real2 "**GO** for head \`$A12\`." 93 "$T1"; sign12 "$N12" J real2
+rec12t "$N12" J noop "**GO** for head \`$A12\`." 93 "$T3" "delta: no-op"$'\n'"delta-judged: $P12"; sign12 "$N12" J noop
+rec12t "$N12" J other "**GO** for head \`$B12\`." 93 "$T3"; sign12 "$N12" J other
+got=$(gt12 "$N12/J" "$A12")
+[ "$got" = "0|$T2" ] || fail "12g: go_real_go_time is the newest signed real GO at the head, a no-op GO and another head's GO never counting: $got"
+got=$(gt12 "$N12/J" "$S12")
 [ "$got" = "0|" ] || fail "12g: go_real_go_time names nothing for a head with no real GO: $got"
-rec12 "$N12" K unstamped "**GO** for head \`$A12\`." 93
-got=$(gg12 go_real_go_time "$N12/K" "$A12")
-[ "$got" = "0|" ] || fail "12g: a real GO with no written-at stamp gives no cutoff: $got"
+rec12t "$N12" J planted "**GO** for head \`$A12\`." 93 "$T3"
+got=$(gt12 "$N12/J" "$A12")
+[ "$got" = "0|$T2" ] || fail "12g 9845-codex-1: an unsigned GO with a later stamp never supplies the cutoff: $got"
+rec12t "$N12" J bound "**GO** for head \`$A12\`." 93 "$T3" "bound-from: real1.md"; sign12 "$N12" J bound
+got=$(gt12 "$N12/J" "$A12")
+[ "$got" = "0|$T2" ] || fail "12g 9845-codex-2: a bound record's own time never supplies the cutoff: $got"
+rec12t "$N12" K unstamped "**GO** for head \`$A12\`." 93 "x"; sign12 "$N12" K unstamped
+got=$(gt12 "$N12/K" "$A12")
+[ "$got" = "0|" ] || fail "12g: a real GO with no valid written-at stamp gives no cutoff: $got"
 cut12() {  # <label> <NO-GO head> <NO-GO written-at, or - for none> <cutoff> <asked head> <want rc>
     local d="$ROOT/c12g-$1/verdicts"
     if [ "$3" = - ]; then rec12 "$d" K judge "**NO-GO** for head \`$2\`." 93

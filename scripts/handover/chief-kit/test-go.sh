@@ -995,6 +995,16 @@ check "9845-c: a NO-GO written at the same second as the real GO still vetoes (e
 VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A29\`." HIMMEL-1-judge-K
 check "9845-d: a NO-GO with no written-at stamp still vetoes (exit 10, no GO)" "$(go29 "$B29")" "10:none"
 rm -f "$V29/K/HIMMEL-1-judge-K.md" "$V29/J/HIMMEL-1-judge-J-t2.md"
+# a bind carries no new judgement: its own (newer) stamp never outranks a NO-GO written after the branch GO it binds
+# shellcheck disable=SC2016  # the backticks are literal verdict-line text
+printf '# VERDICT J - judge\n\nwriter-session: s\nwritten-at: %s\n\n## Verdict\n\n**GO** for head `%s`.\n\nbranch: fix/x\nmodel: claude-opus-5-5\neffort: high\n\nbody\n' "$T1_29" "$A29" > "$V29/J/branch-go.md"
+vsign J "$V29/J/branch-go.md"
+# shellcheck disable=SC2016  # the backticks are literal verdict-line text
+printf '# VERDICT J - bind-pr93-%s\n\nwriter-session: s\nwritten-at: %s\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 93\nbranch: fix/x\nmodel: claude-opus-5-5\neffort: high\nbound-from: branch-go.md\n\nbody\n' "$A29" "$T3_29" "$A29" > "$V29/J/bind-pr93-$A29.md"
+vsign J "$V29/J/bind-pr93-$A29.md"
+VWRITTEN=$T2_29 VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A29\`." HIMMEL-1-judge-K
+check "9845-h: a bound record stamped after K's NO-GO does not outrank it (exit 10, no GO)" "$(go29 "$B29")" "10:none"
+rm -f "$V29/K/HIMMEL-1-judge-K.md" "$V29/J/branch-go.md" "$V29/J/bind-pr93-$A29.md"
 # the root is P: J's newest real GO there is stamped T2, K's NO-GO at the hop A (T1) is not at the root
 VEXTRA=$'delta: no-op\ndelta-judged: '"$P29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$A29\`." "delta-noop-$A29"
 VWRITTEN=$T2_29 verdict "$ROOT29" J "**GO** for head \`$P29\`." HIMMEL-1-judge-J-p
