@@ -1,6 +1,6 @@
 # Optional: enables the `local-headless` scrape backend in harvest-clip-body-batch.py
 # (HIMMEL-4344). Without it the slot is skipped and the chain falls through to jina.
-# Direct pins: scrapling[fetchers]==0.5, markdownify==1.2.3 (the rest is the hashed closure).
+# Direct pins: scrapling[fetchers]==0.5.1, markdownify==1.2.3 (the rest is the hashed closure).
 # Regenerate: uv pip compile <a .in with those two pins> --universal --generate-hashes -o requirements-scrapling.txt
 #   python3 -m venv ~/.himmel/scrapling-venv
 #   ~/.himmel/scrapling-venv/bin/pip install --require-hashes -r requirements-scrapling.txt
@@ -131,9 +131,9 @@ cffi==2.1.1 \
     --hash=sha256:fb92203a88b3d3053034db775110081c49d28be6551923805e039924093761e4 \
     --hash=sha256:fcd22650c908d7b7da162bbfaab594a1227a15d1643a98c68b122ac642fa2264
     # via curl-cffi
-click==8.5.0 \
-    --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360 \
-    --hash=sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34
+click==8.5.1 \
+    --hash=sha256:8bb5376d2006950386f8c6427613334a2acadc5f559cb80e638d00b4df957e37 \
+    --hash=sha256:9bbfada76703fd1d784b83eea012e3e8c6a001a876543ef104fa56aaaeb072b4
     # via
     #   browserforge
     #   scrapling
@@ -174,6 +174,25 @@ curl-cffi==0.17.0 \
     --hash=sha256:f8cf840646d3e57637b8caae7d0d93334dfed0bfbf6f160b36479a7d6069d547 \
     --hash=sha256:fc33ca76371bc96df3c4e8593449a1e0e28086bf8016addb851905090069178c
     # via scrapling
+frostwork==0.2.2 \
+    --hash=sha256:0e4d32156f366b20c7ffafc0f8d4413ddab9a952f6d990b7429810d9f518532b \
+    --hash=sha256:13a84aa5cc734c9f83dad7b4a61e823e91d59acc415255658d629fe8afdefde7 \
+    --hash=sha256:35ca9a828ee8c584bb087457d55cc6306d930d49d0acf28f25dce69aca8b4cd8 \
+    --hash=sha256:3b0314b8d5bb696e268cfceef2e72cbe766874e124bc8cd6ae70f00c6d7b7092 \
+    --hash=sha256:67c5a59aeb88ab27d9381503903ac559abb4f6138e97069af2cf17e03179dfe3 \
+    --hash=sha256:73c2fde0a0a34d58c124de315c6dd1356f42ab1131ac7e494d4678b9d735595e \
+    --hash=sha256:76f27de29a6e1bd903e55e6619b60e905f6f0abf7bbe73a34b022ae96359fa80 \
+    --hash=sha256:7f57a1fc96324ce2bab7a30acf10cfad264688ba65c99eeffaf532c154ec16a2 \
+    --hash=sha256:806ad0ef6ce55cb5fac735adb6022c9a5b513a20587f5e2ddbb99fe7351a4243 \
+    --hash=sha256:98f0a24eaacffddac21abfa0ea060cc170f65cd4570f0c7fbea3eeb11230e643 \
+    --hash=sha256:9bbb7014559b8773271866321f5dd89f36a29c4a90547df080f0013653fd33a3 \
+    --hash=sha256:a4f0956321c95139353916036bbf4a94e4c5d82a43c22833da3d4a05da8a1780 \
+    --hash=sha256:b35c09f5a951cdc4cde831e546db8dbf53050bf4edc2aa266ea3881fb66d4525 \
+    --hash=sha256:c9f0c569d5bb373983286cf47006e0f4ace259482da3a1fc2b611b6f3f38a1d1 \
+    --hash=sha256:da4ac35a703b68a6fd1ad92dba53abeed4d38bcfaa5125b6f7f50b4405de7066 \
+    --hash=sha256:e77620bd1bb4216a0b8ed48b30910aeade21d3a71053d7ceb067ddc8a66aa378 \
+    --hash=sha256:f989422f0e14872dd58081d431d588f55fecf0f0e7faa77a619eb844404bd994
+    # via w3lib
 greenlet==3.5.6 \
     --hash=sha256:0616b8f878098c5681fd8f0dc92d887551717402342a70f0abcbfea5f5ad8a44 \
     --hash=sha256:06c0e933290fba8ffe53ead4ae1b8044b0e9754b75cebf381aa2bc3e50d82fac \
@@ -622,9 +641,9 @@ pyee==13.0.1 \
     # via
     #   patchright
     #   playwright
-scrapling==0.5 \
-    --hash=sha256:366f0ec9f1e7e998900e6c5e3a4063ea34062326394ced64e5c389b690572726 \
-    --hash=sha256:da9dfa45662996a9a62f20a8385314df93309aad330b8bb8b6372c9324938456
+scrapling==0.5.1 \
+    --hash=sha256:210e2b96cf2a67b0bb77e3671b2767bbad4ba41444b9a12adea7fd735b8cabaa \
+    --hash=sha256:c9eb0ef22a05e00e19827a179544fea2bc91b663585f637d428453d3b00ceb17
     # via -r /tmp/claude-1000/-home-overlord-Documents-github-himmel/230c4231-1fff-49ec-b5bb-594f3138d143/scratchpad/scrapling.in
 six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
@@ -644,9 +663,10 @@ typing-extensions==4.16.0 \
     # via
     #   anyio
     #   beautifulsoup4
+    #   frostwork
     #   pyee
     #   scrapling
-w3lib==2.5.0 \
-    --hash=sha256:136fd5edfe64b53b8579838e2a7e803495bbbe6b69ddfaeed3c29a794b44f6ba \
-    --hash=sha256:a7ddf714508ddc1b8563bd19ace2feb28080bbaca39326cbc964359f6754f615
+w3lib==2.6.0 \
+    --hash=sha256:821f78cfdeb9e675c736ffe0b874bd1e50e9e02997e675ce046b373c009f27be \
+    --hash=sha256:e62ce6b7f845b5e8588223d44e64990673a0fefd6815d6b3f2e6d39bf9ef308c
     # via scrapling
