@@ -57,14 +57,20 @@ claim_start() {
     claim_try && return 0
     holder="$(cat "$CLAIM" 2>/dev/null)"  # swallow-ok: a vanished claim reads empty and is taken over below
     proc_has "$holder" graph-pass-detached && return 1
-    # A stale claim is moved aside (atomic: one racer wins the move) and only
-    # discarded when it is the one that was seen; a fresh claim moved by
-    # mistake means another start is running, so this one gives way.
-    mv "$CLAIM" "$CLAIM.stale.$$" 2>/dev/null || return 1  # swallow-ok: losing the move means another start took the claim over
-    taken="$(cat "$CLAIM.stale.$$" 2>/dev/null)"  # swallow-ok: an unreadable moved claim fails the comparison below
-    rm -f "$CLAIM.stale.$$"
-    [ "$taken" = "$holder" ] || return 1
-    claim_try
+    # Taking over a stale claim is one starter at a time (mkdir is atomic and
+    # refuses an existing name): the winner re-reads the claim and replaces it
+    # only if it is still the stale one seen; every other contender gives way.
+    mkdir "$CLAIM.takeover" 2>/dev/null || return 1  # swallow-ok: mkdir refusing means another starter is taking the claim over
+    now="$(cat "$CLAIM" 2>/dev/null)"  # swallow-ok: a vanished claim reads empty, which only matches an empty holder
+    if [ "$now" = "$holder" ]; then
+        rm -f "$CLAIM"
+        claim_try
+        rc=$?
+    else
+        rc=1
+    fi
+    rmdir "$CLAIM.takeover"
+    return "$rc"
 }
 # Only the starter that owns the claim file removes it.
 claim_release() {
@@ -81,7 +87,7 @@ cmd_status() {
 cmd_start() {
     mkdir -p "$STATE_DIR" || return 2
     if ! claim_start; then
-        echo "graph-pass-detached: refused, another start is in progress" >&2
+        echo "graph-pass-detached: refused, another start is in progress (a start killed mid-way leaves $CLAIM*: remove them if no start is running)" >&2
         return 3
     fi
     trap claim_release EXIT

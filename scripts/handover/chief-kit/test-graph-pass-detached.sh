@@ -157,12 +157,15 @@ bash "$SCRIPT" start > "$tmp/d1.out" 2>&1 &
 d1=$!
 bash "$SCRIPT" start > "$tmp/d2.out" 2>&1 &
 d2=$!
+bash "$SCRIPT" start > "$tmp/d3.out" 2>&1 &
+d3=$!
 rd1=0; wait "$d1" || rd1=$?
 rd2=0; wait "$d2" || rd2=$?
+rd3=0; wait "$d3" || rd3=$?
 sleep 0.5
-check "9: two starts over a stale claim launched exactly one pass" "$(wc -l < "$tmp/starts" | tr -d ' ')" 1
-check "9: one start succeeded and the other was refused with rc 3" "$(printf '%s\n' "$rd1" "$rd2" | sort | tr '\n' ,)" "0,3,"
-[ ! -e "$CLAIM" ] && echo "ok - 9: the claim is released once the start is over" || { echo "FAIL - 9: the claim file is left behind"; fails=$((fails+1)); }
+check "9: three starts over a stale claim launched exactly one pass" "$(wc -l < "$tmp/starts" | tr -d ' ')" 1
+check "9: one start succeeded and the others were refused with rc 3" "$(printf '%s\n' "$rd1" "$rd2" "$rd3" | sort | tr '\n' ,)" "0,3,3,"
+[ ! -e "$CLAIM" ] && [ ! -e "$CLAIM.takeover" ] && echo "ok - 9: the claim and the takeover lock are released once the start is over" || { echo "FAIL - 9: a claim file or takeover lock is left behind"; fails=$((fails+1)); }
 pid9="$(state_val "$STATE" pid)"
 [ -n "$pid9" ] && { kill "$pid9" 2>/dev/null; wait_dead "$pid9"; }
 
