@@ -82,7 +82,9 @@ case "$args" in
         # check 19: the run's head_sha (STUB_RUN_HEAD_SHA, default the PR head), through the script's own --jq
         [ -z "${STUB_RUN_SLEEP:-}" ] || sleep "$STUB_RUN_SLEEP"
         id="${args#*/actions/runs/}"; id="${id%% *}"
-        jq -n --argjson id "$id" --arg h "${STUB_RUN_HEAD_SHA:-$STUB_HEAD}" '{id:$id,head_sha:$h,status:"completed",conclusion:"success"}' | jq -r "${args#*--jq }" ;;
+        conc=success
+        for kv in ${STUB_RUN_CONC:-}; do [ "${kv%%=*}" = "$id" ] && conc="${kv#*=}"; done
+        jq -n --argjson id "$id" --arg h "${STUB_RUN_HEAD_SHA:-$STUB_HEAD}" --arg c "$conc" '{id:$id,head_sha:$h,status:"completed",conclusion:$c}' | jq -r "${args#*--jq }" ;;
     "run download "*)
         # check 19: copy STUB_MANIFEST_DIR's artifact dirs into -D <dir>; none = gh's no-artifact reply
         [ -z "${STUB_DL_SLEEP:-}" ] || sleep "$STUB_DL_SLEEP"
@@ -309,7 +311,7 @@ run() {
         STUB_DEFAULT_BRANCH_FAIL="${STUB_DEFAULT_BRANCH_FAIL:-}" \
         STUB_GH_RL="${STUB_GH_RL:-}" HIMMEL_QUOTA_DIR="${RUN_QUOTA_DIR:-$tmp/quota}" \
         STUB_MANIFEST_DIR="${STUB_MANIFEST_DIR:-}" STUB_DL_FAIL="${STUB_DL_FAIL:-}" STUB_DL_SLEEP="${STUB_DL_SLEEP:-}" \
-        STUB_RUN_SLEEP="${STUB_RUN_SLEEP:-}" STUB_RUN_HEAD_SHA="${STUB_RUN_HEAD_SHA:-}" \
+        STUB_RUN_SLEEP="${STUB_RUN_SLEEP:-}" STUB_RUN_HEAD_SHA="${STUB_RUN_HEAD_SHA:-}" STUB_RUN_CONC="${STUB_RUN_CONC:-}" \
         READY_CHECK_ITEM19_BOUND="${READY_CHECK_ITEM19_BOUND:-}" \
         READY_CHECK_FAIL_LEDGER="${READY_CHECK_FAIL_LEDGER:-$tmp/ci-failures.jsonl}" \
         READY_CHECK_ANCHOR="${READY_CHECK_ANCHOR:-$TP_ANCHOR}" \
@@ -4051,7 +4053,7 @@ s17_at() {
     SHA="$keep_sha"; REPO="$keep_repo"; LEDGER="$keep_ledger"
 }
 line17() { printf '%s\n' "$1" | grep -F '] 19. ' || true; }
-s17_clear() { unset S17_RUNBOOK_CMD S17_LP S17_RS S17_ROW_BRANCH S17_ROW_PR S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA READY_CHECK_ITEM19_BOUND; reset_stubs; }
+s17_clear() { unset S17_RUNBOOK_CMD S17_LP S17_RS S17_ROW_BRANCH S17_ROW_PR S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA STUB_RUN_CONC READY_CHECK_ITEM19_BOUND; reset_stubs; }
 
 # T6 / T21: every suite has a ran-0 row in the head's run; the PR touches no plugin file
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
@@ -4177,13 +4179,70 @@ contains "19 T22 ran 00, ran 10, a .bak path: not proof" "$(line17 "$out")" "1 s
 
 # T11-T14b, T16: CI evidence only from the latest SUCCESS aggregator whose run is at the head
 S17_OLDOK=$(s17_agg COMPLETED SUCCESS 2026-11-05T01:00:00Z 554)
-for s17_case in "T11 cancelled after a SUCCESS|$(s17_agg COMPLETED CANCELLED 2026-11-05T02:00:00Z 555)" \
-                "T12 in progress after a SUCCESS|$(s17_agg IN_PROGRESS null 2026-11-05T02:00:00Z 555)"; do
-    s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
-    S17_ROLLUP="[$S17_OLDOK,${s17_case#*|}]"
-    s17_at "$S17_H1"
-    contains "19 ${s17_case%%|*}: no settled CI run" "$(line17 "$out")" "[FAIL] 19. suite evidence: 2 suite(s) proven nowhere: $S17_A (no settled CI run"
-done
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+S17_ROLLUP="[$S17_OLDOK,$(s17_agg IN_PROGRESS null 2026-11-05T02:00:00Z 555)]"
+s17_at "$S17_H1"
+contains "19 T12 in progress after a SUCCESS: no settled CI run" "$(line17 "$out")" "[FAIL] 19. suite evidence: 2 suite(s) proven nowhere: $S17_A (no settled CI run"
+S17_DUP_OK=$(s17_agg COMPLETED SUCCESS 2026-11-11T09:00:05Z 42975581139)
+S17_DUP_CANC=$(s17_agg COMPLETED CANCELLED 2026-11-11T09:00:09Z 42975581119)
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_OK,$S17_DUP_CANC]"
+s17_at "$S17_H1"
+check "19 T11 a CANCELLED run newer than a SUCCESS one: exit 0" "$rc" "0"
+contains "19 T11: reads the SUCCESS run" "$(line17 "$out")" "[PASS] 19. suite evidence: 2 impacted, 2 from CI run 42975581139, 0 local"
+contains "19 T11: the head check runs on the SUCCESS run" "$(cat "$GH_LOG")" "actions/runs/42975581139"
+notcontains "19 T11: the cancelled run is never read" "$(cat "$GH_LOG")" "42975581119"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_CANC,$S17_DUP_OK]"
+s17_at "$S17_H1"
+contains "19 T11b the rollup rows in the other order: same run" "$(line17 "$out")" "[PASS] 19. suite evidence: 2 impacted, 2 from CI run 42975581139, 0 local"
+S17_DUP_OLD=$(s17_agg COMPLETED SUCCESS 2026-11-11T08:00:00Z 42975500000)
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_OLD,$S17_DUP_OK,$S17_DUP_CANC]"
+s17_at "$S17_H1"
+contains "19 T11c two SUCCESS runs and a CANCELLED one: the newer SUCCESS" "$(line17 "$out")" "from CI run 42975581139"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_OK,$S17_DUP_CANC]"; STUB_RUN_HEAD_SHA="$S17_BASE"
+s17_at "$S17_H1"
+contains "19 T11d the SUCCESS run is at another head: FAIL" "$(line17 "$out")" "(no settled CI run (run 42975581139 is not at ${S17_H1:0:7}))"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_OLDOK,$(s17_agg COMPLETED FAILURE 2026-11-05T02:00:00Z 556)]"
+s17_at "$S17_H1"
+contains "19 T11e a real FAILURE after a SUCCESS: still no settled CI run" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): COMPLETED/FAILURE 556))"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$(s17_agg COMPLETED FAILURE 2026-11-05T01:00:00Z 556),$(s17_agg COMPLETED CANCELLED 2026-11-05T02:00:00Z 557)]"
+s17_at "$S17_H1"
+contains "19 T11f FAILURE then CANCELLED: the FAILURE stays the pick" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): COMPLETED/FAILURE 556))"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_CANC,$(s17_agg COMPLETED CANCELLED 2026-11-11T09:00:04Z 42975581100)]"
+s17_at "$S17_H1"
+check "19 T11g every run CANCELLED: exit 1" "$rc" "1"
+contains "19 T11g: no settled CI run, naming the newest cancelled one" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): COMPLETED/CANCELLED 42975581119))"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_OK,$S17_DUP_CANC,$(s17_agg IN_PROGRESS null 2026-11-11T09:10:00Z 42975600000)]"
+s17_at "$S17_H1"
+contains "19 T12b in progress newest after a CANCELLED duplicate: no settled CI run" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): IN_PROGRESS/null 42975600000))"
+S17_LIVE_FAIL=$(s17_agg COMPLETED FAILURE 2026-11-11T06:53:36Z 42975581119)
+S17_LIVE_SHARD=$(s17_agg COMPLETED CANCELLED 2026-11-11T06:53:34Z 42975581119 shell-unit-shard)
+# shellcheck disable=SC2016  # the unevaluated matrix name is literal on purpose
+S17_LIVE_SKIP=$(s17_agg COMPLETED SKIPPED 2026-11-11T06:59:43Z 42975581139 'shell-unit${{ x }} (${{ matrix.os }})')
+S17_LIVE_CONC="42975581119=cancelled 42975581139=success"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_LIVE_SHARD,$S17_LIVE_FAIL,$S17_LIVE_SKIP]"; STUB_RUN_CONC="$S17_LIVE_CONC"
+s17_at "$S17_H1"
+contains "19 T11h a FAILURE row of a cancelled run, the later run's shell-unit skipped: reads the later successful run" "$(line17 "$out")" "[PASS] 19. suite evidence: 2 impacted, 2 from CI run 42975581139, 0 local"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_LIVE_SKIP,$S17_LIVE_FAIL]"; STUB_RUN_CONC="$S17_LIVE_CONC"
+s17_at "$S17_H1"
+contains "19 T11h the rollup rows in the other order: same run" "$(line17 "$out")" "from CI run 42975581139"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_LIVE_FAIL,$S17_LIVE_SKIP]"
+s17_at "$S17_H1"
+contains "19 T11i the same rows, the FAILURE run not cancelled: the FAILURE stays the pick" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): COMPLETED/FAILURE 42975581119))"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_LIVE_FAIL,$S17_LIVE_SKIP]"; STUB_RUN_CONC="42975581119=cancelled 42975581139=failure"
+s17_at "$S17_H1"
+contains "19 T11j the later run did not succeed: the FAILURE stays the pick" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): COMPLETED/FAILURE 42975581119))"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_LIVE_FAIL,$S17_LIVE_SKIP]"; STUB_RUN_CONC="$S17_LIVE_CONC"; STUB_RUN_HEAD_SHA="$S17_BASE"
+s17_at "$S17_H1"
+contains "19 T11k the later run is at another head: the FAILURE stays the pick" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): COMPLETED/FAILURE 42975581119))"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_LIVE_FAIL,$S17_LIVE_SKIP,$(s17_agg IN_PROGRESS null 2026-11-11T07:10:00Z 42975600000)]"; STUB_RUN_CONC="$S17_LIVE_CONC"
+s17_at "$S17_H1"
+contains "19 T11l an in-progress run newer than the cancelled one: not settled" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): IN_PROGRESS/null 42975600000))"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$(s17_agg COMPLETED SUCCESS 2026-11-11T06:00:00Z 42975500000),$S17_LIVE_FAIL,$S17_LIVE_SKIP]"; STUB_RUN_CONC="$S17_LIVE_CONC"
+s17_at "$S17_H1"
+contains "19 T11m an older SUCCESS aggregator row is preferred to the run-level fallback" "$(line17 "$out")" "from CI run 42975500000"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_LIVE_FAIL]"; STUB_RUN_CONC="42975581119=cancelled"
+s17_at "$S17_H1"
+contains "19 T11n a cancelled run's FAILURE and no other run at the head: the FAILURE stays the pick" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): COMPLETED/FAILURE 42975581119))"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
 # shellcheck disable=SC2016  # the unevaluated matrix name is literal on purpose
 S17_ROLLUP="[$(s17_agg COMPLETED SUCCESS 2026-11-05T01:00:00Z 555 'shell-unit (${{ matrix.os }})')]"
