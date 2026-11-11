@@ -919,7 +919,6 @@ check_contains "LAC: injected failure reached the enriched JSONL source" "$lac_l
 check_contains "LAC: injected failure targeted the finding batch destination" "$lac_log" "/.finding-batch.jsonl"
 check_contains "LAC: panel reports failed ledger certification" "$(cat "$tmp/lac-err")" "CR-ledger append failed"
 check "LAC: failed copy writes no finding rows" "$(grep -c '\"kind\":\"finding\"' "$LAC_LEDGER" || true)" "0"
-# Count ledger rows by kind (and optional status / reason).
 ledger_rows() {
     python3 - "$@" <<'PYEOF'
 import json, sys
@@ -936,15 +935,9 @@ for l in open(p):
 print(n)
 PYEOF
 }
-# An uncertified run must not leave a passing avail row behind
-# (ledger-append never downgrades ok -> unavailable, so it has to be written
-# as unavailable in the first place).
 check "HIMMEL-8992 LAC: failed copy leaves no passing avail row" "$(ledger_rows "$LAC_LEDGER" avail ok)" "0"
 check "HIMMEL-8992 LAC: the responders are recorded unavailable (record-failed)" "$(ledger_rows "$LAC_LEDGER" avail unavailable record-failed)" "2"
 
-# LAW: the finding batch write itself fails (ledger-append exits
-# non-zero on `finding`). A pass-through wrapper (LAW2) is the control: the same
-# fixture records its ok rows and its findings.
 LAW_APPEND="$tmp/law-append.sh"
 cat > "$LAW_APPEND" <<LAWEOF
 #!/usr/bin/env bash

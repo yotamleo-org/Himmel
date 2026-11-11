@@ -1247,9 +1247,6 @@ _queue_attempt() {
 
 _append_panel_ledger() {
     _apl_failed=0
-    # Findings are recorded FIRST. ledger-append.sh never downgrades an ok
-    # avail row, so a record failure found after the avail rows were written could not
-    # take their ok back; the avail rows below read _apl_findings_failed instead.
     _apl_findings_failed=0
     # one ledger-append.sh --batch-file call for ALL finding rows
     # instead of one `bash ledger-append.sh finding` invocation per row. Each
@@ -1314,7 +1311,6 @@ _append_panel_ledger() {
         while IFS=$'\034' read -r _apl_model _apl_status _apl_responding _apl_reason _apl_detail; do
             [ -n "$_apl_model" ] || continue
             if [ "$_apl_findings_failed" -eq 1 ] && [ "$_apl_status" = "ok" ]; then
-                # The review could not be recorded: never leave a passing row.
                 _apl_status="unavailable"; _apl_responding=""
                 _apl_reason="record-failed"
                 _apl_detail="finding rows could not be recorded on the CR ledger; this run is not certified"

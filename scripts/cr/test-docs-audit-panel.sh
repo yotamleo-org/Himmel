@@ -59,7 +59,6 @@ STUB_MARKER="$tmp/stub-called"
 STUB="$root/scripts/cr/critic-panel.sh"
 cat > "$STUB" <<'STUBEOF'
 #!/usr/bin/env bash
-# swallow the piped diff, like the real panel does (STUB_STDIN keeps a copy)
 if [ -n "${STUB_STDIN:-}" ]; then cat > "$STUB_STDIN"; else cat >/dev/null; fi
 [ -n "${STUB_MARKER:-}" ] && : > "$STUB_MARKER"
 [ -n "${STUB_ARGS:-}" ] && printf '%s\n' "$*" > "$STUB_ARGS"
@@ -218,9 +217,6 @@ check "$rc" "7" "T3h rc"
 contains "$(cat "$stderr_file")" "docs-audit-panel ABORT - could not fetch origin/main" "T3h names the fetch"
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3h the panel ran on an unfetched base"; fail=1; }
 
-# 3i. A diff base that names no commit aborts at exit 7 and the
-# panel never runs. A repo with only `trunk` has no origin and no main to fall
-# back to, so the base the resolver names does not resolve.
 nobase="$tmp/nobase"
 mkdir -p "$nobase"
 (
@@ -243,9 +239,6 @@ contains "$(cat "$stderr_file")" "docs-audit-panel ABORT - diff base " "T3i name
 contains "$(cat "$stderr_file")" "does not resolve to a commit. Nothing was reviewed and nothing was recorded" "T3i says nothing was recorded"
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3i the panel ran on an unresolvable diff base"; fail=1; }
 
-# 3j. A failed git diff holds the head, naming the hold, and the
-# panel never runs. A head with no common ancestor makes `git diff base...head`
-# fail ("no merge base").
 orphan_head="$(git -C "$repo" -c user.email=t@t -c user.name=t commit-tree "$(git -C "$repo" hash-object -t tree /dev/null)" -m orphan)"
 rm -f "$STUB_MARKER"
 rc=0
@@ -329,9 +322,6 @@ for retry_rc in 2 5 6 1; do
         >"$stdout_file" 2>"$stderr_file"
     if [ "$retry_rc" -eq 1 ]; then
         [ -e "$RTK_MARKER" ] || { echo "FAIL: T7d control: rc=1 must retry through rtk"; fail=1; }
-        # The retry runs exactly this command over exactly this range,
-        # and the panel gets the bytes it returned: a wrong range would mint an ok
-        # row on a diff nobody meant to review.
         check "$(cat "$RTK_MARKER" 2>/dev/null)" "proxy git diff $head_main...$head_feat" "T7d the rtk retry command and range"
         check "$(cat "$tmp/retry-stdin" 2>/dev/null)" "diff --git a/f.txt b/f.txt" "T7d the panel gets the rtk retry's diff"
     else
@@ -339,8 +329,6 @@ for retry_rc in 2 5 6 1; do
     fi
 done
 
-# 7f. Panel exit 5 (the findings could not be recorded, so the
-# panel left no ok row) is named as such, never "all critics failed", and holds.
 set_policy 1
 unset CR_PROFILE 2>/dev/null || true
 export STUB_RC=5 STUB_OUT="should-be-discarded" STUB_ERR="critic-panel.sh: CR-ledger append failed; review output was emitted but this run is NOT certified"
