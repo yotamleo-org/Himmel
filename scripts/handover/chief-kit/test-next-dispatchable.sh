@@ -2687,7 +2687,7 @@ q6run() { # <mode> [extra env...] -- [dispatcher args...]: sets Q6_OUT, Q6_RC, Q
     t0=$(date +%s)
     Q6_OUT="$(env -u himmel_github_token_vm2 PATH="$Q6/realbin:$PATH" HIMMEL_QUOTA_DIR="$Q6Q" GH_READ_ENV_ROOT="$Q6/envroot" GHQ_PROBE_TIMEOUT=2 \
         Q_MODE="$mode" Q_LOG="$Q6/log" NEXT_DISPATCH_MIRROR="$Q6M" NEXT_DISPATCH_GH_CMD="$WORK/gh-q" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-q" \
-        ${envs[@]+"${envs[@]}"} timeout -k 2 40 bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" "$@" 2>/dev/null)"; Q6_RC=$?
+        ${envs[@]+"${envs[@]}"} timeout -k 2 40 bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" "$@" 2>/dev/null)"; Q6_RC=$?  # gnu-ok: the chief kit is Linux-only
     Q6_SECS=$(( $(date +%s) - t0 ))
 }
 q6_paused() { # <row name> <want prefix: quota-pause or gh-stall>: the single pause line, rc 0, nothing else
