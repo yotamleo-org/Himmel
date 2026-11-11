@@ -10,9 +10,8 @@
 // CLI itself reads (.env at the repo root, or JIRA_* env vars) and a prior
 // `npm run build` (the suite drives dist/index.js, the shipped binary).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { LIVE_BODY, liveChildEnv, liveVersionName, resolveLiveProject } from './project-guard.js';
+import { LIVE_BODY, liveVersionName, resolveLiveProject, runJira } from './project-guard.js';
 import { createTeardown } from './teardown.js';
 
 const ENABLED = process.env.JIRA_LIVE_TEST === '1';
@@ -21,12 +20,7 @@ const CLI = fileURLToPath(new URL('../dist/index.js', import.meta.url));
 const CONFIG_DIR = process.env.JIRA_LIVE_CONFIG_DIR ?? '';
 let PROJECT = '';
 
-function jira(...args: string[]): string {
-  return execFileSync('node', [CLI, ...args], {
-    encoding: 'utf8',
-    env: liveChildEnv(process.env, PROJECT, CONFIG_DIR),
-  });
-}
+const jira = (...args: string[]): string => runJira(CLI, CONFIG_DIR, PROJECT, ...args);
 
 interface Issue {
   key: string;
