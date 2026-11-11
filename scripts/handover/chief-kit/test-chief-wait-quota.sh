@@ -214,6 +214,31 @@ check "(own) the owner gets the WAKE ready" "WAKE ready 77 $SHA" "$(head -n 1 "$
 check "(own) naming the gate" "after-quota=go.sh" "$(head -n 1 "$WORK/own-a.out" | grep -oE 'after-quota=[^ ]+$')"
 check "(own) the marker is gone" "" "$(markers)"
 
+# --- (unk) a marker with no head (check-ci read the PR, not its head) re-arms the worker's real head
+fleet unk N1 "READY 77 $SHA GREEN"
+printf '77 %s\n' "$SHA" > "$I.wait.readywoke"
+rm -rf "$Q/blocked"; marker "77.unknown" "$(( $(now) - 100 ))" check-ci.sh
+mode healthy
+sample "$I" "$M" "$WORK/unk.out"
+check "(unk) the woken head wakes again after quota" "WAKE ready 77 $SHA" "$(head -n 1 "$WORK/unk.out" | cut -d' ' -f1-4)"
+check "(unk) naming the gate" "after-quota=check-ci.sh" "$(head -n 1 "$WORK/unk.out" | grep -oE 'after-quota=[^ ]+$')"
+
+# --- (lock) the claim waits for the writers' lock, so a stamp or a merge cannot resurrect it
+fleet lock N2 "LIVE — working"
+rm -rf "$Q/blocked"; marker "66.$SHA2" "$(( $(now) - 5000 ))" go.sh graphql rate-limit "$(( $(now) - 1000 ))"
+flock "$Q/blocked/.lock" sleep 6 &  # gnu-ok: Linux-only kit (util-linux flock)
+lpid=$!
+sleep 0.5
+rm -f "$I.wait"
+( cd "$GATE_REPO" && exec env HOUSEKEEPING_DIGEST_SECS=0 bash "$WAIT" "$I" --workers-from "$M" ) > "$WORK/lock.out" 2>&1 &
+WPID=$!
+sleep 4
+check "(lock) while a writer holds the lock the marker is not claimed" "66.$SHA2" "$(markers)"
+wait "$lpid"
+n=0; while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+check "(lock) once it is free the claim goes through, once" "WAKE quota-back 66 $SHA2 caller=go.sh" "$(head -n 1 "$WORK/lock.out")"
+
 # --- (nonown) another chief's PR: no wake until 900 s after back_epoch, and one claims -----
 rm -rf "$Q/blocked"; marker "66.$SHA2" "$(( $(now) - 5000 ))" go.sh graphql rate-limit "$(( $(now) - 800 ))"
 sample "$IB" "$MB" "$WORK/nonown-1.out" HOUSEKEEPING_DIGEST_SECS=0

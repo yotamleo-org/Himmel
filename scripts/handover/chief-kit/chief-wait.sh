@@ -1968,17 +1968,19 @@ quota_step() {
         if ! quota_owner "$key" "$ref" "$(_ghq_field "$m" repo)"; then
             [ -n "$back" ] && [ $((now - back)) -ge 900 ] || continue
         fi
+        # under the writers' lock, so a stamp or a gate's merge cannot recreate a marker already claimed
         claimed="$quota_blocked/.claim.$$.$name"
-        mv "$m" "$claimed" 2>/dev/null || continue
+        with_lock "$quota_blocked/.lock" mv "$m" "$claimed" 2>/dev/null || continue
         caller="$(_ghq_field "$claimed" caller)"; reason="$(_ghq_field "$claimed" reason)"
         rm -f "$claimed"
         if [ -z "$unknown" ] && [ "$reason" = rate-limit ] && ! auto_go_on && quota_ready_worker "$key" "$ref"; then
-            # the READY path: unspend the head, and ready_wake re-runs its checks and wakes after-quota=
+            # the READY path: unspend the worker's head (a ref of unknown names none), and ready_wake
+            # re-runs its checks and wakes after-quota=
             if [ -s "$ready_woke_file" ]; then
-                awk -v k="$key $ref" '$0 != k' "$ready_woke_file" | atomic_write "$ready_woke_file"
+                awk -v k="$key $rb_head" '$0 != k' "$ready_woke_file" | atomic_write "$ready_woke_file"
             fi
-            ready_hint_drop "$key" "$ref"
-            printf '%s %s %s\n' "$key" "$ref" "${caller:-unknown}" >> "$ready_hint_file"
+            ready_hint_drop "$key" "$rb_head"
+            printf '%s %s %s\n' "$key" "$rb_head" "${caller:-unknown}" >> "$ready_hint_file"
             continue
         fi
         if housekeeping_add quota-back "$(printf '%s' "$key" | sed 's#%2F#/#g') $ref caller=${caller:-unknown}${unknown:+ quota=unknown}"; then
