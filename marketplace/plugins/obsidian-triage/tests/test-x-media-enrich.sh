@@ -1300,6 +1300,8 @@ took=$((SECONDS - t0))
 assert "the rate-limit wait is cut at the time left" ok "$a"
 grep -qF 'x-media-fetch: 1 not started (budget 2s spent' "$tmp/wait.out" && a=ok || a=no
 assert "the clip after a spent wait is counted as not started" ok "$a"
+grep -q '^media_probe_at:' "$VS2/Clippings/s2.md" && a=probed || a=not-probed
+assert "a spent wait ends the run before that clip is probed" not-probed "$a"
 VOK="$tmp/vault-one-video"; make_x_vault "$VOK" 972 "$VIDEO_MEDIA"
 X_MEDIA_BUDGET_S=60 X_TEST_GDL_SLEEP=0 run_tool "$VOK" >"$tmp/one.out" 2>"$tmp/one.err"
 grep -q '^media_enriched_at:' "$VOK/Clippings/clip.md" && a=ok || a=no
