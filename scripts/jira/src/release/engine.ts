@@ -315,9 +315,10 @@ export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]
   operatorFence(ctx);
   if (!o.keys.length) throw new Error('release operator decision: --keys names the exact keys it covers');
   return locked(ctx, (l) => {
-    // A words record for the same decision file, keys, op and versions is the same record: a retry reuses it.
+    // A words record for the same decision file, words, keys, op and versions is the same record: a retry reuses it.
     const again = o.decision_sha256 === undefined ? undefined : l.operator.verified.find((x) => x.kind === 'decision' && x.decision === o.decision
-      && sameKeys(x.keys, o.keys) && x.op === o.op && (x.from_v ?? null) === o.from_v && (x.to_v ?? null) === o.to_v && x.decision_sha256 === o.decision_sha256);
+      && sameKeys(x.keys, o.keys) && x.op === o.op && (x.from_v ?? null) === o.from_v && (x.to_v ?? null) === o.to_v
+      && x.decision_sha256 === o.decision_sha256 && x.verbatim === o.verbatim);
     if (again) return again;
     const placement = placementOf(o);
     const latest = placement === undefined ? new Map<string, RequestRow>() : latestRequests(l.requests);

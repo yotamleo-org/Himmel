@@ -2787,6 +2787,19 @@ describe('a request names the operator\'s words', () => {
     expect(latestOf().filter((r) => r.state === 'open')).toHaveLength(1);
   });
 
+  it('other words from the same file are a new O- row, never the earlier quotation', async () => {
+    await setup();
+    const dir = join(root, 'specs', 'decisions');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'verbatim-decision-9-op.txt'), 'Operator:\n\nApproved one more round of the spike\n');
+    const rec = (words: string) => recordRequestDecision(ctx(), { decision: '9', words, key: 'HIMMEL-1', verb: 'INTAKE', from_v: null, to_v: 'v1' });
+    const first = rec('Approved one more round');
+    const other = rec('Approved one more round of the spike');
+    expect(other.id).not.toBe(first.id);
+    expect(other.verbatim).toBe('Approved one more round of the spike');
+    expect(decisionRows()).toHaveLength(2);
+  });
+
   it('a pending duplicate without evidence.operator is withdrawn and refiled', async () => {
     await setup();
     decisionFile();
