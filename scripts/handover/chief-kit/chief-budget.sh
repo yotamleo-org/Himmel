@@ -33,10 +33,7 @@ num_env() { # <name> <default> - a bad value warns and falls back, never disable
   fi
   printf '%s\n' "$v"
 }
-# Turns and cache-read only stop a runaway chief; context fill ends a normal one. Every
-# hand-over also costs the workers re-accept turns and loses jobs: on 11-10 all 36
-# hand-overs came at 21-38 % fill, each about 72K tokens of re-reading and about 17
-# worker re-accept turns.
+# Turns and cache-read only stop a runaway chief; context fill ends a normal one.
 TURN_BUDGET="$(num_env CHIEF_TURN_BUDGET 400)"
 CR_BUDGET_M="$(num_env CHIEF_CACHE_READ_BUDGET_M 120)"
 FILL_PCT="$(num_env CHIEF_FILL_HANDOVER_PCT 45)"
