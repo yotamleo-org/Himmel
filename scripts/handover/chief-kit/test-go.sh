@@ -82,8 +82,8 @@ contains() { grepq "$2" -F -e "$3" && echo "ok - $1" || { echo "FAIL - $1: outpu
 verdict() {
   local vf="$1/$VSCOPE/verdicts/$2/${4:-HIMMEL-1-judge-$2}.md" vmac
   mkdir -p "$1/$VSCOPE/verdicts/$2"
-  printf '# VERDICT %s - judge\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: %s\n\nreason\n\n## Evidence checked\n\ne\n%s' \
-    "$2" "$3" "${VPR:-83}" "${VEXTRA:-}" > "$vf"
+  printf '# VERDICT %s - judge\n\n%s## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: %s\n\nreason\n\n## Evidence checked\n\ne\n%s' \
+    "$2" "${VWRITTEN:+written-at: $VWRITTEN$'\n\n'}" "$3" "${VPR:-83}" "${VEXTRA:-}" > "$vf"
   # a record counts only with write-verdict.sh's mac (VSIGN=0 models a hand-written one).
   [ "${VSIGN:-1}" = 1 ] || return 0
   vsign "$2" "$vf"
@@ -981,6 +981,55 @@ VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A2
 VEXTRA=$'**GO** for head `'"$B29"$'`.\n' verdict "$ROOT29" J "**GO** for head \`$S29\`." HIMMEL-1-judge-J-s
 check "8732-h: a J record at another head whose body quotes the GO line for B leaves B a no-op, and K's NO-GO at A vetoes it (exit 10, no GO)" "$(go29 "$B29")" "10:none"
 rm -f "$V29/J/HIMMEL-1-judge-J-s.md" "$V29/K/HIMMEL-1-judge-K.md" "$V29/J/delta-noop-$B29.md"
+# 9845: at the chain's root the newest verdict wins. K's NO-GO at A older than J's newest real GO at A
+# no longer vetoes the no-op GO at B; a newer one, a tie, a NO-GO at a hop below the root still do.
+T1_29=2026-11-01T00:00:00Z T2_29=2026-11-02T00:00:00Z T3_29=2026-11-03T00:00:00Z
+VEXTRA=$'delta: no-op\ndelta-judged: '"$A29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$B29\`." "delta-noop-$B29"
+VWRITTEN=$T2_29 verdict "$ROOT29" J "**GO** for head \`$A29\`." HIMMEL-1-judge-J-t2
+VWRITTEN=$T1_29 VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A29\`." HIMMEL-1-judge-K
+check "9845-a: a NO-GO at the root older than the newest real GO at it no longer vetoes the no-op GO" "$(go29 "$B29")" "0:go"
+VWRITTEN=$T3_29 VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A29\`." HIMMEL-1-judge-K
+check "9845-b: a NO-GO at the root newer than the real GO still vetoes (exit 10, no GO)" "$(go29 "$B29")" "10:none"
+VWRITTEN=$T2_29 VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A29\`." HIMMEL-1-judge-K
+check "9845-c: a NO-GO written at the same second as the real GO still vetoes (exit 10, no GO)" "$(go29 "$B29")" "10:none"
+VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A29\`." HIMMEL-1-judge-K
+check "9845-d: a NO-GO with no written-at stamp still vetoes (exit 10, no GO)" "$(go29 "$B29")" "10:none"
+rm -f "$V29/K/HIMMEL-1-judge-K.md" "$V29/J/HIMMEL-1-judge-J-t2.md"
+# a bind carries no new judgement: its own (newer) stamp never outranks a NO-GO written after the branch GO it binds
+# shellcheck disable=SC2016  # the backticks are literal verdict-line text
+printf '# VERDICT J - judge\n\nwriter-session: s\nwritten-at: %s\n\n## Verdict\n\n**GO** for head `%s`.\n\nbranch: fix/x\nmodel: claude-opus-5-5\neffort: high\n\nbody\n' "$T1_29" "$A29" > "$V29/J/branch-go.md"
+vsign J "$V29/J/branch-go.md"
+# shellcheck disable=SC2016  # the backticks are literal verdict-line text
+printf '# VERDICT J - bind-pr93-%s\n\nwriter-session: s\nwritten-at: %s\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 93\nbranch: fix/x\nmodel: claude-opus-5-5\neffort: high\nbound-from: branch-go.md\n\nbody\n' "$A29" "$T3_29" "$A29" > "$V29/J/bind-pr93-$A29.md"
+vsign J "$V29/J/bind-pr93-$A29.md"
+VWRITTEN=$T2_29 VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A29\`." HIMMEL-1-judge-K
+check "9845-h: a bound record stamped after K's NO-GO does not outrank it (exit 10, no GO)" "$(go29 "$B29")" "10:none"
+rm -f "$V29/K/HIMMEL-1-judge-K.md" "$V29/J/branch-go.md" "$V29/J/bind-pr93-$A29.md"
+# the root is P: J's newest real GO there is stamped T2, K's NO-GO at the hop A (T1) is not at the root
+VEXTRA=$'delta: no-op\ndelta-judged: '"$P29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$A29\`." "delta-noop-$A29"
+VWRITTEN=$T2_29 verdict "$ROOT29" J "**GO** for head \`$P29\`." HIMMEL-1-judge-J-p
+VWRITTEN=$T1_29 VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A29\`." HIMMEL-1-judge-K
+VEXTRA=$'delta: no-op\ndelta-judged: '"$A29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$B29\`." "delta-noop-$B29"
+check "9845-e: a NO-GO at a hop below the root is never outranked by the root's GO (exit 10, no GO)" "$(go29 "$B29")" "10:none"
+rm -f "$V29/K/HIMMEL-1-judge-K.md" "$V29/J/HIMMEL-1-judge-J-p.md" "$V29/J/delta-noop-$A29.md" "$V29/J/delta-noop-$B29.md"
+# 9845: a branch GO (branch: and no pr:) is no trust for a PR; write-verdict.sh --bind's record beside it
+# (pr: 93, same head) is, with no second judge. Both records are shaped as the writer emits them.
+mkdir -p "$V29/Q"
+go29q() {  # <head> - go.sh --trust-reviewed Q for PR 93, as go29 does for J
+  local r=0
+  ( cd "$fx29" && READY_STUB_HEAD="$1" HANDOVER_DIR="$ROOT29" bash "$SCRIPT" --trust-reviewed Q 93 "$1" >/dev/null 2>&1 ) || r=$?
+  printf '%s:%s' "$r" "$([ -e "$ROOT29/.locks/go/93.$1" ] && echo go || echo none)"
+  rm -f "$ROOT29/.locks/go/93.$1"
+}
+# shellcheck disable=SC2016  # the backticks are literal verdict-line text
+printf '# VERDICT Q - judge\n\nwriter-session: s\nwritten-at: %s\n\n## Verdict\n\n**GO** for head `%s`.\n\nbranch: fix/x\nmodel: claude-opus-5-5\neffort: high\n\nbody\n' "$T1_29" "$A29" > "$V29/Q/judge.md"
+vsign Q "$V29/Q/judge.md"
+check "9845-f: a branch GO alone (no pr: line) is no trust for PR 93 (exit 5, no GO)" "$(go29q "$A29")" "5:none"
+# shellcheck disable=SC2016  # the backticks are literal verdict-line text
+printf '# VERDICT Q - bind-pr93-%s\n\nwriter-session: s\nwritten-at: %s\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 93\nbranch: fix/x\nmodel: claude-opus-5-5\neffort: high\nbound-from: judge.md\n\nbody\n' "$A29" "$T2_29" "$A29" > "$V29/Q/bind-pr93-$A29.md"
+vsign Q "$V29/Q/bind-pr93-$A29.md"
+check "9845-g: the bound record beside it makes go.sh accept PR 93 at that head with no second judge (exit 0, GO)" "$(go29q "$A29")" "0:go"
+rm -f "$V29/Q/judge.md" "$V29/Q/bind-pr93-$A29.md"
 # B - T adds a trust path, D removes it: the net A..D delta is none, A..T is trust.
 fx29_git checkout -q a29
 printf 't\n' > "$fx29/scripts/ci/t.sh"; fx29_git add -A && fx29_git commit -qm t
