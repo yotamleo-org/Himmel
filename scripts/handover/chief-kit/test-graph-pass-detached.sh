@@ -9,17 +9,13 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/graph-pass-detached-test.XXXXXX")" || { echo "
 tmp="$(cd "$tmp" && pwd)"
 fails=0
 
-# Stops every stub pass this run started, read from starts.all (the rows remove
-# starts between rows, never starts.all). A pid is only signalled while its
-# command line still names this run's stub, so a reused pid is never hit; the
-# stub leads its own session, so its group takes the sleep child with it.
 stop_stubs() {
-    [ -f "$tmp/starts.all" ] || return 0
+    [ -f "$tmp/starts.ever" ] || return 0
     while IFS= read -r p; do
         case "$(ps -p "$p" -o args= 2>/dev/null)" in  # swallow-ok: ps failing means the pid is gone
             *"$tmp/stub-pass.sh"*) kill -- "-$p" 2>/dev/null || kill "$p" 2>/dev/null ;;
         esac
-    done < "$tmp/starts.all"
+    done < "$tmp/starts.ever"
     return 0
 }
 cleanup() {
@@ -42,8 +38,8 @@ wait_dead() { n=0; while alive "$1" && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n+1))
 stub="$tmp/stub-pass.sh"
 cat > "$stub" <<'EOF'
 #!/bin/sh
+echo "$$" >> "$STUB_EVER"
 echo "$$" >> "$STUB_STARTS"
-echo "$$" >> "$STUB_ALL"
 echo "stub pass started"
 dir="${0%/*}"
 i=0
@@ -53,7 +49,7 @@ while [ -d "$dir" ] && [ "$i" -lt "${STUB_MAX:-120}" ]; do sleep 1; i=$((i+1)); 
 EOF
 chmod +x "$stub"
 export STUB_STARTS="$tmp/starts"
-export STUB_ALL="$tmp/starts.all"
+export STUB_EVER="$tmp/starts.ever"
 export GRAPH_PASS_SCRIPT="$stub"
 export GRAPH_PASS_STATE_DIR="$tmp/state"
 export GRAPH_PASS_LOG="$tmp/pass-own.log"
@@ -232,8 +228,8 @@ stop_stubs
 [ -n "$pid13" ] && ! alive "$pid13" && echo "ok - 13: stop_stubs stops a stub whose start was dropped from the per-row file" || { echo "FAIL - 13: stub [$pid13] outlived stop_stubs"; fails=$((fails+1)); }
 
 stubs_alive=0
-if [ -f "$tmp/starts.all" ]; then
-    while IFS= read -r p; do alive "$p" && stubs_alive=$((stubs_alive+1)); done < "$tmp/starts.all"
+if [ -f "$tmp/starts.ever" ]; then
+    while IFS= read -r p; do alive "$p" && stubs_alive=$((stubs_alive+1)); done < "$tmp/starts.ever"
 fi
 check "14: no stub this suite started is still alive" "$stubs_alive" 0
 
