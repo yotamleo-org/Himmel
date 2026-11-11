@@ -374,3 +374,104 @@ describe('a versionless Done close into a frozen release goes through the releas
     expect(intakeRows()).toHaveLength(0);
   });
 });
+
+describe('a Done-category close removes the phase label', () => {
+  const CATEGORY: Record<string, string> = { 'To Do': 'new', 'In Progress': 'indeterminate', Done: 'done', Closed: 'done', 'wont do': 'done' };
+  let labels: string[];
+  let status: string;
+  let failLabelPut: boolean;
+  let errs: string[];
+  let dir: string;
+  const labelPuts = () => mockRequest.mock.calls.filter((c) => c[0] === 'PUT' && (c[2] as { update?: { labels?: unknown } })?.update?.labels);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    errs = [];
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation((s: unknown) => { errs.push(String(s)); });
+    dir = mkdtempSync(join(tmpdir(), 'transition-phase-'));
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(dir, 'admissions-ledger.jsonl'));
+    labels = ['standalone', 'phase:sliced'];
+    status = 'In Progress';
+    failLabelPut = false;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: { update?: { labels?: Array<{ remove?: string }> } }) => {
+      if (method === 'GET' && path.endsWith('/transitions')) return { transitions: LIVE };
+      if (method === 'GET' && path.endsWith('/versions')) return VERSIONS;
+      if (method === 'POST' && path.endsWith('/transitions')) {
+        status = LIVE.find((t) => t.id === (body as unknown as { transition: { id: string } }).transition.id)!.name;
+        return {};
+      }
+      if (method === 'PUT' && body?.update?.labels) {
+        if (failLabelPut) throw new Error('HTTP 400 labels');
+        for (const op of body.update.labels) labels = labels.filter((l) => l !== op.remove);
+        return {};
+      }
+      if (method === 'GET' && path.includes('/issue/')) {
+        return { fields: { fixVersions: [{ name: 'v1.1.3' }], labels: [...labels], status: { name: status, statusCategory: { key: CATEGORY[status] } } } };
+      }
+      return {};
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    process.exitCode = undefined;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a close to Done of a phase:sliced ticket sends the swap to none after the status read-back and exits 0', async () => {
+    await run('HIMMEL-1', 'Done');
+    expect(labelPuts()).toHaveLength(1);
+    expect(labelPuts()[0][2]).toEqual({ update: { labels: [{ remove: 'phase:sliced' }] } });
+    const post = mockRequest.mock.calls.findIndex((c) => c[0] === 'POST');
+    const put = mockRequest.mock.calls.findIndex((c) => c[0] === 'PUT');
+    expect(put).toBeGreaterThan(post);
+    expect(labels).toEqual(['standalone']);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('a close to Closed (statusCategory done) clears the label too', async () => {
+    await run('HIMMEL-1', 'Closed');
+    expect(labelPuts()).toHaveLength(1);
+    expect(labels).toEqual(['standalone']);
+  });
+
+  it('a move to In Progress (statusCategory indeterminate) sends no label update', async () => {
+    status = 'To Do';
+    await run('HIMMEL-1', 'In Progress');
+    expect(labelPuts()).toHaveLength(0);
+  });
+
+  it('a failing label PUT keeps exit 0 and prints the WARN', async () => {
+    failLabelPut = true;
+    await run('HIMMEL-1', 'Done');
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(errs.join('\n')).toMatch(/^WARN HIMMEL-1 closed with phase:sliced still on it \(/m);
+  });
+
+  it('an unstamped close with a failing clear still exits 3 and prints both the FAIL and the WARN line', async () => {
+    writeFileSync(join(dir, 'admissions-ledger.jsonl'), JSON.stringify({ ts: 't', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'deferral', actor: 'a' }) + '\n');
+    const frozen = [
+      { id: '1', name: 'v1.1.2', released: true },
+      { id: '2', name: 'v1.1.3', released: false, description: 'frozen: 2026-10-20\nfrozen-keys: HIMMEL-2' },
+    ];
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+      if (method === 'GET' && path.endsWith('/versions')) return frozen;
+      if (method === 'GET' && path.includes('fields=fixVersions')) return { fields: { fixVersions: [] } };
+      return base(method, path, body);
+    });
+    failLabelPut = true;
+    await run('HIMMEL-1', 'Done');
+    expect(process.exitCode).toBe(3);
+    expect(errs.join('\n')).toMatch(/^FAIL \S+ closed with no fixVersion/m);
+    expect(errs.join('\n')).toMatch(/^WARN HIMMEL-1 closed with phase:sliced still on it/m);
+  });
+
+  it('jira move closes its source through transitionIssue, which prints the same WARN', async () => {
+    const { transitionIssue } = await import('./transition.js');
+    failLabelPut = true;
+    const r = await transitionIssue('HIMMEL-1', 'Done', { version: false });
+    expect(r.phaseLeft).toBe('phase:sliced');
+    expect(errs.join('\n')).toMatch(/^WARN HIMMEL-1 closed with phase:sliced still on it/m);
+  });
+});

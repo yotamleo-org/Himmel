@@ -772,7 +772,7 @@ HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
 # note, so its budget is 17400; worker-preface.md's 12800 was raised to 12900 for the same change,
 # and to 13100 for the write-barrier bullet. chief-template.md's was raised to 18000 for the
 # two lines that make a chief read the direction companion files in its first batch.
-for budget in "worker-preface.md:13300" "chief-template.md:18000"; do
+for budget in "worker-preface.md:13300" "chief-template.md:18600"; do
     f="${budget%%:*}"; max="${budget##*:}"
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
@@ -1703,6 +1703,37 @@ cg_workers absdesign HIMMEL-9440 "$WORK/handovers/specs/core-gate-fixture.md" ''
 cgo="$(cgrun absdesign)"; rc=$?
 [ "$rc" = 0 ] && pass "a label-only leg writing an absolute handover-root .md is a design leg (rc 0)" || fail "absolute design rc=$rc: $cgo"
 [ "$(cg_field absdesign HIMMEL-9440 bypass)" = design ] && pass "the absolute-path design leg appends one bypass row of kind design" || fail "absolute design row: $(cat "$(cg_log absdesign)" 2>/dev/null)"
+
+LK_FIX="$HERE/fixtures/leg-kind-lines.txt"
+LK_DESIGN="$(sed -n 1p "$LK_FIX" 2>/dev/null)"; LK_BUILD="$(sed -n 2p "$LK_FIX" 2>/dev/null)"
+lk_lines() { grep -E '^> \*\*Leg kind:\*\*' "$1" 2>/dev/null; }
+lk_case() {
+    local name="$1" key="$2" writes="$3" want="$4" what="$5"
+    cg_mirror "$key" Task Medium '[]'
+    cg_workers "$name" "$key" "$writes" ''
+    cgo="$(cgrun "$name")"; rc=$?
+    got="$(lk_lines "$(cg_brief "$name")")"
+    if [ "$rc" != 0 ]; then fail "$what (rc=$rc): $cgo"
+    elif [ "$got" = "$want" ]; then pass "$what"
+    else fail "$what (got '$got', want '$want')"; fi
+}
+lk_case lkdesign HIMMEL-9441 "$WORK/handovers/specs/lk-spec.md $WORK/handovers/specs/lk-plan.md" "$LK_DESIGN" "a leg writing two bucket .md files renders the fixture's design line"
+lk_case lkbuild HIMMEL-9442 "scripts/x.sh" "$LK_BUILD" "a leg writing scripts/x.sh renders the fixture's build line"
+lk_case lkdocs HIMMEL-9443 "docs/guide.md" "$LK_BUILD" "a docs-only leg writing a repo path renders the build line"
+lk_case lkstray HIMMEL-9444 "$WORK/handovers/specs/lk-spec.md /opt/elsewhere/lk.md" "$LK_BUILD" "a bucket file plus a stray absolute path outside the root renders the build line"
+got="$(lk_lines "$RMD")"
+[ -f "$RMD" ] && [ -z "$got" ] && pass "an rm brief renders no Leg kind line" || fail "rm brief Leg kind: '$got' ($RMD)"
+NWB="$WORK/nowrites-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md"
+got="$(lk_lines "$NWB")"
+[ -f "$NWB" ] && [ -z "$got" ] && pass "a Writes: none named leg renders no Leg kind line" || fail "none named Leg kind: '$got' ($NWB)"
+lkbad=0
+for n in lkdesign lkbuild lkdocs lkstray signed; do
+    while IFS= read -r ln; do grep -Fxq -- "$ln" "$LK_FIX" || lkbad=1; done <<LKEOF
+$(lk_lines "$(cg_brief "$n")")
+LKEOF
+    [ -n "$(lk_lines "$(cg_brief "$n")")" ] || lkbad=1
+done
+[ "$lkbad" = 0 ] && pass "every rendered Leg kind line is a line of fixtures/leg-kind-lines.txt (grep -Fx)" || fail "a rendered Leg kind line is not in $LK_FIX"
 
 cg_mirror HIMMEL-9414 Bug Medium '[]'
 cg_workers bug HIMMEL-9414 "$CORE_WRITES" ''

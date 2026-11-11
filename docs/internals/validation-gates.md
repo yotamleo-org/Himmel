@@ -292,6 +292,26 @@ reads its lists from the script's own checkout and fails closed when it cannot
 read one. It is outside `--only 7`, and an org-member PR's output is unchanged.
 The operator's GitHub code-owner approval comes last, after item 16 passes.
 
+**Stage 1 writes no record** (16h reads its CodeRabbit half). It is recomputed at the head wherever it is needed: CodeRabbit's
+status is `success` (read in a fresh child with the four `CR_*` pattern overrides unset), no changed
+path is on the lint surface, and `check-ci.sh <n> --max-wait 120 --except-context codeowner-review-gate`
+exits 0 with `CR_APP`, `CR_PROFILE`, `CR_BOT_USER_ID` and `CHECK_CI_DISTINCT_DEADLINE` unset.
+
+**Stage 2 (16i) is the `security-audit` row**, written only by
+`scripts/cr/outside-security-audit.sh --pr <n> --head <40-hex>`, run from the primary checkout. The
+script reads the PR's full diff from its merge base as text (fetched through
+`pr-check-outside.sh --fetch-only`) and runs none of its files. It runs five hard checks: H1 a bidi or
+invisible character on an added line, H2 a git, install or tool-run file, H3 a changed package
+lifecycle script, H4 a lockfile source off the default registry, and H5 a symlink or gitlink. Then it
+makes one codex critic call under `scripts/cr/perspectives/outside-security.md`. The counts come from
+the score row that call wrote. Trust-path hits and binary files are flagged in the report and never
+set the verdict. The verdict is `fail` on any hard hit or a Critical, `flagged` on an Important, a
+dropped citation or critic exit 4, else `pass`. The row carries the hash of a report under
+`<git-common-dir>/outside-audits/`. Exit 0 wrote a row, whatever its verdict; 2 the PR is not open,
+not outside or not at that head; 6 stage 1 is incomplete; 7 no verdict (the fixed 192 KiB cap, a
+critic with no answer, no score row, a trust-path refusal); 8 the head already has a fail row, or an
+ok row under the current perspective. A `fail` is sticky at its head, and no verdict is re-rolled.
+
 **The no-checkout route.** An outside PR is reviewed from its diff at its head, with no checkout
 of its code on the station, so none of its files run there. `scripts/cr/pr-check-outside.sh`
 with `--pr <n> --head <40-hex>` refuses unless the PR is outside, open and at that head, asks
