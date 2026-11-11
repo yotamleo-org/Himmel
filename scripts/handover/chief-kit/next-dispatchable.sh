@@ -239,7 +239,7 @@ rate_limited = []
 timed_out = []
 
 def gh_t(secs):
-    return int(os.environ.get('NEXT_DISPATCH_GH_TIMEOUT') or secs)
+    return int(os.environ.get('NEXT_DISPATCH_GH_TIMEOUT') or 0) or secs
 
 def gh_bucket(argv):
     if len(argv) > 1 and argv[1] == 'api':
