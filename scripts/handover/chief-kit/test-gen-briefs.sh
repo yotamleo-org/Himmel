@@ -2100,6 +2100,10 @@ printf 'not json\n' > "$WORK/lt-junk.json"
 ltmk vjunk ''
 o="$(LT_STUB_FILE="$WORK/lt-junk.json" ltrun vjunk)"; rc=$?
 [ "$rc" = 1 ] && has "I10 a verb answer that does not parse dies like CORE-CHECK-FAILED" "$o" "CORE-CHECK-FAILED jira live-test" || fail "I10 unparseable verb rc=$rc: $o"
+printf '{}\n' > "$WORK/lt-empty.json"
+ltmk vempty ''
+o="$(LT_STUB_FILE="$WORK/lt-empty.json" ltrun vempty)"; rc=$?
+[ "$rc" = 1 ] && has "I10 a verb answer with no test_project field dies like CORE-CHECK-FAILED" "$o" "no test_project field" || fail "I10 empty verb object rc=$rc: $o"
 lacks "I10 control: an unmarked worker with no phrase generates with no Live test line" "$b1" "**Live test:**"
 # shellcheck disable=SC2016  # python source in single quotes
 lt16="$(python3 -I -c '

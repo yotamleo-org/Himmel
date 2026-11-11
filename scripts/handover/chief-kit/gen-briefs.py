@@ -600,7 +600,7 @@ def live_test_info(label):
                 info = json.loads(r.stdout)
             except ValueError:
                 why = 'its output is not JSON: %s' % r.stdout.strip()[:200]
-            if info is not None and not (isinstance(info, dict) and isinstance(info.get('test_project'), (str, type(None)))):
+            if info is not None and not (isinstance(info, dict) and 'test_project' in info and isinstance(info['test_project'], (str, type(None)))):
                 info, why = None, 'its output has no test_project field: %s' % r.stdout.strip()[:200]
         elif r is not None:
             why = 'it exited %d: %s' % (r.returncode, (r.stderr or r.stdout).strip()[:300])
