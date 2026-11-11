@@ -1890,7 +1890,7 @@ cmd_arm() {
         if [ "$AST_ONLY" -eq 1 ]; then
             semantic_lines="$luna_line"
         else
-            semantic_lines="  $TASK_LUNA       weekly (dow $WEEKLY_DAY_CRON) $LUNA_TIME   -> refresh-graph-map luna (semantic, $BACKEND)"
+            semantic_lines="  $TASK_LUNA       weekly (dow $WEEKLY_DAY_CRON) $LUNA_TIME   -> refresh-graph-map luna (semantic, $LUNA_MAP_BACKEND)"
         fi
         ast_lines="  $TASK_AST_LUNA    daily at $AST_LUNA_TIME   -> graphify update luna (structural, free)
   himmel rows: untouched by --luna-only (see \`status\`)"

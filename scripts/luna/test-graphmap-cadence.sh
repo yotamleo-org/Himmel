@@ -479,6 +479,7 @@ echo "TEST: cron arm installs entries with defaults, preserves unrelated lines"
 printf '5 5 * * * /usr/bin/true # keep-me\n' > "$CSTATE/crontab"
 out=$(arm_full run_cron arm --vault "$VAULT")
 assert_contains "cron arm banner" "GRAPHMAP CADENCE ARMED" "$out"
+assert_contains "luna-only banner names the luna map backend" "refresh-graph-map luna (semantic, claude-cli)" "$out"
 tab=$(cat "$CSTATE/crontab" 2>/dev/null || echo MISSING)
 assert_contains "weekly luna entry (Sunday) 13:00"   "00 13 * * 0" "$tab"
 # The himmel semantic pass runs daily; the luna one stays weekly.
