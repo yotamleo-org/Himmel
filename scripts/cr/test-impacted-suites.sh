@@ -893,8 +893,6 @@ for s in $cmo_cmt; do grepq "$out" -Fx "scripts/$s" || all_listed=0; done
 if [ "$all_listed" -eq 1 ] && [ -z "$err" ]; then pass "30b the plain listing still names every comment-only suite and prints nothing to stderr"; else fail "30b plain listing narrowed: err=$err out=$out"; fi
 out="$(run_is "$range" --shell)"
 if grepq "$out" -Fx 'scripts/test-cmo-hash.sh' && grepq "$out" -Fx 'scripts/test-cmo-after-hd.sh' && ! grepq "$out" -F '.test.'; then pass "30b --shell (what CI selects from) still lists a comment-only suite --check drops"; else fail "30b --shell narrowed: $out"; fi
-# --- 9901. --record keeps the verdicts it was given for a suite it dropped as comment-only
-# (ready-check item 19 lists every suite, so the row must hold their proof).
 REC_LEDGER="$(git -C "$FX" rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
 rec_head="${range##*..}"
 git -C "$FX" update-ref refs/remotes/origin/main "${range%%..*}"
