@@ -22,10 +22,10 @@
 # done rulings leave the block; their files and the companion files stay). Never drops
 # what it cannot find: with no ledger, or no pointer line (the companions then may not hold
 # the block's full text), the block is printed unchanged; a ruling line naming a number
-# the ledger lacks, or naming none, is kept as it is. The rendered index is re-rendered
-# from the ledger on every run. Its lines are cut to fit CHIEF_DIRECTION_BUDGET_BYTES
-# (default 12000), never below 40 bytes of the one line. Exit 3, printing nothing, on an
-# unreadable ledger row.
+# the ledger lacks, a range over 50 numbers or a reversed one, or no number, is kept as it
+# is. The rendered index is re-rendered from the ledger on every run. Its lines are cut to
+# fit CHIEF_DIRECTION_BUDGET_BYTES (default 12000), never below 40 bytes of the one line.
+# Exit 3, printing nothing, on a ledger row that is not JSON or lacks a field.
 #
 # Platform guard: bash 3.2+ and python3; same scope as chief.sh.
 set -uo pipefail
@@ -72,9 +72,14 @@ def load():
                 continue
             try:
                 r = json.loads(raw)
-                rows[int(r["id"])] = r
-            except (ValueError, KeyError, TypeError):
-                die("%s line %d is not a ledger row; repair it" % (LEDGER, k), 3)
+                ok = (type(r["id"]) is int and r["id"] >= 0 and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", r["date"])
+                      and r["line"].strip() and "\n" not in r["line"] and r["path"].strip()
+                      and re.fullmatch(r"in-force|done|superseded-by [0-9]+", r["status"]))
+            except (ValueError, KeyError, TypeError, AttributeError):
+                ok = False
+            if not ok:
+                die("%s line %d is not a whole ledger row (id, date, line, status, path); repair it" % (LEDGER, k), 3)
+            rows[r["id"]] = r
     return rows
 
 if verb == "record":
@@ -123,7 +128,9 @@ def numbers(head):
         toks, i = re.findall(r"\d+|to|-|–", m.group(1)), 0
         while i < len(toks):
             if toks[i].isdigit():
-                if i + 2 < len(toks) and toks[i + 1] in ("to", "-", "–") and toks[i + 2].isdigit() and 0 <= int(toks[i + 2]) - int(toks[i]) <= 50:
+                if i + 2 < len(toks) and toks[i + 1] in ("to", "-", "–") and toks[i + 2].isdigit():
+                    if not 0 <= int(toks[i + 2]) - int(toks[i]) <= 50:
+                        return []
                     out += range(int(toks[i]), int(toks[i + 2]) + 1); i += 3; continue
                 out.append(int(toks[i]))
             i += 1

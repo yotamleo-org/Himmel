@@ -88,6 +88,18 @@ same "render: a range with one number unledgered is kept" "$(render "$blk" | gre
 rec --id 860 --status in-force --date 2026-11-09 --line 'range 860' --path "$(v 905)" >/dev/null
 same "render: a range with every number ledgered leaves" "$(render "$blk" | grep -cF 'decisions 858 to 860')" "0"
 same "render: the range's in-force number is indexed" "$(render "$blk" | grep -c '^IN FORCE 860, ')" "1"
+wide="$ptr
+
+OPERATOR 11-01 AA, decisions 1 to 100: a range too wide to expand …
+OPERATOR 11-01 AA, decisions 100 to 1: a reversed range …"
+for n in 1 100; do rec --id "$n" --status "done" --date 2026-11-01 --line "end $n" --path "$(v 905)" >/dev/null; done
+same "render: a range over 50 numbers is kept when only its ends are ledgered" "$(render "$wide" | grep -cF 'decisions 1 to 100: a range too wide')" "1"
+same "render: a reversed range is kept when only its ends are ledgered" "$(render "$wide" | grep -cF 'decisions 100 to 1: a reversed range')" "1"
+BP="$W/partial"; mkdir -p "$BP/specs/decisions"
+printf '{"id": 901}\n' > "$BP/specs/decisions/rulings-in-force.jsonl"
+out="$(render "$blk" "$BP")"; rc=$?
+same "render: a ledger row without its status, line, date or path exits 3" "$rc" "3"
+same "render: that render prints nothing, so the ruling is never dropped" "$out" ""
 
 # --- 40 rulings in force: the index stays under 12 KB and names every id
 B40="$W/b40"; mkdir -p "$B40/specs/decisions"
