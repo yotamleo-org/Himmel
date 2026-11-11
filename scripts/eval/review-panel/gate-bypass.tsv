@@ -7,3 +7,4 @@
 # A row lands by a chief-ruled change of its own, citing the operator decision in column 3.
 # pr	head	decision	reason
 5173	2921fa3d2dbf49a221bd168bddb839e1ac08178a	decision-781	the T6a critic fix, Q6 option (a)
+5234	2970ca0c31210dc7b038973d1b91f3ab7c343cc0	decision-912	the critic panel pin, operator-approved with no paid sweep

@@ -1,6 +1,6 @@
 name: Main Red Fix Dispatch
 
-# HIMMEL-7343. Main has no push run (ci.yml: HIMMEL-5113), so after a fix for a
+# Main has no push run (ci.yml runs main on a cron), so after a fix for a
 # red main merges, the next proof is the next cron sweep, hours later, and the
 # fleet waits on it. A merged PR that carries the `fixes-main-red` label, or a
 # `Fixes-main-red:` line in its body, dispatches ci.yml on main at once.
