@@ -132,7 +132,7 @@
 # it EXECUTES (bash a.sh, no source line), or builds the path at runtime
 # ("$dir/uninstall-$kind.sh"), is still not found — the union under-
 # approximates there; the --selector-miss ledger is how such a gap surfaces, and
-# a suite can widen its own text with the basename it really drives. A
+# a suite names the basename it really drives on a `# selector: names` line. A
 # path-scanning suite is covered by content_rules, one row each.
 # A basename shared by many files (lib.sh) over-approximates on purpose; the
 # safe direction for a gate is a suite too many, never one too few.

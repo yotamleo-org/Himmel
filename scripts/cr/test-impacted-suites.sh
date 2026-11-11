@@ -903,6 +903,17 @@ out="$( cd "$FX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$arange" 2>/dev/nul
 if ! grepq "$out" -Fx 'scripts/test-cmo-hash.sh' && ! grepq "$out" -Fx 'scripts/lib/cmo.test.mjs' && grepq "$out" -Fx 'scripts/test-cmo-heredoc.sh' && grepq "$out" -Fx 'scripts/lib/cmo-tpl.test.mjs'; then pass "30b the per-file path (.gitattributes filter) drops the same comment-only suites"; else fail "30b per-file path proof list: $out"; fi
 git -C "$FX" rm -q .gitattributes
 git -C "$FX" commit -q -m "chore: drop the attribute"
+mkf scripts/_nw-helper.sh
+mkf scripts/wt-tool.sh 'bash "$d/_nw-helper.sh"'
+mkf scripts/test-wt-exec.sh $'# wt-tool.sh runs _nw-helper.sh\nbash "$d/wt-tool.sh"'
+mkf scripts/test-wt-exec-names.sh $'# selector: names _nw-helper.sh\nbash "$d/wt-tool.sh"'
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: an exec edge the selector cannot follow"
+change scripts/_nw-helper.sh
+out="$( cd "$FX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$range" 2>/dev/null | awk '$1 == "LOCAL" { print $2 }' )"
+if grepq "$out" -Fx 'scripts/test-wt-exec-names.sh' && ! grepq "$out" -Fx 'scripts/test-wt-exec.sh'; then pass "30b an exec-edge suite stays on --plan through its selector: names line, and drops with a prose comment alone"; else fail "30b exec-edge proof list: $out"; fi
+err="$( cd "$FX" && printf '' | bash "$IS" --check "$range" 2>&1 >/dev/null )"
+if grepq "$err" -F 'scripts/test-wt-exec-names.sh' && ! grepq "$err" -F 'scripts/test-wt-exec.sh'; then pass "30b --check owes a verdict for the exec-edge suite that names its file on a selector: names line"; else fail "30b exec-edge --check: $err"; fi
 
 mkdir -p "$FX/scripts/docs" "$FX/scripts/hooks/lib" "$FX/scripts/handover/chief-kit"
 for s in scripts/docs/test-dev-graph.sh scripts/hooks/test-escape-class-corpus.sh scripts/docs/test-workflow-page-drift.sh scripts/docs/test-how-a-change-ships.sh; do
