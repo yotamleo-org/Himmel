@@ -81,6 +81,26 @@ stacked_series_state() { ( . "$HERE/../../lib/flags.sh" && himmel_flag stacked_s
 
 usage() { echo "usage: worker-event.sh --doc <chief doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
 escalate() { echo "ESCALATE $1"; exit 10; }
+listed_doc() {
+    local cand
+    while IFS= read -r cand; do
+        [ -n "$cand" ] || continue
+        [ "$(worker_label "$cand")" = "$1" ] && { printf '%s' "$cand"; return 0; }
+    done <<EOF
+$2
+EOF
+    return 1
+}
+successor_docs() {
+    local cand
+    while IFS= read -r cand; do
+        [ -n "$cand" ] || continue
+        [[ "$(worker_label "$cand")" =~ ^${1}[a-z]+$ ]] && printf '%s\n' "$cand"
+    done <<EOF
+$2
+EOF
+    return 0
+}
 
 DOC=""; FLEET=""; MSG=""
 while [ "$#" -gt 0 ]; do
@@ -99,18 +119,24 @@ if [ "$MSG" = "-" ]; then body="$(cat)"; else body="$(cat "$MSG")" || usage; fi 
 line="$(printf '%s\n' "$body" | grep -m1 -E '[^[:space:]]')" || line=""
 line="${line#- }"
 # a message may lead with its own N<k> label and ticket key before the marker
-while [[ "$line" =~ ^(N[0-9]+|[A-Z]+-[0-9]+)[[:space:]]+ ]]; do line="${line#"${BASH_REMATCH[0]}"}"; done
+while [[ "$line" =~ ^(N[0-9]+[a-z]*|[A-Z]+-[0-9]+)[[:space:]]+ ]]; do line="${line#"${BASH_REMATCH[0]}"}"; done
 marker="${line%%[^A-Za-z-]*}"
 
 dry_run_ready() {
     local dpr dhead dlabels
     [[ $line =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})([^0-9a-f]|$) ]] || return 0
     dpr="${BASH_REMATCH[1]}"; dhead="${BASH_REMATCH[2]}"
-    dlabels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)"
+    dlabels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+[a-z]*\>' | sort -u)"
     case "$dlabels" in ''|*$'\n'*) return 0 ;; esac
     (
+        dlist="$("${LIST[@]}" "$FLEET")" || dlist=""
+        dw="$(listed_doc "$dlabels" "$dlist")" || dw=""
+        if [ -z "$dw" ]; then
+            dsucc="$(successor_docs "$dlabels" "$dlist")"
+            [ "$(printf '%s' "$dsucc" | grep -c .)" -ne 1 ] || dw="$dsucc"
+        fi
+        [ -z "$dw" ] || dlabels="$(worker_label "$dw")"
         if stacked_series_state; then
-            dw="$("${LIST[@]}" "$FLEET" | grep -F -- "-${dlabels}-" | head -n 1)"
             if [ -n "$dw" ] && dfind="$(python3 -I "$HERE/series-ledger.py" find --bucket "$(dirname "$FLEET")" --doc "$dw" --manifest "$FLEET")" \
                 && [ -n "$dfind" ] && [ "${dfind##* }" != "-" ]; then
                 dlabels="${dfind##* }"
@@ -140,23 +166,14 @@ fi
 
 # the worker is named by its N<k> label, or failing that by its session name (the
 # worker doc's stem, which a wrap message may quote without any N<k>)
-labels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)" || labels=""
+labels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+[a-z]*\>' | sort -u)" || labels=""
 if [ -n "$labels" ]; then
     [ "$(printf '%s\n' "$labels" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
     label="$labels"
     listing="$("${LIST[@]}" "$FLEET" 2>/dev/null)" || listing=""
-    worker="$(printf '%s\n' "$listing" | grep -F -- "-${label}-" | head -n 1)" || worker=""
-    # a resumed worker's manifest entry carries a successor letter (N4304b) the message may not;
-    # matched on each doc's worker label, never on a directory or slug that mentions it
+    worker="$(listed_doc "$label" "$listing")" || worker=""
     if [ -z "$worker" ]; then
-        succ=""
-        while IFS= read -r cand; do
-            [ -n "$cand" ] || continue
-            [[ "$(worker_label "$cand")" =~ ^${label}[a-z]+$ ]] && succ="$succ$cand"$'\n'
-        done <<EOF
-$listing
-EOF
-        succ="${succ%$'\n'}"
+        succ="$(successor_docs "$label" "$listing")"
         [ "$(printf '%s' "$succ" | grep -c .)" -le 1 ] || escalate "ambiguous-label"
         # a label already recorded closed cannot tell the closed worker from its successor: a replay escalates
         if [ -n "$succ" ] && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null; then
@@ -211,6 +228,8 @@ if [ "$marker" = READY ]; then
     if [ -n "$series_role" ]; then
         [ -n "$series_label" ] && [ "$series_label" != "-" ] || escalate "series-writer-unlisted"
         label="$series_label"
+    else
+        label="$(worker_label "$worker")"
     fi
     [[ $line =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})([^0-9a-f]|$) ]] || escalate "ready-unparsed"
     rpr="${BASH_REMATCH[1]}"; rhead="${BASH_REMATCH[2]}"
