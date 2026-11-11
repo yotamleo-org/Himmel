@@ -264,7 +264,6 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
           if (typeof f.recovered === 'boolean') { target.known += f.count; if (f.recovered) target.recovered += f.count; }
         }
         // The counted refusals themselves, so the chain can say which have a reason row; stripped before the result leaves.
-        // The ids come from the digest's full denied_calls when the session has them, else the failure row's capped sample.
         const dc = [...s.tools.values()].filter((t) => Array.isArray(t.denied_calls));
         const ids = dc.length ? [...new Set(dc.flatMap((t) => t.denied_calls.filter((c) => Array.isArray(c) && typeof c[0] === 'string' && c[1] === f.class).map((c) => c[0])))]
           : Array.isArray(f.tool_call_ids) ? f.tool_call_ids : [];

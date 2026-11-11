@@ -5830,8 +5830,6 @@ check "51s ... the launcher exits non-zero with the signal status, and the reser
 
 LR="$HOME/.himmel/launch-refusals.jsonl"
 rm -f "$LR"
-# Schema v2: an attempt-started row, then the terminal row (the EXIT trap's), sharing one attempt_id. term() is the
-# terminal rows only; a v1 reader's "one row per refusal" is one terminal row per attempt.
 term() { jq -c 'select(.outcome != "attempt-started")' "$LR" 2>/dev/null; }
 rc=0; run45 in HIMMEL-45-in HIMMEL-chief-45-other || rc=$?
 check "9625a the refused launch still exits 2" "$rc" "2"

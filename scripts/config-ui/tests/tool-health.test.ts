@@ -1582,7 +1582,6 @@ test("launches refused are counted by cause", () => {
   expect(l.recent[0]).toEqual({ ts: "2026-10-07T13:00:00Z", name: "HIMMEL-1-N1", cause: "bus-register", rc: 2, line: null });
 });
 
-// Schema v2: attempt rows share an attempt_id; the page counts attempts, not rows. v1 rows are legacy refusals.
 const att = (id: string, outcome: string, over: any = {}) => ({ v: 2, ts: "2026-10-07T12:00:00Z", host: "h", source: "headed-arm-worker", kind: "launch-attempt", name: `W-${id}`,
   attempt_id: id, phase: outcome === "attempt-started" ? "unknown" : "handoff", outcome, cause: "headed-arm", rc: outcome === "attempt-started" ? null : 0, line: null, ...over });
 test("launch-attempts-are-counted-by-attempt-id-not-by-row", () => {
@@ -1725,7 +1724,6 @@ test("the launches box escapes every value", async () => {
   expect(html).not.toContain(`<b>"&`);
 });
 
-// One outcome partition per issued call, summed across the rollup, the daily record and the page.
 const OUTC = { ok: 5, ok_blocked: 1, error: 3, denied: 1, no_verdict: 1, interrupted: 2, unknown: 1 };
 const oRow = (session: string, digest_v: number, health: any[]) => ({ eval: "leg-trajectory", run_id: session, status: "ok", lane: "native", model: "m",
   ts: "2026-11-09T12:00:00Z", config: { digest_v }, meta: { started_ts: Date.parse("2026-11-09T12:00:00Z"), tool_health: health } });
@@ -1781,7 +1779,6 @@ test("outcome-partition-the-page-shows-not-run-and-changed-or-stopped", async ()
   expect((/<p class="sub" data-note="outcomes">([^<]*)</.exec(legacy) || [])[1]).toContain("not recorded for 1 of 1 sessions");
 });
 
-// The paired snapshot: an eval row's meta.tool_failures is the session's failure set; the ledger is the legacy fallback.
 const pRow = (tf?: any[]) => { const r: any = bEval(9, [bTool("Bash", 10, { "error/Bash": 2 })]); if (tf) r.meta.tool_failures = tf; return r; };
 const pFail = (cls: string, count: number) => ({ agent, class: cls, failure: cls.split("/")[0], count, recovered: null, identical_retry: null, first_ts: null, last_ts: null, tool_call_ids: [] });
 test("paired-snapshot-the-eval-row-failures-win-over-the-ledger", () => {
@@ -1799,7 +1796,6 @@ test("paired-snapshot-a-row-without-the-field-falls-back-to-the-ledger", () => {
   expect(d.class_counts["error/Bash"]).toBe(2);
 });
 
-// Evidence joins: refusal reasons join by session, call id and guard from the digest's full denied_calls, not the five-id sample.
 const J = "denied/block-read-secrets", JS = bSession(7);
 const jIds = Array.from({ length: 10 }, (_, i) => `toolu_J${i}`);
 const jTool = (ids: string[], omitted = 0) => ({ ...bTool("Read", 12, { [J]: ids.length + omitted }), denied_calls: ids.map((id) => [id, J, Date.parse("2026-10-28T10:30:00Z")]), denied_calls_captured: ids.length, denied_calls_omitted: omitted });

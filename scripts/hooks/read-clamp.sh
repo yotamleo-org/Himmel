@@ -146,13 +146,10 @@ strip_quotes() {
 case "$tool" in
     Read)
         [ -n "$fp" ] || exit 0
-        [ -r "$fp" ] || exit 0  # a nonexistent or unreadable file may be fixed before a retry: no state, allow
-        # No session or no runtime dir: allow outright, size clamp included, as before.
+        [ -r "$fp" ] || exit 0
         [ -n "$session_id" ] || exit 0
         mkdir -p "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/himmel-read-clamp" 2>/dev/null || exit 0
 
-        # Duplicate tracking: only a plain text Read (no extra argument) of a
-        # hashable file, by a well-formed actor, with a tool_use_id to pair on.
         track=0 key="" chash=""
         if [ "$extra_args" = 0 ] && ! rc_extension_native "$fp" \
             && rc_state_init "$session_id" "$agent_type" "$agent_id"; then

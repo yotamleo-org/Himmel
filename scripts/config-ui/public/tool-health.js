@@ -161,12 +161,9 @@ function kpis(data) {
   const calls = data ? data.totalCalls : null, failed = sum("failures"), known = sum("known"), recovered = sum("recovered");
   const rate = bad.size ? null : ratio(failed, calls);
   const tile = (id, label, value, note) => `<div class="kpi" data-kpi="${id}"><span class="k">${esc(label)}</span><b class="kv">${esc(value)}</b><span class="ks">${esc(note)}</span></div>`;
-  // mockup v9: four cards. Denied rides the Failed note; changed/stopped after refusal is the note under the cards, and the
-  // per-call outcome partition the note under that, so no fact leaves the page.
   const worst = data && !bad.size ? tools.filter((t) => isNum(t.calls) && t.calls >= 10 && isNum(t.failures)).map((t) => ({ t, r: t.failures / t.calls })).sort((a, b) => b.r - a.r || b.t.failures - a.t.failures || (a.t.tool < b.t.tool ? -1 : 1))[0] : null;
   const recovery = data ? `<p class="sub" data-note="recovery">Changed/stopped after refusal ${pct(ratio(recovered, known))} (${recovered} of ${known} known · ${failed - known} unclassified)</p>` : "";
   const cov = data ? data.outcome_coverage : null, o = data ? data.outcomes : null;
-  // A no-verdict call never ran: it is counted apart, neither a tool error nor a success.
   const outcomes = !data ? "" : o ? `<p class="sub" data-note="outcomes">Issued calls by outcome: ${o.ok} ok · ${o.ok_blocked} ok reporting BLOCKED · ${o.error} tool errors · ${o.denied} denied · ${o.no_verdict} not run (no verdict) · ${o.interrupted} interrupted · ${o.unknown} no result${cov && !cov.comparable ? " · mixed definition versions, not a certified comparison" : ""}</p>`
     : `<p class="sub" data-note="outcomes">Outcome partition not recorded for ${cov ? cov.without_partition : "—"} of ${cov ? cov.sessions : "—"} sessions (older digests): those calls read unknown, not zero.</p>`;
   return `<div class="kpis">${[
@@ -176,7 +173,6 @@ function kpis(data) {
     tile("highest", "Highest rate", worst ? pct(worst.r) : "—", data ? (worst ? `${worst.t.tool} · ${worst.t.failures} of ${worst.t.calls} calls` : "no tool with 10 or more calls") : "—"),
   ].join("")}</div>${recovery}${outcomes}${coverageNote(data)}`;
 }
-// What the counts cover, so a partial population never reads as the whole fleet.
 function coverageNote(data) {
   const c = data && data.coverage;
   if (!c || !c.population) return "";
@@ -381,8 +377,6 @@ function candidatesPanel(data) {
   return table(["Profile", "Tool", "Calls in window", "Listing cost"], rows, "Nothing loaded and unused, or the listing cost is not measured");
 }
 
-// Launch attempts have their own denominator, never the tool calls'. Counted by attempt id; an attempt with no
-// terminal row (the launcher was killed) is unknown.
 function attemptsLine(l) {
   const a = l && l.attempts;
   if (!a || !a.total) return "";

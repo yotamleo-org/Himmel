@@ -6,7 +6,6 @@
 // nothing changes because of it.
 import { OUTCOMES, rollupToolHealth } from './tool-health.mjs';
 
-// 2: the per-call outcome partition (cases[tool:*].outcomes, metrics outcome.*); a new series, never spliced onto 1.
 export const RECORD_VERSION = 2;
 const num = (n) => typeof n === 'number' && Number.isFinite(n);
 const ratio = (n, d) => num(n) && num(d) && d > 0 ? n / d : null;

@@ -504,8 +504,6 @@ check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'j
 check "the window is 14 days and the cap is 3" 'jq -e ".window_days == 14 and .daily_cap == 3" "$HERE/failure-routes.table.json" >/dev/null'
 
 echo "refreshed rows keep their original time: an old session's refresh decides nothing, an in-window one still counts"
-# A refresh rewrites a session's rows with meta {digest_id, refreshed_at} and the ORIGINAL ts. The stub Jira
-# records any call; --dry-run makes none either way.
 LED_SAVE="$LED"; LED="$TMP/refresh-ledger.jsonl"; : >"$LED"
 REFRESH_META='{"digest_id":"0123456789abcdef0123456789abcdef","refreshed_at":"2026-10-09T11:00:00Z"}'
 row N700 denied/guard-refresh-old 1 false worker 2026-09-01T10:00:00Z; row N701 denied/guard-refresh-old 1 false worker 2026-09-01T10:00:00Z

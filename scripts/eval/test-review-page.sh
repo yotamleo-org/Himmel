@@ -241,8 +241,6 @@ rows = [row("leg-trajectory", "2026-10-20T00:00:00Z", {"red_before_green": 1}, t
         row("friction", "2026-10-22T00:00:00Z", {"refusals": 100, "unclear": 40}),
         row("friction", "2026-10-24T12:00:00Z", {"refusals": 100, "unclear": 30}),
         row("judge-accuracy", "2026-10-24T12:00:00Z", {"model.claude-opus-5-5.n": 9, "model.sonnet.n": 1, "model.unknown.n": 4})]
-# A refresh re-records a session under its own run_id and original ts; an older restamp re-recorded one with a later
-# ts. Neither is a new session: q1 counts each run_id once, at its first ok record time.
 refreshed = dict(rows[0], meta=dict(rows[0]["meta"], refreshed_at="2026-10-30T00:00:00Z"))
 restamped = dict(rows[1], ts="2026-10-25T00:00:00Z")
 rows += [refreshed, restamped]

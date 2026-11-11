@@ -361,7 +361,6 @@ function CallGroup({ tools, now, open, onToggle }: { tools: Tool[]; now: number;
   );
 }
 
-// not_run is the classifier's no verdict: the call never ran, so it reads neither as done nor as a tool error.
 const STATE_WORD: Record<Tool["status"], string> = { running: "running", done: "done", error: "tool error",
   not_run: "not run (no verdict)", interrupted: "interrupted", no_result: "no result" };
 const stateWord = (t: Tool) => (t.failure ? FAILURE[t.failure] : STATE_WORD[t.status]);

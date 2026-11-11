@@ -325,8 +325,6 @@ esac
 silent "delta marker with nothing to override (opus, judge) -> no output" "$(agent judge opus "$DM"$'\n'"$JBL")"
 
 echo "== the deny remedy passes BOTH model guards =="
-# The deny text is a recovery instruction: following it must pass this guard AND
-# guard-subagent-model.sh, which denies a dispatch with no model.
 SUBGUARD="$HOOKS/guard-subagent-model.sh"
 both() { # <label> <allow|block> <json>: the verdict of the two guards in a row
     local rc1 rc2 got

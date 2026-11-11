@@ -24,8 +24,6 @@ import { denyLinesByCall, memberOfGuardClass, readChainLogs, rollupChain } from 
 import { cacheReadWeight } from "../../lib/burn-weights.mjs";
 
 const { spawnSync } = Bun;
-// 3: one outcome partition per call (tool_health[].outcomes, metrics.outcomes); no_verdict and interrupted calls leave
-// the error counts; the Edit-input, separator and judge-provenance counters.
 const DIGEST_SCHEMA = 3;
 const LANES = new Set(["native", "claudex", "openrouter", "cloud", "unknown"]);
 const laneEnv = process.env.WORKER_SESSION_LANE || "";
@@ -448,8 +446,6 @@ async function main() {
           else h.denied_calls_omitted++;
         }
       }
-      // The partition decides: a call counted as an error or denial here is that outcome (a BLOCKED report on an
-      // errored call is error; on a successful one, ok_blocked).
       if (failure === "error" || failure === "suite") callOutcome.set(id, "error");
       else if (failure === "denied") callOutcome.set(id, "denied");
       else if (failure === "blocked") callOutcome.set(id, callOutcome.get(id) === "error" ? "error" : "ok_blocked");
@@ -478,7 +474,6 @@ async function main() {
   };
   const callCause = new Map<string, string>();
   const deniedSeen = new WeakMap<object, Set<string>>(), deniedBytes = new WeakMap<object, number>();
-  // Every issued call's outcome: unknown until a result says otherwise; interrupted when its turn was cancelled first.
   const callOutcome = new Map<string, ToolOutcome>(), settled = new Set<string>();
   const editInput: EditInput = { not_found: 0, ambiguous: 0, unchanged: 0, stale: 0, not_read: 0 };
   let separatorErrors = 0;
@@ -593,8 +588,6 @@ async function main() {
         // an error. A hook refusal on any tool is a denial: the text says so, or the chain log names the call.
         const member = chainDeny.get(e.toolCallId);
         const failure = e.failure === "error" && (member || HOOK_ANY.test(e.content.slice(0, 2000))) ? "denied" : e.failure;
-        // The mapper's outcome; a legacy stream with none reads its flags. The branches below refine it only where the
-        // digest knows more (a hook refusal it recognises, a by-design exit code, a grep no-match, a TaskStop no-op).
         callOutcome.set(e.toolCallId, e.outcome ?? (e.isError ? (failure === "denied" ? "denied" : "error") : failure === "blocked" ? "ok_blocked" : "ok"));
         if (!failure) {
           if (SUITE.test(cmd)) { const s = suiteLast.get(suiteKey(a, cmd)); if (s) s.red = false; }

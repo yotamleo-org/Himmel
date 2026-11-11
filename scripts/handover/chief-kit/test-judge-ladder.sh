@@ -56,7 +56,6 @@ out="$(JUDGE_LADDER_STATE="$WORK/state" run convene seatE sonnet --delta finding
 rmdir "$WORK/state.lock"
 [ "$rc" = 3 ] && pass "a held state lock refuses the convening (rc 3)" || fail "held lock did not refuse (rc=$rc)"
 
-# An ordinary first or trust judge starts at Opus; a Sonnet seat needs finding-delta context.
 out="$(run convene seatS sonnet)"; rc=$?
 [ "$rc" = 2 ] && pass "a Sonnet seat with no delta context is refused (rc 2)" || fail "bare sonnet convening rc=$rc"
 has "the refusal names the opus start" "$out" "opus"

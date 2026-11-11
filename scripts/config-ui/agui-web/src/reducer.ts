@@ -17,7 +17,6 @@ export type Agent = {
   last: number; // elapsed ms of the last event that touched it
 };
 export type Text = { id: string; text: string; open: boolean; agent: string; role?: "user" | "assistant"; failure?: Failure };
-// not_run: the classifier gave no verdict, so the call never ran; no_result: its turn ended without a result.
 export type ToolStatus = "running" | "done" | "error" | "not_run" | "interrupted" | "no_result";
 export type Tool = {
   id: string; name: string; args: string; result?: string; status: ToolStatus; failure?: Failure; outcome?: Outcome;
@@ -67,10 +66,8 @@ function addFailure(v: View, ref: Omit<FailureRef, "at">, agent: string): View {
   const at = ref.kind === "tool" ? v.tools[ref.id].start : v.elapsed;
   return { ...v, failures: [...v.failures, { ...ref, at }], agents: a ? { ...v.agents, [agent]: { ...a, failures: a.failures + 1 } } : v.agents };
 }
-// A no-verdict or interrupted call is not a failure: it never ran, or was cut off.
 const failureOf = (e: Ev): Failure | undefined => (FAILURES.has(e.failure) ? e.failure
   : e.isError === true && e.outcome !== "no_verdict" && e.outcome !== "interrupted" ? "error" : undefined);
-// The stream's outcome; a stream from before the outcome field reads its legacy flags.
 const outcomeOf = (e: Ev): Outcome => (OUTCOMES.has(e.outcome) ? e.outcome
   : e.isError === true ? (e.failure === "denied" ? "denied" : "error") : e.failure === "blocked" ? "ok_blocked" : "ok");
 

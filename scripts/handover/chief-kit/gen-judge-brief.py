@@ -147,7 +147,6 @@ def validate(s):
 
 
 def agent_alias(s):
-    """The Agent alias for the spec's model, or die: the dispatch must name a model both guards accept."""
     model = model_of(s)
     if re.search(r'haiku', model, re.I):
         die('model %r: haiku is not a judge tier' % model)

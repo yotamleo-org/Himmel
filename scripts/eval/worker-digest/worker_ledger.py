@@ -522,7 +522,6 @@ def digest_id(digest, lane, meta):
 
 
 def _original_ok_ts(eval_ledger, session):
-    """The ts of the session's first ok eval row: the time every superseding row keeps; None if there is none."""
     rows, _, _ = eval_runs.scan_rows(eval_ledger)
     ok = [r for r in rows if r["eval"] == EVAL_ID and r["run_id"] == session and r["status"] == "ok"]
     ts = ok[0].get("ts") if ok else None
@@ -596,7 +595,6 @@ def _stop_after(step):
 
 
 def _old_failure_ts(path, session):
-    """{(agent.id, class): ts} of the session's current rows, and the earliest of those times."""
     by, first = {}, None
     try:
         fh = open(path, encoding="utf-8")
@@ -620,7 +618,6 @@ def _old_failure_ts(path, session):
 
 
 def refresh(digest, who, failures_ledger, eval_ledger):
-    """Re-record an ok session from a fresh digest without moving it in time; returns a word for the summary."""
     if digest.get("status") != "ok":
         return "inconclusive"
     frows, erow = build_rows(digest, who)

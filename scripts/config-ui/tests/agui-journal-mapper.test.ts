@@ -328,8 +328,6 @@ describe("a session with no agent-name record is named from its branch, cwd or f
   });
 });
 
-// One outcome per issued call (ok, ok_blocked, error, denied, no_verdict, interrupted); a call with no result
-// gets none here (the digest and reducer finalize it). The shared fixture is the one every boundary reads.
 describe("tool call outcome partition", () => {
   const OUT = join(import.meta.dir, "..", "..", "eval", "worker-digest", "fixtures", "outcomes.jsonl");
   const results = new Map((mapFile(OUT).events as any[]).filter((e) => e.type === "TOOL_CALL_RESULT").map((e) => [e.toolCallId, e]));

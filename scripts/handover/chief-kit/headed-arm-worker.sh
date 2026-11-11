@@ -3119,7 +3119,6 @@ while :; do
     kill -0 "$_ha_child" 2>/dev/null || break   # a trapped signal ends `wait` early; the child is still running
 done
 trap - TERM HUP INT
-# The child's typed result decides the attempt's outcome; an exit status alone never reads as launched.
 _ha_word="$( [ -n "$_LAUNCH_OUTCOME_FILE" ] && head -n 1 "$_LAUNCH_OUTCOME_FILE" 2>/dev/null)" || _ha_word=''  # swallow-ok: no word reads indeterminate below
 if [ "$_LAUNCH_REFUSAL_FWD" -eq 1 ]; then _LAUNCH_OUTCOME=indeterminate; _launch_refusal_note signal
 elif [ "$launch_rc" -eq 0 ]; then

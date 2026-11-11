@@ -461,8 +461,6 @@ describe("failure navigator", () => {
   });
 });
 
-// The shared outcome fixture folded into the page state: every issued call lands in exactly one outcome,
-// a no-verdict call reads "not run" (no failure, no error styling), and a turn's end never marks a call ok.
 describe("tool call outcome partition", () => {
   const OUT = join(import.meta.dir, "..", "..", "eval", "worker-digest", "fixtures", "outcomes.jsonl");
   const v = reduceAll(mapFile(OUT).events as any[]);

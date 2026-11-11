@@ -15,7 +15,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DIG="$HERE/worker-digest.ts"
-LL="${WORKER_LEDGER_PY:-$HERE/worker_ledger.py}"  # override: the RED control runs a base copy
+LL="${WORKER_LEDGER_PY:-$HERE/worker_ledger.py}"
 EVR="$HERE/../lib/eval_runs.py"
 FX="$HERE/fixtures"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/worker-ledger-test.XXXXXX")" || { echo "test-worker-ledger: mktemp -d failed" >&2; exit 1; }
