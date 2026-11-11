@@ -4273,10 +4273,7 @@ READY_CHECK_FAIL_LEDGER="$tmp/s17-fl-other.jsonl" s17_at "$S17_H1"
 check "19 T25c a fail row of another repo's PR 77: no round" "$(jq -c 'select(.kind == "round")' "$tmp/s17-fl-other.jsonl" | wc -l | tr -d ' ')" "0"
 s17_clear
 
-# T26: the claude-startup proof file published beside the shard manifests. A download of
-# shell-unit-manifest-ubuntu-latest-shard* lays it out as its own artifact directory; the
-# stub ignores -p, so the -p half is pinned by scripts/ci/test-ci-quick.sh Q8.
-s17_man_cs() {  # <dir> <line>...: the published claude-startup manifest, beside a shard directory made by s17_man
+s17_man_cs() {
     local d="$1/shell-unit-manifest-ubuntu-latest-shard-claude-startup"
     shift
     mkdir -p "$d"
