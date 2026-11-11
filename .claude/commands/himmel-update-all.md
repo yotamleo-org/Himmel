@@ -57,4 +57,4 @@ Prefix whichever report you give with the diagnosis (disabled-by-policy vs unkno
 
 After both steps: harness hooks are live immediately; **restart any running Claude session** to pick up plugin / slash-command / skill changes.
 
-The harness step ends with the **gap-audit offer**: a print-only list of non-green qmd / graphify / in-work-ticket / ponytail checks. Relay it to the operator and run the full audit (`bash "$REPO/scripts/himmel-doctor.sh"`) only on their yes.
+The harness step ends with the **gap-audit offer**: a print-only list of non-green qmd / graphify / in-work-ticket / ceilings-ledger checks. Relay it to the operator and run the full audit (`bash "$REPO/scripts/himmel-doctor.sh"`) only on their yes.
