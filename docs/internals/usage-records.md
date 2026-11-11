@@ -53,7 +53,7 @@ outside the tree.
 | `cr` | `rounds` (distinct reviewed heads), `findings` (count by final verdict after amends; `open` when none), `est_tokens` (the ledger's estimated critic tokens) |
 | `digest` | sha256 of the record without this field |
 
-Numbers and ids only: neither `records.jsonl` nor the `phase-cost-state/` directory beside it holds message text or a session title (the state keeps message ids, counts and a class word per transcript).
+Numbers and ids only: neither `records.jsonl` nor the `phase-cost-state/` directory beside it holds message text or a session title (the state keeps message ids, counters and a class word per transcript). The new schema 2 states, emitted maps and phase-cost rows also hold no title at all; the checkpoint's session names and a ticket record's `legs[].name` are the session titles and stay as they were.
 
 ## Phase-cost rows (`kind: "phase-cost"`)
 
@@ -72,7 +72,9 @@ want ticket records skip rows without one (`usage-read.sh` does).
 | `model` | the models of the row's calls, sorted, comma-joined |
 | `phase` | see below |
 | `phase_rule` | `v1`: the rule set of the cost-page audit |
-| `calls`, `in`, `out`, `cache_read`, `cc_5m`, `cc_1h` | API calls (a message id seen earlier anywhere in the same transcript counts once, as `usage-attribution.sh` does) and their tokens |
+| `role_rule` | `legacy-v1`: the class comes from the existing title classification and the first prompt, as before |
+| `usage_rule` | `final-v2`: each call counts once at its final usage (see "Call state, corrected usage and old states") |
+| `calls`, `in`, `out`, `cache_read`, `cc_5m`, `cc_1h` | API calls (a call is one message id, else one request id, else one line, per transcript) and their tokens at each call's final usage |
 | `usd` | the calls priced per model from `scripts/lanes/lib/model-prices.tsv`; `null` when no call was priced |
 | `mark` | `counted` (the phase is the session's whole class), `derived` (the phase is the last-tool rule), `unpriced` (some call's model has no price row; `usd` covers only the priced calls) |
 
@@ -86,8 +88,8 @@ before any tool; `compaction` after a compaction boundary until the next tool):
 session has that one phase; a chief or brief-drafter (and a subagent of a chief) has
 `chief-turns`; a subagent of a worker has phase `agent`. All of these are mark `counted`. Classes `graph-eval` and `bots` are not detected yet (class `other`).
 
-**Rows are cumulative.** Each run reads every transcript from its saved byte offset
-(`<store>/phase-cost-state/`, one file per transcript, named by a checksum of its path, the offset inside it), complete lines only (a last line with no newline waits), and appends a key's row only when
+**Rows are cumulative.** Each run reads every changed transcript from its saved byte offset
+(`<store>/phase-cost-state/`, one state file per transcript, named by a checksum of its path, the offset inside it), complete lines only (a last line with no newline waits), and appends a key's row only when
 its totals changed; the latest row for a (day, session, phase) is the total. What was
 emitted is kept per session in `<store>/phase-cost-state/emitted/`, one file per session.
 A key that disappears (a class change moved it) is closed with a zero row. The whole run
@@ -127,15 +129,18 @@ runs in windows rather than all at once.
   fingerprint of its files (count and total bytes), the per-session table rows, the
   `--since` they were read with, and the last committed window. A different `--since`
   makes every session stale. The rows carry the same session names that the ticket
-  records' `legs[]` carry.
-- **A commit per window.** The window's phase-cost rows, its sessions' emitted maps and
-  the new checkpoint are staged under `<store>/.commit.new`, renamed to `.commit`, and
-  then applied: the part of the staged rows that `records.jsonl` lacks is appended, and
-  each state file is replaced by copy then rename. An applied commit is renamed to
-  `.commit.done` before it is removed, so it is never replayed. A run that finds
-  `.commit` applies it first. A kill at any point therefore leaves each row appended once or not yet, never
-  twice and never lost. Each transcript's phase state is saved as soon as it is read, so
-  a kill loses at most the transcript in flight.
+  records' `legs[]` carry. `pending_legacy` lists the sessions kept pending (below) and
+  `pending_legacy_files` counts them.
+- **A commit per window.** The window's phase-cost rows, its transcripts' call states
+  (`states/`), its sessions' emitted maps (`emitted/`) and the new checkpoint are staged under
+  `<store>/.commit.new`, renamed to `.commit`, and then applied in that order: the part of
+  the staged rows that `records.jsonl` lacks is appended, then each state file, each
+  emitted map and the checkpoint is replaced by copy then rename. An applied commit is
+  renamed to `.commit.done` before it is removed, so it is never replayed. A run that finds
+  `.commit` applies it first. A kill at any point therefore leaves each row appended once
+  or not yet, never twice and never lost, and the resumed store equals an uninterrupted
+  run's. A transcript's new state exists only in the commit, so a kill loses at most the
+  window in flight, which the next run reads again.
 - **Ticket records** are computed and appended only in the run's last window, once every
   changed session is in. A reader never sees a ticket's partial total. When nothing
   changed, a run still recomputes them, so a new CR ledger row shows up.
@@ -164,6 +169,51 @@ once more with the same values. `usage-read.sh --phase-cost` keeps the latest ro
 (day, session, phase) (`scripts/usage/usage-read.sh`, the `reduce` in its jq program),
 and the Cost page reads only through it, so the totals do not double. The old
 `emitted.json` is left unread.
+
+## Call state, corrected usage and old states
+
+The phase-cost pass runs in Node: `scripts/usage/phase-call-state.mjs` folds one
+transcript's new bytes into that transcript's state. `usage-compute.sh` resolves an
+absolute Node (`scripts/lib/resolve-node.sh`: PATH, then the well-known locations, nvm,
+fnm) before it takes the lock or writes anything, so a scheduled run with no `PATH` works
+and a missing runtime fails closed (exit 1, nothing written), never open.
+
+**State schema 2** (`<store>/phase-cost-state/<key>.json`): `schema`, `off` (the saved
+byte offset), `last` (the last-tool cursor), `agg` (`day|phase` to `calls, i, o, cr, c5,
+c1, nano, unp, models`), `seen`, `meta`, `role`, `fp`, `tc_class`, `ac_class`, `refused`.
+`seen` holds, for each call, its ids, model, normalized counters, the `day|phase` of its
+first usage and its contribution in integer nanodollars. It holds no message text and no
+title; a title is reduced to a class word (`chief`, `worker`, `other`) as it is read.
+
+**Final usage.** A call is one message id (else one request id, else one line by byte
+offset) per transcript, reduced by `foldUsageCall` in `scripts/lanes/model-price.mjs`. When
+a later row repeats the call with other usage, the old contribution is subtracted from
+its first `day|phase` key and the new one added there, so a call counts once, on the day
+and phase of its first usage, even when the correction arrives after midnight or after
+other tools. A decrease wins too; an identical repeat changes nothing. A synthetic model
+(`<...>`) with all-zero usage is not a call; a synthetic model with nonzero usage, a
+malformed counter or two request ids for one message is refused: the call keeps its first
+answer and `refused` counts it. A tool block in a later streaming row still moves the
+cursor. Dollars are integer nanodollars from `model-prices.tsv`, never floating sums.
+
+**Old (schema 1) states.** A state with no `schema` field keeps a boolean seen map, which
+cannot be reused as contributions; the adapter refuses it with exit 3
+(`legacy-state-replay-required`). When a window holds such a unit, `usage-compute.sh`
+rebuilds each of its transcripts from byte 0 under schema 2 in that same window, and the
+existing cumulative emitter and zero closures turn the difference into rows. A unit that
+is not dirty keeps its schema 1 states and rows. This is migration of the units that
+change, inside the normal window, `--budget-seconds` and `--max-windows` limits; it is not
+a rebuild of the corpus. If a unit's emitted rows name a transcript that is gone (its
+parent or a subagent was rotated away), the unit is pending: its states, rows and
+checkpoint entry stay as they were, the run goes on with every other unit, and the
+checkpoint lists it in `pending_legacy` and counts it in `pending_legacy_files`.
+
+**Reverting this change.** Rows written under it carry `usage_rule` and `role_rule`. The
+earlier collector keys `seen` by bare message id and reads `tc`/`ac`, which a schema 2
+state does not hold, so after a revert remove `<store>/phase-cost-state/*.json` and
+`<store>/build-checkpoint.json` (leave `emitted/` and `records.jsonl`): the earlier
+collector then reads every transcript once, as on a first build, and its cumulative rows
+replace the latest values.
 
 ## PR/CI join (`--repo OWNER/NAME [--gh <executable>]`)
 

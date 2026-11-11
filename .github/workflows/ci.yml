@@ -744,14 +744,14 @@ jobs:
       - id: claude-startup
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        run: bash scripts/ci/claude-startup-row.sh scripts/testing/test-fakekey-claude-startup.sh
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label ci-quick/claude-startup -- bash scripts/ci/claude-startup-row.sh scripts/testing/test-fakekey-claude-startup.sh
       # HIMMEL-4411: a full scripted turn (text, Bash tool_use, tool_result) against
       # scripts/testing/mock-anthropic. The suite also asserts the installed CLI
       # equals CLAUDE_CLI_VERSION, so a version drift fails loudly here.
       - id: claude-startup__mock-turn
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        run: bash scripts/ci/claude-startup-row.sh scripts/testing/test-claude-mock-turn.sh
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label ci-quick/claude-startup__mock-turn -- bash scripts/ci/claude-startup-row.sh scripts/testing/test-claude-mock-turn.sh
       # HIMMEL-4412: two "a hook that fails open" smokes on the same mock. MOCK-BACKED:
       # they prove Claude Code enforces the consult sandbox and that the project hook
       # chain fires clean in a real session; neither is evidence of real-model behaviour.
@@ -775,11 +775,11 @@ jobs:
       - id: claude-startup__consult
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        run: bash scripts/ci/claude-startup-row.sh scripts/testing/test-mock-consult-sandbox.sh
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label ci-quick/claude-startup__consult -- bash scripts/ci/claude-startup-row.sh scripts/testing/test-mock-consult-sandbox.sh
       - id: claude-startup__hook-smoke
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        run: bash scripts/ci/claude-startup-row.sh scripts/testing/test-mock-hook-smoke.sh
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label ci-quick/claude-startup__hook-smoke -- bash scripts/ci/claude-startup-row.sh scripts/testing/test-mock-hook-smoke.sh
       # The live turn denies `git stash drop` through block-git-stash.sh, which reads
       # the command with shfmt; without it the deny text names shfmt, not the stash.
       # Same pinned, sha-verified release as the shell-unit job; keep in lockstep.
@@ -797,7 +797,7 @@ jobs:
       - id: claude-startup__live-turn
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        run: bash scripts/ci/claude-startup-row.sh scripts/testing/test-mock-hook-live-turn.sh
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label ci-quick/claude-startup__live-turn -- bash scripts/ci/claude-startup-row.sh scripts/testing/test-mock-hook-live-turn.sh
       - id: claude-startup__raw
         name: Upload the raw claude-startup rows
         if: ${{ !cancelled() }}
@@ -1500,14 +1500,14 @@ jobs:
         run: npm ci --ignore-scripts
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
-        run: npm test
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/${{ matrix.pkg }} -- npm test
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
       # HIMMEL-8974: the root vitest.config.ts and sector.test.ts keep a vitest run from the
       # repo root off the real HOME. The guard needs the scripts/jira install above, which
       # the shell-unit shards lack (there its runtime cases SKIP), so it runs here with
       # the require flag: a missing install is a FAIL, never a vacuous SKIP.
       - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
-        run: bash scripts/ci/test-root-vitest-sandbox.sh
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/root-vitest-sandbox -- bash scripts/ci/test-root-vitest-sandbox.sh
         env:
           HIMMEL_REQUIRE_JIRA_VITEST: "1"
 
@@ -1639,7 +1639,7 @@ jobs:
         if: ${{ !job.container.id }}
         with:
           bun-version-file: .bun-version
-      - run: node --test "scripts/lanes/tests/**/*.test.mjs"
+      - run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/lanes -- node --test "scripts/lanes/tests/**/*.test.mjs"
       # HIMMEL-1529: same shape — a zero-dependency node:test suite outside any
       # package.json. Listed explicitly because nothing globs for it; an
       # unlisted suite is a suite nobody runs.
@@ -1647,14 +1647,14 @@ jobs:
       # `ls` first because `node --test` reports zero tests and exits 0 when the
       # glob matches nothing: a renamed or deleted suite would go green with
       # nothing executed. `ls` on an unexpanded pattern fails, so the step does.
-      - run: ls scripts/trust/tests/*.test.mjs && node --test "scripts/trust/tests/*.test.mjs"
+      - run: ls scripts/trust/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/trust -- node --test "scripts/trust/tests/*.test.mjs"
       # HIMMEL-3827: zero-dependency node:test suites no runner executed. `ls`
       # first for the same vacuous-glob reason as the trust step above.
-      - run: ls scripts/where-are-we/tests/*.test.mjs && node --test "scripts/where-are-we/tests/*.test.mjs"
-      - run: ls scripts/lessons/tests/*.test.mjs && node --test "scripts/lessons/tests/*.test.mjs"
+      - run: ls scripts/where-are-we/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/where-are-we -- node --test "scripts/where-are-we/tests/*.test.mjs"
+      - run: ls scripts/lessons/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/lessons -- node --test "scripts/lessons/tests/*.test.mjs"
       # HIMMEL-4501: a glob, not a file list, so a NEW observability .test.mjs
       # runs without a ci.yml edit; `ls` fails on an unexpanded pattern.
-      - run: ls scripts/op-env-parity.test.mjs scripts/observability/*.test.mjs && node --test scripts/op-env-parity.test.mjs "scripts/observability/*.test.mjs"
+      - run: ls scripts/op-env-parity.test.mjs scripts/observability/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/observability -- node --test scripts/op-env-parity.test.mjs "scripts/observability/*.test.mjs"
       # HIMMEL-3028: the scripts/hooks + scripts/lib node:test suites
       # (HIMMEL-1578) ran ONLY in the local pre-commit hook until now — that
       # hook deliberately skipped ci.yml because Actions was off on the
@@ -1664,7 +1664,7 @@ jobs:
       # is tracked there. Pre-commit stays the fast local gate; this is the
       # authoritative check a bypassed or skipped local hook can no longer
       # dodge (HIMMEL-3025 is exactly the kind of leak this surfaces).
-      - run: bash scripts/hooks/check-hook-lib-suites.sh
+      - run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/hook-lib-suites -- bash scripts/hooks/check-hook-lib-suites.sh
 
   guardrail-matrices:
     name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'guardrail-matrices' || 'guardrail-matrices (deferred)' }}
@@ -1737,7 +1737,7 @@ jobs:
           bun-version-file: .bun-version
       # The root bunfig.toml preload keeps every bun test below off the real HOME; this guard
       # proves it, and with the require flag a missing bun is a FAIL, never a vacuous SKIP.
-      - run: bash scripts/ci/test-root-vitest-sandbox.sh
+      - run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label bun-suites/root-vitest-sandbox -- bash scripts/ci/test-root-vitest-sandbox.sh
         env:
           HIMMEL_REQUIRE_BUN_TEST: "1"
       - run: cd scripts/luna-vitals && bun install --frozen-lockfile --ignore-scripts && bash ../ci/run-bun-tests.sh scripts/luna-vitals
