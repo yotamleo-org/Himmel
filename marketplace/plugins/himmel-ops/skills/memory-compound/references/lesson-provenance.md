@@ -1,4 +1,4 @@
-# memory-compound — lesson provenance carry (HIMMEL-767)
+# memory-compound — lesson provenance carry, so a compounded lesson keeps its evidence trail
 
 Moved verbatim out of `SKILL.md`.
 

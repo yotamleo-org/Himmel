@@ -2,7 +2,8 @@
 
 Moved verbatim out of `SKILL.md`.
 
-**Scope the gate to the collection you wrote to (D8, HIMMEL-570).** The qmd
+**Scope the gate to the collection you wrote to (scoping, not hit ranking, keeps
+a fresh note findable).** The qmd
 index holds many collections; an **unscoped** memory query searches all of them
 and dilutes a hit on a freshly landed note, which sank the 2026-07-16 recall
 probes. The collections that matter here are `luna` (vault notes landed from

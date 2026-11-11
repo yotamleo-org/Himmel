@@ -49,7 +49,17 @@
 # Blocker and Major are counted by a line prefix in the verdict text; a severity header from
 # write-verdict.sh is the upgrade path.
 #
-# Exit: 0 done; 2 refused input.
+#   fleet-scorecard.sh --exposure-screen SCREEN.json --out SCREEN-RESULT.json
+#       The free B1a screen: over a frozen, complete inventory of worker parents, the
+#       share of priced cost in the first five parent calls strictly after each compaction boundary.
+#       NO-OP below 3 %, QUALIFIED at 3 % or more, INCONCLUSIVE when coverage is incomplete. Reads
+#       only the files SCREEN names (each pinned by sha256), runs model-price.mjs's loader and
+#       validator and compaction-trigger-report.py --json --min-peak 0, and writes only --out.
+#       It makes no model call, no Jira write and no network call. Exit 0 NO-OP or QUALIFIED,
+#       3 INCONCLUSIVE, 2 malformed input or an unsupported lever (B2).
+#
+# Exit: 0 done; 2 refused input; 3 INCONCLUSIVE (--exposure-screen only).
+# Platform guard for --exposure-screen: also node, for model-price.mjs.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -72,12 +82,15 @@ done
 
 exec python3 -I - "$HERE" ${args[@]+"${args[@]}"} <<'PY'
 import argparse
+import calendar
+import hashlib
 import json
 import os
 import re
 import statistics
+import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 HERE = sys.argv[1]
 sys.path.insert(0, os.path.normpath(os.path.join(HERE, "..", "..", "..", "eval")))
@@ -136,11 +149,18 @@ def args():
     ap.add_argument("--mirror")
     ap.add_argument("--tz")
     ap.add_argument("--out")
+    ap.add_argument("--exposure-screen")
     a = ap.parse_args()
-    if not a.manifest and not a.doc:
-        refuse("give at least one --manifest or --doc")
     if a.out and re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", a.out):
         refuse("--out is a local path, never a URL: " + a.out)
+    if a.exposure_screen is not None:
+        if not a.out:
+            refuse("--exposure-screen needs --out")
+        if any([a.manifest, a.doc, a.since, a.prs, a.cr_ledger, a.verdicts, a.chief_doc, a.denials, a.mirror, a.tz]):
+            refuse("--exposure-screen takes only --out")
+        return a
+    if not a.manifest and not a.doc:
+        refuse("give at least one --manifest or --doc")
     return a
 
 
@@ -527,8 +547,276 @@ def table(head, rows):
     return "\n".join(lines)
 
 
+SCREEN_KEYS = {"schema", "lever", "window", "inventory", "export_set", "validation"}
+INVENTORY_KEYS = {"window", "scope_root", "complete", "population_review", "top_level_files", "exclusions"}
+ENTRY_KEYS = {"relative_path", "session", "role", "role_evidence"}
+ROLES = {"worker", "chief", "relay", "other", "unknown"}
+WHOLE_FILE = ("1970-01-01T00:00:00Z", "9999-12-31T23:59:59Z")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+RFC3339 = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$")
+MIN_PARENTS = 12
+NODE_LOAD = """
+import { pathToFileURL } from 'node:url';
+const m = await import(pathToFileURL(process.argv[2]).href);
+const out = (validation, exports) => process.stdout.write(JSON.stringify({ validation, exports }));
+try {
+  const { exports, expectedSessions, expectations } = m.loadExportSet(process.argv[1]);
+  const validation = m.validateCallExport(exports, expectedSessions, expectations);
+  out(validation, exports.map((e) => {
+    let manifest = null;
+    try { manifest = JSON.parse(e.manifestBytes); } catch { manifest = null; }
+    return { lines: e.lines, manifest };
+  }));
+} catch (e) {
+  if (!(e instanceof m.CallExportLoadError)) throw e;
+  out(e.validation, []);
+}
+"""
+
+
+def parse_us(s):
+    m = RFC3339.match(s) if isinstance(s, str) else None
+    if not m:
+        return None
+    try:
+        t = datetime(*(int(m.group(i)) for i in range(1, 7)), tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    off = m.group(8)
+    shift = 0 if off == "Z" else (1 if off[0] == "+" else -1) * (int(off[1:3]) * 3600 + int(off[4:6]) * 60)
+    frac = int((m.group(7) or "")[:6].ljust(6, "0"))
+    return (calendar.timegm(t.timetuple()) - shift) * 1_000_000 + frac
+
+
+def berlin_midnight(us):
+    from zoneinfo import ZoneInfo
+    if us % 1_000_000:
+        return None
+    dt = datetime.fromtimestamp(us // 1_000_000, ZoneInfo("Europe/Berlin"))
+    return dt.date() if (dt.hour, dt.minute, dt.second) == (0, 0, 0) else None
+
+
+def json_of(raw, what):
+    try:
+        return json.loads(raw)
+    except ValueError as e:
+        refuse("%s is not readable JSON: %s" % (what, e))
+
+
+def ref_of(obj, what, base):
+    if (not isinstance(obj, dict) or set(obj) != {"path", "sha256"} or not isinstance(obj["path"], str)
+            or not obj["path"] or not isinstance(obj["sha256"], str) or not HEX64.match(obj["sha256"])):
+        refuse("malformed ref: " + what)
+    path = os.path.realpath(os.path.join(base, obj["path"]))
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError as e:
+        refuse("unreadable ref %s: %s" % (what, e))
+    return path, raw, hashlib.sha256(raw).hexdigest() == obj["sha256"]
+
+
+def screen_result(a, disposition, why, selected=0, straddlers=0, num=None, den=None):
+    complete = disposition != "INCONCLUSIVE"
+    res = {"schema": 1, "kind": "exposure-screen", "lever": "B1", "coverage": "complete" if complete else "incomplete",
+           "selected": selected, "excluded_straddlers": straddlers,
+           "numerator_nano": str(num) if complete else None, "denominator_nano": str(den) if complete else None,
+           "share": num / den if complete else None, "disposition": disposition, "reasons": why}
+    try:
+        with open(a.out, "w", encoding="utf-8") as fh:
+            json.dump(res, fh, indent=1)
+            fh.write("\n")
+    except OSError as e:
+        refuse("cannot write --out %s: %s" % (a.out, e))
+    print("exposure-screen: %s%s" % (disposition, " (" + ", ".join(why) + ")" if why else ""))
+    return 3 if disposition == "INCONCLUSIVE" else 0
+
+
+def exposure_screen(a):
+    price_cli = os.path.normpath(os.path.join(HERE, "..", "..", "model-price.mjs"))
+    reader = os.path.normpath(os.path.join(HERE, "..", "..", "..", "eval", "compaction-trigger-report.py"))
+    screen_dir = os.path.dirname(os.path.abspath(a.exposure_screen))
+    try:
+        with open(a.exposure_screen, "rb") as fh:
+            screen = json_of(fh.read(), "SCREEN")
+    except OSError as e:
+        refuse("SCREEN is not readable JSON: %s" % e)
+    if not isinstance(screen, dict):
+        refuse("SCREEN is not a JSON object")
+    if set(screen) != SCREEN_KEYS:
+        refuse("SCREEN has unknown field %s or lacks %s" % (sorted(set(screen) - SCREEN_KEYS), sorted(SCREEN_KEYS - set(screen))))
+    if screen["schema"] != 1:
+        refuse("SCREEN schema must be 1")
+    if screen["lever"] != "B1":
+        refuse("unsupported lever %r: only B1 has an exposure screen" % (screen["lever"],))
+    win = screen["window"]
+    if not isinstance(win, dict) or set(win) != {"since", "until", "timezone"} or not isinstance(win["timezone"], str):
+        refuse("SCREEN window needs since, until and timezone")
+    since_us, until_us = parse_us(win["since"]), parse_us(win["until"])
+    if since_us is None or until_us is None or since_us >= until_us:
+        refuse("SCREEN window is not an RFC3339 interval")
+
+    inv_path, inv_raw, inv_ok = ref_of(screen["inventory"], "inventory", screen_dir)
+    set_path, _, set_ok = ref_of(screen["export_set"], "export_set", screen_dir)
+    _, val_raw, val_ok = ref_of(screen["validation"], "validation", screen_dir)
+    inv = json_of(inv_raw, "inventory")
+    supplied = json_of(val_raw, "validation")
+    if not isinstance(inv, dict) or set(inv) != INVENTORY_KEYS or not isinstance(inv["complete"], bool) \
+            or not isinstance(inv["scope_root"], str) or not inv["scope_root"] \
+            or not isinstance(inv["top_level_files"], list) or not isinstance(inv["exclusions"], list):
+        refuse("malformed inventory")
+    if inv["window"] != win:
+        refuse("inventory window differs from the SCREEN window")
+    inv_dir = os.path.dirname(inv_path)
+    _, _, review_ok = ref_of(inv["population_review"], "population_review", inv_dir)
+    evidence_ok = True
+    for f in inv["top_level_files"]:
+        if (not isinstance(f, dict) or set(f) != ENTRY_KEYS
+                or not all(isinstance(f[k], str) and f[k] for k in ("relative_path", "session", "role"))):
+            refuse("malformed inventory entry")
+        if f["role"] not in ROLES:
+            refuse("inventory role %r is not one of %s" % (f["role"], ", ".join(sorted(ROLES))))
+        evidence_ok = ref_of(f["role_evidence"], "role_evidence", inv_dir)[2] and evidence_ok
+
+    why = []
+
+    def add(code):
+        if code not in why:
+            why.append(code)
+
+    if not (inv_ok and set_ok and val_ok and review_ok and evidence_ok):
+        add("ref-hash-mismatch")
+    if not inv["complete"]:
+        add("population-incomplete")
+    if any(f["role"] == "unknown" for f in inv["top_level_files"]):
+        add("role-unknown")
+    first, last = berlin_midnight(since_us), berlin_midnight(until_us)
+    if win["timezone"] != "Europe/Berlin" or first is None or last is None:
+        add("window-not-berlin-days")
+    else:
+        if (last - first).days < 7:
+            add("window-too-short")
+        if first < date(2026, 11, 9):
+            add("window-before-nov-9")
+    if why:
+        return screen_result(a, "INCONCLUSIVE", why)
+
+    try:
+        loaded = subprocess.run(["node", "--input-type=module", "-e", NODE_LOAD, set_path, price_cli],
+                                capture_output=True, check=False)
+        data = json.loads(loaded.stdout) if loaded.returncode == 0 else None
+    except (OSError, ValueError):
+        data = None
+    if data is None:
+        return screen_result(a, "INCONCLUSIVE", ["validator-unavailable"])
+    validation = data["validation"]
+    if validation["state"] == "invalid":
+        refuse("export set is invalid: " + ", ".join(validation["reasons"]))
+    if supplied != validation:
+        return screen_result(a, "INCONCLUSIVE", ["validation-mismatch"])
+    if validation["state"] != "complete":
+        return screen_result(a, "INCONCLUSIVE", ["validation-inconclusive"] + validation["reasons"])
+
+    carrier = os.path.dirname(set_path)
+    sources, rows = {}, []
+    for e in data["exports"]:
+        m = e["manifest"]
+        if m is None or (m["since"], m["until"]) != WHOLE_FILE:
+            add("projection-not-whole-file")
+            continue
+        root = os.path.realpath(m["root"] if os.path.isabs(m["root"]) else os.path.join(carrier, m["root"]))
+        for f in m["files"]:
+            sources[os.path.realpath(os.path.join(root, f["relative_path"]))] = f
+        rows += [r for r in map(json.loads, filter(str.strip, e["lines"])) if r.get("kind") == "usage-call"]
+    by_session = {}
+    for r in rows:
+        by_session.setdefault((r["parent"], r["session"]), []).append(r)
+
+    scope = os.path.realpath(os.path.join(inv_dir, inv["scope_root"]))
+    picked, seen = [], set()
+    for f in inv["top_level_files"]:
+        if f["role"] != "worker":
+            continue
+        path = os.path.realpath(os.path.join(scope, f["relative_path"]))
+        if path in seen:
+            add("path-duplicate")
+            continue
+        seen.add(path)
+        src = sources.get(path)
+        if src is None or src["parent"] is not None or src["session"] != f["session"]:
+            add("path-missing")
+            continue
+        picked.append((path, src))
+    selected, straddlers = [], 0
+    for path, src in picked:
+        stamps = [parse_us(c["first_timestamp"]) for c in by_session.get((None, src["session"]), [])]
+        if not stamps or None in stamps:
+            add("span-unknown")
+        elif since_us <= min(stamps) and max(stamps) < until_us:
+            selected.append((path, src))
+        elif min(stamps) < until_us and max(stamps) >= since_us:
+            straddlers += 1
+    if len(selected) < MIN_PARENTS:
+        add("too-few-parents")
+    if why:
+        return screen_result(a, "INCONCLUSIVE", why, len(selected), straddlers)
+
+    def frozen():
+        for path, src in selected:
+            try:
+                with open(path, "rb") as fh:
+                    raw = fh.read()
+            except OSError:
+                return False
+            if len(raw) != src["bytes"] or hashlib.sha256(raw).hexdigest() != src["sha256"]:
+                return False
+        return True
+
+    paths = sorted(p for p, _ in selected)
+    report = None
+    if frozen():
+        ran = subprocess.run([sys.executable, "-I", reader, "--json", "--min-peak", "0"] + paths,
+                             capture_output=True, check=False)
+        try:
+            report = json.loads(ran.stdout) if ran.returncode == 0 else None
+        except ValueError:
+            report = None
+    if report is None or not frozen():
+        return screen_result(a, "INCONCLUSIVE", ["source-changed" if not frozen() else "reader-failed"], len(selected), straddlers)
+    by_path = {}
+    for w in report["workers"]:
+        by_path.setdefault(w["path"], []).append(w)
+    for p in paths:
+        if len(by_path.get(p, [])) != 1:
+            add("path-missing" if p not in by_path else "path-duplicate")
+    if why:
+        return screen_result(a, "INCONCLUSIVE", why, len(selected), straddlers)
+
+    union = {}
+    for path, src in selected:
+        calls = sorted((parse_us(c["first_timestamp"]), c["call_id"], c) for c in by_session[(None, src["session"])])
+        for comp in by_path[path][0]["compactions"]:
+            t = comp.get("t")
+            if isinstance(t, bool) or not isinstance(t, (int, float)):
+                add("event-time-invalid")
+                continue
+            boundary = round(t * 1_000_000)
+            for _, call_id, c in [x for x in calls if x[0] > boundary][:5]:
+                union[call_id] = c
+    sessions = {src["session"] for _, src in selected}
+    num = sum(int(c["nano"]) for c in union.values())
+    den = sum(int(r["nano"]) for r in rows if (r["session"] in sessions and r["parent"] is None) or r["parent"] in sessions)
+    if den == 0:
+        add("zero-denominator")
+    if why:
+        return screen_result(a, "INCONCLUSIVE", why, len(selected), straddlers)
+    return screen_result(a, "QUALIFIED" if num * 100 >= den * 3 else "NO-OP", [], len(selected), straddlers, num, den)
+
+
 def main():
     a = args()
+    if a.exposure_screen is not None:
+        return exposure_screen(a)
     tz = zone(a.tz)
     since = None
     if a.since:
