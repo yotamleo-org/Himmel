@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createJournalMapper, mapFile, mapJournal } from "../agui/journal-mapper.ts";
+import { createJournalMapper, MAPPER_SCHEMA, mapFile, mapJournal } from "../agui/journal-mapper.ts";
 import type { AguiEvent } from "../agui/events.ts";
 import { aguiViolations } from "./agui-schema.ts";
 
@@ -45,7 +45,7 @@ describe("happy path", () => {
     expect(JSON.parse((events[8] as { delta: string }).delta)).toEqual({ command: "ls", description: "List files" });
     expect(events[10]).toEqual({
       type: "TOOL_CALL_RESULT", messageId: "toolu_ls:result", toolCallId: "toolu_ls", role: "tool",
-      content: "README.md\nscripts", timestamp: Date.parse("2026-10-06T10:00:03.000Z"),
+      content: "README.md\nscripts", outcome: "ok", timestamp: Date.parse("2026-10-06T10:00:03.000Z"),
     });
     expect(events[14]).toMatchObject({ type: "RUN_FINISHED", threadId: "sess-happy", runId: "u-prompt-1", outcome: { type: "success" } });
   });
@@ -326,4 +326,25 @@ describe("a session with no agent-name record is named from its branch, cwd or f
     expect(evs.find((e) => e.agent?.id === "zz9").agent).toEqual({ id: "zz9", name: "agent zz9", role: "subagent" });
     expect(evs.find((e) => e.agent?.id === "main").agent.name).toBe("real prompt");
   });
+});
+
+describe("tool call outcome partition", () => {
+  const OUT = join(import.meta.dir, "..", "..", "eval", "worker-digest", "fixtures", "outcomes.jsonl");
+  const results = new Map((mapFile(OUT).events as any[]).filter((e) => e.type === "TOOL_CALL_RESULT").map((e) => [e.toolCallId, e]));
+  const want: Record<string, string> = {
+    c_ok: "ok", c_quote: "ok", c_judge_m: "ok", c_judge_u: "ok", c_late: "ok", c_blk: "ok_blocked",
+    c_err: "error", c_suite: "error", c_edit_nf: "error", c_edit_amb: "error", c_edit_same: "error", c_sep: "error",
+    c_den: "denied", c_nv: "no_verdict", c_nv_edit: "no_verdict", c_int: "interrupted",
+  };
+  for (const [id, outcome] of Object.entries(want)) test(`${id} is ${outcome}`, () => expect(results.get(id)?.outcome).toBe(outcome));
+  test("a successful result quoting the no-verdict message stays ok, with no failure", () => {
+    expect(results.get("c_quote")?.failure).toBeUndefined();
+  });
+  test("no_verdict and interrupted carry no failure: they are not execution errors", () => {
+    for (const id of ["c_nv", "c_nv_edit", "c_int"]) expect(results.get(id)?.failure).toBeUndefined();
+  });
+  test("the raw isError survives as a detail field", () => expect(results.get("c_nv")?.isError).toBe(true));
+  test("the suite failure keeps its detail kind under error", () => expect(results.get("c_suite")?.failure).toBe("suite"));
+  test("a call with no result gets no result event here", () => expect(results.has("c_missing")).toBe(false));
+  test("the mapper meaning version moved", () => expect(MAPPER_SCHEMA).toBe(2));
 });

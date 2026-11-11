@@ -125,7 +125,7 @@ write_brief() { # $1 row, $2 worktree, $3 task, $4 nonce, $5 chief
   cat <<EOF
 ---
 resume_cwd: $2
-description: HIMMEL-4869 pilot row $1, one frozen eval task
+description: lane-quality pilot row $1, one frozen eval task
 ---
 
 # Pilot row $1: one eval task

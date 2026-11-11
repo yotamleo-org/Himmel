@@ -248,6 +248,102 @@ nb="$(cat "$WORK"/nbucket/*-judge-j2599d-2026-10-13-RESUME.md 2>/dev/null)"
 has "ceilings: control, the no-pr brief was written" "$nb" "j2599d"
 lacks "ceilings: a spec with no pr carries no ceilings item" "$nb" "Recorded ceilings"
 
+# --dispatch-json: one native Agent input object on stdout, no bucket, lock or RESUME write.
+HOOKS_DIR="$(cd "$HERE/../../hooks" && pwd)"
+DBUCKET="$WORK/dbucket"; DSCRATCH="$WORK/dverdicts"
+dj() { # <spec name>: run dispatch mode; stdout -> $dj_out, stderr -> $WORK/dj.err, rc -> $dj_rc
+    dj_out="$(python3 "$SUT" "$WORK/$1.json" --chief "$CHIEF" --dispatch-json --bucket "$DBUCKET" --date 2026-10-13 \
+        --scratch-root "$DSCRATCH" 2>"$WORK/dj.err")"; dj_rc=$?
+}
+jf() { printf '%s' "$dj_out" | python3 -I -c 'import json,sys; d=json.load(sys.stdin); v=d.get(sys.argv[1]); print(json.dumps(v) if not isinstance(v, str) else v)' "$1" 2>/dev/null; }
+guards() { # <payload json>: "<agent-model rc> <subagent-model rc> <agent-model stdout bytes>"
+    local o1 r1 r2
+    o1="$(printf '%s' "$1" | bash "$HOOKS_DIR/guard-agent-model.sh" 2>/dev/null)"; r1=$?
+    printf '%s' "$1" | env -u SUBAGENT_MODEL_OK bash "$HOOKS_DIR/guard-subagent-model.sh" >/dev/null 2>&1; r2=$?
+    printf '%s %s %s' "$r1" "$r2" "${#o1}"
+}
+as_call() { printf '%s' "$1" | python3 -I -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":json.load(sys.stdin)}))'; }
+
+dj spec
+[ "$dj_rc" = 0 ] && pass "dispatch: a first judge spec emits (rc 0)" || fail "dispatch rc=$dj_rc: $(cat "$WORK/dj.err")"
+keys="$(printf '%s' "$dj_out" | python3 -I -c 'import json,sys; print(",".join(sorted(json.load(sys.stdin))))' 2>/dev/null)"
+[ "$keys" = "description,model,prompt,run_in_background,subagent_type" ] && pass "dispatch: stdout is exactly one Agent input object" || fail "dispatch keys: '$keys' out: $dj_out"
+[ "$(jf subagent_type)" = "judge-ro" ] && pass "dispatch: subagent_type is judge-ro" || fail "dispatch subagent_type: $(jf subagent_type)"
+[ "$(jf model)" = "opus" ] && pass "dispatch: a first judge maps claude-opus-5-5 to the alias opus" || fail "dispatch model: $(jf model)"
+[ "$(jf run_in_background)" = "false" ] && pass "dispatch: run_in_background is false" || fail "dispatch bg: $(jf run_in_background)"
+p="$(jf prompt)"
+has "dispatch: the prompt carries the question" "$p" "Does PR 2599 parse the SUCCESSION bullet strictly enough that an ambiguous line reads missing?"
+has "dispatch: the prompt carries the head" "$p" "git diff origin/main...$HEAD40"
+has "dispatch: the prompt carries a RETASK nonce in the chief letter's shape" "$p" "RETASK: your nonce is \`Z-j2599a-"
+has "dispatch: the prompt names the direct parent as the only authority" "$p" "direct parent"
+has "dispatch: the prompt is read-only" "$p" "read-only"
+has "dispatch: the prompt carries the result contract" "$p" "**GO**"
+jbl="$(printf '%s\n' "$p" | grep -E '^JUDGE-BRIEF: [0-9a-f]{16}$')"
+[ -n "$jbl" ] && pass "dispatch: the prompt carries a JUDGE-BRIEF line of its own" || fail "dispatch: no JUDGE-BRIEF line"
+rt="$(printf '%s' "$p" | grep -oE 'Z-j2599a-[0-9a-f]{8}' | head -1)"
+case "$jbl" in *"${rt##*-}"*) fail "dispatch: the JUDGE-BRIEF marker reuses the RETASK nonce" ;; *) pass "dispatch: JUDGE-BRIEF and RETASK are distinct nonces" ;; esac
+lacks "dispatch: no headed-session lock instruction" "$p" "queue-lock"
+lacks "dispatch: no RESUME instruction" "$p" "RESUME"
+lacks "dispatch: no scratch-file instruction for a judge with no Write tool" "$p" "Put every scratch file"
+lacks "dispatch: no DELTA-JUDGE on a first judge" "$p" "DELTA-JUDGE:"
+lacks "dispatch: no ESCALATION on a first judge" "$p" "ESCALATION:"
+[ ! -e "$DBUCKET" ] && pass "dispatch: no bucket document written" || fail "dispatch wrote $DBUCKET: $(ls -R "$DBUCKET")"
+[ ! -e "$DSCRATCH" ] && pass "dispatch: no scratch dir created" || fail "dispatch created $DSCRATCH"
+diag="$(cat "$WORK/dj.err")"
+has "dispatch: diagnostics go to stderr" "$diag" "model=opus"
+first="$dj_out"; dj spec
+[ "$dj_rc" = 0 ] && [ ! -e "$DBUCKET" ] && pass "dispatch: rerunning the same qid succeeds with no write" || fail "dispatch rerun rc=$dj_rc"
+g="$(guards "$(as_call "$first")")"
+[ "$g" = "0 0 0" ] && pass "dispatch: a first judge passes both model guards silently" || fail "first judge guards: $g"
+
+mutate nodo 'del d["do_not"]'
+dj nodo
+lacks "dispatch: the default scope names no verdict file for an in-process judge" "$(jf prompt)" "verdict file"
+has "dispatch: the default scope says the verdict is the reply" "$(jf prompt)" "your verdict is your reply"
+
+dj dfind
+[ "$dj_rc" = 0 ] && [ "$(jf model)" = "sonnet" ] && pass "dispatch: a finding delta maps to the alias sonnet" || fail "finding delta rc=$dj_rc model=$(jf model): $(cat "$WORK/dj.err")"
+has "dispatch: a finding delta carries its DELTA-JUDGE line" "$(jf prompt)" "
+DELTA-JUDGE: $HEAD40
+"
+g="$(guards "$(as_call "$dj_out")")"
+[ "$g" = "0 0 0" ] && pass "dispatch: a finding delta passes both model guards" || fail "finding delta guards: $g"
+dj dtrust
+[ "$dj_rc" = 0 ] && [ "$(jf model)" = "opus" ] && pass "dispatch: a trust delta stays on opus" || fail "trust delta rc=$dj_rc model=$(jf model)"
+g="$(guards "$(as_call "$dj_out")")"
+[ "$g" = "0 0 0" ] && pass "dispatch: a trust delta passes both model guards" || fail "trust delta guards: $g"
+
+djrefuse() { # <label> <spec name> <stderr fragment>
+    dj "$2"
+    if [ "$dj_rc" = 1 ] && [ -z "$dj_out" ] && grep -q "$3" "$WORK/dj.err" && [ ! -e "$DBUCKET" ]; then pass "$1"; else fail "$1 (rc=$dj_rc, out=$dj_out, err: $(cat "$WORK/dj.err"))"; fi
+}
+mutate fnr 'd["model"]="claude-fable-5-2"'
+djrefuse "dispatch: Fable without an escalation_reason is refused" fnr "escalation_reason"
+mutate fph 'd["model"]="claude-fable-5-2"; d["escalation_reason"]="n/a"'
+djrefuse "dispatch: Fable with a placeholder escalation_reason is refused" fph "escalation_reason"
+mutate fshort 'd["model"]="claude-fable-5-2"; d["escalation_reason"]="hard"'
+djrefuse "dispatch: Fable with a too-short escalation_reason is refused" fshort "escalation_reason"
+mutate fok 'd["model"]="claude-fable-5-2"; d["escalation_reason"]="a cross-file lock replay Opus returned above-my-tier on"'
+dj fok
+[ "$dj_rc" = 0 ] && [ "$(jf model)" = "fable" ] && pass "dispatch: Fable with a valid escalation_reason maps to the alias fable" || fail "fable ok rc=$dj_rc model=$(jf model): $(cat "$WORK/dj.err")"
+has "dispatch: Fable renders the ESCALATION line" "$(jf prompt)" "
+ESCALATION: a cross-file lock replay Opus returned above-my-tier on
+"
+g="$(guards "$(as_call "$dj_out")")"
+[ "${g% *}" = "0 0" ] && pass "dispatch: a Fable judge with its reason passes both model guards" || fail "fable guards: $g"
+stripped="$(printf '%s' "$dj_out" | python3 -I -c 'import json,sys; d=json.load(sys.stdin); d["prompt"]="\n".join(l for l in d["prompt"].split("\n") if not l.startswith("ESCALATION:")); print(json.dumps(d))')"
+g="$(guards "$(as_call "$stripped")")"
+[ "${g%% *}" = "2" ] && pass "dispatch: the same Fable call without its ESCALATION line is denied" || fail "stripped fable guards: $g"
+mutate fhaiku 'd["model"]="claude-haiku-5-5"'
+djrefuse "dispatch: a Haiku judge is refused" fhaiku "haiku"
+mutate fold 'd["model"]="claude-opus-4-1-20250805"'
+djrefuse "dispatch: an unrepresentable model id is refused" fold "alias"
+mutate f1m 'd["model"]="claude-opus-5-5[1m]"'
+djrefuse "dispatch: a session-only model setting is refused" f1m "alias"
+mutate erlegacy 'd["escalation_reason"]="a cross-file lock replay Opus returned above-my-tier on"'
+dj erlegacy
+[ "$dj_rc" = 1 ] && grep -q "escalation_reason" "$WORK/dj.err" && pass "dispatch: an escalation_reason on a non-Fable judge is refused" || fail "non-fable reason rc=$dj_rc: $(cat "$WORK/dj.err")"
+
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
 

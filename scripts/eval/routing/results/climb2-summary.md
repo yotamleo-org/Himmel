@@ -1,4 +1,4 @@
-# Routing eval, phase 2 climb: sealed targets not met (HIMMEL-8088)
+# Routing eval, phase 2 climb: sealed targets not met
 
 Means over reps: 5 for haiku, 3 for sonnet and opus. Sealed is aggregate only.
 
@@ -24,7 +24,7 @@ How many sealed cases the final candidate loses, counted as a flip from majority
 
 Every flip is noise-sized, so no description edit from this phase ships. The listing stays as it is on main (3296 tokens). The `before` haiku row has 4 reps: a fifth was voided because an edit landed while it ran.
 
-The listing tokens column is the whole-listing chars/4 figure. Eval spend for the phase was 19.92 USD, against a 45 USD line. The sealed targets move to HIMMEL-8158.
+The listing tokens column is the whole-listing chars/4 figure. Eval spend for the phase was 19.92 USD, against a 45 USD line. The sealed targets move to a follow-up eval that meets or re-baselines them.
 
 ## History
 

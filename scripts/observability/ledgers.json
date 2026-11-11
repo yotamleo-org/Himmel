@@ -366,10 +366,10 @@
       "format": "jsonl",
       "rotation": "none",
       "retention": "unbounded",
-      "schema_version": 1,
+      "schema_version": 2,
       "envelope": ["v", "ts", "host", "source", "kind"],
       "grandfathered": false,
-      "_note": "One row per worker launch that headed-arm-worker.sh refuses after its seam guard, or whose headed-arm.sh child does not report a launch: cause (closed set), rc, the first line of the refusal. Written by the launcher's EXIT trap, never on --dry-run or a forwarded signal. There is no path override."
+      "_note": "Launch attempts of headed-arm-worker.sh. v2 (kind launch-attempt): an attempt-started row once a real launch's arguments are parsed, then one terminal row from the EXIT trap, both with one attempt_id; phase (brief-validation, usage-preflight, bus-registration, handoff, manifest, unknown), outcome (refused, launched, already-running, indeterminate, postlaunch-error; launched and already-running come from the headed-arm.sh child's own word, never the exit code), cause (closed set), rc, the first line of a refusal. An attempt with no terminal row reads unknown. v1 rows (kind launch-refused, refusals only) stay readable as legacy. Never written on --dry-run. There is no path override."
     },
     {
       "id": "keyword-lag",

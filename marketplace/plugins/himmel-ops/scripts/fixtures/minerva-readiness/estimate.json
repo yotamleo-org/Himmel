@@ -1,0 +1,46 @@
+{
+  "config_version": "B-2026-10-01",
+  "goal": "G2",
+  "alternatives": [
+    "x"
+  ],
+  "range": [
+    "S",
+    "S"
+  ],
+  "plan_first_slice": null,
+  "g1": "no",
+  "deps": "none",
+  "scope_files": [
+    "a.sh"
+  ],
+  "red": "r",
+  "median_seq": 1.362,
+  "sigma": 0.45,
+  "dod": {
+    "passed": true,
+    "failed": [],
+    "checks": {
+      "scope_files": true,
+      "red": true,
+      "g1_flag": true,
+      "deps": true,
+      "range_width": true,
+      "sigma_ceiling": true
+    }
+  },
+  "mean_seq": 1.507125520368127,
+  "p80_seq": 1.9890839531962903,
+  "band_seq": {
+    "p30": 1.075702791737173,
+    "p40": 1.2152735648785957,
+    "p50": 1.362,
+    "p60": 1.5264414972980316,
+    "p70": 1.7244949202039852
+  },
+  "bank": {
+    "median": 0.012258,
+    "mean": 0.013564129683313143,
+    "p80": 0.017901755578766613
+  }
+}

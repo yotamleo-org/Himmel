@@ -20,8 +20,15 @@ function readRows(path) {
   catch { return []; }
 }
 const strOrNull = (v) => v === null || typeof v === 'string';
-const validLaunch = (r) => r && typeof r === 'object' && !Array.isArray(r) && r.v === 1 && typeof r.ts === 'string' && Number.isFinite(Date.parse(r.ts))
-  && Number.isSafeInteger(r.rc) && typeof r.cause === 'string' && strOrNull(r.name) && strOrNull(r.line);
+// launch-refusals.jsonl: v1 rows are refusals only (legacy); v2 rows are attempts, an attempt-started row and one
+// terminal row sharing an attempt_id (headed-arm-worker.sh's EXIT trap).
+export const LAUNCH_OUTCOMES = ['attempt-started', 'refused', 'launched', 'already-running', 'indeterminate', 'postlaunch-error'];
+const LAUNCH_PHASES = ['brief-validation', 'usage-preflight', 'bus-registration', 'handoff', 'manifest', 'unknown'];
+const validLaunch = (r) => r && typeof r === 'object' && !Array.isArray(r) && typeof r.ts === 'string' && Number.isFinite(Date.parse(r.ts))
+  && typeof r.cause === 'string' && strOrNull(r.name) && strOrNull(r.line)
+  && ((r.v === 1 && Number.isSafeInteger(r.rc))
+    || (r.v === 2 && typeof r.attempt_id === 'string' && /^[0-9A-Za-z-]{1,80}$/.test(r.attempt_id) && LAUNCH_OUTCOMES.includes(r.outcome)
+      && LAUNCH_PHASES.includes(r.phase) && (r.rc === null || Number.isSafeInteger(r.rc))));
 export function readLaunchRows(path) {
   let text;
   try { text = readFileSync(path, 'utf8'); } catch (e) { return e && e.code === 'ENOENT' ? { exists: false, rows: [], skipped: 0 } : null; }
@@ -38,15 +45,27 @@ function rollupLaunches(launches, firstDay, lastDay) {
   if (!launches) return { state: 'not-read' };
   if (!launches.exists) return { state: 'absent', total: 0, by_cause: [], recent: [], skipped: 0 };
   const inWindow = launches.rows.filter((r) => { const d = dayOf(Date.parse(r.ts)); return d !== null && d >= firstDay && d <= lastDay; });
+  // One attempt per attempt_id: its last terminal row decides, a replayed row counts once, and an attempt with only
+  // attempt-started (a killed launcher) is unknown. The refusals below are v1 rows plus refused attempts.
+  const attempts = new Map();
+  for (const r of inWindow.filter((x) => x.v === 2)) {
+    const a = attempts.get(r.attempt_id) ?? { terminal: null };
+    if (r.outcome !== 'attempt-started') a.terminal = r;
+    attempts.set(r.attempt_id, a);
+  }
+  const byOutcome = { launched: 0, 'already-running': 0, refused: 0, indeterminate: 0, 'postlaunch-error': 0, unknown: 0 };
+  for (const a of attempts.values()) byOutcome[a.terminal ? a.terminal.outcome : 'unknown']++;
+  const legacy = inWindow.filter((r) => r.v === 1);
+  const refusals = [...legacy, ...[...attempts.values()].filter((a) => a.terminal?.outcome === 'refused').map((a) => a.terminal)];
   const causes = new Map();
-  for (const r of inWindow) {
+  for (const r of refusals) {
     const cause = CAUSE_RE.test(r.cause) ? r.cause : 'other';
     const c = causes.get(cause) ?? { cause, count: 0, rc: {} };
     c.count++; c.rc[String(r.rc)] = (c.rc[String(r.rc)] ?? 0) + 1; causes.set(cause, c);
   }
-  const recent = inWindow.map((r, i) => ({ r, i })).sort((a, b) => Date.parse(b.r.ts) - Date.parse(a.r.ts) || b.i - a.i).slice(0, 20)
+  const recent = refusals.map((r, i) => ({ r, i })).sort((a, b) => Date.parse(b.r.ts) - Date.parse(a.r.ts) || b.i - a.i).slice(0, 20)
     .map(({ r }) => ({ ts: r.ts, name: r.name, cause: CAUSE_RE.test(r.cause) ? r.cause : 'other', rc: r.rc, line: r.line }));
-  return { state: 'ok', total: inWindow.length, by_cause: [...causes.values()].sort((a, b) => b.count - a.count || a.cause.localeCompare(b.cause)), recent, skipped: launches.skipped };
+  return { state: 'ok', total: refusals.length, attempts: { total: attempts.size, by_outcome: byOutcome }, legacy_rows: legacy.length, by_cause: [...causes.values()].sort((a, b) => b.count - a.count || a.cause.localeCompare(b.cause)), recent, skipped: launches.skipped };
 }
 // Test override for the listing cost, {profile: {tool: tokens}}; absent or unreadable = none.
 function readListing(path) {
@@ -110,6 +129,12 @@ const nearest = (xs, p) => xs.length ? xs.slice().sort((a, b) => a - b)[Math.cei
 const timingOf = (raw) => ({ n: raw.single.length, p50_ms: nearest(raw.single, 0.5), p95_ms: nearest(raw.single, 0.95), batched_n: raw.batched.length, batched_p50_ms: nearest(raw.batched, 0.5),
   missing: raw.missing, unknown_calls: raw.unknown_calls, capped: raw.capped });
 const CAUSES = ['command', 'rtk_hook', 'guard', 'classifier', 'other'];
+// The digest's per-call outcome partition (digest_v 3). A row without one, or whose counts do not sum to its calls, is
+// legacy for comparison: its tool and the totals report outcomes as null, never as zeros.
+export const OUTCOMES = ['ok', 'ok_blocked', 'error', 'denied', 'no_verdict', 'interrupted', 'unknown'];
+const zeroOutcomes = () => Object.fromEntries(OUTCOMES.map((k) => [k, 0]));
+const validOutcomes = (o, calls) => !!o && typeof o === 'object' && !Array.isArray(o) && OUTCOMES.every((k) => num(o[k]))
+  && num(calls) && OUTCOMES.reduce((n, k) => n + o[k], 0) === calls;
 
 const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;
 // A row recorded before the rename carries the old profile id; it rolls up under the renamed one.
@@ -148,7 +173,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cohort) || cohort < firstDay || cohort > lastDay) return null;
       const key = `${session}\0${agent}\0${cohort}`;
       if (!slots.has(key)) {
-        const slot = { session, agent, day: cohort, lane, role, profile, team: teamOf(profile), gap: typeof r.meta?.launch_gap === 'string' ? r.meta.launch_gap : null, model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
+        const slot = { session, agent, day: cohort, ts, lane, role, profile, defv: num(r.config?.digest_v) ? String(r.config.digest_v) : 'unknown', team: teamOf(profile), gap: typeof r.meta?.launch_gap === 'string' ? r.meta.launch_gap : null, model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
         slots.set(key, slot);
         const agentKey = `${session}\0${agent}`, cohorts = byAgent.get(agentKey) || [];
         cohorts.push(slot); byAgent.set(agentKey, cohorts);
@@ -163,8 +188,13 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       if (slot) slot.tools.set(h.tool, { ...h, failures: h.failures - blocked, blocked });
     }
   }
+  // The paired snapshot: a selected eval row's meta.tool_failures is its session's failure set (an empty list means
+  // none), so the failures shown always belong to the row counted; the ledger is the fallback for a row without it.
+  const paired = new Map([...sessions].filter(([, r]) => Array.isArray(r.meta?.tool_failures)).map(([id, r]) => [id, r.meta.tool_failures]));
+  const failureRows = [...failures.filter((r) => !(r && paired.has(r.session))),
+    ...[...paired].flatMap(([session, list]) => list.filter((f) => f && typeof f === 'object').map((f) => ({ ...f, session })))];
   const seenFailures = new Set();
-  for (const r of failures) {
+  for (const r of failureRows) {
     if (!r || typeof r.class !== 'string' || !num(r.count) || !r.agent || r.failure === 'traj' || r.failure === 'run_error') continue;
     const identity = `${r.session}\0${r.agent.id}\0${r.class}`;
     if (seenFailures.has(identity)) continue;
@@ -191,8 +221,10 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       }
     }
   }
-  const blank = () => ({ calls: 0, failures: 0, errors: 0, denials: 0, blocked: 0, recovered: 0, known: 0, sessions: new Set(), classes: new Map(), ids: new Set() });
-  const finish = (r) => ({ ...r, rate: rate(r.failures, r.calls), error_rate: rate(r.errors, r.calls), recovery_rate: rate(r.recovered, r.known), sessions: [...r.sessions], classes: [...r.classes].sort((a, b) => b[1] - a[1]).map(([className, count]) => ({ class: className, count })), tool_call_ids: [...r.ids].slice(0, 20) });
+  const blank = () => ({ calls: 0, failures: 0, errors: 0, denials: 0, blocked: 0, recovered: 0, known: 0, outcomes: zeroOutcomes(), outcome_gaps: 0, sessions: new Set(), classes: new Map(), ids: new Set() });
+  // retry_known / retry_changed_or_stopped: refused calls whose next step is known, and those where the caller changed the
+  // call or stopped (the router's old `recovered` field, kept for compatibility); not proof the task was completed.
+  const finish = ({ outcome_gaps, ...r }) => ({ ...r, outcomes: outcome_gaps ? null : r.outcomes, rate: rate(r.failures, r.calls), error_rate: rate(r.errors, r.calls), recovery_rate: rate(r.recovered, r.known), retry_known: r.known, retry_changed_or_stopped: r.recovered, sessions: [...r.sessions], classes: [...r.classes].sort((a, b) => b[1] - a[1]).map(([className, count]) => ({ class: className, count })), tool_call_ids: [...r.ids].slice(0, 20) });
   const sumCalls = (a, b) => a === null || b === null ? null : a + b;
   function aggregate(list) {
     const tools = new Map(), daily = new Map(), hooks = new Map(), dailyHooks = new Map(), bashByGroup = new Map();
@@ -210,6 +242,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
         const d = daily.get(key) || { ...blank(), tool: h.tool, day: s.day, model: s.model, lane: s.lane, role: s.role };
         for (const target of [t, d]) {
           target.calls = sumCalls(target.calls, h.calls); target.failures += h.failures; target.errors += h.errors; target.denials += h.denials; target.blocked += h.blocked ?? 0; target.sessions.add(s.session);
+          if (validOutcomes(h.outcomes, h.calls)) for (const k of OUTCOMES) target.outcomes[k] += h.outcomes[k]; else target.outcome_gaps++;
           for (const f of s.failures) {
             const count = h.classes ? h.classes[f.class] : inferredTool(f.class) === h.tool ? f.count : 0;
             if (!num(count) || count === 0) continue;
@@ -231,7 +264,10 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
           if (typeof f.recovered === 'boolean') { target.known += f.count; if (f.recovered) target.recovered += f.count; }
         }
         // The counted refusals themselves, so the chain can say which have a reason row; stripped before the result leaves.
-        h.refusals.push({ count: f.count, ids: Array.isArray(f.tool_call_ids) ? f.tool_call_ids : [], first: f.first_ts, last: f.last_ts });
+        const dc = [...s.tools.values()].filter((t) => Array.isArray(t.denied_calls));
+        const ids = dc.length ? [...new Set(dc.flatMap((t) => t.denied_calls.filter((c) => Array.isArray(c) && typeof c[0] === 'string' && c[1] === f.class).map((c) => c[0])))]
+          : Array.isArray(f.tool_call_ids) ? f.tool_call_ids : [];
+        h.refusals.push({ count: f.count, ids, session: s.session, first: f.first_ts, last: f.last_ts });
         hooks.set(f.class, h); dailyHooks.set(key, d);
       }
     }
@@ -342,14 +378,36 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const chainOut = rollupChain(chain, { firstDay, lastDay, refused });
   result.hooks = result.hooks.map(({ refusals, ...h }) => ({ ...h, reason_gap: chainOut.gaps?.[memberOfGuardClass(h.class)] ?? null }));
   const { gaps, ...chainShown } = chainOut ?? {};
-  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, cross_tab, attribution, bash: bashRollup(filtered, usable, rtk), coverage: coverageOf(everySlot.filter((s) => matches(s)), new Set(sessions.keys()), rtk, firstDay, lastDay), chain: chainOut.state === 'not-read' ? chainOut : chainShown, launches_refused: rollupLaunches(launches, firstDay, lastDay), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => everySlot.some((s) => s.team === t)) }, selected };
+  // The partition over the filtered window, and which digest meaning versions produced it: a window mixing versions, or
+  // holding a session with no partition, is not a certified comparison.
+  const withPartition = new Set(), withoutPartition = new Set(), digestV = {};
+  for (const s of filtered) {
+    const ok = [...s.tools.values()].every((h) => validOutcomes(h.outcomes, h.calls));
+    (s.known && ok ? withPartition : withoutPartition).add(s.session);
+  }
+  for (const id of new Set(filtered.map((s) => s.session))) { const v = filtered.find((s) => s.session === id).defv; digestV[v] = (digestV[v] || 0) + 1; }
+  for (const id of withPartition) if (withoutPartition.has(id)) withPartition.delete(id);
+  const outcomesTotal = result.tools.length && result.tools.every((t) => t.outcomes)
+    ? Object.fromEntries(OUTCOMES.map((k) => [k, result.tools.reduce((n, t) => n + t.outcomes[k], 0)])) : null;
+  const outcome_coverage = { sessions: withPartition.size + withoutPartition.size, with_partition: withPartition.size, without_partition: withoutPartition.size,
+    comparable: withoutPartition.size === 0 && Object.keys(digestV).length === 1 };
+  return { state: slots.size ? 'ok' : 'absent', ...result, outcomes: outcomesTotal, outcome_coverage, definitions: { digest_v: digestV }, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, cross_tab, attribution, bash: bashRollup(filtered, usable, rtk), coverage: coverageOf(everySlot.filter((s) => matches(s)), new Set(sessions.keys()), rtk, firstDay, lastDay), chain: chainOut.state === 'not-read' ? chainOut : chainShown, launches_refused: rollupLaunches(launches, firstDay, lastDay), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => everySlot.some((s) => s.team === t)) }, selected };
 }
 
 // What the roll-up does not see: digested sessions that carry no tool_health (left out of the rates), and the sessions and
 // Bash calls rtk's history.db saw in the window that have no digest at all. rtk.coverage(first, last) -> {state, sessions: Map<id, calls>}.
 function coverageOf(window, digested, rtk, firstDay, lastDay) {
   const ids = (known) => new Set(window.filter((s) => s.known === known).map((s) => s.session));
-  const cov = { sessions: ids(true).size, without_tool_health: ids(false).size, rtk: { state: 'not-read', undigested_sessions: null, undigested_calls: null } };
+  // What is measured: Claude Code journals the digest ingested. Native Codex and T3 sessions are not integrated, so their
+  // counts are null (never zero), and the `native` lane is not native Codex coverage.
+  const rows = window.flatMap((s) => [...s.tools.values()]);
+  const sum = (k) => rows.reduce((n, h) => n + (num(h[k]) ? h[k] : 0), 0);
+  const newest = window.reduce((t, s) => (Number.isFinite(s.ts) && (t === null || s.ts > t) ? s.ts : t), null);
+  const cov = { sessions: ids(true).size, without_tool_health: ids(false).size, population: 'ingested Claude Code journal attempts',
+    not_integrated: { codex: { calls: null, rate: null }, t3: { calls: null, rate: null } },
+    newest_session_ts: newest === null ? null : new Date(newest).toISOString(),
+    evidence: { denied_calls_captured: sum('denied_calls_captured'), denied_calls_omitted: sum('denied_calls_omitted'), rows_without_denied_calls: rows.filter((h) => num(h.denials) && h.denials > 0 && !Array.isArray(h.denied_calls)).length },
+    rtk: { state: 'not-read', undigested_sessions: null, undigested_calls: null } };
   if (typeof rtk?.coverage !== 'function') return cov;
   let c;
   try { c = rtk.coverage(firstDay, lastDay); } catch { c = { state: 'error' }; }

@@ -243,7 +243,7 @@ transcript_metrics() {
   if [ -z "$1" ] || [ ! -r "$1" ]; then
     echo '{"tool_calls":null,"dispatches":null,"dispatch_unnamed_model":null,"compactions":null,"hook_denials":null,"peeked":null,"red_before_green":null,"denial_recovery":null,"identical_denied_retries":null,"verify_before_claim":null}'; return
   fi
-  local traj  # HIMMEL-4651 trajectory fields; a scorer failure leaves them null
+  local traj  # trajectory fields; a scorer failure leaves them null
   traj="$(python3 "$HERE/trajectory.py" score "$1" --report "$2" 2>/dev/null)" || traj=""
   jq -s -c --argjson traj "${traj:-null}" --arg rp "${3:+$3/}" '
     (if $traj == null then {red_before_green: null, denial_recovery: null, identical_denied_retries: null, verify_before_claim: null} else $traj end) as $traj
@@ -292,7 +292,7 @@ judge_call() {
       exit 1
     fi
   ) <"$packet" >"$out" 2>"$err"  # opened before the cd, so a relative path still resolves
-  rc=$?  # the judge's status, not the cleanup's (HIMMEL-4667)
+  rc=$?  # the judge's status, not the cleanup's
   rm -rf "$jdir"
   return "$rc"
 }
@@ -576,7 +576,7 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
     else $ac + ($j.cost_usd? // 0) + ($jb.cost_usd? // 0) end'
 }
 
-API_PILOT_CAP=1  # HIMMEL-4986: the most one api sweep may be given, in USD
+API_PILOT_CAP=1  # the most one api sweep may be given, in USD
 
 # api_dry_run <tasks>: every check an api sweep makes before it spends, plus the
 # plan and the exact command. Spends nothing, starts nothing, prints no key.

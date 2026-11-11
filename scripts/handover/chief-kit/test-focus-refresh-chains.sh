@@ -68,6 +68,7 @@ EOS
 cat >"$tmp/bin/dispo" <<'EOS'
 #!/usr/bin/env bash
 echo "dispo $*" >> "$FX/log"
+[ -e "$FX/dispo.pause" ] && { cat "$FX/dispo.pause"; exit 0; }
 printf '# disposition HIMMEL-9101 listed LOCAL\n# disposition HIMMEL-9102 collision scripts/x.sh held by open PR 5\n'
 EOS
 chmod +x "$tmp"/bin/*
@@ -181,6 +182,21 @@ contains "an unreadable graph prints focus=WARN:chains render" "$(out)" "focus=W
 check "and the last good focus-chains.json is byte-identical" "$(cmp -s "$CH" "$tmp/good.json" && echo same)" same
 rm -f "$FX/graph.bad"
 
+for pause in '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 floor=500 reset=unknown caller=next-dispatchable nothing-was-judged' \
+    '# gh-stall GH-STALL github read timed out after 400s token=main caller=next-dispatchable nothing-was-judged'; do
+    pw="${pause#\# }"; pw="${pw%% *}"
+    reset
+    refresh
+    cp "$CH" "$tmp/good.json"
+    printf '%s\n' "$pause" > "$FX/dispo.pause"
+    refresh
+    check "a paused dispositions read ($pw) still prints ok, no new token" "$(out)" "focus=ok"
+    check "and the last good focus-chains.json is byte-identical ($pw)" "$(cmp -s "$CH" "$tmp/good.json" && echo same)" same
+    check "the tracker read the last good file ($pw)" "$(cat "$FX/tracker-chains-path")" "$CH"
+    contains "stderr names the pause ($pw)" "$(cat "$tmp/err")" "${pause#\# }; focus-chains.json is as it was"
+    rm -f "$FX/dispo.pause"
+done
+
 # --- focus-plan set: the priority line comes from a hand-kept plan, not the registry
 reset
 printf 'focus-plan: %s/plan.md\n' "$tmp/doc" >> "$DOC"
@@ -213,7 +229,7 @@ mkdir -p "$tmp/wrongroot"
 fx_refresh HANDOVER_DIR="$tmp/wrongroot"
 contains "a wrong root: the skip is a WARN on stdout" "$(out)" "focus=WARN:chains root"
 contains "a wrong root: the skip is named on stderr" "$(cat "$tmp/err")" "chains root"
-(cd "$FXR" && env -u HANDOVER_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$FXR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>&1)
+(cd "$FXR" && env -u HANDOVER_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$FXR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 opus >/dev/null 2>&1)
 check "no HANDOVER_DIR: the judge ladder is written under the configured root" "$([ -f "$CFG/.judge-ladder" ] && echo yes)" yes
 check "no HANDOVER_DIR: nothing is written under the stub folder" "$([ -e "$FXR/handovers/.judge-ladder" ] && echo yes || echo no)" no
 
@@ -234,7 +250,7 @@ rm -f "$CFG/.judge-ladder"
 frrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR HOME="$tmp/home" bash "$WTR/scripts/handover/chief-kit/focus-refresh.sh" --doc "$DOC" --repo example-org/example-repo >"$tmp/out" 2>"$tmp/err") || frrc=$?
 check "a linked worktree: focus-refresh succeeds with the primary env's root" "$frrc $(out)" "0 focus=ok"
 lacks "a linked worktree: focus-refresh prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
-jlrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$WTR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>"$tmp/err") || jlrc=$?
+jlrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$WTR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 opus >/dev/null 2>"$tmp/err") || jlrc=$?
 check "a linked worktree: judge-ladder writes under the primary env's root" "$jlrc $([ -f "$CFG/.judge-ladder" ] && echo yes)" "0 yes"
 lacks "a linked worktree: judge-ladder prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
 

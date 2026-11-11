@@ -131,5 +131,16 @@ run query q >/dev/null
 if grep -q 'worker-graph.sh' "$T/err"; then pass "T8 missing-graph message names worker-graph.sh"
 else fail "T8 err=$(cat "$T/err")"; fi
 
+mkdir -p "$T/seam"
+printf '{"nodes":[{"id":"scripts_go","source_file":"scripts/go.sh","label":"go.sh"}],"built_at_commit": "%s"}\n' "$BASE" > "$T/seam/graph.json"
+# shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  --rationale"; exit 0; }\necho "GRAPHIFY_OUT=$GRAPHIFY_OUT ARGS=$*" >> "%s/calls"\necho x\n' "$T" > "$T/bin/graphify"
+rm -f "$T/calls"
+(cd "$T/wt" && WORKER_GRAPH_OUT="$T/seam" PATH="$T/bin:$PATH" bash "$SCRIPT" query "where is go.sh used" >/dev/null 2>"$T/err"); rc=$?
+if [ "$rc" = 0 ] && grep -q "^GRAPHIFY_OUT=$T/seam ARGS=query .*--seed scripts_go .*--budget 4000" "$T/calls" \
+   && ! grep -q "GRAPHIFY_OUT=$P/graphify-out" "$T/calls"; then
+  pass "T9 worker_graph_out_seam reads the seam's graph and keeps its seeds and budget"
+else fail "T9 rc=$rc calls='$(cat "$T/calls" 2>/dev/null)' err='$(cat "$T/err")'"; fi
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

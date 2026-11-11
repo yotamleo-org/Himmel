@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/lane-quality/lq_stats.py - lane-quality statistics (HIMMEL-4648).
+"""scripts/eval/lane-quality/lq_stats.py - lane-quality statistics.
 
 Called by run.sh; no model call, stdlib only.
 
@@ -16,7 +16,7 @@ Called by run.sh; no model call, stdlib only.
       (<stem>.judge2.<label>.json, written by `run.sh calibration`). Appends one
       `lane-quality-calibration` row to the eval-runs ledger unless --no-ledger;
       --json prints that row instead of the report.
-      Model-graded calibration (HIMMEL-7555): --judge1-label grades with a
+      Model-graded calibration: --judge1-label grades with a
       fresh first grader instead of the stored judge. With a second grader the
       row adds Cohen's kappa between the two on the per-run verdict (pass =
       every correctness claim holds, correctness 5); with --tiebreak-label it
@@ -391,7 +391,7 @@ def cmd_disagreements(args):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="lq_stats.py", description="lane-quality statistics (HIMMEL-4648)")
+    ap = argparse.ArgumentParser(prog="lq_stats.py", description="lane-quality statistics")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("summary")
     s.add_argument("files", nargs="+")

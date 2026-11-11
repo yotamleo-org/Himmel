@@ -73,6 +73,9 @@ export interface OperatorRow {
   from_v?: string | null;
   to_v?: string | null;
   verbatim?: string;
+  decision_file?: string;
+  decision_sha256?: string;
+  words?: 1;
   file?: string;
   sha?: string;
   epoch?: number;

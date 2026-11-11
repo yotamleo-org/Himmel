@@ -503,6 +503,20 @@ echo "the routing table is data"
 check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'jq -e "[.routes[].match] | index(\"denied/classifier:*\") and index(\"suite/*\") and index(\"error/*\") and index(\"traj/claim-unverified\")" "$HERE/failure-routes.table.json" >/dev/null'
 check "the window is 14 days and the cap is 3" 'jq -e ".window_days == 14 and .daily_cap == 3" "$HERE/failure-routes.table.json" >/dev/null'
 
+echo "refreshed rows keep their original time: an old session's refresh decides nothing, an in-window one still counts"
+LED_SAVE="$LED"; LED="$TMP/refresh-ledger.jsonl"; : >"$LED"
+REFRESH_META='{"digest_id":"0123456789abcdef0123456789abcdef","refreshed_at":"2026-10-09T11:00:00Z"}'
+row N700 denied/guard-refresh-old 1 false worker 2026-09-01T10:00:00Z; row N701 denied/guard-refresh-old 1 false worker 2026-09-01T10:00:00Z
+row N702 denied/guard-refresh-new 1 false worker 2026-10-06T10:00:00Z; row N703 denied/guard-refresh-new 1 false worker 2026-10-06T10:00:00Z
+jq -c --argjson m "$REFRESH_META" '.meta = $m' "$LED" >"$LED.m" && mv "$LED.m" "$LED"
+before_calls="$(calls create)"
+route --now 2026-10-09T12:00:00Z --dry-run >"$TMP/refresh-dry.out" 2>&1 || bad "route --dry-run over refreshed rows exits 0: $(head -c 300 "$TMP/refresh-dry.out")"
+check "refreshed rows are still valid ledger rows" 'python3 "$HERE/worker_ledger.py" validate "$LED" >/dev/null'
+check "an older-than-window session refresh makes no filing or comment decision" '! grep -q "guard-refresh-old" "$TMP/refresh-dry.out" && [ -s "$TMP/refresh-dry.out" ]'
+check "a refreshed row inside the window is still read by the router" 'grep -q "would-file.*guard-refresh-new\|guard-refresh-new.*would-file" "$TMP/refresh-dry.out"'
+check "the preview made no Jira call" '[ "$(calls create)" = "$before_calls" ]'
+LED="$LED_SAVE"
+
 echo
 echo "test-failure-router: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

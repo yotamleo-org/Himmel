@@ -2,15 +2,19 @@
 // render, no republish); the page draws the kanban by version and theme, the release panels and the drift trend, the
 // worker -> Jira sync plan the chief kit writes, and the librarian's ready-to-approve lists. Read-only throughout.
 import { test, expect, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { legSync, readRoadmap, SYNC_LABEL } from "../roadmap";
 import { BOARD_REFRESH_MS, boardRefreshDue, driftSince, renderBoard, renderKanban, renderRoadmap, pinsFromSearch, searchWithPins, togglePin } from "../public/roadmap.js";
 import { navLinks, parseLanding } from "../public/nav.js";
 import { startServer } from "../server";
 
 const K = (n: number) => "HIMMEL-" + n;
+const ROUTE = resolve(import.meta.dir, "../../telegram/chief-route.ts");
+const route = (args: string[], env: Record<string, string> = {}) => execFileSync(process.execPath, [ROUTE, ...args], { encoding: "utf8", stdio: "pipe", env: { ...process.env, ...env } });
+const seedSpecs = (specs: string) => route(["round-seed", "--all", specs]);
 
 const TOKEN = "a".repeat(64); // hex: parseLanding only accepts a hex token
 const cleanups: (() => void)[] = [];
@@ -1671,6 +1675,7 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   critic("HIMMEL-7-capped", 3, "SPEC FINDINGS 1");                // past the round cap: owed
   critic("HIMMEL-3-shipped.md", 1, "SPEC CLEAN");                 // its ticket is Done
   critic("HIMMEL-5-signed-bare", 1, "SPEC CLEAN");                // signed below by the name with no .md
+  seedSpecs(join(bucket, "specs"));
   // the signing record and the critic base differ in a trailing .md in both directions, and reach the file through a `..` or a symlinked folder: both read as signed
   //   the first spec's critic base ends in .md and its record does not; the second's record ends in .md and its critic base does not
   symlinkSync(designs, join(bucket, "designs-link"));
@@ -1712,6 +1717,37 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   // no handover root and no chief doc: nothing is readable, so the answer is absent with the reasons
   const none = readOwed({ ...env, HANDOVER_DIR: join(s.d, "no-ho") });
   expect(none.state).toBe("absent");
+});
+
+test("readOwed: the round, the classes and the open operator-critical findings come from the round ledger; a ledger that cannot be read skips the specs", async () => {
+  const { readOwed } = await import("../board");
+  const s = station();
+  const bucket = join(s.d, "ho", "u", "himmel"), specs = join(bucket, "specs"), designs = join(specs, "designs");
+  mkdirSync(designs, { recursive: true }); mkdirSync(join(specs, "decisions")); mkdirSync(join(bucket, "release", "v1.1.2"), { recursive: true });
+  const critic = (name: string, n: number, body: string, last: string) => writeFileSync(join(designs, `${name}.critic-spec-r${n}.md`), `# round ${n}\n\n${body}\n\n${last}\n`);
+  critic("HIMMEL-1-seat.md", 2, "- **o1** (minor; operator-critical: spend-grant) the step buys a paid seat", "SPEC FINDINGS 1");
+  critic("HIMMEL-2-sec.md", 1, "- **s1** (minor; operator-critical: security) the page names a scanner", "SPEC FINDINGS 1");
+  critic("HIMMEL-5-moved.md", 1, "notes", "SPEC FINDINGS 4");
+  critic("HIMMEL-5-moved.md", 3, "notes", "SPEC FINDINGS 2");
+  seedSpecs(specs);
+  rmSync(join(designs, "HIMMEL-5-moved.md.critic-spec-r3.md"));
+  const env = { PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, HANDOVER_DIR: join(s.d, "ho"), HIMMEL_BUCKET_DIR: bucket, JIRA_PROJECT_KEY: "HIMMEL" };
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  const critical = o.items.filter((i) => i.source === "operator-critical finding");
+  expect(critical.map((i) => [i.key, i.title])).toEqual([[K(1), "Roadmap in the ui"]]);
+  expect(critical[0].ctx).toContain("o1 (spend-grant)");
+  expect(o.items.filter((i) => i.key === K(2))).toEqual([]);
+  expect(o.items.filter((i) => i.source === "unsigned spec").map((i) => [i.key, i.ctx])).toEqual([[K(5), "HIMMEL-5-moved.md: latest critic round 3 reads SPEC FINDINGS 4, no spec row in operator.jsonl"]]);
+  writeFileSync(join(specs, "decisions", "verbatim-decision-901-seat.txt"), `Operator, on ${K(1)}: sign it as it stands, the paid seat is approved.\n`);
+  route(["round-critical", K(1), "--finding", "o1", "--decision", "901", "--quote", "sign it as it stands, the paid seat is approved", "--no-round", "--specs", specs], { HIMMEL_CONSOLE: "1" });
+  const ruled = readOwed(env);
+  expect(ruled.state === "ok" && ruled.items.filter((i) => i.source === "operator-critical finding")).toEqual([]);
+  renameSync(join(specs, "ledgers"), join(specs, "ledgers.gone"));
+  const gone = readOwed(env);
+  expect(gone.state === "ok" && gone.unread).toContain("round ledger");
+  expect(gone.state === "ok" && gone.skipped).toEqual(["HIMMEL-1-seat.md.critic-spec-r2.md", "HIMMEL-2-sec.md.critic-spec-r1.md", "HIMMEL-5-moved.md.critic-spec-r1.md"]);
+  expect(gone.state === "ok" && gone.items.filter((i) => i.source === "unsigned spec" || i.source === "operator-critical finding")).toEqual([]);
 });
 
 const sx = () => withNoVersion(station());

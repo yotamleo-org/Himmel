@@ -20,6 +20,36 @@ release is declared (`jira release state <R>` prints a status other than
   one line per request, then `RM-RUN <R> summary: N refused` when any request
   was refused. An empty queue prints `RM-RUN <R>: nothing pending`
   and writes nothing.
+- **A request for operator work carries the operator's words.** An INTAKE or
+  REVERSION into a version, for an open ticket labelled `operator-directed` or of
+  priority High or Highest, is refused before it is filed unless it names the
+  decision and the operator's exact words in it:
+  ```text
+  release request: <KEY> is operator-directed and High; a request that places it needs a record of the operator's words.
+    jira release request <R> --verb INTAKE --key <KEY> --from backlog --to <v> --why "<why>" --decision <n> --words "<the operator's exact words>"
+    (<n>: specs/decisions/verbatim-decision-<n>-*.txt)
+  ```
+  `--decision <n>` must match exactly one `verbatim-decision-<n>-*.txt` in the
+  bucket's `specs/decisions`. `--words` must occur byte for byte in one paragraph
+  of that file, never in a paragraph that opens with a gloss word (`Read`,
+  `Reading`, `Chief`, `Asked`, `Answering`, `Note`, `Ruling`, `Relayed`, `Facts`
+  and the rest of the list in `scripts/jira/src/release/verbatim.ts`), and be at
+  least 20 characters or the whole paragraph (a bare "yes"). Your own reading of a
+  ruling is never the operator's words. The same call writes one `O-` record with
+  `words: 1` (or reuses the one an earlier call wrote), withdraws an open duplicate
+  that cites no `O-` record, and files the request citing it; it prints
+  `OPERATOR <O-id>`, `WITHDRAWN <req>` when there was one, and `REQ <id>`. An open
+  duplicate that already cites an `O-` record is returned as it is, so its `REQ`
+  may cite an older record than the `OPERATOR` line names; to file the request on
+  the new words, `jira release withdraw <R> --req <id> --reason "<why>"` it first,
+  then run the request again. The
+  gate reads the ticket from the mirror, else from one live read; a ticket neither
+  can read is refused with both fixes (`jira mirror`, or `--decision`). `jira
+  create`, `jira move` and the MCP `create` tool take the same `--decision` and
+  `--words` and check them before anything is filed. A backlog target, a closed
+  ticket, a request filed inside a worker you spawned, the close-time Done fold and
+  the version repair are not gated; a worker's request that the RM refuses comes
+  back to you as a refusal.
 - **The batch reads only disk.** Anything the RM must weigh goes in the
   request's `--why` or in an operator `O-` record; nothing said in a message
   reaches it.
@@ -55,7 +85,11 @@ release is declared (`jira release state <R>` prints a status other than
   ruled request to get a different answer.
 - **An operator ruling is a scoped record.** Write it before `rm-run` rules
   on it, then quote the printed `O-` id in the request's `--why`:
-  `jira release operator decision <R> --decision <n> --keys <k1,k2> --op add|remove|move|keep|discharge --from <v|backlog> --to <v|backlog> --verbatim-file <f>`.
+  `jira release operator decision <R> --decision <n> --keys <k1,k2> --op add|remove|move|keep|discharge|none --from <v|backlog> --to <v|backlog> --words "<the operator's exact words>"`.
+  `--words` is checked against the decision's verbatim file as above and marks the
+  record `words: 1`; `--op none` records words that place nothing and withdraw no
+  request. `--verbatim-file <f>` is the legacy form, exactly one of the two: it
+  stores the file unchecked, without `words: 1`, and the RM reads it as before.
   The writer refuses inside any worker the chief spawned. A bare decision number
   authorizes nothing.
 - **Declaring a release and freezing a baseline are operator acts**, done by

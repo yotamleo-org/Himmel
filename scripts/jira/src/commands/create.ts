@@ -19,7 +19,8 @@ import { admissionsLedgerExists, appendAdmission, readAdmissions, type Admission
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 import { ctxFor, refuseRequest, refuseTestJiraPost } from './release.js';
-import { placementOf, readOperatorRecords, request as releaseRequest } from '../release/engine.js';
+import { decisionWords, operatorFence, placementOf, readOperatorRecords, request as releaseRequest, requestWithWords } from '../release/engine.js';
+import type { TicketFacts } from '../release/operator-work.js';
 import { admits } from '../release/leaks.js';
 import { loadKey } from '../release/ledger.js';
 import { releaseKeyPath, releaseRoot } from '../release/paths.js';
@@ -628,7 +629,20 @@ interface IntakeOptions {
   proposedVersion?: string;
   why?: string;
   evidence?: Record<string, unknown>;
+  decision?: string;
+  words?: string;
 }
+
+type IntakeWords = { decision?: string; words?: string; ticket?: TicketFacts };
+
+const toVersionOf = (o: { proposedVersion?: string }): string | null =>
+  o.proposedVersion === undefined || o.proposedVersion === 'backlog' ? null : o.proposedVersion;
+
+const factsOf = (fields: Record<string, unknown>): TicketFacts => ({
+  labels: Array.isArray(fields['labels']) ? (fields['labels'] as string[]) : [],
+  priority: (fields['priority'] as { name?: string } | undefined)?.name ?? '',
+  open: true,
+});
 
 class NoReleaseDeclared extends Error {
   constructor(root: string) {
@@ -652,13 +666,21 @@ export function intakeRelease(): string {
 }
 
 /** Throws unless an INTAKE with this why could be queued now, so the filing is refused before anything is created. */
-export function assertIntakeQueueable(why: string): void {
-  refuseRequest(ctxFor(intakeRelease()), { verb: 'INTAKE', key: 'NEW', from_v: null, why });
+export function assertIntakeQueueable(why: string, o: IntakeWords & { toVersion?: string | null } = {}): void {
+  const ctx = ctxFor(intakeRelease());
+  refuseRequest(ctx, { verb: 'INTAKE', key: 'NEW', from_v: null, to_v: o.toVersion ?? null, why, origin: 'create', ticket: o.ticket, decision: o.decision });
+  if (o.decision === undefined && o.words === undefined) return;
+  if (o.decision === undefined) throw new Error('jira create: --words needs --decision <n>, the decision whose file holds them');
+  if (o.words === undefined) throw new Error('jira create: --decision needs --words "<the operator\'s exact words>"');
+  operatorFence(ctx);
+  decisionWords(ctx, o.decision, o.words);
 }
 
 /** Refuses an unversioned Bug, Task or Story (a follow-up or residual too) whose INTAKE could not be queued; runs before the POST. */
 export function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, title: string, testProject = false): void {
-  if (intakeOwed(o.type, fields, testProject)) assertIntakeQueueable(intakeWhy(o, title));
+  if (intakeOwed(o.type, fields, testProject)) {
+    assertIntakeQueueable(intakeWhy(o, title), { toVersion: toVersionOf(o), ticket: factsOf(fields), decision: o.decision, words: o.words });
+  }
 }
 
 interface ParentState {
@@ -708,9 +730,8 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
 
 export function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions, testProject = false): void {
   if (!intakeOwed(o.type, fields, testProject)) return;
-  const toVersion = o.proposedVersion === undefined || o.proposedVersion === 'backlog' ? null : o.proposedVersion;
   try {
-    queueBacklogIntake(key, intakeWhy(o, title), toVersion, true, o.evidence);
+    queueBacklogIntake(key, intakeWhy(o, title), toVersionOf(o), true, o.evidence, { decision: o.decision, words: o.words, ticket: factsOf(fields) });
   } catch (e) {
     console.error(
       `jira: PARTIAL: Created ${key} but INTAKE not queued: ${(e as Error).message}; still owed: the INTAKE request ` +
@@ -726,15 +747,21 @@ export function queueIntakeIfUnversioned(key: string, fields: Record<string, unk
  * callers (edit's depth-2 drop) only warn, also when no release is declared;
  * strict ones rethrow so the caller can fail the run.
  */
-export function queueBacklogIntake(key: string, why: string, toVersion: string | null = null, strict = false, evidence: Record<string, unknown> = {}): void {
+export function queueBacklogIntake(
+  key: string, why: string, toVersion: string | null = null, strict = false, evidence: Record<string, unknown> = {}, opts: IntakeWords = {},
+): void {
   let release: string | undefined;
   try {
     release = intakeRelease();
     const ctx = ctxFor(release);
-    refuseRequest(ctx, { verb: 'INTAKE', key, from_v: null, why });
-    const r = releaseRequest(ctx, {
-      verb: 'INTAKE', key, from_v: null, to_v: toVersion, why, evidence, from: 'console',
-    });
+    refuseRequest(ctx, { verb: 'INTAKE', key, from_v: null, to_v: toVersion, why, origin: 'create', ticket: opts.ticket, decision: opts.decision });
+    const row = { verb: 'INTAKE' as const, key, from_v: null, to_v: toVersion, why, evidence, from: 'console' };
+    if (opts.decision !== undefined && opts.words !== undefined) {
+      const got = requestWithWords(ctx, row, { decision: opts.decision, words: opts.words });
+      console.error(`jira: INTAKE queued for ${key} as REQ ${got.request.req} (release ${release}), citing the operator's words ${got.operator.id}`);
+      return;
+    }
+    const r = releaseRequest(ctx, row);
     console.error(`jira: INTAKE queued for ${key} as REQ ${r.req} (release ${release})`);
   } catch (e) {
     if (strict) throw e;
@@ -865,6 +892,8 @@ export function registerCreate(program: Command): void {
       'A Bug, Task or Story without --fix-version is filed with a proposed version (label proposed-<v>) and its INTAKE request queued in the same call; `backlog` needs --backlog and --why',
     )
     .option('--why <why>', 'One line: why the ticket waits in the backlog (required with --backlog); the INTAKE request carries it')
+    .option('--decision <n>', 'The operator decision that places an operator-directed or High ticket into a version (its specs/decisions verbatim file); needs --words')
+    .option('--words <text>', 'The operator\'s exact words in that decision file; recorded as an O- record the INTAKE request cites')
     .option(
       '--gate <reason>',
       'Why this may enter a version (' + INTAKE_GATES + '): a Bug without --fix-version goes to the earliest unreleased version, and a frozen version takes nothing without it',

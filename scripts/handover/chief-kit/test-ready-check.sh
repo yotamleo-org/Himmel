@@ -4273,6 +4273,30 @@ READY_CHECK_FAIL_LEDGER="$tmp/s17-fl-other.jsonl" s17_at "$S17_H1"
 check "19 T25c a fail row of another repo's PR 77: no round" "$(jq -c 'select(.kind == "round")' "$tmp/s17-fl-other.jsonl" | wc -l | tr -d ' ')" "0"
 s17_clear
 
+s17_man_cs() {
+    local d="$1/shell-unit-manifest-ubuntu-latest-shard-claude-startup"
+    shift
+    mkdir -p "$d"
+    { printf 'head 1111111111111111111111111111111111111111\nmode impacted\nshard claude-startup\n'; printf '%s\n' "$@"; } > "$d/manifest-shard-claude-startup.txt"
+}
+S17_MAN_CS_OK="$tmp/s17-man-cs-ok"; s17_man "$S17_MAN_CS_OK" "ran 0 $S17_A" "skip $S17_B"; s17_man_cs "$S17_MAN_CS_OK" "ran 0 $S17_B"
+S17_MAN_CS_ONLYA="$tmp/s17-man-cs-onlya"; s17_man "$S17_MAN_CS_ONLYA" "skip $S17_A" "skip $S17_B"; s17_man_cs "$S17_MAN_CS_ONLYA" "ran 0 $S17_A"
+S17_MAN_CS_77="$tmp/s17-man-cs-77"; s17_man "$S17_MAN_CS_77" "ran 0 $S17_A" "skip $S17_B"; s17_man_cs "$S17_MAN_CS_77" "ran 77 $S17_B"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_CS_OK"
+s17_at "$S17_H1"
+check "19 T26 the shard skipped B, the published file ran it: exit 0" "$rc" "0"
+contains "19 T26: both suites proven from CI" "$out" "[PASS] 19. suite evidence: 2 impacted, 2 from CI run 555, 0 local"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_CS_ONLYA"
+s17_at "$S17_H1"
+check "19 T26b the published file proves only A: exit 1" "$rc" "1"
+contains "19 T26b: B is the suite proven nowhere" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI skipped it)"
+notcontains "19 T26b: A is not named" "$(line17 "$out")" "$S17_A ("
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_CS_77"
+s17_at "$S17_H1"
+check "19 T26c the published file says ran 77 for B: exit 1" "$rc" "1"
+contains "19 T26c: B is the suite proven nowhere" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI skipped it)"
+s17_clear
+
 reset_stubs
 rm -rf "$tmp/quota"
 rc=0; out="$(STUB_GH_RL=1 run 2>&1)" || rc=$?

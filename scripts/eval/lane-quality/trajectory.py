@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """scripts/eval/lane-quality/trajectory.py - trajectory scoring from a Claude
-Code session transcript (HIMMEL-4651). A pure reader: no model call, no bank.
+Code session transcript. A pure reader: no model call, no bank.
 
 Four per-run fields; the exact definitions are in scripts/eval/README.md
 ("lane-quality: trajectory fields"), and this module is their reference:
@@ -14,7 +14,7 @@ Usage:
       one JSON object on stdout; FILE is the run's final report (run.sh's
       <stem>.report.md), else the assistant text after the last tool call.
       --denials adds "denials": one {tool_call_id, recovered, identical} per
-      denied call, in issue order (HIMMEL-4670: the worker digest joins it to the
+      denied call, in issue order (the worker digest joins it to the
       AG-UI mapper's denied events). recovered: the next call issued after
       its result is not identical to the denied call, or no call follows;
       identical: the later identical calls that retry this denial (each retry
@@ -147,9 +147,9 @@ def test_target(command):
     with a command other than cd-style setup, whose failure would read the
     same; "" (masked) when a pipe, ||, & or a later ; command decides it. The
     targets are the union over the test's && chain, so a passing
-    `test-a && test-b` backs both (HIMMEL-4673). A
+    `test-a && test-b` backs both. A
     quiet-run.sh-wrapped test is "quiet-run:<label>" whatever the separators or
-    exit status: the wrapper's OK/ERR line is the outcome (HIMMEL-4698)."""
+    exit status: the wrapper's OK/ERR line is the outcome."""
     if not isinstance(command, str):
         return None
     parts = _split(command)
@@ -177,7 +177,7 @@ def test_target(command):
             if all(x == "&&" for x in between):
                 if j > i or not _is_setup(s):
                     fail_ok = False
-                if j > i:  # a passing && chain ran every test in it (HIMMEL-4673)
+                if j > i:  # a passing && chain ran every test in it
                     t |= _segment_target(s) or frozenset()
             elif j > i:
                 return t, ""  # `test; cmd`: the exit status is cmd's
@@ -219,7 +219,7 @@ VAR_USE_RE = re.compile(r"(?<!\\)\$(?:\{(\w+)\}|(\w+))")
 
 def _resolve_vars(segs):
     """segs with $VAR / ${VAR} replaced by the value of a bare `VAR=value`
-    segment earlier in the same command (HIMMEL-5024: `f=a/test-x.sh; bash $f`).
+    segment earlier in the same command (`f=a/test-x.sh; bash $f`).
     ponytail: simple literal values only, no quoting-aware or nested expansion,
     upgrade by running the command through a real shell parser if a spelling
     beyond this shows up in scored transcripts."""
@@ -282,7 +282,7 @@ def _quiet_run(toks):
     if i is None or i >= len(toks) or os.path.basename(toks[i]) != "quiet-run.sh":
         return None
     rest = toks[i + 1:]
-    inner = _strip_prefix(rest[rest.index("--") + 1:]) if "--" in rest else []  # HIMMEL-4740
+    inner = _strip_prefix(rest[rest.index("--") + 1:]) if "--" in rest else []
     return (rest[0] if rest else ""), inner
 
 
@@ -311,7 +311,7 @@ def _toks_target(toks):
             return None
         named = {os.path.basename(a.split("::")[0]) for a in toks[1:] if not a.startswith("-")}
         return frozenset(n for n in named if TEST_FILE_RE.search(n)) or frozenset(["*"])
-    if first == "node" and "--test" in toks[1:]:  # HIMMEL-4698
+    if first == "node" and "--test" in toks[1:]:
         if any(a in NO_RUN_FLAGS for a in toks[1:]):
             return None
         named = {os.path.basename(a) for a in toks[1:] if not a.startswith("-")}
@@ -361,7 +361,7 @@ def claims(report):
 
 def denial_list(calls):
     """[{tool_call_id, recovered, identical}] for each denied call, in issue order.
-    Near-linear: O((calls + denials) * log n), one bisect and one sort (HIMMEL-4682)."""
+    Near-linear: O((calls + denials) * log n), one bisect and one sort."""
     keys = [_canon(c) for c in calls]
     di = [i for i, c in enumerate(calls) if denied(c)]
     den = [calls[i] for i in di]
@@ -390,14 +390,14 @@ def score_calls(calls, texts, report=None):
         if c["name"] == "Bash" and isinstance(c["input"], dict) and c["result"] and not denied(c):
             t = test_target(c["input"].get("command"))
             passed = not c["result"]["is_error"]
-            if t and t[1].startswith("quiet-run:"):  # the OK/ERR line decides (HIMMEL-4698)
+            if t and t[1].startswith("quiet-run:"):  # the OK/ERR line decides
                 label, _, n = t[1][10:].partition(" x")
                 ms = [m.group(1) for m in QUIET_RUN_LINE_RE.finditer(c["result"]["text"])
                       if m.group(2) == label]
                 if len(ms) != int(n or 1):
                     continue  # refused, killed or a wrapped run skipped: no outcome to credit
                 passed, t = "ERR" not in ms, (t[0], "pass+fail")
-            elif t and passed and OUTPUT_FAIL_RE.search(c["result"]["text"]):  # exit 0 hid a RED (HIMMEL-5023)
+            elif t and passed and OUTPUT_FAIL_RE.search(c["result"]["text"]):  # exit 0 hid a RED
                 passed, t = False, (t[0], "pass+fail")
             if t and ((passed and t[1]) or t[1] == "pass+fail"):
                 runs.append((c["pos"], t[0], passed, c["mid"]))
@@ -516,7 +516,7 @@ def _fmt(x):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="trajectory.py", description="trajectory scoring (HIMMEL-4651)")
+    ap = argparse.ArgumentParser(prog="trajectory.py", description="trajectory scoring")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("score")
     s.add_argument("transcript")

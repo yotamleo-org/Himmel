@@ -81,7 +81,7 @@ helpers.
 - `JIRA_PROJECT_KEY` is required at runtime. No `HIMMEL` fallback.
 - **The site URL comes from the CLI, never a secrets file or the Jira MCP.** `jira config`
   prints every Jira setting with its source (email and token only as set or not set, plus
-  the source kind); `get`, `edit`, `transition` and `move` print a `browse:` link
+  the source kind); `get`, `create`, `edit`, `transition` and `move` print a `browse:` link
   (`src/browse-line.ts`; no link when no site URL is set).
 
 ## Reference

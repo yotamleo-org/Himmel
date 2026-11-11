@@ -241,6 +241,9 @@ rows = [row("leg-trajectory", "2026-10-20T00:00:00Z", {"red_before_green": 1}, t
         row("friction", "2026-10-22T00:00:00Z", {"refusals": 100, "unclear": 40}),
         row("friction", "2026-10-24T12:00:00Z", {"refusals": 100, "unclear": 30}),
         row("judge-accuracy", "2026-10-24T12:00:00Z", {"model.claude-opus-5-5.n": 9, "model.sonnet.n": 1, "model.unknown.n": 4})]
+refreshed = dict(rows[0], meta=dict(rows[0]["meta"], refreshed_at="2026-10-30T00:00:00Z"))
+restamped = dict(rows[1], ts="2026-10-25T00:00:00Z")
+rows += [refreshed, restamped]
 with open(sys.argv[2], "w") as fh:
     for r in rows:
         fh.write(json.dumps(r) + "\n")

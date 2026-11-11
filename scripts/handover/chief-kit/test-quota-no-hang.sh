@@ -170,35 +170,6 @@ emit() { printf '%s\n' "$*" >> "$RES/$CUR.txt"; }   # emit <status> <caller> <mo
 
 known_task() {
     awk -v c="$1" -v m="$2" -v a="$3" '$2 == c && $3 == m && $4 == a { print $1; exit }' <<'KNOWN'
-T6 next-dispatchable.sh gql-out no-false-phrase
-T6 next-dispatchable.sh both-out no-false-phrase
-T6 next-dispatchable.sh gql-200 no-false-phrase
-T6 next-dispatchable.sh gql-late no-false-phrase
-T6 next-dispatchable.sh main-only no-false-phrase
-T6 next-dispatchable.sh reset-past no-false-phrase
-T6 next-dispatchable.sh reset-absent no-false-phrase
-T6 next-dispatchable.sh reset-absurd no-false-phrase
-T6 next-dispatchable.sh secondary no-false-phrase
-T6 next-dispatchable.sh rest-out names-limit
-T6 next-dispatchable.sh hung bound
-T6 next-dispatchable.sh hung exit
-T6 next-dispatchable.sh hung names-limit
-T6 next-dispatchable.sh hung-after-probe bound
-T6 next-dispatchable.sh hung-after-probe exit
-T6 next-dispatchable.sh hung-after-probe names-limit
-T7a chief-wait.sh gql-out telegram-latency
-T7a chief-wait.sh both-out telegram-latency
-T7a chief-wait.sh gql-200 telegram-latency
-T7a chief-wait.sh main-only telegram-latency
-T7a chief-wait.sh rest-out telegram-latency
-T7a chief-wait.sh reset-past telegram-latency
-T7a chief-wait.sh reset-absent telegram-latency
-T7a chief-wait.sh reset-absurd telegram-latency
-T7a chief-wait.sh secondary telegram-latency
-T7a chief-wait.sh hung bound
-T7a chief-wait.sh hung telegram-latency
-T7a chief-wait.sh hung-after-probe bound
-T7a chief-wait.sh hung-after-probe telegram-latency
 KNOWN
 }
 
@@ -427,6 +398,7 @@ drive_next_dispatchable() {
     AFFECT_FN=affect_nd RATE_BOUND=25 XM="gql-late"
     EXTRA_ENV="$ND_ENV"
     for m in $(modes_for); do
+        rm -f "$cdir/quota/quota.tsv"
         run_mode next-dispatchable.sh "$m" 12 0 bash "$script" --top 5
     done
     EXTRA_ENV=""
@@ -507,13 +479,15 @@ drive_chief_wait() {
         [ "$class" = rate ] && scaled=0 && bound=$rb
         [ "$class" = stall ] && [ "$FULL" = 1 ] && scaled=0 && bound=$(full_bound chief-wait.sh "$m")
         ROW_DIR="$cdir/rows/$m"; mkdir -p "$ROW_DIR"
-        rm -f "$inbox".wait* "$cdir/h/consoles/c.md.wait"* ; : > "$inbox"
+        rm -f "$inbox".wait* "$cdir/h/consoles/c.md.wait"* "$inbox.cursor"; : > "$inbox"; : > "$inbox.announced"
+        rm -rf "$cdir/quota/blocked" "$cdir/quota/quota.tsv"
+        printf 'N9\n' > "$inbox.wait.unwatched"
         envs=()
         while IFS= read -r l; do envs+=("$l"); done < <(base_env "$cdir" "$m" "$scaled"; printf '%s\n' "$ND_ENV" \
             "CHIEF_WAIT_TICK=$cdir/tick-real.sh" "CHIEF_WAIT_USAGE=$cdir/bank.sh" "CHIEF_WAIT_INTERVAL=1" "CHIEF_WAIT_POLL_SEC=0.2" \
             "CHIEF_WAIT_FAIL_WAKE=1000" "CHIEF_WAIT_PAGE_CMD=$cdir/off.sh" "CHIEF_WAIT_BUDGET=$cdir/budget-off.sh" \
             "CHIEF_WAIT_ORPHAN=$cdir/off.sh" "WAIT_SWEEP_CMD=$cdir/off.sh" "WAIT_FOCUS_CMD=$cdir/off.sh" \
-            "HIMMEL_DENIAL_ACK_DIR=$cdir/denial-acks" \
+            "HIMMEL_DENIAL_ACK_DIR=$cdir/denial-acks" "HIMMEL_FLAG_AUTO_GO=off" \
             "STUB_FLEET_LINE=bank-preflight: FLEET native=8 claudex=0 openrouter=0 reserved=0 total=8/8")
         t0=$(date +%s)
         env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY -u CHIEF_SESSION_NAME -u himmel_github_token_vm2 -u GITHUB_TOKEN \

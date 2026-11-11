@@ -1,4 +1,4 @@
-# Routing eval, phase 2: climb and trim (HIMMEL-8088)
+# Routing eval, phase 2: climb and trim
 
 Means over reps. Sealed is aggregate only. Tokens are chars/4 over the whole listing.
 

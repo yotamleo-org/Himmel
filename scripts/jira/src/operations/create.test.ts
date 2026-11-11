@@ -50,6 +50,25 @@ afterEach(() => {
 });
 
 describe('runCreate', () => {
+  it('prints the browse: link on the line right after Created KEY when a site URL is set', async () => {
+    await runCreate(task());
+    const printed = vi.mocked(console.log).mock.calls.map((c) => String(c[0]));
+    const at = printed.indexOf('Created HIMMEL-1');
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(printed[at + 1]).toBe('browse: http://127.0.0.1:9/browse/HIMMEL-1');
+  });
+
+  it('control: no site URL set prints Created KEY alone, with no browse: line', async () => {
+    mockRequest.mockImplementation(async () => {
+      vi.stubEnv('JIRA_BASE_URL', undefined as unknown as string);
+      return { key: 'HIMMEL-1' };
+    });
+    await runCreate(task());
+    const printed = vi.mocked(console.log).mock.calls.map((c) => String(c[0]));
+    expect(printed).toContain('Created HIMMEL-1');
+    expect(printed.some((l) => l.startsWith('browse:'))).toBe(false);
+  });
+
   it('check mode runs every check and writes nothing', async () => {
     await expect(runCreate(task(), { check: true })).resolves.toEqual({ disposition: 'checked' });
     expect(mutations()).toEqual([]);

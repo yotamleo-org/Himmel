@@ -141,7 +141,16 @@
 # Output, one line per ticket, tab-separated:
 #   <LOCAL|CLOUD> <KEY> <priority> <fixVersion|-> <title> files=<a,b|->  [hook]
 #
-# Env (tests): NEXT_DISPATCH_MIRROR, NEXT_DISPATCH_GH_CMD (replaces `gh`),
+# GitHub out: a preflight (scripts/lib/gh-quota.sh ghq_scan_gate, main token, GraphQL and core) that finds a
+# bucket under the floor or a probe timed out, or a gh read during the run that names a rate limit or times out (the
+# classifier's stderr or a classifier timeout too), makes the WHOLE stdout one line, `# quota-pause QUOTA-PAUSE …` or `# gh-stall GH-STALL …`, exit 0:
+# no rows, no RESUME-HELD, no POOL-EMPTY, since the unread rows are unknown, not empty. After the first refused or
+# stalled read every later gh read fails at once and classification is skipped. NEXT_DISPATCH_DEADLINE (seconds,
+# default 400, under the waiter's 420; 0 = none) bounds the whole run, preflight included, and a cut prints `# gh-stall`.
+# NEXT_DISPATCH_GH_TIMEOUT (seconds) replaces every gh read's own bound (60 or 120) and the classifier's 300.
+#
+# Env (tests): NEXT_DISPATCH_MIRROR, NEXT_DISPATCH_GH_CMD (replaces `gh`, the quota probes' too; with no HIMMEL_QUOTA_DIR
+# its readings go to a temp quota dir removed at exit, never the station's quota.tsv),
 # NEXT_DISPATCH_CLASSIFY_CMD (replaces cloud-route.mjs; called with the keys),
 # NEXT_DISPATCH_JIRA_CMD (replaces the jira CLI for the live blocker read; called `get KEY`),
 # NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default),
@@ -192,7 +201,39 @@ if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag stacked_series 2>/d
 export ND_STACKED="$stacked"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger" ND_HOLDS="${ND_HOLDS:-$HERE/holds.py}"
-exec python3 -I - <<'PY'
+
+# shellcheck source=scripts/lib/gh-quota.sh
+. "$REPO/scripts/lib/gh-quota.sh"
+# shellcheck disable=SC2034  # read by the probes in gh-graphql-budget.sh
+GHQ_GH_CMD="${NEXT_DISPATCH_GH_CMD:-gh}"
+nd_qtmp=""
+if [ -n "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -z "${HIMMEL_QUOTA_DIR:-}" ]; then
+    nd_qtmp=$(tmpdir) || exit 1
+    export HIMMEL_QUOTA_DIR="$nd_qtmp"
+    trap 'rm -rf "$nd_qtmp"' EXIT
+fi
+export GH_READ_NO_MAIN_FALLBACK=1
+nd_pause() {
+    case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
+    exit 0
+}
+for nd_bucket in graphql core; do
+    nd_line=$(ghq_scan_gate main "$nd_bucket" next-dispatchable) || { [ $? -ne 75 ] || nd_pause "$nd_line"; }
+done
+nd_deadline="${NEXT_DISPATCH_DEADLINE:-400}"
+case "$nd_deadline" in ''|*[!0-9]*) nd_deadline=400 ;; esac
+nd_out=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-out.XXXXXX") || exit 1
+nd_flags=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-flags.XXXXXX") || { rm -f "$nd_out"; exit 1; }
+nd_pid=""
+trap 'rm -f "$nd_out" "$nd_flags"; [ -z "$nd_qtmp" ] || rm -rf "$nd_qtmp"' EXIT
+# an outer kill reaches the run's own process group through timeout, which relays the signal
+trap '[ -z "$nd_pid" ] || kill -TERM "$nd_pid" 2>/dev/null; exit 143' TERM INT HUP
+_TIMEOUT_BIN=""
+[ "$nd_deadline" -eq 0 ] || . "$REPO/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: no timeout binary runs the scan with its per-read bounds only
+export ND_FLAGS="$nd_flags"
+nd_left=$((nd_deadline - SECONDS))
+[ "$nd_left" -gt 0 ] || nd_left=1
+${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
 import datetime, json, os, re, subprocess, sys, tempfile, time
 
 top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
@@ -200,18 +241,41 @@ repo = os.environ['ND_REPO']
 sys.path.insert(0, os.path.join(repo, 'scripts', 'lib'))
 from env_alias import legacy_names_on
 
-# Every gh read goes through ghrun. A gh answer that names a rate limit is recorded once, so the header says the fleet's
-# GitHub budget is spent and that the unread rows are unknown, not empty. gh itself is not wrapped or changed.
-RATE_LIMIT_RE = re.compile(r'rate limit|RATE_LIMIT', re.I)
+RATE_LIMIT_RE = re.compile(r'rate limit|RATE_LIMIT|abuse detection|secondary rate', re.I)
 rate_limited = []
+timed_out = []
+
+def gh_t(secs):
+    v = os.environ.get('NEXT_DISPATCH_GH_TIMEOUT', '')
+    return int(v) if v.isdigit() and int(v) > 0 else secs
+
+def gh_bucket(argv):
+    if len(argv) > 1 and argv[1] == 'api':
+        return 'graphql' if 'graphql' in argv else 'core'
+    return 'core' if argv[1:3] == ['pr', 'diff'] else 'graphql'
+
+def note_flag(kind, bucket, detail):
+    if rate_limited or timed_out:
+        return
+    (rate_limited if kind == 'rate-limit' else timed_out).append(detail)
+    try:
+        with open(os.environ['ND_FLAGS'], 'a') as f:
+            f.write('%s\t%s\t%s\n' % (kind, bucket, int(time.time()) if kind == 'rate-limit' else detail))
+    except (KeyError, OSError):
+        pass  # swallow-ok: with no flag file the run prints its rows with the rate-limit WARN header, as before
 
 def ghrun(argv, **kw):
+    if rate_limited or timed_out:
+        raise subprocess.SubprocessError('an earlier GitHub read was refused or stalled')
     try:
         return subprocess.run(argv, **kw)
+    except subprocess.TimeoutExpired:
+        note_flag('stall', gh_bucket(argv), kw.get('timeout') or 0)
+        raise
     except subprocess.CalledProcessError as e:
         err = e.stderr if isinstance(e.stderr, str) else (e.stderr or b'').decode('utf-8', 'replace')
-        if RATE_LIMIT_RE.search(err) and not rate_limited:
-            rate_limited.append(err.strip().splitlines()[0][:200])
+        if RATE_LIMIT_RE.search(err):
+            note_flag('rate-limit', gh_bucket(argv), err.strip().splitlines()[0][:200])
         raise
 
 
@@ -1047,12 +1111,12 @@ gh = os.environ.get('NEXT_DISPATCH_GH_CMD', 'gh')
 gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
 try:
     nums = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
-                          capture_output=True, text=True, timeout=60, check=True).stdout.split()
+                          capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.split()
     def pr_files(num):
         # the paginated files API, not `gh pr diff`: that fails with HTTP 406 on a PR over 300 files. A rename holds both names.
         try:
             files = ghrun([gh, 'api', '--paginate', 'repos/%s/pulls/%s/files' % (gh_repo, num), '--jq', '.[] | .filename, (.previous_filename // empty)'],
-                                   capture_output=True, text=True, timeout=120, check=True).stdout.splitlines()
+                                   capture_output=True, text=True, timeout=gh_t(120), check=True).stdout.splitlines()
         except (OSError, subprocess.SubprocessError):
             return None  # this PR's files are unknown; the rest are still read
         return None if len(files) >= 3000 else files  # the API stops at 3000 files: a PR that long is cut short, so its files are unknown
@@ -1068,7 +1132,7 @@ try:
                 pr_file_map[num] = [f for f in d if f]
     # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
     for line in ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository,updatedAt', '--jq', '.[] | [.number, .title, .headRefName, .isCrossRepository, .updatedAt] | @tsv'],
-                               capture_output=True, text=True, timeout=60, check=True).stdout.splitlines():
+                               capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.splitlines():
         cols = line.split('\t')
         if len(cols) >= 3:
             pr_meta[cols[0]] = (cols[1], cols[2])
@@ -1150,7 +1214,7 @@ def remainder_of(pr, key):
             remainder_cache[(pr, key)] = hit
             return hit
         try:
-            body = ghrun([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=60, check=True).stdout
+            body = ghrun([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=gh_t(60), check=True).stdout
             out = subprocess.run([sys.executable, '-I', reader, key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
             if out[0] == 'remaining' and len(out) == 2:
                 ans = ('remaining', [], out[1])
@@ -1230,7 +1294,7 @@ def branch_states(branch):
     # fills its limit (a PR past it could be open)
     try:
         out = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--head', branch, '--state', 'all', '--limit', str(BRANCH_PR_LIMIT), '--json', 'state', '--jq', '.[].state'],
-                             capture_output=True, text=True, timeout=60, check=True).stdout.split()
+                             capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.split()
     except (OSError, subprocess.SubprocessError):
         return None  # swallow-ok: a PR state that cannot be read keeps the hold
     return out if len(out) < BRANCH_PR_LIMIT else None
@@ -1307,7 +1371,7 @@ if inci_keys and not (pr_unknown or owners_unknown):
         if cited_on_main(key, subject_only=True):
             return True
         out = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'merged', '--search', key, '--limit', '30', '--json', 'title,headRefName', '--jq', '.[] | [.title, .headRefName] | @tsv'],
-                             capture_output=True, text=True, timeout=60, check=True).stdout
+                             capture_output=True, text=True, timeout=gh_t(60), check=True).stdout
         return key in {k.upper() for k in re.findall(r'[A-Za-z]+-\d+', out)}
     try:
         from concurrent.futures import ThreadPoolExecutor
@@ -1394,13 +1458,20 @@ def classify(batch):
     cls = {}
     cmd = os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD')
     argv = [cmd] if cmd else ['node', os.path.join(repo, 'scripts/lanes/cloud-route.mjs'), '--classify-only']
+    if rate_limited or timed_out:
+        return cls
     try:
-        r = subprocess.run(argv + [i['key'] for i in batch], capture_output=True, text=True, timeout=300)
+        r = subprocess.run(argv + [i['key'] for i in batch], capture_output=True, text=True, timeout=gh_t(300))
+        hit = next((l for l in r.stderr.splitlines() if RATE_LIMIT_RE.search(l)), None)
+        if hit:
+            note_flag('rate-limit', 'graphql' if re.search(r'graphql', hit, re.I) else 'core', hit.strip()[:200])
         for line in r.stdout.splitlines():
             p = line.split('\t')
             if len(p) >= 2 and re.match(r'^[A-Z]+-\d+$', p[0]):
                 cls[p[0]] = p[1]
                 reasons[p[0]] = p[2].strip() if len(p) > 2 else ''
+    except subprocess.TimeoutExpired:
+        note_flag('stall', 'graphql', gh_t(300))
     except (OSError, subprocess.SubprocessError):
         pass
     return cls
@@ -1760,3 +1831,16 @@ drop_summary()
 if os.environ.get('ND_DISPO') == '1':
     print_intake(intake_keys())  # the tick counts INTAKE= from the snapshot (HIMMEL-8336)
 PY
+nd_pid=$!
+wait "$nd_pid"; nd_rc=$?
+nd_pid=""
+IFS="$(printf '\t')" read -r nd_why nd_bucket nd_at < "$nd_flags" 2>/dev/null || nd_why=""
+case "$nd_why" in
+    rate-limit) nd_pause "$(ghq_line main "$nd_bucket" next-dispatchable rate-limit "$nd_at")" ;;
+    stall) nd_pause "$(ghq_line main "$nd_bucket" next-dispatchable stall "$nd_at")" ;;
+esac
+if [ -n "$_TIMEOUT_BIN" ] && { [ "$nd_rc" -eq 124 ] || [ "$nd_rc" -eq 137 ]; }; then
+    nd_pause "$(ghq_line main graphql next-dispatchable stall "$nd_deadline")"
+fi
+cat "$nd_out"  # read-sink-ok: our own mktemp buffer
+exit "$nd_rc"

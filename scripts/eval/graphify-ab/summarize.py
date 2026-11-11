@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""summarize.py -- turn a graphify-ab sweep dir into runs.jsonl and a report
-(HIMMEL-5317).
+"""summarize.py -- turn a graphify-ab sweep dir into runs.jsonl and a report.
 
     summarize.py ingest DIR [--transcripts ROOT]   raw/*.json -> DIR/runs.jsonl
     summarize.py report DIR [--seed N]             runs.jsonl -> markdown on stdout

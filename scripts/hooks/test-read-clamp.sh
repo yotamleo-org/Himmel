@@ -60,9 +60,19 @@ j_read() {  # $1 = path, $2 = session_id
         "$(printf '%s' "$1" | jq -Rs .)" "$(printf '%s' "$2" | jq -Rs .)"
 }
 
-j_read_ranged() {  # $1 = path, $2 = offset, $3 = limit, $4 = session_id
-    printf '{"tool_name":"Read","tool_input":{"file_path":%s,"offset":%s,"limit":%s},"session_id":%s}' \
-        "$(printf '%s' "$1" | jq -Rs .)" "$2" "$3" "$(printf '%s' "$4" | jq -Rs .)"
+j_read_ranged() {  # $1 = path, $2 = offset, $3 = limit, $4 = session_id, [$5 = tool_use_id]
+    printf '{"tool_name":"Read","tool_input":{"file_path":%s,"offset":%s,"limit":%s},"session_id":%s,"tool_use_id":%s}' \
+        "$(printf '%s' "$1" | jq -Rs .)" "$2" "$3" "$(printf '%s' "$4" | jq -Rs .)" "$(printf '%s' "${5:-tu-$2-$3}" | jq -Rs .)"
+}
+
+# read_ok <path> <offset> <limit> <session> <total lines>: the successful PostToolUse
+# record-read-clamp.sh needs before a range counts as read (himmel-read-clamp/v2).
+read_ok() {
+    jq -cn --arg p "$1" --argjson o "$2" --argjson l "$3" --arg s "$4" --arg t "tu-$2-$3" --argjson tot "$5" '
+        {tool_name:"Read", session_id:$s, tool_use_id:$t, tool_input:{file_path:$p, offset:$o, limit:$l},
+         tool_response:{type:"text", file:{filePath:$p, content:"x", startLine:$o,
+           numLines:([$l, ($tot - $o + 1)] | min), totalLines:$tot}}}' \
+        | env XDG_RUNTIME_DIR="$RUNTIME_DIR" HIMMEL_CONSOLE_LEG=1 bash "$HERE/record-read-clamp.sh" >/dev/null 2>&1
 }
 
 j_bash() {  # $1 = command, $2 = session_id
@@ -90,18 +100,14 @@ assert_stderr_contains "whole-file deny says read in pages, not stop (HIMMEL-678
 rc=$(run_case "$(j_read "$SMALL_FILE" sess-smallfile)" "HIMMEL_CONSOLE_LEG=1")
 assert_rc "whole-file read under limit allows" 0 "$rc"
 
-# 4. ranged read -> allow + recorded.
+# 4. ranged read -> allow; only a pending record until the Read succeeds.
 rc=$(run_case "$(j_read_ranged "$BIG_FILE" 1 5 sess-range)" "HIMMEL_CONSOLE_LEG=1")
 assert_rc "ranged read allows" 0 "$rc"
-STATE_FILE="$RUNTIME_DIR/himmel-read-clamp/sess-range/reads.tsv"
-if [ -f "$STATE_FILE" ] && grep -qF "$(printf '%s\t1\t5' "$BIG_FILE")" "$STATE_FILE"; then
-    echo "PASS ranged read recorded in state"
-else
-    echo "FAIL ranged read recorded in state — state file: $(cat "$STATE_FILE" 2>/dev/null || echo MISSING)"
-    FAILED=$((FAILED + 1))
-fi
+rc=$(run_case "$(j_read_ranged "$BIG_FILE" 1 5 sess-range)" "HIMMEL_CONSOLE_LEG=1")
+assert_rc "a repeat before the first Read succeeded still allows" 0 "$rc"
+read_ok "$BIG_FILE" 1 5 sess-range 10
 
-# 5. identical repeat of the same (path, offset, limit) -> deny.
+# 5. identical repeat of the same (path, offset, limit) after a successful Read -> deny.
 rc=$(run_case "$(j_read_ranged "$BIG_FILE" 1 5 sess-range)" "HIMMEL_CONSOLE_LEG=1")
 assert_rc "identical repeat read denies" 2 "$rc"
 assert_stderr_contains "repeat deny names 'already read'" "already read"
@@ -124,7 +130,7 @@ assert_rc "bash cat of a quoted path over limit denies" 2 "$rc"
 rc=$(run_case "$(j_bash "cat $BIG_FILE | wc -l" sess-bash-unrec)" "HIMMEL_CONSOLE_LEG=1")
 assert_rc "unrecognised bash shape allows" 0 "$rc"
 
-# 9. uncreatable runtime dir -> allow (fail-open on state). A path nested
+# 9. uncreatable runtime dir -> allow (fail-open on state), the size clamp included. A path nested
 # under a plain FILE guarantees mkdir fails regardless of privilege --
 # unlike a path under /, which root can create.
 BLOCKER_FILE="$WORK/blocker"
@@ -199,6 +205,7 @@ assert_stderr_contains "continuation names the next offset" "then offset=41 limi
 # 11c. the repeated-read deny is unchanged under the default.
 rc=$(run_case_default "$(j_read_ranged "$MOCKUP_FILE" 1 800 sess-default-repeat)")
 assert_rc "default: first ranged read allows" 0 "$rc"
+read_ok "$MOCKUP_FILE" 1 800 sess-default-repeat 1613
 rc=$(run_case_default "$(j_read_ranged "$MOCKUP_FILE" 1 800 sess-default-repeat)")
 assert_rc "default: identical repeat read still denies" 2 "$rc"
 assert_stderr_contains "default: repeat deny names 'already read'" "already read"

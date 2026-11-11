@@ -15,7 +15,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DIG="$HERE/worker-digest.ts"
-LL="$HERE/worker_ledger.py"
+LL="${WORKER_LEDGER_PY:-$HERE/worker_ledger.py}"
 EVR="$HERE/../lib/eval_runs.py"
 FX="$HERE/fixtures"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/worker-ledger-test.XXXXXX")" || { echo "test-worker-ledger: mktemp -d failed" >&2; exit 1; }
@@ -47,7 +47,7 @@ check "validate passes on the worker-failures ledger" 'python3 "$LL" validate "$
 check "validate passes on the eval-runs ledger" 'python3 "$EVR" validate "$EL" >/dev/null'
 check "a worker-failures row carries the envelope and the worker fields" 'jq -e "select(.class == \"denied/guard-pr-check-literal\") | .v == 1 and .kind == \"leg-failure\" and .source == \"scripts/eval/worker-digest/worker_ledger.py\" and (.host | length > 0) and (.ts | length > 0) and .session == \"$SID\" and .leg == \"N1373\" and .ticket == \"HIMMEL-4670\" and .console == \"demo-chief\" and .pr == 1990 and .count == 2 and .identical_retry == 1 and .recovered == false" "$FL" >/dev/null'
 check "a suite row keeps final_red" 'jq -e "select(.class == \"suite/test-eval-runs.sh\") | .final_red == true" "$FL" >/dev/null'
-check "the eval-runs row is the observational leg-trajectory row keyed by session" 'jq -e ".eval == \"leg-trajectory\" and .run_id == \"$SID\" and .status == \"ok\" and .meta.observational == true and .meta.leg == \"N1373\" and .meta.pr == 1990 and .n == 3 and .reps == 1 and .cases == null and .config.digest_v == 2 and .model == \"claude-opus-5-5\"" "$EL" >/dev/null'
+check "the eval-runs row is the observational leg-trajectory row keyed by session" 'jq -e ".eval == \"leg-trajectory\" and .run_id == \"$SID\" and .status == \"ok\" and .meta.observational == true and .meta.leg == \"N1373\" and .meta.pr == 1990 and .n == 3 and .reps == 1 and .cases == null and .config.digest_v == 3 and .model == \"claude-opus-5-5\"" "$EL" >/dev/null'
 check "its metrics are the digest metrics, booleans as 1/0" 'jq -e ".metrics | .fail_denied == 10 and .turns == 3 and .identical_denied_retries == 1 and has(\"red_before_green\") and has(\"verify_before_claim\")" "$EL" >/dev/null'
 check "the digest file is written last and the row points at it" '[ -f "$ST/$SID.json" ] && [ "$(jq -r .artifact "$EL")" = "$ST/$SID.json" ]'
 
@@ -147,6 +147,7 @@ check "backfill: a launch with a lane and no profile records the lane and no pro
 printf 'headed-arm-worker: profile=worker-impl lane=native model=m role=worker session=HIMMEL-4670-N1365-agui-spec launched=2026-10-23T00:00:00Z\n' >"$TMP/bfp-cache/launch-logs/HIMMEL-4670-N1365-agui-spec.log"
 bfp >"$TMP/bfp2.out" 2>&1
 check "backfill asks a lane-known, profile-unknown session again, and the profile is stamped" 'jq -s "[.[] | select(.run_id == \"$B1\")] | length == 2 and (.[-1].meta.profile == \"worker-impl\")" "$TMP/bfp-e.jsonl" | grep -q true && jq -e "all(.tool_health[]; .profile == \"worker-impl\")" "$TMP/bfp-s/$B1.json" >/dev/null'
+check "the attribution restamp keeps the original record time" 'jq -s "[.[] | select(.run_id == \"$B1\")] | .[0].ts == .[-1].ts" "$TMP/bfp-e.jsonl" | grep -q true'
 mkdir -p "$TMP/h/.config/claude-glm/phi-roots"
 HOME="$TMP/h" python3 "$LL" backfill --since 2026-10-01 --projects "$P" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$TMP/bf3-f.jsonl" --eval-ledger "$TMP/bf3-e.jsonl" --state-dir "$TMP/bf3-s" >"$TMP/bf3.out" 2>&1; rc3=$?
 check "an unreadable PHI-roots file fails closed: nonzero, nothing written" '[ "$rc3" != 0 ] && [ ! -s "$TMP/bf3-e.jsonl" ]'
@@ -446,6 +447,190 @@ SP="$TMP/salus-projects"; mkdir -p "$SP/-home-x-other"
 { title HIMMEL-8575-N9-salus "$SS"; cat "$TMP/$SS.jsonl"; } >"$SP/-home-x-other/$SS.jsonl"
 python3 "$LL" backfill --since 2026-10-01 --projects "$SP" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$TMP/salus-bf-f.jsonl" --eval-ledger "$TMP/salus-bf-e.jsonl" --state-dir "$TMP/salus-bf-s" >"$TMP/salus-bf.out" 2>&1
 check "backfill refuses the salus-rooted journal (salus=1) and writes nothing, the canary included" 'grep -q "salus=1" "$TMP/salus-bf.out" && [ ! -s "$TMP/salus-bf-f.jsonl" ] && [ ! -s "$TMP/salus-bf-e.jsonl" ] && absent SALUSCANARY8575ph "$TMP/salus-bf.out"'
+
+echo "16. backfill --refresh: a corrected classifier reaches an old session without moving it in time"
+R1=4670b000-0000-4000-8000-0000000000f1
+OLD_E=2026-10-06T12:30:00Z; OLD_F=2026-10-06T12:31:00Z
+# setup_refresh <dir>: one backfilled session made old (original times) and of an older generation (no digest_id,
+# plus a stale error/TaskStop class the current digest no longer writes).
+setup_refresh() {
+    local d="$1"; mkdir -p "$d/p/-home-x-himmel"
+    { title HIMMEL-4670-N1365-refresh "$R1"; sed "s#\"sessionId\"#\"cwd\": \"$TMP/w\", \"sessionId\"#" "$FX/classes.jsonl"; } >"$d/p/-home-x-himmel/$R1.jsonl"
+    python3 "$LL" backfill --since 2026-10-01 --projects "$d/p" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$d/f.jsonl" --eval-ledger "$d/e.jsonl" --state-dir "$d/s" >/dev/null 2>&1
+    jq -c --arg t "$OLD_E" '.ts = $t | del(.meta.digest_id, .meta.tool_failures)' "$d/e.jsonl" >"$d/e2" && mv "$d/e2" "$d/e.jsonl"
+    jq -c --arg t "$OLD_F" '.ts = $t' "$d/f.jsonl" >"$d/f2" && mv "$d/f2" "$d/f.jsonl"
+    local first; first="$(head -n 1 "$d/f.jsonl")"
+    printf '%s\n' "$first" | jq -c --arg t "2026-10-06T12:32:00Z" '.ts = $t | .class = "error/TaskStop" | .failure = "error" | del(.refusal_line)' >>"$d/f.jsonl"
+    jq -c 'del(.digest_id)' "$d/s/$R1.json" >"$d/m2" && mv "$d/m2" "$d/s/$R1.json"
+}
+rf() { env HIMMEL_LEDGER_REFRESH_STOP_AFTER="${2:-}" python3 "$LL" backfill --refresh --since 2026-10-01 --projects "$1/p" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$1/f.jsonl" --eval-ledger "$1/e.jsonl" --state-dir "$1/s"; }
+D="$TMP/rf1"; setup_refresh "$D"
+check "control: the old generation carries the stale error/TaskStop class" 'grep -q "\"class\":\"error/TaskStop\"" "$D/f.jsonl"'
+rf "$D" >"$D/out" 2>&1 || bad "refresh exits 0: $(head -c 300 "$D/out")"
+check "refresh reports one refreshed session" 'grep -q "refreshed=1 unchanged=0 refused=0 inconclusive=0" "$D/out"'
+check "the refreshed eval row keeps the original ts and records refreshed_at and digest_id apart" 'jq -s "[.[] | select(.run_id == \"$R1\")] | length == 2 and .[-1].ts == \"$OLD_E\" and (.[-1].meta.refreshed_at | test(\"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$\")) and (.[-1].meta.digest_id | test(\"^[0-9a-f]{32}$\"))" "$D/e.jsonl" | grep -q true'
+check "the eval row carries its paired failures, without refusal text" 'jq -s ".[-1].meta.tool_failures | type == \"array\" and length > 0 and all(has(\"refusal_line\") | not)" "$D/e.jsonl" | grep -q true'
+check "the stale TaskStop class is gone end to end" 'absent "error/TaskStop" "$D/f.jsonl" && jq -s ".[-1].meta.tool_failures | all(.class != \"error/TaskStop\")" "$D/e.jsonl" | grep -q true'
+check "every superseding failure row keeps its original ts and names the generation" 'jq -s --arg id "$(jq -s -r ".[-1].meta.digest_id" "$D/e.jsonl")" "all(.ts == \"$OLD_F\" and .meta.digest_id == \$id and (.meta.refreshed_at | type == \"string\"))" "$D/f.jsonl" | grep -q true'
+check "refreshed failure rows pass the v1 validator, and so do old ones" 'python3 "$LL" validate "$D/f.jsonl" >/dev/null && python3 "$LL" validate "$TMP/bf-fail.jsonl" >/dev/null'
+check "the marker carries the digest_id last" '[ "$(jq -r .digest_id "$D/s/$R1.json")" = "$(jq -s -r ".[-1].meta.digest_id" "$D/e.jsonl")" ]'
+cp "$D/f.jsonl" "$D/f.after"
+rf "$D" >"$D/out2" 2>&1
+check "the same digest_id on the marker is a complete no-op" 'grep -q "refreshed=0 unchanged=1" "$D/out2" && [ "$(jq -s "[.[] | select(.run_id == \"$R1\")] | length" "$D/e.jsonl")" = 2 ] && cmp -s "$D/f.jsonl" "$D/f.after"'
+
+D="$TMP/rf1"; X="$(jq -s -r ".[-1].meta.digest_id" "$D/e.jsonl")"
+gen_b="$(jq -s -c '.[-1] | .meta.digest_id = "ffffffffffffffffffffffffffffffff"' "$D/e.jsonl")"; printf '%s\n' "$gen_b" >>"$D/e.jsonl"
+jq -c '.digest_id = "ffffffffffffffffffffffffffffffff"' "$D/s/$R1.json" >"$D/m3" && mv "$D/m3" "$D/s/$R1.json"
+rf "$D" >"$D/out3" 2>&1
+check "a generation that comes back (A, B, A) is appended again, so the newest row is A" 'grep -q "refreshed=1" "$D/out3" && [ "$(jq -s -r ".[-1].meta.digest_id" "$D/e.jsonl")" = "$X" ] && [ "$(jq -s "[.[] | select(.run_id == \"$R1\")] | length" "$D/e.jsonl")" = 4 ]'
+
+D="$TMP/rf2"; setup_refresh "$D"
+rf "$D" eval >/dev/null 2>&1
+check "crash after the eval write: the new eval row is in, the failures and marker are still old" '[ "$(jq -s "[.[] | select(.run_id == \"$R1\")] | length" "$D/e.jsonl")" = 2 ] && grep -q "error/TaskStop" "$D/f.jsonl" && [ "$(jq -r ".digest_id // \"none\"" "$D/s/$R1.json")" = none ]'
+rf "$D" >"$D/out" 2>&1
+check "the replay finishes the failures and the marker with no duplicate eval row" 'grep -q "refreshed=1" "$D/out" && [ "$(jq -s "[.[] | select(.run_id == \"$R1\")] | length" "$D/e.jsonl")" = 2 ] && absent "error/TaskStop" "$D/f.jsonl" && [ "$(jq -r .digest_id "$D/s/$R1.json")" != null ]'
+D="$TMP/rf3"; setup_refresh "$D"
+rf "$D" failures >/dev/null 2>&1
+check "crash after the failures write: rows replaced, marker still old" 'absent "error/TaskStop" "$D/f.jsonl" && [ "$(jq -r ".digest_id // \"none\"" "$D/s/$R1.json")" = none ]'
+cp "$D/f.jsonl" "$D/f.crash"
+rf "$D" >/dev/null 2>&1
+check "the replay repairs the marker with no duplicate row anywhere" '[ "$(jq -s "[.[] | select(.run_id == \"$R1\")] | length" "$D/e.jsonl")" = 2 ] && cmp -s "$D/f.jsonl" "$D/f.crash" && [ "$(jq -r .digest_id "$D/s/$R1.json")" != null ]'
+
+D="$TMP/rf4"; setup_refresh "$D"; : >"$D/e.jsonl"; cp "$D/f.jsonl" "$D/f.before"
+rf "$D" >"$D/out" 2>&1
+check "no original ok eval row: refused, never stamped with the refresh time" 'grep -q "refused=1" "$D/out" && grep -q "no original ok eval row" "$D/out" && [ ! -s "$D/e.jsonl" ] && cmp -s "$D/f.jsonl" "$D/f.before"'
+D="$TMP/rf5"; setup_refresh "$D"; printf '{not json\n' >>"$D/p/-home-x-himmel/$R1.jsonl"; cp "$D/f.jsonl" "$D/f.before"; cp "$D/e.jsonl" "$D/e.before"
+rf "$D" >"$D/out" 2>&1
+check "a partial re-digest leaves the previous measurement untouched" 'grep -q "inconclusive=1" "$D/out" && cmp -s "$D/f.jsonl" "$D/f.before" && cmp -s "$D/e.jsonl" "$D/e.before"'
+D="$TMP/rf6"; setup_refresh "$D"; printf '{"type":"system","subtype":"x","timestamp":"%s","sessionId":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" "$R1" >>"$D/p/-home-x-himmel/$R1.jsonl"; cp "$D/f.jsonl" "$D/f.before"
+rf "$D" >"$D/out" 2>&1
+check "a live session is not refreshed" 'grep -q "live=1" "$D/out" && cmp -s "$D/f.jsonl" "$D/f.before"'
+row1="$(head -n 1 "$TMP/rf1/f.jsonl")"
+printf '%s\n' "$(printf '%s' "$row1" | jq -c '.meta.extra = 1')" >"$TMP/rf-bad1.jsonl"
+printf '%s\n' "$(printf '%s' "$row1" | jq -c '.meta.refreshed_at = "yesterday"')" >"$TMP/rf-bad2.jsonl"
+printf '%s\n' "$(printf '%s' "$row1" | jq -c '.meta = "x"')" >"$TMP/rf-bad3.jsonl"
+check "the validator rejects any other meta key, a bad refreshed_at and a non-object meta" '! python3 "$LL" validate "$TMP/rf-bad1.jsonl" >/dev/null 2>&1 && ! python3 "$LL" validate "$TMP/rf-bad2.jsonl" >/dev/null 2>&1 && ! python3 "$LL" validate "$TMP/rf-bad3.jsonl" >/dev/null 2>&1'
+check "a normal record also writes the paired snapshot" 'jq -e "select(.run_id == \"$SID\") | (.meta.digest_id | test(\"^[0-9a-f]{32}$\")) and (.meta.tool_failures | type == \"array\")" "$EL" >/dev/null'
+
+echo "17. backfill --refresh keeps each session's attribution, Claude version and effort, and reads the eval ledger once"
+AT_TICKET=HIMMEL-4701
+CV="$TMP/cv"; mkdir -p "$CV/vers" "$CV/bin1" "$CV/bin2" "$CV/cache/launch-logs" "$CV/nocache"
+for v in 1.2.3 4.5.6; do printf '#!/bin/sh\n' >"$CV/vers/$v"; chmod +x "$CV/vers/$v"; done
+ln -s "$CV/vers/1.2.3" "$CV/bin1/claude"; ln -s "$CV/vers/4.5.6" "$CV/bin2/claude"
+printf 'headed-arm-worker: profile=worker-impl lane=native model=m role=worker session=attr-launch launched=2026-10-23T00:00:00Z\n' >"$CV/cache/launch-logs/attr-launch.log"
+cat >"$CV/count.py" <<'EOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+import worker_ledger
+scans = [0]
+real = worker_ledger.eval_runs.scan_rows
+def counted(*a, **k):
+    scans[0] += 1
+    return real(*a, **k)
+worker_ledger.eval_runs.scan_rows = counted
+rc = worker_ledger.main(sys.argv[2:])
+print("scans=%d" % scans[0])
+sys.exit(rc)
+EOF
+setup_attr() {
+    local d="$1" s; shift; mkdir -p "$d/p/-home-x-himmel"
+    for s in "$@"; do
+        { title HIMMEL-4670-N1365-attr "$s"; sed "s#\"sessionId\"#\"cwd\": \"$TMP/w\", \"sessionId\"#" "$FX/classes.jsonl"; } >"$d/p/-home-x-himmel/$s.jsonl"
+        bun "$DIG" --transcript "$d/p/-home-x-himmel/$s.jsonl" --denials-ledger "$FX/classifier-denials.jsonl" >"$d/$s.digest" 2>/dev/null
+        env PATH="$CV/bin1:$PATH" CLAUDE_CODE_EFFORT_LEVEL=medium HIMMELCTL_CACHE_DIR="$CV/cache" python3 "$LL" record --failures-ledger "$d/f.jsonl" --eval-ledger "$d/e.jsonl" --state-dir "$d/s" --digest "$d/$s.digest" --worker N7777 --ticket "$AT_TICKET" --chief demo-chief --pr 4242 --doc himmel/x.md --launch-name attr-launch >/dev/null 2>&1
+        jq -c 'del(.digest_id)' "$d/s/$s.json" >"$d/m2" && mv "$d/m2" "$d/s/$s.json"
+    done
+    jq -c 'del(.meta.digest_id, .meta.tool_failures)' "$d/e.jsonl" >"$d/e2" && mv "$d/e2" "$d/e.jsonl"
+}
+arf() { local d="$1"; shift; env PATH="$CV/bin2:$PATH" CLAUDE_CODE_EFFORT_LEVEL=xhigh HIMMELCTL_CACHE_DIR="$CV/nocache" "$@" backfill --refresh --since 2026-10-01 --projects "$d/p" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$d/f.jsonl" --eval-ledger "$d/e.jsonl" --state-dir "$d/s"; }
+A1=9863b000-0000-4000-8000-000000000001; A2=9863b000-0000-4000-8000-000000000002; A3=9863b000-0000-4000-8000-000000000003
+D="$TMP/at1"; setup_attr "$D" "$A1"
+check "precondition: the original row carries the attribution, the Claude version and the effort" 'jq -e "select(.run_id == \"$A1\") | .lane == \"native\" and (.meta | .leg == \"N7777\" and .ticket == \"$AT_TICKET\" and .console == \"demo-chief\" and .pr == 4242 and .doc == \"himmel/x.md\" and .profile == \"worker-impl\" and .cli_version == \"1.2.3\" and .effort == \"medium\")" "$D/e.jsonl" >/dev/null && [ "$(jq -s "map(select(.session == \"$A1\" and .pr == 4242 and .console == \"demo-chief\" and .ticket == \"$AT_TICKET\" and .leg == \"N7777\")) | length" "$D/f.jsonl")" -gt 0 ]'
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "attribution refresh exits 0: $(head -c 300 "$D/out")"
+check "the refresh ran: one refreshed session, a second eval row" 'grep -q "refreshed=1 unchanged=0" "$D/out" && [ "$(jq -s "[.[] | select(.run_id == \"$A1\")] | length" "$D/e.jsonl")" = 2 ]'
+check "the refreshed eval row keeps leg, ticket, pr, console, doc, profile and lane (the title names N1365)" 'jq -s -e ".[-1] | .lane == \"native\" and (.meta | .leg == \"N7777\" and .ticket == \"$AT_TICKET\" and .console == \"demo-chief\" and .pr == 4242 and .doc == \"himmel/x.md\" and .profile == \"worker-impl\")" "$D/e.jsonl" >/dev/null'
+check "every refreshed failure row keeps leg, console, ticket and pr" 'jq -s -e --arg s "$A1" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N7777\" and .console == \"demo-chief\" and .ticket == \"$AT_TICKET\" and .pr == 4242)" "$D/f.jsonl" >/dev/null'
+check "the refresh under another CLAUDE_CODE_EFFORT_LEVEL and claude version leaves meta.cli_version and meta.effort at the original values" 'jq -s -e ".[-1].meta | .cli_version == \"1.2.3\" and .effort == \"medium\"" "$D/e.jsonl" >/dev/null'
+D="$TMP/at2"; setup_attr "$D" "$A1" "$A2" "$A3"
+arf "$D" python3 -I "$CV/count.py" "$HERE" >"$D/out" 2>&1 || bad "counted refresh exits 0: $(head -c 300 "$D/out")"
+check "one backfill --refresh over three sessions refreshes all three and scans the eval ledger once" 'grep -q "refreshed=3 unchanged=0" "$D/out" && grep -qx "scans=1" "$D/out"'
+cat >"$CV/stale.py" <<'EOF'
+import json
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import worker_ledger
+d, session = sys.argv[2], sys.argv[3]
+evals, fails, state = d + "/e.jsonl", d + "/f.jsonl", d + "/s"
+with open(d + "/" + session + ".digest", encoding="utf-8") as fh:
+    digest = json.load(fh)
+who = {"leg": None, "ticket": None, "console": None, "pr": None, "doc": None, "lane": None, "state_dir": state,
+       "backfill": True, "launch_name": None, "kind": "worker"}
+index = worker_ledger._OkIndex(evals)
+print(worker_ledger.refresh(digest, who, fails, evals, index))
+marker = state + "/" + session + ".json"
+with open(marker, encoding="utf-8") as fh:
+    saved = json.load(fh)
+del saved["digest_id"]
+with open(marker, "w", encoding="utf-8") as fh:
+    json.dump(saved, fh)
+print(worker_ledger.refresh(digest, who, fails, evals, index))
+print("eval_rows=%d" % sum(1 for line in open(evals, encoding="utf-8") if session in line))
+EOF
+D="$TMP/at3"; setup_attr "$D" "$A1"
+env HIMMELCTL_CACHE_DIR="$CV/nocache" python3 -I "$CV/stale.py" "$HERE" "$D" "$A1" >"$D/out" 2>&1
+check "an index built before another writer's eval row does not append the generation a second time" 'grep -qx "eval_rows=2" "$D/out"'
+cat >"$CV/partial.py" <<'EOF'
+import json
+import sys
+sys.path.insert(0, sys.argv[1])
+import worker_ledger
+d, session = sys.argv[2], sys.argv[3]
+evals, fails, state = d + "/e.jsonl", d + "/f.jsonl", d + "/s"
+with open(d + "/" + session + ".digest", encoding="utf-8") as fh:
+    digest = json.load(fh)
+who = {"leg": None, "ticket": None, "console": None, "pr": None, "doc": None, "lane": None, "state_dir": state,
+       "backfill": True, "launch_name": None, "kind": "worker"}
+print(worker_ledger.refresh(digest, who, fails, evals, worker_ledger._OkIndex(evals)))
+with open(evals, "rb") as fh:
+    data = fh.read()
+start = data.rstrip(b"\n").rfind(b"\n") + 1
+cut = start + (len(data) - start) // 2
+with open(evals, "wb") as fh:
+    fh.write(data[:cut])
+index = worker_ledger._OkIndex(evals)
+with open(evals, "ab") as fh:
+    fh.write(data[cut:])
+marker = state + "/" + session + ".json"
+with open(marker, encoding="utf-8") as fh:
+    saved = json.load(fh)
+del saved["digest_id"]
+with open(marker, "w", encoding="utf-8") as fh:
+    json.dump(saved, fh)
+print(worker_ledger.refresh(digest, who, fails, evals, index))
+print("eval_rows=%d" % sum(1 for line in open(evals, encoding="utf-8") if session in line))
+EOF
+D="$TMP/at4"; setup_attr "$D" "$A1"
+env HIMMELCTL_CACHE_DIR="$CV/nocache" python3 -I "$CV/partial.py" "$HERE" "$D" "$A1" >"$D/out" 2>&1
+check "an index built while another writer's row is half appended reads that row whole and appends nothing again" 'grep -qx "eval_rows=2" "$D/out"'
+D="$TMP/at5"; setup_attr "$D" "$A1"
+jq -c '.meta.pr = null' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row without a pr exits 0: $(head -c 300 "$D/out")"
+check "a field the eval row lacks keeps the value its failure rows already carry" 'grep -q "refreshed=1" "$D/out" && jq -s -e --arg s "$A1" "map(select(.session == \$s)) | length > 0 and all(.pr == 4242)" "$D/f.jsonl" >/dev/null'
+D="$TMP/at6"; setup_attr "$D" "$A1"
+jq -c '.meta.leg = null | .meta.ticket = null' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row without a leg or ticket exits 0: $(head -c 300 "$D/out")"
+check "the failure rows' old leg and ticket beat the journal title when the eval row has none" 'grep -q "refreshed=1" "$D/out" && jq -s -e --arg s "$A1" --arg t "$AT_TICKET" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N7777\" and .ticket == \$t)" "$D/f.jsonl" >/dev/null'
+check "and the refreshed eval row takes the same leg and ticket, not the title's" 'jq -s -e --arg t "$AT_TICKET" ".[-1].meta | .leg == \"N7777\" and .ticket == \$t" "$D/e.jsonl" >/dev/null'
+D="$TMP/at7"; setup_attr "$D" "$A1"
+jq -c '.meta.leg = null | .meta.ticket = null' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" HIMMEL_LEDGER_REFRESH_STOP_AFTER=eval python3 -I "$HERE/worker_ledger.py" >"$D/out1" 2>&1
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "replayed refresh exits 0: $(head -c 300 "$D/out")"
+check "a replay after a crash following the eval write keeps the held leg and ticket on the failure rows" 'grep -q "refreshed=1" "$D/out" && jq -s -e --arg s "$A1" --arg t "$AT_TICKET" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N7777\" and .ticket == \$t)" "$D/f.jsonl" >/dev/null'
+D="$TMP/at8"; setup_attr "$D" "$A1"
+jq -c '.meta.leg = "N8888"' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row with another leg exits 0: $(head -c 300 "$D/out")"
+check "the eval row's leg beats the old failure rows' leg on both refreshed rows" 'grep -q "refreshed=1" "$D/out" && jq -s -e ".[-1].meta.leg == \"N8888\"" "$D/e.jsonl" >/dev/null && jq -s -e --arg s "$A1" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N8888\")" "$D/f.jsonl" >/dev/null'
 
 echo "test-worker-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

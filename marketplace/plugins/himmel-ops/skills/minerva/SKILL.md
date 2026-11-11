@@ -267,11 +267,49 @@ in the spec). The critic reads the estimate record and may challenge sigma.
 Dispatch a fresh subagent (Agent tool, `model: opus` at high effort) against
 the written spec file; never let it inherit the parent's tier (CLAUDE.md
 subagent policy). Loop
-fix → re-critic until it returns clean, **cap 3 rounds per spec**: spec
-and plan critics are counted apart, and a new critic name or a scope edit does not
-restart the count. Every round the critic reads the whole file. After round 3 stop asking:
-the page goes to the operator with each open finding on it, for a ruling. A
-further round needs an operator record, and `critic-seal.sh` refuses to seal it without one.
+fix → re-critic until it returns clean, **cap 3 rounds per spec**, then at most
+one closure check. Rounds 1 to 3 read the whole file.
+
+**Rounds are counted per ticket, in the round ledger.** Each seal through
+`critic-seal.sh` records the return in `specs/ledgers/spec-rounds/<KEY>.jsonl`,
+and every surface reads the count from there, so a new leg, a renamed spec, a new
+file name or a deleted critic file does not lower it. Spec and plan rounds are
+counted apart; the writer round is the higher of the two. See where a ticket
+stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY> --specs <bucket>/specs`,
+`<bucket>` being the state repo bucket that holds the spec; every verb below takes the same `--specs`.
+
+| Round | Allowed when | What the critic reads |
+|---|---|---|
+| 1 to 3 | always | the whole file |
+| 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record opens it | the closure pack only |
+| 5 and on | the chief's one `round-override`, or a `round-critical` record, opens that writer round | the closure pack only |
+
+- **Round 4 is a closure check.** Build the critic's input with
+  `bun <himmel>/scripts/telegram/chief-route.ts closure-pack <KEY> <spec|plan> --specs <bucket>/specs`:
+  a `CLOSURE-CHECK` marker line, the open blocking findings, the sha of each file
+  round 3 sealed and the diff of each since. The critic gets the pack and the
+  charter's Closure mode, never the whole file. The seal refuses a round-4 return
+  without the marker line, or one that reads a file round 3 did not seal.
+- **Minors and mediums never buy a round.** The ledger keeps every finding, and
+  the build brief gets the ones no later round answered, through `fold-list`, as
+  `## Folded critic findings`. After a minors-only round 3, sign the spec: do not
+  ask for round 4.
+- **The override.** Past round 4, the chief may record one
+  `round-override <KEY> --findings <id,...> --why "<line>" --chief <session> --specs <bucket>/specs` per
+  ticket, ever, naming open blocking ids.
+- **Operator-critical.** A finding tagged `operator-critical: <class>`, with one
+  of the four classes (`spend-grant`, `account-or-terms`, `public-policy`,
+  `reverses-ruling`), goes to the operator, not to a round. It stays open until the
+  chief records the operator's ruling with
+  `round-critical <KEY> --finding <id> --decision <d> --quote "<operator words>" --specs <bucket>/specs`.
+  Add `--no-round` when the ruling needs no revision (for example "sign it as it
+  stands"); without it the record opens one further writer round. While any such
+  finding is open the signature is refused, naming it.
+- **A rethink.** Only the operator's ruling to start over lowers the count:
+  `round-reset <KEY> --decision <d> --quote "<operator words>" --specs <bucket>/specs`, once per ticket.
+- The three record verbs run only from the chief's console, and every record is
+  checked again on each read. A hand-written `<spec>.operator-round-r<n>.md` file
+  counts for nothing.
 
 **Name what the critic reviews, before each dispatch.** Look over the spec's
 `## Fact ownership` first: a fix there later is a spec edit, which costs a round.
@@ -355,7 +393,7 @@ write that line by hand. A return with no quote line for a file: ask the same
 critic for it if that run still answers, and keep its reply verbatim in the return.
 If it no longer answers, that file gets no seal and the next round reads it. At
 the cap there is no next round: the page stays refused, and a further round
-needs the operator's record (At the cap, below).
+needs a record (At the cap, below).
 
 A refused seal names its cause, and each has one next step:
 
@@ -366,7 +404,11 @@ A refused seal names its cause, and each has one next step:
   again and type it once more.
 - `last line`: append the verdict line as above, then type it once more.
 - `already seals`: that file is done; go on to the next.
-- `needs an operator record`: stop; see At the cap.
+- `needs a blocking finding in round 3`: round 3 left only minors; sign the spec
+  under 848 and let the build carry them.
+- `is a closure check`: the return lacks the pack's marker line, or read a file
+  round 3 did not seal; dispatch the critic again with `closure-pack`.
+- `needs a round-override or round-critical record`: stop; see At the cap.
 - anything else: report it; the page stays refused.
 
 Every edit after a seal voids it: a fix, a `## Critic rounds` line, a status line,
@@ -376,17 +418,21 @@ round's dispositions in the fix the next round reads. An agreed panel finding on
 `CLEAN` return is a fix like any other, and the next round reads it.
 
 **At the cap.** Once a critic has had round 3, whatever its verdict, the files it
-read are not edited: the spec critic's freezes the spec, and the plan critic's
-freezes the spec and the plan. Stages 3 and 4 still run on a frozen spec, because
+read change only to answer an open blocking finding, and only the files round 3
+sealed: round 4 checks exactly that diff. When round 3 of either kind left no
+blocking finding, they are not edited at all: sign the spec under 848, and the
+minors go to the build. Stages 3 and 4 still run on a frozen spec, because
 send-file refuses a page with no plan critic file, or one neither `PLAN CLEAN` nor
-at its own round 3. The plan alone may still be fixed while its critic is under
-the cap. send-file lists only the findings in a `FINDINGS` return. Whatever else
-wants an edit it cannot have, an agreed panel finding or a Terminal lint gap, goes
-to the operator in a plain message with the page, and a lint gap also stops the
-hand-off. If the edit was made, put the sealed bytes back. A further round needs
-the operator's record, one `<spec>.operator-round-r<n>.md` per round number, asked
-in a plain message, since no page of the edited spec can be sent. A spec edit needs
-the plan critic's next round too, so a plan at its cap needs a record as well.
+at its own round 3 in the ledger. The plan alone may still be fixed while its
+critic is under the cap. send-file lists the findings in a `FINDINGS` return and
+every open operator-critical finding. Whatever else wants an edit it cannot have,
+an agreed panel finding or a Terminal lint gap, goes to the operator in a plain
+message with the page, and a lint gap also stops the hand-off. If the edit was
+made, put the sealed bytes back. A round past round 4 needs the chief's one
+`round-override` or a `round-critical` record carrying the operator's quoted
+words; the operator is asked in a plain message, since no page of the edited spec
+can be sent. A spec edit voids the plan critic's seal too; a blocking finding of
+either kind opens round 4 for both, so the plan gets its own closure check.
 
 CHARTER — the single source is **`panel-charter.md`** in this skill dir; paste
 its contents into the subagent prompt verbatim. Do NOT inline a second copy here
@@ -397,7 +443,8 @@ copies is the instructional-not-structural drift root `CLAUDE.md` warns against)
 critic round, run the free-cloud critic panel over the SAME spec as an advisory
 second opinion — it catches the same-family popularity trap (Claude reviewing
 Claude). The Claude critic stays the GATE; the panel only feeds its next round.
-Resolve paths from the himmel checkout (minerva runs inside it):
+It does not run at a closure round (round 4 and on): that round reads only the
+closure pack. Resolve paths from the himmel checkout (minerva runs inside it):
 
 ```bash
 REPO="$(git rev-parse --show-toplevel)"; CR="$REPO/scripts/cr"
@@ -448,7 +495,9 @@ Optional readiness check: the marked paragraph before Stage 2 applies here with 
 
 Dispatch a fresh subagent (Agent tool, `model: sonnet` at high effort) against
 the written plan file. Loop
-fix → re-critic until clean, **cap 3 rounds**, counted as Stage 2 counts them.
+fix → re-critic until clean, **cap 3 rounds**, counted per ticket in the same
+round ledger and capped by the same table as Stage 2. A plan round 4 is a closure
+check too: build its input with `closure-pack <KEY> plan --specs <bucket>/specs`.
 
 Save each return as Stage 2 does, beside the **spec** (not the plan):
 `<spec-file>.critic-plan-r<n>.md`, ending in `PLAN CLEAN` or

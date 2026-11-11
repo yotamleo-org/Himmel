@@ -87,7 +87,7 @@ printf '%s\n' '{"task":"a","rep":1,"accept_passed":1,"accept_total":1,"accept_ok
 python3 "$HERE/../lib/eval_runs.py" lane-quality "$TMP/run" --run-id t2 >/dev/null 2>&1
 check "a pre-4651 run dir still writes a row, its fields null" 'jq -s -e ".[-1].metrics | .red_before_green_rate == null and .identical_denied_retries == null" "$HIMMEL_EVAL_RUNS_LEDGER" >/dev/null'
 
-echo "5. score --denials: the per-denial list the worker digest joins by tool_call_id (HIMMEL-4670)"
+echo "5. score --denials: the per-denial list the worker digest joins by tool_call_id"
 check "denial-repeated lists each denial: recovered when the next call differs, identical = the retries it drew" 'python3 "$TR" score "$FX/denial-repeated.jsonl" --denials | jq -e -c ".denials == [{\"tool_call_id\":\"toolu_01\",\"recovered\":false,\"identical\":1},{\"tool_call_id\":\"toolu_02\",\"recovered\":false,\"identical\":1},{\"tool_call_id\":\"toolu_03\",\"recovered\":true,\"identical\":0}]" >/dev/null'
 check "a retry after an intervening call still counts against the denial it repeats" 'python3 "$TR" score "$FX/red-denied.jsonl" --denials | jq -e -c ".denials == [{\"tool_call_id\":\"toolu_02\",\"recovered\":true,\"identical\":1}]" >/dev/null'
 check "the per-denial identical counts sum to identical_denied_retries on every fixture" '(for f in "$FX"/*.jsonl; do python3 "$TR" score "$f" --denials | jq -e "([.denials[].identical] | add // 0) == .identical_denied_retries" >/dev/null || exit 1; done)'
@@ -124,7 +124,7 @@ for c in calls:
 print(json.dumps([out[d["id"]] for d in den]))' "$HERE" "$1"
 }
 den "$TMP/den-small.jsonl" 200
-check "the indexed denial list equals the all-pairs scan on every fixture and a reordered synthetic journal (HIMMEL-4682)" '(for f in "$FX"/*.jsonl "$TMP/den-small.jsonl"; do [ "$(python3 "$TR" score "$f" --denials | jq -c .denials)" = "$(ref "$f" | jq -c .)" ] || exit 1; done)'
+check "the indexed denial list equals the all-pairs scan on every fixture and a reordered synthetic journal" '(for f in "$FX"/*.jsonl "$TMP/den-small.jsonl"; do [ "$(python3 "$TR" score "$f" --denials | jq -c .denials)" = "$(ref "$f" | jq -c .)" ] || exit 1; done)'
 den "$TMP/den-5k.jsonl" 5000
 # shellcheck source=../../lib/timeout-bin.sh
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
@@ -133,7 +133,7 @@ check "score --denials on a 5k-denial journal finishes well inside 20s (near-lin
 else ok "5k-denial timing row skipped: no GNU timeout on PATH"; fi
 
 
-echo "6. quiet-run-wrapped suites and wrap-report phrasing (HIMMEL-4698)"
+echo "6. quiet-run-wrapped suites and wrap-report phrasing"
 # tt <command>: test_target's (targets, outcomes) as JSON, or null.
 tt() { python3 -c 'import json, sys; sys.path.insert(0, sys.argv[1]); import trajectory as t; r = t.test_target(sys.argv[2]); print(json.dumps(r and [sorted(r[0]), r[1]]))' "$HERE" "$1"; }
 QR="bash scripts/quiet-run.sh suite --"
@@ -141,7 +141,7 @@ check "quiet-run suite -- bash test-x.sh is a run of test-x.sh, its OK/ERR line 
 check "an env-var prefix and a trailing ; grep still read the quiet-run line" '[ "$(tt "SUITE_LOCK_WAIT=300 $QR bash test-x.sh; grep -c FAIL /tmp/q.log")" = "[[\"test-x.sh\"], \"quiet-run:suite\"]" ]'
 check "a direct ./scripts/quiet-run.sh call under a pipe is recognized" '[ "$(tt "./scripts/quiet-run.sh suite -- bash test-x.sh 2>&1 | tail -3")" = "[[\"test-x.sh\"], \"quiet-run:suite\"]" ]'
 check "two quiet-run suites in one command are one run of both test files" '[ "$(tt "$QR bash test-a.sh; $QR bash test-b.sh")" = "[[\"test-a.sh\", \"test-b.sh\"], \"quiet-run:suite x2\"]" ]'
-check "env VAR= and wrappers inside the quiet-run inner command are dropped (HIMMEL-4740)" '[ "$(tt "$QR env FOO=bar bash test-x.sh")" = "[[\"test-x.sh\"], \"quiet-run:suite\"]" ] && [ "$(tt "$QR FOO=bar time bash test-x.sh")" = "[[\"test-x.sh\"], \"quiet-run:suite\"]" ]'
+check "env VAR= and wrappers inside the quiet-run inner command are dropped" '[ "$(tt "$QR env FOO=bar bash test-x.sh")" = "[[\"test-x.sh\"], \"quiet-run:suite\"]" ] && [ "$(tt "$QR FOO=bar time bash test-x.sh")" = "[[\"test-x.sh\"], \"quiet-run:suite\"]" ]'
 check "quiet-run wrapping a non-test is not a test run" '[ "$(tt "bash scripts/quiet-run.sh npm-install -- npm install")" = "null" ]'
 check "node --test names its test files" '[ "$(tt "node --test scripts/a/foo.test.mjs")" = "[[\"foo.test.mjs\"], \"pass+fail\"]" ]'
 check "node --test with no test file runs the default set" '[ "$(tt "node --test")" = "[[\"*\"], \"pass+fail\"]" ]'
@@ -175,7 +175,7 @@ check "one OK line for two wrapped suites credits neither as a pass" 'python3 "$
 cl() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import trajectory as t; print(len(t.claims(sys.argv[2])))' "$HERE" "$1"; }
 check "wrap-report phrasing is not a test claim" '[ "$(cl "the subtree check passed: CLOSABLE.")" = 0 ]'
 check "a test or suite claim is still a claim" '[ "$(cl "All 12 tests passed and the suite is green.")" = 1 ]'
-echo "7. a passing && chain backs every test it runs (HIMMEL-4673)"
+echo "7. a passing && chain backs every test it runs"
 check "test-a && test-b is one run of both, its pass the only outcome it speaks for" '[ "$(tt "bash test-a.sh && bash test-b.sh")" = "[[\"test-a.sh\", \"test-b.sh\"], \"pass\"]" ]'
 check "cd-style setup before the chain keeps the union" '[ "$(tt "cd d && bash test-a.sh && bash test-b.sh")" = "[[\"test-a.sh\", \"test-b.sh\"], \"pass\"]" ]'
 worker chain-union "bash test-a.sh" "ok" "bash test-a.sh && bash test-x.sh" "ok"
@@ -183,7 +183,7 @@ check "a passing test-a && test-x backs a claim that test-x.sh passes" 'python3 
 worker chain-union-red "bash test-x.sh && bash test-a.sh" "Exit code 1
 FAIL" "bash test-x.sh && bash test-a.sh" "ok"
 check "a failing test-x && test-a chain proves no RED" 'python3 "$TR" score "$TMP/chain-union-red.jsonl" | jq -e ".red_before_green == false and .verify_before_claim == true" >/dev/null'
-echo "8. output that reports failures is a failing run even at exit 0 (HIMMEL-5023)"
+echo "8. output that reports failures is a failing run even at exit 0"
 worker out-red-piped "bash test-x.sh 2>&1 | tail -3" "  FAIL a case
 test-x: 128 passed, 25 failed" "bash test-x.sh" "test-x: 153 passed, 0 failed"
 check "a piped RED run (25 failed, exit 0) scores red_before_green" 'python3 "$TR" score "$TMP/out-red-piped.jsonl" | jq -e ".red_before_green == true and .verify_before_claim == true" >/dev/null'
@@ -197,7 +197,7 @@ worker out-nonzero-silent "bash test-x.sh" "Exit code 1" "bash test-x.sh" "ok"
 check "a non-zero exit with silent output still fails" 'python3 "$TR" score "$TMP/out-nonzero-silent.jsonl" | jq -e ".red_before_green == true" >/dev/null'
 worker out-red-then-red "bash test-x.sh" "test-x: 1 passed, 2 failed" "bash test-x.sh" "test-x: 1 passed, 2 failed"
 check "a red run after the impl write is not a pass for the claim" 'python3 "$TR" score "$TMP/out-red-then-red.jsonl" | jq -e ".red_before_green == false and .verify_before_claim == false" >/dev/null'
-echo "9. a same-command VAR=path assignment resolves a later \$VAR / \${VAR} test run (HIMMEL-5024)"
+echo "9. a same-command VAR=path assignment resolves a later \$VAR / \${VAR} test run"
 check "f=path; bash \$f is a run of the file" '[ "$(tt "f=scripts/a/test-x.sh; bash \$f")" = "[[\"test-x.sh\"], \"pass+fail\"]" ]'
 check "the braced \${f} form resolves" '[ "$(tt "f=scripts/a/test-x.sh; bash \${f}")" = "[[\"test-x.sh\"], \"pass+fail\"]" ]'
 check "a quoted \"\$f\" resolves" '[ "$(tt "f=scripts/a/test-x.sh; bash \"\$f\"")" = "[[\"test-x.sh\"], \"pass+fail\"]" ]'
@@ -211,7 +211,7 @@ check "a non-test value is not a test run" '[ "$(tt "f=scripts/a/helper.sh; bash
 worker var-red-green 'f=scripts/a/test-x.sh; echo run; bash $f' "Exit code 1
 FAIL" 'f=scripts/a/test-x.sh; bash $f' "ok"
 check "a RED spelled bash \$f scores red_before_green" 'python3 "$TR" score "$TMP/var-red-green.jsonl" | jq -e ".red_before_green == true and .verify_before_claim == true" >/dev/null'
-echo "10. a write and a test run in one assistant message are unordered (HIMMEL-4672)"
+echo "10. a write and a test run in one assistant message are unordered"
 # batch <name> <red-msg> <write-msg> <green-msg>: a RED run, an impl Write, a green run, then a passing
 # claim; each call is stamped with the message.id given for it (one id = one parallel batch).
 batch() {

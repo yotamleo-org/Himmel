@@ -267,7 +267,7 @@ class LocalAdapterTests(unittest.TestCase):
 
 
 class LedgerTests(unittest.TestCase):
-    """HIMMEL-4647: each bench.main run appends one valid eval-runs row."""
+    """Each bench.main run appends one valid eval-runs row."""
 
     def bench(self, d, script_body):
         script = Path(d) / "engine.sh"

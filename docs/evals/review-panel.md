@@ -47,40 +47,52 @@ branch: almost every branch is one PR, but a few are not.
 <!-- review-page.py --panel: start -->
 ## Headline numbers
 
-As of 25 Oct 2026 (CR ledger cut `2026-10-25T02:30:00Z`): 11,646 distinct findings across 2,147 PRs, 2026-09-04 to 2026-10-25.
+As of 11 Nov 2026 (CR ledger cut `2026-11-11T04:56:48Z`): 19,982 distinct findings across 3,332 PRs, 2026-09-04 to 2026-11-11.
 
-The ledger holds 11,720 finding rows. 74 of them repeat a finding already counted here: the same claim on the same file and line of the same PR, raised again in a later round or by another critic. A merged finding takes the verdict of its earliest raise that has one. A finding with no recorded text is never merged.
+The ledger holds 20,401 finding rows. 419 of them repeat a finding already counted here: the same claim on the same file and line of the same PR, raised again in a later round or by another critic. A merged finding takes the verdict of its earliest raise that has one. A finding with no recorded text is never merged.
 
-Per PR: 3,322 PRs reviewed, 2,147 with at least one finding; median 3 and mean 5.4 distinct findings per PR with findings, at most 87 on one PR.
+Per PR: 4,630 PRs reviewed, 3,332 with at least one finding; median 4 and mean 6 distinct findings per PR with findings, at most 95 on one PR.
 
 | Critic | Findings | PRs | Agreed | Disproved | Deferred | Unadjudicated | Precision | 95% CI |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
 | `codex:gpt-5.6-sol` | 231 | 27 | 95 | 18 | 35 | 83 | 84.1% | 74.2–91.7 |
 | `citation-guard` | 15 | 15 | 7 | 6 | 1 | 1 | 53.8% | 30.8–76.9 |
 | `codex:gpt-6-astra` | 2,435 | 362 | 1,099 | 132 | 697 | 507 | 89.3% | 86.1–92.0 |
-| `codex` | 109 | 8 | 100 | 2 | 7 | 0 | 98.0% | 95.8–100.0 |
-| `coderabbit` | 87 | 52 | 57 | 5 | 25 | 0 | 91.9% | 82.6–100.0 |
+| `codex` | 483 | 36 | 394 | 64 | 18 | 7 | 86.0% | 79.2–90.6 |
+| `coderabbit` | 4,086 | 1,417 | 3,433 | 529 | 115 | 9 | 86.7% | 85.0–88.2 |
 | `sonnet` | 24 | 1 | 22 | 1 | 1 | 0 | 95.7% | — |
-| `unlabelled` | 48 | 11 | 0 | 0 | 47 | 1 | — | — |
-| `claude` | 130 | 58 | 24 | 0 | 106 | 0 | 100.0% | 100.0–100.0 |
-| `coderabbit-outside` | 216 | 119 | 67 | 54 | 95 | 0 | 55.4% | 44.1–65.1 |
+| `coderabbit-outside` | 567 | 300 | 162 | 93 | 230 | 82 | 63.5% | 57.1–69.9 |
+| `unlabelled` | 86 | 27 | 3 | 2 | 80 | 1 | 60.0% | 0.0–100.0 |
+| `claude` | 462 | 141 | 106 | 48 | 306 | 2 | 68.8% | 40.6–96.2 |
 | `codex:gpt-6-sol` | 872 | 169 | 443 | 184 | 234 | 11 | 70.7% | 64.8–76.2 |
-| `codex:gpt-6.1-sol` | 7,079 | 1,500 | 3,996 | 1,026 | 2,016 | 41 | 79.6% | 77.9–81.2 |
-| `claude:claude-opus-5-5` | 341 | 36 | 93 | 100 | 138 | 10 | 48.2% | 36.5–59.2 |
+| `codex:gpt-6.1-sol` | 9,717 | 2,297 | 5,584 | 1,384 | 2,700 | 49 | 80.1% | 78.7–81.5 |
+| `claude:claude-opus-5-5` | 469 | 72 | 157 | 105 | 197 | 10 | 59.9% | 47.5–70.2 |
+| `coverage-deferral` | 223 | 88 | 0 | 0 | 223 | 0 | — | — |
+| `claude-opus-5-5` | 17 | 7 | 4 | 0 | 13 | 0 | 100.0% | 100.0–100.0 |
 | `disposition-carry-forward` | 13 | 2 | 0 | 0 | 13 | 0 | — | — |
-| other (25 slugs under 10 findings each) | 50 | 34 | 10 | 0 | 40 | 0 | 100.0% | 100.0–100.0 |
-| **All** | **11,646** | **2,147** | **6,012** | **1,528** | **3,452** | **654** | **79.7%** | 78.3–81.2 |
+| `judge` | 44 | 27 | 13 | 0 | 31 | 0 | 100.0% | 100.0–100.0 |
+| `leg-n3645` | 11 | 1 | 0 | 0 | 11 | 0 | — | — |
+| `worker` | 36 | 17 | 13 | 0 | 23 | 0 | 100.0% | 100.0–100.0 |
+| `claude-sonnet-5-5` | 12 | 5 | 3 | 0 | 9 | 0 | 100.0% | — |
+| `worker-scope` | 23 | 9 | 0 | 0 | 23 | 0 | — | — |
+| `worker-verification` | 13 | 2 | 11 | 0 | 2 | 0 | 100.0% | 100.0–100.0 |
+| `himmel-8326-spec` | 11 | 1 | 9 | 1 | 0 | 1 | 90.0% | — |
+| `himmel-4862-spec` | 10 | 1 | 10 | 0 | 0 | 0 | 100.0% | — |
+| `codex-r1` | 12 | 1 | 5 | 7 | 0 | 0 | 41.7% | — |
+| `codex-r2` | 15 | 1 | 1 | 14 | 0 | 0 | 6.7% | — |
+| other (45 slugs under 10 findings each) | 107 | 62 | 20 | 11 | 76 | 0 | 64.5% | 34.0–100.0 |
+| **All** | **19,982** | **3,332** | **11,590** | **2,596** | **5,033** | **763** | **81.7%** | 80.6–82.9 |
 
 A finding raised by two critics counts once in each critic's row and once in **All**. Precision is agreed / (agreed + disproved); the interval resamples whole PRs.
 
-- Of the 11,646 distinct findings, 51.6% were agreed, 13.1% disproved, 29.6% deferred and 5.6% never ruled on.
-- Precision by severity: Critical 78.1% (276 findings, CI 70.6–84.9); Important 82.8% (4,962 findings, CI 80.8–84.5); Suggestion 76.4% (6,345 findings, CI 74.4–78.2).
-- 2,284 of the 3,452 deferred findings carry a follow-up class: 1,407 `polish`, 808 `hardening`, 69 `escape`.
+- Of the 19,982 distinct findings, 58.0% were agreed, 13.0% disproved, 25.2% deferred and 3.8% never ruled on.
+- Precision by severity: Critical 77.7% (290 findings, CI 70.6–84.3); Important 83.8% (7,476 findings, CI 82.4–85.1); Suggestion 80.8% (11,621 findings, CI 79.5–82.1).
+- 3,865 of the 5,033 deferred findings carry a follow-up class: 2,591 `polish`, 1,098 `hardening`, 176 `escape`.
 
 Regenerate this section from a himmel checkout (the cut makes it re-run exactly):
 
 ```bash
-python3 scripts/eval/review-page.py --panel --until 2026-10-25T02:30:00Z --out docs/evals/review-panel.md
+python3 scripts/eval/review-page.py --panel --until 2026-11-11T04:56:48Z --out docs/evals/review-panel.md
 ```
 <!-- review-page.py --panel: end -->
 
