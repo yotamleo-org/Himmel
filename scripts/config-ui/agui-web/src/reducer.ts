@@ -207,7 +207,8 @@ function fold(prev: View, e: Ev): View {
       // An Agent call's result may be the first event to name the subagent it ran.
       if (e.subagent?.id) v = withAgent(v, { agent: e.subagent } as Ev).v;
       const failure = failureOf(e), outcome = outcomeOf(e);
-      const status: ToolStatus = outcome === "no_verdict" ? "not_run" : outcome === "interrupted" ? "interrupted" : e.isError === true ? "error" : "done";
+      const status: ToolStatus = outcome === "no_verdict" ? "not_run" : outcome === "interrupted" ? "interrupted"
+        : outcome === "unknown" ? "no_result" : outcome === "error" || outcome === "denied" ? "error" : "done";
       return finish(v, t.id, at, { status, outcome, result: String(e.content ?? ""), ...(failure ? { failure } : {}) });
     }
     case "STATE_SNAPSHOT":

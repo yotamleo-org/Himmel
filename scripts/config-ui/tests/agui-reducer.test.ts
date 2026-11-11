@@ -488,6 +488,12 @@ describe("tool call outcome partition", () => {
     expect(outcome("c_cancel")).toBe("interrupted");
     expect(outcome("c_late")).toBe("ok");
   });
+  test("the status follows the outcome, not the optional isError flag", () => {
+    const start = (id: string) => ({ type: "TOOL_CALL_START", toolCallId: id, toolCallName: "Bash", timestamp: 1 });
+    const res = (id: string, outcome: string) => ({ type: "TOOL_CALL_RESULT", toolCallId: id, messageId: `${id}:r`, role: "tool", content: "x", outcome, timestamp: 2 });
+    const w = reduceAll([{ type: "RUN_STARTED", runId: "r", timestamp: 0 }, start("e"), res("e", "error"), start("d"), res("d", "denied"), start("u"), res("u", "unknown")] as any[]);
+    expect([w.tools.e.status, w.tools.d.status, w.tools.u.status]).toEqual(["error", "error", "no_result"]);
+  });
   test("the outcomes sum to the issued calls", () => {
     const n = Object.keys(v.tools).length;
     const counts = Object.values(v.tools).reduce((m: Record<string, number>, t) => ({ ...m, [t.outcome ?? "none"]: (m[t.outcome ?? "none"] ?? 0) + 1 }), {});

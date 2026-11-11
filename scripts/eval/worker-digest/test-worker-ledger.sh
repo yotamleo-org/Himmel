@@ -478,6 +478,12 @@ cp "$D/f.jsonl" "$D/f.after"
 rf "$D" >"$D/out2" 2>&1
 check "the same digest_id on the marker is a complete no-op" 'grep -q "refreshed=0 unchanged=1" "$D/out2" && [ "$(jq -s "[.[] | select(.run_id == \"$R1\")] | length" "$D/e.jsonl")" = 2 ] && cmp -s "$D/f.jsonl" "$D/f.after"'
 
+D="$TMP/rf1"; X="$(jq -s -r ".[-1].meta.digest_id" "$D/e.jsonl")"
+gen_b="$(jq -s -c '.[-1] | .meta.digest_id = "ffffffffffffffffffffffffffffffff"' "$D/e.jsonl")"; printf '%s\n' "$gen_b" >>"$D/e.jsonl"
+jq -c '.digest_id = "ffffffffffffffffffffffffffffffff"' "$D/s/$R1.json" >"$D/m3" && mv "$D/m3" "$D/s/$R1.json"
+rf "$D" >"$D/out3" 2>&1
+check "a generation that comes back (A, B, A) is appended again, so the newest row is A" 'grep -q "refreshed=1" "$D/out3" && [ "$(jq -s -r ".[-1].meta.digest_id" "$D/e.jsonl")" = "$X" ] && [ "$(jq -s "[.[] | select(.run_id == \"$R1\")] | length" "$D/e.jsonl")" = 4 ]'
+
 D="$TMP/rf2"; setup_refresh "$D"
 rf "$D" eval >/dev/null 2>&1
 check "crash after the eval write: the new eval row is in, the failures and marker are still old" '[ "$(jq -s "[.[] | select(.run_id == \"$R1\")] | length" "$D/e.jsonl")" = 2 ] && grep -q "error/TaskStop" "$D/f.jsonl" && [ "$(jq -r ".digest_id // \"none\"" "$D/s/$R1.json")" = none ]'

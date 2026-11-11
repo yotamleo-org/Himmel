@@ -639,7 +639,10 @@ def refresh(digest, who, failures_ledger, eval_ledger):
             print("refresh: %s refused: no original ok eval row to keep its time" % session, file=sys.stderr)
             return "refused"
         rows, _, _ = eval_runs.scan_rows(eval_ledger)
-        same = [r for r in rows if r["eval"] == EVAL_ID and r["run_id"] == session and (r.get("meta") or {}).get("digest_id") == did]
+        # Only the session's CURRENT row counts (the newest ok one, as Tool health selects it): a generation that came
+        # back after another (A, B, A) must be appended again, or the selected row would stay B.
+        ok = [r for r in rows if r["eval"] == EVAL_ID and r["run_id"] == session and r["status"] == "ok"]
+        same = ok[-1:] if ok and (ok[-1].get("meta") or {}).get("digest_id") == did else []
         # A replay after a crash reuses the generation's own refresh time, so the rows it rewrites come out identical.
         was = (same[-1].get("meta") or {}).get("refreshed_at") if same else None
         now = was if isinstance(was, str) and UTC_TS.match(was) else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
