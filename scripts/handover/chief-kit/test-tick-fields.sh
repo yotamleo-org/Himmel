@@ -862,6 +862,25 @@ seed_floor "$W/q-low" 200
 contains 'a bucket under the floor prints quota=main.graphql:200@<reset>' "$(q_tick "$W/q-low")" " quota=main.graphql:200@$q_hm"
 seed_floor "$W/q-edge" 500
 not_contains 'RED control: a bucket at the floor prints no quota=' "$(q_tick "$W/q-edge")" ' quota='
+PW="$W/pw-mirror/HIMMEL"; mkdir -p "$PW"
+printf -- '---\nkey: "HIMMEL-951"\ntype: "Task"\nstatus: "In Progress"\nstatusCategory: "x"\npriority: "Medium"\nlabels: []\nfixVersions: []\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-951: an orphan\n\n## Description\n\nEdit scripts/lib/pw-orphan.sh.\n' > "$PW/HIMMEL-951.md"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$W/pw-gh"; chmod +x "$W/pw-gh"
+{ git init -q -b main "$W/pw-main" && git -C "$W/pw-main" -c user.name=t -c user.email=t@e.x -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m init; } \
+    || fail "the pw-main fixture repo could not be created"
+pw_tick() { # <graphql remaining in the seeded quota.tsv>: orphans-wip= of one tick whose resume scan runs to its end
+    local d="$W/pw-$1"
+    rm -rf "$d"; seed_floor "$d/quota" "$1"
+    TICK_SECTION_WAIT=60 TICK_POOL_WAIT=0 TICK_STATE_DIR="$d/state" HIMMEL_QUOTA_DIR="$d/quota" GH_READ_ENV_ROOT="$W/noenv" \
+        NEXT_DISPATCH_MIRROR="$PW" NEXT_DISPATCH_GH_CMD="$W/pw-gh" NEXT_DISPATCH_GIT_DIR="$W/pw-main" NEXT_DISPATCH_MAIN_REF=main \
+        timeout 100 bash "$SUT" 2>/dev/null | tr ' ' '\n' | sed -n 's/^orphans-wip=//p'  # gnu-ok: chief kit is Linux-only (PLATFORM GUARD)
+}
+same 'a resume scan the dispatcher paused on quota reads orphans-wip=?, not 0' "$(pw_tick 100)" '?'
+same 'RED control: a healthy resume scan still counts the orphan' "$(pw_tick 4000)" '1:HIMMEL-951'
+pd_pause_out="$(printf '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 floor=500 reset=unknown caller=next-dispatchable nothing-was-judged\n' | bash "$SUT" --pool-dispositions 2>/dev/null)"
+same '--pool-dispositions reads a paused snapshot as pool unknown' "$pd_pause_out" '# pool-counts ?'
+pd_stall_out="$(printf '# gh-stall GH-STALL github read timed out after 400s token=main caller=next-dispatchable nothing-was-judged\n' | bash "$SUT" --pool-dispositions 2>/dev/null)"
+same '--pool-dispositions reads a stalled snapshot as pool unknown' "$pd_stall_out" '# pool-counts ?'
+
 q_key_line="$(grep -n -E '^[[:space:]]+for f in workers livestate prs ' "$HERE/chief-wait.sh")"
 [ -n "$q_key_line" ] && pass "chief-wait's key field list is found" || fail "chief-wait's key field list moved"
 not_contains "chief-wait's key field list gains no quota" "$q_key_line" 'quota'

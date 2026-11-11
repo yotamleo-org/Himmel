@@ -68,6 +68,7 @@ EOS
 cat >"$tmp/bin/dispo" <<'EOS'
 #!/usr/bin/env bash
 echo "dispo $*" >> "$FX/log"
+[ -e "$FX/dispo.pause" ] && { cat "$FX/dispo.pause"; exit 0; }
 printf '# disposition HIMMEL-9101 listed LOCAL\n# disposition HIMMEL-9102 collision scripts/x.sh held by open PR 5\n'
 EOS
 chmod +x "$tmp"/bin/*
@@ -180,6 +181,21 @@ refresh
 contains "an unreadable graph prints focus=WARN:chains render" "$(out)" "focus=WARN:chains render"
 check "and the last good focus-chains.json is byte-identical" "$(cmp -s "$CH" "$tmp/good.json" && echo same)" same
 rm -f "$FX/graph.bad"
+
+for pause in '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 floor=500 reset=unknown caller=next-dispatchable nothing-was-judged' \
+    '# gh-stall GH-STALL github read timed out after 400s token=main caller=next-dispatchable nothing-was-judged'; do
+    pw="${pause#\# }"; pw="${pw%% *}"
+    reset
+    refresh
+    cp "$CH" "$tmp/good.json"
+    printf '%s\n' "$pause" > "$FX/dispo.pause"
+    refresh
+    check "a paused dispositions read ($pw) still prints ok, no new token" "$(out)" "focus=ok"
+    check "and the last good focus-chains.json is byte-identical ($pw)" "$(cmp -s "$CH" "$tmp/good.json" && echo same)" same
+    check "the tracker read the last good file ($pw)" "$(cat "$FX/tracker-chains-path")" "$CH"
+    contains "stderr names the pause ($pw)" "$(cat "$tmp/err")" "${pause#\# }; focus-chains.json is as it was"
+    rm -f "$FX/dispo.pause"
+done
 
 # --- focus-plan set: the priority line comes from a hand-kept plan, not the registry
 reset
