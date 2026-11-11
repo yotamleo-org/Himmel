@@ -870,9 +870,9 @@ case "$GH_STUB_MODE" in
             [ -f "$d/watch-started" ] || date +%s > "$d/watch-started"
             ff=0; case " $* " in *" --fail-fast "*) ff=1 ;; esac
             rows=$(_checks_now)
-            if [ "$ff" -eq 1 ] && printf '%s\n' "$rows" | grep -q '^fail:'; then printf '%s\n' "$rows" | sed -n 's/^fail:/X /p'; exit 1; fi
-            if printf '%s\n' "$rows" | grep -q '^pending:'; then sleep "${GH_STUB_EXC_SLEEP:-3}"; rows=$(_checks_now); fi
-            if printf '%s\n' "$rows" | grep -q '^fail:'; then printf '%s\n' "$rows" | sed -n 's/^fail:/X /p'; exit 1; fi
+            if [ "$ff" -eq 1 ] && grep -q '^fail:' <<<"$rows"; then sed -n 's/^fail:/X /p' <<<"$rows"; exit 1; fi
+            if grep -q '^pending:' <<<"$rows"; then sleep "${GH_STUB_EXC_SLEEP:-3}"; rows=$(_checks_now); fi
+            if grep -q '^fail:' <<<"$rows"; then sed -n 's/^fail:/X /p' <<<"$rows"; exit 1; fi
             echo "All checks were successful"; exit 0
         fi
         exit 8 ;;
@@ -3328,7 +3328,7 @@ RULES_OVERRIDE="req:$_gate,unit-tests,shard-1"; CHECKS_OVERRIDE=$'fail:codeowner
 run except-ctx --grace 0 --max-wait 4 --except-context "$_gate"
 SCRIPT="$_real_script"; rm -f "$_mutant"
 unset GH_STUB_EXC_SLEEP
-if [ "$RC" -ne 2 ] || ! printf '%s' "$ERR" | grep -qF "DEADLINE-PENDING"; then pass "T3.23-d mutation check: with --fail-fast kept, the T3.23-a pending row goes RED (rc=$RC, no DEADLINE-PENDING wait)"; else fail "T3.23-d mutation check: with --fail-fast kept, the T3.23-a pending row still passed"; fi
+if [ "$RC" -ne 2 ] || ! grep -qF "DEADLINE-PENDING" <<<"$ERR"; then pass "T3.23-d mutation check: with --fail-fast kept, the T3.23-a pending row goes RED (rc=$RC, no DEADLINE-PENDING wait)"; else fail "T3.23-d mutation check: with --fail-fast kept, the T3.23-a pending row still passed"; fi
 if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending context is never certified green (rc=$RC)"; else fail "T3.23-d with --fail-fast kept, a pending context was certified green (rc 0)"; fi
 
 echo
