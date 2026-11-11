@@ -34,7 +34,9 @@ scripts/security/test-security-audit-cadence.sh	6
 #   both that case and the replay balance; a pure mean left Case 22w 214s over its
 #   bound. test-review-panel.sh and test-ready-check.sh were measured at 1641 and
 #   1466, past the LD7 ceiling, so the blend keeps them near their earlier rows.
-#   Replay on those three runs: slowest/floor 1.232 before, 1.239 after (the 59 new
+#   One luna post-merge suite has no row on purpose: it refuses any file outside its
+#   allowlist that names it, and this file would be one.
+#   Replay on those three runs: slowest/floor 1.232 before, 1.250 after (the 59 new
 #   rows alone gave 1.324, over the 1.3 threshold).
 # The quarantined suites (SKIP_LIST) have no measured row.
 #
@@ -1342,7 +1344,6 @@ scripts/lib/test-redact-check.sh	0
 scripts/lib/test-worker-successor.sh	1
 scripts/lint/test-audit-prompt-sentence.sh	0
 scripts/luna/test-keyword-lag.sh	35
-scripts/luna/test-post-merge-refresh.sh	24
 scripts/machine-setup/test-setup-statechart.sh	1
 scripts/telegram/test-message-classes.sh	4
 scripts/test-himmel-update-graph-fetch.sh	13
