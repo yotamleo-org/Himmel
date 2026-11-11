@@ -18,7 +18,7 @@ Also inventory, in the same pass:
   dir, a deprecated state repo) never load in any session; their durable
   facts are stranded. Mine them through this same pass (or fold the few live
   facts into the current store), then delete the orphaned store.
-- **Remote stations** (D5, HIMMEL-570). Memory is per-host: a fact captured on
+- **Remote stations** (the memory strategy design's multi-host sweep). Memory is per-host: a fact captured on
   another machine never loads here. Read the station registry — the luna note
   `[[himmel-remote-stations]]` — and **skip cleanly if it is absent** (adopters
   have no remote stations; this is not an error). For each listed host, inventory
