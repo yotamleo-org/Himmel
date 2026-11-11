@@ -150,6 +150,8 @@
 #   3  refused: a chief worker or relay, or the root / <user>/<bucket> scope is unresolved
 #   4  refused: symlink, conflicting or unparsed verdict
 #   5  write failed
+#   6  refused (--bind only): the PR's head is not the verdict's head
+#   7  refused (--bind only): the PR's head could not be read from gh
 #
 # Platform guard: POSIX bash 3.2+.
 set -u
@@ -498,7 +500,7 @@ if [ "$PRBIND" -eq 1 ]; then
         [ "$(bind_field "$GO_VERDICT_SNAP" repo)" = "$VREPO" ] || continue
         bname=${bf##*/}; bname=${bname%.md}
         go_verdict_mac_ok_text "$GO_VERDICT_SNAP" "$SCOPE" "$QID" "$bname" || continue
-        printf '%s' "$GO_VERDICT_SNAP" | grep -qE '^(delta|delta-scope|delta-from|delta-judged|bound-from|reviewed-head):' && continue
+        grep -qE '^(delta|delta-scope|delta-from|delta-judged|bound-from|reviewed-head):' <<< "$GO_VERDICT_SNAP" && continue
         bn=$((bn + 1)); bsrc=$bf; bsnap=$GO_VERDICT_SNAP
     done
     if [ "$bn" -ne 1 ]; then
