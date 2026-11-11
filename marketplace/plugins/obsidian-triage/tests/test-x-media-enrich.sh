@@ -1272,8 +1272,6 @@ X_MEDIA_FXT_CMD="$tmp/bin/fxt-slow" X_MEDIA_BUDGET_S=3 X_TEST_GDL_SLEEP=0 run_to
 grep -q '^media_enriched_at:' "$VP/Clippings/p1.md" && a=ok || a=no
 assert "a clip its probe finds is enriched before later probes spend the budget" ok "$a"
 
-# A long HLS video (128 x 10 s audio and video segments) served by a stub curl
-# that sleeps on every segment, so one run's window never holds the download.
 LW="$tmp/long-www"; mkdir -p "$LW/long"
 cat > "$LW/long/M.m3u8" <<'EOF'
 #EXTM3U

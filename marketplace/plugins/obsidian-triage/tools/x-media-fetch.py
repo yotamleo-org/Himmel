@@ -417,13 +417,9 @@ MEDIA_HOSTS = ("video.twimg.com", "pbs.twimg.com")
 HLS_SEG_EXTS = {".m4s", ".mp4", ".m4a", ".m4v", ".ts", ".aac"}
 HLS_PLAYLIST_MAX_BYTES = 4 * 1024 * 1024
 URI_ATTR_RE = re.compile(r'URI="([^"]*)"')
-# An HLS video longer than this takes the long-video path: its audio rendition
-# alone (the best video variant of a long clip outgrows MEDIA_MAX_BYTES), fetched
-# SEG_BATCH segments per parallel curl run, its segments kept between runs so a
-# download that outlasts one run's window resumes on the next run.
 LONG_VIDEO_S = 600
 SEG_BATCH = 16
-KEEP_MARK = "keep"   # in an HLS work dir: keep the segments until the clip is written
+KEEP_UNTIL_WRITTEN = "keep"
 
 
 def _media_url_ok(url: str) -> bool:
@@ -530,7 +526,6 @@ def _hls_media(text: str, base: str, work: Path, tag: str):
 
 
 def _hls_seconds(text: str) -> float:
-    """The summed #EXTINF durations of a media playlist."""
     return sum(float(s) for s in re.findall(r"(?m)^#EXTINF:(\d+(?:\.\d+)?)", text))
 
 
@@ -614,8 +609,17 @@ def _resolve_hls(url: str, work: Path, deadline: float):
         return "download_error"
     if not pairs:
         return "download_error"
-    # A segment already on disk from an earlier run is kept only while the
-    # ledger lists the same segments under the same names.
+    _reset_stale_segments(work, pairs)
+    if long:
+        (work / KEEP_UNTIL_WRITTEN).touch()
+    err = _fetch_whole_segments(pairs, deadline, SEG_BATCH if long else 1)
+    if err:
+        return err
+    (work / "master.m3u8").write_text(master, encoding="utf-8")
+    return None
+
+
+def _reset_stale_segments(work: Path, pairs):
     ledger = work / "urls.txt"
     listing = "".join(f"{p.name}\t{u}\n" for u, p in pairs)
     if not ledger.is_file() or ledger.read_text(encoding="utf-8") != listing:
@@ -623,21 +627,17 @@ def _resolve_hls(url: str, work: Path, deadline: float):
             p.unlink(missing_ok=True)
         ledger.write_text(listing, encoding="utf-8")
     for _u, p in pairs:
-        p.with_name(p.name + ".part").unlink(missing_ok=True)   # a cut run's leftovers
-    if long:
-        (work / KEEP_MARK).touch()
-    # Each curl run caps every file at its share of what is left of the budget,
-    # so the segments together never take more than MEDIA_MAX_BYTES of disk. A
-    # segment gets its name only once its run completed, so a run cut by the
-    # deadline leaves whole segments only.
+        p.with_name(p.name + ".part").unlink(missing_ok=True)
+
+
+def _fetch_whole_segments(pairs, deadline: float, step: int):
     total = sum(p.stat().st_size for _, p in pairs if p.is_file())
     todo = [pair for pair in pairs if not pair[1].is_file()]
-    step = SEG_BATCH if long else 1
     for i in range(0, len(todo), step):
         chunk = todo[i:i + step]
         parts = [(u, p.with_name(p.name + ".part")) for u, p in chunk]
-        err = _curl(parts, deadline, max(1, (MEDIA_MAX_BYTES - total) // len(parts)),
-                    parallel=len(parts) > 1)
+        share_of_cap = max(1, (MEDIA_MAX_BYTES - total) // len(parts))
+        err = _curl(parts, deadline, share_of_cap, parallel=len(parts) > 1)
         if err:
             return err
         for (_u, p), (_u, part) in zip(chunk, parts):
@@ -646,7 +646,6 @@ def _resolve_hls(url: str, work: Path, deadline: float):
         if total >= MEDIA_MAX_BYTES:
             print(f"  ffmpeg-hls: segments reach the {MEDIA_MAX_BYTES}-byte cap, refused", file=sys.stderr)
             return "download_error"
-    (work / "master.m3u8").write_text(master, encoding="utf-8")
     return None
 
 
@@ -666,13 +665,12 @@ def _fetch_item(item: dict, target: Path):
     except BaseException:
         shutil.rmtree(work, ignore_errors=True)
         raise
-    if err != "download_resumable" and not (err is None and (work / KEEP_MARK).exists()):
+    if err != "download_resumable" and not (err is None and (work / KEEP_UNTIL_WRITTEN).exists()):
         shutil.rmtree(work, ignore_errors=True)
     return err
 
 
 def _kept_segments(work: Path):
-    """(segments on disk, segments listed) for an HLS work dir's ledger."""
     ledger = work / "urls.txt"
     if not ledger.is_file():
         return 0, 0
@@ -681,8 +679,6 @@ def _kept_segments(work: Path):
 
 
 def _resumable(work: Path):
-    """download_resumable when the deadline stopped a download that keeps
-    segments for the next run, else download_timeout."""
     kept, listed = _kept_segments(work)
     if not kept:
         return "download_timeout"
@@ -727,7 +723,7 @@ def download_media_scrapling(x: dict, py: str):
     if dest.exists():
         for child in dest.iterdir():
             if child.is_dir() and child.suffix == ".hls":
-                continue      # an HLS download's kept segments
+                continue
             if child.is_dir():
                 shutil.rmtree(child)
             else:
@@ -766,7 +762,6 @@ def download_media_scrapling(x: dict, py: str):
 
 
 def drop_kept_segments(x: dict):
-    """Remove a status' kept HLS segments once its clip no longer needs them."""
     for work in (cache_root() / x["shortcode"]).glob("*.hls"):
         shutil.rmtree(work, ignore_errors=True)
 
