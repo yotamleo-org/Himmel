@@ -454,6 +454,8 @@ in `.env` or the launching shell):
 | `GHQ_GH_CMD` | `gh` | the gh the quota probes run (a test seam) |
 | `GO_DEADLINE` | `270` | seconds `scripts/handover/chief-kit/go.sh` may run in all before it is cut; `0` = no bound. A cut before the GO file is written exits 11 (no GO, a quota marker); a cut after it exits 0 and the GO stands |
 | `CR_DISPOSITION_GH_TIMEOUT` | `60` | seconds `cr-disposition.sh` waits for its head-branch read; a timeout exits 2 with a `GH-STALL` line and (on `check`) a quota marker; `0` = no bound |
+| `CHIEF_WAIT_READY_CI_TIMEOUT` | `30` | seconds the chief waiter's one CI read for a READY may take (`gh pr checks`); a timeout reads `ci=PENDING` |
+| `CHIEF_WAIT_DISPOSITION_TIMEOUT` | `90` | seconds the chief waiter's `cr-disposition.sh check` for a READY may take; a cut is a stall, and the second stalled sample wakes `disposition=STALLED` |
 
 The cache is a head-bound file per PR: a snapshot is used only for the head SHA
 the run bound at start, so a push never reads a stale-head green. `scripts/ci/api-budget.sh`

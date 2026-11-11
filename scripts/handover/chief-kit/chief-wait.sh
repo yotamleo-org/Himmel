@@ -105,15 +105,31 @@
 #                               resolve call was denied). Once per bullet; the chief
 #                               resolves each thread itself, never the operator. The
 #                               tick line follows and its key is saved.
-#   WAKE ready <pr> <head40> ready-check=<PASS|FAIL> ci=<GREEN|RED|PENDING> coverage=<PASS|FAIL>
-#        disposition=<ok|open:<n>> out=<file>   with --workers-from and the auto_go flag off
+#   WAKE ready <pr> <head40> ready-check=<PASS|FAIL> ci=<GREEN|RED|PENDING|PAUSED> coverage=<PASS|FAIL>
+#        disposition=<ok|open:<n>|STALLED> out=<file> [after-quota=<caller>]
+#   WAKE ready <pr> <head40> ready-check=STALLED out=<file> [after-quota=<caller>]
+#                               with --workers-from and the auto_go flag off
 #                               (on, the relay above routes READY to auto-go.sh): a worker doc
 #                               whose newest marker bullet is `READY <pr> <head40> GREEN`. Before
-#                               waking, the waiter runs `timeout -k 5 150 ready-check.sh <pr> <head>`,
-#                               one bounded CI read (`gh pr checks`; a failed read is PENDING) and
-#                               `timeout -k 5 90 cr-disposition.sh check <pr> <head> --trust-path
+#                               waking, the waiter runs `timeout -k 5 <READY_CHECK_DEADLINE + 15>
+#                               ready-check.sh <pr> <head>` (165 s by default, so ready-check's own
+#                               deadline speaks first), one CI read (`gh pr checks` under
+#                               CHIEF_WAIT_READY_CI_TIMEOUT, default 30; a failed read is PENDING, a
+#                               rate-limit refusal PAUSED) and `timeout -k 5 <CHIEF_WAIT_DISPOSITION_TIMEOUT,
+#                               default 90> cr-disposition.sh check <pr> <head> --trust-path
 #                               <ready-check's TRUST-PATH>` (read only; open:? = it could not
-#                               evaluate). coverage= is ready-check's item 7. Once per (PR, head):
+#                               evaluate). coverage= is ready-check's item 7. At quota out the READY
+#                               is not spent: a head with a rate-limit marker (see quota-back below)
+#                               runs no check; when every GraphQL route of quota.tsv reads 0 or refused
+#                               the waiter marks the head itself (caller=chief-wait) and runs none; when
+#                               every route timed out it runs none and marks nothing; a check that
+#                               comes back QUOTA-PAUSE wakes nothing and records nothing. A check that
+#                               stalls (GH-STALL, its deadline cut, or rc 124/137) wakes nothing on the
+#                               first sample (<inbox>.wait.stall-<pr>.<head> counts it) and wakes
+#                               STALLED, recorded, on the second in a row, clearing the count and the
+#                               head's stall marker. One sample runs at most one head's checks. A
+#                               READY the quota step re-armed carries `after-quota=<the refused gate>`.
+#                               Once per (PR, head):
 #                               <inbox>.wait.readywoke keeps `<pr> <head>`, and a repeat READY of
 #                               a woken head folds that worker's tails=/acts= move into the
 #                               saved key, so it wakes nothing. out= is <inbox>.wait.ready-<pr>,
@@ -122,7 +138,25 @@
 #                               chief reads the diff and rules; GO stays go.sh. Seams (tests):
 #                               CHIEF_WAIT_READY_CHECK, CHIEF_WAIT_CI (prints the CI word),
 #                               CHIEF_WAIT_DISPOSITION.
-#   WAKE silent-go              with --doc and --workers-from: silent-go-merge.sh found a GO'd
+#   quota-back <key> <ref> caller=<gate> [quota=unknown]   look-only (housekeeping digest; with
+#                               HOUSEKEEPING_DIGEST_SECS=0 it is `WAKE quota-back ...`). Once per
+#                               sample, before the READY checks and on a failed sample too, the
+#                               waiter reads the markers a refused or stalled gate left
+#                               (blocked/<key>.<ref> under HIMMEL_QUOTA_DIR; key a PR number or
+#                               branch-<name>, ref a head or unknown). No marker: only the directory
+#                               is read. A marker 24 h old is deleted with no line; while quota is
+#                               out there is no line. Quota is back when every bucket the marker names
+#                               reads state=ok at or above GH_BUDGET_FLOOR (200) on a token it rides,
+#                               observed after its first_epoch; the first waiter to see that stamps
+#                               back_epoch. 7200 s with no good reading counts too, as quota=unknown.
+#                               The owner (the head is in its readywoke, a manifest worker's newest
+#                               READY names it, or a worker doc names the branch) takes it at once;
+#                               another waiter 900 s after back_epoch. One `mv` claims it. A
+#                               rate-limit marker at a manifest worker's newest READY (auto_go off)
+#                               unspends that head and leaves <inbox>.wait.readyhint, so the READY
+#                               wake above re-runs on this or the next good sample with
+#                               after-quota=; anything else is this line.
+#   WAKE silent-go             with --doc and --workers-from: silent-go-merge.sh found a GO'd
 #   <SILENT-WORKER-... line>... READY PR whose worker has been silent past
 #                               CHIEF_WAIT_WORKER_SILENT_MIN (default 45) since its doc or GO
 #                               was last written, and either merged it through
@@ -346,7 +380,7 @@
 #                      CHIEF_WAIT_TICK_TIMEOUT (+5 s kill grace each), and a
 #                      Telegram line waits for it. The relay adds at most one
 #                      wrap attempt (240 s +5 s kill grace), refreshing the heartbeat
-#                      before its call; a READY wake's three checks (90 + 30 + 90 s,
+#                      before its call; a READY wake's three checks (165 + 30 + 90 s by default,
 #                      +5 s kill grace each) refresh it before each one. Older than those bounds plus a few polls,
 #                      waiting or sampling, means it died without trapping (SIGKILL).
 #   <inbox>.wait.state   the saved action key (line 1: tick-args hash, line 2: key;
@@ -362,7 +396,10 @@
 #   <inbox>.wait.ready   `<label><TAB><line>`, the last READY bullet handed on to worker-event.
 #   <inbox>.wait.readywoke  with auto_go off: `<pr> <head40>`, each READY already woken for;
 #                        <inbox>.wait.ready-<pr> holds that wake's checks, tokens scrubbed.
-#   <inbox>.handover     handover mode: while it is fresh (younger
+#   <inbox>.wait.readyhint  `<pr> <head40> <gate>`: a READY the quota step unspent; its next wake
+#                        carries after-quota=<gate> and drops the line (it survives failed samples).
+#   <inbox>.wait.stall-<pr>.<head40>  that head's checks stalled once; the next stall wakes.
+#   <inbox>.handover    handover mode: while it is fresh (younger
 #                        than CHIEF_WAIT_HANDOVER_MIN, default 60) the waiter
 #                        skips tick/bank/page sampling and wakes only on Telegram.
 #                        That mutes classifier-denial pages for up to that long;
@@ -391,7 +428,11 @@
 # replace tick.sh / the bank verdict command (tests); CHIEF_WAIT_PAGE_CMD
 # replaces the Telegram sender (called as `$CMD <text>`, tests) and
 # CHIEF_WAIT_PAGE_TIMEOUT bounds it (seconds, default 45); HIMMEL_DENIAL_ACK_DIR
-# relocates the page/ack records (default ~/.himmel/state/denial-acks).
+# relocates the page/ack records (default ~/.himmel/state/denial-acks);
+# CHIEF_WAIT_READY_CI_TIMEOUT (default 30) and CHIEF_WAIT_DISPOSITION_TIMEOUT (default 90)
+# bound a READY's CI read and its cr-disposition check; READY_CHECK_DEADLINE (ready-check's,
+# default 150) sets ready-check's bound 15 s above it; HIMMEL_QUOTA_DIR holds quota.tsv and the
+# blocked/ markers (gh-quota.sh).
 #
 # Worker messages (SendMessage) wake a chief on their own; only the Telegram
 # and tick paths depend on this waiter.
@@ -426,6 +467,8 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 # the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
 # shellcheck source=../../lib/legacy-names.sh
 . "$REPO/scripts/lib/legacy-names.sh" || exit 2
+# shellcheck source=../../lib/gh-quota.sh
+. "$REPO/scripts/lib/gh-quota.sh" || exit 2
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 if [ "$#" -lt 1 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
@@ -1715,44 +1758,230 @@ EOF
 # is `READY <pr> <head40> GREEN` wakes the chief once per (PR, head), the checks already
 # run (see the header). A head already woken adds its worker's label to $ready_fold.
 ready_woke_file="$inbox.wait.readywoke"
+ready_hint_file="$inbox.wait.readyhint"
+quota_blocked="$(_ghq_dir)/blocked"
+ready_check_grace=15
+quota_owner_lead=900
+quota_backstop_secs=7200
+quota_expire_secs=86400
+newest_marker_bullet() {
+    grep -E '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|MERGED)([^A-Za-z0-9_]|$)' "$1" | tail -n 1
+}
+ready_bullet_of() {
+    local rest
+    rest="$(newest_marker_bullet "$1" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?//')"
+    [[ $rest =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})[[:space:]]+GREEN([^A-Za-z0-9_]|$) ]] || return 1
+    printf '%s %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+}
+checks_word() {
+    case "$1" in 124|137) echo stall; return ;; esac
+    if [ "$1" -eq 2 ] && printf '%s\n' "$2" | grep -q '^QUOTA-PAUSE '; then echo pause
+    elif [ "$1" -eq 2 ] && printf '%s\n' "$2" | grep -qE '^GH-STALL |no verdict within the '; then echo stall
+    else echo verdict; fi
+}
+ready_graphql() {
+    local t n=0 out=0 tmo=0
+    for t in $(ghq_routes ready-check | tr ',' ' '); do
+        ghq_read "$t" graphql || continue
+        n=$((n + 1))
+        case "$GHQ_STATE" in
+            refused) out=$((out + 1)) ;;
+            timed-out) tmo=$((tmo + 1)) ;;
+            ok) [ "$GHQ_REMAINING" != 0 ] || out=$((out + 1)) ;;
+        esac
+    done
+    if [ "$n" -gt 0 ] && [ "$out" -eq "$n" ]; then echo out
+    elif [ "$n" -gt 0 ] && [ "$tmo" -eq "$n" ]; then echo stalled
+    else echo go; fi
+}
+stall_clear() {
+    rm -f "$inbox.wait.stall-$1.$2"
+    [ "$(_ghq_field "$quota_blocked/$1.$2" reason)" != stall ] || rm -f "$quota_blocked/$1.$2"
+}
 ready_wake() {
-    local label ldoc bullet rest pr head rc_out rc trust ci disp drc cov rck dsp outf
+    local label ldoc bullet rb pr head rc_out rc trust ci disp drc cov rck dsp outf word aq rcd ci_t disp_t
     ready_fold=""
     [ -n "$legs_from" ] || return 1
     auto_go_on && return 1
+    rcd="${READY_CHECK_DEADLINE:-150}"; case "$rcd" in ''|0|*[!0-9]*) rcd=150 ;; esac
+    ci_t="${CHIEF_WAIT_READY_CI_TIMEOUT:-30}"; case "$ci_t" in ''|0|*[!0-9]*) ci_t=30 ;; esac
+    disp_t="${CHIEF_WAIT_DISPOSITION_TIMEOUT:-90}"; case "$disp_t" in ''|0|*[!0-9]*) disp_t=90 ;; esac
     while IFS=$'\t' read -r label ldoc; do
         [ -n "$label" ] && [ -f "$ldoc" ] || continue
-        bullet="$(grep -E '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|MERGED)([^A-Za-z0-9_]|$)' "$ldoc" | tail -n 1)"
-        rest="$(printf '%s\n' "$bullet" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?//')"
-        [[ $rest =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})[[:space:]]+GREEN([^A-Za-z0-9_]|$) ]] || continue
-        pr="${BASH_REMATCH[1]}"; head="${BASH_REMATCH[2]}"
+        rb="$(ready_bullet_of "$ldoc")" || continue
+        pr="${rb% *}"; head="${rb#* }"; bullet="$(newest_marker_bullet "$ldoc")"
         if grep -qxF -- "$pr $head" "$ready_woke_file" 2>/dev/null; then
             ready_fold="$ready_fold $label"; continue
         fi
+        [ "$(_ghq_field "$quota_blocked/$pr.$head" reason)" != rate-limit ] || continue
+        case "$(ready_graphql)" in
+            out) ghq_mark_blocked "$pr" "$head" chief-wait graphql rate-limit; continue ;;
+            stalled) continue ;;
+        esac
+        aq=""
+        [ ! -s "$ready_hint_file" ] || aq="$(awk -v k="$pr $head" '$1 " " $2 == k { c = $3 } END { print c }' "$ready_hint_file")"
         heartbeat sampling
-        rc_out="$(timeout -k 5 150 bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" --observe "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        rc_out="$(timeout -k 5 $((rcd + ready_check_grace)) bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" --observe "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        word="$(checks_word "$rc" "$rc_out")"
+        if [ "$word" = pause ]; then return 1; fi
+        outf="$inbox.wait.ready-$pr"
+        if [ "$word" = stall ]; then
+            [ -e "$inbox.wait.stall-$pr.$head" ] || { : > "$inbox.wait.stall-$pr.$head"; return 1; }
+            printf '%s READY %s %s\n== bullet\n%s\n== ready-check rc=%s\n%s\n' \
+                "$label" "$pr" "$head" "$bullet" "$rc" "$rc_out" | r0_scrub > "$outf" 2>/dev/null
+            printf '%s %s\n' "$pr" "$head" >> "$ready_woke_file"
+            stall_clear "$pr" "$head"
+            ready_hint_drop "$pr" "$head"
+            printf 'WAKE ready %s %s ready-check=STALLED out=%s%s\n' "$pr" "$head" "$outf" "${aq:+ after-quota=$aq}"
+            return 0
+        fi
         if [ "$rc" -eq 0 ]; then rck=PASS; else rck=FAIL; fi
         if printf '%s\n' "$rc_out" | grep -q '^\[PASS\] 7\.'; then cov=PASS; else cov=FAIL; fi
         if printf '%s\n' "$rc_out" | grep -qx 'TRUST-PATH: yes'; then trust=yes; else trust=no; fi
         heartbeat sampling
-        ci="$(ready_ci "$pr" "$head")"
+        ci="$(ready_ci "$pr" "$head" "$ci_t")"
         heartbeat sampling
-        disp="$(timeout -k 5 90 bash "${CHIEF_WAIT_DISPOSITION:-$HERE/cr-disposition.sh}" check "$pr" "$head" --trust-path "$trust" </dev/null 2>&1 9>&-)"; drc=$?  # gnu-ok: Linux-only kit
-        case "$drc" in
-            0) dsp=ok ;;
-            1) dsp="open:$(printf '%s\n' "$disp" | sed -nE 's/^DISPOSITION FAIL \(([0-9]+) of .*/\1/p' | head -n 1)"
-               [ "$dsp" != open: ] || dsp='open:?' ;;
-            *) dsp='open:?' ;;
-        esac
-        outf="$inbox.wait.ready-$pr"
+        disp="$(timeout -k 5 "$disp_t" bash "${CHIEF_WAIT_DISPOSITION:-$HERE/cr-disposition.sh}" check "$pr" "$head" --trust-path "$trust" </dev/null 2>&1 9>&-)"; drc=$?  # gnu-ok: Linux-only kit
+        word="$(checks_word "$drc" "$disp")"
+        if [ "$word" = pause ]; then return 1; fi
+        if [ "$word" = stall ]; then
+            [ -e "$inbox.wait.stall-$pr.$head" ] || { : > "$inbox.wait.stall-$pr.$head"; return 1; }
+            dsp=STALLED
+        else
+            case "$drc" in
+                0) dsp=ok ;;
+                1) dsp="open:$(printf '%s\n' "$disp" | sed -nE 's/^DISPOSITION FAIL \(([0-9]+) of .*/\1/p' | head -n 1)"
+                   [ "$dsp" != open: ] || dsp='open:?' ;;
+                *) dsp='open:?' ;;
+            esac
+        fi
         printf '%s READY %s %s\n== bullet\n%s\n== ready-check rc=%s\n%s\n== ci %s\n== cr-disposition check rc=%s\n%s\n' \
             "$label" "$pr" "$head" "$bullet" "$rc" "$rc_out" "$ci" "$drc" "$disp" | r0_scrub > "$outf" 2>/dev/null
         printf '%s %s\n' "$pr" "$head" >> "$ready_woke_file"
-        printf 'WAKE ready %s %s ready-check=%s ci=%s coverage=%s disposition=%s out=%s\n' "$pr" "$head" "$rck" "$ci" "$cov" "$dsp" "$outf"
+        stall_clear "$pr" "$head"
+        ready_hint_drop "$pr" "$head"
+        printf 'WAKE ready %s %s ready-check=%s ci=%s coverage=%s disposition=%s out=%s%s\n' "$pr" "$head" "$rck" "$ci" "$cov" "$dsp" "$outf" "${aq:+ after-quota=$aq}"
         return 0
     done <<EOF
 $(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
+    return 1
+}
+ready_hint_drop() {
+    [ -s "$ready_hint_file" ] || return 0
+    awk -v k="$1 $2" '$1 " " $2 != k' "$ready_hint_file" | atomic_write "$ready_hint_file"
+    [ -s "$ready_hint_file" ] || rm -f "$ready_hint_file"
+}
+
+quota_waiter_repo=""
+quota_repo() {
+    [ -z "$quota_waiter_repo" ] || { printf '%s' "$quota_waiter_repo"; return; }
+    quota_waiter_repo="${GHQ_REPO:-$(. "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git config --get remote.origin.url | sed -E 's#^.*github\.com[:/]##; s#\.git$##')}"
+    printf '%s' "$quota_waiter_repo"
+}
+quota_field() {
+    printf '%s\n' "$1" | sed -n "s/^$2=//p" | head -n 1
+}
+quota_back() {
+    local b t ok floor="${GH_BUDGET_FLOOR:-200}" buckets routes
+    case "$floor" in ''|*[!0-9]*) floor=200 ;; esac
+    buckets="$(quota_field "$1" buckets | tr ',' ' ')"; routes="$(quota_field "$1" routes | tr ',' ' ')"
+    [ -n "$buckets" ] && [ -n "$routes" ] || return 1
+    for b in $buckets; do
+        ok=""
+        for t in $routes; do
+            ghq_read "$t" "$b" || continue
+            [ "$GHQ_STATE" = ok ] && [ -n "$GHQ_REMAINING" ] && [ "$GHQ_REMAINING" -ge "$floor" ] && [ "$GHQ_OBSERVED" -gt "$2" ] && { ok=1; break; }
+        done
+        [ -n "$ok" ] || return 1
+    done
+}
+quota_ready_head() {
+    local label ldoc rb
+    [ -n "$legs_from" ] || return 1
+    while IFS=$'\t' read -r label ldoc; do
+        [ -n "$label" ] && [ -f "$ldoc" ] || continue
+        rb="$(ready_bullet_of "$ldoc")" || continue
+        [ "${rb% *}" = "$1" ] && { [ "$2" = unknown ] || [ "${rb#* }" = "$2" ]; } && { printf '%s\n' "${rb#* }"; return 0; }
+    done <<EOF
+$(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
+EOF
+    return 1
+}
+quota_owner() {
+    local label ldoc branch=""
+    [ -z "$3" ] || [ -z "$(quota_repo)" ] || [ "$3" = "$(quota_repo)" ] || return 1
+    if [ "$2" = unknown ]; then
+        grep -q "^$1 " "$ready_woke_file" 2>/dev/null && return 0
+    else
+        grep -qxF -- "$1 $2" "$ready_woke_file" 2>/dev/null && return 0
+    fi
+    quota_ready_head "$1" "$2" >/dev/null && return 0
+    case "$1" in branch-*) branch="$(printf '%s' "${1#branch-}" | sed 's#%2F#/#g')" ;; *) return 1 ;; esac
+    [ -n "$legs_from" ] || return 1
+    while IFS=$'\t' read -r label ldoc; do
+        [ -n "$label" ] && [ -f "$ldoc" ] || continue
+        grep -qwF -- "$branch" "$ldoc" && return 0
+    done <<EOF
+$(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
+EOF
+    return 1
+}
+quota_stamp_back() {
+    [ -f "$1" ] && [ "$(cat "$1")" = "$2" ] || return 1  # read-sink-ok: $1 is a marker quota_step globbed under quota_blocked
+    { printf '%s\n' "$2"; printf 'back_epoch=%s\n' "$3"; } | atomic_write "$1"
+}
+quota_claim() {
+    [ -f "$1" ] && [ "$(cat "$1")" = "$2" ] || return 1  # read-sink-ok: $1 is a marker quota_step globbed under quota_blocked
+    mv "$1" "$3"
+}
+quota_rearm() {
+    if [ -s "$ready_woke_file" ]; then
+        awk -v k="$1 $2" '$0 != k' "$ready_woke_file" | atomic_write "$ready_woke_file"
+    fi
+    ready_hint_drop "$1" "$2"
+    printf '%s %s %s\n' "$1" "$2" "$3" >> "$ready_hint_file"
+}
+quota_step() {
+    local m name key ref first back now unknown claimed caller reason snap head
+    [ -d "$quota_blocked" ] || return 1
+    now="$(date +%s)"
+    for m in "$quota_blocked"/*; do
+        [ -f "$m" ] || continue
+        name="${m##*/}"; ref="${name##*.}"; key="${name%.*}"
+        [ -n "$key" ] && [ "$key" != "$name" ] || continue
+        [ ! -e "$inbox.wait.stall-$key.$ref" ] || continue
+        snap="$(cat "$m")" || continue
+        first="$(quota_field "$snap" first_epoch)"
+        case "$first" in ''|*[!0-9]*) continue ;; esac
+        if [ $((now - first)) -ge "$quota_expire_secs" ]; then rm -f "$m"; continue; fi
+        back="$(quota_field "$snap" back_epoch)"; case "$back" in *[!0-9]*) back="" ;; esac
+        unknown=""
+        if quota_back "$snap" "$first"; then
+            if [ -z "$back" ]; then
+                with_lock "$quota_blocked/.lock" quota_stamp_back "$m" "$snap" "$now" || continue
+                back="$now"; snap="$snap"$'\n'"back_epoch=$now"
+            fi
+        elif [ $((now - first)) -ge "$quota_backstop_secs" ]; then
+            unknown=1; back=$((first + quota_backstop_secs))
+        else
+            continue
+        fi
+        if ! quota_owner "$key" "$ref" "$(quota_field "$snap" repo)"; then
+            [ -n "$back" ] && [ $((now - back)) -ge "$quota_owner_lead" ] || continue
+        fi
+        claimed="$quota_blocked/.claim.$$.$name"
+        with_lock "$quota_blocked/.lock" quota_claim "$m" "$snap" "$claimed" || continue
+        caller="$(quota_field "$snap" caller)"; reason="$(quota_field "$snap" reason)"
+        rm -f "$claimed"
+        if [ -z "$unknown" ] && [ "$reason" = rate-limit ] && ! auto_go_on && head="$(quota_ready_head "$key" "$ref")"; then
+            quota_rearm "$key" "$head" "${caller:-unknown}"
+            continue
+        fi
+        if housekeeping_add quota-back "$(printf '%s' "$key" | sed 's#%2F#/#g') $ref caller=${caller:-unknown}${unknown:+ quota=unknown}"; then
+            return 0
+        fi
+    done
     return 1
 }
 # silent_go_wake: with --doc and --workers-from, silent-go-merge.sh merges a GO'd READY PR
@@ -1823,18 +2052,21 @@ $rows
 EOF
     return 1
 }
-# ready_ci <pr> <head>: GREEN, RED or PENDING from one bounded, non-blocking read; a failed read is PENDING.
 ready_ci() {
-    local b
+    local b rc err="$inbox.wait.ci-err"
     if [ -n "${CHIEF_WAIT_CI:-}" ]; then
-        b="$(timeout -k 5 30 bash "$CHIEF_WAIT_CI" "$1" "$2" </dev/null 2>/dev/null 9>&- | head -n 1)"  # gnu-ok: Linux-only kit
-        case "$b" in GREEN|RED|PENDING) printf '%s\n' "$b" ;; *) printf 'PENDING\n' ;; esac
+        b="$(timeout -k 5 "$3" bash "$CHIEF_WAIT_CI" "$1" "$2" </dev/null 2>/dev/null 9>&- | head -n 1)"  # gnu-ok: Linux-only kit
+        case "$b" in GREEN|RED|PENDING|PAUSED) printf '%s\n' "$b" ;; *) printf 'PENDING\n' ;; esac
         return
     fi
-    # swallow-ok: an unreadable check list is PENDING, never GREEN
-    b="$(timeout -k 5 30 gh pr checks "$1" --json bucket -q '.[].bucket' </dev/null 2>/dev/null 9>&-)"  # gnu-ok: Linux-only kit
+    b="$(timeout -k 5 "$3" gh pr checks "$1" --json bucket -q '.[].bucket' </dev/null 2>"$err" 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+    # a refusal exits 1 like a failed check, so its stderr decides (stdout is check names)
+    if [ -z "$b" ] && [ "$rc" -ne 0 ] && ghq_is_rate_limited "$(cat "$err")"; then
+        rm -f "$err"; printf 'PAUSED\n'; return
+    fi
+    rm -f "$err"
     # gh exits 1 on a failed check and 8 on a pending one; any other non-zero is a failed read
-    case $? in 0|1|8) ;; *) printf 'PENDING\n'; return ;; esac
+    case $rc in 0|1|8) ;; *) printf 'PENDING\n'; return ;; esac
     if printf '%s\n' "$b" | grep -qE '^(fail|cancel)$'; then printf 'RED\n'
     elif [ -z "$b" ] || printf '%s\n' "$b" | grep -qx pending; then printf 'PENDING\n'
     else printf 'GREEN\n'; fi
@@ -2081,6 +2313,7 @@ while :; do
         fi
         sample "$@" 9>&-
         focus_rebuild
+        if quota_step; then exit_reason='wake-quota-back'; exit 0; fi
         if [ -n "$key" ]; then
             fail_streak=0
             fail_woke && save_key "${saved:-$key}"
