@@ -3490,6 +3490,31 @@ check "9846 the superseded and done rulings leave the block" "$(printf '%s\n' "$
 check "9846 a ruling with no ledger row is carried" "$(printf '%s\n' "$d9846" | grep -c '^OPERATOR 11-10 YZ, decision 905: delta')" "1"
 c9846=0; for _r in $(printf '%s\n' "$d9846" | grep -m 1 '^Full original text' | grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md'); do c9846=$((c9846 + $(grep -cxF -e 'OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.' -e 'OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.' "$root/tester/rif9846/$_r"))); done
 check "9846 the companions keep the full text of the rulings that left, byte for byte" "$c9846" "2"
+if [ "$HOST_MODES_STICK" -eq 1 ]; then
+    mk91 rc2x9846 "(46) other ruling" "-" "$dir9846"
+    mkdir -p "$root/tester/rc2x9846/specs/decisions"
+    printf 'OPERATOR words of 902.\n' > "$root/tester/rc2x9846/specs/decisions/verbatim-decision-902-x.txt"
+    bash "$rif" record --bucket "$root/tester/rc2x9846" --id 902 --status "done" --date 2026-11-11 --line 'bravo done' --path specs/decisions/verbatim-decision-902-x.txt >/dev/null
+    chmod 555 "$root/tester/rc2x9846/specs/decisions"
+    run91 rc2x9846
+    chmod 755 "$root/tester/rc2x9846/specs/decisions"
+    check "9846 a failed companion write with a ledger present exits 0" "$rc91" "0"
+    check "9846 a failed companion write with a ledger present carries the block whole" \
+        "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/rc2x9846/DEMO-nextleg-${today}C-chief.md" | grep -cxF -e 'OPERATOR 11-11 ZA (BINDING, decision 901): alpha, the full text of 901.' -e 'OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.' -e 'OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.' -e 'OPERATOR 11-10 YZ (BINDING, decision 905): delta, the full text of 905, which no ledger row holds.')/$(grep -c '^IN FORCE ' "$root/tester/rc2x9846/DEMO-nextleg-${today}C-chief.md")" "4/0"
+else
+    echo "ok - SKIPPED: 9846 failed companion write: chmod does not stick on this host"
+fi
+mk91 cite9846 "(46) other ruling" "-" "OPERATOR 11-11 ZB (BINDING): replaces decision 901 with the golf rule.
+
+$dir9846"
+mkdir -p "$root/tester/cite9846/specs/decisions"
+printf 'OPERATOR words of 901.\n' > "$root/tester/cite9846/specs/decisions/verbatim-decision-901-x.txt"
+bash "$rif" record --bucket "$root/tester/cite9846" --id 901 --status "done" --date 2026-11-11 --line 'alpha done' --path specs/decisions/verbatim-decision-901-x.txt >/dev/null
+run91 cite9846
+d9846c="$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/cite9846/DEMO-nextleg-${today}C-chief.md")"
+check "9846 an unnumbered ruling that only cites a ledgered number is carried" "$(printf '%s\n' "$d9846c" | grep -c '^OPERATOR 11-11 ZB, decision 901: replaces decision 901')" "1"
+check "9846 the ruling numbered 901 itself leaves" "$(printf '%s\n' "$d9846c" | grep -c '^OPERATOR 11-11 ZA, decision 901:')" "0"
+check "9846 the read-all-companions duty stays with the unnumbered ruling" "$(printf '%s\n' "$d9846c" | grep '^Full original text' | grep -c 'READ ALL OF those files')" "1"
 run91 noledger9846
 check "9846 with no ledger the block is carried as today" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/noledger9846/DEMO-nextleg-${today}C-chief.md" | grep -cxF -e 'OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.' -e 'OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.')" "2"
 

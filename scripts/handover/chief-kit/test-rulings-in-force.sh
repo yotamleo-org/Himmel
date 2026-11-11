@@ -21,7 +21,17 @@ D="$B/specs/decisions"
 L="$D/rulings-in-force.jsonl"
 mkdir -p "$D"
 for n in 901 902 903 904 905; do printf 'OPERATOR words of ruling %s.\n' "$n" > "$D/verbatim-decision-$n-2026-11-11.txt"; done
-printf '# Current direction, full text (part 1 of 1), byte for byte, written by chief.sh next\n\nOPERATOR 11-11 ZA (BINDING, decision 901): the full text.\n' > "$D/chief-direction-2026-11-11-p1.md"
+printf '%s\n\n' '# Current direction, full text (part 1 of 1), byte for byte, written by chief.sh next' \
+    'OPERATOR 11-11 ZA (BINDING, decision 901): alpha reading of 901, the full text.' \
+    'OPERATOR 11-11 ZA (BINDING, decision 902): bravo reading of 902, the full text.' \
+    'OPERATOR 11-10 YZ (BINDING, decision 904): charlie reading of 904, the full text.' \
+    'OPERATOR 11-10 YZ (BINDING, decision 905): delta reading of 905, no ledger row, the full text.' \
+    'OPERATOR 11-09 WG (BINDING): echo, a ruling with no number, the full text.' \
+    'OPERATOR 11-09 WF (BINDING, decisions 858 to 860): foxtrot, a range, the full text.' \
+    'OPERATOR 11-11 ZB (BINDING): replaces decision 901 with the golf rule, the full text.' \
+    'OPERATOR 11-01 AA (BINDING, decisions 1 to 100): a range too wide to expand, the full text.' \
+    'OPERATOR 11-01 AA (BINDING, decisions 100 to 1): a reversed range, the full text.' \
+    'OPERATOR 11-12 ZD, decision 903 (BINDING; verbatim specs/decisions/verbatim-decision-903-x.txt): hotel, its number before the parenthesis.' > "$D/chief-direction-2026-11-11-p1.md"
 rec() { bash "$SUT" record --bucket "$B" "$@" >/dev/null 2>&1; echo $?; }
 v() { printf 'specs/decisions/verbatim-decision-%s-2026-11-11.txt' "$1"; }
 
@@ -100,11 +110,26 @@ printf '{"id": 901}\n' > "$BP/specs/decisions/rulings-in-force.jsonl"
 out="$(render "$blk" "$BP")"; rc=$?
 same "render: a ledger row without its status, line, date or path exits 3" "$rc" "3"
 same "render: that render prints nothing, so the ruling is never dropped" "$out" ""
+cite="$ptr
+
+OPERATOR 11-11 ZA, decision 901: alpha reading of 901 …
+OPERATOR 11-11 ZB, decision 901: replaces decision 901 with the golf rule …
+OPERATOR 11-12 ZC, decision 902: an index line with no full text in the companions …
+OPERATOR 11-12 ZD, decision 903: hotel, its number before the parenthesis."
+rec --id 903 --status "done" --date 2026-11-12 --line 'hotel' --path "$(v 903)" >/dev/null
+out="$(render "$cite")"
+same "render: a ruling whose own number precedes its parenthesis leaves once ledgered" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-12 ZD, decision 903:')" "0"
+same "render: the ruling numbered 901 leaves once 901 is ledgered" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-11 ZA, decision 901:')" "0"
+same "render: an unnumbered ruling that only cites ledgered 901 stays" "$(printf '%s\n' "$out" | grep -cxF 'OPERATOR 11-11 ZB, decision 901: replaces decision 901 with the golf rule …')" "1"
+same "render: an index line whose full text is in no companion stays" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-12 ZC, decision 902:')" "1"
+same "render: with those rulings left, the read-all duty stays" "$(printf '%s\n' "$out" | grep '^Full original text' | grep -c 'READ ALL OF those files in your first turn')" "1"
+same "record: superseding by a decision with no ledger row warns" "$(bash "$SUT" record --bucket "$B" --id 905 --status 'superseded-by 9999' --date 2026-11-10 --line 'delta' --path "$(v 905)" 2>&1 >/dev/null | grep -c 'decision 9999 has no ledger row yet')" "1"
 
 # --- 40 rulings in force: the index stays under 12 KB and names every id
 B40="$W/b40"; mkdir -p "$B40/specs/decisions"
-cp "$D/chief-direction-2026-11-11-p1.md" "$B40/specs/decisions/"
 w="$(printf 'word%.0s ' $(seq 1 40))"
+printf '# Current direction, full text (part 1 of 1), byte for byte, written by chief.sh next\n' > "$B40/specs/decisions/chief-direction-2026-11-11-p1.md"
+for n in $(seq 1001 1040); do printf '\nOPERATOR 11-11 ZA (BINDING, decision %s): reading %s %s\n' "$n" "$n" "$w" >> "$B40/specs/decisions/chief-direction-2026-11-11-p1.md"; done
 blk40="$ptr"$'\n'
 for n in $(seq 1001 1040); do
     printf 'x\n' > "$B40/specs/decisions/verbatim-decision-$n-2026-11-11.txt"

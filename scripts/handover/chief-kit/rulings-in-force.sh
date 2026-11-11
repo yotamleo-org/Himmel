@@ -14,16 +14,23 @@
 # record: the first row of an id needs --date, --line and --path; a later row carries any
 # of the three it omits from the id's newest row. The path must be a readable, non-empty
 # file under <dir>/specs/decisions/. Refused (exit 1): a bad id, date or status, a line
-# that is empty or more than one line, a missing verbatim file.
+# that is empty or more than one line, a missing verbatim file. Superseding by a decision
+# with no ledger row yet is recorded with a warning.
 #
 # render: prints the block with the in-force rows as an index right after its
 # `Full original text` pointer line (one line each: id, date, line, verbatim path), and
-# without each ruling line whose decision numbers all have a ledger row (superseded and
-# done rulings leave the block; their files and the companion files stay). Never drops
+# without each ruling line whose OWN decision numbers all have a ledger row (superseded and
+# done rulings leave the block; their files and the companion files stay). A ruling's own
+# numbers are the ones in the head of its full text in the companion files (before and
+# inside its parenthesis), never the numbers its reading cites, which the index line also
+# lists; a line matches its full text
+# by its who-and-date, its listed numbers and the start of its reading, and a line that
+# matches none, or more than one with different numbers, has no own number. Never drops
 # what it cannot find: with no ledger, or no pointer line (the companions then may not hold
-# the block's full text), the block is printed unchanged; a ruling line naming a number
-# the ledger lacks, a range over 50 numbers or a reversed one, or no number, is kept as it
-# is. The rendered index is re-rendered from the ledger on every run. Its lines are cut to
+# the block's full text), the block is printed unchanged; a ruling line with no own number
+# (an unnumbered ruling, one citing others, a range over 50 numbers or a reversed one), or
+# with one the ledger lacks, is kept as it is. The rendered index is re-rendered from the
+# ledger on every run. Its lines are cut to
 # fit CHIEF_DIRECTION_BUDGET_BYTES (default 12000), never below 40 bytes of the one line.
 # Exit 3, printing nothing, on a ledger row that is not JSON or lacks a field.
 #
@@ -88,7 +95,10 @@ if verb == "record":
     m = re.fullmatch(r"in-force|done|superseded-by ([0-9]+)", status)
     if not m or (m.group(1) and int(m.group(1)) == int(rid)):
         die("--status must be in-force, done or superseded-by <another decision number>")
-    prev = (load() or {}).get(int(rid), {})
+    known = load() or {}
+    prev = known.get(int(rid), {})
+    if m.group(1) and int(m.group(1)) not in known:
+        sys.stderr.write("rulings-in-force: warning: decision %s has no ledger row yet; record it too\n" % m.group(1))
     date = date or prev.get("date", "")
     line = line or prev.get("line", "")
     path = path or prev.get("path", "")
@@ -130,13 +140,34 @@ def numbers(head):
             if toks[i].isdigit():
                 if i + 2 < len(toks) and toks[i + 1] in ("to", "-", "–") and toks[i + 2].isdigit():
                     if not 0 <= int(toks[i + 2]) - int(toks[i]) <= 50:
-                        return []
+                        return None
                     out += range(int(toks[i]), int(toks[i + 2]) + 1); i += 3; continue
                 out.append(int(toks[i]))
             i += 1
     return out
 def headed(l):
     return l.startswith(("OPERATOR ", "CHIEF ", "IN FORCE ", ">", INDEX_HEAD)) or bool(NOTE.match(l))
+RAW = re.compile(r"^((?:OPERATOR|CHIEF)[^(]*?) \(([^()]*(?:\{[^{}]*\}[^()]*)*)\)[.:]?\s*(.*)$")
+paths = re.findall(r"specs/decisions/chief-direction-[A-Za-z0-9._-]+\.md", src[note_at])
+units = []
+for rel in paths:
+    try:
+        text = open(os.path.join(bucket, rel), encoding="utf-8").read()
+    except OSError:
+        continue
+    for blk in text.split("\n\n"):
+        us = [b.strip() for b in blk.split("\n") if b.strip() and not b.startswith("# Current direction, full text")]
+        m = RAW.match(us[0]) if us else None
+        a, b = (numbers(m.group(1)), numbers(m.group(2))) if m else (None, None)
+        if a is not None and b is not None:
+            units.append((m.group(1), a + b, " / ".join(us)))
+def own_numbers(l, h):
+    probe = l[h.end():].rstrip()
+    probe = (probe[:-2] if probe.endswith(" …") else probe)[:24].rstrip()
+    cited = set(numbers(h.group(0)) or [])
+    own = {tuple(n) for who, n, text in units
+           if n and l.startswith(who) and l[len(who):len(who) + 1] in (",", ":", " ") and set(n) <= cited and probe and probe in text}
+    return list(own.pop()) if len(own) == 1 else []
 kept, i = [], 0
 while i < len(src):
     l = src[i]; i += 1
@@ -150,14 +181,13 @@ while i < len(src):
         if int(m.group(1)) not in rows: kept.append(l)
         continue
     h = HEAD.match(l) if l.startswith(("OPERATOR ", "CHIEF ")) else None
-    nums = numbers(h.group(0)) if h else []
+    nums = own_numbers(l, h) if h else []
     if nums and all(n in rows for n in nums):
         while i < len(src) and src[i].strip() and not headed(src[i]):
             i += 1
         continue
     kept.append(l)
 live = sorted((n for n, r in rows.items() if r.get("status") == "in-force"), reverse=True)
-paths = re.findall(r"specs/decisions/chief-direction-[A-Za-z0-9._-]+\.md", src[note_at])
 left = any(l is not None and l.startswith(("OPERATOR ", "CHIEF ")) for l in kept)
 note = ("Full original text of every ruling, byte for byte, is in %d file%s under the bucket (%s). The rulings in force come first, one line each, from the ledger %s (superseded and done rulings are left out; their files stay): before you act on one, read its verbatim file." % (len(paths), "" if len(paths) == 1 else "s", " ".join(paths), LEDGER)
     + (" The OPERATOR and CHIEF lines outside that index are rulings the ledger does not hold yet, as one-line readings: READ ALL OF those files in your first turn, in the same batch as this document. Each such line, with the lines directly under it, is BINDING unless it says otherwise; any other line is context, not a ruling." if left else " Every ruling the block held is in that index; any other line is context, not a ruling."))
