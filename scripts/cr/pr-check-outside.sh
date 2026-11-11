@@ -15,11 +15,14 @@ lib="$here/../lib"
 # config or hooks, and runs nothing from the fetched tree), then prints
 #   outside-pr: yes <n> <head> <headRefName> base=<baseRefName> authorized=allowlist|approval:<id>
 # Exit 0 ok; 5 not authorized; 2 for the state, the head, a collision, the fetch or a usage error.
+# A fifth argument --fetch-only skips the authorization step: it fetches and prints authorized=fetch-only,
+# and writes no review-round state (the security audit reads the diff before any approval exists).
 # The one-argument form below stays the classifier.
 if [ "${1:-}" = "--pr" ]; then
-    PR="${2:-}"; HEAD="${4:-}"
-    if [ "$#" -ne 4 ] || [ "${3:-}" != "--head" ] || ! [[ "$PR" =~ ^[1-9][0-9]{0,8}$ ]] || ! [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]]; then
-        echo "usage: pr-check-outside.sh <pr-number> | --pr <pr-number> --head <40-hex sha>" >&2
+    PR="${2:-}"; HEAD="${4:-}"; fetch_only=0
+    [ "${5:-}" != "--fetch-only" ] || fetch_only=1
+    if [ "$#" -ne $((4 + fetch_only)) ] || [ "${3:-}" != "--head" ] || ! [[ "$PR" =~ ^[1-9][0-9]{0,8}$ ]] || ! [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "usage: pr-check-outside.sh <pr-number> | --pr <pr-number> --head <40-hex sha> [--fetch-only]" >&2
         exit 2
     fi
     # The route runs ready-check.sh and the libraries below, none of which a branch under review may supply:
@@ -68,9 +71,11 @@ if [ "${1:-}" = "--pr" ]; then
         exit 2
     fi
     # 2. authorize: the one function, run by review-round.sh; this script never decides it.
+    # --fetch-only skips it: the stage-2 audit reads the diff before any approval exists, and a fetch starts no review round.
     pc_rc=0
+    pc_auth="authorized fetch-only"
     # swallow-ok: the exit code is kept in pc_rc and decides below (5 refuses, any other non-zero is exit 2)
-    pc_auth="$(bash "$here/review-round.sh" check --pr "$PR" --head "$HEAD" 2>/dev/null)" || pc_rc=$?
+    [ "$fetch_only" -eq 1 ] || pc_auth="$(bash "$here/review-round.sh" check --pr "$PR" --head "$HEAD" 2>/dev/null)" || pc_rc=$?
     if [ "$pc_rc" -eq 5 ]; then
         pc_ap="${HOME:-/nonexistent}/.himmel/outside-pr-approvals.jsonl"
         if jq -nRe --argjson pr "$PR" --arg h "$HEAD" '[inputs | fromjson? | select(type == "object" and .pr == $pr and .head == $h and .stage == "review")] | length > 0' "$pc_ap" >/dev/null 2>&1 \
