@@ -839,12 +839,6 @@ if grepq "$out" '^scripts/test-cm-chain\.sh$'; then pass "a chained '; . x' sour
 if grepq "$out" '^scripts/test-cm-var\.sh$'; then pass "an indented variable-sourcing file is still followed"; else fail "indented var-source missed: $out"; fi
 if grepq "$out" '^scripts/test-cm-sub\.sh$'; then pass "a subshell '(source x)' is still followed"; else fail "subshell source missed: $out"; fi
 
-# --- 30b. A suite that names the changed file only on a whole-line comment
-# ('#' in a shell suite, '//' in a JS/TS suite) drops off the proof lists
-# (--plan, --check). A '#' line inside a string or a here-document body, a
-# trailing comment after code, a `# shellcheck source=` directive and a
-# `# selector: names` line still list. The plain and --shell listings, the one
-# CI selects from, stay as wide as before. ---
 mkf scripts/lib/cmo-lib.sh
 mkf scripts/test-cmo-hash.sh $'#!/usr/bin/env bash\n# drives cmo-lib.sh end to end\necho x'
 mkf scripts/test-cmo-indent.sh $'if true; then\n    # see scripts/lib/cmo-lib.sh\n    :\nfi'
@@ -899,8 +893,6 @@ for s in $cmo_cmt; do grepq "$out" -Fx "scripts/$s" || all_listed=0; done
 if [ "$all_listed" -eq 1 ] && [ -z "$err" ]; then pass "30b the plain listing still names every comment-only suite and prints nothing to stderr"; else fail "30b plain listing narrowed: err=$err out=$out"; fi
 out="$(run_is "$range" --shell)"
 if grepq "$out" -Fx 'scripts/test-cmo-hash.sh' && grepq "$out" -Fx 'scripts/test-cmo-after-hd.sh' && ! grepq "$out" -F '.test.'; then pass "30b --shell (what CI selects from) still lists a comment-only suite --check drops"; else fail "30b --shell narrowed: $out"; fi
-# The same proof list when a content-rewriting .gitattributes sends every candidate
-# down the per-file path, which reads each blob from git under its own name.
 printf 'x.none filter=none\n' > "$FX/.gitattributes"
 git -C "$FX" add -A
 git -C "$FX" commit -q -m "chore: an attribute that rewrites content"
@@ -912,9 +904,6 @@ if ! grepq "$out" -Fx 'scripts/test-cmo-hash.sh' && ! grepq "$out" -Fx 'scripts/
 git -C "$FX" rm -q .gitattributes
 git -C "$FX" commit -q -m "chore: drop the attribute"
 
-# --- 30c. The suites that widen their own text name each basename on a
-# `# selector: names` line, so an edit to one still puts them on the --plan
-# proof list, which reads no other comment line (the real suite text, copied). ---
 mkdir -p "$FX/scripts/docs" "$FX/scripts/hooks/lib" "$FX/scripts/handover/chief-kit"
 for s in scripts/docs/test-dev-graph.sh scripts/hooks/test-escape-class-corpus.sh scripts/docs/test-workflow-page-drift.sh scripts/docs/test-how-a-change-ships.sh; do
     cp "$REPO_ROOT/$s" "$FX/$s"

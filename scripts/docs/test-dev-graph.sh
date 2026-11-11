@@ -12,9 +12,6 @@
 #   selection (a source basename the suite does not name fails);
 # then the real graph passes against the real tree.
 #
-# Source basenames the real graph binds. impacted-suites.sh selects a suite by
-# basename and reads no comment line but a `# selector: names` one, so each is
-# named on one (check-dev-graph.sh enforces it):
 # selector: names chief.sh chief-wait.sh tick.sh next-dispatchable.sh gen-briefs.py
 # selector: names headed-arm-worker.sh running-a-chief.md worker-preface.md check-commit-msg.sh
 # selector: names .pre-commit-config.yaml check-cr-before-push.sh pr-check.md

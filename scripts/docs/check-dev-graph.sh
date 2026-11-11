@@ -178,7 +178,6 @@ if [ ! -f "$SUITE" ]; then
   fail "suite $SUITE: not found (impacted-suites.sh could not select it)"
 else
   sort -u "$TMP/files" > "$TMP/uniq-files"
-  # impacted-suites.sh reads no comment line of a suite but a `# selector: names` one.
   grep -E '^[[:space:]]*#[[:space:]]*selector:[[:space:]]+names[[:space:]]' "$SUITE" > "$TMP/suite-names" || : > "$TMP/suite-names"
   while IFS= read -r f; do
     b=${f##*/}

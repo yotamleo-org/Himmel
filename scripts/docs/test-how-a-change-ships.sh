@@ -19,7 +19,7 @@
 #                and every edge and node is drawn in the graph.
 #   5. SELECT  — every cited file's basename is named on a `# selector: names`
 #                line below, so scripts/cr/impacted-suites.sh runs this suite when
-#                it changes (it reads no other comment line).
+#                it changes.
 #   6. CONTROL — on a temp copy: a renamed source file and a reworded refusal
 #                string fail case 2, a source moved into PORTABLE_FILES fails
 #                case 3, and a page missing one chain row fails case 4, so no

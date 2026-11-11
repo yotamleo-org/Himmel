@@ -29,8 +29,7 @@
 #              or `noSource` (why no code stands behind it). The line is strict:
 #              a shifted citation fails and names the line to write. Each cited
 #              basename is named on a `# selector: names` line below, so a change
-#              to the file selects this suite (impacted-suites.sh reads no other
-#              comment line).
+#              to the file selects this suite.
 #   7. CONTROL — on a temp copy, a reworded cited line and a shifted cited line
 #              fail case 6 for a step and for a move, and a step with neither
 #              field fails it.
