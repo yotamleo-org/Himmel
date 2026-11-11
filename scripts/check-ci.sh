@@ -199,7 +199,7 @@ usage: check-ci.sh [<pr-number|branch|url>] [--grace <sec>] [--settle <sec>] [--
 --except-context codeowner-review-gate: that literal only (any other value is exit 64). The context is dropped
           from the required set and from every verdict, the watch is not fail-fast (the gate is red from the PR's open),
           and the exit is decided once every other check has settled. A BLOCKED mergeStateStatus passes only while
-          that context is not green (BLOCKED with it green, and every other state, is still exit 6). GitHub reports
+          that context is not green (BLOCKED with it green, and every other refusing state, is still exit 6). GitHub reports
           one BLOCKED for every cause, so a non-check cause that sits behind the non-green gate (a required review,
           deployment or signature rule) cannot be told apart here; GitHub still enforces it at merge.
 run mode: foreground workflow/job wait, no PR merge/review gates or settle.
