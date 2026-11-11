@@ -116,7 +116,7 @@ out=$(cd "$tmp" && bash "$AUDIT" 2>&1); rc=$?
 [ "$rc" -eq 1 ] && grepq "$out" "reason=gates-may-pass" && grepq "$out" "clear-review-marker.sh feat/x from the worktree where feat/x is checked out" && pass || fail "T4 rc=$rc out=$out"
 rm -rf "$tmp"
 
-echo "T5: amended-to-sug finding is NOT re-reported as blocking (HIMMEL-1294)"
+echo "T5: amended-to-sug finding is NOT re-reported as blocking"
 make_repo || exit 1
 write_marker "$tmp" feat/x "$sha"
 write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" crit agreed)" \
@@ -202,7 +202,7 @@ out=$(cd "$tmp" && bash "$AUDIT" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && [ -z "$out" ] && pass || fail "T12 rc=$rc out=$out"
 rm -rf "$tmp"
 
-echo "T13: SHA-256 repo (64-hex head) is still recognised as review evidence (HIMMEL-2029)"
+echo "T13: SHA-256 repo (64-hex head) is still recognised as review evidence"
 make_repo_sha256 || exit 1
 write_marker "$tmp" feat/x "$sha"
 write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" crit agreed)"
@@ -211,7 +211,7 @@ out=$(cd "$tmp" && bash "$AUDIT" 2>&1); rc=$?
     && ! grepq "$out" "reason=no-review-at-tip" && pass || fail "T13 rc=$rc out=$out"
 rm -rf "$tmp"
 
-echo "T14: SHA-256 repo, an ABBREVIATED (40-63 char) head still counts as review evidence (codex-1 CR round 3, HIMMEL-2029)"
+echo "T14: SHA-256 repo, an ABBREVIATED (40-63 char) head still counts as review evidence"
 make_repo_sha256 || exit 1
 write_marker "$tmp" feat/x "$sha"
 # A 50-char abbreviation is shorter than the real 64-char tip but LONGER than

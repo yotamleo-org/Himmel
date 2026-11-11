@@ -106,8 +106,8 @@ plan_rc=0
 plan_out="$(CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" HERMES_PY="$PLAN_PY" bash "$AC" --artifact "$PLAN" --charter "$CH" --model x/y --slug plancritic 2>/dev/null)" || plan_rc=$?
 # all-dropped now exits the DISTINCT code 4 (not
 # clean), while the evidence stays on stdout for guard-aware callers.
-check "HIMMEL-1871: all-dropped plan review exits 4 with evidence on stdout" "$plan_rc" "4"
-check_contains "HIMMEL-1871: plan review surfaces Dropped Citations" "$plan_out" "## Dropped Citations (1 dropped)"
-check_contains "HIMMEL-1871: plan review preserves rejected finding" "$plan_out" "migration ordering can lose state"
+check "all-dropped plan review exits 4 with evidence on stdout" "$plan_rc" "4"
+check_contains "plan review surfaces Dropped Citations" "$plan_out" "## Dropped Citations (1 dropped)"
+check_contains "plan review preserves rejected finding" "$plan_out" "migration ordering can lose state"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

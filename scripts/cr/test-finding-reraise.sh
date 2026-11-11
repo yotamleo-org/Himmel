@@ -301,7 +301,7 @@ assert_eq "$?" "0" "r8 deferred re-raise panel run succeeds"
 assert_has "$(cat "$tmp/d8.out")" "RE-RAISE (r7 deferred)" "r8 reports the original deferred disposition"
 assert_has "$(cat "$tmp/d8.out")" "## Suggestions (0 found)" "r8 deferred re-raise is excluded from suggestion tally"
 assert_eq "$(ledger_value deferred "$head_d8" deferred_to)" "HIMMEL-9007" "r8 durable row carries the defer ticket"
-assert_eq "$(ledger_value deferred "$head_d8" fu_class)" "hardening" "r8 durable row carries the follow-up class (HIMMEL-4034)"
+assert_eq "$(ledger_value deferred "$head_d8" fu_class)" "hardening" "r8 durable row carries the follow-up class"
 
 head_d9="$(advance_head d9)"
 run_panel 9 'CACHE cleanup must retain 2 generations [scripts/cr/cache.sh:90]' sug "$tmp/d9.out" "$tmp/d9.err"
@@ -327,7 +327,7 @@ printf '4\n' > "$git_dir/cr-review-rounds/deferred.round"
     cd "$repo" || exit 1
     bash "$ROUND" defer --branch deferred --head "$head_d9"
 ) >"$tmp/cap.out" 2>"$tmp/cap.err"
-assert_eq "$?" "0" "settled deferred re-raise does not consume the HIMMEL-2780 cap"
+assert_eq "$?" "0" "settled deferred re-raise does not consume the re-raise cap"
 assert_lacks "$(cat "$tmp/cap.err")" "no valid defer ticket" "settled cap path does not request another ticket"
 
 # A disposition at Suggestion severity does not authorize silently suppressing
