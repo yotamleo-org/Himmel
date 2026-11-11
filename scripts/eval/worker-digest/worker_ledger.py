@@ -531,15 +531,43 @@ def _original_ok_ts(eval_ledger, session):
     return ts if isinstance(ts, str) and UTC_TS.match(ts) else None
 
 
-def _ok_index(eval_ledger):
-    """{session: (first ok row, current ok row)} from ONE scan of the eval ledger; the current row is the newest ok one,
-    as Tool health selects it. A refresh run builds this once instead of rereading the file for every session."""
-    rows, _, _ = eval_runs.scan_rows(eval_ledger)
-    index = {}
-    for r in rows:
-        if r["eval"] == EVAL_ID and r["status"] == "ok":
-            index[r["run_id"]] = (index.get(r["run_id"], (r,))[0], r)
-    return index
+class _OkIndex:
+    """session -> (first ok row, current ok row) from ONE scan of the eval ledger; the current row is the newest ok one,
+    as Tool health selects it. A refresh run builds this once instead of rereading the file for every session, and
+    catch_up() reads only the bytes other writers appended since, so a session's row is never stale under its lock."""
+
+    def __init__(self, eval_ledger):
+        self.path = eval_runs.ledger_path(eval_ledger)
+        # Sized before the scan: a row that lands during it is read twice, which changes nothing.
+        self.size = os.path.getsize(self.path) if os.path.exists(self.path) else 0
+        self.rows = {}
+        self._take(eval_runs.scan_rows(self.path)[0])
+
+    def _take(self, rows):
+        for r in rows:
+            if r["eval"] == EVAL_ID and r["status"] == "ok":
+                self.rows[r["run_id"]] = (self.rows.get(r["run_id"], (r,))[0], r)
+
+    def get(self, session):
+        return self.rows.get(session, (None, None))
+
+    def catch_up(self):
+        try:
+            with open(self.path, "rb") as fh:
+                fh.seek(self.size)
+                tail = fh.read()
+        except FileNotFoundError:
+            return
+        # Whole lines only: a row another writer is still appending is read on the next call.
+        tail = tail[:tail.rfind(b"\n") + 1]
+        self.size += len(tail)
+        for line in tail.splitlines():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if not eval_runs.validate(r):
+                self._take([r])
 
 
 def _anchored_who(who, current):
@@ -646,17 +674,24 @@ def _old_failure_ts(path, session):
 
 
 def refresh(digest, who, failures_ledger, eval_ledger, index=None):
-    """index: _ok_index(eval_ledger), built once per backfill run; None scans the ledger for this one call."""
+    """index: _OkIndex(eval_ledger), built once per backfill run; None scans the ledger for this one call."""
     if digest.get("status") != "ok":
         return "inconclusive"
     if index is None:
-        index = _ok_index(eval_ledger)
-    first, current = index.get(digest.get("session"), (None, None))
+        index = _OkIndex(eval_ledger)
+    current = index.get(digest.get("session"))[1]
     frows, erow = build_rows(digest, _anchored_who(who, current))
     session, did, state = erow["run_id"], erow["meta"]["digest_id"], who["state_dir"]
     marker = os.path.join(state, session + ".json")
     with open(os.path.join(state, session + ".lock"), "w") as lk:
         fcntl.flock(lk, fcntl.LOCK_EX)
+        index.catch_up()
+        if index.get(session)[1] != current:
+            # Another writer appended this session's row while this one waited: its attribution is the current one.
+            current = index.get(session)[1]
+            frows, erow = build_rows(digest, _anchored_who(who, current))
+            did = erow["meta"]["digest_id"]
+        first = index.get(session)[0]
         try:
             with open(marker, encoding="utf-8") as fh:
                 if json.load(fh).get("digest_id") == did:
@@ -798,7 +833,7 @@ def backfill(a):
     live_cut = datetime.now(timezone.utc).timestamp() - a.live_minutes * 60
     n = workers = others = salus = done = live = fa = ea = restamped = 0
     words = {"refreshed": 0, "unchanged": 0, "refused": 0, "inconclusive": 0}
-    index = _ok_index(a.eval_ledger) if getattr(a, "refresh", False) else None
+    index = _OkIndex(a.eval_ledger) if getattr(a, "refresh", False) else None
     for j in sorted(glob.glob(os.path.join(a.projects, "*", "*.jsonl"))):
         session = os.path.basename(j)[:-len(".jsonl")]
         if not UUID.match(session) or os.path.getmtime(j) < since.timestamp():

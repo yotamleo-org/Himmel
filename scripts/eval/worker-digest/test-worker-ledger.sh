@@ -556,6 +556,33 @@ check "the refresh under another CLAUDE_CODE_EFFORT_LEVEL and claude version lea
 D="$TMP/at2"; setup_attr "$D" "$A1" "$A2" "$A3"
 arf "$D" python3 -I "$CV/count.py" "$HERE" >"$D/out" 2>&1 || bad "counted refresh exits 0: $(head -c 300 "$D/out")"
 check "one backfill --refresh over three sessions refreshes all three and scans the eval ledger once" 'grep -q "refreshed=3 unchanged=0" "$D/out" && grep -qx "scans=1" "$D/out"'
+# Another refresh appended this session's eval row after the index was built and stopped before its marker: the stale index must not append the generation again.
+cat >"$CV/stale.py" <<'EOF'
+import json
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import worker_ledger
+d, session = sys.argv[2], sys.argv[3]
+evals, fails, state = d + "/e.jsonl", d + "/f.jsonl", d + "/s"
+with open(d + "/" + session + ".digest", encoding="utf-8") as fh:
+    digest = json.load(fh)
+who = {"leg": None, "ticket": None, "console": None, "pr": None, "doc": None, "lane": None, "state_dir": state,
+       "backfill": True, "launch_name": None, "kind": "worker"}
+index = worker_ledger._OkIndex(evals)
+print(worker_ledger.refresh(digest, who, fails, evals, index))
+marker = state + "/" + session + ".json"
+with open(marker, encoding="utf-8") as fh:
+    saved = json.load(fh)
+del saved["digest_id"]
+with open(marker, "w", encoding="utf-8") as fh:
+    json.dump(saved, fh)
+print(worker_ledger.refresh(digest, who, fails, evals, index))
+print("eval_rows=%d" % sum(1 for line in open(evals, encoding="utf-8") if session in line))
+EOF
+D="$TMP/at3"; setup_attr "$D" "$A1"
+env HIMMELCTL_CACHE_DIR="$CV/nocache" python3 -I "$CV/stale.py" "$HERE" "$D" "$A1" >"$D/out" 2>&1
+check "an index built before another writer's eval row does not append the generation a second time" 'grep -qx "eval_rows=2" "$D/out"'
 
 echo "test-worker-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
