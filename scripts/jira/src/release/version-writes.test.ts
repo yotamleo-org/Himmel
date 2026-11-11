@@ -75,6 +75,7 @@ const READ_ONLY = [
   // Joined so the CI plan audit's closure does not read this list as a suite that executes the file.
   'scripts/config-ui/' + 'roadmap.ts',
   'scripts/handover/chief-kit/board.mjs',
+  'scripts/handover/chief-kit/chain-add.sh',
   'scripts/handover/chief-kit/chain-render.py',
   'scripts/handover/chief-kit/chain-state.mjs',
   'scripts/handover/chief-kit/intake-backfill.sh',

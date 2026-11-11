@@ -388,5 +388,120 @@ out25="$(bash "$SCRIPT" "$hy" --print 2>/dev/null)"
 check '25. --print prints the workers: line without the next labelled line' 'workers: `N61:nonce-61:tok-one:111` note a wrapped prose b' "$out25"
 check '25. --digest ends the workers line at the pool-disposition line' 'workers: `N61:nonce-61:tok-one:111` note a wrapped prose b' "$(bash "$SCRIPT" "$hy" --digest 2>/dev/null | grep '^workers:')"
 
+js="$tmp/jira-stub"; jdb="$tmp/jira-db"; mkdir -p "$jdb"; : > "$jdb/calls"
+cat > "$js" <<'STUB'
+#!/usr/bin/env bash
+db="${JIRA_STUB_DB:?}"
+printf '%s\n' "$*" >> "$db/calls"
+case "$1" in
+    get) st="$(cat "$db/status-$2" 2>/dev/null)" || exit 1; printf '%s\tTask\t%s\ttitle of %s\n' "$2" "$st" "$2" ;;
+    links)
+        [ -z "${JIRA_STUB_SLEEP:-}" ] || sleep "$JIRA_STUB_SLEEP"
+        n=0
+        while read -r a b; do
+            n=$((n + 1))
+            if [ "$2" = "$a" ]; then printf '%s\tBlocks\tinward=%s\toutward=%s\t%s blocks %s\n' "$n" "$a" "$b" "$a" "$b"
+            elif [ "$2" = "$b" ]; then printf '%s\tBlocks\tinward=%s\toutward=%s\t%s is blocked by %s\n' "$n" "$a" "$b" "$b" "$a"; fi
+        done < "$db/links"
+        [ "$n" -gt 0 ] || echo "$2: no issue links" ;;
+    link)
+        [ "$3" = --blocks ] || exit 2
+        if [ -f "$db/refuse-link" ]; then echo "$2 must carry fixVersion v1 before linking; add that version first, or pass --backlog to opt out" >&2; exit 1; fi
+        printf '%s %s\n' "$2" "$4" >> "$db/links"; echo "Linked: $2 blocks $4" ;;
+    *) exit 2 ;;
+esac
+STUB
+chmod +x "$js"
+mkdir -p "$tmp/t26"
+export LIVE_STATE_JIRA_CMD="$js" JIRA_STUB_DB="$jdb" TMPDIR="$tmp/t26"
+af="$HANDOVER_DIR/b/HIMMEL-nextleg-AF-chief.md"
+af_doc() { { printf '# c\n\n## Live state\n\nworkers: `N61:nonce-61:tok-one:111`\n'; printf '%s\n' "$@"; printf 'queue: none\n\n## Results\n'; } > "$af"; }
+link_calls() { grep -c '^link ' "$jdb/calls" 2>/dev/null || true; }
+bash "$FM" add "${af%.md}.fleet.json" --lane native "$d1" >/dev/null 2>&1
+echo 'To Do' > "$jdb/status-HIMMEL-1"; echo 'In Progress' > "$jdb/status-HIMMEL-2"
+af_doc 'pool-disposition: HIMMEL-2 question after HIMMEL-1'
+bash "$SCRIPT" "$af" --print >/dev/null 2>&1
+check '26. --print makes no link call' 0 "$(link_calls)"
+af_err="$(bash "$SCRIPT" "$af" 2>&1 >/dev/null)"; rc=$?
+check '26. the render succeeds' 0 "$rc"
+check '26. one link call, HIMMEL-1 blocks HIMMEL-2' 'link HIMMEL-1 --blocks HIMMEL-2' "$(grep '^link ' "$jdb/calls" 2>/dev/null)"
+case "$af_err" in *'linked HIMMEL-1 blocks HIMMEL-2'*) r=logged ;; *) r="[$af_err]" ;; esac
+check '26. the link is logged' logged "$r"
+check '26. the pool-disposition line is unchanged' 'pool-disposition: HIMMEL-2 question after HIMMEL-1' "$(grep '^pool-disposition:' "$af")"
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a second render makes no second link call' 1 "$(link_calls)"
+reset26() { : > "$jdb/calls"; : > "$jdb/links"; rm -f "$jdb/refuse-link"; rm -rf "$TMPDIR"/himmel-chain-links-*; }
+calls26() { wc -l < "$jdb/calls" | tr -d ' '; }
+reset26
+echo 'Done' > "$jdb/status-HIMMEL-1"
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a blocker that is not open makes no link call' 0 "$(link_calls)"
+n26=$(grep -cxF 'get HIMMEL-1' "$jdb/calls")
+check '26. that blocker was read' 1 "$n26"
+: > "$jdb/calls"; bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a pair with a closed key is recorded: the next render makes no Jira call' 0 "$(calls26)"
+reset26
+echo 'To Do' > "$jdb/status-HIMMEL-1"; echo 'Closed' > "$jdb/status-HIMMEL-2"
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a waiting key that is not open makes no link call' 0 "$(link_calls)"
+n26=$(grep -cxF 'get HIMMEL-2' "$jdb/calls")
+check '26. that waiting key was read' 1 "$n26"
+reset26
+echo 'To Do' > "$jdb/status-HIMMEL-2"
+echo 'HIMMEL-1 HIMMEL-2' > "$jdb/links"
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a link already in Jira (read from the waiting key, is blocked by) makes no link call' 0 "$(link_calls)"
+n26=$(grep -cxF 'links HIMMEL-2' "$jdb/calls")
+check '26. the waiting key links were read' 1 "$n26"
+: > "$jdb/calls"; bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a link found in Jira is recorded: the next render makes no Jira call' 0 "$(calls26)"
+reset26
+: > "$jdb/refuse-link"
+af_err="$(bash "$SCRIPT" "$af" 2>&1 >/dev/null)"
+check '26. a version refusal is one link call' 1 "$(link_calls)"
+case "$af_err" in *'must carry fixVersion'*) r=logged ;; *) r="[$af_err]" ;; esac
+check '26. the version refusal is logged' logged "$r"
+: > "$jdb/calls"; bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a version refusal is recorded: the next render makes no Jira call' 0 "$(calls26)"
+reset26
+rm -f "$jdb/status-HIMMEL-1"
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+: > "$jdb/calls"; bash "$SCRIPT" "$af" >/dev/null 2>&1
+n26=$(grep -cxF 'links HIMMEL-2' "$jdb/calls")
+check '26. an unreadable status is not recorded: the next render reads again' 1 "$n26"
+echo 'To Do' > "$jdb/status-HIMMEL-1"
+reset26
+af_doc 'pool-disposition: HIMMEL-2 slice after HIMMEL-1 (its spec lands first)'
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a slice after line with a reason writes its link too' 'link HIMMEL-1 --blocks HIMMEL-2' "$(grep '^link ' "$jdb/calls" 2>/dev/null)"
+: > "$jdb/calls"; : > "$jdb/links"; rm -rf "$TMPDIR"/himmel-chain-links-*
+af_doc 'pool-disposition: HIMMEL-2 close after HIMMEL-1'
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a close disposition makes no call at all' 0 "$(wc -l < "$jdb/calls" | tr -d ' ')"
+echo 'To Do' > "$jdb/status-HIMMEL-3"
+af_doc 'pool-disposition: HIMMEL-2 question after HIMMEL-1' 'pool-disposition: HIMMEL-3 slice after HIMMEL-1'
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. two after lines write a link each' 'link HIMMEL-1 --blocks HIMMEL-2|link HIMMEL-1 --blocks HIMMEL-3' "$(grep '^link ' "$jdb/calls" | paste -sd'|')"
+: > "$jdb/calls"; : > "$jdb/links"; rm -rf "$TMPDIR"/himmel-chain-links-*
+af_doc 'pool-disposition: HIMMEL-2 question after HIMMEL-1'
+JIRA_STUB_SLEEP=1 bash "$SCRIPT" "$af" >/dev/null 2>&1 &
+race26=$!
+JIRA_STUB_SLEEP=1 bash "$SCRIPT" "$af" >/dev/null 2>&1; rc_fg=$?
+wait "$race26"; rc_bg=$?
+check '26. both renders at once succeed' '0 0' "$rc_fg $rc_bg"
+check '26. the later render waited and found the pair recorded (one links read)' 1 "$(grep -c '^links ' "$jdb/calls")"
+check '26. two renders at once write the link once' 1 "$(link_calls)"
+reset26
+LIVE_STATE_JIRA_TIMEOUT=1 JIRA_STUB_SLEEP=4 bash "$SCRIPT" "$af" >/dev/null 2>&1; rc=$?
+check '26. a stalled Jira read is cut at the deadline and the render succeeds' 0 "$rc"
+check '26. a stalled Jira read writes no link' 0 "$(link_calls)"
+: > "$jdb/calls"; bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a stalled read is not recorded: the next render writes the link' 1 "$(link_calls)"
+reset26
+: > "$tmp/not-a-dir"
+TMPDIR="$tmp/not-a-dir" bash "$SCRIPT" "$af" >/dev/null 2>&-; rc=$?
+check '26. no record dir and a closed stderr still exit with the render status' 0 "$rc"
+unset LIVE_STATE_JIRA_CMD JIRA_STUB_DB TMPDIR
+
 [ "$t1" = tok-one ] || { echo "FAIL - setup: lock token [$t1]"; fails=$((fails+1)); }
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails FAILED"; exit 1; }
