@@ -2397,8 +2397,8 @@ else
         rm -rf "$d" "$st"; mkdir -p "$d" "$st"
         fake="$st/crontab-fake.sh"
         sed "s#^CSTATE=.*#CSTATE=\"$st\"#" "$FAKE_CRONTAB3" > "$fake"; chmod +x "$fake"
-        HOME="$OPTIN_HOME" env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$fake" GRAPHMAP_BAT_DIR="$d" \
-            PATH="$TMP_ROOT/bin:$GRAPHIFY_BIN_DIR_PATH:$PATH" "$REAL_BASH" "$s" arm --vault "$VAULT" --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+        HOME="$OPTIN_HOME" env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$fake" GRAPHMAP_BAT_DIR="$d" GRAPHMAP_DOTENV_ROOT="$ADOPTER_ENV" \
+            PATH="$CLAUDE_BIN_DIR_PATH:$TMP_ROOT/bin:$GRAPHIFY_BIN_DIR_PATH:$PATH" "$REAL_BASH" "$s" arm --vault "$VAULT" --with-publish --publish-semantic --semantic-active >/dev/null 2>"$st/arm.err" || true
         for f in "$d"/graphmap-*.sh; do
             [ -f "$f" ] || continue
             printf '== %s\n' "${f##*/}"; cat "$f"
@@ -2413,9 +2413,9 @@ else
         if [ -n "$g1_head" ] && grepq "$g1_head" -F 'graphmap-publish-himmel.sh' && [ "$g1_head" = "$g1_base_out" ]; then
             pass "G1 the publisher render of HEAD equals the merge base's render"
         else
-            fail "G1 the publisher render differs from the merge base's" "$(diff <(printf '%s\n' "$g1_base_out") <(printf '%s\n' "$g1_head") | head -20)"
+            fail "G1 the publisher render differs from the merge base's" "$(diff <(printf '%s\n' "$g1_base_out") <(printf '%s\n' "$g1_head") | head -20; head -5 "$TMP_ROOT/g1run-head-state/arm.err" "$TMP_ROOT/g1run-base-state/arm.err" 2>/dev/null)"
         fi
-        g1_ctl="$(printf '%s\n' "$g1_head" | sed '0,/--name/s/--name/--namf/')"
+        g1_ctl="${g1_head/graphmap-publish-himmel.sh/graphmap-publish-himmeL.sh}"
         if [ "$g1_ctl" != "$g1_base_out" ]; then pass "G1 RED control: one changed byte outside the replaced root fails the compare"; else fail "G1 RED control: a one-byte change still compared equal"; fi
         git -C "$g1_repo" worktree remove --force "$g1_tree" >/dev/null 2>&1 || rm -rf "$g1_tree"
     fi
