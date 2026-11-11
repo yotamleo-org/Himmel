@@ -9,10 +9,21 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/graph-pass-detached-test.XXXXXX")" || { echo "
 tmp="$(cd "$tmp" && pwd)"
 fails=0
 
+# Stops every stub pass this run started, read from starts.all (the rows remove
+# starts between rows, never starts.all). A pid is only signalled while its
+# command line still names this run's stub, so a reused pid is never hit; the
+# stub leads its own session, so its group takes the sleep child with it.
+stop_stubs() {
+    [ -f "$tmp/starts.all" ] || return 0
+    while IFS= read -r p; do
+        case "$(ps -p "$p" -o args= 2>/dev/null)" in  # swallow-ok: ps failing means the pid is gone
+            *"$tmp/stub-pass.sh"*) kill -- "-$p" 2>/dev/null || kill "$p" 2>/dev/null ;;
+        esac
+    done < "$tmp/starts.all"
+    return 0
+}
 cleanup() {
-    if [ -f "$tmp/starts" ]; then
-        while IFS= read -r p; do kill "$p" 2>/dev/null || true; done < "$tmp/starts"
-    fi
+    stop_stubs
     [ -n "${decoy:-}" ] && kill "$decoy" 2>/dev/null
     rm -rf "$tmp"
 }
@@ -29,9 +40,20 @@ state_val() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -n 1; }
 wait_dead() { n=0; while alive "$1" && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n+1)); done; }
 
 stub="$tmp/stub-pass.sh"
-printf '#!/bin/sh\necho "$$" >> "$STUB_STARTS"\necho "stub pass started"\nwhile :; do sleep 1; done\n' > "$stub"
+cat > "$stub" <<'EOF'
+#!/bin/sh
+echo "$$" >> "$STUB_STARTS"
+echo "$$" >> "$STUB_ALL"
+echo "stub pass started"
+dir="${0%/*}"
+i=0
+# A suite killed with SIGKILL cannot run its trap: the stub ends when its dir is
+# gone or after STUB_MAX seconds, so none outlives the run by more than that.
+while [ -d "$dir" ] && [ "$i" -lt "${STUB_MAX:-120}" ]; do sleep 1; i=$((i+1)); done
+EOF
 chmod +x "$stub"
 export STUB_STARTS="$tmp/starts"
+export STUB_ALL="$tmp/starts.all"
 export GRAPH_PASS_SCRIPT="$stub"
 export GRAPH_PASS_STATE_DIR="$tmp/state"
 export GRAPH_PASS_LOG="$tmp/pass-own.log"
@@ -199,6 +221,26 @@ rm -f "$STATE"
 out6c="$(bash "$SCRIPT" status 2>&1)"; rc=$?
 check "6: status none rc 0" "$rc" 0
 check "6: status none" "$out6c" "none"
+
+rm -f "$STATE" "$tmp/starts" "$CLAIM"
+bash "$SCRIPT" start >/dev/null 2>&1
+pid13="$(state_val "$STATE" pid)"
+n=0; while [ ! -s "$tmp/starts" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n+1)); done
+rm -f "$tmp/starts"
+stop_stubs
+[ -n "$pid13" ] && wait_dead "$pid13"
+[ -n "$pid13" ] && ! alive "$pid13" && echo "ok - 13: stop_stubs stops a stub whose start was dropped from the per-row file" || { echo "FAIL - 13: stub [$pid13] outlived stop_stubs"; fails=$((fails+1)); }
+
+stubs_alive=0
+if [ -f "$tmp/starts.all" ]; then
+    while IFS= read -r p; do alive "$p" && stubs_alive=$((stubs_alive+1)); done < "$tmp/starts.all"
+fi
+check "14: no stub this suite started is still alive" "$stubs_alive" 0
+
+STUB_MAX=2 bash "$SCRIPT" start >/dev/null 2>&1
+pid15="$(state_val "$STATE" pid)"
+[ -n "$pid15" ] && { n=0; while alive "$pid15" && [ "$n" -lt 60 ]; do sleep 0.1; n=$((n+1)); done; }
+[ -n "$pid15" ] && ! alive "$pid15" && echo "ok - 15: a stub exits by itself once its lifetime cap passes" || { echo "FAIL - 15: stub [$pid15] outlived its cap"; fails=$((fails+1)); }
 
 echo
 [ "$fails" -eq 0 ] && { echo "PASS: all rows ok"; exit 0; } || { echo "FAIL: $fails row(s)"; exit 1; }
