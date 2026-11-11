@@ -682,6 +682,12 @@ if [ "$ROLE" = "chief" ]; then
     _chief_profile_args=(--settings "$_chief_profile_settings" --append-system-prompt-file "$_chief_brief")
     [ -z "$_chief_profile_mcp" ] || _chief_profile_args+=(--mcp-config "$_chief_profile_mcp" --strict-mcp-config)
     LAUNCH_ARGV=("$LAUNCHER" "${_chief_profile_args[@]}" "${LAUNCH_ARGV[@]:1}")
+    if [ "$HEADLESS" != "1" ] && [ "$RECORDER" != "1" ]; then
+        case "${LAUNCHER##*/}" in
+            claude-codex|claude-openrouter|claude-deepseek) ;;
+            *) LAUNCH_ARGV=("$LAUNCHER" --remote-control "$NAME" "${LAUNCH_ARGV[@]:1}") ;;
+        esac
+    fi
 fi
 if [ "$HEADLESS" = "1" ]; then
     # auto is what a headed worker runs in (defaultMode=auto in the operator's

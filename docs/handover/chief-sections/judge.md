@@ -18,6 +18,27 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   (`HIMMEL_VERDICT_MODEL`; `HIMMEL_VERDICT_EFFORT`, then `CLAUDE_CODE_EFFORT_LEVEL`),
   and a write with no value for either is refused (exit 2). A verdict that
   lives only in your context dies with it; the file is what a successor reads.
+  **The judge writes it, not you**: a `gen-judge-brief.py --dispatch-json`
+  prompt for a PR head names the judge's own `write-verdict.sh` line (qid,
+  head, PR, model and effort filled in), and `judge-ro` runs it through Bash
+  with its evidence in the scratch dir `scripts/judge-dir.sh <PR>` makes. Its
+  tools line stays `Read, Grep, Glob, Bash`, because `guard-chief-dispatch.sh`
+  gives the read-only lane only to that exact line. You write the file by hand
+  only when the judge's reply reports a refused write.
+- **A judge whose verdict never landed is re-dispatched by code**: `chief.sh
+  next` reads the outgoing session's subagent registry (the one
+  `live-subagents.sh` reads). For every `judge-ro` call whose description is the
+  generator's `Judge <qid> on <KEY>` and whose `verdicts/<qid>/` holds no file
+  written since that dispatch (a reused qid keeps its older verdicts), it writes `JUDGE-OWED <qid> — <description> — brief: <transcript>` into the
+  successor's pre-computed ACTION ZERO block. A `judge-ro` call with any other
+  description is listed as `JUDGE-OWED unknown (<agent-id>: <description>)`; no
+  owed judge reads `JUDGE-OWED: none`, and a read failure reads
+  `JUDGE-OWED: unavailable (<why>)` (then list them by hand). The successor
+  checks `verdicts/<qid>/` again for a file newer than the `.meta.json` beside
+  the named transcript (a judge still running at `next` may have written it
+  since), then re-dispatches each one still owed from the prompt in that
+  transcript, through the generator with a fresh nonce; an `unknown` line is
+  re-asked by hand.
   Prefer `bash scripts/handover/chief-kit/verdict-go.sh <qid> <GO|NO-GO> <head>
   --model <id> --effort <level>
   --pr <n> --evidence-file <path> --doc <chief doc> --contract <yes|no>`: it runs

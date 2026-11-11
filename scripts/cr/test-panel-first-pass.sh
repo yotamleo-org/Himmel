@@ -113,6 +113,7 @@ ARGS_LOG="$tmp/panel-args.log"
 export ARGS_LOG
 cat > "$fx/scripts/cr/critic-panel.sh" <<'STUBEOF'
 #!/usr/bin/env bash
+case " $* " in *" --pin-ref refs/himmel/outside/0..0 "*) echo "critic-panel.sh: REFUSING --pin-ref refs/himmel/outside/0..0 — not a commit (stub of the real refusal)" >&2; exit 7 ;; esac
 printf 'called\n' >> "$CALL_LOG"
 printf '%s\n' "$*" >> "$ARGS_LOG"
 # STDIN_LOG keeps the diff the panel was handed; CTX_COPY keeps the context
@@ -1165,14 +1166,24 @@ pr_run() { # args...: sets pr_out, pr_err, pr_rc
     pr_err="$(cat "$tmp/err")"
 }
 pr_rounds() { local f n=0; for f in "$prrepo"/.git/cr-review-rounds/*; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
-# the pin: the stub panel must accept --pin-ref, as the real one will; until it does the run is refused
+cp "$fx/scripts/cr/critic-panel.sh" "$tmp/critic-panel.stub"
+# shellcheck disable=SC2016  # the fake panel's own text, expanded when it runs
+printf '#!/usr/bin/env bash\necho "critic-panel.sh: unknown option $1" >&2\nexit 2\n' > "$fx/scripts/cr/critic-panel.sh"
+pr_probe_refused() {
+    if [ "$pr_rc" -eq 7 ]; then ok "$1 is refused (exit 7)"; else bad "$1 exit (got $pr_rc)"; fi
+    assert_has "$pr_err" "--pin-ref" "$1: the refusal names --pin-ref"
+    if [ -f "$CALL_LOG" ]; then bad "$1: the unpinned panel ran"; else ok "$1: the unpinned panel never ran"; fi
+    if [ "$(pr_rounds)" = 0 ] && [ "$(rs_count "$prrepo")" = 0 ]; then ok "$1: no round spent, no round-scope row"; else bad "$1: state or a row was written"; fi
+}
 pr_run --pr 7 --head "$pr_oid" --branch feat/outside-thing
-if [ "$pr_rc" -eq 7 ]; then ok "T2.17 control: a panel without --pin-ref is refused (exit 7)"; else bad "T2.17 control: a panel without --pin-ref exit (got $pr_rc)"; fi
-assert_has "$pr_err" "--pin-ref" "T2.17 control: the refusal names --pin-ref"
-if [ -f "$CALL_LOG" ]; then bad "T2.17 control: the unpinned panel ran"; else ok "T2.17 control: the unpinned panel never ran"; fi
-if [ "$(pr_rounds)" = 0 ] && [ "$(rs_count "$prrepo")" = 0 ]; then ok "T2.17 control: no round spent, no round-scope row"; else bad "T2.17 control: state or a row was written"; fi
-cp "$fx/scripts/cr/critic-panel.sh" "$tmp/critic-panel.nopin"
+pr_probe_refused "T2.17 control: a panel without --pin-ref"
 printf '# accepts: --pin-ref) pins the review to a ref instead of the live checkout\n' >> "$fx/scripts/cr/critic-panel.sh"
+pr_run --pr 7 --head "$pr_oid" --branch feat/outside-thing
+pr_probe_refused "T2.17 a comment that names --pin-ref alone"
+printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 0\n' > "$fx/scripts/cr/critic-panel.sh"
+pr_run --pr 7 --head "$pr_oid" --branch feat/outside-thing
+pr_probe_refused "T2.17 a panel that accepts any --pin-ref"
+cp "$tmp/critic-panel.stub" "$fx/scripts/cr/critic-panel.sh"
 pr_run --pr 7 --head "$pr_oid" --branch feat/outside-thing
 if [ "$pr_rc" -eq 0 ]; then ok "T2.17 --pr from a checkout on another branch exits 0"; else bad "T2.17 --pr exit (got $pr_rc; err: $pr_err)"; fi
 assert_has "$pr_out" "captured diff base: main ($pr_base)" "T2.17 the base is the merge base with the PR's base branch"
@@ -1191,6 +1202,50 @@ pr_after="$(git -C "$prrepo" status --porcelain; git -C "$prrepo" rev-parse HEAD
 if [ "$pr_before" = "$pr_after" ]; then ok "T2.3 status, HEAD and config of the primary fixture are unchanged"; else bad "T2.3 the primary fixture changed"; fi
 if [ ! -e "$pr_canary" ]; then ok "T2.3 the PR's canary never ran"; else bad "T2.3 a PR file ran"; fi
 if [ "$(git -C "$prrepo" worktree list | wc -l | tr -d ' ')" = 1 ]; then ok "T2.3 no new worktree"; else bad "T2.3 a worktree was added"; fi
+pr_run_x() {
+    local envs=()
+    while [ "$1" != "--" ]; do envs+=("$1"); shift; done
+    shift
+    rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/stdin-log" "$tmp/err"
+    pr_out="$( (cd "$prrepo" && env HOME="$pr_home" GH_FALLBACK="$tmp/ghbin/gh" PR_OID="$pr_oid" STDIN_LOG="$tmp/stdin-log" FAKE_RC=0 \
+        PATH="$tmp/prbin:$PATH" "${envs[@]}" bash "$SCRIPT" "$@") 2>"$tmp/err" )"; pr_rc=$?
+    pr_err="$(cat "$tmp/err")"
+}
+git -C "$prrepo" update-ref refs/himmel/outside/11 "$pr_oid"
+cp "$HERE/critic-panel.sh" "$HERE/failure-classify.sh" "$HERE/finding-reraise.js" "$HERE/triviality-gate.sh" "$fx/scripts/cr/"
+cp "$HERE/../lib/prim.sh" "$HERE/../lib/canon-path.sh" "$fx/scripts/lib/"
+REAL_MEMBER="$tmp/real-member.sh"
+cat > "$REAL_MEMBER" <<'EOS'
+#!/usr/bin/env bash
+cat > "$REAL_DIFF_DUMP"
+printf 'head=%s branch=%s pr=%s triv=%s\n' "${CR_TARGET_HEAD:-}" "${CR_TARGET_BRANCH:-}" "${CR_TARGET_PR:-}" "${CR_TRIVIALITY_OVERRIDE:-}" > "$REAL_ENV_DUMP"
+printf '# real First-Pass Review\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
+EOS
+chmod +x "$REAL_MEMBER"
+printf '%s' '{"panel":[{"slug":"real","model":"real-model","provider":"nvidia","tier":"free"}]}' > "$tmp/real-critics.json"
+REAL_DIFF_DUMP="$tmp/real-diff.txt"; REAL_ENV_DUMP="$tmp/real-env.txt"; rm -f "$REAL_DIFF_DUMP" "$REAL_ENV_DUMP"
+cp "$HERE/critic-panel.sh" "$fx/scripts/cr/critic-panel.sh"
+pr_run_x CRITICS_JSON="$tmp/real-critics.json" CRITIC_FIRST_PASS="$REAL_MEMBER" CR_PROFILE=free \
+    REAL_DIFF_DUMP="$REAL_DIFF_DUMP" REAL_ENV_DUMP="$REAL_ENV_DUMP" -- --pr 11 --head "$pr_oid" --branch feat/outside-thing
+if [ "$pr_rc" -eq 0 ]; then ok "T2.17 the real panel, --pr from a checkout on another branch: exit 0"; else bad "T2.17 real panel exit (got $pr_rc; err: $pr_err)"; fi
+assert_has "$(cat "$REAL_DIFF_DUMP" 2>/dev/null)" "evil-test.sh" "T2.17 the real panel's member read the PR ref's diff, not the checkout's"
+assert_lacks "$(cat "$REAL_DIFF_DUMP" 2>/dev/null)" "live.txt" "T2.17 the real panel's member never saw the checkout"
+assert_has "$(cat "$REAL_ENV_DUMP" 2>/dev/null)" "head=$pr_oid branch=feat/outside-thing pr=11" "T2.17 the member sees the PR head, headRefName and PR number"
+assert_has "$(cat "$REAL_ENV_DUMP" 2>/dev/null)" "triv=full" "R7 --pr sets CR_TRIVIALITY_OVERRIDE=full for the panel it runs"
+pr_avail="$(grep -F '"kind":"avail"' "$prrepo/.git/cr-critic-scores.jsonl" | grep -F "\"head\":\"$pr_oid\"")"
+assert_has "$pr_avail" '"branch":"feat/outside-thing"' "T2.17 the panel's own rows carry headRefName from a checkout on another branch"
+if [ -n "$pr_avail" ]; then ok "T2.17 the panel wrote rows for the PR head"; else bad "T2.17 the panel wrote no row for the PR head"; fi
+assert_lacks "$pr_avail" "$(git -C "$prrepo" rev-parse HEAD)" "T2.17 no panel row carries the checkout's head"
+pr_row="$(rs_rows "$prrepo" | tail -n 1)"
+assert_has "$pr_row" '"branch":"feat/outside-thing"' "T2.17 the round-scope row carries headRefName (real panel)"
+assert_has "$pr_row" "\"head\":\"$pr_oid\"" "T2.17 the round-scope row carries the PR head (real panel)"
+assert_has "$pr_row" '"pr":11' "T2.17 the round-scope row names the PR (real panel)"
+cp "$tmp/critic-panel.stub" "$fx/scripts/cr/critic-panel.sh"
+cap_lit() { grep -o 'CRITIC_FIRST_PASS_CAP_BYTES:-[0-9]*' "$1" | sed -n '1s/.*-//p'; }
+cap_pfp="$(cap_lit "$HERE/panel-first-pass.sh")"; cap_cfp="$(cap_lit "$HERE/critic-first-pass.sh")"
+if [ -n "$cap_pfp" ] && [ "$cap_pfp" = "$cap_cfp" ]; then ok "R2 the cap defaults in panel-first-pass.sh and critic-first-pass.sh are equal ($cap_pfp)"; else bad "R2 cap defaults differ (panel-first-pass.sh '$cap_pfp', critic-first-pass.sh '$cap_cfp')"; fi
+sed 's/CRITIC_FIRST_PASS_CAP_BYTES:-204800/CRITIC_FIRST_PASS_CAP_BYTES:-204801/' "$HERE/panel-first-pass.sh" > "$tmp/pfp-cap-mutant.sh"
+if [ "$(cap_lit "$tmp/pfp-cap-mutant.sh")" != "$cap_cfp" ]; then ok "R2 control: a drifted cap literal is told apart"; else bad "R2 control: the cap reader did not see a drifted literal"; fi
 # T2.43: a direct call for an unlisted author with a hand-fetched ref is refused by start --pr
 n_before="$(pr_rounds)"; rs_before="$(rs_rows "$prrepo" | wc -l | tr -d ' ')"
 rm -f "$CALL_LOG"
@@ -1211,16 +1266,6 @@ pr_run --pr 7 --head "$pr_oid" --branch some/other-branch
 if [ "$pr_rc" -eq 7 ]; then ok "--pr with a --branch that is not the PR's headRefName exits 7"; else bad "--pr wrong branch exit (got $pr_rc)"; fi
 assert_has "$pr_err" "headRefName" "--pr wrong branch: the refusal names headRefName"
 if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ] && [ "$(rs_rows "$prrepo" | wc -l | tr -d ' ')" = "$rs_before" ]; then ok "--pr wrong branch: no panel, no round, no row"; else bad "--pr wrong branch: the panel ran or state was written"; fi
-# pr_run_x VAR=val ... -- args: pr_run with extra stub environment
-pr_run_x() {
-    local envs=()
-    while [ "$1" != "--" ]; do envs+=("$1"); shift; done
-    shift
-    rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/stdin-log" "$tmp/err"
-    pr_out="$( (cd "$prrepo" && env HOME="$pr_home" GH_FALLBACK="$tmp/ghbin/gh" PR_OID="$pr_oid" STDIN_LOG="$tmp/stdin-log" FAKE_RC=0 \
-        PATH="$tmp/prbin:$PATH" "${envs[@]}" bash "$SCRIPT" "$@") 2>"$tmp/err" )"; pr_rc=$?
-    pr_err="$(cat "$tmp/err")"
-}
 pr_ledger="$prrepo/.git/cr-critic-scores.jsonl"
 # a hostile --branch is refused before anything is echoed or recorded
 n_before="$(pr_rounds)"
@@ -1228,6 +1273,14 @@ pr_run_x X=1 -- --pr 7 --head "$pr_oid" --branch 'feat/x;touch-evil'
 if [ "$pr_rc" -eq 2 ]; then ok "--pr with a branch outside the safe alphabet exits 2"; else bad "--pr hostile branch exit (got $pr_rc)"; fi
 assert_lacks "$pr_err" "touch-evil" "--pr hostile branch: the raw name is never echoed"
 if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ]; then ok "--pr hostile branch: no panel, no round"; else bad "--pr hostile branch: the panel ran or state was written"; fi
+for pr_base_try in 'main;touch-evil' '-main' 'ma in'; do
+    n_before="$(pr_rounds)"
+    pr_run_x PR_BASE="$pr_base_try" -- --pr 7 --head "$pr_oid" --branch feat/outside-thing
+    if [ "$pr_rc" -eq 7 ]; then ok "R1 --pr with base '$pr_base_try' exits 7"; else bad "R1 --pr base '$pr_base_try' exit (got $pr_rc)"; fi
+    assert_has "$pr_err" "base branch name as the forge names it is outside the safe alphabet" "R1 base '$pr_base_try': the refusal names the base alphabet check"
+    assert_lacks "$pr_out$pr_err" "touch-evil" "R1 base '$pr_base_try': the raw name is never echoed"
+    if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ]; then ok "R1 base '$pr_base_try': no panel, no round"; else bad "R1 base '$pr_base_try': the panel ran or state was written"; fi
+done
 # an unreadable or unknown base never lets the diff read the station HEAD
 for pr_base_try in nosuchbranch ""; do
     n_before="$(pr_rounds)"

@@ -93,8 +93,16 @@ printf '1234 claude --session x -n HIMMEL-9002-N2900-thing-2026-10-19\n1235 clau
 export PATH="$WORK/bin:$PATH"
 export STUCK_SCAN_NOW="$NOW" STUCK_SCAN_MIRROR="$M" STUB_PRS="$WORK/prs.json" STUB_PGREP="$WORK/pgrep.txt"
 export STUCK_SCAN_JIRA_CMD="$WORK/jira-stub" STUB_JIRA_LOG="$WORK/jira.log"
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$WORK/ttroot" "$WORK/emptyroot" "$WORK/tt" "$WORK/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$WORK/ttroot/.env"
+: > "$WORK/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$WORK/tt/gh"
+export GH_READ_ENV_ROOT="$WORK/emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$WORK/himmelcfg"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 
 out="$(bash "$SS" 2>&1)"; rc=$?
+base_out="$out"
 check "scan exits 0" 0 "$rc"
 has   "orphan In Progress is STUCK with its age" '^STUCK HIMMEL-9001 In Progress 5h$' "$out"
 hasnt "ticket owned by a live worker is quiet" 'HIMMEL-9002' "$out"
@@ -150,6 +158,23 @@ check "dispose without an argument exits 2" 2 "$rc"
 bash "$SS" dispose not-a-key RESUME x >/dev/null 2>&1; rc=$?
 check "dispose with a malformed key exits 2" 2 "$rc"
 check "refused dispose posts nothing" "" "$(cat "$WORK/jira.log")"
+
+TTLOG="$WORK/tt.log"
+logn() { grep -c -E -- "$1" "$TTLOG"; }
+tt_scan() {
+    : > "$TTLOG"
+    GH_READ_ENV_ROOT="$1" PATH="$WORK/tt:$PATH" GH_STUB_DELEGATE="$WORK/bin/gh" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" bash "$SS" 2>&1
+}
+out="$(GH_STUB_MAINFAIL=rate tt_scan "$WORK/ttroot")"; rc=$?
+check "main spent: the scan exits 0" 0 "$rc"
+hasnt "main spent: no STUCK-UNKNOWN gh failed" '^STUCK-UNKNOWN' "$out"
+check "main spent: the scan answers as it does on a healthy main" "$base_out" "$out"
+check "main spent: the PR list read logs tok=read" 1 "$(logn '^tok=read argv=pr list ')"
+check "main spent: no read logs tok=main" 0 "$(logn '^tok=main ')"
+out="$(tt_scan "$WORK/emptyroot")"; rc=$?
+check "control, no read token: the scan exits 0" 0 "$rc"
+check "control: the PR list read logs tok=main" 1 "$(logn '^tok=main argv=pr list ')"
+check "control: no call logs tok=read" 0 "$(logn '^tok=read ')"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; }
 echo "$fails FAILED"; exit 1

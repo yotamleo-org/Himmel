@@ -12,8 +12,9 @@
 # 6 = citation-guard id not computable (SHA-256 unavailable/failed) — run
 #     REFUSED, fail-closed: no review emitted, no ledger rows appended.
 # (exit 4 also covers stdin mode: an empty piped/null diff.)
-# 7 = --head / --base-sha pin mismatch: the checkout
-#     or the base branch moved since the caller captured its review inputs — run
+# 7 = --head / --base-sha / --pin-ref pin mismatch: the checkout
+#     or the base branch moved since the caller captured its review inputs, or
+#     the --pin-ref ref is missing or is not at --head — run
 #     REFUSED, no review emitted, no ledger rows appended, so a stamp can never
 #     certify a SHA nobody reviewed, nor a diff nobody computed.
 # Bash 3.2-safe.
@@ -91,7 +92,7 @@ LEDGER_APPEND="${CRITIC_LEDGER_APPEND:-$SCRIPT_DIR/ledger-append.sh}"
 
 usage() {
     cat >&2 <<'USAGE'
-usage: critic-panel.sh [--worktree <path>] [--head <sha>] [--branch <name>] [--base <name>] [--base-sha <sha>] [--check [--all-tiers]]
+usage: critic-panel.sh [--worktree <path>] [--head <sha>] [--branch <name>] [--pin-ref <ref>] [--base <name>] [--base-sha <sha>] [--check [--all-tiers]]
   stdin                    review the unified diff read from stdin (back-compat)
                            ledger rows are stamped with the CWD repo's HEAD, not the
                            diff's source: pipe a diff from the same repo (or use
@@ -105,6 +106,11 @@ usage: critic-panel.sh [--worktree <path>] [--head <sha>] [--branch <name>] [--b
   --branch <name>          pin the review to the caller's captured BRANCH: exit 7
                            unless the checkout is still on it (a SHA pin alone
                            passes a switch to another branch at the same commit)
+  --pin-ref <ref>          review the commit this ref names (e.g. a fetched PR ref)
+                           instead of the checkout's HEAD: exit 7 unless the ref
+                           resolves to a commit and --head, when given, equals it.
+                           The checkout's HEAD and branch are not read; requires
+                           --branch, which names the stamped branch
   --base <name>            the caller's captured base REF NAME; wins over
                            CR_BASE_BRANCH and the auto-resolution, so --base-sha
                            is verified against the base the caller actually used
@@ -120,8 +126,9 @@ exit 3: --worktree path is not a git worktree
 exit 4: --worktree <base>...HEAD diff is empty, or stdin mode got no piped diff (review refused)
 exit 5: git metadata, diff computation, or CR-ledger persistence failed
 exit 6: citation-guard id not computable (SHA-256 unavailable or failing) - run refused
-exit 7: --head/--branch/--base-sha pin mismatch - the checkout or the base branch
-        moved since capture (review refused)
+exit 7: --head/--branch/--base-sha/--pin-ref pin mismatch - the checkout or the base
+        branch moved since capture, or the --pin-ref ref is missing or not at --head
+        (review refused)
 USAGE
 }
 
@@ -392,6 +399,7 @@ WORKTREE=""
 CTX_ARGS=()
 HEAD_PIN=""
 BRANCH_PIN=""
+PIN_REF=""
 BASE_PIN=""
 BASE_REF=""
 while [ $# -gt 0 ]; do
@@ -465,6 +473,21 @@ while [ $# -gt 0 ]; do
             BRANCH_PIN="$2"
             shift 2
             ;;
+        --pin-ref)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "critic-panel.sh: --pin-ref requires a ref name" >&2
+                usage
+                exit 2
+            fi
+            case "$2" in
+                -*|*[!A-Za-z0-9._/+-]*)
+                    echo "critic-panel.sh: --pin-ref must be a plain ref name, not an option or a revision expression (got: $2)" >&2
+                    exit 2
+                    ;;
+            esac
+            PIN_REF="$2"
+            shift 2
+            ;;
         --check)
             CHECK_MODE="1"
             shift
@@ -506,6 +529,12 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
+
+if [ -n "$PIN_REF" ] && [ -z "$BRANCH_PIN" ]; then
+    echo "critic-panel.sh: --pin-ref requires --branch, the branch the pinned commit is stamped under" >&2
+    usage
+    exit 2
+fi
 
 if [ "$CHECK_MODE" = "1" ] && [ -n "$WORKTREE" ]; then
     echo "critic-panel.sh: --worktree cannot be combined with --check" >&2
@@ -617,7 +646,7 @@ fi
 # full head.
 _verify_head_pin() {
     # $1 = resolved repository root ("" when there is none), $2 = resolved head
-    if [ -n "$BRANCH_PIN" ]; then
+    if [ -n "$BRANCH_PIN" ] && [ -z "$PIN_REF" ]; then
         if [ -z "$1" ]; then
             echo "critic-panel.sh: REFUSING --branch $BRANCH_PIN — no git worktree here to verify the pin against" >&2
             exit 7
@@ -638,10 +667,22 @@ _verify_head_pin() {
         echo "critic-panel.sh: REFUSING --head $HEAD_PIN — not a commit in $1" >&2
         exit 7
     fi
+    if [ "$_pin" != "$2" ] && [ -n "$PIN_REF" ]; then
+        echo "critic-panel.sh: REFUSING — --pin-ref $PIN_REF names ${2:-<unresolvable>} but the review was pinned to --head $_pin; the ref is not the commit the caller captured, so this review would be stamped against a SHA it never covered." >&2
+        exit 7
+    fi
     if [ "$_pin" != "$2" ]; then
         echo "critic-panel.sh: REFUSING — $1 is at ${2:-<unresolvable>} but the review was pinned to $_pin; the checkout moved since the caller captured its inputs, so this review would be stamped against a SHA it never covered. Re-run /pr-check from step 1." >&2
         exit 7
     fi
+}
+
+_resolve_pin_ref_head() {
+    if [ -z "$1" ]; then
+        echo "critic-panel.sh: REFUSING --pin-ref $PIN_REF — no git worktree here to resolve the ref in" >&2
+        exit 7
+    fi
+    _head="$(git -C "$1" rev-parse --verify --quiet "$PIN_REF^{commit}")" || { echo "critic-panel.sh: REFUSING --pin-ref $PIN_REF — not a commit in $1" >&2; exit 7; }
 }
 
 # Resolve the operator-visible base name, then hand ref precedence to the one
@@ -747,7 +788,11 @@ if [ -n "$WORKTREE" ]; then
     # two invocations, certifying a head that does not match the reviewed diff.
     # The diagnostics still read "<base>...HEAD" (the operator-visible intent);
     # $_head is that same HEAD, snapshotted here.
-    _head="$(git -C "$REVIEW_ROOT" rev-parse HEAD 2>/dev/null)" || _head=""
+    if [ -n "$PIN_REF" ]; then
+        _resolve_pin_ref_head "$REVIEW_ROOT"
+    else
+        _head="$(git -C "$REVIEW_ROOT" rev-parse HEAD 2>/dev/null)" || _head=""
+    fi
     _verify_head_pin "$REVIEW_ROOT" "$_head"
     _verify_base_pin "$REVIEW_ROOT"
     # A verified pin is the base the diff uses, for the same
@@ -787,7 +832,9 @@ else
     # diff is not HEAD-derived, but REVIEW_HEAD must still name the exact commit
     # under review, snapshotted here rather than re-resolved at stamp time.
     _head=""
-    if [ -n "$REVIEW_ROOT" ]; then
+    if [ -n "$PIN_REF" ]; then
+        _resolve_pin_ref_head "$REVIEW_ROOT"
+    elif [ -n "$REVIEW_ROOT" ]; then
         _head="$(git -C "$REVIEW_ROOT" rev-parse HEAD 2>/dev/null)" || _head=""
     fi
     # The stdin diff is the CALLER's; the pin still guards the stamp — and, for

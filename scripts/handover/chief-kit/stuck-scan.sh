@@ -38,6 +38,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 
 usage() {
     printf 'usage: stuck-scan.sh [--mirror DIR] [--version V] [--min N] [--repo owner/name]\n       stuck-scan.sh dispose <KEY> RESUME <worker> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>\n' >&2
@@ -78,7 +80,7 @@ done
 case "$min" in '' | *[!0-9]*) usage ;; esac
 [ -d "$mirror" ] || { printf 'STUCK-UNKNOWN mirror missing\n'; exit 3; }
 
-prs="$(gh pr list ${repo:+--repo "$repo"} --state open --limit "${STUCK_SCAN_PR_LIMIT:-1000}" --json number,title,headRefName 2>/dev/null)" || { printf 'STUCK-UNKNOWN gh failed\n'; exit 3; }  # swallow-ok: a gh failure exits 3 as STUCK-UNKNOWN on this line
+prs="$("$GH_READ_BIN" pr list ${repo:+--repo "$repo"} --state open --limit "${STUCK_SCAN_PR_LIMIT:-1000}" --json number,title,headRefName 2>/dev/null)" || { printf 'STUCK-UNKNOWN gh failed\n'; exit 3; }  # swallow-ok: a gh failure exits 3 as STUCK-UNKNOWN on this line
 # pgrep exits 1 on no match, which is a valid empty answer; only rc >= 2 is a failure
 alive="$(pgrep -af 'claude .*-n HIMMEL-' 2>/dev/null)"  # swallow-ok: rc is checked on the next line
 [ "$?" -le 1 ] || { printf 'STUCK-UNKNOWN pgrep failed\n'; exit 3; }

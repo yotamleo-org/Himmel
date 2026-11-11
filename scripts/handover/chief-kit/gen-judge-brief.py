@@ -12,7 +12,9 @@ chief rewrites. It NEVER launches: it writes the brief and prints its path and n
 call instead of writing a headed-session brief: description, subagent_type judge-ro, model (the
 alias opus, sonnet or fable), the complete prompt, run_in_background false. Diagnostics go to
 stderr. It writes nothing (no bucket document, queue lock, RESUME file or scratch dir), so the
-same qid can be rerun. The prompt carries a fresh RETASK nonce with the direct-parent authority
+same qid can be rerun. For a spec with pr and head the prompt names the judge's own write-verdict.sh line
+(qid, head, PR, model and the effort of .claude/agents/judge-ro.md filled in), so the judge persists its
+verdict itself; with no head it says the verdict is the reply. The prompt carries a fresh RETASK nonce with the direct-parent authority
 rule and a distinct `JUDGE-BRIEF: <16 hex>` line: declared generator provenance, which
 guard-agent-model.sh only warns about when absent; it is not proof the generator ran. Only
 claude-opus-5-5, claude-sonnet-5-5, claude-fable-5-2 or their aliases map to an Agent alias; any
@@ -61,9 +63,15 @@ AGENT_ALIASES = {'claude-opus-5-5': 'opus', 'opus': 'opus', 'claude-sonnet-5-5':
                  'claude-fable-5-2': 'fable', 'fable': 'fable'}
 POLICY = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'guardrails',
                                       'agent-model-policy.json'))
-DISPATCH_DO_NOT = ('edit, write or run anything that changes a file, a branch or a ticket: your verdict is your reply. '
+DISPATCH_DO_NOT = ('edit, write or run anything that changes a file, a branch or a ticket, except the one evidence '
+                   'file in your judge scratch dir and the write-verdict.sh call below. '
                    'A judge that finds it needs to change a file to answer its question has been asked an '
                    'implementation question: say so rather than working around it.')
+DISPATCH_DO_NOT_NO_HEAD = ('edit, write or run anything that changes a file, a branch or a ticket. '
+                           'A judge that finds it needs to change a file to answer its question has been asked an '
+                           'implementation question: say so rather than working around it.')
+JUDGE_AGENT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '.claude',
+                                           'agents', 'judge-ro.md'))
 DEFAULT_DO_NOT = ('everything except reading and writing your verdict file. A judge that finds it needs '
                   'to edit a file to answer its question has been asked an implementation question: '
                   'say so in the verdict rather than editing.')
@@ -176,6 +184,33 @@ def agent_alias(s):
     return alias
 
 
+def judge_effort():
+    try:
+        with open(JUDGE_AGENT, encoding='utf-8') as f:
+            m = re.search(r'\A---\n(?:.*\n)*?effort: *([a-z]+)\n(?:.*\n)*?---\n', f.read())
+    except OSError as e:
+        die('cannot read the judge-ro agent definition %s: %s' % (JUDGE_AGENT, e))
+    if not m:
+        die('the judge-ro agent definition %s names no effort: line in its front matter' % JUDGE_AGENT)
+    return m.group(1)
+
+
+def persist_text(s):
+    if not (s.get('pr') and s.get('head')):
+        return ('**Persist:** this question names no PR head, so no verdict file can record it: your verdict '
+                'is your reply, and your parent persists it.')
+    return ('**Persist your verdict before you reply** (your parent may wrap before it reads your reply, and '
+            '`verdicts/%s/` is what its successor reads): make your scratch dir with '
+            '`bash <primary checkout>/scripts/judge-dir.sh %s`, write your evidence to one file in it with the '
+            'verdict line left out, then run '
+            '`bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh %s <GO|NO-GO> %s --pr %s '
+            '--evidence-file <your evidence file> --model %s --effort %s` and put the path it prints in your reply. '
+            '`<primary checkout>` is the directory holding the `.git` that '
+            '`git rev-parse --path-format=absolute --git-common-dir` prints. A refused write is reported in your '
+            'reply under your GUARD RULE, never re-spelled.'
+            % (s['qid'], s['pr'], s['qid'], s['head'], s['pr'], model_of(s), judge_effort()))
+
+
 def dispatch_prompt(s, a, alias):
     lines = ['You are a judge call (judge-ro) for `%s`: rule on ONE question, read-only. Your reply follows '
              'the contract in your agent definition.' % s['qid'],
@@ -199,7 +234,10 @@ def dispatch_prompt(s, a, alias):
               '**Evidence:**',
               evidence_text(s),
               '',
-              '**Scope:** read-only. Do not: %s' % (s.get('do_not') or DISPATCH_DO_NOT),
+              '**Scope:** read-only. Do not: %s' % (s.get('do_not') or (
+                  DISPATCH_DO_NOT if s.get('pr') and s.get('head') else DISPATCH_DO_NOT_NO_HEAD)),
+              '',
+              persist_text(s),
               '',
               '**Result contract:** the first line of your reply is `**GO**` or `**NO-GO**` for the head named '
               'above; then the evidence you checked. Completion condition: %s' % s['_completion']]

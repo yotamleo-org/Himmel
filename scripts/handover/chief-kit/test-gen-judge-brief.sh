@@ -287,6 +287,9 @@ lacks "dispatch: no RESUME instruction" "$p" "RESUME"
 lacks "dispatch: no scratch-file instruction for a judge with no Write tool" "$p" "Put every scratch file"
 lacks "dispatch: no DELTA-JUDGE on a first judge" "$p" "DELTA-JUDGE:"
 lacks "dispatch: no ESCALATION on a first judge" "$p" "ESCALATION:"
+has "dispatch: the prompt names the write-verdict.sh line with qid, head, PR, model and effort filled" "$p" \
+    "scripts/handover/chief-kit/write-verdict.sh j2599a <GO|NO-GO> $HEAD40 --pr 2599 --evidence-file <your evidence file> --model claude-opus-5-5 --effort high\`"
+has "dispatch: the prompt makes the evidence scratch dir with judge-dir.sh" "$p" "scripts/judge-dir.sh 2599\`"
 [ ! -e "$DBUCKET" ] && pass "dispatch: no bucket document written" || fail "dispatch wrote $DBUCKET: $(ls -R "$DBUCKET")"
 [ ! -e "$DSCRATCH" ] && pass "dispatch: no scratch dir created" || fail "dispatch created $DSCRATCH"
 diag="$(cat "$WORK/dj.err")"
@@ -298,8 +301,12 @@ g="$(guards "$(as_call "$first")")"
 
 mutate nodo 'del d["do_not"]'
 dj nodo
-lacks "dispatch: the default scope names no verdict file for an in-process judge" "$(jf prompt)" "verdict file"
-has "dispatch: the default scope says the verdict is the reply" "$(jf prompt)" "your verdict is your reply"
+has "dispatch: the default scope allows only the evidence file and the write-verdict.sh call" "$(jf prompt)" \
+    "except the one evidence file in your judge scratch dir and the write-verdict.sh call below"
+lacks "dispatch: the default scope no longer says the verdict is only the reply" "$(jf prompt)" "your verdict is your reply"
+dj nopr
+lacks "dispatch: a spec with no PR head carries no write-verdict.sh line" "$(jf prompt)" "write-verdict.sh"
+has "dispatch: a spec with no PR head says the verdict is the reply" "$(jf prompt)" "your verdict is your reply"
 
 dj dfind
 [ "$dj_rc" = 0 ] && [ "$(jf model)" = "sonnet" ] && pass "dispatch: a finding delta maps to the alias sonnet" || fail "finding delta rc=$dj_rc model=$(jf model): $(cat "$WORK/dj.err")"

@@ -101,4 +101,26 @@ cp "$WORK/fleet.good" "${DOC%.md}.fleet.json"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$PRS"
 check "prs failure is fail-open text" "yes" "$(printf '#!/usr/bin/env bash\nexit 1\n' > "$PRS"; run prs | grep -q unavailable && echo yes)"
 
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$WORK/ttroot" "$WORK/emptyroot" "$WORK/tt" "$WORK/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$WORK/ttroot/.env"
+: > "$WORK/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$WORK/tt/gh"
+printf '#!/usr/bin/env bash\necho "#7 a read title (feat/x)"\n' > "$WORK/gh-delegate"
+chmod +x "$WORK/gh-delegate"
+TTLOG="$WORK/tt.log"
+tt_prs() {
+    : > "$TTLOG"
+    env -u HANDOFF_FACTS_PRS GH_READ_ENV_ROOT="$1" PATH="$WORK/tt:$PATH" GH_STUB_DELEGATE="$WORK/gh-delegate" \
+        GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$WORK/himmelcfg" \
+        bash "$HF" prs "$DOC" --repo "$REPO" 2>/dev/null
+}
+logn() { grep -c -E -- "$1" "$TTLOG"; }
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+check "main spent: prs prints the open PR from the read token" "#7 a read title (feat/x)" "$(GH_STUB_MAINFAIL=rate tt_prs "$WORK/ttroot")"
+check "main spent: the PR list read logs tok=read" "1" "$(logn '^tok=read argv=pr list --state open ')"
+check "main spent: no read logs tok=main" "0" "$(logn '^tok=main ')"
+check "control, no read token: prs prints the open PR" "#7 a read title (feat/x)" "$(tt_prs "$WORK/emptyroot")"
+check "control: the PR list read logs tok=main" "1" "$(logn '^tok=main argv=pr list --state open ')"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
