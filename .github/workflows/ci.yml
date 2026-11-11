@@ -1051,8 +1051,7 @@ jobs:
 
   # Trust-path git subprocess calls must scrub GIT_DIR/GIT_WORK_TREE/
   # GIT_COMMON_DIR/GIT_INDEX_FILE before invoking git — an attacker-set value
-  # otherwise steers which repo/worktree/index the call answers about
-  # (already caught twice as real bugs, PR 1212 and PR 1217).
+  # otherwise steers which repo/worktree/index the call answers about.
   # Main and the crons scan every trust-path file; a PR scans the files it
   # changed, to keep PR runs short.
   git-env-scrub:
@@ -1425,9 +1424,9 @@ jobs:
       # CHANGED against the baseline; a diff that cannot be computed fails closed
       # (shell-lint exits 2). The checkout is the PR merge ref, so HEAD^1 is the
       # current base tip; event base.sha can lag it and would lint main's own files.
-      # shell-lint's [shellcheck] check ran the runner's preinstalled 0.9.0 while
-      # the pre-commit hook above runs the pinned shellcheck-py, so a PR could pass every local
-      # gate and fail here. Install that same rev, read from the pre-commit config, first on PATH.
+      # The runner's preinstalled shellcheck is not the pinned shellcheck-py the pre-commit hook
+      # above runs, so a PR could pass every local gate and fail here. Install that same rev,
+      # read from the pre-commit config, first on PATH.
       - name: pinned shellcheck for shell-lint
         if: github.event_name == 'pull_request' && !job.container.id
         run: |
@@ -1656,15 +1655,10 @@ jobs:
       # runs without a ci.yml edit; `ls` fails on an unexpanded pattern.
       - run: ls scripts/op-env-parity.test.mjs scripts/observability/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/observability -- node --test scripts/op-env-parity.test.mjs "scripts/observability/*.test.mjs"
       # The scripts/hooks + scripts/lib node:test suites (the security gates'
-      # own suites) ran ONLY in the local pre-commit hook until now — that
-      # hook deliberately skipped ci.yml because Actions was off on the
-      # private repo and the public mirror lacked .claude/settings.json (the
-      # wire-hook-bash fixture source). Both premises died 2026-09-09: origin
-      # is the public repo with Actions on every PR, and .claude/settings.json
-      # is tracked there. Pre-commit stays the fast local gate; this is the
-      # authoritative check a bypassed or skipped local hook can no longer
-      # dodge (a suite that inherits a bypass variable from the launching shell
-      # is exactly the kind of leak this surfaces).
+      # own suites). Pre-commit runs them as the fast local gate; this is the
+      # authoritative check a bypassed or skipped local hook cannot dodge (a
+      # suite that inherits a bypass variable from the launching shell is
+      # exactly the kind of leak this surfaces).
       - run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/hook-lib-suites -- bash scripts/hooks/check-hook-lib-suites.sh
 
   guardrail-matrices:
@@ -1747,13 +1741,11 @@ jobs:
       # directory fails every wired case (docs/internals/environment-gotchas.md,
       # "The bun test cwd is per-suite"). No `bun install` needed: scripts/telegram
       # has no package.json of its own and the suites run against the repo tree.
-      # This is the largest bun test surface in the repo (971 tests). It runs on
-      # every matrix entry because
-      # three of its cases are platform-sensitive by construction.
+      # It runs on every matrix entry because three of its cases are
+      # platform-sensitive by construction.
       - run: bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots
-      # The luna source-identity suites (source-identity +
-      # backfill, 40 tests) had no CI step, so a regression in
-      # scripts/vault/** could merge green. Runs from the repo root like the
+      # The luna source-identity suites (source-identity + backfill) gate
+      # scripts/vault/**. Runs from the repo root like the
       # telegram suite (fixtures are repo-relative). Hermetic: a stub `gh` and a
       # preloaded fetch stub, no network, no live vault.
       # A step in this job (not a new job) rides the already-required
@@ -2040,9 +2032,6 @@ jobs:
     # suite-durations.tsv is the fast tier only (~18 min slowest
     # shard). 60 is ~1.7x the slowest nightly shard. There are no macos rows in
     # this matrix (macos-cadence.yml / os-verify.yml carry their own 120).
-    # Cap NOT lowered. PR shards run only impacted suites (p95 1676s,
-    # 28m, over 10 green PR runs); the main sweep runs the full set per shard and
-    # the p95 measured here does not cover it, so 60 stays until sweep data does.
     timeout-minutes: 60
     # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
     env:
