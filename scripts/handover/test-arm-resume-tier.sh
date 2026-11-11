@@ -261,6 +261,11 @@ assert_not_contains "a: guard line cites no ruling number" "ruling" "$out"
 assert_model_flag "a: relaunch command carries --model opus" opus "$out"
 assert_not_contains "a: relaunch command carries no fable token" 'fable' "$out"
 
+out=$(run_arm --help 2>&1)
+rc=$?
+assert_rc "a: --help exits 0" 0 "$rc"
+assert_not_contains "a: --help text cites no ruling number" "ruling" "$out"
+
 # ---------------------------------------------------------------------------
 # (b) Fable-family --model on a non-chief arm, no --fable-ok -> rc=20,
 #     refused before anything is armed. Two sub-cases prove FAMILY match

@@ -425,9 +425,8 @@ Optional:
                      and unnecessary on a *-chief.md handover, which
                      is always exempt.
   --context <1m|standard>
-                     Arming-time context-window choice (an
-                     operator ruling that context mode must be armed
-                     explicitly per chief/worker, never inherited from the
+                     Arming-time context-window choice (context mode
+                     must be armed explicitly per chief/worker, never inherited from the
                      user-level model setting: a stray [1m] suffix there
                      drove ~25-35% of the weekly bank). 1m appends the
                      [1m] suffix to --model (silently a no-op on a
@@ -449,8 +448,8 @@ Optional:
                      key names a fence scripts/chief/base-status.sh
                      could not certify clean — PENDING/RED, or the
                      certification itself failed (missing script, gh
-                     query error, truncated list) — (ruling
-                     66) instead of refusing (rc=21). WARNS loudly and
+                     query error, truncated list) — instead of
+                     refusing (rc=21). WARNS loudly and
                      prints the warning text on stderr — paste it into
                      the worker's first message. No-op on a handover with
                      no `fence:` key, or when the fence checks out clean.
