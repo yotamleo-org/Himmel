@@ -283,7 +283,7 @@ families=""
 families="${families%,}"
 
 deny_msg="You are a CHIEF session dispatching PR/ship-flow-shaped work ($families) as an
-in-process Agent-tool subagent — DENIED (standing operator ruling 20).
+in-process Agent-tool subagent — DENIED. Arm a detached session instead (steps below).
 
 In-process subagents die with the parent, are not relaunchable, and their reports land in the
 parent's own context — none of that survives a chief session ending, and a chief dying
