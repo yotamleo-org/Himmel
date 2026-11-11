@@ -2491,6 +2491,27 @@ for _m43 in headed headless; do
   contains "43b $_m43 console: argv carries the chief --mcp-config file" "$out43b" "chief.mcp.json"
 done
 
+# --- 43r: a native headed chief arm is reachable from the Claude app
+# (--remote-control <session name>), as a native worker is. Headless (--bg), a
+# claudex recorder lane and a lane launcher stay without it.
+for _m43r in headed headless claudex lanebin; do
+  d43r="$tmp/c43r-$_m43r"; mk_stub "$d43r" 1 alive
+  _hl43r=0; _rec43r=0; _lau43r=claude
+  [ "$_m43r" = headless ] && _hl43r=1
+  [ "$_m43r" = claudex ] && _rec43r=1
+  [ "$_m43r" = lanebin ] && _lau43r="$d43r/claude-codex"
+  rc43r=0
+  out43r=$(HEADED_ARM_HEADLESS="$_hl43r" HEADED_ARM_RECORDER="$_rec43r" HEADED_ARM_LAUNCHER="$_lau43r" WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI=true \
+    KONSOLE_CMD="$d43r/konsole" PGREP_CMD=true HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43r/locks" HEADED_ARM_PROC="$d43r/proc" \
+    bash "$SCRIPT" --dry-run --role chief "HIMMEL-rc43r" "doc43r.md" "$d43r/signal-never" "$PAST" "$d43r/log" 2>&1) || rc43r=$?
+  check "43r $_m43r chief --dry-run: exit 0" "$rc43r" "0"
+  if [ "$_m43r" = headed ]; then
+    contains "43r headed native chief: argv carries --remote-control <session name>" "$out43r" "--remote-control HIMMEL-rc43r"
+  else
+    not_contains "43r $_m43r chief: argv carries no --remote-control" "$out43r" "--remote-control"
+  fi
+done
+
 # --- 43d: the chief's MCP allowlist names an undefined server
 # (the settings still resolve): refuse, exit 2, konsole never invoked.
 d43d="$tmp/c43d"; mk_stub "$d43d" 1 alive
