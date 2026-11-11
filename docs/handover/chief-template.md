@@ -196,6 +196,22 @@ matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review 
 `bash scripts/handover/chief-kit/go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21). Tag cuts and the
 merged-docs list: `chief-sections/merges.md`.
 
+**An unlisted outside author's PR walks a staged path**, every stage at the exact head `H`; a new head
+restarts at stage 1. A listed author (login and id on `~/.himmel/outside-contributors.json`) starts at stage 3.
+1. **Stage 1, CodeRabbit and CI.** The operator's approve-and-run click, your `ci:go` label and its approved run,
+   and your `@coderabbitai review` comment. Complete when CodeRabbit's status at `H` is `success`, no path is on
+   `scripts/ci/outside-lint-surface.txt`, and `check-ci.sh <n> --max-wait 120 --except-context codeowner-review-gate` exits 0.
+2. **Stage 2, the audit.** From the primary checkout: `bash <anchor>/scripts/cr/outside-security-audit.sh --pr <n> --head <H>`.
+   Exit 0 wrote a row (`outside-audit: <verdict> <report>`); 6 stage 1 is incomplete; 7 no verdict, re-run once the
+   cause is gone; 8 already audited. A `fail` stops the PR at `H` (a new head is the only way on, no override); `pass`
+   and `flagged` go on.
+3. **The approval request** (`outside-approve-request <n> <H>`) carries the stage-3 evidence: the CodeRabbit status at
+   `H`, the CI run ids at `H`, the audit verdict, its hard hits, its Critical and Important counts, every dropped
+   bullet and the report path. The operator's `approve` writes the `review` row.
+4. **Stage 3, our full review:** `/pr-check --pr <n>`, until ready-check item 16 passes at `H`.
+5. **The code-owner approval comes last:** the operator's GitHub APPROVED review at `H` turns `codeowner-review-gate`
+   green; then the whole ready-check passes at `H` and the GO follows.
+
 **19. suite evidence.** Every impacted suite of `origin/main..<head>` needs proof at the
 exact head: `local_pass` or a ruled SKIP in the head's `impacted` ledger row, or a `ran 0 <path>`
 line in the CI shard manifests (`docs/internals/validation-gates.md`). Read each ruled SKIP the
