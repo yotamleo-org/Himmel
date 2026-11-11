@@ -7,11 +7,16 @@
 # moves the ticket back.
 #
 # Usage: worker-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--repo <owner/repo>] [--doc <path>] [--resume-brief <path>]
+#        worker-jira-status.sh <TICKET> --event phase-label --phase <p>
+#        worker-jira-status.sh <TICKET> --event phase-label --after <event> --rule <R> [--doc <path>] [--pr <n>]
 #        worker-jira-status.sh <TICKET> <target-status> [--allow-back]
 #   --repo names the repository whose PRs and checks the derive reads (GH_REPO);
 #   without it gh reads the current checkout's.
 #   The second form is the legacy call: the target is a hint logged as
 #   event=legacy:<target>, never written.
+#   --event phase-label writes the ticket's one phase:* label and nothing else (no derive, no status, no
+#   record): the chief's form takes --phase, the wrapper's own second child takes --after and --rule.
+#   Exactly one of those forms; either flag with any other event exits 2.
 #
 # Under a per-key flock it derives, re-reads Jira and the open-PR heads (a
 # change re-derives once; a second change defers), transitions, reads the
@@ -23,21 +28,29 @@
 # TICKET_STATUS_BUDGET seconds (default 20), and a run cut off logs
 # miss stage=timeout.
 #
+# The phase label: after the status child has exited, the wrapper runs a second child,
+# --event phase-label --after <event> --rule <R>, in the budget the first left. It reads the ticket's
+# phase:* labels and, on a change, swaps them with one `edit --phase`. Its rows are event=phase-label
+# result=phase-set|phase-miss only (a cut-off one is phase-miss stage=timeout), never a status-shaped
+# row, so a slow phase write cannot read as a status miss. This script is the one caller of that edit.
+#
 # Env: WORKER_SESSION_JIRA_STATUS=0 opts out (a disabled row); HIMMEL_RELEASE_MANAGER=1 skips (a skip rule=RM row). TICKET_STATUS_LOCK_WAIT
-# (default 10) bounds the flock wait. The rest is read by the lib.
+# (default 10) bounds the flock wait; TICKET_STATUS_PHASE_MIN (default 3) is the seconds the phase child
+# needs left, else one phase-miss stage=budget row. The rest is read by the lib.
 #
 # Platform guard: POSIX bash 3.2+ (shell-only harness).
 set -u
 
 usage() {
     echo "usage: worker-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--repo <owner/repo>] [--doc <path>] [--resume-brief <path>]" >&2
+    echo "       worker-jira-status.sh <TICKET> --event phase-label --phase <p>" >&2
     echo "       worker-jira-status.sh <TICKET> <target-status> [--allow-back]" >&2
     exit 2
 }
 [ "$#" -ge 2 ] || usage
 KEY="$1"
 shift
-EVENT="" PR="" HEAD="" REPO="" DOC="" RESUME=""
+EVENT="" PR="" HEAD="" REPO="" DOC="" RESUME="" PHASE="" AFTER="" RULE="" HP="" HA="" HR=""
 if [ "${1#--}" = "$1" ]; then
     EVENT="legacy:$1"
     shift
@@ -53,11 +66,24 @@ while [ "$#" -gt 0 ]; do
         --repo) REPO="$2" ;;
         --doc) DOC="$2" ;;
         --resume-brief) RESUME="$2" ;;
+        --phase) PHASE="$2" HP=1 ;;
+        --after) AFTER="$2" HA=1 ;;
+        --rule) RULE="$2" HR=1 ;;
         *) usage ;;
     esac
     shift 2
 done
 [ -n "$EVENT" ] || usage
+# phase-label takes exactly --phase <p>, or --after <event> with --rule <R>; no other event takes any of the three
+if [ "$EVENT" = phase-label ]; then
+    if [ -n "$HP" ]; then
+        [ -z "$HA$HR" ] && [ -n "$PHASE" ] || usage
+    else
+        [ -n "$AFTER" ] && [ -n "$RULE" ] || usage
+    fi
+else
+    [ -z "$HP$HA$HR" ] || usage
+fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
@@ -103,17 +129,58 @@ fi
 # shellcheck source=../../lib/timeout-bin.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/timeout-bin.sh"
+# A phase row is never row(): row() writes the run's own event, and a phase failure must not read as one.
+phase_row() { status_event event=phase-label key="$KEY" ${PR:+"pr=$PR"} "$@"; }
+
 if [ -z "${TICKET_STATUS_IN_BUDGET:-}" ] && [ -n "$_TIMEOUT_BIN" ]; then
     budget="${TICKET_STATUS_BUDGET:-20}"
     case "$budget" in ''|*[!0-9]*) budget=20 ;; esac
+    t0=$(date +%s)
     rc=0
-    TICKET_STATUS_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 "$budget" bash "${BASH_SOURCE[0]}" "$KEY" --event "$EVENT" \
+    if [ "$EVENT" = phase-label ]; then
+        # the chief's form: one child, and its cut-off is a phase row, never a status miss
+        TICKET_STATUS_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 "$budget" bash "${BASH_SOURCE[0]}" "$KEY" --event phase-label \
+            ${HP:+--phase "$PHASE"} ${HA:+--after "$AFTER" --rule "$RULE"} \
+            ${PR:+--pr "$PR"} ${REPO:+--repo "$REPO"} ${DOC:+--doc "$DOC"} || rc=$?
+        case "$rc" in
+            124|137)
+                phase_row result=phase-miss stage=timeout
+                warn "$KEY phase not written within ${budget}s" ;;
+        esac
+        exit 0
+    fi
+    # child 1, the status child, hands its rule to the wrapper through a file; with no file
+    # (mktemp failed) the variable is set but empty, so the child neither writes one nor runs the phase step
+    rulefile=$(mktemp "${TMPDIR:-/tmp}/ticket-status-rule.XXXXXX" 2>/dev/null) || rulefile=""  # swallow-ok: no rule file means no phase step, WARNed next
+    [ -n "$rulefile" ] || echo "WARN worker-jira-status: cannot make the rule file; no phase step for $KEY (continuing; the worker is not blocked)" >&2
+    TICKET_STATUS_RULE_FILE="$rulefile" TICKET_STATUS_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 "$budget" bash "${BASH_SOURCE[0]}" "$KEY" --event "$EVENT" \
         ${PR:+--pr "$PR"} ${HEAD:+--head "$HEAD"} ${REPO:+--repo "$REPO"} ${DOC:+--doc "$DOC"} ${RESUME:+--resume-brief "$RESUME"} || rc=$?
     case "$rc" in
         124|137)
+            [ -z "$rulefile" ] || rm -f "$rulefile"
             row result=miss stage=timeout
             warn "$KEY not synced within ${budget}s" ;;
     esac
+    # child 2, the phase child: only after child 1 returned, with the budget it left, and only for an event that can anchor
+    prule=""
+    [ -z "$rulefile" ] || { prule=$(cat "$rulefile"); rm -f "$rulefile"; }
+    if [ -n "$prule" ] && { { [ "$EVENT" = live ] && [ -n "$DOC" ]; } || { [ "$EVENT" = merge ] && [ -n "$PR" ]; } || [ "$prule" = D5c ] || [ "$prule" = D0 ]; }; then
+        pmin="${TICKET_STATUS_PHASE_MIN:-3}"
+        case "$pmin" in ''|*[!0-9]*) pmin=3 ;; esac
+        left=$((budget - ($(date +%s) - t0)))
+        if [ "$left" -lt "$pmin" ] || [ "$left" -lt 1 ]; then
+            phase_row result=phase-miss stage=budget
+        else
+            rc=0
+            TICKET_STATUS_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 "$left" bash "${BASH_SOURCE[0]}" "$KEY" --event phase-label --after "$EVENT" --rule "$prule" \
+                ${PR:+--pr "$PR"} ${DOC:+--doc "$DOC"} || rc=$?
+            case "$rc" in
+                124|137)
+                    phase_row result=phase-miss stage=timeout
+                    echo "WARN worker-jira-status: $KEY phase not written within ${left}s (continuing; the worker is not blocked)" >&2 ;;
+            esac
+        fi
+    fi
     exit 0
 fi
 
@@ -146,14 +213,98 @@ take_key_lease() {
     done
     trap 'rmdir "$lease" 2>/dev/null || :' EXIT
 }
+lock_miss() { # in phase-label mode a lock miss is a phase row, never a status-shaped deferred
+    if [ "$EVENT" = phase-label ]; then phase_row result=phase-miss stage=lock; else row result=deferred stage=lock; fi
+}
 if command -v flock >/dev/null 2>&1; then
     exec 9>>"$lockdir/$KEY" || warn "cannot open the $KEY status lock"
     if ! flock -w "${TICKET_STATUS_LOCK_WAIT:-10}" 9; then # prim-ok: a bounded wait that logs deferred; with_lock has no deadline
-        row result=deferred stage=lock
+        lock_miss
         exit 0
     fi
 else
-    take_key_lease || { row result=deferred stage=lock; exit 0; }
+    take_key_lease || { lock_miss; exit 0; }
+fi
+
+# The phase label is moved by its own mode (after the lock, before any derive or record write), so a
+# chief's backfill call never moves a status and never touches the worker record.
+phase_furthest() { # <space-joined phase names> - the furthest one the funnel knows, else empty
+    local want="" p
+    for p in design ready build sliced last-step; do
+        case " $1 " in *" $p "*) want=$p ;; esac
+    done
+    printf '%s' "$want"
+}
+
+# phase_next <anchor> <remainder> <status category> <p0> - PH_NEXT is the phase to hold (none = no label), empty = no write
+phase_next() {
+    local f
+    PH_NEXT=""
+    if [ "$3" = "done" ]; then PH_NEXT=none; return 0; fi
+    f=$(phase_furthest "$4")
+    case "$1" in
+        chief) PH_NEXT=$PHASE ;;
+        design-leg) PH_NEXT=${f:-design} ;;
+        build-leg) case "$f" in build|sliced|last-step) PH_NEXT=$f ;; *) PH_NEXT=build ;; esac ;;
+        merge-partial) case "$2" in owed|handed-off) PH_NEXT=last-step ;; *) PH_NEXT=sliced ;; esac ;;
+        partial-seen) case "$f" in sliced|last-step) PH_NEXT=$f ;; *) PH_NEXT=sliced ;; esac ;;
+    esac
+    return 0
+}
+
+# phase_step - move the ticket's one phase label to the phase the event anchors, or leave it. The first
+# anchor that matches wins; no anchor reads nothing and writes nothing. Never fails the funnel: a miss is a
+# WARN and one phase-miss row.
+phase_step() {
+    local contract ev="${AFTER:-$EVENT}" rule="${RULE:-${TS_RULE:-}}" anchor="" remainder="" kind mrow json p0 cat out log
+    if [ "$EVENT" = phase-label ] && [ -n "$HP" ]; then
+        anchor=chief
+    elif [ "$ev" = live ] && [ -n "$DOC" ] && [ -f "$DOC" ]; then
+        kind=$(sed -nE '/^## Results/q; s/^> \*\*Leg kind:\*\* (design|build)[[:space:]]*$/\1/p' "$DOC" | head -n 1)
+        [ -z "$kind" ] || anchor="$kind-leg"
+    fi
+    if [ -z "$anchor" ] && [ "$ev" = merge ] && [ -n "$PR" ]; then
+        log="$(ts_state_dir)/status-events.jsonl"
+        mrow=$(grep -F "\"key\":\"$KEY\"" "$log" 2>/dev/null | jq -c --arg p "$PR" 'select(.event == "merge" and .pr == $p and has("contract"))' | tail -n 1)  # swallow-ok: no log or no merge row is no anchor
+        if [ -n "$mrow" ]; then
+            contract=$(jq -r '.contract // ""' <<<"$mrow")
+            if [ "$contract" = no ]; then
+                anchor=merge-partial
+                remainder=$(jq -r '.remainder // ""' <<<"$mrow")
+            fi
+        fi
+    fi
+    if [ -z "$anchor" ]; then
+        case "$rule" in D5c) anchor=partial-seen ;; D0) anchor=maybe-closed ;; esac
+    fi
+    [ -n "$anchor" ] || return 0
+    json=$(ts_jira get "$KEY" --json 2>/dev/null) || json=""  # swallow-ok: an unread ticket is one phase-miss stage=get row below
+    p0="" cat=""
+    if [ -n "$json" ]; then
+        p0=$(jq -r '[.fields.labels[]? | select(type == "string" and startswith("phase:")) | .[6:]] | join(" ")' <<<"$json" 2>/dev/null) || json=""  # swallow-ok: an unparsable ticket is the same stage=get miss
+        cat=$(jq -r '.fields.status.statusCategory.key // ""' <<<"$json" 2>/dev/null) || json=""  # swallow-ok: an unparsable ticket is the same stage=get miss
+    fi
+    if [ -z "$json" ]; then
+        phase_row result=phase-miss stage=get
+        echo "WARN worker-jira-status: $KEY phase not read (continuing; the worker is not blocked)" >&2
+        return 0
+    fi
+    if [ "$anchor" = maybe-closed ] && [ "$cat" != "done" ]; then return 0; fi
+    phase_next "$anchor" "$remainder" "$cat" "$p0"
+    [ -n "$PH_NEXT" ] || return 0
+    if [ "$PH_NEXT" = none ]; then [ -n "$p0" ] || return 0; else [ "$p0" != "$PH_NEXT" ] || return 0; fi
+    if out=$(ts_jira edit "$KEY" --phase "$PH_NEXT" 2>&1); then
+        phase_row result=phase-set from="${p0// /+}" to="$PH_NEXT" cause="$anchor"
+    else
+        phase_row result=phase-miss stage=edit to="$PH_NEXT"
+        echo "WARN worker-jira-status: $KEY phase '$PH_NEXT' not written: $(printf '%s' "$out" | tr '\n' ' ') (continuing; the worker is not blocked)" >&2
+    fi
+    return 0
+}
+
+if [ "$EVENT" = phase-label ]; then
+    phase_step
+    exit 0
 fi
 
 # An event that names the owner's doc or resume brief records it first, so the
@@ -254,7 +405,18 @@ intake_to_current() {
         echo "WARN worker-jira-status: $KEY sits in $from, later than the current $cur; the INTAKE request was NOT filed: $(printf '%s' "$out" | tr '\n' ' ')" >&2
     fi
 }
-finish() { [ "$EVENT" != live ] || intake_to_current; exit 0; }
+# finish: the INTAKE request first, then the phase. A wrapper (TICKET_STATUS_RULE_FILE set, maybe empty)
+# runs the phase step as its own child from the rule written here; with no wrapper (no timeout binary)
+# the step runs in this process.
+finish() {
+    [ "$EVENT" != live ] || intake_to_current
+    if [ -n "${TICKET_STATUS_RULE_FILE+x}" ]; then
+        [ -z "$TICKET_STATUS_RULE_FILE" ] || printf '%s' "${TS_RULE:-}" > "$TICKET_STATUS_RULE_FILE" 2>/dev/null || :
+    else
+        phase_step
+    fi
+    exit 0
+}
 
 # Derive, then re-read Jira and the PR heads before the write: Jira has no
 # conditional transition, so a change in between re-derives once, and a second
