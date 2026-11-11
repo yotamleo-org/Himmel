@@ -32,7 +32,7 @@ export interface RepairRunOptions {
   /** The versions file; default is <mirror>.versions.tsv. */
   versionsFile?: string | null;
   /** The request check of `jira release request`, handed in because release/ does not import commands/. A throw refuses the request. */
-  refuse?: (ctx: Ctx, row: { verb: Verb; key: string; from_v: string | null; why: string; evidence: Record<string, unknown> }) => void;
+  refuse?: (ctx: Ctx, row: { verb: Verb; key: string; from_v: string | null; to_v: string | null; why: string; evidence: Record<string, unknown>; origin: 'repair' }) => void;
 }
 
 export type StopWhy = 'mirror-unknown' | 'bad-input';
@@ -250,7 +250,7 @@ async function plan(ctx: Ctx, o: RepairRunOptions): Promise<{ done: RepairReport
     for (const c of out) {
       if (c.action.kind !== 'request') continue;
       try {
-        o.refuse(ctx, { verb: c.action.verb, key: c.key, from_v: c.action.from, why: c.action.why, evidence: { rule: 'version-repair', entry: c.action.entry } });
+        o.refuse(ctx, { verb: c.action.verb, key: c.key, from_v: c.action.from, to_v: c.action.to, why: c.action.why, evidence: { rule: 'version-repair', entry: c.action.entry }, origin: 'repair' });
       } catch (e) {
         if (!(e instanceof RequestRefused)) throw e; // a read error is not a refusal: the run ends as an error
         refused.add(c.key);

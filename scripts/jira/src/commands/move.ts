@@ -163,6 +163,8 @@ export function registerMove(program: Command): void {
     .option('--backlog', 'File the target to the backlog (needs --proposed-version backlog and --why)')
     .option('--proposed-version <v>', 'The target is filed with a proposed version and its INTAKE request')
     .option('--why <why>', 'One line: why the target waits in the backlog')
+    .option('--decision <n>', 'The operator decision that places an operator-directed or High target into a version; needs --words')
+    .option('--words <text>', 'The operator\'s exact words in that decision file; recorded as an O- record the INTAKE request cites')
     .option('--gate <reason>', 'Why the target may enter a version')
     .option('--dry-run', 'Run every check of the target create and print the plan; no mutations', false)
     .action(
@@ -173,7 +175,7 @@ export function registerMove(program: Command): void {
           type?: string;
           targetStatus: string;
           dryRun: boolean;
-        } & Pick<CreateOptions, 'parent' | 'labels' | 'sector' | 'fixVersion' | 'priority' | 'backlog' | 'proposedVersion' | 'why' | 'gate'>,
+        } & Pick<CreateOptions, 'parent' | 'labels' | 'sector' | 'fixVersion' | 'priority' | 'backlog' | 'proposedVersion' | 'why' | 'decision' | 'words' | 'gate'>,
       ) => {
         // Partial-state tracking, used by the error-breadcrumb path so the
         // operator can finish the move manually instead of re-running and
@@ -236,7 +238,8 @@ export function registerMove(program: Command): void {
           const target: CreateOptions = {
             type: srcType, title: targetSummary, adf: targetDesc, project: options.toProject, blocks: [], attach: [],
             parent: options.parent, labels: options.labels, sector: options.sector, fixVersion: options.fixVersion,
-            priority: options.priority, backlog: options.backlog, proposedVersion: options.proposedVersion, why: options.why, gate: options.gate,
+            priority: options.priority, backlog: options.backlog, proposedVersion: options.proposedVersion, why: options.why,
+            decision: options.decision, words: options.words, gate: options.gate,
           };
           stepLabel = 'CHECK target create';
           try {

@@ -58,6 +58,8 @@ export interface CreateOptions {
   backlog?: boolean;
   proposedVersion?: string;
   why?: string;
+  decision?: string;
+  words?: string;
   gate?: string;
   chiefOverride?: string;
   affectsVersion?: string;
