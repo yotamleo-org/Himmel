@@ -150,10 +150,17 @@ async function handoverSources(root: string, path: string[]): Promise<string[]> 
   return [...sources];
 }
 
-async function writtenAfterMarker(inbox: string): Promise<boolean> {
-  const [marker, box] = await Promise.all([stat(inbox + ".handover"), stat(inbox)]);
-  return box.isFile() && box.mtimeMs >= marker.mtimeMs;
+function handoverWindowMs(): number {
+  const min = Number(process.env.CHIEF_WAIT_HANDOVER_MIN ?? 60);
+  return (Number.isFinite(min) && min > 0 ? min : 60) * 60_000;
 }
+
+async function writtenAfterRecentMarker(inbox: string, now: number): Promise<boolean> {
+  const [marker, box] = await Promise.all([stat(inbox + ".handover"), stat(inbox)]);
+  return box.isFile() && box.mtimeMs >= marker.mtimeMs && now - marker.mtimeMs < handoverWindowMs();
+}
+
+const CONFIG_AUDIT_BROADCAST = "[config-audit] ";
 
 async function inboxFollowCursor(inbox: string, size: number): Promise<number> {
   try {
@@ -167,10 +174,12 @@ async function unreadCompleteLines(inbox: string): Promise<{ text: string; end: 
   const buf = await readFile(inbox);
   const start = await inboxFollowCursor(inbox, buf.length);
   const end = buf.lastIndexOf(0x0a) + 1;
-  return end > start ? { text: buf.subarray(start, end - 1).toString("utf8"), end } : null;
+  if (end <= start) return null;
+  const lines = buf.subarray(start, end - 1).toString("utf8").split("\n").filter(l => !l.startsWith(CONFIG_AUDIT_BROADCAST));
+  return lines.length ? { text: lines.join("\n"), end } : null;
 }
 
-export async function forwardAfterHandover(root: string, path: string[]): Promise<void> {
+export async function forwardAfterHandover(root: string, path: string[], now = Date.now()): Promise<void> {
   const to = path.at(-1)!;
   const target = consoleInboxPath(root, to);
   if (!target) return;
@@ -178,7 +187,7 @@ export async function forwardAfterHandover(root: string, path: string[]): Promis
     const inbox = consoleInboxPath(root, from);
     if (!inbox) continue;
     try {
-      const unread = await writtenAfterMarker(inbox) ? await unreadCompleteLines(inbox) : null;
+      const unread = await writtenAfterRecentMarker(inbox, now) ? await unreadCompleteLines(inbox) : null;
       if (!unread) continue;
       if (!(await appendIfExists(target, unread.text))) return;
       await atomicWrite(inbox + ".cursor", `${unread.end}\n`);

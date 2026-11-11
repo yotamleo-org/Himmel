@@ -3212,3 +3212,26 @@ test("an unread line that reached the old inbox after the hand-over moves to the
   await routeText(early, `/chief ${HY} after`);
   expect(inboxText(early, HY)).not.toContain("listen very carefully");
 });
+
+test("an unread tail behind a hand-over marker older than the window stays put; the new line still reaches the successor", async () => {
+  const r = root(); const x = heartbeat(r, HX); armInbox(r, HY); handOver(r, HX, HY);
+  writeFileSync(x, "- 09:00 [telegram from=1 chat=1] yesterday's line\n");
+  const t = Date.now() / 1000;
+  utimesSync(x + ".handover", t - 61 * 60, t - 61 * 60);
+  utimesSync(x, t, t);
+  await routeText(r, `/chief ${HX} today`);
+  expect(inboxText(r, HY)).toMatch(/^- \d\d:\d\d \[telegram from=1 chat=1\] today\n$/);
+  expect(existsSync(x + ".cursor")).toBe(false);
+});
+
+test("a config-audit broadcast in an old inbox is never moved, only the operator's lines are", async () => {
+  const r = root(); const x = heartbeat(r, HX); const y = armInbox(r, HY); const z = armInbox(r, HZ); handOver(r, HX, HY); handOver(r, HY, HZ);
+  const broadcast = "[config-audit] settings.json lost keys\n";
+  writeFileSync(x, broadcast + "- 00:02 [telegram from=1 chat=1] raced\n");
+  writeFileSync(y, broadcast);
+  writeFileSync(z, broadcast);
+  const t = Date.now() / 1000;
+  for (const f of [x, y]) { utimesSync(f + ".handover", t - 60, t - 60); utimesSync(f, t, t); }
+  await routeText(r, `/chief ${HX} after`);
+  expect(inboxText(r, HZ)).toMatch(/^\[config-audit\] settings\.json lost keys\n- 00:02 \[telegram from=1 chat=1\] raced\n- \d\d:\d\d \[telegram from=1 chat=1\] after\n$/);
+});
