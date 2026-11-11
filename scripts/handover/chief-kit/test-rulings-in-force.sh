@@ -101,7 +101,7 @@ for n in $(seq 1001 1040); do
 done
 out40="$(render "$blk40" "$B40")"
 same "render: 40 rulings in force fit under 12,000 bytes" "$([ "$(printf '%s' "$out40" | wc -c)" -lt 12000 ] && echo under || echo over)" "under"
-named=0; for n in $(seq 1001 1040); do printf '%s\n' "$out40" | grep -q "^IN FORCE $n, 2026-11-11: ruling $n " && named=$((named + 1)); done
+named=0; for n in $(seq 1001 1040); do grep -q "^IN FORCE $n, 2026-11-11: ruling $n " <<< "$out40" && named=$((named + 1)); done
 same "render: every one of the 40 ids is indexed" "$named" "40"
 same "render: with every ruling indexed the read-all duty is gone" "$(printf '%s\n' "$out40" | grep '^Full original text' | grep -c 'READ ALL')" "0"
 
