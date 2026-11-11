@@ -217,11 +217,35 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     **A READY wakes you once, already checked**. Armed with
     `--workers-from` and the `auto_go` flag off, a worker whose newest marker bullet
     is `READY <pr> <head40> GREEN` wakes you with one line:
-    `WAKE ready <pr> <head40> ready-check=<PASS|FAIL> ci=<GREEN|RED|PENDING> coverage=<PASS|FAIL> disposition=<ok|open:<n>> out=<file>`,
-    plus the tick line. Before waking, the waiter ran `timeout -k 5 90 ready-check.sh
-    <pr> <head>`, one bounded `gh pr checks` read (a failed read is `PENDING`, never
-    `GREEN`) and `cr-disposition.sh check <pr> <head>` (read only; `open:?` = it
-    could not evaluate); `coverage=` is ready-check's item 7. The out file
+    `WAKE ready <pr> <head40> ready-check=<PASS|FAIL> ci=<GREEN|RED|PENDING|PAUSED> coverage=<PASS|FAIL> disposition=<ok|open:<n>|STALLED> out=<file>`,
+    plus the tick line. Before waking, the waiter ran `ready-check.sh <pr> <head>`
+    (bounded 15 s above `READY_CHECK_DEADLINE`, 165 s by default), one bounded
+    `gh pr checks` read (a failed read is `PENDING`, never `GREEN`; a rate-limit
+    refusal is `PAUSED`: ready-check already judged CI) and `cr-disposition.sh check
+    <pr> <head>` (read only; `open:?` = it could not evaluate); `coverage=` is
+    ready-check's item 7. The line may end in `after-quota=<gate>` (below), so read
+    `out=` as a field, not as the last word.
+
+    **At quota out a READY stays unspent.** A READY whose checks cannot read wakes
+    nothing and is not recorded: a gate's rate-limit marker stands at its head, every
+    GraphQL route reads 0 (the waiter marks the head itself), or a check came back
+    `QUOTA-PAUSE`. A check that stalls (`GH-STALL`, its deadline, or killed) wakes
+    nothing the first sample and `WAKE ready <pr> <head40> ready-check=STALLED
+    out=<file>` (or `disposition=STALLED`) the second: a slow read is reported, never
+    hidden. One sample checks one head at most.
+
+    **A gate refused at quota out wakes you once when quota is back.** `go.sh`,
+    `ready-check`, `cr-disposition` and `check-ci` leave a marker when GitHub refuses
+    or stalls a read (`blocked/<key>.<ref>` under the quota dir). The waiter reads
+    them each sample and says nothing while quota is out (the tick's `quota=` shows
+    it). When every bucket the marker names reads healthy again, the owning waiter
+    (the PR's head is in its `readywoke`, or a manifest worker's READY or doc names it)
+    takes it at once and any other 900 s later. If that worker's newest bullet is
+    still READY at the head, you get the normal `WAKE ready … after-quota=<gate>`
+    with fresh checks: rerun `go.sh`. Otherwise one look-only line rides the
+    housekeeping digest: `quota-back <pr|branch-<name>> <head|unknown>
+    caller=<gate>`, plus `quota=unknown` when 2 h passed with no good reading.
+    Resume the BLOCKED worker or rerun the gate it names. The out file
     (`<inbox>.wait.ready-<pr>`) holds the READY bullet (any note the worker wrote in it: a trust path, suite rows) and the three outputs, tokens scrubbed. Do not
     re-run ready-check or poll CI: read the diff, rule, and GO through `go.sh` or
     `verdict-go.sh` as before, which run their own gates. It wakes once per (PR,
