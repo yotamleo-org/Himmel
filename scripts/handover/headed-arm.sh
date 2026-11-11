@@ -682,9 +682,6 @@ if [ "$ROLE" = "chief" ]; then
     _chief_profile_args=(--settings "$_chief_profile_settings" --append-system-prompt-file "$_chief_brief")
     [ -z "$_chief_profile_mcp" ] || _chief_profile_args+=(--mcp-config "$_chief_profile_mcp" --strict-mcp-config)
     LAUNCH_ARGV=("$LAUNCHER" "${_chief_profile_args[@]}" "${LAUNCH_ARGV[@]:1}")
-    # A native headed chief is reachable from the Claude app by its session name,
-    # as a native worker is (headed-arm-worker.sh). Out: a headless --bg chief, the
-    # claudex recorder lane and a lane launcher (a proxy endpoint is not eligible).
     if [ "$HEADLESS" != "1" ] && [ "$RECORDER" != "1" ]; then
         case "${LAUNCHER##*/}" in
             claude-codex|claude-openrouter|claude-deepseek) ;;

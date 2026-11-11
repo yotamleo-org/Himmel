@@ -2491,9 +2491,6 @@ for _m43 in headed headless; do
   contains "43b $_m43 console: argv carries the chief --mcp-config file" "$out43b" "chief.mcp.json"
 done
 
-# --- 43r: a native headed chief arm is reachable from the Claude app
-# (--remote-control <session name>), as a native worker is. Headless (--bg), a
-# claudex recorder lane and a lane launcher stay without it.
 for _m43r in headed headless claudex lanebin; do
   d43r="$tmp/c43r-$_m43r"; mk_stub "$d43r" 1 alive
   _hl43r=0; _rec43r=0; _lau43r=claude
