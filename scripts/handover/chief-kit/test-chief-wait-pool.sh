@@ -73,6 +73,7 @@ case " $* " in
         [ -f "$STUB/pool.fail" ] && exit 1
         [ -f "$STUB/pool.slow" ] && exec sleep 30
         [ -f "$STUB/pool.partial" ] && { printf 'LOCAL\tHIMMEL-9099\tMedium\tv1\tcut short\tfiles=z.sh\n'; exit 124; }
+        [ -f "$STUB/pool.paused" ] && { cat "$STUB/pool.paused"; exit 0; }
         if [ -f "$STUB/pool.rows" ] && [ -f "$STUB/pool.intake" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,INTAKE:3\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"; if [ -s "$STUB/pool.intake" ]; then cat "$STUB/pool.intake"; else echo '# intake 3 for v1: HIMMEL-901 HIMMEL-902 HIMMEL-905'; fi
         elif [ -f "$STUB/pool.rows" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,LOW\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"
         else printf '# pool=0/7,LOW\nPOOL-EMPTY\n'; fi
@@ -462,6 +463,52 @@ check "(rp-workers) the hand run keeps the held worker's ticket out of the pool"
 check "(rp-workers) and lists the other pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-3	')"
 check "(rp-workers) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# rows left in /,$d;/^# disposition /d;/^# pool-unresolved /d;/^# dispatchable in /d' "$WORK/rplegs.out")"
 
+# --- (T7b) a paused pool: no underfill wake and no marker, and the next good reading wakes once
+# shellcheck disable=SC2030  # the T7b cases scope their env to the subshell on purpose
+t7b_stub_cases() (
+    export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800
+    printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+    for t7b_line in '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 floor=500 reset=unknown caller=next-dispatchable nothing-was-judged' \
+        '# gh-stall GH-STALL github read timed out after 400s token=main caller=next-dispatchable nothing-was-judged'; do
+        t7b_kind="${t7b_line#\# }"; t7b_kind="${t7b_kind%% *}"
+        printf '%s\n' "$t7b_line" > "$STUB/pool.paused"
+        I="$(new_inbox "t7b-$t7b_kind")"
+        arm "$I" "$WORK/t7b-$t7b_kind-1.out" 4
+        check "(T7b) a $t7b_kind pool does not wake (rc 124)" "124" "$rc"
+        check "(T7b) a $t7b_kind pool writes no underfill marker" "no" "$([ -e "$I.wait.underfill" ] && echo yes || echo no)"
+        check "(T7b) a $t7b_kind pool shows pool=paused on the heartbeat" "1" "$(grep -c ' pool=paused' "$I.wait")"
+        rm -f "$STUB/pool.paused"
+        arm "$I" "$WORK/t7b-$t7b_kind-2.out" 6
+        check "(T7b) after a $t7b_kind pool the next good reading wakes (rc 0)" "0" "$rc"
+        check "(T7b) after a $t7b_kind pool it is one underfill wake" "1" "$(wakes "$WORK/t7b-$t7b_kind-2.out")"
+    done
+    : > "$STUB/pool.slow"
+    I="$(new_inbox t7b-killed)"
+    CHIEF_WAIT_DISPATCH_TIMEOUT=1 arm "$I" "$WORK/t7b-killed.out" 6
+    check "(T7b) a probe its outer timeout killed does not wake (rc 124)" "124" "$rc"
+    check "(T7b) a probe its outer timeout killed writes no underfill marker" "no" "$([ -e "$I.wait.underfill" ] && echo yes || echo no)"
+    rm -f "$STUB/pool.slow" "$STUB/pool.rows"
+    I="$(new_inbox t7b-empty)"
+    arm "$I" "$WORK/t7b-empty.out" 6
+    check "(T7b) RED control: a real empty pool still wakes (rc 0)" "0" "$rc"
+    check "(T7b) RED control: and says POOL-EMPTY" "1" "$(grep -c '^POOL-EMPTY' "$WORK/t7b-empty.out")"
+    [ "$fails" -eq 0 ]
+)
+# shellcheck disable=SC2030,SC2031  # the T7b cases scope their env to the subshell on purpose
+t7b_real_cases() (
+    mkdir -p "$WORK/t7b-quota"
+    printf '#!/usr/bin/env bash\ncase "$*" in *rateLimit* | "api -i user"*) printf "HTTP/2.0 403 Forbidden\\r\\nX-Ratelimit-Remaining: 0\\r\\n\\r\\n"; exit 1 ;; esac\nexit 0\n' > "$WORK/gh-out"
+    chmod +x "$WORK/gh-out"
+    export CHIEF_WAIT_DISPATCH="$HERE/next-dispatchable.sh" NEXT_DISPATCH_GH_CMD="$WORK/gh-out" HIMMEL_QUOTA_DIR="$WORK/t7b-quota" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800
+    I="$(new_inbox t7b-real)"
+    timeout 10 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/t7b-real.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    check "(T7b) the real dispatcher paused on quota gives no underfill wake (rc 124)" "124" "$rc"
+    check "(T7b) and no underfill marker" "no" "$([ -e "$I.wait.underfill" ] && echo yes || echo no)"
+    [ "$fails" -eq 0 ]
+)
+if ! t7b_stub_cases; then fails=$((fails + 1)); fi
+if ! t7b_real_cases; then fails=$((fails + 1)); fi
+
 # --- (lp) the plain current-version rows are pool rows: 2 labelled heads and 5 plain tickets fill 7 of 7 ----
 M="$WORK/mirror-lp/HIMMEL"; mkdir -p "$M"
 mk HIMMEL-1 '["ps3-blocker"]' "pool head one" "Edit scripts/lib/alpha.sh only."
@@ -498,6 +545,7 @@ check "(8134) the current-version rows are listed before the later-version pool 
 check "(8134) the later-version pool row has its own heading after the current one" "yes" "$([ "$(grep -n '^# dispatchable in v1.0.1' "$WORK/lp2.out" | head -n1 | cut -d: -f1)" -lt "$(grep -n '^# dispatchable in other versions' "$WORK/lp2.out" | head -n1 | cut -d: -f1)" ] && echo yes)"
 
 # --- (6604) a RESUME-HELD line is not a pool key: the pool signature ignores it ----------------
+# shellcheck disable=SC2031  # the T7b subshells set it only for their own rows
 export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"  # the sections above re-point it at the real dispatcher
 rm -f "$STUB/dispositions"
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
