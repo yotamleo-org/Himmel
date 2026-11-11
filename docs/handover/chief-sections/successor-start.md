@@ -38,8 +38,13 @@ the relays below follow in the very next turn.
    before it wraps. `chief.sh next` carries that block verbatim into the successor doc
    when it is short; over `CHIEF_DIRECTION_SPILL_BYTES` (12000) it carries one reading line per ruling
    and writes the full text of every ruling to companion files, which the block's line beginning `Full original text` names and
-   the successor reads in its first turn, in the same batch as the doc;
-   the HANDOFF points at it (and gets the `focus-chains.json` dependency-chain order). Keep the block current on
+   the successor reads in its first turn, in the same batch as the doc.
+   With a rulings ledger in the bucket (`specs/decisions/rulings-in-force.jsonl`,
+   kept with `chief-kit/rulings-in-force.sh record`), `next` puts the rulings in force
+   first, one line each with its verbatim file, and leaves out the superseded and done
+   ones (their files stay); a ruling the ledger does not hold keeps its reading line and
+   its read-in-the-first-turn duty. Before you act on a ruling, read its verbatim file:
+   the index line is not the ruling. The HANDOFF points at it (and gets the `focus-chains.json` dependency-chain order). Keep the block current on
    every ruling and wrap: `next` refuses (exit 7) an absent, empty or placeholder
    block, and (exit 6) while a Results bullet quotes an `OPERATOR ... (verbatim)`
    ruling that `decisions:` and its decisions files do not hold.

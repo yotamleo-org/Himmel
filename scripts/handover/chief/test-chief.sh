@@ -3433,6 +3433,64 @@ mk91 hdr91b "(46) other ruling" "-" "$dir91"
 printf '%s\n' '**Operator:** at the station.' > "$root/tester/hdr91b/DEMO-nextleg-${today}B-chief-HANDOFF.md"; run91 hdr91b
 check "91 a filled existing HANDOFF is not reported" "$(printf '%s\n' "$out91" | grep -c 'template placeholders')" "0"
 
+# --- 9838: next seeds only the newest queue: segment. Earlier chiefs' segments open with
+# ` || (<LL> <time>; ...)` or ` || prior <LL> queue: (...)` (the live shapes; the words are
+# synthetic); the older ones go to the dated history file byte for byte.
+# mkq <bucket> <queue value>: an outgoing doc whose Live state carries that queue: line.
+mkq() {
+    mkdir -p "$root/tester/$1"
+    printf '# B — CHIEF — successor to none (fill signal 70 %%)\n\n## Live state\nqueue: %s\ndecisions: (46) other ruling\n\n## Current direction\n\n%s\n\n## Results\n' "$2" "$dir91" > "$root/tester/$1/DEMO-nextleg-${today}B-chief.md"
+}
+q_new='(ZB 08:1xZ; MERGED this shift none) | 5101 alpha bravo HELD until 9001 | 5102 READY charlie'
+q_seg() { if [ $(($1 % 2)) -eq 0 ]; then printf ' || (X%s %02d:1xZ; MERGED %d) %d delta echo foxtrot' "$2" "$1" "$((5000 + $1))" "$((5050 + $1))"; else printf ' || prior V%s queue: (V%s %02d:5xZ; READY %d) %d golf hotel' "$2" "$2" "$1" "$((5000 + $1))" "$((5050 + $1))"; fi; }
+q_old3="$(q_seg 0 S)$(q_seg 1 X)"
+q_old24=""
+for _i in $(seq 0 21); do q_old24="$q_old24$(q_seg "$_i" "$(printf '%s' ABCDEFGHIJKLMNOPQRSTUVW | cut -c$((_i + 1)))")"; done
+q_old24="$q_old24 || (WH 07:1xZ) 5053 9689 india at ee673e94"
+for _q in q3:"$q_old3" q24:"$q_old24"; do
+    _b="${_q%%:*}"; _old="${_q#*:}"
+    mkq "$_b" "$q_new$_old"; run91 "$_b"
+    check "9838 $_b: next over the queue line exits 0" "$rc91" "0"
+    _seeded="$(sed -n 's/^queue: //p' "$root/tester/$_b/DEMO-nextleg-${today}C-chief.md")"
+    check "9838 $_b: the seeded queue: line is the newest segment and a pointer to the history file" "$_seeded" "$q_new || older segments of this line: specs/decisions/chief-history-$today.md"
+    printf '## queue: older segments, trimmed by chief.sh next from DEMO-nextleg-%sB-chief\n\n%s\n\n' "$today" "$_old" > "$tmp/$_b.want-hist"
+    check "9838 $_b: the history file holds every older segment byte for byte" "$(cmp -s "$tmp/$_b.want-hist" "$root/tester/$_b/specs/decisions/chief-history-$today.md" && echo same || echo differs)" "same"
+    check "9838 $_b: the HANDOFF's held queue is the seeded line, without the older segments" \
+        "$(grep -cxF "**Held queue:** queue: $_seeded" "$root/tester/$_b/DEMO-nextleg-${today}B-chief-HANDOFF.md")/$(grep -cF -- "$_old" "$root/tester/$_b/DEMO-nextleg-${today}B-chief-HANDOFF.md")" "1/0"
+done
+mkq q1 "$q_new"; run91 q1
+check "9838 q1: a one-segment queue: line is seeded whole" "$(sed -n 's/^queue: //p' "$root/tester/q1/DEMO-nextleg-${today}C-chief.md")" "$q_new"
+
+# --- 9846: with a rulings ledger, next renders only the rulings in force into the
+# successor's Current direction; a ruling the ledger lacks is carried as today, and the
+# full text of every ruling stays in the companion files. Synthetic rulings.
+dir9846='OPERATOR 11-11 ZA (BINDING, decision 901): alpha, the full text of 901.
+
+OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.
+
+OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.
+
+OPERATOR 11-10 YZ (BINDING, decision 905): delta, the full text of 905, which no ledger row holds.'
+rif="$fixture_repo/scripts/handover/chief-kit/rulings-in-force.sh"
+for _b in rif9846 noledger9846; do
+    mk91 "$_b" "(46) other ruling" "-" "$dir9846"
+    mkdir -p "$root/tester/$_b/specs/decisions"
+    for _n in 901 902 904; do printf 'OPERATOR words of %s.\n' "$_n" > "$root/tester/$_b/specs/decisions/verbatim-decision-$_n-x.txt"; done
+done
+bash "$rif" record --bucket "$root/tester/rif9846" --id 901 --status in-force --date 2026-11-11 --line 'alpha in force' --path specs/decisions/verbatim-decision-901-x.txt >/dev/null
+bash "$rif" record --bucket "$root/tester/rif9846" --id 902 --status 'superseded-by 903' --date 2026-11-11 --line 'bravo superseded' --path specs/decisions/verbatim-decision-902-x.txt >/dev/null
+bash "$rif" record --bucket "$root/tester/rif9846" --id 904 --status "done" --date 2026-11-10 --line 'charlie done' --path specs/decisions/verbatim-decision-904-x.txt >/dev/null
+run91 rif9846
+d9846="$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/rif9846/DEMO-nextleg-${today}C-chief.md")"
+check "9846 next with a ledger exits 0" "$rc91" "0"
+check "9846 the in-force ruling is indexed from the ledger" "$(printf '%s\n' "$d9846" | grep -cxF 'IN FORCE 901, 2026-11-11: alpha in force (verbatim: specs/decisions/verbatim-decision-901-x.txt)')" "1"
+check "9846 the superseded and done rulings leave the block" "$(printf '%s\n' "$d9846" | grep -cE 'decision 90[24]|^IN FORCE 90[24],')" "0"
+check "9846 a ruling with no ledger row is carried" "$(printf '%s\n' "$d9846" | grep -c '^OPERATOR 11-10 YZ, decision 905: delta')" "1"
+c9846=0; for _r in $(printf '%s\n' "$d9846" | grep -m 1 '^Full original text' | grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md'); do c9846=$((c9846 + $(grep -cxF -e 'OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.' -e 'OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.' "$root/tester/rif9846/$_r"))); done
+check "9846 the companions keep the full text of the rulings that left, byte for byte" "$c9846" "2"
+run91 noledger9846
+check "9846 with no ledger the block is carried as today" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/noledger9846/DEMO-nextleg-${today}C-chief.md" | grep -cxF -e 'OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.' -e 'OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.')" "2"
+
 # --- 92: a chief is named *-chief; a live *-console predecessor still resolves
 out92="$(chief new --bucket chief92)"
 token92="$(token_of "$out92")"
