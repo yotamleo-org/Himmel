@@ -232,6 +232,8 @@ assert_rc "b: pending after-report -> refused" 21 "$rc"
 assert_contains "b: refusal names the fence" "fence 'scripts/hooks'" "$out"
 assert_contains "b: refusal shows the PENDING line" "PENDING PR 501" "$out"
 assert_contains "b: refusal names the escape hatch" "--provisional-base-ok" "$out"
+assert_contains "b: refusal states the rule" "a worker is not armed on a fence whose merged PRs have a pending or red after-report" "$out"
+assert_not_contains "b: refusal cites no ruling number" "ruling" "$out"
 
 # ---------------------------------------------------------------------------
 # (c) same fixture, --provisional-base-ok -> WARNS, arms anyway (rc=0).
@@ -241,7 +243,8 @@ out=$(GH_CMD="$GH_PENDING" run_arm --time "$(future_time)" --handover "$HO_C" --
 rc=$?
 assert_rc "c: --provisional-base-ok arms despite pending" 0 "$rc"
 assert_contains "c: warns loudly" "WARN arm-resume: arming on a PROVISIONAL base" "$out"
-assert_contains "c: warning carries ruling 66" "ruling 66" "$out"
+assert_contains "c: warning tells the worker to hold fence conclusions" "hold fence conclusions until the fix lands" "$out"
+assert_not_contains "c: warning cites no ruling number" "ruling" "$out"
 assert_contains "c: warning shows the PENDING line" "PENDING PR 501" "$out"
 
 # ---------------------------------------------------------------------------
