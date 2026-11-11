@@ -36,8 +36,9 @@
 #                               that grows from empty counts, a failed probe or an emptied
 #                               pool does not; a paused probe, one the dispatcher answered
 #                               with `# quota-pause` / `# gh-stall` or one its outer timeout
-#                               killed, wakes nothing, writes no marker and shows pool=paused
-#                               on the heartbeat, so the next good reading wakes), with the
+#                               killed, wakes nothing, writes no marker and writes pool=paused
+#                               to <inbox>.wait.poolpaused until a good probe removes it, so
+#                               the next good reading wakes), with the
 #                               priority-pool list (--priority-pool-only, plus
 #                               --doc when given; POOL-EMPTY when nothing is in
 #                               the pool), the earliest unreleased version's rows first under
@@ -535,7 +536,6 @@ heartbeat() { # <state> [exit reason]
     local line
     line="hb=$(date +%s) pid=$$ key=${cur_hash:--} tick=$tick_state state=$1"
     [ "${pred_hangs:-0}" -gt 0 ] && line="$line pred_hangs=$pred_hangs"
-    [ -z "${pool_paused:-}" ] || line="$line pool=paused"
     [ -n "${2:-}" ] && line="$line exit=$2"
     printf '%s\n' "$line" > "$hb_file.tmp" 2>/dev/null && mv -f "$hb_file.tmp" "$hb_file" 2>/dev/null
 }
@@ -1003,6 +1003,7 @@ rc_session_for() {
 # non-empty key set wakes once more (a pool that grew from empty, or moved): the first
 # probe may have read a transient empty pool, and the streak never re-woke on it.
 underfill_file="$inbox.wait.underfill"
+pool_paused_file="$inbox.wait.poolpaused"
 unowned_file="$inbox.wait.unowned"
 unowned_none_streak=0
 dispatch_cmd="${CHIEF_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
@@ -1017,7 +1018,12 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
     pool_out="$(timeout -k 2 "$budget" bash "$dispatch_cmd" --priority-pool-only --dispositions "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)"; pool_rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the rc is kept and read below, a pause or a timeout is paused, any other failure drops its rows
     case "$pool_rc" in 124|137) pool_paused=1 ;; esac
     case "$pool_out" in '# quota-pause '*|'# gh-stall '*) pool_paused=1 ;; esac
-    if [ -n "$pool_paused" ]; then pool_out=""; return 1; fi
+    if [ -n "$pool_paused" ]; then
+        pool_out=""
+        printf 'pool=paused\n' > "$pool_paused_file" 2>/dev/null  # swallow-ok: the marker is informational, the pause holds without it
+        return 1
+    fi
+    rm -f "$pool_paused_file"
     [ "$pool_rc" -eq 0 ] || pool_out=""
     pool_summary="$(printf '%s\n' "$pool_out" | DOC='' bash "$HERE/tick.sh" --pool-dispositions --doc "$console_doc" 2>/dev/null)" || pool_summary=""  # swallow-ok: an unavailable interpreter keeps the legacy underfill wake, never an all-clear
     pool_keys="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-keys //p')"  # a stacked-series row names its tickets here, joined to its row by line number
@@ -1147,7 +1153,8 @@ pool_watch_wake() {
 }
 # underfill_repool: succeeds (and saves the new key set) when the marker is due for a re-probe
 # and the pool's non-empty key set differs from the saved one. A failed probe reads no output and
-# never counts; every due probe restarts the cadence clock. The probe blocks the Telegram path
+# never counts; every due probe restarts the cadence clock, except a paused one, which leaves the
+# marker as it was so the next sample probes again. The probe blocks the Telegram path
 # and the heartbeat like a tick does, so it gets CHIEF_WAIT_REPOOL_TIMEOUT (default 120), well
 # inside the five-minute stale-heartbeat window.
 underfill_repool() {
