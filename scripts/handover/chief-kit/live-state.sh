@@ -45,7 +45,8 @@
 # After a render that wrote the doc, each `pool-disposition: <KEY> question|slice after <KEY2>`
 # line with both keys open writes its Jira link `<KEY2> blocks <KEY>` when absent, once per pair.
 # A pair linked, found linked, with a closed key, or refused by the CLI's blocker-version check is
-# recorded and costs no Jira call again; an unread status or a failed call is tried next render.
+# recorded and costs no Jira call again; an unread status, a failed call or one cut at the
+# LIVE_STATE_JIRA_TIMEOUT deadline (seconds, default 30) is tried next render.
 # LIVE_STATE_JIRA_CMD replaces the jira CLI.
 #
 # Exit: 0 ok; 1 refused (no manifest, no workers: line, new worker without a nonce);
@@ -240,10 +241,10 @@ doc_unlock
 
 DONE_RE='^(Done|Closed|wont do|wont fix|Resolved|In Public)$'
 jira() {
-    if [ -n "${LIVE_STATE_JIRA_CMD:-}" ]; then "$LIVE_STATE_JIRA_CMD" "$@" < /dev/null; return; fi
-    local common
+    local t="${LIVE_STATE_JIRA_TIMEOUT:-30}" common
+    if [ -n "${LIVE_STATE_JIRA_CMD:-}" ]; then timeout "$t" "$LIVE_STATE_JIRA_CMD" "$@" < /dev/null; return; fi
     common="$(. "$HERE/../../lib/git-clean.sh" && git_env_scrub && git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 2  # swallow-ok: no checkout, no jira CLI: the pair is tried again next render
-    JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-${2%%-*}}" node "$(dirname "$common")/scripts/jira/dist/index.js" "$@" < /dev/null
+    JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-${2%%-*}}" timeout "$t" node "$(dirname "$common")/scripts/jira/dist/index.js" "$@" < /dev/null
 }
 after_pairs="$(awk '
     $0 == "## Live state" { s = 1; next }
@@ -295,3 +296,4 @@ EOF
     doc_unlock
 }
 [ -z "$after_pairs" ] || link_after_pairs
+exit 0

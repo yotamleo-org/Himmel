@@ -78,8 +78,7 @@ valid() {
 
 # shellcheck source=scripts/handover/chief-kit/worker-doc-lock.sh
 . "$HERE/worker-doc-lock.sh"
-lrc=0; doc_lock "$reg" chain-add || lrc=$?
-[ "$lrc" -ne 1 ] || refuse "cannot lock $reg"
+doc_lock "$reg" chain-add || refuse "cannot lock $reg (no lock tool on this host, or the lock was not taken)"
 valid "$reg" || refuse "the registry is invalid: $(grep -m1 '^chain-state:' "$tmp/err")"
 
 new="$(mktemp "$reg.XXXXXX")" || refuse "cannot create a temp file next to $reg"

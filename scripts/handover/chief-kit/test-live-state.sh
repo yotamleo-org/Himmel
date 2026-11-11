@@ -491,6 +491,16 @@ wait "$race26"; rc_bg=$?
 check '26. both renders at once succeed' '0 0' "$rc_fg $rc_bg"
 check '26. the later render waited and found the pair recorded (one links read)' 1 "$(grep -c '^links ' "$jdb/calls")"
 check '26. two renders at once write the link once' 1 "$(link_calls)"
+reset26
+LIVE_STATE_JIRA_TIMEOUT=1 JIRA_STUB_SLEEP=4 bash "$SCRIPT" "$af" >/dev/null 2>&1; rc=$?
+check '26. a stalled Jira read is cut at the deadline and the render succeeds' 0 "$rc"
+check '26. a stalled Jira read writes no link' 0 "$(link_calls)"
+: > "$jdb/calls"; bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a stalled read is not recorded: the next render writes the link' 1 "$(link_calls)"
+reset26
+: > "$tmp/not-a-dir"
+TMPDIR="$tmp/not-a-dir" bash "$SCRIPT" "$af" >/dev/null 2>&-; rc=$?
+check '26. no record dir and a closed stderr still exit with the render status' 0 "$rc"
 unset LIVE_STATE_JIRA_CMD JIRA_STUB_DB TMPDIR
 
 [ "$t1" = tok-one ] || { echo "FAIL - setup: lock token [$t1]"; fails=$((fails+1)); }
