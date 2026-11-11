@@ -87,6 +87,7 @@ if [ "${1:-} ${2:-}" = "api graphql" ]; then
     exit $?
 fi
 if [ "${1:-} ${2:-}" = "pr view" ]; then
+    [ "${3:-}" = "${STUB_PR_NUM:-9845}" ] || { echo "pr view: unexpected PR ${3:-}" >&2; exit 1; }
     [ -n "${STUB_PR_HEAD:-}" ] || { echo "pr view boom" >&2; exit 1; }
     printf '%s\n' "$STUB_PR_HEAD"
     exit 0
@@ -1129,6 +1130,9 @@ bind30() {
 }
 src30 q30s 1
 check "30: control, a hand-built signed branch GO binds rc 0" "$(bind30 q30s)" 0
+rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9846" wv q30s GO "$SHA_A" 2>&1) || rc=$?
+check "30: a bind naming a PR the stub does not know is refused rc 7" "$rc" 7
+check "30: ...and nothing is written (wrong PR)" "$([ -e "$scope_dir/q30s/bind-pr9846-$SHA_A.md" ] && echo yes || echo no)" no
 src30 q30a 0
 check "30: an unsigned source branch GO is refused rc 2" "$(bind30 q30a)" 2
 check "30: ...and nothing is written (unsigned source)" "$([ -e "$scope_dir/q30a/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
