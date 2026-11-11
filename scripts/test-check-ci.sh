@@ -133,17 +133,14 @@ if [ "${GH_STUB_MAIN_SPENT:-}" = 1 ] && [ "$_tok" = main ]; then
     echo "gh: HTTP 403: API rate limit exceeded for user" >&2
     exit 1
 fi
-# GH_STUB_MAIN_SPENT=until-watch: the main token is spent until a --watch has run, then it resets.
 if [ "${GH_STUB_MAIN_SPENT:-}" = until-watch ] && [ "$_tok" = main ] && [ ! -f "$(dirname "$0")/watch-ran" ]; then
     echo "gh: HTTP 403: API rate limit exceeded for user" >&2
     exit 1
 fi
-# GH_STUB_READFAIL=auth: every call on the read token is refused as a bad credential.
 if [ "${GH_STUB_READFAIL:-}" = auth ] && [ "$_tok" = read ]; then
     echo "gh: HTTP 401: Bad credentials" >&2
     exit 1
 fi
-# the free rate-limit probe the --watch runs before it picks a token.
 if [ "${1:-}" = api ] && [ "${2:-}" = rate_limit ]; then echo "${GH_STUB_RL_REMAINING:-5000}"; exit 0; fi
 # the value of the --jq flag among the args ("" if none).
 _jq_arg() { while [ $# -gt 0 ]; do if [ "$1" = "--jq" ]; then printf '%s' "${2:-}"; return; fi; shift; done; }
@@ -790,7 +787,6 @@ case "$GH_STUB_MODE" in
     probe-error)
         echo "HTTP 401: Bad credentials (https://api.github.com/graphql)" >&2; exit 1 ;;
     red-probe)
-        # a red check as gh reports it: the plain probe exits 1 with nothing on stderr
         if [ "$is_watch" -eq 1 ]; then echo "X ci fail"; exit 1; fi
         exit 1 ;;
     green-then-red)
@@ -3181,19 +3177,16 @@ assert_err_has "required-set unreadable" "8644 both tokens refused the protectio
 check_eq "8644 both tokens refused the protection read: a refusal that is not a rate limit never defers to the watch" "no" "$(if grep -q '^read pr checks .*--watch' "$STUBDIR/toklog"; then echo yes; else echo no; fi)"
 CLASSIC_OVERRIDE=none
 
-# 8691 S9 — what 8644 left: the legacy red-check read, the --watch fallback and the spent-main reads.
 _s9_on() { : > "$STUBDIR/toklog"; export GH_STUB_TOKLOG="$STUBDIR/toklog" GH_READ_ENV_ROOT="$STUBDIR/ghr-root"; }
 _s9_off() { unset GH_STUB_TOKLOG GH_STUB_READFAIL GH_STUB_MAIN_SPENT GH_STUB_CLASSIC_ADMIN_ONLY; export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT"; }
 tok_count() { grep -c -- "$1" "$STUBDIR/toklog" | tr -d ' '; }
 tok_before() { local a b; a=$(grep -n -- "$1" "$STUBDIR/toklog" | head -1 | cut -d: -f1); b=$(grep -n -- "$2" "$STUBDIR/toklog" | head -1 | cut -d: -f1); if [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; then echo yes; else echo no; fi; }
-# a. the read token is refused and one check is red: the probe's stderr must not carry gh-read's warning
 _s9_on; export GH_STUB_READFAIL=auth
 run red-probe --grace 30
 _s9_off
 assert_rc 1 "S9-1a legacy path, refused read token, red check: exit 1"
 assert_err_has "checks FAILED" "S9-1a legacy path, refused read token, red check: the red-check message"
 assert_err_lacks "S9-1a legacy path, refused read token, red check: never the cannot-evaluate refusal" "stderr: $ERR" -iF -- "gh pr checks failed"
-# b. the read token is refused: the exec'd watch rides the main token after a free rate-limit probe
 _s9_on; export GH_STUB_READFAIL=auth
 run cr-completed --grace 30
 _s9_off
@@ -3205,13 +3198,11 @@ _s9_on
 run cr-completed --grace 30
 _s9_off
 check_eq "S9-1b working read token: the --watch logs tok=read" "yes" "$([ "$(tok_count '^read pr checks .*--watch')" -ge 1 ] && echo yes || echo no)"
-# c. the main token is spent at the start and resets while the watch runs: the deferral clears at the post-settle gate
 _s9_on; export GH_STUB_MAIN_SPENT=until-watch GH_STUB_CLASSIC_ADMIN_ONLY=1
 CLASSIC_OVERRIDE="ctx:unit-tests"
 run cr-completed --grace 30
 _s9_off
 assert_rc 0 "S9-1c main spent at the start, reset mid-watch: the run ends green (exit 0)"
-# d. the main token is spent for the whole run: the thread read, the merge-state gate and the head re-read stay on the read token
 _s9_threads_ok() { if [ "$(tok_count '^read api graphql')" -ge 2 ] && [ "$(tok_count '^main api graphql')" -eq 0 ]; then echo yes; else echo no; fi; }
 _s9_mstate_ok() { if [ "$(tok_count '^read pr view .*mergeStateStatus')" -ge 1 ] && [ "$(tok_count '^main pr view .*mergeStateStatus')" -eq 0 ]; then echo yes; else echo no; fi; }
 _s9_head_ok() { if [ "$(tok_count '^read pr view --json headRefOid --jq .headRefOid')" -ge 1 ] && [ "$(tok_count '^main pr view --json headRefOid --jq .headRefOid')" -eq 0 ]; then echo yes; else echo no; fi; }
@@ -3222,7 +3213,6 @@ _s9_off
 check_eq "S9-1d spent main: the review-thread reads log tok=read, never tok=main" "yes" "$(_s9_threads_ok)"
 check_eq "S9-1d spent main: the merge-state gate read logs tok=read, never tok=main" "yes" "$(_s9_mstate_ok)"
 check_eq "S9-1d spent main: the head re-read logs tok=read, never tok=main" "yes" "$(_s9_head_ok)"
-# RED control: a scratch copy with ONE of those reads on bare gh fails that read's row
 _s9_mutant="$SCRIPT_DIR/check-ci.mutant.$$.sh"
 # shellcheck disable=SC2016  # the sed expressions carry literal $( on purpose
 for _s9_m in 'threads|s/page=\$(gh_read api graphql/page=$(gh api graphql/' \

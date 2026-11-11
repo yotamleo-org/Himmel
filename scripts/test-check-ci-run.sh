@@ -12,7 +12,6 @@ PASS=0; FAIL=0
 ok() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 bad() { echo "  FAIL: $1"; printf '%s\n' "${OUT:-}"; FAIL=$((FAIL + 1)); }
 mkdir -p "$ROOT/bin" "$ROOT/noread"
-# no station token reaches this suite: an empty .env root, keyring off, ambient tokens unset
 : > "$ROOT/noread/.env"
 export GH_READ_ENV_ROOT="$ROOT/noread" HIMMEL_SECRETS_KEYRING=off
 unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
@@ -20,7 +19,6 @@ cat > "$ROOT/bin/gh" <<'SH'
 #!/usr/bin/env bash
 set -u
 printf '%s\n' "$*" >> "$CASE/calls"
-# a token on a call is logged by class only, never by value: no station token may reach this stub
 [ -z "${GH_TOKEN:-}" ] || echo tok=other >> "$CASE/toklog"
 if [ "$1" = api ] && [ "${4:-}" = rate_limit ]; then
     now=$(cat "$CASE/clock")
@@ -216,7 +214,6 @@ run --run 123 --max-wait 1
 expect_rc 2 'TERM-resistant read cannot evaluate'
 if [ "$((SECONDS - started))" -le 2 ]; then ok 'hard read deadline has no two-second kill overrun'; else bad 'TERM-resistant child exceeded hard deadline'; fi
 
-# 8691 S9 — a token planted at the default .env root of a scratch tree never reaches the stub
 new_case
 TREE="$ROOT/tree"
 mkdir -p "$TREE/scripts"

@@ -10,14 +10,12 @@ PASS=0; FAIL=0
 ok() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 bad() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
 mkdir -p "$ROOT/bin" "$ROOT/noread"
-# no station token reaches this suite: an empty .env root, keyring off, ambient tokens unset
 : > "$ROOT/noread/.env"
 export GH_READ_ENV_ROOT="$ROOT/noread" HIMMEL_SECRETS_KEYRING=off
 unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 cat > "$ROOT/bin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$CASE/calls"
-# a token on a call is logged by class only, never by value: no station token may reach this stub
 [ -z "${GH_TOKEN:-}" ] || echo tok=other >> "$CASE/toklog"
 case " $* " in
     *' -i graphql '*) printf 'HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: %s\r\nX-Ratelimit-Reset: 1000003600\r\n\r\n{"data":{}}\n' "${ACTUAL_GQL:-${GQL:-5000}}"; exit 0 ;;
@@ -233,7 +231,6 @@ else
   bad "startup snapshot misaligned head=$s_head base=$s_base dec=$s_dec"
 fi
 
-# 8691 S9 — a token planted at the default .env root of a scratch tree never reaches the stub
 new_case
 TREE="$ROOT/tree"
 mkdir -p "$TREE/scripts"

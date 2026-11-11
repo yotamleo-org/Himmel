@@ -645,11 +645,7 @@ pr_view() {
     if [ -n "$selector" ]; then gh_read pr view "$selector" "$@"; else gh_read pr view "$@"; fi
 }
 
-# _watch_read_token — export the read token as GH_TOKEN for the one exec'd `gh pr checks --watch`
-# that follows, but only when `gh api rate_limit` (free: it spends no budget) shows it accepted
-# with GraphQL budget left. A refused or spent read token leaves GH_TOKEN alone, so the watch runs
-# on the main token. Call it in the watch's own subshell: the export must not reach the caller.
-_watch_read_token() {
+_export_read_token_if_usable() {
     local rem
     [ -n "${_GHR_TOK:-}" ] || return 0
     rem=$(GH_TOKEN="$_GHR_TOK" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 10} gh api rate_limit --jq .resources.graphql.remaining 2>/dev/null) || return 0
@@ -1169,16 +1165,10 @@ watch_round() {
                     CHECK_CI_CACHE_HEAD="$cache_head" CHECK_CI_MAX_WAIT="$LIB_CAP" CIC_NOTICE_FD=1 CHECK_CI_EXCEPT_CONTEXT="$EXCEPT_CTX" \
                     bash "$(cd "$(dirname "$0")" && pwd)/lib/check-ci-watch.sh" ${selector:+"$selector"}
             elif [ -n "$selector" ]; then
-                # the watch is a read; it rides the read-only token when one
-                # loaded (gh_read_init above) and a free rate-limit probe shows that token
-                # usable. The token goes to this one exec'd gh as GH_TOKEN, never in argv.
-                # gh_read itself cannot be exec'd (it forks, and $! must stay gh's real
-                # pid), so a refused or spent read token is caught by the probe and the
-                # watch runs on the main token instead.
-                _watch_read_token
+                _export_read_token_if_usable
                 exec gh pr checks "$selector" --watch ${watch_ff:+"$watch_ff"} --interval "$WATCH_INTERVAL"
             else
-                _watch_read_token
+                _export_read_token_if_usable
                 exec gh pr checks --watch ${watch_ff:+"$watch_ff"} --interval "$WATCH_INTERVAL"
             fi
         ) 2>"$err_file" &
