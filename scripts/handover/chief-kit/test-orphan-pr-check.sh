@@ -173,7 +173,6 @@ printf 'not json\n' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-666.json"
 run
 check "an unparsable record is not an orphan" "0" "$rc"
 
-# --- GitHub out: with no PR seam the gh read is gated, and a pause is unavailable (exit 3), never an all-clear
 mkdir -p "$WORK/ghbin"
 cat > "$WORK/ghbin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -181,12 +180,12 @@ printf '%s\n' "$*" >> "$OPC_GH_LOG"
 [ "$1 $2" != "pr list" ] || printf '[{"number":109,"headRefName":"fix/himmel-999-quota"}]\n'
 EOF
 chmod +x "$WORK/ghbin/gh"
-qplant() { # <dir> <main graphql remaining> <state>
+qplant() {
     local now; now=$(date +%s)
     mkdir -p "$1"
     printf 'main\tgraphql\t%s\t5000\t%s\t%s\t%s\nmain\tcore\t4000\t5000\t%s\t%s\tok\n' "$2" "$((now + 1800))" "$now" "$3" "$((now + 1800))" "$now" > "$1/quota.tsv"
 }
-qrun() { # <quota dir|-> — the gh path, no seam; - leaves HIMMEL_QUOTA_DIR unset
+qrun() {
     : > "$WORK/gh.log"
     if [ "$1" = - ]; then
         out="$(env -u HIMMEL_QUOTA_DIR -u ORPHAN_PR_CHECK_PRS PATH="$WORK/ghbin:$PATH" OPC_GH_LOG="$WORK/gh.log" bash "$OPC" --doc "$DOC" --repo "$WORK" 2>"$WORK/err")"; rc=$?

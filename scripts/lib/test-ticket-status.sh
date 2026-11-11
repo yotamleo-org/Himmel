@@ -159,8 +159,6 @@ _TS_LIB_DIR="$tmp/countlib" ts_has_merge_row HIMMEL-9190; a=$?
 _TS_LIB_DIR="$tmp/countlib" ts_has_merge_row HIMMEL-9191; b=$?
 check "9436: a log replaced by a file of the same size is read again, not served from the cache" "$a$b:$(wc -l < "$MRC_LOG" | tr -d ' ')" "10:3"
 
-# A live derive with GitHub out reads no PR: no-write + miss stage=gh, the pause line on stderr, no gh call.
-# The readings live under the state dir when HIMMEL_QUOTA_DIR is unset (CI sets none).
 unset TS_SNAPSHOT_DIR TS_EVENT
 export TICKET_STATUS_STATE_DIR="$tmp/qstate"
 mkdir -p "$TICKET_STATUS_STATE_DIR/workers" "$tmp/qbin"
@@ -176,7 +174,7 @@ EOF
 chmod +x "$tmp/qjira" "$tmp/qbin/gh"
 printf -- '- 10:00 LIVE — started\n' > "$tmp/qowner.md"
 jq -nc --arg doc "$tmp/qowner.md" '{doc:$doc,docs:[$doc],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9201.json"
-qplant() { # <dir> <main graphql remaining> <state>
+qplant() {
     local now; now=$(date +%s)
     mkdir -p "$1"
     printf 'main\tgraphql\t%s\t5000\t%s\t%s\t%s\nmain\tcore\t4000\t5000\t%s\t%s\tok\n' "$2" "$((now + 1800))" "$now" "$3" "$((now + 1800))" "$now" > "$1/quota.tsv"
@@ -186,7 +184,7 @@ cat > "$tmp/qderive.sh" <<'EOF'
 ts_derive HIMMEL-9201
 printf '%s/%s/%s/%s' "$TS_DERIVED" "$TS_RESULT" "$TS_STAGE" "$TS_RULE"
 EOF
-qderive() { # <quota dir|-> — one live derive of the fixture key (- leaves HIMMEL_QUOTA_DIR unset); stderr in $tmp/qerr
+qderive() {
     local q=()
     : > "$tmp/qgh.log"
     [ "$1" = - ] || q=("HIMMEL_QUOTA_DIR=$1")

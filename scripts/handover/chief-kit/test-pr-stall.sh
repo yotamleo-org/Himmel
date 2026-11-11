@@ -140,13 +140,12 @@ out="$(XDG_RUNTIME_DIR=/proc/no-such-dir run --notify)"; rc=$?
 check "unwritable notify state lists without sending, exit 0" "0:0" "$rc:$(wc -l < "$WORK/sent.log" | tr -d ' ')"
 has "unwritable notify state says so" 'cannot take the notify lock' "$out"
 
-# GitHub out: the scan gate pauses before any read, and the unknown output and exit stay.
-qplant() { # <dir> <main graphql remaining> <state>
+qplant() {
     local now; now=$(date +%s)
     mkdir -p "$1"
     printf 'main\tgraphql\t%s\t5000\t%s\t%s\t%s\nmain\tcore\t4000\t5000\t%s\t%s\tok\n' "$2" "$((now + 1800))" "$now" "$3" "$((now + 1800))" "$now" > "$1/quota.tsv"
 }
-qrun() { # <quota dir>: rc, out (stdout) and err (stderr); the stub's calls land in gh.log
+qrun() {
     : > "$WORK/gh.log"
     out="$(HIMMEL_QUOTA_DIR="$1" STUB_GH_LOG="$WORK/gh.log" bash "$PS" --repo o/r --manifest "$MAN" 2> "$WORK/err")"; rc=$?
     err="$(cat "$WORK/err")"

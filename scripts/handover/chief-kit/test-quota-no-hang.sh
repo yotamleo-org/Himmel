@@ -565,22 +565,20 @@ drive_chief_wait() {
 }
 
 affect_scans() { case "$1" in read-only) echo no ;; *) echo yes ;; esac; }
-# a healthy focus-refresh goes on to a sweep this stub cannot answer, so read-only claims the bound only
 affect_focus() { case "$1" in read-only) echo maybe ;; *) echo yes ;; esac; }
 
-# no_list_row <caller> <mode>: a paused scan reads nothing past the probes, so the stub logs no PR list
 no_list_row() {
     if [ "$(mode_class "$2")" = rate ] && [ "$("$AFFECT_FN" "$2")" != yes ]; then
         emit "PASS $1 $2 no-list-call n/a"
-    elif grep -q ' pr list' "$ROW_DIR/stub.log" 2> /dev/null; then
+    elif [ ! -r "$ROW_DIR/stub.log" ]; then
+        emit "FAIL $1 $2 no-list-call the stub log is missing"
+    elif grep -q ' pr list' "$ROW_DIR/stub.log"; then
         emit "FAIL $1 $2 no-list-call the stub logged a PR list"
     else
         emit "PASS $1 $2 no-list-call"
     fi
 }
 
-# The recurring scans (plan T8): status-sweep.sh and focus-refresh.sh pause before any read. hung-after-probe is
-# left out: past a good probe a hung read is each script's own per-call bound, not the gate's.
 drive_scans() {
     CUR=scans
     local m sweep="$HERE/status-sweep.sh" focus="$HERE/focus-refresh.sh" doc

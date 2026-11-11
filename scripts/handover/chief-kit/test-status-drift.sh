@@ -1738,14 +1738,13 @@ if command -v flock >/dev/null 2>&1; then
     check "3c: the next refresh clears the dirty mark" "$(fst dirty)" ""
 fi
 
-# --- 9479 T8: GitHub out pauses the sweep, the funnel and the drift pass before any gh read -------------
-qplant() { # <dir> <main graphql remaining> <state>
+qplant() {
     local now; now=$(date +%s)
     mkdir -p "$1"
     printf 'main\tgraphql\t%s\t5000\t%s\t%s\t%s\nmain\tcore\t4000\t5000\t%s\t%s\tok\n' "$2" "$((now + 1800))" "$now" "$3" "$((now + 1800))" "$now" > "$1/quota.tsv"
 }
 ngh() { grep -c '^gh ' "$STUB_LOG" || true; }
-uiclose() { # the 2b UI close: the record holds PR 7 open, GitHub lists none, the owner is live
+uiclose() {
     reset "In Review"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"7":{"head":"aaa111","ci":"pending","red_latch":false,"open":true}}}'
     jl "$K" "In Review"
     printf '{"title":"[%s] feat","state":"CLOSED"}\n' "$K" > "$FX/view-7.json"

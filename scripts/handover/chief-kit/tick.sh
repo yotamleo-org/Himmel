@@ -879,7 +879,6 @@ fi
 
 if [ "$stale_mode" -eq 1 ]; then
     [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
-    # GitHub out: pool_stale is skipped and pool-stale reads ?, the pause line on stderr
     if [ -f "$HERE/../../lib/gh-quota.sh" ]; then
         # shellcheck source=../../lib/gh-quota.sh
         . "$HERE/../../lib/gh-quota.sh"
