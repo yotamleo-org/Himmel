@@ -621,6 +621,16 @@ D="$TMP/at6"; setup_attr "$D" "$A1"
 jq -c '.meta.leg = null | .meta.ticket = null' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
 arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row without a leg or ticket exits 0: $(head -c 300 "$D/out")"
 check "the failure rows' old leg and ticket beat the journal title when the eval row has none" 'grep -q "refreshed=1" "$D/out" && jq -s -e --arg s "$A1" --arg t "$AT_TICKET" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N7777\" and .ticket == \$t)" "$D/f.jsonl" >/dev/null'
+check "and the refreshed eval row takes the same leg and ticket, not the title's" 'jq -s -e --arg t "$AT_TICKET" ".[-1].meta | .leg == \"N7777\" and .ticket == \$t" "$D/e.jsonl" >/dev/null'
+D="$TMP/at7"; setup_attr "$D" "$A1"
+jq -c '.meta.leg = null | .meta.ticket = null' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" HIMMEL_LEDGER_REFRESH_STOP_AFTER=eval python3 -I "$HERE/worker_ledger.py" >"$D/out1" 2>&1
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "replayed refresh exits 0: $(head -c 300 "$D/out")"
+check "a replay after a crash following the eval write keeps the held leg and ticket on the failure rows" 'grep -q "refreshed=1" "$D/out" && jq -s -e --arg s "$A1" --arg t "$AT_TICKET" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N7777\" and .ticket == \$t)" "$D/f.jsonl" >/dev/null'
+D="$TMP/at8"; setup_attr "$D" "$A1"
+jq -c '.meta.leg = "N8888"' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row with another leg exits 0: $(head -c 300 "$D/out")"
+check "the eval row's leg beats the old failure rows' leg on both refreshed rows" 'grep -q "refreshed=1" "$D/out" && jq -s -e ".[-1].meta.leg == \"N8888\"" "$D/e.jsonl" >/dev/null && jq -s -e --arg s "$A1" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N8888\")" "$D/f.jsonl" >/dev/null'
 
 echo "test-worker-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

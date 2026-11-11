@@ -75,8 +75,9 @@ sessions without moving them in time. It never runs on its own: no cadence calls
     next refresh finishes the remaining steps without a duplicate. The two JSONL files are not one atomic
     commit. Live sessions are skipped as in backfill.
   The refreshed rows keep the attribution of the session's current ok eval row (leg, ticket, pr, console, doc,
-  profile, lane; the journal title fills only a field that row lacks) and its meta.cli_version and meta.effort,
-  never the refreshing shell's. A run reads the eval ledger once and indexes the first and current ok row per session.
+  profile, lane) and its meta.cli_version and meta.effort, never the refreshing shell's. A field that row lacks
+  keeps the value the replaced failure rows held (the failure rows only for pr and console); the journal title fills
+  a field neither has. A run reads the eval ledger once and indexes the first and current ok row per session.
   Before a production refresh, preview the router with --dry-run against scratch copies; a refresh never
   changes the cadence mode.
 """
@@ -693,11 +694,10 @@ def refresh(digest, who, failures_ledger, eval_ledger, index=None):
     with open(os.path.join(state, session + ".lock"), "w") as lk:
         fcntl.flock(lk, fcntl.LOCK_EX)
         index.catch_up()
-        if index.get(session)[1] != current:
-            current = index.get(session)[1]
-            frows, erow = build_rows(digest, _anchored_who(who, current))
-            did = erow["meta"]["digest_id"]
-        first = index.get(session)[0]
+        first, current = index.get(session)
+        old, oldest, held = _old_failure_ts(failures_ledger, session)
+        frows, erow = build_rows(digest, _anchored_who(dict(who, **{k: held[k] for k in ("leg", "ticket") if k in held}), current))
+        did = erow["meta"]["digest_id"]
         try:
             with open(marker, encoding="utf-8") as fh:
                 if json.load(fh).get("digest_id") == did:
@@ -722,10 +722,9 @@ def refresh(digest, who, failures_ledger, eval_ledger, index=None):
         if not same:
             eval_runs.append_row(erow, eval_ledger)
         _stop_after("eval")
-        old, first, held = _old_failure_ts(failures_ledger, session)
         for r in frows:
             r.update({k: v for k, v in held.items() if (current.get("meta") or {}).get(k) is None})
-            r["ts"] = old.get((r["agent"]["id"], r["class"]), first or anchor)
+            r["ts"] = old.get((r["agent"]["id"], r["class"]), oldest or anchor)
             r["meta"] = {"digest_id": did, "refreshed_at": now}
             problems = validate(r)
             if problems:
