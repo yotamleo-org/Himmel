@@ -199,11 +199,9 @@ def anchor(gate):
         root = os.path.realpath(env)
     else:
         d = os.path.dirname(os.path.realpath(gate))
-        while True:
+        for _ in range(d.count(os.sep) + 1):
             if os.path.isfile(os.path.join(d, MARKER)):
                 root = d
-                break
-            if os.path.dirname(d) == d:
                 break
             d = os.path.dirname(d)
     if root is None:
