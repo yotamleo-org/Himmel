@@ -180,7 +180,6 @@ function opRequest(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
     p.code === undefined ? "" : `${p.code}\n`)
     .then((res) => {
       const first = res.stdout.split("\n")[0]?.trim() || `exit ${res.code}`;
-      // A filed op carries the buttons the run request has: without them the operator has no Approve prompt to reply to.
       const id = res.code === 0 && first.startsWith("result=pending ") ? /(?:^| )id=(\S+)/.exec(first)?.[1] : undefined;
       const markup = id === undefined ? null : afkApprovalKeyboard(id);
       const text = `${res.code === 0 ? "✅" : "⚠️"} afk-sudo op ${p.name}: ${first}`;
@@ -347,8 +346,6 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
 const BUTTON = /^afk:(approve|deny):([a-z2-7]{8})$/;
 const REQUEST_ID = /^[a-z2-7]{8}$/;
 
-// The Approve / Deny keyboard of a request DM: the same two buttons scripts/lib/afk-sudo-request sends for a
-// run request (the suite pins the bytes). null for an id that is not the helper's 8 base32 characters.
 export function afkApprovalKeyboard(id: string): object | null {
   if (!REQUEST_ID.test(id)) return null;
   return { inline_keyboard: [[{ text: "✅ Approve", callback_data: `afk:approve:${id}` }, { text: "❌ Deny", callback_data: `afk:deny:${id}` }]] };

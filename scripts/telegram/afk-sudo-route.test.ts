@@ -844,7 +844,6 @@ test("the operator's /op reaches the helper as op-request with the name and key=
   expect(replies).toEqual(["✅ afk-sudo op cron-entry: result=pending id=abcdefgh expires=1 operator=4242"]);
 });
 
-// The run request's own keyboard line, as afk-sudo-request sends it: the bytes the op request's buttons must match.
 const runRequestKeyboard = (): string => {
   const line = readFileSync(join(import.meta.dir, "../lib/afk-sudo-request"), "utf8").split("\n").find((l) => l.includes("inline_keyboard"))!;
   return line.slice(line.indexOf('{\\"inline_keyboard'), line.lastIndexOf("}]]}") + 4).replaceAll('\\"', '"').replaceAll("${id}", "abcdefgh");
@@ -863,8 +862,6 @@ test("a Telegram-started op request is answered with the run request's Approve a
   expect(JSON.stringify(sent[0].markup)).toContain("afk:deny:abcdefgh");
 });
 
-// The production reply is wired inside poller.ts main(), which no suite can drive; pin that line so the markup is
-// handed to replyViaOutbox (which carries it through the outbox: poller.test.ts, "carries inline-button markup").
 test("the poller's afk-sudo reply passes the markup on to replyViaOutbox", () => {
   const wiring = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("\n").find((l) => l.includes("const afkSudoDeps = "))!;
   expect(wiring).toContain("reply: (chat: number, text: string, markup?: object) => replyViaOutbox(root, chat, text, undefined, undefined, markup)");
