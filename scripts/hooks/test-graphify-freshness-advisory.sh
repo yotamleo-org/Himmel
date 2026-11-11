@@ -66,12 +66,14 @@ case "$out" in *"graphify graph is STALE"*) pass "T2 stale banner present";; *) 
 case "$out" in *"5d old"*|*"5 days"*) pass "T2 names age";; *) fail "T2 age missing";; esac
 case "$out" in *"HIMMEL-GraphMap-Himmel"*) pass "T2 names cadence";; *) fail "T2 cadence missing";; esac
 case "$out" in *"refresh-graph-map.sh"*) pass "T2 names refresh";; *) fail "T2 refresh missing";; esac
-# T2b stale on a station that is not the publisher -> the banner names remedy's text and no refresh command
+# T2b stale on a station that is not the publisher -> the banner's own lines name remedy's text and no
+# refresh command (the quoted checker block is the checker's; test-check-graph-freshness.sh T13 covers it)
 out=$(HOME="$tmp/adopterhome" HIMMEL_CONFIG_DIR='' GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
 [ "$rc" -eq 0 ] || fail "T2b adopter stale rc=$rc"
+own=$(printf '%s\n' "$out" | awk '/^---$/ { q = !q; next } !q')
 case "$out" in *"graphify graph is STALE"*) pass "T2b adopter stale banner present";; *) fail "T2b no stale banner: $out";; esac
-case "$out" in *"comes from us"*) pass "T2b names remedy's text";; *) fail "T2b remedy missing: $out";; esac
-case "$out" in *"refresh-graph-map.sh"*) fail "T2b names refresh-graph-map.sh on an adopter: $out";; *) pass "T2b names no refresh-graph-map.sh";; esac
+case "$own" in *"comes from us"*) pass "T2b names remedy's text";; *) fail "T2b remedy missing: $own";; esac
+case "$own" in *"refresh-graph-map.sh"*) fail "T2b the banner's own lines name refresh-graph-map.sh on an adopter: $own";; *) pass "T2b the banner's own lines name no refresh-graph-map.sh";; esac
 
 # T3a absent dir in a repo that TRACKS graphify-out -> banner (codex-2: silence
 # must not cover a missing graph where one is expected). Fixture: a tiny git

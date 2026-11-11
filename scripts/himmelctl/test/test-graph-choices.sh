@@ -62,6 +62,10 @@ fresh_home c2d; : > "$HOME/.himmel/config.json"; expect_eq "C2 empty reads unrea
 fresh_home c2e; cfg '{"graphify":"on"}'; expect_eq "C2 a graphify string reads unreadable" "$(gc role)" unreadable
 fresh_home c2f; cfg '[1,2]'; expect_eq "C2 a JSON array reads unreadable" "$(gc role)" unreadable
 fresh_home c2g; cfg '{"vm":"broken","graphify":{"semantic_api_ok":true}}'; expect_eq "C2 a bad vm section with the key true reads publisher" "$(gc role)" publisher
+fresh_home c2h; cfg '{}'; chmod 000 "$HOME"
+if ls "$HOME/.himmel" >/dev/null 2>&1; then echo "  SKIP: C2 an unsearchable HOME (this user reads mode 000)"
+else expect_eq "C2 a station dir that cannot be stat'ed reads unreadable, never adopter" "$(gc role)" unreadable; fi
+chmod 700 "$HOME"
 
 echo "C3: invalid stores, all or nothing, no value echoed"
 for doc in \

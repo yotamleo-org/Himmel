@@ -88,7 +88,10 @@ function readStation() {
   let st;
   try {
     if (fs.lstatSync(dir).isSymbolicLink()) return { role: 'unreadable', cause: 'symlink', linked: linkedPublisher(file) };
-  } catch { return { role: 'adopter', cause: '', doc: {} }; }
+  } catch (e) {
+    if (e && e.code === 'ENOENT') return { role: 'adopter', cause: '', doc: {} };
+    return { role: 'unreadable', cause: 'mode' };
+  }
   try { st = fs.lstatSync(file); } catch (e) {
     if (e && e.code === 'ENOENT') return { role: 'adopter', cause: '', doc: {} };
     return { role: 'unreadable', cause: 'mode' };
