@@ -4,7 +4,8 @@
 # CI unless a line here turns its hit into a WARN.
 #
 # One `<glob> HIMMEL-<n> <reason>` per line. The glob is matched against
-# "/<suite path>" and names ONE suite file (no glob character in its last
+# "/<suite path>" in a shard, or against the `--label` of a wrapped ci.yml step
+# (`<job>/<step>`), and names ONE suite file or step (no glob character in its last
 # `/`-separated part, and no `[` or `]` anywhere); the key names the ticket that fixes
 # it. The runner exits 2 on any other line.
 */marketplace/plugins/obsidian-triage/tests/test-follow-web.sh HIMMEL-9723 writes state/firecrawl-ledger.jsonl under HOME
@@ -44,23 +45,6 @@
 */scripts/hooks/test-stop-chief-idle-guard.sh HIMMEL-9723 writes cadence-ledger.jsonl under HOME
 */scripts/luna-vitals/connectors/test-pull-cadence-arm.sh HIMMEL-9723 writes flow-runs.jsonl under HOME
 */templates/luna-second-brain/scripts/test-vault-git.sh HIMMEL-9723 writes .local/bin under HOME
-ci-quick/claude-startup HIMMEL-9672 measurement
-ci-quick/claude-startup__mock-turn HIMMEL-9672 measurement
-ci-quick/claude-startup__consult HIMMEL-9672 measurement
-ci-quick/claude-startup__hook-smoke HIMMEL-9672 measurement
-ci-quick/claude-startup__live-turn HIMMEL-9672 measurement
-node-suites/jira HIMMEL-9672 measurement
-node-suites/bitbucket HIMMEL-9672 measurement
-node-suites/himmel-run HIMMEL-9672 measurement
-node-suites/ci-orchestrator HIMMEL-9672 measurement
-node-suites/himmel-gh HIMMEL-9672 measurement
-node-suites/himmel-jira HIMMEL-9672 measurement
-node-suites/himmel-bus HIMMEL-9672 measurement
-node-suites/root-vitest-sandbox HIMMEL-9672 measurement
-lanes-and-trust-suites/lanes HIMMEL-9672 measurement
-lanes-and-trust-suites/trust HIMMEL-9672 measurement
-lanes-and-trust-suites/where-are-we HIMMEL-9672 measurement
-lanes-and-trust-suites/lessons HIMMEL-9672 measurement
-lanes-and-trust-suites/observability HIMMEL-9672 measurement
-lanes-and-trust-suites/hook-lib-suites HIMMEL-9672 measurement
-bun-suites/root-vitest-sandbox HIMMEL-9672 measurement
+ci-quick/claude-startup__consult HIMMEL-9723 writes cadence-ledger.jsonl, launch-logs and the bus peers dir under HOME
+lanes-and-trust-suites/hook-lib-suites HIMMEL-9723 writes stop-queue under HOME
+lanes-and-trust-suites/lanes HIMMEL-9723 writes cache/codex-bank.json.refresh.attempt under HOME

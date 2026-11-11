@@ -502,7 +502,7 @@ if [ "$rc" -eq 1 ] && grepq "$out" 'ambiguous'; then pass "a line naming two run
 # ci.yml and executed in a scratch tree, so the row tracks the live step text.
 CI_YML="$REPO_ROOT/.github/workflows/ci.yml"
 bun_guard="$(sed -nE 's/^[ -]*run:(.*) && bash scripts\/ci\/run-bun-tests\.sh scripts\/observability .*/\1/p' "$CI_YML")"
-node_guard="$(sed -n 's/^[ -]*run:\(.*\) && node --test .*scripts\/observability\/\*\.test\.mjs.*/\1/p' "$CI_YML")"
+node_guard="$(sed -n 's/^[ -]*run:\(.*\) && \(bash "\$GITHUB_WORKSPACE\/scripts\/ci\/live-witness\.sh" run --label [^ ]* -- \)\{0,1\}node --test .*scripts\/observability\/\*\.test\.mjs.*/\1/p' "$CI_YML")"
 if [ -n "$bun_guard" ]; then pass "bun step's presence guard extracted from real ci.yml"; else fail "bun step guard not found in ci.yml"; fi
 if [ -n "$node_guard" ]; then pass "node step globs scripts/observability/*.test.mjs in real ci.yml"; else fail "node step does not glob scripts/observability/*.test.mjs"; fi
 GT="$FX/guard-tree"
