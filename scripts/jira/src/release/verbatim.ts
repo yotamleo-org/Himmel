@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-// A paragraph that opens with one of these words is the chief's gloss, never the operator's words.
 export const GLOSS_OPENERS: readonly string[] = [
   'Read', 'Reading', 'Readings', 'Chief', "Chief's", 'Context', 'Asked', 'Answering', 'Note', 'Ruling', 'Rulings',
   'Relayed', 'Facts', 'Replying', '(chief', '[pasted',
@@ -18,11 +17,6 @@ function unquoted(p: string): string {
   return hit ? p.slice(1, -1).trim() : p;
 }
 
-/**
- * The operator's words, as the chief names them, against the decision file's text: they occur byte for byte
- * within one paragraph, every paragraph that holds them opens with no gloss word, and they are at least
- * 20 characters or the whole of their paragraph once its outer quotes are dropped.
- */
 export function checkWords(text: string, words: string): { ok: true } | { ok: false; why: string } {
   if (!words.trim()) return { ok: false, why: '--words is empty; name the operator\'s exact words' };
   if (/\n[ \t]*\r?\n/.test(words)) return { ok: false, why: 'the words span a blank line; cite them from one paragraph' };
@@ -38,10 +32,8 @@ export function checkWords(text: string, words: string): { ok: true } | { ok: fa
   return { ok: true };
 }
 
-// The bucket's specs/decisions, two levels above <bucket>/release/<R>.
 export const decisionsDirFor = (releaseDir: string): string => join(dirname(dirname(releaseDir)), 'specs', 'decisions');
 
-/** The one verbatim file of decision <n>: its path, its bucket-relative path, its hash and its text. */
 export function resolveDecision(decisionsDir: string, n: string): { path: string; rel: string; sha256: string; text: string } {
   if (!/^\d+$/.test(n)) throw new Error(`--decision ${n}: a decision is a number`);
   let names: string[];

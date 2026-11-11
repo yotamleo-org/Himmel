@@ -77,7 +77,6 @@ beforeEach(() => {
   vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
   vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
   writeFileSync(join(root, 'verbatim.txt'), 'R = v1 + v2\n');
-  // The request gate's live read of a key the mirror lacks answers a plain open Medium ticket; every other call answers nothing.
   vi.mocked(request).mockReset();
   vi.mocked(request).mockImplementation((async (_m: string, path: string) => (path.endsWith('?fields=labels,priority,status')
     ? { fields: { labels: [], priority: { name: 'Medium' }, status: { statusCategory: { name: 'To Do' } } } }

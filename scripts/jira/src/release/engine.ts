@@ -301,7 +301,6 @@ export function freeze(ctx: Ctx, o: { version: string; keys: string[]; decision:
 
 type DecisionWords = { decision_file: string; decision_sha256: string; words: 1 };
 
-// The operator's words for decision <n>, checked against its one verbatim file in the bucket.
 export function decisionWords(ctx: Ctx, decision: string, words: string): DecisionWords {
   const d = resolveDecision(decisionsDirFor(ctx.dir), decision);
   const c = checkWords(d.text, words);
@@ -315,7 +314,6 @@ export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]
   operatorFence(ctx);
   if (!o.keys.length) throw new Error('release operator decision: --keys names the exact keys it covers');
   return locked(ctx, (l) => {
-    // A words record for the same decision file, words, keys, op and versions is the same record: a retry reuses it.
     const again = o.decision_sha256 === undefined ? undefined : l.operator.verified.find((x) => x.kind === 'decision' && x.decision === o.decision
       && sameKeys(x.keys, o.keys) && x.op === o.op && (x.from_v ?? null) === o.from_v && (x.to_v ?? null) === o.to_v
       && x.decision_sha256 === o.decision_sha256 && x.verbatim === o.verbatim);
@@ -1020,7 +1018,6 @@ export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): 
   });
 }
 
-/** The O- record of the operator's words a request into a version names: INTAKE from the backlog adds, any other placement moves. */
 export function recordRequestDecision(ctx: Ctx, o: { decision: string; words: string; key: string; verb: Verb; from_v: string | null; to_v: string | null }): OperatorRow {
   operatorFence(ctx);
   if (o.to_v === null) throw new Error('release request: --decision records the operator\'s words for a request into a version');
@@ -1032,10 +1029,7 @@ export function recordRequestDecision(ctx: Ctx, o: { decision: string; words: st
 
 const citedOperator = (r: RequestRow): unknown => (r.evidence as { operator?: unknown } | null)?.operator;
 
-/**
- * A request that names the operator's words: the O- record, then a pending duplicate that cites no O- record is
- * withdrawn by it, then the request is filed citing it. A duplicate that already cites one is returned as it is.
- */
+// A pending duplicate that already cites an O- record is returned as it is, by request()'s dedupe.
 export function requestWithWords(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 'state'>, o: { decision: string; words: string }): {
   operator: OperatorRow; withdrawn: RequestRow | null; request: RequestRow;
 } {

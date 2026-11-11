@@ -629,7 +629,6 @@ interface IntakeOptions {
   proposedVersion?: string;
   why?: string;
   evidence?: Record<string, unknown>;
-  // The operator decision and its exact words that place an operator-directed or High ticket into a version.
   decision?: string;
   words?: string;
 }
@@ -639,7 +638,6 @@ type IntakeWords = { decision?: string; words?: string; ticket?: TicketFacts };
 const toVersionOf = (o: { proposedVersion?: string }): string | null =>
   o.proposedVersion === undefined || o.proposedVersion === 'backlog' ? null : o.proposedVersion;
 
-// A new ticket's facts come from its own create fields, never from the mirror or a live read.
 const factsOf = (fields: Record<string, unknown>): TicketFacts => ({
   labels: Array.isArray(fields['labels']) ? (fields['labels'] as string[]) : [],
   priority: (fields['priority'] as { name?: string } | undefined)?.name ?? '',

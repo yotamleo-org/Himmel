@@ -101,14 +101,8 @@ const isPr = (pr: unknown): boolean => Number.isInteger(pr) && (pr as number) > 
 
 export { asksOperator, type TicketFacts } from '../release/operator-work.js';
 
-/** Who files a request: the chief's CLI or `jira create` (gated), the close-time Done fold, or the version repair (not gated). */
 export type Origin = 'cli' | 'create' | 'close-fold' | 'repair';
 
-/**
- * A request that places operator work into a version needs a record of the operator's words: an INTAKE or
- * REVERSION into a version, filed by the chief (not a chief-spawned worker) from the CLI or `jira create`,
- * for an open ticket that is operator-directed or High. An unreadable ticket (null) is treated as one.
- */
 export function isGated(o: { verb: Verb; to_v: string | null; origin: Origin; ticket: TicketFacts | null; env: NodeJS.ProcessEnv | Record<string, string | undefined> }): boolean {
   if (o.verb !== 'INTAKE' && o.verb !== 'REVERSION') return false;
   if (o.to_v === null || (o.origin !== 'cli' && o.origin !== 'create')) return false;
@@ -128,7 +122,6 @@ function gateRefusal(ctx: Ctx, o: { verb: Verb; key: string; from_v: string | nu
   return `release request: ${o.key} is ${operatorWorkOf(o.ticket)}; a request that places it needs a record of the operator's words.\n${fix}\n${where}`;
 }
 
-/** The gate's view of a ticket: the mirror's, else one live read; null when neither answers. */
 export async function ticketFacts(ctx: Ctx, key: string): Promise<TicketFacts | null> {
   const snap = readMirror(ctx.mirrorRoot).issues?.get(key);
   if (snap) return { labels: snap.labels ?? [], priority: snap.priority, open: terminalOf(snap) === null };

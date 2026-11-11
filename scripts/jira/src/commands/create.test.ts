@@ -2365,7 +2365,6 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
 
     it('the post-create call never reads the mirror', async () => {
       await declare();
-      // The mirror reads the new key as operator work; the create's own flags say it is not, and they decide.
       const mirror = join(root, 'home', '.himmel', 'state', 'jira-mirror', 'HIMMEL');
       mkdirSync(mirror, { recursive: true });
       writeFileSync(join(mirror, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-10T00:00:00Z' }));
