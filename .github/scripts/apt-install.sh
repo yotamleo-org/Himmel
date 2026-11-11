@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # .github/scripts/apt-install.sh -- install apt packages on a CI runner so a
-# stalled Ubuntu archive mirror cannot kill the job (HIMMEL-2872).
+# stalled Ubuntu archive mirror cannot kill the job.
 #
 # Order, each attempt under its own `timeout`:
 #   1. cached .debs  -- `install --no-download` from $APT_ARCHIVES (restored by

@@ -1,7 +1,7 @@
 name: Main Sweep Red
 
-# HIMMEL-3841 slice E (spec HIMMEL-3815 section 6.1 B). After each COMPLETED
-# main CI sweep (a cron or dispatch run since HIMMEL-5113; there is no push
+# After each COMPLETED
+# main CI sweep (a cron or dispatch run; there is no push
 # run), open or refresh ONE `main-red` issue when a job failed,
 # and close it only after a later sweep ran and passed every job it recorded
 # (scripts/ci/main-sweep-red-issue.sh).
@@ -35,7 +35,7 @@ concurrency:
 
 jobs:
   main-sweep-red:
-    # HIMMEL-5113: main has no per-merge push run; its health is the cron sweep
+    # Main has no per-merge push run; its health is the cron sweep
     # (event `schedule`: the main-sweep cron, and the nightly, which the script
     # recognises by guard-corpus-full or a windows-latest job name and skips entirely) and a
     # manual dispatch on main
