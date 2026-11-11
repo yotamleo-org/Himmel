@@ -410,13 +410,6 @@ else
     fail "failed arm left state behind" "$(ls -a "$CRON_DIR" 2>/dev/null; cat "$CSTATE/crontab" 2>/dev/null)"
 fi
 
-# Test C13b: the luna map runner (claude-cli) needs `claude` at arm time; the himmel rows do not
-# ---------------------------------------
-#
-# The semantic default is claude-api: a bare arm renders the himmel rows only and
-# shells no local `claude`. The Luna map runner stays on claude-cli (a Luna run never walks auto,
-# decision 525), so `arm --luna-only` still fails fast when `claude` is absent. Mirrors the
-# graphify fail-fast test above: PATH carries graphify but not claude.
 
 echo "TEST: cron arm --luna-only fails fast when claude is not on PATH"
 rc=0; out=$(env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$FAKE_CRONTAB" \
@@ -612,7 +605,6 @@ for what in luna himmel; do
     # backend shells the local `claude` CLI internally, so the semantic
     # runner must ALSO pin its dir onto PATH the same way.
     # shellcheck disable=SC2016  # literal $PATH — the runner expands it at fire time
-    # Only the luna map runner (claude-cli) shells claude; the himmel claude-api runner pins none.
     if [ "$what" = luna ]; then
         assert_contains "$what runner prepends the claude dir to PATH" \
             "export PATH=$CLAUDE_BIN_DIR_PATH:\$PATH" "${body//\\/}"
@@ -859,11 +851,6 @@ luna_line=$(grep 'HIMMEL-GraphMap-Luna' <<< "$out")
 assert_contains "runner with no --backend flag gets its own explicit label" "installed: no --backend flag in runner" "$luna_line"
 assert_not_contains "runner with no --backend flag is never silently read as the configured fallback" "configured:" "$luna_line"
 
-# Test C5d: the claude-api default -------------------------------------------
-# A bare arm on an opted-in station with no `claude` on PATH: himmel semantic runner on the API
-# lane, no claude-cli, no Luna rows. A claude-cli himmel runner already armed is flagged by
-# status and turned into claude-api by arm --rewrite-armed; an un-opted-in station renders the
-# skip line and no lane.
 echo "TEST: bare arm bakes the claude-api lane, needs no claude, adds no luna rows"
 API_DIR="$TMP_ROOT/api-default-runners"; API_STATE="$TMP_ROOT/api-default-state"; mkdir -p "$API_STATE"
 API_CRON="$TMP_ROOT/crontab-fake-api.sh"

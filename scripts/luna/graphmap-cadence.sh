@@ -32,16 +32,6 @@
 # fragment, and NO auto-approve hook.
 # That keeps pipeline-cadence's "every task = a claude session" invariant
 # clean, and makes this scheduler strictly simpler than its sibling.
-# The semantic BACKEND is `claude-api` (there is no kimi backend). Unlike
-# pipeline-cadence's interactive `claude "<prompt>" < NUL` sessions, the
-# semantic pair never opens a claude SESSION itself — refresh-graph-map.sh
-# extracts through the API lane, which spends the station's own API key, so
-# the runner renders the lane only on an opted-in station (semantic_api_opted_in).
-# The Luna map runner (claude-cli) is the one exception: graphify shells the local
-# `claude` CLI headlessly, and refresh-graph-map.sh gates that fire on
-# usage-preflight.sh (SKIPPED-BANK stops the run rather than draining the
-# bank unattended). The structural pair never talks to any provider and needs
-# no gate.
 #
 # FENCE SAFETY: refresh-graph-map.sh never extracts on a live vault — it copies
 # the corpus to a PID-owned scratchpad, carries the `.graphify-corpus` marker,
@@ -89,12 +79,6 @@
 # default; the stagger REDUCES THE CHANCE of the two extraction jobs
 # overlapping (it cannot guarantee no overlap — luna and himmel are different
 # corpora / out dirs, so the per-out-dir promote lock does not serialize them).
-# These times are a quiet-hours default, not a provider off-peak window. WHY :05 / :15 PAST THE HOUR for the structural pair (10 min
-# apart, tighter than the semantic stagger — these workers are seconds-to-minutes,
-# not the semantic workers' LLM-bound runtime): same overlap-reduction rationale,
-# scaled to how fast a local AST re-parse actually is. The backend/day/hour
-# offsets are fixed as BACKEND/WEEKLY_DAY_*/AST_*_TIME in this script — not
-# flags; edit + re-arm to change them.
 #
 # Usage:
 #   bash scripts/luna/graphmap-cadence.sh arm [--himmel-time HH:MM]
@@ -344,14 +328,7 @@ LUNA_TAG="luna"
 HIMMEL_TITLE="Graphify Himmel Map"
 HIMMEL_SLUG="graphify-himmel-map"
 HIMMEL_TAG="himmel"
-# The himmel semantic worker runs on the `claude-api` backend with the lane env baked in
-# (HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto, the graph role walks A then B then C), only on
-# an opted-in station: background LLM jobs run on the API, never on the subscription.
-# Already-armed runners keep their baked-in --backend until `arm --rewrite-armed`; status
-# flags a himmel runner still on claude-cli.
 BACKEND="claude-api"
-# The Luna map row (opt-in, `arm --luna-only`) carries no account flag and a Luna run never
-# walks auto, so it keeps the subscription backend.
 LUNA_MAP_BACKEND="claude-cli"
 
 # Resolved by validate_arm_inputs (both arm paths call it): `graphify` itself,
@@ -363,10 +340,6 @@ LUNA_MAP_BACKEND="claude-cli"
 # directory to PATH — see the note in validate_arm_inputs.
 GRAPHIFY_BIN=""
 GRAPHIFY_DIR=""
-# Resolved the same way, Luna map runner only (see validate_arm_inputs): under
-# LUNA_MAP_BACKEND=claude-cli, graphify shells the local `claude` CLI internally at
-# fire time, so its directory must ALSO be on the runner's PATH. Empty when no Luna map
-# runner is rendered (nothing shells claude then).
 CLAUDE_BIN=""
 CLAUDE_DIR=""
 
@@ -800,11 +773,6 @@ validate_arm_inputs() {
     if [ "$AST_ONLY" -eq 0 ] && { [ "$REWRITE_ARMED" -ne 1 ] || [ -f "$CRON_RUNNER_LUNA" ] \
             || [ -f "$CRON_RUNNER_HIMMEL" ] || [ -f "$CRON_RUNNER_SEMANTIC_LUNA" ]; }; then
         validate_backend_credential
-        # FAIL FAST on a missing `claude` CLI, only when a Luna map runner
-        # (LUNA_MAP_BACKEND=claude-cli) is being rendered: graphify shells the local `claude` CLI
-        # for it, and the scheduler's minimal PATH carries it no more than it carries graphify --
-        # same rationale as the GRAPHIFY_BIN check above. The claude-api himmel rows shell no
-        # local CLI, so requiring it for them would refuse an arm the fire path never needs.
         case "$LUNA_MAP_NEEDS_CLAUDE" in
             1)
                 if ! CLAUDE_BIN=$(command -v claude 2>/dev/null); then
@@ -879,9 +847,8 @@ validate_backend_credential() {
         deepseek)      key_var="DEEPSEEK_API_KEY" ;;
         # Subscription/local backends need no API key at arm time: claude-cli
         # uses the operator's own Claude Code auth, ollama is local.
-        # claude-api needs no key at arm time either: the lane resolves its key at fire time and
-        # renders only behind semantic_api_opted_in (an .env key is not an opt-in, decision 525).
-        claude|claude-cli|claude-api|ollama) return 0 ;;
+        claude|claude-cli|ollama) return 0 ;;
+        claude-api)    return 0 ;;
         # Fail CLOSED on anything unclassified. A warning here would be
         # read at arm time and forgotten; the cadence it permits fails silently
         # weeks later, which is the whole failure mode this gate exists for. A
