@@ -646,7 +646,7 @@ typing-extensions==4.16.0 \
     #   beautifulsoup4
     #   pyee
     #   scrapling
-w3lib==2.5.0 \
-    --hash=sha256:136fd5edfe64b53b8579838e2a7e803495bbbe6b69ddfaeed3c29a794b44f6ba \
-    --hash=sha256:a7ddf714508ddc1b8563bd19ace2feb28080bbaca39326cbc964359f6754f615
+w3lib==2.6.0 \
+    --hash=sha256:821f78cfdeb9e675c736ffe0b874bd1e50e9e02997e675ce046b373c009f27be \
+    --hash=sha256:e62ce6b7f845b5e8588223d44e64990673a0fefd6815d6b3f2e6d39bf9ef308c
     # via scrapling
