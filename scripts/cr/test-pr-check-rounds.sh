@@ -398,6 +398,31 @@ hand_rc=0
     bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" >/dev/null 2>&1) || hand_rc=$?
 assert_eq "$hand_rc" 4 "9498 a hand-written polish amend with another reason still blocks in a delta round"
 if [ -e "$recovery_git/cr-pending/recovery" ]; then pass "9498 the hand-written polish amend leaves the marker pending"; else fail "9498 the hand-written polish amend leaves the marker pending"; fi
+delta_row() {
+    printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"%s","fu_class":"%s","fu_why":"no-check","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
+        "$recovery_head" "$2" "$3" > "$recovery_git/cr-critic-scores.jsonl"
+    CR_LEDGER="$recovery_git/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" amend \
+        --branch recovery --head "$recovery_head" --id critic-1 --artifact spec --perspective on \
+        --set verdict="$4" --reason "9892 $1 fixture" >/dev/null 2>&1 || fail "9892 $1 seed the $4 amend"
+    printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+    delta_rc=0
+    (cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up' RECOVERY_JIRA_LOG="$recovery_log" \
+        bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" >/dev/null 2>&1) || delta_rc=$?
+    delta_amends="$(grep -c '"kind":"amend"' "$recovery_git/cr-critic-scores.jsonl" || true)"
+}
+delta_row C3 crit escape fixed
+assert_eq "$delta_rc" 4 "9892 C3 a fixed Critical still blocks the delta round"
+delta_row C3b imp hardening fixed
+assert_eq "$delta_rc" 0 "9892 C3b a fixed hardening-class Important in the delta round exits 0"
+assert_eq "$delta_amends" 1 "9892 C3b writes nothing beyond the seeded amend"
+delta_row C3c imp escape fixed
+assert_eq "$delta_rc" 4 "9892 C3c a fixed escape-class Important still blocks the delta round"
+delta_row C3d crit escape disproved
+assert_eq "$delta_rc" 0 "9892 C3d the same Critical disproved exits 0"
+assert_eq "$delta_amends" 1 "9892 C3d writes nothing beyond the seeded amend"
+delta_row C3e imp escape disproved
+assert_eq "$delta_rc" 0 "9892 C3e the same escape-class Important disproved exits 0"
+assert_eq "$delta_amends" 1 "9892 C3e writes nothing beyond the seeded amend"
 # A missing class is recorded in the body, never invented as a class label.
 printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-unclassified","severity":"imp","fu_class":"hardening","fu_why":"no-check","text":"- [critic-unclassified]: a gap [a.sh:3]"}\n' \
     "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
@@ -621,6 +646,57 @@ assert_has "$rl1_out" 'remain blocking at round 1' "8425 the round-1 Critical re
 assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8425 an open Critical at round 1 writes no deferred row"
 assert_eq "$(rl1_marker)" kept "8425 an open Critical at round 1 keeps the marker"
 
+rl1_v_imp() {
+    printf '{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-6","severity":"imp","class":"reader-allowlist"}\n'
+    [ -z "${1:-}" ] || printf '{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"critic-6","artifact":"diff","perspective":"off","set":{"verdict":"%s"}}\n' "$1"
+}
+rl1_fixed_imp="$(rl1_v_imp fixed)"$'\n'
+rl1_fixed_crit="$(rl1_v_imp fixed | sed 's/critic-6/critic-7/g; s/"imp"/"crit"/')"$'\n'
+rl1_reached() { if [ -f "$CLEAR_CALLS" ]; then grep -c '^feat/rl1$' "$CLEAR_CALLS" || true; else echo 0; fi; }
+rl1_amends_for() { { printf '%s\n' "$rl1_ledger" | grep '"kind":"amend"' | grep -c "\"finding_id\":\"$1\"" || true; } | tr -d ' '; }
+rl1_deferred_rows() { printf '%s\n' "$rl1_ledger" | grep '"verdict":"deferred"' || true; }
+rl1_assert_settled_defer() {
+    assert_eq "$rl1_rc" 0 "$1 exits 0 ($rl1_out)"
+    rl1_def="$(rl1_deferred_rows)"
+    assert_eq "$(printf '%s\n' "$rl1_def" | grep -c '"verdict":"deferred"' || true)" 2 "$1 writes exactly two deferred amends"
+    assert_has "$rl1_def" '"finding_id":"critic-1"' "$1 defers critic-1"
+    assert_has "$rl1_def" '"finding_id":"critic-2"' "$1 defers critic-2"
+    assert_has "$rl1_def" '"fu_class":"polish"' "$1 records the polish class"
+    assert_has "$rl1_def" 'Polish finding noted in the PR body: no ticket filed' "$1 records the noted reason"
+    assert_lacks "$rl1_def" 'critic-6' "$1 writes no deferred row for the fixed Important"
+    assert_lacks "$rl1_def" 'critic-7' "$1 writes no deferred row for the fixed Critical"
+    assert_eq "$(rl1_reached)" "$((rl1_reached_before + 1))" "$1 reaches the marker stub once"
+}
+rl1_reached_before="$(rl1_reached)"
+rl1_run feat/rl1 3 "$rl1_sug$rl1_fixed_imp"
+rl1_assert_settled_defer "9892 R1 a fixed Important plus declined Suggestions at round 3"
+assert_eq "$(rl1_amends_for critic-6)" 1 "9892 R1 the only amend for critic-6 is the seeded fixed"
+
+rl1_reached_before="$(rl1_reached)"
+rl1_run feat/rl1 1 "$rl1_sug$rl1_fixed_crit"
+rl1_assert_settled_defer "9892 R2 a fixed Critical plus declined Suggestions at round 1"
+assert_eq "$(rl1_amends_for critic-7)" 1 "9892 R2 the only amend for critic-7 is the seeded fixed"
+
+rl1_reached_before="$(rl1_reached)"
+rl1_run feat/rl1 3 "$rl1_fixed_imp"
+assert_eq "$rl1_rc" 0 "9892 R4 a fixed Important alone exits 0 ($rl1_out)"
+assert_eq "$(printf '%s\n' "$rl1_ledger" | grep -c '"kind":"amend"' || true)" 1 "9892 R4 a fixed Important alone writes no amend beyond the seeded one"
+assert_eq "$(rl1_marker)" kept "9892 R4 a fixed Important alone keeps the marker"
+assert_eq "$(rl1_reached)" "$rl1_reached_before" "9892 R4 a fixed Important alone calls no marker"
+
+rl1_run feat/rl1 3 "$rl1_sug$(rl1_v_imp)"
+assert_eq "$rl1_rc" 4 "9892 C1 a full-round Important with no verdict still blocks defer ($rl1_out)"
+assert_has "$rl1_out" 'remain blocking at round 3: critic-6' "9892 C1 names the blocking Important"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "9892 C1 writes no deferred row"
+assert_eq "$(rl1_marker)" kept "9892 C1 keeps the marker"
+for rl1_v in agreed conflict unaddressed deferred; do
+    rl1_run feat/rl1 3 "$rl1_sug$(rl1_v_imp "$rl1_v")"
+    assert_eq "$rl1_rc" 4 "9892 C2 a full-round Important with verdict $rl1_v still blocks defer ($rl1_out)"
+    assert_has "$rl1_out" 'remain blocking at round 3: critic-6' "9892 C2 verdict $rl1_v names the blocking Important"
+    assert_lacks "$(rl1_deferred_rows)" '"finding_id":"critic-1"' "9892 C2 verdict $rl1_v defers no Suggestion"
+    assert_eq "$(rl1_marker)" kept "9892 C2 verdict $rl1_v keeps the marker"
+done
+
 # I1 and I4: only the structured pre_existing field (an amend row
 # the tagger writes) lets defer defer an Important, at rounds 2 and 3, to the
 # branch's batch residual. A Critical never is, and an Important whose text
@@ -629,6 +705,10 @@ rl1_pre_reason='Important finding deferred: the cited code is older than this PR
 rl1_pre_imp='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-8","severity":"imp","class":"reader-allowlist","text":"- [critic-8]: old helper ignores errors [docs/guide/x.md:1]"}
 '
 rl1_pre_amend() { printf '{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"%s","artifact":"diff","perspective":"off","set":{"pre_existing":true}}\n' "$1"; }
+rl1_reached_before="$(rl1_reached)"
+rl1_run feat/rl1 3 "$rl1_sug$rl1_fixed_imp"$'\n'"$(rl1_pre_amend critic-6)"$'\n'
+rl1_assert_settled_defer "9892 R1p a fixed pre-existing-tagged Important plus declined Suggestions at round 3"
+assert_eq "$(rl1_amends_for critic-6)" 2 "9892 R1p critic-6 keeps only its seeded fixed and pre_existing amends"
 # The adjudicator's own class for the finding (and, for hardening, its fu_why).
 # The leading newline keeps it a row of its own after a $(...) that lost its last one.
 rl1_class_amend() { printf '\n{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"%s","artifact":"diff","perspective":"off","set":{"fu_class":"%s"%s}}\n' "$1" "$2" "${3:+,\"fu_why\":\"$3\"}"; }
@@ -1362,6 +1442,57 @@ notereal_amends="$(grep '"kind":"amend"' "$git_dir/cr-critic-scores.jsonl" | gre
 assert_has "$notereal_amends" '"fu_class":"polish"' "9498 the polish-only round records the polish class"
 assert_has "$notereal_amends" 'Polish finding noted in the PR body: no ticket filed' "9498 the polish-only round records the noted reason"
 assert_lacks "$notereal_amends" 'deferred_to' "9498 the polish-only round records no ticket, so the coverage lint finds no deferral key to match"
+
+three_rounds r3fix important
+CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
+    --branch r3fix --head "$cap_r3_head" --model stub --id stub-9 --severity sug --file f.txt --line 4 \
+    --verdict "" >/dev/null 2>"$tmp/r3fix-stub9.err" || fail "r3fix stub-9 finding"
+postcap_amend r3fix "$cap_r3_head" stub-1 fixed
+printf '%s\n' "SWEEP [stub-1@$cap_r3_head] class=stub :: single-site search=git grep -n stub" \
+    | (cd "$repo" && bash "$fx/scripts/cr/write-verdicts.sh" sweep --branch r3fix) >/dev/null 2>"$tmp/r3fix-sweep.err" \
+    || fail "r3fix sweep record"
+fix_commit r3fix
+git -C "$repo" push -q -u origin r3fix
+write_real_marker r3fix "$cap_fix_head"
+(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_fix_head" --branch r3fix >/dev/null 2>"$tmp/r3fix-delta.err") \
+    || fail "r3fix delta round runs"
+r3fix_log="$tmp/r3fix-jira.log"
+r3fix_rc=0
+r3fix_out="$(cd "$repo" && RECOVERY_JIRA_LOG="$r3fix_log" bash "$fx/scripts/cr/review-round.sh" defer --head "$cap_r3_head" --branch r3fix 2>"$tmp/r3fix.err")" || r3fix_rc=$?
+assert_eq "$r3fix_rc" 0 "9892 R3 a fixed round-3 Important plus a Suggestion clears through the real marker ($r3fix_out $(cat "$tmp/r3fix.err"))"
+assert_has "$r3fix_out" "clear-cr-marker CLEARED branch=r3fix sha=$cap_fix_head" "9892 R3 the real marker gates clear the fix head"
+if [ -e "$git_dir/cr-pending/r3fix" ]; then fail "9892 R3 the marker is gone"; else pass "9892 R3 the marker is gone"; fi
+if [ -e "$r3fix_log" ]; then fail "9892 R3 never reaches Jira"; else pass "9892 R3 never reaches Jira"; fi
+r3fix_amends="$(grep '"kind":"amend"' "$git_dir/cr-critic-scores.jsonl" | grep '"branch":"r3fix"' | grep '"verdict":"deferred"' || true)"
+assert_has "$r3fix_amends" '"finding_id":"stub-9"' "9892 R3 the Suggestion is deferred"
+assert_has "$r3fix_amends" '"fu_class":"polish"' "9892 R3 the deferral records the polish class"
+assert_has "$r3fix_amends" 'Polish finding noted in the PR body: no ticket filed' "9892 R3 the deferral records the noted reason"
+assert_lacks "$r3fix_amends" 'deferred_to' "9892 R3 the deferral names no ticket"
+
+three_rounds c5fix important
+CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
+    --branch c5fix --head "$cap_r3_head" --model stub --id stub-9 --severity sug --file f.txt --line 4 \
+    --verdict "" >/dev/null 2>"$tmp/c5fix-stub9.err" || fail "c5fix stub-9 finding"
+postcap_amend c5fix "$cap_r3_head" stub-1 fixed
+printf '%s\n' "SWEEP [stub-1@$cap_r3_head] class=stub :: single-site search=git grep -n stub" \
+    | (cd "$repo" && bash "$fx/scripts/cr/write-verdicts.sh" sweep --branch c5fix) >/dev/null 2>"$tmp/c5fix-sweep.err" \
+    || fail "c5fix sweep record"
+git -C "$repo" push -q -u origin c5fix
+write_real_marker c5fix "$cap_r3_head"
+c5fix_amends() { grep '"kind":"amend"' "$git_dir/cr-critic-scores.jsonl" | grep -c '"branch":"c5fix"' || true; }
+c5fix_before="$(c5fix_amends)"
+c5fix_rc=0
+c5fix_out="$(cd "$repo" && GH_TRUST_LIST="$HERE/../ci/ci-trust-paths.txt" GH_PR_HEAD="$cap_r3_head" GH_PR_FILES=c5fix.txt \
+    RECOVERY_JIRA_LOG="$tmp/c5fix-jira.log" bash "$fx/scripts/cr/review-round.sh" defer --head "$cap_r3_head" --branch c5fix 2>&1)" || c5fix_rc=$?
+assert_eq "$c5fix_rc" 15 "9892 C5 a fixed Important at the reviewed tip with no judge GO exits 15 ($c5fix_out)"
+assert_has "$c5fix_out" 'REFUSED reason=blocking-findings' "9892 C5 the marker gate refuses on blocking findings"
+if [ -e "$git_dir/cr-pending/c5fix" ]; then pass "9892 C5 the marker is kept"; else fail "9892 C5 the marker is kept"; fi
+assert_eq "$(c5fix_amends)" "$((c5fix_before + 1))" "9892 C5 adds exactly one amend, the Suggestion's noted row"
+c5fix_rc2=0
+(cd "$repo" && GH_TRUST_LIST="$HERE/../ci/ci-trust-paths.txt" GH_PR_HEAD="$cap_r3_head" GH_PR_FILES=c5fix.txt \
+    RECOVERY_JIRA_LOG="$tmp/c5fix-jira.log" bash "$fx/scripts/cr/review-round.sh" defer --head "$cap_r3_head" --branch c5fix >/dev/null 2>&1) || c5fix_rc2=$?
+assert_eq "$c5fix_rc2" 15 "9892 C5 a second identical run exits 15"
+assert_eq "$(c5fix_amends)" "$((c5fix_before + 1))" "9892 C5 a second identical run adds no amend"
 
 postcap_setup postcap suggestion
 assert_eq "$(cat "$git_dir/cr-review-rounds/postcap.round")" "4" "postcap fixture: the delta round ran as round 4"

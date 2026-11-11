@@ -2298,6 +2298,7 @@ for (const o of findings.values()) {
   const notedPolish = verdict === "deferred" && !ticket && reason === e.NOTE_REASON &&
     (severity === "sug" || severity === "nit") && String(o.fu_class || "").trim() === "polish";
   const resolved = verdict === "disproved" || trackedDeferred || notedPolish;
+  const settled = resolved || verdict === "fixed";
   if (e.DELTA === "1") {
     // The delta round blocks only on Critical or escape-class;
     // every other open finding is deferred. An Important needs an explicit
@@ -2318,7 +2319,7 @@ for (const o of findings.values()) {
     });
     else if (trackedDeferred && CAP_REASONS.includes(reason)) capDeferred.push({id, ticket});
     else if (notedPolish) capDeferred.push({id, ticket: ""});
-    else if (!resolved && verdict !== "fixed") blocking.push(id);
+    else if (!settled) blocking.push(id);
     continue;
   }
   // I1: a Critical is never deferred by the pre_existing field. Only the
@@ -2344,7 +2345,7 @@ for (const o of findings.values()) {
     else unclassified.push(id);
   }
   else if (preExisting && trackedDeferred && reason === e.PRE_REASON) capDeferred.push({id, ticket});
-  else if ((severity === "crit" || severity === "imp") && !resolved) blocking.push(id);
+  else if ((severity === "crit" || severity === "imp") && !settled) blocking.push(id);
   else if (!verdict && (severity === "sug" || severity === "nit")) pending.push({
     id,
     artifact: o.artifact || "diff",
