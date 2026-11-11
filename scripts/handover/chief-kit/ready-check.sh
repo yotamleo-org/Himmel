@@ -2084,8 +2084,10 @@ check_open_findings
 
 # --- 19. suite evidence. Each impacted suite needs local proof (the head's
 # `impacted` ledger row) or CI proof (an exact `ran 0 <path>` line in a shard
-# manifest of the run behind the latest SUCCESS `shell-unit (ubuntu-latest)`
-# check-run in workflow CI, whose run head_sha is SHA). The manifests are read
+# manifest of the run behind the latest `shell-unit (ubuntu-latest)` check-run in
+# workflow CI that is not a cancelled duplicate and whose run is a SUCCESS with
+# head_sha SHA; when every such row belongs to a cancelled run, the newest other
+# CI run at the head that is not cancelled decides, up to 5 are read). The manifests are read
 # only when some suite lacks local proof. The row comes from o16_ledger (head,
 # headRefName, .pr null or this PR). ponytail: the latest-run pick mirrors check
 # 2's rather than sharing it; upgrade path: one shared latest-run reader.
@@ -2243,7 +2245,7 @@ s17_body() {
             | ($all | map(select(.name == $n)) | newest_first | .[] | "A \(.st)/\(.c) \(.run)"),
               ($all | map(select(.run != "")) | newest_first | map(.run)
                | reduce .[] as $r ([]; if any(.[]; . == $r) then . else . + [$r] end) | .[] | "O \(.)")' 2>/dev/null) || cands="unreadable"  # swallow-ok: an unreadable rollup is no settled CI run
-        agg=""; agg_first=""; agg_skipped=" "; agg_others=""
+        agg=""; agg_first=""; agg_skipped=" "; agg_others=""; agg_err=""
         while IFS= read -r line; do
             case "$line" in
                 "O "*) agg_others="$agg_others ${line#O }" ;;
@@ -2253,9 +2255,12 @@ s17_body() {
                     case "${line#A }" in
                         "COMPLETED/CANCELLED "*) agg_skipped="$agg_skipped${line##* } "; continue ;;
                         "COMPLETED/FAILURE "[0-9]*)
-                            if s17_run "gh api actions/runs/${line##* }" "$(s17_bound 15)" "$d/rc" "$GH" api "repos/$owner/$repo/actions/runs/${line##* }" --jq .conclusion \
-                                && [ "$(tr -d '[:space:]' < "$d/rc")" = cancelled ]; then
-                                agg_skipped="$agg_skipped${line##* } "; continue
+                            if s17_run "gh api actions/runs/${line##* }" "$(s17_bound 15)" "$d/rc" "$GH" api "repos/$owner/$repo/actions/runs/${line##* }" --jq .conclusion; then
+                                if [ "$(tr -d '[:space:]' < "$d/rc")" = cancelled ]; then
+                                    agg_skipped="$agg_skipped${line##* } "; continue
+                                fi
+                            else
+                                agg_err="$s17_why"
                             fi ;;
                     esac
                     agg="${line#A }" ;;
@@ -2266,17 +2271,22 @@ s17_body() {
             for r in $agg_others; do
                 case "$agg_skipped" in *" $r "*) continue ;; esac
                 agg_n=$((agg_n + 1)); [ "$agg_n" -le 5 ] || break
-                if s17_run "gh api actions/runs/$r" "$(s17_bound 15)" "$d/rc" "$GH" api "repos/$owner/$repo/actions/runs/$r" --jq '[.conclusion, .head_sha] | join(" ")' \
-                    && [ "$(tr -d '\r' < "$d/rc" | head -n 1)" = "success $SHA" ]; then
-                    agg="COMPLETED/SUCCESS $r"; break
+                # the newest run that is not cancelled decides: an older success never stands in for it
+                if ! s17_run "gh api actions/runs/$r" "$(s17_bound 15)" "$d/rc" "$GH" api "repos/$owner/$repo/actions/runs/$r" --jq '[.conclusion, .head_sha] | join(" ")'; then
+                    agg_err="$s17_why"; break
                 fi
+                case "$(tr -d '\r' < "$d/rc" | head -n 1)" in
+                    "success $SHA") agg="COMPLETED/SUCCESS $r"; break ;;
+                    "cancelled "*) continue ;;
+                    *) break ;;
+                esac
             done
             [ -n "$agg" ] || agg="$agg_first"
         fi
         case "$cands" in unreadable) agg="" ;; *) [ -n "$agg" ] || agg="none" ;; esac
         case "$agg" in
             "COMPLETED/SUCCESS "[0-9]*) run_id="${agg#* }" ;;
-            *) s17_why="no settled CI run (latest $S17_AGG: ${agg:-unreadable})" ;;
+            *) s17_why="no settled CI run (latest $S17_AGG: ${agg:-unreadable}${agg_err:+; $agg_err})" ;;
         esac
         case "$agg" in "COMPLETED/FAILURE "[0-9]*) why="$s17_why"; s17_fl_failures "$d" "${agg#* }"; s17_why="$why" ;; esac
         if [ -n "$run_id" ]; then
