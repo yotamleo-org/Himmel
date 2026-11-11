@@ -499,7 +499,7 @@ contains "dry-run HIMMEL_WORKER_SESSION_CONTEXT_MODE=bogus: names the allowed mo
 # this exact assertion, not a vaguer one.
 rc=0; out="$(CHIEF_CONTEXT=1m WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, ambient CHIEF_CONTEXT=1m: exit 0 (a worker is unaffected by it)" "$rc" "0"
-contains "dry-run, ambient CHIEF_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CHIEF_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE CHIEF_CONTEXT=<unset> "
+contains "dry-run, ambient CHIEF_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CHIEF_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE HIMMEL_JIRA_LIVE_TEST CHIEF_CONTEXT=<unset> "
 not_contains "dry-run, ambient CHIEF_CONTEXT=1m: never reported as still set" "$out" "CHIEF_CONTEXT=1m"
 
 # --- HIMMEL_CONSOLE_NAME resolution (--chief, launching
@@ -3944,6 +3944,31 @@ rc34o=0
 WORKER_SESSION_EFFORT=high HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e_worker "$mut6507_script" "$d34o" "HIMMEL-9999-worker-34o" >/dev/null 2>&1 || rc34o=$?
 check "34o RED control: with the 6507 fix reverted the 34n WORKER_SESSION_EFFORT=high assertion no longer holds" "$([ "$(e2e_effort "$d34o" 40)" = high ] && echo holds || echo broken)" "broken"
 check "34o RED control: the reverted launcher refuses instead of running at medium (exit 2)" "$rc34o" "2"
+
+mk_lt_stubs() {
+  mk_exec_stubs "$1" "$2"
+  cat > "$1/claude" <<'CLAUDE_EOF'
+#!/usr/bin/env bash
+d="$(dirname "$0")"
+[ "${1:-}" = --version ] && { echo "2.1.296 (Claude Code)"; exit 0; }
+printf 'HIMMEL_JIRA_LIVE_TEST=%s\n' "${HIMMEL_JIRA_LIVE_TEST-<unset>}" > "$d/claude-lt"
+: > "$d/confirmable"
+sleep 2
+CLAUDE_EOF
+  chmod 755 "$1/claude"
+}
+lt34p="$tmp/c34p-doc.md"
+fx_brief '# live-test fixture' "> **Live test:** jira HTEST own=HIMMEL-9577 — every Jira write this session makes goes to HTEST; the jira CLI refuses any other project except this brief's own tickets. Create with --project HTEST." > "$lt34p"
+d34p="$tmp/c34p-marked"; mk_lt_stubs "$d34p" "HIMMEL-9577-worker-34p-marked"
+rc34p=0
+some_doc="$lt34p" e2e_worker "$SCRIPT" "$d34p" "HIMMEL-9577-worker-34p-marked" >/dev/null 2>&1 || rc34p=$?
+check "34p a Live test jira doc: the launcher exits 0" "$rc34p" "0"
+check "34p a Live test jira doc: the claude process's environment carries the marker" "$(e2e_seen "$d34p" claude-lt)" "HIMMEL_JIRA_LIVE_TEST=HIMMEL-9577"
+d34p="$tmp/c34p-plain"; mk_lt_stubs "$d34p" "HIMMEL-9577-worker-34p-plain"
+rc34p=0
+HIMMEL_JIRA_LIVE_TEST=HIMMEL-1 e2e_worker "$SCRIPT" "$d34p" "HIMMEL-9577-worker-34p-plain" >/dev/null 2>&1 || rc34p=$?
+check "34p an unmarked doc with a caller marker: the launcher exits 0" "$rc34p" "0"
+check "34p an unmarked doc: the caller's marker never reaches the claude process" "$(e2e_seen "$d34p" claude-lt)" "HIMMEL_JIRA_LIVE_TEST=<unset>"
 
 # --- 35. HANDOVER_DIR unset, but a root IS
 # self-resolvable (case 26's shape: a chief-like cwd with an

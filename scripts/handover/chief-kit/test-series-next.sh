@@ -335,6 +335,7 @@ check "8b: a published item cannot commit" "$rc" 2
 IB="$tmp/ibucket"; mkdir -p "$tmp/stub-jira" "$tmp/imirror" "$tmp/isigned"
 cat > "$tmp/stub-jira/index.js" <<'JSEOF'
 const a = process.argv.slice(2);
+if (a[0] === 'live-test') { process.stdout.write(require('fs').readFileSync(process.env.LT_NONE, 'utf8')); process.exit(0); }
 const keys = a.slice(a.indexOf(a[1] === 'core-check' ? '--key' : '--mirror') + (a[1] === 'core-check' ? 1 : 2));
 if (a[1] === 'core-check') { for (const k of keys) console.log('NOT-CORE ' + k); }
 else { for (const k of keys) console.log('SPEC ok ' + k + ' x'); }
@@ -354,7 +355,7 @@ cat > "$tmp/iworkers.json" <<IWEOF
 IWEOF
 gb_out="$( HIMMEL_FLAG_STACKED_SERIES=1 GEN_BRIEFS_WORKTREE_CMD="$tmp/wt-stub.sh" WT_LOG="$tmp/wt.log" GEN_BRIEFS_MIRROR="$tmp/imirror" \
     TICKET_STATUS_STATE_DIR="$tmp/state-empty" GEN_BRIEFS_NO_WT_CHECK=1 GEN_BRIEFS_JIRA_CLI="$tmp/stub-jira/index.js" CG_STUB_SIGNED="$tmp/isigned" \
-    python3 "$HERE/gen-briefs.py" "$tmp/iworkers.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 \
+    LT_NONE="$HERE/../../jira/src/fixtures/live-test-none.json" python3 "$HERE/gen-briefs.py" "$tmp/iworkers.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 \
     --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$IB" --date 2026-10-08 --repo "$REPO" --handover-root "$tmp/handovers" \
     --work-dir "$tmp/iwork" --deadline 1791475000 2>&1 )"; gb_rc=$?
 [ "$gb_rc" = 0 ] || printf '%s\n' "$gb_out"

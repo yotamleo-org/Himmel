@@ -1212,6 +1212,66 @@ assert "commands-catalog.md has /x-media-enrich row" ok "$a"
 grep -qF -- 'x-media' "$README" 2>/dev/null && a=ok || a=no
 assert "README.md documents x-media rung" ok "$a"
 
+echo "Test 23: queue order - untried known media newest first, then probes, failed last"
+VO="$tmp/vault-order"; mkdir -p "$VO/Clippings"
+order_clip() {
+  local name="$1" id="$2" date="$3" media="$4" extra="$5"
+  printf -- '---\ntitle: "%s"\nsource: "https://x.com/u/status/%s"\ntype: tweet\ndate_clipped: %s\n%s---\n# %s\n%s\n' \
+    "$name" "$id" "$date" "$extra" "$name" "$media" > "$VO/Clippings/$name.md"
+}
+order_clip a-failed 701 2026-11-01 "$VIDEO_MEDIA" $'media_enrichment_status: deferred\nmedia_last_error: scrapling:download_timeout\nx_media_pending: true\n'
+order_clip b-old 702 2026-06-01 "$VIDEO_MEDIA" ""
+order_clip c-new 703 2026-11-10 "$VIDEO_MEDIA" ""
+order_clip d-probe 704 2026-11-11 "text only" ""
+run_tool "$VO" --dry-run --limit 3 >"$tmp/order.out" 2>"$tmp/order.err"
+plans="$(sed -n 's/^PLAN Clippings\/\([a-z-]*\)\.md.*/\1/p' "$tmp/order.out" | tr '\n' ' ')"
+assert "untried known media goes first, newest first; the failed clip is not in a 3-clip batch" "c-new b-old " "$plans"
+grep -qF '1 clip(s) would be probed' "$tmp/order.out" && a=ok || a=no
+assert "the never-probed clip goes before the failed clip" ok "$a"
+
+echo "Test 24: X_MEDIA_BUDGET_S - no clip starts once the budget is spent"
+cat > "$tmp/bin/gallery-dl" <<'STUB'
+#!/usr/bin/env bash
+dest=""
+while [ $# -gt 0 ]; do case "$1" in -D) shift; dest="$1" ;; esac; shift; done
+sleep "${X_TEST_GDL_SLEEP:-0}"
+mkdir -p "$dest"; echo data > "$dest/video.mp4"
+STUB
+chmod +x "$tmp/bin/gallery-dl"
+VB="$tmp/vault-budget"; mkdir -p "$VB/Clippings"
+for n in 1 2; do
+  printf -- '---\ntitle: "b%s"\nsource: "https://x.com/u/status/80%s"\ntype: tweet\n---\n# b%s\n%s\n' \
+    "$n" "$n" "$n" "$VIDEO_MEDIA" > "$VB/Clippings/b$n.md"
+done
+X_MEDIA_BUDGET_S=1 X_TEST_GDL_SLEEP=2 run_tool "$VB" >"$tmp/budget.out" 2>"$tmp/budget.err"
+assert "budgeted run exits 0" 0 "$?"
+grep -qF 'x-media-fetch: 1 not started (budget 1s spent' "$tmp/budget.out" && a=ok || a=no
+assert "the run names the clip it did not start" ok "$a"
+grep -q '^media_' "$VB/Clippings/b2.md" && a=touched || a=untouched
+assert "the clip not started is left untouched for the next run" untouched "$a"
+VC="$tmp/vault-cap"; make_x_vault "$VC" 901 "$VIDEO_MEDIA"
+t0=$SECONDS
+X_MEDIA_BUDGET_S=2 X_TEST_GDL_SLEEP=20 run_tool "$VC" >"$tmp/cap.out" 2>"$tmp/cap.err"
+took=$((SECONDS - t0))
+[ "$took" -lt 15 ] && a=ok || a="took ${took}s"
+assert "a download running past the budget is cut at the time left" ok "$a"
+grep -qF 'download_timeout' "$tmp/cap.out" && a=ok || a=no
+assert "the cut clip records download_timeout and stays pending" ok "$a"
+cat > "$tmp/bin/fxt-slow" <<'STUB'
+#!/usr/bin/env bash
+sleep 2
+echo '{"code":200,"tweet":{"media":{"videos":[{"type":"video","duration":40}]}}}'
+STUB
+chmod +x "$tmp/bin/fxt-slow"
+VP="$tmp/vault-probe-stream"; mkdir -p "$VP/Clippings"
+for n in 1 2; do
+  printf -- '---\ntitle: "p%s"\nsource: "https://x.com/u/status/95%s"\ntype: tweet\n---\n# p%s\ntext only\n' \
+    "$n" "$n" "$n" > "$VP/Clippings/p$n.md"
+done
+X_MEDIA_FXT_CMD="$tmp/bin/fxt-slow" X_MEDIA_BUDGET_S=3 X_TEST_GDL_SLEEP=0 run_tool "$VP" >"$tmp/pstream.out" 2>"$tmp/pstream.err"
+grep -q '^media_enriched_at:' "$VP/Clippings/p1.md" && a=ok || a=no
+assert "a clip its probe finds is enriched before later probes spend the budget" ok "$a"
+
 echo ""
 echo "x-media-enrich tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
