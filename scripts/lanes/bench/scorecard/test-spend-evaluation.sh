@@ -99,6 +99,29 @@ check "(coverage) an incomplete result carries null nano and share" \
 fx short-window
 check "(coverage) a window under seven Berlin days is INCONCLUSIVE (exit 3)" "$RC" "3"
 check "(coverage) window reason" "$(jf "$R" reasons)" '["window-too-short"]'
+fx early-window
+check "(coverage) a window starting before Nov 9 is INCONCLUSIVE (exit 3)" "$RC $(jf "$R" reasons)" '3 ["window-before-nov-9"]'
+fx utc-window
+check "(coverage) a window that is not Berlin days is INCONCLUSIVE (exit 3)" "$RC $(jf "$R" reasons)" '3 ["window-not-berlin-days"]'
+fx role-unknown
+check "(coverage) an unknown role in the inventory is INCONCLUSIVE (exit 3)" "$RC $(jf "$R" reasons)" '3 ["role-unknown"]'
+python3 -I "$GEN" "$TMP/tamper" qualified
+printf 'edited\n' >> "$TMP/tamper/population-review.md"
+"$FLEET" --exposure-screen "$TMP/tamper/SCREEN.json" --out "$TMP/tamper/R.json" >/dev/null 2>&1; RC=$?
+check "(coverage) a ref whose bytes changed after pinning is INCONCLUSIVE (exit 3)" "$RC $(jf "$TMP/tamper/R.json" reasons)" '3 ["ref-hash-mismatch"]'
+python3 -I "$GEN" "$TMP/stale" qualified
+python3 -I -c 'import hashlib, json, sys
+d = sys.argv[1]
+v = json.load(open(d + "/validation.json"))
+v["selected_calls"] += 1
+raw = (json.dumps(v) + "\n").encode()
+open(d + "/validation.json", "wb").write(raw)
+s = json.load(open(d + "/SCREEN.json"))
+s["validation"]["sha256"] = hashlib.sha256(raw).hexdigest()
+json.dump(s, open(d + "/SCREEN.json", "w"))' "$TMP/stale"
+"$FLEET" --exposure-screen "$TMP/stale/SCREEN.json" --out "$TMP/stale/R.json" >/dev/null 2>&1; RC=$?
+check "(coverage) a validation that differs from the validator's own answer is INCONCLUSIVE (exit 3)" \
+    "$RC $(jf "$TMP/stale/R.json" reasons)" '3 ["validation-mismatch"]'
 fx population-incomplete
 check "(coverage) an incomplete population is INCONCLUSIVE (exit 3)" "$RC" "3"
 check "(coverage) population reason" "$(jf "$R" reasons)" '["population-incomplete"]'
@@ -120,6 +143,8 @@ check "(malformed) the refusal names the field" "$(grep -c 'compaction_report' "
 printf 'not json' > "$TMP/junk.json"
 ERR=$("$FLEET" --exposure-screen "$TMP/junk.json" --out "$TMP/junk-out.json" 2>&1 >/dev/null); RC=$?
 check "(malformed) unreadable SCREEN JSON is refused (exit 2)" "$RC $(printf '%s' "$ERR" | grep -c 'SCREEN is not')" "2 1"
+ERR=$("$FLEET" --exposure-screen "$TMP/qualified/SCREEN.json" --out "$TMP/x.json" --tz UTC 2>&1 >/dev/null); RC=$?
+check "(malformed) --exposure-screen with a report-mode option is refused (exit 2)" "$RC $(printf '%s' "$ERR" | grep -c 'takes only --out')" "2 1"
 ERR=$("$FLEET" --exposure-screen "$TMP/qualified/SCREEN.json" 2>&1 >/dev/null); RC=$?
 check "(malformed) --exposure-screen without --out is refused (exit 2)" "$RC $(printf '%s' "$ERR" | grep -c 'needs --out')" "2 1"
 

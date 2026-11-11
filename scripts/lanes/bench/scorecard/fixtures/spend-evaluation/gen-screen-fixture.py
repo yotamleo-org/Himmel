@@ -11,7 +11,7 @@ the five calls after its boundary hold S (299 -> .0299, 300 -> .03).
 
 Scenarios: noop qualified lowpeak-markers boundary-instant overlap few-parents unpriced
 bad-event-time source-changed dup-path missing-path population-incomplete short-window
-b2-lever caller-report.
+early-window utc-window role-unknown b2-lever caller-report.
 """
 import hashlib
 import json
@@ -89,6 +89,12 @@ def scenario(name):
         pass
     elif name == "short-window":
         sc["window"] = (SINCE, "2026-11-15T00:00:00+01:00")
+    elif name == "early-window":
+        sc["window"] = ("2026-11-02T00:00:00+01:00", SINCE)
+    elif name == "utc-window":
+        sc["window"], sc["tz"] = ("2026-11-09T00:00:00Z", "2026-11-16T00:00:00Z"), "UTC"
+    elif name == "role-unknown":
+        ps[0]["role"] = "unknown"
     elif name in ("b2-lever", "caller-report"):
         pass
     else:
@@ -182,7 +188,7 @@ def main():
     if name == "missing-path":
         top.append({"relative_path": "proj/wk99.jsonl", "session": "wk99", "role": "worker",
                     "role_evidence": ref("role-evidence.txt", evid)})
-    window = {"since": sc["window"][0], "until": sc["window"][1], "timezone": "Europe/Berlin"}
+    window = {"since": sc["window"][0], "until": sc["window"][1], "timezone": sc.get("tz", "Europe/Berlin")}
     inv_bytes = put(os.path.join(out, "inventory.json"), jdump({
         "window": window, "scope_root": root, "complete": name != "population-incomplete",
         "population_review": ref("population-review.md", review), "top_level_files": top, "exclusions": []}))
