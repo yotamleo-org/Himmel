@@ -490,7 +490,11 @@ included in dispositioned. A listed row or unexplained drop is not a decision.
 Live-state pool-disposition: KEY slice|close|question <named target> lines record
 explicit chief decisions. Malformed, duplicate or unknown decisions stay unresolved.
 --pool-dispositions reads a dispatcher snapshot on stdin and prints these counts
-and unresolved keys by class; it does not take a tick or perform network reads.
+and unresolved keys by class; it does not take a tick or perform network reads. With --doc it also reads the
+doc's stale file (tick-pool-stale-<cksum>.out in TICK_STATE_DIR, the main tick's saved --pool-stale output, else the
+newest file of the same mirror): a key whose only reason to count as dispositioned is its line, and whose line still hashes to the
+file's line=, is unresolved as class `stale` and names its gone targets. The file has no age bound. A failed or paused read
+keeps a stale verdict while the line is unchanged and no target reads open (--prior, the carry-forward, ends ` carried`).
 pool-stale=<n>:<KEY>,... (HIMMEL-6604) re-checks each pool-disposition: line whose target
 names a ticket key of the mirror's project or `PR <n>`: when every named blocker is Done (Jira mirror)
 or its PR merged or closed the line is stale, `?` marks an unreadable target (never stale), and
@@ -563,9 +567,22 @@ USAGE
 
 # One interpretation for both the tick and waiter; stdin is a complete
 # next-dispatchable.sh --dispositions snapshot, never a chief's claimed counts.
+# The stale file of one doc and one mirror: where the main tick saves `--pool-stale`'s output and where
+# `--pool-dispositions` reads it. Both resolve the doc and the mirror the same way, so they agree.
+pool_stale_file() { # <doc> <mirror>
+    printf '%s/tick-pool-stale-%s.out\n' "${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}" \
+        "$(printf '%s\n%s' "$(realpath -m "$1")" "$(realpath -m "$2")" | cksum | cut -d' ' -f1)"  # prim-ok: the doc and the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
+}
+
 pool_dispositions() {
-    python3 -I - "$1" 3<&0 <<'PY'
-import re, sys
+    local psf="" psm=""
+    if [ -n "$1" ]; then
+        psm="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+        psf="$(pool_stale_file "$1" "$psm")"
+        psm="$(realpath -m "$psm")"  # prim-ok: the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
+    fi
+    python3 -I - "$1" "$psf" "$psm" 3<&0 <<'PY'
+import glob, hashlib, os, re, sys
 rows = {}
 text = open(3).read()
 for line in text.splitlines():
@@ -626,6 +643,35 @@ if sys.argv[1]:
 if not rows and not re.search(r"^# dropped from .+: 0 of 0 To Do", text, re.M):
     print("# pool-counts ?")
     sys.exit(0)
+
+# A key whose line the stale file judged gone, with the line unchanged since, is not handled. There is no
+# age bound: the line hash binds the file to its verdict. A doc whose own file does not exist yet reads the newest file of
+# the same mirror, so a successor doc whose producer has not completed a run is no all-clear either.
+stale_file, stale_mirror = sys.argv[2], sys.argv[3]
+maxmerges = int(os.environ.get("TICK_POOL_MAX_MERGES") or 30)
+def read_stale(path):
+    try:
+        return open(path).read().splitlines()
+    except OSError:
+        return None
+stale_lines = read_stale(stale_file) if stale_file else None
+if stale_lines is None and stale_file:
+    others = sorted(glob.glob(os.path.join(os.path.dirname(stale_file), "tick-pool-stale-*.out")), key=lambda f: (os.path.getmtime(f), f), reverse=True)
+    for other in others:
+        got = read_stale(other)
+        if got is not None and "# mirror=" + stale_mirror in got[:1]:
+            stale_lines = got
+            break
+stale = {}
+for line in stale_lines or []:
+    m = re.fullmatch(r"STALE-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) (.*?)(?: carried)?", line)
+    if m:
+        targets = []
+        for t in m[3].split():
+            sm = re.fullmatch(r"(@[0-9a-f]+)=(\d+)-behind", t)
+            targets.append("%s=%s" % (sm[1], "expired" if int(sm[2]) > maxmerges else "within") if sm else t)
+        stale[m[1]] = (m[2], " ".join(targets))
+
 inflight = disposed = 0
 unresolved = []
 for key, reason in rows.items():
@@ -635,6 +681,8 @@ for key, reason in rows.items():
     blocker = bool(re.match(r"blocker-unknown [A-Z]+-\d+", reason)) or (reason.startswith("blocker ") and bool(re.search(r"[A-Z]+-\d+ \((?:(?!Done,|Closed,)[^()]+, live|reopened live)\)", reason)))
     if key in invalid:
         unresolved.append(("invalid", key, invalid[key]))
+    elif not (owned or holder or blocker) and key in decisions and key in stale and stale[key][0] == hashlib.sha256(decisions[key].encode()).hexdigest()[:12]:
+        unresolved.append(("stale", key, "its pool-disposition target is gone: %s; re-decide or rewrite the line" % stale[key][1]))
     elif owned or holder or blocker or key in decisions:
         disposed += 1
     elif key in unowned:
@@ -687,8 +735,11 @@ PY
 # rewrites the doc.
 pool_stale() { # <doc> <mirror> <gh command> <repo dir>
     python3 -I - "$@" <<'PY'
-import hashlib, json, os, re, subprocess, sys
-doc, mirror, gh, repo = sys.argv[1:5]
+import glob, hashlib, json, os, re, subprocess, sys
+doc, mirror, gh, repo, prior, stale_file, mirror_real, noread = sys.argv[1:9]
+if stale_file:
+    print("# mirror=" + mirror_real)
+    print("# stale-file=" + stale_file)
 
 def front(key):
     try:
@@ -734,9 +785,29 @@ def age(sha):
             return int(r.stdout.strip())
     return None
 
+# The verdicts of the last completed run, read from the --prior file; when that file does not exist (a successor
+# doc's first run), from the newest stale file of the same mirror. A verdict is carried only while its line hash still matches.
+def read_prior(path):
+    try:
+        return open(path).read().splitlines()
+    except OSError:
+        return None
+prior_lines = read_prior(prior) if prior else None
+if prior_lines is None and stale_file:
+    for other in sorted(glob.glob(os.path.join(os.path.dirname(stale_file), "tick-pool-stale-*.out")), key=lambda f: (os.path.getmtime(f), f), reverse=True):
+        got = read_prior(other)
+        if got is not None and got[:1] == ["# mirror=" + mirror_real]:
+            prior_lines = got
+            break
+carry = {}
+for line in prior_lines or []:
+    m = re.fullmatch(r"(STALE-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) .*?)(?: carried)?", line)
+    if m:
+        carry[m[2]] = (m[3], m[1])
+
 prstate = None
 nums = sorted({int(p) for _, _, prs, _, _ in lines for p in prs})
-if nums:
+if nums and noread != "1":
     try:
         got = {}
         for i in range(0, len(nums), 100):
@@ -786,24 +857,25 @@ stale, unreadable, details = [], False, []
 for key, refs, prs, sha, h in lines:
     states = [state("key", k) for k in sorted(refs)] + [state("pr", p) for p in sorted(prs)]
     n = age(sha) if sha else None
-    if sha:
-        if n is not None and n > maxmerges:
-            if key not in stale:
-                stale.append(key)
-                details.append(detail(key, refs, prs, sha, h, n))
-            continue
-        if n is None:
-            unreadable = True
-            continue  # an age that cannot be read leaves the line unjudged, as an unreadable blocker does
-    if not states:
+    if sha and n is not None and n > maxmerges:
+        verdict = "stale"
+    elif sha and n is None:
+        verdict = "unknown"  # an age that cannot be read leaves the line unjudged, as an unreadable blocker does
+    elif not states or "open" in states:
         continue
-    if "open" in states:
+    else:
+        verdict = "unknown" if "?" in states else "stale"
+    if verdict == "stale":
+        if key not in stale:
+            stale.append(key)
+            details.append(detail(key, refs, prs, sha, h, n))
         continue
-    if "?" in states:
-        unreadable = True
-    elif key not in stale:
+    unreadable = True
+    # unknown is not all-clear: a verdict the chief has not touched since (same hash) is kept while no target reads open
+    # and some target could not be read
+    if key in carry and carry[key][0] == h and "open" not in states and key not in stale:
         stale.append(key)
-        details.append(detail(key, refs, prs, sha, h, n))
+        details.append(carry[key][1] + " carried")
 for line in details:
     print(line)
 tail = stale + (["?"] if unreadable else [])
@@ -857,6 +929,7 @@ verbose=0
 burn=0
 pool_mode=0
 stale_mode=0
+ps_prior=""
 emit_fp=0
 ready_mode=0
 ready_dir=""
@@ -874,9 +947,10 @@ while [ "$#" -gt 0 ]; do
         --ready-mismatch) ready_mode=1; shift ;;
         --pool-dispositions) pool_mode=1; shift ;;
         --pool-stale) stale_mode=1; shift ;;
-        --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir)
+        --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir|--prior)
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
             case "$1" in
+                --prior) ps_prior="$2" ;;
                 --doc) DOC="$2" ;;
                 --token) TOKEN="$2" ;;
                 --workers) WORKERS="$2" ;;
@@ -918,17 +992,26 @@ fi
 
 if [ "$stale_mode" -eq 1 ]; then
     [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
+    ps_mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+    ps_self=""; ps_mirror_real=""
+    if [ -n "$DOC" ]; then
+        ps_self="$(pool_stale_file "$DOC" "$ps_mirror")"
+        ps_mirror_real="$(realpath -m "$ps_mirror")"  # prim-ok: the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
+    fi
+    ps_noread=0
     if [ -f "$HERE/../../lib/gh-quota.sh" ]; then
         # shellcheck source=../../lib/gh-quota.sh
         . "$HERE/../../lib/gh-quota.sh"
         if ghq_read main graphql && [ $(($(date +%s) - GHQ_OBSERVED)) -lt 170 ] \
             && ! ps_line=$(GHQ_GH_CMD="${TICK_GH_CMD:-${GHQ_GH_CMD:-gh}}" ghq_scan_gate main graphql tick); then
             printf '%s\n' "$ps_line" >&2
-            printf 'pool-stale=?\nresidual-unversioned=skip\n'
-            exit 0
+            # a producer run must not wipe the carried verdicts: under --prior the refused scan reads no PR, so every PR target is ? and the carry applies
+            [ -n "$ps_prior" ] || { printf 'pool-stale=?\nresidual-unversioned=skip\n'; exit 0; }
+            export GH_READ_OFF=1
+            ps_noread=1
         fi
     fi
-    pool_stale "$DOC" "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" "${TICK_GH_CMD:-$GH_READ_BIN}" "$REPO"
+    pool_stale "$DOC" "$ps_mirror" "${TICK_GH_CMD:-$GH_READ_BIN}" "$REPO" "$ps_prior" "$ps_self" "$ps_mirror_real" "$ps_noread"
     exit $?
 fi
 
@@ -2782,6 +2865,23 @@ if [ "${DEPENDABOT_AUTOLAND:-off}" = on ] && [ -f "$REPO/scripts/cr/dependabot-g
     fi
 fi
 
+# pool-stale=<n>:<KEY>,... and residual-unversioned=<n>:<KEY>,...: the Jira mirror
+# plus one batched gh read, only when a disposition names a PR. skip = no doc or mirror.
+# It runs before the pool counts below: the output is saved as the doc's stale file, which the counts read, and
+# --prior hands the last saved file back so a failed read keeps a verdict instead of wiping it.
+pool_stale=skip
+residual_unversioned=skip
+if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
+    ps_file="$(pool_stale_file "$console_doc" "$nd_mirror")"
+    ps_out="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-stale --doc "$console_doc" --repo "$pr_repo" --prior "$ps_file" 2>/dev/null)" || ps_out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
+    pool_stale="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-stale=//p')"; [ -n "$pool_stale" ] || pool_stale=skip
+    residual_unversioned="$(printf '%s\n' "$ps_out" | sed -n 's/^residual-unversioned=//p')"; [ -n "$residual_unversioned" ] || residual_unversioned=skip
+    if [ "$pool_stale" != skip ] && mkdir -p "${ps_file%/*}" 2>/dev/null; then
+        printf '%s\n' "$ps_out" > "$ps_file.$$" 2>/dev/null && mv -f "$ps_file.$$" "$ps_file" 2>/dev/null  # swallow-ok: a failed save keeps the last file, and the verdict stays
+        rm -f "$ps_file.$$"
+    fi
+fi
+
 # The pool snapshot classifies every version ticket: 140 s on a 23-worker fleet,
 # longer than the waiter's whole tick budget. It runs detached under flock, at most once per
 # TICK_POOL_MIN_SECS (default 600), and the tick waits TICK_POOL_WAIT seconds (default 10)
@@ -2855,16 +2955,6 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         for prio_w in $prio_rest; do prio_stale="${prio_stale:+$prio_stale,}$prio_w"; done
         [ -z "$prio_stale" ] || prio_stale="WARN:$prio_stale"
     fi
-fi
-
-# pool-stale=<n>:<KEY>,... and residual-unversioned=<n>:<KEY>,...: the Jira mirror
-# plus one batched gh read, only when a disposition names a PR. skip = no doc or mirror.
-pool_stale=skip
-residual_unversioned=skip
-if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
-    ps_out="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-stale --doc "$console_doc" --repo "$pr_repo" 2>/dev/null)" || ps_out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
-    pool_stale="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-stale=//p')"; [ -n "$pool_stale" ] || pool_stale=skip
-    residual_unversioned="$(printf '%s\n' "$ps_out" | sed -n 's/^residual-unversioned=//p')"; [ -n "$residual_unversioned" ] || residual_unversioned=skip
 fi
 
 # chains=<ok|STALE:<n>/<m>|skip>: Done steps still listed in the focus-chains.json beside the chief doc.

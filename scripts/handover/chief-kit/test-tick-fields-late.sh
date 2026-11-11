@@ -845,6 +845,161 @@ rm -f "$rv"/*
 not_contains 'no review file leaves review= off the line (decision 593)' "$(rv_tick)" 'review='
 rm -rf "$rv"
 
+# --- (9839 S2) a stale pool-disposition line counts as unresolved, and a failed read, a successor doc or the
+# quota-gate exit keeps it so. The producer is the real tick.sh --pool-stale, a stub gh answers its one GraphQL read, and
+# every row names its own TICK_STATE_DIR, mirror, quota dir and TICK_GH_CMD (GH_READ_OFF=1 keeps every router read off GitHub).
+S2="$W/s2"; SM="$S2/mirror/HIMMEL"; mkdir -p "$SM" "$S2/quota" "$W/handover"
+mk_s2() { # <num> <status> <statusCategory>
+    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "Medium"\nlabels: []\nfixVersions: ["v1.1.3"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-%s: t\n\n## Description\n\nbody\n' \
+        "$1" "$2" "$3" "$1" > "$SM/HIMMEL-$1.md"
+}
+mk_s2 901 Done Done
+mk_s2 902 "In Progress" "In Progress"
+printf 'v1.1.3\tfalse\t\n' > "$S2/mirror/HIMMEL.versions.tsv"
+cat > "$S2/ps-gh" <<'STUB'
+#!/usr/bin/env bash
+[ -z "${PS_GH_FAIL:-}" ] || exit 1
+case "$*" in *"api graphql"*) ;; *) exit 1 ;; esac
+out=""
+for n in $(printf '%s\n' "$*" | grep -oE 'issueOrPullRequest\(number:[0-9]+\)' | grep -oE '[0-9]+'); do
+    case "$n" in
+        999001) v='{"__typename":"PullRequest","state":"CLOSED"}' ;;
+        999002) v='{"__typename":"PullRequest","state":"MERGED"}' ;;
+        *) v=null ;;
+    esac
+    out="${out:+$out,}\"p$n\":$v"
+done
+printf '{"data":{"repository":{%s}}}\n' "$out"
+STUB
+chmod +x "$S2/ps-gh"
+S2ST="$S2/st-none"
+s2() { env TICK_STATE_DIR="$S2ST" NEXT_DISPATCH_MIRROR="$SM" HIMMEL_QUOTA_DIR="$S2/quota" TICK_GH_CMD="$S2/ps-gh" GH_READ_OFF=1 TOKEN='' "$@"; }
+s2_doc() { # <name> <the pool-disposition lines on stdin>: a chief doc under the handover root; prints its path
+    { printf '# chief\n\n## Live state\n'; cat; printf '\n## Results\n'; } > "$W/handover/$1.md"
+    printf '%s' "$W/handover/$1.md"
+}
+s2_lines() { # the DoD-1 lines: 141 and 144 name a PR, 142 a Done ticket, 143 an In Progress one
+    printf '%s\n' \
+        'pool-disposition: HIMMEL-141 question after PR #999001 the doctor edit' \
+        'pool-disposition: HIMMEL-142 question after HIMMEL-901 drafted in ZA-1' \
+        'pool-disposition: HIMMEL-143 question after HIMMEL-902 the rest' \
+        'pool-disposition: HIMMEL-144 question after PR #999002 shipped'
+}
+printf '%s\n' '# disposition HIMMEL-141 listed LOCAL' '# disposition HIMMEL-142 listed LOCAL' '# disposition HIMMEL-143 listed LOCAL' \
+    '# disposition HIMMEL-144 in-flight owned by worker N1' > "$S2/rows"
+s2_produce() { # <doc> [env VAR=value...]: run the producer and save its output where its # stale-file= line names; prints that path
+    local doc="$1" out sf; shift
+    out="$(s2 env "$@" bash "$SUT" --pool-stale --doc "$doc" --prior "$S2ST/none.out" 2>/dev/null)"
+    sf="$(printf '%s\n' "$out" | sed -n 's/^# stale-file=//p')"
+    [ -n "$sf" ] || return 1
+    mkdir -p "$(dirname "$sf")"
+    printf '%s\n' "$out" > "$sf"
+    printf '%s' "$sf"
+}
+s2_pd() { s2 bash "$SUT" --pool-dispositions --doc "$1" < "$S2/rows" 2>/dev/null; }
+s2_tick() { # <doc> [env VAR=value...]: one whole tick, then wait out the detached pool snapshot it started
+    local doc="$1" l; shift
+    s2 env NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" TICK_POOL_WAIT=0 "$@" bash "$SUT" --doc "$doc" > /dev/null 2>&1
+    for l in "$S2ST"/tick-pool-*.lock; do [ ! -e "$l" ] || flock "$l" true; done
+}
+# shellcheck disable=SC2012  # the names are the cksum producer's digits, never odd characters
+s2_file() { ls "$S2ST"/tick-pool-stale-*.out 2>/dev/null | head -n 1; }
+n141() { grep -c "^STALE-DISPOSITION HIMMEL-141 line=[0-9a-f]\{12\} PR#999001=CLOSED$1\$" "$2"; }
+
+S2ST="$S2/st-r20"
+s2_a="$(s2_lines | s2_doc r20-a)"
+s2_produce "$s2_a" > /dev/null
+r20="$(s2_pd "$s2_a")"
+contains 'R20 a stale key moves from disposed to unresolved and nothing else' "$r20" '# pool-counts 4/1/2/2'
+contains 'R20 the unresolved line names the class, the key and the gone targets' "$r20" '# pool-unresolved stale HIMMEL-141 its pool-disposition target is gone: PR#999001=CLOSED; re-decide or rewrite the line'
+contains 'R20 a Done ticket target is stale too' "$r20" '# pool-unresolved stale HIMMEL-142 its pool-disposition target is gone: HIMMEL-901=Done; re-decide or rewrite the line'
+p143='HIMMEL-143 '
+same 'R21 the open-target line stays disposed' "$(printf '%s\n' "$r20" | grep '^# pool-unresolved' | grep -c "$p143")" 0
+not_contains 'R21b an owned key with a stale line stays disposed' "$r20" '# pool-unresolved stale HIMMEL-144 '
+same 'R21b its stale line is still in the file' "$(grep -c '^STALE-DISPOSITION HIMMEL-144 ' "$(s2_file)")" 1
+same 'every saved file opens with its mirror and its own path' "$(head -n 2 "$(s2_file)")" "# mirror=$(realpath -m "$SM")
+# stale-file=$(s2_file)"
+
+S2ST="$S2/st-ctl"
+same 'no stale file counts as today' "$(s2_pd "$s2_a" | sed -n 's/^# pool-counts //p')" '4/1/4/0'
+S2ST="$S2/st-r20"
+s2_x="$(s2_lines | sed 's/$/ again/' | s2_doc ctl-x)"
+same "another doc's stale file counts as today" "$(s2_pd "$s2_x" | sed -n 's/^# pool-counts //p')" '4/1/4/0'
+
+# R8: the main tick writes the stale file; R8b..R8g: a failed read after a good one, an edited line and an aged file
+s2_lines | s2_doc r8 > /dev/null; S2ST="$S2/st-r8"; rm -rf "$S2ST"; mkdir -p "$S2ST"
+s2_tick "$W/handover/r8.md"
+f8="$(s2_file)"
+same 'R8 the main tick writes the stale file' "$(head -n 1 "$f8" 2>/dev/null)" "# mirror=$SM"
+p8='^STALE-DISPOSITION HIMMEL-14[124] '
+same 'R8 it holds the stale keys of the doc, not the owned one skipped' "$(grep -c "$p8" "$f8" 2>/dev/null)" 3
+cp "$f8" "$S2/r8.good"
+
+S2ST="$S2/st-r8"
+PS_GH_FAIL=1 s2_tick "$W/handover/r8.md"
+same 'R8b a failed read after a good one carries the stale line' "$(n141 ' carried' "$f8")" 1
+contains 'R8b and the key stays unresolved' "$(s2_pd "$W/handover/r8.md")" '# pool-unresolved stale HIMMEL-141 its pool-disposition target is gone: PR#999001=CLOSED; re-decide or rewrite the line'
+cp "$S2/r8.good" "$f8"
+PS_GH_FAIL=1 s2_tick "$W/handover/r8.md"
+p141='^STALE-DISPOSITION HIMMEL-141 '
+same 'R8b the carried line differs from the read one only by its marker' "$(sed 's/ carried$//' "$f8" | grep "$p141")" "$(grep "$p141" "$S2/r8.good")"
+
+# R8c: the chief rewrote the 141 line between the good read and the failed one
+s2_lines | s2_doc r8c > /dev/null; S2ST="$S2/st-r8c"; rm -rf "$S2ST"; mkdir -p "$S2ST"
+s2_tick "$W/handover/r8c.md"
+s2_lines | sed 's/^\(pool-disposition: HIMMEL-141 question\) .*/\1 operator decision 268/' | s2_doc r8c > /dev/null
+PS_GH_FAIL=1 s2_tick "$W/handover/r8c.md"
+same 'R8c a rewritten line is not carried' "$(grep -c '^STALE-DISPOSITION HIMMEL-141 ' "$(s2_file)")" 0
+not_contains 'R8c the rewritten key counts as disposed' "$(s2_pd "$W/handover/r8c.md")" '# pool-unresolved stale HIMMEL-141 '
+
+# R8d: 142 names a Done key and a closed PR; the failed read finds the key open
+s2_lines | sed 's/HIMMEL-901 drafted/HIMMEL-901 and PR #999001 drafted/' | s2_doc r8d > /dev/null; S2ST="$S2/st-r8d"; rm -rf "$S2ST"; mkdir -p "$S2ST"
+s2_tick "$W/handover/r8d.md"
+same 'R8d 142 is stale with a key and a PR target before the failed read' "$(grep -c '^STALE-DISPOSITION HIMMEL-142 line=[0-9a-f]\{12\} HIMMEL-901=Done PR#999001=CLOSED$' "$(s2_file)")" 1
+mk_s2 901 "In Progress" "In Progress"
+PS_GH_FAIL=1 s2_tick "$W/handover/r8d.md"
+same 'R8d a key target read open is not carried' "$(grep -c '^STALE-DISPOSITION HIMMEL-142 ' "$(s2_file)")" 0
+not_contains 'R8d the key counts as disposed' "$(s2_pd "$W/handover/r8d.md")" '# pool-unresolved stale HIMMEL-142 '
+mk_s2 901 Done Done
+
+# R8e: the 141 line gains a PR between the good read and the failed one
+s2_lines | s2_doc r8e > /dev/null; S2ST="$S2/st-r8e"; rm -rf "$S2ST"; mkdir -p "$S2ST"
+s2_tick "$W/handover/r8e.md"
+s2_lines | sed 's/^\(pool-disposition: HIMMEL-141 .*\)$/\1 and PR #999002/' | s2_doc r8e > /dev/null
+PS_GH_FAIL=1 s2_tick "$W/handover/r8e.md"
+same 'R8e an extended line is not carried' "$(grep -c '^STALE-DISPOSITION HIMMEL-141 ' "$(s2_file)")" 0
+
+# R8f, R8g: no age bound; the line hash is what binds the file to its verdict
+S2ST="$S2/st-r8"
+cp "$S2/r8.good" "$f8"
+touch -d '-6 hours' "$f8"  # gnu-ok: chief kit is Linux-only
+contains 'R8f an aged file still demotes an unchanged line' "$(s2_pd "$W/handover/r8.md")" '# pool-unresolved stale HIMMEL-141 '
+s2_lines | sed 's/^\(pool-disposition: HIMMEL-141 .*\)$/\1 and more/' | s2_doc r8g > /dev/null
+not_contains 'R8g an aged file releases a changed line' "$(s2_pd "$W/handover/r8g.md")" '# pool-unresolved stale HIMMEL-141 '
+
+# R8h: a successor doc inherits the verdict through a failed read, and through a cut producer, and through the quota gate
+S2ST="$S2/st-r8h"; rm -rf "$S2ST"; mkdir -p "$S2ST"
+s2_lines | s2_doc r8h-a > /dev/null
+s2_tick "$W/handover/r8h-a.md"
+s2_lines | s2_doc r8h-b > /dev/null
+PS_GH_FAIL=1 s2_tick "$W/handover/r8h-b.md"
+# shellcheck disable=SC2012  # the names are the cksum producer's digits, never odd characters
+fb="$(ls -t "$S2ST"/tick-pool-stale-*.out | head -n 1)"
+same 'R8h the successor writes a file of its own that holds the carried 141 line' "$(n141 ' carried' "${fb:-/dev/null}")" 1
+contains 'R8h and its consumer counts 141 unresolved' "$(s2_pd "$W/handover/r8h-b.md")" '# pool-unresolved stale HIMMEL-141 '
+s2_lines | s2_doc r8h-b2 > /dev/null
+contains 'R8h cut producer: the consumer falls back to the newest same-mirror file' "$(s2_pd "$W/handover/r8h-b2.md")" '# pool-unresolved stale HIMMEL-141 '
+s2_lines | s2_doc r8h-b3 > /dev/null
+printf 'main\tgraphql\t10\t5000\t%s\t%s\tok\n' "$(( $(date +%s) + 3600 ))" "$(date +%s)" > "$S2/quota/quota.tsv"
+s2_pu="$(s2 bash "$SUT" --pool-stale --doc "$W/handover/r8h-b3.md" --prior "$S2ST/none.out" 2>/dev/null)"
+rm -f "$S2/quota/quota.tsv"
+p141c='^STALE-DISPOSITION HIMMEL-141 .* carried$'
+same 'R8h quota gate: under --prior the carried 141 line survives the gate refusing' "$(printf '%s\n' "$s2_pu" | grep -c "$p141c")" 1
+same 'R8h quota gate: its field still names the key and reads ?' "$(printf '%s\n' "$s2_pu" | sed -n 's/^pool-stale=//p')" '3:HIMMEL-141,HIMMEL-142,HIMMEL-144,?'
+s2_lines | sed 's/^\(pool-disposition: HIMMEL-141 .*\)$/\1!/' | s2_doc r8h-c > /dev/null
+PS_GH_FAIL=1 s2_tick "$W/handover/r8h-c.md"
+not_contains 'R8h control: a 141 line that differs by one character carries nothing' "$(s2_pd "$W/handover/r8h-c.md")" '# pool-unresolved stale HIMMEL-141 '
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-fields-late.sh'
     exit 0
