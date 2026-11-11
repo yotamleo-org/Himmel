@@ -1332,6 +1332,134 @@ pin11b_rc=0
       bash "$PANEL" --base-sha "$master_base" > "$tmp/pin11b-out" 2> "$tmp/pin11b-err" ) || pin11b_rc=$?
 check "PIN11: control — without --base the env-resolved base refuses" "$pin11b_rc" "7"
 
+# ── --pin-ref pins the head to a fetched ref, not the live checkout ──
+# The no-checkout review of an outside PR (panel-first-pass.sh --pr) reviews
+# refs/himmel/outside/<n> while the station's checkout sits on ANOTHER branch at
+# ANOTHER commit. PINREF1/2 = a ref that resolves to --head runs from that
+# checkout (--worktree and stdin lanes) and stamps the pinned head and the
+# --branch name, never the live ones; PINREF3-6 = a bad or mismatched ref
+# refuses (exit 7) with nothing run and nothing stamped; PINREF7-9 = usage and
+# controls.
+PR_REPO="$tmp/pinref-repo"
+git init -q "$PR_REPO"
+git -C "$PR_REPO" checkout -q -b main
+git -C "$PR_REPO" config user.name test
+git -C "$PR_REPO" config user.email test@example.invalid
+printf 'base\n' > "$PR_REPO/f.txt"
+git -C "$PR_REPO" add f.txt
+git -C "$PR_REPO" commit -q -m base
+git -C "$PR_REPO" checkout -q -b prside
+printf 'outside change\n' >> "$PR_REPO/f.txt"
+git -C "$PR_REPO" add f.txt
+git -C "$PR_REPO" commit -q -m pr-change
+pr_oid="$(git -C "$PR_REPO" rev-parse HEAD)"
+git -C "$PR_REPO" update-ref refs/himmel/outside/7 "$pr_oid"
+git -C "$PR_REPO" checkout -q main
+git -C "$PR_REPO" branch -q -D prside
+git -C "$PR_REPO" checkout -q -b elsewhere
+printf 'live checkout only\n' > "$PR_REPO/live.txt"
+git -C "$PR_REPO" add live.txt
+git -C "$PR_REPO" commit -q -m live
+pr_live="$(git -C "$PR_REPO" rev-parse HEAD)"
+PINREF_STUB="$tmp/stub-pinref-env.sh"
+cat > "$PINREF_STUB" <<'EOS'
+#!/usr/bin/env bash
+# Dumps the diff it was handed and the head/branch the panel exported, then answers clean.
+cat > "$PINREF_DIFF_DUMP"
+printf '%s %s\n' "${CR_TARGET_HEAD:-}" "${CR_TARGET_BRANCH:-}" > "$PINREF_ENV_DUMP"
+printf '# pinref First-Pass Review\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
+EOS
+chmod +x "$PINREF_STUB"
+# pinref_run <label> <lane: worktree|stdin> <panel args...>: sets pinref_rc; ledger, diff and env dumps are per label
+pinref_run() {
+    local label="$1" lane="$2"; shift 2
+    PINREF_LEDGER="$tmp/pinref-$label-ledger.jsonl"; : > "$PINREF_LEDGER"
+    PINREF_DIFF_DUMP="$tmp/pinref-$label-diff.txt"; PINREF_ENV_DUMP="$tmp/pinref-$label-env.txt"
+    rm -f "$PINREF_DIFF_DUMP" "$PINREF_ENV_DUMP"
+    export PINREF_DIFF_DUMP PINREF_ENV_DUMP
+    pinref_rc=0
+    if [ "$lane" = worktree ]; then
+        CR_TARGET_PR=7 CR_LEDGER="$PINREF_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
+            CRITICS_JSON="$tmp/critics-pin.json" CRITIC_FIRST_PASS="$PINREF_STUB" \
+            bash "$PANEL" --worktree "$PR_REPO" "$@" > "$tmp/pinref-$label-out" 2> "$tmp/pinref-$label-err" || pinref_rc=$?
+    else
+        ( cd "$PR_REPO" && git diff "main...$pr_oid" \
+            | CR_TARGET_PR=7 CR_LEDGER="$PINREF_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
+              CRITICS_JSON="$tmp/critics-pin.json" CRITIC_FIRST_PASS="$PINREF_STUB" \
+              bash "$PANEL" "$@" > "$tmp/pinref-$label-out" 2> "$tmp/pinref-$label-err" ) || pinref_rc=$?
+    fi
+}
+pinref_ledger_is() { # head branch: yes when every ledger row of the last run carries them
+    python3 - "$PINREF_LEDGER" "$1" "$2" <<'PYEOF'
+import json, sys
+rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+print('yes' if rows and all(r.get('head') == sys.argv[2] and r.get('branch') == sys.argv[3] for r in rows) else 'no')
+PYEOF
+}
+pinref_ran() { [ -f "$PINREF_DIFF_DUMP" ] && echo yes || echo no; }
+
+pinref_run 1 worktree --head "$pr_oid" --branch feat/outside-thing --pin-ref refs/himmel/outside/7
+check "PINREF1: a ref at --head runs from a checkout on another branch and commit (--worktree)" "$pinref_rc" "0"
+check "PINREF1: the critic saw the diff of the REF, not the live checkout" \
+    "$(cat "$PINREF_DIFF_DUMP" 2>/dev/null)" "$(git -C "$PR_REPO" diff "main...$pr_oid")"
+check "PINREF1: ledger rows stamp the ref's head and the --branch name, never the live ones" \
+    "$(pinref_ledger_is "$pr_oid" feat/outside-thing)" "yes"
+check "PINREF1: the member sees the ref's head and the --branch name in CR_TARGET_HEAD and CR_TARGET_BRANCH" \
+    "$(cat "$PINREF_ENV_DUMP" 2>/dev/null)" "$pr_oid feat/outside-thing"
+pinref_run 2 stdin --head "$pr_oid" --branch feat/outside-thing --pin-ref refs/himmel/outside/7
+check "PINREF2: a ref at --head runs from a checkout on another branch and commit (stdin)" "$pinref_rc" "0"
+check "PINREF2: ledger rows stamp the ref's head and the --branch name (stdin)" \
+    "$(pinref_ledger_is "$pr_oid" feat/outside-thing)" "yes"
+check "PINREF2: the member sees the ref's head and the --branch name (stdin)" \
+    "$(cat "$PINREF_ENV_DUMP" 2>/dev/null)" "$pr_oid feat/outside-thing"
+
+pinref_run 3 worktree --head "$pr_oid" --branch feat/outside-thing --pin-ref refs/himmel/outside/999
+check "PINREF3: a ref that resolves to no commit refuses (exit 7)" "$pinref_rc" "7"
+check_contains "PINREF3: the refusal names --pin-ref" "$(cat "$tmp/pinref-3-err")" "REFUSING --pin-ref refs/himmel/outside/999"
+check "PINREF3: no ledger rows stamped, no critic ran" "$(wc -l < "$PINREF_LEDGER" | tr -d ' ')$(pinref_ran)" "0no"
+
+pinref_run 4 worktree --head "$pr_live" --branch feat/outside-thing --pin-ref refs/himmel/outside/7
+check "PINREF4: a ref at a commit other than --head refuses (exit 7)" "$pinref_rc" "7"
+check_contains "PINREF4: the refusal names the pinned ref's commit" "$(cat "$tmp/pinref-4-err")" "$pr_oid"
+check "PINREF4: no ledger rows stamped, no critic ran" "$(wc -l < "$PINREF_LEDGER" | tr -d ' ')$(pinref_ran)" "0no"
+pinref_run 4b stdin --head "$pr_live" --branch feat/outside-thing --pin-ref refs/himmel/outside/7
+check "PINREF4: a mismatched ref refuses in the stdin lane too" "$pinref_rc" "7"
+check "PINREF4: stdin lane stamps nothing and runs no critic" "$(wc -l < "$PINREF_LEDGER" | tr -d ' ')$(pinref_ran)" "0no"
+
+# PINREF5: a --pin-ref with no git worktree to resolve it in refuses like the other pins.
+pinref5_rc=0
+mkdir -p "$tmp/pinref-nogit"
+( cd "$tmp/pinref-nogit" && printf '%s' "$DIFF" \
+    | CRITICS_JSON="$tmp/critics-pin.json" CRITIC_FIRST_PASS="$PINREF_STUB" \
+      bash "$PANEL" --head "$pr_oid" --branch feat/outside-thing --pin-ref refs/himmel/outside/7 > "$tmp/pinref-5-out" 2> "$tmp/pinref-5-err" ) || pinref5_rc=$?
+check "PINREF5: --pin-ref with no git worktree refuses (exit 7)" "$pinref5_rc" "7"
+check_contains "PINREF5: the refusal says there is no worktree" "$(cat "$tmp/pinref-5-err")" "REFUSING --pin-ref refs/himmel/outside/7 — no git worktree"
+
+# PINREF6: usage errors — no value, an option-looking value, a revision expression, no --branch.
+pinref_run 6a worktree --head "$pr_oid" --branch feat/outside-thing --pin-ref
+check "PINREF6: --pin-ref with no value is a usage error" "$pinref_rc" "2"
+check_contains "PINREF6: the error says the ref is missing" "$(cat "$tmp/pinref-6a-err")" "--pin-ref requires a ref name"
+pinref_run 6b worktree --pin-ref --head "$pr_oid" --branch feat/outside-thing
+check "PINREF6: --pin-ref followed by an option is a usage error" "$pinref_rc" "2"
+check_contains "PINREF6: the error says an option is not a ref" "$(cat "$tmp/pinref-6b-err")" "--pin-ref must be a plain ref name"
+pinref_run 6c worktree --head "$pr_oid" --branch feat/outside-thing --pin-ref 'HEAD~1'
+check "PINREF6: --pin-ref with a revision expression is a usage error" "$pinref_rc" "2"
+check_contains "PINREF6: the error says a revision expression is not a ref" "$(cat "$tmp/pinref-6c-err")" "--pin-ref must be a plain ref name"
+pinref_run 6d worktree --head "$pr_oid" --pin-ref refs/himmel/outside/7
+check "PINREF6: --pin-ref without --branch is a usage error (the live branch must never be stamped)" "$pinref_rc" "2"
+check_contains "PINREF6: the error names --branch" "$(cat "$tmp/pinref-6d-err")" "--pin-ref requires --branch"
+check "PINREF6: a usage error runs no critic" "$(pinref_ran)" "no"
+
+# PINREF7: controls — without --pin-ref the live HEAD and live branch checks stand.
+pinref_run 7 worktree --head "$pr_oid" --branch feat/outside-thing
+check "PINREF7: control — without --pin-ref the same --head refuses on a checkout elsewhere" "$pinref_rc" "7"
+pinref_run 7b worktree --head "$pr_live" --branch feat/outside-thing
+check "PINREF7: control — without --pin-ref the live --head with another --branch refuses" "$pinref_rc" "7"
+check_contains "PINREF7: control — the refusal is the live-branch check" "$(cat "$tmp/pinref-7b-err")" \
+    "is on branch elsewhere but the review was pinned to feat/outside-thing"
+pinref_run 7c worktree --head "$pr_live" --branch elsewhere
+check "PINREF7: control — without --pin-ref the live head and branch still run" "$pinref_rc" "0"
+
 # ── stdin graceful degrade, base-branch resolution, ──────────
 #    citation-less ledger rows. Three panel suggestions, parent premise-
 #    verified; each fix has its own fixture and touches only critic-panel.sh.
