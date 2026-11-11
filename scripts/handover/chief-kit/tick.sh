@@ -565,17 +565,16 @@ on a wake-up budget and this reads every project's transcripts.
 USAGE
 }
 
-# One interpretation for both the tick and waiter; stdin is a complete
-# next-dispatchable.sh --dispositions snapshot, never a chief's claimed counts.
-pool_stale_file() { # <doc> <mirror>
+pool_stale_file() {
+    local doc="$1" mirror="$2"
     printf '%s/tick-pool-stale-%s.out\n' "${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}" \
-        "$(printf '%s\n%s' "$(realpath -m "$1")" "$(realpath -m "$2")" | cksum | cut -d' ' -f1)"  # prim-ok: the doc and the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
+        "$(printf '%s\n%s' "$(realpath -m "$doc")" "$(realpath -m "$mirror")" | cksum | cut -d' ' -f1)"  # prim-ok: the doc and the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
 }
 
-pool_stale_serialized() { # <doc> <repo> <stale file>
-    local out="" file="$3"
+pool_stale_serialized() {
+    local doc="$1" repo="$2" file="$3" out=""
     if mkdir -p "${file%/*}" 2>/dev/null && { exec 7>>"$file.lock"; } 2>/dev/null && flock -w "$(tick_bound 20)" 7; then  # prim-ok: a per-stale-file lock held for one producer run and its save; gnu-ok: chief kit is Linux-only
-        out="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-stale --doc "$1" --repo "$2" --prior "$file" 7>&- 2>/dev/null)" || out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
+        out="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-stale --doc "$doc" --repo "$repo" --prior "$file" 7>&- 2>/dev/null)" || out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
         if printf '%s\n' "$out" | grep -q '^pool-stale=' && ! printf '%s\n' "$out" | grep -q '^pool-stale=skip$'; then
             { printf '%s\n' "$out" > "$file.$$" && mv -f "$file.$$" "$file"; } || printf 'tick: pool-stale file not saved: %s\n' "$file" >&2
             rm -f "$file.$$"
@@ -585,6 +584,8 @@ pool_stale_serialized() { # <doc> <repo> <stale file>
     printf '%s\n' "$out"
 }
 
+# One interpretation for both the tick and waiter; stdin is a complete
+# next-dispatchable.sh --dispositions snapshot, never a chief's claimed counts.
 pool_dispositions() {
     local psf="" psm=""
     if [ -n "$1" ]; then

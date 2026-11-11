@@ -846,7 +846,7 @@ not_contains 'no review file leaves review= off the line (decision 593)' "$(rv_t
 rm -rf "$rv"
 
 S2="$W/s2"; SM="$S2/mirror/HIMMEL"; mkdir -p "$SM" "$S2/quota" "$W/handover"
-mk_s2() { # <num> <status> <statusCategory>
+mk_s2() {
     printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "Medium"\nlabels: []\nfixVersions: ["v1.1.3"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-%s: t\n\n## Description\n\nbody\n' \
         "$1" "$2" "$3" "$1" > "$SM/HIMMEL-$1.md"
 }

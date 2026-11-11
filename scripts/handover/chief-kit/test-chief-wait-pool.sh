@@ -766,10 +766,8 @@ PATH="$STUB/nopy:$PATH" timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" 
 check "(unread) a pool the tick cannot read says backlog=unread and never prints dispatchable=0" "WAKE underfilled capacity=UNDERFILLED:7 backlog=unread" "$(head -n1 "$WORK/unread-summary.out")"
 rm -f "$STUB/pool.rows"
 
-# Every sample's stale file comes from the real tick.sh --pool-stale (a stub gh answers its one GraphQL read); the waiter's own tick
-# stays the stub above. Every row names its TICK_STATE_DIR, mirror, quota dir and TICK_GH_CMD so nothing reads the real HOME or GitHub.
 S2="$WORK/s2"; S2M="$S2/mirror/HIMMEL"; mkdir -p "$S2M" "$S2/ho" "$S2/quota"
-s2mk() { # <num> <status> <statusCategory>
+s2mk() {
     printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "Medium"\nlabels: []\nfixVersions: ["v1.1.3"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-%s: t\n\n## Description\n\nbody\n' \
         "$1" "$2" "$3" "$1" > "$S2M/HIMMEL-$1.md"
 }
