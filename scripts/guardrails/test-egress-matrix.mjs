@@ -574,6 +574,17 @@ assert(corpora.includes("peer-desk"), "corpus peer-desk must be declared");
 for (const c of ["salus", "luna-personal", "handover-state", "jira-mirror"])
   assert(evaluate(c, "peer-telegram", "peer-message").effective === "deny", `${c} x peer-telegram x peer-message must deny`);
 
+assert(corpora.includes("adopter-repo"), "corpus adopter-repo must be declared");
+{
+  const { effective, rule } = evaluate("adopter-repo", "anthropic", "extraction");
+  assert(effective === "conditional" && rule && rule.corpus === "adopter-repo" && rule.provider === "anthropic" && /listed/.test(rule.condition || ""),
+    `adopter-repo x anthropic x extraction must be conditional on a listed root via its OWN row, got ${effective}`);
+  for (const p of providers) for (const u of purposes) {
+    if (p === "anthropic" && u === "extraction") continue;
+    assert(evaluate("adopter-repo", p, u).effective === "deny", `adopter-repo x ${p} x ${u} must deny`);
+  }
+}
+
 if (failures > 0) {
   console.error(`egress-matrix: ${failures} invariant failure(s)`);
   process.exit(1);

@@ -153,7 +153,18 @@ function rootCheck(root) {
   if (real !== root) errors.push('the root is not stored as its real path');
   try { if (!fs.statSync(real).isDirectory()) errors.push('the root is not a directory'); } catch { errors.push('the root cannot be read'); }
   if (!fs.existsSync(path.join(real, '.git'))) errors.push('the root holds no .git entry');
-  return errors;
+  return errors.concat(classifierErrors(real));
+}
+
+function resolveBash() { return process.env.HIMMELCTL_BASH || 'bash'; }
+
+function classifierErrors(real) {
+  const wrapper = path.join(HIMMEL_ROOT, 'scripts', 'guardrails', 'graphify-classify.sh');
+  const r = require('child_process').spawnSync(resolveBash(), [wrapper, real], { encoding: 'utf8', timeout: 30000 });
+  if (r.error || r.status !== 0) return ['the root cannot be classified (the egress classifier failed or refused), so it is refused'];
+  const cls = r.stdout.split('\n')[0].trim();
+  if (!cls) return [];
+  return [`the root is in the ${cls.replace(/[^A-Za-z0-9-]/g, '?')} corpus class at, above or below it (a vault, a salus or PHI root, the handover state or the himmel checkout), so it is refused`];
 }
 
 function rosterCheck(choices, accounts) {

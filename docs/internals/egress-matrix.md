@@ -233,9 +233,9 @@ Exit 0 = allow (ledger written where the verdict requires it); exit 2 = deny,
 reason on stderr. The verdict is exactly what an agent-typed invocation of the
 same corpus × provider gets from the matrix.
 
-- **Validation (fail-closed, exit 2):** `<corpus>` must be one of the five
+- **Validation (fail-closed, exit 2):** `<corpus>` must be one of the six
   classes (`salus`, `luna-personal`, `luna-clippings`, `handover-state`,
-  `himmel-code`); `<backend>` and `<tool-label>` must match `[A-Za-z0-9._-]+`
+  `himmel-code`, `adopter-repo`); `<backend>` and `<tool-label>` must match `[A-Za-z0-9._-]+`
   (they land in the ledger JSON unescaped, so the charset is the escaping);
   `<abs-target>` must be an absolute path. Any operand count other than four
   after `--eval` exits 2 — a malformed direct call is never let fall through to
@@ -253,6 +253,46 @@ same corpus × provider gets from the matrix.
 
 This section documents the contract only. It deliberately restates no matrix
 verdicts — `scripts/guardrails/egress-matrix.json` is authoritative.
+
+## The adopter-repo class and the classify verb
+
+`adopter-repo` (decision 780 A1) is a user's **own** git repository,
+named in `graphify.choices.corpora` of `~/.himmel/config.json`. Its one open cell
+is `anthropic × extraction`, **conditional** on the root being listed
+(`scripts/himmelctl/lib/graph-choices.js listed <root>` exits 0); every other
+provider and purpose denies, the `ollama-cloud` wildcard included. What leaves
+the machine on that cell is the repo's markdown files, uncommitted ones included,
+with no secret scan on the path; code stays in the free local AST.
+
+- **Only `--eval` names the class.** A `.graphify-corpus` marker cannot declare
+  `adopter-repo` (the marker list is unchanged), so the hook path is not widened.
+- **`--eval adopter-repo` does not look below the root.** The refusal of a root
+  that holds another class is the classifier's job, below.
+
+```text
+graphify-fence.sh --classify <abs-target>   -> the strongest class at, above or below the root, or nothing; exit 0; no ledger
+graphify-classify.sh <abs-target>           -> the same, read against the configured vault and handover state
+```
+
+- **At or above the root:** the fence's usual classification (`.salus`, the PHI
+  root lists, the configured vault, the handover state, the himmel checkout, a
+  staging marker) plus an `.obsidian` marker, which marks an Obsidian vault and
+  names `luna-personal`.
+- **Below the root:** a `.salus` or `.obsidian` anywhere under it, an entry of
+  `phi-roots` or `egress-denylist` under it, the configured vault under it, or the
+  himmel checkout under it. A
+  subtree holding PHI would otherwise pass, because the semantic pass has no PHI
+  skip. An inline `handovers/` folder below the root is **not** a class (A8).
+- **Fail-closed:** an unreadable PHI list, a bad marker or a subtree that cannot
+  be read through exits 2, and the caller treats any non-zero exit as a refusal.
+- **The wrapper** clears the caller's `LUNA_VAULT`, `LUNA_VAULT_PATH` and
+  `HANDOVER_DIR` and loads the configured values through `scripts/lib/load-dotenv.sh`
+  (`himmel.conf`, then `.env`), because the fence reads `LUNA_VAULT` before
+  `LUNA_VAULT_PATH` and a live value elsewhere would mask the configured vault.
+  An `.env` that exists but cannot be read exits 2: `load_dotenv` returns 0 on
+  every path, so the wrapper checks readability itself.
+- **Consumer:** the choice store's `root-check` refuses a root when the wrapper
+  names a class or exits non-zero.
 
 ## Salus ollama-cloud opt-in and its trust root
 
