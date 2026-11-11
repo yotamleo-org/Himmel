@@ -111,6 +111,20 @@ async function main() {
     assert.equal(read(envFile), original);
     assert(!fs.existsSync(conf));
   });
+  await test('the JIRA_TEST_PROJECT row is a config key the wizard asks, explains and writes to himmel.conf', async () => {
+    const rows = require(path.join(root, 'scripts/himmelctl/lib/config-keys.json')).keys;
+    const row = rows.find(r => r.name === 'JIRA_TEST_PROJECT');
+    assert(row, 'config-keys.json must carry a JIRA_TEST_PROJECT row');
+    assert.equal(row.class, 'config');
+    assert(!row.envOnly, 'the test project is read from himmel.conf, never .env only');
+    const prompts = [];
+    await adopter.askBehaviourConfig(async prompt => { prompts.push(prompt); return ''; }, { log: s => prompts.push(s) });
+    assert(prompts.some(p => p.includes('JIRA_TEST_PROJECT') && p.includes(row.explanation) && p.includes(row.effect)));
+    const dir = fixture('jira-test-project');
+    const conf = path.join(dir, 'himmel.conf');
+    adopter.applyBehaviourConfig({ JIRA_TEST_PROJECT: 'HTEST' }, { conf, envFile: path.join(dir, '.env'), log: () => {} });
+    assert.equal(load(conf, 'JIRA_TEST_PROJECT'), 'JIRA_TEST_PROJECT=HTEST');
+  });
   await test('every config key is asked with its explanation; policy is explained only', async () => {
     const prompts = [];
     const answers = await adopter.askBehaviourConfig(async prompt => { prompts.push(prompt); return ''; }, { log: s => prompts.push(s) });

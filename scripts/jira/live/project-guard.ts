@@ -13,6 +13,12 @@ export function assertLiveProject(project: string, configured: string): void {
   }
 }
 
+// The station's config dir, read before vitest.setup.ts redirects HOME and HIMMEL_CONFIG_DIR; nothing outside a live run.
+export function recordLiveConfigDir(env: NodeJS.ProcessEnv, passwdHome: string): string | undefined {
+  if (env.JIRA_LIVE_TEST !== '1') return undefined;
+  return env.HIMMEL_CONFIG_DIR || join(passwdHome, '.himmel');
+}
+
 export function liveChildEnv(base: NodeJS.ProcessEnv, project: string, configDir: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...base,
