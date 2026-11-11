@@ -897,7 +897,6 @@ eq "exposure_counts_planted_journal: 4 reads in the repo (one through a sibling 
     "prior 24 h: 3/4 = 0.7500; wilson95 $(wl 3)|prior 1 h: 2/4 = 0.5000; wilson95 $(wl 2)" \
     "$(grep '^prior ' "$W/exp.txt" | paste -sd'|' -)"
 
-# ---- slice 4.1: mine-luna (I9) ------------------------------------------------
 V="$W/vault"; mkdir -p "$V/notes" "$W/mproj/p1" "$W/mproj/p2" "$W/state"
 py - "$W/mproj" "$V" <<'PY'
 import datetime, json, sys
@@ -943,7 +942,6 @@ eq "mine_refuses_repo_path: a sibling worktree outside the primary checkout's di
 py "$EV" mine-luna --repo "$W/state" --projects "$W/mproj" --vault "$V" --out "$W/cand5.jsonl" > "$W/mine-nogit.txt" 2>&1
 eq "mine_refuses_repo_path: when git cannot list the checkouts (a --repo that is no checkout) the guard refuses and writes nothing" "2 absent 1" "$? $([ -e "$W/cand5.jsonl" ] && echo present || echo absent) $(grep -c 'cannot list the checkouts' "$W/mine-nogit.txt")"
 
-# ---- slice 4.2: the luna arms and vault-report (I9, I10) ------------------------
 cat > "$W/lbank.jsonl" <<'EOF'
 {"id":"l1","q":"where do we describe the halt rule","gold":["notes/alpha.md"],"reason":[],"source":"qmd"}
 {"id":"l2","q":"which note covers relay batches","gold":["notes/gamma.md"],"reason":[],"source":"direct"}

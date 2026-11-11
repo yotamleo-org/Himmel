@@ -659,7 +659,6 @@ def refuse_live(u):
 
 
 def checkout_roots(repo):
-    """Every checkout git knows for repo. A git failure refuses: a guard that cannot list the checkouts must not pass."""
     def git(*args):
         try:
             r = subprocess.run(["git", "-C", repo] + list(args), capture_output=True, text=True, timeout=10)
@@ -677,7 +676,6 @@ def checkout_roots(repo):
 
 
 def refuse_repo_path(path, repo, what):
-    """I9: a luna question, gold path or note text never lands in a checkout, through a symlink or not."""
     real = os.path.realpath(path)
     for root in sorted(checkout_roots(repo)):
         if real == root or real.startswith(root + os.sep):
@@ -1429,7 +1427,6 @@ SOURCES = ("qmd", "direct", "written")
 
 
 def luna_reached(cl):
-    """Vault-relative notes a qmd call surfaced from the luna collection."""
     if cl["name"].startswith("mcp__") and not cl["name"].endswith("__query"):
         # get and multi_get echo the document body, which can quote other paths: only the input names notes.
         text = " ".join(str(cl["input"].get(k) or "") for k in ("file", "pattern"))
@@ -1469,7 +1466,6 @@ def cmd_mine_luna(a):
                         here["qmd"].add(p)
             elif cl["name"] == "Read" and not failed(cl):
                 rel = vault_note(a.vault, cl["input"].get("file_path") or "")
-                # An open by path ends every direct route (a grep hit, a wikilink): it counts unless a qmd call surfaced it first.
                 if rel and rel.lower() not in reached:
                     here["direct"].add(rel)
         for src, paths in here.items():
