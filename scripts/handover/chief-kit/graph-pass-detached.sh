@@ -12,6 +12,10 @@
 #   graph-pass-detached.sh start    launch the pass; rc 3 while one is running
 #   graph-pass-detached.sh status   running|finished|none, with pid= and log=
 #
+# Exit: 0 started (start) or any answer (status); 1 the pass exited at once;
+#       2 usage, a pass script that is not executable, or no launcher;
+#       3 start refused because a pass is already running.
+#
 # Seams (the suite points both at a stub and a temp dir):
 #   GRAPH_PASS_SCRIPT     the pass; default ~/.claude/graphmap-cadence/graphmap-himmel.sh
 #   GRAPH_PASS_STATE_DIR  state file and logs; default ~/.claude/graphmap-cadence/detached
