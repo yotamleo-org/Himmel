@@ -70,7 +70,7 @@ DISPATCH_DO_NOT = ('edit, write or run anything that changes a file, a branch or
 DISPATCH_DO_NOT_NO_HEAD = ('edit, write or run anything that changes a file, a branch or a ticket. '
                            'A judge that finds it needs to change a file to answer its question has been asked an '
                            'implementation question: say so rather than working around it.')
-JUDGE_AGENT =os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '.claude',
+JUDGE_AGENT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '.claude',
                                            'agents', 'judge-ro.md'))
 DEFAULT_DO_NOT = ('everything except reading and writing your verdict file. A judge that finds it needs '
                   'to edit a file to answer its question has been asked an implementation question: '

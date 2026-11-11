@@ -3888,13 +3888,17 @@ printf '{"agentType":"judge-ro","description":"Judge j9844a on DEMO-9844","toolU
 printf '{"agentType":"judge-ro","description":"Judge j9844b on DEMO-9844","toolUseId":"toolu_b"}\n' > "$reg97/agent-a97b.meta.json"
 printf '{"agentType":"judge-ro","description":"Delta judge PR 3579","toolUseId":"toolu_c"}\n' > "$reg97/agent-a97c.meta.json"
 printf '{"agentType":"Explore","description":"Judge j9844d on DEMO-9844","toolUseId":"toolu_d"}\n' > "$reg97/agent-a97d.meta.json"
-mkdir -p "$root/tester/repo/verdicts/j9844b"
+printf '{"agentType":"judge-ro","description":"Judge j9844e on DEMO-9844","toolUseId":"toolu_e"}\n' > "$reg97/agent-a97e.meta.json"
+mkdir -p "$root/tester/repo/verdicts/j9844b" "$root/tester/repo/verdicts/j9844e"
 printf '# VERDICT j9844b - judge\n' > "$root/tester/repo/verdicts/j9844b/judge.md"
+printf '# VERDICT j9844e - judge\n' > "$root/tester/repo/verdicts/j9844e/judge.md"
+touch -t 202001010000 "$root/tester/repo/verdicts/j9844e/judge.md"
 out97="$(chief new --bucket p97)"
 CLAUDE_CONFIG_DIR="$cfg97" CLAUDE_CODE_SESSION_ID="$sid97" chief next --bucket p97 >/dev/null 2>&1
 doc97B="$root/tester/p97/DEMO-nextleg-${today}B-chief.md"
 check "97 a judge qid dispatched with no verdict file is listed JUDGE-OWED" "$(grep -c '^JUDGE-OWED j9844a — Judge j9844a on DEMO-9844 — brief: ' "$doc97B")" "1"
 check "97 control: a judge qid with a verdict file is not listed" "$(grep -c 'JUDGE-OWED j9844b' "$doc97B")" "0"
+check "97 a reused qid whose only verdict predates the dispatch is still owed" "$(grep -c '^JUDGE-OWED j9844e — ' "$doc97B")" "1"
 check "97 a judge-ro child with no qid is listed unknown" "$(grep -c '^JUDGE-OWED unknown (a97c: Delta judge PR 3579)' "$doc97B")" "1"
 check "97 a child that is not judge-ro is not listed" "$(grep -c 'j9844d' "$doc97B")" "0"
 check "97 the owed list sits inside the pre-computed ACTION ZERO block" \

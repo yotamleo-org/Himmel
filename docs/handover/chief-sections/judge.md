@@ -28,8 +28,8 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
 - **A judge whose verdict never landed is re-dispatched by code**: `chief.sh
   next` reads the outgoing session's subagent registry (the one
   `live-subagents.sh` reads). For every `judge-ro` call whose description is the
-  generator's `Judge <qid> on <KEY>` and whose `verdicts/<qid>/` holds no file,
-  it writes `JUDGE-OWED <qid> — <description> — brief: <transcript>` into the
+  generator's `Judge <qid> on <KEY>` and whose `verdicts/<qid>/` holds no file
+  written since that dispatch (a reused qid keeps its older verdicts), it writes `JUDGE-OWED <qid> — <description> — brief: <transcript>` into the
   successor's pre-computed ACTION ZERO block. A `judge-ro` call with any other
   description is listed as `JUDGE-OWED unknown (<agent-id>: <description>)`; no
   owed judge reads `JUDGE-OWED: none`. The successor checks `verdicts/<qid>/`

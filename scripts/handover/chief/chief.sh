@@ -606,8 +606,9 @@ judge_calls_now() {
 }
 
 # The successor's owed judges: every judge-ro child this session dispatched (the
-# subagent registry live-subagents.sh reads) whose qid has no verdict file under the
-# verdicts/ directory write-verdict.sh writes (go-gate.sh's root and scope). The qid
+# subagent registry live-subagents.sh reads) whose qid has no verdict file, written no
+# earlier than the dispatch, under the verdicts/ directory write-verdict.sh writes
+# (go-gate.sh's root and scope), since a reused qid keeps its older verdicts. The qid
 # is read from the generator's description `Judge <qid> on <KEY>`; a judge-ro child
 # with another description is listed unknown. Fails open to a note.
 judges_owed_now() {
@@ -642,7 +643,7 @@ EOF_META
             continue
         fi
         written=""
-        for f in "$vdir/$qid"/*.md; do [ -f "$f" ] && { written=1; break; }; done
+        for f in "$vdir/$qid"/*.md; do [ -f "$f" ] && ! [ "$meta" -nt "$f" ] && { written=1; break; }; done
         [ -z "$written" ] || continue
         printf 'JUDGE-OWED %s — %s — brief: %s\n' "$qid" "$desc" "${meta%.meta.json}.jsonl"
         n=$((n + 1))
