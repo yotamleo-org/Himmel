@@ -2642,7 +2642,7 @@ mode="${Q_MODE:-healthy}"
 probe=0; case "$*" in *rateLimit* | "api -i user"*) probe=1 ;; esac
 bucket=graphql; [ "$1" = api ] && case "$*" in *graphql*) ;; *) bucket=core ;; esac
 if [ "$probe" = 1 ]; then
-    [ "$mode" = hung ] && exec sleep 60
+    [ "$mode" = hung ] && exec -a "q6-sleep-${Q_TAG:-none}" sleep 60
     rem=4000
     case "$mode:$bucket" in gql-out:graphql | rest-out:core | secondary:*) rem=0 ;; esac
     printf 'HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: %s\r\nX-Ratelimit-Reset: %s\r\n' "$rem" "$(($(date +%s) + 1800))"
@@ -2655,17 +2655,20 @@ calls=$(grep -cv -e rateLimit -e 'api -i user' "$Q_LOG")
 case "$mode" in
     gql-out | secondary) [ "$bucket" = graphql ] && { echo 'GraphQL: API rate limit already exceeded for user ID 1.' >&2; exit 1; } ;;
     rest-out) [ "$bucket" = core ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; } ;;
-    hung-after-probe) exec sleep 60 ;;
+    hung-after-probe) exec -a "q6-sleep-${Q_TAG:-none}" sleep 60 ;;
+    files-out) case "$*" in */files*) echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1 ;; esac ;;
+    view-out) [ "$1 $2" = "pr view" ] && { echo 'GraphQL: API rate limit already exceeded for user ID 1.' >&2; exit 1; } ;;
     from-third) [ "$calls" -ge 3 ] && { echo 'GraphQL: API rate limit already exceeded for user ID 1.' >&2; exit 1; } ;;
 esac
 case "$1 $2" in
-    "pr list") case "$*" in *merged*) ;; *headRefName*) printf '4601\tfix(x): an open change\tfix/q6-open\n' ;; *) echo 4601 ;; esac ;;
+    "pr list") case "$*" in *merged*) ;; *headRefName*) printf '4601\tfix(x): an open change\tfix/q6-open\n4602\tfix(x): another open change\tfix/q6-other\n' ;; *) printf '4601\n4602\n' ;; esac ;;
     "api "*) echo scripts/q6/pr-file.sh ;;
 esac
 exit 0
 EOF
 cat > "$WORK/classify-q" <<'EOF'
 #!/usr/bin/env bash
+[ -z "${Q_CLASSIFY_LOG:-}" ] || printf '%s\n' "$*" >> "$Q_CLASSIFY_LOG"
 if [ "${Q_CLASSIFY:-ok}" = refuse ]; then echo 'GraphQL: API rate limit already exceeded for user ID 1.' >&2; exit 0; fi
 [ "${Q_CLASSIFY:-ok}" != hang ] || exec sleep 60
 for k in "$@"; do printf '%s\tLOCAL-NATIVE\tstub\n' "$k"; done
@@ -2682,10 +2685,10 @@ q6run() { # <mode> [extra env...] -- [dispatcher args...]: sets Q6_OUT, Q6_RC, Q
     shift
     while [ "$#" -gt 0 ] && [ "$1" != -- ]; do envs+=("$1"); shift; done
     [ "${1:-}" != -- ] || shift
-    Q6Q="$(mktemp -d "$Q6/quota.XXXXXX")" || { fail "T6: mktemp -d failed"; return 1; }; : > "$Q6/log"; rm -f "$Q6/real-gh-reached"
+    Q6Q="$(mktemp -d "$Q6/quota.XXXXXX")" || { fail "T6: mktemp -d failed"; return 1; }; : > "$Q6/log"; : > "$Q6/classify.log"; rm -f "$Q6/real-gh-reached"
     t0=$(date +%s)
     Q6_OUT="$(env -u himmel_github_token_vm2 PATH="$Q6/realbin:$PATH" HIMMEL_QUOTA_DIR="$Q6Q" GH_READ_ENV_ROOT="$Q6/envroot" GHQ_PROBE_TIMEOUT=2 \
-        Q_MODE="$mode" Q_LOG="$Q6/log" NEXT_DISPATCH_MIRROR="$Q6M" NEXT_DISPATCH_GH_CMD="$WORK/gh-q" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-q" \
+        Q_MODE="$mode" Q_LOG="$Q6/log" Q_CLASSIFY_LOG="$Q6/classify.log" NEXT_DISPATCH_MIRROR="$Q6M" NEXT_DISPATCH_GH_CMD="$WORK/gh-q" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-q" \
         ${envs[@]+"${envs[@]}"} timeout -k 2 40 bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" "$@" 2>/dev/null)"; Q6_RC=$?  # gnu-ok: the chief kit is Linux-only
     Q6_SECS=$(( $(date +%s) - t0 ))
 }
@@ -2726,6 +2729,36 @@ q6run healthy Q_CLASSIFY=hang NEXT_DISPATCH_GH_TIMEOUT=2 -- --priority-pool-only
 q6_paused "a classification that times out" gh-stall
 q6run gql-out -- --resume-only
 q6_paused "gql-out --resume-only" quota-pause
+q6run files-out -- --priority-pool-only
+q6_paused "a refused PR files read with two open PRs" quota-pause
+q6_after="$(awk '/\/files/ { seen = 1; next } seen && !/rateLimit|api -i user/' "$Q6/log")"
+[ -z "$q6_after" ] && pass "T6 fail-fast: no other gh read follows a refused PR files read" || fail "T6 fail-fast: no other gh read follows a refused PR files read (got: $q6_after)"
+mkdir -p "$Q6/state/workers"
+printf '{"ts":"t","event":"merge","key":"HIMMEL-9802","pr":"4700","contract":"no","result":"noop"}\n' > "$Q6/state/status-events.jsonl"
+q6run view-out -- --priority-pool-only --workers-dir "$Q6/state/workers"
+q6_paused "a refused merged-PR body read" quota-pause
+[ ! -s "$Q6/classify.log" ] && pass "T6 classification is skipped once a read was refused" || fail "T6 classification is skipped once a read was refused (classifier ran: $(head -2 "$Q6/classify.log"))"
+q6run healthy -- --priority-pool-only --workers-dir "$Q6/state/workers"
+[ -s "$Q6/classify.log" ] && pass "T6 RED control: with no refusal the classifier runs" || fail "T6 RED control: with no refusal the classifier runs"
+q6_tree() { local c; for c in $(pgrep -P "$1" 2> /dev/null); do printf '%s\n' "$c"; q6_tree "$c"; done; }
+Q6T="q6term$$"
+Q6Q="$(mktemp -d "$Q6/quota.XXXXXX")" || fail "T6: mktemp -d failed"
+env -u himmel_github_token_vm2 PATH="$Q6/realbin:$PATH" HIMMEL_QUOTA_DIR="$Q6Q" GH_READ_ENV_ROOT="$Q6/envroot" GHQ_PROBE_TIMEOUT=2 \
+    Q_MODE=hung-after-probe Q_TAG="$Q6T" Q_LOG="$Q6/log" NEXT_DISPATCH_MIRROR="$Q6M" NEXT_DISPATCH_GH_CMD="$WORK/gh-q" \
+    NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-q" NEXT_DISPATCH_DEADLINE=120 bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" > /dev/null 2>&1 &
+q6pid=$!
+for _ in $(seq 50); do pgrep -f "q6-sleep-$Q6T" > /dev/null && break; sleep 0.2; done
+q6_kids="$(q6_tree "$q6pid")"
+pgrep -f "q6-sleep-$Q6T" > /dev/null && [ -n "$q6_kids" ] && pass "T6 TERM control: the run reached its hung gh read" || fail "T6 TERM control: the run reached its hung gh read"
+kill -TERM "$q6pid" 2> /dev/null; wait "$q6pid" 2> /dev/null
+sleep 3
+q6_alive=""
+for q6k in $q6_kids; do kill -0 "$q6k" 2> /dev/null && q6_alive="$q6_alive $q6k"; done
+[ -z "$q6_alive" ] && ! pgrep -f "q6-sleep-$Q6T" > /dev/null && pass "T6 TERM: a killed run leaves no gh read and no python behind" || fail "T6 TERM: a killed run leaves no gh read and no python behind (still alive:$q6_alive)"
+for q6k in $q6_alive; do kill "$q6k" 2> /dev/null; done
+pkill -f "q6-sleep-$Q6T" 2> /dev/null
+q6run healthy NEXT_DISPATCH_GH_TIMEOUT=abc -- --priority-pool-only
+has "T6 a non-integer NEXT_DISPATCH_GH_TIMEOUT keeps each read's own bound" "$Q6_OUT" "LOCAL	HIMMEL-9801"
 q6run healthy -- --priority-pool-only
 lacks "T6 RED control: a healthy stub prints no quota-pause line" "$Q6_OUT" "# quota-pause"
 lacks "T6 RED control: a healthy stub prints no gh-stall line" "$Q6_OUT" "# gh-stall"
