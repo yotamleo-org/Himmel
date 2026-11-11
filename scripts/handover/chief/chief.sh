@@ -1989,10 +1989,10 @@ hist_file_append() {
 }
 
 # The newest segment of a `queue:` value: everything before the first ` || (<LETTERS>) `,
-# the marker each earlier chief's segment starts with. Prints the whole value when it has
-# one segment. Arg: queue value.
+# ` || (<LETTERS> <time>; ...)` or ` || prior <LETTERS> queue:`, the markers an earlier
+# chief's segment starts with. Prints the whole value when it has one segment. Arg: queue value.
 queue_newest_segment() {
-    printf '%s\n' "$1" | awk '{ if (match($0, / \|\| \([A-Z][A-Z]?\) /)) print substr($0, 1, RSTART - 1); else print }'
+    printf '%s\n' "$1" | awk '{ if (match($0, / \|\| (\([A-Z][A-Z]?[ )]|prior [A-Z][A-Z]? queue:)/)) print substr($0, 1, RSTART - 1); else print }'
 }
 
 # The pinned head of a `tracker:` value: everything before the first ` — older:` or
@@ -2279,7 +2279,7 @@ seed_live_fields() {
             new_legs="$workers"; new_go="$go"
         fi
     fi
-    # queue: only the newest segment (an earlier chief's segment starts with ` || (<LETTERS>) `);
+    # queue: only the newest segment (queue_newest_segment names the markers of an earlier chief's);
     # the older ones are kept byte for byte in the dated history file and the line points at it.
     local queue newest
     queue="$(seeded_live_field "$live" queue)"
@@ -2569,14 +2569,24 @@ cmd_next() {
             cp "$predecessor_dir/$companion" "$state_dir/$companion" || { err "could not copy the direction companion $companion to $state_dir"; exit 1; }
         done
     fi
-    if [ "$(printf '%s' "$predecessor_direction" | wc -c | tr -d ' ')" -gt "${CHIEF_DIRECTION_SPILL_BYTES:-12000}" ]; then
-        dir_rc=0
+    # With a rulings ledger the block is always shortened first, so the companions hold the
+    # full text of every line the in-force render then leaves out; a failed write renders nothing.
+    local ledger="$state_dir/specs/decisions/rulings-in-force.jsonl" dir_in_force
+    dir_rc=0
+    if [ -f "$ledger" ] || [ "$(printf '%s' "$predecessor_direction" | wc -c | tr -d ' ')" -gt "${CHIEF_DIRECTION_SPILL_BYTES:-12000}" ]; then
         dir_short="$(printf '%s\n' "$predecessor_direction" | compress_direction "$state_dir" "$(date +%F)")" || dir_rc=$?
         case "$dir_rc" in
             0) predecessor_direction="$dir_short" ;;
             1) ;;
             *) err "warning: could not read or write the direction companion files; carried the Current direction as it was, with its pointer" ;;
         esac
+    fi
+    if [ -f "$ledger" ] && [ "$dir_rc" -le 1 ]; then
+        if dir_in_force="$(printf '%s\n' "$predecessor_direction" | bash "$kit/rulings-in-force.sh" render --bucket "$state_dir")" && [ -n "$dir_in_force" ]; then
+            predecessor_direction="$dir_in_force"
+        else
+            err "warning: could not render the rulings in force from $ledger; carried the Current direction as it was"
+        fi
     fi
     render_template "$console_template" "$doc" \
         FLEET_MANIFEST "$successor_manifest" \
@@ -2647,7 +2657,7 @@ cmd_next() {
                 WORKER_SESSION_LIST "$hf_legs" \
                 OPEN_PRS "$hf_prs" \
                 SHIFT_SUMMARY "$hf_summary" \
-                QUEUE_LINE "$(bash "$facts" queue "$predecessor_doc" --repo "$repo")" \
+                QUEUE_LINE "$(bash "$facts" queue "$doc" --repo "$repo")" \
                 LAST_GO "$hf_lastgo" \
                 JUDGE_CALLS "$(judge_calls_now)" \
                 PREDECESSOR_LETTER "$predecessor_letter" \
