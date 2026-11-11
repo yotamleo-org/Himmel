@@ -1212,7 +1212,6 @@ assert "commands-catalog.md has /x-media-enrich row" ok "$a"
 grep -qF -- 'x-media' "$README" 2>/dev/null && a=ok || a=no
 assert "README.md documents x-media rung" ok "$a"
 
-# --- Test 23: a clip that failed before goes behind the untried ones ----------
 echo "Test 23: queue order - untried known media newest first, then probes, failed last"
 VO="$tmp/vault-order"; mkdir -p "$VO/Clippings"
 order_clip() {
@@ -1230,7 +1229,6 @@ assert "untried known media goes first, newest first; the failed clip is not in 
 grep -qF '1 clip(s) would be probed' "$tmp/order.out" && a=ok || a=no
 assert "the never-probed clip goes before the failed clip" ok "$a"
 
-# --- Test 24: the run budget ends a batch inside one tool call ----------------
 echo "Test 24: X_MEDIA_BUDGET_S - no clip starts once the budget is spent"
 cat > "$tmp/bin/gallery-dl" <<'STUB'
 #!/usr/bin/env bash

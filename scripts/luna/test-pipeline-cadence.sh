@@ -1474,8 +1474,6 @@ assert_not_contains "a completed worker logs no FAILED line" "PIPELINE-WORKER-FA
 use_claude parked
 sh "$FIRE_DIR/pipeline-harvest.sh" || true
 assert_rc "after a completed worker the next failure sends again" 2 "$(count_lines "$ALERT_SENDS")"
-# An unfinished x-media-enrich step is named under its own alert key, and the
-# completed harvest it ran in keeps its marker and its exit 0.
 reset_alerts
 use_claude ok-nox
 rc=0; sh "$FIRE_DIR/pipeline-harvest.sh" || rc=$?

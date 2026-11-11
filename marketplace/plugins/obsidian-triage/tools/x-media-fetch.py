@@ -216,9 +216,6 @@ def _has_twimg_media(body: str) -> bool:
 
 
 def _cap(seconds: float) -> float:
-    """A subprocess timeout capped by the time left in the run's budget; once
-    the budget is spent each remaining step of the clip in flight times out at
-    once."""
     if RUN_DEADLINE is None:
         return seconds
     return max(0.1, min(seconds, RUN_DEADLINE - time.monotonic()))
@@ -235,7 +232,6 @@ def _report_unstarted(unstarted: int):
 
 
 def _tried(fm: dict) -> bool:
-    """The clip already failed a fetch: it carries a media_last_error."""
     return str(fm.get("media_last_error", "")).strip().strip('"') not in ("", "null")
 
 
@@ -1429,9 +1425,7 @@ def enrich_batch(args, selected, matched_total, remaining, run):
     Per-clip isolation: the whole per-clip body is wrapped so an unexpected error
     on one clip is reported loudly and counted failed, never aborting the batch. A
     clip whose media only PARTIALLY survived is written honestly as
-    media_enrichment_status: partial and KEEPS x_media_pending for retry.
-    `selected` is consumed lazily; `run` carries the probe and not-started counts.
-    A run with nothing to enrich never reaches the binary preflight."""
+    media_enrichment_status: partial and KEEPS x_media_pending for retry."""
     import time
     enriched = 0
     partial = 0

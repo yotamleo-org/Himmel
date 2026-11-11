@@ -208,8 +208,6 @@ HARVEST_PROMPT=""
 # Clips per nightly x-media-fetch call. The call is one foreground Bash call; the
 # tool's own 420 s run budget keeps it inside the Bash tool's 600 s maximum.
 X_MEDIA_LIMIT=10
-# The line the harvest worker prints once the x-media-enrich step finished; the
-# harvest runner alerts under X_MEDIA_ALERT_KEY when it is missing.
 X_MEDIA_DONE_LINE="X-MEDIA-ENRICH done:"
 X_MEDIA_ALERT_KEY="pipeline-harvest-x-media"
 SYNTH_PROMPT="Run /synthesize-clips to completion, then run /archive-clips. This is the scheduled daily pipeline cadence run - fully autonomous, no user prompts; report results and exit. For this worker, all of its work means both skills ran to completion and wrote their own output. When archive-clips reports clips as (stuck) in the inbox, those are structural backlog that triage owns and re-running cannot clear: report the stuck count and still print the marker. Withhold the marker when a step itself failed or aborted (a non-zero exit, a crash, a refused write) or the worker was blocked, parked, or bailed early; do not withhold it only because stuck clips remain. $COMPLETION_INSTRUCTIONS"
