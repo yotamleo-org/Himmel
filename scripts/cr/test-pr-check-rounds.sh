@@ -716,7 +716,7 @@ rl1_pre_imp='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"cri
 rl1_pre_amend() { printf '{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"%s","artifact":"diff","perspective":"off","set":{"pre_existing":true}}\n' "$1"; }
 # 9892 R1p: a fixed Important that the tagger also marked pre-existing settles the same way.
 rl1_reached_before="$(rl1_reached)"
-rl1_run feat/rl1 3 "$rl1_sug$rl1_fixed_imp"$'\n'"$(rl1_pre_amend critic-6)"
+rl1_run feat/rl1 3 "$rl1_sug$rl1_fixed_imp"$'\n'"$(rl1_pre_amend critic-6)"$'\n'
 rl1_assert_settled_defer "9892 R1p a fixed pre-existing-tagged Important plus declined Suggestions at round 3"
 assert_eq "$(rl1_amends_for critic-6)" 2 "9892 R1p critic-6 keeps only its seeded fixed and pre_existing amends"
 # The adjudicator's own class for the finding (and, for hardening, its fu_why).
