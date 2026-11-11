@@ -2271,14 +2271,14 @@ s17_body() {
             for r in $agg_others; do
                 case "$agg_skipped" in *" $r "*) continue ;; esac
                 agg_n=$((agg_n + 1)); [ "$agg_n" -le 5 ] || break
-                # the newest run that is not cancelled decides: an older success never stands in for it
                 if ! s17_run "gh api actions/runs/$r" "$(s17_bound 15)" "$d/rc" "$GH" api "repos/$owner/$repo/actions/runs/$r" --jq '[.conclusion, .head_sha] | join(" ")'; then
                     agg_err="$s17_why"; break
                 fi
-                case "$(tr -d '\r' < "$d/rc" | head -n 1)" in
+                agg_rc=$(tr -d '\r' < "$d/rc" | head -n 1)
+                case "$agg_rc" in
                     "success $SHA") agg="COMPLETED/SUCCESS $r"; break ;;
                     "cancelled "*) continue ;;
-                    *) break ;;
+                    *) echo "       note: the newest non-cancelled other CI run $r is not a success at ${SHA:0:7} (read: $agg_rc)"; break ;;
                 esac
             done
             [ -n "$agg" ] || agg="$agg_first"
