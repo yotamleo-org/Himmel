@@ -716,7 +716,6 @@ print(a["identity"]["harness_commit"] == b["identity"]["harness_commit"] and a["
 PY
 )"
 
-# ---- staleness eval: --pair runs, stale-report, exposure ----------------------------------
 SU="http://127.0.0.1:47999/mcp"
 PD="$W/pair"; mkdir -p "$PD/graph-s/graphify-out" "$PD/graph-l/graphify-out"
 printf '{"built_at_commit": "5555555"}\n' > "$PD/graph-s/graphify-out/graph.json"
@@ -728,7 +727,7 @@ printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${WORKER_GRAPH_OUT:-unset}" >> "%s
 # shellcheck disable=SC2016  # the stub's own $-expansion must stay literal
 printf '#!/usr/bin/env bash\nprintf "{\\"totalDocuments\\": %%s}\\n" "${STUB_DOCS:-5}"\n' > "$W/status"
 chmod +x "$W/graph-env" "$W/status"
-pr() { # <ledger tag> <env assignments...> -- <run args...>: one --pair run, rc in $?
+pr() {
     local tag="$1"; shift
     local e=(); while [ "$1" != -- ]; do e+=("$1"); shift; done; shift
     env "${e[@]}" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-$tag.jsonl" RETRIEVAL_EVAL_QMD_STATUS_CMD="$W/status" \
@@ -783,8 +782,6 @@ rm -rf "$PD/graph-s/graphify-out"; ln -s "$R/graphify-out" "$PD/graph-s/graphify
 pr "g2" "RETRIEVAL_EVAL_GRAPH_CMD=$W/graph-env" -- --index-state s --arms graphify
 eq "refuses_primary_graph_by_symlink: a pair graph that links to the checkout's graphify-out is refused" "2 absent" "$? $([ -s "$W/ledger-g2.jsonl" ] && echo present || echo absent)"
 
-# stale-report: a planted paired table. plant <dir> <arm> <stratum> <S-only hits> <L-only hits> [<C extra>]: 10 questions
-# right in every state, S-only ids right in S, L-only ids right in L and C, the rest of the 20 right nowhere.
 cat > "$W/plant.py" <<'PY'
 import json, os, sys
 d, arm, stratum, s_only, l_only = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5])
@@ -798,8 +795,8 @@ for st in states:
 PY
 plant() { py "$W/plant.py" "$@"; }
 SR="$W/sr"; rm -rf "$SR"
-plant "$SR" qmd-lex added 0 6     # Added: L right on 6 more than S
-plant "$SR" qmd-lex kept 8 2      # Kept: 8 right in S alone, 2 in L alone: L minus S is -30 points, exact McNemar p = 0.1094
+plant "$SR" qmd-lex added 0 6
+plant "$SR" qmd-lex kept 8 2
 LAGNONE="$W/lag-none"; printf '#!/usr/bin/env bash\necho "headline: 0/0 = n/a within 39 min (no exclusions); wilson95 n/a"\n' > "$LAGNONE"; chmod +x "$LAGNONE"
 RETRIEVAL_EVAL_LAG_CMD="$LAGNONE" py "$EV" stale-report "$SR" > "$W/sr.txt" 2>&1; eq "stale-report exits 0" "0" "$?"
 eq "stale_report_interval: Kept, L minus S: n, points, exact McNemar p and the seeded bootstrap interval in points" "20 -30.0 0.1094 $(py -c 'import sys
@@ -809,8 +806,7 @@ ci = eval_runs.bootstrap_ci(sorted([-1] * 8 + [1] * 2 + [0] * 10), b=10000, seed
 print("%.1f %.1f" % (ci["lo"] * 100, ci["hi"] * 100))' "$HERE/../lib")" "$(awk -F'\t' '$1=="qmd-lex" && $2=="L-S" && $3=="kept"{print $4, $7, $8, $9, $10}' "$W/sr.txt")"
 eq "the Added stratum is the headline: it is the arm's first row" "added" "$(awk -F'\t' '$1=="qmd-lex"{print $3; exit}' "$W/sr.txt")"
 eq "no c-state rows: the matching row is C1 not run" "C1 not run" "$(sed -n 's/^decides: \(.*\) | .*/\1/p' "$W/sr.txt")"
-# decides_row_matches: hybrid rows for S, L and C on a kept stratum of 20.
-decide() { # <name> <S-only> <L-only> <baseline wilson text> [states]: the stale-report output
+decide() {
     local d="$W/dec-$1"; rm -rf "$d"
     plant "$d" qmd-hybrid kept "$2" "$3" "${5:-slc}"
     printf '#!/usr/bin/env bash\necho "headline: x within 39 min (no exclusions); wilson95 %s"\n' "$4" > "$W/lag-$1"; chmod +x "$W/lag-$1"
@@ -823,22 +819,19 @@ eq "decides_row_matches: no harm and the baseline's low end at 0.5 or above is L
 eq "decides_row_matches: no harm and the baseline's high end under 0.5 is The hole would be new" "The hole would be new" "$(decide hole 0 0 '0.2000 to 0.4900' | row)"
 eq "decides_row_matches: no harm and an interval spanning 0.5 is Not shown" "Not shown" "$(decide span 0 0 '0.3000 to 0.7000' | row)"
 eq "baseline_absent_prints_pending: baseline pending, and no decides line" "1 0" "$(decide none 0 0 'n/a' | awk '/^baseline pending/{p++} /^decides:/{d++} END{print p+0, d+0}')"
-# a second run's rows for the same arm, question and state are refused, never folded over the first
 DUP="$W/dup"; rm -rf "$DUP"
 plant "$DUP/a" qmd-lex kept 8 2; plant "$DUP/b" qmd-lex kept 8 2
 RETRIEVAL_EVAL_LAG_CMD="$LAGNONE" py "$EV" stale-report "$DUP" > "$W/dup.txt" 2>&1
 eq "stale_report_refuses_duplicate_rows: the same arm, question and state twice exits 64" "64" "$?"
-# a hybrid run with no Kept L-S comparison cannot reach an arming row
 INC="$W/inc"; rm -rf "$INC"
 plant "$INC" qmd-hybrid kept 0 0 c
 printf '#!/usr/bin/env bash\necho "headline: x within 39 min (no exclusions); wilson95 0.7000 to 0.9000"\n' > "$W/lag-inc"; chmod +x "$W/lag-inc"
 RETRIEVAL_EVAL_LAG_CMD="$W/lag-inc" py "$EV" stale-report "$INC" > "$W/inc.txt" 2>&1
 eq "stale_report_refuses_incomplete_comparison: c rows without a Kept L-S comparison exit 64 and print no decides line" "64 0" "$? $(grep -c '^decides:' "$W/inc.txt")"
 
-# exposure: a planted journal and a planted main history.
 G2="$W/xrepo"; mkdir -p "$G2"; git -C "$G2" init -q -b main
 NOW="$(date +%s)"
-gc() { # <file> <seconds ago>: commit that file at that time
+gc() {
     printf '%s\n' "$2" >> "$G2/$1"; git -C "$G2" add -A
     local t; t="$(date -u -d "@$((NOW - $2))" +%Y-%m-%dT%H:%M:%S)"
     GIT_AUTHOR_DATE="$t +0000" GIT_COMMITTER_DATE="$t +0000" git -C "$G2" -c user.email=t@t -c user.name=t commit -q -m "$1"

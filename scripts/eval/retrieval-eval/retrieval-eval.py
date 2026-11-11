@@ -124,7 +124,7 @@ class Usage(Exception):
 
 
 class Refuse(Exception):
-    """A run refused before it measured anything: a live index or graph, or a label that does not match."""
+    pass
 
 
 class Parser(argparse.ArgumentParser):
@@ -352,7 +352,6 @@ def _mcp_post(url, body, headers, timeout):
 
 
 def mcp_tool_call(name, args, timeout):
-    """One MCP tools/call against QMD_URL -> the reply message. The whole exchange shares one deadline."""
     end = time.time() + timeout
     left = lambda: max(0.1, end - time.time())  # noqa: E731
     url = os.environ.get("QMD_URL", "http://localhost:8181/mcp")
@@ -376,7 +375,6 @@ def mcp_tool_call(name, args, timeout):
 
 
 def qmd_server(args, timeout):
-    """One MCP query against the qmd server -> list of {file, snippet}."""
     return mcp_rows(mcp_tool_call("query", args, timeout))
 
 
@@ -613,8 +611,6 @@ def run_arm(arm, q, repo, a, k):
     return arm_qmd(q, arm != "qmd-lex", a.timeout, k, a.collection, arm != "qmd-hybrid-norerank")
 
 
-# ---- staleness eval: the pair a run is labelled with --------------------------------------------
-
 LIVE_QMD_PORT = 8181
 LOOPBACK = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
 
@@ -636,7 +632,6 @@ def load_pair(path):
 
 
 def check_served_url(pair):
-    """QMD_URL must be the URL the pair is served on, and never the live daemon's port."""
     url = os.environ.get("QMD_URL")
     if not url:
         raise Refuse("QMD_URL is not set, so the default live daemon would answer: set it to the pair's served URL")
@@ -652,7 +647,6 @@ def check_served_url(pair):
 
 
 def served_count(timeout):
-    """The served daemon's document count, from its status tool's totalDocuments."""
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_STATUS_CMD")
     if cmd:
         out, to, rc = run_cmd(shlex.split(cmd), timeout)
@@ -673,7 +667,6 @@ def served_count(timeout):
 
 
 def pair_commits(pair, qs):
-    """(first, second) from pair.json, or, for a graph-only pair, the one pair every question names."""
     if pair.get("first") and pair.get("second"):
         return pair["first"], pair["second"]
     named = {(q["pair"]["first"], q["pair"]["second"]) for q in qs if isinstance(q.get("pair"), dict)}
@@ -683,7 +676,6 @@ def pair_commits(pair, qs):
 
 
 def pair_graph_out(pair, qs, state, repo):
-    """The graphify-out the graph arms read: the graph built at the first commit (state s) or the second (l)."""
     if state not in ("s", "l"):
         raise Usage("a graph arm reads state s (built at the first commit) or l (the second), not %s" % state)
     commit = pair_commits(pair, qs)[0 if state == "s" else 1]
@@ -707,7 +699,6 @@ def pair_graph_out(pair, qs, state, repo):
 
 
 def pair_setup(a, arms, qs, repo):
-    """Refuse a run whose label or index is not the pair's; returns the row-config fields."""
     if bool(a.pair) != bool(a.index_state):
         raise Usage("--pair and --index-state go together")
     if not a.pair:
@@ -1159,8 +1150,6 @@ def cmd_census(a):
     return 0
 
 
-# ---- staleness report and exposure --------------------------------------------------------------
-
 STALE_ORDER = ("added", "kept", "new", "control", "changed")
 CONTRASTS = (("L-S", "s", "l"), ("C-L", "l", "c"))
 DECIDES = {
@@ -1177,7 +1166,6 @@ def mcnemar_p(b, c):
 
 
 def paired(rows, arm, stratum_name, base, other):
-    """(sorted per-question differences other minus base, base hits, other hits) over the questions run in both states."""
     by = {}
     for r in rows:
         if r["arm"] == arm and r.get("stale_stratum") == stratum_name:
@@ -1196,7 +1184,6 @@ def paired(rows, arm, stratum_name, base, other):
 
 
 def baseline_interval():
-    """(lo, hi, text) of keyword-lag.py --report's headline Wilson interval, or None while no baseline exists."""
     cmd = os.environ.get("RETRIEVAL_EVAL_LAG_CMD")
     argv = shlex.split(cmd) if cmd else ["python3", "-I", os.path.join(HERE, "..", "..", "luna", "keyword-lag.py"),
                                          "--report", "--days", "7"]
@@ -1258,7 +1245,6 @@ def cmd_stale_report(a):
 
 
 def repo_path(root, p):
-    """p relative to the repo, for a path inside it or inside one of its worktrees; else None."""
     p = os.path.realpath(p)
     wt = os.path.join(root, ".claude", "worktrees") + os.sep
     if p.startswith(wt):

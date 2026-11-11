@@ -131,9 +131,6 @@ run query q >/dev/null
 if grep -q 'worker-graph.sh' "$T/err"; then pass "T8 missing-graph message names worker-graph.sh"
 else fail "T8 err=$(cat "$T/err")"; fi
 
-# T9 worker_graph_out_seam: WORKER_GRAPH_OUT points the wrapper at another graph (the staleness eval's scratch
-# graphs). The primary has no graph here (T8 moved it), so a read of it would fail; the seam's graph keeps its
-# seeds and its budget split.
 mkdir -p "$T/seam"
 printf '{"nodes":[{"id":"scripts_go","source_file":"scripts/go.sh","label":"go.sh"}],"built_at_commit": "%s"}\n' "$BASE" > "$T/seam/graph.json"
 # shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
