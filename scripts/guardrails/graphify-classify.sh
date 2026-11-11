@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
-# graphify-classify.sh <abs-root> - what graphify-fence.sh --classify says about a
-# root, read against the CONFIGURED vault and handover state.
-#
-# The fence takes its roots from the live environment, and LUNA_VAULT beats
-# LUNA_VAULT_PATH there. A caller's shell (a session, a worker, a test) may point
-# those anywhere, which would mask the vault this machine is configured with. So
-# the caller's LUNA_VAULT, LUNA_VAULT_PATH and HANDOVER_DIR are cleared first and
-# the configured values are loaded through load-dotenv.sh (himmel.conf, then .env).
-#
-# Output and exit code are the fence's: the strongest class at, above or below the
-# root or nothing, exit 0; any other exit refuses the root. No ledger is written.
+# graphify-classify.sh <abs-root> - graphify-fence.sh --classify read against the
+# configured vault and handover state, not a caller's LUNA_VAULT (which the fence
+# prefers over LUNA_VAULT_PATH). Output and exit code are the fence's.
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 unset LUNA_VAULT LUNA_VAULT_PATH HANDOVER_DIR

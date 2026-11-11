@@ -856,8 +856,7 @@ _graphify_backend_marker() {
 }
 
 # _under_any_list <abs-path> <listfile> [below] -> echoes hit | miss | unreadable.
-# hit = <abs-path> is at or under a listed root; with a third arg `below`, hit =
-# a listed root is at or under <abs-path> (the --classify verb's tree walk).
+# With `below` the direction flips: hit = a listed root is at or under <abs-path>.
 _under_any_list() {
     local p="$1" listfile="$2" root
     # [ -e ] is also false on EACCES (a locked dir or parent), so a miss is only
@@ -969,14 +968,10 @@ _rank() {
     esac
 }
 
-# _strongest <class-a> <class-b> -> the more restrictive of the two (a when equal;
-# either may be empty).
 _strongest() {
     if [ "$(_rank "${2:-}")" -gt "$(_rank "${1:-}")" ]; then echo "$2"; else echo "${1:-}"; fi
 }
 
-# _dir_marked <abs-path> <marker-name> -> 0 if <marker-name> sits at the path or
-# any ancestor directory (the ancestor walk _salus_marked does for `.salus`).
 _dir_marked() {
     local d="$1" prev=""
     [ -d "$d" ] || d="${d%/*}"
@@ -988,17 +983,10 @@ _dir_marked() {
     return 1
 }
 
-# _classify_tree <abs-target> -> prints the strongest class at, above or below
-# the root (nothing when none) and returns 0. A classify sentinel, or a tree
-# under the root that cannot be read through, DENIES (exit 2). Call it from the
-# main shell body, never in a $(...) subshell (deny would only leave the subshell).
-# At or above the root: classify() (.salus, PHI lists, the configured vault,
-# handover state, the himmel checkout, a staging marker) plus an `.obsidian`
-# marker. Below it: a `.salus` or `.obsidian` anywhere under the root, a PHI-list
-# entry under the root, or the configured vault under the root. An `.obsidian`
-# marks an Obsidian vault and classifies as luna-personal. The handover root
-# below the root is deliberately no class: an inline install keeps its notes in
-# <repo>/handovers/ (decision 780 A8).
+# _classify_tree <abs-target> -> the strongest class at, above or below the root.
+# Call it from the main shell body, never in a $(...) subshell: deny would only
+# leave the subshell. The handover root below the root is deliberately no class,
+# because an inline install keeps its notes in <repo>/handovers/ (decision 780 A8).
 _classify_tree() {
     local t="$1" c apfs ap best found line name rc
     c="$(classify "$t")"
@@ -1124,9 +1112,6 @@ _ollama_provider() {
     esac
 }
 
-# _adopter_repo_listed <abs-root> -> 0 only when graph-choices.js `listed` says the
-# root is a corpus root in the choice store. Any failure (node, a missing or
-# unreadable store, an unlisted root) is no listing (deny).
 _adopter_repo_listed() {
     node "$SCRIPT_DIR/../himmelctl/lib/graph-choices.js" listed "$1" >/dev/null 2>&1
 }
@@ -1564,7 +1549,6 @@ apply_verdict() {
                     optval=0
                     if _salus_ollama_cloud_optin; then optval=1; fi
                     ;;
-                # the user's own repo: open only when the root is listed in the choice store.
                 adopter-repo/anthropic)
                     optvar="a root listed in graphify.choices.corpora of \$HOME/.himmel/config.json (absent, unreadable or malformed = deny)"
                     optval=0

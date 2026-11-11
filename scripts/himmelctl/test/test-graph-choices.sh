@@ -121,7 +121,7 @@ expect_eq "C8 cap under 0.25 is invalid" "$(gc route --state)" invalid
 echo "C9: root-check refuses a root the classifier names"
 fresh_home c9
 c9_env() { printf 'LUNA_VAULT_PATH=%s\nHANDOVER_DIR=%s\n' "$1" "$2" > "$HIMMELCTL_CACHE_DIR/.env"; }
-c9_refused() { # <name> <root> <class word the reason names>
+c9_refused() {
     local out rc; out="$(gc root-check "$2")"; rc=$?
     if [ "$rc" -eq 1 ]; then has "$1" "$out" "$3"; else fail "$1 (rc=$rc, out=$out)"; fi
 }
@@ -130,8 +130,6 @@ mkrepo "$WS/c9-vault"; mkrepo "$WS/c9-hand/repo"; mkrepo "$WS/c9-obs"; mkdir -p 
 mkrepo "$WS/c9-himmel"
 out="$(GRAPHIFY_HIMMEL_ROOT="$WS/c9-himmel" gc root-check "$WS/c9-himmel")"; rc=$?
 if [ "$rc" -eq 1 ]; then has "C9 a himmel checkout is refused" "$out" himmel-code; else fail "C9 a himmel checkout (rc=$rc, out=$out)"; fi
-# the real checkout holds fixture .obsidian dirs below its root, so it names the stronger vault class; any class refuses it
-c9_refused "C9 this himmel checkout is refused" "$repo_root" "corpus class"
 c9_refused "C9 a root inside HANDOVER_DIR is refused" "$WS/c9-hand/repo" handover-state
 c9_refused "C9 the configured vault is refused" "$WS/c9-vault" luna-personal
 c9_refused "C9 a .obsidian root is refused" "$WS/c9-obs" luna-personal

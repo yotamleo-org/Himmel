@@ -156,8 +156,6 @@ function rootCheck(root) {
   return errors.concat(classifierErrors(real));
 }
 
-// The fence owns "is this root an allowed corpus": the classifier names a class at,
-// above or below the root, or exits non-zero on a sentinel. Either refuses the root.
 function resolveBash() { return process.env.HIMMELCTL_BASH || 'bash'; }
 
 function classifierErrors(real) {
