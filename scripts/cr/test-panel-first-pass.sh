@@ -1242,7 +1242,8 @@ assert_has "$(cat "$REAL_ENV_DUMP" 2>/dev/null)" "head=$pr_oid branch=feat/outsi
 assert_has "$(cat "$REAL_ENV_DUMP" 2>/dev/null)" "triv=full" "R7 --pr sets CR_TRIVIALITY_OVERRIDE=full for the panel it runs"
 pr_avail="$(grep -F '"kind":"avail"' "$prrepo/.git/cr-critic-scores.jsonl" | grep -F "\"head\":\"$pr_oid\"")"
 assert_has "$pr_avail" '"branch":"feat/outside-thing"' "T2.17 the panel's own rows carry headRefName from a checkout on another branch"
-if [ -n "$pr_avail" ] && ! printf '%s\n' "$pr_avail" | grep -qF "$(git -C "$prrepo" rev-parse HEAD)"; then ok "T2.17 no panel row carries the checkout's head"; else bad "T2.17 a panel row carries the checkout's head or there is none"; fi
+if [ -n "$pr_avail" ]; then ok "T2.17 the panel wrote rows for the PR head"; else bad "T2.17 the panel wrote no row for the PR head"; fi
+assert_lacks "$pr_avail" "$(git -C "$prrepo" rev-parse HEAD)" "T2.17 no panel row carries the checkout's head"
 pr_row="$(rs_rows "$prrepo" | tail -n 1)"
 assert_has "$pr_row" '"branch":"feat/outside-thing"' "T2.17 the round-scope row carries headRefName (real panel)"
 assert_has "$pr_row" "\"head\":\"$pr_oid\"" "T2.17 the round-scope row carries the PR head (real panel)"
