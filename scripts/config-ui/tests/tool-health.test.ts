@@ -1582,6 +1582,39 @@ test("launches refused are counted by cause", () => {
   expect(l.recent[0]).toEqual({ ts: "2026-10-07T13:00:00Z", name: "HIMMEL-1-N1", cause: "bus-register", rc: 2, line: null });
 });
 
+// Schema v2: attempt rows share an attempt_id; the page counts attempts, not rows. v1 rows are legacy refusals.
+const att = (id: string, outcome: string, over: any = {}) => ({ v: 2, ts: "2026-10-07T12:00:00Z", host: "h", source: "headed-arm-worker", kind: "launch-attempt", name: `W-${id}`,
+  attempt_id: id, phase: outcome === "attempt-started" ? "unknown" : "handoff", outcome, cause: "headed-arm", rc: outcome === "attempt-started" ? null : 0, line: null, ...over });
+test("launch-attempts-are-counted-by-attempt-id-not-by-row", () => {
+  const rows = [
+    att("a1", "attempt-started"), att("a1", "launched"),
+    att("a2", "attempt-started"), att("a2", "already-running"),
+    att("a3", "attempt-started"), att("a3", "refused", { phase: "bus-registration", cause: "bus-register", rc: 2 }),
+    att("a3", "refused", { phase: "bus-registration", cause: "bus-register", rc: 2 }), // a replayed terminal row
+    att("a4", "attempt-started"), att("a4", "indeterminate", { cause: "konsole-up-claude-unseen", rc: 7 }),
+    att("a5", "attempt-started"), // killed: no terminal row
+    att("a6", "attempt-started"), att("a6", "postlaunch-error", { phase: "manifest", cause: "manifest", rc: 1 }),
+    launchRow({ ts: "2026-10-07T11:00:00Z", cause: "fleet-cap", rc: 10 }), // a v1 refusal
+  ];
+  const l = read(seedLaunches(rows)).launches_refused;
+  expect(l.attempts).toEqual({ total: 6, by_outcome: { launched: 1, "already-running": 1, refused: 1, indeterminate: 1, "postlaunch-error": 1, unknown: 1 } });
+  expect(l.legacy_rows).toBe(1);
+  expect(l.total).toBe(2);
+  expect(l.by_cause).toEqual([{ cause: "bus-register", count: 1, rc: { "2": 1 } }, { cause: "fleet-cap", count: 1, rc: { "10": 1 } }]);
+  expect(l.skipped).toBe(0);
+});
+test("launch-attempt-rows-are-validated-too", () => {
+  const bad = [JSON.stringify(att("x", "launched", { attempt_id: 7 })), JSON.stringify(att("x", "exploded")), JSON.stringify(att("x", "refused", { phase: "nowhere" })), JSON.stringify(att("x", "refused", { rc: "2" }))];
+  expect(read(seedLaunches([], bad)).launches_refused).toMatchObject({ total: 0, skipped: bad.length });
+});
+test("launch-attempts-show-on-the-page-with-their-own-denominator", async () => {
+  const html = await page(read(seedLaunches([att("a1", "attempt-started"), att("a1", "launched"), att("a2", "attempt-started")])));
+  const note = (/<p class="sub" data-launch-attempts>([^<]*)</.exec(html) || [])[1] || "";
+  expect(note).toContain("2 launch attempts");
+  expect(note).toContain("1 launched");
+  expect(note).toContain("1 unknown");
+});
+
 test("launch rows are validated field by field", () => {
   const good = JSON.stringify(launchRow());
   const bad = [

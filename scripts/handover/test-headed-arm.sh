@@ -613,6 +613,21 @@ else echo "ok - dedup: konsole not invoked"; fi
 log4="$(cat "$d4/log" 2>/dev/null || true)"
 contains "dedup: log names it already running" "$log4" "already running"
 
+# --- 4b. the typed outcome at the decision point: exit 0 is launched OR already running, so headed-arm.sh
+# says which in HEADED_ARM_OUTCOME_FILE (the launcher's attempt record reads it, never the exit code alone).
+d4b="$tmp/c4b"; mk_stub "$d4b" 0 alive "HIMMEL-dedup-4b"
+rc4b=0
+HEADED_ARM_OUTCOME_FILE="$d4b/outcome" run_headed_arm "$d4b" "$REPO" "HIMMEL-dedup-4b" "doc4b.md" "$d4b/signal-never" "$PAST" >/dev/null 2>&1 || rc4b=$?
+check "typed outcome: a dedup exits 0 and says already-running" "$rc4b|$(cat "$d4b/outcome" 2>/dev/null)" "0|already-running"
+d4c="$tmp/c4c"; mk_stub "$d4c" 1 alive "HIMMEL-9999-worker4c"
+rc4c=0
+HEADED_ARM_OUTCOME_FILE="$d4c/outcome" run_headed_arm "$d4c" "$REPO" "HIMMEL-9999-worker4c" "some/handover-doc.md" "$d4c/signal-never" "$PAST" >/dev/null 2>&1 || rc4c=$?
+wait_record "$d4c" || true
+check "typed outcome: a confirmed launch exits 0 and says launched" "$rc4c|$(cat "$d4c/outcome" 2>/dev/null)" "0|launched"
+rc4d=0
+run_headed_arm "$d4" "$REPO" "HIMMEL-dedup" "doc4.md" "$d4/signal-never" "$PAST" >/dev/null 2>&1 || rc4d=$?
+check "typed outcome: no outcome file asked, none written (control)" "$rc4d|$([ -e "$d4/outcome" ] && echo written || echo none)" "0|none"
+
 # --- 6. usage / arg-shape contract -----------------------------------------
 outu="$(bash "$SCRIPT" only one two three 2>&1)"; rcu=$?
 check    "too few args: exit 2"     "$rcu" "2"

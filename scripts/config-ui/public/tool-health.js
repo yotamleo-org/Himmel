@@ -381,17 +381,26 @@ function candidatesPanel(data) {
   return table(["Profile", "Tool", "Calls in window", "Listing cost"], rows, "Nothing loaded and unused, or the listing cost is not measured");
 }
 
+// Launch attempts have their own denominator, never the tool calls'. Counted by attempt id; an attempt with no
+// terminal row (the launcher was killed) is unknown.
+function attemptsLine(l) {
+  const a = l && l.attempts;
+  if (!a || !a.total) return "";
+  const o = a.by_outcome || {};
+  const legacy = isNum(l.legacy_rows) && l.legacy_rows > 0 ? ` · ${num(l.legacy_rows)} older refusal rows with no attempt id` : "";
+  return `<p class="sub" data-launch-attempts>${num(a.total)} launch attempts: ${num(o.launched)} launched · ${num(o["already-running"])} already running · ${num(o.refused)} refused · ${num(o.indeterminate)} indeterminate · ${num(o["postlaunch-error"])} post-launch error · ${num(o.unknown)} unknown${legacy}</p>`;
+}
 function launchesPanel(data) {
   const l = data.launches_refused;
   const note = (t) => `<p class="nodata">${esc(t)}</p>`;
   if (!l || l.state === "not-read") return note("Launch refusals were not read for this response.");
   const skipped = l.skipped > 0 ? note(`${num(l.skipped)} unreadable row${l.skipped === 1 ? "" : "s"}`) : "";
   if (l.state === "absent") return note("No launch refusal recorded yet.") + skipped;
-  if (!l.total) return note("No launch refused in this window.") + skipped;
+  if (!l.total) return attemptsLine(l) + note("No launch refused in this window.") + skipped;
   const codes = (rc) => Object.entries(rc || {}).sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0])).map(([c, n]) => `${esc(c)} ×${num(n)}`).join(", ");
   const byCause = table(["Cause", "Refused", "Exit codes"], l.by_cause.map((c) => `<tr data-launch-cause="${esc(c.cause)}">${td(esc(c.cause))}${td(num(c.count))}${td(codes(c.rc))}</tr>`));
   const recent = table(["Time", "Worker", "Cause", "Exit", "Reason"], l.recent.map((r) => `<tr data-launch-row="${esc(r.ts)}">${td(esc(utc(r.ts)))}${td(r.name ? esc(r.name) : "—")}${td(esc(r.cause))}${td(num(r.rc))}${tdWrap(r.line ? esc(r.line) : "see the launch log")}</tr>`));
-  return `${byCause}<details data-launch-recent><summary>Most recent refusals (${num(l.recent.length)} of ${num(l.total)})</summary>${recent}</details>${skipped}`;
+  return `${attemptsLine(l)}${byCause}<details data-launch-recent><summary>Most recent refusals (${num(l.recent.length)} of ${num(l.total)})</summary>${recent}</details>${skipped}`;
 }
 function overview(data, st, ui) {
   const toolsBox = (text) => box("tools", "Tools", "Which tool, skill, hook or plugin fails most? Each name opens its drill-in.", `<p class="nodata">${esc(text)}</p>`, "First build");

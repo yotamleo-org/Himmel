@@ -20,8 +20,15 @@ function readRows(path) {
   catch { return []; }
 }
 const strOrNull = (v) => v === null || typeof v === 'string';
-const validLaunch = (r) => r && typeof r === 'object' && !Array.isArray(r) && r.v === 1 && typeof r.ts === 'string' && Number.isFinite(Date.parse(r.ts))
-  && Number.isSafeInteger(r.rc) && typeof r.cause === 'string' && strOrNull(r.name) && strOrNull(r.line);
+// launch-refusals.jsonl: v1 rows are refusals only (legacy); v2 rows are attempts, an attempt-started row and one
+// terminal row sharing an attempt_id (headed-arm-worker.sh's EXIT trap).
+export const LAUNCH_OUTCOMES = ['attempt-started', 'refused', 'launched', 'already-running', 'indeterminate', 'postlaunch-error'];
+const LAUNCH_PHASES = ['brief-validation', 'usage-preflight', 'bus-registration', 'handoff', 'manifest', 'unknown'];
+const validLaunch = (r) => r && typeof r === 'object' && !Array.isArray(r) && typeof r.ts === 'string' && Number.isFinite(Date.parse(r.ts))
+  && typeof r.cause === 'string' && strOrNull(r.name) && strOrNull(r.line)
+  && ((r.v === 1 && Number.isSafeInteger(r.rc))
+    || (r.v === 2 && typeof r.attempt_id === 'string' && /^[0-9A-Za-z-]{1,80}$/.test(r.attempt_id) && LAUNCH_OUTCOMES.includes(r.outcome)
+      && LAUNCH_PHASES.includes(r.phase) && (r.rc === null || Number.isSafeInteger(r.rc))));
 export function readLaunchRows(path) {
   let text;
   try { text = readFileSync(path, 'utf8'); } catch (e) { return e && e.code === 'ENOENT' ? { exists: false, rows: [], skipped: 0 } : null; }
@@ -38,15 +45,27 @@ function rollupLaunches(launches, firstDay, lastDay) {
   if (!launches) return { state: 'not-read' };
   if (!launches.exists) return { state: 'absent', total: 0, by_cause: [], recent: [], skipped: 0 };
   const inWindow = launches.rows.filter((r) => { const d = dayOf(Date.parse(r.ts)); return d !== null && d >= firstDay && d <= lastDay; });
+  // One attempt per attempt_id: its last terminal row decides, a replayed row counts once, and an attempt with only
+  // attempt-started (a killed launcher) is unknown. The refusals below are v1 rows plus refused attempts.
+  const attempts = new Map();
+  for (const r of inWindow.filter((x) => x.v === 2)) {
+    const a = attempts.get(r.attempt_id) ?? { terminal: null };
+    if (r.outcome !== 'attempt-started') a.terminal = r;
+    attempts.set(r.attempt_id, a);
+  }
+  const byOutcome = { launched: 0, 'already-running': 0, refused: 0, indeterminate: 0, 'postlaunch-error': 0, unknown: 0 };
+  for (const a of attempts.values()) byOutcome[a.terminal ? a.terminal.outcome : 'unknown']++;
+  const legacy = inWindow.filter((r) => r.v === 1);
+  const refusals = [...legacy, ...[...attempts.values()].filter((a) => a.terminal?.outcome === 'refused').map((a) => a.terminal)];
   const causes = new Map();
-  for (const r of inWindow) {
+  for (const r of refusals) {
     const cause = CAUSE_RE.test(r.cause) ? r.cause : 'other';
     const c = causes.get(cause) ?? { cause, count: 0, rc: {} };
     c.count++; c.rc[String(r.rc)] = (c.rc[String(r.rc)] ?? 0) + 1; causes.set(cause, c);
   }
-  const recent = inWindow.map((r, i) => ({ r, i })).sort((a, b) => Date.parse(b.r.ts) - Date.parse(a.r.ts) || b.i - a.i).slice(0, 20)
+  const recent = refusals.map((r, i) => ({ r, i })).sort((a, b) => Date.parse(b.r.ts) - Date.parse(a.r.ts) || b.i - a.i).slice(0, 20)
     .map(({ r }) => ({ ts: r.ts, name: r.name, cause: CAUSE_RE.test(r.cause) ? r.cause : 'other', rc: r.rc, line: r.line }));
-  return { state: 'ok', total: inWindow.length, by_cause: [...causes.values()].sort((a, b) => b.count - a.count || a.cause.localeCompare(b.cause)), recent, skipped: launches.skipped };
+  return { state: 'ok', total: refusals.length, attempts: { total: attempts.size, by_outcome: byOutcome }, legacy_rows: legacy.length, by_cause: [...causes.values()].sort((a, b) => b.count - a.count || a.cause.localeCompare(b.cause)), recent, skipped: launches.skipped };
 }
 // Test override for the listing cost, {profile: {tool: tokens}}; absent or unreadable = none.
 function readListing(path) {

@@ -5759,6 +5759,7 @@ tgt51="$tmp/target51.sh"
 cat > "$tgt51" <<'TGT51_EOF'
 #!/usr/bin/env bash
 printf '%s %s\n' "$$" "${HEADED_ARM_CONTEXT_PID:-unset}" > "${TGT51_PIDS:-/dev/null}"
+[ -z "${TGT51_WORD:-}" ] || [ -z "${HEADED_ARM_OUTCOME_FILE:-}" ] || printf '%s\n' "$TGT51_WORD" > "$HEADED_ARM_OUTCOME_FILE"
 case "${TGT51_MODE:-rc}" in
   hang) exec sleep 60 ;;
   *) exit "${TGT51_RC:-0}" ;;
@@ -5829,20 +5830,24 @@ check "51s ... the launcher exits non-zero with the signal status, and the reser
 
 LR="$HOME/.himmel/launch-refusals.jsonl"
 rm -f "$LR"
+# Schema v2: an attempt-started row, then the terminal row (the EXIT trap's), sharing one attempt_id. term() is the
+# terminal rows only; a v1 reader's "one row per refusal" is one terminal row per attempt.
+term() { jq -c 'select(.outcome != "attempt-started")' "$LR" 2>/dev/null; }
 rc=0; run45 in HIMMEL-45-in HIMMEL-chief-45-other || rc=$?
 check "9625a the refused launch still exits 2" "$rc" "2"
-check "9625a one row, whole: v, source, kind, name, cause, rc" "$(jq -r '[.v, .source, .kind, .name, .cause, .rc] | join(" ")' "$LR" 2>/dev/null | tr '\n' '|')" "1 headed-arm-worker launch-refused HIMMEL-45-in bus-register 2|"
-check "9625a the row carries the keys in order" "$(jq -c 'keys_unsorted' "$LR" 2>/dev/null | head -1)" '["v","ts","host","source","kind","name","cause","rc","line"]'
-check "9625a ts is a UTC second stamp" "$(jq -r '.ts' "$LR" 2>/dev/null | grep -cE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')" "1"
-check "9625a the line holds the refusal reason" "$(jq -r '.line | type' "$LR" 2>/dev/null | head -1)" "string"
-n9625b="$(wc -l < "$LR" 2>/dev/null | tr -d ' ')"
+check "9625a one terminal row, whole: v, source, kind, name, outcome, phase, cause, rc" "$(term | jq -r '[.v, .source, .kind, .name, .outcome, .phase, .cause, .rc] | join(" ")' | tr '\n' '|')" "2 headed-arm-worker launch-attempt HIMMEL-45-in refused bus-registration bus-register 2|"
+check "9625a the row carries the keys in order" "$(term | jq -c 'keys_unsorted' | head -1)" '["v","ts","host","source","kind","name","attempt_id","phase","outcome","cause","rc","line"]'
+check "9625a ts is a UTC second stamp" "$(term | jq -r '.ts' | grep -cE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')" "1"
+check "9625a the line holds the refusal reason" "$(term | jq -r '.line | type' | head -1)" "string"
+check "9625a the attempt started before it was refused: two rows, one attempt_id" "$(jq -r '.outcome' "$LR" | tr '\n' ' ')|$(jq -r '.attempt_id' "$LR" | sort -u | wc -l | tr -d ' ')" "attempt-started refused |1"
+n9625b="$(term | wc -l | tr -d ' ')"
 rc=0; run45 in HIMMEL-45-in || rc=$?
 check "9625-base control: the admitted launch exits 0" "$rc" "0"
-check "9625-base an admitted launch adds no row" "$(wc -l < "$LR" 2>/dev/null | tr -d ' ')" "$n9625b"
-check "9625-base control: a row exists to be counted" "$n9625b" "1"
+check "9625-base an admitted launch whose child names no result is one indeterminate attempt, never launched" "$(( $(term | wc -l | tr -d ' ') - n9625b ))|$(term | tail -n 1 | jq -r '[.outcome, .phase, .rc] | join(" ")')" "1|indeterminate handoff 0"
+check "9625-base two launches are two attempt ids" "$(jq -r '.attempt_id' "$LR" | sort -u | wc -l | tr -d ' ')" "2"
 
-lr_n() { if [ -f "$LR" ]; then wc -l < "$LR" | tr -d ' '; else echo 0; fi; }
-lr_last() { tail -n 1 "$LR" 2>/dev/null | jq -r "$1" 2>/dev/null; }
+lr_n() { if [ -f "$LR" ]; then term | wc -l | tr -d ' '; else echo 0; fi; }
+lr_last() { term | tail -n 1 | jq -r "$1" 2>/dev/null; }
 lr_expect() {
   check "9625-cause $1: the launcher exits $3" "$4" "$3"
   check "9625-cause $1: one row, cause $2, rc $3" "$(( $(lr_n) - $5 ))|$(lr_last '[.cause,.rc]|join(" ")')" "1|$2 $3"
@@ -5876,11 +5881,18 @@ b="$(lr_n)"; rc=0; bash "$SCRIPT" --no-profile HIMMEL-39-worker "$tmp/c9625-39-d
 lr_expect handover-root handover-root 15 "$rc" "$b"
 b="$(lr_n)"; rc=0; some_doc="$doc50" REC_PREFLIGHT_OUT="$tmp/rec-preflight9625.env" RUN_WORKER_WRAP="env -u UNGUARDED_LAUNCH_OK" RUN_WORKER_ARGS=--no-profile run_worker "$d50" "$scratch50" "HIMMEL-9026-N3-guard" "claude-sonnet-5" "$REC_PREFLIGHT" >/dev/null 2>&1 || rc=$?
 lr_expect unguarded-checkout unguarded-checkout 18 "$rc" "$b"
-for crc in 3 7 9 137; do
+for pair in 3:headed-arm:refused 7:konsole-up-claude-unseen:indeterminate 9:dedup-indeterminate:refused 137:headed-arm:refused; do
+  crc="${pair%%:*}"; rest="${pair#*:}"; ccause="${rest%%:*}"; cout="${rest#*:}"
   b="$(lr_n)"; rc=0; TGT51_RC=$crc t51 "$PROCEED_PREFLIGHT" "HIMMEL-9625-N6-child$crc" "$doc9625_ok" >/dev/null 2>&1 || rc=$?
-  lr_expect "headed-arm child $crc" headed-arm "$crc" "$rc" "$b"
-  check "9625-cause headed-arm child $crc: no line" "$(lr_last '.line|type')" "null"
+  lr_expect "headed-arm child $crc" "$ccause" "$crc" "$rc" "$b"
+  check "9625-cause headed-arm child $crc: outcome $cout in the handoff phase, no line" "$(lr_last '[.outcome, .phase, (.line|type)] | join(" ")')" "$cout handoff null"
 done
+for w in launched already-running; do
+  b="$(lr_n)"; rc=0; TGT51_WORD=$w t51 "$PROCEED_PREFLIGHT" "HIMMEL-9696-N1-$w" "$doc9625_ok" >/dev/null 2>&1 || rc=$?
+  check "9696-typed exit 0 with the child's word $w: one terminal row, outcome $w" "$rc|$(( $(lr_n) - b ))|$(lr_last '[.outcome, .phase, .rc] | join(" ")')" "0|1|$w handoff 0"
+done
+b="$(lr_n)"; rc=0; TGT51_WORD=launched TGT51_RC=3 t51 "$PROCEED_PREFLIGHT" "HIMMEL-9696-N2-word-rc3" "$doc9625_ok" >/dev/null 2>&1 || rc=$?
+check "9696-typed a non-zero exit is never launched, whatever the child wrote" "$rc|$(lr_last '.outcome')" "3|refused"
 bus9625_name="HIMMEL-9625-$(printf 'x%.0s' $(seq 1 130))"
 rm -f "$bus45/seen" "$bus45/bus-called"
 b="$(lr_n)"; rc=0; XDG_STATE_HOME="$bus45/state" HEADED_ARM_BUS_CLI="$bus9537_stub" HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
@@ -5901,7 +5913,7 @@ if command -v flock >/dev/null 2>&1; then
   mkdir -p "$tmp/fleet9625-dir"
   b="$(lr_n)"; rc=0; out9625f="$(fleet9625 "$tmp/fleet9625-dir" worker-fleet-seven 2>&1)" || rc=$?
   check "9625-skip --fleet manifest failure: the launch came up, the manifest add failed, exit 1" "$rc|$(printf '%s\n' "$out9625f" | grep -c 'fleet manifest update failed')" "1|1"
-  lr_none "--fleet manifest failure (the launch itself came up)" "$b"
+  check "9696-postlaunch --fleet manifest failure: the launch came up, so one postlaunch-error row in the manifest phase, not a refusal" "$(( $(lr_n) - b ))|$(lr_last '[.outcome, .phase, .cause] | join(" ")')" "1|postlaunch-error manifest manifest"
   b="$(lr_n)"; rc=0; FLEET_TEST_RC=3 fleet9625 "$tmp/fleet9625-dir" HIMMEL-3748-N8-fleet >/dev/null 2>&1 || rc=$?
   lr_expect "--fleet control, child 3" headed-arm 3 "$rc" "$b"
 else
@@ -5917,7 +5929,17 @@ cpid9625="$(awk '{ print $1 }' "$tmp/pids9625t" 2>/dev/null)"
 kill -TERM "$lpid9625" 2>/dev/null
 rc=0; wait "$lpid9625" 2>/dev/null || rc=$?
 check "9625-skip forwarded TERM: the launcher exits non-zero" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
-lr_none "a forwarded TERM (the control is the child 137 row above: the same status, not forwarded)" "$b"
+check "9696-signal a forwarded TERM: one indeterminate attempt in the handoff phase, cause signal, never a refusal" "$(( $(lr_n) - b ))|$(lr_last '[.outcome, .phase, .cause] | join(" ")')" "1|indeterminate handoff signal"
+# A launcher killed outright runs no EXIT trap: its attempt stays attempt-started, which a reader counts as unknown.
+n9696k="HIMMEL-9696-N3-kill"; doc9696k="$tmp/$n9696k.md"; fx_brief "# $n9696k" > "$doc9696k"; rm -f "$tmp/pids9696k"
+TGT51_MODE=hang TGT51_PIDS="$tmp/pids9696k" HEADED_ARM_WORKER_TARGET="$tgt51" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  bash "$SCRIPT" --no-profile "$n9696k" "$doc9696k" "$tmp/sig9696k" "$PAST" "$tmp/log9696-$n9696k" claude-sonnet-5-5 >/dev/null 2>&1 &
+lpid9696=$!
+n=0; while [ ! -s "$tmp/pids9696k" ] && [ "$n" -lt 100 ]; do sleep 0.1; n=$((n+1)); done
+cpid9696="$(awk '{ print $1 }' "$tmp/pids9696k" 2>/dev/null)"
+kill -KILL "$lpid9696" 2>/dev/null; wait "$lpid9696" 2>/dev/null
+check "9696-kill a killed launcher leaves its attempt started and nothing else" "$(jq -r --arg n "$n9696k" 'select(.name == $n) | .outcome' "$LR" | tr '\n' ' ')" "attempt-started "
+[ -z "$cpid9696" ] || kill -KILL "$cpid9696" 2>/dev/null || true
 [ -z "$cpid9625" ] || kill -KILL "$cpid9625" 2>/dev/null || true
 
 b="$(lr_n)"; rc=0; HOSTNAME=$'h"o\\st\tx\xc3\xa9\nsecond' bash "$SCRIPT" --bogus-flag >/dev/null 2>&1 || rc=$?

@@ -853,6 +853,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
+# Exit 0 means launched OR already running: the launcher's attempt record (headed-arm-worker.sh) cannot tell them
+# apart from the status, so the decision point writes its typed result to HEADED_ARM_OUTCOME_FILE when given.
+# Best-effort: a write that fails leaves the record indeterminate, never changes this exit.
+_ha_outcome() { [ -z "${HEADED_ARM_OUTCOME_FILE:-}" ] || printf '%s\n' "$1" > "$HEADED_ARM_OUTCOME_FILE" 2>/dev/null; return 0; }
+
 echo "$(date +%F_%T) armed: name=$NAME doc=$DOC signal=$SIGNAL deadline=$DEADLINE role=${ROLE:-unsplit}" >> "$LOG"
 # The header calls $DEADLINE a hard deadline, but a flat `sleep
 # 30` let the loop overshoot it by up to nearly 30s before the launch even
@@ -1044,6 +1049,7 @@ session_confirmed() { # session_confirmed <pgrep-ere-pattern> - returns
 session_confirmed "[c]laude .*-n $NAME_ERE( |\$)"; sc_rc=$?
 if [ "$sc_rc" -eq 0 ]; then
     echo "$(date +%F_%T) a session named $NAME is already running - not launching" >> "$LOG"
+    _ha_outcome already-running
     exit 0
 elif [ "$sc_rc" -eq 2 ]; then
     echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running'" >&2
@@ -1237,6 +1243,7 @@ headless_launch() {
             || echo "$(date +%F_%T) WARN headless launch line NOT written to $LAUNCH_RECORD" >> "$LOG"
     fi
     rm -rf "$LOCK" 2>/dev/null
+    _ha_outcome launched
     exit 0
 }
 
@@ -1506,6 +1513,7 @@ while :; do
     session_confirmed "[c]laude .*-n $NAME_ERE( |\$)"; sc_rc=$?
     if [ "$sc_rc" -eq 0 ]; then
         echo "$(date +%F_%T) a session named $NAME is already running - not launching" >> "$LOG"
+        _ha_outcome already-running
         exit 0
     elif [ "$sc_rc" -eq 2 ]; then
         echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running'" >&2
@@ -1543,6 +1551,7 @@ session_confirmed "[c]laude .*-n $NAME_ERE( |\$)"; sc_rc=$?
 if [ "$sc_rc" -eq 0 ]; then
     echo "$(date +%F_%T) a session named $NAME appeared after this arm claimed the lock - releasing and not launching" >> "$LOG"
     rm -rf "$LOCK" 2>/dev/null
+    _ha_outcome already-running
     exit 0
 elif [ "$sc_rc" -eq 2 ]; then
     echo "headed-arm: pgrep scan failed re-checking for $NAME right after claiming the lock - refusing to launch on an indeterminate scan" >&2
@@ -2086,6 +2095,7 @@ if [ "$sv_seen" -eq 1 ]; then
             echo "$(date +%F_%T) WARN: no setsid, bus-idle-waker not started for $NAME" >> "$LOG"
         fi
     fi
+    _ha_outcome launched
     exit 0
 fi
 [ "$BUS_BIND" = "1" ] && echo "$(date +%F_%T) WARN: bus bind of $NAME skipped - no session confirmed, it stays unbound" >> "$LOG"
