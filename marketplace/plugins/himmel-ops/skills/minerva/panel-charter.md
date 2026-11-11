@@ -18,3 +18,25 @@ rubber-stamp. Check ONLY these dimensions and return findings as a list
    does not rest on the text), or land with a `ponytail:` ceiling and a filed
    structural fix. Absent both, that is a finding.
 For each finding: the section + the problem + a concrete fix.
+
+**Finding format.** Open each finding with one heading line in exactly this
+form, then its text:
+
+- **<id>** (<major|medium|minor>[; operator-critical: <class>][; reopens <id> | ; regression]) <text>
+
+For example:
+
+- **F1** (major) D2: the cap test reads the file count, not the ledger; take the round from round-status.
+
+Every finding carries one of the three severities, and its id starts with a
+letter. Tag `operator-critical: <class>` only with one of `spend-grant`,
+`account-or-terms`, `public-policy` or `reverses-ruling`; any other word counts
+for nothing. A finding without a heading line counts as major.
+
+**Closure mode.** If your input opens with a `CLOSURE-CHECK` line, copy that
+line, unchanged, as its own line. Report only two kinds of finding:
+`(major; reopens <id>)` for each open finding the change did not fix, wherever
+its text sits, and `(major; regression)` for a fault the change made, quoting the
+changed line in backticks (12 characters or more) on the same heading line. An
+open finding you do not reopen counts as fixed. Raise no new finding about text
+the change did not touch.

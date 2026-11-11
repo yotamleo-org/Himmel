@@ -2858,7 +2858,7 @@
       "id": "m.p.plan.again",
       "source": {
         "file": "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md",
-        "line": 451,
+        "line": 498,
         "text": "fix → re-critic until clean, **cap 3 rounds**"
       },
       "from": "p.plan",
