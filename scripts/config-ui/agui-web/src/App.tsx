@@ -361,7 +361,8 @@ function CallGroup({ tools, now, open, onToggle }: { tools: Tool[]; now: number;
   );
 }
 
-const STATE_WORD: Record<Tool["status"], string> = { running: "running", done: "done", error: "failed" };
+const STATE_WORD: Record<Tool["status"], string> = { running: "running", done: "done", error: "tool error",
+  not_run: "not run (no verdict)", interrupted: "interrupted", no_result: "no result" };
 const stateWord = (t: Tool) => (t.failure ? FAILURE[t.failure] : STATE_WORD[t.status]);
 
 function ToolCard({ tool, now, open, onToggle }: { tool: Tool; now: number; open: boolean; onToggle: () => void }) {
@@ -377,7 +378,7 @@ function ToolCard({ tool, now, open, onToggle }: { tool: Tool; now: number; open
       {open && (
         <div className="call-body">
           <Field label="Input">{pretty(tool.args) || "—"}</Field>
-          {tool.result !== undefined && <Output label={tool.failure ? FAILURE[tool.failure] : tool.status === "error" ? "Error" : "Result"} text={tool.result || "(empty)"} />}
+          {tool.result !== undefined && <Output label={tool.failure ? FAILURE[tool.failure] : tool.status === "error" ? "Tool error" : tool.status === "not_run" ? "Not run" : "Result"} text={tool.result || "(empty)"} />}
         </div>
       )}
     </article>

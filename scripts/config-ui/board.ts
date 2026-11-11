@@ -151,16 +151,25 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
 
 // What is owed to the operator beside the labels and the chain holds, read from the records that hold it: the same three sources as the roadmap
 // tracker's reader (tracker.py operator_owed), so the two views agree. All READ ONLY.
-//   1. an unsigned spec: the latest critic verdict of a spec of an open ticket of the running version is SPEC CLEAN or is past the round cap, and
-//      <bucket>/release/<version>/operator.jsonl has no `spec` row naming that spec file;
+//   1. an unsigned spec: the latest critic verdict of a spec of an open ticket of the running version is SPEC CLEAN, or the ticket's spec round
+//      in the round ledger (chief-route.ts round-status) is at the cap, and <bucket>/release/<version>/operator.jsonl has no `spec` row naming
+//      that spec file; and an open ticket whose ledger holds an operator-critical finding the operator has not ruled on, at any round;
 //   2. a `queue:` segment or `pool-disposition:` line of the newest chief doc's `## Live state` that names the operator;
 //   3. the newest *HANDOFF.md of the bucket, its `## Open operator items` lines.
 // A source that cannot be read is named in `unread`; when none can be read the whole read is absent with the reasons, never an empty list.
 // ponytail: the newest chief doc by mtime stands for "the live chief" and its folder for the bucket, upgrade path: the live chiefs' docs by queue lock as Shift reads them.
-export type OwedItem = { source: "unsigned spec" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
+export type OwedItem = { source: "unsigned spec" | "operator-critical finding" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
 export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?: string[] } | Absent;
 const OWED_SOURCES = 3; // unsigned specs, handoff items, chief doc lines
-const SPEC_ROUNDS = 3; // the critic round cap (critic-seal.sh): a spec past it needs the operator's record whatever its last verdict says
+type RoundKey = { spec?: unknown; critical_open?: { id: string; class: string; kind: string; round: number; verdict_path: string }[]; error?: string };
+type RoundStatus = { cap: number; classes: string[]; keys: Record<string, RoundKey> };
+const ROUTE = resolve(import.meta.dir, "../telegram/chief-route.ts"), ROUND_LEDGER = "round ledger";
+function roundStatusAll(bucket: string, env: Env): RoundStatus | undefined {
+  try {
+    const s = JSON.parse(execFileSync(process.execPath, [ROUTE, "round-status", "--all", "--specs", join(bucket, "specs"), "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: childEnv(env), timeout: TIMEOUT_MS }));
+    return s && Number.isInteger(s.cap) && Array.isArray(s.classes) && s.classes.length && s.keys && typeof s.keys === "object" ? s : undefined;
+  } catch { return undefined; }
+}
 const OWED_RE = /operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed/i;
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 // The lines under `## <heading>` up to the next `## `; undefined when the file has no such section.
@@ -182,7 +191,7 @@ const specId = (p: string) => {
   return r.replace(/\.md$/, "");
 };
 // `skipped` takes the critic files of single specs that could not be read: the rest of the list still stands.
-function specItems(bucket: string, version: string, open: Map<string, string>, skipped: string[]): OwedItem[] {
+function specItems(bucket: string, version: string, open: Map<string, string>, skipped: string[], unread: string[], env: Env): OwedItem[] {
   const signed = new Set<string>();
   let ledger = "";
   try { ledger = readText(join(bucket, "release", version, "operator.jsonl")); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; } // a release with no record yet has signed nothing
@@ -194,15 +203,24 @@ function specItems(bucket: string, version: string, open: Map<string, string>, s
     const m = f.match(/^(.*)\.critic-spec-r(\d+)\.md$/);
     if (m && (!latest.has(m[1]) || Number(m[2]) > latest.get(m[1])!.n)) latest.set(m[1], { n: Number(m[2]), f });
   }
-  const items: OwedItem[] = [];
-  for (const [spec, { n, f }] of [...latest].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
+  const status = roundStatusAll(bucket, env), items: OwedItem[] = [];
+  if (!status) unread.push(ROUND_LEDGER);
+  for (const [spec, { f }] of [...latest].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
     const key = spec.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
+    const st = status && key ? status.keys[key] : undefined;
+    if (!status || st?.error !== undefined) { skipped.push(f); continue; }
+    const n = Number.isInteger(st?.spec) ? Number(st!.spec) : 0;
     let last: string | undefined;
     try { last = utf8(join(dir, f)).split("\n").map((x) => x.trim()).filter(Boolean).pop(); } catch { /* named below */ }
     if (last === undefined) { skipped.push(f); continue; } // an empty, unreadable or non-UTF-8 critic file skips that one spec, and says so
-    if (!key || !open.has(key) || signed.has(specId(join(dir, spec))) || !(last === "SPEC CLEAN" || n >= SPEC_ROUNDS)) continue;
+    if (!key || !open.has(key) || signed.has(specId(join(dir, spec))) || !(last === "SPEC CLEAN" || n >= status.cap)) continue;
     items.push({ source: "unsigned spec", key, title: open.get(key)!, act: "sign the spec, or rule on its findings",
       ctx: `${spec}: latest critic round ${n} reads ${/^SPEC (?:CLEAN|FINDINGS \d+)$/.test(last) ? last : "no verdict line"}, no spec row in operator.jsonl` });
+  }
+  for (const [key, st] of Object.entries(status?.keys ?? {}).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
+    if (!open.has(key) || !Array.isArray(st.critical_open) || !st.critical_open.length) continue;
+    items.push({ source: "operator-critical finding", key, title: open.get(key)!, act: "rule on each finding; the chief records the ruling with chief-route.ts round-critical",
+      ctx: st.critical_open.map((c) => `${c.id} (${c.class}) in ${c.kind} round ${c.round}, ${basename(String(c.verdict_path))}`).join("; ") });
   }
   return items;
 }
@@ -305,7 +323,7 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
   if (!bucket) { miss("unsigned specs", "no bucket: no chief doc under the handover root, and HIMMEL_BUCKET_DIR is not set"); miss("handoff items", "no bucket"); }
   else {
     if (!running) miss("unsigned specs", "no running version");
-    else tryRead("unsigned specs", () => specItems(bucket, running!, open, skipped), "none");
+    else tryRead("unsigned specs", () => specItems(bucket, running!, open, skipped, unread, env), "none");
     tryRead("handoff items", () => handoffItems(bucket), `no Open operator items section in the newest HANDOFF under ${bucket}`);
   }
   if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
@@ -314,7 +332,7 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
     if (live === undefined) miss("chief doc lines", "the chief doc has no Live state section");
     return [...(live ?? []), ...more];
   }, "");
-  return unread.length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread, skipped };
+  return unread.filter((u) => u !== ROUND_LEDGER).length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread, skipped };
 }
 
 // `asked`: the version tile picked on the page. A known one is the version the tab reads; an unknown one reads as the running version and the answer says so (fellBack).

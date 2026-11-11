@@ -65,7 +65,7 @@
 // Nothing here throws on bad input; a bad line is counted and skipped.
 
 import { readFileSync } from "node:fs";
-import type { AgentInfo, AgentRole, AguiEvent, Failure, JsonPatchOp } from "./events.ts";
+import type { AgentInfo, AgentRole, AguiEvent, Failure, JsonPatchOp, ToolOutcome } from "./events.ts";
 import { commandVerdicts, extractHead, extractLedgerRows, parsePanelReport, type ReviewState, type VerdictUpdate } from "./review-panel.ts";
 
 export type MapperStats = {
@@ -98,7 +98,11 @@ const SILENT_TYPES = new Set([
 ]);
 const INTERRUPT = /^\[Request interrupted by user/;
 // Bumped when a failure's classification changes, so an eval-runs series never mixes two meanings.
-export const MAPPER_SCHEMA = 1;
+export const MAPPER_SCHEMA = 2;
+// The auto-mode classifier's no-verdict refusal, on any tool: the call never ran. Anchored on the trimmed result, so a
+// successful output that quotes the message elsewhere stays ok (all three wordings start with this sentence).
+const NO_VERDICT = /^The server-side auto mode classifier gave no verdict\b/;
+const TOOL_INTERRUPT = /^\[Request interrupted by user/;
 // A refusal by a PreToolUse/permission hook, by the operator's permission prompt, or by the auto-mode classifier.
 const DENIED = /^(PreToolUse|PermissionRequest):\w+ hook error|permission to use .* has been denied|doesn't want to proceed|tool use was rejected|was denied by the Claude Code auto mode classifier/i;
 export const SUITE =/quiet-run\.sh suite|\bbun test\b|run-shell-tests\.sh|\btest-[\w.-]+\.sh\b|\bplaywright test\b|\bpytest\b|\bnpm (run )?test\b/;
@@ -346,11 +350,15 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
     const isError = block.is_error === true;
     const call = pending.get(toolCallId);
     const content = resultText(block.content);
-    const failure = classify(call, isError, content);
+    const head = isError ? content.slice(0, 2000).trimStart() : "";
+    const unrun: ToolOutcome | undefined = !isError ? undefined
+      : NO_VERDICT.test(head) ? "no_verdict" : TOOL_INTERRUPT.test(head) ? "interrupted" : undefined;
+    const failure = unrun ? undefined : classify(call, isError, content);
+    const outcome: ToolOutcome = unrun ?? (!isError ? (failure === "blocked" ? "ok_blocked" : "ok") : failure === "denied" ? "denied" : "error");
     const subagent = bindResult(rec, toolCallId);
     out.push({
       type: "TOOL_CALL_RESULT", messageId: `${toolCallId}:result`, toolCallId, role: "tool",
-      content, ...(isError ? { isError: true as const } : {}), ...(failure ? { failure } : {}),
+      content, ...(isError ? { isError: true as const } : {}), ...(failure ? { failure } : {}), outcome,
       ...(subagent ? { subagent } : {}), ...epochMs(rec),
     });
     pending.delete(toolCallId);

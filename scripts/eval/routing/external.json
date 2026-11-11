@@ -1,5 +1,5 @@
 {
-  "_comment": "HIMMEL-8088: listing entries a session sees that himmel does not own, frozen 2026-10-29 from a live session listing (Claude Code bundled skills and built-in agents, the anthropic-skills plugin), the qmd MCP server's tools/list (first sentence of each). An empty description is a name-only entry, as the live listing shows it. The climb never edits these.",
+  "_comment": "Listing entries a session sees that himmel does not own, frozen 2026-10-29 from a live session listing (Claude Code bundled skills and built-in agents, the anthropic-skills plugin), the qmd MCP server's tools/list (first sentence of each). An empty description is a name-only entry, as the live listing shows it. The climb never edits these.",
   "skills": [
     {"name": "update-config", "description": ""},
     {"name": "keybindings-help", "description": ""},

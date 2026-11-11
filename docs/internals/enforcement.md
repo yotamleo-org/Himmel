@@ -4326,20 +4326,47 @@ Denies (a) a `Read` without `offset`/`limit` of a file over
 `HIMMEL_READ_CLAMP_LINES` (default 2000, the Read tool's page size) lines, naming the file's line count and the exact
 `offset=<n> limit=<m>` pages that cover it (the first 8, then the continuation
 step) so any lane retries in one step; (b) a `Read` whose exact
-`(path, offset, limit)` triple was already read this session, naming the
-recorded timestamp — a *different* range of the same file is allowed and
-recorded; (c) the equivalent `Bash` shapes (`cat <file>`, `sed -n '1,$p'
+`(path, offset, limit)` the same agent already read successfully and whose
+file is unchanged since, naming the recorded timestamp — a *different* range,
+another agent or an edited file is allowed; (c) the equivalent `Bash` shapes (`cat <file>`, `sed -n '1,$p'
 <file>`, `head -n <huge> <file>`) against an over-limit file. An unrecognised
 Bash shape is always allowed — this hook never denies on a guess.
 
-Per-session state: one line per allowed read under
-`${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/himmel-read-clamp/<session_id>/reads.tsv`.
+**Read lifecycle (state `himmel-read-clamp/v2`,
+`scripts/hooks/lib/read-clamp-state.sh`).** A range is consumed only by a Read
+that succeeded and returned all of it, in three hooks the project wirer
+installs: `read-clamp.sh` (PreToolUse) writes a pending record per
+`tool_use_id` with the request key and the file's SHA-256;
+`record-read-clamp.sh` (PostToolUse, its own `Read` group) marks the range read
+only for a `text` result whose `startLine` is the requested offset, which is
+not `truncatedByTokenCap`, which returned its whole limit or reached
+`totalLines`, and whose file hash is unchanged; `read-clamp-failure.sh`
+(PostToolUseFailure, its own `Read` group) drops the pending record. So a
+failed, later-guard-denied or interrupted Read never blocks its own retry.
+State is per session and per actor: `agent_id` inside a subagent, `root` on the
+main thread (the hook payload omits `agent_id` there), hashed on disk, under
+`${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/himmel-read-clamp/v2/`; a malformed
+identity skips tracking. Bounds: 256 pending records per actor, expiring after
+an hour, and 2048 read keys per actor, oldest evicted; overflow skips tracking,
+never denies. Only a regular text file up to 1 MiB is hashed: a larger file, a
+binary, an image, PDF or notebook, or a Read with another argument (`pages`,
+`allow_large`) keeps the size check but skips duplicate tracking.
+
+**Oversize recovery.** Native token limits stay native: this adds no size
+limit. On the native `File content (N tokens) exceeds maximum allowed tokens
+(M)` failure, `read-clamp-failure.sh` names a smaller line-aligned native
+`Read` from the attempted offset (attempted lines × M / N × 0.9, or half the
+lines when the error gives no count) as additionalContext, never a permission
+decision. A single line that cannot fit gets a Bash byte preview as the last
+resort, still behind `block-read-secrets.sh`, labelled as bytes and as no Read
+for Edit/Write's read-before-write check.
+
 Workflow nudge, not a security fence: fails open on a missing `jq`, unparsed
 stdin, or an uncreatable runtime dir (state stays unwritten, the call is
-allowed) — this hook saves tokens, it does not protect anything. Escape hatch:
-`HIMMEL_READ_CLAMP_OK=1` in the launching shell allows one session past the
-clamp (e.g. re-reading a file after an external edit invalidated a recorded
-range), logged to stderr each time it fires. `headed-arm-worker.sh --judge`
+allowed, the size clamp included) — this hook saves tokens, it does not
+protect anything. Escape hatch: `HIMMEL_READ_CLAMP_OK=1` in the launching
+shell allows one session past the clamp and its two lifecycle hooks, logged
+to stderr each time it fires. `headed-arm-worker.sh --judge`
 takes the other lever instead — it raises the whole-file limit
 itself (`HIMMEL_READ_CLAMP_LINES=4000`) rather than bypassing the clamp,
 since independent reading is a judge's actual job; the repeat-read half of

@@ -1,7 +1,7 @@
 # relay-cost eval
 
-What does one relayed message cost, and does a cheaper way deliver it as correctly? (HIMMEL-6992,
-operator decision 158.) Four options over the same fixtures:
+What does one relayed message cost, and does a cheaper way deliver it as correctly? (Operator
+decision 158.) Four options over the same fixtures:
 
 | option | what it is | model calls |
 |---|---|---|

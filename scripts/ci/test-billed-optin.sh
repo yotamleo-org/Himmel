@@ -248,6 +248,7 @@ refuse scripts/eval/graphify-ab/run.sh bash 2 "HIMMEL_BILLED_OK" run
 refuse scripts/eval/retrieval-eval/answer-ab.py python3 64 "HIMMEL_BILLED_OK" run --questions q.jsonl --out o
 refuse scripts/eval/review-panel/run.sh bash 2 "HIMMEL_BILLED_OK" --out "$tmp/rp"
 refuse scripts/eval/docs-review/run.sh bash 2 "HIMMEL_BILLED_OK" --out "$tmp/dr" A
+refuse scripts/eval/retrieval-eval/staleness-fixture.sh bash 2 "HIMMEL_BILLED_OK" build --first HEAD --second HEAD --state s --out "$tmp/sf" --embed-ok 1
 # decision 525: a billed docs-review run names its API account (A, B or C); auto is never accepted
 account_refusal() { # <label> [VAR=value...] -- opted in, the account is missing or auto: exit 2, no preflight, no model call
   local label="$1"; shift

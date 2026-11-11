@@ -124,7 +124,7 @@ test("RUN_FINISHED closes calls that never reported a result", () => {
   const v = reduceAll([{ type: "RUN_STARTED", runId: "r", timestamp: 0 }, { type: "TOOL_CALL_START", toolCallId: "a", toolCallName: "Bash", timestamp: 100 },
     { type: "RUN_FINISHED", timestamp: 400 }]);
   expect(v.status).toBe("finished");
-  expect([v.tools.a.status, v.tools.a.end, v.tools.a.result]).toEqual(["done", 400, undefined]);
+  expect([v.tools.a.status, v.tools.a.end, v.tools.a.result, v.tools.a.outcome]).toEqual(["no_result", 400, undefined, "unknown"]);
 });
 
 test("applyPatch rejects a path that is not a JSON Pointer instead of replacing the document", () => {
@@ -260,7 +260,7 @@ describe("agents and failures", () => {
       { type: "TOOL_CALL_START", toolCallId: "m", toolCallName: "Bash", timestamp: 1 },
       { type: "TOOL_CALL_START", toolCallId: "s", toolCallName: "Read", agent: { id: "q", name: "bg", role: "subagent" }, timestamp: 2 },
       { type: "RUN_FINISHED", timestamp: 3 }]);
-    expect([w.tools.m.status, w.tools.s.status]).toEqual(["done", "running"]);
+    expect([w.tools.m.status, w.tools.s.status]).toEqual(["no_result", "running"]);
     expect(reduceAll([{ type: "RUN_ERROR", message: "lost", timestamp: 4 }], w).tools.s.status).toBe("error");
   });
 
@@ -458,5 +458,45 @@ describe("failure navigator", () => {
     expect(list.map((f) => f.n)).toEqual([1, 2, 3, 4, 5]);
     expect(new Set(list.map((f) => f.ref.id)).size).toBe(5);
     expect(list.map((f) => f.at)).toEqual([...list.map((f) => f.at)].sort((a, b) => a - b));
+  });
+});
+
+describe("tool call outcome partition", () => {
+  const OUT = join(import.meta.dir, "..", "..", "eval", "worker-digest", "fixtures", "outcomes.jsonl");
+  const v = reduceAll(mapFile(OUT).events as any[]);
+  const outcome = (id: string) => v.tools[id]?.outcome;
+  test("each call carries the stream's outcome", () => {
+    expect(outcome("c_ok")).toBe("ok");
+    expect(outcome("c_blk")).toBe("ok_blocked");
+    expect(outcome("c_err")).toBe("error");
+    expect(outcome("c_den")).toBe("denied");
+    expect(outcome("c_nv")).toBe("no_verdict");
+    expect(outcome("c_int")).toBe("interrupted");
+  });
+  test("a no-verdict call is not run, not a failure", () => {
+    expect(v.tools.c_nv.status).toBe("not_run");
+    expect(v.tools.c_nv.failure).toBeUndefined();
+    expect(v.failures.some((f) => f.id === "c_nv")).toBe(false);
+  });
+  test("a call the turn ended without a result is unknown, not done", () => {
+    expect(outcome("c_missing")).toBe("unknown");
+    expect(v.tools.c_missing.status).toBe("no_result");
+  });
+  test("a call a cancelled turn cut off is interrupted; a late result still wins", () => {
+    expect(outcome("c_cancel")).toBe("interrupted");
+    expect(outcome("c_late")).toBe("ok");
+  });
+  test("the status follows the outcome, not the optional isError flag", () => {
+    const start = (id: string) => ({ type: "TOOL_CALL_START", toolCallId: id, toolCallName: "Bash", timestamp: 1 });
+    const res = (id: string, outcome: string) => ({ type: "TOOL_CALL_RESULT", toolCallId: id, messageId: `${id}:r`, role: "tool", content: "x", outcome, timestamp: 2 });
+    const w = reduceAll([{ type: "RUN_STARTED", runId: "r", timestamp: 0 }, start("e"), res("e", "error"), start("d"), res("d", "denied"), start("u"), res("u", "unknown")] as any[]);
+    expect([w.tools.e.status, w.tools.d.status, w.tools.u.status]).toEqual(["error", "error", "no_result"]);
+  });
+  test("the outcomes sum to the issued calls", () => {
+    const n = Object.keys(v.tools).length;
+    const counts = Object.values(v.tools).reduce((m: Record<string, number>, t) => ({ ...m, [t.outcome ?? "none"]: (m[t.outcome ?? "none"] ?? 0) + 1 }), {});
+    expect(counts.none).toBeUndefined();
+    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(n);
+    expect(counts).toEqual({ ok: 5, ok_blocked: 1, error: 6, denied: 1, no_verdict: 2, interrupted: 2, unknown: 1 });
   });
 });

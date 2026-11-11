@@ -1,4 +1,4 @@
-"""Scrape-provider adapters for the HIMMEL-4362 benchmark. A provider is an
+"""Scrape-provider adapters for the benchmark. A provider is an
 object with `name`, `calls`, `last_credits` and `scrape(url) -> markdown`
 (raises on failure). Stdlib only. Never logs a key, a URL or a body."""
 import datetime

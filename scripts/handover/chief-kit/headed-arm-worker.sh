@@ -235,6 +235,7 @@ fi
 chokepoint_seam_guard scripts/handover/chief-kit/headed-arm-worker.sh || exit 96
 
 _LAUNCH_REFUSAL_SKIP=0 _LAUNCH_REFUSAL_FWD=0 _LAUNCH_REFUSAL_CAUSE='' _LAUNCH_REFUSAL_LINE=''
+_LAUNCH_ATTEMPT_ID='' _LAUNCH_OUTCOME='' _LAUNCH_OUTCOME_FILE=''
 for _lr_a in "$@"; do [ "$_lr_a" != --dry-run ] || _LAUNCH_REFUSAL_SKIP=1; done
 unset _lr_a
 _launch_refusal_note() { _LAUNCH_REFUSAL_CAUSE="$1"; _LAUNCH_REFUSAL_LINE="${2:-}"; return 0; }
@@ -246,18 +247,56 @@ _lr_json() {
     s="$(printf '%s' "${s:0:$1}" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')" || return 1
     printf '"%s"' "$s"
 }
-# shellcheck disable=SC2329  # invoked by the EXIT trap
-_launch_refusal_exit() {
-    local rc=$?
-    [ "$rc" -ne 0 ] && [ "${DRY_RUN:-0}" != 1 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] && [ -n "${HOME:-}" ] || return 0
-    local ts host name line row
+# The attempt record, launch-refusals.jsonl schema v2 (v1 rows, refusals only, stay readable as legacy): an
+# attempt-started row once a real launch's arguments are parsed, then one terminal row from the EXIT trap, both
+# carrying one attempt_id. outcome: refused | launched | already-running | indeterminate | postlaunch-error; a killed
+# launcher leaves only attempt-started, which a reader counts as unknown. phase says where the attempt ended.
+# Exit 0 is launched OR already running, so the headed-arm.sh child writes its typed result to
+# HEADED_ARM_OUTCOME_FILE; exit 7 is indeterminate (konsole up, claude unseen); exit 9 a refusal before launch
+# (the dedup scan was indeterminate). A recorder failure is silent and never changes the launch's exit.
+# shellcheck disable=SC2329  # called by the EXIT trap and the attempt start
+_lr_phase() {
+    case "$1" in
+        brief-lint|denial-unacked|handover-root|unguarded-checkout) echo brief-validation ;;
+        bank-exhausted|fleet-cap|fleet-duplicate) echo usage-preflight ;;
+        bus-register|bus-name-too-long) echo bus-registration ;;
+        headed-arm|dedup-indeterminate|konsole-up-claude-unseen|signal) echo handoff ;;
+        manifest) echo manifest ;;
+        *) echo unknown ;;
+    esac
+}
+# shellcheck disable=SC2329  # called by the EXIT trap and the attempt start
+_lr_row() {  # <outcome> <rc or null>
+    local ts host name line aid cause phase row
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" || return 0
     [ -n "$ts" ] || return 0
     host="$(_lr_json 64 "${HOSTNAME:-}")" || return 0
     name="$(_lr_json 128 "${NAME:-}")" || return 0
     line="$(_lr_json 200 "$_LAUNCH_REFUSAL_LINE")" || return 0
-    row="{\"v\":1,\"ts\":\"$ts\",\"host\":$host,\"source\":\"headed-arm-worker\",\"kind\":\"launch-refused\",\"name\":$name,\"cause\":\"${_LAUNCH_REFUSAL_CAUSE:-other}\",\"rc\":$rc,\"line\":$line}"
+    aid="$(_lr_json 80 "$_LAUNCH_ATTEMPT_ID")" || return 0
+    cause="${_LAUNCH_REFUSAL_CAUSE:-other}"
+    if [ "$1" = attempt-started ]; then phase=unknown; line=null; else phase="$(_lr_phase "$cause")"; fi
+    row="{\"v\":2,\"ts\":\"$ts\",\"host\":$host,\"source\":\"headed-arm-worker\",\"kind\":\"launch-attempt\",\"name\":$name,\"attempt_id\":$aid,\"phase\":\"$phase\",\"outcome\":\"$1\",\"cause\":\"$cause\",\"rc\":$2,\"line\":$line}"
     { mkdir -p "$HOME/.himmel" && printf '%s\n' "$row" >> "$HOME/.himmel/launch-refusals.jsonl"; } 2>/dev/null
+    return 0
+}
+_launch_attempt_start() {
+    [ "${DRY_RUN:-0}" != 1 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] && [ -n "${HOME:-}" ] || return 0
+    _LAUNCH_ATTEMPT_ID="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null)-$$-${RANDOM}${RANDOM}"  # swallow-ok: a failed date leaves the pid and random parts, still one id per attempt
+    _LAUNCH_REFUSAL_CAUSE='' _lr_row attempt-started null
+    return 0
+}
+# shellcheck disable=SC2329  # invoked by the EXIT trap
+_launch_refusal_exit() {
+    local rc=$?
+    [ -z "$_LAUNCH_OUTCOME_FILE" ] || rm -f "$_LAUNCH_OUTCOME_FILE" 2>/dev/null
+    [ "${DRY_RUN:-0}" != 1 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] && [ -n "${HOME:-}" ] || return 0
+    local outcome="$_LAUNCH_OUTCOME"
+    if [ -z "$outcome" ]; then
+        [ "$rc" -ne 0 ] || [ -n "$_LAUNCH_ATTEMPT_ID" ] || return 0
+        if [ "$rc" -ne 0 ]; then outcome=refused; else outcome=indeterminate; fi
+    fi
+    _lr_row "$outcome" "$rc"
     return 0
 }
 trap '_launch_refusal_exit 2>/dev/null' EXIT
@@ -775,6 +814,7 @@ if [ "$#" -lt 5 ]; then
 fi
 
 NAME="$1"; DOC="$2"; SIGNAL="$3"; DEADLINE="$4"; LOG="$5"; MODEL="${6:-}"
+_launch_attempt_start
 
 # role-to-profile rule: a `profile: <name>` line in the brief's first
 # 60 lines selects the worker's profile when neither --profile nor WORKER_SESSION_PROFILE did
@@ -3067,6 +3107,8 @@ _ha_child=""
 # shellcheck disable=SC2329  # invoked by the trap below
 _ha_forward() { [ -z "$_ha_child" ] || { _LAUNCH_REFUSAL_FWD=1; kill -TERM "$_ha_child" 2>/dev/null; }; }
 trap _ha_forward TERM HUP INT
+_LAUNCH_OUTCOME_FILE="$(mktemp "${TMPDIR:-/tmp}/headed-arm-outcome.XXXXXX" 2>/dev/null)" || _LAUNCH_OUTCOME_FILE=''  # swallow-ok: no temp file means no child word, read as indeterminate
+if [ -n "$_LAUNCH_OUTCOME_FILE" ]; then export HEADED_ARM_OUTCOME_FILE="$_LAUNCH_OUTCOME_FILE"; else unset HEADED_ARM_OUTCOME_FILE; fi
 # Keep headed-arm.sh's profile/context handoff paired to its own exec PID.
 "${HA_SH[@]}" -c 'export HEADED_ARM_CONTEXT_PID="$$"; exec "$@"' bash \
     "${HA_RUN[@]}" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT" <&0 &
@@ -3077,7 +3119,16 @@ while :; do
     kill -0 "$_ha_child" 2>/dev/null || break   # a trapped signal ends `wait` early; the child is still running
 done
 trap - TERM HUP INT
-if [ "$launch_rc" -eq 0 ] || [ "$_LAUNCH_REFUSAL_FWD" -eq 1 ]; then _LAUNCH_REFUSAL_SKIP=1; else _launch_refusal_note headed-arm; fi
+_ha_word="$( [ -n "$_LAUNCH_OUTCOME_FILE" ] && head -n 1 "$_LAUNCH_OUTCOME_FILE" 2>/dev/null)" || _ha_word=''  # swallow-ok: no word reads indeterminate below
+if [ "$_LAUNCH_REFUSAL_FWD" -eq 1 ]; then _LAUNCH_OUTCOME=indeterminate; _launch_refusal_note signal
+elif [ "$launch_rc" -eq 0 ]; then
+    case "$_ha_word" in launched|already-running) _LAUNCH_OUTCOME="$_ha_word" ;; *) _LAUNCH_OUTCOME=indeterminate ;; esac
+    _launch_refusal_note headed-arm
+elif [ "$launch_rc" -eq 7 ]; then _LAUNCH_OUTCOME=indeterminate; _launch_refusal_note konsole-up-claude-unseen
+elif [ "$launch_rc" -eq 9 ]; then _LAUNCH_OUTCOME=refused; _launch_refusal_note dedup-indeterminate
+else _launch_refusal_note headed-arm
+fi
+unset -v _ha_word
 case "$launch_rc" in 0|7|9) ;; *) _release_fleet_reservation ;; esac
 if [ -n "$FLEET_MANIFEST" ]; then
     [ "$launch_rc" -eq 0 ] || exit "$launch_rc"
@@ -3085,6 +3136,7 @@ if [ -n "$FLEET_MANIFEST" ]; then
     [ -z "$AB_ARM" ] || _fm_arm=(--arm "$AB_ARM")
     if ! bash "$HERE/fleet-manifest.sh" add "$FLEET_MANIFEST" --lane "$LANE" ${_fm_arm[@]+"${_fm_arm[@]}"} "$DOC"; then
         echo "headed-arm-worker: launch handed off but fleet manifest update failed: $FLEET_MANIFEST" >&2
+        _LAUNCH_OUTCOME=postlaunch-error; _launch_refusal_note manifest
         exit 1
     fi
     exit 0

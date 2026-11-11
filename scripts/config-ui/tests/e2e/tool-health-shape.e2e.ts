@@ -71,10 +71,10 @@ for (const width of [1280, 390]) {
   test.describe(`at ${width}px`, () => {
     test.beforeEach(async ({ page }) => { h = await boot(); await page.setViewportSize({ width, height: 900 }); });
 
-    test("overview: four cards; Recovery rides a note", async ({ page }, info) => {
+    test("overview: four cards; Changed/stopped after refusal rides a note", async ({ page }, info) => {
       await open(page, "#/toolhealth", "[data-kpi]");
       expect(await page.locator("[data-kpi]").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.kpi))).toEqual(["calls", "failed", "rate", "highest"]);
-      await expect(page.locator('[data-note="recovery"]')).toContainText("Recovery");
+      await expect(page.locator('[data-note="recovery"]')).toContainText("Changed/stopped after refusal");
       expect(await sideways(page)).toBe(false);
       await info.attach(`overview-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     });

@@ -213,7 +213,7 @@ mkdir -p "$tmp/wrongroot"
 fx_refresh HANDOVER_DIR="$tmp/wrongroot"
 contains "a wrong root: the skip is a WARN on stdout" "$(out)" "focus=WARN:chains root"
 contains "a wrong root: the skip is named on stderr" "$(cat "$tmp/err")" "chains root"
-(cd "$FXR" && env -u HANDOVER_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$FXR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>&1)
+(cd "$FXR" && env -u HANDOVER_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$FXR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 opus >/dev/null 2>&1)
 check "no HANDOVER_DIR: the judge ladder is written under the configured root" "$([ -f "$CFG/.judge-ladder" ] && echo yes)" yes
 check "no HANDOVER_DIR: nothing is written under the stub folder" "$([ -e "$FXR/handovers/.judge-ladder" ] && echo yes || echo no)" no
 
@@ -234,7 +234,7 @@ rm -f "$CFG/.judge-ladder"
 frrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR HOME="$tmp/home" bash "$WTR/scripts/handover/chief-kit/focus-refresh.sh" --doc "$DOC" --repo example-org/example-repo >"$tmp/out" 2>"$tmp/err") || frrc=$?
 check "a linked worktree: focus-refresh succeeds with the primary env's root" "$frrc $(out)" "0 focus=ok"
 lacks "a linked worktree: focus-refresh prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
-jlrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$WTR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 sonnet >/dev/null 2>"$tmp/err") || jlrc=$?
+jlrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR -u JUDGE_LADDER_STATE HOME="$tmp/home" JUDGE_LADDER_NOW=1000 bash "$WTR/scripts/handover/chief-kit/judge-ladder.sh" convene seat1 opus >/dev/null 2>"$tmp/err") || jlrc=$?
 check "a linked worktree: judge-ladder writes under the primary env's root" "$jlrc $([ -f "$CFG/.judge-ladder" ] && echo yes)" "0 yes"
 lacks "a linked worktree: judge-ladder prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
 

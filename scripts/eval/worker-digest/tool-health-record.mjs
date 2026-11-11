@@ -4,9 +4,9 @@
 // implementation. This module is pure: it reads nothing and writes nothing. tool_health_record.py wraps the body in the
 // validated eval-runs envelope and appends it once per day. Record first, audit read-only: no rule reads this eval, so
 // nothing changes because of it.
-import { rollupToolHealth } from './tool-health.mjs';
+import { OUTCOMES, rollupToolHealth } from './tool-health.mjs';
 
-export const RECORD_VERSION = 1;
+export const RECORD_VERSION = 2;
 const num = (n) => typeof n === 'number' && Number.isFinite(n);
 const ratio = (n, d) => num(n) && num(d) && d > 0 ? n / d : null;
 const GUARD = /^denied\/(?!classifier|other$|permission-prompt$)(.+)$/;
@@ -39,8 +39,11 @@ export function buildRecord(rollup, { day }) {
   const totalKnown = num(rollup.totalCalls);
 
   for (const t of tools) {
-    cases[`tool:${t.tool}`] = { calls: num(t.calls) ? t.calls : null, failures: t.failures, errors: t.errors, denials: t.denials, recovered: t.recovered, known: t.known };
+    cases[`tool:${t.tool}`] = { calls: num(t.calls) ? t.calls : null, failures: t.failures, errors: t.errors, denials: t.denials, recovered: t.recovered, known: t.known,
+      ...Object.fromEntries(OUTCOMES.map((k) => [`outcome_${k}`, t.outcomes ? t.outcomes[k] : null])) };
     metrics[`tool.${t.tool}.calls`] = num(t.calls) ? t.calls : null;
+    for (const k of OUTCOMES) metrics[`tool.${t.tool}.outcome.${k}`] = t.outcomes ? t.outcomes[k] : null;
+    if (t.outcomes && num(t.calls) && OUTCOMES.reduce((n, k) => n + t.outcomes[k], 0) !== t.calls) problems.push(`tool ${t.tool}: outcomes do not sum to calls`);
     metrics[`tool.${t.tool}.fail_rate`] = ratio(t.failures, t.calls);
     if (t.denials > t.failures || (num(t.calls) && t.failures > t.calls)) problems.push(`tool ${t.tool}: denials <= failures <= calls does not hold`);
   }
@@ -48,22 +51,24 @@ export function buildRecord(rollup, { day }) {
     const gap = h.reason_gap;
     const reasons = Object.fromEntries(REASONS.map((k) => [`reason_${k}`, gap ? gap.by_reason[k] : null]));
     cases[`guard:${name}`] = { denials: h.failures, eligible_calls: num(h.eligible_calls) ? h.eligible_calls : null, unattributed: h.unattributed, outside_eligible: num(h.outside_eligible) ? h.outside_eligible : null,
-      ...reasons, reason_before_logging: gap ? gap.before_reasons_logged : null, reason_not_established: gap ? gap.not_established : null };
+      ...reasons, reason_before_logging: gap ? gap.before_reasons_logged : null, reason_not_joinable: gap ? gap.not_joinable : null, reason_not_established: gap ? gap.not_established : null };
     metrics[`guard.${name}.denials`] = h.failures;
     metrics[`guard.${name}.eligible_calls`] = num(h.eligible_calls) ? h.eligible_calls : null;
     metrics[`guard.${name}.deny_rate`] = num(h.eligible_rate) ? h.eligible_rate : null;
     metrics[`guard.${name}.timeout_rate`] = gap ? ratio(gap.by_reason.timeout, h.eligible_calls) : null;
-    if (gap && REASONS.reduce((s, k) => s + gap.by_reason[k], gap.before_reasons_logged + gap.not_established) !== h.failures) problems.push(`guard ${name}: reason rows and residuals do not add up to the denials`);
+    if (gap && REASONS.reduce((s, k) => s + gap.by_reason[k], gap.before_reasons_logged + gap.not_joinable + gap.not_established) !== h.failures) problems.push(`guard ${name}: reason rows and residuals do not add up to the denials`);
   }
   metrics.calls = totalKnown ? rollup.totalCalls : (rollup.totalCalls === 0 ? 0 : null);
   metrics.failures = tools.reduce((s, t) => s + t.failures, 0);
   metrics.denials = tools.reduce((s, t) => s + t.denials, 0);
+  for (const k of OUTCOMES) metrics[`outcome.${k}`] = rollup.outcomes ? rollup.outcomes[k] : null;
 
   const missing = [];
   if (rollup.eligible_fingerprint == null) missing.push('wiring');
   if (chain.state !== 'ok') missing.push('hook-chain log');
   if (!totalKnown) missing.push('call denominators');
   if (guards.some(([, h]) => !num(h.eligible_calls))) missing.push('guard denominators');
+  if (!rollup.outcome_coverage || !rollup.outcome_coverage.comparable) missing.push('outcome partition');
   const status = missing.length || problems.length ? 'partial' : rollup.totalCalls === 0 ? 'inconclusive' : 'ok';
   const a = chain.audit || {};
   return {

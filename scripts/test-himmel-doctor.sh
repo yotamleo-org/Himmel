@@ -8000,6 +8000,16 @@ printf '#!/usr/bin/env bash\ncase "$1" in status) exit 1 ;; esac\nexec bash "${B
 c75_reset
 out="$(env PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" HIMMEL_CONFIG_DIR="" HIMMEL_SECRETS_KEYRING=off bash "$c75_x/himmel-doctor.sh" --root "$REPO_ROOT" --no-color --only C75 2>&1)"
 if grepq "$out" -F 'WARN C75-keyring' && grepq "$out" -F 'himmel-secrets status failed' && ! grepq "$out" -F 'OK   C75-secrets' && ! grepq "$out" -F 'OK   C75-config-keys'; then pass "C75 status failure -> WARN, and no OK row built on it"; else fail "C75 status failure -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C75 run from another repo's directory or from outside any repo reads the same as from the checkout =="
+c75_p="$c75_t/proj"; mkdir -p "$c75_p" "$c75_t/away" "$c75_t/norepo"
+git init -q "$c75_p"; git init -q "$c75_t/away"
+ln -s "$REPO_ROOT/scripts" "$c75_p/scripts"
+printf 'TELEGRAM_BOT_TOKEN=planted-dotenv-value\n' > "$c75_p/.env"
+printf 'JIRA_API_TOKEN=planted-away-value\n' > "$c75_t/away/.env"
+c75_from() { local o; o="$(cd "$1" && env -u HIMMEL_DOCTOR_ENV_FILE -u HIMMEL_REPO -u HIMMELCTL_CACHE_DIR -u JIRA_BASE_URL -u JIRA_API_TOKEN -u TELEGRAM_BOT_TOKEN -u TELEGRAM_CHAT_ID -u TELEGRAM_GROUP_CHAT_ID -u CREDENTIALS_DIRECTORY PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_SECRETS_KEYRING=off bash "$DOC" --root "$c75_p" --only C75 --no-color 2>&1)"; sed -n '/C75-/p' <<< "$o"; }
+c75_home="$(c75_from "$c75_p")"; c75_away="$(c75_from "$c75_t/away")"; c75_out="$(c75_from "$c75_t/norepo")"
+if grepq "$c75_home" -F 'INFO C75-secrets' && grepq "$c75_home" -F 'TELEGRAM_BOT_TOKEN' && ! grepq "$c75_home" -F 'JIRA' && ! grepq "$c75_home" -F 'planted' \
+    && [ "$c75_away" = "$c75_home" ] && [ "$c75_out" = "$c75_home" ]; then pass "C75 from another repo's directory and from outside any repo reads the checkout .env, as from the checkout"; else fail "C75 away vs checkout -> checkout: $c75_home / away: $c75_away / outside: $c75_out"; fi
 rm -rf "$c75_t"
 
 # --- C76-duplicate-plugin-installs: one plugin installed more than 3 times ---
@@ -8061,6 +8071,17 @@ if grepq "$out" 'WARN C88-graph-api-optin'; then pass "C88 symlinked config.json
 c88_reset; c88_key_in_env; c88_lane_runner; printf '{"graphify":{"semantic_api_ok":"true"}}\n' > "$c88_t/home/.himmel/config.json"
 out="$(c88_run)"
 if grepq "$out" 'WARN C88-graph-api-optin'; then pass "C88 string \"true\" is no opt-in"; else fail "C88 string true -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88 run from another repo's directory or from outside any repo reads the same as from the checkout =="
+c88_reset; c88_lane_runner
+c88_p="$c88_t/proj"; mkdir -p "$c88_p" "$c88_t/away" "$c88_t/norepo"
+git init -q "$c88_p"; git init -q "$c88_t/away"
+ln -s "$REPO_ROOT/scripts" "$c88_p/scripts"
+printf 'ANTHROPIC_ORG_A_KEY=%s\n' "$c88_key" > "$c88_p/.env"
+printf 'ANTHROPIC_ORG_B_KEY=%s\n' "$c88_key" > "$c88_t/away/.env"
+c88_from() { local o; o="$(cd "$1" && env -u HIMMEL_DOCTOR_ENV_FILE -u HIMMEL_REPO -u HIMMELCTL_CACHE_DIR CLAUDE_DIR="$c88_t/claude" HOME="$c88_t/home" GRAPHMAP_BAT_DIR="$c88_t/bat" bash "$DOC" --root "$c88_p" --only C88 --no-color 2>&1)"; sed -n '/C88-graph-api-optin/p' <<< "$o"; }
+c88_home="$(c88_from "$c88_p")"; c88_away="$(c88_from "$c88_t/away")"; c88_out="$(c88_from "$c88_t/norepo")"
+if grepq "$c88_home" 'WARN C88-graph-api-optin' && grepq "$c88_home" -F 'ANTHROPIC_ORG_A_KEY' && ! grepq "$c88_home" -F 'ANTHROPIC_ORG_B_KEY' && ! grepq "$c88_home" -F "$c88_key" \
+    && [ "$c88_away" = "$c88_home" ] && [ "$c88_out" = "$c88_home" ]; then pass "C88 from another repo's directory and from outside any repo reads the checkout .env, as from the checkout"; else fail "C88 away vs checkout -> checkout: $c88_home / away: $c88_away / outside: $c88_out"; fi
 rm -rf "$c88_t"
 
 # --- C87-stub-handover-state: files under <repo>/handovers newer than the operator's baseline marker ---
