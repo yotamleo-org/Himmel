@@ -423,7 +423,7 @@ mkdir -p "$WS/pubhome/.himmel" "$WS/adopterhome"
 printf '{"graphify":{"semantic_api_ok":true}}\n' > "$WS/pubhome/.himmel/config.json"
 err=$( HOME="$WS/pubhome" HIMMEL_CONFIG_DIR='' bash "$SCRIPT" --out "$WS/t13/no-such-out" 2>&1 >/dev/null ); rc=$?
 want="  Rebuild with: bash $(cd "$HERE" && pwd)/refresh-graph-map.sh --name <N> --corpus-root <path> --maps-dir <vault>/60-Maps --title \"<Title>\" --slug <slug>"
-[ "$rc" -eq 2 ] && printf '%s\n' "$err" | grep -qxF -- "$want" \
+[ "$rc" -eq 2 ] && grep -qxF -- "$want" <<< "$err" \
   && pass "T13 the publisher's REMEDIATION is main's refresh line" || fail "T13 publisher REMEDIATION (rc=$rc): $err"
 err=$( HOME="$WS/adopterhome" HIMMEL_CONFIG_DIR='' bash "$SCRIPT" --out "$WS/t13/no-such-out" 2>&1 >/dev/null ); rc=$?
 case "$err" in
