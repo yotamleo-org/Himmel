@@ -42,6 +42,9 @@
 # lost its lock: it is listed on its own `lockless: <label> (<lane>) <doc>; ...` line
 # right after the workers: line (replaced on every render), for succession to carry.
 #
+# After a render that wrote the doc, each `pool-disposition: <KEY> question|slice after <KEY2>`
+# line with both keys open writes its Jira link `<KEY2> blocks <KEY>` when absent (see the end).
+#
 # Exit: 0 ok; 1 refused (no manifest, no workers: line, new worker without a nonce);
 # 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe; needs jq.
 # shellcheck disable=SC2016  # backtick spans and awk programs are literal, not expansions
@@ -229,4 +232,54 @@ if ! NL="$new_line" awk -v k="$live_key" '
     rm -f "$tmp"
     echo "live-state: cannot write $doc" >&2
     exit 1
+fi
+doc_unlock
+
+# A Live state `pool-disposition: <KEY> question|slice after <KEY2>` line is a dependency the chief
+# recorded; the chain read (chain-state.mjs) sees only Jira blocked-by links and the registry. With
+# both keys open and no `<KEY2> blocks <KEY>` link in Jira, the render makes ONE
+# `jira link <KEY2> --blocks <KEY>` call and logs it on stderr. A pair linked, or found linked, is
+# recorded per doc under TMPDIR, so a later render makes no Jira call for it. A key not open, or a
+# Jira read or write that fails, writes no link and is tried again at the next render. The exit
+# code is the render's alone. LIVE_STATE_JIRA_CMD replaces the jira CLI (tests).
+DONE_RE='^(Done|Closed|wont do|wont fix|Resolved|In Public)$'
+jira() {
+    if [ -n "${LIVE_STATE_JIRA_CMD:-}" ]; then "$LIVE_STATE_JIRA_CMD" "$@" < /dev/null; return; fi
+    local common
+    common="$(. "$HERE/../../lib/git-clean.sh" && git_env_scrub && git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 2  # swallow-ok: no checkout, no jira CLI: the pair is tried again next render
+    JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-${2%%-*}}" node "$(dirname "$common")/scripts/jira/dist/index.js" "$@" < /dev/null
+}
+after_pairs="$(awk '
+    $0 == "## Live state" { s = 1; next }
+    s && /^## / { s = 0 }
+    s && /^pool-disposition:[[:space:]]+[A-Z][A-Z0-9]*-[0-9]+[[:space:]]+(question|slice)[[:space:]]+after[[:space:]]+[A-Z][A-Z0-9]*-[0-9]+([^A-Za-z0-9-]|$)/ {
+        split($0, w, " "); on = w[5]; sub(/[^A-Z0-9-].*$/, "", on)
+        if (on != w[2]) print on, w[2]
+    }' "$doc")"
+if [ -n "$after_pairs" ]; then
+    seen=""
+    seen_dir="${TMPDIR:-/tmp}/himmel-chain-links-$UID"
+    # shellcheck disable=SC2174 # only the final, per-user directory is ours
+    if mkdir -m 700 -p "$seen_dir" 2>/dev/null && [ ! -L "$seen_dir" ] && [ -O "$seen_dir" ]; then
+        # prim-ok: the record key follows the doc file's own symlink, as doc_lock's does
+        seen="$seen_dir/$(realpath -- "$doc" | sha256sum | cut -d' ' -f1)"
+    fi
+    while read -r on key; do
+        pair="$on blocks $key"
+        [ -n "$seen" ] && grep -qxF "$pair" "$seen" 2>/dev/null && continue
+        links="$(jira links "$key" 2>/dev/null)" || { echo "live-state: cannot read $key's Jira links: $pair not written" >&2; continue; }  # swallow-ok: an unread link list writes no link and says so; the pair is tried again next render
+        if ! awk -F'\t' -v p="$pair" '$2 == "Blocks" && $NF == p { f = 1 } END { exit !f }' <<< "$links"; then
+            open=yes
+            for k in "$on" "$key"; do
+                st="$(jira get "$k" 2>/dev/null | awk -F'\t' 'NR == 1 { print $3 }')"  # swallow-ok: an unread status is empty, which writes no link
+                if [ -z "$st" ] || [[ "$st" =~ $DONE_RE ]]; then open="$k is ${st:-unreadable}"; break; fi
+            done
+            [ "$open" = yes ] || { echo "live-state: $pair not written: $open" >&2; continue; }
+            jira link "$on" --blocks "$key" >/dev/null 2>&1 || { echo "live-state: jira link $on --blocks $key failed" >&2; continue; }
+            echo "live-state: linked $pair (pool-disposition: $key after $on)" >&2
+        fi
+        [ -z "$seen" ] || printf '%s\n' "$pair" >> "$seen"
+    done <<EOF
+$after_pairs
+EOF
 fi

@@ -11,6 +11,7 @@
 #   5. prose on the workers: line survives; other fields and sections are untouched
 #   6. --print writes nothing; the rendered line is what tick.sh's parser reads
 #   7. a chief doc with neither a `workers:` nor a `legs:` line is refused
+#  26. a pool-disposition `after <KEY>` line writes its Jira blocks link once (a stub Jira CLI)
 #
 # Hermetic: temp dir + its own HANDOVER_DIR. PLATFORM GUARD: Linux-only kit.
 set -uo pipefail
@@ -387,6 +388,66 @@ check '25. the lines keep their order' 'workers|pool-disposition|tracker-plan|qu
 out25="$(bash "$SCRIPT" "$hy" --print 2>/dev/null)"
 check '25. --print prints the workers: line without the next labelled line' 'workers: `N61:nonce-61:tok-one:111` note a wrapped prose b' "$out25"
 check '25. --digest ends the workers line at the pool-disposition line' 'workers: `N61:nonce-61:tok-one:111` note a wrapped prose b' "$(bash "$SCRIPT" "$hy" --digest 2>/dev/null | grep '^workers:')"
+
+# 26. A `pool-disposition: <KEY> question|slice after <KEY2>` line, both keys open, writes ONE
+#     `link <KEY2> --blocks <KEY>` call when the link is absent; a second render makes none; a key
+#     that is not open, a link already there or --print makes none. The Jira CLI is a stub
+#     that records every call; a link it makes shows in its next `links` read.
+js="$tmp/jira-stub"; jdb="$tmp/jira-db"; mkdir -p "$jdb"; : > "$jdb/calls"
+cat > "$js" <<'STUB'
+#!/usr/bin/env bash
+db="${JIRA_STUB_DB:?}"
+printf '%s\n' "$*" >> "$db/calls"
+case "$1" in
+    get) st="$(cat "$db/status-$2" 2>/dev/null)" || exit 1; printf '%s\tTask\t%s\ttitle of %s\n' "$2" "$st" "$2" ;;
+    links) cat "$db/links" 2>/dev/null | grep -F "$2" || true ;;
+    link) [ "$3" = --blocks ] || exit 2; printf '9%s\tBlocks\tinward=%s\toutward=%s\t%s blocks %s\n' "$RANDOM" "$2" "$4" "$2" "$4" >> "$db/links"; echo "Linked: $2 blocks $4" ;;
+    *) exit 2 ;;
+esac
+STUB
+chmod +x "$js"
+mkdir -p "$tmp/t26"
+export LIVE_STATE_JIRA_CMD="$js" JIRA_STUB_DB="$jdb" TMPDIR="$tmp/t26"
+af="$HANDOVER_DIR/b/HIMMEL-nextleg-AF-chief.md"
+af_doc() { { printf '# c\n\n## Live state\n\nworkers: `N61:nonce-61:tok-one:111`\n'; printf '%s\n' "$@"; printf 'queue: none\n\n## Results\n'; } > "$af"; }
+link_calls() { grep -c '^link ' "$jdb/calls" 2>/dev/null || true; }
+bash "$FM" add "${af%.md}.fleet.json" --lane native "$d1" >/dev/null 2>&1
+echo 'To Do' > "$jdb/status-HIMMEL-1"; echo 'In Progress' > "$jdb/status-HIMMEL-2"
+af_doc 'pool-disposition: HIMMEL-2 question after HIMMEL-1'
+bash "$SCRIPT" "$af" --print >/dev/null 2>&1
+check '26. --print makes no link call' 0 "$(link_calls)"
+af_err="$(bash "$SCRIPT" "$af" 2>&1 >/dev/null)"; rc=$?
+check '26. the render succeeds' 0 "$rc"
+check '26. one link call, HIMMEL-1 blocks HIMMEL-2' 'link HIMMEL-1 --blocks HIMMEL-2' "$(grep '^link ' "$jdb/calls" 2>/dev/null)"
+case "$af_err" in *'linked HIMMEL-1 blocks HIMMEL-2'*) r=logged ;; *) r="[$af_err]" ;; esac
+check '26. the link is logged' logged "$r"
+check '26. the pool-disposition line is unchanged' 'pool-disposition: HIMMEL-2 question after HIMMEL-1' "$(grep '^pool-disposition:' "$af")"
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a second render makes no second link call' 1 "$(link_calls)"
+: > "$jdb/calls"; : > "$jdb/links"; rm -rf "$TMPDIR"/himmel-chain-links-*
+echo 'Done' > "$jdb/status-HIMMEL-1"
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a blocker that is not open makes no link call' 0 "$(link_calls)"
+echo 'To Do' > "$jdb/status-HIMMEL-1"; echo 'Closed' > "$jdb/status-HIMMEL-2"
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a waiting key that is not open makes no link call' 0 "$(link_calls)"
+echo 'To Do' > "$jdb/status-HIMMEL-2"
+printf '1\tBlocks\tinward=HIMMEL-1\toutward=HIMMEL-2\tHIMMEL-1 blocks HIMMEL-2\n' > "$jdb/links"
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a link already in Jira makes no link call' 0 "$(link_calls)"
+: > "$jdb/links"; rm -rf "$TMPDIR"/himmel-chain-links-*
+af_doc 'pool-disposition: HIMMEL-2 slice after HIMMEL-1 (its spec lands first)'
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a slice after line with a reason writes its link too' 'link HIMMEL-1 --blocks HIMMEL-2' "$(grep '^link ' "$jdb/calls" 2>/dev/null)"
+: > "$jdb/calls"; : > "$jdb/links"; rm -rf "$TMPDIR"/himmel-chain-links-*
+af_doc 'pool-disposition: HIMMEL-2 close after HIMMEL-1'
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. a close disposition makes no call at all' 0 "$(wc -l < "$jdb/calls" | tr -d ' ')"
+echo 'To Do' > "$jdb/status-HIMMEL-3"
+af_doc 'pool-disposition: HIMMEL-2 question after HIMMEL-1' 'pool-disposition: HIMMEL-3 slice after HIMMEL-1'
+bash "$SCRIPT" "$af" >/dev/null 2>&1
+check '26. two after lines write a link each' 'link HIMMEL-1 --blocks HIMMEL-2|link HIMMEL-1 --blocks HIMMEL-3' "$(grep '^link ' "$jdb/calls" | paste -sd'|')"
+unset LIVE_STATE_JIRA_CMD JIRA_STUB_DB TMPDIR
 
 [ "$t1" = tok-one ] || { echo "FAIL - setup: lock token [$t1]"; fails=$((fails+1)); }
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails FAILED"; exit 1; }
