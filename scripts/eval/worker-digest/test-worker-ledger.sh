@@ -613,6 +613,10 @@ EOF
 D="$TMP/at4"; setup_attr "$D" "$A1"
 env HIMMELCTL_CACHE_DIR="$CV/nocache" python3 -I "$CV/partial.py" "$HERE" "$D" "$A1" >"$D/out" 2>&1
 check "an index built while another writer's row is half appended reads that row whole and appends nothing again" 'grep -qx "eval_rows=2" "$D/out"'
+D="$TMP/at5"; setup_attr "$D" "$A1"
+jq -c '.meta.pr = null' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
+arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row without a pr exits 0: $(head -c 300 "$D/out")"
+check "a field the eval row lacks keeps the value its failure rows already carry" 'grep -q "refreshed=1" "$D/out" && jq -s -e --arg s "$A1" "map(select(.session == \$s)) | length > 0 and all(.pr == 4242)" "$D/f.jsonl" >/dev/null'
 
 echo "test-worker-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

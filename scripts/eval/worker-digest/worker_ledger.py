@@ -656,11 +656,11 @@ def _stop_after(step):
 
 
 def _old_failure_ts(path, session):
-    by, first = {}, None
+    by, first, held = {}, None, {}
     try:
         fh = open(path, encoding="utf-8")
     except FileNotFoundError:
-        return by, first
+        return by, first, held
     with fh:
         for line in fh:
             if session not in line:
@@ -671,11 +671,14 @@ def _old_failure_ts(path, session):
                 continue
             if not (isinstance(r, dict) and r.get("session") == session and isinstance(r.get("agent"), dict)):
                 continue
+            for k in ("leg", "console", "ticket", "pr"):
+                if r.get(k) is not None:
+                    held.setdefault(k, r[k])
             ts = r.get("ts")
             if isinstance(ts, str) and UTC_TS.match(ts):
                 by.setdefault((r["agent"].get("id"), r.get("class")), ts)
                 first = ts if first is None or ts < first else first
-    return by, first
+    return by, first, held
 
 
 def refresh(digest, who, failures_ledger, eval_ledger, index=None):
@@ -719,8 +722,9 @@ def refresh(digest, who, failures_ledger, eval_ledger, index=None):
         if not same:
             eval_runs.append_row(erow, eval_ledger)
         _stop_after("eval")
-        old, first = _old_failure_ts(failures_ledger, session)
+        old, first, held = _old_failure_ts(failures_ledger, session)
         for r in frows:
+            r.update({k: v for k, v in held.items() if r[k] is None})
             r["ts"] = old.get((r["agent"]["id"], r["class"]), first or anchor)
             r["meta"] = {"digest_id": did, "refreshed_at": now}
             problems = validate(r)
