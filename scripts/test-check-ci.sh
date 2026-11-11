@@ -95,6 +95,7 @@ PASS=0; FAIL=0; COUNT=0; STUBDIR=""
 
 # shellcheck disable=SC2329,SC2317
 cleanup() {
+    rm -f "$SCRIPT_DIR/check-ci.mutant.$$.sh" 2>/dev/null || true
     if [ -n "$_NO_READ_TOKEN_ROOT" ] && [ -d "$_NO_READ_TOKEN_ROOT" ]; then rm -rf "$_NO_READ_TOKEN_ROOT" 2>/dev/null || true; fi
     if [ -n "$STUBDIR" ] && [ -d "$STUBDIR" ]; then rm -rf "$STUBDIR" 2>/dev/null || true; fi
 }
@@ -134,6 +135,15 @@ if [ "${GH_STUB_MAIN_SPENT:-}" = 1 ] && [ "$_tok" = main ]; then
 fi
 # the value of the --jq flag among the args ("" if none).
 _jq_arg() { while [ $# -gt 0 ]; do if [ "$1" = "--jq" ]; then printf '%s' "${2:-}"; return; fi; shift; done; }
+# the check rows now: GH_STUB_CHECKS, or GH_STUB_CHECKS_AFTER once the except-ctx watch has run for a second
+_checks_now() {
+    local d t; d=$(dirname "$0")
+    if [ -n "${GH_STUB_CHECKS_AFTER:-}" ] && [ -f "$d/watch-started" ]; then
+        t=$(cat "$d/watch-started")
+        if [ $(( $(date +%s) - t )) -ge 1 ]; then printf '%s' "$GH_STUB_CHECKS_AFTER"; return; fi
+    fi
+    printf '%s' "${GH_STUB_CHECKS:-pass:unit-tests}"
+}
 cmd="${1:-}"
 # the GraphQL budget probe (`gh api -i graphql`, lib/gh-graphql-budget.sh)
 # when GH_STUB_RL_PROBE names a counter file. Call 1 (the startup preflight) spends
@@ -682,7 +692,7 @@ case " $* " in
                             pendlate:*) printf 'pass\tunit-tests\n'; if [ "$rq" -eq 0 ]; then printf 'pending\tshard-1\n'; else printf 'pass\tshard-1\npass\t%s\n' "${GH_STUB_CHECKS#pendlate:}"; fi ;;
                             pendstuck:*) printf 'pass\tunit-tests\npending\tshard-1\n' ;;
                             flipfail:*) if [ "$rq" -eq 0 ]; then printf 'pending\t%s\n' "${GH_STUB_CHECKS#flipfail:}"; else printf 'fail\t%s\n' "${GH_STUB_CHECKS#flipfail:}"; fi ;;
-                            *) printf '%s\n' "${GH_STUB_CHECKS:-pass:unit-tests}" | while IFS=: read -r b n; do printf '%s\t%s\n' "$b" "$n"; done ;;
+                            *) printf '%s\n' "$(_checks_now)" | while IFS=: read -r b n; do printf '%s\t%s\n' "$b" "$n"; done ;;
                         esac
                         exit 0 ;;
                 esac
@@ -851,6 +861,21 @@ case "$GH_STUB_MODE" in
             echo "All checks were successful"; exit 0
         fi
         exit 8 ;;
+    except-ctx)
+        # a watch that behaves like gh's: with --fail-fast it returns on the first red row; without it
+        # it waits until every row has settled and exits 1 when any check failed. A pending row holds
+        # it for GH_STUB_EXC_SLEEP seconds (default 3), then the rows are read again.
+        if [ "$is_watch" -eq 1 ]; then
+            d=$(dirname "$0")
+            [ -f "$d/watch-started" ] || date +%s > "$d/watch-started"
+            ff=0; case " $* " in *" --fail-fast "*) ff=1 ;; esac
+            rows=$(_checks_now)
+            if [ "$ff" -eq 1 ] && grep -q '^fail:' <<<"$rows"; then sed -n 's/^fail:/X /p' <<<"$rows"; exit 1; fi
+            if grep -q '^pending:' <<<"$rows"; then sleep "${GH_STUB_EXC_SLEEP:-3}"; rows=$(_checks_now); fi
+            if grep -q '^fail:' <<<"$rows"; then sed -n 's/^fail:/X /p' <<<"$rows"; exit 1; fi
+            echo "All checks were successful"; exit 0
+        fi
+        exit 8 ;;
     green-then-slow)
         # the first watch is instantly green (the settle path is then
         # taken); every later watch runs past any cap the suite sets.
@@ -936,6 +961,7 @@ CLASSIC_OVERRIDE=none
 PRODUCERS_OVERRIDE=none
 STATUSCTX_OVERRIDE=none
 CHECKS_OVERRIDE="pass:unit-tests"
+CHECKS_AFTER_OVERRIDE=""
 KEEP_ALERT_STATE=0
 ALERT_FAIL_OVERRIDE=""
 ACCESS_OVERRIDE="$STUBDIR/access.json"
@@ -1005,6 +1031,7 @@ run() {
     : > "$STUBDIR/claims"
     : > "$STUBDIR/reqrows-count"
     : > "$STUBDIR/msc"
+    rm -f "$STUBDIR/watch-started"
     # alert state resets per run unless a case sets KEEP_ALERT_STATE=1
     # (the dedupe case runs the SAME head twice and must see ONE alert).
     if [ "$KEEP_ALERT_STATE" -ne 1 ]; then : > "$STUBDIR/alerts.log"; rm -rf "$STUBDIR/alert-sentinels"; fi
@@ -1037,6 +1064,7 @@ run() {
         GH_STUB_PRODUCERS="$PRODUCERS_OVERRIDE" \
         GH_STUB_STATUSCTX="$STATUSCTX_OVERRIDE" \
         GH_STUB_CHECKS="$CHECKS_OVERRIDE" \
+        GH_STUB_CHECKS_AFTER="$CHECKS_AFTER_OVERRIDE" \
         HIMMEL_CONSOLE_LEG=0 \
         GH_STUB_MERGE_STATE="$MERGE_STATE_OVERRIDE" \
         GH_STUB_MERGE_HEAD="$MERGE_HEAD_OVERRIDE" \
@@ -1073,7 +1101,7 @@ run() {
     ESCALATE_WAIT_OVERRIDE=0; ESCALATE_POLL_OVERRIDE=0; MARKERS_OVERRIDE=""; SLEEP_CMD_OVERRIDE=":"
     CR_PROFILE_OVERRIDE=""; CR_APP_OVERRIDE=1
     FRESHNESS_OVERRIDE=fresh; FILES_OVERRIDE=README.md; CR_BOT_LOGINS_OVERRIDE=""; MPR_OVERRIDE=none; BODY_FILE_OVERRIDE=""; BODY_FILE2_OVERRIDE=""
-    RULES_OVERRIDE=none; CLASSIC_OVERRIDE=none; PRODUCERS_OVERRIDE=none; STATUSCTX_OVERRIDE=none; CHECKS_OVERRIDE="pass:unit-tests"
+    RULES_OVERRIDE=none; CLASSIC_OVERRIDE=none; PRODUCERS_OVERRIDE=none; STATUSCTX_OVERRIDE=none; CHECKS_OVERRIDE="pass:unit-tests"; CHECKS_AFTER_OVERRIDE=""
     KEEP_ALERT_STATE=0; ALERT_FAIL_OVERRIDE=""; ACCESS_OVERRIDE="$STUBDIR/access.json"
     MERGE_STATE_OVERRIDE=CLEAN; MERGE_HEAD_OVERRIDE=sha1
     BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""; QUOTA_OVERRIDE=""
@@ -3233,7 +3261,83 @@ assert_err_lacks "T4-i a recovered refusal is not named as a quota stop" "said Q
 check_eq "T4-i a recovered refusal leaves no marker" "" "$(blocked_names)"
 rm -rf "$STUBDIR/quota"
 
+# ── --except-context: the stage-1 read of an outside PR ───────────────────────────────────────
+# codeowner-review-gate is red from the PR's open until the code owner approves, so the audit's CI
+# precondition waits for every OTHER required context. The stub's except-ctx watch behaves like gh's:
+# --fail-fast returns on the first red row, without it the watch waits for every row to settle.
+_gate=codeowner-review-gate
+_exc_rules="req:$_gate,unit-tests"
+_gate_red=$'fail:codeowner-review-gate\npass:unit-tests'
+
+# T3.18 — gate red, every other required context green: 0 with the flag, 1 without it. GitHub says
+# BLOCKED while the gate is red, and the flag does not turn that into a refusal.
+RULES_OVERRIDE="$_exc_rules"; CHECKS_OVERRIDE="$_gate_red"; MERGE_STATE_OVERRIDE=BLOCKED
+run except-ctx --grace 0 --except-context "$_gate"
+assert_rc 0 "T3.18-a gate red and every other required context green: exit 0 with --except-context"
+assert_out_has "all checks green" "T3.18-a the green verdict is printed"
+RULES_OVERRIDE="$_exc_rules"; CHECKS_OVERRIDE="$_gate_red"; MERGE_STATE_OVERRIDE=BLOCKED
+run except-ctx --grace 0
+assert_rc 1 "T3.18-b the same PR without the flag exits 1"
+# gate red and another required context red: 1 with the flag
+RULES_OVERRIDE="$_exc_rules"; CHECKS_OVERRIDE=$'fail:codeowner-review-gate\nfail:unit-tests'; MERGE_STATE_OVERRIDE=BLOCKED
+run except-ctx --grace 0 --except-context "$_gate"
+assert_rc 1 "T3.18-c gate red and another required context red: exit 1 with the flag"
+assert_err_has "unit-tests" "T3.18-c the refusal names the other context"
+# the flag accepts that one literal and nothing else
+RULES_OVERRIDE="$_exc_rules"; CHECKS_OVERRIDE="$_gate_red"
+run except-ctx --grace 0 --except-context unit-tests
+assert_rc 64 "T3.18-d any other value exits 64 (it cannot hide a CI job)"
+assert_verdict 64 "T3.18-d verdict line on the bad value"
+run except-ctx --grace 0 --except-context
+assert_rc 64 "T3.18-e --except-context with no value exits 64"
+# BLOCKED passes only while the excepted gate is the one not green: BLOCKED with it green is exit 6
+RULES_OVERRIDE="$_exc_rules"; CHECKS_OVERRIDE=$'pass:codeowner-review-gate\npass:unit-tests'; MERGE_STATE_OVERRIDE=BLOCKED
+run except-ctx --grace 0 --except-context "$_gate"
+assert_rc 6 "T3.18-f BLOCKED with the gate green is still exit 6 under the flag"
+RULES_OVERRIDE="$_exc_rules"; CHECKS_OVERRIDE=$'pass:codeowner-review-gate\npass:unit-tests'; MERGE_STATE_OVERRIDE=BLOCKED
+run except-ctx --grace 0
+assert_rc 6 "T3.18-g BLOCKED with every check green and no flag is exit 6"
+RULES_OVERRIDE="$_exc_rules"; CHECKS_OVERRIDE="$_gate_red"; MERGE_STATE_OVERRIDE=DIRTY
+run except-ctx --grace 0 --except-context "$_gate"
+assert_rc 6 "T3.18-h DIRTY with the gate red is still exit 6 under the flag"
+
+# T3.23 — the watch drops --fail-fast: a pending context holds the verdict until it settles
+export GH_STUB_EXC_SLEEP=30
+RULES_OVERRIDE="req:$_gate,unit-tests,shard-1"; CHECKS_OVERRIDE=$'fail:codeowner-review-gate\npass:unit-tests\npending:shard-1'; MERGE_STATE_OVERRIDE=BLOCKED
+run except-ctx --grace 0 --max-wait 4 --except-context "$_gate"
+assert_rc 2 "T3.23-a gate red and another context pending: no exit 0, it waits and exits 2 at the deadline"
+assert_err_has "DEADLINE-PENDING" "T3.23-a the deadline refusal is the pending one"
+assert_err_has "shard-1" "T3.23-a the pending context is named"
+export GH_STUB_EXC_SLEEP=3
+RULES_OVERRIDE="req:$_gate,unit-tests,shard-1"; CHECKS_OVERRIDE=$'fail:codeowner-review-gate\npass:unit-tests\npending:shard-1'
+CHECKS_AFTER_OVERRIDE=$'fail:codeowner-review-gate\npass:unit-tests\nfail:shard-1'; MERGE_STATE_OVERRIDE=BLOCKED
+run except-ctx --grace 0 --max-wait 30 --except-context "$_gate"
+assert_rc 1 "T3.23-b gate red, another context pending then red on the next poll: exit 1"
+RULES_OVERRIDE="req:$_gate,unit-tests,shard-1"; CHECKS_OVERRIDE=$'fail:codeowner-review-gate\npass:unit-tests\npending:shard-1'
+CHECKS_AFTER_OVERRIDE=$'fail:codeowner-review-gate\npass:unit-tests\npass:shard-1'; MERGE_STATE_OVERRIDE=BLOCKED
+run except-ctx --grace 0 --max-wait 30 --except-context "$_gate"
+assert_rc 0 "T3.23-c gate red, another context pending then green: exit 0"
+# the gate itself still pending (its workflow running): the watch is not held on it, gh would wait for it
+# but the early-stop probe reads the rows without it
+export GH_STUB_EXC_SLEEP=30
+RULES_OVERRIDE="$_exc_rules"; CHECKS_OVERRIDE=$'pending:codeowner-review-gate\npass:unit-tests'; MERGE_STATE_OVERRIDE=BLOCKED
+run except-ctx --grace 0 --max-wait 30 --except-context "$_gate"
+assert_rc 0 "T3.23-e the excepted gate pending and every other check green: exit 0, not held on the gate"
+unset GH_STUB_EXC_SLEEP
+# mutation check: a copy that keeps --fail-fast under the flag must fail the pending rows
+_mutant="$SCRIPT_DIR/check-ci.mutant.$$.sh"
+sed 's/watch_ff=""/watch_ff=--fail-fast/' "$SCRIPT" > "$_mutant"
+if cmp -s "$SCRIPT" "$_mutant"; then fail "T3.23-d the mutation changed nothing (the watch no longer carries watch_ff)"; else pass "T3.23-d the mutant keeps --fail-fast in the watch"; fi
+export GH_STUB_EXC_SLEEP=30
+_real_script="$SCRIPT"; SCRIPT="$_mutant"
+RULES_OVERRIDE="req:$_gate,unit-tests,shard-1"; CHECKS_OVERRIDE=$'fail:codeowner-review-gate\npass:unit-tests\npending:shard-1'; MERGE_STATE_OVERRIDE=BLOCKED
+run except-ctx --grace 0 --max-wait 4 --except-context "$_gate"
+SCRIPT="$_real_script"; rm -f "$_mutant"
+unset GH_STUB_EXC_SLEEP
+if [ "$RC" -ne 2 ] || ! grep -qF "DEADLINE-PENDING" <<<"$ERR"; then pass "T3.23-d mutation check: with --fail-fast kept, the T3.23-a pending row goes RED (rc=$RC, no DEADLINE-PENDING wait)"; else fail "T3.23-d mutation check: with --fail-fast kept, the T3.23-a pending row still passed"; fi
+if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending context is never certified green (rc=$RC)"; else fail "T3.23-d with --fail-fast kept, a pending context was certified green (rc 0)"; fi
+
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 235 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 235"; exit 1; fi
+if [ "$COUNT" -ne 248 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 248"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

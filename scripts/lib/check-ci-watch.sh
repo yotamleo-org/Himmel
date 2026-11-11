@@ -30,6 +30,9 @@ DTTL=$(_num dttl "${CHECK_CI_DECIDE_TTL:-5}" 5)
 export CIC_MAX_WAIT="${CIC_MAX_WAIT:-${CHECK_CI_MAX_WAIT:-0}}"
 
 RUN_MODE=0; JOB_NAME=""; MAX_WAIT=0; HB_FILE=""; TICK="-"
+EXCEPT_CTX="${CHECK_CI_EXCEPT_CONTEXT:-}"
+FAIL_FAST=1
+[ -z "$EXCEPT_CTX" ] || FAIL_FAST=0
 SLEEP_PID=""
 _hsleep() {
     if [ -n "${CHECK_CI_WATCH_SLEEP_CMD:-}" ]; then "$CHECK_CI_WATCH_SLEEP_CMD" "$1"; return 0; fi
@@ -81,7 +84,7 @@ fi
 # workflow has already completed (then the selector cannot be evaluated).
 _classify() {
     ROWS="$CIC_ROWS"
-    if [ "$RUN_MODE" = 0 ]; then ROWS=$(printf '%s\n' "$CIC_ROWS" | ngc_drop_rows); fi
+    if [ "$RUN_MODE" = 0 ]; then ROWS=$(printf '%s\n' "$CIC_ROWS" | ngc_drop_rows | awk -F'\t' -v x="$EXCEPT_CTX" 'x == "" || $2 != x'); fi
     if [ "$RUN_MODE" = 1 ] && [ -n "$JOB_NAME" ]; then
         ROWS=$(printf '%s\n' "$CIC_ROWS" | CHECK_CI_JOB_NAME="$JOB_NAME" awk -F'\t' '$3 == "job" && $2 == ENVIRON["CHECK_CI_JOB_NAME"]')
         if printf '%s\n' "$ROWS" | awk -F'\t' '$1 == "skipping" { found=1 } END { exit !found }'; then
@@ -128,7 +131,7 @@ last_sig=""
 while :; do
     _read "$TTL"
     _classify
-    if [ "$FAILS" -gt 0 ] || [ "$PENDING" -eq 0 ]; then
+    if { [ "$FAILS" -gt 0 ] && [ "$FAIL_FAST" -eq 1 ]; } || [ "$PENDING" -eq 0 ]; then
         _read "$DTTL"
         _classify
         if [ "$FAILS" -gt 0 ]; then
