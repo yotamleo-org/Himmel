@@ -34,6 +34,7 @@ letter. Tag `operator-critical: <class>` only with one of `spend-grant`,
 for nothing. A finding without a heading line counts as major.
 
 **Closure mode.** If your input opens with a `CLOSURE-CHECK` line, quote that
-line first. Report only `reopens <id>`, for an open finding the change did not
-fix, or `regression`, quoting the changed line in backticks (12 characters or
-more). Raise nothing about text the change did not touch.
+line first. Report only `reopens <id>`, for each open finding the change did not
+fix, wherever its text sits, or `regression`, quoting the changed line in
+backticks (12 characters or more). An open finding you do not reopen counts as
+fixed. Raise no new finding about text the change did not touch.
